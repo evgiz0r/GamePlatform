@@ -31,6 +31,7 @@ Or use the built-in commands:
 
 | Command | What it does |
 |---|---|
+| `/start` | first time here? checks your setup and gets you to a running game |
 | `/new-game <idea>` | designs and builds a whole new game |
 | `/add <thing>` | adds one enemy, powerup, obstacle or rule |
 | `/look <style>` | changes the colors and mood |
@@ -61,7 +62,7 @@ Commit whenever a game is in a good state, so you always have somewhere to fall 
 ```
 game/       your games — one folder each. This is where the AI works.
 shell/      menu, pause, score, audio, juice, self-play. The AI is told not to touch it.
-assets/     art and sound. Games work fine without any.
+assets/     art and sound — people, monsters, animals, items, music. See assets/INDEX.md.
 tools/      playtest.sh — headless self-play
 GAME.md     your game's design, in your words
 CLAUDE.md   the rules the AI follows

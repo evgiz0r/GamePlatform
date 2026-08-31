@@ -24,7 +24,7 @@ func start(_config: Dictionary) -> void:
 	add_child(cam)
 
 	set_lives(3)
-	player = _blob("player", 9.0, "circle")
+	player = _blob("player", 9.0, "circle", "penguin", 0.13)
 	player.position = center()
 	Probe.track(player, "@")
 
@@ -56,7 +56,7 @@ func _process(delta: float) -> void:
 		Probe.capture("mid-game")
 
 func _spawn_hazard() -> void:
-	var h := _blob("hazard", 8.0, "triangle")
+	var h := _blob("hazard", 8.0, "triangle", "spider", 1.5)
 	h.position = random_edge_point(-10.0)
 	h.set_meta("vel", (player.position - h.position).normalized() * HAZARD_SPEED)
 	hazards.append(h)
@@ -64,7 +64,7 @@ func _spawn_hazard() -> void:
 	Probe.event("hazard_spawn")
 
 func _spawn_prize() -> void:
-	var p := _blob("prize", 6.0, "diamond")
+	var p := _blob("prize", 6.0, "diamond", "gold_bar", 1.2)
 	p.position = Vector2(randf_range(30, play_area.size.x - 30), randf_range(30, play_area.size.y - 30))
 	prizes.append(p)
 	Probe.track(p, "*")
@@ -103,10 +103,13 @@ func _check_prizes() -> void:
 		keep.append(p)
 	prizes = keep
 
-func _blob(role: String, radius: float, shape: String) -> Blob:
+## sprite is optional -- pass "" and you get the glowing placeholder shape instead
+func _blob(role: String, radius: float, shape: String, sprite: String = "", scale: float = 2.0) -> Blob:
 	var b := Blob.new()
 	b.role = role
 	b.radius = radius
 	b.shape = shape
 	add_child(b)
+	if sprite != "":
+		b.set_sprite(sprite, scale)
 	return b

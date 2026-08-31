@@ -61,8 +61,10 @@ Verbs the shell gives you — use these instead of inventing your own:
   directly silently breaks self-play.
 - **Color**: use `Palette.col(role)` with roles `bg bg_alt ink player friend hazard warn
   prize accent`. Never a hex literal. This is what makes `/look` reskin the whole game.
-- **Visuals**: use `Blob` (see `shell/blob.gd`) for actors until real art exists. It draws
-  a glowing shape in a palette role and needs no asset files.
+- **Visuals**: use `Blob` (see `shell/blob.gd`) for every actor. `b.set_sprite("wizard")`
+  uses real art; with no sprite it draws a glowing shape in a palette role. **Read
+  `assets/INDEX.md` before naming any asset** — never guess a filename, and mind the scale
+  (16x16 sprites want ~1.5-2.0, the 256x256 animals want ~0.12).
 - **Instrumentation**: call `Probe.track(node, "@")` for the player, `"x"` for hazards,
   `"*"` for prizes/goals, and `Probe.event("thing_happened")` at meaningful moments.
   Without this you are blind during playtests and so is the report.
