@@ -61,6 +61,7 @@ func _maybe_start_sim() -> bool:
 	runner.policy = a.get("bot", "smart")
 	runner.seconds = float(a.get("seconds", "30"))
 	runner.seed_value = int(a.get("seed", "12345"))
+	runner.shots = int(a.get("shots", "0"))
 	get_tree().root.add_child(runner)
 	return true
 
@@ -146,6 +147,10 @@ func _launch(id: String) -> void:
 		return
 	var scn: PackedScene = load(path)
 	current_game = scn.instantiate()
+	var bd := Backdrop.new()
+	if "play_area" in current_game:
+		bd.area = current_game.play_area
+	_stage.add_child(bd)
 	_stage.add_child(current_game)
 	_in_game = true
 	_score = 0
@@ -153,6 +158,10 @@ func _launch(id: String) -> void:
 	_build_hud()
 	if current_game.has_method("start"):
 		current_game.start({})
+	else:
+		push_error("game '%s' has no GameMode script (compile error?)" % id)
+		Probe.note("game '%s' failed to load its script" % id)
+		Bus.game_over.emit(false, 0)
 	Probe.event("game_start", {"id": id})
 
 func restart() -> void:

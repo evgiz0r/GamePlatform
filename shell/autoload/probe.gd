@@ -29,6 +29,7 @@ func reset(new_title: String) -> void:
 	_events.clear(); _counts.clear(); _tracked.clear()
 	_snaps.clear(); _notes.clear()
 	player_seen = false
+	hazard_seen = false
 	_fps_min = 9999.0
 
 func _process(delta: float) -> void:
@@ -67,6 +68,8 @@ func track(node: Node2D, sym: String) -> void:
 	var s := sym.substr(0, 1)
 	if s == "@":
 		player_seen = true
+	elif s == "x":
+		hazard_seen = true
 	_tracked.append({"ref": weakref(node), "sym": s})
 
 func counts() -> Dictionary:
@@ -75,6 +78,7 @@ func counts() -> Dictionary:
 ## ---- perception (used by sim bots, and by checks) --------------------------
 
 var player_seen := false
+var hazard_seen := false
 
 func first_with(sym: String) -> Node2D:
 	for e in _tracked:

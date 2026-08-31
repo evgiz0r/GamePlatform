@@ -24,9 +24,10 @@ static func run(bot_policy: String, duration: float, ended: bool, won: bool, sco
 		elif not ended:
 			out.append(["PASS", "a competent bot survived the full run"])
 
-	var spawned := int(c.get("hazard_spawn", 0))
-	if spawned == 0 and c.get("enemy_spawn", 0) == 0:
-		out.append(["WARN", "nothing hostile ever spawned -- check the spawner"])
+	# keyed off tracked symbols, not event names -- games name their spawn events freely
+	if not Probe.hazard_seen:
+		out.append(["WARN", "nothing hostile was ever tracked as \"x\" -- either the game "
+			+ "has no threats, or it is not calling Probe.track(enemy, \"x\")"])
 
 	if not Probe.player_seen:
 		out.append(["FAIL", "no node was tracked as the player ('@'). Call Probe.track(player, \"@\")."])

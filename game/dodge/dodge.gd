@@ -24,7 +24,7 @@ func start(_config: Dictionary) -> void:
 	add_child(cam)
 
 	set_lives(3)
-	player = _blob("player", 9.0, "circle", "penguin", 0.13)
+	player = _blob("player", 9.0, "circle", "ranger", 1.7)
 	player.position = center()
 	Probe.track(player, "@")
 

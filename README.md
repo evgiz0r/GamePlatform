@@ -36,9 +36,11 @@ Or use the built-in commands:
 | `/add <thing>` | adds one enemy, powerup, obstacle or rule |
 | `/look <style>` | changes the colors and mood |
 | `/playtest` | the AI plays the game itself and reports problems |
+
 | `/publish` | exports to the web so you can share a link |
 
-Every game you make shows up on the menu automatically.
+Every game you make shows up on the menu automatically. Three come with the kit —
+**dodge** (arena), **jump** (platformer) and **blast** (shooter) — as working references.
 
 ## Working with a kid
 
@@ -63,7 +65,7 @@ Commit whenever a game is in a good state, so you always have somewhere to fall 
 game/       your games — one folder each. This is where the AI works.
 shell/      menu, pause, score, audio, juice, self-play. The AI is told not to touch it.
 assets/     art and sound — people, monsters, animals, items, music. See assets/INDEX.md.
-tools/      playtest.sh — headless self-play
+tools/      playtest.sh (headless self-play) and shots.sh (real screenshots)
 GAME.md     your game's design, in your words
 CLAUDE.md   the rules the AI follows
 ```

@@ -44,9 +44,13 @@ Monsters: skeleton, ghost, goblin, crab, bat, skull, spider, snail.
 
 `elephant` `giraffe` `hippo` `monkey` `panda` `parrot` `penguin` `pig` `rabbit` `snake`
 
-These are a chunkier, rounder style than `characters/`. Mixing the two in one game looks
-deliberate if you keep to one per role (e.g. animal hero, pixel monsters) and sloppy if
-you scatter them. Pick a lane.
+**These are icon badges, not game sprites** — each animal sits on an opaque rounded square,
+so on a dark background it shows as a coloured tile rather than a free-standing character.
+They look right for tokens, cards, menus, buttons and match-3 pieces, and wrong for
+something running around an arena.
+
+For an actor that moves, prefer `characters/`. If a game really wants an animal hero, say
+so plainly and use it knowing it will read as a badge.
 
 ## items/ — 16x16 pixel art
 
