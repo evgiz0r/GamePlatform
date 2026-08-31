@@ -36,7 +36,6 @@ Or use the built-in commands:
 | `/add <thing>` | adds one enemy, powerup, obstacle or rule |
 | `/look <style>` | changes the colors and mood |
 | `/playtest` | the AI plays the game itself and reports problems |
-
 | `/publish` | exports to the web so you can share a link |
 
 Every game you make shows up on the menu automatically. Three come with the kit —
