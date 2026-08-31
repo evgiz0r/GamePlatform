@@ -1,0 +1,43 @@
+; GamePlatform - a clone-and-prompt 2D game kit for Godot 4.
+; Renderer is gl_compatibility so that web export works. Do not change it.
+
+config_version=5
+
+[application]
+
+config/name="GamePlatform"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.4", "GL Compatibility")
+config/icon="res://icon.svg"
+
+[autoload]
+
+Bus="*res://shell/autoload/bus.gd"
+Controls="*res://shell/autoload/controls.gd"
+Palette="*res://shell/autoload/palette.gd"
+SaveData="*res://shell/autoload/save_data.gd"
+Probe="*res://shell/autoload/probe.gd"
+PInput="*res://shell/autoload/pinput.gd"
+Audio="*res://shell/autoload/audio.gd"
+Juice="*res://shell/autoload/juice.gd"
+Flow="*res://shell/autoload/flow.gd"
+
+[display]
+
+window/size/viewport_width=640
+window/size/viewport_height=360
+window/size/window_width_override=1280
+window/size/window_height_override=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="keep"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/canvas_textures/default_texture_filter=0
+environment/defaults/default_clear_color=Color(0.043, 0.035, 0.098, 1)
+
+[physics]
+
+common/physics_ticks_per_second=60
