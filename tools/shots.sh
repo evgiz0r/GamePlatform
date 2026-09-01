@@ -3,7 +3,7 @@
 # Runs WITHOUT --headless because the headless driver renders nothing (black frames).
 # Images land in shots/ (gitignored).
 set -u
-GAME="${1:-dodge}"; BOT="${2:-smart}"; SECS="${3:-10}"; N="${4:-2}"
+GAME="${1:-count}"; BOT="${2:-smart}"; SECS="${3:-10}"; N="${4:-2}"
 BIN="${GODOT:-}"
 if [ -z "$BIN" ]; then
   for c in godot godot4 Godot; do command -v "$c" >/dev/null 2>&1 && BIN="$c" && break; done

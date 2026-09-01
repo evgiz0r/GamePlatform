@@ -13,7 +13,7 @@ bugs. You never have to ask for those.
    this kit is tuned for.
 3. **Clone this repo** and open the folder in your AI tool.
 4. Open the same folder in Godot and press **F5**. You should get a menu with one game
-   called *dodge*. Play it for ten seconds so you know what "working" looks like.
+   called *count*. Play it for ten seconds so you know what "working" looks like.
 
 Optional but recommended — tell the kit where Godot lives, so the AI can playtest:
 
@@ -38,8 +38,9 @@ Or use the built-in commands:
 | `/playtest` | the AI plays the game itself and reports problems |
 | `/publish` | exports to the web so you can share a link |
 
-Every game you make shows up on the menu automatically. Three come with the kit —
-**dodge** (arena), **jump** (platformer) and **blast** (shooter) — as working references.
+Every game you make shows up on the menu automatically. The kit's three starter games have
+been removed; **count** (a counting quiz) is the working reference now, and a frozen copy
+lives in `reference/count/` with notes on what is worth copying from it.
 
 ## Working with a kid
 
