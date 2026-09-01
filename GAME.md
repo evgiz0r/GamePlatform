@@ -1,8 +1,53 @@
-# My Game
+# My Games
 
 > This file is the design, in the words of whoever is making the game. The AI reads it
 > before every change and it outranks the AI's own taste. Fill it in loosely — bad
 > handwriting is fine, so is changing your mind.
+>
+> One section per game. Newest first.
+
+# tank
+
+## Who are you?
+
+A tank in the bottom-left corner of the board.
+
+## What do you do?
+
+**Stand the mouse somewhere and click, and the tank shoots there** — a real lobbed
+trajectory, an arc like the one in my drawing.
+
+(Arrow keys move the crosshair and space fires, so the bots can play it too.)
+
+## What is trying to stop you?
+
+There are animals on the screen and **only one of them is different** — at least 3 of
+them, all the same animal except one. I have to hit the different one.
+
+**No time cap, no shots cap.** Take as long as you like.
+
+## How do you win?
+
+Hit the odd one out and **it cries** — then on to the next level. Hit a wrong one and
+**it just laughs and spins** at you.
+
+As the levels get harder **the animals start moving a bit, and there are more of them.**
+
+## Core loop
+
+> Spot the odd animal out → lob a shell onto it → it cries and the level advances → next
+> level has more animals and they wander.
+
+## Notes
+
+- It cannot be lost — that is on purpose (no time cap, no shots cap). The playtest bots
+  will always report "idle bot survived, the game has no teeth". That check is right about
+  the facts and wrong about this game.
+- Score is the only thing that moves: 100 for a level, minus 15 for each wrong animal you
+  hit on the way, floor of 25.
+- 3 animals at level 1, up to 6. They start wandering at level 3.
+
+# count
 
 ## What is it called?
 
