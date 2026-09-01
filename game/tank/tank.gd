@@ -18,14 +18,19 @@ const CRY_TIME := 1.7
 const LAUGH_TIME := 0.75
 const MAX_ANIMALS := 6
 const TRAIL_MAX := 26
+const GROUND_Y := 338.0                   ## where a shell that hits nothing lands
+const ACTOR_SCALE := 0.45
 ## The shell default (0.8) is loud for a game that fires this often. In memory only --
 ## the saved settings file is never written. See reference/README.md.
 const SFX_VOLUME := 0.28
 
-const BADGES := ["pig", "rabbit", "monkey", "panda", "penguin", "parrot", "hippo",
-	"elephant", "giraffe", "snake"]
+## The animated cast. "soldier" is reserved for the gunner beside the tank so he is never
+## also a target -- two soldiers on screen meaning different things reads as a bug.
+const CAST := ["adventurer", "female", "player", "zombie"]
+const GUNNER := "soldier"
 
 var cross: Blob
+var gunner: Blob
 var _animals: Array = []       ## Blob, meta: odd, slot, phase, laugh, spin
 var _shells: Array = []        ## Blob, meta: vel, trail
 var _tears: Array = []         ## Blob, meta: vel
@@ -61,6 +66,13 @@ func start(_config: Dictionary) -> void:
 	cross.position = Vector2(380, 190)
 	Probe.track(cross, "@")
 
+	gunner = Blob.new()
+	gunner.role = "player"
+	add_child(gunner)
+	gunner.set_actor(GUNNER, ACTOR_SCALE)
+	gunner.play("idle")
+	gunner.position = Vector2(96, 300)
+
 	_next_level()
 	Probe.capture("start")
 
@@ -79,7 +91,7 @@ func _next_level() -> void:
 	_animals.clear()
 
 	var n := clampi(3 + (_level - 1) / 2, 3, MAX_ANIMALS)
-	var species: Array = BADGES.duplicate()
+	var species: Array = CAST.duplicate()
 	species.shuffle()
 	var herd: String = species[0]
 	var odd: String = species[1]
@@ -92,7 +104,8 @@ func _next_level() -> void:
 		b.role = "prize" if is_odd else "friend"
 		b.radius = 15.0
 		add_child(b)
-		b.set_sprite(odd if is_odd else herd, 0.13)
+		b.set_actor(odd if is_odd else herd, ACTOR_SCALE)
+		b.play("idle")
 		b.position = slots[i]
 		b.set_meta("odd", is_odd)
 		b.set_meta("slot", slots[i])
@@ -155,6 +168,9 @@ func _fire(at: Vector2) -> void:
 	Probe.track(s, "!")
 	Probe.event("fire")
 	Audio.play("thud")
+	Audio.play("impact_metal", 0.15, -6.0)
+	if is_instance_valid(gunner):
+		gunner.play("action", 12.0, false)
 	Juice.shake(3.5)
 	_cool = FIRE_COOLDOWN
 
@@ -167,6 +183,8 @@ func _process(delta: float) -> void:
 	queue_redraw()
 	_cool = maxf(0.0, _cool - delta)
 
+	if is_instance_valid(gunner) and _cool <= 0.0:
+		gunner.play("idle")
 	_move_animals(delta)
 	_move_shells(delta)
 	_move_tears(delta)
@@ -193,17 +211,27 @@ func _move_animals(delta: float) -> void:
 		if laugh > 0.0:
 			a.set_meta("laugh", maxf(0.0, laugh - delta))
 			continue
+		if a.get_meta("laughed", false) and _crying <= 0.0:
+			a.set_meta("laughed", false)
+			a.play("idle")
+		var slot: Vector2 = a.get_meta("slot")
+		var ph: float = a.get_meta("phase")
 		if _crying > 0.0:
 			if a.get_meta("odd"):
 				# the shake of a good cry
-				var slot: Vector2 = a.get_meta("slot")
 				a.position = slot + Vector2(sin(_t * 34.0) * 3.0, 0)
 			continue
 		if amp <= 0.0:
+			# standing still: one pose plus a breath, so nobody moonwalks on the spot
+			a.play("idle")
+			a.position = slot + Vector2(0, sin(_t * 1.9 + ph) * 1.5)
 			continue
-		var ph: float = a.get_meta("phase")
-		var slot2: Vector2 = a.get_meta("slot")
-		a.position = slot2 + Vector2(sin(_t * w + ph) * amp, cos(_t * w * 0.8 + ph) * amp * 0.7)
+		var was: float = a.position.x
+		a.position = slot + Vector2(sin(_t * w + ph) * amp, cos(_t * w * 0.8 + ph) * amp * 0.7)
+		a.play("walk", clampf(2.0 + w * 4.0, 2.0, 10.0))
+		var dx: float = a.position.x - was
+		if absf(dx) > 0.02:
+			a.flip_h = dx < 0.0
 
 func _move_shells(delta: float) -> void:
 	var keep: Array = []
@@ -221,23 +249,28 @@ func _move_shells(delta: float) -> void:
 			trail = trail.slice(trail.size() - TRAIL_MAX)
 		s.set_meta("trail", trail)
 
-		# The shell detonates where it was aimed and hits whatever is standing there. It
-		# deliberately does NOT collide in mid-air: a lob that clips an animal it merely flew
-		# over makes clicking the odd one out feel broken, and the arc crosses the field on
-		# the way up. Wobbling animals can still step out from under it -- that is the skill.
+		# The fuse marks the aim point: up to there the shell is inert, so a lob cannot clip
+		# an animal it merely flew over on the way up (that read as broken -- you click the
+		# odd one and something else explodes). Past the aim point it stays in the air and
+		# keeps falling, live, until it hits somebody or reaches the ground.
 		var life: float = float(s.get_meta("life")) - delta
 		s.set_meta("life", life)
-		if life > 0.0 and in_play_area(s.position, 60.0):
+		if life > 0.0:
 			keep.append(s)
 			continue
+
 		var struck: Blob = null if _crying > 0.0 else _animal_at(s.position)
 		if struck != null:
 			_impact(struck)
-		else:
-			Probe.event("miss")
-			Audio.play("hit")
-			Juice.shake(2.0)
-			_puff(s.position)
+			s.queue_free()
+			continue
+		if s.position.y < GROUND_Y and in_play_area(s.position, 80.0):
+			keep.append(s)
+			continue
+		Probe.event("miss")
+		Audio.play("impact_light")
+		Juice.shake(2.0)
+		_puff(Vector2(s.position.x, minf(s.position.y, GROUND_Y)))
 		s.queue_free()
 	_shells = keep
 
@@ -304,7 +337,10 @@ func _cry(a: Blob) -> void:
 	var points := maxi(25, 100 - _wrong_this_level * 15)
 	add_score(points)
 	Probe.event("hit_odd", {"level": _level, "wrong": _wrong_this_level})
-	Audio.play("win")
+	a.play("hurt")
+	Audio.play("impact_soft")
+	# "win" is a two-second jingle (see assets/INDEX.md) -- the voice line is the sting
+	Audio.play("voice_level_up" if _level % 5 == 0 else "voice_correct")
 	Juice.hit(7.0)
 	Juice.pop(a, 1.5)
 	Juice.text(self, a.position + Vector2(-12, -52), "+%d" % points, Palette.col("warn"))
@@ -328,9 +364,12 @@ func _cry(a: Blob) -> void:
 func _laugh(a: Blob) -> void:
 	_wrong_this_level += 1
 	a.set_meta("laugh", LAUGH_TIME)
+	a.set_meta("laughed", true)
 	a.rotation = 0.0
 	Probe.event("hit_wrong", {"level": _level})
-	Audio.play("select")
+	a.play("cheer", 9.0)
+	Audio.play("impact_light")
+	Audio.play("voice_wrong")
 	Juice.shake(2.5)
 	Juice.pop(a, 1.4, 0.3)
 	Juice.text(self, a.position + Vector2(-16, -50), "HA HA!", Palette.col("hazard"))

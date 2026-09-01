@@ -21,15 +21,20 @@ trajectory, an arc like the one in my drawing.
 
 ## What is trying to stop you?
 
-There are animals on the screen and **only one of them is different** — at least 3 of
-them, all the same animal except one. I have to hit the different one.
+There are **characters** on the screen and **only one of them is different** — at least 3
+of them, all the same one except one. I have to hit the different one.
+
+(They started out as the flat animal badges. Once the animated actors arrived they became
+adventurers, zombies and kids instead — they walk, cheer and get hurt, which the badges
+could never do.)
 
 **No time cap, no shots cap.** Take as long as you like.
 
 ## How do you win?
 
-Hit the odd one out and **it cries** — then on to the next level. Hit a wrong one and
-**it just laughs and spins** at you.
+Hit the odd one out and **it cries** — the hurt pose, tears, and a voice saying "correct"
+— then on to the next level. Hit a wrong one and **it just laughs and spins** at you, arms
+in the air, while the voice says "wrong".
 
 As the levels get harder **the animals start moving a bit, and there are more of them.**
 
@@ -45,7 +50,13 @@ As the levels get harder **the animals start moving a bit, and there are more of
   the facts and wrong about this game.
 - Score is the only thing that moves: 100 for a level, minus 15 for each wrong animal you
   hit on the way, floor of 25.
-- 3 animals at level 1, up to 6. They start wandering at level 3.
+- 3 characters at level 1, up to 6. They stand still and breathe until level 3, then walk
+  their wander with the walk cycle, facing the way they are going.
+- The shell is inert up to the point you aimed at, then stays live and keeps falling until
+  it hits somebody or reaches the ground. So it no longer pops in mid-air on a miss — and
+  a shell that sails past can still land on somebody further along, which is fair game.
+- A soldier stands next to the tank and works the gun. He is deliberately kept out of the
+  target line-up so there are never two soldiers meaning different things.
 
 # count
 
