@@ -15,6 +15,9 @@ to do, and because it records where things came from if you want more of them.
 | `audio/sfx/` (interface) | Interface Sounds | https://kenney.nl/assets/interface-sounds |
 | `audio/sfx/` (impacts) | Impact Sounds | https://kenney.nl/assets/impact-sounds |
 | `audio/music/` | Music Jingles | https://kenney.nl/assets/music-jingles |
+| `actors/` | Platformer Characters | https://kenney.nl/assets/platformer-characters |
+| `audio/sfx/voice_*` | Voiceover Pack (female voice, Giselle) | https://kenney.nl/assets/voiceover-pack |
+| `audio/sfx/impact_*`, `step_*` | Impact Sounds | https://kenney.nl/assets/impact-sounds |
 
 ## Adding more
 

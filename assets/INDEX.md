@@ -20,7 +20,8 @@ b.set_sprite("penguin", 0.12)   # second arg is the scale (default 2.0)
 | Folder | Source size | Good scale | On screen |
 |---|---|---|---|
 | `characters/`, `items/` | 16x16 | `1.5` - `2.0` | 24-32 px |
-| `animals/` | 256x256 | `0.10` - `0.14` | 26-36 px |
+| `animals/` | ~300-400 px | `0.10` - `0.14` | 30-45 px |
+| `actors/` | 80x110 | `0.40` - `0.60` | 32-66 px |
 
 Passing an animal the default scale of `2.0` gives you a 512 px sprite that fills the
 screen. This is the most likely mistake with these assets.
@@ -31,6 +32,37 @@ properly in the neon look.
 Games work **with no sprites at all** — `Blob` falls back to a glowing shape in a palette
 role. Art is an upgrade, never a dependency. An unknown name leaves the placeholder and
 records a warning in the playtest report.
+
+## actors/ — animated characters (the only animated art in the kit)
+
+Five characters, each with **24 poses** at a uniform 80x110, plus **9 separate limbs** for
+building your own puppet rig. This is the only place frame animation exists — everything
+else in `assets/` is a single static image.
+
+`adventurer` `female` `player` `soldier` `zombie`
+
+```gdscript
+var b := Blob.new()
+add_child(b)
+b.set_actor("zombie")          # second arg is scale, default 0.5
+b.play("walk", 10.0)           # loops walk1 -> walk2 at 10 fps
+b.play("cheer", 6.0, false)    # plays once, holds the last frame
+b.flip_h = true                # face the other way
+```
+
+`play()` returns `false` and records a playtest warning if the clip does not exist, so it
+is safe to try one and fall back. `set_actor()` turns `glow` off — the neon halo is tuned
+for 16x16 shapes and reads as a dark smear behind a detailed character. Set `glow = true`
+again afterwards if you want it.
+
+**Two-frame clips** (pass a name, it loops): `walk` `climb` `cheer` `swim` `action` `hold`
+
+**Single poses** (same call, one frame): `idle` `stand` `jump` `fall` `duck` `hurt` `kick`
+`skid` `slide` `hang` `talk` `back`
+
+**Limbs** for puppet rigs live in `actors/<name>/limbs/`: `head` `head_back` `head_focus`
+`head_hurt` `body_front` `body_back` `arm` `hand` `leg`. Load these by full path with
+`set_sprite("res://assets/actors/zombie/limbs/arm.png", 0.5)`.
 
 ## characters/ — 16x16 pixel art
 
@@ -71,7 +103,34 @@ build a `TileSet` from one of these sheets (16x16 tiles, no margin in the packed
 `win` `lose`
 
 These names were mapped from Kenney's packs by meaning, not by listening. If one sounds
-wrong for its job, swap the file — nothing depends on the specific sound.
+wrong for its job, swap the file — nothing depends on the specific sound. Note that `win`
+is a byte-for-byte copy of `music/jingle_1` and runs about two seconds, so it is a poor
+choice for a snappy hit; reach for `impact_*` or a `voice_*` line instead.
+
+### voice_* — a real human voice (female)
+
+Spoken lines, not blips. These are what make a quiz or a level transition feel like a game
+rather than a UI.
+
+`voice_correct` `voice_wrong` `voice_level_up` `voice_level` `voice_round` `voice_ready`
+`voice_set` `voice_go` `voice_hurry_up` `voice_time_over` `voice_final_round`
+`voice_game_over` `voice_you_win` `voice_you_lose` `voice_new_highscore`
+`voice_congratulations` `voice_power_up` `voice_objective_achieved`
+`voice_mission_completed` `voice_mission_failed`
+
+Spoken numbers **one to ten**: `voice_num_1` … `voice_num_10`.
+
+The male voice and ~16 military lines ("fire in the hole", "reloading") are in the same
+CC0 pack but were not vendored — ask if you want them.
+
+### impact_* and step_* — things hitting things
+
+`impact_soft` `impact_punch` `impact_wood` `impact_metal` `impact_glass` `impact_plate`
+`impact_bell` `impact_light` `step_grass` `step_wood`
+
+`Audio.play()` takes a pitch-jitter argument (default `0.08`). Firing one sample several
+times at climbing pitch is the cheapest way to build a laugh, a combo or a countdown out
+of a single file.
 
 A missing sound is not an error: the game runs silent and the playtest report warns once.
 
