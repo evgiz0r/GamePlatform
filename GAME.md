@@ -21,20 +21,20 @@ trajectory, an arc like the one in my drawing.
 
 ## What is trying to stop you?
 
-There are **characters** on the screen and **only one of them is different** — at least 3
-of them, all the same one except one. I have to hit the different one.
+There are animals on the screen and **only one of them is different** — at least 3 of
+them, all the same animal except one. I have to hit the different one.
 
-(They started out as the flat animal badges. Once the animated actors arrived they became
-adventurers, zombies and kids instead — they walk, cheer and get hurt, which the badges
-could never do.)
+**Animals, not people.** They were briefly adventurers and zombies, because those are the
+only sprites in the kit with real animation frames. Animals won. Kenney's animal art has
+no frames at all, so all the life in them is hand-animated instead — see the notes.
 
 **No time cap, no shots cap.** Take as long as you like.
 
 ## How do you win?
 
-Hit the odd one out and **it cries** — the hurt pose, tears, and a voice saying "correct"
-— then on to the next level. Hit a wrong one and **it just laughs and spins** at you, arms
-in the air, while the voice says "wrong".
+Hit the odd one out and **it cries** — it droops over, shakes, sheds tears, and a voice
+says "correct" — then on to the next level. Hit a wrong one and **it just laughs and
+spins**, bouncing on the spot, while the voice says "wrong".
 
 As the levels get harder **the animals start moving a bit, and there are more of them.**
 
@@ -50,13 +50,13 @@ As the levels get harder **the animals start moving a bit, and there are more of
   the facts and wrong about this game.
 - Score is the only thing that moves: 100 for a level, minus 15 for each wrong animal you
   hit on the way, floor of 25.
-- 3 characters at level 1, up to 6. They stand still and breathe until level 3, then walk
-  their wander with the walk cycle, facing the way they are going.
+- 3 animals at level 1, up to 6. They sway on the spot until level 3, then **hop** their
+  wander rather than gliding, facing the way they are going.
 - The shell is inert up to the point you aimed at, then stays live and keeps falling until
   it hits somebody or reaches the ground. So it no longer pops in mid-air on a miss — and
   a shell that sails past can still land on somebody further along, which is fair game.
-- A soldier stands next to the tank and works the gun. He is deliberately kept out of the
-  target line-up so there are never two soldiers meaning different things.
+- A penguin crews the tank, drawn smaller than a target and kept out of the line-up, so
+  the same animal never means two things on screen.
 
 # count
 
@@ -104,6 +104,21 @@ The kit's default sound effects are **too loud**. count turns them down to 0.28 
 ships at 0.8) while it is on screen and puts them back when you leave. `SFX_VOLUME` at the
 top of `game/count/count.gd` is the knob. Any new game should do the same — see
 `reference/README.md`.
+
+## Notes
+
+- **The placement is the difficulty, not the number.** The count creeps up (+1 every other
+  round, capped at 12) but the arrangement gets mean fast: neat rows, then ragged rows,
+  then clumps, then scattered, then jumbled, changing every two rounds. Six in a tidy row
+  is trivial; the same six in two clumps with a stray one is not. The current arrangement
+  is named at the bottom of the screen so you can see the difficulty rather than just feel
+  it.
+- A voice **says the number out loud** when you get it right — only one to ten were
+  recorded, so bigger answers just get "correct".
+- The critters jump for joy when you get it and slump when you do not.
+- The things being counted are the small pixel animals; the numbers are held by the big
+  animal badges. Two different kinds of picture on purpose — if both were badges you could
+  not tell the things being counted from the answers.
 
 ## Ideas for later
 

@@ -19,15 +19,16 @@ const LAUGH_TIME := 0.75
 const MAX_ANIMALS := 6
 const TRAIL_MAX := 26
 const GROUND_Y := 338.0                   ## where a shell that hits nothing lands
-const ACTOR_SCALE := 0.45
+const ANIMAL_SCALE := 0.13
 ## The shell default (0.8) is loud for a game that fires this often. In memory only --
 ## the saved settings file is never written. See reference/README.md.
 const SFX_VOLUME := 0.28
 
-## The animated cast. "soldier" is reserved for the gunner beside the tank so he is never
-## also a target -- two soldiers on screen meaning different things reads as a bug.
-const CAST := ["adventurer", "female", "player", "zombie"]
-const GUNNER := "soldier"
+## The cast. "penguin" crews the tank and is kept out of the target line-up, so the same
+## animal never means two things on screen at once.
+const CAST := ["pig", "rabbit", "monkey", "panda", "parrot", "hippo", "elephant",
+	"giraffe", "snake"]
+const GUNNER := "penguin"
 
 var cross: Blob
 var gunner: Blob
@@ -69,9 +70,9 @@ func start(_config: Dictionary) -> void:
 	gunner = Blob.new()
 	gunner.role = "player"
 	add_child(gunner)
-	gunner.set_actor(GUNNER, ACTOR_SCALE)
-	gunner.play("idle")
-	gunner.position = Vector2(96, 300)
+	# smaller than a target, so the crew never reads as one of the animals to shoot
+	gunner.set_sprite(GUNNER, ANIMAL_SCALE * 0.72)
+	gunner.position = Vector2(98, 306)
 
 	_next_level()
 	Probe.capture("start")
@@ -104,8 +105,7 @@ func _next_level() -> void:
 		b.role = "prize" if is_odd else "friend"
 		b.radius = 15.0
 		add_child(b)
-		b.set_actor(odd if is_odd else herd, ACTOR_SCALE)
-		b.play("idle")
+		b.set_sprite(odd if is_odd else herd, ANIMAL_SCALE)
 		b.position = slots[i]
 		b.set_meta("odd", is_odd)
 		b.set_meta("slot", slots[i])
@@ -170,7 +170,7 @@ func _fire(at: Vector2) -> void:
 	Audio.play("thud")
 	Audio.play("impact_metal", 0.15, -6.0)
 	if is_instance_valid(gunner):
-		gunner.play("action", 12.0, false)
+		Juice.pop(gunner, 1.35, 0.22)
 	Juice.shake(3.5)
 	_cool = FIRE_COOLDOWN
 
@@ -183,8 +183,6 @@ func _process(delta: float) -> void:
 	queue_redraw()
 	_cool = maxf(0.0, _cool - delta)
 
-	if is_instance_valid(gunner) and _cool <= 0.0:
-		gunner.play("idle")
 	_move_animals(delta)
 	_move_shells(delta)
 	_move_tears(delta)
@@ -201,6 +199,9 @@ func _process(delta: float) -> void:
 	if PInput.just_pressed("action_a") and _cool <= 0.0:
 		_fire(cross.position)
 
+## Static badges, animated by hand: a sway when they are standing, a proper hop when they
+## wander, a droop when one of them is crying. Kenney's animal art has no frames at all,
+## so every bit of life here is position, rotation and squash.
 func _move_animals(delta: float) -> void:
 	var amp := _wobble()
 	var w := clampf(float(_level - 2) * 0.3, 0.0, 1.9)
@@ -210,25 +211,25 @@ func _move_animals(delta: float) -> void:
 		var laugh: float = a.get_meta("laugh")
 		if laugh > 0.0:
 			a.set_meta("laugh", maxf(0.0, laugh - delta))
+			# bouncing on the spot, hooting
+			a.position = a.get_meta("slot") + Vector2(0, -absf(sin(_t * 17.0)) * 9.0)
 			continue
-		if a.get_meta("laughed", false) and _crying <= 0.0:
-			a.set_meta("laughed", false)
-			a.play("idle")
 		var slot: Vector2 = a.get_meta("slot")
 		var ph: float = a.get_meta("phase")
 		if _crying > 0.0:
 			if a.get_meta("odd"):
-				# the shake of a good cry
-				a.position = slot + Vector2(sin(_t * 34.0) * 3.0, 0)
+				a.rotation = 0.26
+				a.position = slot + Vector2(sin(_t * 34.0) * 3.0, 4.0)
 			continue
+		a.rotation = 0.0
 		if amp <= 0.0:
-			# standing still: one pose plus a breath, so nobody moonwalks on the spot
-			a.play("idle")
-			a.position = slot + Vector2(0, sin(_t * 1.9 + ph) * 1.5)
+			a.position = slot + Vector2(0, sin(_t * 1.9 + ph) * 2.0)
 			continue
 		var was: float = a.position.x
-		a.position = slot + Vector2(sin(_t * w + ph) * amp, cos(_t * w * 0.8 + ph) * amp * 0.7)
-		a.play("walk", clampf(2.0 + w * 4.0, 2.0, 10.0))
+		var drift := Vector2(sin(_t * w + ph) * amp, cos(_t * w * 0.8 + ph) * amp * 0.7)
+		# hop along rather than glide -- a sliding animal reads as broken
+		var hop := absf(sin(_t * (2.2 + w) + ph)) * (3.0 + amp * 0.28)
+		a.position = slot + drift - Vector2(0, hop)
 		var dx: float = a.position.x - was
 		if absf(dx) > 0.02:
 			a.flip_h = dx < 0.0
@@ -337,7 +338,6 @@ func _cry(a: Blob) -> void:
 	var points := maxi(25, 100 - _wrong_this_level * 15)
 	add_score(points)
 	Probe.event("hit_odd", {"level": _level, "wrong": _wrong_this_level})
-	a.play("hurt")
 	Audio.play("impact_soft")
 	# "win" is a two-second jingle (see assets/INDEX.md) -- the voice line is the sting
 	Audio.play("voice_level_up" if _level % 5 == 0 else "voice_correct")
@@ -367,7 +367,6 @@ func _laugh(a: Blob) -> void:
 	a.set_meta("laughed", true)
 	a.rotation = 0.0
 	Probe.event("hit_wrong", {"level": _level})
-	a.play("cheer", 9.0)
 	Audio.play("impact_light")
 	Audio.play("voice_wrong")
 	Juice.shake(2.5)
