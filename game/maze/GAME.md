@@ -14,8 +14,9 @@ A dot in a maze.
 
 ## What do you do?
 
-**Get out.** Move along a line — hold a direction, or hold your finger somewhere and you
-run that way down the corridor until a wall stops you.
+**Get out.** You are **on the grid** — one cell at a time, never halfway through a wall.
+Tap where you want to end up and you run down that line until you get there or a wall
+stops you. Arrow keys work too.
 
 ## What is trying to stop you?
 
@@ -29,8 +30,13 @@ until it has finished**. Then you solve it. Then the next one builds itself. For
 The way **out** of one maze **becomes the way in** to the next, so leaving by the right
 edge means arriving at the left of the next one. In and out are otherwise random.
 
-The view stays on the current maze — centred, and scaled so the whole thing fits the
-screen however big it gets.
+**I want to see more than one maze at once.** The mazes sit side by side in one world, so
+the one I just escaped is still on screen behind me and I can see the recursion. So the
+current maze takes about half the screen rather than all of it, and the camera pans across
+when a new one starts.
+
+**The exit is on a far wall.** Not two steps from the entrance — it should be the long way
+round.
 
 ## Core loop
 
@@ -41,7 +47,13 @@ screen however big it gets.
 
 - No lives, no timer, no fail state. On purpose. The playtest bots will report "idle bot
   survived, the game has no teeth" and they are right about the facts.
-- 3x3 to start, +1 each maze, capped at 15x15 (past that the cells are too small to see).
+- 3x3 to start, +1 each maze, capped at 12x12. Lower than it was, because the maze is only
+  half the screen now and the cells would get too small to see.
+- Every maze is the same size in world units whatever its cell count, so the camera only
+  ever slides — it never zooms. The cells just get smaller.
+- The exit is chosen as the border cell **furthest from the entrance by corridor
+  distance**. A random exit was often a couple of steps away, which made the maze
+  pointless.
 - The maze checks itself: after every build it walks the path from the entrance to the
   exit and complains loudly if there isn't one.
 
