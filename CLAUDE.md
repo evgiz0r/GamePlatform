@@ -126,6 +126,12 @@ Short, specific, and all of them cost a debugging session:
   to walk onto, or it oscillates between two of them forever. And only tag a real threat
   as `"x"` — tagging harmless things as hazards is false instrumentation and it wrecks the
   bot's judgement as surely as it would a human's.
+- **If the bots cannot play your game, give them a way in.** The bots have no
+  pathfinding, planning or reading ability, so a puzzle game is invisible to them: they
+  will report it runs and nothing else. If the game has a self-play or auto-solve mode,
+  bind it to `action_a` as well as a button -- the bots pulse that, so they switch it on
+  and the run becomes a real test. `maze` went from "score never moved" to fourteen levels
+  cleared in one run that way.
 - **A game whose only input is the mouse cannot be self-playtested.** Always give the same
   verb a `PInput` path too, even if no human will use it.
 - **Animated art exists in `assets/actors/` only** — five human characters with real

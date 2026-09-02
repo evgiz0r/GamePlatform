@@ -57,11 +57,20 @@ var _leaving := false
 var _goal := Vector2i(-999, -999)
 var _run_axis := 0
 
+## Auto-solve. A real depth-first search walked one cell at a time: it only ever knows the
+## walls of cells it has actually stood in, takes the opening that heads most towards the
+## exit, and reverses back out of dead ends. On a maze with no loops -- which a recursive
+## backtracker always produces -- that is guaranteed to find the way out.
+var _auto := false
+var _known := {}        ## cells the solver has stood in
+var _route: Array = []  ## its stack: entrance -> where it is now
+
 var player: Blob
 var _marker: Blob
 var _cam: Camera2D
 var _hud_top: Label
 var _hud_bottom: Label
+var _solve_btn: Button
 var _level := 0
 var _sfx_was := 0.8
 
@@ -108,6 +117,12 @@ func start(_config: Dictionary) -> void:
 	_hud_bottom.position = Vector2(120, 336)
 	_hud_bottom.size = Vector2(400, 20)
 	layer.add_child(_hud_bottom)
+	_solve_btn = UIKit.button("solve", _toggle_auto)
+	_solve_btn.custom_minimum_size = Vector2(62, 22)
+	_solve_btn.size = Vector2(62, 22)
+	_solve_btn.position = Vector2(10, 330)
+	_solve_btn.add_theme_font_size_override("font_size", 12)
+	layer.add_child(_solve_btn)
 
 	_next_maze()
 
@@ -166,6 +181,8 @@ func _next_maze() -> void:
 	_moving = false
 	_leaving = false
 	_goal = Vector2i(-999, -999)
+	_known = {}
+	_route = []
 	player.radius = maxf(3.0, _cell * 0.2)
 	_marker.radius = maxf(3.5, _cell * 0.22)
 	player.position = _cell_centre(_in)
@@ -300,8 +317,14 @@ func _process(delta: float) -> void:
 			_build_step()
 		return
 
+	if PInput.just_pressed("action_a") and not _auto:
+		_toggle_auto()
+	elif PInput.just_pressed("action_b") and _auto:
+		_toggle_auto()
+
 	if _moving:
-		_step_t += delta / STEP_TIME
+		# the solver runs brisker than a person, so watching it is not a chore
+		_step_t += delta / (STEP_TIME * (0.6 if _auto else 1.0))
 		if _step_t < 1.0:
 			player.position = _from.lerp(_to, _step_t)
 			return
@@ -321,6 +344,8 @@ var _step_target := Vector2i.ZERO
 ## One cell at a time, always axis-locked. A tap picks the axis once and the player runs
 ## down that line until it reaches the tapped row or column, or a wall stops it.
 func _wanted_step() -> Vector2i:
+	if _auto:
+		return _solver_step()
 	var k := PInput.dir()
 	if k != Vector2.ZERO:
 		_goal = Vector2i(-999, -999)
@@ -338,6 +363,48 @@ func _wanted_step() -> Vector2i:
 		_goal = Vector2i(-999, -999)
 		return Vector2i.ZERO
 	return Vector2i(0, 1 if _goal.y > _pc.y else -1)
+
+func _toggle_auto() -> void:
+	_auto = not _auto
+	_solve_btn.text = "stop" if _auto else "solve"
+	_goal = Vector2i(-999, -999)
+	Probe.event("auto_solve", {"on": _auto, "level": _level})
+
+## One move of the search. Returns the direction to step, or nothing if it is stuck --
+## which on a perfect maze it never is.
+func _solver_step() -> Vector2i:
+	if _route.is_empty():
+		_route = [_pc]
+		_known = {_pc: true}
+	if _pc == _out:
+		return SIDE_DIR[_out_side]     # standing on the exit: walk out of the doorway
+
+	var best_side := -1
+	var best_d := INF
+	for side in 4:
+		if _walls[_pc.y][_pc.x] & SIDE_BIT[side]:
+			continue
+		var n: Vector2i = _pc + SIDE_DIR[side]
+		if not _inside(n) or _known.has(n):
+			continue
+		# of the openings it has not tried, take the one pointing most at the exit. That
+		# is not cheating: where the exit IS can be seen from anywhere. What it cannot see
+		# is which walls are in the way, which is the whole problem.
+		var d: float = Vector2(n).distance_squared_to(Vector2(_out))
+		if d < best_d:
+			best_d = d
+			best_side = side
+	if best_side >= 0:
+		var n: Vector2i = _pc + SIDE_DIR[best_side]
+		_known[n] = true
+		_route.append(n)
+		return SIDE_DIR[best_side]
+
+	if _route.size() >= 2:
+		_route.pop_back()               # dead end: reverse out the way it came
+		var back: Vector2i = _route[-1]
+		return back - _pc
+	return Vector2i.ZERO
 
 func _begin_step(d: Vector2i) -> void:
 	var side := _side_of(d)
@@ -414,6 +481,17 @@ func _draw() -> void:
 		var head: Vector2i = _stack[-1]
 		draw_rect(Rect2(_origin + Vector2(head) * _cell, Vector2(_cell, _cell)),
 			Palette.col("accent"))
+	if _auto and not _building:
+		var seen_col := Palette.col("accent")
+		for c in _known:
+			draw_rect(Rect2(_origin + Vector2(c) * _cell, Vector2(_cell, _cell)),
+				Color(seen_col.r, seen_col.g, seen_col.b, 0.1))
+		if _route.size() > 1:
+			var pts := PackedVector2Array()
+			for c in _route:
+				pts.append(_cell_centre(c))
+			draw_polyline(pts, Palette.col("friend"), maxf(1.5, _cell * 0.08))
+
 	if not _building:
 		_draw_doorway(_in, _in_side, Palette.col("friend"))
 		_draw_doorway(_out, _out_side, Palette.col("prize"))

@@ -38,6 +38,19 @@ when a new one starts.
 **The exit is on a far wall.** Not two steps from the entrance — it should be the long way
 round.
 
+## Solve button
+
+A **solve** button in the corner. Press it and it plays itself, forever, so I can just
+watch. I want **real solving** — not the answer handed over.
+
+It is a depth-first search walked one cell at a time. It only knows the walls of cells it
+has actually stood in; of the openings it has not tried it takes the one pointing most at
+the exit, and when it hits a dead end it reverses back out the way it came. Knowing where
+the exit is is fair — you can see that from anywhere. Knowing which walls are in the way
+would not be, and it does not.
+
+Its route and everywhere it has been are drawn while it works.
+
 ## Core loop
 
 > Watch it build → run the corridors → step out of the doorway → a bigger one builds
@@ -54,6 +67,9 @@ round.
 - The exit is chosen as the border cell **furthest from the entrance by corridor
   distance**. A random exit was often a couple of steps away, which made the maze
   pointless.
+- Space also starts the solver and shift stops it. That is what lets the playtest bots
+  turn it on, which is the only reason this game can be checked automatically at all: 14
+  mazes solved in a two-minute run, every size up to the cap.
 - The maze checks itself: after every build it walks the path from the entrance to the
   exit and complains loudly if there isn't one.
 
