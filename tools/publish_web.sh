@@ -16,6 +16,11 @@ if [ -z "$BIN" ]; then
 fi
 cd "$(dirname "$0")/.."
 
+# stamped into the build and shown on the menu, so you can tell from the device itself
+# whether a push has landed -- an installed web app swaps versions silently
+date -u +"%Y-%m-%d %H:%M UTC" > build.txt
+echo "build.txt: $(cat build.txt)"
+
 mkdir -p docs
 "$BIN" --headless --path . --export-release "Web" docs/index.html
 

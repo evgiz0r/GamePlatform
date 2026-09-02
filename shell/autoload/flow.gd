@@ -110,10 +110,22 @@ func _show_menu() -> void:
 	nodes.append(UIKit.button("look: " + Palette.active, _cycle_palette))
 	if not OS.has_feature("web"):
 		nodes.append(UIKit.button("quit", func(): get_tree().quit()))
+	nodes.append(UIKit.label(_build_stamp(), 10, "accent"))
 	var col := UIKit.center_column(nodes)
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ui.add_child(col)
 	_ui.mouse_filter = Control.MOUSE_FILTER_PASS
+
+## Which build is on screen. An installed web app updates silently in the background and
+## only swaps over on a later launch, so without this there is no way to tell from the
+## device whether a change has actually landed. Written by tools/publish_web.sh.
+func _build_stamp() -> String:
+	if not FileAccess.file_exists("res://build.txt"):
+		return "dev build"
+	var f := FileAccess.open("res://build.txt", FileAccess.READ)
+	if f == null:
+		return "dev build"
+	return "build " + f.get_as_text().strip_edges()
 
 func _cycle_palette() -> void:
 	var all := Palette.names()
