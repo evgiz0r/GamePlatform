@@ -108,6 +108,10 @@ func start(_config: Dictionary) -> void:
 	# Text has to live in a CanvasLayer, not _draw(): the camera moves, and anything drawn
 	# in world space would slide off screen with it.
 	var layer := CanvasLayer.new()
+	# Above the shell's own HUD layer (10). Flow's full-screen Control sits there on
+	# MOUSE_FILTER_PASS and takes the click first, so a button on a lower layer looks
+	# present and is simply not clickable.
+	layer.layer = 20
 	add_child(layer)
 	_hud_top = UIKit.label("", 14, "accent")
 	_hud_top.position = Vector2(120, 14)
@@ -446,6 +450,10 @@ func _input(event: InputEvent) -> void:
 		return
 	var mb := event as InputEventMouseButton
 	if not mb.pressed or mb.button_index != MOUSE_BUTTON_LEFT:
+		return
+	# _input runs before the GUI, so without this a tap on the solve button would also
+	# order the player to run somewhere
+	if _solve_btn.get_global_rect().has_point(mb.position):
 		return
 	var rel := (get_global_mouse_position() - _origin) / _cell
 	var tc := Vector2i(int(floorf(rel.x)), int(floorf(rel.y)))
