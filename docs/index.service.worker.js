@@ -4,7 +4,7 @@
 // Incrementing CACHE_VERSION will kick off the install event and force
 // previously cached resources to be updated from the network.
 /** @type {string} */
-const CACHE_VERSION = '1788387360|12956051';
+const CACHE_VERSION = '1788387957|12917493';
 /** @type {string} */
 const CACHE_PREFIX = 'GamePlatform-sw-cache-';
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
@@ -21,19 +21,38 @@ const CACHEABLE_FILES = ["index.wasm","index.pck"];
 const FULL_CACHE = CACHED_FILES.concat(CACHEABLE_FILES);
 
 self.addEventListener('install', (event) => {
-	event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(CACHED_FILES)));
+	// PATCHED by tools/publish_web.sh -- fetch with cache:'reload' so the HTTP cache cannot
+	// hand us a stale index.html, then take over instead of waiting for every window to
+	// close first.
+	event.waitUntil((async () => {
+		const cache = await caches.open(CACHE_NAME);
+		await Promise.all(CACHED_FILES.map(async (f) => {
+			const res = await fetch(f, { cache: 'reload' });
+			if (res.ok) {
+				await cache.put(f, res);
+			}
+		}));
+		await self.skipWaiting();
+	})());
 });
 
 self.addEventListener('activate', (event) => {
-	event.waitUntil(caches.keys().then(
-		function (keys) {
-			// Remove old caches.
-			return Promise.all(keys.filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME).map((key) => caches.delete(key)));
+	// PATCHED by tools/publish_web.sh -- claim the open pages, and if this build replaced
+	// an older one, reload them onto it. Guarded on there having BEEN an older one, so a
+	// first install does not reload for nothing.
+	event.waitUntil((async () => {
+		const keys = await caches.keys();
+		const stale = keys.filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME);
+		await Promise.all(stale.map((key) => caches.delete(key)));
+		if ('navigationPreload' in self.registration) {
+			await self.registration.navigationPreload.enable();
 		}
-	).then(function () {
-		// Enable navigation preload if available.
-		return ('navigationPreload' in self.registration) ? self.registration.navigationPreload.enable() : Promise.resolve();
-	}));
+		await self.clients.claim();
+		if (stale.length > 0) {
+			const all = await self.clients.matchAll({ type: 'window' });
+			all.forEach((c) => c.navigate(c.url));
+		}
+	})());
 });
 
 /**

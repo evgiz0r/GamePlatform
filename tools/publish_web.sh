@@ -29,6 +29,63 @@ touch docs/.nojekyll   # stop GitHub Pages running Jekyll over it
 touch docs/.gdignore   # stop Godot importing the exported PNGs back in as assets
 rm -f docs/*.import
 
+# Godot's service worker is cache-first with no revalidation, and the replacement worker
+# never calls skipWaiting -- so an installed app serves the old build forever and even a
+# refresh does not help, because the refreshed page is still controlled by the old worker.
+# Patch it to take over immediately and reload open windows onto the new build.
+python - <<'SW'
+import io
+p = 'docs/index.service.worker.js'
+s = io.open(p, encoding='utf-8').read()
+
+old_install = """self.addEventListener('install', (event) => {
+	event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(CACHED_FILES)));
+});"""
+new_install = """self.addEventListener('install', (event) => {
+	// PATCHED by tools/publish_web.sh -- fetch with cache:'reload' so the HTTP cache cannot
+	// hand us a stale index.html, then take over instead of waiting for every window to
+	// close first.
+	event.waitUntil((async () => {
+		const cache = await caches.open(CACHE_NAME);
+		await Promise.all(CACHED_FILES.map(async (f) => {
+			const res = await fetch(f, { cache: 'reload' });
+			if (res.ok) {
+				await cache.put(f, res);
+			}
+		}));
+		await self.skipWaiting();
+	})());
+});"""
+assert old_install in s, 'install handler not as expected -- Godot changed its template'
+s = s.replace(old_install, new_install, 1)
+
+start = s.index("self.addEventListener('activate'")
+end = s.index('/**', start)
+new_activate = """self.addEventListener('activate', (event) => {
+	// PATCHED by tools/publish_web.sh -- claim the open pages, and if this build replaced
+	// an older one, reload them onto it. Guarded on there having BEEN an older one, so a
+	// first install does not reload for nothing.
+	event.waitUntil((async () => {
+		const keys = await caches.keys();
+		const stale = keys.filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME);
+		await Promise.all(stale.map((key) => caches.delete(key)));
+		if ('navigationPreload' in self.registration) {
+			await self.registration.navigationPreload.enable();
+		}
+		await self.clients.claim();
+		if (stale.length > 0) {
+			const all = await self.clients.matchAll({ type: 'window' });
+			all.forEach((c) => c.navigate(c.url));
+		}
+	})());
+});
+
+"""
+s = s[:start] + new_activate + s[end:]
+io.open(p, 'w', encoding='utf-8', newline='').write(s)
+print('service worker: patched for immediate takeover')
+SW
+
 cp tools/pwa/icon_192x192.png docs/index.192x192.png
 python - <<'PY'
 import io, json
