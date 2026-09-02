@@ -8,12 +8,13 @@ bugs. You never have to ask for those.
 
 ## Setup (about five minutes)
 
-1. **Install [Godot 4](https://godotengine.org/download)** — the standard version, not .NET.
+1. **Install [Godot 4](https://godotengine.org/download)** — the standard version, **not**
+   .NET/mono. The mono build cannot export to the web at all.
 2. **Install an AI coding tool** — [Claude Code](https://claude.com/claude-code) is what
    this kit is tuned for.
 3. **Clone this repo** and open the folder in your AI tool.
-4. Open the same folder in Godot and press **F5**. You should get a menu with one game
-   called *count*. Play it for ten seconds so you know what "working" looks like.
+4. Open the same folder in Godot and press **F5**. You get a menu listing whatever games
+   are in `game/`. Play one for ten seconds so you know what "working" looks like.
 
 Optional but recommended — tell the kit where Godot lives, so the AI can playtest:
 
@@ -38,9 +39,12 @@ Or use the built-in commands:
 | `/playtest` | the AI plays the game itself and reports problems |
 | `/publish` | exports to the web so you can share a link |
 
-Every game you make shows up on the menu automatically. The kit's three starter games have
-been removed; **count** (a counting quiz) is the working reference now, and a frozen copy
-lives in `reference/count/` with notes on what is worth copying from it.
+Every game you make shows up on the menu automatically — a game is just a folder under
+`game/` holding its code, its scene and its `GAME.md`. Add one by making the folder, remove
+one by deleting it. Nothing else needs updating.
+
+Whatever games are in `game/` when you take a copy are there as working examples. Delete
+the ones you do not want.
 
 ## Working with a kid
 

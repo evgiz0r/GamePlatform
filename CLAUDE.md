@@ -16,16 +16,34 @@ silently.
 
 ## How to make a game
 
-1. Read `GAME.md` if it exists. It is the player's design in their own words and it wins
-   any argument with your own taste.
-2. Create `game/<name>/<name>.gd` and `game/<name>/<name>.tscn`.
+1. Read the design. For an existing game that is `game/<name>/GAME.md`; for a new one it
+   is the root `GAME.md`, which is where someone sketches before a game exists. It is the
+   player's design in their own words and it wins any argument with your own taste.
+2. Create `game/<name>/<name>.gd`, `game/<name>/<name>.tscn`, and `game/<name>/GAME.md`
+   (move the root sketch into it and blank the root file for the next idea).
 3. The script extends `GameMode` (see `shell/game_mode.gd`).
 4. The scene is a single `Node2D` with that script attached. Build everything else in code.
 5. Run a playtest (below). Read the report. Fix what it tells you.
 6. Only then tell the user it is ready.
 
-The game appears on the menu automatically — any folder under `game/` containing a
-matching `.tscn` is picked up. There is no registry to update.
+## A game is one folder
+
+```
+game/count/
+  count.gd      # the code
+  count.tscn    # one Node2D with that script
+  GAME.md       # the design, in the player's words
+```
+
+**To add a game, create the folder. To remove one, delete the folder.** The menu scans
+`game/` for any folder holding a matching `.tscn`, so there is no registry, no list, and
+nothing else to update. `tools/playtest.sh` with no arguments picks the first game it
+finds, so it keeps working whatever you add or delete.
+
+Nothing outside a game's own folder should ever name that game. If you find yourself
+writing its name in a doc, a tool or another game, that is the thing that will rot when it
+is deleted — the kit's own onboarding once told people to play a game that had been gone
+for weeks.
 
 ## The contract
 
@@ -88,6 +106,33 @@ automatic checks. Read the ASCII maps: they show spatial bugs (everything spawni
 corner, the player stuck in a wall, a goal outside the play area) that counts alone hide.
 
 Keep runs short (20–30s). They are cheap, but not free.
+
+## Things this kit learned the hard way
+
+Short, specific, and all of them cost a debugging session:
+
+- **The default sound is loud.** `SaveData.data["volume_sfx"]` ships at `0.8`, which is a
+  lot for a game that makes a noise every few seconds. Both games drop it to `~0.28` in
+  `start()` and restore it in `_exit_tree()`, in memory only so the saved settings file is
+  never touched. Copy that.
+- **`win.ogg` is a two-second jingle**, byte-identical to `music/jingle_1`. It is a bad
+  choice for a hit. Use `impact_*` or a `voice_*` line.
+- **The `smart` bot flees anything tagged `"x"` within 90px.** Space out anything it has
+  to walk onto, or it oscillates between two of them forever. And only tag a real threat
+  as `"x"` — tagging harmless things as hazards is false instrumentation and it wrecks the
+  bot's judgement as surely as it would a human's.
+- **A game whose only input is the mouse cannot be self-playtested.** Always give the same
+  verb a `PInput` path too, even if no human will use it.
+- **Animated art exists in `assets/actors/` only** — five human characters with real
+  frames, via `Blob.set_actor()` / `Blob.play()`. Everything else in `assets/` is a single
+  static image, so animals and items can only be animated by hand: position, rotation and
+  squash. See `assets/INDEX.md`.
+
+## The web build
+
+`docs/` holds the exported web build that GitHub Pages serves. It is generated, not
+written by hand — regenerate it with `/publish` after a change worth sharing. Exporting
+needs the **standard** Godot build; the .NET/mono one refuses web export outright.
 
 ## Style
 
