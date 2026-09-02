@@ -110,7 +110,11 @@ func _show_menu() -> void:
 	nodes.append(UIKit.button("look: " + Palette.active, _cycle_palette))
 	if not OS.has_feature("web"):
 		nodes.append(UIKit.button("quit", func(): get_tree().quit()))
-	nodes.append(UIKit.label(_build_stamp(), 10, "accent"))
+	# deliberately faint: it is a diagnostic, not part of the game's look. "ink" dimmed
+	# rather than a palette role, so it stays unobtrusive whichever palette is active.
+	var stamp := UIKit.label(_build_stamp(), 9, "ink")
+	stamp.modulate.a = 0.3
+	nodes.append(stamp)
 	var col := UIKit.center_column(nodes)
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ui.add_child(col)
