@@ -184,7 +184,34 @@ func _build_hud() -> void:
 	row.add_child(score)
 	row.add_child(lives)
 	_hud.add_child(row)
+
+	# Always-available way out. Pause has one too, but on a phone there is no Escape key,
+	# so without this the only exit from a game is the browser's back button.
+	var out := UIKit.button("menu", goto_menu)
+	out.name = "MenuButton"
+	# Fixed position in the 640x360 design space, like the score row above. Anchoring it to
+	# the right edge did not render at all here; this is the idiom that works in this file.
+	out.custom_minimum_size = Vector2(62, 22)
+	out.size = Vector2(62, 22)
+	out.position = Vector2(566, 8)
+	out.add_theme_font_size_override("font_size", 12)
+	_hud.add_child(out)
+
 	_ui.add_child(_hud)
+	_ui.mouse_filter = Control.MOUSE_FILTER_PASS
+
+## True while the pointer is over the shell's own HUD controls.
+##
+## Games read mouse clicks in _input(), which runs BEFORE the GUI gets a look, so a tap on
+## the menu button would otherwise also fire the game's action underneath it. Every game
+## that acts on a click should bail out when this is true.
+func pointer_over_hud() -> bool:
+	if _hud == null or not is_instance_valid(_hud):
+		return false
+	var b := _hud.find_child("MenuButton", true, false) as Control
+	if b == null or not b.is_visible_in_tree():
+		return false
+	return b.get_global_rect().has_point(b.get_global_mouse_position())
 
 func _on_score(v: int) -> void:
 	_score = v

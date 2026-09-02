@@ -316,6 +316,8 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
 		cross.position = get_global_mouse_position().clamp(play_area.position, play_area.end)
 		return
+	if Flow.pointer_over_hud():
+		return
 	if not (event is InputEventMouseButton):
 		return
 	var mb := event as InputEventMouseButton

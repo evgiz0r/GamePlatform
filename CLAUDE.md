@@ -71,6 +71,7 @@ Verbs the shell gives you — use these instead of inventing your own:
 | `Juice.hit()`, `Juice.pop(node)`, `Juice.flash(node)`, `Juice.text(...)` | game feel |
 | `Audio.play("coin")` | sfx; silent + warns if the file is missing |
 | `Palette.col("hazard")` | colors by ROLE, never hardcoded hex |
+| `Flow.pointer_over_hud()` | true when the pointer is over the shell's HUD |
 
 ## Hard requirements
 
@@ -86,6 +87,10 @@ Verbs the shell gives you — use these instead of inventing your own:
 - **Instrumentation**: call `Probe.track(node, "@")` for the player, `"x"` for hazards,
   `"*"` for prizes/goals, and `Probe.event("thing_happened")` at meaningful moments.
   Without this you are blind during playtests and so is the report.
+- **Mouse clicks**: if the game acts on a click, bail out first when
+  `Flow.pointer_over_hud()` is true. Games read clicks in `_input()`, which runs before
+  the GUI, so without this a tap on the shell's "menu" button also fires the game
+  underneath it.
 - **No physics nodes required.** Distance checks are fine and far more predictable. Use
   `Area2D` only if the game genuinely needs shaped collision.
 

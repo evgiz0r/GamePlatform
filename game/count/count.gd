@@ -308,6 +308,8 @@ func _bob(delta: float) -> void:
 func _input(event: InputEvent) -> void:
 	if finished or _reveal_left > 0.0 or _choices.is_empty():
 		return
+	if Flow.pointer_over_hud():
+		return
 	if not (event is InputEventMouseButton):
 		return
 	var mb := event as InputEventMouseButton
