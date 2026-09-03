@@ -117,9 +117,16 @@ Keep runs short (20–30s). They are cheap, but not free.
 Short, specific, and all of them cost a debugging session:
 
 - **The default sound is loud.** `SaveData.data["volume_sfx"]` ships at `0.8`, which is a
-  lot for a game that makes a noise every few seconds. Both games drop it to `~0.28` in
-  `start()` and restore it in `_exit_tree()`, in memory only so the saved settings file is
-  never touched. Copy that.
+  lot for a game that makes a noise every few seconds. Every game so far drops it to
+  `~0.28` in `start()` and restores it in `_exit_tree()`, in memory only so the saved
+  settings file is never touched. Copy that. `volume_music` gets the same treatment in any
+  game that plays background music.
+- **Faking a looping background track without touching shared assets.** Godot's music
+  jingles are not set to loop, and setting `loop=true` on the shared `.import` file would
+  loop them everywhere else they play too (menu wins, other games' stings). Instead, call
+  `Audio.music("jingle_2")` every `_process()` frame: the function no-ops while the track
+  is still playing and only actually restarts it once the clip has ended, so this
+  reissues playback as a fake loop for a few bytes of cost per frame. `bricks` does this.
 - **`win.ogg` is a two-second jingle**, byte-identical to `music/jingle_1`. It is a bad
   choice for a hit. Use `impact_*` or a `voice_*` line.
 - **The `smart` bot flees anything tagged `"x"` within 90px.** Space out anything it has
@@ -134,6 +141,12 @@ Short, specific, and all of them cost a debugging session:
   cleared in one run that way.
 - **A game whose only input is the mouse cannot be self-playtested.** Always give the same
   verb a `PInput` path too, even if no human will use it.
+- **A swipe control should track the drag, not the touch point.** Snapping whatever you are
+  steering straight to the finger's absolute position means a single tap anywhere on the
+  field yanks it there -- on a phone this reads as broken. Record where the drag started
+  and where the thing being steered was at that moment, then move it by the same delta the
+  finger has moved since. A stationary tap then asks for zero movement and a small drag
+  asks for a proportionally small one. `bricks`' paddle does this.
 - **Animated art exists in `assets/actors/` only** — five human characters with real
   frames, via `Blob.set_actor()` / `Blob.play()`. Everything else in `assets/` is a single
   static image, so animals and items can only be animated by hand: position, rotation and
