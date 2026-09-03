@@ -2,7 +2,8 @@ extends GameMode
 ## bricks -- breakout, with things that fall out of the wall. Half of them help and half
 ## of them hurt, and you can tell which at a glance. See game/bricks/GAME.md.
 ##
-## Swipe left and right to move. With a gun, tap or press space to shoot upward.
+## Tap either side of the paddle to move it that way. With a gun, tap or press space to
+## shoot upward.
 
 const PADDLE_Y := 330.0
 const PADDLE_H := 7.0          ## half-height; Blob draws a square of side 2*radius
@@ -10,6 +11,7 @@ const PADDLE_W := 72.0         ## normal full width
 const PADDLE_WIDE := 116.0
 const PADDLE_NARROW := 44.0
 const PADDLE_SPEED := 420.0
+const PADDLE_TOUCH_MARGIN := 22.0  ## clearance beyond the paddle's own edge before it stops
 
 const BALL_R := 5.0
 const BALL_START := 235.0
@@ -76,8 +78,6 @@ var _timers := {}              ## effect id -> seconds remaining
 var _cool := 0.0
 var _held := false
 var _point := 0.0
-var _drag_from := 0.0
-var _drag_base := 0.0
 var _sfx_was := 0.8
 var _music_was := 0.7
 
@@ -247,13 +247,18 @@ func _move_paddle(delta: float) -> void:
 	var half := _paddle_half()
 	paddle.scale = Vector2(half / PADDLE_H, 1.0)   # Blob draws a square; stretch it wide
 	var dir := PInput.dir().x
+	if dir == 0.0 and _held:
+		# Tap-a-side, not drag-to-position: a direction relative to where the paddle
+		# CURRENTLY is, not a target to chase onto. Dragging the paddle to an exact spot
+		# means your finger ends up sitting on top of it right when the ball arrives --
+		# tapping to one side never puts a finger over the thing you are trying to watch.
+		# The deadzone scales with the paddle's own half-width so it stops beside a tap
+		# rather than under it, at any width the wide/narrow power-ups produce.
+		var dx := _point - paddle.position.x
+		if absf(dx) > half + PADDLE_TOUCH_MARGIN:
+			dir = signf(dx)
 	if dir != 0.0:
 		paddle.position.x += dir * PADDLE_SPEED * delta
-	elif _held:
-		# swipe: the paddle chases your finger rather than teleporting under it
-		var want: float = _point
-		var step := PADDLE_SPEED * delta
-		paddle.position.x += clampf(want - paddle.position.x, -step, step)
 	paddle.position.x = clampf(paddle.position.x, half, play_area.size.x - half)
 
 ## One ball or several, all handled the same way. Bails out the moment `finished` or
@@ -575,17 +580,9 @@ func _input(event: InputEvent) -> void:
 		if mb.button_index == MOUSE_BUTTON_LEFT:
 			_held = mb.pressed
 			if mb.pressed:
-				# Relative drag, not absolute position. The old version snapped the target
-				# straight to the touch point, so a tap anywhere on the field yanked the
-				# paddle toward it -- a tap that never moves the finger should never move
-				# the paddle. Recording where the drag started and where the paddle was
-				# means a stationary tap asks for zero movement, and a small drag asks for
-				# a proportionally small one.
-				_drag_from = get_global_mouse_position().x
-				_drag_base = paddle.position.x
-				_point = _drag_base
+				_point = get_global_mouse_position().x
 	elif event is InputEventMouseMotion and _held:
-		_point = _drag_base + (get_global_mouse_position().x - _drag_from)
+		_point = get_global_mouse_position().x
 
 ## ---- drawing ---------------------------------------------------------------
 

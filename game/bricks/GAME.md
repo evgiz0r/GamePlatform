@@ -14,8 +14,10 @@ The paddle at the bottom. Like breakout.
 
 ## What do you do?
 
-**Swipe left and right** to move — a small tap should not move it too much, only a real
-drag should. Keep the ball up, break the wall.
+**Tap or hold to one side of the paddle to move it that way.** Not a drag — swiping meant
+dragging a finger right over the paddle, which hides it right when you need to see it
+most. Tap right of it to go right, left of it to go left. Keep the ball up, break the
+wall.
 
 ## The bit I actually want
 
@@ -65,9 +67,15 @@ Clear the wall and the next level builds a bigger one. Chase the score.
   brick near it with it, and if one of THOSE is also a bomb, it keeps going). Steel and
   bomb start turning up from level 2, sparsely at first. Steel never counts towards
   clearing a level, so a wall with one in it can always still be finished.
-- **Swipe is relative, not absolute.** Tapping without moving your finger moves the paddle
-  not at all; a real drag moves it by roughly how far the finger moved. Catching the touch
-  point itself used to yank the paddle across the whole field for a single tap.
+- **Controls went through two swipe designs before landing here.** First, a straight drag
+  (paddle snaps under your finger) — a single tap anywhere yanked the paddle across the
+  whole field, since it chased the exact touch point. Fixed that by tracking the drag
+  relative to where it started instead of the raw touch position. Still bad: dragging
+  still meant a finger sitting right on top of the paddle, hiding it exactly when the ball
+  was arriving. The real fix was dropping "chase the touch point" entirely — holding a
+  point now only sets a DIRECTION relative to wherever the paddle currently is, and the
+  paddle stops with a visible gap once it is safely past the paddle's own edge, so a hand
+  resting to one side never covers the thing it is steering.
 - **The multi-ball drop** fans two new balls out of whichever ball is currently in flight,
   same speed, off to either side. Losing one ball while others are still up does not cost a
   life — only running out of balls entirely does. Capped at 5 balls at once.

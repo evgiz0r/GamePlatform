@@ -29,6 +29,40 @@ that fail during a build usually failed because they had three verbs and none of
 good. If the user asks for a game with movement AND combat AND building AND crafting, build
 the most important verb first and say you are doing so.
 
+## Controls: design for a thumb, not just a mouse
+
+This kit publishes to the web and gets installed as a phone app — assume every game will
+be played on a touchscreen, not just tested with a mouse on a desktop. A control scheme
+that works with a precise pointer can still be a bad one on a phone.
+
+The recurring failure mode: **a control that puts the player's own hand over the thing
+they need to watch.** Drag-to-position is the classic case — "touch the paddle/ship/character
+and drag it where you want it" feels natural to design but means a finger is sitting
+directly on top of the most important part of the screen at the exact moment something is
+about to happen there. `bricks`' paddle went through this: dragging it worked, but the
+player's finger hid the paddle right as the ball arrived. The fix was not a tuning
+adjustment, it was a different control shape entirely — tap or hold *beside* the thing you
+are steering, never on it, and let a direction (not a destination) do the moving.
+
+Before locking in a control scheme, ask:
+- **Does the input point ever need to be where the player needs to look?** If the answer
+  is "yes, right where the action is," prefer a control that lets the player's hand stay
+  off to the side — a direction, a zone, an angle — over one that plants a fingertip on
+  the target.
+- **Would this be too small to hit with a fingertip?** A mouse cursor is a pixel; a
+  fingertip is closer to 40-50px on a real phone. A button or a hit target sized for a
+  cursor can be genuinely unusable on a touchscreen even though it looks fine in a desktop
+  browser.
+- **Does it need the pointer to be held, or just tapped?** Both are fine, but be
+  deliberate: a tap-and-release is instantaneous and easy to miss for continuous movement;
+  a hold that only fires once per frame boundary can feel unresponsive. `PInput.dir()` and
+  a held pointer should drive movement the same way keyboard input does — see `godot-2d`
+  for the actual code pattern.
+
+The design canvas is a fixed 640x360 space that gets stretched to fit whatever shape
+screen it lands on (see `CLAUDE.md`) — do not assume the player has a mouse's precision or
+a desktop's screen shape just because that is what shows up while building the game.
+
 ## The core loop
 
 Every good small game is a 5–20 second loop the player repeats:

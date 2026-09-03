@@ -91,6 +91,9 @@ Verbs the shell gives you — use these instead of inventing your own:
   `Flow.pointer_over_hud()` is true. Games read clicks in `_input()`, which runs before
   the GUI, so without this a tap on the shell's "menu" button also fires the game
   underneath it.
+- **Touch controls**: assume a phone, not just a mouse. A pointer control should never need
+  to sit on top of the thing it is steering — see "Controls" in the `game-design` skill for
+  why (`bricks`' paddle got this wrong once already) and what to do instead.
 - **No physics nodes required.** Distance checks are fine and far more predictable. Use
   `Area2D` only if the game genuinely needs shaped collision.
 
