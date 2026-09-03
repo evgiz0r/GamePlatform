@@ -108,7 +108,6 @@ func _show_menu() -> void:
 		var caption: String = g["title"] + ("   best %d" % best if best > 0 else "")
 		nodes.append(UIKit.button(caption, func(): start_game(id)))
 	nodes.append(UIKit.button("look: " + Palette.active, _cycle_palette))
-	nodes.append(UIKit.button("volume: %d%%" % int(round(_volume_level() * 100.0)), _cycle_volume))
 	if not OS.has_feature("web"):
 		nodes.append(UIKit.button("quit", func(): get_tree().quit()))
 	# deliberately faint: it is a diagnostic, not part of the game's look. "ink" dimmed
@@ -116,11 +115,8 @@ func _show_menu() -> void:
 	var stamp := UIKit.label(_build_stamp(), 9, "ink")
 	stamp.modulate.a = 0.3
 	nodes.append(stamp)
-	# center_column() now returns a ScrollContainer (see ui_kit.gd) -- it must actually
-	# receive input to capture a drag-to-scroll gesture, so unlike the old plain column
-	# this one is not set to MOUSE_FILTER_IGNORE. Its own default already does the right
-	# thing: buttons inside still get their clicks, empty space inside it scrolls.
 	var col := UIKit.center_column(nodes)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ui.add_child(col)
 	_ui.mouse_filter = Control.MOUSE_FILTER_PASS
 
@@ -140,31 +136,6 @@ func _cycle_palette() -> void:
 	var i := all.find(Palette.active)
 	Palette.use(all[(i + 1) % all.size()])
 	SaveData.set_value("palette", Palette.active)
-	_show_menu()
-
-## One knob for both sfx and music, stepped rather than a slider -- easier to hit for a
-## kid on a phone. "100%" is the shipped defaults (0.8 sfx, 0.7 music), not 1.0, so the two
-## stay balanced against each other at every step rather than sfx ever drowning out music.
-const VOLUME_BASE_SFX := 0.8
-const VOLUME_BASE_MUSIC := 0.7
-const VOLUME_STEPS := [0.0, 0.25, 0.5, 0.75, 1.0]
-
-func _volume_level() -> float:
-	return clampf(float(SaveData.data.get("volume_sfx", VOLUME_BASE_SFX)) / VOLUME_BASE_SFX,
-		0.0, 1.0)
-
-func _cycle_volume() -> void:
-	var cur := _volume_level()
-	var idx := 0
-	for i in VOLUME_STEPS.size():
-		if absf(VOLUME_STEPS[i] - cur) < 0.01:
-			idx = i
-			break
-	var nxt: float = VOLUME_STEPS[(idx + 1) % VOLUME_STEPS.size()]
-	SaveData.set_value("volume_sfx", VOLUME_BASE_SFX * nxt)
-	SaveData.set_value("volume_music", VOLUME_BASE_MUSIC * nxt)
-	if nxt > 0.0:
-		Audio.play("select")
 	_show_menu()
 
 ## Every subfolder of res://game/ holding a <name>.tscn is a game. No registry to maintain.

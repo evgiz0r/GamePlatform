@@ -121,12 +121,13 @@ Short, specific, and all of them cost a debugging session:
   `~0.28` in `start()` and restores it in `_exit_tree()`, in memory only so the saved
   settings file is never touched. Copy that. `volume_music` gets the same treatment in any
   game that plays background music.
-- **Faking a looping background track without touching shared assets.** Godot's music
-  jingles are not set to loop, and setting `loop=true` on the shared `.import` file would
-  loop them everywhere else they play too (menu wins, other games' stings). Instead, call
-  `Audio.music("jingle_2")` every `_process()` frame: the function no-ops while the track
-  is still playing and only actually restarts it once the clip has ended, so this
-  reissues playback as a fake loop for a few bytes of cost per frame. `bricks` does this.
+- **Don't loop one of the kit's jingles as background music.** `assets/audio/music/` is
+  four short stings built for a one-off moment (a win, a menu) -- calling `Audio.music()`
+  on repeat to fake a loop out of one is mechanically easy (the function no-ops while the
+  track is still playing, so calling it every `_process()` frame just restarts it once the
+  clip ends) but it sounds like exactly what it is: the same ten seconds on repeat,
+  annoying within a minute. `bricks` tried this and pulled it back out. A real composed
+  loop track is what background music actually needs -- there is not one in the kit yet.
 - **`win.ogg` is a two-second jingle**, byte-identical to `music/jingle_1`. It is a bad
   choice for a hit. Use `impact_*` or a `voice_*` line.
 - **The `smart` bot flees anything tagged `"x"` within 90px.** Space out anything it has

@@ -31,7 +31,9 @@ whether to catch it or dodge it without thinking.
 something that takes 2. Some blocks **can't be destroyed** — they just sit there. Some
 blocks **explode**, taking their neighbours with them.
 
-**Some more graphics, a background, and a little music.**
+**Some more graphics, a background, and a little music.** The music turned out to be a
+short jingle looping on repeat, and that got old fast — pulled back out for now. See
+Notes.
 
 ## What is trying to stop you?
 
@@ -70,7 +72,11 @@ Clear the wall and the next level builds a bigger one. Chase the score.
   same speed, off to either side. Losing one ball while others are still up does not cost a
   life — only running out of balls entirely does. Capped at 5 balls at once.
 - A soft glow along the side walls and behind the wall, and each ball leaves a short fading
-  trail. A quiet jingle loops in the background while the game is open.
+  trail.
+- **No background music, on purpose, for now.** It looped a short jingle from the kit's
+  stings, which are built for a one-off win/menu moment, not five straight minutes on
+  repeat — it got annoying fast. A real looping track would fix this properly; the sfx
+  (coin, impacts) are untouched and still play normally.
 - **This is the first game here with a real fail state**, so the idle bot finally dies the
   way the playtest expects.
 

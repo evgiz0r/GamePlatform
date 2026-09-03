@@ -37,13 +37,9 @@ const DROP_W := 26.0
 const DROP_H := 16.0
 const BULLET_SPEED := 380.0
 const FIRE_COOLDOWN := 0.35
-## Fractions of whatever the menu's volume knob is set to, not absolute levels -- a
-## game that hard-set these ignored the menu control entirely. 0.35 / 0.31 match the
-## old fixed 0.28 / 0.22 at the shipped defaults (0.8 sfx, 0.7 music), so nothing
-## sounds different if the knob has never been touched. See CLAUDE.md.
+## Fraction of whatever volume_sfx is currently set to, not an absolute level. See
+## CLAUDE.md, "things this kit learned the hard way".
 const SFX_SCALE := 0.35
-const MUSIC_SCALE := 0.31
-const MUSIC_TRACK := "jingle_2"
 
 ## Everything that can fall out of a brick. `good` drives both the icon and the colour, so
 ## a drop reads as help-or-harm before you can read the letter on it. "multi" has no
@@ -78,7 +74,6 @@ var _point := 0.0
 var _drag_from := 0.0
 var _drag_base := 0.0
 var _sfx_was := 0.8
-var _music_was := 0.7
 
 func _ready() -> void:
 	title = "bricks"
@@ -88,8 +83,6 @@ func _ready() -> void:
 func start(_config: Dictionary) -> void:
 	_sfx_was = float(SaveData.data.get("volume_sfx", 0.8))
 	SaveData.data["volume_sfx"] = _sfx_was * SFX_SCALE
-	_music_was = float(SaveData.data.get("volume_music", 0.7))
-	SaveData.data["volume_music"] = _music_was * MUSIC_SCALE
 
 	var cam := Camera2D.new()
 	cam.position = center()
@@ -112,8 +105,6 @@ func start(_config: Dictionary) -> void:
 
 func _exit_tree() -> void:
 	SaveData.data["volume_sfx"] = _sfx_was
-	SaveData.data["volume_music"] = _music_was
-	Audio.stop_music()
 
 func _make_ball() -> Blob:
 	var b := Blob.new()
@@ -202,11 +193,6 @@ func _process(delta: float) -> void:
 	if finished:
 		return
 	queue_redraw()
-	# Godot's ogg jingles are not set to loop, and touching that shared import setting
-	# would also loop them wherever else they play (menu wins, other games' stings). This
-	# reissues playback once the clip ends instead -- Audio.music() no-ops while it is
-	# still going, so calling it every frame is cheap and does not touch shared assets.
-	Audio.music(MUSIC_TRACK)
 
 	_cool = maxf(0.0, _cool - delta)
 	_tick_timers(delta)
