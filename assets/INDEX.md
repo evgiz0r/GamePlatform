@@ -154,6 +154,17 @@ None of these were checked by ear for a clean loop seam beyond what their own so
 claim — if one clicks or pops where it repeats, that is a real flaw to fix (a different
 track, or trimming the file), not something to shrug off.
 
+### Candidates, not vendored yet
+
+More tracks worth having on hand, checked for license but not yet downloaded into
+`assets/`:
+
+| Track | Feel | Licence | Author |
+|---|---|---|---|
+| [Cyberpunk Moonlight Sonata](https://opengameart.org/content/cyberpunk-moonlight-sonata) | moody, driving, synthwave | CC0 | Joth |
+| [Heroic Minority](https://opengameart.org/content/heroic-minority) | orchestral, adventurous | CC-BY 3.0 | Alexandr Zhelanov |
+| [Crystal Cave](https://opengameart.org/content/crystal-cave-mysterious-ambience-seamless-loop) | ambient, mysterious, explicitly seamless | CC-BY 3.0 (author also offers CC-BY-SA / GPL — **use the CC-BY option only**, per the licence rule below) | cynicmusic / The Cynic Project |
+
 ## drawings/
 
 Empty, and meant to be. This is where the person whose game it is puts their own pictures
