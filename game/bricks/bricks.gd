@@ -37,8 +37,12 @@ const DROP_W := 26.0
 const DROP_H := 16.0
 const BULLET_SPEED := 380.0
 const FIRE_COOLDOWN := 0.35
-const SFX_VOLUME := 0.28
-const MUSIC_VOLUME := 0.22
+## Fractions of whatever the menu's volume knob is set to, not absolute levels -- a
+## game that hard-set these ignored the menu control entirely. 0.35 / 0.31 match the
+## old fixed 0.28 / 0.22 at the shipped defaults (0.8 sfx, 0.7 music), so nothing
+## sounds different if the knob has never been touched. See CLAUDE.md.
+const SFX_SCALE := 0.35
+const MUSIC_SCALE := 0.31
 const MUSIC_TRACK := "jingle_2"
 
 ## Everything that can fall out of a brick. `good` drives both the icon and the colour, so
@@ -83,9 +87,9 @@ func _ready() -> void:
 
 func start(_config: Dictionary) -> void:
 	_sfx_was = float(SaveData.data.get("volume_sfx", 0.8))
-	SaveData.data["volume_sfx"] = SFX_VOLUME
+	SaveData.data["volume_sfx"] = _sfx_was * SFX_SCALE
 	_music_was = float(SaveData.data.get("volume_music", 0.7))
-	SaveData.data["volume_music"] = MUSIC_VOLUME
+	SaveData.data["volume_music"] = _music_was * MUSIC_SCALE
 
 	var cam := Camera2D.new()
 	cam.position = center()

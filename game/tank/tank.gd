@@ -21,8 +21,13 @@ const TRAIL_MAX := 26
 const GROUND_Y := 338.0                   ## where a shell that hits nothing lands
 const ANIMAL_SCALE := 0.13
 ## The shell default (0.8) is loud for a game that fires this often. In memory only --
-## the saved settings file is never written. See reference/README.md.
-const SFX_VOLUME := 0.28
+## the saved settings file is never written. See CLAUDE.md, "things this kit learned
+## the hard way".
+## Fraction of whatever the menu's volume knob is set to, not an absolute level --
+## a game that hard-set this ignored the menu control entirely. 0.35 matches the old
+## fixed 0.28 at the shipped default (0.8), so nothing sounds different if the knob
+## has never been touched.
+const SFX_SCALE := 0.35
 
 ## The cast. "penguin" crews the tank and is kept out of the target line-up, so the same
 ## animal never means two things on screen at once.
@@ -49,7 +54,7 @@ func _ready() -> void:
 
 func start(_config: Dictionary) -> void:
 	_sfx_was = float(SaveData.data.get("volume_sfx", 0.8))
-	SaveData.data["volume_sfx"] = SFX_VOLUME
+	SaveData.data["volume_sfx"] = _sfx_was * SFX_SCALE
 
 	var cam := Camera2D.new()
 	cam.position = center()

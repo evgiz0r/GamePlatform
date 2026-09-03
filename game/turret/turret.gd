@@ -22,7 +22,11 @@ const SPAWN_START := 2.6
 const SPAWN_MIN := 0.9
 const FALL_START := 28.0
 const FALL_MAX := 88.0
-const SFX_VOLUME := 0.28
+## Fraction of whatever the menu's volume knob is set to, not an absolute level --
+## a game that hard-set this ignored the menu control entirely. 0.35 matches the old
+## fixed 0.28 at the shipped default (0.8), so nothing sounds different if the knob
+## has never been touched.
+const SFX_SCALE := 0.35
 
 const FOES := ["bat", "spider", "ghost", "skull", "goblin", "skeleton", "crab", "snail"]
 
@@ -45,7 +49,7 @@ func _ready() -> void:
 
 func start(_config: Dictionary) -> void:
 	_sfx_was = float(SaveData.data.get("volume_sfx", 0.8))
-	SaveData.data["volume_sfx"] = SFX_VOLUME
+	SaveData.data["volume_sfx"] = _sfx_was * SFX_SCALE
 
 	var cam := Camera2D.new()
 	cam.position = center()

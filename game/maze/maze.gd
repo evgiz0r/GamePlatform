@@ -17,7 +17,11 @@ const KEEP_PAST := 3
 const FIRST_SIZE := 3
 const MAX_SIZE := 12
 const STEP_TIME := 0.085     ## seconds to cross one cell
-const SFX_VOLUME := 0.28
+## Fraction of whatever the menu's volume knob is set to, not an absolute level --
+## a game that hard-set this ignored the menu control entirely. 0.35 matches the old
+## fixed 0.28 at the shipped default (0.8), so nothing sounds different if the knob
+## has never been touched.
+const SFX_SCALE := 0.35
 
 const N := 1
 const E := 2
@@ -85,7 +89,7 @@ func _ready() -> void:
 
 func start(_config: Dictionary) -> void:
 	_sfx_was = float(SaveData.data.get("volume_sfx", 0.8))
-	SaveData.data["volume_sfx"] = SFX_VOLUME
+	SaveData.data["volume_sfx"] = _sfx_was * SFX_SCALE
 
 	_cam = Camera2D.new()
 	_cam.zoom = Vector2(CAM_ZOOM, CAM_ZOOM)

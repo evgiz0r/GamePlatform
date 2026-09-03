@@ -13,7 +13,12 @@ const ROUND_TIME := 10.0
 const REVEAL_TIME := 0.85
 ## The shell default (0.8) is loud for a game that beeps every few seconds.
 ## Set in memory only while count is on screen -- the saved settings file is not touched.
-const SFX_VOLUME := 0.28
+## See CLAUDE.md, "things this kit learned the hard way".
+## Fraction of whatever the menu's volume knob is set to, not an absolute level --
+## a game that hard-set this ignored the menu control entirely. 0.35 matches the old
+## fixed 0.28 at the shipped default (0.8), so nothing sounds different if the knob
+## has never been touched.
+const SFX_SCALE := 0.35
 
 ## Small animals to count. These are the 16x16 sprites, deliberately a different kind of
 ## picture from the big animal badges that hold the numbers -- if both were badges you
@@ -42,7 +47,7 @@ func _ready() -> void:
 
 func start(_config: Dictionary) -> void:
 	_sfx_was = float(SaveData.data.get("volume_sfx", 0.8))
-	SaveData.data["volume_sfx"] = SFX_VOLUME
+	SaveData.data["volume_sfx"] = _sfx_was * SFX_SCALE
 
 	var cam := Camera2D.new()
 	cam.position = center()
