@@ -21,8 +21,17 @@ func _ready() -> void:
 	_music.bus = "Master"
 	add_child(_music)
 
+## The one global on/off. Checked here rather than in each game, so every game -- current
+## and future -- respects it automatically with no per-game code at all. A per-game volume
+## trick (see CLAUDE.md) still applies on top of this when sound IS on; this is a separate,
+## harder gate that skips playback entirely regardless of any volume math upstream.
+func muted() -> bool:
+	return bool(SaveData.data.get("muted", false))
+
 ## play("jump") looks for res://assets/audio/sfx/jump.ogg (or .wav)
 func play(sound: String, pitch_jitter: float = 0.08, volume_db: float = 0.0) -> void:
+	if muted():
+		return
 	var stream: AudioStream = _load(sound)
 	if stream == null:
 		return
@@ -34,6 +43,8 @@ func play(sound: String, pitch_jitter: float = 0.08, volume_db: float = 0.0) -> 
 	p.play()
 
 func music(track: String, fade: float = 0.6) -> void:
+	if muted():
+		return
 	var stream: AudioStream = _load(track, "res://assets/audio/music/")
 	if stream == null:
 		return

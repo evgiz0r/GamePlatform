@@ -31,9 +31,9 @@ whether to catch it or dodge it without thinking.
 something that takes 2. Some blocks **can't be destroyed** — they just sit there. Some
 blocks **explode**, taking their neighbours with them.
 
-**Some more graphics, a background, and a little music.** The music turned out to be a
-short jingle looping on repeat, and that got old fast — pulled back out for now. See
-Notes.
+**Some more graphics, a background, and a little music.** First attempt looped a short
+jingle from the kit's stings — that got old fast and was pulled back out. Now playing a
+real composed track ("Peaceful 1am in May") instead of a repeating sting. See Notes.
 
 ## What is trying to stop you?
 
@@ -73,10 +73,12 @@ Clear the wall and the next level builds a bigger one. Chase the score.
   life — only running out of balls entirely does. Capped at 5 balls at once.
 - A soft glow along the side walls and behind the wall, and each ball leaves a short fading
   trail.
-- **No background music, on purpose, for now.** It looped a short jingle from the kit's
-  stings, which are built for a one-off win/menu moment, not five straight minutes on
-  repeat — it got annoying fast. A real looping track would fix this properly; the sfx
-  (coin, impacts) are untouched and still play normally.
+- **Background music is "Peaceful 1am in May" by TAD** (CC-BY 3.0 — credited in
+  `assets/CREDITS.md`), not one of the kit's short jingles looped on repeat. Quieter than
+  the sfx, same "scale whatever the setting already is" trick as the sound effects.
+- **A sound on/off toggle sits in the corner at all times** — main menu or mid-game, no
+  need to back out to reach it. That is a shell-level thing now (`Flow`), not specific to
+  this game, so every game gets it automatically.
 - **This is the first game here with a real fail state**, so the idle bot finally dies the
   way the playtest expects.
 

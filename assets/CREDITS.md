@@ -1,8 +1,12 @@
 # Credits
 
-All art and audio in this kit is **CC0 (public domain)** by [Kenney](https://kenney.nl).
+Almost everything in this kit is **CC0 (public domain)** by [Kenney](https://kenney.nl).
 CC0 requires no attribution — this file exists because crediting people is the right thing
 to do, and because it records where things came from if you want more of them.
+
+**One exception**, marked below: `audio/music/peaceful_1am_in_may.mp3` is **CC-BY 3.0**,
+which does require attribution — see the credit line under the table. Nothing else in the
+kit carries that requirement; check before adding anything else that isn't CC0.
 
 | What | Pack | Source |
 |---|---|---|
@@ -14,10 +18,16 @@ to do, and because it records where things came from if you want more of them.
 | `tiles/pixel_platformer.png` | Pixel Platformer | https://kenney.nl/assets/pixel-platformer |
 | `audio/sfx/` (interface) | Interface Sounds | https://kenney.nl/assets/interface-sounds |
 | `audio/sfx/` (impacts) | Impact Sounds | https://kenney.nl/assets/impact-sounds |
-| `audio/music/` | Music Jingles | https://kenney.nl/assets/music-jingles |
+| `audio/music/jingle_*` | Music Jingles | https://kenney.nl/assets/music-jingles |
 | `actors/` | Platformer Characters | https://kenney.nl/assets/platformer-characters |
 | `audio/sfx/voice_*` | Voiceover Pack (female voice, Giselle) | https://kenney.nl/assets/voiceover-pack |
 | `audio/sfx/impact_*`, `step_*` | Impact Sounds | https://kenney.nl/assets/impact-sounds |
+| `audio/music/bonus_round.wav` | CC0, [Wolfgang_](https://opengameart.org/content/bonus-round-8bit) | OpenGameArt |
+| `audio/music/chiptune_battle.ogg` | CC0, pmiller | https://opengameart.org/content/chiptune-battle-music |
+| `audio/music/on_the_offensive.ogg` | CC0, Ted Kerr (uploaded by Wolfgang_) | https://opengameart.org/content/8-bit-theme-on-the-offensive |
+
+**`audio/music/peaceful_1am_in_may.mp3`** — "Peaceful 1am in May" by **TAD**, **CC-BY 3.0**
+(attribution required): https://opengameart.org/content/peaceful-1am-in-may
 
 ## Adding more
 

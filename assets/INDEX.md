@@ -137,7 +137,22 @@ A missing sound is not an error: the game runs silent and the playtest report wa
 ## audio/music/ — `Audio.music("name")`
 
 `jingle_1` `jingle_2` `jingle_3` `jingle_4` — short 8-bit stings, good for menus, wins and
-level transitions. They are short and will not loop seamlessly.
+level transitions. **Do not loop these as background music** — a game that calls
+`Audio.music()` on repeat to fake a loop out of one just repeats the same ten seconds
+forever, and it reads as exactly that. See CLAUDE.md.
+
+Real background tracks, long enough to loop sensibly, one licence exception among them:
+
+| Name | Feel | Licence |
+|---|---|---|
+| `peaceful_1am_in_may` | calm, ambient | **CC-BY 3.0** — credit TAD, see `CREDITS.md` |
+| `bonus_round` | bright, playful, short loop | CC0 |
+| `chiptune_battle` | driving, tense | CC0 |
+| `on_the_offensive` | upbeat, march-like | CC0 |
+
+None of these were checked by ear for a clean loop seam beyond what their own source pages
+claim — if one clicks or pops where it repeats, that is a real flaw to fix (a different
+track, or trimming the file), not something to shrug off.
 
 ## drawings/
 

@@ -11,6 +11,7 @@ var _layer: CanvasLayer
 var _fade: ColorRect
 var _ui: Control
 var _hud: Control
+var _sound_btn: Button
 var _score := 0
 var _lives := 0
 var _in_game := false
@@ -38,6 +39,8 @@ func _build() -> void:
 	_fade.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_layer.add_child(_fade)
+
+	_build_sound_toggle()
 
 	Bus.score_changed.connect(_on_score)
 	Bus.lives_changed.connect(_on_lives)
@@ -184,6 +187,41 @@ func restart() -> void:
 	if current_id != "":
 		start_game(current_id)
 
+## ---- sound toggle -----------------------------------------------------------
+
+## A plain on/off, not a volume level -- the menu-level percentage slider this replaced
+## required backing out of whatever game you were in to reach it, which made no sense
+## mid-game. This lives directly on _layer, a sibling of _ui rather than a child of it, so
+## _clear_stage() (which frees every child of _ui on every menu<->game transition) never
+## touches it: it is built once and is on screen for the rest of the run, menu or game.
+func _build_sound_toggle() -> void:
+	_sound_btn = UIKit.button("", _toggle_sound)
+	_sound_btn.name = "SoundButton"
+	# "at all times" includes while a game is paused -- everything else under _layer
+	# defaults to pausable and the pause screen has to opt out the same way (see
+	# toggle_pause() below), so this needs the same explicit opt-out.
+	_sound_btn.process_mode = Node.PROCESS_MODE_ALWAYS
+	# sits directly left of where the per-game "menu" button appears (566,8 size 62x22)
+	_sound_btn.custom_minimum_size = Vector2(56, 22)
+	_sound_btn.size = Vector2(56, 22)
+	_sound_btn.position = Vector2(502, 8)
+	_sound_btn.add_theme_font_size_override("font_size", 12)
+	_layer.add_child(_sound_btn)
+	_update_sound_btn()
+
+func _update_sound_btn() -> void:
+	var on := not Audio.muted()
+	_sound_btn.text = "sound" if on else "muted"
+	_sound_btn.modulate.a = 1.0 if on else 0.55
+
+func _toggle_sound() -> void:
+	SaveData.set_value("muted", not Audio.muted())
+	if Audio.muted():
+		Audio.stop_music()
+	else:
+		Audio.play("select")
+	_update_sound_btn()
+
 ## ---- hud / pause / game over ----------------------------------------------
 
 func _build_hud() -> void:
@@ -222,6 +260,11 @@ func _build_hud() -> void:
 ## the menu button would otherwise also fire the game's action underneath it. Every game
 ## that acts on a click should bail out when this is true.
 func pointer_over_hud() -> bool:
+	# the sound toggle is present even outside a game (see _build_sound_toggle), so check
+	# it whether or not _hud exists
+	if _sound_btn != null and is_instance_valid(_sound_btn) and _sound_btn.visible \
+			and _sound_btn.get_global_rect().has_point(_sound_btn.get_global_mouse_position()):
+		return true
 	if _hud == null or not is_instance_valid(_hud):
 		return false
 	var b := _hud.find_child("MenuButton", true, false) as Control

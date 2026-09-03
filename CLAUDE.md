@@ -121,13 +121,26 @@ Short, specific, and all of them cost a debugging session:
   `~0.28` in `start()` and restores it in `_exit_tree()`, in memory only so the saved
   settings file is never touched. Copy that. `volume_music` gets the same treatment in any
   game that plays background music.
-- **Don't loop one of the kit's jingles as background music.** `assets/audio/music/` is
-  four short stings built for a one-off moment (a win, a menu) -- calling `Audio.music()`
-  on repeat to fake a loop out of one is mechanically easy (the function no-ops while the
+- **Don't loop one of the kit's jingles as background music.** `jingle_1`-`jingle_4` are
+  short stings built for a one-off moment (a win, a menu) -- calling `Audio.music()` on
+  repeat to fake a loop out of one is mechanically easy (the function no-ops while the
   track is still playing, so calling it every `_process()` frame just restarts it once the
   clip ends) but it sounds like exactly what it is: the same ten seconds on repeat,
-  annoying within a minute. `bricks` tried this and pulled it back out. A real composed
-  loop track is what background music actually needs -- there is not one in the kit yet.
+  annoying within a minute. `bricks` tried this and pulled it back out.
+  For real background music, `assets/audio/music/` also has four longer, loop-friendly
+  tracks now (`peaceful_1am_in_may`, `bonus_round`, `chiptune_battle`, `on_the_offensive`)
+  -- see `assets/INDEX.md` for the feel of each. Same `Audio.music()` polling trick, just
+  aimed at a track that is actually meant to repeat. One of the four
+  (`peaceful_1am_in_may`) is CC-BY, not CC0 -- already credited in `assets/CREDITS.md`,
+  nothing more to do, but worth knowing before assuming everything in the folder is CC0.
+- **A sound on/off toggle is already on screen, always.** `Flow` builds it once, outside
+  the menu/game rebuild cycle, so it survives every transition and sits in the corner on
+  every screen including the main menu -- see `_build_sound_toggle()` in
+  `shell/autoload/flow.gd`. It gates `Audio.play()`/`Audio.music()` centrally
+  (`Audio.muted()`), so no game needs to check it or do anything for it to work. A
+  percentage slider on the main menu was tried first and reverted: reaching a menu-level
+  control meant backing out of whatever game you were adjusting it for, which defeated
+  the point.
 - **`win.ogg` is a two-second jingle**, byte-identical to `music/jingle_1`. It is a bad
   choice for a hit. Use `impact_*` or a `voice_*` line.
 - **The `smart` bot flees anything tagged `"x"` within 90px.** Space out anything it has

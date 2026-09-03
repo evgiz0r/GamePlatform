@@ -40,6 +40,11 @@ const FIRE_COOLDOWN := 0.35
 ## Fraction of whatever volume_sfx is currently set to, not an absolute level. See
 ## CLAUDE.md, "things this kit learned the hard way".
 const SFX_SCALE := 0.35
+const MUSIC_SCALE := 0.31
+## A real composed, loop-friendly track (CC0-licensed candidates and one CC-BY -- see
+## assets/CREDITS.md) rather than one of the kit's short jingles looped on repeat, which
+## read as the same ten seconds forever and got pulled back out. See assets/INDEX.md.
+const MUSIC_TRACK := "peaceful_1am_in_may"
 
 ## Everything that can fall out of a brick. `good` drives both the icon and the colour, so
 ## a drop reads as help-or-harm before you can read the letter on it. "multi" has no
@@ -74,6 +79,7 @@ var _point := 0.0
 var _drag_from := 0.0
 var _drag_base := 0.0
 var _sfx_was := 0.8
+var _music_was := 0.7
 
 func _ready() -> void:
 	title = "bricks"
@@ -83,6 +89,8 @@ func _ready() -> void:
 func start(_config: Dictionary) -> void:
 	_sfx_was = float(SaveData.data.get("volume_sfx", 0.8))
 	SaveData.data["volume_sfx"] = _sfx_was * SFX_SCALE
+	_music_was = float(SaveData.data.get("volume_music", 0.7))
+	SaveData.data["volume_music"] = _music_was * MUSIC_SCALE
 
 	var cam := Camera2D.new()
 	cam.position = center()
@@ -105,6 +113,8 @@ func start(_config: Dictionary) -> void:
 
 func _exit_tree() -> void:
 	SaveData.data["volume_sfx"] = _sfx_was
+	SaveData.data["volume_music"] = _music_was
+	Audio.stop_music()
 
 func _make_ball() -> Blob:
 	var b := Blob.new()
@@ -193,6 +203,10 @@ func _process(delta: float) -> void:
 	if finished:
 		return
 	queue_redraw()
+	# Audio.music() no-ops while the track is still playing and only actually restarts it
+	# once the clip has ended, so calling it every frame reissues playback as a loop. Cheap
+	# to call unconditionally -- see CLAUDE.md.
+	Audio.music(MUSIC_TRACK)
 
 	_cool = maxf(0.0, _cool - delta)
 	_tick_timers(delta)
