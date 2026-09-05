@@ -169,6 +169,13 @@ Short, specific, and all of them cost a debugging session:
   static image, so animals and items can only be animated by hand: position, rotation and
   squash. See `assets/INDEX.md`.
 
+## Ideas that are not being built yet
+
+`IDEAS.md` at the root is the parking lot for concepts about the kit that are noted but
+not scheduled. Read it before pitching features, so you do not re-pitch what is already
+there. When someone mentions an idea and says it is for later, offer to add it to that
+file rather than letting it disappear into the chat.
+
 ## The web build
 
 `docs/` holds the exported web build that GitHub Pages serves. It is generated, not
