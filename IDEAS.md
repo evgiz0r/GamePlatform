@@ -18,6 +18,9 @@ right now, offer to add it here rather than letting it get lost in the chat.
 - **Card games and card assets.** Deck, hand, table; and the art to go with it.
 - **Game flow in open worlds.** State machines, a database of characters, states and
   dialogs. How do people actually structure this? Research first, then decide.
+- **Open world of gambling.** You wander around and play mini games with bets. Every
+  person you meet has their own riddle or game. Somewhere between math puzzles and
+  spotting the scammer's trick. Leans on "2D open world" and "in-game dialog" above.
 
 ## Platform and tooling
 
