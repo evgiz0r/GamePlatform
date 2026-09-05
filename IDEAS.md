@@ -21,6 +21,11 @@ right now, offer to add it here rather than letting it get lost in the chat.
 - **Open world of gambling.** You wander around and play mini games with bets. Every
   person you meet has their own riddle or game. Somewhere between math puzzles and
   spotting the scammer's trick. Leans on "2D open world" and "in-game dialog" above.
+- **Dressing and clothes.** An open world where you start in bad clothes. People you
+  meet present themselves and what they wear, and you pick what you want: sometimes you
+  buy it, sometimes they give it to you for a reason. You see yourself wearing it, and
+  everyone else wearing theirs. A visual game first. Needs layered outfit art, which the
+  kit does not have today (see "Hand-drawn input" below).
 
 ## Platform and tooling
 
