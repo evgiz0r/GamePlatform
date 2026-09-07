@@ -10,7 +10,9 @@ right now, offer to add it here rather than letting it get lost in the chat.
 
 ## Games and content
 
-- **In-game dialog.** Characters that talk. Text boxes, choices, maybe portraits.
+- **Dialog as a shared system.** One game now has its own text box with portraits and
+  multiple-choice answers. When a second game needs one, lift it out of that game into
+  something both can use, rather than copying it.
 - **Memory games.** Match pairs, repeat the sequence, that family.
 - **2D open world.** A big map you wander instead of one screen.
 - **3D.** The kit is 2D-only today. Would need its own shell contract.
