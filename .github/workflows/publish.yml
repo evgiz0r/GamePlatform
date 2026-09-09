@@ -40,7 +40,8 @@ jobs:
         run: echo "GODOT=$(tools/setup_godot.sh --templates | tail -1)" >> "$GITHUB_ENV"
 
       - name: import assets
-        run: "$GODOT" --headless --path . --import > /dev/null 2>&1 || true
+        run: |
+          "$GODOT" --headless --path . --import > /dev/null 2>&1 || true
 
       - name: export the web build
         run: tools/publish_web.sh
