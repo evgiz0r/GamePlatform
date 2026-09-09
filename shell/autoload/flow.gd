@@ -105,14 +105,36 @@ func _show_menu() -> void:
 	]
 	if games.is_empty():
 		nodes.append(UIKit.label("no games in res://game/ yet -- ask your AI for one", 12, "warn"))
+	# One column reads best, but a column of full-height buttons runs off the bottom at
+	# five games. Past four the list goes two-up and a little shorter; up to eight games
+	# then fit with room to spare, and the buttons stay big enough for a thumb.
+	var grid := GridContainer.new()
+	grid.columns = 2 if games.size() > 4 else 1
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 6 if grid.columns == 2 else 10)
 	for g in games:
 		var id: String = g["id"]
 		var best := SaveData.best_for(id)
 		var caption: String = g["title"] + ("   best %d" % best if best > 0 else "")
-		nodes.append(UIKit.button(caption, func(): start_game(id)))
-	nodes.append(UIKit.button("look: " + Palette.active, _cycle_palette))
+		var btn := UIKit.button(caption, func(): start_game(id))
+		if grid.columns == 2:
+			btn.custom_minimum_size = Vector2(200, 30)
+			btn.add_theme_font_size_override("font_size", 14)
+		grid.add_child(btn)
+	nodes.append(grid)
+	# look and quit share a row for the same reason
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	var look := UIKit.button("look: " + Palette.active, _cycle_palette)
+	look.custom_minimum_size = Vector2(200, 30)
+	look.add_theme_font_size_override("font_size", 14)
+	row.add_child(look)
 	if not OS.has_feature("web"):
-		nodes.append(UIKit.button("quit", func(): get_tree().quit()))
+		var quit := UIKit.button("quit", func(): get_tree().quit())
+		quit.custom_minimum_size = Vector2(90, 30)
+		quit.add_theme_font_size_override("font_size", 14)
+		row.add_child(quit)
+	nodes.append(row)
 	# deliberately faint: it is a diagnostic, not part of the game's look. "ink" dimmed
 	# rather than a palette role, so it stays unobtrusive whichever palette is active.
 	var stamp := UIKit.label(_build_stamp(), 9, "ink")

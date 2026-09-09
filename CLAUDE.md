@@ -164,6 +164,10 @@ Short, specific, and all of them cost a debugging session:
   and where the thing being steered was at that moment, then move it by the same delta the
   finger has moved since. A stationary tap then asks for zero movement and a small drag
   asks for a proportionally small one. `bricks`' paddle does this.
+- **The menu goes two-up past four games.** A single column of full-height buttons ran
+  off the bottom at five, which is why `reference/` exists (finished games parked out of
+  the menu). Now `_show_menu()` in `shell/autoload/flow.gd` switches to a two-column
+  grid of slightly shorter buttons above four games, and eight fit. Past that, park one.
 - **Animated art exists in `assets/actors/` only** — five human characters with real
   frames, via `Blob.set_actor()` / `Blob.play()`. Everything else in `assets/` is a single
   static image, so animals and items can only be animated by hand: position, rotation and
