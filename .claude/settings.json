@@ -10,7 +10,24 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(ls:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(tools/shots.sh:*)",
+      "Bash(tools/publish_web.sh:*)",
+      "Bash(tools/setup_godot.sh:*)",
+      "Bash(tools/menu_shot.sh:*)",
+      "Bash(xvfb-run:*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh"
+          }
+        ]
+      }
     ]
   }
 }

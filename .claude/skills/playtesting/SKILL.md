@@ -64,6 +64,8 @@ Read them spatially. They reveal things numbers cannot:
 | everything in one corner | spawn position not randomized |
 | the bot does nothing at all | the game reads `Input` instead of `PInput` |
 | bot moves but never jumps/shoots | the game uses `just_pressed()` for that action and something is holding the button. Bot presses are pulsed via `_pulse()` in `bot.gd` for exactly this reason — if you add a policy, pulse it. |
+| bot reaches the first goal, then sits pressed against a wall | the next goal is behind a wall and the bot walks straight lines. Track the next *waypoint* on the route as `"*"` (a door, a corner) rather than the goal itself, and move it on as the player arrives. Skip a waypoint the player is already lined up with, or the bot dithers at it forever. |
+| bot flips between two directions at one spot | two goals or waypoints at nearly the same distance, or a switch-over threshold the bot sits right on. Add hysteresis: keep the current target until it is clearly reached. |
 
 Check that last one first whenever a bot appears passive — it is the most common cause of
 a confusing report.
@@ -79,8 +81,16 @@ tools/shots.sh <game> <bot> <seconds> <count>
 ```
 
 Images land in `shots/` (gitignored). This runs **without** `--headless`, because the
-headless display driver renders nothing and would save black frames. A window will briefly
-appear on the user's screen.
+headless display driver renders nothing and would save black frames. On a machine with a
+display a window briefly appears; on a headless box (a remote session, CI) the script runs
+itself under Xvfb, so it works there too with no extra setup.
+
+The main menu is the one screen this cannot reach, since a run starts straight into a
+game. `tools/menu_shot.sh` screenshots it into `shots/menu.png`. Look at it whenever the
+number of games changes: the menu is the thing that overflows.
+
+The bot's brief moments -- a choice screen it clears in half a second -- need a higher
+rate: forty shots over twenty seconds catches them, a shot per second does not.
 
 Use them sparingly — an image costs several times a text report and tells you far less
 about *why* something happened. Reach for a screenshot to answer "does this look right?",

@@ -180,6 +180,14 @@ not scheduled. Read it before pitching features, so you do not re-pitch what is 
 there. When someone mentions an idea and says it is for later, offer to add it to that
 file rather than letting it disappear into the chat.
 
+## Running in a remote session
+
+Claude Code on the web starts from a bare container. `.claude/hooks/session-start.sh`
+fetches a matching Godot plus the web export templates (`tools/setup_godot.sh`) and sets
+`GODOT`, so `tools/playtest.sh`, `tools/shots.sh`, `tools/menu_shot.sh` and
+`tools/publish_web.sh` all just work there. The user's own machine is not reachable from
+that session: never ask them to run something for you or for the path to their install.
+
 ## The web build
 
 `docs/` holds the exported web build that GitHub Pages serves. It is generated, not

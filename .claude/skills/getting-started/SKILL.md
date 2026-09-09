@@ -25,6 +25,15 @@ If `GODOT` is set in their environment, `tools/playtest.sh` works and you can ch
 yourself. If it is not, ask them for the path to their Godot binary and tell them to set
 it — without it you are blind and every claim you make about their game is a guess.
 
+**In a remote session (Claude Code on the web) their machine is not reachable at all**, so
+never ask for the path to their Godot install and never tell them to run something for
+you. The repo's session-start hook fetches a matching Godot and the web export templates
+into the container and sets `GODOT` for you (`.claude/hooks/session-start.sh`, which calls
+`tools/setup_godot.sh`). If `GODOT` is somehow unset in a remote session, run
+`tools/setup_godot.sh --templates` yourself and use the path it prints. When they say
+"you have Godot at C:\...", explain the split in one sentence: you are in a cloud
+container with your own copy, their install is for playing the game on their PC.
+
 Common first-run problems:
 
 | What they see | What it is |

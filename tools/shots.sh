@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Capture real screenshots of a game. Usage: tools/shots.sh <game> [bot] [seconds] [count]
 # Runs WITHOUT --headless because the headless driver renders nothing (black frames).
+# With no DISPLAY it runs under Xvfb if that is installed, so it works on a headless box too.
 # Images land in shots/ (gitignored).
 set -u
 GAME="${1:-}"; BOT="${2:-smart}"; SECS="${3:-10}"; N="${4:-2}"
@@ -26,5 +27,11 @@ if [ ! -d .godot ]; then
   echo "First run: importing assets, this takes about ten seconds..." >&2
   "$BIN" --headless --path . --import >/dev/null 2>&1
 fi
-"$BIN" --path . --rendering-driver opengl3 --audio-driver Dummy -- \
+# A headless box (Claude Code on the web, CI) has no display, but Mesa can render into a
+# virtual one -- so borrow Xvfb when there is no DISPLAY and it is installed.
+RUN=()
+if [ -z "${DISPLAY:-}" ] && command -v xvfb-run >/dev/null 2>&1; then
+  RUN=(xvfb-run -a -s "-screen 0 1280x720x24")
+fi
+"${RUN[@]}" "$BIN" --path . --rendering-driver opengl3 --audio-driver Dummy -- \
   --sim="$GAME" --bot="$BOT" --seconds="$SECS" --shots="$N" 2>&1 | grep -E "^\[shot\]"
