@@ -14,8 +14,12 @@ extends GameMode
 
 const SURFACE_G := 450.0            ## gravity at a planet's surface, px/s^2; falls off as 1/r^2
 const STEP := 1.0 / 120.0           ## shell physics step; the solver uses the same one
-const MAX_FLIGHT := 14.0            ## a shell that has not landed by then is lost in space
-const SPACE_MARGIN := 900.0         ## how far off screen a shell may wander -- far, so long shots come back
+const MAX_FLIGHT := 10.0            ## a shell that has not landed by then is lost in space
+const SPACE_MARGIN := 600.0         ## how far off screen a shell may wander before it is lost
+const OFFSCREEN_MAX := 3.0          ## and how long it may stay out there, in total
+## Gravity is 1/r^2 near a planet but only 1/r beyond SOFT_R x its radius: far out it pulls
+## much harder than a real planet would, so a long shot turns round instead of drifting.
+const SOFT_R := 1.5
 ## Escape speed off the biggest planet is about 290 px/s (sqrt(2 g R)); the range sits
 ## around it on purpose, because the shots that bend and come back are the ones near it.
 const SPEED_MIN := 60.0
@@ -26,7 +30,10 @@ const AIM_SPEED := 230.0            ## how fast the keys move the aim point, px/
 const MUZZLE_LEN := 16.0
 const TANK_R := 7.0
 const HIT_R := 13.0                 ## a shell this close to a tank strikes it directly
-const BLAST_R := 30.0               ## a blast this close to a tank hurts it
+const BLAST_R := 40.0               ## a blast this close to a tank hurts it
+const DMG_DIRECT := 60              ## damage from a blast right on the tank ...
+const DMG_EDGE := 12                ## ... down to this at the edge of the blast
+const MAX_HP := 100
 const ARM_TIME := 0.35              ## a shell younger than this cannot hurt its own shooter
 const CRATER_R := 24.0              ## how much planet a blast removes
 const MIN_ROCK := 6.0               ## a planet never carves below this radius
@@ -44,6 +51,7 @@ const SFX_SCALE := 0.35
 const SOLVE_ANGLES := 36
 const SOLVE_POWERS := [0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1.0]
 const SOLVE_MAX_STEPS := 1000       ## eight seconds of flight: enough for a shot that goes out and comes back
+const FLIGHT_W := 6.0               ## solver: a second of flight costs this many pixels of miss
 const PLANET_ROLES := ["accent", "prize", "friend", "warn"]
 
 var _planets: Array = []            ## {pos, r, role, seed, hm, marker}
@@ -77,6 +85,8 @@ var _prompt := ""
 var _t := 0.0
 var _sfx_was := 0.8
 var _autoaim := false
+var _trace_steps := 0               ## how long the last _trace flew, for the solver's flight-time preference
+var _hint_aim := Vector2.ZERO       ## the aim behind _hint, re-solved only once it stops working
 
 func _ready() -> void:
 	title = "planets"
@@ -93,7 +103,8 @@ func start(_config: Dictionary) -> void:
 	add_child(cam)
 	cam.make_current()
 
-	set_lives(3)
+	# no lives: the tanks carry hit points, drawn over them. An empty lives display is honest.
+	set_lives(0)
 
 	for i in STAR_COUNT:
 		_stars.append(Vector2(randf_range(0, play_area.size.x), randf_range(0, play_area.size.y)))
@@ -123,6 +134,7 @@ func _next_level() -> void:
 	_level += 1
 	_shots_this_level = 0
 	_last_trail = PackedVector2Array()
+	_hint_aim = Vector2.ZERO
 	# the enemy opens wide of the mark and closes in with every miss; later levels open tighter
 	_enemy_err = maxf(0.8, 1.5 - 0.06 * float(_level - 1))
 	for s in _shells:
@@ -343,6 +355,7 @@ func _spawn_tank(planet: int, angle: float, mine: bool) -> Blob:
 	b.set_meta("angle", angle)
 	b.set_meta("alt", _surface(planet, angle) + TANK_R)   # distance from the planet centre
 	b.set_meta("vy", 0.0)
+	b.set_meta("hp", MAX_HP)
 	return b
 
 ## A tank stands on the live surface under it. When that ground is carved away it falls,
@@ -381,7 +394,10 @@ func _accel(p: Vector2) -> Vector2:
 		var d := _ppos[i] - p
 		var r2 := maxf(d.length_squared(), 100.0)
 		var r := _prad[i]
-		a += d * (SURFACE_G * r * r / (r2 * sqrt(r2)))
+		var dist := sqrt(r2)
+		var soft := r * SOFT_R
+		var mag := SURFACE_G * r * r / (r2 if dist <= soft else soft * dist)
+		a += d * (mag / dist)
 	return a
 
 func _aim_velocity(aim: Vector2) -> Vector2:
@@ -420,13 +436,20 @@ func _trace(from: Vector2, vel: Vector2, target: Vector2, shooter: Vector2, max_
 	var bounds := play_area.grow(SPACE_MARGIN)
 	var n := _ppos.size()
 	var immune := int(0.2 / STEP)
+	var out_max := int(OFFSCREEN_MAX / STEP)
+	var out := 0
+	_trace_steps = max_steps
 	for step in max_steps:
+		_trace_steps = step
 		var a := Vector2.ZERO
 		for i in n:
 			var d := _ppos[i] - p
 			var r2 := maxf(d.length_squared(), 100.0)
 			var r := _prad[i]
-			a += d * (SURFACE_G * r * r / (r2 * sqrt(r2)))
+			var dist := sqrt(r2)
+			var soft := r * SOFT_R
+			var mag := SURFACE_G * r * r / (r2 if dist <= soft else soft * dist)
+			a += d * (mag / dist)
 		v += a * STEP
 		p += v * STEP
 		var dt := p.distance_to(target)
@@ -434,7 +457,9 @@ func _trace(from: Vector2, vel: Vector2, target: Vector2, shooter: Vector2, max_
 			closest = dt
 		if dt < HIT_R:
 			return 0.0
-		var stopped := not bounds.has_point(p)
+		if not play_area.has_point(p):
+			out += 1
+		var stopped := not bounds.has_point(p) or out > out_max
 		if not stopped:
 			for i in n:
 				var d := p - _ppos[i]
@@ -452,28 +477,37 @@ func _trace(from: Vector2, vel: Vector2, target: Vector2, shooter: Vector2, max_
 
 ## Search for an aim that sends a shell from `from` to `target`. Coarse sweep, then a
 ## refine around the best cell. Returns {aim, miss}.
+##
+## Among shots that get about equally close, the quicker one wins: a long looping flight
+## through the far gravity field is hypersensitive, so a shade of noise or a fresh crater
+## sends it wide, while a short lob survives both. FLIGHT_W is the price of a second of
+## flight, in pixels of miss.
 func _solve(from: Vector2, target: Vector2) -> Dictionary:
 	var best_aim := (target - from).normalized() * 90.0
 	var best_miss := INF
+	var best_score := INF
 	for i in SOLVE_ANGLES:
 		var ang := TAU * float(i) / float(SOLVE_ANGLES)
 		for pw in SOLVE_POWERS:
 			var aim := Vector2.from_angle(ang) * lerpf(AIM_LEN_MIN, AIM_LEN_MAX, pw)
 			var miss := _trace(from + aim.normalized() * MUZZLE_LEN, _aim_velocity(aim), target, from, SOLVE_MAX_STEPS)
-			if miss < best_miss:
+			var score := miss + float(_trace_steps) * STEP * FLIGHT_W
+			if score < best_score:
+				best_score = score
 				best_miss = miss
 				best_aim = aim
-	if best_miss > 0.0:
-		var base_ang := best_aim.angle()
-		var base_len := best_aim.length()
-		var span := AIM_LEN_MAX - AIM_LEN_MIN
-		for da in [-8.0, -4.0, 0.0, 4.0, 8.0]:
-			for dl in [-0.07, 0.0, 0.07]:
-				var aim := Vector2.from_angle(base_ang + deg_to_rad(da)) * clampf(base_len + dl * span, AIM_LEN_MIN, AIM_LEN_MAX)
-				var miss := _trace(from + aim.normalized() * MUZZLE_LEN, _aim_velocity(aim), target, from, SOLVE_MAX_STEPS)
-				if miss < best_miss:
-					best_miss = miss
-					best_aim = aim
+	var base_ang := best_aim.angle()
+	var base_len := best_aim.length()
+	var span := AIM_LEN_MAX - AIM_LEN_MIN
+	for da in [-8.0, -4.0, 0.0, 4.0, 8.0]:
+		for dl in [-0.07, 0.0, 0.07]:
+			var aim := Vector2.from_angle(base_ang + deg_to_rad(da)) * clampf(base_len + dl * span, AIM_LEN_MIN, AIM_LEN_MAX)
+			var miss := _trace(from + aim.normalized() * MUZZLE_LEN, _aim_velocity(aim), target, from, SOLVE_MAX_STEPS)
+			var score := miss + float(_trace_steps) * STEP * FLIGHT_W
+			if score < best_score:
+				best_score = score
+				best_miss = miss
+				best_aim = aim
 	return {"aim": best_aim, "miss": best_miss}
 
 ## ---- firing ---------------------------------------------------------------
@@ -489,6 +523,7 @@ func _fire(from: Blob, aim: Vector2, mine: bool) -> void:
 	s.set_meta("trail", PackedVector2Array([muzzle]))
 	s.set_meta("path", PackedVector2Array([muzzle]))
 	s.set_meta("life", 0.0)
+	s.set_meta("out", 0.0)
 	s.set_meta("mine", mine)
 	s.set_meta("from", from.position)
 	_shells.append(s)
@@ -561,10 +596,11 @@ func _process(delta: float) -> void:
 					_prompt = "enemy is aiming..."
 				else:
 					if not _player_hit_this_flight:
-						_enemy_err = maxf(0.2, _enemy_err * 0.7)
+						_enemy_err = maxf(0.3, _enemy_err * 0.75)
 					_state = "aim"
 					_clock = SHOT_CLOCK
 					_prompt = "your shot"
+					_update_hint()   # tanks fall and craters open: the bot's hint goes stale
 		"think":
 			_pause -= delta
 			if _pause <= 0.0:
@@ -583,8 +619,18 @@ func _update_reticle() -> void:
 func _update_hint() -> void:
 	if _hint == null or _player == null or _enemy == null:
 		return
+	# keep the old hint while it still works: the bot needs a steady target to settle on,
+	# and a fresh solve can jump to a different branch every turn
+	if _hint_aim != Vector2.ZERO:
+		var still := _trace(_player.position + _hint_aim.normalized() * MUZZLE_LEN,
+			_aim_velocity(_hint_aim), _enemy.position, _player.position, SOLVE_MAX_STEPS)
+		if still < BLAST_R * 0.4:
+			_hint.position = _player.position + _hint_aim
+			return
 	var sol := _solve(_player.position, _enemy.position)
-	_hint.position = _player.position + sol["aim"]
+	_hint_aim = sol["aim"]
+	_hint.position = _player.position + _hint_aim
+	Probe.event("hint", {"miss": snappedf(sol["miss"], 0.1)})
 
 func _move_shells(delta: float) -> void:
 	var keep: Array = []
@@ -594,6 +640,7 @@ func _move_shells(delta: float) -> void:
 		var p: Vector2 = s.position
 		var v: Vector2 = s.get_meta("vel")
 		var life: float = s.get_meta("life")
+		var out: float = s.get_meta("out")
 		var shooter: Vector2 = s.get_meta("from")
 		var mine: bool = s.get_meta("mine")
 		var hit: Dictionary = {}
@@ -602,12 +649,15 @@ func _move_shells(delta: float) -> void:
 			v += _accel(p) * STEP
 			p += v * STEP
 			life += STEP
+			if not in_play_area(p):
+				out += STEP
 			hit = _collide(p, shooter, life)
 			if not hit.is_empty():
 				break
 		s.position = p
 		s.set_meta("vel", v)
 		s.set_meta("life", life)
+		s.set_meta("out", out)
 		var trail: PackedVector2Array = s.get_meta("trail")
 		trail.append(p)
 		if trail.size() > TRAIL_MAX:
@@ -617,7 +667,7 @@ func _move_shells(delta: float) -> void:
 		path.append(p)
 		s.set_meta("path", path)
 
-		if hit.is_empty() and life < MAX_FLIGHT:
+		if hit.is_empty() and life < MAX_FLIGHT and out < OFFSCREEN_MAX:
 			keep.append(s)
 			continue
 		if mine:
@@ -644,19 +694,34 @@ func _explode(at: Vector2, mine: bool, unarmed: bool) -> void:
 	Juice.hit(5.0)
 	_boom(at, "warn", 8, 90.0)
 
-	var enemy_hit := _enemy != null and is_instance_valid(_enemy) and at.distance_to(_enemy.position) < BLAST_R
-	var player_hit := _player != null and is_instance_valid(_player) and at.distance_to(_player.position) < BLAST_R
+	var hurt_enemy := _blast_damage(_enemy, at)
+	var hurt_player := _blast_damage(_player, at)
+	if not mine:
+		# the enemy's shells start at half strength and reach full by level 6, so the
+		# opening levels are about learning the arcs, not surviving them
+		hurt_player = int(round(float(hurt_player) * clampf(0.5 + 0.1 * float(_level - 1), 0.5, 1.0)))
 	if unarmed:
 		if mine:
-			player_hit = false
+			hurt_player = 0
 		else:
-			enemy_hit = false
-	if not enemy_hit and not player_hit:
+			hurt_enemy = 0
+	if hurt_enemy == 0 and hurt_player == 0:
 		_prompt = ("hit the planet" if carved else "boom") if mine else "it missed you"
-	if enemy_hit:
-		_kill_enemy(at, not mine)
-	if player_hit:
-		_hurt_player(at, mine)
+	if hurt_enemy > 0:
+		_damage_enemy(hurt_enemy, at, not mine)
+	if hurt_player > 0:
+		_damage_player(hurt_player, mine)
+
+## Damage a blast at `at` does to `tank`: full on a direct hit, tapering to DMG_EDGE at
+## the edge of the blast, nothing beyond it.
+func _blast_damage(tank: Blob, at: Vector2) -> int:
+	if tank == null or not is_instance_valid(tank):
+		return 0
+	var d := at.distance_to(tank.position)
+	if d >= BLAST_R:
+		return 0
+	var k := clampf((d - HIT_R) / (BLAST_R - HIT_R), 0.0, 1.0)
+	return int(round(lerpf(float(DMG_DIRECT), float(DMG_EDGE), k)))
 
 func _nearest_planet_role(at: Vector2) -> String:
 	var best := "accent"
@@ -668,26 +733,42 @@ func _nearest_planet_role(at: Vector2) -> String:
 			best = pl["role"]
 	return best
 
-func _kill_enemy(at: Vector2, suicide: bool) -> void:
+func _damage_enemy(dmg: int, at: Vector2, suicide: bool) -> void:
+	var hp: int = _enemy.get_meta("hp") - dmg
+	_enemy.set_meta("hp", hp)
+	Probe.event("enemy_hurt", {"dmg": dmg, "hp": hp})
+	Juice.flash(_enemy)
+	Juice.text(self, _enemy.position + Vector2(-10, -30), "-%d" % dmg, Palette.col("hazard"))
+	if hp > 0:
+		add_score(dmg)
+		_prompt = "it hurt itself!" if suicide else "hit! -%d" % dmg
+		return
 	# its own shell coming back round on it is worth something, but not a full kill
 	var points := 50 if suicide else maxi(30, 150 - 25 * (_shots_this_level - 1))
 	add_score(points)
 	Probe.event("hit_enemy", {"level": _level, "shots": _shots_this_level})
 	Audio.play("voice_level_up" if _level % 3 == 0 else "voice_correct")
 	Juice.hit(8.0)
-	Juice.text(self, at + Vector2(-14, -40), "+%d" % points, Palette.col("warn"))
+	Juice.text(self, at + Vector2(-14, -50), "+%d" % points, Palette.col("warn"))
 	_boom(_enemy.position, "hazard", 16, 140.0)
 	_enemy.queue_free()
 	_enemy = null
-	_prompt = "it shot itself!" if suicide else "direct hit!"
+	_prompt = "it blew itself up!" if suicide else "destroyed!"
 
-func _hurt_player(at: Vector2, mine: bool) -> void:
+func _damage_player(dmg: int, mine: bool) -> void:
 	_player_hit_this_flight = true
-	Probe.event("self_hit" if mine else "player_hit")
-	_boom(_player.position, "player", 10, 110.0)
+	var hp: int = _player.get_meta("hp") - dmg
+	_player.set_meta("hp", hp)
+	Probe.event("self_hit" if mine else "player_hurt", {"dmg": dmg, "hp": hp})
+	Audio.play("hurt")
+	Juice.hit(7.0)
 	Juice.flash(_player)
-	_prompt = "you shot yourself!" if mine else "hit!"
-	lose_life()
+	Juice.text(self, _player.position + Vector2(-10, -30), "-%d" % dmg, Palette.col("hazard"))
+	_prompt = "you hurt yourself! -%d" % dmg if mine else "hit! -%d" % dmg
+	if hp <= 0:
+		_boom(_player.position, "player", 16, 140.0)
+		_prompt = "destroyed"
+		lose()
 
 func _boom(at: Vector2, role: String, n: int, speed: float) -> void:
 	for i in n:
@@ -837,6 +918,14 @@ func _draw_tank(tank: Blob, aim: Vector2) -> void:
 	draw_rect(Rect2(-11, -1, 22, 7), c)
 	draw_rect(Rect2(-9, 1, 18, 3), Palette.col("bg_alt"))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	# hit points: a bar a fixed distance above the tank on screen, drawn over whatever is
+	# there, so neither the barrel nor a planet edge can sit on top of it
+	var hp: int = tank.get_meta("hp")
+	var bar := p + Vector2(-13, -TANK_R - 17)
+	draw_rect(Rect2(bar - Vector2.ONE, Vector2(28, 6)), Palette.col("bg"))
+	draw_rect(Rect2(bar, Vector2(26, 4)), Palette.col("bg_alt"))
+	var frac := clampf(float(hp) / float(MAX_HP), 0.0, 1.0)
+	draw_rect(Rect2(bar, Vector2(26.0 * frac, 4)), c if frac > 0.35 else Palette.col("warn"))
 
 func _draw_preview() -> void:
 	var p: Vector2 = _player.position + _aim.normalized() * MUZZLE_LEN

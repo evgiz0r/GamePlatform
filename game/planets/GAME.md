@@ -13,8 +13,10 @@ A tank sitting on a planet. **Like Scorched Earth, but it's planets and gravity.
 Aim and fire. The planets have gravity which affects the bullets (and the tanks),
 so the shell bends around them -- a shot can curve right round a planet and land on
 the far side, like in my drawings. **The gravity is strong**, and a long shot can go
-way out past the edge of the screen and come back (an arrow on the edge shows where
-it is).
+out past the edge of the screen and come back (an arrow on the edge shows where it
+is) -- but it must not take too long: gravity is **even stronger further away** than
+a real planet's would be, so a shot turns round quickly, and a shell that stays off
+screen for more than about three seconds is lost.
 
 **The shot does an AOE explosion.** Anything close to where it lands gets hurt, and
 the planet gets hurt too: the blast removes a chunk of it. If the ground under a tank
@@ -26,9 +28,11 @@ WASD nudge the aim point and space fires, so the bots can play it too.)
 
 ## What is trying to stop you?
 
-The enemy tank shoots back, and it gets more accurate every time it misses you. Three
-hits and you are gone. You also have ten seconds per shot before the turn passes.
-Gravity is the real enemy: your own shell can come round and hit you.
+The enemy tank shoots back, and it gets more accurate every time it misses you. **Both
+tanks have HP** (a bar over each one) and don't die from one hit: **the closer the blast,
+the more damage** -- a direct hit takes 60 of your 100, a blast at the edge of its
+range takes 12. You also have ten seconds per shot before the turn passes. Gravity is
+the real enemy: your own shell can come round and hit you.
 
 ## How do you win?
 
@@ -55,8 +59,11 @@ there are more planets and moons.
   random generator. Humans never see that.
 - Every generated level is checked to be solvable from both sides with the same solver
   the enemy uses, so there is always a shot.
-- Shells live at most fourteen seconds and may wander 900 px off screen before they
-  count as lost; a real orbit is possible but it eventually falls.
+- Gravity is 1/r^2 out to 1.5x a planet's radius and only 1/r beyond that, so nothing
+  ever really escapes. Shells live at most ten seconds, may wander 600 px off screen,
+  and count as lost after three seconds off screen in total.
+- HP is restored to full at the start of every level, Scorched Earth style: a level
+  is a duel, not attrition across the whole run.
 - A planet is a radial heightmap (144 spokes). A blast carves each spoke back to where
   it first enters the crater circle, so craters are bowls, never caves. Gravity keeps
   the planet's original mass; only the ground moves. Tanks stand on the live surface
