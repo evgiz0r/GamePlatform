@@ -59,16 +59,16 @@ nothing else needs updating.
 
 ## Putting it on the web
 
-`/publish` runs `tools/publish_web.sh`, which exports into **`docs/`**. GitHub Pages serves
-that folder, so:
+**Pushing to `main` publishes.** A GitHub Actions workflow (`.github/workflows/publish.yml`)
+exports the web build with the standard Godot, commits `docs/` back to `main`, and GitHub
+Pages serves it. Two to three minutes after a push the link at the top of this file is the
+new version. Nothing to run by hand; the one habit it needs is a `git pull` before your
+next push, because the workflow's commit has moved `main` along.
 
-```bash
-tools/publish_web.sh
-git add -A && git commit -m "publish" && git push
-```
+`/publish` (`tools/publish_web.sh`) still builds `docs/` locally when you want to check a
+build before pushing, but it is no longer required.
 
-and about a minute later (GitHub Pages' own deploy time) the link at the top of this file
-is the new version. An open or installed copy of the game looks for a new build every time
+An open or installed copy of the game looks for a new build every time
 it starts and every time it comes back to the foreground, and reloads itself onto it. If a
 phone still shows the old build, close the app fully and reopen it. `docs/` is generated —
 never edit it by hand.

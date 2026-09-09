@@ -1,0 +1,57 @@
+# Publishes the web build automatically. Every push to main that touches anything but the
+# build itself exports the game with the standard Godot build (tools/publish_web.sh) and
+# commits docs/ + build.txt back to main, which GitHub Pages serves. Nobody has to run
+# /publish by hand any more; pushing a game is publishing it.
+#
+# The commit it makes is skipped by the paths-ignore below and by [skip ci], so it never
+# triggers itself. After a push, `git pull` before the next one -- main has moved.
+name: publish web build
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "build.txt"
+  workflow_dispatch:
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: cache Godot and the web export templates
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/godot
+            ~/.local/share/godot/export_templates
+          key: godot-${{ hashFiles('project.godot') }}
+
+      - name: fetch Godot + web templates
+        run: echo "GODOT=$(tools/setup_godot.sh --templates | tail -1)" >> "$GITHUB_ENV"
+
+      - name: import assets
+        run: "$GODOT" --headless --path . --import > /dev/null 2>&1 || true
+
+      - name: export the web build
+        run: tools/publish_web.sh
+
+      - name: commit docs/ back to main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A docs build.txt
+          if git diff --cached --quiet; then
+            echo "nothing changed in the build"; exit 0
+          fi
+          git commit -m "publish: web build $(cat build.txt) [skip ci]"
+          git push

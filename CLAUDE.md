@@ -191,8 +191,11 @@ that session: never ask them to run something for you or for the path to their i
 ## The web build
 
 `docs/` holds the exported web build that GitHub Pages serves. It is generated, not
-written by hand — regenerate it with `/publish` after a change worth sharing. Exporting
-needs the **standard** Godot build; the .NET/mono one refuses web export outright.
+written by hand, and **it publishes itself**: every push to `main` runs
+`.github/workflows/publish.yml`, which exports and commits `docs/` back. Do not run
+`/publish` just to get a change online; push it. `git pull` before pushing, because the
+workflow's own commit moves `main`. `/publish` remains for checking a build locally.
+Exporting needs the **standard** Godot build; the .NET/mono one refuses web export outright.
 
 ## Style
 
