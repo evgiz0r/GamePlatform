@@ -1,25 +1,36 @@
 extends GameMode
 ## planets -- Scorched Earth, but the ground is round and gravity is everywhere. Two
 ## tanks sit on planets; you drag to aim, let go to fire, and the shell bends around
-## every planet on the way. Hit the enemy and the next level has more planets in the way.
-## The enemy shoots back and learns from its misses. See GAME.md.
+## every planet on the way. Every impact is a blast: it hurts any tank in range and
+## bites a crater out of the planet, and a tank whose ground is gone falls to the new
+## ground. Hit the enemy and the next level has more planets in the way. The enemy
+## shoots back and learns from its misses. See GAME.md.
 ##
 ## Turn based: your shot, then the enemy's. One shell in the air at a time.
+##
+## A planet is a radial heightmap: HM_N samples of "how far the rock reaches" around the
+## centre. Gravity comes from the planet's original size (mass does not leave with the
+## chunks), collision and standing use the live surface.
 
-const SURFACE_G := 300.0            ## gravity at a planet's surface, px/s^2; falls off as 1/r^2
+const SURFACE_G := 450.0            ## gravity at a planet's surface, px/s^2; falls off as 1/r^2
 const STEP := 1.0 / 120.0           ## shell physics step; the solver uses the same one
-const MAX_FLIGHT := 7.0             ## a shell that has not landed by then is lost in space
-const SPACE_MARGIN := 240.0         ## how far off screen a shell may wander before it is lost
-## Escape speed off the biggest planet is about 240 px/s (sqrt(2 g R)); the range sits
-## around it on purpose, because the shots that bend are the ones near it.
-const SPEED_MIN := 70.0
-const SPEED_MAX := 330.0
+const MAX_FLIGHT := 14.0            ## a shell that has not landed by then is lost in space
+const SPACE_MARGIN := 900.0         ## how far off screen a shell may wander -- far, so long shots come back
+## Escape speed off the biggest planet is about 290 px/s (sqrt(2 g R)); the range sits
+## around it on purpose, because the shots that bend and come back are the ones near it.
+const SPEED_MIN := 60.0
+const SPEED_MAX := 340.0
 const AIM_LEN_MIN := 18.0           ## drag length that means "minimum power"
 const AIM_LEN_MAX := 150.0          ## drag length that means "full power"
 const AIM_SPEED := 230.0            ## how fast the keys move the aim point, px/s
 const MUZZLE_LEN := 16.0
 const TANK_R := 7.0
-const HIT_R := 13.0                 ## a shell this close to a tank hits it
+const HIT_R := 13.0                 ## a shell this close to a tank strikes it directly
+const BLAST_R := 30.0               ## a blast this close to a tank hurts it
+const ARM_TIME := 0.35              ## a shell younger than this cannot hurt its own shooter
+const CRATER_R := 24.0              ## how much planet a blast removes
+const MIN_ROCK := 6.0               ## a planet never carves below this radius
+const HM_N := 144                   ## heightmap samples around a planet
 const SHOT_CLOCK := 10.0            ## seconds you get per shot before the turn passes
 const THINK_TIME := 0.8             ## the enemy's pause before it fires
 const LEVEL_PAUSE := 1.6
@@ -32,17 +43,18 @@ const SFX_SCALE := 0.35
 ## Solver grid: coarse sweep, then a refine around the best cell.
 const SOLVE_ANGLES := 36
 const SOLVE_POWERS := [0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1.0]
-const SOLVE_MAX_STEPS := 600        ## five seconds of flight is plenty to find a hit
+const SOLVE_MAX_STEPS := 1000       ## eight seconds of flight: enough for a shot that goes out and comes back
 const PLANET_ROLES := ["accent", "prize", "friend", "warn"]
 
-var _planets: Array = []            ## {pos, r, role, seed, marker}
+var _planets: Array = []            ## {pos, r, role, seed, hm, marker}
 var _ppos := PackedVector2Array()   ## planet centers, mirrored from _planets for the hot loops
-var _prad := PackedFloat32Array()
+var _prad := PackedFloat32Array()   ## original radii (gravity, bounding checks)
+var _phm: Array = []                ## live heightmaps, one PackedFloat32Array per planet
 var _player: Blob = null
 var _enemy: Blob = null
 var _reticle: Blob = null
 var _hint: Node2D = null            ## the solved aim point, tracked for the bots only under PLANETS_AUTOAIM
-var _shells: Array = []             ## Blob, meta: vel, trail, life, mine, from
+var _shells: Array = []             ## Blob, meta: vel, trail, path, life, mine, from
 var _last_trail := PackedVector2Array()  ## your previous shot, kept on screen to aim the next one
 var _bits: Array = []               ## debris Blob, meta: vel
 var _stars := PackedVector2Array()
@@ -206,7 +218,8 @@ func _build_layout(level: int) -> Dictionary:
 		if miss < best_miss:
 			best_miss = miss
 			best = {"pp": left, "pa": pa, "ep": right, "ea": ea, "planets": _planets.duplicate(true)}
-		if miss < HIT_R * 0.8:
+		# a near miss is a hit now that every impact is a blast
+		if miss < BLAST_R * 0.7:
 			break
 	if best.is_empty():
 		# never happens in practice; fall back to the second drawing
@@ -224,15 +237,20 @@ func _clear_planets() -> void:
 
 func _add_planet(pos: Vector2, r: float) -> void:
 	var role: String = "ink" if r < 35.0 else PLANET_ROLES[_planets.size() % PLANET_ROLES.size()]
-	_planets.append({"pos": pos, "r": r, "role": role, "seed": randf() * TAU})
+	var hm := PackedFloat32Array()
+	hm.resize(HM_N)
+	hm.fill(r)
+	_planets.append({"pos": pos, "r": r, "role": role, "seed": randf() * TAU, "hm": hm})
 	_sync_planets()
 
 func _sync_planets() -> void:
 	_ppos.clear()
 	_prad.clear()
+	_phm.clear()
 	for pl in _planets:
 		_ppos.append(pl["pos"])
 		_prad.append(pl["r"])
+		_phm.append(pl["hm"])
 
 func _place_random(r: float) -> bool:
 	var inner := play_area.grow(-(r + 24.0))
@@ -258,9 +276,62 @@ func _surface_angle(on: int, other: int) -> float:
 			return a
 	return base
 
+## ---- the ground -------------------------------------------------------------
+
+## How far the rock of planet i reaches in direction `ang`, off the live heightmap.
+func _surface(i: int, ang: float) -> float:
+	var hm: PackedFloat32Array = _phm[i]
+	var f := fposmod(ang, TAU) / TAU * float(HM_N)
+	var a := int(f) % HM_N
+	return lerpf(hm[a], hm[(a + 1) % HM_N], f - floorf(f))
+
+## True if p is inside the rock of any planet.
+func _in_rock(p: Vector2) -> bool:
+	for i in _ppos.size():
+		var d := p - _ppos[i]
+		var d2 := d.length_squared()
+		if d2 >= _prad[i] * _prad[i]:
+			continue
+		var s := _surface(i, d.angle())
+		if d2 < s * s:
+			return true
+	return false
+
+## Bite a crater of radius cr centred at c out of every planet it reaches. Along each
+## sample ray the rock now stops where the ray first enters the crater circle. Returns
+## true if any rock was removed.
+func _carve(c: Vector2, cr: float) -> bool:
+	var any := false
+	for i in _planets.size():
+		var pl: Dictionary = _planets[i]
+		var rel: Vector2 = c - pl["pos"]
+		if rel.length() > pl["r"] + cr:
+			continue
+		var hm: PackedFloat32Array = pl["hm"]
+		var removed := false
+		for k in HM_N:
+			var d := Vector2.from_angle(TAU * float(k) / float(HM_N))
+			var m := d.dot(rel)
+			var disc := m * m - (rel.length_squared() - cr * cr)
+			if disc < 0.0:
+				continue
+			var root := sqrt(disc)
+			var t_far := m + root
+			if t_far < hm[k]:
+				continue           # the crater is buried under solid rock (cannot show a cave)
+			var t_near := maxf(m - root, MIN_ROCK)
+			if t_near < hm[k]:
+				hm[k] = t_near
+				removed = true
+		if removed:
+			pl["hm"] = hm
+			any = true
+	if any:
+		_sync_planets()
+	return any
+
 func _tank_pos(planet: int, angle: float) -> Vector2:
-	var pl: Dictionary = _planets[planet]
-	return pl["pos"] + Vector2.from_angle(angle) * (pl["r"] + TANK_R)
+	return _planets[planet]["pos"] + Vector2.from_angle(angle) * (_surface(planet, angle) + TANK_R)
 
 func _spawn_tank(planet: int, angle: float, mine: bool) -> Blob:
 	var b := Blob.new()
@@ -268,8 +339,39 @@ func _spawn_tank(planet: int, angle: float, mine: bool) -> Blob:
 	b.radius = TANK_R * 0.8
 	add_child(b)
 	b.position = _tank_pos(planet, angle)
+	b.set_meta("planet", planet)
 	b.set_meta("angle", angle)
+	b.set_meta("alt", _surface(planet, angle) + TANK_R)   # distance from the planet centre
+	b.set_meta("vy", 0.0)
 	return b
+
+## A tank stands on the live surface under it. When that ground is carved away it falls,
+## straight down toward the centre, and thuds onto whatever is left.
+func _update_tanks(delta: float) -> void:
+	for t in [_player, _enemy]:
+		if t == null or not is_instance_valid(t):
+			continue
+		var pi: int = t.get_meta("planet")
+		var ang: float = t.get_meta("angle")
+		var alt: float = t.get_meta("alt")
+		var vy: float = t.get_meta("vy")
+		var ground := _surface(pi, ang) + TANK_R
+		if alt > ground + 0.05:
+			vy += SURFACE_G * delta
+			alt -= vy * delta
+			if alt <= ground:
+				alt = ground
+				Probe.event("tank_landed", {"mine": t == _player})
+				Audio.play("thud")
+				Juice.shake(minf(6.0, vy * 0.03))
+				Juice.pop(t, 1.25, 0.2)
+				vy = 0.0
+		else:
+			alt = ground
+			vy = 0.0
+		t.set_meta("alt", alt)
+		t.set_meta("vy", vy)
+		t.position = _ppos[pi] + Vector2.from_angle(ang) * alt
 
 ## ---- physics --------------------------------------------------------------
 
@@ -301,15 +403,14 @@ func _collide(p: Vector2, shooter: Vector2, life: float) -> Dictionary:
 			continue
 		if p.distance_to(t.position) < HIT_R:
 			return {"what": "tank", "tank": t}
-	for i in _ppos.size():
-		if p.distance_squared_to(_ppos[i]) < _prad[i] * _prad[i]:
-			return {"what": "planet", "planet": _planets[i]}
+	if _in_rock(p):
+		return {"what": "planet"}
 	if not in_play_area(p, SPACE_MARGIN):
 		return {"what": "space"}
 	return {}
 
 ## Fly a shell from `from` and report how close it gets to `target`; 0 means a hit.
-## Stops where the real shell would: a planet, the shooter's own tank, or deep space.
+## Stops where the real shell would: rock, the shooter's own tank, or deep space.
 ## Inlined rather than sharing _collide because the solver runs this a few hundred times
 ## a turn and a Dictionary per step was most of the cost.
 func _trace(from: Vector2, vel: Vector2, target: Vector2, shooter: Vector2, max_steps: int) -> float:
@@ -336,9 +437,13 @@ func _trace(from: Vector2, vel: Vector2, target: Vector2, shooter: Vector2, max_
 		var stopped := not bounds.has_point(p)
 		if not stopped:
 			for i in n:
-				if p.distance_squared_to(_ppos[i]) < _prad[i] * _prad[i]:
-					stopped = true
-					break
+				var d := p - _ppos[i]
+				var d2 := d.length_squared()
+				if d2 < _prad[i] * _prad[i]:
+					var s := _surface(i, d.angle())
+					if d2 < s * s:
+						stopped = true
+						break
 		if not stopped and step > immune and p.distance_to(shooter) < HIT_R:
 			stopped = true
 		if stopped:
@@ -427,6 +532,7 @@ func _process(delta: float) -> void:
 	_t += delta
 	queue_redraw()
 	_move_bits(delta)
+	_update_tanks(delta)
 
 	match _state:
 		"aim":
@@ -521,39 +627,64 @@ func _move_shells(delta: float) -> void:
 			Probe.event("lost_in_space")
 			_prompt = "lost in space"
 			continue
-		if hit["what"] == "planet":
-			_planet_hit(p, hit["planet"], mine)
-			continue
-		_tank_hit(hit["tank"], p, mine)
+		_explode(p, mine, life < ARM_TIME)
 	_shells = keep
 
-func _planet_hit(at: Vector2, pl: Dictionary, mine: bool) -> void:
-	Probe.event("hit_planet")
-	Audio.play("impact_light")
-	Juice.shake(2.5)
-	_boom(at, pl["role"], 6, 60.0)
-	_prompt = "hit the planet" if mine else "it missed you"
+## Every impact is a blast: it bites a crater out of any planet in reach, throws chunks,
+## and hurts every tank within BLAST_R -- the enemy, you, or both. A shell that lands
+## before it has armed still digs, but spares whoever fired it: shooting the ground at
+## your own feet should cost the turn, not a life.
+func _explode(at: Vector2, mine: bool, unarmed: bool) -> void:
+	Probe.event("blast")
+	var carved := _carve(at, CRATER_R)
+	if carved:
+		Probe.event("crater")
+		_boom(at, _nearest_planet_role(at), 12, 120.0)
+	Audio.play("explode")
+	Juice.hit(5.0)
+	_boom(at, "warn", 8, 90.0)
 
-func _tank_hit(tank: Blob, at: Vector2, mine: bool) -> void:
-	if tank == _enemy:
-		# its own shell coming back round on it is worth something, but not a full kill
-		var suicide := not mine
-		var points := 50 if suicide else maxi(30, 150 - 25 * (_shots_this_level - 1))
-		add_score(points)
-		Probe.event("hit_enemy", {"level": _level, "shots": _shots_this_level})
-		Audio.play("explode")
-		Audio.play("voice_level_up" if _level % 3 == 0 else "voice_correct")
-		Juice.hit(8.0)
-		Juice.text(self, at + Vector2(-14, -40), "+%d" % points, Palette.col("warn"))
-		_boom(at, "hazard", 16, 140.0)
-		_enemy.queue_free()
-		_enemy = null
-		_prompt = "it shot itself!" if suicide else "direct hit!"
-		return
-	# the player was hit, by the enemy or by their own shell coming back round
+	var enemy_hit := _enemy != null and is_instance_valid(_enemy) and at.distance_to(_enemy.position) < BLAST_R
+	var player_hit := _player != null and is_instance_valid(_player) and at.distance_to(_player.position) < BLAST_R
+	if unarmed:
+		if mine:
+			player_hit = false
+		else:
+			enemy_hit = false
+	if not enemy_hit and not player_hit:
+		_prompt = ("hit the planet" if carved else "boom") if mine else "it missed you"
+	if enemy_hit:
+		_kill_enemy(at, not mine)
+	if player_hit:
+		_hurt_player(at, mine)
+
+func _nearest_planet_role(at: Vector2) -> String:
+	var best := "accent"
+	var best_d := INF
+	for pl in _planets:
+		var d: float = at.distance_to(pl["pos"]) - pl["r"]
+		if d < best_d:
+			best_d = d
+			best = pl["role"]
+	return best
+
+func _kill_enemy(at: Vector2, suicide: bool) -> void:
+	# its own shell coming back round on it is worth something, but not a full kill
+	var points := 50 if suicide else maxi(30, 150 - 25 * (_shots_this_level - 1))
+	add_score(points)
+	Probe.event("hit_enemy", {"level": _level, "shots": _shots_this_level})
+	Audio.play("voice_level_up" if _level % 3 == 0 else "voice_correct")
+	Juice.hit(8.0)
+	Juice.text(self, at + Vector2(-14, -40), "+%d" % points, Palette.col("warn"))
+	_boom(_enemy.position, "hazard", 16, 140.0)
+	_enemy.queue_free()
+	_enemy = null
+	_prompt = "it shot itself!" if suicide else "direct hit!"
+
+func _hurt_player(at: Vector2, mine: bool) -> void:
 	_player_hit_this_flight = true
 	Probe.event("self_hit" if mine else "player_hit")
-	_boom(at, "player", 10, 110.0)
+	_boom(_player.position, "player", 10, 110.0)
 	Juice.flash(_player)
 	_prompt = "you shot yourself!" if mine else "hit!"
 	lose_life()
@@ -626,8 +757,8 @@ func _draw() -> void:
 		var tw := 0.35 + 0.35 * sin(_t * 1.7 + _star_phase[i])
 		draw_circle(_stars[i], 1.0, Color(ink.r, ink.g, ink.b, tw))
 
-	for pl in _planets:
-		_draw_planet(pl)
+	for i in _planets.size():
+		_draw_planet(i)
 
 	if _last_trail.size() > 1:
 		var lc := Palette.col("warn")
@@ -642,6 +773,8 @@ func _draw() -> void:
 		for i in trail.size():
 			var k := float(i) / float(maxi(1, trail.size()))
 			draw_circle(trail[i], 0.8 + k * 2.0, Color(c.r, c.g, c.b, k * 0.55))
+		if not in_play_area(s.position):
+			_draw_offscreen_marker(s.position, c)
 
 	if _state == "aim" and _player != null and is_instance_valid(_player):
 		_draw_preview()
@@ -653,23 +786,44 @@ func _draw() -> void:
 	if _prompt != "":
 		_text(f, 320, 348, _prompt, 13, Palette.col("accent"))
 
-func _draw_planet(pl: Dictionary) -> void:
+## A shell that has gone off screen is still coming back: an arrow on the edge, pointing
+## at it, with a hint of how far out it is.
+func _draw_offscreen_marker(p: Vector2, c: Color) -> void:
+	var inner := play_area.grow(-12.0)
+	var edge := p.clamp(inner.position, inner.end)
+	var dir := (p - edge).normalized()
+	var side := dir.orthogonal()
+	var far := clampf(p.distance_to(edge) / SPACE_MARGIN, 0.0, 1.0)
+	var size := 8.0 - 3.0 * far
+	draw_colored_polygon(PackedVector2Array([edge + dir * size, edge - dir * size * 0.6 + side * size * 0.7,
+		edge - dir * size * 0.6 - side * size * 0.7]), Color(c.r, c.g, c.b, 0.9 - 0.4 * far))
+
+func _draw_planet(i: int) -> void:
+	var pl: Dictionary = _planets[i]
 	var pos: Vector2 = pl["pos"]
 	var r: float = pl["r"]
+	var hm: PackedFloat32Array = pl["hm"]
 	var c := Palette.col(pl["role"])
 	var body := Palette.col("bg_alt").lightened(0.12)
 	# gravity halo: three faint rings, so the reach of each planet is readable
 	for k in [1.45, 1.95, 2.55]:
 		draw_arc(pos, r * k, 0.0, TAU, 64, Color(c.r, c.g, c.b, 0.11 / k), 1.0, true)
-	draw_circle(pos, r, body)
-	draw_circle(pos, r, Color(c.r, c.g, c.b, 0.10))
-	draw_arc(pos, r, 0.0, TAU, 72, c, 2.0, true)
-	# craters, placed from the planet's seed so they hold still
+	var pts := PackedVector2Array()
+	pts.resize(HM_N + 1)
+	for k in HM_N:
+		pts[k] = pos + Vector2.from_angle(TAU * float(k) / float(HM_N)) * hm[k]
+	pts[HM_N] = pts[0]
+	draw_colored_polygon(pts, body)
+	draw_colored_polygon(pts, Color(c.r, c.g, c.b, 0.10))
+	draw_polyline(pts, c, 2.0, true)
+	# craters, placed from the planet's seed so they hold still; buried ones vanish with the rock
 	var sd: float = pl["seed"]
-	for i in 3:
-		var a := sd + float(i) * 2.1
-		var cr := Vector2.from_angle(a) * r * (0.35 + 0.18 * float(i))
-		draw_circle(pos + cr, r * (0.16 - 0.03 * float(i)), Palette.col("bg_alt"))
+	for k in 3:
+		var a := sd + float(k) * 2.1
+		var dist := r * (0.35 + 0.18 * float(k))
+		var cr := r * (0.16 - 0.03 * float(k))
+		if _surface(i, a) > dist + cr:
+			draw_circle(pos + Vector2.from_angle(a) * dist, cr, Palette.col("bg_alt"))
 
 ## The Blob is the turret dome; the tracks and barrel are drawn here underneath it.
 func _draw_tank(tank: Blob, aim: Vector2) -> void:
