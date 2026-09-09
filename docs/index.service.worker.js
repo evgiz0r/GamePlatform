@@ -4,7 +4,7 @@
 // Incrementing CACHE_VERSION will kick off the install event and force
 // previously cached resources to be updated from the network.
 /** @type {string} */
-const CACHE_VERSION = '1788984895|10541277';
+const CACHE_VERSION = '1788985999|13802398';
 /** @type {string} */
 const CACHE_PREFIX = 'GamePlatform-sw-cache-';
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
@@ -20,14 +20,23 @@ const CACHED_FILES = ["index.html","index.js","index.offline.html","index.icon.p
 const CACHEABLE_FILES = ["index.wasm","index.pck"];
 const FULL_CACHE = CACHED_FILES.concat(CACHEABLE_FILES);
 
+// PATCHED by tools/publish_web.sh -- fetch straight from the origin, under a URL stamped
+// with this build's version and with the HTTP cache switched off. Otherwise a freshly
+// installed worker can be handed the PREVIOUS build's index.pck by the browser cache or the
+// GitHub Pages CDN (Cache-Control: max-age=600) and lock it in until the next publish.
+function freshFetch(url) {
+	const u = new URL(url, self.location.href);
+	u.searchParams.set('v', CACHE_VERSION);
+	return self.fetch(u.href, { cache: 'no-store', credentials: 'same-origin' });
+}
+
 self.addEventListener('install', (event) => {
-	// PATCHED by tools/publish_web.sh -- fetch with cache:'reload' so the HTTP cache cannot
-	// hand us a stale index.html, then take over instead of waiting for every window to
-	// close first.
+	// PATCHED by tools/publish_web.sh -- precache with freshFetch, then take over instead of
+	// waiting for every window to close first.
 	event.waitUntil((async () => {
 		const cache = await caches.open(CACHE_NAME);
 		await Promise.all(CACHED_FILES.map(async (f) => {
-			const res = await fetch(f, { cache: 'reload' });
+			const res = await freshFetch(f);
 			if (res.ok) {
 				await cache.put(f, res);
 			}
@@ -39,14 +48,11 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
 	// PATCHED by tools/publish_web.sh -- claim the open pages, and if this build replaced
 	// an older one, reload them onto it. Guarded on there having BEEN an older one, so a
-	// first install does not reload for nothing.
+	// first install (or a re-registration of the same build) does not reload for nothing.
 	event.waitUntil((async () => {
 		const keys = await caches.keys();
 		const stale = keys.filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME);
 		await Promise.all(stale.map((key) => caches.delete(key)));
-		if ('navigationPreload' in self.registration) {
-			await self.registration.navigationPreload.enable();
-		}
 		await self.clients.claim();
 		if (stale.length > 0) {
 			const all = await self.clients.matchAll({ type: 'window' });
@@ -86,13 +92,8 @@ function ensureCrossOriginIsolationHeaders(response) {
  * @returns {Response}
  */
 async function fetchAndCache(event, cache, isCacheable) {
-	// Use the preloaded response, if it's there
-	/** @type { Response } */
-	let response = await event.preloadResponse;
-	if (response == null) {
-		// Or, go over network.
-		response = await self.fetch(event.request);
-	}
+	// PATCHED by tools/publish_web.sh -- always the stamped, uncached fetch (freshFetch above).
+	let response = await freshFetch(event.request.url);
 
 	if (ENSURE_CROSSORIGIN_ISOLATION_HEADERS) {
 		response = ensureCrossOriginIsolationHeaders(response);

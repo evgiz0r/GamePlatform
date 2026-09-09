@@ -67,8 +67,11 @@ tools/publish_web.sh
 git add -A && git commit -m "publish" && git push
 ```
 
-and a minute later the link at the top of this file is the new version. `docs/` is
-generated — never edit it by hand.
+and about a minute later (GitHub Pages' own deploy time) the link at the top of this file
+is the new version. An open or installed copy of the game looks for a new build every time
+it starts and every time it comes back to the foreground, and reloads itself onto it. If a
+phone still shows the old build, close the app fully and reopen it. `docs/` is generated —
+never edit it by hand.
 
 The menu shows the **build time** at the bottom. That is how you tell from a phone whether
 a change has actually arrived, which matters because an installed app updates itself in

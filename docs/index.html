@@ -94,7 +94,25 @@ body {
 <link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
 <link rel="manifest" href="index.manifest.json">
 
-	</head>
+	<script>
+// PATCHED by tools/publish_web.sh -- register the service worker under a URL that changes
+// every minute. The browser checks for a new worker at the registered URL, and the GitHub
+// Pages CDN (max-age=600) would otherwise keep answering with the previous build's worker
+// for up to ten minutes. Registered here, before the engine loads, and again whenever the
+// app returns to the foreground. GODOT_CONFIG below points the engine at the same URL, so
+// the two registrations never fight over which worker is current.
+const SW_URL = 'index.service.worker.js?t=' + Math.floor(Date.now() / 60000);
+if ('serviceWorker' in navigator) {
+	const lookForNewBuild = (url) => navigator.serviceWorker.register(url).catch(() => {});
+	lookForNewBuild(SW_URL);
+	document.addEventListener('visibilitychange', () => {
+		if (document.visibilityState === 'visible') {
+			lookForNewBuild('index.service.worker.js?t=' + Math.floor(Date.now() / 60000));
+		}
+	});
+}
+</script>
+</head>
 	<body>
 		<canvas id="canvas">
 			Your browser does not support the canvas tag.
@@ -112,7 +130,7 @@ body {
 
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":14764376,"index.wasm":39509339},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":13910996,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":SW_URL};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
