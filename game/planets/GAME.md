@@ -15,8 +15,12 @@ so the shell bends around them -- a shot can curve right round a planet and land
 the far side, like in my drawings. **The gravity is strong**, and a long shot can go
 out past the edge of the screen and come back (an arrow on the edge shows where it
 is) -- but it must not take too long: gravity is **even stronger further away** than
-a real planet's would be, so a shot turns round quickly, and a shell that stays off
-screen for more than about three seconds is lost.
+a real planet's would be, so a shot turns round quickly. A shell that gets itself into
+orbit is cool, but it has a fuse: after eight seconds **it just explodes wherever it
+is**, and a shell that stays off screen for more than about three seconds is lost.
+
+**The view is zoomed out** so there is more space round the planets and aiming on a
+phone is not cramped against the edge. A drag of about 100 px is full power.
 
 **The shot does an AOE explosion.** Anything close to where it lands gets hurt, and
 the planet gets hurt too: the blast removes a chunk of it. If the ground under a tank
@@ -29,17 +33,17 @@ WASD nudge the aim point and space fires, so the bots can play it too.)
 ## What is trying to stop you?
 
 The enemy tank shoots back, and it gets more accurate every time it misses you. **Both
-tanks have HP** (a bar over each one) and don't die from one hit: **the closer the blast,
-the more damage** -- a direct hit takes 60 of your 100, a blast at the edge of its
-range takes 12. You also have ten seconds per shot before the turn passes. Gravity is
+tanks have HP**, shown as **two bars along the top, Tekken style** (yours left, the
+enemy's right), and don't die from one hit: **the closer the blast, the more damage**
+-- a direct hit takes 60 of your 100, a blast at the edge of its range takes 12. You also have ten seconds per shot before the turn passes. Gravity is
 the real enemy: your own shell can come round and hit you.
 
 ## How do you win?
 
-Hit the enemy tank and it explodes; then the next level. Level 1 is one big planet
-with both tanks on it (my first drawing). Level 2 is two planets with a small one in
-between that bends the shot (my second drawing). After that the layouts are random and
-there are more planets and moons.
+Hit the enemy tank until its HP is gone; then the next level. Level 1 is one big planet
+with both tanks on it (my first drawing). **After the first level the layouts are
+randomized** (later maybe all of them): **at least 4 planets, various sizes**, and
+**the two tanks somewhat apart** from each other. More planets as the levels go up.
 
 ## Core loop
 
@@ -60,8 +64,11 @@ there are more planets and moons.
 - Every generated level is checked to be solvable from both sides with the same solver
   the enemy uses, so there is always a shot.
 - Gravity is 1/r^2 out to 1.5x a planet's radius and only 1/r beyond that, so nothing
-  ever really escapes. Shells live at most ten seconds, may wander 600 px off screen,
-  and count as lost after three seconds off screen in total.
+  ever really escapes. Shells explode after eight seconds wherever they are, may wander
+  700 px off screen, and count as lost after three seconds off screen in total.
+- The world is 960x540 behind a camera at 2/3 zoom, so everything is in world pixels
+  (a 640x360 screen shows the whole world). Random levels put the two home planets in
+  the outer thirds at least 460 px apart, then fill in 2-5 more of assorted sizes.
 - HP is restored to full at the start of every level, Scorched Earth style: a level
   is a duel, not attrition across the whole run.
 - A planet is a radial heightmap (144 spokes). A blast carves each spoke back to where
