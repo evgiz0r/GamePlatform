@@ -35,6 +35,8 @@ var sun: DirectionalLight3D
 var env: Environment
 
 var _mats := {}            ## "role|emission" -> StandardMaterial3D
+var _vc: SubViewportContainer
+var _res_scale := 1.0      ## 3D pixels per design pixel (see _fit_resolution)
 var _proxies: Array = []   ## {"ref": weakref(Node3D), "proxy": Node2D}
 var _shake := 0.0
 var _shake_decay := 14.0
@@ -50,10 +52,16 @@ func _ready() -> void:
 
 func _build_view() -> void:
 	var vc := SubViewportContainer.new()
+	_vc = vc
 	vc.name = "View3D"
-	vc.stretch = true
+	# The kit's design space is 640x360 with nearest-neighbour filtering (pixel art). 3D
+	# rendered at that size and blown up looks like a potato, so the viewport renders at
+	# the real window resolution and is scaled DOWN into the design space with linear
+	# filtering (_fit_resolution). Nothing in game code has to know: taps and to_screen()
+	# stay in 640x360 coordinates.
+	vc.stretch = false
+	vc.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	vc.position = play_area.position
-	vc.size = play_area.size
 	# Games read taps in _input() on this Node2D, like every 2D game; the container must
 	# not swallow them, and nothing inside the 3D view takes GUI input.
 	vc.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -61,11 +69,13 @@ func _build_view() -> void:
 
 	view = SubViewport.new()
 	view.own_world_3d = true
-	view.size = Vector2i(play_area.size)
 	view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	view.gui_disable_input = true
 	view.handle_input_locally = false
+	view.msaa_3d = Viewport.MSAA_4X   # smooth edges; supported by the Compatibility renderer
 	vc.add_child(view)
+	_fit_resolution()
+	get_tree().root.size_changed.connect(_fit_resolution)
 
 	world = Node3D.new()
 	world.name = "World"
@@ -103,6 +113,16 @@ func _build_view() -> void:
 	view.add_child(cam)
 	look_from(Vector3(0, 18, 15), Vector3.ZERO)
 	_retint()
+
+## Render the 3D view at the window's real pixel size (capped at 3x the design space, so a
+## 4K monitor does not render 12 megapixels) and scale it down into play_area.
+func _fit_resolution() -> void:
+	var win := Vector2(get_window().size)
+	var k := minf(win.x / play_area.size.x, win.y / play_area.size.y)
+	_res_scale = clampf(floorf(k * 2.0) / 2.0, 1.0, 3.0)   # half steps: 1, 1.5, 2 ... 3
+	view.size = Vector2i(play_area.size * _res_scale)
+	_vc.size = Vector2(view.size)
+	_vc.scale = Vector2.ONE / _res_scale
 
 ## Re-aim the camera. Also the base pose that shake3d() jitters around.
 func look_from(pos: Vector3, target: Vector3) -> void:
@@ -153,7 +173,7 @@ func _retint() -> void:
 ## Where a screen point (640x360 space, as delivered to _input) hits the plane Y=y.
 ## Returns Vector3.INF when the ray misses (looking at the sky); check with is_finite().
 func ground_point(screen: Vector2, y: float = 0.0) -> Vector3:
-	var p := screen - play_area.position
+	var p := (screen - play_area.position) * _res_scale
 	var from := cam.project_ray_origin(p)
 	var dir := cam.project_ray_normal(p)
 	if absf(dir.y) < 0.0001:
@@ -165,7 +185,7 @@ func ground_point(screen: Vector2, y: float = 0.0) -> Vector3:
 
 ## Screen position of a world point -- for Juice.text() and other 2D overlays.
 func to_screen(w: Vector3) -> Vector2:
-	return cam.unproject_position(w) + play_area.position
+	return cam.unproject_position(w) / _res_scale + play_area.position
 
 ## world_area (X/Z) -> play_area, the mapping the ASCII eye and the bots live in.
 func to_play(w: Vector3) -> Vector2:

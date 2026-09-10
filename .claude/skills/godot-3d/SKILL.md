@@ -46,6 +46,10 @@ is a Z coordinate, not a height.
   without it. Tonemapper is linear on purpose: filmic turned the pink accent orange.
   Shadows are off by default (`sun.shadow_enabled`); turn them on per game if the look
   needs them, they cost on phones.
+- **Resolution**: the 3D `SubViewport` renders at the real window size (up to 3x the
+  640x360 design space, half-step multiples) and is scaled down with linear filtering,
+  with 4x MSAA. The kit's nearest-neighbour default is for pixel art and made 3D look
+  blocky. `ground_point()` / `to_screen()` hide the scale; game code stays in 640x360.
 - Meshes: `BoxMesh`, `CapsuleMesh`, `SphereMesh`, `PlaneMesh`, `CylinderMesh` — code-built,
   no asset files, like `Blob` in 2D. Real art is an upgrade, not a dependency.
 
