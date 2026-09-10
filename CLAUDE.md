@@ -80,7 +80,9 @@ the scene is still one `Node2D`, and menu, pause, HUD, palette and self-play all
 working. What it gives you on top: `world` (a `Node3D` to build in), `cam` + `sun`,
 `look_from(pos, target)`, `mat("hazard")` (palette-role materials that reskin with
 `/look`), `ground_point(screen_pos)` for taps, `to_screen(world_pos)` for `Juice.text()`,
-`track3d(node, "@")` so bots and ASCII maps see 3D actors, and `shake3d()` / `hit3d()`.
+`track3d(node, "@")` so bots and ASCII maps see 3D actors, `shake3d()` / `hit3d()`,
+`model("taxi", 3.0)` for the CC0 3D models in `assets/models/` and `Actor3D` for the
+animated people in `assets/characters3d/` (both fall back to shapes when a file is missing).
 Set `world_area` (the X/Z rectangle of your ground) so the ASCII eye knows what to draw.
 Read the `godot-3d` skill before writing one. `game/drop/` is the reference.
 

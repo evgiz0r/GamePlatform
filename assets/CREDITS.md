@@ -25,9 +25,18 @@ kit carries that requirement; check before adding anything else that isn't CC0.
 | `audio/music/bonus_round.wav` | CC0, [Wolfgang_](https://opengameart.org/content/bonus-round-8bit) | OpenGameArt |
 | `audio/music/chiptune_battle.ogg` | CC0, pmiller | https://opengameart.org/content/chiptune-battle-music |
 | `audio/music/on_the_offensive.ogg` | CC0, Ted Kerr (uploaded by Wolfgang_) | https://opengameart.org/content/8-bit-theme-on-the-offensive |
+| `models/car/` | Car Kit (3D) | https://kenney.nl/assets/car-kit |
+| `models/food/` | Food Kit (3D) | https://kenney.nl/assets/food-kit |
+| `models/space/` | Space Kit (3D) | https://kenney.nl/assets/space-kit |
+| `models/city-suburban/`, `models/city-roads/` | City Kit Suburban / Roads (3D) | https://kenney.nl/assets/city-kit-suburban · https://kenney.nl/assets/city-kit-roads |
+| `characters3d/` | CC0, Quaternius — Ultimate Animated Character Pack | https://quaternius.com |
 
 **`audio/music/peaceful_1am_in_may.mp3`** — "Peaceful 1am in May" by **TAD**, **CC-BY 3.0**
 (attribution required): https://opengameart.org/content/peaceful-1am-in-may
+
+The 3D Kenney models were fetched one file at a time from the community mirror
+https://github.com/shorepine/kenney (same CC0 files, organised as single `.glb`s);
+`tools/fetch_model.sh` does that.
 
 ## Adding more
 
