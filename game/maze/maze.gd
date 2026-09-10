@@ -110,11 +110,12 @@ var _bout := Vector2i.ZERO
 var _bin_side := 0
 var _bout_side := 0
 var _cell_in_side := {}         ## big cell -> side its small maze is entered by
-var _cell_out_side := {}        ## big cell -> side its small maze is left by
-var _bdone := {}                ## big cells whose small maze is finished
+var _cell_kids := {}            ## big cell -> sides the carving left it by, in order
+var _cell_rec := {}             ## big cell -> its finished small maze (a _record)
 var _prev_cell := NO_CELL       ## the big cell just finished, for doorway continuity
-var _big_pts := PackedVector2Array()       ## every big wall, unit cells (ghost plan)
-var _big_done_pts := PackedVector2Array()  ## big walls around finished cells (solid)
+var _exit_open := false         ## has the big one's way out been cut yet
+var _door_flash := {}           ## a doorway just cut, lit up for a moment
+var _big_done_pts := PackedVector2Array()  ## finished cells' border walls, big units
 
 var player: Blob
 var _marker: Blob
@@ -358,7 +359,7 @@ func _pan_to(where: Vector2, time: float) -> void:
 ## other mazes drawn inside it (infinite mode's big ones): its floor would paint over them.
 func _record(ground: bool) -> Dictionary:
 	return {"walls": _walls, "cols": _cols, "rows": _rows, "origin": _origin,
-		"cell": _cell, "pts": _wall_pts(_walls, _cols, _rows), "ground": ground}
+		"cell": _cell, "in": _in, "pts": _wall_pts(_walls, _cols, _rows), "ground": ground}
 
 ## Line the new entrance up with the exit you just walked out of, so the two doorways face
 ## each other across the gap instead of being joined by an invisible jump.
@@ -409,15 +410,27 @@ func _build_step() -> void:
 func _finish_build() -> void:
 	_walls[_in.y][_in.x] &= ~SIDE_BIT[_in_side]
 	var dist := _grid_dist(_walls, _cols, _rows, _in)
-	var far := _far_border(_cols, _in, dist, _out_sides)
-	_out = far[0]
-	_out_side = far[1]
-	_walls[_out.y][_out.x] &= ~SIDE_BIT[_out_side]
+	if _out_sides.is_empty():
+		# no way out at all (a dead end of infinite mode's big maze): the goal is the
+		# cell furthest in, and the prize sits on it
+		_out = _in
+		_out_side = -1
+		var best := -1
+		for c in dist:
+			if int(dist[c]) > best:
+				best = int(dist[c])
+				_out = c
+		_marker.position = _cell_centre(_out)
+	else:
+		var far := _far_border(_cols, _in, dist, _out_sides)
+		_out = far[0]
+		_out_side = far[1]
+		_walls[_out.y][_out.x] &= ~SIDE_BIT[_out_side]
+		_marker.position = _cell_centre(_out) + Vector2(SIDE_DIR[_out_side]) * _cell * 0.8
 
 	_building = false
 	player.visible = true
 	_marker.visible = true
-	_marker.position = _cell_centre(_out) + Vector2(SIDE_DIR[_out_side]) * _cell * 0.8
 	Audio.play("impact_light")
 
 	var steps: int = int(dist.get(_out, -1))
@@ -469,6 +482,18 @@ func _grid_dist(walls: Array, cols: int, rows: int, from: Vector2i) -> Dictionar
 	return dist
 
 ## ---- infinite mode ------------------------------------------------------------
+##
+## Nothing about the big maze is drawn ahead of time, and nothing about it is decided
+## separately from the small ones. Every opening in the big maze IS a doorway in a small
+## maze: the doorway you leave one by, lined up with the doorway you enter the next by.
+## When the carving comes back to a finished cell to branch off in a new direction, a new
+## doorway is cut into that cell's maze right where the next maze's entrance will be. A
+## dead end of the big maze is a maze with a single doorway and a prize at the far end.
+## The way out of the big one is cut last, just before the zoom-out.
+##
+## A plan does exist -- the big maze is carved invisibly up front, so the play order and
+## the far exit are known -- but the big maze you play after the zoom-out is read back
+## off the small mazes' doorways, and the plan is only used to check the two agree.
 
 func _inf_begin() -> void:
 	_stage = 0
@@ -479,17 +504,18 @@ func _inf_begin() -> void:
 	_inf_plan_big(root, -1)
 	# the first small maze goes at the world origin, like classic's first one
 	_big_origin = -Vector2(root) * SPAN
-	_bdone = {}
+	_cell_rec = {}
 	_prev_cell = NO_CELL
 	_bidx = 0
 	_phase = "small"
+	_exit_open = false
 	_inf_start_small()
 
-## Carve the whole big maze now, instantly, and remember the order its cells were
-## reached in -- that is the order the player fills them, so the big maze grows the way
-## a maze is carved. Each cell also remembers which side it was entered from (its small
-## maze's entrance) and which side the carving left by first (its small maze's exit), so
-## walking out of one small maze lands you at the doorway of the next.
+## Carve the plan, instantly, and remember the order its cells were reached in -- that
+## is the order the player fills them, so the big maze grows the way a maze is carved.
+## Each cell remembers which side it was entered from (its small maze's entrance) and
+## the sides the carving left it by, in order (its small maze's exits, cut one at a time
+## as the carving comes back for each).
 ## `forced` is the side the very first carve must take: the cell that was the previous
 ## big maze keeps the exit you just used, so its first neighbour has to be there.
 func _inf_plan_big(root: Vector2i, forced: int) -> void:
@@ -502,8 +528,8 @@ func _inf_plan_big(root: Vector2i, forced: int) -> void:
 	var seen := {root: true}
 	var stack: Array = [root]
 	_order = [root]
-	var parent_side := {}
-	var child_side := {}
+	_cell_in_side = {}
+	_cell_kids = {}
 	while not stack.is_empty():
 		var here: Vector2i = stack[-1]
 		var options: Array = []
@@ -527,11 +553,13 @@ func _inf_plan_big(root: Vector2i, forced: int) -> void:
 		seen[nxt] = true
 		stack.append(nxt)
 		_order.append(nxt)
-		parent_side[nxt] = (side + 2) % 4
-		if not child_side.has(here):
-			child_side[here] = side
+		_cell_in_side[nxt] = (side + 2) % 4
+		if not _cell_kids.has(here):
+			_cell_kids[here] = []
+		_cell_kids[here].append(side)
 
 	_bin = root
+	_cell_in_side[root] = _bin_side
 	var dist := _grid_dist(_bwalls, _big, _big, _bin)
 	var far := _far_border(_big, _bin, dist, _sides_except(_bin_side))
 	_bout = far[0]
@@ -539,21 +567,6 @@ func _inf_plan_big(root: Vector2i, forced: int) -> void:
 	_bwalls[_bin.y][_bin.x] &= ~SIDE_BIT[_bin_side]
 	_bwalls[_bout.y][_bout.x] &= ~SIDE_BIT[_bout_side]
 
-	_cell_in_side = {}
-	_cell_out_side = {}
-	for c in _order:
-		var in_s: int = _bin_side if c == _bin else parent_side[c]
-		var out_s: int = in_s
-		if child_side.has(c):
-			out_s = child_side[c]
-		elif c == _bout:
-			out_s = _bout_side
-		# a dead end of the big maze is entered and left by the same side, so its small
-		# maze's exit is on the wall you came in through -- a different doorway on it
-		_cell_in_side[c] = in_s
-		_cell_out_side[c] = out_s
-
-	_big_pts = _wall_pts(_bwalls, _big, _big)
 	_rebuild_big_done()
 	if _order.size() != _big * _big or int(dist.get(_bout, -1)) < 0:
 		Probe.note("the big %dx%d maze did not carve every cell or has no way out" % [_big, _big])
@@ -575,26 +588,59 @@ func _inf_start_small() -> void:
 	_cell = SPAN / float(_small)
 	_origin = _big_origin + Vector2(c) * SPAN
 	_in_side = _cell_in_side[c]
-	_out_sides = [_cell_out_side[c]]
+	var kids: Array = _cell_kids.get(c, [])
+	if not kids.is_empty():
+		_out_sides = [kids[0]]
+	elif c == _bout:
+		_out_sides = [_bout_side]
+		_exit_open = true
+	else:
+		_out_sides = []      # a dead end of the big maze: one doorway, and a prize inside
+
 	# When the maze you just left is the neighbour across this entrance, the doorways
-	# line up like classic's do. After a dead end the camera jumps to wherever the carving
-	# went next, and the entrance can be anywhere on that wall.
-	var continuous: bool = _prev_cell != NO_CELL \
+	# line up like classic's do. Otherwise the carving has come back to an earlier cell
+	# to branch: pick this entrance, then cut the matching doorway into that cell's maze.
+	var continuous: bool = _prev_cell != NO_CELL and prev_out_side >= 0 \
 		and _prev_cell + SIDE_DIR[prev_out_side] == c \
 		and _in_side == (prev_out_side + 2) % 4
 	if continuous:
 		_in = _aligned_in_cell(prev_origin, prev_cell, prev_out)
 	else:
 		_in = _random_border_cell(_in_side)
+		if _bidx > 0:
+			var parent: Vector2i = c + SIDE_DIR[_in_side]
+			var rec: Dictionary = _cell_rec[parent]
+			_cut_doorway(rec, _aligned_border_cell(rec, (_in_side + 2) % 4, _cell_centre(_in)),
+				(_in_side + 2) % 4)
 	_begin_build(PAN_TIME if _level > 0 else 0.0)
 	Probe.event("cell_start", {"stage": _stage, "cell": _bidx + 1, "of": _order.size(),
-		"continuous": continuous})
+		"continuous": continuous, "dead_end": _out_sides.is_empty()})
+
+## The border cell of a finished maze on `side` that sits across from `world` -- where a
+## doorway has to go for it to face the neighbour's.
+func _aligned_border_cell(rec: Dictionary, side: int, world: Vector2) -> Vector2i:
+	var size: int = rec["cols"]
+	var rel: Vector2 = (world - rec["origin"]) / float(rec["cell"])
+	var along: float = rel.x if (side == 0 or side == 2) else rel.y
+	return _border_cell(side, clampi(int(floorf(along)), 0, size - 1), size)
+
+## Open a doorway in a finished maze. This is how a cell of the big maze gets its second
+## and third openings, and how the big one gets its way out.
+func _cut_doorway(rec: Dictionary, bc: Vector2i, side: int) -> void:
+	rec["walls"][bc.y][bc.x] &= ~SIDE_BIT[side]
+	rec["pts"] = _wall_pts(rec["walls"], rec["cols"], rec["rows"])
+	_door_flash = {"origin": rec["origin"], "cell": rec["cell"], "c": bc, "side": side, "t": 1.4}
+	Audio.play("open")
+	Probe.event("doorway_cut", {"stage": _stage, "side": side})
+	_rebuild_big_done()
+	_static.queue_redraw()
 
 func _inf_after_solve() -> void:
 	if _phase == "small":
-		_done.append(_record(true))
+		var rec := _record(true)
+		_done.append(rec)
 		var c: Vector2i = _order[_bidx]
-		_bdone[c] = true
+		_cell_rec[c] = rec
 		_prev_cell = c
 		_bidx += 1
 		_rebuild_big_done()
@@ -607,11 +653,18 @@ func _inf_after_solve() -> void:
 		_done.append(_record(false))
 		_inf_next_stage()
 
-## Every cell is filled: pull back until the whole big maze is on screen.
+## Every cell is filled: cut the way out of the big one if it is not there yet, then
+## pull back until the whole thing is on screen.
 func _inf_zoom_out() -> void:
 	_phase = "zoom"
 	player.visible = false
 	_marker.visible = false
+	if not _exit_open:
+		var rec: Dictionary = _cell_rec[_bout]
+		var dist := _grid_dist(rec["walls"], rec["cols"], rec["rows"], rec["in"])
+		var far := _far_border(rec["cols"], rec["in"], dist, [_bout_side])
+		_cut_doorway(rec, far[0], _bout_side)
+		_exit_open = true
 	Probe.world_rect = Rect2(_big_origin, Vector2.ONE * SPAN * _big)
 	Probe.event("zoom_out", {"stage": _stage, "size": "%dx%d" % [_big, _big]})
 	Audio.play("voice_level_up")
@@ -625,6 +678,34 @@ func _inf_zoom_out() -> void:
 		ZOOM_TIME).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 	_cam_tw.chain().tween_callback(_inf_play_big)
 
+## The big maze, read off the small ones: two neighbouring cells are joined where both
+## their mazes have a doorway on the shared wall, and a doorway on the outer edge is the
+## way in or out. Nothing else is open.
+func _derive_big_walls() -> Array:
+	var w: Array = []
+	for y in _big:
+		var row: Array = []
+		for x in _big:
+			row.append(N | E | S | W)
+		w.append(row)
+	for c in _order:
+		var rec: Dictionary = _cell_rec[c]
+		for side in 4:
+			if not _rec_has_door(rec, side):
+				continue
+			var n: Vector2i = c + SIDE_DIR[side]
+			if not _in_big(n) or _rec_has_door(_cell_rec[n], (side + 2) % 4):
+				w[c.y][c.x] &= ~SIDE_BIT[side]
+	return w
+
+func _rec_has_door(rec: Dictionary, side: int) -> bool:
+	var size: int = rec["cols"]
+	for i in size:
+		var bc := _border_cell(side, i, size)
+		if not (rec["walls"][bc.y][bc.x] & SIDE_BIT[side]):
+			return true
+	return false
+
 ## The zoom has landed. Rather than keep playing at a smaller and smaller camera zoom --
 ## which would run the coordinates into float trouble a few stages in -- shrink the world
 ## so the big maze is SPAN wide like every maze before it, and snap the zoom back. The
@@ -637,12 +718,15 @@ func _inf_play_big() -> void:
 	_cam.zoom = Vector2(CAM_ZOOM, CAM_ZOOM)
 	_cam.position = _big_origin + Vector2.ONE * SPAN * 0.5
 
+	var derived := _derive_big_walls()
+	if derived != _bwalls:
+		Probe.note("the big maze read off the small mazes' doorways differs from the plan")
 	_phase = "big"
 	_cols = _big
 	_rows = _big
 	_cell = SPAN / float(_big)
 	_origin = _big_origin
-	_walls = _bwalls
+	_walls = derived
 	_in = _bin
 	_in_side = _bin_side
 	_out = _bout
@@ -656,7 +740,9 @@ func _inf_play_big() -> void:
 	Probe.world_rect = Rect2(_origin, Vector2(SPAN, SPAN)).grow(GAP)
 	_static.queue_redraw()
 	Audio.play("impact_light")
-	Probe.event("big_start", {"stage": _stage, "size": "%dx%d" % [_big, _big]})
+	var dist := _grid_dist(_walls, _cols, _rows, _in)
+	Probe.event("big_start", {"stage": _stage, "size": "%dx%d" % [_big, _big],
+		"path": int(dist.get(_out, -1)), "matches_plan": derived == _bwalls})
 
 ## The big maze is solved. It becomes the first cell of the next big one, one square
 ## bigger, keeping the doorways you came in and went out by, and the camera slides on to
@@ -671,10 +757,11 @@ func _inf_next_stage() -> void:
 	_bin_side = prev_in_side
 	_inf_plan_big(root, prev_out_side)
 	_big_origin = _origin - Vector2(root) * SPAN
-	_bdone = {root: true}
+	_cell_rec = {root: _done[-1]}
 	_prev_cell = root
 	_bidx = 1
 	_phase = "small"
+	_exit_open = false
 	_rebuild_big_done()
 	Probe.event("stage", {"stage": _stage, "small": _small, "big": _big})
 	_inf_start_small()
@@ -692,19 +779,37 @@ func _root_for(in_side: int, out_side: int) -> Vector2i:
 			return c
 	return _border_cell(in_side, 0, _big)
 
+## The thick outline around finished cells is the small mazes' own border walls, gaps
+## and all, in big-maze units (one cell of the big maze = 1.0). Nothing is drawn that a
+## small maze does not have.
 func _rebuild_big_done() -> void:
 	_big_done_pts = PackedVector2Array()
-	for c in _bdone:
-		var bits: int = _bwalls[c.y][c.x]
-		var tl := Vector2(c)
-		if bits & N:
-			_big_done_pts.append(tl); _big_done_pts.append(tl + Vector2(1, 0))
-		if bits & W:
-			_big_done_pts.append(tl); _big_done_pts.append(tl + Vector2(0, 1))
-		if bits & S:
-			_big_done_pts.append(tl + Vector2(0, 1)); _big_done_pts.append(tl + Vector2(1, 1))
-		if bits & E:
-			_big_done_pts.append(tl + Vector2(1, 0)); _big_done_pts.append(tl + Vector2(1, 1))
+	for c in _cell_rec:
+		var rec: Dictionary = _cell_rec[c]
+		var size: int = rec["cols"]
+		var step := 1.0 / float(size)
+		for side in 4:
+			for i in size:
+				var bc := _border_cell(side, i, size)
+				if not (rec["walls"][bc.y][bc.x] & SIDE_BIT[side]):
+					continue
+				var a: Vector2
+				var b: Vector2
+				match side:
+					0:
+						a = Vector2(c.x + i * step, c.y)
+						b = a + Vector2(step, 0)
+					2:
+						a = Vector2(c.x + i * step, c.y + 1)
+						b = a + Vector2(step, 0)
+					3:
+						a = Vector2(c.x, c.y + i * step)
+						b = a + Vector2(0, step)
+					_:
+						a = Vector2(c.x + 1, c.y + i * step)
+						b = a + Vector2(0, step)
+				_big_done_pts.append(a)
+				_big_done_pts.append(b)
 
 ## ---- walking on the grid --------------------------------------------------
 
@@ -720,6 +825,10 @@ func _process(delta: float) -> void:
 		_last_cam_zoom = _cam.zoom.x
 		_static.queue_redraw()
 	_update_hud()
+	if not _door_flash.is_empty():
+		_door_flash["t"] = float(_door_flash["t"]) - delta
+		if float(_door_flash["t"]) <= 0.0:
+			_door_flash = {}
 
 	if _mode == "infinite" and _phase == "zoom":
 		return
@@ -747,6 +856,9 @@ func _process(delta: float) -> void:
 			_solved()
 			return
 		_pc = _step_target
+		if _out_side < 0 and _pc == _out:
+			_solved()      # a dead end: reaching the prize is the whole job
+			return
 
 	var d := _wanted_step()
 	if d != Vector2i.ZERO:
@@ -804,6 +916,8 @@ func _solver_step() -> Vector2i:
 		_route = [_pc]
 		_known = {_pc: true}
 	if _pc == _out:
+		if _out_side < 0:
+			return Vector2i.ZERO
 		return SIDE_DIR[_out_side]     # standing on the exit: walk out of the doorway
 
 	var best_side := -1
@@ -967,15 +1081,15 @@ func _draw_static() -> void:
 	_static.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	if _mode == "infinite" and _phase != "big":
-		# the plan, faint, and the walls already built around finished cells, solid
-		_static.draw_set_transform(_big_origin, 0.0, Vector2(SPAN, SPAN))
-		_static.draw_multiline(_big_pts, _faded("accent", 0.18), 0.035)
+		# the big maze so far: nothing but the finished mazes' own border walls, thick,
+		# so every doorway between two of them reads as an opening in the big one
 		if not _big_done_pts.is_empty():
+			_static.draw_set_transform(_big_origin, 0.0, Vector2(SPAN, SPAN))
 			_static.draw_multiline(_big_done_pts, _faded("accent", 0.85), 0.035)
-		_static.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-		# the big one's own doorways, so you can see where all this is heading
+			_static.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		_draw_doorway(_static, _big_origin, SPAN, _bin, _bin_side, _faded("friend", 0.5), SPAN * 0.035)
-		_draw_doorway(_static, _big_origin, SPAN, _bout, _bout_side, _faded("prize", 0.5), SPAN * 0.035)
+		if _exit_open:
+			_draw_doorway(_static, _big_origin, SPAN, _bout, _bout_side, _faded("prize", 0.5), SPAN * 0.035)
 
 ## The maze being played, every frame: its walls (vanishing as it carves), the carving
 ## head, the solver's trail, and the doorways.
@@ -1002,7 +1116,16 @@ func _draw_live() -> void:
 
 	if not _building:
 		_draw_doorway(_live, _origin, _cell, _in, _in_side, Palette.col("friend"))
-		_draw_doorway(_live, _origin, _cell, _out, _out_side, Palette.col("prize"))
+		if _out_side >= 0:
+			_draw_doorway(_live, _origin, _cell, _out, _out_side, Palette.col("prize"))
+	if not _door_flash.is_empty():
+		# a doorway just cut into a finished maze lights up, then fades
+		var k: float = clampf(float(_door_flash["t"]) / 1.4, 0.0, 1.0)
+		var cell: float = _door_flash["cell"]
+		var bc: Vector2i = _door_flash["c"]
+		var o: Vector2 = _door_flash["origin"]
+		_live.draw_rect(Rect2(o + Vector2(bc) * cell, Vector2(cell, cell)), _faded("warn", 0.35 * k))
+		_draw_doorway(_live, o, cell, bc, int(_door_flash["side"]), _faded("warn", k), cell * 0.25)
 
 func _draw_maze(on: CanvasItem, walls: Array, cols: int, rows: int, origin: Vector2,
 		cell: float, alpha: float, ground: bool) -> void:
