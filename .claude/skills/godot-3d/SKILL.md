@@ -47,7 +47,31 @@ is a Z coordinate, not a height.
   Shadows are off by default (`sun.shadow_enabled`); turn them on per game if the look
   needs them, they cost on phones.
 - Meshes: `BoxMesh`, `CapsuleMesh`, `SphereMesh`, `PlaneMesh`, `CylinderMesh` — code-built,
-  no asset files, like `Blob` in 2D. There is no 3D art in `assets/` and none is needed.
+  no asset files, like `Blob` in 2D. Real art is an upgrade, not a dependency.
+
+## Models and characters (real art)
+
+- `model(name, size)` → a pivot with the glTF from `assets/models/<kit>/<name>.glb` scaled
+  so its longest side is `size`, centred on X/Z, feet at Y=0. **Always pass a size**: kits
+  are not to scale with each other (house 1.3, car 2.5, fork 0.5 units natively).
+  `tools/model_info.sh res://assets/models/car/sedan.glb` prints real bounds + clips.
+- `add_box_collision(body, pivot)` gives a `RigidBody3D`/`StaticBody3D` a box matching that
+  pivot (add the pivot to the body first, rotate the body not the pivot). The pivot carries
+  `meta "aabb"` (its box in parent space) for hit checks.
+- `Actor3D` (`shell/actor3d.gd`): `set_character("Casual_Male", 1.8)` + `play("Walk")` +
+  `face(dir)`. Quaternius characters face +Z; `face()` handles that. Clip names are in
+  `assets/INDEX.md`; `play()` returns false and warns on a bad name.
+- New models: `tools/fetch_model.sh <kit> <name>...` from the shorepine/kenney mirror, then
+  import, then **list them in `assets/INDEX.md`** and credit the pack in `CREDITS.md`.
+  Most kits share one `Textures/colormap.png`; fetch_model fetches it first. **A model
+  imported before its colormap exists renders pure white** (it cached a missing texture)
+  -- delete its `.glb.import` and import again. Quaternius characters embed their
+  textures, so they never have this problem.
+- Both helpers fall back to palette shapes + a playtest warning when a file is missing, so
+  a game keeps running (and the report tells you which name was wrong).
+- Scenery: a ring of `model()`s around the play area (houses behind, trees on the sides,
+  lamps on the corners) plus `sun.shadow_enabled = true` is most of the difference between
+  "a prototype" and "a place". Shadows cost; turn them on per game, not in the shell.
 
 ## Input
 

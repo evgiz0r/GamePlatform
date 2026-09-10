@@ -165,6 +165,57 @@ More tracks worth having on hand, checked for license but not yet downloaded int
 | [Heroic Minority](https://opengameart.org/content/heroic-minority) | orchestral, adventurous | CC-BY 3.0 | Alexandr Zhelanov |
 | [Crystal Cave](https://opengameart.org/content/crystal-cave-mysterious-ambience-seamless-loop) | ambient, mysterious, explicitly seamless | CC-BY 3.0 (author also offers CC-BY-SA / GPL — **use the CC-BY option only**, per the licence rule below) | cynicmusic / The Cynic Project |
 
+## models/ — 3D, glTF (`.glb`), for `GameMode3D` games
+
+```gdscript
+var car := model("taxi", 3.0)          # any kit; scaled so its longest side is 3 units
+world.add_child(car)                    # origin = bottom centre, feet on the ground
+car.position = Vector3(2, 0, -1)
+var body := RigidBody3D.new()           # to make it fall:
+body.add_child(model("utensil-fork", 4.0))
+add_box_collision(body, body.get_child(0))
+```
+
+Sizes vary wildly between kits (a Kenney house is 1.3 units, a car 2.5, a fork 0.5), so
+**always pass a size**; `tools/model_info.sh res://assets/models/car/sedan.glb` prints the
+real bounds and any animation clips. Kits use a shared `Textures/colormap.png` next to the
+models — keep it. Get more with `tools/fetch_model.sh <kit> <name>...` (see the kit list at
+https://github.com/shorepine/kenney/tree/main/3d) and list them here.
+
+`car/` (Kenney Car Kit): `sedan` `taxi` `police` `suv` `van` `ambulance` `delivery` `truck`
+`firetruck` `garbage-truck` — there is no bus in the kit; `delivery` is the closest.
+
+`food/` (Kenney Food Kit): `utensil-fork` `utensil-knife` `utensil-spoon` `plate` `frying-pan`
+
+`space/` (Kenney Space Kit): `craft_speederA` `craft_racer` — the nearest thing to an
+aircraft; Kenney has no 3D airplane.
+
+`city-suburban/`: `building-type-a` … `building-type-e` `tree-large` `tree-small` `fence-1x4` `planter`
+
+`city-roads/`: `light-square` `light-curved` (street lights)
+
+A missing name leaves a palette-coloured box of the requested size and records a playtest
+warning, the same way sprites fall back to a shape.
+
+## characters3d/ — animated 3D people (Quaternius, CC0), for `Actor3D`
+
+```gdscript
+var a := Actor3D.new()
+world.add_child(a)
+a.set_character("Casual_Female")   # scaled to 1.8 units tall, origin between the feet
+a.play("Walk", true, 1.2)          # loop, speed
+a.face(direction)
+```
+
+`Casual_Male` `Casual_Female` `Casual2_Male` `Casual2_Female` `Casual3_Female`
+(about 2 MB each with embedded textures — add more sparingly, they all ship in the web build).
+
+Clips, same on every character: `Idle` `Walk` `Run` `Walk_Carry` `Run_Carry` `Jump` `Death`
+`Defeat` `Victory` `PickUp` `Punch` `RecieveHit` (sic) `Roll` `SitDown` `StandUp`
+`SwordSlash` `Shoot_OneHanded`. `play()` sets the loop flag itself (glTF drops them).
+The full pack (52 characters: chefs, cowboys, doctors, knights, ninjas, pirates...) is
+Quaternius' Ultimate Animated Character Pack; ask for more by name.
+
 ## drawings/
 
 Empty, and meant to be. This is where the person whose game it is puts their own pictures

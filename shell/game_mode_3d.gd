@@ -6,6 +6,9 @@ class_name GameMode3D extends GameMode
 ##   world       a Node3D to put your game in (its own World3D inside a SubViewport)
 ##   cam / sun   a camera and a key light, already set up; look_from() re-aims them
 ##   mat(role)   a StandardMaterial3D in a PALETTE ROLE that re-tints when /look changes
+##   model("taxi", 3.0)     a glTF from assets/models/ scaled to 3 units, feet on the ground
+##   add_box_collision(body, pivot)   a BoxShape3D sized from that model (things that fall)
+##   Actor3D (shell/actor3d.gd)       animated characters: set_character() + play("Walk")
 ##   ground_point(screen)   where a tap on the screen lands on the Y=0 ground plane
 ##   to_screen(world)       the opposite: where a 3D point is on the 640x360 screen
 ##   track3d(node, "@")     Probe.track for Node3D -- bots and ASCII maps see 3D actors
@@ -22,6 +25,8 @@ class_name GameMode3D extends GameMode
 
 ## World X/Z rectangle (x, z, width, depth) that fills play_area in the ASCII snapshot.
 @export var world_area := Rect2(-12, -7, 24, 14)
+
+const MODELS_DIR := "res://assets/models/"
 
 var view: SubViewport
 var world: Node3D
@@ -67,7 +72,11 @@ func _build_view() -> void:
 	view.add_child(world)
 
 	env = Environment.new()
-	env.background_mode = Environment.BG_COLOR
+	# a soft gradient sky in palette colours (bg at the top, bg_alt at the horizon) so the
+	# world has a horizon instead of a flat wall; re-tinted with the palette
+	env.background_mode = Environment.BG_SKY
+	env.sky = Sky.new()
+	env.sky.sky_material = ProceduralSkyMaterial.new()
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color.WHITE
 	env.ambient_light_energy = 0.35
@@ -127,7 +136,15 @@ func _tint(m: StandardMaterial3D) -> void:
 
 func _retint() -> void:
 	if env != null:
-		env.background_color = Palette.col("bg")
+		var bg := Palette.col("bg")
+		var alt := Palette.col("bg_alt")
+		env.background_color = bg
+		var sky := env.sky.sky_material as ProceduralSkyMaterial
+		sky.sky_top_color = bg
+		sky.sky_horizon_color = alt.lerp(Palette.col("accent"), 0.18)
+		sky.ground_horizon_color = alt
+		sky.ground_bottom_color = bg
+		sky.sky_curve = 0.25
 	for k in _mats:
 		_tint(_mats[k])
 
@@ -164,6 +181,98 @@ func from_play(p: Vector2) -> Vector3:
 func clamp_to_area(w: Vector3, margin: float = 0.0) -> Vector3:
 	var r := world_area.grow(-margin)
 	return Vector3(clampf(w.x, r.position.x, r.end.x), w.y, clampf(w.z, r.position.y, r.end.y))
+
+## ---- models (the 3D Blob.set_sprite) ------------------------------------------------
+
+## A model by name from assets/models/<kit>/<name>.glb (any kit, first match; or a full
+## res:// path), wrapped in a pivot whose origin is the model's bottom centre and scaled so
+## its longest side is `size` world units. Missing file: a palette box of that size and a
+## playtest warning, so a game never breaks over a filename. Read assets/INDEX.md first.
+func model(name: String, size: float = 1.0, role_if_missing: String = "warn") -> Node3D:
+	var pivot := Node3D.new()
+	pivot.name = name.get_file().get_basename()
+	var path := find_model(name)
+	var inst: Node3D = null
+	if path != "":
+		var scn = load(path)
+		if scn is PackedScene:
+			inst = scn.instantiate()
+	if inst == null:
+		Probe.note("no model named '%s' in assets/models/ -- see assets/INDEX.md" % name)
+		var box := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3.ONE * size
+		bm.material = mat(role_if_missing, 0.4)
+		box.mesh = bm
+		box.position = Vector3(0, size * 0.5, 0)
+		pivot.add_child(box)
+		pivot.set_meta("aabb", AABB(Vector3(-size * 0.5, 0, -size * 0.5), Vector3.ONE * size))
+		return pivot
+	pivot.add_child(inst)
+	fit(inst, size)
+	pivot.set_meta("aabb", fitted_aabb(inst))
+	return pivot
+
+func find_model(name: String) -> String:
+	if name.begins_with("res://"):
+		return name if ResourceLoader.exists(name) else ""
+	var d := DirAccess.open(MODELS_DIR)
+	if d == null:
+		return ""
+	for kit in d.get_directories():
+		for ext: String in ["glb", "gltf"]:
+			var p := MODELS_DIR + kit + "/" + name + "." + ext
+			if ResourceLoader.exists(p):
+				return p
+	return ""
+
+## Bounding box of every mesh under `node`, in node-local space (ignores node's own transform).
+static func aabb_of(node: Node3D) -> AABB:
+	var out: Array = [AABB(), false]
+	for c in node.get_children():
+		_acc_aabb(c, Transform3D.IDENTITY, out)
+	return out[0]
+
+static func _acc_aabb(n: Node, xf: Transform3D, out: Array) -> void:
+	if n is Node3D:
+		xf = xf * (n as Node3D).transform
+	if n is MeshInstance3D and (n as MeshInstance3D).mesh != null:
+		var b: AABB = xf * (n as MeshInstance3D).mesh.get_aabb()
+		out[0] = b if not out[1] else (out[0] as AABB).merge(b)
+		out[1] = true
+	for c in n.get_children():
+		_acc_aabb(c, xf, out)
+
+## Scale `inst` so its longest side (or its height if `by_height`) is `size`, and move it so
+## the model is centred on X/Z with its lowest point at Y=0 of its parent. Returns the scale.
+static func fit(inst: Node3D, size: float, by_height: bool = false) -> float:
+	var b := aabb_of(inst)
+	var ref := b.size.y if by_height else maxf(b.size.x, maxf(b.size.y, b.size.z))
+	var s := size / ref if ref > 0.0001 else 1.0
+	inst.scale = Vector3.ONE * s
+	inst.rotation = Vector3.ZERO
+	var c := b.get_center()
+	inst.position = Vector3(-c.x * s, -b.position.y * s, -c.z * s)
+	return s
+
+## The box a fitted model occupies in its parent's space (centred, bottom at Y=0).
+static func fitted_aabb(inst: Node3D) -> AABB:
+	var b := aabb_of(inst)
+	var s := inst.scale.x
+	var size := b.size * s
+	return AABB(Vector3(-size.x * 0.5, 0.0, -size.z * 0.5), size)
+
+## Give a physics body a BoxShape3D matching a model() pivot that is its direct child.
+## Add the pivot to the body first, keep the pivot unrotated (rotate the body instead).
+func add_box_collision(body: CollisionObject3D, pivot: Node3D, shrink: float = 0.9) -> CollisionShape3D:
+	var b: AABB = pivot.get_meta("aabb") if pivot.has_meta("aabb") else fitted_aabb(pivot.get_child(0))
+	var cs := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = b.size * shrink
+	cs.shape = bs
+	cs.position = pivot.position + b.get_center()
+	body.add_child(cs)
+	return cs
 
 ## ---- Probe bridge ---------------------------------------------------------------
 
