@@ -28,6 +28,8 @@ kit carries that requirement; check before adding anything else that isn't CC0.
 | `models/car/` | Car Kit (3D) | https://kenney.nl/assets/car-kit |
 | `models/food/` | Food Kit (3D) | https://kenney.nl/assets/food-kit |
 | `models/space/` | Space Kit (3D) | https://kenney.nl/assets/space-kit |
+| `models/toy-car/` | Toy Car Kit (3D) | https://kenney.nl/assets/toy-car-kit |
+| `models/city-commercial/` | City Kit Commercial (3D) | https://kenney.nl/assets/city-kit-commercial |
 | `models/city-suburban/`, `models/city-roads/` | City Kit Suburban / Roads (3D) | https://kenney.nl/assets/city-kit-suburban · https://kenney.nl/assets/city-kit-roads |
 | `characters3d/` | CC0, Quaternius — Ultimate Animated Character Pack | https://quaternius.com |
 

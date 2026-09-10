@@ -110,6 +110,23 @@ is a Z coordinate, not a height.
 - The project does not pin a 3D physics engine; the default works headless and on the
   web build. Do not add Jolt to `project.godot` for one game.
 
+## Rail games: a road that bends (`game/drive_by/`)
+
+Do not scroll the world past a fixed camera; **move the camera along a curve** and build
+the world in road coordinates. `drive_by` keeps `u` (distance along the road) and `lat`
+(sideways, negative = the building side) per thing and `_frame(u)` gives the world
+`Transform3D` of the road there (origin on the centre line, +X forward, +Z sideways);
+`_road_pos(u, lat, y)` places anything. The centre line is a sum of two sines of `u`, so
+it bends gently and never repeats obviously. Road, sidewalk and kerb are 4-unit boxes
+placed per segment along the curve (tiny overlaps at the joints are invisible). Things
+behind the car (`u < dist - 8`) are freed, the street is built ahead (`u < dist + 42`),
+the far skyline the same way further out — with a moving camera, parallax is free.
+Head movement is a slow sum-of-sines offset added to the look target in road space, plus
+a bob that grows with speed. Aim through `screen_ray()` and march it until it hits your
+own surfaces (`_lat_of(p) <= FACADE` or `p.y <= 0`) — there is no physics to ray-cast.
+Opening shot: interpolate camera pose from an outside point to the seat, both expressed in
+`_frame(0)`, with `ease(k, -2.2)`; fade the 2D interior in over the last quarter.
+
 ## Self-play
 
 The bots and the ASCII map are 2D and stay that way: `track3d()` keeps a 2D proxy per

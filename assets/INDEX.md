@@ -194,6 +194,8 @@ aircraft; Kenney has no 3D airplane.
 
 `city-roads/`: `light-square` `light-curved` (street lights)
 
+`toy-car/`: `item-banana`
+
 `city-commercial/`: `building-a` … `building-h` (shops, 2-4 storeys) `building-skyscraper-a`
 `building-skyscraper-b` `building-skyscraper-c` — street-facing facades, good for a side-on street
 

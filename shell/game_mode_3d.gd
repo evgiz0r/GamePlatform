@@ -183,6 +183,12 @@ func ground_point(screen: Vector2, y: float = 0.0) -> Vector3:
 		return Vector3.INF
 	return from + dir * t
 
+## The camera ray under a screen point: [origin, direction]. For games that aim at things
+## that are not on the ground plane (march along it, or intersect your own surfaces).
+func screen_ray(screen: Vector2) -> Array:
+	var p := (screen - play_area.position) * _res_scale
+	return [cam.project_ray_origin(p), cam.project_ray_normal(p)]
+
 ## Screen position of a world point -- for Juice.text() and other 2D overlays.
 func to_screen(w: Vector3) -> Vector2:
 	return cam.unproject_position(w) / _res_scale + play_area.position
