@@ -15,8 +15,9 @@ right now, offer to add it here rather than letting it get lost in the chat.
   something both can use, rather than copying it.
 - **Memory games.** Match pairs, repeat the sequence, that family.
 - **2D open world.** A big map you wander instead of one screen.
-- **3D.** The kit is 2D-only today. Would need its own shell contract.
-- **3D open world.** The two above combined. Biggest item on this list.
+- **3D open world.** "2D open world" above, but in 3D: `GameMode3D` exists now
+  (`shell/game_mode_3d.gd`, see `game/drop/`), so this is the open-world part. Biggest
+  item on this list.
 - **Card games and card assets.** Deck, hand, table; and the art to go with it.
 - **Game flow in open worlds.** State machines, a database of characters, states and
   dialogs. How do people actually structure this? Research first, then decide.

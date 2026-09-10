@@ -73,6 +73,17 @@ Verbs the shell gives you — use these instead of inventing your own:
 | `Palette.col("hazard")` | colors by ROLE, never hardcoded hex |
 | `Flow.pointer_over_hud()` | true when the pointer is over the shell's HUD |
 
+## 3D games
+
+The kit can do 3D too. Extend `GameMode3D` (`shell/game_mode_3d.gd`) instead of `GameMode`;
+the scene is still one `Node2D`, and menu, pause, HUD, palette and self-play all keep
+working. What it gives you on top: `world` (a `Node3D` to build in), `cam` + `sun`,
+`look_from(pos, target)`, `mat("hazard")` (palette-role materials that reskin with
+`/look`), `ground_point(screen_pos)` for taps, `to_screen(world_pos)` for `Juice.text()`,
+`track3d(node, "@")` so bots and ASCII maps see 3D actors, and `shake3d()` / `hit3d()`.
+Set `world_area` (the X/Z rectangle of your ground) so the ASCII eye knows what to draw.
+Read the `godot-3d` skill before writing one. `game/drop/` is the reference.
+
 ## Hard requirements
 
 - **Input**: read `PInput`, never `Input`. `PInput.dir()`, `PInput.pressed("action_a")`,
@@ -95,7 +106,9 @@ Verbs the shell gives you — use these instead of inventing your own:
   to sit on top of the thing it is steering — see "Controls" in the `game-design` skill for
   why (`bricks`' paddle got this wrong once already) and what to do instead.
 - **No physics nodes required.** Distance checks are fine and far more predictable. Use
-  `Area2D` only if the game genuinely needs shaped collision.
+  `Area2D` only if the game genuinely needs shaped collision. (3D games may use
+  `RigidBody3D` for things that fall and tumble -- that is the one place physics earns
+  its keep -- but still detect hits with distance checks, see `game/drop/`.)
 
 ## Playtesting — do this before claiming a game works
 

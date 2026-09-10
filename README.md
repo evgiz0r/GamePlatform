@@ -1,6 +1,6 @@
 # GamePlatform
 
-A starter kit for making complete 2D games by **describing them to an AI**.
+A starter kit for making complete 2D (and, since recently, 3D) games by **describing them to an AI**.
 
 You bring the ideas. The kit already has the boring parts — menu, pause, score, high
 scores, sound, screen shake, a web build you can put on a phone, and a way for the AI to
