@@ -67,9 +67,10 @@ is a Z coordinate, not a height.
   `assets/INDEX.md`; `play()` returns false and warns on a bad name.
 - New models: `tools/fetch_model.sh <kit> <name>...` from the shorepine/kenney mirror, then
   import, then **list them in `assets/INDEX.md`** and credit the pack in `CREDITS.md`.
-  Most kits share one `Textures/colormap.png`; fetch_model fetches it first. **A model
-  imported before its colormap exists renders pure white** (it cached a missing texture)
-  -- delete its `.glb.import` and import again. Quaternius characters embed their
+  Most kits share one `Textures/colormap.png`; fetch_model fetches it and imports it on
+  its own before fetching the models. **A model imported in the same pass as (or before)
+  its colormap renders pure white** (it cached a missing texture) -- the cure is to delete
+  its `.glb.import` and import again. Seen twice; hence the two-step import in the tool. Quaternius characters embed their
   textures, so they never have this problem.
 - Both helpers fall back to palette shapes + a playtest warning when a file is missing, so
   a game keeps running (and the report tells you which name was wrong).

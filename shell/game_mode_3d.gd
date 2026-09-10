@@ -297,16 +297,18 @@ func add_box_collision(body: CollisionObject3D, pivot: Node3D, shrink: float = 0
 ## ---- Probe bridge ---------------------------------------------------------------
 
 ## Probe.track() for 3D nodes: a hidden Node2D proxy follows the node in play_area space,
-## so bots (nearest "*", flee "x") and the ASCII maps work unchanged.
-func track3d(node: Node3D, sym: String) -> void:
+## so bots (nearest "*", flee "x") and the ASCII maps work unchanged. Top-down games map
+## the ground (world_area -> play_area); a game seen from the side, where height matters,
+## passes screen_space = true and the proxy sits where the node appears on screen instead.
+func track3d(node: Node3D, sym: String, screen_space: bool = false) -> void:
 	if not Probe.enabled:
 		return
 	var proxy := Node2D.new()
 	proxy.name = "probe_" + sym
 	add_child(proxy)
-	proxy.global_position = to_play(node.global_position)
+	proxy.global_position = to_screen(node.global_position) if screen_space else to_play(node.global_position)
 	Probe.track(proxy, sym)
-	_proxies.append({"ref": weakref(node), "proxy": proxy})
+	_proxies.append({"ref": weakref(node), "proxy": proxy, "screen": screen_space})
 
 func _sync() -> void:
 	if not is_inside_tree():
@@ -319,7 +321,7 @@ func _sync() -> void:
 			if is_instance_valid(proxy):
 				proxy.queue_free()
 			continue
-		proxy.global_position = to_play(n.global_position)
+		proxy.global_position = to_screen(n.global_position) if e["screen"] else to_play(n.global_position)
 		kept.append(e)
 	_proxies = kept
 

@@ -194,6 +194,9 @@ aircraft; Kenney has no 3D airplane.
 
 `city-roads/`: `light-square` `light-curved` (street lights)
 
+`city-commercial/`: `building-a` … `building-h` (shops, 2-4 storeys) `building-skyscraper-a`
+`building-skyscraper-b` `building-skyscraper-c` — street-facing facades, good for a side-on street
+
 A missing name leaves a palette-coloured box of the requested size and records a playtest
 warning, the same way sprites fall back to a shape.
 
@@ -207,7 +210,8 @@ a.play("Walk", true, 1.2)          # loop, speed
 a.face(direction)
 ```
 
-`Casual_Male` `Casual_Female` `Casual2_Male` `Casual2_Female` `Casual3_Female`
+`Casual_Male` `Casual_Female` `Casual2_Male` `Casual2_Female` `Casual3_Female` (people)
+`Goblin_Male` `Goblin_Female` (creatures)
 (about 2 MB each with embedded textures — add more sparingly, they all ship in the web build).
 
 Clips, same on every character: `Idle` `Walk` `Run` `Walk_Carry` `Run_Carry` `Jump` `Death`

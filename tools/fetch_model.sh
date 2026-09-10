@@ -20,6 +20,13 @@ if [ ! -f "assets/models/$KIT/Textures/colormap.png" ]; then
   mkdir -p "assets/models/$KIT/Textures"
   if curl -sfL "$BASE/$KIT/Textures/colormap.png" -o "assets/models/$KIT/Textures/colormap.png"; then
     echo "fetched assets/models/$KIT/Textures/colormap.png (shared kit texture)"
+    # ... and import it NOW, on its own. Fetched together, Godot may import a model before
+    # its texture in the same pass and the model stays white until re-imported by hand.
+    if [ -n "${GODOT:-}" ]; then
+      "$GODOT" --headless --path . --import >/dev/null 2>&1 && echo "imported the texture first"
+    else
+      echo "GODOT is not set: import once now, then again after the models, or they render white" >&2
+    fi
   else
     rmdir "assets/models/$KIT/Textures" 2>/dev/null
   fi
