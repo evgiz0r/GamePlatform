@@ -56,7 +56,7 @@ is a Z coordinate, not a height.
   mouse on purpose; nothing inside the 3D view takes GUI input.
 - Bail out on `Flow.pointer_over_hud()` first, and give every mouse verb a `PInput` path
   too (`action_a` to act, `PInput.dir()` to aim) or the bots cannot play it.
-- On-screen buttons drawn by the game (`drop`'s rotate) are a `ColorRect` + `Label` with
+- On-screen buttons drawn by a game should be a `ColorRect` + `Label` with
   `mouse_filter = IGNORE` and a `Rect2.has_point()` test in `_input()`, not a `Button`:
   `_input` runs before the GUI, so a real `Button` would also fire the game underneath.
 

@@ -2,6 +2,7 @@ extends GameMode3D
 ## drop -- a neon plaza at night, walkers crossing it, and a Tetris piece hovering in the
 ## sky where you point. Tap and it falls as a real 3D rigid body; anyone under it is
 ## squashed and the next piece appears at once. Walkers who make it across cost a life.
+## No aiming beyond the tap: it is slop dropping, not Tetris.
 ## See GAME.md.
 ##
 ## The kit's first 3D game: everything 3D comes from GameMode3D (shell/game_mode_3d.gd);
@@ -25,7 +26,6 @@ const SETTLE := 2.5                  ## seconds a landed piece lies there before
 const MAX_PIECES := 8
 const START_LIVES := 3
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
-const ROT_BTN := Rect2(546, 312, 84, 38)   ## screen px, bottom right, thumb sized
 const SHAPES := {
 	"I": [Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(3, 0)],
 	"O": [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)],
@@ -121,26 +121,8 @@ func _build_cursor() -> void:
 	world.add_child(_shadow)
 
 func _build_ui() -> void:
-	# rotate control: drawn, not a Button -- games read taps in _input() before the GUI, so
-	# a real Button would drop a piece underneath itself. The hit test is in _input().
-	var rot := ColorRect.new()
-	rot.position = ROT_BTN.position
-	rot.size = ROT_BTN.size
-	rot.color = Color(Palette.col("accent"), 0.22)
-	rot.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(rot)
-	var rl := Label.new()
-	rl.text = "rotate"
-	rl.add_theme_font_size_override("font_size", 13)
-	rl.add_theme_color_override("font_color", Palette.col("ink"))
-	rl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	rl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	rl.set_anchors_preset(Control.PRESET_FULL_RECT)
-	rl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	rot.add_child(rl)
-
 	_hint = Label.new()
-	_hint.text = "tap where it should fall   ·   arrows aim, A drops, B rotates"
+	_hint.text = "tap where it should fall   ·   arrows aim, A drops"
 	_hint.add_theme_font_size_override("font_size", 11)
 	_hint.add_theme_color_override("font_color", Palette.col("ink"))
 	_hint.modulate.a = 0.7
@@ -191,10 +173,6 @@ func _next_piece() -> void:
 	_build_cells(_hover, _shape, false, false)
 	_build_cells(_shadow, _shape, false, true)
 
-func _rotate() -> void:
-	_yaw += PI * 0.5
-	Audio.play("click")
-
 func _drop() -> void:
 	if _cooldown > 0.0 or finished:
 		return
@@ -210,7 +188,7 @@ func _drop() -> void:
 	body.set_meta("rest", 0.0)
 	body.set_meta("sink", -1.0)
 	world.add_child(body)
-	body.global_transform = Transform3D(Basis(Vector3.UP, _yaw), _cursor.position + Vector3(0, HOVER_Y, 0))
+	body.global_transform = Transform3D(Basis(Vector3.UP, _hover.rotation.y), _cursor.position + Vector3(0, HOVER_Y, 0))
 	body.angular_velocity = Vector3(randf_range(-0.5, 0.5), randf_range(-0.5, 0.5), randf_range(-0.5, 0.5))
 	body.body_entered.connect(func(_other: Node) -> void: _on_land(body))
 	_pieces.append(body)
@@ -411,13 +389,11 @@ func _process(delta: float) -> void:
 		_cursor.position = clamp_to_area(_cursor.position + Vector3(d.x, 0, d.y) * CURSOR_SPEED * delta, 0.8)
 	if PInput.just_pressed("action_a"):
 		_drop()
-	if PInput.just_pressed("action_b"):
-		_rotate()
 
 	_hover.position = _cursor.position + Vector3(0, HOVER_Y + sin(_t * 2.2) * 0.25, 0)
-	_hover.rotation.y = _yaw
+	_hover.rotation.y = _yaw + _t * 0.35   # slow idle spin; the drop uses a fresh random yaw
 	_shadow.position = _cursor.position + Vector3(0, 0.04, 0)
-	_shadow.rotation.y = _yaw
+	_shadow.rotation.y = _hover.rotation.y
 
 	_walk(delta)
 
@@ -434,9 +410,6 @@ func _input(e: InputEvent) -> void:
 		_aim_at(e.position)
 	elif e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 		if Flow.pointer_over_hud():
-			return
-		if ROT_BTN.has_point(e.position):
-			_rotate()
 			return
 		_aim_at(e.position)
 		_drop()

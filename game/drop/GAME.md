@@ -15,7 +15,7 @@ The sky. A Tetris piece hovers up there, right where you point.
 
 Tap somewhere on the plaza and the piece falls there, for real (it tumbles, bounces,
 lands). Anyone under it gets squashed. The next piece appears straight away. Arrow keys
-aim too, A drops, B (or the on-screen button) rotates the piece a quarter turn.
+aim too, A drops. No rotating: it is slop dropping, the piece spins on its own.
 
 ## What is trying to stop you?
 
