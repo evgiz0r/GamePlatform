@@ -9,13 +9,16 @@ drive by
 
 ## Who are you?
 
-Someone in a car with a gun, looking out of the side window. The view never moves; the
-street does, at whatever speed the car is doing. No extra controls on the phone.
+Someone in a car with a gun, looking out of the side window and a little forward, the way
+you actually look out of a car. The view never moves; the street does, at whatever speed
+the car is doing. No extra controls on the phone, and no crosshair cluttering the view.
+The game opens with a three-second shot from across the street that swoops into the
+driver's seat; then the car pulls away and it begins.
 
 ## What do you do?
 
-Tap a goblin and you shoot it. That is the whole control. (Keys and pad: arrows move a
-crosshair, A fires. Taps aim by themselves.) Shooting one goblin right after another
+Tap a goblin and you shoot it. That is the whole control. (Keys and pad: arrows move an
+invisible aim point, A fires. Taps aim by themselves.) Shooting one goblin right after another
 chains a combo: 10, then 20, then 30.
 
 ## What is trying to stop you?

@@ -10,9 +10,9 @@ extends GameMode3D
 const FACADE_Z := -13.0              ## front face of the buildings
 const WALK_Z := -11.0                ## sidewalk, where people stroll
 const CREATURE_Z := FACADE_Z + 0.55  ## goblins stand just in front of the facades
-const SPAWN_X := 21.0                ## off screen to the right ...
-const GONE_X := -17.0                ## ... and gone on the left
-const STRIP_END := 32.0              ## how far ahead the street is built
+const SPAWN_X := 31.0                ## far ahead, small, where the street vanishes ...
+const GONE_X := -7.0                 ## ... and just behind the window pillar
+const STRIP_END := 42.0              ## how far ahead the street is built
 const BASE_SPEED := 5.0              ## car speed at the start, units per second ...
 const MAX_SPEED := 11.0              ## ... and after SPEED_RAMP seconds
 const SPEED_RAMP := 100.0
@@ -23,7 +23,9 @@ const PEOPLE_EVERY := 2.6
 const AIM_ASSIST := 70.0             ## a tap this close (screen px) to a goblin hits it -- thumbs are wide
 const CROSS_ASSIST := 130.0          ## the crosshair (keys / pad / bots) snaps harder: it only aims sideways well
 const PERSON_HIT := 30.0
-const CROSS_SPEED := 300.0           ## crosshair speed on the keys / stick, px per second
+const CROSS_SPEED := 300.0           ## aim-point speed on the keys / stick, px per second
+const LOOK_AHEAD := 5.3              ## the view turns toward where the car is going (about 22 degrees)
+const INTRO := 3.0                   ## seconds of the opening shot: from the street into the seat
 const COMBO_WINDOW := 1.3            ## a kill this soon after the last one chains
 const GOBLIN_H := 1.7
 const PERSON_H := 1.8
@@ -42,7 +44,7 @@ var _far: Array = []                 ## {node, k} parallax layers: k = fraction 
 var _creatures: Array = []           ## Actor3D, meta: alive
 var _people: Array = []              ## Actor3D, meta: dir, speed
 var _strip_x := -19.0                ## where the next building goes
-var _cross: Blob                     ## crosshair; the bots' "@"
+var _cross: Node2D                   ## the hidden aim point for keys / pad; the bots' "@"
 var _gun: Polygon2D
 var _flash: Blob
 var _tracer: Line2D
@@ -51,6 +53,9 @@ var _people_t := 0.5
 var _combo := 0
 var _combo_t := 0.0
 var _t := 0.0
+var _intro_t := 0.0                  ## counts up to INTRO; the game proper starts after
+var _interior: Node2D
+var _car: Node3D
 var _sfx_was := 0.8
 
 func _init() -> void:
@@ -65,7 +70,6 @@ func start(_config: Dictionary) -> void:
 	SaveData.data["volume_sfx"] = SFX_SCALE
 	set_lives(START_LIVES)
 	cam.fov = 58.0
-	_aim_camera(0.0)
 	sun.shadow_enabled = true
 	sun.directional_shadow_max_distance = 50.0
 	sun.rotation_degrees = Vector3(-42, 24, 0)
@@ -73,13 +77,32 @@ func start(_config: Dictionary) -> void:
 	_build_car()
 	for i in 3:
 		_spawn_person()
+	# the car itself, only seen during the opening shot; the camera ends up inside it
+	_car = model("sedan", 4.6)
+	_car.rotation.y = PI * 0.5
+	world.add_child(_car)
+	_speed = 0.0
+	_intro_step(0.0)
 	Probe.event("start")
 
 func _exit_tree() -> void:
 	SaveData.data["volume_sfx"] = _sfx_was
 
 func _aim_camera(bob: float) -> void:
-	look_from(Vector3(0, 1.55 + bob, 0), Vector3(0, 4.2 + bob, FACADE_Z))
+	look_from(Vector3(0, 1.55 + bob, 0), Vector3(LOOK_AHEAD, 4.2 + bob, FACADE_Z))
+
+## The opening shot: a wide view of the street from across the road, swooping into the
+## driver's seat. The interior fades in as we arrive, the car model vanishes once we are in.
+func _intro_step(k: float) -> void:
+	var e := ease(clampf(k, 0.0, 1.0), -2.2)
+	var from_pos := Vector3(-9.0, 5.5, 13.0)
+	var from_look := Vector3(0.0, 1.2, 0.0)
+	var pos := from_pos.lerp(Vector3(0, 1.55, 0), e)
+	var look := from_look.lerp(Vector3(LOOK_AHEAD, 4.2, FACADE_Z), e)
+	look_from(pos, look)
+	_interior.modulate.a = clampf((k - 0.72) / 0.22, 0.0, 1.0)
+	if is_instance_valid(_car):
+		_car.visible = k < 0.86
 
 ## ---- the street ------------------------------------------------------------------
 
@@ -186,6 +209,9 @@ func _building_at(x: float) -> Node3D:
 func _build_car() -> void:
 	var dark := Palette.col("bg").darkened(0.35)
 	var trim := Palette.col("bg_alt")
+	_interior = Node2D.new()
+	_interior.modulate.a = 0.0
+	add_child(_interior)
 	# window pillars, roof line and the door sill / dashboard
 	for pts in [
 			PackedVector2Array([Vector2(0, 0), Vector2(46, 0), Vector2(22, 360), Vector2(0, 360)]),
@@ -195,16 +221,16 @@ func _build_car() -> void:
 		var p := Polygon2D.new()
 		p.polygon = pts
 		p.color = dark
-		add_child(p)
+		_interior.add_child(p)
 	var sill := Polygon2D.new()
 	sill.polygon = PackedVector2Array([Vector2(0, 318), Vector2(200, 306), Vector2(440, 306), Vector2(640, 318), Vector2(640, 322), Vector2(440, 310), Vector2(200, 310), Vector2(0, 322)])
 	sill.color = trim
-	add_child(sill)
+	_interior.add_child(sill)
 	# the gun, bottom right, pointing out of the window
 	_gun = Polygon2D.new()
 	_gun.polygon = PackedVector2Array([Vector2(520, 360), Vector2(556, 360), Vector2(470, 262), Vector2(452, 276)])
 	_gun.color = trim.darkened(0.2)
-	add_child(_gun)
+	_interior.add_child(_gun)
 	_flash = Blob.new()
 	_flash.role = "warn"
 	_flash.radius = 13.0
@@ -217,25 +243,21 @@ func _build_car() -> void:
 	_tracer.default_color = Palette.col("warn")
 	_tracer.visible = false
 	add_child(_tracer)
-	# crosshair: where the keys / stick aim and where the bots aim. Taps aim by themselves.
-	_cross = Blob.new()
-	_cross.role = "player"
-	_cross.radius = 7.0
-	_cross.shape = "diamond"
-	_cross.glow = true
+	# the aim point for keys / stick and the bots. Deliberately invisible: a crosshair
+	# floating over the street annoyed the player, and taps aim by themselves.
+	_cross = Node2D.new()
 	_cross.position = Vector2(340, 170)
-	_cross.modulate.a = 0.75
 	add_child(_cross)
 	Probe.track(_cross, "@")
 
 	var hint := Label.new()
-	hint.text = "tap the goblins   ·   arrows aim, A shoots   ·   not the people"
+	hint.text = "tap the goblins   ·   not the people"
 	hint.add_theme_font_size_override("font_size", 11)
 	hint.add_theme_color_override("font_color", Palette.col("ink"))
 	hint.modulate.a = 0.7
 	hint.position = Vector2(10, 338)
 	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(hint)
+	_interior.add_child(hint)
 
 ## ---- goblins and people ------------------------------------------------------------
 
@@ -277,7 +299,7 @@ func _spawn_person() -> void:
 ## ---- shooting -------------------------------------------------------------------------
 
 func _shoot(at: Vector2, assist: float = AIM_ASSIST) -> void:
-	if finished:
+	if finished or _intro_t < INTRO:
 		return
 	_cross.position = at
 	Audio.play("hit", 0.15)
@@ -383,6 +405,13 @@ func _debris(at: Vector3, role: String, n: int) -> void:
 func _process(delta: float) -> void:
 	if finished:
 		return
+	if _intro_t < INTRO:
+		_intro_t += delta
+		_intro_step(_intro_t / INTRO)
+		if _intro_t >= INTRO:
+			Probe.event("drive")
+			Audio.play("select")
+		return
 	_t += delta
 	_combo_t -= delta
 	if _combo_t <= 0.0:
@@ -449,7 +478,7 @@ func _process(delta: float) -> void:
 		_shoot(_cross.position, CROSS_ASSIST)
 
 func _input(e: InputEvent) -> void:
-	if finished:
+	if finished or _intro_t < INTRO:
 		return
 	if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 		if Flow.pointer_over_hud():
