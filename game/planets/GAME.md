@@ -31,6 +31,11 @@ more power. **Shooting is a separate control**: the big FIRE button bottom right
 tap your own tank, or space. **Drag to move around the map.** (Arrow keys / WASD
 nudge the aim point too, so the bots can play it.)
 
+**Next to FIRE you can see the strength and the angle**, and there are two scrollers
+there to set them by hand as well as with the mouse: drag along the angle wheel or
+the power wheel and the number scrolls (half a degree, or half a percent, per pixel).
+Angle is 0 to 360 anticlockwise, 90 is straight up; power is 0 to 100.
+
 **The map is bigger than the screen** -- one and a half screens each way, not too big
 -- and it has limits: you can't scroll past the edge. When you shoot, the camera follows
 the shot if it goes off screen. The enemy tank may be off screen; you have to find it.
@@ -46,10 +51,12 @@ the real enemy: your own shell can come round and hit you.
 
 ## How do you win?
 
-Hit the enemy tank until its HP is gone; then the next level. Level 1 is one big planet
-with both tanks on it (my first drawing). **After the first level the layouts are
-randomized** (later maybe all of them): **at least 4 planets, various sizes**, and
-**the two tanks somewhat apart** from each other. More planets as the levels go up.
+Hit the enemy tank until its HP is gone; then the next level. **The layouts are
+randomized from level 1**: **at least 4 planets, various sizes**, and **the two tanks
+somewhat apart** from each other. More planets as the levels go up.
+
+**Some planets have small moons** close by. They have no gravity of their own, but a
+blast chews them up and a couple of hits destroys one completely. Not too many.
 
 ## Core loop
 
@@ -74,9 +81,11 @@ randomized** (later maybe all of them): **at least 4 planets, various sizes**, a
   700 px off screen, and count as lost after three seconds off screen in total.
 - The map is 1440x810 behind a camera at 2/3 zoom, so the 640x360 screen shows a
   960x540 window of it and everything in the code is in map pixels. The HUD (HP bars,
-  level, prompt, FIRE) is drawn in that same `_draw` but anchored to the camera. Random
-  levels put the two home planets in the outer thirds at least 720 px apart, then fill
-  in 3-7 more of assorted sizes.
+  level, prompt, FIRE, wheels) is drawn in that same `_draw` but anchored to the camera.
+  Levels put the two home planets in the outer thirds at least 720 px apart, then fill
+  in 3-7 more of assorted sizes, then up to three moons (half the planets over 55 px get
+  one, 10-16 px, 18-40 px off the surface). Moons are planets with zero gravity mass;
+  they are always last in the list so destroying one never shifts the home indices.
 - HP is restored to full at the start of every level, Scorched Earth style: a level
   is a duel, not attrition across the whole run.
 - A planet is a radial heightmap (144 spokes). A blast carves each spoke back to where

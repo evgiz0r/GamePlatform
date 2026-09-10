@@ -24,6 +24,15 @@ const VIEW := Vector2(960, 540)
 const CAM_LERP := 7.0               ## how quickly the camera glides to where it is going
 const FOLLOW_MARGIN := 60.0         ## a shell this close to the view's edge pulls the camera along
 const FIRE_BTN := Rect2(522, 298, 108, 52)   ## screen px, bottom right, thumb sized
+## Two scroll wheels beside FIRE: drag left or right along one and the value scrolls,
+## half a unit per screen px, with a ruler moving under a fixed pointer.
+const ANGLE_SCROLL := Rect2(352, 302, 156, 18)
+const POWER_SCROLL := Rect2(352, 332, 156, 18)
+const SCROLL_STEP := 0.5            ## degrees (or percent) per screen px of drag
+## Some big planets get a small moon close by: no gravity of its own, but rock that a
+## blast can chew up and, with a couple of hits, wipe out entirely. Not too many.
+const MOON_CHANCE := 0.5
+const MOON_MAX := 3
 const MAX_FLIGHT := 8.0             ## a shell's fuse: it explodes wherever it is when this runs out
 const SPACE_MARGIN := 700.0         ## how far off screen a shell may wander before it is lost
 const OFFSCREEN_MAX := 3.0          ## and how long it may stay out there, in total
@@ -58,16 +67,17 @@ const STAR_COUNT := 320
 ## only -- the saved settings file is never written. See CLAUDE.md.
 const SFX_SCALE := 0.35
 ## Solver grid: coarse sweep, then a refine around the best cell.
-const SOLVE_ANGLES := 36
+const SOLVE_ANGLES := 30
 const SOLVE_POWERS := [0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1.0]
-const SOLVE_MAX_STEPS := 1000       ## eight seconds of flight: enough for a shot that goes out and comes back
+const SOLVE_MAX_STEPS := 720        ## six seconds of flight; longer shots exist but are too twitchy to aim for
 const FLIGHT_W := 6.0               ## solver: a second of flight costs this many pixels of miss
 const PLANET_ROLES := ["accent", "prize", "friend", "warn"]
 const HOME_APART := 720.0           ## the two home planets are never closer than this
 
 var _planets: Array = []            ## {pos, r, role, seed, hm, marker}
 var _ppos := PackedVector2Array()   ## planet centers, mirrored from _planets for the hot loops
-var _prad := PackedFloat32Array()   ## original radii (gravity, bounding checks)
+var _prad := PackedFloat32Array()   ## original radii (bounding checks)
+var _pgrav := PackedFloat32Array()  ## radius that gravity is computed from; 0 for a moon
 var _phm: Array = []                ## live heightmaps, one PackedFloat32Array per planet
 var _player: Blob = null
 var _enemy: Blob = null
@@ -88,6 +98,8 @@ var _pressed := false               ## pointer held down since a press on the ma
 var _panning := false               ## ... and it has moved far enough to be a drag, not a tap
 var _press_scr := Vector2.ZERO      ## where the press landed, in screen px
 var _press_cam := Vector2.ZERO      ## where the camera was heading when it did
+var _scroll := ""                   ## "angle" or "power" while a scroll wheel is being dragged
+var _scroll_x := 0.0                ## last pointer x on that wheel, screen px
 var _clock := SHOT_CLOCK
 var _pause := 0.0
 var _flight_owner_mine := true
@@ -212,11 +224,7 @@ func _next_level() -> void:
 ## enemy's own solver so a shot always exists from both sides.
 func _build_layout(level: int) -> Dictionary:
 	_clear_planets()
-	if level == 1:
-		_add_planet(Vector2(720, 405), 120.0)
-		return {"pp": 0, "pa": deg_to_rad(140.0), "ep": 0, "ea": deg_to_rad(-25.0)}
-
-	var total := 5 + mini(4, (level - 2) / 2)
+	var total := 5 + mini(4, (level - 1) / 2)
 	var best: Dictionary = {}
 	var best_miss := INF
 	for attempt in 8:
@@ -228,6 +236,7 @@ func _build_layout(level: int) -> Dictionary:
 				ok = false
 		if not ok:
 			continue
+		_add_moons()
 		var pa := _surface_angle(0, 1)
 		var ea := _surface_angle(1, 0)
 		var p_pos := _tank_pos(0, pa)
@@ -240,8 +249,8 @@ func _build_layout(level: int) -> Dictionary:
 		if miss < BLAST_R * 0.7:
 			break
 	if best.is_empty():
-		# never happens in practice; fall back to the drawing
-		return _build_layout(1)
+		# never happens in practice: eight tries at a solvable layout all failed
+		return _build_layout(level)
 	_planets = best["planets"]
 	_sync_planets()
 	return best
@@ -278,22 +287,56 @@ func _clear_planets() -> void:
 	_planets.clear()
 	_sync_planets()
 
-func _add_planet(pos: Vector2, r: float) -> void:
-	var role: String = "ink" if r < 35.0 else PLANET_ROLES[_planets.size() % PLANET_ROLES.size()]
+func _add_planet(pos: Vector2, r: float, moon: bool = false) -> void:
+	var role: String = "ink" if (moon or r < 35.0) else PLANET_ROLES[_planets.size() % PLANET_ROLES.size()]
 	var hm := PackedFloat32Array()
 	hm.resize(HM_N)
 	hm.fill(r)
-	_planets.append({"pos": pos, "r": r, "role": role, "seed": randf() * TAU, "hm": hm})
+	_planets.append({"pos": pos, "r": r, "role": role, "seed": randf() * TAU, "hm": hm, "moon": moon})
 	_sync_planets()
 
 func _sync_planets() -> void:
 	_ppos.clear()
 	_prad.clear()
+	_pgrav.clear()
 	_phm.clear()
 	for pl in _planets:
 		_ppos.append(pl["pos"])
 		_prad.append(pl["r"])
+		_pgrav.append(0.0 if pl["moon"] else pl["r"])
 		_phm.append(pl["hm"])
+
+## Moons come last in the list, after every planet, so the home planets keep indices 0
+## and 1 (the tanks refer to them by index) even when a moon is destroyed and removed.
+func _add_moons() -> void:
+	var n := 0
+	var count := _planets.size()
+	for i in count:
+		var pl: Dictionary = _planets[i]
+		if n >= MOON_MAX or pl["r"] < 55.0 or randf() > MOON_CHANCE:
+			continue
+		for attempt in 12:
+			var mr := randf_range(10.0, 16.0)
+			var a := randf() * TAU
+			var pos: Vector2 = pl["pos"] + Vector2.from_angle(a) * (pl["r"] + mr + randf_range(18.0, 40.0))
+			if not play_area.grow(-(mr + 10.0)).has_point(pos):
+				continue
+			var clear := true
+			for j in _planets.size():
+				if j != i and pos.distance_to(_planets[j]["pos"]) < _planets[j]["r"] + mr + 16.0:
+					clear = false
+					break
+			if clear:
+				_add_planet(pos, mr, true)
+				n += 1
+				break
+
+## Nothing should spawn a tank inside or right against a moon.
+func _spot_clear(p: Vector2) -> bool:
+	for pl in _planets:
+		if pl["moon"] and p.distance_to(pl["pos"]) < pl["r"] + TANK_R + 12.0:
+			return false
+	return true
 
 func _place_random(r: float) -> bool:
 	var inner := play_area.grow(-(r + 30.0))
@@ -315,7 +358,8 @@ func _surface_angle(on: int, other: int) -> float:
 	var base: float = (_planets[other]["pos"] - _planets[on]["pos"]).angle()
 	for i in 12:
 		var a := base + randf_range(-1.1, 1.1)
-		if play_area.grow(-30.0).has_point(_tank_pos(on, a)):
+		var spot := _tank_pos(on, a)
+		if play_area.grow(-30.0).has_point(spot) and _spot_clear(spot):
 			return a
 	return base
 
@@ -362,7 +406,7 @@ func _carve(c: Vector2, cr: float) -> bool:
 			var t_far := m + root
 			if t_far < hm[k]:
 				continue           # the crater is buried under solid rock (cannot show a cave)
-			var t_near := maxf(m - root, MIN_ROCK)
+			var t_near := maxf(m - root, 0.0 if pl["moon"] else MIN_ROCK)
 			if t_near < hm[k]:
 				hm[k] = t_near
 				removed = true
@@ -370,8 +414,25 @@ func _carve(c: Vector2, cr: float) -> bool:
 			pl["hm"] = hm
 			any = true
 	if any:
+		_drop_dead_moons()
 		_sync_planets()
 	return any
+
+## A moon with no rock left is gone, with a puff of what it was made of.
+func _drop_dead_moons() -> void:
+	var keep: Array = []
+	for pl in _planets:
+		var biggest := 0.0
+		for v in pl["hm"]:
+			biggest = maxf(biggest, v)
+		if pl["moon"] and biggest < 3.0:
+			Probe.event("moon_destroyed")
+			_boom(pl["pos"], "ink", 10, 90.0)
+			if pl.has("marker") and is_instance_valid(pl["marker"]):
+				pl["marker"].free()
+			continue
+		keep.append(pl)
+	_planets = keep
 
 func _tank_pos(planet: int, angle: float) -> Vector2:
 	return _planets[planet]["pos"] + Vector2.from_angle(angle) * (_surface(planet, angle) + TANK_R)
@@ -446,9 +507,11 @@ func _update_camera(delta: float) -> void:
 func _accel(p: Vector2) -> Vector2:
 	var a := Vector2.ZERO
 	for i in _ppos.size():
+		var r := _pgrav[i]
+		if r <= 0.0:
+			continue
 		var d := _ppos[i] - p
 		var r2 := maxf(d.length_squared(), 100.0)
-		var r := _prad[i]
 		var dist := sqrt(r2)
 		var soft := r * SOFT_R
 		var mag := SURFACE_G * r * r / (r2 if dist <= soft else soft * dist)
@@ -458,6 +521,19 @@ func _accel(p: Vector2) -> Vector2:
 func _aim_velocity(aim: Vector2) -> Vector2:
 	var power := clampf((aim.length() - AIM_LEN_MIN) / (AIM_LEN_MAX - AIM_LEN_MIN), 0.0, 1.0)
 	return aim.normalized() * lerpf(SPEED_MIN, SPEED_MAX, power)
+
+## The aim as Scorched Earth would say it: degrees anticlockwise from "right" (so 90 is
+## straight up on screen) and power 0-100.
+func _aim_angle() -> float:
+	return fposmod(-rad_to_deg(_aim.angle()), 360.0)
+
+func _aim_power() -> float:
+	return clampf((_aim.length() - AIM_LEN_MIN) / (AIM_LEN_MAX - AIM_LEN_MIN), 0.0, 1.0) * 100.0
+
+func _set_aim(angle_deg: float, power: float) -> void:
+	var len := lerpf(AIM_LEN_MIN, AIM_LEN_MAX, clampf(power, 0.0, 100.0) / 100.0)
+	_aim = Vector2.from_angle(-deg_to_rad(angle_deg)) * len
+	_update_reticle()
 
 func _clamp_aim(v: Vector2) -> Vector2:
 	if v.length() < 0.001:
@@ -498,9 +574,11 @@ func _trace(from: Vector2, vel: Vector2, target: Vector2, shooter: Vector2, max_
 		_trace_steps = step
 		var a := Vector2.ZERO
 		for i in n:
+			var r := _pgrav[i]
+			if r <= 0.0:
+				continue
 			var d := _ppos[i] - p
 			var r2 := maxf(d.length_squared(), 100.0)
-			var r := _prad[i]
 			var dist := sqrt(r2)
 			var soft := r * SOFT_R
 			var mag := SURFACE_G * r * r / (r2 if dist <= soft else soft * dist)
@@ -873,11 +951,20 @@ func _input(event: InputEvent) -> void:
 				if _state == "aim":
 					_fire(_player, _aim, true)
 				return
+			if _state == "aim" and ANGLE_SCROLL.grow(6.0).has_point(scr):
+				_scroll = "angle"
+				_scroll_x = scr.x
+				return
+			if _state == "aim" and POWER_SCROLL.grow(6.0).has_point(scr):
+				_scroll = "power"
+				_scroll_x = scr.x
+				return
 			_pressed = true
 			_panning = false
 			_press_scr = scr
 			_press_cam = _cam_target
 			return
+		_scroll = ""
 		if not _pressed:
 			return
 		_pressed = false
@@ -890,6 +977,16 @@ func _input(event: InputEvent) -> void:
 		else:
 			_aim = _clamp_aim(world - _player.position)
 			_update_reticle()
+		return
+	if event is InputEventMouseMotion and _scroll != "":
+		var x := get_viewport().get_mouse_position().x
+		var dx := (x - _scroll_x) * SCROLL_STEP
+		_scroll_x = x
+		if _state == "aim":
+			if _scroll == "angle":
+				_set_aim(_aim_angle() + dx, _aim_power())
+			else:
+				_set_aim(_aim_angle(), _aim_power() + dx)
 		return
 	if event is InputEventMouseMotion and _pressed:
 		var scr := get_viewport().get_mouse_position()
@@ -936,9 +1033,35 @@ func _draw() -> void:
 
 	_draw_hp_bars(f)
 	_draw_fire_button(f)
+	_draw_scroll(f, ANGLE_SCROLL, "angle", _aim_angle(), 10.0, 30.0, "%d\u00b0" % int(round(_aim_angle())))
+	_draw_scroll(f, POWER_SCROLL, "power", _aim_power(), 5.0, 25.0, "%d%%" % int(round(_aim_power())))
 	_text(f, _scr(Vector2(320, 58)), "level %d" % _level, 18, Palette.col("ink"))
 	if _prompt != "":
-		_text(f, _scr(Vector2(320, 346)), _prompt, 19, Palette.col("accent"))
+		draw_string(f, _scr(Vector2(20, 346)), _prompt, HORIZONTAL_ALIGNMENT_LEFT, 320.0 / ZOOM, 19, Palette.col("accent"))
+
+## A scroll wheel: a ruler that slides under a fixed pointer as the value changes. Minor
+## ticks every `minor`, taller ones every `major`. Reads as a dial, drags like a wheel.
+func _draw_scroll(f: Font, r: Rect2, label: String, value: float, minor: float, major: float, text: String) -> void:
+	var live := _state == "aim"
+	var box := Rect2(_scr(r.position), r.size / ZOOM)
+	draw_rect(box.grow(2.0), Palette.col("bg"))
+	draw_rect(box, Palette.col("bg_alt"))
+	var ink := Palette.col("ink") if live else Palette.col("ink").darkened(0.55)
+	var cx := r.position.x + r.size.x * 0.5
+	var half := r.size.x * 0.5 * SCROLL_STEP          # how much value fits either side of the pointer
+	var first := floorf((value - half) / minor) * minor
+	var v := first
+	while v <= value + half:
+		var x := cx + (v - value) / SCROLL_STEP
+		if x >= r.position.x + 2.0 and x <= r.end.x - 2.0:
+			var is_major := fmod(absf(v), major) < 0.01
+			var h := (r.size.y * 0.7) if is_major else (r.size.y * 0.35)
+			draw_line(_scr(Vector2(x, r.end.y - 1.0)), _scr(Vector2(x, r.end.y - 1.0 - h)), Color(ink.r, ink.g, ink.b, 0.55), 1.5)
+		v += minor
+	var pc := Palette.col("warn") if live else Palette.col("bg_alt").lightened(0.3)
+	draw_line(_scr(Vector2(cx, r.position.y - 3.0)), _scr(Vector2(cx, r.end.y + 1.0)), pc, 3.0)
+	draw_string(f, _scr(Vector2(r.position.x, r.position.y - 4.0)), label, HORIZONTAL_ALIGNMENT_LEFT, r.size.x / ZOOM, 16, ink)
+	draw_string(f, _scr(Vector2(r.position.x, r.position.y - 4.0)), text, HORIZONTAL_ALIGNMENT_RIGHT, r.size.x / ZOOM, 16, pc)
 
 func _draw_fire_button(f: Font) -> void:
 	var live := _state == "aim"
@@ -999,9 +1122,10 @@ func _draw_planet(i: int) -> void:
 	var hm: PackedFloat32Array = pl["hm"]
 	var c := Palette.col(pl["role"])
 	var body := Palette.col("bg_alt").lightened(0.12)
-	# gravity halo: three faint rings, so the reach of each planet is readable
-	for k in [1.45, 1.95, 2.55]:
-		draw_arc(pos, r * k, 0.0, TAU, 64, Color(c.r, c.g, c.b, 0.11 / k), 1.0, true)
+	# gravity halo: three faint rings, so the reach of each planet is readable (moons have none)
+	if not pl["moon"]:
+		for k in [1.45, 1.95, 2.55]:
+			draw_arc(pos, r * k, 0.0, TAU, 64, Color(c.r, c.g, c.b, 0.11 / k), 1.0, true)
 	var pts := PackedVector2Array()
 	pts.resize(HM_N + 1)
 	for k in HM_N:
@@ -1012,7 +1136,7 @@ func _draw_planet(i: int) -> void:
 	draw_polyline(pts, c, 2.0, true)
 	# craters, placed from the planet's seed so they hold still; buried ones vanish with the rock
 	var sd: float = pl["seed"]
-	for k in 3:
+	for k in (1 if pl["moon"] else 3):
 		var a := sd + float(k) * 2.1
 		var dist := r * (0.35 + 0.18 * float(k))
 		var cr := r * (0.16 - 0.03 * float(k))
