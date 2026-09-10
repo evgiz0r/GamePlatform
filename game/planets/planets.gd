@@ -1,7 +1,7 @@
 extends GameMode
 ## planets -- Scorched Earth, but the ground is round and gravity is everywhere. Two
-## tanks sit on planets; you drag to aim, let go to fire, and the shell bends around
-## every planet on the way. Every impact is a blast: it hurts any tank in range and
+## tanks sit on planets on a map bigger than the screen; you tap to aim, press FIRE, and
+## the shell bends around every planet on the way while the camera follows it. Every impact is a blast: it hurts any tank in range and
 ## bites a crater out of the planet, and a tank whose ground is gone falls to the new
 ## ground. Hit the enemy and the next level has more planets in the way. The enemy
 ## shoots back and learns from its misses. See GAME.md.
@@ -14,10 +14,16 @@ extends GameMode
 
 const SURFACE_G := 450.0            ## gravity at a planet's surface, px/s^2; falls off as 1/r^2
 const STEP := 1.0 / 120.0           ## shell physics step; the solver uses the same one
-## The world is 960x540 seen through a camera zoomed out to 2/3, so it fits the 640x360
-## viewport: more room round the planets, and no tank ends up right by the edge.
-const WORLD := Rect2(0, 0, 960, 540)
+## The camera is zoomed out to 2/3, so the 640x360 viewport shows a 960x540 window (VIEW)
+## onto a map one and a half screens wide and tall. Drag to pan; the camera never shows
+## anything beyond the map's edge, follows a shell that leaves the view, and comes back
+## to your tank when your turn starts.
+const WORLD := Rect2(0, 0, 1440, 810)
 const ZOOM := 2.0 / 3.0
+const VIEW := Vector2(960, 540)
+const CAM_LERP := 7.0               ## how quickly the camera glides to where it is going
+const FOLLOW_MARGIN := 60.0         ## a shell this close to the view's edge pulls the camera along
+const FIRE_BTN := Rect2(522, 298, 108, 52)   ## screen px, bottom right, thumb sized
 const MAX_FLIGHT := 8.0             ## a shell's fuse: it explodes wherever it is when this runs out
 const SPACE_MARGIN := 700.0         ## how far off screen a shell may wander before it is lost
 const OFFSCREEN_MAX := 3.0          ## and how long it may stay out there, in total
@@ -42,12 +48,12 @@ const ARM_TIME := 0.35              ## a shell younger than this cannot hurt its
 const CRATER_R := 32.0              ## how much planet a blast removes
 const MIN_ROCK := 8.0               ## a planet never carves below this radius
 const HM_N := 144                   ## heightmap samples around a planet
-const SHOT_CLOCK := 10.0            ## seconds you get per shot before the turn passes
+const SHOT_CLOCK := 15.0            ## seconds you get per shot before the turn passes (finding the enemy takes a moment)
 const THINK_TIME := 0.8             ## the enemy's pause before it fires
 const LEVEL_PAUSE := 1.6
 const PREVIEW_STEPS := 60           ## half a second of predicted flight shown while aiming
 const TRAIL_MAX := 90
-const STAR_COUNT := 140
+const STAR_COUNT := 320
 ## The shell default (0.8) is loud for a game that explodes every few seconds. In memory
 ## only -- the saved settings file is never written. See CLAUDE.md.
 const SFX_SCALE := 0.35
@@ -57,7 +63,7 @@ const SOLVE_POWERS := [0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1.0]
 const SOLVE_MAX_STEPS := 1000       ## eight seconds of flight: enough for a shot that goes out and comes back
 const FLIGHT_W := 6.0               ## solver: a second of flight costs this many pixels of miss
 const PLANET_ROLES := ["accent", "prize", "friend", "warn"]
-const HOME_APART := 460.0           ## the two home planets are never closer than this
+const HOME_APART := 720.0           ## the two home planets are never closer than this
 
 var _planets: Array = []            ## {pos, r, role, seed, hm, marker}
 var _ppos := PackedVector2Array()   ## planet centers, mirrored from _planets for the hot loops
@@ -76,9 +82,12 @@ var _star_phase := PackedFloat32Array()
 var _state := "aim"                 ## aim | flying | think | levelup
 var _aim := Vector2(90, -40)        ## world-space vector from the player tank to the aim point
 var _enemy_aim := Vector2(-60, -40)
-var _dragging := false
-var _drag_from := Vector2.ZERO
-var _drag_moved := false
+var _cam: Camera2D = null
+var _cam_target := Vector2.ZERO
+var _pressed := false               ## pointer held down since a press on the map
+var _panning := false               ## ... and it has moved far enough to be a drag, not a tap
+var _press_scr := Vector2.ZERO      ## where the press landed, in screen px
+var _press_cam := Vector2.ZERO      ## where the camera was heading when it did
 var _clock := SHOT_CLOCK
 var _pause := 0.0
 var _flight_owner_mine := true
@@ -108,11 +117,11 @@ func start(_config: Dictionary) -> void:
 	SaveData.data["volume_sfx"] = _sfx_was * SFX_SCALE
 	_autoaim = OS.get_environment("PLANETS_AUTOAIM") == "1"
 
-	var cam := Camera2D.new()
-	cam.position = center()
-	cam.zoom = Vector2(ZOOM, ZOOM)
-	add_child(cam)
-	cam.make_current()
+	_cam = Camera2D.new()
+	_cam.position = center()
+	_cam.zoom = Vector2(ZOOM, ZOOM)
+	add_child(_cam)
+	_cam.make_current()
 
 	# no lives: the tanks carry hit points, drawn over them. An empty lives display is honest.
 	set_lives(0)
@@ -132,7 +141,7 @@ func start(_config: Dictionary) -> void:
 		add_child(_hint)
 		Probe.track(_hint, "*")
 
-	_prompt = "drag anywhere to aim, let go to fire"
+	_prompt = "tap to aim, FIRE to shoot, drag to look around"
 	_next_level()
 	Probe.capture("start")
 
@@ -181,6 +190,8 @@ func _next_level() -> void:
 	_update_hint()
 	_state = "aim"
 	_clock = SHOT_CLOCK
+	_cam_target = _clamp_cam(_player.position)
+	_cam.position = _cam_target
 	if _level > 1:
 		_prompt = "level %d -- your shot" % _level
 	var info := {"level": _level, "planets": _planets.size()}
@@ -202,16 +213,16 @@ func _next_level() -> void:
 func _build_layout(level: int) -> Dictionary:
 	_clear_planets()
 	if level == 1:
-		_add_planet(Vector2(480, 275), 110.0)
+		_add_planet(Vector2(720, 405), 120.0)
 		return {"pp": 0, "pa": deg_to_rad(140.0), "ep": 0, "ea": deg_to_rad(-25.0)}
 
-	var total := 4 + mini(3, (level - 2) / 2)
+	var total := 5 + mini(4, (level - 2) / 2)
 	var best: Dictionary = {}
 	var best_miss := INF
 	for attempt in 8:
 		_clear_planets()
 		# the two home planets first (index 0 yours, 1 the enemy's), then the rest
-		var ok := _place_home(true, randf_range(55.0, 95.0)) and _place_home(false, randf_range(55.0, 95.0))
+		var ok := _place_home(true, randf_range(60.0, 110.0)) and _place_home(false, randf_range(60.0, 110.0))
 		for i in total - 2:
 			if not _place_random(_random_radius()):
 				ok = false
@@ -239,10 +250,10 @@ func _build_layout(level: int) -> Dictionary:
 func _random_radius() -> float:
 	var roll := randf()
 	if roll < 0.4:
-		return randf_range(16.0, 30.0)
+		return randf_range(18.0, 34.0)
 	if roll < 0.75:
-		return randf_range(30.0, 55.0)
-	return randf_range(55.0, 80.0)
+		return randf_range(34.0, 60.0)
+	return randf_range(60.0, 95.0)
 
 ## A home planet sits in the left or the right third of the world, and the two of them
 ## are at least HOME_APART apart, so the duel always crosses most of the screen.
@@ -290,7 +301,7 @@ func _place_random(r: float) -> bool:
 		var p := Vector2(randf_range(inner.position.x, inner.end.x), randf_range(inner.position.y, inner.end.y))
 		var clear := true
 		for pl in _planets:
-			if p.distance_to(pl["pos"]) < r + pl["r"] + 56.0:
+			if p.distance_to(pl["pos"]) < r + pl["r"] + 64.0:
 				clear = false
 				break
 		if clear:
@@ -405,6 +416,30 @@ func _update_tanks(delta: float) -> void:
 		t.set_meta("alt", alt)
 		t.set_meta("vy", vy)
 		t.position = _ppos[pi] + Vector2.from_angle(ang) * alt
+
+## ---- camera ---------------------------------------------------------------
+
+## Keep a camera centre inside the map, so the view never shows past its edge.
+func _clamp_cam(p: Vector2) -> Vector2:
+	var half := VIEW * 0.5
+	return Vector2(clampf(p.x, play_area.position.x + half.x, play_area.end.x - half.x),
+		clampf(p.y, play_area.position.y + half.y, play_area.end.y - half.y))
+
+## The part of the map on screen right now (shake ignored).
+func _view_rect() -> Rect2:
+	return Rect2(_cam.position - VIEW * 0.5, VIEW)
+
+## Screen px (640x360 space) to world, for HUD drawn in _draw while the camera roams.
+func _scr(v: Vector2) -> Vector2:
+	return _cam.position + _cam.offset - VIEW * 0.5 + v / ZOOM
+
+func _update_camera(delta: float) -> void:
+	if _state == "flying":
+		var inner := _view_rect().grow(-FOLLOW_MARGIN)
+		for sh in _shells:
+			if is_instance_valid(sh) and not inner.has_point(sh.position):
+				_cam_target = _clamp_cam(sh.position)
+	_cam.position = _cam.position.lerp(_cam_target, 1.0 - exp(-CAM_LERP * delta))
 
 ## ---- physics --------------------------------------------------------------
 
@@ -555,7 +590,6 @@ func _fire(from: Blob, aim: Vector2, mine: bool) -> void:
 	Juice.shake(3.0)
 	_flight_owner_mine = mine
 	_player_hit_this_flight = false
-	_dragging = false
 	_state = "flying"
 	if mine:
 		_shots_this_level += 1
@@ -588,20 +622,19 @@ func _process(delta: float) -> void:
 	queue_redraw()
 	_move_bits(delta)
 	_update_tanks(delta)
+	_update_camera(delta)
 
 	match _state:
 		"aim":
 			_clock -= delta
-			if not _dragging:
-				var d := PInput.dir()
-				if d != Vector2.ZERO:
-					_aim = _clamp_aim(_aim + d * AIM_SPEED * delta)
+			var d := PInput.dir()
+			if d != Vector2.ZERO:
+				_aim = _clamp_aim(_aim + d * AIM_SPEED * delta)
 			if PInput.just_pressed("action_a"):
 				_fire(_player, _aim, true)
 			elif _clock <= 0.0:
 				Probe.event("turn_timeout")
 				_prompt = "too slow!"
-				_dragging = false
 				_state = "think"
 				_pause = THINK_TIME
 		"flying":
@@ -620,6 +653,7 @@ func _process(delta: float) -> void:
 					_state = "aim"
 					_clock = SHOT_CLOCK
 					_prompt = "your shot"
+					_cam_target = _clamp_cam(_player.position)   # back home for your turn
 					_update_hint()   # tanks fall and craters open: the bot's hint goes stale
 		"think":
 			_pause -= delta
@@ -821,9 +855,9 @@ func _move_bits(delta: float) -> void:
 		keep.append(b)
 	_bits = keep
 
-## Drag anywhere: the drag vector is the aim, its length the power. Starting the drag
-## away from the tank keeps the thumb off the thing being aimed. A plain tap fires the
-## current aim again. Keys drive the same aim point so the bots can play.
+## Tap anywhere on the map and the aim point goes there. Drag and the map pans. Fire is a
+## separate control: the big button bottom right, a tap on your own tank, or space. The
+## keys nudge the same aim point so the bots can play.
 func _input(event: InputEvent) -> void:
 	if finished:
 		return
@@ -831,26 +865,39 @@ func _input(event: InputEvent) -> void:
 		var mb := event as InputEventMouseButton
 		if mb.button_index != MOUSE_BUTTON_LEFT:
 			return
+		var scr := get_viewport().get_mouse_position()
 		if mb.pressed:
-			if Flow.pointer_over_hud() or _state != "aim":
+			if Flow.pointer_over_hud():
 				return
-			_dragging = true
-			_drag_moved = false
-			_drag_from = get_global_mouse_position()
+			if FIRE_BTN.has_point(scr):
+				if _state == "aim":
+					_fire(_player, _aim, true)
+				return
+			_pressed = true
+			_panning = false
+			_press_scr = scr
+			_press_cam = _cam_target
 			return
-		if not _dragging:
+		if not _pressed:
 			return
-		_dragging = false
-		if _state == "aim":
+		_pressed = false
+		if _panning or _state != "aim":
+			return
+		# a tap: on your tank it fires, anywhere else it puts the aim point there
+		var world := get_global_mouse_position()
+		if world.distance_to(_player.position) < TANK_R * 2.4:
 			_fire(_player, _aim, true)
-		return
-	if event is InputEventMouseMotion and _dragging and _state == "aim":
-		var d := get_global_mouse_position() - _drag_from
-		if d.length() > 8.0:
-			_drag_moved = true
-		if _drag_moved:
-			_aim = _clamp_aim(d)
+		else:
+			_aim = _clamp_aim(world - _player.position)
 			_update_reticle()
+		return
+	if event is InputEventMouseMotion and _pressed:
+		var scr := get_viewport().get_mouse_position()
+		var d := scr - _press_scr
+		if not _panning and d.length() > 12.0:
+			_panning = true
+		if _panning and _state != "flying":
+			_cam_target = _clamp_cam(_press_cam - d / ZOOM)
 
 ## ---- the screen ------------------------------------------------------------
 
@@ -878,7 +925,7 @@ func _draw() -> void:
 		for i in trail.size():
 			var k := float(i) / float(maxi(1, trail.size()))
 			draw_circle(trail[i], 0.8 + k * 2.0, Color(c.r, c.g, c.b, k * 0.55))
-		if not in_play_area(s.position):
+		if not _view_rect().has_point(s.position):
 			_draw_offscreen_marker(s.position, c)
 
 	if _state == "aim" and _player != null and is_instance_valid(_player):
@@ -888,33 +935,45 @@ func _draw() -> void:
 	_draw_tank(_enemy, _enemy_aim)
 
 	_draw_hp_bars(f)
-	_text(f, 480, 92, "level %d" % _level, 18, Palette.col("ink"))
+	_draw_fire_button(f)
+	_text(f, _scr(Vector2(320, 58)), "level %d" % _level, 18, Palette.col("ink"))
 	if _prompt != "":
-		_text(f, 480, 520, _prompt, 19, Palette.col("accent"))
+		_text(f, _scr(Vector2(320, 346)), _prompt, 19, Palette.col("accent"))
+
+func _draw_fire_button(f: Font) -> void:
+	var live := _state == "aim"
+	var c := Palette.col("warn") if live else Palette.col("bg_alt")
+	var r := Rect2(_scr(FIRE_BTN.position), FIRE_BTN.size / ZOOM)
+	draw_rect(r.grow(3.0), Palette.col("bg"))
+	draw_rect(r, c)
+	draw_rect(r, Palette.col("ink") if live else Palette.col("bg_alt").lightened(0.2), false, 2.0)
+	draw_string(f, r.position + Vector2(0, r.size.y * 0.66), "FIRE", HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 27,
+		Palette.col("bg") if live else Palette.col("ink").darkened(0.5))
 
 ## Two long bars at the top, yours on the left and the enemy's on the right, each anchored
 ## at the outer edge and draining toward the middle, the way a fighting game does it.
 func _draw_hp_bars(f: Font) -> void:
-	var y := 70.0
-	var w := 380.0
-	var h := 12.0
-	var lx := 40.0
-	var rx := play_area.end.x - 40.0 - w
+	# laid out in screen px: below the shell's score and buttons, either side of the level
+	var y := 46.0
+	var w := 248.0
+	var h := 9.0
+	var lx := 28.0
+	var rx := 640.0 - 28.0 - w
 	var bg := Palette.col("bg_alt")
 	var edge := Palette.col("bg")
-	draw_rect(Rect2(lx - 2, y - 2, w + 4, h + 4), edge)
-	draw_rect(Rect2(rx - 2, y - 2, w + 4, h + 4), edge)
-	draw_rect(Rect2(lx, y, w, h), bg)
-	draw_rect(Rect2(rx, y, w, h), bg)
+	draw_rect(Rect2(_scr(Vector2(lx - 2, y - 2)), Vector2(w + 4, h + 4) / ZOOM), edge)
+	draw_rect(Rect2(_scr(Vector2(rx - 2, y - 2)), Vector2(w + 4, h + 4) / ZOOM), edge)
+	draw_rect(Rect2(_scr(Vector2(lx, y)), Vector2(w, h) / ZOOM), bg)
+	draw_rect(Rect2(_scr(Vector2(rx, y)), Vector2(w, h) / ZOOM), bg)
 	var php := _hp_frac(_player)
 	var ehp := _hp_frac(_enemy)
 	var pc := Palette.col("player") if php > 0.35 else Palette.col("warn")
 	var ec := Palette.col("hazard") if ehp > 0.35 else Palette.col("warn")
-	draw_rect(Rect2(lx, y, w * php, h), pc)
-	draw_rect(Rect2(rx + w * (1.0 - ehp), y, w * ehp, h), ec)
+	draw_rect(Rect2(_scr(Vector2(lx, y)), Vector2(w * php, h) / ZOOM), pc)
+	draw_rect(Rect2(_scr(Vector2(rx + w * (1.0 - ehp), y)), Vector2(w * ehp, h) / ZOOM), ec)
 	# labels at the inner ends: the outer right corner is where the shell's menu button sits
-	draw_string(f, Vector2(lx, y - 5), "you", HORIZONTAL_ALIGNMENT_LEFT, w, 13, Palette.col("player"))
-	draw_string(f, Vector2(rx, y - 5), "enemy", HORIZONTAL_ALIGNMENT_LEFT, w, 13, Palette.col("hazard"))
+	draw_string(f, _scr(Vector2(lx, y - 4)), "you", HORIZONTAL_ALIGNMENT_LEFT, w / ZOOM, 18, Palette.col("player"))
+	draw_string(f, _scr(Vector2(rx, y - 4)), "enemy", HORIZONTAL_ALIGNMENT_LEFT, w / ZOOM, 18, Palette.col("hazard"))
 
 func _hp_frac(tank: Blob) -> float:
 	if tank == null or not is_instance_valid(tank):
@@ -924,7 +983,7 @@ func _hp_frac(tank: Blob) -> float:
 ## A shell that has gone off screen is still coming back: an arrow on the edge, pointing
 ## at it, with a hint of how far out it is.
 func _draw_offscreen_marker(p: Vector2, c: Color) -> void:
-	var inner := play_area.grow(-16.0)
+	var inner := _view_rect().grow(-24.0)
 	var edge := p.clamp(inner.position, inner.end)
 	var dir := (p - edge).normalized()
 	var side := dir.orthogonal()
@@ -997,5 +1056,5 @@ func _draw_clock() -> void:
 	var c := Palette.col("warn") if frac > 0.2 else Palette.col("hazard")
 	draw_arc(_player.position, TANK_R + 10.0, -PI * 0.5, -PI * 0.5 + TAU * frac, 32, c, 3.0, true)
 
-func _text(f: Font, cx: float, y: float, msg: String, size: int, col: Color) -> void:
-	draw_string(f, Vector2(cx - 300, y), msg, HORIZONTAL_ALIGNMENT_CENTER, 600, size, col)
+func _text(f: Font, at: Vector2, msg: String, size: int, col: Color) -> void:
+	draw_string(f, at - Vector2(300, 0), msg, HORIZONTAL_ALIGNMENT_CENTER, 600, size, col)
