@@ -1,6 +1,7 @@
 # bowling
 
-The kit's third 3D game: real physics, one lane, nobody to beat but yourself.
+The kit's third 3D game: real physics, one wide lane, a hundred pins, nobody to beat but
+yourself.
 
 ## What is it called?
 
@@ -9,42 +10,44 @@ bowling
 ## Who are you?
 
 A bowler on one lane of a neon alley, alone, chasing your own best score. There is no
-opponent and no clock: ten frames, then the total goes on the high score table.
+opponent and no clock: ten throws at a rack of a hundred pins, then the total goes on the
+high score table.
 
 ## What do you do?
 
-Swipe up to roll. The angle of the swipe aims the ball (it has to be fairly straight: a
-swipe that leans far to one side is a gutter ball), how fast you flick is how fast it
-goes, and a swipe that bends makes the ball hook the same way, so you can start it left
-and curl it into the pocket like a real bowler. The ball rolls, the pins tumble and take
-each other out, and the pinsetter clears the fallen ones and re-spots the rest.
+Swipe up to throw. The ball flies through the air, lands, rolls, and ploughs into the
+rack. The angle of the swipe aims it, how fast you flick is how far it flies (a hard
+flick lands it right in the middle of the rack; a gentle one drops it early and lets it
+roll in), and a swipe that bends makes the ball hook after it lands. The lane has
+bumpers, not gutters: the ball banks off the walls and keeps most of its speed, so a bank
+shot into the side of the rack is a real tactic.
 
-Keys and pad: left and right slide the ball along the foul line, A rolls it straight at a
-good medium speed. That is also how the bots play it.
+Keys and pad: left and right slide the ball along the foul line, A throws it straight,
+hard enough to land just short of the rack. That is also how the bots play it.
 
 ## What is trying to stop you?
 
-Only the pins. A ball straight down the middle splits the rack and leaves pins standing
-on both sides; the strike lives in the 1-3 pocket, just off centre, and a hooking ball
-gets there with more force than a straight one. Ten frames of that, scored the real way:
-a strike counts the next two balls, a spare the next one, and the tenth frame gives extra
-balls to anyone who earns them. 300 is perfect.
+Only the rack. A ball carves a channel through it and knocks down the pins in its way
+and the ones they fall onto; the next throw has to go somewhere fresh. Fallen pins are
+swept away after every throw, the standing ones stay exactly where they were pushed to.
+Every pin down is a point. Knock down the last one and it is +50 and a fresh rack of a
+hundred for the throws you have left.
 
 ## How do you win?
 
-Highest score. The game ends after the tenth frame and the shell keeps your best.
-There is no way to lose, by design: the `idle` bot never rolls, so it never finishes,
+Highest score. The game ends after the tenth throw and the shell keeps your best.
+There is no way to lose, by design: the `idle` bot never throws, so it never finishes,
 and that playtest check fails on purpose.
 
 ## What should it look like?
 
-A lane at night: a polished dark lane between two glowing rails, arrows on the boards,
-white pins with a red band, a glossy ball with three finger holes so you can see it roll,
-and a masking unit with a row of marquee bulbs over the pin deck. The camera rides down
-the lane behind the ball, watches the pins go, and glides back for the next roll. A
-strip along the bottom keeps the frame marks (X, 7/, 9-) the way the overhead screen at
-an alley does.
+A wide lane at night: a polished dark lane with board lines between two glowing pink
+bumpers, arrows on the boards, a crowd of white pins with red bands filling the far end,
+a glossy ball with three finger holes so you can see it roll, and a masking unit with a
+row of marquee bulbs over the deck. The camera rides down the lane behind the ball,
+lifts with it while it flies, watches the pins go, and glides back for the next throw.
+A strip along the bottom keeps the pins per throw and how many are still up.
 
 ## Core loop
 
-Aim, swipe, watch the pins go, read the strip, roll again. Twenty balls at most.
+Aim, swipe, watch the pins scatter, find the next gap, throw again. Ten throws.
