@@ -5,7 +5,9 @@ extends GameMode3D
 ## the lane has bumpers, not gutters. Real rigid bodies: the ball rolls, the pins tumble,
 ## scatter and take each other out. Keys and pad: left/right slide the ball along the foul
 ## line, up/down move the landing spot, A throws -- which is also how the bots play.
-## The camera looks down on the lane so the whole thing is on screen to tap. See GAME.md.
+## Two racks to pick from at the start: the hundred-pin block, or twenty pins in a random
+## shape (blobs that can have holes in them, hollow rings), a new shape every rack.
+## The camera looks down the lane from behind and above, so all of it is on screen to tap.
 
 const LANE_W := 6.4                  ## wide: ten pins abreast with room to bank off the walls
 const LANE_LEN := 18.0               ## foul line at z=0, the pit starts at z=-LANE_LEN
@@ -23,9 +25,9 @@ const PIN_DX := 0.64                 ## between neighbours in a row (a ball cann
 const PIN_DZ := 0.6                  ## between rows
 const RACK_FRONT_Z := -12.6          ## the nearest row
 const PIT_Z := -LANE_LEN - 1.2       ## anything past here (or under the floor) is gone
-const LAUNCH_DEG := 28.0             ## the ball leaves the hand at this angle, always
-const SPEED_MIN := 8.0               ## slowest and fastest throw; the speed is solved from
-const SPEED_MAX := 23.0              ## ... where you tapped, so far taps are hard throws
+const LAUNCH_DEG := 16.0             ## the ball leaves the hand at this angle, always: flat, toward the pins
+const SPEED_MIN := 10.0              ## slowest throw -- still rolls all the way to the rack
+const SPEED_MAX := 30.0              ## fastest; the speed is solved from where you tapped
 const DIST_MIN := 2.0                ## a landing spot closer than this is a tap on the ball, not a throw
 const DIST_MAX := 17.0               ## the far end of the rack; keys cannot ask for more
 const KEY_DIST_START := 13.0         ## where the keyboard landing spot starts (the front of the rack)
@@ -36,7 +38,13 @@ const SETTLE := 0.7                  ## everything quiet this long -> count the 
 const ROLL_TIMEOUT := 7.0            ## a wobbling pin does not get to hold the game up
 const RESET_DELAY := 1.0             ## seconds to admire the wreckage before the sweep
 const THROWS := 10
-const CLEAR_BONUS := 50              ## for knocking down every last pin (then a fresh rack)
+const CLEAR_BONUS := 0.5             ## for knocking down every last pin: this times the rack size (then a fresh rack)
+const SHAPE_PINS := 20               ## the random-shape rack
+const SHAPE_DX := 0.72               ## its grid; square so holes read as holes, tight so the ball cannot slip between columns
+const SHAPE_COLS := 7
+const SHAPE_ROWS := 6
+const BTN_BLOCK := Rect2(110, 150, 200, 64)    ## the rack-choice screen
+const BTN_SHAPES := Rect2(330, 150, 200, 64)
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 const PHYSICS_HZ := 120              ## a fast ball through thin pins needs it; restored on exit
 
@@ -50,7 +58,11 @@ var _pin_mm: Array = []              ## [MultiMeshInstance3D, Vector3 offset] pe
 var _standing := 0                   ## pins up at the start of this throw
 var _throws: Array = []              ## pins knocked per throw, the whole game
 var _racks := 0                      ## racks cleared
-var _state := "aim"                  ## aim | rolling | reset | over
+var _mode := ""                      ## block | shapes, chosen on the first screen
+var _rack_size := 0                  ## pins in a fresh rack of the current mode
+var _menu: Node2D                    ## the rack-choice screen
+var _menu_pick := 0                  ## 0 = block, 1 = shapes (keys move it, A picks)
+var _state := "menu"                 ## menu | aim | rolling | reset | over
 var _t := 0.0
 var _roll_t := 0.0
 var _quiet_t := 0.0
@@ -83,16 +95,17 @@ func start(_config: Dictionary) -> void:
 	sun.shadow_enabled = true
 	sun.directional_shadow_max_distance = 45.0
 	sun.rotation_degrees = Vector3(-58, 24, 0)
-	cam.fov = 48.0
+	cam.fov = 50.0
 	_cam_pos = _rest_cam_pos()
 	_cam_target = _rest_cam_target()
 	look_from(_cam_pos, _cam_target)
 	_build_lane()
 	_build_ball()
 	_build_pin_meshes()
-	_rack()
 	_build_ui()
-	_refresh_strip()
+	_strip.visible = false
+	_hint.visible = false
+	_build_menu()
 	Probe.event("start")
 
 func _exit_tree() -> void:
@@ -277,6 +290,86 @@ func _build_ui() -> void:
 	_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_hint)
 
+## ---- the rack-choice screen -----------------------------------------------------------------
+
+## Two buttons over the empty lane. ColorRect + Label with the mouse ignored and a
+## Rect2 test in _input, not real Buttons: _input runs before the GUI would.
+func _build_menu() -> void:
+	_menu = Node2D.new()
+	add_child(_menu)
+	var title := Label.new()
+	title.text = "bowling"
+	title.add_theme_font_size_override("font_size", 40)
+	title.add_theme_color_override("font_color", Palette.col("player"))
+	title.position = Vector2(0, 62)
+	title.size = Vector2(640, 50)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_menu.add_child(title)
+	var sub := Label.new()
+	sub.text = "pick a rack"
+	sub.add_theme_font_size_override("font_size", 14)
+	sub.add_theme_color_override("font_color", Palette.col("accent"))
+	sub.position = Vector2(0, 112)
+	sub.size = Vector2(640, 20)
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_menu.add_child(sub)
+	for i in 2:
+		var r: Rect2 = BTN_BLOCK if i == 0 else BTN_SHAPES
+		var edge := ColorRect.new()
+		edge.name = "edge%d" % i
+		edge.position = r.position - Vector2(3, 3)
+		edge.size = r.size + Vector2(6, 6)
+		edge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_menu.add_child(edge)
+		var box := ColorRect.new()
+		box.color = Palette.col("player" if i == 0 else "prize")
+		box.position = r.position
+		box.size = r.size
+		box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_menu.add_child(box)
+		var l := Label.new()
+		l.text = "100 pins" if i == 0 else "random shapes"
+		l.add_theme_font_size_override("font_size", 22)
+		l.add_theme_color_override("font_color", Palette.col("bg"))
+		l.position = r.position
+		l.size = r.size
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_menu.add_child(l)
+		var blurb := Label.new()
+		blurb.text = "a wall of a hundred, ten throws" if i == 0 else "twenty pins in a random shape,\nholes and all. clear it, get another"
+		blurb.add_theme_font_size_override("font_size", 11)
+		blurb.add_theme_color_override("font_color", Palette.col("ink"))
+		blurb.modulate.a = 0.75
+		blurb.position = Vector2(r.position.x, r.end.y + 6)
+		blurb.size = Vector2(r.size.x, 34)
+		blurb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		blurb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_menu.add_child(blurb)
+	_menu_highlight()
+
+func _menu_highlight() -> void:
+	for i in 2:
+		var edge: ColorRect = _menu.get_node("edge%d" % i)
+		edge.color = Palette.col("ink") if i == _menu_pick else Palette.col("bg")
+
+func _choose(mode: String) -> void:
+	if _state != "menu":
+		return
+	_mode = mode
+	Audio.play("select")
+	_menu.queue_free()
+	_menu = null
+	_rack()
+	_strip.visible = true
+	_hint.visible = true
+	_state = "aim"
+	_refresh_strip()
+	Probe.event("begin", {"mode": mode})
+
 ## ---- pins ----------------------------------------------------------------------------
 
 ## A hundred pins are drawn as three instanced meshes (body, head, neck band) whose
@@ -352,19 +445,60 @@ func _make_pin(at: Vector3) -> RigidBody3D:
 	track3d(p, "*")
 	return p
 
-## A full rack: PIN_ROWS staggered rows of PIN_COLS, the nearest row at RACK_FRONT_Z.
+## A fresh rack for the current mode, the nearest row at RACK_FRONT_Z.
 func _rack() -> void:
 	for p in _pins:
 		if is_instance_valid(p):
 			p.queue_free()
 	_pins.clear()
-	for row in PIN_ROWS:
-		var shift := 0.15 if row % 2 == 1 else -0.15
-		for col in PIN_COLS:
-			var x := (col - (PIN_COLS - 1) * 0.5) * PIN_DX + shift
-			_pins.append(_make_pin(Vector3(x, 0, RACK_FRONT_Z - row * PIN_DZ)))
+	if _mode == "shapes":
+		var cells := _random_shape()
+		var minc := Vector2i(SHAPE_COLS, SHAPE_ROWS)
+		var maxc := Vector2i(0, 0)
+		for c: Vector2i in cells:
+			minc = Vector2i(mini(minc.x, c.x), mini(minc.y, c.y))
+			maxc = Vector2i(maxi(maxc.x, c.x), maxi(maxc.y, c.y))
+		var mid_x := (minc.x + maxc.x) * 0.5
+		for c: Vector2i in cells:
+			_pins.append(_make_pin(Vector3((c.x - mid_x) * SHAPE_DX, 0, RACK_FRONT_Z - (c.y - minc.y) * SHAPE_DX)))
+		Probe.event("shape", {"pins": cells.size()})
+	else:
+		for row in PIN_ROWS:
+			var shift := 0.15 if row % 2 == 1 else -0.15
+			for col in PIN_COLS:
+				var x := (col - (PIN_COLS - 1) * 0.5) * PIN_DX + shift
+				_pins.append(_make_pin(Vector3(x, 0, RACK_FRONT_Z - row * PIN_DZ)))
+	_rack_size = _pins.size()
 	_standing = _pins.size()
 	_sync_pin_meshes()
+
+## SHAPE_PINS cells on a SHAPE_COLS x SHAPE_ROWS grid. Mostly a blob grown from a seed
+## cell by adding random neighbours, which wraps round empty cells often enough to leave
+## holes; now and then a hollow ring, which is nothing but hole.
+func _random_shape() -> Array:
+	var cells: Array = []
+	if randf() < 0.3:
+		var dims: Array = [[6, 6], [7, 5]]
+		var d: Array = dims[randi() % dims.size()]
+		var w: int = d[0]
+		var h: int = d[1]
+		var ox := (SHAPE_COLS - w) / 2
+		for x in w:
+			for y in h:
+				if x == 0 or y == 0 or x == w - 1 or y == h - 1:
+					cells.append(Vector2i(ox + x, y))
+		return cells
+	var seed := Vector2i(SHAPE_COLS / 2 + randi_range(-1, 1), SHAPE_ROWS / 2 + randi_range(-1, 1))
+	cells.append(seed)
+	var guard := 0
+	while cells.size() < SHAPE_PINS and guard < 5000:
+		guard += 1
+		var from: Vector2i = cells[randi() % cells.size()]
+		var n: Vector2i = from + [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)][randi() % 4]
+		if n.x < 0 or n.y < 0 or n.x >= SHAPE_COLS or n.y >= SHAPE_ROWS or cells.has(n):
+			continue
+		cells.append(n)
+	return cells
 
 func _pin_up(p: RigidBody3D) -> bool:
 	if not is_instance_valid(p) or float(p.get_meta("swept")) >= 0.0:
@@ -470,7 +604,7 @@ func _tally() -> void:
 	var deck := to_screen(Vector3(0, 1.6, RACK_FRONT_Z - 2.5))
 	if cleared:
 		Probe.event("rack_cleared")
-		Juice.text(self, deck, "CLEARED! +%d" % (knocked + CLEAR_BONUS), Palette.col("prize"))
+		Juice.text(self, deck, "CLEARED! +%d" % (knocked + _clear_bonus()), Palette.col("prize"))
 		Audio.play("voice_congratulations")
 		hit3d(7.0)
 		_sparks(Vector3(0, 0.8, RACK_FRONT_Z - 2.5), 18)
@@ -489,7 +623,7 @@ func _tally() -> void:
 	else:
 		Juice.text(self, deck, "miss", Palette.col("hazard"))
 	Probe.event("pins_down", {"n": knocked, "left": up})
-	add_score(knocked + (CLEAR_BONUS if cleared else 0))
+	add_score(knocked + (_clear_bonus() if cleared else 0))
 	_refresh_strip()
 
 	# fallen pins shrink away; the rest stay exactly where they are
@@ -497,6 +631,9 @@ func _tally() -> void:
 		if not _pin_up(p):
 			p.set_meta("swept", _t + RESET_DELAY * 0.5)
 	get_tree().create_timer(RESET_DELAY).timeout.connect(_reset.bind(_throws.size() >= THROWS, cleared))
+
+func _clear_bonus() -> int:
+	return int(round(_rack_size * CLEAR_BONUS))
 
 func _reset(game_over: bool, cleared: bool) -> void:
 	if finished:
@@ -567,13 +704,13 @@ func _sparks(at: Vector3, n: int) -> void:
 
 ## ---- per frame -----------------------------------------------------------------------------
 
-## Looking down at the lane, steeply enough that it reads as a rectangle and the whole of
-## it is on screen to tap, low enough that the pins are still pins.
+## Behind and above the ball, looking down the lane at about 35 degrees: the whole lane
+## is on screen to tap, and the pins at the far end are still pins.
 func _rest_cam_pos() -> Vector3:
-	return Vector3(_aim_x * 0.3, 17.0, BALL_START_Z + 8.3)
+	return Vector3(_aim_x * 0.3, 11.0, BALL_START_Z + 9.0)
 
 func _rest_cam_target() -> Vector3:
-	return Vector3(_aim_x * 0.15, 0.0, -5.5)
+	return Vector3(_aim_x * 0.15, 0.0, -6.0)
 
 func _process(delta: float) -> void:
 	if finished:
@@ -581,7 +718,14 @@ func _process(delta: float) -> void:
 	_t += delta
 	_sfx_t -= delta
 
-	if _state == "aim":
+	if _state == "menu":
+		if PInput.just_pressed("move_left") or PInput.just_pressed("move_right"):
+			_menu_pick = 1 - _menu_pick
+			_menu_highlight()
+			Audio.play("click")
+		if PInput.just_pressed("action_a"):
+			_choose("block" if _menu_pick == 0 else "shapes")
+	elif _state == "aim":
 		var d := PInput.dir()
 		if d.x != 0.0:
 			_aim_x = clampf(_aim_x + d.x * SLIDE_SPEED * delta, -(LANE_W * 0.5 - BALL_R - 0.1), LANE_W * 0.5 - BALL_R - 0.1)
@@ -604,10 +748,10 @@ func _process(delta: float) -> void:
 		var bp := _ball.global_position
 		var bz := clampf(bp.z, RACK_FRONT_Z + 1.5, BALL_START_Z)
 		var bx := clampf(bp.x, -2.0, 2.0)
-		want_pos = Vector3(bx * 0.5, 9.0 + maxf(0.0, bp.y - BALL_R) * 0.5, bz + 7.5)
-		want_target = Vector3(bx * 0.3, 0.0, bz - 6.0)
+		want_pos = Vector3(bx * 0.5, 6.0 + maxf(0.0, bp.y - BALL_R) * 0.5, bz + 7.5)
+		want_target = Vector3(bx * 0.3, 0.0, bz - 7.0)
 		if _state == "reset":
-			want_pos = Vector3(0, 8.0, RACK_FRONT_Z + 8.0)
+			want_pos = Vector3(0, 5.5, RACK_FRONT_Z + 8.0)
 			want_target = Vector3(0, 0.3, RACK_FRONT_Z - 2.5)
 	var k := 1.0 - exp(-delta * (5.0 if _state == "rolling" else 3.0))
 	_cam_pos = _cam_pos.lerp(want_pos, k)
@@ -640,6 +784,14 @@ func _input(e: InputEvent) -> void:
 	if finished:
 		return
 	if e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT:
+		if e.pressed and _state == "menu":
+			if Flow.pointer_over_hud():
+				return
+			if BTN_BLOCK.has_point(e.position):
+				_choose("block")
+			elif BTN_SHAPES.has_point(e.position):
+				_choose("shapes")
+			return
 		if e.pressed:
 			if Flow.pointer_over_hud() or _state != "aim":
 				_drag = false
