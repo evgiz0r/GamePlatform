@@ -5,8 +5,9 @@ extends GameMode3D
 ## the lane has bumpers, not gutters. Real rigid bodies: the ball rolls, the pins tumble,
 ## scatter and take each other out. Keys and pad: left/right slide the ball along the foul
 ## line, up/down move the landing spot, A throws -- which is also how the bots play.
-## Two racks to pick from at the start: the hundred-pin block, or twenty pins in a random
-## shape (blobs that can have holes in them, hollow rings), a new shape every rack.
+## Two games to pick from at the start: the hundred-pin block on a whole lane, or "random
+## ground": the lane past the approach is a random patchwork of floor tiles with holes in
+## it, twenty pins scattered over the tiles, and a ball that misses the floor is gone.
 ## The camera looks down the lane from behind and above, so all of it is on screen to tap.
 
 const LANE_W := 6.4                  ## wide: ten pins abreast with room to bank off the walls
@@ -39,10 +40,12 @@ const ROLL_TIMEOUT := 7.0            ## a wobbling pin does not get to hold the 
 const RESET_DELAY := 1.0             ## seconds to admire the wreckage before the sweep
 const THROWS := 10
 const CLEAR_BONUS := 0.5             ## for knocking down every last pin: this times the rack size (then a fresh rack)
-const SHAPE_PINS := 20               ## the random-shape rack
-const SHAPE_DX := 0.72               ## its grid; square so holes read as holes, tight so the ball cannot slip between columns
-const SHAPE_COLS := 7
-const SHAPE_ROWS := 6
+const GROUND_PINS := 20              ## random ground: pins scattered over the tiles
+const TILE := 1.6                    ## floor tile size; the patchwork is TILE_COLS x TILE_ROWS of them
+const TILE_COLS := 4
+const TILE_ROWS := 8
+const TILE_FRONT_Z := -5.0           ## the approach lane ends here; the tiles start
+const TILES_KEPT := 19               ## of 32: enough floor to play on, enough holes to fall in
 const BTN_BLOCK := Rect2(110, 150, 200, 64)    ## the rack-choice screen
 const BTN_SHAPES := Rect2(330, 150, 200, 64)
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
@@ -58,10 +61,11 @@ var _pin_mm: Array = []              ## [MultiMeshInstance3D, Vector3 offset] pe
 var _standing := 0                   ## pins up at the start of this throw
 var _throws: Array = []              ## pins knocked per throw, the whole game
 var _racks := 0                      ## racks cleared
-var _mode := ""                      ## block | shapes, chosen on the first screen
+var _mode := ""                      ## block | ground, chosen on the first screen
+var _floor: Array = []               ## the lane surface (and board lines) of the current mode
 var _rack_size := 0                  ## pins in a fresh rack of the current mode
 var _menu: Node2D                    ## the rack-choice screen
-var _menu_pick := 0                  ## 0 = block, 1 = shapes (keys move it, A picks)
+var _menu_pick := 0                  ## 0 = block, 1 = ground (keys move it, A picks)
 var _state := "menu"                 ## menu | aim | rolling | reset | over
 var _t := 0.0
 var _roll_t := 0.0
@@ -146,11 +150,7 @@ func _box(size: Vector3, at: Vector3, m: Material, solid: bool = false, bounce: 
 func _build_lane() -> void:
 	var length := LANE_LEN + APPROACH
 	var mid_z := (APPROACH - LANE_LEN) * 0.5
-	# the lane: a polished slab from the approach to the pit
-	_box(Vector3(LANE_W, 0.4, length), Vector3(0, -0.2, mid_z), mat("bg_alt", 0.18, 0.22), true, 0.15)
-	# faint board lines down the lane
-	for i in range(1, 8):
-		_box(Vector3(0.02, 0.011, length), Vector3(-LANE_W * 0.5 + i * LANE_W / 8.0, 0.0055, mid_z), mat("ink", 0.02, 0.6))
+	# the lane surface itself is per mode: _build_floor()
 	# bumpers: a glowing rail you see, and a tall invisible wall so a flying ball cannot
 	# clear it. Both bounce, so a bank shot comes back with most of its speed.
 	for side: float in [-1.0, 1.0]:
@@ -163,7 +163,7 @@ func _build_lane() -> void:
 	_box(Vector3(LANE_W, 0.012, 0.06), Vector3(0, 0.006, 0.0), mat("hazard", 0.9))
 	for i in range(-3, 4):
 		var ax := i * (LANE_W / 8.0)
-		var az := -4.6 - (3 - absi(i)) * 0.45
+		var az := -2.4 - (3 - absi(i)) * 0.4
 		_box(Vector3(0.09, 0.012, 0.42), Vector3(ax, 0.006, az), mat("accent", 0.9))
 	# the pit: a floor well below the deck so knocked pins tumble out of sight, walled in
 	_box(Vector3(LANE_W + 0.8, 0.2, 3.0), Vector3(0, -1.6, -LANE_LEN - 1.5), mat("bg", 0.0), true)
@@ -183,14 +183,66 @@ func _build_lane() -> void:
 		bulb.mesh = sm
 		bulb.position = Vector3(-3.5 + i * 0.5, 2.75, -LANE_LEN - 2.25)
 		world.add_child(bulb)
-	# a wide dark floor under everything so the world has a ground
-	var ground := MeshInstance3D.new()
-	var gm := PlaneMesh.new()
-	gm.size = Vector2(70, 70)
-	gm.material = mat("bg", 0.0, 1.0)
-	ground.mesh = gm
-	ground.position = Vector3(0, -1.8, -8)
-	world.add_child(ground)
+	# a wide dark floor under everything: the world has a ground, and whatever falls
+	# through a hole in the random one lands on it in plain view
+	_box(Vector3(70, 0.2, 70), Vector3(0, -1.9, -8), mat("bg", 0.0, 1.0), true)
+
+## The lane surface for the mode: the whole lane as one polished slab, or the approach
+## slab and then a random patchwork of tiles with holes, grown from the approach so it
+## is always reachable. Board lines only where there is a whole lane to draw them on.
+func _build_floor() -> Array:
+	for n in _floor:
+		if is_instance_valid(n):
+			n.queue_free()
+	_floor.clear()
+	var cells: Array = []
+	if _mode == "ground":
+		var length := APPROACH - TILE_FRONT_Z
+		var mid_z := (APPROACH + TILE_FRONT_Z) * 0.5
+		_floor.append(_box(Vector3(LANE_W, 0.4, length), Vector3(0, -0.2, mid_z), mat("bg_alt", 0.18, 0.22), true, 0.15))
+		for i in range(1, 8):
+			_floor.append(_box(Vector3(0.02, 0.011, length), Vector3(-LANE_W * 0.5 + i * LANE_W / 8.0, 0.0055, mid_z), mat("ink", 0.02, 0.6)))
+		cells = _random_ground()
+		for c: Vector2i in cells:
+			var at := _tile_centre(c)
+			_floor.append(_box(Vector3(TILE, 0.4, TILE), Vector3(at.x, -0.2, at.z), mat("bg_alt", 0.18, 0.22), true, 0.15))
+			# a thin glowing lip on every tile edge that faces a hole, so the holes read
+			for d: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var n := c + d
+				var open: bool = not cells.has(n) and n.x >= 0 and n.x < TILE_COLS and n.y >= 0 and n.y < TILE_ROWS
+				if open:
+					var lip_size := Vector3(TILE, 0.03, 0.06) if d.x == 0 else Vector3(0.06, 0.03, TILE)
+					var lip_at := Vector3(at.x + d.x * (TILE * 0.5 - 0.03), 0.01, at.z - d.y * (TILE * 0.5 - 0.03))
+					_floor.append(_box(lip_size, lip_at, mat("warn", 0.8)))
+	else:
+		var length := LANE_LEN + APPROACH
+		var mid_z := (APPROACH - LANE_LEN) * 0.5
+		_floor.append(_box(Vector3(LANE_W, 0.4, length), Vector3(0, -0.2, mid_z), mat("bg_alt", 0.18, 0.22), true, 0.15))
+		for i in range(1, 8):
+			_floor.append(_box(Vector3(0.02, 0.011, length), Vector3(-LANE_W * 0.5 + i * LANE_W / 8.0, 0.0055, mid_z), mat("ink", 0.02, 0.6)))
+	return cells
+
+func _tile_centre(c: Vector2i) -> Vector3:
+	return Vector3((c.x - (TILE_COLS - 1) * 0.5) * TILE, 0.0, TILE_FRONT_Z - (c.y + 0.5) * TILE)
+
+## TILES_KEPT cells of the TILE_COLS x TILE_ROWS grid (row 0 touches the approach),
+## grown from two or three random front-row cells by adding random neighbours. The
+## growth wanders and leaves holes behind; sometimes a whole side is missing.
+func _random_ground() -> Array:
+	var cells: Array = []
+	var front: Array = range(TILE_COLS)
+	front.shuffle()
+	for i in randi_range(2, 3):
+		cells.append(Vector2i(front[i], 0))
+	var guard := 0
+	while cells.size() < TILES_KEPT and guard < 5000:
+		guard += 1
+		var from: Vector2i = cells[randi() % cells.size()]
+		var n: Vector2i = from + [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, 1), Vector2i(0, -1)][randi() % 5]
+		if n.x < 0 or n.y < 0 or n.x >= TILE_COLS or n.y >= TILE_ROWS or cells.has(n):
+			continue
+		cells.append(n)
+	return cells
 
 func _build_ball() -> void:
 	_ball = RigidBody3D.new()
@@ -330,7 +382,7 @@ func _build_menu() -> void:
 		box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_menu.add_child(box)
 		var l := Label.new()
-		l.text = "100 pins" if i == 0 else "random shapes"
+		l.text = "100 pins" if i == 0 else "random ground"
 		l.add_theme_font_size_override("font_size", 22)
 		l.add_theme_color_override("font_color", Palette.col("bg"))
 		l.position = r.position
@@ -340,7 +392,7 @@ func _build_menu() -> void:
 		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_menu.add_child(l)
 		var blurb := Label.new()
-		blurb.text = "a wall of a hundred, ten throws" if i == 0 else "twenty pins in a random shape,\nholes and all. clear it, get another"
+		blurb.text = "a wall of a hundred, ten throws" if i == 0 else "the floor is a random shape with holes,\ntwenty pins on it. clear it, get another"
 		blurb.add_theme_font_size_override("font_size", 11)
 		blurb.add_theme_color_override("font_color", Palette.col("ink"))
 		blurb.modulate.a = 0.75
@@ -363,6 +415,8 @@ func _choose(mode: String) -> void:
 	Audio.play("select")
 	_menu.queue_free()
 	_menu = null
+	if _mode != "ground":
+		_build_floor()
 	_rack()
 	_strip.visible = true
 	_hint.visible = true
@@ -451,17 +505,21 @@ func _rack() -> void:
 		if is_instance_valid(p):
 			p.queue_free()
 	_pins.clear()
-	if _mode == "shapes":
-		var cells := _random_shape()
-		var minc := Vector2i(SHAPE_COLS, SHAPE_ROWS)
-		var maxc := Vector2i(0, 0)
+	if _mode == "ground":
+		# a new floor every rack, and the pins on four slots per tile, twenty of them at
+		# random, never on the front row (that is where the ball arrives)
+		var cells := _build_floor()
+		var slots: Array = []
 		for c: Vector2i in cells:
-			minc = Vector2i(mini(minc.x, c.x), mini(minc.y, c.y))
-			maxc = Vector2i(maxi(maxc.x, c.x), maxi(maxc.y, c.y))
-		var mid_x := (minc.x + maxc.x) * 0.5
-		for c: Vector2i in cells:
-			_pins.append(_make_pin(Vector3((c.x - mid_x) * SHAPE_DX, 0, RACK_FRONT_Z - (c.y - minc.y) * SHAPE_DX)))
-		Probe.event("shape", {"pins": cells.size()})
+			if c.y == 0:
+				continue
+			var at := _tile_centre(c)
+			for off in [Vector3(-0.4, 0, -0.4), Vector3(0.4, 0, -0.4), Vector3(-0.4, 0, 0.4), Vector3(0.4, 0, 0.4)]:
+				slots.append(at + off)
+		slots.shuffle()
+		for i in mini(GROUND_PINS, slots.size()):
+			_pins.append(_make_pin(slots[i]))
+		Probe.event("ground", {"tiles": cells.size(), "pins": _pins.size()})
 	else:
 		for row in PIN_ROWS:
 			var shift := 0.15 if row % 2 == 1 else -0.15
@@ -471,34 +529,6 @@ func _rack() -> void:
 	_rack_size = _pins.size()
 	_standing = _pins.size()
 	_sync_pin_meshes()
-
-## SHAPE_PINS cells on a SHAPE_COLS x SHAPE_ROWS grid. Mostly a blob grown from a seed
-## cell by adding random neighbours, which wraps round empty cells often enough to leave
-## holes; now and then a hollow ring, which is nothing but hole.
-func _random_shape() -> Array:
-	var cells: Array = []
-	if randf() < 0.3:
-		var dims: Array = [[6, 6], [7, 5]]
-		var d: Array = dims[randi() % dims.size()]
-		var w: int = d[0]
-		var h: int = d[1]
-		var ox := (SHAPE_COLS - w) / 2
-		for x in w:
-			for y in h:
-				if x == 0 or y == 0 or x == w - 1 or y == h - 1:
-					cells.append(Vector2i(ox + x, y))
-		return cells
-	var seed := Vector2i(SHAPE_COLS / 2 + randi_range(-1, 1), SHAPE_ROWS / 2 + randi_range(-1, 1))
-	cells.append(seed)
-	var guard := 0
-	while cells.size() < SHAPE_PINS and guard < 5000:
-		guard += 1
-		var from: Vector2i = cells[randi() % cells.size()]
-		var n: Vector2i = from + [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)][randi() % 4]
-		if n.x < 0 or n.y < 0 or n.x >= SHAPE_COLS or n.y >= SHAPE_ROWS or cells.has(n):
-			continue
-		cells.append(n)
-	return cells
 
 func _pin_up(p: RigidBody3D) -> bool:
 	if not is_instance_valid(p) or float(p.get_meta("swept")) >= 0.0:
@@ -724,7 +754,7 @@ func _process(delta: float) -> void:
 			_menu_highlight()
 			Audio.play("click")
 		if PInput.just_pressed("action_a"):
-			_choose("block" if _menu_pick == 0 else "shapes")
+			_choose("block" if _menu_pick == 0 else "ground")
 	elif _state == "aim":
 		var d := PInput.dir()
 		if d.x != 0.0:
@@ -790,7 +820,7 @@ func _input(e: InputEvent) -> void:
 			if BTN_BLOCK.has_point(e.position):
 				_choose("block")
 			elif BTN_SHAPES.has_point(e.position):
-				_choose("shapes")
+				_choose("ground")
 			return
 		if e.pressed:
 			if Flow.pointer_over_hud() or _state != "aim":

@@ -1,7 +1,7 @@
 # bowling
 
-The kit's third 3D game: real physics, one wide lane, a wall of pins or a random shape of
-them, nobody to beat but yourself.
+The kit's third 3D game: real physics, one wide lane, a wall of pins or a floor with
+holes in it, nobody to beat but yourself.
 
 ## What is it called?
 
@@ -13,10 +13,14 @@ A bowler on one lane of a neon alley, alone, chasing your own best score. There 
 opponent and no clock: ten throws, then the total goes on the high score table. The
 first screen asks which rack you want:
 
-- **100 pins**: a ten-by-ten wall of them.
-- **random shapes**: twenty pins in a random shape on a square grid. Mostly blobs grown
-  from a seed pin, which often wrap around an empty cell and leave a hole; sometimes a
-  hollow ring, which is all hole. Clear it and the next throw gets a new shape.
+- **100 pins**: a ten-by-ten wall of them on a whole lane.
+- **random ground**: past the approach, the lane floor itself is a random shape. It is
+  a patchwork of big tiles grown out from the end of the approach, with holes where the
+  growth wandered past, and sometimes a whole side missing; a glowing lip marks every
+  edge that drops off. Twenty pins are scattered over the tiles. A ball that lands on
+  a hole, or rolls into one, drops out of play and the throw is over; so do pins that
+  get knocked off the edge, which counts. Clear the pins and the next throw gets a new
+  floor and a new scatter.
 
 ## What do you do?
 
@@ -37,7 +41,8 @@ Only the rack. A ball carves a channel through it and knocks down the pins in it
 and the ones they fall onto; the next throw has to go somewhere fresh. Fallen pins are
 swept away after every throw, the standing ones stay exactly where they were pushed to.
 Every pin down is a point. Knock down the last one and it is a bonus of half the rack
-(+50 on the wall, +10 on a shape) and a fresh rack for the throws you have left.
+(+50 on the wall, +10 on the random ground) and a fresh rack for the throws you have
+left.
 
 ## How do you win?
 
@@ -58,4 +63,5 @@ A strip along the bottom keeps the pins per throw and how many are still up.
 
 ## Core loop
 
-Pick a rack. Tap, watch the pins scatter, find the next gap, throw again. Ten throws.
+Pick a game. Tap, watch the pins scatter, find the next gap (or the next island),
+throw again. Ten throws.
