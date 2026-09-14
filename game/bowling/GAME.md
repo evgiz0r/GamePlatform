@@ -15,15 +15,15 @@ high score table.
 
 ## What do you do?
 
-Swipe up to throw. The ball flies through the air, lands, rolls, and ploughs into the
-rack. The angle of the swipe aims it, how fast you flick is how far it flies (a hard
-flick lands it right in the middle of the rack; a gentle one drops it early and lets it
-roll in), and a swipe that bends makes the ball hook after it lands. The lane has
-bumpers, not gutters: the ball banks off the walls and keeps most of its speed, so a bank
-shot into the side of the rack is a real tactic.
+Tap where the ball should land. It flies there, lands, rolls on and ploughs into the
+rack. A farther spot is a harder throw (tap the middle of the rack and it drops straight
+into it; tap short and it rolls the rest of the way in). Hold and drag to move the
+landing marker, let go to throw. The lane has bumpers, not gutters: the ball banks off
+the walls and keeps most of its speed, so a spot past a wall is a bank shot into the
+side of the rack.
 
-Keys and pad: left and right slide the ball along the foul line, A throws it straight,
-hard enough to land just short of the rack. That is also how the bots play it.
+Keys and pad: left and right slide the ball along the foul line, up and down move the
+landing spot, A throws. That is also how the bots play it.
 
 ## What is trying to stop you?
 
@@ -44,8 +44,10 @@ and that playtest check fails on purpose.
 A wide lane at night: a polished dark lane with board lines between two glowing pink
 bumpers, arrows on the boards, a crowd of white pins with red bands filling the far end,
 a glossy ball with three finger holes so you can see it roll, and a masking unit with a
-row of marquee bulbs over the deck. The camera rides down the lane behind the ball,
-lifts with it while it flies, watches the pins go, and glides back for the next throw.
+row of marquee bulbs over the deck. The camera looks down on the lane from high behind
+the ball, steeply enough that the lane reads as a flat rectangle with the whole of it on
+screen to tap; it rides down the lane behind the ball, watches the pins go, and glides
+back for the next throw.
 A strip along the bottom keeps the pins per throw and how many are still up.
 
 ## Core loop

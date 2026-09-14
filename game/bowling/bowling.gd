@@ -1,11 +1,11 @@
 extends GameMode3D
 ## bowling -- a hundred pins on one wide neon lane, ten throws, nobody to beat but your own
-## best. Swipe up to throw: the ball flies, lands, rolls, and ploughs into the rack. The
-## angle of the swipe aims, its speed is how far it flies, and a swipe that bends makes
-## the ball hook after it lands. The lane has bumpers, not gutters: the ball banks off the
-## walls, so a bank shot is a real tactic. Real rigid bodies: the ball rolls, the pins
-## tumble, scatter and take each other out. Keys and pad slide the ball along the foul
-## line and A throws it straight, which is also how the bots play. See GAME.md.
+## best. Tap where the ball should land: it flies there, lands, rolls on and ploughs into
+## the rack. A farther spot is a harder throw; a spot past a wall is a bank shot, because
+## the lane has bumpers, not gutters. Real rigid bodies: the ball rolls, the pins tumble,
+## scatter and take each other out. Keys and pad: left/right slide the ball along the foul
+## line, up/down move the landing spot, A throws -- which is also how the bots play.
+## The camera looks down on the lane so the whole thing is on screen to tap. See GAME.md.
 
 const LANE_W := 6.4                  ## wide: ten pins abreast with room to bank off the walls
 const LANE_LEN := 18.0               ## foul line at z=0, the pit starts at z=-LANE_LEN
@@ -24,14 +24,13 @@ const PIN_DZ := 0.6                  ## between rows
 const RACK_FRONT_Z := -12.6          ## the nearest row
 const PIT_Z := -LANE_LEN - 1.2       ## anything past here (or under the floor) is gone
 const LAUNCH_DEG := 28.0             ## the ball leaves the hand at this angle, always
-const SPEED_MIN := 9.0               ## slowest and fastest a swipe can send the ball ...
-const SPEED_MAX := 22.0              ## ... the fastest lands in the middle of the rack
-const KEY_SPEED := 19.0              ## the A button (and the bots) throw at this: lands just short of the rack
-const AIM_MAX_DEG := 32.0            ## how far off straight a throw can go (bank shots!)
-const HOOK_MAX := 3.0                ## sideways acceleration of a fully bent swipe, units/s^2
+const SPEED_MIN := 8.0               ## slowest and fastest throw; the speed is solved from
+const SPEED_MAX := 23.0              ## ... where you tapped, so far taps are hard throws
+const DIST_MIN := 2.0                ## a landing spot closer than this is a tap on the ball, not a throw
+const DIST_MAX := 17.0               ## the far end of the rack; keys cannot ask for more
+const KEY_DIST_START := 13.0         ## where the keyboard landing spot starts (the front of the rack)
+const KEY_DIST_SPEED := 6.0          ## up/down move it this fast, units per second
 const SLIDE_SPEED := 3.0             ## foul-line slide on the keys, units per second
-const SWIPE_MIN_PX := 28.0           ## shorter than this is a tap, not a throw
-const SWIPE_HOOK_PX := 70.0          ## a swipe needs this much length before its bend counts
 const GRAVITY_SCALE := 2.5           ## Earth gravity at this scale looks like the moon
 const SETTLE := 0.7                  ## everything quiet this long -> count the pins
 const ROLL_TIMEOUT := 7.0            ## a wobbling pin does not get to hold the game up
@@ -42,7 +41,10 @@ const SFX_SCALE := 0.28              ## the shell default is loud; in memory onl
 const PHYSICS_HZ := 120              ## a fast ball through thin pins needs it; restored on exit
 
 var _ball: RigidBody3D
-var _guide: MeshInstance3D           ## the aim line on the lane while you swipe
+var _marker: Node3D                  ## the landing spot on the lane while you aim
+var _guide: MeshInstance3D           ## the line from the ball to it
+var _target := Vector3.ZERO          ## where the ball will land (world, on the lane)
+var _key_dist := KEY_DIST_START      ## landing distance chosen on the keys
 var _pins: Array = []                ## RigidBody3D, meta: swept (float, -1 = standing)
 var _pin_mm: Array = []              ## [MultiMeshInstance3D, Vector3 offset] per drawn part
 var _standing := 0                   ## pins up at the start of this throw
@@ -52,14 +54,12 @@ var _state := "aim"                  ## aim | rolling | reset | over
 var _t := 0.0
 var _roll_t := 0.0
 var _quiet_t := 0.0
-var _hook := 0.0                     ## sideways acceleration on the ball this throw
 var _aim_x := 0.0
 var _airborne := false
 var _sfx_t := 0.0                    ## throttle for pin clatter
 var _cam_pos := Vector3.ZERO
 var _cam_target := Vector3.ZERO
 var _drag := false
-var _drag_pts: Array = []            ## [Vector2 screen, float seconds]
 var _strip: Label
 var _hint: Label
 var _sfx_was := 0.8
@@ -83,7 +83,7 @@ func start(_config: Dictionary) -> void:
 	sun.shadow_enabled = true
 	sun.directional_shadow_max_distance = 45.0
 	sun.rotation_degrees = Vector3(-58, 24, 0)
-	cam.fov = 58.0
+	cam.fov = 48.0
 	_cam_pos = _rest_cam_pos()
 	_cam_target = _rest_cam_target()
 	look_from(_cam_pos, _cam_target)
@@ -221,10 +221,30 @@ func _build_ball() -> void:
 	_ball.body_entered.connect(_on_ball_hit)
 	track3d(_ball, "@")
 
+	# the landing spot: a glowing ring on the lane, and a thin line from the ball to it
+	_marker = Node3D.new()
+	var ring := MeshInstance3D.new()
+	var tm := TorusMesh.new()
+	tm.inner_radius = 0.3
+	tm.outer_radius = 0.42
+	tm.material = mat("player", 0.9)
+	ring.mesh = tm
+	ring.position = Vector3(0, 0.02, 0)
+	_marker.add_child(ring)
+	var dot := MeshInstance3D.new()
+	var dm := SphereMesh.new()
+	dm.radius = 0.08
+	dm.height = 0.16
+	dm.material = mat("player", 1.0)
+	dot.mesh = dm
+	dot.position = Vector3(0, 0.05, 0)
+	_marker.add_child(dot)
+	_marker.visible = false
+	world.add_child(_marker)
 	_guide = MeshInstance3D.new()
 	var gm := BoxMesh.new()
-	gm.size = Vector3(0.05, 0.01, 7.0)
-	gm.material = mat("player", 0.7)
+	gm.size = Vector3(0.04, 0.01, 1.0)
+	gm.material = mat("player", 0.5)
 	_guide.mesh = gm
 	_guide.visible = false
 	world.add_child(_guide)
@@ -247,7 +267,7 @@ func _build_ui() -> void:
 	_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_strip)
 	_hint = Label.new()
-	_hint.text = "swipe up to throw, harder flies further  ·  bend it to hook  ·  bank off the walls  ·  arrows slide, A throws"
+	_hint.text = "tap where the ball should land: further is harder, past a wall is a bank shot  ·  arrows aim, A throws"
 	_hint.add_theme_font_size_override("font_size", 10)
 	_hint.add_theme_color_override("font_color", Palette.col("ink"))
 	_hint.modulate.a = 0.6
@@ -356,34 +376,46 @@ func _pin_up(p: RigidBody3D) -> bool:
 
 ## ---- the throw ---------------------------------------------------------------------------
 
-func _throw(aim_deg: float, speed: float, hook: float) -> void:
+## Throw so the ball lands on `target` (a point on the lane): a fixed launch angle, and the
+## speed solved from the distance, so a farther spot is a harder throw. Past DIST_MAX the
+## speed just caps and the ball lands short of the spot, still going that way.
+func _throw_at(target: Vector3) -> void:
 	if _state != "aim" or finished:
 		return
+	var from := _ball.global_position
+	var to := target - from
+	to.y = 0.0
+	var dist := to.length()
+	if dist < DIST_MIN:
+		return
+	var flat := to / dist
+	var up := deg_to_rad(LAUNCH_DEG)
+	var g: float = ProjectSettings.get_setting("physics/3d/default_gravity") * GRAVITY_SCALE
+	# 1.05: the first contact with the lane eats a little of the launch; measured, not derived
+	var speed := clampf(sqrt(minf(dist, DIST_MAX) * 1.05 * g / sin(2.0 * up)), SPEED_MIN, SPEED_MAX)
+	var dir := Vector3(flat.x * cos(up), sin(up), flat.z * cos(up))
 	_state = "rolling"
 	_roll_t = 0.0
 	_quiet_t = 0.0
 	_airborne = true
-	_hook = hook
+	_marker.visible = false
 	_guide.visible = false
-	var a := deg_to_rad(clampf(aim_deg, -AIM_MAX_DEG, AIM_MAX_DEG))
-	var up := deg_to_rad(LAUNCH_DEG)
-	var flat := Vector3(sin(a), 0, -cos(a))
-	var dir := Vector3(flat.x * cos(up), sin(up), flat.z * cos(up))
-	speed = clampf(speed, SPEED_MIN, SPEED_MAX)
 	_ball.freeze = false
+	_ball.linear_damp = 0.0   # no drag in the air, so it lands where the marker was
 	_ball.linear_velocity = dir * speed
 	_ball.angular_velocity = Vector3.UP.cross(flat) * (speed * cos(up) / BALL_R)   # rolling, not sliding, once it lands
 	Audio.play("jump", 0.1)
-	Probe.event("throw", {"aim": snappedf(aim_deg, 0.1), "speed": snappedf(speed, 0.1), "hook": snappedf(hook, 0.1)})
+	Probe.event("throw", {"dist": snappedf(dist, 0.1), "speed": snappedf(speed, 0.1), "x": snappedf(target.x, 0.1)})
+
+## The landing spot the keys (and the bots) ask for: straight ahead, _key_dist away.
+func _key_target() -> Vector3:
+	return _ball.global_position + Vector3(0, 0, -_key_dist)
 
 func _physics_process(delta: float) -> void:
 	if _state != "rolling":
 		return
 	_roll_t += delta
 	var bp := _ball.global_position
-	# the hook: sideways pull while the ball rolls on the lane, ahead of the rack
-	if absf(_hook) > 0.01 and not _airborne and bp.y < BALL_R + 0.05 and bp.z > RACK_FRONT_Z + 0.8:
-		_ball.apply_central_force(Vector3(_hook * BALL_MASS, 0, 0))
 	# done when the ball is gone (or stuck) and the pins have stopped moving
 	var ball_done: bool = bp.z < PIT_Z or bp.y < -1.0 or (_roll_t > 2.0 and _ball.linear_velocity.length() < 0.4)
 	var pins_quiet := true
@@ -402,6 +434,7 @@ func _on_ball_hit(other: Node) -> void:
 	if other is StaticBody3D:
 		if _airborne:
 			_airborne = false
+			_ball.linear_damp = 0.04
 			Audio.play("thud")
 			hit3d(3.0)
 			Probe.event("land", {"z": snappedf(_ball.global_position.z, 0.1)})
@@ -534,11 +567,13 @@ func _sparks(at: Vector3, n: int) -> void:
 
 ## ---- per frame -----------------------------------------------------------------------------
 
+## Looking down at the lane, steeply enough that it reads as a rectangle and the whole of
+## it is on screen to tap, low enough that the pins are still pins.
 func _rest_cam_pos() -> Vector3:
-	return Vector3(_aim_x * 0.4, 4.4, BALL_START_Z + 6.5)
+	return Vector3(_aim_x * 0.3, 17.0, BALL_START_Z + 8.3)
 
 func _rest_cam_target() -> Vector3:
-	return Vector3(_aim_x * 0.2, 0.3, -8.0)
+	return Vector3(_aim_x * 0.15, 0.0, -5.5)
 
 func _process(delta: float) -> void:
 	if finished:
@@ -551,13 +586,14 @@ func _process(delta: float) -> void:
 		if d.x != 0.0:
 			_aim_x = clampf(_aim_x + d.x * SLIDE_SPEED * delta, -(LANE_W * 0.5 - BALL_R - 0.1), LANE_W * 0.5 - BALL_R - 0.1)
 			_ball.global_transform = Transform3D(Basis(), Vector3(_aim_x, BALL_R, BALL_START_Z))
+		if d.y != 0.0:
+			_key_dist = clampf(_key_dist - d.y * KEY_DIST_SPEED * delta, DIST_MIN, DIST_MAX)
+		if not _drag:
+			_target = _key_target()
+			_marker.visible = d != Vector2.ZERO
 		if PInput.just_pressed("action_a"):
-			_throw(0.0, KEY_SPEED, 0.0)
-		_guide.visible = _drag
-		if _drag:
-			var aim: float = _stroke()[0]
-			_guide.rotation.y = -deg_to_rad(aim)
-			_guide.position = Vector3(_aim_x, 0.012, BALL_START_Z) + Vector3(sin(deg_to_rad(aim)), 0, -cos(deg_to_rad(aim))) * 3.6
+			_throw_at(_key_target())
+		_show_aim()
 
 	_sync_pin_meshes()
 
@@ -568,18 +604,38 @@ func _process(delta: float) -> void:
 		var bp := _ball.global_position
 		var bz := clampf(bp.z, RACK_FRONT_Z + 1.5, BALL_START_Z)
 		var bx := clampf(bp.x, -2.0, 2.0)
-		want_pos = Vector3(bx * 0.5, 3.6 + maxf(0.0, bp.y - BALL_R) * 0.5, bz + 6.0)
-		want_target = Vector3(bx * 0.3, 0.3, bz - 9.0)
+		want_pos = Vector3(bx * 0.5, 9.0 + maxf(0.0, bp.y - BALL_R) * 0.5, bz + 7.5)
+		want_target = Vector3(bx * 0.3, 0.0, bz - 6.0)
 		if _state == "reset":
-			want_pos = Vector3(0, 4.0, RACK_FRONT_Z + 7.5)
-			want_target = Vector3(0, 0.5, RACK_FRONT_Z - 2.5)
+			want_pos = Vector3(0, 8.0, RACK_FRONT_Z + 8.0)
+			want_target = Vector3(0, 0.3, RACK_FRONT_Z - 2.5)
 	var k := 1.0 - exp(-delta * (5.0 if _state == "rolling" else 3.0))
 	_cam_pos = _cam_pos.lerp(want_pos, k)
 	_cam_target = _cam_target.lerp(want_target, k)
 	look_from(_cam_pos, _cam_target)
 
-## ---- the swipe ---------------------------------------------------------------------------
+## ---- aiming with the pointer ---------------------------------------------------------------
 
+## The marker sits on the landing spot; the line runs from the ball to it. Hidden unless
+## the player is holding the pointer down or nudging the keys.
+func _show_aim() -> void:
+	if not _marker.visible:
+		_guide.visible = false
+		return
+	_marker.position = Vector3(_target.x, 0.0, _target.z)
+	var from := _ball.global_position
+	from.y = 0.012
+	var to := Vector3(_target.x, 0.012, _target.z)
+	var v := to - from
+	var n := v.length()
+	_guide.visible = n > 0.1
+	if _guide.visible:
+		_guide.position = (from + to) * 0.5
+		_guide.scale = Vector3(1, 1, n)
+		_guide.rotation.y = atan2(-v.x, -v.z)
+
+## Press anywhere on the lane ahead of the ball and the marker shows where it will land;
+## drag to move it; release to throw. A release behind the ball, or over the HUD, cancels.
 func _input(e: InputEvent) -> void:
 	if finished:
 		return
@@ -589,53 +645,22 @@ func _input(e: InputEvent) -> void:
 				_drag = false
 				return
 			_drag = true
-			_drag_pts = [[e.position, _now()]]
+			_aim_pointer(e.position)
 		elif _drag:
 			_drag = false
-			_drag_pts.append([e.position, _now()])
-			_release()
+			_aim_pointer(e.position)
+			if _marker.visible:
+				_throw_at(_target)
+			_marker.visible = false
 	elif e is InputEventMouseMotion and _drag:
-		_drag_pts.append([e.position, _now()])
-		if _drag_pts.size() > 96:
-			_drag_pts.pop_front()
+		_aim_pointer(e.position)
 
-func _now() -> float:
-	return Time.get_ticks_msec() / 1000.0
-
-## [aim degrees, speed, hook] read off the drag so far. The angle is the direction of the
-## first half of the stroke and the hook is how much the second half bent away from it:
-## the ball starts where the swipe started going and bends the way the swipe bent.
-func _stroke() -> Array:
-	if _drag_pts.size() < 2:
-		return [0.0, 0.0, 0.0]
-	var a: Vector2 = _drag_pts[0][0]
-	var b: Vector2 = _drag_pts[_drag_pts.size() - 1][0]
-	var whole := b - a
-	var dt: float = maxf(0.03, _drag_pts[_drag_pts.size() - 1][1] - _drag_pts[0][1])
-	var aim := rad_to_deg(atan2(whole.x, -whole.y))
-	var hook := 0.0
-	if whole.length() >= SWIPE_HOOK_PX:
-		var m: Vector2 = _drag_pts[_drag_pts.size() >> 1][0]
-		var first := m - a
-		var second := b - m
-		if first.length() > 8.0 and second.length() > 8.0:
-			var a1 := rad_to_deg(atan2(first.x, -first.y))
-			var a2 := rad_to_deg(atan2(second.x, -second.y))
-			aim = a1
-			hook = clampf((a2 - a1) / 30.0, -1.0, 1.0) * HOOK_MAX
-	var px_per_s := whole.length() / dt
-	var speed: float = lerpf(SPEED_MIN, SPEED_MAX, clampf((px_per_s - 250.0) / 1500.0, 0.0, 1.0))
-	return [aim, speed, hook]
-
-func _release() -> void:
-	if _drag_pts.size() < 2 or _state != "aim":
+func _aim_pointer(screen: Vector2) -> void:
+	var g := ground_point(screen)
+	if not g.is_finite() or _state != "aim":
+		_marker.visible = false
 		return
-	var a: Vector2 = _drag_pts[0][0]
-	var b: Vector2 = _drag_pts[_drag_pts.size() - 1][0]
-	if a.y - b.y < SWIPE_MIN_PX:
-		return   # a tap or a sideways fiddle, not a throw
-	var st := _stroke()
-	var aim: float = st[0]
-	var speed: float = st[1]
-	var hook: float = st[2]
-	_throw(aim, speed, hook)
+	var ahead := _ball.global_position.z - g.z
+	_marker.visible = ahead >= DIST_MIN
+	if _marker.visible:
+		_target = Vector3(g.x, 0.0, g.z)
