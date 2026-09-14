@@ -1,55 +1,60 @@
 extends GameMode3D
-## bowling -- ten frames of ten-pin bowling on one neon lane, against nobody but your own
-## best. Swipe up to roll: the angle of the swipe aims, its speed is the ball's speed, and
-## a swipe that bends makes the ball hook the same way. Real rigid bodies: the ball rolls,
-## the pins tumble, scatter and take each other out. Keys and pad slide the ball along the
-## foul line and A rolls it straight, which is also how the bots play. See GAME.md.
+## bowling -- a hundred pins on one wide neon lane, ten throws, nobody to beat but your own
+## best. Swipe up to throw: the ball flies, lands, rolls, and ploughs into the rack. The
+## angle of the swipe aims, its speed is how far it flies, and a swipe that bends makes
+## the ball hook after it lands. The lane has bumpers, not gutters: the ball banks off the
+## walls, so a bank shot is a real tactic. Real rigid bodies: the ball rolls, the pins
+## tumble, scatter and take each other out. Keys and pad slide the ball along the foul
+## line and A throws it straight, which is also how the bots play. See GAME.md.
 
-const LANE_W := 2.6                  ## a real lane is 1.05 m wide; one unit is ~0.4 m
+const LANE_W := 6.4                  ## wide: ten pins abreast with room to bank off the walls
 const LANE_LEN := 18.0               ## foul line at z=0, the pit starts at z=-LANE_LEN
 const APPROACH := 3.0                ## lane surface behind the foul line where the ball waits
-const GUTTER_W := 0.6
-const GUTTER_DEPTH := 0.3
+const WALL_H := 0.5                  ## the glowing bumper you see; the one that stops the ball is taller
 const BALL_R := 0.27
-const BALL_MASS := 7.0
+const BALL_MASS := 9.0                 ## a wrecking ball next to the pins
 const BALL_START_Z := 1.2
-const PIN_H := 0.95
+const PIN_H := 0.9
 const PIN_R := 0.13                  ## collision cylinder; the drawn pin bulges past it
-const PIN_MASS := 1.6
-const PIN_SPACING := 0.76            ## between neighbouring pins, like the real 12 inches
-const HEAD_PIN_Z := -15.6
+const PIN_MASS := 0.35                 ## light, so a hundred of them do not stop the ball and a hit one flies
+const PIN_COLS := 10                 ## the rack: PIN_COLS x PIN_ROWS in staggered rows
+const PIN_ROWS := 10
+const PIN_DX := 0.64                 ## between neighbours in a row (a ball cannot squeeze through)
+const PIN_DZ := 0.6                  ## between rows
+const RACK_FRONT_Z := -12.6          ## the nearest row
 const PIT_Z := -LANE_LEN - 1.2       ## anything past here (or under the floor) is gone
-const SPEED_MIN := 9.0               ## slowest and fastest a swipe can send the ball
-const SPEED_MAX := 19.0
-const KEY_SPEED := 15.0              ## the A button (and the bots) roll at this
-const AIM_MAX_DEG := 7.0             ## how far off straight the ball can go (6 degrees is a gutter)
-const AIM_SCALE := 0.3               ## swipe angle -> aim angle; a swipe has to be fairly straight
-const HOOK_MAX := 2.6                ## sideways acceleration of a fully bent swipe, units/s^2
-const SLIDE_SPEED := 2.4             ## foul-line slide on the keys, units per second
-const SWIPE_MIN_PX := 28.0           ## shorter than this is a tap, not a roll
+const LAUNCH_DEG := 28.0             ## the ball leaves the hand at this angle, always
+const SPEED_MIN := 9.0               ## slowest and fastest a swipe can send the ball ...
+const SPEED_MAX := 22.0              ## ... the fastest lands in the middle of the rack
+const KEY_SPEED := 19.0              ## the A button (and the bots) throw at this: lands just short of the rack
+const AIM_MAX_DEG := 32.0            ## how far off straight a throw can go (bank shots!)
+const HOOK_MAX := 3.0                ## sideways acceleration of a fully bent swipe, units/s^2
+const SLIDE_SPEED := 3.0             ## foul-line slide on the keys, units per second
+const SWIPE_MIN_PX := 28.0           ## shorter than this is a tap, not a throw
 const SWIPE_HOOK_PX := 70.0          ## a swipe needs this much length before its bend counts
 const GRAVITY_SCALE := 2.5           ## Earth gravity at this scale looks like the moon
 const SETTLE := 0.7                  ## everything quiet this long -> count the pins
-const ROLL_TIMEOUT := 6.0            ## a wobbling pin does not get to hold the game up
-const RESET_DELAY := 1.0             ## seconds to admire the wreckage before the pinsetter
-const FRAMES := 10
+const ROLL_TIMEOUT := 7.0            ## a wobbling pin does not get to hold the game up
+const RESET_DELAY := 1.0             ## seconds to admire the wreckage before the sweep
+const THROWS := 10
+const CLEAR_BONUS := 50              ## for knocking down every last pin (then a fresh rack)
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 const PHYSICS_HZ := 120              ## a fast ball through thin pins needs it; restored on exit
 
 var _ball: RigidBody3D
 var _guide: MeshInstance3D           ## the aim line on the lane while you swipe
-var _pins: Array = []                ## RigidBody3D, meta: spot (int)
-var _spots: Array = []               ## Vector3, the ten pin positions
-var _standing: Array = []            ## spot indices still up (set at the start of each roll)
-var _rolls: Array = []               ## pins knocked per roll, the whole game
-var _frame := 0                      ## 0..9
-var _roll_in_frame := 0
+var _pins: Array = []                ## RigidBody3D, meta: swept (float, -1 = standing)
+var _pin_mm: Array = []              ## [MultiMeshInstance3D, Vector3 offset] per drawn part
+var _standing := 0                   ## pins up at the start of this throw
+var _throws: Array = []              ## pins knocked per throw, the whole game
+var _racks := 0                      ## racks cleared
 var _state := "aim"                  ## aim | rolling | reset | over
+var _t := 0.0
 var _roll_t := 0.0
 var _quiet_t := 0.0
-var _hook := 0.0                     ## sideways acceleration on the ball this roll
+var _hook := 0.0                     ## sideways acceleration on the ball this throw
 var _aim_x := 0.0
-var _gutter := false
+var _airborne := false
 var _sfx_t := 0.0                    ## throttle for pin clatter
 var _cam_pos := Vector3.ZERO
 var _cam_target := Vector3.ZERO
@@ -63,7 +68,7 @@ var _hz_was := 60
 ## Set at construction: the shell sizes its backdrop off play_area before _ready runs.
 func _init() -> void:
 	play_area = Rect2(0, 0, 640, 360)
-	world_area = Rect2(-(LANE_W * 0.5 + GUTTER_W), -LANE_LEN - 3.2, LANE_W + GUTTER_W * 2.0, APPROACH + LANE_LEN + 3.2)
+	world_area = Rect2(-LANE_W * 0.5 - 0.3, -LANE_LEN - 3.2, LANE_W + 0.6, APPROACH + LANE_LEN + 3.2)
 
 func _ready() -> void:
 	title = "bowling"
@@ -74,21 +79,21 @@ func start(_config: Dictionary) -> void:
 	SaveData.data["volume_sfx"] = SFX_SCALE
 	_hz_was = Engine.physics_ticks_per_second
 	Engine.physics_ticks_per_second = PHYSICS_HZ
-	set_lives(0)   # nothing can hurt you here; the game is ten frames long, that is all
+	set_lives(0)   # nothing can hurt you here; the game is ten throws long, that is all
 	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = 40.0
+	sun.directional_shadow_max_distance = 45.0
 	sun.rotation_degrees = Vector3(-58, 24, 0)
+	cam.fov = 58.0
 	_cam_pos = _rest_cam_pos()
 	_cam_target = _rest_cam_target()
 	look_from(_cam_pos, _cam_target)
 	_build_lane()
 	_build_ball()
-	_build_spots()
-	_set_pins(range(10))
+	_build_pin_meshes()
+	_rack()
 	_build_ui()
 	_refresh_strip()
 	Probe.event("start")
-	Probe.event("frame", {"n": 1})
 
 func _exit_tree() -> void:
 	SaveData.data["volume_sfx"] = _sfx_was
@@ -96,12 +101,14 @@ func _exit_tree() -> void:
 
 ## ---- the alley ---------------------------------------------------------------------
 
-func _box(size: Vector3, at: Vector3, m: Material, solid: bool = false) -> Node3D:
-	var mi := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = size
-	bm.material = m
-	mi.mesh = bm
+func _box(size: Vector3, at: Vector3, m: Material, solid: bool = false, bounce: float = 0.0) -> Node3D:
+	var mi: MeshInstance3D = null
+	if m != null:
+		mi = MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = size
+		bm.material = m
+		mi.mesh = bm
 	if not solid:
 		mi.position = at
 		world.add_child(mi)
@@ -112,7 +119,13 @@ func _box(size: Vector3, at: Vector3, m: Material, solid: bool = false) -> Node3
 	bs.size = size
 	cs.shape = bs
 	body.add_child(cs)
-	body.add_child(mi)
+	if mi != null:
+		body.add_child(mi)
+	if bounce > 0.0:
+		var pm := PhysicsMaterial.new()
+		pm.bounce = bounce
+		pm.friction = 0.2
+		body.physics_material_override = pm
 	body.position = at
 	world.add_child(body)
 	return body
@@ -121,43 +134,46 @@ func _build_lane() -> void:
 	var length := LANE_LEN + APPROACH
 	var mid_z := (APPROACH - LANE_LEN) * 0.5
 	# the lane: a polished slab from the approach to the pit
-	_box(Vector3(LANE_W, 0.4, length), Vector3(0, -0.2, mid_z), mat("bg_alt", 0.18, 0.22), true)
-	# gutters either side, a step down, with a glowing rail outside each
+	_box(Vector3(LANE_W, 0.4, length), Vector3(0, -0.2, mid_z), mat("bg_alt", 0.18, 0.22), true, 0.15)
+	# faint board lines down the lane
+	for i in range(1, 8):
+		_box(Vector3(0.02, 0.011, length), Vector3(-LANE_W * 0.5 + i * LANE_W / 8.0, 0.0055, mid_z), mat("ink", 0.02, 0.6))
+	# bumpers: a glowing rail you see, and a tall invisible wall so a flying ball cannot
+	# clear it. Both bounce, so a bank shot comes back with most of its speed.
 	for side: float in [-1.0, 1.0]:
-		var gx := side * (LANE_W * 0.5 + GUTTER_W * 0.5)
-		_box(Vector3(GUTTER_W, 0.2, length), Vector3(gx, -GUTTER_DEPTH - 0.1, mid_z), mat("bg", 0.0, 0.8), true)
-		var rx := side * (LANE_W * 0.5 + GUTTER_W + 0.08)
-		_box(Vector3(0.16, 0.5, length), Vector3(rx, 0.0, mid_z), mat("accent", 0.85), true)
+		var rx := side * (LANE_W * 0.5 + 0.1)
+		_box(Vector3(0.2, WALL_H, length), Vector3(rx, WALL_H * 0.5 - 0.05, mid_z), mat("accent", 0.85), true, 0.7)
+		_box(Vector3(0.2, 6.0, length), Vector3(rx, WALL_H + 3.0, mid_z), null, true, 0.7)
 		# the neighbouring lanes, dim, so this is an alley and not a plank in space
-		_box(Vector3(LANE_W, 0.3, length), Vector3(side * (LANE_W + GUTTER_W * 2.0 + 0.4), -0.25, mid_z), mat("bg_alt", 0.05, 0.4))
+		_box(Vector3(LANE_W, 0.3, length), Vector3(side * (LANE_W + 0.9), -0.25, mid_z), mat("bg_alt", 0.05, 0.4))
 	# foul line and the seven aiming arrows
 	_box(Vector3(LANE_W, 0.012, 0.06), Vector3(0, 0.006, 0.0), mat("hazard", 0.9))
 	for i in range(-3, 4):
-		var ax := i * (LANE_W / 7.0)
+		var ax := i * (LANE_W / 8.0)
 		var az := -4.6 - (3 - absi(i)) * 0.45
 		_box(Vector3(0.09, 0.012, 0.42), Vector3(ax, 0.006, az), mat("accent", 0.9))
-	# the pit: a floor well below the deck so knocked pins tumble out of sight
-	_box(Vector3(LANE_W + GUTTER_W * 2.0 + 0.4, 0.2, 3.0), Vector3(0, -1.6, -LANE_LEN - 1.5), mat("bg", 0.0), true)
+	# the pit: a floor well below the deck so knocked pins tumble out of sight, walled in
+	_box(Vector3(LANE_W + 0.8, 0.2, 3.0), Vector3(0, -1.6, -LANE_LEN - 1.5), mat("bg", 0.0), true)
 	for side: float in [-1.0, 1.0]:
-		_box(Vector3(0.2, 2.2, 3.0), Vector3(side * 2.2, -0.6, -LANE_LEN - 1.5), mat("bg_alt", 0.05, 0.4), true)
+		_box(Vector3(0.2, 2.2, 3.0), Vector3(side * (LANE_W * 0.5 + 0.1), -0.6, -LANE_LEN - 1.5), mat("bg_alt", 0.05, 0.4), true)
 	# back wall and the masking unit above the pins: a glowing bar and a row of bulbs
-	_box(Vector3(LANE_W + GUTTER_W * 2.0 + 0.4, 4.0, 0.3), Vector3(0, 0.4, -LANE_LEN - 3.0), mat("bg_alt", 0.12), true)
-	_box(Vector3(LANE_W + GUTTER_W * 2.0 + 0.4, 0.9, 0.25), Vector3(0, 2.45, -LANE_LEN - 2.4), mat("bg_alt", 0.3))
-	_box(Vector3(LANE_W + GUTTER_W * 2.0 + 0.4, 0.06, 0.06), Vector3(0, 2.0, -LANE_LEN - 2.28), mat("prize", 0.9))
-	_box(Vector3(LANE_W + GUTTER_W * 2.0 + 0.4, 0.06, 0.06), Vector3(0, 2.9, -LANE_LEN - 2.28), mat("prize", 0.9))
-	for i in 9:
+	_box(Vector3(LANE_W + 0.8, 5.0, 0.3), Vector3(0, 0.9, -LANE_LEN - 3.0), mat("bg_alt", 0.12), true)
+	_box(Vector3(LANE_W + 0.8, 0.9, 0.25), Vector3(0, 2.75, -LANE_LEN - 2.4), mat("bg_alt", 0.3))
+	_box(Vector3(LANE_W + 0.8, 0.06, 0.06), Vector3(0, 2.3, -LANE_LEN - 2.28), mat("prize", 0.9))
+	_box(Vector3(LANE_W + 0.8, 0.06, 0.06), Vector3(0, 3.2, -LANE_LEN - 2.28), mat("prize", 0.9))
+	for i in 15:
 		var bulb := MeshInstance3D.new()
 		var sm := SphereMesh.new()
 		sm.radius = 0.09
 		sm.height = 0.18
 		sm.material = mat("accent" if i % 2 == 0 else "warn", 1.0)
 		bulb.mesh = sm
-		bulb.position = Vector3(-2.0 + i * 0.5, 2.45, -LANE_LEN - 2.25)
+		bulb.position = Vector3(-3.5 + i * 0.5, 2.75, -LANE_LEN - 2.25)
 		world.add_child(bulb)
 	# a wide dark floor under everything so the world has a ground
 	var ground := MeshInstance3D.new()
 	var gm := PlaneMesh.new()
-	gm.size = Vector2(60, 60)
+	gm.size = Vector2(70, 70)
 	gm.material = mat("bg", 0.0, 1.0)
 	ground.mesh = gm
 	ground.position = Vector3(0, -1.8, -8)
@@ -213,15 +229,6 @@ func _build_ball() -> void:
 	_guide.visible = false
 	world.add_child(_guide)
 
-func _build_spots() -> void:
-	# row 0 is the head pin, then 2, 3 and 4 pins back, 12 inches apart (the real layout)
-	_spots.clear()
-	var row_d := PIN_SPACING * sqrt(0.75)
-	for row in 4:
-		for k in row + 1:
-			var x := (k - row * 0.5) * PIN_SPACING
-			_spots.append(Vector3(x, 0, HEAD_PIN_Z - row * row_d))
-
 func _build_ui() -> void:
 	var back := ColorRect.new()
 	var c := Palette.col("bg")
@@ -240,8 +247,8 @@ func _build_ui() -> void:
 	_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_strip)
 	_hint = Label.new()
-	_hint.text = "swipe up to roll  ·  bend the swipe to hook  ·  arrows slide, A rolls"
-	_hint.add_theme_font_size_override("font_size", 11)
+	_hint.text = "swipe up to throw, harder flies further  ·  bend it to hook  ·  bank off the walls  ·  arrows slide, A throws"
+	_hint.add_theme_font_size_override("font_size", 10)
 	_hint.add_theme_color_override("font_color", Palette.col("ink"))
 	_hint.modulate.a = 0.6
 	_hint.position = Vector2(0, 338)
@@ -252,19 +259,64 @@ func _build_ui() -> void:
 
 ## ---- pins ----------------------------------------------------------------------------
 
-func _make_pin(spot: int) -> RigidBody3D:
+## A hundred pins are drawn as three instanced meshes (body, head, neck band) whose
+## transforms follow the physics bodies every frame: three draw calls instead of three
+## hundred nodes, which is the difference between a phone coping and not.
+func _build_pin_meshes() -> void:
+	var body := CylinderMesh.new()
+	body.top_radius = 0.07
+	body.bottom_radius = 0.125
+	body.height = 0.72
+	var head := SphereMesh.new()
+	head.radius = 0.1
+	head.height = 0.2
+	var band := CylinderMesh.new()
+	band.top_radius = 0.1
+	band.bottom_radius = 0.105
+	band.height = 0.05
+	for part in [[body, Vector3(0, 0.36, 0), mat("ink", 0.22, 0.35)],
+			[head, Vector3(0, 0.8, 0), mat("ink", 0.22, 0.35)],
+			[band, Vector3(0, 0.58, 0), mat("hazard", 0.6)]]:
+		var mesh: Mesh = part[0]
+		mesh.material = part[2]
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = mesh
+		mm.instance_count = PIN_COLS * PIN_ROWS
+		mm.visible_instance_count = 0
+		var mmi := MultiMeshInstance3D.new()
+		mmi.multimesh = mm
+		world.add_child(mmi)
+		_pin_mm.append([mmi, part[1]])
+
+func _sync_pin_meshes() -> void:
+	var n := _pins.size()
+	for e in _pin_mm:
+		var mm: MultiMesh = (e[0] as MultiMeshInstance3D).multimesh
+		var off: Vector3 = e[1]
+		mm.visible_instance_count = n
+		for i in n:
+			var p: RigidBody3D = _pins[i]
+			var s := 1.0
+			var swept: float = p.get_meta("swept")
+			if swept >= 0.0:
+				s = maxf(0.01, 1.0 - (_t - swept) / 0.3)
+			var xf := p.global_transform * Transform3D(Basis().scaled(Vector3.ONE * s), off * s)
+			mm.set_instance_transform(i, xf)
+
+func _make_pin(at: Vector3) -> RigidBody3D:
 	var p := RigidBody3D.new()
 	p.mass = PIN_MASS
 	p.gravity_scale = GRAVITY_SCALE
 	p.center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
-	p.center_of_mass = Vector3(0, 0.36, 0)   # a real pin is bottom-heavy
+	p.center_of_mass = Vector3(0, 0.34, 0)   # a real pin is bottom-heavy
 	p.contact_monitor = true
 	p.max_contacts_reported = 2
-	p.angular_damp = 0.4
-	p.linear_damp = 0.15
+	p.angular_damp = 0.1
+	p.linear_damp = 0.05
 	var pm := PhysicsMaterial.new()
-	pm.friction = 0.5
-	pm.bounce = 0.12
+	pm.friction = 0.3
+	pm.bounce = 0.35
 	p.physics_material_override = pm
 	var cs := CollisionShape3D.new()
 	var cyl := CylinderShape3D.new()
@@ -273,109 +325,70 @@ func _make_pin(spot: int) -> RigidBody3D:
 	cs.shape = cyl
 	cs.position = Vector3(0, PIN_H * 0.5, 0)
 	p.add_child(cs)
-	# the drawn pin: base, belly, neck, head, and the classic band round the neck
-	var body_m := mat("ink", 0.22, 0.35)
-	var base := CylinderMesh.new()
-	base.top_radius = 0.14
-	base.bottom_radius = 0.10
-	base.height = 0.25
-	_part(p, base, Vector3(0, 0.125, 0), body_m)
-	var belly := SphereMesh.new()
-	belly.radius = 0.16
-	belly.height = 0.42
-	_part(p, belly, Vector3(0, 0.36, 0), body_m)
-	var neck := CylinderMesh.new()
-	neck.top_radius = 0.07
-	neck.bottom_radius = 0.115
-	neck.height = 0.3
-	_part(p, neck, Vector3(0, 0.66, 0), body_m)
-	var head := SphereMesh.new()
-	head.radius = 0.095
-	head.height = 0.19
-	_part(p, head, Vector3(0, 0.86, 0), body_m)
-	var band := CylinderMesh.new()
-	band.top_radius = 0.1
-	band.bottom_radius = 0.105
-	band.height = 0.05
-	_part(p, band, Vector3(0, 0.6, 0), mat("hazard", 0.6))
-	p.set_meta("spot", spot)
-	p.set_meta("t", 0.0)
+	p.set_meta("swept", -1.0)
 	world.add_child(p)
-	p.global_position = _spots[spot]
+	p.global_position = at
 	p.body_entered.connect(_on_pin_hit)
 	track3d(p, "*")
 	return p
 
-func _part(parent: Node3D, mesh: Mesh, at: Vector3, m: Material) -> void:
-	var mi := MeshInstance3D.new()
-	mesh.material = m
-	mi.mesh = mesh
-	mi.position = at
-	parent.add_child(mi)
-
-## Fresh pins on the given spots; everything that was there before is gone.
-func _set_pins(spots: Array) -> void:
+## A full rack: PIN_ROWS staggered rows of PIN_COLS, the nearest row at RACK_FRONT_Z.
+func _rack() -> void:
 	for p in _pins:
 		if is_instance_valid(p):
 			p.queue_free()
 	_pins.clear()
-	for s in spots:
-		_pins.append(_make_pin(s))
-	_standing = spots.duplicate()
+	for row in PIN_ROWS:
+		var shift := 0.15 if row % 2 == 1 else -0.15
+		for col in PIN_COLS:
+			var x := (col - (PIN_COLS - 1) * 0.5) * PIN_DX + shift
+			_pins.append(_make_pin(Vector3(x, 0, RACK_FRONT_Z - row * PIN_DZ)))
+	_standing = _pins.size()
+	_sync_pin_meshes()
 
 func _pin_up(p: RigidBody3D) -> bool:
-	if not is_instance_valid(p):
+	if not is_instance_valid(p) or float(p.get_meta("swept")) >= 0.0:
 		return false
 	var pos := p.global_position
-	if pos.y < -0.15 or pos.z < -LANE_LEN or absf(pos.x) > LANE_W * 0.5 + 0.1:
+	if pos.y < -0.15 or pos.z < -LANE_LEN:
 		return false
-	return p.global_transform.basis.y.y > 0.72   # leaning more than ~44 degrees is down
+	return p.global_transform.basis.y.y > 0.85   # leaning more than ~32 degrees is down
 
-func _pins_up_now() -> Array:
-	var up: Array = []
-	for p: RigidBody3D in _pins:
-		if _pin_up(p):
-			up.append(p.get_meta("spot"))
-	return up
+## ---- the throw ---------------------------------------------------------------------------
 
-## ---- the roll ---------------------------------------------------------------------------
-
-func _roll(aim_deg: float, speed: float, hook: float) -> void:
+func _throw(aim_deg: float, speed: float, hook: float) -> void:
 	if _state != "aim" or finished:
 		return
 	_state = "rolling"
 	_roll_t = 0.0
 	_quiet_t = 0.0
-	_gutter = false
+	_airborne = true
 	_hook = hook
 	_guide.visible = false
 	var a := deg_to_rad(clampf(aim_deg, -AIM_MAX_DEG, AIM_MAX_DEG))
-	var dir := Vector3(sin(a), 0, -cos(a))
+	var up := deg_to_rad(LAUNCH_DEG)
+	var flat := Vector3(sin(a), 0, -cos(a))
+	var dir := Vector3(flat.x * cos(up), sin(up), flat.z * cos(up))
 	speed = clampf(speed, SPEED_MIN, SPEED_MAX)
 	_ball.freeze = false
 	_ball.linear_velocity = dir * speed
-	_ball.angular_velocity = Vector3.UP.cross(dir) * (speed / BALL_R)   # rolling, not sliding
-	Audio.play("step_wood", 0.1)
-	Probe.event("roll", {"aim": snappedf(aim_deg, 0.1), "speed": snappedf(speed, 0.1), "hook": snappedf(hook, 0.1)})
+	_ball.angular_velocity = Vector3.UP.cross(flat) * (speed * cos(up) / BALL_R)   # rolling, not sliding, once it lands
+	Audio.play("jump", 0.1)
+	Probe.event("throw", {"aim": snappedf(aim_deg, 0.1), "speed": snappedf(speed, 0.1), "hook": snappedf(hook, 0.1)})
 
 func _physics_process(delta: float) -> void:
 	if _state != "rolling":
 		return
 	_roll_t += delta
 	var bp := _ball.global_position
-	# the hook: sideways pull while the ball is still on the lane, ahead of the pins
-	if absf(_hook) > 0.01 and bp.y < BALL_R + 0.05 and bp.z > HEAD_PIN_Z + 1.0 and absf(bp.x) < LANE_W * 0.5:
+	# the hook: sideways pull while the ball rolls on the lane, ahead of the rack
+	if absf(_hook) > 0.01 and not _airborne and bp.y < BALL_R + 0.05 and bp.z > RACK_FRONT_Z + 0.8:
 		_ball.apply_central_force(Vector3(_hook * BALL_MASS, 0, 0))
-	if not _gutter and bp.y < BALL_R - 0.12 and bp.z > HEAD_PIN_Z + 1.0 and bp.z < 0.0:
-		_gutter = true
-		Audio.play("thud")
-		Juice.text(self, to_screen(bp + Vector3(0, 0.6, 0)), "gutter", Palette.col("hazard"))
-		Probe.event("gutter")
 	# done when the ball is gone (or stuck) and the pins have stopped moving
 	var ball_done: bool = bp.z < PIT_Z or bp.y < -1.0 or (_roll_t > 2.0 and _ball.linear_velocity.length() < 0.4)
 	var pins_quiet := true
 	for p: RigidBody3D in _pins:
-		if is_instance_valid(p) and p.global_position.y > -1.0 and p.global_position.z > PIT_Z:
+		if p.global_position.y > -1.0 and p.global_position.z > PIT_Z:
 			if p.linear_velocity.length() > 0.5 or p.angular_velocity.length() > 1.2:
 				pins_quiet = false
 				break
@@ -384,12 +397,24 @@ func _physics_process(delta: float) -> void:
 		_tally()
 
 func _on_ball_hit(other: Node) -> void:
-	if _state != "rolling" or not (other is RigidBody3D):
+	if _state != "rolling":
 		return
-	if _sfx_t <= 0.0:
-		_sfx_t = 0.08
-		Audio.play("impact_wood", 0.2)
-	hit3d(2.5)
+	if other is StaticBody3D:
+		if _airborne:
+			_airborne = false
+			Audio.play("thud")
+			hit3d(3.0)
+			Probe.event("land", {"z": snappedf(_ball.global_position.z, 0.1)})
+		elif _ball.linear_velocity.length() > 3.0 and absf(_ball.global_position.x) > LANE_W * 0.5 - BALL_R - 0.15:
+			Audio.play("impact_light", 0.15)
+			shake3d(1.5)
+			Probe.event("bank")
+		return
+	if other is RigidBody3D:
+		if _sfx_t <= 0.0:
+			_sfx_t = 0.08
+			Audio.play("impact_wood", 0.2)
+		hit3d(2.5)
 
 func _on_pin_hit(other: Node) -> void:
 	if _state != "rolling" or not (other is RigidBody3D) or _sfx_t > 0.0:
@@ -398,159 +423,91 @@ func _on_pin_hit(other: Node) -> void:
 	Audio.play("impact_wood", 0.25, -4.0)
 	shake3d(1.2)
 
-## ---- counting and the pinsetter -----------------------------------------------------------
+## ---- counting and the sweep -----------------------------------------------------------------
 
 func _tally() -> void:
 	_state = "reset"
-	var up := _pins_up_now()
-	var knocked := _standing.size() - up.size()
-	_rolls.append(knocked)
-	var first_of_frame := _roll_in_frame == 0 or (_frame == FRAMES - 1 and _standing.size() == 10)
-	var strike := knocked == 10 and first_of_frame
-	var spare := knocked > 0 and up.is_empty() and not strike
-	var deck := to_screen(Vector3(0, 1.4, HEAD_PIN_Z - 0.6))
-	if strike:
-		Probe.event("strike")
-		Juice.text(self, deck, "STRIKE!", Palette.col("prize"))
+	var up := 0
+	for p: RigidBody3D in _pins:
+		if _pin_up(p):
+			up += 1
+	var knocked := _standing - up
+	_throws.append(knocked)
+	var cleared := up == 0
+	var deck := to_screen(Vector3(0, 1.6, RACK_FRONT_Z - 2.5))
+	if cleared:
+		Probe.event("rack_cleared")
+		Juice.text(self, deck, "CLEARED! +%d" % (knocked + CLEAR_BONUS), Palette.col("prize"))
 		Audio.play("voice_congratulations")
-		hit3d(6.0)
-		_sparks(Vector3(0, 0.8, HEAD_PIN_Z - 0.6), 14)
-	elif spare:
-		Probe.event("spare")
-		Juice.text(self, deck, "SPARE!", Palette.col("warn"))
+		hit3d(7.0)
+		_sparks(Vector3(0, 0.8, RACK_FRONT_Z - 2.5), 18)
+		_racks += 1
+	elif knocked >= 25:
+		Probe.event("big_hit")
+		Juice.text(self, deck, "+%d  !!" % knocked, Palette.col("prize"))
 		Audio.play("voice_correct")
-		hit3d(4.0)
-		_sparks(Vector3(0, 0.8, HEAD_PIN_Z - 0.6), 8)
+		hit3d(5.0)
+		_sparks(Vector3(0, 0.8, RACK_FRONT_Z - 2.5), 10)
+	elif knocked >= 10:
+		Juice.text(self, deck, "+%d" % knocked, Palette.col("warn"))
+		Audio.play("coin")
 	elif knocked > 0:
 		Juice.text(self, deck, "+%d" % knocked, Palette.col("ink"))
-	elif not _gutter:
-		Juice.text(self, deck, "miss", Palette.col("hazard"))
-	Probe.event("pins_down", {"n": knocked, "left": up.size()})
-	add_score(_total() - score)
-
-	# what the pinsetter does next
-	var next_spots: Array = up
-	var game_over := false
-	if _frame < FRAMES - 1:
-		if strike or _roll_in_frame == 1:
-			_frame += 1
-			_roll_in_frame = 0
-			next_spots = range(10)
-		else:
-			_roll_in_frame = 1
 	else:
-		# tenth frame: a strike or spare earns extra balls on a full rack
-		if _roll_in_frame == 0:
-			_roll_in_frame = 1
-			if strike:
-				next_spots = range(10)
-		elif _roll_in_frame == 1:
-			var first: int = _rolls[_rolls.size() - 2]
-			if first == 10 or first + knocked == 10:
-				_roll_in_frame = 2
-				if up.is_empty():
-					next_spots = range(10)
-			else:
-				game_over = true
-		else:
-			game_over = true
+		Juice.text(self, deck, "miss", Palette.col("hazard"))
+	Probe.event("pins_down", {"n": knocked, "left": up})
+	add_score(knocked + (CLEAR_BONUS if cleared else 0))
 	_refresh_strip()
 
-	# fallen pins get swept away, the rest are re-spotted after a beat
+	# fallen pins shrink away; the rest stay exactly where they are
 	for p: RigidBody3D in _pins:
-		if is_instance_valid(p) and not up.has(p.get_meta("spot")):
-			var tw := p.create_tween()
-			tw.tween_interval(RESET_DELAY * 0.5)
-			tw.tween_property(p, "scale", Vector3(0.01, 0.01, 0.01), 0.3)
-	get_tree().create_timer(RESET_DELAY).timeout.connect(_reset.bind(next_spots, game_over))
+		if not _pin_up(p):
+			p.set_meta("swept", _t + RESET_DELAY * 0.5)
+	get_tree().create_timer(RESET_DELAY).timeout.connect(_reset.bind(_throws.size() >= THROWS, cleared))
 
-func _reset(spots: Array, game_over: bool) -> void:
+func _reset(game_over: bool, cleared: bool) -> void:
 	if finished:
 		return
+	var kept: Array = []
+	for p: RigidBody3D in _pins:
+		if float(p.get_meta("swept")) >= 0.0:
+			p.queue_free()
+		else:
+			kept.append(p)
+	_pins = kept
 	if game_over:
 		_state = "over"
 		_refresh_strip()
 		Probe.event("game_end", {"score": score})
-		_set_pins([])
 		get_tree().create_timer(0.8).timeout.connect(win)
 		return
-	_set_pins(spots)
+	if cleared:
+		_rack()
+	_standing = _pins.size()
+	_sync_pin_meshes()
 	_ball.freeze = true
 	_ball.linear_velocity = Vector3.ZERO
 	_ball.angular_velocity = Vector3.ZERO
 	_ball.global_transform = Transform3D(Basis(), Vector3(_aim_x, BALL_R, BALL_START_Z))
 	_state = "aim"
-	if _roll_in_frame == 0 or spots.size() == 10:
-		Probe.event("frame", {"n": _frame + 1})
-		if _frame == FRAMES - 1 and _roll_in_frame == 0:
-			Audio.play("voice_final_round")
+	if _throws.size() == THROWS - 1:
+		Audio.play("voice_final_round")
 
-## Standard ten-pin scoring over everything rolled so far; a strike or spare whose bonus
-## balls have not been rolled yet counts its ten for now and grows as they come in.
-func _total() -> int:
-	var t := 0
-	var i := 0
-	for f in FRAMES:
-		if i >= _rolls.size():
-			break
-		if f == FRAMES - 1:
-			for k in range(i, _rolls.size()):
-				t += _rolls[k]
-			break
-		if _rolls[i] == 10:
-			t += 10 + _at(i + 1) + _at(i + 2)
-			i += 1
-		elif i + 1 < _rolls.size() and _rolls[i] + _rolls[i + 1] == 10:
-			t += 10 + _at(i + 2)
-			i += 2
-		else:
-			t += _rolls[i] + _at(i + 1)
-			i += 2
-	return t
-
-func _at(k: int) -> int:
-	return _rolls[k] if k < _rolls.size() else 0
-
-## The frame strip: one mark per ball, the way an alley's overhead screen writes them.
+## The strip: pins per throw so far, the current throw bracketed, and pins left up.
 func _refresh_strip() -> void:
 	var marks: Array = []
-	var i := 0
-	for f in FRAMES:
-		var s := ""
-		if f < FRAMES - 1:
-			if i < _rolls.size():
-				if _rolls[i] == 10:
-					s = "X"
-					i += 1
-				else:
-					s = _mark(_rolls[i])
-					if i + 1 < _rolls.size():
-						s += "/" if _rolls[i] + _rolls[i + 1] == 10 else _mark(_rolls[i + 1])
-					i += 2
+	for i in THROWS:
+		if i < _throws.size():
+			marks.append(str(_throws[i]))
+		elif i == _throws.size() and _state != "over":
+			marks.append("[_]")
 		else:
-			var prev := 0
-			var first := true
-			for k in range(i, _rolls.size()):
-				var r: int = _rolls[k]
-				if r == 10 and (first or prev == 10 or prev < 0):
-					s += "X"
-					prev = -1
-				elif not first and prev >= 0 and prev + r == 10:
-					s += "/"
-					prev = -1
-				else:
-					s += _mark(r)
-					prev = r
-				first = false
-		if f == _frame and not finished and _state != "over":
-			s = "[" + s + "_" + "]" if s.length() < 2 or f == FRAMES - 1 else "[" + s + "]"
-		elif s == "":
-			s = "·"
-		marks.append(s)
-	_strip.text = "   ".join(marks)
-
-func _mark(n: int) -> String:
-	return "-" if n == 0 else str(n)
+			marks.append("·")
+	var up := 0
+	for p: RigidBody3D in _pins:
+		if _pin_up(p):
+			up += 1
+	_strip.text = "   ".join(marks) + "      %d pins up" % up
 
 func _sparks(at: Vector3, n: int) -> void:
 	for i in n:
@@ -570,50 +527,52 @@ func _sparks(at: Vector3, n: int) -> void:
 		cs.shape = bs
 		d.add_child(cs)
 		world.add_child(d)
-		d.global_position = at + Vector3(randf_range(-0.8, 0.8), 0.2, randf_range(-0.5, 0.5))
-		d.linear_velocity = Vector3(randf_range(-3, 3), randf_range(4, 8), randf_range(-3, 1))
+		d.global_position = at + Vector3(randf_range(-2.0, 2.0), 0.2, randf_range(-1.5, 1.5))
+		d.linear_velocity = Vector3(randf_range(-3, 3), randf_range(4, 9), randf_range(-3, 1))
 		d.angular_velocity = Vector3(randf_range(-9, 9), randf_range(-9, 9), randf_range(-9, 9))
 		get_tree().create_timer(1.2).timeout.connect(d.queue_free)
 
 ## ---- per frame -----------------------------------------------------------------------------
 
 func _rest_cam_pos() -> Vector3:
-	return Vector3(_aim_x * 0.4, 3.1, BALL_START_Z + 5.2)
+	return Vector3(_aim_x * 0.4, 4.4, BALL_START_Z + 6.5)
 
 func _rest_cam_target() -> Vector3:
-	return Vector3(_aim_x * 0.2, 0.3, -9.0)
+	return Vector3(_aim_x * 0.2, 0.3, -8.0)
 
 func _process(delta: float) -> void:
 	if finished:
 		return
+	_t += delta
 	_sfx_t -= delta
 
 	if _state == "aim":
 		var d := PInput.dir()
 		if d.x != 0.0:
-			_aim_x = clampf(_aim_x + d.x * SLIDE_SPEED * delta, -(LANE_W * 0.5 - BALL_R - 0.05), LANE_W * 0.5 - BALL_R - 0.05)
+			_aim_x = clampf(_aim_x + d.x * SLIDE_SPEED * delta, -(LANE_W * 0.5 - BALL_R - 0.1), LANE_W * 0.5 - BALL_R - 0.1)
 			_ball.global_transform = Transform3D(Basis(), Vector3(_aim_x, BALL_R, BALL_START_Z))
 		if PInput.just_pressed("action_a"):
-			_roll(0.0, KEY_SPEED, 0.0)
+			_throw(0.0, KEY_SPEED, 0.0)
 		_guide.visible = _drag
-		_guide.position = Vector3(_aim_x, 0.012, BALL_START_Z - 3.6)
 		if _drag:
 			var aim: float = _stroke()[0]
 			_guide.rotation.y = -deg_to_rad(aim)
 			_guide.position = Vector3(_aim_x, 0.012, BALL_START_Z) + Vector3(sin(deg_to_rad(aim)), 0, -cos(deg_to_rad(aim))) * 3.6
 
-	# the camera rides down the lane behind the ball and glides home for the next roll
+	_sync_pin_meshes()
+
+	# the camera rides down the lane behind the ball and glides home for the next throw
 	var want_pos := _rest_cam_pos()
 	var want_target := _rest_cam_target()
 	if _state == "rolling" or _state == "reset":
 		var bp := _ball.global_position
-		var bz := clampf(bp.z, HEAD_PIN_Z + 1.5, BALL_START_Z)
-		var bx := clampf(bp.x, -1.2, 1.2)
-		want_pos = Vector3(bx * 0.5, 2.9, bz + 5.0)
+		var bz := clampf(bp.z, RACK_FRONT_Z + 1.5, BALL_START_Z)
+		var bx := clampf(bp.x, -2.0, 2.0)
+		want_pos = Vector3(bx * 0.5, 3.6 + maxf(0.0, bp.y - BALL_R) * 0.5, bz + 6.0)
 		want_target = Vector3(bx * 0.3, 0.3, bz - 9.0)
 		if _state == "reset":
-			want_pos = Vector3(0, 2.6, HEAD_PIN_Z + 6.0)
-			want_target = Vector3(0, 0.5, HEAD_PIN_Z - 0.8)
+			want_pos = Vector3(0, 4.0, RACK_FRONT_Z + 7.5)
+			want_target = Vector3(0, 0.5, RACK_FRONT_Z - 2.5)
 	var k := 1.0 - exp(-delta * (5.0 if _state == "rolling" else 3.0))
 	_cam_pos = _cam_pos.lerp(want_pos, k)
 	_cam_target = _cam_target.lerp(want_target, k)
@@ -653,7 +612,7 @@ func _stroke() -> Array:
 	var b: Vector2 = _drag_pts[_drag_pts.size() - 1][0]
 	var whole := b - a
 	var dt: float = maxf(0.03, _drag_pts[_drag_pts.size() - 1][1] - _drag_pts[0][1])
-	var aim := rad_to_deg(atan2(whole.x, -whole.y)) * AIM_SCALE
+	var aim := rad_to_deg(atan2(whole.x, -whole.y))
 	var hook := 0.0
 	if whole.length() >= SWIPE_HOOK_PX:
 		var m: Vector2 = _drag_pts[_drag_pts.size() >> 1][0]
@@ -662,7 +621,7 @@ func _stroke() -> Array:
 		if first.length() > 8.0 and second.length() > 8.0:
 			var a1 := rad_to_deg(atan2(first.x, -first.y))
 			var a2 := rad_to_deg(atan2(second.x, -second.y))
-			aim = a1 * AIM_SCALE
+			aim = a1
 			hook = clampf((a2 - a1) / 30.0, -1.0, 1.0) * HOOK_MAX
 	var px_per_s := whole.length() / dt
 	var speed: float = lerpf(SPEED_MIN, SPEED_MAX, clampf((px_per_s - 250.0) / 1500.0, 0.0, 1.0))
@@ -674,9 +633,9 @@ func _release() -> void:
 	var a: Vector2 = _drag_pts[0][0]
 	var b: Vector2 = _drag_pts[_drag_pts.size() - 1][0]
 	if a.y - b.y < SWIPE_MIN_PX:
-		return   # a tap or a sideways fiddle, not a roll
+		return   # a tap or a sideways fiddle, not a throw
 	var st := _stroke()
 	var aim: float = st[0]
 	var speed: float = st[1]
 	var hook: float = st[2]
-	_roll(aim, speed, hook)
+	_throw(aim, speed, hook)
