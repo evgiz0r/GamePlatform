@@ -5,9 +5,10 @@ extends GameMode3D
 ## the lane has bumpers, not gutters. Real rigid bodies: the ball rolls, the pins tumble,
 ## scatter and take each other out. Keys and pad: left/right slide the ball along the foul
 ## line, up/down move the landing spot, A throws -- which is also how the bots play.
-## Two games to pick from at the start: the hundred-pin block on a whole lane, or "random
-## ground": the lane past the approach is a random patchwork of floor tiles with holes in
-## it, twenty pins scattered over the tiles, and a ball that misses the floor is gone.
+## Three games to pick from at the start: the hundred-pin block on a whole lane; "random
+## ground", where the lane past the approach is a random patchwork of floor tiles with
+## holes in it and twenty pins scattered over the tiles; and "triangle", where the floor
+## narrows to a point and twenty pins stand in a triangle inside it. Off the floor is gone.
 ## The camera looks down the lane from behind and above, so all of it is on screen to tap.
 
 const LANE_W := 6.4                  ## wide: ten pins abreast with room to bank off the walls
@@ -46,8 +47,18 @@ const TILE_COLS := 4
 const TILE_ROWS := 8
 const TILE_FRONT_Z := -5.0           ## the approach lane ends here; the tiles start
 const TILES_KEPT := 19               ## of 32: enough floor to play on, enough holes to fall in
-const BTN_BLOCK := Rect2(110, 150, 200, 64)    ## the rack-choice screen
-const BTN_SHAPES := Rect2(330, 150, 200, 64)
+const TRI_TIP_Z := -17.5             ## triangle: full lane width at the approach, a point here
+const TRI_ROWS := [6, 5, 4, 3, 2]    ## its pins, front row first (twenty)
+const TRI_ROW_DZ := 1.5
+const TRI_FRONT_ROW_Z := -8.5
+## the game-choice screen: one button per mode
+const MODES := ["block", "ground", "triangle"]
+const MODE_LABELS := ["100 pins", "random ground", "triangle"]
+const MODE_BLURBS := ["a wall of a hundred,\nten throws",
+	"the floor is a random shape with\nholes, twenty pins on it",
+	"the floor narrows to a point,\ntwenty pins in a triangle on it"]
+const MODE_ROLES := ["player", "prize", "warn"]
+const BTNS := [Rect2(50, 150, 170, 64), Rect2(235, 150, 170, 64), Rect2(420, 150, 170, 64)]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 const PHYSICS_HZ := 120              ## a fast ball through thin pins needs it; restored on exit
 
@@ -61,11 +72,11 @@ var _pin_mm: Array = []              ## [MultiMeshInstance3D, Vector3 offset] pe
 var _standing := 0                   ## pins up at the start of this throw
 var _throws: Array = []              ## pins knocked per throw, the whole game
 var _racks := 0                      ## racks cleared
-var _mode := ""                      ## block | ground, chosen on the first screen
+var _mode := ""                      ## block | ground | triangle, chosen on the first screen
 var _floor: Array = []               ## the lane surface (and board lines) of the current mode
 var _rack_size := 0                  ## pins in a fresh rack of the current mode
 var _menu: Node2D                    ## the rack-choice screen
-var _menu_pick := 0                  ## 0 = block, 1 = ground (keys move it, A picks)
+var _menu_pick := 0                  ## index into MODES (keys move it, A picks)
 var _state := "menu"                 ## menu | aim | rolling | reset | over
 var _t := 0.0
 var _roll_t := 0.0
@@ -196,12 +207,23 @@ func _build_floor() -> Array:
 			n.queue_free()
 	_floor.clear()
 	var cells: Array = []
-	if _mode == "ground":
+	if _mode != "block":
+		# the approach, up to where the special floor begins
 		var length := APPROACH - TILE_FRONT_Z
 		var mid_z := (APPROACH + TILE_FRONT_Z) * 0.5
 		_floor.append(_box(Vector3(LANE_W, 0.4, length), Vector3(0, -0.2, mid_z), mat("bg_alt", 0.18, 0.22), true, 0.15))
 		for i in range(1, 8):
 			_floor.append(_box(Vector3(0.02, 0.011, length), Vector3(-LANE_W * 0.5 + i * LANE_W / 8.0, 0.0055, mid_z), mat("ink", 0.02, 0.6)))
+	if _mode == "triangle":
+		_floor.append(_triangle_floor())
+		# a glowing lip down each slanted edge
+		var half := LANE_W * 0.5
+		var run := TILE_FRONT_Z - TRI_TIP_Z
+		var edge_len := sqrt(half * half + run * run)
+		for side: float in [-1.0, 1.0]:
+			var lip := _box(Vector3(0.06, 0.03, edge_len), Vector3(side * half * 0.5, 0.01, (TILE_FRONT_Z + TRI_TIP_Z) * 0.5), mat("warn", 0.8))
+			lip.rotation.y = side * atan2(half, run)
+	elif _mode == "ground":
 		cells = _random_ground()
 		for c: Vector2i in cells:
 			var at := _tile_centre(c)
@@ -221,6 +243,42 @@ func _build_floor() -> Array:
 		for i in range(1, 8):
 			_floor.append(_box(Vector3(0.02, 0.011, length), Vector3(-LANE_W * 0.5 + i * LANE_W / 8.0, 0.0055, mid_z), mat("ink", 0.02, 0.6)))
 	return cells
+
+## A triangular slab: full width at the approach's end, a point at TRI_TIP_Z. One convex
+## collision shape and a mesh built by hand (top and the two slanted sides; the front is
+## against the approach, the bottom is never seen).
+func _triangle_floor() -> StaticBody3D:
+	var half := LANE_W * 0.5
+	var top := 0.0
+	var bot := -0.4
+	var fl := Vector3(-half, top, TILE_FRONT_Z)
+	var fr := Vector3(half, top, TILE_FRONT_Z)
+	var tip := Vector3(0, top, TRI_TIP_Z)
+	var down := Vector3(0, bot - top, 0)
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_material(mat("bg_alt", 0.18, 0.22))
+	for tri: Array in [[fl, tip, fr], [fl, fl + down, tip], [tip, tip + down, fl + down],
+			[fr, tip, fr + down], [fr + down, tip, tip + down]]:
+		var n: Vector3 = (tri[1] - tri[0]).cross(tri[2] - tri[0]).normalized()
+		for v: Vector3 in tri:
+			st.set_normal(n)
+			st.add_vertex(v)
+	var mi := MeshInstance3D.new()
+	mi.mesh = st.commit()
+	var body := StaticBody3D.new()
+	var cs := CollisionShape3D.new()
+	var shape := ConvexPolygonShape3D.new()
+	shape.points = PackedVector3Array([fl, fr, tip, fl + down, fr + down, tip + down])
+	cs.shape = shape
+	body.add_child(cs)
+	body.add_child(mi)
+	var pm := PhysicsMaterial.new()
+	pm.bounce = 0.15
+	pm.friction = 0.2
+	body.physics_material_override = pm
+	world.add_child(body)
+	return body
 
 func _tile_centre(c: Vector2i) -> Vector3:
 	return Vector3((c.x - (TILE_COLS - 1) * 0.5) * TILE, 0.0, TILE_FRONT_Z - (c.y + 0.5) * TILE)
@@ -359,7 +417,7 @@ func _build_menu() -> void:
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_menu.add_child(title)
 	var sub := Label.new()
-	sub.text = "pick a rack"
+	sub.text = "pick a game"
 	sub.add_theme_font_size_override("font_size", 14)
 	sub.add_theme_color_override("font_color", Palette.col("accent"))
 	sub.position = Vector2(0, 112)
@@ -367,8 +425,8 @@ func _build_menu() -> void:
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_menu.add_child(sub)
-	for i in 2:
-		var r: Rect2 = BTN_BLOCK if i == 0 else BTN_SHAPES
+	for i in MODES.size():
+		var r: Rect2 = BTNS[i]
 		var edge := ColorRect.new()
 		edge.name = "edge%d" % i
 		edge.position = r.position - Vector2(3, 3)
@@ -376,14 +434,14 @@ func _build_menu() -> void:
 		edge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_menu.add_child(edge)
 		var box := ColorRect.new()
-		box.color = Palette.col("player" if i == 0 else "prize")
+		box.color = Palette.col(MODE_ROLES[i])
 		box.position = r.position
 		box.size = r.size
 		box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_menu.add_child(box)
 		var l := Label.new()
-		l.text = "100 pins" if i == 0 else "random ground"
-		l.add_theme_font_size_override("font_size", 22)
+		l.text = MODE_LABELS[i]
+		l.add_theme_font_size_override("font_size", 20)
 		l.add_theme_color_override("font_color", Palette.col("bg"))
 		l.position = r.position
 		l.size = r.size
@@ -392,7 +450,7 @@ func _build_menu() -> void:
 		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_menu.add_child(l)
 		var blurb := Label.new()
-		blurb.text = "a wall of a hundred, ten throws" if i == 0 else "the floor is a random shape with holes,\ntwenty pins on it. clear it, get another"
+		blurb.text = MODE_BLURBS[i]
 		blurb.add_theme_font_size_override("font_size", 11)
 		blurb.add_theme_color_override("font_color", Palette.col("ink"))
 		blurb.modulate.a = 0.75
@@ -404,7 +462,7 @@ func _build_menu() -> void:
 	_menu_highlight()
 
 func _menu_highlight() -> void:
-	for i in 2:
+	for i in MODES.size():
 		var edge: ColorRect = _menu.get_node("edge%d" % i)
 		edge.color = Palette.col("ink") if i == _menu_pick else Palette.col("bg")
 
@@ -520,6 +578,11 @@ func _rack() -> void:
 		for i in mini(GROUND_PINS, slots.size()):
 			_pins.append(_make_pin(slots[i]))
 		Probe.event("ground", {"tiles": cells.size(), "pins": _pins.size()})
+	elif _mode == "triangle":
+		for row in TRI_ROWS.size():
+			var n: int = TRI_ROWS[row]
+			for k in n:
+				_pins.append(_make_pin(Vector3((k - (n - 1) * 0.5) * PIN_DX, 0, TRI_FRONT_ROW_Z - row * TRI_ROW_DZ)))
 	else:
 		for row in PIN_ROWS:
 			var shift := 0.15 if row % 2 == 1 else -0.15
@@ -750,11 +813,11 @@ func _process(delta: float) -> void:
 
 	if _state == "menu":
 		if PInput.just_pressed("move_left") or PInput.just_pressed("move_right"):
-			_menu_pick = 1 - _menu_pick
+			_menu_pick = posmod(_menu_pick + (1 if PInput.just_pressed("move_right") else -1), MODES.size())
 			_menu_highlight()
 			Audio.play("click")
 		if PInput.just_pressed("action_a"):
-			_choose("block" if _menu_pick == 0 else "ground")
+			_choose(MODES[_menu_pick])
 	elif _state == "aim":
 		var d := PInput.dir()
 		if d.x != 0.0:
@@ -817,10 +880,9 @@ func _input(e: InputEvent) -> void:
 		if e.pressed and _state == "menu":
 			if Flow.pointer_over_hud():
 				return
-			if BTN_BLOCK.has_point(e.position):
-				_choose("block")
-			elif BTN_SHAPES.has_point(e.position):
-				_choose("ground")
+			for i in MODES.size():
+				if (BTNS[i] as Rect2).has_point(e.position):
+					_choose(MODES[i])
 			return
 		if e.pressed:
 			if Flow.pointer_over_hud() or _state != "aim":

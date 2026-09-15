@@ -1,7 +1,7 @@
 # bowling
 
-The kit's third 3D game: real physics, one wide lane, a wall of pins or a floor with
-holes in it, nobody to beat but yourself.
+The kit's third 3D game: real physics, one wide lane, a wall of pins, a floor with holes
+in it, or a floor that narrows to a point; nobody to beat but yourself.
 
 ## What is it called?
 
@@ -21,6 +21,12 @@ first screen asks which rack you want:
   a hole, or rolls into one, drops out of play and the throw is over; so do pins that
   get knocked off the edge, which counts. Clear the pins and the next throw gets a new
   floor and a new scatter.
+- **triangle**: past the approach the floor is a wedge, full width where it starts and
+  a point at the far end, with a glowing lip down each slanted edge. Twenty pins stand
+  in a triangle inside it, six across at the front down to two at the back. The rack
+  is wide where the floor is wide and the ball has room; further back, everything is
+  a step from the edge and a pin knocked sideways is gone. Clear it and the same wedge
+  gets a fresh triangle.
 
 ## What do you do?
 
@@ -41,8 +47,8 @@ Only the rack. A ball carves a channel through it and knocks down the pins in it
 and the ones they fall onto; the next throw has to go somewhere fresh. Fallen pins are
 swept away after every throw, the standing ones stay exactly where they were pushed to.
 Every pin down is a point. Knock down the last one and it is a bonus of half the rack
-(+50 on the wall, +10 on the random ground) and a fresh rack for the throws you have
-left.
+(+50 on the wall, +10 on the random ground and the triangle) and a fresh rack for the
+throws you have left.
 
 ## How do you win?
 
