@@ -1,5 +1,5 @@
 extends GameMode3D
-## bowling -- a hundred pins on one wide neon lane, ten throws, nobody to beat but your own
+## bowling -- twenty pins on one wide neon lane, ten throws, nobody to beat but your own
 ## best. Tap where the ball should land: it flies there, lands, rolls on and ploughs into
 ## the rack. A farther spot is a harder throw; a spot past a wall is a bank shot, because
 ## the lane has bumpers, not gutters. Real rigid bodies: the ball rolls, the pins tumble,
@@ -16,9 +16,9 @@ const BALL_MASS := 9.0                 ## a wrecking ball next to the pins
 const BALL_START_Z := 1.2
 const PIN_H := 0.9
 const PIN_R := 0.13                  ## collision cylinder; the drawn pin bulges past it
-const PIN_MASS := 0.35                 ## light, so a hundred of them do not stop the ball and a hit one flies
-const PIN_COLS := 10                 ## the rack: PIN_COLS x PIN_ROWS in staggered rows
-const PIN_ROWS := 10
+const PIN_MASS := 0.35                 ## light, so the rack does not stop the ball and a hit pin flies
+const PIN_COLS := 5                  ## the rack: PIN_COLS x PIN_ROWS in staggered rows (twenty)
+const PIN_ROWS := 4
 const PIN_DX := 0.64                 ## between neighbours in a row (a ball cannot squeeze through)
 const PIN_DZ := 0.6                  ## between rows
 const RACK_FRONT_Z := -12.6          ## the nearest row
@@ -36,7 +36,9 @@ const SETTLE := 0.7                  ## everything quiet this long -> count the 
 const ROLL_TIMEOUT := 7.0            ## a wobbling pin does not get to hold the game up
 const RESET_DELAY := 1.0             ## seconds to admire the wreckage before the sweep
 const THROWS := 10
-const CLEAR_BONUS := 50              ## for knocking down every last pin (then a fresh rack)
+const CLEAR_BONUS := 10              ## for knocking down every last pin (then a fresh rack)
+const BIG_HIT := 12                  ## pins in one throw that earn the big reaction ...
+const GOOD_HIT := 6                  ## ... and the small one
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 const PHYSICS_HZ := 120              ## a fast ball through thin pins needs it; restored on exit
 
@@ -272,9 +274,8 @@ func _build_ui() -> void:
 
 ## ---- pins ----------------------------------------------------------------------------
 
-## A hundred pins are drawn as three instanced meshes (body, head, neck band) whose
-## transforms follow the physics bodies every frame: three draw calls instead of three
-## hundred nodes, which is the difference between a phone coping and not.
+## The pins are drawn as three instanced meshes (body, head, neck band) whose transforms
+## follow the physics bodies every frame: three draw calls however many pins there are.
 func _build_pin_meshes() -> void:
 	var body := CylinderMesh.new()
 	body.top_radius = 0.07
@@ -468,13 +469,13 @@ func _tally() -> void:
 		hit3d(7.0)
 		_sparks(Vector3(0, 0.8, RACK_FRONT_Z - 2.5), 18)
 		_racks += 1
-	elif knocked >= 25:
+	elif knocked >= BIG_HIT:
 		Probe.event("big_hit")
 		Juice.text(self, deck, "+%d  !!" % knocked, Palette.col("prize"))
 		Audio.play("voice_correct")
 		hit3d(5.0)
 		_sparks(Vector3(0, 0.8, RACK_FRONT_Z - 2.5), 10)
-	elif knocked >= 10:
+	elif knocked >= GOOD_HIT:
 		Juice.text(self, deck, "+%d" % knocked, Palette.col("warn"))
 		Audio.play("coin")
 	elif knocked > 0:

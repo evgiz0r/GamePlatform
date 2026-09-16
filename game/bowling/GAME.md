@@ -1,6 +1,6 @@
 # bowling
 
-The kit's third 3D game: real physics, one wide lane, a hundred pins, nobody to beat but
+The kit's third 3D game: real physics, one wide lane, twenty pins, nobody to beat but
 yourself.
 
 ## What is it called?
@@ -10,8 +10,8 @@ bowling
 ## Who are you?
 
 A bowler on one lane of a neon alley, alone, chasing your own best score. There is no
-opponent and no clock: ten throws at a wall of a hundred pins, then the total goes on
-the high score table.
+opponent and no clock: ten throws at a rack of twenty pins, five across in four rows,
+then the total goes on the high score table.
 
 ## What do you do?
 
@@ -31,8 +31,8 @@ landing spot, A throws. That is also how the bots play it.
 Only the rack. A ball carves a channel through it and knocks down the pins in its way
 and the ones they fall onto; the next throw has to go somewhere fresh. Fallen pins are
 swept away after every throw, the standing ones stay exactly where they were pushed to.
-Every pin down is a point. Knock down the last one and it is +50 and a fresh rack of a
-hundred for the throws you have left.
+Every pin down is a point. Knock down the last one and it is +10 and a fresh rack of
+twenty for the throws you have left.
 
 ## How do you win?
 
