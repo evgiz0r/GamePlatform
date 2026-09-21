@@ -99,30 +99,63 @@ func _show_menu() -> void:
 	_clear_stage()
 	Palette.use(SaveData.data.get("palette", "neon_candy"))
 	var games := list_games()
+	var active: Array = games.filter(func(g): return g["active"])
+	var other: Array = games.filter(func(g): return not g["active"])
 	var nodes: Array = [
 		UIKit.label("GAME PLATFORM", 34, "player"),
 		UIKit.label("pick a game", 13, "accent"),
 	]
 	if games.is_empty():
 		nodes.append(UIKit.label("no games in res://game/ yet -- ask your AI for one", 12, "warn"))
+	# The front page is for the one or two games being worked on right now (a game is
+	# "active" when its folder holds a file named ACTIVE). Everything else is one tap away
+	# behind "other", so the menu stays clean however many games pile up.
+	for g in active:
+		nodes.append(_game_button(g, false))
+	if not other.is_empty():
+		var label := "other" if active.is_empty() else "other (%d)" % other.size()
+		nodes.append(UIKit.button(label, func(): _fade_to(_show_other)))
+	nodes.append(_menu_footer_row())
+	_show_column(nodes)
+
+## The parked shelf: every game without an ACTIVE marker, as a grid.
+func _show_other() -> void:
+	_clear_stage()
+	var other: Array = list_games().filter(func(g): return not g["active"])
+	var nodes: Array = [
+		UIKit.label("OTHER GAMES", 26, "player"),
+		UIKit.label("everything not on the front page", 13, "accent"),
+	]
+	if other.is_empty():
+		nodes.append(UIKit.label("nothing here -- every game is on the front page", 12, "warn"))
 	# One column reads best, but a column of full-height buttons runs off the bottom at
 	# five games. Past four the list goes two-up and a little shorter; up to eight games
 	# then fit with room to spare, and the buttons stay big enough for a thumb.
 	var grid := GridContainer.new()
-	grid.columns = 2 if games.size() > 4 else 1
+	grid.columns = 2 if other.size() > 4 else 1
 	grid.add_theme_constant_override("h_separation", 10)
 	grid.add_theme_constant_override("v_separation", 6 if grid.columns == 2 else 10)
-	for g in games:
-		var id: String = g["id"]
-		var best := SaveData.best_for(id)
-		var caption: String = g["title"] + ("   best %d" % best if best > 0 else "")
-		var btn := UIKit.button(caption, func(): start_game(id))
-		if grid.columns == 2:
-			btn.custom_minimum_size = Vector2(200, 30)
-			btn.add_theme_font_size_override("font_size", 14)
-		grid.add_child(btn)
+	for g in other:
+		grid.add_child(_game_button(g, grid.columns == 2))
 	nodes.append(grid)
-	# look and quit share a row for the same reason
+	var back := UIKit.button("back", goto_menu)
+	back.custom_minimum_size = Vector2(200, 30)
+	back.add_theme_font_size_override("font_size", 14)
+	nodes.append(back)
+	_show_column(nodes)
+
+func _game_button(g: Dictionary, small: bool) -> Button:
+	var id: String = g["id"]
+	var best := SaveData.best_for(id)
+	var caption: String = g["title"] + ("   best %d" % best if best > 0 else "")
+	var btn := UIKit.button(caption, func(): start_game(id))
+	if small:
+		btn.custom_minimum_size = Vector2(200, 30)
+		btn.add_theme_font_size_override("font_size", 14)
+	return btn
+
+## look and quit share a row so the column stays short
+func _menu_footer_row() -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
 	var look := UIKit.button("look: " + Palette.active, _cycle_palette)
@@ -134,7 +167,9 @@ func _show_menu() -> void:
 		quit.custom_minimum_size = Vector2(90, 30)
 		quit.add_theme_font_size_override("font_size", 14)
 		row.add_child(quit)
-	nodes.append(row)
+	return row
+
+func _show_column(nodes: Array) -> void:
 	# deliberately faint: it is a diagnostic, not part of the game's look. "ink" dimmed
 	# rather than a palette role, so it stays unobtrusive whichever palette is active.
 	var stamp := UIKit.label(_build_stamp(), 9, "ink")
@@ -164,6 +199,8 @@ func _cycle_palette() -> void:
 	_show_menu()
 
 ## Every subfolder of res://game/ holding a <name>.tscn is a game. No registry to maintain.
+## A file named ACTIVE in the folder puts the game on the menu's front page; without it
+## the game sits behind "other". Still no registry: the marker lives with the game.
 func list_games() -> Array:
 	var out: Array = []
 	var d := DirAccess.open(GAMES_DIR)
@@ -172,7 +209,8 @@ func list_games() -> Array:
 	for sub in d.get_directories():
 		var path := GAMES_DIR + sub + "/" + sub + ".tscn"
 		if ResourceLoader.exists(path):
-			out.append({"id": sub, "path": path, "title": sub.replace("_", " ")})
+			var active := FileAccess.file_exists(GAMES_DIR + sub + "/ACTIVE")
+			out.append({"id": sub, "path": path, "title": sub.replace("_", " "), "active": active})
 	return out
 
 func start_game(id: String) -> void:

@@ -40,6 +40,12 @@ game/count/
 nothing else to update. `tools/playtest.sh` with no arguments picks the first game it
 finds, so it keeps working whatever you add or delete.
 
+**The menu has a front page and an "other" shelf.** A game whose folder holds an empty
+file named `ACTIVE` sits on the front page; every other game is one tap away behind the
+"other" button. The front page is for the one or two games being worked on right now, so
+only add the marker when asked (`touch game/<name>/ACTIVE`) and delete it when that game
+is done. Still no registry: the marker lives in the game's own folder.
+
 Nothing outside a game's own folder should ever name that game. If you find yourself
 writing its name in a doc, a tool or another game, that is the thing that will rot when it
 is deleted — the kit's own onboarding once told people to play a game that had been gone
@@ -179,10 +185,13 @@ Short, specific, and all of them cost a debugging session:
   and where the thing being steered was at that moment, then move it by the same delta the
   finger has moved since. A stationary tap then asks for zero movement and a small drag
   asks for a proportionally small one. `bricks`' paddle does this.
-- **The menu goes two-up past four games.** A single column of full-height buttons ran
-  off the bottom at five, which is why `reference/` exists (finished games parked out of
-  the menu). Now `_show_menu()` in `shell/autoload/flow.gd` switches to a two-column
-  grid of slightly shorter buttons above four games, and eight fit. Past that, park one.
+- **The "other" shelf goes two-up past four games.** A single column of full-height
+  buttons ran off the bottom at five, which is why `reference/` exists (finished games
+  parked out of the menu). Now `_show_other()` in `shell/autoload/flow.gd` switches to a
+  two-column grid of slightly shorter buttons above four games, and ten fit. Past that,
+  park one. The front page itself never has this problem: it only ever holds the one or
+  two `ACTIVE` games plus the "other" button. `tools/menu_shot.sh other` screenshots the
+  shelf.
 - **Animated art exists in `assets/actors/` only** — five human characters with real
   frames, via `Blob.set_actor()` / `Blob.play()`. Everything else in `assets/` is a single
   static image, so animals and items can only be animated by hand: position, rotation and

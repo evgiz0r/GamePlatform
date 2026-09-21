@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Screenshot the main menu into shots/menu.png -- the one screen tools/shots.sh cannot
-# reach, since that starts straight into a game. Worth a look whenever the number of games
-# changes: the menu is the thing that overflows. Set GODOT if it is not on PATH.
+# reach, since that starts straight into a game. `tools/menu_shot.sh other` shoots the
+# "other" shelf into shots/other.png instead. Worth a look whenever the number of games
+# changes: the shelf is the thing that overflows. Set GODOT if it is not on PATH.
 set -u
 BIN="${GODOT:-}"
 if [ -z "$BIN" ]; then
@@ -16,5 +17,6 @@ RUN=()
 if [ -z "${DISPLAY:-}" ] && command -v xvfb-run >/dev/null 2>&1; then
   RUN=(xvfb-run -a -s "-screen 0 1280x720x24")
 fi
+SCREEN="${1:-menu}"
 "${RUN[@]}" "$BIN" --path . --rendering-driver opengl3 --audio-driver Dummy \
-  --script "$PWD/tools/menu_shot.gd" 2>&1 | grep -E "^\[shot\]"
+  --script "$PWD/tools/menu_shot.gd" -- --screen="$SCREEN" 2>&1 | grep -E "^\[shot\]"
