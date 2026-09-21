@@ -1,7 +1,11 @@
 # reference
 
-Finished games parked out of the menu. Each folder is a complete game exactly as it was
-under `game/`: code, scene and design, kept for reading, borrowing from and bringing back.
+Finished games parked out of the menu entirely. (A game that should stay playable but
+off the front page does not belong here: leave it under `game/` without an `ACTIVE`
+marker and the menu files it under "other".)
+
+Each folder is a complete game exactly as it was under `game/`: code, scene and design,
+kept for reading, borrowing from and bringing back.
 
 Godot ignores this folder (`.gdignore`), so nothing here is compiled, imported, exported or
 listed on the menu. The menu only ever scans `game/`, so parking a game is just moving its
