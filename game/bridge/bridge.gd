@@ -32,9 +32,9 @@ const SWEEP_TIME := 0.25
 const FLY_TIME := 0.16
 
 ## Layout, in the 640x360 design space.
-const S_CARD := Vector2(42, 60)
-const N_CARD := Vector2(34, 48)
-const T_CARD := Vector2(36, 50)
+const S_CARD := Vector2(48, 68)
+const N_CARD := Vector2(40, 56)
+const T_CARD := Vector2(42, 58)
 const S_TOP := 292.0
 const N_TOP := 36.0
 const MID := Vector2(320, 190)
@@ -73,6 +73,7 @@ var _deals := 0
 
 var _hits: Array = []               ## [{rect, kind, value}] from the last draw
 var _kb := -1                       ## keyboard selection among the current options
+var _hint := -1                     ## the call or card the hint button suggested, until you act
 var _t := 0.0
 var _sfx_was := 0.8
 var _idle_limit := 0.0
@@ -145,6 +146,7 @@ func _new_deal() -> void:
 	_phase = "bid"
 	_deal_t = 0.0
 	_kb = -1
+	_hint = -1
 	_wait = AI_CALL_TIME * _tempo + 0.5
 	_deals += 1
 	Audio.play("open", 0.05, -6.0)
@@ -181,6 +183,7 @@ func _make_call(call: int) -> void:
 		return
 	_auc.append(call)
 	_kb = -1
+	_hint = -1
 	Audio.play("click", 0.08, -4.0 if call == R.PASS else 0.0)
 	Probe.event("call", {"seat": R.SEAT_SHORT[seat], "call": R.call_text(call)})
 	if R.is_bid(call) or call != R.PASS:
@@ -231,6 +234,7 @@ func _play_card(card: int) -> void:
 	var winner := _table.play(card)
 	_shown.append([seat, card, 0.0])
 	_kb = -1
+	_hint = -1
 	Audio.play("impact_light", 0.12, -2.0)
 	if led >= 0 and R.suit_of(card) != led and R.suit_of(card) == _table.trump:
 		Juice.shake(3.0)
@@ -360,6 +364,20 @@ func _auto() -> void:
 	elif _phase == "play":
 		_play_card(_ai_card(seat))
 
+## The hint button: the computer's choice for your turn, lit up but not played. Tap it
+## (or press shift) to follow the advice, or play something else.
+func _show_hint() -> void:
+	if finished or _phase == "result":
+		return
+	var seat := _to_act()
+	if seat < 0 or not _yours(seat) or _pause > 0.0 or _sweep >= 0.0:
+		return
+	if _hint < 0:
+		_hint = _ai_call(seat) if _phase == "bid" else _ai_card(seat)
+	_kb = _options().find(_hint)
+	Audio.play("select", 0.05, -6.0)
+	Probe.event("hint", {"phase": _phase})
+
 func _process(delta: float) -> void:
 	_t += delta
 	_deal_t += delta
@@ -461,6 +479,7 @@ func _input(event: InputEvent) -> void:
 		match h["kind"]:
 			"level": _set_level(h["value"])
 			"auto": _auto()
+			"hint": _show_hint()
 			"new": _new_rubber_pressed()
 			"call":
 				if _phase == "bid" and _yours(_to_act()):
@@ -601,6 +620,9 @@ func _draw_right(f: Font, ink: Color, dim: Color, accent: Color) -> void:
 	var mine := _to_act() >= 0 and _yours(_to_act()) or _phase == "result"
 	_button(f, auto, "next" if _phase == "result" else "auto", mine)
 	_hits.append({"rect": auto, "kind": "auto", "value": 0})
+	var hint := Rect2(540, 294, 92, 22)
+	_button(f, hint, "hint", mine and _phase != "result")
+	_hits.append({"rect": hint, "kind": "hint", "value": 0})
 	var nr := Rect2(540, 320, 92, 22)
 	_button(f, nr, "new rubber", false)
 	_hits.append({"rect": nr, "kind": "new", "value": 0})
@@ -634,7 +656,7 @@ func _cards_of(seat: int) -> Array:
 func _draw_south(f: Font) -> void:
 	var cards: Array = _cards_of(SOUTH)
 	var shown := mini(cards.size(), int(_deal_t * 40.0)) if _phase == "bid" and _auc.is_empty() else cards.size()
-	_draw_row(f, SOUTH, cards, shown, S_TOP, S_CARD, 32.0, 440.0)
+	_draw_row(f, SOUTH, cards, shown, S_TOP, S_CARD, 34.0, 432.0)
 
 func _draw_north(f: Font, dim: Color) -> void:
 	var cards: Array = _cards_of(NORTH)
@@ -645,15 +667,15 @@ func _draw_north(f: Font, dim: Color) -> void:
 			label = "north - declarer (you play it)"
 		elif _table.dummy == NORTH:
 			label = "north - dummy (you play it)"
-	_txt_c(f, 320, 97, label, 10, _seat_col(NORTH, dim))
+	_txt_c(f, 320, 104, label, 10, _seat_col(NORTH, dim))
 	if up:
-		_draw_row(f, NORTH, cards, cards.size(), N_TOP, N_CARD, 24.0, 330.0)
+		_draw_row(f, NORTH, cards, cards.size(), N_TOP, N_CARD, 26.0, 356.0)
 	else:
 		var n := cards.size()
-		var step := 14.0
-		var w := step * (n - 1) + 26.0
+		var step := 16.0
+		var w := step * (n - 1) + 30.0
 		for i in n:
-			_draw_back(Rect2(320 - w * 0.5 + i * step, N_TOP + 6, 26, 36))
+			_draw_back(Rect2(320 - w * 0.5 + i * step, N_TOP + 6, 30, 42))
 
 func _seat_col(seat: int, dim: Color) -> Color:
 	if _to_act() == seat and _phase != "result":
@@ -690,6 +712,8 @@ func _draw_row(f: Font, seat: int, cards: Array, shown: int, top: float, size: V
 			lift = -14.0
 		var rect := Rect2(x0 + i * step, top + lift, size.x, size.y)
 		_draw_face(f, rect, c, ok, mine and not ok, c == sel)
+		if mine and c == _hint:
+			_hint_glow(f, rect)
 		if ok:
 			var hit := Rect2(rect.position, Vector2(step if i < n - 1 else size.x, size.y + 10))
 			_hits.append({"rect": hit, "kind": "card", "value": c})
@@ -741,7 +765,7 @@ func _draw_face(f: Font, rect: Rect2, c: int, lit: bool, dull: bool, chosen: boo
 		draw_rect(rect.grow(4.0), Color(col.r, col.g, col.b, 0.45))
 	draw_rect(rect, base)
 	draw_rect(rect, Color(col.r, col.g, col.b, 0.95 if lit else 0.55), false, 1.5)
-	var fs := 14 if rect.size.x >= 40 else 12
+	var fs := 16 if rect.size.x >= 46 else (14 if rect.size.x >= 38 else 12)
 	draw_string(f, rect.position + Vector2(3, fs + 1), R.card_text(c), HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)
 	_suit(rect.position + Vector2(9, fs + 10), s, 4.5, col)
 	_suit(rect.position + Vector2(rect.size.x * 0.6, rect.size.y * 0.66), s, rect.size.x * 0.2, Color(col.r, col.g, col.b, 0.85))
@@ -849,13 +873,18 @@ func _draw_box(f: Font) -> void:
 	if not mine:
 		_txt_c(f, BOX.x + CELL.x * 2.5, BOX.y + 70, "%s to call..." % R.SEAT_NAMES[seat], 12, Color(ink.r, ink.g, ink.b, 0.7))
 		return
-	_txt_c(f, BOX.x + CELL.x * 2.5, BOX.y - 6, "your call", 11, Palette.col("warn"))
+	if _hint >= 0:
+		_txt_c(f, BOX.x + CELL.x * 2.5, BOX.y - 6, "hint: " + R.call_text(_hint), 11, Palette.col("prize"))
+	else:
+		_txt_c(f, BOX.x + CELL.x * 2.5, BOX.y - 6, "your call", 11, Palette.col("warn"))
 	for lv in range(1, 8):
 		for st in 5:
 			var b := R.make_bid(lv, st)
 			var rect := Rect2(BOX + Vector2(st * CELL.x, (lv - 1) * CELL.y), CELL - Vector2(2, 2))
 			var ok := legal.has(b)
 			_cell(f, rect, b, ok, b == sel)
+			if b == _hint:
+				_hint_glow(f, rect, false)
 			if ok:
 				_hits.append({"rect": rect, "kind": "call", "value": b})
 	var y := BOX.y + 7 * CELL.y + 3
@@ -865,8 +894,20 @@ func _draw_box(f: Font) -> void:
 	for sp in specials:
 		var ok := legal.has(sp[0])
 		_cell(f, sp[1], sp[0], ok, sp[0] == sel)
+		if sp[0] == _hint:
+			_hint_glow(f, sp[1], false)
 		if ok:
 			_hits.append({"rect": sp[1], "kind": "call", "value": sp[0]})
+
+## A pulsing ring and a small "hint" tag over whatever the hint suggested.
+func _hint_glow(f: Font, rect: Rect2, tag: bool = true) -> void:
+	var g := Palette.col("prize")
+	var a := 0.55 + 0.45 * sin(_t * 7.0)
+	draw_rect(rect.grow(3.0), Color(g.r, g.g, g.b, a), false, 2.5)
+	if not tag:
+		return
+	draw_string(f, Vector2(rect.position.x - 10, rect.position.y - 4), "hint", HORIZONTAL_ALIGNMENT_CENTER,
+		rect.size.x + 20, 10, Color(g.r, g.g, g.b, 0.6 + 0.4 * a))
 
 func _cell(f: Font, rect: Rect2, call: int, ok: bool, chosen: bool) -> void:
 	var accent := Palette.col("accent")
