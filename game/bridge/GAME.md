@@ -81,6 +81,9 @@ clubs each in their own palette colour) so suits read at a glance on a phone.
     at a hidden hand.
 - **Auto** (space) makes the computer call or play for you, at partner's level. It is a
   hint when you are stuck, and it is also how the bots play whole rubbers.
+- **Hint** lights up the call or card the computer would choose for you (at partner's
+  level) without playing it. Follow it or not; it goes away once you act. With the
+  keyboard, the hint is also selected, so shift plays it.
 - **Keyboard**: arrows pick a legal card or call, shift (or K) plays it, space is auto.
 - **Score** is your side's total on the scoresheet. The shell keeps the high score.
 - **New rubber** starts over with the score back at zero.
