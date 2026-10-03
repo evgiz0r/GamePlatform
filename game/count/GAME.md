@@ -21,17 +21,45 @@ to work out how many there are.
 
 ## What is trying to stop you?
 
-A **10 second countdown**. If it runs out you lose a life. Picking the wrong animal loses
-a life too. **Three lives** and the run is over.
+A **countdown** (10 seconds, down to 7 on the boss). If it runs out you lose a life.
+Picking the wrong animal loses a life too. **Three lives** — topped back up at the start
+of every level — and the run is over.
 
 And it **gets harder — bigger numbers**. It starts with tiny numbers you can see at a
 glance, and grows until there are a lot of critters and the wrong answers are only one
 away from the right one.
 
+## Levels
+
+> There will be levels. For each level, there is a goal within the game's rules to
+> complete. For example, three consecutive right answers or reached eight in the count.
+> Ten levels, increasingly hard, so that the tenth is a boss level. It would take an
+> average player three to five minutes to complete it. For each level they get a small
+> prize, like a cute icon, and the tenth one is a bigger prize.
+
+| # | Goal | Herd | Prize |
+|---|---|---|---|
+| 1 | get 3 right | 1–4, neat rows, 3 answers | beehive |
+| 2 | get 3 in a row | 2–6, neat rows | red potion |
+| 3 | count 8 or more, twice | 4–9, ragged rows, 4 answers | ghost |
+| 4 | 3 quick ones, under 4 seconds | 3–8, ragged rows | blue potion |
+| 5 | score 70 points | 3–9, clumps | banner |
+| 6 | get 4 in a row | 4–10, clumps, wrong answers closer | green potion |
+| 7 | count 10 or more, twice | 6–12, scattered, 9 s | bow |
+| 8 | 3 quick ones, under 4 seconds | 5–10, scattered, 8 s | princess |
+| 9 | right answers add up to 40 | 6–12, jumbled | gold bar |
+| 10 | **BOSS:** 5 in a row | 7–13, jumbled, mixed critters, 5 answers, 7 s | **the crown** |
+
+Each level opens with a banner naming the goal; the goal and a row of dots for your
+progress sit along the bottom while you play. Prizes pop up big in the middle and fly to a
+shelf down the right-hand edge, with empty outlines for the ones still to win. Beat the
+boss and a big golden crown appears with every prize you won dancing round it.
+
 ## How do you win?
 
-You do not — it is endless. You keep your streak going as long as you can and chase the
-high score.
+Clear all ten levels. An average player takes three to five minutes; a perfect bot does it
+in about a minute and a half. Score still counts (plus a bonus for each level) for the
+high-score table.
 
 ## What should it look like?
 
@@ -40,7 +68,8 @@ Bright neon. Big friendly animal badges holding big numbers.
 ## Core loop
 
 > Critters appear → count them before the bar runs out → click the animal holding that
-> number → the next round has more critters and closer wrong answers.
+> number → hit the level's goal → win a prize → the next level has more critters and
+> closer wrong answers.
 
 ## Sound
 
@@ -51,12 +80,12 @@ top of `game/count/count.gd` is the knob. Any new game should do the same — se
 
 ## Notes
 
-- **The placement is the difficulty, not the number.** The count creeps up (+1 every other
-  round, capped at 12) but the arrangement gets mean fast: neat rows, then ragged rows,
-  then clumps, then scattered, then jumbled, changing every two rounds. Six in a tidy row
-  is trivial; the same six in two clumps with a stray one is not. The current arrangement
-  is named at the bottom of the screen so you can see the difficulty rather than just feel
-  it.
+- **The placement is the difficulty, not the number.** The count creeps up level by level
+  but the arrangement is what gets mean: neat rows, then ragged rows, then clumps, then
+  scattered, then jumbled. Six in a tidy row
+  is trivial; the same six in two clumps with a stray one is not.
+- On the "quick ones" levels a little mark on the timer bar shows where "quick" runs out.
+- All the level numbers live in the `LEVELS` table at the top of `count.gd`.
 - A voice **says the number out loud** when you get it right — only one to ten were
   recorded, so bigger answers just get "correct".
 - The critters jump for joy when you get it and slump when you do not.
