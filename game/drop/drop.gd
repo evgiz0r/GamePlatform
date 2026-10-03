@@ -13,8 +13,10 @@ const HOVER_Y := 8.0                 ## how high the waiting thing floats (and f
 const GRAVITY_SCALE := 3.0           ## Earth gravity floats; this reads as a drop
 const CURSOR_SPEED := 10.0           ## world units per second on the keys / stick
 const DROP_COOLDOWN := 0.3
-const WALK_MIN := 1.3                ## walker speed range, units per second
-const WALK_MAX := 2.4
+## Walker speed range, units per second. They cross the long way (left to right), so this
+## is a touch quicker than it was when people could also cut across the short way.
+const WALK_MIN := 1.6
+const WALK_MAX := 3.0
 const SPAWN_RAMP := 60.0             ## a level's spawn gap shrinks to 75% over this long
 const MAX_WALKERS := 22
 const WALKER_R := 0.35               ## a falling thing this close to a walker's centre squashes it
@@ -499,7 +501,9 @@ func _spawn_group() -> void:
 		w.set_meta("speed", lead.get_meta("speed"))
 		w.set_meta("phase", lead.get_meta("phase"))
 
-func _spawn_walker(mid_way: bool = false, at := Vector3.INF, to := Vector3.INF) -> Actor3D:
+## `fresh` = one of the crowd at the start of a level: already a step or two in from its
+## edge, so the square is not empty while the banner is up, but never starting mid-square.
+func _spawn_walker(fresh: bool = false, at := Vector3.INF, to := Vector3.INF) -> Actor3D:
 	var w := Actor3D.new()
 	world.add_child(w)
 	w.set_character(PEOPLE[randi() % PEOPLE.size()], WALKER_H)
@@ -516,28 +520,17 @@ func _spawn_walker(mid_way: bool = false, at := Vector3.INF, to := Vector3.INF) 
 		halo.position = Vector3(0, WALKER_H + 0.35, 0)
 		w.add_child(halo)
 
-	# in from one edge, out through the opposite one
+	# side to side: in from the left or right edge, out through the opposite one
 	var r := world_area.grow(-0.6)
-	var from: Vector3
-	var goal: Vector3
-	match randi() % 4:
-		0:
-			from = Vector3(randf_range(r.position.x, r.end.x), 0, r.position.y)
-			goal = Vector3(randf_range(r.position.x, r.end.x), 0, r.end.y)
-		1:
-			from = Vector3(randf_range(r.position.x, r.end.x), 0, r.end.y)
-			goal = Vector3(randf_range(r.position.x, r.end.x), 0, r.position.y)
-		2:
-			from = Vector3(r.position.x, 0, randf_range(r.position.y, r.end.y))
-			goal = Vector3(r.end.x, 0, randf_range(r.position.y, r.end.y))
-		_:
-			from = Vector3(r.end.x, 0, randf_range(r.position.y, r.end.y))
-			goal = Vector3(r.position.x, 0, randf_range(r.position.y, r.end.y))
+	var left := Vector3(r.position.x, 0, randf_range(r.position.y, r.end.y))
+	var right := Vector3(r.end.x, 0, randf_range(r.position.y, r.end.y))
+	var from := left if randi() % 2 == 0 else right
+	var goal := right if from == left else left
 	if at.is_finite():
 		from = clamp_to_area(at, 0.3)
 		goal = clamp_to_area(to, 0.3)
-	if mid_way:
-		from = from.lerp(goal, randf_range(0.2, 0.7))
+	if fresh:
+		from = from.lerp(goal, randf_range(0.0, 0.12))
 	var speed := randf_range(WALK_MIN, WALK_MAX) * float(_lv().get("speed", 1.0))
 	w.set_meta("goal", goal)
 	w.set_meta("speed", speed)

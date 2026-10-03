@@ -29,8 +29,8 @@ A drops. No rotating: it is slop dropping, the thing spins on its own.
 
 ## What is trying to stop you?
 
-People. They stroll in from one edge of the square and cross to the opposite one, faster
-and more of them as time goes on. Every one that makes it across costs a life. Three lives.
+People. They stroll in from the left or right edge of the square and cross to the other
+side -- never popping up in the middle -- faster and more of them as time goes on. Every one that makes it across costs a life. Three lives.
 
 ## Levels
 
