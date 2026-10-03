@@ -9,9 +9,17 @@ drop
 
 ## Who are you?
 
-The sky. Something absurd hovers up there, right where you point: a taxi, an ambulance, a
-garbage truck, a fork, a frying pan, a spaceship. (No bus and no plane exist in the CC0
-kits; the delivery truck and the speeder stand in.)
+The sky. A little pocket monster hovers up there, right where you point, breathing gently:
+a yellow one with tall pointy ears and a glowing antenna, a blue water blob with a fin, a
+pink bear with a flame on its tail, a green pup with a leaf growing out of its head, a
+spiky ball, an owl chick, a big flat sleepy one, a fluffy cloud with wings.
+
+> Change the droppable objects to renders of Pokemon. Make the size a little bit smaller.
+
+Real Pokemon belong to Nintendo and this game is published on the web, so these are our own
+monsters instead -- built from spheres and cones in code, coloured by palette role so
+`/look` reskins them, and about three quarters the size of the cars and pans they replaced.
+They squash flat and spring back when they land.
 
 ## What do you do?
 
@@ -59,7 +67,7 @@ The goals, mixed and stacked:
 | 12 | 5 hits in a row | haloes, fast |
 | 13 | hold out 60 seconds | haloes, packed |
 | 14 | 4 double squashes | 60 second clock |
-| 15 | **FINAL:** squash 22 | 30 drops, 75 second clock, haloes, groups, fast |
+| 15 | **FINAL:** squash 20 | 32 drops, 75 second clock, haloes, groups, fast |
 
 Three lives, topped up at the start of every level. People freeze while a level banner is
 up. Each level won gives a small prize that flies to a shelf down the right edge; winning
@@ -80,8 +88,8 @@ two or three at once pays 10 + 20 + 30, and each level cleared adds 50 x its num
 ## What should it look like?
 
 A little town square at night: houses behind, trees down the sides, street lights on the
-corners, a glowing kerb, real low-poly people walking. Things that have landed lie there a
-couple of seconds, then sink into the ground.
+corners, a glowing kerb, real low-poly people walking. Monsters that have landed sit there
+a couple of seconds, then sink into the ground.
 
 ## Core loop
 

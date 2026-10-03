@@ -1,12 +1,13 @@
 extends GameMode3D
-## drop -- a little neon town square at night, people crossing it, and something absurd
-## hovering in the sky where you point: a taxi, a garbage truck, a fork, a spaceship. Tap
-## and it falls as a real 3D rigid body; anyone under it is squashed and the next thing
-## appears at once. People who make it across cost a life. Fifteen levels, each with its
+## drop -- a little neon town square at night, people crossing it, and a pocket monster
+## hovering in the sky where you point (our own designs, built in _monster()). Tap and it
+## falls as a real 3D rigid body; anyone under it is squashed and the next one appears at
+## once. People who make it across cost a life. Fifteen levels, each with its
 ## own goal, some against the clock, some with only so many things to drop. See GAME.md.
 ##
 ## The kit's first 3D game and the reference for GameMode3D (shell/game_mode_3d.gd):
-## model() for the things and the scenery, Actor3D for the walking people.
+## model() for the scenery, shapes built from palette materials for the monsters, Actor3D
+## for the walking people.
 
 const HOVER_Y := 8.0                 ## how high the waiting thing floats (and falls from)
 const GRAVITY_SCALE := 3.0           ## Earth gravity floats; this reads as a drop
@@ -55,29 +56,22 @@ const LEVELS := [
 	{"goal": "survive", "need": 60, "friends": 0.2, "spawn": 0.95, "speed": 1.25, "prize": "sword"},
 	{"goal": "combo", "need": 4, "time": 60, "spawn": 1.2, "speed": 1.3, "groups": 0.7, "prize": "potion_red"},
 	# the last one: everything at once
-	{"goal": "squash", "need": 22, "time": 75, "drops": 30, "friends": 0.3, "spawn": 1.0, "speed": 1.25,
+	{"goal": "squash", "need": 20, "time": 75, "drops": 32, "friends": 0.3, "spawn": 1.1, "speed": 1.15,
 		"groups": 0.35, "prize": "crown"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
-## What can fall. `size` is the longest side in world units (a walker is 1.8 tall).
+## What can fall: little pocket monsters, our own designs, built from spheres and cones in
+## _monster() so they reskin with the palette. `size` is the longest side in world units (a
+## walker is 1.8 tall), `role` the main body colour.
 const THINGS := [
-	{"model": "sedan", "size": 3.2, "mass": 6.0, "sfx": "impact_metal"},
-	{"model": "taxi", "size": 3.2, "mass": 6.0, "sfx": "impact_metal"},
-	{"model": "police", "size": 3.2, "mass": 6.0, "sfx": "impact_metal"},
-	{"model": "suv", "size": 3.4, "mass": 7.0, "sfx": "impact_metal"},
-	{"model": "van", "size": 3.5, "mass": 7.0, "sfx": "impact_metal"},
-	{"model": "ambulance", "size": 3.8, "mass": 8.0, "sfx": "impact_metal"},
-	{"model": "delivery", "size": 4.0, "mass": 9.0, "sfx": "impact_metal"},
-	{"model": "truck", "size": 4.2, "mass": 9.0, "sfx": "impact_metal"},
-	{"model": "firetruck", "size": 4.4, "mass": 10.0, "sfx": "impact_metal"},
-	{"model": "garbage-truck", "size": 4.4, "mass": 10.0, "sfx": "impact_metal"},
-	{"model": "utensil-fork", "size": 4.5, "mass": 2.0, "sfx": "impact_plate"},
-	{"model": "utensil-knife", "size": 4.5, "mass": 2.0, "sfx": "impact_plate"},
-	{"model": "utensil-spoon", "size": 4.5, "mass": 2.0, "sfx": "impact_plate"},
-	{"model": "plate", "size": 3.2, "mass": 3.0, "sfx": "impact_glass"},
-	{"model": "frying-pan", "size": 3.6, "mass": 4.0, "sfx": "impact_metal"},
-	{"model": "craft_speederA", "size": 4.0, "mass": 7.0, "sfx": "explode"},
-	{"model": "craft_racer", "size": 4.0, "mass": 7.0, "sfx": "explode"},
+	{"name": "sparkit", "size": 2.6, "mass": 3.0, "role": "warn", "sfx": "impact_soft"},
+	{"name": "blubbo", "size": 2.7, "mass": 4.0, "role": "accent", "sfx": "impact_soft"},
+	{"name": "embear", "size": 2.8, "mass": 5.0, "role": "hazard", "sfx": "impact_punch"},
+	{"name": "leafpup", "size": 2.7, "mass": 4.0, "role": "friend", "sfx": "impact_soft"},
+	{"name": "spikoon", "size": 2.5, "mass": 4.0, "role": "player", "sfx": "impact_wood"},
+	{"name": "owlbit", "size": 2.5, "mass": 3.0, "role": "prize", "sfx": "impact_soft"},
+	{"name": "snoozle", "size": 3.3, "mass": 8.0, "role": "player", "sfx": "impact_punch"},
+	{"name": "cloudy", "size": 2.8, "mass": 2.0, "role": "ink", "sfx": "impact_light"},
 ]
 const PEOPLE := ["Casual_Male", "Casual_Female", "Casual2_Male", "Casual2_Female", "Casual3_Female"]
 
@@ -220,7 +214,7 @@ func _next_thing() -> void:
 	_thing = THINGS[randi() % THINGS.size()]
 	for c in _hover.get_children():
 		c.queue_free()
-	var pivot := model(_thing["model"], _thing["size"])
+	var pivot := _monster(_thing)
 	_hover.add_child(pivot)
 	var b: AABB = pivot.get_meta("aabb")
 	(_shadow.mesh as BoxMesh).size = Vector3(b.size.x, 0.04, b.size.z)
@@ -241,7 +235,7 @@ func _drop() -> void:
 	body.mass = _thing["mass"]
 	body.contact_monitor = true
 	body.max_contacts_reported = 4
-	var pivot := model(_thing["model"], _thing["size"])
+	var pivot := _monster(_thing)
 	body.add_child(pivot)
 	add_box_collision(body, pivot, 0.9)
 	body.set_meta("aabb", pivot.get_meta("aabb"))
@@ -261,13 +255,18 @@ func _drop() -> void:
 		if is_instance_valid(old):
 			old.queue_free()
 	Audio.play("open")
-	Probe.event("drop", {"thing": _thing["model"]})
+	Probe.event("drop", {"thing": _thing["name"]})
 	_next_thing()
 
 func _on_land(body: RigidBody3D) -> void:
 	if not is_instance_valid(body) or body.get_meta("landed"):
 		return
 	body.set_meta("landed", true)
+	# a soft splat: the monster squashes flat and springs back (the collision box does not)
+	var look: Node3D = body.get_child(0)
+	var tw := look.create_tween()
+	tw.tween_property(look, "scale", Vector3(1.3, 0.65, 1.3), 0.07)
+	tw.tween_property(look, "scale", Vector3.ONE, 0.35).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 	get_tree().create_timer(RESOLVE_TIME).timeout.connect(func(): _resolve(body))
 	hit3d(3.5)
 	Audio.play(body.get_meta("sfx"))
@@ -332,6 +331,157 @@ func _spawn_debris(at: Vector3, role: String, n: int) -> void:
 		d.linear_velocity = Vector3(randf_range(-4, 4), randf_range(4, 9), randf_range(-4, 4))
 		d.angular_velocity = Vector3(randf_range(-8, 8), randf_range(-8, 8), randf_range(-8, 8))
 		get_tree().create_timer(1.3).timeout.connect(d.queue_free)
+
+## ---- the pocket monsters ---------------------------------------------------------
+
+## Build one monster as a model()-style pivot: bottom centre at the origin, longest side
+## `size`, with an "aabb" meta so collision and squash checks treat it like any model.
+## Everything is built facing +Z (towards the camera) at about one unit across, then fitted.
+func _monster(spec: Dictionary) -> Node3D:
+	var pivot := Node3D.new()
+	pivot.name = spec.name
+	var m := Node3D.new()
+	pivot.add_child(m)
+	var role: String = spec.role
+	match String(spec.name):
+		"sparkit":
+			_ball(m, role, Vector3(0, 1, 0), Vector3(1.0, 0.95, 0.9))
+			for sx in [-1.0, 1.0]:
+				_cone(m, role, Vector3(sx * 0.5, 1.95, 0), 0.24, 0.95, Vector3(0, 0, -sx * 0.35))
+				_ball(m, "bg", Vector3(sx * 0.66, 2.35, 0), Vector3.ONE * 0.12)
+				_ball(m, role, Vector3(sx * 0.45, 0.12, 0.35), Vector3(0.28, 0.16, 0.36))
+			_stick(m, Vector3(0, 1.9, 0), 0.5)
+			_ball(m, "prize", Vector3(0, 2.25, 0), Vector3.ONE * 0.17, 1.6)
+			_ball(m, "accent", Vector3(0, 0.75, -0.9), Vector3.ONE * 0.3)
+			_face(m, 1.05, 0.85)
+		"blubbo":
+			_ball(m, role, Vector3(0, 0.85, 0), Vector3(1.1, 0.85, 1.0))
+			_ball(m, "ink", Vector3(0, 0.7, 0.55), Vector3(0.65, 0.55, 0.5), 0.2)
+			var fin := _cone(m, "player", Vector3(0, 1.75, -0.1), 0.45, 0.8, Vector3(-0.3, 0, 0))
+			fin.scale = Vector3(0.3, 1, 1)
+			_ring(m, "player", Vector3(0, 0.7, -1.05), 0.28)
+			_face(m, 1.0, 0.95)
+		"embear":
+			_ball(m, role, Vector3(0, 1, 0))
+			for sx in [-1.0, 1.0]:
+				_ball(m, role, Vector3(sx * 0.62, 1.78, 0), Vector3.ONE * 0.32)
+				_ball(m, "ink", Vector3(sx * 0.62, 1.8, 0.12), Vector3.ONE * 0.16, 0.2)
+				_ball(m, role, Vector3(sx * 0.45, 0.12, 0.4), Vector3(0.3, 0.16, 0.38))
+			_ball(m, "ink", Vector3(0, 0.8, 0.85), Vector3(0.38, 0.28, 0.25), 0.2)
+			_ball(m, "bg", Vector3(0, 0.9, 1.06), Vector3.ONE * 0.09)
+			_stick(m, Vector3(0, 0.8, -0.95), 0.6, Vector3(-0.7, 0, 0))
+			_cone(m, "warn", Vector3(0, 1.35, -1.3), 0.22, 0.6, Vector3.ZERO, 1.8)
+			_face(m, 1.15, 0.9)
+		"leafpup":
+			_ball(m, role, Vector3(0, 0.9, 0), Vector3(1.1, 0.9, 1.1))
+			for sx in [-1.0, 1.0]:
+				var ear := _ball(m, "friend", Vector3(sx * 1.0, 1.0, 0.1), Vector3(0.22, 0.55, 0.38))
+				ear.rotation.z = sx * 0.4
+			_stick(m, Vector3(0, 1.75, 0), 0.35)
+			var leaf := _ball(m, "prize", Vector3(0.3, 2.05, 0), Vector3(0.45, 0.07, 0.25), 0.8)
+			leaf.rotation.z = 0.5
+			_ball(m, "bg", Vector3(0, 0.82, 1.08), Vector3.ONE * 0.1)
+			_face(m, 1.05, 0.95)
+		"spikoon":
+			_ball(m, role, Vector3(0, 1, 0))
+			for i in 9:
+				var a := TAU * float(i) / 9.0
+				var dir := Vector3(cos(a), 0.55 + 0.35 * sin(a * 2.0), sin(a)).normalized()
+				if dir.z > 0.55:
+					continue   # keep the face clear
+				var sp := _cone(m, "accent", Vector3(0, 1, 0) + dir * 1.15, 0.24, 0.65, Vector3.ZERO, 0.8)
+				sp.quaternion = Quaternion(Vector3.UP, dir)   # point the cone's tip outwards
+			_face(m, 1.0, 0.9)
+		"owlbit":
+			_ball(m, role, Vector3(0, 1.05, 0), Vector3(0.95, 1.1, 0.9))
+			for sx in [-1.0, 1.0]:
+				_cone(m, role, Vector3(sx * 0.5, 2.05, 0), 0.2, 0.5, Vector3(0, 0, -sx * 0.5))
+				var wing := _ball(m, "accent", Vector3(sx * 0.95, 1.0, -0.1), Vector3(0.2, 0.6, 0.5))
+				wing.rotation.z = sx * 0.3
+			_ball(m, "ink", Vector3(0, 0.75, 0.6), Vector3(0.55, 0.6, 0.35), 0.2)
+			_cone(m, "warn", Vector3(0, 1.0, 0.95), 0.12, 0.3, Vector3(PI * 0.5, 0, 0))
+			_face(m, 1.3, 0.85, false, 1.3)
+		"snoozle":
+			_ball(m, role, Vector3(0, 0.75, 0), Vector3(1.45, 0.75, 1.2))
+			_ball(m, "ink", Vector3(0, 0.6, 0.7), Vector3(1.0, 0.5, 0.55), 0.2)
+			for sx in [-1.0, 1.0]:
+				_ball(m, role, Vector3(sx * 0.75, 1.35, -0.1), Vector3(0.28, 0.3, 0.22))
+			_face(m, 1.0, 1.15, true)
+		_:  # cloudy
+			for o in [Vector3(0, 1.0, 0), Vector3(-0.7, 0.8, 0), Vector3(0.7, 0.8, 0), Vector3(-0.35, 1.45, -0.1),
+					Vector3(0.4, 1.4, -0.1), Vector3(0, 0.5, 0)]:
+				_ball(m, role, o, Vector3.ONE * 0.62, 0.25)
+			for sx in [-1.0, 1.0]:
+				var w := _ball(m, "accent", Vector3(sx * 1.25, 1.2, -0.2), Vector3(0.18, 0.38, 0.5), 0.8)
+				w.rotation.z = sx * 0.6
+			_face(m, 1.05, 0.62)
+	fit(m, float(spec.size))
+	pivot.set_meta("aabb", fitted_aabb(m))
+	return pivot
+
+func _ball(parent: Node3D, role: String, at: Vector3, scl := Vector3.ONE, glow := 0.35) -> MeshInstance3D:
+	var sm := SphereMesh.new()
+	sm.radius = 1.0
+	sm.height = 2.0
+	sm.radial_segments = 16
+	sm.rings = 8
+	sm.material = mat(role, glow)
+	return _part(parent, sm, at, scl)
+
+func _cone(parent: Node3D, role: String, at: Vector3, r: float, h: float, rot := Vector3.ZERO,
+		glow := 0.35) -> MeshInstance3D:
+	var cm := CylinderMesh.new()
+	cm.top_radius = 0.0
+	cm.bottom_radius = r
+	cm.height = h
+	cm.radial_segments = 10
+	cm.material = mat(role, glow)
+	var mi := _part(parent, cm, at)
+	mi.rotation = rot
+	return mi
+
+func _stick(parent: Node3D, at: Vector3, h: float, rot := Vector3.ZERO) -> MeshInstance3D:
+	var cm := CylinderMesh.new()
+	cm.top_radius = 0.04
+	cm.bottom_radius = 0.05
+	cm.height = h
+	cm.radial_segments = 6
+	cm.material = mat("bg", 0.0)
+	var mi := _part(parent, cm, at + Vector3(0, h * 0.5, 0))
+	mi.rotation = rot
+	return mi
+
+func _ring(parent: Node3D, role: String, at: Vector3, r: float) -> MeshInstance3D:
+	var tm := TorusMesh.new()
+	tm.inner_radius = r * 0.6
+	tm.outer_radius = r
+	tm.rings = 12
+	tm.ring_segments = 8
+	tm.material = mat(role, 0.35)
+	var mi := _part(parent, tm, at)
+	mi.rotation = Vector3(0, 0, PI * 0.5)
+	return mi
+
+func _part(parent: Node3D, mesh: Mesh, at: Vector3, scl := Vector3.ONE) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.position = at
+	mi.scale = scl
+	parent.add_child(mi)
+	return mi
+
+## Big shiny eyes and a little smile on the front of a body centred at height `y` with
+## front surface `z` out. `sleepy` draws closed eyes instead.
+func _face(parent: Node3D, y: float, z: float, sleepy := false, eye := 1.0) -> void:
+	for sx in [-1.0, 1.0]:
+		var at := Vector3(sx * 0.36, y + 0.12, z)
+		if sleepy:
+			_ball(parent, "bg", at, Vector3(0.24, 0.05, 0.08), 0.0)
+			continue
+		_ball(parent, "ink", at, Vector3.ONE * 0.22 * eye, 0.3)
+		_ball(parent, "bg", at + Vector3(0, -0.02, 0.12 * eye), Vector3.ONE * 0.13 * eye, 0.0)
+		_ball(parent, "ink", at + Vector3(0.05, 0.06, 0.22 * eye), Vector3.ONE * 0.045 * eye, 1.2)
+	_ball(parent, "bg", Vector3(0, y - 0.22, z - 0.02), Vector3(0.14, 0.06, 0.08), 0.0)
 
 ## ---- walkers ---------------------------------------------------------------------
 
@@ -485,6 +635,8 @@ func _process(delta: float) -> void:
 
 	_hover.position = _cursor.position + Vector3(0, HOVER_Y + sin(_t * 2.2) * 0.25, 0)
 	_hover.rotation.y = _t * 0.35   # slow idle spin; it falls at whatever angle it has
+	var breath := sin(_t * 5.0) * 0.05
+	_hover.scale = Vector3(1.0 + breath, 1.0 - breath, 1.0 + breath)   # it is alive up there
 	_shadow.position = _cursor.position + Vector3(0, 0.03, 0)
 	_shadow.rotation.y = _hover.rotation.y
 
