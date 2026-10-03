@@ -14,6 +14,8 @@ var seed_value := 12345
 ## How many screenshots to capture across the run. Requires running WITHOUT --headless,
 ## because the headless display driver renders nothing and would save black frames.
 var shots := 0
+## Start at this level (games with a LEVELS table). 0 = the game's own default.
+var level := 0
 
 var _t := 0.0
 var _ended := false
@@ -32,7 +34,7 @@ func _ready() -> void:
 	_bot.policy = policy
 	PInput.bot = _bot
 	Bus.game_over.connect(_on_over)
-	Flow.start_game(game_id)
+	Flow.start_game(game_id, {"level": level} if level > 0 else {})
 
 func _on_over(won: bool, score: int) -> void:
 	_won = won

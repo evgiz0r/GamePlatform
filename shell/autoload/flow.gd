@@ -6,6 +6,10 @@ const GAMES_DIR := "res://game/"
 
 var current_game: Node = null
 var current_id := ""
+## What the current game was started with, e.g. {"level": 4}. A game may update it as it
+## goes (a levelled game sets "level" when it reaches a new one), so "play again" and
+## "restart" pick up where the run actually got to rather than where it began.
+var current_config: Dictionary = {}
 var _stage: Node = null
 var _layer: CanvasLayer
 var _fade: ColorRect
@@ -65,6 +69,7 @@ func _maybe_start_sim() -> bool:
 	runner.seconds = float(a.get("seconds", "30"))
 	runner.seed_value = int(a.get("seed", "12345"))
 	runner.shots = int(a.get("shots", "0"))
+	runner.level = int(a.get("level", "0"))
 	get_tree().root.add_child(runner)
 	return true
 
@@ -144,7 +149,7 @@ func _show_other() -> void:
 	nodes.append(back)
 	_show_column(nodes)
 
-func _game_button(g: Dictionary, small: bool) -> Button:
+func _game_button(g: Dictionary, small: bool) -> Control:
 	var id: String = g["id"]
 	var best := SaveData.best_for(id)
 	var caption: String = g["title"] + ("   best %d" % best if best > 0 else "")
@@ -152,7 +157,43 @@ func _game_button(g: Dictionary, small: bool) -> Button:
 	if small:
 		btn.custom_minimum_size = Vector2(200, 30)
 		btn.add_theme_font_size_override("font_size", 14)
-	return btn
+	if g["levels"] <= 0:
+		return btn
+	# a game with levels gets a second, smaller button beside it: pick where to start
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	row.add_child(btn)
+	var lv := UIKit.button("levels", func(): _fade_to(func(): _show_levels(g)))
+	lv.custom_minimum_size = Vector2(64, btn.custom_minimum_size.y)
+	lv.add_theme_font_size_override("font_size", 12 if small else 14)
+	row.add_child(lv)
+	return row
+
+## Level select for a game that has levels: a grid of numbered buttons, each starting the
+## game with {"level": n}. The game decides what a level means; the shell just counts them.
+func _show_levels(g: Dictionary) -> void:
+	_clear_stage()
+	var n: int = g["levels"]
+	var nodes: Array = [
+		UIKit.label(String(g["title"]).to_upper(), 26, "player"),
+		UIKit.label("pick a level", 13, "accent"),
+	]
+	var grid := GridContainer.new()
+	grid.columns = mini(n, 5)
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 8)
+	for i in n:
+		var level := i + 1
+		var b := UIKit.button(str(level), func(): start_game(g["id"], {"level": level}))
+		b.custom_minimum_size = Vector2(64, 34)
+		b.add_theme_font_size_override("font_size", 16)
+		grid.add_child(b)
+	nodes.append(grid)
+	var back := UIKit.button("back", goto_menu)
+	back.custom_minimum_size = Vector2(200, 30)
+	back.add_theme_font_size_override("font_size", 14)
+	nodes.append(back)
+	_show_column(nodes)
 
 ## look and quit share a row so the column stays short
 func _menu_footer_row() -> HBoxContainer:
@@ -210,11 +251,25 @@ func list_games() -> Array:
 		var path := GAMES_DIR + sub + "/" + sub + ".tscn"
 		if ResourceLoader.exists(path):
 			var active := FileAccess.file_exists(GAMES_DIR + sub + "/ACTIVE")
-			out.append({"id": sub, "path": path, "title": sub.replace("_", " "), "active": active})
+			out.append({"id": sub, "path": path, "title": sub.replace("_", " "), "active": active,
+				"levels": _level_count(sub)})
 	return out
 
-func start_game(id: String) -> void:
+## A game has levels when its script declares a `LEVELS` array (one entry per level).
+## Still no registry: the menu reads it off the game itself.
+func _level_count(sub: String) -> int:
+	var gd := GAMES_DIR + sub + "/" + sub + ".gd"
+	if not ResourceLoader.exists(gd):
+		return 0
+	var scr := load(gd) as Script
+	if scr == null:
+		return 0
+	var levels = scr.get_script_constant_map().get("LEVELS")
+	return levels.size() if levels is Array else 0
+
+func start_game(id: String, config: Dictionary = {}) -> void:
 	current_id = id
+	current_config = config.duplicate()
 	_fade_to(func(): _launch(id))
 
 func _launch(id: String) -> void:
@@ -236,7 +291,7 @@ func _launch(id: String) -> void:
 	_lives = 0
 	_build_hud()
 	if current_game.has_method("start"):
-		current_game.start({})
+		current_game.start(current_config)
 	else:
 		push_error("game '%s' has no GameMode script (compile error?)" % id)
 		Probe.note("game '%s' failed to load its script" % id)
@@ -245,7 +300,7 @@ func _launch(id: String) -> void:
 
 func restart() -> void:
 	if current_id != "":
-		start_game(current_id)
+		start_game(current_id, current_config)
 
 ## ---- sound toggle -----------------------------------------------------------
 

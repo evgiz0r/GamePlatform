@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Screenshot the main menu into shots/menu.png -- the one screen tools/shots.sh cannot
 # reach, since that starts straight into a game. `tools/menu_shot.sh other` shoots the
-# "other" shelf into shots/other.png instead. Worth a look whenever the number of games
+# "other" shelf into shots/other.png instead, and `tools/menu_shot.sh levels:<game>` a
+# game's level select. Worth a look whenever the number of games
 # changes: the shelf is the thing that overflows. Set GODOT if it is not on PATH.
 set -u
 BIN="${GODOT:-}"

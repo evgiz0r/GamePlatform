@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Headless self-play. Usage: tools/playtest.sh <game> [bot] [seconds]
+# LEVEL=<n> before it starts a game that has levels at that level.
 # Set GODOT to your Godot 4 binary if it is not on PATH.
 set -u
 GAME="${1:-}"; BOT="${2:-smart}"; SECS="${3:-30}"
@@ -26,5 +27,5 @@ if [ ! -d .godot ]; then
   "$BIN" --headless --path . --import >/dev/null 2>&1
 fi
 "$BIN" --headless --fixed-fps 60 --path . -- \
-  --sim="$GAME" --bot="$BOT" --seconds="$SECS" 2>&1 \
+  --sim="$GAME" --bot="$BOT" --seconds="$SECS" --level="${LEVEL:-0}" 2>&1 \
   | sed -n '/=== PLAYTEST/,/=== END REPORT ===/p'

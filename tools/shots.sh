@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Capture real screenshots of a game. Usage: tools/shots.sh <game> [bot] [seconds] [count]
+# LEVEL=<n> before it starts a game that has levels at that level.
 # Runs WITHOUT --headless because the headless driver renders nothing (black frames).
 # With no DISPLAY it runs under Xvfb if that is installed, so it works on a headless box too.
 # Images land in shots/ (gitignored).
@@ -34,4 +35,4 @@ if [ -z "${DISPLAY:-}" ] && command -v xvfb-run >/dev/null 2>&1; then
   RUN=(xvfb-run -a -s "-screen 0 1280x720x24")
 fi
 "${RUN[@]}" "$BIN" --path . --rendering-driver opengl3 --audio-driver Dummy -- \
-  --sim="$GAME" --bot="$BOT" --seconds="$SECS" --shots="$N" 2>&1 | grep -E "^\[shot\]"
+  --sim="$GAME" --bot="$BOT" --seconds="$SECS" --shots="$N" --level="${LEVEL:-0}" 2>&1 | grep -E "^\[shot\]"

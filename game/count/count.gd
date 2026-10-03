@@ -81,7 +81,7 @@ var _progress := 0                ## towards this level's goal
 ## and after the boss, "crown" -> win().
 var _phase := "intro"
 var _phase_left := 0.0
-var _shelf: Array = []            ## prize Blobs already won
+var _shelf := {}                  ## level -> prize Blob, for the levels won this run
 var _crown_pos := Vector2.ZERO
 var _crown_size := 0.0            ## 0 = no crown on screen
 var _sfx_was := 0.8
@@ -91,7 +91,7 @@ func _ready() -> void:
 	play_area = Rect2(0, 0, 640, 360)
 	super()
 
-func start(_config: Dictionary) -> void:
+func start(config: Dictionary) -> void:
 	_sfx_was = float(SaveData.data.get("volume_sfx", 0.8))
 	SaveData.data["volume_sfx"] = _sfx_was * SFX_SCALE
 
@@ -109,7 +109,7 @@ func start(_config: Dictionary) -> void:
 	paw.position = Vector2(320, 215)
 	Probe.track(paw, "@")
 
-	_begin_level(1)
+	_begin_level(clampi(int(config.get("level", 1)), 1, LEVELS.size()))
 	Probe.capture("start")
 
 func _exit_tree() -> void:
@@ -440,6 +440,8 @@ func _reveal(keep: Blob = null) -> void:
 
 func _begin_level(n: int) -> void:
 	_level = n
+	# "play again" after a game over restarts from here, not from wherever the run began
+	Flow.current_config["level"] = n
 	_progress = 0
 	_streak = 0
 	_clear_round()
@@ -525,8 +527,8 @@ func _award(prize: String) -> void:
 	b.set_sprite(prize, 1.3)
 	b.position = Vector2(320, 175)
 	b.scale = Vector2.ZERO
-	var slot := Vector2(SHELF_X, SHELF_Y + SHELF_STEP * _shelf.size())
-	_shelf.append(b)
+	var slot := Vector2(SHELF_X, SHELF_Y + SHELF_STEP * (_level - 1))
+	_shelf[_level] = b
 	var tw := b.create_tween()
 	tw.tween_property(b, "scale", Vector2(4.0, 4.0), 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tw.tween_property(b, "rotation", TAU, 0.6).set_trans(Tween.TRANS_QUAD)
@@ -548,9 +550,10 @@ func _crown() -> void:
 	Audio.play("voice_you_win")
 	Audio.music("jingle_3")
 	Juice.shake(8.0)
-	for i in _shelf.size():
-		var b: Blob = _shelf[i]
-		var ang := TAU * float(i) / float(_shelf.size())
+	var won: Array = _shelf.values()
+	for i in won.size():
+		var b: Blob = won[i]
+		var ang := TAU * float(i) / float(won.size())
 		var t2 := b.create_tween()
 		t2.set_parallel(true)
 		t2.tween_property(b, "position", _crown_pos + Vector2(cos(ang) * 120.0, sin(ang) * 70.0), 0.7) \
@@ -639,7 +642,7 @@ func _draw_shelf() -> void:
 	for i in LEVELS.size():
 		var p := Vector2(SHELF_X, SHELF_Y + SHELF_STEP * i)
 		var boss_slot := i == LEVELS.size() - 1
-		var won := i < _shelf.size() or (boss_slot and _crown_size > 0.0)
+		var won := _shelf.has(i + 1) or (boss_slot and _crown_size > 0.0)
 		if not won:
 			draw_arc(p, 8.0, 0, TAU, 20, Palette.col("hazard" if boss_slot else "bg_alt"), 1.5)
 		if boss_slot:
