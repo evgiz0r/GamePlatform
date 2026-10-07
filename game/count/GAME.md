@@ -86,7 +86,7 @@ top of `game/count/count.gd` is the knob. Any new game should do the same — se
   is trivial; the same six in two clumps with a stray one is not.
 - On the "quick ones" levels a little mark on the timer bar shows where "quick" runs out.
 - All the level numbers live in the `LEVELS` table at the top of `count.gd`.
-- The "levels" button beside count on the menu starts at any level, and "play again"
+- Entering count from the menu asks for a new game or any level to start from, and "play again"
   after a game over picks up at the level you were on.
 - A voice **says the number out loud** when you get it right — only one to ten were
   recorded, so bigger answers just get "correct".

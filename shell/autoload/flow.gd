@@ -10,6 +10,9 @@ var current_id := ""
 ## goes (a levelled game sets "level" when it reaches a new one), so "play again" and
 ## "restart" pick up where the run actually got to rather than where it began.
 var current_config: Dictionary = {}
+## Set for headless self-play: a levelled game started without a level goes straight in
+## at its default instead of waiting on a start screen no bot can press.
+var skip_level_pick := false
 var _stage: Node = null
 var _layer: CanvasLayer
 var _fade: ColorRect
@@ -70,6 +73,7 @@ func _maybe_start_sim() -> bool:
 	runner.seed_value = int(a.get("seed", "12345"))
 	runner.shots = int(a.get("shots", "0"))
 	runner.level = int(a.get("level", "0"))
+	skip_level_pick = true
 	get_tree().root.add_child(runner)
 	return true
 
@@ -153,43 +157,39 @@ func _game_button(g: Dictionary, small: bool) -> Control:
 	var id: String = g["id"]
 	var best := SaveData.best_for(id)
 	var caption: String = g["title"] + ("   best %d" % best if best > 0 else "")
+	# one button per game, levels or not: a levelled game asks where to start once you are
+	# inside it (see start_game), so the menu itself stays a plain list of games
 	var btn := UIKit.button(caption, func(): start_game(id))
 	if small:
 		btn.custom_minimum_size = Vector2(200, 30)
 		btn.add_theme_font_size_override("font_size", 14)
-	if g["levels"] <= 0:
-		return btn
-	# a game with levels gets a second, smaller button beside it: pick where to start
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 6)
-	row.add_child(btn)
-	var lv := UIKit.button("levels", func(): _fade_to(func(): _show_levels(g)))
-	lv.custom_minimum_size = Vector2(64, btn.custom_minimum_size.y)
-	lv.add_theme_font_size_override("font_size", 12 if small else 14)
-	row.add_child(lv)
-	return row
+	return btn
 
-## Level select for a game that has levels: a grid of numbered buttons, each starting the
-## game with {"level": n}. The game decides what a level means; the shell just counts them.
+## A levelled game's own start screen, shown over its backdrop when it is entered without
+## a level: "new game" starts at level 1, or pick any level from the numbered grid. Each
+## choice starts the game with {"level": n}. The game decides what a level means; the
+## shell just counts them.
 func _show_levels(g: Dictionary) -> void:
 	_clear_stage()
+	_stage.add_child(Backdrop.new())
 	var n: int = g["levels"]
 	var nodes: Array = [
-		UIKit.label(String(g["title"]).to_upper(), 26, "player"),
-		UIKit.label("pick a level", 13, "accent"),
+		UIKit.label(String(g["title"]).to_upper(), 30, "player"),
+		UIKit.button("new game", func(): start_game(g["id"], {"level": 1})),
+		UIKit.label("or start from a level", 13, "accent"),
 	]
 	var grid := GridContainer.new()
-	grid.columns = mini(n, 5)
+	grid.columns = mini(n, 8)
 	grid.add_theme_constant_override("h_separation", 8)
 	grid.add_theme_constant_override("v_separation", 8)
 	for i in n:
 		var level := i + 1
 		var b := UIKit.button(str(level), func(): start_game(g["id"], {"level": level}))
-		b.custom_minimum_size = Vector2(64, 34)
-		b.add_theme_font_size_override("font_size", 16)
+		b.custom_minimum_size = Vector2(52, 30)
+		b.add_theme_font_size_override("font_size", 15)
 		grid.add_child(b)
 	nodes.append(grid)
-	var back := UIKit.button("back", goto_menu)
+	var back := UIKit.button("menu", goto_menu)
 	back.custom_minimum_size = Vector2(200, 30)
 	back.add_theme_font_size_override("font_size", 14)
 	nodes.append(back)
@@ -267,10 +267,33 @@ func _level_count(sub: String) -> int:
 	var levels = scr.get_script_constant_map().get("LEVELS")
 	return levels.size() if levels is Array else 0
 
+## Entering a game that has levels without saying which one opens its start screen
+## (new game or pick a level) instead of the game. "play again" and "restart" never land
+## there, because the game keeps "level" in current_config as it goes; headless self-play
+## skips it too, since a bot cannot press its buttons.
 func start_game(id: String, config: Dictionary = {}) -> void:
 	current_id = id
 	current_config = config.duplicate()
+	if not config.has("level") and not skip_level_pick:
+		var g := _game_info(id)
+		if not g.is_empty() and g["levels"] > 0:
+			_fade_to(func(): _show_levels(g))
+			return
 	_fade_to(func(): _launch(id))
+
+## The game's start screen, from inside it: back to "new game or pick a level".
+func pick_level() -> void:
+	if current_id != "":
+		start_game(current_id)
+
+func _has_levels(id: String) -> bool:
+	return _level_count(id) > 0
+
+func _game_info(id: String) -> Dictionary:
+	for g in list_games():
+		if g["id"] == id:
+			return g
+	return {}
 
 func _launch(id: String) -> void:
 	_clear_stage()
@@ -407,12 +430,15 @@ func toggle_pause() -> void:
 	var tree := get_tree()
 	tree.paused = not tree.paused
 	if tree.paused:
-		var p := UIKit.center_column([
+		var items: Array = [
 			UIKit.label("PAUSED", 28, "player"),
 			UIKit.button("resume", toggle_pause),
 			UIKit.button("restart", func(): toggle_pause(); restart()),
-			UIKit.button("menu", func(): toggle_pause(); goto_menu()),
-		])
+		]
+		if _has_levels(current_id):
+			items.append(UIKit.button("levels", func(): toggle_pause(); pick_level()))
+		items.append(UIKit.button("menu", func(): toggle_pause(); goto_menu()))
+		var p := UIKit.center_column(items)
 		p.name = "PauseUI"
 		p.process_mode = Node.PROCESS_MODE_ALWAYS
 		_ui.add_child(p)
@@ -430,12 +456,15 @@ func _on_game_over(won: bool, score: int) -> void:
 	Probe.event("game_over", {"won": won, "score": score})
 	var record := SaveData.submit_score(current_id, score)
 	var head := "YOU WIN" if won else "GAME OVER"
-	var col := UIKit.center_column([
+	var items: Array = [
 		UIKit.label(head, 30, "player" if won else "hazard"),
 		UIKit.label("score %d%s" % [score, "   NEW BEST!" if record else ""], 16, "warn" if record else "ink"),
 		UIKit.button("play again", restart),
-		UIKit.button("menu", goto_menu),
-	])
+	]
+	if _has_levels(current_id):
+		items.append(UIKit.button("levels", pick_level))
+	items.append(UIKit.button("menu", goto_menu))
+	var col := UIKit.center_column(items)
 	col.process_mode = Node.PROCESS_MODE_ALWAYS
 	_ui.add_child(col)
 	_ui.mouse_filter = Control.MOUSE_FILTER_PASS

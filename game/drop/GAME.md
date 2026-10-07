@@ -73,7 +73,7 @@ Three lives, topped up at the start of every level. People freeze while a level 
 up. Each level won gives a small prize that flies to a shelf down the right edge; winning
 the last gives a big golden crown with every prize you won dancing round it. Running out
 of time or drops, or of lives, ends the run -- and "play again" picks up at the level you
-were on, not level 1. The "levels" button beside drop on the menu starts at any level.
+were on, not level 1. Entering drop from the menu offers a new game or any level to start from.
 
 Tuned against a simulated player who taps about once a second and lands roughly two in
 three: a run from level 1 gets to level 12 or 13 in about three and a half minutes, and

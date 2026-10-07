@@ -47,12 +47,14 @@ only add the marker when asked (`touch game/<name>/ACTIVE`) and delete it when t
 is done. Still no registry: the marker lives in the game's own folder.
 
 **A game can have levels.** Declare a `const LEVELS := [...]` array in the game's script
-(one entry per level, whatever shape the game wants) and the menu puts a "levels" button
-beside it, opening a numbered grid. Picking one calls `start({"level": n})`; with the plain
-button `config` has no "level", so default to 1. When a run reaches a new level, set
+(one entry per level, whatever shape the game wants) and entering it from the menu opens
+the game's own start screen first: "new game" or a numbered grid to start from any level.
+Either calls `start({"level": n})`, and pause and game over gain a "levels" button back to
+that screen. The menu itself has no level picking. Self-play skips the start screen, so
+`config` may have no "level" -- default to 1. When a run reaches a new level, set
 `Flow.current_config["level"] = n` so "play again" resumes there rather than at the start.
 `LEVEL=n tools/playtest.sh <game> ...` (and `tools/shots.sh`) start a run at level n, and
-`tools/menu_shot.sh levels:<game>` screenshots the grid.
+`tools/menu_shot.sh levels:<game>` screenshots the start screen.
 
 Nothing outside a game's own folder should ever name that game. If you find yourself
 writing its name in a doc, a tool or another game, that is the thing that will rot when it

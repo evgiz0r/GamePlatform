@@ -30,7 +30,7 @@ bots) begin from a sensible guess; a tap can aim anywhere.
 
 ## Levels
 
-Twelve, picked from the "levels" button or played in order. Each one is a layout plus a
+Twelve, picked on the start screen when you enter the game or played in order. Each one is a layout plus a
 target: "knock down 14 pins in 5 throws". The level name and target come up as a banner;
 the strip along the bottom keeps the score against the target, the pins per throw, and
 the stars at the top are the throws left. Losing a level ends the run, and "play again"

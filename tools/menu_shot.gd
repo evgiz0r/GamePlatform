@@ -1,7 +1,8 @@
 extends SceneTree
 ## Screenshot of the main menu. Run through tools/menu_shot.sh, not directly.
 ## With `-- --screen=other` it screenshots the "other" shelf instead of the front page,
-## and with `-- --screen=levels:<game>` that game's level select.
+## and with `-- --screen=levels:<game>` that game's start screen
+## (new game or pick a level).
 func _init() -> void:
 	var screen := "menu"
 	for raw in OS.get_cmdline_user_args():
