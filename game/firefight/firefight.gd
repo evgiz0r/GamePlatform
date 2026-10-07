@@ -1,71 +1,76 @@
 extends GameMode3D
-## firefight -- a first-person shooter where you only shoot. You walk down a night street
-## on your own, stop where the trouble is, and look around; goblins pop out from behind
-## cars, crates and rooftops, take aim (a ring fills around them) and hit you if the ring
-## closes. Tap to shoot where you tap. Clear a stop and you walk on. See GAME.md.
+## firefight -- a first-person shooter where you only shoot. You walk down a bending night
+## street without ever stopping. Goblins come at you from everywhere: they sprint out of
+## alleys and cross streets to dive behind cars and crates, pop up over them to shoot, run
+## at you down the road, appear on rooftops, and pile out of a van that screeches to a halt
+## in front of you. A ring fills around each one while it aims; if it closes, you are hit.
+## Tap to shoot where you tap. See GAME.md.
 ##
-## The street runs along +X; the camera's x is how far you have walked. Stops sit every
-## STOP_GAP units. Each stop builds its own cover and its wave a little before you arrive,
-## and everything behind you is freed. Hits are tested in screen space: the shot lands on
-## whichever exposed actor's on-screen box contains the tap, nearest first.
+## The street is a curve, like drive_by's: everything has road coordinates (u = distance
+## along the road, lat = sideways, + is right of the walking line, y = height) and
+## _frame(u) turns them into world space. The camera walks along u. The street is built
+## ahead and freed behind; fog and the bends hide where it ends. Hits are tested in screen
+## space against each exposed goblin's on-screen box, nearest first.
 
-const EYE := 1.6                     ## camera height
-const FACADE := 12.0                 ## |z| of the building fronts on both sides
-const ROAD := 7.0                    ## |z| of the kerbs
-const AHEAD := 60.0                  ## how far ahead the street is built
-const BEHIND := 10.0                 ## how far behind it is kept
-const FIRST_STOP := 16.0
-const STOP_GAP := 26.0
-const WALK_SPEED := 4.6
+const EYE := 1.6
+const FACADE := 12.0                 ## |lat| of the building fronts
+const ROAD := 7.0                    ## |lat| of the kerbs
+const AHEAD := 75.0                  ## street is built this far ahead (fog hides the end)
+const BEHIND := 10.0
+const WALK_MIN := 2.6                ## walking pace at the start ...
+const WALK_MAX := 4.2                ## ... and after RAMP seconds
+const RAMP := 150.0
 const GOBLIN_H := 1.8
 const PERSON_H := 1.8
+const RUN_SPEED := 6.5
 const MAG := 6
 const RELOAD_TIME := 1.0
-const SHOT_GAP := 0.14               ## fastest you can fire
-const TAP_SLOP := 6.0                ## screen px of forgiveness around a body
-const CROSS_ASSIST := 40.0           ## keys / pad / bots: the crosshair snaps this far
+const SHOT_GAP := 0.14
+const TAP_SLOP := 6.0
+const CROSS_ASSIST := 40.0
 const CROSS_SPEED := 320.0
-const HEADSHOT := 0.22               ## top fraction of the body that counts as the head
+const HEADSHOT := 0.22
 const START_LIVES := 5
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 const SHOPS := ["building-a", "building-b", "building-c", "building-d", "building-e", "building-f", "building-g", "building-h"]
 const TOWERS := ["building-skyscraper-a", "building-skyscraper-b", "building-skyscraper-c"]
-const CARS := ["sedan", "taxi", "suv", "police", "van"]
+const CARS := ["sedan", "taxi", "suv", "police"]
 const GOBLINS := ["Goblin_Male", "Goblin_Female"]
 const PEOPLE := ["Casual_Male", "Casual_Female", "Casual2_Male", "Casual2_Female", "Casual3_Female"]
-const GUN_REST := Vector2(560, 312)  ## where the gun sits on screen
+const GUN_REST := Vector2(560, 312)
 const GUN_BOX := Rect2(488, 262, 152, 98)   ## tap here to reload
 
-var _dist := 0.0                     ## how far you have walked (the camera's x)
+var _dist := 0.0                     ## how far you have walked (the camera's u)
 var _speed := 0.0
-var _built_x := -BEHIND              ## buildings built up to here, each side
-var _built_r := -BEHIND
-var _road_x := -BEHIND
-var _street: Array = []              ## Node3D, meta x, w (freed once behind)
-var _buildings: Array = []           ## {x, w, h, side} for roof spots
-var _stop_i := 0                     ## stops reached so far
-var _next_stop := FIRST_STOP
-var _built_stop := -1                ## index of the last stop whose wave is built
-var _waves := {}                     ## stop index -> {"actors": [...], "yaw": float}
-var _at_stop := false
-var _actors: Array = []              ## the current stop's actors (Dictionaries, see _actor)
-var _look := Vector3(20, EYE, 0)     ## where the camera is looking, smoothed
-var _yaw := 0.0                      ## the current stop's look direction
+var _road_u := -BEHIND
+var _strip := {-1.0: -BEHIND, 1.0: -BEHIND}   ## building strip built up to here, per side
+var _next_cross := 70.0              ## the next cross street starts here
+var _street: Array = []              ## static Node3D, meta u, w (freed once behind)
+var _buildings: Array = []           ## {u, w, h, side}
+var _openings: Array = []            ## alleys and cross streets: {u, side, lat} -- where goblins come from
+var _cover: Array = []               ## {u, lat, top, depth, taken}
+var _foes: Array = []                ## goblins: Dictionaries, see _new_goblin
+var _people: Array = []              ## civilians crossing: {node, u, lat, dir, mark}
+var _van: Dictionary = {}            ## the ambush van while it is driving
+var _van_cd := 30.0
+var _spawn_t := 2.5
+var _look := Vector3.ZERO
 var _t := 0.0
 var _intro := 1.6
 var _ammo := MAG
 var _reload := 0.0
 var _shot_cd := 0.0
 var _cross: Node2D                   ## the crosshair (and the bots' "@")
-var _ov: Node2D                      ## overlay: aim rings, tracers, ammo
+var _ov: Node2D                      ## overlay: rings, tracers, ammo, edge arrows
 var _gun: Node2D
-var _red: ColorRect                  ## the screen flash when you are hit
+var _red: ColorRect
 var _ground: MeshInstance3D
-var _tracers: Array = []             ## {from, to, t, role}
-var _sparks: Array = []              ## {at, t, role}
+var _tracers: Array = []
+var _sparks: Array = []
 var _flash_t := 0.0
 var _kick := 0.0
 var _streak := 0
+var _kills := 0
 var _sfx_was := 0.8
 
 func _init() -> void:
@@ -80,16 +85,21 @@ func start(_config: Dictionary) -> void:
 	_sfx_was = SaveData.data.get("volume_sfx", 0.8)
 	SaveData.data["volume_sfx"] = SFX_SCALE
 	set_lives(START_LIVES)
-	cam.fov = 62.0
+	cam.fov = 64.0
+	cam.far = 90.0
 	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = 45.0
+	sun.directional_shadow_max_distance = 40.0
 	sun.rotation_degrees = Vector3(-48, 30, 0)
+	# fog the colour of the horizon: the far street fades out instead of popping in
+	env.fog_enabled = true
+	env.fog_light_color = Palette.col("bg_alt").lerp(Palette.col("accent"), 0.18)
+	env.fog_density = 0.022
+	env.fog_sky_affect = 0.0
 	_ground = MeshInstance3D.new()
 	var gm := PlaneMesh.new()
-	gm.size = Vector2(200, 200)
+	gm.size = Vector2(220, 220)
 	gm.material = mat("bg", 0.0, 1.0)
 	_ground.mesh = gm
-	_ground.position = Vector3(0, -0.05, 0)
 	world.add_child(_ground)
 	_extend()
 	_build_overlay()
@@ -100,34 +110,53 @@ func start(_config: Dictionary) -> void:
 func _exit_tree() -> void:
 	SaveData.data["volume_sfx"] = _sfx_was
 
+## ---- the road as a curve --------------------------------------------------------------
+
+func _wander(u: float) -> float:
+	return 8.0 * sin(u / 38.0) + 4.0 * sin(u / 19.0 + 1.3)
+
+func _wander_slope(u: float) -> float:
+	return 8.0 / 38.0 * cos(u / 38.0) + 4.0 / 19.0 * cos(u / 19.0 + 1.3)
+
+## World transform of the road at u: +X forward along the road, +Z = +lat (right).
+func _frame(u: float) -> Transform3D:
+	var fwd := Vector3(1.0, 0.0, _wander_slope(u)).normalized()
+	var side := Vector3(-fwd.z, 0.0, fwd.x)
+	return Transform3D(Basis(fwd, Vector3.UP, side), Vector3(u, 0.0, _wander(u)))
+
+func _road_pos(u: float, lat: float, y: float = 0.0) -> Vector3:
+	return _frame(u) * Vector3(0.0, y, lat)
+
 ## ---- the street ------------------------------------------------------------------
 
 func _extend() -> void:
-	while _road_x < _dist + AHEAD:
-		_road_segment(_road_x)
-		_road_x += 4.0
-	while _built_x < _dist + AHEAD:
-		_built_x += _add_building(_built_x, -1.0)
-	while _built_r < _dist + AHEAD:
-		_built_r += _add_building(_built_r, 1.0)
-	# each stop's cover and wave, built while it is still far away
-	while FIRST_STOP + (_built_stop + 1) * STOP_GAP < _dist + AHEAD - 10.0:
-		_built_stop += 1
-		_build_wave(_built_stop)
+	while _next_cross < _dist + AHEAD + 10.0:
+		_add_cross(_next_cross)
+		_next_cross += randf_range(60.0, 110.0)
+	while _road_u < _dist + AHEAD:
+		_road_segment(_road_u)
+		_road_u += 4.0
+	for side: float in [-1.0, 1.0]:
+		while _strip[side] < _dist + AHEAD:
+			_strip[side] = _strip[side] + _add_lot(_strip[side], side)
 	for n: Node3D in _street.duplicate():
-		if n.get_meta("x") + n.get_meta("w") * 0.5 < _dist - BEHIND:
+		if n.get_meta("u") + n.get_meta("w") * 0.5 < _dist - BEHIND:
 			_street.erase(n)
 			n.queue_free()
-	for b: Dictionary in _buildings.duplicate():
-		if b["x"] + b["w"] < _dist - BEHIND:
-			_buildings.erase(b)
-	_ground.position.x = _dist
+	for list: Array in [_buildings, _openings, _cover]:
+		for e: Dictionary in list.duplicate():
+			if e["u"] + e.get("w", 0.0) < _dist - BEHIND:
+				list.erase(e)
+	_ground.position = _road_pos(_dist, 0.0, -0.05)
 
-func _keep(n: Node3D, x: float, w: float) -> void:
-	n.set_meta("x", x)
+func _place(n: Node3D, u: float, lat: float, w: float, y: float = 0.0, flip: bool = false) -> void:
+	n.transform = _frame(u)
+	n.position = _road_pos(u, lat, y)
+	if flip:
+		n.rotate_object_local(Vector3.UP, PI)
+	n.set_meta("u", u)
 	n.set_meta("w", w)
-	if n.get_parent() == null:
-		world.add_child(n)
+	world.add_child(n)
 	_street.append(n)
 
 func _box(size: Vector3, role: String, emission: float) -> MeshInstance3D:
@@ -138,254 +167,372 @@ func _box(size: Vector3, role: String, emission: float) -> MeshInstance3D:
 	m.mesh = bm
 	return m
 
-func _road_segment(x: float) -> void:
-	var mid := x + 2.0
+func _road_segment(u: float) -> void:
+	var mid := u + 2.0
+	var crossing := _cross_at(mid) or _cross_at(mid - 2.0) or _cross_at(mid + 2.0)
 	for side: float in [-1.0, 1.0]:
-		var walk := _box(Vector3(4.05, 0.08, FACADE - ROAD), "bg_alt", 0.15)
-		walk.position = Vector3(mid, 0.04, side * (ROAD + FACADE) * 0.5)
-		_keep(walk, mid, 4.0)
-		var kerb := _box(Vector3(4.05, 0.14, 0.16), "accent", 0.8)
-		kerb.position = Vector3(mid, 0.07, side * ROAD)
-		_keep(kerb, mid, 4.0)
-	var dash := _box(Vector3(1.8, 0.02, 0.14), "ink", 0.4)
-	dash.position = Vector3(mid, 0.01, 0.0)
-	_keep(dash, mid, 4.0)
+		if not crossing:
+			_place(_box(Vector3(4.15, 0.08, FACADE - ROAD), "bg_alt", 0.15), mid, side * (ROAD + FACADE) * 0.5, 4.0, 0.04)
+			_place(_box(Vector3(4.15, 0.14, 0.16), "accent", 0.8), mid, side * ROAD, 4.0, 0.07)
+	_place(_box(Vector3(1.8, 0.02, 0.14), "ink", 0.4), mid, 0.0, 4.0, 0.01)
+	# little things that make it a street, and that goblins hide behind
+	if not crossing and u > 12.0 and randf() < 0.42:
+		var side := -1.0 if randf() < 0.5 else 1.0
+		if randf() < 0.55:
+			var car := model(CARS[randi() % CARS.size()], 4.0)
+			var lat := side * (ROAD - 1.4)
+			_place(car, mid, lat, 4.0)
+			car.rotate_object_local(Vector3.UP, PI * 0.5 * side)
+			_cover.append({"u": mid, "lat": lat, "top": 2.0, "depth": 2.6, "taken": false})
+		else:
+			var lat := side * randf_range(2.6, ROAD - 1.0)
+			_place(_crate(), mid, lat, 1.6)
+			_cover.append({"u": mid, "lat": lat, "top": 0.85, "depth": 1.0, "taken": false})
 
-## One building on one side starting at x; returns how much street it used. Sometimes a
-## parked car and a street light in front of it, unless a stop's cover lives there.
-func _add_building(x: float, side: float) -> float:
+func _crate() -> Node3D:
+	var crate := Node3D.new()
+	var body := _box(Vector3(1.0, 0.85, 1.6), "bg_alt", 0.2)
+	body.position.y = 0.425
+	crate.add_child(body)
+	var rim := _box(Vector3(1.04, 0.08, 1.64), "accent", 0.9)
+	rim.position.y = 0.85
+	crate.add_child(rim)
+	return crate
+
+## Cross streets are 10 units wide, every 60-110 units; both sides open there, and
+## goblins come running out of them.
+var _crosses: Array = []             ## [u0, u1] pairs
+func _cross_at(u: float) -> bool:
+	for c: Array in _crosses:
+		if u >= c[0] and u <= c[1]:
+			return true
+	return false
+
+func _add_cross(u: float) -> void:
+	_crosses.append([u, u + 10.0])
+	var seg := _box(Vector3(10.0, 0.02, 46.0), "bg", 0.0)
+	_place(seg, u + 5.0, 0.0, 10.0, -0.02)
+	for s: float in [-1.0, 1.0]:
+		_openings.append({"u": u + 5.0, "side": s, "lat": s * 20.0})
+		_place(model("light-square", 4.4), u - 0.4, s * (ROAD + 0.5), 0.5, 0.0, s > 0.0)
+
+## One lot on one side starting at u: a building (with an alley after it now and then),
+## or the gap of a cross street. Returns how much street it used.
+func _add_lot(u: float, side: float) -> float:
+	for c: Array in _crosses:
+		if u >= c[0] - 0.01 and u < c[1]:
+			return c[1] - u + 0.01
 	var tower := randf() < 0.22
 	var name: String = TOWERS[randi() % TOWERS.size()] if tower else SHOPS[randi() % SHOPS.size()]
 	var b := model(name, randf_range(10.0, 13.0) if tower else randf_range(5.5, 8.0))
 	var box: AABB = b.get_meta("aabb")
-	var bx := x + box.size.x * 0.5
-	b.position = Vector3(bx, 0.0, side * (FACADE + box.size.z * 0.5))
-	if side > 0.0:
-		b.rotation.y = PI
-	_keep(b, bx, box.size.x)
-	_buildings.append({"x": x, "w": box.size.x, "h": box.size.y, "side": side})
-	var used := box.size.x + 0.4
-	if randf() < 0.4 and not _near_stop(x + used * 0.5):
-		var lamp := model("light-square", 4.4)
-		lamp.position = Vector3(x + used - 0.2, 0.0, side * (ROAD + 0.5))
-		if side > 0.0:
-			lamp.rotation.y = PI
-		_keep(lamp, x + used, 0.5)
-	elif randf() < 0.45 and not _near_stop(x + used * 0.5):
-		var car := model(CARS[randi() % CARS.size()], 4.0)
-		car.position = Vector3(x + used * 0.5, 0.0, side * (ROAD - 1.3))
-		car.rotation.y = PI * 0.5 if randf() < 0.5 else -PI * 0.5
-		_keep(car, x + used * 0.5, 4.0)
+	for c: Array in _crosses:
+		if c[0] > u and c[0] < u + box.size.x + 0.3:
+			b.free()
+			return c[0] - u
+
+	var bu := u + box.size.x * 0.5
+	_place(b, bu, side * (FACADE + box.size.z * 0.5), box.size.x, 0.0, side > 0.0)
+	_buildings.append({"u": u, "w": box.size.x, "h": box.size.y, "side": side})
+	var used := box.size.x + 0.3
+	if randf() < 0.3:
+		_openings.append({"u": u + box.size.x + 1.2, "side": side, "lat": side * (FACADE + 1.5)})
+		used += 2.4
+	elif randf() < 0.35:
+		_place(model("light-square", 4.4), u + used - 0.2, side * (ROAD + 0.5), 0.5, 0.0, side > 0.0)
 	return used
 
-func _near_stop(x: float) -> bool:
-	var k := roundf((x - FIRST_STOP - 12.0) / STOP_GAP)
-	return absf(x - (FIRST_STOP + 12.0 + k * STOP_GAP)) < 14.0
+## ---- goblins ---------------------------------------------------------------------------
 
-func _roof_at(x: float, side: float) -> Dictionary:
+## A goblin record. Everything is in road coordinates; _move_goblin() keeps the node there.
+func _new_goblin(u: float, lat: float, y: float = 0.0) -> Dictionary:
+	var g := Actor3D.new()
+	world.add_child(g)
+	g.set_character(GOBLINS[randi() % GOBLINS.size()], GOBLIN_H)
+	# a small glowing marker over the head: goblins are dark and the street is foggy
+	var tag := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = 0.16
+	cm.bottom_radius = 0.0
+	cm.height = 0.26
+	cm.radial_segments = 4
+	cm.material = mat("hazard", 1.4)
+	tag.mesh = cm
+	tag.position.y = GOBLIN_H + 0.35
+	g.add_child(tag)
+	var m := Node2D.new()
+	m.position = Vector2(-2000, -2000)
+	add_child(m)
+	Probe.track(m, "*")
+	var f := {"node": g, "mark": m, "u": u, "lat": lat, "y": y, "state": "run", "t": 0.0,
+		"to_u": u, "to_lat": lat, "cover": {}, "top": -1.0, "hide_y": 0.0, "stand_y": y,
+		"aim": _aim_time(), "alive": true, "rush": false}
+	_foes.append(f)
+	_move_goblin(f)
+	Probe.event("goblin")
+	return f
+
+func _aim_time() -> float:
+	return lerpf(1.9, 0.95, clampf(_t / 120.0, 0.0, 1.0)) * randf_range(0.9, 1.15)
+
+func _move_goblin(f: Dictionary) -> void:
+	var g: Actor3D = f["node"]
+	g.position = _road_pos(f["u"], f["lat"], f["y"])
+
+func _face_player(f: Dictionary) -> void:
+	var g: Actor3D = f["node"]
+	var d := cam.global_position - g.global_position
+	d.y = 0.0
+	if d.length() > 0.01:
+		g.face(d.normalized())
+
+## Send a goblin running to (u, lat); with cover, it crouches behind it on arrival.
+func _run_to(f: Dictionary, u: float, lat: float, cover: Dictionary = {}) -> void:
+	if not (f["cover"] as Dictionary).is_empty():
+		f["cover"]["taken"] = false
+	f["cover"] = cover
+	if not cover.is_empty():
+		cover["taken"] = true
+		u = cover["u"] + cover["depth"]
+		lat = cover["lat"]
+	f["to_u"] = u
+	f["to_lat"] = lat
+	f["state"] = "run"
+	f["top"] = -1.0
+	var g: Actor3D = f["node"]
+	g.play("Run", true, 1.3)
+	var d := _road_pos(u, lat) - _road_pos(f["u"], f["lat"])
+	if d.length() > 0.01:
+		g.face(d.normalized())
+
+## Free cover between lo and hi units ahead of you, nearest to `lat` first, or {}.
+func _find_cover(lo: float, hi: float, lat: float) -> Dictionary:
+	var best := {}
+	var best_d := INF
+	for c: Dictionary in _cover:
+		if c["taken"]:
+			continue
+		var ahead: float = c["u"] - _dist
+		if ahead < lo or ahead > hi:
+			continue
+		var d: float = absf(c["lat"] - lat) + absf(ahead - (lo + hi) * 0.5) * 0.3
+		if d < best_d:
+			best_d = d
+			best = c
+	return best
+
+func _opening(lo: float, hi: float) -> Dictionary:
+	var pool: Array = []
+	for o: Dictionary in _openings:
+		var ahead: float = o["u"] - _dist
+		if ahead >= lo and ahead <= hi:
+			pool.append(o)
+	return {} if pool.is_empty() else pool[randi() % pool.size()]
+
+## ---- the director: who comes next, and from where ----------------------------------------
+
+func _spawn_something() -> void:
+	var cap := mini(2 + int(_t / 18.0), 7)
+	if _alive() >= cap:
+		return
+	var r := randf()
+	if r < 0.1 and _t > 20.0 and _van.is_empty() and _van_cd <= 0.0:
+		_spawn_van()
+	elif r < 0.2 and _t > 12.0:
+		_spawn_rusher()
+	elif r < 0.33:
+		_spawn_roof()
+	elif r < 0.42 and _people.size() < 1:
+		_spawn_civilian()
+	else:
+		_spawn_runner()
+
+## Out of an alley or a cross street (or a doorway), sprinting to the nearest cover.
+func _spawn_runner() -> void:
+	var o := _opening(16.0, 34.0)
+	var u: float = _dist + randf_range(20.0, 30.0)
+	var lat: float = (FACADE - 0.6) * (-1.0 if randf() < 0.5 else 1.0)
+	if not o.is_empty():
+		u = o["u"]
+		lat = o["lat"]
+	var f := _new_goblin(u, lat)
+	var c := _find_cover(9.0, 24.0, -lat * 0.4)
+	if c.is_empty():
+		_run_to(f, u - randf_range(1.0, 5.0), randf_range(-5.5, 5.5))
+	else:
+		_run_to(f, 0.0, 0.0, c)
+	Probe.event("runner")
+
+## Straight down the road at you, firing once it is close.
+func _spawn_rusher() -> void:
+	var f := _new_goblin(_dist + randf_range(28.0, 34.0), randf_range(-4.0, 4.0))
+	f["rush"] = true
+	_run_to(f, _dist + 8.0, f["lat"] * 0.5)
+	Probe.event("rusher")
+
+## On the front edge of a roof ahead, rising up to shoot down at you.
+func _spawn_roof() -> void:
+	var pool: Array = []
 	for b: Dictionary in _buildings:
-		if b["side"] == side and x > b["x"] + 0.8 and x < b["x"] + b["w"] - 0.8:
-			return b
-	return {}
+		var ahead: float = b["u"] + b["w"] * 0.5 - _dist
+		if ahead > 14.0 and ahead < 30.0 and b["h"] < 9.0:
+			pool.append(b)
+	if pool.is_empty():
+		_spawn_runner()
+		return
+	var b: Dictionary = pool[randi() % pool.size()]
+	var h: float = b["h"]
+	var f := _new_goblin(b["u"] + randf_range(1.0, b["w"] - 1.0), b["side"] * (FACADE + 0.7), h - GOBLIN_H - 0.2)
+	f["stand_y"] = h
+	f["hide_y"] = h - GOBLIN_H - 0.2
+	f["top"] = h
+	f["state"] = "duck"
+	f["t"] = randf_range(0.2, 0.6)
+	f["cover"] = {"roof": true, "taken": true, "top": h}
+	_face_player(f)
+	(f["node"] as Actor3D).play("Idle", true)
+	Probe.event("roof")
 
-## ---- a stop: where you look, the cover and who hides behind it -------------------------
+## A van comes down the other lane, screeches sideways ahead of you and goblins pile out.
+func _spawn_van() -> void:
+	var van := model("van", 4.6)
+	world.add_child(van)
+	_van = {"node": van, "u": _dist + 60.0, "lat": 3.5, "turn": 0.0, "stopping": false}
+	_van_cd = randf_range(22.0, 32.0)
+	_place_van()
+	Probe.event("van")
 
-func _build_wave(i: int) -> void:
-	var sx := FIRST_STOP + i * STOP_GAP
-	var yaw := 0.0                                  # 0 = straight ahead, + = right (+Z)
-	if i > 0:
-		yaw = [-0.75, -0.35, 0.0, 0.35, 0.75][randi() % 5]
-	var n := clampi(2 + i / 2, 2, 6)
-	var civ := i >= 2 and randf() < 0.4
-	var actors: Array = []
-	var aim := maxf(0.85, 2.1 - 0.11 * i)
-	var tries := 0
-	while actors.size() < n + (1 if civ else 0) and tries < 60:
-		tries += 1
-		var a := yaw + randf_range(-0.42, 0.42)
-		var d := randf_range(6.5, 12.5)
-		var p := Vector3(sx + cos(a) * d, 0.0, sin(a) * d)
-		if p.x < sx + 4.0:
-			continue
-		p.z = clampf(p.z, -FACADE + 1.6, FACADE - 1.6)
-		if absf(p.z) < 3.2:                         # keep the walking line clear
-			p.z = 3.2 * (1.0 if p.z >= 0.0 else -1.0)
-		var clash := false
-		for o: Dictionary in actors:
-			if (o["peek"] as Vector3).distance_to(p) < 3.0:
-				clash = true
-		if clash:
-			continue
-		var is_civ := civ and actors.size() == 0
-		var kind := "crate"
-		var roll := randf()
-		if not is_civ and roll < 0.25 and absf(p.z) > 5.0:
-			kind = "roof"
-		elif roll < 0.6:
-			kind = "car"
-		var act := _make_cover(kind, p, Vector3(sx, 0.0, 0.0))
-		if act.is_empty():
-			continue
-		act["civ"] = is_civ
-		act["aim"] = aim * randf_range(0.9, 1.15)
-		act["t"] = randf_range(0.4, 1.0) + actors.size() * randf_range(0.5, 0.9)
-		actors.append(act)
-	_waves[i] = {"actors": actors, "yaw": yaw, "x": sx}
+func _place_van() -> void:
+	var van: Node3D = _van["node"]
+	van.transform = _frame(_van["u"])
+	van.position = _road_pos(_van["u"], _van["lat"])
+	van.rotate_object_local(Vector3.UP, -PI * 0.5 + _van["turn"])
 
-## Cover of one kind around p, seen from the stop. Returns the actor record (no body yet:
-## the character is spawned when you arrive, so hidden goblins cost nothing on the way).
-func _make_cover(kind: String, p: Vector3, stop: Vector3) -> Dictionary:
-	var away := Vector3(p.x - stop.x, 0.0, p.z).normalized()
-	var face := -away
-	match kind:
-		"roof":
-			var side := signf(p.z)
-			var b := _roof_at(p.x, side)
-			if b.is_empty():
-				return {}
-			var h: float = b["h"]
-			var at := Vector3(p.x, h, side * (FACADE + 0.7))
-			return {"kind": kind, "hide": at - Vector3(0, GOBLIN_H + 0.2, 0), "peek": at,
-				"top": h, "face": Vector3(stop.x - p.x, 0, -at.z).normalized()}
-		"car":
-			var car := model(CARS[randi() % CARS.size()], 4.0)
-			# parked across the line of fire, so it hides whoever crouches behind it
-			var across := Vector3(-away.z, 0.0, away.x)
-			if minf(absf(p.z + across.z * 2.3), absf(p.z - across.z * 2.3)) < 1.6:
-				car.free()                              # it would block the walking line
-				return {}
-			car.position = p
-			car.rotation.y = atan2(across.x, across.z)
-			_keep(car, p.x, 4.0)
-			var hide := p + away * 1.6
-			var out := 2.9 if randf() < 0.5 else -2.9
-			return {"kind": kind, "hide": hide, "peek": hide + across * out, "top": -1.0, "face": face}
-		_:
-			var crate := Node3D.new()
-			var body := _box(Vector3(1.6, 0.85, 1.0), "bg_alt", 0.2)
-			body.position.y = 0.425
-			crate.add_child(body)
-			var rim := _box(Vector3(1.64, 0.08, 1.04), "accent", 0.9)
-			rim.position.y = 0.85
-			crate.add_child(rim)
-			crate.position = p
-			crate.rotation.y = atan2(away.x, away.z)
-			_keep(crate, p.x, 1.6)
-			var at := p + away * 0.9
-			return {"kind": kind, "hide": at - Vector3(0, GOBLIN_H * 0.62, 0), "peek": at,
-				"top": 0.85, "face": face}
-
-## Arriving at a stop: the hidden characters take their places.
-func _arrive() -> void:
-	_at_stop = true
-	_stop_i += 1
-	var w: Dictionary = _waves.get(_stop_i - 1, {"actors": [], "yaw": 0.0})
-	_waves.erase(_stop_i - 1)
-	_yaw = w["yaw"]
-	_actors = w["actors"]
-	for a: Dictionary in _actors:
-		var g := Actor3D.new()
-		world.add_child(g)
-		if a["civ"]:
-			g.set_character(PEOPLE[randi() % PEOPLE.size()], PERSON_H)
-		else:
-			g.set_character(GOBLINS[randi() % GOBLINS.size()], GOBLIN_H)
-		g.position = a["hide"]
-		g.face(a["face"])
-		g.play("Idle", true, randf_range(0.9, 1.2))
-		a["node"] = g
-		a["state"] = "wait"
-		a["alive"] = true
-		a["pops"] = 0
-		a["k"] = 0.0
-		# the bots' view: a 2D marker on the actor's chest while it is out, and where it
-		# will pop out while it hides -- a player covers the spot, so does the bot
-		var m := Node2D.new()
-		m.position = Vector2(-2000, -2000)
-		add_child(m)
-		Probe.track(m, "x" if a["civ"] else "*")
-		a["mark"] = m
-	Probe.event("stop", {"n": _stop_i, "enemies": _foes()})
-	Juice.text(self, Vector2(320, 80), "area %d" % _stop_i, Palette.col("accent"))
-
-func _foes() -> int:
-	var n := 0
-	for a: Dictionary in _actors:
-		if a["alive"] and not a["civ"]:
-			n += 1
-	return n
-
-## Done with a stop: bonus, and the civilians go home.
-func _clear() -> void:
-	_at_stop = false
-	var bonus := 25 * _stop_i
-	add_score(bonus)
-	Juice.text(self, Vector2(320, 120), "clear!  +%d" % bonus, Palette.col("prize"))
-	Audio.play("coin")
-	Probe.event("clear", {"n": _stop_i})
-	for a: Dictionary in _actors:
-		if a["civ"] and is_instance_valid(a["node"]):
-			(a["node"] as Node3D).queue_free()
-		if is_instance_valid(a.get("mark")):
-			(a["mark"] as Node2D).queue_free()
-	_actors = []
-	_next_stop += STOP_GAP
-
-## ---- the actors: hide, step out, aim, fire, duck ------------------------------------
-
-func _run_actors(delta: float) -> void:
-	for a: Dictionary in _actors:
-		if not a["alive"]:
-			continue
-		var g: Actor3D = a["node"]
-		a["t"] = a["t"] - delta
-		match a["state"]:
-			"wait":
-				if a["t"] <= 0.0:
-					if a["civ"] and a["pops"] >= 2:
-						a["t"] = 99.0
-						continue
-					a["state"] = "out"
-					a["k"] = 0.0
-					g.play("Run" if a["kind"] == "car" else "Idle", true, 1.4)
-			"out", "back":
-				var out: bool = a["state"] == "out"
-				a["k"] = minf(1.0, a["k"] + delta / (0.42 if a["kind"] == "car" else 0.3))
-				var e := ease(a["k"], -1.8)
-				var from: Vector3 = a["hide"] if out else a["peek"]
-				var to: Vector3 = a["peek"] if out else a["hide"]
-				g.position = from.lerp(to, e)
-				if a["k"] >= 1.0:
-					if out:
-						a["state"] = "aim"
-						a["t"] = a["aim"] * (1.4 if a["civ"] else 1.0)
-						a["pops"] += 1
-						g.face(a["face"])
-						g.play("Idle", true, 1.0)
-						Probe.event("peek")
+func _drive_van(delta: float) -> void:
+	if _van.is_empty():
+		return
+	var ahead: float = _van["u"] - _dist
+	if ahead > 19.0:
+		_van["u"] = _van["u"] - 11.0 * delta
+	else:
+		if not _van["stopping"]:
+			_van["stopping"] = true
+			Audio.play("impact_metal", 0.1)
+			shake3d(1.5)
+		_van["turn"] = minf(PI * 0.5, _van["turn"] + delta * 3.5)
+		_van["lat"] = lerpf(_van["lat"], 1.2, delta * 3.0)
+		if _van["turn"] >= PI * 0.5:
+			var u: float = _van["u"]
+			var c := {"u": u, "lat": _van["lat"], "top": 2.2, "depth": 1.6, "taken": false}
+			_cover.append(c)
+			var van: Node3D = _van["node"]
+			van.set_meta("u", u)
+			van.set_meta("w", 5.0)
+			_street.append(van)
+			var n := 2 + (1 if _t > 60.0 else 0)
+			for i in n:
+				var f := _new_goblin(u + 1.4, _van["lat"] + randf_range(-1.0, 1.0))
+				if i == 0:
+					_run_to(f, 0.0, 0.0, c)
+				else:
+					var cc := _find_cover(8.0, 22.0, (-1.0 if i % 2 == 0 else 1.0) * 5.0)
+					if cc.is_empty():
+						_run_to(f, u - randf_range(1.0, 4.0), (-1.0 if i % 2 == 0 else 1.0) * randf_range(3.0, 6.0))
 					else:
-						a["state"] = "wait"
-						a["t"] = randf_range(0.7, 1.8)
+						_run_to(f, 0.0, 0.0, cc)
+			_van = {}
+			Probe.event("van_stop")
+			return
+	_place_van()
+
+func _spawn_civilian() -> void:
+	var p := Actor3D.new()
+	world.add_child(p)
+	p.set_character(PEOPLE[randi() % PEOPLE.size()], PERSON_H)
+	var dir := -1.0 if randf() < 0.5 else 1.0
+	var rec := {"node": p, "u": _dist + randf_range(14.0, 22.0), "lat": -dir * (FACADE - 1.0), "dir": dir}
+	var m := Node2D.new()
+	add_child(m)
+	Probe.track(m, "x")
+	rec["mark"] = m
+	p.play("Run", true, 1.2)
+	_people.append(rec)
+	Probe.event("civilian")
+
+func _alive() -> int:
+	return _foes.size()
+
+## ---- goblins, per frame --------------------------------------------------------------
+
+func _run_goblins(delta: float) -> void:
+	for f: Dictionary in _foes.duplicate():
+		var g: Actor3D = f["node"]
+		f["t"] = f["t"] - delta
+		var ahead: float = f["u"] - _dist
+		if ahead < 2.5:
+			_drop(f)            # slipped past you
+			continue
+		match f["state"]:
+			"run":
+				if f["rush"]:
+					f["to_u"] = maxf(f["to_u"], _dist + 8.0)
+				var here := Vector2(f["u"], f["lat"])
+				var to := Vector2(f["to_u"], f["to_lat"])
+				var step := RUN_SPEED * delta
+				if here.distance_to(to) <= step:
+					f["u"] = to.x
+					f["lat"] = to.y
+					if not (f["cover"] as Dictionary).is_empty():
+						f["top"] = f["cover"]["top"]
+						f["hide_y"] = minf(0.0, f["top"] - GOBLIN_H - 0.15)
+						f["state"] = "duck"
+						f["t"] = randf_range(0.3, 1.0)
+						g.play("Idle", true)
+					else:
+						_start_aim(f)
+				else:
+					here += (to - here).normalized() * step
+					f["u"] = here.x
+					f["lat"] = here.y
+			"duck":
+				f["y"] = lerpf(f["y"], f["hide_y"], clampf(delta * 10.0, 0.0, 1.0))
+				if f["t"] <= 0.0:
+					f["state"] = "rise"
+					f["t"] = 0.25
+			"rise":
+				f["y"] = lerpf(f["y"], f["stand_y"], clampf(delta * 14.0, 0.0, 1.0))
+				if f["t"] <= 0.0:
+					f["y"] = f["stand_y"]
+					_start_aim(f)
 			"aim":
-				if a["t"] <= 0.0:
-					if a["civ"]:
-						a["state"] = "back"
-						a["k"] = 0.0
-					else:
-						_enemy_fires(a)
+				_face_player(f)
+				if f["rush"]:
+					# a rusher keeps walking at you while it aims
+					f["u"] = maxf(_dist + 6.0, f["u"] - 1.2 * delta)
+				if f["t"] <= 0.0:
+					_goblin_fires(f)
 			"fire":
-				if a["t"] <= 0.0:
-					a["state"] = "back"
-					a["k"] = 0.0
-					g.play("Run" if a["kind"] == "car" else "Idle", true, 1.4)
+				if f["t"] <= 0.0:
+					_after_fire(f)
+		_move_goblin(f)
+		var m: Node2D = f["mark"]
+		m.position = to_screen(_road_pos(f["u"], f["lat"], f["stand_y"] + GOBLIN_H * 0.78))
 
-func _enemy_fires(a: Dictionary) -> void:
-	var g: Actor3D = a["node"]
-	a["state"] = "fire"
-	a["t"] = 0.45
+func _start_aim(f: Dictionary) -> void:
+	f["state"] = "aim"
+	f["aim"] = _aim_time() * (0.8 if f["rush"] else 1.0)
+	f["t"] = f["aim"]
+	(f["node"] as Actor3D).play("Idle", true)
+	_face_player(f)
+	Probe.event("aim")
+
+func _goblin_fires(f: Dictionary) -> void:
+	var g: Actor3D = f["node"]
+	f["state"] = "fire"
+	f["t"] = 0.45
 	g.play("Shoot_OneHanded", false, 1.6)
-	var from := to_screen(g.global_position + Vector3(0, GOBLIN_H * 0.62, 0))
-	_tracers.append({"from": from, "to": Vector2(320 + randf_range(-60, 60), 300), "t": 0.12, "role": "hazard"})
+	_tracers.append({"from": to_screen(g.global_position + Vector3(0, GOBLIN_H * 0.62, 0)),
+		"to": Vector2(320 + randf_range(-60, 60), 300), "t": 0.12, "role": "hazard"})
 	_red.color = Palette.col("hazard")
 	_red.color.a = 0.38
 	_streak = 0
@@ -395,44 +542,88 @@ func _enemy_fires(a: Dictionary) -> void:
 	Probe.event("player_hit")
 	lose_life()
 
-func _exposed(a: Dictionary) -> bool:
-	return a["alive"] and a["state"] in ["aim", "fire", "out", "back"]
+## After a shot: duck back down, or break for other cover further on, or (in the open)
+## sidestep and go again.
+func _after_fire(f: Dictionary) -> void:
+	var cover: Dictionary = f["cover"]
+	if cover.has("roof"):
+		f["state"] = "duck"
+		f["t"] = randf_range(0.8, 1.6)
+	elif not cover.is_empty() and randf() < 0.6:
+		f["state"] = "duck"
+		f["t"] = randf_range(0.7, 1.6)
+	else:
+		var c := _find_cover(8.0, 22.0, -f["lat"])
+		if not c.is_empty() and not f["rush"]:
+			_run_to(f, 0.0, 0.0, c)
+		else:
+			_run_to(f, maxf(_dist + 8.0, f["u"] + randf_range(-2.0, 2.0)), clampf(f["lat"] + randf_range(-3.5, 3.5), -6.0, 6.0))
+		f["rush"] = false
+
+func _drop(f: Dictionary) -> void:
+	_foes.erase(f)
+	if not (f["cover"] as Dictionary).is_empty():
+		f["cover"]["taken"] = false
+	(f["mark"] as Node2D).queue_free()
+	(f["node"] as Node3D).queue_free()
+
+func _exposed(f: Dictionary) -> bool:
+	return f["y"] > f["hide_y"] + 0.55 or (f["cover"] as Dictionary).is_empty() or f["state"] == "run"
+
+func _walk_people(delta: float) -> void:
+	for p: Dictionary in _people.duplicate():
+		p["lat"] = p["lat"] + p["dir"] * 4.2 * delta
+		var n: Actor3D = p["node"]
+		n.transform = _frame(p["u"])
+		n.position = _road_pos(p["u"], p["lat"])
+		n.face(_frame(p["u"]).basis.z * p["dir"])
+		(p["mark"] as Node2D).position = to_screen(n.global_position + Vector3(0, PERSON_H * 0.6, 0))
+		if absf(p["lat"]) > FACADE or p["u"] < _dist + 2.0:
+			_people.erase(p)
+			(p["mark"] as Node2D).queue_free()
+			n.queue_free()
 
 ## ---- shooting -----------------------------------------------------------------------
 
-## What a shot at `p` hits: [actor, headshot] for the nearest exposed actor whose on-screen
-## body contains p (above its cover), or [{}, false].
+## The nearest body whose on-screen box contains p, above its cover: [record, is_person, headshot].
 func _hit_test(p: Vector2, slop: float) -> Array:
 	var best := {}
 	var best_d := INF
 	var head := false
-	for a: Dictionary in _actors:
-		if not _exposed(a):
+	var person := false
+	var bodies: Array = []
+	for f: Dictionary in _foes:
+		if _exposed(f):
+			bodies.append([f, false, GOBLIN_H, f["top"] if f["state"] != "run" else -1.0])
+	for q: Dictionary in _people:
+		bodies.append([q, true, PERSON_H, -1.0])
+	for b: Array in bodies:
+		var g: Node3D = b[0]["node"]
+		if cam.is_position_behind(g.global_position):
 			continue
-		var g: Actor3D = a["node"]
-		var h := PERSON_H if a["civ"] else GOBLIN_H
+		var h: float = b[2]
 		var feet := to_screen(g.global_position)
 		var top := to_screen(g.global_position + Vector3(0, h, 0))
 		var hpx := feet.y - top.y
 		if hpx <= 1.0:
 			continue
 		var low := feet.y
-		if a["top"] > g.global_position.y:
-			low = minf(low, to_screen(Vector3(g.global_position.x, a["top"], g.global_position.z)).y)
+		var cover_top: float = b[3]
+		if cover_top > g.global_position.y:
+			low = minf(low, to_screen(Vector3(g.global_position.x, cover_top, g.global_position.z)).y)
 		var half := hpx * 0.2 + slop
 		if absf(p.x - top.x) > half or p.y < top.y - slop or p.y > low + slop * 0.5:
 			continue
 		var d := cam.global_position.distance_to(g.global_position)
 		if d < best_d:
 			best_d = d
-			best = a
+			best = b[0]
+			person = b[1]
 			head = p.y < top.y + hpx * HEADSHOT
-	return [best, head]
+	return [best, person, head]
 
 func _shoot(at: Vector2) -> void:
-	if finished or _intro > 0.0 or _shot_cd > 0.0:
-		return
-	if _reload > 0.0:
+	if finished or _intro > 0.0 or _shot_cd > 0.0 or _reload > 0.0:
 		return
 	if _ammo <= 0:
 		_start_reload()
@@ -447,15 +638,15 @@ func _shoot(at: Vector2) -> void:
 	shake3d(1.2)
 	Probe.event("shot")
 	var r := _hit_test(at, TAP_SLOP)
-	var a: Dictionary = r[0]
-	if a.is_empty():
+	var who: Dictionary = r[0]
+	if who.is_empty():
 		_sparks.append({"at": at, "t": 0.18, "role": "ink"})
 		_streak = 0
 		Probe.event("miss")
-	elif a["civ"]:
-		_shot_civilian(a)
+	elif r[1]:
+		_shot_civilian(who)
 	else:
-		_kill(a, r[1])
+		_kill(who, r[2])
 	if _ammo <= 0:
 		_start_reload()
 
@@ -466,71 +657,70 @@ func _start_reload() -> void:
 	Audio.play("click")
 	Probe.event("reload")
 
-func _kill(a: Dictionary, head: bool) -> void:
-	var g: Actor3D = a["node"]
-	a["alive"] = false
-	(a["mark"] as Node2D).queue_free()
+func _kill(f: Dictionary, head: bool) -> void:
+	var g: Actor3D = f["node"]
+	_foes.erase(f)
+	if not (f["cover"] as Dictionary).is_empty():
+		f["cover"]["taken"] = false
+	(f["mark"] as Node2D).queue_free()
 	_streak += 1
-	var pts := (150 if head else 100) + 10 * mini(_streak - 1, 10)
+	_kills += 1
+	var pts := (150 if head else 100) + 10 * mini(_streak - 1, 10) + (50 if f["state"] == "run" else 0)
 	add_score(pts)
 	_sparks.append({"at": to_screen(g.global_position + Vector3(0, GOBLIN_H * 0.6, 0)), "t": 0.3, "role": "hazard"})
-	Juice.text(self, to_screen(g.global_position + Vector3(0, GOBLIN_H + 0.3, 0)),
-		("headshot! +%d" if head else "+%d") % pts, Palette.col("warn" if head else "ink"))
+	var tag := "headshot! +%d" if head else ("on the run! +%d" if f["state"] == "run" else "+%d")
+	Juice.text(self, to_screen(g.global_position + Vector3(0, GOBLIN_H + 0.3, 0)), tag % pts,
+		Palette.col("warn" if head else "ink"))
 	Audio.play("impact_bell" if head else "hit", 0.1)
 	hit3d(2.0)
 	Probe.event("headshot" if head else "kill")
+	if _kills % 10 == 0:
+		Audio.play("voice_power_up")
 	if not g.play("Death", false, 1.4):
 		g.scale = Vector3(1.2, 0.1, 1.2)
 	var tw := g.create_tween()
-	tw.tween_interval(1.4)
+	tw.tween_interval(1.3)
 	tw.tween_property(g, "position:y", g.position.y - 2.2, 0.6)
 	tw.tween_callback(g.queue_free)
 
-func _shot_civilian(a: Dictionary) -> void:
-	var g: Actor3D = a["node"]
-	a["state"] = "back"
-	a["k"] = 0.0
-	a["pops"] = 99
-	g.play("RecieveHit", false)
+func _shot_civilian(p: Dictionary) -> void:
+	var n: Actor3D = p["node"]
+	_people.erase(p)
+	(p["mark"] as Node2D).queue_free()
+	n.play("RecieveHit", false)
+	var tw := n.create_tween()
+	tw.tween_interval(0.8)
+	tw.tween_callback(n.queue_free)
 	_streak = 0
-	Juice.text(self, to_screen(g.global_position + Vector3(0, PERSON_H + 0.3, 0)), "not them!", Palette.col("hazard"))
+	Juice.text(self, to_screen(n.global_position + Vector3(0, PERSON_H + 0.3, 0)), "not them!", Palette.col("hazard"))
 	Audio.play("voice_wrong")
 	Probe.event("civilian_hit")
 	lose_life()
 
 ## ---- camera -------------------------------------------------------------------------
 
-## Walking: eyes ahead with a step bob and a slow look around. At a stop: the stop's
-## direction, pulled toward whoever is out and aiming -- you look where the danger is.
+## Eyes down the road with a step bob and a slow look around, pulled toward whoever is
+## aiming at you: you turn to the danger.
 func _aim_camera(delta: float, snap: bool = false) -> void:
-	var walk := clampf(_speed / WALK_SPEED, 0.0, 1.0)
-	var bob := sin(_t * 8.5) * 0.05 * walk
-	var eye := Vector3(_dist, EYE + bob, sin(_t * 4.25) * 0.04 * walk)
-	var want: Vector3
-	if _at_stop:
-		want = eye + Vector3(cos(_yaw), 0.0, sin(_yaw)) * 12.0 + Vector3(0, 0.6, 0)
-		var sum := Vector3.ZERO
-		var w := 0.0
-		for a: Dictionary in _actors:
-			if a["alive"] and not a["civ"]:
-				var k := 2.0 if a["state"] == "aim" else 0.6
-				sum += ((a["peek"] as Vector3) + Vector3(0, 1.0, 0)) * k
-				w += k
-		if w > 0.0:
-			want = want.lerp(sum / w, 0.45)
-	else:
-		var glance := Vector3(0, 0.25 * sin(_t * 0.6), 2.6 * sin(_t * 0.45) + 1.2 * sin(_t * 0.9 + 1.0))
-		want = eye + Vector3(14.0, 0.4, 0.0) + glance
-		# start turning toward the next stop's direction as you get close
-		var w2: Dictionary = _waves.get(_stop_i, {})
-		if not w2.is_empty():
-			var near := clampf(1.0 - (_next_stop - _dist) / 9.0, 0.0, 1.0)
-			var y: float = w2["yaw"]
-			want = want.lerp(eye + Vector3(cos(y), 0.05, sin(y)) * 12.0, near)
-	_look = want if snap else _look.lerp(want, clampf(delta * 3.0, 0.0, 1.0))
+	var f := _frame(_dist)
+	var walk := clampf(_speed / WALK_MAX, 0.0, 1.0)
+	var bob := sin(_t * 8.0) * 0.06 * walk
+	var eye := f * Vector3(0, EYE + bob, sin(_t * 4.0) * 0.04 * walk)
+	var want := _road_pos(_dist + 14.0, 2.2 * sin(_t * 0.37) + 1.0 * sin(_t * 0.81 + 1.0), 1.7 + 0.3 * sin(_t * 0.5))
+	var sum := Vector3.ZERO
+	var w := 0.0
+	for e: Dictionary in _foes:
+		var k := 2.5 if e["state"] == "aim" else (0.5 if e["state"] == "run" else 0.3)
+		k *= clampf(1.0 - (e["u"] - _dist) / 40.0, 0.1, 1.0)
+		sum += _road_pos(e["u"], e["lat"], e["stand_y"] + 1.0) * k
+		w += k
+	if w > 0.0:
+		want = want.lerp(sum / w, clampf(w / (w + 1.5), 0.0, 0.6))
+		want.y = minf(want.y, 4.0)          # glance up at a roof, don't stare at the sky
+	_look = want if snap else _look.lerp(want, clampf(delta * 2.5, 0.0, 1.0))
 	look_from(eye, _look)
 
-## ---- 2D overlay: crosshair, gun, rings, tracers, ammo ----------------------------------
+## ---- 2D overlay ---------------------------------------------------------------------
 
 func _build_overlay() -> void:
 	_ov = Node2D.new()
@@ -585,15 +775,27 @@ func _muzzle() -> Vector2:
 	return _gun.position + Vector2(-68, -27).rotated(_gun.rotation)
 
 func _draw_overlay() -> void:
-	# aim rings: fill up as an enemy takes aim; closes = you are hit
-	for a: Dictionary in _actors:
-		if not a["alive"] or a["civ"] or a["state"] != "aim":
+	var view := Rect2(14, 14, 612, 332)
+	for f: Dictionary in _foes:
+		if f["state"] != "aim":
 			continue
-		var g: Actor3D = a["node"]
-		var c := to_screen(g.global_position + Vector3(0, GOBLIN_H * 0.6, 0))
-		var k := clampf(1.0 - a["t"] / a["aim"], 0.0, 1.0)
-		var r := lerpf(26.0, 14.0, k)
+		var g: Actor3D = f["node"]
+		var wp := g.global_position + Vector3(0, GOBLIN_H * 0.6, 0)
+		var k := clampf(1.0 - f["t"] / f["aim"], 0.0, 1.0)
 		var col := Palette.col("warn").lerp(Palette.col("hazard"), k)
+		var c := to_screen(wp)
+		if cam.is_position_behind(wp) or not view.has_point(c):
+			# off screen: an arrow on the edge pointing at it, filling the same way
+			var from := Vector2(320, 180)
+			var dir := (c - from).normalized()
+			if cam.is_position_behind(wp):
+				dir = -dir
+			var e := from + dir * 150.0
+			e = e.clamp(view.position + Vector2(10, 10), view.end - Vector2(10, 10))
+			_ov.draw_colored_polygon(PackedVector2Array([e + dir * 12.0, e + dir.orthogonal() * 8.0, e - dir.orthogonal() * 8.0]), col)
+			_ov.draw_arc(e, 16.0, -PI * 0.5, -PI * 0.5 + TAU * k, 24, col, 3.0)
+			continue
+		var r := lerpf(26.0, 14.0, k)
 		_ov.draw_arc(c, r, 0, TAU, 32, Color(col, 0.25), 2.0)
 		_ov.draw_arc(c, r, -PI * 0.5, -PI * 0.5 + TAU * k, 32, col, 3.0)
 	for t: Dictionary in _tracers:
@@ -608,20 +810,16 @@ func _draw_overlay() -> void:
 		var m := _muzzle()
 		_ov.draw_circle(m, 14.0, Color(Palette.col("warn"), 0.9))
 		_ov.draw_circle(m, 7.0, Palette.col("ink"))
-	# crosshair
 	var cc := Palette.col("ink")
 	var cp := _cross.position
 	for d: Vector2 in [Vector2.LEFT, Vector2.RIGHT, Vector2.UP, Vector2.DOWN]:
 		_ov.draw_line(cp + d * 5.0, cp + d * 11.0, Color(cc, 0.85), 2.0)
 	_ov.draw_circle(cp, 1.5, Palette.col("hazard"))
-	# ammo, bottom right above the gun
 	for i in MAG:
 		var full := i < _ammo and _reload <= 0.0
-		var x := 620.0 - i * 9.0
-		_ov.draw_rect(Rect2(x, 236, 5, 14), Palette.col("prize") if full else Color(Palette.col("ink"), 0.2))
+		_ov.draw_rect(Rect2(620.0 - i * 9.0, 236, 5, 14), Palette.col("prize") if full else Color(Palette.col("ink"), 0.2))
 	if _reload > 0.0:
-		var k := 1.0 - _reload / RELOAD_TIME
-		_ov.draw_rect(Rect2(570, 254, 55 * k, 3), Palette.col("prize"))
+		_ov.draw_rect(Rect2(570, 254, 55 * (1.0 - _reload / RELOAD_TIME), 3), Palette.col("prize"))
 
 ## ---- per frame ------------------------------------------------------------------------
 
@@ -634,24 +832,26 @@ func _process(delta: float) -> void:
 		if _intro <= 0.0:
 			Audio.play("voice_go")
 			Probe.event("go")
-	# walk to the next stop, slow into it
-	elif not _at_stop:
-		var left := _next_stop - _dist
-		var want := WALK_SPEED * clampf(left / 3.0, 0.15, 1.0)
-		_speed = lerpf(_speed, want, clampf(delta * 3.0, 0.0, 1.0))
-		_dist = minf(_next_stop, _dist + _speed * delta)
-		if _dist >= _next_stop - 0.02:
-			_dist = _next_stop
-			_speed = 0.0
-			_arrive()
-		_extend()
 	else:
-		_run_actors(delta)
-		if _foes() == 0:
-			_clear()
+		# always walking; easing off a little while someone is close in front of you
+		var want := lerpf(WALK_MIN, WALK_MAX, clampf(_t / RAMP, 0.0, 1.0))
+		for f: Dictionary in _foes:
+			if f["u"] - _dist < 10.0:
+				want *= 0.45
+				break
+		_speed = lerpf(_speed, want, clampf(delta * 2.0, 0.0, 1.0))
+		_dist += _speed * delta
+		_extend()
+		_van_cd -= delta
+		_spawn_t -= delta
+		if _spawn_t <= 0.0:
+			_spawn_t = lerpf(2.4, 1.0, clampf(_t / 120.0, 0.0, 1.0)) * randf_range(0.7, 1.3)
+			_spawn_something()
+		_drive_van(delta)
+		_run_goblins(delta)
+		_walk_people(delta)
 	_aim_camera(delta)
 
-	# crosshair on keys / stick, fire on A, reload on B
 	var d := PInput.dir()
 	if d != Vector2.ZERO:
 		_cross.position = (_cross.position + d * CROSS_SPEED * delta).clamp(Vector2(20, 30), Vector2(620, 330))
@@ -671,6 +871,7 @@ func _process(delta: float) -> void:
 	_kick = maxf(0.0, _kick - delta * 7.0)
 	var lean := (_cross.position.x - 320.0) / 320.0
 	_gun.position = GUN_REST + Vector2(lean * 14.0, (_cross.position.y - 180.0) / 180.0 * 8.0) + Vector2(10, 14) * _kick
+	_gun.position.y += sin(_t * 8.0) * 3.0 * clampf(_speed / WALK_MAX, 0.0, 1.0)
 	_gun.rotation = -0.18 * _kick + lean * 0.06
 	if _reload > 0.0:
 		_gun.position.y += 40.0 * sin(PI * (1.0 - _reload / RELOAD_TIME))
@@ -683,22 +884,18 @@ func _process(delta: float) -> void:
 		s["t"] = s["t"] - delta
 		if s["t"] <= 0.0:
 			_sparks.erase(s)
-	for a: Dictionary in _actors:
-		var m: Node2D = a.get("mark")
-		if m != null and is_instance_valid(m):
-			var h := PERSON_H if a["civ"] else GOBLIN_H
-			var at: Vector3 = (a["node"] as Node3D).global_position if _exposed(a) else a["peek"]
-			m.position = to_screen(at + Vector3(0, h * 0.78, 0))
 	_ov.queue_redraw()
 
-## Screen position of an exposed enemy's chest within `r` px of p, or (-1, -1).
+## Screen position of an exposed goblin's chest within `r` px of p, or (-1, -1).
 func _nearest_foe(p: Vector2, r: float) -> Vector2:
 	var best := Vector2(-1, -1)
 	var best_d := r
-	for a: Dictionary in _actors:
-		if a["civ"] or not _exposed(a):
+	for f: Dictionary in _foes:
+		if not _exposed(f):
 			continue
-		var g: Actor3D = a["node"]
+		var g: Actor3D = f["node"]
+		if cam.is_position_behind(g.global_position):
+			continue
 		var s := to_screen(g.global_position + Vector3(0, GOBLIN_H * 0.78, 0))
 		if s.distance_to(p) < best_d:
 			best_d = s.distance_to(p)
