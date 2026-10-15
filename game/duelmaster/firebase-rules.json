@@ -1,0 +1,26 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "pool": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && auth.uid == $uid"
+      }
+    },
+    "invites": {
+      "$to": {
+        ".read": "auth != null && auth.uid == $to",
+        "$from": {
+          ".write": "auth != null && (auth.uid == $from || auth.uid == $to)"
+        }
+      }
+    },
+    "matches": {
+      "$mid": {
+        ".read": "auth != null && (!data.exists() || data.child('host').val() == auth.uid || data.child('guest').val() == auth.uid)",
+        ".write": "auth != null && (!data.exists() || data.child('host').val() == auth.uid || data.child('guest').val() == auth.uid)"
+      }
+    }
+  }
+}
