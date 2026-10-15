@@ -52,19 +52,25 @@ Doing nothing until the time runs out is a miss. Two misses is a draw.
 
 First to win more than half of N duels takes the set.
 
-## Online (next, not built yet)
+## Online
 
-Agreed so far:
+Agreed and built:
 
-- "Online" button: type your name, press enter, and you join a **pool** of everyone online.
-- You set your **best of N when you log in**, in case somebody challenges you.
-- Tap somebody to **challenge** them; they get an **accept** prompt. If you accept, it is
-  **the challenger's N**.
-- Duels are played **together**: both players play the same duel at the same time on their
-  own device, and it **syncs every round** -- nobody starts the next duel until both have
-  finished this one and seen the verdict.
-- Needs a small relay service (Firebase or Supabase, free tier), because GitHub Pages only
-  serves files and cannot pass messages between two phones.
+- "online" on the first screen: type your name, pick your **best of N**, press enter, and
+  you join a **pool** of everyone online. (Name and N are remembered on that device.)
+- Your N is what you play if somebody challenges you.
+- Tap somebody to **challenge** them; they get an **accept / no thanks** prompt. If they
+  accept, it is **the challenger's N**. No answer in 30 seconds and the challenge lapses.
+  If two people tap each other at the same moment they just get one match.
+- Duels are played **together**: both players play the same duel at the same time on
+  their own device, and it **syncs every round** -- nobody starts the next duel until both
+  have finished this one and seen the verdict.
+- Somebody who leaves or goes silent for about 20 seconds forfeits the set.
+
+How it works: the game is still served by GitHub Pages; only the small messages (who is in
+the pool, challenges, each duel's seed and each player's result) go through a free
+**Firebase Realtime Database**. `net.gd` talks to it, `online.gd` runs the pool and the
+match, and `firebase-rules.json` is what to paste into the database's Rules tab.
 
 ## What should it look like?
 
