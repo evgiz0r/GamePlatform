@@ -32,6 +32,10 @@ const NAME_MAX := 12
 ## The shell default (0.8) is loud for a game that beeps every few seconds. Memory only,
 ## restored on exit. See CLAUDE.md, "things this kit learned the hard way".
 const SFX_SCALE := 0.35
+## Online play is switched off for now: no "online" button, and the game opens straight on
+## the best-of picker. The code (online.gd, net.gd) stays, untouched; set this to true to
+## bring it back. See GAME.md, "Online".
+const ONLINE_ENABLED := false
 
 var best_of := 3
 var _online := false
@@ -94,12 +98,16 @@ func start(config: Dictionary) -> void:
 	Probe.event("boot")
 	# "play again" comes back to where you were: the same N on one device, the pool online.
 	# DUELMASTER_ONLINE=1 starts straight in online mode, for testing two copies at once.
-	if config.get("online", false) or OS.get_environment("DUELMASTER_ONLINE") == "1":
+	var want_online: bool = config.get("online", false) \
+		or OS.get_environment("DUELMASTER_ONLINE") == "1"
+	if ONLINE_ENABLED and want_online:
 		_show_login()
 	elif config.has("best_of"):
 		_begin_set(int(config["best_of"]))
-	else:
+	elif ONLINE_ENABLED:
 		_show_mode()
+	else:
+		_show_picker()
 
 func _exit_tree() -> void:
 	SaveData.data["volume_sfx"] = _sfx_was
@@ -139,7 +147,8 @@ func _show_picker() -> void:
 	for i in BEST_OF.size():
 		var n: int = BEST_OF[i]
 		_button("best of %d" % n, Vector2(56 + i * 136, 196), Vector2(124, 46), _begin_set.bind(n), 16)
-	_button("back", Vector2(270, 290), Vector2(100, 30), _show_mode, 13)
+	if ONLINE_ENABLED:
+		_button("back", Vector2(270, 290), Vector2(100, 30), _show_mode, 13)
 
 func _begin_set(n: int) -> void:
 	_ui_clear()
@@ -596,8 +605,11 @@ func _draw() -> void:
 			_text(f, 320, 176, "how are you playing?", 14, Palette.col("warn"))
 			return
 		"pick":
-			_text(f, 320, 110, "SAME DEVICE", 28, Palette.col("accent"))
-			_text(f, 320, 146, "take turns, pass the phone between them.", 13, ink)
+			if ONLINE_ENABLED:
+				_text(f, 320, 110, "SAME DEVICE", 28, Palette.col("accent"))
+			else:
+				_text(f, 320, 110, "DUELMASTER", 34, Palette.col("accent"))
+			_text(f, 320, 146, "two players, one screen. take turns, closest wins.", 13, ink)
 			_text(f, 320, 176, "how many duels?", 14, Palette.col("warn"))
 			return
 		"login":
