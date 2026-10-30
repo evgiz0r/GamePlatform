@@ -54,6 +54,10 @@ First to win more than half of N duels takes the set.
 
 ## Online
 
+**Switched off for now** (`ONLINE_ENABLED := false` in `duelmaster.gd`): the game opens
+straight on the best-of picker and there is no "online" button. Everything below is built
+and kept, ready to switch back on.
+
 Agreed and built:
 
 - "online" on the first screen: type your name, pick your **best of N**, press enter, and
