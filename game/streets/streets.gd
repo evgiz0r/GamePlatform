@@ -63,6 +63,7 @@ const Y_ROAD := 0.035
 const Y_MARK := 0.046
 const NEW_STREET_M := 30.0           ## drive this far along a street for it to count
 const MAP_R := 210.0                 ## the minimap shows this far around the car (m)
+const AP_LAT := 3.0                  ## autodrive keeps the sideways pull in turns under this (m/s^2)
 
 ## Facades: a wall colour, a window grid per storey, a darker ground floor. UV is (metres
 ## along this wall, metres above the ground); UV2 is (wall length, roof height). COLOR.r is
@@ -196,6 +197,7 @@ var _roll := 0.0
 var _pitch := 0.0
 var _crash_cool := 0.0
 var _odo := 0.0
+var _last_hit := ""                  ## what the car last bumped: "building 12" / "post 40", for the report
 
 ## ---- camera ----
 var _cam_yaw := 0.0
@@ -762,6 +764,9 @@ func _build_signals() -> void:
 				var p := c - dir * (rn + 1.5) + right * (float(r["w"]) * 0.5 + 0.8)
 				if _push_out(p, 0.3, false) != Vector2.ZERO:
 					continue
+				var on := _nearest_seg(p, 12.0, true)
+				if not on.is_empty() and float(on["edge"]) < 0.4:
+					continue   # OSM puts the light's node a few metres out; never plant it in a lane
 				var g := 0 if absf(dir.x) >= absf(dir.y) else 1
 				var face := Basis(Vector3.UP, atan2(-dir.x, -dir.y))   # +Z of the head toward the traffic
 				poles.append(Transform3D(Basis(), Vector3(p.x, 1.7, p.y)))
@@ -1095,7 +1100,8 @@ func _crash(speed: float) -> void:
 	else:
 		shake3d(1.0)
 		Audio.play("impact_soft", 0.1, -6.0)
-	Probe.event("crash", {"kmh": int(speed * 3.6)})
+	Probe.event("crash", {"kmh": int(speed * 3.6), "hit": _last_hit, "at": Vector2i(_pos),
+		"street": _on_name, "auto": _auto})
 
 ## how far to move a circle so it overlaps nothing solid
 func _push_out(c: Vector2, r: float, posts: bool) -> Vector2:
@@ -1106,13 +1112,17 @@ func _push_out(c: Vector2, r: float, posts: bool) -> Vector2:
 		var box: Rect2 = _bld_box[i]
 		if not box.grow(r).has_point(c + push):
 			continue
-		push += _poly_push(_blds[i], c + push, r)
+		var p := _poly_push(_blds[i], c + push, r)
+		if p != Vector2.ZERO:
+			push += p
+			_last_hit = "building %d" % i
 	if posts:
 		for i: int in _near(_post_hash, c, r, BLD_CELL):
 			var d := (c + push) - _posts[i]
 			var need := r + _post_r[i]
 			if d.length() < need:
 				push += d.normalized() * (need - d.length()) if d.length() > 0.001 else Vector2(need, 0)
+				_last_hit = "post %d" % i
 	return push
 
 func _poly_push(poly: PackedVector2Array, c: Vector2, r: float) -> Vector2:
@@ -1289,6 +1299,21 @@ func _autodrive(dt: float) -> Array:
 		_ap_stuck = 0.0
 	return [throttle, brake, steer]
 
+## the point `dist` metres along the planned lane from point k (negative = back)
+func _ap_walk(k: int, dist: float) -> Vector2:
+	var step := 1 if dist > 0.0 else -1
+	var left := absf(dist)
+	var p := _ap_pts[k]
+	var j := k + step
+	while j >= 0 and j < _ap_pts.size():
+		var L := p.distance_to(_ap_pts[j])
+		if L >= left:
+			return p + (_ap_pts[j] - p) * (left / maxf(L, 0.0001))
+		left -= L
+		p = _ap_pts[j]
+		j += step
+	return p
+
 func _ap_len() -> float:
 	var L := 0.0
 	for i in range(1, _ap_pts.size()):
@@ -1349,13 +1374,17 @@ func _ap_leg(ri: int, from: int, dir: int) -> void:
 			break
 		i += dir
 	_ap_end = Vector3i(ri, last, dir)
-	# corners: the sharper the bend, the slower
-	for k in range(maxi(1, start - 1), _ap_pts.size() - 1):
-		var a := (_ap_pts[k] - _ap_pts[k - 1]).normalized()
-		var b := (_ap_pts[k + 1] - _ap_pts[k]).normalized()
-		var turn := absf(a.angle_to(b))
-		if turn > 0.15:
-			_ap_v[k] = minf(_ap_v[k], lerpf(_ap_v[k], 3.5, clampf((turn - 0.15) / 1.3, 0.0, 1.0)))
+	# corners: the radius through the points 5 m either side of each one, and the speed
+	# that keeps the sideways pull comfortable round it. A sharp junction corner and the
+	# gentle-looking many-sided ring of a roundabout both come out as the tight turns
+	# they are. (Points near the old end are redone now that there is road beyond them.)
+	for k in range(maxi(1, start - 10), _ap_pts.size() - 1):
+		var a := _ap_walk(k, -5.0)
+		var b := _ap_pts[k]
+		var c := _ap_walk(k, 5.0)
+		var cross := absf((b - a).cross(c - a))
+		var radius := INF if cross < 0.001 else a.distance_to(b) * b.distance_to(c) * c.distance_to(a) / (2.0 * cross)
+		_ap_v[k] = minf(_ap_lim[k], maxf(sqrt(AP_LAT * radius), 2.5))
 
 ## at the end of the planned road pick the next one: ahead rather than a turn, a street
 ## not driven yet rather than an old one, never against a one-way, U-turn only at a dead end
