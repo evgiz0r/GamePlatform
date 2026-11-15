@@ -49,7 +49,14 @@ import time
 import urllib.parse
 import urllib.request
 
-OVERPASS = os.environ.get("OVERPASS_URL", "https://overpass-api.de/api/interpreter")
+# Public Overpass servers, tried in order: the main one turns some clients away (a 406 for
+# a link opened in a browser, resets from some networks), the others are full mirrors.
+SERVERS = ["https://overpass-api.de/api/interpreter",
+           "https://overpass.private.coffee/api/interpreter",
+           "https://overpass.kumi.systems/api/interpreter"]
+if os.environ.get("OVERPASS_URL"):
+    SERVERS = [os.environ["OVERPASS_URL"]]
+OVERPASS = SERVERS[0]
 HERE = os.path.dirname(os.path.abspath(__file__))
 CACHE = os.path.join(HERE, ".cache")
 SCALE = 10  # integers in the file are decimetres
@@ -96,19 +103,22 @@ def log(*a):
 
 # ---- fetch ---------------------------------------------------------------------------
 
-def overpass(query, tries=4):
+def overpass(query, tries=2):
     body = urllib.parse.urlencode({"data": query}).encode()
     for attempt in range(tries):
-        try:
-            req = urllib.request.Request(OVERPASS, data=body,
-                                         headers={"User-Agent": "osm-city-bake/1"})
-            with urllib.request.urlopen(req, timeout=300) as r:
-                return json.loads(r.read().decode("utf-8"))
-        except Exception as e:  # rate limits and timeouts are routine on the public server
-            wait = 5 * 2 ** attempt
-            log(f"  overpass: {e} -- retrying in {wait}s")
-            time.sleep(wait)
-    sys.exit("overpass: giving up (is the host allowed by your network?)")
+        for url in SERVERS:
+            try:
+                req = urllib.request.Request(url, data=body, headers={
+                    "User-Agent": "osm-city-bake/1 (a game kit's map baker)",
+                    "Accept": "application/json"})
+                with urllib.request.urlopen(req, timeout=300) as r:
+                    return json.loads(r.read().decode("utf-8"))
+            except Exception as e:  # rate limits and timeouts are routine on public servers
+                log(f"  {urllib.parse.urlparse(url).netloc}: {e}")
+        if attempt + 1 < tries:
+            log("  every server refused; trying again in 20s")
+            time.sleep(20)
+    sys.exit("overpass: giving up (are the servers reachable from this network?)")
 
 
 def name_regex(place):
@@ -575,7 +585,7 @@ def main():
     name = args.name or args.place or (f"relation {args.relation}" if args.relation else "area")
     slug = re.sub(r"[^a-z0-9]+", "_", (args.name or args.place or
                                        (str(args.relation) if args.relation else args.bbox)
-                                       ).lower()).strip("_")
+                                       ).lower()).strip("_") or "city"
     raw = fetch(args, slug)
     city = bake(raw, name, args)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)

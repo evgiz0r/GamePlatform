@@ -1,0 +1,69 @@
+# Bakes a real place from OpenStreetMap into a city file (tools/osm_city.py) on GitHub's
+# own machines, which can reach the Overpass servers whatever network you or a cloud
+# session are on, and commits the file to the branch it was run on. Run it from the
+# Actions tab ("Run workflow"), with `gh workflow run bake_city.yml -f place=... -f out=...`,
+# or ask the AI to. Run on main, it also re-publishes the web build, because a commit
+# made by a workflow does not set off publish.yml by itself.
+name: bake a real city
+
+on:
+  workflow_dispatch:
+    inputs:
+      place:
+        description: "The town as OpenStreetMap names it, any language (Givatayim, גבעתיים, Ramat Gan)"
+        required: true
+      out:
+        description: "Where the city file goes: game/<game>/cities/<city>.json"
+        required: true
+      margin:
+        description: "Metres of the neighbouring towns kept round the edge"
+        default: "250"
+
+concurrency:
+  group: bake-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  bake:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: bake
+        env:
+          PLACE: ${{ inputs.place }}
+          OUT: ${{ inputs.out }}
+          MARGIN: ${{ inputs.margin }}
+        run: |
+          if ! [[ "$OUT" =~ ^game/[A-Za-z0-9_-]+/[A-Za-z0-9_/-]+\.json$ ]]; then
+            echo "out must be a .json path inside a game folder, got: $OUT"; exit 1
+          fi
+          if ! [[ "$MARGIN" =~ ^[0-9]+$ ]]; then
+            echo "margin must be a whole number of metres, got: $MARGIN"; exit 1
+          fi
+          python3 tools/osm_city.py --place "$PLACE" --margin "$MARGIN" --out "$OUT"
+
+      - name: commit the city file
+        env:
+          PLACE: ${{ inputs.place }}
+          OUT: ${{ inputs.out }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$OUT"
+          if git diff --cached --quiet; then
+            echo "the city file did not change"; exit 0
+          fi
+          git commit -m "bake $PLACE from OpenStreetMap"
+          git pull --rebase
+          git push
+
+      - name: re-publish the web build
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run publish.yml --ref main
