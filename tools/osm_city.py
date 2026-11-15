@@ -12,6 +12,10 @@ Two steps, so the second can be re-run without the network:
              OSM leaves out (building heights, road widths) and write the city file
 Pass --offline to skip step 1 and bake from the cache.
 
+No network here? Anyone with a browser can do step 1: open an Overpass API link that asks
+for the same things (print one with --print-query), save the JSON it answers with, and
+pass it as --from-file. It is cached like a download, so --offline works afterwards.
+
 The city file is plain JSON, every coordinate an integer in decimetres (`scale`: 10) on
 the ground plane: +x is east, +z is SOUTH (so north is -z, which is "up the screen" in a
 Godot top view and keeps the map from coming out mirrored). Format, version 1:
@@ -108,9 +112,15 @@ def overpass(query, tries=4):
 
 
 def name_regex(place):
-    """'Givatayim' should also find "Giv'atayim": punctuation between letters optional."""
-    letters = [re.escape(c) for c in place if c.isalnum() or c == " "]
-    return "^" + "['’`.-]?".join(letters) + "$"
+    """'Givatayim' should also find "Giv'atayim": punctuation between Latin letters is
+    optional. Other scripts (Hebrew, Arabic...) are matched as written."""
+    letters = [c for c in place if c.isalnum() or c == " "]
+    out = ""
+    for i, c in enumerate(letters):
+        if i and c.isascii() and letters[i - 1].isascii():
+            out += "['`.-]?"
+        out += re.escape(c)
+    return "^" + out + "$"
 
 
 def find_boundary(args):
@@ -137,12 +147,85 @@ def find_boundary(args):
     return rel
 
 
+DATA_FILTERS = (
+    'way["highway"];'
+    'way["building"];'
+    'rel["building"]["type"="multipolygon"];'
+    'way["leisure"~"^(park|garden|playground|dog_park|pitch|sports_centre|track)$"];'
+    'way["landuse"~"^(grass|recreation_ground|village_green|meadow|cemetery|forest|orchard|flowerbed|allotments)$"];'
+    'way["natural"~"^(wood|scrub|grassland|water)$"];'
+    'way["amenity"="parking"];'
+    'way["place"="square"];'
+    'node["natural"="tree"];'
+    'node["highway"~"^(traffic_signals|crossing|stop|give_way)$"];'
+)
+
+
+def one_query(args):
+    """Boundary and everything within --margin of it in ONE request, so it can be pasted
+    into a browser (--print-query). Follows the city's own outline, not a rectangle."""
+    if args.relation:
+        sel = f"rel({args.relation})"
+    else:
+        rx = name_regex(args.place).replace('"', '\\"')
+        sel = f'rel["boundary"="administrative"][~"^name(:[a-z]+)?$"~"{rx}",i]'
+    m = int(args.margin)
+    filters = (DATA_FILTERS.replace('way[', 'way.w[').replace('node[', 'node.n[')
+               .replace('rel["building"]', 'rel(bw.w)["building"]'))
+    return (f"[out:json][timeout:300][maxsize:536870912];{sel}->.city;.city out geom;"
+            f"way(r.city)->.edge;.city map_to_area->.inside;"
+            f"(way(area.inside);way(around.edge:{m});)->.w;"
+            f"(node(area.inside);node(around.edge:{m});)->.n;"
+            f"({filters});out geom;")
+
+
+def from_file(args, path):
+    """A raw Overpass answer saved by hand -> the same shape fetch() caches."""
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    if "elements" not in data:
+        sys.exit(f"{path} is not an Overpass JSON answer (no 'elements')")
+    rel = None
+    want = re.compile(name_regex(args.place), re.I) if args.place else None
+    for e in data["elements"]:
+        t = e.get("tags", {})
+        if e["type"] == "relation" and t.get("boundary") == "administrative":
+            names = [v for k, v in t.items() if k == "name" or k.startswith("name:")]
+            if want is None or any(want.match(v) for v in names):
+                rel = e
+                break
+    if args.bbox:
+        s, w, n, e = [float(v) for v in args.bbox.split(",")]
+    elif rel and "bounds" in rel:
+        b = rel["bounds"]
+        s, w, n, e = b["minlat"], b["minlon"], b["maxlat"], b["maxlon"]
+    else:
+        lats = [g["lat"] for el in data["elements"] if el["type"] == "way"
+                for g in el.get("geometry", []) if g]
+        lons = [g["lon"] for el in data["elements"] if el["type"] == "way"
+                for g in el.get("geometry", []) if g]
+        s, w, n, e = min(lats), min(lons), max(lats), max(lons)
+        args.margin = 0.0
+    log(f"boundary: {'relation ' + str(rel['id']) if rel else 'none found, using the data extent'}")
+    dlat = args.margin / 111320.0
+    dlon = args.margin / (111320.0 * math.cos(math.radians((s + n) / 2)))
+    box = (s - dlat, w - dlon, n + dlat, e + dlon)
+    return {"box": box, "boundary": rel, "data": data,
+            "fetched": datetime.date.fromtimestamp(os.path.getmtime(path)).isoformat()}
+
+
 def fetch(args, slug):
     os.makedirs(CACHE, exist_ok=True)
     gd = os.path.join(CACHE, ".gdignore")   # keep Godot from scanning the raw downloads
     if not os.path.exists(gd):
         open(gd, "w").close()
     raw_path = os.path.join(CACHE, slug + ".raw.json")
+    if args.from_file:
+        raw = from_file(args, args.from_file)
+        with open(raw_path, "w", encoding="utf-8") as f:
+            json.dump(raw, f)
+        log(f"  cached as {os.path.relpath(raw_path)}")
+        return raw
     if args.offline:
         if not os.path.exists(raw_path):
             sys.exit(f"--offline but no cache at {raw_path}")
@@ -162,18 +245,7 @@ def fetch(args, slug):
     log(f"fetching {box[0]:.5f},{box[1]:.5f} .. {box[2]:.5f},{box[3]:.5f} "
         f"(boundary box + {args.margin:.0f} m) ...")
     q = (f"[out:json][timeout:240][maxsize:536870912][bbox:{box[0]},{box[1]},{box[2]},{box[3]}];"
-         "("
-         'way["highway"];'
-         'way["building"];'
-         'rel["building"]["type"="multipolygon"];'
-         'way["leisure"~"^(park|garden|playground|dog_park|pitch|sports_centre|track)$"];'
-         'way["landuse"~"^(grass|recreation_ground|village_green|meadow|cemetery|forest|orchard|flowerbed|allotments)$"];'
-         'way["natural"~"^(wood|scrub|grassland|water)$"];'
-         'way["amenity"="parking"];'
-         'way["place"="square"];'
-         'node["natural"="tree"];'
-         'node["highway"~"^(traffic_signals|crossing|stop|give_way)$"];'
-         ");out geom;")
+         "(" + DATA_FILTERS + ");out geom;")
     t0 = time.time()
     data = overpass(q)
     log(f"  {len(data['elements'])} elements in {time.time() - t0:.0f}s")
@@ -299,7 +371,7 @@ def bake(raw, name, args):
 
     rel = raw.get("boundary")
     if rel:
-        outer = [[P(g["lat"], g["lon"]) for g in m.get("geometry", [])]
+        outer = [[P(g["lat"], g["lon"]) for g in m.get("geometry", []) if g]
                  for m in rel.get("members", []) if m.get("role") == "outer" and m["type"] == "way"]
         for ring in join_rings([[(round(x, 2), round(z, 2)) for x, z in s] for s in outer]):
             r = clean_ring(ring, 1.0)
@@ -329,12 +401,12 @@ def bake(raw, name, args):
             continue
         if t.get("access") in ("no", "private") and kind == "service":
             continue
-        pts = [P(g["lat"], g["lon"]) for g in e["geometry"]]
+        pts = [P(g["lat"], g["lon"]) if g else None for g in e["geometry"]]
         ids = e.get("nodes", [])
         if len(ids) != len(pts):
             continue
         # keep the stretch inside the box (+ a little), cut where it leaves for good
-        keep = [i for i, (x, z) in enumerate(pts) if inside(x, z, 60.0)]
+        keep = [i for i, p in enumerate(pts) if p and inside(p[0], p[1], 60.0)]
         if len(keep) < 2:
             continue
         runs, cur = [], [keep[0]]
@@ -425,10 +497,11 @@ def bake(raw, name, args):
         if "building" not in t or t.get("building") in ("no", "demolished", "proposed"):
             continue
         if e["type"] == "way" and "geometry" in e:
-            add_building([P(g["lat"], g["lon"]) for g in e["geometry"]], t)
+            if all(e["geometry"]):
+                add_building([P(g["lat"], g["lon"]) for g in e["geometry"]], t)
         elif e["type"] == "relation":
             outer = [[(round(x, 2), round(z, 2)) for x, z in
-                      (P(g["lat"], g["lon"]) for g in m.get("geometry", []))]
+                      (P(g["lat"], g["lon"]) for g in m.get("geometry", []) if g)]
                      for m in e.get("members", []) if m.get("role") == "outer"]
             for ring in join_rings(outer):
                 add_building(ring, t)
@@ -448,7 +521,7 @@ def bake(raw, name, args):
         if not kind:
             continue
         g = e["geometry"]
-        if len(g) < 4 or (g[0]["lat"], g[0]["lon"]) != (g[-1]["lat"], g[-1]["lon"]):
+        if len(g) < 4 or not all(g) or (g[0]["lat"], g[0]["lon"]) != (g[-1]["lat"], g[-1]["lon"]):
             continue
         r = clean_ring([P(p["lat"], p["lon"]) for p in g], 0.5)
         if not r:
@@ -482,11 +555,23 @@ def main():
                     help="metres of neighbouring city kept around the boundary box")
     ap.add_argument("--default-levels", type=int, default=4,
                     help="storeys for a building OSM gives no height for")
-    ap.add_argument("--out", required=True, help="where to write the city file")
+    ap.add_argument("--out", help="where to write the city file")
     ap.add_argument("--offline", action="store_true", help="bake from tools/.cache only")
+    ap.add_argument("--from-file", help="a raw Overpass JSON answer you saved yourself")
+    ap.add_argument("--print-query", action="store_true",
+                    help="print a browser link that downloads the raw data, for --from-file")
     args = ap.parse_args()
-    if not (args.place or args.relation or args.bbox):
-        ap.error("give --place, --relation or --bbox")
+    if not (args.place or args.relation or args.bbox or args.from_file):
+        ap.error("give --place, --relation, --bbox or --from-file")
+    if args.print_query:
+        if not (args.place or args.relation):
+            ap.error("--print-query needs --place or --relation")
+        q = one_query(args)
+        log(q)
+        print(OVERPASS + "?data=" + urllib.parse.quote(q, safe=""))
+        return
+    if not args.out:
+        ap.error("--out is required")
     name = args.name or args.place or (f"relation {args.relation}" if args.relation else "area")
     slug = re.sub(r"[^a-z0-9]+", "_", (args.name or args.place or
                                        (str(args.relation) if args.relation else args.bbox)
