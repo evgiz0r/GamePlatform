@@ -76,6 +76,9 @@ the neighbouring towns round the edge so the world does not stop at the city lim
 raw download is cached in `tools/.cache/` (not committed), and `--offline` re-bakes from
 it, so changing the bake does not hit the server again.
 
+If `CITY`'s file is not there, the game drives whichever city file is (`test_town.json`
+is a made-up grid kept only until a real city is baked; delete it then).
+
 The network needs `overpass-api.de` allowed. Everything baked is © OpenStreetMap
 contributors under the ODbL, which is why the credit sits on screen.
 

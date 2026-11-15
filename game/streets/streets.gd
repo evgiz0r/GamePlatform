@@ -279,10 +279,20 @@ func _exit_tree() -> void:
 ## ---- loading the city ---------------------------------------------------------------
 
 func _load_city(id: String) -> bool:
-	var path: String = get_script().resource_path.get_base_dir() + "/cities/" + id + ".json"
+	var dir: String = get_script().resource_path.get_base_dir() + "/cities/"
+	var path := dir + id + ".json"
 	if not FileAccess.file_exists(path):
-		Probe.note("no city file at %s -- bake one with tools/osm_city.py (GAME.md)" % path)
-		return false
+		# not baked yet: drive whichever city is there rather than nothing
+		var any := ""
+		for f in DirAccess.get_files_at(dir):
+			if f.ends_with(".json"):
+				any = dir + f
+				break
+		if any == "":
+			Probe.note("no city file at %s -- bake one with tools/osm_city.py (GAME.md)" % path)
+			return false
+		Probe.note("no %s yet, driving %s instead" % [path, any.get_file()])
+		path = any
 	var data = JSON.parse_string(FileAccess.get_file_as_string(path))
 	if not data is Dictionary:
 		Probe.note("city file %s did not parse" % path)
