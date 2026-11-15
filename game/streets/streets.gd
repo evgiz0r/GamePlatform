@@ -235,8 +235,16 @@ var _dest_name := ""
 var _dest_t := 0.0
 var _beacon: MeshInstance3D
 var _picker: Control
-var _pick_list: GridContainer
-var _pick_filter: LineEdit
+var _pick_body: Control              ## where the page of buttons goes
+var _pick_letters: Control
+var _pick_page_lbl: Label
+var _pick_prev: Button
+var _pick_next: Button
+var _pick_mode := "streets"          ## or "numbers"
+var _pick_letter := ""               ## "" = every street
+var _pick_page := 0
+var _pick_street := ""
+var _streets_list: Array = []        ## {name, en, label, count}, sorted, built once per city
 var _dest_lbl: Label
 
 ## ---- exploring ----
@@ -1712,47 +1720,54 @@ func _check_arrival(dt: float) -> void:
 		_show_banner("arrived: " + _dest_name, 3.0)
 		Probe.event("arrived", {"to": _dest_name, "secs": int(_dest_t)})
 
-## ---- the address picker: streets, then house numbers -----------------------------------------
+## ---- the address picker: streets, then house numbers ---------------------------------------
+## Built for thumbs: no scrolling list (a phone's finger lands on a button, not the list)
+## and no typing box (web builds get no reliable on-screen keyboard). Letter chips narrow
+## the streets to an initial, pages flip with big arrows. The buttons are only drawn: the
+## shell's UI layer sits over every game and would swallow real clicks, so _input() hit-
+## tests them and calls the Callable each one carries in its "cb" meta (see _pick_tap).
+
+const PICK_COLS := 2
+const PICK_ROWS := 7
+const NUM_COLS := 6
 
 func _open_picker() -> void:
 	if _picker != null:
 		return
+	if _streets_list.is_empty():
+		_build_street_list()
 	_picker = Control.new()
 	_picker.size = Vector2(640, 360)
 	_picker.z_index = 90
 	add_child(_picker)
 	var dim := ColorRect.new()
-	dim.color = Color(Palette.col("bg"), 0.92)
+	dim.color = Color(Palette.col("bg"), 0.93)
 	dim.size = Vector2(640, 360)
+	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_picker.add_child(dim)
-	var title := UIKit.label("where to?", 18, "player")
-	title.position = Vector2(170, 4)
-	title.size = Vector2(300, 26)
+	var title := UIKit.label("where to?", 16, "player")
+	title.position = Vector2(170, 2)
+	title.size = Vector2(300, 22)
 	_picker.add_child(title)
-	_pick_filter = LineEdit.new()
-	_pick_filter.position = Vector2(150, 34)
-	_pick_filter.size = Vector2(340, 26)
-	_pick_filter.placeholder_text = "type a street, or scroll"
-	_pick_filter.add_theme_font_override("font", _font)
-	_pick_filter.add_theme_font_size_override("font_size", 13)
-	_pick_filter.text_changed.connect(_list_streets)
-	_picker.add_child(_pick_filter)
-	var scroll := ScrollContainer.new()
-	scroll.position = Vector2(20, 66)
-	scroll.size = Vector2(600, 262)
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_picker.add_child(scroll)
-	_pick_list = GridContainer.new()
-	_pick_list.add_theme_constant_override("h_separation", 8)
-	_pick_list.add_theme_constant_override("v_separation", 6)
-	scroll.add_child(_pick_list)
-	var close := UIKit.button("close", _close_picker)
-	close.position = Vector2(270, 332)
-	close.custom_minimum_size = Vector2(100, 24)
-	close.size = Vector2(100, 24)
-	close.add_theme_font_size_override("font_size", 13)
-	_picker.add_child(close)
-	_list_streets("")
+	_pick_letters = Control.new()
+	_pick_letters.position = Vector2(0, 34)   # clear of the shell's sound/menu buttons
+	_picker.add_child(_pick_letters)
+	_pick_body = Control.new()
+	_pick_body.position = Vector2(20, 90)
+	_picker.add_child(_pick_body)
+	_pick_prev = _bar_button("◀", Vector2(20, 331), 90, func(): _turn(-1))
+	_pick_next = _bar_button("▶", Vector2(410, 331), 90, func(): _turn(1))
+	_bar_button("close", Vector2(530, 331), 90, _close_picker)
+	_pick_page_lbl = UIKit.label("", 12, "ink")
+	_pick_page_lbl.add_theme_font_override("font", _font)
+	_pick_page_lbl.text_direction = Control.TEXT_DIRECTION_LTR
+	_pick_page_lbl.position = Vector2(110, 334)
+	_pick_page_lbl.size = Vector2(300, 18)
+	_picker.add_child(_pick_page_lbl)
+	_pick_mode = "streets"
+	_pick_page = 0
+	_build_letters()
+	_refresh_pick()
 	Probe.event("picker")
 
 func _close_picker() -> void:
@@ -1760,49 +1775,151 @@ func _close_picker() -> void:
 		_picker.queue_free()
 		_picker = null
 
-func _pick_button(text: String, w: float, cb: Callable) -> Button:
-	var b := UIKit.button(text, cb)
-	b.custom_minimum_size = Vector2(w, 26)
-	b.add_theme_font_override("font", _font)
-	b.add_theme_font_size_override("font_size", 13)
-	b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	_pick_list.add_child(b)
+## a drawn button that _pick_tap() can press
+func _tap_button(text: String, cb: Callable) -> Button:
+	var b := UIKit.button(text, func(): pass)
+	b.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.focus_mode = Control.FOCUS_NONE
+	b.set_meta("cb", cb)
 	return b
 
-## every street with a name, as the roads and the addresses spell it, filtered by the box
-func _list_streets(filter: String) -> void:
-	for c in _pick_list.get_children():
-		c.queue_free()
-	_pick_list.columns = 2
+## a click or tap while the picker is open: whichever of its buttons is under it
+func _pick_tap(at: Vector2) -> void:
+	for b: Button in _picker.find_children("*", "Button", true, false):
+		if b.is_queued_for_deletion() or b.disabled or not b.is_visible_in_tree():
+			continue
+		if b.get_global_rect().has_point(at):
+			Audio.play("click", 0.05, -8.0)
+			(b.get_meta("cb") as Callable).call()
+			return
+
+func _bar_button(text: String, at: Vector2, w: float, cb: Callable) -> Button:
+	var b := _tap_button(text, cb)
+	b.add_theme_font_override("font", _font)
+	b.add_theme_font_size_override("font_size", 13)
+	_picker.add_child(b)
+	_put(b, at, Vector2(w, 26))
+	return b
+
+## size a button once it is in the tree: set before, Godot keeps the kit's 180x34 minimum
+## on record and the "small" buttons came out 180 wide, overlapping their neighbours
+func _put(b: Control, at: Vector2, sz: Vector2) -> void:
+	b.custom_minimum_size = sz
+	b.position = at
+	b.size = sz
+
+## every named street, as the roads and the addresses spell it
+func _build_street_list() -> void:
 	var en := {}
 	for r: Dictionary in _roads:
-		if r["drive"] and not r["pv"] and r["name"] != "":
+		if r["drive"] and not r["pv"] and r["name"] != "" and not String(r["name"]).is_valid_int():
 			en[r["name"]] = r["en"]
 	for st: String in _addr:
-		if not en.has(st):
+		if not en.has(st) and not st.is_valid_int():
 			en[st] = ""
-	var names: Array = en.keys()
-	names.sort_custom(func(a, b): return (String(en[a]) if en[a] != "" else String(a)).naturalnocasecmp_to(String(en[b]) if en[b] != "" else String(b)) < 0)
-	var f := filter.strip_edges().to_lower()
-	for nm: String in names:
-		if nm.is_valid_int():
-			continue   # planning numbers some roads carry instead of a name
-		var label: String = nm if en[nm] == "" or en[nm] == nm else "%s · %s" % [nm, en[nm]]
-		if f != "" and label.to_lower().find(f) < 0:
-			continue
+	for nm: String in en:
+		var e: String = en[nm]
 		var count := (_addr.get(nm, []) as Array).size()
-		_pick_button(label + ("  (%d)" % count if count > 0 else ""), 290, _list_numbers.bind(nm))
+		var label: String = nm if e == "" or e == nm else "%s · %s" % [e, nm]
+		# U+200E (left-to-right mark) after the Hebrew keeps the count at the end, not in it
+		_streets_list.append({"name": nm, "en": e, "label": label + ("\u200e  (%d)" % count if count > 0 else "")})
+	_streets_list.sort_custom(func(a, b): return _sort_key(a).naturalnocasecmp_to(_sort_key(b)) < 0)
 
-func _list_numbers(street: String) -> void:
-	for c in _pick_list.get_children():
+func _sort_key(st: Dictionary) -> String:
+	return String(st["en"]) if st["en"] != "" else String(st["name"])
+
+## the initials a street can be found under: of its English name and of its own name
+func _initials(st: Dictionary) -> Array:
+	var out: Array = []
+	for nm: String in [st["en"], st["name"]]:
+		if nm != "":
+			var c := nm.substr(0, 1).to_upper()
+			if not out.has(c):
+				out.append(c)
+	return out
+
+func _build_letters() -> void:
+	for c in _pick_letters.get_children():
 		c.queue_free()
-	_pick_list.columns = 6
-	_pick_button("← streets", 90, func(): _list_streets(_pick_filter.text))
-	_pick_button("anywhere", 90, _go.bind(street, -1))
-	var nums: Array = _addr.get(street, []).duplicate()
-	nums.sort_custom(func(a, b): return String(a[0]).naturalnocasecmp_to(String(b[0])) < 0)
-	for i in range(nums.size()):
-		_pick_button(String(nums[i][0]), 90, _go_to.bind(street + " " + String(nums[i][0]), nums[i][1]))
+	var latin: Array = []
+	var other: Array = []
+	for st: Dictionary in _streets_list:
+		for c: String in _initials(st):
+			var bucket: Array = latin if c.unicode_at(0) < 0x0250 else other
+			if not bucket.has(c):
+				bucket.append(c)
+	latin.sort()
+	other.sort()
+	var rows: Array = [["all"] + latin, other] if not other.is_empty() else [["all"] + latin]
+	for r in range(rows.size()):
+		var row: Array = rows[r]
+		var w := minf(24.0, 560.0 / maxf(1.0, row.size()))
+		var total := 0.0
+		for c: String in row:
+			total += 42.0 if c == "all" else w
+		var x := 320.0 - total * 0.5
+		for i in range(row.size()):
+			var c: String = row[i]
+			var key := "" if c == "all" else c
+			var b := _tap_button(c, func(): _pick_letter = key; _pick_page = 0; _pick_mode = "streets"; _refresh_pick())
+			b.add_theme_font_override("font", _font)
+			b.add_theme_font_size_override("font_size", 11)
+			b.set_meta("key", key)
+			_pick_letters.add_child(b)
+			var cw := 42.0 if c == "all" else w
+			_put(b, Vector2(x, r * 25), Vector2(cw - 2.0, 22))
+			x += cw
+
+func _turn(by: int) -> void:
+	_pick_page += by
+	_refresh_pick()
+
+## lay out the current page: streets (two columns) or one street's numbers (six columns)
+func _refresh_pick() -> void:
+	for c in _pick_body.get_children():
+		c.queue_free()
+	for b in _pick_letters.get_children():
+		(b as Control).modulate = Color(1, 1, 1, 1.0 if b.get_meta("key") == _pick_letter else 0.55)
+	var items: Array = []   ## [text, callable]
+	var cols := PICK_COLS
+	if _pick_mode == "streets":
+		for st: Dictionary in _streets_list:
+			if _pick_letter == "" or _initials(st).has(_pick_letter):
+				items.append([st["label"], _pick_numbers.bind(st["name"])])
+	else:
+		cols = NUM_COLS
+		items.append(["← streets", func(): _pick_mode = "streets"; _pick_page = _pick_back_page; _refresh_pick()])
+		items.append(["anywhere", _go.bind(_pick_street, -1)])
+		var nums: Array = _addr.get(_pick_street, []).duplicate()
+		nums.sort_custom(func(a, b): return String(a[0]).naturalnocasecmp_to(String(b[0])) < 0)
+		for n: Array in nums:
+			items.append([String(n[0]), _go_to.bind(_pick_street + " " + String(n[0]), n[1])])
+	var per := cols * PICK_ROWS
+	var pages := maxi(1, ceili(float(items.size()) / per))
+	_pick_page = clampi(_pick_page, 0, pages - 1)
+	var w := 600.0 / cols
+	for i in range(_pick_page * per, mini(items.size(), (_pick_page + 1) * per)):
+		var k := i - _pick_page * per
+		var b := _tap_button(items[i][0], items[i][1])
+		b.add_theme_font_override("font", _font)
+		b.add_theme_font_size_override("font_size", 13)
+		b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		b.clip_text = true
+		_pick_body.add_child(b)
+		_put(b, Vector2((k % cols) * w, (k / cols) * 33), Vector2(w - 8.0, 28))
+	_pick_prev.disabled = _pick_page == 0
+	_pick_next.disabled = _pick_page >= pages - 1
+	var what := _pick_street if _pick_mode == "numbers" else ("streets" if _pick_letter == "" else "streets · " + _pick_letter)
+	_pick_page_lbl.text = "%s\u200e   %d / %d" % [what, _pick_page + 1, pages]
+
+var _pick_back_page := 0
+
+func _pick_numbers(street: String) -> void:
+	_pick_back_page = _pick_page
+	_pick_street = street
+	_pick_mode = "numbers"
+	_pick_page = 0
+	_refresh_pick()
 
 ## a street with no particular number: its nearest point to the car
 func _go(street: String, _i: int) -> void:
@@ -2052,8 +2169,18 @@ func _draw_map() -> void:
 ## it takes the wheel back from autodrive. ----------------------------------------------------
 
 func _input(event: InputEvent) -> void:
-	if not _loaded or _picker != null:
-		return   # the picker's own buttons take the clicks
+	if not _loaded:
+		return
+	if _picker != null:   # everything goes to the picker while it is open
+		var mb := event as InputEventMouseButton
+		if mb != null and mb.pressed and not Flow.pointer_over_hud():
+			if mb.button_index == MOUSE_BUTTON_LEFT:
+				_pick_tap(mb.position)
+			elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+				_turn(1)
+			elif mb.button_index == MOUSE_BUTTON_WHEEL_UP:
+				_turn(-1)
+		return
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT and not Flow.pointer_over_hud():
