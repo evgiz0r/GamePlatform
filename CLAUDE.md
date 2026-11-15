@@ -111,7 +111,10 @@ metres on the X/Z ground. The format is documented at the top of the tool. It ne
 `overpass-api.de` reachable from the network, caches the raw download in `tools/.cache/`
 (not committed) and re-bakes from it with `--offline`. Everything baked is
 © OpenStreetMap contributors (ODbL): a game that shows it must credit that on screen.
-OSM rarely knows building heights; the tool guesses those and marks the guesses.
+OSM rarely knows building heights; the tool guesses those and marks the guesses. When the
+session's network cannot reach Overpass, run the "bake a real city" GitHub workflow
+(`.github/workflows/bake_city.yml`, inputs `place` and `out`) instead: it bakes on GitHub's
+machines and commits the file, and you can start it with the GitHub tools.
 
 ## Hard requirements
 

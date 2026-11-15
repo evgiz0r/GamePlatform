@@ -62,13 +62,17 @@ is a palette role mixed for daylight, so `/look` still reskins it.
 ## Where the city comes from: a repeatable process
 
 Nothing about a city is in the code. A city is one JSON file in `cities/`, baked from
-OpenStreetMap by `tools/osm_city.py`. To add one:
+OpenStreetMap by `tools/osm_city.py`. The easy way to add one needs no network of your
+own: on GitHub, Actions -> "bake a real city" -> Run workflow, with the place
+(`Ramat Gan`, `רמת גן`...) and `out` = `game/streets/cities/ramat_gan.json`. It bakes on
+GitHub's machines and commits the file (and, run on main, re-publishes the web build).
+Givatayim was made that way. Or locally:
 
 ```bash
 python3 tools/osm_city.py --place "Ramat Gan" --out game/streets/cities/ramat_gan.json
 ```
 
-then point `CITY` at the top of `streets.gd` at it (once there are two cities they can
+Then point `CITY` at the top of `streets.gd` at it (once there are two cities they can
 become the game's `LEVELS`). `--place` takes the name of an administrative area as OSM
 spells it (any language; "Givatayim" finds "Giv'atayim"); `--relation <id>` pins an exact
 one, `--bbox s,w,n,e` takes any rectangle. It keeps `--margin` metres (250 by default) of
@@ -76,10 +80,11 @@ the neighbouring towns round the edge so the world does not stop at the city lim
 raw download is cached in `tools/.cache/` (not committed), and `--offline` re-bakes from
 it, so changing the bake does not hit the server again.
 
-If `CITY`'s file is not there, the game drives whichever city file is (`test_town.json`
-is a made-up grid kept only until a real city is baked; delete it then).
+If `CITY`'s file is not there, the game drives whichever city file is.
 
-The network needs `overpass-api.de` allowed. Everything baked is © OpenStreetMap
+Locally, the network needs to reach an Overpass server (the tool tries
+`overpass-api.de`, then two mirrors); without that, `--print-query` prints a link to
+open in a browser and `--from-file` bakes what it saved. Everything baked is © OpenStreetMap
 contributors under the ODbL, which is why the credit sits on screen.
 
 ### What is real and what is guessed
