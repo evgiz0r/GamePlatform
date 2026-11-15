@@ -106,7 +106,7 @@ the neighbouring towns round the edge so the world does not stop at the city lim
 raw download is cached in `tools/.cache/` (not committed), and `--offline` re-bakes from
 it, so changing the bake does not hit the server again.
 
-If `CITY`'s file is not there, the game drives whichever city file is.
+If a place's city file is not there yet, the game drives whichever city file is.
 
 Locally, the network needs to reach an Overpass server (the tool tries
 `overpass-api.de`, then two mirrors); without that, `--print-query` prints a link to
