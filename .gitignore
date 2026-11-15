@@ -3,3 +3,4 @@ shots/
 *.tmp
 *.log
 tools/.cache/
+__pycache__/
