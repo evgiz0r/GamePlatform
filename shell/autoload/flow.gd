@@ -173,19 +173,25 @@ func _show_levels(g: Dictionary) -> void:
 	_clear_stage()
 	_stage.add_child(Backdrop.new())
 	var n: int = g["levels"]
-	var nodes: Array = [
-		UIKit.label(String(g["title"]).to_upper(), 30, "player"),
-		UIKit.button("new game", func(): start_game(g["id"], {"level": 1})),
-		UIKit.label("or start from a level", 13, "accent"),
-	]
+	# Levels that carry a "name" (a game whose levels are places, say) are picked by name:
+	# no "new game", one wide button each. Plain levels keep the numbered grid.
+	var names := _level_names(String(g["id"]))
+	var named := names.any(func(x): return x != "")
+	var nodes: Array = [UIKit.label(String(g["title"]).to_upper(), 30, "player")]
+	if named:
+		nodes.append(UIKit.label("pick one", 13, "accent"))
+	else:
+		nodes.append(UIKit.button("new game", func(): start_game(g["id"], {"level": 1})))
+		nodes.append(UIKit.label("or start from a level", 13, "accent"))
 	var grid := GridContainer.new()
-	grid.columns = mini(n, 8)
+	grid.columns = (1 if n <= 4 else 2) if named else mini(n, 8)
 	grid.add_theme_constant_override("h_separation", 8)
 	grid.add_theme_constant_override("v_separation", 8)
 	for i in n:
 		var level := i + 1
-		var b := UIKit.button(str(level), func(): start_game(g["id"], {"level": level}))
-		b.custom_minimum_size = Vector2(52, 30)
+		var text: String = names[i] if named and names[i] != "" else str(level)
+		var b := UIKit.button(text, func(): start_game(g["id"], {"level": level}))
+		b.custom_minimum_size = Vector2(240, 32) if named else Vector2(52, 30)
 		b.add_theme_font_size_override("font_size", 15)
 		grid.add_child(b)
 	nodes.append(grid)
@@ -266,6 +272,16 @@ func _level_count(sub: String) -> int:
 		return 0
 	var levels = scr.get_script_constant_map().get("LEVELS")
 	return levels.size() if levels is Array else 0
+
+## Each level's "name", or "" for a level without one (or that is not a Dictionary).
+func _level_names(sub: String) -> Array:
+	var out: Array = []
+	var scr := load(GAMES_DIR + sub + "/" + sub + ".gd") as Script
+	var levels = scr.get_script_constant_map().get("LEVELS") if scr != null else null
+	if levels is Array:
+		for lv in levels:
+			out.append(String(lv.get("name", "")) if lv is Dictionary else "")
+	return out
 
 ## Entering a game that has levels without saying which one opens its start screen
 ## (new game or pick a level) instead of the game. "play again" and "restart" never land
