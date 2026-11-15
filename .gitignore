@@ -2,3 +2,4 @@
 shots/
 *.tmp
 *.log
+tools/.cache/

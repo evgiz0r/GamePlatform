@@ -1,0 +1,104 @@
+# streets
+
+Drive a real city. The player's words:
+
+> I want to drive (1st person / 3rd person) in a city, literally from reality. Starting
+> with my own, Givatayim.
+
+> Lets try to make a small one. Just with driving. With the real buildings (!?), at least
+> the structure or locations maybe. And I want to think about all of it as a repeatable
+> process for other locations and cities. And maybe later even not just driving.
+
+> The gameplay of picking up in a taxi is meh. Lets focus on the free driving (maybe later
+> other cars and actual proper driving signs, lights and so on). Lets start with "chase"
+> cam. I want it to be closer to a simulation than a game at first, but we can add some
+> game features just to be aligned with the platform.
+
+## What is it called?
+
+streets
+
+## Who are you?
+
+Someone driving an ordinary car through their own town, on a sunny day, seen from just
+behind and above the car (a chase cam that swings out a little on the turns and pulls in
+rather than sit inside a wall).
+
+## What do you do?
+
+Drive, freely. The car behaves like a car rather than a toy: about 4 m/s² off the line,
+150 km/h flat out, firm brakes, steering that gets gentler with speed, tyres that let go
+if you take a corner too fast (it runs wide), body roll and nose dive. Hold the brake when
+stopped and it goes into reverse, like an automatic.
+
+Keys: up = gas, down = brake (and reverse), left/right = steer. Space switches on
+**autodrive**, which drives the streets by itself in the right-hand lane, slows for
+corners and keeps the speed limit (50 on through roads, 40 on residential streets).
+Shift takes the wheel back. On a phone: drag on the left half to steer, gas and brake
+pads on the right, tap "autodrive".
+
+The minimap (bottom left) shows the real streets and buildings round you, heading up, with
+the city limits in pink. The name of the street you are on is at the top, in Hebrew with
+the English name under it when OSM has one.
+
+## What is trying to stop you?
+
+Nothing yet, on purpose: this is a driving sim first. Buildings, trees and traffic-light
+poles are solid, and hitting them hurts the way it should (a thud, a shake, speed gone).
+
+## How do you win?
+
+There is no winning. The one game hook: every street of the city you drive down for the
+first time (30 m along it) scores a point. "streets 12 / 143" in the corner counts how
+much of the city you have seen.
+
+## What should it look like?
+
+The real place, recognisably: the street layout, building footprints and heights, parks,
+trees and traffic lights where they really are. Daylight, cream apartment blocks with a
+window per storey, tree-lined streets, white dashed lines, zebra crossings. Every colour
+is a palette role mixed for daylight, so `/look` still reskins it.
+
+## Where the city comes from: a repeatable process
+
+Nothing about a city is in the code. A city is one JSON file in `cities/`, baked from
+OpenStreetMap by `tools/osm_city.py`. To add one:
+
+```bash
+python3 tools/osm_city.py --place "Ramat Gan" --out game/streets/cities/ramat_gan.json
+```
+
+then point `CITY` at the top of `streets.gd` at it (once there are two cities they can
+become the game's `LEVELS`). `--place` takes the name of an administrative area as OSM
+spells it (any language; "Givatayim" finds "Giv'atayim"); `--relation <id>` pins an exact
+one, `--bbox s,w,n,e` takes any rectangle. It keeps `--margin` metres (250 by default) of
+the neighbouring towns round the edge so the world does not stop at the city limits. The
+raw download is cached in `tools/.cache/` (not committed), and `--offline` re-bakes from
+it, so changing the bake does not hit the server again.
+
+The network needs `overpass-api.de` allowed. Everything baked is © OpenStreetMap
+contributors under the ODbL, which is why the credit sits on screen.
+
+### What is real and what is guessed
+
+- **Real**: every road's path, kind, width (or lanes), one-way direction and name; every
+  building outline; heights and floors where OSM has them; parks, grass, water, car
+  parks; mapped trees; traffic lights and zebra crossings; the city boundary.
+- **Guessed**: a building with no height gets 4 storeys (by type: houses 2, garages 1,
+  offices 5...), varied a storey up or down so a street is not one flat wall. A road with
+  no width tag gets one by kind (residential 8 m, room for a parked row each side).
+  The rows of street trees along residential streets are added, not mapped. The window
+  grid is a pattern, not the real facade. The traffic lights run their own simple cycle.
+- **Not there yet**: hills (the ground is flat), bridges and tunnels as such (tunnels are
+  dropped), parked cars, other traffic, shop signs.
+
+To make your own street more accurate, fix it on openstreetmap.org (building heights are
+the most useful thing to add) and bake again.
+
+## Later (said, not built)
+
+- First-person / hood camera.
+- Other cars, and real driving rules: lights that mean something, signs, give way.
+- Not just driving: the same baked city could be walked, or used by another game.
+- Elevation (Givatayim is hilly), from an open elevation model.
+- Engine sound.

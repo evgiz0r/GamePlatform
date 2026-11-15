@@ -102,6 +102,17 @@ animated people in `assets/characters3d/` (both fall back to shapes when a file 
 Set `world_area` (the X/Z rectangle of your ground) so the ASCII eye knows what to draw.
 Read the `godot-3d` skill before writing one. `game/drop/` is the reference.
 
+## Real places
+
+`tools/osm_city.py` bakes a real town from OpenStreetMap into one JSON file a game can
+build from: roads (path, kind, width, lanes, one-way, name), building outlines with
+heights, parks, water, trees, traffic lights, crossings and the town's boundary, all in
+metres on the X/Z ground. The format is documented at the top of the tool. It needs
+`overpass-api.de` reachable from the network, caches the raw download in `tools/.cache/`
+(not committed) and re-bakes from it with `--offline`. Everything baked is
+© OpenStreetMap contributors (ODbL): a game that shows it must credit that on screen.
+OSM rarely knows building heights; the tool guesses those and marks the guesses.
+
 ## Hard requirements
 
 - **Input**: read `PInput`, never `Input`. `PInput.dir()`, `PInput.pressed("action_a")`,
