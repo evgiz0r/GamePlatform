@@ -198,6 +198,48 @@ def find_boundary(args):
     return rel
 
 
+def take_in(names, box):
+    """Grow the box to cover other places by name -- a park, a lake, a street -- each the
+    match nearest the box's centre (Nova Scotia alone has dozens of Sandy Lakes)."""
+    s, w, n, e = box
+    cy, cx = (s + n) / 2, (w + e) / 2
+    kx = math.cos(math.radians(cy))
+
+    def km(lat, lon):
+        return math.hypot((lat - cy) * 111.32, (lon - cx) * 111.32 * kx)
+
+    for name in [x.strip() for x in names.split(";") if x.strip()]:
+        rx = name_regex(name).replace('"', '\\"')
+        data = overpass(f"[out:json][timeout:180];"
+                        f'nwr[~"^name(:[a-z]+)?$"~"{rx}",i](around:30000,{cy},{cx});out bb;')
+        found = []
+        for el in data["elements"]:
+            if el["type"] == "node":
+                b = (el["lat"], el["lon"], el["lat"], el["lon"])
+            elif "bounds" in el:
+                bb = el["bounds"]
+                b = (bb["minlat"], bb["minlon"], bb["maxlat"], bb["maxlon"])
+            else:
+                continue
+            found.append((km((b[0] + b[2]) / 2, (b[1] + b[3]) / 2), b, el))
+        if not found:
+            log(f"  include '{name}': nothing by that name within 30 km -- skipped")
+            continue
+        found.sort(key=lambda f: f[0])
+        best = found[0]
+        bc = ((best[1][0] + best[1][2]) / 2, (best[1][1] + best[1][3]) / 2)
+        # a street is many ways, a park a way and a relation: take every piece near the best
+        for d, b, el in found:
+            if math.hypot((b[0] + b[2]) / 2 - bc[0], ((b[1] + b[3]) / 2 - bc[1]) * kx) * 111.32 < 2.5:
+                s, w, n, e = min(s, b[0]), min(w, b[1]), max(n, b[2]), max(e, b[3])
+        t = best[2].get("tags", {})
+        kind = next((f"{k}={t[k]}" for k in ("leisure", "natural", "highway", "place", "landuse")
+                     if k in t), best[2]["type"])
+        log(f"  include '{name}': {kind} {best[2]['type']} {best[2]['id']}, {best[0]:.1f} km "
+            "from the centre")
+    return s, w, n, e
+
+
 DATA_FILTERS = (
     'way["highway"];'
     'way["building"];'
@@ -292,6 +334,8 @@ def fetch(args, slug):
         rel = find_boundary(args)
         b = rel["bounds"]
         s, w, n, e = b["minlat"], b["minlon"], b["maxlat"], b["maxlon"]
+    if args.include:
+        s, w, n, e = take_in(args.include, (s, w, n, e))
     dlat = args.margin / 111320.0
     dlon = args.margin / (111320.0 * math.cos(math.radians((s + n) / 2)))
     box = (s - dlat, w - dlon, n + dlat, e + dlon)
@@ -734,6 +778,8 @@ def main():
     ap.add_argument("--relation", type=int, help="exact OSM relation id of the boundary")
     ap.add_argument("--bbox", help="south,west,north,east instead of a named place")
     ap.add_argument("--name", help="display name (defaults to --place)")
+    ap.add_argument("--include", help="more places to take in, ';'-separated, e.g. "
+                    "\"Hemlock Ravine Park; Kearney Lake\" (each the match nearest the place)")
     ap.add_argument("--radius", type=float, default=2000.0,
                     help="metres round the centre when the place has no boundary mapped")
     ap.add_argument("--margin", type=float, default=250.0,

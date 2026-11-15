@@ -56,7 +56,7 @@ const DRIVE := {
 ## and OSM maps few of them one by one) -- an embellishment, see GAME.md
 const TREE_ROADS := ["primary", "secondary", "tertiary", "residential", "living_street", "unclassified"]
 const TREE_GAP := 11.0
-const MAX_TREES := 9000
+const MAX_TREES := 16000
 const SIGNAL_CYCLE := [              ## [seconds, phase of the E-W group, phase of N-S]
 	[14.0, "g", "r"], [3.0, "y", "r"], [1.5, "r", "r"],
 	[14.0, "r", "g"], [3.0, "r", "y"], [1.5, "r", "r"],
@@ -64,7 +64,9 @@ const SIGNAL_CYCLE := [              ## [seconds, phase of the E-W group, phase 
 
 const SEG_CELL := 24.0               ## spatial hash cell for road segments (m)
 const BLD_CELL := 24.0
-const CHUNK := 320.0                 ## buildings are merged into meshes this big, for culling
+const CHUNK := 400.0                 ## buildings and trees are merged per square this big, for culling
+const VIEW_RANGE := 1100.0           ## building chunks further than this are not drawn
+const TREE_RANGE := 700.0
 const Y_AREA := 0.012
 const Y_PATH := 0.022
 const Y_ROAD := 0.035
@@ -705,6 +707,8 @@ func _build_buildings() -> void:
 			am.surface_set_material(am.get_surface_count() - 1, roof)
 		var mi := MeshInstance3D.new()
 		mi.mesh = am
+		mi.visibility_range_end = VIEW_RANGE   # past this the haze has it anyway
+		mi.visibility_range_end_margin = 80.0
 		world.add_child(mi)
 
 func _bld_box_of(ring: PackedVector2Array) -> Rect2:
@@ -765,28 +769,38 @@ func _build_trees() -> void:
 	var leaf := _surface("leaf")
 	leaf.vertex_color_use_as_albedo = true
 	crown.material = leaf
-	var mt := MultiMesh.new()
-	mt.transform_format = MultiMesh.TRANSFORM_3D
-	mt.mesh = trunk
-	mt.instance_count = spots.size()
-	var mc := MultiMesh.new()
-	mc.transform_format = MultiMesh.TRANSFORM_3D
-	mc.use_colors = true
-	mc.mesh = crown
-	mc.instance_count = spots.size()
-	for i in range(spots.size()):
-		var sp: Vector3 = spots[i]
-		var sc := sp.z
-		var rot := Basis(Vector3.UP, rng.randf() * TAU)
-		mt.set_instance_transform(i, Transform3D(rot.scaled(Vector3.ONE * sc), Vector3(sp.x, 1.3 * sc, sp.y)))
-		var cb := rot.scaled(Vector3(2.3, 1.9, 2.3) * sc)
-		mc.set_instance_transform(i, Transform3D(cb, Vector3(sp.x, 3.9 * sc, sp.y)))
-		var g := rng.randf_range(0.8, 1.1)
-		mc.set_instance_color(i, Color(g, g, g))
-	for mm: MultiMesh in [mt, mc]:
-		var mmi := MultiMeshInstance3D.new()
-		mmi.multimesh = mm
-		world.add_child(mmi)
+	# one pair of multimeshes per chunk, so trees far off are not drawn at all
+	var groups := {}
+	for sp: Vector3 in spots:
+		var key := _cell(Vector2(sp.x, sp.y), CHUNK)
+		if not groups.has(key):
+			groups[key] = []
+		(groups[key] as Array).append(sp)
+	for key: Vector2i in groups:
+		var list: Array = groups[key]
+		var mt := MultiMesh.new()
+		mt.transform_format = MultiMesh.TRANSFORM_3D
+		mt.mesh = trunk
+		mt.instance_count = list.size()
+		var mc := MultiMesh.new()
+		mc.transform_format = MultiMesh.TRANSFORM_3D
+		mc.use_colors = true
+		mc.mesh = crown
+		mc.instance_count = list.size()
+		for i in range(list.size()):
+			var sp: Vector3 = list[i]
+			var sc := sp.z
+			var rot := Basis(Vector3.UP, rng.randf() * TAU)
+			mt.set_instance_transform(i, Transform3D(rot.scaled(Vector3.ONE * sc), Vector3(sp.x, 1.3 * sc, sp.y)))
+			var cb := rot.scaled(Vector3(2.3, 1.9, 2.3) * sc)
+			mc.set_instance_transform(i, Transform3D(cb, Vector3(sp.x, 3.9 * sc, sp.y)))
+			var g := rng.randf_range(0.8, 1.1)
+			mc.set_instance_color(i, Color(g, g, g))
+		for mm: MultiMesh in [mt, mc]:
+			var mmi := MultiMeshInstance3D.new()
+			mmi.multimesh = mm
+			mmi.visibility_range_end = TREE_RANGE
+			world.add_child(mmi)
 
 func _tree_ok(p: Vector2, spacing: float) -> bool:
 	if not _bounds.has_point(p):
@@ -973,7 +987,7 @@ func _retint_city() -> void:
 		env.ambient_light_energy = 0.55
 		env.fog_enabled = true
 		env.fog_light_color = _tone["haze"]
-		env.fog_density = 0.0014
+		env.fog_density = 0.0018
 		env.fog_sky_affect = 0.0
 	if sun != null:
 		sun.light_color = Palette.col("ink").lerp(Palette.col("warn"), 0.12)

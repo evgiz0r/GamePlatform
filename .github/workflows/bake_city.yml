@@ -18,6 +18,9 @@ on:
       margin:
         description: "Metres of the neighbouring towns kept round the edge"
         default: "250"
+      include:
+        description: "Optional: more places to take in, ';'-separated (a park, a lake, a street near the place)"
+        default: ""
 
 concurrency:
   group: bake-${{ github.ref }}
@@ -38,6 +41,7 @@ jobs:
           PLACE: ${{ inputs.place }}
           OUT: ${{ inputs.out }}
           MARGIN: ${{ inputs.margin }}
+          INCLUDE: ${{ inputs.include }}
         run: |
           if ! [[ "$OUT" =~ ^game/[A-Za-z0-9_-]+/[A-Za-z0-9_/-]+\.json$ ]]; then
             echo "out must be a .json path inside a game folder, got: $OUT"; exit 1
@@ -45,7 +49,11 @@ jobs:
           if ! [[ "$MARGIN" =~ ^[0-9]+$ ]]; then
             echo "margin must be a whole number of metres, got: $MARGIN"; exit 1
           fi
-          python3 tools/osm_city.py --place "$PLACE" --margin "$MARGIN" --out "$OUT"
+          if [ -n "$INCLUDE" ]; then
+            python3 tools/osm_city.py --place "$PLACE" --margin "$MARGIN" --include "$INCLUDE" --out "$OUT"
+          else
+            python3 tools/osm_city.py --place "$PLACE" --margin "$MARGIN" --out "$OUT"
+          fi
 
       - name: commit the city file
         env:
