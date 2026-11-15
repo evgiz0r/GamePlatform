@@ -34,13 +34,16 @@ stopped and it goes into reverse, like an automatic.
 Keys: up = gas, down = brake (and reverse), left/right = steer. Space switches on
 **autodrive**, which drives the streets by itself in the right-hand lane, slows for
 corners and keeps the speed limit (50 on through roads, 40 on residential streets).
-Shift takes the wheel back. On a phone there is one stick: put your thumb down anywhere
-and drag -- up is gas, down is brake (and reverse once stopped), sideways steers, and the
-further you drag the more you get. It follows the drag, not where you touched, and
-grabbing it takes the wheel back from autodrive. Tap "autodrive" to hand it over.
+Shift takes the wheel back. On a phone there is one circle, fixed in the lower right:
+hold it and drag -- up is gas, down is brake (and reverse once stopped), sideways steers,
+and the further from the centre the more you get. Let go and it centres. Grabbing it
+takes the wheel back from autodrive; tap "autodrive" to hand it over.
 
 > The controls on mobile are a bit annoying. Especially the whole wheel, brake, gas.
 > Maybe one circle control for mobile.
+
+> The circle keeps moving. Can't drive like that. Make it a static circle, somewhere on
+> the right side.
 
 The minimap (bottom left) shows the real streets and buildings round you, heading up, with
 the city limits in pink. The name of the street you are on is at the top, in Hebrew with

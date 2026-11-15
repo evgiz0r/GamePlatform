@@ -238,11 +238,12 @@ var _osm_lbl: Label
 var _loaded := false
 var _touch_seen := false
 var _stick_id := -1                  ## the touch that owns the stick; -1 when no thumb is down
-var _stick_o := Vector2.ZERO         ## the stick's centre: where that thumb came down
 var _stick := Vector2.ZERO           ## its deflection, inside the unit circle
 var _sfx_was := 0.8
 const AUTO_BTN := Rect2(270, 334, 100, 20)
-const STICK_R := 50.0                ## thumb travel (design px) for full lock / full gas
+const STICK_C := Vector2(556, 268)   ## the touch stick sits still, here, on the right
+const STICK_R := 52.0                ## thumb travel (design px) for full lock / full gas
+const STICK_GRAB := 84.0             ## a thumb this close to its centre takes hold of it
 const STICK_DEAD := 0.12
 
 func _init() -> void:
@@ -1562,14 +1563,14 @@ func _build_hud() -> void:
 	_count_lbl.text = "streets 0 / %d" % _streets.size()
 	_speed_lbl = _label(30, "ink")
 	_speed_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_speed_lbl.position = Vector2(500, 300)
+	_speed_lbl.position = Vector2(496, 30)
 	_speed_lbl.size = Vector2(100, 40)
 	_gear_lbl = _label(16, "warn")
-	_gear_lbl.position = Vector2(604, 312)
+	_gear_lbl.position = Vector2(600, 42)
 	_gear_lbl.size = Vector2(24, 22)
 	var unit := _label(9, "ink")
 	unit.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	unit.position = Vector2(500, 336)
+	unit.position = Vector2(496, 66)
 	unit.size = Vector2(100, 14)
 	unit.text = "km/h"
 	_banner = _label(20, "warn")
@@ -1622,18 +1623,18 @@ func _draw_hud() -> void:
 	_hud.draw_rect(AUTO_BTN, Color(on, 0.9), false, 1.5)
 	var txt := "AUTODRIVE ON" if _auto else "autodrive"
 	_hud.draw_string(_font, AUTO_BTN.position + Vector2(0, 15), txt, HORIZONTAL_ALIGNMENT_CENTER, AUTO_BTN.size.x, 11, on)
-	if _stick_id >= 0:
-		var c := _stick_o
-		var gas := Palette.col("friend")
-		var stop := Palette.col("hazard")
-		_hud.draw_circle(c, STICK_R, Color(bg, 0.3))
-		_hud.draw_arc(c, STICK_R, 0.0, TAU, 48, Color(ink, 0.5), 2.0)
-		# the top half is gas, the bottom half brake / reverse
-		_hud.draw_arc(c, STICK_R + 4.0, PI * 1.2, PI * 1.8, 16, Color(gas, 0.8), 3.0)
-		_hud.draw_arc(c, STICK_R + 4.0, PI * 0.2, PI * 0.8, 16, Color(stop, 0.8), 3.0)
-		_hud.draw_circle(c + _stick * STICK_R, 16.0, Color(Palette.col("player"), 0.6))
-	elif _touch_seen:
-		_hud.draw_string(_font, Vector2(400, 330), "drag anywhere to drive", HORIZONTAL_ALIGNMENT_CENTER, 200, 10, Color(ink, 0.55))
+	if _touch_seen:
+		var held := _stick_id >= 0
+		var c := STICK_C
+		var a := 0.85 if held else 0.45
+		_hud.draw_circle(c, STICK_R, Color(bg, 0.35 if held else 0.2))
+		_hud.draw_arc(c, STICK_R, 0.0, TAU, 48, Color(ink, a * 0.6), 2.0)
+		# the top of the ring is gas, the bottom brake / reverse
+		_hud.draw_arc(c, STICK_R + 4.0, PI * 1.2, PI * 1.8, 16, Color(Palette.col("friend"), a), 3.0)
+		_hud.draw_arc(c, STICK_R + 4.0, PI * 0.2, PI * 0.8, 16, Color(Palette.col("hazard"), a), 3.0)
+		_hud.draw_circle(c + _stick * STICK_R, 17.0, Color(Palette.col("player"), 0.75 if held else 0.35))
+		if not held:
+			_hud.draw_string(_font, c + Vector2(-60, STICK_R + 18), "hold & drag to drive", HORIZONTAL_ALIGNMENT_CENTER, 120, 9, Color(ink, 0.6))
 
 ## the minimap: streets and building outlines round the car, heading up
 func _draw_map() -> void:
@@ -1689,9 +1690,9 @@ func _draw_map() -> void:
 	_map.draw_colored_polygon(PackedVector2Array([c + Vector2(0, -7), c + Vector2(5, 5), c + Vector2(-5, 5)]), Palette.col("player"))
 	_map.draw_rect(Rect2(Vector2.ZERO, sz), Color(ink, 0.5), false, 1.0)
 
-## ---- touch: one floating stick -- thumb down anywhere, drag up for gas, down to brake
-## (and reverse once stopped), sideways to steer. It follows the drag, not the touch point,
-## so a tap asks for nothing. Grabbing it takes the wheel back from autodrive. -------------
+## ---- touch: one stick that stays put on the right -- thumb on it, drag up for gas, down
+## to brake (and reverse once stopped), sideways to steer; let go and it centres. Grabbing
+## it takes the wheel back from autodrive. ----------------------------------------------------
 
 func _input(event: InputEvent) -> void:
 	if not _loaded:
@@ -1708,10 +1709,9 @@ func _input(event: InputEvent) -> void:
 		if t.pressed:
 			if AUTO_BTN.grow(4).has_point(t.position) or t.position.y < 36.0:
 				return   # the button (via its emulated click) and the shell's menu/sound row
-			if _stick_id < 0:
+			if _stick_id < 0 and t.position.distance_to(STICK_C) <= STICK_GRAB:
 				_stick_id = t.index
-				_stick_o = t.position
-				_stick = Vector2.ZERO
+				_stick = ((t.position - STICK_C) / STICK_R).limit_length(1.0)
 				if _auto:
 					_set_auto(false)
 		elif t.index == _stick_id:
@@ -1720,8 +1720,4 @@ func _input(event: InputEvent) -> void:
 	elif event is InputEventScreenDrag:
 		var dr := event as InputEventScreenDrag
 		if dr.index == _stick_id:
-			var d := dr.position - _stick_o
-			if d.length() > STICK_R:   # past the rim the centre follows the thumb
-				_stick_o = dr.position - d.normalized() * STICK_R
-				d = dr.position - _stick_o
-			_stick = d / STICK_R
+			_stick = ((dr.position - STICK_C) / STICK_R).limit_length(1.0)
