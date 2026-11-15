@@ -237,14 +237,13 @@ var _banner_tw: Tween
 var _osm_lbl: Label
 var _loaded := false
 var _touch_seen := false
-var _touch_steer_id := -1
-var _touch_steer_x0 := 0.0
-var _touch_steer := 0.0
-var _touch_pedal := {}               ## touch index -> "gas" / "brake"
+var _stick_id := -1                  ## the touch that owns the stick; -1 when no thumb is down
+var _stick_o := Vector2.ZERO         ## the stick's centre: where that thumb came down
+var _stick := Vector2.ZERO           ## its deflection, inside the unit circle
 var _sfx_was := 0.8
 const AUTO_BTN := Rect2(270, 334, 100, 20)
-const GAS_BTN := Rect2(560, 236, 72, 100)
-const BRAKE_BTN := Rect2(480, 276, 72, 60)
+const STICK_R := 50.0                ## thumb travel (design px) for full lock / full gas
+const STICK_DEAD := 0.12
 
 func _init() -> void:
 	play_area = Rect2(0, 0, 640, 360)
@@ -259,6 +258,7 @@ func start(_config: Dictionary) -> void:
 	_sfx_was = SaveData.data.get("volume_sfx", 0.8)
 	SaveData.data["volume_sfx"] = SFX_SCALE
 	set_lives(0)
+	_touch_seen = DisplayServer.is_touchscreen_available()   # phones get the stick hint at once
 	_make_font()
 	_tones()
 	var t0 := Time.get_ticks_msec()
@@ -1033,13 +1033,14 @@ func _manual(dt: float) -> Array:
 	var steer_t := PInput.axis("move_left", "move_right")
 	var up := 1.0 if PInput.pressed("move_up") else 0.0
 	var down := 1.0 if PInput.pressed("move_down") else 0.0
-	for id in _touch_pedal:
-		if _touch_pedal[id] == "gas":
-			up = 1.0
-		else:
-			down = 1.0
-	if _touch_steer_id >= 0:
-		_steer_in = _touch_steer
+	if _stick_id >= 0:
+		# the touch stick is analog: a little off centre is a little gas or a little lock,
+		# and steering is eased near the middle so small corrections stay small
+		var k := _stick
+		up = maxf(up, _dead(-k.y))
+		down = maxf(down, _dead(k.y))
+		var sx := _dead(absf(k.x))
+		_steer_in = signf(k.x) * pow(sx, 1.4)
 	else:
 		var rate := STEER_RATE if absf(steer_t) > 0.0 and signf(steer_t) == signf(_steer_in) else STEER_RATE * 1.8
 		_steer_in = move_toward(_steer_in, steer_t, rate * dt)
@@ -1062,6 +1063,10 @@ func _manual(dt: float) -> Array:
 		if up > 0.0 and down == 0.0 and _v > -0.4:
 			_gear = 1
 	return [throttle, brake, _steer_in * lock]
+
+## 0 inside the dead zone, then 0..1 to the rim
+func _dead(v: float) -> float:
+	return clampf((v - STICK_DEAD) / (1.0 - STICK_DEAD), 0.0, 1.0)
 
 func _drive(dt: float, throttle: float, brake: float, steer: float) -> void:
 	_steer = steer
@@ -1617,17 +1622,18 @@ func _draw_hud() -> void:
 	_hud.draw_rect(AUTO_BTN, Color(on, 0.9), false, 1.5)
 	var txt := "AUTODRIVE ON" if _auto else "autodrive"
 	_hud.draw_string(_font, AUTO_BTN.position + Vector2(0, 15), txt, HORIZONTAL_ALIGNMENT_CENTER, AUTO_BTN.size.x, 11, on)
-	if _touch_seen:
-		var pl := Palette.col("player")
-		var hz := Palette.col("hazard")
-		_hud.draw_rect(GAS_BTN, Color(pl, 0.18 if not _touch_pedal.values().has("gas") else 0.45))
-		_hud.draw_rect(BRAKE_BTN, Color(hz, 0.18 if not _touch_pedal.values().has("brake") else 0.45))
-		_hud.draw_string(_font, GAS_BTN.position + Vector2(0, 54), "gas", HORIZONTAL_ALIGNMENT_CENTER, GAS_BTN.size.x, 12, Color(ink, 0.8))
-		_hud.draw_string(_font, BRAKE_BTN.position + Vector2(0, 34), "brake", HORIZONTAL_ALIGNMENT_CENTER, BRAKE_BTN.size.x, 12, Color(ink, 0.8))
-		if _touch_steer_id >= 0:
-			var c := Vector2(_touch_steer_x0, 300)
-			_hud.draw_line(c - Vector2(70, 0), c + Vector2(70, 0), Color(ink, 0.3), 2.0)
-			_hud.draw_circle(c + Vector2(_touch_steer * 70.0, 0), 12.0, Color(pl, 0.5))
+	if _stick_id >= 0:
+		var c := _stick_o
+		var gas := Palette.col("friend")
+		var stop := Palette.col("hazard")
+		_hud.draw_circle(c, STICK_R, Color(bg, 0.3))
+		_hud.draw_arc(c, STICK_R, 0.0, TAU, 48, Color(ink, 0.5), 2.0)
+		# the top half is gas, the bottom half brake / reverse
+		_hud.draw_arc(c, STICK_R + 4.0, PI * 1.2, PI * 1.8, 16, Color(gas, 0.8), 3.0)
+		_hud.draw_arc(c, STICK_R + 4.0, PI * 0.2, PI * 0.8, 16, Color(stop, 0.8), 3.0)
+		_hud.draw_circle(c + _stick * STICK_R, 16.0, Color(Palette.col("player"), 0.6))
+	elif _touch_seen:
+		_hud.draw_string(_font, Vector2(400, 330), "drag anywhere to drive", HORIZONTAL_ALIGNMENT_CENTER, 200, 10, Color(ink, 0.55))
 
 ## the minimap: streets and building outlines round the car, heading up
 func _draw_map() -> void:
@@ -1683,7 +1689,9 @@ func _draw_map() -> void:
 	_map.draw_colored_polygon(PackedVector2Array([c + Vector2(0, -7), c + Vector2(5, 5), c + Vector2(-5, 5)]), Palette.col("player"))
 	_map.draw_rect(Rect2(Vector2.ZERO, sz), Color(ink, 0.5), false, 1.0)
 
-## ---- touch: drag anywhere on the left to steer, pedals on the right, tap autodrive ----------
+## ---- touch: one floating stick -- thumb down anywhere, drag up for gas, down to brake
+## (and reverse once stopped), sideways to steer. It follows the drag, not the touch point,
+## so a tap asks for nothing. Grabbing it takes the wheel back from autodrive. -------------
 
 func _input(event: InputEvent) -> void:
 	if not _loaded:
@@ -1698,22 +1706,22 @@ func _input(event: InputEvent) -> void:
 		var t := event as InputEventScreenTouch
 		_touch_seen = true
 		if t.pressed:
-			if AUTO_BTN.grow(4).has_point(t.position):
-				return   # the emulated mouse click handles the button
-			if GAS_BTN.grow(8).has_point(t.position):
-				_touch_pedal[t.index] = "gas"
-			elif BRAKE_BTN.grow(8).has_point(t.position):
-				_touch_pedal[t.index] = "brake"
-			elif t.position.x < 320.0 and t.position.y > 50.0 and _touch_steer_id < 0:
-				_touch_steer_id = t.index
-				_touch_steer_x0 = t.position.x
-				_touch_steer = 0.0
-		else:
-			_touch_pedal.erase(t.index)
-			if t.index == _touch_steer_id:
-				_touch_steer_id = -1
-				_touch_steer = 0.0
+			if AUTO_BTN.grow(4).has_point(t.position) or t.position.y < 36.0:
+				return   # the button (via its emulated click) and the shell's menu/sound row
+			if _stick_id < 0:
+				_stick_id = t.index
+				_stick_o = t.position
+				_stick = Vector2.ZERO
+				if _auto:
+					_set_auto(false)
+		elif t.index == _stick_id:
+			_stick_id = -1
+			_stick = Vector2.ZERO
 	elif event is InputEventScreenDrag:
 		var dr := event as InputEventScreenDrag
-		if dr.index == _touch_steer_id:
-			_touch_steer = clampf((dr.position.x - _touch_steer_x0) / 70.0, -1.0, 1.0)
+		if dr.index == _stick_id:
+			var d := dr.position - _stick_o
+			if d.length() > STICK_R:   # past the rim the centre follows the thumb
+				_stick_o = dr.position - d.normalized() * STICK_R
+				d = dr.position - _stick_o
+			_stick = d / STICK_R
