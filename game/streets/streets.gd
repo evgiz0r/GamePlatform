@@ -10,11 +10,15 @@ extends GameMode3D
 ## Layout of this file: city data -> meshes -> the car -> camera -> autodrive -> exploring
 ## -> HUD (speedometer, street name, minimap, touch pedals).
 
-const CITY := "givatayim"            ## which file in cities/ to drive
-## Where a city's drive begins, by street names as OSM spells them: [street, cross street].
-## The car starts on the first, just past its corner with the second. A city not listed
-## starts on a main road near the middle of town.
-const START_AT := {"givatayim": ["המרי", "שיינקין"]}
+## The places you can drive: the game's start screen offers one per entry. `city` is the
+## file in cities/ (bake it with the "bake a real city" workflow, see GAME.md); `start` is
+## the corner to begin at, by street names as OSM spells them: [street, cross street] puts
+## the car on the first just past the second. Without one it starts on a main road
+## mid-town.
+const LEVELS := [
+	{"name": "Givatayim", "city": "givatayim", "start": ["המרי", "שיינקין"]},
+	{"name": "Bedford, Nova Scotia", "city": "bedford"},
+]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
 ## ---- the car, in real units (metres, seconds, kilograms, newtons) ----
@@ -157,6 +161,7 @@ class Buf:
 ## ---- city data ----
 var _city_name := ""
 var _city_id := ""
+var _place: Dictionary = {}          ## the LEVELS entry being driven
 var _bounds := Rect2()
 var _nodes := PackedVector2Array()
 var _node_roads: Array = []          ## per node: Array of Vector2i(road, index along it)
@@ -263,7 +268,8 @@ func start(_config: Dictionary) -> void:
 	_make_font()
 	_tones()
 	var t0 := Time.get_ticks_msec()
-	if not _load_city(CITY):
+	_place = LEVELS[clampi(int(_config.get("level", 1)), 1, LEVELS.size()) - 1]
+	if not _load_city(String(_place["city"])):
 		_build_hud()
 		_show_banner("no city file -- see GAME.md", 30.0)
 		return
@@ -405,14 +411,15 @@ func _build_world() -> void:
 	var areas := {}
 	for a: Dictionary in _city_data.get("areas", []):
 		var kind := String(a["k"])
-		var tone := "grass" if kind in ["park", "grass"] else kind
+		var tone := "grass" if kind in ["park", "grass"] else ("ground" if kind == "land" else kind)
 		if not areas.has(tone):
 			areas[tone] = Buf.new()
 		var flat: Array = a["p"]
 		var ring := PackedVector2Array()
 		for i in range(0, flat.size(), 2):
 			ring.append(Vector2(flat[i], flat[i + 1]) * k)
-		var y := Y_AREA + (0.002 if tone in ["parking", "plaza"] else 0.0)
+		# islands sit on the sea, parks and car parks on whatever is under them
+		var y := Y_AREA + (0.002 if tone in ["parking", "plaza"] else (0.001 if kind == "land" else 0.0))
 		_fill(areas[tone], ring, y)
 	for tone: String in areas:
 		_add_mesh(areas[tone], _surface(tone), false)
@@ -940,10 +947,10 @@ func _build_car() -> void:
 func _fwd() -> Vector2:
 	return Vector2(cos(_yaw), sin(_yaw))
 
-## start where START_AT says, else on a through road near the middle of town; always in
+## start at the place's `start` corner, else on a through road near the middle of town; always in
 ## the right-hand lane, facing the way traffic goes
 func _place_start() -> void:
-	var spot: Array = START_AT.get(_city_id, [])
+	var spot: Array = _place.get("start", []) if _place.get("city") == _city_id else []
 	if spot.size() == 2 and _start_on(spot[0], spot[1]):
 		_cam_yaw = _yaw
 		_place_car(0.016)
@@ -1010,7 +1017,7 @@ func _start_on(street: String, cross: String) -> bool:
 				_pos = pts[e.y] + dir * into + Vector2(-dir.y, dir.x) * lane
 				_yaw = dir.angle()
 				return true
-	Probe.note("START_AT: %s never meets %s in %s" % [street, cross, _city_id])
+	Probe.note("start corner: %s never meets %s in %s" % [street, cross, _city_id])
 	return false
 
 func _physics_process(dt: float) -> void:

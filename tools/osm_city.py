@@ -133,16 +133,50 @@ def name_regex(place):
     return "^" + out + "$"
 
 
+def split_place(place):
+    """'Bedford, Nova Scotia' -> ('Bedford', 'Nova Scotia'); a bare name has no region."""
+    name, _, region = place.partition(",")
+    return name.strip(), region.strip()
+
+
 def find_boundary(args):
+    """The place's administrative boundary relation. 'Name, Region' only looks inside that
+    region (there are Bedfords on three continents). With no boundary mapped, falls back to
+    the place's centre point (a town, suburb or neighbourhood node) and a --radius box."""
+    region_q = within = ""
     if args.relation:
         sel = f"rel({args.relation});"
+        name = str(args.relation)
     else:
-        rx = name_regex(args.place).replace('"', '\\"')
-        sel = (f'rel["boundary"="administrative"][~"^name(:[a-z]+)?$"~"{rx}",i];')
+        name, region = split_place(args.place)
+        rx = name_regex(name).replace('"', '\\"')
+        if region:
+            rrx = name_regex(region).replace('"', '\\"')
+            region_q = (f'area["boundary"="administrative"][~"^name(:[a-z]+)?$"~"{rrx}",i]'
+                        "->.region;")
+            within = "(area.region)"
+        sel = (f'{region_q}rel["boundary"="administrative"][~"^name(:[a-z]+)?$"~"{rx}",i]'
+               f"{within};")
     data = overpass(f"[out:json][timeout:90];{sel}out geom;")
     rels = [e for e in data["elements"] if e["type"] == "relation"]
+    if not rels and not args.relation:
+        found = overpass(f"[out:json][timeout:90];{region_q}"
+                         f'node["place"][~"^name(:[a-z]+)?$"~"{rx}",i]{within};out;')
+        rank = ["city", "town", "suburb", "village", "quarter", "neighbourhood", "hamlet"]
+        pts = sorted([e for e in found["elements"] if e["type"] == "node"],
+                     key=lambda e: rank.index(e.get("tags", {}).get("place"))
+                     if e.get("tags", {}).get("place") in rank else 99)
+        if pts:
+            n = pts[0]
+            dlat = args.radius / 111320.0
+            dlon = args.radius / (111320.0 * math.cos(math.radians(n["lat"])))
+            log(f"no boundary mapped; using the {n['tags'].get('place')} point "
+                f"node {n['id']} and {args.radius:.0f} m round it")
+            return {"type": "relation", "id": None, "tags": n.get("tags", {}), "members": [],
+                    "bounds": {"minlat": n["lat"] - dlat, "maxlat": n["lat"] + dlat,
+                               "minlon": n["lon"] - dlon, "maxlon": n["lon"] + dlon}}
     if not rels:
-        sys.exit(f"no administrative boundary named '{args.place}'. Try --relation <id> "
+        sys.exit(f"nothing named '{args.place}' found. Try 'Name, Region', --relation <id> "
                  "(look the place up on openstreetmap.org) or --bbox.")
     if len(rels) > 1:
         log("several matches, taking the most local one (highest admin_level):")
@@ -166,6 +200,7 @@ DATA_FILTERS = (
     'way["natural"~"^(wood|scrub|grassland|water)$"];'
     'way["amenity"="parking"];'
     'way["place"="square"];'
+    'way["natural"="coastline"];'
     'node["natural"="tree"];'
     'node["highway"~"^(traffic_signals|crossing|stop|give_way)$"];'
 )
@@ -340,6 +375,106 @@ def join_rings(segments):
         if len(ring) >= 4:
             rings.append(ring)
     return rings
+
+
+def join_chains(segments):
+    """Coastline ways end to end, keeping their direction (it says which side is land)."""
+    chains = [list(s) for s in segments if len(s) >= 2]
+    merged = True
+    while merged:
+        merged = False
+        for i in range(len(chains)):
+            for j in range(len(chains)):
+                if i != j and chains[i] and chains[j] and chains[i][-1] == chains[j][0]:
+                    chains[i] = chains[i] + chains[j][1:]
+                    chains[j] = []
+                    merged = True
+        chains = [c for c in chains if c]
+    return chains
+
+
+def sea_polygons(coast, box):
+    """Turn coastline (land on the left, sea on the right) into sea polygons inside the
+    box, closed along the box edge; closed coast rings inside the box are islands."""
+    x0, z0, x1, z1 = box
+    W, H = x1 - x0, z1 - z0
+    per = 2 * (W + H)
+
+    def inside(p):
+        return x0 <= p[0] <= x1 and z0 <= p[1] <= z1
+
+    def t_of(p):  # position along the box edge, clockwise as seen on a north-up map
+        x, z = p
+        edge = min(((abs(z - z0), 0), (abs(x - x1), 1), (abs(z - z1), 2), (abs(x - x0), 3)))[1]
+        return (x - x0, W + (z - z0), W + H + (x1 - x), 2 * W + H + (z1 - z))[edge]
+
+    def clip(a, b):  # Liang-Barsky: the part of a->b inside the box as (t0, t1), or None
+        t0, t1 = 0.0, 1.0
+        dx, dz = b[0] - a[0], b[1] - a[1]
+        for pp, qq in ((-dx, a[0] - x0), (dx, x1 - a[0]), (-dz, a[1] - z0), (dz, z1 - a[1])):
+            if pp == 0:
+                if qq < 0:
+                    return None
+            else:
+                r = qq / pp
+                if pp < 0:
+                    t0 = max(t0, r)
+                else:
+                    t1 = min(t1, r)
+        return (t0, t1) if t0 <= t1 else None
+
+    def lerp(a, b, t):
+        return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+
+    pieces, islands = [], []
+    for ch in join_chains(coast):
+        if ch[0] == ch[-1] and all(inside(p) for p in ch):
+            # land is on the left: drawn anticlockwise on a north-up map (a negative
+            # shoelace in x/z, where z points south) the ring is an island
+            if signed_area(ch[:-1]) < 0:
+                islands.append(ch[:-1])
+            continue
+        cur, started = None, False
+        for i in range(1, len(ch)):
+            a, b = ch[i - 1], ch[i]
+            c = clip(a, b)
+            if c is None:
+                cur = None
+                continue
+            t0, t1 = c
+            if t0 > 0.0:                 # comes in across the edge
+                cur, started = [lerp(a, b, t0)], True
+            elif cur is None:            # the coast begins inside the box: cannot close it
+                cur, started = [a], False
+            cur.append(lerp(a, b, t1) if t1 < 1.0 else b)
+            if t1 < 1.0:                 # goes out across the edge
+                if started:
+                    pieces.append(cur)
+                cur = None
+    if not pieces:
+        return [], islands
+    used, polys = set(), []
+    for start in range(len(pieces)):
+        if start in used:
+            continue
+        poly, cur = [], start
+        for _ in range(len(pieces) + 1):
+            used.add(cur)
+            poly += pieces[cur]
+            t_out = t_of(pieces[cur][-1])
+            nxt = min(range(len(pieces)), key=lambda k: (t_of(pieces[k][0]) - t_out) % per)
+            t_in = t_of(pieces[nxt][0])
+            # corners passed going clockwise from t_out to t_in
+            span = (t_in - t_out) % per
+            for ct, corner in sorted(((W, (x1, z0)), (W + H, (x1, z1)), (2 * W + H, (x0, z1)),
+                                      (0.0, (x0, z0))), key=lambda c: (c[0] - t_out) % per):
+                if 0 < (ct - t_out) % per < span:
+                    poly.append(corner)
+            if nxt == start:
+                break
+            cur = nxt
+        polys.append(poly)
+    return polys, islands
 
 
 def q(v):
@@ -542,6 +677,22 @@ def bake(raw, name, args):
             out["areas"].append({"p": flat(r), "k": kind})
             stats["areas"] += 1
 
+    # the sea: OSM draws it as coastline lines with the land on their left
+    coast = [[P(g["lat"], g["lon"]) for g in e["geometry"] if g] for e in elements
+             if e["type"] == "way" and e.get("tags", {}).get("natural") == "coastline"
+             and "geometry" in e]
+    if coast:
+        water, islands = sea_polygons(coast, (x0, z0, x1, z1))
+        for ring in water:
+            r = clean_ring(ring, 0.5)
+            if r:
+                out["areas"].append({"p": flat(r), "k": "water"})
+        for ring in islands:
+            r = clean_ring(ring, 0.5)
+            if r:
+                out["areas"].append({"p": flat(r), "k": "land"})
+        log(f"coast: {len(water)} sea areas, {len(islands)} islands")
+
     for e in elements:
         if e["type"] == "node" and e.get("tags", {}).get("natural") == "tree":
             x, z = P(e["lat"], e["lon"])
@@ -561,6 +712,8 @@ def main():
     ap.add_argument("--relation", type=int, help="exact OSM relation id of the boundary")
     ap.add_argument("--bbox", help="south,west,north,east instead of a named place")
     ap.add_argument("--name", help="display name (defaults to --place)")
+    ap.add_argument("--radius", type=float, default=2000.0,
+                    help="metres round the centre when the place has no boundary mapped")
     ap.add_argument("--margin", type=float, default=250.0,
                     help="metres of neighbouring city kept around the boundary box")
     ap.add_argument("--default-levels", type=int, default=4,
@@ -582,7 +735,7 @@ def main():
         return
     if not args.out:
         ap.error("--out is required")
-    name = args.name or args.place or (f"relation {args.relation}" if args.relation else "area")
+    name = args.name or (split_place(args.place)[0] if args.place else None) or (f"relation {args.relation}" if args.relation else "area")
     slug = re.sub(r"[^a-z0-9]+", "_", (args.name or args.place or
                                        (str(args.relation) if args.relation else args.bbox)
                                        ).lower()).strip("_") or "city"
