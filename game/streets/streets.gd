@@ -11,6 +11,10 @@ extends GameMode3D
 ## -> HUD (speedometer, street name, minimap, touch pedals).
 
 const CITY := "givatayim"            ## which file in cities/ to drive
+## Where a city's drive begins, by street names as OSM spells them: [street, cross street].
+## The car starts on the first, just past its corner with the second. A city not listed
+## starts on a main road near the middle of town.
+const START_AT := {"givatayim": ["המרי", "שיינקין"]}
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
 ## ---- the car, in real units (metres, seconds, kilograms, newtons) ----
@@ -152,6 +156,7 @@ class Buf:
 
 ## ---- city data ----
 var _city_name := ""
+var _city_id := ""
 var _bounds := Rect2()
 var _nodes := PackedVector2Array()
 var _node_roads: Array = []          ## per node: Array of Vector2i(road, index along it)
@@ -300,6 +305,7 @@ func _load_city(id: String) -> bool:
 		Probe.note("city file %s did not parse" % path)
 		return false
 	var k := 1.0 / float(data.get("scale", 10))
+	_city_id = path.get_file().get_basename()
 	_city_name = String(data.get("name", id))
 	var b: Array = data["bounds"]
 	_bounds = Rect2(b[0], b[1], float(b[2]) - float(b[0]), float(b[3]) - float(b[1]))
@@ -324,7 +330,7 @@ func _load_city(id: String) -> bool:
 			pts.append(_nodes[int(n)])
 		var r := {"pts": pts, "ids": ids, "w": float(rd.get("w", 6.0)), "k": kind,
 			"o": int(rd.get("o", 0)), "l": int(rd.get("l", 0)), "name": String(rd.get("name", "")),
-			"en": String(rd.get("name_en", "")), "drive": DRIVE.has(kind),
+			"en": String(rd.get("name_en", "")), "drive": DRIVE.has(kind), "pv": rd.has("pv"),
 			"speed": float(DRIVE.get(kind, 5.0))}
 		var ri := _roads.size()
 		_roads.append(r)
@@ -933,8 +939,15 @@ func _build_car() -> void:
 func _fwd() -> Vector2:
 	return Vector2(cos(_yaw), sin(_yaw))
 
-## start on a through road near the middle of town, in the right-hand lane
+## start where START_AT says, else on a through road near the middle of town; always in
+## the right-hand lane, facing the way traffic goes
 func _place_start() -> void:
+	var spot: Array = START_AT.get(_city_id, [])
+	if spot.size() == 2 and _start_on(spot[0], spot[1]):
+		_cam_yaw = _yaw
+		_place_car(0.016)
+		_camera(1.0)
+		return
 	var mid := _bounds.get_center()
 	if not _boundary.is_empty():
 		var box := Rect2((_boundary[0] as PackedVector2Array)[0], Vector2.ZERO)
@@ -967,6 +980,37 @@ func _place_start() -> void:
 	_cam_yaw = _yaw
 	_place_car(0.016)
 	_camera(1.0)
+
+## put the car on `street` a few metres past where it meets `cross`; false if they never meet
+func _start_on(street: String, cross: String) -> bool:
+	for i in range(_nodes.size()):
+		var on_street: Array = []
+		var on_cross := false
+		for e: Vector2i in _node_roads[i]:
+			var r: Dictionary = _roads[e.x]
+			if not r["drive"]:
+				continue
+			if r["name"] == street:
+				on_street.append(e)
+			elif r["name"] == cross:
+				on_cross = true
+		if not on_cross:
+			continue
+		for e: Vector2i in on_street:
+			var r: Dictionary = _roads[e.x]
+			var pts: PackedVector2Array = r["pts"]
+			for d2: int in [1, -1]:
+				var nxt := e.y + d2
+				if nxt < 0 or nxt >= pts.size() or (r["o"] != 0 and r["o"] != d2):
+					continue
+				var dir := (pts[nxt] - pts[e.y]).normalized()
+				var lane := 0.0 if r["o"] != 0 else minf(float(r["w"]) * 0.25, 1.8)
+				var into := minf(_node_r[i] + 6.0, pts[e.y].distance_to(pts[nxt]) * 0.6)
+				_pos = pts[e.y] + dir * into + Vector2(-dir.y, dir.x) * lane
+				_yaw = dir.angle()
+				return true
+	Probe.note("START_AT: %s never meets %s in %s" % [street, cross, _city_id])
+	return false
 
 func _physics_process(dt: float) -> void:
 	if not _loaded or finished:
@@ -1405,8 +1449,8 @@ func _ap_next() -> bool:
 	var best_score := -INF
 	for e: Vector2i in _node_roads[node]:
 		var r2: Dictionary = _roads[e.x]
-		if not r2["drive"]:
-			continue
+		if not r2["drive"] or r2["pv"]:
+			continue   # autodrive stays out of private driveways and car parks
 		var p2: PackedVector2Array = r2["pts"]
 		for d2: int in [1, -1]:
 			var nxt := e.y + d2
@@ -1603,18 +1647,22 @@ func _draw_map() -> void:
 		_map.draw_multiline(blds, Color(ink, 0.22), 1.0 / s)
 	var major := PackedVector2Array()
 	var minor := PackedVector2Array()
+	var paths := PackedVector2Array()
 	for code: int in _near(_seg_hash, _pos, MAP_R, SEG_CELL):
 		var r: Dictionary = _roads[code / 4096]
-		if not r["drive"]:
-			continue
 		var pts: PackedVector2Array = r["pts"]
 		var j := code % 4096
-		if float(r["w"]) >= 9.0:
+		if not r["drive"] or r["pv"]:
+			paths.append(pts[j] - _pos)
+			paths.append(pts[j + 1] - _pos)
+		elif float(r["w"]) >= 9.0:
 			major.append(pts[j] - _pos)
 			major.append(pts[j + 1] - _pos)
 		else:
 			minor.append(pts[j] - _pos)
 			minor.append(pts[j + 1] - _pos)
+	if not paths.is_empty():
+		_map.draw_multiline(paths, Color(ink, 0.3), 1.0 / s)
 	if not minor.is_empty():
 		_map.draw_multiline(minor, Color(ink, 0.75), 2.0 / s)
 	if not major.is_empty():

@@ -24,7 +24,7 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
   boundary   [[x, z, x, z, ...], ...]   the place's outline rings (empty for --bbox)
   nodes      [x, z, x, z, ...]           road graph vertices, shared where roads meet
   roads      [{n: [node indices], k: kind, w: width m, l: lanes, o: 1/-1/0 oneway,
-               name, name_en, br: 1 bridge, tu: 1 tunnel}]
+               name, name_en, br: 1 bridge, tu: 1 tunnel, pv: 1 private (driveways)}]
   buildings  [{p: [x, z, ...] counter-clockwise ring, h: height m, b: base height m,
                g: 1 if the height is a guess, name, addr}]
   areas      [{p: ring, k: park|grass|wood|water|parking|pitch|plaza}]
@@ -409,8 +409,6 @@ def bake(raw, name, args):
         kind = t["highway"]
         if t.get("area") == "yes" or kind not in ROAD_WIDTH or ROAD_WIDTH[kind] == 0:
             continue
-        if t.get("access") in ("no", "private") and kind == "service":
-            continue
         pts = [P(g["lat"], g["lon"]) if g else None for g in e["geometry"]]
         ids = e.get("nodes", [])
         if len(ids) != len(pts):
@@ -451,6 +449,8 @@ def bake(raw, name, args):
                 road["br"] = 1
             if t.get("tunnel") and t["tunnel"] != "no":
                 road["tu"] = 1
+            if t.get("access") in ("no", "private"):
+                road["pv"] = 1
             out["roads"].append(road)
             stats["roads"] += 1
         for i in range(len(ids)):
