@@ -29,6 +29,7 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
                g: 1 if the height is a guess, name, addr}]
   areas      [{p: ring, k: park|grass|wood|water|parking|pitch|plaza}]
   trees      [x, z, ...]
+  addrs      [[x, z, street, number], ...]   address points not on a building outline
   signals    [node indices]   traffic lights that sit on the road graph
   crossings  [node indices]
 
@@ -207,6 +208,7 @@ DATA_FILTERS = (
     'way["amenity"="parking"];'
     'way["place"="square"];'
     'way["natural"="coastline"];'
+    'node["addr:housenumber"]["addr:street"];'
     'node["natural"="tree"];'
     'node["highway"~"^(traffic_signals|crossing|stop|give_way)$"];'
 )
@@ -625,7 +627,12 @@ def bake(raw, name, args):
             h = (levels + roof_levels) * LEVEL_H + 1.0
         if h is None:
             guessed = True
-            lv = DEFAULT_LEVELS.get(kind, args.default_levels)
+            lv = DEFAULT_LEVELS.get(kind)
+            if lv is None:
+                # a plain "building" with no height: its footprint is the best clue. A
+                # suburban house is under ~180 m2, a Givatayim apartment block 300-600.
+                fp = abs(signed_area(r))
+                lv = 1 if fp < 60 else (2 if fp < 180 else (3 if fp < 280 else args.default_levels))
             h = lv * LEVEL_H + 1.0
         base = num(t.get("min_height"))
         if base is None and num(t.get("building:min_level")) is not None:
@@ -698,6 +705,15 @@ def bake(raw, name, args):
             if r:
                 out["areas"].append({"p": flat(r), "k": "land"})
         log(f"coast: {len(water)} sea areas, {len(islands)} islands")
+
+    # addresses that are points (a door, an entrance) rather than tags on a building
+    out["addrs"] = []
+    for e in elements:
+        t = e.get("tags", {})
+        if e["type"] == "node" and t.get("addr:street") and t.get("addr:housenumber"):
+            x, z = P(e["lat"], e["lon"])
+            if inside(x, z):
+                out["addrs"].append([q(x), q(z), t["addr:street"], t["addr:housenumber"]])
 
     for e in elements:
         if e["type"] == "node" and e.get("tags", {}).get("natural") == "tree":

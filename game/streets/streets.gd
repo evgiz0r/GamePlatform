@@ -222,6 +222,21 @@ var _ap_end := Vector3i(-1, 0, 0)    ## the last leg planned: road, last index, 
 var _ap_stuck := 0.0
 var _ap_back := 0.0
 
+## ---- going somewhere: an address, a route on the road graph, a beacon over it ----
+var _astar: AStar2D                  ## the drivable road graph (one-ways are one-way)
+var _edge_of := {}                   ## Vector2i(from node, to node) -> Vector3i(road, index, dir)
+var _addr := {}                      ## street (as the address spells it) -> Array of [number, Vector2]
+var _dest_on := false
+var _dest := Vector2.ZERO            ## the address itself
+var _dest_stop := Vector2.ZERO       ## the kerb in front of it, where the drive ends
+var _dest_name := ""
+var _dest_t := 0.0
+var _beacon: MeshInstance3D
+var _picker: Control
+var _pick_list: GridContainer
+var _pick_filter: LineEdit
+var _dest_lbl: Label
+
 ## ---- exploring ----
 var _on_name := ""
 var _on_m := 0.0
@@ -245,7 +260,8 @@ var _touch_seen := false
 var _stick_id := -1                  ## the touch that owns the stick; -1 when no thumb is down
 var _stick := Vector2.ZERO           ## its deflection, inside the unit circle
 var _sfx_was := 0.8
-const AUTO_BTN := Rect2(270, 334, 100, 20)
+const AUTO_BTN := Rect2(226, 334, 100, 20)
+const GOTO_BTN := Rect2(334, 334, 84, 20)
 const STICK_C := Vector2(556, 268)   ## the touch stick sits still, here, on the right
 const STICK_R := 52.0                ## thumb travel (design px) for full lock / full gas
 const STICK_GRAB := 84.0             ## a thumb this close to its centre takes hold of it
@@ -382,8 +398,50 @@ func _load_city(id: String) -> bool:
 		bd["_h"] = h
 		bd["_ring"] = ring
 		bd["_base"] = base
+		if bd.has("addr"):
+			_add_address(String(bd["addr"]), box.get_center())
+	for a: Array in data.get("addrs", []):   # address points that are not on a building
+		_add_address("%s %s" % [a[2], a[3]], Vector2(a[0], a[1]) * k)
+	_build_graph()
 	_city_data = data
 	return true
+
+## "Sheinkin 47" -> filed under "Sheinkin" as number "47"
+func _add_address(full: String, at: Vector2) -> void:
+	var cut := full.rfind(" ")
+	if cut <= 0:
+		return
+	var street := full.substr(0, cut)
+	var num := full.substr(cut + 1)
+	if not _addr.has(street):
+		_addr[street] = []
+	for a: Array in _addr[street]:
+		if a[0] == num:
+			return   # a building and an address point for the same door
+	(_addr[street] as Array).append([num, at])
+
+## the drivable roads as a directed graph for routing (Godot's AStar2D, distance-weighted)
+func _build_graph() -> void:
+	_astar = AStar2D.new()
+	for ri in range(_roads.size()):
+		var r: Dictionary = _roads[ri]
+		if not r["drive"] or r["pv"]:
+			continue
+		var ids: PackedInt32Array = r["ids"]
+		for j in range(ids.size() - 1):
+			var a := ids[j]
+			var b := ids[j + 1]
+			if a == b:
+				continue
+			for id: int in [a, b]:
+				if not _astar.has_point(id):
+					_astar.add_point(id, _nodes[id])
+			if r["o"] != -1:
+				_astar.connect_points(a, b, false)
+				_edge_of[Vector2i(a, b)] = Vector3i(ri, j, 1)
+			if r["o"] != 1:
+				_astar.connect_points(b, a, false)
+				_edge_of[Vector2i(b, a)] = Vector3i(ri, j + 1, -1)
 
 var _city_data: Dictionary = {}      ## the parsed file, kept only until the meshes exist
 
@@ -891,6 +949,7 @@ func _tones() -> void:
 		"pole": alt.lerp(ink, 0.3),
 		"sky": pl.lerp(pz, 0.35).lerp(bg, 0.32),
 		"haze": ink.lerp(pl, 0.3),
+		"beacon": Color(ac, 0.35),
 	}
 
 func _retint_city() -> void:
@@ -1021,8 +1080,8 @@ func _start_on(street: String, cross: String) -> bool:
 	return false
 
 func _physics_process(dt: float) -> void:
-	if not _loaded or finished:
-		return
+	if not _loaded or finished or _picker != null:
+		return   # the address picker is open: the world waits
 	_signals_tick(dt)
 	_crash_cool = maxf(0.0, _crash_cool - dt)
 	if PInput.just_pressed("action_a") and not _auto:
@@ -1031,6 +1090,7 @@ func _physics_process(dt: float) -> void:
 		_set_auto(false)
 	var ctl: Array = _autodrive(dt) if _auto else _manual(dt)
 	_drive(dt, ctl[0], ctl[1], ctl[2])
+	_check_arrival(dt)
 	_explore(dt)
 	_camera(dt)
 	_tick_hud()
@@ -1231,7 +1291,7 @@ func _near(h: Dictionary, p: Vector2, r: float, size: float) -> Array:
 
 ## the closest road segment to p within max_d: {road, seg, q (closest point), edge (metres
 ## past the asphalt's edge, negative when on it)}; {} when there is none
-func _nearest_seg(p: Vector2, max_d: float, drivable: bool) -> Dictionary:
+func _nearest_seg(p: Vector2, max_d: float, drivable: bool, public := false) -> Dictionary:
 	var best := {}
 	var bd := INF
 	for code: int in _near(_seg_hash, p, max_d, SEG_CELL):
@@ -1239,6 +1299,8 @@ func _nearest_seg(p: Vector2, max_d: float, drivable: bool) -> Dictionary:
 		var sj := code % 4096
 		var r: Dictionary = _roads[ri]
 		if drivable and not r["drive"]:
+			continue
+		if public and r["pv"]:
 			continue
 		var pts: PackedVector2Array = r["pts"]
 		var q := Geometry2D.get_closest_point_to_segment(p, pts[sj], pts[sj + 1])
@@ -1307,20 +1369,18 @@ func _autodrive(dt: float) -> Array:
 			_gear = 1
 			_ap_pts = PackedVector2Array()
 		return [0.7, 0.0, -signf(_steer) * MAX_STEER * 0.6]
-	if _ap_pts.size() < 2 or _pos.distance_to(_ap_pts[0]) > 30.0:
+	if _ap_pts.size() < 2 or _ap_off_route() > 25.0:
 		_ap_plan()
 		if _ap_pts.size() < 2:
 			return [0.0, 1.0, 0.0]
-	# forget what is behind
-	while _ap_pts.size() > 2:
-		var a := _ap_pts[0]
-		var seg := _ap_pts[1] - a
-		if (_pos - a).dot(seg) / maxf(seg.length_squared(), 0.001) > 1.0:
-			_ap_pts.remove_at(0)
-			_ap_v.remove_at(0)
-			_ap_lim.remove_at(0)
-		else:
-			break
+	# forget what is behind: we are on whichever of the next stretches is closest. Looking
+	# at only the current one lost track after a sharp corner and sent the car back round
+	# to a point it had already passed.
+	var at := _ap_nearest_seg()
+	for _k in range(at):
+		_ap_pts.remove_at(0)
+		_ap_v.remove_at(0)
+		_ap_lim.remove_at(0)
 	while _ap_len() < 160.0:
 		if not _ap_next():
 			break
@@ -1371,6 +1431,27 @@ func _ap_walk(k: int, dist: float) -> Vector2:
 		j += step
 	return p
 
+## index of the planned stretch the car is on: the closest of the next three, or of any
+## further one that starts within 60 m of the car (not "within 40 m of the point behind":
+## a long first stretch then hid the next one, and the car never saw its stop coming)
+func _ap_nearest_seg() -> int:
+	var best_i := 0
+	var best_d := INF
+	for i in range(_ap_pts.size() - 1):
+		if i >= 3 and _ap_pts[i].distance_to(_pos) > 60.0:
+			break
+		var d := Geometry2D.get_closest_point_to_segment(_pos, _ap_pts[i], _ap_pts[i + 1]).distance_to(_pos)
+		if d < best_d - 0.05:
+			best_d = d
+			best_i = i
+	return best_i
+
+func _ap_off_route() -> float:
+	if _ap_pts.size() < 2:
+		return INF
+	var i := _ap_nearest_seg()
+	return Geometry2D.get_closest_point_to_segment(_pos, _ap_pts[i], _ap_pts[i + 1]).distance_to(_pos)
+
 func _ap_len() -> float:
 	var L := 0.0
 	for i in range(1, _ap_pts.size()):
@@ -1393,7 +1474,12 @@ func _ap_plan() -> void:
 	_ap_pts = PackedVector2Array()
 	_ap_v = PackedFloat32Array()
 	_ap_lim = PackedFloat32Array()
-	var hit := _nearest_seg(_pos, 60.0, true)
+	if _dest_on:
+		if not _route_to(_dest):
+			_show_banner("can't find a way there from here", 2.0)
+			_clear_dest()
+		return
+	var hit := _nearest_seg(_pos, 60.0, true, true)
 	if hit.is_empty():
 		return
 	var ri: int = hit["road"]
@@ -1435,7 +1521,10 @@ func _ap_leg(ri: int, from: int, dir: int) -> void:
 	# that keeps the sideways pull comfortable round it. A sharp junction corner and the
 	# gentle-looking many-sided ring of a roundabout both come out as the tight turns
 	# they are. (Points near the old end are redone now that there is road beyond them.)
-	for k in range(maxi(1, start - 10), _ap_pts.size() - 1):
+	_ap_curves(start - 10)
+
+func _ap_curves(from_k: int) -> void:
+	for k in range(maxi(1, from_k), _ap_pts.size() - 1):
 		var a := _ap_walk(k, -5.0)
 		var b := _ap_pts[k]
 		var c := _ap_walk(k, 5.0)
@@ -1492,6 +1581,235 @@ func _ap_next() -> bool:
 		return false
 	_ap_leg(best.x, best.y, best.z)
 	return true
+
+## ---- going to an address ------------------------------------------------------------------
+
+## plan the shortest legal way from the car to the kerb nearest `goal` into the autodrive lane
+func _route_to(goal: Vector2) -> bool:
+	var s := _nearest_seg(_pos, 40.0, true, true)
+	var g := _nearest_seg(goal, 150.0, true, true)
+	if s.is_empty() or g.is_empty():
+		return false
+	var r: Dictionary = _roads[s["road"]]
+	var ids: PackedInt32Array = r["ids"]
+	var pts: PackedVector2Array = r["pts"]
+	var sj: int = s["seg"]
+	var ahead := (pts[sj + 1] - pts[sj]).dot(_fwd()) >= 0.0
+	var dir: int = r["o"] if r["o"] != 0 else (1 if ahead else -1)
+	var first := ids[sj + 1] if dir > 0 else ids[sj]
+	# arrive at either end of the goal's segment, whichever is legal and shorter
+	var gr: Dictionary = _roads[g["road"]]
+	var gids: PackedInt32Array = gr["ids"]
+	var gj: int = g["seg"]
+	var best := PackedInt64Array()
+	var best_len := INF
+	var best_dir := 0
+	for end: Array in [[gids[gj], 1], [gids[gj + 1], -1]]:
+		if gr["o"] != 0 and gr["o"] != end[1]:
+			continue   # would mean driving the last bit against a one-way
+		if not _astar.has_point(first) or not _astar.has_point(end[0]):
+			continue
+		var path := _astar.get_id_path(first, end[0])
+		if path.is_empty():
+			continue
+		var other := gids[gj + 1] if end[1] == 1 else gids[gj]
+		if path.size() >= 2 and path[path.size() - 2] == other:
+			continue   # it drives past the address to the far end, then U-turns back: no
+		var L := 0.0
+		for i in range(1, path.size()):
+			L += _nodes[path[i - 1]].distance_to(_nodes[path[i]])
+		if L < best_len:
+			best_len = L
+			best = path
+			best_dir = end[1]
+	if best.is_empty():
+		return false
+	_ap_pts = PackedVector2Array([s["q"]])
+	_ap_lim = PackedFloat32Array([float(r["speed"])])
+	for i in range(best.size()):
+		var n := int(best[i])
+		var prv := _ap_pts[_ap_pts.size() - 1]
+		var nxt: Vector2 = _nodes[best[i + 1]] if i + 1 < best.size() else g["q"]
+		var e: Vector3i = _edge_of.get(Vector2i(int(best[i - 1]), n), Vector3i(s["road"], 0, 1)) if i > 0 else Vector3i(s["road"], 0, dir)
+		var road: Dictionary = _roads[e.x]
+		var d := (nxt - prv).normalized()
+		var lane := minf(float(road["w"]) * 0.25, 1.9) if road["o"] == 0 and float(road["w"]) >= 5.0 else 0.0
+		_ap_pts.append(_nodes[n] + Vector2(-d.y, d.x) * lane)
+		_ap_lim.append(float(road["speed"]))
+	# the last stretch along the goal's segment, to the kerb in front of the address
+	var last_dir := (gr["pts"] as PackedVector2Array)[gj + 1] - (gr["pts"] as PackedVector2Array)[gj]
+	last_dir = last_dir.normalized() * float(best_dir)
+	var glane := minf(float(gr["w"]) * 0.25, 1.9) if gr["o"] == 0 else 0.0
+	_dest_stop = (g["q"] as Vector2) + Vector2(-last_dir.y, last_dir.x) * glane
+	_ap_pts.append(_dest_stop)
+	_ap_lim.append(float(gr["speed"]))
+	_ap_v = _ap_lim.duplicate()
+	_ap_curves(1)
+	_ap_v[_ap_v.size() - 1] = 0.0   # and stop there
+	_ap_end = Vector3i(-1, 0, 0)    # nothing after the destination
+	Probe.event("route", {"to": _dest_name, "m": int(best_len), "points": _ap_pts.size()})
+	return true
+
+func _set_dest(at: Vector2, label: String) -> void:
+	_dest_on = true
+	_dest = at
+	_dest_stop = at
+	_dest_name = label
+	_dest_t = 0.0
+	if _beacon == null:
+		_beacon = MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 1.4
+		cm.bottom_radius = 1.4
+		cm.height = 70.0
+		cm.radial_segments = 16
+		cm.cap_top = false
+		var m := _surface("beacon")
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+		cm.material = m
+		_beacon.mesh = cm
+		_beacon.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		world.add_child(_beacon)
+	_beacon.position = Vector3(at.x, 35.0, at.y)
+	_beacon.visible = true
+	Probe.event("destination", {"to": label})
+	_set_auto(true)
+	_show_banner("→ " + label, 2.0)
+
+func _clear_dest() -> void:
+	_dest_on = false
+	if _beacon != null:
+		_beacon.visible = false
+
+func _check_arrival(dt: float) -> void:
+	if not _dest_on:
+		return
+	_dest_t += dt
+	var near_stop := _pos.distance_to(_dest_stop)
+	var last_leg := _auto and _ap_pts.size() <= 3
+	if near_stop < 9.0 and absf(_v) < 1.5 or last_leg and near_stop < 15.0 and absf(_v) < 3.0 \
+			or (not _auto and _pos.distance_to(_dest) < 16.0 and absf(_v) < 2.5):
+		_auto = false
+		_ap_pts = PackedVector2Array()
+		_clear_dest()
+		Audio.play("coin", 0.05, -2.0)
+		_show_banner("arrived: " + _dest_name, 3.0)
+		Probe.event("arrived", {"to": _dest_name, "secs": int(_dest_t)})
+
+## ---- the address picker: streets, then house numbers -----------------------------------------
+
+func _open_picker() -> void:
+	if _picker != null:
+		return
+	_picker = Control.new()
+	_picker.size = Vector2(640, 360)
+	_picker.z_index = 90
+	add_child(_picker)
+	var dim := ColorRect.new()
+	dim.color = Color(Palette.col("bg"), 0.92)
+	dim.size = Vector2(640, 360)
+	_picker.add_child(dim)
+	var title := UIKit.label("where to?", 18, "player")
+	title.position = Vector2(170, 4)
+	title.size = Vector2(300, 26)
+	_picker.add_child(title)
+	_pick_filter = LineEdit.new()
+	_pick_filter.position = Vector2(150, 34)
+	_pick_filter.size = Vector2(340, 26)
+	_pick_filter.placeholder_text = "type a street, or scroll"
+	_pick_filter.add_theme_font_override("font", _font)
+	_pick_filter.add_theme_font_size_override("font_size", 13)
+	_pick_filter.text_changed.connect(_list_streets)
+	_picker.add_child(_pick_filter)
+	var scroll := ScrollContainer.new()
+	scroll.position = Vector2(20, 66)
+	scroll.size = Vector2(600, 262)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_picker.add_child(scroll)
+	_pick_list = GridContainer.new()
+	_pick_list.add_theme_constant_override("h_separation", 8)
+	_pick_list.add_theme_constant_override("v_separation", 6)
+	scroll.add_child(_pick_list)
+	var close := UIKit.button("close", _close_picker)
+	close.position = Vector2(270, 332)
+	close.custom_minimum_size = Vector2(100, 24)
+	close.size = Vector2(100, 24)
+	close.add_theme_font_size_override("font_size", 13)
+	_picker.add_child(close)
+	_list_streets("")
+	Probe.event("picker")
+
+func _close_picker() -> void:
+	if _picker != null:
+		_picker.queue_free()
+		_picker = null
+
+func _pick_button(text: String, w: float, cb: Callable) -> Button:
+	var b := UIKit.button(text, cb)
+	b.custom_minimum_size = Vector2(w, 26)
+	b.add_theme_font_override("font", _font)
+	b.add_theme_font_size_override("font_size", 13)
+	b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_pick_list.add_child(b)
+	return b
+
+## every street with a name, as the roads and the addresses spell it, filtered by the box
+func _list_streets(filter: String) -> void:
+	for c in _pick_list.get_children():
+		c.queue_free()
+	_pick_list.columns = 2
+	var en := {}
+	for r: Dictionary in _roads:
+		if r["drive"] and not r["pv"] and r["name"] != "":
+			en[r["name"]] = r["en"]
+	for st: String in _addr:
+		if not en.has(st):
+			en[st] = ""
+	var names: Array = en.keys()
+	names.sort_custom(func(a, b): return (String(en[a]) if en[a] != "" else String(a)).naturalnocasecmp_to(String(en[b]) if en[b] != "" else String(b)) < 0)
+	var f := filter.strip_edges().to_lower()
+	for nm: String in names:
+		if nm.is_valid_int():
+			continue   # planning numbers some roads carry instead of a name
+		var label: String = nm if en[nm] == "" or en[nm] == nm else "%s · %s" % [nm, en[nm]]
+		if f != "" and label.to_lower().find(f) < 0:
+			continue
+		var count := (_addr.get(nm, []) as Array).size()
+		_pick_button(label + ("  (%d)" % count if count > 0 else ""), 290, _list_numbers.bind(nm))
+
+func _list_numbers(street: String) -> void:
+	for c in _pick_list.get_children():
+		c.queue_free()
+	_pick_list.columns = 6
+	_pick_button("← streets", 90, func(): _list_streets(_pick_filter.text))
+	_pick_button("anywhere", 90, _go.bind(street, -1))
+	var nums: Array = _addr.get(street, []).duplicate()
+	nums.sort_custom(func(a, b): return String(a[0]).naturalnocasecmp_to(String(b[0])) < 0)
+	for i in range(nums.size()):
+		_pick_button(String(nums[i][0]), 90, _go_to.bind(street + " " + String(nums[i][0]), nums[i][1]))
+
+## a street with no particular number: its nearest point to the car
+func _go(street: String, _i: int) -> void:
+	var best := INF
+	var at := _pos
+	for r: Dictionary in _roads:
+		if r["name"] != street or not r["drive"]:
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		for j in range(pts.size() - 1):
+			var q := Geometry2D.get_closest_point_to_segment(_pos, pts[j], pts[j + 1])
+			if q.distance_to(_pos) < best:
+				best = q.distance_to(_pos)
+				at = q
+	if best == INF and _addr.has(street):
+		at = (_addr[street] as Array)[0][1]
+	_go_to(street, at)
+
+func _go_to(label: String, at: Vector2) -> void:
+	_close_picker()
+	_set_dest(at, label)
 
 ## ---- exploring: a point for every street of the city you drive down -----------------------
 
@@ -1580,6 +1898,10 @@ func _build_hud() -> void:
 	unit.position = Vector2(496, 66)
 	unit.size = Vector2(100, 14)
 	unit.text = "km/h"
+	_dest_lbl = _label(12, "accent")
+	_dest_lbl.text_direction = Control.TEXT_DIRECTION_LTR   # "→ <Hebrew street> 47 · 930 m" reads left to right
+	_dest_lbl.position = Vector2(150, 314)
+	_dest_lbl.size = Vector2(340, 18)
 	_banner = _label(20, "warn")
 	_banner.position = Vector2(120, 70)
 	_banner.size = Vector2(400, 30)
@@ -1618,6 +1940,13 @@ func _show_banner(msg: String, secs: float) -> void:
 
 func _tick_hud() -> void:
 	_speed_lbl.text = str(int(round(absf(_v) * 3.6)))
+	if _dest_on:
+		var left := _pos.distance_to(_dest)
+		if _auto and _ap_pts.size() > 1:
+			left = _pos.distance_to(_ap_pts[0]) + _ap_len()
+		_dest_lbl.text = "→ %s · %s" % [_dest_name, ("%.1f km" % (left / 1000.0)) if left >= 1000.0 else ("%d m" % int(left))]
+	else:
+		_dest_lbl.text = ""
 	_gear_lbl.text = "D" if _gear > 0 else "R"
 	_hud.queue_redraw()
 	_map.queue_redraw()
@@ -1630,6 +1959,10 @@ func _draw_hud() -> void:
 	_hud.draw_rect(AUTO_BTN, Color(on, 0.9), false, 1.5)
 	var txt := "AUTODRIVE ON" if _auto else "autodrive"
 	_hud.draw_string(_font, AUTO_BTN.position + Vector2(0, 15), txt, HORIZONTAL_ALIGNMENT_CENTER, AUTO_BTN.size.x, 11, on)
+	var go := Palette.col("accent")
+	_hud.draw_rect(GOTO_BTN, Color(bg, 0.65))
+	_hud.draw_rect(GOTO_BTN, Color(go, 0.9), false, 1.5)
+	_hud.draw_string(_font, GOTO_BTN.position + Vector2(0, 15), "go to…", HORIZONTAL_ALIGNMENT_CENTER, GOTO_BTN.size.x, 11, go)
 	if _touch_seen:
 		var held := _stick_id >= 0
 		var c := STICK_C
@@ -1692,6 +2025,9 @@ func _draw_map() -> void:
 		for p in _ap_pts:
 			route.append(p - _pos)
 		_map.draw_polyline(route, Color(Palette.col("friend"), 0.8), 1.5 / s)
+	if _dest_on:
+		_map.draw_circle(_dest - _pos, 6.0 / s, Palette.col("accent"))
+		_map.draw_arc(_dest - _pos, 11.0 / s, 0.0, TAU, 24, Color(Palette.col("accent"), 0.6), 1.5 / s)
 	_map.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	var c := sz * 0.5
 	_map.draw_colored_polygon(PackedVector2Array([c + Vector2(0, -7), c + Vector2(5, 5), c + Vector2(-5, 5)]), Palette.col("player"))
@@ -1702,19 +2038,21 @@ func _draw_map() -> void:
 ## it takes the wheel back from autodrive. ----------------------------------------------------
 
 func _input(event: InputEvent) -> void:
-	if not _loaded:
-		return
+	if not _loaded or _picker != null:
+		return   # the picker's own buttons take the clicks
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
-		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT and not Flow.pointer_over_hud() \
-				and AUTO_BTN.grow(4).has_point(mb.position):
-			_set_auto(not _auto)
+		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT and not Flow.pointer_over_hud():
+			if AUTO_BTN.grow(4).has_point(mb.position):
+				_set_auto(not _auto)
+			elif GOTO_BTN.grow(4).has_point(mb.position):
+				_open_picker.call_deferred()   # after this click, so it does not hit the list
 		return
 	if event is InputEventScreenTouch:
 		var t := event as InputEventScreenTouch
 		_touch_seen = true
 		if t.pressed:
-			if AUTO_BTN.grow(4).has_point(t.position) or t.position.y < 36.0:
+			if AUTO_BTN.grow(4).has_point(t.position) or GOTO_BTN.grow(4).has_point(t.position) or t.position.y < 36.0:
 				return   # the button (via its emulated click) and the shell's menu/sound row
 			if _stick_id < 0 and t.position.distance_to(STICK_C) <= STICK_GRAB:
 				_stick_id = t.index

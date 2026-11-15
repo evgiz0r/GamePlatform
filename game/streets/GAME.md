@@ -45,6 +45,25 @@ takes the wheel back from autodrive; tap "autodrive" to hand it over.
 > The circle keeps moving. Can't drive like that. Make it a static circle, somewhere on
 > the right side.
 
+**Going somewhere.** "go to…" opens a list of the city's streets (type in the box to
+filter, in Hebrew or English, or scroll), then that street's house numbers, or "anywhere"
+on it. Autodrive takes the shortest legal way there (one-way streets respected), a beacon
+stands over the address, the minimap shows the route and the line above the buttons
+counts down the distance. It stops at the kerb in front: "arrived". Steer yourself and the
+destination stays; autodrive picks the route up again from wherever you are.
+
+> I also want that I will be able to pick an address of destination and it will drive
+> there.
+
+Only addresses OpenStreetMap knows are listed: in Givatayim that is about one building in
+six (plus address points), in Bedford almost all of them.
+
+**Places.** Entering the game asks where: Givatayim, or Bedford, Nova Scotia. Each place
+is one entry in `LEVELS` at the top of `streets.gd` (name, city file, starting corner).
+
+> Lets make a menu where I pick a place we have. Starting with Givatayim. Can we add
+> Bedford, Nova Scotia.
+
 The minimap (bottom left) shows the real streets and buildings round you, heading up, with
 the city limits in pink. The name of the street you are on is at the top, in Hebrew with
 the English name under it when OSM has one.
@@ -80,8 +99,7 @@ Givatayim was made that way. Or locally:
 python3 tools/osm_city.py --place "Ramat Gan" --out game/streets/cities/ramat_gan.json
 ```
 
-Then point `CITY` at the top of `streets.gd` at it (once there are two cities they can
-become the game's `LEVELS`). `--place` takes the name of an administrative area as OSM
+Then add a line for it to `LEVELS` at the top of `streets.gd`. `--place` takes the name of an administrative area as OSM
 spells it (any language; "Givatayim" finds "Giv'atayim"); `--relation <id>` pins an exact
 one, `--bbox s,w,n,e` takes any rectangle. It keeps `--margin` metres (250 by default) of
 the neighbouring towns round the edge so the world does not stop at the city limits. The
