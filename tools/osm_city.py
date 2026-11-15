@@ -112,7 +112,12 @@ def overpass(query, tries=2):
                     "User-Agent": "osm-city-bake/1 (a game kit's map baker)",
                     "Accept": "application/json"})
                 with urllib.request.urlopen(req, timeout=300) as r:
-                    return json.loads(r.read().decode("utf-8"))
+                    answer = json.loads(r.read().decode("utf-8"))
+                # a timed-out or failed query still answers 200, with a remark and no data
+                remark = answer.get("remark", "")
+                if "error" in remark.lower() or "timed out" in remark.lower():
+                    raise RuntimeError(remark.strip())
+                return answer
             except Exception as e:  # rate limits and timeouts are routine on public servers
                 log(f"  {urllib.parse.urlparse(url).netloc}: {e}")
         if attempt + 1 < tries:
@@ -151,16 +156,17 @@ def find_boundary(args):
         name, region = split_place(args.place)
         rx = name_regex(name).replace('"', '\\"')
         if region:
-            rrx = name_regex(region).replace('"', '\\"')
-            region_q = (f'area["boundary"="administrative"][~"^name(:[a-z]+)?$"~"{rrx}",i]'
-                        "->.region;")
+            # by exact name: a pattern over every boundary on Earth times out
+            rn = region.replace('"', '\\"')
+            region_q = (f'(area["boundary"="administrative"]["name"="{rn}"];'
+                        f'area["boundary"="administrative"]["name:en"="{rn}"];)->.region;')
             within = "(area.region)"
         sel = (f'{region_q}rel["boundary"="administrative"][~"^name(:[a-z]+)?$"~"{rx}",i]'
                f"{within};")
-    data = overpass(f"[out:json][timeout:90];{sel}out geom;")
+    data = overpass(f"[out:json][timeout:180];{sel}out geom;")
     rels = [e for e in data["elements"] if e["type"] == "relation"]
     if not rels and not args.relation:
-        found = overpass(f"[out:json][timeout:90];{region_q}"
+        found = overpass(f"[out:json][timeout:180];{region_q}"
                          f'node["place"][~"^name(:[a-z]+)?$"~"{rx}",i]{within};out;')
         rank = ["city", "town", "suburb", "village", "quarter", "neighbourhood", "hamlet"]
         pts = sorted([e for e in found["elements"] if e["type"] == "node"],
