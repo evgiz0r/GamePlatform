@@ -1102,7 +1102,9 @@ func _build_pois() -> void:
 	for p: Array in _city_data.get("pois", []):
 		var at := Vector2(p[0], p[1]) * k
 		var kind := String(p[2])
-		var look: Array = POI_LOOK.get(kind, ["player", kind.replace("_", " ")])
+		if not POI_LOOK.has(kind):
+			continue   # e.g. parking entrances that came in on an address point
+		var look: Array = POI_LOOK[kind]
 		var role: String = look[0]
 		var spot := _facade_spot(at)
 		var pos: Vector2 = spot[0]
@@ -1143,14 +1145,14 @@ func _build_pois() -> void:
 		var bm := _multi(plate, boards)
 		bm.material_override = _surface("board")
 		bm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		bm.visibility_range_end = SIGN_RANGE
+		# no draw distance here: a multimesh is culled by the middle of its whole box, and
+		# the boards span the city, so they vanished anywhere away from the town centre
 	var box := BoxMesh.new()
 	box.size = Vector3(3.0, 2.5, 0.12)
 	for role: String in fronts:
 		var mi := _multi(box, fronts[role])
 		mi.material_override = mat(role, 0.55)
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		mi.visibility_range_end = VIEW_RANGE * 0.5
 
 ## where a place's front goes: [point, outward normal, true if on a building wall]. The
 ## wall of its building (or the nearest one) closest to the street; otherwise a free-
