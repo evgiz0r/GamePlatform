@@ -112,10 +112,7 @@ func setup(game: Node) -> void:
 	_beams.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_beams.visible = false
 	g.world.add_child(_beams)
-	var palette := [Palette.col("ink"), Palette.col("ink").lerp(Palette.col("bg_alt"), 0.35),
-		Palette.col("bg_alt").lerp(Palette.col("ink"), 0.3), Palette.col("bg").lerp(Palette.col("bg_alt"), 0.5),
-		Palette.col("player").lerp(Palette.col("bg"), 0.5), Palette.col("hazard").lerp(Palette.col("bg"), 0.3),
-		Palette.col("warn").lerp(Palette.col("bg"), 0.45), Palette.col("ink").lerp(Palette.col("bg_alt"), 0.2)]
+	var palette: Array = g._car_paints()
 	for i in range(COUNT):
 		var c := Car.new()
 		c.pace = rng.randf_range(0.82, 1.06)

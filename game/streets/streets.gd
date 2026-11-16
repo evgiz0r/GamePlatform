@@ -43,7 +43,7 @@ const STEER_RATE := 2.4              ## keyboard: lock to centre in ~0.4 s
 const GRIP := 8.8                    ## tyres give up past ~0.9 g sideways: understeer
 const CAR_R := 0.95                  ## the car is two circles of this radius...
 const CAR_OFF := 1.25                ## ...this far ahead of and behind its centre
-const BOUNCE := 0.15
+const BOUNCE := 0.45                 ## how much of a knock bounces back (a real car: ~0.15)
 const WALL_GRIP := 0.45              ## speed lost scraping along a wall, per m/s of impact
 ## Driving assist (on by default; the "assist" button switches it): straightens the car
 ## along the street and into its lane while you are not steering much, brakes before a
@@ -429,6 +429,17 @@ var _gear := 1                       ## 1 drive, -1 reverse
 var _rev_hold := 0.0
 var _a_long := 0.0
 var _throttle_in := 0.0              ## the pedal this tick, for the engine's sound
+## off the ground: over a crest too fast, or knocked up by a hard hit. A little more game
+## than a real car would give (lighter gravity, a little lift off the crest), on purpose.
+var _y := 0.0                        ## the car's height (the ground's, unless it is flying)
+var _vy := 0.0
+var _air := false
+var _ground_was := 0.0
+var _prev_y := 0.0
+var _view_y := 0.0
+var _spin := 0.0                     ## a knock's spin, dying away (rad/s)
+const AIR_G := 7.5                   ## gravity in the air: floatier than 9.8, for longer jumps
+const LIFTOFF := 1.3                 ## the ground falling away this much faster than the car (m/s)
 var _roll := 0.0
 var _pitch := 0.0
 var _crash_cool := 0.0
@@ -2060,12 +2071,7 @@ func _build_trees() -> void:
 	trunk.radial_segments = 6
 	trunk.rings = 1
 	trunk.material = _surface("trunk")
-	var crown := SphereMesh.new()
-	crown.radius = 1.0
-	crown.height = 2.0
-	crown.radial_segments = 9
-	crown.rings = 5
-	crown.material = leaf
+	var crown := _blob_mesh([[Vector3(0, 0, 0), 1.0], [Vector3(0.62, 0.12, 0.28), 0.74], [Vector3(-0.5, 0.18, -0.38), 0.7]], leaf)
 	var palm_trunk := CylinderMesh.new()
 	palm_trunk.top_radius = 0.15
 	palm_trunk.bottom_radius = 0.24
@@ -2080,34 +2086,95 @@ func _build_trees() -> void:
 	cone.radial_segments = 8
 	cone.rings = 2
 	cone.material = leaf
-	# kind 0 round, 1 palm, 2 conifer; same trunk post either way
+	_surface("trunk").vertex_color_use_as_albedo = true   # birches are pale; the rest bark-brown
 	var parts := {"trunk": [], "crown": [], "ptrunk": [], "fronds": [], "ftrunk": [], "cone": []}
-	var colours := {"crown": [], "fronds": [], "cone": []}
+	var colours := {"trunk": [], "crown": [], "ptrunk": [], "fronds": [], "ftrunk": [], "cone": []}
+	var put := func(part: String, xf: Transform3D, col: Color) -> void:
+		(parts[part] as Array).append(xf)
+		(colours[part] as Array).append(col)
 	for si in range(spots.size()):
 		var sp: Vector3 = spots[si]
 		var sc := sp.z
-		var gy := _h(Vector2(sp.x, sp.y))
-		var rot := Basis(Vector3.UP, rng.randf() * TAU)
-		var g := rng.randf_range(0.8, 1.1)
-		var roll := rng.randf()
-		if forest.has(si) and look == "north":
-			roll *= 0.5   # a northern wood is mostly spruce and fir
-		if look == "med" and roll < 0.13 and not forest.has(si):
-			parts["ptrunk"].append(Transform3D(rot.scaled(Vector3(1, sc, 1)), Vector3(sp.x, gy + 3.5 * sc, sp.y)))
-			parts["fronds"].append(Transform3D(rot.scaled(Vector3.ONE * sc), Vector3(sp.x, gy + 7.0 * sc, sp.y)))
-			colours["fronds"].append(Color(g, g, g))
-		elif look == "north" and roll < 0.45:
-			parts["ftrunk"].append(Transform3D(rot.scaled(Vector3(1, 0.6, 1) * sc), Vector3(sp.x, gy + 0.8 * sc, sp.y)))
-			parts["cone"].append(Transform3D(rot.scaled(Vector3(1, 1.15, 1) * sc), Vector3(sp.x, gy + 4.6 * sc, sp.y)))
-			colours["cone"].append(Color(g * 0.8, g * 0.8, g * 0.8))
-		else:
-			parts["trunk"].append(Transform3D(rot.scaled(Vector3.ONE * sc), Vector3(sp.x, gy + 1.3 * sc, sp.y)))
-			parts["crown"].append(Transform3D(rot.scaled(Vector3(2.3, 1.9, 2.3) * sc), Vector3(sp.x, gy + 3.9 * sc, sp.y)))
-			colours["crown"].append(Color(g, g, g))
+		var base := Vector3(sp.x, _h(Vector2(sp.x, sp.y)), sp.y)
+		var spin := Basis(Vector3.UP, rng.randf() * TAU)
+		var g := rng.randf_range(0.85, 1.1)
+		var kind := _tree_kind(look, forest.has(si), rng.randf())
+		var spec: Array = TREE_KINDS[kind]
+		# [trunk part, trunk scale (w, h), crown part, crown scale (w, h, w), crown height,
+		#  leaf tint, lean (radians)]
+		var lean := Basis(Vector3(rng.randf_range(-1, 1), 0, rng.randf_range(-1, 1)).normalized(), rng.randf() * float(spec[6]))
+		var b := lean * spin
+		var tw: Vector2 = spec[1]
+		var cw: Vector3 = spec[3]
+		var tint: Color = spec[5]
+		var jitter := Vector3(rng.randf_range(0.85, 1.15), rng.randf_range(0.85, 1.15), rng.randf_range(0.85, 1.15))
+		var tpart: String = spec[0]
+		var trunk_h := 2.6 if tpart != "ptrunk" else 7.0
+		var bark := Color(1.9, 1.9, 1.8) if kind == "birch" else Color(1, 1, 1)
+		put.call(tpart, Transform3D(b * Basis.from_scale(Vector3(tw.x, tw.y, tw.x) * sc), base + b * Vector3(0, trunk_h * 0.5 * tw.y * sc, 0)), bark)
+		put.call(spec[2], Transform3D(b * Basis.from_scale(cw * jitter * sc), base + b * Vector3(0, float(spec[4]) * sc, 0)),
+			Color(tint.r * g, tint.g * g, tint.b * g))
 	var meshes := {"trunk": trunk, "crown": crown, "ptrunk": palm_trunk, "fronds": _palm_fronds(leaf),
 		"ftrunk": trunk, "cone": cone}
 	for part: String in parts:
-		_chunked(meshes[part], parts[part], TREE_RANGE, colours.get(part, []), null, true)
+		_chunked(meshes[part], parts[part], TREE_RANGE, colours[part], null, true)
+
+## Trees by kind, after what the streets really have. Givatayim: big dark ficus, light
+## feathery acacias and jacarandas, round street trees, olives, a few cypresses and Aleppo
+## pines, date palms and tall thin fan palms. Bedford: maples, oaks, birches, spruce.
+## [trunk part, trunk (width, height) scale, crown part, crown (w, h, w) scale, crown
+## height, leaf tint, most lean]. All from four meshes, so variety costs no draw calls.
+const TREE_KINDS := {
+	"ficus":   ["trunk", Vector2(1.7, 0.95), "crown", Vector3(3.3, 2.3, 3.3), 3.9, Color(0.62, 0.8, 0.64), 0.04],
+	"acacia":  ["trunk", Vector2(0.9, 1.25), "crown", Vector3(2.9, 1.65, 2.9), 4.4, Color(1.12, 1.2, 0.82), 0.1],
+	"round":   ["trunk", Vector2(1.0, 1.0), "crown", Vector3(2.2, 2.0, 2.2), 3.9, Color(0.9, 1.02, 0.88), 0.05],
+	"olive":   ["trunk", Vector2(1.2, 0.7), "crown", Vector3(1.6, 1.25, 1.6), 2.6, Color(0.92, 0.98, 0.9), 0.12],
+	"cypress": ["ftrunk", Vector2(0.8, 0.4), "cone", Vector3(0.32, 1.55, 0.32), 5.1, Color(0.55, 0.72, 0.6), 0.02],
+	"pine":    ["trunk", Vector2(0.95, 2.7), "crown", Vector3(2.5, 1.55, 2.5), 7.7, Color(0.6, 0.76, 0.72), 0.12],
+	"date":    ["ptrunk", Vector2(1.0, 1.0), "fronds", Vector3(1, 1, 1), 7.0, Color(0.95, 1.0, 0.9), 0.14],
+	"fan":     ["ptrunk", Vector2(0.62, 1.75), "fronds", Vector3(0.62, 0.7, 0.62), 12.2, Color(0.95, 1.05, 0.8), 0.05],
+	"maple":   ["trunk", Vector2(1.2, 1.1), "crown", Vector3(2.8, 2.5, 2.8), 4.4, Color(0.9, 1.0, 0.8), 0.04],
+	"oak":     ["trunk", Vector2(1.6, 1.0), "crown", Vector3(3.4, 2.4, 3.4), 4.3, Color(0.7, 0.86, 0.68), 0.05],
+	"birch":   ["trunk", Vector2(0.65, 1.5), "crown", Vector3(1.6, 2.2, 1.6), 4.6, Color(1.1, 1.18, 0.85), 0.08],
+	"spruce":  ["ftrunk", Vector2(1.0, 0.6), "cone", Vector3(1.0, 1.25, 1.0), 4.6, Color(0.68, 0.8, 0.72), 0.02],
+}
+
+func _tree_kind(look: String, wood: bool, r: float) -> String:
+	if look == "north":
+		if wood:
+			return "spruce" if r < 0.68 else ("birch" if r < 0.82 else ("maple" if r < 0.93 else "oak"))
+		return "maple" if r < 0.42 else ("spruce" if r < 0.62 else ("birch" if r < 0.78 else "oak"))
+	if wood:
+		return "pine" if r < 0.45 else ("cypress" if r < 0.6 else ("olive" if r < 0.8 else "round"))
+	var table := [["ficus", 0.24], ["acacia", 0.42], ["round", 0.6], ["olive", 0.67], ["cypress", 0.72],
+		["pine", 0.78], ["date", 0.9], ["fan", 1.0]]
+	for t: Array in table:
+		if r < float(t[1]):
+			return t[0]
+	return "round"
+
+## a crown of a few overlapping low spheres, lumpier than one ball
+func _blob_mesh(blobs: Array, m: Material) -> ArrayMesh:
+	var sph := SphereMesh.new()
+	sph.radius = 1.0
+	sph.height = 2.0
+	sph.radial_segments = 7
+	sph.rings = 3
+	var arr := sph.get_mesh_arrays()
+	var sv: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var sn: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
+	var si: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+	var b := Buf.new()
+	for bl: Array in blobs:
+		var c: Vector3 = bl[0]
+		var r: float = bl[1]
+		for i in range(0, si.size(), 3):
+			var n := (sn[si[i]] + sn[si[i + 1]] + sn[si[i + 2]]).normalized()
+			b.tri(c + sv[si[i]] * r, c + sv[si[i + 1]] * r, c + sv[si[i + 2]] * r, n, Color.WHITE)
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, b.arrays())
+	am.surface_set_material(0, m)
+	return am
 
 ## Israeli roofs: solar water heaters ("dud shemesh"), a tilted panel facing south with
 ## its white tank behind, one to a handful per block depending on its size
@@ -2700,10 +2767,7 @@ func _build_parked() -> void:
 	var cols: Array = []
 	var xf_by := {"sedan": [], "hatch": [], "suv": [], "van": []}
 	var cols_by := {"sedan": [], "hatch": [], "suv": [], "van": []}
-	var palette := [Palette.col("ink"), Palette.col("ink").lerp(Palette.col("bg_alt"), 0.35),
-		Palette.col("bg_alt").lerp(Palette.col("ink"), 0.3), Palette.col("bg").lerp(Palette.col("bg_alt"), 0.5),
-		Palette.col("player").lerp(Palette.col("bg"), 0.5), Palette.col("hazard").lerp(Palette.col("bg"), 0.3),
-		Palette.col("ink"), Palette.col("ink").lerp(Palette.col("bg_alt"), 0.2)]
+	var palette := _car_paints()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(_city_name) + 11
 	var crossings := {}
@@ -2756,6 +2820,19 @@ func _build_parked() -> void:
 		if not (xf_by[kind] as Array).is_empty():
 			_chunked(_parked_mesh(kind), xf_by[kind], 160.0, cols_by[kind], null, true, true)
 	_dressing["parked"] = xf.size()
+
+## car colours as Israeli streets have them (and Canadian ones are not far off): mostly
+## white, silver, grey and black, now and then a blue, a red or a beige
+func _car_paints() -> Array:
+	var ink := Palette.col("ink")
+	var bg := Palette.col("bg")
+	var alt := Palette.col("bg_alt")
+	var white := ink
+	var silver := ink.lerp(alt, 0.32)
+	var grey := alt.lerp(ink, 0.22)
+	var black := bg.lerp(alt, 0.35)
+	return [white, white, white, white, silver, silver, silver, grey, grey, black, black,
+		Palette.col("player").lerp(bg, 0.55), Palette.col("hazard").lerp(bg, 0.4), Palette.col("warn").lerp(ink, 0.5).lerp(alt, 0.2)]
 
 ## parked cars and traffic: mostly sedans and hatchbacks, some SUVs, the odd van
 const CAR_MIX := ["sedan", "sedan", "sedan", "hatch", "hatch", "hatch", "suv", "suv", "van"]
@@ -4296,6 +4373,7 @@ func _start_on(street: String, cross: String) -> bool:
 func _physics_process(dt: float) -> void:
 	_prev_pos = _pos   # where the car was at the last tick, for _frame() to blend from
 	_prev_yaw = _yaw
+	_prev_y = _y
 	if not _loaded or finished or _picker != null:
 		return   # the address picker is open: the world waits
 	_signals_tick(dt)
@@ -4334,7 +4412,8 @@ func _frame() -> void:
 	var f := Engine.get_physics_interpolation_fraction()
 	_view_pos = _prev_pos.lerp(_pos, f)
 	_view_yaw = lerp_angle(_prev_yaw, _yaw, f)
-	_pose_car(_view_pos, _view_yaw)
+	_view_y = lerpf(_prev_y, _y, f)
+	_pose_car(_view_pos, _view_yaw, _view_y)
 	_traffic.draw(f)
 	_camera(dt, _view_pos, _view_yaw)
 	_tick_hud()
@@ -4404,6 +4483,13 @@ func _watch_fps(dt: float) -> void:
 ## after a jump (the start, "back on the road"): no blending from where it was, camera
 ## straight behind
 func _snap_pose() -> void:
+	_air = false
+	_y = _h(_pos)
+	_vy = 0.0
+	_spin = 0.0
+	_ground_was = _y
+	_prev_y = _y
+	_view_y = _y
 	_prev_pos = _pos
 	_prev_yaw = _yaw
 	_view_pos = _pos
@@ -4554,6 +4640,9 @@ func _drive(dt: float, throttle: float, brake: float, steer: float) -> void:
 	_throttle_in = throttle
 	var v := _v
 	var f := 0.0
+	if _air:
+		throttle = 0.0   # wheels in the air: the engine just revs
+		brake = 0.0
 	if _gear > 0:
 		f = throttle * minf(ENGINE_F, POWER / maxf(absf(v), 0.1))
 	elif v > -REVERSE_MAX:
@@ -4561,7 +4650,7 @@ func _drive(dt: float, throttle: float, brake: float, steer: float) -> void:
 	var resist := DRAG * v * absf(v) + ROLL * signf(v)
 	if throttle <= 0.01:
 		resist += ENGINE_BRAKE * signf(v)
-	if _hnx > 0:   # gravity along the road: uphill slows you, downhill pulls
+	if _hnx > 0 and not _air:   # gravity along the road: uphill slows you, downhill pulls
 		var fwd0 := _fwd()
 		_slope = atan2(_h(_pos + fwd0 * 1.4) - _h(_pos - fwd0 * 1.4), 2.8)
 		resist += MASS * 9.81 * sin(_slope)
@@ -4578,8 +4667,10 @@ func _drive(dt: float, throttle: float, brake: float, steer: float) -> void:
 	var want := _v * tan(_steer) / WHEELBASE
 	var cap := GRIP / maxf(absf(_v), 1.0)
 	want = clampf(want, -cap, cap)
-	_yaw_rate = lerpf(_yaw_rate, want, 1.0 - exp(-dt * 10.0))
-	_yaw = wrapf(_yaw + _yaw_rate * dt, -PI, PI)
+	if not _air:   # no steering in the air: it keeps the turn it took off with
+		_yaw_rate = lerpf(_yaw_rate, want, 1.0 - exp(-dt * 10.0))
+	_spin *= exp(-dt * 2.2)
+	_yaw = wrapf(_yaw + (_yaw_rate + _spin) * dt, -PI, PI)
 	_v_lat *= exp(-dt * 5.0)
 	var fwd := _fwd()
 	var right := Vector2(-fwd.y, fwd.x)
@@ -4589,10 +4680,53 @@ func _drive(dt: float, throttle: float, brake: float, steer: float) -> void:
 	if not edge.has_point(_pos):
 		_pos = _pos.clamp(edge.position, edge.end)
 		_v *= 0.5
+	_fly(dt)
 	_place_car(dt)
 
+## up and down: on the ground the car rides it; over a crest the ground can fall away
+## faster than the car comes down, and then it flies, with a little lift for the fun of it,
+## and lands with a thump (and a bounce if it came down hard)
+func _fly(dt: float) -> void:
+	var ground := _h(_pos)
+	var gv := (ground - _ground_was) / maxf(dt, 0.001)   # the ground's own rise or fall, under the car
+	_ground_was = ground
+	if _air:
+		_vy -= AIR_G * dt
+		_y += _vy * dt
+		if _y <= ground:
+			var hit := gv - _vy   # how fast it met the ground
+			_y = ground
+			if hit > 5.0:
+				_vy = gv + hit * 0.3   # a hard landing bounces
+				_crash(hit * 0.8)
+				_pitch = clampf(_pitch + 0.08, -0.15, 0.15)
+			else:
+				_air = false
+				_vy = gv
+				if hit > 2.0:
+					shake3d(hit * 0.5)
+					Audio.play("impact_soft", 0.1, -4.0)
+					Probe.event("landed", {"kmh": int(_v * 3.6), "hit": snappedf(hit, 0.1)})
+				_pitch = clampf(_pitch + hit * 0.012, -0.1, 0.1)   # the nose dips onto its springs
+		return
+	if _vy - gv > LIFTOFF and absf(_v) > 7.0:
+		_air = true
+		_vy = _vy * 1.1 + 0.6
+		_y = ground
+		Probe.event("airborne", {"kmh": int(_v * 3.6)})
+		return
+	_y = ground
+	_vy = lerpf(_vy, gv, 0.5)
+
+## knocked off the ground (a hard hit): up it goes, a little
+func _hop(up: float) -> void:
+	if not _air:
+		_air = true
+		_y = _h(_pos)
+	_vy = maxf(_vy, up)
+
 func _place_car(dt: float) -> void:
-	_pose_car(_pos, _yaw)
+	_pose_car(_pos, _yaw, _y)
 	var k := 1.0 - exp(-dt * 6.0)
 	_roll = lerpf(_roll, clampf(-_v * _yaw_rate * 0.006, -0.07, 0.07), k)
 	_pitch = lerpf(_pitch, clampf(-_a_long * 0.005, -0.05, 0.05), k)
@@ -4604,9 +4738,12 @@ func _place_car(dt: float) -> void:
 
 ## the car's body where the map says, sitting on the slope: nose up a hill, leaning across
 ## a camber
-func _pose_car(p: Vector2, yaw: float) -> void:
-	_car.position = Vector3(p.x, _h(p), p.y)
+func _pose_car(p: Vector2, yaw: float, y := NAN) -> void:
+	_car.position = Vector3(p.x, _h(p) if is_nan(y) else maxf(y, _h(p)), p.y)
 	_car.rotation.y = PI * 0.5 - yaw
+	if _air:   # in the air the nose follows the flight
+		_car.rotation.x = lerp_angle(_car.rotation.x, -atan2(_vy, maxf(absf(_v), 3.0)) * 0.8, 0.15)
+		return
 	if _hnx > 0:
 		var fwd := Vector2(cos(yaw), sin(yaw))
 		var side := Vector2(-fwd.y, fwd.x)
@@ -4925,6 +5062,8 @@ func _clear_lane(p: Vector2, d: Vector2, lane: float) -> Vector2:
 func _collide() -> void:
 	var fwd := _fwd()
 	var total := Vector2.ZERO
+	var at_front := Vector2.ZERO
+	var at_back := Vector2.ZERO
 	# a few passes: out of a wall can be into a tree, and one push each left the car
 	# jittering between the two, stuck
 	for _pass in range(3):
@@ -4935,6 +5074,10 @@ func _collide() -> void:
 				total += p
 				_pos += p
 				moved = true
+				if off > 0.0:
+					at_front += p
+				else:
+					at_back += p
 		if not moved:
 			break
 	if total == Vector2.ZERO:
@@ -4949,6 +5092,13 @@ func _collide() -> void:
 		# a real knock bounces a little; leaning on a wall at walking pace does not (the
 		# bounce back and push in again was a judder that held the car there)
 		vel -= n * vn * (1.0 + (BOUNCE if impact > 2.0 else 0.0))
+		# a bit more game than real: a knock off one end spins the car, and a hard one
+		# lifts it off the ground
+		if impact > 2.0:
+			var lever := (at_front - at_back).dot(right) / maxf(at_front.length() + at_back.length(), 0.001)
+			_spin = clampf(_spin + lever * impact * 0.18, -3.0, 3.0)
+		if impact > 7.0:
+			_hop(minf(impact * 0.18, 3.2))
 		# scraping along it: the harder it hit, the more speed the scrape takes, so a
 		# glancing touch slides on and a head-on stops. (It used to lose 6% every tick in
 		# contact, which glued the car to anything it touched.)
@@ -4958,7 +5108,7 @@ func _collide() -> void:
 		if _last_hit.begins_with("car "):
 			_traffic.bumped(int(_last_hit.substr(4)))
 	_v = vel.dot(fwd)
-	_v_lat = clampf(vel.dot(right), -4.0, 4.0)
+	_v_lat = clampf(vel.dot(right), -7.0, 7.0)
 
 func _crash(speed: float) -> void:
 	if speed < 1.2 or _crash_cool > 0.0:
@@ -5093,7 +5243,7 @@ func _camera(dt: float, p: Vector2, yaw: float) -> void:
 	var clear := _clear_behind(p, -back, want)
 	_cam_dist = clear if clear < _cam_dist else lerpf(_cam_dist, clear, 1.0 - exp(-dt * 1.5))
 	var d := _cam_dist
-	var gy := _h(p)
+	var gy := _h(p) + maxf(_view_y - _h(p), 0.0) * 0.8   # up with the car when it flies
 	var eye2 := p - back * d
 	var eye := Vector3(eye2.x, maxf(gy + 2.0 + d * 0.14, _h(eye2) + 1.4), eye2.y)
 	var ahead := p + back * 4.0
