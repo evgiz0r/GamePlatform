@@ -316,6 +316,7 @@ var _banner_tw: Tween
 var _osm_lbl: Label
 var _loaded := false
 var _touch_seen := false
+var _woke := false
 var _stick_id := -1                  ## the touch that owns the stick; -1 when no thumb is down
 var _stick := Vector2.ZERO           ## its deflection, inside the unit circle
 var _sfx_was := 0.8
@@ -341,6 +342,7 @@ func start(_config: Dictionary) -> void:
 	SaveData.data["volume_sfx"] = SFX_SCALE
 	set_lives(0)
 	_touch_seen = DisplayServer.is_touchscreen_available()   # phones get the stick hint at once
+	_keep_screen_on(true)
 	_make_font()
 	_tones()
 	var t0 := Time.get_ticks_msec()
@@ -365,6 +367,34 @@ func start(_config: Dictionary) -> void:
 
 func _exit_tree() -> void:
 	SaveData.data["volume_sfx"] = _sfx_was
+	_keep_screen_on(false)
+
+## Watching autodrive means nobody touches the phone, and phones dim and lock. Natively
+## Godot can hold the screen on; in a browser that is the Screen Wake Lock API, which the
+## page must ask for while visible, again after the tab comes back (the browser drops the
+## lock when it is hidden), and on some browsers only after a tap.
+const WAKE_JS := """
+window.__streetsWake = window.__streetsWake || (function () {
+  var lock = null, want = false;
+  function grab() {
+    if (!want || lock || document.visibilityState !== 'visible' || !('wakeLock' in navigator)) return;
+    navigator.wakeLock.request('screen').then(function (l) {
+      lock = l;
+      l.addEventListener('release', function () { lock = null; });
+    }).catch(function () {});
+  }
+  document.addEventListener('visibilitychange', grab);
+  return {
+    start: function () { want = true; grab(); },
+    stop: function () { want = false; if (lock) { lock.release(); lock = null; } }
+  };
+})();
+"""
+
+func _keep_screen_on(on: bool) -> void:
+	DisplayServer.screen_set_keep_on(on)
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval(WAKE_JS + ("window.__streetsWake.start();" if on else "window.__streetsWake.stop();"), true)
 
 ## ---- loading the city ---------------------------------------------------------------
 
@@ -2662,6 +2692,9 @@ func _input(event: InputEvent) -> void:
 		return
 	if event is InputEventScreenTouch:
 		var t := event as InputEventScreenTouch
+		if t.pressed and not _woke:   # some browsers grant the wake lock only after a tap
+			_woke = true
+			_keep_screen_on(true)
 		_touch_seen = true
 		if t.pressed:
 			if AUTO_BTN.grow(4).has_point(t.position) or GOTO_BTN.grow(4).has_point(t.position) \
