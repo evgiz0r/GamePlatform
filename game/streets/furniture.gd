@@ -423,10 +423,12 @@ func retint() -> void:
 
 ## ---- everything else, built after the places ------------------------------------------------
 func build() -> void:
-	flags()
-	ads()
-	fences()
-	street_life()
+	var t := Time.get_ticks_msec()
+	for step: Callable in [flags, ads, fences, street_life]:
+		step.call()
+		var now := Time.get_ticks_msec()
+		_count["ms_" + step.get_method()] = now - t
+		t = now
 	for k: String in _count:
 		g._dressing[k] = _count[k]
 
@@ -706,19 +708,21 @@ func fences() -> void:
 	var metres := {"fence": 0.0, "railing": 0.0, "hedge": 0.0}
 	for kind: String in ["pitch", "school"]:
 		for ring: PackedVector2Array in g._area_rings.get(kind, []):
-			if g._area(ring) < 150.0:
-				continue
+			var area: float = g._area(ring)
+			if area < 150.0 or (kind == "pitch" and area > 25000.0):
+				continue   # (a whole sports park is not fenced round, its pitches are)
 			var H := 3.2 if kind == "pitch" else 2.1
 			for i in range(ring.size()):
 				var a := ring[i]
 				var e := ring[(i + 1) % ring.size()]
-				var got := _fence_line(green, posts, a, e, H, fence_col, 2.6)
+				var got := _fence_line(green, posts, a, e, H, fence_col, 2.6, false, 2)
 				if got > 0.0:
 					_mark("fence", (a + e) * 0.5)
 				metres["fence"] += got
 	for ring: PackedVector2Array in g._area_rings.get("park", []):
-		if g._area(ring) < 200.0:
-			continue
+		var parea: float = g._area(ring)
+		if parea < 200.0 or parea > 40000.0:
+			continue   # a city park, not a big open one: those are not railed round
 		for i in range(ring.size()):
 			var a := ring[i]
 			var e := ring[(i + 1) % ring.size()]
@@ -729,10 +733,10 @@ func fences() -> void:
 			if hit.is_empty():
 				continue   # only the sides along a street
 			var pick := _rnd(Vector2i((mid * 2.0).round()))
-			if med and pick < 0.45:
-				metres["railing"] += _fence_line(white, rails, a, e, 1.05, rail_col, 2.0, true)
+			if med and pick < 0.3:
+				metres["railing"] += _fence_line(white, rails, a, e, 1.05, rail_col, 2.4, true, 2)
 				_mark("railing", mid)
-			elif pick < (0.85 if med else 0.4):
+			elif pick < (0.55 if med else 0.35):
 				metres["hedge"] += _hedge_line(hedge, a, e)
 				_mark("hedge", mid)
 	var k := 1.0 / float(g._city_data.get("scale", 10))
@@ -746,7 +750,7 @@ func fences() -> void:
 				metres["hedge"] += _hedge_line(hedge, a, e)
 			elif kind == "fence":
 				if med:
-					metres["fence"] += _fence_line(green, posts, a, e, 1.8, fence_col, 2.5)
+					metres["fence"] += _fence_line(green, posts, a, e, 1.8, fence_col, 2.5, false, 2)
 				else:
 					# Bedford's mapped fences are mostly chain-link: along the highway, round
 					# yards and lots (tens of kilometres of them, so a post every other piece)
@@ -779,13 +783,26 @@ func _open_pieces(a: Vector2, e: Vector2, step: float) -> Array:
 	var L := a.distance_to(e)
 	var n := maxi(1, int(ceil(L / step)))
 	var out: Array = []
-	for i in range(n):
-		var p0 := a.lerp(e, float(i) / n)
-		var p1 := a.lerp(e, float(i + 1) / n)
-		var m := (p0 + p1) * 0.5
-		if g._off_road(m, 0.2) and g._push_out(m, 0.15, false, false) == Vector2.ZERO:
-			out.append([p0, p1])
+	# a run of about 8 m whose ends and middle are all clear is taken whole; only a run
+	# that touches a road or a building is looked at piece by piece (a school's fence is
+	# kilometres of the first kind)
+	var per := maxi(1, int(8.0 / maxf(L / n, 0.1)))
+	var i := 0
+	while i < n:
+		var j := mini(i + per, n)
+		var q0 := a.lerp(e, float(i) / n)
+		var q1 := a.lerp(e, float(j) / n)
+		var whole := j - i > 1 and _clear_at(q0) and _clear_at(q1) and _clear_at((q0 + q1) * 0.5)
+		for k in range(i, j):
+			var p0 := a.lerp(e, float(k) / n)
+			var p1 := a.lerp(e, float(k + 1) / n)
+			if whole or _clear_at((p0 + p1) * 0.5):
+				out.append([p0, p1])
+		i = j
 	return out
+
+func _clear_at(m: Vector2) -> bool:
+	return g._off_road(m, 0.2) and g._push_out(m, 0.15, false, false) == Vector2.ZERO
 
 ## a see-through panel H high from a to e (the shader draws the bars), a post every
 ## `post_every` pieces of about `step` metres
@@ -807,8 +824,13 @@ func _fence_line(panel, posts, a: Vector2, e: Vector2, H: float, col: Color, ste
 		var u2 := Vector2(H, 0)
 		panel.tri(A, B, B + up, n, col, Vector2(run, 0), Vector2(run + L, 0), Vector2(run + L, H), u2)
 		panel.tri(A, B + up, A + up, n, col, Vector2(run, 0), Vector2(run + L, H), Vector2(run, H), u2)
-		if i % post_every == 0:
-			_box(posts, A + Vector3(0, H * 0.5, 0), Vector3(0.06, H, 0.06), col)
+		if i % post_every == 0:   # a post: four sides, no ends (nobody sees its top)
+			for f: Array in [[Vector3(0.03, 0, 0), Vector3(0, 0, 0.03)], [Vector3(-0.03, 0, 0), Vector3(0, 0, 0.03)],
+					[Vector3(0, 0, 0.03), Vector3(0.03, 0, 0)], [Vector3(0, 0, -0.03), Vector3(0.03, 0, 0)]]:
+				var o: Vector3 = A + f[0]
+				var u: Vector3 = f[1]
+				posts.tri(o - u, o + u, o + u + up, (f[0] as Vector3).normalized(), col)
+				posts.tri(o - u, o + u + up, o - u + up, (f[0] as Vector3).normalized(), col)
 		i += 1
 		if rail:   # a solid round top rail on a railing
 			_tube(posts, A + up, B + up, 0.035, 0.035, col, 4)
@@ -820,7 +842,7 @@ func _fence_line(panel, posts, a: Vector2, e: Vector2, H: float, col: Color, ste
 func _hedge_line(buf, a: Vector2, e: Vector2) -> float:
 	var done := 0.0
 	var col := Color.WHITE
-	for pc: Array in _open_pieces(a, e, 1.5):
+	for pc: Array in _open_pieces(a, e, 2.5):
 		var p0: Vector2 = pc[0]
 		var p1: Vector2 = pc[1]
 		var d := (p1 - p0).normalized()

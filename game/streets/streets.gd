@@ -20,6 +20,7 @@ extends GameMode3D
 const LEVELS := [
 	{"name": "Givatayim", "city": "givatayim", "start": ["המרי", "שיינקין"], "look": "med"},
 	{"name": "Bedford, Nova Scotia", "city": "bedford", "look": "north"},
+	{"name": "Ashdod", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -145,7 +146,13 @@ render_mode cull_back;
 uniform vec4 wall_a : source_color;
 uniform vec4 wall_b : source_color;
 uniform vec4 wall_c : source_color;
+uniform vec4 wall_d : source_color;   // yellow plaster
+uniform vec4 wall_e : source_color;   // peach plaster
+uniform vec4 wall_f : source_color;   // grey render
 uniform vec4 glass : source_color;
+uniform vec4 glass_b : source_color;  // a tower's tinted glass: blue, green, silver
+uniform vec4 glass_c : source_color;
+uniform vec4 glass_d : source_color;
 uniform vec4 shutter : source_color;
 uniform vec4 dark : source_color;
 uniform vec4 lit : source_color;      // a lit room, at night
@@ -155,7 +162,12 @@ uniform float siding = 0.0;           // northern houses: clapboard, white-frame
 uniform vec4 trim : source_color;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 void fragment() {
-	vec3 base = mix(mix(wall_a.rgb, wall_b.rgb, COLOR.g), wall_c.rgb, COLOR.a) * COLOR.r;
+	// COLOR.g picks the plaster (0 plain, then a pastel, yellow, peach, grey), COLOR.a how
+	// far toward beige stone; a tinted plaster takes less of the stone
+	float tk = floor(COLOR.g * 4.0 + 0.5);
+	vec3 plaster = tk < 0.5 ? wall_a.rgb : (tk < 1.5 ? wall_b.rgb : (tk < 2.5 ? wall_d.rgb : (tk < 3.5 ? wall_e.rgb : wall_f.rgb)));
+	vec3 base = mix(plaster, wall_c.rgb, COLOR.a * (tk < 0.5 ? 1.0 : 0.3)) * COLOR.r;
+	vec3 tower = tk < 0.5 ? glass.rgb : (tk < 1.5 ? glass_b.rgb : (tk < 2.5 ? glass_c.rgb : (tk < 3.5 ? glass_d.rgb : glass.rgb * 0.8)));
 	float style = floor(COLOR.b * 3.99);
 	float along = UV.x;
 	float up = UV.y;
@@ -229,7 +241,7 @@ void fragment() {
 			}
 		} else {
 			if (fx > 0.04 && fx < 0.96 && fy > 0.08 && fy < 0.96) {
-				col = glass.rgb * (0.85 + 0.3 * r1);
+				col = tower * (0.85 + 0.3 * r1);
 				rough = 0.12;
 				emit = r3 < 0.3 ? lit_cool.rgb * (0.7 + 0.3 * r2) : vec3(0.0);
 			}
@@ -1475,7 +1487,15 @@ func _build_buildings() -> void:
 		var roofs: Buf = chunks[key][1]
 		var hsh := _hash_i(ring[0])
 		var bright := 0.84 + 0.18 * float(posmod(hsh, 7)) / 6.0
-		var tint := 0.4 if posmod(hsh >> 3, 6) == 0 else 0.0
+		# the plaster: mostly white, cream and stone; some pastel, yellow, peach or grey
+		# (Bedford's clapboard comes in more colours)
+		var pick := posmod(hsh >> 3, 100)
+		var tk := 0
+		if north:
+			tk = 0 if pick < 34 else (1 if pick < 48 else (2 if pick < 62 else (3 if pick < 76 else 4)))
+		else:
+			tk = 0 if pick < 54 else (1 if pick < 62 else (2 if pick < 74 else (3 if pick < 84 else 4)))
+		var tint := float(tk) / 4.0
 		var stone := float(posmod(hsh >> 5, 5)) * 0.18   # 0 white .. 0.72 beige stone
 		var rel := float(bd["_h"])
 		var style: int = 3 if rel > 32.0 else (0 if rel < 10.0 else [0, 0, 0, 0, 1, 1, 1, 2, 0, 1][posmod(hsh >> 7, 10)])
@@ -1582,6 +1602,7 @@ func _build_facade_kit() -> void:
 	var north := String(_place.get("look", "")) == "north"
 	var kit := {"balcony": [], "column": [], "canopy": [], "porch": [], "post": []}
 	var kit_col := {"balcony": [], "column": [], "canopy": [], "porch": [], "post": []}
+	var encl: Array = [[], []]   # balconies closed in, shutters a little or a lot down
 	var acs: Array = []
 	var plates: Array = []
 	var bi := -1
@@ -1634,6 +1655,10 @@ func _build_facade_kit() -> void:
 							var p := at + out * 0.62
 							kit["balcony"].append(Transform3D(face, Vector3(p.x, g_lo + lv * 3.0, p.y)))
 							kit_col["balcony"].append(wc)
+							# a third of them closed in, the Israeli way: glass above the parapet
+							# and a roller shutter part-way down
+							if med and posmod(hsh >> (sk * 7 + lv * 3 + 2), 100) < 34:
+								(encl[posmod(hsh >> (lv + 1), 2)] as Array).append(Transform3D(face, Vector3(p.x, g_lo + lv * 3.0, p.y)))
 							# now and then a flag hung over the parapet
 							if posmod(hsh >> (sk * 5 + lv), 29) == 0 and String(_place.get("look", "")) == "med":
 								_balcony_flags.append(Transform3D(face, Vector3(p.x, g_lo + lv * 3.0 + 1.02, p.y) + face * Vector3(0, 0, 0.67)))
@@ -1695,6 +1720,10 @@ func _build_facade_kit() -> void:
 	for k: String in kit:
 		if not (kit[k] as Array).is_empty():
 			_chunked(meshes[k], kit[k], ranges[k], kit_col[k], tinted, k != "post")
+	for v in range(2):
+		if not (encl[v] as Array).is_empty():
+			_chunked(_enclosure_mesh(v), encl[v], 230.0, [], tinted)
+	_dressing["closed_balconies"] = (encl[0] as Array).size() + (encl[1] as Array).size()
 	if not _mall_glass.is_empty():
 		_chunked(_boxm(Vector3.ONE), _mall_glass, 400.0, [], _shop_glass())
 	if not acs.is_empty():
@@ -1784,6 +1813,38 @@ func _longest_edge(ring: PackedVector2Array, sgn: float) -> Array:
 			pick = [a, b, Vector2(b.y - a.y, a.x - b.x).normalized() * sgn]
 	return pick
 
+## a balcony closed in, over the parapet of _balcony_mesh: a band of glass in white frames
+## up to the slab above, and a roller shutter down over it -- `v` 0 a little, 1 most of the
+## way. Its colours are its own (vertex colours), not the wall's.
+func _enclosure_mesh(v: int) -> ArrayMesh:
+	var b := Buf.new()
+	var glass: Color = _tone["glass"].darkened(0.15)
+	var shutter: Color = _tone["shutter"]
+	var frame: Color = _tone["mark"]
+	var lo := 1.0
+	var hi := 2.82
+	var drop := 0.28 if v == 0 else 0.72
+	var cut := hi - (hi - lo) * drop   # where the shutter's bottom edge is
+	var panel := func(a: Vector3, e: Vector3, y0: float, y1: float, n: Vector3, col: Color) -> void:
+		b.tri(Vector3(a.x, y0, a.z), Vector3(e.x, y0, e.z), Vector3(e.x, y1, e.z), n, col)
+		b.tri(Vector3(a.x, y0, a.z), Vector3(e.x, y1, e.z), Vector3(a.x, y1, a.z), n, col)
+	# the front and the two sides
+	var faces := [[Vector3(-1.35, 0, 0.62), Vector3(1.35, 0, 0.62), Vector3.BACK],
+		[Vector3(-1.35, 0, -0.62), Vector3(-1.35, 0, 0.62), Vector3.LEFT],
+		[Vector3(1.35, 0, 0.62), Vector3(1.35, 0, -0.62), Vector3.RIGHT]]
+	for f: Array in faces:
+		panel.call(f[0], f[1], lo, cut, f[2], glass)
+		panel.call(f[0], f[1], cut, hi, f[2], shutter)
+		panel.call(f[0] + (f[2] as Vector3) * 0.01, f[1] + (f[2] as Vector3) * 0.01, cut - 0.05, cut, f[2], frame)
+		panel.call(f[0] + (f[2] as Vector3) * 0.01, f[1] + (f[2] as Vector3) * 0.01, lo, lo + 0.05, f[2], frame)
+	# the window mullions on the front
+	for x: float in [-0.45, 0.45]:
+		b.tri(Vector3(x - 0.03, lo, 0.635), Vector3(x + 0.03, lo, 0.635), Vector3(x + 0.03, cut, 0.635), Vector3.BACK, frame)
+		b.tri(Vector3(x - 0.03, lo, 0.635), Vector3(x + 0.03, cut, 0.635), Vector3(x - 0.03, cut, 0.635), Vector3.BACK, frame)
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, b.arrays())
+	return am
+
 ## a balcony, local +Z out of the wall: a slab and a solid parapet round its three sides
 func _balcony_mesh() -> ArrayMesh:
 	var b := Buf.new()
@@ -1824,10 +1885,9 @@ func _street_edge(ring: PackedVector2Array, sgn: float) -> Array:
 
 ## the colour the facade shader gives a building's walls, for things stuck on them
 func _wall_rgb(bright: float, tint: float, stone: float) -> Color:
-	var wa: Color = _tone["wall"]
-	var wb: Color = _tone["wall2"]
-	var wc: Color = _tone["wall3"]
-	var c := wa.lerp(wb, tint).lerp(wc, stone)
+	var tk := int(round(tint * 4.0))
+	var plaster: Color = _tone[["wall", "wall2", "wall4", "wall5", "wall6"][clampi(tk, 0, 4)]]
+	var c := plaster.lerp(_tone["wall3"], stone * (1.0 if tk == 0 else 0.3))
 	return Color(c.r * bright, c.g * bright, c.b * bright)
 
 ## a block on columns: the floors above start at `lift`; under them, a walled-in core set
@@ -3181,7 +3241,9 @@ func _palm_fronds(leaf: Material) -> ArrayMesh:
 ## asked: the shadow map draws every caster again.
 func _chunked(mesh: Mesh, xforms: Array, range_end: float, colours: Array = [], m: Material = null, shadows := false,
 		custom := false) -> void:
-	var cell := clampf(range_end * 0.6, 140.0, CHUNK)
+	# a square about as big as the range: little things (signs, posts, racks) seen 100-150 m
+	# off in 140 m squares were a dozen draws a kind, and a big city tens of thousands of nodes
+	var cell := clampf(range_end, 220.0, CHUNK)
 	var groups := {}
 	for i in range(xforms.size()):
 		var t: Transform3D = xforms[i]
@@ -3358,7 +3420,8 @@ func _build_signals() -> void:
 ## a lit shopfront on the street side of each shop's building, and its name above it
 func _build_pois() -> void:
 	var k := 1.0 / float(_city_data.get("scale", 10))
-	var front := {"glass": [], "post": [], "beam": []}   ## shop windows and their frames
+	var front := {"glass": [], "post": [], "beam": [], "shutter": []}   ## shop windows and their frames
+	var board_cols: Array = []       ## each sign board's colour: dark, white, the shop's, cream
 	var awnings := {}                ## colour role -> awning transforms
 	var crosses: Array = []          ## pharmacy crosses, sticking out from the wall
 	var canopy := {"roof": [], "pillar": [], "pump": [], "band": []}   ## gas stations
@@ -3406,9 +3469,13 @@ func _build_pois() -> void:
 			for sgn: float in [-1.0, 1.0]:
 				front["post"].append(Transform3D(b, at3.call(pos + along * 1.56 * wide * sgn, 0.08, 1.3)))
 			var hue: String = role if kind != "shop" and sub == "" else AWNINGS[posmod(_hash_i(at), AWNINGS.size())]
-			if not awnings.has(hue):
-				awnings[hue] = []
-			(awnings[hue] as Array).append(Transform3D(b * Basis(Vector3.RIGHT, 0.33) * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.72, 2.9)))
+			var look_k := posmod(_hash_i(at) >> 4, 100)
+			if look_k >= 28:   # most have an awning; some just the sign over the window
+				if not awnings.has(hue):
+					awnings[hue] = []
+				(awnings[hue] as Array).append(Transform3D(b * Basis(Vector3.RIGHT, 0.33) * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.72, 2.9)))
+			if look_k < 10 and kind.begins_with("shop"):   # shut: the roller shutter down
+				front["shutter"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.1, 1.3)))
 			if kind == "pharmacy":
 				crosses.append(Transform3D(b, at3.call(pos + along * (1.6 * wide + 0.5), 0.5, 3.2)))
 		if spot[2] and kind in ["cafe", "restaurant", "fast_food", "ice_cream", "bar", "pub"]:
@@ -3431,6 +3498,9 @@ func _build_pois() -> void:
 		var tw := _font.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, 64).x * 0.011
 		boards.append(Transform3D(Basis(Vector3.UP, face) * Basis.from_scale(Vector3(maxf(tw + 0.5, 2.0), 1.0, 1.0)),
 			Vector3(pos.x + n.x * 0.1, sy, pos.y + n.y * 0.1)))
+		var bk := posmod(_hash_i(at) >> 9, 100)
+		board_cols.append(_tone["board"] if bk < 45 else (_tone["mark"] if bk < 68 else
+			(Palette.col(role).lerp(Palette.col("bg"), 0.55) if bk < 86 else _tone["wall3"])))
 		sign.double_sided = false
 		sign.visibility_range_end = SIGN_RANGE
 		sign.set_meta("role", role)
@@ -3439,11 +3509,12 @@ func _build_pois() -> void:
 	if not boards.is_empty():
 		var plate := BoxMesh.new()
 		plate.size = Vector3(1.0, 0.95, 0.08)
-		var bm := _multi(plate, boards)
-		bm.material_override = _surface("board")
-		bm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		# no draw distance here: a multimesh is culled by the middle of its whole box, and
-		# the boards span the city, so they vanished anywhere away from the town centre
+		var bmat := StandardMaterial3D.new()
+		bmat.vertex_color_use_as_albedo = true   # each board's own colour (instance colour)
+		bmat.roughness = 0.7
+		# cut into squares like everything else (one multimesh across the city is culled by
+		# the middle of its box, and the boards vanished away from the town centre)
+		_chunked(plate, boards, SIGN_RANGE * 3.0, board_cols, bmat)
 	_terrace_meshes(terrace, shades)
 	_dressing["tables"] = (terrace["top"] as Array).size()
 	_dressing["shops"] = (front["glass"] as Array).size()
@@ -3457,6 +3528,10 @@ func _build_pois() -> void:
 	var beam := BoxMesh.new()
 	beam.size = Vector3(3.26, 0.2, 0.16)
 	_chunked(beam, front["beam"], r, [], _surface("cartrim"), false)
+	if not (front["shutter"] as Array).is_empty():
+		var shut := BoxMesh.new()
+		shut.size = Vector3(3.0, 2.4, 0.05)
+		_chunked(shut, front["shutter"], r, [], _surface("shutter"), false)
 	var awning := BoxMesh.new()
 	awning.size = Vector3(3.3, 0.14, 1.5)
 	for hue: String in awnings:
@@ -4661,6 +4736,12 @@ func _tones() -> void:
 		"wall": ink.lerp(wn, 0.1),
 		"wall2": ink.lerp(ac, 0.28),
 		"wall3": ink.lerp(wn, 0.38).lerp(alt, 0.06),
+		"wall4": ink.lerp(wn, 0.5).lerp(pz, 0.05),
+		"wall5": ink.lerp(Palette.col("hazard"), 0.2).lerp(wn, 0.18),
+		"wall6": ink.lerp(alt, 0.34),
+		"glass2": alt.lerp(pl, 0.55),
+		"glass3": alt.lerp(fr, 0.45),
+		"glass4": ink.lerp(alt, 0.45).lerp(pl, 0.1),
 		"glass": alt.lerp(pl, 0.3),
 		"shutter": ink.lerp(alt, 0.22),
 		"recess": alt.lerp(bg, 0.25),
@@ -4719,6 +4800,12 @@ func _retint_city() -> void:
 		_wall_mat.set_shader_parameter("wall_b", _tone["wall2"])
 		_wall_mat.set_shader_parameter("glass", _tone["glass"])
 		_wall_mat.set_shader_parameter("wall_c", _tone["wall3"])
+		_wall_mat.set_shader_parameter("wall_d", _tone["wall4"])
+		_wall_mat.set_shader_parameter("wall_e", _tone["wall5"])
+		_wall_mat.set_shader_parameter("wall_f", _tone["wall6"])
+		_wall_mat.set_shader_parameter("glass_b", _tone["glass2"])
+		_wall_mat.set_shader_parameter("glass_c", _tone["glass3"])
+		_wall_mat.set_shader_parameter("glass_d", _tone["glass4"])
 		_wall_mat.set_shader_parameter("shutter", _tone["shutter"])
 		_wall_mat.set_shader_parameter("dark", _tone["recess"])
 	if env != null:

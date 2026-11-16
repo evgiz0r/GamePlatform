@@ -22,7 +22,11 @@ streets
 
 Someone driving an ordinary car through their own town, on a sunny day, seen from just
 behind and above the car (a chase cam that swings out a little on the turns and pulls in
-rather than sit inside a wall).
+rather than sit inside a wall) -- or from the driver's seat (the "seat" button, or C):
+the dashboard, a steering wheel that turns with the front wheels, the pillars and the
+mirror, the eyes leading a little into the turns.
+
+> First-person / bonnet camera.
 
 ## What do you do?
 
@@ -92,11 +96,15 @@ lane, stopped, facing the way that has the address on the kerb side.
 
 > Besides go to, I want also jump to. It teleports there, instead of driving.
 
-**Places.** Entering the game asks where: Givatayim, or Bedford, Nova Scotia. Each place
-is one entry in `LEVELS` at the top of `streets.gd` (name, city file, starting corner).
+**Places.** Entering the game asks where: Givatayim; Bedford, Nova Scotia; or Ashdod
+(starting at Sderot Herzl and HeHalutzim, its busiest corner for shops). Each place is one
+entry in `LEVELS` at the top of `streets.gd` (name, city file, starting corner). Ashdod is
+three times Givatayim's size and takes longer to load (about 10 s here).
 
 > Lets make a menu where I pick a place we have. Starting with Givatayim. Can we add
 > Bedford, Nova Scotia.
+
+> Ashdod.
 
 The minimap (bottom left) shows the real streets and buildings round you, heading up, with
 the city limits in pink. The name of the street you are on is at the top, in Hebrew with
@@ -122,6 +130,20 @@ side street; between equals whoever gets there first, and a car turning across g
 to one going straight on. You always have the right of way. A car kept waiting too long
 creeps through, so a jam cannot lock for good. Hitting one is a crash like any other.
 They are not a physics simulation: each follows its lane at its own speed (`traffic.gd`).
+
+Not just cars: a couple of city buses (in the blue and green of Givatayim's companies,
+white in Bedford) keep to the main roads and pull in to the kerb at each bus stop on their
+side to stand a while; taxis carry the lit roof sign; scooters with their riders squeeze
+between two lanes past a queue. On a road with more than one lane each way, cars pick a
+lane, pull out to pass a slower car when the lane beside is clear, drift back right, and
+get into the right lane for the turn ahead (right lane to turn right, left to turn left).
+
+People wait at the zebra crossings and step out once whatever is coming can still stop;
+traffic and autodrive stop for anyone on a crossing. Drive at someone crossing and they
+hurry back to the kerb, and the game says so, like a red light.
+
+> More kinds of traffic (buses that stop at the stops, taxis, motorbikes weaving); people
+> crossing at zebras; multi-lane traffic that changes lanes and turns from the right lane.
 
 > Cars get really stuck at crossroads, they are struggling giving way and hitting each
 > other, as well in roundabouts.
@@ -185,6 +207,15 @@ houses have clapboard siding, white-framed windows, a porch on the street side a
 chimney. Which block gets what is chosen from its outline, so it is the same every time.
 A roof OSM puts on stilts (a petrol station canopy, a carport) stands on columns with a
 flat roof; it was getting a house's pitched roof, and flew.
+
+Walls are mostly white, cream and beige stone, with some blocks in yellow, peach, a pastel
+or grey render (Bedford's clapboard comes in more colours); glass towers are blue, green
+or silver. A third of Givatayim's balconies are closed in the Israeli way, glass above the
+parapet and a roller shutter part-way down it. Shops vary: dark, white, cream or coloured
+sign boards, an awning or none, now and then one shut behind its shutter.
+
+> More varied buildings: plaster colours, glass towers, shopfront variety, shutters on
+> balconies.
 
 **Landmarks.** A big named building (a mall, a tower, the cinema, a school) has its name
 in large letters along the top of its street side; a mall has glass shopfronts all along
@@ -300,15 +331,14 @@ contributors under the ODbL, which is why the credit sits on screen.
   solar heaters and rooms (Givatayim), pitched roofs on small houses (Bedford).
 - **Not there yet**: bridges and tunnels as such: roads at different levels are drawn
   on the ground, and tunnels are dropped (an interchange is flat; motorways and their slip
-  roads at least have no pavements or people along them). Traffic that changes lanes or
-  overtakes; pedestrians crossing the road.
+  roads at least have no pavements or people along them). People crossing anywhere but a
+  zebra.
 
 To make your own street more accurate, fix it on openstreetmap.org (building heights are
 the most useful thing to add) and bake again.
 
 ## Later (said, not built)
 
-- First-person / hood camera.
 - Bridges and tunnels: roads at different levels, an interchange you drive over and
   under.
 - Not just driving: the same baked city could be walked, or used by another game.
