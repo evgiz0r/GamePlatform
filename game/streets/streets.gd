@@ -356,6 +356,15 @@ var _signals: Array = []             ## per traffic-light group: {role -> MultiM
 var _sig_mats: Array = []            ## [group][0 red, 1 yellow, 2 green] materials
 var _sig_phase := 0
 var _sig_t := 0.0
+var _sig_set := {}                   ## graph node -> true, for each node with traffic lights
+var _sig_hash := {}                  ## the same nodes in a spatial hash
+var _light_odo := -1000.0            ## the odometer when the car last went through a light
+const LIGHT_SKIP := 45.0             ## lights this soon after one are the far side of the same junction
+
+## ---- traffic ----
+const Traffic := preload("res://game/streets/traffic.gd")
+var _traffic: Traffic = null
+var _ap_wait := 0.0                  ## autodrive held up by a car this long
 
 ## ---- look ----
 var _tone := {}
@@ -509,6 +518,9 @@ func start(_config: Dictionary) -> void:
 	_build_hud()
 	_retint_city()
 	_spawn_people()
+	_traffic = Traffic.new()
+	_traffic.setup(self)
+	_dressing["traffic"] = _traffic.alive_count()
 	_loaded = true
 	track3d(_car, "@")
 	Probe.event("city", {"name": _city_name, "roads": _roads.size(), "buildings": _blds.size(),
@@ -1829,6 +1841,9 @@ func _build_signals() -> void:
 			var r: Dictionary = _roads[e.x]
 			if not r["drive"]:
 				continue
+			if not _sig_set.has(node):
+				_sig_set[node] = true
+				_hash_add(_sig_hash, Rect2(c, Vector2.ZERO), SEG_CELL, node)
 			var pts: PackedVector2Array = r["pts"]
 			for d2: int in [-1, 1]:
 				var from := e.y + d2
@@ -2232,6 +2247,72 @@ func _signals_tick(dt: float) -> void:
 		_sig_phase = (_sig_phase + 1) % SIGNAL_CYCLE.size()
 		_apply_signals()
 
+## the car going through a junction with lights: note it (the far side's lights are the
+## same junction), and whether it went through on red
+var _reds := 0
+
+func _through_lights() -> void:
+	if _odo - _light_odo < LIGHT_SKIP or _v < 1.0:
+		return
+	for n: int in _near(_sig_hash, _pos, 16.0, SEG_CELL):
+		if _nodes[n].distance_to(_pos) > _node_r[n] + 2.5:
+			continue
+		_light_odo = _odo
+		if _light_at(n, _fwd()) == "r" and _v > 2.5:
+			_reds += 1
+			_show_banner("ran a red light", 1.8)
+			shake3d(1.5)
+			Probe.event("red_light", {"street": _on_name, "kmh": int(_v * 3.6), "auto": _auto})
+		return
+
+## autodrive: the first light on the planned lane that counts. Red: come to a stop at its
+## line. Amber: stop if there is room to, else through. The speed allowed now (INF: none).
+func _ap_light_v() -> float:
+	if _sig_set.is_empty() or _ap_pts.size() < 2:
+		return INF
+	var found: Array = []   # [along the lane, node, direction]
+	for n: int in _near(_sig_hash, _pos, 90.0, SEG_CELL):
+		var c := _nodes[n]
+		var base := -_ap_pts[0].distance_to(Geometry2D.get_closest_point_to_segment(_pos, _ap_pts[0], _ap_pts[1]))
+		for j in range(_ap_pts.size() - 1):
+			if base > 90.0:
+				break
+			var a := _ap_pts[j]
+			var b := _ap_pts[j + 1]
+			var cp := Geometry2D.get_closest_point_to_segment(c, a, b)
+			if cp.distance_to(c) < 4.5:
+				found.append([base + a.distance_to(cp), n, b - a])
+				break
+			base += a.distance_to(b)
+	if found.is_empty():
+		return INF
+	found.sort_custom(func(x, y): return x[0] < y[0])
+	var counted := -(_odo - _light_odo)   # where the last light went by, on the same scale
+	for f: Array in found:
+		var along: float = f[0]
+		if along - counted < LIGHT_SKIP:
+			continue
+		var n: int = f[1]
+		var stop := along - (_node_r[n] + 2.5)
+		if stop < -0.5:
+			return INF   # over the line already
+		var state := _light_at(n, f[2])
+		if state == "g":
+			return INF
+		if state == "y" and _v * _v > 2.0 * 3.0 * maxf(stop, 0.1):
+			return INF   # too late to stop on amber
+		return sqrt(2.0 * 2.6 * maxf(stop - 0.5, 0.0))
+	return INF
+
+## the light facing traffic that arrives at node `n` going `dir`: "g", "y" or "r", or ""
+## where there is none. The two groups are the streets running more east-west and those
+## running more north-south, as the lights are drawn.
+func _light_at(n: int, dir: Vector2) -> String:
+	if not _sig_set.has(n):
+		return ""
+	var step: Array = SIGNAL_CYCLE[_sig_phase]
+	return step[1 if absf(dir.x) >= absf(dir.y) else 2]
+
 func _apply_signals() -> void:
 	var step: Array = SIGNAL_CYCLE[_sig_phase]
 	var roles := ["hazard", "warn", "friend"]
@@ -2615,8 +2696,10 @@ func _physics_process(dt: float) -> void:
 		_set_auto(true)
 	elif PInput.just_pressed("action_b") and _auto:
 		_set_auto(false)
+	_traffic.tick(dt)
 	var ctl: Array = _autodrive(dt) if _auto else _manual(dt)
 	_drive(dt, ctl[0], ctl[1], ctl[2])
+	_through_lights()
 	_people_tick(dt)
 	_check_arrival(dt)
 	_explore(dt)
@@ -2641,6 +2724,7 @@ func _frame() -> void:
 	_view_pos = _prev_pos.lerp(_pos, f)
 	_view_yaw = lerp_angle(_prev_yaw, _yaw, f)
 	_pose_car(_view_pos, _view_yaw)
+	_traffic.draw(f)
 	_camera(dt, _view_pos, _view_yaw)
 	_tick_hud()
 
@@ -3068,6 +3152,8 @@ func _collide() -> void:
 		var along := vel - n * vel.dot(n)
 		vel -= along.limit_length(impact * WALL_GRIP)
 		_crash(impact)
+		if _last_hit.begins_with("car "):
+			_traffic.bumped(int(_last_hit.substr(4)))
 	_v = vel.dot(fwd)
 	_v_lat = clampf(vel.dot(right), -4.0, 4.0)
 
@@ -3107,6 +3193,11 @@ func _push_out(c: Vector2, r: float, posts: bool) -> Vector2:
 			if d.length() < need:
 				push += d.normalized() * (need - d.length()) if d.length() > 0.001 else Vector2(need, 0)
 				_last_hit = "post %d" % i
+		if _traffic != null:
+			var tp := _traffic.push(c + push, r)
+			if tp != Vector2.ZERO:
+				push += tp
+				_last_hit = "car %d" % _traffic.hit_index
 	return push
 
 func _poly_push(poly: PackedVector2Array, c: Vector2, r: float) -> Vector2:
@@ -3276,9 +3367,26 @@ func _autodrive(dt: float) -> Array:
 		if dist > 90.0:
 			break
 		vt = minf(vt, sqrt(_ap_v[i] * _ap_v[i] + 2.0 * 2.6 * dist))
+	vt = minf(vt, _ap_light_v())
+	# the car in front, kept a couple of metres and a second or so behind; after waiting
+	# a while, ignore cars crossing the lane (a standoff in a junction) -- never one ahead
+	var lead: Array = _traffic.lead_on(_ap_pts, _pos, clampf(10.0 + _v * 3.0, 18.0, 55.0), _ap_wait > 3.0)
+	if float(lead[0]) < INF:
+		var lv: float = lead[1]
+		var room := float(lead[0]) - CAR_LEN - 2.2 - lv * 1.2
+		var follow := 0.0 if room <= 0.0 else sqrt(lv * lv + 2.0 * 2.6 * room)
+		if follow < vt:
+			vt = follow
+			_ap_wait = _ap_wait + dt if _v < 0.3 else 0.0
+		else:
+			_ap_wait = 0.0
+	else:
+		_ap_wait = 0.0
 	var err := vt - _v
 	var throttle := clampf(err * 0.35, 0.0, 1.0)
 	var brake := clampf(-err * 0.25, 0.0, 1.0) if err < -0.3 else 0.0
+	if vt < 0.5 and _v < 1.5:
+		brake = maxf(brake, 0.8)   # waiting at a light or behind a car: foot on the brake
 	if throttle > 0.3 and absf(_v) < 0.4:
 		_ap_stuck += dt
 		if _ap_stuck > 2.0:
@@ -3372,9 +3480,9 @@ func _ap_plan() -> void:
 func _ap_leg(ri: int, from: int, dir: int) -> void:
 	var r: Dictionary = _roads[ri]
 	var pts: PackedVector2Array = r["pts"]
-	var lane := 0.0
-	if r["o"] == 0 and float(r["w"]) >= 5.0:
-		lane = minf(float(r["w"]) * 0.25, 1.9)
+	# the right-hand lane: every two-way street has two, however narrow (with traffic
+	# about, driving down the middle of one meant meeting cars head on)
+	var lane := clampf(float(r["w"]) * 0.25, 1.2, 1.9) if r["o"] == 0 else 0.0
 	var last := pts.size() - 1 if dir > 0 else 0
 	var i := from
 	var start := _ap_pts.size()
@@ -4117,6 +4225,10 @@ func _draw_map() -> void:
 		_map.draw_polyline(route, Color(Palette.col("friend"), 0.8), 1.5 / s)
 	for pl: Array in _map_lines["places"]:
 		_map.draw_circle(pl[0], 1.8 / s, Palette.col(pl[1]))
+	if _traffic != null:
+		for c in _traffic.cars:
+			if c.alive:
+				_map.draw_circle(c.pos - at, 1.9 / s, Color(ink, 0.8))
 	if _dest_on:
 		_map.draw_circle(_dest - at, 6.0 / s, Palette.col("accent"))
 		_map.draw_arc(_dest - at, 11.0 / s, 0.0, TAU, 24, Color(Palette.col("accent"), 0.6), 1.5 / s)

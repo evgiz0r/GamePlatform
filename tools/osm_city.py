@@ -37,6 +37,9 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
              `base` (metres above sea level), row by row from (x0, z0); absent = flat
   signals    [node indices]   traffic lights that sit on the road graph
   crossings  [node indices]
+  signs      [[node index, "stop"|"give_way", dx, dz], ...]   stop and give-way signs on
+             the road graph; (dx, dz) x100 is the way of travel they face (from the sign's
+             direction=forward/backward along its road), (0, 0) when OSM does not say
 
 Road kinds keep OSM's highway values (primary, residential, footway ...); a game decides
 which are drivable. Everything here is (c) OpenStreetMap contributors, ODbL: a game that
@@ -700,7 +703,7 @@ def bake(raw, name, args):
            "fetched": raw.get("fetched", ""), "origin": [round(lat0, 7), round(lon0, 7)],
            "scale": SCALE, "bounds": [round(x0, 1), round(z0, 1), round(x1, 1), round(z1, 1)],
            "boundary": [], "nodes": [], "roads": [], "buildings": [], "areas": [],
-           "trees": [], "signals": [], "crossings": []}
+           "trees": [], "signals": [], "crossings": [], "signs": []}
 
     rel = raw.get("boundary")
     if rel:
@@ -783,7 +786,26 @@ def bake(raw, name, args):
                     out["signals"].append(node_ix[ids[i]])
                 elif nt.get("highway") == "crossing":
                     out["crossings"].append(node_ix[ids[i]])
+                elif nt.get("highway") in ("stop", "give_way") and pts[i]:
+                    # facing: forward = the way's own direction at this node
+                    d = (0.0, 0.0)
+                    way = nt.get("direction", "")
+                    if way in ("forward", "backward"):
+                        a = pts[i - 1] if i > 0 and pts[i - 1] else pts[i]
+                        b = pts[i + 1] if i + 1 < len(pts) and pts[i + 1] else pts[i]
+                        dx, dz = b[0] - a[0], b[1] - a[1]
+                        L = math.hypot(dx, dz) or 1.0
+                        k = 1.0 if way == "forward" else -1.0
+                        d = (dx / L * k, dz / L * k)
+                    out["signs"].append([node_ix[ids[i]], nt["highway"], round(d[0] * 100), round(d[1] * 100)])
     out["signals"] = sorted(set(out["signals"]))
+    seen_signs = set()
+    signs = []
+    for sg in out["signs"]:
+        if (sg[0], sg[1]) not in seen_signs:
+            seen_signs.add((sg[0], sg[1]))
+            signs.append(sg)
+    out["signs"] = signs
     out["crossings"] = sorted(set(out["crossings"]))
 
     # -- buildings ------------------------------------------------------------------------
