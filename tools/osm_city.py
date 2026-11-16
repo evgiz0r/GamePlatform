@@ -31,7 +31,7 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
   trees      [x, z, ...]
   addrs      [[x, z, street, number], ...]   address points not on a building outline
   pois       [[x, z, kind, name, name_en], ...]   shops, restaurants, schools... (kind:
-             the amenity/tourism value, or "shop")
+             the amenity/tourism value, or "shop:<type>" e.g. "shop:supermarket")
   height     {x0, z0, step, nx, nz, base, h: [...]}  ground height on a grid, decimetres above
              `base` (metres above sea level), row by row from (x0, z0); absent = flat
   signals    [node indices]   traffic lights that sit on the road graph
@@ -889,7 +889,8 @@ def bake(raw, name, args):
     out["pois"] = []
     for e in elements:
         t = e.get("tags", {})
-        kind = t.get("amenity") or t.get("tourism") or ("shop" if "shop" in t else None)
+        # shops keep their type ("shop:bakery"), so a game can tell a supermarket from a kiosk
+        kind = t.get("amenity") or t.get("tourism") or (("shop:" + t["shop"]) if "shop" in t else None)
         if not kind or kind in ("parking",) or "highway" in t:
             continue
         if e["type"] == "node":

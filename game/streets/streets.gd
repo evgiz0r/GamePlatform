@@ -81,6 +81,18 @@ const POI_LOOK := {
 	"theatre": ["prize", "theatre"], "community_centre": ["prize", "community centre"],
 	"hotel": ["player", "hotel"], "museum": ["prize", "museum"], "attraction": ["prize", "attraction"],
 }
+## what to call an unnamed shop, by its OSM type (others: the type, spaced)
+const SHOP_WORDS := {
+	"supermarket": "supermarket", "convenience": "mini market", "bakery": "bakery",
+	"greengrocer": "fruit & veg", "butcher": "butcher", "kiosk": "kiosk", "clothes": "clothes",
+	"shoes": "shoes", "hairdresser": "hairdresser", "beauty": "beauty", "optician": "optician",
+	"mobile_phone": "phones", "florist": "flowers", "laundry": "laundry", "dry_cleaning": "dry cleaning",
+	"hardware": "hardware", "books": "books", "toys": "toys", "jewelry": "jewellery",
+	"alcohol": "wine & spirits", "confectionery": "sweets", "pet": "pet shop", "furniture": "furniture",
+	"electronics": "electronics", "car_repair": "garage", "variety_store": "everything shop",
+}
+const WIDE_SHOPS := ["supermarket", "department_store", "furniture", "hardware", "doityourself"]
+const AWNINGS := ["accent", "prize", "player", "warn", "friend"]
 const SIGN_RANGE := 110.0            ## signs further than this are not drawn
 const SIGNAL_CYCLE := [              ## [seconds, phase of the E-W group, phase of N-S]
 	[14.0, "g", "r"], [3.0, "y", "r"], [1.5, "r", "r"],
@@ -303,6 +315,7 @@ var _font: Font
 var _car: Node3D
 var _body: Node3D
 var _wheels: Array = []              ## [node, rest rotation.y] for the two front wheels
+var _spinners: Array = []            ## the four wheels' rolling parts
 var _pos := Vector2.ZERO
 var _yaw := 0.0                      ## heading: forward is (cos, sin) on the x/z ground
 var _v := 0.0                        ## forward speed, m/s (negative = backwards)
@@ -1368,7 +1381,10 @@ func _build_signals() -> void:
 ## a lit shopfront on the street side of each shop's building, and its name above it
 func _build_pois() -> void:
 	var k := 1.0 / float(_city_data.get("scale", 10))
-	var fronts := {}                 ## role -> Array of Transform3D
+	var front := {"glass": [], "post": [], "beam": []}   ## shop windows and their frames
+	var awnings := {}                ## colour role -> awning transforms
+	var crosses: Array = []          ## pharmacy crosses, sticking out from the wall
+	var canopy := {"roof": [], "pillar": [], "pump": [], "band": []}   ## gas stations
 	var boards: Array = []           ## the sign boards behind the names
 	var terrace := {"top": [], "leg": [], "seat": [], "back": [], "pole": []}
 	var shades := {}                 ## role -> umbrella transforms
@@ -1376,9 +1392,9 @@ func _build_pois() -> void:
 	for p: Array in _city_data.get("pois", []):
 		var at := Vector2(p[0], p[1]) * k
 		var kind := String(p[2])
-		if not POI_LOOK.has(kind):
+		var look: Array = _poi_look(kind)
+		if look.is_empty():
 			continue   # e.g. parking entrances that came in on an address point
-		var look: Array = POI_LOOK[kind]
 		var role: String = look[0]
 		var spot := _facade_spot(at)
 		var pos: Vector2 = spot[0]
@@ -1389,10 +1405,33 @@ func _build_pois() -> void:
 		taken[key] = dup + 1
 		pos += along * 6.0 * float((dup + 1) / 2) * (1.0 if dup % 2 == 1 else -1.0)
 		var face := atan2(n.x, n.y)
-		if spot[2]:
-			if not fronts.has(role):
-				fronts[role] = []
-			(fronts[role] as Array).append(Transform3D(Basis(Vector3.UP, face), Vector3(pos.x + n.x * 0.07, _h(pos + n * 0.6) + 1.35, pos.y + n.y * 0.07)))
+		var sub := kind.substr(5) if kind.begins_with("shop:") else ""
+		var gy := _h(pos + n * 0.6)
+		var station := Vector2.INF
+		if kind == "fuel":
+			# OSM marks most stations by a point in the shop building: the canopy goes out
+			# front, between the building and the street, wherever there is room for it
+			for c: Vector2 in [pos + n * 6.0, pos + n * 8.0, at]:
+				var on := _nearest_seg(c, 15.0, true)
+				if _push_out(c, 3.2, false) == Vector2.ZERO and (on.is_empty() or float(on["edge"]) > 1.5):
+					_gas_station(c, n, canopy)
+					station = c
+					break
+		elif spot[2]:
+			# a shop window with the light on inside, a dark frame, an awning over it
+			var wide := 2.0 if WIDE_SHOPS.has(sub) else 1.0
+			var b := Basis(Vector3.UP, face)
+			var at3 := func(q: Vector2, out: float, y: float) -> Vector3: return Vector3(q.x + n.x * out, gy + y, q.y + n.y * out)
+			front["glass"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.05, 1.3)))
+			front["beam"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.08, 2.62)))
+			for sgn: float in [-1.0, 1.0]:
+				front["post"].append(Transform3D(b, at3.call(pos + along * 1.56 * wide * sgn, 0.08, 1.3)))
+			var hue: String = role if kind != "shop" and sub == "" else AWNINGS[posmod(_hash_i(at), AWNINGS.size())]
+			if not awnings.has(hue):
+				awnings[hue] = []
+			(awnings[hue] as Array).append(Transform3D(b * Basis(Vector3.RIGHT, 0.33) * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.72, 2.9)))
+			if kind == "pharmacy":
+				crosses.append(Transform3D(b, at3.call(pos + along * (1.6 * wide + 0.5), 0.5, 3.2)))
 		if spot[2] and kind in ["cafe", "restaurant", "fast_food", "ice_cream", "bar", "pub"]:
 			_terrace(pos, n, along, role, terrace, shades)
 		var name := String(p[3]) if String(p[3]) != "" else (String(p[4]) if String(p[4]) != "" else String(look[1]))
@@ -1404,7 +1443,10 @@ func _build_pois() -> void:
 		sign.outline_size = 8
 		sign.modulate = Palette.col(role)
 		sign.outline_modulate = Palette.col("bg")
-		var sy := _h(pos + n * 0.6) + (3.25 if spot[2] else 2.7)
+		var sy := gy + (3.75 if spot[2] else 2.7)
+		if station.is_finite():   # the name on the canopy's street edge
+			pos = station + n * 3.05
+			sy = _h(station) + 5.45
 		sign.position = Vector3(pos.x + n.x * 0.16, sy, pos.y + n.y * 0.16)
 		sign.rotation.y = face
 		var tw := _font.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, 64).x * 0.011
@@ -1425,12 +1467,80 @@ func _build_pois() -> void:
 		# the boards span the city, so they vanished anywhere away from the town centre
 	_terrace_meshes(terrace, shades)
 	_dressing["tables"] = (terrace["top"] as Array).size()
-	var box := BoxMesh.new()
-	box.size = Vector3(3.0, 2.5, 0.12)
-	for role: String in fronts:
-		var mi := _multi(box, fronts[role])
-		mi.material_override = mat(role, 0.55)
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_dressing["shops"] = (front["glass"] as Array).size()
+	var r := SIGN_RANGE * 2.0
+	var glass := BoxMesh.new()
+	glass.size = Vector3(3.0, 2.4, 0.06)
+	_chunked(glass, front["glass"], r, [], _shop_glass(), false)
+	var post := BoxMesh.new()
+	post.size = Vector3(0.14, 2.6, 0.14)
+	_chunked(post, front["post"], r, [], _surface("cartrim"), false)
+	var beam := BoxMesh.new()
+	beam.size = Vector3(3.26, 0.2, 0.16)
+	_chunked(beam, front["beam"], r, [], _surface("cartrim"), false)
+	var awning := BoxMesh.new()
+	awning.size = Vector3(3.3, 0.14, 1.5)
+	for hue: String in awnings:
+		_chunked(awning, awnings[hue], r, [], mat(hue, 0.3))
+	if not crosses.is_empty():
+		var cross := ArrayMesh.new()
+		var cb := Buf.new()
+		_box(cb, Vector3.ZERO, Vector3(0.06, 0.78, 0.26))
+		_box(cb, Vector3.ZERO, Vector3(0.06, 0.26, 0.78))
+		cross.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, cb.arrays())
+		_chunked(cross, crosses, r, [], mat("friend", 1.3), false)
+	if not (canopy["roof"] as Array).is_empty():
+		var roof := BoxMesh.new()
+		roof.size = Vector3(9.0, 0.45, 6.0)
+		_chunked(roof, canopy["roof"], r, [], _surface("tank"))
+		var band := BoxMesh.new()
+		band.size = Vector3(9.06, 0.2, 6.06)
+		_chunked(band, canopy["band"], r, [], mat("player", 0.4), false)
+		var pillar := BoxMesh.new()
+		pillar.size = Vector3(0.3, 4.6, 0.3)
+		_chunked(pillar, canopy["pillar"], r, [], _surface("tank"))
+		var pump := BoxMesh.new()
+		pump.size = Vector3(0.7, 1.6, 0.45)
+		_chunked(pump, canopy["pump"], r, [], mat("player", 0.15))
+
+## [colour role, word for an unnamed one] for a place's OSM kind; [] = not shown
+func _poi_look(kind: String) -> Array:
+	if POI_LOOK.has(kind):
+		return POI_LOOK[kind]
+	if kind.begins_with("shop:"):
+		var t := kind.substr(5)
+		return ["accent", SHOP_WORDS.get(t, t.replace("_", " "))]
+	return []
+
+## the glass of a shop window: dark glass with the shop's light on inside
+func _shop_glass() -> StandardMaterial3D:
+	if _smat.has("shopglass"):
+		return _smat["shopglass"]
+	var m := _surface("glass").duplicate() as StandardMaterial3D
+	m.set_meta("tone", "glass")
+	m.roughness = 0.12
+	m.metallic = 0.3
+	m.emission_enabled = true
+	m.emission = _tone["shoplight"]
+	m.emission_energy_multiplier = 0.7
+	_smat["shopglass"] = m
+	return m
+
+## a gas station: a canopy on four pillars over two pumps, square to the street
+func _gas_station(at: Vector2, n: Vector2, c: Dictionary) -> void:
+	var along := Vector2(-n.y, n.x)
+	var gy := _h(at)
+	var b := Basis(Vector3.UP, atan2(n.x, n.y))
+	c["roof"].append(Transform3D(b, Vector3(at.x, gy + 4.85, at.y)))
+	c["band"].append(Transform3D(b, Vector3(at.x, gy + 4.85, at.y)))
+	for sx: float in [-1.0, 1.0]:
+		for sz: float in [-1.0, 1.0]:
+			var q := at + along * 3.6 * sx + n * 2.2 * sz
+			c["pillar"].append(Transform3D(b, Vector3(q.x, gy + 2.3, q.y)))
+			_add_post(q, 0.25)
+		var pq := at + along * 1.8 * sx
+		c["pump"].append(Transform3D(b, Vector3(pq.x, gy + 0.8, pq.y)))
+		_add_post(pq, 0.45)
 
 ## tables and chairs on the pavement in front of a cafe or restaurant, umbrellas over
 ## them in the place's colour -- where there is pavement (not road, not building)
@@ -1599,12 +1709,21 @@ func _tones() -> void:
 		"tank": ink.lerp(alt, 0.08),
 		"lamp": ink.lerp(wn, 0.25),
 		"furniture": alt.lerp(ink, 0.35),
+		"paint": pl.lerp(alt, 0.5).lerp(ink, 0.12),
+		"shoplight": ink.lerp(wn, 0.45),
+		"carglass": bg.lerp(pl, 0.12),
+		"cartrim": bg.lerp(alt, 0.4),
+		"tyre": bg.lerp(alt, 0.2),
+		"rim": ink.lerp(alt, 0.35),
 	}
 
 func _retint_city() -> void:
 	_tones()
 	for t: String in _smat:
-		(_smat[t] as StandardMaterial3D).albedo_color = _tone[t]
+		var sm := _smat[t] as StandardMaterial3D
+		sm.albedo_color = _tone[sm.get_meta("tone", t)]
+	if _smat.has("shopglass"):
+		(_smat["shopglass"] as StandardMaterial3D).emission = _tone["shoplight"]
 	if _wall_mat != null:
 		_wall_mat.set_shader_parameter("wall_a", _tone["wall"])
 		_wall_mat.set_shader_parameter("wall_b", _tone["wall2"])
@@ -1649,18 +1768,176 @@ func _build_car() -> void:
 	world.add_child(_car)
 	_body = Node3D.new()
 	_car.add_child(_body)
-	var m := model("sedan", CAR_LEN, "player")
-	# the kit's car is a stubby toy; stretch it to a real car's proportions
-	var aabb: AABB = m.get_meta("aabb")
-	m.scale = Vector3(CAR_WIDTH / maxf(aabb.size.x, 0.01), CAR_HEIGHT / maxf(aabb.size.y, 0.01), 1.0)
-	_body.add_child(m)
-	for nm: String in ["wheel-front-left", "wheel-front-right"]:
-		var w := m.find_child(nm, true, false) as Node3D
-		if w != null:
-			_wheels.append([w, w.rotation.y])
+	_body.add_child(_sedan("paint"))
 
 func _fwd() -> Vector2:
 	return Vector2(cos(_yaw), sin(_yaw))
+
+## A sedan at real size (4.6 x 1.8 x 1.45 m), built in code: a body lofted from its side
+## profile, a narrower glass cabin on it, bumpers, lights, mirrors, plates and four
+## wheels that turn and roll. Faces +Z (forward), like the kit's models.
+## `paint` is a tone name; the front wheels land in _wheels, all four in _spinners.
+func _sedan(paint: String) -> Node3D:
+	var root := Node3D.new()
+	var bufs := {"paint": Buf.new(), "glass": Buf.new(), "trim": Buf.new()}
+	var hw := 0.9
+	# the lower body: its side outline (z forward, y up), pushed out to both sides
+	var low := PackedVector2Array([Vector2(-2.24, 0.24), Vector2(2.22, 0.24), Vector2(2.3, 0.6),
+		Vector2(2.16, 0.78), Vector2(1.08, 0.93), Vector2(-1.62, 1.0), Vector2(-2.16, 0.97),
+		Vector2(-2.3, 0.62)])
+	_prism(bufs["paint"], low, hw)
+	# the cabin: windshield, roof, rear window, and the side glass, narrower at the top
+	var c0 := Vector2(1.06, 0.93)
+	var c1 := Vector2(0.28, 1.42)
+	var c2 := Vector2(-0.86, 1.44)
+	var c3 := Vector2(-1.6, 1.0)
+	var lo := 0.84
+	var up := 0.66
+	var P := func(p: Vector2, x: float) -> Vector3: return Vector3(x, p.y, p.x)
+	_poly(bufs["glass"], [P.call(c0, -lo), P.call(c0, lo), P.call(c1, up), P.call(c1, -up)], Vector3(0, 0.6, 1))
+	_poly(bufs["paint"], [P.call(c1, -up), P.call(c1, up), P.call(c2, up), P.call(c2, -up)], Vector3.UP)
+	_poly(bufs["glass"], [P.call(c2, -up), P.call(c2, up), P.call(c3, lo), P.call(c3, -lo)], Vector3(0, 0.6, -1))
+	for sx: float in [-1.0, 1.0]:
+		_poly(bufs["glass"], [P.call(c0, lo * sx), P.call(c1, up * sx), P.call(c2, up * sx), P.call(c3, lo * sx)], Vector3(sx, 0.3, 0))
+		# the B pillar, in paint, splitting the side glass
+		var b0: Vector3 = P.call(Vector2(-0.2, 0.96), lo * sx + 0.01 * sx)
+		var b1: Vector3 = P.call(Vector2(-0.32, 1.43), up * sx + 0.01 * sx)
+		_poly(bufs["paint"], [b0, b0 + Vector3(0, 0, -0.12), b1 + Vector3(0, 0, -0.12), b1], Vector3(sx, 0.3, 0))
+	# bumpers, grille, side skirts in dark trim
+	_box(bufs["trim"], Vector3(0, 0.36, 2.25), Vector3(1.84, 0.22, 0.14))
+	_box(bufs["trim"], Vector3(0, 0.36, -2.25), Vector3(1.84, 0.22, 0.14))
+	_box(bufs["trim"], Vector3(0, 0.66, 2.29), Vector3(0.7, 0.12, 0.04))
+	for sx: float in [-1.0, 1.0]:
+		_box(bufs["trim"], Vector3(sx * 0.91, 0.32, 0), Vector3(0.04, 0.12, 2.6))
+		_box(bufs["paint"], Vector3(sx * 0.98, 1.0, 0.95), Vector3(0.16, 0.1, 0.08))   # mirror
+	for k: String in bufs:
+		var mi := MeshInstance3D.new()
+		var am := ArrayMesh.new()
+		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, (bufs[k] as Buf).arrays())
+		am.surface_set_material(0, _car_mat(k, paint))
+		mi.mesh = am
+		root.add_child(mi)
+	# lights and plates
+	for sx: float in [-1.0, 1.0]:
+		root.add_child(_part(BoxMesh, Vector3(sx * 0.62, 0.68, 2.27), Vector3(0.36, 0.12, 0.05), mat("ink", 1.2)))
+		root.add_child(_part(BoxMesh, Vector3(sx * 0.66, 0.84, -2.27), Vector3(0.34, 0.12, 0.05), mat("hazard", 1.0)))
+	var plate := "warn" if String(_place.get("look", "")) == "med" else "ink"   # Israeli plates are yellow
+	root.add_child(_part(BoxMesh, Vector3(0, 0.45, 2.33), Vector3(0.52, 0.12, 0.02), mat(plate, 0.1)))
+	root.add_child(_part(BoxMesh, Vector3(0, 0.6, -2.33), Vector3(0.52, 0.12, 0.02), mat(plate, 0.1)))
+	# wheels: a pivot each (front ones steer), a tyre and a rim that roll inside it
+	_wheels.clear()
+	_spinners.clear()
+	for wz: float in [1.38, -1.38]:
+		for sx: float in [-1.0, 1.0]:
+			var pivot := Node3D.new()
+			pivot.position = Vector3(sx * 0.8, 0.33, wz)
+			root.add_child(pivot)
+			var spin := Node3D.new()
+			pivot.add_child(spin)
+			var tyre := _part(CylinderMesh, Vector3.ZERO, Vector3(0.33, 0.22, 0.0), _car_mat("tyre", paint))
+			tyre.rotation.z = PI * 0.5
+			spin.add_child(tyre)
+			var rim := _part(CylinderMesh, Vector3(sx * 0.02, 0, 0), Vector3(0.2, 0.23, 0.0), _car_mat("rim", paint))
+			rim.rotation.z = PI * 0.5
+			spin.add_child(rim)
+			var spoke := _part(BoxMesh, Vector3(sx * 0.03, 0, 0), Vector3(0.235, 0.36, 0.06), _car_mat("trim", paint))
+			spin.add_child(spoke)
+			_spinners.append(spin)
+			if wz > 0.0:
+				_wheels.append([pivot, 0.0])
+	return root
+
+func _car_mat(k: String, paint: String) -> StandardMaterial3D:
+	var key := "car_%s_%s" % [k, paint]
+	if _smat.has(key):
+		return _smat[key]
+	var m := _surface({"paint": paint, "glass": "carglass", "trim": "cartrim", "tyre": "tyre", "rim": "rim"}[k])
+	m = m.duplicate()
+	match k:
+		"paint":
+			m.metallic = 0.45
+			m.roughness = 0.28
+		"glass":
+			m.metallic = 0.6
+			m.roughness = 0.08
+		"rim":
+			m.metallic = 0.7
+			m.roughness = 0.3
+	m.set_meta("tone", {"paint": paint, "glass": "carglass", "trim": "cartrim", "tyre": "tyre", "rim": "rim"}[k])
+	_smat[key] = m
+	return m
+
+## a primitive part: BoxMesh with `size`, or CylinderMesh with (radius, height)
+func _part(kind: Variant, at: Vector3, size: Vector3, m: Material) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	if kind == BoxMesh:
+		var bm := BoxMesh.new()
+		bm.size = size
+		mi.mesh = bm
+	else:
+		var cm := CylinderMesh.new()
+		cm.top_radius = size.x
+		cm.bottom_radius = size.x
+		cm.height = size.y
+		cm.radial_segments = 14
+		cm.rings = 1
+		mi.mesh = cm
+	mi.material_override = m
+	mi.position = at
+	return mi
+
+## a convex polygon (in order around it), facing `out`
+func _poly(buf: Buf, pts: Array, out: Vector3) -> void:
+	var n: Vector3 = ((pts[1] as Vector3) - pts[0]).cross((pts[2] as Vector3) - pts[0]).normalized()
+	if n.dot(out) < 0.0:
+		n = -n
+	for i in range(1, pts.size() - 1):
+		buf.tri(pts[0], pts[i], pts[i + 1], n, Color.WHITE)
+
+## a side outline (z, y) pushed out to x = -hw .. hw: two side faces and the band around
+func _prism(buf: Buf, outline: PackedVector2Array, hw: float) -> void:
+	var idx := Geometry2D.triangulate_polygon(outline)
+	for sx: float in [-1.0, 1.0]:
+		for i in range(0, idx.size(), 3):
+			var a := outline[idx[i]]
+			var b := outline[idx[i + 1]]
+			var d := outline[idx[i + 2]]
+			buf.tri(Vector3(hw * sx, a.y, a.x), Vector3(hw * sx, b.y, b.x), Vector3(hw * sx, d.y, d.x), Vector3(sx, 0, 0), Color.WHITE)
+	var centre := Vector2.ZERO
+	for p in outline:
+		centre += p
+	centre /= outline.size()
+	for i in range(outline.size()):
+		var a := outline[i]
+		var b := outline[(i + 1) % outline.size()]
+		var e := (b - a).normalized()
+		var nrm := Vector2(e.y, -e.x)
+		if nrm.dot((a + b) * 0.5 - centre) < 0.0:
+			nrm = -nrm
+		buf.quad3(Vector3(-hw, a.y, a.x), Vector3(hw, a.y, a.x), Vector3(hw, b.y, b.x), Vector3(-hw, b.y, b.x))
+		# quad3 orients up; fix the band's facing to point out of the outline
+		var count := 6
+		for k in range(buf.n.size() - count, buf.n.size()):
+			buf.n[k] = Vector3(0, nrm.y, nrm.x)
+		var t0 := buf.v.size() - count
+		if (buf.v[t0 + 1] - buf.v[t0]).cross(buf.v[t0 + 2] - buf.v[t0]).dot(Vector3(0, nrm.y, nrm.x)) > 0.0:
+			for k: int in [t0, t0 + 3]:
+				var tmp := buf.v[k + 1]
+				buf.v[k + 1] = buf.v[k + 2]
+				buf.v[k + 2] = tmp
+
+func _box(buf: Buf, c: Vector3, size: Vector3) -> void:
+	var h := size * 0.5
+	for ax in range(3):
+		for sg: float in [-1.0, 1.0]:
+			var n := Vector3.ZERO
+			n[ax] = sg
+			var u := Vector3.ZERO
+			u[(ax + 1) % 3] = h[(ax + 1) % 3]
+			var w := Vector3.ZERO
+			w[(ax + 2) % 3] = h[(ax + 2) % 3]
+			var f := c + n * h[ax]
+			_poly(buf, [f - u - w, f + u - w, f + u + w, f - u + w], n)
 
 ## start at the place's `start` corner, else on a through road near the middle of town; always in
 ## the right-hand lane, facing the way traffic goes
@@ -1919,6 +2196,8 @@ func _place_car(dt: float) -> void:
 	_body.rotation = Vector3(_pitch, 0.0, _roll)
 	for w: Array in _wheels:
 		(w[0] as Node3D).rotation.y = float(w[1]) - _steer
+	for sp: Node3D in _spinners:
+		sp.rotation.x += _v * dt / 0.33
 
 ## ---- collisions: the car's two circles against building outlines and posts -------------
 
