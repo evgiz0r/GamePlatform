@@ -426,15 +426,28 @@ func start(_config: Dictionary) -> void:
 	_keep_screen_on(true)
 	_make_font()
 	_tones()
-	var t0 := Time.get_ticks_msec()
 	_place = LEVELS[clampi(int(_config.get("level", 1)), 1, LEVELS.size()) - 1]
+	# a big city takes seconds to build: say so, and build in steps a frame apart, so the
+	# screen shows progress instead of hanging (a phone takes two or three times as long)
+	_loading = UIKit.label("", 16, "ink")
+	_loading.add_theme_font_override("font", _font)
+	_loading.position = Vector2(120, 160)
+	_loading.size = Vector2(400, 40)
+	_loading.z_index = 100
+	add_child(_loading)
+	if not await _step("loading " + String(_place["name"])):
+		return
+	var t0 := Time.get_ticks_msec()
 	if not _load_city(String(_place["city"])):
+		_loading.queue_free()
 		_build_hud()
 		_show_banner("no city file -- see GAME.md", 30.0)
 		return
 	var t1 := Time.get_ticks_msec()
 	world_area = _bounds
-	_build_world()
+	if not await _build_world():
+		return
+	_loading.queue_free()
 	_build_car()
 	_place_start()
 	_build_hud()
@@ -442,9 +455,20 @@ func start(_config: Dictionary) -> void:
 	_loaded = true
 	track3d(_car, "@")
 	Probe.event("city", {"name": _city_name, "roads": _roads.size(), "buildings": _blds.size(),
-		"trees": _posts.size(), "streets": _streets.size(), "dressing": _dressing,
+		"trees": _posts.size(), "streets": _streets.size(), "dressing": _dressing, "stage_ms": _stage_ms,
 		"parse_ms": t1 - t0, "build_ms": Time.get_ticks_msec() - t1})
 	_show_banner(_city_name, 3.0)
+
+var _loading: Label
+
+## show what is being built and let a frame be drawn; false if the game was left meanwhile
+func _step(what: String) -> bool:
+	if not is_inside_tree():
+		return false
+	_loading.text = "building %s…\n%s" % [_city_name if _city_name != "" else String(_place["name"]), what]
+	await get_tree().process_frame
+	await get_tree().process_frame
+	return is_inside_tree()
 
 func _exit_tree() -> void:
 	SaveData.data["volume_sfx"] = _sfx_was
@@ -629,7 +653,14 @@ var _city_data: Dictionary = {}      ## the parsed file, kept only until the mes
 
 ## ---- building the world ---------------------------------------------------------------
 
-func _build_world() -> void:
+var _stage_ms := {}
+
+func _stage(name: String, t0: int) -> int:
+	var t := Time.get_ticks_msec()
+	_stage_ms[name] = t - t0
+	return t
+
+func _build_world() -> bool:
 	sun.shadow_enabled = true
 	sun.directional_shadow_max_distance = 110.0
 	sun.rotation_degrees = Vector3(-50, -28, 0)
@@ -648,6 +679,8 @@ func _build_world() -> void:
 	world.add_child(ground)
 	if _hnx > 0:
 		_build_terrain()
+	if not await _step("streets"):
+		return false
 
 	# parks, grass, water, car parks
 	var areas := {}
@@ -685,14 +718,31 @@ func _build_world() -> void:
 	_add_mesh(paths, _surface("path"), false)
 	_add_mesh(asphalt, _surface("asphalt"), false)
 	_add_mesh(marks, _surface("mark"), false)
-
+	if not await _step("kerbs and gardens"):
+		return false
+	var tk := Time.get_ticks_msec()
+	_build_kerbs()
+	tk = _stage("kerbs", tk)
+	if not await _step("buildings"):
+		return false
+	tk = Time.get_ticks_msec()
 	_build_buildings()
 	_build_roof_kit()
+	tk = _stage("buildings", tk)
+	if not await _step("trees and lamps"):
+		return false
+	tk = Time.get_ticks_msec()
 	_build_trees()
 	_build_lamps()
+	tk = _stage("trees", tk)
+	if not await _step("shops and places"):
+		return false
+	tk = Time.get_ticks_msec()
 	_build_signals()
 	_build_pois()
+	tk = _stage("places", tk)
 	_city_data = {}
+	return true
 
 ## ground height at p: the same two triangles per grid cell as the terrain mesh, so
 ## anything placed with it sits exactly on the drawn ground. 0 for a flat city.
@@ -815,6 +865,193 @@ func _fill(buf: Buf, ring: PackedVector2Array, y: float, level := false) -> void
 			if nrm.y < 0.0:
 				nrm = -nrm
 			buf.tri(pa, pb, pd, nrm.normalized() if nrm.length_squared() > 0.0 else Vector3.UP, Color.WHITE)
+
+## Kerbs, pavements and front gardens along the streets. Kerbs are painted the Israeli
+## way on some streets (red-white: no stopping, blue-white: paid parking, yellow-black:
+## buses) by a shader, so a painted kerb costs no more than a plain one. Front gardens --
+## a low stone wall behind the pavement, then a strip of garden with bushes -- go along
+## residential streets. Everything stops short of junctions so the corners stay open.
+const KERB_SHADER := """
+shader_type spatial;
+uniform vec4 plain : source_color;
+uniform vec4 white : source_color;
+uniform vec4 red : source_color;
+uniform vec4 blue : source_color;
+uniform vec4 yellow : source_color;
+uniform vec4 black : source_color;
+void fragment() {
+	float pat = floor(COLOR.r * 3.99 + 0.01);
+	float stripe = step(0.5, fract(UV.x * 0.5));
+	vec3 c = plain.rgb;
+	if (pat > 0.5 && pat < 1.5) { c = mix(red.rgb, white.rgb, stripe); }
+	else if (pat > 1.5 && pat < 2.5) { c = mix(blue.rgb, white.rgb, stripe); }
+	else if (pat > 2.5) { c = mix(yellow.rgb, black.rgb, stripe); }
+	ALBEDO = c;
+	ROUGHNESS = 0.85;
+}
+"""
+const PAVE_W := 2.4                  ## pavement width (m)
+const KERB_H := 0.14
+const KERB_W := 0.2
+var _kerb_mat: ShaderMaterial
+
+func _build_kerbs() -> void:
+	var kerb := Buf.new()
+	var pave := Buf.new()
+	var wall := Buf.new()
+	var garden := Buf.new()
+	var bushes: Array = []
+	var med := String(_place.get("look", "")) == "med"
+	for r: Dictionary in _roads:
+		if not r["drive"] or r["pv"] or r["k"] == "service":
+			continue
+		var hw: float = float(r["w"]) * 0.5
+		var hsh := _hash_i((r["pts"] as PackedVector2Array)[0])
+		var pat := 0
+		if med:
+			pat = [0, 0, 0, 0, 0, 1, 1, 1, 2, 3][posmod(hsh, 10)]
+		var yard: bool = r["k"] in ["residential", "living_street"]
+		for run: PackedVector2Array in _street_runs(r):
+			for sgn: float in [-1.0, 1.0]:
+				var inner := _offset_line(run, hw * sgn)
+				var outer := _offset_line(run, (hw + KERB_W) * sgn)
+				var p_out := _offset_line(run, (hw + PAVE_W) * sgn)
+				var along := 0.0
+				for i in range(run.size() - 1):
+					var seg := run[i].distance_to(run[i + 1])
+					var col := Color(float(pat) / 4.0 + 0.05, 0, 0)
+					var a0 := _g3(inner[i], 0.0)
+					var a1 := _g3(inner[i + 1], 0.0)
+					var t0 := _g3(inner[i], KERB_H)
+					var t1 := _g3(inner[i + 1], KERB_H)
+					var o0 := _g3(outer[i], KERB_H)
+					var o1 := _g3(outer[i + 1], KERB_H)
+					var face := Vector3(-(inner[i + 1] - inner[i]).y, 0, (inner[i + 1] - inner[i]).x).normalized() * -sgn
+					kerb.tri(a0, a1, t1, face, col, Vector2(along, 0), Vector2(along + seg, 0), Vector2(along + seg, 1))
+					kerb.tri(a0, t1, t0, face, col, Vector2(along, 0), Vector2(along + seg, 1), Vector2(along, 1))
+					kerb.tri(t0, t1, o1, Vector3.UP, col, Vector2(along, 0), Vector2(along + seg, 0), Vector2(along + seg, 1))
+					kerb.tri(t0, o1, o0, Vector3.UP, col, Vector2(along, 0), Vector2(along + seg, 1), Vector2(along, 1))
+					pave.quad3(o0, o1, _g3(p_out[i + 1], KERB_H), _g3(p_out[i], KERB_H))
+					along += seg
+				if not yard:
+					continue
+				# a low stone wall at the back of the pavement, a garden strip behind it
+				var w_in := _offset_line(run, (hw + PAVE_W + 0.05) * sgn)
+				var w_out := _offset_line(run, (hw + PAVE_W + 0.3) * sgn)
+				var g_out := _offset_line(run, (hw + PAVE_W + 3.4) * sgn)
+				for i in range(run.size() - 1):
+					garden.quad3(_g3(w_out[i], 0.03), _g3(w_out[i + 1], 0.03), _g3(g_out[i + 1], 0.03), _g3(g_out[i], 0.03))
+					if not med:
+						continue   # northern lawns run open to the pavement
+					var wy := 0.62
+					wall.quad3(_g3(w_in[i], wy), _g3(w_in[i + 1], wy), _g3(w_out[i + 1], wy), _g3(w_out[i], wy))
+					var fn := Vector3(-(w_in[i + 1] - w_in[i]).y, 0, (w_in[i + 1] - w_in[i]).x).normalized() * -sgn
+					wall.tri(_g3(w_in[i], 0.0), _g3(w_in[i + 1], 0.0), _g3(w_in[i + 1], wy), fn, Color.WHITE)
+					wall.tri(_g3(w_in[i], 0.0), _g3(w_in[i + 1], wy), _g3(w_in[i], wy), fn, Color.WHITE)
+				var step := 7.0
+				var s := 3.0
+				for i in range(run.size() - 1):
+					var L := run[i].distance_to(run[i + 1])
+					while s < L:
+						var q := (w_out[i].lerp(w_out[i + 1], s / L)).lerp(g_out[i].lerp(g_out[i + 1], s / L), 0.45)
+						if posmod(_hash_i(q), 3 if med else 6) == 1 and _push_out(q, 0.8, false) == Vector2.ZERO:
+							var sc := 0.7 + 0.5 * float(posmod(_hash_i(q), 5)) / 4.0
+							bushes.append(Transform3D(Basis.from_scale(Vector3(1.3, 0.9, 1.3) * sc), _g3(q, 0.45 * sc)))
+						s += step
+					s -= L
+	_kerb_mat = ShaderMaterial.new()
+	var sh := Shader.new()
+	sh.code = KERB_SHADER
+	_kerb_mat.shader = sh
+	_add_mesh(kerb, _kerb_mat, false)
+	_add_mesh(pave, _surface("pavement"), false)
+	_add_mesh(wall, _surface("stonewall"), true)
+	_add_mesh(garden, _surface("grass"), false)
+	if not bushes.is_empty():
+		var bush := SphereMesh.new()
+		bush.radius = 0.6
+		bush.height = 1.2
+		bush.radial_segments = 7
+		bush.rings = 4
+		bush.material = _surface("bush")
+		_chunked(bush, bushes, TREE_RANGE * 0.7)
+	_dressing["bushes"] = bushes.size()
+	_retint_kerbs()
+
+func _retint_kerbs() -> void:
+	if _kerb_mat == null:
+		return
+	_kerb_mat.set_shader_parameter("plain", _tone["kerb"])
+	_kerb_mat.set_shader_parameter("white", Palette.col("ink"))
+	_kerb_mat.set_shader_parameter("red", Palette.col("hazard"))
+	_kerb_mat.set_shader_parameter("blue", Palette.col("player").lerp(Palette.col("bg"), 0.35))
+	_kerb_mat.set_shader_parameter("yellow", Palette.col("warn"))
+	_kerb_mat.set_shader_parameter("black", Palette.col("bg"))
+
+## a street's stretches between junctions, each cut short where it meets one (so kerbs
+## and walls leave the corner open), points every few metres
+func _street_runs(r: Dictionary) -> Array:
+	var pts: PackedVector2Array = r["pts"]
+	var ids: PackedInt32Array = r["ids"]
+	var out: Array = []
+	var start := 0
+	for i in range(1, pts.size()):
+		var junction := (_node_roads[ids[i]] as Array).size() >= 2
+		if junction or i == pts.size() - 1:
+			var run := PackedVector2Array()
+			for k in range(start, i + 1):
+				run.append(pts[k])
+			var cut_a := _node_r[ids[start]] + 2.0 if (_node_roads[ids[start]] as Array).size() >= 2 else 0.0
+			var cut_b := _node_r[ids[i]] + 2.0 if junction else 0.0
+			var trimmed := _trim(run, cut_a, cut_b)
+			if trimmed.size() >= 2:
+				out.append(trimmed)
+			start = i
+	return out
+
+## the polyline from `a` metres in to `b` metres short of its end
+func _trim(run: PackedVector2Array, a: float, b: float) -> PackedVector2Array:
+	var cum := PackedFloat32Array([0.0])
+	for i in range(1, run.size()):
+		cum.append(cum[i - 1] + run[i - 1].distance_to(run[i]))
+	var total := cum[cum.size() - 1]
+	var out := PackedVector2Array()
+	if total - a - b < 2.0:
+		return out
+	# the street's own corners, plus points often enough to follow the ground's detail
+	var step := maxf(6.0, _hstep * 0.7) if _hnx > 0 else INF
+	out.append(_along(run, cum, a))
+	var s := a
+	for i in range(1, run.size() - 1):
+		while s + step < cum[i] and s + step < total - b:
+			s += step
+			out.append(_along(run, cum, s))
+		if cum[i] > a and cum[i] < total - b:
+			out.append(run[i])
+			s = cum[i]
+	while s + step < total - b:
+		s += step
+		out.append(_along(run, cum, s))
+	out.append(_along(run, cum, total - b))
+	return out
+
+## a polyline moved sideways by d (right of travel for d > 0), mitred at the bends
+func _offset_line(pts: PackedVector2Array, d: float) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	var n := pts.size()
+	for i in range(n):
+		var d_in := (pts[i] - pts[i - 1]).normalized() if i > 0 else Vector2.ZERO
+		var d_out := (pts[i + 1] - pts[i]).normalized() if i < n - 1 else Vector2.ZERO
+		var t := d_in + d_out
+		if t.length_squared() < 0.0001:
+			t = d_out if d_out != Vector2.ZERO else d_in
+		t = t.normalized()
+		var side := Vector2(-t.y, t.x)
+		var m := 1.0
+		if i > 0 and i < n - 1:
+			m = 1.0 / maxf(side.dot(Vector2(-d_out.y, d_out.x)), 0.5)
+		out.append(pts[i] + side * d * m)
+	return out
 
 ## a strip of half-width hw along a polyline, mitred at the bends
 func _ribbon(buf: Buf, pts: PackedVector2Array, hw: float, y: float) -> void:
@@ -1711,6 +1948,10 @@ func _tones() -> void:
 		"furniture": alt.lerp(ink, 0.35),
 		"paint": pl.lerp(alt, 0.5).lerp(ink, 0.12),
 		"shoplight": ink.lerp(wn, 0.45),
+		"pavement": ink.lerp(alt, 0.3).lerp(wn, 0.05),
+		"kerb": ink.lerp(alt, 0.45),
+		"stonewall": ink.lerp(wn, 0.3).lerp(alt, 0.2),
+		"bush": fr.lerp(bg, 0.58),
 		"carglass": bg.lerp(pl, 0.12),
 		"cartrim": bg.lerp(alt, 0.4),
 		"tyre": bg.lerp(alt, 0.2),
@@ -1750,6 +1991,7 @@ func _retint_city() -> void:
 		sun.light_color = Palette.col("ink").lerp(Palette.col("warn"), 0.12)
 		sun.light_energy = 1.05
 	_apply_signals_safe()
+	_retint_kerbs()
 	for poi: Array in _pois:
 		var lb := poi[2] as Label3D
 		lb.modulate = Palette.col(poi[1])
