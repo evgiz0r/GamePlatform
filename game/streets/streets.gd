@@ -42,6 +42,14 @@ const GRIP := 8.8                    ## tyres give up past ~0.9 g sideways: unde
 const CAR_R := 0.95                  ## the car is two circles of this radius...
 const CAR_OFF := 1.25                ## ...this far ahead of and behind its centre
 const BOUNCE := 0.15
+## Driving assist (on by default; the "assist" button switches it): straightens the car
+## along the street and into its lane while you are not steering much, brakes before a
+## wall, tree or pole, and puts you back on the road when you are pinned against one.
+const ASSIST_ALIGN := 1.1            ## wheel angle per radian the car points off the road
+const ASSIST_LANE := 0.07            ## wheel angle per metre off the middle of the lane
+const ASSIST_MAX := 0.22             ## the most it ever turns the wheel, radians
+const ASSIST_FADE := 0.35            ## steering input at which it lets go completely
+const RESCUE_AFTER := 1.5            ## seconds pinned with the gas down before a rescue
 
 ## Drivable road kinds and the speed autodrive keeps on them (m/s): Israeli urban limits,
 ## 50 on through roads, 40 on residential streets. Kinds not listed are footpaths: drawn,
@@ -209,6 +217,9 @@ var _roll := 0.0
 var _pitch := 0.0
 var _crash_cool := 0.0
 var _odo := 0.0
+var _assist := true
+var _touch_t := 0.0                  ## counts down after the car touched something
+var _pinned_t := 0.0
 var _last_hit := ""                  ## what the car last bumped: "building 12" / "post 40", for the report
 
 ## ---- camera ----
@@ -272,6 +283,7 @@ var _stick := Vector2.ZERO           ## its deflection, inside the unit circle
 var _sfx_was := 0.8
 const AUTO_BTN := Rect2(226, 334, 100, 20)
 const GOTO_BTN := Rect2(334, 334, 84, 20)
+const ASSIST_BTN := Rect2(426, 334, 70, 20)
 const STICK_C := Vector2(556, 268)   ## the touch stick sits still, here, on the right
 const STICK_R := 52.0                ## thumb travel (design px) for full lock / full gas
 const STICK_GRAB := 84.0             ## a thumb this close to its centre takes hold of it
@@ -742,6 +754,7 @@ func _build_trees() -> void:
 		if not TREE_ROADS.has(r["k"]) or spots.size() >= MAX_TREES:
 			continue
 		var pts: PackedVector2Array = r["pts"]
+		var ids: PackedInt32Array = r["ids"]
 		var off: float = r["w"] * 0.5 + 1.3
 		var s := rng.randf() * TREE_GAP
 		for j in range(pts.size() - 1):
@@ -750,7 +763,13 @@ func _build_trees() -> void:
 			var L := a.distance_to(b)
 			var d := (b - a) / maxf(L, 0.001)
 			var side := Vector2(-d.y, d.x)
+			# real streets keep the corners clear (sight lines); so do we
+			var keep_a := _node_r[ids[j]] + 9.0 if (_node_roads[ids[j]] as Array).size() >= 2 else 0.0
+			var keep_b := _node_r[ids[j + 1]] + 9.0 if (_node_roads[ids[j + 1]] as Array).size() >= 2 else 0.0
 			while s < L:
+				if s < keep_a or s > L - keep_b:
+					s += TREE_GAP
+					continue
 				for sgn: float in [-1.0, 1.0]:
 					if rng.randf() < 0.22:
 						continue
@@ -1106,6 +1125,7 @@ func _physics_process(dt: float) -> void:
 		return   # the address picker is open: the world waits
 	_signals_tick(dt)
 	_crash_cool = maxf(0.0, _crash_cool - dt)
+	_touch_t = maxf(0.0, _touch_t - dt)
 	if PInput.just_pressed("action_a") and not _auto:
 		_set_auto(true)
 	elif PInput.just_pressed("action_b") and _auto:
@@ -1135,6 +1155,9 @@ func _manual(dt: float) -> Array:
 		var rate := STEER_RATE if absf(steer_t) > 0.0 and signf(steer_t) == signf(_steer_in) else STEER_RATE * 1.8
 		_steer_in = move_toward(_steer_in, steer_t, rate * dt)
 	var lock := MAX_STEER / (1.0 + pow(absf(_v) / STEER_V, 2.0))
+	var steer := _steer_in * lock
+	if _assist and _v > 1.5:
+		steer += _assist_steer() * clampf(1.0 - absf(_steer_in) / ASSIST_FADE, 0.0, 1.0)
 	var throttle := 0.0
 	var brake := 0.0
 	if _gear > 0:
@@ -1152,7 +1175,73 @@ func _manual(dt: float) -> Array:
 		brake = up
 		if up > 0.0 and down == 0.0 and _v > -0.4:
 			_gear = 1
-	return [throttle, brake, _steer_in * lock]
+	if _assist and _gear > 0 and _v > 2.0 and _blocked_ahead():
+		throttle = 0.0
+		brake = maxf(brake, clampf((_v - 1.0) / 7.0, 0.35, 1.0))
+	# pinned: gas down, going nowhere, against something
+	if _assist and up + down > 0.5 and absf(_v) < 0.6 and _touch_t > 0.0:
+		_pinned_t += dt
+		if _pinned_t > RESCUE_AFTER:
+			_rescue()
+	else:
+		_pinned_t = 0.0
+	return [throttle, brake, steer]
+
+## the assist's nudge: toward the street's direction and the middle of the lane, while
+## the car is roughly following the street (not crossing it or turning off it)
+func _assist_steer() -> float:
+	var hit := _nearest_seg(_pos, 12.0, true, true)
+	if hit.is_empty():
+		return 0.0
+	var r: Dictionary = _roads[hit["road"]]
+	var pts: PackedVector2Array = r["pts"]
+	var sj: int = hit["seg"]
+	var d := (pts[sj + 1] - pts[sj]).normalized()
+	var fwd := _fwd()
+	if d.dot(fwd) < 0.0:
+		d = -d
+	var err := fwd.angle_to(d)
+	if absf(err) > 0.6:
+		return 0.0
+	var lane := minf(float(r["w"]) * 0.25, 1.9) if r["o"] == 0 and float(r["w"]) >= 5.0 else 0.0
+	var right := Vector2(-d.y, d.x)
+	var off := (_pos - (hit["q"] as Vector2)).dot(right) - lane
+	return clampf(err * ASSIST_ALIGN - off * ASSIST_LANE, -ASSIST_MAX, ASSIST_MAX)
+
+## something solid where the car will be in about half a second
+func _blocked_ahead() -> bool:
+	var fwd := _fwd()
+	for k: float in [0.6, 1.0]:
+		var p := _pos + fwd * (CAR_LEN * 0.5 + 0.8 + _v * 0.45 * k) + Vector2(-fwd.y, fwd.x) * _steer * 3.0 * k
+		if _push_out(p, 0.6, true) != Vector2.ZERO:
+			return true
+	return false
+
+## back into the nearest lane, facing along the street the way the car was facing
+func _rescue() -> void:
+	_pinned_t = 0.0
+	var hit := _nearest_seg(_pos, 80.0, true, true)
+	if hit.is_empty():
+		return
+	var r: Dictionary = _roads[hit["road"]]
+	var pts: PackedVector2Array = r["pts"]
+	var sj: int = hit["seg"]
+	var d := (pts[sj + 1] - pts[sj]).normalized()
+	if r["o"] != 0:
+		d *= float(r["o"])
+	elif d.dot(_fwd()) < 0.0:
+		d = -d
+	var lane := minf(float(r["w"]) * 0.25, 1.8) if r["o"] == 0 else 0.0
+	_pos = (hit["q"] as Vector2) + Vector2(-d.y, d.x) * lane
+	_yaw = d.angle()
+	_v = 0.0
+	_v_lat = 0.0
+	_yaw_rate = 0.0
+	_gear = 1
+	_steer_in = 0.0
+	_cam_yaw = _yaw
+	_show_banner("back on the road", 1.4)
+	Probe.event("rescue")
 
 ## 0 inside the dead zone, then 0..1 to the rim
 func _dead(v: float) -> float:
@@ -1215,6 +1304,7 @@ func _collide() -> void:
 			_pos += p
 	if total == Vector2.ZERO:
 		return
+	_touch_t = 0.5
 	var n := total.normalized()
 	var right := Vector2(-fwd.y, fwd.x)
 	var vel := fwd * _v + right * _v_lat
@@ -2094,6 +2184,10 @@ func _draw_hud() -> void:
 	_hud.draw_rect(GOTO_BTN, Color(bg, 0.65))
 	_hud.draw_rect(GOTO_BTN, Color(go, 0.9), false, 1.5)
 	_hud.draw_string(_font, GOTO_BTN.position + Vector2(0, 15), "go to…", HORIZONTAL_ALIGNMENT_CENTER, GOTO_BTN.size.x, 11, go)
+	var asc := Palette.col("friend") if _assist else Color(ink, 0.6)
+	_hud.draw_rect(ASSIST_BTN, Color(bg, 0.65))
+	_hud.draw_rect(ASSIST_BTN, Color(asc, 0.9), false, 1.5)
+	_hud.draw_string(_font, ASSIST_BTN.position + Vector2(0, 15), "assist on" if _assist else "assist off", HORIZONTAL_ALIGNMENT_CENTER, ASSIST_BTN.size.x, 11, asc)
 	if _touch_seen:
 		var held := _stick_id >= 0
 		var c := STICK_C
@@ -2188,12 +2282,17 @@ func _input(event: InputEvent) -> void:
 				_set_auto(not _auto)
 			elif GOTO_BTN.grow(4).has_point(mb.position):
 				_open_picker.call_deferred()   # after this click, so it does not hit the list
+			elif ASSIST_BTN.grow(4).has_point(mb.position):
+				_assist = not _assist
+				_show_banner("driving assist " + ("on" if _assist else "off"), 1.2)
+				Probe.event("assist", {"on": _assist})
 		return
 	if event is InputEventScreenTouch:
 		var t := event as InputEventScreenTouch
 		_touch_seen = true
 		if t.pressed:
-			if AUTO_BTN.grow(4).has_point(t.position) or GOTO_BTN.grow(4).has_point(t.position) or t.position.y < 36.0:
+			if AUTO_BTN.grow(4).has_point(t.position) or GOTO_BTN.grow(4).has_point(t.position) \
+					or ASSIST_BTN.grow(4).has_point(t.position) or t.position.y < 36.0:
 				return   # the button (via its emulated click) and the shell's menu/sound row
 			if _stick_id < 0 and t.position.distance_to(STICK_C) <= STICK_GRAB:
 				_stick_id = t.index
