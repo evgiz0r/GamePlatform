@@ -378,6 +378,8 @@ var _wired := {}                     ## road index -> true: Bedford's lamps hang
 var _flag_spots: Array = []          ## a flag on a staff off a lamp post (local X out over the road)
 var _balcony_flags: Array = []       ## a flag hanging off a balcony's parapet
 var _stop_ads: Array = []            ## the lit ad panel at the end of a bus shelter
+var _stop_spots := PackedVector2Array()   ## every bus stop on the pavement (buses pull in at them)
+var _stop_hash := {}
 var _crossing_nodes: Array = []
 var _people_t := 0.0
 var _people_rng := RandomNumberGenerator.new()
@@ -459,6 +461,11 @@ var _last_hit := ""                  ## what the car last bumped: "building 12" 
 ## ---- camera ----
 var _cam_yaw := 0.0
 var _cam_dist := 6.5
+var _cockpit := false                ## the view from the driver's seat
+var _cockpit_node: Node3D            ## dashboard, wheel, pillars: only shown in that view
+var _wheel_node: Node3D
+var _sedan_node: Node3D              ## the player's car body: only its shadow from the seat
+var _look_turn := 0.0                ## the driver's glance into a turn
 
 ## ---- autodrive (the bots' way in, and the seed of AI traffic later) ----
 var _auto := false
@@ -531,6 +538,7 @@ const AUTO_BTN := Rect2(184, 334, 100, 20)
 const GOTO_BTN := Rect2(290, 334, 80, 20)
 const ASSIST_BTN := Rect2(376, 334, 70, 20)
 const NIGHT_BTN := Rect2(452, 334, 52, 20)
+const VIEW_BTN := Rect2(578, 98, 52, 20)    ## chase cam / driver's seat (key C too)
 const STICK_C := Vector2(556, 268)   ## the touch stick sits still, here, on the right
 const STICK_R := 52.0                ## thumb travel (design px) for full lock / full gas
 const STICK_GRAB := 84.0             ## a thumb this close to its centre takes hold of it
@@ -585,6 +593,7 @@ func start(_config: Dictionary) -> void:
 	_build_hud()
 	_retint_city()
 	_spawn_people()
+	_spawn_crossers()
 	_traffic = Traffic.new()
 	_traffic.setup(self)
 	_build_engine()
@@ -3012,6 +3021,13 @@ var _car_meshes := {}
 func _parked_mesh(kind := "sedan") -> ArrayMesh:
 	if _car_meshes.has(kind):
 		return _car_meshes[kind]
+	if kind == "bus":
+		return _bus_mesh()
+	if kind == "moto":
+		return _moto_mesh()
+	var taxi := kind == "taxi"
+	if taxi:
+		kind = "sedan"
 	var shape: Array = CAR_SHAPES[kind]
 	var hw: float = shape[2]
 	var hl: float = shape[3]
@@ -3029,10 +3045,22 @@ func _parked_mesh(kind := "sedan") -> ArrayMesh:
 		_box(tails, Vector3(sx * (hw - 0.24), 0.84 + lift, -hl + 0.03), Vector3(0.34, 0.14, 0.05))
 	_box(lights, Vector3(0, 0.45 + lift, hl + 0.03), Vector3(0.52, 0.12, 0.02))
 	_box(tails, Vector3(0, 0.6 + lift, -hl - 0.03), Vector3(0.52, 0.12, 0.02))
-	var one := Buf.new()
-	for pair: Array in [[bufs["paint"], Color(1, 1, 1, 1.0)], [bufs["glass"], Color(_tone["carglass"], 0.75)],
+	var parts: Array = [[bufs["paint"], Color(1, 1, 1, 1.0)], [bufs["glass"], Color(_tone["carglass"], 0.75)],
 			[bufs["trim"], Color(_tone["cartrim"], 0.5)], [tyre, Color(_tone["tyre"], 0.3)],
-			[lights, Color(_tone["tank"], 0.1)], [tails, Color(_tone["tank"], 0.0)]]:
+			[lights, Color(_tone["tank"], 0.1)], [tails, Color(_tone["tank"], 0.0)]]
+	if taxi:
+		# the roof sign: lit like a headlight, so it glows at night
+		var sign := Buf.new()
+		_box(sign, Vector3(0, 1.52, -0.3), Vector3(0.62, 0.17, 0.26))
+		parts.append([sign, Color(Palette.col("warn"), 0.1)])
+	var am := _car_parts_mesh(parts)
+	_car_meshes["taxi" if taxi else kind] = am
+	return am
+
+## parts [Buf, colour with the part code in alpha] as one surface in the car shader
+func _car_parts_mesh(parts: Array) -> ArrayMesh:
+	var one := Buf.new()
+	for pair: Array in parts:
 		var b: Buf = pair[0]
 		one.v.append_array(b.v)
 		one.n.append_array(b.n)
@@ -3043,7 +3071,74 @@ func _parked_mesh(kind := "sedan") -> ArrayMesh:
 	var am := ArrayMesh.new()
 	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, one.arrays())
 	am.surface_set_material(0, _car_material())
-	_car_meshes[kind] = am
+	return am
+
+## A city bus, 11.8 m: the body in its colour below and above a band of windows all round,
+## pillars between them, a big windscreen, the route sign over it, two doors on the right
+## (the kerb side: the car's -X), an air-conditioning box on the roof. Faces +Z.
+func _bus_mesh() -> ArrayMesh:
+	var paint := Buf.new()
+	var glass := Buf.new()
+	var trim := Buf.new()
+	var tyre := Buf.new()
+	var lights := Buf.new()
+	var tails := Buf.new()
+	var route := Buf.new()
+	var hw := 1.25
+	var hl := 5.9
+	_box(paint, Vector3(0, 0.78, 0), Vector3(hw * 2.0, 0.86, hl * 2.0))
+	_box(glass, Vector3(0, 1.9, 0), Vector3(hw * 2.0 - 0.04, 1.38, hl * 2.0 - 0.04))
+	_box(paint, Vector3(0, 2.8, 0), Vector3(hw * 2.0, 0.42, hl * 2.0))
+	for i in range(9):
+		var z := -hl + 0.7 + i * 1.32
+		for sx: float in [-1.0, 1.0]:
+			_box(trim, Vector3(sx * (hw - 0.005), 1.9, z), Vector3(0.03, 1.38, 0.12))
+	_box(trim, Vector3(0, 3.12, -1.2), Vector3(1.6, 0.22, 2.8))
+	_box(glass, Vector3(0, 1.55, hl + 0.01), Vector3(hw * 2.0 - 0.22, 1.5, 0.02))
+	_box(route, Vector3(0, 2.5, hl + 0.02), Vector3(1.7, 0.26, 0.02))
+	for z: float in [hl - 1.05, -0.4]:
+		_box(glass, Vector3(-hw - 0.01, 1.35, z), Vector3(0.02, 2.0, 1.15))
+	for wz: float in [hl - 2.6, -hl + 3.1]:
+		for sx: float in [-1.0, 1.0]:
+			_cyl_x(tyre, Vector3(sx * (hw - 0.18), 0.5, wz), 0.5, 0.32, 12)
+	for sx: float in [-1.0, 1.0]:
+		_box(lights, Vector3(sx * (hw - 0.32), 0.62, hl + 0.02), Vector3(0.36, 0.16, 0.04))
+		_box(tails, Vector3(sx * (hw - 0.18), 0.95, -hl - 0.02), Vector3(0.2, 0.42, 0.04))
+	var am := _car_parts_mesh([[paint, Color(1, 1, 1, 1.0)], [glass, Color(_tone["carglass"], 0.75)],
+		[trim, Color(_tone["cartrim"], 0.5)], [tyre, Color(_tone["tyre"], 0.3)], [route, Color(Palette.col("warn"), 0.1)],
+		[lights, Color(_tone["tank"], 0.1)], [tails, Color(_tone["tank"], 0.0)]])
+	_car_meshes["bus"] = am
+	return am
+
+## A scooter and its rider, 1.9 m: two small wheels, the body in its colour, the leg
+## shield, handlebars, the rider in a dark jacket and a white helmet. Faces +Z.
+func _moto_mesh() -> ArrayMesh:
+	var paint := Buf.new()
+	var trim := Buf.new()
+	var rider := Buf.new()
+	var helmet := Buf.new()
+	var tyre := Buf.new()
+	var lights := Buf.new()
+	var tails := Buf.new()
+	_cyl_x(tyre, Vector3(0, 0.28, 0.66), 0.28, 0.12, 10)
+	_cyl_x(tyre, Vector3(0, 0.28, -0.62), 0.28, 0.12, 10)
+	_box(paint, Vector3(0, 0.46, -0.28), Vector3(0.38, 0.34, 0.92))
+	_box(paint, Vector3(0, 0.36, 0.2), Vector3(0.3, 0.1, 0.5))
+	_box(paint, Vector3(0, 0.82, 0.5), Vector3(0.42, 0.8, 0.14))
+	_box(trim, Vector3(0, 0.7, -0.3), Vector3(0.32, 0.1, 0.62))
+	_box(trim, Vector3(0, 1.12, 0.52), Vector3(0.66, 0.05, 0.05))
+	_box(rider, Vector3(0, 0.82, -0.1), Vector3(0.4, 0.2, 0.5))      # thighs
+	_box(rider, Vector3(0, 1.2, -0.22), Vector3(0.44, 0.62, 0.28))   # body
+	for sx: float in [-1.0, 1.0]:
+		_box(rider, Vector3(sx * 0.25, 1.24, 0.15), Vector3(0.1, 0.1, 0.52))   # arms
+		_box(rider, Vector3(sx * 0.14, 0.55, 0.22), Vector3(0.12, 0.42, 0.12))  # shins
+	_box(helmet, Vector3(0, 1.66, -0.12), Vector3(0.3, 0.3, 0.33))
+	_box(lights, Vector3(0, 1.0, 0.58), Vector3(0.16, 0.1, 0.04))
+	_box(tails, Vector3(0, 0.66, -0.75), Vector3(0.16, 0.07, 0.04))
+	var am := _car_parts_mesh([[paint, Color(1, 1, 1, 1.0)], [trim, Color(_tone["cartrim"], 0.5)],
+		[rider, Color(_tone["cartrim"].lerp(_tone["carglass"], 0.3), 0.5)], [helmet, Color(_tone["mark"], 0.5)],
+		[tyre, Color(_tone["tyre"], 0.3)], [lights, Color(_tone["tank"], 0.1)], [tails, Color(_tone["tank"], 0.0)]])
+	_car_meshes["moto"] = am
 	return am
 
 ## a low cylinder lying along x (a wheel)
@@ -3414,6 +3509,8 @@ func _build_stops() -> void:
 		var b := Basis(Vector3.UP, atan2(n.x, n.y))
 		var P := func(p: Vector2, y: float) -> Vector3: return Vector3(p.x, gy + y, p.y)
 		parts["back"].append(Transform3D(b, P.call(c - n * 0.7, 1.25)))
+		_hash_add(_stop_hash, Rect2(c, Vector2.ZERO), SEG_CELL, _stop_spots.size())
+		_stop_spots.append(c)
 		parts["roof"].append(Transform3D(b, P.call(c, 2.55)))
 		for sgn: float in [-1.0, 1.0]:
 			parts["post"].append(Transform3D(b, P.call(c - n * 0.7 + along * 1.5 * sgn, 1.25)))
@@ -3819,7 +3916,10 @@ func _names_tick(dt: float) -> void:
 			lb.pixel_size = 0.0058
 			lb.outline_size = 0
 			lb.modulate = _tone["mark"]
-			lb.shaded = true
+			# crisp and full white, like the reflective letters of a real plate: shaded and
+			# blended they came out grey and see-through
+			lb.shaded = false
+			lb.alpha_cut = Label3D.ALPHA_CUT_OPAQUE_PREPASS
 			lb.double_sided = false
 			lb.line_spacing = -6.0
 			lb.visible = false
@@ -3838,10 +3938,21 @@ func _names_tick(dt: float) -> void:
 			var sg: Array = _name_signs[near[k][1]]
 			if lb.text != sg[1]:
 				lb.text = sg[1]
+				lb.pixel_size = _name_fit(String(sg[1]))
 			lb.transform = sg[0]
 			lb.visible = true
 		else:
 			lb.visible = false
+
+## the label size that keeps a street's name inside the green of its plate (about 1.1 by
+## 0.26 m before SIGN_SCALE): long names get smaller letters instead of running off the end
+func _name_fit(text: String) -> float:
+	var w := 1.0
+	var lines := text.split("\n")
+	for line: String in lines:
+		w = maxf(w, _font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, 40).x)
+	var h := lines.size() * (_font.get_height(40) - 6.0)
+	return minf(0.0058, minf(1.06 / w, 0.25 / maxf(h, 1.0)))
 
 func _build_street_signs() -> void:
 	var med := String(_place.get("look", "")) == "med"
@@ -4687,7 +4798,8 @@ func _build_car() -> void:
 	world.add_child(_car)
 	_body = Node3D.new()
 	_car.add_child(_body)
-	_body.add_child(_sedan("paint"))
+	_sedan_node = _sedan("paint")
+	_body.add_child(_sedan_node)
 	var beam := MeshInstance3D.new()
 	beam.mesh = _beam_mesh()
 	beam.material_override = _glow_mat("lamplight", 0.55)
@@ -4695,9 +4807,146 @@ func _build_car() -> void:
 	beam.visible = _night
 	_car.add_child(beam)
 	_night_nodes.append(beam)
+	_build_cockpit()
 
 func _fwd() -> Vector2:
 	return Vector2(cos(_yaw), sin(_yaw))
+
+## ---- the driver's seat ----------------------------------------------------------------------
+## The view from behind the wheel, like a dashcam a little lower: the bonnet through the
+## windscreen (the body's own faces point out, so from inside only the bonnet and the mirrors
+## show), and inside, the dashboard, a steering wheel that turns with the front wheels, the
+## windscreen pillars, the roof's edge and the mirror. Left-hand drive: the seat is on the
+## car's left (+X, the car facing +Z).
+const SEAT := Vector3(0.37, 1.2, -0.32)
+
+func _build_cockpit() -> void:
+	_cockpit_node = Node3D.new()
+	_cockpit_node.visible = false
+	_body.add_child(_cockpit_node)
+	var dark: Color = _tone["cartrim"]
+	var b := Buf.new()
+	var box := func(c: Vector3, sz: Vector3, col: Color) -> void:
+		var h := sz * 0.5
+		for f: Array in [[Vector3(h.x, 0, 0), Vector3(0, h.y, 0), Vector3(0, 0, h.z)], [Vector3(-h.x, 0, 0), Vector3(0, h.y, 0), Vector3(0, 0, h.z)],
+				[Vector3(0, h.y, 0), Vector3(h.x, 0, 0), Vector3(0, 0, h.z)], [Vector3(0, -h.y, 0), Vector3(h.x, 0, 0), Vector3(0, 0, h.z)],
+				[Vector3(0, 0, h.z), Vector3(h.x, 0, 0), Vector3(0, h.y, 0)], [Vector3(0, 0, -h.z), Vector3(h.x, 0, 0), Vector3(0, h.y, 0)]]:
+			var n: Vector3 = f[0]
+			var u: Vector3 = f[1]
+			var v: Vector3 = f[2]
+			var o: Vector3 = c + n
+			b.tri(o - u - v, o + u - v, o + u + v, n.normalized(), col)
+			b.tri(o - u - v, o + u + v, o - u + v, n.normalized(), col)
+	# the dashboard under the windscreen (down to the footwell), the instrument hood in
+	# front of the driver, the centre console, and the doors' insides below the windows
+	box.call(Vector3(0, 0.7, 0.78), Vector3(1.7, 0.5, 0.62), dark)
+	box.call(Vector3(0.37, 0.98, 0.56), Vector3(0.42, 0.07, 0.2), dark.darkened(0.2))
+	box.call(Vector3(0, 0.5, 0.2), Vector3(0.3, 0.3, 0.6), dark.lightened(0.05))
+	for sx: float in [-1.0, 1.0]:
+		box.call(Vector3(sx * 0.84, 0.66, 0.05), Vector3(0.05, 0.56, 1.9), dark.lightened(0.08))
+	box.call(Vector3(0, 1.36, 0.36), Vector3(0.24, 0.07, 0.03), dark)           # the mirror
+	box.call(Vector3(0, 1.4, 0.32), Vector3(0.03, 0.06, 0.03), dark)
+	# the pillars beside the windscreen and the roof's edge over it, seen from inside
+	var shape: Array = CAR_SHAPES["sedan"]
+	var hw: float = shape[2]
+	var c0: Vector2 = shape[1][0]
+	var c1: Vector2 = shape[1][1]
+	var lo := hw - 0.06
+	var up := hw - 0.24
+	var quad2 := func(a: Vector3, e: Vector3, f: Vector3, d: Vector3, col: Color) -> void:
+		var n := (e - a).cross(d - a).normalized()
+		for sg: float in [1.0, -1.0]:
+			b.tri(a, e, f, n * sg, col)
+			b.tri(a, f, d, n * sg, col)
+	for sx: float in [-1.0, 1.0]:
+		var foot := Vector3(lo * sx, c0.y, c0.x)
+		var top := Vector3(up * sx, c1.y, c1.x)
+		var inw := Vector3(-sx * 0.11, 0, 0)
+		quad2.call(foot, top, top + inw + Vector3(0, -0.02, -0.03), foot + inw + Vector3(0, 0, -0.04), dark)
+	quad2.call(Vector3(-up, c1.y - 0.01, c1.x), Vector3(up, c1.y - 0.01, c1.x), Vector3(up, c1.y + 0.01, c1.x - 0.5),
+			Vector3(-up, c1.y + 0.01, c1.x - 0.5), dark.lightened(0.1))
+	# the bonnet through the windscreen, in the car's paint (the body itself is hidden here:
+	# it is built to be seen from outside, and from inside it showed its backs)
+	var low: Array = shape[0]
+	var hb := Buf.new()
+	var hood: Array = []
+	for q: Vector2 in low:
+		if q.x > c0.x - 0.05 and q.y > 0.5:
+			hood.append(q)
+	hood.sort_custom(func(a: Vector2, e: Vector2): return a.x < e.x)
+	for i in range(hood.size() - 1):
+		var a: Vector2 = hood[i]
+		var e: Vector2 = hood[i + 1]
+		var n := Vector3(0, e.x - a.x, -(e.y - a.y)).normalized()
+		if n.y < 0.0:
+			n = -n
+		hb.tri(Vector3(-hw, a.y, a.x), Vector3(hw, a.y, a.x), Vector3(hw, e.y, e.x), n, Color.WHITE)
+		hb.tri(Vector3(-hw, a.y, a.x), Vector3(hw, e.y, e.x), Vector3(-hw, e.y, e.x), n, Color.WHITE)
+	var hmi := MeshInstance3D.new()
+	var ham := ArrayMesh.new()
+	ham.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, hb.arrays())
+	ham.surface_set_material(0, _car_mat("paint", "paint"))
+	hmi.mesh = ham
+	hmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_cockpit_node.add_child(hmi)
+	var mi := MeshInstance3D.new()
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, b.arrays())
+	var m := StandardMaterial3D.new()
+	m.vertex_color_use_as_albedo = true
+	m.roughness = 0.9
+	am.surface_set_material(0, m)
+	mi.mesh = am
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_cockpit_node.add_child(mi)
+	# the wheel: a ring and three spokes, tilted back toward the driver, turned with the
+	# front wheels (about 15 turns of it to one of theirs)
+	_wheel_node = Node3D.new()
+	_wheel_node.position = Vector3(0.37, 0.94, 0.3)
+	_wheel_node.rotation.x = -0.45
+	_cockpit_node.add_child(_wheel_node)
+	var wb := Buf.new()
+	var rim := dark.darkened(0.3)
+	var R := 0.185
+	for i in range(14):
+		var a0 := TAU * i / 14.0
+		var a1 := TAU * (i + 1) / 14.0
+		var p0 := Vector3(cos(a0) * R, sin(a0) * R, 0)
+		var p1 := Vector3(cos(a1) * R, sin(a1) * R, 0)
+		var r0 := p0.normalized() * 0.022
+		var r1 := p1.normalized() * 0.022
+		for side: float in [1.0, -1.0]:
+			var zz := Vector3(0, 0, 0.022 * side)
+			wb.tri(p0 + zz - r0, p1 + zz - r1, p1 + zz + r1, Vector3(0, 0, side), rim)
+			wb.tri(p0 + zz - r0, p1 + zz + r1, p0 + zz + r0, Vector3(0, 0, side), rim)
+			wb.tri(p0 + r0 * side - zz, p1 + r1 * side - zz, p1 + r1 * side + zz, p0.normalized() * side, rim)
+			wb.tri(p0 + r0 * side - zz, p1 + r1 * side + zz, p0 + r0 * side + zz, p0.normalized() * side, rim)
+	for a: float in [PI * 0.5 + PI, 0.0, PI]:
+		var d := Vector3(cos(a), sin(a), 0) * R
+		var n := Vector3(-d.y, d.x, 0).normalized() * 0.02
+		for side: float in [1.0, -1.0]:
+			var zz := Vector3(0, 0, 0.012 * side)
+			wb.tri(zz - n, d + zz - n, d + zz + n, Vector3(0, 0, side), rim)
+			wb.tri(zz - n, d + zz + n, zz + n, Vector3(0, 0, side), rim)
+	var wmi := MeshInstance3D.new()
+	var wam := ArrayMesh.new()
+	wam.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, wb.arrays())
+	wam.surface_set_material(0, m)
+	wmi.mesh = wam
+	wmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_wheel_node.add_child(wmi)
+
+func _set_cockpit(on: bool) -> void:
+	_cockpit = on
+	if _cockpit_node != null:
+		_cockpit_node.visible = on
+	if _sedan_node != null:
+		for gi: GeometryInstance3D in _sedan_node.find_children("*", "GeometryInstance3D", true, false):
+			gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if on \
+					else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	cam.near = 0.05 if on else 0.1
+	_show_banner("driver's seat" if on else "chase cam", 1.0)
+	Probe.event("view", {"cockpit": on})
 
 ## A sedan at real size (4.6 x 1.8 x 1.45 m), built in code: a body lofted from its side
 ## profile, a narrower glass cabin on it, bumpers, lights, mirrors, plates and four
@@ -4996,6 +5245,7 @@ func _physics_process(dt: float) -> void:
 	_names_tick(dt)
 	_engine_tick(dt)
 	_people_tick(dt)
+	_crossers_tick(dt)
 	_check_arrival(dt)
 	_explore(dt)
 
@@ -5650,6 +5900,188 @@ func _people_tick(dt: float) -> void:
 		if p.distance_to(_pos) > PEOPLE_RANGE:
 			_place_walker(w, false)
 
+## ---- people crossing at the zebras -----------------------------------------------------------
+## A few people at the zebra crossings near the car. They wait at the kerb, and cross once
+## whatever is coming can still stop for them; traffic and autodrive stop for anyone on a
+## crossing. Drive at someone crossing and they hurry back to the kerb -- and the game says
+## so, the way it does a red light.
+const CROSSERS := 5
+const CROSS_NEAR := 110.0
+var _crossers: Array = []            ## {actor, ni, a, b, s, state, t, speed}
+var _zebras_on: Array = []           ## crossings with someone on them now: [middle, half width + 1, across]
+var _zebra_t := 0.0
+var _zebra_warned := -1              ## the crossing the player was last told off at
+
+func _spawn_crossers() -> void:
+	for i in range(CROSSERS):
+		var a := Actor3D.new()
+		world.add_child(a)
+		a.set_character(PEOPLE[(i + 3) % PEOPLE.size()], _people_rng.randf_range(1.6, 1.86))
+		_people_lod(a)
+		a.visible = false
+		_crossers.append({"actor": a, "ni": -1, "a": Vector2.ZERO, "b": Vector2.ZERO, "s": 0.0,
+			"state": "off", "t": 0.0, "speed": _people_rng.randf_range(1.15, 1.5)})
+
+## the zebra at node ni: [middle, across (unit, kerb to kerb), half the road's width, the road's way]
+func _zebra_geom(ni: int) -> Array:
+	var c := _nodes[ni]
+	for e: Vector2i in _node_roads[ni]:
+		var r: Dictionary = _roads[e.x]
+		if not r["drive"] or HIGHWAYS.has(r["k"]):
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		var d := (pts[mini(e.y + 1, pts.size() - 1)] - pts[maxi(e.y - 1, 0)]).normalized()
+		return [c, Vector2(-d.y, d.x), float(r["w"]) * 0.5, d]
+	return []
+
+## nothing coming that could not stop before the crossing, and nothing standing on it
+func _safe_to_cross(z: Array) -> bool:
+	var mid: Vector2 = z[0]
+	var hw: float = z[2]
+	var movers: Array = [[_pos, _fwd() * signf(_v), absf(_v)]]
+	for c in _traffic.cars:
+		if c.alive:
+			movers.append([c.pos, Vector2(sin(c.yaw), cos(c.yaw)), c.v])
+	for m: Array in movers:
+		var p: Vector2 = m[0]
+		var to: Vector2 = mid - p
+		var d := to.length()
+		if d < hw + 2.5:
+			return false   # on it, or right at it
+		var v: float = m[2]
+		if d < 45.0 and v > 0.8 and (m[1] as Vector2).dot(to / d) > 0.5 and v * v / (2.0 * 3.0) + 7.0 > d:
+			return false   # coming, and too close to stop
+	return true
+
+func _crossers_tick(dt: float) -> void:
+	if _crossers.is_empty() or _crossing_nodes.is_empty():
+		return
+	_zebra_t -= dt
+	if _zebra_t <= 0.0:
+		_zebra_t = 1.2
+		_send_crossers()
+	_zebras_on = []
+	for cr: Dictionary in _crossers:
+		var a: Actor3D = cr["actor"]
+		var state: String = cr["state"]
+		if state == "off":
+			continue
+		var z: Array = _zebra_geom(int(cr["ni"]))
+		var from: Vector2 = cr["a"]
+		var to: Vector2 = cr["b"]
+		var p: Vector2 = from.lerp(to, float(cr["s"]))
+		match state:
+			"wait":
+				cr["t"] = float(cr["t"]) - dt
+				if float(cr["t"]) <= 0.0 and _safe_to_cross(z):
+					cr["state"] = "cross"
+					a.play("Walk", true, float(cr["speed"]) / 1.35)
+			"cross", "back":
+				var w := from.distance_to(to)
+				var sp: float = cr["speed"] * (2.4 if state == "back" else 1.0)
+				cr["s"] = clampf(float(cr["s"]) + (sp if state == "cross" else -sp) * dt / maxf(w, 0.1), 0.0, 1.0)
+				p = from.lerp(to, float(cr["s"]))
+				_zebras_on.append([z[0], float(z[2]) + 1.0, z[1]])
+				# the player bearing down on them: back to the kerb they came from
+				if state == "cross" and p.distance_to(_pos) < 5.5 and absf(_v) > 2.0 and (p - _pos).dot(_fwd() * signf(_v)) > 0.0:
+					cr["state"] = "back"
+					a.play("Run", true, 1.2)
+					if _zebra_warned != int(cr["ni"]):
+						_zebra_warned = int(cr["ni"])
+						_show_banner("stop for people on the crossing", 1.8)
+						Probe.event("zebra", {"street": _on_name, "kmh": int(absf(_v) * 3.6), "auto": _auto})
+				if state == "cross" and float(cr["s"]) >= 1.0 or state == "back" and float(cr["s"]) <= 0.0:
+					# over (or back): off along the pavement, gone once out of the way
+					cr["state"] = "away"
+					cr["t"] = 12.0
+					a.play("Walk", true, float(cr["speed"]) / 1.35)
+					cr["away"] = (z[3] as Vector2) * (1.0 if _people_rng.randf() < 0.5 else -1.0)
+			"away":
+				cr["t"] = float(cr["t"]) - dt
+				var end: Vector2 = to if float(cr["s"]) >= 1.0 else from
+				var dir: Vector2 = cr["away"]
+				cr["a_off"] = float(cr.get("a_off", 0.0)) + float(cr["speed"]) * dt
+				p = end + dir * float(cr["a_off"])
+				if float(cr["t"]) <= 0.0 or p.distance_to(_pos) > CROSS_NEAR:
+					cr["state"] = "off"
+					cr["ni"] = -1
+					a.visible = false
+					continue
+		a.position = Vector3(p.x, _h(p), p.y)
+		var look: Vector2 = (to - from) if state in ["wait", "cross"] else ((from - to) if state == "back" else cr.get("away", to - from))
+		if look != Vector2.ZERO:
+			a.face(Vector3(look.x, 0, look.y))
+		_people_awake(a, p)
+
+## idle crossers to the zebras near the car (ahead of it rather than behind, and where
+## there is life about), one each
+func _send_crossers() -> void:
+	var busy := {}
+	for cr: Dictionary in _crossers:
+		if cr["state"] != "off":
+			busy[int(cr["ni"])] = true
+	var look := _fwd()
+	var near: Array = []
+	for ni: int in _crossing_nodes:
+		var to := _nodes[ni] - _pos
+		var d := to.length()
+		if d >= 20.0 and d <= CROSS_NEAR and not (d > 45.0 and to.dot(look) < 0.0):
+			near.append(ni)
+	for cr: Dictionary in _crossers:
+		if cr["state"] != "off":
+			continue
+		var pick := -1
+		for _try in range(8):
+			if near.is_empty():
+				break
+			var ni: int = near[_people_rng.randi() % near.size()]
+			if busy.has(ni) or _people_rng.randf() > _liveliness(_nodes[ni]) + 0.35 or _zebra_geom(ni).is_empty():
+				continue
+			pick = ni
+			break
+		if pick < 0:
+			return
+		busy[pick] = true
+		var z := _zebra_geom(pick)
+		var across: Vector2 = z[1]
+		var reach: float = float(z[2]) + 1.1
+		var flip := 1.0 if _people_rng.randf() < 0.5 else -1.0
+		var along: Vector2 = (z[3] as Vector2) * _people_rng.randf_range(-0.8, 0.8)
+		cr["ni"] = pick
+		cr["a"] = (z[0] as Vector2) - across * reach * flip + along
+		cr["b"] = (z[0] as Vector2) + across * reach * flip + along
+		cr["s"] = 0.0
+		cr["a_off"] = 0.0
+		cr["state"] = "wait"
+		cr["t"] = _people_rng.randf_range(1.0, 5.0)
+		var a: Actor3D = cr["actor"]
+		a.visible = true
+		a.play("Idle", true, _people_rng.randf_range(0.8, 1.1))
+
+## autodrive: stop short of a crossing with someone on it (the speed allowed now, or INF)
+func _ap_zebra_v() -> float:
+	if _zebras_on.is_empty() or _ap_pts.size() < 2:
+		return INF
+	var best := INF
+	for z: Array in _zebras_on:
+		var mid: Vector2 = z[0]
+		if mid.distance_to(_pos) > 70.0:
+			continue
+		var base := -_ap_pts[0].distance_to(Geometry2D.get_closest_point_to_segment(_pos, _ap_pts[0], _ap_pts[1]))
+		for j in range(_ap_pts.size() - 1):
+			if base > 70.0:
+				break
+			var a := _ap_pts[j]
+			var b := _ap_pts[j + 1]
+			var cp := Geometry2D.get_closest_point_to_segment(mid, a, b)
+			if cp.distance_to(mid) < float(z[1]):
+				var stop := base + a.distance_to(cp) - 4.5 - CAR_OFF
+				if stop > -1.5:
+					best = minf(best, sqrt(2.0 * 2.6 * maxf(stop - 0.3, 0.0)))
+				break
+			base += a.distance_to(b)
+	return best
+
 ## A lane point for centre-line point p (road direction d): `lane` to the right, or less,
 ## or the middle, or a little to the left, whichever first leaves the car room (nose, middle
 ## and tail). OSM rarely says how wide a street is; the guess is 8 m, and in the old narrow
@@ -5842,6 +6274,9 @@ func _in_city(p: Vector2) -> bool:
 
 ## `p` and `yaw`: where the car is drawn this frame
 func _camera(dt: float, p: Vector2, yaw: float) -> void:
+	if _cockpit:
+		_seat_camera(dt, yaw)
+		return
 	_cam_yaw = lerp_angle(_cam_yaw, yaw, 1.0 - exp(-dt * 3.0))
 	var back := Vector2(cos(_cam_yaw), sin(_cam_yaw))
 	var spd := clampf(absf(_v) / 30.0, 0.0, 1.0)
@@ -5856,6 +6291,20 @@ func _camera(dt: float, p: Vector2, yaw: float) -> void:
 	var at := Vector3(ahead.x, lerpf(gy, _h(ahead), 0.5) + 1.0, ahead.y)
 	look_from(eye, at)
 	cam.fov = lerpf(64.0, 74.0, spd)
+
+## from the driver's seat: with the body as it pitches and leans, the head pushed back a
+## little as the car pulls away, the eyes leading into a turn
+func _seat_camera(dt: float, yaw: float) -> void:
+	_cam_yaw = yaw
+	_look_turn = lerpf(_look_turn, clampf(_steer * 0.55, -0.3, 0.3), 1.0 - exp(-dt * 3.0))
+	var xf := _body.global_transform
+	var head := SEAT + Vector3(0, 0, clampf(-_a_long * 0.004, -0.04, 0.04))
+	var eye := xf * head
+	var ahead := Vector3(-sin(_look_turn), -0.06, cos(_look_turn)) * 12.0   # +X is the car's left
+	look_from(eye, xf * (head + ahead))
+	cam.fov = lerpf(72.0, 78.0, clampf(absf(_v) / 30.0, 0.0, 1.0))
+	if _wheel_node != null:
+		_wheel_node.rotation.z = _steer * 15.0 * 0.5
 
 func _clear_behind(from: Vector2, dir: Vector2, want: float) -> float:
 	var s := 1.0
@@ -5961,6 +6410,7 @@ func _autodrive(dt: float) -> Array:
 		vt = minf(vt, sqrt(_ap_v[i] * _ap_v[i] + 2.0 * 2.6 * dist))
 	vt = minf(vt, _ap_light_v())
 	vt = minf(vt, _ap_sign_v(dt))
+	vt = minf(vt, _ap_zebra_v())
 	if ahead_blocked:
 		vt = minf(vt, 2.5)
 	# the car in front, kept a couple of metres and a second or so behind; after waiting
@@ -6770,6 +7220,10 @@ func _draw_hud() -> void:
 	_hud.draw_rect(NIGHT_BTN, Color(bg, 0.65))
 	_hud.draw_rect(NIGHT_BTN, Color(nc, 0.9), false, 1.5)
 	_hud.draw_string(_font, NIGHT_BTN.position + Vector2(0, 15), "day" if _night else "night", HORIZONTAL_ALIGNMENT_CENTER, NIGHT_BTN.size.x, 11, nc)
+	var vc := Palette.col("player") if _cockpit else Color(ink, 0.8)
+	_hud.draw_rect(VIEW_BTN, Color(bg, 0.65))
+	_hud.draw_rect(VIEW_BTN, Color(vc, 0.9), false, 1.5)
+	_hud.draw_string(_font, VIEW_BTN.position + Vector2(0, 15), "chase" if _cockpit else "seat", HORIZONTAL_ALIGNMENT_CENTER, VIEW_BTN.size.x, 11, vc)
 	if _touch_seen:
 		var held := _stick_id >= 0
 		var c := STICK_C
@@ -6889,6 +7343,10 @@ func _input(event: InputEvent) -> void:
 			elif mb.button_index == MOUSE_BUTTON_WHEEL_UP:
 				_turn(-1)
 		return
+	var key := event as InputEventKey
+	if key != null and key.pressed and not key.echo and key.keycode == KEY_C:
+		_set_cockpit(not _cockpit)   # a view, not a control: bots have no use for it
+		return
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT and not Flow.pointer_over_hud():
@@ -6903,6 +7361,8 @@ func _input(event: InputEvent) -> void:
 				_open_picker.call_deferred()   # after this click, so it does not hit the list
 			elif NIGHT_BTN.grow(4).has_point(mb.position):
 				_set_night(not _night)
+			elif VIEW_BTN.grow(4).has_point(mb.position):
+				_set_cockpit(not _cockpit)
 			elif ASSIST_BTN.grow(4).has_point(mb.position):
 				_assist = not _assist
 				_show_banner("driving assist " + ("on" if _assist else "off"), 1.2)
@@ -6917,6 +7377,7 @@ func _input(event: InputEvent) -> void:
 		if t.pressed:
 			if AUTO_BTN.grow(4).has_point(t.position) or GOTO_BTN.grow(4).has_point(t.position) \
 					or ASSIST_BTN.grow(4).has_point(t.position) or NIGHT_BTN.grow(4).has_point(t.position) \
+					or VIEW_BTN.grow(4).has_point(t.position) \
 					or t.position.y < 36.0:
 				return   # the button (via its emulated click) and the shell's menu/sound row
 			if _stick_id < 0 and t.position.distance_to(STICK_C) <= STICK_GRAB:

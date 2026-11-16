@@ -19,6 +19,13 @@ const BRAKE_HARD := 7.5      ## what it will do when it has to
 const GAP := 2.2             ## bumper to bumper when stopped (m)
 const HEADWAY := 1.2         ## seconds behind the car in front, moving
 const LEN := 4.4
+## how long each kind is, bumper to bumper (m)
+const LENS := {"sedan": 4.6, "hatch": 4.0, "suv": 4.7, "van": 5.0, "taxi": 4.6, "bus": 11.8, "moto": 1.9}
+## the player's car against each kind: circles along its length [offsets], radius
+const BODY := {"bus": [[-4.6, -2.3, 0.0, 2.3, 4.6], 1.25], "moto": [[0.0], 0.55]}
+const BUS_ROADS := {"primary": true, "secondary": true, "tertiary": true, "trunk": true}
+const LANE_MOVE := 1.4       ## sideways speed changing lanes (m/s): about 2.5 s a lane
+const DWELL := 7.0           ## seconds a bus stands at a stop
 const LANE_W := 1.5          ## a car on my path: its middle within this of my lane line
 const PLAYER_W := 2.0        ## the player's car counts as in my way from further over: it
                              ## need not be on a lane line, and half in the lane is in it
@@ -58,6 +65,19 @@ class Car:
 	var sign_wait := 0.0
 	var holding := false              ## stopping for a stop sign: not taking the junction yet
 	var alive := false
+	var len := 4.6
+	## lanes: the path is the lane line a single-lane road would have; on a road with more
+	## lanes each way a car sits `shift` metres to the left of it (right: negative), in lane
+	## `lane_i` counted from the right
+	var lane_i := 0
+	var shift := 0.0
+	var shift_to := 0.0
+	var shift_rate := 0.0
+	var lane_t := 0.0                 ## seconds before it will think of changing lanes again
+	var split := false                ## a scooter filtering between the lanes past a queue
+	var free_t := 0.0
+	var dwell := 0.0                  ## a bus: seconds stood at the stop
+	var served := {}                  ## a bus: the stops it has stopped at
 
 var g: Node                           ## the game: its road graph, lights, ground, player
 var cars: Array = []
@@ -85,7 +105,7 @@ func setup(game: Node) -> void:
 	var b: Rect2 = g._bounds
 	var box := AABB(Vector3(b.position.x - 500.0, -200.0, b.position.y - 500.0),
 		Vector3(b.size.x + 1000.0, 600.0, b.size.y + 1000.0))   # no box to recompute every frame
-	for kind: String in ["sedan", "hatch", "suv", "van"]:
+	for kind: String in ["sedan", "hatch", "suv", "van", "taxi", "bus", "moto"]:
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_colors = true   # white: the car shader's part colours are vertex colours, see _chunked
@@ -113,12 +133,29 @@ func setup(game: Node) -> void:
 	_beams.visible = false
 	g.world.add_child(_beams)
 	var palette: Array = g._car_paints()
+	var med := String(g._place.get("look", "")) == "med"
+	# the city's buses: Givatayim's in the blue and the green of its two companies, Bedford's white
+	var bus_paints: Array = [Palette.col("player").lerp(Palette.col("bg"), 0.25), Palette.col("friend").lerp(Palette.col("bg"), 0.3)] \
+			if med else [Palette.col("ink").lerp(Palette.col("bg_alt"), 0.1)]
 	for i in range(COUNT):
 		var c := Car.new()
 		c.pace = rng.randf_range(0.82, 1.06)
 		cars.append(c)
 		c.paint = palette[rng.randi() % palette.size()]
-		c.kind = g.CAR_MIX[rng.randi() % g.CAR_MIX.size()]
+		# a couple of buses, a few scooters and taxis, the rest cars
+		var roll := rng.randf()
+		if i % 9 == 4:
+			c.kind = "bus"
+			c.paint = bus_paints[i % bus_paints.size()]
+			c.pace = rng.randf_range(0.8, 0.9)
+		elif roll < 0.15:
+			c.kind = "moto"
+			c.pace = rng.randf_range(0.95, 1.12)
+		elif roll < (0.27 if med else 0.2):
+			c.kind = "taxi"
+		else:
+			c.kind = g.CAR_MIX[rng.randi() % g.CAR_MIX.size()]
+		c.len = float(LENS.get(c.kind, 4.6))
 		c.alive = _spawn(c, true)
 		_hide_or_show(i)
 	retint()
@@ -159,6 +196,9 @@ func tick(dt: float) -> void:
 				break
 		_trim(c)
 		var vt := _target(c, i, dt)
+		var ds := clampf(c.shift_to - c.shift, -LANE_MOVE * dt, LANE_MOVE * dt)
+		c.shift += ds
+		c.shift_rate = ds / maxf(dt, 0.001)
 		if c.hit > 0.0:
 			c.hit -= dt
 			vt = 0.0
@@ -185,6 +225,7 @@ func _target(c: Car, i: int, dt: float) -> float:
 		vt = minf(vt, sqrt(c.vmax[j] * c.vmax[j] + 2.0 * BRAKE * maxf(dist, 0.0)))
 	var lv := _light_ahead(c)
 	vt = minf(vt, lv)
+	vt = minf(vt, _zebra_ahead(c))
 	if lv == INF:
 		vt = minf(vt, _sign_ahead(c, dt))
 		if not c.holding:
@@ -193,6 +234,7 @@ func _target(c: Car, i: int, dt: float) -> float:
 	# far enough to stop in, at the speed it is doing (55 m was short of that on a motorway)
 	var look := clampf(12.0 + c.v * 1.2 + c.v * c.v / (2.0 * BRAKE), 18.0, 130.0)
 	var best := INF
+	var best_len := 4.6
 	var who := -2
 	var lead_v := 0.0
 	var fwd := Vector2(sin(c.yaw), cos(c.yaw))
@@ -219,15 +261,21 @@ func _target(c: Car, i: int, dt: float) -> float:
 			continue
 		if c.ignore > 0.0 and j < cars.size() and absf(angle_difference(oyaw, c.yaw)) > 0.8:
 			continue   # breaking a standoff: go, and let the crossing car wait
-		var gap := _path_gap(c, q, look, PLAYER_W if j == cars.size() else LANE_W)
+		var wide := PLAYER_W if j == cars.size() else LANE_W
+		if c.split:
+			wide = 0.6   # filtering: only what is right in front of the wheel
+		var gap := _path_gap(c, q, look, wide)
 		if gap < best:
 			best = gap
 			who = -1 if j == cars.size() else j
+			best_len = 4.6 if j == cars.size() else (cars[j] as Car).len
 			# moving with me: its speed along my way, else treat it as standing
 			lead_v = ov * maxf(0.0, cos(angle_difference(oyaw, c.yaw)))
 	c.ignore = maxf(0.0, c.ignore - dt)
+	_steer_lanes(c, i, dt, best, lead_v)
+	vt = minf(vt, _bus_stop(c, dt))
 	if best < INF:
-		var room := best - LEN - GAP - lead_v * HEADWAY
+		var room := best - (c.len + best_len) * 0.5 - GAP - lead_v * HEADWAY
 		var follow := sqrt(maxf(0.0, lead_v * lead_v + 2.0 * BRAKE * maxf(room, 0.0)))
 		if room <= 0.0:
 			follow = 0.0
@@ -457,11 +505,215 @@ func _path_gap(c: Car, q: Vector2, look: float, wide := LANE_W) -> float:
 			break
 		var a := c.pts[j]
 		var b := c.pts[j + 1]
+		var d := b - a
+		if d.length_squared() < 0.0001:
+			continue
+		var dn := d.normalized()
 		var cp := Geometry2D.get_closest_point_to_segment(q, a, b)
-		if cp.distance_to(q) < wide:
+		var off := q - cp
+		var lon := off.dot(dn)
+		var lat := off.dot(Vector2(dn.y, -dn.x))   # to the left of the lane line
+		# in my lane: the one I am in, and while changing, the one I am going to
+		if Vector2(lon, lat - c.shift).length() < wide or (absf(c.shift_to - c.shift) > 0.3 and Vector2(lon, lat - c.shift_to).length() < wide):
 			var along := base + a.distance_to(cp)
 			if along > 0.5:
 				return along
+	return INF
+
+## someone on a zebra crossing on my way: stop short of it (the speed allowed now, or INF)
+func _zebra_ahead(c: Car) -> float:
+	var best := INF
+	for z: Array in g._zebras_on:
+		var mid: Vector2 = z[0]
+		if mid.distance_squared_to(c.pos) > 4900.0:
+			continue
+		for j in range(c.k, c.pts.size() - 1):
+			var base := c.cum[j] - c.s
+			if base > 70.0:
+				break
+			var cp := Geometry2D.get_closest_point_to_segment(mid, c.pts[j], c.pts[j + 1])
+			if cp.distance_to(mid) < float(z[1]):
+				var stop := base + c.pts[j].distance_to(cp) - 4.0 - c.len * 0.5
+				if stop > -1.5:   # (over the line already: through)
+					best = minf(best, sqrt(2.0 * BRAKE * maxf(stop - 0.3, 0.0)))
+				break
+	return best
+
+## where q is from this car's lane line: (metres ahead of it, metres to the left), or INF
+func _proj(c: Car, q: Vector2, back: float, ahead: float) -> Vector2:
+	for j in range(maxi(c.k - 4, 0), c.pts.size() - 1):
+		var base := c.cum[j] - c.s
+		if base > ahead:
+			break
+		var a := c.pts[j]
+		var b := c.pts[j + 1]
+		var d := b - a
+		var L := d.length()
+		if L < 0.01:
+			continue
+		var dn := d / L
+		var t := (q - a).dot(dn)
+		if t < -0.01 or t > L + 0.01:
+			continue
+		var lat := (q - a).dot(Vector2(dn.y, -dn.x))
+		if absf(lat) > 9.0:
+			continue
+		var along := base + t
+		if along < -back:
+			continue
+		return Vector2(along, lat)
+	return Vector2(INF, INF)
+
+## ---- lanes --------------------------------------------------------------------------------
+
+## lanes each way on road r: OSM's count when it has one, else what the width holds
+func _lanes_dir(r: Dictionary) -> int:
+	var l := int(r.get("l", 0))
+	var w := float(r["w"])
+	var n := 1
+	if int(r["o"]) != 0:
+		n = l if l > 0 else int(w / 3.3)
+	else:
+		n = l / 2 if l > 1 else int(w / 6.6)
+	return clampi(n, 1, 4)
+
+## how far left of the lane line lane `idx` (from the right) of road r lies
+func _lane_shift(r: Dictionary, idx: int) -> float:
+	var n := _lanes_dir(r)
+	if n <= 1:
+		return 0.0
+	var w := float(r["w"])
+	var centre := 0.0   # to the right of the road's middle
+	if int(r["o"]) != 0:
+		centre = w * 0.5 - w / n * (idx + 0.5)
+	else:
+		centre = w * 0.5 - w * 0.5 / n * (idx + 0.5)
+	return _lane(r) - centre
+
+## the next junction ahead within 110 m where this car turns: [+1 right / -1 left / 0
+## straight on, metres to it], or [0, INF]
+func _turn_ahead(c: Car) -> Array:
+	var n := c.pts.size()
+	for j in range(c.k + 1, n - 1):
+		var dist := c.cum[j] - c.s
+		if dist > 110.0:
+			break
+		var node := c.node[j]
+		if node < 0 or _ways_out(node) < 3:
+			continue
+		var din := (c.pts[j] - c.pts[maxi(j - 2, 0)]).normalized()
+		var dout := (c.pts[mini(j + 2, n - 1)] - c.pts[j]).normalized()
+		var a := din.angle_to(dout)
+		return [0 if absf(a) < 0.6 else (1 if a > 0.0 else -1), dist]
+	return [0, INF]
+
+func _near_junction(c: Car, ahead: float) -> bool:
+	for j in range(maxi(c.k - 2, 0), c.pts.size()):
+		var dist := c.cum[j] - c.s
+		if dist > ahead:
+			return false
+		if dist > -8.0 and c.node[j] >= 0 and _ways_out(c.node[j]) >= 3:
+			return true
+	return false
+
+## nobody (nor the player) beside or close behind or ahead in the lane `shift` left of my line
+func _lane_clear(c: Car, i: int, shift: float) -> bool:
+	for j in range(cars.size() + 1):
+		var q: Vector2
+		if j == cars.size():
+			q = g._pos
+		else:
+			if j == i or not (cars[j] as Car).alive:
+				continue
+			q = (cars[j] as Car).pos
+		if q.distance_squared_to(c.pos) > 900.0:
+			continue
+		var pr := _proj(c, q, 16.0, 24.0)
+		if pr.x != INF and pr.x > -14.0 and pr.x < 22.0 and absf(pr.y - shift) < 2.3:
+			return false
+	return true
+
+## Which lane: on a road with more than one each way, into the right one for the turn
+## ahead (right lane for a right turn, left for a left), out to overtake a slow car in
+## front when the lane beside is free, back to the right now and then. A bus keeps to the
+## right lane. A scooter stuck behind a queue rides the line between two lanes past it.
+func _steer_lanes(c: Car, i: int, dt: float, best: float, lead_v: float) -> void:
+	c.lane_t = maxf(0.0, c.lane_t - dt)
+	var r: Dictionary = _roads[c.rd[mini(c.k + 1, c.rd.size() - 1)]]
+	var n := _lanes_dir(r)
+	if n <= 1:
+		c.lane_i = 0
+		c.split = false
+		c.shift_to = 0.0
+		return
+	var want := c.lane_i
+	var turn: Array = _turn_ahead(c)
+	var vnow: float = c.vmax[mini(c.k + 1, c.vmax.size() - 1)]
+	if c.kind == "bus":
+		want = 0
+	elif int(turn[0]) != 0 and float(turn[1]) < 110.0:
+		want = 0 if int(turn[0]) > 0 else n - 1
+	elif best < 40.0 and lead_v < vnow * 0.75 and c.lane_i < n - 1 and c.lane_t <= 0.0 and c.kind != "moto":
+		want = c.lane_i + 1   # out to pass
+	elif c.lane_i > 0 and c.lane_t <= 0.0 and rng.randf() < dt * 0.1:
+		want = c.lane_i - 1   # keep right
+	want = clampi(want, 0, n - 1)
+	c.lane_i = clampi(c.lane_i, 0, n - 1)
+	if want != c.lane_i and c.lane_t <= 0.0 and not _near_junction(c, 14.0):
+		var step := c.lane_i + (1 if want > c.lane_i else -1)
+		if _lane_clear(c, i, _lane_shift(r, step)):
+			c.lane_i = step
+			c.lane_t = 3.0
+	c.shift_to = _lane_shift(r, c.lane_i)
+	if c.kind == "moto":
+		if best < 20.0 and lead_v < 2.0:
+			c.split = true
+			c.free_t = 0.0
+		elif c.split:
+			c.free_t += dt
+			# back into the lane only where there is room in it: merging back beside a car
+			# put the scooter on top of it
+			if c.free_t > 3.0 and _lane_clear(c, i, c.shift_to):
+				c.split = false
+		if c.split:
+			var lw := float(r["w"]) / n * (1.0 if int(r["o"]) != 0 else 0.5)
+			c.shift_to += lw * 0.5 * (1.0 if c.lane_i < n - 1 else -1.0)
+
+## A bus pulls in at each stop on its side of the street, stands a while, and goes on:
+## the speed that stops it at the next one it has not served, or INF
+func _bus_stop(c: Car, dt: float) -> float:
+	if c.kind != "bus":
+		return INF
+	for j in range(c.k, c.pts.size() - 1):
+		var base := c.cum[j] - c.s
+		if base > 70.0:
+			break
+		var a := c.pts[j]
+		var b := c.pts[j + 1]
+		var L := a.distance_to(b)
+		if L < 0.01:
+			continue
+		var d := (b - a) / L
+		for id: int in g._near(g._stop_hash, a.lerp(b, 0.5), L * 0.5 + 10.0, g.SEG_CELL):
+			if c.served.has(id):
+				continue
+			var sp: Vector2 = g._stop_spots[id]
+			var t := (sp - a).dot(d)
+			var side := (sp - a).dot(Vector2(-d.y, d.x))
+			if t < 0.0 or t > L or side < 0.5 or side > 9.0:
+				continue
+			var at := base + t
+			if at < 45.0:
+				c.shift_to -= 0.9   # in toward the kerb
+			if at < 1.6:
+				if c.v < 0.4:
+					c.dwell += dt
+					if c.dwell > DWELL:
+						c.served[id] = true
+						c.dwell = 0.0
+						return INF
+				return 0.0
+			return sqrt(2.0 * BRAKE * maxf(at - 0.6, 0.0))
 	return INF
 
 ## the same for any lane (the player's autodrive): [gap centre to centre, speed of the car
@@ -512,6 +764,8 @@ func _spawn(c: Car, first: bool) -> bool:
 		var r: Dictionary = _roads[ri]
 		if r["k"] == "service" or rng.randf() > float(KIND_W.get(r["k"], 0.25)):
 			continue
+		if c.kind == "bus" and not BUS_ROADS.has(r["k"]):
+			continue
 		var at: Vector2 = hit["q"]
 		if at.distance_to(me) < 30.0:
 			continue
@@ -528,6 +782,15 @@ func _spawn(c: Car, first: bool) -> bool:
 			dir = int(r["o"])
 		var along := (p[sj + 1] - p[sj]).normalized() * dir
 		var lane := _lane(r)
+		var n := _lanes_dir(r)
+		c.lane_i = 0 if (c.kind == "bus" or rng.randf() < 0.5) else rng.randi_range(0, n - 1)
+		c.lane_i = clampi(c.lane_i, 0, n - 1)
+		c.shift = _lane_shift(r, c.lane_i)
+		c.shift_to = c.shift
+		c.shift_rate = 0.0
+		c.split = false
+		c.served = {}
+		c.dwell = 0.0
 		c.pts = PackedVector2Array([at + Vector2(-along.y, along.x) * lane])
 		c.cum = PackedFloat32Array([0.0])
 		c.node = PackedInt32Array([-1])
@@ -631,6 +894,8 @@ func _next(c: Car) -> bool:
 			if straight < -0.7:
 				continue
 			var score := straight * 1.4 + float(KIND_W.get(r2["k"], 0.25)) * 1.2 + rng.randf() * 1.5
+			if c.kind == "bus":
+				score += 3.0 if BUS_ROADS.has(r2["k"]) else -3.0   # buses keep to their routes
 			if score > best_score:
 				best_score = score
 				best = Vector3i(e.x, nxt, d2)
@@ -692,6 +957,9 @@ func _place(c: Car) -> void:
 		c.yaw = atan2(d.x, d.y)
 		if g._hnx > 0:
 			c.pitch = atan2(float(g._h(b)) - float(g._h(a)), d.length())
+	if c.shift != 0.0 or c.shift_rate != 0.0:
+		c.pos += Vector2(cos(c.yaw), -sin(c.yaw)) * c.shift   # its lane: left of the line
+		c.yaw += atan2(c.shift_rate, maxf(c.v, 3.0))         # nose into the lane change
 
 func _in_view(p: Vector2) -> bool:
 	var look := Vector2(cos(float(g._yaw)), sin(float(g._yaw)))
@@ -730,12 +998,13 @@ func push(p: Vector2, r: float) -> Vector2:
 	var out := Vector2.ZERO
 	for i in range(cars.size()):
 		var c: Car = cars[i]
-		if not c.alive or c.pos.distance_squared_to(p) > 64.0:
+		if not c.alive or c.pos.distance_squared_to(p) > (100.0 if c.kind == "bus" else 64.0):
 			continue
 		var fwd := Vector2(sin(c.yaw), cos(c.yaw))
-		for off: float in [1.25, -1.25]:
+		var body: Array = BODY.get(c.kind, [[1.25, -1.25], 0.85])
+		for off: float in body[0]:
 			var d := (p + out) - (c.pos + fwd * off)
-			var need := r + 0.85
+			var need := r + float(body[1])
 			if d.length() < need:
 				out += d.normalized() * (need - d.length()) if d.length() > 0.001 else Vector2(need, 0)
 				hit_index = i
