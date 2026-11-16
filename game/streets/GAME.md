@@ -124,6 +124,23 @@ the nearest car going by.
 in homes, cooler in offices), street lamps on with a pool of light under each, shop
 windows bright, headlights with their beams on the road, tail lights glowing.
 
+> More realistic structure of homes. More realistic structure of landmarks (shops, malls,
+> parks).
+
+**Homes.** Givatayim's blocks have a parapet round the flat roof, one or two stacks of
+balconies up the street side, AC units on the walls, a canopy over the entrance with the
+lit blue house-number plate beside it, and about a third of the mid-rise blocks stand on
+columns ("komat amudim"), the ground floor open round a walled-in stairwell. Bedford's
+houses have clapboard siding, white-framed windows, a porch on the street side and often a
+chimney. Which block gets what is chosen from its outline, so it is the same every time.
+
+**Landmarks.** A big named building (a mall, a tower, the cinema, a school) has its name
+in large letters along the top of its street side; a mall has glass shopfronts all along
+the ground floor and a canopy on columns over the way in. Parks have benches along their
+paths, low park lamps, trees where OSM has few, and a playground (slide tower, swings,
+sandpit, soft floor) in the bigger ones. Sports pitches have their lines and goals or
+basketball hoops. Bedford's woods are filled with trees, mostly conifers.
+
 ## Smooth on a laptop and a phone
 
 > It's pretty choppy and laggy now. I'm trying on a laptop browser.

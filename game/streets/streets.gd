@@ -68,6 +68,7 @@ const DRIVE := {
 const TREE_ROADS := ["primary", "secondary", "tertiary", "residential", "living_street", "unclassified"]
 const TREE_GAP := 11.0
 const MAX_TREES := 16000
+const MAX_FOREST := 14000            ## trees added in parks and woods, on top
 ## Places from the map, by OSM kind: [palette role, what to call one with no name].
 ## Food is yellow, shops pink, health green, services blue, learning/culture/worship purple.
 const POI_LOOK := {
@@ -146,6 +147,8 @@ uniform vec4 dark : source_color;
 uniform vec4 lit : source_color;      // a lit room, at night
 uniform vec4 lit_cool : source_color; // an office
 uniform float night = 0.0;
+uniform float siding = 0.0;           // northern houses: clapboard, white-framed windows
+uniform vec4 trim : source_color;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 void fragment() {
 	vec3 base = mix(mix(wall_a.rgb, wall_b.rgb, COLOR.g), wall_c.rgb, COLOR.a) * COLOR.r;
@@ -173,8 +176,18 @@ void fragment() {
 	vec3 emit = vec3(0.0);
 	bool facade = len >= 2.5 && up < top - 0.9;
 	bool upper = up >= 3.0 || top < 10.0;
+	if (siding > 0.5 && style < 0.5 && facade && fract(up / 0.24) < 0.13) {
+		col *= 0.88;
+	}
 	if (facade && upper) {
-		if (style < 0.5) {
+		if (style < 0.5 && siding > 0.5) {
+			if (fx > 0.25 && fx < 0.75 && fy > 0.28 && fy < 0.84) {
+				bool frame = fx < 0.29 || fx > 0.71 || fy < 0.32 || fy > 0.8 || abs(fx - 0.5) < 0.012 || abs(fy - 0.56) < 0.012;
+				col = frame ? trim.rgb : glass.rgb;
+				rough = frame ? 0.6 : 0.2;
+				emit = frame ? vec3(0.0) : room;
+			}
+		} else if (style < 0.5) {
 			if (fx > 0.22 && fx < 0.78 && fy > 0.3 && fy < 0.85) {
 				float shut = r1 > 0.45 ? (r1 - 0.45) * 1.6 : 0.0;
 				bool closed = fy > 0.85 - 0.55 * shut;
@@ -343,6 +356,7 @@ var _seg_hash := {}                  ## Vector2i cell -> Array of road * 4096 + 
 var _blds: Array = []                ## PackedVector2Array outlines, counter-clockwise
 var _bld_box: Array = []             ## Rect2 per building
 var _bld_solid := PackedByteArray()  ## 0 for a building raised on stilts you can drive under
+var _bld_kind := PackedByteArray()   ## 1 a block on columns, 2 a house with a pitched roof, 3 balconies
 var _bld_hash := {}
 var _posts := PackedVector2Array()   ## round things you can hit: trees, signal poles
 var _post_r := PackedFloat32Array()
@@ -779,6 +793,7 @@ func _build_world() -> bool:
 	if not await _step("streets"):
 		return false
 
+	var ta := Time.get_ticks_msec()
 	# parks, grass, water, car parks
 	var areas := {}
 	for a: Dictionary in _city_data.get("areas", []):
@@ -793,8 +808,13 @@ func _build_world() -> bool:
 		# islands sit on the sea, parks and car parks on whatever is under them
 		var y := Y_AREA + (0.002 if tone in ["parking", "plaza"] else (0.001 if kind == "land" else 0.0))
 		_fill(areas[tone], ring, y, tone == "water")
+		if kind in ["park", "grass", "wood", "pitch"] and ring.size() >= 3:
+			if not _area_rings.has(kind):
+				_area_rings[kind] = []
+			(_area_rings[kind] as Array).append(ring)
 	for tone: String in areas:
 		_add_mesh(areas[tone], _surface(tone), false, VIEW_RANGE)
+	ta = _stage("areas", ta)
 
 	# roads: asphalt ribbons, with a round patch where roads meet so corners are filled
 	var asphalt := CBuf.new(CHUNK)
@@ -816,6 +836,7 @@ func _build_world() -> bool:
 	_add_mesh(paths, _surface("path"), false, VIEW_RANGE * 0.6)
 	_add_mesh(asphalt, _surface("asphalt"), false, VIEW_RANGE)
 	_add_mesh(marks, _surface("mark"), false, DETAIL_RANGE)
+	ta = _stage("roads", ta)
 	if not await _step("kerbs and gardens"):
 		return false
 	var tk := Time.get_ticks_msec()
@@ -825,15 +846,22 @@ func _build_world() -> bool:
 		return false
 	tk = Time.get_ticks_msec()
 	_build_buildings()
-	_build_roof_kit()
 	tk = _stage("buildings", tk)
+	_build_roof_kit()
+	tk = _stage("roofs", tk)
+	_build_facade_kit()
+	tk = _stage("facades", tk)
 	if not await _step("trees and lamps"):
 		return false
 	tk = Time.get_ticks_msec()
 	_build_trees()
-	_build_lamps()
-	_build_parked()
 	tk = _stage("trees", tk)
+	_build_lamps()
+	tk = _stage("lamps", tk)
+	_build_parks()
+	tk = _stage("parks", tk)
+	_build_parked()
+	tk = _stage("parked", tk)
 	if not await _step("shops and places"):
 		return false
 	tk = Time.get_ticks_msec()
@@ -843,6 +871,7 @@ func _build_world() -> bool:
 	_build_stops()
 	tk = _stage("places", tk)
 	_city_data = {}
+	_area_rings = {}
 	return true
 
 ## ground height at p: the same two triangles per grid cell as the terrain mesh, so
@@ -861,6 +890,15 @@ func _h(p: Vector2) -> float:
 		return _hgrid[r] + (_hgrid[r + 1] - _hgrid[r]) * ax + (_hgrid[r + _hnx] - _hgrid[r]) * az
 	var h11 := _hgrid[r + _hnx + 1]
 	return h11 + (_hgrid[r + _hnx] - h11) * (1.0 - ax) + (_hgrid[r + 1] - h11) * (1.0 - az)
+
+## _g3's height (lift 0) for every point of a line, each worked out once
+func _ground_line(pts: PackedVector2Array) -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	out.resize(pts.size())
+	var extra := 0.07 if _hnx > 0 else 0.0
+	for i in range(pts.size()):
+		out[i] = _h(pts[i]) + extra
+	return out
 
 ## a map point on the ground, `lift` above it (a little more on hills: a straight piece
 ## of road between two points can dip under a bend in the ground)
@@ -1045,22 +1083,27 @@ func _build_kerbs() -> void:
 				var inner := _offset_line(run, hw * sgn)
 				var outer := _offset_line(run, (hw + KERB_W) * sgn)
 				var p_out := _offset_line(run, (hw + PAVE_W) * sgn)
+				# the ground under each point once, not once per piece that touches it
+				var h_in := _ground_line(inner)
+				var h_out := _ground_line(outer)
+				var h_pv := _ground_line(p_out)
 				var along := 0.0
 				for i in range(run.size() - 1):
 					var seg := run[i].distance_to(run[i + 1])
 					var col := Color(float(pat) / 4.0 + 0.05, 0, 0)
-					var a0 := _g3(inner[i], 0.0)
-					var a1 := _g3(inner[i + 1], 0.0)
-					var t0 := _g3(inner[i], KERB_H)
-					var t1 := _g3(inner[i + 1], KERB_H)
-					var o0 := _g3(outer[i], KERB_H)
-					var o1 := _g3(outer[i + 1], KERB_H)
+					var a0 := Vector3(inner[i].x, h_in[i], inner[i].y)
+					var a1 := Vector3(inner[i + 1].x, h_in[i + 1], inner[i + 1].y)
+					var t0 := Vector3(inner[i].x, h_in[i] + KERB_H, inner[i].y)
+					var t1 := Vector3(inner[i + 1].x, h_in[i + 1] + KERB_H, inner[i + 1].y)
+					var o0 := Vector3(outer[i].x, h_out[i] + KERB_H, outer[i].y)
+					var o1 := Vector3(outer[i + 1].x, h_out[i + 1] + KERB_H, outer[i + 1].y)
 					var face := Vector3(-(inner[i + 1] - inner[i]).y, 0, (inner[i + 1] - inner[i]).x).normalized() * -sgn
 					kerb.tri(a0, a1, t1, face, col, Vector2(along, 0), Vector2(along + seg, 0), Vector2(along + seg, 1))
 					kerb.tri(a0, t1, t0, face, col, Vector2(along, 0), Vector2(along + seg, 1), Vector2(along, 1))
 					kerb.tri(t0, t1, o1, Vector3.UP, col, Vector2(along, 0), Vector2(along + seg, 0), Vector2(along + seg, 1))
 					kerb.tri(t0, o1, o0, Vector3.UP, col, Vector2(along, 0), Vector2(along + seg, 1), Vector2(along, 1))
-					pave.quad3(o0, o1, _g3(p_out[i + 1], KERB_H), _g3(p_out[i], KERB_H))
+					pave.quad3(o0, o1, Vector3(p_out[i + 1].x, h_pv[i + 1] + KERB_H, p_out[i + 1].y),
+						Vector3(p_out[i].x, h_pv[i] + KERB_H, p_out[i].y))
 					along += seg
 				if not yard:
 					continue
@@ -1210,17 +1253,21 @@ func _ribbon(buf: Buf, pts: PackedVector2Array, hw: float, y: float) -> void:
 			m = 1.0 / maxf(side.dot(Vector2(-d_out.y, d_out.x)), 0.5)
 		left.append(pts[i] - side * hw * m)
 		right.append(pts[i] + side * hw * m)
+	var hl := _ground_line(left)
+	var hr := _ground_line(right)
 	for i in range(n - 1):
-		buf.quad3(_g3(left[i], y), _g3(left[i + 1], y), _g3(right[i + 1], y), _g3(right[i], y))
+		buf.quad3(Vector3(left[i].x, hl[i] + y, left[i].y), Vector3(left[i + 1].x, hl[i + 1] + y, left[i + 1].y),
+			Vector3(right[i + 1].x, hr[i + 1] + y, right[i + 1].y), Vector3(right[i].x, hr[i] + y, right[i].y))
 
 func _disc(buf: Buf, c: Vector2, r: float, y: float) -> void:
 	var seg := 14
 	var mid := _g3(c, y)
+	var rim: Array = []
 	for i in range(seg):
-		var a0 := TAU * i / seg
-		var a1 := TAU * (i + 1) / seg
-		var p0 := _g3(c + Vector2(cos(a0), sin(a0)) * r, y)
-		var p1 := _g3(c + Vector2(cos(a1), sin(a1)) * r, y)
+		rim.append(_g3(c + Vector2(cos(TAU * i / seg), sin(TAU * i / seg)) * r, y))
+	for i in range(seg):
+		var p0: Vector3 = rim[i]
+		var p1: Vector3 = rim[(i + 1) % seg]
 		var nrm := (p0 - mid).cross(p1 - mid)
 		if nrm.y < 0.0:
 			nrm = -nrm
@@ -1312,7 +1359,9 @@ func _build_buildings() -> void:
 	roof.vertex_color_use_as_albedo = true
 	var chunks := {}
 	var north := String(_place.get("look", "")) == "north"
+	var med := String(_place.get("look", "")) == "med"
 	var gables := {"roof": CBuf.new(CHUNK), "end": CBuf.new(CHUNK)}
+	var cores := CBuf.new(CHUNK)   # the walled-in middle of a block lifted on columns
 	for bd: Dictionary in _city_data["buildings"]:
 		var ring: PackedVector2Array = bd["_ring"]
 		# on a slope: walls start below the lowest corner, the roof sits its height above
@@ -1344,6 +1393,21 @@ func _build_buildings() -> void:
 		for i in range(n):
 			area += ring[i].x * ring[(i + 1) % n].y - ring[(i + 1) % n].x * ring[i].y
 		var sgn := 1.0 if area > 0.0 else -1.0
+		var gabled := north and rel < 10.0 and absf(area) * 0.5 < 450.0
+		# "komat amudim": many Givatayim blocks stand on columns, the ground floor open for
+		# parking round a walled-in stairwell and lobby
+		var pilotis := med and style <= 1 and rel >= 7.0 and rel <= 22.0 and raised == 0.0 \
+			and absf(area) * 0.5 > 140.0 and posmod(hsh >> 11, 100) < 35
+		var wall_base := g_lo + 3.0 if pilotis else base
+		# flat roofs have a low parapet round them; the facade's window grid still stops
+		# at the roof itself (u2.y)
+		var lip := 0.7 if not gabled and rel >= 5.0 else 0.0
+		var look := {"style": style, "rgb": _wall_rgb(bright, tint, stone), "g_lo": g_lo, "top": h,
+			"sgn": sgn, "gabled": gabled, "pilotis": pilotis, "lip": lip}
+		bd["_look"] = look
+		_bld_kind.append(1 if pilotis else (2 if gabled else 0))
+		if pilotis:
+			_lift_on_columns(ring, sgn, base, g_lo + 3.0, roofs, cores, look)
 		for i in range(n):
 			var a := ring[i]
 			var b := ring[(i + 1) % n]
@@ -1353,14 +1417,21 @@ func _build_buildings() -> void:
 				continue
 			var out := Vector2(e.y, -e.x).normalized() * sgn
 			var nrm := Vector3(out.x, 0.0, out.y)
-			var a0 := Vector3(a.x, base, a.y)
-			var b0 := Vector3(b.x, base, b.y)
-			var a1 := Vector3(a.x, h, a.y)
-			var b1 := Vector3(b.x, h, b.y)
+			var a0 := Vector3(a.x, wall_base, a.y)
+			var b0 := Vector3(b.x, wall_base, b.y)
+			var a1 := Vector3(a.x, h + lip, a.y)
+			var b1 := Vector3(b.x, h + lip, b.y)
 			var u2 := Vector2(len, h - g_lo)
-			walls.tri(a0, b0, b1, nrm, col, Vector2(0, base - g_lo), Vector2(len, base - g_lo), Vector2(len, h - g_lo), u2)
-			walls.tri(a0, b1, a1, nrm, col, Vector2(0, base - g_lo), Vector2(len, h - g_lo), Vector2(0, h - g_lo), u2)
-		if north and rel < 10.0 and absf(area) * 0.5 < 450.0:
+			var y0 := wall_base - g_lo
+			var y1 := h + lip - g_lo
+			walls.tri(a0, b0, b1, nrm, col, Vector2(0, y0), Vector2(len, y0), Vector2(len, y1), u2)
+			walls.tri(a0, b1, a1, nrm, col, Vector2(0, y0), Vector2(len, y1), Vector2(0, y1), u2)
+			if lip > 0.0:   # the parapet's inside, seen from the roof
+				var ar := Vector3(a.x, h, a.y)
+				var br := Vector3(b.x, h, b.y)
+				walls.tri(ar, a1, b1, -nrm, col, Vector2(0, h - g_lo), Vector2(0, y1), Vector2(len, y1), u2)
+				walls.tri(ar, b1, br, -nrm, col, Vector2(0, h - g_lo), Vector2(len, y1), Vector2(len, h - g_lo), u2)
+		if gabled:
 			_gable(gables, ring, h, hsh)
 		var idx := Geometry2D.triangulate_polygon(ring)
 		var rc := Color(bright * 0.95, bright * 0.95, bright * 0.95)
@@ -1384,12 +1455,335 @@ func _build_buildings() -> void:
 		mi.visibility_range_end = VIEW_RANGE   # past this the haze has it anyway
 		mi.visibility_range_end_margin = 80.0
 		world.add_child(mi)
+	_add_mesh(cores, _surface("recess"), true, VIEW_RANGE * 0.5)
 	if not (gables["roof"] as Buf).empty():
 		var shingles := StandardMaterial3D.new()
 		shingles.vertex_color_use_as_albedo = true
 		shingles.roughness = 0.9
 		_add_mesh(gables["roof"], shingles, true, VIEW_RANGE)
 		_add_mesh(gables["end"], _surface("gable"), true, VIEW_RANGE)
+
+func _area(poly: PackedVector2Array) -> float:
+	return absf(_area_signed(poly))
+
+func _area_signed(poly: PackedVector2Array) -> float:
+	var a := 0.0
+	for i in range(poly.size()):
+		a += poly[i].x * poly[(i + 1) % poly.size()].y - poly[(i + 1) % poly.size()].x * poly[i].y
+	return a * 0.5
+
+var _chimneys: Array = []
+var _area_rings := {}                ## "park" / "grass" / "wood" / "pitch" -> outlines, while building
+var _landmarks: Array = []           ## [where, "playground" | "pitch"]
+
+## ---- what makes a block look lived in ---------------------------------------------------------
+## Givatayim: stacks of balconies on the street side, an AC unit or two on the walls, a
+## canopy over the entrance with the blue house-number plate beside it, the columns of the
+## blocks that stand on them. Bedford: a porch on the street side of a house, a chimney.
+## All of it instanced, in the building's own wall colour.
+func _build_facade_kit() -> void:
+	var med := String(_place.get("look", "")) == "med"
+	var north := String(_place.get("look", "")) == "north"
+	var kit := {"balcony": [], "column": [], "canopy": [], "porch": [], "post": []}
+	var kit_col := {"balcony": [], "column": [], "canopy": [], "porch": [], "post": []}
+	var acs: Array = []
+	var plates: Array = []
+	var bi := -1
+	for bd: Dictionary in _city_data["buildings"]:
+		bi += 1
+		if not bd.has("_look"):
+			continue
+		var look: Dictionary = bd["_look"]
+		var wc: Color = look["rgb"]
+		for t: Transform3D in look.get("cols", []):
+			kit["column"].append(t)
+			kit_col["column"].append(wc)
+		var rel: float = bd["_h"]
+		if rel < 3.0 or float(bd["_base"]) > 0.0:
+			continue
+		var ring: PackedVector2Array = bd["_ring"]
+		var hsh := _hash_i(ring[0])
+		var g_lo: float = look["g_lo"]
+		var street := _street_edge(ring, float(look["sgn"]))
+		var bname := String(bd.get("name", ""))
+		if bname != "" and (_area(ring) >= 300.0 or rel >= 20.0):
+			var face_edge := street if not street.is_empty() else _longest_edge(ring, float(look["sgn"]))
+			var mall := _is_mall(bname)
+			_name_on(bname, face_edge, float(look["top"]), g_lo, mall)
+			if mall and not street.is_empty():
+				_mall_front(face_edge, g_lo, wc, kit, kit_col)
+				continue
+		var style: int = look["style"]
+		if med and rel <= 32.0:
+			var floors := int((rel + 0.3) / 3.0)
+			# balconies: one or two stacks up the street side
+			if not street.is_empty() and style != 1 and floors >= 2:
+				var a: Vector2 = street[0]
+				var b: Vector2 = street[1]
+				var out: Vector2 = street[2]
+				var L := a.distance_to(b)
+				var n := maxi(1, int(L / 3.3))
+				var cw := L / n
+				if L >= 7.0:
+					var stacks := 1 if n < 4 else 2
+					var face := Basis(Vector3.UP, atan2(out.x, out.y))
+					for sk in range(stacks):
+						var ci := posmod(hsh >> (3 + sk * 4), n)
+						if n >= 3:
+							ci = 1 + posmod(hsh >> (3 + sk * 4), n - 2)
+						if sk == 1 and ci == posmod(hsh >> 3, n):
+							ci = (ci + 2) % n
+						var at := a + (b - a) / L * ((ci + 0.5) * cw)
+						for lv in range(1, floors):
+							var p := at + out * 0.62
+							kit["balcony"].append(Transform3D(face, Vector3(p.x, g_lo + lv * 3.0, p.y)))
+							kit_col["balcony"].append(wc)
+					if _bld_kind[bi] == 0:
+						_bld_kind[bi] = 3
+			# AC units: a couple on the walls, beside a window, any side
+			var placed := 0
+			for i in range(ring.size()):
+				if placed >= 3 or floors < 1:
+					break
+				var a := ring[i]
+				var b := ring[(i + 1) % ring.size()]
+				var L := a.distance_to(b)
+				if L < 4.0 or posmod((hsh >> (i % 8)) + i, 3) != 0:
+					continue
+				var e := (b - a) / L
+				var out := Vector2(e.y, -e.x) * float(look["sgn"])
+				var n := maxi(1, int(L / 3.3))
+				var ci := posmod(hsh + i * 7, n)
+				var lv := posmod(hsh + i * 3, maxi(floors, 1))
+				var p := a + e * ((ci + 0.86) * L / n) + out * 0.2
+				acs.append(Transform3D(Basis(Vector3.UP, atan2(out.x, out.y)), Vector3(p.x, g_lo + lv * 3.0 + 0.75, p.y)))
+				placed += 1
+			# the entrance: a canopy over the door, the lit blue number plate beside it
+			if not street.is_empty() and not look["pilotis"]:
+				var a: Vector2 = street[0]
+				var b: Vector2 = street[1]
+				var out: Vector2 = street[2]
+				var mid := (a + b) * 0.5
+				var e := (b - a).normalized()
+				var face := Basis(Vector3.UP, atan2(out.x, out.y))
+				var cp := mid + out * 0.55
+				kit["canopy"].append(Transform3D(face, Vector3(cp.x, g_lo + 2.75, cp.y)))
+				kit_col["canopy"].append(wc * 0.92)
+				var pp := mid + e * 1.7 + out * 0.03
+				plates.append(Transform3D(face, Vector3(pp.x, g_lo + 2.2, pp.y)))
+		elif north and look["gabled"] and not street.is_empty():
+			# a porch: a little roof on two posts in front of the door
+			var a: Vector2 = street[0]
+			var b: Vector2 = street[1]
+			var out: Vector2 = street[2]
+			if a.distance_to(b) >= 6.0 and posmod(hsh >> 6, 10) < 7:
+				var mid := (a + b) * 0.5 + (b - a).normalized() * float(posmod(hsh, 3) - 1) * 1.5
+				var e := (b - a).normalized()
+				var face := Basis(Vector3.UP, atan2(out.x, out.y))
+				var rp := mid + out * 0.95
+				kit["porch"].append(Transform3D(face, Vector3(rp.x, g_lo + 2.6, rp.y)))
+				kit_col["porch"].append(wc)
+				for sd: float in [-1.4, 1.4]:
+					var q := mid + e * sd + out * 1.7
+					kit["post"].append(Transform3D(Basis(), Vector3(q.x, g_lo + 1.3, q.y)))
+					kit_col["post"].append(wc)
+	var tinted := StandardMaterial3D.new()
+	tinted.vertex_color_use_as_albedo = true
+	tinted.roughness = 0.9
+	var meshes := {"balcony": _balcony_mesh(), "column": _boxm(Vector3.ONE), "canopy": _boxm(Vector3(2.4, 0.14, 1.1)),
+		"porch": _boxm(Vector3(3.4, 0.14, 1.9)), "post": _boxm(Vector3(0.14, 2.6, 0.14))}
+	var ranges := {"balcony": 230.0, "column": 260.0, "canopy": 150.0, "porch": 220.0, "post": 160.0}
+	for k: String in kit:
+		if not (kit[k] as Array).is_empty():
+			_chunked(meshes[k], kit[k], ranges[k], kit_col[k], tinted, k != "post")
+	if not _mall_glass.is_empty():
+		_chunked(_boxm(Vector3.ONE), _mall_glass, 400.0, [], _shop_glass())
+	if not acs.is_empty():
+		var ac := _boxm(Vector3(0.82, 0.55, 0.32))
+		ac.material = _surface("tank")
+		_chunked(ac, acs, 140.0)
+	if not plates.is_empty():
+		var pl := _boxm(Vector3(0.36, 0.24, 0.04))
+		pl.material = mat("player", 0.6)
+		_chunked(pl, plates, 110.0)
+	if not _chimneys.is_empty():
+		var ch := _boxm(Vector3(0.7, 2.2, 0.7))
+		ch.material = _surface("brick")
+		_chunked(ch, _chimneys, 450.0, [], null, true)
+	_dressing["balconies"] = (kit["balcony"] as Array).size()
+	_dressing["columns"] = (kit["column"] as Array).size()
+	_dressing["porches"] = (kit["porch"] as Array).size()
+	_dressing["chimneys"] = _chimneys.size()
+
+## the building's name in big letters along the top of its street side: malls, towers,
+## the cinema, schools -- the places people give directions by
+var _names: Array = []
+
+func _name_on(text: String, edge: Array, top: float, g_lo: float, mall: bool) -> void:
+	if edge.is_empty():
+		return
+	var a: Vector2 = edge[0]
+	var b: Vector2 = edge[1]
+	var out: Vector2 = edge[2]
+	var L := a.distance_to(b)
+	var lb := Label3D.new()
+	lb.text = text
+	lb.font = _font
+	lb.font_size = 96
+	var w := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 96).x
+	lb.pixel_size = clampf(L * 0.75 / maxf(w, 1.0), 0.008, 0.035)
+	lb.outline_size = 12
+	var role := "accent" if mall else "ink"
+	lb.modulate = Palette.col(role)
+	lb.outline_modulate = Palette.col("bg")
+	lb.set_meta("role", role)
+	var mid := (a + b) * 0.5 + out * 0.25
+	var y := (g_lo + 5.9) if mall else maxf(top - 1.6, g_lo + 3.0)
+	lb.position = Vector3(mid.x, y, mid.y)
+	lb.rotation.y = atan2(out.x, out.y)
+	lb.double_sided = false
+	lb.visibility_range_end = 520.0
+	world.add_child(lb)
+	_names.append(lb)
+
+func _is_mall(name: String) -> bool:
+	var n := name.to_lower()
+	return n.contains("mall") or n.contains("קניון") or n.contains(" מול") or n.begins_with("מול ") \
+		or n.contains("plaza") or n.contains("centre") and n.contains("shopping")
+
+## a mall's street side: glass shopfronts all along the ground floor, and a big canopy on
+## columns over the way in
+func _mall_front(edge: Array, g_lo: float, wc: Color, kit: Dictionary, kit_col: Dictionary) -> void:
+	var a: Vector2 = edge[0]
+	var b: Vector2 = edge[1]
+	var out: Vector2 = edge[2]
+	var L := a.distance_to(b)
+	var e := (b - a) / L
+	var face := Basis(Vector3.UP, atan2(out.x, out.y))
+	var mid := (a + b) * 0.5
+	var glass := mid + out * 0.08
+	_mall_glass.append(Transform3D(face * Basis.from_scale(Vector3(maxf(L - 1.0, 2.0), 3.4, 0.1)),
+		Vector3(glass.x, g_lo + 1.8, glass.y)))
+	var cp := mid + out * 1.8
+	kit["canopy"].append(Transform3D(face * Basis.from_scale(Vector3(minf(12.0, L * 0.5) / 2.4, 2.4, 3.3)), Vector3(cp.x, g_lo + 4.0, cp.y)))
+	kit_col["canopy"].append(wc * 0.9)
+	for sd: float in [-1.0, 1.0]:
+		var q := mid + e * sd * minf(5.0, L * 0.2) + out * 3.2
+		kit["column"].append(Transform3D(Basis.from_scale(Vector3(0.45, 4.0, 0.45)), Vector3(q.x, g_lo + 2.0, q.y)))
+		kit_col["column"].append(wc)
+
+var _mall_glass: Array = []
+
+func _longest_edge(ring: PackedVector2Array, sgn: float) -> Array:
+	var best := 0.0
+	var pick: Array = []
+	for i in range(ring.size()):
+		var a := ring[i]
+		var b := ring[(i + 1) % ring.size()]
+		if a.distance_to(b) > best:
+			best = a.distance_to(b)
+			pick = [a, b, Vector2(b.y - a.y, a.x - b.x).normalized() * sgn]
+	return pick
+
+## a balcony, local +Z out of the wall: a slab and a solid parapet round its three sides
+func _balcony_mesh() -> ArrayMesh:
+	var b := Buf.new()
+	_box(b, Vector3(0, -0.09, 0), Vector3(2.7, 0.18, 1.24))
+	_box(b, Vector3(0, 0.5, 0.58), Vector3(2.7, 1.0, 0.08))
+	for sx: float in [-1.0, 1.0]:
+		_box(b, Vector3(sx * 1.31, 0.5, 0), Vector3(0.08, 1.0, 1.24))
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, b.arrays())
+	return am
+
+## the side of a building facing its street: the longest edge whose outside looks toward
+## the nearest road, as [a, b, out], or [] when no road is near
+func _street_edge(ring: PackedVector2Array, sgn: float) -> Array:
+	var c := Vector2.ZERO
+	for p in ring:
+		c += p
+	c /= ring.size()
+	var hit := _nearest_seg(c, 22.0, true, true)
+	if hit.is_empty():
+		return []
+	var to: Vector2 = ((hit["q"] as Vector2) - c).normalized()
+	var best := -INF
+	var pick: Array = []
+	for i in range(ring.size()):
+		var a := ring[i]
+		var b := ring[(i + 1) % ring.size()]
+		var e := b - a
+		var L := e.length()
+		if L < 3.0:
+			continue
+		var out := Vector2(e.y, -e.x).normalized() * sgn
+		var facing := out.dot(to)
+		if facing > 0.5 and facing * minf(L, 14.0) > best:
+			best = facing * minf(L, 14.0)
+			pick = [a, b, out]
+	return pick
+
+## the colour the facade shader gives a building's walls, for things stuck on them
+func _wall_rgb(bright: float, tint: float, stone: float) -> Color:
+	var wa: Color = _tone["wall"]
+	var wb: Color = _tone["wall2"]
+	var wc: Color = _tone["wall3"]
+	var c := wa.lerp(wb, tint).lerp(wc, stone)
+	return Color(c.r * bright, c.g * bright, c.b * bright)
+
+## a block on columns: the floors above start at `lift`; under them, a walled-in core set
+## back from the edge (stairs, lobby, storage), the ceiling of the open floor, and a column
+## at every corner and every few metres along the edges
+func _lift_on_columns(ring: PackedVector2Array, sgn: float, base: float, lift: float, roofs: Buf,
+		cores: Buf, look: Dictionary) -> void:
+	var cols: Array = []
+	var ceil_c := Color(0.62, 0.62, 0.62)
+	var idx := Geometry2D.triangulate_polygon(ring)
+	for i in range(0, idx.size(), 3):
+		var p0 := ring[idx[i]]
+		var p1 := ring[idx[i + 1]]
+		var p2 := ring[idx[i + 2]]
+		roofs.tri(Vector3(p0.x, lift, p0.y), Vector3(p1.x, lift, p1.y), Vector3(p2.x, lift, p2.y), Vector3.DOWN, ceil_c)
+	# set back 2.2 m: whichever way round the outline runs, the smaller of the two offsets
+	var inner: Array = Geometry2D.offset_polygon(ring, -2.2)
+	var other: Array = Geometry2D.offset_polygon(ring, 2.2)
+	if not inner.is_empty() and not other.is_empty() and _area(other[0]) < _area(inner[0]):
+		inner = other
+	if not inner.is_empty() and _area(inner[0]) < _area(ring) * 0.95:
+		var core: PackedVector2Array = inner[0]
+		var ca := 0.0
+		for i in range(core.size()):
+			ca += core[i].x * core[(i + 1) % core.size()].y - core[(i + 1) % core.size()].x * core[i].y
+		var cs := 1.0 if ca > 0.0 else -1.0
+		for i in range(core.size()):
+			var a := core[i]
+			var b := core[(i + 1) % core.size()]
+			var e := b - a
+			if e.length() < 0.05:
+				continue
+			var out := Vector2(e.y, -e.x).normalized() * cs
+			var nrm := Vector3(out.x, 0.0, out.y)
+			cores.tri(Vector3(a.x, base, a.y), Vector3(b.x, base, b.y), Vector3(b.x, lift, b.y), nrm, Color.WHITE)
+			cores.tri(Vector3(a.x, base, a.y), Vector3(b.x, lift, b.y), Vector3(a.x, lift, a.y), nrm, Color.WHITE)
+	var hgt := lift - base
+	var c := Vector2.ZERO
+	for p in ring:
+		c += p
+	c /= ring.size()
+	for i in range(ring.size()):
+		var a := ring[i]
+		var b := ring[(i + 1) % ring.size()]
+		var e := b - a
+		var L := e.length()
+		if L < 0.5:
+			continue
+		var d := e / L
+		var inward := -Vector2(e.y, -e.x).normalized() * sgn
+		var steps := maxi(1, int(L / 4.5))
+		for k in range(steps):
+			var q := a + d * (L * float(k) / steps) + inward * 0.28 + (d * 0.28 if k == 0 else Vector2.ZERO)
+			cols.append(Transform3D(Basis.from_scale(Vector3(0.4, hgt, 0.4)), Vector3(q.x, base + hgt * 0.5, q.y)))
+	look["cols"] = cols
 
 ## a pitched roof over a house: the footprint's tightest rectangle, the ridge along its
 ## long side, eaves a little past the walls, shingles grey or red-brown
@@ -1450,6 +1844,9 @@ func _gable(g: Dictionary, ring: PackedVector2Array, top: float, hsh: int) -> vo
 		var c: Vector3 = P.call(end[0], cy, top + rise - 0.1)
 		var out := Vector3(u.x, 0, u.y) * float(end[1])
 		(g["end"] as Buf).tri(a, b, c, out, Color.WHITE)
+	if posmod(hsh >> 13, 10) < 6:   # a chimney up one end, through the slope
+		var at: Vector3 = P.call(lo.x + 1.3, cy + (hi.y - lo.y) * 0.18, top + rise * 0.72)
+		_chimneys.append(Transform3D(Basis(Vector3.UP, atan2(u.x, u.y)), at))
 
 func _bld_box_of(ring: PackedVector2Array) -> Rect2:
 	var box := Rect2(ring[0], Vector2.ZERO)
@@ -1499,6 +1896,27 @@ func _build_trees() -> void:
 						spots.append(Vector3(p.x, p.y, rng.randf_range(0.8, 1.25)))
 				s += TREE_GAP + rng.randf_range(-2.5, 2.5)
 			s -= L
+	# parks get trees where OSM has few; woods are filled (conifers in the north)
+	var forest := {}   # index into spots -> true
+	for kind: String in ["park", "grass", "wood"]:
+		for ring: PackedVector2Array in _area_rings.get(kind, []):
+			var area := _area(ring)
+			if area < 500.0 or spots.size() >= MAX_TREES + MAX_FOREST:
+				continue
+			var per := 70.0 if kind == "wood" else 160.0
+			var want := mini(int(area / per), 2500)
+			var box := _bld_box_of(ring)
+			for _i in range(want * 2):
+				if want <= 0 or spots.size() >= MAX_TREES + MAX_FOREST:
+					break
+				var p := Vector2(rng.randf_range(box.position.x, box.end.x), rng.randf_range(box.position.y, box.end.y))
+				if not Geometry2D.is_point_in_polygon(p, ring) or not _tree_ok(p, 4.5 if kind == "wood" else 7.0):
+					continue
+				_add_post(p, 0.3)
+				if kind == "wood":
+					forest[spots.size()] = true
+				spots.append(Vector3(p.x, p.y, rng.randf_range(0.8, 1.35)))
+				want -= 1
 	if spots.is_empty():
 		return
 	var look := String(_place.get("look", ""))
@@ -1534,13 +1952,16 @@ func _build_trees() -> void:
 	# kind 0 round, 1 palm, 2 conifer; same trunk post either way
 	var parts := {"trunk": [], "crown": [], "ptrunk": [], "fronds": [], "ftrunk": [], "cone": []}
 	var colours := {"crown": [], "fronds": [], "cone": []}
-	for sp: Vector3 in spots:
+	for si in range(spots.size()):
+		var sp: Vector3 = spots[si]
 		var sc := sp.z
 		var gy := _h(Vector2(sp.x, sp.y))
 		var rot := Basis(Vector3.UP, rng.randf() * TAU)
 		var g := rng.randf_range(0.8, 1.1)
 		var roll := rng.randf()
-		if look == "med" and roll < 0.13:
+		if forest.has(si) and look == "north":
+			roll *= 0.5   # a northern wood is mostly spruce and fir
+		if look == "med" and roll < 0.13 and not forest.has(si):
 			parts["ptrunk"].append(Transform3D(rot.scaled(Vector3(1, sc, 1)), Vector3(sp.x, gy + 3.5 * sc, sp.y)))
 			parts["fronds"].append(Transform3D(rot.scaled(Vector3.ONE * sc), Vector3(sp.x, gy + 7.0 * sc, sp.y)))
 			colours["fronds"].append(Color(g, g, g))
@@ -1628,7 +2049,6 @@ func _build_roof_kit() -> void:
 
 ## street lamps along the pavements, every ~34 m, alternating sides
 func _build_lamps() -> void:
-	var pools := CBuf.new(GROUND_CELL)
 	var poles: Array = []
 	var arms: Array = []
 	var heads: Array = []
@@ -1668,7 +2088,7 @@ func _build_lamps() -> void:
 						arms.append(Transform3D(face, Vector3(arm.x, gy + 6.95, arm.y)))
 						var head := p + toward * 1.75
 						heads.append(Transform3D(face, Vector3(head.x, gy + 6.85, head.y)))
-						_pool(pools, head + toward * 0.6, 7.5)
+						_pool_at.append(Vector3(head.x + toward.x * 0.6, head.y + toward.y * 0.6, 7.5))
 						_add_post(p, 0.15)
 				s += 34.0
 			s -= L
@@ -1689,9 +2109,292 @@ func _build_lamps() -> void:
 	_chunked(arm_m, arms, LAMP_RANGE)
 	_chunked(head_m, heads, LAMP_RANGE)
 	_dressing["lamps"] = poles.size()
-	for mi: MeshInstance3D in _add_mesh(pools, _glow_mat("lamplight", 0.42), false, LAMP_RANGE):
-		mi.visible = _night
+
+## the pools of light under street and park lamps: built the first time it gets dark (a
+## few thousand discs that follow the hills are not worth the wait if it never does)
+var _pool_at: Array = []             ## Vector3(x, z, radius)
+var _pools_made := false
+
+func _make_pools() -> void:
+	_pools_made = true
+	var pools := CBuf.new(GROUND_CELL)
+	for q: Vector3 in _pool_at:
+		_pool(pools, Vector2(q.x, q.y), q.z)
+	for mi: MeshInstance3D in _add_mesh(pools, _glow_mat("lamplight", 0.4), false, LAMP_RANGE):
 		_night_nodes.append(mi)
+
+## ---- parks and pitches ----------------------------------------------------------------------
+## Along the paths through a park: benches facing the path, low park lamps (lit at night,
+## with their pools). In a big enough park, a playground: a slide tower, swings and a
+## sandpit on a soft floor. On a sports pitch: its lines, and goals or basketball hoops.
+
+func _build_parks() -> void:
+	var parks: Array = []   # [ring, box]
+	var park_hash := {}
+	for kind: String in ["park", "grass"]:
+		for ring: PackedVector2Array in _area_rings.get(kind, []):
+			if _area(ring) >= 400.0:
+				_hash_add(park_hash, _bld_box_of(ring), 60.0, parks.size())
+				parks.append([ring, _bld_box_of(ring)])
+	var benches: Array = []
+	var posts: Array = []
+	var globes: Array = []
+	var flip := false
+	for r: Dictionary in _roads:
+		if r["drive"]:
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		var hw: float = float(r["w"]) * 0.5
+		var s_bench := 6.0
+		var s_lamp := 12.0
+		for j in range(pts.size() - 1):
+			var a := pts[j]
+			var b := pts[j + 1]
+			var L := a.distance_to(b)
+			if L < 0.5:
+				continue
+			var d := (b - a) / L
+			var side := Vector2(-d.y, d.x)
+			var mid := (a + b) * 0.5
+			var inside := false
+			for pi: int in _near(park_hash, mid, 1.0, 60.0):
+				var pk: Array = parks[pi]
+				if (pk[1] as Rect2).grow(2.0).has_point(mid) and Geometry2D.is_point_in_polygon(mid, pk[0]):
+					inside = true
+					break
+			if not inside:
+				s_bench -= L
+				s_lamp -= L
+				continue
+			while s_bench < L:
+				flip = not flip
+				var out := side * (1.0 if flip else -1.0)
+				var q := a + d * s_bench + out * (hw + 0.75)
+				if _push_out(q, 0.9, true) == Vector2.ZERO:
+					benches.append(Transform3D(Basis(Vector3.UP, atan2(-out.x, -out.y)), _g3(q, 0.0)))
+					_add_post(q, 0.5)
+				s_bench += 19.0
+			s_bench -= L
+			while s_lamp < L:
+				var q := a + d * s_lamp - side * (hw + 0.6) * (1.0 if flip else -1.0)
+				if _push_out(q, 0.5, true) == Vector2.ZERO:
+					var gy := _h(q)
+					posts.append(Transform3D(Basis(), Vector3(q.x, gy + 1.8, q.y)))
+					globes.append(Transform3D(Basis(), Vector3(q.x, gy + 3.75, q.y)))
+					_pool_at.append(Vector3(q.x, q.y, 4.5))
+					_add_post(q, 0.1)
+				s_lamp += 27.0
+			s_lamp -= L
+	var bench_buf := Buf.new()
+	_box(bench_buf, Vector3(0, 0.44, 0), Vector3(1.7, 0.07, 0.46))
+	_box(bench_buf, Vector3(0, 0.74, -0.22), Vector3(1.7, 0.36, 0.06))
+	for sx: float in [-0.72, 0.72]:
+		_box(bench_buf, Vector3(sx, 0.22, 0), Vector3(0.07, 0.44, 0.42))
+	var bench := ArrayMesh.new()
+	bench.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, bench_buf.arrays())
+	bench.surface_set_material(0, _surface("furniture"))
+	_chunked(bench, benches, 160.0, [], null, true)
+	var post := CylinderMesh.new()
+	post.top_radius = 0.045
+	post.bottom_radius = 0.06
+	post.height = 3.6
+	post.radial_segments = 6
+	post.rings = 1
+	post.material = _surface("pole")
+	var globe := SphereMesh.new()
+	globe.radius = 0.22
+	globe.height = 0.44
+	globe.radial_segments = 8
+	globe.rings = 4
+	globe.material = _surface("lamp")
+	_chunked(post, posts, LAMP_RANGE)
+	_chunked(globe, globes, LAMP_RANGE)
+	# playgrounds, in the bigger parks
+	var play := {"friend": CBuf.new(CHUNK), "warn": CBuf.new(CHUNK), "accent": CBuf.new(CHUNK),
+		"player": CBuf.new(CHUNK), "pole": CBuf.new(CHUNK), "soft": CBuf.new(CHUNK), "sand": CBuf.new(CHUNK)}
+	var made := 0
+	for pk: Array in parks:
+		var ring: PackedVector2Array = pk[0]
+		if _area(ring) < 1500.0:
+			continue
+		var spot := _clear_spot(ring, 7.0)
+		if not spot.is_finite():
+			continue
+		_playground(play, spot, float(posmod(_hash_i(spot), 360)) * PI / 180.0)
+		_landmarks.append([spot, "playground"])
+		made += 1
+	var mats := {"friend": mat("friend", 0.12), "warn": mat("warn", 0.12), "accent": mat("accent", 0.12),
+		"player": mat("player", 0.12), "pole": _surface("pole"), "soft": _surface("rubber"), "sand": _surface("sand")}
+	for k: String in play:
+		_add_mesh(play[k], mats[k], k != "soft" and k != "sand", 260.0)
+	# pitches: lines, and goals or hoops
+	var lines := CBuf.new(GROUND_CELL)
+	var frames := CBuf.new(CHUNK)
+	for ring: PackedVector2Array in _area_rings.get("pitch", []):
+		_sports_pitch(ring, lines, frames)
+	_add_mesh(lines, _surface("mark"), false, DETAIL_RANGE)
+	_add_mesh(frames, _surface("mark"), true, 260.0)
+	_dressing["benches"] = benches.size()
+	_dressing["playgrounds"] = made
+	_dressing["pitches"] = (_area_rings.get("pitch", []) as Array).size()
+
+## a point inside `ring` with nothing solid or a path within `r` of it, nearest its middle
+func _clear_spot(ring: PackedVector2Array, r: float) -> Vector2:
+	var c := Vector2.ZERO
+	for p in ring:
+		c += p
+	c /= ring.size()
+	var box := _bld_box_of(ring)
+	var best := Vector2.INF
+	var bd := INF
+	for i in range(40):
+		var q := c if i == 0 else Vector2(lerpf(box.position.x, box.end.x, fposmod(i * 0.618, 1.0)),
+			lerpf(box.position.y, box.end.y, fposmod(i * 0.382 + 0.17, 1.0)))
+		if not Geometry2D.is_point_in_polygon(q, ring):
+			continue
+		var ok := true
+		for k in range(8):
+			var e := q + Vector2(cos(k * TAU / 8.0), sin(k * TAU / 8.0)) * r
+			if not Geometry2D.is_point_in_polygon(e, ring):
+				ok = false
+				break
+		if not ok or _push_out(q, r, true) != Vector2.ZERO:
+			continue
+		var hit := _nearest_seg(q, r + 3.0, false)
+		if not hit.is_empty() and float(hit["edge"]) < r:
+			continue
+		if q.distance_to(c) < bd:
+			bd = q.distance_to(c)
+			best = q
+	return best
+
+## a box turned by `yaw` about its own middle, into a Buf
+func _obox(buf: Buf, c: Vector3, size: Vector3, yaw: float, tilt := 0.0) -> void:
+	var basis := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, tilt)
+	var h := size * 0.5
+	for ax in range(3):
+		for sg: float in [-1.0, 1.0]:
+			var n := Vector3.ZERO
+			n[ax] = sg
+			var u := Vector3.ZERO
+			u[(ax + 1) % 3] = h[(ax + 1) % 3]
+			var w := Vector3.ZERO
+			w[(ax + 2) % 3] = h[(ax + 2) % 3]
+			var f := n * h[ax]
+			var pts: Array = []
+			for q: Vector3 in [f - u - w, f + u - w, f + u + w, f - u + w]:
+				pts.append(c + basis * q)
+			_poly(buf, pts, basis * n)
+
+## a slide tower with a roof, a swing frame and a sandpit, on a round soft floor
+func _playground(b: Dictionary, at: Vector2, yaw: float) -> void:
+	var gy := _h(at)
+	var fwd := Vector2(sin(yaw), cos(yaw))
+	var side := Vector2(fwd.y, -fwd.x)
+	var P := func(q: Vector2, y: float) -> Vector3: return Vector3(q.x, gy + y, q.y)
+	var floor_buf: Buf = b["soft"]
+	var seg := 16
+	for i in range(seg):
+		var a0 := TAU * i / seg
+		var a1 := TAU * (i + 1) / seg
+		floor_buf.tri(P.call(at, 0.04), P.call(at + Vector2(cos(a0), sin(a0)) * 7.0, 0.04),
+			P.call(at + Vector2(cos(a1), sin(a1)) * 7.0, 0.04), Vector3.UP, Color.WHITE)
+	# the tower and its slide
+	var t := at - side * 2.5
+	for c: Vector2 in [Vector2(-0.6, -0.6), Vector2(0.6, -0.6), Vector2(0.6, 0.6), Vector2(-0.6, 0.6)]:
+		var q := t + side * c.x + fwd * c.y
+		_obox(b["pole"], P.call(q, 1.45), Vector3(0.1, 2.9, 0.1), yaw)
+	_obox(b["friend"], P.call(t, 1.5), Vector3(1.4, 0.1, 1.4), yaw)
+	_obox(b["accent"], P.call(t, 2.95), Vector3(1.6, 0.1, 1.6), yaw)
+	var run := t + fwd * 2.05
+	_obox(b["warn"], P.call(run, 0.8), Vector3(0.62, 0.06, 2.9), yaw, 0.5)
+	# swings
+	var sw := at + side * 2.6
+	for e: float in [-1.6, 1.6]:
+		for l: float in [-0.5, 0.5]:
+			_obox(b["player"], P.call(sw + side * e + fwd * l * 0.6, 1.2), Vector3(0.08, 2.5, 0.08), yaw, l * 0.45)
+	_obox(b["player"], P.call(sw, 2.4), Vector3(0.1, 0.1, 3.4), yaw + PI * 0.5)
+	for e: float in [-0.7, 0.7]:
+		var q := sw + side * e
+		_obox(b["pole"], P.call(q, 1.5), Vector3(0.03, 1.8, 0.03), yaw)
+		_obox(b["warn"], P.call(q, 0.55), Vector3(0.5, 0.05, 0.22), yaw)
+	# the sandpit
+	var sp := at + fwd * -3.4
+	for e: float in [-1.5, 1.5]:
+		_obox(b["friend"], P.call(sp + fwd * e, 0.15), Vector3(3.2, 0.3, 0.15), yaw)
+		_obox(b["friend"], P.call(sp + side * e, 0.15), Vector3(3.2, 0.3, 0.15), yaw + PI * 0.5)
+	_obox(b["sand"], P.call(sp, 0.08), Vector3(2.9, 0.12, 2.9), yaw)
+
+## a pitch: the tightest rectangle round it, its lines (inset a metre), and a goal at each
+## end (a basketball hoop on a small court)
+func _sports_pitch(ring: PackedVector2Array, lines: Buf, frames: Buf) -> void:
+	var best := INF
+	var u := Vector2.RIGHT
+	var lo := Vector2.ZERO
+	var hi := Vector2.ZERO
+	for i in range(ring.size()):
+		var e := (ring[(i + 1) % ring.size()] - ring[i]).normalized()
+		if e == Vector2.ZERO:
+			continue
+		var v := Vector2(-e.y, e.x)
+		var mn := Vector2(INF, INF)
+		var mx := Vector2(-INF, -INF)
+		for p in ring:
+			var q := Vector2(p.dot(e), p.dot(v))
+			mn = mn.min(q)
+			mx = mx.max(q)
+		if (mx.x - mn.x) * (mx.y - mn.y) < best:
+			best = (mx.x - mn.x) * (mx.y - mn.y)
+			u = e
+			lo = mn
+			hi = mx
+	var v := Vector2(-u.y, u.x)
+	if hi.y - lo.y > hi.x - lo.x:   # u along the long side
+		var t := u
+		u = v
+		v = -t
+		var l2 := Vector2(-hi.y, lo.x)
+		var h2 := Vector2(-lo.y, hi.x)
+		lo = l2
+		hi = h2
+	var L := hi.x - lo.x
+	var W := hi.y - lo.y
+	if L < 12.0 or W < 7.0 or best > 12000.0:
+		return
+	_landmarks.append([u * (lo.x + hi.x) * 0.5 + v * (lo.y + hi.y) * 0.5, "pitch"])
+	var at := func(a: float, b: float) -> Vector2: return u * a + v * b
+	var strip := func(p0: Vector2, p1: Vector2) -> void:
+		var d := (p1 - p0).normalized()
+		var n := Vector2(-d.y, d.x) * 0.06
+		lines.quad3(_g3(p0 - n, 0.05), _g3(p1 - n, 0.05), _g3(p1 + n, 0.05), _g3(p0 + n, 0.05))
+	var x0 := lo.x + 1.0
+	var x1 := hi.x - 1.0
+	var y0 := lo.y + 1.0
+	var y1 := hi.y - 1.0
+	var cx := (x0 + x1) * 0.5
+	var cy := (y0 + y1) * 0.5
+	for e: Array in [[x0, y0, x1, y0], [x1, y0, x1, y1], [x1, y1, x0, y1], [x0, y1, x0, y0], [cx, y0, cx, y1]]:
+		strip.call(at.call(e[0], e[1]), at.call(e[2], e[3]))
+	var cr := minf(3.0, (y1 - y0) * 0.16)
+	for i in range(16):
+		var a0 := TAU * i / 16.0
+		var a1 := TAU * (i + 1) / 16.0
+		strip.call(at.call(cx + cos(a0) * cr, cy + sin(a0) * cr), at.call(cx + cos(a1) * cr, cy + sin(a1) * cr))
+	var yaw := atan2(u.x, u.y)
+	for end: Array in [[x0, 1.0], [x1, -1.0]]:
+		var g: Vector2 = at.call(end[0], cy)
+		var gy := _h(g)
+		if L >= 34.0:   # football: two posts and a bar
+			var gw := minf(5.0, (y1 - y0) * 0.3)
+			for sd: float in [-0.5, 0.5]:
+				var q := g + v * gw * sd
+				_obox(frames, Vector3(q.x, gy + 1.1, q.y), Vector3(0.1, 2.2, 0.1), yaw)
+			_obox(frames, Vector3(g.x, gy + 2.2, g.y), Vector3(gw + 0.1, 0.1, 0.1), yaw)
+		else:   # a hoop: a pole off the end line and a backboard over it
+			var q := g - u * 0.6 * float(end[1])
+			_obox(frames, Vector3(q.x, gy + 1.6, q.y), Vector3(0.12, 3.2, 0.12), yaw)
+			var bb := g + u * 0.3 * float(end[1])
+			_obox(frames, Vector3(bb.x, gy + 3.35, bb.y), Vector3(1.6, 1.0, 0.06), yaw)
 
 ## ---- night ---------------------------------------------------------------------------------
 ## The same city after dark: the sun down to a dim blue moon (and no shadows, which also
@@ -1730,27 +2433,26 @@ func _glow_mat(tone: String, strength: float) -> ShaderMaterial:
 	_glow_mats[key] = m
 	return m
 
-## a disc of light on the ground round p, following the hills
+## a disc of light on the ground round p, following the hills: a ring at half the radius
+## and one at the rim, each point's height worked out once
 func _pool(buf: Buf, p: Vector2, r: float) -> void:
 	var seg := 12
 	var mid := _g3(p, 0.09)
+	var inner: Array = []
+	var outer: Array = []
+	var dirs: Array = []
 	for i in range(seg):
-		var a0 := TAU * i / seg
-		var a1 := TAU * (i + 1) / seg
-		var e0 := Vector2(cos(a0), sin(a0))
-		var e1 := Vector2(cos(a1), sin(a1))
-		for ring: Array in [[0.0, 0.55], [0.55, 1.0]]:
-			var r0: float = ring[0]
-			var r1: float = ring[1]
-			var q00 := _g3(p + e0 * r * r0, 0.09)
-			var q01 := _g3(p + e1 * r * r0, 0.09)
-			var q10 := _g3(p + e0 * r * r1, 0.09)
-			var q11 := _g3(p + e1 * r * r1, 0.09)
-			if r0 == 0.0:
-				buf.tri(mid, q10, q11, Vector3.UP, Color.WHITE, Vector2.ZERO, e0 * r1, e1 * r1)
-			else:
-				buf.tri(q00, q10, q11, Vector3.UP, Color.WHITE, e0 * r0, e0 * r1, e1 * r1)
-				buf.tri(q00, q11, q01, Vector3.UP, Color.WHITE, e0 * r0, e1 * r1, e1 * r0)
+		var e := Vector2(cos(TAU * i / seg), sin(TAU * i / seg))
+		dirs.append(e)
+		inner.append(_g3(p + e * r * 0.55, 0.09))
+		outer.append(_g3(p + e * r, 0.09))
+	for i in range(seg):
+		var j := (i + 1) % seg
+		var e0: Vector2 = dirs[i]
+		var e1: Vector2 = dirs[j]
+		buf.tri(mid, inner[i], inner[j], Vector3.UP, Color.WHITE, Vector2.ZERO, e0 * 0.55, e1 * 0.55)
+		buf.tri(inner[i], outer[i], outer[j], Vector3.UP, Color.WHITE, e0 * 0.55, e0, e1)
+		buf.tri(inner[i], outer[j], inner[j], Vector3.UP, Color.WHITE, e0 * 0.55, e1, e1 * 0.55)
 
 ## a headlight beam on the road, local to a car facing +Z: from the bumper, 26 m out and
 ## widening (UV.x across, UV.y along; UV2.x = 1 marks it as a beam for the shader)
@@ -1777,6 +2479,8 @@ func _beam_mesh() -> ArrayMesh:
 
 func _set_night(on: bool) -> void:
 	_night = on
+	if on and not _pools_made:
+		_make_pools()
 	for n: Node3D in _night_nodes:
 		n.visible = on
 	_retint_city()
@@ -2690,6 +3394,9 @@ func _tones() -> void:
 		"lit": ink.lerp(wn, 0.55),
 		"litcool": ink.lerp(pl, 0.2),
 		"lamplight": ink.lerp(wn, 0.45),
+		"brick": Palette.col("hazard").lerp(bg, 0.45).lerp(alt, 0.15),
+		"rubber": ac.lerp(alt, 0.55).lerp(bg, 0.25),
+		"sand": wn.lerp(ink, 0.45).lerp(alt, 0.1),
 	}
 
 func _retint_city() -> void:
@@ -2729,6 +3436,8 @@ func _retint_city() -> void:
 		_wall_mat.set_shader_parameter("lit", _tone["lit"])
 		_wall_mat.set_shader_parameter("lit_cool", _tone["litcool"])
 		_wall_mat.set_shader_parameter("night", 1.0 if _night else 0.0)
+		_wall_mat.set_shader_parameter("trim", _tone["mark"])
+		_wall_mat.set_shader_parameter("siding", 1.0 if String(_place.get("look", "")) == "north" else 0.0)
 	for m: ShaderMaterial in _glow_mats.values():
 		m.set_shader_parameter("col", _tone[m.get_meta("tone")])
 	var lamp := _surface("lamp")
@@ -2760,6 +3469,9 @@ func _retint_city() -> void:
 	for poi: Array in _pois:
 		var lb := poi[2] as Label3D
 		lb.modulate = Palette.col(poi[1])
+		lb.outline_modulate = Palette.col("bg")
+	for lb: Label3D in _names:
+		lb.modulate = Palette.col(lb.get_meta("role"))
 		lb.outline_modulate = Palette.col("bg")
 	_retint_hud()
 
