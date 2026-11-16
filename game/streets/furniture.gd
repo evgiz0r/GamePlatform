@@ -699,7 +699,8 @@ func fences() -> void:
 	var posts = g.new_cbuf(CELL)
 	var rails = g.new_cbuf(CELL)
 	var hedge = g.new_cbuf(CELL)
-	var boards = g.new_cbuf(CELL)
+	var chain = g.new_cbuf(CELL)
+	var chain_posts = g.new_cbuf(CELL)
 	var fence_col := _tone("fencegreen")
 	var rail_col := _tone("railing")
 	var metres := {"fence": 0.0, "railing": 0.0, "hedge": 0.0}
@@ -747,13 +748,16 @@ func fences() -> void:
 				if med:
 					metres["fence"] += _fence_line(green, posts, a, e, 1.8, fence_col, 2.5)
 				else:
-					metres["fence"] += _board_line(boards, a, e)
+					# Bedford's mapped fences are mostly chain-link: along the highway, round
+					# yards and lots (tens of kilometres of them, so a post every other piece)
+					metres["fence"] += _fence_line(chain, chain_posts, a, e, 1.8, _tone("pole"), 3.0, false, 2)
 	g._add_mesh(green, _fence_material("fencegreen", 0.12), false, FENCE_SEEN)
 	g._add_mesh(white, _fence_material("railing", 0.15), false, FENCE_SEEN * 0.7)
 	g._add_mesh(posts, g._surface("fencegreen"), false, FENCE_SEEN)
 	g._add_mesh(rails, g._surface("railing"), false, FENCE_SEEN * 0.7)
 	g._add_mesh(hedge, g._surface("bush"), false, FENCE_SEEN * 1.2)
-	g._add_mesh(boards, g._surface("trunk"), false, FENCE_SEEN)
+	g._add_mesh(chain, _fence_material("pole", 0.08), false, FENCE_SEEN * 0.8)
+	g._add_mesh(chain_posts, g._surface("pole"), false, FENCE_SEEN * 0.8)
 	for key: String in metres:
 		_count[key + "_m"] = int(metres[key])
 
@@ -783,10 +787,13 @@ func _open_pieces(a: Vector2, e: Vector2, step: float) -> Array:
 			out.append([p0, p1])
 	return out
 
-## a see-through panel H high from a to e (the shader draws the bars), posts every `step`
-func _fence_line(panel, posts, a: Vector2, e: Vector2, H: float, col: Color, step: float, rail := false) -> float:
+## a see-through panel H high from a to e (the shader draws the bars), a post every
+## `post_every` pieces of about `step` metres
+func _fence_line(panel, posts, a: Vector2, e: Vector2, H: float, col: Color, step: float, rail := false,
+		post_every := 1) -> float:
 	var done := 0.0
 	var run := 0.0
+	var i := 0
 	for pc: Array in _open_pieces(a, e, step):
 		var p0: Vector2 = pc[0]
 		var p1: Vector2 = pc[1]
@@ -800,7 +807,9 @@ func _fence_line(panel, posts, a: Vector2, e: Vector2, H: float, col: Color, ste
 		var u2 := Vector2(H, 0)
 		panel.tri(A, B, B + up, n, col, Vector2(run, 0), Vector2(run + L, 0), Vector2(run + L, H), u2)
 		panel.tri(A, B + up, A + up, n, col, Vector2(run, 0), Vector2(run + L, H), Vector2(run, H), u2)
-		_box(posts, A + Vector3(0, H * 0.5, 0), Vector3(0.06, H, 0.06), col)
+		if i % post_every == 0:
+			_box(posts, A + Vector3(0, H * 0.5, 0), Vector3(0.06, H, 0.06), col)
+		i += 1
 		if rail:   # a solid round top rail on a railing
 			_tube(posts, A + up, B + up, 0.035, 0.035, col, 4)
 		run += L
@@ -837,20 +846,6 @@ func _hedge_line(buf, a: Vector2, e: Vector2) -> float:
 			var n := Vector3(((lo[i] as Vector2) + (lo[j] as Vector2) - p0 - p1).x, 0.4, ((lo[i] as Vector2) + (lo[j] as Vector2) - p0 - p1).y).normalized()
 			buf.tri(foot[i], foot[j], top[j], n, col)
 			buf.tri(foot[i], top[j], top[i], n, col)
-		done += p0.distance_to(p1)
-	return done
-
-## Bedford's wooden fence: solid boards 1.5 m high
-func _board_line(buf, a: Vector2, e: Vector2) -> float:
-	var done := 0.0
-	for pc: Array in _open_pieces(a, e, 2.4):
-		var p0: Vector2 = pc[0]
-		var p1: Vector2 = pc[1]
-		var A := Vector3(p0.x, _h(p0), p0.y)
-		var B := Vector3(p1.x, _h(p1), p1.y)
-		var n := (B - A).cross(Vector3.UP).normalized()
-		_box(buf, (A + B) * 0.5 + Vector3(0, 0.75, 0), Vector3(p0.distance_to(p1), 1.5, 0.05), Color.WHITE,
-				Basis(Vector3.UP, atan2(-(p1 - p0).y, (p1 - p0).x)))
 		done += p0.distance_to(p1)
 	return done
 
