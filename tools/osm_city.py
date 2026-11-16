@@ -30,6 +30,7 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
   areas      [{p: ring, k: park|grass|wood|water|parking|pitch|plaza}]
   trees      [x, z, ...]
   addrs      [[x, z, street, number], ...]   address points not on a building outline
+  stops      [[x, z, name], ...]   bus stops
   pois       [[x, z, kind, name, name_en], ...]   shops, restaurants, schools... (kind:
              the amenity/tourism value, or "shop:<type>" e.g. "shop:supermarket")
   height     {x0, z0, step, nx, nz, base, h: [...]}  ground height on a grid, decimetres above
@@ -267,6 +268,7 @@ DATA_FILTERS = (
     'way["place"="square"];'
     'way["natural"="coastline"];'
     'node["addr:housenumber"]["addr:street"];'
+    'node["highway"="bus_stop"];'
     # places people go: food, shops, health, services, schools, culture, worship
     'node["shop"];way["shop"];'
     'node["amenity"~"^(restaurant|cafe|fast_food|bar|pub|ice_cream|pharmacy|bank|post_office|clinic|doctors|dentist|fuel|school|kindergarten|library|place_of_worship|cinema|theatre|community_centre)$"];'
@@ -903,6 +905,15 @@ def bake(raw, name, args):
             continue
         if inside(x, z):
             out["pois"].append([q(x), q(z), kind, t.get("name", ""), t.get("name:en", "")])
+
+    # bus stops: [x, z, name]
+    out["stops"] = []
+    for e in elements:
+        t = e.get("tags", {})
+        if e["type"] == "node" and t.get("highway") == "bus_stop":
+            x, z = P(e["lat"], e["lon"])
+            if inside(x, z):
+                out["stops"].append([q(x), q(z), t.get("name", "")])
 
     # addresses that are points (a door, an entrance) rather than tags on a building
     out["addrs"] = []

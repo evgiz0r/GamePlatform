@@ -94,6 +94,12 @@ const SHOP_WORDS := {
 const WIDE_SHOPS := ["supermarket", "department_store", "furniture", "hardware", "doityourself"]
 const AWNINGS := ["accent", "prize", "player", "warn", "friend"]
 const SIGN_RANGE := 110.0            ## signs further than this are not drawn
+## People on the pavements: walkers kept around the car (respawned near it when left far
+## behind), and some standing about by the cafe tables
+const PEOPLE := ["Casual_Male", "Casual_Female", "Casual2_Male", "Casual2_Female", "Casual3_Female"]
+const WALKERS := 26
+const CHATTERS := 10
+const PEOPLE_RANGE := 150.0
 const SIGNAL_CYCLE := [              ## [seconds, phase of the E-W group, phase of N-S]
 	[14.0, "g", "r"], [3.0, "y", "r"], [1.5, "r", "r"],
 	[14.0, "r", "g"], [3.0, "r", "y"], [1.5, "r", "r"],
@@ -293,6 +299,12 @@ var _streets := {}                   ## name -> true, the named streets inside t
 var _visited := {}
 var _pois: Array = []                ## [Vector2 where, role, sign] for the minimap
 var _dressing := {}                  ## how many lamps, solar heaters, tables went in (the report)
+var _walkers: Array = []             ## {actor, line (PackedVector2Array), cum, s, dir, speed, dodge}
+var _chatters: Array = []            ## {actor, spot}
+var _table_spots: Array = []         ## Vector2 of every cafe table
+var _crossing_nodes: Array = []
+var _people_t := 0.0
+var _people_rng := RandomNumberGenerator.new()
 var _hgrid := PackedFloat32Array()   ## ground height (m above the lowest point) on a grid
 var _hx0 := 0.0
 var _hz0 := 0.0
@@ -452,6 +464,7 @@ func start(_config: Dictionary) -> void:
 	_place_start()
 	_build_hud()
 	_retint_city()
+	_spawn_people()
 	_loaded = true
 	track3d(_car, "@")
 	Probe.event("city", {"name": _city_name, "roads": _roads.size(), "buildings": _blds.size(),
@@ -715,6 +728,7 @@ func _build_world() -> bool:
 		_markings(marks, r)
 	for ni in _city_data.get("crossings", []):
 		_zebra(marks, int(ni))
+		_crossing_nodes.append(int(ni))
 	_add_mesh(paths, _surface("path"), false)
 	_add_mesh(asphalt, _surface("asphalt"), false)
 	_add_mesh(marks, _surface("mark"), false)
@@ -734,12 +748,14 @@ func _build_world() -> bool:
 	tk = Time.get_ticks_msec()
 	_build_trees()
 	_build_lamps()
+	_build_parked()
 	tk = _stage("trees", tk)
 	if not await _step("shops and places"):
 		return false
 	tk = Time.get_ticks_msec()
 	_build_signals()
 	_build_pois()
+	_build_stops()
 	tk = _stage("places", tk)
 	_city_data = {}
 	return true
@@ -1182,6 +1198,8 @@ func _build_buildings() -> void:
 	var roof := _surface("roof")
 	roof.vertex_color_use_as_albedo = true
 	var chunks := {}
+	var north := String(_place.get("look", "")) == "north"
+	var gables := {"roof": Buf.new(), "end": Buf.new()}
 	for bd: Dictionary in _city_data["buildings"]:
 		var ring: PackedVector2Array = bd["_ring"]
 		# on a slope: walls start below the lowest corner, the roof sits its height above
@@ -1229,6 +1247,8 @@ func _build_buildings() -> void:
 			var u2 := Vector2(len, h - g_lo)
 			walls.tri(a0, b0, b1, nrm, col, Vector2(0, base - g_lo), Vector2(len, base - g_lo), Vector2(len, h - g_lo), u2)
 			walls.tri(a0, b1, a1, nrm, col, Vector2(0, base - g_lo), Vector2(len, h - g_lo), Vector2(0, h - g_lo), u2)
+		if north and rel < 10.0 and absf(area) * 0.5 < 450.0:
+			_gable(gables, ring, h, hsh)
 		var idx := Geometry2D.triangulate_polygon(ring)
 		var rc := Color(bright * 0.95, bright * 0.95, bright * 0.95)
 		for i in range(0, idx.size(), 3):
@@ -1251,6 +1271,72 @@ func _build_buildings() -> void:
 		mi.visibility_range_end = VIEW_RANGE   # past this the haze has it anyway
 		mi.visibility_range_end_margin = 80.0
 		world.add_child(mi)
+	if not (gables["roof"] as Buf).empty():
+		var shingles := StandardMaterial3D.new()
+		shingles.vertex_color_use_as_albedo = true
+		shingles.roughness = 0.9
+		_add_mesh(gables["roof"], shingles, true)
+		_add_mesh(gables["end"], _surface("gable"), true)
+
+## a pitched roof over a house: the footprint's tightest rectangle, the ridge along its
+## long side, eaves a little past the walls, shingles grey or red-brown
+func _gable(g: Dictionary, ring: PackedVector2Array, top: float, hsh: int) -> void:
+	var best := INF
+	var u := Vector2.RIGHT
+	var lo := Vector2.ZERO
+	var hi := Vector2.ZERO
+	for i in range(ring.size()):
+		var e := (ring[(i + 1) % ring.size()] - ring[i]).normalized()
+		if e == Vector2.ZERO:
+			continue
+		var v := Vector2(-e.y, e.x)
+		var mn := Vector2(INF, INF)
+		var mx := Vector2(-INF, -INF)
+		for p in ring:
+			var q := Vector2(p.dot(e), p.dot(v))
+			mn = mn.min(q)
+			mx = mx.max(q)
+		var area := (mx.x - mn.x) * (mx.y - mn.y)
+		if area < best:
+			best = area
+			u = e
+			lo = mn
+			hi = mx
+	var v := Vector2(-u.y, u.x)
+	if hi.y - lo.y > hi.x - lo.x:   # the ridge runs along the long side
+		var t := u
+		u = v
+		v = -t
+		var l2 := Vector2(-hi.y, lo.x)
+		var h2 := Vector2(-lo.y, hi.x)
+		lo = l2
+		hi = h2
+	lo -= Vector2(0.35, 0.35)
+	hi += Vector2(0.35, 0.35)
+	var rise := (hi.y - lo.y) * 0.32
+	var cy := (lo.y + hi.y) * 0.5
+	var P := func(a: float, b: float, y: float) -> Vector3:
+		var q := u * a + v * b
+		return Vector3(q.x, y, q.y)
+	var shades := [Palette.col("bg").lerp(Palette.col("bg_alt"), 0.6), Palette.col("hazard").lerp(Palette.col("bg"), 0.55),
+		Palette.col("warn").lerp(Palette.col("bg"), 0.62), Palette.col("bg_alt").lerp(Palette.col("ink"), 0.25)]
+	var col: Color = shades[posmod(hsh >> 9, shades.size())]
+	var r0: Vector3 = P.call(lo.x, cy, top + rise)
+	var r1: Vector3 = P.call(hi.x, cy, top + rise)
+	for side: Array in [[lo.y, 1.0], [hi.y, -1.0]]:
+		var e0: Vector3 = P.call(lo.x, side[0], top - 0.15)
+		var e1: Vector3 = P.call(hi.x, side[0], top - 0.15)
+		var nrm := (e1 - e0).cross(r0 - e0).normalized()
+		if nrm.y < 0.0:
+			nrm = -nrm
+		(g["roof"] as Buf).tri(e0, e1, r1, nrm, col)
+		(g["roof"] as Buf).tri(e0, r1, r0, nrm, col)
+	for end: Array in [[lo.x + 0.35, -1.0], [hi.x - 0.35, 1.0]]:
+		var a: Vector3 = P.call(end[0], lo.y + 0.35, top)
+		var b: Vector3 = P.call(end[0], hi.y - 0.35, top)
+		var c: Vector3 = P.call(end[0], cy, top + rise - 0.1)
+		var out := Vector3(u.x, 0, u.y) * float(end[1])
+		(g["end"] as Buf).tri(a, b, c, out, Color.WHITE)
 
 func _bld_box_of(ring: PackedVector2Array) -> Rect2:
 	var box := Rect2(ring[0], Vector2.ZERO)
@@ -1365,6 +1451,7 @@ func _build_roof_kit() -> void:
 		return
 	var panels: Array = []
 	var tanks: Array = []
+	var rooms: Array = []            ## the stairwell room most blocks have on the roof
 	var rng := RandomNumberGenerator.new()
 	for bd: Dictionary in _city_data["buildings"]:
 		var rel: float = bd["_h"]
@@ -1380,6 +1467,17 @@ func _build_roof_kit() -> void:
 		var top := g_sum / ring.size() + rel
 		var want := clampi(int(absf(area) * 0.5 / 200.0), 1, 4)
 		rng.seed = _hash_i(ring[0])
+		if rel > 9.0 and rng.randf() < 0.6:
+			for _try in range(8):
+				var q := Vector2(rng.randf_range(box.position.x, box.end.x), rng.randf_range(box.position.y, box.end.y))
+				var room_fits := true
+				for d: Vector2 in [Vector2.ZERO, Vector2(2.2, 0), Vector2(-2.2, 0), Vector2(0, 2.4), Vector2(0, -2.4)]:
+					if not Geometry2D.is_point_in_polygon(q + d, ring):
+						room_fits = false
+						break
+				if room_fits:
+					rooms.append(Transform3D(Basis(Vector3.UP, rng.randf() * 0.2), Vector3(q.x, top + 1.3, q.y)))
+					break
 		var placed := 0
 		for _try in range(want * 5):
 			if placed >= want:
@@ -1408,6 +1506,11 @@ func _build_roof_kit() -> void:
 	tank.material = _surface("tank")
 	_chunked(panel, panels, VIEW_RANGE * 0.5)
 	_chunked(tank, tanks, VIEW_RANGE * 0.5)
+	var room := BoxMesh.new()
+	room.size = Vector3(3.0, 2.6, 3.4)
+	room.material = _surface("roofroom")
+	_chunked(room, rooms, VIEW_RANGE * 0.6)
+	_dressing["roof_rooms"] = rooms.size()
 	_dressing["solar"] = panels.size()
 
 ## street lamps along the pavements, every ~34 m, alternating sides
@@ -1471,6 +1574,100 @@ func _build_lamps() -> void:
 	_chunked(arm_m, arms, TREE_RANGE)
 	_chunked(head_m, heads, TREE_RANGE)
 	_dressing["lamps"] = poles.size()
+
+## Parked cars down Givatayim's streets, half up on the pavement the way they really
+## park there: one sedan mesh shared by all of them, each in its own colour.
+const PARKED_FILL := 0.26            ## share of the kerb taken
+func _build_parked() -> void:
+	if String(_place.get("look", "")) != "med":
+		return   # northern suburbs park in driveways
+	var xf: Array = []
+	var cols: Array = []
+	var palette := [Palette.col("ink"), Palette.col("ink").lerp(Palette.col("bg_alt"), 0.35),
+		Palette.col("bg_alt").lerp(Palette.col("ink"), 0.3), Palette.col("bg").lerp(Palette.col("bg_alt"), 0.5),
+		Palette.col("player").lerp(Palette.col("bg"), 0.5), Palette.col("hazard").lerp(Palette.col("bg"), 0.3),
+		Palette.col("ink"), Palette.col("ink").lerp(Palette.col("bg_alt"), 0.2)]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(_city_name) + 11
+	var crossings := {}
+	for ni in _crossing_nodes:
+		crossings[ni] = true
+	for r: Dictionary in _roads:
+		if not r["drive"] or r["pv"] or not (r["k"] in ["residential", "tertiary", "unclassified", "living_street"]):
+			continue
+		var hw: float = float(r["w"]) * 0.5
+		for run: PackedVector2Array in _street_runs(r):
+			var cum := PackedFloat32Array([0.0])
+			for i in range(1, run.size()):
+				cum.append(cum[i - 1] + run[i - 1].distance_to(run[i]))
+			var total := cum[cum.size() - 1]
+			for sgn: float in [-1.0, 1.0]:
+				var s := 4.0 + rng.randf() * 3.0
+				while s < total - 4.0:
+					if rng.randf() < PARKED_FILL:
+						var c := _along(run, cum, s)
+						var d := (_along(run, cum, minf(s + 1.0, total)) - c).normalized()
+						var side := Vector2(-d.y, d.x) * sgn
+						var p := c + side * (hw + 0.15)
+						var ok := _push_out(p, 1.0, false) == Vector2.ZERO
+						for i: int in _near(_post_hash, p, 1.4, BLD_CELL):
+							if _posts[i].distance_to(p) < 1.4:
+								ok = false
+						if ok:
+							var face := d * sgn   # nose with the traffic on its side
+							var yaw := atan2(face.x, face.y)
+							var lean := Basis(Vector3.UP, yaw) * Basis(Vector3.FORWARD, -0.05 * sgn)
+							xf.append(Transform3D(lean, _g3(p, 0.02)))
+							cols.append(palette[rng.randi() % palette.size()])
+							_add_post(p + face * 1.25, 0.85)
+							_add_post(p - face * 1.25, 0.85)
+					s += 5.6
+	if xf.is_empty():
+		return
+	var mesh := _parked_mesh()
+	_chunked(mesh, xf, 160.0, cols)
+	_dressing["parked"] = xf.size()
+
+## the shared parked-car mesh: the sedan's body, wheels, lights and plates in one
+func _parked_mesh() -> ArrayMesh:
+	var bufs := _sedan_body()
+	var tyre := Buf.new()
+	for wz: float in [1.38, -1.38]:
+		for sx: float in [-1.0, 1.0]:
+			_cyl_x(tyre, Vector3(sx * 0.8, 0.33, wz), 0.33, 0.22, 10)
+	var lights := Buf.new()
+	var tails := Buf.new()
+	for sx: float in [-1.0, 1.0]:
+		_box(lights, Vector3(sx * 0.62, 0.68, 2.27), Vector3(0.36, 0.12, 0.05))
+		_box(tails, Vector3(sx * 0.66, 0.84, -2.27), Vector3(0.34, 0.12, 0.05))
+	_box(lights, Vector3(0, 0.45, 2.33), Vector3(0.52, 0.12, 0.02))
+	_box(tails, Vector3(0, 0.6, -2.33), Vector3(0.52, 0.12, 0.02))
+	var am := ArrayMesh.new()
+	var paint := _surface("paint").duplicate() as StandardMaterial3D
+	paint.albedo_color = Color.WHITE
+	paint.vertex_color_use_as_albedo = true   # each parked car's own colour
+	paint.metallic = 0.4
+	paint.roughness = 0.3
+	for pair: Array in [[bufs["paint"], paint], [bufs["glass"], _car_mat("glass", "paint")],
+			[bufs["trim"], _car_mat("trim", "paint")], [tyre, _car_mat("tyre", "paint")],
+			[lights, _surface("tank")], [tails, mat("hazard", 0.2)]]:
+		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, (pair[0] as Buf).arrays())
+		am.surface_set_material(am.get_surface_count() - 1, pair[1])
+	return am
+
+## a low cylinder lying along x (a wheel)
+func _cyl_x(buf: Buf, c: Vector3, r: float, w: float, seg: int) -> void:
+	for i in range(seg):
+		var a0 := TAU * i / seg
+		var a1 := TAU * (i + 1) / seg
+		var p0 := Vector3(0, cos(a0) * r, sin(a0) * r)
+		var p1 := Vector3(0, cos(a1) * r, sin(a1) * r)
+		var hx := Vector3(w * 0.5, 0, 0)
+		var nrm := Vector3(0, cos((a0 + a1) * 0.5), sin((a0 + a1) * 0.5))
+		buf.tri(c + p0 - hx, c + p1 - hx, c + p1 + hx, nrm, Color.WHITE)
+		buf.tri(c + p0 - hx, c + p1 + hx, c + p0 + hx, nrm, Color.WHITE)
+		buf.tri(c - hx, c + p0 - hx, c + p1 - hx, Vector3.LEFT, Color.WHITE)
+		buf.tri(c + hx, c + p0 + hx, c + p1 + hx, Vector3.RIGHT, Color.WHITE)
 
 ## a palm's crown: nine drooping fronds, one mesh
 func _palm_fronds(leaf: Material) -> ArrayMesh:
@@ -1740,6 +1937,71 @@ func _build_pois() -> void:
 		pump.size = Vector3(0.7, 1.6, 0.45)
 		_chunked(pump, canopy["pump"], r, [], mat("player", 0.15))
 
+## bus stops: a shelter with a glass back, a roof and a bench, and the stop's pole and
+## sign, on the pavement facing the street, its name along the roof edge
+func _build_stops() -> void:
+	var k := 1.0 / float(_city_data.get("scale", 10))
+	var parts := {"back": [], "roof": [], "post": [], "bench": [], "pole": [], "plate": []}
+	for st: Array in _city_data.get("stops", []):
+		var at := Vector2(st[0], st[1]) * k
+		var road := _nearest_seg(at, 30.0, true, true)
+		if road.is_empty():
+			continue
+		var q: Vector2 = road["q"]
+		var out := (at - q).normalized()
+		if out == Vector2.ZERO:
+			continue
+		var r: Dictionary = _roads[road["road"]]
+		var c := q + out * (float(r["w"]) * 0.5 + 1.9)   # on the pavement, whatever the map said
+		if _push_out(c, 1.2, false) != Vector2.ZERO:
+			continue
+		var n := -out                                       # the shelter faces the street
+		var along := Vector2(-n.y, n.x)
+		var gy := _h(c)
+		var b := Basis(Vector3.UP, atan2(n.x, n.y))
+		var P := func(p: Vector2, y: float) -> Vector3: return Vector3(p.x, gy + y, p.y)
+		parts["back"].append(Transform3D(b, P.call(c - n * 0.7, 1.25)))
+		parts["roof"].append(Transform3D(b * Basis(Vector3.RIGHT, -0.08), P.call(c, 2.5)))
+		for sgn: float in [-1.0, 1.0]:
+			parts["post"].append(Transform3D(b, P.call(c - n * 0.7 + along * 1.5 * sgn, 1.25)))
+		parts["bench"].append(Transform3D(b, P.call(c - n * 0.4, 0.45)))
+		var pole := c + along * 2.4 + n * 0.5
+		parts["pole"].append(Transform3D(b, P.call(pole, 1.4)))
+		parts["plate"].append(Transform3D(b, P.call(pole, 2.6)))
+		_add_post(c - n * 0.6 + along * 1.5, 0.2)
+		_add_post(c - n * 0.6 - along * 1.5, 0.2)
+		_add_post(pole, 0.12)
+		var name := String(st[2])
+		if name != "":
+			var lb := Label3D.new()
+			lb.text = name
+			lb.font = _font
+			lb.font_size = 40
+			lb.pixel_size = 0.008
+			lb.outline_size = 6
+			lb.modulate = Palette.col("ink")
+			lb.outline_modulate = Palette.col("bg")
+			lb.position = P.call(c + n * 0.82, 2.42)
+			lb.rotation.y = atan2(n.x, n.y)
+			lb.double_sided = false
+			lb.visibility_range_end = 60.0
+			world.add_child(lb)
+	if (parts["back"] as Array).is_empty():
+		return
+	var r := SIGN_RANGE * 1.6
+	_chunked(_boxm(Vector3(3.2, 2.3, 0.05)), parts["back"], r, [], _shop_glass(), false)
+	_chunked(_boxm(Vector3(3.5, 0.1, 1.7)), parts["roof"], r, [], _surface("cartrim"))
+	_chunked(_boxm(Vector3(0.08, 2.5, 0.08)), parts["post"], r, [], _surface("pole"))
+	_chunked(_boxm(Vector3(2.0, 0.08, 0.42)), parts["bench"], r, [], _surface("furniture"))
+	_chunked(_boxm(Vector3(0.07, 2.8, 0.07)), parts["pole"], r, [], _surface("pole"))
+	_chunked(_boxm(Vector3(0.6, 0.4, 0.04)), parts["plate"], r, [], mat("warn", 0.25), false)
+	_dressing["bus_stops"] = (parts["back"] as Array).size()
+
+func _boxm(size: Vector3) -> BoxMesh:
+	var b := BoxMesh.new()
+	b.size = size
+	return b
+
 ## [colour role, word for an unnamed one] for a place's OSM kind; [] = not shown
 func _poi_look(kind: String) -> Array:
 	if POI_LOOK.has(kind):
@@ -1800,6 +2062,7 @@ func _terrace(pos: Vector2, n: Vector2, along: Vector2, role: String, t: Diction
 			var bk := ch + along * 0.2 * sgn
 			t["back"].append(Transform3D(b, Vector3(bk.x, gy + 0.68, bk.y)))
 		t["pole"].append(Transform3D(Basis(), Vector3(c.x, gy + 1.2, c.y)))
+		_table_spots.append(c)
 		if not shades.has(role):
 			shades[role] = []
 		(shades[role] as Array).append(Transform3D(Basis(), Vector3(c.x, gy + 2.35, c.y)))
@@ -1952,6 +2215,8 @@ func _tones() -> void:
 		"kerb": ink.lerp(alt, 0.45),
 		"stonewall": ink.lerp(wn, 0.3).lerp(alt, 0.2),
 		"bush": fr.lerp(bg, 0.58),
+		"roofroom": ink.lerp(wn, 0.12).lerp(alt, 0.1),
+		"gable": ink.lerp(wn, 0.15),
 		"carglass": bg.lerp(pl, 0.12),
 		"cartrim": bg.lerp(alt, 0.4),
 		"tyre": bg.lerp(alt, 0.2),
@@ -2021,6 +2286,18 @@ func _fwd() -> Vector2:
 ## `paint` is a tone name; the front wheels land in _wheels, all four in _spinners.
 func _sedan(paint: String) -> Node3D:
 	var root := Node3D.new()
+	var bufs := _sedan_body()
+	for k: String in bufs:
+		var mi := MeshInstance3D.new()
+		var am := ArrayMesh.new()
+		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, (bufs[k] as Buf).arrays())
+		am.surface_set_material(0, _car_mat(k, paint))
+		mi.mesh = am
+		root.add_child(mi)
+	return _sedan_rest(root, paint)
+
+## the sedan's body as three surfaces: paint, glass, trim
+func _sedan_body() -> Dictionary:
 	var bufs := {"paint": Buf.new(), "glass": Buf.new(), "trim": Buf.new()}
 	var hw := 0.9
 	# the lower body: its side outline (z forward, y up), pushed out to both sides
@@ -2052,13 +2329,10 @@ func _sedan(paint: String) -> Node3D:
 	for sx: float in [-1.0, 1.0]:
 		_box(bufs["trim"], Vector3(sx * 0.91, 0.32, 0), Vector3(0.04, 0.12, 2.6))
 		_box(bufs["paint"], Vector3(sx * 0.98, 1.0, 0.95), Vector3(0.16, 0.1, 0.08))   # mirror
-	for k: String in bufs:
-		var mi := MeshInstance3D.new()
-		var am := ArrayMesh.new()
-		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, (bufs[k] as Buf).arrays())
-		am.surface_set_material(0, _car_mat(k, paint))
-		mi.mesh = am
-		root.add_child(mi)
+	return bufs
+
+## lights, plates and the four wheels on a sedan body
+func _sedan_rest(root: Node3D, paint: String) -> Node3D:
 	# lights and plates
 	for sx: float in [-1.0, 1.0]:
 		root.add_child(_part(BoxMesh, Vector3(sx * 0.62, 0.68, 2.27), Vector3(0.36, 0.12, 0.05), mat("ink", 1.2)))
@@ -2266,6 +2540,7 @@ func _physics_process(dt: float) -> void:
 		_set_auto(false)
 	var ctl: Array = _autodrive(dt) if _auto else _manual(dt)
 	_drive(dt, ctl[0], ctl[1], ctl[2])
+	_people_tick(dt)
 	_check_arrival(dt)
 	_explore(dt)
 	_camera(dt)
@@ -2440,6 +2715,122 @@ func _place_car(dt: float) -> void:
 		(w[0] as Node3D).rotation.y = float(w[1]) - _steer
 	for sp: Node3D in _spinners:
 		sp.rotation.x += _v * dt / 0.33
+
+## ---- people ----------------------------------------------------------------------------------
+
+func _spawn_people() -> void:
+	_people_rng.seed = hash(_city_name) + 7
+	for i in range(WALKERS):
+		var a := Actor3D.new()
+		world.add_child(a)
+		a.set_character(PEOPLE[i % PEOPLE.size()], _people_rng.randf_range(1.62, 1.88))
+		var w := {"actor": a, "line": PackedVector2Array(), "cum": PackedFloat32Array(), "s": 0.0,
+			"dir": 1.0, "speed": _people_rng.randf_range(1.1, 1.6), "dodge": 0.0,
+			"carry": _people_rng.randf() < 0.22}
+		_walkers.append(w)
+		_place_walker(w, true)
+	for i in range(CHATTERS):
+		var a := Actor3D.new()
+		world.add_child(a)
+		a.set_character(PEOPLE[(i + 2) % PEOPLE.size()], _people_rng.randf_range(1.62, 1.88))
+		a.play("Idle", true, _people_rng.randf_range(0.8, 1.1))
+		a.visible = false
+		_chatters.append({"actor": a, "spot": Vector2.INF})
+	_seat_chatters()
+
+## a walker onto a pavement near the car (ahead of it rather than behind when it moves)
+func _place_walker(w: Dictionary, anywhere: bool) -> void:
+	var a: Actor3D = w["actor"]
+	for _try in range(12):
+		var ang := _people_rng.randf() * TAU
+		if not anywhere and absf(_v) > 2.0:
+			ang = _yaw + _people_rng.randf_range(-0.9, 0.9)
+		var d := _people_rng.randf_range(25.0 if anywhere else 70.0, PEOPLE_RANGE * 0.8)
+		var hit := _nearest_seg(_pos + Vector2(cos(ang), sin(ang)) * d, 40.0, true, true)
+		if hit.is_empty():
+			continue
+		var r: Dictionary = _roads[hit["road"]]
+		if r["k"] == "service":
+			continue
+		var runs := _street_runs(r)
+		if runs.is_empty():
+			continue
+		var run: PackedVector2Array = runs[_people_rng.randi() % runs.size()]
+		var side := 1.0 if _people_rng.randf() < 0.5 else -1.0
+		var line := _offset_line(run, (float(r["w"]) * 0.5 + 1.3 + _people_rng.randf_range(-0.3, 0.5)) * side)
+		var cum := PackedFloat32Array([0.0])
+		for i in range(1, line.size()):
+			cum.append(cum[i - 1] + line[i - 1].distance_to(line[i]))
+		if cum[cum.size() - 1] < 8.0:
+			continue
+		w["line"] = line
+		w["cum"] = cum
+		w["s"] = _people_rng.randf() * cum[cum.size() - 1]
+		w["dir"] = 1.0 if _people_rng.randf() < 0.5 else -1.0
+		a.play("Walk_Carry" if w["carry"] else "Walk", true, float(w["speed"]) / 1.35)
+		a.visible = true
+		return
+	a.visible = false
+
+## people by the cafe tables nearest the car, standing about
+func _seat_chatters() -> void:
+	if _table_spots.is_empty():
+		return
+	var near: Array = _table_spots.filter(func(t): return t.distance_to(_pos) < PEOPLE_RANGE)
+	near.sort_custom(func(a, b): return a.distance_to(_pos) < b.distance_to(_pos))
+	for i in range(_chatters.size()):
+		var c: Dictionary = _chatters[i]
+		var a: Actor3D = c["actor"]
+		if i >= near.size():
+			a.visible = false
+			continue
+		var t: Vector2 = near[i]
+		if c["spot"] == t:
+			continue
+		c["spot"] = t
+		var off := Vector2(cos(i * 2.4), sin(i * 2.4)) * 0.95
+		var at := t + off
+		a.position = Vector3(at.x, _h(at), at.y)
+		a.face(Vector3(-off.x, 0, -off.y))
+		a.visible = true
+
+func _people_tick(dt: float) -> void:
+	_people_t -= dt
+	if _people_t <= 0.0:
+		_people_t = 1.5
+		_seat_chatters()
+	for w: Dictionary in _walkers:
+		var a: Actor3D = w["actor"]
+		var line: PackedVector2Array = w["line"]
+		if line.size() < 2:
+			continue
+		var cum: PackedFloat32Array = w["cum"]
+		var total := cum[cum.size() - 1]
+		var s: float = w["s"] + float(w["dir"]) * float(w["speed"]) * dt
+		if s < 0.0 or s > total:   # the end of the block: turn back
+			w["dir"] = -float(w["dir"])
+			s = clampf(s, 0.0, total)
+		w["s"] = s
+		var p := _along(line, cum, s)
+		var ahead := _along(line, cum, clampf(s + float(w["dir"]) * 0.5, 0.0, total)) - p
+		# a car coming at them on the pavement: step aside, towards the buildings
+		var to_car := _pos - p
+		var dodge: float = w["dodge"]
+		if to_car.length() < 6.0 and absf(_v) > 1.0:
+			dodge = minf(dodge + dt * 3.0, 1.6)
+		else:
+			dodge = maxf(dodge - dt * 0.8, 0.0)
+		w["dodge"] = dodge
+		if dodge > 0.0 and ahead != Vector2.ZERO:
+			var side := Vector2(-ahead.y, ahead.x).normalized()
+			if side.dot(to_car) > 0.0:
+				side = -side
+			p += side * dodge
+		a.position = Vector3(p.x, _h(p), p.y)
+		if ahead != Vector2.ZERO:
+			a.face(Vector3(ahead.x, 0, ahead.y))
+		if p.distance_to(_pos) > PEOPLE_RANGE:
+			_place_walker(w, false)
 
 ## ---- collisions: the car's two circles against building outlines and posts -------------
 
