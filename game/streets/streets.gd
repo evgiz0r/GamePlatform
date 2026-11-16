@@ -10,14 +10,16 @@ extends GameMode3D
 ## Layout of this file: city data -> meshes -> the car -> camera -> autodrive -> exploring
 ## -> HUD (speedometer, street name, minimap, touch pedals).
 
-## The places you can drive: the game's start screen offers one per entry. `city` is the
+## The places you can drive: the game's start screen offers one per entry. `look` sets the
+## regional details: "med" (palms among the trees, solar water heaters on the roofs) or
+## "north" (conifers among the trees). `city` is the
 ## file in cities/ (bake it with the "bake a real city" workflow, see GAME.md); `start` is
 ## the corner to begin at, by street names as OSM spells them: [street, cross street] puts
 ## the car on the first just past the second. Without one it starts on a main road
 ## mid-town.
 const LEVELS := [
-	{"name": "Givatayim", "city": "givatayim", "start": ["המרי", "שיינקין"]},
-	{"name": "Bedford, Nova Scotia", "city": "bedford"},
+	{"name": "Givatayim", "city": "givatayim", "start": ["המרי", "שיינקין"], "look": "med"},
+	{"name": "Bedford, Nova Scotia", "city": "bedford", "look": "north"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -101,34 +103,99 @@ const AP_LAT := 3.0                  ## autodrive keeps the sideways pull in tur
 ## Facades: a wall colour, a window grid per storey, a darker ground floor. UV is (metres
 ## along this wall, metres above the ground); UV2 is (wall length, roof height). COLOR.r is
 ## the building's brightness and COLOR.g how far it leans to the second wall tone.
+## Facades. UV is (metres along this wall, metres above the building's lowest ground);
+## UV2 is (wall length, roof height). Vertex COLOR carries the building: r brightness,
+## g lean to the second tone, a lean to the stone tone, b the facade style:
+##   0 punched windows with roller shutters (trisim) and the odd AC unit
+##   1 balcony rows: a shaded recess per bay behind a parapet
+##   2 Bauhaus ribbon windows        3 glass tower
+## Ground floors of blocks are open between pillars (pilotis), towers get a glass lobby,
+## and houses (under ~10 m) have windows from the ground up.
 const WALL_SHADER := """
 shader_type spatial;
 render_mode cull_back;
 uniform vec4 wall_a : source_color;
 uniform vec4 wall_b : source_color;
+uniform vec4 wall_c : source_color;
 uniform vec4 glass : source_color;
+uniform vec4 shutter : source_color;
+uniform vec4 dark : source_color;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 void fragment() {
-	vec3 base = mix(wall_a.rgb, wall_b.rgb, COLOR.g) * COLOR.r;
+	vec3 base = mix(mix(wall_a.rgb, wall_b.rgb, COLOR.g), wall_c.rgb, COLOR.a) * COLOR.r;
+	float style = floor(COLOR.b * 3.99);
 	float along = UV.x;
 	float up = UV.y;
 	float len = UV2.x;
 	float top = UV2.y;
-	float n = floor(len / 3.3);
-	float win = 0.0;
-	float shade = 1.0;
-	if (n >= 1.0 && up < top - 0.9) {
-		float fx = fract(along / (len / n));
-		if (up > 3.0) {
-			float fy = fract((up - 3.0) / 3.0);
-			win = step(0.2, fx) * step(fx, 0.8) * step(0.3, fy) * step(fy, 0.85);
-			shade = 1.0 - 0.16 * step(fy, 0.07);
+	float n = max(1.0, floor(len / 3.3));
+	float cell = along / (len / n);
+	float ci = floor(cell);
+	float fx = fract(cell);
+	float lv = floor(up / 3.0);
+	float fy = fract(up / 3.0);
+	// whole numbers only: interpolated vertex colours wobble in the last bits, and the hash
+	// turned that wobble into grain across every window
+	float seed = floor(COLOR.r * 50.0 + 0.5) * 7.0 + floor(COLOR.a * 10.0 + 0.5) * 13.0 + floor(COLOR.b * 4.0 + 0.5) * 5.0;
+	float r1 = hash(vec2(ci, lv) + seed);
+	float r2 = hash(vec2(ci + 13.0, lv * 3.0) + seed);
+	vec3 col = base;
+	float rough = 0.92;
+	bool facade = len >= 2.5 && up < top - 0.9;
+	bool upper = up >= 3.0 || top < 10.0;
+	if (facade && upper) {
+		if (style < 0.5) {
+			if (fx > 0.22 && fx < 0.78 && fy > 0.3 && fy < 0.85) {
+				float shut = r1 > 0.45 ? (r1 - 0.45) * 1.6 : 0.0;
+				bool closed = fy > 0.85 - 0.55 * shut;
+				col = closed ? shutter.rgb : glass.rgb;
+				rough = closed ? 0.8 : 0.2;
+			}
+			if (r2 < 0.22 && fx > 0.56 && fx < 0.76 && fy > 0.1 && fy < 0.26) {
+				col = shutter.rgb * 0.97;
+			}
+			if (fy < 0.06) {
+				col *= 0.88;
+			}
+		} else if (style < 1.5) {
+			if (fx > 0.06 && fx < 0.94 && fy < 0.88) {
+				if (fy < 0.34) {
+					col = base * 1.05;
+				} else {
+					col = dark.rgb;
+					if (fx > 0.3 && fx < 0.7 && fy > 0.36 && fy < 0.84) {
+						col = r1 > 0.6 ? shutter.rgb : glass.rgb * 0.8;
+						rough = 0.25;
+					}
+				}
+			}
+			if (fy > 0.88 && fy < 0.95) {
+				col = base * 1.12;
+			}
+		} else if (style < 2.5) {
+			if (fy > 0.38 && fy < 0.78 && fx > 0.04 && fx < 0.96) {
+				col = glass.rgb;
+				rough = 0.2;
+			}
 		} else {
-			win = step(0.1, fx) * step(fx, 0.9) * step(up, 2.5) * 0.8;
+			if (fx > 0.04 && fx < 0.96 && fy > 0.08 && fy < 0.96) {
+				col = glass.rgb * (0.85 + 0.3 * r1);
+				rough = 0.12;
+			}
+		}
+	} else if (facade && up < 2.7) {
+		if (style > 2.5) {
+			if (fx > 0.04) {
+				col = glass.rgb;
+				rough = 0.15;
+			}
+		} else if (fx > 0.14) {
+			col = dark.rgb;
 		}
 	}
-	ALBEDO = mix(base * shade, glass.rgb, win);
-	ROUGHNESS = mix(0.92, 0.25, win);
-	SPECULAR = mix(0.2, 0.6, win);
+	ALBEDO = col;
+	ROUGHNESS = rough;
+	SPECULAR = 0.35;
 }
 """
 
@@ -213,6 +280,7 @@ var _boundary: Array = []            ## PackedVector2Array rings of the city lim
 var _streets := {}                   ## name -> true, the named streets inside the limits
 var _visited := {}
 var _pois: Array = []                ## [Vector2 where, role, sign] for the minimap
+var _dressing := {}                  ## how many lamps, solar heaters, tables went in (the report)
 var _hgrid := PackedFloat32Array()   ## ground height (m above the lowest point) on a grid
 var _hx0 := 0.0
 var _hz0 := 0.0
@@ -361,7 +429,7 @@ func start(_config: Dictionary) -> void:
 	_loaded = true
 	track3d(_car, "@")
 	Probe.event("city", {"name": _city_name, "roads": _roads.size(), "buildings": _blds.size(),
-		"trees": _posts.size(), "streets": _streets.size(),
+		"trees": _posts.size(), "streets": _streets.size(), "dressing": _dressing,
 		"parse_ms": t1 - t0, "build_ms": Time.get_ticks_msec() - t1})
 	_show_banner(_city_name, 3.0)
 
@@ -606,7 +674,9 @@ func _build_world() -> void:
 	_add_mesh(marks, _surface("mark"), false)
 
 	_build_buildings()
+	_build_roof_kit()
 	_build_trees()
+	_build_lamps()
 	_build_signals()
 	_build_pois()
 	_city_data = {}
@@ -882,9 +952,12 @@ func _build_buildings() -> void:
 		var walls: Buf = chunks[key][0]
 		var roofs: Buf = chunks[key][1]
 		var hsh := _hash_i(ring[0])
-		var bright := 0.86 + 0.16 * float(posmod(hsh, 7)) / 6.0
-		var tint := 0.45 if posmod(hsh >> 3, 5) == 0 else 0.0
-		var col := Color(bright, tint, 0.0)
+		var bright := 0.84 + 0.18 * float(posmod(hsh, 7)) / 6.0
+		var tint := 0.4 if posmod(hsh >> 3, 6) == 0 else 0.0
+		var stone := float(posmod(hsh >> 5, 5)) * 0.18   # 0 white .. 0.72 beige stone
+		var rel := float(bd["_h"])
+		var style: int = 3 if rel > 32.0 else (0 if rel < 10.0 else [0, 0, 0, 0, 1, 1, 1, 2, 0, 1][posmod(hsh >> 7, 10)])
+		var col := Color(bright, tint, float(style) / 4.0 + 0.05, stone)
 		var n := ring.size()
 		var area := 0.0
 		for i in range(n):
@@ -979,6 +1052,9 @@ func _build_trees() -> void:
 			s -= L
 	if spots.is_empty():
 		return
+	var look := String(_place.get("look", ""))
+	var leaf := _surface("leaf")
+	leaf.vertex_color_use_as_albedo = true
 	var trunk := CylinderMesh.new()
 	trunk.top_radius = 0.11
 	trunk.bottom_radius = 0.16
@@ -991,42 +1067,208 @@ func _build_trees() -> void:
 	crown.height = 2.0
 	crown.radial_segments = 9
 	crown.rings = 5
-	var leaf := _surface("leaf")
-	leaf.vertex_color_use_as_albedo = true
 	crown.material = leaf
-	# one pair of multimeshes per chunk, so trees far off are not drawn at all
-	var groups := {}
+	var palm_trunk := CylinderMesh.new()
+	palm_trunk.top_radius = 0.15
+	palm_trunk.bottom_radius = 0.24
+	palm_trunk.height = 7.0
+	palm_trunk.radial_segments = 6
+	palm_trunk.rings = 1
+	palm_trunk.material = _surface("trunk")
+	var cone := CylinderMesh.new()
+	cone.top_radius = 0.0
+	cone.bottom_radius = 1.8
+	cone.height = 6.0
+	cone.radial_segments = 8
+	cone.rings = 2
+	cone.material = leaf
+	# kind 0 round, 1 palm, 2 conifer; same trunk post either way
+	var parts := {"trunk": [], "crown": [], "ptrunk": [], "fronds": [], "ftrunk": [], "cone": []}
+	var colours := {"crown": [], "fronds": [], "cone": []}
 	for sp: Vector3 in spots:
-		var key := _cell(Vector2(sp.x, sp.y), CHUNK)
+		var sc := sp.z
+		var gy := _h(Vector2(sp.x, sp.y))
+		var rot := Basis(Vector3.UP, rng.randf() * TAU)
+		var g := rng.randf_range(0.8, 1.1)
+		var roll := rng.randf()
+		if look == "med" and roll < 0.13:
+			parts["ptrunk"].append(Transform3D(rot.scaled(Vector3(1, sc, 1)), Vector3(sp.x, gy + 3.5 * sc, sp.y)))
+			parts["fronds"].append(Transform3D(rot.scaled(Vector3.ONE * sc), Vector3(sp.x, gy + 7.0 * sc, sp.y)))
+			colours["fronds"].append(Color(g, g, g))
+		elif look == "north" and roll < 0.45:
+			parts["ftrunk"].append(Transform3D(rot.scaled(Vector3(1, 0.6, 1) * sc), Vector3(sp.x, gy + 0.8 * sc, sp.y)))
+			parts["cone"].append(Transform3D(rot.scaled(Vector3(1, 1.15, 1) * sc), Vector3(sp.x, gy + 4.6 * sc, sp.y)))
+			colours["cone"].append(Color(g * 0.8, g * 0.8, g * 0.8))
+		else:
+			parts["trunk"].append(Transform3D(rot.scaled(Vector3.ONE * sc), Vector3(sp.x, gy + 1.3 * sc, sp.y)))
+			parts["crown"].append(Transform3D(rot.scaled(Vector3(2.3, 1.9, 2.3) * sc), Vector3(sp.x, gy + 3.9 * sc, sp.y)))
+			colours["crown"].append(Color(g, g, g))
+	var meshes := {"trunk": trunk, "crown": crown, "ptrunk": palm_trunk, "fronds": _palm_fronds(leaf),
+		"ftrunk": trunk, "cone": cone}
+	for part: String in parts:
+		_chunked(meshes[part], parts[part], TREE_RANGE, colours.get(part, []))
+
+## Israeli roofs: solar water heaters ("dud shemesh"), a tilted panel facing south with
+## its white tank behind, one to a handful per block depending on its size
+func _build_roof_kit() -> void:
+	if String(_place.get("look", "")) != "med":
+		return
+	var panels: Array = []
+	var tanks: Array = []
+	var rng := RandomNumberGenerator.new()
+	for bd: Dictionary in _city_data["buildings"]:
+		var rel: float = bd["_h"]
+		if rel < 6.0 or rel > 45.0:
+			continue
+		var ring: PackedVector2Array = bd["_ring"]
+		var box := _bld_box_of(ring)
+		var area := 0.0
+		var g_sum := 0.0
+		for i in range(ring.size()):
+			area += ring[i].x * ring[(i + 1) % ring.size()].y - ring[(i + 1) % ring.size()].x * ring[i].y
+			g_sum += _h(ring[i])
+		var top := g_sum / ring.size() + rel
+		var want := clampi(int(absf(area) * 0.5 / 200.0), 1, 4)
+		rng.seed = _hash_i(ring[0])
+		var placed := 0
+		for _try in range(want * 5):
+			if placed >= want:
+				break
+			var p := Vector2(rng.randf_range(box.position.x, box.end.x), rng.randf_range(box.position.y, box.end.y))
+			var fits := true
+			for d: Vector2 in [Vector2.ZERO, Vector2(1.4, 0), Vector2(-1.4, 0), Vector2(0, 1.2), Vector2(0, -1.2)]:
+				if not Geometry2D.is_point_in_polygon(p + d, ring):
+					fits = false
+					break
+			if not fits:
+				continue
+			placed += 1
+			# the panel faces south (+z), tilted ~35 degrees; the tank lies behind, east-west
+			panels.append(Transform3D(Basis(Vector3.RIGHT, 0.6), Vector3(p.x, top + 0.55, p.y + 0.15)))
+			tanks.append(Transform3D(Basis(Vector3.FORWARD, PI * 0.5), Vector3(p.x, top + 1.05, p.y - 0.55)))
+	var panel := BoxMesh.new()
+	panel.size = Vector3(2.0, 0.06, 1.15)
+	panel.material = _surface("solar")
+	var tank := CylinderMesh.new()
+	tank.top_radius = 0.3
+	tank.bottom_radius = 0.3
+	tank.height = 1.8
+	tank.radial_segments = 8
+	tank.rings = 1
+	tank.material = _surface("tank")
+	_chunked(panel, panels, VIEW_RANGE * 0.5)
+	_chunked(tank, tanks, VIEW_RANGE * 0.5)
+	_dressing["solar"] = panels.size()
+
+## street lamps along the pavements, every ~34 m, alternating sides
+func _build_lamps() -> void:
+	var poles: Array = []
+	var arms: Array = []
+	var heads: Array = []
+	var flip := false
+	for r: Dictionary in _roads:
+		if not r["drive"] or r["pv"] or r["k"] == "service":
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		var ids: PackedInt32Array = r["ids"]
+		var hw: float = float(r["w"]) * 0.5
+		var s := 10.0
+		for j in range(pts.size() - 1):
+			var a := pts[j]
+			var b := pts[j + 1]
+			var L := a.distance_to(b)
+			var d := (b - a) / maxf(L, 0.001)
+			var side := Vector2(-d.y, d.x)
+			var keep_a := _node_r[ids[j]] + 6.0 if (_node_roads[ids[j]] as Array).size() >= 2 else 0.0
+			var keep_b := _node_r[ids[j + 1]] + 6.0 if (_node_roads[ids[j + 1]] as Array).size() >= 2 else 0.0
+			while s < L:
+				if s > keep_a and s < L - keep_b:
+					flip = not flip
+					var out := side * (1.0 if flip else -1.0)
+					var p := a + d * s + out * (hw + 0.9)
+					var ok := _push_out(p, 0.6, false) == Vector2.ZERO
+					var on := _nearest_seg(p, 10.0, true)
+					ok = ok and (on.is_empty() or float(on["edge"]) > 0.4)
+					for i: int in _near(_post_hash, p, 2.5, BLD_CELL):
+						if _posts[i].distance_to(p) < 2.5:
+							ok = false
+					if ok:
+						var gy := _h(p)
+						var toward := -out
+						var face := Basis(Vector3.UP, atan2(-toward.y, toward.x))
+						poles.append(Transform3D(Basis(), Vector3(p.x, gy + 3.5, p.y)))
+						var arm := p + toward * 0.9
+						arms.append(Transform3D(face, Vector3(arm.x, gy + 6.95, arm.y)))
+						var head := p + toward * 1.75
+						heads.append(Transform3D(face, Vector3(head.x, gy + 6.85, head.y)))
+						_add_post(p, 0.15)
+				s += 34.0
+			s -= L
+	var pole := CylinderMesh.new()
+	pole.top_radius = 0.06
+	pole.bottom_radius = 0.09
+	pole.height = 7.0
+	pole.radial_segments = 6
+	pole.rings = 1
+	pole.material = _surface("pole")
+	var arm_m := BoxMesh.new()
+	arm_m.size = Vector3(1.8, 0.07, 0.07)
+	arm_m.material = _surface("pole")
+	var head_m := BoxMesh.new()
+	head_m.size = Vector3(0.6, 0.14, 0.28)
+	head_m.material = _surface("lamp")
+	_chunked(pole, poles, TREE_RANGE)
+	_chunked(arm_m, arms, TREE_RANGE)
+	_chunked(head_m, heads, TREE_RANGE)
+	_dressing["lamps"] = poles.size()
+
+## a palm's crown: nine drooping fronds, one mesh
+func _palm_fronds(leaf: Material) -> ArrayMesh:
+	var buf := Buf.new()
+	for i in range(9):
+		var a := TAU * i / 9.0 + 0.3 * (i % 2)
+		var dir := Vector3(cos(a), 0, sin(a))
+		var side := Vector3(-dir.z, 0, dir.x)
+		var base := Vector3.ZERO
+		var mid := dir * 1.6 + Vector3(0, 0.35, 0)
+		var tip := dir * 3.1 + Vector3(0, -0.7, 0)
+		for t: Array in [[base - side * 0.08, base + side * 0.08, mid + side * 0.32], [base - side * 0.08, mid + side * 0.32, mid - side * 0.32], [mid - side * 0.32, mid + side * 0.32, tip]]:
+			buf.tri(t[0], t[1], t[2], Vector3.UP, Color.WHITE)
+			buf.tri(t[0], t[2], t[1], Vector3.DOWN, Color.WHITE)
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, buf.arrays())
+	am.surface_set_material(0, leaf)
+	return am
+
+## many copies of one mesh, one MultiMeshInstance3D per CHUNK square so far ones are not
+## drawn (a multimesh is culled by the middle of its whole box); optional per-copy colours
+func _chunked(mesh: Mesh, xforms: Array, range_end: float, colours: Array = [], m: Material = null, shadows := true) -> void:
+	var groups := {}
+	for i in range(xforms.size()):
+		var t: Transform3D = xforms[i]
+		var key := _cell(Vector2(t.origin.x, t.origin.z), CHUNK)
 		if not groups.has(key):
 			groups[key] = []
-		(groups[key] as Array).append(sp)
+		(groups[key] as Array).append(i)
 	for key: Vector2i in groups:
 		var list: Array = groups[key]
-		var mt := MultiMesh.new()
-		mt.transform_format = MultiMesh.TRANSFORM_3D
-		mt.mesh = trunk
-		mt.instance_count = list.size()
-		var mc := MultiMesh.new()
-		mc.transform_format = MultiMesh.TRANSFORM_3D
-		mc.use_colors = true
-		mc.mesh = crown
-		mc.instance_count = list.size()
-		for i in range(list.size()):
-			var sp: Vector3 = list[i]
-			var sc := sp.z
-			var rot := Basis(Vector3.UP, rng.randf() * TAU)
-			var gy := _h(Vector2(sp.x, sp.y))
-			mt.set_instance_transform(i, Transform3D(rot.scaled(Vector3.ONE * sc), Vector3(sp.x, gy + 1.3 * sc, sp.y)))
-			var cb := rot.scaled(Vector3(2.3, 1.9, 2.3) * sc)
-			mc.set_instance_transform(i, Transform3D(cb, Vector3(sp.x, gy + 3.9 * sc, sp.y)))
-			var g := rng.randf_range(0.8, 1.1)
-			mc.set_instance_color(i, Color(g, g, g))
-		for mm: MultiMesh in [mt, mc]:
-			var mmi := MultiMeshInstance3D.new()
-			mmi.multimesh = mm
-			mmi.visibility_range_end = TREE_RANGE
-			world.add_child(mmi)
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_colors = not colours.is_empty()
+		mm.mesh = mesh
+		mm.instance_count = list.size()
+		for j in range(list.size()):
+			mm.set_instance_transform(j, xforms[list[j]])
+			if not colours.is_empty():
+				mm.set_instance_color(j, colours[list[j]])
+		var mmi := MultiMeshInstance3D.new()
+		mmi.multimesh = mm
+		mmi.visibility_range_end = range_end
+		if m != null:
+			mmi.material_override = m
+		if not shadows:
+			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		world.add_child(mmi)
 
 func _tree_ok(p: Vector2, spacing: float) -> bool:
 	if not _bounds.has_point(p):
@@ -1128,6 +1370,8 @@ func _build_pois() -> void:
 	var k := 1.0 / float(_city_data.get("scale", 10))
 	var fronts := {}                 ## role -> Array of Transform3D
 	var boards: Array = []           ## the sign boards behind the names
+	var terrace := {"top": [], "leg": [], "seat": [], "back": [], "pole": []}
+	var shades := {}                 ## role -> umbrella transforms
 	var taken := {}                  ## a facade spot already used -> how many there
 	for p: Array in _city_data.get("pois", []):
 		var at := Vector2(p[0], p[1]) * k
@@ -1143,12 +1387,14 @@ func _build_pois() -> void:
 		var key := Vector2i((pos / 2.0).round())
 		var dup: int = taken.get(key, 0)
 		taken[key] = dup + 1
-		pos += along * 3.6 * float((dup + 1) / 2) * (1.0 if dup % 2 == 1 else -1.0)
+		pos += along * 6.0 * float((dup + 1) / 2) * (1.0 if dup % 2 == 1 else -1.0)
 		var face := atan2(n.x, n.y)
 		if spot[2]:
 			if not fronts.has(role):
 				fronts[role] = []
 			(fronts[role] as Array).append(Transform3D(Basis(Vector3.UP, face), Vector3(pos.x + n.x * 0.07, _h(pos + n * 0.6) + 1.35, pos.y + n.y * 0.07)))
+		if spot[2] and kind in ["cafe", "restaurant", "fast_food", "ice_cream", "bar", "pub"]:
+			_terrace(pos, n, along, role, terrace, shades)
 		var name := String(p[3]) if String(p[3]) != "" else (String(p[4]) if String(p[4]) != "" else String(look[1]))
 		var sign := Label3D.new()
 		sign.text = name
@@ -1177,12 +1423,73 @@ func _build_pois() -> void:
 		bm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		# no draw distance here: a multimesh is culled by the middle of its whole box, and
 		# the boards span the city, so they vanished anywhere away from the town centre
+	_terrace_meshes(terrace, shades)
+	_dressing["tables"] = (terrace["top"] as Array).size()
 	var box := BoxMesh.new()
 	box.size = Vector3(3.0, 2.5, 0.12)
 	for role: String in fronts:
 		var mi := _multi(box, fronts[role])
 		mi.material_override = mat(role, 0.55)
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+## tables and chairs on the pavement in front of a cafe or restaurant, umbrellas over
+## them in the place's colour -- where there is pavement (not road, not building)
+func _terrace(pos: Vector2, n: Vector2, along: Vector2, role: String, t: Dictionary, shades: Dictionary) -> void:
+	for off: float in [-2.3, 0.0, 2.3]:
+		var c := pos + n * 2.6 + along * off
+		if _push_out(c, 0.9, false) != Vector2.ZERO:
+			continue
+		var on := _nearest_seg(c, 12.0, true)
+		if not on.is_empty() and float(on["edge"]) < 0.9:
+			continue
+		var gy := _h(c)
+		var face := atan2(along.x, along.y)
+		t["top"].append(Transform3D(Basis(), Vector3(c.x, gy + 0.74, c.y)))
+		t["leg"].append(Transform3D(Basis(), Vector3(c.x, gy + 0.37, c.y)))
+		for sgn: float in [-1.0, 1.0]:
+			var ch := c + along * 0.62 * sgn
+			var b := Basis(Vector3.UP, face + (0.0 if sgn > 0.0 else PI))
+			t["seat"].append(Transform3D(b, Vector3(ch.x, gy + 0.45, ch.y)))
+			var bk := ch + along * 0.2 * sgn
+			t["back"].append(Transform3D(b, Vector3(bk.x, gy + 0.68, bk.y)))
+		t["pole"].append(Transform3D(Basis(), Vector3(c.x, gy + 1.2, c.y)))
+		if not shades.has(role):
+			shades[role] = []
+		(shades[role] as Array).append(Transform3D(Basis(), Vector3(c.x, gy + 2.35, c.y)))
+		_add_post(c, 0.7)
+
+func _terrace_meshes(t: Dictionary, shades: Dictionary) -> void:
+	if (t["top"] as Array).is_empty():
+		return
+	var furn := _surface("furniture")
+	var top := CylinderMesh.new()
+	top.top_radius = 0.4
+	top.bottom_radius = 0.4
+	top.height = 0.04
+	top.radial_segments = 10
+	var leg := CylinderMesh.new()
+	leg.top_radius = 0.035
+	leg.bottom_radius = 0.035
+	leg.height = 0.72
+	leg.radial_segments = 5
+	var seat := BoxMesh.new()
+	seat.size = Vector3(0.42, 0.05, 0.42)
+	var back := BoxMesh.new()
+	back.size = Vector3(0.42, 0.42, 0.05)
+	var pole := CylinderMesh.new()
+	pole.top_radius = 0.025
+	pole.bottom_radius = 0.025
+	pole.height = 2.4
+	pole.radial_segments = 4
+	for pair: Array in [[top, "top"], [leg, "leg"], [seat, "seat"], [back, "back"], [pole, "pole"]]:
+		_chunked(pair[0], t[pair[1]], SIGN_RANGE * 1.5, [], furn)
+	var shade := CylinderMesh.new()
+	shade.top_radius = 0.03
+	shade.bottom_radius = 1.25
+	shade.height = 0.4
+	shade.radial_segments = 10
+	for role: String in shades:
+		_chunked(shade, shades[role], SIGN_RANGE * 1.5, [], mat(role, 0.15))
 
 ## where a place's front goes: [point, outward normal, true if on a building wall]. The
 ## wall of its building (or the nearest one) closest to the street; otherwise a free-
@@ -1276,7 +1583,10 @@ func _tones() -> void:
 		"mark": ink,
 		"wall": ink.lerp(wn, 0.1),
 		"wall2": ink.lerp(ac, 0.28),
+		"wall3": ink.lerp(wn, 0.38).lerp(alt, 0.06),
 		"glass": alt.lerp(pl, 0.3),
+		"shutter": ink.lerp(alt, 0.22),
+		"recess": alt.lerp(bg, 0.25),
 		"roof": ink.lerp(alt, 0.42),
 		"leaf": fr.lerp(bg, 0.52),
 		"trunk": alt.lerp(wn, 0.3),
@@ -1285,6 +1595,10 @@ func _tones() -> void:
 		"haze": ink.lerp(pl, 0.3),
 		"beacon": Color(ac, 0.35),
 		"board": bg.lerp(alt, 0.5),
+		"solar": alt.lerp(pl, 0.35).lerp(bg, 0.2),
+		"tank": ink.lerp(alt, 0.08),
+		"lamp": ink.lerp(wn, 0.25),
+		"furniture": alt.lerp(ink, 0.35),
 	}
 
 func _retint_city() -> void:
@@ -1295,6 +1609,9 @@ func _retint_city() -> void:
 		_wall_mat.set_shader_parameter("wall_a", _tone["wall"])
 		_wall_mat.set_shader_parameter("wall_b", _tone["wall2"])
 		_wall_mat.set_shader_parameter("glass", _tone["glass"])
+		_wall_mat.set_shader_parameter("wall_c", _tone["wall3"])
+		_wall_mat.set_shader_parameter("shutter", _tone["shutter"])
+		_wall_mat.set_shader_parameter("dark", _tone["recess"])
 	if env != null:
 		var sky := env.sky.sky_material as ProceduralSkyMaterial
 		sky.sky_top_color = _tone["sky"]
