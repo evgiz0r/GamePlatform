@@ -127,6 +127,40 @@ own surfaces (`_lat_of(p) <= FACADE` or `p.y <= 0`) — there is no physics to r
 Opening shot: interpolate camera pose from an outside point to the seat, both expressed in
 `_frame(0)`, with `ease(k, -2.2)`; fade the 2D interior in over the last quarter.
 
+## Big worlds in a browser
+
+A world of thousands of objects that runs fine on the desktop can crawl in a laptop
+browser (WebGL, one thread). Measure before guessing: `view.get_render_info(TYPE, WHAT)`
+gives draw calls and triangles for the visible pass and the shadow pass. What cost the
+most, in order, last time one did:
+
+- **The default sun shadow is four cascades**: every caster is drawn again per cascade.
+  `sun.directional_shadow_mode = SHADOW_ORTHOGONAL` with a short
+  `directional_shadow_max_distance` (50-75 m round a chase cam) cut shadow triangles from
+  1.5M to under 0.1M. Switch `cast_shadow` off for small or numerous dressing and for the
+  ground itself; keep it on what reads (buildings, trees, cars, people).
+- **One mesh for the whole map is drawn whole every frame**, behind the camera too, and
+  into the shadow map. Cut ground, roads, kerbs into squares (a few hundred m), one
+  `MeshInstance3D` each, with a `visibility_range_end`.
+- **Visibility range counts to the middle of a node's box**, not its nearest point. A
+  multimesh over a 400 m square with a 160 m range draws every copy in the square, and
+  none when the camera sits near a corner. Make the squares no bigger than about 0.6x the
+  range and add half a square's diagonal to the range.
+- **A Quaternius character is about eight meshes**: eight draw calls and eight skinnings.
+  Thirty of them out-drew the whole city. Give their `MeshInstance3D`s a
+  `visibility_range_end` (~90 m) and set `anim.active = false` beyond it.
+- **Move the camera per drawn frame, not per physics tick.** A camera tied to the 60 Hz
+  tick judders on a 75/120/144 Hz screen or a browser that drops frames. Keep the
+  physics in `_physics_process`, blend the drawn pose with
+  `Engine.get_physics_interpolation_fraction()`, and to keep `shake3d()` working connect
+  that per-frame function to `get_tree().process_frame` *before* `super()` in `_ready()`:
+  the shell's own per-frame hook adds the shake on top of `look_from()`, and must run after.
+- MSAA is the big pixel cost; `view.msaa_3d` and `view.scaling_3d_scale` can be lowered
+  at runtime. A game can watch its frame rate on the web (`OS.has_feature("web")`) and
+  step down. Not natively: test runs use a software renderer and would step to nothing.
+  Godot caps a frame's time step at 8 physics ticks, so a measured frame rate never reads
+  below 7.5 fps however slow the frames really are.
+
 ## Self-play
 
 The bots and the ASCII map are 2D and stay that way: `track3d()` keeps a 2D proxy per

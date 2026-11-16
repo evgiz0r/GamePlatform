@@ -45,6 +45,23 @@ takes the wheel back from autodrive; tap "autodrive" to hand it over.
 > The circle keeps moving. Can't drive like that. Make it a static circle, somewhere on
 > the right side.
 
+**Driving assist** (on by default, the "assist" button): while you roughly follow a street
+it eases the car toward the street's direction and the middle of your lane, letting go
+the moment you steer harder than a nudge, and it brakes for something solid right in
+front at speed.
+
+> The driving is a bit hard if I'm driving alone. I'm wondering how to make the feeling
+> smoother. Some of it is a skill issue but I want to help a bit. We get stuck in
+> buildings and trees a lot.
+
+**Getting unstuck.** Scrape along a wall at an angle and the car slides on, losing speed
+in proportion to how hard it hit; head-on stops it. Nose against something, hold brake
+and it goes straight into reverse. And if a pedal is down against something and the car
+gets nowhere for over a second (wedged on a tree, rocking between two parked cars) it is
+put back in the nearest lane, clear of parked cars: "back on the road". Assist or not.
+
+> Sometimes I get stuck too hard, and it's hard to unstick from walls or trees.
+
 **Choosing the way.** While autodrive is driving (and not to an address), each real
 crossing ahead -- two or more proper streets on, not driveways -- puts its choices at the
 top of the screen about five seconds before it: an arrow per way with the street's name
@@ -80,8 +97,22 @@ the English name under it when OSM has one.
 
 ## What is trying to stop you?
 
-Nothing yet, on purpose: this is a driving sim first. Buildings, trees and traffic-light
-poles are solid, and hitting them hurts the way it should (a thud, a shake, speed gone).
+Nothing yet, on purpose: this is a driving sim first. Buildings, trees, parked cars and
+traffic-light poles are solid, and hitting them hurts the way it should (a thud, a shake,
+speed gone).
+
+## Smooth on a laptop and a phone
+
+> It's pretty choppy and laggy now. I'm trying on a laptop browser.
+
+A browser draws through WebGL, much slower than a desktop game, so the city is cut into
+squares that are only drawn when on screen and near enough (kerbs and road markings to
+about 260 m, trees 550 m, buildings 1100 m, people 90 m), shadows cover only the street
+round the car, and the car and camera are drawn between physics ticks so they glide
+however fast the screen redraws. In a browser the game also watches its own frame rate:
+under 50 frames a second for a few seconds and it steps down a level -- first smoother
+edges (MSAA) off and shorter shadows, then no shadows and a lower 3D resolution. It never
+steps back up during a drive.
 
 ## How do you win?
 
@@ -127,14 +158,18 @@ contributors under the ODbL, which is why the credit sits on screen.
 
 - **Real**: every road's path, kind, width (or lanes), one-way direction and name; every
   building outline; heights and floors where OSM has them; parks, grass, water, car
-  parks; mapped trees; traffic lights and zebra crossings; the city boundary.
+  parks; mapped trees; traffic lights and zebra crossings; the city boundary. The hills:
+  the ground follows an open elevation model (AWS terrain tiles), baked in with the city.
+  Shops, cafes and bus stops stand where OSM puts them, under their real names.
 - **Guessed**: a building with no height gets 4 storeys (by type: houses 2, garages 1,
   offices 5...), varied a storey up or down so a street is not one flat wall. A road with
   no width tag gets one by kind (residential 8 m, room for a parked row each side).
   The rows of street trees along residential streets are added, not mapped. The window
   grid is a pattern, not the real facade. The traffic lights run their own simple cycle.
-- **Not there yet**: hills (the ground is flat), bridges and tunnels as such (tunnels are
-  dropped), parked cars, other traffic, shop signs.
+  What a shop looks like (awning, tables, the bus shelter) is generic. The parked cars
+  (about a quarter of the kerb), the people walking and sitting at cafe tables, rooftop
+  solar heaters and rooms (Givatayim), pitched roofs on small houses (Bedford).
+- **Not there yet**: bridges and tunnels as such (tunnels are dropped), other traffic.
 
 To make your own street more accurate, fix it on openstreetmap.org (building heights are
 the most useful thing to add) and bake again.
@@ -144,5 +179,4 @@ the most useful thing to add) and bake again.
 - First-person / hood camera.
 - Other cars, and real driving rules: lights that mean something, signs, give way.
 - Not just driving: the same baked city could be walked, or used by another game.
-- Elevation (Givatayim is hilly), from an open elevation model.
 - Engine sound.

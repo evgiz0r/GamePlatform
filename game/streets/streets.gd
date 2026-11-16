@@ -44,6 +44,7 @@ const GRIP := 8.8                    ## tyres give up past ~0.9 g sideways: unde
 const CAR_R := 0.95                  ## the car is two circles of this radius...
 const CAR_OFF := 1.25                ## ...this far ahead of and behind its centre
 const BOUNCE := 0.15
+const WALL_GRIP := 0.45              ## speed lost scraping along a wall, per m/s of impact
 ## Driving assist (on by default; the "assist" button switches it): straightens the car
 ## along the street and into its lane while you are not steering much, brakes before a
 ## wall, tree or pole, and puts you back on the road when you are pinned against one.
@@ -51,7 +52,7 @@ const ASSIST_ALIGN := 1.1            ## wheel angle per radian the car points of
 const ASSIST_LANE := 0.07            ## wheel angle per metre off the middle of the lane
 const ASSIST_MAX := 0.22             ## the most it ever turns the wheel, radians
 const ASSIST_FADE := 0.35            ## steering input at which it lets go completely
-const RESCUE_AFTER := 1.5            ## seconds pinned with the gas down before a rescue
+const RESCUE_AFTER := 1.2            ## seconds stuck against something, pedal down, before a rescue
 
 ## Drivable road kinds and the speed autodrive keeps on them (m/s): Israeli urban limits,
 ## 50 on through roads, 40 on residential streets. Kinds not listed are footpaths: drawn,
@@ -97,9 +98,10 @@ const SIGN_RANGE := 110.0            ## signs further than this are not drawn
 ## People on the pavements: walkers kept around the car (respawned near it when left far
 ## behind), and some standing about by the cafe tables
 const PEOPLE := ["Casual_Male", "Casual_Female", "Casual2_Male", "Casual2_Female", "Casual3_Female"]
-const WALKERS := 26
-const CHATTERS := 10
+const WALKERS := 18
+const CHATTERS := 8
 const PEOPLE_RANGE := 150.0
+const PEOPLE_SEEN := 90.0            ## people further than this are not drawn or animated
 const SIGNAL_CYCLE := [              ## [seconds, phase of the E-W group, phase of N-S]
 	[14.0, "g", "r"], [3.0, "y", "r"], [1.5, "r", "r"],
 	[14.0, "r", "g"], [3.0, "r", "y"], [1.5, "r", "r"],
@@ -109,7 +111,10 @@ const SEG_CELL := 24.0               ## spatial hash cell for road segments (m)
 const BLD_CELL := 24.0
 const CHUNK := 400.0                 ## buildings and trees are merged per square this big, for culling
 const VIEW_RANGE := 1100.0           ## building chunks further than this are not drawn
-const TREE_RANGE := 700.0
+const DETAIL_RANGE := 260.0          ## kerbs, road markings, garden walls: drawn this far
+const GROUND_CELL := 200.0           ## squares the ground details are cut into
+const TREE_RANGE := 550.0
+const LAMP_RANGE := 320.0            ## lamp posts, traffic-light poles: thin, gone in the haze
 const Y_AREA := 0.012
 const Y_PATH := 0.022
 const Y_ROAD := 0.035
@@ -267,6 +272,11 @@ class Buf:
 	func empty() -> bool:
 		return v.is_empty()
 
+	## for the city-wide kinds (roads, kerbs, lawns...): a Buf per square of the map instead,
+	## see CBuf
+	func parts() -> Dictionary:
+		return {Vector2i.ZERO: self}
+
 	func arrays() -> Array:
 		var a := []
 		a.resize(Mesh.ARRAY_MAX)
@@ -276,6 +286,36 @@ class Buf:
 		a[Mesh.ARRAY_TEX_UV] = uv
 		a[Mesh.ARRAY_TEX_UV2] = uv2
 		return a
+
+## A Buf that sorts its triangles into squares of the map as they come, so each square
+## becomes its own mesh. One mesh for the whole city is drawn whole every frame, even the
+## half behind the camera, and drawn again into the shadow map; squares are skipped when
+## off screen or past their range.
+class CBuf extends Buf:
+	var cell := 400.0
+	var _parts := {}
+	var _last_key := Vector2i(-99999, -99999)   # triangles come in runs along a street
+	var _last: Buf = null
+
+	func _init(size := 400.0) -> void:
+		cell = size
+
+	func tri(a: Vector3, b: Vector3, d: Vector3, nrm: Vector3, col: Color,
+			ua := Vector2.ZERO, ub := Vector2.ZERO, ud := Vector2.ZERO, u2 := Vector2.ZERO) -> void:
+		var key := Vector2i(floori(a.x / cell), floori(a.z / cell))
+		if key != _last_key:
+			_last_key = key
+			_last = _parts.get(key)
+			if _last == null:
+				_last = Buf.new()
+				_parts[key] = _last
+		_last.tri(a, b, d, nrm, col, ua, ub, ud, u2)
+
+	func empty() -> bool:
+		return _parts.is_empty()
+
+	func parts() -> Dictionary:
+		return _parts
 
 ## ---- city data ----
 var _city_name := ""
@@ -345,6 +385,7 @@ var _odo := 0.0
 var _assist := true
 var _touch_t := 0.0                  ## counts down after the car touched something
 var _pinned_t := 0.0
+var _pin_at := Vector2.ZERO          ## where the car was when it started pushing against something
 var _last_hit := ""                  ## what the car last bumped: "building 12" / "post 40", for the report
 
 ## ---- camera ----
@@ -427,6 +468,9 @@ func _init() -> void:
 
 func _ready() -> void:
 	title = "streets"
+	# Before super(): the shell's own per-frame hook puts camera shake on top of where
+	# _frame() leaves the camera, so _frame() has to run first.
+	get_tree().process_frame.connect(_frame)
 	super()
 	Bus.palette_changed.connect(_retint_city)
 
@@ -674,8 +718,10 @@ func _stage(name: String, t0: int) -> int:
 	return t
 
 func _build_world() -> bool:
-	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = 110.0
+	# one shadow map over the near streets, not the default four cascades: those drew every
+	# shadow-casting thing in view four more times a frame, more than the view itself
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+	_set_quality(QUALITY_WEB if OS.has_feature("web") else QUALITY.size() - 1)
 	sun.rotation_degrees = Vector3(-50, -28, 0)
 	cam.near = 0.1
 	cam.far = 2200.0
@@ -701,7 +747,7 @@ func _build_world() -> bool:
 		var kind := String(a["k"])
 		var tone := "grass" if kind in ["park", "grass"] else ("ground" if kind == "land" else kind)
 		if not areas.has(tone):
-			areas[tone] = Buf.new()
+			areas[tone] = CBuf.new(CHUNK)
 		var flat: Array = a["p"]
 		var ring := PackedVector2Array()
 		for i in range(0, flat.size(), 2):
@@ -710,12 +756,12 @@ func _build_world() -> bool:
 		var y := Y_AREA + (0.002 if tone in ["parking", "plaza"] else (0.001 if kind == "land" else 0.0))
 		_fill(areas[tone], ring, y, tone == "water")
 	for tone: String in areas:
-		_add_mesh(areas[tone], _surface(tone), false)
+		_add_mesh(areas[tone], _surface(tone), false, VIEW_RANGE)
 
 	# roads: asphalt ribbons, with a round patch where roads meet so corners are filled
-	var asphalt := Buf.new()
-	var paths := Buf.new()
-	var marks := Buf.new()
+	var asphalt := CBuf.new(CHUNK)
+	var paths := CBuf.new(CHUNK)
+	var marks := CBuf.new(GROUND_CELL)
 	for r: Dictionary in _roads:
 		if r["drive"]:
 			_ribbon(asphalt, r["pts"], r["w"] * 0.5, Y_ROAD)
@@ -729,9 +775,9 @@ func _build_world() -> bool:
 	for ni in _city_data.get("crossings", []):
 		_zebra(marks, int(ni))
 		_crossing_nodes.append(int(ni))
-	_add_mesh(paths, _surface("path"), false)
-	_add_mesh(asphalt, _surface("asphalt"), false)
-	_add_mesh(marks, _surface("mark"), false)
+	_add_mesh(paths, _surface("path"), false, VIEW_RANGE * 0.6)
+	_add_mesh(asphalt, _surface("asphalt"), false, VIEW_RANGE)
+	_add_mesh(marks, _surface("mark"), false, DETAIL_RANGE)
 	if not await _step("kerbs and gardens"):
 		return false
 	var tk := Time.get_ticks_msec()
@@ -796,21 +842,38 @@ func _build_terrain() -> void:
 			var hu := _hgrid[maxi(j - 1, 0) * _hnx + i]
 			var hd := _hgrid[mini(j + 1, _hnz - 1) * _hnx + i]
 			norms.append(Vector3(hl - hr, 2.0 * _hstep, hu - hd).normalized())
-	for j in range(_hnz - 1):
-		for i in range(_hnx - 1):
-			var a := j * _hnx + i
-			idx.append_array(PackedInt32Array([a, a + 1, a + _hnx, a + 1, a + _hnx + 1, a + _hnx]))
-	var arr := []
-	arr.resize(Mesh.ARRAY_MAX)
-	arr[Mesh.ARRAY_VERTEX] = verts
-	arr[Mesh.ARRAY_NORMAL] = norms
-	arr[Mesh.ARRAY_INDEX] = idx
-	var am := ArrayMesh.new()
-	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
-	am.surface_set_material(0, _surface("ground"))
-	var mi := MeshInstance3D.new()
-	mi.mesh = am
-	world.add_child(mi)
+	# in blocks about CHUNK across, each its own mesh, so the ground behind the camera and
+	# far off is not drawn (the flat plane under it takes over in the haze)
+	var blk := maxi(2, int(CHUNK / _hstep))
+	for bj in range(0, _hnz - 1, blk):
+		for bi in range(0, _hnx - 1, blk):
+			var j1 := mini(bj + blk, _hnz - 1)
+			var i1 := mini(bi + blk, _hnx - 1)
+			var w := i1 - bi + 1
+			var bv := PackedVector3Array()
+			var bn := PackedVector3Array()
+			for j in range(bj, j1 + 1):
+				for i in range(bi, i1 + 1):
+					bv.append(verts[j * _hnx + i])
+					bn.append(norms[j * _hnx + i])
+			idx = PackedInt32Array()
+			for j in range(j1 - bj):
+				for i in range(i1 - bi):
+					var a := j * w + i
+					idx.append_array(PackedInt32Array([a, a + 1, a + w, a + 1, a + w + 1, a + w]))
+			var arr := []
+			arr.resize(Mesh.ARRAY_MAX)
+			arr[Mesh.ARRAY_VERTEX] = bv
+			arr[Mesh.ARRAY_NORMAL] = bn
+			arr[Mesh.ARRAY_INDEX] = idx
+			var am := ArrayMesh.new()
+			am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+			am.surface_set_material(0, _surface("ground"))
+			var mi := MeshInstance3D.new()
+			mi.mesh = am
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			mi.visibility_range_end = VIEW_RANGE + blk * _hstep * 0.71 + 300.0
+			world.add_child(mi)
 
 func _surface(tone: String) -> StandardMaterial3D:
 	if _smat.has(tone):
@@ -822,17 +885,25 @@ func _surface(tone: String) -> StandardMaterial3D:
 	_smat[tone] = m
 	return m
 
-func _add_mesh(buf: Buf, m: Material, shadows: bool) -> MeshInstance3D:
-	if buf.empty():
-		return null
-	var am := ArrayMesh.new()
-	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, buf.arrays())
-	am.surface_set_material(0, m)
-	var mi := MeshInstance3D.new()
-	mi.mesh = am
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	world.add_child(mi)
-	return mi
+## a Buf as mesh(es): one per square for a CBuf, each drawn while the camera is within
+## `seen` metres of it (0: always)
+func _add_mesh(buf: Buf, m: Material, shadows: bool, seen := 0.0) -> void:
+	var parts := buf.parts()
+	var half := (buf as CBuf).cell * 0.71 if buf is CBuf else 0.0
+	for key: Vector2i in parts:
+		var part: Buf = parts[key]
+		if part.empty():
+			continue
+		var am := ArrayMesh.new()
+		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, part.arrays())
+		am.surface_set_material(0, m)
+		var mi := MeshInstance3D.new()
+		mi.mesh = am
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		if seen > 0.0:   # the range counts to the middle of the square, so add half of it
+			mi.visibility_range_end = seen + half
+			mi.visibility_range_end_margin = 40.0
+		world.add_child(mi)
 
 ## a polygon on the ground
 func _fill(buf: Buf, ring: PackedVector2Array, y: float, level := false) -> void:
@@ -912,10 +983,10 @@ const KERB_W := 0.2
 var _kerb_mat: ShaderMaterial
 
 func _build_kerbs() -> void:
-	var kerb := Buf.new()
-	var pave := Buf.new()
-	var wall := Buf.new()
-	var garden := Buf.new()
+	var kerb := CBuf.new(GROUND_CELL)
+	var pave := CBuf.new(GROUND_CELL)
+	var wall := CBuf.new(GROUND_CELL)
+	var garden := CBuf.new(GROUND_CELL)
 	var bushes: Array = []
 	var med := String(_place.get("look", "")) == "med"
 	for r: Dictionary in _roads:
@@ -979,10 +1050,10 @@ func _build_kerbs() -> void:
 	var sh := Shader.new()
 	sh.code = KERB_SHADER
 	_kerb_mat.shader = sh
-	_add_mesh(kerb, _kerb_mat, false)
-	_add_mesh(pave, _surface("pavement"), false)
-	_add_mesh(wall, _surface("stonewall"), true)
-	_add_mesh(garden, _surface("grass"), false)
+	_add_mesh(kerb, _kerb_mat, false, DETAIL_RANGE)
+	_add_mesh(pave, _surface("pavement"), false, DETAIL_RANGE * 1.6)
+	_add_mesh(wall, _surface("stonewall"), false, DETAIL_RANGE)
+	_add_mesh(garden, _surface("grass"), false, DETAIL_RANGE * 1.6)
 	if not bushes.is_empty():
 		var bush := SphereMesh.new()
 		bush.radius = 0.6
@@ -990,7 +1061,7 @@ func _build_kerbs() -> void:
 		bush.radial_segments = 7
 		bush.rings = 4
 		bush.material = _surface("bush")
-		_chunked(bush, bushes, TREE_RANGE * 0.7)
+		_chunked(bush, bushes, DETAIL_RANGE)
 	_dressing["bushes"] = bushes.size()
 	_retint_kerbs()
 
@@ -1199,7 +1270,7 @@ func _build_buildings() -> void:
 	roof.vertex_color_use_as_albedo = true
 	var chunks := {}
 	var north := String(_place.get("look", "")) == "north"
-	var gables := {"roof": Buf.new(), "end": Buf.new()}
+	var gables := {"roof": CBuf.new(CHUNK), "end": CBuf.new(CHUNK)}
 	for bd: Dictionary in _city_data["buildings"]:
 		var ring: PackedVector2Array = bd["_ring"]
 		# on a slope: walls start below the lowest corner, the roof sits its height above
@@ -1275,8 +1346,8 @@ func _build_buildings() -> void:
 		var shingles := StandardMaterial3D.new()
 		shingles.vertex_color_use_as_albedo = true
 		shingles.roughness = 0.9
-		_add_mesh(gables["roof"], shingles, true)
-		_add_mesh(gables["end"], _surface("gable"), true)
+		_add_mesh(gables["roof"], shingles, true, VIEW_RANGE)
+		_add_mesh(gables["end"], _surface("gable"), true, VIEW_RANGE)
 
 ## a pitched roof over a house: the footprint's tightest rectangle, the ridge along its
 ## long side, eaves a little past the walls, shingles grey or red-brown
@@ -1442,7 +1513,7 @@ func _build_trees() -> void:
 	var meshes := {"trunk": trunk, "crown": crown, "ptrunk": palm_trunk, "fronds": _palm_fronds(leaf),
 		"ftrunk": trunk, "cone": cone}
 	for part: String in parts:
-		_chunked(meshes[part], parts[part], TREE_RANGE, colours.get(part, []))
+		_chunked(meshes[part], parts[part], TREE_RANGE, colours.get(part, []), null, true)
 
 ## Israeli roofs: solar water heaters ("dud shemesh"), a tilted panel facing south with
 ## its white tank behind, one to a handful per block depending on its size
@@ -1504,12 +1575,12 @@ func _build_roof_kit() -> void:
 	tank.radial_segments = 8
 	tank.rings = 1
 	tank.material = _surface("tank")
-	_chunked(panel, panels, VIEW_RANGE * 0.5)
-	_chunked(tank, tanks, VIEW_RANGE * 0.5)
+	_chunked(panel, panels, 420.0)
+	_chunked(tank, tanks, 420.0)
 	var room := BoxMesh.new()
 	room.size = Vector3(3.0, 2.6, 3.4)
 	room.material = _surface("roofroom")
-	_chunked(room, rooms, VIEW_RANGE * 0.6)
+	_chunked(room, rooms, VIEW_RANGE * 0.5)
 	_dressing["roof_rooms"] = rooms.size()
 	_dressing["solar"] = panels.size()
 
@@ -1570,9 +1641,9 @@ func _build_lamps() -> void:
 	var head_m := BoxMesh.new()
 	head_m.size = Vector3(0.6, 0.14, 0.28)
 	head_m.material = _surface("lamp")
-	_chunked(pole, poles, TREE_RANGE)
-	_chunked(arm_m, arms, TREE_RANGE)
-	_chunked(head_m, heads, TREE_RANGE)
+	_chunked(pole, poles, LAMP_RANGE)
+	_chunked(arm_m, arms, LAMP_RANGE)
+	_chunked(head_m, heads, LAMP_RANGE)
 	_dressing["lamps"] = poles.size()
 
 ## Parked cars down Givatayim's streets, half up on the pavement the way they really
@@ -1625,7 +1696,7 @@ func _build_parked() -> void:
 	if xf.is_empty():
 		return
 	var mesh := _parked_mesh()
-	_chunked(mesh, xf, 160.0, cols)
+	_chunked(mesh, xf, 160.0, cols, null, true)
 	_dressing["parked"] = xf.size()
 
 ## the shared parked-car mesh: the sedan's body, wheels, lights and plates in one
@@ -1687,13 +1758,18 @@ func _palm_fronds(leaf: Material) -> ArrayMesh:
 	am.surface_set_material(0, leaf)
 	return am
 
-## many copies of one mesh, one MultiMeshInstance3D per CHUNK square so far ones are not
-## drawn (a multimesh is culled by the middle of its whole box); optional per-copy colours
-func _chunked(mesh: Mesh, xforms: Array, range_end: float, colours: Array = [], m: Material = null, shadows := true) -> void:
+## many copies of one mesh, one MultiMeshInstance3D per square so far ones are not drawn,
+## each drawn while the camera is within `range_end` of it. A multimesh is drawn whole or
+## not at all, judged by the middle of its box, so the squares are sized to the range:
+## 400 m squares for things seen 160 m off drew every parked car in a whole square, and
+## none at all from near a corner of one. Optional per-copy colours. Shadows only where
+## asked: the shadow map draws every caster again.
+func _chunked(mesh: Mesh, xforms: Array, range_end: float, colours: Array = [], m: Material = null, shadows := false) -> void:
+	var cell := clampf(range_end * 0.6, 100.0, CHUNK)
 	var groups := {}
 	for i in range(xforms.size()):
 		var t: Transform3D = xforms[i]
-		var key := _cell(Vector2(t.origin.x, t.origin.z), CHUNK)
+		var key := _cell(Vector2(t.origin.x, t.origin.z), cell)
 		if not groups.has(key):
 			groups[key] = []
 		(groups[key] as Array).append(i)
@@ -1710,7 +1786,8 @@ func _chunked(mesh: Mesh, xforms: Array, range_end: float, colours: Array = [], 
 				mm.set_instance_color(j, colours[list[j]])
 		var mmi := MultiMeshInstance3D.new()
 		mmi.multimesh = mm
-		mmi.visibility_range_end = range_end
+		mmi.visibility_range_end = range_end + cell * 0.71
+		mmi.visibility_range_end_margin = 20.0
 		if m != null:
 			mmi.material_override = m
 		if not shadows:
@@ -1788,13 +1865,13 @@ func _build_signals() -> void:
 	var head_mesh := BoxMesh.new()
 	head_mesh.size = Vector3(0.34, 1.0, 0.3)
 	head_mesh.material = _surface("pole")
-	_multi(pole_mesh, poles)
-	_multi(head_mesh, heads)
+	_chunked(pole_mesh, poles, LAMP_RANGE)
+	_chunked(head_mesh, heads, LAMP_RANGE)
 	var bulb := SphereMesh.new()
 	bulb.radius = 0.11
 	bulb.height = 0.22
-	bulb.radial_segments = 8
-	bulb.rings = 4
+	bulb.radial_segments = 6
+	bulb.rings = 2
 	_sig_mats = []
 	for g in range(2):
 		var mats: Array = []
@@ -1915,7 +1992,7 @@ func _build_pois() -> void:
 	var awning := BoxMesh.new()
 	awning.size = Vector3(3.3, 0.14, 1.5)
 	for hue: String in awnings:
-		_chunked(awning, awnings[hue], r, [], mat(hue, 0.3))
+		_chunked(awning, awnings[hue], r, [], mat(hue, 0.3), true)
 	if not crosses.is_empty():
 		var cross := ArrayMesh.new()
 		var cb := Buf.new()
@@ -2461,8 +2538,7 @@ func _place_start() -> void:
 	var spot: Array = _place.get("start", []) if _place.get("city") == _city_id else []
 	if spot.size() == 2 and _start_on(spot[0], spot[1]):
 		_cam_yaw = _yaw
-		_place_car(0.016)
-		_camera(1.0)
+		_snap_pose()
 		return
 	var mid := _bounds.get_center()
 	if not _boundary.is_empty():
@@ -2494,8 +2570,7 @@ func _place_start() -> void:
 	_pos = at
 	_yaw = dir.angle()
 	_cam_yaw = _yaw
-	_place_car(0.016)
-	_camera(1.0)
+	_snap_pose()
 
 ## put the car on `street` a few metres past where it meets `cross`; false if they never meet
 func _start_on(street: String, cross: String) -> bool:
@@ -2529,6 +2604,8 @@ func _start_on(street: String, cross: String) -> bool:
 	return false
 
 func _physics_process(dt: float) -> void:
+	_prev_pos = _pos   # where the car was at the last tick, for _frame() to blend from
+	_prev_yaw = _yaw
 	if not _loaded or finished or _picker != null:
 		return   # the address picker is open: the world waits
 	_signals_tick(dt)
@@ -2543,8 +2620,90 @@ func _physics_process(dt: float) -> void:
 	_people_tick(dt)
 	_check_arrival(dt)
 	_explore(dt)
-	_camera(dt)
+
+## ---- every drawn frame -------------------------------------------------------------------
+## The car moves in fixed physics ticks (60 a second). Drawn as it was at the last tick,
+## a screen that draws 75 or 144 times a second, or a browser that misses some, shows it
+## (and the camera tied to it) stepping unevenly: choppy even at a good frame rate. So the
+## car and camera are drawn where the car is BETWEEN the last two ticks, every frame.
+
+var _prev_pos := Vector2.ZERO
+var _prev_yaw := 0.0
+var _view_pos := Vector2.ZERO        ## where the car is drawn this frame (the minimap too)
+var _view_yaw := 0.0
+
+func _frame() -> void:
+	if not _loaded or _car == null or _picker != null:
+		return
+	var dt := get_process_delta_time()
+	_watch_fps(dt)
+	var f := Engine.get_physics_interpolation_fraction()
+	_view_pos = _prev_pos.lerp(_pos, f)
+	_view_yaw = lerp_angle(_prev_yaw, _yaw, f)
+	_pose_car(_view_pos, _view_yaw)
+	_camera(dt, _view_pos, _view_yaw)
 	_tick_hud()
+
+## ---- render quality: the web build watches its own frame rate and steps down ---------------
+## Per level: edge smoothing (MSAA), how far shadows reach (0: none), the 3D resolution.
+const QUALITY := [
+	[Viewport.MSAA_DISABLED, 0.0, 0.7],
+	[Viewport.MSAA_DISABLED, 45.0, 0.85],
+	[Viewport.MSAA_2X, 60.0, 1.0],
+	[Viewport.MSAA_4X, 75.0, 1.0],
+]
+const QUALITY_WEB := 2               ## where a browser starts
+const FPS_LOW := 50.0                ## below this for two 2-second spells: a step down
+var _quality := 3
+var _fps_t := 0.0
+var _fps_frames := 0
+var _fps_low := 0
+var _fps_wait := 4.0                 ## the first seconds compile shaders and stutter anyway
+
+func _set_quality(q: int) -> void:
+	_quality = clampi(q, 0, QUALITY.size() - 1)
+	var row: Array = QUALITY[_quality]
+	view.msaa_3d = row[0]
+	sun.shadow_enabled = float(row[1]) > 0.0
+	sun.directional_shadow_max_distance = maxf(float(row[1]), 1.0)
+	view.scaling_3d_scale = row[2]
+
+## only down, never back up: a laptop that could not keep up once will not later. Only on
+## the web: a desktop build has a real GPU, and test runs on a software renderer would
+## step themselves down to nothing.
+func _watch_fps(dt: float) -> void:
+	if not OS.has_feature("web") or _quality == 0:
+		return
+	if _fps_wait > 0.0:
+		_fps_wait -= dt
+		return
+	_fps_t += dt
+	_fps_frames += 1
+	if _fps_t < 2.0:
+		return
+	var fps := _fps_frames / _fps_t
+	_fps_t = 0.0
+	_fps_frames = 0
+	if fps >= FPS_LOW:
+		_fps_low = 0
+		return
+	_fps_low += 1
+	if _fps_low >= 2:
+		_fps_low = 0
+		_set_quality(_quality - 1)
+		_fps_wait = 1.0
+		Probe.event("quality", {"level": _quality, "fps": int(fps)})
+
+## after a jump (the start, "back on the road"): no blending from where it was, camera
+## straight behind
+func _snap_pose() -> void:
+	_prev_pos = _pos
+	_prev_yaw = _yaw
+	_view_pos = _pos
+	_view_yaw = _yaw
+	_cam_yaw = _yaw
+	_place_car(0.016)
+	_camera(1.0, _pos, _yaw)
 
 ## keys and touch -> [throttle, brake, wheel angle]. Down brakes, and once stopped, holding
 ## it selects reverse; then down drives backwards and up brakes, like a real automatic.
@@ -2574,7 +2733,8 @@ func _manual(dt: float) -> Array:
 		brake = down
 		if down > 0.0 and up == 0.0 and _v < 0.4:
 			_rev_hold += dt
-			if _rev_hold > 0.3:
+			# nose against something: straight into reverse, no waiting
+			if _rev_hold > (0.06 if _touch_t > 0.0 else 0.3):
 				_gear = -1
 				Probe.event("reverse")
 		else:
@@ -2587,13 +2747,19 @@ func _manual(dt: float) -> Array:
 	if _assist and _gear > 0 and _v > 2.0 and _blocked_ahead():
 		throttle = 0.0
 		brake = maxf(brake, clampf((_v - 1.0) / 7.0, 0.35, 1.0))
-	# pinned: gas down, going nowhere, against something
-	if _assist and up + down > 0.5 and absf(_v) < 0.6 and _touch_t > 0.0:
+	# stuck: a pedal down against something and the car getting nowhere -- nose in a
+	# corner, wedged on a tree, rocking between two parked cars. With or without the assist:
+	# nobody wants to sit there.
+	if up + down > 0.5 and _touch_t > 0.0:
 		_pinned_t += dt
-		if _pinned_t > RESCUE_AFTER:
+		if _pos.distance_to(_pin_at) > 1.2:   # backing out (or sliding off) is working
+			_pin_at = _pos
+			_pinned_t = 0.0
+		elif _pinned_t > RESCUE_AFTER:
 			_rescue()
 	else:
 		_pinned_t = 0.0
+		_pin_at = _pos
 	return [throttle, brake, steer]
 
 ## the assist's nudge: toward the street's direction and the middle of the lane, while
@@ -2641,14 +2807,24 @@ func _rescue() -> void:
 	elif d.dot(_fwd()) < 0.0:
 		d = -d
 	var lane := minf(float(r["w"]) * 0.25, 1.8) if r["o"] == 0 else 0.0
-	_pos = (hit["q"] as Vector2) + Vector2(-d.y, d.x) * lane
+	var at := (hit["q"] as Vector2) + Vector2(-d.y, d.x) * lane
+	# not on top of a parked car or a tree: a little along the street until both ends of
+	# the car are clear
+	for s: float in [0.0, 5.0, -5.0, 10.0, -10.0, 15.0, -15.0, 20.0]:
+		var p := at + d * s
+		if _push_out(p + d * CAR_OFF, CAR_R, true) == Vector2.ZERO \
+				and _push_out(p - d * CAR_OFF, CAR_R, true) == Vector2.ZERO:
+			at = p
+			break
+	_pos = at
 	_yaw = d.angle()
 	_v = 0.0
 	_v_lat = 0.0
 	_yaw_rate = 0.0
 	_gear = 1
 	_steer_in = 0.0
-	_cam_yaw = _yaw
+	_pin_at = _pos
+	_snap_pose()
 	_show_banner("back on the road", 1.4)
 	Probe.event("rescue")
 
@@ -2698,15 +2874,7 @@ func _drive(dt: float, throttle: float, brake: float, steer: float) -> void:
 	_place_car(dt)
 
 func _place_car(dt: float) -> void:
-	_car.position = Vector3(_pos.x, _h(_pos), _pos.y)
-	_car.rotation.y = PI * 0.5 - _yaw
-	if _hnx > 0:   # sit on the slope: nose up a hill, leaning across a camber
-		var fwd := _fwd()
-		var side := Vector2(-fwd.y, fwd.x)
-		var pitch := atan2(_h(_pos + fwd * 1.4) - _h(_pos - fwd * 1.4), 2.8)
-		var roll := atan2(_h(_pos - side * 0.8) - _h(_pos + side * 0.8), 1.6)
-		_car.rotation.x = -pitch
-		_car.rotation.z = roll
+	_pose_car(_pos, _yaw)
 	var k := 1.0 - exp(-dt * 6.0)
 	_roll = lerpf(_roll, clampf(-_v * _yaw_rate * 0.006, -0.07, 0.07), k)
 	_pitch = lerpf(_pitch, clampf(-_a_long * 0.005, -0.05, 0.05), k)
@@ -2716,6 +2884,19 @@ func _place_car(dt: float) -> void:
 	for sp: Node3D in _spinners:
 		sp.rotation.x += _v * dt / 0.33
 
+## the car's body where the map says, sitting on the slope: nose up a hill, leaning across
+## a camber
+func _pose_car(p: Vector2, yaw: float) -> void:
+	_car.position = Vector3(p.x, _h(p), p.y)
+	_car.rotation.y = PI * 0.5 - yaw
+	if _hnx > 0:
+		var fwd := Vector2(cos(yaw), sin(yaw))
+		var side := Vector2(-fwd.y, fwd.x)
+		var pitch := atan2(_h(p + fwd * 1.4) - _h(p - fwd * 1.4), 2.8)
+		var roll := atan2(_h(p - side * 0.8) - _h(p + side * 0.8), 1.6)
+		_car.rotation.x = -pitch
+		_car.rotation.z = roll
+
 ## ---- people ----------------------------------------------------------------------------------
 
 func _spawn_people() -> void:
@@ -2724,6 +2905,7 @@ func _spawn_people() -> void:
 		var a := Actor3D.new()
 		world.add_child(a)
 		a.set_character(PEOPLE[i % PEOPLE.size()], _people_rng.randf_range(1.62, 1.88))
+		_people_lod(a)
 		var w := {"actor": a, "line": PackedVector2Array(), "cum": PackedFloat32Array(), "s": 0.0,
 			"dir": 1.0, "speed": _people_rng.randf_range(1.1, 1.6), "dodge": 0.0,
 			"carry": _people_rng.randf() < 0.22}
@@ -2733,10 +2915,25 @@ func _spawn_people() -> void:
 		var a := Actor3D.new()
 		world.add_child(a)
 		a.set_character(PEOPLE[(i + 2) % PEOPLE.size()], _people_rng.randf_range(1.62, 1.88))
+		_people_lod(a)
 		a.play("Idle", true, _people_rng.randf_range(0.8, 1.1))
 		a.visible = false
 		_chatters.append({"actor": a, "spot": Vector2.INF})
 	_seat_chatters()
+
+## A person is about eight meshes (body, head, hair, clothes...), each its own draw call
+## and its own skinning every frame: thirty-six of them were three hundred draws, more
+## than the whole city. Past PEOPLE_SEEN they are a few pixels tall, so there they are
+## not drawn (the renderer drops them by range) and do not animate (_people_tick).
+func _people_lod(a: Actor3D) -> void:
+	for mi: MeshInstance3D in a.find_children("*", "MeshInstance3D", true, false):
+		mi.visibility_range_end = PEOPLE_SEEN
+		mi.visibility_range_end_margin = 5.0
+
+func _people_awake(a: Actor3D, p: Vector2) -> void:
+	var near := p.distance_to(_pos) < PEOPLE_SEEN + 8.0
+	if a.anim != null and a.anim.active != near:
+		a.anim.active = near
 
 ## a walker onto a pavement near the car (ahead of it rather than behind when it moves)
 func _place_walker(w: Dictionary, anywhere: bool) -> void:
@@ -2799,6 +2996,9 @@ func _people_tick(dt: float) -> void:
 	if _people_t <= 0.0:
 		_people_t = 1.5
 		_seat_chatters()
+		for c: Dictionary in _chatters:
+			var ca: Actor3D = c["actor"]
+			_people_awake(ca, Vector2(ca.position.x, ca.position.z))
 	for w: Dictionary in _walkers:
 		var a: Actor3D = w["actor"]
 		var line: PackedVector2Array = w["line"]
@@ -2829,6 +3029,7 @@ func _people_tick(dt: float) -> void:
 		a.position = Vector3(p.x, _h(p), p.y)
 		if ahead != Vector2.ZERO:
 			a.face(Vector3(ahead.x, 0, ahead.y))
+		_people_awake(a, p)
 		if p.distance_to(_pos) > PEOPLE_RANGE:
 			_place_walker(w, false)
 
@@ -2837,11 +3038,18 @@ func _people_tick(dt: float) -> void:
 func _collide() -> void:
 	var fwd := _fwd()
 	var total := Vector2.ZERO
-	for off: float in [CAR_OFF, -CAR_OFF]:
-		var p := _push_out(_pos + fwd * off, CAR_R, true)
-		if p != Vector2.ZERO:
-			total += p
-			_pos += p
+	# a few passes: out of a wall can be into a tree, and one push each left the car
+	# jittering between the two, stuck
+	for _pass in range(3):
+		var moved := false
+		for off: float in [CAR_OFF, -CAR_OFF]:
+			var p := _push_out(_pos + fwd * off, CAR_R, true)
+			if p != Vector2.ZERO:
+				total += p
+				_pos += p
+				moved = true
+		if not moved:
+			break
 	if total == Vector2.ZERO:
 		return
 	_touch_t = 0.5
@@ -2850,9 +3058,16 @@ func _collide() -> void:
 	var vel := fwd * _v + right * _v_lat
 	var vn := vel.dot(n)
 	if vn < 0.0:
-		vel -= n * vn * (1.0 + BOUNCE)
-		vel *= 0.94
-		_crash(-vn)
+		var impact := -vn
+		# a real knock bounces a little; leaning on a wall at walking pace does not (the
+		# bounce back and push in again was a judder that held the car there)
+		vel -= n * vn * (1.0 + (BOUNCE if impact > 2.0 else 0.0))
+		# scraping along it: the harder it hit, the more speed the scrape takes, so a
+		# glancing touch slides on and a head-on stops. (It used to lose 6% every tick in
+		# contact, which glued the car to anything it touched.)
+		var along := vel - n * vel.dot(n)
+		vel -= along.limit_length(impact * WALL_GRIP)
+		_crash(impact)
 	_v = vel.dot(fwd)
 	_v_lat = clampf(vel.dot(right), -4.0, 4.0)
 
@@ -2975,18 +3190,19 @@ func _in_city(p: Vector2) -> bool:
 
 ## ---- camera: a chase cam that swings wide on turns and never sits inside a building -----
 
-func _camera(dt: float) -> void:
-	_cam_yaw = lerp_angle(_cam_yaw, _yaw, 1.0 - exp(-dt * 3.0))
+## `p` and `yaw`: where the car is drawn this frame
+func _camera(dt: float, p: Vector2, yaw: float) -> void:
+	_cam_yaw = lerp_angle(_cam_yaw, yaw, 1.0 - exp(-dt * 3.0))
 	var back := Vector2(cos(_cam_yaw), sin(_cam_yaw))
 	var spd := clampf(absf(_v) / 30.0, 0.0, 1.0)
 	var want := lerpf(6.3, 7.8, spd)
-	var clear := _clear_behind(_pos, -back, want)
+	var clear := _clear_behind(p, -back, want)
 	_cam_dist = clear if clear < _cam_dist else lerpf(_cam_dist, clear, 1.0 - exp(-dt * 1.5))
 	var d := _cam_dist
-	var gy := _h(_pos)
-	var eye2 := _pos - back * d
+	var gy := _h(p)
+	var eye2 := p - back * d
 	var eye := Vector3(eye2.x, maxf(gy + 2.0 + d * 0.14, _h(eye2) + 1.4), eye2.y)
-	var ahead := _pos + back * 4.0
+	var ahead := p + back * 4.0
 	var at := Vector3(ahead.x, lerpf(gy, _h(ahead), 0.5) + 1.0, ahead.y)
 	look_from(eye, at)
 	cam.fov = lerpf(64.0, 74.0, spd)
@@ -3824,62 +4040,86 @@ func _draw_hud() -> void:
 		if not held:
 			_hud.draw_string(_font, c + Vector2(-60, STICK_R + 18), "hold & drag to drive", HORIZONTAL_ALIGNMENT_CENTER, 120, 9, Color(ink, 0.6))
 
+## The minimap's lines round a point, in metres from it: outlines, paths, minor and major
+## streets, the city limits, places. Gathered again only once the car is MAP_MOVE away,
+## not every frame (that was a few thousand points a frame, in script).
+const MAP_MOVE := 60.0
+var _map_lines := {}
+
+func _map_gather() -> Dictionary:
+	var at := _view_pos
+	var reach := MAP_R * 1.45 + MAP_MOVE   # the map's corners, wherever the car turns
+	var blds := PackedVector2Array()
+	for i: int in _near(_bld_hash, at, reach, BLD_CELL):
+		var poly: PackedVector2Array = _blds[i]
+		for j in range(poly.size()):
+			blds.append(poly[j] - at)
+			blds.append(poly[(j + 1) % poly.size()] - at)
+	var major := PackedVector2Array()
+	var minor := PackedVector2Array()
+	var paths := PackedVector2Array()
+	for code: int in _near(_seg_hash, at, reach, SEG_CELL):
+		var r: Dictionary = _roads[code / 4096]
+		var pts: PackedVector2Array = r["pts"]
+		var j := code % 4096
+		if not r["drive"] or r["pv"]:
+			paths.append(pts[j] - at)
+			paths.append(pts[j + 1] - at)
+		elif float(r["w"]) >= 9.0:
+			major.append(pts[j] - at)
+			major.append(pts[j + 1] - at)
+		else:
+			minor.append(pts[j] - at)
+			minor.append(pts[j + 1] - at)
+	var limits: Array = []
+	for ring: PackedVector2Array in _boundary:
+		var pts := PackedVector2Array()
+		for p in ring:
+			pts.append(p - at)
+		pts.append(ring[0] - at)
+		limits.append(pts)
+	var places: Array = []
+	for poi: Array in _pois:
+		var d: Vector2 = (poi[0] as Vector2) - at
+		if absf(d.x) < reach and absf(d.y) < reach:
+			places.append([d, poi[1]])
+	return {"at": at, "blds": blds, "paths": paths, "minor": minor, "major": major,
+		"limits": limits, "places": places}
+
 ## the minimap: streets and building outlines round the car, heading up
 func _draw_map() -> void:
 	var sz := _map.size
 	var ink := Palette.col("ink")
 	var bg := Palette.col("bg")
 	_map.draw_rect(Rect2(Vector2.ZERO, sz), Color(bg, 0.72))
+	if _map_lines.is_empty() or (_map_lines["at"] as Vector2).distance_to(_view_pos) > MAP_MOVE:
+		_map_lines = _map_gather()
+	var at: Vector2 = _map_lines["at"]
 	var s := sz.x * 0.5 / MAP_R
-	_map.draw_set_transform(sz * 0.5, -PI * 0.5 - _yaw, Vector2(s, s))
-	var blds := PackedVector2Array()
-	for i: int in _near(_bld_hash, _pos, MAP_R, BLD_CELL):
-		var poly: PackedVector2Array = _blds[i]
-		for j in range(poly.size()):
-			blds.append(poly[j] - _pos)
-			blds.append(poly[(j + 1) % poly.size()] - _pos)
-	if not blds.is_empty():
-		_map.draw_multiline(blds, Color(ink, 0.22), 1.0 / s)
-	var major := PackedVector2Array()
-	var minor := PackedVector2Array()
-	var paths := PackedVector2Array()
-	for code: int in _near(_seg_hash, _pos, MAP_R, SEG_CELL):
-		var r: Dictionary = _roads[code / 4096]
-		var pts: PackedVector2Array = r["pts"]
-		var j := code % 4096
-		if not r["drive"] or r["pv"]:
-			paths.append(pts[j] - _pos)
-			paths.append(pts[j + 1] - _pos)
-		elif float(r["w"]) >= 9.0:
-			major.append(pts[j] - _pos)
-			major.append(pts[j + 1] - _pos)
-		else:
-			minor.append(pts[j] - _pos)
-			minor.append(pts[j + 1] - _pos)
-	if not paths.is_empty():
-		_map.draw_multiline(paths, Color(ink, 0.3), 1.0 / s)
-	if not minor.is_empty():
-		_map.draw_multiline(minor, Color(ink, 0.75), 2.0 / s)
-	if not major.is_empty():
-		_map.draw_multiline(major, Palette.col("warn"), 3.0 / s)
-	for ring: PackedVector2Array in _boundary:
-		var pts := PackedVector2Array()
-		for p in ring:
-			pts.append(p - _pos)
-		pts.append(ring[0] - _pos)
+	# heading up round the middle of the map, and the gathered lines shifted from where
+	# they were gathered to where the car is now
+	_map.draw_set_transform_matrix(Transform2D(-PI * 0.5 - _view_yaw, Vector2(s, s), 0.0, sz * 0.5)
+		* Transform2D(0.0, at - _view_pos))
+	if not (_map_lines["blds"] as PackedVector2Array).is_empty():
+		_map.draw_multiline(_map_lines["blds"], Color(ink, 0.22), 1.0 / s)
+	if not (_map_lines["paths"] as PackedVector2Array).is_empty():
+		_map.draw_multiline(_map_lines["paths"], Color(ink, 0.3), 1.0 / s)
+	if not (_map_lines["minor"] as PackedVector2Array).is_empty():
+		_map.draw_multiline(_map_lines["minor"], Color(ink, 0.75), 2.0 / s)
+	if not (_map_lines["major"] as PackedVector2Array).is_empty():
+		_map.draw_multiline(_map_lines["major"], Palette.col("warn"), 3.0 / s)
+	for pts: PackedVector2Array in _map_lines["limits"]:
 		_map.draw_polyline(pts, Color(Palette.col("accent"), 0.8), 1.5 / s)
 	if _auto and _ap_pts.size() > 1:
 		var route := PackedVector2Array()
 		for p in _ap_pts:
-			route.append(p - _pos)
+			route.append(p - at)
 		_map.draw_polyline(route, Color(Palette.col("friend"), 0.8), 1.5 / s)
-	for poi: Array in _pois:
-		var d: Vector2 = (poi[0] as Vector2) - _pos
-		if absf(d.x) < MAP_R and absf(d.y) < MAP_R:
-			_map.draw_circle(d, 1.8 / s, Palette.col(poi[1]))
+	for pl: Array in _map_lines["places"]:
+		_map.draw_circle(pl[0], 1.8 / s, Palette.col(pl[1]))
 	if _dest_on:
-		_map.draw_circle(_dest - _pos, 6.0 / s, Palette.col("accent"))
-		_map.draw_arc(_dest - _pos, 11.0 / s, 0.0, TAU, 24, Color(Palette.col("accent"), 0.6), 1.5 / s)
+		_map.draw_circle(_dest - at, 6.0 / s, Palette.col("accent"))
+		_map.draw_arc(_dest - at, 11.0 / s, 0.0, TAU, 24, Color(Palette.col("accent"), 0.6), 1.5 / s)
 	_map.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	var c := sz * 0.5
 	_map.draw_colored_polygon(PackedVector2Array([c + Vector2(0, -7), c + Vector2(5, 5), c + Vector2(-5, 5)]), Palette.col("player"))
