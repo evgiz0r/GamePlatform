@@ -916,6 +916,7 @@ func _build_world() -> bool:
 	_build_signs()
 	_build_road_paint()
 	_build_speed_signs()
+	_build_street_signs()
 	_build_pois()
 	_build_stops()
 	tk = _stage("places", tk)
@@ -2028,18 +2029,19 @@ func _build_trees() -> void:
 			no_rings.append(ring)
 	var wild_cap := 15000 if north else 1800
 	var wild := 0
-	var step := 16.0
+	var step := 22.0 if north else 16.0
 	var thresh := 0.56 if north else 0.7
 	var nx := int(_bounds.size.x / step)
 	var nz := int(_bounds.size.y / step)
-	# count the green spots first, then keep each with the same chance, so the cap thins
-	# them evenly (stopping at the cap left the south of the map bare)
+	# count the green spots first (on every third row and column: an estimate is enough),
+	# then keep each with the same chance, so the cap thins them evenly (stopping at the
+	# cap left the south of the map bare)
 	var green := 0
-	for gz in range(nz):
-		for gx in range(nx):
+	for gz in range(0, nz, 3):
+		for gx in range(0, nx, 3):
 			var c := _bounds.position + Vector2(gx + 0.5, gz + 0.5) * step
 			if _vnoise(c / 70.0) * 0.65 + _vnoise(c / 15.0) * 0.35 >= thresh:
-				green += 1
+				green += 9
 	var keep := minf(1.0, float(wild_cap) * 1.4 / maxf(green, 1.0))
 	for gz in range(nz):
 		for gx in range(nx):
@@ -3036,6 +3038,7 @@ func _add_post(p: Vector2, r: float) -> void:
 ## a traffic light on the right of every way into a signalled junction, in two groups by
 ## direction so crossing streets take turns
 func _build_signals() -> void:
+	var med := String(_place.get("look", "")) == "med"
 	var poles: Array = []
 	var heads: Array = []
 	var bulbs: Array = [[[], [], []], [[], [], []]]
@@ -3085,6 +3088,11 @@ func _build_signals() -> void:
 				var gy := _h(p)
 				poles.append(Transform3D(Basis(), Vector3(p.x, gy + 1.7, p.y)))
 				heads.append(Transform3D(face, Vector3(p.x, gy + 3.3, p.y)))
+				# the blue crossing sign strapped to the pole under the light, as in Israel
+				# (Nova Scotia's lights carry walk signals instead): the zebra is just past it
+				if med:
+					_pole_plates.append(["crossing", Transform3D(face * Basis.from_scale(Vector3.ONE * SIGN_SCALE),
+							Vector3(p.x, gy + 2.25, p.y) + Vector3(-dir.x, 0.0, -dir.y) * 0.09)])
 				var front := Vector3(-dir.x, 0.0, -dir.y) * 0.17
 				for ci in range(3):
 					bulbs[g][ci].append(Vector3(p.x, gy + 3.3 + 0.3 - 0.3 * ci, p.y) + front)
@@ -3645,6 +3653,433 @@ func _build_speed_signs() -> void:
 		_chunked(board, plates, LAMP_RANGE)
 	_dressing["speed_signs"] = poles.size()
 
+## ---- the signs every street has ------------------------------------------------------------
+## Green street-name plates at the corners (Hebrew and English), a blue roundabout sign on
+## every way into one, a blue crossing sign on both sides of each zebra and on every
+## traffic-light pole, a P at the car parks, no-entry at the wrong end of a one-way street
+## and the blue one-way arrow at its right end, "turn this way" where only one way out is
+## allowed, "keep right" where a street splits round an island, and painted lane arrows
+## before the junctions of the main roads.
+var _sign_meshes := {}
+var _pole_plates: Array = []         ## [kind, transform] of plates on poles built elsewhere
+const SIGN_SCALE := 1.35
+## Street-name plates are thousands; their names are drawn only near the car, by a small
+## pool of labels handed to the nearest plates every so often (two thousand labels made up
+## front cost a second of loading and a node each).
+var _name_signs: Array = []          ## [transform, text]
+var _name_hash := {}
+var _name_pool: Array = []
+var _name_t := 0.0
+const NAME_POOL := 18
+const NAME_SEEN := 55.0
+
+func _names_tick(dt: float) -> void:
+	_name_t -= dt
+	if _name_t > 0.0 or _name_signs.is_empty():
+		return
+	_name_t = 0.4
+	if _name_pool.is_empty():
+		for i in range(NAME_POOL):
+			var lb := Label3D.new()
+			lb.font = _font
+			lb.font_size = 40
+			lb.pixel_size = 0.0058
+			lb.outline_size = 0
+			lb.modulate = _tone["mark"]
+			lb.shaded = true
+			lb.double_sided = false
+			lb.line_spacing = -6.0
+			lb.visible = false
+			world.add_child(lb)
+			_name_pool.append(lb)
+	var near: Array = []
+	for i: int in _near(_name_hash, _pos, NAME_SEEN, 50.0):
+		var xf: Transform3D = _name_signs[i][0]
+		var d := Vector2(xf.origin.x, xf.origin.z).distance_to(_pos)
+		if d < NAME_SEEN:
+			near.append([d, i])
+	near.sort_custom(func(a, b): return a[0] < b[0])
+	for k in range(_name_pool.size()):
+		var lb: Label3D = _name_pool[k]
+		if k < near.size():
+			var sg: Array = _name_signs[near[k][1]]
+			if lb.text != sg[1]:
+				lb.text = sg[1]
+			lb.transform = sg[0]
+			lb.visible = true
+		else:
+			lb.visible = false
+
+func _build_street_signs() -> void:
+	var med := String(_place.get("look", "")) == "med"
+	var plates := {}     # kind -> transforms
+	var poles: Array = []
+	var marks := CBuf.new(GROUND_CELL)
+	var plant := func(kind: String, p: Vector2, facing: Basis, h: float) -> void:
+		if not plates.has(kind):
+			plates[kind] = []
+		var gy := _h(p)
+		# a third bigger than life: on a screen, at driving distance, life-size is a speck
+		(plates[kind] as Array).append(Transform3D(facing * Basis.from_scale(Vector3.ONE * SIGN_SCALE), Vector3(p.x, gy + h, p.y)))
+		poles.append(Transform3D(Basis.from_scale(Vector3(1, h / 2.2, 1)), Vector3(p.x, gy + h * 0.5, p.y)))
+		_add_post(p, 0.06)
+	var toward := func(dir: Vector2) -> Basis: return Basis(Vector3.UP, atan2(-dir.x, -dir.y))
+	var side_spot := func(c: Vector2, dir: Vector2, back: float, w: float) -> Vector2:
+		return c - dir * back + Vector2(-dir.y, dir.x) * (w * 0.5 + 0.8)
+	var named := 0
+	# the crossing signs strapped to the traffic-light poles: their pole is the light's
+	for pp: Array in _pole_plates:
+		if not plates.has(pp[0]):
+			plates[pp[0]] = []
+		(plates[pp[0]] as Array).append(pp[1])
+	# the point `dist` metres along a road's points from index k, going `step` (+1 or -1)
+	var walk := func(pts: PackedVector2Array, k: int, step: int, dist: float) -> Vector2:
+		var left := dist
+		while k + step >= 0 and k + step < pts.size():
+			var seg := pts[k].distance_to(pts[k + step])
+			if seg >= left:
+				return pts[k].lerp(pts[k + step], left / maxf(seg, 0.001))
+			left -= seg
+			k += step
+		return pts[k]
+	var spot_free := func(p: Vector2, margin: float) -> bool:
+		return _off_road(p, margin) and _push_out(p, 0.4, true, false) == Vector2.ZERO
+	for ni in range(_nodes.size()):
+		var ways := _node_ways(ni)
+		if ways < 2:
+			continue
+		var c := _nodes[ni]
+		if ways == 3:
+			_keep_right_at(ni, walk, spot_free, plant, toward)
+		var arrivals: Array = []   # [dir in, road]
+		var seen_names := {}
+		for e: Vector2i in _node_roads[ni]:
+			var r: Dictionary = _roads[e.x]
+			if not r["drive"] or r["pv"] or r["k"] == "service":
+				continue
+			var pts: PackedVector2Array = r["pts"]
+			for d2: int in [-1, 1]:
+				var from := e.y + d2
+				if from < 0 or from >= pts.size():
+					continue
+				var dir := (c - pts[from]).normalized()
+				if r["o"] == 0 or r["o"] == -d2:
+					arrivals.append([dir, r, c.distance_to(pts[from])])
+				elif ways >= 3 and r["o"] != 0:
+					# the far end of a one-way street, seen from the junction: no entry
+					var sp: Vector2 = side_spot.call(c, -dir, -(_node_r[ni] + 3.0), float(r["w"]))
+					if _off_road(sp, 0.4) and _push_out(sp, 0.4, true, false) == Vector2.ZERO:
+						plant.call("noentry", sp, toward.call(-dir), 2.2)
+		if ways < 3:
+			continue
+		for a: Array in arrivals:
+			var dir: Vector2 = a[0]
+			var r: Dictionary = a[1]
+			var w: float = r["w"]
+			# a roundabout ahead
+			var ring_ahead := false
+			for e: Vector2i in _node_roads[ni]:
+				if (_roads[e.x] as Dictionary).get("ring", false) and not r.get("ring", false):
+					ring_ahead = true
+			if ring_ahead:
+				var sp: Vector2 = side_spot.call(c, dir, _node_r[ni] + 6.0, w)
+				if _off_road(sp, 0.4) and _push_out(sp, 0.4, true, false) == Vector2.ZERO:
+					plant.call("roundabout", sp, toward.call(dir), 2.2)
+			# lane arrows before the junctions of the main roads
+			if MAIN_ROADS.has(r["k"]) and float(a[2]) > 30.0 and not r.get("ring", false):
+				_lane_arrows(marks, ni, dir, r)
+			# only one way out (the street across the end is one-way): the blue "turn this
+			# way" across the junction, facing the street coming in
+			if not r.get("ring", false) and not ring_ahead:
+				var mv := _moves(ni, dir)
+				if mv.size() == 1 and not mv.has("s"):
+					for extra: float in [0.8, 1.8, 2.8, 3.8]:
+						var far := c + dir * (_node_r[ni] + extra)
+						if spot_free.call(far, 0.4):
+							plant.call("turn_r" if mv.has("r") else "turn_l", far, toward.call(dir), 2.2)
+							break
+		# a one-way street leaving here: the blue arrow at its corner, side-on to the street
+		# it leaves from so the cross traffic reads which way it runs (under the name plate
+		# when there is one: same corner, same pole)
+		for e: Vector2i in _node_roads[ni]:
+			var r: Dictionary = _roads[e.x]
+			if ways < 3 or r["o"] == 0 or not r["drive"] or r.get("ring", false) or r["k"] == "service" \
+					or HIGHWAYS.has(r["k"]) or r["k"] == "primary" or r["k"] == "primary_link":
+				continue   # (a one-way primary is mostly half of a dual carriageway: no arrow)
+			var nxt: int = e.y + int(r["o"])
+			var pts: PackedVector2Array = r["pts"]
+			if nxt < 0 or nxt >= pts.size():
+				continue
+			var along := (pts[nxt] - c).normalized()
+			var across := Vector2(-along.y, along.x)
+			var w: float = r["w"]
+			for side: float in [1.0, -1.0]:
+				var corner := c + along * (w * 0.5 + 2.0) + across * side * (w * 0.5 + 1.0)
+				if spot_free.call(corner, 0.5):
+					plant.call("oneway", corner, Basis(Vector3.UP, atan2(along.x, along.y) - PI * 0.5), 2.0)
+					break
+		# a street-name plate at a corner for each named street through it, parallel to it,
+		# read from the cross street
+		for e: Vector2i in _node_roads[ni]:
+			var r: Dictionary = _roads[e.x]
+			var nm := String(r["name"])
+			if nm == "" or seen_names.has(nm) or not r["drive"] or r["k"] == "service" or HIGHWAYS.has(r["k"]):
+				continue
+			seen_names[nm] = true
+			var pts: PackedVector2Array = r["pts"]
+			var k2 := e.y + 1 if e.y + 1 < pts.size() else e.y - 1
+			var along := (pts[k2] - c).normalized()
+			var across := Vector2(-along.y, along.x)
+			var corner := c + along * (float(r["w"]) * 0.5 + 2.0) + across * (float(r["w"]) * 0.5 + 1.0)
+			if not _off_road(corner, 0.5) or _push_out(corner, 0.5, true, false) != Vector2.ZERO:
+				corner = c - along * (float(r["w"]) * 0.5 + 2.0) - across * (float(r["w"]) * 0.5 + 1.0)
+				if not _off_road(corner, 0.5) or _push_out(corner, 0.5, true, false) != Vector2.ZERO:
+					continue
+			var face := Basis(Vector3.UP, atan2(along.x, along.y) - PI * 0.5)   # its face looks across the street it names
+			plant.call("street", corner, face, 2.6)
+			var en := String(r["en"])
+			var text := ("רח' " + nm + ("\n" + en.to_upper() if en != "" else "")) if med else (en if en != "" else nm)
+			_hash_add(_name_hash, Rect2(corner, Vector2.ZERO), 50.0, _name_signs.size())
+			_name_signs.append([Transform3D(face * Basis.from_scale(Vector3.ONE * SIGN_SCALE), Vector3(corner.x, _h(corner) + 2.6, corner.y) + face * Vector3(0, 0, 0.04)), text])
+			named += 1
+	# crossing signs, both sides of each zebra
+	for ni: int in _crossing_nodes:
+		var c := _nodes[ni]
+		for e: Vector2i in _node_roads[ni]:
+			var r: Dictionary = _roads[e.x]
+			if not r["drive"] or r["k"] == "service":
+				continue
+			var pts: PackedVector2Array = r["pts"]
+			for d2: int in [-1, 1]:
+				var from := e.y + d2
+				if from < 0 or from >= pts.size() or (r["o"] != 0 and r["o"] != -d2):
+					continue
+				var dir := (c - pts[from]).normalized()
+				var sp: Vector2 = side_spot.call(c, dir, 2.5, float(r["w"]))
+				if _off_road(sp, 0.4) and _push_out(sp, 0.4, true, false) == Vector2.ZERO:
+					plant.call("crossing", sp, toward.call(dir), 2.4)
+			break
+	# car parks: a P by the road at the corner nearest it
+	for ring: PackedVector2Array in _area_rings.get("parking", []):
+		if _area(ring) < 300.0:
+			continue
+		var best := INF
+		var at := Vector2.ZERO
+		var dir := Vector2.ZERO
+		for q in ring:
+			var hit := _nearest_seg(q, 25.0, true, true)
+			if not hit.is_empty() and float(hit["edge"]) < best and float(hit["edge"]) > 0.6:
+				best = float(hit["edge"])
+				at = q
+				dir = ((hit["q"] as Vector2) - q).normalized()
+		if best < INF and _push_out(at, 0.4, true, false) == Vector2.ZERO:
+			plant.call("parking", at, Basis(Vector3.UP, atan2(dir.x, dir.y)), 2.3)
+	var pole := CylinderMesh.new()
+	pole.top_radius = 0.035
+	pole.bottom_radius = 0.035
+	pole.height = 2.2
+	pole.radial_segments = 6
+	pole.rings = 1
+	pole.material = _surface("pole")
+	_chunked(pole, poles, LAMP_RANGE)
+	for kind: String in plates:
+		_chunked(_street_sign_mesh(kind), plates[kind], LAMP_RANGE)
+		_dressing["sign_" + kind] = (plates[kind] as Array).size()
+	_add_mesh(marks, _surface("mark"), false, DETAIL_RANGE)
+	_dressing["street_signs"] = poles.size()
+	_dressing["street_names"] = named
+
+## A two-way street splitting into a pair of one-way carriageways at node `ni` (three ways:
+## the street in, one carriageway out and one back): a blue "keep right" on the nose of the
+## island between them, facing the street coming in.
+func _keep_right_at(ni: int, walk: Callable, spot_free: Callable, plant: Callable, toward: Callable) -> void:
+	var c := _nodes[ni]
+	var two: Array = []      # direction coming in on the two-way street
+	var outs: Array = []     # [points, index, step] of the carriageway leaving
+	var ins: Array = []      # ...and the one coming back
+	for e: Vector2i in _node_roads[ni]:
+		var r: Dictionary = _roads[e.x]
+		if not r["drive"]:
+			continue
+		if r["k"] == "service" or r.get("ring", false):
+			return
+		var pts: PackedVector2Array = r["pts"]
+		for d2: int in [-1, 1]:
+			var k := e.y + d2
+			if k < 0 or k >= pts.size():
+				continue
+			if r["o"] == 0:
+				two.append((c - pts[k]).normalized())
+			elif r["o"] == d2:
+				outs.append([pts, e.y, d2])
+			else:
+				ins.append([pts, e.y, d2])
+	if two.size() != 1 or outs.size() != 1 or ins.size() != 1:
+		return
+	var dir: Vector2 = two[0]
+	for dist: float in [8.0, 12.0, 16.0, 20.0]:
+		var pa: Vector2 = walk.call(outs[0][0], outs[0][1], outs[0][2], dist)
+		var pb: Vector2 = walk.call(ins[0][0], ins[0][1], ins[0][2], dist)
+		var nose := (pa + pb) * 0.5
+		if pa.distance_to(pb) > 24.0 or (nose - c).dot(dir) < dist * 0.6:
+			return   # not a pair carrying on ahead side by side: a junction, not a split
+		if spot_free.call(nose, 0.3):
+			plant.call("keepright", nose, toward.call(dir), 1.6)
+			return
+
+## painted arrows in the lane(s) coming into junction `ni` going `dir`: straight, right,
+## left -- whichever ways out there are from it
+func _lane_arrows(buf: Buf, ni: int, dir: Vector2, r: Dictionary) -> void:
+	var c := _nodes[ni]
+	var moves := _moves(ni, dir)
+	if moves.is_empty():
+		return
+	var w: float = r["w"]
+	var lanes: Array = []
+	if r["o"] == 0:
+		lanes = [clampf(w * 0.25, 1.2, 1.9)]
+	else:
+		var n := maxi(1, int(r["l"]) if int(r["l"]) > 0 else int(w / 3.4))
+		for i in range(n):
+			lanes.append(-w * 0.5 + w * (i + 0.5) / n)
+	var right := Vector2(-dir.y, dir.x)
+	var y := Y_MARK + 0.004
+	for lane: float in lanes:
+		var a := c - dir * (_node_r[ni] + 16.0) + right * lane
+		var quad := func(p0: Vector2, p1: Vector2, half: float) -> void:
+			var d := (p1 - p0).normalized()
+			var n := Vector2(-d.y, d.x) * half
+			buf.quad3(_g3(p0 - n, y), _g3(p1 - n, y), _g3(p1 + n, y), _g3(p0 + n, y))
+		var head := func(base: Vector2, d: Vector2) -> void:
+			var n := Vector2(-d.y, d.x)
+			buf.tri(_g3(base - n * 0.38, y), _g3(base + n * 0.38, y), _g3(base + d * 1.1, y), Vector3.UP, Color.WHITE)
+		quad.call(a - dir * 2.6, a + dir * 0.4, 0.09)
+		if moves.has("s"):
+			quad.call(a + dir * 0.4, a + dir * 1.0, 0.09)
+			head.call(a + dir * 1.0, dir)
+		for t: String in ["r", "l"]:
+			if moves.has(t):
+				var sd := right if t == "r" else -right
+				quad.call(a + dir * 0.2, a + dir * 0.2 + sd * 0.75, 0.09)
+				head.call(a + dir * 0.2 + sd * 0.75, sd)
+
+## the ways out of junction `ni` for a car arriving going `dir`: "s" straight on, "r" right,
+## "l" left (never back the way it came, never the wrong way down a one-way)
+func _moves(ni: int, dir: Vector2) -> Dictionary:
+	var c := _nodes[ni]
+	var moves := {}
+	for e: Vector2i in _node_roads[ni]:
+		var r2: Dictionary = _roads[e.x]
+		if not r2["drive"] or r2["pv"] or r2["k"] == "service":
+			continue
+		var p2: PackedVector2Array = r2["pts"]
+		for d2: int in [1, -1]:
+			var nxt := e.y + d2
+			if nxt < 0 or nxt >= p2.size() or (r2["o"] != 0 and r2["o"] != d2):
+				continue
+			var go := (p2[nxt] - c).normalized()
+			var turn := dir.angle_to(go)
+			if absf(turn) > 2.6:
+				continue   # back the way it came
+			moves["s" if absf(turn) < 0.5 else ("r" if turn > 0.0 else "l")] = true
+	return moves
+
+## a sign's plate as one surface (its colours in the vertex colours), facing +Z, grey behind
+## (the one-way arrow is painted on both faces: it stands side-on to the cross street)
+func _street_sign_mesh(kind: String) -> ArrayMesh:
+	if _sign_meshes.has(kind):
+		return _sign_meshes[kind]
+	var b := Buf.new()
+	var blue: Color = _tone["signblue"]
+	var white: Color = _tone["mark"]
+	var red: Color = _tone["signred"]
+	var green: Color = _tone["signgreen"]
+	var back: Color = _tone["pole"]
+	var flat := func(pts: Array, z: float, col: Color) -> void:
+		for i in range(1, pts.size() - 1):
+			var p0: Vector2 = pts[0]
+			var p1: Vector2 = pts[i]
+			var p2: Vector2 = pts[i + 1]
+			b.tri(Vector3(p0.x, p0.y, z), Vector3(p1.x, p1.y, z), Vector3(p2.x, p2.y, z), Vector3.BACK, col)
+			if z < 0.005:   # the back
+				b.tri(Vector3(p0.x, p0.y, z - 0.01), Vector3(p2.x, p2.y, z - 0.01), Vector3(p1.x, p1.y, z - 0.01), Vector3.FORWARD, back)
+	var circle := func(r: float) -> Array:
+		var out: Array = []
+		for i in range(16):
+			out.append(Vector2(cos(TAU * i / 16.0), sin(TAU * i / 16.0)) * r)
+		return out
+	var box := func(cx: float, cy: float, w: float, h: float) -> Array:
+		return [Vector2(cx - w * 0.5, cy - h * 0.5), Vector2(cx + w * 0.5, cy - h * 0.5), Vector2(cx + w * 0.5, cy + h * 0.5), Vector2(cx - w * 0.5, cy + h * 0.5)]
+	# both faces in the same colour, for a plate seen from either side
+	var both := func(pts: Array, z: float, col: Color) -> void:
+		for i in range(1, pts.size() - 1):
+			var p0: Vector2 = pts[0]
+			var p1: Vector2 = pts[i]
+			var p2: Vector2 = pts[i + 1]
+			b.tri(Vector3(p0.x, p0.y, z), Vector3(p1.x, p1.y, z), Vector3(p2.x, p2.y, z), Vector3.BACK, col)
+			b.tri(Vector3(p0.x, p0.y, -z - 0.01), Vector3(p2.x, p2.y, -z - 0.01), Vector3(p1.x, p1.y, -z - 0.01), Vector3.FORWARD, col)
+	# left-right mirror of a polygon, wound the same way round
+	var mirror := func(pts: Array) -> Array:
+		var out: Array = []
+		for i in range(pts.size() - 1, -1, -1):
+			out.append(Vector2(-(pts[i] as Vector2).x, (pts[i] as Vector2).y))
+		return out
+	match kind:
+		"oneway":
+			both.call(box.call(0, 0, 0.7, 0.3), 0.0, blue)
+			both.call(box.call(-0.07, 0.0, 0.4, 0.07), 0.006, white)
+			both.call([Vector2(0.12, -0.11), Vector2(0.29, 0.0), Vector2(0.12, 0.11)], 0.006, white)
+		"turn_r", "turn_l":
+			# the blue "this way only": up from the bottom, then round the corner
+			flat.call(circle.call(0.32), 0.0, blue)
+			var parts: Array = [box.call(-0.06, -0.06, 0.08, 0.3), box.call(0.02, 0.05, 0.24, 0.08),
+					[Vector2(0.12, -0.07), Vector2(0.27, 0.05), Vector2(0.12, 0.17)]]
+			for pts: Array in parts:
+				flat.call(pts if kind == "turn_r" else mirror.call(pts), 0.006, white)
+		"keepright":
+			# the blue "keep right" on the nose of a traffic island: an arrow down to the right
+			flat.call(circle.call(0.32), 0.0, blue)
+			var d := Vector2(1, -1).normalized()
+			var n := Vector2(-d.y, d.x)
+			var a := -d * 0.17
+			var t := d * 0.07
+			flat.call([a - n * 0.04, t - n * 0.04, t + n * 0.04, a + n * 0.04], 0.006, white)
+			flat.call([t - n * 0.12, t + d * 0.15, t + n * 0.12], 0.006, white)
+		"roundabout":
+			flat.call(circle.call(0.32), 0.0, blue)
+			for k in range(3):   # three white arrows chasing round
+				var a0 := TAU * k / 3.0
+				for j in range(4):
+					var t0 := a0 + j * 0.32
+					var t1 := t0 + 0.32
+					flat.call([Vector2(cos(t0), sin(t0)) * 0.15, Vector2(cos(t0), sin(t0)) * 0.21, Vector2(cos(t1), sin(t1)) * 0.21, Vector2(cos(t1), sin(t1)) * 0.15], 0.006, white)
+				var tip := a0 + 1.5
+				flat.call([Vector2(cos(tip - 0.25), sin(tip - 0.25)) * 0.1, Vector2(cos(tip - 0.25), sin(tip - 0.25)) * 0.26, Vector2(cos(tip), sin(tip)) * 0.18], 0.006, white)
+		"crossing":
+			flat.call(box.call(0, 0, 0.56, 0.56), 0.0, blue)
+			flat.call([Vector2(0, 0.22), Vector2(-0.23, -0.18), Vector2(0.23, -0.18)], 0.006, white)
+			flat.call(box.call(0.0, -0.05, 0.05, 0.16), 0.012, back)
+			flat.call(box.call(0.0, 0.06, 0.06, 0.06), 0.012, back)
+		"noentry":
+			flat.call(circle.call(0.32), 0.0, red)
+			flat.call(box.call(0, 0, 0.44, 0.1), 0.006, white)
+		"parking":
+			flat.call(box.call(0, 0, 0.5, 0.5), 0.0, blue)
+			flat.call(box.call(-0.06, 0.0, 0.07, 0.34), 0.006, white)
+			flat.call(box.call(0.03, 0.08, 0.2, 0.18), 0.006, white)
+			flat.call(box.call(0.03, 0.08, 0.09, 0.07), 0.012, blue)
+		"street":
+			flat.call([Vector2(-0.66, -0.17), Vector2(0.58, -0.17), Vector2(0.7, 0.0), Vector2(0.58, 0.17), Vector2(-0.66, 0.17)], 0.0, white)
+			flat.call([Vector2(-0.63, -0.14), Vector2(0.56, -0.14), Vector2(0.66, 0.0), Vector2(0.56, 0.14), Vector2(-0.63, 0.14)], 0.006, green)
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, b.arrays())
+	var m := StandardMaterial3D.new()
+	m.vertex_color_use_as_albedo = true
+	m.roughness = 0.6
+	am.surface_set_material(0, m)
+	_sign_meshes[kind] = am
+	return am
+
 ## the junction a node belongs to: itself if three or more ways meet there, else the first
 ## such node within `reach` metres along a road through it (-1 if none)
 func _junction_of(node: int, reach: float) -> int:
@@ -3724,8 +4159,22 @@ func _build_signs() -> void:
 					continue
 				var gy := _h(p)
 				poles.append(Transform3D(Basis(), Vector3(p.x, gy + 1.1, p.y)))
-				(plates[kind] as Array).append(Transform3D(Basis(Vector3.UP, atan2(-way_in.x, -way_in.y)), Vector3(p.x, gy + 2.3, p.y)))
+				(plates[kind] as Array).append(Transform3D(Basis(Vector3.UP, atan2(-way_in.x, -way_in.y)) * Basis.from_scale(Vector3.ONE * SIGN_SCALE), Vector3(p.x, gy + 2.3, p.y)))
 				_add_post(p, 0.08)
+				if kind == "stop" and String(_place.get("look", "")) != "med":
+					var word := Label3D.new()   # a North American stop sign says so
+					word.text = "STOP"
+					word.font = _font
+					word.font_size = 48
+					word.pixel_size = 0.0058 * SIGN_SCALE
+					word.outline_size = 0
+					word.modulate = _tone["mark"]
+					word.shaded = true
+					word.double_sided = false
+					word.rotation.y = atan2(-way_in.x, -way_in.y)
+					word.position = Vector3(p.x, gy + 2.3, p.y) - Vector3(way_in.x, 0, way_in.y) * 0.03
+					word.visibility_range_end = 60.0
+					world.add_child(word)
 		if not rules.is_empty():
 			_signs[node] = rules
 			_hash_add(_sign_hash, Rect2(c, Vector2.ZERO), SEG_CELL, node)
@@ -3761,6 +4210,17 @@ func _sign_plate(kind: String) -> ArrayMesh:
 	var rim := Buf.new()
 	var face := Buf.new()
 	var back := Buf.new()
+	if kind == "stop" and String(_place.get("look", "")) == "med":
+		# Israel's stop sign carries a white hand, palm out
+		var z := 0.02
+		var hand: Array = [[-0.085, -0.13, 0.17, 0.17]]   # palm: x, y (bottom), w, h
+		for f: Array in [[-0.085, 0.13], [-0.04, 0.16], [0.005, 0.155], [0.05, 0.13]]:
+			hand.append([f[0], 0.03, 0.038, f[1]])
+		for hb: Array in hand:
+			var x0: float = hb[0]
+			var y0: float = hb[1]
+			_poly(rim, [Vector3(x0, y0, z), Vector3(x0 + hb[2], y0, z), Vector3(x0 + hb[2], y0 + hb[3], z), Vector3(x0, y0 + hb[3], z)], Vector3.BACK)
+		_poly(rim, [Vector3(0.085, -0.06, z), Vector3(0.15, 0.0, z), Vector3(0.13, 0.03, z), Vector3(0.07, -0.01, z)], Vector3.BACK)   # thumb
 	_poly(rim, outer.map(func(v): return Vector3(v.x, -v.y, 0.012)), Vector3.BACK)
 	_poly(face, inner.map(func(v): return Vector3(v.x, -v.y, 0.016)), Vector3.BACK)
 	_poly(back, outer.map(func(v): return Vector3(v.x, -v.y, 0.0)), Vector3.FORWARD)
@@ -3989,6 +4449,9 @@ func _tones() -> void:
 		"lamplight": ink.lerp(wn, 0.45),
 		"brick": Palette.col("hazard").lerp(bg, 0.45).lerp(alt, 0.15),
 		"markyellow": wn.lerp(ink, 0.2),
+		"signblue": pl.lerp(bg, 0.4),
+		"signgreen": fr.lerp(bg, 0.45),
+		"signred": Palette.col("hazard").lerp(bg, 0.1),
 		"rubber": ac.lerp(alt, 0.55).lerp(bg, 0.25),
 		"sand": wn.lerp(ink, 0.45).lerp(alt, 0.1),
 	}
@@ -4388,6 +4851,7 @@ func _physics_process(dt: float) -> void:
 	_drive(dt, ctl[0], ctl[1], ctl[2])
 	_through_lights()
 	_check_stop_signs()
+	_names_tick(dt)
 	_engine_tick(dt)
 	_people_tick(dt)
 	_check_arrival(dt)

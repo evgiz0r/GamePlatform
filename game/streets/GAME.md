@@ -105,8 +105,13 @@ the English name under it when OSM has one.
 ## What is trying to stop you?
 
 Nothing yet, on purpose: this is a driving sim first. Buildings, trees, parked cars and
-traffic-light poles are solid, and hitting them hurts the way it should (a thud, a shake,
-speed gone).
+traffic-light poles are solid. Crashes are a bit more game than real: a thud and a shake,
+the car bounces back off what it hit and spins if it was hit off-centre, and a hard one
+throws it into a little hop. Too fast over a crest or off a ramp and it leaves the ground
+for a moment and lands with a bump.
+
+> I want the car to be able to "jump" a bit if I drive too fast on slopes. Maybe making
+> the crashes more bouncy as well... slightly less realistic, more "game"-like.
 
 **Traffic.** About twenty cars drive the real streets round you, in their lane, mostly on
 the main roads: they slow for corners, keep their distance (brake lights on), stop at red
@@ -135,10 +140,29 @@ red-rimmed in Givatayim, a white MAXIMUM board in Bedford). Bedford's centre lin
 yellow, as in Nova Scotia: a solid double line on main roads, dashed on side streets,
 with white edge lines.
 
+Every street has the signs a real one has: a green name plate at the corners (רח' and the
+Hebrew name over the English in Givatayim, the name alone in Bedford), a blue roundabout
+sign on every way into one, a blue crossing sign on both sides of each zebra (and in
+Givatayim on the traffic-light poles too), a P at car parks, no entry at the wrong end of
+a one-way street and the blue one-way arrow at its corner, "turn this way" where only one
+way out is allowed, and "keep right" where a street splits round an island. Givatayim's
+stop sign is the Israeli one, the red octagon with the white hand; Bedford's says STOP.
+Painted arrows in the lanes before the junctions of the main roads show the ways out.
+
+> We didn't add the road signs? (slow, turn, roundabout, parking, the street name, turn
+> or straight arrows on the road itself, on the lights)
+
 > More road marks and signs (speed, slow, stop...). Cars slightly prettier.
 
-Parked cars and traffic are a mix of sedans, hatchbacks, SUVs and the odd van, each in
-its own colour, with door seams, handles and wheel arches.
+Parked cars and traffic are a mix of sedans, hatchbacks, SUVs and the odd van, with door
+seams, handles and wheel arches, in the colours real cars come in: mostly white, silver,
+grey and black, with the odd red or blue. Parked cars tilt with the slope they stand on.
+
+**Trees.** A dozen kinds, picked by the place and where they stand: ficus, acacia, olive,
+cypress, pine and date and fan palms in Givatayim; maple, oak, birch and spruce in Bedford.
+Each tree varies in size, lean and shade, and crowns are clumps, not one ball.
+
+> More variety for the trees? They seem all bland and the same.
 
 > Traffic, lights and signs that mean something, engine sound, night.
 
