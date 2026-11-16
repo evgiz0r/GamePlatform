@@ -20,6 +20,8 @@ const GAP := 2.2             ## bumper to bumper when stopped (m)
 const HEADWAY := 1.2         ## seconds behind the car in front, moving
 const LEN := 4.4
 const LANE_W := 1.5          ## a car on my path: its middle within this of my lane line
+const PLAYER_W := 2.0        ## the player's car counts as in my way from further over: it
+                             ## need not be on a lane line, and half in the lane is in it
 const CURVE_LAT := 2.6       ## sideways pull a driver takes a corner at (m/s^2)
 const LIGHT_SKIP := 45.0     ## lights this close after one already passed are the far side of the same junction
 ## how much traffic each kind of road gets, and how keen a driver is to turn into it
@@ -31,6 +33,8 @@ class Car:
 	var pts := PackedVector2Array()   ## the lane ahead (and a little behind)
 	var cum := PackedFloat32Array()   ## distance along it to each point
 	var node := PackedInt32Array()    ## the graph node at each point
+	var rd := PackedInt32Array()      ## the road each point is on (at a junction: the one coming in)
+	var jwait := 0.0                  ## seconds waiting at a junction's edge
 	var vmax := PackedFloat32Array()  ## the speed allowed at each point (limit, corners)
 	var end := Vector3i(-1, 0, 0)     ## the last leg planned: road, last index, direction
 	var k := 0                        ## the segment it is on
@@ -42,6 +46,8 @@ class Car:
 	var prev_pos := Vector2.ZERO
 	var prev_yaw := 0.0
 	var pace := 1.0                   ## this driver's share of the limit
+	var paint := Color.WHITE
+	var kind := "sedan"
 	var braking := 0.0                ## brake lights, 0..1
 	var wait := 0.0                   ## seconds held up by another car
 	var blocker := -2                 ## who holds it up: a car's index, -1 the player
@@ -58,32 +64,15 @@ var cars: Array = []
 var rng := RandomNumberGenerator.new()
 var hit_index := -1                   ## the car the player last bumped
 var _clock := 0.0
-## junctions taken: node -> [car, until (clock), way in, way out]. A car about to cross a
-## junction takes it; another whose way crosses that one waits at its edge till it is free.
-## Without this, cars from side streets only saw each other once inside it, too late.
-var _taken := {}
 var _degree := {}                     ## node -> how many ways out of it (3+: a junction)
-const TAKE_AHEAD := 22.0              ## a junction is taken this far before it
+const TAKE_AHEAD := 22.0              ## who goes first at a junction is settled this far before it
 var _mm: MultiMesh
-var _brake_mat: ShaderMaterial
-var _head_mat: StandardMaterial3D      ## headlights: lit at night
+var _mms := {}                        ## car shape -> its multimesh
 var _beams: MultiMeshInstance3D       ## their beams on the road, at night
 var _night := false
 var _roads: Array
 var _node_roads: Array
 var _node_r: PackedFloat32Array
-
-const BRAKE_SHADER := """
-shader_type spatial;
-uniform vec4 col : source_color;
-uniform float night = 0.0;
-varying float brake;
-void vertex() { brake = INSTANCE_CUSTOM.r; }
-void fragment() {
-	ALBEDO = col.rgb;
-	EMISSION = col.rgb * (0.25 + 1.1 * night + 2.8 * brake);
-}
-"""
 
 func setup(game: Node) -> void:
 	g = game
@@ -91,27 +80,27 @@ func setup(game: Node) -> void:
 	_node_roads = g._node_roads
 	_node_r = g._node_r
 	rng.seed = hash(g._city_name) + 23
-	var mesh: ArrayMesh = g._parked_mesh()
-	_brake_mat = ShaderMaterial.new()
-	var sh := Shader.new()
-	sh.code = BRAKE_SHADER
-	_brake_mat.shader = sh
-	mesh.surface_set_material(mesh.get_surface_count() - 1, _brake_mat)   # the tail lights
-	_head_mat = StandardMaterial3D.new()
-	_head_mat.roughness = 0.3
-	mesh.surface_set_material(mesh.get_surface_count() - 2, _head_mat)    # the headlights
-	_mm = MultiMesh.new()
-	_mm.transform_format = MultiMesh.TRANSFORM_3D
-	_mm.use_colors = true
-	_mm.use_custom_data = true
-	_mm.mesh = mesh
-	_mm.instance_count = COUNT
+	# a multimesh per car shape (one surface each, the car shader: paint and brake in custom
+	# data); a car's slot in the others stays hidden
 	var b: Rect2 = g._bounds
-	_mm.custom_aabb = AABB(Vector3(b.position.x - 500.0, -200.0, b.position.y - 500.0),
+	var box := AABB(Vector3(b.position.x - 500.0, -200.0, b.position.y - 500.0),
 		Vector3(b.size.x + 1000.0, 600.0, b.size.y + 1000.0))   # no box to recompute every frame
-	var mi := MultiMeshInstance3D.new()
-	mi.multimesh = _mm
-	g.world.add_child(mi)
+	for kind: String in ["sedan", "hatch", "suv", "van"]:
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_colors = true   # white: the car shader's part colours are vertex colours, see _chunked
+		mm.use_custom_data = true
+		mm.mesh = g._parked_mesh(kind)
+		mm.instance_count = COUNT
+		mm.custom_aabb = box
+		for i in range(COUNT):
+			mm.set_instance_transform(i, Transform3D(Basis(), Vector3(0, -500, 0)))
+			mm.set_instance_color(i, Color.WHITE)
+		var mi := MultiMeshInstance3D.new()
+		mi.multimesh = mm
+		g.world.add_child(mi)
+		_mms[kind] = mm
+	_mm = _mms["sedan"]
 	var bm := MultiMesh.new()
 	bm.transform_format = MultiMesh.TRANSFORM_3D
 	bm.mesh = g._beam_mesh()
@@ -131,21 +120,17 @@ func setup(game: Node) -> void:
 		var c := Car.new()
 		c.pace = rng.randf_range(0.82, 1.06)
 		cars.append(c)
-		_mm.set_instance_color(i, palette[rng.randi() % palette.size()])
+		c.paint = palette[rng.randi() % palette.size()]
+		c.kind = g.CAR_MIX[rng.randi() % g.CAR_MIX.size()]
 		c.alive = _spawn(c, true)
 		_hide_or_show(i)
 	retint()
 
 func retint() -> void:
-	_brake_mat.set_shader_parameter("col", Palette.col("hazard"))
-	_head_mat.albedo_color = g._tone["tank"]
-	_head_mat.emission = g._tone["lamplight"]
+	pass   # the car shader is the game's, retinted with it
 
 func set_night(on: bool) -> void:
 	_night = on
-	_brake_mat.set_shader_parameter("night", 1.0 if on else 0.0)
-	_head_mat.emission_enabled = on
-	_head_mat.emission_energy_multiplier = 2.5
 	_beams.visible = on
 	if not on:
 		return
@@ -206,9 +191,10 @@ func _target(c: Car, i: int, dt: float) -> float:
 	if lv == INF:
 		vt = minf(vt, _sign_ahead(c, dt))
 		if not c.holding:
-			vt = minf(vt, _junction_ahead(c, i))
+			vt = minf(vt, _junction_ahead(c, i, dt))
 	# the car (or the player) in front, on this lane
-	var look := clampf(10.0 + c.v * 3.0, 18.0, 55.0)
+	# far enough to stop in, at the speed it is doing (55 m was short of that on a motorway)
+	var look := clampf(12.0 + c.v * 1.2 + c.v * c.v / (2.0 * BRAKE), 18.0, 130.0)
 	var best := INF
 	var who := -2
 	var lead_v := 0.0
@@ -236,7 +222,7 @@ func _target(c: Car, i: int, dt: float) -> float:
 			continue
 		if c.ignore > 0.0 and j < cars.size() and absf(angle_difference(oyaw, c.yaw)) > 0.8:
 			continue   # breaking a standoff: go, and let the crossing car wait
-		var gap := _path_gap(c, q, look)
+		var gap := _path_gap(c, q, look, PLAYER_W if j == cars.size() else LANE_W)
 		if gap < best:
 			best = gap
 			who = -1 if j == cars.size() else j
@@ -288,40 +274,110 @@ func _light_ahead(c: Car) -> float:
 		return sqrt(2.0 * BRAKE * maxf(stop - 0.3, 0.0))
 	return INF
 
-## the next junction on my way: take it, or wait at its edge while a car on a crossing
-## way has it (or the player is coming into it)
-func _junction_ahead(c: Car, i: int) -> float:
+## The next junction on my way, and who goes first. A car already in it goes. Then the
+## bigger road: a roundabout's ring above all (on it you go, coming in you give way), then
+## main roads over side streets. Between equals, whoever gets there first; turning across,
+## give way to one going straight. The player always has the right of way. A car kept
+## waiting long enough creeps through (the car in front still holds it back), so a jam
+## cannot lock for good. (The first version was first come, first served, and a car kept
+## the junction while it sat in a queue: whole crossroads and roundabouts locked up.)
+func _junction_ahead(c: Car, i: int, dt: float) -> float:
 	for j in range(c.k + 1, c.pts.size() - 1):
 		var dist := c.cum[j] - c.s
 		if dist > TAKE_AHEAD + c.v * 1.5:
-			return INF
+			break
 		var n := c.node[j]
 		if n < 0 or _ways_out(n) < 3:
 			continue
 		var edge := dist - (_node_r[n] + 2.0)
 		if edge < -1.0:
-			return INF   # in it already: carry on through
-		var way_in := (c.pts[j] - c.pts[maxi(j - 1, 0)]).normalized()
-		var way_out := Vector2.ZERO
-		for m in range(j + 1, c.pts.size()):
-			if c.cum[m] - c.cum[j] > 3.0:
-				way_out = (c.pts[m] - c.pts[j]).normalized()
-				break
+			break   # in it already: carry on through
+		var mine := _arrival(c, j, n)
 		var stop := sqrt(2.0 * BRAKE * maxf(edge - 0.3, 0.0))
-		# the player coming into it from another way has it
-		var to_me: Vector2 = Vector2(_nodes_at(n)) - g._pos
-		var pfwd := Vector2(cos(float(g._yaw)), sin(float(g._yaw)))
-		if to_me.length() < _node_r[n] + 14.0 and float(g._v) > 1.5 and pfwd.dot(to_me) > 0.0 \
-				and pfwd.dot(way_in) < 0.85:
-			return stop
-		var t: Array = _taken.get(n, [])
-		if not t.is_empty() and int(t[0]) != i and float(t[1]) > _clock and cars[int(t[0])].alive \
-				and _crosses(way_in, way_out, t[2], t[3]):
-			return stop
-		var through := (dist + _node_r[n] * 2.0 + LEN + 2.0) / maxf(c.v, 2.5)
-		_taken[n] = [i, _clock + through + 0.5, way_in, way_out]
-		return INF
+		var my_eta := dist / maxf(c.v, 2.0)
+		# the player: stopped in it, or coming into it first -- unless right behind me
+		var me_at: Vector2 = g._pos
+		var node_at := _nodes_at(n)
+		var rel := me_at - c.pos
+		var fwd := Vector2(sin(c.yaw), cos(c.yaw))
+		if not (rel.dot(fwd) < 0.0 and absf(rel.dot(Vector2(-fwd.y, fwd.x))) < 2.5):
+			var pd := me_at.distance_to(node_at)
+			var pv := maxf(float(g._v), 0.0)
+			var pfwd := Vector2(cos(float(g._yaw)), sin(float(g._yaw)))
+			if pd < _node_r[n] + 3.0:
+				return _hold(c, dt, stop)
+			if pd < _node_r[n] + 30.0 and pv > 1.5 and pfwd.dot(node_at - me_at) > 0.0 \
+					and pd / pv < my_eta + 1.5:
+				return _hold(c, dt, stop)
+		for oi in range(cars.size()):
+			if oi == i:
+				continue
+			var o: Car = cars[oi]
+			if not o.alive or o.pos.distance_squared_to(node_at) > 3600.0:
+				continue
+			var ok := _node_index(o, n)
+			if ok < 0:
+				continue
+			var od := o.cum[ok] - o.s
+			var theirs := _arrival(o, ok, n)
+			if not _crosses(mine[0], mine[1], theirs[0], theirs[1], int(mine[3]), int(theirs[3])):
+				continue
+			if od < _node_r[n] + 1.0:
+				return _hold(c, dt, stop)   # in it now
+			var o_eta := od / maxf(o.v, 2.0)
+			if o_eta > 5.0:
+				continue
+			var mr: int = mine[2]
+			var orr: int = theirs[2]
+			if orr > mr:
+				return _hold(c, dt, stop)
+			if orr < mr:
+				continue
+			var my_turn: bool = (mine[0] as Vector2).dot(mine[1]) < 0.85
+			var o_turn: bool = (theirs[0] as Vector2).dot(theirs[1]) < 0.85
+			if my_turn and not o_turn and o_eta < my_eta + 2.0:
+				return _hold(c, dt, stop)
+			if my_turn == o_turn and (o_eta < my_eta - 0.25 or (absf(o_eta - my_eta) <= 0.25 and oi < i)):
+				return _hold(c, dt, stop)
+		break
+	c.jwait = 0.0
 	return INF
+
+func _hold(c: Car, dt: float, stop: float) -> float:
+	if c.v < 0.5:
+		c.jwait += dt
+	if c.jwait > 6.0:
+		return INF   # waited long enough: in, slowly (whoever is in the way still stops it)
+	return stop
+
+## where node n comes on this car's way (just behind counts too: it may be in it), or -1
+func _node_index(o: Car, n: int) -> int:
+	for k in range(maxi(o.k - 3, 0), mini(o.pts.size(), o.k + 24)):
+		if o.node[k] == n:
+			var d := o.cum[k] - o.s
+			if d > -(_node_r[n] + 5.0) and d < 55.0:
+				return k
+	return -1
+
+## how a car comes through node n at its point j: [way in, way out, road rank, last node]
+func _arrival(c: Car, j: int, n: int) -> Array:
+	var m := j - 1
+	while m > 0 and c.pts[m].distance_squared_to(c.pts[j]) < 0.25:
+		m -= 1
+	var way_in := (c.pts[j] - c.pts[maxi(m, 0)]).normalized()
+	var way_out := way_in
+	for q in range(j + 1, c.pts.size()):
+		if c.cum[q] - c.cum[j] > 3.0:
+			way_out = (c.pts[q] - c.pts[j]).normalized()
+			break
+	var from := -1
+	for q in range(j - 1, -1, -1):
+		if c.node[q] >= 0 and c.node[q] != n:
+			from = c.node[q]
+			break
+	var r: Dictionary = _roads[c.rd[j]]
+	var rank := 10 if r.get("ring", false) else int(g.ROAD_RANK.get(r["k"], 1))
+	return [way_in, way_out, rank, from]
 
 func _nodes_at(n: int) -> Vector2:
 	return g._nodes[n]
@@ -342,10 +398,11 @@ func _ways_out(n: int) -> int:
 	_degree[n] = count
 	return count
 
-## do two ways through a junction cross? Not when both come in the same way (the one
+## do two ways through a junction cross? Not when both come along the same road (the one
 ## behind follows), and not when they come from opposite sides and both go straight on.
-func _crosses(in_a: Vector2, out_a: Vector2, in_b: Vector2, out_b: Vector2) -> bool:
-	if in_a.dot(in_b) > 0.85:
+## Two roads joining into one (a slip road merging) do: they want the same lane.
+func _crosses(in_a: Vector2, out_a: Vector2, in_b: Vector2, out_b: Vector2, from_a := -1, from_b := -2) -> bool:
+	if from_a == from_b or (from_a < 0 and in_a.dot(in_b) > 0.85):
 		return false
 	if in_a.dot(in_b) < -0.85 and in_a.dot(out_a) > 0.85 and in_b.dot(out_b) > 0.85:
 		return false
@@ -396,7 +453,7 @@ func _passed_lights(c: Car, before: float) -> void:
 
 ## how far along my lane ahead something at q is (centre to centre), or INF if it is not
 ## on it
-func _path_gap(c: Car, q: Vector2, look: float) -> float:
+func _path_gap(c: Car, q: Vector2, look: float, wide := LANE_W) -> float:
 	for j in range(c.k, c.pts.size() - 1):
 		var base := c.cum[j] - c.s
 		if base > look:
@@ -404,7 +461,7 @@ func _path_gap(c: Car, q: Vector2, look: float) -> float:
 		var a := c.pts[j]
 		var b := c.pts[j + 1]
 		var cp := Geometry2D.get_closest_point_to_segment(q, a, b)
-		if cp.distance_to(q) < LANE_W:
+		if cp.distance_to(q) < wide:
 			var along := base + a.distance_to(cp)
 			if along > 0.5:
 				return along
@@ -477,6 +534,7 @@ func _spawn(c: Car, first: bool) -> bool:
 		c.pts = PackedVector2Array([at + Vector2(-along.y, along.x) * lane])
 		c.cum = PackedFloat32Array([0.0])
 		c.node = PackedInt32Array([-1])
+		c.rd = PackedInt32Array([ri])
 		c.vmax = PackedFloat32Array([float(r["speed"]) * c.pace])
 		c.k = 0
 		c.s = 0.0
@@ -516,11 +574,12 @@ func _leg(c: Car, ri: int, from: int, dir: int) -> void:
 		var prv := p[i - dir] if (i - dir >= 0 and i - dir < p.size()) else p[i]
 		var nxt := p[i + dir] if (i + dir >= 0 and i + dir < p.size()) else p[i]
 		var d := (nxt - prv).normalized()
-		var q := p[i] + Vector2(-d.y, d.x) * lane
+		var q: Vector2 = g._clear_lane(p[i], d, lane)
 		var tail := c.pts[c.pts.size() - 1]
 		c.cum.append(c.cum[c.cum.size() - 1] + tail.distance_to(q))
 		c.pts.append(q)
 		c.node.append(ids[i])
+		c.rd.append(ri)
 		c.vmax.append(lim)
 		if i == last:
 			break
@@ -593,6 +652,7 @@ func _trim(c: Car) -> void:
 	var off := c.cum[cut]
 	c.pts = c.pts.slice(cut)
 	c.node = c.node.slice(cut)
+	c.rd = c.rd.slice(cut)
 	c.vmax = c.vmax.slice(cut)
 	var cum := c.cum.slice(cut)
 	for j in range(cum.size()):
@@ -652,15 +712,16 @@ func draw(f: float) -> void:
 		var yaw := lerp_angle(c.prev_yaw, c.yaw, f)
 		var basis := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, -c.pitch)
 		var xf := Transform3D(basis, Vector3(p.x, float(g._h(p)) + 0.02, p.y))
-		_mm.set_instance_transform(i, xf)
-		_mm.set_instance_custom_data(i, Color(c.braking, 0, 0, 0))
+		var mm: MultiMesh = _mms[c.kind]
+		mm.set_instance_transform(i, xf)
+		mm.set_instance_custom_data(i, Color(c.paint, c.braking))
 		if _night:
 			_beams.multimesh.set_instance_transform(i, xf)
 
 func _hide_or_show(i: int) -> void:
 	var c: Car = cars[i]
 	if not c.alive:
-		_mm.set_instance_transform(i, Transform3D(Basis(), Vector3(0, -500, 0)))
+		(_mms[c.kind] as MultiMesh).set_instance_transform(i, Transform3D(Basis(), Vector3(0, -500, 0)))
 		if _beams != null:
 			_beams.multimesh.set_instance_transform(i, Transform3D(Basis(), Vector3(0, -500, 0)))
 
