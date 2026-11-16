@@ -48,6 +48,9 @@ class Car:
 	var ignore := 0.0                 ## seconds it ignores crossing cars (a standoff broken)
 	var hit := 0.0                    ## seconds it sits stunned after the player hit it
 	var last_light := -1000.0         ## s at the last light it drove through
+	var sign_done := -1               ## the stop sign it has stopped at already
+	var sign_wait := 0.0
+	var holding := false              ## stopping for a stop sign: not taking the junction yet
 	var alive := false
 
 var g: Node                           ## the game: its road graph, lights, ground, player
@@ -63,6 +66,9 @@ var _degree := {}                     ## node -> how many ways out of it (3+: a 
 const TAKE_AHEAD := 22.0              ## a junction is taken this far before it
 var _mm: MultiMesh
 var _brake_mat: ShaderMaterial
+var _head_mat: StandardMaterial3D      ## headlights: lit at night
+var _beams: MultiMeshInstance3D       ## their beams on the road, at night
+var _night := false
 var _roads: Array
 var _node_roads: Array
 var _node_r: PackedFloat32Array
@@ -70,11 +76,12 @@ var _node_r: PackedFloat32Array
 const BRAKE_SHADER := """
 shader_type spatial;
 uniform vec4 col : source_color;
+uniform float night = 0.0;
 varying float brake;
 void vertex() { brake = INSTANCE_CUSTOM.r; }
 void fragment() {
 	ALBEDO = col.rgb;
-	EMISSION = col.rgb * (0.25 + 2.8 * brake);
+	EMISSION = col.rgb * (0.25 + 1.1 * night + 2.8 * brake);
 }
 """
 
@@ -90,6 +97,9 @@ func setup(game: Node) -> void:
 	sh.code = BRAKE_SHADER
 	_brake_mat.shader = sh
 	mesh.surface_set_material(mesh.get_surface_count() - 1, _brake_mat)   # the tail lights
+	_head_mat = StandardMaterial3D.new()
+	_head_mat.roughness = 0.3
+	mesh.surface_set_material(mesh.get_surface_count() - 2, _head_mat)    # the headlights
 	_mm = MultiMesh.new()
 	_mm.transform_format = MultiMesh.TRANSFORM_3D
 	_mm.use_colors = true
@@ -102,6 +112,17 @@ func setup(game: Node) -> void:
 	var mi := MultiMeshInstance3D.new()
 	mi.multimesh = _mm
 	g.world.add_child(mi)
+	var bm := MultiMesh.new()
+	bm.transform_format = MultiMesh.TRANSFORM_3D
+	bm.mesh = g._beam_mesh()
+	bm.instance_count = COUNT
+	bm.custom_aabb = _mm.custom_aabb
+	_beams = MultiMeshInstance3D.new()
+	_beams.multimesh = bm
+	_beams.material_override = g._glow_mat("lamplight", 0.4)
+	_beams.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_beams.visible = false
+	g.world.add_child(_beams)
 	var palette := [Palette.col("ink"), Palette.col("ink").lerp(Palette.col("bg_alt"), 0.35),
 		Palette.col("bg_alt").lerp(Palette.col("ink"), 0.3), Palette.col("bg").lerp(Palette.col("bg_alt"), 0.5),
 		Palette.col("player").lerp(Palette.col("bg"), 0.5), Palette.col("hazard").lerp(Palette.col("bg"), 0.3),
@@ -117,6 +138,19 @@ func setup(game: Node) -> void:
 
 func retint() -> void:
 	_brake_mat.set_shader_parameter("col", Palette.col("hazard"))
+	_head_mat.albedo_color = g._tone["tank"]
+	_head_mat.emission = g._tone["lamplight"]
+
+func set_night(on: bool) -> void:
+	_night = on
+	_brake_mat.set_shader_parameter("night", 1.0 if on else 0.0)
+	_head_mat.emission_enabled = on
+	_head_mat.emission_energy_multiplier = 2.5
+	_beams.visible = on
+	if not on:
+		return
+	for i in range(cars.size()):   # nothing drawn yet for cars that are not alive
+		_beams.multimesh.set_instance_transform(i, Transform3D(Basis(), Vector3(0, -500, 0)))
 
 func alive_count() -> int:
 	var n := 0
@@ -170,7 +204,9 @@ func _target(c: Car, i: int, dt: float) -> float:
 	var lv := _light_ahead(c)
 	vt = minf(vt, lv)
 	if lv == INF:
-		vt = minf(vt, _junction_ahead(c, i))
+		vt = minf(vt, _sign_ahead(c, dt))
+		if not c.holding:
+			vt = minf(vt, _junction_ahead(c, i))
 	# the car (or the player) in front, on this lane
 	var look := clampf(10.0 + c.v * 3.0, 18.0, 55.0)
 	var best := INF
@@ -314,6 +350,42 @@ func _crosses(in_a: Vector2, out_a: Vector2, in_b: Vector2, out_b: Vector2) -> b
 	if in_a.dot(in_b) < -0.85 and in_a.dot(out_a) > 0.85 and in_b.dot(out_b) > 0.85:
 		return false
 	return true
+
+## a stop sign on my way: a full stop at its line, a moment, then on (and the junction
+## after it taken in turn); a give-way: down to walking pace at the line
+func _sign_ahead(c: Car, dt: float) -> float:
+	c.holding = false
+	if g._signs.is_empty():
+		return INF
+	for j in range(c.k + 1, c.pts.size()):
+		var dist := c.cum[j] - c.s
+		if dist > 60.0:
+			break
+		var n := c.node[j]
+		if not g._signs.has(n):
+			continue
+		var dir := c.pts[j] - c.pts[maxi(j - 1, 0)]
+		if dir.length_squared() < 0.01 and j >= 2:
+			dir = c.pts[j] - c.pts[j - 2]
+		var rule: Array = g._sign_rule(n, dir)
+		if rule.is_empty():
+			continue
+		var line := dist - float(rule[1])
+		if line < -1.0:
+			continue
+		if rule[0] == "give_way":
+			return sqrt(16.0 + 2.0 * BRAKE * maxf(line, 0.0))
+		if c.sign_done == n:
+			continue
+		c.holding = true
+		if line < 2.5 and c.v < 0.3:
+			c.sign_wait += dt
+			if c.sign_wait > 0.8:
+				c.sign_done = n
+				c.sign_wait = 0.0
+			return 0.0
+		return sqrt(2.0 * BRAKE * maxf(line - 0.3, 0.0))
+	return INF
 
 func _passed_lights(c: Car, before: float) -> void:
 	for j in range(c.k, c.pts.size()):
@@ -579,13 +651,18 @@ func draw(f: float) -> void:
 		var p := c.prev_pos.lerp(c.pos, f)
 		var yaw := lerp_angle(c.prev_yaw, c.yaw, f)
 		var basis := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, -c.pitch)
-		_mm.set_instance_transform(i, Transform3D(basis, Vector3(p.x, float(g._h(p)) + 0.02, p.y)))
+		var xf := Transform3D(basis, Vector3(p.x, float(g._h(p)) + 0.02, p.y))
+		_mm.set_instance_transform(i, xf)
 		_mm.set_instance_custom_data(i, Color(c.braking, 0, 0, 0))
+		if _night:
+			_beams.multimesh.set_instance_transform(i, xf)
 
 func _hide_or_show(i: int) -> void:
 	var c: Car = cars[i]
 	if not c.alive:
 		_mm.set_instance_transform(i, Transform3D(Basis(), Vector3(0, -500, 0)))
+		if _beams != null:
+			_beams.multimesh.set_instance_transform(i, Transform3D(Basis(), Vector3(0, -500, 0)))
 
 ## ---- the player's car against them --------------------------------------------------------
 

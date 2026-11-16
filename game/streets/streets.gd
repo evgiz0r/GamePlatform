@@ -143,6 +143,9 @@ uniform vec4 wall_c : source_color;
 uniform vec4 glass : source_color;
 uniform vec4 shutter : source_color;
 uniform vec4 dark : source_color;
+uniform vec4 lit : source_color;      // a lit room, at night
+uniform vec4 lit_cool : source_color; // an office
+uniform float night = 0.0;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 void fragment() {
 	vec3 base = mix(mix(wall_a.rgb, wall_b.rgb, COLOR.g), wall_c.rgb, COLOR.a) * COLOR.r;
@@ -164,6 +167,10 @@ void fragment() {
 	float r2 = hash(vec2(ci + 13.0, lv * 3.0) + seed);
 	vec3 col = base;
 	float rough = 0.92;
+	// at night some rooms have the light on: warm in homes, cooler in offices
+	float r3 = hash(vec2(ci * 1.7 + 3.0, lv * 2.3) + seed);
+	vec3 room = r3 < 0.36 ? mix(lit.rgb, lit.rgb * 0.7, r2) : vec3(0.0);
+	vec3 emit = vec3(0.0);
 	bool facade = len >= 2.5 && up < top - 0.9;
 	bool upper = up >= 3.0 || top < 10.0;
 	if (facade && upper) {
@@ -173,6 +180,7 @@ void fragment() {
 				bool closed = fy > 0.85 - 0.55 * shut;
 				col = closed ? shutter.rgb : glass.rgb;
 				rough = closed ? 0.8 : 0.2;
+				emit = closed ? room * 0.12 : room;
 			}
 			if (r2 < 0.22 && fx > 0.56 && fx < 0.76 && fy > 0.1 && fy < 0.26) {
 				col = shutter.rgb * 0.97;
@@ -189,6 +197,7 @@ void fragment() {
 					if (fx > 0.3 && fx < 0.7 && fy > 0.36 && fy < 0.84) {
 						col = r1 > 0.6 ? shutter.rgb : glass.rgb * 0.8;
 						rough = 0.25;
+						emit = r1 > 0.6 ? room * 0.12 : room;
 					}
 				}
 			}
@@ -199,11 +208,13 @@ void fragment() {
 			if (fy > 0.38 && fy < 0.78 && fx > 0.04 && fx < 0.96) {
 				col = glass.rgb;
 				rough = 0.2;
+				emit = room;
 			}
 		} else {
 			if (fx > 0.04 && fx < 0.96 && fy > 0.08 && fy < 0.96) {
 				col = glass.rgb * (0.85 + 0.3 * r1);
 				rough = 0.12;
+				emit = r3 < 0.3 ? lit_cool.rgb * (0.7 + 0.3 * r2) : vec3(0.0);
 			}
 		}
 	} else if (facade && up < 2.7) {
@@ -211,6 +222,7 @@ void fragment() {
 			if (fx > 0.04) {
 				col = glass.rgb;
 				rough = 0.15;
+				emit = lit_cool.rgb * 0.8;
 			}
 		} else if (fx > 0.14) {
 			col = dark.rgb;
@@ -219,6 +231,7 @@ void fragment() {
 	ALBEDO = col;
 	ROUGHNESS = rough;
 	SPECULAR = 0.35;
+	EMISSION = emit * night * 1.25;
 }
 """
 
@@ -361,6 +374,16 @@ var _sig_hash := {}                  ## the same nodes in a spatial hash
 var _light_odo := -1000.0            ## the odometer when the car last went through a light
 const LIGHT_SKIP := 45.0             ## lights this soon after one are the far side of the same junction
 
+## ---- stop and give-way signs, where OSM has them ----
+var _signs := {}                     ## graph node -> [[kind, way in (Vector2), line before the node (m)], ...]
+var _sign_hash := {}
+var _stopped_odo := 0.0              ## the odometer when the car was last (nearly) stopped
+var _sign_odo := -1000.0             ## ... at the last stop sign it went through
+var _ap_sign_done := -1              ## autodrive: the stop sign it has stopped at already
+var _ap_sign_wait := 0.0
+const ROAD_RANK := {"motorway": 6, "trunk": 6, "primary": 5, "secondary": 4, "tertiary": 3,
+	"unclassified": 2, "residential": 1, "living_street": 0, "service": 0}
+
 ## ---- traffic ----
 const Traffic := preload("res://game/streets/traffic.gd")
 var _traffic: Traffic = null
@@ -387,6 +410,7 @@ var _steer_in := 0.0                 ## keyboard steering after the ramp, -1..1
 var _gear := 1                       ## 1 drive, -1 reverse
 var _rev_hold := 0.0
 var _a_long := 0.0
+var _throttle_in := 0.0              ## the pedal this tick, for the engine's sound
 var _roll := 0.0
 var _pitch := 0.0
 var _crash_cool := 0.0
@@ -463,9 +487,10 @@ var _woke := false
 var _stick_id := -1                  ## the touch that owns the stick; -1 when no thumb is down
 var _stick := Vector2.ZERO           ## its deflection, inside the unit circle
 var _sfx_was := 0.8
-const AUTO_BTN := Rect2(226, 334, 100, 20)
-const GOTO_BTN := Rect2(334, 334, 84, 20)
-const ASSIST_BTN := Rect2(426, 334, 70, 20)
+const AUTO_BTN := Rect2(184, 334, 100, 20)
+const GOTO_BTN := Rect2(290, 334, 80, 20)
+const ASSIST_BTN := Rect2(376, 334, 70, 20)
+const NIGHT_BTN := Rect2(452, 334, 52, 20)
 const STICK_C := Vector2(556, 268)   ## the touch stick sits still, here, on the right
 const STICK_R := 52.0                ## thumb travel (design px) for full lock / full gas
 const STICK_GRAB := 84.0             ## a thumb this close to its centre takes hold of it
@@ -520,6 +545,7 @@ func start(_config: Dictionary) -> void:
 	_spawn_people()
 	_traffic = Traffic.new()
 	_traffic.setup(self)
+	_build_engine()
 	_dressing["traffic"] = _traffic.alive_count()
 	_loaded = true
 	track3d(_car, "@")
@@ -812,6 +838,7 @@ func _build_world() -> bool:
 		return false
 	tk = Time.get_ticks_msec()
 	_build_signals()
+	_build_signs()
 	_build_pois()
 	_build_stops()
 	tk = _stage("places", tk)
@@ -899,7 +926,8 @@ func _surface(tone: String) -> StandardMaterial3D:
 
 ## a Buf as mesh(es): one per square for a CBuf, each drawn while the camera is within
 ## `seen` metres of it (0: always)
-func _add_mesh(buf: Buf, m: Material, shadows: bool, seen := 0.0) -> void:
+func _add_mesh(buf: Buf, m: Material, shadows: bool, seen := 0.0) -> Array:
+	var made: Array = []
 	var parts := buf.parts()
 	var half := (buf as CBuf).cell * 0.71 if buf is CBuf else 0.0
 	for key: Vector2i in parts:
@@ -916,6 +944,8 @@ func _add_mesh(buf: Buf, m: Material, shadows: bool, seen := 0.0) -> void:
 			mi.visibility_range_end = seen + half
 			mi.visibility_range_end_margin = 40.0
 		world.add_child(mi)
+		made.append(mi)
+	return made
 
 ## a polygon on the ground
 func _fill(buf: Buf, ring: PackedVector2Array, y: float, level := false) -> void:
@@ -1598,6 +1628,7 @@ func _build_roof_kit() -> void:
 
 ## street lamps along the pavements, every ~34 m, alternating sides
 func _build_lamps() -> void:
+	var pools := CBuf.new(GROUND_CELL)
 	var poles: Array = []
 	var arms: Array = []
 	var heads: Array = []
@@ -1637,6 +1668,7 @@ func _build_lamps() -> void:
 						arms.append(Transform3D(face, Vector3(arm.x, gy + 6.95, arm.y)))
 						var head := p + toward * 1.75
 						heads.append(Transform3D(face, Vector3(head.x, gy + 6.85, head.y)))
+						_pool(pools, head + toward * 0.6, 7.5)
 						_add_post(p, 0.15)
 				s += 34.0
 			s -= L
@@ -1657,6 +1689,105 @@ func _build_lamps() -> void:
 	_chunked(arm_m, arms, LAMP_RANGE)
 	_chunked(head_m, heads, LAMP_RANGE)
 	_dressing["lamps"] = poles.size()
+	for mi: MeshInstance3D in _add_mesh(pools, _glow_mat("lamplight", 0.42), false, LAMP_RANGE):
+		mi.visible = _night
+		_night_nodes.append(mi)
+
+## ---- night ---------------------------------------------------------------------------------
+## The same city after dark: the sun down to a dim blue moon (and no shadows, which also
+## makes the night cheaper to draw), a share of the windows lit, the street lamps on with a
+## pool of light under each, shop windows bright, headlights and their beams on the road.
+## Light that is drawn, not computed: real lights in this renderer redraw everything they
+## touch, which a browser cannot afford by the hundred.
+
+var _night := false
+var _night_nodes: Array = []          ## shown only at night: light pools, headlight beams
+
+const GLOW_SHADER := """
+shader_type spatial;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled;
+uniform vec4 col : source_color;
+uniform float strength = 0.5;
+void fragment() {
+	// UV: 0 at the light, 1 at the rim (pools); beams fade along their length and to the sides
+	float k = UV2.x > 0.5 ? (1.0 - UV.y) * (1.0 - UV.y) * (1.0 - UV.x * UV.x) : clamp(1.0 - length(UV), 0.0, 1.0);
+	ALBEDO = col.rgb * k * k * strength;
+}
+"""
+var _glow_mats := {}
+
+func _glow_mat(tone: String, strength: float) -> ShaderMaterial:
+	var key := "%s|%.2f" % [tone, strength]
+	if _glow_mats.has(key):
+		return _glow_mats[key]
+	var m := ShaderMaterial.new()
+	var sh := Shader.new()
+	sh.code = GLOW_SHADER
+	m.shader = sh
+	m.set_shader_parameter("col", _tone[tone])
+	m.set_shader_parameter("strength", strength)
+	m.set_meta("tone", tone)
+	_glow_mats[key] = m
+	return m
+
+## a disc of light on the ground round p, following the hills
+func _pool(buf: Buf, p: Vector2, r: float) -> void:
+	var seg := 12
+	var mid := _g3(p, 0.09)
+	for i in range(seg):
+		var a0 := TAU * i / seg
+		var a1 := TAU * (i + 1) / seg
+		var e0 := Vector2(cos(a0), sin(a0))
+		var e1 := Vector2(cos(a1), sin(a1))
+		for ring: Array in [[0.0, 0.55], [0.55, 1.0]]:
+			var r0: float = ring[0]
+			var r1: float = ring[1]
+			var q00 := _g3(p + e0 * r * r0, 0.09)
+			var q01 := _g3(p + e1 * r * r0, 0.09)
+			var q10 := _g3(p + e0 * r * r1, 0.09)
+			var q11 := _g3(p + e1 * r * r1, 0.09)
+			if r0 == 0.0:
+				buf.tri(mid, q10, q11, Vector3.UP, Color.WHITE, Vector2.ZERO, e0 * r1, e1 * r1)
+			else:
+				buf.tri(q00, q10, q11, Vector3.UP, Color.WHITE, e0 * r0, e0 * r1, e1 * r1)
+				buf.tri(q00, q11, q01, Vector3.UP, Color.WHITE, e0 * r0, e1 * r1, e1 * r0)
+
+## a headlight beam on the road, local to a car facing +Z: from the bumper, 26 m out and
+## widening (UV.x across, UV.y along; UV2.x = 1 marks it as a beam for the shader)
+func _beam_mesh() -> ArrayMesh:
+	var b := Buf.new()
+	var near := 2.3
+	var far := 28.0
+	var steps := 6
+	for i in range(steps):
+		var t0 := float(i) / steps
+		var t1 := float(i + 1) / steps
+		var z0 := lerpf(near, far, t0)
+		var z1 := lerpf(near, far, t1)
+		var w0 := lerpf(0.9, 5.5, t0)
+		var w1 := lerpf(0.9, 5.5, t1)
+		var u2 := Vector2(1, 0)
+		b.tri(Vector3(-w0, 0.07, z0), Vector3(w0, 0.07, z0), Vector3(w1, 0.07, z1), Vector3.UP, Color.WHITE,
+			Vector2(-1, t0), Vector2(1, t0), Vector2(1, t1), u2)
+		b.tri(Vector3(-w0, 0.07, z0), Vector3(w1, 0.07, z1), Vector3(-w1, 0.07, z1), Vector3.UP, Color.WHITE,
+			Vector2(-1, t0), Vector2(1, t1), Vector2(-1, t1), u2)
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, b.arrays())
+	return am
+
+func _set_night(on: bool) -> void:
+	_night = on
+	for n: Node3D in _night_nodes:
+		n.visible = on
+	_retint_city()
+	if on:
+		sun.shadow_enabled = false
+	else:
+		_set_quality(_quality)
+	if _traffic != null:
+		_traffic.set_night(on)
+	_show_banner("night" if on else "day", 1.2)
+	Probe.event("night", {"on": on})
 
 ## Parked cars down Givatayim's streets, half up on the pavement the way they really
 ## park there: one sedan mesh shared by all of them, each in its own colour.
@@ -2247,6 +2378,183 @@ func _signals_tick(dt: float) -> void:
 		_sig_phase = (_sig_phase + 1) % SIGNAL_CYCLE.size()
 		_apply_signals()
 
+## Stop and give-way signs: a pole and a plate on the right of each way in they are for.
+## Which ways: the one OSM says (direction=forward/backward); else, at a junction, the
+## minor roads into it (all of them if they are all alike); on a plain stretch, both ways.
+func _build_signs() -> void:
+	var poles: Array = []
+	var plates := {"stop": [], "give_way": []}
+	for sg: Array in _city_data.get("signs", []):
+		var node := int(sg[0])
+		if node < 0 or node >= _nodes.size():
+			continue
+		var kind := String(sg[1])
+		if not plates.has(kind):
+			continue
+		var facing := Vector2(float(sg[2]), float(sg[3])) / 100.0
+		var c := _nodes[node]
+		var junction := _node_ways(node) >= 3
+		var top := 0
+		var bottom := 99
+		for e: Vector2i in _node_roads[node]:
+			var r: Dictionary = _roads[e.x]
+			if r["drive"]:
+				top = maxi(top, int(ROAD_RANK.get(r["k"], 1)))
+				bottom = mini(bottom, int(ROAD_RANK.get(r["k"], 1)))
+		var rules: Array = []
+		for e: Vector2i in _node_roads[node]:
+			var r: Dictionary = _roads[e.x]
+			if not r["drive"] or r["pv"]:
+				continue
+			var pts: PackedVector2Array = r["pts"]
+			for d2: int in [-1, 1]:
+				var from := e.y + d2
+				if from < 0 or from >= pts.size():
+					continue
+				if r["o"] != 0 and r["o"] != -d2:
+					continue   # arriving from `from` is travelling -d2 along the road
+				var way_in := (c - pts[from]).normalized()
+				if facing != Vector2.ZERO:
+					if way_in.dot(facing) < 0.7:
+						continue
+				elif junction and top != bottom and int(ROAD_RANK.get(r["k"], 1)) >= top:
+					continue   # the main road through has the right of way
+				var line := _node_r[node] + 2.0 if junction else 1.0
+				rules.append([kind, way_in, line])
+				var right := Vector2(-way_in.y, way_in.x)
+				var p := c - way_in * (line + 0.4) + right * (float(r["w"]) * 0.5 + 0.7)
+				if _push_out(p, 0.3, false) != Vector2.ZERO:
+					continue
+				var gy := _h(p)
+				poles.append(Transform3D(Basis(), Vector3(p.x, gy + 1.1, p.y)))
+				(plates[kind] as Array).append(Transform3D(Basis(Vector3.UP, atan2(-way_in.x, -way_in.y)), Vector3(p.x, gy + 2.3, p.y)))
+				_add_post(p, 0.08)
+		if not rules.is_empty():
+			_signs[node] = rules
+			_hash_add(_sign_hash, Rect2(c, Vector2.ZERO), SEG_CELL, node)
+	if poles.is_empty():
+		return
+	var pole := CylinderMesh.new()
+	pole.top_radius = 0.035
+	pole.bottom_radius = 0.035
+	pole.height = 2.2
+	pole.radial_segments = 6
+	pole.rings = 1
+	pole.material = _surface("pole")
+	_chunked(pole, poles, LAMP_RANGE)
+	for kind: String in plates:
+		if not (plates[kind] as Array).is_empty():
+			_chunked(_sign_plate(kind), plates[kind], LAMP_RANGE)
+	_dressing["signs"] = poles.size()
+
+## the plate, facing +Z: a red octagon in a thin white rim, or a white triangle point down
+## in a red one; grey behind
+func _sign_plate(kind: String) -> ArrayMesh:
+	var outer: Array = []
+	var inner: Array = []
+	if kind == "stop":
+		for i in range(8):
+			var a := TAU * (float(i) + 0.5) / 8.0
+			outer.append(Vector2(cos(a), sin(a)) * 0.38)
+			inner.append(Vector2(cos(a), sin(a)) * 0.34)
+	else:
+		for v: Vector2 in [Vector2(0, -0.42), Vector2(0.46, 0.38), Vector2(-0.46, 0.38)]:
+			outer.append(v)
+			inner.append(Vector2(v.x, v.y + 0.035) * 0.62)
+	var rim := Buf.new()
+	var face := Buf.new()
+	var back := Buf.new()
+	_poly(rim, outer.map(func(v): return Vector3(v.x, -v.y, 0.012)), Vector3.BACK)
+	_poly(face, inner.map(func(v): return Vector3(v.x, -v.y, 0.016)), Vector3.BACK)
+	_poly(back, outer.map(func(v): return Vector3(v.x, -v.y, 0.0)), Vector3.FORWARD)
+	var red := mat("hazard", 0.15)
+	var white := _surface("mark")
+	var am := ArrayMesh.new()
+	for pair: Array in [[rim, white if kind == "stop" else red], [face, red if kind == "stop" else white],
+			[back, _surface("pole")]]:
+		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, (pair[0] as Buf).arrays())
+		am.surface_set_material(am.get_surface_count() - 1, pair[1])
+	return am
+
+## how many ways a car can leave a graph node by (3 or more: a junction)
+func _node_ways(n: int) -> int:
+	var count := 0
+	for e: Vector2i in _node_roads[n]:
+		var r: Dictionary = _roads[e.x]
+		if not r["drive"]:
+			continue
+		if e.y > 0:
+			count += 1
+		if e.y < (r["pts"] as PackedVector2Array).size() - 1:
+			count += 1
+	return count
+
+## the sign for traffic arriving at node `n` going `dir`: [kind, line before the node] or []
+func _sign_rule(n: int, dir: Vector2) -> Array:
+	var rules: Array = _signs.get(n, [])
+	if rules.is_empty() or dir == Vector2.ZERO:
+		return []
+	var d := dir.normalized()
+	for rule: Array in rules:
+		if d.dot(rule[1]) > 0.7:
+			return [rule[0], rule[2]]
+	return []
+
+## the player through a stop sign without stopping: called out, like a red light
+func _check_stop_signs() -> void:
+	if absf(_v) < 0.8:
+		_stopped_odo = _odo
+	if _signs.is_empty() or _v < 2.0 or _odo - _sign_odo < 20.0:
+		return
+	for n: int in _near(_sign_hash, _pos, 20.0, SEG_CELL):
+		var rule := _sign_rule(n, _fwd())
+		if rule.is_empty() or rule[0] != "stop":
+			continue
+		if _nodes[n].distance_to(_pos) > float(rule[1]) + 0.6:
+			continue
+		_sign_odo = _odo
+		if _odo - _stopped_odo > 12.0:
+			_show_banner("didn't stop at the stop sign", 1.8)
+			Probe.event("stop_sign", {"street": _on_name, "kmh": int(_v * 3.6), "auto": _auto})
+		return
+
+## autodrive at signs on its lane: a full stop at a stop sign's line (a moment, then on),
+## slow to walking pace for a give-way
+func _ap_sign_v(dt: float) -> float:
+	if _signs.is_empty() or _ap_pts.size() < 2:
+		return INF
+	var best := INF
+	for n: int in _near(_sign_hash, _pos, 60.0, SEG_CELL):
+		var c := _nodes[n]
+		var base := -_ap_pts[0].distance_to(Geometry2D.get_closest_point_to_segment(_pos, _ap_pts[0], _ap_pts[1]))
+		for j in range(_ap_pts.size() - 1):
+			if base > 60.0:
+				break
+			var a := _ap_pts[j]
+			var b := _ap_pts[j + 1]
+			var cp := Geometry2D.get_closest_point_to_segment(c, a, b)
+			if cp.distance_to(c) < 4.5:
+				var rule := _sign_rule(n, b - a)
+				if rule.is_empty():
+					break
+				var line := base + a.distance_to(cp) - float(rule[1])
+				if line < -1.0:
+					break
+				if rule[0] == "give_way":
+					best = minf(best, sqrt(16.0 + 2.0 * 2.6 * maxf(line, 0.0)))
+				elif _ap_sign_done != n:
+					if line < 2.5 and _v < 0.3:
+						_ap_sign_wait += dt
+						if _ap_sign_wait > 0.8:
+							_ap_sign_done = n
+							_ap_sign_wait = 0.0
+						best = 0.0
+					else:
+						best = minf(best, sqrt(2.0 * 2.6 * maxf(line - 0.4, 0.0)))
+				break
+			base += a.distance_to(b)
+	return best
+
 ## the car going through a junction with lights: note it (the far side's lights are the
 ## same junction), and whether it went through on red
 var _reds := 0
@@ -2379,6 +2687,9 @@ func _tones() -> void:
 		"cartrim": bg.lerp(alt, 0.4),
 		"tyre": bg.lerp(alt, 0.2),
 		"rim": ink.lerp(alt, 0.35),
+		"lit": ink.lerp(wn, 0.55),
+		"litcool": ink.lerp(pl, 0.2),
+		"lamplight": ink.lerp(wn, 0.45),
 	}
 
 func _retint_city() -> void:
@@ -2413,6 +2724,37 @@ func _retint_city() -> void:
 	if sun != null:
 		sun.light_color = Palette.col("ink").lerp(Palette.col("warn"), 0.12)
 		sun.light_energy = 1.05
+		sun.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_AND_SKY
+	if _wall_mat != null:
+		_wall_mat.set_shader_parameter("lit", _tone["lit"])
+		_wall_mat.set_shader_parameter("lit_cool", _tone["litcool"])
+		_wall_mat.set_shader_parameter("night", 1.0 if _night else 0.0)
+	for m: ShaderMaterial in _glow_mats.values():
+		m.set_shader_parameter("col", _tone[m.get_meta("tone")])
+	var lamp := _surface("lamp")
+	lamp.emission_enabled = _night
+	lamp.emission = _tone["lamplight"]
+	lamp.emission_energy_multiplier = 2.4
+	if _smat.has("shopglass"):
+		(_smat["shopglass"] as StandardMaterial3D).emission_energy_multiplier = 2.0 if _night else 0.7
+	if _night and env != null:
+		var bg := Palette.col("bg")
+		var pl := Palette.col("player")
+		var ink := Palette.col("ink")
+		var haze := bg.lerp(pl, 0.3).lerp(ink, 0.06)
+		var sky := env.sky.sky_material as ProceduralSkyMaterial
+		sky.sky_top_color = bg.lerp(pl, 0.05)
+		sky.sky_horizon_color = haze
+		sky.ground_horizon_color = haze
+		sky.ground_bottom_color = bg
+		env.background_color = haze
+		env.ambient_light_color = bg.lerp(pl, 0.5).lerp(ink, 0.25)
+		env.ambient_light_energy = 0.42
+		env.fog_light_color = haze
+		env.fog_density = 0.0026
+		sun.light_color = ink.lerp(pl, 0.4)
+		sun.light_energy = 0.18
+		sun.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY   # no sun disc in a night sky
 	_apply_signals_safe()
 	_retint_kerbs()
 	for poi: Array in _pois:
@@ -2434,6 +2776,13 @@ func _build_car() -> void:
 	_body = Node3D.new()
 	_car.add_child(_body)
 	_body.add_child(_sedan("paint"))
+	var beam := MeshInstance3D.new()
+	beam.mesh = _beam_mesh()
+	beam.material_override = _glow_mat("lamplight", 0.55)
+	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	beam.visible = _night
+	_car.add_child(beam)
+	_night_nodes.append(beam)
 
 func _fwd() -> Vector2:
 	return Vector2(cos(_yaw), sin(_yaw))
@@ -2700,6 +3049,8 @@ func _physics_process(dt: float) -> void:
 	var ctl: Array = _autodrive(dt) if _auto else _manual(dt)
 	_drive(dt, ctl[0], ctl[1], ctl[2])
 	_through_lights()
+	_check_stop_signs()
+	_engine_tick(dt)
 	_people_tick(dt)
 	_check_arrival(dt)
 	_explore(dt)
@@ -2918,6 +3269,7 @@ func _dead(v: float) -> float:
 
 func _drive(dt: float, throttle: float, brake: float, steer: float) -> void:
 	_steer = steer
+	_throttle_in = throttle
 	var v := _v
 	var f := 0.0
 	if _gear > 0:
@@ -2980,6 +3332,131 @@ func _pose_car(p: Vector2, yaw: float) -> void:
 		var roll := atan2(_h(p - side * 0.8) - _h(p + side * 0.8), 1.6)
 		_car.rotation.x = -pitch
 		_car.rotation.z = roll
+
+## ---- the engine's sound ----------------------------------------------------------------------
+## Made here, not from a file: a half-second loop of a four-cylinder's firing pulses at
+## 1200 rpm (40 a second, uneven from cylinder to cylinder, a half-order shake under them),
+## low-passed. Every part repeats a whole number of times in the loop, so it has no seam.
+## Played at a pitch of rpm / 1200, with a simple automatic gearbox giving the rpm; a second,
+## brighter loop (hiss and higher harmonics on each firing) comes in with the throttle. A
+## looping clip with its pitch changed is cheap and smooth in a browser, where pushing
+## generated audio every frame stutters whenever a frame is late.
+
+const ENGINE_RATE := 22050
+const ENGINE_F0 := 40.0
+const IDLE_RPM := 800.0
+const GEAR_RPM := [420.0, 240.0, 165.0, 122.0, 96.0]   ## rpm per m/s, first to fifth
+var _engine: Array = []              ## [rumble, load, traffic going by]
+var _rpm := IDLE_RPM
+var _gear_n := 1
+var _load := 0.0
+
+func _build_engine() -> void:
+	for bright: bool in [false, true, false]:
+		var p := AudioStreamPlayer.new()
+		p.stream = _engine_loop(bright)
+		p.volume_db = -80.0
+		add_child(p)
+		_engine.append(p)
+
+func _engine_loop(bright: bool) -> AudioStreamWAV:
+	var n := int(ENGINE_RATE * 0.5)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5 if bright else 3
+	var lump := [1.0, 0.82, 0.93, 0.78]   # no two cylinders fire quite alike
+	var raw := PackedFloat32Array()
+	raw.resize(n)
+	for i in range(n):
+		var t := float(i) / ENGINE_RATE
+		var cyc := t * ENGINE_F0
+		var k := int(cyc)
+		var ph := cyc - float(k)
+		var pulse: float = exp(-ph * (9.0 if bright else 5.0)) * float(lump[k % 4])
+		var v := pulse + 0.25 * sin(TAU * ENGINE_F0 * 0.5 * t)
+		if bright:
+			v += (rng.randf() * 2.0 - 1.0) * 0.6 * pulse
+			v += 0.3 * sin(TAU * ENGINE_F0 * 3.0 * t) * pulse
+		raw[i] = v
+	# a one-pole low-pass, round the loop twice so its end runs into its start
+	var cut := 0.35 if bright else 0.12
+	var y := 0.0
+	var out := PackedFloat32Array()
+	out.resize(n)
+	for pass_i in range(2):
+		for i in range(n):
+			y += (raw[i] - y) * cut
+			out[i] = y
+	var mean := 0.0
+	for i in range(n):
+		mean += out[i]
+	mean /= n
+	var peak := 0.0001
+	for i in range(n):
+		peak = maxf(peak, absf(out[i] - mean))
+	var data := PackedByteArray()
+	data.resize(n * 2)
+	for i in range(n):
+		data.encode_s16(i * 2, int(clampf((out[i] - mean) / peak * 0.85, -1.0, 1.0) * 32767.0))
+	var w := AudioStreamWAV.new()
+	w.format = AudioStreamWAV.FORMAT_16_BITS
+	w.mix_rate = ENGINE_RATE
+	w.stereo = false
+	w.data = data
+	w.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	w.loop_begin = 0
+	w.loop_end = n
+	return w
+
+func _engine_tick(dt: float) -> void:
+	if _engine.is_empty():
+		return
+	var off := Audio.muted() or finished
+	for p: AudioStreamPlayer in _engine:
+		if off and p.playing:
+			p.stop()
+		elif not off and not p.playing:
+			p.play()
+	if off:
+		return
+	# the gearbox: up a gear sooner on a light foot, later with it down; down below 1250
+	var v := absf(_v)
+	if _gear > 0:
+		var up_at := 2000.0 + 1700.0 * _throttle_in
+		if v * float(GEAR_RPM[_gear_n - 1]) > up_at and _gear_n < GEAR_RPM.size():
+			_gear_n += 1
+		elif v * float(GEAR_RPM[_gear_n - 1]) < 1250.0 and _gear_n > 1:
+			_gear_n -= 1
+	else:
+		_gear_n = 1
+	var want := maxf(IDLE_RPM, v * float(GEAR_RPM[_gear_n - 1]))
+	if v < 1.5:   # pulling away: the clutch lets the revs rise with the pedal
+		want = maxf(want, IDLE_RPM + 1500.0 * _throttle_in)
+	_rpm = lerpf(_rpm, want, 1.0 - exp(-dt * 7.0))
+	_load = lerpf(_load, _throttle_in, 1.0 - exp(-dt * 6.0))
+	var base := linear_to_db(maxf(0.0001, float(SaveData.data.get("volume_sfx", 0.8))))
+	var pitch := clampf(_rpm / 1200.0, 0.3, 4.0)
+	var rumble: AudioStreamPlayer = _engine[0]
+	var load: AudioStreamPlayer = _engine[1]
+	rumble.pitch_scale = pitch
+	load.pitch_scale = pitch
+	rumble.volume_db = base - 7.0 + 4.0 * clampf((_rpm - IDLE_RPM) / 3500.0, 0.0, 1.0)
+	load.volume_db = base - 34.0 + 30.0 * sqrt(_load)
+	# the nearest car going by: louder as it nears, its pitch with its speed
+	var by: AudioStreamPlayer = _engine[2]
+	var near := INF
+	var nv := 0.0
+	if _traffic != null:
+		for c in _traffic.cars:
+			if c.alive and c.v > 1.0:
+				var d: float = c.pos.distance_to(_pos)
+				if d < near:
+					near = d
+					nv = c.v
+	if near < 45.0:
+		by.pitch_scale = clampf((IDLE_RPM + nv * 150.0) / 1200.0, 0.4, 3.0)
+		by.volume_db = base - 12.0 - near * 0.55
+	else:
+		by.volume_db = -80.0
 
 ## ---- people ----------------------------------------------------------------------------------
 
@@ -3368,6 +3845,7 @@ func _autodrive(dt: float) -> Array:
 			break
 		vt = minf(vt, sqrt(_ap_v[i] * _ap_v[i] + 2.0 * 2.6 * dist))
 	vt = minf(vt, _ap_light_v())
+	vt = minf(vt, _ap_sign_v(dt))
 	# the car in front, kept a couple of metres and a second or so behind; after waiting
 	# a while, ignore cars crossing the lane (a standoff in a junction) -- never one ahead
 	var lead: Array = _traffic.lead_on(_ap_pts, _pos, clampf(10.0 + _v * 3.0, 18.0, 55.0), _ap_wait > 3.0)
@@ -4135,6 +4613,10 @@ func _draw_hud() -> void:
 	_hud.draw_rect(ASSIST_BTN, Color(bg, 0.65))
 	_hud.draw_rect(ASSIST_BTN, Color(asc, 0.9), false, 1.5)
 	_hud.draw_string(_font, ASSIST_BTN.position + Vector2(0, 15), "assist on" if _assist else "assist off", HORIZONTAL_ALIGNMENT_CENTER, ASSIST_BTN.size.x, 11, asc)
+	var nc := Palette.col("warn") if _night else Color(ink, 0.8)
+	_hud.draw_rect(NIGHT_BTN, Color(bg, 0.65))
+	_hud.draw_rect(NIGHT_BTN, Color(nc, 0.9), false, 1.5)
+	_hud.draw_string(_font, NIGHT_BTN.position + Vector2(0, 15), "day" if _night else "night", HORIZONTAL_ALIGNMENT_CENTER, NIGHT_BTN.size.x, 11, nc)
 	if _touch_seen:
 		var held := _stick_id >= 0
 		var c := STICK_C
@@ -4266,6 +4748,8 @@ func _input(event: InputEvent) -> void:
 				_set_auto(not _auto)
 			elif GOTO_BTN.grow(4).has_point(mb.position):
 				_open_picker.call_deferred()   # after this click, so it does not hit the list
+			elif NIGHT_BTN.grow(4).has_point(mb.position):
+				_set_night(not _night)
 			elif ASSIST_BTN.grow(4).has_point(mb.position):
 				_assist = not _assist
 				_show_banner("driving assist " + ("on" if _assist else "off"), 1.2)
@@ -4279,7 +4763,8 @@ func _input(event: InputEvent) -> void:
 		_touch_seen = true
 		if t.pressed:
 			if AUTO_BTN.grow(4).has_point(t.position) or GOTO_BTN.grow(4).has_point(t.position) \
-					or ASSIST_BTN.grow(4).has_point(t.position) or t.position.y < 36.0:
+					or ASSIST_BTN.grow(4).has_point(t.position) or NIGHT_BTN.grow(4).has_point(t.position) \
+					or t.position.y < 36.0:
 				return   # the button (via its emulated click) and the shell's menu/sound row
 			if _stick_id < 0 and t.position.distance_to(STICK_C) <= STICK_GRAB:
 				_stick_id = t.index
