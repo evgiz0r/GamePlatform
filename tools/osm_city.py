@@ -209,9 +209,16 @@ def take_in(names, box):
         return math.hypot((lat - cy) * 111.32, (lon - cx) * 111.32 * kx)
 
     for name in [x.strip() for x in names.split(";") if x.strip()]:
-        rx = name_regex(name).replace('"', '\\"')
-        data = overpass(f"[out:json][timeout:180];"
-                        f'nwr[~"^name(:[a-z]+)?$"~"{rx}",i](around:30000,{cy},{cx});out bb;')
+        # exact name first: tag values are indexed, so it answers at once. A pattern over
+        # every key of everything for 30 km timed out on all three servers.
+        nm = name.replace('"', '\\"')
+        data = overpass(f"[out:json][timeout:120];"
+                        f'(nwr["name"="{nm}"](around:20000,{cy},{cx});'
+                        f'nwr["name:en"="{nm}"](around:20000,{cy},{cx}););out bb;')
+        if not data["elements"]:
+            rx = name_regex(name).replace('"', '\\"')
+            data = overpass(f"[out:json][timeout:180];"
+                            f'nwr["name"~"{rx}",i](around:12000,{cy},{cx});out bb;')
         found = []
         for el in data["elements"]:
             if el["type"] == "node":
