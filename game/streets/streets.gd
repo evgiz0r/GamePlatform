@@ -2015,20 +2015,27 @@ func _build_trees() -> void:
 		for ring: PackedVector2Array in _area_rings.get(kind, []):
 			_hash_add(no_grow, _bld_box_of(ring), 60.0, no_rings.size())
 			no_rings.append(ring)
-	var wild_cap := 9000 if north else 1800
+	var wild_cap := 15000 if north else 1800
 	var wild := 0
 	var step := 16.0
 	var thresh := 0.56 if north else 0.7
-	for gz in range(int(_bounds.size.y / step)):
-		if wild >= wild_cap:
-			break
-		for gx in range(int(_bounds.size.x / step)):
-			if wild >= wild_cap:
-				break
-			var p := _bounds.position + Vector2(gx + rng.randf(), gz + rng.randf()) * step
-			var n := _vnoise(p / 70.0) * 0.65 + _vnoise(p / 15.0) * 0.35
-			if n < thresh:
+	var nx := int(_bounds.size.x / step)
+	var nz := int(_bounds.size.y / step)
+	# count the green spots first, then keep each with the same chance, so the cap thins
+	# them evenly (stopping at the cap left the south of the map bare)
+	var green := 0
+	for gz in range(nz):
+		for gx in range(nx):
+			var c := _bounds.position + Vector2(gx + 0.5, gz + 0.5) * step
+			if _vnoise(c / 70.0) * 0.65 + _vnoise(c / 15.0) * 0.35 >= thresh:
+				green += 1
+	var keep := minf(1.0, float(wild_cap) * 1.4 / maxf(green, 1.0))
+	for gz in range(nz):
+		for gx in range(nx):
+			var c := _bounds.position + Vector2(gx + 0.5, gz + 0.5) * step
+			if _vnoise(c / 70.0) * 0.65 + _vnoise(c / 15.0) * 0.35 < thresh or rng.randf() > keep or wild >= wild_cap:
 				continue
+			var p := c + Vector2(rng.randf() - 0.5, rng.randf() - 0.5) * step
 			var blocked := false
 			for ri: int in _near(no_grow, p, 1.0, 60.0):
 				if Geometry2D.is_point_in_polygon(p, no_rings[ri]):
@@ -2729,7 +2736,13 @@ func _build_parked() -> void:
 						ok = ok and _off_road(p + face * 1.25, -0.1) and _off_road(p - face * 1.25, -0.1)
 						if ok:
 							var yaw := atan2(face.x, face.y)
-							var lean := Basis(Vector3.UP, yaw) * Basis(Vector3.FORWARD, -0.05 * sgn)
+							# with the ground: nose up a hill, leaning across a camber (level, on a
+							# slope one end floated and the other sank into the road)
+							var lx := Vector2(face.y, -face.x)
+							var pitch := atan2(_h(p + face * 1.4) - _h(p - face * 1.4), 2.8)
+							var roll := atan2(_h(p + lx * 0.8) - _h(p - lx * 0.8), 1.6)
+							var lean := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, -pitch) \
+								* Basis(Vector3.BACK, roll) * Basis(Vector3.FORWARD, -0.05 * sgn)
 							var kind: String = CAR_MIX[rng.randi() % CAR_MIX.size()]
 							(xf_by[kind] as Array).append(Transform3D(lean, _g3(p, 0.02)))
 							(cols_by[kind] as Array).append(palette[rng.randi() % palette.size()])
@@ -3048,6 +3061,8 @@ func _build_pois() -> void:
 	for p: Array in _city_data.get("pois", []):
 		var at := Vector2(p[0], p[1]) * k
 		var kind := String(p[2])
+		if kind in ["shop:vacant", "shop:disused", "shop:no"] or String(p[3]).to_lower() == "vacant":
+			continue   # an empty shop: OSM keeps it on the map, and its sign read "vacant"
 		var look: Array = _poi_look(kind)
 		if look.is_empty():
 			continue   # e.g. parking entrances that came in on an address point
@@ -4900,8 +4915,8 @@ func _clear_lane(p: Vector2, d: Vector2, lane: float) -> Vector2:
 	var right := Vector2(-d.y, d.x)
 	for off: float in [lane, lane * 0.6, lane * 0.25, 0.0, -0.7, 0.7]:
 		var q := p + right * off
-		if _push_out(q, 1.05, true, false) == Vector2.ZERO and _push_out(q + d * 1.4, 1.0, true, false) == Vector2.ZERO \
-				and _push_out(q - d * 1.4, 1.0, true, false) == Vector2.ZERO:
+		if _push_out(q, 1.2, true, false) == Vector2.ZERO and _push_out(q + d * 1.4, 1.15, true, false) == Vector2.ZERO \
+				and _push_out(q - d * 1.4, 1.15, true, false) == Vector2.ZERO:
 			return q
 	return p + right * lane
 
@@ -5162,11 +5177,21 @@ func _autodrive(dt: float) -> Array:
 	# pure pursuit on a point ahead of the rear axle
 	var fwd := _fwd()
 	var rear := _pos - fwd * WHEELBASE * 0.5
-	var look := clampf(4.0 + absf(_v) * 0.6, 6.0, 18.0)
+	var look := clampf(3.5 + absf(_v) * 0.5, 5.0, 16.0)
 	var tgt := _ap_point_ahead(look)
 	var to := tgt - rear
 	var alpha := fwd.angle_to(to)
 	var steer := clampf(atan(2.0 * WHEELBASE * sin(alpha) / maxf(to.length(), 1.0)), -MAX_STEER, MAX_STEER)
+	# a safety net: anything solid near where the nose will be in a moment (a parked car's
+	# corner, a building on a bend) steers it away, and slows it if it is dead ahead. The
+	# planned lane is clear; this catches the car drifting off it.
+	var nose := _pos + fwd * (CAR_OFF + 0.5 + absf(_v) * 0.3)
+	var shove := _push_out(nose, 1.15, true, false)
+	var ahead_blocked := false
+	if shove != Vector2.ZERO:
+		var side := Vector2(-fwd.y, fwd.x)
+		steer = clampf(steer + clampf(shove.dot(side) * 0.45, -0.3, 0.3), -MAX_STEER, MAX_STEER)
+		ahead_blocked = shove.normalized().dot(fwd) < -0.6
 	# keep the limit, and slow for the corners ahead: at most the speed from which each
 	# one can still be braked down to in time
 	var vt: float = _ap_lim[1]
@@ -5180,6 +5205,8 @@ func _autodrive(dt: float) -> Array:
 		vt = minf(vt, sqrt(_ap_v[i] * _ap_v[i] + 2.0 * 2.6 * dist))
 	vt = minf(vt, _ap_light_v())
 	vt = minf(vt, _ap_sign_v(dt))
+	if ahead_blocked:
+		vt = minf(vt, 2.5)
 	# the car in front, kept a couple of metres and a second or so behind; after waiting
 	# a while, ignore cars crossing the lane (a standoff in a junction) -- never one ahead
 	var lead: Array = _traffic.lead_on(_ap_pts, _pos, clampf(12.0 + _v * 1.2 + _v * _v / 5.2, 18.0, 130.0), _ap_wait > 3.0)
@@ -5415,7 +5442,7 @@ func _cross_tick() -> void:
 	# go on: chosen, or too close to wait -- or crawling with the plan nearly used up (a car
 	# handed over beside a crossing, that could not get within 10 m of its point, waited
 	# there for ever and drifted into the parked cars)
-	if _cross["chosen"] or d < maxf(10.0, _v * 1.3) or (absf(_v) < 1.5 and _ap_len() < 22.0):
+	if _cross["chosen"] or d < maxf(10.0, _v * 1.3) or (absf(_v) < 1.5 and d < 26.0):
 		var w: Dictionary = ways[_cross["pick"]]
 		var leg: Vector3i = w["leg"]
 		Probe.event("crossing", {"turn": int(rad_to_deg(w["turn"])), "chosen": _cross["chosen"]})

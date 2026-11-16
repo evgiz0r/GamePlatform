@@ -155,6 +155,13 @@ most, in order, last time one did:
   `Engine.get_physics_interpolation_fraction()`, and to keep `shake3d()` working connect
   that per-frame function to `get_tree().process_frame` *before* `super()` in `_ready()`:
   the shell's own per-frame hook adds the shake on top of `look_from()`, and must run after.
+- **Many-surface meshes in a multimesh multiply draws.** A car of six surfaces (paint,
+  glass, trim, tyres, lights) costs six draws per batch. One surface with a `ShaderMaterial`
+  that reads each part from the vertex colour (alpha as a part code) and the per-instance
+  paint from `INSTANCE_CUSTOM` costs one. **Gotcha**: with `use_custom_data` on and
+  `use_colors` off, the Compatibility renderer hands the shader a vertex `COLOR` of zero
+  (it multiplies in an instance colour that is not there). Turn `use_colors` on and set
+  every instance colour to white.
 - MSAA is the big pixel cost; `view.msaa_3d` and `view.scaling_3d_scale` can be lowered
   at runtime. A game can watch its frame rate on the web (`OS.has_feature("web")`) and
   step down. Not natively: test runs use a software renderer and would step to nothing.
