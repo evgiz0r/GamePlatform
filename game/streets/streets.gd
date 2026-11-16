@@ -373,6 +373,11 @@ var _dressing := {}                  ## how many lamps, solar heaters, tables we
 var _walkers: Array = []             ## {actor, line (PackedVector2Array), cum, s, dir, speed, dodge}
 var _chatters: Array = []            ## {actor, spot}
 var _table_spots: Array = []         ## Vector2 of every cafe table
+var _furn: RefCounted                ## the street furniture builder (furniture.gd)
+var _wired := {}                     ## road index -> true: Bedford's lamps hang off its power poles
+var _flag_spots: Array = []          ## a flag on a staff off a lamp post (local X out over the road)
+var _balcony_flags: Array = []       ## a flag hanging off a balcony's parapet
+var _stop_ads: Array = []            ## the lit ad panel at the end of a bus shelter
 var _crossing_nodes: Array = []
 var _people_t := 0.0
 var _people_rng := RandomNumberGenerator.new()
@@ -404,6 +409,7 @@ const ROAD_RANK := {"motorway": 6, "trunk": 6, "primary": 5, "secondary": 4, "te
 
 ## ---- traffic ----
 const Traffic := preload("res://game/streets/traffic.gd")
+const Furniture := preload("res://game/streets/furniture.gd")
 var _traffic: Traffic = null
 var _ap_wait := 0.0                  ## autodrive held up by a car this long
 
@@ -843,7 +849,8 @@ func _build_world() -> bool:
 	var areas := {}
 	for a: Dictionary in _city_data.get("areas", []):
 		var kind := String(a["k"])
-		var tone := "grass" if kind in ["park", "grass"] else ("ground" if kind == "land" else kind)
+		# a school's grounds: paved, under whatever pitches and lawns OSM puts in them
+		var tone := "grass" if kind in ["park", "grass"] else ("ground" if kind == "land" else ("plaza" if kind == "school" else kind))
 		if not areas.has(tone):
 			areas[tone] = CBuf.new(CHUNK)
 		var flat: Array = a["p"]
@@ -852,8 +859,10 @@ func _build_world() -> bool:
 			ring.append(Vector2(flat[i], flat[i + 1]) * k)
 		# islands sit on the sea, parks and car parks on whatever is under them
 		var y := Y_AREA + (0.002 if tone in ["parking", "plaza"] else (0.001 if kind == "land" else 0.0))
+		if kind == "school":
+			y = Y_AREA - 0.001
 		_fill(areas[tone], ring, y, tone == "water")
-		if kind in ["park", "grass", "wood", "pitch", "water", "parking", "plaza"] and ring.size() >= 3:
+		if kind in ["park", "grass", "wood", "pitch", "water", "parking", "plaza", "school"] and ring.size() >= 3:
 			if not _area_rings.has(kind):
 				_area_rings[kind] = []
 			(_area_rings[kind] as Array).append(ring)
@@ -903,6 +912,9 @@ func _build_world() -> bool:
 	tk = Time.get_ticks_msec()
 	_build_trees()
 	tk = _stage("trees", tk)
+	_furn = Furniture.new(self)
+	_furn.wires()   # before the lamps: in Bedford those hang off the power poles
+	tk = _stage("wires", tk)
 	_build_lamps()
 	tk = _stage("lamps", tk)
 	_build_parks()
@@ -920,6 +932,8 @@ func _build_world() -> bool:
 	_build_pois()
 	_build_stops()
 	tk = _stage("places", tk)
+	_furn.build()
+	tk = _stage("furniture", tk)
 	_city_data = {}
 	_area_rings = {}
 	return true
@@ -1611,6 +1625,9 @@ func _build_facade_kit() -> void:
 							var p := at + out * 0.62
 							kit["balcony"].append(Transform3D(face, Vector3(p.x, g_lo + lv * 3.0, p.y)))
 							kit_col["balcony"].append(wc)
+							# now and then a flag hung over the parapet
+							if posmod(hsh >> (sk * 5 + lv), 29) == 0 and String(_place.get("look", "")) == "med":
+								_balcony_flags.append(Transform3D(face, Vector3(p.x, g_lo + lv * 3.0 + 1.02, p.y) + face * Vector3(0, 0, 0.67)))
 					if _bld_kind[bi] == 0:
 						_bld_kind[bi] = 3
 			# AC units: a couple on the walls, beside a window, any side
@@ -2248,14 +2265,29 @@ func _build_roof_kit() -> void:
 	_dressing["solar"] = panels.size()
 
 ## street lamps along the pavements, every ~34 m, alternating sides
+## Lamp posts down the streets, every 34 m, the sides taking turns. Most are tall and grey
+## with one arm out over the road. Givatayim's main roads have the ornate dark-green ones,
+## a curved arm and a lantern with a flag on a staff off each, and where a main road is
+## split into two carriageways, a double one down the middle (the other carriageway's
+## lamps are those same ones). In Bedford a street with power lines has its lamps on the
+## power poles instead (furniture.gd's wires).
+const FANCY_ROADS := {"primary": true, "secondary": true, "tertiary": true}
 func _build_lamps() -> void:
+	var med := String(_place.get("look", "")) == "med"
 	var poles: Array = []
 	var arms: Array = []
 	var heads: Array = []
+	var ornate: Array = []
+	var doubles: Array = []
+	var lanterns: Array = []
 	var flip := false
-	for r: Dictionary in _roads:
-		if not r["drive"] or r["pv"] or r["k"] == "service":
+	for ri in range(_roads.size()):
+		var r: Dictionary = _roads[ri]
+		if not r["drive"] or r["pv"] or r["k"] == "service" or _wired.has(ri):
 			continue
+		var fancy := med and FANCY_ROADS.has(r["k"])
+		var o := int(r["o"])
+		var dual: bool = o != 0 and (FANCY_ROADS.has(r["k"]) or r["k"] == "trunk") and not r.get("ring", false)
 		var pts: PackedVector2Array = r["pts"]
 		var ids: PackedInt32Array = r["ids"]
 		var hw: float = float(r["w"]) * 0.5
@@ -2271,24 +2303,62 @@ func _build_lamps() -> void:
 			while s < L:
 				if s > keep_a and s < L - keep_b:
 					flip = not flip
-					var out := side * (1.0 if flip else -1.0)
-					var p := a + d * s + out * (hw + 0.9)
+					var c := a + d * s
+					var pair: Array = _partner(c, d, ri, hw, o) if dual else []
+					if not pair.is_empty():
+						# half of a dual carriageway: the lamps go down the middle, planted by the
+						# half with the lower number so they go in once
+						var gap: float = pair[2]
+						var left: Vector2 = pair[3]
+						var m := c + left * (hw + gap * 0.5)
+						if ri < int(pair[0]) and gap >= 1.0 and _off_road(m, 0.25) and _push_out(m, 0.3, false) == Vector2.ZERO \
+								and _clear_of_posts(m, 3.0):
+							var gy := _h(m)
+							var bs := Basis(Vector3.UP, atan2(-left.y, left.x))   # local X across the road
+							(doubles if med else poles).append(Transform3D(bs if med else Basis(), Vector3(m.x, gy + (0.0 if med else 3.5), m.y)))
+							for sg: float in [-1.0, 1.0]:
+								var arm_dir := left * sg
+								var lp := m + arm_dir * (1.6 if med else 1.75)
+								if med:
+									lanterns.append(Transform3D(Basis(), Vector3(lp.x, gy + 6.85, lp.y)))
+									var fb := Basis(Vector3.UP, atan2(-arm_dir.y, arm_dir.x))
+									var fp := m + arm_dir * 0.08
+									_flag_spots.append(Transform3D(fb, Vector3(fp.x, gy + 4.4, fp.y)))
+								else:
+									var face := Basis(Vector3.UP, atan2(-arm_dir.y, arm_dir.x))
+									var am := m + arm_dir * 0.9
+									arms.append(Transform3D(face, Vector3(am.x, gy + 6.95, am.y)))
+									heads.append(Transform3D(face, Vector3(lp.x, gy + 6.85, lp.y)))
+								_pool_at.append(Vector3(lp.x + arm_dir.x * 0.5, lp.y + arm_dir.y * 0.5, 7.5))
+							_add_post(m, 0.18)
+						s += 34.0
+						continue
+					# one-way: on the pavement side (right of the traffic); else the sides take turns
+					var sgn := float(o) if o != 0 else (1.0 if flip else -1.0)
+					var out := side * sgn
+					var p := c + out * (hw + 0.9)
 					var ok := _push_out(p, 0.6, false) == Vector2.ZERO
 					var on := _nearest_seg(p, 10.0, true)
-					ok = ok and (on.is_empty() or float(on["edge"]) > 0.4)
-					for i: int in _near(_post_hash, p, 2.5, BLD_CELL):
-						if _posts[i].distance_to(p) < 2.5:
-							ok = false
+					ok = ok and (on.is_empty() or float(on["edge"]) > 0.4) and _clear_of_posts(p, 2.5)
 					if ok:
 						var gy := _h(p)
 						var toward := -out
-						var face := Basis(Vector3.UP, atan2(-toward.y, toward.x))
-						poles.append(Transform3D(Basis(), Vector3(p.x, gy + 3.5, p.y)))
-						var arm := p + toward * 0.9
-						arms.append(Transform3D(face, Vector3(arm.x, gy + 6.95, arm.y)))
-						var head := p + toward * 1.75
-						heads.append(Transform3D(face, Vector3(head.x, gy + 6.85, head.y)))
-						_pool_at.append(Vector3(head.x + toward.x * 0.6, head.y + toward.y * 0.6, 7.5))
+						if fancy:
+							var bs := Basis(Vector3.UP, atan2(-toward.y, toward.x))   # local X out over the road
+							ornate.append(Transform3D(bs, Vector3(p.x, gy, p.y)))
+							var lp := p + toward * 1.6
+							lanterns.append(Transform3D(Basis(), Vector3(lp.x, gy + 6.85, lp.y)))
+							var fp := p + toward * 0.08
+							_flag_spots.append(Transform3D(bs, Vector3(fp.x, gy + 4.4, fp.y)))
+							_pool_at.append(Vector3(lp.x + toward.x * 0.5, lp.y + toward.y * 0.5, 7.0))
+						else:
+							var face := Basis(Vector3.UP, atan2(-toward.y, toward.x))
+							poles.append(Transform3D(Basis(), Vector3(p.x, gy + 3.5, p.y)))
+							var arm := p + toward * 0.9
+							arms.append(Transform3D(face, Vector3(arm.x, gy + 6.95, arm.y)))
+							var head := p + toward * 1.75
+							heads.append(Transform3D(face, Vector3(head.x, gy + 6.85, head.y)))
+							_pool_at.append(Vector3(head.x + toward.x * 0.6, head.y + toward.y * 0.6, 7.5))
 						_add_post(p, 0.15)
 				s += 34.0
 			s -= L
@@ -2308,7 +2378,49 @@ func _build_lamps() -> void:
 	_chunked(pole, poles, LAMP_RANGE)
 	_chunked(arm_m, arms, LAMP_RANGE)
 	_chunked(head_m, heads, LAMP_RANGE)
-	_dressing["lamps"] = poles.size()
+	if not lanterns.is_empty():
+		_chunked(_furn.ornate_kit(false), ornate, LAMP_RANGE)
+		_chunked(_furn.ornate_kit(true), doubles, LAMP_RANGE)
+		var lantern := CylinderMesh.new()
+		lantern.top_radius = 0.13
+		lantern.bottom_radius = 0.24
+		lantern.height = 0.42
+		lantern.radial_segments = 6
+		lantern.rings = 1
+		lantern.material = _surface("lamp")
+		_chunked(lantern, lanterns, LAMP_RANGE)
+	_dressing["lamps"] = poles.size() + ornate.size() + doubles.size()
+	_dressing["lamps_ornate"] = ornate.size()
+	_dressing["lamps_median"] = doubles.size()
+
+## the other half of a dual carriageway beside point c of road ri (heading d along its
+## points, one-way `o`): [road, nearest point, the gap between their asphalt, the way to
+## it], or [] when there is none
+func _partner(c: Vector2, d: Vector2, ri: int, hw: float, o: int) -> Array:
+	var travel := d * float(o)
+	var left := Vector2(travel.y, -travel.x)   # left of the traffic: where the median is
+	var best: Array = []
+	var best_across := INF
+	for code: int in _near(_seg_hash, c, hw + 18.0, SEG_CELL):
+		var rj := code / 4096
+		if rj == ri:
+			continue
+		var r2: Dictionary = _roads[rj]
+		if not r2["drive"] or int(r2["o"]) == 0:
+			continue
+		var p2: PackedVector2Array = r2["pts"]
+		var sj := code % 4096
+		var d2 := (p2[sj + 1] - p2[sj]).normalized() * float(r2["o"])
+		if d2.dot(travel) > -0.85:
+			continue   # not running the other way beside it
+		var q := Geometry2D.get_closest_point_to_segment(c, p2[sj], p2[sj + 1])
+		var across := (q - c).dot(left)
+		if across <= 0.0 or (q - c).length() > across * 1.25 + 2.0:
+			continue
+		if across < best_across:
+			best_across = across
+			best = [rj, q, across - hw - float(r2["w"]) * 0.5, left]
+	return best
 
 ## the pools of light under street and park lamps: built the first time it gets dark (a
 ## few thousand discs that follow the hills are not worth the wait if it never does)
@@ -2754,6 +2866,8 @@ func _set_night(on: bool) -> void:
 		_set_quality(_quality)
 	if _traffic != null:
 		_traffic.set_night(on)
+	if _furn != null:
+		_furn.set_night(on)
 	if _car_shader_mat != null:
 		_car_material()
 	_show_banner("night" if on else "day", 1.2)
@@ -3029,6 +3143,20 @@ func _off_road(p: Vector2, margin: float) -> bool:
 	var hit := _nearest_seg(p, 14.0, true)
 	return hit.is_empty() or float(hit["edge"]) >= margin
 
+## nothing round (a tree, a lamp, a sign) stands within `d` metres of p
+func _clear_of_posts(p: Vector2, d: float) -> bool:
+	for i: int in _near(_post_hash, p, d, BLD_CELL):
+		if _posts[i].distance_to(p) < d:
+			return false
+	return true
+
+## for scripts that build meshes the game's way (furniture.gd)
+func new_buf() -> Buf:
+	return Buf.new()
+
+func new_cbuf(cell: float) -> CBuf:
+	return CBuf.new(cell)
+
 func _add_post(p: Vector2, r: float) -> void:
 	var i := _posts.size()
 	_posts.append(p)
@@ -3286,13 +3414,18 @@ func _build_stops() -> void:
 		var b := Basis(Vector3.UP, atan2(n.x, n.y))
 		var P := func(p: Vector2, y: float) -> Vector3: return Vector3(p.x, gy + y, p.y)
 		parts["back"].append(Transform3D(b, P.call(c - n * 0.7, 1.25)))
-		parts["roof"].append(Transform3D(b * Basis(Vector3.RIGHT, -0.08), P.call(c, 2.5)))
+		parts["roof"].append(Transform3D(b, P.call(c, 2.55)))
 		for sgn: float in [-1.0, 1.0]:
 			parts["post"].append(Transform3D(b, P.call(c - n * 0.7 + along * 1.5 * sgn, 1.25)))
 		parts["bench"].append(Transform3D(b, P.call(c - n * 0.4, 0.45)))
 		var pole := c + along * 2.4 + n * 0.5
 		parts["pole"].append(Transform3D(b, P.call(pole, 1.4)))
-		parts["plate"].append(Transform3D(b, P.call(pole, 2.6)))
+		parts["plate"].append(Transform3D(b, P.call(pole, 2.45)))
+		# a lit ad panel standing at the other end of the shelter, square to it
+		var ad := c - along * 2.0 - n * 0.35
+		if _off_road(ad, 0.3) and _push_out(ad, 0.5, false) == Vector2.ZERO and _clear_of_posts(ad, 1.0):
+			_stop_ads.append(Transform3D(Basis(Vector3.UP, atan2(along.x, along.y)), P.call(ad, 0.0)))
+			_add_post(ad, 0.6)
 		_add_post(c - n * 0.6 + along * 1.5, 0.2)
 		_add_post(c - n * 0.6 - along * 1.5, 0.2)
 		_add_post(pole, 0.12)
@@ -3315,11 +3448,11 @@ func _build_stops() -> void:
 		return
 	var r := SIGN_RANGE * 1.6
 	_chunked(_boxm(Vector3(3.2, 2.3, 0.05)), parts["back"], r, [], _shop_glass(), false)
-	_chunked(_boxm(Vector3(3.5, 0.1, 1.7)), parts["roof"], r, [], _surface("cartrim"))
+	_chunked(_furn.bus_roof_kit(), parts["roof"], r)
 	_chunked(_boxm(Vector3(0.08, 2.5, 0.08)), parts["post"], r, [], _surface("pole"))
 	_chunked(_boxm(Vector3(2.0, 0.08, 0.42)), parts["bench"], r, [], _surface("furniture"))
 	_chunked(_boxm(Vector3(0.07, 2.8, 0.07)), parts["pole"], r, [], _surface("pole"))
-	_chunked(_boxm(Vector3(0.6, 0.4, 0.04)), parts["plate"], r, [], mat("warn", 0.25), false)
+	_chunked(_furn.bus_sign_kit(), parts["plate"], r)
 	_dressing["bus_stops"] = (parts["back"] as Array).size()
 
 func _boxm(size: Vector3) -> BoxMesh:
@@ -4454,6 +4587,13 @@ func _tones() -> void:
 		"signred": Palette.col("hazard").lerp(bg, 0.1),
 		"rubber": ac.lerp(alt, 0.55).lerp(bg, 0.25),
 		"sand": wn.lerp(ink, 0.45).lerp(alt, 0.1),
+		"concrete": ink.lerp(alt, 0.32).lerp(wn, 0.04),
+		"insulator": ink.lerp(alt, 0.15),
+		"trafo": alt.lerp(ink, 0.4).lerp(fr, 0.08),
+		"cable": bg.lerp(alt, 0.35),
+		"lampgreen": fr.lerp(bg, 0.74),
+		"fencegreen": fr.lerp(bg, 0.55),
+		"railing": ink.lerp(alt, 0.12),
 	}
 
 func _retint_city() -> void:
@@ -4497,6 +4637,8 @@ func _retint_city() -> void:
 		_wall_mat.set_shader_parameter("siding", 1.0 if String(_place.get("look", "")) == "north" else 0.0)
 	for m: ShaderMaterial in _glow_mats.values():
 		m.set_shader_parameter("col", _tone[m.get_meta("tone")])
+	if _furn != null:
+		_furn.retint()
 	var lamp := _surface("lamp")
 	lamp.emission_enabled = _night
 	lamp.emission = _tone["lamplight"]

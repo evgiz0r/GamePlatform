@@ -202,6 +202,30 @@ street is busy and a verge out by the highway is nearly empty.
 > harsh. The density of people should be somewhat correlated to the houses and
 > landmarks; in the middle of nowhere, probably less people.
 
+**Street furniture** (`furniture.gd`).
+- **Power lines** run down one side of about half of Givatayim's streets and most of
+  Bedford's, three wires sagging from pole to pole with a transformer every so often.
+  Givatayim's poles are concrete. Bedford's are wood, with a phone cable lower down and
+  the street lamps on arms off them.
+- **Lamps.** Givatayim's main roads have ornate dark-green lamps, a curved arm and a
+  lantern. Where a main road is split into two carriageways there is a double one down
+  the middle, and each lamp has an Israeli flag on a staff.
+- **Flags.** Flags hang off balconies here and there, and every school has a flagpole
+  (Israel's or Canada's). All the flags wave.
+- **Bus stops** have a curved blue roof (grey in Bedford), a lit ad panel at the end and
+  the yellow bus sign on its pole.
+- **Ads.** The main roads have lit ad columns on the pavement, and the faster roads have
+  big billboards where there is room. The ads are made up, and they glow at night.
+- **Fences and hedges.** Sports pitches (and schoolyards, once the bake has them) are
+  fenced with tall green mesh. Park edges along a street get a hedge or, in Givatayim, a
+  low white railing. The fences and hedges OSM maps go in too, once the city is
+  re-baked.
+- **Outside shops, cafes and schools** there are bike racks, often with bikes in them,
+  and in Givatayim a few scooters parked nose to the kerb.
+
+> Some more photos for ideas: flags, power lines, better street lamps, bus stops,
+> billboards, fences and hedges, bike racks, cafe tables, scooters.
+
 ## Smooth on a laptop and a phone
 
 > It's pretty choppy and laggy now. I'm trying on a laptop browser.

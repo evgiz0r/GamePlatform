@@ -28,7 +28,9 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
                rb: 1 part of a roundabout}]
   buildings  [{p: [x, z, ...] counter-clockwise ring, h: height m, b: base height m,
                g: 1 if the height is a guess, name, addr}]
-  areas      [{p: ring, k: park|grass|wood|water|parking|pitch|plaza}]
+  areas      [{p: ring, k: park|grass|wood|water|parking|pitch|plaza|school}]
+             (school: the grounds of a school or kindergarten)
+  barriers   [[[x, z, x, z, ...], "fence"|"hedge"], ...]   fences and hedges as lines
   trees      [x, z, ...]
   addrs      [[x, z, street, number], ...]   address points not on a building outline
   stops      [[x, z, name], ...]   bus stops
@@ -102,7 +104,7 @@ AREA_KINDS = [
                  "meadow": "grass", "cemetery": "grass", "forest": "wood", "orchard": "wood",
                  "flowerbed": "grass", "allotments": "grass"}),
     ("natural", {"wood": "wood", "scrub": "wood", "grassland": "grass", "water": "water"}),
-    ("amenity", {"parking": "parking"}),
+    ("amenity", {"parking": "parking", "school": "school", "kindergarten": "school"}),
     ("place", {"square": "plaza"}),
     ("highway", {"pedestrian": "plaza"}),   # a closed pedestrian way tagged area=yes
 ]
@@ -269,6 +271,7 @@ DATA_FILTERS = (
     'way["landuse"~"^(grass|recreation_ground|village_green|meadow|cemetery|forest|orchard|flowerbed|allotments)$"];'
     'way["natural"~"^(wood|scrub|grassland|water)$"];'
     'way["amenity"="parking"];'
+    'way["barrier"~"^(fence|hedge)$"];'
     'way["place"="square"];'
     'way["natural"="coastline"];'
     'node["addr:housenumber"]["addr:street"];'
@@ -704,7 +707,7 @@ def bake(raw, name, args):
            "fetched": raw.get("fetched", ""), "origin": [round(lat0, 7), round(lon0, 7)],
            "scale": SCALE, "bounds": [round(x0, 1), round(z0, 1), round(x1, 1), round(z1, 1)],
            "boundary": [], "nodes": [], "roads": [], "buildings": [], "areas": [],
-           "trees": [], "signals": [], "crossings": [], "signs": []}
+           "trees": [], "signals": [], "crossings": [], "signs": [], "barriers": []}
 
     rel = raw.get("boundary")
     if rel:
@@ -894,6 +897,20 @@ def bake(raw, name, args):
         if inside(cx, cz, 100.0):
             out["areas"].append({"p": flat(r), "k": kind})
             stats["areas"] += 1
+
+    # fences and hedges, as lines (a closed one is a ring with its first point again last)
+    for e in elements:
+        t = e.get("tags", {})
+        if e["type"] != "way" or "geometry" not in e or t.get("barrier") not in ("fence", "hedge"):
+            continue
+        line = [P(p["lat"], p["lon"]) for p in e["geometry"] if p]
+        if len(line) < 2:
+            continue
+        cx = sum(p[0] for p in line) / len(line)
+        cz = sum(p[1] for p in line) / len(line)
+        if inside(cx, cz, 100.0):
+            out["barriers"].append([flat(line), t["barrier"]])
+    log(f"barriers: {len(out['barriers'])}")
 
     # the sea: OSM draws it as coastline lines with the land on their left
     coast = [[P(g["lat"], g["lon"]) for g in e["geometry"] if g] for e in elements
