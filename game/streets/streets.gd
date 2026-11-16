@@ -170,6 +170,15 @@ class Buf:
 		tri(a, b, d, Vector3.UP, col)
 		tri(a, d, e, Vector3.UP, col)
 
+	## a quad on the ground with its own heights (corners in order around it)
+	func quad3(a: Vector3, b: Vector3, d: Vector3, e: Vector3, col := Color.WHITE) -> void:
+		var nrm := (d - a).cross(b - a)
+		if nrm.y < 0.0:
+			nrm = -nrm
+		nrm = nrm.normalized() if nrm.length_squared() > 0.000001 else Vector3.UP
+		tri(a, b, d, nrm, col)
+		tri(a, d, e, nrm, col)
+
 	func empty() -> bool:
 		return v.is_empty()
 
@@ -203,7 +212,14 @@ var _post_hash := {}
 var _boundary: Array = []            ## PackedVector2Array rings of the city limits
 var _streets := {}                   ## name -> true, the named streets inside the limits
 var _visited := {}
-var _pois: Array = []                ## [Vector2 where, role] for the minimap
+var _pois: Array = []                ## [Vector2 where, role, sign] for the minimap
+var _hgrid := PackedFloat32Array()   ## ground height (m above the lowest point) on a grid
+var _hx0 := 0.0
+var _hz0 := 0.0
+var _hstep := 1.0
+var _hnx := 0
+var _hnz := 0
+var _slope := 0.0                    ## the road's pitch under the car, radians (uphill +)
 var _signals: Array = []             ## per traffic-light group: {role -> MultiMesh}
 var _sig_mats: Array = []            ## [group][0 red, 1 yellow, 2 green] materials
 var _sig_phase := 0
@@ -438,6 +454,17 @@ func _load_city(id: String) -> bool:
 		bd["_base"] = base
 		if bd.has("addr"):
 			_add_address(String(bd["addr"]), box.get_center())
+	var hg: Dictionary = data.get("height", {})
+	if not hg.is_empty():
+		_hx0 = float(hg["x0"])
+		_hz0 = float(hg["z0"])
+		_hstep = float(hg["step"])
+		_hnx = int(hg["nx"])
+		_hnz = int(hg["nz"])
+		var raw: Array = hg["h"]
+		_hgrid.resize(raw.size())
+		for i in range(raw.size()):
+			_hgrid[i] = float(raw[i]) * k
 	for a: Array in data.get("addrs", []):   # address points that are not on a building
 		_add_address("%s %s" % [a[2], a[3]], Vector2(a[0], a[1]) * k)
 	_build_graph()
@@ -499,9 +526,11 @@ func _build_world() -> void:
 	pm.size = _bounds.size + Vector2(4000, 4000)
 	pm.material = _surface("ground")
 	ground.mesh = pm
-	ground.position = Vector3(_bounds.get_center().x, 0.0, _bounds.get_center().y)
+	ground.position = Vector3(_bounds.get_center().x, -0.4 if _hnx > 0 else 0.0, _bounds.get_center().y)
 	ground.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	world.add_child(ground)
+	if _hnx > 0:
+		_build_terrain()
 
 	# parks, grass, water, car parks
 	var areas := {}
@@ -516,7 +545,7 @@ func _build_world() -> void:
 			ring.append(Vector2(flat[i], flat[i + 1]) * k)
 		# islands sit on the sea, parks and car parks on whatever is under them
 		var y := Y_AREA + (0.002 if tone in ["parking", "plaza"] else (0.001 if kind == "land" else 0.0))
-		_fill(areas[tone], ring, y)
+		_fill(areas[tone], ring, y, tone == "water")
 	for tone: String in areas:
 		_add_mesh(areas[tone], _surface(tone), false)
 
@@ -546,6 +575,58 @@ func _build_world() -> void:
 	_build_pois()
 	_city_data = {}
 
+## ground height at p: the same two triangles per grid cell as the terrain mesh, so
+## anything placed with it sits exactly on the drawn ground. 0 for a flat city.
+func _h(p: Vector2) -> float:
+	if _hnx == 0:
+		return 0.0
+	var fx := clampf((p.x - _hx0) / _hstep, 0.0, float(_hnx) - 1.001)
+	var fz := clampf((p.y - _hz0) / _hstep, 0.0, float(_hnz) - 1.001)
+	var i := int(fx)
+	var j := int(fz)
+	var ax := fx - i
+	var az := fz - j
+	var r := j * _hnx + i
+	if ax + az <= 1.0:
+		return _hgrid[r] + (_hgrid[r + 1] - _hgrid[r]) * ax + (_hgrid[r + _hnx] - _hgrid[r]) * az
+	var h11 := _hgrid[r + _hnx + 1]
+	return h11 + (_hgrid[r + _hnx] - h11) * (1.0 - ax) + (_hgrid[r + 1] - h11) * (1.0 - az)
+
+## a map point on the ground, `lift` above it (a little more on hills: a straight piece
+## of road between two points can dip under a bend in the ground)
+func _g3(p: Vector2, lift: float) -> Vector3:
+	return Vector3(p.x, _h(p) + lift + (0.07 if _hnx > 0 else 0.0), p.y)
+
+## the ground itself: one mesh over the city's height grid, smooth-shaded
+func _build_terrain() -> void:
+	var verts := PackedVector3Array()
+	var norms := PackedVector3Array()
+	var idx := PackedInt32Array()
+	for j in range(_hnz):
+		for i in range(_hnx):
+			var h := _hgrid[j * _hnx + i]
+			verts.append(Vector3(_hx0 + i * _hstep, h, _hz0 + j * _hstep))
+			var hl := _hgrid[j * _hnx + maxi(i - 1, 0)]
+			var hr := _hgrid[j * _hnx + mini(i + 1, _hnx - 1)]
+			var hu := _hgrid[maxi(j - 1, 0) * _hnx + i]
+			var hd := _hgrid[mini(j + 1, _hnz - 1) * _hnx + i]
+			norms.append(Vector3(hl - hr, 2.0 * _hstep, hu - hd).normalized())
+	for j in range(_hnz - 1):
+		for i in range(_hnx - 1):
+			var a := j * _hnx + i
+			idx.append_array(PackedInt32Array([a, a + 1, a + _hnx, a + 1, a + _hnx + 1, a + _hnx]))
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = verts
+	arr[Mesh.ARRAY_NORMAL] = norms
+	arr[Mesh.ARRAY_INDEX] = idx
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	am.surface_set_material(0, _surface("ground"))
+	var mi := MeshInstance3D.new()
+	mi.mesh = am
+	world.add_child(mi)
+
 func _surface(tone: String) -> StandardMaterial3D:
 	if _smat.has(tone):
 		return _smat[tone]
@@ -569,16 +650,63 @@ func _add_mesh(buf: Buf, m: Material, shadows: bool) -> MeshInstance3D:
 	return mi
 
 ## a polygon on the ground
-func _fill(buf: Buf, ring: PackedVector2Array, y: float) -> void:
+func _fill(buf: Buf, ring: PackedVector2Array, y: float, level := false) -> void:
 	var idx := Geometry2D.triangulate_polygon(ring)
+	var flat_y := INF
+	if level:   # water lies flat, at its shore's lowest point
+		for p in ring:
+			flat_y = minf(flat_y, _h(p))
+	var stack: Array = []
 	for i in range(0, idx.size(), 3):
-		var a := ring[idx[i]]
-		var b := ring[idx[i + 1]]
-		var d := ring[idx[i + 2]]
-		buf.tri(Vector3(a.x, y, a.y), Vector3(b.x, y, b.y), Vector3(d.x, y, d.y), Vector3.UP, Color.WHITE)
+		stack.append([ring[idx[i]], ring[idx[i + 1]], ring[idx[i + 2]]])
+	# on hills, split triangles until they are small enough to follow the ground
+	var most := _hstep * 0.8 if _hnx > 0 and not level else INF
+	while not stack.is_empty():
+		var t: Array = stack.pop_back()
+		var a: Vector2 = t[0]
+		var b: Vector2 = t[1]
+		var d: Vector2 = t[2]
+		var ab := a.distance_squared_to(b)
+		var bd := b.distance_squared_to(d)
+		var da := d.distance_squared_to(a)
+		var longest := maxf(ab, maxf(bd, da))
+		if longest > most * most and stack.size() < 200000:
+			if longest == ab:
+				var m := (a + b) * 0.5
+				stack.append([a, m, d])
+				stack.append([m, b, d])
+			elif longest == bd:
+				var m := (b + d) * 0.5
+				stack.append([a, b, m])
+				stack.append([a, m, d])
+			else:
+				var m := (d + a) * 0.5
+				stack.append([a, b, m])
+				stack.append([m, b, d])
+			continue
+		if level:
+			var lift := y + (0.07 if _hnx > 0 else 0.0)
+			buf.tri(Vector3(a.x, flat_y + lift, a.y), Vector3(b.x, flat_y + lift, b.y),
+				Vector3(d.x, flat_y + lift, d.y), Vector3.UP, Color.WHITE)
+		else:
+			var pa := _g3(a, y)
+			var pb := _g3(b, y)
+			var pd := _g3(d, y)
+			var nrm := (pb - pa).cross(pd - pa)
+			if nrm.y < 0.0:
+				nrm = -nrm
+			buf.tri(pa, pb, pd, nrm.normalized() if nrm.length_squared() > 0.0 else Vector3.UP, Color.WHITE)
 
 ## a strip of half-width hw along a polyline, mitred at the bends
 func _ribbon(buf: Buf, pts: PackedVector2Array, hw: float, y: float) -> void:
+	if _hnx > 0:   # on hills: a point every 5 m so the road follows the ground
+		var dense := PackedVector2Array([pts[0]])
+		for i in range(1, pts.size()):
+			var L := pts[i - 1].distance_to(pts[i])
+			var parts := maxi(1, ceili(L / 5.0))
+			for k in range(1, parts + 1):
+				dense.append(pts[i - 1].lerp(pts[i], float(k) / parts))
+		pts = dense
 	var n := pts.size()
 	if n < 2:
 		return
@@ -598,15 +726,20 @@ func _ribbon(buf: Buf, pts: PackedVector2Array, hw: float, y: float) -> void:
 		left.append(pts[i] - side * hw * m)
 		right.append(pts[i] + side * hw * m)
 	for i in range(n - 1):
-		buf.flat(left[i], left[i + 1], right[i + 1], right[i], y)
+		buf.quad3(_g3(left[i], y), _g3(left[i + 1], y), _g3(right[i + 1], y), _g3(right[i], y))
 
 func _disc(buf: Buf, c: Vector2, r: float, y: float) -> void:
 	var seg := 14
+	var mid := _g3(c, y)
 	for i in range(seg):
 		var a0 := TAU * i / seg
 		var a1 := TAU * (i + 1) / seg
-		buf.tri(Vector3(c.x, y, c.y), Vector3(c.x + cos(a0) * r, y, c.y + sin(a0) * r),
-			Vector3(c.x + cos(a1) * r, y, c.y + sin(a1) * r), Vector3.UP, Color.WHITE)
+		var p0 := _g3(c + Vector2(cos(a0), sin(a0)) * r, y)
+		var p1 := _g3(c + Vector2(cos(a1), sin(a1)) * r, y)
+		var nrm := (p0 - mid).cross(p1 - mid)
+		if nrm.y < 0.0:
+			nrm = -nrm
+		buf.tri(mid, p0, p1, nrm.normalized() if nrm.length_squared() > 0.0 else Vector3.UP, Color.WHITE)
 
 ## dashed white lines: down the middle of a two-way street, between lanes of a one-way
 func _markings(buf: Buf, r: Dictionary) -> void:
@@ -649,7 +782,8 @@ func _markings(buf: Buf, r: Dictionary) -> void:
 			for o: float in offs:
 				var oa := a + side * o
 				var ob := b + side * o
-				buf.flat(oa - side * 0.07, ob - side * 0.07, ob + side * 0.07, oa + side * 0.07, Y_MARK)
+				buf.quad3(_g3(oa - side * 0.07, Y_MARK), _g3(ob - side * 0.07, Y_MARK),
+					_g3(ob + side * 0.07, Y_MARK), _g3(oa + side * 0.07, Y_MARK))
 		s += 8.0
 
 func _along(pts: PackedVector2Array, cum: PackedFloat32Array, s: float) -> Vector2:
@@ -677,8 +811,9 @@ func _zebra(buf: Buf, ni: int) -> void:
 		var o := -hw
 		while o < hw:
 			var p := c + side * (o + 0.25)
-			buf.flat(p - d * 1.5 - side * 0.25, p + d * 1.5 - side * 0.25,
-				p + d * 1.5 + side * 0.25, p - d * 1.5 + side * 0.25, Y_MARK + 0.002)
+			var yz := Y_MARK + 0.002
+			buf.quad3(_g3(p - d * 1.5 - side * 0.25, yz), _g3(p + d * 1.5 - side * 0.25, yz),
+				_g3(p + d * 1.5 + side * 0.25, yz), _g3(p - d * 1.5 + side * 0.25, yz))
 			o += 1.0
 		return   # one road is enough; the others through this node are its continuation
 
@@ -693,8 +828,18 @@ func _build_buildings() -> void:
 	var chunks := {}
 	for bd: Dictionary in _city_data["buildings"]:
 		var ring: PackedVector2Array = bd["_ring"]
-		var h: float = bd["_h"]
-		var base: float = bd["_base"]
+		# on a slope: walls start below the lowest corner, the roof sits its height above
+		# the average ground, and the window rows count from the lowest corner
+		var g_lo := INF
+		var g_sum := 0.0
+		for p in ring:
+			var gh := _h(p)
+			g_lo = minf(g_lo, gh)
+			g_sum += gh
+		var g_avg := g_sum / ring.size()
+		var raised: float = bd["_base"]
+		var h: float = g_avg + float(bd["_h"])
+		var base: float = g_lo + raised - (0.6 if raised == 0.0 and _hnx > 0 else 0.0)
 		var key := _cell(_bld_box_of(ring).get_center(), CHUNK)
 		if not chunks.has(key):
 			chunks[key] = [Buf.new(), Buf.new()]
@@ -722,9 +867,9 @@ func _build_buildings() -> void:
 			var b0 := Vector3(b.x, base, b.y)
 			var a1 := Vector3(a.x, h, a.y)
 			var b1 := Vector3(b.x, h, b.y)
-			var u2 := Vector2(len, h)
-			walls.tri(a0, b0, b1, nrm, col, Vector2(0, base), Vector2(len, base), Vector2(len, h), u2)
-			walls.tri(a0, b1, a1, nrm, col, Vector2(0, base), Vector2(len, h), Vector2(0, h), u2)
+			var u2 := Vector2(len, h - g_lo)
+			walls.tri(a0, b0, b1, nrm, col, Vector2(0, base - g_lo), Vector2(len, base - g_lo), Vector2(len, h - g_lo), u2)
+			walls.tri(a0, b1, a1, nrm, col, Vector2(0, base - g_lo), Vector2(len, h - g_lo), Vector2(0, h - g_lo), u2)
 		var idx := Geometry2D.triangulate_polygon(ring)
 		var rc := Color(bright * 0.95, bright * 0.95, bright * 0.95)
 		for i in range(0, idx.size(), 3):
@@ -835,9 +980,10 @@ func _build_trees() -> void:
 			var sp: Vector3 = list[i]
 			var sc := sp.z
 			var rot := Basis(Vector3.UP, rng.randf() * TAU)
-			mt.set_instance_transform(i, Transform3D(rot.scaled(Vector3.ONE * sc), Vector3(sp.x, 1.3 * sc, sp.y)))
+			var gy := _h(Vector2(sp.x, sp.y))
+			mt.set_instance_transform(i, Transform3D(rot.scaled(Vector3.ONE * sc), Vector3(sp.x, gy + 1.3 * sc, sp.y)))
 			var cb := rot.scaled(Vector3(2.3, 1.9, 2.3) * sc)
-			mc.set_instance_transform(i, Transform3D(cb, Vector3(sp.x, 3.9 * sc, sp.y)))
+			mc.set_instance_transform(i, Transform3D(cb, Vector3(sp.x, gy + 3.9 * sc, sp.y)))
 			var g := rng.randf_range(0.8, 1.1)
 			mc.set_instance_color(i, Color(g, g, g))
 		for mm: MultiMesh in [mt, mc]:
@@ -899,11 +1045,12 @@ func _build_signals() -> void:
 					continue   # OSM puts the light's node a few metres out; never plant it in a lane
 				var g := 0 if absf(dir.x) >= absf(dir.y) else 1
 				var face := Basis(Vector3.UP, atan2(-dir.x, -dir.y))   # +Z of the head toward the traffic
-				poles.append(Transform3D(Basis(), Vector3(p.x, 1.7, p.y)))
-				heads.append(Transform3D(face, Vector3(p.x, 3.3, p.y)))
+				var gy := _h(p)
+				poles.append(Transform3D(Basis(), Vector3(p.x, gy + 1.7, p.y)))
+				heads.append(Transform3D(face, Vector3(p.x, gy + 3.3, p.y)))
 				var front := Vector3(-dir.x, 0.0, -dir.y) * 0.17
 				for ci in range(3):
-					bulbs[g][ci].append(Vector3(p.x, 3.3 + 0.3 - 0.3 * ci, p.y) + front)
+					bulbs[g][ci].append(Vector3(p.x, gy + 3.3 + 0.3 - 0.3 * ci, p.y) + front)
 				_add_post(p, 0.15)
 	if poles.is_empty():
 		return
@@ -944,6 +1091,7 @@ func _build_signals() -> void:
 func _build_pois() -> void:
 	var k := 1.0 / float(_city_data.get("scale", 10))
 	var fronts := {}                 ## role -> Array of Transform3D
+	var boards: Array = []           ## the sign boards behind the names
 	var taken := {}                  ## a facade spot already used -> how many there
 	for p: Array in _city_data.get("pois", []):
 		var at := Vector2(p[0], p[1]) * k
@@ -962,23 +1110,34 @@ func _build_pois() -> void:
 		if spot[2]:
 			if not fronts.has(role):
 				fronts[role] = []
-			(fronts[role] as Array).append(Transform3D(Basis(Vector3.UP, face), Vector3(pos.x + n.x * 0.07, 1.35, pos.y + n.y * 0.07)))
+			(fronts[role] as Array).append(Transform3D(Basis(Vector3.UP, face), Vector3(pos.x + n.x * 0.07, _h(pos + n * 0.6) + 1.35, pos.y + n.y * 0.07)))
 		var name := String(p[3]) if String(p[3]) != "" else (String(p[4]) if String(p[4]) != "" else String(look[1]))
 		var sign := Label3D.new()
 		sign.text = name
 		sign.font = _font
-		sign.font_size = 44
-		sign.pixel_size = 0.01
-		sign.outline_size = 10
+		sign.font_size = 64
+		sign.pixel_size = 0.011
+		sign.outline_size = 8
 		sign.modulate = Palette.col(role)
 		sign.outline_modulate = Palette.col("bg")
-		sign.position = Vector3(pos.x + n.x * 0.15, 3.15 if spot[2] else 2.6, pos.y + n.y * 0.15)
+		var sy := _h(pos + n * 0.6) + (3.25 if spot[2] else 2.7)
+		sign.position = Vector3(pos.x + n.x * 0.16, sy, pos.y + n.y * 0.16)
 		sign.rotation.y = face
+		var tw := _font.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, 64).x * 0.011
+		boards.append(Transform3D(Basis(Vector3.UP, face) * Basis.from_scale(Vector3(maxf(tw + 0.5, 2.0), 1.0, 1.0)),
+			Vector3(pos.x + n.x * 0.1, sy, pos.y + n.y * 0.1)))
 		sign.double_sided = false
 		sign.visibility_range_end = SIGN_RANGE
 		sign.set_meta("role", role)
 		world.add_child(sign)
 		_pois.append([at, role, sign])
+	if not boards.is_empty():
+		var plate := BoxMesh.new()
+		plate.size = Vector3(1.0, 0.95, 0.08)
+		var bm := _multi(plate, boards)
+		bm.material_override = _surface("board")
+		bm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		bm.visibility_range_end = SIGN_RANGE
 	var box := BoxMesh.new()
 	box.size = Vector3(3.0, 2.5, 0.12)
 	for role: String in fronts:
@@ -1087,6 +1246,7 @@ func _tones() -> void:
 		"sky": pl.lerp(pz, 0.35).lerp(bg, 0.32),
 		"haze": ink.lerp(pl, 0.3),
 		"beacon": Color(ac, 0.35),
+		"board": bg.lerp(alt, 0.5),
 	}
 
 func _retint_city() -> void:
@@ -1358,9 +1518,15 @@ func _drive(dt: float, throttle: float, brake: float, steer: float) -> void:
 	var resist := DRAG * v * absf(v) + ROLL * signf(v)
 	if throttle <= 0.01:
 		resist += ENGINE_BRAKE * signf(v)
+	if _hnx > 0:   # gravity along the road: uphill slows you, downhill pulls
+		var fwd0 := _fwd()
+		_slope = atan2(_h(_pos + fwd0 * 1.4) - _h(_pos - fwd0 * 1.4), 2.8)
+		resist += MASS * 9.81 * sin(_slope)
 	var nv := v + (f - resist) / MASS * dt
 	if v != 0.0 and signf(nv) != signf(v) and throttle <= 0.01:
 		nv = 0.0   # resistance stops you; it never pushes you backwards
+	if throttle <= 0.01 and absf(nv) < 0.3 and absf(_slope) < 0.14:
+		nv = 0.0   # stopped on a gentle slope: the car holds (an automatic on the brake)
 	nv = move_toward(nv, 0.0, brake * BRAKE_F / MASS * dt)
 	_a_long = (nv - v) / dt
 	_v = nv
@@ -1383,8 +1549,15 @@ func _drive(dt: float, throttle: float, brake: float, steer: float) -> void:
 	_place_car(dt)
 
 func _place_car(dt: float) -> void:
-	_car.position = Vector3(_pos.x, 0.0, _pos.y)
+	_car.position = Vector3(_pos.x, _h(_pos), _pos.y)
 	_car.rotation.y = PI * 0.5 - _yaw
+	if _hnx > 0:   # sit on the slope: nose up a hill, leaning across a camber
+		var fwd := _fwd()
+		var side := Vector2(-fwd.y, fwd.x)
+		var pitch := atan2(_h(_pos + fwd * 1.4) - _h(_pos - fwd * 1.4), 2.8)
+		var roll := atan2(_h(_pos - side * 0.8) - _h(_pos + side * 0.8), 1.6)
+		_car.rotation.x = -pitch
+		_car.rotation.z = roll
 	var k := 1.0 - exp(-dt * 6.0)
 	_roll = lerpf(_roll, clampf(-_v * _yaw_rate * 0.006, -0.07, 0.07), k)
 	_pitch = lerpf(_pitch, clampf(-_a_long * 0.005, -0.05, 0.05), k)
@@ -1543,8 +1716,11 @@ func _camera(dt: float) -> void:
 	var clear := _clear_behind(_pos, -back, want)
 	_cam_dist = clear if clear < _cam_dist else lerpf(_cam_dist, clear, 1.0 - exp(-dt * 1.5))
 	var d := _cam_dist
-	var eye := Vector3(_pos.x - back.x * d, 2.0 + d * 0.14, _pos.y - back.y * d)
-	var at := Vector3(_pos.x + back.x * 4.0, 1.0, _pos.y + back.y * 4.0)
+	var gy := _h(_pos)
+	var eye2 := _pos - back * d
+	var eye := Vector3(eye2.x, maxf(gy + 2.0 + d * 0.14, _h(eye2) + 1.4), eye2.y)
+	var ahead := _pos + back * 4.0
+	var at := Vector3(ahead.x, lerpf(gy, _h(ahead), 0.5) + 1.0, ahead.y)
 	look_from(eye, at)
 	cam.fov = lerpf(64.0, 74.0, spd)
 
@@ -1884,7 +2060,7 @@ func _set_dest(at: Vector2, label: String) -> void:
 		_beacon.mesh = cm
 		_beacon.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		world.add_child(_beacon)
-	_beacon.position = Vector3(at.x, 35.0, at.y)
+	_beacon.position = Vector3(at.x, _h(at) + 35.0, at.y)
 	_beacon.visible = true
 	Probe.event("destination", {"to": label})
 	_set_auto(true)
