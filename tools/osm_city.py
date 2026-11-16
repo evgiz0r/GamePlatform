@@ -30,6 +30,10 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
   areas      [{p: ring, k: park|grass|wood|water|parking|pitch|plaza}]
   trees      [x, z, ...]
   addrs      [[x, z, street, number], ...]   address points not on a building outline
+  pois       [[x, z, kind, name, name_en], ...]   shops, restaurants, schools... (kind:
+             the amenity/tourism value, or "shop")
+  height     {x0, z0, step, nx, nz, base, h: [...]}  ground height on a grid, decimetres above
+             `base` (metres above sea level), row by row from (x0, z0); absent = flat
   signals    [node indices]   traffic lights that sit on the road graph
   crossings  [node indices]
 
@@ -49,6 +53,7 @@ import sys
 import time
 import urllib.parse
 import urllib.request
+import zlib
 
 # Public Overpass servers, tried in order: the main one turns some clients away (a 406 for
 # a link opened in a browser, resets from some networks), the others are full mirrors.
@@ -262,6 +267,11 @@ DATA_FILTERS = (
     'way["place"="square"];'
     'way["natural"="coastline"];'
     'node["addr:housenumber"]["addr:street"];'
+    # places people go: food, shops, health, services, schools, culture, worship
+    'node["shop"];way["shop"];'
+    'node["amenity"~"^(restaurant|cafe|fast_food|bar|pub|ice_cream|pharmacy|bank|post_office|clinic|doctors|dentist|fuel|school|kindergarten|library|place_of_worship|cinema|theatre|community_centre)$"];'
+    'way["amenity"~"^(restaurant|cafe|fast_food|pharmacy|bank|post_office|clinic|fuel|school|kindergarten|library|place_of_worship|cinema|theatre|community_centre)$"];'
+    'node["tourism"~"^(hotel|museum|attraction)$"];way["tourism"~"^(hotel|museum)$"];'
     'node["natural"="tree"];'
     'node["highway"~"^(traffic_signals|crossing|stop|give_way)$"];'
 )
@@ -438,6 +448,119 @@ def join_rings(segments):
         if len(ring) >= 4:
             rings.append(ring)
     return rings
+
+
+# ---- ground height ----------------------------------------------------------------------
+# AWS's open terrain tiles ("terrarium" PNGs: height = R*256 + G + B/256 - 32768 metres),
+# mostly SRTM: ~30 m detail, a surface model (it sees some rooftops), free, no key.
+TERRAIN = os.environ.get("TERRAIN_URL",
+                         "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png")
+
+
+def png_pixels(data):
+    """Minimal PNG reader for 8-bit RGB/RGBA, non-interlaced: (w, h, bytes/pixel, bytes)."""
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        raise ValueError("not a PNG")
+    pos, idat, w, h, ctype = 8, b"", 0, 0, 2
+    while pos < len(data):
+        n = int.from_bytes(data[pos:pos + 4], "big")
+        kind, body = data[pos + 4:pos + 8], data[pos + 8:pos + 8 + n]
+        pos += 12 + n
+        if kind == b"IHDR":
+            w, h = int.from_bytes(body[0:4], "big"), int.from_bytes(body[4:8], "big")
+            if body[8] != 8 or body[12] != 0:
+                raise ValueError("only 8-bit, non-interlaced PNGs")
+            ctype = body[9]
+        elif kind == b"IDAT":
+            idat += body
+        elif kind == b"IEND":
+            break
+    bpp = {2: 3, 6: 4}[ctype]
+    raw = zlib.decompress(idat)
+    stride = w * bpp
+    out = bytearray(h * stride)
+    prev = bytearray(stride)
+    i = 0
+    for y in range(h):
+        f = raw[i]
+        line = bytearray(raw[i + 1:i + 1 + stride])
+        i += 1 + stride
+        if f == 1:
+            for x in range(bpp, stride):
+                line[x] = (line[x] + line[x - bpp]) & 255
+        elif f == 2:
+            for x in range(stride):
+                line[x] = (line[x] + prev[x]) & 255
+        elif f == 3:
+            for x in range(stride):
+                left = line[x - bpp] if x >= bpp else 0
+                line[x] = (line[x] + ((left + prev[x]) >> 1)) & 255
+        elif f == 4:
+            for x in range(stride):
+                a = line[x - bpp] if x >= bpp else 0
+                b = prev[x]
+                c = prev[x - bpp] if x >= bpp else 0
+                pa, pb, pc = abs(b - c), abs(a - c), abs(a + b - 2 * c)
+                line[x] = (line[x] + (a if pa <= pb and pa <= pc else (b if pb <= pc else c))) & 255
+        out[y * stride:(y + 1) * stride] = line
+        prev = line
+    return w, h, bpp, out
+
+
+def terrain_grid(P, box, bounds, step, zoom=13):
+    """Ground height on a regular grid over the bounds, in metres above its lowest point."""
+    x0, z0, x1, z1 = bounds
+    nx, nz = int(math.ceil((x1 - x0) / step)) + 1, int(math.ceil((z1 - z0) / step)) + 1
+    n = 2 ** zoom
+    tiles = {}
+
+    def tile(tx, ty):
+        if (tx, ty) not in tiles:
+            url = TERRAIN.format(z=zoom, x=tx, y=ty)
+            req = urllib.request.Request(url, headers={"User-Agent": "osm-city-bake/1"})
+            with urllib.request.urlopen(req, timeout=60) as r:
+                tiles[(tx, ty)] = png_pixels(r.read())
+        return tiles[(tx, ty)]
+
+    def px_height(gx, gy):  # global pixel coordinates at this zoom
+        tx, ty = int(gx // 256), int(gy // 256)
+        w, h, bpp, pix = tile(tx, ty)
+        x, y = int(gx - tx * 256), int(gy - ty * 256)
+        o = (y * w + x) * bpp
+        return pix[o] * 256 + pix[o + 1] + pix[o + 2] / 256.0 - 32768.0
+
+    def height(lat, lon):
+        gx = (lon + 180.0) / 360.0 * n * 256
+        gy = (1 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2 * n * 256
+        fx, fy = gx - 0.5, gy - 0.5
+        ix, iy = int(math.floor(fx)), int(math.floor(fy))
+        ax, ay = fx - ix, fy - iy
+        h00, h10 = px_height(ix, iy), px_height(ix + 1, iy)
+        h01, h11 = px_height(ix, iy + 1), px_height(ix + 1, iy + 1)
+        return (h00 * (1 - ax) + h10 * ax) * (1 - ay) + (h01 * (1 - ax) + h11 * ax) * ay
+
+    grid = []
+    for j in range(nz):
+        for i in range(nx):
+            x, z = x0 + i * step, z0 + j * step
+            grid.append(height(P.lat0 - z / P.my, P.lon0 + x / P.mx))
+    # one light blur: the data is a surface model, rooftops make bumps
+    blur = grid[:]
+    for j in range(nz):
+        for i in range(nx):
+            acc, cnt = 0.0, 0
+            for dj in (-1, 0, 1):
+                for di in (-1, 0, 1):
+                    ii, jj = i + di, j + dj
+                    if 0 <= ii < nx and 0 <= jj < nz:
+                        acc += grid[jj * nx + ii]
+                        cnt += 1
+            blur[j * nx + i] = acc / cnt
+    base = min(blur)
+    log(f"ground: {nx} x {nz} grid every {step:.0f} m from {len(tiles)} tiles, "
+        f"{base:.0f} to {max(blur):.0f} m above sea level")
+    return {"x0": round(x0, 1), "z0": round(z0, 1), "step": step, "nx": nx, "nz": nz,
+            "base": round(base, 1), "h": [int(round((v - base) * SCALE)) for v in blur]}
 
 
 def join_chains(segments):
@@ -761,6 +884,25 @@ def bake(raw, name, args):
                 out["areas"].append({"p": flat(r), "k": "land"})
         log(f"coast: {len(water)} sea areas, {len(islands)} islands")
 
+    # points of interest: [x, z, kind, name, name_en]; kind is the amenity / tourism value or
+    # "shop" (the game decides how each looks)
+    out["pois"] = []
+    for e in elements:
+        t = e.get("tags", {})
+        kind = t.get("amenity") or t.get("tourism") or ("shop" if "shop" in t else None)
+        if not kind or kind in ("parking",) or "highway" in t:
+            continue
+        if e["type"] == "node":
+            x, z = P(e["lat"], e["lon"])
+        elif e["type"] == "way" and e.get("geometry") and all(e["geometry"]):
+            ring = [P(g["lat"], g["lon"]) for g in e["geometry"]]
+            x = sum(p[0] for p in ring) / len(ring)
+            z = sum(p[1] for p in ring) / len(ring)
+        else:
+            continue
+        if inside(x, z):
+            out["pois"].append([q(x), q(z), kind, t.get("name", ""), t.get("name:en", "")])
+
     # addresses that are points (a door, an entrance) rather than tags on a building
     out["addrs"] = []
     for e in elements:
@@ -775,6 +917,13 @@ def bake(raw, name, args):
             x, z = P(e["lat"], e["lon"])
             if inside(x, z):
                 out["trees"] += [q(x), q(z)]
+
+    if not args.no_terrain:
+        try:
+            span = max(x1 - x0, z1 - z0)
+            out["height"] = terrain_grid(P, box, (x0, z0, x1, z1), max(12.0, round(span / 300.0)))
+        except Exception as e:   # flat is better than no city
+            log(f"ground: no height data ({e}); the city stays flat")
 
     log(f"baked: {stats['roads']} road pieces, {len(out['nodes']) // 2} road nodes, "
         f"{stats['buildings']} buildings ({stats['guessed']} with guessed heights), "
@@ -800,6 +949,7 @@ def main():
     ap.add_argument("--out", help="where to write the city file")
     ap.add_argument("--offline", action="store_true", help="bake from tools/.cache only")
     ap.add_argument("--from-file", help="a raw Overpass JSON answer you saved yourself")
+    ap.add_argument("--no-terrain", action="store_true", help="skip the ground heights")
     ap.add_argument("--print-query", action="store_true",
                     help="print a browser link that downloads the raw data, for --from-file")
     args = ap.parse_args()

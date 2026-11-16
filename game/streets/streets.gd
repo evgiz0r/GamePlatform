@@ -65,6 +65,21 @@ const DRIVE := {
 const TREE_ROADS := ["primary", "secondary", "tertiary", "residential", "living_street", "unclassified"]
 const TREE_GAP := 11.0
 const MAX_TREES := 16000
+## Places from the map, by OSM kind: [palette role, what to call one with no name].
+## Food is yellow, shops pink, health green, services blue, learning/culture/worship purple.
+const POI_LOOK := {
+	"restaurant": ["warn", "restaurant"], "cafe": ["warn", "café"], "fast_food": ["warn", "fast food"],
+	"bar": ["warn", "bar"], "pub": ["warn", "pub"], "ice_cream": ["warn", "ice cream"],
+	"shop": ["accent", "shop"],
+	"pharmacy": ["friend", "pharmacy"], "clinic": ["friend", "clinic"], "doctors": ["friend", "doctor"],
+	"dentist": ["friend", "dentist"],
+	"bank": ["player", "bank"], "post_office": ["player", "post office"], "fuel": ["player", "fuel"],
+	"school": ["prize", "school"], "kindergarten": ["prize", "kindergarten"], "library": ["prize", "library"],
+	"place_of_worship": ["prize", "place of worship"], "cinema": ["prize", "cinema"],
+	"theatre": ["prize", "theatre"], "community_centre": ["prize", "community centre"],
+	"hotel": ["player", "hotel"], "museum": ["prize", "museum"], "attraction": ["prize", "attraction"],
+}
+const SIGN_RANGE := 110.0            ## signs further than this are not drawn
 const SIGNAL_CYCLE := [              ## [seconds, phase of the E-W group, phase of N-S]
 	[14.0, "g", "r"], [3.0, "y", "r"], [1.5, "r", "r"],
 	[14.0, "r", "g"], [3.0, "r", "y"], [1.5, "r", "r"],
@@ -188,6 +203,7 @@ var _post_hash := {}
 var _boundary: Array = []            ## PackedVector2Array rings of the city limits
 var _streets := {}                   ## name -> true, the named streets inside the limits
 var _visited := {}
+var _pois: Array = []                ## [Vector2 where, role] for the minimap
 var _signals: Array = []             ## per traffic-light group: {role -> MultiMesh}
 var _sig_mats: Array = []            ## [group][0 red, 1 yellow, 2 green] materials
 var _sig_phase := 0
@@ -527,6 +543,7 @@ func _build_world() -> void:
 	_build_buildings()
 	_build_trees()
 	_build_signals()
+	_build_pois()
 	_city_data = {}
 
 func _surface(tone: String) -> StandardMaterial3D:
@@ -923,6 +940,85 @@ func _build_signals() -> void:
 		_sig_mats.append(mats)
 	_apply_signals()
 
+## a lit shopfront on the street side of each shop's building, and its name above it
+func _build_pois() -> void:
+	var k := 1.0 / float(_city_data.get("scale", 10))
+	var fronts := {}                 ## role -> Array of Transform3D
+	var taken := {}                  ## a facade spot already used -> how many there
+	for p: Array in _city_data.get("pois", []):
+		var at := Vector2(p[0], p[1]) * k
+		var kind := String(p[2])
+		var look: Array = POI_LOOK.get(kind, ["player", kind.replace("_", " ")])
+		var role: String = look[0]
+		var spot := _facade_spot(at)
+		var pos: Vector2 = spot[0]
+		var n: Vector2 = spot[1]
+		var along := Vector2(-n.y, n.x)
+		var key := Vector2i((pos / 2.0).round())
+		var dup: int = taken.get(key, 0)
+		taken[key] = dup + 1
+		pos += along * 3.6 * float((dup + 1) / 2) * (1.0 if dup % 2 == 1 else -1.0)
+		var face := atan2(n.x, n.y)
+		if spot[2]:
+			if not fronts.has(role):
+				fronts[role] = []
+			(fronts[role] as Array).append(Transform3D(Basis(Vector3.UP, face), Vector3(pos.x + n.x * 0.07, 1.35, pos.y + n.y * 0.07)))
+		var name := String(p[3]) if String(p[3]) != "" else (String(p[4]) if String(p[4]) != "" else String(look[1]))
+		var sign := Label3D.new()
+		sign.text = name
+		sign.font = _font
+		sign.font_size = 44
+		sign.pixel_size = 0.01
+		sign.outline_size = 10
+		sign.modulate = Palette.col(role)
+		sign.outline_modulate = Palette.col("bg")
+		sign.position = Vector3(pos.x + n.x * 0.15, 3.15 if spot[2] else 2.6, pos.y + n.y * 0.15)
+		sign.rotation.y = face
+		sign.double_sided = false
+		sign.visibility_range_end = SIGN_RANGE
+		sign.set_meta("role", role)
+		world.add_child(sign)
+		_pois.append([at, role, sign])
+	var box := BoxMesh.new()
+	box.size = Vector3(3.0, 2.5, 0.12)
+	for role: String in fronts:
+		var mi := _multi(box, fronts[role])
+		mi.material_override = mat(role, 0.55)
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.visibility_range_end = VIEW_RANGE * 0.5
+
+## where a place's front goes: [point, outward normal, true if on a building wall]. The
+## wall of its building (or the nearest one) closest to the street; otherwise a free-
+## standing sign on the spot, facing the street.
+func _facade_spot(at: Vector2) -> Array:
+	var road := _nearest_seg(at, 60.0, true, true)
+	var street: Vector2 = road["q"] if not road.is_empty() else at + Vector2(0, 1)
+	var best := INF
+	var out: Array = []
+	for i: int in _near(_bld_hash, at, 16.0, BLD_CELL):
+		if not (_bld_box[i] as Rect2).grow(16.0).has_point(at):
+			continue
+		var poly: PackedVector2Array = _blds[i]
+		var inside := Geometry2D.is_point_in_polygon(at, poly)
+		var area := 0.0
+		for j in range(poly.size()):
+			area += poly[j].x * poly[(j + 1) % poly.size()].y - poly[(j + 1) % poly.size()].x * poly[j].y
+		for j in range(poly.size()):
+			var a := poly[j]
+			var b := poly[(j + 1) % poly.size()]
+			if a.distance_to(b) < 2.5:
+				continue
+			var c := Geometry2D.get_closest_point_to_segment(street, a, b)
+			var score := c.distance_to(street) + (0.0 if inside else 2.0 * c.distance_to(at))
+			if score < best:
+				best = score
+				var e := (b - a).normalized()
+				out = [c, Vector2(e.y, -e.x) * (1.0 if area > 0.0 else -1.0), true]
+	if out.is_empty():
+		var face := (street - at).normalized() if street != at else Vector2(0, 1)
+		out = [at, face, false]
+	return out
+
 func _multi(mesh: Mesh, xforms: Array) -> MultiMeshInstance3D:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
@@ -1020,6 +1116,10 @@ func _retint_city() -> void:
 		sun.light_color = Palette.col("ink").lerp(Palette.col("warn"), 0.12)
 		sun.light_energy = 1.05
 	_apply_signals_safe()
+	for poi: Array in _pois:
+		var lb := poi[2] as Label3D
+		lb.modulate = Palette.col(poi[1])
+		lb.outline_modulate = Palette.col("bg")
 	_retint_hud()
 
 func _apply_signals_safe() -> void:
@@ -2250,6 +2350,10 @@ func _draw_map() -> void:
 		for p in _ap_pts:
 			route.append(p - _pos)
 		_map.draw_polyline(route, Color(Palette.col("friend"), 0.8), 1.5 / s)
+	for poi: Array in _pois:
+		var d: Vector2 = (poi[0] as Vector2) - _pos
+		if absf(d.x) < MAP_R and absf(d.y) < MAP_R:
+			_map.draw_circle(d, 1.8 / s, Palette.col(poi[1]))
 	if _dest_on:
 		_map.draw_circle(_dest - _pos, 6.0 / s, Palette.col("accent"))
 		_map.draw_arc(_dest - _pos, 11.0 / s, 0.0, TAU, 24, Color(Palette.col("accent"), 0.6), 1.5 / s)
