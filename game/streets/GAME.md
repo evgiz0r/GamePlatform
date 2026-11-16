@@ -101,6 +101,29 @@ Nothing yet, on purpose: this is a driving sim first. Buildings, trees, parked c
 traffic-light poles are solid, and hitting them hurts the way it should (a thud, a shake,
 speed gone).
 
+**Traffic.** About twenty cars drive the real streets round you, in their lane, mostly on
+the main roads: they slow for corners, keep their distance (brake lights on), stop at red
+lights (and on amber when there is room), come to a full stop at stop signs and slow for
+give-way signs. A junction with no lights is taken in turn: a car whose way crosses one
+already taken waits at its edge, and you always have the right of way. Hitting one is a
+crash like any other. They are not a physics simulation: each follows its lane at its own
+speed (`traffic.gd`).
+
+**Lights and signs mean something.** Autodrive stops at red lights and stop signs and
+keeps behind the car in front. Drive through a red light, or a stop sign without
+stopping, and it says so. The stop and give-way signs are OSM's (Givatayim has a few
+dozen mapped); the lights run their own cycle, east-west streets then north-south.
+
+> Traffic, lights and signs that mean something, engine sound, night.
+
+**Sound.** The engine is made in the game, not recorded: a four-cylinder's firing pulses
+pitched by the revs of a five-speed automatic, a brighter layer with the throttle, and
+the nearest car going by.
+
+**Night.** The "night" button: a dark sky and a dim moon, a share of the windows lit (warm
+in homes, cooler in offices), street lamps on with a pool of light under each, shop
+windows bright, headlights with their beams on the road, tail lights glowing.
+
 ## Smooth on a laptop and a phone
 
 > It's pretty choppy and laggy now. I'm trying on a laptop browser.
@@ -169,7 +192,8 @@ contributors under the ODbL, which is why the credit sits on screen.
   What a shop looks like (awning, tables, the bus shelter) is generic. The parked cars
   (about a quarter of the kerb), the people walking and sitting at cafe tables, rooftop
   solar heaters and rooms (Givatayim), pitched roofs on small houses (Bedford).
-- **Not there yet**: bridges and tunnels as such (tunnels are dropped), other traffic.
+- **Not there yet**: bridges and tunnels as such (tunnels are dropped); traffic that
+  changes lanes or overtakes; pedestrians crossing the road.
 
 To make your own street more accurate, fix it on openstreetmap.org (building heights are
 the most useful thing to add) and bake again.
