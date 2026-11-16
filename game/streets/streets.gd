@@ -266,6 +266,12 @@ var _ap_lim := PackedFloat32Array()  ## the limit on the road leading to each po
 var _ap_end := Vector3i(-1, 0, 0)    ## the last leg planned: road, last index, direction
 var _ap_stuck := 0.0
 var _ap_back := 0.0
+## the crossing ahead, while autodrive waits for you to pick a way on:
+## {node, at (Vector2), ways: [{leg: Vector3i, turn (radians, + = right), name, en}] left to
+## right, pick (index), chosen (you picked it)}; {} when there is none
+var _cross := {}
+const CROSS_SHOW_S := 5.0            ## the choices show this many seconds before the crossing
+const CROSS_V := 6.5                 ## undecided, autodrive comes up to it no faster (m/s)
 
 ## ---- going somewhere: an address, a route on the road graph, a beacon over it ----
 var _astar: AStar2D                  ## the drivable road graph (one-ways are one-way)
@@ -1739,6 +1745,7 @@ func _clear_behind(from: Vector2, dir: Vector2, want: float) -> float:
 
 func _set_auto(on: bool) -> void:
 	_auto = on
+	_cross = {}
 	_ap_pts = PackedVector2Array()
 	_ap_v = PackedFloat32Array()
 	_ap_lim = PackedFloat32Array()
@@ -1769,6 +1776,7 @@ func _autodrive(dt: float) -> Array:
 		_ap_pts.remove_at(0)
 		_ap_v.remove_at(0)
 		_ap_lim.remove_at(0)
+	_cross_tick()
 	while _ap_len() < 160.0:
 		if not _ap_next():
 			break
@@ -1859,6 +1867,7 @@ func _ap_point_ahead(look: float) -> Vector2:
 	return p
 
 func _ap_plan() -> void:
+	_cross = {}
 	_ap_pts = PackedVector2Array()
 	_ap_v = PackedFloat32Array()
 	_ap_lim = PackedFloat32Array()
@@ -1934,8 +1943,9 @@ func _ap_next() -> bool:
 	if prev < 0 or prev >= pts.size():
 		prev = ei
 	var came := (pts[ei] - pts[prev]).normalized()
-	var best := Vector3i(-1, 0, 0)
+	var ways: Array = []
 	var back := Vector3i(-1, 0, 0)
+	var best_i := -1
 	var best_score := -INF
 	for e: Vector2i in _node_roads[node]:
 		var r2: Dictionary = _roads[e.x]
@@ -1960,15 +1970,70 @@ func _ap_next() -> bool:
 				score += 1.4
 			if r2["k"] == "service":
 				score -= 1.5
+			ways.append({"leg": Vector3i(e.x, nxt, d2), "turn": came.angle_to(go), "name": r2["name"],
+				"en": r2["en"], "service": r2["k"] == "service", "score": score})
 			if score > best_score:
 				best_score = score
-				best = Vector3i(e.x, nxt, d2)
-	if best.x < 0:
-		best = back
-	if best.x < 0:
+				best_i = ways.size() - 1
+	if ways.is_empty():
+		if back.x < 0:
+			return false
+		_ap_leg(back.x, back.y, back.z)
+		return true
+	# a real crossing (two or more proper streets on): ask, and plan no further for now
+	var main: Array = ways.filter(func(w): return not w["service"])
+	if not _dest_on and main.size() >= 2:
+		if _cross.is_empty() or _cross["node"] != node:
+			main.sort_custom(func(a, b): return a["turn"] < b["turn"])
+			var pick := 0
+			for i in range(main.size()):
+				if main[i]["score"] > main[pick]["score"]:
+					pick = i
+			_cross = {"node": node, "at": _ap_pts[_ap_pts.size() - 1], "ways": main, "pick": pick, "chosen": false}
+			_ap_v[_ap_v.size() - 1] = minf(_ap_v[_ap_v.size() - 1], CROSS_V)
 		return false
-	_ap_leg(best.x, best.y, best.z)
+	var leg: Vector3i = ways[best_i]["leg"]
+	_ap_leg(leg.x, leg.y, leg.z)
 	return true
+
+## the crossing ahead: take your pick (or ours, once it is too late to wait for yours)
+func _cross_tick() -> void:
+	if _cross.is_empty():
+		return
+	var ways: Array = _cross["ways"]
+	if not _cross["chosen"] and _cross_showing():
+		var pick := -1
+		if PInput.just_pressed("move_left"):
+			pick = 0
+		elif PInput.just_pressed("move_right"):
+			pick = ways.size() - 1
+		elif PInput.just_pressed("move_up"):
+			pick = 0
+			for i in range(ways.size()):
+				if absf(ways[i]["turn"]) < absf(ways[pick]["turn"]):
+					pick = i
+		if pick >= 0:
+			_cross_pick(pick)
+	var d := _pos.distance_to(_cross["at"])
+	if _cross["chosen"] or d < maxf(10.0, _v * 1.3):
+		var w: Dictionary = ways[_cross["pick"]]
+		var leg: Vector3i = w["leg"]
+		Probe.event("crossing", {"turn": int(rad_to_deg(w["turn"])), "chosen": _cross["chosen"]})
+		_cross = {}
+		_ap_leg(leg.x, leg.y, leg.z)
+
+func _cross_pick(i: int) -> void:
+	_cross["pick"] = i
+	_cross["chosen"] = true
+	Audio.play("click", 0.05, -6.0)
+
+## the choices are up from CROSS_SHOW_S seconds (and at least 45 m) out
+func _cross_showing() -> bool:
+	return not _cross.is_empty() and _pos.distance_to(_cross["at"]) < maxf(45.0, _v * CROSS_SHOW_S)
+
+func _cross_rect(i: int, n: int) -> Rect2:
+	var w := 78.0
+	return Rect2(320.0 - n * (w + 6.0) * 0.5 + i * (w + 6.0) + 3.0, 44.0, w, 46.0)
 
 ## ---- going to an address ------------------------------------------------------------------
 
@@ -2400,7 +2465,7 @@ func _build_hud() -> void:
 	_dest_lbl.position = Vector2(150, 314)
 	_dest_lbl.size = Vector2(340, 18)
 	_banner = _label(20, "warn")
-	_banner.position = Vector2(120, 70)
+	_banner.position = Vector2(120, 98)
 	_banner.size = Vector2(400, 30)
 	_banner.modulate.a = 0.0
 	_osm_lbl = _label(8, "ink")
@@ -2456,6 +2521,27 @@ func _draw_hud() -> void:
 	_hud.draw_rect(AUTO_BTN, Color(on, 0.9), false, 1.5)
 	var txt := "AUTODRIVE ON" if _auto else "autodrive"
 	_hud.draw_string(_font, AUTO_BTN.position + Vector2(0, 15), txt, HORIZONTAL_ALIGNMENT_CENTER, AUTO_BTN.size.x, 11, on)
+	if _auto and _cross_showing():
+		var ways: Array = _cross["ways"]
+		var commit := maxf(10.0, _v * 1.3)
+		var show := maxf(45.0, _v * CROSS_SHOW_S)
+		var left := clampf((_pos.distance_to(_cross["at"]) - commit) / maxf(show - commit, 1.0), 0.0, 1.0)
+		for i in range(ways.size()):
+			var rc := _cross_rect(i, ways.size())
+			var mine: bool = i == _cross["pick"]
+			var col := (Palette.col("friend") if _cross["chosen"] else Palette.col("accent")) if mine else ink
+			_hud.draw_rect(rc, Color(bg, 0.9))
+			_hud.draw_rect(rc, Color(col, 0.95 if mine else 0.5), false, 2.0 if mine else 1.0)
+			var c := rc.position + Vector2(rc.size.x * 0.5, 17.0)
+			var v := Vector2(sin(ways[i]["turn"]), -cos(ways[i]["turn"]))
+			_hud.draw_line(c - v * 9.0, c + v * 7.0, col, 3.0)
+			var side := Vector2(-v.y, v.x)
+			_hud.draw_colored_polygon(PackedVector2Array([c + v * 13.0, c + v * 5.0 + side * 5.5, c + v * 5.0 - side * 5.5]), col)
+			var nm: String = ways[i]["en"] if ways[i]["en"] != "" else ways[i]["name"]
+			_hud.draw_string(_font, rc.position + Vector2(2, 41), nm, HORIZONTAL_ALIGNMENT_CENTER, rc.size.x - 4, 9, Color(ink, 0.9))
+		if not _cross["chosen"]:
+			var bar := Rect2(_cross_rect(0, ways.size()).position + Vector2(0, 50), Vector2(ways.size() * 84.0 - 6.0, 3))
+			_hud.draw_rect(Rect2(bar.position, Vector2(bar.size.x * left, 3)), Color(Palette.col("accent"), 0.8))
 	var go := Palette.col("accent")
 	_hud.draw_rect(GOTO_BTN, Color(bg, 0.65))
 	_hud.draw_rect(GOTO_BTN, Color(go, 0.9), false, 1.5)
@@ -2558,6 +2644,11 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT and not Flow.pointer_over_hud():
+			if _auto and _cross_showing() and not _cross["chosen"]:
+				for i in range((_cross["ways"] as Array).size()):
+					if _cross_rect(i, (_cross["ways"] as Array).size()).grow(3).has_point(mb.position):
+						_cross_pick(i)
+						return
 			if AUTO_BTN.grow(4).has_point(mb.position):
 				_set_auto(not _auto)
 			elif GOTO_BTN.grow(4).has_point(mb.position):

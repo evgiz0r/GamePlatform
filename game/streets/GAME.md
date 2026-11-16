@@ -45,6 +45,16 @@ takes the wheel back from autodrive; tap "autodrive" to hand it over.
 > The circle keeps moving. Can't drive like that. Make it a static circle, somewhere on
 > the right side.
 
+**Choosing the way.** While autodrive is driving (and not to an address), each real
+crossing ahead -- two or more proper streets on, not driveways -- puts its choices at the
+top of the screen about five seconds before it: an arrow per way with the street's name
+and a bar running down. Tap one (or press left / up / right). Leave it and autodrive takes
+its own pick, mostly straight on and preferring streets you have not driven yet.
+
+> I want another mode of driving, where an option appears at every crossing a few seconds
+> before, and I can pick the action. If I don't choose, a random one or it just keeps
+> driving.
+
 **Going somewhere.** "go to…" opens a list of the city's streets (type in the box to
 filter, in Hebrew or English, or scroll), then that street's house numbers, or "anywhere"
 on it. Autodrive takes the shortest legal way there (one-way streets respected), a beacon

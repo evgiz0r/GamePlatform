@@ -132,7 +132,7 @@ machines and commits the file, and you can start it with the GitHub tools.
   Without this you are blind during playtests and so is the report.
 - **Mouse clicks**: if the game acts on a click, bail out first when
   `Flow.pointer_over_hud()` is true. Games read clicks in `_input()`, which runs before
-  the GUI, so without this a tap on the shell's "menu" button also fires the game
+  the GUI, so without this a tap on the shell's "exit" button also fires the game
   underneath it.
 - **Touch controls**: assume a phone, not just a mouse. A pointer control should never need
   to sit on top of the thing it is steering — see "Controls" in the `game-design` skill for

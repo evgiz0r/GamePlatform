@@ -355,7 +355,7 @@ func _build_sound_toggle() -> void:
 	# defaults to pausable and the pause screen has to opt out the same way (see
 	# toggle_pause() below), so this needs the same explicit opt-out.
 	_sound_btn.process_mode = Node.PROCESS_MODE_ALWAYS
-	# sits directly left of where the per-game "menu" button appears (566,8 size 62x22)
+	# sits directly left of where the per-game "exit" button appears (566,8 size 62x22)
 	_sound_btn.custom_minimum_size = Vector2(56, 22)
 	_sound_btn.size = Vector2(56, 22)
 	_sound_btn.position = Vector2(502, 8)
@@ -395,7 +395,9 @@ func _build_hud() -> void:
 
 	# Always-available way out. Pause has one too, but on a phone there is no Escape key,
 	# so without this the only exit from a game is the browser's back button.
-	var out := UIKit.button("menu", goto_menu)
+	# "exit", not "menu": it leaves the game (and its progress) for the main menu, and
+	# players read "menu" as "open a menu" and lost their run to it
+	var out := UIKit.button("exit", goto_menu)
 	out.name = "MenuButton"
 	# Fixed position in the 640x360 design space, like the score row above. Anchoring it to
 	# the right edge did not render at all here; this is the idiom that works in this file.
