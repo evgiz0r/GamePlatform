@@ -104,7 +104,7 @@ def log(*a):
 
 # ---- fetch ---------------------------------------------------------------------------
 
-def overpass(query, tries=2):
+def overpass(query, tries=3):
     body = urllib.parse.urlencode({"data": query}).encode()
     for attempt in range(tries):
         for url in SERVERS:
@@ -112,7 +112,7 @@ def overpass(query, tries=2):
                 req = urllib.request.Request(url, data=body, headers={
                     "User-Agent": "osm-city-bake/1 (a game kit's map baker)",
                     "Accept": "application/json"})
-                with urllib.request.urlopen(req, timeout=300) as r:
+                with urllib.request.urlopen(req, timeout=240) as r:
                     answer = json.loads(r.read().decode("utf-8"))
                 # a timed-out or failed query still answers 200, with a remark and no data
                 remark = answer.get("remark", "")
@@ -122,8 +122,9 @@ def overpass(query, tries=2):
             except Exception as e:  # rate limits and timeouts are routine on public servers
                 log(f"  {urllib.parse.urlparse(url).netloc}: {e}")
         if attempt + 1 < tries:
-            log("  every server refused; trying again in 20s")
-            time.sleep(20)
+            wait = 30 * 3 ** attempt   # busy public servers: give them a minute or two
+            log(f"  every server refused; trying again in {wait}s")
+            time.sleep(wait)
     sys.exit("overpass: giving up (are the servers reachable from this network?)")
 
 
@@ -208,14 +209,17 @@ def take_in(names, box):
     def km(lat, lon):
         return math.hypot((lat - cy) * 111.32, (lon - cx) * 111.32 * kx)
 
-    for name in [x.strip() for x in names.split(";") if x.strip()]:
-        # exact name first: tag values are indexed, so it answers at once. A pattern over
-        # every key of everything for 30 km timed out on all three servers.
-        nm = name.replace('"', '\\"')
-        data = overpass(f"[out:json][timeout:120];"
-                        f'(nwr["name"="{nm}"](around:20000,{cy},{cx});'
-                        f'nwr["name:en"="{nm}"](around:20000,{cy},{cx}););out bb;')
-        if not data["elements"]:
+    wanted = [x.strip() for x in names.split(";") if x.strip()]
+    # every exact name in ONE request (tag values are indexed, so it answers at once; the
+    # public servers throttle many small requests from shared CI addresses)
+    union = "".join(f'nwr["{key}"="{w.replace(chr(34), "")}"](around:20000,{cy},{cx});'
+                    for w in wanted for key in ("name", "name:en"))
+    exact = overpass(f"[out:json][timeout:180];({union});out bb;")["elements"]
+    for name in wanted:
+        hits = [el for el in exact if name in (el.get("tags", {}).get("name"),
+                                                el.get("tags", {}).get("name:en"))]
+        data = {"elements": hits}
+        if not hits:   # a spelling or case slip: a pattern on the name key, nearer in
             rx = name_regex(name).replace('"', '\\"')
             data = overpass(f"[out:json][timeout:180];"
                             f'nwr["name"~"{rx}",i](around:12000,{cy},{cx});out bb;')
