@@ -23,7 +23,7 @@ var where := {}                ## kind -> transforms of what went in (for tests 
 const SEEN := 320.0            ## poles, lamps: thin, gone in the haze
 const WIRE_SEEN := 200.0       ## wires: past this they are less than a pixel and shimmer
 const NEAR_SEEN := 140.0       ## racks, scooters, flags
-const CELL := 200.0            ## the map squares wires, fences and hedges are cut into
+const CELL := 400.0            ## the map squares wires, fences and hedges are cut into
 const FENCE_SEEN := 220.0
 const MAIN := {"primary": true, "secondary": true, "tertiary": true, "trunk": true}
 const FAST := {"motorway": true, "trunk": true, "motorway_link": true, "trunk_link": true}
@@ -93,9 +93,7 @@ func _init(game: Node) -> void:
 
 func _kit() -> StandardMaterial3D:
 	if _kit_mat == null:
-		_kit_mat = StandardMaterial3D.new()
-		_kit_mat.vertex_color_use_as_albedo = true
-		_kit_mat.roughness = 0.8
+		_kit_mat = g._vc_mat()   # shared with the signs: merged into the same meshes
 	return _kit_mat
 
 func _mesh(b, m: Material = null) -> ArrayMesh:

@@ -23,10 +23,19 @@ streets
 Someone driving an ordinary car through their own town, on a sunny day, seen from just
 behind and above the car (a chase cam that swings out a little on the turns and pulls in
 rather than sit inside a wall) -- or from the driver's seat (the "seat" button, or C):
-the dashboard, a steering wheel that turns with the front wheels, the pillars and the
-mirror, the eyes leading a little into the turns.
+the dashboard, a steering wheel that turns with the front wheels, a speedometer and rev
+counter seen through the top of it, the pillars and the mirror, the eyes leading a little
+into the turns.
 
 > First-person / bonnet camera.
+
+**On foot.** Stop, and the "walk" button (or F) lets the driver out of the door to walk the
+same city: arrows or the stick to walk and turn, space to run, over the shoulder or (the
+"seat" button) from the eyes. The car idles where it was left and traffic goes round it;
+traffic stops for you on the road; walls, trees and passing cars push you aside; the
+minimap marks the car. Back at it, "drive" gets you in.
+
+> Walk mode: get out of the car and walk the same city.
 
 ## What do you do?
 
@@ -34,6 +43,13 @@ Drive, freely. The car behaves like a car rather than a toy: about 4 m/s² off t
 150 km/h flat out, firm brakes, steering that gets gentler with speed, tyres that let go
 if you take a corner too fast (it runs wide), body roll and nose dive. Hold the brake when
 stopped and it goes into reverse, like an automatic.
+
+The car's switches, on screen (top right) and on the keyboard: indicators (Q and E) that
+tick and go off by themselves after the turn, the horn (H: people on a crossing hurry, a
+car stuck in a standoff ahead goes), headlights (L; on by themselves at night), and
+reverse lights when backing. Autodrive signals its own turns.
+
+> Indicators, horn, headlights, speedometer.
 
 Keys: up = gas, down = brake (and reverse), left/right = steer. Space switches on
 **autodrive**, which drives the streets by itself in the right-hand lane, slows for
@@ -274,6 +290,17 @@ traffic are one mesh per car shape (a batch of them costs one draw, not six); ev
 of shader is drawn once while the city loads, so none of them stalls the first time it
 comes into view; the browser's shadow map is smaller and its filter cheaper.
 
+The small things a street is made of -- sign plates and their poles, lamp and power
+poles, racks, benches, balconies -- and the flat layers under them (asphalt, paint, paths,
+grass, pavement) are merged, while the city loads, into one mesh per 400 m square and draw
+range, all with one material: a vertex carries its colour, or the number of a palette tone
+looked up in a table the material holds (so `/look` still reskins them). That took a
+view from about 425 draw calls to 290 in Givatayim and from 515 to 385 in Ashdod. What
+changes at night or moves stays separate (lamps, lit glass, flags, ads, cars, people), and
+so do the trees, which are too many to copy.
+
+> Performance pass: fewer draw calls, faster loading of big cities.
+
 ## How do you win?
 
 There is no winning. The one game hook: every street of the city you drive down for the
@@ -341,4 +368,6 @@ the most useful thing to add) and bake again.
 
 - Bridges and tunnels: roads at different levels, an interchange you drive over and
   under.
+- Faster loading of a big city (Ashdod takes about 10 s here, mostly roads, kerbs and
+  trees), e.g. by building the far parts after the drive starts.
 - Not just driving: the same baked city could be walked, or used by another game.

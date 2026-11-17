@@ -118,7 +118,7 @@ const BLD_CELL := 24.0
 const CHUNK := 400.0                 ## buildings and trees are merged per square this big, for culling
 const VIEW_RANGE := 1100.0           ## building chunks further than this are not drawn
 const DETAIL_RANGE := 260.0          ## kerbs, road markings, garden walls: drawn this far
-const GROUND_CELL := 200.0           ## squares the ground details are cut into
+const GROUND_CELL := 400.0           ## squares the ground details are cut into (big: each layer is a draw a square)
 const TREE_RANGE := 550.0
 const LAMP_RANGE := 320.0            ## lamp posts, traffic-light poles: thin, gone in the haze
 const Y_AREA := 0.012
@@ -874,6 +874,7 @@ func _stage(name: String, t0: int) -> int:
 	return t
 
 func _build_world() -> bool:
+	_batching = true
 	# one shadow map over the near streets, not the default four cascades: those drew every
 	# shadow-casting thing in view four more times a frame, more than the view itself
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
@@ -987,6 +988,8 @@ func _build_world() -> bool:
 	tk = _stage("places", tk)
 	_furn.build()
 	tk = _stage("furniture", tk)
+	_flush_batches()
+	tk = _stage("batches", tk)
 	_city_data = {}
 	_area_rings = {}
 	return true
@@ -1082,6 +1085,11 @@ func _surface(tone: String) -> StandardMaterial3D:
 ## a Buf as mesh(es): one per square for a CBuf, each drawn while the camera is within
 ## `seen` metres of it (0: always)
 func _add_mesh(buf: Buf, m: Material, shadows: bool, seen := 0.0) -> Array:
+	if _batching and not buf.empty():
+		var how := _merge_as(m)
+		if not how.is_empty():
+			_batch_buf(buf, m, how, shadows, seen)
+			return []
 	var made: Array = []
 	var parts := buf.parts()
 	var half := (buf as CBuf).cell * 0.71 if buf is CBuf else 0.0
@@ -1743,9 +1751,7 @@ func _build_facade_kit() -> void:
 					var q := mid + e * sd + out * 1.7
 					kit["post"].append(Transform3D(Basis(), Vector3(q.x, g_lo + 1.3, q.y)))
 					kit_col["post"].append(wc)
-	var tinted := StandardMaterial3D.new()
-	tinted.vertex_color_use_as_albedo = true
-	tinted.roughness = 0.9
+	var tinted := _vc_mat()
 	var meshes := {"balcony": _balcony_mesh(), "column": _boxm(Vector3.ONE), "canopy": _boxm(Vector3(2.4, 0.14, 1.1)),
 		"porch": _boxm(Vector3(3.4, 0.14, 1.9)), "post": _boxm(Vector3(0.14, 2.6, 0.14))}
 	var ranges := {"balcony": 230.0, "column": 260.0, "canopy": 150.0, "porch": 220.0, "post": 160.0}
@@ -3274,8 +3280,266 @@ func _palm_fronds(leaf: Material) -> ArrayMesh:
 ## 400 m squares for things seen 160 m off drew every parked car in a whole square, and
 ## none at all from near a corner of one. Optional per-copy colours. Shadows only where
 ## asked: the shadow map draws every caster again.
+## ---- batching: the small things merged ---------------------------------------------------
+## A street has dozens of kinds of small things -- sign plates and poles, lamp posts, power
+## poles, racks, benches, balconies -- and as a multimesh each, every kind cost a draw call
+## in every square of the map in view: hundreds in all. While the city is built, every
+## kind that shares a material (most share one of a few: the poles' grey, the one vertex-
+## coloured "kit" material) is instead copied, transformed, into ONE mesh per square per
+## material and draw range. The copying is the engine's: a Transform3D times a packed array
+## of vertices is a single call. Left out: whatever changes at night or moves (lamps, lit
+## glass, flags, ads, the cars) and anything so numerous that copying it would be a lot of
+## memory (the trees), which stay multimeshes.
+var _batching := false
+var _batches := {}
+var _soups := {}
+const BATCH_CELL := 400.0
+const BATCH_RANGES := [140.0, 200.0, 270.0, 340.0, 460.0, 700.0, 1150.0]
+const BATCH_VERTS := 650000          ## more than this in one call: left as a multimesh (trees, balconies)
+
+## ONE material for every merged mesh: a vertex either carries its colour (alpha 1: signs,
+## kits, balconies) or the number of a tone of the palette (alpha 0, the number in red),
+## looked up in a table the material holds -- so the asphalt, the grass, the poles and the
+## paint of a square are one mesh and one draw, and a new palette is a new table.
+const TONE_SHADER := """
+shader_type spatial;
+render_mode cull_back;
+uniform vec4 tones[64] : source_color;
+void fragment() {
+	ALBEDO = COLOR.a < 0.02 ? tones[int(COLOR.r * 63.0 + 0.5)].rgb : COLOR.rgb;
+	ROUGHNESS = 0.9;
+	SPECULAR = 0.25;
+}
+"""
+var _tone_list: Array = []           ## the table's tone names, in order
+var _tone_material: ShaderMaterial
+
+func _tone_mat() -> ShaderMaterial:
+	if _tone_material == null:
+		_tone_material = ShaderMaterial.new()
+		var sh := Shader.new()
+		sh.code = TONE_SHADER
+		_tone_material.shader = sh
+	return _tone_material
+
+func _retint_tone_mat() -> void:
+	if _tone_material == null:
+		return
+	var cols := PackedColorArray()
+	cols.resize(64)
+	for i in range(_tone_list.size()):
+		cols[i] = _tone.get(_tone_list[i], Palette.col("warn"))
+	_tone_material.set_shader_parameter("tones", cols)
+
+## the tone a plain material is (one of _surface's), or "" when it is anything else
+func _tone_of(m: Material) -> String:
+	var sm := m as StandardMaterial3D
+	if sm == null or sm.vertex_color_use_as_albedo or sm.emission_enabled or sm.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED:
+		return ""
+	for t: String in _smat:
+		if _smat[t] == m and _tone.has(String(sm.get_meta("tone", t))) and t != "lamp":
+			return String(sm.get_meta("tone", t))
+	return ""
+
+## how a material's geometry goes into the merged mesh: [colour to fill with, or null to keep
+## the vertex colours, the material's own colour to multiply them by (linear)], or [] if it
+## is not one for the merged mesh. (A tree's tint is its instance colour times the leaf's.)
+func _merge_as(m: Material) -> Array:
+	var sm := m as StandardMaterial3D
+	if sm != null and sm.vertex_color_use_as_albedo and not sm.emission_enabled and sm.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED:
+		return [null, sm.albedo_color.srgb_to_linear()]
+	var t := _tone_of(m)
+	if t == "":
+		return []
+	var i := _tone_list.find(t)
+	if i < 0:
+		if _tone_list.size() >= 64:
+			return []
+		_tone_list.append(t)
+		i = _tone_list.size() - 1
+	return [Color(float(i) / 63.0, 0.0, 0.0, 0.0)]
+
+func _range_class(seen: float) -> float:
+	if seen <= 0.0:
+		return 100000.0
+	for r: float in BATCH_RANGES:
+		if r >= seen:
+			return r
+	return BATCH_RANGES[BATCH_RANGES.size() - 1]
+
+## a whole Buf (already in world space) into the merged meshes
+func _batch_buf(buf: Buf, m: Material, how: Array, shadows: bool, seen: float) -> void:
+	var rc := _range_class(seen)
+	var key := "U|%s|%d" % [shadows, int(rc)]
+	if not _batches.has(key):
+		_batches[key] = {"mat": _tone_mat(), "shadows": shadows, "range": rc, "cells": {}}
+	var cells: Dictionary = _batches[key]["cells"]
+	var parts := buf.parts()
+	for pk: Vector2i in parts:
+		var part: Buf = parts[pk]
+		if part.empty():
+			continue
+		var centre := part.v[0]
+		var ck := _cell(Vector2(centre.x, centre.z), BATCH_CELL)
+		var bat: Buf = cells.get(ck)
+		if bat == null:
+			bat = Buf.new()
+			cells[ck] = bat
+		bat.v.append_array(part.v)
+		bat.n.append_array(part.n)
+		if how[0] == null:
+			var alb: Color = how[1]
+			if alb == Color.WHITE:
+				bat.c.append_array(part.c)
+			else:
+				var pc := part.c.duplicate()
+				for k in range(pc.size()):
+					pc[k] = pc[k] * alb
+				bat.c.append_array(pc)
+		else:
+			var cs := PackedColorArray()
+			cs.resize(part.v.size())
+			cs.fill(how[0])
+			bat.c.append_array(cs)
+
+## the one material for everything coloured in its vertices (signs, kits, balconies)
+var _vc_material: StandardMaterial3D
+func _vc_mat() -> StandardMaterial3D:
+	if _vc_material == null:
+		_vc_material = StandardMaterial3D.new()
+		_vc_material.vertex_color_use_as_albedo = true
+		_vc_material.roughness = 0.75
+	return _vc_material
+
+## a mesh's first surface as plain triangles: [vertices, normals, colours, all white?]
+func _soup(mesh: Mesh) -> Array:
+	var id := mesh.get_instance_id()
+	if _soups.has(id):
+		return _soups[id]
+	var arr := mesh.surface_get_arrays(0)
+	var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var n: PackedVector3Array = arr[Mesh.ARRAY_NORMAL] if arr[Mesh.ARRAY_NORMAL] != null else PackedVector3Array()
+	var c: PackedColorArray = arr[Mesh.ARRAY_COLOR] if arr[Mesh.ARRAY_COLOR] != null else PackedColorArray()
+	var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX] if arr[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
+	if n.size() != v.size():
+		n = PackedVector3Array()
+		n.resize(v.size())
+		n.fill(Vector3.UP)
+	if c.size() != v.size():
+		c = PackedColorArray()
+		c.resize(v.size())
+		c.fill(Color.WHITE)
+	if not idx.is_empty():
+		var v2 := PackedVector3Array()
+		var n2 := PackedVector3Array()
+		var c2 := PackedColorArray()
+		v2.resize(idx.size())
+		n2.resize(idx.size())
+		c2.resize(idx.size())
+		for k in range(idx.size()):
+			v2[k] = v[idx[k]]
+			n2[k] = n[idx[k]]
+			c2[k] = c[idx[k]]
+		v = v2
+		n = n2
+		c = c2
+	var white := true
+	for col in c:
+		if col != Color.WHITE:
+			white = false
+			break
+	var out := [v, n, c, white]
+	_soups[id] = out
+	return out
+
+func _batchable(mesh: Mesh, m: Material, count: int) -> bool:
+	if mesh == null or mesh.get_surface_count() != 1:
+		return false
+	var mt: Material = m if m != null else mesh.surface_get_material(0)
+	if not (mt is StandardMaterial3D):
+		return false
+	var sm := mt as StandardMaterial3D
+	if sm.emission_enabled or sm.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED or sm == _smat.get("lamp"):
+		return false
+	return (_soup(mesh)[0] as PackedVector3Array).size() * count <= BATCH_VERTS
+
+func _batch_add(mesh: Mesh, xforms: Array, range_end: float, colours: Array, m: Material, shadows: bool) -> void:
+	var mt: Material = m if m != null else mesh.surface_get_material(0)
+	var rc := _range_class(range_end)
+	var how := _merge_as(mt)
+	var key := ("U|%s|%d" % [shadows, int(rc)]) if not how.is_empty() else ("%d|%s|%d" % [mt.get_instance_id(), shadows, int(rc)])
+	if not _batches.has(key):
+		_batches[key] = {"mat": _tone_mat() if not how.is_empty() else mt, "shadows": shadows, "range": rc, "cells": {}}
+	var cells: Dictionary = _batches[key]["cells"]
+	var soup := _soup(mesh)
+	var sv: PackedVector3Array = soup[0]
+	var sn: PackedVector3Array = soup[1]
+	var sc: PackedColorArray = soup[2]
+	var white: bool = soup[3]
+	var nv := sv.size()
+	for i in range(xforms.size()):
+		var t: Transform3D = xforms[i]
+		var ck := _cell(Vector2(t.origin.x, t.origin.z), BATCH_CELL)
+		var bat: Buf = cells.get(ck)
+		if bat == null:
+			bat = Buf.new()
+			cells[ck] = bat
+		bat.v.append_array(t * sv)
+		bat.n.append_array(Transform3D(t.basis, Vector3.ZERO) * sn)
+		if not how.is_empty() and how[0] != null:   # a plain tone: its number, whatever the instance colour
+			var ts := PackedColorArray()
+			ts.resize(nv)
+			ts.fill(how[0])
+			bat.c.append_array(ts)
+		elif colours.is_empty() and (how.is_empty() or how[1] == Color.WHITE):
+			bat.c.append_array(sc)
+		else:
+			var col: Color = (colours[i] if not colours.is_empty() else Color.WHITE) * (how[1] if not how.is_empty() else Color.WHITE)
+			var cs := PackedColorArray()
+			cs.resize(nv)
+			if white:
+				cs.fill(col)
+			else:
+				for k in range(nv):
+					cs[k] = sc[k] * col
+			bat.c.append_array(cs)
+
+func _flush_batches() -> void:
+	_batching = false
+	_retint_tone_mat()
+	var made := 0
+	for key: String in _batches:
+		var b: Dictionary = _batches[key]
+		var rc: float = b["range"]
+		for ck: Vector2i in b["cells"]:
+			var bat: Buf = b["cells"][ck]
+			var arr := []
+			arr.resize(Mesh.ARRAY_MAX)
+			arr[Mesh.ARRAY_VERTEX] = bat.v
+			arr[Mesh.ARRAY_NORMAL] = bat.n
+			arr[Mesh.ARRAY_COLOR] = bat.c
+			var am := ArrayMesh.new()
+			am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+			am.surface_set_material(0, b["mat"])
+			var mi := MeshInstance3D.new()
+			mi.mesh = am
+			if rc < 99999.0:
+				mi.visibility_range_end = rc + BATCH_CELL * 0.71
+				mi.visibility_range_end_margin = 20.0
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if b["shadows"] else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			world.add_child(mi)
+			made += 1
+	_dressing["batches"] = made
+	_batches = {}
+	_soups = {}
+
 func _chunked(mesh: Mesh, xforms: Array, range_end: float, colours: Array = [], m: Material = null, shadows := false,
 		custom := false) -> void:
+	if xforms.is_empty():
+		return
+	if _batching and not custom and _batchable(mesh, m, xforms.size()):
+		_batch_add(mesh, xforms, range_end, colours, m, shadows)
+		return
 	# a square about as big as the range: little things (signs, posts, racks) seen 100-150 m
 	# off in 140 m squares were a dozen draws a kind, and a big city tens of thousands of nodes
 	var cell := clampf(range_end, 220.0, CHUNK)
@@ -3544,9 +3808,7 @@ func _build_pois() -> void:
 	if not boards.is_empty():
 		var plate := BoxMesh.new()
 		plate.size = Vector3(1.0, 0.95, 0.08)
-		var bmat := StandardMaterial3D.new()
-		bmat.vertex_color_use_as_albedo = true   # each board's own colour (instance colour)
-		bmat.roughness = 0.7
+		var bmat := _vc_mat()   # each board's own colour (instance colour)
 		# cut into squares like everything else (one multimesh across the city is culled by
 		# the middle of its box, and the boards vanished away from the town centre)
 		_chunked(plate, boards, SIGN_RANGE * 3.0, board_cols, bmat)
@@ -4427,10 +4689,7 @@ func _street_sign_mesh(kind: String) -> ArrayMesh:
 			flat.call([Vector2(-0.63, -0.14), Vector2(0.56, -0.14), Vector2(0.66, 0.0), Vector2(0.56, 0.14), Vector2(-0.63, 0.14)], 0.006, green)
 	var am := ArrayMesh.new()
 	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, b.arrays())
-	var m := StandardMaterial3D.new()
-	m.vertex_color_use_as_albedo = true
-	m.roughness = 0.6
-	am.surface_set_material(0, m)
+	am.surface_set_material(0, _vc_mat())
 	_sign_meshes[kind] = am
 	return am
 
@@ -4872,6 +5131,7 @@ func _retint_city() -> void:
 		m.set_shader_parameter("col", _tone[m.get_meta("tone")])
 	if _furn != null:
 		_furn.retint()
+	_retint_tone_mat()
 	var lamp := _surface("lamp")
 	lamp.emission_enabled = _night
 	lamp.emission = _tone["lamplight"]
