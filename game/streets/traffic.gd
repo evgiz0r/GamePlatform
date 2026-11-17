@@ -78,6 +78,8 @@ class Car:
 	var free_t := 0.0
 	var dwell := 0.0                  ## a bus: seconds stood at the stop
 	var served := {}                  ## a bus: the stops it has stopped at
+	var blink := 0                    ## indicating: -1 left, 1 right
+	var pull_out := 0.0               ## a bus leaving a stop: seconds it signals out
 
 var g: Node                           ## the game: its road graph, lights, ground, player
 var cars: Array = []
@@ -89,6 +91,10 @@ const TAKE_AHEAD := 22.0              ## who goes first at a junction is settled
 var _mm: MultiMesh
 var _mms := {}                        ## car shape -> its multimesh
 var _beams: MultiMeshInstance3D       ## their beams on the road, at night
+var _blinkers: MultiMesh              ## the indicators that are lit, front and back: one draw
+## each kind's half width and half length, for where its indicators are
+const CORNERS := {"sedan": Vector2(0.9, 2.25), "hatch": Vector2(0.86, 1.95), "suv": Vector2(0.96, 2.32),
+	"van": Vector2(0.98, 2.45), "taxi": Vector2(0.9, 2.25), "bus": Vector2(1.25, 5.85), "moto": Vector2(0.3, 0.8)}
 var _night := false
 var _roads: Array
 var _node_roads: Array
@@ -132,6 +138,20 @@ func setup(game: Node) -> void:
 	_beams.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_beams.visible = false
 	g.world.add_child(_beams)
+	_blinkers = MultiMesh.new()
+	_blinkers.transform_format = MultiMesh.TRANSFORM_3D
+	var lamp := BoxMesh.new()
+	lamp.size = Vector3(0.13, 0.1, 0.1)
+	lamp.material = g.mat("warn", 2.6)
+	_blinkers.mesh = lamp
+	_blinkers.instance_count = COUNT * 2
+	_blinkers.custom_aabb = box
+	for k in range(COUNT * 2):
+		_blinkers.set_instance_transform(k, Transform3D(Basis(), Vector3(0, -500, 0)))
+	var bmi := MultiMeshInstance3D.new()
+	bmi.multimesh = _blinkers
+	bmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	g.world.add_child(bmi)
 	var palette: Array = g._car_paints()
 	var med := String(g._place.get("look", "")) == "med"
 	# the city's buses: Givatayim's in the blue and the green of its two companies, Bedford's white
@@ -199,6 +219,7 @@ func tick(dt: float) -> void:
 		var ds := clampf(c.shift_to - c.shift, -LANE_MOVE * dt, LANE_MOVE * dt)
 		c.shift += ds
 		c.shift_rate = ds / maxf(dt, 0.001)
+		_signal(c, dt)
 		if c.hit > 0.0:
 			c.hit -= dt
 			vt = 0.0
@@ -563,6 +584,27 @@ func _proj(c: Car, q: Vector2, back: float, ahead: float) -> Vector2:
 			continue
 		return Vector2(along, lat)
 	return Vector2(INF, INF)
+
+## which way a driver is signalling: changing lanes (left is +shift), the turn ahead within
+## 40 m, a bus pulling in to its stop or out of it
+func _signal(c: Car, dt: float) -> void:
+	c.pull_out = maxf(0.0, c.pull_out - dt)
+	if c.kind == "bus" and c.dwell > DWELL - 1.5:
+		c.pull_out = 4.0
+	if c.pull_out > 0.0:
+		c.blink = -1
+		return
+	if absf(c.shift_to - c.shift) > 0.4:
+		c.blink = -1 if c.shift_to > c.shift else 1
+		return
+	var turn: Array = _turn_ahead(c)
+	if int(turn[0]) != 0 and float(turn[1]) < 40.0:
+		c.blink = int(turn[0])
+		return
+	if c.kind == "bus" and c.shift_to < c.shift - 0.2:
+		c.blink = 1
+		return
+	c.blink = 0
 
 ## ---- lanes --------------------------------------------------------------------------------
 
@@ -982,11 +1024,24 @@ func draw(f: float) -> void:
 		mm.set_instance_custom_data(i, Color(c.paint, c.braking))
 		if _night:
 			_beams.multimesh.set_instance_transform(i, xf)
+		# the indicators: the car's right is its -X
+		var lit := c.blink != 0 and fmod(_clock + float(i) * 0.13, 0.7) < 0.36
+		if lit:
+			var cn: Vector2 = CORNERS.get(c.kind, Vector2(0.9, 2.25))
+			var x := -float(c.blink) * (cn.x - 0.04)
+			_blinkers.set_instance_transform(i * 2, xf * Transform3D(Basis(), Vector3(x, 0.72, cn.y)))
+			_blinkers.set_instance_transform(i * 2 + 1, xf * Transform3D(Basis(), Vector3(x, 0.86, -cn.y)))
+		else:
+			_blinkers.set_instance_transform(i * 2, Transform3D(Basis(), Vector3(0, -500, 0)))
+			_blinkers.set_instance_transform(i * 2 + 1, Transform3D(Basis(), Vector3(0, -500, 0)))
 
 func _hide_or_show(i: int) -> void:
 	var c: Car = cars[i]
 	if not c.alive:
 		(_mms[c.kind] as MultiMesh).set_instance_transform(i, Transform3D(Basis(), Vector3(0, -500, 0)))
+		if _blinkers != null:
+			_blinkers.set_instance_transform(i * 2, Transform3D(Basis(), Vector3(0, -500, 0)))
+			_blinkers.set_instance_transform(i * 2 + 1, Transform3D(Basis(), Vector3(0, -500, 0)))
 		if _beams != null:
 			_beams.multimesh.set_instance_transform(i, Transform3D(Basis(), Vector3(0, -500, 0)))
 

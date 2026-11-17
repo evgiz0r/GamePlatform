@@ -477,6 +477,22 @@ var _cockpit := false                ## the view from the driver's seat
 var _cockpit_node: Node3D            ## dashboard, wheel, pillars: only shown in that view
 var _wheel_node: Node3D
 var _sedan_node: Node3D              ## the player's car body: only its shadow from the seat
+## ---- the driver's controls: indicators, horn, lights ----
+var _blink := 0                      ## indicator: -1 left, 1 right, 0 off
+var _blink_t := 0.0                  ## seconds it has been on
+var _blink_yaw := 0.0                ## the heading when it went on: off again after the turn
+var _blink_lit := false
+var _blink_nodes := {}               ## side -> its lamps (front and back corner)
+var _reverse_nodes: Array = []
+var _lights_on := false
+var _beam_node: MeshInstance3D
+var _horn_t := 0.0                   ## a tap of the horn: seconds left of it
+var _horn_held := false
+var _snd_tick: AudioStreamPlayer
+var _snd_horn: AudioStreamPlayer
+var _dial_speed: Node3D
+var _dial_rpm: Node3D
+var _dash_arrows := {}               ## side -> the green arrow on the dashboard
 var _look_turn := 0.0                ## the driver's glance into a turn
 
 ## ---- autodrive (the bots' way in, and the seed of AI traffic later) ----
@@ -551,6 +567,10 @@ const GOTO_BTN := Rect2(290, 334, 80, 20)
 const ASSIST_BTN := Rect2(376, 334, 70, 20)
 const NIGHT_BTN := Rect2(452, 334, 52, 20)
 const VIEW_BTN := Rect2(578, 98, 52, 20)    ## chase cam / driver's seat (key C too)
+const LIGHTS_BTN := Rect2(578, 122, 52, 20)  ## headlights (key L)
+const BLINK_L_BTN := Rect2(558, 146, 24, 20) ## indicators (keys Q and E) and the horn (H)
+const HORN_BTN := Rect2(585, 146, 28, 20)
+const BLINK_R_BTN := Rect2(616, 146, 24, 20)
 const STICK_C := Vector2(556, 268)   ## the touch stick sits still, here, on the right
 const STICK_R := 52.0                ## thumb travel (design px) for full lock / full gas
 const STICK_GRAB := 84.0             ## a thumb this close to its centre takes hold of it
@@ -609,6 +629,7 @@ func start(_config: Dictionary) -> void:
 	_traffic = Traffic.new()
 	_traffic.setup(self)
 	_build_engine()
+	_build_signal_sounds()
 	_dressing["traffic"] = _traffic.alive_count()
 	_loaded = true
 	track3d(_car, "@")
@@ -2928,6 +2949,9 @@ func _set_night(on: bool) -> void:
 		_make_pools()
 	for n: Node3D in _night_nodes:
 		n.visible = on
+	_lights_on = on   # headlights on with the dark (the lights button still switches them)
+	if _beam_node != null:
+		_beam_node.visible = _lights_on
 	_retint_city()
 	if on:
 		sun.shadow_enabled = false
@@ -4893,8 +4917,10 @@ func _build_car() -> void:
 	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	beam.visible = _night
 	_car.add_child(beam)
-	_night_nodes.append(beam)
+	_beam_node = beam
+	_lights_on = _night
 	_build_cockpit()
+	_build_car_signals()
 
 func _fwd() -> Vector2:
 	return Vector2(cos(_yaw), sin(_yaw))
@@ -4927,7 +4953,7 @@ func _build_cockpit() -> void:
 	# the dashboard under the windscreen (down to the footwell), the instrument hood in
 	# front of the driver, the centre console, and the doors' insides below the windows
 	box.call(Vector3(0, 0.7, 0.78), Vector3(1.7, 0.5, 0.62), dark)
-	box.call(Vector3(0.37, 0.98, 0.56), Vector3(0.42, 0.07, 0.2), dark.darkened(0.2))
+	box.call(Vector3(0.37, 1.0, 0.55), Vector3(0.44, 0.1, 0.16), dark.darkened(0.2))   # the binnacle
 	box.call(Vector3(0, 0.5, 0.2), Vector3(0.3, 0.3, 0.6), dark.lightened(0.05))
 	for sx: float in [-1.0, 1.0]:
 		box.call(Vector3(sx * 0.84, 0.66, 0.05), Vector3(0.05, 0.56, 1.9), dark.lightened(0.08))
@@ -4988,6 +5014,71 @@ func _build_cockpit() -> void:
 	_cockpit_node.add_child(mi)
 	# the wheel: a ring and three spokes, tilted back toward the driver, turned with the
 	# front wheels (about 15 turns of it to one of theirs)
+	# the speedometer and rev counter in the binnacle, facing the driver, and the green
+	# indicator arrows between them
+	var face_c: Color = _tone["tyre"].darkened(0.4)
+	var tick_c: Color = _tone["mark"]
+	var dial_at := [Vector3(0.465, 1.03, 0.43), Vector3(0.275, 1.03, 0.43)]
+	var dial_b := Basis(Vector3.RIGHT, 0.32)   # tipped back toward the eyes
+	var b0: Buf = b
+	b = Buf.new()   # (the cockpit's own mesh is built already: the dials get one of theirs)
+	for di in range(2):
+		var c: Vector3 = dial_at[di]
+		var R := 0.052
+		for i in range(16):
+			var a0 := TAU * i / 16.0
+			var a1 := TAU * (i + 1) / 16.0
+			var e0 := Vector3(cos(a0), sin(a0), 0)
+			var e1 := Vector3(cos(a1), sin(a1), 0)
+			b.tri(c, c + dial_b * (e0 * R), c + dial_b * (e1 * R), dial_b * Vector3.FORWARD, face_c)
+			# a bright rim round it, so the dial reads in a dark cabin
+			var z := Vector3(0, 0, -0.001)
+			b.tri(c + dial_b * (e0 * R + z), c + dial_b * (e0 * (R + 0.006) + z), c + dial_b * (e1 * (R + 0.006) + z), dial_b * Vector3.FORWARD, tick_c)
+			b.tri(c + dial_b * (e0 * R + z), c + dial_b * (e1 * (R + 0.006) + z), c + dial_b * (e1 * R + z), dial_b * Vector3.FORWARD, tick_c)
+		for i in range(9):
+			var a := 2.2 - 4.4 * i / 8.0 + PI * 0.5
+			var d := Vector3(cos(a), sin(a), 0)
+			var nn := Vector3(-d.y, d.x, 0) * 0.003
+			var p0 := d * R * 0.78
+			var p1 := d * R * 0.95
+			b.tri(c + dial_b * (p0 - nn + Vector3(0, 0, -0.002)), c + dial_b * (p1 - nn + Vector3(0, 0, -0.002)), c + dial_b * (p1 + nn + Vector3(0, 0, -0.002)), dial_b * Vector3.FORWARD, tick_c)
+			b.tri(c + dial_b * (p0 - nn + Vector3(0, 0, -0.002)), c + dial_b * (p1 + nn + Vector3(0, 0, -0.002)), c + dial_b * (p0 + nn + Vector3(0, 0, -0.002)), dial_b * Vector3.FORWARD, tick_c)
+		var pivot := Node3D.new()
+		pivot.position = c + dial_b * Vector3(0, 0, -0.004)
+		pivot.basis = dial_b
+		_cockpit_node.add_child(pivot)
+		var needle := MeshInstance3D.new()
+		var nm := BoxMesh.new()
+		nm.size = Vector3(0.004, 0.05, 0.002)
+		needle.mesh = nm
+		needle.position = Vector3(0, 0.022, 0)
+		needle.material_override = mat("hazard", 1.4)
+		pivot.add_child(needle)
+		if di == 0:
+			_dial_speed = pivot
+		else:
+			_dial_rpm = pivot
+	var dmi := MeshInstance3D.new()
+	var dam := ArrayMesh.new()
+	dam.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, b.arrays())
+	dam.surface_set_material(0, m)
+	dmi.mesh = dam
+	dmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_cockpit_node.add_child(dmi)
+	b = b0
+	for side: int in [-1, 1]:
+		var arrow := MeshInstance3D.new()
+		var ab := Buf.new()
+		var sx := -float(side)   # the car's right is -X
+		var c := Vector3(0.37 + sx * 0.03, 1.03, 0.43)
+		ab.tri(c + dial_b * Vector3(sx * 0.018, 0, -0.003), c + dial_b * Vector3(-sx * 0.01, 0.013, -0.003), c + dial_b * Vector3(-sx * 0.01, -0.013, -0.003), dial_b * Vector3.FORWARD, Color.WHITE)
+		var aam := ArrayMesh.new()
+		aam.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, ab.arrays())
+		arrow.mesh = aam
+		arrow.material_override = mat("friend", 2.2)
+		arrow.visible = false
+		_cockpit_node.add_child(arrow)
+		_dash_arrows[side] = arrow
 	_wheel_node = Node3D.new()
 	_wheel_node.position = Vector3(0.37, 0.94, 0.3)
 	_wheel_node.rotation.x = -0.45
@@ -5022,6 +5113,140 @@ func _build_cockpit() -> void:
 	wmi.mesh = wam
 	wmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_wheel_node.add_child(wmi)
+
+## the indicators at the car's four corners, and the reverse lights (+X is the car's left)
+func _build_car_signals() -> void:
+	var amber := mat("warn", 2.6)
+	for side: int in [-1, 1]:
+		var x := -0.86 * float(side)
+		var lamps: Array = []
+		for at: Vector3 in [Vector3(x, 0.66, 2.27), Vector3(x, 0.84, -2.31)]:
+			var l := _part(BoxMesh, at, Vector3(0.16, 0.1, 0.07), amber)
+			l.visible = false
+			l.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			_body.add_child(l)
+			lamps.append(l)
+		_blink_nodes[side] = lamps
+	for sx: float in [-1.0, 1.0]:
+		var r := _part(BoxMesh, Vector3(sx * 0.4, 0.84, -2.29), Vector3(0.16, 0.09, 0.04), mat("ink", 1.6))
+		r.visible = false
+		r.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_body.add_child(r)
+		_reverse_nodes.append(r)
+
+## the indicator's tick and the horn, made here like the engine: a click, and two tones
+## buzzing together
+func _build_signal_sounds() -> void:
+	var rate := 22050
+	var click := PackedFloat32Array()
+	click.resize(int(rate * 0.035))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 9
+	for i in range(click.size()):
+		var t := float(i) / rate
+		click[i] = exp(-t * 260.0) * (sin(TAU * 1700.0 * t) + 0.4 * (rng.randf() * 2.0 - 1.0))
+	_snd_tick = AudioStreamPlayer.new()
+	_snd_tick.stream = _wav(click, rate, false)
+	add_child(_snd_tick)
+	var horn := PackedFloat32Array()
+	horn.resize(int(rate * 0.5))   # 205 and 257.5 cycles: both tones loop seamlessly
+	for i in range(horn.size()):
+		var t := float(i) / rate
+		horn[i] = tanh(2.2 * sin(TAU * 410.0 * t)) + tanh(2.2 * sin(TAU * 515.0 * t)) * 0.85
+	_snd_horn = AudioStreamPlayer.new()
+	_snd_horn.stream = _wav(horn, rate, true)
+	add_child(_snd_horn)
+
+func _wav(samples: PackedFloat32Array, rate: int, loop: bool) -> AudioStreamWAV:
+	var peak := 0.0001
+	for v in samples:
+		peak = maxf(peak, absf(v))
+	var data := PackedByteArray()
+	data.resize(samples.size() * 2)
+	for i in range(samples.size()):
+		data.encode_s16(i * 2, int(clampf(samples[i] / peak * 0.8, -1.0, 1.0) * 32767.0))
+	var w := AudioStreamWAV.new()
+	w.format = AudioStreamWAV.FORMAT_16_BITS
+	w.mix_rate = rate
+	w.data = data
+	if loop:
+		w.loop_mode = AudioStreamWAV.LOOP_FORWARD
+		w.loop_end = samples.size()
+	return w
+
+func _set_blink(side: int) -> void:
+	_blink = side
+	_blink_t = 0.0
+	_blink_yaw = _yaw
+	if side != 0:
+		Probe.event("indicator", {"side": "right" if side > 0 else "left", "auto": _auto})
+
+func _set_lights(on: bool) -> void:
+	_lights_on = on
+	if _beam_node != null:
+		_beam_node.visible = on
+	_show_banner("lights on" if on else "lights off", 0.8)
+
+## every tick: the indicator blinks (and ticks), and goes off by itself once the turn it was
+## for is done; the reverse lights; the horn
+func _controls_tick(dt: float) -> void:
+	if _blink != 0:
+		_blink_t += dt
+		var turned := angle_difference(_blink_yaw, _yaw)   # + : turned right
+		if (turned * _blink > 0.6 and absf(_steer) < 0.08) or _blink_t > 20.0:
+			_set_blink(0)
+	var lit := _blink != 0 and fmod(_blink_t, 0.7) < 0.36
+	if lit != _blink_lit:
+		_blink_lit = lit
+		if _blink != 0 or not lit:
+			var base := linear_to_db(maxf(0.0001, float(SaveData.data.get("volume_sfx", 0.8))))
+			if not Audio.muted() and _snd_tick != null and (_blink != 0):
+				_snd_tick.volume_db = base - 14.0
+				_snd_tick.pitch_scale = 1.0 if lit else 0.82
+				_snd_tick.play()
+	for side: int in _blink_nodes:
+		for l: MeshInstance3D in _blink_nodes[side]:
+			l.visible = lit and side == _blink
+		if _dash_arrows.has(side):
+			(_dash_arrows[side] as Node3D).visible = lit and side == _blink
+	for r: MeshInstance3D in _reverse_nodes:
+		r.visible = _gear < 0
+	_horn_t = maxf(0.0, _horn_t - dt)
+	var honk := (_horn_held or _horn_t > 0.0) and not Audio.muted() and not finished
+	if _snd_horn != null:
+		if honk and not _snd_horn.playing:
+			_snd_horn.volume_db = linear_to_db(maxf(0.0001, float(SaveData.data.get("volume_sfx", 0.8)))) - 8.0
+			_snd_horn.play()
+			_on_horn()
+		elif not honk and _snd_horn.playing:
+			_snd_horn.stop()
+
+## what the horn does: people on a crossing ahead hurry, a car standing in a standoff in
+## front of you goes
+func _on_horn() -> void:
+	Probe.event("horn", {})
+	for cr: Dictionary in _crossers:
+		if cr["state"] == "cross" and (cr["a"] as Vector2).distance_to(_pos) < 30.0:
+			cr["speed"] = float(cr["speed"]) * 1.8
+	if _traffic != null:
+		for c in _traffic.cars:
+			if c.alive and c.v < 0.3 and c.wait > 1.5 and c.pos.distance_to(_pos) < 15.0 and (c.pos - _pos).dot(_fwd()) > 0.0:
+				c.ignore = 2.5
+
+## autodrive: the turn the plan makes within 35 m, for the indicator (-1, 1, or 0)
+func _ap_turn_ahead() -> int:
+	var n := _ap_pts.size()
+	var dist := 0.0
+	for j in range(1, n - 1):
+		dist += _ap_pts[j - 1].distance_to(_ap_pts[j])
+		if dist > 35.0:
+			break
+		var din := (_ap_pts[j] - _ap_pts[maxi(j - 3, 0)]).normalized()
+		var dout := (_ap_pts[mini(j + 3, n - 1)] - _ap_pts[j]).normalized()
+		var a := din.angle_to(dout)
+		if absf(a) > 0.7:
+			return 1 if a > 0.0 else -1
+	return 0
 
 func _set_cockpit(on: bool) -> void:
 	_cockpit = on
@@ -5326,6 +5551,11 @@ func _physics_process(dt: float) -> void:
 		_set_auto(false)
 	_traffic.tick(dt)
 	var ctl: Array = _autodrive(dt) if _auto else _manual(dt)
+	if _auto:
+		var turn := _ap_turn_ahead()
+		if turn != 0 and _blink != turn:
+			_set_blink(turn)
+	_controls_tick(dt)
 	_drive(dt, ctl[0], ctl[1], ctl[2])
 	_through_lights()
 	_check_stop_signs()
@@ -6392,6 +6622,12 @@ func _seat_camera(dt: float, yaw: float) -> void:
 	cam.fov = lerpf(72.0, 78.0, clampf(absf(_v) / 30.0, 0.0, 1.0))
 	if _wheel_node != null:
 		_wheel_node.rotation.z = _steer * 15.0 * 0.5
+	# the needles: 0-200 km/h and 0-7000 rpm round 4.4 radians, from the bottom left
+	if _dial_speed != null:
+		# (the dial's +X is the driver's left: from -2.2, bottom left as the driver sees it,
+		# clockwise over the top)
+		_dial_speed.basis = Basis(Vector3.RIGHT, 0.32) * Basis(Vector3.BACK, -2.2 + 4.4 * clampf(absf(_v) * 3.6 / 200.0, 0.0, 1.0))
+		_dial_rpm.basis = Basis(Vector3.RIGHT, 0.32) * Basis(Vector3.BACK, -2.2 + 4.4 * clampf(_rpm / 7000.0, 0.0, 1.0))
 
 func _clear_behind(from: Vector2, dir: Vector2, want: float) -> float:
 	var s := 1.0
@@ -7307,6 +7543,29 @@ func _draw_hud() -> void:
 	_hud.draw_rect(NIGHT_BTN, Color(bg, 0.65))
 	_hud.draw_rect(NIGHT_BTN, Color(nc, 0.9), false, 1.5)
 	_hud.draw_string(_font, NIGHT_BTN.position + Vector2(0, 15), "day" if _night else "night", HORIZONTAL_ALIGNMENT_CENTER, NIGHT_BTN.size.x, 11, nc)
+	var lc := Palette.col("warn") if _lights_on else Color(ink, 0.8)
+	_hud.draw_rect(LIGHTS_BTN, Color(bg, 0.65))
+	_hud.draw_rect(LIGHTS_BTN, Color(lc, 0.9), false, 1.5)
+	_hud.draw_string(_font, LIGHTS_BTN.position + Vector2(0, 15), "lights", HORIZONTAL_ALIGNMENT_CENTER, LIGHTS_BTN.size.x, 11, lc)
+	var green := Palette.col("friend")
+	for side: int in [-1, 1]:
+		var rb := BLINK_L_BTN if side < 0 else BLINK_R_BTN
+		var lit_side := _blink == side
+		var col := green if lit_side else Color(ink, 0.7)
+		_hud.draw_rect(rb, Color(bg, 0.65))
+		_hud.draw_rect(rb, Color(col, 0.9), false, 1.5)
+		var cc := rb.get_center()
+		var s := float(side)
+		_hud.draw_colored_polygon(PackedVector2Array([cc + Vector2(s * 6, 0), cc + Vector2(-s * 4, -6), cc + Vector2(-s * 4, 6)]),
+			Color(col, 1.0 if (lit_side and _blink_lit) or not lit_side else 0.35))
+		# and blinking by the speed, for the chase view
+		if lit_side and _blink_lit:
+			var at := Vector2(500.0 if side < 0 else 633.0, 50.0)
+			_hud.draw_colored_polygon(PackedVector2Array([at + Vector2(s * 7, 0), at + Vector2(-s * 5, -7), at + Vector2(-s * 5, 7)]), green)
+	var hc := Palette.col("hazard") if (_horn_held or _horn_t > 0.0) else Color(ink, 0.8)
+	_hud.draw_rect(HORN_BTN, Color(bg, 0.65))
+	_hud.draw_rect(HORN_BTN, Color(hc, 0.9), false, 1.5)
+	_hud.draw_string(_font, HORN_BTN.position + Vector2(0, 14), "horn", HORIZONTAL_ALIGNMENT_CENTER, HORN_BTN.size.x, 9, hc)
 	var vc := Palette.col("player") if _cockpit else Color(ink, 0.8)
 	_hud.draw_rect(VIEW_BTN, Color(bg, 0.65))
 	_hud.draw_rect(VIEW_BTN, Color(vc, 0.9), false, 1.5)
@@ -7431,9 +7690,26 @@ func _input(event: InputEvent) -> void:
 				_turn(-1)
 		return
 	var key := event as InputEventKey
-	if key != null and key.pressed and not key.echo and key.keycode == KEY_C:
-		_set_cockpit(not _cockpit)   # a view, not a control: bots have no use for it
-		return
+	if key != null and not key.echo:
+		# the view and the car's switches, straight off the keyboard: none of them drives the
+		# car, so the bots (which play through PInput) have no use for them
+		if key.keycode == KEY_H:
+			_horn_held = key.pressed
+			return
+		if key.pressed:
+			match key.keycode:
+				KEY_C:
+					_set_cockpit(not _cockpit)
+					return
+				KEY_Q:
+					_set_blink(0 if _blink == -1 else -1)
+					return
+				KEY_E:
+					_set_blink(0 if _blink == 1 else 1)
+					return
+				KEY_L:
+					_set_lights(not _lights_on)
+					return
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT and not Flow.pointer_over_hud():
@@ -7450,6 +7726,14 @@ func _input(event: InputEvent) -> void:
 				_set_night(not _night)
 			elif VIEW_BTN.grow(4).has_point(mb.position):
 				_set_cockpit(not _cockpit)
+			elif LIGHTS_BTN.grow(2).has_point(mb.position):
+				_set_lights(not _lights_on)
+			elif BLINK_L_BTN.grow(2).has_point(mb.position):
+				_set_blink(0 if _blink == -1 else -1)
+			elif BLINK_R_BTN.grow(2).has_point(mb.position):
+				_set_blink(0 if _blink == 1 else 1)
+			elif HORN_BTN.grow(2).has_point(mb.position):
+				_horn_t = 0.6
 			elif ASSIST_BTN.grow(4).has_point(mb.position):
 				_assist = not _assist
 				_show_banner("driving assist " + ("on" if _assist else "off"), 1.2)
@@ -7464,7 +7748,9 @@ func _input(event: InputEvent) -> void:
 		if t.pressed:
 			if AUTO_BTN.grow(4).has_point(t.position) or GOTO_BTN.grow(4).has_point(t.position) \
 					or ASSIST_BTN.grow(4).has_point(t.position) or NIGHT_BTN.grow(4).has_point(t.position) \
-					or VIEW_BTN.grow(4).has_point(t.position) \
+					or VIEW_BTN.grow(4).has_point(t.position) or LIGHTS_BTN.grow(2).has_point(t.position) \
+					or BLINK_L_BTN.grow(2).has_point(t.position) or BLINK_R_BTN.grow(2).has_point(t.position) \
+					or HORN_BTN.grow(2).has_point(t.position) \
 					or t.position.y < 36.0:
 				return   # the button (via its emulated click) and the shell's menu/sound row
 			if _stick_id < 0 and t.position.distance_to(STICK_C) <= STICK_GRAB:
