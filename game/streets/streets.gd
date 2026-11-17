@@ -493,6 +493,16 @@ var _snd_horn: AudioStreamPlayer
 var _dial_speed: Node3D
 var _dial_rpm: Node3D
 var _dash_arrows := {}               ## side -> the green arrow on the dashboard
+## ---- on foot ----
+var _walking := false
+var _me: Actor3D                     ## the driver, out of the car
+var _me_anim := ""
+var _car_at := Vector2.ZERO          ## where the car was left, and how
+var _car_yaw_at := 0.0
+var _car_y_at := 0.0
+const WALK := 1.45                   ## m/s
+const RUN := 4.2
+const TURN_ON_FOOT := 2.6            ## rad/s
 var _look_turn := 0.0                ## the driver's glance into a turn
 
 ## ---- autodrive (the bots' way in, and the seed of AI traffic later) ----
@@ -571,6 +581,7 @@ const LIGHTS_BTN := Rect2(578, 122, 52, 20)  ## headlights (key L)
 const BLINK_L_BTN := Rect2(558, 146, 24, 20) ## indicators (keys Q and E) and the horn (H)
 const HORN_BTN := Rect2(585, 146, 28, 20)
 const BLINK_R_BTN := Rect2(616, 146, 24, 20)
+const WALK_BTN := Rect2(578, 170, 52, 20)    ## out of the car and back in (key F)
 const STICK_C := Vector2(556, 268)   ## the touch stick sits still, here, on the right
 const STICK_R := 52.0                ## thumb travel (design px) for full lock / full gas
 const STICK_GRAB := 84.0             ## a thumb this close to its centre takes hold of it
@@ -5114,6 +5125,117 @@ func _build_cockpit() -> void:
 	wmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_wheel_node.add_child(wmi)
 
+## ---- on foot ---------------------------------------------------------------------------------
+## Out of the car (the "walk" button, or F, standing still): the driver steps out of the
+## door onto the street and walks the same city -- arrows or the stick to walk and turn,
+## held action (space) to run. The car waits where it was left, and traffic goes round it;
+## traffic stops for you on the road the way it does for the car. Back at the car, the
+## same button gets you in.
+
+func _get_out() -> void:
+	if absf(_v) > 1.0:
+		_show_banner("stop the car first", 1.2)
+		return
+	if _auto:
+		_set_auto(false)
+	_set_blink(0)
+	_horn_held = false
+	_throttle_in = 0.0
+	_car_at = _pos
+	_car_yaw_at = _yaw
+	_car_y_at = _y
+	var fwd := _fwd()
+	var left := Vector2(fwd.y, -fwd.x)
+	var door := _pos + left * 1.4
+	if _push_out(door, 0.35, true) != Vector2.ZERO:
+		door = _pos - left * 1.4   # a wall on that side: out of the other door
+	if _me == null:
+		_me = Actor3D.new()
+		world.add_child(_me)
+		_me.set_character(PEOPLE[1], 1.76)
+	_me.visible = true
+	_me_anim = ""
+	_walking = true
+	_set_cockpit(_cockpit)   # (from the eyes if the seat view was on)
+	if _cockpit_node != null:
+		_cockpit_node.visible = false
+	if _sedan_node != null:   # the car seen from outside again, whatever the view
+		for gi: GeometryInstance3D in _sedan_node.find_children("*", "GeometryInstance3D", true, false):
+			gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	_pos = door
+	_prev_pos = door
+	_v = 0.0
+	_y = _h(door)
+	_cam_dist = 3.4
+	Probe.event("walk", {"on": true})
+	_show_banner("on foot", 1.0)
+
+func _get_in() -> void:
+	var d := _pos.distance_to(_car_at)
+	if d > 3.6:
+		_show_banner("walk back to the car (%d m)" % int(d), 1.4)
+		return
+	_walking = false
+	_me.visible = false
+	_set_cockpit(_cockpit)   # back to the view it was in
+	_pos = _car_at
+	_prev_pos = _car_at
+	_yaw = _car_yaw_at
+	_prev_yaw = _yaw
+	_y = _car_y_at
+	_v = 0.0
+	_gear = 1
+	Probe.event("walk", {"on": false})
+	_show_banner("driving", 1.0)
+
+func _walk(dt: float) -> void:
+	var turn := PInput.axis("move_left", "move_right")
+	var go := (1.0 if PInput.pressed("move_up") else 0.0) - (1.0 if PInput.pressed("move_down") else 0.0)
+	if _stick_id >= 0:
+		turn = signf(_stick.x) * _dead(absf(_stick.x))
+		go = -signf(_stick.y) * _dead(absf(_stick.y))
+	var run := PInput.pressed("action_a") or (_stick_id >= 0 and _stick.length() > 0.92)
+	_yaw = wrapf(_yaw + turn * TURN_ON_FOOT * dt, -PI, PI)
+	var want := go * (RUN if run and go > 0.0 else WALK) * (0.6 if go < 0.0 else 1.0)
+	_v = move_toward(_v, want, 9.0 * dt)
+	_pos += _fwd() * _v * dt
+	# walls, trees and posts; the cars going by; the car you left
+	var push := _push_out(_pos, 0.3, true)
+	_pos += push
+	_pos += _traffic.push(_pos, 0.3)
+	var cf := Vector2(cos(_car_yaw_at), sin(_car_yaw_at))
+	for off: float in [CAR_OFF, -CAR_OFF]:
+		var d := _pos - (_car_at + cf * off)
+		if d.length() < CAR_R + 0.3 and d.length() > 0.001:
+			_pos += d.normalized() * (CAR_R + 0.3 - d.length())
+	_y = _h(_pos)
+	var anim := "Idle" if absf(_v) < 0.15 else ("Run" if absf(_v) > WALK + 0.5 else "Walk")
+	if anim != _me_anim:
+		_me_anim = anim
+		_me.play(anim, true, 1.0 if anim == "Idle" else maxf(absf(_v) / (WALK if anim == "Walk" else RUN * 0.8), 0.5))
+	elif anim != "Idle":
+		_me.anim.speed_scale = maxf(absf(_v) / (WALK if anim == "Walk" else RUN * 0.8), 0.5)
+
+## the camera on foot: over the shoulder, a few metres back (kept out of walls), or from the
+## eyes when the seat view is chosen
+func _foot_camera(dt: float) -> void:
+	var p := _view_pos
+	var gy := _h(p)
+	if _cockpit:
+		var fwd := Vector2(cos(_view_yaw), sin(_view_yaw))
+		var eye := Vector3(p.x + fwd.x * 0.15, gy + 1.64, p.y + fwd.y * 0.15)
+		look_from(eye, eye + Vector3(fwd.x, -0.08, fwd.y) * 10.0)
+		cam.fov = 70.0
+		return
+	_cam_yaw = lerp_angle(_cam_yaw, _view_yaw, 1.0 - exp(-dt * 4.0))
+	var back := Vector2(cos(_cam_yaw), sin(_cam_yaw))
+	var clear := _clear_behind(p, -back, 3.4)
+	_cam_dist = clear if clear < _cam_dist else lerpf(_cam_dist, clear, 1.0 - exp(-dt * 2.0))
+	var e2 := p - back * _cam_dist
+	var eye := Vector3(e2.x, maxf(gy + 2.0, _h(e2) + 1.3), e2.y)
+	look_from(eye, Vector3(p.x + back.x * 2.0, gy + 1.35, p.y + back.y * 2.0))
+	cam.fov = 66.0
+
 ## the indicators at the car's four corners, and the reverse lights (+X is the car's left)
 func _build_car_signals() -> void:
 	var amber := mat("warn", 2.6)
@@ -5180,6 +5302,12 @@ func _set_blink(side: int) -> void:
 	_blink_yaw = _yaw
 	if side != 0:
 		Probe.event("indicator", {"side": "right" if side > 0 else "left", "auto": _auto})
+
+func _toggle_walk() -> void:
+	if _walking:
+		_get_in()
+	else:
+		_get_out()
 
 func _set_lights(on: bool) -> void:
 	_lights_on = on
@@ -5251,13 +5379,17 @@ func _ap_turn_ahead() -> int:
 func _set_cockpit(on: bool) -> void:
 	_cockpit = on
 	if _cockpit_node != null:
-		_cockpit_node.visible = on
+		_cockpit_node.visible = on and not _walking
 	if _sedan_node != null:
 		for gi: GeometryInstance3D in _sedan_node.find_children("*", "GeometryInstance3D", true, false):
-			gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if on \
+			gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if on and not _walking \
 					else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	cam.near = 0.05 if on else 0.1
-	_show_banner("driver's seat" if on else "chase cam", 1.0)
+	if _me != null:   # on foot, from the eyes: no looking out through your own hair
+		for gi: GeometryInstance3D in _me.find_children("*", "GeometryInstance3D", true, false):
+			gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if on and _walking \
+					else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	_show_banner(("eyes" if on else "over the shoulder") if _walking else ("driver's seat" if on else "chase cam"), 1.0)
 	Probe.event("view", {"cockpit": on})
 
 ## A sedan at real size (4.6 x 1.8 x 1.45 m), built in code: a body lofted from its side
@@ -5545,6 +5677,16 @@ func _physics_process(dt: float) -> void:
 	_signals_tick(dt)
 	_crash_cool = maxf(0.0, _crash_cool - dt)
 	_touch_t = maxf(0.0, _touch_t - dt)
+	if _walking:
+		_traffic.tick(dt)
+		_walk(dt)
+		_controls_tick(dt)
+		_names_tick(dt)
+		_engine_tick(dt)
+		_people_tick(dt)
+		_crossers_tick(dt)
+		_explore(dt)
+		return
 	if PInput.just_pressed("action_a") and not _auto:
 		_set_auto(true)
 	elif PInput.just_pressed("action_b") and _auto:
@@ -5586,6 +5728,14 @@ func _frame() -> void:
 	_view_pos = _prev_pos.lerp(_pos, f)
 	_view_yaw = lerp_angle(_prev_yaw, _yaw, f)
 	_view_y = lerpf(_prev_y, _y, f)
+	if _walking:
+		_pose_car(_car_at, _car_yaw_at, _car_y_at)
+		_me.position = Vector3(_view_pos.x, _h(_view_pos), _view_pos.y)
+		_me.face(Vector3(cos(_view_yaw), 0, sin(_view_yaw)))
+		_traffic.draw(f)
+		_foot_camera(dt)
+		_tick_hud()
+		return
 	_pose_car(_view_pos, _view_yaw, _view_y)
 	_traffic.draw(f)
 	_camera(dt, _view_pos, _view_yaw)
@@ -6011,7 +6161,7 @@ func _engine_tick(dt: float) -> void:
 	if off:
 		return
 	# the gearbox: up a gear sooner on a light foot, later with it down; down below 1250
-	var v := absf(_v)
+	var v := 0.0 if _walking else absf(_v)   # on foot: the car idles where it was left
 	if _gear > 0:
 		var up_at := 2000.0 + 1700.0 * _throttle_in
 		if v * float(GEAR_RPM[_gear_n - 1]) > up_at and _gear_n < GEAR_RPM.size():
@@ -6033,6 +6183,9 @@ func _engine_tick(dt: float) -> void:
 	load.pitch_scale = pitch
 	rumble.volume_db = base - 7.0 + 4.0 * clampf((_rpm - IDLE_RPM) / 3500.0, 0.0, 1.0)
 	load.volume_db = base - 34.0 + 30.0 * sqrt(_load)
+	if _walking:   # idling behind you, quieter the further you walk
+		rumble.volume_db -= 4.0 + _pos.distance_to(_car_at) * 0.9
+		load.volume_db = -80.0
 	# the nearest car going by: louder as it nears, its pitch with its speed
 	var by: AudioStreamPlayer = _engine[2]
 	var near := INF
@@ -7121,6 +7274,9 @@ const NUM_COLS := 6
 func _open_picker() -> void:
 	if _picker != null:
 		return
+	if _walking:
+		_show_banner("get back in the car first", 1.2)
+		return
 	if _streets_list.is_empty():
 		_build_street_list()
 	_picker = Control.new()
@@ -7498,7 +7654,7 @@ func _tick_hud() -> void:
 		_dest_lbl.text = "→ %s · %s" % [_dest_name, ("%.1f km" % (left / 1000.0)) if left >= 1000.0 else ("%d m" % int(left))]
 	else:
 		_dest_lbl.text = ""
-	_gear_lbl.text = "D" if _gear > 0 else "R"
+	_gear_lbl.text = "" if _walking else ("D" if _gear > 0 else "R")
 	_hud.queue_redraw()
 	_map.queue_redraw()
 
@@ -7566,6 +7722,11 @@ func _draw_hud() -> void:
 	_hud.draw_rect(HORN_BTN, Color(bg, 0.65))
 	_hud.draw_rect(HORN_BTN, Color(hc, 0.9), false, 1.5)
 	_hud.draw_string(_font, HORN_BTN.position + Vector2(0, 14), "horn", HORIZONTAL_ALIGNMENT_CENTER, HORN_BTN.size.x, 9, hc)
+	var near_car := _walking and _pos.distance_to(_car_at) < 3.6
+	var wc := Palette.col("accent") if near_car or not _walking else Color(ink, 0.7)
+	_hud.draw_rect(WALK_BTN, Color(bg, 0.65))
+	_hud.draw_rect(WALK_BTN, Color(wc, 0.9), false, 1.5)
+	_hud.draw_string(_font, WALK_BTN.position + Vector2(0, 15), "drive" if _walking else "walk", HORIZONTAL_ALIGNMENT_CENTER, WALK_BTN.size.x, 11, wc)
 	var vc := Palette.col("player") if _cockpit else Color(ink, 0.8)
 	_hud.draw_rect(VIEW_BTN, Color(bg, 0.65))
 	_hud.draw_rect(VIEW_BTN, Color(vc, 0.9), false, 1.5)
@@ -7664,6 +7825,8 @@ func _draw_map() -> void:
 		for c in _traffic.cars:
 			if c.alive:
 				_map.draw_circle(c.pos - at, 1.9 / s, Color(ink, 0.8))
+	if _walking:
+		_map.draw_rect(Rect2(_car_at - at - Vector2(3, 3) / s, Vector2(6, 6) / s), Palette.col("warn"))
 	if _dest_on:
 		_map.draw_circle(_dest - at, 6.0 / s, Palette.col("accent"))
 		_map.draw_arc(_dest - at, 11.0 / s, 0.0, TAU, 24, Color(Palette.col("accent"), 0.6), 1.5 / s)
@@ -7710,6 +7873,9 @@ func _input(event: InputEvent) -> void:
 				KEY_L:
 					_set_lights(not _lights_on)
 					return
+				KEY_F:
+					_toggle_walk()
+					return
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT and not Flow.pointer_over_hud():
@@ -7719,7 +7885,8 @@ func _input(event: InputEvent) -> void:
 						_cross_pick(i)
 						return
 			if AUTO_BTN.grow(4).has_point(mb.position):
-				_set_auto(not _auto)
+				if not _walking:
+					_set_auto(not _auto)
 			elif GOTO_BTN.grow(4).has_point(mb.position):
 				_open_picker.call_deferred()   # after this click, so it does not hit the list
 			elif NIGHT_BTN.grow(4).has_point(mb.position):
@@ -7734,6 +7901,8 @@ func _input(event: InputEvent) -> void:
 				_set_blink(0 if _blink == 1 else 1)
 			elif HORN_BTN.grow(2).has_point(mb.position):
 				_horn_t = 0.6
+			elif WALK_BTN.grow(2).has_point(mb.position):
+				_toggle_walk()
 			elif ASSIST_BTN.grow(4).has_point(mb.position):
 				_assist = not _assist
 				_show_banner("driving assist " + ("on" if _assist else "off"), 1.2)
@@ -7750,7 +7919,7 @@ func _input(event: InputEvent) -> void:
 					or ASSIST_BTN.grow(4).has_point(t.position) or NIGHT_BTN.grow(4).has_point(t.position) \
 					or VIEW_BTN.grow(4).has_point(t.position) or LIGHTS_BTN.grow(2).has_point(t.position) \
 					or BLINK_L_BTN.grow(2).has_point(t.position) or BLINK_R_BTN.grow(2).has_point(t.position) \
-					or HORN_BTN.grow(2).has_point(t.position) \
+					or HORN_BTN.grow(2).has_point(t.position) or WALK_BTN.grow(2).has_point(t.position) \
 					or t.position.y < 36.0:
 				return   # the button (via its emulated click) and the shell's menu/sound row
 			if _stick_id < 0 and t.position.distance_to(STICK_C) <= STICK_GRAB:

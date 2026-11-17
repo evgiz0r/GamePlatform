@@ -292,6 +292,14 @@ func _target(c: Car, i: int, dt: float) -> float:
 			best_len = 4.6 if j == cars.size() else (cars[j] as Car).len
 			# moving with me: its speed along my way, else treat it as standing
 			lead_v = ov * maxf(0.0, cos(angle_difference(oyaw, c.yaw)))
+	# the player's car, left standing while they walk: in the way like any other
+	if g._walking and g._car_at.distance_squared_to(c.pos) < (look + 6.0) * (look + 6.0):
+		var pg := _path_gap(c, g._car_at, look, PLAYER_W)
+		if pg < best:
+			best = pg
+			who = -1
+			best_len = 4.6
+			lead_v = 0.0
 	c.ignore = maxf(0.0, c.ignore - dt)
 	_steer_lanes(c, i, dt, best, lead_v)
 	vt = minf(vt, _bus_stop(c, dt))
