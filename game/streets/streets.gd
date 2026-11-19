@@ -518,8 +518,9 @@ var _ap_stuck := 0.0
 var _ap_back := 0.0
 var _ap_turn := 0.0                   ## turning round on the spot to face the planned lane (s left)
 ## the crossing ahead, while autodrive waits for you to pick a way on:
-## {node, at (Vector2), ways: [{leg: Vector3i, turn (radians, + = right), name, en}] left to
-## right, pick (index), chosen (you picked it)}; {} when there is none
+## {node, at (Vector2), ways: [{leg: Vector3i, legs (all of them, across a junction drawn as
+## several points), turn (radians, + = right), name, en}] left to right, pick (index), chosen
+## (you picked it)}; {} when there is none
 var _cross := {}
 const CROSS_SHOW_S := 5.0            ## the choices show this many seconds before the crossing
 const CROSS_V := 9.0                 ## undecided, autodrive comes up to it no faster (m/s)
@@ -7038,8 +7039,8 @@ func _place_walker(w: Dictionary, anywhere: bool) -> void:
 		if hit.is_empty():
 			continue
 		var r: Dictionary = _roads[hit["road"]]
-		if r["k"] == "service" or HIGHWAYS.has(r["k"]):
-			continue   # nobody walks along a motorway or a slip road
+		if not _kerbed(r):
+			continue   # no pavement: a motorway, a slip road, a service lane, a private way
 		# as many people as the place has life: by its homes, shops and cafes
 		if _people_rng.randf() > _liveliness(hit["q"]):
 			continue
@@ -7047,8 +7048,14 @@ func _place_walker(w: Dictionary, anywhere: bool) -> void:
 		if runs.is_empty():
 			continue
 		var run: PackedVector2Array = runs[_people_rng.randi() % runs.size()]
-		var side := 1.0 if _people_rng.randf() < 0.5 else -1.0
-		var line := _offset_line(run, (float(r["w"]) * 0.5 + 1.3 + _people_rng.randf_range(-0.3, 0.5)) * side)
+		# a divided road's pavement is on its outer side: the inner one is the median, and
+		# a step past it the other carriageway
+		var side := float(r["o"]) if r.has("median") else (1.0 if _people_rng.randf() < 0.5 else -1.0)
+		# the back half of the pavement: the parked cars stand on the front of it
+		var line := _offset_line(run, (float(r["w"]) * 0.5 + _people_rng.randf_range(1.85, 2.2)) * side)
+		line = _pavement_piece(line)
+		if line.size() < 2:
+			continue
 		var cum := PackedFloat32Array([0.0])
 		for i in range(1, line.size()):
 			cum.append(cum[i - 1] + line[i - 1].distance_to(line[i]))
@@ -7062,6 +7069,56 @@ func _place_walker(w: Dictionary, anywhere: bool) -> void:
 		a.visible = true
 		return
 	a.visible = false
+
+## Somewhere to walk along a pavement line: the longest-but-random stretch of it that keeps
+## off every road's asphalt and out of the buildings. A driveway's mouth, a few metres, is
+## walked over; a service lane or a car park's lane running alongside, the other half of a
+## divided road, the next street where two meet at an angle are not -- people walked down
+## all of those. [] when nothing is left 8 m long.
+func _pavement_piece(line: PackedVector2Array) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for i in range(line.size() - 1):
+		var n := maxi(1, ceili(line[i].distance_to(line[i + 1]) / 1.5))
+		for k in range(n):
+			pts.append(line[i].lerp(line[i + 1], float(k) / n))
+	pts.append(line[line.size() - 1])
+	var n := pts.size()
+	var bad := PackedByteArray()   # 0 clear, 1 asphalt, 2 a building
+	bad.resize(n)
+	for i in range(n):
+		if _push_out(pts[i], 0.35, false) != Vector2.ZERO:
+			bad[i] = 2
+		elif not _off_road(pts[i], 0.3):
+			bad[i] = 1
+	# forgive short stretches of asphalt between clear ground (a driveway, an alley's mouth)
+	var i := 0
+	while i < n:
+		if bad[i] != 1:
+			i += 1
+			continue
+		var j := i
+		while j < n and bad[j] == 1:
+			j += 1
+		if i > 0 and j < n and bad[i - 1] == 0 and bad[j] == 0 and j - i <= 4:
+			for k in range(i, j):
+				bad[k] = 0
+		i = j
+	var pieces: Array = []
+	var cur := PackedVector2Array()
+	var length := 0.0
+	for k in range(n + 1):
+		if k < n and bad[k] == 0:
+			if not cur.is_empty():
+				length += cur[cur.size() - 1].distance_to(pts[k])
+			cur.append(pts[k])
+			continue
+		if length >= 8.0:
+			pieces.append(cur)
+		cur = PackedVector2Array()
+		length = 0.0
+	if pieces.is_empty():
+		return PackedVector2Array()
+	return pieces[_people_rng.randi() % pieces.size()]
 
 ## people by the cafe tables nearest the car, standing about
 func _seat_chatters() -> void:
@@ -7153,7 +7210,8 @@ func _spawn_crossers() -> void:
 		_crossers.append({"actor": a, "ni": -1, "a": Vector2.ZERO, "b": Vector2.ZERO, "s": 0.0,
 			"state": "off", "t": 0.0, "speed": _people_rng.randf_range(1.15, 1.5)})
 
-## the zebra at node ni: [middle, across (unit, kerb to kerb), half the road's width, the road's way]
+## the zebra at node ni: [middle, across (unit, kerb to kerb), half the road's width, the
+## road's way, the road]
 func _zebra_geom(ni: int) -> Array:
 	var c := _nodes[ni]
 	for e: Vector2i in _node_roads[ni]:
@@ -7162,13 +7220,35 @@ func _zebra_geom(ni: int) -> Array:
 			continue
 		var pts: PackedVector2Array = r["pts"]
 		var d := (pts[mini(e.y + 1, pts.size() - 1)] - pts[maxi(e.y - 1, 0)]).normalized()
-		return [c, Vector2(-d.y, d.x), float(r["w"]) * 0.5, d]
+		return [c, Vector2(-d.y, d.x), float(r["w"]) * 0.5, d, e.x]
 	return []
 
-## nothing coming that could not stop before the crossing, and nothing standing on it
-func _safe_to_cross(z: Array) -> bool:
+## Where a crossing's people wait and walk to: [one kerb, the other], each a step back on the
+## pavement. On a divided road the zebra is painted on each half, but people cross the lot,
+## outer kerb to outer kerb (waiting on the median they stood in the other carriageway).
+## [] when either end is on another road's asphalt or in a building.
+func _zebra_span(z: Array) -> Array:
 	var mid: Vector2 = z[0]
+	var across: Vector2 = z[1]
 	var hw: float = z[2]
+	var r: Dictionary = _roads[int(z[4])]
+	var a := mid - across * (hw + 1.1)
+	var b := mid + across * (hw + 1.1)
+	if r.has("median"):
+		var pair := _partner(mid, z[3], int(z[4]), hw, int(r["o"]))
+		if not pair.is_empty():
+			var left: Vector2 = pair[3]
+			var far := ((pair[1] as Vector2) - mid).dot(left) + float(_roads[int(pair[0])]["w"]) * 0.5
+			a = mid - left * (hw + 1.1)
+			b = mid + left * (far + 1.1)
+	for q: Vector2 in [a, b]:
+		if not _off_road(q, 0.2) or _push_out(q, 0.4, false) != Vector2.ZERO:
+			return []
+	return [a, b]
+
+## nothing coming that could not stop before the crossing (middle `mid`, `hw` from it to
+## either kerb), and nothing standing on it
+func _safe_to_cross(mid: Vector2, hw: float) -> bool:
 	var movers: Array = [[_pos, _fwd() * signf(_v), absf(_v)]]
 	for c in _traffic.cars:
 		if c.alive:
@@ -7204,7 +7284,7 @@ func _crossers_tick(dt: float) -> void:
 		match state:
 			"wait":
 				cr["t"] = float(cr["t"]) - dt
-				if float(cr["t"]) <= 0.0 and _safe_to_cross(z):
+				if float(cr["t"]) <= 0.0 and _safe_to_cross((from + to) * 0.5, from.distance_to(to) * 0.5 - 1.1):
 					cr["state"] = "cross"
 					a.play("Walk", true, float(cr["speed"]) / 1.35)
 			"cross", "back":
@@ -7212,7 +7292,7 @@ func _crossers_tick(dt: float) -> void:
 				var sp: float = cr["speed"] * (2.4 if state == "back" else 1.0)
 				cr["s"] = clampf(float(cr["s"]) + (sp if state == "cross" else -sp) * dt / maxf(w, 0.1), 0.0, 1.0)
 				p = from.lerp(to, float(cr["s"]))
-				_zebras_on.append([z[0], float(z[2]) + 1.0, z[1]])
+				_zebras_on.append([(from + to) * 0.5, from.distance_to(to) * 0.5 - 0.1, (to - from).normalized()])
 				# the player bearing down on them: back to the kerb they came from
 				if state == "cross" and p.distance_to(_pos) < 5.5 and absf(_v) > 2.0 and (p - _pos).dot(_fwd() * signf(_v)) > 0.0:
 					cr["state"] = "back"
@@ -7226,13 +7306,18 @@ func _crossers_tick(dt: float) -> void:
 					cr["state"] = "away"
 					cr["t"] = 12.0
 					a.play("Walk", true, float(cr["speed"]) / 1.35)
-					cr["away"] = (z[3] as Vector2) * (1.0 if _people_rng.randf() < 0.5 else -1.0)
+					_away_from(cr, z)
 			"away":
 				cr["t"] = float(cr["t"]) - dt
 				var end: Vector2 = to if float(cr["s"]) >= 1.0 else from
 				var dir: Vector2 = cr["away"]
-				cr["a_off"] = float(cr.get("a_off", 0.0)) + float(cr["speed"]) * dt
-				p = end + dir * float(cr["a_off"])
+				var far: float = cr["away_len"]
+				var went := float(cr.get("a_off", 0.0))
+				cr["a_off"] = went + float(cr["speed"]) * dt
+				if went < far and float(cr["a_off"]) >= far:
+					a.play("Idle", true, _people_rng.randf_range(0.8, 1.1))   # as far as the pavement goes
+				var off := minf(float(cr["a_off"]), far)
+				p = end + (cr["out"] as Vector2) * minf(off, 0.9) + dir * off
 				if float(cr["t"]) <= 0.0 or p.distance_to(_pos) > CROSS_NEAR:
 					cr["state"] = "off"
 					cr["ni"] = -1
@@ -7240,9 +7325,35 @@ func _crossers_tick(dt: float) -> void:
 					continue
 		a.position = Vector3(p.x, _h(p), p.y)
 		var look: Vector2 = (to - from) if state in ["wait", "cross"] else ((from - to) if state == "back" else cr.get("away", to - from))
+		if state == "away" and float(cr["a_off"]) >= float(cr["away_len"]):
+			look = cr["out"]
 		if look != Vector2.ZERO:
 			a.face(Vector3(look.x, 0, look.y))
 		_people_awake(a, p)
+
+## Over the road: off along the pavement, a step back from the kerb, whichever way it runs
+## further before meeting another road's asphalt or a building (up to 15 m), and there wait.
+func _away_from(cr: Dictionary, z: Array) -> void:
+	var from: Vector2 = cr["a"]
+	var to: Vector2 = cr["b"]
+	var end: Vector2 = to if float(cr["s"]) >= 1.0 else from
+	var out := (end - (from + to) * 0.5).normalized()
+	var way: Vector2 = z[3]
+	var best := -1.0
+	for sgn: float in ([1.0, -1.0] if _people_rng.randf() < 0.5 else [-1.0, 1.0]):
+		var dir := way * sgn
+		var go := 0.0
+		while go < 15.0:
+			var q := end + out * 0.9 + dir * (go + 1.5)
+			if not _off_road(q, 0.3) or _push_out(q, 0.35, false) != Vector2.ZERO:
+				break
+			go += 1.5
+		if go > best:
+			best = go
+			cr["away"] = dir
+	cr["away_len"] = best
+	cr["out"] = out
+	cr["a_off"] = 0.0
 
 ## idle crossers to the zebras near the car (ahead of it rather than behind, and where
 ## there is life about), one each
@@ -7274,13 +7385,14 @@ func _send_crossers() -> void:
 			return
 		busy[pick] = true
 		var z := _zebra_geom(pick)
-		var across: Vector2 = z[1]
-		var reach: float = float(z[2]) + 1.1
-		var flip := 1.0 if _people_rng.randf() < 0.5 else -1.0
 		var along: Vector2 = (z[3] as Vector2) * _people_rng.randf_range(-0.8, 0.8)
+		var span := _zebra_span(z)
+		if span.is_empty():
+			continue   # (next time, another crossing)
+		var flip := _people_rng.randf() < 0.5
 		cr["ni"] = pick
-		cr["a"] = (z[0] as Vector2) - across * reach * flip + along
-		cr["b"] = (z[0] as Vector2) + across * reach * flip + along
+		cr["a"] = (span[1] if flip else span[0]) + along
+		cr["b"] = (span[0] if flip else span[1]) + along
 		cr["s"] = 0.0
 		cr["a_off"] = 0.0
 		cr["state"] = "wait"
@@ -7592,6 +7704,7 @@ func _clear_behind(from: Vector2, dir: Vector2, want: float) -> float:
 func _set_auto(on: bool) -> void:
 	_auto = on
 	_cross = {}
+	_ap_queue = []
 	_ap_pts = PackedVector2Array()
 	_ap_v = PackedFloat32Array()
 	_ap_lim = PackedFloat32Array()
@@ -7795,6 +7908,7 @@ func _ap_point_ahead(look: float) -> Vector2:
 
 func _ap_plan() -> void:
 	_cross = {}
+	_ap_queue = []
 	_ap_pts = PackedVector2Array()
 	_ap_v = PackedFloat32Array()
 	_ap_lim = PackedFloat32Array()
@@ -7907,13 +8021,67 @@ func _ap_curves(from_k: int) -> void:
 
 ## at the end of the planned road pick the next one: ahead rather than a turn, a street
 ## not driven yet rather than an old one, never against a one-way, U-turn only at a dead end
+## the legs still to drive across a junction already chosen at (see _cluster_exits)
+var _ap_queue: Array = []
+const CLUSTER_M := 35.0              ## legs this short between junction points: one junction
+
 func _ap_next() -> bool:
 	if _ap_end.x < 0:
 		return false
 	var r: Dictionary = _roads[_ap_end.x]
+	var node: int = (r["ids"] as PackedInt32Array)[_ap_end.y]
+	if not _ap_queue.is_empty():
+		var q: Vector3i = _ap_queue.pop_front()
+		var rq: Dictionary = _roads[q.x]
+		if (rq["ids"] as PackedInt32Array)[q.y - q.z] == node:
+			_ap_ring_n = 0
+			_ap_leg(q.x, q.y, q.z)
+			return true
+		_ap_queue = []   # (somewhere else after all: choose afresh)
+	var found := _ap_ways(_ap_end.x, _ap_end.y, _ap_end.z)
+	var ways: Array = found[0]
+	var back: Vector3i = found[1]
+	if ways.is_empty():
+		if back.x < 0:
+			return false
+		_ap_leg(back.x, back.y, back.z)
+		return true
+	# a real crossing (two or more proper streets on): ask, and plan no further for now --
+	# but not round a roundabout, where the exits come too fast to ask at each
+	var main: Array = ways.filter(func(w): return not w["service"])
+	if not _dest_on and main.size() >= 2 and not r.get("ring", false):
+		if _cross.is_empty() or _cross["node"] != node:
+			var pts: PackedVector2Array = r["pts"]
+			var prev := clampi(_ap_end.y - _ap_end.z, 0, pts.size() - 1)
+			var came := (pts[_ap_end.y] - pts[prev]).normalized()
+			var exits := _cluster_exits(main, came, 0, {node: true})
+			if exits.is_empty():
+				exits = main
+				for w: Dictionary in exits:
+					w["legs"] = [w["leg"]]
+			exits.sort_custom(func(a, b): return a["turn"] < b["turn"])
+			var pick := 0
+			for i in range(exits.size()):
+				if exits[i]["score"] > exits[pick]["score"]:
+					pick = i
+			_cross = {"node": node, "at": _ap_pts[_ap_pts.size() - 1], "ways": exits, "pick": pick, "chosen": false}
+			_ap_v[_ap_v.size() - 1] = minf(_ap_v[_ap_v.size() - 1], CROSS_V)
+		return false
+	var best_i := 0
+	for i in range(ways.size()):
+		if ways[i]["score"] > ways[best_i]["score"]:
+			best_i = i
+	var leg: Vector3i = ways[best_i]["leg"]
+	_ap_ring_n = _ap_ring_n + 1 if (_roads[leg.x] as Dictionary).get("ring", false) else 0
+	_ap_leg(leg.x, leg.y, leg.z)
+	return true
+
+## The ways on from point ei of road ri, arrived at going `dir`: [ways, back], ways each
+## {leg: Vector3i(road, first index, direction), turn, name, en, service, score}, back the
+## leg back the way it came (only from a dead end; Vector3i(-1, ...) when there is none).
+func _ap_ways(ri: int, ei: int, dir: int) -> Array:
+	var r: Dictionary = _roads[ri]
 	var pts: PackedVector2Array = r["pts"]
-	var ei := _ap_end.y
-	var dir := _ap_end.z
 	var node: int = (r["ids"] as PackedInt32Array)[ei]
 	var prev := ei - dir
 	if prev < 0 or prev >= pts.size():
@@ -7921,8 +8089,6 @@ func _ap_next() -> bool:
 	var came := (pts[ei] - pts[prev]).normalized()
 	var ways: Array = []
 	var back := Vector3i(-1, 0, 0)
-	var best_i := -1
-	var best_score := -INF
 	for e: Vector2i in _node_roads[node]:
 		var r2: Dictionary = _roads[e.x]
 		if not r2["drive"] or r2["pv"]:
@@ -7932,7 +8098,7 @@ func _ap_next() -> bool:
 			var nxt := e.y + d2
 			if nxt < 0 or nxt >= p2.size():
 				continue
-			if e.x == _ap_end.x and nxt == prev:
+			if e.x == ri and nxt == prev:
 				back = Vector3i(e.x, nxt, d2)   # back the way it came: only from a dead end
 				continue
 			if r2["o"] != 0 and r2["o"] != d2:
@@ -7953,31 +8119,82 @@ func _ap_next() -> bool:
 				score += (-0.8 - 1.2 * _ap_ring_n) if r2.get("ring", false) else 1.2
 			ways.append({"leg": Vector3i(e.x, nxt, d2), "turn": came.angle_to(go), "name": r2["name"],
 				"en": r2["en"], "service": r2["k"] == "service", "score": score})
-			if score > best_score:
-				best_score = score
-				best_i = ways.size() - 1
-	if ways.is_empty():
-		if back.x < 0:
-			return false
-		_ap_leg(back.x, back.y, back.z)
-		return true
-	# a real crossing (two or more proper streets on): ask, and plan no further for now --
-	# but not round a roundabout, where the exits come too fast to ask at each
-	var main: Array = ways.filter(func(w): return not w["service"])
-	if not _dest_on and main.size() >= 2 and not r.get("ring", false):
-		if _cross.is_empty() or _cross["node"] != node:
-			main.sort_custom(func(a, b): return a["turn"] < b["turn"])
-			var pick := 0
-			for i in range(main.size()):
-				if main[i]["score"] > main[pick]["score"]:
-					pick = i
-			_cross = {"node": node, "at": _ap_pts[_ap_pts.size() - 1], "ways": main, "pick": pick, "chosen": false}
-			_ap_v[_ap_v.size() - 1] = minf(_ap_v[_ap_v.size() - 1], CROSS_V)
-		return false
-	var leg: Vector3i = ways[best_i]["leg"]
-	_ap_ring_n = _ap_ring_n + 1 if (_roads[leg.x] as Dictionary).get("ring", false) else 0
-	_ap_leg(leg.x, leg.y, leg.z)
-	return true
+	return [ways, back]
+
+## One big junction drawn as several. Where a divided road meets a street, each of its halves
+## meets it at a point of its own, 10-30 m apart (four points where two divided roads cross),
+## and every one of them asked again which way: right-or-on, then left-or-on, for one left
+## turn. The choices are now the ways out of the whole knot -- each with the short legs
+## across it that get there, driven without asking -- and how far each turns from the way in.
+func _cluster_exits(ways: Array, came: Vector2, depth: int, seen: Dictionary) -> Array:
+	var out: Array = []
+	for w: Dictionary in ways:
+		if w["service"]:
+			continue
+		var leg: Vector3i = w["leg"]
+		var r2: Dictionary = _roads[leg.x]
+		var p2: PackedVector2Array = r2["pts"]
+		var last := p2.size() - 1 if leg.z > 0 else 0
+		var length := 0.0
+		var k := leg.y - leg.z
+		while k != last:
+			length += p2[k].distance_to(p2[k + leg.z])
+			k += leg.z
+		var end_node: int = (r2["ids"] as PackedInt32Array)[last]
+		if depth < 3 and length <= CLUSTER_M and not r2.get("ring", false) and not seen.has(end_node):
+			var main2: Array = (_ap_ways(leg.x, last, leg.z)[0] as Array).filter(func(x): return not x["service"])
+			if main2.size() >= 2:   # another point of the same junction: on across it
+				seen[end_node] = true
+				for sub: Dictionary in _cluster_exits(main2, came, depth + 1, seen):
+					sub["legs"] = [leg] + (sub["legs"] as Array)
+					out.append(sub)
+				continue
+		# (not one that runs back into the knot: round three sides of it to leave by a road
+		# the first point already offered)
+		var ids2: PackedInt32Array = r2["ids"]
+		var back_in := false
+		var run := 0.0
+		var j := leg.y
+		while run < CLUSTER_M * 1.5:
+			run += p2[j - leg.z].distance_to(p2[j])
+			if seen.has(ids2[j]):
+				back_in = true
+				break
+			if j == last:
+				break
+			j += leg.z
+		if back_in:
+			continue
+		# a way out: where it heads 15 m on (a slip road curves), against the way in
+		var a := p2[leg.y - leg.z]
+		var b := a
+		var i := leg.y - leg.z
+		while i != last and b.distance_to(a) < 15.0:
+			i += leg.z
+			b = p2[i]
+		var go := (b - a).normalized()
+		if go == Vector2.ZERO or came.dot(go) < -0.7:
+			continue   # round the knot and back the way it came
+		out.append({"leg": leg, "legs": [leg], "turn": came.angle_to(go), "name": w["name"], "en": w["en"],
+			"service": false, "score": w["score"]})
+	if depth > 0:
+		return out
+	# the same way out reached two ways round (or the same street, the same way, from two
+	# of its points): the one across fewer of them
+	var keep: Array = []
+	for x: Dictionary in out:
+		var dup := -1
+		for i in range(keep.size()):
+			var k2: Dictionary = keep[i]
+			if (k2["legs"] as Array).back() == (x["legs"] as Array).back() \
+					or (x["name"] != "" and k2["name"] == x["name"] and absf(angle_difference(k2["turn"], x["turn"])) < 0.5):
+				dup = i
+				break
+		if dup < 0:
+			keep.append(x)
+		elif (x["legs"] as Array).size() < (keep[dup]["legs"] as Array).size():
+			keep[dup] = x
+	return keep
 
 ## the crossing ahead: take your pick (or ours, once it is too late to wait for yours)
 func _cross_tick() -> void:
@@ -8003,9 +8220,11 @@ func _cross_tick() -> void:
 	# there for ever and drifted into the parked cars)
 	if _cross["chosen"] or d < maxf(10.0, _v * 1.3) or (absf(_v) < 1.5 and d < 26.0):
 		var w: Dictionary = ways[_cross["pick"]]
-		var leg: Vector3i = w["leg"]
-		Probe.event("crossing", {"turn": int(rad_to_deg(w["turn"])), "chosen": _cross["chosen"]})
+		var legs: Array = w["legs"]
+		var leg: Vector3i = legs[0]
+		Probe.event("crossing", {"turn": int(rad_to_deg(w["turn"])), "chosen": _cross["chosen"], "legs": legs.size()})
 		_cross = {}
+		_ap_queue = legs.slice(1)
 		_ap_leg(leg.x, leg.y, leg.z)
 
 func _cross_pick(i: int) -> void:

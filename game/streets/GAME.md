@@ -87,7 +87,10 @@ put back in the nearest lane, clear of parked cars: "back on the road". Assist o
 crossing ahead -- two or more proper streets on, not driveways -- puts its choices at the
 top of the screen about five seconds before it: an arrow per way with the street's name
 and a bar running down. Tap one (or press left / up / right). Leave it and autodrive takes
-its own pick, mostly straight on and preferring streets you have not driven yet.
+its own pick, mostly straight on and preferring streets you have not driven yet. A big
+junction mapped as several points -- a divided road meets a street at one point per half,
+two divided roads at four -- asks once, with every way out of the whole junction, and
+drives across it without asking again.
 
 > I want another mode of driving, where an option appears at every crossing a few seconds
 > before, and I can pick the action. If I don't choose, a random one or it just keeps
@@ -156,7 +159,12 @@ get into the right lane for the turn ahead (right lane to turn right, left to tu
 
 People wait at the zebra crossings and step out once whatever is coming can still stop;
 traffic and autodrive stop for anyone on a crossing. Drive at someone crossing and they
-hurry back to the kerb, and the game says so, like a red light.
+hurry back to the kerb, and the game says so, like a red light. On a divided road they
+cross both halves, outer kerb to outer kerb. People walking along the street keep to the
+back half of the pavement (the parked cars stand on the front of it), only on the outer
+side of a divided road, and off any stretch where the pavement line would run over another
+road -- a service lane or car-park lane alongside, the next street at a corner -- though
+they step across a driveway's mouth.
 
 > More kinds of traffic (buses that stop at the stops, taxis, motorbikes weaving); people
 > crossing at zebras; multi-lane traffic that changes lanes and turns from the right lane.
