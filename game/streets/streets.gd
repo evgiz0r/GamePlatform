@@ -21,6 +21,9 @@ const LEVELS := [
 	{"name": "Givatayim", "city": "givatayim", "start": ["המרי", "שיינקין"], "look": "med"},
 	{"name": "Bedford, Nova Scotia", "city": "bedford", "look": "north"},
 	{"name": "Ashdod", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med"},
+	# made up by tools/fake_city.py: one small town with one of everything, ringed by mountains,
+	# that loads in a moment -- for checking a change, not for exploring
+	{"name": "Kiryat Dimyon (test town)", "city": "dimyon", "start": ["הנשיא", "השוק"], "look": "med"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -130,6 +133,10 @@ const Y_MARK := 0.085
 const NEW_STREET_M := 30.0           ## drive this far along a street for it to count
 const MAP_R := 210.0                 ## the minimap shows this far around the car (m)
 const AP_LAT := 3.6                  ## autodrive keeps the sideways pull in turns under this (m/s^2)
+## Ground steeper than this (rise per metre, about 32 degrees) cannot be driven or walked up:
+## it is as solid as a wall. No real town so far has any (Givatayim's steepest is 52%); the
+## made-up town's mountains do, and they are what keeps it a valley.
+const STEEP := 0.62
 
 ## Facades: a wall colour, a window grid per storey, a darker ground floor. UV is (metres
 ## along this wall, metres above the ground); UV2 is (wall length, roof height). COLOR.r is
@@ -443,6 +450,8 @@ var _crossing_nodes: Array = []
 var _people_t := 0.0
 var _people_rng := RandomNumberGenerator.new()
 var _hgrid := PackedFloat32Array()   ## ground height (m above the lowest point) on a grid
+var _steep := false                  ## some of the ground is too steep to drive up (see STEEP)
+var _made_up := false                ## the city file is invented (tools/fake_city.py), not OSM's
 var _hx0 := 0.0
 var _hz0 := 0.0
 var _hstep := 1.0
@@ -968,6 +977,8 @@ func _load_city(id: String) -> bool:
 		_hgrid.resize(raw.size())
 		for i in range(raw.size()):
 			_hgrid[i] = float(raw[i]) * k
+		_steep = _any_steep()
+	_made_up = data.has("made_up")
 	for a: Array in data.get("addrs", []):   # address points that are not on a building
 		_add_address("%s %s" % [a[2], a[3]], Vector2(a[0], a[1]) * k)
 	_fit_widths_to_buildings()
@@ -2915,11 +2926,13 @@ uniform vec4 base : source_color;
 uniform vec4 green : source_color;
 uniform vec4 dark : source_color;
 uniform float greenness = 0.5;
+uniform vec4 rock : source_color;
 uniform float textured = 1.0;
 uniform sampler2D grass_tex : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D grass_nrm : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform vec3 grass_mean = vec3(0.5);
 varying vec3 wpos;
+varying float wup;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 float noise(vec2 p) {
 	vec2 i = floor(p);
@@ -2927,16 +2940,23 @@ float noise(vec2 p) {
 	vec2 u = f * f * (3.0 - 2.0 * f);
 	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
 }
-void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
+void vertex() {
+	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	wup = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz).y;
+}
 void fragment() {
 	float n = noise(wpos.xz / 70.0) * 0.65 + noise(wpos.xz / 15.0) * 0.35;
 	vec3 c = mix(base.rgb, green.rgb, smoothstep(0.62 - greenness * 0.45, 0.78 - greenness * 0.4, n));
 	c = mix(c, dark.rgb, smoothstep(0.62, 0.9, noise(wpos.xz / 31.0 + 17.0)) * 0.55);
+	// a mountainside steeper than any town street is bare rock, in bands and blotches
+	float bare = smoothstep(0.86, 0.74, wup + (noise(wpos.xz / 9.0) - 0.5) * 0.08);
+	vec3 stone = rock.rgb * (0.72 + 0.28 * noise(vec2(wpos.y * 0.45, (wpos.x + wpos.z) * 0.03))) * (0.85 + 0.3 * noise(wpos.xz / 6.0));
+	c = mix(c, stone, bare);
 	c *= 0.94 + 0.06 * noise(wpos.xz / 2.5);
 	if (textured > 0.5) {   // the lawn photo (see TONE_SHADER), over earth and grass alike
 		vec2 uv = wpos.xz * 0.5;
 		vec3 t = texture(grass_tex, uv).rgb;
-		c *= mix(vec3(1.0), clamp(t / grass_mean, vec3(0.0), vec3(2.6)), 0.85);
+		c *= mix(vec3(1.0), clamp(t / grass_mean, vec3(0.0), vec3(2.6)), 0.85 * (1.0 - bare * 0.6));
 		vec2 xy = (texture(grass_nrm, uv).rg * 2.0 - 1.0) * 0.8;
 		vec3 b = vec3(xy, sqrt(max(0.0, 1.0 - dot(xy, xy))));
 		vec3 tx = (VIEW_MATRIX * vec4(1.0, 0.0, 0.0, 0.0)).xyz;
@@ -2972,6 +2992,7 @@ func _retint_ground() -> void:
 	_ground_shader_mat.set_shader_parameter("green", green.lerp(base, 0.25))
 	_ground_shader_mat.set_shader_parameter("dark", green.lerp(Palette.col("bg"), 0.45))
 	_ground_shader_mat.set_shader_parameter("greenness", 0.8 if north else 0.3)
+	_ground_shader_mat.set_shader_parameter("rock", _tone["rock"])
 
 ## the same noise in script, for clumping what grows on open land where the green is
 func _vnoise(p: Vector2) -> float:
@@ -5681,6 +5702,7 @@ func _tones() -> void:
 	var pz := Palette.col("prize")
 	_tone = {
 		"ground": alt.lerp(ink, 0.42),
+		"rock": alt.lerp(ink, 0.3).lerp(wn, 0.2),
 		"path": alt.lerp(ink, 0.62),
 		"asphalt": alt.lerp(ink, 0.2),
 		"parking": alt.lerp(ink, 0.32),
@@ -6134,6 +6156,7 @@ func _walk(dt: float) -> void:
 	_pos += _fwd() * _v * dt
 	# walls, trees and posts; the cars going by; the car you left
 	var push := _push_out(_pos, 0.3, true)
+	push += _steep_push(_pos + push, 0.3)
 	_pos += push
 	_pos += _traffic.push(_pos, 0.3)
 	var cf := Vector2(cos(_car_yaw_at), sin(_car_yaw_at))
@@ -6838,7 +6861,7 @@ func _blocked_ahead() -> bool:
 	var fwd := _fwd()
 	for k: float in [0.6, 1.0]:
 		var p := _pos + fwd * (CAR_LEN * 0.5 + 0.8 + _v * 0.45 * k) + Vector2(-fwd.y, fwd.x) * _steer * 3.0 * k
-		if _push_out(p, 0.6, true) != Vector2.ZERO:
+		if _push_out(p, 0.6, true) != Vector2.ZERO or _steep_push(p, 0.6) != Vector2.ZERO:
 			return true
 	return false
 
@@ -7656,6 +7679,7 @@ func _collide() -> void:
 		var moved := false
 		for off: float in [CAR_OFF, -CAR_OFF]:
 			var p := _push_out(_pos + fwd * off, CAR_R, true)
+			p += _steep_push(_pos + fwd * off + p, CAR_R)
 			if p != Vector2.ZERO:
 				total += p
 				_pos += p
@@ -7711,6 +7735,44 @@ func _crash(speed: float) -> void:
 		Audio.play("impact_soft", 0.1, -6.0)
 	Probe.event("crash", {"kmh": int(speed * 3.6), "hit": _last_hit, "at": Vector2i(_pos),
 		"street": _on_name, "auto": _auto})
+
+## Ground too steep to climb is a wall (STEEP): a circle whose uphill edge is on it is moved
+## back downhill to where the ground is gentle enough. A road is always drivable, however
+## steep. Nothing to do in a city without such ground.
+func _steep_push(c: Vector2, r: float) -> Vector2:
+	if not _steep:
+		return Vector2.ZERO
+	var g := _grade(c)
+	if g == Vector2.ZERO:
+		return Vector2.ZERO
+	var up := g.normalized()
+	var edge := c + up * r
+	if _grade(edge).length() < STEEP:
+		return Vector2.ZERO
+	var on := _nearest_seg(edge, 14.0, true)
+	if not on.is_empty() and float(on["edge"]) < 0.0:
+		return Vector2.ZERO
+	var s := 0.0
+	while s < 4.0:
+		s += 0.25
+		if _grade(edge - up * s).length() < STEEP:
+			break
+	_last_hit = "steep ground"
+	return -up * s
+
+## which way and how steeply the ground rises at p (metres up per metre across)
+func _grade(p: Vector2) -> Vector2:
+	return Vector2(_h(p + Vector2(1, 0)) - _h(p - Vector2(1, 0)), _h(p + Vector2(0, 1)) - _h(p - Vector2(0, 1))) * 0.5
+
+## true when some cell of the height grid is steeper than STEEP
+func _any_steep() -> bool:
+	var lim := STEEP * _hstep
+	for j in range(_hnz - 1):
+		for i in range(_hnx - 1):
+			var r := j * _hnx + i
+			if absf(_hgrid[r + 1] - _hgrid[r]) > lim or absf(_hgrid[r + _hnx] - _hgrid[r]) > lim:
+				return true
+	return false
 
 ## how far to move a circle so it overlaps nothing solid
 func _push_out(c: Vector2, r: float, posts: bool, cars := true) -> Vector2:
@@ -8883,7 +8945,7 @@ func _build_hud() -> void:
 	_osm_lbl = _label(8, "ink")
 	_osm_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_osm_lbl.position = Vector2(8, 347)
-	_osm_lbl.text = "map data © OpenStreetMap contributors"
+	_osm_lbl.text = "a made-up town: not a real place" if _made_up else "map data © OpenStreetMap contributors"
 	_osm_lbl.modulate.a = 0.7
 	_map = Control.new()
 	_map.position = Vector2(8, 224)
