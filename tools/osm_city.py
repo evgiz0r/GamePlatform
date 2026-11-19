@@ -25,7 +25,8 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
   nodes      [x, z, x, z, ...]           road graph vertices, shared where roads meet
   roads      [{n: [node indices], k: kind, w: width m, l: lanes, o: 1/-1/0 oneway,
                name, name_en, br: 1 bridge, tu: 1 tunnel, pv: 1 private (driveways),
-               rb: 1 part of a roundabout}]
+               rb: 1 part of a roundabout, sv: a service road's kind -- parking_aisle,
+               driveway, alley}]
   buildings  [{p: [x, z, ...] counter-clockwise ring, h: height m, b: base height m,
                g: 1 if the height is a guess, name, addr}]
   areas      [{p: ring, k: park|grass|wood|water|parking|pitch|plaza|school}]
@@ -783,6 +784,8 @@ def bake(raw, name, args):
                 road["pv"] = 1
             if t.get("junction") in ("roundabout", "circular"):
                 road["rb"] = 1
+            if kind == "service" and t.get("service") in ("parking_aisle", "driveway", "alley"):
+                road["sv"] = t["service"]
             out["roads"].append(road)
             stats["roads"] += 1
         for i in range(len(ids)):

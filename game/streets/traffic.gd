@@ -79,6 +79,7 @@ class Car:
 	var dwell := 0.0                  ## a bus: seconds stood at the stop
 	var served := {}                  ## a bus: the stops it has stopped at
 	var blink := 0                    ## indicating: -1 left, 1 right
+	var ring_n := 0                   ## pieces of roundabout driven since it came onto one
 	var pull_out := 0.0               ## a bus leaving a stop: seconds it signals out
 
 var g: Node                           ## the game: its road graph, lights, ground, player
@@ -868,7 +869,7 @@ func _spawn(c: Car, first: bool) -> bool:
 ## the right-hand lane's offset from the middle of a road. Every two-way street gets two,
 ## however narrow (both ways down the middle met head on).
 func _lane(r: Dictionary) -> float:
-	return clampf(float(r["w"]) * 0.25, 1.2, 1.9) if r["o"] == 0 else 0.0
+	return g._lane_off(r)
 
 ## append road `ri` from index `from` to its end in direction `dir`, in the right-hand lane
 func _leg(c: Car, ri: int, from: int, dir: int) -> void:
@@ -878,6 +879,9 @@ func _leg(c: Car, ri: int, from: int, dir: int) -> void:
 	var lane := _lane(r)
 	var lim := float(r["speed"]) * c.pace
 	var last := p.size() - 1 if dir > 0 else 0
+	if r.get("ring", false):
+		last = _ring_stop(r, from, dir, last)
+	_turn_into(c, ri, from, dir, lane, lim)
 	var start := c.pts.size()
 	var i := from
 	while true:
@@ -897,6 +901,51 @@ func _leg(c: Car, ri: int, from: int, dir: int) -> void:
 	c.end = Vector3i(ri, last, dir)
 	_curves(c, start - 8)
 
+## Into the next road at a junction (the player's autodrive does the same, see the game's
+## _ap_turn_into): the last road ended on the junction's point and the next one's first
+## point can be far down it; the straight line between ran down the wrong side of the new
+## street, into the cars coming the other way. The turn now starts just short of the
+## junction in its lane and comes out just past it in the right lane. The junction's node
+## goes on the middle of the curve, where it was, for the lights and the giving way.
+func _turn_into(c: Car, ri: int, from: int, dir: int, lane: float, lim: float) -> void:
+	var r: Dictionary = _roads[ri]
+	var p: PackedVector2Array = r["pts"]
+	var ids: PackedInt32Array = r["ids"]
+	var at := from - dir
+	var n := c.pts.size()
+	if at < 0 or at >= p.size() or n < 2:
+		return
+	var node := ids[at]
+	if c.node[n - 1] != node or _ways_out(node) < 3:
+		return
+	var cn: Vector2 = g._nodes[node]
+	var before := c.pts[n - 2]
+	var in_dir := (cn - before).normalized()
+	var out_dir := (p[from] - cn).normalized()
+	if in_dir == Vector2.ZERO or out_dir == Vector2.ZERO or absf(in_dir.angle_to(out_dir)) < 0.35:
+		return
+	var rin := Vector2(-in_dir.y, in_dir.x)
+	var rout := Vector2(-out_dir.y, out_dir.x)
+	var lane_in := (c.pts[n - 1] - cn).dot(rin)
+	var back := minf(_node_r[node] + 1.0, before.distance_to(cn) * 0.8)
+	var ahead := minf(_node_r[node] + 1.0, cn.distance_to(p[from]) * 0.8)
+	var E := cn - in_dir * back + rin * lane_in
+	var X := cn + out_dir * ahead + rout * lane
+	var K = Geometry2D.line_intersects_line(E, in_dir, X, -out_dir)
+	var k2: Vector2 = K if K != null and (K as Vector2).distance_to(cn) < back + ahead + 4.0 else (E + X) * 0.5
+	var rd_in := c.rd[n - 1]
+	var v_in := c.vmax[n - 1]
+	c.pts[n - 1] = E
+	c.node[n - 1] = -1
+	c.cum[n - 1] = c.cum[n - 2] + before.distance_to(E)
+	for t: float in [0.25, 0.5, 0.75, 1.0]:
+		var q := E * (1.0 - t) * (1.0 - t) + k2 * 2.0 * (1.0 - t) * t + X * t * t
+		c.cum.append(c.cum[c.cum.size() - 1] + c.pts[c.pts.size() - 1].distance_to(q))
+		c.pts.append(q)
+		c.node.append(node if t == 0.5 else -1)
+		c.rd.append(rd_in if t <= 0.5 else ri)
+		c.vmax.append(minf(v_in, lim))
+
 ## corners: the radius through the points 5 m either side of each, and the speed that keeps
 ## the sideways pull comfortable round it
 func _curves(c: Car, from_k: int) -> void:
@@ -909,6 +958,18 @@ func _curves(c: Car, from_k: int) -> void:
 			continue
 		var radius := a.distance_to(b) * b.distance_to(d) * d.distance_to(a) / (2.0 * cr)
 		c.vmax[k] = minf(c.vmax[k], maxf(sqrt(CURVE_LAT * radius), 2.5))
+
+## On a roundabout a leg ends at the next way off it, so a car can leave there. (Driving
+## a ring to its OSM end first sent cars nearly all the way round, and there "straight on"
+## was round again: they circled, and the cars waiting to come on waited for ever.)
+func _ring_stop(r: Dictionary, from: int, dir: int, last: int) -> int:
+	var ids: PackedInt32Array = r["ids"]
+	var k := from
+	while k != last:
+		if k != from and _ways_out(ids[k]) >= 3:
+			return k
+		k += dir
+	return last
 
 ## at the end of the planned road, the next one: straight on rather than a turn, a main
 ## road rather than a side street, never against a one-way, back only from a dead end
@@ -944,6 +1005,9 @@ func _next(c: Car) -> bool:
 			if straight < -0.7:
 				continue
 			var score := straight * 1.4 + float(KIND_W.get(r2["k"], 0.25)) * 1.2 + rng.randf() * 1.5
+			if r.get("ring", false):
+				# on a roundabout: off it at one of the next few exits, never round and round
+				score += (-0.6 - 1.1 * c.ring_n) if r2.get("ring", false) else 1.0
 			if c.kind == "bus":
 				score += 3.0 if BUS_ROADS.has(r2["k"]) else -3.0   # buses keep to their routes
 			if score > best_score:
@@ -953,6 +1017,7 @@ func _next(c: Car) -> bool:
 		best = back
 	if best.x < 0:
 		return false
+	c.ring_n = c.ring_n + 1 if (_roads[best.x] as Dictionary).get("ring", false) else 0
 	_leg(c, best.x, best.y, best.z)
 	return true
 
@@ -1026,7 +1091,7 @@ func draw(f: float) -> void:
 		var p := c.prev_pos.lerp(c.pos, f)
 		var yaw := lerp_angle(c.prev_yaw, c.yaw, f)
 		var basis := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, -c.pitch)
-		var xf := Transform3D(basis, Vector3(p.x, float(g._h(p)) + 0.02, p.y))
+		var xf := Transform3D(basis, Vector3(p.x, float(g._h(p)) + float(g.road_top()), p.y))
 		var mm: MultiMesh = _mms[c.kind]
 		mm.set_instance_transform(i, xf)
 		mm.set_instance_custom_data(i, Color(c.paint, c.braking))

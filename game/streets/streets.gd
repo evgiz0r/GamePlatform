@@ -121,10 +121,12 @@ const DETAIL_RANGE := 260.0          ## kerbs, road markings, garden walls: draw
 const GROUND_CELL := 400.0           ## squares the ground details are cut into (big: each layer is a draw a square)
 const TREE_RANGE := 550.0
 const LAMP_RANGE := 320.0            ## lamp posts, traffic-light poles: thin, gone in the haze
+## The ground's layers, centimetres apart: a phone's depth buffer is coarser than a
+## desktop's, and at 2 cm the grass under a road showed through it in green patches
 const Y_AREA := 0.012
-const Y_PATH := 0.022
-const Y_ROAD := 0.035
-const Y_MARK := 0.046
+const Y_PATH := 0.03
+const Y_ROAD := 0.065
+const Y_MARK := 0.085
 const NEW_STREET_M := 30.0           ## drive this far along a street for it to count
 const MAP_R := 210.0                 ## the minimap shows this far around the car (m)
 const AP_LAT := 3.6                  ## autodrive keeps the sideways pull in turns under this (m/s^2)
@@ -504,6 +506,7 @@ const WALK := 1.45                   ## m/s
 const RUN := 4.2
 const TURN_ON_FOOT := 2.6            ## rad/s
 var _look_turn := 0.0                ## the driver's glance into a turn
+var _ap_ring_n := 0                  ## autodrive: pieces of roundabout driven since it came onto one
 
 ## ---- autodrive (the bots' way in, and the seed of AI traffic later) ----
 var _auto := false
@@ -748,13 +751,67 @@ func _fit_dual_carriageways() -> void:
 		fitted += 1
 	if fitted == 0:
 		return
+	_recompute_node_r()
+	_dressing["dual_halves"] = fitted
+
+func _recompute_node_r() -> void:
 	for i in range(_node_r.size()):
 		_node_r[i] = 0.0
 	for r: Dictionary in _roads:
 		if r["drive"]:
 			for id: int in r["ids"]:
 				_node_r[id] = maxf(_node_r[id], float(r["w"]) * 0.5)
-	_dressing["dual_halves"] = fitted
+
+## Road widths are guesses too (8 m a residential street, 10 m a secondary), and in the old
+## streets the buildings stand closer than that: drawn at the guess, the road ran under
+## them ("buildings halfway into the street"). Each road is narrowed, to no less than two
+## lanes (one for a one-way), where over most of its length a wall stands within its
+## asphalt and a strip of pavement. Only where a wall is near is a narrower width looked for.
+func _fit_widths_to_buildings() -> void:
+	var narrowed := 0
+	for ri in range(_roads.size()):
+		var r: Dictionary = _roads[ri]
+		if not r["drive"] or HIGHWAYS.has(r["k"]) or r["k"] == "service":
+			continue
+		var hw := float(r["w"]) * 0.5
+		var min_hw := 2.7 if int(r["o"]) == 0 else 1.8
+		if hw <= min_hw:
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		var allowed: Array = []
+		for j in range(pts.size() - 1):
+			var a := pts[j]
+			var b := pts[j + 1]
+			var L := a.distance_to(b)
+			if L < 0.5:
+				continue
+			var d := (b - a) / L
+			var nrm := Vector2(-d.y, d.x)
+			var n := maxi(1, int(L / 12.0))
+			for k in range(n):
+				var q := a + d * (L * (k + 0.5) / n)
+				var room := hw
+				for sg: float in [-1.0, 1.0]:
+					var side := nrm * sg
+					if _push_out(q + side * (hw + 0.9), 0.5, false) == Vector2.ZERO:
+						continue
+					var x := hw
+					while x > min_hw:
+						x = maxf(min_hw, x - 0.5)
+						if _push_out(q + side * (x + 0.9), 0.5, false) == Vector2.ZERO:
+							break
+					room = minf(room, x)
+				allowed.append(room)
+		if allowed.is_empty():
+			continue
+		allowed.sort()
+		var fit: float = allowed[int(allowed.size() * 0.3)]   # most of its length, not one corner
+		if fit < hw - 0.2:
+			r["w"] = fit * 2.0
+			narrowed += 1
+	if narrowed > 0:
+		_recompute_node_r()
+	_dressing["narrowed"] = narrowed
 
 ## ---- loading the city ---------------------------------------------------------------
 
@@ -803,7 +860,7 @@ func _load_city(id: String) -> bool:
 			pts.append(_nodes[int(n)])
 		var r := {"pts": pts, "ids": ids, "w": float(rd.get("w", 6.0)), "k": kind,
 			"o": int(rd.get("o", 0)), "l": int(rd.get("l", 0)), "name": String(rd.get("name", "")),
-			"en": String(rd.get("name_en", "")), "drive": DRIVE.has(kind), "pv": rd.has("pv"),
+			"en": String(rd.get("name_en", "")), "drive": DRIVE.has(kind), "pv": rd.has("pv"), "sv": String(rd.get("sv", "")),
 			"speed": float(DRIVE.get(kind, 5.0)) * (NORTH_FASTER.get(kind, 1.0) if String(_place.get("look", "")) == "north" else 1.0),
 			# a roundabout's ring: marked by the bake, or a one-way way that closes on itself
 			"ring": rd.has("rb") or (int(rd.get("o", 0)) != 0 and ids.size() > 3 and ids[0] == ids[ids.size() - 1])}
@@ -867,6 +924,7 @@ func _load_city(id: String) -> bool:
 			_hgrid[i] = float(raw[i]) * k
 	for a: Array in data.get("addrs", []):   # address points that are not on a building
 		_add_address("%s %s" % [a[2], a[3]], Vector2(a[0], a[1]) * k)
+	_fit_widths_to_buildings()
 	_build_graph()
 	_city_data = data
 	return true
@@ -926,7 +984,7 @@ func _build_world() -> bool:
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
 	_set_quality(QUALITY_WEB if OS.has_feature("web") else QUALITY.size() - 1)
 	sun.rotation_degrees = Vector3(-50, -28, 0)
-	cam.near = 0.1
+	cam.near = 0.3
 	cam.far = 2200.0
 	var k := 1.0 / float(_city_data.get("scale", 10))
 
@@ -1020,6 +1078,7 @@ func _build_world() -> bool:
 	_build_parks()
 	tk = _stage("parks", tk)
 	_build_parked()
+	_build_lots()
 	tk = _stage("parked", tk)
 	if not await _step("shops and places"):
 		return false
@@ -1042,6 +1101,10 @@ func _build_world() -> bool:
 
 ## ground height at p: the same two triangles per grid cell as the terrain mesh, so
 ## anything placed with it sits exactly on the drawn ground. 0 for a flat city.
+## how far the road's surface is above the ground: wheels go on it, not in it
+func road_top() -> float:
+	return Y_ROAD + (0.07 if _hnx > 0 else 0.0)
+
 func _h(p: Vector2) -> float:
 	if _hnx == 0:
 		return 0.0
@@ -1281,6 +1344,10 @@ func _build_kerbs() -> void:
 				var w_out := _offset_line(run, (hw + PAVE_W + 0.3) * sgn)
 				var g_out := _offset_line(run, (hw + PAVE_W + 3.4) * sgn)
 				for i in range(run.size() - 1):
+					# (not where it would lie on another road: a garden strip of one street ran
+					# over the asphalt of the next where they met at an angle)
+					if _asphalt_other((w_out[i] + w_out[i + 1] + g_out[i] + g_out[i + 1]) * 0.25, ri):
+						continue
 					garden.quad3(_g3(w_out[i], 0.03), _g3(w_out[i + 1], 0.03), _g3(g_out[i + 1], 0.03), _g3(g_out[i], 0.03))
 					if not med:
 						continue   # northern lawns run open to the pavement
@@ -1295,7 +1362,7 @@ func _build_kerbs() -> void:
 					var L := run[i].distance_to(run[i + 1])
 					while s < L:
 						var q := (w_out[i].lerp(w_out[i + 1], s / L)).lerp(g_out[i].lerp(g_out[i + 1], s / L), 0.45)
-						if posmod(_hash_i(q), 3 if med else 6) == 1 and _push_out(q, 0.8, false) == Vector2.ZERO:
+						if posmod(_hash_i(q), 3 if med else 6) == 1 and not _asphalt_other(q, ri) and _push_out(q, 0.8, false) == Vector2.ZERO:
 							var sc := 0.7 + 0.5 * float(posmod(_hash_i(q), 5)) / 4.0
 							bushes.append(Transform3D(Basis.from_scale(Vector3(1.3, 0.9, 1.3) * sc), _g3(q, 0.45 * sc)))
 						s += step
@@ -3260,7 +3327,7 @@ func _build_parked() -> void:
 						var c := _along(run, cum, s)
 						var d := (_along(run, cum, minf(s + 1.0, total)) - c).normalized()
 						var side := Vector2(-d.y, d.x) * sgn
-						var p := c + side * (hw + 0.15)
+						var p := c + side * (hw + 0.6)   # mostly up on the pavement: a third of a car in the road
 						var ok := _push_out(p, 1.0, false) == Vector2.ZERO
 						for i: int in _near(_post_hash, p, 1.4, BLD_CELL):
 							if _posts[i].distance_to(p) < 1.4:
@@ -3279,7 +3346,7 @@ func _build_parked() -> void:
 							var lean := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, -pitch) \
 								* Basis(Vector3.BACK, roll) * Basis(Vector3.FORWARD, -0.05 * sgn)
 							var kind: String = CAR_MIX[rng.randi() % CAR_MIX.size()]
-							(xf_by[kind] as Array).append(Transform3D(lean, _g3(p, 0.02)))
+							(xf_by[kind] as Array).append(Transform3D(lean, _g3(p, 0.1)))   # half up the kerb
 							(cols_by[kind] as Array).append(palette[rng.randi() % palette.size()])
 							xf.append(0)
 							_add_post(p + face * 1.25, 0.85)
@@ -3291,6 +3358,125 @@ func _build_parked() -> void:
 		if not (xf_by[kind] as Array).is_empty():
 			_chunked(_parked_mesh(kind), xf_by[kind], 160.0, cols_by[kind], null, true, true)
 	_dressing["parked"] = xf.size()
+
+## Car parks: OSM's parking areas -- a block's own lot behind its buildings, a supermarket's
+## -- laid out in rows of bays along their long side (2.5 m wide, 5 m deep, two rows back to
+## front across a 6 m aisle), the bays painted, and about three in four taken. Bays that
+## would stick out of the lot, into a building, onto a road or onto a tree are left out.
+var _lot_at: Array = []              ## a car in each car park (for tests and tours)
+
+func _build_lots() -> void:
+	var rings: Array = _area_rings.get("parking", [])
+	var palette := _car_paints()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(_city_name) + 31
+	var xf_by := {"sedan": [], "hatch": [], "suv": [], "van": []}
+	var cols_by := {"sedan": [], "hatch": [], "suv": [], "van": []}
+	var lines := CBuf.new(GROUND_CELL)
+	var cars := 0
+	var ly := Y_AREA + 0.012
+	for ring: PackedVector2Array in rings:
+		var area := _area(ring)
+		if area < 120.0 or area > 8000.0:
+			continue   # (a mall's or a stadium's acres of tarmac: left empty, it is a lot to draw)
+		var n := ring.size()
+		var u := Vector2.RIGHT
+		var longest := 0.0
+		for i in range(n):
+			var e := ring[(i + 1) % n] - ring[i]
+			if e.length() > longest:
+				longest = e.length()
+				u = e.normalized()
+		var v := Vector2(-u.y, u.x)
+		var umin := INF
+		var umax := -INF
+		var vmin := INF
+		var vmax := -INF
+		for q in ring:
+			umin = minf(umin, q.dot(u))
+			umax = maxf(umax, q.dot(u))
+			vmin = minf(vmin, q.dot(v))
+			vmax = maxf(vmax, q.dot(v))
+		var inside := func(q: Vector2) -> bool: return Geometry2D.is_point_in_polygon(q, ring)
+		# rows across the lot: [row facing back, aisle, row facing forward], again and again
+		var vv := vmin + 0.5
+		var row := 0
+		var bays := 0
+		var taken := 0
+		while vv + 5.0 <= vmax - 0.3 and bays < 140:
+			var face := -v if row % 2 == 0 else v   # nose in, away from the aisle
+			var uu := umin + 0.6
+			var placed_any := false
+			while uu + 2.5 <= umax - 0.6 and bays < 140:
+				var p := u * (uu + 1.25) + v * (vv + 2.5)
+				var ok: bool = inside.call(p + u * 1.15 + v * 2.3) and inside.call(p - u * 1.15 + v * 2.3) \
+					and inside.call(p + u * 1.15 - v * 2.3) and inside.call(p - u * 1.15 - v * 2.3)
+				ok = ok and _push_out(p, 1.4, false) == Vector2.ZERO and _off_road(p, 1.6) and _clear_of_posts(p, 1.8)
+				if ok:
+					placed_any = true
+					bays += 1
+					# the bay's two side lines
+					for side: float in [-1.25, 1.25]:
+						var a := p + u * side - v * 2.5
+						var b := p + u * side + v * 2.5
+						lines.quad3(_g3(a - u * 0.05, ly), _g3(b - u * 0.05, ly), _g3(b + u * 0.05, ly), _g3(a + u * 0.05, ly))
+					if rng.randf() < 0.66 and taken < 70:
+						taken += 1
+						var kind: String = CAR_MIX[rng.randi() % CAR_MIX.size()]
+						var f := face.rotated(rng.randf_range(-0.05, 0.05))
+						var at := p + u * rng.randf_range(-0.15, 0.15) - face * 0.2
+						(xf_by[kind] as Array).append(Transform3D(Basis(Vector3.UP, atan2(f.x, f.y)), _g3(at, 0.02)))
+						if taken == 1:
+							_lot_at.append(at)
+						(cols_by[kind] as Array).append(palette[rng.randi() % palette.size()])
+						_add_post(at + f * 1.25, 0.85)
+						_add_post(at - f * 1.25, 0.85)
+						cars += 1
+				uu += 2.5
+			vv += 5.0 + (6.0 if row % 2 == 0 else 0.4)   # the aisle after the first row of a pair
+			row += 1
+	# a car park mapped only by its lanes (OSM: service=parking_aisle, as most blocks' own
+	# lots are): a row of bays down each side of each lane
+	for r: Dictionary in _roads:
+		if r.get("sv", "") != "parking_aisle":
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		var hw: float = float(r["w"]) * 0.5
+		var taken := 0
+		for j in range(pts.size() - 1):
+			var a := pts[j]
+			var b := pts[j + 1]
+			var L := a.distance_to(b)
+			if L < 4.0:
+				continue
+			var d := (b - a) / L
+			var nrm := Vector2(-d.y, d.x)
+			var s := 2.5
+			while s + 1.25 < L - 1.0:
+				for sg: float in [-1.0, 1.0]:
+					var face := nrm * sg   # nose in, away from the lane
+					var p := a + d * s + face * (hw + 2.6)
+					if _push_out(p, 1.4, false) != Vector2.ZERO or not _off_road(p, 1.2) or not _clear_of_posts(p, 1.8):
+						continue
+					for side: float in [-1.25, 1.25]:
+						var q0 := p + d * side - face * 2.5
+						var q1 := p + d * side + face * 2.5
+						lines.quad3(_g3(q0 - d * 0.05, ly), _g3(q1 - d * 0.05, ly), _g3(q1 + d * 0.05, ly), _g3(q0 + d * 0.05, ly))
+					if rng.randf() < 0.66 and taken < 50:
+						taken += 1
+						var kind: String = CAR_MIX[rng.randi() % CAR_MIX.size()]
+						var f := face.rotated(rng.randf_range(-0.05, 0.05))
+						(xf_by[kind] as Array).append(Transform3D(Basis(Vector3.UP, atan2(f.x, f.y)), _g3(p, 0.02)))
+						(cols_by[kind] as Array).append(palette[rng.randi() % palette.size()])
+						_add_post(p + f * 1.25, 0.85)
+						_add_post(p - f * 1.25, 0.85)
+						cars += 1
+				s += 2.5
+	for kind: String in xf_by:
+		if not (xf_by[kind] as Array).is_empty():
+			_chunked(_parked_mesh(kind), xf_by[kind], 130.0, cols_by[kind], null, true, true)
+	_add_mesh(lines, _surface("mark"), false, DETAIL_RANGE)
+	_dressing["lot_cars"] = cars
 
 ## car colours as Israeli streets have them (and Canadian ones are not far off): mostly
 ## white, silver, grey and black, now and then a blue, a red or a beige
@@ -4374,7 +4560,7 @@ func _build_road_paint() -> void:
 				var dir := (c - pts[from]).normalized()
 				if c.distance_to(pts[from]) < 16.0:
 					continue
-				var lane := clampf(float(r["w"]) * 0.25, 1.2, 1.9) if r["o"] == 0 else 0.0
+				var lane := _lane_off(r)
 				_road_word("האט" if med else "SLOW", c - dir * 12.0 + Vector2(-dir.y, dir.x) * lane, dir)
 	_add_mesh(paint, _surface("mark"), false, DETAIL_RANGE)
 
@@ -5441,6 +5627,16 @@ func _build_car() -> void:
 func _fwd() -> Vector2:
 	return Vector2(cos(_yaw), sin(_yaw))
 
+## The right-hand lane's line, this far right of a two-way road's middle (one-way: the
+## middle). Every two-way street has two lanes, however narrow; the line sits a little past
+## the lane's own middle, toward the kerb, as drivers do -- at w/4 cars ran close to the
+## centre line and met the traffic coming the other way in it.
+func _lane_off(r: Dictionary) -> float:
+	if int(r["o"]) != 0:
+		return 0.0
+	var w := float(r["w"])
+	return clampf(minf(w * 0.25 + 0.25, w * 0.5 - 0.95), 0.9, 2.6)
+
 ## ---- the driver's seat ----------------------------------------------------------------------
 ## The view from behind the wheel, like a dashcam a little lower: the bonnet through the
 ## windscreen (the body's own faces point out, so from inside only the bonnet and the mirrors
@@ -5889,7 +6085,7 @@ func _set_cockpit(on: bool) -> void:
 		for gi: GeometryInstance3D in _sedan_node.find_children("*", "GeometryInstance3D", true, false):
 			gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if on and not _walking \
 					else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-	cam.near = 0.05 if on else 0.1
+	cam.near = 0.05 if on else 0.3   # (further out: finer depth for the ground's thin layers)
 	if _me != null:   # on foot, from the eyes: no looking out through your own hair
 		for gi: GeometryInstance3D in _me.find_children("*", "GeometryInstance3D", true, false):
 			gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if on and _walking \
@@ -6135,7 +6331,7 @@ func _place_start() -> void:
 				dir = (pts[j + 1] - pts[j]).normalized()
 				if r["o"] == -1:
 					dir = -dir
-				var lane := 0.0 if r["o"] != 0 else minf(float(r["w"]) * 0.25, 1.8)
+				var lane := _lane_off(r)
 				at = c + Vector2(-dir.y, dir.x) * lane
 	_pos = at
 	_yaw = dir.angle()
@@ -6165,7 +6361,7 @@ func _start_on(street: String, cross: String) -> bool:
 				if nxt < 0 or nxt >= pts.size() or (r["o"] != 0 and r["o"] != d2):
 					continue
 				var dir := (pts[nxt] - pts[e.y]).normalized()
-				var lane := 0.0 if r["o"] != 0 else minf(float(r["w"]) * 0.25, 1.8)
+				var lane := _lane_off(r)
 				var into := minf(_node_r[i] + 6.0, pts[e.y].distance_to(pts[nxt]) * 0.6)
 				_pos = pts[e.y] + dir * into + Vector2(-dir.y, dir.x) * lane
 				_yaw = dir.angle()
@@ -6399,7 +6595,7 @@ func _assist_steer() -> float:
 	var err := fwd.angle_to(d)
 	if absf(err) > 0.6:
 		return 0.0
-	var lane := minf(float(r["w"]) * 0.25, 1.9) if r["o"] == 0 and float(r["w"]) >= 5.0 else 0.0
+	var lane := _lane_off(r)
 	var right := Vector2(-d.y, d.x)
 	var off := (_pos - (hit["q"] as Vector2)).dot(right) - lane
 	return clampf(err * ASSIST_ALIGN - off * ASSIST_LANE, -ASSIST_MAX, ASSIST_MAX)
@@ -6438,7 +6634,7 @@ func _land_on_road(near: Vector2, reach: float, prefer: Vector2) -> bool:
 			d = -d
 	elif (near - (hit["q"] as Vector2)).dot(Vector2(-d.y, d.x)) < 0.0:
 		d = -d   # the address on the right, the kerb side
-	var lane := minf(float(r["w"]) * 0.25, 1.8) if r["o"] == 0 else 0.0
+	var lane := _lane_off(r)
 	var at := (hit["q"] as Vector2) + Vector2(-d.y, d.x) * lane
 	# not on top of a parked car or a tree: a little along the street until both ends of
 	# the car are clear
@@ -6567,7 +6763,7 @@ func _place_car(dt: float) -> void:
 ## the car's body where the map says, sitting on the slope: nose up a hill, leaning across
 ## a camber
 func _pose_car(p: Vector2, yaw: float, y := NAN) -> void:
-	_car.position = Vector3(p.x, _h(p) if is_nan(y) else maxf(y, _h(p)), p.y)
+	_car.position = Vector3(p.x, (_h(p) if is_nan(y) else maxf(y, _h(p))) + road_top(), p.y)
 	_car.rotation.y = PI * 0.5 - yaw
 	if _air:   # in the air the nose follows the flight
 		_car.rotation.x = lerp_angle(_car.rotation.x, -atan2(_vy, maxf(absf(_v), 3.0)) * 0.8, 0.15)
@@ -7033,6 +7229,39 @@ func _send_crossers() -> void:
 		a.visible = true
 		a.play("Idle", true, _people_rng.randf_range(0.8, 1.1))
 
+## autodrive: anyone standing on the lane ahead -- crossing, hurrying back, stepping aside
+## off a pavement -- stopped for, whatever the crossing rules say (the speed allowed, or INF)
+func _ap_people_v() -> float:
+	if _ap_pts.size() < 2:
+		return INF
+	var people: Array = []
+	for cr: Dictionary in _crossers:
+		if cr["state"] in ["cross", "back"]:
+			people.append((cr["actor"] as Actor3D).position)
+	for w: Dictionary in _walkers:
+		var a: Actor3D = w["actor"]
+		if a.visible:
+			people.append(a.position)
+	var fwd := _fwd()
+	var best := INF
+	for p3: Vector3 in people:
+		var p := Vector2(p3.x, p3.z)
+		if p.distance_squared_to(_pos) > 1100.0 or (p - _pos).dot(fwd) < 0.0:
+			continue
+		var base := -_ap_pts[0].distance_to(Geometry2D.get_closest_point_to_segment(_pos, _ap_pts[0], _ap_pts[1]))
+		for j in range(_ap_pts.size() - 1):
+			if base > 32.0:
+				break
+			var a := _ap_pts[j]
+			var b := _ap_pts[j + 1]
+			var cp := Geometry2D.get_closest_point_to_segment(p, a, b)
+			if cp.distance_to(p) < 1.7:
+				var stop := base + a.distance_to(cp) - CAR_OFF - 2.8
+				best = minf(best, sqrt(2.0 * 3.5 * maxf(stop - 0.3, 0.0)))
+				break
+			base += a.distance_to(b)
+	return best
+
 ## autodrive: stop short of a crossing with someone on it (the speed allowed now, or INF)
 func _ap_zebra_v() -> float:
 	if _zebras_on.is_empty() or _ap_pts.size() < 2:
@@ -7392,6 +7621,7 @@ func _autodrive(dt: float) -> Array:
 	vt = minf(vt, _ap_light_v())
 	vt = minf(vt, _ap_sign_v(dt))
 	vt = minf(vt, _ap_zebra_v())
+	vt = minf(vt, _ap_people_v())
 	if ahead_blocked:
 		vt = minf(vt, 2.5)
 	# the car in front, kept a couple of metres and a second or so behind; after waiting
@@ -7421,7 +7651,33 @@ func _autodrive(dt: float) -> Array:
 			Probe.event("autodrive_stuck")
 	else:
 		_ap_stuck = 0.0
+	_ap_watch(dt, vt)
 	return [throttle, brake, steer]
+
+## The last resort: autodrive that has got nowhere for 40 s -- not waiting at a light,
+## just stuck (a dead end at the edge of the map, a knot of buildings the plan runs into) --
+## is lifted onto a street a little way toward the middle of town, and drives on from there.
+var _ap_mark := Vector2.INF
+var _ap_mark_t := 0.0
+const AP_GIVE_UP := 40.0
+
+func _ap_watch(dt: float, vt: float) -> void:
+	if _ap_mark == Vector2.INF or _pos.distance_to(_ap_mark) > 12.0 or _ap_light_v() < 0.5 or not _cross.is_empty():
+		_ap_mark = _pos
+		_ap_mark_t = 0.0
+		return
+	_ap_mark_t += dt
+	if _ap_mark_t < AP_GIVE_UP:
+		return
+	_ap_mark = Vector2.INF
+	var mid := _bounds.get_center()
+	var toward := (mid - _pos).normalized()
+	for reach: float in [40.0, 80.0, 140.0]:
+		if _land_on_road(_pos + toward * reach, 50.0, toward):
+			_ap_pts = PackedVector2Array()
+			_show_banner("autodrive: unstuck", 1.6)
+			Probe.event("autodrive_unstuck")
+			return
 
 ## the point `dist` metres along the planned lane from point k (negative = back)
 func _ap_walk(k: int, dist: float) -> Vector2:
@@ -7508,10 +7764,19 @@ func _ap_leg(ri: int, from: int, dir: int) -> void:
 	var pts: PackedVector2Array = r["pts"]
 	# the right-hand lane: every two-way street has two, however narrow (with traffic
 	# about, driving down the middle of one meant meeting cars head on)
-	var lane := clampf(float(r["w"]) * 0.25, 1.2, 1.9) if r["o"] == 0 else 0.0
+	var lane := _lane_off(r)
 	var last := pts.size() - 1 if dir > 0 else 0
+	if r.get("ring", false):   # a roundabout: plan only to its next exit (see traffic.gd's _ring_stop)
+		var ids: PackedInt32Array = r["ids"]
+		var k := from
+		while k != last:
+			if k != from and _node_ways(ids[k]) >= 3:
+				last = k
+				break
+			k += dir
 	var i := from
-	var start := _ap_pts.size()
+	_ap_turn_into(ri, from, dir, lane)
+	var start := maxi(_ap_pts.size() - 6, 0)
 	while true:
 		var prv := pts[i - dir] if (i - dir >= 0 and i - dir < pts.size()) else pts[i]
 		var nxt := pts[i + dir] if (i + dir >= 0 and i + dir < pts.size()) else pts[i]
@@ -7530,6 +7795,46 @@ func _ap_leg(ri: int, from: int, dir: int) -> void:
 	# gentle-looking many-sided ring of a roundabout both come out as the tight turns
 	# they are. (Points near the old end are redone now that there is road beyond them.)
 	_ap_curves(start - 10)
+
+## Into the next road at a junction: the last road ended on the junction's point, and the
+## next road's first point can be 30-100 m down it -- the straight line between them ran
+## down the wrong side of the new street (after a left turn the car sat in the oncoming
+## lane for a while, after a right one it straddled the middle) and into the cars there.
+## Now the turn starts just short of the junction in the lane it is in, curves round, and
+## comes out just past it in the right lane of the new road.
+func _ap_turn_into(ri: int, from: int, dir: int, lane: float) -> void:
+	var r: Dictionary = _roads[ri]
+	var pts: PackedVector2Array = r["pts"]
+	var ids: PackedInt32Array = r["ids"]
+	var at := from - dir
+	var n := _ap_pts.size()
+	if at < 0 or at >= pts.size() or n < 2:
+		return
+	var node := ids[at]
+	var c := _nodes[node]
+	if _node_ways(node) < 3 or _ap_pts[n - 1].distance_to(c) > 6.0:
+		return
+	var before := _ap_pts[n - 2]
+	var in_dir := (c - before).normalized()
+	var out_dir := (pts[from] - c).normalized()
+	if in_dir == Vector2.ZERO or out_dir == Vector2.ZERO or absf(in_dir.angle_to(out_dir)) < 0.35:
+		return
+	var rin := Vector2(-in_dir.y, in_dir.x)
+	var rout := Vector2(-out_dir.y, out_dir.x)
+	var lane_in := (_ap_pts[n - 1] - c).dot(rin)
+	var back := minf(_node_r[node] + 1.0, before.distance_to(c) * 0.8)
+	var ahead := minf(_node_r[node] + 1.0, c.distance_to(pts[from]) * 0.8)
+	var E := c - in_dir * back + rin * lane_in
+	var X := c + out_dir * ahead + rout * lane
+	var K = Geometry2D.line_intersects_line(E, in_dir, X, -out_dir)
+	var k2: Vector2 = K if K != null and (K as Vector2).distance_to(c) < back + ahead + 4.0 else (E + X) * 0.5
+	var v := _ap_v[n - 1]
+	var lim := _ap_lim[n - 1]
+	_ap_pts[n - 1] = E
+	for t: float in [0.25, 0.5, 0.75, 1.0]:
+		_ap_pts.append(E * (1.0 - t) * (1.0 - t) + k2 * 2.0 * (1.0 - t) * t + X * t * t)
+		_ap_v.append(v)
+		_ap_lim.append(minf(lim, float(r["speed"])))
 
 func _ap_curves(from_k: int) -> void:
 	for k in range(maxi(1, from_k), _ap_pts.size() - 1):
@@ -7580,7 +7885,12 @@ func _ap_next() -> bool:
 			if r2["name"] != "" and not _visited.has(r2["name"]):
 				score += 1.4
 			if r2["k"] == "service":
-				score -= 1.5
+				score -= 6.0   # alleys and car-park lanes: only when there is nothing else
+			if not _in_city(p2[nxt]):
+				score -= 2.5   # back toward town rather than out past its edge
+			if r.get("ring", false):
+				# on a roundabout: off at one of the next exits, never round and round
+				score += (-0.8 - 1.2 * _ap_ring_n) if r2.get("ring", false) else 1.2
 			ways.append({"leg": Vector3i(e.x, nxt, d2), "turn": came.angle_to(go), "name": r2["name"],
 				"en": r2["en"], "service": r2["k"] == "service", "score": score})
 			if score > best_score:
@@ -7591,9 +7901,10 @@ func _ap_next() -> bool:
 			return false
 		_ap_leg(back.x, back.y, back.z)
 		return true
-	# a real crossing (two or more proper streets on): ask, and plan no further for now
+	# a real crossing (two or more proper streets on): ask, and plan no further for now --
+	# but not round a roundabout, where the exits come too fast to ask at each
 	var main: Array = ways.filter(func(w): return not w["service"])
-	if not _dest_on and main.size() >= 2:
+	if not _dest_on and main.size() >= 2 and not r.get("ring", false):
 		if _cross.is_empty() or _cross["node"] != node:
 			main.sort_custom(func(a, b): return a["turn"] < b["turn"])
 			var pick := 0
@@ -7604,6 +7915,7 @@ func _ap_next() -> bool:
 			_ap_v[_ap_v.size() - 1] = minf(_ap_v[_ap_v.size() - 1], CROSS_V)
 		return false
 	var leg: Vector3i = ways[best_i]["leg"]
+	_ap_ring_n = _ap_ring_n + 1 if (_roads[leg.x] as Dictionary).get("ring", false) else 0
 	_ap_leg(leg.x, leg.y, leg.z)
 	return true
 
@@ -7700,13 +8012,13 @@ func _route_to(goal: Vector2) -> bool:
 		var e: Vector3i = _edge_of.get(Vector2i(int(best[i - 1]), n), Vector3i(s["road"], 0, 1)) if i > 0 else Vector3i(s["road"], 0, dir)
 		var road: Dictionary = _roads[e.x]
 		var d := (nxt - prv).normalized()
-		var lane := minf(float(road["w"]) * 0.25, 1.9) if road["o"] == 0 and float(road["w"]) >= 5.0 else 0.0
+		var lane := _lane_off(road)
 		_ap_pts.append(_nodes[n] + Vector2(-d.y, d.x) * lane)
 		_ap_lim.append(float(road["speed"]))
 	# the last stretch along the goal's segment, to the kerb in front of the address
 	var last_dir := (gr["pts"] as PackedVector2Array)[gj + 1] - (gr["pts"] as PackedVector2Array)[gj]
 	last_dir = last_dir.normalized() * float(best_dir)
-	var glane := minf(float(gr["w"]) * 0.25, 1.9) if gr["o"] == 0 else 0.0
+	var glane := _lane_off(gr)
 	_dest_stop = (g["q"] as Vector2) + Vector2(-last_dir.y, last_dir.x) * glane
 	_ap_pts.append(_dest_stop)
 	_ap_lim.append(float(gr["speed"]))
