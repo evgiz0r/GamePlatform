@@ -316,6 +316,21 @@ out per pixel from where it is, nothing to load, the fine part fading out with d
 > buildings; roundabouts where cars get stuck or circle; autodrive not stopping for
 > people; some non-flat texture on big empty grey or green areas.
 
+**Real textures.** Up close the surfaces are photographs (free CC0 ones from Poly Haven, in
+`textures/`): the asphalt has grit and fine cracks, with a second photo of tyre marks,
+patches and long cracks laid over it at 30 m so it doesn't visibly repeat; Givatayim's and Ashdod's
+pavements are rows of concrete pavers, Bedford's poured concrete slabs; grass and open
+ground are a real lawn; walls are painted render. Each has its bumps, so the low sun picks
+out the cracks and the joints between pavers. The palette still decides every colour: a
+photo only adds the variation round its own average, so `/look` reskins it as before.
+Walls are a little darker at the foot, and a faint streak of grime runs down from each
+window sill.
+
+> What would it take to make it more realistic, closer to Unreal and Unity quality of
+> details and resolution?
+
+> Let's start with the textures.
+
 ## Smooth on a laptop and a phone
 
 > It's pretty choppy and laggy now. I'm trying on a laptop browser.
@@ -327,7 +342,8 @@ round the car, and the car and camera are drawn between physics ticks so they gl
 however fast the screen redraws. In a browser the game also watches its own frame rate:
 under 55 frames a second, or stuttering (more than one frame in twelve slower than 25 ms),
 for a few seconds and it steps down a level -- first smoother edges (MSAA) off and
-shorter shadows, then no shadows and a lower 3D resolution. It never steps back up during
+shorter shadows, then no shadows and a lower 3D resolution and the photo textures off
+(back to the drawn grain). It never steps back up during
 a drive. The frame rate and the level are shown small under the speed. Parked cars and
 traffic are one mesh per car shape (a batch of them costs one draw, not six); every kind
 of shader is drawn once while the city loads, so none of them stalls the first time it
