@@ -1068,6 +1068,7 @@ func _build_world() -> bool:
 	world.add_child(ground)
 	if _hnx > 0:
 		_build_terrain()
+	_build_edge()
 	if not await _step("streets"):
 		return false
 
@@ -5734,6 +5735,7 @@ func _retint_city() -> void:
 	_apply_signals_safe()
 	_retint_kerbs()
 	_retint_ground()
+	_retint_edge()
 	for poi: Array in _pois:
 		var lb := poi[2] as Label3D
 		lb.modulate = Palette.col(poi[1])
@@ -6080,6 +6082,7 @@ func _walk(dt: float) -> void:
 		var d := _pos - (_car_at + cf * off)
 		if d.length() < CAR_R + 0.3 and d.length() > 0.001:
 			_pos += d.normalized() * (CAR_R + 0.3 - d.length())
+	_keep_inside(0.3, false)
 	_y = _h(_pos)
 	var anim := "Idle" if absf(_v) < 0.15 else ("Run" if absf(_v) > WALK + 0.5 else "Walk")
 	if anim != _me_anim:
@@ -6871,12 +6874,122 @@ func _drive(dt: float, throttle: float, brake: float, steer: float) -> void:
 	var right := Vector2(-fwd.y, fwd.x)
 	_pos += (fwd * _v + right * (_v_lat + _yaw_rate * WHEELBASE * 0.5)) * dt
 	_collide()
-	var edge := _bounds.grow(-8.0)
-	if not edge.has_point(_pos):
-		_pos = _pos.clamp(edge.position, edge.end)
-		_v *= 0.5
+	_keep_inside(CAR_R, true)
 	_fly(dt)
 	_place_car(dt)
+
+## The edge of the map: a striped barrier EDGE metres in from the baked area's rim, with a
+## glowing curtain over it that shows as you come near (it used to be an invisible wall the
+## car stopped dead against). The car's circles (or a walker, r 0.3) are kept off it.
+const EDGE := 6.0
+const EDGE_BAND := 1.1                ## the barrier's height
+const EDGE_CURTAIN := 7.0             ## the curtain's top
+var _edge_mats: Array = []
+var _edge_warned := 0.0
+
+func _keep_inside(r: float, car: bool) -> void:
+	var inside := _bounds.grow(-EDGE - r)
+	var push := Vector2.ZERO
+	var circles: Array = [_pos + _fwd() * CAR_OFF, _pos - _fwd() * CAR_OFF] if car else [_pos]
+	for q: Vector2 in circles:
+		var d := q.clamp(inside.position, inside.end) - q
+		if absf(d.x) > absf(push.x):
+			push.x = d.x
+		if absf(d.y) > absf(push.y):
+			push.y = d.y
+	if push == Vector2.ZERO:
+		return
+	_pos += push
+	if car:
+		var into := -push.normalized().dot(_fwd() * signf(_v)) * absf(_v)
+		_v *= 0.4
+		if into > 0.5:
+			_last_hit = "edge"
+			_crash(into)
+	if Time.get_ticks_msec() * 0.001 > _edge_warned:
+		_edge_warned = Time.get_ticks_msec() * 0.001 + 6.0
+		_show_banner("the edge of the map", 1.4)
+		Probe.event("map_edge", {"at": Vector2i(_pos)})
+
+## the barrier and curtain along the four sides, following the ground, a few metres a piece
+func _build_edge() -> void:
+	_edge_mats = []
+	for curtain: bool in [false, true]:
+		var sh := Shader.new()   # (two: the barrier opaque, only the curtain see-through)
+		sh.code = ("#define CURTAIN\n" if curtain else "") + EDGE_SHADER
+		var m := ShaderMaterial.new()
+		m.shader = sh
+		m.set_shader_parameter("band", EDGE_BAND)
+		m.set_shader_parameter("top", EDGE_CURTAIN)
+		m.render_priority = 1 if curtain else 0
+		_edge_mats.append(m)
+	_retint_edge()
+	var rim := _bounds.grow(-EDGE)
+	var corners := [rim.position, Vector2(rim.end.x, rim.position.y), rim.end, Vector2(rim.position.x, rim.end.y)]
+	for side in range(4):
+		var a: Vector2 = corners[side]
+		var b: Vector2 = corners[(side + 1) % 4]
+		var L := a.distance_to(b)
+		var n := maxi(1, ceili(L / 4.0))
+		for curtain: bool in [false, true]:
+			var st := SurfaceTool.new()
+			st.begin(Mesh.PRIMITIVE_TRIANGLES)
+			for k in range(n):
+				var p0 := a.lerp(b, float(k) / n)
+				var p1 := a.lerp(b, float(k + 1) / n)
+				var g0 := _h(p0)
+				var g1 := _h(p1)
+				var lo0 := g0 + (EDGE_BAND if curtain else -0.4)
+				var lo1 := g1 + (EDGE_BAND if curtain else -0.4)
+				var hi0 := g0 + (EDGE_CURTAIN if curtain else EDGE_BAND)
+				var hi1 := g1 + (EDGE_CURTAIN if curtain else EDGE_BAND)
+				var s0 := L * float(k) / n
+				var s1 := L * float(k + 1) / n
+				var v: Array = [Vector3(p0.x, lo0, p0.y), Vector3(p1.x, lo1, p1.y), Vector3(p1.x, hi1, p1.y), Vector3(p0.x, hi0, p0.y)]
+				var uv: Array = [Vector2(s0, lo0 - g0), Vector2(s1, lo1 - g1), Vector2(s1, hi1 - g1), Vector2(s0, hi0 - g0)]
+				for i: int in [0, 1, 2, 0, 2, 3]:
+					st.set_uv(uv[i])
+					st.add_vertex(v[i])
+			var mi := MeshInstance3D.new()
+			mi.mesh = st.commit()
+			mi.material_override = _edge_mats[1 if curtain else 0]
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			world.add_child(mi)
+
+func _retint_edge() -> void:
+	for m: ShaderMaterial in _edge_mats:
+		m.set_shader_parameter("stripe", Palette.col("hazard"))
+		m.set_shader_parameter("ink", Palette.col("ink"))
+
+const EDGE_SHADER := """
+shader_type spatial;
+render_mode unshaded, cull_disabled, shadows_disabled;
+uniform float band = 1.1;
+uniform float top = 7.0;
+uniform vec3 stripe : source_color = vec3(1.0, 0.2, 0.4);
+uniform vec3 ink : source_color = vec3(1.0);
+varying float dist;
+void vertex() {
+	dist = length((MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).xyz);
+}
+void fragment() {
+#ifndef CURTAIN
+	// chevrons on the barrier: the hazard colour and white, a bright line along its top
+	float s = fract((UV.x + UV.y) / 1.6);
+	vec3 c = s < 0.5 ? stripe : ink;
+	c = mix(c, ink, smoothstep(band - 0.12, band - 0.04, UV.y));
+	ALBEDO = c;
+#else
+	// the curtain: glowing at the barrier, fading up, with faint upright lines; only when
+	// near (a ring of light round the town on the horizon is no help)
+	float h = clamp((UV.y - band) / (top - band), 0.0, 1.0);
+	float lines = 0.75 + 0.25 * step(0.85, fract(UV.x / 3.0));
+	float near = 1.0 - smoothstep(60.0, 180.0, dist);
+	ALBEDO = mix(stripe, ink, 0.25);
+	ALPHA = (1.0 - h) * (1.0 - h) * 0.55 * lines * near;
+#endif
+}
+"""
 
 ## up and down: on the ground the car rides it; over a crest the ground can fall away
 ## faster than the car comes down, and then it flies, with a little lift for the fun of it,
@@ -9113,6 +9226,10 @@ func _draw_map() -> void:
 		_map.draw_multiline(_map_lines["major"], Palette.col("warn"), 3.0 / s)
 	for pts: PackedVector2Array in _map_lines["limits"]:
 		_map.draw_polyline(pts, Color(Palette.col("accent"), 0.8), 1.5 / s)
+	var rim := _bounds.grow(-EDGE)
+	if not rim.grow(-MAP_R * 1.5).has_point(_view_pos):   # the map's edge, when it is in view
+		_map.draw_polyline(PackedVector2Array([rim.position - at, Vector2(rim.end.x, rim.position.y) - at, rim.end - at,
+			Vector2(rim.position.x, rim.end.y) - at, rim.position - at]), Palette.col("hazard"), 3.0 / s)
 	if _auto and _ap_pts.size() > 1:
 		var route := PackedVector2Array()
 		for p in _ap_pts:
