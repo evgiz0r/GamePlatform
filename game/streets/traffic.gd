@@ -153,6 +153,19 @@ func setup(game: Node) -> void:
 	bmi.multimesh = _blinkers
 	bmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	g.world.add_child(bmi)
+	# a soft patch under each car, for when the real shadows are off (g._set_blobs)
+	var sm := MultiMesh.new()
+	sm.transform_format = MultiMesh.TRANSFORM_3D
+	sm.mesh = g.blob_mesh()
+	sm.instance_count = COUNT
+	sm.custom_aabb = box
+	for k in range(COUNT):
+		sm.set_instance_transform(k, Transform3D(Basis(), Vector3(0, -500, 0)))
+	_blobs = MultiMeshInstance3D.new()
+	_blobs.multimesh = sm
+	_blobs.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_blobs.visible = g._blobs_on
+	g.world.add_child(_blobs)
 	var palette: Array = g._car_paints()
 	var med := String(g._place.get("look", "")) == "med"
 	# the city's buses: Givatayim's in the blue and the green of its two companies, Bedford's white
@@ -180,6 +193,12 @@ func setup(game: Node) -> void:
 		c.alive = _spawn(c, true)
 		_hide_or_show(i)
 	retint()
+
+var _blobs: MultiMeshInstance3D
+
+func show_blobs(on: bool) -> void:
+	if _blobs != null:
+		_blobs.visible = on
 
 func retint() -> void:
 	pass   # the car shader is the game's, retinted with it
@@ -1096,6 +1115,9 @@ func draw(f: float) -> void:
 		mm.set_instance_custom_data(i, Color(c.paint, c.braking))
 		if _night:
 			_beams.multimesh.set_instance_transform(i, xf)
+		if _blobs.visible:
+			var cs: Vector2 = CORNERS.get(c.kind, Vector2(0.9, 2.25))
+			_blobs.multimesh.set_instance_transform(i, xf * Transform3D(Basis.from_scale(Vector3(cs.x * 2.0 + 0.8, 1.0, cs.y * 2.0 + 1.0)), Vector3(0, 0.02, 0)))
 		# the indicators: the car's right is its -X
 		var lit := c.blink != 0 and fmod(_clock + float(i) * 0.13, 0.7) < 0.36
 		if lit:
@@ -1116,6 +1138,8 @@ func _hide_or_show(i: int) -> void:
 			_blinkers.set_instance_transform(i * 2 + 1, Transform3D(Basis(), Vector3(0, -500, 0)))
 		if _beams != null:
 			_beams.multimesh.set_instance_transform(i, Transform3D(Basis(), Vector3(0, -500, 0)))
+		if _blobs != null:
+			_blobs.multimesh.set_instance_transform(i, Transform3D(Basis(), Vector3(0, -500, 0)))
 
 ## ---- the player's car against them --------------------------------------------------------
 

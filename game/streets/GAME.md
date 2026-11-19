@@ -365,6 +365,13 @@ so do the trees, which are too many to copy.
 
 > Performance pass: fewer draw calls, faster loading of big cities.
 
+When the browser can't keep up, the game steps its own quality down; at the lowest step
+the real shadows are off, and each car gets a soft dark patch under it instead so it still
+stands on the road (the street went flat the moment it stepped down). The asphalt's wear and
+grain are strong enough to read at the lowest step's lower resolution.
+
+> I start with textures on the street but after I drive a bit they just vanish.
+
 ## How do you win?
 
 There is no winning. The one game hook: every street of the city you drive down for the

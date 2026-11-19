@@ -3885,7 +3885,7 @@ void fragment() {
 const TONE_FX := {
 	"grass": [0.16, 0.08, 0.0, 1.0], "pitch": [0.06, 0.05, 0.0, 1.0], "wood": [0.16, 0.07, 0.0, 1.0],
 	"bush": [0.1, 0.05, 0.0, 1.0], "ground": [0.1, 0.06, 0.0, 1.0], "sand": [0.08, 0.08, 0.0, 1.0],
-	"asphalt": [0.08, 0.06, 0.0, 2.0], "parking": [0.08, 0.05, 0.0, 2.0], "path": [0.06, 0.07, 0.0, 2.0],
+	"asphalt": [0.11, 0.075, 0.0, 2.0], "parking": [0.1, 0.06, 0.0, 2.0], "path": [0.06, 0.07, 0.0, 2.0],
 	"pavement": [0.04, 0.04, 0.6, 3.0], "plaza": [0.05, 0.04, 1.0, 3.0], "mark": [0.0, 0.04, 0.0, 2.0],
 }
 var _tone_list: Array = []           ## the table's tone names, in order
@@ -5743,6 +5743,8 @@ func _retint_city() -> void:
 	_retint_kerbs()
 	_retint_ground()
 	_retint_edge()
+	if _blob_plane != null:
+		(_blob_plane.material as ShaderMaterial).set_shader_parameter("tint", Palette.col("bg"))
 	for poi: Array in _pois:
 		var lb := poi[2] as Label3D
 		lb.modulate = Palette.col(poi[1])
@@ -5774,8 +5776,53 @@ func _build_car() -> void:
 	_car.add_child(beam)
 	_beam_node = beam
 	_lights_on = _night
+	_blob = MeshInstance3D.new()
+	_blob.mesh = blob_mesh()
+	_blob.scale = Vector3(2.7, 1.0, 5.6)
+	_blob.position = Vector3(0, 0.02, 0)
+	_blob.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_blob.visible = _blobs_on
+	_car.add_child(_blob)
 	_build_cockpit()
 	_build_car_signals()
+
+## Where the real shadows are off (the lowest quality: a phone that could not keep up), a
+## soft dark patch under each car keeps it standing on the road. Without them the street
+## went flat the moment the game stepped down, and the cars floated over it.
+var _blobs_on := false
+var _blob: MeshInstance3D
+var _blob_plane: PlaneMesh
+const BLOB_SHADER := """
+shader_type spatial;
+render_mode unshaded, depth_draw_never, cull_disabled, shadows_disabled;
+uniform vec3 tint : source_color = vec3(0.0);
+void fragment() {
+	vec2 q = abs(UV - 0.5) * 2.0;   // 0 in the middle, 1 at the rim
+	float d = length(max(q - vec2(0.5, 0.68), 0.0) / vec2(0.5, 0.32));
+	ALBEDO = tint;
+	ALPHA = (1.0 - smoothstep(0.0, 1.0, d)) * 0.62;
+}
+"""
+
+## a 1 m square lying flat, the patch's shape and fade in its shader (scaled to each car)
+func blob_mesh() -> PlaneMesh:
+	if _blob_plane == null:
+		_blob_plane = PlaneMesh.new()
+		_blob_plane.size = Vector2(1.0, 1.0)
+		var m := ShaderMaterial.new()
+		var sh := Shader.new()
+		sh.code = BLOB_SHADER
+		m.shader = sh
+		m.set_shader_parameter("tint", Palette.col("bg"))
+		_blob_plane.material = m
+	return _blob_plane
+
+func _set_blobs(on: bool) -> void:
+	_blobs_on = on
+	if _blob != null:
+		_blob.visible = on
+	if _traffic != null:
+		_traffic.show_blobs(on)
 
 func _fwd() -> Vector2:
 	return Vector2(cos(_yaw), sin(_yaw))
@@ -5799,10 +5846,10 @@ func _lanes_each_way(r: Dictionary) -> int:
 	var w := float(r["w"])
 	var n := 1
 	if int(r["o"]) != 0:
-		n = l if l > 0 else int(w / 3.3)
+		n = mini(l if l > 0 else int(w / 3.3), int(w / 2.8))
 	else:
-		n = l / 2 if l > 1 else int(w / 6.6)
-	return clampi(n, 1, 4)
+		n = mini(l / 2 if l > 1 else int(w / 6.6), int(w / 5.6))
+	return clampi(n, 1, 4)   # (no more than the width holds: a tagged two lanes narrowed to 4 m is one)
 
 ## of road r's lanes going one way, the line of the one nearest `off` metres right of the
 ## road's middle
@@ -6654,6 +6701,7 @@ func _set_quality(q: int) -> void:
 	sun.shadow_enabled = float(row[1]) > 0.0
 	sun.directional_shadow_max_distance = maxf(float(row[1]), 1.0)
 	view.scaling_3d_scale = row[2]
+	_set_blobs(not sun.shadow_enabled)
 
 ## only down, never back up: a laptop that could not keep up once will not later. Only on
 ## the web: a desktop build has a real GPU, and test runs on a software renderer would
