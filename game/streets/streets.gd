@@ -857,8 +857,15 @@ func _clip_buildings(bdata: Array) -> void:
 			var b: Vector2 = cut[1]
 			var c: float = cut[2]
 			var d := (b - a).normalized()
-			var nr := Vector2(-d.y, d.x) * c
-			var lane := PackedVector2Array([a - d * 0.5 + nr, b + d * 0.5 + nr, b + d * 0.5 - nr, a - d * 0.5 - nr])
+			if d == Vector2.ZERO:
+				continue
+			# the road's strip round this piece, rounded at both ends (squared off, the
+			# outside of every bend and every junction's middle were left uncut)
+			var lane := PackedVector2Array()
+			for k in range(7):
+				lane.append(b + Vector2(-d.y, d.x).rotated(-PI * k / 6.0) * c)
+			for k in range(7):
+				lane.append(a + Vector2(d.y, -d.x).rotated(-PI * k / 6.0) * c)
 			var best := PackedVector2Array()
 			var best_a := 0.0
 			for piece: PackedVector2Array in Geometry2D.clip_polygons(cur, lane):
