@@ -12,6 +12,17 @@ required, given anyway. The 1k JPG downloads, renamed `<id>_diff.jpg` (colour) a
 | `concrete_pavement_*` | concrete_pavement | 1.8 m | Bedford's pavements (slabs, scaled up) |
 | `leafy_grass_*` | leafy_grass | 2 m | grass, earth, the open ground |
 | `painted_plaster_wall_*` | painted_plaster_wall | 2 m | building render |
+| `bark_brown_02_*` | bark_brown_02 | 1 m | tree trunks and branches |
+| `palm_tree_bark_*` | palm_tree_bark | 1.3 m | palm trunks (colour capped at 1024 px) |
+
+`leaves_atlas.png` (2x2 cells: broad leaves, small narrow leaves, feathery fronds, needle
+sprays) is made by `leaf_atlas.py` from two Poly Haven *model* textures, also CC0: the
+leaves of [island_tree_01](https://polyhaven.com/a/island_tree_01) and of
+[jacaranda_tree](https://polyhaven.com/a/jacaranda_tree), cut out of their black
+backgrounds and scattered into clusters; the needle sprays are drawn by the script. To
+remake it, download those two `*_leaves_diff_1k.jpg` files from Poly Haven and run
+`python3 leaf_atlas.py <island leaves> <jacaranda leaves> leaves_atlas.png`; it prints each
+cell's average colour for `LEAF_MEAN` in `streets.gd`.
 
 To swap one: download the same id's `diff_1k.jpg` and `nor_gl_1k.jpg`, keep the import
 settings (VRAM compressed, mipmaps on, normal maps flagged and capped at 512), and put its

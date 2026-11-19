@@ -205,10 +205,25 @@ seams, handles and wheel arches, in the colours real cars come in: mostly white,
 grey and black, with the odd red or blue. Parked cars tilt with the slope they stand on.
 
 **Trees.** A dozen kinds, picked by the place and where they stand: ficus, acacia, olive,
-cypress, pine and date and fan palms in Givatayim; maple, oak, birch and spruce in Bedford.
-Each tree varies in size, lean and shade, and crowns are clumps, not one ball.
+cypress, pine, tall pale eucalyptus (the roadsides' and parks' tree) and date and fan palms
+in Givatayim; maple, oak, birch and spruce in Bedford. Each tree varies in size, lean and
+shade, and crowns are clumps, not one ball.
 
 > More variety for the trees? They seem all bland and the same.
+
+They are made of leaves now, not coloured shapes. A crown is a cloud of small cards, each a
+cluster of real leaves (photos of leaves, cut out and arranged: broad ones for the ficus,
+the plane-like street trees, maples and oaks; small narrow ones for olives, birches and
+eucalyptus; feathery fronds for the acacias and for about a third of the round street
+trees, like the melias and jacarandas; needle sprays for pines, cypresses and spruces).
+The cards always face you, so a crown looks full from every side, lit like a soft ball,
+darker inside and underneath, with lighter clumps here and there; every tree's outline is
+its own, and the crowns sway a little in the wind. Through the gaps you see the branches
+fork up from a barked trunk; the shadows on the ground are dappled. Conifers have a dense
+dark middle, so a cypress is the narrow column it should be. Palm fronds are cut into
+leaflets that dry yellow at the tips, on a ringed palm trunk.
+
+> No, let's do trees, maybe some more texture and variety, then we will try the cars.
 
 > Traffic, lights and signs that mean something, engine sound, night.
 
