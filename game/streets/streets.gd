@@ -3352,11 +3352,8 @@ func _build_parked() -> void:
 							_add_post(p + face * 1.25, 0.85)
 							_add_post(p - face * 1.25, 0.85)
 					s += 5.6
-	if xf.is_empty():
-		return
-	for kind: String in xf_by:
-		if not (xf_by[kind] as Array).is_empty():
-			_chunked(_parked_mesh(kind), xf_by[kind], 160.0, cols_by[kind], null, true, true)
+	_parked_xf = xf_by   # drawn with the car parks' cars, in one set of batches (_build_lots)
+	_parked_cols = cols_by
 	_dressing["parked"] = xf.size()
 
 ## Car parks: OSM's parking areas -- a block's own lot behind its buildings, a supermarket's
@@ -3364,6 +3361,9 @@ func _build_parked() -> void:
 ## front across a 6 m aisle), the bays painted, and about three in four taken. Bays that
 ## would stick out of the lot, into a building, onto a road or onto a tree are left out.
 var _lot_at: Array = []              ## a car in each car park (for tests and tours)
+var _parked_xf := {}                 ## the street's parked cars by shape, to batch with the car parks'
+var _parked_cols := {}
+const LOT_CARS := 6000               ## car-park cars in a whole city, at most: they are a lot to draw
 
 func _build_lots() -> void:
 	var rings: Array = _area_rings.get("parking", [])
@@ -3372,6 +3372,11 @@ func _build_lots() -> void:
 	rng.seed = hash(_city_name) + 31
 	var xf_by := {"sedan": [], "hatch": [], "suv": [], "van": []}
 	var cols_by := {"sedan": [], "hatch": [], "suv": [], "van": []}
+	for kind: String in _parked_xf:   # the street's parked cars go in the same batches
+		(xf_by[kind] as Array).append_array(_parked_xf[kind])
+		(cols_by[kind] as Array).append_array(_parked_cols[kind])
+	_parked_xf = {}
+	_parked_cols = {}
 	var lines := CBuf.new(GROUND_CELL)
 	var cars := 0
 	var ly := Y_AREA + 0.012
@@ -3420,7 +3425,7 @@ func _build_lots() -> void:
 						var a := p + u * side - v * 2.5
 						var b := p + u * side + v * 2.5
 						lines.quad3(_g3(a - u * 0.05, ly), _g3(b - u * 0.05, ly), _g3(b + u * 0.05, ly), _g3(a + u * 0.05, ly))
-					if rng.randf() < 0.66 and taken < 70:
+					if rng.randf() < 0.66 and taken < 70 and cars < LOT_CARS:
 						taken += 1
 						var kind: String = CAR_MIX[rng.randi() % CAR_MIX.size()]
 						var f := face.rotated(rng.randf_range(-0.05, 0.05))
@@ -3462,7 +3467,7 @@ func _build_lots() -> void:
 						var q0 := p + d * side - face * 2.5
 						var q1 := p + d * side + face * 2.5
 						lines.quad3(_g3(q0 - d * 0.05, ly), _g3(q1 - d * 0.05, ly), _g3(q1 + d * 0.05, ly), _g3(q0 + d * 0.05, ly))
-					if rng.randf() < 0.66 and taken < 50:
+					if rng.randf() < 0.6 and taken < 24 and cars < LOT_CARS:
 						taken += 1
 						var kind: String = CAR_MIX[rng.randi() % CAR_MIX.size()]
 						var f := face.rotated(rng.randf_range(-0.05, 0.05))
@@ -3474,7 +3479,7 @@ func _build_lots() -> void:
 				s += 2.5
 	for kind: String in xf_by:
 		if not (xf_by[kind] as Array).is_empty():
-			_chunked(_parked_mesh(kind), xf_by[kind], 130.0, cols_by[kind], null, true, true)
+			_chunked(_parked_mesh(kind), xf_by[kind], 140.0, cols_by[kind], null, true, true)
 	_add_mesh(lines, _surface("mark"), false, DETAIL_RANGE)
 	_dressing["lot_cars"] = cars
 
