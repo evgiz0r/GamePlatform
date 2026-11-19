@@ -284,6 +284,38 @@ is laid where it would lie on another road's asphalt, which also leaves a drivew
 > There are a lot of broken roads and random sidewalks in the middle. And in general very
 > badly looking crossroads.
 
+**Roads that fit.** A road's width is mostly a guess (OSM rarely says), so where a street's
+buildings stand closer than the guess it is narrowed (to no less than two lanes) instead of
+running under them. The ground's thin layers -- grass, paths, asphalt, paint -- sit a few
+centimetres apart and the camera's near plane is a little way out, so a phone's coarser
+depth buffer no longer shows grass through the road in green patches.
+
+**Turning, lanes, roundabouts.** A turn starts just short of the junction in the lane the car
+is in and comes out just past it in the right lane of the new street (the plan used to run
+straight from the junction to the new street's next point, down its wrong side). Cars keep
+a little further from the centre line; parked cars stand mostly up on the pavement. On a
+roundabout a car decides at each exit and is ever less likely to stay on, so nobody
+circles and the cars waiting to come on are let in.
+
+**Autodrive** stops for anyone standing on its lane, keeps out of alleys and car-park lanes
+unless there is no other way, prefers turnings back into town at its edge, and if it has
+got nowhere for 40 s (not at a light) it is lifted onto a street a little way toward the
+middle of town and drives on.
+
+**Car parks.** OSM's parking areas (up to a block's size) are laid out in rows of painted
+bays with most of them taken; a car park mapped only by its lanes (OSM: a parking aisle,
+as most blocks' own lots are) gets a row of bays down each side of each lane.
+
+**Surfaces.** The merged ground isn't one flat colour: grass is mottled with drier patches,
+asphalt has a grain and worn patches, pavements and plazas are laid in slabs -- all worked
+out per pixel from where it is, nothing to load, the fine part fading out with distance.
+
+> Green patches on the road; buildings halfway into the streets; turning too deep into
+> the opposite lane; cars too close to the centre; parked cars too far into the road;
+> parking lots for blocks of buildings; autodrive stuck at the edge or driving into
+> buildings; roundabouts where cars get stuck or circle; autodrive not stopping for
+> people; some non-flat texture on big empty grey or green areas.
+
 ## Smooth on a laptop and a phone
 
 > It's pretty choppy and laggy now. I'm trying on a laptop browser.
