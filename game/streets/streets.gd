@@ -162,13 +162,34 @@ uniform vec4 lit_cool : source_color; // an office
 uniform float night = 0.0;
 uniform float siding = 0.0;           // northern houses: clapboard, white-framed windows
 uniform vec4 trim : source_color;
+uniform float textured = 1.0;
+uniform sampler2D plaster_tex : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D plaster_nrm : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform vec3 plaster_mean = vec3(0.5);
 float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 void fragment() {
+	// the slopes the plaster's lookups and its bump frame need, taken before any branch
+	vec2 puv = UV * 0.5;   // the plaster photo is 2 m across
+	vec2 pdx = dFdx(puv);
+	vec2 pdy = dFdy(puv);
+	vec3 dp1 = dFdx(VERTEX);
+	vec3 dp2 = dFdy(VERTEX);
 	// COLOR.g picks the plaster (0 plain, then a pastel, yellow, peach, grey), COLOR.a how
 	// far toward beige stone; a tinted plaster takes less of the stone
 	float tk = floor(COLOR.g * 4.0 + 0.5);
 	vec3 plaster = tk < 0.5 ? wall_a.rgb : (tk < 1.5 ? wall_b.rgb : (tk < 2.5 ? wall_d.rgb : (tk < 3.5 ? wall_e.rgb : wall_f.rgb)));
 	vec3 base = mix(plaster, wall_c.rgb, COLOR.a * (tk < 0.5 ? 1.0 : 0.3)) * COLOR.r;
+	// the render's own texture: a photo over its average, so the palette keeps the colour.
+	// Clapboard (siding) takes it faintly: painted wood is not rough render.
+	vec3 pb = vec3(0.0, 0.0, 1.0);
+	if (textured > 0.5) {
+		vec3 t = textureGrad(plaster_tex, puv, pdx, pdy).rgb;
+		float k = siding > 0.5 ? 0.3 : 0.75;
+		base *= mix(1.0, clamp(dot(t, vec3(0.333)) / dot(plaster_mean, vec3(0.333)), 0.0, 2.0), k);
+		vec2 xy = (textureGrad(plaster_nrm, puv, pdx, pdy).rg * 2.0 - 1.0) * (siding > 0.5 ? 0.4 : 1.0);
+		pb = vec3(xy, sqrt(max(0.0, 1.0 - dot(xy, xy))));
+	}
+	float pl = 1.0;   // 0 where the pixel is glass, a shutter or a frame: no plaster bumps there
 	vec3 tower = tk < 0.5 ? glass.rgb : (tk < 1.5 ? glass_b.rgb : (tk < 2.5 ? glass_c.rgb : (tk < 3.5 ? glass_d.rgb : glass.rgb * 0.8)));
 	float style = floor(COLOR.b * 3.99);
 	float along = UV.x;
@@ -202,6 +223,7 @@ void fragment() {
 			if (fx > 0.25 && fx < 0.75 && fy > 0.28 && fy < 0.84) {
 				bool frame = fx < 0.29 || fx > 0.71 || fy < 0.32 || fy > 0.8 || abs(fx - 0.5) < 0.012 || abs(fy - 0.56) < 0.012;
 				col = frame ? trim.rgb : glass.rgb;
+				pl = 0.0;
 				rough = frame ? 0.6 : 0.2;
 				emit = frame ? vec3(0.0) : room;
 			}
@@ -210,11 +232,16 @@ void fragment() {
 				float shut = r1 > 0.45 ? (r1 - 0.45) * 1.6 : 0.0;
 				bool closed = fy > 0.85 - 0.55 * shut;
 				col = closed ? shutter.rgb : glass.rgb;
+				pl = 0.0;
 				rough = closed ? 0.8 : 0.2;
 				emit = closed ? room * 0.12 : room;
 			}
 			if (r2 < 0.22 && fx > 0.56 && fx < 0.76 && fy > 0.1 && fy < 0.26) {
 				col = shutter.rgb * 0.97;
+				pl = 0.0;
+			} else if (fx > 0.24 && fx < 0.76 && fy < 0.3 && siding < 0.5) {
+				// a faint streak of grime down from the sill above
+				col *= 1.0 - (fy / 0.3) * (0.04 + 0.06 * r2) * (1.0 - abs(fx - 0.5) * 3.0);
 			}
 			if (fy < 0.06) {
 				col *= 0.88;
@@ -225,6 +252,7 @@ void fragment() {
 					col = base * 1.05;
 				} else {
 					col = dark.rgb;
+					pl = 0.0;
 					if (fx > 0.3 && fx < 0.7 && fy > 0.36 && fy < 0.84) {
 						col = r1 > 0.6 ? shutter.rgb : glass.rgb * 0.8;
 						rough = 0.25;
@@ -238,12 +266,14 @@ void fragment() {
 		} else if (style < 2.5) {
 			if (fy > 0.38 && fy < 0.78 && fx > 0.04 && fx < 0.96) {
 				col = glass.rgb;
+				pl = 0.0;
 				rough = 0.2;
 				emit = room;
 			}
 		} else {
 			if (fx > 0.04 && fx < 0.96 && fy > 0.08 && fy < 0.96) {
 				col = tower * (0.85 + 0.3 * r1);
+				pl = 0.0;
 				rough = 0.12;
 				emit = r3 < 0.3 ? lit_cool.rgb * (0.7 + 0.3 * r2) : vec3(0.0);
 			}
@@ -252,12 +282,27 @@ void fragment() {
 		if (style > 2.5) {
 			if (fx > 0.04) {
 				col = glass.rgb;
+				pl = 0.0;
 				rough = 0.15;
 				emit = lit_cool.rgb * 0.8;
 			}
 		} else if (fx > 0.14) {
 			col = dark.rgb;
+			pl = 0.0;
 		}
+	}
+	// the foot of a wall darker: splashed dirt, and less of the sky's light reaches it
+	col *= mix(0.74, 1.0, smoothstep(0.0, 1.5, up));
+	if (pl > 0.5 && pb.z < 0.99999) {
+		// the bump's frame from how the wall's metres run across the screen (works whichever
+		// way round an outline was drawn); the photo's "up" is the wall's down (UV.y grows up)
+		vec3 nn = NORMAL;
+		vec3 q2 = cross(dp2, nn);
+		vec3 q1 = cross(nn, dp1);
+		vec3 tt = q2 * pdx.x + q1 * pdy.x;
+		vec3 bb = q2 * pdx.y + q1 * pdy.y;
+		float inv = inversesqrt(max(max(dot(tt, tt), dot(bb, bb)), 1e-24));
+		NORMAL = normalize(tt * inv * pb.x - bb * inv * pb.y + nn * pb.z);
 	}
 	ALBEDO = col;
 	ROUGHNESS = rough;
@@ -1812,6 +1857,10 @@ func _build_buildings() -> void:
 	var sh := Shader.new()
 	sh.code = WALL_SHADER
 	_wall_mat.shader = sh
+	_wall_mat.set_shader_parameter("plaster_tex", _tex("painted_plaster_wall_diff"))
+	_wall_mat.set_shader_parameter("plaster_nrm", _tex("painted_plaster_wall_nor"))
+	_wall_mat.set_shader_parameter("plaster_mean", TEX_MEAN["painted_plaster_wall"])
+	_wall_mat.set_shader_parameter("textured", 1.0 if _quality > 0 else 0.0)
 	var roof := _surface("roof")
 	roof.vertex_color_use_as_albedo = true
 	var chunks := {}
@@ -2866,6 +2915,10 @@ uniform vec4 base : source_color;
 uniform vec4 green : source_color;
 uniform vec4 dark : source_color;
 uniform float greenness = 0.5;
+uniform float textured = 1.0;
+uniform sampler2D grass_tex : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D grass_nrm : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform vec3 grass_mean = vec3(0.5);
 varying vec3 wpos;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 float noise(vec2 p) {
@@ -2879,7 +2932,18 @@ void fragment() {
 	float n = noise(wpos.xz / 70.0) * 0.65 + noise(wpos.xz / 15.0) * 0.35;
 	vec3 c = mix(base.rgb, green.rgb, smoothstep(0.62 - greenness * 0.45, 0.78 - greenness * 0.4, n));
 	c = mix(c, dark.rgb, smoothstep(0.62, 0.9, noise(wpos.xz / 31.0 + 17.0)) * 0.55);
-	ALBEDO = c * (0.94 + 0.06 * noise(wpos.xz / 2.5));
+	c *= 0.94 + 0.06 * noise(wpos.xz / 2.5);
+	if (textured > 0.5) {   // the lawn photo (see TONE_SHADER), over earth and grass alike
+		vec2 uv = wpos.xz * 0.5;
+		vec3 t = texture(grass_tex, uv).rgb;
+		c *= mix(vec3(1.0), clamp(t / grass_mean, vec3(0.0), vec3(2.6)), 0.85);
+		vec2 xy = (texture(grass_nrm, uv).rg * 2.0 - 1.0) * 0.8;
+		vec3 b = vec3(xy, sqrt(max(0.0, 1.0 - dot(xy, xy))));
+		vec3 tx = (VIEW_MATRIX * vec4(1.0, 0.0, 0.0, 0.0)).xyz;
+		tx = normalize(tx - NORMAL * dot(NORMAL, tx));
+		NORMAL = normalize(tx * b.x + cross(NORMAL, tx) * b.y + NORMAL * b.z);
+	}
+	ALBEDO = c;
 	ROUGHNESS = 0.95;
 }
 """
@@ -2891,6 +2955,10 @@ func _ground_mat() -> ShaderMaterial:
 		var sh := Shader.new()
 		sh.code = GROUND_SHADER
 		_ground_shader_mat.shader = sh
+		_ground_shader_mat.set_shader_parameter("grass_tex", _tex("leafy_grass_diff"))
+		_ground_shader_mat.set_shader_parameter("grass_nrm", _tex("leafy_grass_nor"))
+		_ground_shader_mat.set_shader_parameter("grass_mean", TEX_MEAN["leafy_grass"])
+		_ground_shader_mat.set_shader_parameter("textured", 1.0 if _quality > 0 else 0.0)
 		_retint_ground()
 	return _ground_shader_mat
 
@@ -3739,15 +3807,39 @@ const BATCH_VERTS := 650000          ## more than this in one call: left as a mu
 ## looked up in a table the material holds -- so the asphalt, the grass, the poles and the
 ## paint of a square are one mesh and one draw, and a new palette is a new table.
 ## Each tone also has a surface (tone_fx: x patches, y grain, z slab size, w kind): grass
-## mottled, asphalt grained and worn in patches, pavements in slabs -- worked out per pixel
-## from the world position, nothing to load. The fine part fades with distance before it
-## can shimmer, and the noise is a cheap hash (no sine), for phones.
+## mottled, asphalt grained and worn in patches, pavements in slabs. The big patches are
+## worked out per pixel from the world position; the fine part is a photo (textures/, CC0
+## from Poly Haven) for each kind -- asphalt, pavers, grass -- with its bumps. A photo is
+## divided by its own average colour and multiplied by the tone, so the palette still sets
+## the colour and the photo only adds the grit, cracks and joints. textured = 0 falls back
+## to the cheap noise grain (the lowest web quality level).
 const TONE_SHADER := """
 shader_type spatial;
 render_mode cull_back;
 uniform vec4 tones[64] : source_color;
 uniform vec4 tone_fx[64];
+uniform float textured = 1.0;
+uniform sampler2D asph_tex : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D asph_nrm : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D asph_big : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D pave_tex : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D pave_nrm : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D grass_tex : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D grass_nrm : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform vec3 asph_mean = vec3(0.5);   // each photo's average, as stored (TEX_MEAN)
+uniform vec3 big_mean = vec3(0.5);
+uniform vec3 pave_mean = vec3(0.5);
+uniform vec3 grass_mean = vec3(0.5);
+uniform float pave_m = 2.0;            // metres one pave_tex covers, for the pavement's slab size
 varying vec3 wpos;
+varying float wup;                     // how much the face looks up: the photos are laid from above
+// a photo's colour over its average: 1 on average, so the tone underneath keeps its colour
+vec3 detail(vec3 t, vec3 mean, float k) { return mix(vec3(1.0), clamp(t / max(mean, vec3(0.002)), vec3(0.0), vec3(2.6)), k); }
+// a normal map's (x, y), reconstructed to a unit normal: the compressed maps keep only x and y
+vec3 unpack(vec2 rg, float k) {
+	vec2 xy = (rg * 2.0 - 1.0) * k;
+	return vec3(xy, sqrt(max(0.0, 1.0 - dot(xy, xy))));
+}
 float hash(vec2 p) {
 	vec3 q = fract(vec3(p.xyx) * 0.1031);
 	q += dot(q, q.yzx + 33.33);
@@ -3759,7 +3851,10 @@ float noise(vec2 p) {
 	vec2 u = f * f * (3.0 - 2.0 * f);
 	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
 }
-void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
+void vertex() {
+	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	wup = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz).y;
+}
 void fragment() {
 	vec3 c = COLOR.rgb;
 	vec4 fx = vec4(0.0);
@@ -3768,15 +3863,41 @@ void fragment() {
 		c = tones[i].rgb;
 		fx = tone_fx[i];
 	}
+	// Texture lookups below sit in branches that differ from one triangle to the next, where
+	// a GPU's own mip choice is undefined at the edges: so the slopes are taken here, where
+	// every pixel runs, and handed to textureGrad.
+	vec2 p = wpos.xz;
+	vec2 dpx = dFdx(p);
+	vec2 dpy = dFdy(p);
+	vec3 bump = vec3(0.0, 0.0, 1.0);
 	if (fx.x + fx.y > 0.0) {
-		vec2 p = wpos.xz;
 		float near = clamp(1.0 - length(VERTEX) / 90.0, 0.0, 1.0);
 		float big = noise(p / 11.0) * 0.6 + noise(p / 3.1) * 0.4;
 		float shade = 1.0 + (big - 0.5) * fx.x * 2.0;
 		if (fx.w < 1.5) {   // grass and ground: drier, yellower patches here and there
 			c = mix(c, c * vec3(1.12, 1.07, 0.8), smoothstep(0.56, 0.82, noise(p / 17.0 + 7.0)) * fx.x * 4.0);
 		}
-		if (near > 0.0) {
+		// a wall or a kerb's face stays on the noise: laid from above, a photo runs down it in streaks
+		if (textured > 0.5 && wup > 0.6) {
+			if (fx.w < 1.5) {   // grass, earth, sand: a lawn photo, 2 m across
+				vec2 uv = p * 0.5;
+				c *= detail(textureGrad(grass_tex, uv, dpx * 0.5, dpy * 0.5).rgb, grass_mean, 0.85);
+				bump = unpack(textureGrad(grass_nrm, uv, dpx * 0.5, dpy * 0.5).rg, 0.8);
+			} else if (fx.w < 2.5) {   // asphalt: fine grit 3 m across over 30 m of patches and tyre marks
+				vec2 uv = p / 3.0;
+				// paint (no patches of its own) takes the grit faintly: it is worn, not gritty
+				float k = fx.x > 0.0 ? 1.0 : 0.35;
+				c *= detail(textureGrad(asph_tex, uv, dpx / 3.0, dpy / 3.0).rgb, asph_mean, 0.9 * k);
+				vec3 b = textureGrad(asph_big, p / 30.0, dpx / 30.0, dpy / 30.0).rgb;
+				c *= mix(1.0, clamp(dot(b, vec3(0.333)) / dot(big_mean, vec3(0.333)), 0.0, 2.0), 0.7 * k);
+				bump = unpack(textureGrad(asph_nrm, uv, dpx / 3.0, dpy / 3.0).rg, 1.0);
+			} else {   // pavement and plazas: pavers, bigger in a plaza
+				float s = pave_m * fx.z / 0.6;
+				vec2 uv = p / s;
+				c *= detail(textureGrad(pave_tex, uv, dpx / s, dpy / s).rgb, pave_mean, 0.9);
+				bump = unpack(textureGrad(pave_nrm, uv, dpx / s, dpy / s).rg, 1.0);
+			}
+		} else if (near > 0.0) {
 			shade += (noise(p * 1.9) - 0.5) * fx.y * 2.0 * near;
 			if (fx.w > 2.5) {   // paving: a grid of slabs, the joints a little darker
 				vec2 g = abs(fract(p / fx.z) - 0.5);
@@ -3784,6 +3905,14 @@ void fragment() {
 			}
 		}
 		c *= shade;
+	}
+	// the photos are mapped on the world's X and Z, so their frame is the world's: across is
+	// +X, the map's "up" is -Z; bent round the surface's own normal for the hills
+	// (only on the ground: on a pole or a sign the frame would come out of nothing)
+	if (bump.z < 0.99999) {
+		vec3 t = (VIEW_MATRIX * vec4(1.0, 0.0, 0.0, 0.0)).xyz;
+		t = normalize(t - NORMAL * dot(NORMAL, t));
+		NORMAL = normalize(t * bump.x + cross(NORMAL, t) * bump.y + NORMAL * bump.z);
 	}
 	ALBEDO = c;
 	ROUGHNESS = 0.9;
@@ -3806,7 +3935,49 @@ func _tone_mat() -> ShaderMaterial:
 		var sh := Shader.new()
 		sh.code = TONE_SHADER
 		_tone_material.shader = sh
+		# Israeli pavements are rows of concrete pavers; Bedford's are poured slabs, the
+		# photo's slabs blown up to a metre or so
+		var north := String(_place.get("look", "")) == "north"
+		var pave := "concrete_pavement" if north else "concrete_pavers_02"
+		_tone_material.set_shader_parameter("asph_tex", _tex("asphalt_02_diff"))
+		_tone_material.set_shader_parameter("asph_nrm", _tex("asphalt_02_nor"))
+		_tone_material.set_shader_parameter("asph_big", _tex("aerial_asphalt_01_diff"))
+		_tone_material.set_shader_parameter("pave_tex", _tex(pave + "_diff"))
+		_tone_material.set_shader_parameter("pave_nrm", _tex(pave + "_nor"))
+		_tone_material.set_shader_parameter("grass_tex", _tex("leafy_grass_diff"))
+		_tone_material.set_shader_parameter("grass_nrm", _tex("leafy_grass_nor"))
+		_tone_material.set_shader_parameter("asph_mean", TEX_MEAN["asphalt_02"])
+		_tone_material.set_shader_parameter("big_mean", TEX_MEAN["aerial_asphalt_01"])
+		_tone_material.set_shader_parameter("pave_mean", TEX_MEAN[pave])
+		_tone_material.set_shader_parameter("grass_mean", TEX_MEAN["leafy_grass"])
+		_tone_material.set_shader_parameter("pave_m", 4.0 if north else 2.0)
+		_tone_material.set_shader_parameter("textured", 1.0 if _quality > 0 else 0.0)
 	return _tone_material
+
+## The photos under the surfaces: CC0 from Poly Haven (textures/CREDITS.md), 1024 px, the
+## bump maps 512. The shaders divide each by its average colour, so a photo adds detail
+## without changing the palette's colour. The averages are of the stored (sRGB) values, and
+## the samplers have no source_color, so they read exactly those: in the Compatibility
+## renderer source_color does not convert them anyway (measured), and a photo's own smallest
+## mipmap, the obvious way to get its average in the shader, read back as junk there.
+const TEX_DIR := "res://game/streets/textures/"
+const TEX_MEAN := {
+	"aerial_asphalt_01": Vector3(0.402, 0.385, 0.406),
+	"asphalt_02": Vector3(0.356, 0.353, 0.333),
+	"concrete_pavement": Vector3(0.501, 0.457, 0.403),
+	"concrete_pavers_02": Vector3(0.448, 0.377, 0.314),
+	"leafy_grass": Vector3(0.593, 0.516, 0.351),
+	"painted_plaster_wall": Vector3(0.671, 0.639, 0.627),
+}
+
+func _tex(file: String) -> Texture2D:
+	return load(TEX_DIR + file + ".jpg") as Texture2D
+
+## the photo textures on or off in every shader that has them (off at the lowest web level)
+func _set_textured(on: bool) -> void:
+	for m: ShaderMaterial in [_tone_material, _wall_mat, _ground_shader_mat]:
+		if m != null:
+			m.set_shader_parameter("textured", 1.0 if on else 0.0)
 
 func _retint_tone_mat() -> void:
 	if _tone_material == null:
@@ -6531,6 +6702,7 @@ func _set_quality(q: int) -> void:
 	_quality = clampi(q, 0, QUALITY.size() - 1)
 	var row: Array = QUALITY[_quality]
 	view.msaa_3d = row[0]
+	_set_textured(_quality > 0)
 	sun.shadow_enabled = float(row[1]) > 0.0
 	sun.directional_shadow_max_distance = maxf(float(row[1]), 1.0)
 	view.scaling_3d_scale = row[2]
