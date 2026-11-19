@@ -290,7 +290,9 @@ there) with its pavement behind it and the asphalt filled out to it; across the 
 T the far kerb runs straight. A divided road (OSM: two one-way roads side by side) has
 each half as wide as its lanes, not the class's guessed width, so the halves no longer
 overlap, and between them a kerbed median instead of two pavements. No kerb or pavement
-is laid where it would lie on another road's asphalt, which also leaves a driveway its gap.
+is laid where it would lie on another road's asphalt, which also leaves a driveway its gap;
+a corner is checked along its whole length (checked only at its middle, a kerb could run
+straight across a road's mouth and lay a strip of pavement over the junction).
 
 > There are a lot of broken roads and random sidewalks in the middle. And in general very
 > badly looking crossroads.

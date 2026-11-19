@@ -1575,6 +1575,8 @@ func _walk_pts(pts: PackedVector2Array, k: int, step: int, dist: float) -> Array
 ## kerb that curves from one street's edge to the other's (red and white in Israel: no
 ## stopping at a corner), its pavement behind it, and the asphalt filled out to it. Across
 ## the mouth of a T, a straight kerb; between the two halves of a divided road, a flat nose.
+var _corner_cut_at: Array = []        ## corners laid piece by piece: [middle, middle clear] (for tests)
+
 func _kerb_corners(kerb: Buf, pave: Buf, fill: Buf, col: Color) -> void:
 	for ni in range(_nodes.size()):
 		if _kerb_arms(ni) < 3:
@@ -1626,14 +1628,27 @@ func _kerb_corners(kerb: Buf, pave: Buf, fill: Buf, col: Color) -> void:
 				var n := maxi(1, ceili(P.distance_to(Q) / 3.0))
 				for k in range(n + 1):
 					curve.append(P.lerp(Q, float(k) / n))
-			# one look at the corner's middle: clear (nearly always), it goes in whole; else
-			# piece by piece, leaving out what lies on another road
-			var m := curve.size() / 2
-			var mt := (curve[m] - curve[m - 1]).normalized()
-			var mn := Vector2(-mt.y, mt.x)
-			if mn.dot(curve[m] - c) < 0.0:
-				mn = -mn
-			var whole := not _asphalt_other(curve[m] + mn * KERB_W * 0.5, -1) and not _asphalt_other(curve[m] + mn * (KERB_W + PAVE_W * 0.5), -1)
+			# a look along the corner: clear (nearly always), it goes in whole; else piece by
+			# piece, leaving out what lies on another road. (One look at its middle let a kerb
+			# straight across a road's mouth in whole wherever its middle happened to miss
+			# the asphalt -- a strip of pavement across the junction.)
+			var whole := true
+			for k in range(curve.size()):
+				var kt := (curve[mini(k + 1, curve.size() - 1)] - curve[maxi(k - 1, 0)]).normalized()
+				var kn := Vector2(-kt.y, kt.x)
+				if kn.dot(curve[k] - c) < 0.0:
+					kn = -kn
+				if _asphalt_other(curve[k] + kn * KERB_W * 0.5, -1) \
+						or (k == curve.size() / 2 and _asphalt_other(curve[k] + kn * (KERB_W + PAVE_W * 0.5), -1)):
+					whole = false
+					break
+			if not whole:
+				# (and whether the one look at its middle would have let it in whole)
+				var m := curve.size() / 2
+				var mt := (curve[m] - curve[m - 1]).normalized()
+				var mn := Vector2(-mt.y, mt.x) * (1.0 if Vector2(-mt.y, mt.x).dot(curve[m] - c) >= 0.0 else -1.0)
+				_corner_cut_at.append([curve[m], not _asphalt_other(curve[m] + mn * KERB_W * 0.5, -1) \
+					and not _asphalt_other(curve[m] + mn * (KERB_W + PAVE_W * 0.5), -1)])
 			var along := 0.0
 			for k in range(curve.size() - 1):
 				var a := curve[k]
