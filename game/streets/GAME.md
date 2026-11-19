@@ -313,7 +313,11 @@ middle, astride two, and in between the cars in them), counts a car going its wa
 its lane wherever their bodies would touch, stops for anyone standing on its lane, keeps out of alleys and car-park lanes
 unless there is no other way, prefers turnings back into town at its edge, and if it has
 got nowhere for 40 s (not at a light) it is lifted onto a street a little way toward the
-middle of town and drives on.
+middle of town and drives on. Switched on (or knocked) off the road -- in a yard, a car park,
+between blocks -- it finds its way back round the buildings at a walking pace instead of
+heading straight at the nearest bit of road through the wall in between; with no way out
+in reach, or after running into walls a few times in quick succession, it is put back on
+the nearest street.
 
 **Car parks.** OSM's parking areas (up to a block's size) are laid out in rows of painted
 bays with most of them taken; a car park mapped only by its lanes (OSM: a parking aisle,

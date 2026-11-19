@@ -515,6 +515,7 @@ var _ap_v := PackedFloat32Array()    ## speed allowed at each of those points (c
 var _ap_lim := PackedFloat32Array()  ## the limit on the road leading to each point
 var _ap_end := Vector3i(-1, 0, 0)    ## the last leg planned: road, last index, direction
 var _ap_stuck := 0.0
+var _ap_bonks := 0.0                 ## buildings run into lately (one each, fading)
 var _ap_back := 0.0
 var _ap_turn := 0.0                   ## turning round on the spot to face the planned lane (s left)
 ## the crossing ahead, while autodrive waits for you to pick a way on:
@@ -7553,6 +7554,8 @@ func _crash(speed: float) -> void:
 	if speed < 1.2 or _crash_cool > 0.0:
 		return
 	_crash_cool = 0.4
+	if _auto and _last_hit.begins_with("building"):
+		_ap_bonks += 1.0
 	if speed > 9.0:
 		hit3d(minf(8.0, speed * 0.35))
 		Audio.play("impact_metal")
@@ -7742,6 +7745,10 @@ func _set_auto(on: bool) -> void:
 	_show_banner("autodrive" if on else "you drive", 1.2)
 
 func _autodrive(dt: float) -> Array:
+	# into the walls again and again (a few in quick succession): lost, back to the street
+	_ap_bonks = maxf(0.0, _ap_bonks - dt / 10.0)
+	if _ap_bonks >= 3.0 and _ap_rescue():
+		_ap_pts = PackedVector2Array()
 	if _ap_back > 0.0:     # stuck against something: back off, then plan again
 		_ap_back -= dt
 		_gear = -1
@@ -7931,6 +7938,85 @@ func _ap_point_ahead(look: float) -> Vector2:
 		p = nxt
 	return p
 
+const AP_OFFROAD_V := 4.0             ## m/s, finding its way back to the road
+const WAY_CELL := 2.0
+const WAY_REACH := 36                 ## cells each way from the car: 72 m
+
+## The way from the car back onto a road it can drive, round whatever buildings are in
+## between: a search outward over 2 m squares the car fits through, to the first one well on
+## the asphalt, then pulled straight wherever a straight line is clear. [] when there is none
+## within reach.
+func _way_to_road() -> PackedVector2Array:
+	var origin := _pos
+	var came := {Vector2i.ZERO: Vector2i.ZERO}
+	var wall := {}
+	var queue: Array[Vector2i] = [Vector2i.ZERO]
+	var head := 0
+	var goal := Vector2i.ZERO
+	var found := false
+	var steps: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
+		Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]
+	while head < queue.size():
+		var c: Vector2i = queue[head]
+		head += 1
+		if c != Vector2i.ZERO:
+			var on := _nearest_seg(origin + Vector2(c) * WAY_CELL, 8.0, true, true)
+			if not on.is_empty() and float(on["edge"]) < -1.2:
+				goal = c
+				found = true
+				break
+		for st: Vector2i in steps:
+			var n: Vector2i = c + st
+			if came.has(n) or wall.has(n) or absi(n.x) > WAY_REACH or absi(n.y) > WAY_REACH:
+				continue
+			if _push_out(origin + Vector2(n) * WAY_CELL, 1.3, true, false) != Vector2.ZERO:
+				wall[n] = true
+				continue
+			came[n] = c
+			queue.append(n)
+	if not found:
+		return PackedVector2Array()
+	var cells: Array[Vector2i] = []
+	var at := goal
+	while at != Vector2i.ZERO:
+		cells.append(at)
+		at = came[at]
+	cells.reverse()
+	var out := PackedVector2Array([origin])
+	var i := 0
+	while i < cells.size():
+		var far := i
+		for j in range(cells.size() - 1, i, -1):
+			if _clear_line(out[out.size() - 1], origin + Vector2(cells[j]) * WAY_CELL):
+				far = j
+				break
+		out.append(origin + Vector2(cells[far]) * WAY_CELL)
+		i = far + 1
+	return out
+
+## a car's width clear all the way from a to b (from a little way out of a: the car may be
+## up against a wall where it stands)
+func _clear_line(a: Vector2, b: Vector2) -> bool:
+	var L := a.distance_to(b)
+	var s := minf(1.5, L)
+	while s < L:
+		if _push_out(a.lerp(b, s / L), 1.2, true, false) != Vector2.ZERO:
+			return false
+		s += 1.0
+	return true
+
+## Lost: no way back found, or into the walls again and again. Back onto the nearest street,
+## the way the 40 s unstuck does.
+func _ap_rescue() -> bool:
+	_ap_bonks = 0.0
+	if not _land_on_road(_pos, 80.0, _fwd()):
+		return false
+	_ap_back = 0.0
+	_ap_turn = 0.0
+	_show_banner("autodrive: back on the road", 1.6)
+	Probe.event("autodrive_rescue")
+	return true
+
 func _ap_plan() -> void:
 	_cross = {}
 	_ap_queue = []
@@ -7945,11 +8031,33 @@ func _ap_plan() -> void:
 	var hit := _nearest_seg(_pos, 60.0, true, true)
 	if hit.is_empty():
 		return
+	var heading := _fwd()
+	if float(hit["edge"]) > 1.0:
+		# off the road (a yard, a car park, between blocks): the way back to it round the
+		# buildings. Straight at the nearest bit of road went into the wall in between, backed
+		# off, planned the same again, and into the wall again.
+		var way := _way_to_road()
+		if way.size() < 2:
+			if not _ap_rescue():
+				return
+			hit = _nearest_seg(_pos, 20.0, true, true)
+			if hit.is_empty():
+				return
+			heading = _fwd()
+		else:
+			for q: Vector2 in way:
+				_ap_pts.append(q)
+				_ap_v.append(AP_OFFROAD_V)
+				_ap_lim.append(AP_OFFROAD_V)
+			heading = (way[way.size() - 1] - way[way.size() - 2]).normalized()
+			hit = _nearest_seg(way[way.size() - 1], 12.0, true, true)
+			if hit.is_empty():
+				return
 	var ri: int = hit["road"]
 	var sj: int = hit["seg"]
 	var r: Dictionary = _roads[ri]
 	var pts: PackedVector2Array = r["pts"]
-	var dir := 1 if (pts[sj + 1] - pts[sj]).dot(_fwd()) >= 0.0 else -1
+	var dir := 1 if (pts[sj + 1] - pts[sj]).dot(heading) >= 0.0 else -1
 	if r["o"] != 0:
 		dir = r["o"]
 	_ap_pts.append(hit["q"])
