@@ -712,6 +712,50 @@ func _keep_screen_on(on: bool) -> void:
 	if OS.has_feature("web"):
 		JavaScriptBridge.eval(WAKE_JS + ("window.__streetsWake.start();" if on else "window.__streetsWake.stop();"), true)
 
+## Divided roads: OSM maps each carriageway as a road of its own, one-way, and with no width
+## given the bake guesses the class's -- 10 m for a secondary -- for each half. Ben Gurion's
+## halves are 7-10 m apart centre to centre, so they overlapped, and each one's kerb and
+## pavement ran down the other's lanes. Each half is made as wide as its lanes (3.3 m a lane),
+## never so wide it reaches the other, and remembers the gap left between them: its inner
+## side gets a kerb and half the median, not a pavement.
+func _fit_dual_carriageways() -> void:
+	var fitted := 0
+	for ri in range(_roads.size()):
+		var r: Dictionary = _roads[ri]
+		var o := int(r["o"])
+		if not r["drive"] or o == 0 or r.get("ring", false) or r["k"] == "service":
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		var hw: float = float(r["w"]) * 0.5
+		var acr: Array = []
+		for j in range(pts.size() - 1):
+			var c := (pts[j] + pts[j + 1]) * 0.5
+			var d := (pts[j + 1] - pts[j]).normalized()
+			var pair := _partner(c, d, ri, hw, o)
+			if not pair.is_empty():
+				acr.append((pair[1] as Vector2).distance_to(c))
+		if acr.is_empty() or acr.size() * 2 < pts.size() - 1:
+			continue   # beside another carriageway along less than half of it
+		acr.sort()
+		var across: float = acr[acr.size() / 2]
+		if across > 40.0:
+			continue
+		var lanes := int(r["l"]) if int(r["l"]) > 0 else maxi(1, roundi(float(r["w"]) / 3.5))
+		var w := minf(float(r["w"]), lanes * 3.3 + 0.5)
+		w = minf(w, maxf(3.0, across - 0.5))
+		r["w"] = w
+		r["median"] = maxf(0.0, across - w)
+		fitted += 1
+	if fitted == 0:
+		return
+	for i in range(_node_r.size()):
+		_node_r[i] = 0.0
+	for r: Dictionary in _roads:
+		if r["drive"]:
+			for id: int in r["ids"]:
+				_node_r[id] = maxf(_node_r[id], float(r["w"]) * 0.5)
+	_dressing["dual_halves"] = fitted
+
 ## ---- loading the city ---------------------------------------------------------------
 
 func _load_city(id: String) -> bool:
@@ -772,6 +816,8 @@ func _load_city(id: String) -> bool:
 				_node_r[ids[j]] = maxf(_node_r[ids[j]], hw)
 		for j in range(pts.size() - 1):
 			_hash_add(_seg_hash, Rect2(pts[j], Vector2.ZERO).expand(pts[j + 1]).grow(hw), SEG_CELL, ri * 4096 + j)
+
+	_fit_dual_carriageways()
 
 	for ring: Array in data.get("boundary", []):
 		var poly := PackedVector2Array()
@@ -1183,6 +1229,7 @@ void fragment() {
 }
 """
 const PAVE_W := 2.4                  ## pavement width (m)
+const KERB_CUT := 4.5                ## kerbs stop this far past a junction's road edge: the corner's radius
 const KERB_H := 0.14
 const KERB_W := 0.2
 var _kerb_mat: ShaderMaterial
@@ -1194,8 +1241,10 @@ func _build_kerbs() -> void:
 	var garden := CBuf.new(GROUND_CELL)
 	var bushes: Array = []
 	var med := String(_place.get("look", "")) == "med"
-	for r: Dictionary in _roads:
-		if not r["drive"] or r["pv"] or r["k"] == "service" or HIGHWAYS.has(r["k"]):
+	_build_asph_hash()
+	for ri in range(_roads.size()):
+		var r: Dictionary = _roads[ri]
+		if not _kerbed(r):
 			continue   # motorways and their slip roads have no pavement
 		var hw: float = float(r["w"]) * 0.5
 		var hsh := _hash_i((r["pts"] as PackedVector2Array)[0])
@@ -1203,33 +1252,28 @@ func _build_kerbs() -> void:
 		if med:
 			pat = [0, 0, 0, 0, 0, 1, 1, 1, 2, 3][posmod(hsh, 10)]
 		var yard: bool = r["k"] in ["residential", "living_street"]
-		for run: PackedVector2Array in _street_runs(r):
+		var dual := r.has("median")
+		var inner_sgn := -float(r["o"])   # a divided road's other half is on the left of its traffic
+		for run: PackedVector2Array in _street_runs(r, KERB_CUT, true):
 			for sgn: float in [-1.0, 1.0]:
+				var inner_side := dual and sgn == inner_sgn
+				var pw := PAVE_W
+				if inner_side:
+					var m: float = r["median"]
+					if m < 0.25:
+						continue   # the halves touch: a painted line, no kerb
+					pw = clampf(m * 0.5 - KERB_W, 0.0, PAVE_W)   # each half paves its half of the median
 				var inner := _offset_line(run, hw * sgn)
-				var outer := _offset_line(run, (hw + KERB_W) * sgn)
-				var p_out := _offset_line(run, (hw + PAVE_W) * sgn)
-				# the ground under each point once, not once per piece that touches it
-				var h_in := _ground_line(inner)
-				var h_out := _ground_line(outer)
-				var h_pv := _ground_line(p_out)
+				var col := Color(float(pat) / 4.0 + 0.05, 0, 0) if not inner_side else Color(0.05, 0, 0)   # a median's kerb: plain
 				var along := 0.0
 				for i in range(run.size() - 1):
 					var seg := run[i].distance_to(run[i + 1])
-					var col := Color(float(pat) / 4.0 + 0.05, 0, 0)
-					var a0 := Vector3(inner[i].x, h_in[i], inner[i].y)
-					var a1 := Vector3(inner[i + 1].x, h_in[i + 1], inner[i + 1].y)
-					var t0 := Vector3(inner[i].x, h_in[i] + KERB_H, inner[i].y)
-					var t1 := Vector3(inner[i + 1].x, h_in[i + 1] + KERB_H, inner[i + 1].y)
-					var o0 := Vector3(outer[i].x, h_out[i] + KERB_H, outer[i].y)
-					var o1 := Vector3(outer[i + 1].x, h_out[i + 1] + KERB_H, outer[i + 1].y)
-					var face := Vector3(-(inner[i + 1] - inner[i]).y, 0, (inner[i + 1] - inner[i]).x).normalized() * -sgn
-					kerb.tri(a0, a1, t1, face, col, Vector2(along, 0), Vector2(along + seg, 0), Vector2(along + seg, 1))
-					kerb.tri(a0, t1, t0, face, col, Vector2(along, 0), Vector2(along + seg, 1), Vector2(along, 1))
-					kerb.tri(t0, t1, o1, Vector3.UP, col, Vector2(along, 0), Vector2(along + seg, 0), Vector2(along + seg, 1))
-					kerb.tri(t0, o1, o0, Vector3.UP, col, Vector2(along, 0), Vector2(along + seg, 1), Vector2(along, 1))
-					pave.quad3(o0, o1, Vector3(p_out[i + 1].x, h_pv[i + 1] + KERB_H, p_out[i + 1].y),
-						Vector3(p_out[i].x, h_pv[i] + KERB_H, p_out[i].y))
+					var na := (inner[i] - run[i]).normalized()
+					var nb := (inner[i + 1] - run[i + 1]).normalized()
+					_kerb_run_piece(kerb, pave, ri, inner[i], inner[i + 1], na, nb, pw, col, along, seg)
 					along += seg
+				if inner_side:
+					continue
 				if not yard:
 					continue
 				# a low stone wall at the back of the pavement, a garden strip behind it
@@ -1256,6 +1300,10 @@ func _build_kerbs() -> void:
 							bushes.append(Transform3D(Basis.from_scale(Vector3(1.3, 0.9, 1.3) * sc), _g3(q, 0.45 * sc)))
 						s += step
 					s -= L
+	var corners := CBuf.new(GROUND_CELL)
+	_kerb_corners(kerb, pave, corners, Color((0.25 if med else 0.0) + 0.05, 0, 0))
+	_asph_hash = {}
+	_add_mesh(corners, _surface("asphalt"), false, VIEW_RANGE)
 	_kerb_mat = ShaderMaterial.new()
 	var sh := Shader.new()
 	sh.code = KERB_SHADER
@@ -1275,6 +1323,197 @@ func _build_kerbs() -> void:
 	_dressing["bushes"] = bushes.size()
 	_retint_kerbs()
 
+func _kerbed(r: Dictionary) -> bool:
+	return r["drive"] and not r["pv"] and r["k"] != "service" and not HIGHWAYS.has(r["k"])
+
+## ways out of node n along roads that have kerbs
+func _kerb_arms(n: int) -> int:
+	var count := 0
+	for e: Vector2i in _node_roads[n]:
+		var r: Dictionary = _roads[e.x]
+		if not _kerbed(r):
+			continue
+		if e.y > 0:
+			count += 1
+		if e.y < (r["pts"] as PackedVector2Array).size() - 1:
+			count += 1
+	return count
+
+## p lies on the asphalt of some drivable road other than ri. Asked tens of thousands of
+## times while the kerbs go in, so against its own fine grid of road surfaces (8 m squares,
+## a handful of segments each) rather than the 24 m one everything else uses.
+var _asph_hash := {}
+const ASPH_CELL := 8.0
+
+func _build_asph_hash() -> void:
+	_asph_hash = {}
+	for ri in range(_roads.size()):
+		var r: Dictionary = _roads[ri]
+		if not r["drive"]:
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		var hw: float = float(r["w"]) * 0.5
+		for j in range(pts.size() - 1):
+			_hash_add(_asph_hash, Rect2(pts[j], Vector2.ZERO).expand(pts[j + 1]).grow(hw), ASPH_CELL, ri * 4096 + j)
+
+func _asphalt_other(p: Vector2, ri: int) -> bool:
+	for code: int in (_asph_hash.get(_cell(p, ASPH_CELL), []) as Array):
+		var rj := code / 4096
+		if rj == ri:
+			continue
+		var r2: Dictionary = _roads[rj]
+		if not r2["drive"]:
+			continue
+		var p2: PackedVector2Array = r2["pts"]
+		var sj := code % 4096
+		var cp := Geometry2D.get_closest_point_to_segment(p, p2[sj], p2[sj + 1])
+		if p.distance_squared_to(cp) < pow(maxf(float(r2["w"]) * 0.5 - 0.25, 0.0), 2.0):
+			return true
+	return false
+
+## One stretch of kerb (inner edge a-b, outward normals na/nb) and the pavement behind it,
+## left out wherever it would lie on another road's asphalt: where two roads overlap (a
+## divided road's halves, a slip road) the pavement no longer runs down the lanes, and a
+## driveway gets its gap. A clear stretch goes in whole; one that is not, in short pieces.
+func _kerb_run_piece(kerb: Buf, pave: Buf, ri: int, a: Vector2, b: Vector2, na: Vector2, nb: Vector2, pw: float,
+		col: Color, along: float, seg: float) -> void:
+	var ts: Array = [0.5] if seg <= 8.0 else [0.15, 0.5, 0.85]
+	var clear := true
+	for t: float in ts:
+		if _kerb_probe(a, b, na, nb, t, pw, ri) != Vector2.ZERO:
+			clear = false
+			break
+	if clear:
+		_kerb_piece(kerb, pave, a, b, na, nb, pw, col, along)
+		return
+	var n := maxi(2, ceili(seg / 1.5))
+	for k in range(n):
+		var t0 := float(k) / n
+		var t1 := float(k + 1) / n
+		var hit: Vector2 = _kerb_probe(a, b, na, nb, (t0 + t1) * 0.5, pw, ri)
+		if hit.x > 0.0:
+			continue
+		_kerb_piece(kerb, pave, a.lerp(b, t0), a.lerp(b, t1), na.lerp(nb, t0).normalized(), na.lerp(nb, t1).normalized(),
+			0.0 if hit.y > 0.0 else pw, col, along + seg * t0)
+
+## (kerb on another road's asphalt, pavement on it) at fraction t of a kerb stretch
+func _kerb_probe(a: Vector2, b: Vector2, na: Vector2, nb: Vector2, t: float, pw: float, ri: int) -> Vector2:
+	var q := a.lerp(b, t)
+	var nq := na.lerp(nb, t).normalized()
+	return Vector2(1.0 if _asphalt_other(q + nq * KERB_W * 0.5, ri) else 0.0,
+		1.0 if pw > 0.05 and _asphalt_other(q + nq * (KERB_W + pw * 0.5), ri) else 0.0)
+
+## a kerb from a to b (its face toward the road, its top KERB_W wide) and pw of pavement behind
+func _kerb_piece(kerb: Buf, pave: Buf, a: Vector2, b: Vector2, na: Vector2, nb: Vector2, pw: float, col: Color, along: float) -> void:
+	var seg := a.distance_to(b)
+	var a0 := _g3(a, 0.0)
+	var a1 := _g3(b, 0.0)
+	var t0 := a0 + Vector3(0, KERB_H, 0)
+	var t1 := a1 + Vector3(0, KERB_H, 0)
+	var oa := a + na * KERB_W
+	var ob := b + nb * KERB_W
+	var o0 := _g3(oa, KERB_H)
+	var o1 := _g3(ob, KERB_H)
+	var nm := (na + nb).normalized()
+	var face := Vector3(-nm.x, 0, -nm.y)
+	kerb.tri(a0, a1, t1, face, col, Vector2(along, 0), Vector2(along + seg, 0), Vector2(along + seg, 1))
+	kerb.tri(a0, t1, t0, face, col, Vector2(along, 0), Vector2(along + seg, 1), Vector2(along, 1))
+	kerb.tri(t0, t1, o1, Vector3.UP, col, Vector2(along, 0), Vector2(along + seg, 0), Vector2(along + seg, 1))
+	kerb.tri(t0, o1, o0, Vector3.UP, col, Vector2(along, 0), Vector2(along + seg, 1), Vector2(along, 1))
+	if pw > 0.05:
+		pave.quad3(o0, o1, _g3(ob + nb * pw, KERB_H), _g3(oa + na * pw, KERB_H))
+
+## the point `dist` metres along a road's points from index k going `step`, and the way on
+func _walk_pts(pts: PackedVector2Array, k: int, step: int, dist: float) -> Array:
+	var left := dist
+	while k + step >= 0 and k + step < pts.size():
+		var seg := pts[k].distance_to(pts[k + step])
+		var d := (pts[k + step] - pts[k]) / maxf(seg, 0.001)
+		if seg >= left:
+			return [pts[k] + d * left, d, true]
+		left -= seg
+		k += step
+	return [pts[k], Vector2.ZERO, false]
+
+## The corners of every junction: between each road coming in and the next one round, a
+## kerb that curves from one street's edge to the other's (red and white in Israel: no
+## stopping at a corner), its pavement behind it, and the asphalt filled out to it. Across
+## the mouth of a T, a straight kerb; between the two halves of a divided road, a flat nose.
+func _kerb_corners(kerb: Buf, pave: Buf, fill: Buf, col: Color) -> void:
+	for ni in range(_nodes.size()):
+		if _kerb_arms(ni) < 3:
+			continue
+		var c := _nodes[ni]
+		var cut := _node_r[ni] + KERB_CUT
+		var arms: Array = []   # [angle, point at the cut, way out there, half width, road]
+		for e: Vector2i in _node_roads[ni]:
+			var r: Dictionary = _roads[e.x]
+			if not _kerbed(r):
+				continue
+			var pts: PackedVector2Array = r["pts"]
+			for step: int in [-1, 1]:
+				if e.y + step < 0 or e.y + step >= pts.size():
+					continue
+				var at: Array = _walk_pts(pts, e.y, step, cut)
+				if not at[2]:
+					continue   # too short to reach the corner (a piece across a median)
+				var p: Vector2 = at[0]
+				arms.append([atan2(p.y - c.y, p.x - c.x), p, at[1], float(r["w"]) * 0.5, e.x])
+		if arms.size() < 2:
+			continue
+		arms.sort_custom(func(x, y): return x[0] < y[0])
+		for i in range(arms.size()):
+			var A: Array = arms[i]
+			var B: Array = arms[(i + 1) % arms.size()]
+			var gap: float = fposmod(float(B[0]) - float(A[0]), TAU)
+			if gap > 3.6 or gap < 0.02:
+				continue
+			var ua: Vector2 = A[2]
+			var ub: Vector2 = B[2]
+			var P: Vector2 = (A[1] as Vector2) + Vector2(-ua.y, ua.x) * float(A[3])   # A's right edge
+			var Q: Vector2 = (B[1] as Vector2) + Vector2(ub.y, -ub.x) * float(B[3])   # B's left edge
+			if P.distance_to(Q) > 45.0:
+				continue
+			var curve := PackedVector2Array()
+			var X = Geometry2D.line_intersects_line(P, ua, Q, ub)
+			var round := X != null and gap > 0.35 and gap < 2.9 and (X as Vector2).distance_to(c) < cut * 2.5 \
+				and ((X as Vector2) - P).dot(ua) < 0.0 and ((X as Vector2) - Q).dot(ub) < 0.0
+			if round:
+				for k in range(7):
+					var t := k / 6.0
+					curve.append(P * (1.0 - t) * (1.0 - t) + (X as Vector2) * 2.0 * (1.0 - t) * t + Q * t * t)
+				# the asphalt out to the curve (the two streets' edges met in a sharp corner)
+				var xg := _g3(X, Y_ROAD)
+				for k in range(6):
+					fill.tri(xg, _g3(curve[k], Y_ROAD), _g3(curve[k + 1], Y_ROAD), Vector3.UP, Color.WHITE)
+			else:
+				var n := maxi(1, ceili(P.distance_to(Q) / 3.0))
+				for k in range(n + 1):
+					curve.append(P.lerp(Q, float(k) / n))
+			# one look at the corner's middle: clear (nearly always), it goes in whole; else
+			# piece by piece, leaving out what lies on another road
+			var m := curve.size() / 2
+			var mt := (curve[m] - curve[m - 1]).normalized()
+			var mn := Vector2(-mt.y, mt.x)
+			if mn.dot(curve[m] - c) < 0.0:
+				mn = -mn
+			var whole := not _asphalt_other(curve[m] + mn * KERB_W * 0.5, -1) and not _asphalt_other(curve[m] + mn * (KERB_W + PAVE_W * 0.5), -1)
+			var along := 0.0
+			for k in range(curve.size() - 1):
+				var a := curve[k]
+				var b := curve[k + 1]
+				var tg := b - a
+				if tg.length_squared() < 0.0001:
+					continue
+				var nrm := Vector2(-tg.y, tg.x).normalized()
+				if nrm.dot((a + b) * 0.5 - c) < 0.0:
+					nrm = -nrm
+				if whole:
+					_kerb_piece(kerb, pave, a, b, nrm, nrm, PAVE_W, col, along)
+				else:
+					_kerb_run_piece(kerb, pave, -1, a, b, nrm, nrm, PAVE_W, col, along, a.distance_to(b))
+				along += a.distance_to(b)
+
 func _retint_kerbs() -> void:
 	if _kerb_mat == null:
 		return
@@ -1287,19 +1526,25 @@ func _retint_kerbs() -> void:
 
 ## a street's stretches between junctions, each cut short where it meets one (so kerbs
 ## and walls leave the corner open), points every few metres
-func _street_runs(r: Dictionary) -> Array:
+## A road's stretches between the places it meets others, trimmed back from them. For kerbs
+## (`kerbs`): only real junctions (three or more kerbed ways) cut them, trimmed `extra` metres
+## past the junction's middle road edge, so the corner can be rounded; where two OSM pieces
+## of the same street join, or a driveway comes in, the kerb runs on.
+func _street_runs(r: Dictionary, extra := 2.0, kerbs := false) -> Array:
 	var pts: PackedVector2Array = r["pts"]
 	var ids: PackedInt32Array = r["ids"]
 	var out: Array = []
 	var start := 0
+	var cuts := func(n: int) -> bool:
+		return _kerb_arms(n) >= 3 if kerbs else (_node_roads[n] as Array).size() >= 2
 	for i in range(1, pts.size()):
-		var junction := (_node_roads[ids[i]] as Array).size() >= 2
+		var junction: bool = cuts.call(ids[i])
 		if junction or i == pts.size() - 1:
 			var run := PackedVector2Array()
 			for k in range(start, i + 1):
 				run.append(pts[k])
-			var cut_a := _node_r[ids[start]] + 2.0 if (_node_roads[ids[start]] as Array).size() >= 2 else 0.0
-			var cut_b := _node_r[ids[i]] + 2.0 if junction else 0.0
+			var cut_a := _node_r[ids[start]] + extra if cuts.call(ids[start]) else 0.0
+			var cut_b := _node_r[ids[i]] + extra if junction else 0.0
 			var trimmed := _trim(run, cut_a, cut_b)
 			if trimmed.size() >= 2:
 				out.append(trimmed)
