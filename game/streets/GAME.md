@@ -241,6 +241,24 @@ sign boards, an awning or none, now and then one shut behind its shutter.
 > More varied buildings: plaster colours, glass towers, shopfront variety, shutters on
 > balconies.
 
+**Windows with depth.** Up close (within about 150 m) a window is not painted on: the glass
+sits back in the wall, so driving past you see the sides of the opening and the shadow
+under its top; it has an aluminium frame and the bar down the middle of a sliding window
+(Bedford's: white casings with a cross of muntins), a stone sill with a shadow under it,
+and the roller shutter, where it is down, is made of slats. Behind the glass is a room --
+back wall, side walls, floor and ceiling, in that flat's own colours, with a sofa, a door
+through or a picture, sometimes a curtain half drawn -- dim by day, lit by its lamp at
+night if the light is on (and through a shutter, light shows between the slats). The
+glass reflects the sky, and the street when you look down at it, more at a glancing look.
+Balconies are real hollows, their side walls, tiled floor and the slab over them seen
+from below, a glass door at the back; a tower's offices show through its tinted glass and
+its lobby is lit at night; the open ground floor of a block on columns is a shaded space
+you see into. None of it is geometry or costs anything to load: it is all worked out per
+pixel by the walls' shader, from where you look. Further off, and at the lowest web
+quality level, the windows go back to paint.
+
+> Can we somehow improve the buildings?
+
 **Landmarks.** A big named building (a mall, a tower, the cinema, a school) has its name
 in large letters along the top of its street side; a mall has glass shopfronts all along
 the ground floor and a canopy on columns over the way in. Parks have benches along their

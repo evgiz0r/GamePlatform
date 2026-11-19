@@ -142,6 +142,15 @@ const AP_LAT := 3.6                  ## autodrive keeps the sideways pull in tur
 ##   2 Bauhaus ribbon windows        3 glass tower
 ## Ground floors of blocks are open between pillars (pilotis), towers get a glass lobby,
 ## and houses (under ~10 m) have windows from the ground up.
+## Within ~150 m (and above the lowest web quality) the windows are not paint but depth,
+## all worked out per pixel from the view, no geometry: the glass sits in a recess whose
+## sides you see as you pass, and behind it is a room -- a ray from the eye is followed into
+## a box the size of the bay (back wall with a sofa, a door or a picture, side walls, floor,
+## ceiling: "interior mapping"), dim by day, lamp-lit at night if the room is. The pane
+## reflects the sky (the street below the horizon), more at a glancing look; frames, slatted
+## shutters and sills are drawn at the pane, softened to an average where a pixel is wider
+## than they are. Balconies and the open ground floor are traced the same way, as hollows.
+## Every colour in a room is one of the palette's wall tones, so /look still reskins them.
 const WALL_SHADER := """
 shader_type spatial;
 render_mode cull_back;
@@ -162,18 +171,104 @@ uniform vec4 lit_cool : source_color; // an office
 uniform float night = 0.0;
 uniform float siding = 0.0;           // northern houses: clapboard, white-framed windows
 uniform vec4 trim : source_color;
-uniform float textured = 1.0;
+uniform float textured = 1.0;         // photo plaster and the windows' depth (off at the lowest quality)
 uniform sampler2D plaster_tex : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D plaster_nrm : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform vec3 plaster_mean = vec3(0.5);
+uniform vec4 sky_top : source_color;  // what the glass reflects: the sky as it is now
+uniform vec4 sky_hor : source_color;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+
+// In the functions below a window's own frame is used: x metres along the wall from the bay's
+// left edge, y metres up from its floor, z out of the wall. v is the direction to the eye in
+// that frame (v.z > 0); a ray from the eye goes the other way, m = -v.xy sideways for every
+// v.z it goes in.
+
+// The ray into an opening [lo, hi] whose pane sits rd into the wall: where it meets the pane
+// (0, at g) or, before that, the side of the opening it runs into (1 its left side, 2 its
+// right, 3 the sill, 4 the lintel) at depth dd.
+int recess(vec2 p, vec3 v, vec2 lo, vec2 hi, float rd, out vec2 g, out float dd) {
+	vec2 m = -v.xy;
+	g = p + m * (rd / v.z);
+	dd = rd;
+	if (g.x >= lo.x && g.x <= hi.x && g.y >= lo.y && g.y <= hi.y) {
+		return 0;
+	}
+	float tx = m.x < 0.0 ? (lo.x - p.x) / min(m.x, -0.0001) : (hi.x - p.x) / max(m.x, 0.0001);
+	float ty = m.y < 0.0 ? (lo.y - p.y) / min(m.y, -0.0001) : (hi.y - p.y) / max(m.y, 0.0001);
+	if (tx < ty) {
+		dd = tx * v.z;
+		g = p + m * tx;
+		return m.x < 0.0 ? 1 : 2;
+	}
+	dd = ty * v.z;
+	g = p + m * ty;
+	return m.y < 0.0 ? 3 : 4;
+}
+
+// The room behind a pane met at g: a box from the bay's left to right edge, floor to ceiling
+// and `deep` metres back. What the ray lands on, lit by the window's daylight (falling off
+// into the room) or, at night, by the room's lamp if it is on. `blur` (0..1) fades the
+// furniture to the walls' colour where a pixel is wider than it.
+vec3 room_at(vec2 g, vec3 v, float cw, float deep, float rs, vec3 wallc, vec3 floorc, vec3 ceilc,
+		vec3 sofac, vec3 lamp, float lit_on, float blur) {
+	vec2 m = -v.xy;
+	float tz = deep / v.z;
+	float tx = m.x < 0.0 ? (0.05 - g.x) / min(m.x, -0.0001) : (cw - 0.05 - g.x) / max(m.x, 0.0001);
+	float ty = m.y < 0.0 ? (0.0 - g.y) / min(m.y, -0.0001) : (2.8 - g.y) / max(m.y, 0.0001);
+	float t = min(tz, min(tx, ty));
+	vec2 h = g + m * t;
+	float depth = t * v.z;
+	vec3 c = wallc;
+	float lgt = 0.55;   // side walls
+	if (t == tz) {   // the back wall: a sofa or a cabinet, a door through, a picture
+		lgt = 0.8;
+		vec3 thing = c;
+		if (h.y < 0.75 && h.x > cw * 0.12 && h.x < cw * 0.58) {
+			thing = sofac;
+		} else if (rs > 0.5 && h.x > cw * 0.66 && h.x < cw * 0.9 && h.y < 2.05) {
+			thing = wallc * 0.45;
+		} else if (rs < 0.3 && h.y > 1.35 && h.y < 1.85 && h.x > cw * 0.22 && h.x < cw * 0.46) {
+			thing = sofac.bgr * 1.2;
+		}
+		c = mix(thing, c, blur);
+	} else if (t == ty) {
+		if (m.y < 0.0) {
+			c = floorc;
+			lgt = 0.62;
+		} else {
+			c = ceilc;
+			lgt = 0.42;
+		}
+	}
+	float day = lgt * (1.0 - depth / (deep + 3.0)) * 0.46;
+	vec3 lamp_c = lamp * (0.45 + 0.55 * lgt) * lit_on;
+	return c * mix(vec3(day), lamp_c, night);
+}
+
+// A pane: the room through it and the sky in it, more sky the more glancing the look (and
+// always some: double glazing). `elev` is how far up the reflected ray points; below the
+// horizon it shows the street and the houses across it.
+vec3 pane(vec3 room_c, vec3 v, float elev, vec3 tint, vec3 street, float floor_f) {
+	float f = mix(floor_f, 1.0, pow(1.0 - clamp(v.z, 0.0, 1.0), 3.0));
+	vec3 sk = elev > 0.0 ? mix(sky_hor.rgb, sky_top.rgb, smoothstep(0.0, 0.45, elev))
+		: mix(sky_hor.rgb * 0.85, street, 1.0 - smoothstep(-0.12, 0.0, elev));
+	return mix(room_c * tint, sk * mix(vec3(1.0), tint, 0.35), f);
+}
+
+// how much of a line `w` wide (half-width) at distance d covers a pixel `aa` metres wide
+float line_cover(float d, float w, float aa) {
+	return clamp((w - d) / aa + 0.5, 0.0, 1.0);
+}
+
 void fragment() {
-	// the slopes the plaster's lookups and its bump frame need, taken before any branch
+	// the slopes the lookups, the bump frame and the line widths need, taken before any branch
 	vec2 puv = UV * 0.5;   // the plaster photo is 2 m across
 	vec2 pdx = dFdx(puv);
 	vec2 pdy = dFdy(puv);
 	vec3 dp1 = dFdx(VERTEX);
 	vec3 dp2 = dFdy(VERTEX);
+	float aa = max(2.0 * max(length(pdx), length(pdy)), 0.002);   // metres one pixel covers
 	// COLOR.g picks the plaster (0 plain, then a pastel, yellow, peach, grey), COLOR.a how
 	// far toward beige stone; a tinted plaster takes less of the stone
 	float tk = floor(COLOR.g * 4.0 + 0.5);
@@ -190,6 +285,22 @@ void fragment() {
 		pb = vec3(xy, sqrt(max(0.0, 1.0 - dot(xy, xy))));
 	}
 	float pl = 1.0;   // 0 where the pixel is glass, a shutter or a frame: no plaster bumps there
+	// the wall's own frame in view space: along it (the way UV.x grows), up, out of it
+	vec3 nn = NORMAL;
+	vec3 q2 = cross(dp2, nn);
+	vec3 q1 = cross(nn, dp1);
+	vec3 tt = q2 * pdx.x + q1 * pdy.x;
+	vec3 bb = q2 * pdx.y + q1 * pdy.y;
+	vec3 bv = (VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz;
+	vec3 tv = normalize(cross(bv, nn));
+	if (dot(tv, tt) < 0.0) {
+		tv = -tv;
+	}
+	vec3 to_eye = -normalize(VERTEX);
+	vec3 v = vec3(dot(to_eye, tv), dot(to_eye, bv), max(dot(to_eye, nn), 0.03));
+	float elev = -(INV_VIEW_MATRIX * vec4(to_eye, 0.0)).y;
+	float near3d = textured * (1.0 - smoothstep(110.0, 220.0, length(VERTEX)));
+
 	vec3 tower = tk < 0.5 ? glass.rgb : (tk < 1.5 ? glass_b.rgb : (tk < 2.5 ? glass_c.rgb : (tk < 3.5 ? glass_d.rgb : glass.rgb * 0.8)));
 	float style = floor(COLOR.b * 3.99);
 	float along = UV.x;
@@ -218,6 +329,7 @@ void fragment() {
 	if (siding > 0.5 && style < 0.5 && facade && fract(up / 0.24) < 0.13) {
 		col *= 0.88;
 	}
+	// ---- the flat facade: paint only (far away, and the whole look at the lowest quality)
 	if (facade && upper) {
 		if (style < 0.5 && siding > 0.5) {
 			if (fx > 0.25 && fx < 0.75 && fy > 0.28 && fy < 0.84) {
@@ -291,23 +403,219 @@ void fragment() {
 			pl = 0.0;
 		}
 	}
+	emit *= night * 1.25;
+
+	// ---- the deep facade: recesses, rooms, reflections (near, and not at the lowest quality)
+	bool deep_hit = false;
+	vec3 col2 = col;
+	vec3 emit2 = emit;
+	float rough2 = rough;
+	vec3 nrm2 = nn;
+	float spec2 = 0.35;
+	if (near3d > 0.0 && facade) {
+		float cw = len / n;
+		vec2 p = vec2(fx * cw, fy * 3.0);
+		float r4 = hash(vec2(ci * 2.3 + 5.0, lv * 1.7) + seed);
+		float r5 = hash(vec2(ci * 0.7 + 9.0, lv * 4.1) + seed);
+		vec3 wallc = mix(wall_a.rgb, mix(wall_d.rgb, wall_b.rgb, r5), r4 * 0.6);
+		vec3 floorc = r5 < 0.5 ? wall_e.rgb * 0.6 : wall_f.rgb * 0.8;
+		vec3 sofac = mix(glass_b.rgb, wall_e.rgb, r4) * 0.75;
+		vec3 lamp = mix(lit.rgb, lit.rgb * 0.7, r2);
+		float lit_on = r3 < 0.36 ? 1.0 : 0.0;
+		vec3 street = base * 0.55;
+		vec3 tint = mix(vec3(1.0), glass.rgb / max(max(glass.r, glass.g), max(glass.b, 0.05)), 0.45);
+		float blur = smoothstep(0.05, 0.2, aa);
+		float wob = (r1 - 0.5) * 0.06;   // no two panes sit quite flat: each reflects a little differently
+		if (upper && style < 0.5) {
+			// punched windows (houses: inside a white casing), a recess, a sliding window or a
+			// roller shutter part-way down, and a stone sill under it
+			bool house = siding > 0.5;
+			vec2 lo = house ? vec2(0.29 * cw, 0.96) : vec2(0.22 * cw, 0.9);
+			vec2 hi = house ? vec2(0.71 * cw, 2.4) : vec2(0.78 * cw, 2.55);
+			float rd = house ? 0.07 : 0.16;
+			if (p.x > lo.x && p.x < hi.x && p.y > lo.y && p.y < hi.y) {
+				deep_hit = true;
+				vec2 g;
+				float dd;
+				int k = recess(p, v, lo, hi, rd, g, dd);
+				if (k > 0) {
+					col2 = (house ? trim.rgb : base) * (0.95 - 0.3 * dd / rd);
+					nrm2 = k == 1 ? tv : (k == 2 ? -tv : (k == 3 ? bv : -bv));
+					emit2 = vec3(0.0);
+					rough2 = 0.85;
+				} else {
+					float shut = (r1 > 0.45 && !house) ? (r1 - 0.45) * 1.6 : 0.0;
+					float sy = hi.y - (hi.y - lo.y) * shut;
+					if (g.y > sy) {   // the shutter's slats, and the room's light between them
+						float sl = fract(g.y / 0.045);
+						float gap = sl < 0.18 ? 1.0 : 0.0;
+						float sharp = clamp(1.0 - aa / 0.03, 0.0, 1.0);
+						col2 = shutter.rgb * mix(0.93, gap > 0.5 ? 0.72 : 0.96 + 0.08 * sl, sharp);
+						emit2 = room * night * mix(0.06, gap * 0.25, sharp);
+						rough2 = 0.75;
+					} else {
+						vec3 rc = room_at(g, v, cw, 3.5 + 2.0 * r4, r5, wallc, floorc, wall_a.rgb, sofac, lamp, lit_on, blur);
+						// a curtain drawn part way across from one side
+						float cur = r2 > 0.55 ? (r2 - 0.55) * 1.4 : 0.0;
+						if ((r4 > 0.5 ? g.x - lo.x : hi.x - g.x) < (hi.x - lo.x) * cur) {
+							rc = wall_a.rgb * mix(vec3(0.33), lamp * lit_on * 0.8, night);
+						}
+						// the frame round the glass and, Israeli style, the middle of a sliding window
+						float fw = house ? 0.025 : 0.045;
+						float dfr = min(min(g.x - lo.x, hi.x - g.x), min(g.y - lo.y, sy - g.y));
+						float cover = line_cover(dfr, fw, aa);
+						cover = max(cover, line_cover(abs(g.x - (lo.x + hi.x) * 0.5), house ? 0.012 : 0.028, aa));
+						if (house) {   // a cross of muntins
+							cover = max(cover, line_cover(abs(g.y - (lo.y + hi.y) * 0.5), 0.012, aa));
+						}
+						col2 = mix(vec3(0.02), trim.rgb * 0.85, cover);
+						emit2 = pane(rc, v, elev + wob, tint, street, 0.11) * (1.0 - cover);
+						rough2 = mix(0.06, 0.5, cover);
+						spec2 = 0.5;
+					}
+				}
+			} else if (!house && p.x > lo.x - 0.06 && p.x < hi.x + 0.06 && p.y < lo.y && p.y > lo.y - 0.12) {
+				// the sill: its lit top edge, the shadow under it
+				deep_hit = true;
+				col2 = p.y > lo.y - 0.05 ? base * 1.1 : base * 0.74;
+			}
+		} else if (upper && style > 0.5 && style < 1.5) {
+			// a balcony: a hollow 1.4 m deep behind the parapet, a glass door at its back
+			vec2 lo = vec2(0.06 * cw, 1.02);
+			vec2 hi = vec2(0.94 * cw, 2.64);
+			if (p.x > lo.x && p.x < hi.x && p.y > lo.y && p.y < hi.y) {
+				deep_hit = true;
+				vec2 m = -v.xy;
+				float tz = 1.4 / v.z;
+				float tx = m.x < 0.0 ? (lo.x - p.x) / min(m.x, -0.0001) : (hi.x - p.x) / max(m.x, 0.0001);
+				float ty = m.y < 0.0 ? (0.06 - p.y) / min(m.y, -0.0001) : (hi.y - p.y) / max(m.y, 0.0001);
+				float t = min(tz, min(tx, ty));
+				vec2 h = p + m * t;
+				float shade = 1.0 - 0.35 * t * v.z / 1.4;
+				emit2 = vec3(0.0);
+				rough2 = 0.85;
+				if (t == tz) {
+					vec2 dlo = vec2(0.3 * cw, 0.06);
+					vec2 dhi = vec2(0.7 * cw, 2.3);
+					if (h.x > dlo.x && h.x < dhi.x && h.y < dhi.y) {
+						if (r1 > 0.6) {   // its shutter down
+							float sl = fract(h.y / 0.045);
+							col2 = shutter.rgb * shade * mix(0.93, sl < 0.18 ? 0.72 : 1.0, clamp(1.0 - aa / 0.03, 0.0, 1.0));
+							emit2 = room * 0.12 * night;
+						} else {
+							vec3 rc = room_at(h, v, cw, 4.0, r5, wallc, floorc, wall_a.rgb, sofac, lamp, lit_on, blur);
+							float dfr = min(min(h.x - dlo.x, dhi.x - h.x), dhi.y - h.y);
+							float cover = max(line_cover(dfr, 0.045, aa), line_cover(abs(h.x - cw * 0.5), 0.028, aa));
+							col2 = mix(vec3(0.02), trim.rgb * 0.8 * shade, cover);
+							emit2 = pane(rc, v, elev + wob, tint, street, 0.11) * (1.0 - cover) * mix(0.75, 1.0, night);
+							rough2 = mix(0.06, 0.5, cover);
+							spec2 = 0.5;
+						}
+					} else {
+						col2 = base * 0.9 * shade;
+					}
+				} else if (t == ty) {   // its tiled floor, or the slab over it seen from below
+					col2 = m.y < 0.0 ? floorc * 1.2 * shade : base * 0.85 * shade;
+					nrm2 = m.y < 0.0 ? bv : -bv;
+				} else {
+					col2 = base * 0.95 * shade;
+					nrm2 = m.x < 0.0 ? tv : -tv;
+				}
+			}
+		} else if (upper && style > 1.5 && style < 2.5) {
+			// Bauhaus ribbon windows: one long recess, a mullion every third of a bay
+			vec2 lo = vec2(0.04 * cw, 1.14);
+			vec2 hi = vec2(0.96 * cw, 2.34);
+			if (p.x > lo.x && p.x < hi.x && p.y > lo.y && p.y < hi.y) {
+				deep_hit = true;
+				vec2 g;
+				float dd;
+				int k = recess(p, v, lo, hi, 0.12, g, dd);
+				if (k > 0) {
+					col2 = base * (0.95 - 0.3 * dd / 0.12);
+					nrm2 = k == 1 ? tv : (k == 2 ? -tv : (k == 3 ? bv : -bv));
+					emit2 = vec3(0.0);
+					rough2 = 0.85;
+				} else {
+					vec3 rc = room_at(g, v, cw, 4.0, r5, wallc, floorc, wall_a.rgb, sofac, lamp, lit_on, blur);
+					float third = (hi.x - lo.x) / 3.0;
+					float dm = abs(fract((g.x - lo.x) / third + 0.5) - 0.5) * third;
+					float dfr = min(min(g.x - lo.x, hi.x - g.x), min(g.y - lo.y, hi.y - g.y));
+					float cover = max(line_cover(dfr, 0.04, aa), line_cover(dm, 0.025, aa));
+					col2 = mix(vec3(0.02), dark.rgb * 1.4, cover);
+					emit2 = pane(rc, v, elev + wob, tint, street, 0.11) * (1.0 - cover);
+					rough2 = mix(0.06, 0.5, cover);
+					spec2 = 0.5;
+				}
+			}
+		} else if (upper && style > 2.5) {
+			// a tower's curtain wall: flush tinted glass, offices behind it
+			vec2 lo = vec2(0.04 * cw, 0.24);
+			vec2 hi = vec2(0.96 * cw, 2.88);
+			if (p.x > lo.x && p.x < hi.x && p.y > lo.y && p.y < hi.y) {
+				deep_hit = true;
+				vec3 ttint = mix(vec3(1.0), tower / max(max(tower.r, tower.g), max(tower.b, 0.05)), 0.7);
+				vec3 offc = mix(wall_a.rgb, wall_f.rgb, 0.5);
+				vec3 rc = room_at(p, v, cw, 6.0, r5, offc, wall_f.rgb * 0.6, wall_a.rgb, wall_f.rgb * 0.5,
+					lit_cool.rgb * (0.7 + 0.3 * r2), r3 < 0.3 ? 1.0 : 0.0, blur);
+				float dfr = min(min(p.x - lo.x, hi.x - p.x), min(p.y - lo.y, hi.y - p.y));
+				float cover = line_cover(dfr, 0.035, aa);
+				col2 = mix(vec3(0.02), tower * 0.6, cover);
+				emit2 = pane(rc, v, elev + wob * 0.5, ttint, street, 0.35) * (1.0 - cover);
+				rough2 = mix(0.05, 0.4, cover);
+				spec2 = 0.6;
+			}
+		} else if (!upper && up < 2.7) {
+			if (style > 2.5) {   // a tower's glass lobby, lit at night
+				vec2 lo = vec2(0.04 * cw, 0.0);
+				vec2 hi = vec2(cw, 2.7);
+				if (p.x > lo.x) {
+					deep_hit = true;
+					vec3 rc = room_at(p, v, cw, 8.0, r5, wall_a.rgb, wall_f.rgb * 0.7, wall_a.rgb, wall_f.rgb * 0.5,
+						lit_cool.rgb * 0.8, 1.0, blur);
+					float cover = line_cover(min(p.x - lo.x, hi.y - p.y), 0.04, aa);
+					col2 = mix(vec3(0.02), tower * 0.6, cover);
+					emit2 = pane(rc, v, elev, mix(vec3(1.0), tint, 0.5), street, 0.2) * (1.0 - cover);
+					rough2 = mix(0.06, 0.5, cover);
+					spec2 = 0.5;
+				}
+			} else if (fx > 0.14 && up > 0.0) {
+				// the open ground floor between the pillars: a covered space 5 m deep, out of the sun
+				deep_hit = true;
+				vec2 m = -v.xy;
+				float tz = 5.0 / v.z;
+				float ty = m.y < 0.0 ? (0.0 - p.y) / min(m.y, -0.0001) : (2.7 - p.y) / max(m.y, 0.0001);
+				float t = min(tz, ty);
+				float depth = t * v.z;
+				vec3 c = t == tz ? base * 0.62 : (m.y < 0.0 ? wall_f.rgb * 0.45 : base * 0.55);
+				float fall = 1.0 - depth / 9.0;
+				col2 = vec3(0.0);
+				emit2 = c * fall * mix(0.42, r3 < 0.5 ? 0.25 : 0.04, night);
+				rough2 = 0.9;
+				pl = 0.0;
+			}
+		}
+	}
+	if (deep_hit) {
+		pl = 0.0;
+		col = mix(col, col2, near3d);
+		emit = mix(emit, emit2, near3d);
+		rough = mix(rough, rough2, near3d);
+	}
 	// the foot of a wall darker: splashed dirt, and less of the sky's light reaches it
 	col *= mix(0.74, 1.0, smoothstep(0.0, 1.5, up));
 	if (pl > 0.5 && pb.z < 0.99999) {
 		// the bump's frame from how the wall's metres run across the screen (works whichever
 		// way round an outline was drawn); the photo's "up" is the wall's down (UV.y grows up)
-		vec3 nn = NORMAL;
-		vec3 q2 = cross(dp2, nn);
-		vec3 q1 = cross(nn, dp1);
-		vec3 tt = q2 * pdx.x + q1 * pdy.x;
-		vec3 bb = q2 * pdx.y + q1 * pdy.y;
 		float inv = inversesqrt(max(max(dot(tt, tt), dot(bb, bb)), 1e-24));
 		NORMAL = normalize(tt * inv * pb.x - bb * inv * pb.y + nn * pb.z);
+	} else if (deep_hit) {
+		NORMAL = normalize(mix(nn, nrm2, near3d));
 	}
 	ALBEDO = col;
 	ROUGHNESS = rough;
-	SPECULAR = 0.35;
-	EMISSION = emit * night * 1.25;
+	SPECULAR = deep_hit ? mix(0.35, spec2, near3d) : 0.35;
+	EMISSION = emit;
 }
 """
 
@@ -657,6 +965,10 @@ func start(_config: Dictionary) -> void:
 	_make_font()
 	_tones()
 	_place = LEVELS[clampi(int(_config.get("level", 1)), 1, LEVELS.size()) - 1]
+	var dev := OS.get_environment("STREETS_CAM").split(",", false)
+	if dev.size() >= 5:
+		for i in 5:
+			_dev_cam.append(dev[i].to_float())
 	# a big city takes seconds to build: say so, and build in steps a frame apart, so the
 	# screen shows progress instead of hanging (a phone takes two or three times as long)
 	_loading = UIKit.label("", 16, "ink")
@@ -697,6 +1009,9 @@ func start(_config: Dictionary) -> void:
 		"trees": _posts.size(), "streets": _streets.size(), "dressing": _dressing, "stage_ms": _stage_ms,
 		"parse_ms": t1 - t0, "build_ms": Time.get_ticks_msec() - t1})
 	_show_banner(_city_name, 3.0)
+	var dev_cam := OS.get_environment("STREETS_CAM").split(",", false)
+	if dev_cam.size() >= 6 and dev_cam[5] == "1":
+		_set_night(true)
 
 var _loading: Label
 
@@ -2934,10 +3249,16 @@ void fragment() {
 	c = mix(c, dark.rgb, smoothstep(0.62, 0.9, noise(wpos.xz / 31.0 + 17.0)) * 0.55);
 	c *= 0.94 + 0.06 * noise(wpos.xz / 2.5);
 	if (textured > 0.5) {   // the lawn photo (see TONE_SHADER), over earth and grass alike
+		// Its 2 m repeat lines up into a grid further off, so it fades out with distance (the
+		// noise above, which never repeats, carries the far ground), and a second copy 7.3 m
+		// across, turned, breaks up the repeat nearer in.
+		float kd = 1.0 - smoothstep(25.0, 110.0, length(VERTEX));
 		vec2 uv = wpos.xz * 0.5;
 		vec3 t = texture(grass_tex, uv).rgb;
-		c *= mix(vec3(1.0), clamp(t / grass_mean, vec3(0.0), vec3(2.6)), 0.85);
-		vec2 xy = (texture(grass_nrm, uv).rg * 2.0 - 1.0) * 0.8;
+		vec3 t2 = texture(grass_tex, vec2(wpos.z, -wpos.x) * 0.137 + vec2(0.31, 0.77)).rgb;
+		c *= mix(vec3(1.0), clamp(t / grass_mean, vec3(0.0), vec3(2.6)), 0.85 * kd);
+		c *= mix(vec3(1.0), clamp(t2 / grass_mean, vec3(0.0), vec3(2.6)), 0.3 * (1.0 - smoothstep(60.0, 260.0, length(VERTEX))));
+		vec2 xy = (texture(grass_nrm, uv).rg * 2.0 - 1.0) * 0.8 * kd;
 		vec3 b = vec3(xy, sqrt(max(0.0, 1.0 - dot(xy, xy))));
 		vec3 tx = (VIEW_MATRIX * vec4(1.0, 0.0, 0.0, 0.0)).xyz;
 		tx = normalize(tx - NORMAL * dot(NORMAL, tx));
@@ -3879,10 +4200,12 @@ void fragment() {
 		}
 		// a wall or a kerb's face stays on the noise: laid from above, a photo runs down it in streaks
 		if (textured > 0.5 && wup > 0.6) {
-			if (fx.w < 1.5) {   // grass, earth, sand: a lawn photo, 2 m across
+			if (fx.w < 1.5) {   // grass, earth, sand: a lawn photo, 2 m across (fading out further
+				// off, where its repeat would line up into a grid; see GROUND_SHADER)
+				float kd = 1.0 - smoothstep(25.0, 110.0, length(VERTEX));
 				vec2 uv = p * 0.5;
-				c *= detail(textureGrad(grass_tex, uv, dpx * 0.5, dpy * 0.5).rgb, grass_mean, 0.85);
-				bump = unpack(textureGrad(grass_nrm, uv, dpx * 0.5, dpy * 0.5).rg, 0.8);
+				c *= detail(textureGrad(grass_tex, uv, dpx * 0.5, dpy * 0.5).rgb, grass_mean, 0.85 * kd);
+				bump = unpack(textureGrad(grass_nrm, uv, dpx * 0.5, dpy * 0.5).rg, 0.8 * kd);
 			} else if (fx.w < 2.5) {   // asphalt: fine grit 3 m across over 30 m of patches and tyre marks
 				vec2 uv = p / 3.0;
 				// paint (no patches of its own) takes the grit faintly: it is worn, not gritty
@@ -5819,6 +6142,10 @@ func _retint_city() -> void:
 		sun.light_color = ink.lerp(pl, 0.4)
 		sun.light_energy = 0.18
 		sun.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY   # no sun disc in a night sky
+	if _wall_mat != null and env != null:   # what the windows reflect: the sky as it is now
+		var sk := env.sky.sky_material as ProceduralSkyMaterial
+		_wall_mat.set_shader_parameter("sky_top", sk.sky_top_color)
+		_wall_mat.set_shader_parameter("sky_hor", sk.sky_horizon_color)
 	_apply_signals_safe()
 	_retint_kerbs()
 	_retint_ground()
@@ -7821,7 +8148,24 @@ func _in_city(p: Vector2) -> bool:
 ## ---- camera: a chase cam that swings wide on turns and never sits inside a building -----
 
 ## `p` and `yaw`: where the car is drawn this frame
+## A camera for looking at the city in screenshots (tools/shots.sh), never in play:
+## STREETS_CAM="ahead,left,up,turn,tilt" stands it that many metres ahead of the car, to its
+## left and above the ground, turned that many degrees left of the car's heading and tilted
+## that many up; a sixth value of 1 makes it night. Unset (always, outside a test) it does
+## nothing.
+var _dev_cam := PackedFloat32Array()
+
 func _camera(dt: float, p: Vector2, yaw: float) -> void:
+	if _dev_cam.size() == 5:
+		var fw := Vector2(cos(yaw), sin(yaw))
+		var lf := Vector2(sin(yaw), -cos(yaw))
+		var at2 := p + fw * _dev_cam[0] + lf * _dev_cam[1]
+		var dy := yaw - deg_to_rad(_dev_cam[3])
+		var tl := deg_to_rad(_dev_cam[4])
+		var eye := Vector3(at2.x, _h(at2) + _dev_cam[2], at2.y)
+		look_from(eye, eye + Vector3(cos(dy) * cos(tl), sin(tl), sin(dy) * cos(tl)))
+		cam.fov = 70.0
+		return
 	if _cockpit:
 		_seat_camera(dt, yaw)
 		return
