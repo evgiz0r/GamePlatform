@@ -3732,16 +3732,65 @@ const BATCH_VERTS := 650000          ## more than this in one call: left as a mu
 ## kits, balconies) or the number of a tone of the palette (alpha 0, the number in red),
 ## looked up in a table the material holds -- so the asphalt, the grass, the poles and the
 ## paint of a square are one mesh and one draw, and a new palette is a new table.
+## Each tone also has a surface (tone_fx: x patches, y grain, z slab size, w kind): grass
+## mottled, asphalt grained and worn in patches, pavements in slabs -- worked out per pixel
+## from the world position, nothing to load. The fine part fades with distance before it
+## can shimmer, and the noise is a cheap hash (no sine), for phones.
 const TONE_SHADER := """
 shader_type spatial;
 render_mode cull_back;
 uniform vec4 tones[64] : source_color;
+uniform vec4 tone_fx[64];
+varying vec3 wpos;
+float hash(vec2 p) {
+	vec3 q = fract(vec3(p.xyx) * 0.1031);
+	q += dot(q, q.yzx + 33.33);
+	return fract((q.x + q.y) * q.z);
+}
+float noise(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	vec2 u = f * f * (3.0 - 2.0 * f);
+	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+}
+void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 void fragment() {
-	ALBEDO = COLOR.a < 0.02 ? tones[int(COLOR.r * 63.0 + 0.5)].rgb : COLOR.rgb;
+	vec3 c = COLOR.rgb;
+	vec4 fx = vec4(0.0);
+	if (COLOR.a < 0.02) {
+		int i = int(COLOR.r * 63.0 + 0.5);
+		c = tones[i].rgb;
+		fx = tone_fx[i];
+	}
+	if (fx.x + fx.y > 0.0) {
+		vec2 p = wpos.xz;
+		float near = clamp(1.0 - length(VERTEX) / 90.0, 0.0, 1.0);
+		float big = noise(p / 11.0) * 0.6 + noise(p / 3.1) * 0.4;
+		float shade = 1.0 + (big - 0.5) * fx.x * 2.0;
+		if (fx.w < 1.5) {   // grass and ground: drier, yellower patches here and there
+			c = mix(c, c * vec3(1.12, 1.07, 0.8), smoothstep(0.56, 0.82, noise(p / 17.0 + 7.0)) * fx.x * 4.0);
+		}
+		if (near > 0.0) {
+			shade += (noise(p * 1.9) - 0.5) * fx.y * 2.0 * near;
+			if (fx.w > 2.5) {   // paving: a grid of slabs, the joints a little darker
+				vec2 g = abs(fract(p / fx.z) - 0.5);
+				shade -= step(0.45, max(g.x, g.y)) * 0.1 * near;
+			}
+		}
+		c *= shade;
+	}
+	ALBEDO = c;
 	ROUGHNESS = 0.9;
 	SPECULAR = 0.25;
 }
 """
+## the surface each tone gets: [patches, grain, slab size, kind (1 soft, 2 grained, 3 slabs)]
+const TONE_FX := {
+	"grass": [0.16, 0.08, 0.0, 1.0], "pitch": [0.06, 0.05, 0.0, 1.0], "wood": [0.16, 0.07, 0.0, 1.0],
+	"bush": [0.1, 0.05, 0.0, 1.0], "ground": [0.1, 0.06, 0.0, 1.0], "sand": [0.08, 0.08, 0.0, 1.0],
+	"asphalt": [0.08, 0.06, 0.0, 2.0], "parking": [0.08, 0.05, 0.0, 2.0], "path": [0.06, 0.07, 0.0, 2.0],
+	"pavement": [0.04, 0.04, 0.6, 3.0], "plaza": [0.05, 0.04, 1.0, 3.0], "mark": [0.0, 0.04, 0.0, 2.0],
+}
 var _tone_list: Array = []           ## the table's tone names, in order
 var _tone_material: ShaderMaterial
 
@@ -3758,9 +3807,15 @@ func _retint_tone_mat() -> void:
 		return
 	var cols := PackedColorArray()
 	cols.resize(64)
+	var fxs: Array = []
+	fxs.resize(64)
+	fxs.fill(Vector4.ZERO)
 	for i in range(_tone_list.size()):
 		cols[i] = _tone.get(_tone_list[i], Palette.col("warn"))
+		var f: Array = TONE_FX.get(_tone_list[i], [0.03, 0.02, 0.0, 1.0])
+		fxs[i] = Vector4(f[0], f[1], f[2], f[3])
 	_tone_material.set_shader_parameter("tones", cols)
+	_tone_material.set_shader_parameter("tone_fx", fxs)
 
 ## the tone a plain material is (one of _surface's), or "" when it is anything else
 func _tone_of(m: Material) -> String:
