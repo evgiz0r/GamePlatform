@@ -813,6 +813,74 @@ func _fit_widths_to_buildings() -> void:
 		_recompute_node_r()
 	_dressing["narrowed"] = narrowed
 
+## What the narrowing leaves (it fits most of a street's length, not every building on it):
+## a building whose front still stands on the road, or so close no pavement is left, has
+## that front cut back to the road's edge plus a kerb and a strip of pavement. OSM's
+## footprints and centre lines are each a little off and the road's width is a guess, so a
+## metre off a facade is the likelier truth than a house standing in the lane. Not a
+## building the road runs under (more than half of it would go: a passage through it, or a
+## guess far too wide), nor one up on columns over it.
+const BLD_CLEAR := 1.5                ## kerb and pavement kept in front of a building (m)
+
+func _clip_buildings(bdata: Array) -> void:
+	var clipped := 0
+	var kept := 0
+	for bi in range(_blds.size()):
+		if _bld_solid[bi] == 0:
+			continue
+		var ring: PackedVector2Array = _blds[bi]
+		var box: Rect2 = _bld_box[bi]
+		var n := ring.size()
+		var cuts: Array = []
+		for code: int in _near(_seg_hash, box.get_center(), box.size.length() * 0.5 + 14.0, SEG_CELL):
+			var r: Dictionary = _roads[code / 4096]
+			if not _kerbed(r):
+				continue
+			var pts: PackedVector2Array = r["pts"]
+			var sj := code % 4096
+			var a := pts[sj]
+			var b := pts[sj + 1]
+			var c := float(r["w"]) * 0.5 + BLD_CLEAR
+			if not box.grow(c).intersects(Rect2(a, Vector2.ZERO).expand(b)):
+				continue
+			for k in range(n):
+				var cp := Geometry2D.get_closest_points_between_segments(a, b, ring[k], ring[(k + 1) % n])
+				if cp[0].distance_to(cp[1]) < c - 0.05:
+					cuts.append([a, b, c])
+					break
+		if cuts.is_empty():
+			continue
+		var area0 := _area_signed(ring)
+		var cur := ring
+		for cut: Array in cuts:
+			var a: Vector2 = cut[0]
+			var b: Vector2 = cut[1]
+			var c: float = cut[2]
+			var d := (b - a).normalized()
+			var nr := Vector2(-d.y, d.x) * c
+			var lane := PackedVector2Array([a - d * 0.5 + nr, b + d * 0.5 + nr, b + d * 0.5 - nr, a - d * 0.5 - nr])
+			var best := PackedVector2Array()
+			var best_a := 0.0
+			for piece: PackedVector2Array in Geometry2D.clip_polygons(cur, lane):
+				var pa := _area(piece)   # (the largest: never a hole, smaller than its outline)
+				if pa > best_a:
+					best_a = pa
+					best = piece
+			cur = best
+			if cur.size() < 3:
+				break
+		if cur.size() < 3 or _area(cur) < absf(area0) * 0.5:
+			kept += 1
+			continue
+		if signf(_area_signed(cur)) != signf(area0):
+			cur.reverse()
+		_blds[bi] = cur
+		_bld_box[bi] = _bld_box_of(cur)
+		(bdata[bi] as Dictionary)["_ring"] = cur
+		clipped += 1
+	_dressing["bld_clipped"] = clipped
+	_dressing["bld_over_road"] = kept
+
 ## ---- loading the city ---------------------------------------------------------------
 
 func _load_city(id: String) -> bool:
@@ -925,6 +993,7 @@ func _load_city(id: String) -> bool:
 	for a: Array in data.get("addrs", []):   # address points that are not on a building
 		_add_address("%s %s" % [a[2], a[3]], Vector2(a[0], a[1]) * k)
 	_fit_widths_to_buildings()
+	_clip_buildings(data["buildings"])
 	_build_graph()
 	_city_data = data
 	return true

@@ -297,7 +297,9 @@ is laid where it would lie on another road's asphalt, which also leaves a drivew
 
 **Roads that fit.** A road's width is mostly a guess (OSM rarely says), so where a street's
 buildings stand closer than the guess it is narrowed (to no less than two lanes) instead of
-running under them. The ground's thin layers -- grass, paths, asphalt, paint -- sit a few
+running under them. A building still standing on the road after that, or so close no
+pavement is left, has its front cut back to the road's edge plus a kerb and a strip of
+pavement (not one a road passes under, nor one up on columns). The ground's thin layers -- grass, paths, asphalt, paint -- sit a few
 centimetres apart and the camera's near plane is a little way out, so a phone's coarser
 depth buffer no longer shows grass through the road in green patches.
 
