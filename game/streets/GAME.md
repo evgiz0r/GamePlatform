@@ -44,12 +44,15 @@ Drive, freely. The car behaves like a car rather than a toy: about 4 m/s² off t
 if you take a corner too fast (it runs wide), body roll and nose dive. Hold the brake when
 stopped and it goes into reverse, like an automatic.
 
-The car's switches, on screen (top right) and on the keyboard: indicators (Q and E) that
-tick and go off by themselves after the turn, the horn (H: people on a crossing hurry, a
-car stuck in a standoff ahead goes), headlights (L; on by themselves at night), and
-reverse lights when backing. Autodrive signals its own turns.
+The car's switches: headlights (on screen, top right, and L; on by themselves at night),
+and on the keyboard only, indicators (Q and E) that tick and go off by themselves after the
+turn and the horn (H: people on a crossing hurry, a car stuck in a standoff ahead goes);
+reverse lights when backing. Autodrive signals its own turns, an arrow blinking by the
+speed.
 
 > Indicators, horn, headlights, speedometer.
+
+> Remove the honk and turn lights UI, it's not needed.
 
 Keys: up = gas, down = brake (and reverse), left/right = steer. Space switches on
 **autodrive**, which drives the streets by itself in the right-hand lane, slows for
@@ -305,7 +308,9 @@ a little further from the centre line; parked cars stand mostly up on the paveme
 roundabout a car decides at each exit and is ever less likely to stay on, so nobody
 circles and the cars waiting to come on are let in.
 
-**Autodrive** stops for anyone standing on its lane, keeps out of alleys and car-park lanes
+**Autodrive** keeps to the right-hand lane of a one-way road of several (it drove down the
+middle, astride two, and in between the cars in them), counts a car going its way as in
+its lane wherever their bodies would touch, stops for anyone standing on its lane, keeps out of alleys and car-park lanes
 unless there is no other way, prefers turnings back into town at its edge, and if it has
 got nowhere for 40 s (not at a light) it is lifted onto a street a little way toward the
 middle of town and drives on.

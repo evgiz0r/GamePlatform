@@ -619,14 +619,7 @@ func _signal(c: Car, dt: float) -> void:
 
 ## lanes each way on road r: OSM's count when it has one, else what the width holds
 func _lanes_dir(r: Dictionary) -> int:
-	var l := int(r.get("l", 0))
-	var w := float(r["w"])
-	var n := 1
-	if int(r["o"]) != 0:
-		n = l if l > 0 else int(w / 3.3)
-	else:
-		n = l / 2 if l > 1 else int(w / 6.6)
-	return clampi(n, 1, 4)
+	return g._lanes_each_way(r)
 
 ## how far left of the lane line lane `idx` (from the right) of road r lies
 func _lane_shift(r: Dictionary, idx: int) -> float:
@@ -785,11 +778,17 @@ func lead_on(path: PackedVector2Array, from: Vector2, look: float, ignore_crossi
 			var a := path[j]
 			var b := path[j + 1]
 			var cp := Geometry2D.get_closest_point_to_segment(c.pos, a, b)
-			if cp.distance_to(c.pos) < LANE_W:
+			var dir := (b - a).normalized()
+			var cdir := Vector2(sin(c.yaw), cos(c.yaw))
+			var same := dir.dot(cdir)
+			# one going my way is in it wherever the bodies would touch: my half width, its,
+			# and a hand's breadth (by its middle alone, at 1.5 m, one in the next lane on a
+			# narrow road was not, and autodrive ran in between two of them)
+			var wide := LANE_W
+			if same > 0.6:
+				wide = maxf(LANE_W, 0.9 + (float(BODY[c.kind][1]) if BODY.has(c.kind) else 0.95) + 0.25)
+			if cp.distance_to(c.pos) < wide:
 				var along := base + a.distance_to(cp)
-				var dir := (b - a).normalized()
-				var cdir := Vector2(sin(c.yaw), cos(c.yaw))
-				var same := dir.dot(cdir)
 				if along > 0.5 and along < best and not (ignore_crossing and same < 0.6):
 					best = along
 					bv = c.v * maxf(same, 0.0)

@@ -582,10 +582,8 @@ const ASSIST_BTN := Rect2(376, 334, 70, 20)
 const NIGHT_BTN := Rect2(452, 334, 52, 20)
 const VIEW_BTN := Rect2(578, 98, 52, 20)    ## chase cam / driver's seat (key C too)
 const LIGHTS_BTN := Rect2(578, 122, 52, 20)  ## headlights (key L)
-const BLINK_L_BTN := Rect2(558, 146, 24, 20) ## indicators (keys Q and E) and the horn (H)
-const HORN_BTN := Rect2(585, 146, 28, 20)
-const BLINK_R_BTN := Rect2(616, 146, 24, 20)
-const WALK_BTN := Rect2(578, 170, 52, 20)    ## out of the car and back in (key F)
+## (the indicators and the horn are keys only, Q / E and H: on screen they were clutter)
+const WALK_BTN := Rect2(578, 146, 52, 20)    ## out of the car and back in (key F)
 const STICK_C := Vector2(556, 268)   ## the touch stick sits still, here, on the right
 const STICK_R := 52.0                ## thumb travel (design px) for full lock / full gas
 const STICK_GRAB := 84.0             ## a thumb this close to its centre takes hold of it
@@ -5688,15 +5686,42 @@ func _build_car() -> void:
 func _fwd() -> Vector2:
 	return Vector2(cos(_yaw), sin(_yaw))
 
-## The right-hand lane's line, this far right of a two-way road's middle (one-way: the
-## middle). Every two-way street has two lanes, however narrow; the line sits a little past
-## the lane's own middle, toward the kerb, as drivers do -- at w/4 cars ran close to the
-## centre line and met the traffic coming the other way in it.
+## The right-hand lane's line, this far right of a two-way road's middle. Every two-way
+## street has two lanes, however narrow; the line sits a little past the lane's own middle,
+## toward the kerb, as drivers do -- at w/4 cars ran close to the centre line and met the
+## traffic coming the other way in it. A one-way road of one lane: its middle; of several:
+## the middle of the right-hand one, where traffic drives (autodrive used to take the middle
+## of the road, astride two lanes, and ran in between the cars in them).
 func _lane_off(r: Dictionary) -> float:
-	if int(r["o"]) != 0:
-		return 0.0
 	var w := float(r["w"])
+	if int(r["o"]) != 0:
+		var n := _lanes_each_way(r)
+		return 0.0 if n <= 1 else w * 0.5 - w / n * 0.5
 	return clampf(minf(w * 0.25 + 0.25, w * 0.5 - 0.95), 0.9, 2.6)
+
+## lanes each way: a one-way road's all, half a two-way road's (by the tag, else the width)
+func _lanes_each_way(r: Dictionary) -> int:
+	var l := int(r.get("l", 0))
+	var w := float(r["w"])
+	var n := 1
+	if int(r["o"]) != 0:
+		n = l if l > 0 else int(w / 3.3)
+	else:
+		n = l / 2 if l > 1 else int(w / 6.6)
+	return clampi(n, 1, 4)
+
+## of road r's lanes going one way, the line of the one nearest `off` metres right of the
+## road's middle
+func _nearest_lane(r: Dictionary, off: float) -> float:
+	var best := _lane_off(r)
+	var n := _lanes_each_way(r)
+	var w := float(r["w"])
+	var span := w if int(r["o"]) != 0 else w * 0.5
+	for i in range(n if n > 1 else 0):
+		var c := w * 0.5 - span / n * (i + 0.5)
+		if absf(c - off) < absf(best - off):
+			best = c
+	return best
 
 ## ---- the driver's seat ----------------------------------------------------------------------
 ## The view from behind the wheel, like a dashcam a little lower: the bonnet through the
@@ -6640,7 +6665,7 @@ func _manual(dt: float) -> Array:
 		_pin_at = _pos
 	return [throttle, brake, steer]
 
-## the assist's nudge: toward the street's direction and the middle of the lane, while
+## the assist's nudge: toward the street's direction and the middle of its lane, while
 ## the car is roughly following the street (not crossing it or turning off it)
 func _assist_steer() -> float:
 	var hit := _nearest_seg(_pos, 12.0, true, true)
@@ -6656,9 +6681,9 @@ func _assist_steer() -> float:
 	var err := fwd.angle_to(d)
 	if absf(err) > 0.6:
 		return 0.0
-	var lane := _lane_off(r)
 	var right := Vector2(-d.y, d.x)
-	var off := (_pos - (hit["q"] as Vector2)).dot(right) - lane
+	var lat := (_pos - (hit["q"] as Vector2)).dot(right)
+	var off := lat - _nearest_lane(r, lat)   # (the lane it is in, of several)
 	return clampf(err * ASSIST_ALIGN - off * ASSIST_LANE, -ASSIST_MAX, ASSIST_MAX)
 
 ## something solid where the car will be in about half a second
@@ -8799,25 +8824,11 @@ func _draw_hud() -> void:
 	_hud.draw_rect(LIGHTS_BTN, Color(bg, 0.65))
 	_hud.draw_rect(LIGHTS_BTN, Color(lc, 0.9), false, 1.5)
 	_hud.draw_string(_font, LIGHTS_BTN.position + Vector2(0, 15), "lights", HORIZONTAL_ALIGNMENT_CENTER, LIGHTS_BTN.size.x, 11, lc)
-	var green := Palette.col("friend")
-	for side: int in [-1, 1]:
-		var rb := BLINK_L_BTN if side < 0 else BLINK_R_BTN
-		var lit_side := _blink == side
-		var col := green if lit_side else Color(ink, 0.7)
-		_hud.draw_rect(rb, Color(bg, 0.65))
-		_hud.draw_rect(rb, Color(col, 0.9), false, 1.5)
-		var cc := rb.get_center()
-		var s := float(side)
-		_hud.draw_colored_polygon(PackedVector2Array([cc + Vector2(s * 6, 0), cc + Vector2(-s * 4, -6), cc + Vector2(-s * 4, 6)]),
-			Color(col, 1.0 if (lit_side and _blink_lit) or not lit_side else 0.35))
-		# and blinking by the speed, for the chase view
-		if lit_side and _blink_lit:
-			var at := Vector2(500.0 if side < 0 else 633.0, 50.0)
-			_hud.draw_colored_polygon(PackedVector2Array([at + Vector2(s * 7, 0), at + Vector2(-s * 5, -7), at + Vector2(-s * 5, 7)]), green)
-	var hc := Palette.col("hazard") if (_horn_held or _horn_t > 0.0) else Color(ink, 0.8)
-	_hud.draw_rect(HORN_BTN, Color(bg, 0.65))
-	_hud.draw_rect(HORN_BTN, Color(hc, 0.9), false, 1.5)
-	_hud.draw_string(_font, HORN_BTN.position + Vector2(0, 14), "horn", HORIZONTAL_ALIGNMENT_CENTER, HORN_BTN.size.x, 9, hc)
+	# the indicator blinking by the speed, as on a dashboard
+	if _blink != 0 and _blink_lit:
+		var s := float(_blink)
+		var at := Vector2(500.0 if _blink < 0 else 633.0, 50.0)
+		_hud.draw_colored_polygon(PackedVector2Array([at + Vector2(s * 7, 0), at + Vector2(-s * 5, -7), at + Vector2(-s * 5, 7)]), Palette.col("friend"))
 	var near_car := _walking and _pos.distance_to(_car_at) < 3.6
 	var wc := Palette.col("accent") if near_car or not _walking else Color(ink, 0.7)
 	_hud.draw_rect(WALK_BTN, Color(bg, 0.65))
@@ -8991,12 +9002,6 @@ func _input(event: InputEvent) -> void:
 				_set_cockpit(not _cockpit)
 			elif LIGHTS_BTN.grow(2).has_point(mb.position):
 				_set_lights(not _lights_on)
-			elif BLINK_L_BTN.grow(2).has_point(mb.position):
-				_set_blink(0 if _blink == -1 else -1)
-			elif BLINK_R_BTN.grow(2).has_point(mb.position):
-				_set_blink(0 if _blink == 1 else 1)
-			elif HORN_BTN.grow(2).has_point(mb.position):
-				_horn_t = 0.6
 			elif WALK_BTN.grow(2).has_point(mb.position):
 				_toggle_walk()
 			elif ASSIST_BTN.grow(4).has_point(mb.position):
@@ -9014,8 +9019,7 @@ func _input(event: InputEvent) -> void:
 			if AUTO_BTN.grow(4).has_point(t.position) or GOTO_BTN.grow(4).has_point(t.position) \
 					or ASSIST_BTN.grow(4).has_point(t.position) or NIGHT_BTN.grow(4).has_point(t.position) \
 					or VIEW_BTN.grow(4).has_point(t.position) or LIGHTS_BTN.grow(2).has_point(t.position) \
-					or BLINK_L_BTN.grow(2).has_point(t.position) or BLINK_R_BTN.grow(2).has_point(t.position) \
-					or HORN_BTN.grow(2).has_point(t.position) or WALK_BTN.grow(2).has_point(t.position) \
+					or WALK_BTN.grow(2).has_point(t.position) \
 					or t.position.y < 36.0:
 				return   # the button (via its emulated click) and the shell's menu/sound row
 			if _stick_id < 0 and t.position.distance_to(STICK_C) <= STICK_GRAB:
