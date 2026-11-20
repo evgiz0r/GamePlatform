@@ -203,6 +203,13 @@ side of a divided road, and off any stretch where the pavement line would run ov
 road -- a service lane or car-park lane alongside, the next street at a corner -- though
 they step across a driveway's mouth.
 
+The people are grown-ups, not the kit's chunky cartoons: smaller heads, hands and feet,
+longer legs and a longer middle (scaled on their skeletons after every animation frame),
+at the height asked for. Faces are a deeper shade of the skin, not big white eyes. Skin
+runs light to dark; hair is mostly dark and brown, with the odd fair, red or grey head;
+shirts and trousers are each picked from a natural range, so no two in a street match.
+That goes for you on foot too.
+
 > More kinds of traffic (buses that stop at the stops, taxis, motorbikes weaving); people
 > crossing at zebras; multi-lane traffic that changes lanes and turns from the right lane.
 

@@ -7832,6 +7832,7 @@ func _get_out() -> void:
 		_me = Actor3D.new()
 		world.add_child(_me)
 		_me.set_character(PEOPLE[1], 1.76)
+		_humanize(_me, hash(_me.get_instance_id()))
 	_me.visible = true
 	_me_anim = ""
 	_walking = true
@@ -9079,6 +9080,7 @@ func _spawn_people() -> void:
 		var a := Actor3D.new()
 		world.add_child(a)
 		a.set_character(PEOPLE[i % PEOPLE.size()], _people_rng.randf_range(1.62, 1.88))
+		_humanize(a, hash(a.get_instance_id()))
 		_people_lod(a)
 		var w := {"actor": a, "line": PackedVector2Array(), "cum": PackedFloat32Array(), "s": 0.0,
 			"dir": 1.0, "speed": _people_rng.randf_range(1.1, 1.6), "dodge": 0.0,
@@ -9089,6 +9091,7 @@ func _spawn_people() -> void:
 		var a := Actor3D.new()
 		world.add_child(a)
 		a.set_character(PEOPLE[(i + 2) % PEOPLE.size()], _people_rng.randf_range(1.62, 1.88))
+		_humanize(a, hash(a.get_instance_id()))
 		_people_lod(a)
 		a.play("Idle", true, _people_rng.randf_range(0.8, 1.1))
 		a.visible = false
@@ -9300,6 +9303,91 @@ func _people_tick(dt: float) -> void:
 			placed = true
 			_place_walker(w, false)
 
+## ---- what people look like ---------------------------------------------------------------------
+## The kit's people (Quaternius, CC0) are cartoons: big heads and hands, one skin of dark
+## grey with white cartoon eyes, the same clothes. Made more like people: a grown-up's
+## proportions scaled on the skeleton (PART_SIZES), the face a deeper shade of the skin, and
+## skin, hair, shirt and trousers each picked from a natural range mixed from the palette, so
+## no two in a street are dressed alike.
+
+## scales bones after the animation has posed them, every frame (the animation's pose puts
+## every bone's scale back, so setting it once does not hold)
+class PartSizes extends SkeletonModifier3D:
+	var bones := {}   ## bone index -> scale
+
+	func _process_modification_with_delta(_delta: float) -> void:
+		var sk := get_skeleton()
+		if sk == null:
+			return
+		for i: int in bones:
+			sk.set_bone_pose_scale(i, bones[i])
+
+func _people_looks() -> Dictionary:
+	var ink := Palette.col("ink")
+	var bg := Palette.col("bg")
+	var alt := Palette.col("bg_alt")
+	var wn := Palette.col("warn")
+	var pl := Palette.col("player")
+	var hz := Palette.col("hazard")
+	var fr := Palette.col("friend")
+	var skin := _natural(ink.lerp(wn, 0.38).lerp(hz, 0.14), 0.7)
+	return {
+		"skin": [skin, skin.darkened(0.15), skin.darkened(0.32), skin.darkened(0.5), skin.darkened(0.64)],
+		# mostly dark and brown, as in any street; a fair one, a red one, a grey one
+		"hair": [bg.lerp(alt, 0.25), bg.lerp(alt, 0.45), _natural(wn.lerp(bg, 0.8), 0.5), _natural(wn.lerp(bg, 0.7), 0.5),
+			_natural(wn.lerp(bg, 0.58), 0.5), _natural(wn.lerp(bg, 0.3), 0.45), _natural(hz.lerp(wn, 0.4).lerp(bg, 0.55), 0.55),
+			_natural(ink.lerp(alt, 0.45), 0.15)],
+		"shirt": [ink.lerp(alt, 0.08), _natural(pl.lerp(ink, 0.35), 0.5), _natural(hz.lerp(bg, 0.3), 0.5),
+			_natural(fr.lerp(bg, 0.45), 0.5), _natural(wn.lerp(ink, 0.35), 0.45), ink.lerp(alt, 0.5),
+			bg.lerp(alt, 0.5), _natural(pl.lerp(bg, 0.6), 0.6), _natural(Palette.col("accent").lerp(ink, 0.3), 0.45)],
+		"pants": [_natural(pl.lerp(bg, 0.55), 0.45), bg.lerp(alt, 0.5), ink.lerp(alt, 0.55), _natural(wn.lerp(alt, 0.5), 0.4),
+			_natural(pl.lerp(bg, 0.7), 0.5)],
+		"belt": [bg.lerp(alt, 0.3), _natural(wn.lerp(bg, 0.65), 0.45)],
+	}
+
+## A grown-up's proportions on the kit's chunky figures: a smaller head, hands and feet,
+## longer thighs and a longer middle. Scales on the bones, kept by PartSizes after the
+## animation has posed them.
+const PART_SIZES := {
+	"Head": Vector3(0.64, 0.64, 0.64),
+	"Fist.L": Vector3(0.7, 0.7, 0.7), "Fist.R": Vector3(0.7, 0.7, 0.7),
+	"Foot.L": Vector3(0.85, 0.85, 0.85), "Foot.R": Vector3(0.85, 0.85, 0.85),
+	"UpperLeg.L": Vector3(1.0, 1.16, 1.0), "UpperLeg.R": Vector3(1.0, 1.16, 1.0),
+	"Abdomen": Vector3(1.0, 1.06, 1.0),
+}
+
+func _humanize(a: Actor3D, seed: int) -> void:
+	if a == null or a.model == null:
+		return
+	var sks := a.model.find_children("*", "Skeleton3D", true, false)
+	if not sks.is_empty():
+		var sk: Skeleton3D = sks[0]
+		var sizes := PartSizes.new()
+		for bone: String in PART_SIZES:
+			var i := sk.find_bone(bone)
+			if i >= 0:
+				sizes.bones[i] = PART_SIZES[bone]
+		sk.add_child(sizes)
+		a.model.scale *= 1.06   # back to the height asked for: the smaller head took some off
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed
+	var looks := _people_looks()
+	var pick := {}
+	for k: String in looks:
+		pick[k] = looks[k][rng.randi() % (looks[k] as Array).size()]
+	# the face (the big white eyes) in a deeper shade of the same skin: features, not a cartoon's eyes
+	pick["face"] = (pick["skin"] as Color).darkened(0.42)
+	for mi: MeshInstance3D in a.model.find_children("*", "MeshInstance3D", true, false):
+		for si in range(mi.mesh.get_surface_count()):
+			var m := mi.mesh.surface_get_material(si) as StandardMaterial3D
+			var role := String(m.resource_name).to_lower() if m != null else ""
+			if not pick.has(role):
+				continue
+			var nm := m.duplicate() as StandardMaterial3D
+			nm.albedo_color = pick[role]
+			nm.roughness = 0.85
+			mi.set_surface_override_material(si, nm)
+
 ## ---- people crossing at the zebras -----------------------------------------------------------
 ## A few people at the zebra crossings near the car. They wait at the kerb, and cross once
 ## whatever is coming can still stop for them; traffic and autodrive stop for anyone on a
@@ -9317,6 +9405,7 @@ func _spawn_crossers() -> void:
 		var a := Actor3D.new()
 		world.add_child(a)
 		a.set_character(PEOPLE[(i + 3) % PEOPLE.size()], _people_rng.randf_range(1.6, 1.86))
+		_humanize(a, hash(a.get_instance_id()))
 		_people_lod(a)
 		a.visible = false
 		_crossers.append({"actor": a, "ni": -1, "a": Vector2.ZERO, "b": Vector2.ZERO, "s": 0.0,
