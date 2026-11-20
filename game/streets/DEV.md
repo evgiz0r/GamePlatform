@@ -544,6 +544,73 @@ off the road. Run it after a change to driving, compare with the last block, loo
 maps of whatever got worse. Pick a new set (another seed) only to widen what is covered;
 keep the old block for the record.
 
+### Routes of your own
+
+The Test routes list has two pages, "the ten" and "yours". "Yours" makes one: a city
+button starts that city with `{"make_route": true}`, the address picker opens once it is up
+(`_making`: "from", then "to"; its jump/drive choice hidden), and the second pick saves it and
+drives it (`_made_pick`). They live in `user://my_routes.json` only (`MY_ROUTES_FILE`,
+newest first, at most 9, ids from 1001): the browser's own storage, never the repo, because
+a route from home names home. `_route_by_id` looks in both. `tests/my_route.gd` makes one in
+the test town by the taps a player would make and puts the file back as it was.
+Two things it found: the list's small buttons were sized before they were in the tree and
+kept the kit's 180x34 minimum (`_put` after `add_child`, as the picker does) -- a tap on
+"test town" started Bedford; and `_land_on_road` looked for a road at the car's own height
+wherever it was asked to land, so from the valley to an address up the test town's hill it
+skipped the street 32 m away for one 107 m off at the valley's height (now: the car's height
+only within 40 m of the car; and a route's start lands within 150 m, as "jump to" does).
+
+## Giving way, crossings, pockets (20 Nov 2026)
+
+**Autodrive gives way** (`_ap_give_v`, `AP_GAP`). Before, it stopped only for a car already
+on its lane, and traffic always lets the player go: it pulled out of side streets in front
+of cars on the main road, which stood on their brakes (7.5 m/s^2, `BRAKE_HARD`, in all four
+meetings `tests/give_way.gd` staged). Now, coming to a junction, it finds the cars whose way
+through it meets its own (the two paths cross, or end in the same lane), decides who goes
+first by traffic's own rule from its side (in it already; lights: with my green I still let
+one going straight on its green by when I turn across it; else the bigger road, a ring above
+all, a sign on my way in below all; between equals straight before turning, then whoever is
+there first), and holds at the junction's edge unless it can be through before the first of
+them gets there with `AP_GAP` (1.5 s) to spare -- after 12 s standing, 0.3 s. While it holds
+there, traffic does not wait for it (`_ap_giving`, read in traffic's `_junction_ahead`), and
+its head turns to the car it waits for. What it took to work, each found by the test:
+- the time to get through is reckoned at the plan's own speed through the junction (a
+  corner's), not pulling away flat out: reckoned that way it judged it could get in first,
+  then slowed for its turn and arrived in front of the car;
+- cars are looked for 110 m along their own paths: traffic's own look (55 m, `_node_index`)
+  is 4.6 s at 12 m/s, under the gap wanted, and the car was not seen until too late;
+- it aims to stop 1.2 m short of the line (it runs a metre or so past where it aims), and a
+  junction it is holding for counts as not yet entered until its nose is at the middle: two
+  metres past the line it read itself as in, and went;
+- the junctions on its plan are found every quarter second and moved up by the distance
+  driven in between (every road segment by every plan point every tick was 1-2 ms); the
+  check costs ~50 us a tick in the test town (`_ap_give_us`).
+Side streets meeting a bigger road with no lights: it comes up to them no faster than it
+can stop from (5 m/s at the line). Results: see `give_way` in tests/README.md.
+
+**Divided roads' crossings** (`_zebra_clear`). People cross a divided road kerb to kerb, both
+halves (18-22 m on Givatayim's, ~15 s on foot), and a car on one half waited for all of it.
+On the route set's first drive that was 10 s of its green on Nachalat Yitzhak, then the whole
+red after: "41 s, zebra". Now `_zebras_on` carries where the person is and their pace, and a
+car (autodrive or traffic) waits only while they are on its half (its carriageway's width
+plus a metre) or will be within 2.5 s. A road that is not divided is one half: they wait for
+all of it. `tests/zebra_halves.gd`: from the near kerb autodrive stood 3.4 and 7.5 s and was
+by while they were still on the far half (they take ~18 s); from the far kerb it did not stop.
+
+**Pockets** (`_find_pockets`). The bake cuts each town at its edge, and with it the far ends
+of one-way streets: some streets have no way back to the town but against a one-way
+(`_trap`), others no way to them from it (`_cut_off`), and points past the barrier are on no
+way at all (`_outside`). Inside the edge, public streets: Givatayim 8.7 km trapped and 8.9 cut
+off of 156; Tel Aviv 6.3 / 9.4 of 144; Ashdod 8.3 / 7.3 of 555; Bedford 24.7 / 26.4 of 321
+(16%: a whole estate in one corner); the test town none. Found once at load on the graph
+the routes use (20-170 ms). Traffic (-6) and free autodrive (-8) do not turn into a trap
+from outside one; "go to" an address in a cut-off pocket goes to the nearest street with a
+way in (never one past the barrier: left unmarked, that was where "the nearest" landed); a
+route that starts in a trap starts at the nearest street with a way out.
+`tests/pockets.gd` (counts, those two checks, `$OUT/pockets_<city>.json`) and
+`tests/pockets_map.py` (the picture: red trapped, orange cut off). Widening the bake would
+only move the cut: a way out beyond the barrier cannot be driven.
+
 ## Numbers to compare against (November 2026, cloud container, software renderer)
 
 - Build time in full: Givatayim ~6 s, Bedford ~9 s, Ashdod ~15 s, the test town ~1.2 s

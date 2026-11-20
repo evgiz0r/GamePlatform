@@ -55,6 +55,23 @@ get better.
 > track, to cover a bit more driving options. Can you add to the menu "test routes", where
 > I would be able to pick one of the routes and just watch.
 
+**Routes of your own.** The list has two pages: "the ten" and "yours". On "yours", "+ a new
+one, in" a city: the city loads, the address picker asks "from where?" and then "to
+where?", and autodrive drives it at once. It is kept on "yours" to watch again (up to nine,
+newest first, ✕ to remove one). They are kept in your own browser or phone only, never in
+the game's files: the web build is public.
+
+> Maybe later in the same menu I would be able to enter my own.
+
+**Giving way.** Autodrive comes out of a side street onto a bigger road the way a driver does:
+up to the corner slowly enough to stop, and if a car is coming that it could not get in
+front of with room to spare, it waits at the edge -- looking at that car as it goes by --
+and then goes. Turning left across oncoming traffic at a green, the same. A divided road's
+crossing: it waits while someone is on its half of the road, not while they finish the far
+half.
+
+> Real give-way and left-turn decisions (picked from the list of next steps: "1 2 6 7").
+
 **On foot.** The "walk" button (or F) lets the driver out of the door to walk the same city:
 arrows or the stick to walk (a brisk 2.1 m/s) and turn, space to run (6 m/s), over the
 shoulder or (the "seat" button) from the eyes. Out of a moving car you jump: you tumble
@@ -1142,9 +1159,6 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
 > My sister tells me the scales of the game feel off.
 
 ## Later (said, not built)
-
-- Test routes of your own: "maybe later in the same menu I would be able to enter my own" --
-  from and to with the address picker, kept beside the ten.
 
 - Bridges and tunnels in the real towns: working out each deck's heights from OSM's tags
   and the ground (the test town has them already), then an interchange you drive over and

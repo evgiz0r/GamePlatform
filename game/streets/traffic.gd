@@ -578,7 +578,8 @@ func _junction_ahead(c: Car, i: int, dt: float) -> float:
 		var node_at := _nodes_at(n)
 		var rel := me_at - c.pos
 		var fwd := Vector2(sin(c.yaw), cos(c.yaw))
-		if _level(c, float(g._y)) and not (rel.dot(fwd) < 0.0 and absf(rel.dot(Vector2(-fwd.y, fwd.x))) < 2.5):
+		# (not while autodrive stands giving way at this junction: it waits for me, I go)
+		if _level(c, float(g._y)) and not g._ap_giving.has(n) and not (rel.dot(fwd) < 0.0 and absf(rel.dot(Vector2(-fwd.y, fwd.x))) < 2.5):
 			var pd := me_at.distance_to(node_at)
 			var pv := maxf(float(g._v), 0.0)
 			var pfwd := Vector2(cos(float(g._yaw)), sin(float(g._yaw)))
@@ -795,6 +796,8 @@ func _zebra_ahead(c: Car) -> float:
 				break
 			var cp := Geometry2D.get_closest_point_to_segment(mid, c.pts[j], c.pts[j + 1])
 			if cp.distance_to(mid) < float(z[1]):
+				if g._zebra_clear(z, cp):
+					break   # (the person is on the other half of a divided road, or not there yet)
 				var stop := base + c.pts[j].distance_to(cp) - 4.0 - c.len * 0.5
 				if stop > -1.5:   # (over the line already: through)
 					best = minf(best, sqrt(2.0 * BRAKE * maxf(stop - 0.3, 0.0)))
@@ -1340,6 +1343,9 @@ func _next(c: Car) -> bool:
 			# overlapped there (a dozen times a run in one cul-de-sac)
 			if _dead_end(r2, nxt, d2):
 				score -= 4.0
+			# nor into a pocket whose only ways out run off the map (see the game's _find_pockets)
+			if g._trap.has((r2["ids"] as PackedInt32Array)[nxt]) and not g._trap.has(node):
+				score -= 6.0
 			if r.get("ring", false):
 				# on a roundabout: off it at one of the next few exits, never round and round
 				score += (-0.6 - 1.1 * c.ring_n) if r2.get("ring", false) else 1.0

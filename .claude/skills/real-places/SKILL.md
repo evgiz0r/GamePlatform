@@ -173,6 +173,11 @@ goes wrong shows up the first time it runs.
   terrain lift) above the bare ground; people placed at the ground height waded knee-deep
   into the slabs.
 - People who stand on the AI's lane must stop it, not only people on zebras.
+- **A divided road is crossed kerb to kerb, but driven one half at a time.** OSM paints the
+  zebra on each carriageway; people cross both (18-22 m, ~15 s on foot). A car that waits
+  for "someone on the crossing" waits through most of its green for a person on the other
+  half. Give the crossing the person's position and pace, and let a car wait only while
+  they are on its carriageway (plus a metre) or about to step onto it.
 
 ## AI drivers in a real town
 
@@ -229,6 +234,16 @@ goes wrong shows up the first time it runs.
 - **Start a plan in the lane**, not at the nearest point of the road's centre line: the
   line from there to the next point (often far down the street) runs diagonally, and the
   car drives left of the middle for the length of the street.
+- **The player's AI must give way too, not only be given way to.** If traffic always lets the
+  player go (an easy rule that avoids deadlocks), an AI driving the player's car that stops
+  only for a car already in its lane pulls out of every side street in front of main-road
+  traffic, which stands on its brakes. Give it traffic's own priority rule from its side,
+  and a gap test: through the junction before the first car with priority arrives, plus a
+  second or two. Reckon its own time through at the plan's speed there (a corner's), not
+  full acceleration, or it judges it can go first and then slows for its turn. Look for
+  cars as far along their paths as the gap needs (5-6 s, ~70 m at 50 km/h), aim to stop
+  a little short of the line, and do not count a junction it is holding for as entered
+  just because it rolled a metre past its line. While it holds, tell traffic not to wait for it.
 - **Score the driving, don't eyeball it**: a scripted exam that drives the AI from several
   places in town and counts per minute (stuck, hits, off the road, wrong side, red lights,
   harsh braking per occasion, and traffic's own stalls, overlaps and reds) finds in one run
@@ -350,6 +365,18 @@ An AI that picks its way at junctions must see the edge coming: a street that ru
 map looks like any other until the barrier. Look a few hundred metres down each way on and
 score down one whose every continuation hits the edge (not ordinary dead ends -- exploring
 those is fine), and end a planned road a few metres short of the barrier as a dead end.
+
+**The edge cuts one-way streets, and leaves pockets.** A street whose only ways out are
+one-ways running off the map can be driven into and not out of; another can only be
+reached from beyond the edge. In real towns 7-16% of public streets were one or the other
+(not near the edge only: a one-way loop inside counts). A look a few hundred metres ahead
+misses a pocket you can drive round in. Find them once at load on the routing graph,
+cut at the barrier: the main network is what a busy junction near the middle can reach
+and be reached from (two flood fills); everything that cannot get back to it is a trap,
+everything it cannot reach is cut off, points past the barrier are on no way at all. Keep
+the AIs out of traps, take a destination in a cut-off pocket to the nearest street with a
+way in, and start a route set down in a trap from the nearest street with a way out -- never
+choosing a street past the barrier as "the nearest". A wider bake only moves the cut.
 
 ## Filmed walks and drives
 

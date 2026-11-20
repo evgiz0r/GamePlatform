@@ -166,9 +166,16 @@ it is made, with a one-line caption, rather than a report at the end.
 
 - **Don't annotate with a `class_name` type that uses autoloads** (`var a: Actor3D`) in a
   `-s` script: it is compiled before the autoloads exist and fails ("Identifier not found:
-  Probe"), taking the whole test with it. Use the base type (`Node3D`).
+  Probe"), taking the whole test with it. Use the base type (`Node3D`). A cast counts too
+  (`x as Actor3D`), and the damage reaches past the test: the class stays broken for the
+  run, so the game's own `Actor3D.new()` fails and the city has no people -- a crossing test
+  ran "PASS" with every case quietly erroring out on an empty list of crossers.
 - `var x := g.some_member` cannot infer a type through an untyped node: annotate it.
 - **Forget `OUT` and the screenshots land in `/`.** Check the folder after the first run.
+- **`await RenderingServer.frame_post_draw` never returns under `--headless`**: a test that
+  takes a shot there hangs until its timeout, silently (a run "took 25 minutes" that way and
+  printed nothing). Skip shots when `DisplayServer.get_name() == "headless"`, or run the shot
+  test under xvfb (`tests/run.sh` does).
 - A script error mid-test prints `SCRIPT ERROR` and the test may hang to its timeout: grep
   the output for it, and always run under `timeout`. One in the background goes on taking
   a core until then, slowing every run beside it: kill it once you have seen the error.
