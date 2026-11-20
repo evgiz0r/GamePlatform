@@ -806,6 +806,24 @@ it is dropped.
   out of the collisions within a junction's corner (`_walls_of`): there they are a step a
   turning car sweeps over.
 
+## Sizes against life (`tests/scale_check.gd`, 20 Nov 2026)
+
+The user's sister said the scale felt off; the check measures what the game builds. Vehicles
+are 1:1: a parked sedan 4.62 x 1.8 (2.09 with its mirrors) x 1.46 m, the bus 11.85 x 2.5
+(2.8 with mirrors) x 3.33 m, the player's car 4.4 x 1.9 x 1.55 (its body; 4.75 x 2.39 x 1.78
+with lamps and mirrors); storeys 3.0 m, kerbs 0.14, pavements 2.4. Off:
+
+- **People are built 6% taller than asked** (every one: Actor3D's height came out 1.06 x the
+  `set_character` height), and asked 1.62-1.88 m besides: walkers 1.72-1.99, about 1.86 on
+  average against life's ~1.70; the player on foot (a woman's figure, asked 1.76) 1.87.
+- **The fields of view are wide**: on foot 66 deg up and down (98 across a 16:9 screen),
+  from the eyes 70 (102), driving 64-74 (96-106), the seat 72-78 (up to 113). The eye's
+  useful field is ~60 across; this much makes the near loom and the rest look small and
+  far -- the likeliest "scale feels off". Not changed yet: the user to decide.
+- Lanes by OSM's widths: tertiary 3.8 m a lane, a one-way residential street 8 m kerb to
+  kerb with its cars parked mostly up on the pavement, so its asphalt reads as one wide lane
+  (life: ~3 m of lane between two rows of cars parked in the road).
+
 ## Open problems
 
 - **Tel Aviv's decks, what is left** (Nov 2026; `tests/decks.gd` at level 7). Short hops
