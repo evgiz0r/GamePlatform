@@ -79,9 +79,52 @@ func _run() -> void:
 			best = path[j].distance_to(sp)
 			at_s = cum[j]
 	var tr: Dictionary = R.trains[0]
-	tr["wait"] = 0.0
+	for i in range(R.trains.size()):
+		R.trains[i]["wait"] = 999.0 if i > 0 else 0.0   # (only the one)
+	# a run through the station, ticked by hand at 30 Hz with the world held still: where
+	# it stops, how long, and that it pulls away again
+	g.set_physics_process(false)
+	var stops: PackedFloat32Array = tr["stops"]
+	var mid_off: float = (R.COACHES - 1) * (R.COACH_L + R.COACH_GAP) * 0.5
+	print("stops on line 0 at %s m" % [Array(stops).map(func(x): return int(x))])
+	if not stops.is_empty():
+		var near := stops[0]
+		for x: float in stops:
+			if absf(x - at_s) < absf(near - at_s):
+				near = x
+		tr["dir"] = 1
+		tr["s"] = near - 700.0
+		tr["v"] = R.TRAIN_V
+		tr["dwell"] = 0.0
+		tr["served"] = -INF
+		(tr["node"] as Node3D).visible = true
+		var t := 0.0
+		var stood := -1.0
+		var left := -1.0
+		while t < 220.0:
+			R.tick(1.0 / 30.0)
+			t += 1.0 / 30.0
+			if stood < 0.0 and float(tr["dwell"]) > 0.0:
+				stood = t
+				print("train: stood at %.1f s, its middle %.1f m from the platform's" % [t, float(tr["s"]) - mid_off - near])
+			if stood >= 0.0 and left < 0.0 and float(tr["dwell"]) <= 0.0 and float(tr["v"]) > 1.0:
+				left = t
+				print("train: pulled away after %.0f s standing; %.1f m/s at %.0f s" % [left - stood, float(tr["v"]), t])
+			if left >= 0.0 and t > left + 20.0:
+				break
+		if stood < 0.0:
+			print("train: never stood at the station")
+		# its sound, as the game's engine step would set it (the world held still here)
+		R.sound(false)
+		var rumble: AudioStreamPlayer3D = ((tr["node"] as Node3D).get_child(R.COACHES / 2) as Node3D).get_node("rumble")
+		print("train sound: rumble playing %s at %.1f dB (v %.1f m/s); off: " % [rumble.playing, rumble.volume_db, float(tr["v"])], end_sound(R, rumble))
+		at_s = near
+	# and stood there for the views, its middle at the platform's
 	tr["dir"] = 1
-	tr["s"] = at_s + R.COACHES * (R.COACH_L + R.COACH_GAP) * 0.5
+	tr["s"] = at_s + mid_off
+	tr["v"] = 0.0
+	tr["dwell"] = 9999.0
+	tr["served"] = at_s
 	(tr["node"] as Node3D).visible = true
 	print("train at %.0f m along line 0, by %s" % [at_s, st[2]])
 	await create_timer(1.0).timeout
@@ -89,9 +132,6 @@ func _run() -> void:
 	var stop: Vector2 = R._along(0, at_s)[0]
 	var dir: Vector2 = R._along(0, at_s)[1]
 	var side := Vector2(-dir.y, dir.x)
-	for i in range(R.trains.size()):
-		R.trains[i]["wait"] = 999.0 if i > 0 else 0.0   # (only the one)
-	g.set_physics_process(false)   # (the world holds still: the train stands at the platform)
 	R.tick(0.0)
 	# the views: the train at the platform, the station from above, along the line from the motorway
 	for sd: float in [1.0, -1.0]:   # (one side or the other is a carriageway, the other the platform)
@@ -107,4 +147,19 @@ func _run() -> void:
 	var ls := Vector2(-ld.y, ld.x)
 	await _view("along_line", lp + ls * 4.0, ld.angle(), 1.6, -6.0)
 	await _view("track_down", lp + ls * 7.0 - ld * 6.0, (lp - (lp + ls * 7.0 - ld * 6.0)).angle(), 7.0, -40.0)
+	# the head of the train, its face and lamps, from a little ahead of it; then by night
+	var head: Vector2 = R._along(0, float(tr["s"]) + R.COACH_L * 0.5)[0]
+	var hd: Vector2 = R._along(0, float(tr["s"]))[1]
+	var heye := head + hd * 28.0 + Vector2(-hd.y, hd.x) * 6.0
+	await _view("train_head", heye, (head - heye).angle(), 2.2, -2.0)
+	g._set_night(true)
+	await create_timer(0.5).timeout
+	await _view("train_head_night", heye, (head - heye).angle(), 2.2, -2.0)
+	var eye_n := stop + side * 9.0 - dir * 45.0
+	await _view("train_at_station_night", eye_n, (stop + dir * 10.0 - eye_n).angle(), 3.0, -3.0)
 	quit()
+
+## the sound switched off (muted, paused): it stops
+func end_sound(R, rumble: AudioStreamPlayer3D) -> String:
+	R.sound(true)
+	return "playing %s" % rumble.playing
