@@ -15205,6 +15205,14 @@ var _ap_js_odo := 0.0                ## ...as the odometer stood when they were 
 var _ap_js_t := 0.0
 var _ap_js_head := Vector2.INF       ## (the plan's first point then: a new plan, found afresh)
 
+## traffic car o on my level: both on the ground (a hill between us is not a level -- 50-80 m
+## off on Givatayim's slopes the car coming was 3-4 m below and was passed over as if on a
+## bridge), else within 2.5 m and a slope's rise over the distance between us
+func _same_level(o) -> bool:
+	if absf(_y - _h(_pos)) < 1.0 and absf(float(o.y) - _h(o.pos)) < 1.0:
+		return true
+	return absf(float(o.y) - _y) <= 2.5 + 0.08 * (o.pos as Vector2).distance_to(_pos)
+
 ## the point `along` metres along the plan (cum: the distance to each of its points)
 func _ap_at(cum: PackedFloat32Array, along: float) -> Vector2:
 	var n := mini(cum.size(), _ap_pts.size())
@@ -15266,13 +15274,36 @@ func _ap_give_v(dt: float) -> float:
 				if d < bd:
 					bd = d
 					along = cum[i] + _ap_pts[i].distance_to(q)
-			if bd < (_node_r[n] + 5.0) * (_node_r[n] + 5.0):
-				_ap_js.append([along, n])
+			if bd >= (_node_r[n] + 5.0) * (_node_r[n] + 5.0):
+				continue
+			# where the plan comes into the junction and leaves it (within its radius and a
+			# metre and a half): the way in and out are read there. Read either side of the point
+			# nearest the middle, a left turn's way in came out along the road it turns onto --
+			# the way the car coming along it goes -- and that car was passed over as following.
+			var rr := _node_r[n] + 1.5
+			var enter := along
+			var leave := along
+			var found_in := false
+			for i in range(cum.size() - 1):
+				var a := _ap_pts[i]
+				var b := _ap_pts[i + 1]
+				var steps := maxi(1, ceili(a.distance_to(b)))
+				for t in range(steps + 1):
+					var p := a.lerp(b, float(t) / steps)
+					if p.distance_to(_nodes[n]) <= rr:
+						var at_c := cum[i] + a.distance_to(p)
+						if not found_in:
+							enter = at_c
+							found_in = true
+						leave = at_c
+					elif found_in and cum[i] + a.distance_to(p) > along + rr * 2.0:
+						break
+			_ap_js.append([along, n, enter, leave])
 		_ap_js.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
 	var moved := _odo - _ap_js_odo
 	var js: Array = []
 	for j: Array in _ap_js:
-		js.append([float(j[0]) - moved, j[1]])
+		js.append([float(j[0]) - moved, j[1], float(j[2]) - moved, float(j[3]) - moved])
 	# the first not yet driven into, and the rest of the same junction after it
 	# (one it was holding for counts as not yet driven into until its nose is at the middle: the
 	# car stops a metre or two past its line, and at -1 it read that as in, and went)
@@ -15280,7 +15311,7 @@ func _ap_give_v(dt: float) -> float:
 	for k in range(js.size()):
 		var n: int = js[k][1]
 		var past := -(_node_r[n] + 1.0) if was.has(n) else -1.0
-		if float(js[k][0]) - (_node_r[n] + 1.0 + CAR_LEN * 0.5) >= past:
+		if float(js[k][2]) + 0.5 - CAR_LEN * 0.5 >= past:   # (its edge: where the plan comes in)
 			first = k
 			break
 	if first < 0 or float(js[first][0]) > reach + 20.0:
@@ -15292,14 +15323,14 @@ func _ap_give_v(dt: float) -> float:
 			_ap_give_t = 0.0
 			return INF   # in the junction already: through it, not stopping in the middle
 	var n0: int = js[first][1]
-	var edge: float = float(js[first][0]) - (_node_r[n0] + 1.0 + CAR_LEN * 0.5)
+	var edge: float = float(js[first][2]) + 0.5 - CAR_LEN * 0.5   # (my nose a metre short of where the plan comes in)
 	if _v * _v > 2.0 * 5.0 * maxf(edge, 0.0) + 1.0 and not was.has(n0):
 		_ap_give_t = 0.0
 		return INF   # too late to stop short of it
 	var stop := sqrt(2.0 * 2.6 * maxf(edge - 1.2, 0.0))   # (it runs a metre or so past where it aims)
 	# the road I come in on, and its rank (a sign on my way in: below everything)
-	var in0 := (_ap_at(cum, float(js[first][0]) - _node_r[n0]) - _ap_at(cum, float(js[first][0]) - _node_r[n0] - 6.0)).normalized()
-	var on := _nearest_seg(_ap_at(cum, float(js[first][0]) - _node_r[n0] - 3.0), 8.0, true, false, _y)
+	var in0 := (_ap_at(cum, float(js[first][2])) - _ap_at(cum, float(js[first][2]) - 6.0)).normalized()
+	var on := _nearest_seg(_ap_at(cum, float(js[first][2]) - 3.0), 8.0, true, false, _y)
 	var my_rank := _rank_of(_roads[on["road"]]) if not on.is_empty() else 1
 	if not _sign_rule(n0, in0).is_empty():
 		my_rank = -1
@@ -15309,18 +15340,19 @@ func _ap_give_v(dt: float) -> float:
 	var hold_d := INF
 	for k in range(first, js.size()):
 		var along: float = js[k][0]
+		var enter: float = js[k][2]
+		var leave: float = js[k][3]
 		var n: int = js[k][1]
 		if along - float(js[first][0]) > AP_KNOT:
 			break
 		var r := _node_r[n]
-		var my_in := (_ap_at(cum, along - r) - _ap_at(cum, along - r - 6.0)).normalized()
-		var my_out := (_ap_at(cum, along + r + 6.0) - _ap_at(cum, along + r)).normalized()
+		var my_in := (_ap_at(cum, enter) - _ap_at(cum, enter - 6.0)).normalized()
+		var my_out := (_ap_at(cum, leave + 6.0) - _ap_at(cum, leave)).normalized()
 		if my_in == Vector2.ZERO:
 			my_in = _fwd()
 		if my_out == Vector2.ZERO:
 			my_out = my_in   # (the plan ends at it: a choice still to make)
 		var my_turn := my_in.dot(my_out) < 0.85
-		var my_eta := maxf(along, 0.0) / maxf(_v, 2.0)
 		# the seconds to get there and through it from here: at the plan's own speed through it
 		# (a corner's), not pulling away flat out -- reckoned that way it judged it could get in
 		# first, then slowed for its turn and the car on the main road stood on its brakes
@@ -15330,21 +15362,22 @@ func _ap_give_v(dt: float) -> float:
 				v_in = minf(v_in, _ap_v[i])
 		v_in = maxf(v_in, 3.0)
 		var v0 := maxf(_v, 0.0)
-		var clear_t := maxf(along, 0.0) / maxf((v0 + v_in) * 0.5, 1.5) + (2.0 * r + CAR_LEN) / v_in
+		var my_t := maxf(along, 0.0) / maxf((v0 + v_in) * 0.5, 1.5)   # (there, at that pace)
+		var clear_t := my_t + (2.0 * r + CAR_LEN) / v_in
 		# my way through it: the plan from a little before it to a little after
 		var mine := PackedVector2Array()
-		mine.append(_ap_at(cum, maxf(along - r - 4.0, cum[0])))
+		mine.append(_ap_at(cum, maxf(enter - 4.0, cum[0])))
 		for i in range(cum.size()):
-			if cum[i] > along - r - 4.0 and cum[i] < along + r + 8.0:
+			if cum[i] > enter - 4.0 and cum[i] < leave + 8.0:
 				mine.append(_ap_pts[i])
-		mine.append(_ap_at(cum, along + r + 8.0))
+		mine.append(_ap_at(cum, leave + 8.0))
 		var sig := _sig_set.has(n)
 		var my_light := _light_at(n, my_in) if sig else ""
 		if sig and my_light not in ["g", ""]:
 			continue   # (the light holds me: _ap_light_v)
 		for oi in range(_traffic.cars.size()):
 			var o = _traffic.cars[oi]
-			if not o.alive or o.pos.distance_squared_to(_nodes[n]) > 12100.0 or not _traffic._level(o, _y):
+			if not o.alive or o.pos.distance_squared_to(_nodes[n]) > 12100.0 or not _same_level(o):
 				continue
 			# where n comes on its way, up to 110 m ahead (traffic's own look, 55 m, is 4.6 s at
 			# 12 m/s: less than the gap wanted, and a car further off was not seen coming)
@@ -15393,6 +15426,16 @@ func _ap_give_v(dt: float) -> float:
 						break
 				if meet:
 					break
+			if not meet:
+				# or passing so close the bodies would touch (two turns through the same corner
+				# of a junction that miss each other by a metre or two)
+				for a in range(mine.size()):
+					for b in range(path.size() - 1):
+						if Geometry2D.get_closest_point_to_segment(mine[a], path[b], path[b + 1]).distance_squared_to(mine[a]) < 2.4 * 2.4:
+							meet = true
+							break
+					if meet:
+						break
 			if not meet and (theirs[1] as Vector2).dot(my_out) > 0.85:
 				# into the same lane after it: one behind the other, too close
 				meet = absf((path[path.size() - 1] - mine[mine.size() - 1]).dot(Vector2(-my_out.y, my_out.x))) < 2.0
@@ -15417,10 +15460,19 @@ func _ap_give_v(dt: float) -> float:
 					elif my_turn != o_turn:
 						theirs_first = my_turn
 					else:
-						theirs_first = o_eta < my_eta - 0.25
+						# first come, first served -- and to count as first it must be clearly so,
+						# reckoned at its pace through the corner: by its speed coming up to it, it
+						# was 2 s ahead, slowed for the turn, got there 1.5 s ahead, and the car
+						# (turning too) stood on its brakes
+						theirs_first = o_eta < my_t + 1.0
 			if not theirs_first:
 				continue
 			if in_it or o_eta < clear_t + gap:
+				# waited long (a stream of cars, a few seconds apart: 40 s on Ashdod's HaSachlav):
+				# one far enough off to slow down comfortably lets it out, as drivers in a stream
+				# do -- traffic waits for it then (it can stop: see traffic's _junction_ahead)
+				if not in_it and _ap_give_t > AP_GIVE_PATIENT and od - r - 1.0 - o.len * 0.5 > o.v * o.v / (2.0 * 2.5) + 4.0:
+					continue
 				hold = true
 				if od < hold_d:
 					hold_d = od
@@ -15429,7 +15481,9 @@ func _ap_give_v(dt: float) -> float:
 		_ap_give_t = 0.0
 		# a side street coming out on a bigger road with no lights: up to it at a pace it can
 		# stop from, looking (it came out at 30 km/h and only then saw what was coming)
-		if not _sig_set.has(n0) and my_rank >= 0:
+		# (not a slip road merging: that is joined at speed, the gap test is enough)
+		var my_kind := String((_roads[on["road"]] as Dictionary)["k"]) if not on.is_empty() else ""
+		if not _sig_set.has(n0) and my_rank >= 0 and not my_kind.ends_with("_link"):
 			for e: Vector2i in _node_roads[n0]:
 				var rr: Dictionary = _roads[e.x]
 				if rr["drive"] and _rank_of(rr) > my_rank:

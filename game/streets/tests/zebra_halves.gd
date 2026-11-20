@@ -7,8 +7,9 @@ extends SceneTree
 ## someone on the other half, then through a whole red (41 s on the route set's first drive).
 ##   LEVEL=1 STREETS_BUILD_ALL=1 $GODOT --headless --fixed-fps 60 --path . -s res://game/streets/tests/zebra_halves.gd
 ## ZH_N crossings (default 3). The other people at crossings are kept off for the test.
-## PASS: from the far kerb it did not stop at all, or for no longer than they took to clear its
-## half; from the near kerb it went before they reached the far kerb.
+## PASS: from the far kerb it did not stop at all, or for no longer than they were on its half
+## (and the 2.5 s before they stepped onto it); from the near kerb it went before they reached
+## the far kerb.
 var g: Node
 
 func _initialize() -> void:
@@ -126,7 +127,9 @@ func _case(p: Array, from_far: bool) -> Dictionary:
 			break
 	# from the far kerb: it waits no longer than they were on its half; from the near: it is
 	# by before they reach the far kerb
-	var ok := passed > 0.0 and (stood <= on_mine + 1.5 if from_far else (gone < 0.0 or passed < gone))
+	# (+4 s: it also waits while they are about to step onto its half, 2.5 s out, and the
+	# metre past its edge as they step off)
+	var ok := passed > 0.0 and (stood <= on_mine + 4.0 if from_far else (gone < 0.0 or passed < gone))
 	return {"node": ni, "street": String(g._roads[g._zebra_geom(ni)[4]].get("name", "")), "from": "far kerb" if from_far else "near kerb",
 		"span": snappedf((sp[0] as Vector2).distance_to(sp[1]), 0.1), "stood": snappedf(stood, 0.1), "on_its_half": snappedf(on_mine, 0.1),
 		"car_by_at": snappedf(passed, 0.1), "crossing_done_at": snappedf(gone, 0.1), "ok": ok}

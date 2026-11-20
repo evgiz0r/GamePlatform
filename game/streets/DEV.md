@@ -648,8 +648,27 @@ its head turns to the car it waits for. What it took to work, each found by the 
 - the junctions on its plan are found every quarter second and moved up by the distance
   driven in between (every road segment by every plan point every tick was 1-2 ms); the
   check costs ~50 us a tick in the test town (`_ap_give_us`).
+- on Givatayim's hills the car coming was 3-4 m below autodrive 50-80 m off, and the level
+  test (`_traffic._level`: within 2.5 m, for bridges) passed it over: now `_same_level`,
+  both on the ground or within 2.5 m plus 8% of the distance. `lead_on` (the car ahead)
+  had the same blind spot: route 4 side-swiped a car turning across it on La Guardia;
+- whose turn it is between equals turning alike ("first come") is judged at its pace through
+  the corner and wants a clear second: by its speed coming up to it, it was 2 s ahead, slowed
+  for the turn and got there 1.5 s ahead, and the car stood on its brakes;
+- two ways that only pass within 2.4 m of each other meet as well (two turns through the
+  same corner); and while autodrive drives, traffic waits for it at a junction only if it
+  can still stop comfortably -- too close, it goes on and autodrive waits for it;
+- its own way in and out of a junction are read where its plan comes within the junction's
+  radius and leaves it, not either side of the point nearest the middle: a left turn's
+  curve passes nearest the middle after the corner, the way in came out along the road it
+  turns onto -- the way the car coming along it goes -- and that car was passed over as one
+  following it;
+- after 12 s standing (a stream of cars a few seconds apart: 40 s on Ashdod's HaSachlav in
+  the route set) a car far enough off to slow comfortably (under 2.5 m/s^2) lets it out, as
+  drivers in a stream do; traffic waits for it then.
 Side streets meeting a bigger road with no lights: it comes up to them no faster than it
-can stop from (5 m/s at the line). Results: see `give_way` in tests/README.md.
+can stop from (5 m/s at the line; not a slip road merging). Results: see `give_way` in
+tests/README.md.
 
 **Divided roads' crossings** (`_zebra_clear`). People cross a divided road kerb to kerb, both
 halves (18-22 m on Givatayim's, ~15 s on foot), and a car on one half waited for all of it.

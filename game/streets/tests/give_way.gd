@@ -231,6 +231,12 @@ func _case(j: Array, turn: String) -> Dictionary:
 					sent = c
 			c_prev = sent.v
 			c_v0 = sent.v
+			# (from the side, not along autodrive's own street: where the main road bends at the
+			# junction the car was sent up behind autodrive, and braked behind it at its turn)
+			var c_dir := Vector2(sin(sent.yaw), cos(sent.yaw))
+			if absf(c_dir.dot(h)) > 0.7:
+				print("  (skipped: the car would come along autodrive's own street, %s at %d)" % [turn, n])
+				return {}
 		if absf(g._v) < 0.3 and my_d < r_n + 12.0 and me_in < 0.0:
 			stood += dt
 		if me_in < 0.0 and my_d < r_n + 0.5:

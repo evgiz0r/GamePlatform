@@ -589,8 +589,11 @@ func _junction_ahead(c: Car, i: int, dt: float) -> float:
 			var pfwd := Vector2(cos(float(g._yaw)), sin(float(g._yaw)))
 			if pd < _node_r[n] + 3.0:
 				return _hold(c, dt, stop)
+			# (autodrive gives way by itself now: a car too close to stop comfortably for it goes
+			# on, and autodrive waits; one that stood on its brakes for autodrive was the worse)
+			var can_stop: bool = not g._auto or c.v * c.v <= 2.0 * BRAKE * maxf(edge - 0.3, 0.0) + 2.0
 			if pd < _node_r[n] + 30.0 and pv > 1.5 and pfwd.dot(node_at - me_at) > 0.0 \
-					and pd / pv < my_eta + 1.5:
+					and pd / pv < my_eta + 1.5 and can_stop:
 				return _hold(c, dt, stop)
 		for oi in range(cars.size()):
 			if oi == i:
@@ -1033,8 +1036,9 @@ func lead_on(path: PackedVector2Array, from: Vector2, look: float, ignore_crossi
 	for c: Car in cars:
 		if not c.alive or c.pos.distance_squared_to(from) > (look + c.len * 0.5 + 6.0) * (look + c.len * 0.5 + 6.0):
 			continue
-		if not is_nan(y) and absf(c.y - y) > LEVEL:
-			continue   # (on a bridge overhead, in a tunnel underneath)
+		if not is_nan(y) and absf(c.y - y) > LEVEL + 0.08 * c.pos.distance_to(from):
+			continue   # (on a bridge overhead, in a tunnel underneath -- not just down a hill:
+			           # 60 m ahead on a 6% street a car is 3.6 m lower, and was not seen)
 		var cdir := Vector2(sin(c.yaw), cos(c.yaw))
 		var offs: Array = (BODY[c.kind][0] as Array).duplicate() if BODY.has(c.kind) else [-c.len * 0.33, 0.0, c.len * 0.33]
 		# and its nose and tail: one waiting crossways at a junction's edge stuck its nose

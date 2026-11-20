@@ -258,8 +258,16 @@ OSM tags which ways are bridges (`bridge=yes`, `layer=1`), tunnels (`tunnel=yes`
 anything is; a bridge way is usually only the span, its ramps ordinary ways. Until the
 heights are worked out, a baked town's bridges lie on the ground and its tunnels are best
 left out. A made-up town can give each such way its surface's height at every point (the
-city format's `y`), and that is enough for a game to do the rest. What a driving game on
-one needed:
+city format's `y`), and that is enough for a game to do the rest.
+
+**A hill is not a level.** "Is that car on my level?" as a bare height difference (2.5 m,
+to skip the bridge overhead) also skips a car 50-80 m down a 5% street, or 15 m along a 16%
+one: the AI did not see the car coming to its junction, nor the car crossing in front of it,
+and side-swiped it -- in the hilly town only; the flat test town never showed it. Both on the
+ground (each within a metre of the ground under it) is one level; otherwise allow a slope's
+rise over the distance between them (~8% of it) on top of the 2.5 m.
+
+What a driving game on one needed:
 
 - **One height per point is the whole problem.** Everything that asked "how high is the
   ground here" -- the car, its pitch, the camera, traffic, people, collisions -- now asks
