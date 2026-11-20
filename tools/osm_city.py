@@ -24,13 +24,20 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
   boundary   [[x, z, x, z, ...], ...]   the place's outline rings (empty for --bbox)
   nodes      [x, z, x, z, ...]           road graph vertices, shared where roads meet
   roads      [{n: [node indices], k: kind, w: width m, l: lanes, o: 1/-1/0 oneway,
-               name, name_en, br: 1 bridge, tu: 1 tunnel, pv: 1 private (driveways),
+               name, name_en, br: 1 bridge, tu: 1 tunnel, em: 1 on an embankment,
+               cu: 1 in a cutting, ly: OSM's layer when not 0, pv: 1 private (driveways),
                rb: 1 part of a roundabout, sv: a service road's kind -- parking_aisle,
-               driveway, alley}]
+               driveway, alley,
+               y: [height per node]  the road's surface off the ground (a "deck"), in
+                  decimetres above `height.base` like the ground grid; the bake leaves it out
+                  (OSM has no such heights: tools/fake_city.py writes it for its own bridges
+                  and tunnels), and a game draws a road without it on the ground}]
   buildings  [{p: [x, z, ...] counter-clockwise ring, h: height m, b: base height m,
                g: 1 if the height is a guess, name, addr}]
-  areas      [{p: ring, k: park|grass|wood|water|parking|pitch|plaza|school}]
-             (school: the grounds of a school or kindergarten)
+  areas      [{p: ring, k: park|grass|wood|water|parking|pitch|plaza|school, y: level}]
+             (school: the grounds of a school or kindergarten; y: water that lies at its
+             own level, decimetres above `height.base` -- a river held by weirs -- else it
+             lies at its shore's lowest point)
   barriers   [[[x, z, x, z, ...], "fence"|"hedge"], ...]   fences and hedges as lines
   trees      [x, z, ...]
   addrs      [[x, z, street, number], ...]   address points not on a building outline
@@ -781,6 +788,13 @@ def bake(raw, name, args):
                 road["br"] = 1
             if t.get("tunnel") and t["tunnel"] != "no":
                 road["tu"] = 1
+            if t.get("embankment") in ("yes", "1"):
+                road["em"] = 1
+            if t.get("cutting") in ("yes", "1"):
+                road["cu"] = 1
+            ly = num(t.get("layer"))
+            if ly and -5 <= ly <= 5 and int(ly) == ly:
+                road["ly"] = int(ly)
             if t.get("access") in ("no", "private"):
                 road["pv"] = 1
             if t.get("junction") in ("roundabout", "circular"):

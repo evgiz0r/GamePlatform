@@ -1,9 +1,9 @@
 extends SceneTree
-## Traffic lights: how many junctions got their groups from their own main road where the old
-## east-west / north-south rule put two different streets in the same group (both green at
-## once); then 90 s of autodrive and traffic counting moments when two cars from crossing ways
-## move inside one signalled junction together (a conflict the lights should prevent), and a
-## close look at a junction's lights and walk lights. Good: conflicts near zero.
+## Traffic lights: how many junctions with lights (sites, see the game's _lights_setup) and
+## walk lights; a close look at a junction's lights and walk lights; then 90 s of autodrive and
+## traffic counting moments when two cars from crossing ways move inside one signalled junction
+## together (a conflict the lights should prevent). Good: conflicts near zero. light_audit.gd
+## checks every junction's groups, stop lines and walk lights.
 var g: Node
 func _initialize() -> void:
 	_run()
@@ -21,22 +21,11 @@ func _run() -> void:
 			if n.get_script() != null and String(n.get_script().resource_path).ends_with("streets.gd"):
 				g = n
 	await create_timer(1.0).timeout
-	var regrouped := 0
-	for j: int in g._sig_ap:
-		var ap: Array = g._sig_ap[j]
-		for a: Array in ap:
-			for b: Array in ap:
-				var da: Vector2 = a[0]
-				var db: Vector2 = b[0]
-				var old_a := 1 if absf(da.x) >= absf(da.y) else 2
-				var old_b := 1 if absf(db.x) >= absf(db.y) else 2
-				if absf(da.dot(db)) < 0.7 and old_a == old_b and a[1] != b[1]:
-					regrouped += 1
-	print("signalled junctions %d, walk lights %d; crossing pairs of ways the old rule had green together: %d" % [g._sig_ap.size(), int(g._dressing.get("walk_lights", 0)), regrouped / 2])
+	print("junctions with lights %d (%d points), walk lights %d" % [g._sites.size(), g._lit.size(), int(g._dressing.get("walk_lights", 0))])
 	# a close look: the signalled junction nearest the start
 	var best := INF
 	var jn := -1
-	for j: int in g._sig_ap:
+	for j: int in g._lit:
 		if g._nodes[j].distance_to(g._pos) < best:
 			best = g._nodes[j].distance_to(g._pos)
 			jn = j
@@ -62,7 +51,7 @@ func _run() -> void:
 					continue
 				g.look_from(Vector3(at.x, hd.y - float(which[2]), at.y), hd)
 				await _snap(which[3])
-				g._sig_phase = (g._sig_phase + 3) % g.SIGNAL_CYCLE.size()
+				g._sig_phase = (g._sig_phase + g.SIGNAL_CYCLE.size() / 2) % g.SIGNAL_CYCLE.size()
 				g._apply_signals()
 				await _snap(String(which[3]) + "_other")
 				break
@@ -74,8 +63,7 @@ func _run() -> void:
 	if jn >= 0 and OS.get_environment("OUT") != "" and OS.get_environment("WIDE") != "":
 		g.set_physics_process(false)
 		var c: Vector2 = g._nodes[jn]
-		var ap: Array = g._sig_ap[jn]
-		var din: Vector2 = (ap[0] as Array)[0]
+		var din: Vector2 = (g._sig_line[jn][0] as Array)[0]
 		var eye := c - din * 26.0 + Vector2(-din.y, din.x) * 3.0
 		g._pos = eye
 		g._yaw = din.angle()
@@ -83,7 +71,7 @@ func _run() -> void:
 		process_frame.disconnect(g._frame)
 		g.look_from(Vector3(eye.x, g._h(eye) + 2.0, eye.y), Vector3(c.x, g._h(c) + 2.5, c.y))
 		await _snap("lights_a")
-		g._sig_phase = (g._sig_phase + 3) % g.SIGNAL_CYCLE.size()
+		g._sig_phase = (g._sig_phase + g.SIGNAL_CYCLE.size() / 2) % g.SIGNAL_CYCLE.size()
 		g._apply_signals()
 		await _snap("lights_b")
 		process_frame.connect(g._frame)
@@ -103,7 +91,7 @@ func _run() -> void:
 				movers.append([c.pos, Vector2(sin(c.yaw), cos(c.yaw))])
 		if absf(g._v) > 2.0:
 			movers.append([g._pos, g._fwd() * signf(g._v)])
-		for j: int in g._sig_ap:
+		for j: int in g._lit:
 			var cj: Vector2 = g._nodes[j]
 			var inside: Array = movers.filter(func(m): return (m[0] as Vector2).distance_to(cj) < g._node_r[j] + 2.0)
 			for a in range(inside.size()):

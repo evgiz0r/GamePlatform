@@ -30,7 +30,7 @@ const LANE_W := 1.5          ## a car on my path: its middle within this of my l
 const PLAYER_W := 2.0        ## the player's car counts as in my way from further over: it
                              ## need not be on a lane line, and half in the lane is in it
 const CURVE_LAT := 2.6       ## sideways pull a driver takes a corner at (m/s^2)
-const LIGHT_SKIP := 45.0     ## lights this close after one already passed are the far side of the same junction
+const SITE_KEEP := 120.0     ## metres after which the junction last driven into is forgotten (a car can come back)
 ## how much traffic each kind of road gets, and how keen a driver is to turn into it
 const KIND_W := {"motorway": 1.0, "trunk": 1.0, "primary": 1.0, "secondary": 1.0, "tertiary": 0.85,
 	"motorway_link": 0.6, "trunk_link": 0.6, "primary_link": 0.6, "secondary_link": 0.6,
@@ -50,9 +50,26 @@ class Car:
 	var pos := Vector2.ZERO
 	var yaw := 0.0                    ## atan2(dir.x, dir.y): the multimesh's way of turning
 	var pitch := 0.0
+	var y := 0.0                      ## the height of the surface under it: the ground, or a bridge or a tunnel's road
+	var prev_y := 0.0
 	var prev_pos := Vector2.ZERO
 	var prev_yaw := 0.0
 	var pace := 1.0                   ## this driver's share of the limit
+	## the driver: how hard they pull away, the gap they leave standing and the seconds
+	## behind they keep moving, how long they take to notice the way ahead clear (a light
+	## gone green, the car in front moving off), and their drift in the lane. All the same,
+	## every car pulled away together on the same tick at the same rate, like a train.
+	var accel := 2.0
+	var gap := 2.2
+	var headway := 1.2
+	var react := 0.6
+	var react_t := 0.0
+	var acc := 0.0                    ## its acceleration now (smoothed: no instant pull-away)
+	var lead_v := 0.0                 ## the speed of the car in front, along my way
+	var still := 0.0                  ## seconds standing
+	var drift := 0.0                  ## phase of its wander in the lane
+	var dip := 0.0                    ## the body: nose down braking, up pulling away (visual)
+	var roll := 0.0                   ## the body: leaning out of a turn (visual)
 	var paint := Color.WHITE
 	var kind := "sedan"
 	var braking := 0.0                ## brake lights, 0..1
@@ -65,7 +82,8 @@ class Car:
 	var retry := 0.0                  ## seconds before trying again to find it a road
 	var want := -1.0                  ## the speed it last decided on (-1: decide now)
 	var passenger := false            ## someone beside the driver (seen through the glass)
-	var last_light := -1000.0         ## s at the last light it drove through
+	var last_light := -1000.0         ## s where it last came into a junction with lights...
+	var last_site := -1               ## ...and which (its other points are not stopped at again)
 	var sign_done := -1               ## the stop sign it has stopped at already
 	var sign_wait := 0.0
 	var holding := false              ## stopping for a stop sign: not taking the junction yet
@@ -199,9 +217,26 @@ func setup(game: Node) -> void:
 			c.kind = g.CAR_MIX[rng.randi() % g.CAR_MIX.size()]
 		c.len = float(LENS.get(c.kind, 4.6))
 		c.passenger = rng.randf() < 0.35
+		_driver(c)
 		c.alive = _spawn(c, true)
 		_hide_or_show(i)
 	retint()
+
+## this car's driver: brisk or easy, close or careful, quick or slow to notice
+func _driver(c: Car) -> void:
+	var brisk := rng.randf()   # one dial for the driver, a little noise on each
+	c.accel = lerpf(1.5, 2.8, brisk) * rng.randf_range(0.9, 1.1)
+	c.gap = lerpf(3.0, 1.6, brisk) * rng.randf_range(0.9, 1.1)
+	c.headway = lerpf(1.8, 0.9, brisk) * rng.randf_range(0.9, 1.1)
+	c.react = lerpf(1.1, 0.35, brisk) * rng.randf_range(0.8, 1.2)
+	c.drift = rng.randf() * TAU
+	match c.kind:
+		"bus", "truck":
+			c.accel = rng.randf_range(0.9, 1.3)
+			c.gap = maxf(c.gap, 2.6)
+		"moto":
+			c.accel = rng.randf_range(2.6, 3.6)
+			c.react = rng.randf_range(0.3, 0.6)
 
 var _blobs: MultiMeshInstance3D
 
@@ -243,6 +278,7 @@ func tick(dt: float) -> void:
 		var c: Car = cars[i]
 		c.prev_pos = c.pos
 		c.prev_yaw = c.yaw
+		c.prev_y = c.y
 		if not c.alive or c.pos.distance_to(me) > NEAR or (c.wait > 25.0 and (not _in_view(c.pos) or c.blocker == -1)):
 			c.retry -= dt
 			if spawned or c.retry > 0.0:
@@ -267,8 +303,10 @@ func tick(dt: float) -> void:
 		# tick (with three ticks' time, so its waits still count right); its speed still
 		# follows every tick. A driver reacts slower than that anyway, and deciding it every
 		# tick for every car was most of traffic's time.
-		if c.want < 0.0 or (i + _tick_n) % 3 == 0:
-			c.want = _target(c, i, dt * (1.0 if c.want < 0.0 else 3.0))
+		# (and one far off, out of sight, every sixth tick: nobody sees it think)
+		var every := 3 if c.pos.distance_squared_to(me) < 120.0 * 120.0 or _in_view(c.pos) else 6
+		if c.want < 0.0 or (i + _tick_n) % every == 0:
+			c.want = _target(c, i, dt * (1.0 if c.want < 0.0 else float(every)))
 		var vt := c.want
 		_us("traffic: follow", t2)
 		var ds := clampf(c.shift_to - c.shift, -LANE_MOVE * dt, LANE_MOVE * dt)
@@ -279,8 +317,33 @@ func tick(dt: float) -> void:
 			c.hit -= dt
 			vt = 0.0
 		var was := c.v
-		c.v = move_toward(c.v, vt, (ACCEL if vt > c.v else BRAKE_HARD) * dt)
+		if vt > c.v + 0.05:
+			# the way ahead clear: from standing, a moment to notice; then pulling away, gently
+			# at first (the push builds over half a second or so) and easing off as it nears
+			# the speed it wants
+			if c.v < 0.3 and c.react_t < c.react:
+				# (behind a car, the moment to notice starts when that car is off (0.5 m/s),
+				# not when it has rolled a few millimetres)
+				if not (c.why == "car" and c.lead_v < 0.5):
+					c.react_t += dt
+				c.acc = 0.0
+			else:
+				var want_a := c.accel * clampf(1.0 - pow(c.v / maxf(vt, 1.0), 4.0), 0.2, 1.0)
+				c.acc = move_toward(c.acc, want_a, 4.0 * dt)
+				c.v = minf(c.v + c.acc * dt, vt)
+		else:
+			# slowing: as before, down to what it wants at once if it must (its plans brake at
+			# BRAKE; this is the margin) -- only the pull-away is softened
+			c.v = move_toward(c.v, vt, BRAKE_HARD * dt)
+			c.acc = (c.v - was) / maxf(dt, 0.001)
+			if vt < 0.3:
+				c.react_t = 0.0
+		# the body: nose down braking, a little up pulling away; leaning out of a turn
+		var turn := angle_difference(c.prev_yaw, c.yaw) / maxf(dt, 0.001)
+		c.dip = lerpf(c.dip, clampf(-c.acc * 0.011, -0.03, 0.06), minf(1.0, dt * 6.0))
+		c.roll = lerpf(c.roll, clampf(turn * c.v * 0.012, -0.06, 0.06), minf(1.0, dt * 5.0))
 		c.braking = clampf(c.braking + (dt * 8.0 if c.v < was - 0.01 or c.v < 0.2 else -dt * 4.0), 0.0, 1.0)
+		c.still = c.still + dt if c.v < 0.3 else 0.0
 		var before := c.s
 		c.s = minf(c.s + c.v * dt, c.cum[c.cum.size() - 1])
 		_passed_lights(c, before)
@@ -327,6 +390,8 @@ func _target(c: Car, i: int, dt: float) -> float:
 		var ov: float
 		var oyaw: float
 		if j == cars.size():
+			if not _level(c, float(g._y)):
+				continue   # (overhead on a bridge, or under it)
 			q = g._pos
 			ov = maxf(float(g._v), 0.0)
 			oyaw = atan2(cos(float(g._yaw)), sin(float(g._yaw)))   # the player's heading, as this file turns
@@ -335,7 +400,7 @@ func _target(c: Car, i: int, dt: float) -> float:
 			if j == i:
 				continue
 			var o: Car = cars[j]
-			if not o.alive:
+			if not o.alive or not _level(c, o.y):
 				continue
 			q = o.pos
 			ov = o.v
@@ -369,10 +434,14 @@ func _target(c: Car, i: int, dt: float) -> float:
 	if c.squeeze > 0.0:
 		c.squeeze -= dt
 		vt = _held(c, vt, 2.5, "squeezing past")
+	c.lead_v = lead_v if best < INF else 99.0
 	_steer_lanes(c, i, dt, best, lead_v)
 	vt = _held(c, vt, _bus_stop(c, dt), "bus stop")
 	if best < INF:
-		var room := best - (c.len + best_len) * 0.5 - GAP - lead_v * HEADWAY
+		# (the seconds behind at its own speed while it is the slower: a queue pulling away
+		# kept its gap for the speed the car in front had reached, so each waited till that
+		# one was well off -- the third car of a queue moved 9 s after the green)
+		var room := best - (c.len + best_len) * 0.5 - c.gap - minf(lead_v, c.v) * c.headway
 		var follow := sqrt(maxf(0.0, lead_v * lead_v + 2.0 * BRAKE * maxf(room, 0.0)))
 		if room <= 0.0:
 			follow = 0.0
@@ -412,37 +481,67 @@ func _held(c: Car, cur: float, v: float, why: String) -> float:
 		return v
 	return cur
 
-## the first traffic light ahead that counts: stop at its line on red, and on amber when
-## there is room to; through on green
+## the first traffic light ahead that counts -- of a junction it is not in already (see the
+## game's _lights_setup: one junction can be several points): stop at its line on red, and on
+## amber when there is room to; through on green
 func _light_ahead(c: Car) -> float:
-	var counted := c.last_light
 	for j in range(c.k + 1, c.pts.size()):
 		var dist := c.cum[j] - c.s
 		if dist > 80.0:
 			break
 		var n := c.node[j]
-		if not g._sig_set.has(n) or c.cum[j] - counted < LIGHT_SKIP:
+		if not g._sig_set.has(n):
 			continue
-		counted = c.cum[j]
-		# the way it ARRIVES (a few metres back): the node sits mid-curve on a turn, and the
-		# direction there read the cross street's light as often as its own
-		var k := j - 1
-		while k > 0 and c.cum[j] - c.cum[k] < 6.0:
-			k -= 1
-		var dir := c.pts[j] - c.pts[maxi(k, 0)]
+		var dir := _came(c, j)
+		var way: Array = g._way_in(n, dir)
+		if way.is_empty() or way[3]:
+			continue   # not a way into it from outside (inside a junction of several points)
+		# over the line and rolling, or in the junction: committed, through. Over the line but
+		# standing -- stopped there for people on the crossing -- is not: it waited for the
+		# people, then drove on through the red
+		var rolling_in := c.v > 2.0 or dist - c.len * 0.5 < _node_r[n]
+		if _in_site(c, n) and rolling_in:
+			continue   # in it already
 		var state: String = g._light_at(n, dir)
-		# the front at the stop line (1.2 m out from the junction's edge), not the middle: a
-		# bus's middle there left its front 4 m into the junction, across the other road
-		var stop := dist - (_node_r[n] + 2.2 + c.len * 0.5)
-		# its front over the line and rolling, or in the junction: committed, through. Over
-		# the line but standing -- stopped there for people on the crossing -- is not: it
-		# waited for the people, then drove on through the red.
-		if state == "g" or stop < -1.5 and (c.v > 2.0 or dist - c.len * 0.5 < _node_r[n]):
+		# the front at the stop line, not the middle: a bus's middle there left its front 4 m
+		# into the junction, across the other road
+		var stop: float = dist - (float(way[1]) + 1.0 + c.len * 0.5)
+		if state == "g" or (stop < -1.5 and rolling_in):
 			return INF
-		if state == "y" and c.v * c.v > 2.0 * BRAKE * maxf(stop, 0.1):
-			return INF   # too late to stop on amber: through
+		# too late to stop on amber: through. Judged at a firmer braking than the stop below
+		# is planned at -- the same, and a car that could stop kept its speed (the plan asked
+		# for no braking yet) until it could not, often late in the amber, and crossed on red
+		if state == "y" and c.v * c.v > 2.0 * (BRAKE + 1.0) * maxf(stop, 0.1):
+			return INF
 		return sqrt(2.0 * BRAKE * maxf(stop - 0.3, 0.0))
 	return INF
+
+## the way a car ARRIVES at its point j (a few metres back): the node sits mid-curve on a
+## turn, and the direction there read the cross street's light as often as its own
+func _came(c: Car, j: int) -> Vector2:
+	var k := j - 1
+	while k > 0 and c.cum[j] - c.cum[k] < 6.0:
+		k -= 1
+	return c.pts[j] - c.pts[maxi(k, 0)]
+
+## has this car come into the junction with lights that node n is a point of?
+func _in_site(c: Car, n: int) -> bool:
+	return c.last_site >= 0 and g._site_of.get(n, -2) == c.last_site and c.s - c.last_light < SITE_KEEP
+
+## Is car o (coming to node n at its point k) going to stand at its red there? Then a car
+## with the green need not wait for it. Not if it is in that junction already, or over the line.
+func _held_at_red(o: Car, k: int, n: int) -> bool:
+	if not g._sig_set.has(n):
+		return false
+	var dir := _came(o, k)
+	var way: Array = g._way_in(n, dir)
+	if way.is_empty() or way[3]:
+		return false
+	var dist := o.cum[k] - o.s
+	var rolling_in := o.v > 2.0 or dist - o.len * 0.5 < _node_r[n]
+	if (_in_site(o, n) and rolling_in) or g._light_at(n, dir) != "r":
+		return false
+	return dist - (float(way[1]) + 1.0 + o.len * 0.5) > -1.0 or not rolling_in
 
 ## The next junction on my way, and who goes first. A car already in it goes. Then the
 ## bigger road: a roundabout's ring above all (on it you go, coming in you give way), then
@@ -470,7 +569,7 @@ func _junction_ahead(c: Car, i: int, dt: float) -> float:
 		var node_at := _nodes_at(n)
 		var rel := me_at - c.pos
 		var fwd := Vector2(sin(c.yaw), cos(c.yaw))
-		if not (rel.dot(fwd) < 0.0 and absf(rel.dot(Vector2(-fwd.y, fwd.x))) < 2.5):
+		if _level(c, float(g._y)) and not (rel.dot(fwd) < 0.0 and absf(rel.dot(Vector2(-fwd.y, fwd.x))) < 2.5):
 			var pd := me_at.distance_to(node_at)
 			var pv := maxf(float(g._v), 0.0)
 			var pfwd := Vector2(cos(float(g._yaw)), sin(float(g._yaw)))
@@ -494,8 +593,29 @@ func _junction_ahead(c: Car, i: int, dt: float) -> float:
 				continue
 			if od < _node_r[n] + 1.0:
 				return _hold(c, dt, stop)   # in it now
+			if _held_at_red(o, ok, n):
+				continue   # it will stand at its red: my green is mine (it held cars on a green
+				           # back for a car waiting at the red across, seconds at a time)
 			var o_eta := od / maxf(o.v, 2.0)
 			if o_eta > 5.0:
+				continue
+			if g._sig_set.has(n):
+				# lights: they say who goes. One held at its red is not coming (a car with its
+				# green gave way to one on the main road that was about to stop at its red, sat
+				# out its green and was caught by the next red: a queue on a side street let
+				# one car through a green); one with its green too goes first only when I turn
+				# across it
+				if _in_site(o, n):
+					# already in the junction (a point of it further on), clearing it: its light
+					# there reads the street across, but it is not stopping for it
+					if o_eta < my_eta + 1.5:
+						return _hold(c, dt, stop)
+					continue
+				if g._light_at(n, theirs[0]) != "g":
+					continue
+				var turn_across: bool = (mine[0] as Vector2).dot(mine[1]) < 0.85 and (theirs[0] as Vector2).dot(theirs[1]) >= 0.85
+				if turn_across and o_eta < my_eta + 2.0:
+					return _hold(c, dt, stop)
 				continue
 			var mr: int = mine[2]
 			var orr: int = theirs[2]
@@ -614,12 +734,20 @@ func _sign_ahead(c: Car, dt: float) -> float:
 		return sqrt(2.0 * BRAKE * maxf(line - 0.3, 0.0))
 	return INF
 
+## a car's front over a stop line: it is in that junction (all its points)
 func _passed_lights(c: Car, before: float) -> void:
-	for j in range(c.k, c.pts.size()):
-		if c.cum[j] > c.s:
+	for j in range(c.k + 1, c.pts.size()):
+		if c.cum[j] - c.s > 30.0:
 			break
-		if c.cum[j] > before and g._sig_set.has(c.node[j]) and c.cum[j] - c.last_light >= LIGHT_SKIP:
-			c.last_light = c.cum[j]
+		var n := c.node[j]
+		if n < 0 or not g._sig_set.has(n):
+			continue
+		var line: float = c.cum[j] - g._light_line(n, _came(c, j)) - c.len * 0.5   # (where its middle is with the front at the line)
+		if line > c.s:
+			break
+		if line > before - 0.01 or (_in_site(c, n) and c.cum[j] > before):
+			c.last_site = g._site_of.get(n, -1)
+			c.last_light = c.s
 
 ## how far along my lane ahead something at q is (centre to centre), or INF if it is not
 ## on it
@@ -760,9 +888,11 @@ func _lane_clear(c: Car, i: int, shift: float) -> bool:
 	for j in range(cars.size() + 1):
 		var q: Vector2
 		if j == cars.size():
+			if not _level(c, float(g._y)):
+				continue
 			q = g._pos
 		else:
-			if j == i or not (cars[j] as Car).alive:
+			if j == i or not (cars[j] as Car).alive or not _level(c, (cars[j] as Car).y):
 				continue
 			q = (cars[j] as Car).pos
 		if q.distance_squared_to(c.pos) > 900.0:
@@ -860,7 +990,7 @@ func _bus_stop(c: Car, dt: float) -> float:
 ## body (five along a bus), not only its middle: a bus pulled in at its stop, or slanting out
 ## of it, stuck its back corner into the lane while its middle was clear of it -- and the
 ## half length lets autodrive stop short of a bus's back, not a car's length behind its middle.
-func lead_on(path: PackedVector2Array, from: Vector2, look: float, ignore_crossing: bool) -> Array:
+func lead_on(path: PackedVector2Array, from: Vector2, look: float, ignore_crossing: bool, y := NAN) -> Array:
 	var best := INF
 	var bv := 0.0
 	var bhalf := 0.0
@@ -871,8 +1001,14 @@ func lead_on(path: PackedVector2Array, from: Vector2, look: float, ignore_crossi
 	for c: Car in cars:
 		if not c.alive or c.pos.distance_squared_to(from) > (look + c.len * 0.5 + 6.0) * (look + c.len * 0.5 + 6.0):
 			continue
+		if not is_nan(y) and absf(c.y - y) > LEVEL:
+			continue   # (on a bridge overhead, in a tunnel underneath)
 		var cdir := Vector2(sin(c.yaw), cos(c.yaw))
-		var offs: Array = BODY[c.kind][0] if BODY.has(c.kind) else [-c.len * 0.33, 0.0, c.len * 0.33]
+		var offs: Array = (BODY[c.kind][0] as Array).duplicate() if BODY.has(c.kind) else [-c.len * 0.33, 0.0, c.len * 0.33]
+		# and its nose and tail: one waiting crossways at a junction's edge stuck its nose
+		# into autodrive's turn, its middle well clear of the lane, and autodrive hit the nose
+		offs.append(c.len * 0.5 - 0.3)
+		offs.append(-c.len * 0.5 + 0.3)
 		var rad: float = float(BODY[c.kind][1]) if BODY.has(c.kind) else 0.95
 		var found := INF
 		var same_at := 0.0
@@ -969,6 +1105,8 @@ func _start_on(c: Car, ri: int, sj: int, at: Vector2, dir: int) -> bool:
 	c.k = 0
 	c.s = 0.0
 	c.last_light = -1000.0
+	c.last_site = -1
+	c.y = g._decks.deck_y(ri, at) if r.has("ys") else float(g._h(at))
 	_leg(c, ri, sj + 1 if dir > 0 else sj, dir)
 	while c.cum[c.cum.size() - 1] < 140.0:
 		if not _next(c):
@@ -984,6 +1122,7 @@ func _start_on(c: Car, ri: int, sj: int, at: Vector2, dir: int) -> bool:
 	_place(c)
 	c.prev_pos = c.pos
 	c.prev_yaw = c.yaw
+	c.prev_y = c.y
 	return true
 
 ## A car put on the road nearest `at` (within 25 m), heading the way `heading` points (a
@@ -1231,13 +1370,17 @@ func _place(c: Car) -> void:
 	var a := _at(c, c.s - 2.2)
 	var b := _at(c, c.s + 2.2)
 	c.pos = (a + b) * 0.5
+	c.y = g._decks.surf(c.pos, c.y)
 	var d := b - a
 	if d.length_squared() > 0.01:
 		c.yaw = atan2(d.x, d.y)
 		if g._hnx > 0:
-			c.pitch = atan2(float(g._h(b)) - float(g._h(a)), d.length())
-	if c.shift != 0.0 or c.shift_rate != 0.0:
-		c.pos += Vector2(cos(c.yaw), -sin(c.yaw)) * c.shift   # its lane: left of the line
+			c.pitch = atan2(float(g._decks.surf(b, c.y)) - float(g._decks.surf(a, c.y)), d.length())
+	# a little drift in the lane while it moves (nobody holds the line to the centimetre)
+	var wander := sin(_clock * 0.31 + c.drift) * 0.14 * clampf(c.v / 8.0, 0.0, 1.0)
+	var off := c.shift + wander
+	if off != 0.0 or c.shift_rate != 0.0:
+		c.pos += Vector2(cos(c.yaw), -sin(c.yaw)) * off       # its lane: left of the line
 		c.yaw += atan2(c.shift_rate, maxf(c.v, 3.0))         # nose into the lane change
 
 func _in_view(p: Vector2) -> bool:
@@ -1254,8 +1397,9 @@ func draw(f: float) -> void:
 			continue
 		var p := c.prev_pos.lerp(c.pos, f)
 		var yaw := lerp_angle(c.prev_yaw, c.yaw, f)
-		var basis := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, -c.pitch)
-		var xf := Transform3D(basis, Vector3(p.x, float(g._h(p)) + float(g.road_top()), p.y))
+		# (the slope it is on, the nose dipping or lifting, the lean in a turn)
+		var basis := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, -c.pitch + c.dip) * Basis(Vector3.BACK, c.roll)
+		var xf := Transform3D(basis, Vector3(p.x, lerpf(c.prev_y, c.y, f) + float(g.road_top()), p.y))
 		var mm: MultiMesh = _mms[c.kind]
 		mm.set_instance_transform(i, xf)
 		# alpha: the brake light, plus 2 for a driver, 4 for a driver and a passenger (the car
@@ -1293,11 +1437,13 @@ func _hide_or_show(i: int) -> void:
 
 ## how far to move a circle at `p` (radius r) to be clear of every car: each is two
 ## circles along its length, like a parked car
-func push(p: Vector2, r: float) -> Vector2:
+func push(p: Vector2, r: float, y := NAN) -> Vector2:
 	var out := Vector2.ZERO
 	for i in range(cars.size()):
 		var c: Car = cars[i]
 		if not c.alive or c.pos.distance_squared_to(p) > (100.0 if c.kind == "bus" else 64.0):
+			continue
+		if not is_nan(y) and absf(c.y - y) > LEVEL:
 			continue
 		var fwd := Vector2(sin(c.yaw), cos(c.yaw))
 		var body: Array = BODY.get(c.kind, [[1.25, -1.25], 0.85])
@@ -1308,6 +1454,13 @@ func push(p: Vector2, r: float) -> Vector2:
 				out += d.normalized() * (need - d.length()) if d.length() > 0.001 else Vector2(need, 0)
 				hit_index = i
 	return out
+
+## two things this much apart in height are on different levels (a bridge and the street under
+## it, a tunnel and the hill over it) and do not meet
+const LEVEL := 2.5
+
+func _level(c: Car, y: float) -> bool:
+	return absf(c.y - y) <= LEVEL
 
 func bumped(i: int) -> void:
 	if i >= 0 and i < cars.size():

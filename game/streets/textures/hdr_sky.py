@@ -1,10 +1,14 @@
 """Radiance .hdr (RLE RGBE) -> the upper half as a tonemapped sRGB JPG, plus where its sun is
-and the average colours of the zenith and the horizon (stored sRGB 0-1)."""
+and the average colours of the zenith and the horizon (stored sRGB 0-1).
+Usage: hdr_sky.py <in.hdr> <out.jpg> <width> [exposure scale]"""
 import sys
 import numpy as np
 from PIL import Image
 
 src, out, width = sys.argv[1], sys.argv[2], int(sys.argv[3])
+# a 4th argument scales the exposure (the evening sky: 0.5, so it keeps its glow instead of
+# being brought up to a day's brightness)
+expo_k = float(sys.argv[4]) if len(sys.argv) > 4 else 1.0
 data = open(src, 'rb').read()
 pos = data.index(b'\n\n') + 2
 line_end = data.index(b'\n', pos)
@@ -36,7 +40,7 @@ print('sun at u=%.4f v=%.4f (elevation %.1f deg)' % (sx / W, sy / H, 90 - sy / H
 top = rgb[: H // 2]
 tl = lum[: H // 2]
 med = np.median(tl[tl < np.percentile(tl, 99)])
-exposure = 0.32 / med
+exposure = 0.32 / med * expo_k
 x = top * exposure
 aces = (x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14)
 aces = np.clip(aces, 0, 1)

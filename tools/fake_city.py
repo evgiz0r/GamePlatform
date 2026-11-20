@@ -14,6 +14,14 @@ with one of each thing a real town has, so a change can be looked at in a moment
            pair), contour streets curling round a hill and steep ones straight up it, two
            roundabouts, a living street, a car park's lane, cul-de-sacs into the foothills,
            and a mountain road that climbs to a lookout
+  off the  a river across the south (a spring, a lake, one level of water held between them)
+  ground   that every street crossing it bridges, a footbridge; a tunnel through the hill
+           with a cutting down to each mouth; one west-grid street dipping under the
+           boulevard (cuttings and a short cut-and-cover tunnel), another flying over it
+           (embankments and a bridge) with two slip roads to and from the boulevard, a
+           half-diamond interchange whose junctions are up on the embankments. Each is its own way, tagged as OSM tags them (br, tu,
+           em, cu, layer), with its surface's height at every point (`y`), its ends at the
+           ground's; streets on different layers cross without meeting
   places   a strip mall and its car parks, an office tower, a hotel, the town hall on its
            square, a cinema, a museum, a school with its pitch, a kindergarten, a sports
            centre, a synagogue, a library, a petrol station, shops and cafes along the main
@@ -403,6 +411,8 @@ N_ROTH = ("רוטשילד", "Rothschild")
 N_BENY = ("בן יהודה", "Ben Yehuda")
 N_KIKAR_W = ("כיכר ההרים", "Kikar HaHarim")
 N_KIKAR_E = ("כיכר המייסדים", "Kikar HaMeyasdim")
+N_TUNNEL = ("דרך המנהרה", "Derekh HaMinhara")
+N_RIVER = ("נחל דימיון", "Nahal Dimyon")
 CULS = [("החצב", "HaHatzav"), ("הדולב", "HaDolev"), ("האלה", "HaEla"), ("הצבר", "HaTzabar"),
         ("הלוטם", "HaLotem"), ("הערבה", "HaArava"), ("הרותם", "HaRotem")]
 
@@ -508,6 +518,7 @@ class Town:
         self.keep_clear = []   # rings no building may touch (forecourts, terraces)
         self.shop_names = {}
         self.numbers = {}      # (street, side) -> next house number
+        self.levels = {}       # area index -> the water's level (m), for water that lies at its own
 
     # -- roads --
 
@@ -524,6 +535,8 @@ class Town:
         """spatial lookups over the finished roads, for placing buildings beside them"""
         self.road_hash = Hash(40.0)
         for st in self.streets:
+            if st.get("deck") == "tu":
+                continue   # under the ground: houses may stand over it
             drive = st["k"] not in ("footway", "path", "steps", "pedestrian")
             hw = st["w"] * 0.5
             p = st["pts"]
@@ -737,7 +750,8 @@ def lay_streets(T):
     T.street(line((230, -115), to_h((230, -115))), "residential", N_MAALE)
     T.street(trim_from(line((380, zc(380)), (380, HILL[1] + top_r)), T.blvd_w), "residential", N_KARMEL)
     T.street(longest(inside(line((380, -700), (380, HILL[1] - top_r)))), "residential", N_GILBOA)
-    T.street(longest(inside(line((800, -250), (HILL[0] + top_r, -250)))), "residential", N_HERMON)
+    # (from the east, a little north of the hill's middle: the tunnel runs under its middle)
+    T.street(longest(inside(line((800, -330), to_h((800, -330))))), "residential", N_HERMON)
 
     # the south-east: newer, bigger
     for pc in clip(longest(inside(line((0, 115), (800, 115)))), rb_e, False):   # either side of the roundabout
@@ -845,6 +859,339 @@ def lookout_road(T):
     return road
 
 
+# ---- off the ground: the river and its bridges, the hill's tunnel, an underpass, a flyover ---
+#
+# A road that leaves the ground is a "deck": a street piece of its own, tagged the way
+# OpenStreetMap tags it -- a bridge (layer 1), a tunnel (layer -1), and the ramps up to a
+# bridge an embankment, the ones down to a tunnel a cutting (both layer 0) -- that carries the
+# height of its surface at every point (written as the road's `y`). Where a deck meets a
+# street on the ground it is at the ground's height. Streets on different layers cross
+# without meeting.
+
+RIVER_LEVEL = 0.8         # the water (m): one level from the spring to the lake, a weired town river
+RIVER_BED = -0.6          # its bed
+RIVER_FLAT = 8.0          # half the bed's width
+RIVER_BANK = 11.0         # the banks: from the bed's edge up to the natural ground over this far
+# a street this near the river's line is on a bridge: past the banks by a cell of the height
+# grid, whose triangles bend the ground that far out (a bridge ending on that slope had a
+# crest just past its end, and cars took off from it)
+RIVER_REACH = RIVER_FLAT + RIVER_BANK + STEP + 2.0
+CLEAR = 6.6               # a road over a road: 5 m clear under the deck, and the deck's own depth
+COVER = 7.0               # ground over a tunnel's road at its mouth: the tube, its roof, some earth
+DECK_STEP = 5.0           # metres between a deck's points (its heights are straight between them)
+
+
+def catmull(ctrl, step):
+    """a smooth line through the control points, a point every `step` metres or so"""
+    out = []
+    n = len(ctrl)
+    for i in range(n - 1):
+        p0, p1, p2, p3 = ctrl[max(i - 1, 0)], ctrl[i], ctrl[i + 1], ctrl[min(i + 2, n - 1)]
+        k = max(1, int(math.ceil(ln(sub(p2, p1)) / step)))
+        for j in range(k):
+            t = j / k
+            t2, t3 = t * t, t * t * t
+            out.append(tuple(0.5 * (2 * p1[c] + (-p0[c] + p2[c]) * t + (2 * p0[c] - 5 * p1[c] + 4 * p2[c] - p3[c]) * t2
+                                    + (-p0[c] + 3 * p1[c] - 3 * p2[c] + p3[c]) * t3) for c in (0, 1)))
+    out.append(ctrl[-1])
+    return out
+
+
+def sub_line(pts, s0, s1):
+    """the part of a line from s0 to s1 metres along it"""
+    out = [at_s(pts, s0)[0]]
+    acc = 0.0
+    for i in range(len(pts) - 1):
+        acc += ln(sub(pts[i + 1], pts[i]))
+        if s0 + 1e-6 < acc < s1 - 1e-6:
+            out.append(pts[i + 1])
+    end = at_s(pts, s1)[0]
+    if ln(sub(end, out[-1])) > 1e-6:
+        out.append(end)
+    return out
+
+
+def s_of(pts, p):
+    """how far along the line its nearest point to p is"""
+    best, bs, acc = 1e18, 0.0, 0.0
+    for i in range(len(pts) - 1):
+        q, t = closest(p, pts[i], pts[i + 1])
+        L = ln(sub(pts[i + 1], pts[i]))
+        d = ln(sub(q, p))
+        if d < best:
+            best, bs = d, acc + t * L
+        acc += L
+    return bs
+
+
+def dense(pts, step=DECK_STEP):
+    out = [pts[0]]
+    for i in range(len(pts) - 1):
+        a, b = pts[i], pts[i + 1]
+        n = max(1, int(math.ceil(ln(sub(b, a)) / step)))
+        for k in range(1, n + 1):
+            out.append(lerp2(a, b, k / n))
+    return out
+
+
+def split_street(T, st, cuts):
+    """Cut a street at distances along it: the street keeps the first piece, each later piece
+    is a new street with the same tags. The pieces, in order."""
+    pts = st["pts"]
+    L = length(pts)
+    marks = [0.0] + sorted(c for c in cuts if 0.5 < c < L - 0.5) + [L]
+    pieces = []
+    for a, b in zip(marks, marks[1:]):
+        part = sub_line(pts, a, b)
+        if not pieces:
+            st["pts"] = part
+            pieces.append(st)
+        else:
+            nw = dict(st)
+            nw["pts"] = part
+            T.streets.append(nw)
+            pieces.append(nw)
+    return pieces
+
+
+def make_deck(st, kind, yf):
+    """a street piece as a deck: `kind` br (bridge), tu (tunnel), em (embankment) or cu
+    (cutting); its surface at height yf(point)"""
+    st["pts"] = dense(st["pts"])
+    st["deck"] = kind
+    st["ly"] = {"br": 1, "tu": -1}.get(kind, 0)
+    st["yf"] = yf
+
+
+def ease(t, k=0.35):
+    """mostly straight, rounded off at the ends a little (a road's crest and sag)"""
+    t = max(0.0, min(1.0, t))
+    return (1.0 - k) * t + k * sm(t)
+
+
+def river(T):
+    """The river: from a spring at the foot of the eastern hills, across the south of the town
+    in a channel cut into the ground, to a lake in the south-west. One level of water all the
+    way, so its banks are low in the middle of town and high where it cuts the knoll. A
+    footbridge crosses it between HaNasi and Rothschild; every street that crosses it does so
+    on a bridge (bridges())."""
+    # (far enough from the ring road that no bridge ends at a junction on it: a car turning
+    # in clipped the parapet)
+    ctrl = [(612, 462), (586, 446), (556, 426), (522, 410), (420, 405), (300, 403), (200, 406),
+            (100, 407), (0, 404), (-100, 401), (-200, 404), (-300, 407), (-400, 406), (-468, 411)]
+    pts = catmull(ctrl, 8.0)
+    T.river = pts
+    G = T.G
+    G.cut(pts, [RIVER_BED] * len(pts), RIVER_FLAT, RIVER_BANK)
+    lake_c, spring_c = (-494, 414), (614, 464)
+    lake = ccw([(lake_c[0] + 30 * math.cos(a) * (1 + 0.1 * math.sin(3 * a)),
+                 lake_c[1] + 22 * math.sin(a) * (1 + 0.08 * math.cos(2 * a))) for a in [2 * math.pi * i / 28 for i in range(28)]])
+    spring = ccw(circle(spring_c, 13.0, 16))
+    G.pad(lake, RIVER_BED, 12.0)
+    G.pad(spring, RIVER_BED, 10.0)
+    half = RIVER_FLAT + RIVER_BANK * 0.6
+    strip = ccw(offset(pts, half) + list(reversed(offset(pts, -half))))
+    for ring in (strip, ccw([add(lake_c, mul(sub(p, lake_c), 1.3)) for p in lake]),
+                 ccw([add(spring_c, mul(sub(p, spring_c), 1.4)) for p in spring])):
+        T.areas.append(["water", ring])
+        T.levels[len(T.areas) - 1] = RIVER_LEVEL
+    # nothing is built on the banks
+    reach = RIVER_REACH + 1.0
+    T.keep_clear.append(ccw(offset(pts, reach) + list(reversed(offset(pts, -reach)))))
+    T.keep_clear.append(ccw([add(lake_c, mul(sub(p, lake_c), 1.7)) for p in lake]))
+    T.keep_clear.append(ccw(circle(spring_c, 28.0, 16)))
+    # the footbridge, on a path from Jabotinsky down to the ring road
+    T.street(longest(clip(line((90, 330), (90, 600), 10.0), T.ring, True)), "footway", ("", ""), 3.0)
+
+
+def river_hash(T):
+    h = Hash(40.0)
+    p = T.river
+    for i in range(len(p) - 1):
+        h.add(bbox([p[i], p[i + 1]], RIVER_REACH), (p[i], p[i + 1]))
+    return h
+
+
+def bridges(T):
+    """Every street the river's banks cut: the piece over them a bridge, its deck straight from
+    one bank to the other with a little camber."""
+    h = river_hash(T)
+    G = T.G
+    n = 0
+    for st in list(T.streets):
+        if st.get("deck") or st["k"] not in DRIVE | {"footway"}:
+            continue
+        pts = st["pts"]
+        L = length(pts)
+        runs, s, start = [], 0.0, None
+        while s <= L:
+            p = at_s(pts, s)[0]
+            near = any(pdist(p, a, b) < RIVER_REACH for a, b in h.near(bbox([p], 1.0)))
+            if near and start is None:
+                start = s
+            elif not near and start is not None:
+                runs.append((start, s))
+                start = None
+            s += 1.0
+        if start is not None:
+            runs.append((start, L))
+        if not runs:
+            continue
+        cuts = [c for r in runs for c in r]
+        for piece in split_street(T, st, cuts):
+            mid = at_s(piece["pts"], length(piece["pts"]) * 0.5)[0]
+            if not any(pdist(mid, a, b) < RIVER_REACH for a, b in h.near(bbox([mid], 1.0))):
+                continue
+            line_ = list(piece["pts"])
+            ya, yb, Lp = G.at(line_[0]), G.at(line_[-1]), length(line_)
+
+            def yf(p, line_=line_, ya=ya, yb=yb, Lp=Lp):
+                t = s_of(line_, p) / max(Lp, 1e-6)
+                return ya + (yb - ya) * t + 0.25 * math.sin(math.pi * t)
+            make_deck(piece, "br", yf)
+            n += 1
+    T.bridge_n = n
+
+
+def hill_tunnel(T):
+    """Derekh HaMinhara: from HaNasi east to HaGalil on the ground, then down into a cutting,
+    through the hill in a tunnel (under HaOranim, HaBroshim and the water tower) and up a
+    cutting to the ring road. Its road runs straight between its ends' heights with a dip
+    in the middle; the tunnel is wherever the ground stands COVER over it."""
+    G = T.G
+    z = -250.0
+    T.street(line((0.0, z), (100.0, z)), "tertiary", N_TUNNEL, 9.0, 2)
+    st = T.street(longest(clip(line((100.0, z), (760.0, z), 5.0), T.ring, True)), "tertiary", N_TUNNEL, 9.0, 2)
+    pts = st["pts"]
+    xa, xb = pts[0][0], pts[-1][0]
+    ga, gb = G.at(pts[0]), G.at(pts[-1])
+    dip, ramp = 3.0, 60.0
+
+    def yf(p):
+        x = p[0]
+        return ga + (gb - ga) * (x - xa) / (xb - xa) - dip * sm(min(x - xa, xb - x) / ramp)
+    xs = [xa + i for i in range(int(xb - xa) + 1)]
+    deep = [G.at((x, z)) - yf((x, z)) >= COVER for x in xs]
+    mid = len(xs) // 2
+    i0 = i1 = mid
+    while i0 > 0 and deep[i0 - 1]:
+        i0 -= 1
+    while i1 < len(xs) - 1 and deep[i1 + 1]:
+        i1 += 1
+    x0, x1 = xs[i0], xs[i1]
+    for piece, kind in zip(split_street(T, st, [x0 - xa, x1 - xa]), ("cu", "tu", "cu")):
+        make_deck(piece, kind, yf)
+    T.tunnel = (x0, x1, min(G.at((x, z)) - yf((x, z)) for x in xs[i0:i1 + 1]))
+
+
+def grade_separations(T):
+    """Two of the west grid's streets leave the boulevard's junctions: HaTamar dips under it
+    in a cut-and-cover tunnel, HaZayit climbs over it on a bridge, each from HaShuk to
+    HaRakefet, so neither meets it any more."""
+    G = T.G
+    T.separated = []
+    for x, nm, kind_end, kind_mid, up in ((WEST_NS[4][0], WEST_NS[4][1], "cu", "tu", -1),
+                                         (WEST_NS[0][0], WEST_NS[0][1], "em", "br", 1)):
+        st = next(s for s in T.streets if s["name"] == nm[0] and not s.get("deck")
+                  and min(p[1] for p in s["pts"]) < -115 and max(p[1] for p in s["pts"]) > 115)
+        pts = st["pts"]
+        z0, z1 = -115.0, 115.0
+        mid = zc(x)
+        za, zb = mid - 16.0, mid + 16.0           # the boulevard, its pavements and a little more
+        g0, g1 = G.at((x, z0)), G.at((x, z1))
+        span = [G.at((x, mid + d)) for d in range(-16, 17, 2)]
+        top = (max(span) + CLEAR) if up > 0 else (min(span) - CLEAR)
+
+        def yf(p, z0=z0, z1=z1, za=za, zb=zb, g0=g0, g1=g1, top=top):
+            zz = p[1]
+            if zz <= za:
+                return g0 + (top - g0) * ease((zz - z0) / (za - z0))
+            if zz >= zb:
+                return g1 + (top - g1) * ease((z1 - zz) / (z1 - zb))
+            return top
+        cuts = [s_of(pts, (x, z)) for z in (z0, za, zb, z1)]
+        pieces = split_street(T, st, cuts)
+        for piece in pieces[1:4]:
+            zm = at_s(piece["pts"], length(piece["pts"]) * 0.5)[0][1]
+            make_deck(piece, kind_mid if za < zm < zb else kind_end, yf)
+        grade = max(abs(top - g0) / (za - z0), abs(top - g1) / (z1 - zb)) * (1.0 + 0.35 * 0.5)
+        T.separated.append((nm[1], top, grade))
+
+
+def interchange(T):
+    """HaZayit's flyover made a half-diamond: a slip road climbs from the boulevard's
+    westbound half to a junction up on HaZayit's northern embankment, and another leaves a
+    junction on its southern one and comes down into the eastbound half -- junctions in the
+    air, slip roads merging and diverging. (Toward the town's middle, east: the west side
+    has the roundabout too close.)"""
+    G = T.G
+    x = WEST_NS[0][0]
+    nm = WEST_NS[0][1]
+
+    def piece_at(z):
+        for st in T.streets:
+            if st["name"] == nm[0] and st.get("deck") == "em" and \
+                    min(p[1] for p in st["pts"]) < z < max(p[1] for p in st["pts"]):
+                return st
+        raise RuntimeError("no embankment of %s at z %.0f" % (nm[1], z))
+
+    def on_half(half, xx):
+        """the point of a boulevard half at x, and the way it runs"""
+        best = None
+        for i in range(len(half) - 1):
+            a, b = half[i], half[i + 1]
+            if min(a[0], b[0]) <= xx <= max(a[0], b[0]) and abs(b[0] - a[0]) > 1e-6:
+                t = (xx - a[0]) / (b[0] - a[0])
+                best = (lerp2(a, b, t), unit(sub(b, a)))
+        return best
+
+    T.slips = []
+    for jz, half, x_bv, up in ((-40.0, T.blvd_w, -455.0, True), (30.0, T.blvd_e, -455.0, False)):
+        em = piece_at(jz)
+        yf_main = em["yf"]
+        split_street(T, em, [s_of(em["pts"], (x, jz))])
+        J = (x, jz)
+        yj = yf_main(J)
+        b, d = on_half(half, x_bv)                    # where it meets the boulevard
+        side = 1.0 if jz > 0 else -1.0                 # (south of the eastbound half, north of the westbound)
+        out = mul((0.0, 1.0), side * 1.0)
+        # from the boulevard out to the junction: alongside the boulevard, then round to it
+        ctrl = [b, add(add(b, mul(d, -14.0 if up else -14.0)), mul(out, 2.5)),
+                (x + 62.0, b[1] + side * 10.0), (x + 34.0, jz - side * 2.0), (x + 14.0, jz), J]
+        if not up:   # the eastbound one runs from the junction to the boulevard
+            ctrl = [J, (x + 14.0, jz), (x + 34.0, jz - side * 2.0), (x + 62.0, b[1] + side * 10.0),
+                    add(add(b, mul(d, -14.0)), mul(out, 2.5)), b]
+        line_ = catmull(ctrl, 4.0)
+        gb = G.at(b)
+        L = length(line_)
+        bv_end = line_[0] if up else line_[-1]
+
+        def yf(p, line_=line_, L=L, gb=gb, yj=yj, up=up):
+            t = s_of(line_, p) / max(L, 1e-6)
+            if not up:
+                t = 1.0 - t
+            return gb + (yj - gb) * sm(t)      # level at both ends: into the junction, onto the boulevard
+        st = T.street(line_, "primary_link", ("", ""), 5.5, 1, 1)
+        make_deck(st, "em", yf)
+        T.slips.append((st, L, yj - gb))
+
+
+def river_trees(T):
+    """trees along both banks, clear of the streets"""
+    pts = T.river
+    L = length(pts)
+    for side in (1, -1):
+        s = 6.0
+        while s < L - 6.0:
+            p, d = at_s(pts, s)
+            q = add(p, mul(right(d), side * (RIVER_REACH + 2.0)))
+            ok = all(pdist(q, a, b) > hw + 4.0 for a, b, hw, drive, st in T.road_hash.near(bbox([q], 12.0)))
+            ok = ok and not any(poly_dist([q], b) < 3.0 for b in T.bld_hash.near(bbox([q], 6.0)))
+            if ok and beyond(q) < -30.0:
+                T.trees.append(q)
+            s += 13.0
+
+
 # ---- joining the streets into a road graph -------------------------------------------------
 
 class Canon:
@@ -887,6 +1234,8 @@ def join(T):
                 A, B = segs[i1], segs[i2]
                 if A[0] == B[0] and abs(A[1] - B[1]) <= 1:
                     continue
+                if T.streets[A[0]].get("ly", 0) != T.streets[B[0]].get("ly", 0):
+                    continue   # a bridge over a street, a tunnel under one: no junction
                 r = seg_x(A[2], A[3], B[2], B[3])
                 if r:
                     q = lerp2(A[2], A[3], r[0])
@@ -931,19 +1280,25 @@ def junctions(T):
     seen = {}
     for si, st in enumerate(T.streets):
         for j, p in enumerate(st["pts"]):
+            if st.get("ly", 0) and 0 < j < len(st["pts"]) - 1:
+                continue   # (a bridge's or a tunnel's own points: only its ends meet anything)
             seen.setdefault(p, []).append((si, j))
     out = {}
     for p, lst in seen.items():
         streets = {si for si, _ in lst}
         closed = any(T.streets[si]["pts"][0] == T.streets[si]["pts"][-1] and j in (0, len(T.streets[si]["pts"]) - 1)
                      for si, j in lst)
-        if len(streets) >= 2 or (len(lst) >= 2 and not closed):
+        # where a street goes onto a bridge or into a tunnel: two pieces of it end there
+        joint = len(lst) == 2 and len({T.streets[si]["name"] for si, _ in lst}) == 1 and all(
+            j in (0, len(T.streets[si]["pts"]) - 1) for si, j in lst) and any(T.streets[si].get("deck") for si, _ in lst)
+        if (len(streets) >= 2 or (len(lst) >= 2 and not closed)) and not joint:
             out[p] = lst
     return out
 
 
-DRIVE = {"primary", "secondary", "tertiary", "unclassified", "residential", "living_street", "service"}
-RANK = {"primary": 5, "secondary": 4, "tertiary": 3, "unclassified": 2, "residential": 1, "living_street": 0, "service": -1}
+DRIVE = {"primary", "secondary", "tertiary", "unclassified", "residential", "living_street", "service", "primary_link"}
+RANK = {"primary": 5, "secondary": 4, "tertiary": 3, "unclassified": 2, "primary_link": 2, "residential": 1, "living_street": 0,
+        "service": -1}
 
 
 def zebras(T, J):
@@ -958,7 +1313,7 @@ def zebras(T, J):
         r = max(T.streets[si]["w"] * 0.5 for si, _ in lst if T.streets[si]["k"] in DRIVE)
         for si, j in lst:
             st = T.streets[si]
-            if st["k"] not in DRIVE or st["k"] == "service" or st.get("rb"):
+            if st["k"] not in DRIVE or st["k"] == "service" or st.get("rb") or st.get("deck"):
                 continue
             pts = st["pts"]
             for step in (-1, 1):
@@ -1025,6 +1380,8 @@ def frontage(T):
         st = T.streets[si]
         if st["k"] not in DRIVE or st["k"] == "service" or st.get("rb") or not st["name"]:
             continue
+        if st.get("deck") in ("br", "tu"):
+            continue   # (a cutting or an embankment has houses along it; a bridge or a tunnel not)
         pts = st["pts"]
         L = length(pts)
         hw = st["w"] * 0.5
@@ -1225,6 +1582,8 @@ def woods(T):
         a = math.atan2(math.sin(phi), math.cos(phi))
         busy = any(abs(math.atan2(math.sin(a - t), math.cos(a - t))) < 0.16 for t in taken)
         busy = busy or abs(math.atan2(math.sin(a - math.pi), math.cos(a - math.pi))) < 0.05   # the lookout road's foot
+        sp = math.atan2(T.river[0][1], T.river[0][0])
+        busy = busy or abs(math.atan2(math.sin(a - sp), math.cos(a - sp))) < 0.09   # the river's spring
         if busy:
             if len(run) >= 3:
                 out.append(run)
@@ -1250,7 +1609,7 @@ def stops(T, J):
     for p, lst in J.items():
         names[p] = [T.streets[si]["name"] for si, _ in lst if T.streets[si]["name"]]
     for st in T.streets:
-        if st["name"] not in (N_BLVD[0], N_NASI[0], N_RING[0], N_WEIZ[0], N_SHUK[0]):
+        if st["name"] not in (N_BLVD[0], N_NASI[0], N_RING[0], N_WEIZ[0], N_SHUK[0]) or st.get("deck"):
             continue
         pts = st["pts"]
         L = length(pts)
@@ -1289,6 +1648,8 @@ def controls(T, J):
             continue
         if any(T.streets[si].get("rb") for si, _ in lst):
             continue
+        if all(T.streets[si].get("deck") for si, _ in lst) or any(T.streets[si]["k"] == "primary_link" for si, _ in lst):
+            continue   # (a junction in the air, a slip road's mouth: no signs, no zebras)
         ranks = [RANK[k] for k in kinds]
         names = {T.streets[si]["name"] for si, _ in lst}
         if N_SHUK[0] in names or (jp[0] < 0 and rng.random() < 0.3) or (jp[0] > 0 and rng.random() < 0.15):
@@ -1394,19 +1755,27 @@ def flat(pts):
 def write(T, g, name, seed):
     nodes, index = [], {}
 
-    def node(p):
-        if p not in index:
-            index[p] = len(nodes) // 2
+    def key(st, p):
+        """a bridge's or a tunnel's own points are its own, wherever another street's lie
+        (only its ends meet anything)"""
+        if st.get("ly", 0) and p != st["pts"][0] and p != st["pts"][-1]:
+            return (p, st["ly"])
+        return p
+
+    def node(k):
+        if k not in index:
+            p = k[0] if isinstance(k[0], tuple) else k
+            index[k] = len(nodes) // 2
             nodes.extend([q(p[0]), q(p[1])])
-        return index[p]
+        return index[k]
 
     # OSM splits a street into ways at its junctions, and a game may only choose where to go
     # where one way ends: so does this (a roundabout's ring stays whole, as one way)
     used = {}
     for st in T.streets:
         if st["k"] in DRIVE:
-            for p in set(st["pts"]):
-                used[p] = used.get(p, 0) + 1
+            for k in {key(st, p) for p in st["pts"]}:
+                used[k] = used.get(k, 0) + 1
     pieces = []
     for st in T.streets:
         pts = st["pts"]
@@ -1416,15 +1785,16 @@ def write(T, g, name, seed):
         cur = [pts[0]]
         for p in pts[1:]:
             cur.append(p)
-            if used.get(p, 0) >= 2 and len(cur) >= 2 and p != pts[-1]:
+            if used.get(key(st, p), 0) >= 2 and len(cur) >= 2 and p != pts[-1]:
                 pieces.append((st, cur))
                 cur = [p]
         if len(cur) >= 2:
             pieces.append((st, cur))
 
+    lo = min(g)
     roads = []
     for st, pts in pieces:
-        ids = [node(p) for p in pts]
+        ids = [node(key(st, p)) for p in pts]
         if len(ids) < 2:
             continue
         rd = {"n": ids, "k": st["k"], "w": round(st["w"], 1)}
@@ -1438,11 +1808,18 @@ def write(T, g, name, seed):
         for tag in ("rb", "sv", "pv"):
             if st.get(tag):
                 rd[tag] = st[tag]
+        if st.get("deck"):
+            rd[st["deck"]] = 1
+            if st["ly"]:
+                rd["ly"] = st["ly"]
+            rd["y"] = [q(st["yf"](p) - lo) for p in pts]
         roads.append(rd)
 
     def nearest_node(p, within=2.0):
         best, bd = None, within
         for k, i in index.items():
+            if isinstance(k[0], tuple):
+                continue   # (a bridge's or a tunnel's own point: no lights or signs there)
             d = ln(sub(k, p))
             if d < bd:
                 best, bd = i, d
@@ -1455,7 +1832,6 @@ def write(T, g, name, seed):
         i = nearest_node(p)
         if i is not None:
             signs.append([i, kind, 0, 0])
-    lo = min(g)
     x1, z1 = X0 + (NX - 1) * STEP, Z0 + (NZ - 1) * STEP
     out = {
         "version": 1,
@@ -1470,7 +1846,8 @@ def write(T, g, name, seed):
         "nodes": nodes,
         "roads": roads,
         "buildings": [dict({"p": flat(b["p"])}, **{k: v for k, v in b.items() if k != "p"}) for b in T.blds],
-        "areas": [{"p": flat(ccw(r)), "k": k} for k, r in T.areas],
+        "areas": [dict({"p": flat(ccw(r)), "k": k}, **({"y": q(T.levels[i] - lo)} if i in T.levels else {}))
+                  for i, (k, r) in enumerate(T.areas)],
         "trees": flat(T.trees),
         "signals": signals,
         "crossings": crossings,
@@ -1516,7 +1893,8 @@ def preview(T, g, path):
         c = (250, 250, 250) if st["k"] in DRIVE else (240, 200, 120)
         if st["o"]:
             c = (250, 220, 160)
-        d.line([P(p) for p in st["pts"]], fill=c, width=w)
+        c = {"br": (255, 150, 40), "em": (230, 190, 90), "tu": (40, 40, 40), "cu": (150, 120, 110)}.get(st.get("deck"), c)
+        d.line([P(p) for p in st["pts"]], fill=c, width=max(w, 2))
     for b in T.blds:
         d.polygon([P(p) for p in b["p"]], fill=(90, 60, 200) if b["h"] < 20 else (40, 20, 140), outline=(20, 10, 60))
     for p in T.signal_at:
@@ -1540,6 +1918,11 @@ def make(seed, name):
     lay_streets(T)
     lookout_road(T)
     park(T)
+    river(T)
+    hill_tunnel(T)
+    grade_separations(T)
+    interchange(T)
+    bridges(T)
     join(T)
     J = junctions(T)
     controls(T, J)
@@ -1549,6 +1932,7 @@ def make(seed, name):
     woods(T)
     T.index()
     frontage(T)
+    river_trees(T)
     stops(T, J)
     g = heights(T)
     return T, g
@@ -1562,6 +1946,7 @@ def main():
     ap.add_argument("--preview", help="also draw a plan of it to this PNG (needs Pillow)")
     args = ap.parse_args()
     T, g = make(args.seed, args.name)
+    J_final = junctions(T)
     shut, reach = no_way_out(T, g)
     if not shut:
         sys.exit("the mountains have a way through (reached %.0f m past the town's edge): "
@@ -1582,6 +1967,21 @@ def main():
     log("ground: %.0f m from the valley floor to the highest crest; the lookout road climbs %.0f m "
         "over %.0f m; a car gets at most %.0f m past the town's edge" % (
             max(g) - min(g), hs[-1] - hs[0], length(pts), reach))
+    ends = []
+    for st in T.streets:
+        if st.get("deck") == "br" and st["k"] in DRIVE:
+            for e in (st["pts"][0], st["pts"][-1]):
+                others = [ln(sub(j, e)) for j, lst in J_final.items() if ln(sub(j, e)) > 0.5]
+                ends.append(min(others) if others else 1e9)
+    if ends:
+        log("bridge ends: the nearest is %.0f m from a junction" % min(ends))
+    x0, x1, cover = T.tunnel
+    log("off the ground: %d bridges; the hill's tunnel from x %.0f to %.0f (%.0f m, at least %.1f m of ground "
+        "over it); %s" % (T.bridge_n, x0, x1, x1 - x0, cover,
+                          ", ".join("%s %s the boulevard at %.1f m (ramps up to %.0f%%)" % (n, "over" if t > 3 else "under", t, gr * 100)
+                                    for n, t, gr in T.separated)))
+    log("the interchange: slip roads %s" % ", ".join("%.0f m climbing %.1f m (up to %.0f%%)" % (L, h, abs(h) / L * 150)
+                                                      for st, L, h in T.slips))
     if len(parts) > 1:
         log("warning: the roads fall into %d separate networks (%s nodes)" % (len(parts), sorted(parts, reverse=True)))
     log("wrote %s (%.1f MB)" % (args.out, os.path.getsize(args.out) / 1e6))
