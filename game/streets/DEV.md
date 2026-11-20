@@ -1155,7 +1155,8 @@ it is dropped.
   the ramp tops' rounding went in); grass slopes for cuttings too (they are walled); a
   long-span bridge's height over water (the MacKay's deck is only as high as its ends);
   pavements at street level beside a cutting (the underpass has none); people on a bridge's
-  pavement and beside a cutting; the minimap draws a tunnel like any street; zooming out from inside the tunnel rises from the
+  pavement and beside a cutting; the
+  minimap draws a tunnel like any street; zooming out from inside the tunnel rises from the
   hilltop (the zoom centres on the ground's height); the heights are whole decimetres, so a
   deck's grade kinks by up to 2% every 5 m (enough for a 2 cm hop off HaNasi's bridge);
   autodrive turning right off the flyover's foot onto HaRakefet clips a crossing railing's
