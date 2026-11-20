@@ -110,7 +110,9 @@ is a Z coordinate, not a height.
   or two a frame; a halo per light, drawn additively in the same mesh as the light's pool on
   the ground (every vertex of its quad at the light, the corner in UV, turned to the eye in
   the vertex shader with `skip_vertex_transform`, sized at least ~1% of the distance so far
-  lamps stay points) costs nothing extra. Two traps: an additive material that is fogged
+  lamps stay points -- 0.4% left a tower's red roof lights invisible at 400 m, 1.1% made
+  them ~6 px) costs nothing extra. As a MultiMesh of quads grown in the shader, give it an
+  `extra_cull_margin`: its box is the unscaled quad's, and far ones are culled. Two traps: an additive material that is fogged
   gets the fog colour *added* (far pools turned into cyan blobs at night: use
   `fog_disabled` and fade by distance yourself), and a glow decal laid at the road's height
   is under the pavement (lay it above the highest surface it can fall on).

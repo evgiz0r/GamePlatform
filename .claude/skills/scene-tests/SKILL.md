@@ -227,6 +227,14 @@ it is made, with a one-line caption, rather than a report at the end.
   tick's position and heading lerped to this one) keeps blending from the last tick
   while physics is stopped: set the "previous" values with the new ones, or the shot
   looks along the player's old heading.
+- **A game may let go of its source data once it is built** (a city's file, outlines, lists
+  per square freed a little a frame after the last square): a test that reads them after
+  "loaded" (and a runner that builds everything first makes that at once) hits an empty
+  array mid-run. Have the module record what a test needs as it sets up, and read that.
+- **Pick a still's eye over open ground.** An eye placed by coordinates alone stood inside a
+  cafe's arcade, and two more had a tower a few metres in front: three of five shots
+  wasted, ten minutes a run. Put it over a road (a street's points are in the data), or high
+  over the roofs, and aim at the subject's middle.
 - **A marker for a 3D shot goes in the game's 3D world**, not under the game's node: a
   3D game's own node is a 2D one, and a ring added under it is never drawn.
 - **A skinned model's box is its rest pose's.** `MeshInstance3D.get_aabb()` (and the shell's
