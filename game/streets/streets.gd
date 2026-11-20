@@ -15542,10 +15542,10 @@ func _route_list_open() -> void:
 	dim.size = Vector2(640, 360)
 	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_route_ui.add_child(dim)
-	var title := UIKit.label("test routes: pick one and watch autodrive drive it", 15, "player")
+	var title := UIKit.label("test routes: pick one and watch autodrive drive it", 13, "player")
 	title.add_theme_font_override("font", _font)
-	title.position = Vector2(20, 40)
-	title.size = Vector2(600, 22)
+	title.position = Vector2(20, 34)
+	title.size = Vector2(600, 20)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_route_ui.add_child(title)
 	var routes := _routes()
@@ -15556,16 +15556,16 @@ func _route_list_open() -> void:
 		return
 	for i in range(routes.size()):
 		var r: Dictionary = routes[i]
-		# (each address on its own line: a Hebrew address and an arrow on one line came out
-		# with the arrow pointing from the end to the start)
-		var text := "%d  %s\nfrom  %s\nto  %s" % [int(r["id"]), CITY_NAMES.get(r["city"], r["city"]), r["from"], r["to"]]
+		# ("from" and "to" between the two addresses, not an arrow: a Hebrew address, an arrow
+		# and another came out as one right-to-left run, the arrow pointing from end to start)
+		var text := "%d   %s:   from  %s   to  %s" % [int(r["id"]), CITY_NAMES.get(r["city"], r["city"]), r["from"], r["to"]]
 		var b := _tap_button(text, func(): Flow.start_game("streets", {"level": int(r["level"]), "route": int(r["id"])}))
 		b.add_theme_font_override("font", _font)
 		b.add_theme_font_size_override("font_size", 10)
 		b.clip_text = true
-		b.position = Vector2(14 + (i / 5) * 310, 68 + (i % 5) * 56)
-		b.size = Vector2(300, 52)
-		b.custom_minimum_size = Vector2(300, 52)
+		b.position = Vector2(14, 56 + i * 30)   # (the buttons' own style is ~29 tall at this size)
+		b.size = Vector2(612, 28)
+		b.custom_minimum_size = Vector2(612, 28)
 		_route_ui.add_child(b)
 	# (later: a button to make your own -- from and to with the address picker -- kept with these)
 
