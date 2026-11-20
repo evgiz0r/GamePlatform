@@ -50,7 +50,8 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
                lv: building:levels, col / rc: wall / roof colour as "#rrggbb", rs:
                roof:shape (flat, gabled, hipped, dome...), mat: building:material (plaster,
                concrete, glass, brick...), yr: the year it was built (start_date)}]
-  areas      [{p: ring, k: park|grass|wood|water|parking|pitch|plaza|school, y: level}]
+  areas      [{p: ring, k: park|grass|wood|water|parking|pitch|plaza|school|sand, y: level}]
+             (sand: a beach, natural=beach or sand)
              (school: the grounds of a school or kindergarten; y: water that lies at its
              own level, decimetres above `height.base` -- a river held by weirs -- else it
              lies at its shore's lowest point)
@@ -137,7 +138,8 @@ AREA_KINDS = [
     ("landuse", {"grass": "grass", "recreation_ground": "park", "village_green": "grass",
                  "meadow": "grass", "cemetery": "grass", "forest": "wood", "orchard": "wood",
                  "flowerbed": "grass", "allotments": "grass"}),
-    ("natural", {"wood": "wood", "scrub": "wood", "grassland": "grass", "water": "water"}),
+    ("natural", {"wood": "wood", "scrub": "wood", "grassland": "grass", "water": "water",
+                 "beach": "sand", "sand": "sand"}),
     ("amenity", {"parking": "parking", "school": "school", "kindergarten": "school"}),
     ("place", {"square": "plaza"}),
     ("highway", {"pedestrian": "plaza"}),   # a closed pedestrian way tagged area=yes
@@ -306,7 +308,7 @@ DATA_FILTERS = (
     'rel["building"]["type"="multipolygon"];'
     'way["leisure"~"^(park|garden|playground|dog_park|pitch|sports_centre|track)$"];'
     'way["landuse"~"^(grass|recreation_ground|village_green|meadow|cemetery|forest|orchard|flowerbed|allotments)$"];'
-    'way["natural"~"^(wood|scrub|grassland|water)$"];'
+    'way["natural"~"^(wood|scrub|grassland|water|beach|sand)$"];'
     'way["amenity"="parking"];'
     'way["barrier"~"^(fence|hedge)$"];'
     'way["place"="square"];'
