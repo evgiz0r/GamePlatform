@@ -132,7 +132,7 @@ func _run() -> void:
 	quit(0)
 
 func _drive(secs: float) -> void:
-	var dt := 1.0 / 60.0
+	var dt := Engine.time_scale / Engine.physics_ticks_per_second
 	var t := 0.0
 	var still := 0.0
 	var off := 0.0
@@ -333,6 +333,7 @@ var _in_solid := {}     ## car index / "ap" -> the tick its body was last seen i
 var _over := {}         ## "i:node" / "ap:node" -> the tick it was counted standing over that line
 var _stop_why := {}     ## traffic car -> what held it the moment it came to a stop
 var _ap_stop_why := ""
+var _last_pos := {}     ## traffic car -> where it was last tick (a jump: put down elsewhere)
 var _stand := {}        ## traffic car -> seconds standing
 var _ap_stand := 0.0
 var _push_at := Vector2.INF
@@ -487,7 +488,15 @@ func _check(dt: float) -> void:
 		_push_at = Vector2.INF
 		_push_s = 0.0
 		_push_counted = false
-	# -- standing 10 s with nothing named holding it (down the queue to whoever is at its front)
+	# -- standing 10 s with nothing named holding it (down the queue to whoever is at its front).
+	# A slot whose car was taken away and put down elsewhere is a new car: its time starts
+	# again (the old one's standing carried over into the new one's)
+	for i: int in boxes:
+		var c = cars[i]
+		if _last_pos.has(i) and (_last_pos[i] as Vector2).distance_to(c.pos) > 15.0:
+			_stand.erase(i)
+			_stop_why.erase(i)
+		_last_pos[i] = c.pos
 	for i: int in boxes:
 		var c = cars[i]
 		if c.v < 0.3:
@@ -496,7 +505,10 @@ func _check(dt: float) -> void:
 				var ch: Array = _chain(i)
 				if not ch[0]:
 					_count("check: held by nothing 10 s+, traffic")
-					_incident("held by nothing", c.pos, " > ".join(ch[1]))
+					var front = T.cars[int(ch[2])] if ch.size() > 2 else c
+					_incident("held by nothing", c.pos, "%s; the front one wants %.1f m/s, stood %.0f s, %.0f m from the player%s" % [
+						" > ".join(ch[1]), front.want, front.still, front.pos.distance_to(g._pos),
+						", out of view" if not T._in_view(front.pos) else ""])
 		else:
 			_stand.erase(i)
 	for i: int in _stand.keys():
@@ -545,7 +557,7 @@ func _chain(i: int) -> Array:
 			# for nothing at all). Not for long: a hatch "wanting to go" stood 20 s with
 			# autodrive's car in it, and the second version excused it
 			parts.append("%s %d (pulling away)" % [c.kind, i])
-			return [true, parts]
+			return [true, parts, i]
 		parts.append("%s %d (%s)" % [c.kind, i, c.why])
 		if c.why == "car" and c.v < 0.3:
 			if c.blocker < 0 or c.blocker >= T.cars.size():
@@ -553,5 +565,5 @@ func _chain(i: int) -> Array:
 				return [false, parts]
 			i = c.blocker
 			continue
-		return [c.why in NAMED or c.why == "car" or c.v > 0.3, parts]
+		return [c.why in NAMED or c.why == "car" or c.v > 0.3, parts, i]
 	return [false, parts]

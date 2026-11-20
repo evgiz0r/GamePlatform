@@ -102,7 +102,7 @@ func _run() -> void:
 		var off := 0.0
 		var last_hit: String = g._last_hit
 		var t := 0.0
-		var dt := 1.0 / 60.0
+		var dt := Engine.time_scale / Engine.physics_ticks_per_second
 		var far := 0.0
 		while t < 40.0 and g._dest_on:
 			await physics_frame
@@ -143,7 +143,7 @@ func _run() -> void:
 		await physics_frame
 		g._set_auto(true)
 		var t := 0.0
-		var dt := 1.0 / 60.0
+		var dt := Engine.time_scale / Engine.physics_ticks_per_second
 		var over := -INF
 		var off := 0.0
 		var hits := 0

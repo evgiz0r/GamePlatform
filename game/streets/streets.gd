@@ -1669,6 +1669,7 @@ func _build_world() -> bool:
 	_build_setup(_stage("world", t0))
 	var tf := Time.get_ticks_msec()
 	await _build_far_shadows()
+	_build_grass()
 	_stage("far shadows", tf)
 	# the squares round the start before the car is shown; the rest while it drives
 	# (STREETS_BUILD_ALL=1: all of it first -- the scene tests look all over the city)
@@ -4345,11 +4346,28 @@ func _mall_front(edge: Array, g_lo: float, wc: Color, kit: Dictionary, kit_col: 
 	var glass := mid + out * 0.08
 	_mall_glass.append(Transform3D(face * Basis.from_scale(Vector3(maxf(L - 1.0, 2.0), 3.4, 0.1)),
 		Vector3(glass.x, g_lo + 1.8, glass.y)))
-	var cp := mid + out * 1.8
-	kit["canopy"].append(Transform3D(face * Basis.from_scale(Vector3(minf(12.0, L * 0.5) / 2.4, 2.4, 3.3)), Vector3(cp.x, g_lo + 4.0, cp.y)))
+	# The canopy and its columns stand on the forecourt, never out over the road: fronts are
+	# cut back to the road's edge + 1.5 m, and columns put 3.2 m out stood 1.7 m into the
+	# lane (two in Zahal by Ashdod's start; a taxi drove through one -- city_check and the
+	# exam's checks found them). The canopy is as deep as the room in front allows; the
+	# columns go only where they are off the road, and a shallow canopy needs none.
+	var width := minf(12.0, L * 0.5)
+	var depth := 3.3
+	while depth > 1.2:
+		var reach := out * (0.15 + depth + 0.3)
+		if _off_road(mid + reach, 0.0) and _off_road(mid + e * width * 0.5 + reach, 0.0) \
+				and _off_road(mid - e * width * 0.5 + reach, 0.0):
+			break
+		depth -= 0.5
+	var cp := mid + out * (0.15 + depth * 0.5)
+	kit["canopy"].append(Transform3D(face * Basis.from_scale(Vector3(width / 2.4, 2.4, depth)), Vector3(cp.x, g_lo + 4.0, cp.y)))
 	kit_col["canopy"].append(wc * 0.9)
+	if depth < 2.0:
+		return
 	for sd: float in [-1.0, 1.0]:
-		var q := mid + e * sd * minf(5.0, L * 0.2) + out * 3.2
+		var q := mid + e * sd * minf(5.0, L * 0.2) + out * (0.15 + depth - 0.25)
+		if not _off_road(q, 0.3) or _in_junction(q, 0.3):
+			continue
 		kit["column"].append(Transform3D(Basis.from_scale(Vector3(0.45, 4.0, 0.45)), Vector3(q.x, g_lo + 2.0, q.y)))
 		kit_col["column"].append(wc)
 		_add_post(q, 0.25)
@@ -6204,7 +6222,9 @@ func _park_moto(r: Dictionary, ri: int, run: PackedVector2Array, cum: PackedFloa
 	var face := (d * sgn).rotated(slant)
 	if not _mine(p) or _no_parking(r, ri, p) or _push_out(p, 0.6, false) != Vector2.ZERO or not _clear_of_posts(p, 1.0):
 		return
-	if not (_off_road(p + face * 0.95, 0.05) and _off_road(p - face * 0.95, 0.05)):
+	# (and its middle by the solid circle it gets below: the ends alone let the circle stand
+	# half a metre into the next street's lane at a corner -- city_check, Ashdod's Ort)
+	if not (_off_road(p + face * 0.95, 0.05) and _off_road(p - face * 0.95, 0.05) and _off_road(p, 0.6)):
 		return
 	var bs := Basis(Vector3.UP, atan2(face.x, face.y)) * Basis(Vector3.BACK, 0.13 * (1.0 if rng.randf() < 0.5 else -1.0))
 	(xf_by["moto_parked"] as Array).append(Transform3D(bs, Vector3(p.x, _walk_y(p), p.y)))   # on the pavement, as people stand
@@ -8328,7 +8348,8 @@ func _build_pois() -> void:
 			# front, between the building and the street, wherever there is room for it
 			for c: Vector2 in [pos + n * 6.0, pos + n * 8.0, at]:
 				var on := _nearest_seg(c, 15.0, true)
-				if _push_out(c, 3.2, false) == Vector2.ZERO and (on.is_empty() or float(on["edge"]) > 1.5):
+				if _push_out(c, 3.2, false) == Vector2.ZERO and (on.is_empty() or float(on["edge"]) > 1.5) \
+						and _station_fits(c, n):
 					_gas_station(c, n, canopy)
 					station = c
 					break
@@ -8538,6 +8559,17 @@ func _shop_glass() -> StandardMaterial3D:
 	return m
 
 ## a gas station: a canopy on four pillars over two pumps, square to the street
+## every column of a station's canopy and both pumps off the road (the middle 1.5 m off it
+## let a corner column, 4 m from the middle, stand 0.9 m into a primary road -- city_check,
+## Bedford)
+func _station_fits(at: Vector2, n: Vector2) -> bool:
+	var along := Vector2(-n.y, n.x)
+	for sx: float in [-1.0, 1.0]:
+		for sz: float in [-1.0, 1.0]:
+			if not _off_road(at + along * 3.6 * sx + n * 2.2 * sz, 0.45):
+				return false
+	return true
+
 func _gas_station(at: Vector2, n: Vector2, c: Dictionary) -> void:
 	var along := Vector2(-n.y, n.x)
 	var gy := _h(at)
@@ -8751,6 +8783,7 @@ func _far_set(m: ShaderMaterial) -> void:
 func _far_update() -> void:
 	for m: ShaderMaterial in _far_mats:
 		_far_set(m)
+	_grass_retint()   # (the grass reads the same picture's green)
 
 func _build_far_shadows() -> void:
 	if DisplayServer.get_name() == "headless":
@@ -8784,19 +8817,22 @@ func _build_far_shadows() -> void:
 		var b := pts.size()
 		for q in hull:
 			pts.append(q)
-			cols.append(Color.WHITE)
+			cols.append(Color(1, 0, 0))
 		for i in range(1, hull.size() - 1):
 			idx.append_array([b, b + i, b + i + 1])
 		if low == 0.0:
 			lit.append(ring)
+	var fpts := PackedVector2Array()
+	var fcols := PackedColorArray()
+	var fidx := PackedInt32Array()
 	for ring: PackedVector2Array in lit:
 		var tri := Geometry2D.triangulate_polygon(ring)
-		var b := pts.size()
+		var b := fpts.size()
 		for p in ring:
-			pts.append((p - o) / mpp)
-			cols.append(Color.BLACK)
+			fpts.append((p - o) / mpp)
+			fcols.append(Color.BLACK)
 		for i in tri:
-			idx.append(b + i)
+			fidx.append(b + i)
 	var vp := SubViewport.new()
 	vp.size = Vector2i(w, h)
 	vp.disable_3d = true
@@ -8804,20 +8840,63 @@ func _build_far_shadows() -> void:
 	var holder := Node2D.new()
 	vp.add_child(holder)
 	add_child(vp)
-	var item := RenderingServer.canvas_item_create()
-	RenderingServer.canvas_item_set_parent(item, holder.get_canvas_item())
-	RenderingServer.canvas_item_add_rect(item, Rect2(0, 0, w, h), Color.BLACK)
-	RenderingServer.canvas_item_add_triangle_array(item, idx, pts, cols)
+	# In the same picture, green: where grass grows (the blades near the camera, _build_grass):
+	# 0.5 open ground (its own noise decides, as GROUND_SHADER draws it), 1 parks, lawns, woods,
+	# pitches and the front gardens, 0 the roads with their pavements, paths, car parks, plazas,
+	# water and the buildings. Each layer its own canvas item, blended so the red (shadows) and
+	# the green leave each other alone: green and shadows added, roads multiplied by (1, 0, 1).
+	var items: Array = []
+	var mats: Array = []
+	var to_px := Transform2D(Vector2(1.0 / mpp, 0), Vector2(0, 1.0 / mpp), -o / mpp)
+	var layer := func(blend: int, world: bool) -> RID:
+		var it := RenderingServer.canvas_item_create()
+		RenderingServer.canvas_item_set_parent(it, holder.get_canvas_item())
+		RenderingServer.canvas_item_set_draw_index(it, items.size())
+		if world:
+			RenderingServer.canvas_item_set_transform(it, to_px)
+		if blend >= 0:
+			var cm := CanvasItemMaterial.new()
+			cm.blend_mode = blend
+			mats.append(cm)
+			RenderingServer.canvas_item_set_material(it, cm.get_rid())
+		items.append(it)
+		return it
+	var bg: RID = layer.call(-1, false)
+	RenderingServer.canvas_item_add_rect(bg, Rect2(0, 0, w, h), Color(0, 0.5, 0))
+	var green: RID = layer.call(CanvasItemMaterial.BLEND_MODE_ADD, true)
+	var g1 := PackedColorArray([Color(0, 1, 0)])
+	for kind: String in ["park", "grass", "wood", "pitch"]:
+		for ring: PackedVector2Array in _area_rings.get(kind, []):
+			_canvas_ring(green, ring, Color(0, 1, 0))
+	var med := String(_place.get("look", "")) == "med"
+	for r: Dictionary in _roads:
+		if med and r["drive"] and r["k"] in ["residential", "living_street"]:
+			var hw: float = float(r["w"]) * 0.5
+			for sgn: float in [-1.0, 1.0]:   # the front gardens, behind the pavements
+				RenderingServer.canvas_item_add_polyline(green, _offset_line(r["pts"], (hw + PAVE_W + 1.85) * sgn), g1, 3.1)
+	var shade: RID = layer.call(CanvasItemMaterial.BLEND_MODE_ADD, false)
+	RenderingServer.canvas_item_add_triangle_array(shade, idx, pts, cols)
+	var bare: RID = layer.call(CanvasItemMaterial.BLEND_MODE_MUL, true)
+	var keep_red := PackedColorArray([Color(1, 0, 1)])
+	for r: Dictionary in _roads:
+		var wide: float = float(r["w"]) + (2.0 * (KERB_W + PAVE_W) if r["drive"] and _kerbed(r) else 0.6)
+		RenderingServer.canvas_item_add_polyline(bare, r["pts"], keep_red, wide)
+	for kind: String in ["water", "parking", "plaza", "school"]:
+		for ring: PackedVector2Array in _area_rings.get(kind, []):
+			_canvas_ring(bare, ring, Color(1, 0, 1))
+	var feet: RID = layer.call(-1, false)
+	RenderingServer.canvas_item_add_triangle_array(feet, fidx, fpts, fcols)
 	var t1 := Time.get_ticks_usec()
 	await RenderingServer.frame_post_draw
 	await RenderingServer.frame_post_draw
 	var t2 := Time.get_ticks_usec()
 	var img := vp.get_texture().get_image()
-	RenderingServer.free_rid(item)
+	for it: RID in items:
+		RenderingServer.free_rid(it)
 	vp.queue_free()
 	if img == null or img.is_empty():
 		return
-	img.convert(Image.FORMAT_R8)
+	img.convert(Image.FORMAT_RG8)   # (red: the shadows, green: the grass)
 	img.generate_mipmaps()
 	_fs_tex = ImageTexture.create_from_image(img)
 	_fs_rect = Vector4(o.x, o.y, 1.0 / (w * mpp), 1.0 / (h * mpp))
@@ -8826,6 +8905,174 @@ func _build_far_shadows() -> void:
 	# (what it costs apart from the two frames it waits for the drawing: those are a few ms
 	# in a browser, but most of a second under a test's software renderer)
 	_stage_ms["far shadows: work, not the frames"] = (t1 - t0 + Time.get_ticks_usec() - t2) / 1000
+
+## ---- grass blades near the camera --------------------------------------------------------
+## A lawn drawn flat looked like a green carpet from a walker's height. Blades on every lawn
+## would be millions of triangles; instead one patch of them (4 x 4 m, GRASS_BLADES) repeated
+## in a grid that moves with the camera, a square at a time, and the shader grows each blade
+## only where grass grows -- the far-shadow picture's green (_build_far_shadows) -- at the
+## ground's height there (the height grid as a texture, interpolated as _h does), shorter
+## further off and gone by GRASS_REACH. Off at the lowest two qualities; a smaller grid at 2.
+const GRASS_SHADER := """
+shader_type spatial;
+render_mode cull_disabled;
+uniform sampler2D mask : filter_linear, repeat_disable;   // green: where grass grows
+uniform vec4 mask_rect = vec4(0.0);
+uniform sampler2D hmap : filter_nearest, repeat_disable;  // the ground's height grid
+uniform vec4 h_info = vec4(0.0, 0.0, 1.0, 0.0);           // its corner (x, z), its step, 1 if hilly
+uniform ivec2 h_size = ivec2(1, 1);
+uniform vec3 col_a : source_color = vec3(0.3, 0.5, 0.2);   // the lawn
+uniform vec3 col_b : source_color = vec3(0.5, 0.5, 0.25);  // drier blades among it
+uniform float greenness = 0.5;
+uniform float reach = 18.0;
+varying float tip;
+varying vec3 tint;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+float noise(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	vec2 u = f * f * (3.0 - 2.0 * f);
+	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+}
+float ground(vec2 p) {   // as the game's _h: the grid's triangles
+	if (h_info.w < 0.5) { return 0.0; }
+	float fx = clamp((p.x - h_info.x) / h_info.z, 0.0, float(h_size.x) - 1.001);
+	float fz = clamp((p.y - h_info.y) / h_info.z, 0.0, float(h_size.y) - 1.001);
+	int i = int(fx);
+	int j = int(fz);
+	float ax = fx - float(i);
+	float az = fz - float(j);
+	float h00 = texelFetch(hmap, ivec2(i, j), 0).r;
+	float h10 = texelFetch(hmap, ivec2(i + 1, j), 0).r;
+	float h01 = texelFetch(hmap, ivec2(i, j + 1), 0).r;
+	float h11 = texelFetch(hmap, ivec2(i + 1, j + 1), 0).r;
+	if (ax + az <= 1.0) { return h00 + (h10 - h00) * ax + (h01 - h00) * az; }
+	return h11 + (h01 - h11) * (1.0 - ax) + (h10 - h11) * (1.0 - az);
+}
+void vertex() {
+	// a blade's three corners all sit at its root (VERTEX); UV says which corner (x across,
+	// y up), UV2 is the blade's own two random numbers
+	vec3 root = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	vec2 p = root.xz;
+	float gy = ground(p) + (h_info.w > 0.5 ? 0.07 : 0.0) + 0.015;
+	float d = distance(vec3(p.x, gy, p.y), CAMERA_POSITION_WORLD);   // (from up high: none)
+	float m = textureLod(mask, (p - mask_rect.xy) * mask_rect.zw, 0.0).g;
+	float n = noise(p / 70.0) * 0.65 + noise(p / 15.0) * 0.35;
+	float wild = smoothstep(0.62 - greenness * 0.45, 0.78 - greenness * 0.4, n);
+	float grow = m > 0.75 ? 1.0 : (m > 0.25 ? wild * 0.85 : 0.0);
+	grow *= 1.0 - smoothstep(reach * 0.6, reach, d);
+	float h = (0.06 + 0.1 * UV2.x) * grow;
+	float a = UV2.y * 6.2831853;
+	vec3 side = vec3(cos(a), 0.0, sin(a));
+	vec3 lean = vec3(-sin(a), 0.0, cos(a)) * (0.2 + 0.35 * UV2.x);
+	float sway = sin(TIME * 1.7 + p.x * 0.31 + p.y * 0.23) * 0.15 + sin(TIME * 3.1 + p.x * 1.3) * 0.05;
+	vec3 w = vec3(p.x, gy, p.y);
+	if (h > 0.004) {
+		w += side * UV.x * (0.011 + 0.007 * UV2.y) * (1.0 - UV.y)
+			+ (vec3(0.0, 1.0, 0.0) + lean + vec3(sway, 0.0, sway * 0.6)) * UV.y * h;
+	}
+	VERTEX = w - MODEL_MATRIX[3].xyz;   // (the grid moves, it does not turn)
+	NORMAL = vec3(0.0, 1.0, 0.0);
+	tip = UV.y;
+	tint = mix(col_a, col_b, step(0.82, fract(UV2.x * 7.3)) * 0.7 + (1.0 - clamp(m * 2.0 - 1.0, 0.0, 1.0)) * 0.25);
+}
+void fragment() {
+	// (a blade's base as dark as the lawn under it read as black spikes: barely darker, and
+	// the tips lighter than the lawn, as sunlit blades are)
+	ALBEDO = tint * mix(0.9, 1.35, tip);
+	if (!FRONT_FACING) { NORMAL = -NORMAL; }   // (double-sided: seen from behind, the renderer turned it to the ground, and the blade went black)
+	ROUGHNESS = 0.9;
+	SPECULAR = 0.2;
+}
+"""
+const GRASS_PATCH := 4.0             ## metres a patch of blades covers
+const GRASS_BLADES := 520            ## blades a patch (about 32 a square metre)
+const GRASS_REACH := 18.0            ## metres from the camera blades grow to
+var _grass: MultiMeshInstance3D
+var _grass_mat: ShaderMaterial
+
+func _build_grass() -> void:
+	if _fs_tex == null:
+		return   # (no picture of where grass grows: a headless run)
+	var b := Buf.new()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 77
+	for i in range(GRASS_BLADES):
+		var at := Vector3(rng.randf() * GRASS_PATCH, 0, rng.randf() * GRASS_PATCH)
+		var u2 := Vector2(rng.randf(), rng.randf())
+		b.tri(at, at, at, Vector3.UP, Color.WHITE, Vector2(-1, 0), Vector2(1, 0), Vector2(0, 1), u2)
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, b.arrays())
+	_grass_mat = ShaderMaterial.new()
+	var sh := Shader.new()
+	sh.code = GRASS_SHADER
+	_grass_mat.shader = sh
+	am.surface_set_material(0, _grass_mat)
+	if _hnx > 0:
+		var img := Image.create_from_data(_hnx, _hnz, false, Image.FORMAT_RF, _hgrid.to_byte_array())
+		_grass_mat.set_shader_parameter("hmap", ImageTexture.create_from_image(img))
+		_grass_mat.set_shader_parameter("h_info", Vector4(_hx0, _hz0, _hstep, 1.0))
+		_grass_mat.set_shader_parameter("h_size", Vector2i(_hnx, _hnz))
+	_grass_mat.set_shader_parameter("reach", GRASS_REACH)
+	_grass_mat.set_shader_parameter("greenness", 0.85 if String(_place.get("look", "")) == "north" else 0.35)
+	# the grid round the camera, nearest patches first (a smaller grid shows only the first)
+	var k := int(ceil(GRASS_REACH / GRASS_PATCH)) + 1
+	var cells: Array = []
+	for j in range(-k, k):
+		for i in range(-k, k):
+			cells.append(Vector2i(i, j))
+	cells.sort_custom(func(a: Vector2i, c: Vector2i) -> bool:
+		return Vector2(a.x + 0.5, a.y + 0.5).length() < Vector2(c.x + 0.5, c.y + 0.5).length())
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = am
+	mm.instance_count = cells.size()
+	for n in range(cells.size()):
+		var c: Vector2i = cells[n]
+		mm.set_instance_transform(n, Transform3D(Basis(), Vector3(c.x * GRASS_PATCH, 0, c.y * GRASS_PATCH)))
+	mm.custom_aabb = AABB(Vector3(-k * GRASS_PATCH, -600, -k * GRASS_PATCH), Vector3(2 * k * GRASS_PATCH, 1800, 2 * k * GRASS_PATCH))
+	_grass = MultiMeshInstance3D.new()
+	_grass.multimesh = mm
+	_grass.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	world.add_child(_grass)
+	_grass_retint()
+	_grass_quality()
+
+func _grass_retint() -> void:
+	if _grass_mat == null:
+		return
+	_grass_mat.set_shader_parameter("mask", _fs_tex)
+	_grass_mat.set_shader_parameter("mask_rect", _fs_rect)
+	var gr: Color = _tone["grass"]
+	_grass_mat.set_shader_parameter("col_a", gr)
+	_grass_mat.set_shader_parameter("col_b", gr.lerp(_tone.get("sand", gr), 0.45))
+
+## how many of the patches show: all at the top quality, the nearer ones at 2, none below
+func _grass_quality() -> void:
+	if _grass == null:
+		return
+	_grass.visible = _quality >= 2
+	var all := _grass.multimesh.instance_count
+	_grass.multimesh.visible_instance_count = all if _quality >= 3 else int(all * 0.55)
+
+## the grid under the camera, a patch at a time (each frame, with the sky)
+func _grass_follow() -> void:
+	if _grass == null or not _grass.visible:
+		return
+	var c := cam.global_position
+	var at := Vector3(floorf(c.x / GRASS_PATCH) * GRASS_PATCH, 0, floorf(c.z / GRASS_PATCH) * GRASS_PATCH)
+	if at != _grass.position:
+		_grass.position = at
+
+## an outline filled on a canvas item, in one colour (skipped if it will not triangulate)
+func _canvas_ring(item: RID, ring: PackedVector2Array, col: Color) -> void:
+	var tri := Geometry2D.triangulate_polygon(ring)
+	if tri.is_empty():
+		return
+	var c := PackedColorArray()
+	c.resize(ring.size())
+	c.fill(col)
+	RenderingServer.canvas_item_add_triangle_array(item, tri, ring, c)
 
 ## a tree's shadow on the ground (crown r across, its middle y up), for past the real ones:
 ## laid round the foot of its trunk; AO_SHADER moves it out along the sun's way and draws it
@@ -8856,6 +9103,8 @@ func cat_at(p: Vector2, y: float, face: Vector2, kind: String) -> void:
 		return
 	var yaw := atan2(face.x, face.y) if face.length_squared() > 0.0001 else 0.0
 	_cat_spots.append([Transform3D(Basis(Vector3.UP, yaw), Vector3(p.x, y, p.y)), kind, posmod(_hash_i(p * 3.0), 97)])
+	if y - _h(p) < 0.4:   # on the ground (not up on a wall): a small post, not walked through
+		_add_post(p, 0.15)
 
 ## ---- contact shadows ------------------------------------------------------------------------
 ## Where a wall meets the ground, and under a parked car, less of the sky's light gets in and
@@ -10423,6 +10672,7 @@ func _build_sky_dome() -> void:
 func _sky_follow() -> void:
 	if _sky_dome != null:
 		_sky_dome.global_position = cam.global_position
+	_grass_follow()
 
 func _retint_sky_dome() -> void:
 	if _sky_dome == null:
@@ -10769,15 +11019,23 @@ func _fwd() -> Vector2:
 ## The right-hand lane's line, this far right of a two-way road's middle. Every two-way
 ## street has two lanes, however narrow; the line sits a little past the lane's own middle,
 ## toward the kerb, as drivers do -- at w/4 cars ran close to the centre line and met the
-## traffic coming the other way in it. A one-way road of one lane: its middle; of several:
-## the middle of the right-hand one, where traffic drives (autodrive used to take the middle
-## of the road, astride two lanes, and ran in between the cars in them).
+## traffic coming the other way in it; at w/4 + 0.25 they hugged the kerb. A one-way road of
+## one lane: its middle; of two: the middle of the right-hand one; of three or more: the
+## second from the right (autodrive used to take the middle of the road, astride two
+## lanes, and ran in between the cars in them).
 func _lane_off(r: Dictionary) -> float:
 	var w := float(r["w"])
 	if int(r["o"]) != 0:
 		var n := _lanes_each_way(r)
-		return 0.0 if n <= 1 else w * 0.5 - w / n * 0.5
-	return clampf(minf(w * 0.25 + 0.25, w * 0.5 - 0.95), 0.9, 2.6)
+		if n <= 1:
+			return 0.0
+		# three lanes or more: the second from the right, where traffic going straight on
+		# drives (the right-hand one hugged the kerb all along Sderot Herzl); the right-hand
+		# lane is taken before a right turn (_ap_turn_lane)
+		return w * 0.5 - w / n * (1.5 if n >= 3 else 0.5)
+	# (+0.12 past the lane's middle, and 1.1 m clear of the kerb: +0.25 left a car 0.6 m from
+	# the kerb on a 7 m street, and the others, drifting, hugged it)
+	return clampf(minf(w * 0.25 + 0.12, w * 0.5 - 1.1), 0.9, 2.6)
 
 ## lanes each way: a one-way road's all, half a two-way road's (by the tag, else the width)
 func _lanes_each_way(r: Dictionary) -> int:
@@ -11282,8 +11540,9 @@ func _walk(dt: float) -> void:
 	var want := go * (RUN if run and go > 0.0 else WALK) * (0.6 if go < 0.0 else 1.0)
 	_v = move_toward(_v, want, 9.0 * dt)
 	_pos += _fwd() * _v * dt
-	# walls, trees and posts; the cars going by; the car you left
+	# walls, trees and posts; the people; the cars going by; the car you left
 	var push := _push_out(_pos, 0.3, true, false, _y)
+	push += _people_push(_pos + push, 0.3)
 	push += _steep_push(_pos + push, 0.3, _y)
 	push += _deep_push(_pos + push, 0.3, _y)
 	_pos += push
@@ -11706,7 +11965,15 @@ func _start_on(street: String, cross: String) -> bool:
 	Probe.note("start corner: %s never meets %s in %s" % [street, cross, _city_id])
 	return false
 
+## STREETS_SIM_SPEED=n (tests only; tests/run.sh sets it from SIM_SPEED): the game runs n
+## times as much game time a tick. Held here every tick because the shell puts the engine's
+## time scale back to 1 when a game starts and after every hit-stop (a --time-scale on the
+## command line was undone before the first tick). Unset in play: nothing happens.
+var _sim_speed := float(OS.get_environment("STREETS_SIM_SPEED")) if OS.get_environment("STREETS_SIM_SPEED") != "" else 0.0
+
 func _physics_process(dt: float) -> void:
+	if _sim_speed > 0.0 and Engine.time_scale != _sim_speed:
+		Engine.time_scale = _sim_speed
 	_prev_pos = _pos   # where the car was at the last tick, for _frame() to blend from
 	_prev_yaw = _yaw
 	_prev_y = _y
@@ -11877,6 +12144,7 @@ func _set_quality(q: int) -> void:
 	view.scaling_3d_scale = row[2]
 	_set_blobs(not sun.shadow_enabled)
 	_far_update()
+	_grass_quality()
 
 ## Only on the web: a desktop build has a real GPU, and test runs on a software renderer
 ## would step themselves down to nothing.
@@ -12590,6 +12858,13 @@ func _people_lod(a: Actor3D) -> void:
 	for mi: MeshInstance3D in a.find_children("*", "MeshInstance3D", true, false):
 		mi.visibility_range_end = PEOPLE_SEEN
 		mi.visibility_range_end_margin = 5.0
+		# dissolving in over the last 15 m (a dither, no sorting), not there in one frame
+		for si in range(mi.mesh.get_surface_count() if mi.mesh != null else 0):
+			var m := mi.get_active_material(si) as BaseMaterial3D
+			if m != null and m.distance_fade_mode == BaseMaterial3D.DISTANCE_FADE_DISABLED:
+				m.distance_fade_mode = BaseMaterial3D.DISTANCE_FADE_OBJECT_DITHER
+				m.distance_fade_min_distance = PEOPLE_SEEN   # (min past max: gone at min)
+				m.distance_fade_max_distance = PEOPLE_SEEN - 15.0
 
 func _people_awake(a: Actor3D, p: Vector2) -> void:
 	var near := p.distance_to(_pos) < PEOPLE_SEEN + 8.0
@@ -12762,6 +13037,19 @@ func _unseen(p: Vector2) -> bool:
 	return d > PEOPLE_SEEN + 4.0 or (d > 18.0 and to.dot(_fwd()) < -0.35 * d)
 
 func _people_tick(dt: float) -> void:
+	# where everyone is, for the walkers to keep clear of and for the car and you to bump
+	# (everyone placed, wherever they are: a walker 60 m off still has to see the next one)
+	_people_at.clear()
+	_people_who.clear()
+	for list: Array in [_walkers, _chatters, _crossers]:
+		for w: Dictionary in list:
+			var a: Actor3D = w["actor"]
+			if a.visible:
+				_people_at.append(Vector2(a.position.x, a.position.z))
+				_people_who.append(a.get_instance_id())
+	if _walking:
+		_people_at.append(_pos)
+		_people_who.append(0)
 	_people_t -= dt
 	if _people_t <= 0.0:
 		_people_t = 1.5
@@ -12791,6 +13079,33 @@ func _people_tick(dt: float) -> void:
 		w["s"] = s
 		var p := _along(line, cum, s)
 		var ahead := _along(line, cum, clampf(s + float(w["dir"]) * 0.5, 0.0, total)) - p
+		# keeping clear, as people do: round a post, a tree, a bench, a cabinet a step ahead,
+		# to the right of anyone coming the other way (or standing in the way), and never
+		# into anything -- they used to walk through all of it on their line
+		if ahead != Vector2.ZERO:
+			var fw := ahead.normalized()
+			var right := Vector2(-fw.y, fw.x)
+			var want := 0.0
+			var block := _push_out(p + fw * 1.3, 0.35, true, false)   # (0.45 felt the house fronts at the pavement's back and drifted them kerbwards)
+			if block != Vector2.ZERO:
+				want += clampf(block.dot(right) * 2.5, -0.8, 0.8)
+			# someone ahead or alongside within a shoulder's width: a step away from their side
+			# until past them (only "ahead" let them drift back as they drew level), the right
+			# if they are dead ahead
+			var me := a.get_instance_id()
+			for k in range(_people_at.size()):
+				if _people_who[k] == me:
+					continue
+				var rel := _people_at[k] - p
+				var fore := rel.dot(fw)
+				if fore > -0.6 and fore < 2.6:
+					var sr := rel.dot(right)
+					if absf(sr) < 0.85:
+						want += 0.8 if absf(sr) < 0.05 else -signf(sr) * (0.85 - absf(sr))
+			var lat: float = w.get("lat", 0.0)
+			lat = lerpf(lat, clampf(want, -0.7, 0.7), 1.0 - exp(-dt * 3.0))
+			w["lat"] = lat
+			p += right * lat
 		# a car coming at them on the pavement: step aside, towards the buildings
 		var to_car := _pos - p
 		var dodge: float = w["dodge"]
@@ -12804,6 +13119,8 @@ func _people_tick(dt: float) -> void:
 			if side.dot(to_car) > 0.0:
 				side = -side
 			p += side * dodge
+		for _pass in range(2):   # (out of one parked car's post can be into its other)
+			p += _push_out(p, 0.25, true, false)
 		a.position = Vector3(p.x, _h(p) + _pave_top(), p.y)   # (their line is on the pavement)
 		if ahead != Vector2.ZERO:
 			# turning as people do, over a moment: at the end of a block they turned back on
@@ -13285,6 +13602,8 @@ func _collide() -> void:
 		var moved := false
 		for off: float in [CAR_OFF, -CAR_OFF]:
 			var p := _push_out(_pos + fwd * off, CAR_R, true, true, _y)
+			if not _walking:
+				p += _people_push(_pos + fwd * off + p, CAR_R)
 			p += _steep_push(_pos + fwd * off + p, CAR_R, _y)
 			p += _deep_push(_pos + fwd * off + p, CAR_R, _y)
 			if p != Vector2.ZERO:
@@ -13320,7 +13639,10 @@ func _collide() -> void:
 		var along := vel - n * vel.dot(n)
 		vel -= along.limit_length(impact * WALL_GRIP)
 		_crash(impact)
-		if _last_hit.begins_with("car "):
+		# a real knock stuns the car hit (2.5 s); leaning on it does not. Every touch used
+		# to, so a car autodrive pressed against never pulled away, and both stood there
+		# (the exam: a hatch "held by the limit" 20 s with autodrive pushing into it)
+		if _last_hit.begins_with("car ") and impact > 1.2:
 			_traffic.bumped(int(_last_hit.substr(4)))
 	_v = vel.dot(fwd)
 	_v_lat = clampf(vel.dot(right), -7.0, 7.0)
@@ -13329,6 +13651,10 @@ func _crash(speed: float) -> void:
 	if speed < 1.2 or _crash_cool > 0.0:
 		return
 	_crash_cool = 0.4
+	if _last_hit == "person":   # the car stops at them, a soft knock: never a bang
+		Audio.play("impact_soft", 0.1, -10.0)
+		Probe.event("crash", {"kmh": int(speed * 3.6), "hit": _last_hit, "at": Vector2i(_pos)})
+		return
 	if _auto and (_last_hit.begins_with("building") or _last_hit.begins_with("wall") or _last_hit.begins_with("post")):
 		_ap_bonks += 1.0
 	# a jolt of the camera, not a freeze-frame: the car stops dead and the view with it
@@ -13452,6 +13778,24 @@ func _push_out(c: Vector2, r: float, posts: bool, cars := true, y := NAN) -> Vec
 		if tp != Vector2.ZERO:
 			push += tp
 			_last_hit = "car %d" % _traffic.hit_index
+	return push
+
+## The people in the street as solid things, for what moves at play -- the car (_collide)
+## and you on foot -- and not for _push_out, which also places things as the city builds
+## (a passer-by there would have cost a square its bench). They were walked and driven
+## through like ghosts.
+const PERSON_R := 0.28
+var _people_at := PackedVector2Array()   ## where everyone in the street is now (_people_tick)
+var _people_who := PackedInt64Array()    ## ... and who (an actor's id; 0 you on foot)
+
+func _people_push(c: Vector2, r: float) -> Vector2:
+	var push := Vector2.ZERO
+	for q in _people_at:
+		var d := (c + push) - q
+		var need := r + PERSON_R
+		if d.length_squared() < need * need:
+			push += d.normalized() * (need - d.length()) if d.length() > 0.001 else Vector2(need, 0)
+			_last_hit = "person"
 	return push
 
 func _poly_push(poly: PackedVector2Array, c: Vector2, r: float) -> Vector2:
@@ -13633,6 +13977,13 @@ func _head_tick(dt: float) -> void:
 		if _head_check <= 0.0 and _head_plan.is_empty() and absf(_v) < 2.5 and _gear > 0:
 			_head_check = 0.2
 			var j := _junction_ahead_me(16.0)
+			# only first in line and about to go: at a light, once it is green (it looked
+			# left and right at every red, from behind a queue of cars); with a car in front,
+			# not yet -- it looks when it is the one pulling out
+			if j >= 0 and _sig_set.has(j) and _light_at(j, _fwd()) not in ["g", ""]:
+				j = -1
+			if j >= 0 and _car_ahead_me(12.0):
+				j = -1
 			if j >= 0 and (_nodes[j].distance_to(_head_at) > 45.0 or _head_at_t > 20.0):
 				_head_at = _nodes[j]
 				_head_at_t = 0.0
@@ -13705,6 +14056,12 @@ func _junction_ahead_me(reach: float) -> int:
 		d += pts[k].distance_to(pts[nk])
 		k = nk
 	return -1
+
+## a car in front within `reach` (on autodrive's planned lane, or straight ahead driving yourself)
+func _car_ahead_me(reach: float) -> bool:
+	var path := _ap_pts if (_auto and _ap_pts.size() >= 2) else PackedVector2Array([_pos, _pos + _fwd() * (reach + 2.0)])
+	var lead: Array = _traffic.lead_on(path, _pos, reach, false)
+	return float(lead[0]) < reach
 
 ## the nearest person in front within `reach` (on a crossing, stepping off the kerb)
 func _person_ahead_me(reach: float) -> Vector2:
@@ -14812,12 +15169,21 @@ func _ap_turn_lane(ri: int, from: int, dir: int) -> void:
 	var c := pts[at]
 	var in_dir := (_ap_pts[m - 1] - _ap_pts[m - 3]).normalized()
 	var out_dir := (pts[from] - c).normalized()
-	if in_dir == Vector2.ZERO or out_dir == Vector2.ZERO or in_dir.angle_to(out_dir) > -0.6:
-		return   # (not a left turn: + is right)
+	if in_dir == Vector2.ZERO or out_dir == Vector2.ZERO:
+		return
+	var turn := in_dir.angle_to(out_dir)   # (+ is right)
 	var n := _lanes_each_way(r_in)
 	var w := float(r_in["w"])
 	var target := 0.0
-	if int(r_in["o"]) != 0:
+	if turn > 0.6:
+		# a right turn off a road of three lanes or more: over to the right-hand lane (the
+		# car goes straight on in the second)
+		if int(r_in["o"]) == 0 or n < 3:
+			return
+		target = w * 0.5 - w / n * 0.5
+	elif turn > -0.6:
+		return   # (straight on)
+	elif int(r_in["o"]) != 0:
 		if n < 2:
 			return
 		target = -(w * 0.5 - w / n * 0.5)
