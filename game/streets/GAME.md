@@ -343,6 +343,13 @@ and black bollards with a yellow band stand along Sirkin's kerb toward Katznelso
 
 > go with all for that area, and create each time a video for me if possible
 
+Kira Sushi's front has its string lights, two strands of warm bulbs looping under the
+awning and lit by day as in the film; Sirkin's paving has light grey setts laid in a half-
+circle round each street tree and in a band between them. Road signs, crossing barriers,
+hydrants and red-and-white kerbs are a real red, not the palette's pink.
+
+> 3,5
+
 The minimap (bottom left) shows the real streets and buildings round you, heading up, with
 the city limits in pink. The name of the street you are on is at the top, in Hebrew with
 the English name under it when OSM has one.
