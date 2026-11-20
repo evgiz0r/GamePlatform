@@ -13,8 +13,13 @@ extends RefCounted
 ## Format (every key optional):
 ##   roads     {drop: [{k, name, near: [x, z]}],   the baked roads of that kind and name
 ##                                                    that pass within 3 m of `near`
-##              add: [{pts: [[x, z]...], k, w, name, name_en, o, l, sv}]}   ends within 1 m of
+##              add: [{pts: [[x, z]...], k, w, name, name_en, o, l, sv}],   ends within 1 m of
 ##                                                    a baked node join it
+##              set: [{k, name, near: [x, z], w, l, kerb}]}   the baked roads of that kind and
+##                                                    name passing within 3 m of `near` get
+##                                                    that width, lanes, kerb paint (plain,
+##                                                    red_white, blue_white, yellow_black: a
+##                                                    whole way, junction to junction)
 ##   crossings [[x, z], ...]                         zebras at the road nodes nearest these
 ##   areas     [{k, p: [[x, z]...]}]                 as the city file's areas (plaza, park...)
 ##   buildings [{near: [x, z], arcade: [[x, z], [x, z]], depth, h}]   the building holding
@@ -23,12 +28,15 @@ extends RefCounted
 ##                                                    `lift` m up (0.14: level with the
 ##                                                    pavement), in a ground tone (slabs,
 ##                                                    pavers_dark...), slabs' joints along `lay`
-##   lines     [{kind, pts: [[x, z]...], h, base}]   stone_wall, wood_fence, loop_fence, hedge
+##   lines     [{kind, pts: [[x, z]...], h, base}]   stone_wall, wood_fence, loop_fence, hedge,
+##                                                    shrubs (tall planting h high: leafy masses)
 ##   props     [{kind, at: [x, z], dir: [x, z]}]     bin, hoop_railing, bollard, twin_poles
 ##                                                    (dir: the line through them), barrier
 ##                                                    (dir: the way the boom goes, len),
 ##                                                    globe_lamp (h), manhole, motorbike and
-##                                                    scooter (dir: the nose; box: a top box).
+##                                                    scooter (dir: the nose; box: a top box),
+##                                                    kerb_paint (at: by the kerb of the road
+##                                                    nearest; len, pat: red_white...).
 ##                                                    Anything on a lifted surface stands on it.
 ##   trees     [[x, z], ...]                         more trees for the city's own builder
 ##   walks     {id: {name, points: [[t, x, z]...],   two points at one spot: it waits there
@@ -41,6 +49,7 @@ extends RefCounted
 
 var g: Node                    ## the streets game
 var data := {}
+const KERB_PAINT := ["plain", "red_white", "blue_white", "yellow_black"]   ## (the kerb shader's order)
 
 func _init(game: Node, d: Dictionary) -> void:
 	g = game
@@ -69,6 +78,20 @@ func edit_city(city: Dictionary) -> void:
 				continue
 			kept.append(r)
 		city["roads"] = kept
+	for st: Dictionary in ed.get("set", []):
+		var near := _v2(st["near"])
+		var hit := 0
+		for r: Dictionary in city["roads"]:
+			if String(r.get("k", "")) == String(st.get("k", "")) and String(r.get("name", "")) == String(st.get("name", "")) \
+					and _passes(r, nodes, near, sc):
+				for key: String in ["w", "l"]:
+					if st.has(key):
+						r[key] = st[key]
+				if st.has("kerb"):
+					r["kerb"] = KERB_PAINT.find(String(st["kerb"]))
+				hit += 1
+		if hit == 0:
+			Probe.note("details: no %s road '%s' at %s to set" % [st.get("k", ""), st.get("name", ""), near])
 	for ad: Dictionary in ed.get("add", []):
 		var ids: Array = []
 		for p: Array in ad["pts"]:
@@ -218,6 +241,8 @@ func build() -> void:
 	var wood: Color = g._tone["woodfence"]
 	var white: Color = g._tone["mark"]
 	var dark: Color = g._tone["tyre"]
+	var shrubs: Array = []
+	var shrub_cols: Array = []
 	for sf: Dictionary in data.get("surfaces", []):
 		_paving(sf)
 	for ln: Dictionary in data.get("lines", []):
@@ -228,7 +253,8 @@ func build() -> void:
 			var e := _v2(pts[j + 1])
 			match kind:
 				"stone_wall":
-					_wall(b, a, e, float(ln.get("h", 0.8)), 0.4, stone, 0.0, true)
+					_wall(b, a, e, float(ln.get("h", 0.8)), 0.36, stone.lerp(g._greyed(stone, 1.0), 0.8).darkened(0.25), 0.0, true)
+					_stones(b, a, e, float(ln.get("h", 0.8)), 0.4, g._greyed(stone, 0.85).darkened(0.12))
 				"wood_fence":
 					_slats(b, a, e, float(ln.get("base", 0.8)), float(ln.get("h", 1.1)), wood)
 				"loop_fence":
@@ -236,8 +262,11 @@ func build() -> void:
 				"hedge":
 					g._furn._hedge_line(hedge, a, e)
 					_solid(a, e, 0.45)
+				"shrubs":
+					_shrubs(shrubs, shrub_cols, a, e, float(ln.get("h", 2.6)))
 	var bikes: Array = []
 	var bike_cols: Array = []
+
 	var scooters: Array = []
 	var scooter_cols: Array = []
 	var boxes: Array = []
@@ -247,13 +276,13 @@ func build() -> void:
 	for pr: Dictionary in data.get("props", []):
 		var at := _v2(pr["at"])
 		var d := _v2(pr.get("dir", [1, 0])).normalized()
-		var y: float = g._h(at) + _lift_at(at)
+		var y: float = maxf(g._walk_y(at), g._h(at) + _lift_at(at))   # (on a pavement, or on paving of ours)
 		k += 1
 		match String(pr["kind"]):
 			"bin":
-				_bin(b, at, dark)
+				_bin(b, at, y, dark)
 			"hoop_railing":
-				_hoop(b, at, d, white)
+				_hoop(b, at, y, d, white)
 			"bollard":
 				_bollard(b, at, y, k)
 			"twin_poles":
@@ -262,6 +291,8 @@ func build() -> void:
 				_barrier(b, at, y, d, float(pr.get("len", 4.0)))
 			"globe_lamp":
 				_globe_lamp(b, at, y, float(pr.get("h", 2.7)))
+			"kerb_paint":
+				_kerb_paint(b, at, float(pr.get("len", 10.0)), KERB_PAINT.find(String(pr.get("pat", "red_white"))))
 			"manhole":
 				g._furn._tube(b, Vector3(at.x, y, at.y), Vector3(at.x, y + 0.012, at.y), 0.33, 0.33, g._tone["metal"].darkened(0.3), 14)
 			"motorbike", "scooter":
@@ -284,6 +315,8 @@ func build() -> void:
 		g._chunked(g._furn._scooter_kit(), scooters, 170.0, scooter_cols, null, true)
 	if not boxes.is_empty():
 		g._chunked(_box_kit(), boxes, 170.0, [], null, true)
+	if not shrubs.is_empty() and g._tree_meshes.has("crown"):
+		g._chunked(g._tree_meshes["crown"], shrubs, 260.0, shrub_cols, null, false)
 	await g._flush_batches()
 
 ## ---- paving -----------------------------------------------------------------------------------
@@ -362,6 +395,39 @@ func _up(p: Vector2, lift: float) -> Vector3:
 	return g._g3(p, lift)
 
 ## ---- things standing ------------------------------------------------------------------------
+
+## A stretch of kerb painted in stripes, `len` long, centred by `at`, on the kerb of the
+## road nearest it on at's side: laid over the city's kerb a shade bigger, in the kerb
+## shader's own colours, for paint that stops short of a whole street (a road's kerb paint
+## is one pattern from junction to junction: "set" in roads gives a whole way's)
+func _kerb_paint(b, at: Vector2, L: float, pat: int) -> void:
+	var hit: Dictionary = g._nearest_seg(at, 15.0, true, true)
+	if hit.is_empty() or pat <= 0:
+		return
+	var r: Dictionary = g._roads[int(hit["road"])]
+	var pts: PackedVector2Array = r["pts"]
+	var sj: int = hit["seg"]
+	var d := (pts[sj + 1] - pts[sj]).normalized()
+	var q: Vector2 = pts[sj] + d * (at - pts[sj]).dot(d)
+	var n := (at - q).normalized()
+	var mat: ShaderMaterial = g._kerb_mat
+	if mat == null:
+		return   # (no kerbs built yet)
+	var kc: Dictionary = (g.get_script() as GDScript).get_script_constant_map()
+	var kw: float = kc["KERB_W"]
+	var kh: float = kc["KERB_H"]
+	var white: Color = mat.get_shader_parameter("white")
+	var paint: Color = mat.get_shader_parameter(["", "red", "blue", "yellow"][pat])
+	if pat == 3:
+		white = mat.get_shader_parameter("black")
+	var lift: float = 0.07 if g._hnx > 0 else 0.0
+	var steps := maxi(2, int(round(L)))
+	var bs := Basis(Vector3.UP, atan2(-d.y, d.x))
+	for i in range(steps):
+		var c: Vector2 = q + n * (float(r["w"]) * 0.5 + kw * 0.5) + d * (-L * 0.5 + (float(i) + 0.5) * L / steps)
+		var gy: float = g._h(c) + lift
+		g._furn._box(b, Vector3(c.x, gy + kh * 0.5 + 0.004, c.y), Vector3(L / steps + 0.002, kh + 0.016, kw + 0.02),
+			paint if i % 2 == 0 else white, bs)
 
 ## a black steel bollard with a yellow band near the top; now and then one worn grey
 func _bollard(b, at: Vector2, y: float, k: int) -> void:
@@ -478,6 +544,65 @@ func _wall(b, a: Vector2, e: Vector2, h: float, t: float, col: Color, y0 := 0.0,
 	if solid:
 		_solid(a, e, t * 0.6 + 0.05)
 
+## A rough stone wall's face, both sides: rows of stones a hand or two high and of uneven
+## length, each a shade of its own and standing a little proud or back, over the mortar
+## (the plain wall `_wall` lays behind them, `t` a little less thick)
+func _stones(b, a: Vector2, e: Vector2, h: float, t: float, col: Color) -> void:
+	var L := a.distance_to(e)
+	if L < 0.2:
+		return
+	var d := (e - a) / L
+	var o := Vector2(-d.y, d.x)
+	var gy := minf(g._h(a), g._h(e))
+	var bs := Basis(Vector3.UP, atan2(-d.y, d.x))
+	var y := -0.05
+	var row := 0
+	while y < h - 0.05:
+		var rh := 0.19 + 0.09 * _rnd(row, 0)
+		rh = minf(rh, h - y)
+		var s := -0.25 * _rnd(row, 1)
+		var k := 0
+		while s < L:
+			var sl := 0.28 + 0.34 * _rnd(row, k + 2)
+			var s0 := maxf(s, 0.0)
+			var s1 := minf(s + sl, L)
+			if s1 - s0 > 0.06:
+				var mid := a + d * ((s0 + s1) * 0.5)
+				var shade := 0.82 + 0.3 * _rnd(row * 31 + k, 7)
+				var c := Color(col.r * shade, col.g * shade * (0.98 + 0.04 * _rnd(k, row)), col.b * shade)
+				var proud := 0.015 * _rnd(k + 5, row + 3)
+				for side: float in [-1.0, 1.0]:
+					var q := mid + o * side * (t * 0.5 - 0.02 + proud)
+					g._furn._box(b, Vector3(q.x, gy + y + rh * 0.5, q.y), Vector3(s1 - s0 - 0.025, rh - 0.025, 0.06), c, bs)
+			s += sl
+			k += 1
+		y += rh
+		row += 1
+
+## Tall planting along a line, `h` high: the trees' leaf-card crowns sat on the ground a
+## metre or so apart, each a little different in size and place, broad leaves and small
+## ones mixed (the crown's atlas cell is the instance colour's alpha), solid to walk into
+func _shrubs(xf: Array, cols: Array, a: Vector2, e: Vector2, h: float) -> void:
+	var L := a.distance_to(e)
+	var d := (e - a) / maxf(L, 0.01)
+	var o := Vector2(-d.y, d.x)
+	var n := maxi(1, int(L / 1.05))
+	for i in range(n + 1):
+		var r1 := _rnd(i, int(a.x * 10.0))
+		var r2 := _rnd(i + 17, int(a.y * 10.0))
+		var p := a + d * (L * float(i) / n + (r1 - 0.5) * 0.5) + o * (r2 - 0.5) * 0.5
+		var hh := h * (0.85 + 0.3 * r2)
+		var w := 0.8 + 0.3 * r1
+		var gy: float = g._h(p)
+		xf.append(Transform3D(Basis(Vector3.UP, r1 * TAU).scaled(Vector3(w, hh * 0.5, w)), Vector3(p.x, gy + hh * 0.48, p.y)))
+		cols.append(Color(0.8, 0.92, 0.78, 0.125) if r2 < 0.6 else Color(0.7, 0.88, 0.66, 0.375))
+	_solid(a, e, 0.45)
+
+## a steady pseudo-random number in [0, 1) for a stone's size and shade, so a wall comes
+## out the same every time
+func _rnd(i: int, j: int) -> float:
+	return fposmod(sin(float(i) * 12.9898 + float(j) * 78.233) * 43758.5453, 1.0)
+
 ## a fence of horizontal wooden boards with gaps between, on posts, from `base` up `h`
 func _slats(b, a: Vector2, e: Vector2, base: float, h: float, col: Color) -> void:
 	var L := a.distance_to(e)
@@ -518,16 +643,14 @@ func _pickets(b, a: Vector2, e: Vector2, h: float, col: Color) -> void:
 	_solid(a, e, 0.2)
 
 ## a litter bin: a black slotted cylinder on a short post
-func _bin(b, at: Vector2, col: Color) -> void:
-	var gy: float = g._h(at)
+func _bin(b, at: Vector2, gy: float, col: Color) -> void:
 	g._furn._tube(b, Vector3(at.x, gy, at.y), Vector3(at.x, gy + 1.0, at.y), 0.26, 0.26, col, 10)
 	g._furn._box(b, Vector3(at.x, gy + 1.0, at.y), Vector3(0.5, 0.04, 0.5), col.darkened(0.2))
 	g._add_post(at, 0.3)
 
 ## a white tubular railing: a straight top rail on two posts with a hoop curving under it,
 ## `d` the way it runs
-func _hoop(b, at: Vector2, d: Vector2, col: Color) -> void:
-	var gy: float = g._h(at)
+func _hoop(b, at: Vector2, gy: float, d: Vector2, col: Color) -> void:
 	var half := 0.9
 	var A := Vector3(at.x - d.x * half, gy, at.y - d.y * half)
 	var E := Vector3(at.x + d.x * half, gy, at.y + d.y * half)

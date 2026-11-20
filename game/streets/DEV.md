@@ -244,18 +244,23 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   motorbikes and scooters nose to the kerb along the arcade (a gap where the walk comes up
   off the road), two more in the forecourt; the planted bed behind the white fence and the
   trees over the passage's mouth.
-- **Next passes** (seen in the side-by-sides; another session's kerb pass now adds its own
-  bollards and crossing railings city-wide, so check what it put here first): Katzenelson's
-  width at the crossing (the film's pace says its halves are narrower than the game's 9 m:
-  measure from the film and narrow them in the details file); the forecourt's slabs still
-  too pale in the sun; at the zebra's south end the white hoop railing and the red-white
-  kerb; the passage's own paving is small grey pavers in rows, not herringbone, and level
-  with the forecourt (the game steps down 12 cm into it); its stone wall is rough grey stone
-  and its fence darker wood; the corner of Sheinkin is a raised crossing paved in charcoal
-  herringbone with the zebra painted on it, white bollards round the corner, another
-  transformer; Ha-Meri has blue-white kerbs, a Zone 30 sign and a painted 30 ring; the
-  confectionery's front; the shop fronts under the arcade are lit glass in light frames, not
-  the game's dark panels. People last.
+- **Pass 4, Katzenelson's crossing and the passage**, done: Katzenelson's halves set to 7 m
+  (roads.set: two lanes each; the baker's 9 m made the walk sprint), the walk's kerbs, median
+  and zebra stretches moved with them; white hoop railings either side of the zebra on both
+  kerbs and the kerb painted red-white 10 m each way (kerb_paint: pieces laid over the
+  city's kerb in the kerb shader's colours; a whole road's paint is roads.set's `kerb`); the
+  passage paved in small grey pavers in rows across it (the tone shader's kind 5), level
+  with the forecourt; its wall rough grey stones on a mortar backing; tall planting both
+  sides (shrubs: the trees' leaf-card crowns on the ground, 2.4-3 m) and four more trees, so
+  the passage closes in as filmed. Props stand on the higher of the city's pavement
+  (`_walk_y`) and the details' own paving.
+- **Next passes** (seen in the side-by-sides): the forecourt's slabs perhaps still too pale
+  in the sun; the corner of Sheinkin is a raised crossing paved in charcoal herringbone with
+  the zebra painted on it, white bollards round the corner (another session's kerb pass now
+  puts bollards there: check), another transformer; Ha-Meri has blue-white kerbs (roads.set
+  `kerb: blue_white`), a Zone 30 sign and a painted 30 ring; the confectionery's front at
+  Katzenelson's far kerb; the shop fronts under the arcade are lit glass in light frames,
+  not the game's dark panels. People last.
 
 ## Open problems
 
