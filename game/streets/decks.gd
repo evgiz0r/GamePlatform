@@ -357,11 +357,47 @@ func _clear_ends(ri: int) -> Vector2:
 ## under it: left out. Bedford's highway bridge rises from Union Street's junction, and the
 ## short one-way links between the two run beside its first metres: its side wall stood
 ## across both of them and autodrive ran into it on every way through the turn.
+## Near a junction end (JUNCTION_REACH along the deck) a piece is also left out where it comes
+## within NEAR_STREET of such a street's carriageway: there the link roads of a junction run
+## past the deck's first metres, and a wall ending 0.2 m off one's edge was hit by every car
+## turning along it. Elsewhere only a wall on the carriageway is (a street running beside an
+## embankment keeps the wall between them).
 const UNDER_CLEAR := 3.0
-func _on_street_below(ri: int, a: Vector2, b: Vector2, rise_a: float, rise_b: float) -> bool:
-	for k in range(3):
-		var t := k * 0.5
-		if lerpf(rise_a, rise_b, t) < UNDER_CLEAR and g._asphalt_other(a.lerp(b, t), ri):
+const NEAR_STREET := 1.0
+const JUNCTION_REACH := 25.0
+func _on_street_below(ri: int, a: Vector2, b: Vector2, rise_a: float, rise_b: float, margin := -0.25) -> bool:
+	var n := maxi(2, ceili(a.distance_to(b) / 0.5))
+	for k in range(n + 1):
+		var t := float(k) / n
+		if lerpf(rise_a, rise_b, t) < UNDER_CLEAR and _street_at(a.lerp(b, t), ri, margin):
+			return true
+	return false
+
+## how far along from each end (x first, y last) a deck counts as near a junction (an end
+## where three roads or more meet): JUNCTION_REACH, else 0
+func _junction_ends(ri: int) -> Vector2:
+	var ids: PackedInt32Array = g._roads[ri]["ids"]
+	return Vector2(JUNCTION_REACH if (g._node_roads[ids[0]] as Array).size() >= 3 else 0.0,
+		JUNCTION_REACH if (g._node_roads[ids[ids.size() - 1]] as Array).size() >= 3 else 0.0)
+
+## p is on the carriageway of a drivable road other than ri (or within `margin` past its edge)
+## where that road is at ground level (a road, or a deck's piece within half a metre of the ground). From the roads' own
+## grid: the walls are worked out while the city loads, before the asphalt's grid is made
+## (with that one, the check above found nothing and the wall stayed).
+func _street_at(p: Vector2, ri: int, margin := -0.25) -> bool:
+	for code: int in g._near(g._seg_hash, p, 8.0, g.SEG_CELL):
+		var rj: int = code / 4096
+		if rj == ri:
+			continue
+		var r: Dictionary = g._roads[rj]
+		if not r["drive"]:
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		var sj: int = code % 4096
+		if r.has("ys") and r.has("gs") and (absf(float(r["ys"][sj]) - float(r["gs"][sj])) > 0.5
+				or absf(float(r["ys"][sj + 1]) - float(r["gs"][sj + 1])) > 0.5):
+			continue
+		if Geometry2D.get_closest_point_to_segment(p, pts[sj], pts[sj + 1]).distance_to(p) < float(r["w"]) * 0.5 + margin:
 			return true
 	return false
 
@@ -385,6 +421,9 @@ func _walls_of(ri: int) -> void:
 	var clear_a := clear.x
 	var clear_b := clear.y
 	var total := cum[cum.size() - 1]
+	var near := _junction_ends(ri)
+	var near_a := near.x
+	var near_b := near.y
 	for sd: float in [-1.0, 1.0]:
 		var line: PackedVector2Array = g._offset_line(pts, off * sd)
 		var outs := _outs(pts, sd)
@@ -423,7 +462,8 @@ func _walls_of(ri: int) -> void:
 			var mid := (line[j] + line[j + 1]) * 0.5
 			if open_at(ri, mid, (ys[j] + ys[j + 1]) * 0.5):
 				continue   # (another deck's road comes in here)
-			if kind in ["br", "em"] and _on_street_below(ri, line[j], line[j + 1], ys[j] - gs[j], ys[j + 1] - gs[j + 1]):
+			if kind in ["br", "em"] and _on_street_below(ri, line[j], line[j + 1], ys[j] - gs[j], ys[j + 1] - gs[j + 1],
+					NEAR_STREET if (cum[j] < near_a or cum[j + 1] > total - near_b) else -0.25):
 				continue
 			if kind == "cu" and (_street_over(line[j]) or _street_over(line[j + 1]) or _street_over(mid)):
 				continue   # (under a street at grade, which carries a car over it: a car on Kaplan
@@ -810,6 +850,7 @@ func _raised(ri: int, pts: PackedVector2Array, walk: RefCounted, kerb: RefCounte
 		var gap_wall := PackedByteArray()
 		# (and a bridge's parapet where it starts low at a junction: see _clear_ends)
 		var clear := _clear_ends(ri) if bridge else Vector2.ZERO
+		var near := _junction_ends(ri)
 		var total := 0.0
 		for i in range(1, pts.size()):
 			total += pts[i - 1].distance_to(pts[i])
@@ -822,7 +863,8 @@ func _raised(ri: int, pts: PackedVector2Array, walk: RefCounted, kerb: RefCounte
 			var corner: bool = (along < clear.x or along > total - clear.y) and absf(y - g._h(pts[i])) < CLEAR_LOW
 			# (and where the wall would stand on a street at ground level the deck is too low
 			# to pass over: see _on_street_below)
-			var on_street: bool = y - g._h(pts[i]) < UNDER_CLEAR and g._asphalt_other(wall_line[i], ri)
+			var margin := NEAR_STREET if (along < near.x or along > total - near.y) else -0.25
+			var on_street: bool = y - g._h(pts[i]) < UNDER_CLEAR and _street_at(wall_line[i], ri, margin)
 			gap_walk.append(1 if open_at(ri, walk_line[i], y, false) or (low and g._asphalt_other(walk_line[i], ri)) else 0)
 			gap_wall.append(1 if open_at(ri, wall_line[i], y) or corner or on_street else 0)
 		# a grass bank where there is room (bank_at), else the wall: a point is the bank's

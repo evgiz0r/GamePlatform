@@ -42,6 +42,28 @@ func _run() -> void:
 			near += 1
 			print("  wall '%s' %s - %s, %.1f m from the junction" % [w[7], a.round(), b.round(), Geometry2D.get_closest_point_to_segment(at, a, b).distance_to(at)])
 	print("deck walls within %.0f m of %s: %d" % [rad, at, near])
+	# the decks there: each point's surface over the ground
+	for ri: int in g._decks.decks:
+		var r: Dictionary = g._roads[ri]
+		var pts: PackedVector2Array = r["pts"]
+		if not Array(pts).any(func(q): return (q as Vector2).distance_to(at) < 40.0):
+			continue
+		var rises: Array = []
+		for j in range(pts.size()):
+			rises.append("%s %.1f" % [pts[j].round(), float(r["ys"][j]) - float(r["gs"][j])])
+		print("  deck %d '%s' (%s, %s, w %.1f, side %.1f): %s" % [ri, r["name"], r["deck"], r["k"], r["w"], r["side"], ", ".join(rises)])
+	if OS.get_environment("PROBE") != "":   # (debugging: what the walls' street check sees at points)
+		for q: String in OS.get_environment("PROBE").split(";", false):
+			var p := _v2(q)
+			var seen: Array = []
+			for code: int in g._near(g._seg_hash, p, 8.0, g.SEG_CELL):
+				var r: Dictionary = g._roads[code / 4096]
+				var pts: PackedVector2Array = r["pts"]
+				var sj: int = code % 4096
+				var d := Geometry2D.get_closest_point_to_segment(p, pts[sj], pts[sj + 1]).distance_to(p)
+				if d < 8.0:
+					seen.append("%d '%s' %s w %.1f %.1f m%s" % [code / 4096, r["name"], r["k"], r["w"], d, " deck" if r.has("ys") else ""])
+			print("probe %s: street_at %s; %s" % [p, g._decks._street_at(p, -1), "; ".join(seen)])
 	var routes := (OS.get_environment("ROUTES") if OS.get_environment("ROUTES") != "" else
 		"476,-1185>498,-1158;476,-1185>416,-1094;416,-1094>476,-1185;495,-1156>476,-1185").split(";", false)
 	var total := 0
