@@ -57,6 +57,19 @@ goes wrong shows up the first time it runs.
   `place` then only its name) -- e.g. read off a screenshot of a map with two landmarks of
   known position for the scale. A box has no boundary: no "welcome to" at the limits, and
   the striped barrier at the map edge is the whole border.
+- **Growing a box later: keep its centre** (the workflow's `origin`, the old file's
+  `"origin"`). The metres are measured from the box's middle, so a bigger box moves every
+  place in it -- and a game's hand fixes, landmarks, tests and notes all name places by
+  their metres. With the old origin given, the old places keep their coordinates to the
+  centimetre and the new ground is simply further out.
+- **The sea came out under its own floor.** The terrain tiles read the sea a metre or so
+  either side of 0 and the beach lower still (2.5 m under sea level, four grid points in),
+  and water lies flat at its shore's lowest point: so the sea's surface lay under the
+  ground drawn over it, a white plain where the sea should be. The baker now holds the sea
+  at sea level (the area's `y`), its floor under it and the shore ~110 m in over it, and
+  sets the sea to sea level *before* `--bare-ground`, whose lowest-round-each-point would
+  otherwise carry the sea bed's depths 90 m inland. Bakes from before this have it: look
+  at a coastal town's sea from above before trusting it.
 - **The ground heights see the roofs.** The terrain tiles the baker reads are a surface
   model (mostly SRTM): in a city centre a cluster of towers comes out as a hill. One
   centre's grid stood 146 m high under three towers, with slopes of 300%, and the buildings

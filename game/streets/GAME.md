@@ -190,9 +190,12 @@ about 3 s here, the same as anywhere (see "Loading near-first").
 > Ashdod.
 
 **Tel Aviv** is a box of the city centre, not the whole city (all of it would be far too
-much to build and drive smoothly): about 2.4 by 2.7 km, from Ichilov and the Savidor
-station down to Yitzhak Sadeh, and from just west of Ibn Gabirol across the Ayalon to
-Nahalat Yitshak -- HaKirya, Azrieli and Sarona, Montefiore, Bitsaron. It starts on Kaplan
+much to build and drive smoothly): about 4.3 by 3.3 km, from Ichilov and the Savidor
+station down past the Carmel market, and from the sea across the Ayalon to Nahalat
+Yitshak -- the beaches and the promenade (Herbert Samuel), Allenby, the Carmel market,
+Rothschild, Dizengoff's south end, HaKirya, Azrieli and Sarona, Montefiore, Bitsaron. It
+began as 2.4 by 2.7 km, Ibn Gabirol to the Ayalon, and was grown to the sea (November
+2026); the places in the first box kept where they were. It starts on Kaplan
 just past Leonardo da Vinci, heading east, HaKirya on the left and the Azrieli towers
 ahead. The towers stand at their real heights (OSM has them for the tall ones: Azrieli's
 round tower 187 m, the Spiral 350 m). The map ends at the box's edge (the striped barrier).
@@ -245,6 +248,11 @@ box (none on Begin or Ibn Gabirol), so the rest are not there.
 > lets do the bridges and tunnels over the Ayalon
 
 > do 1 and 2, then the railway
+
+> what would it cost extending tel aviv to the sea and down including like carmel market
+> and alenbi, how much more is that
+
+> what next options. lets try to make it bigger
 
 **The test town.** The last place, Kiryat Dimyon, is made up (`cities/dimyon.json`, from
 `tools/fake_city.py`): one neighbourhood about 1.3 x 1 km, a fifth of Givatayim's buildings,
