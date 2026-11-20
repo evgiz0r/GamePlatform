@@ -401,17 +401,18 @@ what became of it:
   piers are off the road); a café table's 0.7 m solid circle reached 0.8 m into the lane
   from a table up against the kerb (the circle now only as big as the room); a cat sat on the
   road by a parked car's nose. Givatayim: 16 posts on the road -> 1; Ashdod 27 -> 0.
-- **Fixed -- queues cleared about a fifth slower than real ones.** A trace of the second car
-  (`TRACE=n` in queue_start) showed the follow model was not what held it -- what it wanted
-  was always above its speed -- but its start: it noticed the car in front only at 0.5 m/s
-  (~0.45 s after that car began to creep) and then took 0.35-1.1 s to react, ~1.2 s a car
-  against ~1 s at real signals. Now 0.3 m/s and 0.3-0.9 s: start gaps 1.4 -> 1.2 s, gaps
-  over the line 1.26x -> 1.17x Greenshields' (straight on, unimpeded, by the rear wheels as he
-  timed them). Two things that did not help, for the record: easing the pull-away against
-  the cruising speed, and the notice threshold alone. The measurement itself needed three
-  fixes first -- speeds sampled by ticks (at 2x the old sampling skipped most), only queues
-  going straight on judged, and crossings timed at the rear wheels -- and 40 minutes of
-  watching: three 15-minute watches of one build read 1.18 / 1.44 / 1.57.
+- **Fixed -- queues cleared slower than real ones.** A trace of the second car (`TRACE=n` in
+  queue_start) showed the follow model was not what held it -- what it wanted was always
+  above its speed -- but its start: it noticed the car in front only at 0.5 m/s (~0.45 s
+  after that car began to creep) and then took 0.35-1.1 s to react, ~1.2 s a car against
+  ~1 s at real signals. Now 0.3 m/s and 0.3-0.9 s. At 1x, 40 minutes, gaps between two cars
+  both going straight on: 1.07x Greenshields' (the old drivers on the same test: 1.44x),
+  start gaps 1.0 s. The test needed fixing first, four ways: speeds sampled by ticks (at 2x
+  the old sampling skipped most), the line crossed by the rear wheels as Greenshields timed
+  it, gaps judged only between two cars going straight on (a second car turning off and
+  giving way read as a slow queue), and 40 minutes of watching (three 15-minute watches of
+  one build read 1.18 / 1.44 / 1.57). At 2x it read 1.17x: final numbers at 1x. Tried and no
+  help: easing the pull-away against the cruising speed.
 
 ## Seeing what the car did: the drive recorder
 

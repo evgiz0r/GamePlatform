@@ -90,10 +90,13 @@ func _run() -> void:
 								break
 					if chain.size() < 2:
 						continue
-					var run := {"t0": t, "cars": [], "cross": [], "yaw0": T.cars[chain[0]].yaw, "turned": 0.0, "trace": []}
+					var run := {"t0": t, "cars": [], "cross": [], "yaw0": T.cars[chain[0]].yaw, "turned": 0.0, "trace": [],
+						"yaws": [], "turns": []}
 					for qi in range(chain.size()):
 						run["cars"].append([qi + 1, T.cars[chain[qi]].kind, []])
 						run["cross"].append(-1.0)
+						run["yaws"].append(T.cars[chain[qi]].yaw)
+						run["turns"].append(0.0)
 					runs.append(run)
 					# the stop line: a metre past the first car's front (it stops that short)
 					var c0 = T.cars[chain[0]]
@@ -130,6 +133,12 @@ func _run() -> void:
 			var c0 = T.cars[o[1][0]]
 			if c0.alive:
 				o[0]["turned"] = maxf(float(o[0]["turned"]), absf(angle_difference(float(o[0]["yaw0"]), c0.yaw)))
+			# every car's turn too: a gap is judged only between two cars going straight on (a
+			# second car turning off gave way, as it should, and read as a slow queue)
+			for k in range((o[1] as Array).size()):
+				var ck = T.cars[o[1][k]]
+				if ck.alive:
+					o[0]["turns"][k] = maxf(float(o[0]["turns"][k]), absf(angle_difference(float(o[0]["yaws"][k]), ck.yaw)))
 		# record 10 times a second, by ticks (by int(t * 60) % 6, rounding at 2x skipped most
 		# samples: queues read as never moving, and the held-up filter judged the wrong ones)
 		rec_tick += 1
@@ -173,7 +182,8 @@ func _run() -> void:
 				firsts.append(cross)
 			if qi > 0 and moved >= 0.0 and last_moved >= 0.0:
 				start_gaps.append(moved - last_moved)
-			if qi > 0 and cross >= 0.0 and last_cross >= 0.0:
+			var straight: bool = float(run["turns"][qi]) <= 0.5 and float(run["turns"][qi - 1]) <= 0.5 if qi > 0 else true
+			if qi > 0 and cross >= 0.0 and last_cross >= 0.0 and straight:
 				line_gaps.append((cross - last_cross) / REAL_LINE[mini(qi, REAL_LINE.size() - 1)])
 			last_moved = moved
 			last_cross = cross
