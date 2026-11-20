@@ -38,6 +38,7 @@ these numbers the wrong way has broken something.
 | `on_foot` | 1 | getting out, walking, running, a car stopping for you | 2.1 / 6.2 m/s |
 | `quality_ladder` | 1 | the frame-rate watcher fed made-up frame times | stays at 2 through stalls; down at 35 fps; back up at 60 |
 | `quality_look` | 1 | the street at quality 3 and 0 (shots) | |
+| `eye_level` | 1 | the streets at a walker's eye height round a point (`AT="x,z"`, default the start), along, back, across and down: for comparing with photos of the real street (shots) | a lobby under a block on columns draws pure black |
 | `draws`, `frame_cost` | 1 | what is drawn and what it costs per quality level | ~280 draws |
 | `divided_zebra` | 3 | people crossing both halves of a divided road (shots) | |
 | `load_stages` | 1, 3 | where the build time goes, stage by stage (`STREETS_BUILD_ALL=0`: what a player waits for) | Ashdod near-first: ready in 6.8 s here, 2.5 of it shader warm-up; whole city: kerbs 3.0 s, roads 1.9, trees 1.7 |
