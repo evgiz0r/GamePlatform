@@ -46,6 +46,7 @@ these numbers the wrong way has broken something.
 | `exam` | 1, 3 | the driving exam: autodrive from 4 places for 75 s each, everything that went wrong per minute (see DEV.md) | see DEV.md's scorecard |
 | `dead_ends` | 1 | "go to" from 8 dead ends, parked facing the closed end: out of the street in 40 s? hits, time off the road. Then free autodrive driving into each: stops at the end, turns, comes out? (`DEAD_ONLY=n`: just the n-th, driving in) | 8 of 8 out, 0 hits; driving in 7 of 8 (stops ~2 m short), the one at (522, 356) being looked at |
 | `knot_lights` | 3 | one signalled junction watched for 2 min (`KNOT_AT=x,z`, default Sderot Herzl x HaGdud HaIvri): each car that goes in on red with what it saw in the 4 s before; drive logs centred on the junction | 1 of 17 on red (was 5 of 40: one junction counted as five, and a car stopped for a zebra past its line drove on through the red) |
+| `queue_start` | 3 | a queue at a red light pulling away at the green (`KNOT_AT`), each car's speed for 12 s; `queue_start_chart.py` draws it | cars go one after another |
 | `walls_on_roads` | 1 | walls the car collides with (garden walls, fences, hedges, shelter backs) standing on a road's asphalt; `WALL_AT=x,z` lists those near a point | 0 (was 41: garden walls of one street laid across the next) |
 | `door_to_door` | 1 | a "go to" trip from a house on a side street to another 900-1600 m away (`SEED` picks the pair) | SEED 3: arrives in 235 s, no hits, longest wait 16 s behind a car; was 390 s with 2 min stuck at a dead end |
 

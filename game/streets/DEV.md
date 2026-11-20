@@ -160,8 +160,21 @@ What each round found, so far:
   id; over the line counts as through only when rolling or in the junction.
   `tests/knot_lights.gd` watches one junction and prints what each car that ran the red
   saw before (5 of 40 on red, now 1 of 17).
-- Main roads get the longer green (20 s, side streets 11 s, was 14 each): group 1 at every
-  junction is its main road. Not yet judged by the exam.
+- Main roads get the longer green (18 s, side streets 13 s, was 14 each): group 1 at every
+  junction is its main road. 20/11 first: with drivers who take a moment to pull away, a
+  side street's queue got two cars through a green, and the test trip waited 97 s at one
+  junction.
+- Traffic drivers have character (`_driver` in traffic.gd: one easy-to-brisk dial with
+  noise -- pull-away, standing gap, headway, reaction, drift in the lane), pull away with
+  the push building up, and their bodies dip, lift and lean (drawn only). Each car's
+  moment to react starts when the car in front is really off (1 m/s): from when it had
+  rolled a few millimetres, a whole queue went within 0.3 s (`tests/queue_start.gd`).
+- At a signalled junction the lights decide: a car gives way only to one already in it,
+  and turning across, to one coming with its green. It gave way by road rank, as at an
+  unsignalled one, to a main-road car about to stop at its own red -- the drive log's
+  "what holds each car" showed it (light, car, junction, light).
+- At crossings without lights, a stream of people kept cars 20 s+; once a car has stood
+  there 6 s the next person lets it go (`_kept_waiting`).
 - The exam's own counts were off twice: harsh braking per frame (30x one stop) and traffic
   reds judged at every signal point of a junction by the heading mid-turn. Check what a
   counter counts before chasing its number.
