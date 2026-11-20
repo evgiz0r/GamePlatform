@@ -8242,15 +8242,20 @@ func _other_half(j: int, o: int, leg: int) -> bool:
 ## -- or none, when every road runs within 20 degrees of the main one (a crossing mid-street).
 func _site_axes(nodes: Array) -> Dictionary:
 	var c := Vector2.ZERO
-	var arms: Array = []   # [direction mod PI, rank, width]
+	var arms: Array = []   # [direction mod PI, rank, width]: each way out of each point
 	for n: int in nodes:
 		c += _nodes[n]
 		for e: Vector2i in _node_roads[n]:
 			var r: Dictionary = _roads[e.x]
 			if not r["drive"]:
 				continue
-			arms.append([fposmod(_road_dir_at(e).angle(), PI), int(ROAD_RANK.get(r["k"], 1)),
-					float(r["w"]) * (2.0 if r.has("median") else 1.0)])
+			var pts: PackedVector2Array = r["pts"]
+			# each side of the point on its own: a road bending at the junction runs two ways,
+			# and the line across the bend (once taken as its direction) ran neither
+			for d2: int in [-1, 1]:
+				if e.y + d2 >= 0 and e.y + d2 < pts.size():
+					arms.append([fposmod((pts[e.y + d2] - pts[e.y]).angle(), PI), int(ROAD_RANK.get(r["k"], 1)),
+							float(r["w"]) * (2.0 if r.has("median") else 1.0)])
 	var a1 := 0.0
 	var a2 := -1.0
 	if not arms.is_empty():

@@ -34,7 +34,7 @@ func _run() -> void:
 			var b_in: bool = inner.has_point(pts[k])
 			if a_in == b_in:
 				continue
-			var step := -1 if b_in else 1   # back along the road, inside
+			var step := 1 if b_in else -1   # back along the road, inside (away from the outside point)
 			var dir_out := 1 if not b_in else -1
 			if r["o"] != 0 and r["o"] != dir_out:
 				continue   # one-way into town: nobody drives out on it
