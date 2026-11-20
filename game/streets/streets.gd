@@ -9231,7 +9231,7 @@ func _tones() -> void:
 		# a filmed street's details (details.gd): charcoal pavers under an arcade, a forecourt
 		# of pale poured slabs
 		"pavers_dark": _greyed(ink.lerp(alt, 0.8), 0.85),
-		"slabs": _greyed(ink.lerp(alt, 0.52).lerp(wn, 0.16), 0.5),
+		"slabs": _greyed(ink.lerp(alt, 0.55).lerp(wn, 0.28), 0.38),   # (the film's: warm beige in the sun)
 		"pavers_grey": _greyed(ink.lerp(alt, 0.5), 0.85),
 		"kerb": ink.lerp(alt, 0.45),
 		"stonewall": ink.lerp(wn, 0.3).lerp(alt, 0.2),

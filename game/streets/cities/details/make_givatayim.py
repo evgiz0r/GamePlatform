@@ -140,7 +140,11 @@ d = {
         {"kind": "shrubs", "pts": [P(38.2, -2.0), P(56.8, -2.0)], "h": 3.0},   # the tall hedge on the low wall
         # the shops under the arcade (film 15-23 s): lit glass in light frames, each its own
         # sign; the confectionery's, dark brown, faces the zebra
-        {"kind": "shopfront", "pts": SHOPS, "h": 3.25, "face": [round(-ARC_IN[0], 4), round(-ARC_IN[1], 4)]},
+        {"kind": "shopfront", "pts": SHOPS, "h": 3.25, "face": [round(-ARC_IN[0], 4), round(-ARC_IN[1], 4)],
+         "signs": ["", "קונדיטוריה", "", ""], "panels": [1]},   # (only the film's shop is named)
+        # the little street to Sheinkin (film 64-72 s): a tall hedge on the back of the
+        # pavement the walk is on
+        {"kind": "shrubs", "pts": [P(59.0, -6.3), P(71.5, -6.3)], "h": 2.3},
     ],
     "props": [
         {"kind": "bin", "at": P(41, -0.95)},
@@ -174,6 +178,12 @@ d = {
         {"kind": "zebra", "at": P(92.4, 0), "dir": [round(u[0], 4), round(u[1], 4)], "w": 3.0, "len": 8.0},
         {"kind": "ring30", "at": P(99.5, 0.0), "dir": [round(u[0], 4), round(u[1], 4)]},
         {"kind": "zone30_sign", "at": P(95.6, -4.7), "dir": [round(-u[0], 4), round(-u[1], 4)]},
+        # the little street (film 64-76 s): cars parked along its far side, in the road (the
+        # corner block stands too near for the game to park them up on that kerb), and a
+        # second transformer on twin poles at Sheinkin's corner
+        *[{"kind": "parked_car", "at": P(s0, 1.75), "dir": [round(u[0], 4), round(u[1], 4)], "body": kd}
+          for s0, kd in ((63.0, "suv"), (68.4, "hatch"), (73.8, "sedan"))],
+        {"kind": "twin_poles", "at": P(78.4, -6.5), "dir": SE},
         {"kind": "scooter", "at": P(15.2, -5.2), "dir": [round(-u[0], 4), round(-u[1], 4)]},
     ],
     # the trees over the passage's mouth: in the planted bed, and in the yard behind the fence

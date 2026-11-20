@@ -35,7 +35,9 @@ extends RefCounted
 ##   lines     [{kind, pts: [[x, z]...], h, base}]   stone_wall, wood_fence, loop_fence, hedge,
 ##                                                    shrubs (tall planting h high: leafy masses),
 ##                                                    shopfront (glazed bays h high on a
-##                                                    block's face, facing `face`)
+##                                                    block's face, facing `face`; signs: a
+##                                                    name per bay, "" for none; panels: the
+##                                                    bays with yellow panels in the window)
 ##   props     [{kind, at: [x, z], dir: [x, z]}]     bin, hoop_railing, bollard, twin_poles
 ##                                                    (dir: the line through them), barrier
 ##                                                    (dir: the way the boom goes, len),
@@ -47,7 +49,9 @@ extends RefCounted
 ##                                                    the crossing, len: kerb to kerb; laid on
 ##                                                    the paving there), ring30 (painted on the
 ##                                                    road, read along dir), zone30_sign (dir:
-##                                                    the way it faces).
+##                                                    the way it faces), parked_car (in the
+##                                                    road by its kerb, nose along dir; body:
+##                                                    sedan, hatch, suv, van).
 ##                                                    Anything on a lifted surface stands on it.
 ##   trees     [[x, z], ...]                         more trees for the city's own builder
 ##   walks     {id: {name, points: [[t, x, z]...],   two points at one spot: it waits there
@@ -277,13 +281,15 @@ func build() -> void:
 				"shrubs":
 					_shrubs(shrubs, shrub_cols, a, e, float(ln.get("h", 2.6)))
 				"shopfront":
-					_shopfront(b, glass, a, e, float(ln.get("h", 3.2)), _v2(ln.get("face", [0, 0])))
+					_shopfront(b, glass, a, e, float(ln.get("h", 3.2)), _v2(ln.get("face", [0, 0])),
+						ln.get("signs", []), ln.get("panels", []))
 	var bikes: Array = []
 	var bike_cols: Array = []
 
 	var scooters: Array = []
 	var scooter_cols: Array = []
 	var boxes: Array = []
+	var cars := {}   ## kind -> [transforms, paints]
 	# what bikes come in: white, black, silver, a dull blue; never the palette's neon
 	var paint := [white, g._tone["tyre"].lightened(0.1), g._tone["rim"], g._natural(g._tone["signblue"], 0.45), white, g._tone["cartrim"]]
 	var k := 0
@@ -305,6 +311,17 @@ func build() -> void:
 				_barrier(b, at, y, d, float(pr.get("len", 4.0)))
 			"globe_lamp":
 				_globe_lamp(b, at, y, float(pr.get("h", 2.7)))
+			"parked_car":
+				var kind := String(pr.get("body", ["sedan", "hatch", "suv"][k % 3]))
+				if not cars.has(kind):
+					cars[kind] = [[], []]
+				var paints: Array = g._car_paints()
+				var kc: Dictionary = (g.get_script() as GDScript).get_script_constant_map()
+				var f := d.rotated(0.03 * (_rnd(k, 3) - 0.5))
+				(cars[kind][0] as Array).append(Transform3D(Basis(Vector3.UP, atan2(f.x, f.y)), g._g3(at, float(kc["Y_ROAD"]))))
+				(cars[kind][1] as Array).append(paints[(k * 5) % paints.size()])
+				g._add_post(at + f * 1.25, 0.85)
+				g._add_post(at - f * 1.25, 0.85)
 			"zebra":
 				_zebra(b, at, y, d, float(pr.get("w", 3.0)), float(pr.get("len", 8.0)))
 			"ring30":
@@ -336,6 +353,8 @@ func build() -> void:
 		g._chunked(g._furn._scooter_kit(), scooters, 170.0, scooter_cols, null, true)
 	if not boxes.is_empty():
 		g._chunked(_box_kit(), boxes, 170.0, [], null, true)
+	for kind: String in cars:
+		g._chunked(g._parked_mesh(kind), cars[kind][0], 140.0, cars[kind][1], null, true, true)
 	if not shrubs.is_empty() and g._tree_meshes.has("crown"):
 		g._chunked(g._tree_meshes["crown"], shrubs, 260.0, shrub_cols, null, false)
 	await g._flush_batches()
@@ -711,7 +730,7 @@ func _shrubs(xf: Array, cols: Array, a: Vector2, e: Vector2, h: float) -> void:
 ## Shop fronts along a block's face from a to e, `h` high, facing `face`: bays of about three
 ## metres of lit glass in light aluminium frames, a dark kick plate under them and a sign band
 ## over them, each shop's band its own colour (the second dark brown: the confectionery's)
-func _shopfront(b, glass, a: Vector2, e: Vector2, h: float, face: Vector2) -> void:
+func _shopfront(b, glass, a: Vector2, e: Vector2, h: float, face: Vector2, signs: Array, panels: Array) -> void:
 	var L := a.distance_to(e)
 	var d := (e - a) / L
 	var out := face.normalized()
@@ -734,6 +753,23 @@ func _shopfront(b, glass, a: Vector2, e: Vector2, h: float, face: Vector2) -> vo
 		for x: float in [s0, (s0 + s1) * 0.5, s1]:
 			var q := a + d * x + out * 0.05
 			g._furn._box(b, Vector3(q.x, gy + 1.3, q.y), Vector3(0.12 if x != (s0 + s1) * 0.5 else 0.06, 2.6, 0.08), frame, bs)
+		if panels.has(i):   # yellow boards behind the lower glass, either side of the middle
+			for f: float in [0.27, 0.73]:
+				var q := a + d * (s0 + w * f) + out * 0.045
+				g._furn._box(b, Vector3(q.x, gy + 0.85, q.y), Vector3(w * 0.36, 0.9, 0.01), g._tone["markyellow"], bs)
+		if i < signs.size() and String(signs[i]) != "":
+			var lb := Label3D.new()
+			lb.text = String(signs[i])
+			lb.font = g._font
+			lb.font_size = 64
+			lb.pixel_size = 0.0055
+			lb.modulate = g._tone["mark"].lerp(g._tone["markyellow"], 0.15)
+			lb.outline_size = 0
+			var at := band + out * 0.06
+			lb.position = Vector3(at.x, gy + (2.65 + h) * 0.5, at.y)
+			lb.rotation.y = atan2(out.x, out.y)
+			lb.visibility_range_end = 120.0
+			g.world.add_child(lb)
 
 ## A shop window by day: dark glass that reflects, the shop's light showing faintly through
 ## (the game's lit shop glass, made for a street at night, glowed as a flat cream wall in
