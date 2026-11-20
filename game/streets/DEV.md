@@ -1760,7 +1760,19 @@ Each line: where the code is, the test, what good reads.
   11.6/1.9/0.2. What is left is where two roads at different levels share a cell (the
   Ayalon interchange's slip roads, a service lane below a street) -- a finer grid's job.
   `python3 tools/level_roads.py --check city.json` measures without writing (the same
-  triangles as `_h`); `road_tilt` 4 measures in the game.
+  triangles as `_h`); `road_tilt` 4 measures in the game. Checked against the unlevelled
+  files (a worktree with main's cities, the same code): `decks` 4, 2 clean; 1, 3 the same
+  pre-existing marks (Givatayim's City tunnel run starts against walls, Ashdod's Laskov
+  Road 1.2 m and Sderot Menachem Begin 0.44 m off the level -- unlevelled too); a Givatayim
+  bridge run now drives a different stretch (its inferred bridge moved a few metres) and
+  goes 0.31 m off on Menachem Begin by the Ayalon, where the ground under the car was 0.34
+  m off before and 0.16 m after (`OFFS=1` prints where). A re-bake of a levelled city
+  merged against another session's re-bake: take theirs and run the tool on it again.
+- **The first load after a publish is the slow one** (user, Tel Aviv: "getting the graphics
+  ready (6 of 12)" took a while): a browser keeps compiled shaders between visits only for
+  the same code, and nine commits that day changed shader code -- every first load after
+  such a build compiles them all again. The step that stands out is the one the warm-up
+  gave the most shaders: grouped by code now, the eight steps share them.
 - **Waiting on the user**: the Ashdod "grass patches" spot was never pinned down: islands
   and the ground colour went out without it. **Next**: traffic overlapping at the test town's
   (-639, 261) -- a bus turning off Derekh HaHarim sweeps over the stop line of HaDolev where
