@@ -50,6 +50,12 @@ Read them spatially. They reveal things numbers cannot:
 
 **Warnings** — missing sounds, actors outside the play area. Cheap to fix, usually real.
 
+Two traps in the timeline's numbers: `Probe.event()` keeps the Dictionary it is given, not
+a copy, so a dictionary the game goes on filling shows its final state at its first
+timestamp (pass `d.duplicate()` for a snapshot). And the headless run is `--fixed-fps 60`
+as fast as it can go: event times are game seconds, while anything the game measures with
+`Time.get_ticks_msec()` is wall time, and the two drift apart.
+
 **Checks** — automatic pass/fail. A `FAIL` must be fixed before showing the user.
 
 ## Diagnosing

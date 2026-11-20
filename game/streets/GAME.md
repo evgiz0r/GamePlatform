@@ -127,7 +127,8 @@ lane, stopped, facing the way that has the address on the kerb side.
 **Places.** Entering the game asks where: Givatayim; Bedford, Nova Scotia; or Ashdod
 (starting at Sderot Herzl and HeHalutzim, its busiest corner for shops). Each place is one
 entry in `LEVELS` at the top of `streets.gd` (name, city file, starting corner). Ashdod is
-three times Givatayim's size and takes longer to load (about 10 s here).
+three times Givatayim's size; it takes longer to build in full, but you are driving in
+about 3 s here, the same as anywhere (see "Loading near-first").
 
 > Lets make a menu where I pick a place we have. Starting with Givatayim. Can we add
 > Bedford, Nova Scotia.
@@ -526,6 +527,27 @@ so do the trees, which are too many to copy.
 
 > Performance pass: fewer draw calls, faster loading of big cities.
 
+**Loading near-first.** The city is built a 400 m square at a time -- the squares its
+meshes are merged in anyway, so building it in pieces costs no extra draws. Only the
+squares within about 300 m of the start go up behind the loading text (Givatayim's 9 of
+71), so the car is on the road in about 2 s here (it was 7), Bedford in 1.2 (was 11.7) and
+Ashdod in 2.8 (was 18); a phone takes two or three times as long. The rest goes up while
+you drive, the square nearest where the car is heading first, a few milliseconds a frame
+(6, or 3 when frames already run slow), so the driving does not stutter; "building the city
+40%" under the street count says how far it has got. Givatayim is all up within about 20 s
+of driving here, Ashdod within a couple of minutes. Nothing is left out: when it is done the
+city is the one the old all-at-once build made, lamp for lamp. Anything laid along a road or
+a fence (asphalt, paint, kerbs, garden walls, wires, fences) is worked out by every square
+it crosses, each keeping the triangles that start in it, so nothing shows where two squares
+meet; a building, a tree, a sign, a shop or a parked car belongs to the one square it
+stands in. What only the building needed -- the parsed city file, the outlines, each
+square's lists -- is let go of a little a frame once it is all up. Which junctions have
+traffic lights is worked out for the whole city before you drive, so traffic stops at them
+everywhere at once.
+
+> what would near load gain? latency? im afraid we will start losing a lot of details in a
+> city. maybe 400m is ok.
+
 When the browser can't keep up, the game steps its own quality down; at the lowest step
 the real shadows are off, and each car gets a soft dark patch under it instead so it still
 stands on the road (the street went flat the moment it stepped down). The asphalt's wear and
@@ -637,6 +659,4 @@ the most useful thing to add) and bake again.
 
 - Bridges and tunnels: roads at different levels, an interchange you drive over and
   under.
-- Faster loading of a big city (Ashdod takes about 10 s here, mostly roads, kerbs and
-  trees), e.g. by building the far parts after the drive starts.
 - Not just driving: the same baked city could be walked, or used by another game.

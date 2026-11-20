@@ -4,7 +4,9 @@ extends RefCounted
 ## balconies, on flagpoles at schools), billboards and lit ad columns, fences round pitches
 ## and schoolyards, hedges and railings along parks, bike racks and parked scooters.
 ##
-## Built once with the city. Every kind is a multimesh of one small "kit" mesh (its colours
+## Built with the city, a square at a time (see the game's _build_tile): power lines and
+## fences, like the kerbs, are strung by every square they cross, each keeping its own
+## piece; everything else belongs to the square it stands in. Every kind is a multimesh of one small "kit" mesh (its colours
 ## in the vertex colours) or one mesh per map square, so a kind costs a draw or two where it
 ## is seen and nothing where it is not. Placement asks the game the same questions as
 ## everything else that stands by a street: not on the asphalt (`_off_road`), not in a
@@ -19,6 +21,8 @@ var _fence_mats := {}
 var _kits := {}
 var _count := {}
 var where := {}                ## kind -> transforms of what went in (for tests and tours)
+var _flag_seen := {}           ## 60 m squares that have their flagpole
+var _life_taken := {}          ## 25 m squares that have their rack or scooters
 
 const SEEN := 320.0            ## poles, lamps: thin, gone in the haze
 const WIRE_SEEN := 200.0       ## wires: past this they are less than a pixel and shimmer
@@ -151,6 +155,8 @@ func _rect(x0: float, y0: float, x1: float, y1: float) -> Array:
 func _place(mesh: Mesh, xforms: Array, seen: float, name: String, shadows := false, colours: Array = []) -> void:
 	if xforms.is_empty():
 		return
+	if g._over():
+		await g._pause()
 	g._chunked(mesh, xforms, seen, colours, null, shadows)
 	_count[name] = int(_count.get(name, 0)) + xforms.size()
 	if not where.has(name):
@@ -213,13 +219,16 @@ func wires() -> void:
 	var arms: Array = []
 	var heads: Array = []
 	var wire = g.new_cbuf(CELL)
+	wire.clip = true   # every square the street crosses strings it; each keeps its own stretch
 	var H := 9.0 if med else 10.0
 	var spacing := 34.0 if med else 40.0
 	var spans := 0
-	for ri in range(g._roads.size()):
+	for ri: int in g._tile_roads.get(g._tile, []):
 		var r: Dictionary = g._roads[ri]
 		if not r["drive"] or r["pv"] or r["k"] == "service" or FAST.has(r["k"]) or r.get("ring", false):
 			continue
+		if g._over():
+			await g._pause()
 		var share := 0.85 if not med else (0.6 if MAIN.has(r["k"]) else 0.45)
 		if _rnd(ri * 31 + 7) >= share:
 			continue
@@ -232,13 +241,17 @@ func wires() -> void:
 			var p: Vector2 = sp[0]
 			var d: Vector2 = sp[1]
 			var out: Vector2 = sp[2]
-			if not _free(p, 0.25, 0.45, 2.2):
+			# a pole in this square keeps clear of its lamps and trees; one in the next square is
+			# taken as clear (its trees are not up yet) so the wire still runs to it
+			var mine: bool = g._mine(p)
+			if not (_free(p, 0.25, 0.45, 2.2) if mine else (g._off_road(p, 0.25) and g._push_out(p, 0.45, false, false) == Vector2.ZERO)):
 				continue
 			var gy := _h(p)
 			# the crossarm goes across the street: local X along `out`
 			var bs := Basis(Vector3.UP, atan2(-out.y, out.x))
-			poles.append(Transform3D(bs, Vector3(p.x, gy, p.y)))
-			g._add_post(p, 0.14)
+			if mine:
+				poles.append(Transform3D(bs, Vector3(p.x, gy, p.y)))
+				g._add_post(p, 0.14)
 			n += 1
 			var at: Array = []
 			for x: float in [-0.75, 0.0, 0.75]:
@@ -247,9 +260,9 @@ func wires() -> void:
 			if not med:
 				var q := p - out * 0.15
 				at.append(Vector3(q.x, gy + H - 2.9, q.y))   # the phone cable, lower down
-			if n % 6 == 3:
+			if n % 6 == 3 and mine:
 				trafos.append(Transform3D(bs, Vector3(p.x, gy, p.y)))
-			if not med and (n % 2 == 0 or MAIN.has(r["k"])):
+			if mine and not med and (n % 2 == 0 or MAIN.has(r["k"])):
 				# a street lamp on its arm over the road
 				var toward := -out
 				var abs_ := Basis(Vector3.UP, atan2(-toward.y, toward.x))
@@ -261,21 +274,22 @@ func wires() -> void:
 					and g._push_out((last_p + p) * 0.5, 0.3, false, false) == Vector2.ZERO:
 				for i in range(at.size()):
 					_cable(wire, last_at[i], at[i], 0.05 if i < 3 else 0.07)
-				spans += 1
+				if mine:
+					spans += 1
 			last_p = p
 			last_at = at
 		if not med and n > 0:
 			g._wired[ri] = true
-	_place(_pole_kit(H), poles, SEEN, "power_poles")
-	_place(_trafo_kit(H), trafos, SEEN, "transformers")
+	await _place(_pole_kit(H), poles, SEEN, "power_poles")
+	await _place(_trafo_kit(H), trafos, SEEN, "transformers")
 	if not arms.is_empty():
-		_place(_cobra_arm_kit(), arms, SEEN, "pole_lamps")
+		await _place(_cobra_arm_kit(), arms, SEEN, "pole_lamps")
 		var head := BoxMesh.new()
 		head.size = Vector3(0.7, 0.16, 0.32)
 		head.material = g._surface("lamp")
 		g._chunked(head, heads, SEEN)
 	g._add_mesh(wire, g._surface("cable"), false, WIRE_SEEN)
-	_count["wire_spans"] = spans
+	_count["wire_spans"] = int(_count.get("wire_spans", 0)) + spans
 
 ## one wire from a to e sagging in the middle: two thin ribbons crossed, so it shows from
 ## below and from the side
@@ -421,12 +435,10 @@ func retint() -> void:
 
 ## ---- everything else, built after the places ------------------------------------------------
 func build() -> void:
-	var t := Time.get_ticks_msec()
-	for step: Callable in [flags, ads, fences, street_life]:
-		step.call()
-		var now := Time.get_ticks_msec()
-		_count["ms_" + step.get_method()] = now - t
-		t = now
+	await flags()
+	await ads()
+	await fences()
+	await street_life()
 	for k: String in _count:
 		g._dressing[k] = _count[k]
 
@@ -446,10 +458,14 @@ func flags() -> void:
 	var poles: Array = []
 	var flown: Array = []
 	var k := 1.0 / float(g._city_data.get("scale", 10))
-	var seen := {}
-	for p: Array in g._city_data.get("pois", []):
+	var seen := _flag_seen
+	var all_pois: Array = g._city_data.get("pois", [])
+	for pi: int in g._tile_pois.get(g._tile, []):
+		var p: Array = all_pois[pi]
 		if not (String(p[2]) in ["school", "kindergarten", "townhall", "police", "community_centre", "library"]):
 			continue
+		if g._over():
+			await g._pause()
 		var at := Vector2(p[0], p[1]) * k
 		var cell := Vector2i((at / 60.0).round())
 		if seen.has(cell):
@@ -469,11 +485,11 @@ func flags() -> void:
 	var b = g.new_buf()
 	_tube(b, Vector3.ZERO, Vector3(0, 7.8, 0), 0.06, 0.04, _tone("mark"), 6)
 	_box(b, Vector3(0, 7.85, 0), Vector3(0.12, 0.1, 0.12), _tone("lamp"))
-	_place(_mesh(b), poles, SEEN, "flagpoles")
-	_place(_flag_kit("fly", country), flown, NEAR_SEEN * 1.5, "flags_flown")
+	await _place(_mesh(b), poles, SEEN, "flagpoles")
+	await _place(_flag_kit("fly", country), flown, NEAR_SEEN * 1.5, "flags_flown")
 	if med:
-		_place(_flag_kit("staff", "il"), g._flag_spots, NEAR_SEEN * 1.5, "flags_on_lamps")
-		_place(_flag_kit("hang", "il"), g._balcony_flags, NEAR_SEEN, "flags_on_balconies")
+		await _place(_flag_kit("staff", "il"), g._flag_spots, NEAR_SEEN * 1.5, "flags_on_lamps")
+		await _place(_flag_kit("hang", "il"), g._balcony_flags, NEAR_SEEN, "flags_on_balconies")
 
 func _flag_material() -> ShaderMaterial:
 	if _flag_mat == null:
@@ -579,10 +595,12 @@ func ads() -> void:
 		boards.append([])
 	var n := 0
 	var nb := 0
-	for ri in range(g._roads.size()):
+	for ri: int in g._tile_roads.get(g._tile, []):
 		var r: Dictionary = g._roads[ri]
 		if not r["drive"] or r["pv"]:
 			continue
+		if g._over():
+			await g._pause()
 		var hw: float = float(r["w"]) * 0.5
 		if MAIN.has(r["k"]) and r["k"] != "trunk":
 			var side := 1.0
@@ -590,10 +608,10 @@ func ads() -> void:
 				side = -side
 				var d: Vector2 = sp[1]
 				var p: Vector2 = (sp[0] as Vector2) - (sp[2] as Vector2) * (hw + 1.6) * (1.0 - side)
-				if _free(p, 0.9, 0.9, 2.5):
+				if g._mine(p) and _free(p, 0.9, 0.9, 2.5):
 					var gy := _h(p)
 					var face := Basis(Vector3.UP, atan2(d.x, d.y))   # faces up and down the street
-					(columns[n % AD_KINDS] as Array).append(Transform3D(face, Vector3(p.x, gy, p.y)))
+					(columns[posmod(hash(Vector2i(p.round())), AD_KINDS)] as Array).append(Transform3D(face, Vector3(p.x, gy, p.y)))
 					g._add_post(p, 0.7)
 					n += 1
 		if r["k"] in ["primary", "trunk", "motorway", "secondary"]:
@@ -601,12 +619,12 @@ func ads() -> void:
 				var p: Vector2 = sp[0]
 				var d: Vector2 = sp[1]
 				var out: Vector2 = sp[2]
-				if not (_free(p, 3.0, 4.5, 6.0) and _free(p + d * 2.6, 2.5, 1.0, 1.0) and _free(p - d * 2.6, 2.5, 1.0, 1.0)):
+				if not (g._mine(p) and _free(p, 3.0, 4.5, 6.0) and _free(p + d * 2.6, 2.5, 1.0, 1.0) and _free(p - d * 2.6, 2.5, 1.0, 1.0)):
 					continue
 				# facing the traffic coming, turned a little toward the road
 				var look := (-d * cos(0.35) - out * sin(0.35)).normalized()
 				var gy := _h(p)
-				(boards[nb % AD_KINDS] as Array).append(Transform3D(Basis(Vector3.UP, atan2(look.x, look.y)), Vector3(p.x, gy, p.y)))
+				(boards[posmod(hash(Vector2i(p.round())), AD_KINDS)] as Array).append(Transform3D(Basis(Vector3.UP, atan2(look.x, look.y)), Vector3(p.x, gy, p.y)))
 				g._add_post(p + d * 2.4, 0.2)
 				g._add_post(p - d * 2.4, 0.2)
 				nb += 1
@@ -614,8 +632,8 @@ func ads() -> void:
 		(columns[n % AD_KINDS] as Array).append(xf)
 		n += 1
 	for i in range(AD_KINDS):
-		_place(_column_kit(i), columns[i], SEEN * 0.7, "ad_columns")
-		_place(_board_kit(i), boards[i], SEEN * 1.6, "billboards")
+		await _place(_column_kit(i), columns[i], SEEN * 0.7, "ad_columns")
+		await _place(_board_kit(i), boards[i], SEEN * 1.6, "billboards")
 
 func _ad_material() -> ShaderMaterial:
 	if _ad_mat == null:
@@ -701,11 +719,15 @@ func fences() -> void:
 	var hedge = g.new_cbuf(CELL)
 	var chain = g.new_cbuf(CELL)
 	var chain_posts = g.new_cbuf(CELL)
+	for b in [green, white, posts, rails, hedge, chain, chain_posts]:
+		b.clip = true   # every square a fence reaches runs it; each keeps its own stretch
 	var fence_col := _tone("fencegreen")
 	var rail_col := _tone("railing")
 	var metres := {"fence": 0.0, "railing": 0.0, "hedge": 0.0}
 	for kind: String in ["pitch", "school"]:
-		for ring: PackedVector2Array in g._area_rings.get(kind, []):
+		for ring: PackedVector2Array in g._rings_near(kind):
+			if g._over():
+				await g._pause()
 			var area: float = g._area(ring)
 			if area < 150.0 or (kind == "pitch" and area > 25000.0):
 				continue   # (a whole sports park is not fenced round, its pitches are)
@@ -714,10 +736,13 @@ func fences() -> void:
 				var a := ring[i]
 				var e := ring[(i + 1) % ring.size()]
 				var got := _fence_line(green, posts, a, e, H, fence_col, 2.6, false, 2)
-				if got > 0.0:
-					_mark("fence", (a + e) * 0.5)
-				metres["fence"] += got
-	for ring: PackedVector2Array in g._area_rings.get("park", []):
+				if g._mine((a + e) * 0.5):
+					if got > 0.0:
+						_mark("fence", (a + e) * 0.5)
+					metres["fence"] += got
+	for ring: PackedVector2Array in g._rings_near("park"):
+		if g._over():
+			await g._pause()
 		var parea: float = g._area(ring)
 		if parea < 200.0 or parea > 40000.0:
 			continue   # a city park, not a big open one: those are not railed round
@@ -732,36 +757,51 @@ func fences() -> void:
 				continue   # only the sides along a street
 			var pick := _rnd(Vector2i((mid * 2.0).round()))
 			if med and pick < 0.3:
-				metres["railing"] += _fence_line(white, rails, a, e, 1.05, rail_col, 2.4, true, 2)
-				_mark("railing", mid)
+				var m := _fence_line(white, rails, a, e, 1.05, rail_col, 2.4, true, 2)
+				if g._mine(mid):
+					metres["railing"] += m
+					_mark("railing", mid)
 			elif pick < (0.55 if med else 0.35):
-				metres["hedge"] += _hedge_line(hedge, a, e)
-				_mark("hedge", mid)
+				var m := _hedge_line(hedge, a, e)
+				if g._mine(mid):
+					metres["hedge"] += m
+					_mark("hedge", mid)
 	var k := 1.0 / float(g._city_data.get("scale", 10))
-	for bar: Array in g._city_data.get("barriers", []):
+	var all_bars: Array = g._city_data.get("barriers", [])
+	for bi: int in g._tile_bars.get(g._tile, []):
+		if g._over():
+			await g._pause()
+		var bar: Array = all_bars[bi]
 		var flat: Array = bar[0]
 		var kind := String(bar[1])
 		for i in range(0, flat.size() - 2, 2):
 			var a := Vector2(flat[i], flat[i + 1]) * k
 			var e := Vector2(flat[i + 2], flat[i + 3]) * k
+			if not g._tile_rect(g._tile).grow(2.0).intersects(Rect2(a, Vector2.ZERO).expand(e).grow(0.5)):
+				continue   # a stretch of it nowhere near this square
+			if g._over():
+				await g._pause()
+			var m := 0.0
 			if kind == "hedge":
-				metres["hedge"] += _hedge_line(hedge, a, e)
+				m = _hedge_line(hedge, a, e)
 			elif kind == "fence":
 				if med:
-					metres["fence"] += _fence_line(green, posts, a, e, 1.8, fence_col, 2.5, false, 2)
+					m = _fence_line(green, posts, a, e, 1.8, fence_col, 2.5, false, 2)
 				else:
 					# Bedford's mapped fences are mostly chain-link: along the highway, round
 					# yards and lots (tens of kilometres of them, so a post every other piece)
-					metres["fence"] += _fence_line(chain, chain_posts, a, e, 1.8, _tone("pole"), 3.0, false, 2)
-	g._add_mesh(green, _fence_material("fencegreen", 0.12), false, FENCE_SEEN)
-	g._add_mesh(white, _fence_material("railing", 0.15), false, FENCE_SEEN * 0.7)
-	g._add_mesh(posts, g._surface("fencegreen"), false, FENCE_SEEN)
-	g._add_mesh(rails, g._surface("railing"), false, FENCE_SEEN * 0.7)
-	g._add_mesh(hedge, g._surface("bush"), false, FENCE_SEEN * 1.2)
-	g._add_mesh(chain, _fence_material("pole", 0.08), false, FENCE_SEEN * 0.8)
-	g._add_mesh(chain_posts, g._surface("pole"), false, FENCE_SEEN * 0.8)
+					m = _fence_line(chain, chain_posts, a, e, 1.8, _tone("pole"), 3.0, false, 2)
+			if g._mine(a) and metres.has(kind):
+				metres[kind] += m
+	for job: Array in [[green, _fence_material("fencegreen", 0.12), FENCE_SEEN], [white, _fence_material("railing", 0.15), FENCE_SEEN * 0.7],
+			[posts, g._surface("fencegreen"), FENCE_SEEN], [rails, g._surface("railing"), FENCE_SEEN * 0.7],
+			[hedge, g._surface("bush"), FENCE_SEEN * 1.2], [chain, _fence_material("pole", 0.08), FENCE_SEEN * 0.8],
+			[chain_posts, g._surface("pole"), FENCE_SEEN * 0.8]]:
+		if g._over():
+			await g._pause()
+		g._add_mesh(job[0], job[1], false, job[2])
 	for key: String in metres:
-		_count[key + "_m"] = int(metres[key])
+		_count[key + "_m"] = int(_count.get(key + "_m", 0)) + int(metres[key])
 
 func _fence_material(tone: String, gap: float) -> ShaderMaterial:
 	if _fence_mats.has(tone):
@@ -820,7 +860,8 @@ func _fence_line(panel, posts, a: Vector2, e: Vector2, H: float, col: Color, ste
 		var up := Vector3.UP * H
 		var n := (B - A).cross(Vector3.UP).normalized()
 		var u2 := Vector2(H, 0)
-		g.add_wall(p0, p1, 0.06)
+		if g._mine(p0):   # (each square along the fence works it out: one records it)
+			g.add_wall(p0, p1, 0.06)
 		panel.tri(A, B, B + up, n, col, Vector2(run, 0), Vector2(run + L, 0), Vector2(run + L, H), u2)
 		panel.tri(A, B + up, A + up, n, col, Vector2(run, 0), Vector2(run + L, H), Vector2(run, H), u2)
 		if i % post_every == 0:   # a post: four sides, no ends (nobody sees its top)
@@ -846,7 +887,8 @@ func _hedge_line(buf, a: Vector2, e: Vector2) -> float:
 		var p1: Vector2 = pc[1]
 		var d := (p1 - p0).normalized()
 		var s := Vector2(-d.y, d.x)
-		g.add_wall(p0, p1, 0.4)
+		if g._mine(p0):
+			g.add_wall(p0, p1, 0.4)
 		var h0 := 0.9 + _rnd(Vector2i((p0 * 3.0).round())) * 0.35
 		var h1 := 0.9 + _rnd(Vector2i((p1 * 3.0).round())) * 0.35
 		var y0 := _h(p0)
@@ -883,8 +925,10 @@ func street_life() -> void:
 	var bike_paint := [Palette.col("hazard").lerp(Palette.col("bg"), 0.3), _tone("signblue"), _tone("mark"), _tone("cartrim")]
 	var scooter_paint := [_tone("mark"), _tone("cartrim"), Palette.col("hazard").lerp(Palette.col("bg"), 0.25), _tone("rim")]
 	var k := 1.0 / float(g._city_data.get("scale", 10))
-	var taken := {}
-	for p: Array in g._city_data.get("pois", []):
+	var taken := _life_taken
+	var all_pois: Array = g._city_data.get("pois", [])
+	for pi: int in g._tile_pois.get(g._tile, []):
+		var p: Array = all_pois[pi]
 		var kind := String(p[2])
 		if not (kind.begins_with("shop:") or kind in ["cafe", "restaurant", "fast_food", "ice_cream", "bar", "pub",
 				"school", "library", "bank", "pharmacy", "community_centre"]):
@@ -894,6 +938,8 @@ func street_life() -> void:
 		if taken.has(cell):
 			continue
 		taken[cell] = true
+		if g._over():
+			await g._pause()
 		var hit: Dictionary = g._nearest_seg(at, 40.0, true, true)
 		if hit.is_empty():
 			continue
@@ -939,9 +985,9 @@ func street_life() -> void:
 				scooters.append(Transform3D(bs, Vector3(s.x, gy, s.y)))
 				scooter_cols.append(scooter_paint[int(_rnd(cell + Vector2i(i, 1)) * 4.0) % 4])
 				g._add_post(s, 0.45)
-	_place(_rack_kit(), racks, NEAR_SEEN, "bike_racks")
-	_place(_bike_kit(), bikes, NEAR_SEEN, "bikes", false, bike_cols)
-	_place(_scooter_kit(), scooters, NEAR_SEEN * 1.2, "scooters", false, scooter_cols)
+	await _place(_rack_kit(), racks, NEAR_SEEN, "bike_racks")
+	await _place(_bike_kit(), bikes, NEAR_SEEN, "bikes", false, bike_cols)
+	await _place(_scooter_kit(), scooters, NEAR_SEEN * 1.2, "scooters", false, scooter_cols)
 
 ## a hoop of tube, its plane across local X (bikes go in along X)
 func _rack_kit() -> ArrayMesh:

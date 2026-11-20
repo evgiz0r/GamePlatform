@@ -74,6 +74,16 @@ is a Z coordinate, not a height.
   its colormap renders pure white** (it cached a missing texture) -- the cure is to delete
   its `.glb.import` and import again. Seen twice; hence the two-step import in the tool. Quaternius characters embed their
   textures, so they never have this problem.
+- **Quaternius people read as cartoons** (big head and hands, near-black skin, white slit
+  eyes). Grown-up proportions come from scaling bones: head ~0.64, hands ~0.7, feet ~0.85,
+  upper legs 1.16 along Y, abdomen 1.06 along Y, the whole model x1.06 to keep its height.
+  Setting `set_bone_pose_scale` once does nothing -- the animation sets every pose each
+  frame. Do it from a `SkeletonModifier3D` subclass added under the `Skeleton3D`, in
+  `_process_modification_with_delta()`. Reading `get_bone_pose_scale()` back after the
+  frame says 1.0 even when it works (the pose is put back after skinning): judge by eye,
+  same character side by side at the same distance. Their materials are named `Skin`,
+  `Shirt`, `Pants`, `Belt`, `Hair` and `Face` (the eyes, pure white): duplicate them per
+  person and give `Face` a darker shade of that person's skin.
 - Both helpers fall back to palette shapes + a playtest warning when a file is missing, so
   a game keeps running (and the report tells you which name was wrong).
 - Scenery: a ring of `model()`s around the play area (houses behind, trees on the sides,
@@ -194,6 +204,30 @@ most, in order, last time one did:
   (bucket them once at load), every left-behind AI car respawned in one tick (one a tick),
   an AI planning several legs of its route at once (one a tick), every car deciding its
   speed every tick (20 Hz, staggered).
+- **Build a big world near-first; the rest while it runs.** Build it in the same squares
+  its meshes are merged into (so pieces cost no extra draws): only the squares round the
+  start before the player sees anything, the rest in a coroutine a few ms a frame, nearest
+  where the player is heading first. A city that took 7-18 s to load started in 1-3 s.
+  What made the squares add up to exactly the old all-at-once world:
+  - Anything laid along a line (road surface, paint, kerbs, wires, fences) is worked out
+    in full by every square the line crosses, and each square keeps only the triangles
+    whose first vertex is in it. Everything else, and whatever it records (posts, parked
+    cars, lights), belongs to the one square its anchor point is in, and all its triangles
+    go into that square's mesh.
+  - One random sequence across the whole world comes out different once the order changes.
+    Seed per item (per road, per outline, per grid cell) so every square works out the same
+    positions, and draw every random number whether or not the item is placed.
+  - Work out only the stretch of a long line near the square (with two points more each
+    side so its mitred bends match), or a 3 km road's paint is redone for every square.
+  - Pause inside every loop (`if over_budget(): await pause()`), between mesh creations
+    (`add_surface_from_arrays` on a big array is several ms), inside polygon subdivision on
+    hills, and while letting go of a big parsed JSON (freeing it at once took 40 ms).
+  - **A function that contains `await` must be awaited by every caller**, or the part after
+    its pause runs later, in another square's context. List the coroutines and grep their
+    calls. Pause on a signal the game itself emits once a frame, not `process_frame`: when
+    the game is left mid-build, its own signal dies with it and the coroutine just stops.
+  - Turn off the frame-rate quality watcher while building: the build is not the machine
+    being slow. Check the result by comparing every item count with the old build.
 - **Photo textures under a palette.** Divide the photo by its own average colour and
   multiply by the palette tone: the photo gives the grain, the tone the colour, and `/look`
   still reskins it. Fade fine detail and repeating photos out with distance (a repeat shows

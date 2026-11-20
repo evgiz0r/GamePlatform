@@ -27,7 +27,19 @@ The ones most often touched, and the functions in them:
 - **loading the city** -- `_load_city`, then `_fit_dual_carriageways` (halves of a divided
   road sized to their lanes, `r["median"]`), `_fit_widths_to_buildings` (widths are guesses),
   `_clip_buildings` (fronts still on a road cut back to road + 1.5 m), `_build_graph`.
-- **building the world** -- kerbs and pavements `_build_kerbs`, `_street_runs`,
+- **building the world, near-first** -- `_build_world` does the once-only things
+  (`_build_setup`: which roads, nodes, buildings, areas, places reach each 400 m square;
+  the park, tree and light set-ups), then `_build_tile` square by square: the ones within
+  `NEAR_FIRST` of the start behind the loading text, the rest in `_build_rest` while you
+  drive, nearest the car first, every builder stopping when the frame's budget is used up
+  (`if _over(): await _pause()`; `BUILD_US`). Two rules keep squares from doubling or
+  missing things: what lies along a road or fence is worked out by every square it crosses
+  and kept only where its triangles start (`CBuf.clip`, `_near_part`, `_near_span`);
+  everything else, and whatever it records (posts, parked cars, lights, tables), belongs
+  to the square its spot is in (`_mine`, `_ring_mine`). A builder that is a coroutine must
+  be awaited everywhere, or what it builds after a pause lands in the wrong square.
+  `STREETS_BUILD_ALL=1` builds every square before the car is shown (the tests do).
+- **the builders** -- kerbs and pavements `_build_kerbs`, `_street_runs`,
   `_kerb_run_piece`, corners `_kerb_corners` (checked along their length), the asphalt grid
   `_asph_hash` / `_asphalt_other`; parked cars `_build_parked`, car parks `_build_lots`; the
   map's edge `_build_edge` / `_keep_inside`.
@@ -60,6 +72,10 @@ screenshots in `$OUT`. On a cloud container each takes 2-10 minutes: run them in
 background. `tests/README.md` lists them with the last results -- what "good" looks like.
 Run the ones near what you change, before and after.
 
+`run.sh` sets `STREETS_BUILD_ALL=1`: the whole city is built before a test starts, as the
+tests look all over it (the game itself builds near the start first and the rest while you
+drive).
+
 Before anything: `tools/check_script.sh res://game/streets/streets.gd
 res://game/streets/traffic.gd res://game/streets/furniture.gd` (seconds).
 
@@ -78,9 +94,14 @@ coloured by what held it. Then stage that spot in a scene test.
 
 ## Numbers to compare against (November 2026, cloud container, software renderer)
 
-- Build time: Givatayim ~6 s, Bedford ~9 s, Ashdod ~15 s, the test town ~1.2 s (the
-  container is slower than a laptop by ~3x; compare ratios).
-- Draw calls at the start view: Givatayim ~290, Ashdod ~420 (`tests/draws.gd`).
+- Build time in full: Givatayim ~6 s, Bedford ~9 s, Ashdod ~15 s, the test town ~1.2 s
+  (the container is slower than a laptop by ~3x; compare ratios). Before the car is shown,
+  near-first: Givatayim ~2 s (9 of its 71 squares), Bedford ~1.2 s, Ashdod ~2.8 s, the test
+  town ~1.2 s (headless playtest, `build_ms` in the "city" event); the rest of Givatayim
+  ~10 s of background building (the "city_built" event).
+- Draw calls at the start view: Givatayim ~290, Ashdod ~420 (`tests/draws.gd`), before the
+  city was built in squares; since, Givatayim 235 with all of it built (little things are
+  grouped per 400 m square, not 220 m) and 200 at the start before the rest is up.
 - Givatayim: 140 roads narrowed to their buildings, 865 building fronts cut back, 3
   buildings left over a road on purpose (passages). Ashdod: 44 and 352.
 - Corners laid piece by piece (touching another road): Givatayim 920, Ashdod 2794.

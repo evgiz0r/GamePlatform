@@ -114,6 +114,12 @@ car" against "held by: zebra" is usually the whole diagnosis.
   run straight from the engine draws without them ("Failed loading resource" in the log).
   Run `$GODOT --headless --path . --import` after merging, or use a runner that does it
   when it sees `.import` files newer than its last import (as `tools/playtest.sh` does).
+- **Compare sizes side by side at the same distance.** A before/after lineup with the
+  "after" row nearer the camera hid a 26% smaller head completely: perspective made up the
+  difference. Same character, same depth, one changed and one not.
+- **A game that builds its world in the background is not finished when it says loaded.**
+  Wait for its "all built" flag, or have the runner switch the background build off, before
+  measuring anything away from the start.
 - Parse-check first: `tools/check_script.sh res://game/<game>/<game>.gd` takes seconds and
   says which line; a broken script makes a scene test fail in a confusing way minutes in.
 
