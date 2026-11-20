@@ -6532,8 +6532,27 @@ func _lights_setup() -> void:
 			_sig_set[node] = true
 			_hash_add(_sig_hash, Rect2(_nodes[node], Vector2.ZERO), SEG_CELL, node)
 	_lit = lit
+	# (before any square puts up its poles: every one reads the same groups) -- the points of
+	# one junction together: a divided road's junction is two to four points 10-30 m apart,
+	# each with its lights, and judged one by one they disagreed which road was the main one:
+	# green both ways across the knot, and the cars met in it
+	var knots: Array = []
+	var in_knot := {}
 	for node: int in lit:
-		_signal_groups(node)   # (before any square puts up its poles: every one reads the same groups)
+		if in_knot.has(node):
+			continue
+		var knot: Array = [node]
+		in_knot[node] = true
+		var k := 0
+		while k < knot.size():
+			for other: int in lit:
+				if not in_knot.has(other) and _nodes[other].distance_to(_nodes[knot[k]]) < 40.0:
+					in_knot[other] = true
+					knot.append(other)
+			k += 1
+		knots.append(knot)
+	for knot: Array in knots:
+		_signal_groups(knot)
 	for node: int in lit:
 		for e: Vector2i in _node_roads[node]:
 			if (_roads[e.x] as Dictionary)["drive"] and not _sig_set.has(node):
@@ -8034,34 +8053,40 @@ func _light_group(n: int, dir: Vector2) -> int:
 var _sig_ap := {}                    ## junction node -> [[way in (unit), group], ...]
 var _sig_owner := {}                 ## a node with a light of its own -> the junction it belongs to
 
-## the ways in at junction `node` and their signal groups
-func _signal_groups(node: int) -> void:
-	var c := _nodes[node]
-	var arms: Array = []   # [way in, rank, name, width]
-	for e: Vector2i in _node_roads[node]:
-		var r: Dictionary = _roads[e.x]
-		if not r["drive"]:
-			continue
-		var pts: PackedVector2Array = r["pts"]
-		for d2: int in [-1, 1]:
-			var from := e.y + d2
-			if from < 0 or from >= pts.size():
+## the ways in at the points of one junction (one point, or the few of a junction drawn as
+## several) and their signal groups: the main road -- the busiest kind, then the widest --
+## chosen once for all of them
+func _signal_groups(knot: Array) -> void:
+	var by_node := {}
+	var main: Array = []
+	for node: int in knot:
+		var c := _nodes[node]
+		var arms: Array = []   # [way in, rank, name, width]
+		for e: Vector2i in _node_roads[node]:
+			var r: Dictionary = _roads[e.x]
+			if not r["drive"]:
 				continue
-			arms.append([(c - pts[from]).normalized(), int(ROAD_RANK.get(r["k"], 1)), String(r["name"]), float(r["w"])])
-	if arms.is_empty():
+			var pts: PackedVector2Array = r["pts"]
+			for d2: int in [-1, 1]:
+				var from := e.y + d2
+				if from < 0 or from >= pts.size():
+					continue
+				var a := [(c - pts[from]).normalized(), int(ROAD_RANK.get(r["k"], 1)), String(r["name"]), float(r["w"])]
+				arms.append(a)
+				if main.is_empty() or int(a[1]) > int(main[1]) or (int(a[1]) == int(main[1]) and float(a[3]) > float(main[3])):
+					main = a
+		by_node[node] = arms
+	if main.is_empty():
 		return
-	var main: Array = arms[0]
-	for a: Array in arms:
-		if int(a[1]) > int(main[1]) or (int(a[1]) == int(main[1]) and float(a[3]) > float(main[3])):
-			main = a
 	var axis: Vector2 = main[0]
-	var ap: Array = []
-	for a: Array in arms:
-		var same: bool = String(main[2]) != "" and String(a[2]) == String(main[2])
-		if String(main[2]) == "" or String(a[2]) == "":
-			same = absf((a[0] as Vector2).dot(axis)) >= 0.7
-		ap.append([a[0], 1 if same else 2])
-	_sig_ap[node] = ap
+	for node: int in knot:
+		var ap: Array = []
+		for a: Array in by_node[node]:
+			var same: bool = String(main[2]) != "" and String(a[2]) == String(main[2])
+			if String(main[2]) == "" or String(a[2]) == "":
+				same = absf((a[0] as Vector2).dot(axis)) >= 0.7
+			ap.append([a[0], 1 if same else 2])
+		_sig_ap[node] = ap
 
 ## A signal's colours are what a driver reads, so they are red, amber and green whatever the
 ## palette: each keeps the palette's strength of colour but takes the signal's own hue (the
@@ -11834,8 +11859,13 @@ func _route_to(goal: Vector2) -> bool:
 	var pts: PackedVector2Array = r["pts"]
 	var sj: int = s["seg"]
 	var ahead := (pts[sj + 1] - pts[sj]).dot(_fwd()) >= 0.0
-	var dir: int = r["o"] if r["o"] != 0 else (1 if ahead else -1)
-	var first := ids[sj + 1] if dir > 0 else ids[sj]
+	# Either way along the street it stands in (a two-way one), whichever makes the shorter
+	# trip -- the way it faces only breaks a near tie (turning round costs ~15 m). It took the
+	# way the car faced, and leaving a house facing away from the route it swerved across a
+	# narrow street into the wall, then crept to a junction to turn round in it.
+	var dirs: Array = [int(r["o"])] if int(r["o"]) != 0 else [1, -1]
+	var dir := 0
+	var first := -1
 	# arrive at either end of the goal's segment, whichever is legal and shorter
 	var gr: Dictionary = _roads[g["road"]]
 	var gids: PackedInt32Array = gr["ids"]
@@ -11843,24 +11873,29 @@ func _route_to(goal: Vector2) -> bool:
 	var best := PackedInt64Array()
 	var best_len := INF
 	var best_dir := 0
-	for end: Array in [[gids[gj], 1], [gids[gj + 1], -1]]:
-		if gr["o"] != 0 and gr["o"] != end[1]:
-			continue   # would mean driving the last bit against a one-way
-		if not _astar.has_point(first) or not _astar.has_point(end[0]):
-			continue
-		var path := _astar.get_id_path(first, end[0])
-		if path.is_empty():
-			continue
-		var other := gids[gj + 1] if end[1] == 1 else gids[gj]
-		if path.size() >= 2 and path[path.size() - 2] == other:
-			continue   # it drives past the address to the far end, then U-turns back: no
-		var L := 0.0
-		for i in range(1, path.size()):
-			L += _nodes[path[i - 1]].distance_to(_nodes[path[i]])
-		if L < best_len:
-			best_len = L
-			best = path
-			best_dir = end[1]
+	for d0: int in dirs:
+		var f0 := ids[sj + 1] if d0 > 0 else ids[sj]
+		var lead_in := (s["q"] as Vector2).distance_to(_nodes[f0]) + (0.0 if (d0 > 0) == ahead else 15.0)
+		for end: Array in [[gids[gj], 1], [gids[gj + 1], -1]]:
+			if gr["o"] != 0 and gr["o"] != end[1]:
+				continue   # would mean driving the last bit against a one-way
+			if not _astar.has_point(f0) or not _astar.has_point(end[0]):
+				continue
+			var path := _astar.get_id_path(f0, end[0])
+			if path.is_empty():
+				continue
+			var other := gids[gj + 1] if end[1] == 1 else gids[gj]
+			if path.size() >= 2 and path[path.size() - 2] == other:
+				continue   # it drives past the address to the far end, then U-turns back: no
+			var L := lead_in
+			for i in range(1, path.size()):
+				L += _nodes[path[i - 1]].distance_to(_nodes[path[i]])
+			if L < best_len:
+				best_len = L
+				best = path
+				best_dir = end[1]
+				dir = d0
+				first = f0
 	if best.is_empty():
 		return false
 	_ap_pts = PackedVector2Array([s["q"]])
