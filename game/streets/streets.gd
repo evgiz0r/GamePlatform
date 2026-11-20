@@ -14809,7 +14809,7 @@ func _ap_kt_start() -> void:
 	# right-hand lane (the room is on that side), to the right from the left of the middle
 	var to := -_ap_dead_in
 	var side := -1
-	var hit := _nearest_seg(_pos, 20.0, true, true)
+	var hit := _nearest_seg(_pos, 20.0, true, true, _y)
 	if not hit.is_empty():
 		var pts: PackedVector2Array = (_roads[hit["road"]] as Dictionary)["pts"]
 		var d := (pts[int(hit["seg"]) + 1] - pts[int(hit["seg"])]).normalized()
@@ -14825,13 +14825,13 @@ func _ap_kt_start() -> void:
 ## a move's end: the circle at that end of the car, `ahead` metres on, would touch something,
 ## leave the asphalt (past the kerb, or past the end of the street), or reach the map's edge
 func _ap_kt_blocked(p: Vector2) -> bool:
-	if _push_out(p, CAR_R, true, true) != Vector2.ZERO:
+	if _push_out(p, CAR_R, true, true, _y) != Vector2.ZERO:
 		return true
 	if not _bounds.grow(-EDGE - CAR_R - 0.3).has_point(p):
 		return true
 	if (p - _ap_dead_end).dot(_ap_dead_in) > -CAR_R:
 		return true
-	var on := _nearest_seg(p, 15.0, true, false)   # (a driveway's mouth is asphalt too)
+	var on := _nearest_seg(p, 15.0, true, false, _y)   # (a driveway's mouth is asphalt too)
 	return on.is_empty() or float(on["edge"]) + CAR_R > AP_KT_KERB
 
 func _ap_kturn(dt: float) -> Array:
