@@ -368,6 +368,13 @@ What each round found, so far:
   one person, and moves eased; the seat view takes 70% of it. `tests/seat_steady.gd`:
   swings back 171 -> 67 a minute, 9.4 -> 3.3 deg off ahead on average. What is left is the
   view's own lead into turns following autodrive's small corrections, and the body.
+- "They drive straight but stand very much on the right": autodrive follows its line
+  (`tests/lane_position.gd`), so the line was the cause -- 0.25 m past a two-way lane's
+  middle (0.6 m from the kerb on a 7 m street) and the right-hand lane of three on
+  Sderot Herzl. Now +0.12 m and 1.1 m clear of the kerb; on three lanes or more the second
+  from the right, over to the right-hand one before a right turn.
+- The look-round fires only first in line and about to go (no car within 12 m in front;
+  at a light, its green): it looked left and right at every red from behind a queue.
 - Traffic vehicles steer by their front: the front axle runs on the lane rounded over 4 m,
   the rear trails a wheelbase behind (`_place` in traffic.gd). The body was pointed along
   the lane 2.2 m either side of its middle, the same for a car and a bus, and pivoted on
