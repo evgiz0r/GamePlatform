@@ -909,7 +909,10 @@ Nothing is half done: all of the above is on main.
   near-first: Givatayim ~2 s (9 of its 71 squares), Bedford ~1.2 s, Ashdod ~2.8 s, the test
   town ~1.2 s (headless playtest, `build_ms` in the "city" event); the rest of Givatayim
   ~10 s of background building (the "city_built" event). Tel Aviv (the box, 4011 buildings,
-  3667 roads, 59 squares): ~2.2-2.5 s before the car, the rest ~11-12 s.
+  3667 roads, 59 squares): ~2.2-2.5 s before the car, the rest ~11-12 s. After Tel Aviv grew
+  to the sea (9,591 buildings, 6,091 roads), the playtest's "city" event, two runs at once:
+  Tel Aviv parse 2.7 s + build 3.4 s before the car, Ashdod 2.2 + 3.0, Givatayim 1.0 + 2.0
+  (decks_inferred alone 0.8 s of Tel Aviv's parse, 0.24 of Givatayim's).
 - Frame cost at the start view (`tests/frame_cost.gd`, quality 3, Nov 2026, same run):
   Tel Aviv 1.69 M triangles + 0.75 M shadow, 367 draws; Givatayim (Katznelson by Weizmann)
   2.00 M + 1.01 M, 444 draws -- Tel Aviv's towers are no heavier at the start than
@@ -1873,8 +1876,18 @@ Each line: where the code is, the test, what good reads.
   first pushed the second 0.6-1.5 m out) and its dashed line -- and its traffic gave way to
   the slip road. Now only the way in nearest the facing gets it. `tests/signs_double.gd`:
   two poles facing one way within 3 m -- Givatayim 5 of 149, Tel Aviv 9 of 239 before,
-  0 after (poles 149 -> 138 and 239 -> 213: the plates streets had been given at merges) (`sign_at` records each pole and its sign record; the city's data is let
+  0 after (poles 149 -> 138 and 239 -> 213: the plates streets had been given at merges).
+  Ashdod (the user's screenshot, "streets 2 / 645") had 2 more of another kind: two lanes of
+  a slip road arriving side by side, each its own sign, and two give-ways OSM maps 2.8 m
+  apart -- now a pole is not stood within 3 m of one of the same kind facing the same way
+  (`_sign_poles`; the second way in keeps its rule and line) (`sign_at` records each pole and its sign record; the city's data is let
   go after loading, so a test cannot read `_city_data` then).
+- **Open: a garage tunnel's tube above the ground** by Kaplan and Begin (Tel Aviv, two
+  service tunnels of 79 and 50 m from (38, 121) north to (39-44, 164-177)): from a car's
+  height at (55, 175) a long dark box with the tunnel's lamp strips on top stands over the
+  ground (`AT="55,175" UP=40 tests/run.sh top_at 7`, low_0.png). The same before this
+  round's tunnel change -- not caused by it. `cut_under` also lists 4 service cuttings under
+  a street there and elsewhere (garage mouths).
 - **Tel Aviv grew** (another session, the bake workflow's bbox): 4,011 -> 9,597 buildings,
   3,745 -> 5,963 roads, west to the sea -- Ashdod's size now, and its load with it (see
   "Numbers to compare against").
