@@ -75,8 +75,8 @@ Bright neon. Big friendly animal badges holding big numbers.
 
 The kit's default sound effects are **too loud**. count turns them down to 0.28 (the shell
 ships at 0.8) while it is on screen and puts them back when you leave. `SFX_VOLUME` at the
-top of `game/count/count.gd` is the knob. Any new game should do the same — see
-`reference/README.md`.
+top of `count.gd` is the knob. Any new game should do the same — see "Things this kit
+learned the hard way" in `CLAUDE.md`.
 
 ## Notes
 

@@ -5,10 +5,10 @@ description: 'How to build a 3D game in this kit — the GameMode3D contract (sh
 
 # 3D games in this kit
 
-The kit was 2D-only until `game/drop/` (2026-09). Everything 3D lives in one shell file,
+The kit was 2D-only until `drop` (2026-09, now parked in `reference/drop/`). Everything 3D lives in one shell file,
 `shell/game_mode_3d.gd`, and games extend `GameMode3D` instead of `GameMode`. Same
 one-`Node2D` scene, same `start()`, same verbs (`add_score`, `lose_life`, `win`...), same
-menu / pause / HUD / palette / self-play. Read `game/drop/drop.gd` end to end once: it is
+menu / pause / HUD / palette / self-play. Read `reference/drop/drop.gd` end to end once: it is
 the reference and it is short.
 
 ## What GameMode3D gives you
@@ -122,7 +122,7 @@ is a Z coordinate, not a height.
 - The project does not pin a 3D physics engine; the default works headless and on the
   web build. Do not add Jolt to `project.godot` for one game.
 
-## Rail games: a road that bends (`game/drive_by/`)
+## Rail games: a road that bends (`reference/drive_by/`)
 
 Do not scroll the world past a fixed camera; **move the camera along a curve** and build
 the world in road coordinates. `drive_by` keeps `u` (distance along the road) and `lat`
