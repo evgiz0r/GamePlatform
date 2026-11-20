@@ -402,25 +402,24 @@ is rarely the one you would guess. What cost the most, in order, last time one d
 
 ### Shader programs: count them in a browser
 
-A browser compiles every shader program the first time something is drawn with it, and each
-stalls that frame (tens of ms on a phone or through ANGLE on Windows). In the Compatibility
-renderer one game shader is about **seven programs**: drawn alone and as a multimesh, into
-the shadow map (both again), and an **additive pass for a light that casts shadows** -- the
-sun with shadows on gets its own variant for every lit shader. So:
+(What compiles is shader code -- the bullet on it above. This is how to see it, and what
+else costs programs.)
 
-- **One `Shader` resource per shader code.** `Shader.new()` each time a material is made
-  (a fence material per colour) is a set of programs each, even with the same code: make
-  the Shader once and give it to every material.
+- **Count in a real browser.** Locally nothing compiles after the first run (the shader
+  cache), but a web export can be run in Playwright's Chromium with an init script wrapping
+  `WebGL2RenderingContext.prototype.linkProgram`: count the programs linked before, during
+  and after the game's warm-up, and name each by its variant's `#define`s and its material's
+  uniform names. Count, don't time: under SwiftShader the status check after a compile also
+  waits for the frames before it, seconds of software rendering.
+- **About seven programs a game shader**: drawn alone and as a multimesh, the shadow map's
+  depth pass for both, and an **additive pass for every light that casts shadows** -- in the
+  Compatibility renderer the sun with shadows on is a second pass with its own variant for
+  every lit shader.
 - **A `#define` variant is another shader.** Two looks of one thing (a barrier and its
   see-through curtain) as one shader with a uniform switch compile once.
-- **Built-in materials are one shader per feature mix** (emission on, vertex colour,
-  unshaded, a texture...): a look-alike with one flag different is another set of programs.
-  Before merging two by switching a flag on, look for code that reads that flag to mean
-  something else (a batcher keeping glowing things apart).
-- **Count them in the browser, do not time them there.** Wrap `WebGL2RenderingContext`'s
-  `linkProgram` in Playwright's Chromium (an init script) and count by phase; under
-  SwiftShader the status check after a compile also waits for the frames before it, so the
-  times are not the compiler's.
+- **Before switching a built-in material's flag to share a shader, look for code that reads
+  the flag** to mean something else (a batcher keeping anything with emission on out of its
+  merged meshes, lights that switch emission at night).
 
 ## Self-play
 
