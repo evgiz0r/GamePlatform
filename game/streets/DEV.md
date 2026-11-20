@@ -18,7 +18,8 @@ merge, re-check (`tools/check_script.sh`, a playtest, the tests below), never fo
 | `furniture.gd` | street furniture built after the places: power lines, lamps and bus-stop kits, flags, ads, fences and hedges, bike racks and scooters |
 | `drivelog.gd` | the drive recorder (see below) |
 | `cities/*.json` | baked towns (`tools/osm_city.py`) and the made-up test town (`tools/fake_city.py`) |
-| `details.gd`, `cities/details/<city>.json` | what a filmed walk showed and OSM lacks, laid over the baked city as it loads (road edits, unmarked zebras, areas, walls, fences, hedges, bins, railings) and the walks themselves; the format is at the top of `details.gd` |
+| `details.gd`, `cities/details/<city>.json` | what a filmed walk showed and OSM lacks, laid over the baked city as it loads (road edits, unmarked zebras, areas, an arcade cut under a block, paving level with the pavement, walls, fences, hedges, bins, railings, bollards, a pole transformer, a barrier, parked motorbikes, trees) and the walks themselves; the format is at the top of `details.gd` |
+| `cities/details/make_givatayim.py` | writes `givatayim.json`: every detail placed along the Ha-Meri passage's own line, with the film's seconds beside what each came from. Edit this, not the JSON, and run it |
 | `textures/` | CC0 photo textures (Poly Haven) and the scripts that made the sky and the leaf atlas; credited in `textures/CREDITS.md` |
 | `tests/` | scene tests, see below |
 
@@ -47,6 +48,15 @@ The ones most often touched, and the functions in them:
   (barred windows, the door in the middle bay), stone courses, plinth and mosaic are
   `WALL_SHADER`'s `ground` / `door` / `stone_k`; worn asphalt is `TONE_SHADER`'s
   `crazing()` and patches. `tests/eye_level.gd` puts a camera where a person stands.
+- **front gardens** -- `_garden_fronts`, called from the kerbs for each side of a yard
+  street in the south, after the low stone wall. Plots keyed to the run (so every square
+  along the street works out the same ones) and skipped when nowhere near the square. The
+  kerbs stage cost 549 ms in pass 1 before them, 1.2 s with them done the obvious way
+  (`_fence_line` / `_hedge_line` checking every piece for roads and houses), ~0.85 s now:
+  the wall loop records which pieces of the run have the wall (`walled`), and a fence on
+  the wall is laid by `furniture.wall_fence` with no checks and no walls of its own (the
+  wall is both); a hedge looks only for houses (`roads` false). Of that, the look for the
+  nearest road (`_off_road` -> `_nearest_seg`) was the dear part: half the hedges' 300 ms.
 - **the builders** -- kerbs and pavements `_build_kerbs`, `_street_runs`,
   `_kerb_run_piece`, corners `_kerb_corners` (checked along their length), the asphalt grid
   `_asph_hash` / `_asphalt_other`; parked cars `_build_parked`, car parks `_build_lots`; the
@@ -180,12 +190,17 @@ past Sheinkin, replayed in first person (`_film_begin` / `_film_tick` / `_film_a
 streets.gd, "a filmed walk, replayed"). It is how that street is being made realistic: a
 pass at a time, biggest differences first, each pass checked with a side-by-side video.
 
-- **The route** is `walks.katzenelson_hameri.points` in `cities/details/givatayim.json`:
+- **The route** is `walks.katzenelson_hameri.points` in `cities/details/givatayim.json`
+  (written by `make_givatayim.py` beside it):
   [seconds, x, z], the seconds the film's. Landmarks in the film: off the north kerb 1.5 s,
   the far kerb 16 s (so the road there is ~17 m across by walking time; the game's two
   9 m halves are right), the forecourt 25 s, into the passage 33 s, out of it 64 s, the
   corner of Sheinkin 80 s, over it 90 s, into Ha-Meri 93-96 s. The game's pavement from the
   zebra to the passage is ~7 m longer than the film's, so the walk hurries there (2.2 m/s).
+- **The walk starts where its film does**: `_find_start` puts `_pos` at the walk's first
+  point before the city is built, so the squares round the walk go up first. Before that
+  the game built round the middle of town and the walk's first seconds crossed bare grass
+  (and a scene test jumping along it shot empty ground).
 - **The passage's coordinates** were worked out along its own line: S0 (667.9, -653.0) on
   Katzenelson to S1 (611.3, -588.2) on Sheinkin (both baked nodes); a point is `s` metres
   along it and `off` to the south-east (negative: north-west). Walking it south-west: the
@@ -195,21 +210,52 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   2.7-3.5 m south-east of that street's line.
 - **The side-by-side.** The film reached the session as a 100 s clip under 10 MB (VLC
   transcode, emailed as an attachment: the connectors will not hand over anything bigger,
-  nor a video from OneDrive at all). That clip came out **mirrored** (a shop sign read
+  nor a video from OneDrive at all). It is not in the repo and must not be: a new session
+  that needs it asks the user for it again, or fetches that attachment through the mail
+  connector if the session has one. Everything else a pass needs is here. That clip came out **mirrored** (a shop sign read
   backwards): flip it (`hflip`). Record the game's half with
   `GODOT_ARGS="--fixed-fps 10" STREETS_BUILD_ALL=0 RECORD=1 OUT=... game/streets/tests/run.sh
   filmed_walk 5` (1280x720; about 1 frame a second in the container: 15 minutes), crop the middle 406x720
   (the 70 degree vertical field of view then matches a phone held upright) and `hstack` the
   two. The film itself is the user's: it, its frames and anything past Ha-Meri never go in
   the repo.
-- **Next passes** (seen in the first side-by-side): the forecourt is big plain concrete
-  slabs with black-and-yellow bollards, a transformer on twin lattice poles and a parking
-  barrier; at the zebra's south end the white hoop railing and the red-white kerb, and the
-  game's building there stands too close; the passage's stone wall is rough grey stone and
-  its fence darker wood; the corner of Sheinkin is a raised crossing paved in charcoal
+- **Crossing like a person (pass 3).** The film waits at Katzenelson's north kerb 1.6-4.5 s
+  looking left (a white SUV goes by), crosses the near half, waits on the median 8.7-13.3 s
+  looking right (cars stop at the zebra; one drives on), and is at the far kerb at 17 s;
+  at Sheinkin it looks right, then left, then crosses. The walk does the same: two points at
+  one spot are a wait (`_film_at` holds there, and keeps the curve from swinging past the
+  stop), `looks` turn the head (`_film_look`, the camera only), the head also leads into
+  every bend (where the walk is 3.4 s on against 1.6 s), `zebras` put the walker in
+  `_zebras_on` while it waits or crosses (`_film_on_zebras`, after the crossers rebuild
+  the list; tagged so last tick's go) and `cars` send a car at a second
+  (`Traffic.send`: the car furthest away, not a bus, onto the road nearest the spot, that
+  way). The game's halves of Katzenelson are 9 m: the walk crosses each at 2.3-2.5 m/s to
+  keep the film's times; the film's own speed suggests the real halves are narrower.
+- **The film's clock is decoding from its start.** `ffmpeg -ss` before `-i` lands on the
+  wrong frames in this clip's first seconds (VLC's variable-rate transcode: 2999 frames in
+  100 s, said to be 60 fps); `-vf trim=a:b,setpts=PTS-STARTPTS` agrees with the
+  side-by-side's own clock. A contact sheet cut with `-ss` showed the crossing over at 3 s.
+- **Pass 2, the forecourt (film 17-34 s)**, done: the block at the passage's north-west
+  corner got its arcade along Katzenelson (OSM's outline is the upper floors': the walk ran
+  1.3 m inside it, through a wall drawn only from outside), shops behind the columns (never
+  pilotis); charcoal herringbone under the arcade and pale poured slabs over the forecourt,
+  level with the pavement; a row of bollards across it, the twin-pole transformer on its
+  plinth, the barrier across the next block's drive, a globe lamp, a manhole; seventeen
+  motorbikes and scooters nose to the kerb along the arcade (a gap where the walk comes up
+  off the road), two more in the forecourt; the planted bed behind the white fence and the
+  trees over the passage's mouth.
+- **Next passes** (seen in the side-by-sides; another session's kerb pass now adds its own
+  bollards and crossing railings city-wide, so check what it put here first): Katzenelson's
+  width at the crossing (the film's pace says its halves are narrower than the game's 9 m:
+  measure from the film and narrow them in the details file); the forecourt's slabs still
+  too pale in the sun; at the zebra's south end the white hoop railing and the red-white
+  kerb; the passage's own paving is small grey pavers in rows, not herringbone, and level
+  with the forecourt (the game steps down 12 cm into it); its stone wall is rough grey stone
+  and its fence darker wood; the corner of Sheinkin is a raised crossing paved in charcoal
   herringbone with the zebra painted on it, white bollards round the corner, another
   transformer; Ha-Meri has blue-white kerbs, a Zone 30 sign and a painted 30 ring; the
-  confectionery's front; motorbikes in a row on the pavement.
+  confectionery's front; the shop fronts under the arcade are lit glass in light frames, not
+  the game's dark panels. People last.
 
 ## Open problems
 
