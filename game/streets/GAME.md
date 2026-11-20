@@ -171,9 +171,15 @@ way that has the address on the kerb side; driving hands the way there to autodr
 
 > Besides go to, I want also jump to. It teleports there, instead of driving.
 
-**Places.** Entering the game asks where: Givatayim (starting on Katznelson just past
-Weizmann, the town's central junction); Bedford, Nova Scotia; or Ashdod (starting at Sderot
-Herzl and HeHalutzim, its busiest corner for shops). Each place is one
+**Places.** Entering the game asks where, in two lists side by side: **Cities** (Givatayim,
+Bedford, Ashdod, Tel Aviv, and the made-up test town last) and **Auto Experiments** (the
+filmed walks and the test routes' drives). Each level's `"group"` puts it in one.
+
+> lets rearrange the menu items instead street. 2 categories: Cities, Auto Experiments (walks
+> + test-drives). no extra button for walks, just split in the menu.
+
+Givatayim starts on Katznelson just past Weizmann, the town's central junction; Ashdod at
+Sderot Herzl and HeHalutzim, its busiest corner for shops. Each place is one
 entry in `LEVELS` at the top of `streets.gd` (name, city file, starting corner). Ashdod is
 three times Givatayim's size; it takes longer to build in full, but you are driving in
 about 3 s here, the same as anywhere (see "Loading near-first").
@@ -212,6 +218,16 @@ line on a dark one.
 
 > Trains that act like trains: a front with headlights, lit at night, stopping at the
 > stations; the overhead electric wires; the sound of a train going by.
+
+Its landmarks: the three Azrieli towers -- round, triangular and square -- in one dark,
+glossy blue glass with a band of metal round each top that lights up at night; in HaKirya
+the Matcal tower with its mast and the Marganit tower with its concrete shaft, antenna
+platforms and red-and-white mast up to 138 m; and Sarona's restored Templer houses, two
+storeys under red tile roofs among the lawns and trees, with the towers all round. At night
+every tower over 90 m has red aircraft-warning lights on its roof, slowly pulsing.
+
+> Landmarks: Azrieli round/triangle/square towers in proper glass, lit at night, Sarona,
+> the Kirya (Matcal) tower.
 
 > game streets -- lets add/start working on adding Tel Aviv. Somewhat the area I mentioned.
 > (with a map: Ichilov, Savidor, Azrieli, HaKirya, TLV Mall, Montefiore, Bitsaron,
@@ -282,6 +298,14 @@ then left. Cars come down the street to meet it there: one goes by before it ste
 next stops at the zebra for it, and drives on once it is across. The head looks where the
 walk is going and turns into a corner a moment before the feet do.
 
+The phone is held as a hand holds one: tipped down at the pavement ahead as the film is
+(about 16 degrees, read off where the film's horizon sits), never quite still -- a slow sway
+and a little roll, as small and as slow as the film's own, measured from it -- and it looks
+down as well as round: straight down at Katzenelson's stripes on the way over, and at
+Ha-Meri's kerb as it steps up. Both walks hold it this way. And the picture is the phone's:
+its bright end squeezed rather than burnt to white, its shade lifted, warm and a little less
+colourful than the game drives in -- measured from the film, frame against frame.
+
 Over the passes since, the walk's street has been dressed, a stretch at a time, from the
 film: Katzenelson two lanes each way with railings and red-white kerbs at its zebra; the
 passage paved in grey pavers in rows, its rough stone wall, and tall planting and trees
@@ -335,6 +359,13 @@ than glowing neon. Sheinkin is paved in grey bricks laid in rows, Sirkin in reds
 and black bollards with a yellow band stand along Sirkin's kerb toward Katznelson.
 
 > go with all for that area, and create each time a video for me if possible
+
+Kira Sushi's front has its string lights, two strands of warm bulbs looping under the
+awning and lit by day as in the film; Sirkin's paving has light grey setts laid in a half-
+circle round each street tree and in a band between them. Road signs, crossing barriers,
+hydrants and red-and-white kerbs are a real red, not the palette's pink.
+
+> 3,5
 
 The minimap (bottom left) shows the real streets and buildings round you, heading up, with
 the city limits in pink. The name of the street you are on is at the top, in Hebrew with
@@ -1162,29 +1193,27 @@ contributors under the ODbL, which is why the credit sits on screen.
   What a shop looks like (awning, tables, the bus shelter) is generic. The parked cars
   (about a quarter of the kerb), the people walking and sitting at cafe tables, rooftop
   solar heaters and rooms (Givatayim), pitched roofs on small houses (Bedford).
-<<<<<<< HEAD
-- **Guessed, in Bedford and Tel Aviv: how high their bridges are, how deep their tunnels.**
-  OSM says which ways are bridges and tunnels but not how high or deep, so the game works
-  it out as the town loads: each overpass rises to clear what it crosses, on ramps up the
-  roads leading to it, an interchange's junctions up on them and its slip roads coming
-  down; each tunnel goes 7 m under the ground over it, cuttings sloping down to it, deeper
-  where a road crosses over. Highway 102's overpasses, the Bedford Bypass, the MacKay
-  Bridge's approach; the Ayalon's bridges, the Begin underpass, the Lova Eliav tunnel.
-  Ramps are walled, not grassy banks, yet.
-- **Not there yet**: bridges in Givatayim and Ashdod (still drawn on the ground), and
-  their tunnels (left out). People crossing anywhere but a zebra.
-=======
-- **Guessed, in Givatayim, Bedford and Ashdod: how high the bridges are, how deep the
-  tunnels.** OSM says which ways are bridges but
-  not how high, so the game works it out as the town loads: each overpass rises to clear
-  what it crosses, on ramps up the roads leading to it, an interchange's junctions up on
-  them and its slip roads coming down. Highway 102's overpasses, the Bedford Bypass, the
-  MacKay Bridge's approach; in Ashdod Highway 4's interchanges and Sderot Menachem Begin's
-  underpass, down a cutting under the road it crosses. The ramps are grass banks with a guardrail along the top where
-  there is room for them, retaining walls where there is not.
-- **Not there yet**: footbridges (still flat on the ground), tunnels under footpaths, and a
-  few road tunnels too short for their cuttings (the Rabin Underpass): left out. People crossing anywhere but a zebra.
->>>>>>> origin/main
+- **Guessed, in Givatayim, Bedford, Ashdod and Tel Aviv: how high the bridges are, how deep
+  the tunnels.** OSM says which ways are bridges and tunnels but not how high or deep, so
+  the game works it out as the town loads: each overpass rises to clear what it crosses, on
+  ramps up the roads leading to it, an interchange's junctions up on them and its slip
+  roads coming down; each road tunnel runs about 6 m under what runs over it, cuttings
+  sloping down to its mouths. Highway 102's overpasses, the Bedford Bypass, the MacKay
+  Bridge's approach (Bedford has no tunnel); in Ashdod Highway 4's interchanges and Sderot
+  Menachem Begin's underpass, down a cutting under the road it crosses. Givatayim and Tel
+  Aviv share a stretch of the Ayalon: Menachem Begin's and Arvey Nahal's bridges over it,
+  Uzi Hitman's tunnel and the City tunnel; Tel Aviv adds the Moda'i bridge, the Begin
+  underpass and the Lova Eliav tunnel. The ramps are grass banks with a guardrail along the
+  top where there is room for them, retaining walls where there is not; the cuttings are
+  walled.
+- **Footbridges and footpath tunnels, guessed the same way.** A footbridge clears the street
+  under it by 5.8 m (3.4 m over another path), paved, with a steel railing; its ramps rise
+  along the footpaths only, steep (25%), and as stairs where OSM maps steps or where a path
+  meets a street before its ramp is down. A footpath tunnel goes 3.6 m under the road, a
+  low tiled tube with one row of lamps, ramps or stairs down to it. Trail bridges over
+  creeks (Bedford's greenway) span from bank to bank.
+- **Not there yet**: a few road tunnels too short for their cuttings (the Rabin Underpass):
+  left out. People crossing anywhere but a zebra.
 
 To make your own street more accurate, fix it on openstreetmap.org (building heights are
 the most useful thing to add) and bake again.

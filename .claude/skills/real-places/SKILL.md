@@ -58,6 +58,15 @@ goes wrong shows up the first time it runs.
   workflow's `bare_ground`): a grey opening over ~90 m takes out bumps narrower than ~180 m
   and keeps broad hills and valleys (that centre: 0-38 m, steepest 13%). It also lowers a
   real hill's crest a little (one town's 86 -> 72 m), so it is not the default.
+- **Government open data may refuse the cloud.** A national portal's API answered, but
+  its files came from a CDN host that refused the container even once the environment
+  allowed both hosts (a CloudFront 403 page instead of the file: likely by country). Do not
+  dress the request up to get past it; have the user download the file and add it to the
+  repo, or use what OSM has.
+- **A landmark's name is often on its podium.** OSM names the outline a tower stands on (a
+  radio tower's 18 m base) and maps the tower as an unnamed `building:part` inside it (80 m,
+  `min_height` the podium's top). To dress a named landmark, take the tallest building
+  standing inside the named outline, not the named one.
 - `tools/fake_city.py` makes up a small town with one of every awkward thing (divided
   boulevard, big signalled junction, roundabouts, a one-way pair, a steep hill, car parks)
   in a second, no network. Use it to check a change quickly; check real towns before
@@ -359,6 +368,44 @@ What a driving game on one needed:
   G (s - L/2)) and round humps. And in the car: a rise under it faster than any slope could
   give at its speed is a step (two decks overlapping at a junction in the air, 0.2-0.3 m
   apart), not a climb -- taken as vertical speed, it threw a car 3 m into the air.
+- **Most "crests" are kinks, and the car should not feel them one point at a time.** A
+  worked-out profile is points a few metres apart (and a file's heights rounded to 10 cm):
+  a kink at every point. A car that reads the ground's height under its middle each frame
+  feels each kink as its vertical speed jumping in one frame, and a lift-off rule on that
+  throws it up at 40 km/h over grade changes no real car would leave the road on (a real
+  crest needs v^2 x curvature > g). Smooth the ground the springs feel along the car's own
+  path over half a wheelbase of travel (an exponential follow at rate |v| / (wheelbase/2)):
+  every ramp-top hop in four towns went, while a real drop still throws it. Do not sample
+  the height under each axle instead: an axle's point by a tunnel's wall finds the ground
+  over the tunnel. A hop left after that is a real step in the data (two decks overlapping
+  at different heights): trace the frames before the take-off -- surface under the middle
+  and each axle, and which deck -- to tell a seam from a crest.
+- **Hold the road a bridge crosses along the road, not as the crow flies.** The road under
+  a bridge is held at street level for some distance either side of the crossing; measure
+  that distance along it. A cloverleaf's link bridge lands on its own loop, which turns
+  and passes back under it: by straight-line distance the loop's start (beside the
+  crossing, hundreds of metres along the loop) was held down, and the bridge's end with it
+  -- 0.5-4 m clear over the roads it crossed.
+- **Footbridges and footpath tunnels are a second network.** Work their heights out the same
+  way but along the paths only (footway, path, steps, cycleway...), steep (a ramp ~25%,
+  stairs ~60% where OSM maps `highway=steps`), and keep the two networks apart both ways: a
+  sidewalk or a crossing way shares nodes with the street, so a road bridge's or a
+  tunnel's lift leaks onto it (a 6 m dip in a sidewalk, a pavement rising 5 m in 2 m off a
+  ramp) unless a path's point that a street has keeps the street's level, and a path's lift
+  must never spread onto a street's point (it comes down to the pavement there). A
+  footpath tunnel can end under the ground in OSM (the mapper stopped): leave it out. Two
+  traps when people walk it: footbridges branch at sharp angles, so a railing checked
+  against "another deck comes in here" at its middle alone ran across the way onto the
+  next piece -- check walls of narrow decks in short pieces; and OSM fences cross paths
+  right at a footbridge's foot -- a body on a deck off the ground should not meet the
+  fences and posts down on the ground. A road bridge's piers must keep off paths and off
+  any deck below their top (a footbridge alongside, lower, walked into them). A bridge's
+  sidewalk mapped as its own way can stop dead on the span: bring a path's dead end down to
+  the ground (a stair) rather than leave a ledge. A spiral stair is often one steps way
+  lying on itself: keep a way that comes within ~0.8 m of itself on the ground (not
+  1.5 m: an access ramp's hairpin legs are about a path's width apart). Walk every
+  footbridge and tunnel end to end in a test, steered along the path (count pushes by
+  displacement, not by the "last hit" label: see the scene-tests skill).
 - **Water held at its own level** (a river between weirs) is drawn at that level and is too
   deep to drive into; gentle banks otherwise let a car down to drive along the bed under
   the water. Leave lakes that lie at their shore's lowest point alone: a road over an
@@ -504,6 +551,12 @@ the game walking the same route in first person beside it.
   showed a row. Decide gardens piece by piece (a shop behind it, or a hand-placed row of
   shopfronts), not by the road's tag or the whole street: the same street had one real
   garden between its shops.
+- **Real things keep real colours.** A car's red paint, a red-and-white kerb, a stop sign, a
+  hydrant: built from palette roles directly (hazard for red, player for blue) they came out
+  pink and teal in a neon palette, and only beside the film did it show. Pin the hue
+  (`Color.from_hsv` with a red's or a road-paint blue's hue) and take saturation and
+  brightness from the palette role, so a reskin still moves them; keep the roles for
+  what is the game's own (the HUD, the player's glow).
 - **Panning in the film is how the shops get counted.** Ask the walker to turn the phone to
   each side now and then: the shops across the road, which a forward-facing film never
   shows, came only from those pans.

@@ -54,6 +54,9 @@ focused, or leave them to them.
       face (a screen, a card slot); the scooters' colours (film 82-86 s).
 - [ ] Ha-Meri: trees in square earth pits along the kerb every ~8-10 m; cars parked
       both sides (the game's do it); a delivery scooter (film 88-96 s).
+- [ ] Ha-Meri's far pavement (film 93-96 s): the low wall white plaster and stone with a
+      hedge over it, an e-scooter (a kick scooter, teal) parked against it; the kerb jogs
+      out where the parking bay starts.
 - [ ] Small things: drain grates at the kerbs, utility cabinets at corners, stickers and
       graffiti on poles, a fire hydrant, chewing-gum stains on the slabs.
 
@@ -63,11 +66,6 @@ focused, or leave them to them.
       does not give way.
 - [ ] More traffic on Katzenelson: a steady stream both ways, a bus, a delivery scooter
       weaving (film 0-17 s); parked cars along its kerbs.
-- [ ] The phone in a hand, not on a rail: a slow sway and roll, small bumps with each
-      step, a lag when the walk turns (the film's whole length).
-- [ ] The film looks down at the ground a lot (the zebra 5-8 s, the passage floor 36-56 s)
-      and up at the buildings now and then; the replay keeps one pitch. Looks up and down
-      as well as left and right.
 - [ ] Looks at things as the film does: at the shop fronts under the arcade (film 18-21 s),
       at the people in the forecourt (25-27 s), at the bin (50 s), at the man walking
       out of the passage (60-63 s).
@@ -80,12 +78,17 @@ focused, or leave them to them.
       at 76-90 s).
 
 ### Quality
+- [ ] Under the arcade (film 15-24 s) the film's pavers are nearly as bright as the open
+      pavement's -- the phone's HDR lifts dark areas locally, not by one curve -- and the
+      game's are near black. A global grade cannot lift one area: either the arcade's shade
+      gets more light (ambient under a roof) or the grade gets a local, blurred-luminance
+      term as phones do.
 - [ ] The light: the film's late morning is bright, slightly hazy, warm; shadows soft-edged
       and blue-grey, not near black; the sky pale near the horizon. *(city-wide)*
 - [ ] Dappled shade under the passage's trees: patches of sun through the leaves moving
       on the pavers (film 33-56 s); the game's crowns cast plain blobs.
-- [ ] The camera's own look: the phone's exposure (bright sky blown out, shade lifted),
-      a touch of motion blur in the steps, its slight wide-angle bend at the edges.
+- [ ] The camera's own look, what is left of it: a touch of motion blur in the steps, its
+      slight wide-angle bend at the edges, its sharpening halo on edges against the sky.
 - [ ] Materials: plaster stained under the windows, concrete posts rough, the slabs'
       cracks sharper, the asphalt's patches; the zebra's paint worn to grey in the wheel
       tracks.
@@ -114,6 +117,12 @@ Its film is not in this repo or this machine's scratch: a session needs a clip o
 - [ ] The Katznelson corner at the end: the pedestrian lights (red and green men), the
       push button on the pole, the zebra, the railings (100-106 s).
 - [ ] Trees in pits along Sirkin, bins, bike racks, motorbikes on the pavement as filmed.
+- [ ] Sirkin's street trees hang their lowest leaves at face height over the pavement: the
+      walk passes one at 66 s (0.65 m off its trunk, at (486.5, -734.7)) through its leaves.
+      Pruned street trees keep about 2.2 m clear over a pavement. *(city-wide: the trees)*
+- [ ] At 28 s the walk heads straight at a street tree before stepping round its road side
+      (a front garden's bougainvillea hangs over the pavement's back beside it, leaving 28
+      cm): the film presumably walked between the tree and the wall.
 
 ### Behaviour
 - [ ] Cars that stop for it on the Sheinkin zebra (its `zebras` are there, no `cars`):
@@ -137,8 +146,26 @@ Its film is not in this repo or this machine's scratch: a session needs a clip o
       (bollards, cabinets, motorbikes, tables) keep landing on the walks' lines.
 
 ## Done
+- Pass 10 of walk 1, both walks' picture (DEV.md): the phone's picture measured and laid
+  over the replays (`tests/film_look.py`: the bright end squeezed, not blown -- 0.1% clipped
+  against the game's 4.4%; shade lifted; greys warmed; colour a little less); Ha-Meri's far
+  kerb as filmed (a silver hatchback past the crossing, blue and white paint, no yard car on
+  the pavement); the bougainvillea off the little street's pavement; the hand's sway doubled
+  to read as the film's does.
+- Pass 9 of walk 1, both walks (DEV.md): the phone in a hand -- tipped 15.6 degrees down
+  as the film's horizon says (it was 11.3), swaying slowly as the film's does (0.25 degrees
+  rms, 0.5-0.8 Hz, `tests/film_shake.py`; the steps' jolts are stabilised out of the film,
+  so none are added) and rolling a little; looks up and down as well as across (down at
+  Katzenelson's stripes 6-8 s and Ha-Meri's kerb 92-95 s, where it had looked into a tree).
 - Passes 1-8 of walk 1 (DEV.md, "The filmed walk"): the street's geometry, the arcade,
   the forecourt, the passage, the little street, the crossings and their cars, the
   people standing, the booth, the bollards, the shops, the head's looks.
 - Walk 2: the look left at the two shops (70-74 s) and the cars that blocked it; on to the
-  Katznelson corner (to 106 s).
+  Katznelson corner (to 106 s). Then, from its first recording that far: round two
+  bougainvillea clumps on the pavement (1 s, 29 s); no bike rack where the city had put one
+  across the walk's pavement (86 s: details' `clear`); the end 1.9 m from the corner's tree,
+  not 1.0 (its trunk filled the last look); a passer-by who kept pace just ahead for 80 s
+  now draws away after a few seconds (both walks). The fruit crates at 16 s are the green
+  corner shop's, from the film: kept. Then another session placed the film's red hydrant at
+  the corner (3:22) on the walk's last metre: the end moved to (487.5, -770.9), between it
+  and the light's pole, 1.1 m or more from everything.
