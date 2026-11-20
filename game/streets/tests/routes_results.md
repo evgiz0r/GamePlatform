@@ -31,3 +31,18 @@ Each run of `run_routes.sh`, newest last. The routes are in routes.json (picked 
 | 8 | tel_aviv | שאול המלך 4 -> לויד ג'ורג' 4ב | yes | 3.2 min | 1.5 km | 0 | 25 s (light, קרליבך) | 0 | 0 | 0 s |
 | 9 | bedford | Amin Street 50 -> Lowther Lane 12 | yes | 7.9 min | 4.6 km | 0 | 25 s (car, Hammonds Plains Road) | 0 | 0 | 0 s |
 | 10 | dimyon | הנרקיס 12א -> התאנה 17 | yes | 1.1 min | 0.7 km | 0 | - | 0 | 0 | 0 s |
+
+## 2026-11-20 (commit 5f883e7)
+
+| # | city | from -> to | arrived | time | driven | hits | longest wait | reds | rescues | off road |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | givatayim | בנימיני אהרון 3 -> הניצנים 3 | yes | 4.7 min | 1.6 km | 0 | 32 s (light, נחלת יצחק) | 0 | 0 | 0 s |
+| 2 | givatayim | ההסתדרות 13 -> משה דיין 124א | yes | 3.9 min | 1.7 km | 0 | 17 s (car, השלום) | 0 | 0 | 0 s |
+| 3 | givatayim | ריינס 70 -> רובין שלמה 1 | yes | 5.3 min | 2.2 km | 0 | 31 s (light, ויצמן) | 0 | 0 | 0 s |
+| 4 | givatayim | רחל 1 -> מסלול 2א | yes | 6.0 min | 2.5 km | 0 | 32 s (car, לה גווארדיה) | 0 | 0 | 0 s |
+| 5 | ashdod | המתנדבים 11 -> שגב 10 | yes | 6.2 min | 2.5 km | 0 | 30 s (car, בני ברית) | 0 | 0 | 0 s |
+| 6 | ashdod | הסחלב 32 -> האדמו"ר מבעלזא 41 | yes | 6.9 min | 2.9 km | 0 | 39 s (car, דב גור) | 0 | 0 | 0 s |
+| 7 | ashdod | הרותם 29 -> הורקנוס 7-11 | yes | 2.6 min | 1.3 km | 0 | 13 s (car, דב גור) | 0 | 0 | 0 s |
+| 8 | tel_aviv | שאול המלך 4 -> לויד ג'ורג' 4ב | yes | 4.0 min | 1.5 km | 0 | 38 s (car, דובנוב) | 0 | 0 | 0 s |
+| 9 | bedford | Amin Street 50 -> Lowther Lane 12 | yes | 8.9 min | 4.6 km | 0 | 20 s (light, Hammonds Plains Road) | 0 | 0 | 0 s |
+| 10 | dimyon | הנרקיס 12א -> התאנה 17 | yes | 1.1 min | 0.7 km | 0 | - | 0 | 0 | 0 s |
