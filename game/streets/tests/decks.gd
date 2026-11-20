@@ -11,6 +11,7 @@ extends SceneTree
 ##   ROUTES="ic:3815,-1520,-51;..." ...   runs from chosen points (name:x,z,heading in degrees
 ##                                    [,top]), in any town
 ##   RUNS=none VIEWS=ic_,river ...    no runs, only the views whose names hold one of those
+##   OFFS=1 ...    the first frames off the level: where, the car's height, the roads' levels
 ##   TRACE=1 ...   at each take-off, the ten frames before it: the surface under the car's
 ##                 middle and axles, the deck it is on (a step between decks, or a crest)
 ##   DECK_KINDS=br ...   in a real town, only its bridges (it takes the tunnels first, and ten
@@ -205,6 +206,9 @@ func _drive(run: Array) -> void:
 				if best > 0.3:
 					off += 1
 					worst = maxf(worst, best)
+					if OS.get_environment("OFFS") != "" and off <= 6:   # (where, and the levels round it)
+						print("    off the level at (%.1f, %.1f): car %.2f, levels %s, ground here %.2f" % [g._pos.x, g._pos.y, g._y,
+							lv.map(func(y): return snappedf(y, 0.01)), g._h(g._pos)])
 		air_was = g._air
 		var on: int = g._decks.deck_at(g._pos, g._y, 1.0)
 		if on >= 0:

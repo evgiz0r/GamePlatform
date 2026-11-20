@@ -334,6 +334,26 @@ is rarely the one you would guess. What cost the most, in order, last time one d
   down and back up (a user saw 3.2 s). Keep shadows on at the bottom with a short reach
   (25 m round the car) instead; anything else a level changes should be a shader parameter
   or a buffer size, not a material's feature.
+- **What a browser compiles is shader CODE, not materials.** A ShaderMaterial compiles its
+  Shader once per variant (drawn plain or instanced, and again for the shadow pass when it
+  casts shadows); a StandardMaterial3D's shader is generated from its switches (flags, modes,
+  which textures are set) and shared by every material with the same set -- its colours and
+  numbers are uniforms. So merging look-alike standard materials saves nothing, while two
+  `Shader.new()`s with the same code compile twice (make one and share it). Count it before
+  cutting: group the drawables by Shader / switch set x plain or instanced x shadow -- one
+  city's 77 materials were 25 codes, 43 programs -- and step a warm-up by that grouping, not
+  by material, or one step gets every material of one shader (no work) and another a dozen
+  shaders. Don't call `_get_shader_rid()` from a script (it hung the engine). And locally the
+  GLES3 renderer keeps compiled programs in `user://shader_cache`, so after the first run
+  nothing compiles here at all: compile counts and stalls can't be seen on the test machine,
+  only counted from the scene.
+- **A merged mesh is a triangle soup; index it in pieces.** Built as triangles, a merged mesh
+  repeats most vertices (a quad's two triangles share two). `SurfaceTool`'s `index()` (C++)
+  shared them: 9.8 M -> 5.4 M vertices, 187 -> 121 MB. But the web build has no threads: the
+  biggest mesh whole took 30 ms on the main thread, so index at most ~30,000 vertices at a
+  time, each piece a surface of its own (that also keeps 16-bit indices), the frame handed
+  back between them -- and the extra surfaces are draws, so skip it where the build is
+  behind a loading screen if load time matters more than memory.
 - **Find stalls by timing the parts.** Time each part of a frame (the script's own work, in
   microseconds) and call a frame much slower than its neighbours a hitch, keeping which
   parts took its time. Every few seconds' stall found that way was periodic work done all
@@ -379,6 +399,27 @@ is rarely the one you would guess. What cost the most, in order, last time one d
   as a grid far off) and turn them off at the lowest quality level. Variation that needs no
   file at all -- worn patches, grain, slab joints -- is a cheap hash noise (no `sin`) of
   the world position in the fragment shader: nothing to load.
+
+### Shader programs: count them in a browser
+
+(What compiles is shader code -- the bullet on it above. This is how to see it, and what
+else costs programs.)
+
+- **Count in a real browser.** Locally nothing compiles after the first run (the shader
+  cache), but a web export can be run in Playwright's Chromium with an init script wrapping
+  `WebGL2RenderingContext.prototype.linkProgram`: count the programs linked before, during
+  and after the game's warm-up, and name each by its variant's `#define`s and its material's
+  uniform names. Count, don't time: under SwiftShader the status check after a compile also
+  waits for the frames before it, seconds of software rendering.
+- **About seven programs a game shader**: drawn alone and as a multimesh, the shadow map's
+  depth pass for both, and an **additive pass for every light that casts shadows** -- in the
+  Compatibility renderer the sun with shadows on is a second pass with its own variant for
+  every lit shader.
+- **A `#define` variant is another shader.** Two looks of one thing (a barrier and its
+  see-through curtain) as one shader with a uniform switch compile once.
+- **Before switching a built-in material's flag to share a shader, look for code that reads
+  the flag** to mean something else (a batcher keeping anything with emission on out of its
+  merged meshes, lights that switch emission at night).
 
 ## Self-play
 

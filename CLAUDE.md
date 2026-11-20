@@ -114,7 +114,7 @@ tests -- scripts that stage the moment and measure it, with screenshots: see the
 
 `tools/osm_city.py` bakes a real town from OpenStreetMap into one JSON file a game can
 build from: roads (path, kind, width, lanes, one-way, name), building outlines with
-heights, parks, water, trees, traffic lights, crossings, railways (each track, the
+heights, parks, water (the sea held at sea level), beaches, trees, traffic lights, crossings, railways (each track, the
 platforms, the stations) and the town's boundary, all in
 metres on the X/Z ground. The format is documented at the top of the tool. It needs
 `overpass-api.de` reachable from the network, caches the raw download in `tools/.cache/`
@@ -123,7 +123,7 @@ metres on the X/Z ground. The format is documented at the top of the tool. It ne
 OSM rarely knows building heights; the tool guesses those and marks the guesses. When the
 session's network cannot reach Overpass, run the "bake a real city" GitHub workflow
 (`.github/workflows/bake_city.yml`, inputs `place` and `out`, or `bbox` for a few
-neighbourhoods of a big city) instead: it bakes on GitHub's
+neighbourhoods of a big city, and `origin` to grow a box without moving anything in it) instead: it bakes on GitHub's
 machines and commits the file, and you can start it with the GitHub tools.
 
 `tools/fake_city.py` makes up a town in the same format instead -- no network, a second

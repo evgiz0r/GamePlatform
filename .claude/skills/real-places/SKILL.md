@@ -25,6 +25,12 @@ it, a post a circle. A bus is 12 m: half its length is the error, and that is a 
 of road. The tests can lean on the same shapes (in a game with scene tests, a helper like
 `bodies.gd` beside them), and the scored run checks bodies every tick, so a new place this
 goes wrong shows up the first time it runs.
+A fix in one place does not reach its siblings: the AI stopped its front at a light's line
+for weeks while the same code for a stop sign still stopped its middle there (a sedan's nose
+2 m into the crossing street, a bus's at the junction's middle). When one stopping or
+measuring rule is fixed, grep for every other place doing the same thing -- each line it
+stops at, each kerb it pulls toward (a delivery van pulled in by the asphalt's room stood in
+the parked cars, which stand a third in the road).
 
 ## Getting a city
 
@@ -41,6 +47,13 @@ goes wrong shows up the first time it runs.
   file is made (`bare_ground`, a margin)? Compare the counts with the last bake (the log
   says which server answered); if the data moved, keep the main server's bake and redo only
   what changed -- the ground grid is the same tiles and the same code whatever answered.
+  It happened again to two towns at once (a mirror: 12% fewer road pieces, fewer crossings
+  and areas), while the main server's bake minutes later matched the old files to a road.
+  To re-bake for a new field, run the workflow with `main_server_only` (it waits out the
+  main server's 502s, a minute or two, instead of falling back) and diff the counts against
+  the file it replaces: only the new fields should differ. And do not push to the branch
+  while a bake runs on it: the workflow now pulls and pushes again, but one bake was lost
+  to that race before it did.
 - **Allowing `overpass-api.de` in a cloud environment is not enough**: the proxy lets the
   connection through and the server resets it during the TLS handshake (it turns some
   networks away; its mirrors are other hosts). Go straight to the workflow.
@@ -50,6 +63,19 @@ goes wrong shows up the first time it runs.
   `place` then only its name) -- e.g. read off a screenshot of a map with two landmarks of
   known position for the scale. A box has no boundary: no "welcome to" at the limits, and
   the striped barrier at the map edge is the whole border.
+- **Growing a box later: keep its centre** (the workflow's `origin`, the old file's
+  `"origin"`). The metres are measured from the box's middle, so a bigger box moves every
+  place in it -- and a game's hand fixes, landmarks, tests and notes all name places by
+  their metres. With the old origin given, the old places keep their coordinates to the
+  centimetre and the new ground is simply further out.
+- **The sea came out under its own floor.** The terrain tiles read the sea a metre or so
+  either side of 0 and the beach lower still (2.5 m under sea level, four grid points in),
+  and water lies flat at its shore's lowest point: so the sea's surface lay under the
+  ground drawn over it, a white plain where the sea should be. The baker now holds the sea
+  at sea level (the area's `y`), its floor under it and the shore ~110 m in over it, and
+  sets the sea to sea level *before* `--bare-ground`, whose lowest-round-each-point would
+  otherwise carry the sea bed's depths 90 m inland. Bakes from before this have it: look
+  at a coastal town's sea from above before trusting it.
 - **The ground heights see the roofs.** The terrain tiles the baker reads are a surface
   model (mostly SRTM): in a city centre a cluster of towers comes out as a hill. One
   centre's grid stood 146 m high under three towers, with slopes of 300%, and the buildings
@@ -58,15 +84,98 @@ goes wrong shows up the first time it runs.
   workflow's `bare_ground`): a grey opening over ~90 m takes out bumps narrower than ~180 m
   and keeps broad hills and valleys (that centre: 0-38 m, steepest 13%). It also lowers a
   real hill's crest a little (one town's 86 -> 72 m), so it is not the default.
+- **The same tiles cannot fill in missing building heights.** Tried (Nov 2026): the
+  surface over each footprint minus the bare ground, against 1370 buildings whose height
+  OSM knows in a city centre. Correlation 0.1-0.2; of the twelve tallest (160-350 m) one
+  showed (100 m against 187), the rest 1-9 m. The tiles are ~30 m and from about 2000, so
+  they know neither a block's shape nor anything built since. Building heights have to
+  come from OSM or a municipal or national buildings layer.
+- **A town's own survey of its buildings beats OSM's guesses -- mostly.** Some towns
+  publish theirs as an ArcGIS layer (a REST `.../MapServer/<n>` with `/query?...&f=geojson`,
+  2000 a page, `resultOffset` to page on; ask it for `returnCountOnly` first). The baker
+  reads the ones in its `SURVEYS` list (`--add-surveys CITY_FILE` puts them on a file baked
+  already) and credits each on screen. One city centre's, Nov 2026: a measured height on
+  97% of its buildings (roof top minus ground, rooftop rooms included), storeys on 95%,
+  year built on 72%, and whether it stands on columns. What it taught:
+  - *Its outlines are not OSM's*: ~18% smaller (walls, not traced roofs) and ~1.9 m south of
+    them. Keep OSM's outlines (the game's roads were fitted round them) and lend each the
+    height of the survey building covering most of it, 30% or more; measure the shift on
+    one-to-one pairs first and match again with it.
+  - *It is a snapshot*: a 2019 survey had 6-7 m for towers finished since (OSM: 140-160 m),
+    79 m for a 151 m one going up, and a building site's part-built height. Skip what it
+    marks under construction; under 2.2 m a floor, take its floors instead.
+  - *Its height is the top point over the footprint*, roof or not: a tree's crown over a
+    low house, or the tower beside it (two-storey houses at 19-22 m among old trees, a
+    one-storey one at 214 m). Up to 4 floors, over (floors + 2) * 3.5 + 3 m is not the
+    roof: take its floors (~10% of buildings). Not on towers: their floors run 3-4.5 m and
+    the check would cut real ones (a 98 m tower to 80).
+  - *One shape can be a whole complex at its tallest point*: a mall at a tower's foot came
+    out 187 m, a 75 m^2 lobby 109 m. So a height OSM tags outright wins; floors OSM tags win
+    when the survey is over 1.5x or under 2/3 of that and 10 m off (not the same building,
+    or built since); a small outline (a quarter of the survey's shape) under a survey tower
+    keeps its guess.
+  - *It is taller than floor counts*, +4 m on a typical block: the ground floor on columns
+    and the roof rooms that `building:levels` leaves out. Within the band above, take the
+    survey's: it was measured. A rule written against guessed heights (a house is under
+    13.5 m) may need moving: measured to the ridge, a two-storey pitched house is 9-16 m.
+  - Of 4011 OSM buildings 3138 took a survey height, 232 kept OSM's own; the survey also had
+    ~500 small buildings OSM lacks (median 35 m^2, sheds and annexes, 57 over 300 m^2),
+    not added.
+  - *Smaller towns publish floors, not heights*, and often only inside a hosted map viewer
+    (one Israeli town's sat behind a Complot "GIS-net" viewer, v5.gis-net.co.il/v5/<Town>:
+    its layer list is `/V5/<Town>/Data/GetJson`, its ArcGIS server answers only through
+    the viewer's own proxy and only from inside the viewer's page -- a script outside gets
+    "Bad Request", and the town's main site sent scripts to an abuse page). Its neighbour
+    published straight to ArcGIS Online under the town's own account (search
+    `arcgis.com/sharing/rest/search?q=owner:<account>`; the `services8.arcgis.com/<org>/...`
+    listing shows its public layers). Both counted the ground floor in their floors (they
+    matched OSM's `building:levels` most often, not one under it), had 0 for sheds (median
+    18 m^2) and one of them a placeholder year (1964 on 40%). A survey with no server the
+    bake can reach is saved once as `data/<id>.geojson` beside the city file and read from
+    there (`survey_extract`), so a re-bake anywhere keeps it; where two surveys cover one
+    building, the first in `SURVEYS` wins, so measured heights go before floor counts.
+  - *Neither had a licence on the page*, only "© the municipality" and a disclaimer. Ask the
+    user before committing such a layer, and say so in the notes.
+  - *A town's map viewer usually holds far more than buildings*: trees mapped from the air
+    (crowns), spot heights, land use per plot, house numbers, kindergartens, shelters,
+    bus stops with their lines, signs, sculptures. Many Israeli towns run the same viewer
+    (`v5.gis-net.co.il/v5/<Town>`, two of them checked); its layer list says which are
+    public. Leave out cameras, parcels and any manager, phone or key-holder field.
+  - *Raw data beside a game ships with it*: Godot imports `.json` as a resource and the web
+    export takes every resource, so a folder of source data (20 MB once) goes to every
+    player unless it holds a `.gdignore`. Keep raw extracts in an ignored folder and bake
+    what a feature needs into the city file.
+  - *Which Israeli government hosts refuse scripts*: e.data.gov.il (the open-data portal's
+    file server, behind CloudFront) answers a script with 403 even from a home connection in
+    Israel; the CKAN API on data.gov.il itself answers (`datastore_search`, paged, no SQL),
+    so read through it -- an evenly spread sample when only shares are needed. gov.il's
+    pages are rendered in the browser and refuse automated readers. gtfs.mot.gov.il serves
+    its files to a plain download.
 - **Government open data may refuse the cloud.** A national portal's API answered, but
   its files came from a CDN host that refused the container even once the environment
   allowed both hosts (a CloudFront 403 page instead of the file: likely by country). Do not
   dress the request up to get past it; have the user download the file and add it to the
-  repo, or use what OSM has.
+  repo, or use what OSM has. A municipality's own GIS server, on the other hand, answered
+  the container fine once its host was allowed: try the source's own server before asking
+  the user to paste or download anything.
 - **A landmark's name is often on its podium.** OSM names the outline a tower stands on (a
   radio tower's 18 m base) and maps the tower as an unnamed `building:part` inside it (80 m,
   `min_height` the podium's top). To dress a named landmark, take the tallest building
   standing inside the named outline, not the named one.
+- **What OSM tags beyond the shapes, and what is worth using.** The baker keeps them where
+  present (format at the top of `osm_city.py`) and logs a count per town ("tagged:" lines).
+  An Israeli town and a city centre, Nov 2026: speed limits on ~20% of drivable road
+  pieces, the residential ones nearly all 30 (213 of 216; 174 of 184) -- worth driving by;
+  storeys on 9-34% of buildings (already their heights); wall colour 1-4%, roof shape 1-4%,
+  material under 2%, year built ~0%; turn lanes and lanes each way under 1%; pavement sides
+  2-16%; bus or taxi lanes on a dozen pieces of the city centre's main roads. Colours, roofs and years
+  are too sparse to style a town by -- they would set a few buildings apart at random --
+  so count before building on a field.
+- **A tag on some streets of a kind and not others** (a speed limit) makes neighbouring
+  streets that look the same behave differently: 30 on a tagged residential street, the
+  guessed 50 on the next. Where enough of a kind are tagged and agree (20+, a quarter of
+  that kind, 85% one value), take that as the town's own default for the kind; otherwise
+  keep the guess by kind. Both came out residential 30, as their mapped streets say.
 - `tools/fake_city.py` makes up a small town with one of every awkward thing (divided
   boulevard, big signalled junction, roundabouts, a one-way pair, a steep hill, car parks)
   in a second, no network. Use it to check a change quickly; check real towns before
@@ -116,6 +225,18 @@ goes wrong shows up the first time it runs.
   lanes and its lawns like grass painted on them ("grass patches on the road"). Give open
   land its own colour -- dusty sand, dry earth -- clearly apart from the asphalt.
 
+- **Roads lean with the hillside.** The ground comes from terrain tiles on a grid (a point
+  every 8-46 m), and a road laid on it tilts across with the slope: in one hilly town 28% of
+  the roads' length leaned over 6% side to side, the worst over 30% (a real street: its 2%
+  crown). Cut and fill the GRID, not the road: each grid point near a road takes the height
+  of the road's centre line at the point nearest it, fully out to a cell's diagonal past the
+  pavement (every triangle reaching the asphalt then has all its corners on the road's
+  level), blending back over one more cell, the nearest asphalt edge winning. The road keeps
+  its climb, everything standing on the ground (kerbs, houses, cars, people) follows, and it
+  costs nothing at load: `tools/level_roads.py` does it to a baked file, and both bakers call
+  it. What is left is two roads at different levels within a cell (an interchange's slip
+  roads, a lane below a street): only a finer grid fixes those.
+
 ## Junctions and roundabouts
 
 - **One junction is often several points.** A divided road meets a street at one node per
@@ -148,6 +269,19 @@ goes wrong shows up the first time it runs.
   ways) when looking along an approach. Audit every junction in a scene test -- crossing ways
   sharing a group, a road whose group changes inside a site, ways in with no pole, zebras
   whose road has green one way -- before driving one: in one town it found 12, 48, 66 and 26.
+- **OSM maps few stop and give-way signs** -- a few dozen in a town of thousands of
+  junctions. Work out the rest: a way in of a smaller class into a junction without lights
+  gets one (a stop before a main road where that is the custom, a give-way otherwise; a slip
+  road gives way), with its facing, so it is one sign per way in. Leave out two streets of
+  one class (unmarked in life too, and which is "main" would be a guess), roundabouts,
+  driveways, a street going on through the junction under another class, the gap through a
+  divided road's median (only the outer way in), and junctions with a mapped sign nearby. Two
+  signs at one point must both be kept (code keyed by point kept the last). And a pole tried
+  at one spot by the line stood at 44 of 167 corners (the corner's asphalt, a wall): try a
+  few further back and further out. A sign with a facing belongs to the ONE way in nearest
+  it, not to every way within some angle: a slip road merges at a shallow angle, so the
+  street it joins comes in within 20 degrees of it, and "within 45" gave the street the slip
+  road's give-way too -- two plates side by side, and the street's traffic giving way.
 - **Roundabouts** are closed one-way ways (or tagged junction=roundabout). An AI that plans
   to the end of the way drives the whole circle, then picks "straight on" -- round again.
   Plan only to the next exit, and make staying on less likely with every piece driven.
@@ -187,6 +321,29 @@ goes wrong shows up the first time it runs.
   for "someone on the crossing" waits through most of its green for a person on the other
   half. Give the crossing the person's position and pace, and let a car wait only while
   they are on its carriageway (plus a metre) or about to step onto it.
+- **"Out of sight" is the camera's, not the body's.** Putting people where nobody sees
+  them appear (beyond the drawn distance, or well behind you) by the way the car or the
+  walker faces holds while the camera looks that way too. On foot the head turns -- a
+  filmed walk glances 60-90 degrees aside -- and "behind the body" is then in plain view:
+  someone at a cafe table was re-seated 2.3 m in front of the camera. Test the camera's
+  own heading and its frustum as well.
+- **A parked car as round posts: closer together than their radius.** Two circles of
+  0.85 m at either end of a car leave a 0.8 m gap at its middle, and a walker (0.25 m)
+  stood in it -- on a pavement with cars half up on it they went in at the nose and out at
+  the boot. Even one more in the middle let a shoulder 0.2-0.35 m into the car's side in
+  the scallops between circles, and posts ending short of the car's ends left its wings
+  0.2-0.3 m open; five, 0.7 m apart, the end ones at the car's half-length less their
+  radius, leave about 0.1 m. The same goes for anything long made of posts (a bus, a skip,
+  a bench).
+- **Walkers walk on at the end of a stretch.** Turning back at every block's end paces
+  one block forever, and in view it reads as aimless. Go on over the side street's mouth
+  to the same pavement's next block, or round the corner; turn back only where nothing
+  goes on, and swap someone out only where nobody sees.
+- **You on foot are not a car to them.** A rule that steps people aside from a car coming
+  at them on the pavement (within some metres, moving faster than a walk) fires for the
+  player walking too, at walking pace: everyone jumped a metre aside as you passed. Give
+  way to you on foot as to anyone, from a few steps off -- a replayed walk cannot step
+  round them.
 
 ## AI drivers in a real town
 
@@ -204,7 +361,17 @@ goes wrong shows up the first time it runs.
   the street.
 - **A car on your lane is a car whose body would touch yours**, not one whose middle is
   near your line: a fixed 1.5 m from the middle let the player's AI run in between two cars
-  in the lanes either side.
+  in the lanes either side. The same for traffic following traffic while one changes lanes:
+  it stands across both, angled, and a long one's back end swings out -- a bus stopped by a
+  light halfway over had its middle 2.7 m from the line of the van behind in the lane it
+  was leaving, and the van drove into it.
+- **Lanes across a road change: by where the car is, not by number.** Roads meeting at a
+  node share its middle line, so lane 2 of a wide four-lane link is lane 1 of the narrow
+  slip it runs on into; kept by number, cars crossed over each other into the slip. Follow
+  the shift a road change makes at a pace that grows with speed (a lane change's fixed
+  1.4 m/s ran cars off a slip's edge), and move over only as the car rolls: a body placed
+  by its front axle with the back trailing turns across the next lane if its front moves
+  sideways while it stands.
 - **Standoffs in narrow streets.** Traffic that waits for the player and a player's AI that
   waits for traffic wait for ever. Give one side a way out: after a few seconds face to
   face, the traffic car edges past if there is nearly room, else turns off (once out of
@@ -380,6 +547,9 @@ What a driving game on one needed:
   passage through a building), goes back on the ground. Skip roads that only share an end
   point with it (its own next piece "crossed" it), and hold only what is near a crossing:
   holding whole roads, or searching from every junction in town, is slow and over-holds.
+  OSM maps one tunnel as several ways: judge "too short" by the chain, not one piece. A
+  19 m piece under a street, between two longer ones, put back on the ground came out a
+  cutting at full depth between them -- its railings standing across the street's lanes.
 - **A divided road is two decks overlapping at the median** at slightly different heights:
   decide what is under a body by the carriageway it is on first, the nearest height next,
   or it drifts onto the other and falls off its end.
@@ -594,12 +764,20 @@ the game walking the same route in first person beside it.
   showed a row. Decide gardens piece by piece (a shop behind it, or a hand-placed row of
   shopfronts), not by the road's tag or the whole street: the same street had one real
   garden between its shops.
+- **A published height is over the thing's own ground.** A tower's "142 m" (Wikipedia, a
+  survey) is from its foot; a game's y is usually over the height grid's lowest point. A
+  mast built "up to 142" in world y on ground 15 m up ended under the tower's roof: add
+  the ground at the foot to every such figure.
 - **Real things keep real colours.** A car's red paint, a red-and-white kerb, a stop sign, a
   hydrant: built from palette roles directly (hazard for red, player for blue) they came out
   pink and teal in a neon palette, and only beside the film did it show. Pin the hue
   (`Color.from_hsv` with a red's or a road-paint blue's hue) and take saturation and
   brightness from the palette role, so a reskin still moves them; keep the roles for
-  what is the game's own (the HUD, the player's glow).
+  what is the game's own (the HUD, the player's glow). The same for things that are many
+  colours at once: a market's produce and canvases and a beach's umbrellas, coloured by
+  the roles, came out a market of sweets (pinks and purples) and umbrellas all but white
+  (the roles softened toward the background) -- by paint names (red, orange, green, yellow,
+  blue, white), every umbrella and crate read at once.
 - **Panning in the film is how the shops get counted.** Ask the walker to turn the phone to
   each side now and then: the shops across the road, which a forward-facing film never
   shows, came only from those pans.

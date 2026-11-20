@@ -11,6 +11,10 @@ Two steps, so the second can be re-run without the network:
   2. bake    project lat/lon to metres around the centre, clean the shapes, guess what
              OSM leaves out (building heights, road widths) and write the city file
 Pass --offline to skip step 1 and bake from the cache.
+Where a town publishes its own survey of its buildings (SURVEYS below: Tel Aviv-Yafo's so
+far), the bake also fetches that, caches it beside the OSM answer, and takes its measured
+heights over OSM's guesses. --no-surveys skips it; --add-surveys CITY_FILE runs that step
+alone on a file baked already, without asking OSM again.
 
 No network here? Anyone with a browser can do step 1: open an Overpass API link that asks
 for the same things (print one with --print-query), save the JSON it answers with, and
@@ -28,6 +32,12 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
                cu: 1 in a cutting, ly: OSM's layer when not 0, pv: 1 private (driveways),
                rb: 1 part of a roundabout, sv: a service road's kind -- parking_aisle,
                driveway, alley,
+               ms: the speed limit in km/h, lf / lb: lanes forward / backward,
+               tl / tlf / tlb: OSM's turn:lanes (one way, forward, backward) as written,
+               e.g. "left|through|through;right", sf: surface when not asphalt
+               (paving_stones, sett, concrete...), sw: which sides have a pavement --
+               both, left, right, no, or separate (mapped as footways of their own);
+               each only where OSM tags it, so absent means "not known", not "none",
                bf / bb: the bus lanes going the way's own way (forward, node order) / the
                   other way: a letter a lane, left to right as a driver going that way sees
                   them, "b" a bus (public transport) lane, "-" any other -- from OSM's
@@ -39,10 +49,19 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
                   (OSM has no such heights: tools/fake_city.py writes it for its own bridges
                   and tunnels), and a game draws a road without it on the ground}]
   buildings  [{p: [x, z, ...] counter-clockwise ring, h: height m, b: base height m,
-               g: 1 if the height is a guess, name, addr}]
-  areas      [{p: ring, k: park|grass|wood|water|parking|pitch|plaza|school, y: level}]
+               g: 1 if the height is a guess, name, addr,
+               and only where OSM tags them: k: building= (apartments, retail, office...),
+               lv: building:levels, col / rc: wall / roof colour as "#rrggbb", rs:
+               roof:shape (flat, gabled, hipped, dome...), mat: building:material (plaster,
+               concrete, glass, brick...), yr: the year it was built (start_date, else
+               a town survey's), and from a town survey (see SURVEYS): hm: 1 the height
+               is the survey's measurement, pil: 1 it stands on columns or has an open
+               ground floor}]
+  areas      [{p: ring, k: park|grass|wood|water|parking|pitch|plaza|school|sand, y: level}]
+             (sand: a beach, natural=beach or sand)
              (school: the grounds of a school or kindergarten; y: water that lies at its
-             own level, decimetres above `height.base` -- a river held by weirs -- else it
+             own level, decimetres above `height.base` -- a river held by weirs, the sea at
+             sea level (the ground under it held lower, the shore higher) -- else it
              lies at its shore's lowest point)
   barriers   [[[x, z, x, z, ...], "fence"|"hedge"], ...]   fences and hedges as lines
   trees      [x, z, ...]
@@ -51,7 +70,8 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
   pois       [[x, z, kind, name, name_en], ...]   shops, restaurants, schools... (kind:
              the amenity/tourism value, or "shop:<type>" e.g. "shop:supermarket")
   height     {x0, z0, step, nx, nz, base, h: [...]}  ground height on a grid, decimetres above
-             `base` (metres above sea level), row by row from (x0, z0); absent = flat
+             `base` (metres above sea level), row by row from (x0, z0); absent = flat. Cut
+             and filled along the roads so each is level side to side (tools/level_roads.py)
   signals    [node indices]   traffic lights that sit on the road graph
   crossings  [node indices]
   signs      [[node index, "stop"|"give_way", dx, dz], ...]   stop and give-way signs on
@@ -66,6 +86,8 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
              subway...), "train" when it does not say
              (rails, platforms and stations are absent from files baked before they were kept)
   made_up    1 in a town tools/fake_city.py made up (no OSM data, no credit owed); absent here
+  credits    ["building heights © ...", ...]   sources besides OSM the file took data from
+             (a town survey); a game shows each beside OSM's credit. Absent when none
 
 Road kinds keep OSM's highway values (primary, residential, footway ...); a game decides
 which are drivable. Everything here is (c) OpenStreetMap contributors, ODbL: a game that
@@ -84,6 +106,8 @@ import time
 import urllib.parse
 import urllib.request
 import zlib
+
+import level_roads   # (tools/, beside this file)
 
 # Public Overpass servers, tried in order: the main one turns some clients away (a 406 for
 # a link opened in a browser, resets from some networks), the others are full mirrors.
@@ -127,7 +151,8 @@ AREA_KINDS = [
     ("landuse", {"grass": "grass", "recreation_ground": "park", "village_green": "grass",
                  "meadow": "grass", "cemetery": "grass", "forest": "wood", "orchard": "wood",
                  "flowerbed": "grass", "allotments": "grass"}),
-    ("natural", {"wood": "wood", "scrub": "wood", "grassland": "grass", "water": "water"}),
+    ("natural", {"wood": "wood", "scrub": "wood", "grassland": "grass", "water": "water",
+                 "beach": "sand", "sand": "sand"}),
     ("amenity", {"parking": "parking", "school": "school", "kindergarten": "school"}),
     ("place", {"square": "plaza"}),
     ("highway", {"pedestrian": "plaza"}),   # a closed pedestrian way tagged area=yes
@@ -296,7 +321,7 @@ DATA_FILTERS = (
     'rel["building"]["type"="multipolygon"];'
     'way["leisure"~"^(park|garden|playground|dog_park|pitch|sports_centre|track)$"];'
     'way["landuse"~"^(grass|recreation_ground|village_green|meadow|cemetery|forest|orchard|flowerbed|allotments)$"];'
-    'way["natural"~"^(wood|scrub|grassland|water)$"];'
+    'way["natural"~"^(wood|scrub|grassland|water|beach|sand)$"];'
     'way["amenity"="parking"];'
     'way["barrier"~"^(fence|hedge)$"];'
     'way["place"="square"];'
@@ -492,7 +517,8 @@ def join_rings(segments):
 
 # ---- ground height ----------------------------------------------------------------------
 # AWS's open terrain tiles ("terrarium" PNGs: height = R*256 + G + B/256 - 32768 metres),
-# mostly SRTM: ~30 m detail, a surface model (it sees some rooftops), free, no key.
+# mostly SRTM: ~30 m detail, a surface model (it sees some rooftops), free, no key. Too
+# coarse and too old (~2000) to fill in buildings' missing heights: tried, see real-places.
 TERRAIN = os.environ.get("TERRAIN_URL",
                          "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png")
 
@@ -578,8 +604,74 @@ def bare_ground(grid, nx, nz, step):
     return _square(opened, nx, nz, max(1, k // 2), lambda v: sum(v) / len(v))
 
 
-def terrain_grid(P, box, bounds, step, zoom=13, bare=False):
-    """Ground height on a regular grid over the bounds, in metres above its lowest point."""
+def _in_ring(x, z, ring):
+    inside = False
+    j = len(ring) - 1
+    for i in range(len(ring)):
+        xi, zi = ring[i]
+        xj, zj = ring[j]
+        if (zi > z) != (zj > z) and x < (xj - xi) * (z - zi) / (zj - zi) + xi:
+            inside = not inside
+        j = i
+    return inside
+
+
+def _wet_cells(sea, x0, z0, step, nx, nz):
+    """Which grid points lie in the sea (in a sea polygon, not on an island in it)."""
+    rings, isles = sea
+
+    def boxed(rs):
+        return [(r, min(p[0] for p in r), min(p[1] for p in r), max(p[0] for p in r),
+                 max(p[1] for p in r)) for r in rs if len(r) >= 3]
+
+    def hit(x, z, bs):
+        return any(a <= x <= c and b <= z <= d and _in_ring(x, z, r) for r, a, b, c, d in bs)
+
+    br, bi = boxed(rings), boxed(isles)
+    wet = [False] * (nx * nz)
+    for j in range(nz):
+        for i in range(nx):
+            x, z = x0 + i * step, z0 + j * step
+            wet[j * nx + i] = hit(x, z, br) and not hit(x, z, bi)
+    return wet
+
+
+def _hold_sea(blur, wet, nx, nz, step):
+    """The sea's floor under sea level, the shore over it (heights in metres, in place)."""
+    # the floor 1.5 m under (0.3 m beside the shore, so the ground meets the water near
+    # the coastline), the land within ~110 m of it at least 0.3 m over (the tiles had a
+    # beach 2.5 m under sea level four points in from the shore)
+    coast = wet[:]
+    for _ in range(max(1, round(110.0 / step))):
+        grow = coast[:]
+        for j in range(nz):
+            for i in range(nx):
+                if not coast[j * nx + i]:
+                    grow[j * nx + i] = any(coast[jj * nx + ii] for jj in (j - 1, j, j + 1)
+                                           for ii in (i - 1, i, i + 1)
+                                           if 0 <= ii < nx and 0 <= jj < nz)
+        coast = grow
+    raised = 0
+    for j in range(nz):
+        for i in range(nx):
+            k = j * nx + i
+            if wet[k]:
+                shore = not all(wet[jj * nx + ii] for jj in (j - 1, j, j + 1)
+                                for ii in (i - 1, i, i + 1) if 0 <= ii < nx and 0 <= jj < nz)
+                blur[k] = -0.3 if shore else -1.5
+            elif coast[k] and blur[k] < 0.3:
+                blur[k] = 0.3
+                raised += 1
+    log(f"ground: {sum(wet)} grid points in the sea, held under sea level; "
+        f"{raised} of the shore raised to 0.3 m")
+
+
+def terrain_grid(P, box, bounds, step, zoom=13, bare=False, sea=None):
+    """Ground height on a regular grid over the bounds, in metres above its lowest point.
+    With `sea` (the sea polygons and the islands in them) the sea floor is held under sea
+    level and the shore over it: the tiles read the sea a metre or so either side of 0 and
+    the shore lower than that in places, and water lies flat at the lowest point of its
+    shore, so the sea came out under its own floor (the ground drawn white over it)."""
     x0, z0, x1, z1 = bounds
     nx, nz = int(math.ceil((x1 - x0) / step)) + 1, int(math.ceil((z1 - z0) / step)) + 1
     n = 2 ** zoom
@@ -615,6 +707,11 @@ def terrain_grid(P, box, bounds, step, zoom=13, bare=False):
         for i in range(nx):
             x, z = x0 + i * step, z0 + j * step
             grid.append(height(P.lat0 - z / P.my, P.lon0 + x / P.mx))
+    wet = _wet_cells(sea, x0, z0, step, nx, nz) if sea and sea[0] else None
+    if wet:
+        # (sea level before --bare-ground, whose lowest-round-each-point would carry the sea
+        # bed's depths 90 m inland)
+        grid = [0.0 if w else v for v, w in zip(grid, wet)]
     if bare:
         raw_top = max(grid)
         grid = bare_ground(grid, nx, nz, step)
@@ -631,11 +728,290 @@ def terrain_grid(P, box, bounds, step, zoom=13, bare=False):
                         acc += grid[jj * nx + ii]
                         cnt += 1
             blur[j * nx + i] = acc / cnt
+    if wet:
+        _hold_sea(blur, wet, nx, nz, step)
     base = min(blur)
     log(f"ground: {nx} x {nz} grid every {step:.0f} m from {len(tiles)} tiles, "
         f"{base:.0f} to {max(blur):.0f} m above sea level")
     return {"x0": round(x0, 1), "z0": round(z0, 1), "step": step, "nx": nx, "nz": nz,
             "base": round(base, 1), "h": [int(round((v - base) * SCALE)) for v in blur]}
+
+
+# ---- a town's own survey of its buildings ----------------------------------------------
+# Where a municipality publishes its buildings layer, its measured heights replace OSM's
+# guesses (OSM had no height for 65-94% of an Israeli town's buildings). Each survey is an
+# ArcGIS feature layer; the bake asks it for the buildings in its box when the box overlaps
+# the survey's extent and caches the answer beside the OSM download. The outlines stay
+# OSM's: a survey building lends its height to the OSM outline it covers most of.
+#   extent: south, west, north, east;  h: the measured height field (metres, ground to the
+#   top of the roof, rooftop rooms included);  floors: the fallback;  year;  pilotis: the
+#   field and the values that mean it stands on columns or has an open ground floor;
+#   skip: (field, values) of things not to take a height from (sheds, bus shelters, and a
+#   building site, which a survey catches part-built).
+# Its height is the top point over the footprint, so a tree's crown over a low house or the
+# tower beside it can be taken for the roof (a one-storey house at 214 m, two-storey ones at
+# 19-22 m): where that is out of line with its floors -- under 2.2 m a floor (part-built),
+# or, up to 4 floors, over (floors + 2) * 3.5 + 3 m (a tree reaches no higher; a tower's
+# floors vary too much to judge it so) -- its floors give the height instead.
+# Where OSM knows better it wins (Tel Aviv's survey is of 2019, and one shape there can be
+# a whole tower complex with the tower's height):
+#   - a height OSM tags outright (mappers look towers up; the survey had 6 m for a 160 m
+#     tower finished since, and 187 m for the mall at the tower's foot);
+#   - floors OSM tags that put it over 1.5 times as tall or under 2/3 as tall as the
+#     survey, and 10 m off: not the same building (a lobby beside a tower), or one built
+#     since (a 151 m tower the survey caught at 79 m).
+#     Nearer than that the survey wins: it counts the ground floor on columns and the
+#     rooftop rooms, which floor counts leave out (+5 m on a typical block);
+#   - a small outline (a quarter of the survey shape or less) under a survey tower over
+#     30 m, where OSM has only a guess: a piece of a complex, not the tower.
+SURVEYS = [
+    {"id": "tel_aviv_yafo", "credit": "building heights © Tel Aviv-Yafo Municipality",
+     "url": "https://gisn.tel-aviv.gov.il/arcgis/rest/services/IView2/MapServer/513/query",
+     "extent": (32.0296, 34.7426, 32.1457, 34.8508),
+     "oid": "oid_mivne", "h": "gova_simplex_2019", "floors": "ms_komot", "year": "year",
+     "pilotis": ("t_amudim", ("כן", "קיימת קומה מפולשת")),
+     "skip": ("t_sug_mivne", ("מבנה ארעי", "תחנת אוטובוס", "מבנה בבנייה"))},
+    # A survey with no server the bake can reach (no "url") is read only from a saved extract,
+    # data/<id>.geojson beside the city file -- fetched once by hand where the site answers,
+    # and committed, so a re-bake anywhere keeps it. Floors only, no measured height; its
+    # floor count includes the ground floor ("ground_counted").
+    {"id": "givatayim_muni", "credit": "building storeys © Givatayim Municipality",
+     "extent": (32.0587, 34.7982, 32.0815, 34.8207),
+     "floors": "fl", "ground_counted": True},
+    # Ramat Gan's (its ArcGIS Online buildings layer, NUM_FLOORS; the extract is only the
+    # part a baked box needed; that layer's `year` is mostly a placeholder, 1964, so not taken)
+    {"id": "ramat_gan_muni", "credit": "building storeys © Ramat Gan Municipality",
+     "extent": (32.0557, 34.7991, 32.0849, 34.8239),
+     "floors": "fl", "ground_counted": True},
+    # Ashdod's map publishes floors only on its public buildings (schools, synagogues, clinics,
+    # malls, sports halls...), ~1,300 of them; the same fields as Ramat Gan's, so taken alike
+    {"id": "ashdod_muni", "credit": "building storeys © Ashdod Municipality",
+     "extent": (31.7715, 34.6241, 31.8324, 34.6851),
+     "floors": "fl", "ground_counted": True},
+]
+
+
+def survey_extract(s, box, data_dir):
+    """The survey's buildings in the box from a saved extract (data_dir/<id>.geojson), or None."""
+    path = os.path.join(data_dir, s["id"] + ".geojson") if data_dir else None
+    if not path or not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as f:
+        feats = json.load(f).get("features", [])
+    out = []
+    for ft in feats:
+        g = ft.get("geometry") or {}
+        polys = [g["coordinates"]] if g.get("type") == "Polygon" else g.get("coordinates", [])
+        xs = [c[0] for p in polys for c in p[0]]
+        ys = [c[1] for p in polys for c in p[0]]
+        if xs and min(ys) < box[2] and box[0] < max(ys) and min(xs) < box[3] and box[1] < max(xs):
+            out.append(ft)
+    log(f"survey {s['id']}: {len(out)} buildings from {os.path.relpath(path)}")
+    return out
+
+
+def survey_fetch(s, box, offline, data_dir=None):
+    """The survey's buildings in the box as GeoJSON features (lon/lat): from a saved extract
+    beside the city file (data/<id>.geojson) when there is one, else from the cache, else
+    the server; None when none of those has it (the bake then keeps OSM's guesses)."""
+    got = survey_extract(s, box, data_dir)
+    if got is not None:
+        return got
+    if not s.get("url"):
+        log(f"survey {s['id']}: no {s['id']}.geojson in {data_dir or '(no city folder)'}, skipped")
+        return None
+    path = os.path.join(CACHE, "survey_%s_%.4f_%.4f_%.4f_%.4f.json" % ((s["id"],) + tuple(box)))
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    if offline:
+        log(f"survey {s['id']}: not in tools/.cache, skipped (--offline)")
+        return None
+    fields = [s["h"], s["floors"], s["year"], s["pilotis"][0], s["skip"][0]]   # (a url survey has them all)
+    feats, off = [], 0
+    try:
+        while True:
+            q = {"where": "1=1", "geometry": "%.6f,%.6f,%.6f,%.6f" % (box[1], box[0], box[3], box[2]),
+                 "geometryType": "esriGeometryEnvelope", "inSR": "4326", "outSR": "4326",
+                 "spatialRel": "esriSpatialRelIntersects", "outFields": ",".join(fields),
+                 "returnGeometry": "true", "orderByFields": s["oid"], "resultOffset": off,
+                 "resultRecordCount": 2000, "f": "geojson"}
+            req = urllib.request.Request(s["url"] + "?" + urllib.parse.urlencode(q),
+                                         headers={"User-Agent": "osm-city-bake/1 (a game kit's map baker)"})
+            with urllib.request.urlopen(req, timeout=180) as r:
+                page = json.loads(r.read().decode("utf-8"))
+            if "error" in page:
+                raise RuntimeError(page["error"])
+            got = page.get("features", [])
+            feats += got
+            off += len(got)
+            if not got or not (page.get("exceededTransferLimit") or
+                               page.get("properties", {}).get("exceededTransferLimit")):
+                break
+    except Exception as e:
+        log(f"survey {s['id']}: cannot reach {urllib.parse.urlparse(s['url']).netloc} ({e}); "
+            f"its buildings keep OSM's heights and guesses -- bake again where it is reachable")
+        return None
+    os.makedirs(CACHE, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(feats, f, ensure_ascii=False)
+    log(f"survey {s['id']}: {len(feats)} buildings")
+    return feats
+
+
+def osm_height_kind(b):
+    """Where a baked building's height came from: "guess", "levels" (building:levels, plus
+    roof:levels, at LEVEL_H a storey and a metre of roof) or "tag" (OSM's height=)."""
+    if b.get("g") or b.get("hm"):   # (hm: a survey's own, from an earlier run: take it again)
+        return "guess"
+    if b.get("lv"):
+        f = (b["h"] - 1.0) / LEVEL_H
+        if abs(f - round(f)) < 0.02 and b["lv"] <= round(f) <= b["lv"] + 3:
+            return "levels"
+    return "tag"
+
+
+def point_in_ring(x, z, ring):
+    ins = False
+    for i in range(len(ring)):
+        x1, z1 = ring[i - 1]
+        x2, z2 = ring[i]
+        if (z1 > z) != (z2 > z) and x < x1 + (z - z1) * (x2 - x1) / (z2 - z1):
+            ins = not ins
+    return ins
+
+
+def centroid(ring):
+    a = cx = cz = 0.0
+    for i in range(len(ring)):
+        (x1, z1), (x2, z2) = ring[i - 1], ring[i]
+        c = x1 * z2 - x2 * z1
+        a += c
+        cx += (x1 + x2) * c
+        cz += (z1 + z2) * c
+    return (cx / (3 * a), cz / (3 * a), abs(a) / 2) if a else (ring[0][0], ring[0][1], 0.0)
+
+
+def survey_apply(buildings, P, s, feats, stats):
+    """Give each OSM outline the height of the survey building covering most of it."""
+    surv = []
+    floors0 = stats.get("survey_floors", 0)   # (stats is shared by the surveys of one run)
+    skip, pilotis = s.get("skip", (None, ())), s.get("pilotis", (None, ()))
+    ground = 0 if s.get("ground_counted") else 1   # floors to add for an uncounted ground floor
+    for f in feats:
+        g, pr = f.get("geometry") or {}, f.get("properties") or {}
+        if skip[0] and pr.get(skip[0]) in skip[1]:
+            continue
+        h, fl = pr.get(s.get("h")), pr.get(s["floors"])
+        est = (fl + ground) * LEVEL_H + 1.5 if fl and fl > 0 else None   # from its floors
+        if h and h >= 2.0:
+            h = float(h)
+            if est and (h < fl * 2.2 or (fl <= 4 and h > (fl + 2) * 3.5 + 3.0)):
+                h = est   # the top point over it was a tree's crown or the tower next door
+                stats["survey_floors"] = stats.get("survey_floors", 0) + 1
+        elif est:
+            h = est
+        else:
+            continue
+        polys = [g["coordinates"]] if g.get("type") == "Polygon" else g.get("coordinates", [])
+        for poly in polys:
+            rings = [[P(c[1], c[0]) for c in r] for r in poly if len(r) >= 4]
+            if rings:
+                surv.append({"rings": rings, "h": h, "a": centroid(rings[0])[2],
+                             "yr": pr.get(s.get("year")),
+                             "pil": bool(pilotis[0]) and pr.get(pilotis[0]) in pilotis[1]})
+    if not surv:
+        return
+    outl = [[(b["p"][i] / SCALE, b["p"][i + 1] / SCALE) for i in range(0, len(b["p"]), 2)]
+            for b in buildings]
+    CELL = 50.0
+
+    def index(shift):
+        grid = {}
+        for i, sb in enumerate(surv):
+            xs = [p[0] + shift[0] for p in sb["rings"][0]]
+            zs = [p[1] + shift[1] for p in sb["rings"][0]]
+            sb["bb"] = (min(xs), min(zs), max(xs), max(zs))
+            for gx in range(int(sb["bb"][0] // CELL), int(sb["bb"][2] // CELL) + 1):
+                for gz in range(int(sb["bb"][1] // CELL), int(sb["bb"][3] // CELL) + 1):
+                    grid.setdefault((gx, gz), []).append(i)
+        return grid
+
+    def cover(ring, grid, shift):
+        """(share of the outline under survey buildings, {survey index: sample points})"""
+        xs, zs = [p[0] for p in ring], [p[1] for p in ring]
+        step = max(1.0, math.sqrt((max(xs) - min(xs)) * (max(zs) - min(zs)) / 300.0))
+        tot, hits = 0, {}
+        z = min(zs) + step / 2
+        while z < max(zs):
+            x = min(xs) + step / 2
+            while x < max(xs):
+                if point_in_ring(x, z, ring):
+                    tot += 1
+                    for i in grid.get((int(x // CELL), int(z // CELL)), ()):
+                        bb = surv[i]["bb"]
+                        if bb[0] <= x <= bb[2] and bb[1] <= z <= bb[3]:
+                            u, v = x - shift[0], z - shift[1]
+                            r = surv[i]["rings"]
+                            if point_in_ring(u, v, r[0]) and not any(point_in_ring(u, v, hr) for hr in r[1:]):
+                                hits[i] = hits.get(i, 0) + 1
+                                break
+                x += step
+            z += step
+        return (sum(hits.values()) / tot if tot else 0.0), hits
+
+    # The two sets of outlines can sit a metre or two apart (Tel Aviv's ~1.9 m south of
+    # OSM's): measure the shift on outlines that match one to one, then match again with it.
+    grid, shift = index((0.0, 0.0)), (0.0, 0.0)
+    dx, dz = [], []
+    for ring in outl:
+        share, hits = cover(ring, grid, shift)
+        if share > 0.3 and len(hits) == 1:
+            ox, oz, oa = centroid(ring)
+            sx, sz, sa = centroid(surv[next(iter(hits))]["rings"][0])
+            if oa and 0.6 < sa / oa < 1.6:
+                dx.append(ox - sx)
+                dz.append(oz - sz)
+    if len(dx) >= 20:
+        dx.sort()
+        dz.sort()
+        shift = (dx[len(dx) // 2], dz[len(dz) // 2])
+        grid = index(shift)
+    n = pil = kept = 0
+    done = stats.setdefault("_surveyed", set())   # ids of buildings an earlier survey in this run set
+    for b, ring in zip(buildings, outl):
+        if id(b) in done:   # (on a town's edge two surveys can both cover it: the first, the
+            continue        # better one -- SURVEYS lists measured heights before floor counts -- wins)
+        share, hits = cover(ring, grid, shift)
+        if share < 0.3:
+            continue
+        sb = surv[max(hits, key=hits.get)]
+        own, h = osm_height_kind(b), b["h"]
+        if own == "guess":
+            same = not (sb["h"] > 30.0 and centroid(ring)[2] < 0.25 * sb["a"])
+        else:
+            same = 0.67 <= sb["h"] / h <= 1.5 or abs(sb["h"] - h) <= 10.0
+        if not same or own == "tag":
+            kept += 1
+        if not same:
+            continue
+        if own != "tag":
+            b["h"] = round(max(2.5, min(sb["h"], 400.0)), 1)
+            b.pop("g", None)
+            b["hm"] = 1
+            n += 1
+            done.add(id(b))
+        if sb["yr"] and 1800 <= sb["yr"] <= 2100 and "yr" not in b:
+            b["yr"] = int(sb["yr"])
+        if sb["pil"]:
+            b["pil"] = 1
+            pil += 1
+    stats["guessed"] = sum(1 for b in buildings if b.get("g"))
+    stats["surveyed"] = stats.get("surveyed", 0) + n
+    log(f"survey {s['id']}: heights for {n} of {len(buildings)} buildings ({pil} on columns; "
+        f"OSM's own kept on {kept} it covers; {stats.get('survey_floors', 0) - floors0} of its heights "
+        f"out of line with its floors, taken from those), its outlines shifted "
+        f"{shift[0]:+.1f}, {shift[1]:+.1f} m onto OSM's")
 
 
 def join_chains(segments):
@@ -800,11 +1176,84 @@ def num(s):
     return float(m.group(1)) if m else None
 
 
+# maxspeed's implicit values ("IL:urban") for the countries baked so far, km/h
+ZONE_SPEED = {"il:urban": 50, "il:rural": 80, "il:trunk": 90, "il:motorway": 110,
+              "ca:urban": 50, "ca:ns:urban": 50, "ca:rural": 80, "ca:ns:rural": 80,
+              "ca:motorway": 100, "walk": 7, "living_street": 20}
+
+
+def speed_kmh(v):
+    """'50', '30 mph', 'IL:urban', '50;30' -> km/h as an int; 'none', 'signals' -> None."""
+    if not v:
+        return None
+    v = str(v).strip().lower().split(";")[0].strip()
+    if v in ZONE_SPEED:
+        return ZONE_SPEED[v]
+    m = re.match(r"^(\d+(?:\.\d+)?)\s*(mph|km/h|kmh|kph)?$", v)
+    if not m:
+        return None
+    kmh = float(m.group(1)) * (1.609 if m.group(2) == "mph" else 1.0)
+    return int(round(kmh)) if 3 <= kmh <= 150 else None
+
+
+# the colour names mappers use most, as hex (OSM also takes "#rrggbb")
+COLOUR_NAMES = {
+    "white": "#ffffff", "black": "#000000", "gray": "#808080", "grey": "#808080",
+    "lightgray": "#d3d3d3", "lightgrey": "#d3d3d3", "darkgray": "#a9a9a9", "darkgrey": "#a9a9a9",
+    "dimgray": "#696969", "silver": "#c0c0c0", "gainsboro": "#dcdcdc", "whitesmoke": "#f5f5f5",
+    "beige": "#f5f5dc", "cream": "#fffdd0", "ivory": "#fffff0", "linen": "#faf0e6",
+    "antiquewhite": "#faebd7", "wheat": "#f5deb3", "tan": "#d2b48c", "khaki": "#f0e68c",
+    "sandybrown": "#f4a460", "peru": "#cd853f", "sienna": "#a0522d", "brown": "#a52a2a",
+    "maroon": "#800000", "terracotta": "#e2725b", "red": "#ff0000", "darkred": "#8b0000",
+    "orange": "#ffa500", "yellow": "#ffff00", "gold": "#ffd700", "pink": "#ffc0cb",
+    "salmon": "#fa8072", "green": "#008000", "darkgreen": "#006400", "olive": "#808000",
+    "blue": "#0000ff", "lightblue": "#add8e6", "navy": "#000080", "teal": "#008080",
+    "lavender": "#e6e6fa", "purple": "#800080",
+}
+
+
+def colour_hex(v):
+    """'#fff', '#a1b2c3', 'beige', 'light grey' -> '#rrggbb'; anything else -> None."""
+    if not v:
+        return None
+    v = str(v).strip().lower().replace(" ", "").replace("_", "").split(";")[0]
+    if re.match(r"^#[0-9a-f]{6}$", v):
+        return v
+    if re.match(r"^#[0-9a-f]{3}$", v):
+        return "#" + "".join(c * 2 for c in v[1:])
+    return COLOUR_NAMES.get(v)
+
+
+def sidewalk_sides(t):
+    """Which sides of a road have a pavement, from sidewalk / sidewalk:both|left|right:
+    'both', 'left', 'right', 'no' or 'separate' (mapped as footways of their own); None
+    when OSM does not say."""
+    s = t.get("sidewalk")
+    if s in ("both", "left", "right", "no", "separate"):
+        return s
+    if s == "none":
+        return "no"
+    both = t.get("sidewalk:both")
+    if both in ("yes", "no", "separate"):
+        return {"yes": "both", "no": "no", "separate": "separate"}[both]
+    left, right = t.get("sidewalk:left"), t.get("sidewalk:right")
+    if left is None and right is None:
+        return None
+    if left == "separate" and right == "separate":
+        return "separate"
+    on_l, on_r = left == "yes", right == "yes"
+    return "both" if on_l and on_r else ("left" if on_l else ("right" if on_r else "no"))
+
+
 # ---- bake ------------------------------------------------------------------------------
 
 def bake(raw, name, args):
     box = raw["box"]
     lat0, lon0 = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+    if getattr(args, "origin", None):
+        # a grown box keeps the old file's centre, so every place keeps its metres (a
+        # game's hand-placed fixes, landmarks and tests are pinned to them)
+        lat0, lon0 = (float(v) for v in args.origin.split(","))
     P = Proj(lat0, lon0)
     x0, z1 = P(box[0], box[1])
     x1, z0 = P(box[2], box[3])
@@ -871,6 +1320,30 @@ def bake(raw, name, args):
         oneway = t.get("oneway", "")
         o = 1 if oneway in ("yes", "1", "true") or t.get("junction") in ("roundabout", "circular") \
             else (-1 if oneway == "-1" else 0)
+        # what OSM says when it says it -- the game treats a missing one as "not known"
+        extra = {}
+        ms = speed_kmh(t.get("maxspeed"))
+        if ms is None:   # a different limit each way: the lower one
+            ways = [v for v in (speed_kmh(t.get("maxspeed:forward")),
+                                speed_kmh(t.get("maxspeed:backward"))) if v]
+            ms = min(ways) if ways else None
+        if ms:
+            extra["ms"] = ms
+        for key, field in (("lanes:forward", "lf"), ("lanes:backward", "lb")):
+            v = num(t.get(key))
+            if v and 0 < v < 10:
+                extra[field] = int(v)
+        for key, field in (("turn:lanes", "tl"), ("turn:lanes:forward", "tlf"),
+                           ("turn:lanes:backward", "tlb")):
+            if t.get(key):
+                extra[field] = t[key][:80]
+        if t.get("surface") and t["surface"] not in ("asphalt", "paved"):
+            extra["sf"] = t["surface"][:24]
+        sw = sidewalk_sides(t)
+        if sw:
+            extra["sw"] = sw
+        for f in extra:
+            stats["road_" + f] = stats.get("road_" + f, 0) + 1
         for run in runs:
             if len(run) < 2:
                 continue
@@ -901,6 +1374,7 @@ def bake(raw, name, args):
                 road["rb"] = 1
             if kind == "service" and t.get("service") in ("parking_aisle", "driveway", "alley"):
                 road["sv"] = t["service"]
+            road.update(extra)
             road.update(bus_lanes(t, lanes, o))
             if "bf" in road or "bb" in road:
                 stats["bus_lanes"] = stats.get("bus_lanes", 0) + 1
@@ -976,6 +1450,26 @@ def bake(raw, name, args):
             b["name"] = t["name"]
         if t.get("addr:street") and t.get("addr:housenumber"):
             b["addr"] = f"{t['addr:street']} {t['addr:housenumber']}"
+        # what it looks like, where OSM says
+        if kind not in ("yes", ""):
+            b["k"] = kind[:24]
+        if levels is not None and 0 < levels < 200:
+            b["lv"] = int(levels)
+        for key, field in (("building:colour", "col"), ("roof:colour", "rc")):
+            c = colour_hex(t.get(key))
+            if c:
+                b[field] = c
+        if t.get("roof:shape"):
+            b["rs"] = t["roof:shape"][:20]
+        mat = t.get("building:material") or t.get("building:facade:material")
+        if mat:
+            b["mat"] = mat[:20]
+        yr = re.search(r"\b(1[5-9]\d\d|20\d\d)\b", t.get("start_date", ""))
+        if yr:
+            b["yr"] = int(yr.group(1))
+        for f in ("k", "lv", "col", "rc", "rs", "mat", "yr"):
+            if f in b:
+                stats["bld_" + f] = stats.get("bld_" + f, 0) + 1
         out["buildings"].append(b)
         stats["buildings"] += 1
 
@@ -1037,12 +1531,15 @@ def bake(raw, name, args):
     coast = [[P(g["lat"], g["lon"]) for g in e["geometry"] if g] for e in elements
              if e["type"] == "way" and e.get("tags", {}).get("natural") == "coastline"
              and "geometry" in e]
+    sea, sea_areas = None, []
     if coast:
         water, islands = sea_polygons(coast, (x0, z0, x1, z1))
+        sea = (water, islands)
         for ring in water:
             r = clean_ring(ring, 0.5)
             if r:
-                out["areas"].append({"p": flat(r), "k": "water"})
+                sea_areas.append({"p": flat(r), "k": "water"})
+                out["areas"].append(sea_areas[-1])
         for ring in islands:
             r = clean_ring(ring, 0.5)
             if r:
@@ -1142,11 +1639,23 @@ def bake(raw, name, args):
     if rails or stations:
         out["rails"], out["platforms"], out["stations"] = rails, platforms, stations
 
+    if not args.no_surveys:
+        for s in SURVEYS:
+            e = s["extent"]
+            if box[0] < e[2] and e[0] < box[2] and box[1] < e[3] and e[1] < box[3]:
+                data_dir = os.path.join(os.path.dirname(os.path.abspath(args.out)), "data") if args.out else None
+                feats = survey_fetch(s, box, args.offline, data_dir)
+                if feats:
+                    survey_apply(out["buildings"], P, s, feats, stats)
+                    out.setdefault("credits", []).append(s["credit"])
+
     if not args.no_terrain:
         try:
             span = max(x1 - x0, z1 - z0)
             out["height"] = terrain_grid(P, box, (x0, z0, x1, z1), max(12.0, round(span / 300.0)),
-                                         bare=args.bare_ground)
+                                         bare=args.bare_ground, sea=sea)
+            for a in sea_areas:   # the sea at sea level, as a river is held at its weirs'
+                a["y"] = int(round(-out["height"]["base"] * SCALE))
         except Exception as e:   # flat is better than no city
             log(f"ground: no height data ({e}); the city stays flat")
 
@@ -1155,7 +1664,40 @@ def bake(raw, name, args):
         f"{stats['areas']} areas, {len(out['trees']) // 2} trees, {len(out['signals'])} "
         f"traffic lights, {len(out.get('rails', []))} rail tracks, {len(out.get('stations', []))} "
         f"stations, {stats.get('bus_lanes', 0)} road pieces with bus lanes; {x1 - x0:.0f} x {z1 - z0:.0f} m")
+    # how much of the optional detail OSM had here (the share is of road pieces' ways and
+    # of buildings): worth a look before building anything on one of them
+    nb = max(1, stats["buildings"])
+    log("tagged: buildings " + ", ".join(
+        f"{f} {stats.get('bld_' + f, 0)} ({100 * stats.get('bld_' + f, 0) / nb:.0f}%)"
+        for f in ("k", "lv", "col", "rc", "rs", "mat", "yr")))
+    log("tagged: road ways " + ", ".join(
+        f"{f} {stats.get('road_' + f, 0)}" for f in ("ms", "lf", "lb", "tl", "tlf", "tlb", "sf", "sw")))
     return out
+
+
+def add_surveys(path, offline):
+    """The survey step alone, on a city file baked already (its OSM data is left as it is)."""
+    with open(path, encoding="utf-8") as f:
+        city = json.load(f)
+    P = Proj(*city["origin"])
+    x0, z0, x1, z1 = city["bounds"]
+    box = (city["origin"][0] - z1 / P.my, city["origin"][1] + x0 / P.mx,
+           city["origin"][0] - z0 / P.my, city["origin"][1] + x1 / P.mx)
+    stats = {}
+    for s in SURVEYS:
+        e = s["extent"]
+        if box[0] < e[2] and e[0] < box[2] and box[1] < e[3] and e[1] < box[3]:
+            feats = survey_fetch(s, box, offline, os.path.join(os.path.dirname(os.path.abspath(path)), "data"))
+            if feats:
+                survey_apply(city["buildings"], P, s, feats, stats)
+                if s["credit"] not in city.setdefault("credits", []):
+                    city["credits"].append(s["credit"])
+    if not stats:
+        log("no survey covers this town (or none could be reached): file left as it was")
+        return
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(city, f, ensure_ascii=False, separators=(",", ":"))
+    log(f"wrote {path} ({os.path.getsize(path) / 1e6:.1f} MB)")
 
 
 def main():
@@ -1173,15 +1715,25 @@ def main():
     ap.add_argument("--default-levels", type=int, default=4,
                     help="storeys for a building OSM gives no height for")
     ap.add_argument("--out", help="where to write the city file")
+    ap.add_argument("--origin", help="lat,lon to measure the metres from instead of the box's "
+                    "centre: the old file's \"origin\", when re-baking a bigger box")
     ap.add_argument("--offline", action="store_true", help="bake from tools/.cache only")
     ap.add_argument("--from-file", help="a raw Overpass JSON answer you saved yourself")
     ap.add_argument("--no-terrain", action="store_true", help="skip the ground heights")
+    ap.add_argument("--no-surveys", action="store_true",
+                    help="keep OSM's building heights even where a town publishes its own")
+    ap.add_argument("--add-surveys", metavar="CITY_FILE",
+                    help="only put the town surveys' heights on a city file baked already "
+                         "(no OSM download; the file is rewritten in place)")
     ap.add_argument("--bare-ground", action="store_true",
                     help="take buildings out of the ground heights (a city of towers comes "
                          "out of the terrain tiles as hills)")
     ap.add_argument("--print-query", action="store_true",
                     help="print a browser link that downloads the raw data, for --from-file")
     args = ap.parse_args()
+    if args.add_surveys:
+        add_surveys(args.add_surveys, args.offline)
+        return
     if not (args.place or args.relation or args.bbox or args.from_file):
         ap.error("give --place, --relation, --bbox or --from-file")
     if args.print_query:
@@ -1199,6 +1751,7 @@ def main():
                                        ).lower()).strip("_") or "city"
     raw = fetch(args, slug)
     city = bake(raw, name, args)
+    level_roads.level(city)   # the roads level side to side on the height grid (tools/level_roads.py)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(city, f, ensure_ascii=False, separators=(",", ":"))

@@ -41,7 +41,7 @@ const CHECKS := ["check: bodies overlapping, traffic", "check: bodies overlappin
 	"check: autodrive pushing 3 s+", "check: held by nothing 10 s+, traffic", "check: held by nothing 10 s+, autodrive"]
 ## what may hold a car standing still (anything else -- the limit, a curve -- is nothing)
 const NAMED := ["light", "zebra", "people", "sign", "junction", "player", "bus stop", "squeezing past",
-	"blocked", "choice", "turning", "backing", "pushing"]
+	"blocked", "choice", "turning", "backing", "pushing", "delivery"]   # (delivery: a van double-parked to unload)
 var g: Node
 var T
 var counts := {}
@@ -329,11 +329,30 @@ func _car_line(i: int) -> String:
 	var rd: int = c.rd[clampi(c.k, 0, c.rd.size() - 1)] if c.rd.size() > 0 else -1
 	var road: String = ("%s (%s, %d lanes a way)" % [g._roads[rd]["en"] if g._roads[rd]["en"] != "" else g._roads[rd]["name"],
 		g._roads[rd]["k"], g._lanes_each_way(g._roads[rd])]) if rd >= 0 else "?"
-	return "car %d %s at (%.1f, %.1f) heading %.0f, %.1f m/s, %s, lane %d shift %.2f -> %.2f%s, held by %s (blocker %d), k %d of %d" % [
+	var ahead: Array = []   # the roads its plan runs on from here: [road, which way along it]
+	for j in range(c.k, mini(c.rd.size(), c.k + 12)):
+		var rj: int = c.rd[j]
+		if rj < 0 or (not ahead.is_empty() and int(ahead[-1][0]) == rj):
+			continue
+		var rp: PackedVector2Array = g._roads[rj]["pts"]
+		var way := "?"
+		if j + 1 < c.pts.size():
+			var seg: Vector2 = c.pts[j + 1] - c.pts[j]
+			var best := INF
+			for q in range(rp.size() - 1):
+				var dq: float = Geometry2D.get_closest_point_to_segment(c.pts[j], rp[q], rp[q + 1]).distance_to(c.pts[j])
+				if dq < best:
+					best = dq
+					way = "+" if (rp[q + 1] - rp[q]).dot(seg) >= 0.0 else "-"
+		ahead.append([rj, way])
+	var plan := " > ".join(ahead.map(func(a): return "%s%s(o%d)" % [g._roads[a[0]]["en"] if g._roads[a[0]]["en"] != "" else g._roads[a[0]]["name"], a[1], int(g._roads[a[0]]["o"])]))
+	return "car %d %s at (%.1f, %.1f) heading %.0f, %.1f m/s, %s, lane %d shift %.2f -> %.2f%s, held by %s (blocker %d), k %d of %d; plan %s" % [
 		i, c.kind, c.pos.x, c.pos.y, rad_to_deg(c.yaw), c.v, road, c.lane_i, c.shift, c.shift_to,
-		", filtering" if c.split else "", c.why, c.blocker, c.k, c.pts.size()]
+		", filtering" if c.split else "", c.why, c.blocker, c.k, c.pts.size(), plan]
 
 ## the traffic's own checks: stalls, cars sent away, red lights run, cars overlapping
+var site_was := {}   ## traffic car -> the junction with lights it was last in, as the game had it while outside every lit point
+
 func _watch_traffic(dt: float, t: float, car_still: Dictionary, overlapping: Dictionary, inside: Dictionary, came_dir: Dictionary) -> void:
 	# -- traffic
 	for i in range(T.cars.size()):
@@ -350,6 +369,11 @@ func _watch_traffic(dt: float, t: float, car_still: Dictionary, overlapping: Dic
 			car_still.erase(i)
 		if c.wait > 25.0:
 			_count("traffic: sent away (stuck) ticks")
+			if c.wait - 25.0 < 1.5 / 60.0:   # (once, as it crosses 25 s: what holds it, down the queue)
+				var ch: Array = _chain(i)
+				var o = T.cars[c.blocker] if c.blocker >= 0 and c.blocker < T.cars.size() else null
+				_incident("waited 25 s for a car", c.pos, "%s%s" % [" > ".join(ch[1]),
+					"; the first one %.0f deg across, %.1f m off" % [rad_to_deg(absf(angle_difference(o.yaw, c.yaw))), o.pos.distance_to(c.pos)] if o != null else ""])
 		# a red light run: into a junction's first signalled point on red, by the way the
 		# car came in (its heading before it got there). The points of one junction (a
 		# divided road's are several, 10-30 m apart) are one: a car that went in on
@@ -364,12 +388,23 @@ func _watch_traffic(dt: float, t: float, car_still: Dictionary, overlapping: Dic
 			var key := "%d:%d" % [i, knot]
 			if not inside.has(key) and c.v > 2.0:
 				var came: Vector2 = came_dir.get(i, Vector2(sin(c.yaw), cos(c.yaw)))
+				# already in this junction, by another of its lights whose middle it went
+				# wide of (the game's own record, from before it came to this point): going on
+				# through its inner points is not running their red
+				if int(site_was.get(i, -1)) == knot:
+					inside[key] = t
+					continue
 				if g._light_at(n, came) == "r":
 					_count("traffic: red lights run")
 					_incident("traffic red", c.pos, c.kind)
+					if _watch_r > 0.0 and c.pos.distance_to(_at) <= _watch_r:
+						print("    red at point %d (%s, r %.1f), came heading %.0f; last site %d (this %d), %.1f m since its last light\n    %s" % [
+							n, Vector2i(g._nodes[n]), g._node_r[n], rad_to_deg(atan2(came.x, came.y)), c.last_site, knot,
+							c.s - c.last_light, _car_line(i)])
 			inside[key] = t
 		if not in_any:
 			came_dir[i] = Vector2(sin(c.yaw), cos(c.yaw))
+			site_was[i] = c.last_site
 			for key: String in inside.keys():
 				if key.begins_with("%d:" % i) and t - float(inside[key]) > 8.0:
 					inside.erase(key)
@@ -420,6 +455,7 @@ var _over := {}         ## "i:node" / "ap:node" -> the tick it was counted stand
 var _stop_why := {}     ## traffic car -> what held it the moment it came to a stop
 var _ap_stop_why := ""
 var _last_pos := {}     ## traffic car -> where it was last tick (a jump: put down elsewhere)
+var _hist := {}         ## traffic car -> its last 3 s, for a "held by nothing" record
 var _stand := {}        ## traffic car -> seconds standing
 var _ap_stand := 0.0
 var _push_at := Vector2.INF
@@ -453,8 +489,10 @@ func _check(dt: float) -> void:
 					_count("check: bodies overlapping, traffic")
 					_incident("bodies overlap", (c.pos + o.pos) * 0.5, "%s (%s, %.0f km/h) & %s (%s, %.0f km/h), %.1f m in" % [
 						c.kind, c.why, c.v * 3.6, o.kind, o.why, o.v * 3.6, d])
-					if _watch_r > 0.0 and (c.pos + o.pos).distance_to(_at * 2.0) <= _watch_r * 2.0:
-						print("    %s\n    %s" % [_car_line(i), _car_line(j)])
+					# (both cars, and their last 3 s, every time: a scene staged again to see how
+					# they met cost more than the lines)
+					print("    %s\n    %s\n    last 3 s (t:v/want why react_t/react lead_v blocker hit): %d: %s\n      %d: %s" % [
+						_car_line(i), _car_line(j), i, " | ".join(_hist.get(i, [])), j, " | ".join(_hist.get(j, []))])
 		if c.pos.distance_squared_to(g._pos) < 196.0 and absf(c.y - g._y) < 2.5:
 			var d2 := Bodies.box_depth(pb, boxes[i])
 			if d2 > 0.25:
@@ -482,7 +520,7 @@ func _check(dt: float) -> void:
 					_count("check: traffic body into a " + kind)
 					_incident("traffic into a " + kind, c.pos, "%s (%s, %.0f km/h), %.1f m into %s" % [
 						c.kind, c.why, c.v * 3.6, float(hit[0]), hit[1]])
-					if _watch_r > 0.0 and c.pos.distance_to(_at) <= _watch_r:
+					if true:   # (every time: the car's lane and shift, the post's place against the edge)
 						var what := String(hit[1])
 						var where_s := ""
 						if what.begins_with("post "):
@@ -593,7 +631,16 @@ func _check(dt: float) -> void:
 		if _last_pos.has(i) and (_last_pos[i] as Vector2).distance_to(c.pos) > 15.0:
 			_stand.erase(i)
 			_stop_why.erase(i)
+			_hist.erase(i)
 		_last_pos[i] = c.pos
+		# each car's last 3 s, every 0.25 s, for the record when it is found held by nothing
+		if _tick % 15 == 0:
+			var h: Array = _hist.get(i, [])
+			h.append("%.0f:%.1f/%.1f %s r%.1f/%.1f l%.1f b%d h%.1f" % [_tick / 60.0, c.v, c.want, c.why,
+				c.react_t, c.react, c.lead_v, c.blocker, c.hit])
+			if h.size() > 12:
+				h.remove_at(0)
+			_hist[i] = h
 	for i: int in boxes:
 		var c = cars[i]
 		if c.v < 0.3:
@@ -603,6 +650,8 @@ func _check(dt: float) -> void:
 				if not ch[0]:
 					_count("check: held by nothing 10 s+, traffic")
 					var front = T.cars[int(ch[2])] if ch.size() > 2 else c
+					print("    held by nothing, the front car %d's last 3 s (t:v/want why react_t/react lead_v blocker hit): %s" % [
+						int(ch[2]) if ch.size() > 2 else i, " | ".join(_hist.get(int(ch[2]) if ch.size() > 2 else i, []))])
 					_incident("held by nothing", c.pos, "%s; the front one wants %.1f m/s, stood %.0f s, %.0f m from the player%s" % [
 						" > ".join(ch[1]), front.want, front.still, front.pos.distance_to(g._pos),
 						", out of view" if not T._in_view(front.pos) else ""])
@@ -648,12 +697,14 @@ func _chain(i: int) -> Array:
 		if c.hit > 0.0:
 			parts.append("%s %d (stunned by a hit)" % [c.kind, i])
 			return [true, parts]
-		if c.v < 0.3 and c.want > 0.5 and c.react_t < c.react and not c.why in ["car", "player"]:
+		if c.v < 0.3 and c.want > 0.5 and (c.react_t < c.react or c.acc > 0.05) and not c.why in ["car", "player"]:
 			# wants to go, standing only for its moment to notice: its reaction still running
 			# (the front of a queue at a light gone green reads "limit" then). The first version
 			# took that for nothing at all; the second excused only cars that had stood under
 			# 4 s, so one that waited 10 s at a red and had its green that tick read as held by
-			# nothing (four in one exam); one that has reacted and still stands is not excused
+			# nothing (four in one exam); one that has reacted and still stands is not excused --
+			# but one just pulling away is (accelerating, at 0.2 m/s the tick it was looked at:
+			# the third version's last false alarm, a car that had waited at a junction)
 			parts.append("%s %d (pulling away)" % [c.kind, i])
 			return [true, parts, i]
 		parts.append("%s %d (%s)" % [c.kind, i, c.why])

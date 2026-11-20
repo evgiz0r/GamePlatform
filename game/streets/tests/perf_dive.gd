@@ -6,7 +6,8 @@ extends SceneTree
 ## them, and the script's own average frame (the game's profiler, `_prof_avg`) over a few
 ## seconds of autodrive. Then the scene's totals: nodes, mesh instances, multimeshes and
 ## their instances, distinct shader kinds (each one the browser compiles while loading).
-##   tests/run.sh perf_dive 7            (STREETS_BUILD_ALL=1, the default: everything built)
+##   tests/run.sh perf_dive 7            (STREETS_BUILD_ALL=1, the default: everything built first)
+##   STREETS_BUILD_ALL=0 tests/run.sh perf_dive 7   (as the game builds: the totals after the rest is done)
 var g: Node
 func _initialize() -> void:
 	_run()
@@ -154,7 +155,13 @@ func _run() -> void:
 	for i in range(3):
 		await create_timer(4.0).timeout
 	print("script while driving: %s" % g._prof_avg)
-	# the scene's totals
+	# the scene's totals, once the rest of the city is built (STREETS_BUILD_ALL=0: as in the
+	# game, the start's squares behind the loading text and the rest while driving -- only
+	# those are indexed, see _index_into)
+	var waited := 0.0
+	while g._bg_build and waited < 900.0:
+		await create_timer(1.0).timeout
+		waited += 1.0
 	var nodes := Performance.get_monitor(Performance.OBJECT_NODE_COUNT)
 	var meshes := 0
 	var mms := 0
@@ -169,7 +176,7 @@ func _run() -> void:
 				inst += mm.instance_count
 		elif gi is MeshInstance3D:
 			meshes += 1
-	print("scene: %d nodes, %d mesh instances, %d multimeshes (%d instances), %d shader kinds (materials x instanced)" % [nodes, meshes, mms, inst, keys.size()])
+	print("scene: %d nodes, %d mesh instances, %d multimeshes (%d instances), %d shader kinds (codes x plain/instanced x shadow: the warm-up's steps)" % [nodes, meshes, mms, inst, keys.size()])
 	# the static meshes' vertices by material (each a vertex of a triangle soup unless indexed):
 	# where the buffers' memory goes
 	var verts := {}   # name -> [meshes, vertices, indexed meshes]
@@ -199,6 +206,13 @@ func _run() -> void:
 			bv.append([int(g._dressing[k]), k.substr(18)])
 	bv.sort_custom(func(a, b): return a[0] > b[0])
 	print("  batched, by tone: " + ", ".join(bv.slice(0, 14).map(func(x): return "%s %.2f M" % [x[1], x[0] / 1.0e6])))
+	# and by who added them (debug builds: the function and line, the kit's vertices)
+	var bm: Array = []
+	for k: String in g._dressing:
+		if k.begins_with("batched by: "):
+			bm.append([int(g._dressing[k]), k.substr(12)])
+	bm.sort_custom(func(x, y): return x[0] > y[0])
+	print("  batched, by who: " + ", ".join(bm.slice(0, 16).map(func(x): return "%s %.2f M" % [x[1], x[0] / 1.0e6])))
 	for r: Array in rows.slice(0, 12):
 		print("  %-28s %5d surfaces %6.2f M vertices (%d indexed)" % [r[0], r[1], float(r[2]) / 1.0e6, r[3]])
 	print("video memory %.0f MB, textures %.0f MB, buffers %.0f MB" % [Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0,

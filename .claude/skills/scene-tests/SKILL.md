@@ -161,7 +161,26 @@ differs (the game's materials are not the street's), so fit a moderate warmth ra
 the whole gap (fitted freely it turned grey pavers mauve) and look at the graded frames
 beside the film before trusting the numbers. A canvas shader over the finished frame reads
 the same 8-bit sRGB a recording saves, so a grade fitted on recorded frames in numpy carries
-into the game exactly -- check it with the same moments graded and bare.
+into the game exactly -- check it with the same moments graded and bare. *Exposure*: a
+phone's brightness second to second barely moves (it exposes for what it sees) while a
+fixed-exposure replay's swings with the scene -- a roofed arcade read half the film's, and no
+curve or exposure lifted it until the floor's own colour was fixed: measure the two apart. A
+shader can meter the whole frame off the screen texture's mipmaps (`filter_linear_mipmap`, a
+few `textureLod` taps at a high mip) in the Compatibility renderer too; paint the reading
+in a corner once and compare it with the frame's true mean before trusting it.
+*Which way it faces and how far things are*: the fronts across a street sit level in the
+frame when the camera faces square to them, and stripes or kerbs tilt toward the side it is
+turned to; a thing's foot y of the way down the frame is tilt + atan((y - 0.5) * 2 tan(fov/2))
+below level, so eye height / tan of that is how far off it stands. A wait that read by eye as
+"looking left for the traffic" faced straight across, two metres back from where the replay
+stood. Read the film four frames a second for this, not one: at one a second a car that
+passed in a second and a half, and the turn of the head, fell between the frames.
+
+**A test that jumps a scene's clock cannot show what is timed by it.** Stills taken by
+setting a replay's time and running a third of a second skip every scripted event in
+between: cars sent at a second never drove their distance, and the stills showed none of
+them. Log timed things at the scene's own pace from its start (a trace every quarter second
+of what is near) or record it.
 
 **Checks that should read 0, every tick.** Counting what went wrong per minute finds the
 big things; checks of what must never happen find the bugs before anyone looks for them.
@@ -173,7 +192,10 @@ pushing against something without moving, and standing still with nothing named 
 limit at a standstill is not). Print every check with its count even at 0, so a reader
 sees it ran. The first version of a check finds its own false alarms first (the front of a
 queue in its moment to react at a green read "held by nothing"): run it once in the small
-test town and read every hit before trusting the number.
+test town and read every hit before trusting the number. When a check fires, print the
+last few seconds of everyone involved with it (speed, what it wanted, what held it, a few
+times a second): a car "held by nothing" is usually explained by what it did just before,
+and without that history each one costs a staged re-run.
 
 **A check of the world as built**, before anything drives it: walls, posts and buildings
 on the road, a junction's points each deciding alone, roads too short to have a direction.
@@ -220,6 +242,25 @@ it is made, with a one-line caption, rather than a report at the end.
   the AI by calling the same probe yourself at that moment.
 - **Hold a parked player by hand on a hill** (its position and speed each physics frame):
   with nobody at the pedals it rolls down a 15% street, 100 m in a case.
+
+- **People that appear only out of sight are never in a still.** A game that places its
+  extras (people in chairs, at stops) only where the player cannot see them appear leaves
+  a staged camera looking at empty seats, however long it waits. Stand at the spot facing
+  away for a few of the game's placing ticks, then turn and take the shot.
+
+- **Headless, a multimesh's copies read back as nothing.** `--headless` has no real
+  rendering server: `MultiMesh.get_instance_transform()` returns the identity, so a test
+  reading where a copy was put (a dog at a walker's side) gets (0, 0, 0) for every one and
+  measures nonsense (2112 "dogs across a fence"). Have the game keep the positions it set in
+  its own data for tests to read, or run the test with a display.
+
+- **A collision scan sees only what is solid, and only where it is solid.** A scripted walk
+  that scanned clean went through a parked bike's wheel (solid only at its rack's hoop, while
+  the bike reached across most of the pavement) and ended with a tree's trunk filling the
+  frame; chairs, crates and low leaves have no collider at all. Beside the scan, list
+  everything drawn by instance round the spot (each `MultiMeshInstance3D` instance's box
+  through its transform: where, how big, how high it starts) and look at the recording one
+  frame every 2 s.
 
 - **Measure the exact condition, and name the blocker once.** "Stood still near the van" also
   counted waiting at a red light past it; "within 20 m, the van ahead, held by a car" did
@@ -352,6 +393,11 @@ behaviour counted over minutes, and three things are in the way:
   The same before calling a change a regression: run the base branch beside yours (a git
   worktree with `.godot` copied in) -- one exam read 11 and 12 on a branch and "7-9" in the
   notes, and the base itself read 8 and 12.
+  A pass/fail check over a noisy measure is no better: near variants of one change read
+  1.19 to 1.62 on a queue check's 40-minute watch, so a bisect over single runs chased
+  noise. Run base and candidate back to back on a doubled watch before bisecting, and do
+  it in a worktree, not by copying versions over the file in your own tree: while the
+  copy stands the tree cannot be committed or merged.
   Keep 1x for how driving feels (crashes, steering, frames) and for numbers written down.
 
 A city that builds in 5 s on a laptop can take 15 there, and a minute of game time five of

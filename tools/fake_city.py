@@ -47,6 +47,8 @@ import os
 import random
 import sys
 
+import level_roads   # (tools/, beside this file)
+
 SCALE = 10                     # integers in the file are decimetres, as in tools/osm_city.py
 WALL = 0.62                    # ground rising more than this per metre cannot be driven up
 STEP = 8.0                     # metres between ground height samples
@@ -1953,6 +1955,7 @@ def main():
                  "try another --seed" % reach)
     parts = connected(T)
     city = write(T, g, args.name, args.seed)
+    level_roads.level(city)   # the roads level side to side on the height grid (tools/level_roads.py)
     if args.preview:
         preview(T, g, args.preview)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
