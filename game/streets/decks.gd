@@ -1280,7 +1280,22 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 		nd.append(roundi(p.y / k))
 		return nd.size() / 2 - 1
 	var drv := func(r: Dictionary) -> bool: return drive.has(String(r.get("k", "")))
-	var walk := func(r: Dictionary) -> bool: return WALK.has(String(r.get("k", "")))
+	# A path that coils over itself (a spiral stair mapped as one way, a switchback) cannot be
+	# a deck -- its railings would cross it -- so it stays on the ground, and counts as the
+	# ground for the paths that meet it (as a street's point does).
+	for r: Dictionary in roads:
+		if not WALK.has(String(r.get("k", ""))):
+			continue
+		var ns: Array = r["n"]
+		for i in range(ns.size() - 1):
+			for j in range(i + 2, ns.size() - 1):
+				var cl := Geometry2D.get_closest_points_between_segments(pos.call(int(ns[i])), pos.call(int(ns[i + 1])),
+					pos.call(int(ns[j])), pos.call(int(ns[j + 1])))
+				if (cl[0] as Vector2).distance_to(cl[1]) < 0.8:   # (a spiral lies on itself; a ramp's hairpin legs are a path apart)
+					r["_coil"] = true
+			if r.has("_coil"):
+				break
+	var walk := func(r: Dictionary) -> bool: return WALK.has(String(r.get("k", ""))) and not r.has("_coil")
 	var net := func(r: Dictionary) -> int: return 1 if drv.call(r) else (2 if walk.call(r) else 0)
 	var foot_grade := func(r: Dictionary) -> float: return STAIRS if String(r["k"]) == "steps" else FOOT_RAMP
 	var gnd := {}
@@ -1402,7 +1417,7 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 			(at[int(n)] as Array).append(ri)
 	var on_street := {}   # every point on a drivable road: a footbridge's stairs end there
 	for r: Dictionary in roads:
-		if drv.call(r):
+		if drv.call(r) or r.has("_coil"):
 			for n in r["n"]:
 				on_street[int(n)] = true
 	var spread := func(seeds: Array, frozen: Dictionary) -> void:
@@ -1754,7 +1769,11 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 			var c: Vector2 = (pos.call(n) as Vector2) / 16.0
 			near_lift[Vector2i(floori(c.x), floori(c.y))] = true
 	for n in walk_at:
-		if on_street.has(n) and not near_lift.is_empty():
+		# (and where a path ends at nothing -- a bridge's sidewalk OSM stops on the span --
+		# it comes down by a stair to the ground there, not off a ledge)
+		var dead: bool = (at.get(n, []) as Array).size() == 1 and int(roads[int(at[n][0])]["n"][0]) == n \
+			or (at.get(n, []) as Array).size() == 1 and int((roads[int(at[n][0])]["n"] as Array)[-1]) == n
+		if (on_street.has(n) or dead) and not near_lift.is_empty():
 			var c: Vector2 = (pos.call(n) as Vector2) / 16.0
 			var close := false
 			for dx in range(-1, 2):

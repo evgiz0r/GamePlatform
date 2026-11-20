@@ -904,7 +904,12 @@ it is dropped.
   a two-point stair ramp down to a tunnel tied the embankment/cutting vote and came out an
   embankment, with no hole cut in the ground (a tie goes by the sum); an OSM fence across a
   footbridge's foot stopped you on its first metre up (a body on a deck off the ground no
-  longer meets the fences and posts down on the ground: `off_ground`). And one not about
+  longer meets the fences and posts down on the ground: `off_ground`); Duke Street's
+  sidewalk, mapped as its own footbridge beside the road's, stops 2.5 m up on the span (a
+  path's dead end now holds the ground like a street's point: it comes down by a stair);
+  and a spiral stair mapped as one steps way lies on itself, its railings crossing (a path
+  that comes within 0.8 m of itself stays on the ground and holds it; a ramp's hairpin legs
+  are further apart -- 1.5 m caught the Diamonds Bridge's zig-zag ramp). And one not about
   decks: on foot you pushed yourself off where you stood last tick (the people list has you
   in it, `_people_push` did not skip you) and ran at 35 m/s.
 - **What Bedford found** (the test town had hidden them): a divided road's two carriageways
