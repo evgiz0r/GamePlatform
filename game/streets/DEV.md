@@ -515,6 +515,18 @@ first:
   the pavement; painted bays on the shopping street. The game filled a quarter of the kerb.
 - **Street trees**: thin trunks in square earth pits at the kerb edge every ~8-10 m, the
   canopies meeting over the pavement; no palms on these streets.
+- **Shops** (second pass, done: `_shop_pieces` keeps gardens out from in front of shops and
+  widens the pavement there by `SHOP_PAVE` to the shop windows -- without it a strip of bare
+  grass was left between a 2.4 m pavement and the shopfronts;
+  Sirkin's rows are `lines` of kind shopfront in `cities/details/givatayim.json`, placed on
+  the city file's building edges parallel to the street just behind its pavement): OSM knew
+  six businesses along the walk; the film, panning, showed a row down both sides of Sirkin
+  -- a green corner shop, a bar under string lights with bar stools, shuttered shops,
+  Roladin's posters on its Sirkin side, the sabich stand's red umbrella and the
+  greengrocer's produce across the street, white scalloped awnings near Katznelson. The
+  game had gardens there and one bright awning per OSM shop. Still to do: each shop's own
+  look (awning colours, the umbrella, crates of fruit), and the bright neon awnings of the
+  OSM shops themselves.
 - **Light**: the real late afternoon is hazy and warm; the game's sky is saturated blue
   with cartoon clouds and its sunlight bleaches the ground.
 - **Small things**: black bollards with a yellow band along the kerb by the main road, a
@@ -569,10 +581,11 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   (`Traffic.send`: the car furthest away, not a bus, onto the road nearest the spot, that
   way). The game's halves of Katzenelson are 9 m: the walk crosses each at 2.3-2.5 m/s to
   keep the film's times; the film's own speed suggests the real halves are narrower.
-- **How long a pass takes to check** (one Godot run at a time): the scan (`SCAN=1`) about 5
-  min, the recording (`RECORD=1`, 966 frames) 18-20 min, the side-by-side 1 min, each
-  playtest of a Givatayim level 3-4 min -- the whole chain (scan, record, video, playtests
-  of levels 5, 1 and 6) about 40 min. Tell the user so when you start it.
+- **How long a pass takes to check** (one Godot run at a time; measured 20 Nov 2026 after the
+  city learnt to load in steps -- it was twice as slow before): the scan (`SCAN=1`) about
+  1 min, the recording (`RECORD=1`, 966 frames) about 18.5 min, the side-by-side under 1
+  min, the three playtests (levels 5, 1, 6) about a minute together -- the whole chain about
+  21 min. Tell the user so when you start it.
 - **The film's clock is decoding from its start.** `ffmpeg -ss` before `-i` lands on the
   wrong frames in this clip's first seconds (VLC's variable-rate transcode: 2999 frames in
   100 s, said to be 60 fps); `-vf trim=a:b,setpts=PTS-STARTPTS` agrees with the
@@ -632,9 +645,10 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
 
 A road whose city file has `y` (its surface's height at each node, decimetres above the
 height grid's base) is a **deck**; its OSM tags say what it is built as (`br` bridge, `tu`
-tunnel, `em` embankment, `cu` cutting). Only `tools/fake_city.py` writes `y` so far, so only
-the test town has decks; in the real towns a bridge without `y` is drawn on the ground as
-before and a tunnel without it is still dropped.
+tunnel, `em` embankment, `cu` cutting). `tools/fake_city.py` writes `y` into the test town;
+a real town opted in with `"decks": "infer"` (Bedford, Tel Aviv) gets it worked out as it
+loads (below). Elsewhere a bridge without `y` is drawn on the ground and a tunnel without
+it is dropped.
 
 - **One height is not enough.** Everything used to ask `_h(p)`, the ground. Now whatever has
   a level asks `_decks.surf(p, y)`: the highest of the ground and the decks under p that is
@@ -716,6 +730,39 @@ before and a tunnel without it is still dropped.
   before the start of the other, and fell through (hence "just past the end", 3 m, only at
   deck joints). Buildings OSM maps under a low approach (the MacKay Bridge's) stood in the
   deck: decks under 4 m up are now cut back from like streets (`_clip_buildings`).
+- **`surf` and the streets over them.** `surf` ranks a deck whose carriageway a body is
+  over before the ground (the divided roads' overlap, above) -- and a tunnel 7 m under a
+  street is one: a car on Kaplan dropped into Lova Eliav and hit its wall. A deck more than
+  1.5 m under ground the body can reach is now passed over (inside the tunnel the ground
+  overhead is out of reach, so it is still found). And on a street's asphalt over a
+  cutting or a tunnel (`_street_over`, looked up only there), the street carries a body at
+  its level: the ground counts over the cutting, and anything under it at all is passed
+  over -- a street across an underpass's mouth, a cutting's shallow top under a street's
+  lanes. A cutting's wall where a street's asphalt lies over it is not solid either (a car
+  on Kaplan hit the Lova Eliav cutting's wall where it starts at the kerb).
+  `tests/street_holes.gd` samples every street's asphalt for both -- what a car there
+  stands on, and whether a deck's wall stands there at street level: Tel Aviv 1011 points
+  over a hole, then 6 (on the HaShalom bridge's west ramp, 0.6-0.9 m: a bridge ramp, not a
+  tunnel); the test town 1, then 0. Walls: Tel Aviv 66, Ashdod 80 -- piers standing in the
+  Ayalon's lanes among them (a pier spans the deck's width, and was checked against other
+  roads' lanes at its middle only: now at five points across), then 41 and 51.
+- **What Tel Aviv found** (another session wrote its own tunnel inference first, a
+  mirror of `infer`; this one's found, and its fixes kept): the other half of a divided
+  road crossing a tunnel's line where the halves close in at a mouth counted as a road over
+  it and held Begin's southbound underpass on the ground (same name: skipped); Lova Eliav's
+  two short links into Begin's underpass run under nothing mapped, so they went back on the
+  ground as passages, the junction they meet became a street junction, and held the tunnel's
+  east end up (a tunnel way below the ground that joins a tunnel at an end is a branch,
+  dug with it). With both: 34 tunnels dug, the rest put back on the ground are car park
+  ramps, a passage under a building and two branch ramps too short to climb out. And the
+  car's own physics: it took the surface's rise in a frame as its climb, so the 0.2-0.3 m
+  seam where two decks overlap at a junction in the air read as 17 m/s up and threw the car
+  3 m over the Modai bridge -- a rise faster than STEP_GRADE (0.3) of the speed is now a
+  step, climbed (`_fly`); Modai's 197 frames in the air became 6, and the test town and
+  Bedford are the same with and without it. Building its own version first (dropped for
+  the other's) also found: crests where a cutting meets the street at full grade, and
+  humps in a tunnel where a branch climbs out, launch cars at 30-50 km/h (a vertical curve,
+  rounding) -- not yet in `infer`.
 - **Where the heights come from.** The test town's maker knows them: each deck's ends at the
   ground, a bridge straight from bank to bank with a little camber, the flyover's and
   underpass's ramps eased up and down to 6.6 m clear of the boulevard (`CLEAR`), the tunnel
@@ -732,10 +779,16 @@ before and a tunnel without it is still dropped.
   (a turning car clipped the parapet), a 5 cm switch from a cutting's road to the ground
   where it gets shallow (a hop), and ground triangles left whole over a cutting (an edge
   parallel to the hole's leaves a smaller triangle: compare areas, not corner counts).
+<<<<<<< HEAD
+- **Still to do**: the inferred heights for Givatayim and Ashdod (and their tunnels);
+  pavements and people beside an inferred cutting, and the minimap showing a tunnel as one;
+  earth embankments with grass slopes rather than walls along inferred ramps; a long-span
+=======
 - **Still to do**: the inferred heights for Givatayim (Tel Aviv is another session's);
   Ashdod's tight interchange at its east edge (x 3850, z -1590: slip roads crossing slip
   roads at street level -- 15 crossings short of the clearance, 0.5 m the lowest); a 0.5 s
   hop out of Menachem Begin's underpass; footpath tunnels; grass slopes for cuttings too (they are walled); a long-span
+>>>>>>> origin/main
   bridge's height over water (the MacKay's deck is only as high as its ends); pavements at street
   level beside a cutting (the underpass has none); people on a bridge's pavement; the
   minimap draws a tunnel like any street; zooming out from inside the tunnel rises from the
@@ -749,13 +802,17 @@ before and a tunnel without it is still dropped.
 
 ## Open problems
 
-- **Tel Aviv's bridges and tunnels have no heights** (Nov 2026). OSM tags them but says
-  nothing of how high, so the 2.4 km of bridges (every road over the Ayalon: Moses,
-  Givat HaTahmoshet, Modai, Arvei Nahal, Yitzhak Sadeh, Begin's) lie on the ground and cross
-  the motorway flat, sharing no point with it, and the 4.2 km of drivable tunnels (Lova
-  Eliav 900 m, Uzi Hitman, Carlebach, Begin under Kaplan) are left out. The test town's
-  decks (`y` per point, `decks.gd`) are the way: work the heights out in the bake or at load
-  from `br`/`tu`/`ly`, the ramps being the ways either side.
+- **Tel Aviv's decks, what is left** (Nov 2026; `tests/decks.gd` at level 7). Short hops
+  where ramps meet: Moses and Arvei Nahal's embankments (crests at the ramps' tops, the
+  same kind as Bedford's Anderson Lake hop: `infer` has no vertical curve at a ramp's top
+  yet), and a car-park service bridge at the south-west corner that ends at a building
+  (autodrive noses it). 6 points of the HaShalom bridge's west ramp, 0.6-0.9 m under the
+  street beside it, and 41 points where an inferred ramp's wall, a bank's foot or a
+  parapet stands in a street's lanes (Ashdod 51, the test town 10: embankments running
+  tight alongside other roads -- slip roads beside the Ayalon, Yitzhak Sadeh's ramp)
+  (`tests/street_holes.gd`). Two branch ramps out of Lova Eliav's west
+  end are too short to climb out at 10% and lie on the ground. A tunnel's tube is drawn
+  whatever is over it, buildings included (Lova Eliav runs under HaKirya's blocks).
 - **Givatayim's ground is the terrain tiles' surface model too**: its "steepest 52%" is
   likely part roofs. Measured on its grid, `--bare-ground` would take the hill's crest
   86 -> 72 m and the steepest slope 48 -> 16%. Not re-baked: it moves the ground under the

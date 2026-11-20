@@ -31,7 +31,7 @@ const LEVELS := [
 	{"name": "A walk in Givatayim: Sheinkin and Sirkin", "city": "givatayim", "look": "med", "walk": "sheinkin_sirkin"},
 	# a box of central Tel Aviv, not the whole city (the workflow's bbox): HaKirya, Azrieli,
 	# Sarona, Montefiore, Bitsaron, the Ayalon. Starts on Kaplan heading east, the towers ahead.
-	{"name": "Tel Aviv: Azrieli and HaKirya", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med"},
+	{"name": "Tel Aviv: Azrieli and HaKirya", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -900,6 +900,7 @@ var _view_y := 0.0
 var _spin := 0.0                     ## a knock's spin, dying away (rad/s)
 const AIR_G := 7.5                   ## gravity in the air: floatier than 9.8, for longer jumps
 const LIFTOFF := 1.3                 ## the ground falling away this much faster than the car (m/s)
+const STEP_GRADE := 0.3              ## steeper than this under the car is a step, not a slope (_fly)
 var _roll := 0.0
 var _pitch := 0.0
 var _crash_cool := 0.0
@@ -1506,6 +1507,8 @@ func _load_city(id: String) -> bool:
 			r["kerb"] = int(rd["kerb"])   # its kerb's paint, set by hand (details.gd)
 		if rd.has("kerb_mid"):
 			r["kerb_mid"] = int(rd["kerb_mid"])   # the paint along its middle, set by hand
+		if rd.has("yard"):
+			r["yard"] = bool(rd["yard"])   # front gardens along it or not, set by hand
 		var ri := _roads.size()
 		_roads.append(r)
 		var hw: float = r["w"] * 0.5
@@ -2738,6 +2741,7 @@ void fragment() {
 var _roof_mat: ShaderMaterial
 const PAVE_W := 2.4                  ## pavement width (m)
 const KERB_CUT := 4.5                ## kerbs stop this far past a junction's road edge: the corner's radius
+const SHOP_PAVE := 1.8               ## the pavement this much wider in front of shops (under the building where it stands closer)
 ## Israeli kerb paint goes by where on the street, as a filmed walk showed: blue-white along
 ## a residential street's parking (paid), red-white for the last metres before every
 ## junction (no parking within 12 m of one: the kerb starts KERB_CUT past the corner) and on
@@ -2748,6 +2752,63 @@ const KERB_RED_KINDS := ["residential", "unclassified", "tertiary", "secondary",
 	"tertiary_link", "secondary_link", "primary_link"]
 var _stops_by_road := {}             ## road -> its bus stops' spots on the pavement (for the kerb paint)
 var _stops_mapped := false
+
+## A shop opens onto the pavement: no front garden in front of one. A filmed street that OSM
+## calls residential had shops down both sides where the game laid low walls and hedges --
+## and, between them, one real front garden behind a low white fence, so this goes piece by
+## piece, not by the street: a piece of a run's side is a shop's where OSM has a shop, cafe
+## or the like behind it within 6 m along, or where a hand-placed row of shop fronts
+## (details.gd lines, kind shopfront) runs behind it.
+const SHOP_FRONT_KINDS := ["cafe", "restaurant", "fast_food", "bar", "pub", "ice_cream", "pharmacy", "bank",
+	"bakery", "hairdresser", "post_office"]
+var _shop_pts := PackedVector2Array()
+var _shop_hash := {}
+var _shop_rows: Array = []             ## [a, e]: hand-placed shop fronts (details.gd)
+var _shops_mapped := false
+
+## per piece of `run` (one byte per point, the piece from it to the next), 1 where shops
+## stand behind side `sgn`
+func _shop_pieces(run: PackedVector2Array, hw: float, sgn: float) -> PackedByteArray:
+	if not _shops_mapped:
+		_shops_mapped = true
+		var k := 1.0 / float(_city_data.get("scale", 10))
+		for p: Array in _city_data.get("pois", []):
+			var kind := String(p[2])
+			if (kind.begins_with("shop") and not kind in ["shop:vacant", "shop:disused", "shop:no"]) or kind in SHOP_FRONT_KINDS:
+				var q := Vector2(p[0], p[1]) * k
+				_hash_add(_shop_hash, Rect2(q, Vector2.ZERO), BLD_CELL, _shop_pts.size())
+				_shop_pts.append(q)
+		if _details != null:
+			for ln: Dictionary in _details.data.get("lines", []):
+				if String(ln.get("kind", "")) == "shopfront":
+					var pts: Array = ln["pts"]
+					for i in range(pts.size() - 1):
+						_shop_rows.append([Vector2(pts[i][0], pts[i][1]), Vector2(pts[i + 1][0], pts[i + 1][1])])
+	var out := PackedByteArray()
+	out.resize(run.size())
+	var reach := hw + PAVE_W + 14.0
+	for i in range(run.size() - 1):
+		var a := run[i]
+		var b := run[i + 1]
+		var seg := a.distance_to(b)
+		if seg < 0.01:
+			continue
+		var t := (b - a) / seg
+		var side := Vector2(-t.y, t.x) * sgn   # (the side _offset_line puts a positive offset)
+		for j: int in _near(_shop_hash, (a + b) * 0.5, seg * 0.5 + reach, BLD_CELL):
+			var q := _shop_pts[j] - a
+			var along := q.dot(t)
+			if along > -6.0 and along < seg + 6.0 and q.dot(side) > 0.5 and q.dot(side) < reach:
+				out[i] = 1
+		for row: Array in _shop_rows:
+			var ra: Vector2 = row[0] - a
+			var re: Vector2 = row[1] - a
+			var lo := minf(ra.dot(t), re.dot(t))
+			var hi := maxf(ra.dot(t), re.dot(t))
+			var off := (ra.dot(side) + re.dot(side)) * 0.5
+			if hi > 0.5 and lo < seg - 0.5 and off > 0.5 and off < reach:
+				out[i] = 1
+	return out
 
 ## the paint along the middle of a street's kerb (0 plain, 1 red-white, 2 blue-white)
 func _kerb_paint(r: Dictionary, hsh: int) -> int:
@@ -2850,7 +2911,7 @@ func _build_kerbs() -> void:
 		if r.has("kerb"):
 			pat = int(r["kerb"])   # (as filmed: 0 plain, 1 red-white, 2 blue-white, 3 yellow-black)
 		var stops := _kerb_stops(ri) if med and not r.has("kerb") else PackedVector2Array()
-		var yard: bool = r["k"] in ["residential", "living_street"]
+		var yard: bool = r["k"] in ["residential", "living_street"] and bool(r.get("yard", true))
 		var dual := r.has("median")
 		var inner_sgn := -float(r["o"])   # a divided road's other half is on the left of its traffic
 		for run: PackedVector2Array in _street_runs(r, KERB_CUT, true):
@@ -2868,6 +2929,13 @@ func _build_kerbs() -> void:
 						continue   # the halves touch: a painted line, no kerb
 					pw = clampf(m * 0.5 - KERB_W, 0.0, PAVE_W)   # each half paves its half of the median
 				var inner := _offset_line(run, hw * sgn)
+				# the pieces with shops behind them: the pavement runs on to their windows (a
+				# filmed shopping street's was ~4 m, to the shop fronts, not 2.4 m and then grass)
+				# and no garden is laid in front of them
+				var shops := PackedByteArray()
+				shops.resize(run.size())
+				if not inner_side:
+					shops = _shop_pieces(run, hw, sgn)
 				_pave_walled = med and yard and not inner_side
 				# where the paint changes along this kerb: red-white for KERB_RED at an end that
 				# meets a junction, yellow-black along a bus stop on this side
@@ -2896,7 +2964,7 @@ func _build_kerbs() -> void:
 						var t0 := u0 / seg
 						var t1 := u1 / seg
 						_kerb_run_piece(kerb, pave, ri, inner[i].lerp(inner[i + 1], t0), inner[i].lerp(inner[i + 1], t1),
-							na.lerp(nb, t0).normalized(), na.lerp(nb, t1).normalized(), pw,
+							na.lerp(nb, t0).normalized(), na.lerp(nb, t1).normalized(), pw + (SHOP_PAVE if shops[i] else 0.0),
 							Color(float(p) / 4.0 + 0.05, 0, 0), along + u0, u1 - u0)
 					along += seg
 				_pave_walled = false
@@ -2911,6 +2979,8 @@ func _build_kerbs() -> void:
 				var walled := PackedByteArray()   # which pieces of the run have the wall (for the fronts on it)
 				walled.resize(run.size())
 				for i in range(run.size() - 1):
+					if shops[i]:
+						continue
 					# (not where it would lie on another road: a garden strip of one street ran
 					# over the asphalt of the next where they met at an angle)
 					if _asphalt_other((w_out[i] + w_out[i + 1] + g_out[i] + g_out[i + 1]) * 0.25, ri) \
@@ -2939,7 +3009,7 @@ func _build_kerbs() -> void:
 					var L := run[i].distance_to(run[i + 1])
 					while s < L:
 						var q := (w_out[i].lerp(w_out[i + 1], s / L)).lerp(g_out[i].lerp(g_out[i + 1], s / L), 0.45)
-						if _mine(q) and posmod(_hash_i(q), 3 if med else 6) == 1 and not _asphalt_other(q, ri) and _push_out(q, 0.8, false) == Vector2.ZERO:
+						if not shops[i] and _mine(q) and posmod(_hash_i(q), 3 if med else 6) == 1 and not _asphalt_other(q, ri) and _push_out(q, 0.8, false) == Vector2.ZERO:
 							var sc := 0.7 + 0.5 * float(posmod(_hash_i(q), 5)) / 4.0
 							bushes.append(Transform3D(Basis.from_scale(Vector3(1.3, 0.9, 1.3) * sc), _g3(q, 0.45 * sc)))
 						s += step
@@ -6624,8 +6694,15 @@ func _car_paints() -> Array:
 	var silver := ink.lerp(alt, 0.32)
 	var grey := alt.lerp(ink, 0.22)
 	var black := bg.lerp(alt, 0.35)
+	# a car's red is a car paint's red and its blue a dark blue, whatever the palette: the
+	# palette's hazard (pink here) and player (cyan) made pink and teal cars, and a filmed
+	# street has none. Their hue pinned, their strength the palette's.
+	var hz := Palette.col("hazard")
+	var pl := Palette.col("player")
+	var red := Color.from_hsv(0.99, clampf(hz.s, 0.55, 0.8), clampf(hz.v * 0.62, 0.35, 0.6))
+	var blue := Color.from_hsv(0.61, clampf(pl.s, 0.5, 0.75), clampf(pl.v * 0.42, 0.25, 0.48))
 	var out: Array = [white, white, white, white, silver, silver, silver, grey, grey, black, black,
-		Palette.col("player").lerp(bg, 0.55), Palette.col("hazard").lerp(bg, 0.4), Palette.col("warn").lerp(ink, 0.5).lerp(alt, 0.2)]
+		blue, red, Palette.col("warn").lerp(ink, 0.5).lerp(alt, 0.2)]
 	return out.map(func(c: Color) -> Color: return _natural(c, 0.6))
 
 ## parked cars and traffic: mostly sedans and hatchbacks, some SUVs, the odd van
@@ -11505,7 +11582,7 @@ var _film_looks: Array = []          ## Vector3(from, to, radians): a glance to 
 var _film_zebras: Array = []         ## [from, to, kerb, kerb]: on a crossing (or waiting at it)
 var _film_cars: Array = []           ## [second, at, heading]: a car sent down a street
 var _film_sent := 0
-var _film_people: Array = []         ## [actor, from, to, from second, to second]: who the film shows
+var _film_people: Array = []         ## [actor, from, to, from second, to second, stays, arrived]: who the film shows
 
 func _film_begin(id: String) -> void:
 	var walks: Dictionary = _details.data.get("walks", {}) if _details != null else {}
@@ -11543,7 +11620,7 @@ func _film_begin(id: String) -> void:
 		var pace: float = A.distance_to(B) / maxf(float(tt[1]) - float(tt[0]), 0.01)
 		a.play("Walk" if moving else "Idle", true, pace / 1.35 if moving else 1.0)
 		a.visible = not moving
-		_film_people.append([a, A, B, float(tt[0]), float(tt[1])])
+		_film_people.append([a, A, B, float(tt[0]), float(tt[1]), bool(pp.get("stay", false)), false])
 	var p0 := _film_at(0.0)
 	_pos = p0
 	_yaw = (_film_at(1.5) - p0).angle()
@@ -11587,10 +11664,13 @@ func _film_tick(dt: float) -> void:
 			continue
 		var f: float = (_film_t - float(fp[3])) / maxf(float(fp[4]) - float(fp[3]), 0.01)
 		var who: Actor3D = fp[0]
-		who.visible = f >= 0.0 and f <= 1.0
+		who.visible = f >= 0.0 and (f <= 1.0 or fp[5])   # (a walker that stays stands where it got to)
 		if who.visible:
-			var q := A.lerp(B, f)
+			var q := A.lerp(B, clampf(f, 0.0, 1.0))
 			who.position = Vector3(q.x, _walk_y(q), q.y)
+			if f > 1.0 and not fp[6]:
+				fp[6] = true
+				who.play("Idle", true, 1.0)
 	while _film_sent < _film_cars.size() and _film_t >= float(_film_cars[_film_sent][0]):
 		var fc: Array = _film_cars[_film_sent]
 		_film_sent += 1
@@ -12800,6 +12880,12 @@ func _fly(dt: float) -> void:
 	var ground: float = _decks.surf(_pos, _y)   # (a bridge's deck, a tunnel's road: whatever is under it)
 	var gv := (ground - _ground_was) / maxf(dt, 0.001)   # the ground's own rise or fall, under the car
 	_ground_was = ground
+	# A rise faster than any slope gives at this speed is a step -- the seam where two decks
+	# overlap, up at a junction in the air, a few tenths of a metre apart -- climbed, not a
+	# ramp: taken as the car's own climb, 0.3 m in a frame was 17 m/s up, and on the flat
+	# beyond it the car flew 3 m over the bridge.
+	if gv > absf(_v) * STEP_GRADE + 0.5:
+		gv = 0.0
 	if _air:
 		_vy -= AIR_G * dt
 		_y += _vy * dt

@@ -301,6 +301,31 @@ one needed:
 - **A divided road is two decks overlapping at the median** at slightly different heights:
   decide what is under a body by the carriageway it is on first, the nearest height next,
   or it drifts onto the other and falls off its end.
+- **A tunnel under a street, and a street over a cutting.** Anything that picks "what is
+  under a body" must not take a tunnel's road under a street for what a car on the street
+  stands on: ranked by carriageway first (for the divided roads above), the tunnel 7 m down
+  won and cars dropped into it. A deck well under ground the body can reach is not what it
+  is on (inside the tunnel that ground is out of reach). And where the ground is cut open
+  (a cutting), a street at grade crossing it -- across an underpass's mouth, over a
+  cutting's shallow top -- must still carry a car: its asphalt counts as ground. Test it
+  by sampling every street's asphalt for "what would a car here stand on", not by driving
+  the tunnels: the tunnels drove clean while a thousand street points were holes. Sample
+  for walls the same way: a cutting's wall where it starts at a street's kerb stopped cars
+  on the street, and a bridge's piers -- checked against the lanes below at their middle
+  only, while each spans the deck's width -- stood in a motorway's lanes where the bridge
+  crossed it at a slant.
+- **More tunnel traps, from one city centre**: the other half of a divided road crossing
+  the tunnel's line by a metre where the halves close in at a mouth is not "a road over
+  it" (it held an underpass up); a short tunnel way under nothing but joining a tunnel
+  underground is a branch of it, not a passage (put on the ground, it made the junction a
+  street's and held the tunnel up); OSM's ids come out of JSON as floats (see the godot-2d
+  skill), so a membership test against your own ints silently never matches.
+- **Crests launch cars.** A ramp or cutting that meets the flat at full grade in one point,
+  or a hump where a branch climbs out of a tunnel, is a crest a car takes off from at
+  30-50 km/h. Ease into the slope over ~30 m (a vertical curve: depth G s^2 / 2L, then
+  G (s - L/2)) and round humps. And in the car: a rise under it faster than any slope could
+  give at its speed is a step (two decks overlapping at a junction in the air, 0.2-0.3 m
+  apart), not a climb -- taken as vertical speed, it threw a car 3 m into the air.
 - **Water held at its own level** (a river between weirs) is drawn at that level and is too
   deep to drive into; gentle banks otherwise let a car down to drive along the bed under
   the water. Leave lakes that lie at their shore's lowest point alone: a road over an
@@ -410,6 +435,16 @@ the game walking the same route in first person beside it.
   building of its own raised 3-3.5 m (a raised building stands on columns and is not
   solid), the rest standing back behind it, both outlines starting at the same corner when
   the look comes from a hash of the first corner.
+- **A street of shops that OSM calls residential.** OSM tags a road by its traffic, not by
+  what lines it: a filmed street with shops down both sides was "residential", so the game
+  gave it front gardens with walls and hedges where the film had shopfronts on the pavement.
+  And OSM knew six of its businesses; panning the camera across the street in the film
+  showed a row. Decide gardens piece by piece (a shop behind it, or a hand-placed row of
+  shopfronts), not by the road's tag or the whole street: the same street had one real
+  garden between its shops.
+- **Panning in the film is how the shops get counted.** Ask the walker to turn the phone to
+  each side now and then: the shops across the road, which a forward-facing film never
+  shows, came only from those pans.
 - **A level that starts at a filmed spot must say so before the city builds.** A game that
   builds near its start first builds round wherever its start finder lands; a walk placed
   after that crosses bare ground until the background builder catches up.

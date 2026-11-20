@@ -22,7 +22,9 @@ extends RefCounted
 ##                                                    yellow_black: a whole way, junction to
 ##                                                    junction) or kerb_mid: the paint along
 ##                                                    its middle, the red-white corners and
-##                                                    bus stops kept (streets.gd _kerb_marks)
+##                                                    bus stops kept (streets.gd _kerb_marks);
+##                                                    yard: false for no front gardens (a
+##                                                    street of shops OSM calls residential)
 ##   crossings [[x, z], ...]                         zebras at the road nodes nearest these
 ##   white_bollards [{near: [x, z], r}]              the bollards by every zebra within r of
 ##                                                    near are white (the game picks a few)
@@ -70,13 +72,16 @@ extends RefCounted
 ##                                                    cars stop for it (kerb to kerb)
 ##              cars: [[t, [x, z], [dx, dz]]...],    a car sent down the street nearest the
 ##                                                    spot at second t, that way (traffic.gd)
-##              people: [{at, to, t: [from, to], face, who, tall}]}}   who the film shows:
-##                                                    standing at `at` facing `face`, or walking
-##                                                    `at` to `to` between those seconds
+##              people: [{at, to, t: [from, to], face, who, tall, stay}]}}   who the film
+##                                                    shows: standing at `at` facing `face`, or
+##                                                    walking `at` to `to` between those seconds
+##                                                    (there only then, unless `stay`: then it
+##                                                    stands where it got to)
 
 var g: Node                    ## the streets game
 var data := {}
 const KERB_PAINT := ["plain", "red_white", "blue_white", "yellow_black"]   ## (the kerb shader's order)
+const PAVE_OVER := 0.035               ## lifted paving stands this much over its height (see _paving)
 
 func _init(game: Node, d: Dictionary) -> void:
 	g = game
@@ -118,6 +123,8 @@ func edit_city(city: Dictionary) -> void:
 					r["kerb"] = KERB_PAINT.find(String(st["kerb"]))
 				if st.has("kerb_mid"):
 					r["kerb_mid"] = KERB_PAINT.find(String(st["kerb_mid"]))
+				if st.has("yard"):
+					r["yard"] = bool(st["yard"])
 				hit += 1
 		if hit == 0:
 			Probe.note("details: no %s road '%s' at %s to set" % [st.get("k", ""), st.get("name", ""), near])
@@ -394,7 +401,7 @@ func _lift_at(p: Vector2) -> float:
 		var lift := float(sf.get("lift", 0.0))
 		if lift > best and Geometry2D.is_point_in_polygon(p, _ring(sf["p"])):
 			best = lift
-	return best + 0.006 + (0.07 if g._hnx > 0 else 0.0) if best > 0.0 else 0.0
+	return best + PAVE_OVER + (0.07 if g._hnx > 0 else 0.0) if best > 0.0 else 0.0
 
 func _ring(pts: Array) -> PackedVector2Array:
 	var r := PackedVector2Array()
@@ -416,7 +423,10 @@ func _paving(sf: Dictionary) -> void:
 	var lay := _v2(sf.get("lay", [1, 0]))
 	var col: Color = how[0]
 	col.g = fposmod(atan2(lay.y, lay.x), PI) / PI
-	var lift := float(sf.get("lift", 0.14)) + 0.006
+	# 3.5 cm over its nominal height: the city's pavement runs straight from one end of a
+	# street's piece to the other, so where the ground dips between them it stands above the
+	# ground's own line, and a few millimetres' margin left it drawn over this paving
+	var lift := float(sf.get("lift", 0.14)) + PAVE_OVER
 	var ramps: Array = sf.get("ramps", [])
 	var buf = g.new_buf()
 	var box := Rect2(ring[0], Vector2.ZERO)

@@ -163,9 +163,20 @@ just past Leonardo da Vinci, heading east, HaKirya on the left and the Azrieli t
 ahead. The towers stand at their real heights (OSM has them for the tall ones: Azrieli's
 round tower 187 m, the Spiral 350 m). The map ends at the box's edge (the striped barrier).
 
+The Ayalon runs through it on the ground, and every street over it is a bridge about 6.5 m
+up, on ramps from the streets either side: Arvei Nahal, Moses, Givat HaTahmoshet (the
+HaShalom bridge), Modai, Begin's and Yitzhak Sadeh. The tunnels are dug: Begin dips under
+the Kaplan junction in an underpass both ways, the Lova Eliav tunnel runs under HaKirya and
+Sarona with its links meeting Begin's underpass underground, and Uzi Hitman and the
+Carlebach tunnel go under, each about 6 m down with cuttings up to the street at either
+end. Berkowitz's short tunnel, some car park ramps and two short branch ramps out of
+Lova Eliav stay on the ground (too short to get under the street at a car's grade).
+
 > game streets -- lets add/start working on adding Tel Aviv. Somewhat the area I mentioned.
 > (with a map: Ichilov, Savidor, Azrieli, HaKirya, TLV Mall, Montefiore, Bitsaron,
 > Nahalat Yitshak)
+
+> lets do the bridges and tunnels over the Ayalon
 
 **The test town.** The last place, Kiryat Dimyon, is made up (`cities/dimyon.json`, from
 `tools/fake_city.py`): one neighbourhood about 1.3 x 1 km, a fifth of Givatayim's buildings,
@@ -256,6 +267,20 @@ Asked whether to add it as a level, from the cafe corner to Katznelson (and whet
 move Givatayim's start to a busier corner):
 
 > yes to both
+
+Sirkin, as the film showed it on a second pass: its ground floors are shops -- rows of lit
+glass bays with their sign bands down both sides of the filmed stretch, Roladin's name over
+its side on Sirkin -- and the pavement runs up to them, where the game had laid low garden
+walls and hedges (OSM calls Sirkin residential). The one real front garden between them,
+behind its low white fence, stays. Everywhere else too, no garden is laid in front of a
+shop OSM knows. Cars and scooters come in a car paint's red and a dark blue, not pink and
+teal.
+
+> can we iterate a bit more [...] what can we itertate there to improve realism. i did also
+> photo some of the shops around
+
+> the shops are from the video, i rotated and you could see ( sabih, fruit shop ), maybe
+> roladin somewhere too
 
 The minimap (bottom left) shows the real streets and buildings round you, heading up, with
 the city limits in pink. The name of the street you are on is at the top, in Hebrew with
@@ -1030,6 +1055,18 @@ contributors under the ODbL, which is why the credit sits on screen.
   What a shop looks like (awning, tables, the bus shelter) is generic. The parked cars
   (about a quarter of the kerb), the people walking and sitting at cafe tables, rooftop
   solar heaters and rooms (Givatayim), pitched roofs on small houses (Bedford).
+<<<<<<< HEAD
+- **Guessed, in Bedford and Tel Aviv: how high their bridges are, how deep their tunnels.**
+  OSM says which ways are bridges and tunnels but not how high or deep, so the game works
+  it out as the town loads: each overpass rises to clear what it crosses, on ramps up the
+  roads leading to it, an interchange's junctions up on them and its slip roads coming
+  down; each tunnel goes 7 m under the ground over it, cuttings sloping down to it, deeper
+  where a road crosses over. Highway 102's overpasses, the Bedford Bypass, the MacKay
+  Bridge's approach; the Ayalon's bridges, the Begin underpass, the Lova Eliav tunnel.
+  Ramps are walled, not grassy banks, yet.
+- **Not there yet**: bridges in Givatayim and Ashdod (still drawn on the ground), and
+  their tunnels (left out). People crossing anywhere but a zebra.
+=======
 - **Guessed, in Bedford and Ashdod: how high the bridges are, how deep the tunnels.** OSM says which ways are bridges but
   not how high, so the game works it out as the town loads: each overpass rises to clear
   what it crosses, on ramps up the roads leading to it, an interchange's junctions up on
@@ -1039,6 +1076,7 @@ contributors under the ODbL, which is why the credit sits on screen.
   there is room for them, retaining walls where there is not.
 - **Not there yet**: bridges in Givatayim (still drawn on the ground), and tunnels under
   footpaths (left out). People crossing anywhere but a zebra.
+>>>>>>> origin/main
 
 To make your own street more accurate, fix it on openstreetmap.org (building heights are
 the most useful thing to add) and bake again.

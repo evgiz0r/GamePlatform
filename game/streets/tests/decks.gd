@@ -148,6 +148,8 @@ func _drive(run: Array) -> void:
 	var off := 0
 	var worst := 0.0
 	var air := 0
+	var air_was := false
+	var took_off := 0
 	var hits := {}
 	var driven := {}
 	var was_hit := ""
@@ -160,6 +162,11 @@ func _drive(run: Array) -> void:
 		dist += (g._pos as Vector2).distance_to(last)
 		last = g._pos
 		if g._air:
+			if air_was == false and took_off < 4:   # (where it took off: a crest, or a seam)
+				took_off += 1
+				var on_was: int = g._decks.deck_at(g._pos, g._y, 1.5)
+				print("  %s: in the air at (%.0f, %.0f), %.0f km/h, over %s" % [name, g._pos.x, g._pos.y, absf(g._v) * 3.6,
+					("%s %s" % [g._roads[on_was]["deck"], g._roads[on_was]["en"]]) if on_was >= 0 else "the ground"])
 			air += 1
 		else:
 			var lv := _levels_at(g._pos)
@@ -170,6 +177,7 @@ func _drive(run: Array) -> void:
 				if best > 0.3:
 					off += 1
 					worst = maxf(worst, best)
+		air_was = g._air
 		var on: int = g._decks.deck_at(g._pos, g._y, 1.0)
 		if on >= 0:
 			var r: Dictionary = g._roads[on]
