@@ -18,7 +18,7 @@ extends GameMode3D
 ## the car on the first just past the second. Without one it starts on a main road
 ## mid-town.
 const LEVELS := [
-	{"name": "Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med"},
+	{"name": "Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer"},
 	# "decks": "infer" -- its bridges' heights worked out as it loads (decks.gd: infer)
 	{"name": "Bedford, Nova Scotia", "city": "bedford", "look": "north", "decks": "infer"},
 	{"name": "Ashdod", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med", "decks": "infer"},
@@ -822,6 +822,7 @@ var _table_spots: Array = []         ## Vector2 of every cafe table
 var _furn: RefCounted                ## the street furniture builder (furniture.gd)
 var _details: RefCounted             ## what a filmed walk added to the city (details.gd), or null
 var _decks: Decks                    ## bridges, embankments, cuttings, tunnels (decks.gd)
+var _rails: Rails                    ## railway tracks, platforms, trains (rails.gd)
 var _on_deck := -1                   ## while a deck road is drawn: heights come from it, not the ground
 var _inferred := {}                  ## what decks.gd's infer() made of a real town's bridges (the report)
 var _wired := {}                     ## road index -> true: Bedford's lamps hang off its power poles
@@ -868,6 +869,7 @@ const Traffic := preload("res://game/streets/traffic.gd")
 const Furniture := preload("res://game/streets/furniture.gd")
 const Details := preload("res://game/streets/details.gd")
 const Decks := preload("res://game/streets/decks.gd")
+const Rails := preload("res://game/streets/rails.gd")
 const DriveLog := preload("res://game/streets/drivelog.gd")
 var _log := DriveLog.new()            ## the last two minutes, for the map page and "save log"
 var _ap_why := ""                     ## what held autodrive's speed down this tick (for the log)
@@ -1382,6 +1384,7 @@ const BLD_CLEAR := 1.5                ## kerb and pavement kept in front of a bu
 func _clip_buildings(bdata: Array) -> void:
 	var clipped := 0
 	var kept := 0
+	var drop: Array = []
 	for bi in range(_blds.size()):
 		if _bld_solid[bi] == 0:
 			continue
@@ -1396,9 +1399,9 @@ func _clip_buildings(bdata: Array) -> void:
 				# a deck: cut back like a street where it runs low (an embankment, a bridge's
 				# foot: nothing stands under a deck less than a storey up); never over a
 				# tunnel or a cutting (the houses on the hill above it)
-				if not (String(r["deck"]) in ["em", "br"]) or not r["drive"] \
-						or maxf(r["ys"][sj] - r["gs"][sj], r["ys"][sj + 1] - r["gs"][sj + 1]) > 4.0:
-					continue
+				if not (String(r["deck"]) in ["em", "br", "cu"]) or not r["drive"] \
+						or maxf(absf(r["ys"][sj] - r["gs"][sj]), absf(r["ys"][sj + 1] - r["gs"][sj + 1])) > 4.0:
+					continue   # (a cutting too, where it is shallow: a car came up one into a block)
 			elif not _kerbed(r):
 				continue
 			var pts: PackedVector2Array = r["pts"]
@@ -1441,6 +1444,12 @@ func _clip_buildings(bdata: Array) -> void:
 			if cur.size() < 3:
 				break
 		if cur.size() < 3 or _area(cur) < absf(area0) * 0.5:
+			# A building a road runs under spans it, past both its edges (a passage). One that
+			# only sits in it, small, is a footprint OSM put on the road -- a little house in the
+			# middle of a Bedford street, another across one (city_check): left out
+			if absf(area0) < 400.0 and not _spans_a_cut(ring, cuts):
+				drop.append(bi)
+				continue
 			kept += 1
 			continue
 		if signf(_area_signed(cur)) != signf(area0):
@@ -1451,6 +1460,63 @@ func _clip_buildings(bdata: Array) -> void:
 		clipped += 1
 	_dressing["bld_clipped"] = clipped
 	_dressing["bld_over_road"] = kept
+	_dressing["bld_dropped"] = drop.size()
+	if not drop.is_empty():
+		_drop_buildings(bdata, drop)
+
+## does the outline reach past both edges of one of the roads it was cut by ([a, b, half
+## width + BLD_CLEAR] each): a building over the road, not one standing in it
+func _spans_a_cut(ring: PackedVector2Array, cuts: Array) -> bool:
+	for cut: Array in cuts:
+		var a: Vector2 = cut[0]
+		var b: Vector2 = cut[1]
+		var hw: float = float(cut[2]) - BLD_CLEAR
+		var L := a.distance_to(b)
+		if L < 0.01:
+			continue
+		var d := (b - a) / L
+		var nrm := Vector2(-d.y, d.x)
+		var lo := INF
+		var hi := -INF
+		for v: Vector2 in ring:
+			var t := (v - a).dot(d)
+			if t < -2.0 or t > L + 2.0:
+				continue
+			var lat := (v - a).dot(nrm)
+			lo = minf(lo, lat)
+			hi = maxf(hi, lat)
+		if lo < -hw - 0.5 and hi > hw + 0.5:
+			return true
+	return false
+
+## left out at load, before anything else looks at them: the outlines, their boxes, heights,
+## solidity, the spatial hash and the city's own list, all kept in step
+func _drop_buildings(bdata: Array, drop: Array) -> void:
+	var gone := {}
+	for bi: int in drop:
+		gone[bi] = true
+	var keep_b: Array = []
+	var blds: Array = []
+	var boxes: Array = []
+	var solid := PackedByteArray()
+	var tops := PackedFloat32Array()
+	for bi in range(_blds.size()):
+		if gone.has(bi):
+			continue
+		keep_b.append(bdata[bi])
+		blds.append(_blds[bi])
+		boxes.append(_bld_box[bi])
+		solid.append(_bld_solid[bi])
+		tops.append(_bld_top[bi])
+	bdata.clear()
+	bdata.append_array(keep_b)
+	_blds = blds
+	_bld_box = boxes
+	_bld_solid = solid
+	_bld_top = tops
+	_bld_hash = {}
+	for bi in range(_blds.size()):
+		_hash_add(_bld_hash, _bld_box[bi], BLD_CELL, bi)
 
 ## ---- loading the city ---------------------------------------------------------------
 
@@ -1971,6 +2037,8 @@ func _build_setup(t0: int) -> void:
 				if not seen.has(t):
 					seen[t] = true
 					_bucket(_tile_bars, t, i)
+	_rails = Rails.new(self)
+	_rails.setup(_city_data, k)   # (before the trees: nothing grows on a track's bed)
 	_lights_setup()
 	_parks_setup()
 	_trees_setup()
@@ -2004,6 +2072,7 @@ func _build_tile(t: Vector2i) -> void:
 	await _note_corner_fills()   # (before anything is stood anywhere: see _off_road)
 	await _build_ground()
 	await _decks.build()
+	await _rails.build()
 	tk = _stage("roads", tk)
 	await _build_buildings()
 	tk = _stage("buildings", tk)
@@ -3052,12 +3121,21 @@ func _build_kerbs() -> void:
 				var g_out := _offset_line(run, (hw + PAVE_W + 3.4) * sgn)
 				var walled := PackedByteArray()   # which pieces of the run have the wall (for the fronts on it)
 				walled.resize(run.size())
+				# each point of the wall's line off every road by the game's own test (the
+				# roads' strips and the rounded corners' asphalt), once a point: the asphalt
+				# grid alone let 11 of Givatayim's walls stand 0.3-0.5 m into a road's mouth
+				# or a corner (city_check)
+				var w_clear := PackedByteArray()
+				w_clear.resize(run.size())
+				for i in range(run.size()):
+					w_clear[i] = 1 if _off_road(w_in[i], 0.05) else 0
 				for i in range(run.size() - 1):
 					if shops[i]:
 						continue
 					# (not where it would lie on another road: a garden strip of one street ran
 					# over the asphalt of the next where they met at an angle)
-					if _asphalt_other((w_out[i] + w_out[i + 1] + g_out[i] + g_out[i + 1]) * 0.25, ri) \
+					if not w_clear[i] or not w_clear[i + 1] \
+							or _asphalt_other((w_out[i] + w_out[i + 1] + g_out[i] + g_out[i + 1]) * 0.25, ri) \
 							or _asphalt_other(w_in[i], -1) or _asphalt_other(w_in[i + 1], -1) \
 							or _asphalt_other((w_in[i] + w_in[i + 1]) * 0.5, -1):
 						continue   # (nor where the wall itself would, on any road, its own too at
@@ -3846,6 +3924,12 @@ func _front_gate(gate: Array, run: PackedVector2Array, cum: PackedFloat32Array, 
 	var t := Vector2(-nj.y, nj.x)
 	var wall_mid := q + nj * (hw + PAVE_W + 0.175)
 	var cop: CBuf = fronts["coping"]
+	# no gate where its piers would stand on a road: where the wall's line crosses another
+	# street's mouth or a corner the wall itself is not laid, and the piers stood up to 4 m
+	# into the next street (city_check: 15 in Givatayim, 20 in Ashdod)
+	for side: float in [-1.0, 1.0]:
+		if not _off_road(wall_mid + t * side * (half + 0.18), 0.25):
+			return
 	# the piers either side
 	for side: float in [-1.0, 1.0]:
 		var pc := wall_mid + t * side * (half + 0.18)
@@ -5291,7 +5375,9 @@ func _build_trees() -> void:
 						continue
 					var p := a + d * s + side * off * sgn
 					var sc := rng.randf_range(0.8, 1.25)
-					if _mine(p) and _tree_ok(p, 5.0):
+					# (and not on a rounded corner's asphalt: a street's trees, spaced along it,
+					# landed on the next street's corner -- city_check)
+					if _mine(p) and _tree_ok(p, 5.0) and not _in_corner_fill(p, 0.15):
 						_add_post(p, 0.3)
 						spots.append(Vector3(p.x, p.y, sc))
 						# an iron grate round the trunk, or (four in ten, in Israel) a square of bare
@@ -5325,7 +5411,8 @@ func _build_trees() -> void:
 					await _pause()
 				var p := Vector2(rng.randf_range(part.position.x, part.end.x), rng.randf_range(part.position.y, part.end.y))
 				var sc := rng.randf_range(0.8, 1.35)
-				if not _mine(p) or not Geometry2D.is_point_in_polygon(p, ring) or not _tree_ok(p, 4.5 if kind == "wood" else 7.0):
+				if not _mine(p) or not Geometry2D.is_point_in_polygon(p, ring) or not _tree_ok(p, 4.5 if kind == "wood" else 7.0) \
+						or _in_corner_fill(p, 0.15):
 					continue
 				_add_post(p, 0.3)
 				if kind == "wood":
@@ -6086,7 +6173,10 @@ func _build_lamps() -> void:
 					var p := c + out * (hw + 0.9)
 					var ok := _mine(p) and _push_out(p, 0.6, false) == Vector2.ZERO
 					var on := _nearest_seg(p, 10.0, true)
-					ok = ok and (on.is_empty() or float(on["edge"]) > 0.4) and _clear_of_posts(p, 2.5)
+					# (and off a rounded corner's asphalt: checked by the straight strips alone, a
+					# lamp stood 0.5 m onto a corner -- city_check)
+					ok = ok and (on.is_empty() or float(on["edge"]) > 0.4) and _clear_of_posts(p, 2.5) \
+							and not _in_corner_fill(p, 0.15)
 					if ok:
 						var gy := _h(p)
 						var toward := -out
@@ -8694,8 +8784,18 @@ func _build_signals() -> void:
 				var on := _nearest_seg(q, 12.0, true)
 				if not on.is_empty() and float(on["edge"]) < 0.4:
 					continue   # never plant it in a lane
+				if _in_corner_fill(q, 0.15):
+					continue   # nor on a rounded corner's asphalt (the first spot, at the corner,
+					           # often was: city_check, 32 of Givatayim's 40 posts on the road)
 				p = q
 				break
+			if p == Vector2.INF and not spots.is_empty():
+				# none clear: the corner's spot, moved off its asphalt onto its pavement -- a way
+				# in with no pole had cars stopping for a light nobody could see
+				var q0 := _out_of_corner(c - dir * float(spots[0][0]) + right * float(spots[0][1]), 0.3)
+				var on0 := _nearest_seg(q0, 12.0, true)
+				if _push_out(q0, 0.3, false) == Vector2.ZERO and (on0.is_empty() or float(on0["edge"]) >= 0.4):
+					p = q0
 			if p == Vector2.INF:
 				continue
 			var g := _light_group(node, dir) - 1
@@ -8827,6 +8927,30 @@ func _lights_setup() -> void:
 		up[a] = b
 		(members[b] as Array).append_array(members[a])
 		members.erase(a)
+	# lit points close together that no short piece of road joins -- the two halves of a
+	# divided road's crossing mid-street, each half a crossing of its own -- are one: the
+	# halves ran their own phases, green on one and red on the other for someone crossing
+	# (city_check's "split junctions": six on Sderot Herzl in Ashdod, 8-16 m apart)
+	var lit_keys: Array = lit.keys()
+	for ai in range(lit_keys.size()):
+		for bi in range(ai + 1, lit_keys.size()):
+			var pa: int = lit_keys[ai]
+			var pb: int = lit_keys[bi]
+			if _nodes[pa].distance_to(_nodes[pb]) > 16.0:
+				continue
+			var ra := _site_root(up, pa)
+			var rb := _site_root(up, pb)
+			if ra == rb:
+				continue
+			var span := 0.0
+			for p: int in members[ra]:
+				for q: int in members[rb]:
+					span = maxf(span, _nodes[p].distance_to(_nodes[q]))
+			if span > SITE_SPAN:
+				continue
+			up[ra] = rb
+			(members[rb] as Array).append_array(members[ra])
+			members.erase(ra)
 	_sites = []
 	for rt: int in members:
 		for n: int in members[rt]:
@@ -9275,6 +9399,7 @@ func _terrace(pos: Vector2, n: Vector2, along: Vector2, umb: Color, t: Dictionar
 		# to the road with the upper floors) up against the window: a filmed sabich stand's
 		# tables and red umbrella were on a pavement the game had all but none of
 		var c := Vector2.INF
+		var room := 0.7   # (the solid circle: no bigger than the room to the road's edge)
 		for tr: Vector3 in [Vector3(2.6, 0.9, 0.9), Vector3(1.6, 0.6, 0.4), Vector3(1.1, 0.45, -0.1)]:   # out, room, edge
 			if tr.x < 1.5 and (off != 0.0 or not umbrellas):
 				continue   # (that close: one table, and only for an umbrella someone filmed)
@@ -9282,6 +9407,8 @@ func _terrace(pos: Vector2, n: Vector2, along: Vector2, umb: Color, t: Dictionar
 			var on := _nearest_seg(q, 12.0, true)
 			if _push_out(q, tr.y, false) == Vector2.ZERO and (on.is_empty() or float(on["edge"]) >= tr.z):
 				c = q
+				if not on.is_empty():
+					room = clampf(float(on["edge"]), 0.25, 0.7)
 				break
 		if not c.is_finite():
 			continue
@@ -9300,7 +9427,8 @@ func _terrace(pos: Vector2, n: Vector2, along: Vector2, umb: Color, t: Dictionar
 			t["pole"].append(Transform3D(Basis(), Vector3(c.x, gy + 1.2, c.y)))
 			(shades["xf"] as Array).append(Transform3D(Basis(), Vector3(c.x, gy + 2.35, c.y)))
 			(shades["col"] as Array).append(umb)
-		_add_post(c, 0.7)
+		# (a 0.7 m circle round a table up against the kerb stood 0.8 m into the lane: city_check)
+		_add_post(c, room)
 
 ## a bar's front: a narrow ledge along it 0.9 m out and a row of tall stools at it
 func _bar_stools(pos: Vector2, n: Vector2, along: Vector2, t: Dictionary) -> void:
@@ -9865,6 +9993,8 @@ var _car_flags: Array = []           ## this square's flags on parked cars
 func cat_at(p: Vector2, y: float, face: Vector2, kind: String) -> void:
 	if not _mine(p):
 		return
+	if y - _h(p) < 0.4 and not _off_road(p, 0.2):
+		return   # no cat sitting on the road (by a parked car's nose: city_check)
 	var yaw := atan2(face.x, face.y) if face.length_squared() > 0.0001 else 0.0
 	_cat_spots.append([Transform3D(Basis(Vector3.UP, yaw), Vector3(p.x, y, p.y)), kind, posmod(_hash_i(p * 3.0), 97)])
 	if y - _h(p) < 0.4:   # on the ground (not up on a wall): a small post, not walked through
@@ -12876,6 +13006,8 @@ func _physics_process(dt: float) -> void:
 		return
 	_p0()
 	_signals_tick(dt)
+	if _rails != null:
+		_rails.tick(dt)
 	_crash_cool = maxf(0.0, _crash_cool - dt)
 	_touch_t = maxf(0.0, _touch_t - dt)
 	_p("lights")
@@ -14648,6 +14780,9 @@ func _push_out(c: Vector2, r: float, posts: bool, cars := true, y := NAN) -> Vec
 	if _decks != null and _decks.any():
 		push = _decks.push(c, r, _h(c) if is_nan(y) else y)
 		ground = is_nan(y) or absf(y - _h(c)) < 2.5
+		if ground and not is_nan(y) and y < _h(c) - 0.5:   # in a tunnel: the houses are over its roof
+			var under := _decks.deck_at(c, y, 1.0)
+			ground = under < 0 or String(_roads[under]["deck"]) != "tu"
 	for i: int in (_near(_bld_hash, c, r, BLD_CELL) if ground else []):
 		if _bld_solid[i] == 0:
 			continue
@@ -17644,12 +17779,13 @@ func _map_gather(at: Vector2, r: float) -> Dictionary:
 		var pts := ring.duplicate()
 		pts.append(ring[0])
 		limits.append(pts)
+	var rails: PackedVector2Array = _rails.map_lines(at, reach) if _rails != null else PackedVector2Array()
 	var places: Array = []
 	for poi: Array in _pois:
 		var d: Vector2 = (poi[0] as Vector2) - at
 		if absf(d.x) < reach and absf(d.y) < reach:
 			places.append([poi[0], poi[1]])
-	return {"at": at, "r": r, "blds": blds, "paths": paths, "minor": minor, "major": major,
+	return {"at": at, "r": r, "blds": blds, "paths": paths, "minor": minor, "major": major, "rails": rails,
 		"limits": limits, "places": places}
 
 ## the minimap: streets and building outlines round the car, heading up
@@ -17690,6 +17826,9 @@ func _draw_map_inner() -> void:
 		_map.draw_multiline(_map_lines["blds"], Color(ink, 0.3), -1.0)
 	if not (_map_lines["paths"] as PackedVector2Array).is_empty():
 		_map.draw_multiline(_map_lines["paths"], Color(ink, 0.3), 1.0 / s)
+	if not (_map_lines.get("rails", PackedVector2Array()) as PackedVector2Array).is_empty():   # a railway: light on dark
+		_map.draw_multiline(_map_lines["rails"], Color(bg, 0.9), 3.0 / s)
+		_map.draw_multiline(_map_lines["rails"], Color(ink, 0.6), 1.0 / s)
 	if not (_map_lines["minor"] as PackedVector2Array).is_empty():
 		_map.draw_multiline(_map_lines["minor"], Color(ink, 0.75), 2.0 / s)
 	if not (_map_lines["major"] as PackedVector2Array).is_empty():
@@ -17705,7 +17844,16 @@ func _draw_map_inner() -> void:
 		var route := PackedVector2Array()
 		for p in _ap_pts:
 			route.append(p - at)
-		_map.draw_polyline(route, Color(Palette.col("friend"), 0.8), 1.5 / s)
+		# as a navigation app draws it: wider than any road, in the destination's own colour
+		# (the line leads to the dot), on a dark edge that parts it from whatever road is under
+		# it. (A thin line in the palette's mint, 1.5 px, was lost among the yellow main roads,
+		# the white streets and the white dots of the traffic.)
+		var col := Palette.col("accent")
+		_map.draw_polyline(route, Color(bg, 0.95), 7.0 / s)
+		_map.draw_polyline(route, col, 4.0 / s)
+		for p: Vector2 in [route[0], route[route.size() - 1]]:   # (round ends, not cut-off ones)
+			_map.draw_circle(p, 3.5 / s, Color(bg, 0.95))
+			_map.draw_circle(p, 2.0 / s, col)
 	for pl: Array in _map_lines["places"]:
 		_map.draw_circle(pl[0], 1.8 / s, Palette.col(pl[1]))
 	if _traffic != null:

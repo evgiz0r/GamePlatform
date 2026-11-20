@@ -223,7 +223,10 @@ it is made, with a one-line caption, rather than a report at the end.
   stopped (so its camera does not move yours back), anything it moves with the camera each
   frame -- a sky dome, a far-off ground plane -- stays where it was: a shot a kilometre away
   was a flat blank, the camera outside the dome. Call the game's own follow step after
-  placing the camera.
+  placing the camera. And a view that blends between physics ticks (drawn at the last
+  tick's position and heading lerped to this one) keeps blending from the last tick
+  while physics is stopped: set the "previous" values with the new ones, or the shot
+  looks along the player's old heading.
 - **A marker for a 3D shot goes in the game's 3D world**, not under the game's node: a
   3D game's own node is a 2D one, and a ring added under it is never drawn.
 - **A skinned model's box is its rest pose's.** `MeshInstance3D.get_aabb()` (and the shell's

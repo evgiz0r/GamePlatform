@@ -60,6 +60,13 @@ func _into(q: Vector2, half: float) -> Array:
 	var hit: Dictionary = g._nearest_seg(q, 20.0, true, false)
 	if hit.is_empty():
 		return [-INF, -1]
+	# a rounded corner's asphalt is road too (the straight strips alone missed 159 posts on
+	# Givatayim's corners, which another session found): how far the body is in past the
+	# corner's kerb line, measured as on a straight road
+	var corner := _corner_depth(q, half)
+	if corner > -INF:
+		var straight := half - float(hit["edge"])
+		return [maxf(straight, corner), int(hit["road"])]
 	# past the last point of a dead end the distance is to that point, a half circle the
 	# asphalt does not fill (it stops square): not on the road
 	var rd: Dictionary = g._roads[int(hit["road"])]
@@ -77,6 +84,48 @@ func _into(q: Vector2, half: float) -> Array:
 			if (q - pts[e]).dot(dir * (-1.0 if e == 0 else 1.0)) > 0.0:
 				return [-INF, -1]
 	return [half - float(hit["edge"]), int(hit["road"])]
+
+## how far a body of half-width `half` at q runs into a rounded corner's asphalt past its
+## curved kerb line (the fill's outline from its second point to its last but one), or -INF
+## when q is on no corner's fill
+func _corner_depth(q: Vector2, half: float) -> float:
+	if not ("_fill_hash" in g):
+		return -INF
+	var best := -INF
+	for key: int in g._near(g._fill_hash, q, half + 1.0, g.BLD_CELL):
+		var poly: PackedVector2Array = g._corner_fill[key]
+		var d := INF
+		for k in range(1, poly.size() - 1):
+			d = minf(d, Geometry2D.get_closest_point_to_segment(q, poly[k], poly[k + 1]).distance_to(q))
+		if Geometry2D.is_point_in_polygon(q, poly):
+			best = maxf(best, half + d)
+	return best
+
+## what a post is, as far as the game's lists tell (a signal pole stands on a light spot)
+func _post_kind(q: Vector2, r: float) -> String:
+	for ls: Array in g._light_spots:
+		var v: Vector3 = ls[0]
+		if Vector2(v.x, v.z).distance_to(q) < 0.3:
+			return "signal pole"
+	if "_moto_at" in g:
+		for m: Vector2 in g._moto_at:
+			if m.distance_to(q) < 0.1:
+				return "parked motorbike"
+	if is_equal_approx(r, 0.3):
+		return "tree"
+	if is_equal_approx(r, 0.15):
+		return "lamp, cat or pole"
+	return "post"
+
+## a lit point in words: how many ways meet there (2: a crossing mid-street, not a junction)
+## and the roads through it
+func _node_desc(n: int) -> String:
+	var names := []
+	for e: Vector2i in g._node_roads[n]:
+		var r: Dictionary = g._roads[e.x]
+		if r["drive"]:
+			names.append("%s%s" % [_name(e.x), " (one-way)" if int(r["o"]) != 0 else ""])
+	return "%d ways: %s" % [g._node_ways(n), ", ".join(names)]
 
 func _service(ri: int) -> bool:
 	return ri >= 0 and String((g._roads[ri] as Dictionary)["k"]) == "service"
@@ -118,7 +167,7 @@ func _check() -> int:
 		var hit: Array = _into(q, r)
 		if float(hit[0]) > 0.3:
 			add.call("posts on service roads" if _service(hit[1]) else "posts on the road", hit[0], q,
-				"post %d (%.2f m across), %.1f m into %s" % [i, r * 2.0, float(hit[0]), _name(hit[1])])
+				"post %d (%.2f m across, %s), %.1f m into %s" % [i, r * 2.0, _post_kind(q, r), float(hit[0]), _name(hit[1])])
 	# -- buildings: their outline's corners and every metre of their sides
 	for bi in range(g._blds.size()):
 		if g._bld_solid[bi] == 0:
@@ -143,8 +192,8 @@ func _check() -> int:
 		for m: int in g._near(g._sig_hash, g._nodes[n], 25.0, g.SEG_CELL):
 			if m > n and g._nodes[m].distance_to(g._nodes[n]) < 25.0 and g._site_of.get(m, -1) != g._site_of.get(n, -2):
 				add.call("split junctions", g._nodes[m].distance_to(g._nodes[n]), g._nodes[n],
-					"nodes %d and %d, %.0f m apart, junctions %d and %d" % [n, m, g._nodes[m].distance_to(g._nodes[n]),
-					g._site_of.get(n, -1), g._site_of.get(m, -1)])
+					"nodes %d and %d, %.0f m apart, junctions %d and %d; %s / %s" % [n, m, g._nodes[m].distance_to(g._nodes[n]),
+					g._site_of.get(n, -1), g._site_of.get(m, -1), _node_desc(n), _node_desc(m)])
 	# -- stub roads at junctions
 	for ri in range(g._roads.size()):
 		var rd: Dictionary = g._roads[ri]
@@ -169,6 +218,13 @@ func _check() -> int:
 		if kind in failing:
 			found += list.size()
 		print("  %-24s %5d%s" % [kind, list.size(), "" if kind in failing else "   (traps: where to stage a test)"])
+		if kind.begins_with("posts") and list.size() > 6:
+			var by := {}
+			for e: Array in list:
+				var m := String(e[2])
+				var k2 := m.substr(m.find(", ") + 2, m.find(")") - m.find(", ") - 2) if m.find(", ") >= 0 else "post"
+				by[k2] = int(by.get(k2, 0)) + 1
+			print("      by kind: %s" % str(by))
 		for e: Array in list.slice(0, 6):
 			print("      at %-14s %s" % [str(Vector2i(e[1])), e[2]])
 	return found

@@ -183,11 +183,20 @@ Carlebach tunnel go under, each about 6 m down with cuttings up to the street at
 end. Berkowitz's short tunnel, some car park ramps and two short branch ramps out of
 Lova Eliav stay on the ground (too short to get under the street at a car's grade).
 
+The railway runs down the middle of the Ayalon, between its carriageways and under its
+bridges: three tracks most of the way, more at the stations, on ballast with concrete
+sleepers, and Tel Aviv Savidor and Tel Aviv HaShalom with their platforms, canopies and
+names. Double-deck trains run along it, each line in turn one way then the other, a minute
+or so apart. The Red Line light rail is underground here, so it is not shown. On the
+minimap the tracks are a light line on a dark one.
+
 > game streets -- lets add/start working on adding Tel Aviv. Somewhat the area I mentioned.
 > (with a map: Ichilov, Savidor, Azrieli, HaKirya, TLV Mall, Montefiore, Bitsaron,
 > Nahalat Yitshak)
 
 > lets do the bridges and tunnels over the Ayalon
+
+> do 1 and 2, then the railway
 
 **The test town.** The last place, Kiryat Dimyon, is made up (`cities/dimyon.json`, from
 `tools/fake_city.py`): one neighbourhood about 1.3 x 1 km, a fifth of Givatayim's buildings,
@@ -1112,15 +1121,16 @@ contributors under the ODbL, which is why the credit sits on screen.
 - **Not there yet**: bridges in Givatayim and Ashdod (still drawn on the ground), and
   their tunnels (left out). People crossing anywhere but a zebra.
 =======
-- **Guessed, in Bedford and Ashdod: how high the bridges are, how deep the tunnels.** OSM says which ways are bridges but
+- **Guessed, in Givatayim, Bedford and Ashdod: how high the bridges are, how deep the
+  tunnels.** OSM says which ways are bridges but
   not how high, so the game works it out as the town loads: each overpass rises to clear
   what it crosses, on ramps up the roads leading to it, an interchange's junctions up on
   them and its slip roads coming down. Highway 102's overpasses, the Bedford Bypass, the
   MacKay Bridge's approach; in Ashdod Highway 4's interchanges and Sderot Menachem Begin's
   underpass, down a cutting under the road it crosses. The ramps are grass banks with a guardrail along the top where
   there is room for them, retaining walls where there is not.
-- **Not there yet**: bridges in Givatayim (still drawn on the ground), and tunnels under
-  footpaths (left out). People crossing anywhere but a zebra.
+- **Not there yet**: footbridges (still flat on the ground), tunnels under footpaths, and a
+  few road tunnels too short for their cuttings (the Rabin Underpass): left out. People crossing anywhere but a zebra.
 >>>>>>> origin/main
 
 To make your own street more accurate, fix it on openstreetmap.org (building heights are

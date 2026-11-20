@@ -18,6 +18,7 @@ merge, re-check (`tools/check_script.sh`, a playtest, the tests below), never fo
 | `furniture.gd` | street furniture built after the places: power lines, lamps and bus-stop kits, flags, ads, fences and hedges, bike racks and scooters |
 | `drivelog.gd` | the drive recorder (see below) |
 | `decks.gd` | roads off the ground -- bridges, embankments, cuttings, tunnels: their heights, what is under a point at a level (`surf`), their walls for collisions (`push`), the ground cut away over cuttings (`cut_tri`), and drawing them a square at a time (`build`). See "Off the ground" below |
+| `rails.gd` | railways: the tracks the city file has (`rails`, `platforms`, `stations`), their beds, rails and sleepers, the platforms with canopies and the station's name, and trains running along them (`tick`). See "Railways" below |
 | `cities/*.json` | baked towns (`tools/osm_city.py`) and the made-up test town (`tools/fake_city.py`) |
 | `details.gd`, `cities/details/<city>.json` | what a filmed walk showed and OSM lacks, laid over the baked city as it loads (road edits, unmarked zebras, areas, an arcade cut under a block, paving level with the pavement, walls, fences, hedges, bins, railings, bollards, a pole transformer, a barrier, parked motorbikes, trees) and the walks themselves; the format is at the top of `details.gd` |
 | `cities/details/make_givatayim.py` | writes the Katzenelson-Ha-Meri walk's part of `givatayim.json`: every detail placed along the Ha-Meri passage's own line, with the film's seconds beside what each came from. Edit this, not those items in the JSON, and run it. The file is shared (the Sheinkin-Sirkin walk and its kerb paint were put in by hand): the script marks what it writes `"src": "make_givatayim"` and keeps everything else on a re-run |
@@ -285,6 +286,40 @@ good is 30-70 m past the town's edge, stopped by "steep ground").
 Before anything: `tools/check_script.sh res://game/streets/streets.gd
 res://game/streets/traffic.gd res://game/streets/furniture.gd` (seconds).
 
+### Validation: one command, and handing it to another session
+
+`game/streets/tests/validate.sh` runs the checks below headless, one after another, and
+prints a summary to set beside tests/README.md's last results. It reads the game and
+changes nothing. Quick (default): `city_check` in all four towns and the exam in the test
+town at 2x -- about 4 minutes. `FULL=1`: also the exam in Givatayim and Ashdod at 1x and the
+queue check -- about 10 minutes in all (November 2026, measured: city checks 10-96 s each,
+the exams 46 / 89 / 140 s, the queue watch ~3 min). Run it in the background (a foreground command is cut off
+at 10 minutes).
+
+What it catches: anything solid standing on a road (walls, hedges, posts by kind, buildings),
+a junction's lights split in two, and in driving -- bodies overlapping or into a wall or
+post, stopping over the line at a red, pushing against something, a car standing with
+nothing holding it, queues pulling away unlike real ones. What it does not see: how
+anything looks (textures, colours, light, pop-in -- that needs pictures and a person: the
+shot tests and `city_check SHOTS=1`), how driving feels (crashes, steering, the camera),
+speed on a phone or in a browser (the profiler, `hitches`), the web build itself, the
+filmed walks (`filmed_walk SCAN=1`), bridges and tunnels (`decks`). A clean validation says
+the town is laid out and drives right by these measures, not that it is right.
+
+Reading it: `city_check` is the same every run, so any change in its counts is real. The
+exam is not -- two runs at 1x differed by half on some counts -- so compare against that
+spread, not against one number, and look at the places it lists before believing a count.
+
+**Handing it to another session** (say: "in streets, run the validation on the latest main
+and report against tests/README.md; don't fix anything"): it should fetch and merge `main`
+first (it validates whatever its own branch holds), run the script in the background, and
+report the summary. Sessions run in their own containers, so one validating does not slow
+another down. Say whether it may fix what it finds: a session that fixes as it goes edits
+code other sessions are in the middle of (traffic, the builders), and two fixes to one
+corner clash; "report only", or "fix X only", keeps it to one owner. A session that pushes
+the README's new numbers publishes `main` (the site rebuilds itself, ~5 minutes); that is
+harmless, but it is a push.
+
 ### The checks that should read 0
 
 A look back over twenty bug fixes (November 2026) found the same few mistakes again and
@@ -326,10 +361,7 @@ what became of it:
   (`_station_fits`: its middle was checked, not its corners -- Bedford).
 - **Fixed -- hedges over the kerb into the lane** (18 in Givatayim, 15 in Ashdod): OSM's
   hedges were laid with a fence's margins; `_open_pieces` takes a body width now (0.4 for
-  a hedge). Left: 11 low garden walls in Givatayim, 3 in Ashdod, 0.3-0.5 m in -- the worst
-  is a cul-de-sac's turning bulb at (-1234, 200), with a tree on its asphalt too; others
-  may be the check's weak spot at junction corners (it measures a road's straight strip).
-  Look at each before fixing.
+  a hedge). The low garden walls left after that (11 / 3) are fixed too, below.
 - **Fixed -- autodrive pushing into a traffic car kept it there**: every touch stunned the
   car 2.5 s (`Traffic.bumped`), so one pressed against never pulled away (a hatch "held by
   the limit" 20 s, then a rescue). Only a knock over 1.2 m/s stuns now; Givatayim's exam
@@ -340,20 +372,42 @@ what became of it:
 - **Fixed -- parked motorbikes' solid circle in the lane** (another session's new bikes, an
   hour old: their ends were checked, the 1.1 m circle round their middle was not): Ashdod's
   posts on the road went 12 -> 0 with the columns.
-- **Open -- traffic's bodies over corner posts.** Traffic is on rails; since vehicles steer
-  by their front and the back follows (the other session's change), the back cuts inside a
-  turn, and every car turning at some corners passes over a post there (Givatayim: post 918
-  at (-199, -774), four cars in one run). Wants the turn's line kept wide of the corner by
-  the vehicle's back, in traffic's planning.
-- **Open -- a traffic car that wants to go and does not** (the test town: a scooter wanting
-  8 m/s stood 28 s, 15 m from the player, in view). Not traced yet. A lead: a car decides
-  what it wants every third tick, and one "stop" decision resets its moment to react
-  (`react_t`), so a hold that flickers on and off keeps it standing for ever. Stage it.
-- Moving cars overlapping side by side by 0.3-0.5 m (lane changes, scooters filtering); a
-  scooter filtering to the front stops 7 m past the stop line at Ashdod's start junction.
-- Queues clear about a quarter slower than real ones (QUEUE CHECK: FAIL, just).
-- Six places in Ashdod where lit points 8-16 m apart are separate junctions (three at
-  (-1516, 1823)): the setup that once gave green both ways. Watch one with `knot_lights`.
+- **Fixed -- traffic's backs over corner posts**: since vehicles steer by the front, the back
+  cuts inside a turn by about wb^2/2R; `_turn_into` now swings the arc out by that much
+  (capped at 1.5 m), as a driver does.
+- **Fixed -- cars that would not roll up**: behind a standing car the moment to react
+  waited for it to move off even with metres still to close (one stood 6 m short); now
+  only when under ~2 m short, and a car waiting to react stands instead of creeping at
+  0.26 m/s. `tests/traffic_stuck.gd` prints such a car's last two seconds tick by tick.
+- **Fixed -- two cars changing into one lane from both sides at once** (`_lane_clear` now
+  counts a car moving into the lane too), and **a scooter filtering over the line at
+  walking pace on amber** stopping on the crossing at the red (moving at all, 0.5 m/s, is
+  committed now; it was 2).
+- **Fixed -- posts on corners' asphalt**: once `city_check` measured the rounded corners as
+  road, 40 posts in Givatayim and 66 in Ashdod stood on one -- light poles mostly (their
+  spots were checked against the straight strips only), trees, lamps. Each now keeps off a
+  corner's asphalt; a light pole with no clear spot is moved onto the corner's pavement so
+  every way in keeps one.
+- **Fixed -- garden walls into a road's mouth or a corner**: each point of the wall's line
+  is checked with `_off_road` (strips and corners), not only the asphalt grid.
+- **Fixed -- a divided road's crossing mid-street split in two**: lit points under 16 m
+  apart that no road piece joins are one site now (six on Sderot Herzl).
+- **Fixed -- small buildings standing in a road**: a house in the middle of a Bedford
+  street, another across one. A building cutting back would take more than half of is
+  kept only when it spans the road (past both edges: a passage) or is big (400 m2+);
+  otherwise it is left out at load (`_drop_buildings`).
+- **Fixed -- gate piers, café tables and cats in the road** (other sessions' work of the same
+  hour, caught by `city_check` after a merge): a garden gate's piers stood up to 4 m into the
+  next street where the wall's line crossed its mouth (the gate now goes only where both
+  piers are off the road); a café table's 0.7 m solid circle reached 0.8 m into the lane
+  from a table up against the kerb (the circle now only as big as the room); a cat sat on the
+  road by a parked car's nose. Givatayim: 16 posts on the road -> 1; Ashdod 27 -> 0.
+- **Open -- queues clear about a fifth slower than real ones**: straight on, unimpeded, 28
+  gaps over the line at 1.22x Greenshields' (the band is 1.2). Three 15-minute watches of
+  one build read 1.18 / 1.44 / 1.57 -- watch 40 minutes. Two tries did not move it: easing
+  the pull-away against the cruising speed, and noticing the car in front at 0.35 m/s
+  (start gaps stayed 1.4 s); the time goes in the follow model (decided every third tick,
+  the headway kept from a standstill). Left for whoever owns traffic's driving.
 
 ## Seeing what the car did: the drive recorder
 
@@ -499,6 +553,10 @@ keep the old block for the record.
   town ~1.2 s (headless playtest, `build_ms` in the "city" event); the rest of Givatayim
   ~10 s of background building (the "city_built" event). Tel Aviv (the box, 4011 buildings,
   3667 roads, 59 squares): ~2.2-2.5 s before the car, the rest ~11-12 s.
+- Frame cost at the start view (`tests/frame_cost.gd`, quality 3, Nov 2026, same run):
+  Tel Aviv 1.69 M triangles + 0.75 M shadow, 367 draws; Givatayim (Katznelson by Weizmann)
+  2.00 M + 1.01 M, 444 draws -- Tel Aviv's towers are no heavier at the start than
+  Givatayim's busy junction.
 - Parked cars by the kerb's paint (Givatayim's start view, `tests/frame_cost.gd`, quality
   3): 1.32 M triangles + 632 k shadow before, 1.54 M + 854 k after (+17%, +35%), draws 292
   -> 294. Measured at the old start, a residential street of blue-white kerbs: the densest case.
@@ -793,6 +851,11 @@ it is dropped.
   ramp's walkway gives way to a street's asphalt where its foot runs into one (the slip road
   merging into the boulevard). Walls are left out of the collisions in a junction's corner
   only at street level -- up on the embankment that would leave a gap to drive off.
+  `_clear_ends` says how far: the junction's middle + 6 m from an end that starts at street
+  level at a junction. A bridge (`br`) too, but only while its deck is within `CLEAR_LOW`
+  (0.6 m) of the ground, and its drawn parapet with it (`_raised`'s `gap_wall`): Bedford's
+  highway bridge starts at Union Street's junction, and autodrive turning out of Union Street
+  ran into its parapet. `tests/deck_corner.gd` drives that turn every way.
 - **Water held at a level** (`areas[].y`, the test town's river) lies at that level, and is
   too deep to drive or walk into (`_deep_push`): the banks were gentle enough to drive down
   and along the bed under the water. Lakes and ponds without a level are as before.
@@ -818,8 +881,10 @@ it is dropped.
   ramp's grade, never through a junction (that stays at street level) nor onto what it runs
   under, kept as negative lifts so the rest treats bridges and tunnels alike. Where the
   nearest held point (what it runs under, a junction) is too close for the cuttings to get
-  down at 10%, the tunnel stays on the ground; one under nothing mapped (a passage through
-  a building) is put back on the ground too (it used to be dropped). Footpath tunnels are
+  down at 8.5%, the tunnel is left out as before (on the ground it would run across the roads
+  it dives under); one under nothing mapped (a passage through a building) is put back on
+  the ground (it used to be left out). A body in a tunnel never meets the buildings over it
+  (`_push_out`), however shallow the tunnel is there. Footpath tunnels are
   still left out. Ashdod: 46 bridges, 4 tunnels (Menachem Begin's underpass, two service
   roads), 7 cuttings, 0.3 s. Two traps on the way: a tunnel "crossed" its own next piece
   (the shared end point; skip roads that share a point), and holding the whole of every
@@ -887,7 +952,14 @@ it is dropped.
   pavements and people beside an inferred cutting, and the minimap showing a tunnel as one;
   earth embankments with grass slopes rather than walls along inferred ramps; a long-span
 =======
-- **Still to do**: the inferred heights for Givatayim (Tel Aviv is another session's);
+- **Givatayim** (with the strip of Ramat Gan and Tel Aviv round it): 11 bridges (Menachem
+  Begin's and Arvey Nahal's over the Ayalon), all 23 crossings over roads at full clearance;
+  7 tunnels (Uzi Hitman's, the City tunnel's pieces, HaMaayan's), 16 cuttings, 0.3 s. Left
+  out, too short for their cuttings: the Rabin Underpass, a piece of the City tunnel, a
+  service tunnel. `tests/decks.gd` level 1: the tunnels and bridges driven alone come out
+  clean; in the full sequence two runs stall (traffic left by the run before), and two
+  cuttings give a short hop.
+- **Still to do**: Tel Aviv is another session's;
   Ashdod's tight interchange at its east edge (x 3850, z -1590: slip roads crossing slip
   roads at street level -- 15 crossings short of the clearance, 0.5 m the lowest); a 0.5 s
   hop out of Menachem Begin's underpass; footpath tunnels; grass slopes for cuttings too (they are walled); a long-span
@@ -923,6 +995,43 @@ with lamps and mirrors); storeys 3.0 m, kerbs 0.14, pavements 2.4. Off:
 - Lanes by OSM's widths: tertiary 3.8 m a lane, a one-way residential street 8 m kerb to
   kerb with its cars parked mostly up on the pavement, so its asphalt reads as one wide lane
   (life: ~3 m of lane between two rows of cars parked in the road).
+
+## Railways (`rails.gd`)
+
+The baker keeps railways since November 2026 (`rails`: each track its own line, as OSM maps
+it; `platforms`; `stations`): only Tel Aviv has been baked with them so far -- the other
+towns get them when re-baked. What the game does with them:
+
+- **Setup** (`Rails.setup`, before the trees): tracks in a tunnel and metro lines are left
+  out (Tel Aviv's Red Line is underground: its 6 tracks and 5 stations); each track is a
+  line every 6 m, its ballast bed's foot pulled in where a road's asphalt runs close (along
+  the Ayalon it came up through the road's edge at 47 points), and its outline added to
+  `_no_grow` (open land's wild trees stood on the tracks). Platforms near a track only
+  (OSM's outlines, or a line along a track's edge made a 4 m slab away from it); stations
+  within 60 m of a track. `on_track` keeps a bridge's piers off the tracks (`decks.piers`).
+- **Lines for trains**: tracks joined end to end where they share an end point exactly
+  (the baker writes both from the same OSM node), the straightest way on at each join (no
+  sharper than 60 degrees: a crossover's leg is not "on"), sidings and yards left out; up
+  to 4 lines of 600 m or more, not one alongside another already taken. Tel Aviv: 3 lines
+  of ~3.1 km down the Ayalon.
+- **Drawing a square** (`build`, after the decks): the bed (a flat top 3.4 m wide, 0.35 m
+  up, slopes to the ground), two rails, concrete sleepers every 0.65 m (a multimesh per
+  square), and the platforms: a slab at the coaches' floor, a grey canopy on posts over its
+  middle half, the station's name (Hebrew and English) under it.
+- **Trains** (`tick`, in `_physics_process`): five double-deck coaches at 22 m/s, one
+  train a line, each direction in turn with 40-90 s between; seen, not solid (the Ayalon's
+  line runs where no car goes; a level crossing would need them solid). The minimap draws
+  the tracks light on dark (`map_lines`).
+- **The test**: `tests/rails.gd` (level 7) prints what was set up and how close the beds
+  come to roads (0 over asphalt), stands a train at HaShalom and shoots it from beside the
+  line and from the platform, both stations from above, and a track close up. Two things
+  it took: the ballast first came out as pale as the bare ground of the median, so from
+  beside the line the bed was not there (darker now); and a test that holds the world still
+  (`set_physics_process(false)`) must set `_prev_yaw` with `_yaw`, or the view blends from
+  the car's old heading and looks the wrong way.
+- **Still to do**: a locomotive's face and a train's lights at night; catenary masts and
+  wires (the Ayalon line is electrified); level crossings (trains solid, barriers); the
+  light rail where it runs on the surface; re-baking the other towns (Ashdod has a line).
 
 ## Open problems
 

@@ -153,6 +153,7 @@ func _drive(run: Array) -> void:
 	var hits := {}
 	var driven := {}
 	var was_hit := ""
+	var touch_was := 0.0
 	var dist := 0.0
 	var last := g._pos as Vector2
 	var shot_at := [3.0, secs * 0.45, secs * 0.8]
@@ -183,13 +184,15 @@ func _drive(run: Array) -> void:
 			var r: Dictionary = g._roads[on]
 			var key := "%s %s" % [r["deck"], r["en"] if r["en"] != "" else r["name"]]
 			driven[key] = float(driven.get(key, 0.0)) + Engine.time_scale / Engine.physics_ticks_per_second
-		if g._touch_t > 0.45 and String(g._last_hit) != was_hit:
+		# a real contact sets the car's touch timer back to 0.5 (the label alone is not one:
+		# placing walkers relabels "last hit" every tick as it tries spots for them)
+		if float(g._touch_t) > touch_was + 0.01:
 			was_hit = g._last_hit
 			var kind := was_hit.split(" ")[0] + (" " + was_hit.split(" ")[1] if was_hit.begins_with("wall") else "")
 			hits[kind] = int(hits.get(kind, 0)) + 1
-			print("  %s: hit %s at (%.0f, %.0f), %.0f km/h" % [name, was_hit, g._pos.x, g._pos.y, absf(g._v) * 3.6])
-		elif g._touch_t <= 0.0:
-			was_hit = ""
+			if int(hits[kind]) <= 3:
+				print("  %s: hit %s at (%.0f, %.0f), %.0f km/h" % [name, was_hit, g._pos.x, g._pos.y, absf(g._v) * 3.6])
+		touch_was = float(g._touch_t)
 		if not shot_at.is_empty() and t >= float(shot_at[0]):
 			shot_at.pop_front()
 			await _snap("%s_%02d" % [name, int(t)])
