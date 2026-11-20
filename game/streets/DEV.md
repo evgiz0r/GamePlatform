@@ -70,6 +70,11 @@ The ones most often touched, and the functions in them:
   `last_site` / `_passed_lights` / `_in_site` in traffic.gd) and does not stop at its other
   points. Walk lights: `_build_walk_lights`, `_zebra_light` (which point a zebra goes by; the
   people at it ask the same), `_walk_light`.
+- **the made-up town's mountains** -- `_mtn_from` (`_town_top()` + 6 m: above it the land is
+  mountain), the `mountains` part of `GROUND_SHADER` (rock beds, soil, scrub, cloud shadows;
+  on every steep slope too), mountain woods in the tree builder (`MTN_TREES`, drawn from
+  further off), `_build_turbines` / `_turbines_tick`; the fog halves in that town
+  (`_retint_city`). Only a made-up town with hills gets any of it. `tests/mountains.gd` shoots it.
 - **people** -- walkers `_place_walker` / `_pavement_piece` / `_people_tick`, zebra crossers
   `_send_crossers` / `_zebra_span` / `_away_from` / `_crossers_tick`, the height their feet go
   at `_walk_y` / `_pave_top`, what autodrive stops for `_ap_people_v`.

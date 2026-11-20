@@ -786,6 +786,7 @@ var _people_rng := RandomNumberGenerator.new()
 var _hgrid := PackedFloat32Array()   ## ground height (m above the lowest point) on a grid
 var _steep := false                  ## some of the ground is too steep to drive up (see STEEP)
 var _made_up := false                ## the city file is invented (tools/fake_city.py), not OSM's
+var _mtn_from := 100000.0            ## the made-up town: above this height the land is mountain (see GROUND_SHADER)
 var _hx0 := 0.0
 var _hz0 := 0.0
 var _hstep := 1.0
@@ -1409,6 +1410,8 @@ func _load_city(id: String) -> bool:
 			_hgrid[i] = float(raw[i]) * k
 		_steep = _any_steep()
 	_made_up = data.has("made_up")
+	if _made_up and _hnx > 0:
+		_mtn_from = _town_top() + 6.0
 	for a: Array in data.get("addrs", []):   # address points that are not on a building
 		_add_address("%s %s" % [a[2], a[3]], Vector2(a[0], a[1]) * k)
 	_fit_widths_to_buildings()
@@ -1488,6 +1491,8 @@ func _build_world() -> bool:
 	world.add_child(ground)
 	if _hnx > 0:
 		_build_terrain()
+	if _mtn_from < 10000.0:
+		_build_turbines()
 	_build_edge()
 	_build_setup(_stage("world", t0))
 	# the squares round the start before the car is shown; the rest while it drives
@@ -1993,6 +1998,149 @@ func _g3(p: Vector2, lift: float) -> Vector3:
 	return Vector3(p.x, _h(p) + lift + (0.07 if _hnx > 0 else 0.0), p.y)
 
 ## the ground itself: one mesh over the city's height grid, smooth-shaded
+## ---- the made-up town's wind turbines -------------------------------------------------------
+## A row along the highest stretch of the mountains' crest, facing the town, the blades turning
+## and a red light on each nacelle blinking (all together, as a wind farm's do): something
+## alive on the skyline from anywhere in the valley.
+const TURBINES := 5
+const TURBINE_H := 55.0              ## the hub's height over the ground
+const BLADE_L := 22.0
+var _blades: MultiMesh
+var _hubs: Array = []                ## [hub, facing (unit, toward the town), phase] per turbine
+var _turbine_light: StandardMaterial3D
+
+func _build_turbines() -> void:
+	var mid := _bounds.get_center()
+	var inside := _bounds.grow(-EDGE - 45.0)
+	# the crest on every bearing: the highest ground between the town and the map's edge
+	var crest: Array = []
+	for a in range(360):
+		var dir := Vector2.from_angle(deg_to_rad(a))
+		var best := Vector2.ZERO
+		var bh := -INF
+		var r := 60.0
+		while true:
+			var p := mid + dir * r
+			if not inside.has_point(p):
+				break
+			if not _in_city(p) and _h(p) > bh:
+				bh = _h(p)
+				best = p
+			r += 8.0
+		crest.append([best, bh])
+	# the highest stretch (the bearing whose 30 degrees round it stand highest), then the
+	# turbines along it, 90 m apart or more
+	var top := 0
+	var top_v := -INF
+	for a in range(360):
+		var v := 0.0
+		for k in range(-15, 16):
+			v += float(crest[(a + k + 360) % 360][1])
+		if v > top_v:
+			top_v = v
+			top = a
+	var spots: Array = [crest[top][0]]
+	for side: int in [1, -1]:
+		var a := top
+		for _k in range(60):
+			if spots.size() >= TURBINES:
+				break
+			a = (a + side + 360) % 360
+			var p: Vector2 = crest[a][0]
+			if float(crest[a][1]) > _mtn_from and spots.all(func(q): return (q as Vector2).distance_to(p) > 90.0):
+				if (spots[spots.size() - 1] as Vector2).distance_to(p) > 90.0 or side == -1:
+					spots.append(p)
+					if side == 1 and spots.size() >= 3:
+						break   # (the rest the other way)
+	var white := StandardMaterial3D.new()
+	white.albedo_color = _tone["mark"]
+	white.roughness = 0.5
+	var tower := CylinderMesh.new()
+	tower.top_radius = 1.0
+	tower.bottom_radius = 1.8
+	tower.height = TURBINE_H
+	tower.radial_segments = 10
+	tower.material = white
+	var nacelle := BoxMesh.new()
+	nacelle.size = Vector3(2.6, 2.6, 7.5)
+	nacelle.material = white
+	var hub := SphereMesh.new()
+	hub.radius = 1.3
+	hub.height = 2.6
+	hub.radial_segments = 8
+	hub.rings = 4
+	hub.material = white
+	var blade := BoxMesh.new()
+	blade.size = Vector3(1.3, BLADE_L, 0.35)
+	blade.material = white
+	_turbine_light = StandardMaterial3D.new()
+	_turbine_light.albedo_color = Palette.col("hazard").lerp(Color.RED, 0.6)
+	_turbine_light.emission = _turbine_light.albedo_color
+	_turbine_light.emission_energy_multiplier = 1.5
+	var beacon := SphereMesh.new()
+	beacon.radius = 0.45
+	beacon.height = 0.9
+	beacon.radial_segments = 6
+	beacon.rings = 3
+	beacon.material = _turbine_light
+	var parts := {"tower": [], "nacelle": [], "hub": [], "beacon": []}
+	for i in range(spots.size()):
+		var p: Vector2 = spots[i]
+		var gy := _h(p)
+		var face := (mid - p).normalized()
+		var yaw := Basis(Vector3.UP, atan2(face.x, face.y))   # +Z toward the town
+		var at := Vector3(p.x, gy, p.y)
+		var top3 := at + Vector3(0, TURBINE_H, 0)
+		var f3 := Vector3(face.x, 0, face.y)
+		(parts["tower"] as Array).append(Transform3D(Basis(), at + Vector3(0, TURBINE_H * 0.5, 0)))
+		(parts["nacelle"] as Array).append(Transform3D(yaw, top3 - f3 * 1.2))
+		(parts["hub"] as Array).append(Transform3D(Basis(), top3 + f3 * 2.8))
+		(parts["beacon"] as Array).append(Transform3D(Basis(), top3 + Vector3(0, 1.75, 0) - f3 * 3.5))
+		_hubs.append([top3 + f3 * 3.1, f3, float(i) * 1.7])
+		_add_post(p, 2.0)
+	for part: String in parts:
+		var mesh: Mesh = {"tower": tower, "nacelle": nacelle, "hub": hub, "beacon": beacon}[part]
+		var mi := _multi(mesh, parts[part])
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if part == "beacon" else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	_blades = MultiMesh.new()
+	_blades.transform_format = MultiMesh.TRANSFORM_3D
+	_blades.mesh = blade
+	_blades.instance_count = _hubs.size() * 3
+	var bi := MultiMeshInstance3D.new()
+	bi.multimesh = _blades
+	bi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	world.add_child(bi)
+	_turbines_tick()
+	_tally("turbines", _hubs.size())
+
+## the blades round (about 13 turns a minute) and the beacons on for half of every 1.5 s
+func _turbines_tick() -> void:
+	var t := Time.get_ticks_msec() * 0.001
+	for i in range(_hubs.size()):
+		var h: Array = _hubs[i]
+		var f3: Vector3 = h[1]
+		var side := Vector3.UP.cross(f3).normalized()
+		for k in range(3):
+			var a := t * 1.35 + float(h[2]) + float(k) * TAU / 3.0
+			var along := Vector3.UP * cos(a) + side * sin(a)   # the blade's length, in the rotor's plane
+			var across := Vector3.UP * -sin(a) + side * cos(a)
+			_blades.set_instance_transform(i * 3 + k, Transform3D(Basis(across, along, f3), (h[0] as Vector3) + along * (BLADE_L * 0.5 + 0.9)))
+	var lit := fmod(t, 1.5) < 0.5
+	if lit != _turbine_light.emission_enabled:
+		_turbine_light.emission_enabled = lit
+		_turbine_light.albedo_color = (Palette.col("hazard").lerp(Color.RED, 0.6)) * (1.0 if lit else 0.35)
+
+## the highest ground inside the town's boundary (its hill): the mountains are what rises
+## above it, whatever the town's own hill looks like
+func _town_top() -> float:
+	var top := 0.0
+	for j in range(0, _hnz, 2):
+		for i in range(0, _hnx, 2):
+			var p := Vector2(_hx0 + i * _hstep, _hz0 + j * _hstep)
+			if _in_city(p):
+				top = maxf(top, _hgrid[j * _hnx + i])
+	return top
+
 func _build_terrain() -> void:
 	var verts := PackedVector3Array()
 	var norms := PackedVector3Array()
@@ -3611,6 +3759,38 @@ func _build_trees() -> void:
 			wild += 1
 			_wild_made += 1
 	_tally("wild_trees", wild)
+	# the made-up town's mountains: woods of pine, with cypress and olive, in clumps up the
+	# slopes (the noise the ground's scrub follows), thinning toward the crests; not on
+	# cliffs, roads or the lookout's road
+	var mtn := {}
+	if _mtn_from < 10000.0:
+		var ms := 11.0
+		var mx0 := ceili((sq.position.x - _bounds.position.x) / ms)
+		var mx1 := floori((sq.end.x - _bounds.position.x) / ms)
+		var mz0 := ceili((sq.position.y - _bounds.position.y) / ms)
+		var mz1 := floori((sq.end.y - _bounds.position.y) / ms)
+		for gz in range(mz0, mz1 + 1):
+			if _over():
+				await _pause()
+			for gx in range(mx0, mx1 + 1):
+				if _mtn_made >= MTN_TREES:
+					break
+				rng.seed = gx * 83492791 + gz * 2971215073 + 7
+				var p := _bounds.position + Vector2(gx + rng.randf(), gz + rng.randf()) * ms
+				var hy := _h(p)
+				if hy < _mtn_from - 20.0 or not _mine(p) or _in_city(p):
+					continue
+				var clump := _vnoise(p / 90.0 + Vector2(3.0, 3.0)) * 0.6 + _vnoise(p / 24.0) * 0.4
+				if clump < 0.47 + (hy - _mtn_from) / 900.0:
+					continue
+				var tilt := maxf(absf(_h(p + Vector2(3, 0)) - _h(p - Vector2(3, 0))), absf(_h(p + Vector2(0, 3)) - _h(p - Vector2(0, 3)))) / 6.0
+				if tilt > 1.25 or not _tree_ok(p, 4.0):
+					continue   # a cliff, a road, another tree
+				_add_post(p, 0.3)
+				mtn[spots.size()] = true
+				spots.append(Vector3(p.x, p.y, rng.randf_range(0.8, 1.3)))
+				_mtn_made += 1
+		_tally("mountain_trees", mtn.size())
 	_trees_made += spots.size()
 	if spots.is_empty():
 		return
@@ -3628,6 +3808,9 @@ func _build_trees() -> void:
 		var spin := Basis(Vector3.UP, rng.randf() * TAU)
 		var g := rng.randf_range(0.85, 1.1)
 		var kind := _tree_kind(look, forest.has(si), rng.randf())
+		if mtn.has(si):
+			var mr := rng.randf()
+			kind = "pine" if mr < 0.66 else ("cypress" if mr < 0.9 else "olive")
 		var spec: Array = TREE_KINDS[kind]
 		# [trunk part, trunk scale (w, h), crown part, crown scale (w, h, w), crown height,
 		#  leaf tint, lean (radians)]
@@ -3648,10 +3831,15 @@ func _build_trees() -> void:
 		put.call(tpart, Transform3D(b * Basis.from_scale(Vector3(tw.x, tw.y, tw.x) * sc), base + b * Vector3(0, trunk_h * 0.5 * tw.y * sc, 0)), bark)
 		put.call(spec[2], Transform3D(b * Basis.from_scale(cw * jitter * sc), base + b * Vector3(0, float(spec[4]) * sc, 0)),
 			Color(tint.r * g, tint.g * g, tint.b * g, (float(cell) + 0.5) / 4.0))
+	# a square that is mostly mountain woods: drawn from further off, as they are seen across
+	# the valley
+	var reach := TREE_RANGE * 1.7 if mtn.size() * 2 > spots.size() else TREE_RANGE
 	for part: String in parts:
-		await _chunked_paced(_tree_meshes[part], parts[part], TREE_RANGE, colours[part], null, true)
+		await _chunked_paced(_tree_meshes[part], parts[part], reach, colours[part], null, true)
 
 var _tree_meshes := {}
+const MTN_TREES := 3000              ## the made-up town's mountain woods, all told
+var _mtn_made := 0
 var _trees_made := 0
 var _wild_made := 0
 var _wild_keep := 1.0                ## the share of open land's green spots that get a tree
@@ -4389,6 +4577,12 @@ uniform vec4 dark : source_color;
 uniform float greenness = 0.5;
 uniform vec4 rock : source_color;
 uniform float textured = 1.0;
+// the made-up town's mountains (0: none): limestone in ledges, red soil, dark scrub and the
+// shadows of clouds going over, on every steep slope and everything above `mountain_from`
+uniform float mountains = 0.0;
+uniform float mountain_from = 100000.0;
+uniform vec4 scrub : source_color;
+uniform vec4 soil : source_color;
 uniform sampler2D grass_tex : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D grass_nrm : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform vec3 grass_mean = vec3(0.5);
@@ -4414,6 +4608,30 @@ void fragment() {
 	float bare = smoothstep(0.86, 0.74, wup + (noise(wpos.xz / 9.0) - 0.5) * 0.08);
 	vec3 stone = rock.rgb * (0.72 + 0.28 * noise(vec2(wpos.y * 0.45, (wpos.x + wpos.z) * 0.03))) * (0.85 + 0.3 * noise(wpos.xz / 6.0));
 	c = mix(c, stone, bare);
+	float mtn = 0.0;
+	if (mountains > 0.5) {
+		mtn = max(bare, smoothstep(mountain_from, mountain_from + 30.0, wpos.y + (noise(wpos.xz / 60.0) - 0.5) * 24.0));
+		// limestone laid down in beds: a ledge every 5 m or so of height, wavering, its face
+		// catching the light and a dark seam under it -- from the town they read as contours
+		// (beds 4-12 m thick by where you are, so they break up rather than ruling the slope)
+		float thick = mix(4.0, 12.0, noise(wpos.xz / 160.0 + 21.0));
+		float bed = fract(wpos.y / thick + (noise(wpos.xz / 34.0) - 0.5) * 1.3 + noise(wpos.xz / 9.0) * 0.12);
+		float face = smoothstep(0.0, 0.3, bed) * (1.0 - 0.5 * smoothstep(0.55, 1.0, bed));
+		vec3 m = rock.rgb * 0.7 * (0.75 + 0.35 * noise(wpos.xz / 13.0 + 3.0)) * mix(0.45, 1.05, face);
+		// red soil in hollows, and dark scrub and pine in the folds and low down, thinning
+		// toward the crests
+		m = mix(m, soil.rgb * (0.8 + 0.35 * noise(wpos.xz / 6.0)), smoothstep(0.56, 0.72, noise(wpos.xz / 26.0 + 40.0)) * 0.7);
+		float fold = noise(wpos.xz / 46.0 + 11.0) * 0.65 + noise(wpos.xz / 12.0 + 5.0) * 0.35;
+		float scrubby = smoothstep(0.46, 0.6, fold + (wup - 0.7) * 0.5 - max(wpos.y - mountain_from, 0.0) / 600.0);
+		m = mix(m, scrub.rgb * (0.65 + 0.6 * noise(wpos.xz / 3.5)), scrubby);
+		// a sprinkle of bushes over the bare rock too, darker dots that thin out with height
+		float dots = step(0.64 + max(wpos.y - mountain_from, 0.0) / 900.0, noise(wpos.xz / 2.2 + 9.0));
+		m = mix(m, scrub.rgb * 0.8, dots * (1.0 - scrubby) * 0.8);
+		// clouds' shadows drifting over
+		float cl = noise(wpos.xz / 190.0 + vec2(TIME * 0.011, TIME * 0.004)) * 0.7 + noise(wpos.xz / 75.0 + vec2(TIME * 0.019, 0.3)) * 0.3;
+		m *= 1.0 - 0.4 * smoothstep(0.56, 0.7, cl);
+		c = mix(c, m, mtn);
+	}
 	c *= 0.94 + 0.06 * noise(wpos.xz / 2.5);
 	if (textured > 0.5) {   // the lawn photo (see TONE_SHADER), over earth and grass alike
 		// Its 2 m repeat lines up into a grid further off, so it fades out with distance (the
@@ -4423,7 +4641,7 @@ void fragment() {
 		vec2 uv = wpos.xz * 0.5;
 		vec3 t = texture(grass_tex, uv).rgb;
 		vec3 t2 = texture(grass_tex, vec2(wpos.z, -wpos.x) * 0.137 + vec2(0.31, 0.77)).rgb;
-		float lawn = 1.0 - bare * 0.6;   // less of the lawn photo on bare rock
+		float lawn = (1.0 - bare * 0.6) * (1.0 - mtn * 0.75);   // less of the lawn photo on bare rock
 		// the lawn's colours only where it is grass: bare earth (and rock) takes just its light
 		// and dark -- its greens and yellows on grey earth came out as speckles of colour
 		vec3 lw = vec3(0.2126, 0.7152, 0.0722);
@@ -4468,6 +4686,14 @@ func _retint_ground() -> void:
 	_ground_shader_mat.set_shader_parameter("dark", green.lerp(Palette.col("bg"), 0.45))
 	_ground_shader_mat.set_shader_parameter("greenness", 0.8 if north else 0.3)
 	_ground_shader_mat.set_shader_parameter("rock", _tone["rock"])
+	# the made-up town's mountains (see GROUND_SHADER): dark olive scrub, red-brown soil
+	_ground_shader_mat.set_shader_parameter("mountains", 1.0 if _made_up and _hnx > 0 else 0.0)
+	_ground_shader_mat.set_shader_parameter("mountain_from", _mtn_from)
+	var veg := Palette.col("friend").lerp(Palette.col("warn"), 0.35)
+	_ground_shader_mat.set_shader_parameter("scrub", _natural(veg.lerp(Palette.col("bg"), 0.66), 0.5))
+	# (the palette's warn, its yellow, darkened and a touch of its hazard: an earth brown -- its
+	# hazard alone is pink in most palettes)
+	_ground_shader_mat.set_shader_parameter("soil", _natural(Palette.col("warn").lerp(Palette.col("hazard"), 0.25).lerp(Palette.col("bg"), 0.55), 0.4))
 
 ## the same noise in script, for clumping what grows on open land where the green is
 func _vnoise(p: Vector2) -> float:
@@ -8242,7 +8468,7 @@ func _other_half(j: int, o: int, leg: int) -> bool:
 ## -- or none, when every road runs within 20 degrees of the main one (a crossing mid-street).
 func _site_axes(nodes: Array) -> Dictionary:
 	var c := Vector2.ZERO
-	var arms: Array = []   # [direction mod PI, rank, width]: each way out of each point
+	var arms: Array = []   # [direction mod PI, rank, width]: each way into each point
 	for n: int in nodes:
 		c += _nodes[n]
 		for e: Vector2i in _node_roads[n]:
@@ -8250,10 +8476,12 @@ func _site_axes(nodes: Array) -> Dictionary:
 			if not r["drive"]:
 				continue
 			var pts: PackedVector2Array = r["pts"]
-			# each side of the point on its own: a road bending at the junction runs two ways,
-			# and the line across the bend (once taken as its direction) ran neither
+			# each way in on its own: a road bending at the junction runs two ways, and the line
+			# across the bend (once taken as its direction) ran neither; and only the ways cars
+			# come in by -- a one-way road leaving set the axes at a junction of one-way halves
+			# in Bedford, and two streets crossing had green together
 			for d2: int in [-1, 1]:
-				if e.y + d2 >= 0 and e.y + d2 < pts.size():
+				if e.y + d2 >= 0 and e.y + d2 < pts.size() and (r["o"] == 0 or r["o"] == -d2):
 					arms.append([fposmod((pts[e.y + d2] - pts[e.y]).angle(), PI), int(ROAD_RANK.get(r["k"], 1)),
 							float(r["w"]) * (2.0 if r.has("median") else 1.0)])
 	var a1 := 0.0
@@ -8611,7 +8839,9 @@ func _retint_city() -> void:
 		env.ambient_light_energy = 0.55
 		env.fog_enabled = true
 		env.fog_light_color = hor
-		env.fog_density = 0.0018
+		# (the made-up town is a valley ringed by mountains, no horizon to hide: half the haze,
+		# or its mountains were a white wall)
+		env.fog_density = 0.0018 * (0.5 if _mtn_from < 10000.0 else 1.0)
 		env.fog_sky_affect = 0.0
 		# a film-like curve: the bright walls roll off instead of clipping, the shade deepens
 		env.tonemap_mode = Environment.TONE_MAPPER_ACES
@@ -9604,6 +9834,8 @@ func _frame() -> void:
 		_build_tick.emit()
 		_p("building")
 	_watch_fps(dt)
+	if _blades != null:
+		_turbines_tick()
 	var f := Engine.get_physics_interpolation_fraction()
 	_view_pos = _prev_pos.lerp(_pos, f)
 	_view_yaw = lerp_angle(_prev_yaw, _yaw, f)

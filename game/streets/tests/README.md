@@ -37,6 +37,7 @@ these numbers the wrong way has broken something.
 | `map_edge` | 3 | the car coasting into the map's edge | stops nose to the barrier |
 | `road_blocks` | 4 | things solid to the car on a road's lanes: a median over another road, walls, posts (shots from above) | test town: 0 medians, 0 posts; 16 walls across service lanes |
 | `medians` | 4 | the raised medians from a driver's seat where they end and bend (shots) | |
+| `mountains` | 4 | the test town's mountains from the car, the hill, a mountainside, and the turbines (shots) | |
 | `autodrive_edge` | 1, 3 | autodrive put on streets that run off the map, 120 m short, facing out: touches of the barrier, turn-rounds, time near it | (pending) |
 | `feet` | 1 | a walker's feet against the pavement's top | 0.21 = 0.21 |
 | `feel` | 1 | a crash at 54 km/h; jumping out at 50 km/h; into a fence | rebound 0-1.3 m/s, no hop; 3.4 m tumble, car rolls 37 m; the fence check picks a fence behind a building (stops 6.5 m short) -- to fix |

@@ -511,6 +511,16 @@ with no way back short of the edge it turns round where it is, not at the barrie
 > obviously cannot go. It then turns and does some tricks to go back, but that's weird in
 > the first place.
 
+**The test town's mountains.** The made-up town is ringed by mountains, and they are meant
+to be looked at: limestone in beds (a ledge every few metres of height, a dark seam under it,
+so the slopes read as rock from the streets), red-brown soil in the hollows, dark scrub in
+the folds and low down, pine woods with cypress and olive in clumps up the slopes, and the
+shadows of clouds drifting over. On the highest stretch of the crest a row of five wind
+turbines faces the town, the blades turning, red lights on top blinking together. The valley
+has half the haze of the real towns (no horizon to hide), or the mountains were a white wall.
+
+> Let's make the mountain in the test town a bit more interesting to watch.
+
 **Car parks.** OSM's parking areas (up to a block's size) are laid out in rows of painted
 bays with most of them taken; a car park mapped only by its lanes (OSM: a parking aisle,
 as most blocks' own lots are) gets a row of bays down each side of each lane.

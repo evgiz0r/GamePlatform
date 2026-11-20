@@ -315,7 +315,14 @@ func _drive() -> void:
 							counted[key] = true
 							conflicts += 1
 							if verbose:
-								print("  t=%.1f crossing ways moving inside site %d together: %s and %s" % [f / 60.0, site, ms[a][1], ms[b][1]])
+								var why: Array = []
+								for id: int in [ms[a][1], ms[b][1]]:
+									if id < 0:
+										why.append("autodrive (%s)" % g._ap_why)
+									else:
+										var cc = T.cars[id]
+										why.append("car %d %s light %s wait %.1f ignore %.1f in-site %s" % [id, cc.kind, g._light_at(g._sites[site]["nodes"][0], Vector2(sin(cc.yaw), cos(cc.yaw))) if has_sites else "?", cc.jwait, cc.ignore, (cc.last_site == site) if has_sites else "?"])
+								print("  t=%.1f crossing ways moving inside site %d together: %s" % [f / 60.0, site, " / ".join(why)])
 		for n: int in in_point:
 			var ms: Array = in_point[n]
 			for a in range(ms.size()):
