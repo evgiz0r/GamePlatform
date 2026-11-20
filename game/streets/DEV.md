@@ -49,6 +49,17 @@ The ones most often touched, and the functions in them:
   (barred windows, the door in the middle bay), stone courses, plinth and mosaic are
   `WALL_SHADER`'s `ground` / `door` / `stone_k`; worn asphalt is `TONE_SHADER`'s
   `crazing()` and patches. `tests/eye_level.gd` puts a camera where a person stands.
+- **cats, flags on cars** -- the builders call `cat_at(p, y, facing, "sit"/"loaf")` (garden
+  walls in `_garden_fronts`, a parked car's nose in `_build_parked`, bins in furniture's
+  `kerbside`); furniture.gd's `cats()` places `_cat_kit()` (ellipsoids and tubes, the coat
+  an instance colour: `CAT_COATS`, tones `cat_*`), merged into the batches. Flags on parked
+  cars: `_car_flags`, `_flag_kit("car", "il")`. A wall cat's choices come from their own
+  hash: shifting bits out of the plot's `h` (under 2^20) left nothing to choose with, and
+  every one came out sitting. First pass: cats ~12 ms (both models made once), flags ~2 ms.
+- **more contact shadows** -- `_ao_disc` at each street tree's foot (not the parks' and open
+  land's; one height lookup: ~9 us each, 2,340 in 20-24 ms); along a garden wall's foot the
+  pavement itself darkens in KERB_SHADER (COLOR.a: the wall's distance back / 4, set by
+  `_pave_walled`): the strips laid as geometry cost 36-47 ms, this nothing.
 - **after rain** -- `WET_GLSL` (`wet`, `wet_mirror()`: Fresnel, the sky's two colours, a darker
   band low down for the street's buildings) goes in with `FAR_SHADE` (`_with_far`); the tone
   shader soaks hard kinds (2, 3, 6, 7) and lays puddles by noise, the kerb shader its
