@@ -13431,6 +13431,13 @@ func _head_tick(dt: float) -> void:
 		if _head_check <= 0.0 and _head_plan.is_empty() and absf(_v) < 2.5 and _gear > 0:
 			_head_check = 0.2
 			var j := _junction_ahead_me(16.0)
+			# only first in line and about to go: at a light, once it is green (it looked
+			# left and right at every red, from behind a queue of cars); with a car in front,
+			# not yet -- it looks when it is the one pulling out
+			if j >= 0 and _sig_set.has(j) and _light_at(j, _fwd()) not in ["g", ""]:
+				j = -1
+			if j >= 0 and _car_ahead_me(12.0):
+				j = -1
 			if j >= 0 and (_nodes[j].distance_to(_head_at) > 45.0 or _head_at_t > 20.0):
 				_head_at = _nodes[j]
 				_head_at_t = 0.0
@@ -13503,6 +13510,12 @@ func _junction_ahead_me(reach: float) -> int:
 		d += pts[k].distance_to(pts[nk])
 		k = nk
 	return -1
+
+## a car in front within `reach` (on autodrive's planned lane, or straight ahead driving yourself)
+func _car_ahead_me(reach: float) -> bool:
+	var path := _ap_pts if (_auto and _ap_pts.size() >= 2) else PackedVector2Array([_pos, _pos + _fwd() * (reach + 2.0)])
+	var lead: Array = _traffic.lead_on(path, _pos, reach, false)
+	return float(lead[0]) < reach
 
 ## the nearest person in front within `reach` (on a crossing, stepping off the kerb)
 func _person_ahead_me(reach: float) -> Vector2:
