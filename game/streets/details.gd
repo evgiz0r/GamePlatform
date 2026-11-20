@@ -28,7 +28,8 @@ extends RefCounted
 ##                                                    (0 herringbone, 1 rows of bricks, 2
 ##                                                    slabs; 0 reds and browns, 1 greys, 2
 ##                                                    sand, 3 all mixed: streets.gd
-##                                                    _set_pave_code)
+##                                                    _set_pave_code); setts: true for light
+##                                                    setts round its trees and between them
 ##   crossings [[x, z], ...]                         zebras at the road nodes nearest these
 ##   white_bollards [{near: [x, z], r}]              the bollards by every zebra within r of
 ##                                                    near are white (the game picks a few)
@@ -78,7 +79,7 @@ extends RefCounted
 ##                                                    Anything on a lifted surface stands on it.
 ##   trees     [[x, z], ...]                         more trees for the city's own builder
 ##   shops     [{name | near: [x, z], at: [x, z], add, kind, name_en, sign, awning, umbrella,
-##              seats, crates, board}]   one place's look, by hand (streets.gd _build_pois):
+##              seats, crates, lights, board}]   one place's look, by hand (_build_pois):
 ##                                                    matched by its name or the nearest to
 ##                                                    `near`; `at` moves it there (a map point
 ##                                                    off by a few doors), `add` with `at`,
@@ -87,7 +88,8 @@ extends RefCounted
 ##                                                    (black, white, cream, red, maroon, green,
 ##                                                    blue, or "none"), seats tables, stools (a
 ##                                                    bar's, at a ledge) or none, crates of
-##                                                    produce out front, sign the name on it
+##                                                    produce out front, lights string lights
+##                                                    along its front, sign the name on it
 ##   walks     {id: {name, points: [[t, x, z]...],   two points at one spot: it waits there
 ##              looks: [[from, to, degrees]...],     the head turned off the way it walks
 ##                                                    (+ right), to see the traffic coming
@@ -150,6 +152,8 @@ func edit_city(city: Dictionary) -> void:
 					r["yard"] = bool(st["yard"])
 				if st.has("pave"):
 					r["pave"] = st["pave"]
+				if st.has("setts"):
+					r["setts"] = bool(st["setts"])
 				hit += 1
 		if hit == 0:
 			Probe.note("details: no %s road '%s' at %s to set" % [st.get("k", ""), st.get("name", ""), near])

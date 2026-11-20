@@ -125,6 +125,9 @@ playtest reports are readable. A game without it produces an empty report.
   registered. Plain vars are safer inside `game/`.
 - **`super()`** calls the parent method of the same name. When overriding `_ready()` in a
   `GameMode`, set `title` and `play_area` first, then call `super()`.
+- **Size a Control after `add_child`, not before.** A kit button sized before it is in the
+  tree keeps the kit theme's minimum (180x34) on record: small buttons came out 180 wide,
+  overlapped, and a tap on one landed on its neighbour.
 - **`Engine.time_scale` is global and survives scene changes.** Only `Juice` should touch
   it; the shell resets it on every transition.
 - **`_process(delta)` delta is scaled by `time_scale`.** Use `_physics_process` when you

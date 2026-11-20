@@ -28,11 +28,11 @@ from PIL import Image, ImageDraw, ImageFont
 HERE = os.path.dirname(os.path.abspath(__file__))
 WHY_COL = {"limit": (90, 200, 120), "curve": (60, 160, 230), "light": (230, 60, 60), "sign": (230, 140, 40),
            "zebra": (240, 220, 60), "people": (240, 220, 60), "car": (170, 100, 230), "blocked": (240, 90, 160),
-           "choice": (120, 200, 240), "backing": (255, 255, 255), "turning": (160, 160, 170),
+           "choice": (120, 200, 240), "junction": (240, 170, 200), "backing": (255, 255, 255), "turning": (160, 160, 170),
            "pushing": (150, 40, 40), "": (150, 150, 150)}
 WHY_NAME = {"limit": "nothing (the speed limit)", "curve": "a bend or a turn", "light": "a traffic light",
             "sign": "a stop / give-way sign", "zebra": "people on a crossing", "car": "the car ahead",
-            "blocked": "something in front", "choice": "a junction (which way?)",
+            "blocked": "something in front", "junction": "giving way at a junction", "choice": "a junction (which way?)",
             "backing": "backing off", "turning": "turning round", "pushing": "pushing, not moving (stuck)"}
 
 
