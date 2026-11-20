@@ -173,6 +173,9 @@ func _mark(name: String, p: Vector2) -> void:
 ## on the pavement: off the asphalt by `margin`, out of buildings by `room`, `posts` metres
 ## from the nearest lamp, tree or sign
 func _free(p: Vector2, margin: float, room: float, posts: float) -> bool:
+	for kc: Array in g._keep_clear:   # (where a filmed walk shows nothing: details.gd's `clear`)
+		if p.distance_to(kc[0]) <= kc[1]:
+			return false
 	return g._off_road(p, margin) and not g._in_junction(p, margin) \
 			and g._push_out(p, room, false, false) == Vector2.ZERO and g._clear_of_posts(p, posts)
 

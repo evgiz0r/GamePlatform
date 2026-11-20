@@ -113,6 +113,12 @@ Its film is not in this repo or this machine's scratch: a session needs a clip o
 - [ ] The Katznelson corner at the end: the pedestrian lights (red and green men), the
       push button on the pole, the zebra, the railings (100-106 s).
 - [ ] Trees in pits along Sirkin, bins, bike racks, motorbikes on the pavement as filmed.
+- [ ] Sirkin's street trees hang their lowest leaves at face height over the pavement: the
+      walk passes one at 66 s (0.65 m off its trunk, at (486.5, -734.7)) through its leaves.
+      Pruned street trees keep about 2.2 m clear over a pavement. *(city-wide: the trees)*
+- [ ] At 28 s the walk heads straight at a street tree before stepping round its road side
+      (a front garden's bougainvillea hangs over the pavement's back beside it, leaving 28
+      cm): the film presumably walked between the tree and the wall.
 
 ### Behaviour
 - [ ] Cars that stop for it on the Sheinkin zebra (its `zebras` are there, no `cars`):
@@ -145,4 +151,9 @@ Its film is not in this repo or this machine's scratch: a session needs a clip o
   the forecourt, the passage, the little street, the crossings and their cars, the
   people standing, the booth, the bollards, the shops, the head's looks.
 - Walk 2: the look left at the two shops (70-74 s) and the cars that blocked it; on to the
-  Katznelson corner (to 106 s).
+  Katznelson corner (to 106 s). Then, from its first recording that far: round two
+  bougainvillea clumps on the pavement (1 s, 29 s); no bike rack where the city had put one
+  across the walk's pavement (86 s: details' `clear`); the end 1.9 m from the corner's tree,
+  not 1.0 (its trunk filled the last look); a passer-by who kept pace just ahead for 80 s
+  now draws away after a few seconds (both walks). The fruit crates at 16 s are the green
+  corner shop's, from the film: kept.

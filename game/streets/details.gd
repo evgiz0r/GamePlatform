@@ -34,6 +34,10 @@ extends RefCounted
 ##                                                    near are white (the game picks a few)
 ##   no_parking [{near: [x, z], r}]                  no car parked at the kerb within r of
 ##                                                    near (a view the film had, kept open)
+##   clear     [{near: [x, z], r}]                   none of the city's own kerbside things
+##                                                    (bike racks, scooters, bins, cabinets:
+##                                                    furniture.gd's _free) within r of near --
+##                                                    the film shows nothing there
 ##   areas     [{k, p: [[x, z]...]}]                 as the city file's areas (plaza, park...)
 ##   buildings [{near: [x, z], arcade: [[x, z], [x, z]], depth, h}]   the building holding
 ##                                                    `near` gets an arcade along that line
@@ -158,6 +162,8 @@ func edit_city(city: Dictionary) -> void:
 		city["roads"].append(r)
 	for np: Dictionary in data.get("no_parking", []):
 		g._no_park.append([_v2(np["near"]), float(np.get("r", 8.0))])
+	for kc: Dictionary in data.get("clear", []):
+		g._keep_clear.append([_v2(kc["near"]), float(kc.get("r", 2.0))])
 	for wb: Dictionary in data.get("white_bollards", []):
 		var c := _v2(wb["near"])
 		var r := float(wb.get("r", 10.0))

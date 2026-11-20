@@ -645,6 +645,15 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   amount. Where a clump and a tree in the pavement leave less than half a metre, the walk
   goes round the tree's road side as a person would, and Catmull-Rom cuts the corner: keep
   0.65 m off a tree's centre at the points either side, not just at one.
+- **The scan sees posts only.** A bike in a rack is solid only at its hoop (r 0.35) but
+  reaches 0.85 m each side of it, across most of a pavement; café chairs, crates and low
+  leaves are not posts at all. Walk 2's first full recording went through a parked bike's
+  wheel (86 s) and ended with a tree's trunk filling the frame (1.0 m off), all with a clean
+  scan. `POSTS_NEAR` now also lists everything drawn by instance there -- which group, where,
+  its size, how high it starts and ends -- which told the bike, the tree and a shop's crates
+  apart in one run. Look at a recording one frame every 2 s as well as scanning. Walkers
+  still walk through the city's parked bikes (racks are another session's furniture: giving
+  the bike posts would leave 0.4 m on many pavements, so walkers need a way round first).
 - **The film's clock is decoding from its start.** `ffmpeg -ss` before `-i` lands on the
   wrong frames in this clip's first seconds (VLC's variable-rate transcode: 2999 frames in
   100 s, said to be 60 fps); `-vf trim=a:b,setpts=PTS-STARTPTS` agrees with the

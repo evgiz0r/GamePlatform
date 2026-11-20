@@ -2106,12 +2106,12 @@
     [
      101.0,
      488.0,
-     -771.2
+     -770.4
     ],
     [
      106.0,
      488.0,
-     -771.2
+     -770.4
     ]
    ],
    "looks": [
@@ -2202,6 +2202,16 @@
    "board": "green",
    "crates": true,
    "src": "2:57, across Sirkin beside the sabich: produce out front, a green sign"
+  }
+ ],
+ "clear": [
+  {
+   "near": [
+    486.8,
+    -749.7
+   ],
+   "r": 2.5,
+   "src": "Sheinkin and Sirkin walk, 86 s: the city put a bike rack here and its bicycle filled the pavement the walk was filmed along"
   }
  ]
 }

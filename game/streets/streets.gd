@@ -1753,6 +1753,7 @@ var _tile_bars := {}                 ## square -> mapped fences and hedges that 
 var _crossing_set := {}
 var _white_bollards := {}            ## crossing nodes whose bollards are white, as filmed (details.gd)
 var _no_park: Array = []             ## [spot, radius]: no car parked at the kerb there (details.gd)
+var _keep_clear: Array = []          ## [spot, radius]: none of the city's kerbside things there (details.gd)
 var _bg_build := false               ## building in the background: stop for the frame when over budget
 var _bg_wait := false
 ## The squares round the start are built behind the loading text, and each used to go up in one
@@ -12224,6 +12225,26 @@ func _film_tick(dt: float) -> void:
 			if f > 1.0 and not fp[6]:
 				fp[6] = true
 				who.play("Idle", true, 1.0)
+	# a passer-by keeping pace just ahead on the walk's line: a stranger's back for a minute
+	# and more (one led the whole of Sirkin), which no film has. After a few seconds of it they
+	# step out briskly and draw away.
+	var hd := Vector2(cos(_yaw), sin(_yaw))
+	for w: Dictionary in _walkers:
+		var line: PackedVector2Array = w["line"]
+		var wa: Actor3D = w["actor"]
+		if line.size() < 2 or not wa.visible:
+			continue
+		var cum: PackedFloat32Array = w["cum"]
+		var ws: float = w["s"]
+		var go := _along(line, cum, clampf(ws + float(w["dir"]) * 0.5, 0.0, cum[cum.size() - 1])) - _along(line, cum, ws)
+		var rel := Vector2(wa.position.x, wa.position.z) - p
+		if rel.length() < 14.0 and rel.dot(hd) > 2.0 and go != Vector2.ZERO and go.normalized().dot(hd) > 0.7:
+			w["film_ahead"] = float(w.get("film_ahead", 0.0)) + dt
+			if float(w["film_ahead"]) > 4.0 and float(w["speed"]) < 1.9:
+				w["speed"] = 1.9
+				wa.anim.speed_scale = 1.9 / 1.35
+		else:
+			w["film_ahead"] = 0.0
 	while _film_sent < _film_cars.size() and _film_t >= float(_film_cars[_film_sent][0]):
 		var fc: Array = _film_cars[_film_sent]
 		_film_sent += 1
