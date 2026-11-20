@@ -29,13 +29,19 @@ into the turns.
 
 > First-person / bonnet camera.
 
-**On foot.** Stop, and the "walk" button (or F) lets the driver out of the door to walk the
-same city: arrows or the stick to walk and turn, space to run, over the shoulder or (the
-"seat" button) from the eyes. The car idles where it was left and traffic goes round it;
-traffic stops for you on the road; walls, trees and passing cars push you aside; the
-minimap marks the car. Back at it, "drive" gets you in.
+**On foot.** The "walk" button (or F) lets the driver out of the door to walk the same city:
+arrows or the stick to walk (a brisk 2.1 m/s) and turn, space to run (6 m/s), over the
+shoulder or (the "seat" button) from the eyes. Out of a moving car you jump: you tumble
+out of the door with the car's speed, roll and get up, and the empty car rolls on by
+itself, slowing, until it stops or hits something. Traffic goes round the car; traffic
+stops for you on the road; walls, fences, trees and passing cars push you aside; the
+minimap marks the car. Back at it, "drive" gets you in (still rolling, it rolls on with
+you).
 
 > Walk mode: get out of the car and walk the same city.
+
+> I want to walk a bit faster when I'm out of the car, now it's too slow. I want to be able
+> to start walking also when I'm driving. The car will just continue and I'll pop off.
 
 ## What do you do?
 
@@ -155,11 +161,13 @@ the English name under it when OSM has one.
 
 ## What is trying to stop you?
 
-Nothing yet, on purpose: this is a driving sim first. Buildings, trees, parked cars and
-traffic-light poles are solid. Crashes are a bit more game than real: a thud and a shake,
-the car bounces back off what it hit and spins if it was hit off-centre, and a hard one
-throws it into a little hop. Too fast over a crest or off a ramp and it leaves the ground
-for a moment and lands with a bump.
+Nothing yet, on purpose: this is a driving sim first. Buildings, trees, parked cars,
+traffic-light poles, fences, railings, hedges, the low garden walls, bus shelters and the
+columns under raised buildings and canopies are solid. Crashes are like real ones: the car
+stops at what it hit with a jolt of the camera and a bang, rebounds only a little (it
+crumples), and turns a little if it was hit off-centre -- no hop, no spinning like a top.
+(They were made bouncier and game-like once, and asked back.) Too fast over a crest or off
+a ramp and it leaves the ground for a moment and lands with a bump.
 
 **Ground too steep to climb** -- steeper than 62%, about 32 degrees -- is as solid as a
 wall, on foot too, and assist brakes for it; a road is always drivable however steep. No
@@ -168,6 +176,9 @@ town's mountains. Ground that steep is drawn as bare rock, in bands.
 
 > I want the car to be able to "jump" a bit if I drive too fast on slopes. Maybe making
 > the crashes more bouncy as well... slightly less realistic, more "game"-like.
+
+> I want the interactions back a bit more realistic (less bouncy, more like real crashes).
+> There are also a lot of things without collision, like fences and some parts of buildings.
 
 **Traffic.** About twenty cars drive the real streets round you, in their lane, mostly on
 the main roads: they slow for corners, keep their distance (brake lights on), stop at red
@@ -206,6 +217,18 @@ while crossing, on the ground in a park), not the bare ground's height a kerb be
 where they waded into the slabs.
 
 > People walk a bit inside the ground.
+
+People appear, leave and change places only where nobody would see it: beyond the distance
+people are drawn at, or behind you. (They popped up at the kerb in front of the car, and
+the ones at cafe tables jumped from table to table as you drove.) They turn over a moment
+at the end of a block and round a bend, step up and down kerbs, and step aside from a car
+on the pavement rather than leap. At a crossing by a junction with lights they go with
+the lights: only while the road's cars have red, and only with time enough left to get
+across, so cars through the junction no longer stop in the middle of it for them.
+
+> The movement of the people: they bounce, jump, teleport and so on. They also don't cross
+> the roads according to the lights, so in many crossroads we have to stop for them in the
+> middle.
 
 The people are grown-ups, not the kit's chunky cartoons: smaller heads, hands and feet,
 longer legs and a longer middle (scaled on their skeletons after every animation frame),

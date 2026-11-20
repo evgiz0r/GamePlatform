@@ -47,7 +47,7 @@ const STEER_RATE := 2.4              ## keyboard: lock to centre in ~0.4 s
 const GRIP := 8.8                    ## tyres give up past ~0.9 g sideways: understeer
 const CAR_R := 0.95                  ## the car is two circles of this radius...
 const CAR_OFF := 1.25                ## ...this far ahead of and behind its centre
-const BOUNCE := 0.45                 ## how much of a knock bounces back (a real car: ~0.15)
+const BOUNCE := 0.12                 ## how much of a knock bounces back (a real car crumples: ~0.1-0.15; 0.45 was a bumper car)
 const WALL_GRIP := 0.45              ## speed lost scraping along a wall, per m/s of impact
 ## Driving assist (on by default; the "assist" button switches it): straightens the car
 ## along the street and into its lane while you are not steering much, brakes before a
@@ -864,8 +864,8 @@ var _me_anim := ""
 var _car_at := Vector2.ZERO          ## where the car was left, and how
 var _car_yaw_at := 0.0
 var _car_y_at := 0.0
-const WALK := 1.45                   ## m/s
-const RUN := 4.2
+const WALK := 2.1                    ## m/s: a brisk walk (1.45, a stroll, was too slow to get anywhere)
+const RUN := 6.2
 const TURN_ON_FOOT := 2.6            ## rad/s
 var _look_turn := 0.0                ## the driver's glance into a turn
 var _ap_ring_n := 0                  ## autodrive: pieces of roundabout driven since it came onto one
@@ -1877,6 +1877,7 @@ func _build_kerbs() -> void:
 						continue   # northern lawns run open to the pavement
 					var wy := 0.62
 					wall.quad3(_g3(w_in[i], wy), _g3(w_in[i + 1], wy), _g3(w_out[i + 1], wy), _g3(w_out[i], wy))
+					add_wall((w_in[i] + w_out[i]) * 0.5, (w_in[i + 1] + w_out[i + 1]) * 0.5, 0.13)
 					var fn := Vector3(-(w_in[i + 1] - w_in[i]).y, 0, (w_in[i + 1] - w_in[i]).x).normalized() * -sgn
 					wall.tri(_g3(w_in[i], 0.0), _g3(w_in[i + 1], 0.0), _g3(w_in[i + 1], wy), fn, Color.WHITE)
 					wall.tri(_g3(w_in[i], 0.0), _g3(w_in[i + 1], wy), _g3(w_in[i], wy), fn, Color.WHITE)
@@ -2764,6 +2765,7 @@ func _mall_front(edge: Array, g_lo: float, wc: Color, kit: Dictionary, kit_col: 
 		var q := mid + e * sd * minf(5.0, L * 0.2) + out * 3.2
 		kit["column"].append(Transform3D(Basis.from_scale(Vector3(0.45, 4.0, 0.45)), Vector3(q.x, g_lo + 2.0, q.y)))
 		kit_col["column"].append(wc)
+		_add_post(q, 0.25)
 
 var _mall_glass: Array = []
 
@@ -5826,6 +5828,22 @@ func new_buf() -> Buf:
 func new_cbuf(cell: float) -> CBuf:
 	return CBuf.new(cell)
 
+## Thin walls the car and people bump into: fences and railings, hedges, the low garden walls,
+## a bus shelter's back. They had no collision at all -- not for performance, they were just
+## never added -- and the car drove through them.
+var _walls := PackedVector2Array()   ## two points a wall
+var _wall_r := PackedFloat32Array()  ## half its thickness
+var _wall_hash := {}
+
+func add_wall(a: Vector2, b: Vector2, half: float) -> void:
+	if a.distance_squared_to(b) < 0.0001:
+		return
+	var i := _wall_r.size()
+	_walls.append(a)
+	_walls.append(b)
+	_wall_r.append(half)
+	_hash_add(_wall_hash, Rect2(a, Vector2.ZERO).expand(b).grow(half), BLD_CELL, i)
+
 func _add_post(p: Vector2, r: float) -> void:
 	var i := _posts.size()
 	_posts.append(p)
@@ -6110,6 +6128,8 @@ func _build_stops() -> void:
 			_add_post(ad, 0.6)
 		_add_post(c - n * 0.6 + along * 1.5, 0.2)
 		_add_post(c - n * 0.6 - along * 1.5, 0.2)
+		add_wall(c - n * 0.7 + along * 1.5, c - n * 0.7 - along * 1.5, 0.08)   # its back
+		_add_post(pole, 0.1)
 		_add_post(pole, 0.12)
 		var name := String(st[2])
 		if name != "":
@@ -7823,16 +7843,18 @@ func _build_cockpit() -> void:
 	_wheel_node.add_child(wmi)
 
 ## ---- on foot ---------------------------------------------------------------------------------
-## Out of the car (the "walk" button, or F, standing still): the driver steps out of the
-## door onto the street and walks the same city -- arrows or the stick to walk and turn,
-## held action (space) to run. The car waits where it was left, and traffic goes round it;
-## traffic stops for you on the road the way it does for the car. Back at the car, the
-## same button gets you in.
+## Out of the car (the "walk" button, or F): the driver steps out of the door onto the
+## street and walks the same city -- arrows or the stick to walk and turn, held action
+## (space) to run. Out of a moving car you jump: you tumble out of the door with the car's
+## speed, roll, and get up; the car rolls on driverless, slowing, until it stops or hits
+## something. Traffic goes round it; traffic stops for you on the road the way it does for
+## the car. Back at the car, the same button gets you in.
+var _car_v := 0.0                    ## the empty car still rolling (m/s, along its heading)
+var _tumble := 0.0                   ## s left of a tumble out of a moving car (no control)
+var _jump_v := Vector2.ZERO          ## the tumble's slide
 
 func _get_out() -> void:
-	if absf(_v) > 1.0:
-		_show_banner("stop the car first", 1.2)
-		return
+	var moving := absf(_v) > 1.0
 	if _auto:
 		_set_auto(false)
 	_set_blink(0)
@@ -7863,11 +7885,25 @@ func _get_out() -> void:
 			gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	_pos = door
 	_prev_pos = door
+	_car_v = _v if moving else 0.0
+	_tumble = 0.0
+	_jump_v = Vector2.ZERO
+	if moving:
+		# out of the door with the car's speed (a little less: you push off it) and away
+		# from it; a roll, and up again
+		var side := (door - _car_at).normalized()
+		_jump_v = fwd * _v * 0.75 + side * 2.2
+		_tumble = clampf(0.5 + absf(_v) * 0.05, 0.5, 1.5)
+		_me.play("Roll" if absf(_v) > 4.0 else "RecieveHit", false, 1.0)
+		_me_anim = "tumble"
+		_yaw = _jump_v.angle()
+		_prev_yaw = _yaw
 	_v = 0.0
-	_y = _h(door)
+	_y = _walk_y(door)
+	_prev_y = _y
 	_cam_dist = 3.4
-	Probe.event("walk", {"on": true})
-	_show_banner("on foot", 1.0)
+	Probe.event("walk", {"on": true, "jumped": moving, "kmh": int(absf(_car_v) * 3.6)})
+	_show_banner("jumped out!" if moving else "on foot", 1.0)
 
 func _get_in() -> void:
 	var d := _pos.distance_to(_car_at)
@@ -7883,12 +7919,55 @@ func _get_in() -> void:
 	_yaw = _car_yaw_at
 	_prev_yaw = _yaw
 	_y = _car_y_at
-	_v = 0.0
+	_v = _car_v   # (caught it still rolling: it rolls on with you in it)
+	_car_v = 0.0
 	_gear = 1
 	Probe.event("walk", {"on": false})
 	_show_banner("driving", 1.0)
 
+## the empty car rolling on after you jumped out: no driver, so no steering and no power,
+## slowing as a car in gear does with the foot off (a couple of m/s each second); into a
+## wall or a car it stops short, with a bang
+func _coast_car(dt: float) -> void:
+	if _car_v == 0.0:
+		return
+	var fwd := Vector2(cos(_car_yaw_at), sin(_car_yaw_at))
+	_car_v = move_toward(_car_v, 0.0, (1.6 + 0.012 * _car_v * _car_v) * dt)
+	_car_at += fwd * _car_v * dt
+	var push := Vector2.ZERO
+	for off: float in [CAR_OFF, -CAR_OFF]:
+		var c := _car_at + fwd * off
+		var p := _push_out(c, CAR_R, true, false)
+		if _traffic != null:
+			p += _traffic.push(c + p, CAR_R)
+		if p.length() > push.length():
+			push = p
+	var rim := _bounds.grow(-EDGE - CAR_R - CAR_OFF)
+	push += _car_at.clamp(rim.position, rim.end) - _car_at
+	if push != Vector2.ZERO:
+		_car_at += push
+		var into := -push.normalized().dot(fwd * signf(_car_v)) * absf(_car_v)
+		if into > 1.5:
+			Audio.play("impact_metal" if into > 8.0 else "impact_punch")
+			Probe.event("crash", {"kmh": int(into * 3.6), "hit": "driverless", "auto": false})
+		_car_v *= 0.15 if into > 1.5 else 0.6
+		if absf(_car_v) < 0.3:
+			_car_v = 0.0
+	_car_y_at = _h(_car_at)
+
 func _walk(dt: float) -> void:
+	_coast_car(dt)
+	if _tumble > 0.0:
+		# tumbling out of a moving car: sliding, slowing, no control, then up
+		_tumble -= dt
+		_pos += _jump_v * dt
+		_jump_v *= exp(-dt * 3.2)
+		_pos += _push_out(_pos, 0.3, true)
+		_keep_inside(0.3, false)
+		_y = _walk_y(_pos)
+		if _tumble <= 0.0:
+			_me_anim = ""
+		return
 	var turn := PInput.axis("move_left", "move_right")
 	var go := (1.0 if PInput.pressed("move_up") else 0.0) - (1.0 if PInput.pressed("move_down") else 0.0)
 	if _stick_id >= 0:
@@ -7910,7 +7989,7 @@ func _walk(dt: float) -> void:
 		if d.length() < CAR_R + 0.3 and d.length() > 0.001:
 			_pos += d.normalized() * (CAR_R + 0.3 - d.length())
 	_keep_inside(0.3, false)
-	_y = _walk_y(_pos)
+	_y = lerpf(_y, _walk_y(_pos), 1.0 - exp(-dt * 12.0))   # up and down kerbs in a step, not a jump
 	var anim := "Idle" if absf(_v) < 0.15 else ("Run" if absf(_v) > WALK + 0.5 else "Walk")
 	if anim != _me_anim:
 		_me_anim = anim
@@ -9194,7 +9273,7 @@ func _place_walker(w: Dictionary, anywhere: bool) -> void:
 		var ang := _people_rng.randf() * TAU
 		if not anywhere and absf(_v) > 2.0:
 			ang = _yaw + _people_rng.randf_range(-0.9, 0.9)
-		var d := _people_rng.randf_range(25.0 if anywhere else 70.0, PEOPLE_RANGE * 0.8)
+		var d := _people_rng.randf_range(25.0 if anywhere else PEOPLE_SEEN + 8.0, PEOPLE_RANGE * 0.9)
 		var hit := _nearest_seg(_pos + Vector2(cos(ang), sin(ang)) * d, 40.0, true, true)
 		if hit.is_empty():
 			continue
@@ -9221,9 +9300,13 @@ func _place_walker(w: Dictionary, anywhere: bool) -> void:
 			cum.append(cum[i - 1] + line[i - 1].distance_to(line[i]))
 		if cum[cum.size() - 1] < 8.0:
 			continue
+		var s0 := _people_rng.randf() * cum[cum.size() - 1]
+		if not anywhere and not _unseen(_along(line, cum, s0)):
+			continue   # never appear in view: only where nobody is drawn (or behind you)
 		w["line"] = line
 		w["cum"] = cum
-		w["s"] = _people_rng.randf() * cum[cum.size() - 1]
+		w["s"] = s0
+		w.erase("yaw")
 		w["dir"] = 1.0 if _people_rng.randf() < 0.5 else -1.0
 		a.play("Walk_Carry" if w["carry"] else "Walk", true, float(w["speed"]) / 1.35)
 		a.visible = true
@@ -9280,27 +9363,48 @@ func _pavement_piece(line: PackedVector2Array) -> PackedVector2Array:
 		return PackedVector2Array()
 	return pieces[_people_rng.randi() % pieces.size()]
 
-## people by the cafe tables nearest the car, standing about
+## People by the cafe tables near the car, standing about. Re-seated at the nearest tables
+## every second and a half, they jumped from table to table in plain view as the car moved;
+## now one stays put while it can be seen, and only one out of sight moves -- to a table
+## that is also out of sight, so tables ahead are taken before they come into view.
 func _seat_chatters() -> void:
 	if _table_spots.is_empty():
 		return
-	var near: Array = _table_spots.filter(func(t): return t.distance_to(_pos) < PEOPLE_RANGE)
-	near.sort_custom(func(a, b): return a.distance_to(_pos) < b.distance_to(_pos))
+	var taken := {}
+	for c: Dictionary in _chatters:
+		if (c["actor"] as Actor3D).visible:
+			taken[c["spot"]] = true
+	var first := not _chatters_sat   # (the first time, as the city appears: anywhere near)
+	_chatters_sat = true
+	var free_spots: Array = _table_spots.filter(func(t): return t.distance_to(_pos) < PEOPLE_RANGE and not taken.has(t) and (first or _unseen(t)))
+	var fwd := _fwd()
+	free_spots.sort_custom(func(a, b): return (a - _pos).dot(fwd) - a.distance_to(_pos) * 0.5 > (b - _pos).dot(fwd) - b.distance_to(_pos) * 0.5)
 	for i in range(_chatters.size()):
 		var c: Dictionary = _chatters[i]
 		var a: Actor3D = c["actor"]
-		if i >= near.size():
-			a.visible = false
+		var at: Vector2 = c["spot"]
+		if a.visible and not first and not _unseen(at) and at.distance_to(_pos) < PEOPLE_RANGE:
+			continue   # in view: stays
+		if free_spots.is_empty():
+			if a.visible and at.distance_to(_pos) >= PEOPLE_RANGE:
+				a.visible = false
 			continue
-		var t: Vector2 = near[i]
-		if c["spot"] == t:
-			continue
+		var t: Vector2 = free_spots.pop_front()
 		c["spot"] = t
 		var off := Vector2(cos(i * 2.4), sin(i * 2.4)) * 0.95
-		var at := t + off
-		a.position = Vector3(at.x, _walk_y(at), at.y)
+		var q := t + off
+		a.position = Vector3(q.x, _walk_y(q), q.y)
 		a.face(Vector3(-off.x, 0, -off.y))
 		a.visible = true
+
+var _chatters_sat := false
+
+## somewhere nobody would see a person appear or go: beyond the distance people are drawn
+## at, or well behind the car (and its camera)
+func _unseen(p: Vector2) -> bool:
+	var to := p - _pos
+	var d := to.length()
+	return d > PEOPLE_SEEN + 4.0 or (d > 18.0 and to.dot(_fwd()) < -0.35 * d)
 
 func _people_tick(dt: float) -> void:
 	_people_t -= dt
@@ -9336,9 +9440,9 @@ func _people_tick(dt: float) -> void:
 		var to_car := _pos - p
 		var dodge: float = w["dodge"]
 		if to_car.length() < 6.0 and absf(_v) > 1.0:
-			dodge = minf(dodge + dt * 3.0, 1.6)
+			dodge = minf(dodge + dt * 1.4, 1.1)   # a step aside, not a leap
 		else:
-			dodge = maxf(dodge - dt * 0.8, 0.0)
+			dodge = maxf(dodge - dt * 0.5, 0.0)
 		w["dodge"] = dodge
 		if dodge > 0.0 and ahead != Vector2.ZERO:
 			var side := Vector2(-ahead.y, ahead.x).normalized()
@@ -9347,7 +9451,13 @@ func _people_tick(dt: float) -> void:
 			p += side * dodge
 		a.position = Vector3(p.x, _h(p) + _pave_top(), p.y)   # (their line is on the pavement)
 		if ahead != Vector2.ZERO:
-			a.face(Vector3(ahead.x, 0, ahead.y))
+			# turning as people do, over a moment: at the end of a block they turned back on
+			# the spot in one frame, and at every bend of the pavement line they snapped
+			var want := atan2(ahead.y, ahead.x)
+			var yaw: float = w.get("yaw", want)
+			yaw = lerp_angle(yaw, want, 1.0 - exp(-dt * 5.0))
+			w["yaw"] = yaw
+			a.face(Vector3(cos(yaw), 0, sin(yaw)))
 		_people_awake(a, p)
 		if p.distance_to(_pos) > PEOPLE_RANGE and not placed:
 			placed = true
@@ -9497,6 +9607,28 @@ func _zebra_span(z: Array) -> Array:
 			return []
 	return [a, b]
 
+## At a crossing by a junction with lights, a person steps out only while the cars on the road
+## being crossed have red, and only with time enough left on it to get across (`need`
+## seconds): they walked out in front of cars that had just got their green, and every car
+## through the junction stopped in the middle of it for them. Anywhere else: always.
+func _walk_light(cr: Dictionary, need: float) -> bool:
+	var n: int = cr.get("sig", -1)
+	if n < 0 or not _sig_set.has(n):
+		return true
+	var d: Vector2 = cr["sig_dir"]
+	var axis := 1 if absf(d.x) >= absf(d.y) else 2   # (the cars' group, as _light_at reads it)
+	var left := 0.0
+	var k := _sig_phase
+	var first := true
+	for _i in range(SIGNAL_CYCLE.size()):
+		var step: Array = SIGNAL_CYCLE[k]
+		if step[axis] != "r":
+			break
+		left += float(step[0]) - (_sig_t if first else 0.0)
+		first = false
+		k = (k + 1) % SIGNAL_CYCLE.size()
+	return left >= need + 1.5
+
 ## nothing coming that could not stop before the crossing (middle `mid`, `hw` from it to
 ## either kerb), and nothing standing on it
 func _safe_to_cross(mid: Vector2, hw: float) -> bool:
@@ -9535,7 +9667,8 @@ func _crossers_tick(dt: float) -> void:
 		match state:
 			"wait":
 				cr["t"] = float(cr["t"]) - dt
-				if float(cr["t"]) <= 0.0 and _safe_to_cross((from + to) * 0.5, from.distance_to(to) * 0.5 - 1.1):
+				if float(cr["t"]) <= 0.0 and _walk_light(cr, from.distance_to(to) / float(cr["speed"])) \
+						and _safe_to_cross((from + to) * 0.5, from.distance_to(to) * 0.5 - 1.1):
 					cr["state"] = "cross"
 					a.play("Walk", true, float(cr["speed"]) / 1.35)
 			"cross", "back":
@@ -9569,12 +9702,17 @@ func _crossers_tick(dt: float) -> void:
 					a.play("Idle", true, _people_rng.randf_range(0.8, 1.1))   # as far as the pavement goes
 				var off := minf(float(cr["a_off"]), far)
 				p = end + (cr["out"] as Vector2) * minf(off, 0.9) + dir * off
-				if float(cr["t"]) <= 0.0 or p.distance_to(_pos) > CROSS_NEAR:
-					cr["state"] = "off"
+				if _unseen(p) and (float(cr["t"]) <= 0.0 or p.distance_to(_pos) > CROSS_NEAR):
+					cr["state"] = "off"   # (gone only where nobody sees them go)
 					cr["ni"] = -1
 					a.visible = false
 					continue
-		a.position = Vector3(p.x, _walk_y(p), p.y)
+		# the kerb's step up or down over a moment, not in one frame
+		var fy := _walk_y(p)
+		if cr.has("y"):
+			fy = lerpf(float(cr["y"]), fy, 1.0 - exp(-dt * 10.0))
+		cr["y"] = fy
+		a.position = Vector3(p.x, fy, p.y)
 		var look: Vector2 = (to - from) if state in ["wait", "cross"] else ((from - to) if state == "back" else cr.get("away", to - from))
 		if state == "away" and float(cr["a_off"]) >= float(cr["away_len"]):
 			look = cr["out"]
@@ -9618,7 +9756,9 @@ func _send_crossers() -> void:
 	for ni: int in _crossing_nodes:
 		var to := _nodes[ni] - _pos
 		var d := to.length()
-		if d >= 20.0 and d <= CROSS_NEAR and not (d > 45.0 and to.dot(look) < 0.0):
+		# only where they would not be seen to appear (beyond the distance people are drawn
+		# at, or behind): popping up at the kerb in front of the car read as a teleport
+		if d <= CROSS_NEAR + 40.0 and _unseen(_nodes[ni]) and not (d > 45.0 and to.dot(look) < 0.0):
 			near.append(ni)
 	for cr: Dictionary in _crossers:
 		if cr["state"] != "off":
@@ -9648,6 +9788,16 @@ func _send_crossers() -> void:
 		cr["a_off"] = 0.0
 		cr["state"] = "wait"
 		cr["t"] = _people_rng.randf_range(1.0, 5.0)
+		cr.erase("y")
+		# a crossing at a junction with lights: they go with the lights
+		cr["sig"] = -1
+		var mid := ((cr["a"] as Vector2) + (cr["b"] as Vector2)) * 0.5
+		var sd := 30.0
+		for n: int in _near(_sig_hash, mid, 30.0, SEG_CELL):
+			if _nodes[n].distance_to(mid) < sd:
+				sd = _nodes[n].distance_to(mid)
+				cr["sig"] = n
+		cr["sig_dir"] = z[3]
 		var a: Actor3D = cr["actor"]
 		a.visible = true
 		a.play("Idle", true, _people_rng.randf_range(0.8, 1.1))
@@ -9758,13 +9908,11 @@ func _collide() -> void:
 		# a real knock bounces a little; leaning on a wall at walking pace does not (the
 		# bounce back and push in again was a judder that held the car there)
 		vel -= n * vn * (1.0 + (BOUNCE if impact > 2.0 else 0.0))
-		# a bit more game than real: a knock off one end spins the car, and a hard one
-		# lifts it off the ground
+		# a knock off one end turns the car about the other, as a real one does -- a little:
+		# it used to spin it like a top and hop it off the ground, more pinball than crash
 		if impact > 2.0:
 			var lever := (at_front - at_back).dot(right) / maxf(at_front.length() + at_back.length(), 0.001)
-			_spin = clampf(_spin + lever * impact * 0.18, -3.0, 3.0)
-		if impact > 7.0:
-			_hop(minf(impact * 0.18, 3.2))
+			_spin = clampf(_spin + lever * impact * 0.07, -1.4, 1.4)
 		# scraping along it: the harder it hit, the more speed the scrape takes, so a
 		# glancing touch slides on and a head-on stops. (It used to lose 6% every tick in
 		# contact, which glued the car to anything it touched.)
@@ -9780,13 +9928,14 @@ func _crash(speed: float) -> void:
 	if speed < 1.2 or _crash_cool > 0.0:
 		return
 	_crash_cool = 0.4
-	if _auto and _last_hit.begins_with("building"):
+	if _auto and (_last_hit.begins_with("building") or _last_hit.begins_with("wall")):
 		_ap_bonks += 1.0
+	# a jolt of the camera, not a freeze-frame: the car stops dead and the view with it
 	if speed > 9.0:
-		hit3d(minf(8.0, speed * 0.35))
+		shake3d(minf(4.0, speed * 0.25))
 		Audio.play("impact_metal")
 	elif speed > 4.0:
-		shake3d(speed * 0.4)
+		shake3d(speed * 0.25)
 		Audio.play("impact_punch")
 	else:
 		shake3d(1.0)
@@ -9846,6 +9995,16 @@ func _push_out(c: Vector2, r: float, posts: bool, cars := true) -> Vector2:
 			push += p
 			_last_hit = "building %d" % i
 	if posts:
+		# fences, railings, hedges, garden walls, a shelter's back: thin walls, as segments
+		for i: int in _near(_wall_hash, c, r + 0.5, BLD_CELL):
+			var q := c + push
+			var cp := Geometry2D.get_closest_point_to_segment(q, _walls[i * 2], _walls[i * 2 + 1])
+			var d := q - cp
+			var need := r + _wall_r[i]
+			if d.length_squared() < need * need:
+				var nrm := d.normalized() if d.length() > 0.001 else (_walls[i * 2 + 1] - _walls[i * 2]).orthogonal().normalized()
+				push += nrm * (need - d.length())
+				_last_hit = "wall %d" % i
 		for i: int in _near(_post_hash, c, r, BLD_CELL):
 			var d := (c + push) - _posts[i]
 			var need := r + _post_r[i]
