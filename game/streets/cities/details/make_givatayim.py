@@ -36,9 +36,9 @@ lm = [
     (None, tuple(P(30))), (None, tuple(P(45))),
     (64.0, tuple(P(SPLIT))),                                   # out of it at the railings
     (None, tuple(P(60.5, -2.0))), (None, tuple(P(63, -4.4))),  # onto the little street's pavement, the road on the left
-    (80.0, tuple(P(80.5, -4.6))), (81.5, tuple(P(82.3, -4.6))),  # the corner, at the kerb
-    (82.4, tuple(P(82.3, -4.6))),                                 # (a look each way first)
-    (90.0, tuple(P(90.4, -4.6))),                                 # over Sheinkin
+    (80.0, tuple(P(80.5, -4.4))), (81.5, tuple(P(82.0, -4.2))),  # the corner, at the kerb (between
+    (82.4, tuple(P(82.0, -4.2))),                                 # its bollards); a look each way first
+    (90.0, tuple(P(90.4, -4.2))),                                 # over Sheinkin
     (None, tuple(P(92.5, -5.95))), (93.0, tuple(P(94.0, -5.95))), (96.0, tuple(P(97.5, -5.95))),   # into Ha-Meri,
                                                                     # between the kerb's posts and the garden wall
 ]
@@ -137,7 +137,7 @@ d = {
             # [from, to, kerb, kerb]
             "zebras": [[4.0, 8.9, P(-14.8, -17.4), P(-5.8, -17.4)],
                        [9.2, 17.0, P(-4.9, -17.35), P(4.1, -17.3)],
-                       [81.0, 90.0, P(82.4, -4.6), P(90.4, -4.6)]],
+                       [81.0, 90.0, P(82.4, -4.2), P(90.4, -4.2)]],
             # cars sent down a street at a second, to meet the walk there: [second, at, heading]
             # (both halves of Katzenelson are one-way: the near one towards the north-west,
             # the far one towards the south-east; Sheinkin towards the south-east too)
