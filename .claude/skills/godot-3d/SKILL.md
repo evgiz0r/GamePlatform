@@ -96,6 +96,12 @@ is a Z coordinate, not a height.
   people, step away from whichever side they are on and hold it until past (reacting only
   to someone "ahead" lets them drift back as they draw level and brush); then push out of
   whatever is left, twice. Measure it: sample everyone's overlaps over a run.
+- **Things the car knocks over, in a merged world.** Merged meshes cannot hide one copy, so
+  give the knockable kinds multimeshes of their own (a draw or so a square near the eye),
+  keep a map from each one's collision post to its multimesh copy, and on a hit hide or
+  bend that copy and throw a RigidBody3D with its mesh -- with a slab to land on, if the
+  world has no physics of its own -- and put it back once the player is out of sight. Make
+  sure a braking assist does not brake for what is meant to be knocked aside.
 - **Built in squares, decided the same in every square.** When one square's builder needs
   something another square builds (where a building's door is, to lead a path to it), work
   it out again from the data with the same choices, cached by id -- never read what the

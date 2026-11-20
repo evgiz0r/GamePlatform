@@ -229,7 +229,9 @@ func _driver(c: Car) -> void:
 	c.accel = lerpf(1.5, 2.8, brisk) * rng.randf_range(0.9, 1.1)
 	c.gap = lerpf(3.0, 1.6, brisk) * rng.randf_range(0.9, 1.1)
 	c.headway = lerpf(1.8, 0.9, brisk) * rng.randf_range(0.9, 1.1)
-	c.react = lerpf(1.1, 0.35, brisk) * rng.randf_range(0.8, 1.2)
+	# (0.3-0.9 s: with 0.35-1.1 a queue's start-up wave ran ~1.2 s a car against the ~1 s
+	# measured at real signals, and queues crossed the line a quarter slower -- queue_start)
+	c.react = lerpf(0.9, 0.3, brisk) * rng.randf_range(0.8, 1.2)
 	c.drift = rng.randf() * TAU
 	match c.kind:
 		"bus", "truck":
@@ -324,9 +326,17 @@ func tick(dt: float) -> void:
 			# the speed it wants
 			if c.v < 0.3 and c.react_t < c.react:
 				# (behind a car, the moment to notice starts when that car is off (0.5 m/s),
-				# not when it has rolled a few millimetres)
-				if not (c.why == "car" and c.lead_v < 0.5):
+				# not when it has rolled a few millimetres -- but only when it is close: one
+				# that stopped short of a standing car, with metres still to close, never
+				# rolled up (tests/traffic_stuck.gd: three in four minutes, one 6 m short).
+				# 3.5 m/s is about 2 m of room at the braking it plans with.)
+				# (0.3 m/s: seen to be moving -- at 0.5 the follower waited ~0.45 s more for the
+				# car in front's gentle first push to show; nearer 0 the queue went like a train)
+				if not (c.why == "car" and c.lead_v < 0.3 and vt < 3.5):
 					c.react_t += dt
+				# and waiting to react it stands: it crept on at 0.26 m/s for as long as it
+				# waited, neither pulling away nor stopped
+				c.v = move_toward(c.v, 0.0, BRAKE * dt)
 				c.acc = 0.0
 			else:
 				var want_a := c.accel * clampf(1.0 - pow(c.v / maxf(vt, 1.0), 4.0), 0.2, 1.0)
@@ -500,7 +510,9 @@ func _light_ahead(c: Car) -> float:
 		# over the line and rolling, or in the junction: committed, through. Over the line but
 		# standing -- stopped there for people on the crossing -- is not: it waited for the
 		# people, then drove on through the red
-		var rolling_in := c.v > 2.0 or dist - c.len * 0.5 < _node_r[n]
+		# (rolling: moving at all -- 2 m/s left a scooter filtering over the line at walking
+		# pace on amber "not committed": it stopped on the crossing, 7 m past the line)
+		var rolling_in := c.v > 0.5 or dist - c.len * 0.5 < _node_r[n]
 		if _in_site(c, n) and rolling_in:
 			continue   # in it already
 		var state: String = g._light_at(n, dir)
@@ -899,8 +911,17 @@ func _lane_clear(c: Car, i: int, shift: float) -> bool:
 		if q.distance_squared_to(c.pos) > 900.0:
 			continue
 		var pr := _proj(c, q, 16.0, 24.0)
-		if pr.x != INF and pr.x > -14.0 and pr.x < 22.0 and absf(pr.y - shift) < 2.3:
-			return false
+		if pr.x != INF and pr.x > -14.0 and pr.x < 22.0:
+			if absf(pr.y - shift) < 2.3:
+				return false
+			# nor one moving into that lane itself: two cars either side of it each saw it
+			# empty, moved in at once and drove on through each other side by side (the
+			# exam's "bodies overlapping"). Where it is going: its shift still to come.
+			if j < cars.size():
+				var o: Car = cars[j]
+				if Vector2(sin(o.yaw), cos(o.yaw)).dot(Vector2(sin(c.yaw), cos(c.yaw))) > 0.5 \
+						and absf(pr.y + (o.shift_to - o.shift) - shift) < 2.3:
+					return false
 	return true
 
 ## Which lane: on a road with more than one each way, into the right one for the turn
@@ -1228,6 +1249,24 @@ func _turn_into(c: Car, ri: int, from: int, dir: int, lane: float, lim: float) -
 	var X := cn + out_dir * ahead + rout * lane
 	var K = Geometry2D.line_intersects_line(E, in_dir, X, -out_dir)
 	var k2: Vector2 = K if K != null and (K as Vector2).distance_to(cn) < back + ahead + 4.0 else (E + X) * 0.5
+	# The back trails a wheelbase behind the front (_place) and runs inside it round a turn,
+	# by about wb^2 / 2R: a driver swings the front out by as much. On the tight
+	# arc alone the back cut over the corner's kerb and whatever stood on it -- every car
+	# turning at some corners went over the post there (the exam's checks, Givatayim).
+	# Moving the curve's middle point by d moves the arc's middle by d/2.
+	var wb := clampf(c.len * 0.6, 1.3, 7.0)
+	var chord := (E + X) * 0.5
+	var outward := k2 - chord
+	var mid0 := (E + k2 * 2.0 + X) * 0.25
+	var ab := E.distance_to(mid0)
+	var bc := mid0.distance_to(X)
+	var ca := X.distance_to(E)
+	var area2 := absf((mid0 - E).cross(X - E))
+	if outward.length() > 0.05 and area2 > 0.01:
+		var R := ab * bc * ca / (2.0 * area2)
+		# (wb^2 / 2R, the same for R well over wb, and still an answer on the tight turns
+		# where a bus's 7 m wheelbase is more than the radius: those cut in most)
+		k2 += outward.normalized() * minf(wb * wb / (2.0 * R), 1.5) * 2.0
 	var rd_in := c.rd[n - 1]
 	var v_in := c.vmax[n - 1]
 	c.pts[n - 1] = E

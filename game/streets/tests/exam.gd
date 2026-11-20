@@ -553,11 +553,12 @@ func _chain(i: int) -> Array:
 		if c.hit > 0.0:
 			parts.append("%s %d (stunned by a hit)" % [c.kind, i])
 			return [true, parts]
-		if c.v < 0.3 and c.want > 0.5 and c.still < 4.0 and not c.why in ["car", "player"]:
-			# wants to go, standing only for its moment to notice (the front of a queue at a
-			# light gone green reads "limit" then: the first version of this check took that
-			# for nothing at all). Not for long: a hatch "wanting to go" stood 20 s with
-			# autodrive's car in it, and the second version excused it
+		if c.v < 0.3 and c.want > 0.5 and c.react_t < c.react and not c.why in ["car", "player"]:
+			# wants to go, standing only for its moment to notice: its reaction still running
+			# (the front of a queue at a light gone green reads "limit" then). The first version
+			# took that for nothing at all; the second excused only cars that had stood under
+			# 4 s, so one that waited 10 s at a red and had its green that tick read as held by
+			# nothing (four in one exam); one that has reacted and still stands is not excused
 			parts.append("%s %d (pulling away)" % [c.kind, i])
 			return [true, parts, i]
 		parts.append("%s %d (%s)" % [c.kind, i, c.why])

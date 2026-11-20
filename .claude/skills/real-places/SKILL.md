@@ -278,7 +278,10 @@ one needed:
 - **A bridge's end must be off the bank's slope.** A height grid's triangles bend the ground
   a cell beyond where a dug river channel starts; a bridge ending on that slope has a crest
   just past its end. End it a cell further out. And keep its end away from junctions (20 m
-  or so): a car turning in clipped the parapet's start.
+  or so): a car turning in clipped the parapet's start. Where OSM's own bridge way starts at
+  a junction (its first metres still at street level), leave the parapet and its wall out of
+  the junction's mouth until the deck is half a metre or so up: a car turning out of the side
+  street ran into it.
 - **Junctions in the air** (a slip road meeting a road up on its embankment): draw the
   junction's middle at its height, open the parapet, its wall and the walkway wherever the
   other road comes in, and let a ramp's walkway give way to the street's asphalt where its
@@ -337,6 +340,23 @@ one needed:
   deep to drive into; gentle banks otherwise let a car down to drive along the bed under
   the water. Leave lakes that lie at their shore's lowest point alone: a road over an
   inlet runs on ground below their level.
+
+## Railways
+
+The baker keeps them (`rails`, `platforms`, `stations`; a file baked before has none).
+- **Each track is its own OSM way**: a double track is two lines, a station's throat a
+  fan of them with crossovers between. Tracks that join share an OSM node, so their end
+  points are equal exactly: join them end to end by that, taking the straightest way on
+  (a crossover's leg, sharply off, is not "on"), sidings and yards left out, to get the
+  long runs a train can follow.
+- **Leave out what is underground**: a city's metro or light rail is often all tunnel
+  (its stations too: keep only stations near a surface track).
+- **Keep the city's builders off the tracks**: open land's planted trees grew on them
+  (add the beds to whatever says "nothing grows here"), a bridge's piers stood on them
+  (check a pier against the tracks as against the lanes below), and a bed's slope came up
+  through the asphalt of a road running close alongside (pull the bed's foot in there).
+- **Give the ballast its own colour**, darker than bare ground: in the pale colour of the
+  ground between a motorway's carriageways the bed vanished from beside the line.
 
 ## The edge of the map
 

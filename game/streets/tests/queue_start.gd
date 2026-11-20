@@ -14,8 +14,10 @@ extends SceneTree
 ## Capacity Manual's base of 1900 cars an hour a lane is 1.9 s, and today's drivers are
 ## quicker than 1947's, so these are generous). Each car's gap is set against the figure for
 ## its place in the queue. A queue whose front car is held up past the line (turning across
-## traffic, people on the crossing) is printed but not judged: real counts leave those out
-## too. The bands are wide on purpose -- a few queues of mixed drivers -- and still catch
+## traffic, people on the crossing), or turns off at all, is printed but not judged: real
+## counts are of a lane going straight on. One 15-minute watch is too few queues to judge
+## by -- three on one build read 1.18, 1.44 and 1.57 -- so watch 40 minutes (SECS=2400; at
+## STREETS_SIM_SPEED=2 about 3 minutes here). The bands are wide on purpose -- a few queues of mixed drivers -- and still catch
 ## both mistakes made tuning this by eye: a queue that went within 0.3 s of each other (a
 ## train), then one whose third car moved 9 s after the green.
 const START_GAP := [0.6, 2.5]     ## s between one car moving off and the next (each)
@@ -23,7 +25,7 @@ const START_MED := [0.8, 2.0]     ## ...their median
 const REAL_LINE := [3.8, 3.1, 2.7, 2.4, 2.2, 2.1, 2.0, 2.0]   ## s, by place in the queue (Greenshields)
 const LINE_RATIO := [0.5, 2.0]    ## a car's gap over the line against the real one's (each)
 const LINE_MED := [0.8, 1.2]      ## ...their median: within a fifth of 1947's drivers
-const FIRST := [1.0, 5.5]         ## s from the green to the first car's front over the line
+const FIRST := [2.0, 6.0]         ## s from the green to the first car's rear wheels over the line (Greenshields: 3.8)
 var g: Node
 var T
 
@@ -54,6 +56,9 @@ func _run() -> void:
 	var last_phase: int = g._sig_phase
 	var runs: Array = []      # each: {"t0", "cars": [[queue position, kind, [speeds every 0.1 s]]]}
 	var open: Array = []      # runs still recording: [run, [car indices], start t, line point, its way]
+	var rec_tick := 0
+	var trace := int(OS.get_environment("TRACE")) if OS.get_environment("TRACE") != "" else 0
+	var traced := 0
 	while t < secs:
 		await physics_frame
 		t += dt
@@ -85,24 +90,59 @@ func _run() -> void:
 								break
 					if chain.size() < 2:
 						continue
-					var run := {"t0": t, "cars": [], "cross": []}
+					var run := {"t0": t, "cars": [], "cross": [], "yaw0": T.cars[chain[0]].yaw, "turned": 0.0, "trace": [],
+						"yaws": [], "turns": []}
 					for qi in range(chain.size()):
 						run["cars"].append([qi + 1, T.cars[chain[qi]].kind, []])
 						run["cross"].append(-1.0)
+						run["yaws"].append(T.cars[chain[qi]].yaw)
+						run["turns"].append(0.0)
 					runs.append(run)
 					# the stop line: a metre past the first car's front (it stops that short)
 					var c0 = T.cars[chain[0]]
 					var d0 := Vector2(sin(c0.yaw), cos(c0.yaw))
 					open.append([run, chain, t, c0.pos + d0 * (c0.len * 0.5 + 1.0), d0])
+		# TRACE: the second car's state every tick while its queue is watched (printed below
+		# for the first TRACE straight-on queues): what it wants and why, its moment to react,
+		# the gap to the car in front, that car's speed -- what holds a queue back
+		if trace > 0:
+			for o: Array in open:
+				if (o[1] as Array).size() < 2:
+					continue
+				var c1 = T.cars[o[1][0]]
+				var c2 = T.cars[o[1][1]]
+				if not (c1.alive and c2.alive):
+					continue
+				var gap: float = c1.pos.distance_to(c2.pos) - (c1.len + c2.len) * 0.5
+				(o[0]["trace"] as Array).append([snappedf(t - float(o[2]), 0.01), snappedf(c1.v, 0.01), snappedf(c2.v, 0.01),
+					snappedf(c2.want, 0.01), c2.why, snappedf(c2.react_t, 0.01), snappedf(c2.react, 0.01),
+					snappedf(c2.lead_v, 0.01), snappedf(gap, 0.01), snappedf(c2.acc, 0.01)])
 		# each car's front over the line: every tick
 		for o: Array in open:
 			for k in range((o[1] as Array).size()):
 				var c = T.cars[o[1][k]]
+				# its rear wheels over the line (a metre in from its back), as Greenshields timed
+				# them: by the front, the first car crossed after rolling a metre and the second's
+				# gap read about 0.2 s long
 				if c.alive and float(o[0]["cross"][k]) < 0.0 \
-						and (c.pos + Vector2(sin(c.yaw), cos(c.yaw)) * c.len * 0.5 - (o[3] as Vector2)).dot(o[4]) > 0.0:
+						and (c.pos - Vector2(sin(c.yaw), cos(c.yaw)) * (c.len * 0.5 - 1.0) - (o[3] as Vector2)).dot(o[4]) > 0.0:
 					o[0]["cross"][k] = snappedf(t - float(o[2]), 0.01)
-		# record 10 times a second
-		if int(t * 60.0) % 6 == 0:
+		# the front car's turn so far (a queue turning off is slower, and not what real counts
+		# of a lane's flow measure)
+		for o: Array in open:
+			var c0 = T.cars[o[1][0]]
+			if c0.alive:
+				o[0]["turned"] = maxf(float(o[0]["turned"]), absf(angle_difference(float(o[0]["yaw0"]), c0.yaw)))
+			# every car's turn too: a gap is judged only between two cars going straight on (a
+			# second car turning off gave way, as it should, and read as a slow queue)
+			for k in range((o[1] as Array).size()):
+				var ck = T.cars[o[1][k]]
+				if ck.alive:
+					o[0]["turns"][k] = maxf(float(o[0]["turns"][k]), absf(angle_difference(float(o[0]["yaws"][k]), ck.yaw)))
+		# record 10 times a second, by ticks (by int(t * 60) % 6, rounding at 2x skipped most
+		# samples: queues read as never moving, and the held-up filter judged the wrong ones)
+		rec_tick += 1
+		if rec_tick % maxi(1, roundi(0.1 / dt)) == 0:
 			for o: Array in open:
 				var run: Dictionary = o[0]
 				for k in range((o[1] as Array).size()):
@@ -120,6 +160,9 @@ func _run() -> void:
 		var held := sp0.size() > 60 and float(sp0[60]) < 5.0
 		if held:
 			print("  (the front car held up past the line: printed, not judged)")
+		elif float(run.get("turned", 0.0)) > 0.5:
+			held = true
+			print("  (the front car turned off: printed, not judged -- the real counts are a lane going straight on)")
 		for qi in range((run["cars"] as Array).size()):
 			var c: Array = run["cars"][qi]
 			var sp: Array = c[2]
@@ -139,10 +182,18 @@ func _run() -> void:
 				firsts.append(cross)
 			if qi > 0 and moved >= 0.0 and last_moved >= 0.0:
 				start_gaps.append(moved - last_moved)
-			if qi > 0 and cross >= 0.0 and last_cross >= 0.0:
+			var straight: bool = float(run["turns"][qi]) <= 0.5 and float(run["turns"][qi - 1]) <= 0.5 if qi > 0 else true
+			if qi > 0 and cross >= 0.0 and last_cross >= 0.0 and straight:
 				line_gaps.append((cross - last_cross) / REAL_LINE[mini(qi, REAL_LINE.size() - 1)])
 			last_moved = moved
 			last_cross = cross
+		if trace > 0 and not held and traced < trace and (run["trace"] as Array).size() > 0:
+			traced += 1
+			print("  TRACE car 2 behind car 1 (s since green, car 1 v, car 2 v, want, why, react_t, react, lead_v, gap m, acc):")
+			var tr: Array = run["trace"]
+			var every := maxi(1, roundi(0.2 / dt))
+			for k in range(0, mini(tr.size(), roundi(8.0 / dt)), every):
+				print("    %s" % str(tr[k]))
 	if OS.get_environment("OUT") != "":
 		var f := FileAccess.open(OS.get_environment("OUT") + "/queue_start.json", FileAccess.WRITE)
 		f.store_string(JSON.stringify({"city": g._city_name, "runs": runs}))
@@ -150,7 +201,7 @@ func _run() -> void:
 	var verdict := []
 	verdict.append(_band("start gaps", start_gaps, START_GAP, START_MED))
 	verdict.append(_band("line gaps / real ones", line_gaps, LINE_RATIO, LINE_MED, ""))
-	verdict.append(_band("first car over the line", firsts, FIRST, FIRST))
+	verdict.append(_band("first car over the line", firsts, FIRST, [2.5, 5.0]))
 	var ok := not verdict.has(false) and not start_gaps.is_empty() and not line_gaps.is_empty()
 	print("QUEUE CHECK: %s" % ("PASS" if ok else ("FAIL" if not start_gaps.is_empty() else "NO QUEUES (watch longer, or another junction)")))
 	quit(0)
