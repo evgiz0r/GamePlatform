@@ -29,13 +29,19 @@ into the turns.
 
 > First-person / bonnet camera.
 
-**On foot.** Stop, and the "walk" button (or F) lets the driver out of the door to walk the
-same city: arrows or the stick to walk and turn, space to run, over the shoulder or (the
-"seat" button) from the eyes. The car idles where it was left and traffic goes round it;
-traffic stops for you on the road; walls, trees and passing cars push you aside; the
-minimap marks the car. Back at it, "drive" gets you in.
+**On foot.** The "walk" button (or F) lets the driver out of the door to walk the same city:
+arrows or the stick to walk (a brisk 2.1 m/s) and turn, space to run (6 m/s), over the
+shoulder or (the "seat" button) from the eyes. Out of a moving car you jump: you tumble
+out of the door with the car's speed, roll and get up, and the empty car rolls on by
+itself, slowing, until it stops or hits something. Traffic goes round the car; traffic
+stops for you on the road; walls, fences, trees and passing cars push you aside; the
+minimap marks the car. Back at it, "drive" gets you in (still rolling, it rolls on with
+you).
 
 > Walk mode: get out of the car and walk the same city.
+
+> I want to walk a bit faster when I'm out of the car, now it's too slow. I want to be able
+> to start walking also when I'm driving. The car will just continue and I'll pop off.
 
 ## What do you do?
 
@@ -175,11 +181,13 @@ the English name under it when OSM has one.
 
 ## What is trying to stop you?
 
-Nothing yet, on purpose: this is a driving sim first. Buildings, trees, parked cars and
-traffic-light poles are solid. Crashes are a bit more game than real: a thud and a shake,
-the car bounces back off what it hit and spins if it was hit off-centre, and a hard one
-throws it into a little hop. Too fast over a crest or off a ramp and it leaves the ground
-for a moment and lands with a bump.
+Nothing yet, on purpose: this is a driving sim first. Buildings, trees, parked cars,
+traffic-light poles, fences, railings, hedges, the low garden walls, bus shelters and the
+columns under raised buildings and canopies are solid. Crashes are like real ones: the car
+stops at what it hit with a jolt of the camera and a bang, rebounds only a little (it
+crumples), and turns a little if it was hit off-centre -- no hop, no spinning like a top.
+(They were made bouncier and game-like once, and asked back.) Too fast over a crest or off
+a ramp and it leaves the ground for a moment and lands with a bump.
 
 **Ground too steep to climb** -- steeper than 62%, about 32 degrees -- is as solid as a
 wall, on foot too, and assist brakes for it; a road is always drivable however steep. No
@@ -188,6 +196,9 @@ town's mountains. Ground that steep is drawn as bare rock, in bands.
 
 > I want the car to be able to "jump" a bit if I drive too fast on slopes. Maybe making
 > the crashes more bouncy as well... slightly less realistic, more "game"-like.
+
+> I want the interactions back a bit more realistic (less bouncy, more like real crashes).
+> There are also a lot of things without collision, like fences and some parts of buildings.
 
 **Traffic.** About twenty cars drive the real streets round you, in their lane, mostly on
 the main roads: they slow for corners, keep their distance (brake lights on), stop at red
@@ -227,6 +238,18 @@ where they waded into the slabs.
 
 > People walk a bit inside the ground.
 
+People appear, leave and change places only where nobody would see it: beyond the distance
+people are drawn at, or behind you. (They popped up at the kerb in front of the car, and
+the ones at cafe tables jumped from table to table as you drove.) They turn over a moment
+at the end of a block and round a bend, step up and down kerbs, and step aside from a car
+on the pavement rather than leap. At a crossing by a junction with lights they go with
+the lights: only while the road's cars have red, and only with time enough left to get
+across, so cars through the junction no longer stop in the middle of it for them.
+
+> The movement of the people: they bounce, jump, teleport and so on. They also don't cross
+> the roads according to the lights, so in many crossroads we have to stop for them in the
+> middle.
+
 The people are grown-ups, not the kit's chunky cartoons: smaller heads, hands and feet,
 longer legs and a longer middle (scaled on their skeletons after every animation frame),
 at the height asked for. Faces are a deeper shade of the skin, not big white eyes. Skin
@@ -243,9 +266,24 @@ That goes for you on foot too.
 **Lights and signs mean something.** Autodrive stops at red lights and stop signs and
 keeps behind the car in front. Drive through a red light, or a stop sign without
 stopping, and it says so. The stop and give-way signs are OSM's (Givatayim has a few
-dozen mapped, Bedford more); the lights run their own cycle, east-west streets then
-north-south. OSM often maps a light on one approach of a junction only; the game gives
-that junction lights on every way in.
+dozen mapped, Bedford more); the lights run their own cycle: at each junction its main
+road's ways in, then the rest, with 2.5 s of red all round between (it was the whole
+city's east-west streets against its north-south ones, and at a skewed junction both
+streets had green at once). OSM often maps a light on one approach of a junction only;
+the game gives that junction lights on every way in. The lamps are real red, amber and
+green, red at the top, whatever the palette, and dark when out. Cars stop with their front
+at the stop line -- a bus stopped by its middle stood across the junction -- and read the
+light for the way they come in, not the way they are turning.
+
+At a zebra by a junction with lights there are walk lights on both kerbs, the red man over
+the green man, in step: green while the road being crossed is held at red. People there
+go on the green man only, with time enough left to get over.
+
+> The whole logic of lights and how cars and autodrive go, something is fishy. Let's make
+> the colours clear: red on the top (no go), yellow, green. Maybe add those for people too,
+> matching the lights -- that's how it usually works here, so they don't just cross randomly.
+
+> Buses get stuck in the middle of roads when it's red for them.
 
 **Signs and paint.** A stop line across the lane at every light and stop sign, STOP
 painted before a stop sign (עצור in Givatayim), SLOW (האט) before a crossing near a
@@ -258,8 +296,10 @@ Every street has the signs a real one has: a green name plate at the corners (ר
 Hebrew name over the English in Givatayim, the name alone in Bedford), a blue roundabout
 sign on every way into one, a blue crossing sign on both sides of each zebra (and in
 Givatayim on the traffic-light poles too), a P at car parks, no entry at the wrong end of
-a one-way street and the blue one-way arrow at its corner, "turn this way" where only one
-way out is allowed, and "keep right" where a street splits round an island. Givatayim's
+a one-way street (where its traffic comes out: it stood at the end you may drive in by,
+and autodrive drove in under it) and the blue one-way arrow at its corner, "turn this way"
+where only one way out is allowed (not at one point of a junction drawn as several), and
+"keep right" where a street splits round an island. Givatayim's
 stop sign is the Israeli one, the red octagon with the white hand; Bedford's says STOP.
 Painted arrows in the lanes before the junctions of the main roads show the ways out.
 
@@ -422,6 +462,19 @@ a little further from the centre line; parked cars stand mostly up on the paveme
 roundabout a car decides at each exit and is ever less likely to stay on, so nobody
 circles and the cars waiting to come on are let in.
 
+**Main streets have a divider.** A wide two-way main road in the Israeli towns (OSM maps
+many as one road) has a raised island down the middle, kerbed and paved, solid to the car,
+stopping short of each junction and open at each zebra -- they are not open down the
+middle there.
+
+> Usually in Israel main streets have a clear border between the sides, it's not open.
+
+**Autodrive** moves into the left lane (or toward the centre line) over the last 45 m
+before a left turn, keeps behind a bus by its back, not a car's length behind its middle,
+and passes a bus standing at its stop in the next lane when that lane is clear.
+
+> We turn left from the left lane. / Keeps bumping into stopping buses.
+
 **Autodrive** keeps to the right-hand lane of a one-way road of several (it drove down the
 middle, astride two, and in between the cars in them), counts a car going its way as in
 its lane wherever their bodies would touch, stops for anyone standing on its lane, keeps out of alleys and car-park lanes
@@ -500,7 +553,17 @@ doesn't count -- one half-second stall made a smooth 50 frames a second read as 
 waits longer before the next try (30 s, then 1, 2, 4 minutes), so it never flickers
 between two.
 
-> Sometimes quality drops, even on my PC. It never goes up again, and textures are gone. The frame rate, the slowest frame of the last few seconds and the level are shown
+> Sometimes quality drops, even on my PC. It never goes up again, and textures are gone.
+
+**The drive map.** A second tap on the fps text (or P twice) shows the last two minutes as a
+map: your track coloured by speed, autodrive's lane ahead and what is holding it back, the
+cars round you, a cross where something was hit and a dot where it stood still. "save log"
+downloads those two minutes as a file to send, to see exactly what the car and the cars
+round it did.
+
+> Maybe we can log the path of our car (and maybe some adjacent cars) on a 2D map to
+> reproduce why they were driving badly, and view the path the car took, to fix its
+> accuracy. The frame rate, the slowest frame of the last few seconds and the level are shown
 small under the speed. Parked cars and
 traffic are one mesh per car shape (a batch of them costs one draw, not six); every kind
 of shader is drawn once while the city loads, so none of them stalls the first time it

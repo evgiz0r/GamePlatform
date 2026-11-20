@@ -414,12 +414,17 @@ func _light_ahead(c: Car) -> float:
 		if not g._sig_set.has(n) or c.cum[j] - counted < LIGHT_SKIP:
 			continue
 		counted = c.cum[j]
-		var dir := c.pts[j] - c.pts[maxi(j - 1, 0)]
-		if dir.length_squared() < 0.01 and j >= 2:
-			dir = c.pts[j] - c.pts[j - 2]
+		# the way it ARRIVES (a few metres back): the node sits mid-curve on a turn, and the
+		# direction there read the cross street's light as often as its own
+		var k := j - 1
+		while k > 0 and c.cum[j] - c.cum[k] < 6.0:
+			k -= 1
+		var dir := c.pts[j] - c.pts[maxi(k, 0)]
 		var state: String = g._light_at(n, dir)
-		var stop := dist - (_node_r[n] + 2.0)
-		if state == "g" or stop < -0.5:
+		# the front at the stop line (1.2 m out from the junction's edge), not the middle: a
+		# bus's middle there left its front 4 m into the junction, across the other road
+		var stop := dist - (_node_r[n] + 2.2 + c.len * 0.5)
+		if state == "g" or stop < -1.5:   # (its front over the line: committed, through)
 			return INF
 		if state == "y" and c.v * c.v > 2.0 * BRAKE * maxf(stop, 0.1):
 			return INF   # too late to stop on amber: through
@@ -441,7 +446,7 @@ func _junction_ahead(c: Car, i: int, dt: float) -> float:
 		var n := c.node[j]
 		if n < 0 or _ways_out(n) < 3:
 			continue
-		var edge := dist - (_node_r[n] + 2.0)
+		var edge := dist - (_node_r[n] + 1.0 + c.len * 0.5)   # (its front at the junction's edge)
 		if edge < -1.0:
 			break   # in it already: carry on through
 		var mine := _arrival(c, j, n)
@@ -838,40 +843,56 @@ func _bus_stop(c: Car, dt: float) -> float:
 	return INF
 
 ## the same for any lane (the player's autodrive): [gap centre to centre, speed of the car
-## there along the lane], or [INF, 0]
+## there along the lane, half its length], or [INF, 0, 0]. A car is found by points along its
+## body (five along a bus), not only its middle: a bus pulled in at its stop, or slanting out
+## of it, stuck its back corner into the lane while its middle was clear of it -- and the
+## half length lets autodrive stop short of a bus's back, not a car's length behind its middle.
 func lead_on(path: PackedVector2Array, from: Vector2, look: float, ignore_crossing: bool) -> Array:
 	var best := INF
 	var bv := 0.0
+	var bhalf := 0.0
+	var who := -1
 	if path.size() < 2:
-		return [best, bv]
+		return [best, bv, bhalf, who]
 	var start := Geometry2D.get_closest_point_to_segment(from, path[0], path[1])
 	for c: Car in cars:
-		if not c.alive or c.pos.distance_squared_to(from) > (look + 6.0) * (look + 6.0):
+		if not c.alive or c.pos.distance_squared_to(from) > (look + c.len * 0.5 + 6.0) * (look + c.len * 0.5 + 6.0):
 			continue
-		var base := -path[0].distance_to(start)
-		for j in range(path.size() - 1):
-			if base > look:
-				break
-			var a := path[j]
-			var b := path[j + 1]
-			var cp := Geometry2D.get_closest_point_to_segment(c.pos, a, b)
-			var dir := (b - a).normalized()
-			var cdir := Vector2(sin(c.yaw), cos(c.yaw))
-			var same := dir.dot(cdir)
-			# one going my way is in it wherever the bodies would touch: my half width, its,
-			# and a hand's breadth (by its middle alone, at 1.5 m, one in the next lane on a
-			# narrow road was not, and autodrive ran in between two of them)
-			var wide := LANE_W
-			if same > 0.6:
-				wide = maxf(LANE_W, 0.9 + (float(BODY[c.kind][1]) if BODY.has(c.kind) else 0.95) + 0.25)
-			if cp.distance_to(c.pos) < wide:
-				var along := base + a.distance_to(cp)
-				if along > 0.5 and along < best and not (ignore_crossing and same < 0.6):
-					best = along
-					bv = c.v * maxf(same, 0.0)
-				break
-			base += a.distance_to(b)
-	return [best, bv]
+		var cdir := Vector2(sin(c.yaw), cos(c.yaw))
+		var offs: Array = BODY[c.kind][0] if BODY.has(c.kind) else [-c.len * 0.33, 0.0, c.len * 0.33]
+		var rad: float = float(BODY[c.kind][1]) if BODY.has(c.kind) else 0.95
+		var found := INF
+		var same_at := 0.0
+		for off: float in offs:
+			var q := c.pos + cdir * off
+			var base := -path[0].distance_to(start)
+			for j in range(path.size() - 1):
+				if base > look:
+					break
+				var a := path[j]
+				var b := path[j + 1]
+				var cp := Geometry2D.get_closest_point_to_segment(q, a, b)
+				var dir := (b - a).normalized()
+				var same := dir.dot(cdir)
+				# one going my way is in it wherever the bodies would touch: my half width,
+				# its, and a hand's breadth (by its middle alone, at 1.5 m, one in the next
+				# lane on a narrow road was not, and autodrive ran in between two of them)
+				var wide := LANE_W
+				if same > 0.6:
+					wide = maxf(LANE_W, 0.9 + rad + 0.25)
+				if cp.distance_to(q) < wide:
+					var along := base + a.distance_to(cp) - off * same   # (as if from its middle)
+					if along > 0.5 and along < found and not (ignore_crossing and same < 0.6):
+						found = along
+						same_at = same
+					break
+				base += a.distance_to(b)
+		if found < best:
+			best = found
+			bv = c.v * maxf(same_at, 0.0)
+			bhalf = c.len * 0.5
+			who = cars.find(c)
+	return [best, bv, bhalf, who]
 
 ## ---- the path -----------------------------------------------------------------------------
 

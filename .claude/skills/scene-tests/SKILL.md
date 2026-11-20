@@ -86,6 +86,18 @@ A game's `tests/run.sh <test> [level]` wraps that line (see an existing one).
   and paste them into one sheet. Differences that are invisible flipping between files are
   obvious next to each other.
 
+## When the user saw it and you cannot: a recorder
+
+A report like "it drove into the bus" names a moment you will not hit in a test run. Give
+the game a flight recorder: a ring buffer of the last minute or two at ~10 Hz (the player's
+pose and controls, what the AI planned and *why it chose its speed*, the actors nearby,
+events), a debug page that draws it as a map, and a button that saves it --
+`JavaScriptBridge.download_buffer(text.to_utf8_buffer(), name, "application/json")` in a
+browser, a file under `user://` elsewhere. Ask the user for the file, draw it with a small
+script (Python and Pillow are enough: the level's own data gives the map), and stage that
+spot in a scene test. Record the reason for each decision, not just the outcome: "held by:
+car" against "held by: zebra" is usually the whole diagnosis.
+
 ## Gotchas (each cost a run)
 
 - **Don't annotate with a `class_name` type that uses autoloads** (`var a: Actor3D`) in a
@@ -116,6 +128,13 @@ A game's `tests/run.sh <test> [level]` wraps that line (see an existing one).
   says which line; a broken script makes a scene test fail in a confusing way minutes in.
 
 ## On a slow cloud container
+
+**Tests that measure behaviour should not pay for looks.** The software renderer is bound by
+pixels and per-pixel shader work: when a game gained photo textures and per-pixel traced
+windows, a frame went to ~0.8 s and every simulation test ran out of time. Have such tests
+drop the game to its lowest quality level and use a smaller window (`--resolution 960x540`)
+unless asked otherwise (an env var like `FULL=1`); keep full quality for the tests whose
+point is a picture.
 
 A city that builds in 5 s on a laptop can take 15 there, and a minute of game time five of
 wall time. Run tests with the shell's background mode and a long timeout, chain several

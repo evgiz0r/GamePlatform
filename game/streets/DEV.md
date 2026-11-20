@@ -16,6 +16,7 @@ merge, re-check (`tools/check_script.sh`, a playtest, the tests below), never fo
 | `streets.gd` | the game: loading and building the city, the car, autodrive, people, HUD, camera, quality, profiler (~11.5k lines) |
 | `traffic.gd` | the AI traffic: spawning, paths, lanes, lights and signs, following, standoffs, drawing (multimeshes per car shape) |
 | `furniture.gd` | street furniture built after the places: power lines, lamps and bus-stop kits, flags, ads, fences and hedges, bike racks and scooters |
+| `drivelog.gd` | the drive recorder (see below) |
 | `cities/*.json` | baked towns (`tools/osm_city.py`) and the made-up test town (`tools/fake_city.py`) |
 | `details.gd`, `cities/details/<city>.json` | what a filmed walk showed and OSM lacks, laid over the baked city as it loads (road edits, unmarked zebras, areas, walls, fences, hedges, bins, railings) and the walks themselves; the format is at the top of `details.gd` |
 | `textures/` | CC0 photo textures (Poly Haven) and the scripts that made the sky and the leaf atlas; credited in `textures/CREDITS.md` |
@@ -83,6 +84,19 @@ good is 30-70 m past the town's edge, stopped by "steep ground").
 
 Before anything: `tools/check_script.sh res://game/streets/streets.gd
 res://game/streets/traffic.gd res://game/streets/furniture.gd` (seconds).
+
+## Seeing what the car did: the drive recorder
+
+`drivelog.gd` keeps the last two minutes, ten times a second: the car (where, heading,
+speed, steering, gear), autodrive's lane ahead and what held its speed down (`_ap_why`:
+limit, curve, light, sign, zebra, people, car, blocked, choice), the car ahead, every
+traffic car within 50 m and what holds it, and events (hits, rescues, junction choices,
+quality steps, buses passed). The perf view's second page (P twice, or the fps text tapped
+twice) draws it as a map; "save log" there downloads it (a browser) or writes it under
+`user://drive_logs/`. Ask the user for that file when they report bad driving, and draw it:
+`python3 game/streets/tests/drive_log_map.py file.json` -- the streets, the track coloured
+by speed, the plan every 2 s, the other cars, the events, and a strip of speed against time
+coloured by what held it. Then stage that spot in a scene test.
 
 ## Numbers to compare against (November 2026, cloud container, software renderer)
 

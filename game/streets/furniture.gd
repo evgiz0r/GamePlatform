@@ -860,6 +860,8 @@ func _fence_line(panel, posts, a: Vector2, e: Vector2, H: float, col: Color, ste
 		var up := Vector3.UP * H
 		var n := (B - A).cross(Vector3.UP).normalized()
 		var u2 := Vector2(H, 0)
+		if g._mine(p0):   # (each square along the fence works it out: one records it)
+			g.add_wall(p0, p1, 0.06)
 		panel.tri(A, B, B + up, n, col, Vector2(run, 0), Vector2(run + L, 0), Vector2(run + L, H), u2)
 		panel.tri(A, B + up, A + up, n, col, Vector2(run, 0), Vector2(run + L, H), Vector2(run, H), u2)
 		if i % post_every == 0:   # a post: four sides, no ends (nobody sees its top)
@@ -885,6 +887,8 @@ func _hedge_line(buf, a: Vector2, e: Vector2) -> float:
 		var p1: Vector2 = pc[1]
 		var d := (p1 - p0).normalized()
 		var s := Vector2(-d.y, d.x)
+		if g._mine(p0):
+			g.add_wall(p0, p1, 0.4)
 		var h0 := 0.9 + _rnd(Vector2i((p0 * 3.0).round())) * 0.35
 		var h1 := 0.9 + _rnd(Vector2i((p1 * 3.0).round())) * 0.35
 		var y0 := _h(p0)

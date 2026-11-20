@@ -60,6 +60,8 @@ func _run() -> void:
 			if n.get_script() != null and String(n.get_script().resource_path).ends_with("streets.gd"):
 				g = n
 	await create_timer(1.0).timeout
+	if OS.get_environment("FULL") == "":
+		g._set_quality(0)   # (what this measures doesn't depend on it, and it runs ~3x faster)
 	var ri := -1
 	for i in range(g._roads.size()):
 		if String(g._roads[i]["en"]) == "David Kalai" and g._roads[i]["drive"]:
@@ -72,6 +74,7 @@ func _run() -> void:
 		var T = g._traffic
 		var c = T.cars[0]
 		var start: Vector2 = g._pos
+		var odo0: float = g._odo
 		g._set_auto(true)
 		var t := 0.0
 		var still := 0.0
@@ -89,6 +92,10 @@ func _run() -> void:
 					squeezed = true
 			else:
 				gone = true
+			if OS.get_environment("WHY") != "" and int(t * 60.0) % 60 == 0:
+				var lead: Array = g._traffic.lead_on(g._ap_pts, g._pos, 30.0, g._ap_wait > 3.0)
+				print("    %.0f s: v %.1f, gear %d, backing %.1f, turning %.1f, lead %.1f m, last hit %s, plan %d pts, off route %.1f, car %.1f m away v %.1f wait %.1f" % [
+					t, g._v, g._gear, g._ap_back, g._ap_turn, float(lead[0]), g._last_hit, g._ap_pts.size(), g._ap_off_route(), c.pos.distance_to(g._pos), c.v, c.wait])
 			if absf(g._v) < 0.4:
 				still += 1.0 / 60.0
 				longest = maxf(longest, still)
@@ -97,6 +104,6 @@ func _run() -> void:
 			if not shot and t > 6.0 and OS.get_environment("OUT") != "":
 				shot = true
 				await _snap("standoff_%s" % ("mid" if mid else "lane"))
-		print("%s: drove %.0f m in 30 s, longest standstill %.1f s, closest %.1f m, it edged past: %s, sent away: %s" % [
-			"from the middle" if mid else "in its lane", g._pos.distance_to(start), longest, closest, squeezed, gone])
+		print("%s: drove %.0f m in 30 s (by the odometer), longest standstill %.1f s, closest %.1f m, it edged past: %s, sent away: %s" % [
+			"from the middle" if mid else "in its lane", g._odo - odo0, longest, closest, squeezed, gone])
 	quit(0)

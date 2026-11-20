@@ -20,6 +20,8 @@ func _run() -> void:
 			if n.get_script() != null and String(n.get_script().resource_path).ends_with("streets.gd"):
 				g = n
 	await create_timer(1.0).timeout
+	if OS.get_environment("FULL") == "":
+		g._set_quality(0)   # (what this measures doesn't depend on it, and it runs ~3x faster)
 	print("narrowed %s, cut back %s, left over a road %s" % [g._dressing.get("narrowed"), g._dressing.get("bld_clipped"), g._dressing.get("bld_over_road")])
 	var on_road := 0
 	var close := 0
