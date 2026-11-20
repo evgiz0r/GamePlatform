@@ -107,6 +107,13 @@ A game's `tests/run.sh <test> [level]` wraps that line (see an existing one).
 
 ## On a slow cloud container
 
+**Tests that measure behaviour should not pay for looks.** The software renderer is bound by
+pixels and per-pixel shader work: when a game gained photo textures and per-pixel traced
+windows, a frame went to ~0.8 s and every simulation test ran out of time. Have such tests
+drop the game to its lowest quality level and use a smaller window (`--resolution 960x540`)
+unless asked otherwise (an env var like `FULL=1`); keep full quality for the tests whose
+point is a picture.
+
 A city that builds in 5 s on a laptop can take 15 there, and a minute of game time five of
 wall time. Run tests with the shell's background mode and a long timeout, chain several
 in one script (two Godot runs at once on 4 cores is about the limit), and carry on working.
