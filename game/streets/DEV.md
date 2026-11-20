@@ -1835,7 +1835,13 @@ LEVEL=1 $GODOT --headless --path . -s res://game/streets/tests/<test>.gd`.
   `--fixed-fps 10`, ~4 min): 0 pops, 0-1 turned in view, 0 within 0.6 m of you, deepest into
   a parked car 0.17-0.27 m (a car's end corner; was 0.55 in its middle), 5-7 people met
   within 40 m; `people_clear` 0.0% in a post or wall.
-- **Open**: walk 2's streets are thin (5-7 people within 40 m over its 106 s); people still
+- **Open**: `crash_things` no longer knocks its bin or bends its bollard -- the car stops
+  dead short of them, going back at -1 m/s -- on main as well as here (20 Nov, evening;
+  the building crash still dents and leaves glass): something since this morning, not
+  people in the way (cleared from its path now) and not the parked cars' posts. Walk 1's
+  end (93 s) had a walker 0.37 m off you once. The shop shots (`shop_looks` 6) face down the
+  street, not at a front: the boards and shopkeepers have not been seen in a picture yet.
+  Walk 2's streets are thin (5-7 people within 40 m over its 106 s); people still
   graze a parked car's end corners by ~0.15 m (round posts); the walk's own line runs
   against parked cars at 60-70 s (WALKS.md), where people giving way pass on its far side;
   a dog can be pushed to the far side of a crossing railing (`_companion`'s
