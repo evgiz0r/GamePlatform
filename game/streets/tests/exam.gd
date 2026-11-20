@@ -132,7 +132,7 @@ func _run() -> void:
 	quit(0)
 
 func _drive(secs: float) -> void:
-	var dt := 1.0 / 60.0
+	var dt := Engine.time_scale / Engine.physics_ticks_per_second
 	var t := 0.0
 	var still := 0.0
 	var off := 0.0

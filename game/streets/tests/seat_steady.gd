@@ -42,7 +42,7 @@ func _run() -> void:
 	var next_shot := 10.0
 	while t < secs:
 		await process_frame
-		var dt := 1.0 / 60.0
+		var dt := Engine.time_scale / Engine.physics_ticks_per_second
 		t += dt
 		var cam: Camera3D = g.cam
 		var f := -cam.global_transform.basis.z

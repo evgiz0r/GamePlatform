@@ -37,7 +37,7 @@ func _run() -> void:
 			if c.jwait > 6.0 and c.jwait < 6.0 + 1.0 / 59.0:
 				crept += 1
 			if c.v < 0.3:
-				stall[i] = stall.get(i, 0.0) + 1.0 / 60.0
+				stall[i] = stall.get(i, 0.0) + Engine.time_scale / Engine.physics_ticks_per_second
 				if is_equal_approx(stall[i], 10.0) or (stall[i] > 10.0 and stall[i] < 10.0 + 1.0 / 59.0):
 					stalls += 1
 					print("stall: %s light %.0f blocker %d wait %.0f holding %s" % [c.kind, T._light_ahead(c), c.blocker, c.wait, c.holding])

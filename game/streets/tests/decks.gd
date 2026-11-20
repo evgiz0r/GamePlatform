@@ -155,7 +155,7 @@ func _drive(run: Array) -> void:
 	var shot_at := [3.0, secs * 0.45, secs * 0.8]
 	while t < secs:
 		await physics_frame
-		t += 1.0 / 60.0
+		t += Engine.time_scale / Engine.physics_ticks_per_second
 		dist += (g._pos as Vector2).distance_to(last)
 		last = g._pos
 		if g._air:
@@ -173,7 +173,7 @@ func _drive(run: Array) -> void:
 		if on >= 0:
 			var r: Dictionary = g._roads[on]
 			var key := "%s %s" % [r["deck"], r["en"] if r["en"] != "" else r["name"]]
-			driven[key] = float(driven.get(key, 0.0)) + 1.0 / 60.0
+			driven[key] = float(driven.get(key, 0.0)) + Engine.time_scale / Engine.physics_ticks_per_second
 		if g._touch_t > 0.45 and String(g._last_hit) != was_hit:
 			was_hit = g._last_hit
 			var kind := was_hit.split(" ")[0] + (" " + was_hit.split(" ")[1] if was_hit.begins_with("wall") else "")

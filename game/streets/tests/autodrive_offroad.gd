@@ -64,7 +64,7 @@ func _run() -> void:
 		var plan_ms := Time.get_ticks_msec() - t0
 		while t < 45.0:
 			await physics_frame
-			t += 1.0 / 60.0
+			t += Engine.time_scale / Engine.physics_ticks_per_second
 			var h = g._last_hit
 			if h != "" and h != last_hit and g._crash_cool > 0.35 and String(h).begins_with("building"):
 				hits += 1
