@@ -29,6 +29,17 @@ into the turns.
 
 > First-person / bonnet camera.
 
+**The driver looks around.** Slowing for a junction, a light, a stop or a give-way sign, the
+driver looks left, right and left again (once a junction); into a turn as the wheel goes
+over; at people on the crossing ahead; over the right shoulder reversing. From the seat the
+view turns with the head; from behind, the camera swings a little to where the driver
+looks and the driver's head in the car turns. Autodrive's driver always does it; when you
+drive yourself, the "look" button (or G, for glance) switches it on and off.
+
+> I want the driver to look left and right in the turns, like a real driver with the head.
+> And I want that to be an option for the non-autodrive. For both chase and seat mode there
+> will be some effect of looking. That happens generally on every stop and give way.
+
 **On foot.** The "walk" button (or F) lets the driver out of the door to walk the same city:
 arrows or the stick to walk (a brisk 2.1 m/s) and turn, space to run (6 m/s), over the
 shoulder or (the "seat" button) from the eyes. Out of a moving car you jump: you tumble
@@ -161,7 +172,10 @@ HaGalil down a cutting into the hill and through it in a 440 m tunnel (under HaO
 HaBroshim and the water tower), lit by two rows of lamps, up a cutting on the far side to
 the ring road. Two of the old grid's streets no longer meet the boulevard: HaTamar dips
 under it (a cutting, a short cut-and-cover tunnel, a cutting back up), HaZayit climbs over
-it on embankments and a bridge. Driving, walking and the traffic all keep to their own
+it on embankments and a bridge -- and from HaZayit's flyover two slip roads come down to the
+boulevard and up from it, a half-diamond interchange: the junctions where they meet HaZayit
+are up on its embankments, 7 m over the street, the slip roads merging into and leaving the
+boulevard just short of HaTe'ena. Driving, walking and the traffic all keep to their own
 level: under a bridge you are under it, in the tunnel the hill's houses are not in your
 way, cars overhead do not stop for you.
 
@@ -423,9 +437,12 @@ leaflets that dry yellow at the tips, on a ringed palm trunk.
 
 > Traffic, lights and signs that mean something, engine sound, night.
 
-**Sound.** The engine is made in the game, not recorded: a four-cylinder's firing pulses
-pitched by the revs of a five-speed automatic, a brighter layer with the throttle, and
-the nearest car going by.
+**Sound.** The engine is made, not recorded, pitched by the revs of a five-speed
+automatic, with a brighter layer under the throttle. Over it, what speed sounds like from
+inside a car: the tyres' roar on the asphalt, louder and brighter the faster you go, and
+the wind once you are moving quickly; the nearest car going by as the whoosh of its tyres,
+its pitch falling as it passes; and the city far off, always, soft. (See "Sound you do not
+switch off" below for why it changed.)
 
 **Night.** The "night" button: a dark sky and a dim moon, a share of the windows lit (warm
 in homes, cooler in offices), street lamps on with a pool of light under each, shop
@@ -661,6 +678,15 @@ far ones too, is as long as a low sun makes it. The first switch to the evening 
 moment (its far shadows are drawn then), after that it is instant.
 
 > continue?
+
+> lets improve sound a bit. its just annoying noise i have to turn off now
+
+**Sound you do not switch off.** The engine used to be the only sound: a buzz of sharp
+pulses, almost all of it lower than a laptop's or a phone's speaker can play, so what came
+out was a rough flutter, droning even standing still, with a second buzz beating against it
+whenever a car went by, and a coin's jingle every block. Now the engine is a smooth hum under
+the tyres' roar, nearly silent at idle; speed is the road and the wind; a passing car is a
+whoosh; the coin for a new street is a quiet tick, the indicator a relay's soft click.
 
 > I took a video on my phone, walking in Givatayim.
 

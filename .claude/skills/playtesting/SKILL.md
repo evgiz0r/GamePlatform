@@ -76,6 +76,14 @@ as fast as it can go: event times are game seconds, while anything the game meas
 Check that last one first whenever a bot appears passive — it is the most common cause of
 a confusing report.
 
+## What it sounds like
+
+The headless runs have a silent audio driver, but it still mixes (a little faster than real
+time). Put an `AudioEffectRecord` on the master bus in a SceneTree test, let the game play
+(a bot, an autodrive), `get_recording().save_to_wav(...)`: that is the game's own mix to
+listen to or measure. Run it `--headless` rather than under xvfb, where frames are slow and
+the game barely moves while the audio runs on.
+
 ## Actual screenshots
 
 Text reports are the default because they are cheap and explain causality. When you need to

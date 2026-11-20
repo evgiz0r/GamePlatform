@@ -49,6 +49,14 @@ The ones most often touched, and the functions in them:
   (barred windows, the door in the middle bay), stone courses, plinth and mosaic are
   `WALL_SHADER`'s `ground` / `door` / `stone_k`; worn asphalt is `TONE_SHADER`'s
   `crazing()` and patches. `tests/eye_level.gd` puts a camera where a person stands.
+- **sound** -- `sounds/make_sounds.py` makes the loops (engine, engine_load, road, wind,
+  city; numpy, run it again after changing it, the .wav files are committed and imported
+  looping, QOA); "the sounds of driving" in streets.gd plays them: `_build_engine`,
+  `_engine_tick` (the gearbox, then each layer's pitch and volume a frame; the car going by
+  is the nearest traffic car, its closing speed from its distance a frame ago for the
+  pitch). Levels are relative to `SFX_SCALE`. `tests/sound_drive.gd` records the game's own
+  mix headless. The old engine (pulses below 200 Hz, made at load) measured centroid
+  40-140 Hz, 2-16% above 200 Hz; the new mix 290-550 Hz moving, 45-66% above 200 Hz.
 - **time of day** -- `SKIES` (day, evening: the photo, its sun and colours from `hdr_sky.py`,
   where the sunlight comes from, its warmth and energy), `_sky_now()`; `_next_time()` (the
   button: day, evening, night), `_set_evening()`. `_retint_city` reads `_evening` for the
@@ -205,6 +213,36 @@ What each round found, so far:
   lay across the main road (checked by the garden strip's middle only). 41 walls in
   Givatayim stood on a road (garden walls at bends and across neighbours, OSM fence pieces
   checked by their middle); `tests/walls_on_roads.gd` counts them, now 0.
+- Ashdod's red lights run by traffic were mostly one junction (Sderot Herzl x HaGdud
+  HaIvri, five signalled points 5-15 m apart): its points shared groups but not an id, so
+  a car clearing the junction in the all-red was counted again at the next point; and a
+  car stopped for a zebra a little over its stop line took itself for committed and drove
+  on through the red once the people had crossed. `_sig_knot` gives a junction's points one
+  id; over the line counts as through only when rolling or in the junction.
+  `tests/knot_lights.gd` watches one junction and prints what each car that ran the red
+  saw before (5 of 40 on red, now 1 of 17).
+- Main roads get the longer green (18 s, side streets 13 s, was 14 each): group 1 at every
+  junction is its main road. 20/11 first: with drivers who take a moment to pull away, a
+  side street's queue got two cars through a green, and the test trip waited 97 s at one
+  junction.
+- Traffic drivers have character (`_driver` in traffic.gd: one easy-to-brisk dial with
+  noise -- pull-away, standing gap, headway, reaction, drift in the lane), pull away with
+  the push building up, and their bodies dip, lift and lean (drawn only). Each car's
+  moment to react starts when the car in front is really off (1 m/s): from when it had
+  rolled a few millimetres, a whole queue went within 0.3 s (`tests/queue_start.gd`).
+- At a signalled junction the lights decide: a car gives way only to one already in it,
+  and turning across, to one coming with its green. It gave way by road rank, as at an
+  unsignalled one, to a main-road car about to stop at its own red -- the drive log's
+  "what holds each car" showed it (light, car, junction, light).
+- At crossings without lights, a stream of people kept cars 20 s+; once a car has stood
+  there 6 s the next person lets it go (`_kept_waiting`).
+- Test drives 6 and 7 each found a bump: a car waiting crossways with its nose in the turn
+  (`lead_on` now samples a car's nose and tail), and a 1.5 m road at a junction that turned
+  the "lane's way" backwards (`lane_dir` now over 5 m of the plan). And a wrong 'unstuck'
+  lift after 40 s in a slow queue at a red (`_in_a_queue`).
+- Queues at a green (`tests/queue_start.gd`, KNOT_AT="-800,-288" in Givatayim): all at
+  once at first (a train), then far too slow (third car 9 s); the follow gap now on the
+  slower of the two speeds.
 - The exam's own counts were off twice: harsh braking per frame (30x one stop) and traffic
   reds judged at every signal point of a junction by the heading mid-turn. Check what a
   counter counts before chasing its number.
@@ -395,6 +433,13 @@ before and a tunnel without it is still dropped.
   footprint (`cut_tri`, in `_build_terrain`), and the far-off flat ground plane is put below
   the deepest deck (it showed through the hole). The tunnel's tube casts shadows from both
   faces (its own meshes, not the merged ones) so the sun does not light it inside.
+- **Junctions in the air.** Where only decks meet (the interchange's slip roads joining
+  HaZayit up on its embankment) the junction is drawn by `decks.gd` at its height (no node
+  in `_tile_nodes`, so no signs or lights there). A parapet, its wall and the walkway open
+  wherever another deck's road comes in (`open_at`, drawing and collisions alike), and a
+  ramp's walkway gives way to a street's asphalt where its foot runs into one (the slip road
+  merging into the boulevard). Walls are left out of the collisions in a junction's corner
+  only at street level -- up on the embankment that would leave a gap to drive off.
 - **Water held at a level** (`areas[].y`, the test town's river) lies at that level, and is
   too deep to drive or walk into (`_deep_push`): the banks were gentle enough to drive down
   and along the bed under the water. Lakes and ponds without a level are as before.
