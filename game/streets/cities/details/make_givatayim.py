@@ -37,12 +37,12 @@ r2 = lambda p: [round(p[0], 2), round(p[1], 2)]
 # watching the far half's from the right (cars stop at the zebra, one drives on), over it,
 # the far kerb at 17 s. Its halves are set to 7 m (two lanes each, see "roads" below): the
 # kerbs at -13.8 and 3.1, the median from -6.8 to -3.9; about 2.1-2.3 m/s over each half.
-KERB_N, MEDIAN, KERB_S = P(-14.1, -17.4), P(-5.35, -17.35), tuple(P(3.3, -17.3))
+KERB_N, MEDIAN, KERB_S = P(-14.1, -17.4), P(-5.35, -16.9), tuple(P(3.3, -17.3))   # (in the median's cut, nearer its south-east side: film 9 s)
 lm = [
     # (pass 12, the film a quarter second at a time: it stands 2 m back from the kerb facing
     # across till 2.7 s, a black bollard 2 m ahead at the zebra's north-west edge, then steps up
     # to the kerb beside it)
-    (0.0, tuple(P(-16.0, -17.9))), (1.0, tuple(P(-16.0, -18.5))), (2.7, tuple(P(-16.0, -18.5))),
+    (0.0, tuple(P(-16.4, -18.4))), (1.0, tuple(P(-16.0, -18.5))), (2.7, tuple(P(-16.0, -18.5))),
     (3.7, tuple(P(-14.25, -18.2))), (4.9, tuple(P(-14.25, -18.2))),   # at the north kerb, waiting
                                                                      # (the film steps off at 5.3 s)
     (8.7, tuple(MEDIAN)), (13.3, tuple(MEDIAN)),                            # over the near half; waiting
@@ -284,7 +284,8 @@ d = {
             # the near half's (film 1-4.5 s): a black hatchback by in the lane by the median
             # (about 2 s), a white SUV close past the kerb (3-4 s); then one that stops
             "cars": [[0.0, P(-10.2, 3.6), NW, {"lane": "median", "kind": "hatch", "paint": "black"}],
-                     [0.0, P(-10.2, 22), NW, {"lane": "kerb", "through": True, "kind": "suv", "paint": "white"}],
+                     # (sent from past a junction 32 m up, where a car sent further off was held 2 s)
+                     [0.5, P(-10.2, 10.0), NW, {"lane": "kerb", "through": True, "kind": "suv", "paint": "white"}],
                      [1.5, P(-10.2, 40), NW],
                      # the far half's: a white hatchback by in the lane by the median as the walk
                      # reaches it (film 8.5-9 s), a white sedan stopped in the kerb lane (9.5-12 s),
