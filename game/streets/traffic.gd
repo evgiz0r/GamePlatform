@@ -1340,8 +1340,17 @@ func _turn_into(c: Car, ri: int, from: int, dir: int, lane: float, lim: float) -
 	if g._sig_set.has(node):
 		# at a light the turn starts at the stop line, not behind it: a car waiting for the
 		# green stands straight in its lane (at Begin x Kaplan the curve began 20 m out and
-		# cars waiting to turn left stood angled across the next lane, overlapping its cars)
-		back = minf(back, maxf(g._light_line(node, in_dir) - 0.5, 3.0))
+		# cars waiting to turn left stood angled across the next lane, overlapping its cars).
+		# Only coming in from outside the junction: its inner points' "lines" are a few
+		# metres off, and turns there tightened into the next point's red.
+		var fit := -2.0
+		var way_in: Array = []
+		for way: Array in g._sig_line.get(node, []):
+			if (way[0] as Vector2).dot(in_dir) > fit:
+				fit = (way[0] as Vector2).dot(in_dir)
+				way_in = way
+		if fit > 0.7 and not bool(way_in[3]):
+			back = minf(back, maxf(float(way_in[1]) - 0.5, 3.0))
 	var ahead := minf(_node_r[node] + 1.0, cn.distance_to(p[from]) * 0.8)
 	var E := cn - in_dir * back + rin * lane_in
 	var X := cn + out_dir * ahead + rout * lane

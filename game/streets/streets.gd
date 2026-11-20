@@ -4743,6 +4743,7 @@ func _flat_rect(buf: Buf, c: Vector2, d: Vector2, side: Vector2, along: float, a
 const MAIN_ROADS := {"motorway": true, "trunk": true, "primary": true, "secondary": true, "tertiary": true}
 const BUS_WORD_STEP := 45.0          ## a bus lane's word, painted down it this often
 var _bus_words := 0                  ## how many were painted (for the tests)
+var _bus_word_at: Array = []         ## where the first few are, and the way each reads (for the tests)
 
 func _markings(buf: Buf, r: Dictionary, yellow: Buf) -> void:
 	if not r["drive"] or r["k"] == "service":
@@ -4835,6 +4836,8 @@ func _markings(buf: Buf, r: Dictionary, yellow: Buf) -> void:
 				_road_word("אוטובוס" if String(_place.get("look", "")) == "med" else "BUS",
 					a2 + Vector2(-d2.y, d2.x) * float(bw[0]), d2 * float(bw[1]))
 				_bus_words += 1
+				if _bus_word_at.size() < 8:
+					_bus_word_at.append([a2 + Vector2(-d2.y, d2.x) * float(bw[0]), d2 * float(bw[1])])
 			s2 += BUS_WORD_STEP
 
 func _along(pts: PackedVector2Array, cum: PackedFloat32Array, s: float) -> Vector2:

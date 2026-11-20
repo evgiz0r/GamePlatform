@@ -75,6 +75,12 @@ func _run() -> void:
 		g._car.visible = false
 		await _view("kaplan_bus_lane", Vector2(-290, 160), Vector2(-420, 154), 1.6, -4.0)
 		await _view("kaplan_bus_lane_above", Vector2(-300, 175), Vector2(-380, 152), 14.0, -28.0)
+		for wa: Array in g._bus_word_at:   # a painted word, from behind it as a driver reads it
+			var wp: Vector2 = wa[0]
+			if wp.distance_to(Vector2(-400, 152)) < 200.0:
+				var wd: Vector2 = wa[1]
+				await _view("bus_word", wp - wd * 14.0, wp, 4.0, -14.0)
+				break
 		g._car.visible = true
 		if OS.get_environment("SECS") == "":
 			quit()
