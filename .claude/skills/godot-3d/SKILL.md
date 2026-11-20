@@ -262,6 +262,14 @@ opens a window briefly.
   outline) and fix its winding to match the original's if anything relies on it.
 - Polygon-to-segment distance: `Geometry2D.get_closest_points_between_segments()` over the
   polygon's edges, plus a point-in-polygon test for a segment wholly inside.
+- **A shader error shows only when something draws with it**, as a `SHADER ERROR` in the
+  log, and the material then draws nothing: the script parse check, a headless playtest and
+  the bots all pass. Render a screenshot after any shader edit and grep its log. Godot also
+  refuses `return` inside `fragment()`: write the cases as `if / else`.
+- **Comparing with photos of the real place** finds what a screenshot from the game's own
+  camera never shows: stand a camera where a person stands (1.5 m up, on the pavement) and
+  look along, across and down, beside frames of a walk there. That is how a row of black
+  boxes along every street (painted hollow ground floors on solid buildings) turned up.
 - **Writing `ALPHA` anywhere in a shader makes the material transparent** (sorted, no depth
   prepass, other objects show through it oddly), even in a branch that never runs. For an
   opaque and a see-through variant of one shader, prefix the code with `#define CURTAIN\n`

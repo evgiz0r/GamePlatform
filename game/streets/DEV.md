@@ -39,6 +39,13 @@ The ones most often touched, and the functions in them:
   to the square its spot is in (`_mine`, `_ring_mine`). A builder that is a coroutine must
   be awaited everywhere, or what it builds after a pause lands in the wrong square.
   `STREETS_BUILD_ALL=1` builds every square before the car is shown (the tests do).
+- **looks at street level** -- the pavement is drawn by `KERB_SHADER` in the kerb's own
+  mesh (vertex COLOR.b 1: a pavement; COLOR.r the street's paving, `_set_pave_code`;
+  COLOR.g its leaves, `_leafy`; UV metres along and out from the kerb), so it costs no draw
+  of its own; the kerbs are built after the trees for the leaves. A block's ground floor
+  (barred windows, the door in the middle bay), stone courses, plinth and mosaic are
+  `WALL_SHADER`'s `ground` / `door` / `stone_k`; worn asphalt is `TONE_SHADER`'s
+  `crazing()` and patches. `tests/eye_level.gd` puts a camera where a person stands.
 - **the builders** -- kerbs and pavements `_build_kerbs`, `_street_runs`,
   `_kerb_run_piece`, corners `_kerb_corners` (checked along their length), the asphalt grid
   `_asph_hash` / `_asphalt_other`; parked cars `_build_parked`, car parks `_build_lots`; the

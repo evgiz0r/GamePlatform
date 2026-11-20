@@ -512,6 +512,24 @@ roofs of tar and gravel with dried-puddle stains.
 
 > Let's start with the textures.
 
+**As it looks on foot.** Set beside frames of a phone video of a walk down these streets,
+the city now has what the walk had underfoot and at eye height:
+- Pavements of concrete pavers: herringbone at 45 degrees, rows of bricks, or square slabs,
+  each street its own, in mixed reds and browns, greys, sand, or all of them mixed, with a
+  row on end along the kerb. Leaves on them under the trees (and the odd bougainvillea
+  petal), grime in wide soft stains. Bedford keeps its poured concrete slabs.
+- Blocks' ground floors as they are: flats behind white security bars, the way in a glazed
+  door in the middle bay, lit at night (they used to be dark hollows, a row of black boxes
+  along every street). A stone plinth to knee height on most blocks, Jerusalem stone in
+  courses on the stone-clad ones, small square mosaic tiles on some of the white ones.
+- The lobby under a block on columns light, its glass door lit, the ceiling over the
+  parking pale (it read as a black box from the pavement).
+- Tired roads: patches of newer, darker asphalt with their sealed seams; stretches crazed
+  into small plates; the mix's light stones showing close up; the paint, zebras too, worn
+  half away and cracked with the road. Manhole covers grey cast iron, not black.
+
+> ok lets start as you say
+
 ## Smooth on a laptop and a phone
 
 > It's pretty choppy and laggy now. I'm trying on a laptop browser.
