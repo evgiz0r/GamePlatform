@@ -353,6 +353,16 @@ the parked cars, which stand a third in the road).
   measure "metres ahead" from the car's projection onto the plan, not from the plan's first
   point -- which is the start of the current stretch and can be 40 m behind. Both together
   had autodrive "pass" a van with a bend that landed behind it, then stand there.
+- **One rule for "in my way", or the strict one stands while the others drive past.**
+  Traffic counted a car in its way by its middle, the player's AI by its body plus a
+  margin: a delivery van standing at the kerb, its middle 2.5 m off the lane, was passed by
+  every traffic car while the AI stood behind it for the whole delivery, the street empty
+  ahead -- which reads as broken. Wherever the strict test says "blocked", give it a way
+  past that clears exactly what that test reads (here: over by the van's body points plus
+  the test's own margin, if the car still fits on the asphalt and nothing solid is there),
+  and in a one-way street of one lane, where there is no lane to go round in, that is the
+  only way past. Log every long stop with what holds it and how far the lane is free: one
+  drive found what a user could only describe.
 
 - **Off the road** (handed over in a yard, knocked onto a lawn), heading straight for the
   nearest road goes through the wall in between, backs off and does it again. Search

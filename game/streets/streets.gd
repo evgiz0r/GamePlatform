@@ -19330,10 +19330,15 @@ var _ap_passed := -1                 ## the bus last passed (not again)
 
 func _ap_pass_bus(lead: Array) -> bool:
 	var bi: int = lead[3]
-	if bi < 0 or bi == _ap_passed:
+	if bi < 0:
 		return false
 	var bus = _traffic.cars[bi]
 	var dbl: bool = _traffic._parked_double(bus)
+	if bi == _ap_passed:
+		# bent round it, and still held by it a couple of seconds on: it stood further out than
+		# when the plan was bent (a van pulls in after it stops) -- over a little more, beside
+		# it (Katznelson: 32 s behind a van "gone round", its middle 2 m off the bent plan)
+		return dbl and _ap_wait > 2.0 and _ap_squeeze_by(bi, float(lead[0]))
 	if (not dbl and (bus.kind != "bus" or bus.v > 0.6 or bus.dwell <= 0.0)) or _ap_pts.size() < 2:
 		return false
 	var hit := _nearest_seg(_pos, 12.0, true, true, _y)
@@ -19342,7 +19347,7 @@ func _ap_pass_bus(lead: Array) -> bool:
 	var r: Dictionary = _roads[hit["road"]]
 	var n := _lanes_each_way(r)
 	if n < 2 and not (dbl and int(r["o"]) == 0):
-		return false
+		return _ap_squeeze_by(bi, float(lead[0])) if dbl and int(r["o"]) != 0 else false
 	var w := float(r["w"])
 	var lane_w := w / n if int(r["o"]) != 0 else (w * 0.5) / n
 	if n < 2:   # (a delivery van in a street of one lane each way: over the centre line)
@@ -19392,6 +19397,101 @@ func _ap_pass_bus(lead: Array) -> bool:
 	_ap_passed = bi
 	Probe.event("pass_van" if dbl else "pass_bus", {"lane_w": snappedf(lane_w, 0.1)})
 	_log.event("pass van" if dbl else "pass bus")
+	return true
+
+## Past a delivery van in a one-way street of one lane: no lane to go round it in, but most
+## stand half on the kerb with room beside them, and traffic -- which counts a car in its way
+## by its middle -- drove on past while autodrive, counting its body, stood behind it for the
+## whole delivery (half a minute, the street empty ahead: tests/auto_stands.gd). Over just
+## far enough to clear its body by a hand's breadth (by the points lead_on reads), when the
+## car still fits on the asphalt there, nothing solid (a parked car, a post) stands in the
+## way and no other car is on the bent stretch. True when it moved over.
+const SQUEEZE_MAX := 2.6   ## at most this far over (m)
+func _ap_squeeze_by(bi: int, gap: float) -> bool:
+	if _ap_turn_ahead() != 0:
+		return false   # (a junction just after it: stay in lane)
+	var van = _traffic.cars[bi]
+	var cdir := Vector2(sin(van.yaw), cos(van.yaw))
+	var body: Dictionary = _traffic.BODY
+	var offs: Array = (body[van.kind][0] as Array).duplicate() if body.has(van.kind) else [-van.len * 0.33, 0.0, van.len * 0.33]
+	offs.append(van.len * 0.5 - 0.3)
+	offs.append(-van.len * 0.5 + 0.3)
+	var rad: float = float(body[van.kind][1]) if body.has(van.kind) else 0.95
+	# which side of the plan it stands, and how near its body comes (left of the way: +)
+	var side := 0.0
+	var nearest := INF
+	for off: float in offs:
+		var q: Vector2 = van.pos + cdir * off
+		var best := INF
+		var lat := 0.0
+		for j in range(_ap_pts.size() - 1):
+			var cp := Geometry2D.get_closest_point_to_segment(q, _ap_pts[j], _ap_pts[j + 1])
+			if cp.distance_to(q) < best:
+				best = cp.distance_to(q)
+				var d := (_ap_pts[j + 1] - _ap_pts[j]).normalized()
+				lat = (q - cp).dot(Vector2(d.y, -d.x))
+			if _ap_pts[j].distance_to(_pos) > gap + 20.0:
+				break
+		if side == 0.0:
+			side = signf(lat)
+		if signf(lat) != side or absf(lat) < 0.2:
+			return false   # (across the plan: no room beside it)
+		nearest = minf(nearest, absf(lat))
+	var shift := 0.9 + rad + 0.35 - nearest   # (lead_on's reach for a car going my way: 0.9 + its half + 0.25)
+	if shift <= 0.0 or shift > SQUEEZE_MAX:
+		return false
+	# (over a two-way street's centre line after a first bend round it: nothing coming)
+	var fwd := _fwd()
+	for c in _traffic.cars:
+		if c.alive and c != van and Vector2(sin(c.yaw), cos(c.yaw)).dot(fwd) < -0.5:
+			var rel: Vector2 = c.pos - _pos
+			if rel.dot(fwd) > -5.0 and rel.dot(fwd) < gap + 45.0 and absf(rel.dot(Vector2(fwd.y, -fwd.x))) < 7.0:
+				return false
+	# the bent stretch: out by the van's tail (over 2-8 m, from where the car stands), back in
+	# 6 m past its nose -- tried on a copy, then kept if it is clear
+	var tail := gap - float(van.len) * 0.5
+	var ramp := clampf(tail - 1.3, 2.0, 8.0)
+	var start_s := maxf(tail - 1.0 - ramp, 0.3)
+	var end_s := gap + float(van.len) * 0.5 + 4.0
+	var keep_pts := _ap_pts.duplicate()
+	var keep_v := _ap_v.duplicate()
+	var keep_lim := _ap_lim.duplicate()
+	var s0 := _ap_pts[0].distance_to(Geometry2D.get_closest_point_to_segment(_pos, _ap_pts[0], _ap_pts[1]))
+	_ap_densify(s0 + end_s + 10.0, 1.0)
+	var s := -s0
+	var bent: Array = []
+	for k in range(1, _ap_pts.size()):
+		s += _ap_pts[k - 1].distance_to(_ap_pts[k])
+		if s > end_s + 6.0:
+			break
+		var t := clampf((s - start_s) / ramp, 0.0, 1.0) * clampf((end_s + 6.0 - s) / 6.0, 0.0, 1.0)
+		if t <= 0.0:
+			continue
+		var kd := (_ap_pts[mini(k + 1, _ap_pts.size() - 1)] - _ap_pts[k - 1]).normalized()
+		var away := Vector2(kd.y, -kd.x) * -side
+		_ap_pts[k] += away * shift * t
+		bent.append([_ap_pts[k], away])
+	var ok := not bent.is_empty()
+	for b: Array in bent:
+		var q: Vector2 = b[0]
+		# the car's outer side on the asphalt, nothing solid where it goes
+		if _off_road(q + (b[1] as Vector2) * (CAR_WIDTH * 0.5 + 0.1), 0.0) or _push_out(q, 1.0, true, false, _y) != Vector2.ZERO:
+			ok = false
+			break
+		for c in _traffic.cars:
+			if c.alive and c != van and c.pos.distance_squared_to(q) < 2.4 * 2.4:
+				ok = false
+				break
+		if not ok:
+			break
+	if not ok:
+		_ap_pts = keep_pts
+		_ap_v = keep_v
+		_ap_lim = keep_lim
+		return false
+	_ap_passed = bi
+	Probe.event("squeeze_van", {"over": snappedf(shift, 0.1)})
+	_log.event("squeeze past van")
 	return true
 
 ## A point every `step` metres along the plan for its first `upto` metres. Only points move
