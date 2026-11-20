@@ -451,6 +451,9 @@ func piers(ri: int) -> Array:
 			if not on.is_empty() and int(on["road"]) != ri and not is_deck(g._roads[int(on["road"])]) and float(on["edge"]) < 1.0:
 				in_lanes = true
 				break
+			if g._rails != null and g._rails.on_track(p + across * (half - 0.6) * f, 2.8):
+				in_lanes = true   # (nor on a railway's track: the trains under a bridge run through)
+				break
 		if in_lanes:
 			continue
 		var clash := false

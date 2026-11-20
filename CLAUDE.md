@@ -110,7 +110,8 @@ tests -- scripts that stage the moment and measure it, with screenshots: see the
 
 `tools/osm_city.py` bakes a real town from OpenStreetMap into one JSON file a game can
 build from: roads (path, kind, width, lanes, one-way, name), building outlines with
-heights, parks, water, trees, traffic lights, crossings and the town's boundary, all in
+heights, parks, water, trees, traffic lights, crossings, railways (each track, the
+platforms, the stations) and the town's boundary, all in
 metres on the X/Z ground. The format is documented at the top of the tool. It needs
 `overpass-api.de` reachable from the network, caches the raw download in `tools/.cache/`
 (not committed) and re-bakes from it with `--offline`. Everything baked is

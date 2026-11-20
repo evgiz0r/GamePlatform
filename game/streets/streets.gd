@@ -822,6 +822,7 @@ var _table_spots: Array = []         ## Vector2 of every cafe table
 var _furn: RefCounted                ## the street furniture builder (furniture.gd)
 var _details: RefCounted             ## what a filmed walk added to the city (details.gd), or null
 var _decks: Decks                    ## bridges, embankments, cuttings, tunnels (decks.gd)
+var _rails: Rails                    ## railway tracks, platforms, trains (rails.gd)
 var _on_deck := -1                   ## while a deck road is drawn: heights come from it, not the ground
 var _inferred := {}                  ## what decks.gd's infer() made of a real town's bridges (the report)
 var _wired := {}                     ## road index -> true: Bedford's lamps hang off its power poles
@@ -868,6 +869,7 @@ const Traffic := preload("res://game/streets/traffic.gd")
 const Furniture := preload("res://game/streets/furniture.gd")
 const Details := preload("res://game/streets/details.gd")
 const Decks := preload("res://game/streets/decks.gd")
+const Rails := preload("res://game/streets/rails.gd")
 const DriveLog := preload("res://game/streets/drivelog.gd")
 var _log := DriveLog.new()            ## the last two minutes, for the map page and "save log"
 var _ap_why := ""                     ## what held autodrive's speed down this tick (for the log)
@@ -2026,6 +2028,8 @@ func _build_setup(t0: int) -> void:
 				if not seen.has(t):
 					seen[t] = true
 					_bucket(_tile_bars, t, i)
+	_rails = Rails.new(self)
+	_rails.setup(_city_data, k)   # (before the trees: nothing grows on a track's bed)
 	_lights_setup()
 	_parks_setup()
 	_trees_setup()
@@ -2059,6 +2063,7 @@ func _build_tile(t: Vector2i) -> void:
 	await _note_corner_fills()   # (before anything is stood anywhere: see _off_road)
 	await _build_ground()
 	await _decks.build()
+	await _rails.build()
 	tk = _stage("roads", tk)
 	await _build_buildings()
 	tk = _stage("buildings", tk)
@@ -12893,6 +12898,8 @@ func _physics_process(dt: float) -> void:
 		return
 	_p0()
 	_signals_tick(dt)
+	if _rails != null:
+		_rails.tick(dt)
 	_crash_cool = maxf(0.0, _crash_cool - dt)
 	_touch_t = maxf(0.0, _touch_t - dt)
 	_p("lights")
@@ -17661,12 +17668,13 @@ func _map_gather(at: Vector2, r: float) -> Dictionary:
 		var pts := ring.duplicate()
 		pts.append(ring[0])
 		limits.append(pts)
+	var rails: PackedVector2Array = _rails.map_lines(at, reach) if _rails != null else PackedVector2Array()
 	var places: Array = []
 	for poi: Array in _pois:
 		var d: Vector2 = (poi[0] as Vector2) - at
 		if absf(d.x) < reach and absf(d.y) < reach:
 			places.append([poi[0], poi[1]])
-	return {"at": at, "r": r, "blds": blds, "paths": paths, "minor": minor, "major": major,
+	return {"at": at, "r": r, "blds": blds, "paths": paths, "minor": minor, "major": major, "rails": rails,
 		"limits": limits, "places": places}
 
 ## the minimap: streets and building outlines round the car, heading up
@@ -17707,6 +17715,9 @@ func _draw_map_inner() -> void:
 		_map.draw_multiline(_map_lines["blds"], Color(ink, 0.3), -1.0)
 	if not (_map_lines["paths"] as PackedVector2Array).is_empty():
 		_map.draw_multiline(_map_lines["paths"], Color(ink, 0.3), 1.0 / s)
+	if not (_map_lines.get("rails", PackedVector2Array()) as PackedVector2Array).is_empty():   # a railway: light on dark
+		_map.draw_multiline(_map_lines["rails"], Color(bg, 0.9), 3.0 / s)
+		_map.draw_multiline(_map_lines["rails"], Color(ink, 0.6), 1.0 / s)
 	if not (_map_lines["minor"] as PackedVector2Array).is_empty():
 		_map.draw_multiline(_map_lines["minor"], Color(ink, 0.75), 2.0 / s)
 	if not (_map_lines["major"] as PackedVector2Array).is_empty():
