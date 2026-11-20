@@ -174,11 +174,14 @@ most, in order, last time one did:
   range and add half a square's diagonal to the range.
 - **A camera that rises over the world (a zoom-out, a map view) meets every range at
   once.** Visibility ranges and fog both count from the camera, so from 500 m up the
-  ground right below is already 500 m away: cap the height at about half the longest
-  range you want kept (whatever has a shorter range drops out at the top of the screen
-  first), thin the fog with height (exponential fog at street-level density turns the
-  town below a washed-out white), and push `cam.near` out with the height, or paint
-  laid a few cm over asphalt z-fights. To freeze the world under it without
+  ground right below is already 500 m away. Thinning the fog with height is needed
+  (street-level density turns the town below a washed-out white) but it uncovers the
+  range cut-offs: with ranges per square of a few hundred metres, whole squares of trees
+  and walls pop in as the view pans. While the camera is up, set every range above a
+  threshold to 0 (no limit) and put them back when it comes down; walk the world once,
+  then only its new children. Leave the tiny things (signs, people) on their ranges.
+  Push `cam.near` out with the height, or paint laid a few cm over asphalt z-fights. And
+  lean the view (about 50 degrees down): straight down reads as a plan, not a place. To freeze the world under it without
   `get_tree().paused` (which would freeze the camera too), skip the physics tick and
   set the characters' `process_mode` to disabled, which stops their AnimationPlayers.
   Draw interpolated things at fraction 1 while frozen, or they rock between two ticks.

@@ -91,9 +91,19 @@ The ones most often touched, and the functions in them:
   (rising pauses, landing resumes unless paused by hand), `_zoom_camera` (blends whatever
   camera was placed toward the view from above over the first quarter of the zoom; near
   plane out and haze thinned with height), `_zoom_pan` / `_pinch_move` / `_zoom_turn`, the
-  marks `_draw_zoom_marks`. The quality watcher ignores frames while zoomed out. The top of
-  the zoom (`ZOOM_FAR`) is held to about half of `VIEW_RANGE` because draw ranges are
-  distances from the camera: higher, the trees at the top of the screen go, then buildings.
+  marks `_draw_zoom_marks`. The quality watcher ignores frames while zoomed out. Gradual
+  zooming goes through `_zoom_by` (stops at `ZOOM_MIN`; `_zoom_in_more` counts real time of
+  zooming in there, a second lands). While up, `_zoom_far(true)` sets every draw range of
+  `ZOOM_FAR_FROM` (380 m) or more to 0 (no limit) -- above `ZOOM_SMALL` only those of
+  `ZOOM_FAR_HIGH` (650 m) or more: kerbs, walls and lamps are under a pixel there, and
+  lifting them tripled the draws at the top (Givatayim: 898 against 337; driving 296) --
+  and puts them back on landing; it catches
+  what the background build adds meanwhile by world's child count -- ranges count to the
+  middle of a 400 m square, and from up there those cut-offs swept across the screen (the
+  user saw buildings' surroundings pop in as the view moved). The low view is kept over the
+  roofs with `_bld_top` (walls' heights, kept at load) via `_roof_near`. The minimap follows
+  the view (`_draw_map_inner`: `mid`, `yaw`, `r`; `_view_footprint` is the screen's corners
+  on the ground) and drops building outlines past r 450 m (a grey blur, and most of the lines).
 
 traffic.gd: `tick` (per car: path, lights, signs, the car or player ahead, standoffs,
 `squeeze`), `_next` / `_leg` / `_turn_into` (routes), `_steer_lanes`, `lead_on` (the query
