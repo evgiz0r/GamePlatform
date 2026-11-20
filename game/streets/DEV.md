@@ -1987,6 +1987,42 @@ the user's `tools/.cache/` only.
   gov.il cannot be read by tools; the user read it and found nothing against reuse.
   Ramat Gan's layer has no licence text either; the user approved committing it too.
 
+**Second round, same night: "a lot of data, usable later even if not obvious now"** (the
+user's words). `cities/data/` has a `.gdignore` now: Godot imports `.json` as a resource and
+the web export takes every resource, so 20 MB of raw data would have gone to every player
+(the first round's ~6 MB of `.json` did ride in one build). To use a piece, bake it into the
+city file or a small file outside `data/`.
+
+| File | What | Credit |
+|---|---|---|
+| `givatayim_trees.json` | 11,893 tree crowns mapped from the air: centre + radius (OSM has a few dozen trees there) | © Givatayim Municipality |
+| `givatayim_spot_heights.json` | 10,120 surveyed spot heights, m above sea level (some on roofs) | " |
+| `givatayim_land_use.geojson` | 4,006 plots with their statutory use (residential A/B/C, commerce on the ground floor, public, open space, roads...) | " |
+| `givatayim_addresses.json` | 3,593 house-number points, Hebrew and English | " |
+| `givatayim_units.json` | each building's centre, flats and floors (density: how many people live where) | " |
+| `places_givatayim.geojson` | + traffic-light junctions 17, shared scooter/bike parking 180, recycling bins 118 (with kind: clothes, glass...), youth centres 12, defibrillators 93 (place, hours), institutions' protected spaces 148, active building sites 54 (polygons, with what is built), antiquity sites 8 | " |
+| `places_ramat_gan.geojson` | the level-1 box: kindergartens 56, schools 10, building sites 63, advertising columns 264, bus stops' shade (`shade_pct`, `canopy_m2`) 58, commercial plots 4 | © Ramat Gan Municipality |
+| `ashdod_muni.geojson` | 1,300 public buildings with floors, use, kind and name -- Ashdod publishes no layer of all its buildings; applied to `ashdod.json`: 316 heights, guesses 9,499 -> 9,183 | © Ashdod Municipality |
+| `places_ashdod.geojson` | kindergartens 234, schools 133, youth movements 41, pharmacies 22, parks 402 (polygons, names), sculptures 117, sycamores 53, old trees 112, vegetation survey 214 polygons (species), nature sites 31, shelters 76, direction signs 177, city maps 30, billboards 30, bus terminals 8, BRT corridors (stage A 67, B 69 lines), traffic lights 52, bus stops 409 (with their lines), fuel stations 35, covered parking 203, archaeology 31 | " |
+| `ashdod_land_use.geojson`, `ashdod_addresses.json` | 11,629 plots' use; 9,718 house numbers | " |
+| `tel_aviv_trees.json` | 8,515 street trees with species (Hebrew and Latin) | © Tel Aviv-Yafo Municipality (open-data licence) |
+| `tel_aviv_lamp_poles.json`, `tel_aviv_hydrants.json` | 16,894 lamp poles (type, lamps each); 2,102 hydrants | " |
+| `tel_aviv_businesses.json` | 13,125 licensed businesses: what they are, floor, street -- no names (a sole trader's is their own) | " |
+| `places_tel_aviv.geojson` | bus lanes with hours 89, parking zones 7, building sites 790 (stage, use), preserved buildings 2,188, motorbike parking 371, loading-zone signs 386, taxi stands 44, bike paths 210 (width, direction), bike-share stations 717, sculptures 98, notice boards 137 | " |
+| `transit_tel_aviv.json` | level 7's box: 372 stops, 225 lines, 19,482 trips (same format as the others) | Israel Ministry of Transport |
+
+Boxes: Givatayim's and Ramat Gan's are level 1's; Tel Aviv's is level 7's joined with level
+1's west strip; Ashdod's map is the whole town. Scripts: `ramat_gan_layers.py` and
+`tel_aviv_layers.py` (both reachable from anywhere, so a cloud session can refresh them);
+Givatayim's and Ashdod's come only through their map viewers in a browser (see the
+`real-places` skill), so there is no script: the layer ids and fields are in each file's
+`source`. Not fetched: their security cameras, parcels, planning lines and alerts, and any
+manager, phone or key-holder field; Ashdod's bike paths and urban-renewal zones fail on its
+server. Ideas it opens: real tree species and sizes along the streets, lit lamp poles where
+they stand, shopfronts by kind and floor, building sites with hoardings and cranes, paid-
+parking kerbs, bus stops with their real lines and shade, sculptures and defibrillators as
+landmarks, a quiz or errand on real addresses.
+
 ## Handoff: the street's realism and life, loading split, crashes, sounds (20 Nov 2026)
 
 One session's areas (everything under "front gardens", "the street's goings-on", "more kinds

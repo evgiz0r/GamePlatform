@@ -136,6 +136,15 @@ the parked cars, which stand a third in the road).
     building, the first in `SURVEYS` wins, so measured heights go before floor counts.
   - *Neither had a licence on the page*, only "© the municipality" and a disclaimer. Ask the
     user before committing such a layer, and say so in the notes.
+  - *A town's map viewer usually holds far more than buildings*: trees mapped from the air
+    (crowns), spot heights, land use per plot, house numbers, kindergartens, shelters,
+    bus stops with their lines, signs, sculptures. Many Israeli towns run the same viewer
+    (`v5.gis-net.co.il/v5/<Town>`, two of them checked); its layer list says which are
+    public. Leave out cameras, parcels and any manager, phone or key-holder field.
+  - *Raw data beside a game ships with it*: Godot imports `.json` as a resource and the web
+    export takes every resource, so a folder of source data (20 MB once) goes to every
+    player unless it holds a `.gdignore`. Keep raw extracts in an ignored folder and bake
+    what a feature needs into the city file.
   - *Which Israeli government hosts refuse scripts*: e.data.gov.il (the open-data portal's
     file server, behind CloudFront) answers a script with 403 even from a home connection in
     Israel; the CKAN API on data.gov.il itself answers (`datastore_search`, paged, no SQL),
