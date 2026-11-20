@@ -28,6 +28,8 @@ extends RefCounted
 ##   crossings [[x, z], ...]                         zebras at the road nodes nearest these
 ##   white_bollards [{near: [x, z], r}]              the bollards by every zebra within r of
 ##                                                    near are white (the game picks a few)
+##   no_parking [{near: [x, z], r}]                  no car parked at the kerb within r of
+##                                                    near (a view the film had, kept open)
 ##   areas     [{k, p: [[x, z]...]}]                 as the city file's areas (plaza, park...)
 ##   buildings [{near: [x, z], arcade: [[x, z], [x, z]], depth, h}]   the building holding
 ##                                                    `near` gets an arcade along that line
@@ -137,6 +139,8 @@ func edit_city(city: Dictionary) -> void:
 			if ad.has(key):
 				r[key] = ad[key]
 		city["roads"].append(r)
+	for np: Dictionary in data.get("no_parking", []):
+		g._no_park.append([_v2(np["near"]), float(np.get("r", 8.0))])
 	for wb: Dictionary in data.get("white_bollards", []):
 		var c := _v2(wb["near"])
 		var r := float(wb.get("r", 10.0))

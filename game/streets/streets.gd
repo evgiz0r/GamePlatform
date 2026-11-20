@@ -1727,6 +1727,7 @@ var _tile_lit := {}                  ## square -> junctions with traffic lights
 var _tile_bars := {}                 ## square -> mapped fences and hedges that reach it
 var _crossing_set := {}
 var _white_bollards := {}            ## crossing nodes whose bollards are white, as filmed (details.gd)
+var _no_park: Array = []             ## [spot, radius]: no car parked at the kerb there (details.gd)
 var _bg_build := false               ## building in the background: stop for the frame when over budget
 var _bg_wait := false
 ## The squares round the start are built behind the loading text, and each used to go up in one
@@ -6504,6 +6505,9 @@ func _build_parked() -> void:
 						var side := Vector2(-d.y, d.x) * sgn
 						var p := c + side * (hw + 0.6)   # mostly up on the pavement: a third of a car in the road
 						var ok := _mine(p) and not _no_parking(r, ri, p) and _push_out(p, 1.0, false) == Vector2.ZERO
+						for np: Array in _no_park:   # kept clear by hand (details.gd): a view a film had
+							if p.distance_to(np[0]) < float(np[1]):
+								ok = false
 						for i: int in _near(_post_hash, p, 1.4, BLD_CELL):
 							if _posts[i].distance_to(p) < 1.4:
 								ok = false

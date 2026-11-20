@@ -119,6 +119,24 @@
    "src": "make_givatayim"
   }
  ],
+ "no_parking": [
+  {
+   "near": [
+    485.5,
+    -737.5
+   ],
+   "r": 8.0,
+   "src": "make_givatayim"
+  },
+  {
+   "near": [
+    478.5,
+    -742.0
+   ],
+   "r": 8.0,
+   "src": "make_givatayim"
+  }
+ ],
  "buildings": [
   {
    "near": [
@@ -320,12 +338,6 @@
   }
  ],
  "lines": [
-  {"kind": "shopfront", "pts": [[489.81, -745.8], [490.79, -765.6]], "h": 3.2, "face": [-0.9997, -0.0247], "signs": ["", "", "", "", "", ""], "panels": [], "src": "filmed walk, Sheinkin and Sirkin"},
-  {"kind": "shopfront", "pts": [[488.34, -675.5], [489.36, -683.4]], "h": 3.2, "face": [-0.9997, -0.0247], "signs": ["", ""], "panels": [], "src": "filmed walk, Sheinkin and Sirkin"},
-  {"kind": "shopfront", "pts": [[488.71, -705.8], [489.49, -738.9]], "h": 3.2, "face": [-0.9997, -0.0247], "signs": ["", "", "", "", "", "", "", "", "", ""], "panels": [], "src": "filmed walk, Sheinkin and Sirkin"},
-  {"kind": "shopfront", "pts": [[469.82, -686.9], [470.58, -671.9]], "h": 3.2, "face": [0.9997, 0.0247], "signs": ["", "", "", "", "רולדין"], "panels": [], "src": "filmed walk, Sheinkin and Sirkin"},
-  {"kind": "shopfront", "pts": [[470.19, -703.7], [469.91, -691.4]], "h": 3.2, "face": [0.9997, 0.0247], "signs": ["", "", "", ""], "panels": [], "src": "filmed walk, Sheinkin and Sirkin"},
-  {"kind": "shopfront", "pts": [[472.79, -739.0], [472.21, -706.6]], "h": 3.2, "face": [0.9997, 0.0247], "signs": ["", "", "", "", "", "", "", "", "", ""], "panels": [], "src": "filmed walk, Sheinkin and Sirkin"},
   {
    "kind": "stone_wall",
    "pts": [
@@ -590,6 +602,175 @@
    ],
    "h": 2.3,
    "src": "make_givatayim"
+  },
+  {
+   "kind": "shopfront",
+   "pts": [
+    [
+     489.81,
+     -745.8
+    ],
+    [
+     490.79,
+     -765.6
+    ]
+   ],
+   "h": 3.2,
+   "face": [
+    -0.9997,
+    -0.0247
+   ],
+   "signs": [
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+   ],
+   "panels": [],
+   "src": "filmed walk, Sheinkin and Sirkin"
+  },
+  {
+   "kind": "shopfront",
+   "pts": [
+    [
+     488.34,
+     -675.5
+    ],
+    [
+     489.36,
+     -683.4
+    ]
+   ],
+   "h": 3.2,
+   "face": [
+    -0.9997,
+    -0.0247
+   ],
+   "signs": [
+    "",
+    ""
+   ],
+   "panels": [],
+   "src": "filmed walk, Sheinkin and Sirkin"
+  },
+  {
+   "kind": "shopfront",
+   "pts": [
+    [
+     488.71,
+     -705.8
+    ],
+    [
+     489.49,
+     -738.9
+    ]
+   ],
+   "h": 3.2,
+   "face": [
+    -0.9997,
+    -0.0247
+   ],
+   "signs": [
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+   ],
+   "panels": [],
+   "src": "filmed walk, Sheinkin and Sirkin"
+  },
+  {
+   "kind": "shopfront",
+   "pts": [
+    [
+     469.82,
+     -686.9
+    ],
+    [
+     470.58,
+     -671.9
+    ]
+   ],
+   "h": 3.2,
+   "face": [
+    0.9997,
+    0.0247
+   ],
+   "signs": [
+    "",
+    "",
+    "",
+    "",
+    "רולדין"
+   ],
+   "panels": [],
+   "src": "filmed walk, Sheinkin and Sirkin"
+  },
+  {
+   "kind": "shopfront",
+   "pts": [
+    [
+     470.19,
+     -703.7
+    ],
+    [
+     469.91,
+     -691.4
+    ]
+   ],
+   "h": 3.2,
+   "face": [
+    0.9997,
+    0.0247
+   ],
+   "signs": [
+    "",
+    "",
+    "",
+    ""
+   ],
+   "panels": [],
+   "src": "filmed walk, Sheinkin and Sirkin"
+  },
+  {
+   "kind": "shopfront",
+   "pts": [
+    [
+     472.79,
+     -739.0
+    ],
+    [
+     472.21,
+     -706.6
+    ]
+   ],
+   "h": 3.2,
+   "face": [
+    0.9997,
+    0.0247
+   ],
+   "signs": [
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+   ],
+   "panels": [],
+   "src": "filmed walk, Sheinkin and Sirkin"
   }
  ],
  "props": [
@@ -1621,7 +1802,7 @@
   },
   "sheinkin_sirkin": {
    "name": "Sheinkin and Sirkin, on foot",
-   "film": "from 1:42 of the film to 3:08, the GPS track taken with it (tools/gpx_route.py route, game/streets/tests/walk_snap.gd onto the pavements)",
+   "film": "from 1:42 of the film to 3:08, the GPS track taken with it (tools/gpx_route.py route, game/streets/tests/walk_snap.gd onto the pavements); on to the Katznelson corner by the user's ask (106 s): its last 20 s timed from the track's stops, laid by hand on the pavement it was walked on",
    "points": [
     [
      0.0,
@@ -1822,6 +2003,21 @@
      86.0,
      487.5,
      -748.16
+    ],
+    [
+     94.0,
+     487.4,
+     -760.5
+    ],
+    [
+     101.0,
+     487.3,
+     -772.3
+    ],
+    [
+     106.0,
+     487.3,
+     -772.3
     ]
    ],
    "looks": [
@@ -1839,6 +2035,11 @@
      70.0,
      74.0,
      -65
+    ],
+    [
+     101.5,
+     104.5,
+     -60
     ]
    ],
    "zebras": [

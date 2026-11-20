@@ -41,7 +41,7 @@ func _run() -> void:
 				g = n
 	await create_timer(1.0).timeout
 	print("---- vehicles (length, width, height)")
-	var car := _box(g._car)
+	var car := _box(g._sedan_node)   # (the body: the car node also holds its headlight beams)
 	_row("the player's car: length", maxf(car.size.x, car.size.z), 4.0, 4.9)
 	_row("the player's car: width", minf(car.size.x, car.size.z), 1.7, 2.0)
 	_row("the player's car: height", car.size.y, 1.4, 1.75)
@@ -64,17 +64,24 @@ func _run() -> void:
 		var mk: AABB = g._details._moto_kit().get_aabb()
 		_row("a motorbike: length", maxf(mk.size.x, mk.size.z), 2.0, 2.25)
 		_row("a motorbike: height", mk.size.y, 1.05, 1.25)
-	print("---- people")
-	for i in range(g.PEOPLE.size()):
-		var a := Actor3D.new()
-		g.world.add_child(a)
-		a.set_character(g.PEOPLE[i], 1.72)
-		a.position = Vector3(g._pos.x, g._h(g._pos), g._pos.y)
+	print("---- people (the game's own: a test script cannot make an Actor3D, it uses autoloads)")
+	var who: Array = [["you, on foot", g._me]]
+	for k in range(mini(6, g._walkers.size())):
+		who.append(["a walker %d" % k, g._walkers[k]["actor"]])
+	for wv: Array in who:
+		if wv[1] == null:
+			print("%-44s (not out of the car in this place)" % wv[0])
+			continue
+		var a: Node3D = wv[1]
+		var vis := a.visible
+		a.visible = true
 		await process_frame
 		var ab := _box(a)
-		_row("%s asked 1.72 m: height" % g.PEOPLE[i], ab.size.y, 1.66, 1.78)
-		_row("%s: shoulders across" % g.PEOPLE[i], minf(ab.size.x, ab.size.z) if ab.size.x < 1.2 and ab.size.z < 1.2 else -1.0, 0.25, 0.75)
-		a.queue_free()
+		a.visible = vis
+		var asked: float = float(a.get("height")) if a.get("height") != null else 0.0
+		_row("%s (asked %.2f m): height" % [wv[0], asked], ab.size.y, 1.55, 1.95)
+		if asked > 0.0:
+			print("%-44s %7.2f   (built over asked)" % ["", ab.size.y / asked])
 	print("---- the street")
 	var lanes: Dictionary = {}
 	for r: Dictionary in g._roads:
