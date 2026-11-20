@@ -1370,6 +1370,7 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 	var pinned := {}      # nodes that stay on the ground: the roads crossed
 	var over_roads: Array = []   # crossing nodes over a road (to report the clearance left)
 	var over_name := {}
+	var foot_over: Array = []   # [footbridge's crossing point, street's point, its next, how far between]
 	var crossed := 0
 	for ri: int in is_br:
 		var ns: Array = roads[ri]["n"]
@@ -1398,9 +1399,18 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 						var under_road: bool = drv.call(roads[rj])
 						var over_foot: bool = walk.call(roads[ri])
 						var need := (CLEAR_FOOT if over_foot else CLEAR_ROAD) if under_road else (CLEAR_FOOT_PATH if over_foot else CLEAR_PATH)
+						var m0: Vector2 = pos.call(int(ms[sj]))
+						var m1: Vector2 = pos.call(int(ms[sj + 1]))
 						hits.append([a.distance_to(x) / maxf(a.distance_to(b), 0.001), x, need,
-							roads[rj].get("name_en", roads[rj].get("name", roads[rj]["k"]))])
-						if under_road:   # (the road crossed stays on the ground, where it passes under)
+							roads[rj].get("name_en", roads[rj].get("name", roads[rj]["k"])),
+							# (for a footbridge over a street: the street's two points and how far
+							# along between them, to clear its final height once that is known)
+							[int(ms[sj]), int(ms[sj + 1]), m0.distance_to(x) / maxf(m0.distance_to(m1), 0.001)] if over_foot and under_road else []])
+						# (the road crossed stays on the ground where it passes under -- not under
+						# a footbridge: that holds nothing down, it is raised over the road instead.
+						# Held down, a street that is the ramp up to a road bridge capped that
+						# bridge short of its clearance: Tel Aviv's Givat HaTahmoshet)
+						if under_road and not over_foot:
 							# within 80 m of the crossing ALONG it, not as the crow flies: a
 							# cloverleaf's loop starts at the bridge's own end and passes back under
 							# it -- its start, metres away in a straight line but hundreds along the
@@ -1428,6 +1438,8 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 					over_roads.append(n)
 					over_name[n] = "%s over %s" % [roads[ri].get("name_en", roads[ri].get("name", roads[ri]["k"])), hit[3]]
 				lift[n] = maxf(float(lift.get(n, 0.0)), float(hit[2]))
+				if not (hit[4] as Array).is_empty():
+					foot_over.append([n] + hit[4])
 				crossed += 1
 			out.append(ns[j + 1])
 		roads[ri]["n"] = out
@@ -1576,6 +1588,17 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 		if float(lift[n]) > room + 0.01:
 			lift[n] = maxf(room, 0.0)
 			capped += 1
+	# Footbridges over streets, now the streets' heights are known: each clears the street's
+	# surface under it (a ramp's, an embankment's), not just the ground, and its paths' ramps
+	# are spread again from there.
+	var raised: Array = []
+	for fo: Array in foot_over:
+		var under := lerpf(maxf(float(lift.get(int(fo[1]), 0.0)), 0.0), maxf(float(lift.get(int(fo[2]), 0.0)), 0.0), float(fo[3]))
+		if under + CLEAR_FOOT > float(lift.get(int(fo[0]), 0.0)) + 0.01:
+			lift[int(fo[0])] = under + CLEAR_FOOT
+			raised.append(int(fo[0]))
+	if not raised.is_empty():
+		spread.call(raised, {})
 	# Tunnels, the mirror of the bridges: a drivable tunnel way that runs under something lies
 	# CLEAR_UNDER down along all of it (OSM's tunnel way is the covered part), and the depth
 	# rises back to the ground along the roads either side -- cuttings -- at a ramp's grade,
@@ -1984,7 +2007,7 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 		fb += 1 if walk.call(roads[ri]) else 0
 	for ri: int in is_tu:
 		ft += 1 if walk.call(roads[ri]) else 0
-	return {"bridges": is_br.size() - fb, "footbridges": fb, "stair_capped": stair_capped, "tunnels": is_tu.size() - ft, "foot_tunnels": ft, "crossings": crossed, "stacked": stacked, "capped": capped, "decks": decks,
+	return {"bridges": is_br.size() - fb, "footbridges": fb, "footbridges_raised": raised.size(), "stair_capped": stair_capped, "tunnels": is_tu.size() - ft, "foot_tunnels": ft, "crossings": crossed, "stacked": stacked, "capped": capped, "decks": decks,
 		"over_roads": over_roads.size(), "short_of_clear": short, "lowest_over_road": snappedf(low, 0.1), "short_at": short_at, "tunnels_dropped": dropped,
 		"crests_rounded": rounded[0], "cutting_tops_eased": rounded[1]}
 

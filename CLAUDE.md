@@ -365,6 +365,15 @@ writing it down is small next to the next session rediscovering it.
   session.
 - Update what is there when it turns out wrong; a stale note is worse than none.
 
+**Suggest compacting past ~60%.** The user wants a session compacted once its context is
+more than about 60% full, not left to fill up. Only the user can do it (`/compact` is
+theirs to type; you cannot run it), and only they see the percentage, so judge by the
+session's length -- long rounds of screenshots, videos and big file reads fill it fastest
+-- and at a natural pause (after a push, before starting something new) suggest it in one
+line. Write what is worth keeping first (above, and a handoff in the game's `DEV.md`: what
+you were in the middle of, the open items, the tests and their good numbers), so nothing
+lives only in the context that is about to be summarised.
+
 ## Style
 
 Bright neon on a dark background. Glow, trails, squash-and-stretch, screen shake. Games
