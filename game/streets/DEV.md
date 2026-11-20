@@ -1288,7 +1288,10 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   SUV close past the kerb (3 s), then the far half's three. A car sent 39 m up the near half
   was held 2 s at a junction 32 m off and crawled past at 7 s (`TRAFFIC_LOG`): send from past
   it. Measured on the recording: the hatchback at 1.5-2 s, the SUV in front at 3 s, the grey
-  SUV at 12.4 s (the film's 12-13); brightness 0.473 +- 0.061, levels as pass 11's.
+  SUV at 12.4 s (the film's 12-13); brightness 0.473 +- 0.061, levels as pass 11's. After
+  the evening's traffic merge (bus lines, the car mix) the grey SUV, sent at 10 s, passed at
+  11.5-12 s in one run and 13.5-14 s in the next (the street's other cars slow it or not):
+  now sent at 9.5 s; and a city bus on its real line waits at the near zebra 7.5-11 s.
   Still wrong there: the north kerb north-west of the zebra shows the city's blue and white
   where pass 4's red and white `kerb_paint` (at P(-14.0, -23.95)) should be -- it finds the
   right road, segment, side and height (printed) and draws nothing visible, while the same
@@ -1323,8 +1326,8 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   0.05 of the film's, 0.0% clipped, saturation 0.146 (0.159); each second's brightness
   0.473 +- 0.061 (0.454 +- 0.055); the arcade's floor 0.31-0.36 (0.38-0.41); the horizon
   0.30 of the way down (`FILM_TILT`); `TRAFFIC_LOG=0,14`: the black hatchback within 10 m at
-  1.5-2 s, the white SUV 4-5 m off at 3-3.5 s, the white hatchback 3 m at 9 s, the grey SUV
-  3 m at 12.5 s. Playtests of levels 5, 1 and 6 survive 25 s; validate's
+  1.5-2 s, the white SUV 4-5 m off at 3-3.5 s, the white hatchback 3-4 m at 9 s, the grey
+  SUV 4-5 m off at 12-13 s, give or take a second run to run. Playtests of levels 5, 1 and 6 survive 25 s; validate's
   Givatayim keeps its known 2 posts and 1 building on the road (the café table, the
   passage's building) and the test town's checks read 4-12.
 - **Walk 1's coordinates for new props**: `P(s, off)` in `make_givatayim.py` along S0-S1

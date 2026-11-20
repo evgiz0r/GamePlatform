@@ -291,7 +291,7 @@ d = {
             "cars": [[0.0, P(-10.2, 3.6), NW, {"lane": "median", "kind": "hatch", "paint": "black"}],
                      # (sent from past a junction 32 m up, where a car sent further off was held 2 s)
                      [0.5, P(-10.2, 10.0), NW, {"lane": "kerb", "through": True, "kind": "suv", "paint": "white"}],
-                     [1.5, P(-10.2, 40), NW],
+                     [1.5, P(-10.2, 40), NW, {"kind": "sedan"}],
                      # the far half's: a white hatchback by in the lane by the median as the walk
                      # reaches it (film 8.5-9 s), a white sedan stopped in the kerb lane (9.5-12 s),
                      # then a grey SUV driving on in the median lane past the walk waiting there
@@ -299,7 +299,8 @@ d = {
                      [6.4, P(-0.3, -45), SE, {"lane": "median", "through": True, "kind": "hatch", "paint": "white"}],
                      [6.5, P(-0.3, -62), SE, {"lane": "kerb", "kind": "sedan", "paint": "white"}],
                      [7.5, P(-0.3, -70), SE, {"lane": "kerb"}],
-                     [10.0, P(-0.3, -45), SE, {"lane": "median", "through": True, "kind": "suv", "paint": "grey"}],
+                     # (sent half a second early: the street's other traffic slows it on its way, 0-1.5 s run to run)
+                     [9.5, P(-0.3, -45), SE, {"lane": "median", "through": True, "kind": "suv", "paint": "grey"}],
                      [78.0, P(91.15, -55), SE]],
         }
     },
