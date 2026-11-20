@@ -10012,7 +10012,8 @@ func _build_signal_sounds() -> void:
 	rng.seed = 9
 	for i in range(click.size()):
 		var t := float(i) / rate
-		click[i] = exp(-t * 260.0) * (sin(TAU * 1700.0 * t) + 0.4 * (rng.randf() * 2.0 - 1.0))
+		# a relay's soft tick, not a beep (it was a 1.7 kHz ping)
+		click[i] = exp(-t * 320.0) * (sin(TAU * 1100.0 * t) * 0.6 + 0.5 * (rng.randf() * 2.0 - 1.0))
 	_snd_tick = AudioStreamPlayer.new()
 	_snd_tick.stream = _wav(click, rate, false)
 	add_child(_snd_tick)
@@ -10075,7 +10076,7 @@ func _controls_tick(dt: float) -> void:
 		if _blink != 0 or not lit:
 			var base := linear_to_db(maxf(0.0001, float(SaveData.data.get("volume_sfx", 0.8))))
 			if not Audio.muted() and _snd_tick != null and (_blink != 0):
-				_snd_tick.volume_db = base - 14.0
+				_snd_tick.volume_db = base - 18.0
 				_snd_tick.pitch_scale = 1.0 if lit else 0.82
 				_snd_tick.play()
 	for side: int in _blink_nodes:
@@ -11080,89 +11081,47 @@ func _pose_car(p: Vector2, yaw: float, y := NAN) -> void:
 		_car.rotation.x = -pitch
 		_car.rotation.z = roll
 
-## ---- the engine's sound ----------------------------------------------------------------------
-## Made here, not from a file: a half-second loop of a four-cylinder's firing pulses at
-## 1200 rpm (40 a second, uneven from cylinder to cylinder, a half-order shake under them),
-## low-passed. Every part repeats a whole number of times in the loop, so it has no seam.
-## Played at a pitch of rpm / 1200, with a simple automatic gearbox giving the rpm; a second,
-## brighter loop (hiss and higher harmonics on each firing) comes in with the throttle. A
-## looping clip with its pitch changed is cheap and smooth in a browser, where pushing
-## generated audio every frame stutters whenever a frame is late.
+## ---- the sounds of driving -----------------------------------------------------------------
+## Loops made by sounds/make_sounds.py (it says why each is what it is), played at a pitch
+## and a volume set here every frame: the engine at the revs a simple automatic gearbox gives
+## (the loop is the engine at 1200 rpm), louder and brighter under load; the tyres' roar and
+## the wind with the speed; the nearest car going by as its tyres' whoosh, its pitch falling as
+## it passes; the city far off, always. A looping clip with its pitch changed is cheap and
+## smooth in a browser, where pushing generated audio every frame stutters whenever a frame
+## is late. (The engine used to be made here at load: a buzz of sharp pulses almost all
+## below 200 Hz, the only sound there was, and a laptop's speaker turned it into a rough
+## flutter that players switched off.)
 
-const ENGINE_RATE := 22050
-const ENGINE_F0 := 40.0
+const SND_DIR := "res://game/streets/sounds/"
 const IDLE_RPM := 800.0
 const GEAR_RPM := [420.0, 240.0, 165.0, 122.0, 96.0]   ## rpm per m/s, first to fifth
-var _engine: Array = []              ## [rumble, load, traffic going by]
+const SND_LOOPS := ["engine", "engine_load", "road", "wind", "road", "city"]
+var _engine: Array = []              ## players: SND_LOOPS, the second "road" the car going by
 var _rpm := IDLE_RPM
 var _gear_n := 1
 var _load := 0.0
+var _by_id := 0                      ## the car going by, and how fast it closes on you
+var _by_d := INF
+var _by_closing := 0.0
 
 func _build_engine() -> void:
-	for bright: bool in [false, true, false]:
+	for name: String in SND_LOOPS:
 		var p := AudioStreamPlayer.new()
-		p.stream = _engine_loop(bright)
+		p.stream = load(SND_DIR + name + ".wav")
 		p.volume_db = -80.0
 		add_child(p)
 		_engine.append(p)
-
-func _engine_loop(bright: bool) -> AudioStreamWAV:
-	var n := int(ENGINE_RATE * 0.5)
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 5 if bright else 3
-	var lump := [1.0, 0.82, 0.93, 0.78]   # no two cylinders fire quite alike
-	var raw := PackedFloat32Array()
-	raw.resize(n)
-	for i in range(n):
-		var t := float(i) / ENGINE_RATE
-		var cyc := t * ENGINE_F0
-		var k := int(cyc)
-		var ph := cyc - float(k)
-		var pulse: float = exp(-ph * (9.0 if bright else 5.0)) * float(lump[k % 4])
-		var v := pulse + 0.25 * sin(TAU * ENGINE_F0 * 0.5 * t)
-		if bright:
-			v += (rng.randf() * 2.0 - 1.0) * 0.6 * pulse
-			v += 0.3 * sin(TAU * ENGINE_F0 * 3.0 * t) * pulse
-		raw[i] = v
-	# a one-pole low-pass, round the loop twice so its end runs into its start
-	var cut := 0.35 if bright else 0.12
-	var y := 0.0
-	var out := PackedFloat32Array()
-	out.resize(n)
-	for pass_i in range(2):
-		for i in range(n):
-			y += (raw[i] - y) * cut
-			out[i] = y
-	var mean := 0.0
-	for i in range(n):
-		mean += out[i]
-	mean /= n
-	var peak := 0.0001
-	for i in range(n):
-		peak = maxf(peak, absf(out[i] - mean))
-	var data := PackedByteArray()
-	data.resize(n * 2)
-	for i in range(n):
-		data.encode_s16(i * 2, int(clampf((out[i] - mean) / peak * 0.85, -1.0, 1.0) * 32767.0))
-	var w := AudioStreamWAV.new()
-	w.format = AudioStreamWAV.FORMAT_16_BITS
-	w.mix_rate = ENGINE_RATE
-	w.stereo = false
-	w.data = data
-	w.loop_mode = AudioStreamWAV.LOOP_FORWARD
-	w.loop_begin = 0
-	w.loop_end = n
-	return w
 
 func _engine_tick(dt: float) -> void:
 	if _engine.is_empty():
 		return
 	var off := Audio.muted() or finished or _paused
-	for p: AudioStreamPlayer in _engine:
+	for i in range(_engine.size()):
+		var p: AudioStreamPlayer = _engine[i]
 		if off and p.playing:
 			p.stop()
 		elif not off and not p.playing:
-			p.play()
+			p.play(1.5 if i == 4 else 0.0)   # (the car going by: its own stretch of road)
 	if off:
 		return
 	# the gearbox: up a gear sooner on a light foot, later with it down; down below 1250
@@ -11182,19 +11141,32 @@ func _engine_tick(dt: float) -> void:
 	_load = lerpf(_load, _throttle_in, 1.0 - exp(-dt * 6.0))
 	var base := linear_to_db(maxf(0.0001, float(SaveData.data.get("volume_sfx", 0.8))))
 	var pitch := clampf(_rpm / 1200.0, 0.3, 4.0)
-	var rumble: AudioStreamPlayer = _engine[0]
+	var rev := clampf((_rpm - IDLE_RPM) / 3500.0, 0.0, 1.0)
+	var eng: AudioStreamPlayer = _engine[0]
 	var load: AudioStreamPlayer = _engine[1]
-	rumble.pitch_scale = pitch
+	var road: AudioStreamPlayer = _engine[2]
+	var wind: AudioStreamPlayer = _engine[3]
+	var by: AudioStreamPlayer = _engine[4]
+	var city: AudioStreamPlayer = _engine[5]
+	eng.pitch_scale = pitch
 	load.pitch_scale = pitch
-	rumble.volume_db = base - 7.0 + 4.0 * clampf((_rpm - IDLE_RPM) / 3500.0, 0.0, 1.0)
-	load.volume_db = base - 34.0 + 30.0 * sqrt(_load)
+	eng.volume_db = base - 17.0 + 7.0 * rev
+	load.volume_db = base - 38.0 + 26.0 * sqrt(_load)
+	# the tyres' roar and the wind: what speed sounds like (+8 dB a doubling, and brighter;
+	# the wind only at speed, +12 dB a doubling)
+	var sp := clampf(v / 14.0, 0.02, 3.0)
+	road.pitch_scale = 0.8 + 0.3 * clampf(v / 20.0, 0.0, 1.5)
+	road.volume_db = base - 8.0 + 26.0 * log(sp) / log(10.0) if v > 0.2 else -80.0
+	wind.volume_db = base - 23.0 + 40.0 * log(maxf(sp, 0.05)) / log(10.0) if v > 2.0 else -80.0
+	city.volume_db = base - (16.0 if _walking else 19.0)
 	if _walking:   # idling behind you, quieter the further you walk
-		rumble.volume_db -= 4.0 + _pos.distance_to(_car_at) * 0.9
+		eng.volume_db -= 4.0 + _pos.distance_to(_car_at) * 0.9
 		load.volume_db = -80.0
-	# the nearest car going by: louder as it nears, its pitch with its speed
-	var by: AudioStreamPlayer = _engine[2]
+	# the nearest car going by: its tyres, louder as it nears, the pitch falling as it passes
+	# (how fast it closes on you, from its distance a frame ago)
 	var near := INF
 	var nv := 0.0
+	var nid := 0
 	if _traffic != null:
 		for c in _traffic.cars:
 			if c.alive and c.v > 1.0:
@@ -11202,9 +11174,16 @@ func _engine_tick(dt: float) -> void:
 				if d < near:
 					near = d
 					nv = c.v
-	if near < 45.0:
-		by.pitch_scale = clampf((IDLE_RPM + nv * 150.0) / 1200.0, 0.4, 3.0)
-		by.volume_db = base - 12.0 - near * 0.55
+					nid = c.get_instance_id() if c is Object else hash(c)
+	if nid == _by_id and dt > 0.0 and near < INF and _by_d < INF:
+		_by_closing = lerpf(_by_closing, (_by_d - near) / dt, 1.0 - exp(-dt * 8.0))
+	elif nid != _by_id:
+		_by_closing = 0.0
+	_by_id = nid
+	_by_d = near
+	if near < 60.0:
+		by.pitch_scale = clampf((0.85 + nv / 40.0) / (1.0 - clampf(_by_closing, -60.0, 60.0) / 343.0), 0.5, 2.5)
+		by.volume_db = base - 7.0 - 24.0 * log(maxf(near, 3.0) / 3.0) / log(10.0)
 	else:
 		by.volume_db = -80.0
 
@@ -13531,7 +13510,7 @@ func _check_arrival(dt: float) -> void:
 		_auto = false
 		_ap_pts = PackedVector2Array()
 		_clear_dest()
-		Audio.play("coin", 0.05, -2.0)
+		Audio.play("coin", 0.05, -8.0)
 		_show_banner("arrived: " + _dest_name, 3.0)
 		Probe.event("arrived", {"to": _dest_name, "secs": int(_dest_t)})
 
@@ -13809,7 +13788,7 @@ func _explore(dt: float) -> void:
 	if nm != "" and _on_m >= NEW_STREET_M and _streets.has(nm) and not _visited.has(nm):
 		_visited[nm] = true
 		add_score(1)
-		Audio.play("coin", 0.05, -4.0)
+		Audio.play("coin", 0.05, -14.0)   # (a hint, not a jingle: it came every block or so)
 		Probe.event("new_street", {"n": _visited.size()})
 		_show_banner("+ " + nm, 1.6)
 		_count_lbl.text = "streets %d / %d" % [_visited.size(), _streets.size()]

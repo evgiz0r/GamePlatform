@@ -413,9 +413,12 @@ leaflets that dry yellow at the tips, on a ringed palm trunk.
 
 > Traffic, lights and signs that mean something, engine sound, night.
 
-**Sound.** The engine is made in the game, not recorded: a four-cylinder's firing pulses
-pitched by the revs of a five-speed automatic, a brighter layer with the throttle, and
-the nearest car going by.
+**Sound.** The engine is made, not recorded, pitched by the revs of a five-speed
+automatic, with a brighter layer under the throttle. Over it, what speed sounds like from
+inside a car: the tyres' roar on the asphalt, louder and brighter the faster you go, and
+the wind once you are moving quickly; the nearest car going by as the whoosh of its tyres,
+its pitch falling as it passes; and the city far off, always, soft. (See "Sound you do not
+switch off" below for why it changed.)
 
 **Night.** The "night" button: a dark sky and a dim moon, a share of the windows lit (warm
 in homes, cooler in offices), street lamps on with a pool of light under each, shop
@@ -651,6 +654,15 @@ far ones too, is as long as a low sun makes it. The first switch to the evening 
 moment (its far shadows are drawn then), after that it is instant.
 
 > continue?
+
+> lets improve sound a bit. its just annoying noise i have to turn off now
+
+**Sound you do not switch off.** The engine used to be the only sound: a buzz of sharp
+pulses, almost all of it lower than a laptop's or a phone's speaker can play, so what came
+out was a rough flutter, droning even standing still, with a second buzz beating against it
+whenever a car went by, and a coin's jingle every block. Now the engine is a smooth hum under
+the tyres' roar, nearly silent at idle; speed is the road and the wind; a passing car is a
+whoosh; the coin for a new street is a quiet tick, the indicator a relay's soft click.
 
 > I took a video on my phone, walking in Givatayim.
 
