@@ -129,6 +129,23 @@ The ones most often touched, and the functions in them:
   pixel and drawn before most gardens exist). Walkers who cannot make room for you (a parked
   car one side, a shop's stool the other) take the side with most room, and stop (`hold_me`)
   if that is under 0.6 m.
+- **number plates** -- CAR_SHADER's plate branch (vertex alpha 0.65), `plate_style` 1 for
+  the "med" look: yellow, black digits in a black rim, the blue IL strip; 8 digits
+  (123-45-678) or the older 7 (12-345-67), each car's made up from `plate_id` (its copy's
+  INSTANCE_ID and paint: steady while it drives; the player's car `plate_seed`). The digits
+  are a 13-glyph font (`PLATE_GLYPHS`, 5x7 bits, smoothed up 8x into `_plate_font`) read
+  with the edge at the half-way grey up close and the grey itself far off (`far`, from
+  fwidth: taken at the half-way grey, a plate was blank yellow from the chase view). The
+  player's car's plates were boxes in a palette material: faces in its car shader now
+  (`_sedan_rest`). No real plate, none from a film, is ever used. tests/plates.gd.
+- **shop interiors** -- SHOP_SHADER on the shop windows (`_shop_interior`, instead of the
+  flat lit `_shop_glass`): a room 3.5 m deep traced from the eye through the glass (back
+  wall, sides, floor, ceiling -- no geometry), shelves of goods, racks of clothes or a
+  cafe's counter and menu board by the instance colour's red (`glass_k`: 1 cafes, bars,
+  restaurants; 0.6 clothes, shoes; 0 the rest), a strip light, the sky's sheen at a glance;
+  `lit` 0.45 by day (a shop is dimmer than the sunny street), 1.4 at night. One shader
+  more for a browser (~7 programs). tests/shop_fronts.gd (also counts shopkeepers: 3 of 44
+  doorways round the start).
 - **what breaks, more** -- a knock on a wall or a building at over 2.5 m/s leaves streaks of
   rubber and paint on it at bumper height (`_scrape_at`, 8 kept, 4 minutes); hedges are soft
   walls (`add_wall(..., soft)`, `_wall_soft`): no bounce, dent or glass, the car held to 70%,

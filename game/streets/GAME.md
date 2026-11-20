@@ -1085,6 +1085,17 @@ grows through garden paths, and someone with no room to step aside stops to let 
 The walk along Sirkin keeps a step further from the parked cars, as filmed. Loading compiles
 about a tenth fewer graphics programs (most noticeable on a phone or a Windows laptop).
 
+> lets add real driver plates, that would improve the look a lot. lets think about the cars a
+> bit more how to make even more real. besides lets do - 1,2(i think we added db of stores so
+> we have many of them now!?) , 6
+
+**Plates and shop windows.** Every car carries an Israeli plate -- yellow, black digits in a
+black rim, the blue IL strip -- each a made-up number of its own (never a real one), readable
+up close and from the chase view. Shop windows show the shop inside, in depth as you pass:
+shelves of goods, racks of clothes, or a cafe's counter and menu board, dim by day and
+glowing at night. (There is no store database yet: the shops are OpenStreetMap's and the
+filmed ones; Tel Aviv's council lists 3,387 licensed businesses, which could fill its streets.)
+
 > I took a video on my phone, walking in Givatayim.
 
 ## Smooth on a laptop and a phone

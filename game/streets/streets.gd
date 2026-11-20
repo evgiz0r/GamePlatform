@@ -10032,7 +10032,7 @@ func _build_walk_lights(pole_mesh: Mesh) -> void:
 ## a lit shopfront on the street side of each shop's building, and its name above it
 func _build_pois() -> void:
 	var k := 1.0 / float(_city_data.get("scale", 10))
-	var front := {"glass": [], "post": [], "beam": [], "shutter": []}   ## shop windows and their frames
+	var front := {"glass": [], "glass_k": [], "post": [], "beam": [], "shutter": []}   ## shop windows and their frames (glass_k: what is inside, SHOP_SHADER)
 	var board_cols: Array = []       ## each sign board's colour: dark, white, the shop's, cream
 	var awnings := {"xf": [], "col": []}   ## awning transforms and their colours
 	var crates := new_cbuf(BLD_CELL)    ## fruit and vegetables out in front of a greengrocer
@@ -10085,6 +10085,11 @@ func _build_pois() -> void:
 			var b := Basis(Vector3.UP, face)
 			var at3 := func(q: Vector2, out: float, y: float) -> Vector3: return Vector3(q.x + n.x * out, gy + y, q.y + n.y * out)
 			front["glass"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.05, 1.3)))
+			# what the window shows inside: a counter (cafes, bars, restaurants), racks of
+			# clothes, or shelves of goods (the rest)
+			var inside_k := 1.0 if kind in ["cafe", "restaurant", "fast_food", "ice_cream", "bar", "pub"] else \
+				(0.6 if sub in ["clothes", "shoes", "fashion", "boutique", "jewelry", "bag", "fabric"] else 0.0)
+			front["glass_k"].append(Color(inside_k, 0.0, 0.0, 1.0))
 			if _mine(pos):
 				_shop_lights.append([pos + n * 0.1, n, wide])
 			front["beam"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.08, 2.62)))
@@ -10156,7 +10161,7 @@ func _build_pois() -> void:
 	var r := SIGN_RANGE * 2.0
 	var glass := BoxMesh.new()
 	glass.size = Vector3(3.0, 2.4, 0.06)
-	_chunked(glass, front["glass"], r, [], _shop_glass(), false)
+	_chunked(glass, front["glass"], r, front["glass_k"], _shop_interior(), false)
 	var post := BoxMesh.new()
 	post.size = Vector3(0.14, 2.6, 0.14)
 	_chunked(post, front["post"], r, [], _surface("cartrim"), false)
@@ -10290,6 +10295,140 @@ func _poi_look(kind: String) -> Array:
 	return []
 
 ## the glass of a shop window: dark glass with the shop's light on inside
+## A shop window you see into: behind the glass a room 3.5 m deep, worked out from where you
+## look (the ray from the eye through the glass to the room's back wall, its sides, floor
+## or ceiling -- no geometry), with shelves of goods along the walls, or a cafe's counter
+## and menu board, a tiled floor and a strip light, lit from inside (brighter at night), and
+## the glass's own sheen of the sky over it. Each shop its own mix, from where it stands.
+## (Was a flat lit pane: a shop showed nothing inside. One shader more for a browser to
+## compile while loading, about 7 programs.)
+const SHOP_SHADER := """
+shader_type spatial;
+uniform vec4 light : source_color;      // the shop's light (the tone "shoplight")
+uniform vec4 floor_col : source_color;
+uniform vec4 wall_col : source_color;
+uniform vec4 shelf_col : source_color;
+uniform vec4 goods_a : source_color;
+uniform vec4 goods_b : source_color;
+uniform vec4 goods_c : source_color;
+uniform vec4 goods_d : source_color;
+uniform vec4 sky_col : source_color;
+uniform float lit = 0.7;
+varying vec3 wpos;
+varying vec3 o;
+varying vec3 ax;
+varying vec3 az;
+varying float hw;
+varying float kind;                     // the instance colour's red: 1 a cafe's counter, 0.6 clothes, 0 shelves
+float h21(vec2 p) {
+	vec3 q = fract(vec3(p.xyx) * 0.1031);
+	q += dot(q, q.yzx + 33.33);
+	return fract((q.x + q.y) * q.z);
+}
+void vertex() {
+	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	o = MODEL_MATRIX[3].xyz;
+	ax = normalize(MODEL_MATRIX[0].xyz);
+	az = normalize(MODEL_MATRIX[2].xyz);
+	hw = length(MODEL_MATRIX[0].xyz) * 1.5;
+	kind = COLOR.r;
+}
+// clothes on a rail along a wall: garments hanging side by side, each its own colour
+vec3 racks(float s, float y, float seed) {
+	if (y > 0.62 && y < 0.66) { return shelf_col.rgb * 0.5; }      // the rail
+	if (y < -0.55 || y > 0.62) { return wall_col.rgb; }
+	float cell = floor(s / 0.11);
+	float k = h21(vec2(cell, seed));
+	float len = mix(-0.5, 0.0, h21(vec2(cell * 3.1, seed)));
+	if (y < len || k < 0.08) { return wall_col.rgb * 0.85; }
+	vec3 g = k < 0.3 ? goods_a.rgb : (k < 0.5 ? wall_col.rgb * 0.3 : (k < 0.72 ? goods_d.rgb : wall_col.rgb * 0.9));
+	return g * (0.7 + 0.3 * h21(vec2(cell, 9.0 + seed)));
+}
+// goods on shelves along a wall: s across it, y up (window's frame), seed the shop
+vec3 shelves(float s, float y, float seed, float sparse) {
+	float row = floor((y + 1.05) / 0.42);
+	float in_row = fract((y + 1.05) / 0.42);
+	if (y < -1.05 || y > 1.05) { return wall_col.rgb; }
+	if (in_row < 0.09) { return shelf_col.rgb; }                  // the shelf board
+	float w = mix(0.16, 0.34, h21(vec2(row, seed)));
+	float cell = floor(s / w);
+	float k = h21(vec2(cell * 1.7 + row * 13.1, seed));
+	if (k < 0.12 + sparse * 0.5 || in_row > 0.55 + 0.4 * h21(vec2(cell, row + seed))) { return wall_col.rgb * 0.8; }
+	vec3 g = k < 0.35 ? goods_a.rgb : (k < 0.55 ? goods_b.rgb : (k < 0.78 ? goods_c.rgb : goods_d.rgb));
+	g = mix(g, wall_col.rgb * h21(vec2(cell * 5.3, row + seed)), 0.4);   // (packets, not paint chips)
+	return g * (0.7 + 0.35 * h21(vec2(cell, row * 3.0 + seed)));
+}
+void fragment() {
+	vec3 cam = CAMERA_POSITION_WORLD;
+	vec3 rd = normalize(wpos - cam);
+	vec3 q = vec3(dot(wpos - o, ax), wpos.y - o.y, dot(wpos - o, az));
+	vec3 d = vec3(dot(rd, ax), rd.y, dot(rd, az));
+	float seed = floor(h21(floor(o.xz * 0.5)) * 97.0);
+	float cafe = step(0.8, kind);
+	float clothes = step(0.4, kind) * (1.0 - cafe);
+	vec3 inside = wall_col.rgb * 0.3;
+	if (d.z < -0.01 && q.z > -0.02) {                             // in through the front of the glass
+		float D = 3.5;
+		float t = (-D - q.z) / d.z;
+		int face = 0;                                              // 0 back, 1 side, 2 floor, 3 ceiling
+		if (abs(d.x) > 1e-3) {
+			float ts = (sign(d.x) * hw - q.x) / d.x;
+			if (ts > 0.0 && ts < t) { t = ts; face = 1; }
+		}
+		if (abs(d.y) > 1e-3) {
+			float tf = ((d.y < 0.0 ? -1.3 : 1.55) - q.y) / d.y;
+			if (tf > 0.0 && tf < t) { t = tf; face = d.y < 0.0 ? 2 : 3; }
+		}
+		vec3 h = q + d * t;
+		if (face == 0) {
+			inside = cafe > 0.5 ? (h.y > 0.15 && h.y < 0.95 && abs(h.x) < hw * 0.6 ? shelf_col.rgb * 0.25
+				+ step(0.5, fract(h.y * 9.0)) * step(abs(h.x), hw * 0.55) * 0.18 : wall_col.rgb)
+				: (clothes > 0.5 ? racks(h.x, h.y, seed) : shelves(h.x, h.y, seed, 0.0));
+		} else if (face == 1) {
+			inside = clothes > 0.5 ? racks(h.z, h.y, seed + 31.0) : shelves(h.z, h.y, seed + 31.0, cafe);
+		} else if (face == 2) {
+			vec2 tl = floor(vec2(h.x, h.z) / 0.5);
+			inside = floor_col.rgb * (0.85 + 0.15 * mod(tl.x + tl.y, 2.0));
+		} else {
+			inside = wall_col.rgb * 1.1 + light.rgb * 1.5 * step(abs(h.x), 0.15) * step(fract(h.z * 0.5), 0.7);
+		}
+		// a cafe's counter across the room, half way in, waist high
+		if (cafe > 0.5 && face != 3) {
+			float tc = (-1.6 - q.z) / d.z;
+			vec3 hc = q + d * tc;
+			if (tc > 0.0 && tc < t && hc.y < -0.25 && abs(hc.x) < hw * 0.8) {
+				inside = shelf_col.rgb * (0.55 + 0.1 * step(0.9, fract(hc.x)));
+			}
+		}
+		inside *= 1.0 - 0.35 * smoothstep(1.0, 4.5, t);           // further in, a little darker
+	}
+	float f = 0.06 + 0.94 * pow(1.0 - clamp(dot(-rd, az), 0.0, 1.0), 4.0);
+	ALBEDO = mix(inside * 0.15, sky_col.rgb * 0.5, f);
+	EMISSION = inside * light.rgb * lit * (1.0 - f);
+	ROUGHNESS = 0.1;
+	METALLIC = 0.2;
+}
+"""
+var _shop_mat: ShaderMaterial
+
+func _shop_interior() -> ShaderMaterial:
+	if _shop_mat == null:
+		_shop_mat = ShaderMaterial.new()
+		var sh := Shader.new()
+		sh.code = SHOP_SHADER
+		_shop_mat.shader = sh
+	_shop_mat.set_shader_parameter("light", _tone["shoplight"])
+	_shop_mat.set_shader_parameter("floor_col", _tone["mark"].lerp(_tone["pavement"], 0.4))
+	_shop_mat.set_shader_parameter("wall_col", _tone["mark"].darkened(0.1))
+	_shop_mat.set_shader_parameter("shelf_col", _tone["woodfence"].lightened(0.2))
+	_shop_mat.set_shader_parameter("goods_a", _real_col("red"))
+	_shop_mat.set_shader_parameter("goods_b", _real_col("yellow"))
+	_shop_mat.set_shader_parameter("goods_c", _real_col("green"))
+	_shop_mat.set_shader_parameter("goods_d", _real_col("blue"))
+	_shop_mat.set_shader_parameter("sky_col", (_sky_reflect()[1] as Color) if env != null and env.sky != null else Palette.col("bg_alt"))
+	_shop_mat.set_shader_parameter("lit", 1.4 if _night else 0.45)
+	return _shop_mat
+
 func _shop_glass() -> StandardMaterial3D:
 	if _smat.has("shopglass"):
 		return _smat["shopglass"]
@@ -12892,6 +13031,8 @@ func _retint_city() -> void:
 		sm.albedo_color = _tone[sm.get_meta("tone", t)]
 	if _smat.has("shopglass"):
 		(_smat["shopglass"] as StandardMaterial3D).emission = _tone["shoplight"]
+	if _shop_mat != null:
+		_shop_interior()   # (its colours from the tones again)
 	_retint_trees()
 	if _wall_mat != null:
 		_wall_mat.set_shader_parameter("wall_a", _tone["wall"])
@@ -12956,6 +13097,8 @@ func _retint_city() -> void:
 	if _smat.has("shopglass"):
 		# (at night 2.0 clipped to a blank white pane; the light spills onto the pavement instead)
 		(_smat["shopglass"] as StandardMaterial3D).emission_energy_multiplier = 0.85 if _night else 0.7
+	if _shop_mat != null:
+		_shop_mat.set_shader_parameter("lit", 1.4 if _night else 0.45)
 	if _night and env != null:
 		var bg := Palette.col("bg")
 		var pl := Palette.col("player")
