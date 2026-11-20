@@ -49,6 +49,14 @@ The ones most often touched, and the functions in them:
   (barred windows, the door in the middle bay), stone courses, plinth and mosaic are
   `WALL_SHADER`'s `ground` / `door` / `stone_k`; worn asphalt is `TONE_SHADER`'s
   `crazing()` and patches. `tests/eye_level.gd` puts a camera where a person stands.
+- **night lights** -- GLOW_SHADER (additive, unfogged, `skip_vertex_transform`) draws the
+  pools (`_pool`, at pavement height + 3 cm), the headlight beams (`_beam_mesh`) and halos
+  (`_halo`: a quad whose vertices all sit at the light, UV2.y 1, turned to the eye in the
+  shader, never under ~1% of the distance across): the lamps' halos go in the pools' mesh
+  (`_make_pools`), the headlights' in the beam mesh the player's car and the traffic share
+  -- no draws of their own. Lit shops' light on the pavement: `_shop_lights`. The night's
+  colours: the night branch of `_retint_city` (a little of the palette's player colour, not
+  half of it). Shop glass at night 0.85 (2.0 clipped to white).
 - **cats, flags on cars** -- the builders call `cat_at(p, y, facing, "sit"/"loaf")` (garden
   walls in `_garden_fronts`, a parked car's nose in `_build_parked`, bins in furniture's
   `kerbside`); furniture.gd's `cats()` places `_cat_kit()` (ellipsoids and tubes, the coat

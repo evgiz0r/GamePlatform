@@ -5267,6 +5267,8 @@ func _partner(c: Vector2, d: Vector2, ri: int, hw: float, o: int) -> Array:
 var _pool_at: Array = []             ## Vector3(x, z, radius)
 var _pools_made := false
 var _pools_from := 0                 ## _pool_at before this have theirs
+var _shop_lights: Array = []         ## [the window's foot, out to the street, how wide] of every lit shop window
+var _shop_lit_from := 0
 
 func _make_pools() -> void:
 	_pools_made = true
@@ -5274,8 +5276,27 @@ func _make_pools() -> void:
 	for i in range(_pools_from, _pool_at.size()):
 		var q: Vector3 = _pool_at[i]
 		_pool(pools, Vector2(q.x, q.y), q.z)
+		# the lamp's halo, at its head (a street lamp's ~7 m up, a park globe's ~3.8 m)
+		_halo(pools, _g3(Vector2(q.x, q.y), 3.75 if q.z < 5.0 else 6.9), 0.75 if q.z >= 5.0 else 0.5)
 	_pools_from = _pool_at.size()
-	for mi: MeshInstance3D in _add_mesh(pools, _glow_mat("lamplight", 0.4), false, LAMP_RANGE):
+	# a lit shop window's light on the pavement in front of it
+	for i in range(_shop_lit_from, _shop_lights.size()):
+		var s: Array = _shop_lights[i]
+		var at: Vector2 = s[0]
+		var n: Vector2 = s[1]
+		var w: float = 1.5 * float(s[2])
+		var t := Vector2(-n.y, n.x)
+		var y := KERB_H + 0.03
+		var a0 := _g3(at - t * w, y)
+		var a1 := _g3(at + t * w, y)
+		var b0 := _g3(at - t * (w + 0.8) + n * 2.6, y)
+		var b1 := _g3(at + t * (w + 0.8) + n * 2.6, y)
+		var m0 := _g3(at, y)
+		pools.tri(m0, a1, b1, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(0.35, 0), Vector2(0.6, 0.72))
+		pools.tri(m0, b1, b0, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(0.6, 0.72), Vector2(-0.6, 0.72))
+		pools.tri(m0, b0, a0, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(-0.6, 0.72), Vector2(-0.35, 0))
+	_shop_lit_from = _shop_lights.size()
+	for mi: MeshInstance3D in _add_mesh(pools, _glow_mat("lamplight", 0.75), false, LAMP_RANGE):
 		mi.visible = _night
 		_night_nodes.append(mi)
 
@@ -5720,15 +5741,42 @@ func _sports_pitch(ring: PackedVector2Array, lines: Buf, frames: Buf) -> void:
 var _night := false
 var _night_nodes: Array = []          ## shown only at night: light pools, headlight beams
 
+## UV2.y 1: a halo round a light instead -- every vertex of its quad at the light, UV its
+## corner (-1..1), COLOR.r its size: turned to face the eye here, at least a few pixels across
+## however far, in front of the lamp's own head. It stands in for a glow effect (a bloom over
+## the whole frame), which costs a laptop's browser a millisecond or two every frame: these
+## are drawn with the pools and the beams, no draws of their own. Not fogged (the night's haze
+## added to them turned far pools into cyan blobs); far pools fade out by themselves.
 const GLOW_SHADER := """
 shader_type spatial;
-render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled, skip_vertex_transform;
 uniform vec4 col : source_color;
 uniform float strength = 0.5;
+varying float halo;
+varying float fade;
+void vertex() {
+	halo = UV2.y;
+	if (UV2.y > 0.5) {
+		vec3 c = (MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
+		float d = max(-c.z, 0.1);
+		float s = max(COLOR.r * 1.2, d * 0.009);
+		c += normalize(-c) * min(0.7, d * 0.4);
+		VERTEX = c + vec3(UV, 0.0) * s;
+		fade = 1.0 - smoothstep(450.0, 700.0, d);
+	} else {
+		VERTEX = (MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
+		fade = 1.0 - smoothstep(220.0, 330.0, length(VERTEX));
+	}
+}
 void fragment() {
-	// UV: 0 at the light, 1 at the rim (pools); beams fade along their length and to the sides
-	float k = UV2.x > 0.5 ? (1.0 - UV.y) * (1.0 - UV.y) * (1.0 - UV.x * UV.x) : clamp(1.0 - length(UV), 0.0, 1.0);
-	ALBEDO = col.rgb * k * k * strength;
+	if (halo > 0.5) {   // a bright core and a soft halo round it
+		float t = clamp(1.0 - length(UV), 0.0, 1.0);
+		ALBEDO = col.rgb * (t * t * 0.3 + pow(t, 12.0) * 1.6) * fade;
+	} else {
+		// UV: 0 at the light, 1 at the rim (pools); beams fade along their length and to the sides
+		float k = UV2.x > 0.5 ? (1.0 - UV.y) * (1.0 - UV.y) * (1.0 - UV.x * UV.x) : clamp(1.0 - length(UV), 0.0, 1.0);
+		ALBEDO = col.rgb * k * k * strength * fade;
+	}
 }
 """
 var _glow_mats := {}
@@ -5751,15 +5799,16 @@ func _glow_mat(tone: String, strength: float) -> ShaderMaterial:
 ## and one at the rim, each point's height worked out once
 func _pool(buf: Buf, p: Vector2, r: float) -> void:
 	var seg := 12
-	var mid := _g3(p, 0.09)
+	var y := KERB_H + 0.03   # (over the pavement too: at 0.09 it lay under it, lit only the road)
+	var mid := _g3(p, y)
 	var inner: Array = []
 	var outer: Array = []
 	var dirs: Array = []
 	for i in range(seg):
 		var e := Vector2(cos(TAU * i / seg), sin(TAU * i / seg))
 		dirs.append(e)
-		inner.append(_g3(p + e * r * 0.55, 0.09))
-		outer.append(_g3(p + e * r, 0.09))
+		inner.append(_g3(p + e * r * 0.55, y))
+		outer.append(_g3(p + e * r, y))
 	for i in range(seg):
 		var j := (i + 1) % seg
 		var e0: Vector2 = dirs[i]
@@ -5768,10 +5817,20 @@ func _pool(buf: Buf, p: Vector2, r: float) -> void:
 		buf.tri(inner[i], outer[i], outer[j], Vector3.UP, Color.WHITE, e0 * 0.55, e0, e1)
 		buf.tri(inner[i], outer[j], inner[j], Vector3.UP, Color.WHITE, e0 * 0.55, e1, e1 * 0.55)
 
+## a halo (see GLOW_SHADER) round a light at `at`, `size` metres across near to
+func _halo(b: Buf, at: Vector3, size: float) -> void:
+	var col := Color(size, 0, 0)
+	var u2 := Vector2(0, 1)
+	b.tri(at, at, at, Vector3.BACK, col, Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), u2)
+	b.tri(at, at, at, Vector3.BACK, col, Vector2(-1, -1), Vector2(1, 1), Vector2(-1, 1), u2)
+
 ## a headlight beam on the road, local to a car facing +Z: from the bumper, 26 m out and
-## widening (UV.x across, UV.y along; UV2.x = 1 marks it as a beam for the shader)
+## widening (UV.x across, UV.y along; UV2.x = 1 marks it as a beam for the shader); and a halo
+## round each headlight (the player's car and the traffic's share this mesh)
 func _beam_mesh() -> ArrayMesh:
 	var b := Buf.new()
+	for sx: float in [-0.68, 0.68]:
+		_halo(b, Vector3(sx, 0.68, 2.2), 0.32)
 	var near := 2.3
 	var far := 28.0
 	var steps := 6
@@ -7984,6 +8043,8 @@ func _build_pois() -> void:
 			var b := Basis(Vector3.UP, face)
 			var at3 := func(q: Vector2, out: float, y: float) -> Vector3: return Vector3(q.x + n.x * out, gy + y, q.y + n.y * out)
 			front["glass"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.05, 1.3)))
+			if _mine(pos):
+				_shop_lights.append([pos + n * 0.1, n, wide])
 			front["beam"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.08, 2.62)))
 			for sgn: float in [-1.0, 1.0]:
 				front["post"].append(Transform3D(b, at3.call(pos + along * 1.56 * wide * sgn, 0.08, 1.3)))
@@ -10281,24 +10342,28 @@ func _retint_city() -> void:
 	lamp.emission = _tone["lamplight"]
 	lamp.emission_energy_multiplier = 2.4
 	if _smat.has("shopglass"):
-		(_smat["shopglass"] as StandardMaterial3D).emission_energy_multiplier = 2.0 if _night else 0.7
+		# (at night 2.0 clipped to a blank white pane; the light spills onto the pavement instead)
+		(_smat["shopglass"] as StandardMaterial3D).emission_energy_multiplier = 0.85 if _night else 0.7
 	if _night and env != null:
 		var bg := Palette.col("bg")
 		var pl := Palette.col("player")
 		var ink := Palette.col("ink")
-		var haze := bg.lerp(pl, 0.3).lerp(ink, 0.06)
+		var wn := Palette.col("warn")
+		# a dark night, a little blue (the palette's player colour, lightly: more of it was a
+		# teal "day for night" over everything), the city's own glow low on the horizon
+		var haze := bg.lerp(ink, 0.1).lerp(wn, 0.05)
 		var sky := env.sky.sky_material as ProceduralSkyMaterial
-		sky.sky_top_color = bg.lerp(pl, 0.05)
-		sky.sky_horizon_color = haze
+		sky.sky_top_color = bg.lerp(pl, 0.04)
+		sky.sky_horizon_color = bg.lerp(ink, 0.16).lerp(wn, 0.1)
 		sky.ground_horizon_color = haze
 		sky.ground_bottom_color = bg
 		env.background_color = haze
-		env.ambient_light_color = bg.lerp(pl, 0.5).lerp(ink, 0.25)
-		env.ambient_light_energy = 0.42
+		env.ambient_light_color = bg.lerp(ink, 0.32).lerp(pl, 0.14)
+		env.ambient_light_energy = 0.38
 		env.fog_light_color = haze
 		env.fog_density = FOG_NIGHT
-		sun.light_color = ink.lerp(pl, 0.4)
-		sun.light_energy = 0.18
+		sun.light_color = ink.lerp(pl, 0.15)   # the moon
+		sun.light_energy = 0.14
 		sun.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY   # no sun disc in a night sky
 	if _car_shader_mat != null:   # the cars' reflections, lamps and wells
 		_car_material()
@@ -10339,7 +10404,7 @@ func _build_car() -> void:
 	_body.add_child(_sedan_node)
 	var beam := MeshInstance3D.new()
 	beam.mesh = _beam_mesh()
-	beam.material_override = _glow_mat("lamplight", 0.55)
+	beam.material_override = _glow_mat("lamplight", 0.9)
 	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	beam.visible = _night
 	_car.add_child(beam)

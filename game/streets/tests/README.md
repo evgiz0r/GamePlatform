@@ -52,6 +52,7 @@ these numbers the wrong way has broken something.
 | `time_of_day` | 1 | day, evening, night over the same views: an east-west street towards the evening sun and away from it, the start street, the zoom-out height (shots `tod_*`); how long the first switch to the evening takes | ~0.2 s of work (the evening's far shadows), then two frames |
 | `wet` | 1 | dry and after rain over the same views (down the start street, back across the zebra, a walker looking down at the pavement), by day and in the evening (shots `wet_*`) | darker ground, puddles with the sky in them, no white flare on sunlit pavers |
 | `street_life` | 1 | the cats and the flags on parked cars: how many, and the nearest two of each up close (`AT="x,z"`; shots `life_*`) | ~1 cat a block; a flag on 1 parked car in 14 |
+| `night` | 1 | the night up close: from the car with its headlights, by the nearest lamps (pools, halos), in front of the nearest lit shop (shots `night_*`) | pools on the pavement too; halos; the shop's light on the ground |
 | `sound_drive` | 1 | the game's own mix on autodrive, recorded (AudioEffectRecord on the master bus) to `sound_drive.wav` to listen to, its loudness and brightness second by second (`WET=1`: after rain, the tyres hiss); run headless (`OUT=... $GODOT --headless --path . -s res://game/streets/tests/sound_drive.gd`), not with run.sh | -38 dB standing, -31 to -35 driving |
 | `draws`, `frame_cost` | 1 | what is drawn and what it costs per quality level | ~280 draws |
 | `divided_zebra` | 3 | people crossing both halves of a divided road (shots) | |

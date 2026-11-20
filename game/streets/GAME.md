@@ -785,6 +785,18 @@ it: a soft patch at the foot of every street tree, the pavement darker along the
 garden walls. All of it built with each square of the city in a few tens of milliseconds,
 and nothing to do while you drive.
 
+> Night that feels like night ... Grass blades near the camera ... lets start with these too.
+> and then go the video from today for more ideas
+
+**A night that feels like night.** The night is dark and only a little blue now (it was a
+teal "day for night" over everything), with the city's own glow low on the horizon. Every
+street lamp has a halo round its head and a warm pool of light under it on the pavement as
+well as the road (the pools used to lie under the pavement, and showed only on the road);
+headlights, yours and the traffic's, glow, and their beams light the road ahead; a lit
+shop window throws its light onto the pavement in front of it. No glow effect over the
+whole picture -- that costs a laptop's browser a millisecond or two every frame -- the
+halos are drawn with the pools, as part of what was drawn already.
+
 > I took a video on my phone, walking in Givatayim.
 
 ## Smooth on a laptop and a phone
