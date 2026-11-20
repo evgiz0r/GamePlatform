@@ -847,7 +847,7 @@ func _fence_material(tone: String, gap: float) -> ShaderMaterial:
 	if _fence_mats.has(tone):
 		return _fence_mats[tone]
 	var m := ShaderMaterial.new()
-	if _fence_shader == null:
+	if _fence_shader == null:   # (one Shader for every colour: each Shader is compiled on its own)
 		_fence_shader = Shader.new()
 		_fence_shader.code = FENCE_SHADER
 	m.shader = _fence_shader

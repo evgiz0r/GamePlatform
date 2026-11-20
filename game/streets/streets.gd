@@ -33,7 +33,7 @@ const LEVELS := [
 	{"name": "A walk in Givatayim: Sheinkin and Sirkin", "group": "Auto Experiments", "city": "givatayim", "look": "med", "walk": "sheinkin_sirkin"},
 	# a box of central Tel Aviv, not the whole city (the workflow's bbox): HaKirya, Azrieli,
 	# Sarona, Montefiore, Bitsaron, the Ayalon. Starts on Kaplan heading east, the towers ahead.
-	{"name": "Tel Aviv: Azrieli and HaKirya", "group": "Cities", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer"},
+	{"name": "Tel Aviv: Azrieli to the sea", "group": "Cities", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer"},
 	# the route set (routes.json, tests/pick_routes.py): pick one of the drives and watch
 	# autodrive take it, from one address to the other, in its own city
 	{"name": "Test routes: watch a drive", "group": "Auto Experiments", "routes": true, "city": "dimyon", "look": "med"},
@@ -852,6 +852,7 @@ var _people_rng := RandomNumberGenerator.new()
 var _hgrid := PackedFloat32Array()   ## ground height (m above the lowest point) on a grid
 var _steep := false                  ## some of the ground is too steep to drive up (see STEEP)
 var _made_up := false                ## the city file is invented (tools/fake_city.py), not OSM's
+var _credits: Array = []              ## other sources the city file took data from, to credit on screen beside OSM
 var _mtn_from := 100000.0            ## the made-up town: above this height the land is mountain (see GROUND_SHADER)
 var _hx0 := 0.0
 var _hz0 := 0.0
@@ -1241,9 +1242,38 @@ func _shader_key(gi: GeometryInstance3D) -> String:
 		m = mesh.surface_get_material(0)
 		if m == null and gi is MeshInstance3D:
 			m = (gi as MeshInstance3D).get_surface_override_material(0)
-	if m is ShaderMaterial and m.has_meta("piece"):   # (each person's own colours, one shader)
-		return "%s:piece" % gi.get_class()
-	return "%s:%d" % [gi.get_class(), m.get_instance_id() if m != null else 0]
+	# what compiles is a shader's CODE, not a material: a ShaderMaterial's Shader, and for a
+	# standard material its set of switches (Godot makes one shader per set and shares it, a
+	# colour or a number is only a uniform). Tel Aviv: 77 materials, 25 codes, 43 programs
+	# (tests/warm_census.gd) -- grouped by material, one step of the warm-up got the 38
+	# people's materials (one shader) and another a dozen shaders.
+	var shadow := "+shadow" if gi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF else ""
+	return "%s:%s%s" % [gi.get_class(), _code_key(m), shadow]
+
+var _code_keys := {}                 ## material id -> _code_key
+func _code_key(m: Material) -> String:
+	if m == null:
+		return "none"
+	if m is ShaderMaterial:
+		var sh := (m as ShaderMaterial).shader
+		return "shader:%d" % (sh.get_instance_id() if sh != null else 0)
+	if _code_keys.has(m.get_instance_id()):
+		return _code_keys[m.get_instance_id()]
+	var parts: Array = [m.get_class()]
+	for p: Dictionary in m.get_property_list():   # its switches: every stored bool and enum, which textures are set
+		if not (int(p["usage"]) & PROPERTY_USAGE_STORAGE):
+			continue
+		var t := int(p["type"])
+		var v = m.get(p["name"])
+		if t == TYPE_BOOL and v:
+			parts.append(p["name"])
+		elif t == TYPE_INT and int(v) != 0 and not String(p["name"]).begins_with("render_priority"):
+			parts.append("%s=%d" % [p["name"], v])
+		elif t == TYPE_OBJECT and v != null and String(p["name"]) != "next_pass":
+			parts.append(p["name"] + "+")
+	var key := " ".join(parts)
+	_code_keys[m.get_instance_id()] = key
+	return key
 var _load_ms := 0                    ## from the city file to the car shown, ms
 
 ## the loading, for the perf view: how long, its biggest stages, the warm-up's four views
@@ -1690,6 +1720,7 @@ func _load_city(id: String) -> bool:
 			_hgrid[i] = float(raw[i]) * k
 		_steep = _any_steep()
 	_made_up = data.has("made_up")
+	_credits = data.get("credits", [])
 	if _made_up and _hnx > 0:
 		_mtn_from = _town_top() + 6.0
 	_decks = Decks.new(self)
@@ -2198,6 +2229,7 @@ func _build_setup(t0: int) -> void:
 	_marks = Marks.new(self)
 	_marks.setup(_city_data, _city_id)
 	_lights_setup()
+	_infer_signs()   # (after the lights: a lit junction has none)
 	_parks_setup()
 	_trees_setup()
 	# every square with anything in it, and every square of the map (open land grows trees)
@@ -9314,14 +9346,8 @@ func _flush_batches() -> void:
 			if _over():
 				await _pause()
 			var bat: Buf = b["cells"][ck]
-			var arr := []
-			arr.resize(Mesh.ARRAY_MAX)
-			arr[Mesh.ARRAY_VERTEX] = bat.v
-			arr[Mesh.ARRAY_NORMAL] = bat.n
-			arr[Mesh.ARRAY_COLOR] = bat.c
 			var am := ArrayMesh.new()
-			am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
-			am.surface_set_material(0, b["mat"])
+			await _index_into(am, bat, b["mat"])
 			var mi := MeshInstance3D.new()
 			mi.mesh = am
 			if rc < 99999.0:
@@ -9333,6 +9359,44 @@ func _flush_batches() -> void:
 	_tally("batches", made)
 	_batches = {}
 	_soups = {}
+
+## The merged meshes are triangle soups -- each triangle its own three vertices, built that
+## way -- and most vertices repeat: a quad's two triangles share two, a kit's faces share
+## theirs. Indexed (the same position, normal and colour kept once), Tel Aviv's 9.8 M merged
+## vertices are 5.4 M, 187 MB -> 121 MB (tests/index_gain.gd). SurfaceTool does it in C++,
+## but on the main thread (the web build has none other): a piece of at most INDEX_PIECE
+## vertices at a time, each its own surface, the frame handed back between them -- whole,
+## the biggest square's 170 k vertices took 30 ms here. (Pieces under 65,536 vertices keep
+## 16-bit indices, too.) Only the squares built while driving: the ones round the start are
+## built behind the loading text, where it would add to the wait (the pieces also cost
+## draws: all indexed, Tel Aviv's start view went 669 -> 692 draws, video memory 445 -> 365 MB).
+const INDEX_PIECE := 30000
+func _index_into(am: ArrayMesh, bat: Buf, mat: Material) -> void:
+	var n := bat.v.size()
+	if not _bg_build:
+		var soup := []
+		soup.resize(Mesh.ARRAY_MAX)
+		soup[Mesh.ARRAY_VERTEX] = bat.v
+		soup[Mesh.ARRAY_NORMAL] = bat.n
+		soup[Mesh.ARRAY_COLOR] = bat.c
+		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, soup)
+		am.surface_set_material(0, mat)
+		return
+	for from in range(0, n, INDEX_PIECE):
+		if from > 0 and _over():
+			await _pause()
+		var to := mini(from + INDEX_PIECE, n)
+		var arr := []
+		arr.resize(Mesh.ARRAY_MAX)
+		var whole := from == 0 and to == n
+		arr[Mesh.ARRAY_VERTEX] = bat.v if whole else bat.v.slice(from, to)
+		arr[Mesh.ARRAY_NORMAL] = bat.n if whole else bat.n.slice(from, to)
+		arr[Mesh.ARRAY_COLOR] = bat.c if whole else bat.c.slice(from, to)
+		var st := SurfaceTool.new()
+		st.create_from_arrays(arr)
+		st.index()
+		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, st.commit_to_arrays())
+		am.surface_set_material(am.get_surface_count() - 1, mat)
 
 ## _chunked a couple of hundred copies at a time while building in the background (a
 ## square's trees merged in one go took most of a frame)
@@ -11057,10 +11121,11 @@ func _ao_car(c: Vector2, fwd: Vector2, lift: float) -> void:
 		_ao.tri(I[i], O[j], O[i], Vector3.UP, col, one, Vector2.ZERO, Vector2.ZERO)
 
 ## ---- paint at junctions, speed limits --------------------------------------------------------
-var _stop_lines: Array = []          ## [junction, way in, line before it, road width, one-way, "stop" or ""]
+var _stop_lines: Array = []          ## [junction, way in, line before it, road width, one-way, "stop", "give" or ""]
 
 ## A solid stop line across the lane at every light and stop sign; STOP painted before a
-## stop sign's line (עצור in Givatayim); SLOW (האט) before a crossing near a school.
+## stop sign's line (עצור in Givatayim); a dashed line at a give-way (and האט before it in
+## the Israeli towns); SLOW (האט) before a crossing near a school.
 func _build_road_paint() -> void:
 	var paint := CBuf.new(GROUND_CELL)
 	var med := String(_place.get("look", "")) == "med"
@@ -11072,6 +11137,16 @@ func _build_road_paint() -> void:
 		var at := c - dir * float(sl[2])
 		var o0 := -(w * 0.5 - 0.25) if sl[4] else 0.15
 		var o1 := w * 0.5 - 0.25
+		if sl[5] == "give":   # a give-way's line is dashed: half a metre on, half off
+			var n := maxi(1, int((o1 - o0) / 1.0))
+			for k in range(n):
+				var d0 := lerpf(o0, o1, float(k) / n)
+				var d1 := d0 + (o1 - o0) / n * 0.5
+				paint.quad3(_g3(at + right * d0, Y_MARK + 0.002), _g3(at + right * d1, Y_MARK + 0.002),
+					_g3(at + right * d1 - dir * 0.3, Y_MARK + 0.002), _g3(at + right * d0 - dir * 0.3, Y_MARK + 0.002))
+			if med:
+				_road_word("האט", at - dir * 2.6 + right * ((o0 + o1) * 0.5), dir)
+			continue
 		paint.quad3(_g3(at + right * o0, Y_MARK + 0.002), _g3(at + right * o1, Y_MARK + 0.002),
 			_g3(at + right * o1 - dir * 0.45, Y_MARK + 0.002), _g3(at + right * o0 - dir * 0.45, Y_MARK + 0.002))
 		if sl[5] == "stop":
@@ -11776,6 +11851,79 @@ func _junction_of(node: int, reach: float) -> int:
 					break
 	return best
 
+## OSM maps few stop and give-way signs (Givatayim 33, Tel Aviv 22), where nearly every side
+## street meeting a bigger one without lights has one. Each such way in gets one here, as a
+## sign facing that way: a stop where the bigger road is a main road (secondary or up) in an
+## Israeli town, a give-way otherwise (and always on a slip road, and in Bedford, where stop
+## signs are rare). Left alone: a slip road merging onto a motorway or trunk road, two
+## streets of one class (first come, as before), roundabouts
+## (their own rule), service roads and driveways, lit junctions, a junction with a sign mapped
+## within SIGN_MAPPED, the gap through a divided road's median (only the outer way in), and a
+## street that goes on through the junction under another class.
+const SIGN_MAPPED := 30.0
+func _infer_signs() -> void:
+	if not _city_data.has("signs"):
+		_city_data["signs"] = []
+	var signs: Array = _city_data["signs"]
+	var mapped := {}
+	for sg: Array in signs:
+		var node := int(sg[0])
+		if node >= 0 and node < _nodes.size():
+			_hash_add(mapped, Rect2(_nodes[node], Vector2.ZERO), SEG_CELL, node)
+	var med := String(_place.get("look", "")) == "med"
+	var added := {"stop": 0, "give_way": 0}
+	for ni in range(_nodes.size()):
+		if _node_roads[ni].size() < 2 or _sig_set.has(ni) or _node_ways(ni) < 3:
+			continue
+		var c := _nodes[ni]
+		var top := 0
+		var names := {}   # the top class's street names here
+		var ring := false
+		for e: Vector2i in _node_roads[ni]:
+			var r: Dictionary = _roads[e.x]
+			if not r["drive"]:
+				continue
+			ring = ring or bool(r["ring"])
+			var rank := int(ROAD_RANK.get(r["k"], 1))
+			if rank > top:
+				top = rank
+				names = {}
+			if rank == top and String(r["name"]) != "":
+				names[String(r["name"])] = true
+		if ring or top < 2:
+			continue
+		var near_sign := false
+		for o: int in _near(mapped, c, SIGN_MAPPED, SEG_CELL):
+			near_sign = near_sign or _nodes[o].distance_to(c) < SIGN_MAPPED
+		for o: int in _near(_sig_hash, c, 30.0, SEG_CELL):
+			near_sign = near_sign or _nodes[o].distance_to(c) < 30.0
+		if near_sign:
+			continue
+		for e: Vector2i in _node_roads[ni]:
+			var r: Dictionary = _roads[e.x]
+			var rank := int(ROAD_RANK.get(r["k"], 1))
+			if not r["drive"] or r["pv"] or rank == 0 or rank >= top or names.has(String(r["name"])):
+				continue
+			if String(r["k"]).ends_with("_link") and top >= 6:
+				continue   # a slip road onto a motorway merges at speed: no line to wait at
+			var pts: PackedVector2Array = r["pts"]
+			for d2: int in [-1, 1]:
+				var from := e.y + d2
+				if from < 0 or from >= pts.size() or (r["o"] != 0 and r["o"] != -d2):
+					continue
+				var back := _points_back(e, d2, SITE_LEG)
+				if not back.is_empty():
+					var o := int(back[back.size() - 1][0])
+					if o != ni and _node_ways(o) >= 3 and _other_half(ni, o, e.x):
+						continue   # across a divided road's median: the outer way in has it
+				var way_in := (c - pts[from]).normalized()
+				var kind := "stop" if med and top >= 4 and not String(r["k"]).ends_with("_link") else "give_way"
+				signs.append([ni, kind, roundi(way_in.x * 100.0), roundi(way_in.y * 100.0)])
+				_bucket(_tile_signs, _tile_of(c), signs.size() - 1)
+				added[kind] += 1
+	_dressing["signs inferred: stop"] = added["stop"]
+	_dressing["signs inferred: give way"] = added["give_way"]
+
 ## Stop and give-way signs: a pole and a plate on the right of each way in they are for.
 ## Which ways: the one OSM says (direction=forward/backward); else, at a junction, the
 ## minor roads into it (all of them if they are all alike); on a plain stretch, both ways.
@@ -11823,11 +11971,19 @@ func _build_signs() -> void:
 					continue   # the main road through has the right of way
 				var line := _node_r[node] + 2.0 if junction else 1.0
 				rules.append([kind, way_in, line])
-				if kind == "stop":
-					_stop_lines.append([c, way_in, line, float(r["w"]), r["o"] != 0, "stop"])
+				if kind == "stop" or kind == "give_way":
+					_stop_lines.append([c, way_in, line, float(r["w"]), r["o"] != 0, "stop" if kind == "stop" else "give"])
 				var right := Vector2(-way_in.y, way_in.x)
-				var p := c - way_in * (line + 0.4) + right * (float(r["w"]) * 0.5 + 0.7)
-				if _push_out(p, 0.3, false) != Vector2.ZERO or not _off_road(p, 0.3):
+				# by the line on the right, or a little further back or out: at a corner the
+				# first spot is often in the corner's asphalt or against a wall (Givatayim: 44
+				# poles of 167 ways in stood at the first spot alone)
+				var p := Vector2.INF
+				for back: float in [0.4, 2.0, 4.0, 6.5]:
+					for out: float in [0.7, 1.3]:
+						var q := c - way_in * (line + back) + right * (float(r["w"]) * 0.5 + out)
+						if p == Vector2.INF and _push_out(q, 0.3, false) == Vector2.ZERO and _off_road(q, 0.3):
+							p = q
+				if p == Vector2.INF:
 					continue
 				var gy := _h(p)
 				poles.append(Transform3D(Basis(), Vector3(p.x, gy + 1.1, p.y)))
@@ -11848,6 +12004,9 @@ func _build_signs() -> void:
 					word.visibility_range_end = 60.0
 					world.add_child(word)
 		if not rules.is_empty():
+			if _signs.has(node):   # (another sign here already, for another way in: both kept)
+				(_signs[node] as Array).append_array(rules)
+				continue
 			_signs[node] = rules
 			_hash_add(_sign_hash, Rect2(c, Vector2.ZERO), SEG_CELL, node)
 	if poles.is_empty():
@@ -19781,6 +19940,8 @@ func _build_hud() -> void:
 	_osm_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_osm_lbl.position = Vector2(8, 347)
 	_osm_lbl.text = "a made-up town: not a real place" if _made_up else "map data © OpenStreetMap contributors"
+	for c in _credits:   # e.g. a town's own survey of its buildings' heights (tools/osm_city.py)
+		_osm_lbl.text += " · " + String(c)
 	_osm_lbl.modulate.a = 0.7
 	_map = Control.new()
 	_map.position = Vector2(8, 224)

@@ -190,9 +190,12 @@ about 3 s here, the same as anywhere (see "Loading near-first").
 > Ashdod.
 
 **Tel Aviv** is a box of the city centre, not the whole city (all of it would be far too
-much to build and drive smoothly): about 2.4 by 2.7 km, from Ichilov and the Savidor
-station down to Yitzhak Sadeh, and from just west of Ibn Gabirol across the Ayalon to
-Nahalat Yitshak -- HaKirya, Azrieli and Sarona, Montefiore, Bitsaron. It starts on Kaplan
+much to build and drive smoothly): about 4.3 by 3.3 km, from Ichilov and the Savidor
+station down past the Carmel market, and from the sea across the Ayalon to Nahalat
+Yitshak -- the beaches and the promenade (Herbert Samuel), Allenby, the Carmel market,
+Rothschild, Dizengoff's south end, HaKirya, Azrieli and Sarona, Montefiore, Bitsaron. It
+began as 2.4 by 2.7 km, Ibn Gabirol to the Ayalon, and was grown to the sea (November
+2026); the places in the first box kept where they were. It starts on Kaplan
 just past Leonardo da Vinci, heading east, HaKirya on the left and the Azrieli towers
 ahead. The towers stand at their real heights (OSM has them for the tall ones: Azrieli's
 round tower 187 m, the Spiral 350 m). The map ends at the box's edge (the striped barrier).
@@ -246,6 +249,11 @@ box (none on Begin or Ibn Gabirol), so the rest are not there.
 
 > do 1 and 2, then the railway
 
+> what would it cost extending tel aviv to the sea and down including like carmel market
+> and alenbi, how much more is that
+
+> what next options. lets try to make it bigger
+
 **The test town.** The last place, Kiryat Dimyon, is made up (`cities/dimyon.json`, from
 `tools/fake_city.py`): one neighbourhood about 1.3 x 1 km, a fifth of Givatayim's buildings,
 so it loads in about a second and a half. It is for looking at a change quickly, so it has
@@ -278,6 +286,11 @@ are up on its embankments, 7 m over the street, the slip roads merging into and 
 boulevard just short of HaTe'ena. Driving, walking and the traffic all keep to their own
 level: under a bridge you are under it, in the tunnel the hill's houses are not in your
 way, cars overhead do not stop for you.
+
+**Streets are level side to side on a hillside**, as real ones are: the hill is cut into on
+the uphill side and filled on the downhill one, and the street keeps only its climb along
+its length. (The ground comes from terrain data on a grid, and laid straight on it a street
+across a hillside leaned with it -- HaOranim 13%, the lookout road 37%; in every town.)
 
 > I want to make a new fake city in streets, where we would do quicker simulation and
 > validations. Yes it would not stress as the big cities on latency, but would give a quick
@@ -506,7 +519,11 @@ That goes for you on foot too.
 keeps behind the car in front. Drive through a red light, or a stop sign without
 stopping, and it says so -- judged as the car's nose crosses the stop line, by the way it
 came in (a car in on the last of the amber was told it ran the red). The stop and give-way
-signs are OSM's (Givatayim has a few dozen mapped, Bedford more); the lights run their own
+signs are OSM's where it maps them (Givatayim a few dozen, Bedford more), and everywhere
+else a side street meeting a bigger street without lights gets one, as real towns do: a
+stop before a main road in the Israeli towns, a give-way otherwise (and in Bedford). Two
+streets of the same size meeting have none (first come, as before), nor roundabouts, nor
+driveways; the lights run their own
 cycle. In the Israeli towns they go as they do there: green, three flashes of green, amber,
 red, red and amber together, green. In Bedford: green, amber, red. The main road's green is
 the longer, 18 s against the side streets' 13. Between one way's amber
@@ -555,8 +572,8 @@ standing in a big junction for 25 s, the cars across going round it).
 > properly.
 
 **Signs and paint.** A stop line across the lane at every light and stop sign, STOP
-painted before a stop sign (עצור in Givatayim), SLOW (האט) before a crossing near a
-school, speed limit signs a little after each junction on the main roads (round and
+painted before a stop sign (עצור in Givatayim), a dashed line at a give-way (with האט
+before it in the Israeli towns), SLOW (האט) before a crossing near a school, speed limit signs a little after each junction on the main roads (round and
 red-rimmed in Givatayim, a white MAXIMUM board in Bedford). Bedford's centre lines are
 yellow, as in Nova Scotia: a solid double line on main roads, dashed on side streets,
 with white edge lines.
@@ -1231,7 +1248,9 @@ contributors under the ODbL, which is why the credit sits on screen.
 ### What is real and what is guessed
 
 - **Real**: every road's path, kind, width (or lanes), one-way direction and name; every
-  building outline; heights and floors where OSM has them; parks, grass, water, car
+  building outline; heights and floors where OSM has them; in Tel Aviv (the level, and the
+  strip of it at Givatayim's west edge) the city's own measured heights for most of its
+  buildings, from the municipality's 2019 survey (credited on screen); parks, grass, water, car
   parks; mapped trees; traffic lights and zebra crossings; the speed limit where OSM tags
   it (every driver keeps to it, and the signs show it); the city boundary. The hills:
   the ground follows an open elevation model (AWS terrain tiles), baked in with the city.
