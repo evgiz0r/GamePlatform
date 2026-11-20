@@ -356,6 +356,23 @@ one needed:
   the water. Leave lakes that lie at their shore's lowest point alone: a road over an
   inlet runs on ground below their level.
 
+## Railways
+
+The baker keeps them (`rails`, `platforms`, `stations`; a file baked before has none).
+- **Each track is its own OSM way**: a double track is two lines, a station's throat a
+  fan of them with crossovers between. Tracks that join share an OSM node, so their end
+  points are equal exactly: join them end to end by that, taking the straightest way on
+  (a crossover's leg, sharply off, is not "on"), sidings and yards left out, to get the
+  long runs a train can follow.
+- **Leave out what is underground**: a city's metro or light rail is often all tunnel
+  (its stations too: keep only stations near a surface track).
+- **Keep the city's builders off the tracks**: open land's planted trees grew on them
+  (add the beds to whatever says "nothing grows here"), a bridge's piers stood on them
+  (check a pier against the tracks as against the lanes below), and a bed's slope came up
+  through the asphalt of a road running close alongside (pull the bed's foot in there).
+- **Give the ballast its own colour**, darker than bare ground: in the pale colour of the
+  ground between a motorway's carriageways the bed vanished from beside the line.
+
 ## The edge of the map
 
 The baked area ends; don't let it end in an invisible wall. A striped barrier along it

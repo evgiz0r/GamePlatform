@@ -229,7 +229,9 @@ func _driver(c: Car) -> void:
 	c.accel = lerpf(1.5, 2.8, brisk) * rng.randf_range(0.9, 1.1)
 	c.gap = lerpf(3.0, 1.6, brisk) * rng.randf_range(0.9, 1.1)
 	c.headway = lerpf(1.8, 0.9, brisk) * rng.randf_range(0.9, 1.1)
-	c.react = lerpf(1.1, 0.35, brisk) * rng.randf_range(0.8, 1.2)
+	# (0.3-0.9 s: with 0.35-1.1 a queue's start-up wave ran ~1.2 s a car against the ~1 s
+	# measured at real signals, and queues crossed the line a quarter slower -- queue_start)
+	c.react = lerpf(0.9, 0.3, brisk) * rng.randf_range(0.8, 1.2)
 	c.drift = rng.randf() * TAU
 	match c.kind:
 		"bus", "truck":
@@ -328,7 +330,9 @@ func tick(dt: float) -> void:
 				# that stopped short of a standing car, with metres still to close, never
 				# rolled up (tests/traffic_stuck.gd: three in four minutes, one 6 m short).
 				# 3.5 m/s is about 2 m of room at the braking it plans with.)
-				if not (c.why == "car" and c.lead_v < 0.5 and vt < 3.5):
+				# (0.3 m/s: seen to be moving -- at 0.5 the follower waited ~0.45 s more for the
+				# car in front's gentle first push to show; nearer 0 the queue went like a train)
+				if not (c.why == "car" and c.lead_v < 0.3 and vt < 3.5):
 					c.react_t += dt
 				# and waiting to react it stands: it crept on at 0.26 m/s for as long as it
 				# waited, neither pulling away nor stopped

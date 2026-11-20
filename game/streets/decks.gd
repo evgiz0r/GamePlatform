@@ -524,6 +524,9 @@ func piers(ri: int) -> Array:
 			if not on.is_empty() and int(on["road"]) != ri and not is_deck(g._roads[int(on["road"])]) and float(on["edge"]) < 1.0:
 				in_lanes = true
 				break
+			if g._rails != null and g._rails.on_track(p + across * (half - 0.6) * f, 2.8):
+				in_lanes = true   # (nor on a railway's track: the trains under a bridge run through)
+				break
 		if in_lanes:
 			continue
 		var clash := false
@@ -1105,7 +1108,9 @@ const RAMP_FAST := 0.05       ## a ramp's grade on a motorway, a trunk road, a s
 const RAMP := 0.07            ## ... on anything else
 const MIN_BRIDGE := 8.0
 const CLEAR_UNDER := 6.2      ## a tunnel's road under what it crosses: 4.8 m clear, the roof, a little earth
-const MIN_TUNNEL := 20.0      ## shorter "tunnels" are passages under a building: on the ground
+const MIN_TUNNEL := 20.0
+const CAP_DIG := 0.085        ## a cutting's steepest: coming up out of one onto a junction at 50 km/h,
+                              ## 10% was a crest the car took off from      ## shorter "tunnels" are passages under a building: on the ground
 const FAST := {"motorway": true, "trunk": true, "motorway_link": true, "trunk_link": true, "primary_link": true}
 const CAP_FAST := 0.07        ## the steepest a ramp may be, when there is no room for a gentler one
 const CAP := 0.10
@@ -1462,7 +1467,7 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 		return ends >= 3
 	# how deep each point may be: CAP down for each metre from the nearest point held at street
 	# level (what a tunnel runs under, a junction off it). A tunnel that cannot get down to
-	# CLEAR_UNDER between them is too short for its cuttings: it stays on the ground.
+	# CLEAR_UNDER between them is too short for its cuttings: it is left out, as before.
 	var room := {}
 	var rq: Array = []
 	var dropped: Array = []
@@ -1507,7 +1512,7 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 					if j + step < 0 or j + step >= mn.size():
 						continue
 					var v := int(mn[j + step])
-					var rv := float(room[u]) + CAP * (pos.call(u) as Vector2).distance_to(pos.call(v))
+					var rv := float(room[u]) + CAP_DIG * (pos.call(u) as Vector2).distance_to(pos.call(v))
 					if rv < float(room.get(v, INF)) - 0.01:
 						room[v] = rv
 						if not rq.has(v):
@@ -1525,9 +1530,8 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 					why = int(n)
 			dropped.append("%s at (%d, %d): %.1f m room, held %s" % [roads[ri].get("name_en", roads[ri].get("name", roads[ri]["k"])),
 				int(pos.call(why).x), int(pos.call(why).y), mr, "pinned" if pinned.has(why) else ("junction" if junction.call(why) else "near")])
-			is_tu.erase(ri)
-			roads[ri].erase("tu")
-			continue
+			is_tu.erase(ri)   # (left a tunnel without heights: left out, as before -- on the ground
+			continue          # it would run across the roads it dives under)
 		for n in roads[ri]["n"]:
 			dig[int(n)] = CLEAR_UNDER
 	var dq: Array = dig.keys()
