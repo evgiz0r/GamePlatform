@@ -1747,8 +1747,15 @@ LEVEL=1 $GODOT --headless --path . -s res://game/streets/tests/<test>.gd`.
   `street_people` a dog, a pushchair, a sitter, a waiter each within 80 m inside a minute;
   `street_sounds` birds -31..-34 dB by day by trees, crickets ~-36 at night, voices -20 / -25;
   `crash_things` a bin knocked, 3 dents, 2-3 glass patches; `wall_things` the person 1
-  surface; playtest smart 25 s passes, hitches 4-9 (container noise: compare with main).
-- **Open**: a dog can be pushed to the far side of a crossing railing (`_companion`'s
+  surface; playtest smart 25 s passes, hitches 4-11 (container noise: compare with main, run
+  alone -- 16 with a second Godot running beside it). `walk_people` (level 6, headless,
+  `--fixed-fps 10`, ~4 min): 0 pops, 0-1 turned in view, 0 within 0.6 m of you, deepest into
+  a parked car 0.17-0.27 m (a car's end corner; was 0.55 in its middle), 5-7 people met
+  within 40 m; `people_clear` 0.0% in a post or wall.
+- **Open**: walk 2's streets are thin (5-7 people within 40 m over its 106 s); people still
+  graze a parked car's end corners by ~0.15 m (round posts); the walk's own line runs
+  against parked cars at 60-70 s (WALKS.md), where people giving way pass on its far side;
+  a dog can be pushed to the far side of a crossing railing (`_companion`'s
   `_push_out` picks the nearer side); grass blades still poke through a garden path where it
   crosses a lawn; the sounds are synthesised (make_sounds.py) and the user has not said how
   they sound; more things that break (sign posts, fence panels, hedges, a scrape mark on the
