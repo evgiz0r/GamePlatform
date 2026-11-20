@@ -62,6 +62,7 @@ func _run() -> void:
 	var gaps := {}        # "who: road kind" -> Array of gaps
 	var worst: Array = [] # [gap, who, road name, width, kind, where]
 	var spins: Array = []
+	var off_line: Array = []
 	var was_turning := false
 	var shot := false
 	var t := 0.0
@@ -74,6 +75,14 @@ func _run() -> void:
 		was_turning = g._ap_turn > 0.0
 		if int(t * 60.0) % 6 != 0:
 			continue
+		# autodrive against its own planned line: how far off it, and to which side (+ right)
+		if g._auto and g._ap_pts.size() >= 2 and absf(g._v) > 3.0:
+			var k: int = g._ap_nearest_seg()
+			var a: Vector2 = g._ap_pts[k]
+			var b: Vector2 = g._ap_pts[k + 1]
+			var dd := (b - a).normalized()
+			var cp := Geometry2D.get_closest_point_to_segment(g._pos, a, b)
+			off_line.append((g._pos - cp).dot(Vector2(-dd.y, dd.x)))
 		var list: Array = []
 		if absf(g._v) > 3.0:
 			list.append(["autodrive", g._pos, g._fwd(), 0.9])
@@ -117,4 +126,12 @@ func _run() -> void:
 		if seen.size() >= 10:
 			break
 	print("autodrive turned round on the spot %d time(s): %s" % [spins.size(), str(spins)])
+	if not off_line.is_empty():
+		off_line.sort()
+		var right := 0
+		for v in off_line:
+			if float(v) > 0.4:
+				right += 1
+		print("autodrive off its own planned line (+ right): median %+.2f m, 10%% %+.2f, 90%% %+.2f, more than 0.4 m right %.0f%% of the time" % [
+			float(off_line[off_line.size() / 2]), float(off_line[off_line.size() / 10]), float(off_line[off_line.size() * 9 / 10]), 100.0 * right / off_line.size()])
 	quit(0)
