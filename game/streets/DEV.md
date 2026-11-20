@@ -1583,8 +1583,9 @@ and the ramp-top fix. Where things stand:
 - **Begin x Kaplan's traffic: fixed down to a few a run** (20 Nov 2026). The exam's watch
   mode stages it: `LEVEL=7 EXAM_AT=-30,160 EXAM_STAND=70 EXAM_SECS=150 STREETS_BUILD_ALL=1
   $GODOT --headless --fixed-fps 60 --path . -s res://game/streets/tests/exam.gd` (~5 min;
-  also `EXAM_AT=-45,165`, the eastbound queue). Checks in 150 s: 10 and 8 at first; 1 and 3
-  now (WATCH_NUMBERS). What was wrong and what fixed it, all in traffic.gd (see "lanes" in
+  also `EXAM_AT=-45,165`, the eastbound queue). Checks in 150 s: 10 and 8 at first; now 0 at
+  (-30, 160) and 1 at (-45, 165) (a "held by nothing" where Begin's slip meets a delivery
+  truck's queue). The exam at level 7, 3 x 60 s: 8 then 4; level 1: 4 and 4. What was wrong and what fixed it, all in traffic.gd (see "lanes" in
   the code map):
   1. Cars from Kaplan's four lanes into Begin's two-lane southbound slip kept their lane by
      *number* across the road change, so the link's lane 1 became the slip's lane 1 on the
