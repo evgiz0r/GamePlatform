@@ -624,6 +624,36 @@ def _wet_cells(sea, x0, z0, step, nx, nz):
     return wet
 
 
+def _hold_sea(blur, wet, nx, nz, step):
+    """The sea's floor under sea level, the shore over it (heights in metres, in place)."""
+    # the floor 1.5 m under (0.3 m beside the shore, so the ground meets the water near
+    # the coastline), the land within ~110 m of it at least 0.3 m over (the tiles had a
+    # beach 2.5 m under sea level four points in from the shore)
+    coast = wet[:]
+    for _ in range(max(1, round(110.0 / step))):
+        grow = coast[:]
+        for j in range(nz):
+            for i in range(nx):
+                if not coast[j * nx + i]:
+                    grow[j * nx + i] = any(coast[jj * nx + ii] for jj in (j - 1, j, j + 1)
+                                           for ii in (i - 1, i, i + 1)
+                                           if 0 <= ii < nx and 0 <= jj < nz)
+        coast = grow
+    raised = 0
+    for j in range(nz):
+        for i in range(nx):
+            k = j * nx + i
+            if wet[k]:
+                shore = not all(wet[jj * nx + ii] for jj in (j - 1, j, j + 1)
+                                for ii in (i - 1, i, i + 1) if 0 <= ii < nx and 0 <= jj < nz)
+                blur[k] = -0.3 if shore else -1.5
+            elif coast[k] and blur[k] < 0.3:
+                blur[k] = 0.3
+                raised += 1
+    log(f"ground: {sum(wet)} grid points in the sea, held under sea level; "
+        f"{raised} of the shore raised to 0.3 m")
+
+
 def terrain_grid(P, box, bounds, step, zoom=13, bare=False, sea=None):
     """Ground height on a regular grid over the bounds, in metres above its lowest point.
     With `sea` (the sea polygons and the islands in them) the sea floor is held under sea
@@ -687,18 +717,7 @@ def terrain_grid(P, box, bounds, step, zoom=13, bare=False, sea=None):
                         cnt += 1
             blur[j * nx + i] = acc / cnt
     if wet:
-        # the floor 1.5 m under (0.3 m beside the shore, so the ground meets the water near
-        # the coastline), the land beside it at least 0.3 m over
-        for j in range(nz):
-            for i in range(nx):
-                k = j * nx + i
-                near = [wet[jj * nx + ii] for jj in (j - 1, j, j + 1) for ii in (i - 1, i, i + 1)
-                        if 0 <= ii < nx and 0 <= jj < nz]
-                if wet[k]:
-                    blur[k] = -0.3 if not all(near) else -1.5
-                elif any(near):
-                    blur[k] = max(blur[k], 0.3)
-        log(f"ground: {sum(wet)} grid points in the sea, held under sea level")
+        _hold_sea(blur, wet, nx, nz, step)
     base = min(blur)
     log(f"ground: {nx} x {nz} grid every {step:.0f} m from {len(tiles)} tiles, "
         f"{base:.0f} to {max(blur):.0f} m above sea level")
