@@ -1507,6 +1507,8 @@ func _load_city(id: String) -> bool:
 			r["kerb"] = int(rd["kerb"])   # its kerb's paint, set by hand (details.gd)
 		if rd.has("kerb_mid"):
 			r["kerb_mid"] = int(rd["kerb_mid"])   # the paint along its middle, set by hand
+		if rd.has("yard"):
+			r["yard"] = bool(rd["yard"])   # front gardens along it or not, set by hand
 		var ri := _roads.size()
 		_roads.append(r)
 		var hw: float = r["w"] * 0.5
@@ -1891,6 +1893,7 @@ func _build_setup(t0: int) -> void:
 			for t: Vector2i in over:
 				_bucket(_tile_rings[kind], t, (_area_rings[kind] as Array).size())
 			(_area_rings[kind] as Array).append(ring)
+	_find_islands(areas)
 	for ri in range(_roads.size()):
 		var r: Dictionary = _roads[ri]
 		var pts: PackedVector2Array = r["pts"]
@@ -2106,6 +2109,11 @@ func _build_ground() -> void:
 		if kind == "school":
 			y = Y_AREA - 0.001
 		var ring: PackedVector2Array = a["_ring"]
+		if a.has("_isl"):   # a traffic island: raised, off the asphalt (see _find_islands)
+			for isl: PackedVector2Array in a["_isl"]:
+				for piece: PackedVector2Array in _pieces_in(isl, sq, sq_poly):
+					await _fill(areas[tone], piece, ISLAND_Y)
+			continue
 		var flat := INF
 		if tone == "water" and a.has("y"):   # a river held at its level by weirs
 			flat = float(a["y"]) / float(_city_data.get("scale", 10))
@@ -2733,6 +2741,7 @@ void fragment() {
 var _roof_mat: ShaderMaterial
 const PAVE_W := 2.4                  ## pavement width (m)
 const KERB_CUT := 4.5                ## kerbs stop this far past a junction's road edge: the corner's radius
+const SHOP_PAVE := 1.8               ## the pavement this much wider in front of shops (under the building where it stands closer)
 ## Israeli kerb paint goes by where on the street, as a filmed walk showed: blue-white along
 ## a residential street's parking (paid), red-white for the last metres before every
 ## junction (no parking within 12 m of one: the kerb starts KERB_CUT past the corner) and on
@@ -2743,6 +2752,63 @@ const KERB_RED_KINDS := ["residential", "unclassified", "tertiary", "secondary",
 	"tertiary_link", "secondary_link", "primary_link"]
 var _stops_by_road := {}             ## road -> its bus stops' spots on the pavement (for the kerb paint)
 var _stops_mapped := false
+
+## A shop opens onto the pavement: no front garden in front of one. A filmed street that OSM
+## calls residential had shops down both sides where the game laid low walls and hedges --
+## and, between them, one real front garden behind a low white fence, so this goes piece by
+## piece, not by the street: a piece of a run's side is a shop's where OSM has a shop, cafe
+## or the like behind it within 6 m along, or where a hand-placed row of shop fronts
+## (details.gd lines, kind shopfront) runs behind it.
+const SHOP_FRONT_KINDS := ["cafe", "restaurant", "fast_food", "bar", "pub", "ice_cream", "pharmacy", "bank",
+	"bakery", "hairdresser", "post_office"]
+var _shop_pts := PackedVector2Array()
+var _shop_hash := {}
+var _shop_rows: Array = []             ## [a, e]: hand-placed shop fronts (details.gd)
+var _shops_mapped := false
+
+## per piece of `run` (one byte per point, the piece from it to the next), 1 where shops
+## stand behind side `sgn`
+func _shop_pieces(run: PackedVector2Array, hw: float, sgn: float) -> PackedByteArray:
+	if not _shops_mapped:
+		_shops_mapped = true
+		var k := 1.0 / float(_city_data.get("scale", 10))
+		for p: Array in _city_data.get("pois", []):
+			var kind := String(p[2])
+			if (kind.begins_with("shop") and not kind in ["shop:vacant", "shop:disused", "shop:no"]) or kind in SHOP_FRONT_KINDS:
+				var q := Vector2(p[0], p[1]) * k
+				_hash_add(_shop_hash, Rect2(q, Vector2.ZERO), BLD_CELL, _shop_pts.size())
+				_shop_pts.append(q)
+		if _details != null:
+			for ln: Dictionary in _details.data.get("lines", []):
+				if String(ln.get("kind", "")) == "shopfront":
+					var pts: Array = ln["pts"]
+					for i in range(pts.size() - 1):
+						_shop_rows.append([Vector2(pts[i][0], pts[i][1]), Vector2(pts[i + 1][0], pts[i + 1][1])])
+	var out := PackedByteArray()
+	out.resize(run.size())
+	var reach := hw + PAVE_W + 14.0
+	for i in range(run.size() - 1):
+		var a := run[i]
+		var b := run[i + 1]
+		var seg := a.distance_to(b)
+		if seg < 0.01:
+			continue
+		var t := (b - a) / seg
+		var side := Vector2(-t.y, t.x) * sgn   # (the side _offset_line puts a positive offset)
+		for j: int in _near(_shop_hash, (a + b) * 0.5, seg * 0.5 + reach, BLD_CELL):
+			var q := _shop_pts[j] - a
+			var along := q.dot(t)
+			if along > -6.0 and along < seg + 6.0 and q.dot(side) > 0.5 and q.dot(side) < reach:
+				out[i] = 1
+		for row: Array in _shop_rows:
+			var ra: Vector2 = row[0] - a
+			var re: Vector2 = row[1] - a
+			var lo := minf(ra.dot(t), re.dot(t))
+			var hi := maxf(ra.dot(t), re.dot(t))
+			var off := (ra.dot(side) + re.dot(side)) * 0.5
+			if hi > 0.5 and lo < seg - 0.5 and off > 0.5 and off < reach:
+				out[i] = 1
+	return out
 
 ## the paint along the middle of a street's kerb (0 plain, 1 red-white, 2 blue-white)
 func _kerb_paint(r: Dictionary, hsh: int) -> int:
@@ -2845,7 +2911,7 @@ func _build_kerbs() -> void:
 		if r.has("kerb"):
 			pat = int(r["kerb"])   # (as filmed: 0 plain, 1 red-white, 2 blue-white, 3 yellow-black)
 		var stops := _kerb_stops(ri) if med and not r.has("kerb") else PackedVector2Array()
-		var yard: bool = r["k"] in ["residential", "living_street"]
+		var yard: bool = r["k"] in ["residential", "living_street"] and bool(r.get("yard", true))
 		var dual := r.has("median")
 		var inner_sgn := -float(r["o"])   # a divided road's other half is on the left of its traffic
 		for run: PackedVector2Array in _street_runs(r, KERB_CUT, true):
@@ -2863,6 +2929,13 @@ func _build_kerbs() -> void:
 						continue   # the halves touch: a painted line, no kerb
 					pw = clampf(m * 0.5 - KERB_W, 0.0, PAVE_W)   # each half paves its half of the median
 				var inner := _offset_line(run, hw * sgn)
+				# the pieces with shops behind them: the pavement runs on to their windows (a
+				# filmed shopping street's was ~4 m, to the shop fronts, not 2.4 m and then grass)
+				# and no garden is laid in front of them
+				var shops := PackedByteArray()
+				shops.resize(run.size())
+				if not inner_side:
+					shops = _shop_pieces(run, hw, sgn)
 				_pave_walled = med and yard and not inner_side
 				# where the paint changes along this kerb: red-white for KERB_RED at an end that
 				# meets a junction, yellow-black along a bus stop on this side
@@ -2891,7 +2964,7 @@ func _build_kerbs() -> void:
 						var t0 := u0 / seg
 						var t1 := u1 / seg
 						_kerb_run_piece(kerb, pave, ri, inner[i].lerp(inner[i + 1], t0), inner[i].lerp(inner[i + 1], t1),
-							na.lerp(nb, t0).normalized(), na.lerp(nb, t1).normalized(), pw,
+							na.lerp(nb, t0).normalized(), na.lerp(nb, t1).normalized(), pw + (SHOP_PAVE if shops[i] else 0.0),
 							Color(float(p) / 4.0 + 0.05, 0, 0), along + u0, u1 - u0)
 					along += seg
 				_pave_walled = false
@@ -2906,6 +2979,8 @@ func _build_kerbs() -> void:
 				var walled := PackedByteArray()   # which pieces of the run have the wall (for the fronts on it)
 				walled.resize(run.size())
 				for i in range(run.size() - 1):
+					if shops[i]:
+						continue
 					# (not where it would lie on another road: a garden strip of one street ran
 					# over the asphalt of the next where they met at an angle)
 					if _asphalt_other((w_out[i] + w_out[i + 1] + g_out[i] + g_out[i + 1]) * 0.25, ri) \
@@ -2934,11 +3009,12 @@ func _build_kerbs() -> void:
 					var L := run[i].distance_to(run[i + 1])
 					while s < L:
 						var q := (w_out[i].lerp(w_out[i + 1], s / L)).lerp(g_out[i].lerp(g_out[i + 1], s / L), 0.45)
-						if _mine(q) and posmod(_hash_i(q), 3 if med else 6) == 1 and not _asphalt_other(q, ri) and _push_out(q, 0.8, false) == Vector2.ZERO:
+						if not shops[i] and _mine(q) and posmod(_hash_i(q), 3 if med else 6) == 1 and not _asphalt_other(q, ri) and _push_out(q, 0.8, false) == Vector2.ZERO:
 							var sc := 0.7 + 0.5 * float(posmod(_hash_i(q), 5)) / 4.0
 							bushes.append(Transform3D(Basis.from_scale(Vector3(1.3, 0.9, 1.3) * sc), _g3(q, 0.45 * sc)))
 						s += step
 					s -= L
+	_island_faces(kerb)
 	if med:
 		await _build_medians(kerb, pave)
 	var corners := _clip_buf(GROUND_CELL)
@@ -3043,13 +3119,13 @@ func _on_median(p: Vector2) -> bool:
 	return false
 
 func _median_tick(dt: float) -> void:
-	if _medians.is_empty() or _walking or _air:
+	if (_medians.is_empty() and _islands.is_empty()) or _walking or _air:
 		return
 	var fwd := _fwd()
 	var on := 0
 	for k in range(2):
 		var wheel := _pos + fwd * (WHEELBASE * 0.5 if k == 0 else -WHEELBASE * 0.5)
-		var now := _on_median(wheel)
+		var now := _on_median(wheel) or _on_island(wheel)
 		if now:
 			on += 1
 		if now != _median_on[k]:
@@ -4140,6 +4216,150 @@ func _area_signed(poly: PackedVector2Array) -> float:
 	for i in range(poly.size()):
 		a += poly[i].x * poly[(i + 1) % poly.size()].y - poly[(i + 1) % poly.size()].x * poly[i].y
 	return a * 0.5
+
+## ---- traffic islands ---------------------------------------------------------------------
+## A lawn (or a paved patch) with road nearly all round it -- the island between a
+## roundabout's way in and way out, a roundabout's middle, the space where a boulevard's halves
+## part -- was drawn flat on the ground like any park, and with no kerb where no street laid
+## one it lay level with the asphalt: "grass patches on the road". Such an area is raised
+## instead, a kerb's height less a few centimetres (the streets' own pavements, where they
+## run over its edge, stay on top), with a kerb face all round it, and cut back off the
+## asphalt -- the roads' widths, the junctions' discs -- and off the paths through it (a
+## crossing goes through an island at road level). The car goes over one as over a median.
+const ISLAND_MAX := 8000.0           ## m2: bigger is a park, not an island
+const ISLAND_RING := 0.75            ## the share of its edge that must be within ISLAND_NEAR of asphalt
+const ISLAND_NEAR := 3.0
+const ISLAND_Y := KERB_H - 0.04
+var _islands: Array = []             ## the raised pieces (PackedVector2Array), the whole city
+var _island_hash := {}
+
+func _find_islands(areas: Array) -> void:
+	for ai in range(areas.size()):
+		var a: Dictionary = areas[ai]
+		if not String(a["k"]) in ["park", "grass", "plaza"]:
+			continue
+		var ring: PackedVector2Array = a["_ring"]
+		if ring.size() < 3 or absf(_area_signed(ring)) > ISLAND_MAX or absf(_area_signed(ring)) < 6.0:
+			continue
+		# round its edge every 2 m: how much of it has a street's asphalt close by
+		var n := 0
+		var near := 0
+		for i in range(ring.size()):
+			var p0 := ring[i]
+			var p1 := ring[(i + 1) % ring.size()]
+			var steps := maxi(1, int(p0.distance_to(p1) / 2.0))
+			for k in range(steps):
+				n += 1
+				if _street_gap(p0.lerp(p1, float(k) / steps), ISLAND_NEAR) < ISLAND_NEAR:
+					near += 1
+		if n == 0 or float(near) / n < ISLAND_RING:
+			continue
+		var pieces := _island_cut(ring)
+		if pieces.is_empty():
+			continue
+		a["_isl"] = pieces
+		for piece: PackedVector2Array in pieces:
+			_hash_add(_island_hash, _bld_box_of(piece), BLD_CELL, _islands.size())
+			_islands.append(piece)
+	_tally("islands", _islands.size())
+
+## how far past the asphalt's edge of the nearest street (a public road with kerbs, or a
+## service lane: not a motorway's grass) p is, up to `reach` (INF past that)
+func _street_gap(p: Vector2, reach: float) -> float:
+	var best := INF
+	for code: int in _near(_asph_hash, p, reach, ASPH_CELL):
+		var r: Dictionary = _roads[code / 4096]
+		if r["pv"] or HIGHWAYS.has(r["k"]):
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		var sj := code % 4096
+		best = minf(best, Geometry2D.get_closest_point_to_segment(p, pts[sj], pts[sj + 1]).distance_to(p) - float(r["w"]) * 0.5)
+	return best
+
+## an island's outline less every road's asphalt near it (a little more, so its face stands
+## behind a street's own kerb), the junctions' discs and the paths through it
+func _island_cut(ring: PackedVector2Array) -> Array:
+	var box := _bld_box_of(ring).grow(12.0)
+	var cutters: Array = []
+	var nodes := {}
+	for code: int in _near(_seg_hash, box.get_center(), maxf(box.size.x, box.size.y) * 0.5, SEG_CELL):
+		var ri := code / 4096
+		var r: Dictionary = _roads[ri]
+		if r["pv"] or r.has("ys"):
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		var sj := code % 4096
+		if not box.intersects(Rect2(pts[sj], Vector2.ZERO).expand(pts[sj + 1])):
+			continue
+		var hw := float(r["w"]) * 0.5 + (0.1 if r["drive"] else 0.0)
+		# (round ends: a bend's outside, which the drawn ribbon fills, is covered too)
+		cutters.append_array(Geometry2D.offset_polyline(PackedVector2Array([pts[sj], pts[sj + 1]]), hw,
+				Geometry2D.JOIN_ROUND, Geometry2D.END_ROUND))
+		if r["drive"]:
+			var ids: PackedInt32Array = r["ids"]
+			for nd: int in [ids[sj], ids[sj + 1]]:
+				if _node_r[nd] > 0.0 and (_node_roads[nd] as Array).size() >= 2:
+					nodes[nd] = true
+	for nd: int in nodes:
+		var disc := PackedVector2Array()
+		for k in range(16):
+			disc.append(_nodes[nd] + Vector2.from_angle(TAU * k / 16.0) * (_node_r[nd] * 1.05 + 0.1))
+		cutters.append(disc)
+	var pieces: Array = [ring]
+	for cut: PackedVector2Array in cutters:
+		var next: Array = []
+		for p: PackedVector2Array in pieces:
+			var res := Geometry2D.clip_polygons(p, cut)
+			var big := 0
+			for i in range(res.size()):
+				if absf(_area_signed(res[i])) > absf(_area_signed(res[big])):
+					big = i
+			var holed := false
+			for q: PackedVector2Array in res:
+				if Geometry2D.is_polygon_clockwise(q) != Geometry2D.is_polygon_clockwise(res[big]):
+					holed = true   # (a cutter wholly inside: leave this one out)
+			if holed:
+				next.append(p)
+				continue
+			for q: PackedVector2Array in res:
+				if absf(_area_signed(q)) > 2.0:
+					next.append(q)
+		pieces = next
+	return pieces
+
+func _on_island(p: Vector2) -> bool:
+	for i: int in _near(_island_hash, p, 0.5, BLD_CELL):
+		if Geometry2D.is_point_in_polygon(p, _islands[i]):
+			return true
+	return false
+
+## the kerb face round each island piece reaching this square (into the kerbs' mesh)
+func _island_faces(kerb: Buf) -> void:
+	var all: Array = _city_data.get("areas", [])
+	for ai: int in _tile_areas.get(_tile, []):
+		var a: Dictionary = all[ai]
+		if not a.has("_isl"):
+			continue
+		for piece: PackedVector2Array in a["_isl"]:
+			var along := 0.0
+			var cw := Geometry2D.is_polygon_clockwise(piece)
+			for i in range(piece.size()):
+				var p0 := piece[i]
+				var p1 := piece[(i + 1) % piece.size()]
+				var seg := p0.distance_to(p1)
+				if seg < 0.01:
+					continue
+				var d := (p1 - p0) / seg
+				var out := Vector2(d.y, -d.x) if not cw else Vector2(-d.y, d.x)   # away from the island
+				var face := Vector3(out.x, 0, out.y)
+				var b0 := _g3(p0, 0.0)
+				var b1 := _g3(p1, 0.0)
+				var t0 := _g3(p0, ISLAND_Y)
+				var t1 := _g3(p1, ISLAND_Y)
+				var col := Color(0.05, 0, 0)
+				kerb.tri(b0, b1, t1, face, col, Vector2(along, 0), Vector2(along + seg, 0), Vector2(along + seg, 1))
+				kerb.tri(b0, t1, t0, face, col, Vector2(along, 0), Vector2(along + seg, 1), Vector2(along, 1))
+				along += seg
 
 var _chimneys: Array = []
 var _area_rings := {}                ## "park" / "grass" / "wood" / "pitch" -> outlines, while building
@@ -6474,8 +6694,15 @@ func _car_paints() -> Array:
 	var silver := ink.lerp(alt, 0.32)
 	var grey := alt.lerp(ink, 0.22)
 	var black := bg.lerp(alt, 0.35)
+	# a car's red is a car paint's red and its blue a dark blue, whatever the palette: the
+	# palette's hazard (pink here) and player (cyan) made pink and teal cars, and a filmed
+	# street has none. Their hue pinned, their strength the palette's.
+	var hz := Palette.col("hazard")
+	var pl := Palette.col("player")
+	var red := Color.from_hsv(0.99, clampf(hz.s, 0.55, 0.8), clampf(hz.v * 0.62, 0.35, 0.6))
+	var blue := Color.from_hsv(0.61, clampf(pl.s, 0.5, 0.75), clampf(pl.v * 0.42, 0.25, 0.48))
 	var out: Array = [white, white, white, white, silver, silver, silver, grey, grey, black, black,
-		Palette.col("player").lerp(bg, 0.55), Palette.col("hazard").lerp(bg, 0.4), Palette.col("warn").lerp(ink, 0.5).lerp(alt, 0.2)]
+		blue, red, Palette.col("warn").lerp(ink, 0.5).lerp(alt, 0.2)]
 	return out.map(func(c: Color) -> Color: return _natural(c, 0.6))
 
 ## parked cars and traffic: mostly sedans and hatchbacks, some SUVs, the odd van
@@ -12100,9 +12327,13 @@ func _frame() -> void:
 	_p("camera, hud")
 
 ## ---- render quality: the web build watches its own frame rate and steps down ---------------
-## Per level: edge smoothing (MSAA), how far shadows reach (0: none), the 3D resolution.
+## Per level: edge smoothing (MSAA), how far shadows reach, the 3D resolution.
+## Every level keeps the sun's shadows, the lowest only near the car: switching them off made
+## the browser compile every material's shader again (with the sun's shadows on or off they are
+## different shaders), a freeze of seconds on each step between levels 1 and 0 -- and the
+## ladder steps back up when the frame rate recovers, and down again. A user saw 3.2 s.
 const QUALITY := [
-	[Viewport.MSAA_DISABLED, 0.0, 0.7],
+	[Viewport.MSAA_DISABLED, 25.0, 0.7],
 	[Viewport.MSAA_DISABLED, 45.0, 0.85],
 	[Viewport.MSAA_2X, 60.0, 1.0],
 	[Viewport.MSAA_4X, 75.0, 1.0],

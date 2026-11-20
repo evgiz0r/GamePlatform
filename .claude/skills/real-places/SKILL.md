@@ -96,6 +96,12 @@ goes wrong shows up the first time it runs.
   each laid whole, each with its own pattern, the corner flickered between brick and slabs.
   Lay paving once: keep what is down while building and cut each later piece where an
   earlier one already paves, in an order every square of the map repeats.
+- **Traffic islands are areas, and areas lie flat.** OSM maps the island at a roundabout's
+  mouth, a roundabout's middle and the strip where a divided road's halves part as a grass
+  (or paved) area; drawn on the ground like a park, with no kerb where no street laid one, it
+  lay level with the asphalt -- "grass patches on the road". An area with road nearly all
+  round it is an island: raise it to about kerb height with a kerb face, cut back off every
+  road's asphalt, the junctions' asphalt and the paths through it.
 - **Bare ground must not look like asphalt.** A grey a shade off the road's, with a photo's
   light and dark over it, read as more road: a boulevard's wide middle strip looked like
   lanes and its lawns like grass painted on them ("grass patches on the road"). Give open
@@ -429,6 +435,16 @@ the game walking the same route in first person beside it.
   building of its own raised 3-3.5 m (a raised building stands on columns and is not
   solid), the rest standing back behind it, both outlines starting at the same corner when
   the look comes from a hash of the first corner.
+- **A street of shops that OSM calls residential.** OSM tags a road by its traffic, not by
+  what lines it: a filmed street with shops down both sides was "residential", so the game
+  gave it front gardens with walls and hedges where the film had shopfronts on the pavement.
+  And OSM knew six of its businesses; panning the camera across the street in the film
+  showed a row. Decide gardens piece by piece (a shop behind it, or a hand-placed row of
+  shopfronts), not by the road's tag or the whole street: the same street had one real
+  garden between its shops.
+- **Panning in the film is how the shops get counted.** Ask the walker to turn the phone to
+  each side now and then: the shops across the road, which a forward-facing film never
+  shows, came only from those pans.
 - **A level that starts at a filmed spot must say so before the city builds.** A game that
   builds near its start first builds round wherever its start finder lands; a walk placed
   after that crosses bare ground until the background builder catches up.

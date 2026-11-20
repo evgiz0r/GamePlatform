@@ -179,6 +179,13 @@ The ones most often touched, and the functions in them:
   on every steep slope too), mountain woods in the tree builder (`MTN_TREES`, drawn from
   further off), `_build_turbines` / `_turbines_tick`; the fog halves in that town
   (`_retint_city`). Only a made-up town with hills gets any of it. `tests/mountains.gd` shoots it.
+- **traffic islands** -- `_find_islands` (in `_build_setup`): a park, lawn or plaza under
+  `ISLAND_MAX` with three quarters of its edge within 3 m of a street's asphalt is an island;
+  `_island_cut` takes the roads' asphalt (+0.1 m: its face stands behind a street's own kerb),
+  the junctions' discs and the paths through it off it; `_build_ground` lays the pieces at
+  `ISLAND_Y` (4 cm under a pavement's top, so a street's pavement over its edge stays on top),
+  `_island_faces` the kerb face round them, `_on_island` gives the car the median's jolt.
+  Givatayim 19 pieces, Ashdod 41; `tests/islands.gd` checks none is on a road.
 - **solid things and the road** -- `_off_road` (a road's edges, and the asphalt a rounded
   corner adds out to its curve: `_in_corner_fill`) and `_in_junction` (the round asphalt at a
   junction's point); furniture's `_free` checks both. The corners' outlines (`_corner_fill`)
@@ -197,6 +204,12 @@ The ones most often touched, and the functions in them:
   at `_walk_y` / `_pave_top`, what autodrive stops for `_ap_people_v`.
 - **render quality** -- `QUALITY`, `_set_quality` (what each level drops), `_watch_fps` (web
   only) / `_judge_fps` (the rule; testable natively), the soft car shadows `_set_blobs`.
+  Every level keeps the sun's shadows (level 0: 25 m): switching them off recompiled every
+  material's shader in the browser, seconds of freeze each time the ladder crossed into or out
+  of level 0. Night still switches them off (once, on the button). `tests/hitches.gd` counts
+  frames over 250 ms / 1 s driving and from above -- but under the test machine's software
+  renderer every Tel Aviv frame takes ~0.8 s, so it shows the script's parts, not a GPU's
+  stalls; a browser on the user's machine is the real measure (the perf view's hitch lines).
 - **where a frame's time goes** -- the profiler: `_p("part")` around each part, hitches
   kept and reported; P or a tap on the fps text shows it.
 - **zoom out and pause** -- "the view from above", after the chase cam: `_paused` stops
@@ -508,6 +521,18 @@ first:
   the pavement; painted bays on the shopping street. The game filled a quarter of the kerb.
 - **Street trees**: thin trunks in square earth pits at the kerb edge every ~8-10 m, the
   canopies meeting over the pavement; no palms on these streets.
+- **Shops** (second pass, done: `_shop_pieces` keeps gardens out from in front of shops and
+  widens the pavement there by `SHOP_PAVE` to the shop windows -- without it a strip of bare
+  grass was left between a 2.4 m pavement and the shopfronts;
+  Sirkin's rows are `lines` of kind shopfront in `cities/details/givatayim.json`, placed on
+  the city file's building edges parallel to the street just behind its pavement): OSM knew
+  six businesses along the walk; the film, panning, showed a row down both sides of Sirkin
+  -- a green corner shop, a bar under string lights with bar stools, shuttered shops,
+  Roladin's posters on its Sirkin side, the sabich stand's red umbrella and the
+  greengrocer's produce across the street, white scalloped awnings near Katznelson. The
+  game had gardens there and one bright awning per OSM shop. Still to do: each shop's own
+  look (awning colours, the umbrella, crates of fruit), and the bright neon awnings of the
+  OSM shops themselves.
 - **Light**: the real late afternoon is hazy and warm; the game's sky is saturated blue
   with cartoon clouds and its sunlight bleaches the ground.
 - **Small things**: black bollards with a yellow band along the kerb by the main road, a
