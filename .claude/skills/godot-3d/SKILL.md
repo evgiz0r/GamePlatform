@@ -158,6 +158,17 @@ most, in order, last time one did:
   multimesh over a 400 m square with a 160 m range draws every copy in the square, and
   none when the camera sits near a corner. Make the squares no bigger than about 0.6x the
   range and add half a square's diagonal to the range.
+- **A camera that rises over the world (a zoom-out, a map view) meets every range at
+  once.** Visibility ranges and fog both count from the camera, so from 500 m up the
+  ground right below is already 500 m away: cap the height at about half the longest
+  range you want kept (whatever has a shorter range drops out at the top of the screen
+  first), thin the fog with height (exponential fog at street-level density turns the
+  town below a washed-out white), and push `cam.near` out with the height, or paint
+  laid a few cm over asphalt z-fights. To freeze the world under it without
+  `get_tree().paused` (which would freeze the camera too), skip the physics tick and
+  set the characters' `process_mode` to disabled, which stops their AnimationPlayers.
+  Draw interpolated things at fraction 1 while frozen, or they rock between two ticks.
+  Keep the frame-rate watcher (if any) out of it: the whole world in view costs more.
 - **A Quaternius character is about eight meshes**: eight draw calls and eight skinnings.
   Thirty of them out-drew the whole city. Give their `MeshInstance3D`s a
   `visibility_range_end` (~90 m) and set `anim.active = false` beyond it.
