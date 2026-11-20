@@ -547,9 +547,18 @@ first:
   -- a green corner shop, a bar under string lights with bar stools, shuttered shops,
   Roladin's posters on its Sirkin side, the sabich stand's red umbrella and the
   greengrocer's produce across the street, white scalloped awnings near Katznelson. The
-  game had gardens there and one bright awning per OSM shop. Still to do: each shop's own
-  look (awning colours, the umbrella, crates of fruit), and the bright neon awnings of the
-  OSM shops themselves.
+  game had gardens there and one bright awning per OSM shop. Each shop's own look is now in
+  the details file's `shops` (details.gd has the format; `_build_pois` reads it through
+  `Details.shop_look`); `tests/shop_looks.gd` stands in the street facing each one and
+  prints where its front went. Awnings and umbrellas are instance-coloured (`_awning_col`,
+  `_real_col`), no longer one glowing palette material per role.
+- **Tests after the city is built cannot read `_city_data`**: the game lets go of the city
+  file once every square is up (`_city_data = {}` after building), so a scene test looking
+  for places there finds none. The built places are in `_pois` ([spot, role, name sign]).
+- **The map's outline at the kerb**: on Sirkin's west side the sabich stand's building
+  outline runs to within ~1 m of the kerb (OSM's upper floors), so no terrace fitted; a
+  cafe's table and umbrella may now stand right at its window when the shop's look asks for
+  an umbrella (`_terrace`'s third try).
 - **Light**: the real late afternoon is hazy and warm; the game's sky is saturated blue
   with cartoon clouds and its sunlight bleaches the ground.
 - **Small things**: black bollards with a yellow band along the kerb by the main road, a

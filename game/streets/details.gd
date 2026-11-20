@@ -24,7 +24,11 @@ extends RefCounted
 ##                                                    its middle, the red-white corners and
 ##                                                    bus stops kept (streets.gd _kerb_marks);
 ##                                                    yard: false for no front gardens (a
-##                                                    street of shops OSM calls residential)
+##                                                    street of shops OSM calls residential); pave: [pattern, colours] its paving
+##                                                    (0 herringbone, 1 rows of bricks, 2
+##                                                    slabs; 0 reds and browns, 1 greys, 2
+##                                                    sand, 3 all mixed: streets.gd
+##                                                    _set_pave_code)
 ##   crossings [[x, z], ...]                         zebras at the road nodes nearest these
 ##   white_bollards [{near: [x, z], r}]              the bollards by every zebra within r of
 ##                                                    near are white (the game picks a few)
@@ -65,6 +69,17 @@ extends RefCounted
 ##                                                    a red graffiti heart on that face).
 ##                                                    Anything on a lifted surface stands on it.
 ##   trees     [[x, z], ...]                         more trees for the city's own builder
+##   shops     [{name | near: [x, z], at: [x, z], add, kind, name_en, sign, awning, umbrella,
+##              seats, crates, board}]   one place's look, by hand (streets.gd _build_pois):
+##                                                    matched by its name or the nearest to
+##                                                    `near`; `at` moves it there (a map point
+##                                                    off by a few doors), `add` with `at`,
+##                                                    `kind` and `name` puts in one the map
+##                                                    lacks; awning / umbrella / board a colour
+##                                                    (black, white, cream, red, maroon, green,
+##                                                    blue, or "none"), seats tables, stools (a
+##                                                    bar's, at a ledge) or none, crates of
+##                                                    produce out front, sign the name on it
 ##   walks     {id: {name, points: [[t, x, z]...],   two points at one spot: it waits there
 ##              looks: [[from, to, degrees]...],     the head turned off the way it walks
 ##                                                    (+ right), to see the traffic coming
@@ -125,6 +140,8 @@ func edit_city(city: Dictionary) -> void:
 					r["kerb_mid"] = KERB_PAINT.find(String(st["kerb_mid"]))
 				if st.has("yard"):
 					r["yard"] = bool(st["yard"])
+				if st.has("pave"):
+					r["pave"] = st["pave"]
 				hit += 1
 		if hit == 0:
 			Probe.note("details: no %s road '%s' at %s to set" % [st.get("k", ""), st.get("name", ""), near])
@@ -143,6 +160,20 @@ func edit_city(city: Dictionary) -> void:
 		for i in range(nodes.size() / 2):
 			if Vector2(nodes[i * 2], nodes[i * 2 + 1]).distance_to(c * sc) <= r * sc:
 				g._white_bollards[i] = true
+	var pois: Array = city.get("pois", [])
+	for sh: Dictionary in data.get("shops", []):
+		if not sh.has("at"):
+			continue
+		var at := _v2(sh["at"])
+		if sh.get("add", false):   # a shop the map does not have
+			pois.append([roundi(at.x * sc), roundi(at.y * sc), String(sh.get("kind", "shop")),
+				String(sh.get("name", "")), String(sh.get("name_en", ""))])
+			continue
+		var i := _shop_in(pois, sh, sc)   # one the map has in the wrong place: moved to `at`
+		if i >= 0:
+			pois[i][0] = roundi(at.x * sc)
+			pois[i][1] = roundi(at.y * sc)
+	city["pois"] = pois
 	var cross: Array = city.get("crossings", [])
 	for p: Array in data.get("crossings", []):
 		cross.append(_nearest_node(nodes, _v2(p), sc))
@@ -163,6 +194,39 @@ func edit_city(city: Dictionary) -> void:
 			flat.append(roundi(float(p[1]) * sc))
 		areas.append({"k": a["k"], "p": flat})
 	city["areas"] = areas
+
+## the city file's place (pois entry) that a "shops" entry means: by its name (either
+## language), or the nearest within 10 m of `near`; -1 when none
+func _shop_in(pois: Array, sh: Dictionary, sc: float) -> int:
+	var name := String(sh.get("name", ""))
+	var near := _v2(sh["near"]) if sh.has("near") else Vector2.INF
+	var best := -1
+	var bd := 10.0
+	for i in range(pois.size()):
+		var p: Array = pois[i]
+		if name != "" and not sh.get("add", false) and (String(p[3]) == name or String(p[4]) == name):
+			return i
+		if near.is_finite():
+			var d := Vector2(p[0], p[1]).distance_to(near * sc) / sc
+			if d < bd:
+				bd = d
+				best = i
+	return best
+
+## how one place looks, by hand ("shops" entries: awning, umbrella, seats, crates, board), or
+## {}: matched by name, by `near`, or (one added or moved) by `at` within 2 m. `p` is the city
+## file's pois entry, `k` metres per unit.
+func shop_look(p: Array, k: float) -> Dictionary:
+	var at := Vector2(p[0], p[1]) * k
+	for sh: Dictionary in data.get("shops", []):
+		var name := String(sh.get("name", ""))
+		if name != "" and (String(p[3]) == name or String(p[4]) == name):
+			return sh
+		if sh.has("at") and _v2(sh["at"]).distance_to(at) < 2.0:
+			return sh
+		if sh.has("near") and not sh.has("at") and _v2(sh["near"]).distance_to(at) < 10.0:
+			return sh
+	return {}
 
 func _v2(p: Array) -> Vector2:
 	return Vector2(float(p[0]), float(p[1]))
@@ -309,7 +373,7 @@ func build() -> void:
 					_shrubs(shrubs, shrub_cols, a, e, float(ln.get("h", 2.6)))
 				"shopfront":
 					_shopfront(b, glass, a, e, float(ln.get("h", 3.2)), _v2(ln.get("face", [0, 0])),
-						ln.get("signs", []), ln.get("panels", []))
+						ln.get("signs", []), ln.get("panels", []), String(ln.get("awning", "")))
 	var bikes: Array = []
 	var bike_cols: Array = []
 
@@ -812,7 +876,7 @@ func _shrubs(xf: Array, cols: Array, a: Vector2, e: Vector2, h: float) -> void:
 ## its nominal height), facing `face`: bays of about three
 ## metres of lit glass in light aluminium frames, a dark kick plate under them and a sign band
 ## over them, each shop's band its own colour (the second dark brown: the confectionery's)
-func _shopfront(b, glass, a: Vector2, e: Vector2, h: float, face: Vector2, signs: Array, panels: Array) -> void:
+func _shopfront(b, glass, a: Vector2, e: Vector2, h: float, face: Vector2, signs: Array, panels: Array, awning := "") -> void:
 	var L := a.distance_to(e)
 	var d := (e - a) / L
 	var out := face.normalized()
@@ -837,6 +901,11 @@ func _shopfront(b, glass, a: Vector2, e: Vector2, h: float, face: Vector2, signs
 		for x: float in [s0, (s0 + s1) * 0.5, s1]:
 			var q := a + d * x + out * 0.05
 			g._furn._box(b, Vector3(q.x, gy + top * 0.5, q.y), Vector3(0.12 if x != (s0 + s1) * 0.5 else 0.06, top, 0.08), frame, bs)
+		if awning != "":   # a canvas awning over each bay, under the sign band, sloping out
+			var aw := mid + out * 0.62
+			g._furn._box(b, Vector3(aw.x, gy + h - 0.72, aw.y), Vector3(w - 0.12, 0.06, 1.25), g._real_col(awning), bs)
+			var lip := mid + out * 1.22
+			g._furn._box(b, Vector3(lip.x, gy + h - 0.88, lip.y), Vector3(w - 0.12, 0.3, 0.03), g._real_col(awning).darkened(0.1), bs)
 		if panels.has(i):   # yellow boards behind the lower glass, either side of the middle
 			for f: float in [0.27, 0.73]:
 				var q := a + d * (s0 + w * f) + out * 0.045
