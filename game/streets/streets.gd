@@ -24,6 +24,8 @@ const LEVELS := [
 	# made up by tools/fake_city.py: one small town with one of everything, ringed by mountains,
 	# that loads in a moment -- for checking a change, not for exploring
 	{"name": "Kiryat Dimyon (test town)", "city": "dimyon", "start": ["הנשיא", "השוק"], "look": "med"},
+	# a walk filmed in Givatayim, replayed in first person on its own (cities/details/givatayim.json)
+	{"name": "A walk in Givatayim: Katzenelson to Ha-Meri", "city": "givatayim", "look": "med", "walk": "katzenelson_hameri"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -326,6 +328,28 @@ void fragment() {
 	float seed = floor(COLOR.r * 50.0 + 0.5) * 7.0 + floor(COLOR.a * 10.0 + 0.5) * 13.0 + floor(COLOR.b * 4.0 + 0.5) * 5.0;
 	float r1 = hash(vec2(ci, lv) + seed);
 	float r2 = hash(vec2(ci + 13.0, lv * 3.0) + seed);
+	// Stone and tile, as Givatayim's walls are: COLOR.a high is Jerusalem stone, laid in
+	// courses of blocks; most blocks have a stone plinth to knee height whatever the walls
+	// above; one white block in five is clad in small square mosaic tiles. Drawn only while a
+	// pixel is smaller than the joints are wide apart, an average further off.
+	float stone_k = COLOR.a;
+	bool plinth = up < 0.9 && siding < 0.5 && hash(vec2(seed, 3.7)) < 0.6;
+	if (siding < 0.5 && (stone_k > 0.45 || plinth)) {
+		float course = 0.33;
+		float row = floor(up / course);
+		float bl = 0.55 + 0.35 * hash(vec2(row, seed + 1.0));
+		float xs = along / bl + hash(vec2(row, seed));
+		vec2 f = vec2(fract(xs) * bl, fract(up / course) * course);
+		float jd = min(min(f.x, bl - f.x), min(f.y, course - f.y));
+		vec3 sc = (plinth && stone_k <= 0.45) ? wall_c.rgb * COLOR.r * 0.9 : base;
+		sc *= 0.94 + 0.12 * hash(vec2(floor(xs), row) + seed);
+		base = mix(sc, sc * 0.72, line_cover(jd, 0.005, aa) * (1.0 - smoothstep(0.02, 0.06, aa)));
+	} else if (siding < 0.5 && tk < 0.5 && stone_k < 0.2 && hash(vec2(seed, 9.1)) < 0.2) {
+		vec2 tg = vec2(along, up) / 0.024;
+		vec2 tf = abs(fract(tg) - 0.5);
+		float tj = smoothstep(0.38, 0.46, max(tf.x, tf.y));
+		base *= mix(1.0, (0.97 + 0.05 * hash(floor(tg) + seed)) * mix(1.0, 0.86, tj), 1.0 - smoothstep(0.006, 0.02, aa));
+	}
 	vec3 col = base;
 	float rough = 0.92;
 	// at night some rooms have the light on: warm in homes, cooler in offices
@@ -334,12 +358,25 @@ void fragment() {
 	vec3 emit = vec3(0.0);
 	bool facade = len >= 2.5 && up < top - 0.9;
 	bool upper = up >= 3.0 || top < 10.0;
+	// A block's ground floor: flats behind barred windows (the floors above are style's), the
+	// way in -- a glazed door -- in the middle bay. (A block that really stands on columns has
+	// no wall there at all: its walls start a storey up.)
+	bool ground = !upper && style < 2.5;
+	float wstyle = ground ? 0.0 : style;
+	bool door = ground && n >= 2.0 && ci == floor(n * 0.5);
 	if (siding > 0.5 && style < 0.5 && facade && fract(up / 0.24) < 0.13) {
 		col *= 0.88;
 	}
 	// ---- the flat facade: paint only (far away, and the whole look at the lowest quality)
-	if (facade && upper) {
-		if (style < 0.5 && siding > 0.5) {
+	if (facade && door) {
+		if (fx > 0.27 && fx < 0.73 && fy < 0.78) {
+			col = (fx < 0.3 || fx > 0.7 || fy > 0.75) ? trim.rgb * 0.8 : glass.rgb * 0.7;
+			pl = 0.0;
+			rough = 0.25;
+			emit = lit.rgb * 0.5;
+		}
+	} else if (facade && (upper || ground)) {
+		if (wstyle < 0.5 && siding > 0.5) {
 			if (fx > 0.25 && fx < 0.75 && fy > 0.28 && fy < 0.84) {
 				bool frame = fx < 0.29 || fx > 0.71 || fy < 0.32 || fy > 0.8 || abs(fx - 0.5) < 0.012 || abs(fy - 0.56) < 0.012;
 				col = frame ? trim.rgb : glass.rgb;
@@ -347,7 +384,7 @@ void fragment() {
 				rough = frame ? 0.6 : 0.2;
 				emit = frame ? vec3(0.0) : room;
 			}
-		} else if (style < 0.5) {
+		} else if (wstyle < 0.5) {
 			if (fx > 0.22 && fx < 0.78 && fy > 0.3 && fy < 0.85) {
 				float shut = r1 > 0.45 ? (r1 - 0.45) * 1.6 : 0.0;
 				bool closed = fy > 0.85 - 0.55 * shut;
@@ -398,17 +435,12 @@ void fragment() {
 				emit = r3 < 0.3 ? lit_cool.rgb * (0.7 + 0.3 * r2) : vec3(0.0);
 			}
 		}
-	} else if (facade && up < 2.7) {
-		if (style > 2.5) {
-			if (fx > 0.04) {
-				col = glass.rgb;
-				pl = 0.0;
-				rough = 0.15;
-				emit = lit_cool.rgb * 0.8;
-			}
-		} else if (fx > 0.14) {
-			col = dark.rgb;
+	} else if (facade && up < 2.7 && style > 2.5) {
+		if (fx > 0.04) {
+			col = glass.rgb;
 			pl = 0.0;
+			rough = 0.15;
+			emit = lit_cool.rgb * 0.8;
 		}
 	}
 	emit *= night * 1.25;
@@ -434,13 +466,19 @@ void fragment() {
 		vec3 tint = mix(vec3(1.0), glass.rgb / max(max(glass.r, glass.g), max(glass.b, 0.05)), 0.45);
 		float blur = smoothstep(0.05, 0.2, aa);
 		float wob = (r1 - 0.5) * 0.06;   // no two panes sit quite flat: each reflects a little differently
-		if (upper && style < 0.5) {
+		if ((upper || ground) && wstyle < 0.5) {
 			// punched windows (houses: inside a white casing), a recess, a sliding window or a
-			// roller shutter part-way down, and a stone sill under it
+			// roller shutter part-way down, and a stone sill under it; on a block's ground floor
+			// bars over them, and the door in the middle bay
 			bool house = siding > 0.5;
 			vec2 lo = house ? vec2(0.29 * cw, 0.96) : vec2(0.22 * cw, 0.9);
 			vec2 hi = house ? vec2(0.71 * cw, 2.4) : vec2(0.78 * cw, 2.55);
 			float rd = house ? 0.07 : 0.16;
+			if (door) {
+				lo = vec2(0.28 * cw, 0.0);
+				hi = vec2(0.72 * cw, 2.3);
+				rd = 0.3;
+			}
 			if (p.x > lo.x && p.x < hi.x && p.y > lo.y && p.y < hi.y) {
 				deep_hit = true;
 				vec2 g;
@@ -452,7 +490,7 @@ void fragment() {
 					emit2 = vec3(0.0);
 					rough2 = 0.85;
 				} else {
-					float shut = (r1 > 0.45 && !house) ? (r1 - 0.45) * 1.6 : 0.0;
+					float shut = (r1 > 0.45 && !house && !door) ? (r1 - 0.45) * 1.6 : 0.0;
 					float sy = hi.y - (hi.y - lo.y) * shut;
 					if (g.y > sy) {   // the shutter's slats, and the room's light between them
 						float sl = fract(g.y / 0.045);
@@ -462,7 +500,8 @@ void fragment() {
 						emit2 = room * night * mix(0.06, gap * 0.25, sharp);
 						rough2 = 0.75;
 					} else {
-						vec3 rc = room_at(g, v, cw, 3.5 + 2.0 * r4, r5, wallc, floorc, wall_a.rgb, sofac, lamp, lit_on, blur);
+						vec3 rc = door ? room_at(g, v, cw, 6.0, 1.0, wall_a.rgb, wall_f.rgb * 0.7, wall_a.rgb, wall_a.rgb * 0.8, lit.rgb, 1.0, blur)
+							: room_at(g, v, cw, 3.5 + 2.0 * r4, r5, wallc, floorc, wall_a.rgb, sofac, lamp, lit_on, blur);
 						// a curtain drawn part way across from one side
 						float cur = r2 > 0.55 ? (r2 - 0.55) * 1.4 : 0.0;
 						if ((r4 > 0.5 ? g.x - lo.x : hi.x - g.x) < (hi.x - lo.x) * cur) {
@@ -476,13 +515,17 @@ void fragment() {
 						if (house) {   // a cross of muntins
 							cover = max(cover, line_cover(abs(g.y - (lo.y + hi.y) * 0.5), 0.012, aa));
 						}
+						if (ground && !door) {   // security bars, white, every 13 cm, and a rail across
+							cover = max(cover, line_cover(abs(fract((g.x - lo.x) / 0.13) - 0.5) * 0.13, 0.008, aa));
+							cover = max(cover, line_cover(abs(g.y - (lo.y + sy) * 0.5), 0.01, aa));
+						}
 						col2 = mix(vec3(0.02), trim.rgb * 0.85, cover);
 						emit2 = pane(rc, v, elev + wob, tint, street, 0.11) * (1.0 - cover);
 						rough2 = mix(0.06, 0.5, cover);
 						spec2 = 0.5;
 					}
 				}
-			} else if (!house && p.x > lo.x - 0.06 && p.x < hi.x + 0.06 && p.y < lo.y && p.y > lo.y - 0.12) {
+			} else if (!house && !door && p.x > lo.x - 0.06 && p.x < hi.x + 0.06 && p.y < lo.y && p.y > lo.y - 0.12) {
 				// the sill: its lit top edge, the shadow under it
 				deep_hit = true;
 				col2 = p.y > lo.y - 0.05 ? base * 1.1 : base * 0.74;
@@ -587,20 +630,6 @@ void fragment() {
 					rough2 = mix(0.06, 0.5, cover);
 					spec2 = 0.5;
 				}
-			} else if (fx > 0.14 && up > 0.0) {
-				// the open ground floor between the pillars: a covered space 5 m deep, out of the sun
-				deep_hit = true;
-				vec2 m = -v.xy;
-				float tz = 5.0 / v.z;
-				float ty = m.y < 0.0 ? (0.0 - p.y) / min(m.y, -0.0001) : (2.7 - p.y) / max(m.y, 0.0001);
-				float t = min(tz, ty);
-				float depth = t * v.z;
-				vec3 c = t == tz ? base * 0.62 : (m.y < 0.0 ? wall_f.rgb * 0.45 : base * 0.55);
-				float fall = 1.0 - depth / 9.0;
-				col2 = vec3(0.0);
-				emit2 = c * fall * mix(0.42, r3 < 0.5 ? 0.25 : 0.04, night);
-				rough2 = 0.9;
-				pl = 0.0;
 			}
 		}
 	}
@@ -762,6 +791,7 @@ var _walkers: Array = []             ## {actor, line (PackedVector2Array), cum, 
 var _chatters: Array = []            ## {actor, spot}
 var _table_spots: Array = []         ## Vector2 of every cafe table
 var _furn: RefCounted                ## the street furniture builder (furniture.gd)
+var _details: RefCounted             ## what a filmed walk added to the city (details.gd), or null
 var _wired := {}                     ## road index -> true: Bedford's lamps hang off its power poles
 var _flag_spots: Array = []          ## a flag on a staff off a lamp post (local X out over the road)
 var _balcony_flags: Array = []       ## a flag hanging off a balcony's parapet
@@ -802,6 +832,7 @@ const ROAD_RANK := {"motorway": 6, "trunk": 6, "primary": 5, "secondary": 4, "te
 ## ---- traffic ----
 const Traffic := preload("res://game/streets/traffic.gd")
 const Furniture := preload("res://game/streets/furniture.gd")
+const Details := preload("res://game/streets/details.gd")
 const DriveLog := preload("res://game/streets/drivelog.gd")
 var _log := DriveLog.new()            ## the last two minutes, for the map page and "save log"
 var _ap_why := ""                     ## what held autodrive's speed down this tick (for the log)
@@ -1035,6 +1066,8 @@ func start(_config: Dictionary) -> void:
 	_traffic.setup(self)
 	_build_engine()
 	_build_signal_sounds()
+	if _place.has("walk"):
+		_film_begin(String(_place["walk"]))
 	_dressing["traffic"] = _traffic.alive_count()
 	_loaded = true
 	track3d(_car, "@")
@@ -1307,6 +1340,10 @@ func _load_city(id: String) -> bool:
 		return false
 	var k := 1.0 / float(data.get("scale", 10))
 	_city_id = path.get_file().get_basename()
+	var extra := Details.load_for(dir, _city_id)
+	if not extra.is_empty():
+		_details = Details.new(self, extra)
+		_details.edit_city(data)
 	_city_name = String(data.get("name", id))
 	var b: Array = data["bounds"]
 	_bounds = Rect2(b[0], b[1], float(b[2]) - float(b[0]), float(b[3]) - float(b[1]))
@@ -1486,6 +1523,8 @@ func _build_world() -> bool:
 			return false
 		await _build_tile(near[i])
 	_tiles_todo = _tiles_todo.filter(func(t): return not _tiles_done.has(t))
+	if _details != null:   # what a filmed walk added: built whole, once (details.gd)
+		_details.build()
 	return true
 
 ## ---- building near-first ------------------------------------------------------------------
@@ -1724,8 +1763,9 @@ func _build_setup(t0: int) -> void:
 	_build_total = _tiles_todo.size()
 	_stage("setup", t0)
 
-## One square of the city, everything in it, in the order the whole city used to be built
-## in (each kind keeps clear of what went before: trees of buildings, lamps of trees...).
+## One square of the city, everything in it, each kind keeping clear of what went before
+## (trees of buildings, lamps of trees...); the kerbs after the trees, whose leaves lie on
+## their pavements.
 ## In the background each builder stops when the frame's few milliseconds are used up and
 ## goes on in the next frame.
 func _build_tile(t: Vector2i) -> void:
@@ -1735,13 +1775,11 @@ func _build_tile(t: Vector2i) -> void:
 	_tile = t
 	_set_tiling(true)
 	_batching = true
-	for a: Array in [_stop_lines, _pole_plates, _chimneys, _mall_glass, _balcony_flags, _flag_spots, _stop_ads]:
+	for a: Array in [_stop_lines, _pole_plates, _chimneys, _mall_glass, _lobby_doors, _balcony_flags, _flag_spots, _stop_ads]:
 		a.clear()   # made by one builder for the next, square by square
 	var tk := Time.get_ticks_msec()
 	await _build_ground()
 	tk = _stage("roads", tk)
-	await _build_kerbs()
-	tk = _stage("kerbs", tk)
 	await _build_buildings()
 	tk = _stage("buildings", tk)
 	await _build_roof_kit()
@@ -1749,6 +1787,8 @@ func _build_tile(t: Vector2i) -> void:
 	tk = _stage("facades", tk)
 	await _build_trees()
 	tk = _stage("trees", tk)
+	await _build_kerbs()   # (after the trees: the leaves on the pavement are under them)
+	tk = _stage("kerbs", tk)
 	await _furn.wires()
 	tk = _stage("wires", tk)
 	await _build_lamps()
@@ -1885,6 +1925,7 @@ func _build_ground() -> void:
 	# roads: asphalt ribbons, with a round patch where roads meet so corners are filled
 	var asphalt := _clip_buf(CHUNK)
 	var paths := _clip_buf(CHUNK)
+	var walks := _clip_buf(CHUNK)   # footpaths in town: paved like the pavements
 	var marks := _clip_buf(GROUND_CELL)
 	var yellow := _clip_buf(GROUND_CELL)
 	var metal := _clip_buf(GROUND_CELL)
@@ -1895,7 +1936,8 @@ func _build_ground() -> void:
 		var r: Dictionary = _roads[ri]
 		var part := _near_part(r["pts"], r["w"] * 0.5 + 2.0)
 		if part.size() >= 2:
-			_ribbon(asphalt if r["drive"] else paths, part, r["w"] * 0.5, Y_ROAD if r["drive"] else Y_PATH)
+			var under: Buf = asphalt if r["drive"] else (walks if _paved_walk(r) else paths)
+			_ribbon(under, part, r["w"] * 0.5, Y_ROAD if r["drive"] else Y_PATH)
 		_markings(marks, r, yellow)
 		_street_metal(metal, metal_rim, ri)
 	for ni: int in _tile_nodes.get(_tile, []):
@@ -1904,7 +1946,7 @@ func _build_ground() -> void:
 	for ni: int in _nodes_near(30.0):
 		if _crossing_set.has(ni):
 			_zebra(marks, ni)
-	for job: Array in [[metal_rim, "metalrim", DETAIL_RANGE], [metal, "metal", DETAIL_RANGE], [paths, "path", VIEW_RANGE * 0.6],
+	for job: Array in [[metal_rim, "metalrim", DETAIL_RANGE], [metal, "metal", DETAIL_RANGE], [paths, "path", VIEW_RANGE * 0.6], [walks, "pavement", VIEW_RANGE * 0.6],
 			[asphalt, "asphalt", VIEW_RANGE], [marks, "mark", DETAIL_RANGE], [yellow, "markyellow", DETAIL_RANGE]]:
 		if _over():
 			await _pause()
@@ -2025,6 +2067,26 @@ func _build_terrain() -> void:
 			mi.visibility_range_end = VIEW_RANGE + blk * _hstep * 0.71 + 300.0
 			world.add_child(mi)
 
+## A footpath in town -- a passage between blocks, steps, a pedestrian street -- is paved
+## like the pavements; in a park, a wood or on grass it stays a path. (A walk filmed in
+## Givatayim: its passages are pavers between garden walls, not trails through a lawn.)
+const PAVED_WALKS := {"footway": true, "pedestrian": true, "steps": true}
+
+func _paved_walk(r: Dictionary) -> bool:
+	if r.has("_paved"):
+		return r["_paved"]
+	var paved := PAVED_WALKS.has(r["k"])
+	if paved:
+		var pts: PackedVector2Array = r["pts"]
+		var mid := pts[pts.size() / 2].lerp(pts[(pts.size() - 1) / 2], 0.5)
+		for kind: String in ["park", "grass", "wood"]:
+			for ring: PackedVector2Array in _area_rings.get(kind, []):
+				if _bld_box_of(ring).has_point(mid) and Geometry2D.is_point_in_polygon(mid, ring):
+					paved = false
+					break
+	r["_paved"] = paved   # each square asks again: worked out once a road
+	return paved
+
 func _surface(tone: String) -> StandardMaterial3D:
 	if _smat.has(tone):
 		return _smat[tone]
@@ -2131,13 +2193,122 @@ uniform vec4 black : source_color;
 uniform float textured = 1.0;
 uniform sampler2D conc : filter_linear_mipmap_anisotropic, repeat_enable;   // concrete grain
 uniform vec3 conc_mean = vec3(0.5);
+uniform vec4 pave : source_color;      // the pavement's tone: its pavers are mixed from it
+uniform float med = 1.0;               // Israeli streets (else Bedford's poured slabs)
 varying vec3 wpos;
 varying float wup;
 void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	wup = (MODEL_MATRIX * vec4(NORMAL, 0.0)).y;
 }
+float h21(vec2 p) {
+	vec3 q = fract(vec3(p.xyx) * 0.1031);
+	q += dot(q, q.yzx + 33.33);
+	return fract((q.x + q.y) * q.z);
+}
+// One paver under point g (metres: x along the street, y out from the kerb): (distance to
+// its nearest joint in metres, the paver's own cell for its colour).
+vec3 paver(vec2 g, float pattern) {
+	if (pattern < 0.5) {
+		// herringbone, 20 x 10 cm, at 45 degrees to the kerb: in brick widths, cell (cx, cy) is
+		// the left or right half of a lying brick or the lower or upper half of a standing one,
+		// by (cx - cy) and (cx + cy): the staircases of the pattern run along the diagonal
+		vec2 r = vec2(g.x + g.y, g.y - g.x) * 0.70710678 / 0.1;
+		vec2 c = floor(r);
+		vec2 f = r - c;
+		float s = mod(c.x + c.y, 4.0);
+		vec4 e;   // joints on this cell's (left, right, bottom, top)
+		vec2 id = c;
+		if (mod(c.x - c.y, 2.0) < 0.5) {
+			e = s < 1.0 ? vec4(1.0, 0.0, 1.0, 1.0) : vec4(1.0, 1.0, 1.0, 0.0);
+		} else if (s < 2.0) {
+			e = vec4(0.0, 1.0, 1.0, 1.0);
+			id = c - vec2(1.0, 0.0);
+		} else {
+			e = vec4(1.0, 1.0, 0.0, 1.0);
+			id = c - vec2(0.0, 1.0);
+		}
+		float jd = min(min(mix(9.0, f.x, e.x), mix(9.0, 1.0 - f.x, e.y)), min(mix(9.0, f.y, e.z), mix(9.0, 1.0 - f.y, e.w)));
+		return vec3(jd * 0.1, id);
+	}
+	vec2 size = pattern < 1.5 ? vec2(0.2, 0.1) : (pattern < 2.5 ? vec2(0.4, 0.4) : vec2(1.5, 1.2));
+	vec2 r = g / size;
+	if (pattern < 1.5) {
+		r.x += mod(floor(r.y), 2.0) * 0.5;   // stretcher bond: every other row half a brick on
+	}
+	vec2 c = floor(r);
+	vec2 f = r - c;
+	vec2 d = min(f, 1.0 - f) * size;
+	return vec3(min(d.x, d.y), c);
+}
 void fragment() {
+	if (COLOR.b > 0.5) {
+		// The pavement: pavers in the street's own pattern and colours (COLOR.r: pattern x 4 +
+		// colours), laid square to the kerb (UV: metres along, out from the kerb), a row of
+		// them on end along the kerb; fallen leaves under the trees (COLOR.g: how many trees)
+		float code = floor(COLOR.r * 16.0);
+		float pattern = floor(code / 4.0);
+		float mixk = code - pattern * 4.0;
+		vec2 g = UV;
+		bool border = pattern < 1.5 && g.y < 0.2;
+		vec3 pv = border ? paver(vec2(g.x, g.y) * vec2(2.0, 0.5), 1.0) * vec3(0.5, 1.0, 1.0) : paver(g, pattern);
+		float h = h21(pv.yz + (border ? 71.3 : 0.0));
+		float h2 = h21(pv.yz + 13.7);
+		vec3 base = pave.rgb;
+		vec3 col;
+		if (mixk < 0.5) {          // reds and browns, mixed
+			vec3 a = base * vec3(1.32, 0.9, 0.78);
+			vec3 b = base * vec3(1.12, 0.86, 0.76);
+			vec3 cc = base * vec3(0.98, 0.84, 0.82);
+			col = h < 0.4 ? a : (h < 0.75 ? b : cc);
+		} else if (mixk < 1.5) {   // greys, a darker one here and there
+			col = base * (h < 0.15 ? 0.84 : (h < 0.55 ? 0.95 : 1.03));
+		} else if (mixk < 2.5) {   // pale sand
+			col = base * vec3(1.16, 1.1, 0.96) * (0.94 + 0.08 * h);
+		} else {                   // a mix of all of them
+			col = h < 0.3 ? base * vec3(1.3, 0.92, 0.8) : (h < 0.5 ? base * vec3(1.1, 0.95, 0.75) : (h < 0.8 ? base * 0.95 : base * vec3(1.05, 0.9, 0.95)));
+		}
+		if (border) {
+			col = base * 0.86;
+		}
+		col *= 0.92 + 0.12 * h2;
+		// further off than a few pixels a paver, the pattern is its average colour
+		float fw = length(fwidth(g));
+		float far = smoothstep(0.012, 0.05, fw);
+		vec3 avg = mixk < 0.5 ? base * vec3(1.16, 0.88, 0.79) : (mixk < 1.5 ? base * 0.93 : (mixk < 2.5 ? base * vec3(1.16, 1.1, 0.96) : base * vec3(1.12, 0.92, 0.84)));
+		col = mix(col, avg, far);
+		// the joints, sand-filled and dark, and each paver's bevelled edge
+		float jw = 0.004;
+		float joint = 1.0 - smoothstep(jw, jw + max(fw, 0.0015), pv.x);
+		float bevel = smoothstep(jw, jw + 0.012, pv.x);
+		col *= mix(1.0, mix(1.0, 0.66, joint) * mix(0.93, 1.0, bevel), 1.0 - far);
+		// the grime of a street: wide soft stains, darker where feet and wheels go
+		float st = h21(floor(wpos.xz / 2.3)) * 0.5 + h21(floor(wpos.xz / 0.9) + 4.1) * 0.5;
+		col *= 0.9 + 0.1 * smoothstep(0.2, 0.8, st);
+		if (textured > 0.5) {
+			vec3 t = texture(conc, wpos.xz * 0.9).rgb;
+			col *= mix(1.0, clamp(dot(t, vec3(0.333)) / dot(conc_mean, vec3(0.333)), 0.0, 2.0), 0.6);
+		}
+		// leaves: one in some 18 cm squares, more under the trees, yellow to brown, and in
+		// Givatayim the odd bougainvillea petal
+		float leafy = COLOR.g;
+		vec2 lc = floor(wpos.xz / 0.18);
+		float lh = h21(lc);
+		if (leafy > 0.01 && lh < leafy * 0.3 && far < 0.99) {
+			vec2 lp = fract(wpos.xz / 0.18) - 0.5 + (vec2(h21(lc + 3.1), h21(lc + 5.7)) - 0.5) * 0.4;
+			float an = h21(lc + 9.2) * 6.2832;
+			lp = vec2(lp.x * cos(an) - lp.y * sin(an), lp.x * sin(an) + lp.y * cos(an));
+			float m = 1.0 - smoothstep(0.13, 0.17, length(lp * vec2(1.0, 2.3)));
+			float k = h21(lc + 1.7);
+			vec3 leaf = mix(vec3(0.62, 0.52, 0.18), vec3(0.42, 0.3, 0.16), k);
+			if (med > 0.5 && k > 0.88) {
+				leaf = vec3(0.72, 0.16, 0.42);
+			}
+			col = mix(col, leaf, m * (1.0 - far));
+		}
+		ALBEDO = col;
+		ROUGHNESS = 0.9;
+	} else {   // the kerb
 	float pat = floor(COLOR.r * 3.99 + 0.01);
 	float stripe = step(0.5, fract(UV.x * 0.5));
 	vec3 c = plain.rgb;
@@ -2156,6 +2327,7 @@ void fragment() {
 	}
 	ALBEDO = c;
 	ROUGHNESS = 0.85;
+	}
 }
 """
 
@@ -2195,9 +2367,11 @@ var _kerb_mat: ShaderMaterial
 
 func _build_kerbs() -> void:
 	var kerb := _clip_buf(GROUND_CELL)
-	var pave := _clip_buf(GROUND_CELL)
+	var pave := kerb   # (the pavement is drawn by the kerb's shader, in the kerb's mesh: no extra draw)
 	var wall := _clip_buf(GROUND_CELL)
 	var garden := _clip_buf(GROUND_CELL)
+	var fronts := {"hedge": _clip_buf(GROUND_CELL), "bars": _clip_buf(GROUND_CELL), "bar_posts": _clip_buf(GROUND_CELL),
+		"chain": _clip_buf(GROUND_CELL), "chain_posts": _clip_buf(GROUND_CELL), "flowers": []}
 	var bushes: Array = []
 	var med := String(_place.get("look", "")) == "med"
 	for ri: int in _tile_roads.get(_tile, []):
@@ -2208,6 +2382,7 @@ func _build_kerbs() -> void:
 			await _pause()
 		var hw: float = float(r["w"]) * 0.5
 		var hsh := _hash_i((r["pts"] as PackedVector2Array)[0])
+		_set_pave_code(hsh)
 		var pat := 0
 		if med:
 			pat = [0, 0, 0, 0, 0, 1, 1, 1, 2, 3][posmod(hsh, 10)]
@@ -2263,6 +2438,8 @@ func _build_kerbs() -> void:
 					var fn := Vector3(-(w_in[i + 1] - w_in[i]).y, 0, (w_in[i + 1] - w_in[i]).x).normalized() * -sgn
 					wall.tri(_g3(w_in[i], 0.0), _g3(w_in[i + 1], 0.0), _g3(w_in[i + 1], wy), fn, Color.WHITE)
 					wall.tri(_g3(w_in[i], 0.0), _g3(w_in[i + 1], wy), _g3(w_in[i], wy), fn, Color.WHITE)
+				if med:
+					_garden_fronts(run, hw, sgn, _hash_i(run[0]) + int(sgn) * 104729, fronts)
 				var step := 7.0
 				var s := 3.0
 				for i in range(run.size() - 1):
@@ -2290,20 +2467,40 @@ func _build_kerbs() -> void:
 		_kerb_mat.set_shader_parameter("conc_mean", TEX_MEAN["concrete_pavement"])
 		_kerb_mat.set_shader_parameter("textured", 1.0 if _quality > 0 else 0.0)
 		_retint_kerbs()
-	_add_mesh(kerb, _kerb_mat, false, DETAIL_RANGE)
-	_add_mesh(pave, _surface("pavement"), false, DETAIL_RANGE * 1.6)
+	_add_mesh(kerb, _kerb_mat, false, DETAIL_RANGE * 1.6)
 	_add_mesh(wall, _surface("stonewall"), false, DETAIL_RANGE)
 	_add_mesh(garden, _surface("grass"), false, DETAIL_RANGE * 1.6)
+	if _over():
+		await _pause()
+	_add_mesh(fronts["hedge"], _surface("bush"), true, DETAIL_RANGE * 1.2)
+	_add_mesh(fronts["bars"], _furn._fence_material("railing", 0.15), false, DETAIL_RANGE * 0.8)
+	_add_mesh(fronts["bar_posts"], _surface("railing"), false, DETAIL_RANGE * 0.8)
+	_add_mesh(fronts["chain"], _furn._fence_material("fencegreen", 0.12), false, DETAIL_RANGE * 0.8)
+	_add_mesh(fronts["chain_posts"], _surface("fencegreen"), false, DETAIL_RANGE * 0.8)
+	if not (fronts["flowers"] as Array).is_empty():
+		# bougainvillea: a leafy green shrub (the trees' leaf cards, small) with a smaller
+		# crown of magenta on top of it -- the instance colour turns the leaves into flowers
+		var leaves: Array = []
+		var blooms: Array = []
+		for t: Transform3D in fronts["flowers"]:
+			leaves.append(t * Transform3D(Basis.from_scale(Vector3(0.55, 0.5, 0.5)), Vector3.ZERO))
+			blooms.append(t * Transform3D(Basis.from_scale(Vector3(0.45, 0.35, 0.42)), Vector3(0.0, 0.18, 0.05)))
+		var green: Array = []
+		var pink: Array = []
+		for i in range(leaves.size()):
+			green.append(Color(0.82, 0.95, 0.78, 0.125))   # broad leaves (atlas cell 0)
+			pink.append(Color(2.9, 0.55, 1.9, 0.375))      # small ones (cell 1), magenta
+		_chunked(_tree_meshes["crown"], leaves, DETAIL_RANGE, green, null, false)
+		_chunked(_tree_meshes["crown"], blooms, DETAIL_RANGE, pink, null, false)
+		_tally("bougainvillea", leaves.size())
 	if not bushes.is_empty():
-		var bush := _cached("bush", func() -> Mesh:
-			var m := SphereMesh.new()
-			m.radius = 0.6
-			m.height = 1.2
-			m.radial_segments = 7
-			m.rings = 4
-			m.material = _surface("bush")
-			return m)
-		_chunked(bush, bushes, DETAIL_RANGE)
+		# leafy shrubs: the trees' leaf-card crowns, small (a smooth ball read as a toy)
+		var shrubs: Array = []
+		var cols: Array = []
+		for t: Transform3D in bushes:
+			shrubs.append(t * Transform3D(Basis.from_scale(Vector3(0.5, 0.55, 0.5)), Vector3.ZERO))
+			cols.append(Color(0.8, 0.92, 0.78, 0.125))
+		_chunked(_tree_meshes["crown"], shrubs, DETAIL_RANGE, cols, null, false)
 	_tally("bushes", bushes.size())
 
 ## Israeli main streets are not open down the middle: a raised island divides the two ways.
@@ -2470,7 +2667,85 @@ func _kerb_piece(kerb: Buf, pave: Buf, a: Vector2, b: Vector2, na: Vector2, nb: 
 	kerb.tri(t0, t1, o1, Vector3.UP, col, Vector2(along, 0), Vector2(along + seg, 0), Vector2(along + seg, 1))
 	kerb.tri(t0, o1, o0, Vector3.UP, col, Vector2(along, 0), Vector2(along + seg, 1), Vector2(along, 1))
 	if pw > 0.05:
-		pave.quad3(o0, o1, _g3(ob + nb * pw, KERB_H), _g3(oa + na * pw, KERB_H))
+		var c2 := _g3(ob + nb * pw, KERB_H)
+		var c3 := _g3(oa + na * pw, KERB_H)
+		var nrm := (c2 - o0).cross(o1 - o0)
+		if nrm.y < 0.0:
+			nrm = -nrm
+		nrm = nrm.normalized() if nrm.length_squared() > 0.000001 else Vector3.UP
+		var pc := Color(_pave_code, _leafy((oa + ob) * 0.5 + (na + nb) * pw * 0.25), 1.0)
+		pave.tri(o0, o1, c2, nrm, pc, Vector2(along, 0), Vector2(along + seg, 0), Vector2(along + seg, pw))
+		pave.tri(o0, c2, c3, nrm, pc, Vector2(along, 0), Vector2(along + seg, pw), Vector2(along, pw))
+
+## The paving a street (or a corner) gets: its pattern -- herringbone, rows of bricks, square
+## slabs; Bedford's poured concrete -- and its colours -- reds and browns, greys, sand, all of
+## them mixed -- as the red of the pavement's vertex colour (see KERB_SHADER)
+var _pave_code := 0.0
+
+func _set_pave_code(hsh: int) -> void:
+	var pattern := 3
+	var colours := 1
+	if String(_place.get("look", "")) != "north":
+		var p := posmod(hsh, 100)
+		pattern = 0 if p < 45 else (1 if p < 75 else 2)
+		var c := posmod(hsh >> 7, 100)
+		colours = 0 if c < 30 else (1 if c < 70 else (2 if c < 85 else 3))
+		if pattern == 2 and colours == 0:
+			colours = 1   # (slabs come grey or sand)
+	_pave_code = (float(pattern * 4 + colours) + 0.5) / 16.0
+
+## A garden's front, plot by plot along one side of a street's run (each 14-22 m, a gap
+## between them where the gates are), as a walk down Givatayim's streets has them: a clipped
+## hedge behind the low wall, white bars or green chain-link on top of it, or the bare wall;
+## bougainvillea spilling over one in six. Keyed to the run, so every square along the
+## street works out the same plots (the fronts are laid like the kerbs: CBuf.clip).
+func _garden_fronts(run: PackedVector2Array, hw: float, sgn: float, key: int, fronts: Dictionary) -> void:
+	var on_wall := _offset_line(run, (hw + PAVE_W + 0.175) * sgn)
+	var behind := _offset_line(run, (hw + PAVE_W + 0.85) * sgn)
+	var cum := PackedFloat32Array([0.0])
+	for i in range(1, run.size()):
+		cum.append(cum[i - 1] + run[i - 1].distance_to(run[i]))
+	var total := cum[cum.size() - 1]
+	var s := 0.0
+	var plot := 0
+	while s < total - 2.0:
+		var h := posmod(key + plot * 7919, 1000003)
+		var e := minf(s + 14.0 + float(posmod(h, 9)), total)
+		var style := posmod(h >> 4, 100)
+		if style < 76:
+			var line := behind if style < 42 else on_wall
+			var pts: Array = [_along(line, cum, s + 0.7)]
+			for i in range(1, line.size() - 1):
+				if cum[i] > s + 0.7 and cum[i] < e - 0.7:
+					pts.append(line[i])
+			pts.append(_along(line, cum, e - 0.7))
+			for k in range(pts.size() - 1):
+				var a: Vector2 = pts[k]
+				var b: Vector2 = pts[k + 1]
+				if a.distance_to(b) < 0.3:
+					continue
+				if style < 42:
+					_furn._hedge_line(fronts["hedge"], a, b)
+				elif style < 62:
+					_furn._fence_line(fronts["bars"], fronts["bar_posts"], a, b, 0.95, _tone["railing"], 2.4, true, 2, 0.62)
+				else:
+					_furn._fence_line(fronts["chain"], fronts["chain_posts"], a, b, 1.3, _tone["fencegreen"], 2.6, false, 2, 0.62)
+		if posmod(h >> 9, 100) < 16:   # bougainvillea over the wall, a few clumps
+			for t: float in [0.25, 0.5, 0.75]:
+				var q := _along(on_wall, cum, lerpf(s, e, t)) - (on_wall[0] - run[0]).normalized() * 0.15
+				if _mine(q) and _push_out(q, 0.4, false) == Vector2.ZERO:
+					var sc := 0.8 + 0.5 * float(posmod(_hash_i(q), 7)) / 6.0
+					(fronts["flowers"] as Array).append(Transform3D(Basis.from_scale(Vector3(1.4, 1.0, 1.1) * sc), _g3(q, 0.62 + 0.3 * sc)))
+		s = e
+		plot += 1
+
+## how many trees overhang a spot on the pavement, 0..1 (for the leaves on it)
+func _leafy(p: Vector2) -> float:
+	var sum := 0.0
+	for i: int in _near(_post_hash, p, 7.0, BLD_CELL):
+		if absf(_post_r[i] - 0.3) < 0.001:   # (a tree's post)
+			sum += 1.0 - clampf(_posts[i].distance_to(p) / 7.0, 0.0, 1.0)
+	return clampf(sum * 0.7, 0.0, 1.0)
 
 ## the point `dist` metres along a road's points from index k going `step`, and the way on
 func _walk_pts(pts: PackedVector2Array, k: int, step: int, dist: float) -> Array:
@@ -2499,6 +2774,7 @@ func _kerb_corners(kerb: Buf, pave: Buf, fill: Buf, col: Color) -> void:
 		var c := _nodes[ni]
 		var cut := _node_r[ni] + KERB_CUT
 		var arms: Array = []   # [angle, point at the cut, way out there, half width, road]
+		var through: Array = []   # the ways out of pieces too short for a corner of their own
 		for e: Vector2i in _node_roads[ni]:
 			var r: Dictionary = _roads[e.x]
 			if not _kerbed(r):
@@ -2509,6 +2785,8 @@ func _kerb_corners(kerb: Buf, pave: Buf, fill: Buf, col: Color) -> void:
 					continue
 				var at: Array = _walk_pts(pts, e.y, step, cut)
 				if not at[2]:
+					var q := pts[e.y + step]
+					through.append(atan2(q.y - c.y, q.x - c.x))
 					continue   # too short to reach the corner (a piece across a median)
 				var p: Vector2 = at[0]
 				arms.append([atan2(p.y - c.y, p.x - c.x), p, at[1], float(r["w"]) * 0.5, e.x])
@@ -2521,8 +2799,23 @@ func _kerb_corners(kerb: Buf, pave: Buf, fill: Buf, col: Color) -> void:
 			var gap: float = fposmod(float(B[0]) - float(A[0]), TAU)
 			if gap > 3.6 or gap < 0.02:
 				continue
+			# no corner across a road that goes out between the two: on a divided road's median
+			# side, the piece of the cross street through the median. (Laid anyway, it ran
+			# straight across the opening; cut up where it lay on the asphalt, what was left
+			# stood out of the island's end as an arrowhead and spikes.)
+			var crossed := false
+			for ang: float in through:
+				var into := fposmod(ang - float(A[0]), TAU)
+				if into > 0.05 and into < gap - 0.05:
+					crossed = true
+					break
+			if crossed:
+				if _mine(c):
+					_tally("corners_across_roads", 1)
+				continue
 			var ua: Vector2 = A[2]
 			var ub: Vector2 = B[2]
+			_set_pave_code(_hash_i((_roads[int(A[4])]["pts"] as PackedVector2Array)[0]))   # (the paving of one of its streets)
 			var P: Vector2 = (A[1] as Vector2) + Vector2(-ua.y, ua.x) * float(A[3])   # A's right edge
 			var Q: Vector2 = (B[1] as Vector2) + Vector2(ub.y, -ub.x) * float(B[3])   # B's left edge
 			if P.distance_to(Q) > 45.0:
@@ -2592,6 +2885,8 @@ func _retint_kerbs() -> void:
 	_kerb_mat.set_shader_parameter("blue", _natural(Palette.col("player").lerp(Palette.col("bg"), 0.35), 0.85))
 	_kerb_mat.set_shader_parameter("yellow", Palette.col("warn"))
 	_kerb_mat.set_shader_parameter("black", Palette.col("bg"))
+	_kerb_mat.set_shader_parameter("pave", _tone["pavement"])
+	_kerb_mat.set_shader_parameter("med", 0.0 if String(_place.get("look", "")) == "north" else 1.0)
 
 ## a street's stretches between junctions, each cut short where it meets one (so kerbs
 ## and walls leave the corner open), points every few metres
@@ -3012,7 +3307,7 @@ func _build_buildings() -> void:
 		mi.visibility_range_end = VIEW_RANGE   # past this the haze has it anyway
 		mi.visibility_range_end_margin = 80.0
 		world.add_child(mi)
-	_add_mesh(cores, _surface("recess"), true, VIEW_RANGE * 0.5)
+	_add_mesh(cores, _surface("lobby"), true, VIEW_RANGE * 0.5)
 	if not (gables["roof"] as Buf).empty():
 		if _shingles == null:
 			_shingles = StandardMaterial3D.new()
@@ -3168,6 +3463,8 @@ func _build_facade_kit() -> void:
 	_tally("closed_balconies", (encl[0] as Array).size() + (encl[1] as Array).size())
 	if not _mall_glass.is_empty():
 		_chunked(_boxm(Vector3.ONE), _mall_glass, 400.0, [], _shop_glass())
+	if not _lobby_doors.is_empty():
+		_chunked(_boxm(Vector3(1.9, 2.4, 0.05)), _lobby_doors, 160.0, [], _shop_glass())
 	if not acs.is_empty():
 		var ac := _boxm(Vector3(0.82, 0.55, 0.32))
 		ac.material = _surface("tank")
@@ -3244,6 +3541,7 @@ func _mall_front(edge: Array, g_lo: float, wc: Color, kit: Dictionary, kit_col: 
 		_add_post(q, 0.25)
 
 var _mall_glass: Array = []
+var _lobby_doors: Array = []         ## the glass doors of the lobbies under blocks on columns (this square's)
 
 func _longest_edge(ring: PackedVector2Array, sgn: float) -> Array:
 	var best := 0.0
@@ -3339,7 +3637,7 @@ func _wall_rgb(bright: float, tint: float, stone: float) -> Color:
 func _lift_on_columns(ring: PackedVector2Array, sgn: float, base: float, lift: float, roofs: Buf,
 		cores: Buf, look: Dictionary) -> void:
 	var cols: Array = []
-	var ceil_c := Color(0.62, 0.62, 0.62)
+	var ceil_c := Color(0.86, 0.86, 0.84)   # (light plaster: dark, it read as a hole)
 	var idx := Geometry2D.triangulate_polygon(ring)
 	for i in range(0, idx.size(), 3):
 		var p0 := ring[idx[i]]
@@ -3357,6 +3655,11 @@ func _lift_on_columns(ring: PackedVector2Array, sgn: float, base: float, lift: f
 		for i in range(core.size()):
 			ca += core[i].x * core[(i + 1) % core.size()].y - core[(i + 1) % core.size()].x * core[i].y
 		var cs := 1.0 if ca > 0.0 else -1.0
+		# the lobby's glass door, lit, on the side of the core that faces the street
+		var street := _street_edge(ring, sgn)
+		var to: Vector2 = street[2] if not street.is_empty() else Vector2.ZERO
+		var door: Array = []
+		var best := 0.3
 		for i in range(core.size()):
 			var a := core[i]
 			var b := core[(i + 1) % core.size()]
@@ -3367,6 +3670,13 @@ func _lift_on_columns(ring: PackedVector2Array, sgn: float, base: float, lift: f
 			var nrm := Vector3(out.x, 0.0, out.y)
 			cores.tri(Vector3(a.x, base, a.y), Vector3(b.x, base, b.y), Vector3(b.x, lift, b.y), nrm, Color.WHITE)
 			cores.tri(Vector3(a.x, base, a.y), Vector3(b.x, lift, b.y), Vector3(a.x, lift, a.y), nrm, Color.WHITE)
+			if e.length() >= 2.4 and out.dot(to) > best:
+				best = out.dot(to)
+				door = [(a + b) * 0.5 + out * 0.04, out]
+		if not door.is_empty():
+			var dp: Vector2 = door[0]
+			var dout: Vector2 = door[1]
+			_lobby_doors.append(Transform3D(Basis(Vector3.UP, atan2(dout.x, dout.y)), Vector3(dp.x, base + 1.2, dp.y)))
 	var hgt := lift - base
 	var c := Vector2.ZERO
 	for p in ring:
@@ -3488,6 +3798,7 @@ func _build_trees() -> void:
 	var rng := RandomNumberGenerator.new()
 	var spots: Array = []   ## [x, z, scale]
 	var forest := {}        # index into spots -> true
+	var grates: Array = []  # an iron grate round each street tree's trunk, flat on the pavement
 	var k := 1.0 / float(_city_data.get("scale", 10))
 	var tr: Array = _city_data.get("trees", [])
 	for i: int in _tile_trees.get(_tile, []):
@@ -3530,6 +3841,7 @@ func _build_trees() -> void:
 					if _mine(p) and _tree_ok(p, 5.0):
 						_add_post(p, 0.3)
 						spots.append(Vector3(p.x, p.y, sc))
+						grates.append(Transform3D(Basis(Vector3.UP, sc * 9.0), Vector3(p.x, _h(p) + KERB_H + 0.006, p.y)))
 				s += TREE_GAP + rng.randf_range(-2.5, 2.5)
 			s -= L
 	# parks get trees where OSM has few; woods are filled (conifers in the north): each
@@ -3602,6 +3914,9 @@ func _build_trees() -> void:
 			_wild_made += 1
 	_tally("wild_trees", wild)
 	_trees_made += spots.size()
+	if not grates.is_empty():
+		_chunked(_furn.grate_kit(), grates, 120.0)
+		_tally("tree_grates", grates.size())
 	if spots.is_empty():
 		return
 	var look := String(_place.get("look", ""))
@@ -5933,6 +6248,61 @@ void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	wup = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz).y;
 }
+// A tired road crazes into small plates: where a noise says this stretch is old, the edges
+// of a Voronoi pattern 45 cm across, a hairline as wide as a pixel allows. 1 where there is
+// no crack, darker on one. Only near the eye: further off it is less than a pixel.
+float crazing(vec2 p, float dist, float pxw) {
+	float tired = smoothstep(0.7, 0.84, noise(p / 9.0 + 3.7)) * (1.0 - smoothstep(30.0, 55.0, dist));
+	if (tired <= 0.0) {
+		return 1.0;
+	}
+	vec2 gq = p / 0.45;
+	vec2 gi = floor(gq);
+	vec2 gf = gq - gi;
+	float d1 = 9.0;
+	float d2 = 9.0;
+	for (int y = -1; y <= 1; y++) {
+		for (int x = -1; x <= 1; x++) {
+			vec2 o = vec2(float(x), float(y));
+			vec2 pt = o + vec2(hash(gi + o), hash(gi + o + 17.3)) * 0.9 + 0.05;
+			float dd = length(gf - pt);
+			if (dd < d1) {
+				d2 = d1;
+				d1 = dd;
+			} else if (dd < d2) {
+				d2 = dd;
+			}
+		}
+	}
+	float edge = (d2 - d1) * 0.22;   // metres to the crack
+	// not every edge has cracked: some plates are still joined
+	float open = step(0.35, hash(floor(gq + vec2(0.5)) + 41.0));
+	float crack = 1.0 - smoothstep(0.0015, 0.0015 + pxw, edge);
+	return 1.0 - 0.28 * crack * tired * open;
+}
+// cells of a Voronoi pattern round q: (distance to the nearest edge, in cells; that cell's id)
+vec3 voro(vec2 q) {
+	vec2 gi = floor(q);
+	vec2 gf = q - gi;
+	float d1 = 9.0;
+	float d2 = 9.0;
+	vec2 id = gi;
+	for (int y = -1; y <= 1; y++) {
+		for (int x = -1; x <= 1; x++) {
+			vec2 o = vec2(float(x), float(y));
+			vec2 pt = o + vec2(hash(gi + o), hash(gi + o + 17.3)) * 0.8 + 0.1;
+			float dd = length(gf - pt);
+			if (dd < d1) {
+				d2 = d1;
+				d1 = dd;
+				id = gi + o;
+			} else if (dd < d2) {
+				d2 = dd;
+			}
+		}
+	}
+	return vec3((d2 - d1) * 0.5, id);
+}
 void fragment() {
 	vec3 c = COLOR.rgb;
 	vec4 fx = vec4(0.0);
@@ -5957,7 +6327,14 @@ void fragment() {
 		}
 		// a wall or a kerb's face stays on the noise: laid from above, a photo runs down it in
 		// streaks; kind 0 (a pole's top, a bench, a sign) has no photo at all
-		if (textured > 0.5 && wup > 0.6 && fx.w > 0.5) {
+		if (fx.w > 3.5) {   // kind 4: a wall of rough stones in mortar (garden walls)
+			vec2 q = wup > 0.6 ? p : vec2(wpos.x + wpos.z, wpos.y * 1.3);
+			vec3 vr = voro(q / 0.24);
+			float pxc = (length(dpx) + length(dpy)) / 0.24;
+			float mortar = 1.0 - smoothstep(0.04, 0.04 + pxc * 1.5, vr.x);
+			c *= 0.84 + 0.3 * hash(vr.yz + 5.1);
+			c = mix(c, c * 0.62 + vec3(0.04), mortar * near);
+		} else if (textured > 0.5 && wup > 0.6 && fx.w > 0.5) {
 			if (fx.w < 1.5) {   // grass, earth, sand: a lawn photo, 2 m across (fading out further
 				// off, where its repeat would line up into a grid; see GROUND_SHADER)
 				float kd = 1.0 - smoothstep(25.0, 110.0, length(VERTEX));
@@ -5975,6 +6352,24 @@ void fragment() {
 				vec3 b = textureGrad(asph_big, p / 30.0, dpx / 30.0, dpy / 30.0).rgb;
 				c *= mix(1.0, clamp(dot(b, vec3(0.333)) / dot(big_mean, vec3(0.333)), 0.0, 2.0), 0.7 * k);
 				bump = unpack(textureGrad(asph_nrm, uv, dpx / 3.0, dpy / 3.0).rg, 1.0);
+				float dist = length(VERTEX);
+				float pxw = length(dpx) + length(dpy);
+				if (fx.x > 0.0 && dist < 140.0) {
+					// worn, as Givatayim's streets are: one 5 m square in eight patched with
+					// newer, darker asphalt and its sealed seam; crazed plates where it is old;
+					// the light stones of the mix showing, close up
+					vec2 pc = floor(p / 5.0);
+					if (hash(pc + 2.3) < 0.13) {
+						vec2 lo = (pc + vec2(hash(pc + 4.1), hash(pc + 5.3)) * 0.4) * 5.0;
+						vec2 hi = lo + vec2(1.2 + 2.6 * hash(pc + 6.7), 1.0 + 2.2 * hash(pc + 8.9));
+						vec2 d = min(p - lo, hi - p);
+						float inside = step(0.0, min(d.x, d.y));
+						c *= mix(1.0, 0.8, inside);
+						c *= 1.0 - 0.4 * inside * (1.0 - smoothstep(0.02, 0.02 + pxw * 2.0, min(d.x, d.y)));
+					}
+					c *= crazing(p, dist, pxw);
+					c *= 1.0 + step(0.94, hash(floor(p / 0.012))) * 0.4 * (1.0 - smoothstep(3.0, 12.0, dist));
+				}
 				if (fx.x > 0.0) {
 					// oil and rubber: a dark blotch in about one 3 m square in six, oval, soft
 					vec2 cell = floor(p / 3.0);
@@ -5985,9 +6380,11 @@ void fragment() {
 						c *= 1.0 - 0.5 * smoothstep(r, r * 0.35, d) * (0.6 + 0.4 * noise(p * 3.0));
 					}
 				} else {
-					// paint wears through to the asphalt, in patches and in grains
-					float wear = smoothstep(0.5, 0.85, noise(p * 1.3)) * 0.55 + smoothstep(0.62, 0.9, noise(p * 7.0)) * 0.3;
-					c = mix(c, wear_col, wear);
+					// paint wears through to the asphalt, in patches and in grains -- a zebra half
+					// gone, as most are -- and the road's cracks run through it
+					float wear = smoothstep(0.42, 0.8, noise(p * 1.3)) * 0.7 + smoothstep(0.55, 0.9, noise(p * 7.0)) * 0.35;
+					c = mix(c, wear_col, clamp(wear, 0.0, 0.92));
+					c *= crazing(p, dist, pxw);
 				}
 			} else {   // pavement and plazas: pavers, bigger in a plaza
 				float s = pave_m * fx.z / 0.6;
@@ -6025,6 +6422,7 @@ const TONE_FX := {
 	"asphalt": [0.11, 0.075, 0.0, 2.0], "parking": [0.1, 0.06, 0.0, 2.0], "path": [0.06, 0.07, 0.0, 2.0],
 	"pavement": [0.04, 0.04, 0.6, 3.0], "plaza": [0.05, 0.04, 1.0, 3.0], "mark": [0.0, 0.04, 0.0, 2.0],
 	"markyellow": [0.0, 0.04, 0.0, 2.0], "metal": [0.0, 0.0, 0.0, 0.0], "metalrim": [0.0, 0.0, 0.0, 0.0],
+	"stonewall": [0.06, 0.04, 0.0, 4.0],
 }
 var _tone_list: Array = []           ## the table's tone names, in order
 var _tone_material: ShaderMaterial
@@ -6035,10 +6433,11 @@ func _tone_mat() -> ShaderMaterial:
 		var sh := Shader.new()
 		sh.code = TONE_SHADER
 		_tone_material.shader = sh
-		# Israeli pavements are rows of concrete pavers; Bedford's are poured slabs, the
+		# Israeli pavements are 20 x 10 cm concrete pavers in herringbone, a mix of greys
+		# and red-browns (drawn by textures/herringbone.py); Bedford's are poured slabs, the
 		# photo's slabs blown up to a metre or so
 		var north := String(_place.get("look", "")) == "north"
-		var pave := "concrete_pavement" if north else "concrete_pavers_02"
+		var pave := "concrete_pavement" if north else "herringbone_pavers"
 		_tone_material.set_shader_parameter("asph_tex", _tex("asphalt_02_diff"))
 		_tone_material.set_shader_parameter("asph_nrm", _tex("asphalt_02_nor"))
 		_tone_material.set_shader_parameter("asph_big", _tex("aerial_asphalt_01_diff"))
@@ -6055,7 +6454,7 @@ func _tone_mat() -> ShaderMaterial:
 	return _tone_material
 
 ## The photos under the surfaces: CC0 from Poly Haven (textures/CREDITS.md), 1024 px, the
-## bump maps 512. The shaders divide each by its average colour, so a photo adds detail
+## bump maps 512 -- all but the herringbone pavers, which textures/herringbone.py draws. The shaders divide each by its average colour, so a photo adds detail
 ## without changing the palette's colour. The averages are of the stored (sRGB) values, and
 ## the samplers have no source_color, so they read exactly those: in the Compatibility
 ## renderer source_color does not convert them anyway (measured), and a photo's own smallest
@@ -6065,7 +6464,7 @@ const TEX_MEAN := {
 	"aerial_asphalt_01": Vector3(0.402, 0.385, 0.406),
 	"asphalt_02": Vector3(0.356, 0.353, 0.333),
 	"concrete_pavement": Vector3(0.501, 0.457, 0.403),
-	"concrete_pavers_02": Vector3(0.448, 0.377, 0.314),
+	"herringbone_pavers": Vector3(0.502, 0.489, 0.483),
 	"leafy_grass": Vector3(0.593, 0.516, 0.351),
 	"painted_plaster_wall": Vector3(0.671, 0.639, 0.627),
 	"bark_brown_02": Vector3(0.373, 0.338, 0.251),
@@ -8233,7 +8632,7 @@ const NATURAL := {
 	"ground": 0.3, "rock": 0.3, "path": 0.15, "asphalt": 0.08, "parking": 0.08, "plaza": 0.2,
 	"grass": 0.6, "pitch": 0.6, "wood": 0.6, "leaf": 0.62, "bush": 0.6, "water": 0.5, "sand": 0.6,
 	"mark": 0.3, "wall": 0.5, "wall2": 0.45, "wall3": 0.6, "wall4": 0.6, "wall5": 0.5, "wall6": 0.3,
-	"glass": 0.5, "glass2": 0.5, "glass3": 0.5, "glass4": 0.5, "shutter": 0.3, "recess": 0.3,
+	"glass": 0.5, "glass2": 0.5, "glass3": 0.5, "glass4": 0.5, "shutter": 0.3, "recess": 0.3, "lobby": 0.35, "flowers": 0.8,
 	"roof": 0.2, "trunk": 0.45, "pole": 0.2, "haze": 0.45, "sky": 0.6, "board": 0.4, "solar": 0.5,
 	"tank": 0.3, "furniture": 0.3, "pavement": 0.2, "kerb": 0.15, "stonewall": 0.45, "roofroom": 0.4,
 	"gable": 0.5, "carglass": 0.4, "cartrim": 0.2, "tyre": 0.15, "rim": 0.2, "concrete": 0.15,
@@ -8245,6 +8644,12 @@ const NATURAL := {
 static func _natural(c: Color, keep: float) -> Color:
 	var l := c.get_luminance()
 	return Color(lerpf(l, c.r, keep), lerpf(l, c.g, keep), lerpf(l, c.b, keep), c.a)
+
+## a palette colour with most of its tint taken out (`k` 1: grey of the same brightness) --
+## concrete is grey, whatever colour the palette's light is
+func _greyed(c: Color, k: float) -> Color:
+	var l := c.get_luminance()
+	return c.lerp(Color(l, l, l, c.a), k)
 
 func _tones() -> void:
 	var bg := Palette.col("bg")
@@ -8260,7 +8665,7 @@ func _tones() -> void:
 		"ground": alt.lerp(ink, 0.42),
 		"rock": alt.lerp(ink, 0.3).lerp(wn, 0.2),
 		"path": alt.lerp(ink, 0.62),
-		"asphalt": alt.lerp(ink, 0.2),
+		"asphalt": alt.lerp(ink, 0.27),   # (pale grey, as sun-bleached asphalt is)
 		"parking": alt.lerp(ink, 0.32),
 		"plaza": alt.lerp(ink, 0.58).lerp(wn, 0.08),
 		"grass": veg.lerp(bg, 0.48),
@@ -8280,6 +8685,8 @@ func _tones() -> void:
 		"glass": alt.lerp(pl, 0.3),
 		"shutter": ink.lerp(alt, 0.22),
 		"recess": alt.lerp(bg, 0.25),
+		"lobby": ink.lerp(wn, 0.22).lerp(alt, 0.12),   # the tiled walls of a lobby under a block on columns
+		"flowers": Palette.col("hazard").lerp(Palette.col("accent"), 0.35),   # bougainvillea
 		"roof": ink.lerp(alt, 0.42),
 		"leaf": veg.lerp(bg, 0.52),
 		"trunk": alt.lerp(wn, 0.3),
@@ -8294,9 +8701,10 @@ func _tones() -> void:
 		"furniture": alt.lerp(ink, 0.35),
 		"paint": pl.lerp(alt, 0.5).lerp(ink, 0.12),
 		"shoplight": ink.lerp(wn, 0.45),
-		"pavement": ink.lerp(alt, 0.3).lerp(wn, 0.05),
+		"pavement": _greyed(ink.lerp(alt, 0.48).lerp(wn, 0.04), 0.65),
 		"kerb": ink.lerp(alt, 0.45),
 		"stonewall": ink.lerp(wn, 0.3).lerp(alt, 0.2),
+		"woodfence": alt.lerp(wn, 0.35).lerp(bg, 0.4),
 		"bush": veg.lerp(bg, 0.58),
 		"roofroom": ink.lerp(wn, 0.12).lerp(alt, 0.1),
 		"gable": ink.lerp(wn, 0.15),
@@ -8325,7 +8733,7 @@ func _tones() -> void:
 		"hair": bg.lerp(alt, 0.5).lerp(wn, 0.08),
 		"shirt_a": pl.lerp(bg, 0.45).lerp(ink, 0.15),
 		"shirt_b": ink.lerp(alt, 0.25),
-		"metal": bg.lerp(alt, 0.6),            # cast iron: manhole covers, drain grates
+		"metal": alt.lerp(ink, 0.22),          # cast iron: manhole covers, drain grates
 		"metalrim": alt.lerp(ink, 0.32),
 	}
 	for k: String in NATURAL:
@@ -8817,6 +9225,76 @@ func _get_in() -> void:
 	Probe.event("walk", {"on": false})
 	_show_banner("driving", 1.0)
 
+## ---- a filmed walk, replayed ------------------------------------------------------------------
+## A place in LEVELS with a "walk" replays a walk someone filmed: in first person, from the
+## eyes of someone holding a phone at the chest, on its own, with no controls and no driving
+## HUD. The route is in the city's details file (details.gd) as [seconds, x, z] points timed
+## to the film, so it passes each place when the film did and the two can be watched side
+## by side. At the end it stands still.
+
+var _film: Array = []                ## Vector3(x, z, seconds): the route, in time order
+var _film_t := 0.0
+var _film_step := 0.0                ## metres walked: the head bobs with the steps
+var _film_done := false
+
+func _film_begin(id: String) -> void:
+	var walks: Dictionary = _details.data.get("walks", {}) if _details != null else {}
+	var pts: Array = (walks.get(id, {}) as Dictionary).get("points", [])
+	if pts.size() < 2:
+		Probe.note("no walk '%s' in this city's details file" % id)
+		return
+	for p: Array in pts:
+		_film.append(Vector3(float(p[1]), float(p[2]), float(p[0])))
+	var p0 := _film_at(0.0)
+	_pos = p0
+	_yaw = (_film_at(1.5) - p0).angle()
+	_v = 0.0
+	_snap_pose()
+	_cockpit = true
+	_get_out()
+	_car.visible = false
+	_pos = p0
+	_prev_pos = p0
+	_cam_yaw = _yaw
+	_hud.visible = false
+	Probe.event("film", {"walk": id, "seconds": _film[_film.size() - 1].z})
+
+func _film_tick(dt: float) -> void:
+	_film_t += dt
+	var p := _film_at(_film_t)
+	var moved := p.distance_to(_pos)
+	_film_step += moved
+	_v = moved / maxf(dt, 0.001)
+	_pos = p
+	_y = _h(p)
+	var ahead := _film_at(_film_t + 1.6)
+	if ahead.distance_to(p) > 0.3:
+		_yaw = lerp_angle(_yaw, (ahead - p).angle(), 1.0 - exp(-dt * 2.2))
+	var anim := "Idle" if _v < 0.15 else "Walk"
+	if anim != _me_anim:
+		_me_anim = anim
+		_me.play(anim, true, 1.0 if anim == "Idle" else maxf(_v / WALK, 0.5))
+	if _film_t >= _film[_film.size() - 1].z and not _film_done:
+		_film_done = true
+		Probe.event("film_end", {"at": Vector2i(p)})
+
+## where the walk is at time t: a smooth curve (Catmull-Rom) through the timed points
+func _film_at(t: float) -> Vector2:
+	var n := _film.size()
+	if t <= _film[0].z:
+		return Vector2(_film[0].x, _film[0].y)
+	if t >= _film[n - 1].z:
+		return Vector2(_film[n - 1].x, _film[n - 1].y)
+	var i := 0
+	while i < n - 2 and _film[i + 1].z <= t:
+		i += 1
+	var a: Vector3 = _film[maxi(i - 1, 0)]
+	var b: Vector3 = _film[i]
+	var c: Vector3 = _film[i + 1]
+	var d: Vector3 = _film[mini(i + 2, n - 1)]
+	var u := (t - b.z) / maxf(c.z - b.z, 0.001)
+	return Vector2(b.x, b.y).cubic_interpolate(Vector2(c.x, c.y), Vector2(a.x, a.y), Vector2(d.x, d.y), u)
+
 ## the empty car rolling on after you jumped out: no driver, so no steering and no power,
 ## slowing as a car in gear does with the foot off (a couple of m/s each second); into a
 ## wall or a car it stops short, with a bang
@@ -8897,7 +9375,11 @@ func _foot_camera(dt: float) -> void:
 	if _cockpit:
 		var fwd := Vector2(cos(_view_yaw), sin(_view_yaw))
 		var eye := Vector3(p.x + fwd.x * 0.15, gy + 1.64, p.y + fwd.y * 0.15)
-		look_from(eye, eye + Vector3(fwd.x, -0.08, fwd.y) * 10.0)
+		var down := -0.08
+		if not _film.is_empty():   # a phone held at the chest, looking a little down, bobbing with each step
+			eye.y += -0.2 + sin(_film_step * PI / 0.72) * 0.022 * clampf(_v / 1.2, 0.0, 1.0)
+			down = -0.2
+		look_from(eye, eye + Vector3(fwd.x, down, fwd.y) * 10.0)
 		cam.fov = 70.0
 		return
 	_cam_yaw = lerp_angle(_cam_yaw, _view_yaw, 1.0 - exp(-dt * 4.0))
@@ -9292,8 +9774,11 @@ func _physics_process(dt: float) -> void:
 	if _walking:
 		_traffic.tick(dt)
 		_p("traffic")
-		_walk(dt)
-		_controls_tick(dt)
+		if not _film.is_empty():
+			_film_tick(dt)
+		else:
+			_walk(dt)
+			_controls_tick(dt)
 		_p("walk")
 		_names_tick(dt)
 		_p("names")
@@ -12838,7 +13323,7 @@ func _draw_map_inner() -> void:
 ## it takes the wheel back from autodrive. ----------------------------------------------------
 
 func _input(event: InputEvent) -> void:
-	if not _loaded:
+	if not _loaded or not _film.is_empty():
 		return
 	if _picker != null:   # everything goes to the picker while it is open
 		var mb := event as InputEventMouseButton

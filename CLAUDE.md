@@ -29,10 +29,10 @@ silently.
 ## A game is one folder
 
 ```
-game/count/
-  count.gd      # the code
-  count.tscn    # one Node2D with that script
-  GAME.md       # the design, in the player's words
+game/space_cat/
+  space_cat.gd    # the code
+  space_cat.tscn  # one Node2D with that script
+  GAME.md         # the design, in the player's words
 ```
 
 **To add a game, create the folder. To remove one, delete the folder.** The menu scans
@@ -100,10 +100,11 @@ working. What it gives you on top: `world` (a `Node3D` to build in), `cam` + `su
 `model("taxi", 3.0)` for the CC0 3D models in `assets/models/` and `Actor3D` for the
 animated people in `assets/characters3d/` (both fall back to shapes when a file is missing).
 Set `world_area` (the X/Z rectangle of your ground) so the ASCII eye knows what to draw.
-Read the `godot-3d` skill before writing one. `game/drop/` is the reference. The bots see a
-3D world only as dots on a 2D map, so its spatial bugs (a person in the road, a car in a
-wall, a seam in the ground) need scene tests -- scripts that stage the moment and measure
-it, with screenshots: see the `scene-tests` skill.
+Read the `godot-3d` skill before writing one. `reference/drop/` (parked out of the menu,
+still readable) is the reference. The bots see a 3D world only as dots on a 2D map, so its
+spatial bugs (a person in the road, a car in a wall, a seam in the ground) need scene
+tests -- scripts that stage the moment and measure it, with screenshots: see the
+`scene-tests` skill.
 
 ## Real places
 
@@ -154,7 +155,7 @@ on a baked city.
 - **No physics nodes required.** Distance checks are fine and far more predictable. Use
   `Area2D` only if the game genuinely needs shaped collision. (3D games may use
   `RigidBody3D` for things that fall and tumble -- that is the one place physics earns
-  its keep -- but still detect hits with distance checks, see `game/drop/`.)
+  its keep -- but still detect hits with distance checks, see `reference/drop/`.)
 
 ## Playtesting — do this before claiming a game works
 
