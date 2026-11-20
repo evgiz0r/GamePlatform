@@ -111,10 +111,11 @@ const WALKERS := 18
 const CHATTERS := 8
 const PEOPLE_RANGE := 150.0
 const PEOPLE_SEEN := 90.0            ## people further than this are not drawn or animated
-const SIGNAL_CYCLE := [              ## [seconds, phase of the E-W group, phase of N-S]
-	[14.0, "g", "r"], [3.0, "y", "r"], [2.5, "r", "r"],
-	[14.0, "r", "g"], [3.0, "r", "y"], [2.5, "r", "r"],   # (all red 2.5 s: a big junction takes that to clear)
-]
+const SIGNAL_CYCLE := [              ## [seconds, phase of group 1 (the junction's main road), of group 2]
+	[20.0, "g", "r"], [3.0, "y", "r"], [2.5, "r", "r"],
+	[11.0, "r", "g"], [3.0, "r", "y"], [2.5, "r", "r"],   # (all red 2.5 s: a big junction takes that to clear)
+]   # (the main road's green the longer, as the town's own lights run: with 14 s each way a
+    # main road was stop and go behind every red; see DEV.md for what the exam made of it)
 
 const SEG_CELL := 24.0               ## spatial hash cell for road segments (m)
 const BLD_CELL := 24.0
