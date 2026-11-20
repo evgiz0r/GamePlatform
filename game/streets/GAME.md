@@ -161,7 +161,10 @@ HaGalil down a cutting into the hill and through it in a 440 m tunnel (under HaO
 HaBroshim and the water tower), lit by two rows of lamps, up a cutting on the far side to
 the ring road. Two of the old grid's streets no longer meet the boulevard: HaTamar dips
 under it (a cutting, a short cut-and-cover tunnel, a cutting back up), HaZayit climbs over
-it on embankments and a bridge. Driving, walking and the traffic all keep to their own
+it on embankments and a bridge -- and from HaZayit's flyover two slip roads come down to the
+boulevard and up from it, a half-diamond interchange: the junctions where they meet HaZayit
+are up on its embankments, 7 m over the street, the slip roads merging into and leaving the
+boulevard just short of HaTe'ena. Driving, walking and the traffic all keep to their own
 level: under a bridge you are under it, in the tunnel the hill's houses are not in your
 way, cars overhead do not stop for you.
 

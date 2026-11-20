@@ -168,6 +168,12 @@ one needed:
   a cell beyond where a dug river channel starts; a bridge ending on that slope has a crest
   just past its end. End it a cell further out. And keep its end away from junctions (20 m
   or so): a car turning in clipped the parapet's start.
+- **Junctions in the air** (a slip road meeting a road up on its embankment): draw the
+  junction's middle at its height, open the parapet, its wall and the walkway wherever the
+  other road comes in, and let a ramp's walkway give way to the street's asphalt where its
+  foot runs into one. Leaving walls out of a junction's corner (so a turning car does not
+  clip a kerb-high step) is right at street level only: up on an embankment it is a gap to
+  drive off.
 - **Water held at its own level** (a river between weirs) is drawn at that level and is too
   deep to drive into; gentle banks otherwise let a car down to drive along the bed under
   the water. Leave lakes that lie at their shore's lowest point alone: a road over an

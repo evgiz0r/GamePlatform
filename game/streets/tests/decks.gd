@@ -8,6 +8,7 @@ extends SceneTree
 ##
 ##   OUT=/tmp/decks game/streets/tests/run.sh decks 4
 ##   RUNS=tunnel_east SHOTS=0 ...   only those runs (comma-separated), no fixed views
+##   RUNS=none VIEWS=ic_,river ...    no runs, only the views whose names hold one of those
 ##   STREETS_BUILD_ALL=0 SHOTS=0 $GODOT --headless --fixed-fps 60 --path . -s \
 ##       res://game/streets/tests/decks.gd     the numbers alone, in a minute or two
 ##
@@ -16,7 +17,8 @@ extends SceneTree
 ## (no ground over a cutting, no road floating over a gap, lamps lit in the tunnel).
 var g: Node
 
-## [name, a point near the start, the way to face (radians, 0 east, +z south), seconds]
+## [name, a point near the start, the way to face (radians, 0 east, +z south), seconds,
+## "top" to start on the highest road there rather than the one at the ground's level]
 const RUNS := [
 	["tunnel_east", Vector2(108, -250), 0.0, 40.0],
 	["tunnel_west", Vector2(628, -250), PI, 40.0],
@@ -24,6 +26,10 @@ const RUNS := [
 	["underpass", Vector2(-105, -108), PI * 0.5, 22.0],
 	["river_bridge", Vector2(0, 350), PI * 0.5, 16.0],
 	["ring_bridge", Vector2(578, 368), 2.4, 16.0],
+	# the interchange: up the westbound slip road into the junction on HaZayit's embankment,
+	# and down the eastbound one from the junction into the boulevard (started up on it)
+	["slip_up", Vector2(-475, -21), PI, 16.0],
+	["slip_down", Vector2(-528, 30), 0.0, 16.0, "top"],
 ]
 
 func _initialize() -> void:
@@ -80,7 +86,7 @@ func _drive(run: Array) -> void:
 	var face := Vector2(cos(float(run[2])), sin(float(run[2])))
 	if g._auto:
 		g._set_auto(false)
-	g._y = g._h(at)
+	g._y = g._decks.surf(at, 1.0e6) if run.size() > 4 else g._h(at)
 	if not g._land_on_road(at, 30.0, face):
 		print("%s: no road near %s" % [name, at])
 		return
@@ -137,6 +143,12 @@ func _drive(run: Array) -> void:
 ## the surface there, z). "top": the highest surface (a bridge's deck, the hill over a
 ## tunnel), "low": the lowest (the ground under a bridge, a tunnel's road)
 func _view(name: String, eye: Vector3, look: Vector3, mode := "top") -> void:
+	var want := OS.get_environment("VIEWS").split(",", false)
+	var wanted := want.is_empty()
+	for w: String in want:
+		wanted = wanted or name.contains(w)
+	if not wanted:
+		return
 	var e2 := Vector2(eye.x, eye.z)
 	var l2 := Vector2(look.x, look.z)
 	var lv := 1.0e6 if mode == "top" else -1.0e6
@@ -170,6 +182,14 @@ func _views() -> void:
 	await _view("view_underpass", Vector3(-103, 1.8, -95), Vector3(-105, 1.0, -22), "low")
 	await _view("view_underpass_over", Vector3(-118, 1.7, -27), Vector3(-105, -4.0, -55), "top")
 	await _view("view_underpass_air", Vector3(-160, 30, -110), Vector3(-105, 0, -40))
+	# the interchange: the junction up on HaZayit's embankment, down a slip road, its merge
+	# into the boulevard, from the air
+	await _view("view_ic_junction", Vector3(-543, 1.6, 62), Vector3(-536, 0.5, 26))
+	await _view("view_ic_slip", Vector3(-512, 1.6, 26), Vector3(-458, 0.5, -1))
+	await _view("view_ic_merge", Vector3(-418, 1.6, -1), Vector3(-480, 2.0, 8), "low")
+	await _view("view_ic_air", Vector3(-455, 40, 95), Vector3(-515, 0, -5))
+	await _view("view_ic_above", Vector3(-522, 22, 52), Vector3(-543, 0, 28))
+	await _view("view_ic_into", Vector3(-518, 1.6, 31), Vector3(-560, 0.5, 29))
 	# the hill's tunnel: into its west mouth, inside it, out of its east mouth, the hill above
 	await _view("view_tunnel_west", Vector3(104, 2.0, -252), Vector3(170, 0.5, -250), "low")
 	await _view("view_tunnel_inside", Vector3(300, 1.8, -248), Vector3(380, 1.5, -250), "low")

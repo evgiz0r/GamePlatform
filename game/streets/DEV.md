@@ -398,6 +398,13 @@ before and a tunnel without it is still dropped.
   footprint (`cut_tri`, in `_build_terrain`), and the far-off flat ground plane is put below
   the deepest deck (it showed through the hole). The tunnel's tube casts shadows from both
   faces (its own meshes, not the merged ones) so the sun does not light it inside.
+- **Junctions in the air.** Where only decks meet (the interchange's slip roads joining
+  HaZayit up on its embankment) the junction is drawn by `decks.gd` at its height (no node
+  in `_tile_nodes`, so no signs or lights there). A parapet, its wall and the walkway open
+  wherever another deck's road comes in (`open_at`, drawing and collisions alike), and a
+  ramp's walkway gives way to a street's asphalt where its foot runs into one (the slip road
+  merging into the boulevard). Walls are left out of the collisions in a junction's corner
+  only at street level -- up on the embankment that would leave a gap to drive off.
 - **Water held at a level** (`areas[].y`, the test town's river) lies at that level, and is
   too deep to drive or walk into (`_deep_push`): the banks were gentle enough to drive down
   and along the bed under the water. Lakes and ponds without a level are as before.
