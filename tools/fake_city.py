@@ -976,13 +976,13 @@ def river(T):
     on a bridge (bridges())."""
     # (far enough from the ring road that no bridge ends at a junction on it: a car turning
     # in clipped the parapet)
-    ctrl = [(598, 476), (575, 452), (552, 425), (520, 410), (420, 405), (300, 403), (200, 406),
+    ctrl = [(612, 462), (586, 446), (556, 426), (522, 410), (420, 405), (300, 403), (200, 406),
             (100, 407), (0, 404), (-100, 401), (-200, 404), (-300, 407), (-400, 406), (-468, 411)]
     pts = catmull(ctrl, 8.0)
     T.river = pts
     G = T.G
     G.cut(pts, [RIVER_BED] * len(pts), RIVER_FLAT, RIVER_BANK)
-    lake_c, spring_c = (-494, 414), (598, 478)
+    lake_c, spring_c = (-494, 414), (614, 464)
     lake = ccw([(lake_c[0] + 30 * math.cos(a) * (1 + 0.1 * math.sin(3 * a)),
                  lake_c[1] + 22 * math.sin(a) * (1 + 0.08 * math.cos(2 * a))) for a in [2 * math.pi * i / 28 for i in range(28)]])
     spring = ccw(circle(spring_c, 13.0, 16))

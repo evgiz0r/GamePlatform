@@ -339,7 +339,20 @@ before and a tunnel without it is still dropped.
   is 7 m over the road (`COVER`). For a real town the heights would have to be worked out:
   OSM tags only the bridge's span (the ramps are ordinary ways, sometimes `embankment=yes`)
   and says nothing of how high; the baker now keeps `layer`, `embankment` and `cutting`.
-- **The test**: `tests/decks.gd` (level 4) -- see tests/README.md.
+- **The test**: `tests/decks.gd` (level 4) -- see tests/README.md. Its first rounds found,
+  in order: the surface stepped at every joint of a deck (the highest of several nearby
+  segments of one road was taken: half the tunnel run airborne), autodrive crawling at
+  30 km/h under the hill (its look-ahead probes saw the houses above as obstacles),
+  bridges ending on the river bank's slope (the 8 m grid bends the ground a cell past the
+  dug channel: a crest past each end, cars took off), a bridge ending 8 m from a junction
+  (a turning car clipped the parapet), a 5 cm switch from a cutting's road to the ground
+  where it gets shallow (a hop), and ground triangles left whole over a cutting (an edge
+  parallel to the hole's leaves a smaller triangle: compare areas, not corner counts).
+- **Still to do**: heights for the real towns' bridges and tunnels; pavements at street
+  level beside a cutting (the underpass has none); people on a bridge's pavement; the
+  minimap draws a tunnel like any street; zooming out from inside the tunnel rises from the
+  hilltop (the zoom centres on the ground's height); the heights are whole decimetres, so a
+  deck's grade kinks by up to 2% every 5 m (enough for a 2 cm hop off HaNasi's bridge).
 
 ## Open problems
 

@@ -148,19 +148,28 @@ func _view(name: String, eye: Vector3, look: Vector3, mode := "top") -> void:
 	await _snap(name)
 
 func _views() -> void:
+	if g._auto:
+		g._set_auto(false)   # (its junction prompt over every picture)
 	g.set_physics_process(false)
 	if process_frame.is_connected(g._frame):
 		process_frame.disconnect(g._frame)
 	g._car.visible = false
-	# the river and HaNasi's bridge, from the west bank and from over the water
-	await _view("view_river_bank", Vector3(-45, 1.7, 432), Vector3(0, 2.0, 414), "low")
-	await _view("view_river_air", Vector3(-70, 45, 330), Vector3(10, 0, 420))
-	# the flyover over the boulevard, from the boulevard and from above
-	await _view("view_flyover_low", Vector3(-610, 1.6, -4), Vector3(-545, 4.0, -6), "low")
-	await _view("view_flyover_air", Vector3(-640, 50, -130), Vector3(-545, 0, -10))
-	# the underpass, down its cutting from HaShuk, and from the air
-	await _view("view_underpass", Vector3(-105, 2.5, -122), Vector3(-105, -1.0, -40))
-	await _view("view_underpass_air", Vector3(-190, 45, -150), Vector3(-105, 0, -20))
+	# HaNasi's bridge over the river: from the water, from the bank, from its deck
+	await _view("view_river_under", Vector3(-32, 3.2, 404), Vector3(0, 4.0, 404), "low")
+	await _view("view_river_bank", Vector3(-40, 1.7, 372), Vector3(0, 0.5, 404), "top")
+	await _view("view_river_deck", Vector3(2.5, 1.5, 365), Vector3(2.5, 1.0, 440), "top")
+	await _view("view_river_air", Vector3(60, 28, 470), Vector3(0, 0, 404))
+	# the ring road's skewed bridge, from the water
+	await _view("view_ring_bridge", Vector3(505, 3.0, 405), Vector3(534, 5.0, 417), "low")
+	# the flyover: from the boulevard under it, beside its embankment, from its top
+	await _view("view_flyover_under", Vector3(-590, 1.6, 1.5), Vector3(-545, 6.0, 1.0), "low")
+	await _view("view_flyover_side", Vector3(-572, 1.7, -111), Vector3(-545, 3.0, -50), "low")
+	await _view("view_flyover_top", Vector3(-543, 1.5, -85), Vector3(-543, 0.5, 10), "top")
+	await _view("view_flyover_air", Vector3(-610, 35, -90), Vector3(-545, 0, -10))
+	# the underpass: down its cutting to the mouth, and from the boulevard over it
+	await _view("view_underpass", Vector3(-103, 1.8, -95), Vector3(-105, 1.0, -22), "low")
+	await _view("view_underpass_over", Vector3(-118, 1.7, -27), Vector3(-105, -4.0, -55), "top")
+	await _view("view_underpass_air", Vector3(-160, 30, -110), Vector3(-105, 0, -40))
 	# the hill's tunnel: into its west mouth, inside it, out of its east mouth, the hill above
 	await _view("view_tunnel_west", Vector3(104, 2.0, -252), Vector3(170, 0.5, -250), "low")
 	await _view("view_tunnel_inside", Vector3(300, 1.8, -248), Vector3(380, 1.5, -250), "low")
