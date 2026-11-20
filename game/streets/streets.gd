@@ -113,17 +113,19 @@ const PEOPLE_RANGE := 150.0
 const PEOPLE_SEEN := 90.0            ## people further than this are not drawn or animated
 ## The lights' cycle: [seconds, what group 1 (each junction's main road) shows, group 2 (the
 ## roads across it)]. "g" green, "gf" green flashing (it is about to change: still go), "y"
-## amber, "r" red, "ry" red and amber together (about to go green: still stop). 2.5 s between
-## one way's amber and the other's green, red all round or red-and-amber: a big junction takes
-## that to clear. Israel's: green, three flashes, amber, red, red-and-amber, green. North
-## America's has neither the flashes nor the red-and-amber.
+## amber, "r" red, "ry" red and amber together (about to go green: still stop). 3-3.5 s between
+## one way's amber and the other's green, red all round or red-and-amber: a junction drawn as
+## several points, its stop lines behind the zebras, takes that to clear (at 2.5 s a car in on
+## the last of the amber, turning, met the cars across starting off). Israel's: green, three
+## flashes, amber, red, red-and-amber, green. North America's has neither the flashes nor the
+## red-and-amber.
 const SIGNAL_CYCLE_MED := [
-	[11.0, "g", "r"], [3.0, "gf", "r"], [3.0, "y", "r"], [1.0, "r", "r"], [1.5, "r", "ry"],
-	[11.0, "r", "g"], [3.0, "r", "gf"], [3.0, "r", "y"], [1.0, "r", "r"], [1.5, "ry", "r"],
+	[11.0, "g", "r"], [3.0, "gf", "r"], [3.0, "y", "r"], [2.0, "r", "r"], [1.5, "r", "ry"],
+	[11.0, "r", "g"], [3.0, "r", "gf"], [3.0, "r", "y"], [2.0, "r", "r"], [1.5, "ry", "r"],
 ]
 const SIGNAL_CYCLE_NORTH := [
-	[14.0, "g", "r"], [3.0, "y", "r"], [2.5, "r", "r"],
-	[14.0, "r", "g"], [3.0, "r", "y"], [2.5, "r", "r"],
+	[14.0, "g", "r"], [3.0, "y", "r"], [3.0, "r", "r"],
+	[14.0, "r", "g"], [3.0, "r", "y"], [3.0, "r", "r"],
 ]
 var SIGNAL_CYCLE: Array = SIGNAL_CYCLE_MED   ## this town's (set when the city loads)
 
@@ -8049,9 +8051,12 @@ func _through_lights() -> void:
 			if _nodes[n].distance_to(_pos) < _node_r[n] + 3.0:
 				_light_odo = _odo   # (still in it)
 			continue
+		var way := _way_in(n, came)
+		if way.is_empty() or way[3]:
+			continue   # not a way into it from outside: going by
 		var rel := _nodes[n] - nose
 		var along := rel.dot(came)
-		if along > _light_line(n, came) or along < -_node_r[n] or absf(rel.dot(Vector2(-came.y, came.x))) > _node_r[n] + 2.0:
+		if along > float(way[1]) or along < -_node_r[n] or absf(rel.dot(Vector2(-came.y, came.x))) > _node_r[n] + 2.0:
 			continue
 		_light_site = s
 		_light_odo = _odo
@@ -8097,10 +8102,13 @@ func _ap_light_v() -> float:
 					back += _ap_pts[k - 1].distance_to(_ap_pts[k])
 					k -= 1
 				var din := (cp - _ap_pts[k]).normalized()
+				var way := _way_in(n, din)
+				if way.is_empty() or way[3]:
+					break   # going past it (the other half of a divided road), not into it
 				# the line is so far before the point along the way in; this piece of lane may
 				# be short of the point already (a right turn cuts the corner)
 				var short := maxf(0.0, (c - cp).dot(din))
-				found.append([base + a.distance_to(cp) - maxf(0.0, _light_line(n, din) - short), n, din])
+				found.append([base + a.distance_to(cp) - maxf(0.0, float(way[1]) - short), n, din])
 				break
 			base += a.distance_to(b)
 	if found.is_empty():
@@ -8149,6 +8157,19 @@ func _light_group(n: int, dir: Vector2) -> int:
 		var a := fposmod(dir.angle(), PI)
 		g = 1 if _axis_gap(a, site["a1"]) <= _axis_gap(a, site["a2"]) else 2
 	return 3 - g if site.has("flip") else g
+
+## the way into lit point n that traffic going `dir` takes ([way in, line, road, from inside]
+## as in _sig_line), or [] when none runs within 45 degrees of it: going past the point, not
+## into it (along the other half of a divided road, a few metres over)
+func _way_in(n: int, dir: Vector2) -> Array:
+	var best: Array = []
+	var bd := 0.7
+	for way: Array in _sig_line.get(n, []):
+		var dt := (way[0] as Vector2).dot(dir.normalized())
+		if dt > bd:
+			bd = dt
+			best = way
+	return best
 
 ## the stop line before lit point n for traffic arriving going `dir` (metres from the node)
 func _light_line(n: int, dir: Vector2) -> float:

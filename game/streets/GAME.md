@@ -251,7 +251,9 @@ came in (a car in on the last of the amber was told it ran the red). The stop an
 signs are OSM's (Givatayim has a few dozen mapped, Bedford more); the lights run their own
 cycle. In the Israeli towns they go as they do there: green, three flashes of green, amber,
 red, red and amber together, green. In Bedford: green, amber, red. Between one way's amber
-and the other's green, 2.5 s for the junction to clear.
+and the other's green, 3-3.5 s for the junction to clear. A car that can still stop on amber
+stops; one too close goes (traffic used to cruise on until it could not stop, often late in
+the amber, and cross on red).
 
 A junction is one junction however OSM draws it. Where a divided road meets a street it is
 two points 10-30 m apart, where two divided roads cross it is four; the whole knot is one
@@ -268,7 +270,9 @@ stood). Where the usual corner is a wall or a driveway, the pole stands further 
 a divided road's median. The lamps are real red, amber and green, red at the top, whatever
 the palette, and dark when out. Cars stop with their front at the stop line -- a bus stopped
 by its middle stood across the junction -- and read the light for the way they come in, not
-the way they are turning. Where a zebra crosses the way in by the junction the stop line is
+the way they are turning; autodrive sees the light on a turn too (it looked only where its
+lane passed over the junction's point, which a turn curves past, and drove through reds).
+Where a zebra crosses the way in by the junction the stop line is
 behind it (cars waiting at the red stood on the zebra). A car with the green no longer waits
 for one standing at the red across the junction.
 

@@ -421,8 +421,11 @@ func _light_ahead(c: Car) -> float:
 		var stop: float = dist - (g._light_line(n, dir) + 1.0 + c.len * 0.5)
 		if state == "g" or stop < -1.5:   # (its front over the line: committed, through)
 			return INF
-		if state == "y" and c.v * c.v > 2.0 * BRAKE * maxf(stop, 0.1):
-			return INF   # too late to stop on amber: through
+		# too late to stop on amber: through. Judged at a firmer braking than the stop below
+		# is planned at -- the same, and a car that could stop kept its speed (the plan asked
+		# for no braking yet) until it could not, often late in the amber, and crossed on red
+		if state == "y" and c.v * c.v > 2.0 * (BRAKE + 1.0) * maxf(stop, 0.1):
+			return INF
 		return sqrt(2.0 * BRAKE * maxf(stop - 0.3, 0.0))
 	return INF
 

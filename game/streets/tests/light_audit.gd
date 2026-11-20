@@ -217,6 +217,7 @@ func _drive() -> void:
 	var me := {"g": 0, "y": 0, "r": 0}
 	var conflicts := 0
 	var counted := {}
+	var counted_pt := {}
 	var creeps := {}
 	var line_was := {}    # mover -> the site the game says it is in (sites only)
 	var over := {"g": 0, "y": 0, "r": 0}
@@ -224,7 +225,7 @@ func _drive() -> void:
 	for f in range(60 * secs):
 		await physics_frame
 		if f % 600 == 0 and verbose:
-			print("  t=%d s: car at %s %.1f m/s, odo %.0f m" % [f / 60, g._pos.round(), g._v, g._odo])
+			print("  t=%d s: car at %s %.1f m/s, odo %.0f m, held by %s" % [f / 60, g._pos.round(), g._v, g._odo, g._ap_why])
 		var movers: Array = []
 		for i in range(T.cars.size()):
 			var c = T.cars[i]
@@ -232,6 +233,7 @@ func _drive() -> void:
 				movers.append([i, c.pos, Vector2(sin(c.yaw), cos(c.yaw)), c.v, c.len])
 		movers.append([-1, g._pos, g._fwd(), absf(g._v), g.CAR_LEN])
 		var in_site := {}   # site -> [[way, mover], ...] moving inside it
+		var in_point := {}  # the same by lit point (what the old code called a junction)
 		for m: Array in movers:
 			var id: int = m[0]
 			var p: Vector2 = m[1]
@@ -253,6 +255,9 @@ func _drive() -> void:
 						if not in_site.has(site):
 							in_site[site] = []
 						(in_site[site] as Array).append([m[2], id])
+						if not in_point.has(n):
+							in_point[n] = []
+						(in_point[n] as Array).append([m[2], id])
 			var was: int = inside.get(id, -1)
 			if now >= 0 and now != was:
 				inside[id] = now
@@ -311,6 +316,14 @@ func _drive() -> void:
 							conflicts += 1
 							if verbose:
 								print("  t=%.1f crossing ways moving inside site %d together: %s and %s" % [f / 60.0, site, ms[a][1], ms[b][1]])
+		for n: int in in_point:
+			var ms: Array = in_point[n]
+			for a in range(ms.size()):
+				for b in range(a + 1, ms.size()):
+					if absf((ms[a][0] as Vector2).dot(ms[b][0])) < 0.5:
+						var key := "%d:%d" % [n, f / 120]
+						if not counted_pt.has(key):
+							counted_pt[key] = true
 		for i in range(T.cars.size()):
 			var c = T.cars[i]
 			if c.alive and c.jwait > 6.0:
@@ -322,6 +335,6 @@ func _drive() -> void:
 							print("  t=%.1f car %d crept into the junction at %d after waiting 6 s" % [f / 60.0, i, n])
 					break
 	print("%d s, car %.0f m: traffic came into a junction with lights on green %d, amber %d, red %d; autodrive on green %d, amber %d, red %d (the game counted %d red)" % [secs, g._odo, entries["g"], entries["y"], entries["r"], me["g"], me["y"], me["r"], g._reds])
-	print("crossing ways moving in one junction together: %d; cars that waited 6 s at a lit junction and crept in: %d" % [conflicts, creeps.size()])
+	print("crossing ways moving in one junction together: %d (by point: %d); cars that waited 6 s at a lit junction and crept in: %d" % [conflicts, counted_pt.size(), creeps.size()])
 	if has_sites:
 		print("over the stop line (the game's own count): traffic on green %d, amber %d, red %d; autodrive on green %d, amber %d, red %d" % [over["g"], over["y"], over["r"], me_over["g"], me_over["y"], me_over["r"]])
