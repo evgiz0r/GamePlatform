@@ -794,7 +794,14 @@ Nothing is half done: all of the above is on main.
   out: 9.6 M from vertex-coloured kits, then tanks 0.8 M, poles 0.8 M, furniture 0.75 M,
   railings 0.5 M), the contact shadows 1.1 M, kerbs 0.9 M. Triangle soups, none indexed.
   Nodes 8,134 (4,989 before the parked cars' 100 m squares); 74 shader kinds (each one
-  compiled in the warm-up).
+  compiled in the warm-up). Who made the copies (`perf_dive`'s "batched, by who", a debug-only
+  tally in `_batch_add`): the cast-iron grates and pits round the street trees' feet (384 and
+  534 vertices a copy) 3.5 M, balconies and facade kits 2.5 M, roof kits 0.8 M, bins and
+  bollard kits 1.1 M, cats (1,182 a copy) 0.45 M, terraces 0.5 M. Since a kit of more than
+  `BATCH_KIT_VERTS` (200) stays a multimesh: 13.4 M vertices, video memory 445 MB (buffers
+  374 MB, -131), the start view 668 draws (+27) and 1.75 M triangles, 9,278 nodes, 84 shader
+  kinds (materials x instanced: the instanced kits' materials count again, though look-alike
+  StandardMaterial3Ds share one compiled shader).
 
 ## Cities
 
@@ -1559,13 +1566,12 @@ Each line: where the code is, the test, what good reads.
   `_level_groups`): `tools/menu_shot.sh levels:streets`.
 - **Performance** (`tests/perf_dive.gd` 7; numbers under "Numbers to compare against"):
   parked cars done (`_draw_parked`, `_parked_far_mesh`, `PARKED_CELL/NEAR/SEEN`; `_chunked`
-  takes `cell_m` and `range_begin`). **In the middle of**: which vertex-coloured kits make
-  the 9.6 M batched vertices -- a debug-only tally in `_batch_add` ("batched by:
-  function:line (n verts)") that `perf_dive` prints as "batched, by who"; the plan was to
-  draw the biggest as multimeshes (one mesh, a transform each) instead of copying their
-  vertices into the batches, then measure memory and draws again. Also open: 74 shader
-  kinds for the warm-up (merging look-alike materials would shorten it); nodes up 3,000 from
-  the parked cars' squares (watch the browser's culling cost).
+  takes `cell_m` and `range_begin`); heavy kits kept as multimeshes (`BATCH_KIT_VERTS`, -131
+  MB in Tel Aviv). **Next**: the batches are triangle soups -- indexing them (`SurfaceTool`'s
+  `index()` while flushing, timed against the load) would cut the remaining 9.8 M batched
+  vertices by about a third; the 84 shader kinds for the warm-up (merging look-alike
+  materials would shorten it); nodes up 4,300 from the parked cars' squares and the kits
+  (watch the browser's culling cost).
 - **Waiting on the user**: the test town's hillside roads lean (a finer height grid in
   tools/fake_city.py, or levelling roads in the game; another session owns the test town's
   terrain); stop / give-way signs at every junction (asked whether same-class junctions get
