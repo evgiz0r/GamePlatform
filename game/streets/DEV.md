@@ -581,8 +581,9 @@ what became of it:
 - *Rings of cars waiting for each other.* The old way out (ignore the other car) worked only
   head-on (angles 0.8 rad+ apart); two cars at a skewed junction, each in the other's path,
   stood for good. A car waiting 2.5 s+ walks the chain of who holds whom (6 deep); on a loop
-  the lowest-numbered car ignores the one in front for 3 s (`ignore_car`). "Held by nothing"
-  went from 1-3 a town to 0.
+  the lowest-numbered car goes past the one it waited for for 3 s (`ignore_car`), which still
+  counts when square in front of its wheels (0.6 m, as a filtering motorbike sees). "Held by
+  nothing" went from 1-3 a town to 0-1.
 - *Stop and give-way signs stopped a car's middle at the painted line* (`_sign_ahead`), so a
   sedan's nose stood 2 m into the junction, in the crossing street's lane, and was driven
   into; a bus's stood at the junction's middle. The front now, as at lights. (Found by the
@@ -625,6 +626,11 @@ minutes, this 1.29 on 40 -- the same; main read 1.11-1.23 at 2x all day and 1.07
   stand 1 m into the asphalt (the film shows them so; traffic drives through), a tree 0.7 m
   into Katznelson's (city_check's Givatayim post), and a truck on Sderot Herzl's kerb lane
   4.3 m right of the lane line on a pole past the kerb (where the road narrows).
+- *The test town reads 19-20 checks at 2x on `main` since the evening's merges* (4-12 that
+  morning; this branch beside it 19 and 13), mostly traffic overlapping. One seen whole: the
+  autodrive shoved a bus at Derekh HaHarim (-540, 415) back at 5 m/s and 4 m sideways
+  through the queue behind it, which then read as a ring. Whose change moved it is not
+  found: bisect `main`'s afternoon on the test town (under a minute a run at 2x, twice each).
 - Standing over the line at a red, about once a run (a taxi 4.5 m past it in the test town):
   not the amber case now; its drive log next.
 
