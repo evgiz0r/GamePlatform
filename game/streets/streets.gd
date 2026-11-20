@@ -8611,6 +8611,7 @@ func _build_pois() -> void:
 			_terrace(pos, n, along, _awning_col(role, at + Vector2(3, 0)) if umb == "" else _real_col(umb), terrace, shades,
 				String(shop.get("seats", "tables")), umb != "none")
 		var name := String(p[3]) if String(p[3]) != "" else (String(p[4]) if String(p[4]) != "" else String(look[1]))
+		name = String(shop.get("sign", name))   # (a name filmed or told, where the map has none)
 		var sign := Label3D.new()
 		sign.text = name
 		sign.font = _font
@@ -8829,11 +8830,19 @@ func _terrace(pos: Vector2, n: Vector2, along: Vector2, umb: Color, t: Dictionar
 		_bar_stools(pos, n, along, t)
 		return
 	for off: float in [-2.3, 0.0, 2.3]:
-		var c := pos + n * 2.6 + along * off
-		if _push_out(c, 0.9, false) != Vector2.ZERO:
-			continue
-		var on := _nearest_seg(c, 12.0, true)
-		if not on.is_empty() and float(on["edge"]) < 0.9:
+		# 2.6 m out, or where the wall stands close to the kerb (a map's outline that runs out
+		# to the road with the upper floors) up against the window: a filmed sabich stand's
+		# tables and red umbrella were on a pavement the game had all but none of
+		var c := Vector2.INF
+		for tr: Vector3 in [Vector3(2.6, 0.9, 0.9), Vector3(1.6, 0.6, 0.4), Vector3(1.1, 0.45, -0.1)]:   # out, room, edge
+			if tr.x < 1.5 and (off != 0.0 or not umbrellas):
+				continue   # (that close: one table, and only for an umbrella someone filmed)
+			var q := pos + n * tr.x + along * off
+			var on := _nearest_seg(q, 12.0, true)
+			if _push_out(q, tr.y, false) == Vector2.ZERO and (on.is_empty() or float(on["edge"]) >= tr.z):
+				c = q
+				break
+		if not c.is_finite():
 			continue
 		var gy := _h(c)
 		var face := atan2(along.x, along.y)

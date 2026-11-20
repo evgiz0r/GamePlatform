@@ -65,6 +65,17 @@ extends RefCounted
 ##                                                    a red graffiti heart on that face).
 ##                                                    Anything on a lifted surface stands on it.
 ##   trees     [[x, z], ...]                         more trees for the city's own builder
+##   shops     [{name | near: [x, z], at: [x, z], add, kind, name_en, sign, awning, umbrella,
+##              seats, crates, board}]   one place's look, by hand (streets.gd _build_pois):
+##                                                    matched by its name or the nearest to
+##                                                    `near`; `at` moves it there (a map point
+##                                                    off by a few doors), `add` with `at`,
+##                                                    `kind` and `name` puts in one the map
+##                                                    lacks; awning / umbrella / board a colour
+##                                                    (black, white, cream, red, maroon, green,
+##                                                    blue, or "none"), seats tables, stools (a
+##                                                    bar's, at a ledge) or none, crates of
+##                                                    produce out front, sign the name on it
 ##   walks     {id: {name, points: [[t, x, z]...],   two points at one spot: it waits there
 ##              looks: [[from, to, degrees]...],     the head turned off the way it walks
 ##                                                    (+ right), to see the traffic coming
