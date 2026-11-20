@@ -68,8 +68,16 @@ func _run() -> void:
 					worst[k] = maxf(float(worst.get(k, 0.0)), slip)
 					if absf(rate) > 1.5:
 						snaps[k] = int(snaps.get(k, 0)) + 1
+						if int(snaps[k]) <= 3:
+							print("  snap: %s at %.1f m/s turning %.1f rad/s, lane shift %.1f -> %.1f, held by %s, %.0f m from a junction" % [
+								k, c.v, rate, c.shift, c.shift_to, c.why, _to_junction(c)])
 				if c.kind == "bus" and int(t * 60.0) % 15 == 0:
 					var arr: Array = buses.get(i, [])
+					if not arr.is_empty() and Vector2(float(arr[arr.size() - 1][1]), float(arr[arr.size() - 1][2])).distance_to(c.pos) > 8.0:
+						# (taken away and put back elsewhere: a new track, not a turn)
+						if arr.size() > 4:
+							buses["%d-%d" % [i, int(t)]] = arr
+						arr = []
 					arr.append([snappedf(t, 0.01), snappedf(c.pos.x, 0.01), snappedf(c.pos.y, 0.01), snappedf(c.yaw, 0.001), c.len])
 					buses[i] = arr
 			prev[i] = [c.pos, c.yaw]
@@ -99,3 +107,12 @@ func _run() -> void:
 		var f := FileAccess.open(OS.get_environment("OUT") + "/bus_turn.json", FileAccess.WRITE)
 		f.store_string(JSON.stringify({"city": g._city_id, "samples": best}))
 	quit(0)
+
+## metres from the car to the nearest junction point on its way
+func _to_junction(c) -> float:
+	var best := INF
+	for j in range(c.k, mini(c.k + 12, c.pts.size())):
+		var n: int = c.node[j]
+		if n >= 0 and g._node_ways(n) >= 3:
+			best = minf(best, g._nodes[n].distance_to(c.pos))
+	return best
