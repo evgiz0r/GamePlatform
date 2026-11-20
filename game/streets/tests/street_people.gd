@@ -57,11 +57,33 @@ func _run() -> void:
 				first["wait"] = c["actor"]
 	print("walkers with a dog %d, with a pushchair %d (out now); sitting on benches %d, waiting at stops %d; benches known %d" % [
 		counts["dog"], counts["pram"], sat, waiting, g._bench_spots.size()])
-	g.set_physics_process(false)
-	process_frame.disconnect(g._frame)
+	# each kind shot once one is within 80 m of the car (the dogs and pushchairs, like the
+	# people, are not drawn past PEOPLE_SEEN), driving on up to a minute for it
 	for k: String in ["dog", "pram", "sit", "wait"]:
-		if first.has(k):
-			var a: Node3D = first[k]
-			print("%s: %d m from the camera" % [k, int(a.global_position.distance_to(g.cam.global_position))])
-			await _look_at_person("sp_" + k, a, 1.0, 1.4, 3.0)   # (from the side: what is ahead of them shows)
+		var a: Node3D = null
+		var waited := 0.0
+		while waited < 60.0:
+			a = _near_one(k)
+			if a != null:
+				break
+			await create_timer(1.0).timeout
+			waited += 1.0
+		if a == null:
+			print("%s: none within 80 m in a minute" % k)
+			continue
+		g.set_physics_process(false)
+		process_frame.disconnect(g._frame)
+		print("%s: %d m from the car" % [k, int(Vector2(a.global_position.x, a.global_position.z).distance_to(g._pos))])
+		await _look_at_person("sp_" + k, a, 1.0, 1.4, 3.0)   # (from the side: what is ahead of them shows)
+		process_frame.connect(g._frame)
+		g.set_physics_process(true)
 	quit(0)
+
+func _near_one(k: String) -> Node3D:
+	var lists := {"dog": g._walkers, "pram": g._walkers, "sit": g._sitters, "wait": g._waiters}
+	for w: Dictionary in lists[k]:
+		var a: Node3D = w["actor"]
+		if (k != "dog" and k != "pram") or w.has(k):
+			if a.visible and Vector2(a.global_position.x, a.global_position.z).distance_to(g._pos) < 80.0:
+				return a
+	return null
