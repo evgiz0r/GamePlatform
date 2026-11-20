@@ -47,8 +47,13 @@ extends RefCounted
 ##   surfaces  [{k, p: [[x, z]...], lift, lay: [x, z], ramps: [[[x, z], [x, z]]...]}]   paving
 ##                                                    laid over whatever is there, `lift` m up
 ##                                                    (0.14: level with the pavement), in a
-##                                                    ground tone (slabs, pavers_dark...),
-##                                                    slabs' joints along `lay`; each ramp
+##                                                    ground tone (slabs, pavers_dark,
+##                                                    pavers_grey, pavers_red, tactile: a
+##                                                    crossing's domed slabs, kerb: grey
+##                                                    concrete), slabs' joints along `lay`
+##                                                    (a raised block: a kerb-toned surface,
+##                                                    paving on it a shade higher and inset,
+##                                                    its skirt the kerb's face); each ramp
 ##                                                    rises from nothing at its first point
 ##                                                    to `lift` at its second (a raised
 ##                                                    crossing's slopes)
@@ -58,18 +63,22 @@ extends RefCounted
 ##                                                    block's face, facing `face`; signs: a
 ##                                                    name per bay, "" for none; panels: the
 ##                                                    bays with yellow panels in the window)
-##   props     [{kind, at: [x, z], dir: [x, z]}]     bin, hoop_railing, bollard, twin_poles
+##   props     [{kind, at: [x, z], dir: [x, z]}]     bin, hoop_railing, bollard (top: "grey"
+##                                                    for a black one with a steel top), twin_poles
 ##                                                    (dir: the line through them), barrier
 ##                                                    (dir: the way the boom goes, len),
 ##                                                    globe_lamp (h), manhole, hydrant, motorbike and
 ##                                                    scooter (dir: the nose; box: a top box),
 ##                                                    kerb_paint (at: by the kerb of the road
-##                                                    nearest; len, pat: red_white...),
+##                                                    nearest; len, pat: red_white...; plain
+##                                                    for bare kerb over a street's paint),
 ##                                                    zebra (dir: along the road, w: how wide
 ##                                                    the crossing, len: kerb to kerb; laid on
 ##                                                    the paving there), ring30 (painted on the
 ##                                                    road, read along dir), zone30_sign (dir:
-##                                                    the way it faces), parked_car (in the
+##                                                    the way it faces), no_uturn_sign (round,
+##                                                    on a pole; dir: the way it faces),
+##                                                    parked_car (in the
 ##                                                    road by its kerb, nose along dir; body:
 ##                                                    sedan, hatch, suv, van), booth (a blue
 ##                                                    pay booth, its face along dir),
@@ -415,7 +424,7 @@ func build() -> void:
 			"hoop_railing":
 				_hoop(b, at, y, d, white)
 			"bollard":
-				_bollard(b, at, y, k)
+				_bollard(b, at, y, k, String(pr.get("top", "")))
 			"twin_poles":
 				_twin_poles(b, at, y, d)
 			"barrier":
@@ -448,6 +457,8 @@ func build() -> void:
 				_ring30(b, at, d)
 			"zone30_sign":
 				_zone30_sign(b, at, y, d)
+			"no_uturn_sign":
+				_no_uturn_sign(b, at, y, d)
 			"kerb_paint":
 				_kerb_paint(b, at, float(pr.get("len", 10.0)), KERB_PAINT.find(String(pr.get("pat", "red_white"))))
 			"manhole":
@@ -584,7 +595,7 @@ func _up(p: Vector2, lift: float) -> Vector3:
 ## is one pattern from junction to junction: "set" in roads gives a whole way's)
 func _kerb_paint(b, at: Vector2, L: float, pat: int) -> void:
 	var hit: Dictionary = g._nearest_seg(at, 15.0, true, true)
-	if hit.is_empty() or pat <= 0:
+	if hit.is_empty() or pat < 0:
 		return
 	var r: Dictionary = g._roads[int(hit["road"])]
 	var pts: PackedVector2Array = r["pts"]
@@ -599,7 +610,9 @@ func _kerb_paint(b, at: Vector2, L: float, pat: int) -> void:
 	var kw: float = kc["KERB_W"]
 	var kh: float = kc["KERB_H"]
 	var white: Color = mat.get_shader_parameter("white")
-	var paint: Color = mat.get_shader_parameter(["", "red", "blue", "yellow"][pat])
+	var paint: Color = mat.get_shader_parameter(["plain", "red", "blue", "yellow"][pat])
+	if pat == 0:   # plain: the bare kerb over a street's paint (a crossing's dropped kerb)
+		white = paint
 	if pat == 3:
 		white = mat.get_shader_parameter("black")
 	var lift: float = 0.07 if g._hnx > 0 else 0.0
@@ -683,6 +696,37 @@ func _zone30_sign(b, at: Vector2, y: float, d: Vector2) -> void:
 	_thirty(b, c, right, Vector3.UP, 0.17, nrm, 0.03, g._tone["tyre"])
 	g._add_post(at, 0.1)
 
+## the round "no U-turn" sign on its pole, its face along `d` (towards the drivers it is for):
+## a white disc, a red ring, a black U-turn arrow, a red bar across it; grey behind
+func _no_uturn_sign(b, at: Vector2, y: float, d: Vector2) -> void:
+	var p := Vector3(at.x, y, at.y)
+	g._furn._tube(b, p, p + Vector3.UP * 2.3, 0.035, 0.035, g._tone["pole"], 6)
+	var nrm := Vector3(d.x, 0, d.y)
+	var right := Vector3(-d.y, 0, d.x)
+	var c := p + Vector3.UP * 2.05 + nrm * 0.045
+	var n := 24
+	for i in range(n):
+		var a0 := TAU * float(i) / n
+		var a1 := TAU * float(i + 1) / n
+		var e0 := (right * cos(a0) + Vector3.UP * sin(a0)) * 0.3
+		var e1 := (right * cos(a1) + Vector3.UP * sin(a1)) * 0.3
+		b.tri(c, c + e1, c + e0, nrm, g._tone["mark"])
+		b.tri(c - nrm * 0.01, c - nrm * 0.01 + e0, c - nrm * 0.01 + e1, -nrm, g._tone["pole"])
+	var red: Color = (g._kerb_mat.get_shader_parameter("red") if g._kerb_mat != null else g._tone["signred"])
+	var ink: Color = g._tone["tyre"]
+	_round(b, c + nrm * 0.004, right, Vector3.UP, 0.27, nrm, 0.06, red)
+	var P := func(x: float, yy: float) -> Vector3: return c + nrm * 0.008 + right * x + Vector3.UP * yy
+	_stroke(b, P.call(-0.07, -0.14), P.call(-0.07, 0.04), nrm, 0.035, 0.006, ink)
+	for i in range(8):
+		var t0 := PI * float(i) / 8.0
+		var t1 := PI * float(i + 1) / 8.0
+		_stroke(b, P.call(-0.07 * cos(t0), 0.04 + 0.07 * sin(t0)), P.call(-0.07 * cos(t1), 0.04 + 0.07 * sin(t1)), nrm, 0.035, 0.006, ink)
+	_stroke(b, P.call(0.07, 0.04), P.call(0.07, -0.06), nrm, 0.035, 0.006, ink)
+	_stroke(b, P.call(0.02, -0.05), P.call(0.07, -0.13), nrm, 0.03, 0.006, ink)
+	_stroke(b, P.call(0.12, -0.05), P.call(0.07, -0.13), nrm, 0.03, 0.006, ink)
+	_stroke(b, c + nrm * 0.014 + (Vector3.UP - right) * 0.17, c + nrm * 0.014 + (right - Vector3.UP) * 0.17, nrm, 0.05, 0.006, red)
+	g._add_post(at, 0.08)
+
 ## a square concrete gatepost a little taller than a man, its face along `d`; `heart`: a red
 ## heart sprayed on that face, a hand across
 func _gatepost(b, at: Vector2, y: float, d: Vector2, heart: bool) -> void:
@@ -727,10 +771,20 @@ func _sign_board(b, at: Vector2, y: float, d: Vector2) -> void:
 	g._furn._box(b, face, Vector3(0.45, 0.55, 0.02), g._tone["markyellow"], bs)
 	g._add_post(at, 0.08)
 
-## a black steel bollard with a yellow band near the top; now and then one worn grey
-func _bollard(b, at: Vector2, y: float, k: int) -> void:
-	var body: Color = g._tone["tyre"] if k % 5 != 2 else g._tone["concrete"].darkened(0.25)
+## a black steel bollard with a yellow band near the top; now and then one worn grey;
+## `top` "grey": a black one with a grey steel top and no band (a crossing's, the film's)
+func _bollard(b, at: Vector2, y: float, k: int, top := "") -> void:
+	var body: Color = g._tone["tyre"] if k % 5 != 2 or top != "" else g._tone["concrete"].darkened(0.25)
 	var band: Color = g._tone["markyellow"]
+	if top == "grey":
+		var steel: Color = g._tone["metal"].lerp(g._tone["concrete"], 0.4)
+		var p := Vector3(at.x, y, at.y)
+		g._furn._tube(b, p, p + Vector3.UP * 0.66, 0.075, 0.075, body, 10)
+		g._furn._tube(b, p + Vector3.UP * 0.66, p + Vector3.UP * 0.68, 0.077, 0.077, body.lightened(0.1), 10)
+		g._furn._tube(b, p + Vector3.UP * 0.68, p + Vector3.UP * 0.8, 0.075, 0.075, steel, 10)
+		g._furn._tube(b, p + Vector3.UP * 0.8, p + Vector3.UP * 0.83, 0.075, 0.035, steel, 10)
+		g._add_post(at, 0.12)
+		return
 	var p := Vector3(at.x, y, at.y)
 	g._furn._tube(b, p, p + Vector3.UP * 0.6, 0.075, 0.075, body, 8)
 	g._furn._tube(b, p + Vector3.UP * 0.6, p + Vector3.UP * 0.7, 0.077, 0.077, band, 8)

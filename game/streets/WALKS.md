@@ -25,11 +25,11 @@ focused, or leave them to them.
       metre high (film 19-22 s); the game's are plain light grey.
 - [ ] The café on Katzenelson's north pavement behind the walk's start, its tables and
       awning; people at them (film 0-1 s).
-- [ ] Katzenelson's north pavement: the black bollards with grey tops along the kerb
-      either side of the zebra (film 1-4 s).
-- [ ] Tactile paving (the dotted yellow-grey slabs) at each end of the zebra and on the
-      median island (film 6-9 s, 16 s).
-- [ ] The median island: kerbed, paved, a no-entry sign on a pole (film 8-9 s).
+- [ ] Katzenelson's north kerb north-west of the zebra: red and white as filmed (film 0.5 s),
+      not the city's blue and white -- pass 4's `kerb_paint` there draws nothing visible
+      (DEV.md, pass 12); and no guard railing beside the bollard (the city's).
+- [ ] Cars parked along Katzenelson's far kerb, across the road from the wait (film 1-2.5 s:
+      white and dark cars in a row past the arcade's motorbikes).
 - [ ] The second shop under the arcade, its sign and colours; the confectionery's glass
       door, its branding above (film 15-20 s).
 - [ ] A manhole cover in the arcade's dark pavers (film 19 s).
@@ -61,8 +61,8 @@ focused, or leave them to them.
       graffiti on poles, a fire hydrant, chewing-gum stains on the slabs.
 
 ### Behaviour
-- [ ] More traffic on Katzenelson: a steady stream both ways, a bus, a delivery scooter
-      weaving (film 0-17 s); parked cars along its kerbs.
+- [ ] Katzenelson's traffic past 17 s, seen from the arcade and the forecourt (the film's
+      first 17 s have five cars, all now sent as filmed).
 - [ ] Looks at things as the film does: at the shop fronts under the arcade (film 18-21 s),
       at the people in the forecourt (25-27 s), at the bin (50 s), at the man walking
       out of the passage (60-63 s).
@@ -140,6 +140,11 @@ Its film is not in this repo or this machine's scratch: a session needs a clip o
       (bollards, cabinets, motorbikes, tables) keep landing on the walks' lines.
 
 ## Done
+- Pass 12 of walk 1 (DEV.md): Katzenelson's crossing as filmed -- tactile paving at the north
+  kerb and through the median's cut, the median's ends raised red-paver blocks in a concrete
+  kerb with a no-U-turn sign, a black bollard with a steel top; the walk waits 2 m back
+  facing across, then beside the bollard, and stands by the cut's south-east side; the near
+  half's black hatchback (2 s) and white SUV (3 s), the grey SUV at 12.4 s.
 - Pass 11 of walk 1 (DEV.md): the phone exposes for what it sees (both walks: the arcade, the
   passage's shade and the sunny forecourt held near the film's steady brightness) and the
   arcade's paving mid-grey, not near black; Katzenelson's far half as filmed -- a white

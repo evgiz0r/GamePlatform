@@ -38,6 +38,14 @@ func _run_at(name: String, at: Vector2, d: Vector2, v: float, secs: float) -> Di
 		if f < 30:
 			g._v = v   # (held at speed until it gets there)
 		await physics_frame
+		if OS.get_environment("TRACE") != "" and f < 70 and f > 38:   # what is solid at the car's nose, tick by tick
+			var nose: Vector2 = g._pos + g._fwd() * g.CAR_OFF
+			var pp: Vector2 = g._push_out(nose, g.CAR_R, true, true, g._y)
+			var near: Array = []
+			for i: int in g._near(g._post_hash, nose, g.CAR_R + 1.0, g.BLD_CELL):
+				if g._posts[i].distance_to(nose) < g.CAR_R + g._post_r[i] + 0.3:
+					near.append("%d r%.2f %s%s" % [i, g._post_r[i], Vector2i(g._posts[i] * 10.0), " K" if g._knockable.has(i) else ""])
+			print("  %s f%d v %.2f nose %s push %.2f by '%s'; posts %s" % [name, f, g._v, Vector2i(nose * 10.0), pp.length(), g._last_hit, near])
 		min_v = minf(min_v, g._v)
 		if f == int(0.9 * v / 9.0 * 60.0):
 			await _snap("crash_" + name)
@@ -77,11 +85,16 @@ func _run() -> void:
 			var p: Vector2 = g._posts[pid]
 			if p.distance_to(start) >= best:
 				continue
+			# the whole way the car's nose goes, up to the thing itself (its middle alone left a
+			# give-way sign's pole 0.5 m in front of the bin, and the car stopped at the pole);
+			# the thing itself left out of the check
+			var r0: float = g._post_r[pid]
+			g._post_r[pid] = 0.0
 			for ang in range(0, 360, 20):
 				var d := Vector2.from_angle(deg_to_rad(ang))
 				var clear := true
-				var s := 8.0
-				while s > 2.0:
+				var s := 10.5
+				while s > 0.9:
 					if g._push_out(p - d * s, 0.95, true, false) != Vector2.ZERO:
 						clear = false
 						break
@@ -91,6 +104,7 @@ func _run() -> void:
 					pd = d
 					best = p.distance_to(start)
 					break
+			g._post_r[pid] = r0
 		if pick < 0:
 			print(kind, ": none with a clear run")
 			continue

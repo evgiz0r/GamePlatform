@@ -1146,6 +1146,13 @@ func _cutting(ri: int, pts: PackedVector2Array, conc: RefCounted, rail: RefCount
 			if not g._mine(Vector2(q0.x, q0.z)):
 				continue
 			var L := Vector2(q1.x - q0.x, q1.z - q0.z).length()
+			var across := false   # (where the cutting runs under a street at grade: none across its lanes)
+			for f: float in [0.0, 0.25, 0.5, 0.75, 1.0]:
+				var q := q0.lerp(q1, f)
+				across = across or _street_over(Vector2(q.x, q.z))
+			if across:
+				s += L
+				continue
 			var yaw := atan2(q1.x - q0.x, q1.z - q0.z)
 			g._obox(rail, (q0 + q1) * 0.5 + Vector3(0, 1.0, 0), Vector3(0.06, 0.06, L), yaw)
 			g._obox(rail, (q0 + q1) * 0.5 + Vector3(0, 0.55, 0), Vector3(0.04, 0.04, L), yaw)
@@ -1608,6 +1615,13 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 	var is_tu := {}
 	var dig := {}
 	var branch: Array = []   # tunnel ways under nothing mapped: a passage, or a branch of a tunnel
+	var short_tu := {}          # tunnel ways under something, too short alone: way -> what is over it
+	var pin_over := func(over: Array) -> void:
+		for ov: Array in over:
+			if drv.call(roads[int(ov[0])]):
+				for m in roads[int(ov[0])]["n"]:
+					if (pos.call(int(m)) as Vector2).distance_to(ov[1]) < 80.0:
+						pinned[int(m)] = true
 	for ri in range(roads.size()):
 		var r: Dictionary = roads[ri]
 		if not r.has("tu") or int(net.call(r)) == 0 or r.has("y"):
@@ -1639,33 +1653,40 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 		if over.is_empty() and int(r.get("ly", 0)) < 0 and String(r["k"]) != "service":
 			branch.append(ri)   # (decided below: on the ground, unless it joins a tunnel)
 			continue
-		if over.is_empty() or total < (MIN_TUNNEL if drv.call(r) else 6.0):
+		if not over.is_empty() and total < (MIN_TUNNEL if drv.call(r) else 6.0):
+			short_tu[ri] = over   # (decided below: a tunnel if it joins one, else on the ground)
+			continue
+		if over.is_empty():
 			r.erase("tu")   # (on the ground, where the game drew it before it had tunnels)
 			continue
 		is_tu[ri] = true
-		for ov: Array in over:
-			if drv.call(roads[int(ov[0])]):
-				for m in roads[int(ov[0])]["n"]:
-					if (pos.call(int(m)) as Vector2).distance_to(ov[1]) < 80.0:
-						pinned[int(m)] = true
+		pin_over.call(over)
 	# A tunnel way under nothing mapped, below the ground, that meets a tunnel at an end is a
 	# branch of it, dug with it (Lova Eliav's two links into Begin's underpass, underground):
 	# put back on the ground, it made the junction they meet at a street's and held the
 	# tunnel up. The rest are passages: on the ground as before.
+	# A short tunnel way under something that joins a tunnel at an end is a piece of it (Lova
+	# Eliav's 19 m under Kaplan, between two longer pieces: put on the ground, it came out a
+	# cutting between them, its railings standing across Kaplan's lanes); alone, too short to
+	# be worth a tube, it stays on the ground as before.
 	var grew := true
 	while grew:
 		grew = false
-		for ri: int in branch.duplicate():
+		for ri: int in branch.duplicate() + short_tu.keys():
 			var ns: Array = roads[ri]["n"]
 			var joins := false
 			for e in [ns[0], ns[ns.size() - 1]]:
 				for rj: int in at.get(int(e), []):
-					joins = joins or is_tu.has(rj)
+					joins = joins or (rj != ri and is_tu.has(rj))
 			if joins:
 				is_tu[ri] = true
-				branch.erase(ri)
+				if short_tu.has(ri):
+					pin_over.call(short_tu[ri])
+					short_tu.erase(ri)
+				else:
+					branch.erase(ri)
 				grew = true
-	for ri: int in branch:
+	for ri: int in branch + short_tu.keys():
 		roads[ri].erase("tu")
 	var dropped: Array = []   # tunnels left out, and why (the report)
 	# A footpath tunnel that ends under the ground (OSM's path stops there, or the bake cut

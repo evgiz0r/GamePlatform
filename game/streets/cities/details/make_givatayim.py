@@ -37,10 +37,14 @@ r2 = lambda p: [round(p[0], 2), round(p[1], 2)]
 # watching the far half's from the right (cars stop at the zebra, one drives on), over it,
 # the far kerb at 17 s. Its halves are set to 7 m (two lanes each, see "roads" below): the
 # kerbs at -13.8 and 3.1, the median from -6.8 to -3.9; about 2.1-2.3 m/s over each half.
-KERB_N, MEDIAN, KERB_S = P(-14.1, -17.4), P(-5.35, -17.35), tuple(P(3.3, -17.3))
+KERB_N, MEDIAN, KERB_S = P(-14.1, -17.4), P(-5.35, -16.6), tuple(P(3.3, -17.3))   # (in the median's cut, near its south-east side: film 7.7-9 s)
 lm = [
-    (0.0, tuple(P(-16.0, -17.4))), (1.6, tuple(KERB_N)), (4.9, tuple(KERB_N)),   # to the north kerb, waiting
-                                                                                 # (the film steps off at 5.3 s)
+    # (pass 12, the film a quarter second at a time: it stands 2 m back from the kerb facing
+    # across till 2.7 s, a black bollard 2 m ahead at the zebra's north-west edge, then steps up
+    # to the kerb beside it)
+    (0.0, tuple(P(-16.4, -18.4))), (1.0, tuple(P(-16.0, -18.5))), (2.7, tuple(P(-16.0, -18.5))),
+    (3.7, tuple(P(-14.25, -18.2))), (4.9, tuple(P(-14.25, -18.2))),   # at the north kerb, waiting
+                                                                     # (the film steps off at 5.3 s)
     (8.7, tuple(MEDIAN)), (13.3, tuple(MEDIAN)),                            # over the near half; waiting
     (17.0, KERB_S), (18.4, tuple(P(6.4, -17.6))),                           # over the far half, up the kerb,
                                                                             # in past the arcade's middle column
@@ -125,6 +129,16 @@ d = {
     # to the two blocks either side and round into the drive past the barrier
     "surfaces": [
         {"k": "pavers_dark", "lift": 0.14, "p": [P(3.35, -23.6), P(3.35, -6.0), P(8.4, -6.0), P(8.4, -23.6)]},
+        # Katzenelson's crossing (film 1-9 s): buff domed slabs along the north kerb across the
+        # zebra and filling the cut through the median, the median's ends either side of the cut
+        # raised blocks -- a grey concrete kerb round red pavers -- sloping down to the median
+        # further off (the zebra 3 m wide: off -18.87 to -15.87)
+        {"k": "tactile", "lift": 0.14, "lay": SE, "p": [P(-14.6, -19.3), P(-14.0, -19.3), P(-14.0, -15.45), P(-14.6, -15.45)]},
+        {"k": "tactile", "lift": 0.15, "lay": SE, "p": [P(-6.6, -18.9), P(-4.1, -18.9), P(-4.1, -15.85), P(-6.6, -15.85)]},
+        *[{"k": k, "lift": lift, "lay": SE, "ramps": [[P(-5.35, far), P(-5.35, far + (1.4 if far < -17 else -1.4))]],
+           "p": [P(-6.65 + i, a), P(-4.05 - i, a), P(-4.05 - i, e), P(-6.65 + i, e)]}
+          for (a, e, far) in ((-24.0 + 0.0, -18.9, -24.0), (-15.85, -10.0, -10.0))
+          for (k, lift, i) in (("kerb", 0.3, 0.0), ("pavers_red", 0.31, 0.15))],
         {"k": "slabs", "lift": 0.14, "lay": [round(u[0], 4), round(u[1], 4)],
          "p": [P(3.35, -6.0), P(8.4, -6.0), P(8.4, -7.9), P(17.1, -7.9), P(17.1, 1.35), P(17.1, 5.0),
                P(22.0, 5.0), P(22.0, 10.5), P(16.3, 10.5), P(16.3, 5.4), P(3.35, 5.4)]},
@@ -192,7 +206,17 @@ d = {
         {"kind": "scooter", "box": True, "at": P(8.2, -3.6), "dir": [round(left[0], 4), round(left[1], 4)]},
         # the zebra over Katzenelson (film 0-1 s and 15-17.5 s): a white hoop railing either
         # side of it on both kerbs, and the kerbs painted red and white 10 m each way
-        *[{"kind": "hoop_railing", "at": P(sk, -17.35 + o), "dir": SE} for sk in (3.45, -14.15) for o in (-2.4, 2.4)],
+        # (the north kerb's north-west one a metre further off: the film waits beside the zebra
+        # with nothing between it and the road, 1-4.5 s)
+        *[{"kind": "hoop_railing", "at": P(sk, -17.35 + o - (1.2 if sk < 0 and o < 0 else 0.0)), "dir": SE}
+          for sk in (3.45, -14.15) for o in (-2.4, 2.4)],
+        # the north kerb bare grey across the zebra (the city painted it blue and white there)
+        {"kind": "kerb_paint", "at": P(-14.0, -17.37), "len": 3.6, "pat": "plain"},
+        # a black bollard with a steel top on the domed slabs at the zebra's north-west edge
+        # (film 1-3 s), and the round "no U-turn" sign on the median's raised end by the cut,
+        # facing the near half's drivers (film 7.6-8.6 s)
+        {"kind": "bollard", "top": "grey", "at": P(-14.15, -18.95)},
+        {"kind": "no_uturn_sign", "at": P(-6.25, -15.5), "dir": SE},
         *[{"kind": "kerb_paint", "at": P(sk, -17.35 + o), "len": 10.0, "pat": "red_white"}
           for sk in (3.3, -14.0) for o in (-6.6, 6.6)],
         # Ha-Meri's entrance: the zebra on its raised crossing, a 30 painted in a red ring in
@@ -231,7 +255,9 @@ d = {
             "points": walk,
             # the head turned from the way the walk goes: [from, to, degrees, + right] and, if
             # given, degrees up (the phone already tilts 15.6 down: streets.gd's FILM_TILT)
-            "looks": [[1.4, 4.4, -70], [4.4, 5.1, 30],          # the near half's traffic comes from the left
+            "looks": [[4.0, 5.1, 25],                           # (it faces across while it waits: the
+                                                                # far side's fronts level in the frame,
+                                                                # 1-2.5 s); a glance right, then
                       [5.4, 8.8, 0, -30],                       # then down at the stripes, a foot in shot (6 s)
                       [8.9, 12.6, 15], [12.6, 13.4, 20],        # the far half's from the right (a glance:
                                                                 # the film faces across, 9.5-12 s)
@@ -260,15 +286,21 @@ d = {
                        {"at": P(61.6, 2.1), "to": P(58.4, 2.1), "t": [59.0, 61.4], "stay": True, "who": 2}],
             # [second, at, heading] and what the film shows of it: "lane" kerb or median,
             # "through" (it drives on past the walk at the zebra), "kind"
-            "cars": [[0.0, P(-10.2, 22), NW], [1.5, P(-10.2, 40), NW],              # one by, one stops
+            # the near half's (film 1-4.5 s): a black hatchback by in the lane by the median
+            # (about 2 s), a white SUV close past the kerb (3-4 s); then one that stops
+            "cars": [[0.0, P(-10.2, 3.6), NW, {"lane": "median", "kind": "hatch", "paint": "black"}],
+                     # (sent from past a junction 32 m up, where a car sent further off was held 2 s)
+                     [0.5, P(-10.2, 10.0), NW, {"lane": "kerb", "through": True, "kind": "suv", "paint": "white"}],
+                     [1.5, P(-10.2, 40), NW, {"kind": "sedan"}],
                      # the far half's: a white hatchback by in the lane by the median as the walk
                      # reaches it (film 8.5-9 s), a white sedan stopped in the kerb lane (9.5-12 s),
                      # then a grey SUV driving on in the median lane past the walk waiting there
-                     # (12.5-13.5 s). Each is sent 28 m off at 70% of the street's pace: 2.5 s.
+                     # (12-13 s). Each is sent 28 m off at 70% of the street's pace: 2.5 s.
                      [6.4, P(-0.3, -45), SE, {"lane": "median", "through": True, "kind": "hatch", "paint": "white"}],
                      [6.5, P(-0.3, -62), SE, {"lane": "kerb", "kind": "sedan", "paint": "white"}],
                      [7.5, P(-0.3, -70), SE, {"lane": "kerb"}],
-                     [10.5, P(-0.3, -45), SE, {"lane": "median", "through": True, "kind": "suv", "paint": "grey"}],
+                     # (sent half a second early: the street's other traffic slows it on its way, 0-1.5 s run to run)
+                     [9.5, P(-0.3, -45), SE, {"lane": "median", "through": True, "kind": "suv", "paint": "grey"}],
                      [78.0, P(91.15, -55), SE]],
         }
     },
