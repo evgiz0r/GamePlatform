@@ -1890,6 +1890,7 @@ func _build_setup(t0: int) -> void:
 			for t: Vector2i in over:
 				_bucket(_tile_rings[kind], t, (_area_rings[kind] as Array).size())
 			(_area_rings[kind] as Array).append(ring)
+	_find_islands(areas)
 	for ri in range(_roads.size()):
 		var r: Dictionary = _roads[ri]
 		var pts: PackedVector2Array = r["pts"]
@@ -2105,6 +2106,11 @@ func _build_ground() -> void:
 		if kind == "school":
 			y = Y_AREA - 0.001
 		var ring: PackedVector2Array = a["_ring"]
+		if a.has("_isl"):   # a traffic island: raised, off the asphalt (see _find_islands)
+			for isl: PackedVector2Array in a["_isl"]:
+				for piece: PackedVector2Array in _pieces_in(isl, sq, sq_poly):
+					await _fill(areas[tone], piece, ISLAND_Y)
+			continue
 		var flat := INF
 		if tone == "water" and a.has("y"):   # a river held at its level by weirs
 			flat = float(a["y"]) / float(_city_data.get("scale", 10))
@@ -2938,6 +2944,7 @@ func _build_kerbs() -> void:
 							bushes.append(Transform3D(Basis.from_scale(Vector3(1.3, 0.9, 1.3) * sc), _g3(q, 0.45 * sc)))
 						s += step
 					s -= L
+	_island_faces(kerb)
 	if med:
 		await _build_medians(kerb, pave)
 	var corners := _clip_buf(GROUND_CELL)
@@ -3042,13 +3049,13 @@ func _on_median(p: Vector2) -> bool:
 	return false
 
 func _median_tick(dt: float) -> void:
-	if _medians.is_empty() or _walking or _air:
+	if (_medians.is_empty() and _islands.is_empty()) or _walking or _air:
 		return
 	var fwd := _fwd()
 	var on := 0
 	for k in range(2):
 		var wheel := _pos + fwd * (WHEELBASE * 0.5 if k == 0 else -WHEELBASE * 0.5)
-		var now := _on_median(wheel)
+		var now := _on_median(wheel) or _on_island(wheel)
 		if now:
 			on += 1
 		if now != _median_on[k]:
@@ -4139,6 +4146,150 @@ func _area_signed(poly: PackedVector2Array) -> float:
 	for i in range(poly.size()):
 		a += poly[i].x * poly[(i + 1) % poly.size()].y - poly[(i + 1) % poly.size()].x * poly[i].y
 	return a * 0.5
+
+## ---- traffic islands ---------------------------------------------------------------------
+## A lawn (or a paved patch) with road nearly all round it -- the island between a
+## roundabout's way in and way out, a roundabout's middle, the space where a boulevard's halves
+## part -- was drawn flat on the ground like any park, and with no kerb where no street laid
+## one it lay level with the asphalt: "grass patches on the road". Such an area is raised
+## instead, a kerb's height less a few centimetres (the streets' own pavements, where they
+## run over its edge, stay on top), with a kerb face all round it, and cut back off the
+## asphalt -- the roads' widths, the junctions' discs -- and off the paths through it (a
+## crossing goes through an island at road level). The car goes over one as over a median.
+const ISLAND_MAX := 8000.0           ## m2: bigger is a park, not an island
+const ISLAND_RING := 0.75            ## the share of its edge that must be within ISLAND_NEAR of asphalt
+const ISLAND_NEAR := 3.0
+const ISLAND_Y := KERB_H - 0.04
+var _islands: Array = []             ## the raised pieces (PackedVector2Array), the whole city
+var _island_hash := {}
+
+func _find_islands(areas: Array) -> void:
+	for ai in range(areas.size()):
+		var a: Dictionary = areas[ai]
+		if not String(a["k"]) in ["park", "grass", "plaza"]:
+			continue
+		var ring: PackedVector2Array = a["_ring"]
+		if ring.size() < 3 or absf(_area_signed(ring)) > ISLAND_MAX or absf(_area_signed(ring)) < 6.0:
+			continue
+		# round its edge every 2 m: how much of it has a street's asphalt close by
+		var n := 0
+		var near := 0
+		for i in range(ring.size()):
+			var p0 := ring[i]
+			var p1 := ring[(i + 1) % ring.size()]
+			var steps := maxi(1, int(p0.distance_to(p1) / 2.0))
+			for k in range(steps):
+				n += 1
+				if _street_gap(p0.lerp(p1, float(k) / steps), ISLAND_NEAR) < ISLAND_NEAR:
+					near += 1
+		if n == 0 or float(near) / n < ISLAND_RING:
+			continue
+		var pieces := _island_cut(ring)
+		if pieces.is_empty():
+			continue
+		a["_isl"] = pieces
+		for piece: PackedVector2Array in pieces:
+			_hash_add(_island_hash, _bld_box_of(piece), BLD_CELL, _islands.size())
+			_islands.append(piece)
+	_tally("islands", _islands.size())
+
+## how far past the asphalt's edge of the nearest street (a public road with kerbs, or a
+## service lane: not a motorway's grass) p is, up to `reach` (INF past that)
+func _street_gap(p: Vector2, reach: float) -> float:
+	var best := INF
+	for code: int in _near(_asph_hash, p, reach, ASPH_CELL):
+		var r: Dictionary = _roads[code / 4096]
+		if r["pv"] or HIGHWAYS.has(r["k"]):
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		var sj := code % 4096
+		best = minf(best, Geometry2D.get_closest_point_to_segment(p, pts[sj], pts[sj + 1]).distance_to(p) - float(r["w"]) * 0.5)
+	return best
+
+## an island's outline less every road's asphalt near it (a little more, so its face stands
+## behind a street's own kerb), the junctions' discs and the paths through it
+func _island_cut(ring: PackedVector2Array) -> Array:
+	var box := _bld_box_of(ring).grow(12.0)
+	var cutters: Array = []
+	var nodes := {}
+	for code: int in _near(_seg_hash, box.get_center(), maxf(box.size.x, box.size.y) * 0.5, SEG_CELL):
+		var ri := code / 4096
+		var r: Dictionary = _roads[ri]
+		if r["pv"] or r.has("ys"):
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		var sj := code % 4096
+		if not box.intersects(Rect2(pts[sj], Vector2.ZERO).expand(pts[sj + 1])):
+			continue
+		var hw := float(r["w"]) * 0.5 + (0.1 if r["drive"] else 0.0)
+		# (round ends: a bend's outside, which the drawn ribbon fills, is covered too)
+		cutters.append_array(Geometry2D.offset_polyline(PackedVector2Array([pts[sj], pts[sj + 1]]), hw,
+				Geometry2D.JOIN_ROUND, Geometry2D.END_ROUND))
+		if r["drive"]:
+			var ids: PackedInt32Array = r["ids"]
+			for nd: int in [ids[sj], ids[sj + 1]]:
+				if _node_r[nd] > 0.0 and (_node_roads[nd] as Array).size() >= 2:
+					nodes[nd] = true
+	for nd: int in nodes:
+		var disc := PackedVector2Array()
+		for k in range(16):
+			disc.append(_nodes[nd] + Vector2.from_angle(TAU * k / 16.0) * (_node_r[nd] * 1.05 + 0.1))
+		cutters.append(disc)
+	var pieces: Array = [ring]
+	for cut: PackedVector2Array in cutters:
+		var next: Array = []
+		for p: PackedVector2Array in pieces:
+			var res := Geometry2D.clip_polygons(p, cut)
+			var big := 0
+			for i in range(res.size()):
+				if absf(_area_signed(res[i])) > absf(_area_signed(res[big])):
+					big = i
+			var holed := false
+			for q: PackedVector2Array in res:
+				if Geometry2D.is_polygon_clockwise(q) != Geometry2D.is_polygon_clockwise(res[big]):
+					holed = true   # (a cutter wholly inside: leave this one out)
+			if holed:
+				next.append(p)
+				continue
+			for q: PackedVector2Array in res:
+				if absf(_area_signed(q)) > 2.0:
+					next.append(q)
+		pieces = next
+	return pieces
+
+func _on_island(p: Vector2) -> bool:
+	for i: int in _near(_island_hash, p, 0.5, BLD_CELL):
+		if Geometry2D.is_point_in_polygon(p, _islands[i]):
+			return true
+	return false
+
+## the kerb face round each island piece reaching this square (into the kerbs' mesh)
+func _island_faces(kerb: Buf) -> void:
+	var all: Array = _city_data.get("areas", [])
+	for ai: int in _tile_areas.get(_tile, []):
+		var a: Dictionary = all[ai]
+		if not a.has("_isl"):
+			continue
+		for piece: PackedVector2Array in a["_isl"]:
+			var along := 0.0
+			var cw := Geometry2D.is_polygon_clockwise(piece)
+			for i in range(piece.size()):
+				var p0 := piece[i]
+				var p1 := piece[(i + 1) % piece.size()]
+				var seg := p0.distance_to(p1)
+				if seg < 0.01:
+					continue
+				var d := (p1 - p0) / seg
+				var out := Vector2(d.y, -d.x) if not cw else Vector2(-d.y, d.x)   # away from the island
+				var face := Vector3(out.x, 0, out.y)
+				var b0 := _g3(p0, 0.0)
+				var b1 := _g3(p1, 0.0)
+				var t0 := _g3(p0, ISLAND_Y)
+				var t1 := _g3(p1, ISLAND_Y)
+				var col := Color(0.05, 0, 0)
+				kerb.tri(b0, b1, t1, face, col, Vector2(along, 0), Vector2(along + seg, 0), Vector2(along + seg, 1))
+				kerb.tri(b0, t1, t0, face, col, Vector2(along, 0), Vector2(along + seg, 1), Vector2(along, 1))
+				along += seg
 
 var _chimneys: Array = []
 var _area_rings := {}                ## "park" / "grass" / "wood" / "pitch" -> outlines, while building
