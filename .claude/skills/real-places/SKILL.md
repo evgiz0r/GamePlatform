@@ -260,6 +260,30 @@ goes wrong shows up the first time it runs.
   cars as far along their paths as the gap needs (5-6 s, ~70 m at 50 km/h), aim to stop
   a little short of the line, and do not count a junction it is holding for as entered
   just because it rolled a metre past its line. While it holds, tell traffic not to wait for it.
+- **A corner is an arc from lane to lane, never one point.** A route laid as one point per
+  OSM node, each pushed into the lane square to the way to the next point, puts a corner's
+  point on the middle line of the street being left (the next street's way is square to it):
+  the car swings out before a right turn, comes round at full lock and out over the next
+  street's middle line -- "the turning radius is double what it should be". Lay each corner
+  as an arc tangent to the lane in and the lane out, no tighter than the car can steer (a
+  4.4 m car at 34 degrees is ~4.1 m round: 5-5.5 m), starting further back if it must;
+  merge a junction's points that are a few metres apart first (one junction drawn as two
+  points 0.9 m apart made two corners, the second doubling back over the first). A curve
+  through the point where the two lanes cross, from 5 m before the junction to 5 m after, is
+  2-3 m round for a right turn on an 8 m street: too tight to follow.
+- **A controller that brakes by how far over its target it is runs behind a braking
+  slope**: at 2 m/s^2 of braking per m/s over, following a 2.6 m/s^2 slope it is ~1.3 m/s
+  fast all the way down, into each corner 5 km/h over. Aim at each corner half a second
+  early. And a stop aimed at "the speed that just stops in time from here" never brakes at
+  all with such a controller: that target is always a hair under the speed, the error stays
+  tiny, the need grows -- command the deceleration instead (aim at the speed now less the
+  braking wanted over the controller's gain).
+- **A pure-pursuit point far ahead starts a corner early and finishes it late**: at 5.4 m
+  ahead at 14 km/h the car began a right turn 6 m early and came out with the turn not done,
+  across its new lane. Keep the point near at a corner's pace (2 + 0.6 v, at least 3.5 m).
+- **The end of a green**: on amber (and a flashing green) go only if the nose is over the
+  line before the red at the pace the plan goes there (a turn just past the line slows it);
+  "too late to stop gently" alone sent a car turning left into the red.
 - **Score the driving, don't eyeball it**: a scripted exam that drives the AI from several
   places in town and counts per minute (stuck, hits, off the road, wrong side, red lights,
   harsh braking per occasion, and traffic's own stalls, overlaps and reds) finds in one run
@@ -281,7 +305,11 @@ to skip the bridge overhead) also skips a car 50-80 m down a 5% street, or 15 m 
 one: the AI did not see the car coming to its junction, nor the car crossing in front of it,
 and side-swiped it -- in the hilly town only; the flat test town never showed it. Both on the
 ground (each within a metre of the ground under it) is one level; otherwise allow a slope's
-rise over the distance between them (~8% of it) on top of the 2.5 m. The same trap in
+rise over the distance between them (~8% of it) on top of the 2.5 m. Cheapest everywhere, in
+every check of every AI car: keep each car's height above the ground under it ("lift": ~0 on
+the street, the deck's height on a bridge) and call two things one level when their heights
+*or* their lifts are within 2.5 m -- traffic judged by height alone drove into a player
+standing in a junction at the foot of a 15% street, slowing 8 m off; by lift, 35 m off. The same trap in
 placing the car: "the nearest road at the car's height" is right on a bridge beside it and
 wrong for a jump across town -- from the valley to an address on a hill it skipped the
 street 32 m away for one 107 m off. Use the car's height only near the car.

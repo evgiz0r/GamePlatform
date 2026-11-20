@@ -203,6 +203,19 @@ it is made, with a one-line caption, rather than a report at the end.
 
 ## Gotchas (each cost a run)
 
+- **Read braking over half a second, not a tick.** A follower that steps its speed to its
+  target each tick (an AI car at its hard-braking limit) reads 7.5 m/s^2 in every case; a car
+  coming to rest whose last creep is zeroed reads 15. Average the speed's drop over ~30 ticks
+  and count only the moments the thing you test is the reason (`why == "player"`).
+- **A test that puts the car back at the same place resets "the last one passed".** State
+  kept per place for a while after passing it (the last lit junction crossed, for 120 m
+  driven) goes on applying when a test -- or the game's own "go to" -- sets the car down by the
+  same place again: the car ignored the red there and the red went uncounted, every case
+  reading "on through, no red". If every case reads the same however you vary it, suspect the
+  staging before the code under test, and reset such state wherever the car is put down.
+- **Hold a parked player by hand on a hill** (its position and speed each physics frame):
+  with nobody at the pedals it rolls down a 15% street, 100 m in a case.
+
 - **Measure the exact condition, and name the blocker once.** "Stood still near the van" also
   counted waiting at a red light past it; "within 20 m, the van ahead, held by a car" did
   not. And when a thing does not happen, print once, a few seconds in, what holds it (which

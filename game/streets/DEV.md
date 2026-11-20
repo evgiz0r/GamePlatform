@@ -728,6 +728,34 @@ only move the cut: a way out beyond the barrier cannot be driven.
 
 ### Hills, pockets, the end of a green, a divided road's middle (20 Nov 2026, later)
 
+**Autodrive's turns were wide** (the user: "its radius of turning is like double of what it
+should be, it hits the opposing or the next lane a lot"). `tests/turn_width.gd` (a side street
+to a cross street, right and left, the rest of the traffic off) measured it: on Givatayim's
+8 m streets every right turn came out with the car's middle on the middle line of the street it
+turned into (-0.2 to 0.2 m right of it; its lane is 2.1), 1.5-2.2 m off its own plan, at 14-22
+km/h through a corner planned at 12. Three causes, each fixed:
+- **a "go to" route's corners** (`_route_to`: routes, the test routes, routes of your own) were
+  one point per corner, put into the lane square to the way to the *next* point -- the next
+  street's way -- which put it on the middle line of the street it was leaving: the car swung
+  out left over the last 10 m, came round at full lock from there and out over the next
+  street's middle line. Free autodrive (`_ap_leg`/`_ap_turn_into`) laid real corners. Now the
+  route's points closer than 4 m are one corner (a junction drawn as two points 0.9 m apart
+  was two, the second's curve starting behind the first: the plan doubled back), a corner's
+  curve may start behind the lane point before it (dropped) and run on to the next point when
+  that is no corner itself (lane points it passed are left out);
+- **both laid a right turn tighter than the car turns**: a curve from 5 m before the junction to
+  5 m after through where the two lanes cross is 2-3 m round on an 8 m street, and the car at
+  full lock is ~4.1 m. Now every corner is `_lane_corner`: an arc along the lane in and out
+  along the lane out, at least `AP_TURN_R` (5.5 m) round, starting further back when it needs
+  to (no further than the point before it);
+- **it came into corners fast and steered at a point too far ahead**: braking by how far over
+  its target it is (2 m/s^2 a m/s), it ran ~1.3 m/s over the 2.6 m/s^2 slope down to each corner
+  (now aimed at half a second early); and the point it steers at was 5.4 m ahead at 14 km/h --
+  it started round 6 m early and came out with the turn not done (now 2 + 0.6 v, at least
+  3.5 m: 4.4 m at 14 km/h, the same as before from ~50 km/h).
+After: 0 of 8 over the middle line, the car within 0.5-1.2 m of its plan, right turns out
+1.0-1.4 m right of the middle line at 13-17 km/h (Givatayim, five junctions).
+
 The open items of the handoff below, done:
 - **Traffic sees the player on a hill** (traffic.gd `_level`, `Car.lift`, `_me_lift`). Its
   level test was height alone (2.5 m, for bridges and tunnels), in every check of the player
@@ -751,6 +779,36 @@ The open items of the handoff below, done:
   crossed (a "go to", a route's start, a test going round again) drove through its red and
   the red was not counted. Found by `tests/amber.gd`: every case read "on through, no red"
   at 50 km/h whatever the light did.
+- **The end of a green, from autodrive's seat** (`_ap_light_v`, `_light_red_in`,
+  `_ap_time_to`, `_ap_brake_for`, `_ap_amber_n`). It went on through an amber whenever it
+  could not stop at 3 m/s^2, and stopped (aiming at 2.6 m/s^2) otherwise -- on a flashing green
+  it did nothing. Now, on the flashing green or the amber, it goes on only if its nose will be
+  over the line before the red at the pace its plan goes there (a corner just past the line
+  slows it first); else it stops -- gently on the flashing green (or decides again on the
+  amber), firmly on the amber if need be (up to 4.5 m/s^2; past that, on through). Once it
+  decides to stop it keeps to it until green, braking at the rate the stop needs and a fifth
+  more: aimed at "the speed that just stops in time from here" the target sat a hair under its
+  speed, and the controller (2 m/s^2 for each m/s over) hardly braked -- the need grew until it
+  gave up and drove on into the red. `tests/amber.gd` (Ashdod, two lights, 50 km/h, the light
+  sent to the end of its green at 10-55 m, straight and left): before, the left turn caught by
+  the amber 40 m out ran the red, and an amber 55 m out stopped it at full brake (8.2 m/s^2):
+  5 of 40 bad. Now 0 of 40: on through from 30 m and nearer, stopped from 40 and 55 m at
+  3.6-3.9 m/s^2, 2.7-11 m short of the line; on a flashing green it goes (6 s to the red).
+  The route set's red (route 5, Ashdod) was this. The traffic's own amber rule is not touched.
+- **Waiting in a divided road's middle** (`_median_gap`, `_ap_split`, `_ap_mid`,
+  `_ap_edge_of`; `_ap_median_ok` turns it off for tests). A junction of points within 18 m is
+  one junction for autodrive (`AP_KNOT`): it waits at the kerb for a gap in every stream it
+  crosses. Now, where a short road of its own runs straight across the middle from one
+  carriageway's point to the other's, with no lights, and the room between the two
+  carriageways' edges is a car and 1.2 m (`AP_MEDIAN_SPARE`), it is two: autodrive crosses the
+  near carriageway when that is clear and waits in the middle for the far one (stopping 0.4 m
+  short of its edge, below it in rank whatever road it came from). Most medians where a street
+  crosses are too narrow for that in the game's geometry (the carriageways are drawn at their
+  guessed widths, 4-10 m, and their points 7-14 m apart): `tests/median_wait.gd` counts every
+  way across a median and the ones deep enough -- Ashdod 9 of 42, Tel Aviv 3 of 17, Givatayim 2
+  of 4, Bedford 8 of 16 -- and of the side-street crossings it can stage (a side street with no
+  lights, straight 34 m), only Givatayim's one has room. Where there is none nothing changes
+  (Ashdod's five staged crossings: the same with and without; 0 hits, no car braking for it).
 
 ### Handoff: autodrive's junctions, the route set, test routes (20 Nov 2026)
 
@@ -772,19 +830,19 @@ Nothing is half done: all of the above is on main.
   upstream of the change being tried (no path window, the level test, the way in read past
   the corner). A result identical to the decimal after a change means the change is not
   reached.
-- **Open**:
-  - route 5's red light (Ashdod, Bnei Brit): at 50 km/h on the amber, "can't stop", and the 3 s
-    amber ran out before the line -- the lights' amber rule, not giving way;
-  - traffic's own player check in `_junction_ahead` still uses `_level` (2.5 m): on a hill a
-    traffic car 50 m off does not see the player at its junction (autodrive now gives way
-    itself, so it matters mostly when you drive);
-  - the exam's "autodrive: stuck 8 s+" counts a give-way wait over 8 s as stuck (leave it:
-    a wait that long is worth a look; traffic spawned round the player makes streams
-    denser than real ones);
-  - autodrive does not wait in a wide median: in a junction of several points within 18 m
-    (`AP_KNOT`) it is committed once in the first;
-  - traffic is not kept from spawning inside a pocket (only from turning into one);
-  - `run_routes.sh`'s top says 40-60 min (it is ~10-12).
+- **Open** (the six that were here are done: see "Hills, pockets, the end of a green, a
+  divided road's middle" above):
+  - a right turn's arc is still tighter than 5.5 m where the point before it on the plan is
+    within a few metres of the junction (it may not start behind it): 3.6-4.3 m at two of
+    Givatayim's four in turn_width. Dropping a plain lane point that the arc would start
+    behind would let it;
+  - autodrive's amber stop ends 3-11 m short of the line (it brakes at the need and a fifth);
+  - `_push_out` sets `_last_hit` even when it only probes (the plan's `_clear_lane`, the nose's
+    safety net): a test reading `_last_hit` must gate on `_crash_cool`, as route_set and
+    give_way do;
+  - few medians are deep enough to wait in where side streets cross (the carriageways' guessed
+    widths): if real ones look wider than the game draws them, it is the widths
+    (`_fit_widths`, the `median` key), not the waiting.
 
 ## Numbers to compare against (November 2026, cloud container, software renderer)
 
