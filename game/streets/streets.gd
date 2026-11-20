@@ -11894,12 +11894,72 @@ func _ap_light_v() -> float:
 			stop = 0.0   # (standing a little over it -- stopped there for people on a crossing --
 			             # is not through: it waits for its green where it stands)
 		var state := _light_at(n, f[2])
+		var raw := String(SIGNAL_CYCLE[_sig_phase][_light_group(n, f[2])])
+		if raw == "g":
+			_ap_amber_n = -1
+			return INF
+		if _ap_amber_n == n:
+			return _ap_brake_for(stop)   # (stopping for it already: kept to, through to its red)
+		if raw == "gf" or raw == "y":
+			# the green ending (flashing) or amber: on only if the nose is over the line before
+			# the red, at the pace the plan goes up to it -- "too late to stop" alone (at
+			# 3 m/s^2) went on at 50 km/h into a left turn, slowed for the corner, and the
+			# amber ran out short of the line (the route set's one red, Ashdod's Bnei Brit)
+			# (standing, or nearly: not off on an amber -- one stopped over its line for people
+			# on the crossing waits there for its green)
+			if (raw == "gf" or _v > 2.0) and _ap_time_to(stop + 1.0) < _light_red_in(n, f[2]) - 0.3:
+				return INF
+			# else stop: gently on the flashing green (or on, deciding again on the amber),
+			# firmly on the amber if need be (too late even for that: on through)
+			if _v * _v > 2.0 * (2.6 if raw == "gf" else 4.5) * maxf(stop - 0.5, 0.1):
+				return INF
+			_ap_amber_n = n
+			return _ap_brake_for(stop)
 		if state == "g":
 			return INF
-		if state == "y" and _v * _v > 2.0 * 3.0 * maxf(stop, 0.1):
-			return INF   # too late to stop on amber
 		return sqrt(2.0 * 2.6 * maxf(stop - 0.5, 0.0))
 	return INF
+
+## Stopping for a light that is changing: the speed to aim at now to brake at what the stop
+## needs, and a fifth more. (Aimed at "the speed that just stops in time from here", the
+## target sat a hair under the speed and the controller -- braking by how far over it is --
+## hardly braked: the need grew and grew, and it gave up and drove on into the red.)
+var _ap_amber_n := -1                ## the lit point it decided to stop at as its green ended (kept to until green again)
+
+func _ap_brake_for(stop: float) -> float:
+	var room := stop - 0.5
+	if room <= 0.2:
+		return 0.0
+	var need := maxf(_v, 0.0) * maxf(_v, 0.0) / (2.0 * room)
+	return maxf(_v - clampf(need * 1.2, 1.5, 6.0) * 0.5, 0.0)   # (autodrive brakes 2 m/s^2 for each m/s over: see _autodrive)
+
+## seconds until the light at lit point n facing traffic going `dir` turns red (0: red, or
+## red and amber, now)
+func _light_red_in(n: int, dir: Vector2) -> float:
+	var grp := _light_group(n, dir)
+	var acc := 0.0
+	for k in range(SIGNAL_CYCLE.size()):
+		var ph: Array = SIGNAL_CYCLE[(_sig_phase + k) % SIGNAL_CYCLE.size()]
+		if String(ph[grp]) in ["r", "ry"]:
+			return acc
+		acc += float(ph[0]) - (_sig_t if k == 0 else 0.0)
+	return INF
+
+## autodrive: seconds to drive `dist` metres along the plan, at the pace it goes there --
+## halfway between the speed now and the slowest the plan allows by then and a few metres on
+## (a corner just past a stop line slows the car before it); speeding up is not counted on
+func _ap_time_to(dist: float) -> float:
+	var vc := maxf(_v, 3.0)   # (holding its speed, unless the plan slows it)
+	var along := 0.0
+	var p := _pos
+	for i in range(1, mini(_ap_pts.size(), _ap_v.size())):
+		along += p.distance_to(_ap_pts[i])
+		p = _ap_pts[i]
+		if _ap_v[i] > 0.0:
+			vc = minf(vc, _ap_v[i])
+		if along > dist + 8.0:
+			break
+	return maxf(dist, 0.0) / maxf((maxf(_v, 0.0) + vc) * 0.5, 1.0)
 
 ## the light facing traffic that arrives at node `n` going `dir`, as a driver reads it: "g"
 ## (flashing green too: still go), "y", "r" (red-and-amber too: still stop), or "" where
@@ -14222,6 +14282,12 @@ func _land_on_road(near: Vector2, reach: float, prefer: Vector2) -> bool:
 	_steer_in = 0.0
 	_pin_at = _pos
 	_y = _decks.deck_y(int(hit["road"]), at) if r.has("ys") else _h(at)
+	# somewhere new: no junction with lights just driven through (kept for 120 m driven, it
+	# made a car put down by the one it had last crossed drive through its red, uncounted --
+	# tests/amber.gd going round the same light again)
+	_light_site = -1
+	_light_odo = -1000.0
+	_trail = PackedVector2Array()
 	_snap_pose()
 	return true
 
@@ -15756,6 +15822,8 @@ var _ap_js: Array = []               ## the junctions on the plan ahead: [metres
 var _ap_js_odo := 0.0                ## ...as the odometer stood when they were found (every 0.25 s)
 var _ap_js_t := 0.0
 var _ap_js_head := Vector2.INF       ## (the plan's first point then: a new plan, found afresh)
+var _ap_median_ok := true            ## waits in a divided road's middle where the car fits (tests/median_wait.gd turns it off to compare)
+var _median_gaps := {}               ## Vector2i(n1, n2) -> _median_gap's answer, worked out once
 
 ## traffic car o on my level: both on the ground (a hill between us is not a level -- 50-80 m
 ## off on Givatayim's slopes the car coming was 3-4 m below and was passed over as if on a
@@ -15764,6 +15832,47 @@ func _same_level(o) -> bool:
 	if absf(_y - _h(_pos)) < 1.0 and absf(float(o.y) - _h(o.pos)) < 1.0:
 		return true
 	return absf(float(o.y) - _y) <= 2.5 + 0.08 * (o.pos as Vector2).distance_to(_pos)
+
+## Room to stand in the middle of a divided road between its junction points n1 and n2 (one
+## on each carriageway, joined by a short road of their own across the middle, no lights at
+## either): metres from leaving the one to coming into the next, less a car; below 0, none.
+## There a driver crosses the near carriageway when it is clear and waits in the middle for
+## the far one. Taken as one junction (AP_KNOT), autodrive stood at the kerb for a gap in both
+## streams at once.
+func _median_gap(n1: int, n2: int) -> float:
+	var key := Vector2i(n1, n2)
+	if _median_gaps.has(key):
+		return _median_gaps[key]
+	var out := -1.0
+	if not _sig_set.has(n1) and not _sig_set.has(n2):
+		for e: Vector2i in _node_roads[n1]:
+			var r: Dictionary = _roads[e.x]
+			var ids: PackedInt32Array = r["ids"]
+			if not r["drive"] or r.has("median") or r.get("ring", false) or ids.size() < 2:
+				continue
+			if not ((ids[0] == n1 and ids[ids.size() - 1] == n2) or (ids[0] == n2 and ids[ids.size() - 1] == n1)):
+				continue
+			var a := -1
+			var b := -1
+			for e1: Vector2i in _node_roads[n1]:
+				if (_roads[e1.x] as Dictionary).has("median"):
+					a = e1.x
+			for e2: Vector2i in _node_roads[n2]:
+				if (_roads[e2.x] as Dictionary).has("median") and e2.x != a:
+					b = e2.x
+			if a < 0 or b < 0:
+				continue
+			var L := 0.0
+			var pts: PackedVector2Array = r["pts"]
+			for i in range(pts.size() - 1):
+				L += pts[i].distance_to(pts[i + 1])
+			out = L - (_node_r[n1] + 1.5) - (_node_r[n2] + 1.5) - (CAR_LEN + 0.6)
+			break
+	_median_gaps[key] = out
+	return out
+
+func _ap_split(n1: int, n2: int) -> bool:
+	return _ap_median_ok and _median_gap(n1, n2) >= 0.0
 
 ## the point `along` metres along the plan (cum: the distance to each of its points)
 func _ap_at(cum: PackedFloat32Array, along: float) -> Vector2:
@@ -15871,7 +15980,8 @@ func _ap_give_v(dt: float) -> float:
 		return INF
 	if first > 0:
 		var pn: int = js[first - 1][1]
-		if float(js[first - 1][0]) > -(_node_r[pn] + CAR_LEN * 0.5) and float(js[first][0]) - float(js[first - 1][0]) < AP_KNOT:
+		if float(js[first - 1][0]) > -(_node_r[pn] + CAR_LEN * 0.5) and float(js[first][0]) - float(js[first - 1][0]) < AP_KNOT \
+				and not _ap_split(pn, int(js[first][1])):
 			_ap_give_t = 0.0
 			return INF   # in the junction already: through it, not stopping in the middle
 	var n0: int = js[first][1]
@@ -15886,6 +15996,13 @@ func _ap_give_v(dt: float) -> float:
 	var my_rank := _rank_of(_roads[on["road"]]) if not on.is_empty() else 1
 	if not _sign_rule(n0, in0).is_empty():
 		my_rank = -1
+	elif not on.is_empty():
+		# in a divided road's middle (on the way across it, the far carriageway next): below
+		# the carriageway, whatever road it came from
+		var ids0: PackedInt32Array = (_roads[on["road"]] as Dictionary)["ids"]
+		var m := ids0[0] if ids0[ids0.size() - 1] == n0 else (ids0[ids0.size() - 1] if ids0[0] == n0 else -1)
+		if m >= 0 and _ap_split(m, n0):
+			my_rank = -1
 	var gap := AP_GAP if _ap_give_t < AP_GIVE_PATIENT else 0.3
 	var hold := false
 	var hold_car := -1
@@ -15895,8 +16012,8 @@ func _ap_give_v(dt: float) -> float:
 		var enter: float = js[k][2]
 		var leave: float = js[k][3]
 		var n: int = js[k][1]
-		if along - float(js[first][0]) > AP_KNOT:
-			break
+		if along - float(js[first][0]) > AP_KNOT or (k > first and _ap_split(int(js[k - 1][1]), n)):
+			break   # (the rest is the far carriageway: waited for in the middle)
 		var r := _node_r[n]
 		var my_in := (_ap_at(cum, enter) - _ap_at(cum, enter - 6.0)).normalized()
 		var my_out := (_ap_at(cum, leave + 6.0) - _ap_at(cum, leave)).normalized()
@@ -16042,7 +16159,7 @@ func _ap_give_v(dt: float) -> float:
 					return sqrt(25.0 + 2.0 * 2.6 * maxf(edge, 0.0))
 		return INF
 	for k in range(first, js.size()):
-		if float(js[k][0]) - float(js[first][0]) > AP_KNOT:
+		if float(js[k][0]) - float(js[first][0]) > AP_KNOT or (k > first and _ap_split(int(js[k - 1][1]), int(js[k][1]))):
 			break
 		_ap_giving[int(js[k][1])] = true
 	_ap_give_car = hold_car

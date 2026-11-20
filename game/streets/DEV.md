@@ -726,6 +726,32 @@ route that starts in a trap starts at the nearest street with a way out.
 `tests/pockets_map.py` (the picture: red trapped, orange cut off). Widening the bake would
 only move the cut: a way out beyond the barrier cannot be driven.
 
+### Hills, pockets, the end of a green, a divided road's middle (20 Nov 2026, later)
+
+The open items of the handoff below, done:
+- **Traffic sees the player on a hill** (traffic.gd `_level`, `Car.lift`, `_me_lift`). Its
+  level test was height alone (2.5 m, for bridges and tunnels), in every check of the player
+  and of other cars: the car ahead, the junction, oncoming, the lane beside. Now two things
+  are on one level when their heights are within 2.5 m *or* their heights above the ground
+  under each (`lift`: ~0 on the street, a deck's height on a bridge) are. `tests/hill_level.gd`
+  (Givatayim's five steepest unsignalled approaches, 7-10 m of rise in 60 m): before, a car
+  coming down Shim'on Ben Zvi drove into the player standing in the junction (0.1 m) and into
+  them waiting 15 m short of it (0.0 m), slowing only 8-10 m off; elsewhere it slowed 15-26 m
+  off. Now it slows 34-36 m off on all but one (15 m, the same as before: the car's way comes
+  to that junction round a bend), at 3.5-3.7 m/s^2, none closer than 7 m. The test holds the player still by hand: with nobody at the pedals the
+  car rolls down a 15% street (`_drive` holds it only under 0.14 rad).
+- **No traffic put down in a pocket** (`_spawn` skips segments in `_trap`, `_cut_off`,
+  `_outside`). `tests/pockets.gd` now spawns all the cars round 8 places in or by pockets:
+  Givatayim 79 cars, 0 inside.
+- **The exam's give-way waits** are counted apart: "autodrive: gave way 8 s+" (a wait),
+  "autodrive: stuck giving way 30 s+" (a stall, with its incident); "stuck 8 s+" no longer
+  counts a car holding at a junction for traffic.
+- **A car put down somewhere new forgets the last lit junction** (`_land_on_road` resets
+  `_light_site`). It was kept for 120 m driven: a car put back by the light it had just
+  crossed (a "go to", a route's start, a test going round again) drove through its red and
+  the red was not counted. Found by `tests/amber.gd`: every case read "on through, no red"
+  at 50 km/h whatever the light did.
+
 ### Handoff: autodrive's junctions, the route set, test routes (20 Nov 2026)
 
 This session's areas, for whoever picks them up (its context is compacted after this).
