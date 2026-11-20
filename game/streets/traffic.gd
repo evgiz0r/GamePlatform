@@ -50,6 +50,8 @@ class Car:
 	var pos := Vector2.ZERO
 	var yaw := 0.0                    ## atan2(dir.x, dir.y): the multimesh's way of turning
 	var pitch := 0.0
+	var y := 0.0                      ## the height of the surface under it: the ground, or a bridge or a tunnel's road
+	var prev_y := 0.0
 	var prev_pos := Vector2.ZERO
 	var prev_yaw := 0.0
 	var pace := 1.0                   ## this driver's share of the limit
@@ -244,6 +246,7 @@ func tick(dt: float) -> void:
 		var c: Car = cars[i]
 		c.prev_pos = c.pos
 		c.prev_yaw = c.yaw
+		c.prev_y = c.y
 		if not c.alive or c.pos.distance_to(me) > NEAR or (c.wait > 25.0 and (not _in_view(c.pos) or c.blocker == -1)):
 			c.retry -= dt
 			if spawned or c.retry > 0.0:
@@ -328,6 +331,8 @@ func _target(c: Car, i: int, dt: float) -> float:
 		var ov: float
 		var oyaw: float
 		if j == cars.size():
+			if not _level(c, float(g._y)):
+				continue   # (overhead on a bridge, or under it)
 			q = g._pos
 			ov = maxf(float(g._v), 0.0)
 			oyaw = atan2(cos(float(g._yaw)), sin(float(g._yaw)))   # the player's heading, as this file turns
@@ -336,7 +341,7 @@ func _target(c: Car, i: int, dt: float) -> float:
 			if j == i:
 				continue
 			var o: Car = cars[j]
-			if not o.alive:
+			if not o.alive or not _level(c, o.y):
 				continue
 			q = o.pos
 			ov = o.v
@@ -501,7 +506,7 @@ func _junction_ahead(c: Car, i: int, dt: float) -> float:
 		var node_at := _nodes_at(n)
 		var rel := me_at - c.pos
 		var fwd := Vector2(sin(c.yaw), cos(c.yaw))
-		if not (rel.dot(fwd) < 0.0 and absf(rel.dot(Vector2(-fwd.y, fwd.x))) < 2.5):
+		if _level(c, float(g._y)) and not (rel.dot(fwd) < 0.0 and absf(rel.dot(Vector2(-fwd.y, fwd.x))) < 2.5):
 			var pd := me_at.distance_to(node_at)
 			var pv := maxf(float(g._v), 0.0)
 			var pfwd := Vector2(cos(float(g._yaw)), sin(float(g._yaw)))
@@ -802,9 +807,11 @@ func _lane_clear(c: Car, i: int, shift: float) -> bool:
 	for j in range(cars.size() + 1):
 		var q: Vector2
 		if j == cars.size():
+			if not _level(c, float(g._y)):
+				continue
 			q = g._pos
 		else:
-			if j == i or not (cars[j] as Car).alive:
+			if j == i or not (cars[j] as Car).alive or not _level(c, (cars[j] as Car).y):
 				continue
 			q = (cars[j] as Car).pos
 		if q.distance_squared_to(c.pos) > 900.0:
@@ -902,7 +909,7 @@ func _bus_stop(c: Car, dt: float) -> float:
 ## body (five along a bus), not only its middle: a bus pulled in at its stop, or slanting out
 ## of it, stuck its back corner into the lane while its middle was clear of it -- and the
 ## half length lets autodrive stop short of a bus's back, not a car's length behind its middle.
-func lead_on(path: PackedVector2Array, from: Vector2, look: float, ignore_crossing: bool) -> Array:
+func lead_on(path: PackedVector2Array, from: Vector2, look: float, ignore_crossing: bool, y := NAN) -> Array:
 	var best := INF
 	var bv := 0.0
 	var bhalf := 0.0
@@ -913,6 +920,8 @@ func lead_on(path: PackedVector2Array, from: Vector2, look: float, ignore_crossi
 	for c: Car in cars:
 		if not c.alive or c.pos.distance_squared_to(from) > (look + c.len * 0.5 + 6.0) * (look + c.len * 0.5 + 6.0):
 			continue
+		if not is_nan(y) and absf(c.y - y) > LEVEL:
+			continue   # (on a bridge overhead, in a tunnel underneath)
 		var cdir := Vector2(sin(c.yaw), cos(c.yaw))
 		var offs: Array = BODY[c.kind][0] if BODY.has(c.kind) else [-c.len * 0.33, 0.0, c.len * 0.33]
 		var rad: float = float(BODY[c.kind][1]) if BODY.has(c.kind) else 0.95
@@ -1012,6 +1021,7 @@ func _start_on(c: Car, ri: int, sj: int, at: Vector2, dir: int) -> bool:
 	c.s = 0.0
 	c.last_light = -1000.0
 	c.last_site = -1
+	c.y = g._decks.deck_y(ri, at) if r.has("ys") else float(g._h(at))
 	_leg(c, ri, sj + 1 if dir > 0 else sj, dir)
 	while c.cum[c.cum.size() - 1] < 140.0:
 		if not _next(c):
@@ -1027,6 +1037,7 @@ func _start_on(c: Car, ri: int, sj: int, at: Vector2, dir: int) -> bool:
 	_place(c)
 	c.prev_pos = c.pos
 	c.prev_yaw = c.yaw
+	c.prev_y = c.y
 	return true
 
 ## A car put on the road nearest `at` (within 25 m), heading the way `heading` points (a
@@ -1274,11 +1285,12 @@ func _place(c: Car) -> void:
 	var a := _at(c, c.s - 2.2)
 	var b := _at(c, c.s + 2.2)
 	c.pos = (a + b) * 0.5
+	c.y = g._decks.surf(c.pos, c.y)
 	var d := b - a
 	if d.length_squared() > 0.01:
 		c.yaw = atan2(d.x, d.y)
 		if g._hnx > 0:
-			c.pitch = atan2(float(g._h(b)) - float(g._h(a)), d.length())
+			c.pitch = atan2(float(g._decks.surf(b, c.y)) - float(g._decks.surf(a, c.y)), d.length())
 	if c.shift != 0.0 or c.shift_rate != 0.0:
 		c.pos += Vector2(cos(c.yaw), -sin(c.yaw)) * c.shift   # its lane: left of the line
 		c.yaw += atan2(c.shift_rate, maxf(c.v, 3.0))         # nose into the lane change
@@ -1298,7 +1310,7 @@ func draw(f: float) -> void:
 		var p := c.prev_pos.lerp(c.pos, f)
 		var yaw := lerp_angle(c.prev_yaw, c.yaw, f)
 		var basis := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, -c.pitch)
-		var xf := Transform3D(basis, Vector3(p.x, float(g._h(p)) + float(g.road_top()), p.y))
+		var xf := Transform3D(basis, Vector3(p.x, lerpf(c.prev_y, c.y, f) + float(g.road_top()), p.y))
 		var mm: MultiMesh = _mms[c.kind]
 		mm.set_instance_transform(i, xf)
 		# alpha: the brake light, plus 2 for a driver, 4 for a driver and a passenger (the car
@@ -1336,11 +1348,13 @@ func _hide_or_show(i: int) -> void:
 
 ## how far to move a circle at `p` (radius r) to be clear of every car: each is two
 ## circles along its length, like a parked car
-func push(p: Vector2, r: float) -> Vector2:
+func push(p: Vector2, r: float, y := NAN) -> Vector2:
 	var out := Vector2.ZERO
 	for i in range(cars.size()):
 		var c: Car = cars[i]
 		if not c.alive or c.pos.distance_squared_to(p) > (100.0 if c.kind == "bus" else 64.0):
+			continue
+		if not is_nan(y) and absf(c.y - y) > LEVEL:
 			continue
 		var fwd := Vector2(sin(c.yaw), cos(c.yaw))
 		var body: Array = BODY.get(c.kind, [[1.25, -1.25], 0.85])
@@ -1351,6 +1365,13 @@ func push(p: Vector2, r: float) -> Vector2:
 				out += d.normalized() * (need - d.length()) if d.length() > 0.001 else Vector2(need, 0)
 				hit_index = i
 	return out
+
+## two things this much apart in height are on different levels (a bridge and the street under
+## it, a tunnel and the hill over it) and do not meet
+const LEVEL := 2.5
+
+func _level(c: Car, y: float) -> bool:
+	return absf(c.y - y) <= LEVEL
 
 func bumped(i: int) -> void:
 	if i >= 0 and i < cars.size():
