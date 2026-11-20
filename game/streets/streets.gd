@@ -12200,12 +12200,12 @@ func _camera(dt: float, p: Vector2, yaw: float) -> void:
 ## little as the car pulls away, the eyes leading into a turn
 func _seat_camera(dt: float, yaw: float) -> void:
 	_cam_yaw = yaw
-	_look_turn = lerpf(_look_turn, clampf(_steer * 0.55, -0.3, 0.3), 1.0 - exp(-dt * 3.0))
+	_look_turn = lerpf(_look_turn, clampf(_steer * 0.45, -0.25, 0.25), 1.0 - exp(-dt * 2.0))
 	var xf := _body.global_transform
 	# (the head turned: the eyes a little to that side and back, the view round with it)
-	var head := SEAT + Vector3(sin(_head_yaw) * 0.06, 0, clampf(-_a_long * 0.004, -0.04, 0.04) - (1.0 - cos(_head_yaw)) * 0.05)
+	var head := SEAT + Vector3(sin(_head_yaw * SEAT_HEAD) * 0.06, 0, clampf(-_a_long * 0.004, -0.04, 0.04) - (1.0 - cos(_head_yaw * SEAT_HEAD)) * 0.05)
 	var eye := xf * head
-	var turn := _look_turn - _head_yaw
+	var turn := _look_turn - _head_yaw * SEAT_HEAD
 	var ahead := Vector3(-sin(turn), -0.06, cos(turn)) * 12.0   # +X is the car's left
 	look_from(eye, xf * (head + ahead))
 	cam.fov = lerpf(72.0, 78.0, clampf(absf(_v) / 30.0, 0.0, 1.0))
@@ -12241,32 +12241,56 @@ func _head_tick(dt: float) -> void:
 		_head_plan = []
 	else:
 		_head_check -= dt
-		if _head_check <= 0.0 and _head_plan.is_empty() and absf(_v) < 6.5 and _gear > 0:
-			_head_check = 0.15
-			var j := _junction_ahead_me(26.0)
-			if j >= 0 and (_nodes[j].distance_to(_head_at) > 45.0 or _head_at_t > 12.0):
+		# the look left and right: standing or all but, at a junction, a light or a sign,
+		# once a junction. (Rolling below 23 km/h near any junction, it fired again and again
+		# in slow traffic and turned the seat view half round each time.)
+		if _head_check <= 0.0 and _head_plan.is_empty() and absf(_v) < 2.5 and _gear > 0:
+			_head_check = 0.2
+			var j := _junction_ahead_me(16.0)
+			if j >= 0 and (_nodes[j].distance_to(_head_at) > 45.0 or _head_at_t > 20.0):
 				_head_at = _nodes[j]
 				_head_at_t = 0.0
-				_head_plan = [[0.95, 0.45], [-0.95, 0.5], [0.55, 0.25]]
+				_head_plan = [[0.9, 0.5], [-0.9, 0.55], [0.5, 0.3]]
 		if not _head_plan.is_empty():
-			want = float(_head_plan[0][0])
-			if absf(_head_yaw - want) < 0.1:
-				_head_hold += dt
-				if _head_hold >= float(_head_plan[0][1]):
-					_head_hold = 0.0
-					_head_plan.pop_front()
+			if absf(_v) > 6.0:
+				_head_plan = []   # (off again before it was done: eyes on the road)
+			else:
+				want = float(_head_plan[0][0])
+				if absf(_head_aim - want) < 0.05:
+					_head_hold += dt
+					if _head_hold >= float(_head_plan[0][1]):
+						_head_hold = 0.0
+						_head_plan.pop_front()
 		elif _gear < 0 and absf(_v) > 0.2:
-			want = -1.3   # over the right shoulder, reversing
+			want = -1.2   # over the right shoulder, reversing
 		else:
-			want = clampf(-_steer * 1.6, -0.7, 0.7)   # into the turn (+ steer is right)
-			var at := _person_ahead_me(16.0)
-			if at != Vector2.INF and absf(_v) < 5.0:
-				want = clampf(-_fwd().angle_to(at - _pos), -1.1, 1.1)
-	# a head turns quickly through the middle and slows into where it is going
-	var gap := absf(want - _head_yaw)
-	_head_yaw = move_toward(_head_yaw, want, HEAD_RATE * dt * clampf(gap * 2.5, 0.25, 1.0))
+			# standing for people on the crossing ahead: at one of them, held a moment (the
+			# nearest, chosen afresh every frame, sent the eyes from one to the next)
+			_head_person_t -= dt
+			if absf(_v) < 2.0:
+				if _head_person_t <= 0.0:
+					_head_person = _person_ahead_me(14.0)
+					_head_person_t = 1.5
+				if _head_person != Vector2.INF:
+					want = clampf(-_fwd().angle_to(_head_person - _pos), -1.0, 1.0)
+			else:
+				_head_person = Vector2.INF
+	# eased: the aim moves at a head's pace and the head follows it smoothly. (The steering
+	# was in it too, on top of the seat view's own lead into a turn: every small correction
+	# autodrive made swung the view.)
+	_head_aim = move_toward(_head_aim, want, 2.2 * dt)
+	_head_yaw = lerpf(_head_yaw, _head_aim, 1.0 - exp(-dt * 7.0))
 	if _player_car_mat != null:
-		_player_car_mat.set_shader_parameter("head_turn", _head_yaw)
+		# the head drawn in the car leans a little into a turn as well (the seat view does
+		# that by itself)
+		_head_steer = lerpf(_head_steer, clampf(-_steer * 0.8, -0.35, 0.35), 1.0 - exp(-dt * 3.0))
+		_player_car_mat.set_shader_parameter("head_turn", _head_yaw + _head_steer)
+
+var _head_aim := 0.0                         ## where the head is heading for (eased toward)
+var _head_person := Vector2.INF              ## the person it is looking at, held a moment
+var _head_person_t := 0.0
+var _head_steer := 0.0                       ## the drawn head's lean into a turn
+const SEAT_HEAD := 0.7                       ## how much of the head's turn the seat view takes
 
 func _toggle_look() -> void:
 	_look_on = not _look_on
