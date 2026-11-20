@@ -1513,6 +1513,9 @@ func _build_world() -> bool:
 		_build_terrain()
 	_build_edge()
 	_build_setup(_stage("world", t0))
+	var tf := Time.get_ticks_msec()
+	await _build_far_shadows()
+	_stage("far shadows", tf)
 	# the squares round the start before the car is shown; the rest while it drives
 	# (STREETS_BUILD_ALL=1: all of it first -- the scene tests look all over the city)
 	var all_first := OS.get_environment("STREETS_BUILD_ALL") == "1"
@@ -2245,6 +2248,7 @@ vec3 paver(vec2 g, float pattern) {
 	return vec3(min(d.x, d.y), c);
 }
 void fragment() {
+	float fsh = far_shade(wpos, length(VERTEX));   // (before the branches: a texture read)
 	if (COLOR.b > 0.5) {
 		// The pavement: pavers in the street's own pattern and colours (COLOR.r: pattern x 4 +
 		// colours), laid square to the kerb (UV: metres along, out from the kerb), a row of
@@ -2309,7 +2313,7 @@ void fragment() {
 			}
 			col = mix(col, leaf, m * (1.0 - far));
 		}
-		ALBEDO = col;
+		ALBEDO = col * fsh;
 		ROUGHNESS = 0.9;
 	} else {   // the kerb
 	float pat = floor(COLOR.r * 3.99 + 0.01);
@@ -2328,7 +2332,7 @@ void fragment() {
 			c *= mix(0.7, 1.0, UV.y);
 		}
 	}
-	ALBEDO = c;
+	ALBEDO = c * mix(1.0, fsh, step(0.7, wup));
 	ROUGHNESS = 0.85;
 	}
 }
@@ -2467,8 +2471,9 @@ func _build_kerbs() -> void:
 	if _kerb_mat == null:
 		_kerb_mat = ShaderMaterial.new()
 		var sh := Shader.new()
-		sh.code = KERB_SHADER
+		sh.code = _with_far(KERB_SHADER)
 		_kerb_mat.shader = sh
+		_far(_kerb_mat)
 		_kerb_mat.set_shader_parameter("conc", _tex("concrete_pavement_diff"))
 		_kerb_mat.set_shader_parameter("conc_mean", TEX_MEAN["concrete_pavement"])
 		_kerb_mat.set_shader_parameter("textured", 1.0 if _quality > 0 else 0.0)
@@ -4000,6 +4005,7 @@ func _build_trees() -> void:
 		put.call(tpart, Transform3D(b * Basis.from_scale(Vector3(tw.x, tw.y, tw.x) * sc), base + b * Vector3(0, trunk_h * 0.5 * tw.y * sc, 0)), bark)
 		put.call(spec[2], Transform3D(b * Basis.from_scale(cw * jitter * sc), base + b * Vector3(0, float(spec[4]) * sc, 0)),
 			Color(tint.r * g, tint.g * g, tint.b * g, (float(cell) + 0.5) / 4.0))
+		_ao_tree(Vector2(sp.x, sp.y), cw.x * jitter.x * sc * (0.55 if tpart == "ptrunk" else 0.85), float(spec[4]) * sc)
 	for part: String in parts:
 		await _chunked_paced(_tree_meshes[part], parts[part], TREE_RANGE, colours[part], null, true)
 
@@ -4790,7 +4796,7 @@ void fragment() {
 		tx = normalize(tx - NORMAL * dot(NORMAL, tx));
 		NORMAL = normalize(tx * b.x + cross(NORMAL, tx) * b.y + NORMAL * b.z);
 	}
-	ALBEDO = c;
+	ALBEDO = c * far_shade(wpos, length(VERTEX));
 	ROUGHNESS = 0.95;
 }
 """
@@ -4800,8 +4806,9 @@ func _ground_mat() -> ShaderMaterial:
 	if _ground_shader_mat == null:
 		_ground_shader_mat = ShaderMaterial.new()
 		var sh := Shader.new()
-		sh.code = GROUND_SHADER
+		sh.code = _with_far(GROUND_SHADER)
 		_ground_shader_mat.shader = sh
+		_far(_ground_shader_mat)
 		_ground_shader_mat.set_shader_parameter("grass_tex", _tex("leafy_grass_diff"))
 		_ground_shader_mat.set_shader_parameter("grass_nrm", _tex("leafy_grass_nor"))
 		_ground_shader_mat.set_shader_parameter("grass_mean", TEX_MEAN["leafy_grass"])
@@ -5221,6 +5228,7 @@ func _set_night(on: bool) -> void:
 		_furn.set_night(on)
 	if _car_shader_mat != null:
 		_car_material()
+	_far_update()
 	_show_banner("night" if on else "day", 1.2)
 	Probe.event("night", {"on": on})
 
@@ -6478,7 +6486,8 @@ void fragment() {
 		t = normalize(t - NORMAL * dot(NORMAL, t));
 		NORMAL = normalize(t * bump.x + cross(NORMAL, t) * bump.y + NORMAL * bump.z);
 	}
-	ALBEDO = c;
+	float fsh = far_shade(wpos, length(VERTEX));
+	ALBEDO = c * mix(1.0, fsh, step(0.7, wup));   // (the ground, not a wall or a pole)
 	ROUGHNESS = 0.9;
 	SPECULAR = 0.25;
 }
@@ -6501,8 +6510,9 @@ func _tone_mat() -> ShaderMaterial:
 	if _tone_material == null:
 		_tone_material = ShaderMaterial.new()
 		var sh := Shader.new()
-		sh.code = TONE_SHADER
+		sh.code = _with_far(TONE_SHADER)
 		_tone_material.shader = sh
+		_far(_tone_material)
 		# Israeli pavements are 20 x 10 cm concrete pavers in herringbone, a mix of greys
 		# and red-browns (drawn by textures/herringbone.py); Bedford's are poured slabs, the
 		# photo's slabs blown up to a metre or so
@@ -7529,6 +7539,153 @@ func _signals_tick(dt: float) -> void:
 		_sig_phase = (_sig_phase + 1) % SIGNAL_CYCLE.size()
 		_apply_signals()
 
+## ---- shadows past the shadows -----------------------------------------------------------------
+## The real shadows reach 45-75 m from the camera (none at the lowest quality): past that the
+## whole city stood on evenly sunlit ground, flat as a map, and that is most of what you see
+## from the car. The sun does not move, so every building's shadow is painted once, at load,
+## into one picture of the whole city seen from above (each outline swept along the sun's
+## way by its height, then the outline itself cleared: whatever is on a roof is not in its
+## shadow), read back and mipmapped (a picture drawn straight into a viewport has no
+## mipmaps, and its edges shimmered off in the distance). The ground's shaders darken by it
+## where the real shadows fade out (far_shade), so the two meet without a seam; the trees'
+## shadows go in the contact-shadow layer, square by square, as the trees are planted.
+const FAR_SHADE := """
+uniform sampler2D far_shadow : filter_linear_mipmap_anisotropic, repeat_disable, hint_default_black;
+uniform vec4 fs_rect = vec4(0.0);   // the picture's corner (x, z) and 1 / its size in metres
+uniform float fs_near = 60.0;       // where the real shadows end (0: there are none)
+uniform float fs_fade = 0.8;        // ... and where they start fading out, a share of that
+uniform float fs_dark = 0.0;        // how much of the light a shadow takes (0: at night, no picture)
+float far_shade(vec3 wp, float dist) {
+	float s = texture(far_shadow, (wp.xz - fs_rect.xy) * fs_rect.zw).r;
+	float on = clamp((dist - fs_near * fs_fade) / (fs_near * (1.0 - fs_fade) + 0.001), 0.0, 1.0);
+	return 1.0 - fs_dark * s * on;
+}
+"""
+const FS_PX := 2048                  ## the picture's longer side (px): ~1.6 m a pixel over Givatayim
+const FS_DARK := 0.55                ## the share of the light a shadow takes off the ground (the real ones: tests/far_shadows.gd)
+var _fs_tex: ImageTexture = null
+var _fs_rect := Vector4.ZERO
+var _far_mats: Array = []
+
+## a ground shader's code with far_shade() in it
+func _with_far(code: String) -> String:
+	return code.replace("void vertex()", FAR_SHADE + "void vertex()")
+
+## a ground material to keep in step with the picture, the quality and the night
+func _far(m: ShaderMaterial) -> void:
+	if not _far_mats.has(m):
+		_far_mats.append(m)
+	_far_set(m)
+
+func _far_set(m: ShaderMaterial) -> void:
+	m.set_shader_parameter("far_shadow", _fs_tex)
+	m.set_shader_parameter("fs_rect", _fs_rect)
+	m.set_shader_parameter("fs_near", sun.directional_shadow_max_distance if sun.shadow_enabled else 0.0)
+	m.set_shader_parameter("fs_fade", sun.directional_shadow_fade_start)
+	m.set_shader_parameter("fs_dark", 0.0 if _night or _fs_tex == null else FS_DARK)
+
+func _far_update() -> void:
+	for m: ShaderMaterial in _far_mats:
+		_far_set(m)
+
+func _build_far_shadows() -> void:
+	if DisplayServer.get_name() == "headless":
+		return   # (nothing is drawn: a headless playtest)
+	var L := -sun.global_transform.basis.z   # the way the sunlight goes
+	if L.y > -0.05:
+		return
+	var off := Vector2(L.x, L.z) / -L.y      # a shadow's reach on the ground per metre of height
+	var t0 := Time.get_ticks_usec()
+	var mpp := maxf(1.0, maxf(_bounds.size.x, _bounds.size.y) / FS_PX)
+	var w := int(ceil(_bounds.size.x / mpp))
+	var h := int(ceil(_bounds.size.y / mpp))
+	var o := _bounds.position
+	var pts := PackedVector2Array()
+	var cols := PackedColorArray()
+	var idx := PackedInt32Array()
+	var lit: Array = []   # the outlines, cleared after all the shadows are in
+	for bd: Dictionary in _city_data["buildings"]:
+		var ring: PackedVector2Array = bd["_ring"]
+		if ring.size() < 3:
+			continue
+		var top := float(bd["_h"])
+		var low := float(bd["_base"])
+		var px := PackedVector2Array()
+		for p in ring:
+			px.append((p - o + off * low) / mpp)
+			px.append((p - o + off * top) / mpp)
+		var hull := Geometry2D.convex_hull(px)
+		if hull.size() > 1 and hull[0] == hull[hull.size() - 1]:
+			hull.remove_at(hull.size() - 1)
+		var b := pts.size()
+		for q in hull:
+			pts.append(q)
+			cols.append(Color.WHITE)
+		for i in range(1, hull.size() - 1):
+			idx.append_array([b, b + i, b + i + 1])
+		if low == 0.0:
+			lit.append(ring)
+	for ring: PackedVector2Array in lit:
+		var tri := Geometry2D.triangulate_polygon(ring)
+		var b := pts.size()
+		for p in ring:
+			pts.append((p - o) / mpp)
+			cols.append(Color.BLACK)
+		for i in tri:
+			idx.append(b + i)
+	var vp := SubViewport.new()
+	vp.size = Vector2i(w, h)
+	vp.disable_3d = true
+	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	var holder := Node2D.new()
+	vp.add_child(holder)
+	add_child(vp)
+	var item := RenderingServer.canvas_item_create()
+	RenderingServer.canvas_item_set_parent(item, holder.get_canvas_item())
+	RenderingServer.canvas_item_add_rect(item, Rect2(0, 0, w, h), Color.BLACK)
+	RenderingServer.canvas_item_add_triangle_array(item, idx, pts, cols)
+	var t1 := Time.get_ticks_usec()
+	await RenderingServer.frame_post_draw
+	await RenderingServer.frame_post_draw
+	var t2 := Time.get_ticks_usec()
+	var img := vp.get_texture().get_image()
+	RenderingServer.free_rid(item)
+	vp.queue_free()
+	if img == null or img.is_empty():
+		return
+	img.convert(Image.FORMAT_R8)
+	img.generate_mipmaps()
+	_fs_tex = ImageTexture.create_from_image(img)
+	_fs_rect = Vector4(o.x, o.y, 1.0 / (w * mpp), 1.0 / (h * mpp))
+	_far_update()
+	# (what it costs apart from the two frames it waits for the drawing: those are a few ms
+	# in a browser, but most of a second under a test's software renderer)
+	_stage_ms["far shadows: work, not the frames"] = (t1 - t0 + Time.get_ticks_usec() - t2) / 1000
+
+## a tree's shadow on the ground (crown r across, its middle y up), for past the real ones:
+## longer along the sun's way, as a ball's is
+func _ao_tree(p: Vector2, r: float, y: float) -> void:
+	if _ao == null:
+		return
+	var L := -sun.global_transform.basis.z
+	if L.y > -0.05:
+		return
+	var off := Vector2(L.x, L.z) / -L.y
+	var c := p + off * y
+	var along := off.normalized() if off.length() > 0.01 else Vector2(1, 0)
+	var across := along.orthogonal()
+	var stretch := 1.0 / clampf(-L.y, 0.3, 1.0)
+	var col := Color(0.8, 0.0, 1.0)
+	var mid := _g3(c, KERB_H + 0.03)
+	var one := Vector2(1, 0)
+	var last := Vector3.ZERO
+	for k in range(9):
+		var a := TAU * k / 8.0
+		var q := _g3(c + along * cos(a) * r * stretch + across * sin(a) * r, KERB_H + 0.03)
+		if k > 0:
+			_ao.tri(mid, last, q, Vector3.UP, col, one, Vector2.ZERO, Vector2.ZERO)
+		last = q
+
 ## ---- contact shadows ------------------------------------------------------------------------
 ## Where a wall meets the ground, and under a parked car, less of the sky's light gets in and
 ## the ground is darker: what makes a house stand on the street and a car sit on it, rather
@@ -7539,15 +7696,38 @@ func _signals_tick(dt: float) -> void:
 ## rim), its depth COLOR.r, a flat floor to the ramp COLOR.g (the ground under a block on
 ## columns, dark all over). It lies a little above the pavement, whatever is under it: on a
 ## lawn or a car park it floats a hand's width up, which a soft dark ramp does not show.
+## COLOR.b 1: a tree's shadow instead (see "shadows past the shadows" below), there only
+## where the real ones have ended, and not inside a building's.
 const AO_SHADER := """
 shader_type spatial;
 render_mode unshaded, blend_mul, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
 uniform float strength = 0.62;
 uniform float far = 150.0;
+varying vec3 wpos;
+float h21(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+float vn(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+void vertex() {
+	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+}
 void fragment() {
-	float a = max(UV.x * UV.x, COLOR.g);   // (squared: falls away faster than the straight ramp)
-	float fade = 1.0 - smoothstep(far * 0.5, far, length(VERTEX));
-	ALBEDO = vec3(1.0 - strength * COLOR.r * a * fade);
+	float d = length(VERTEX);
+	float in_bld = texture(far_shadow, (wpos.xz - fs_rect.xy) * fs_rect.zw).r;
+	if (COLOR.b > 0.5) {
+		// a crown lets some light through: the shadow dappled, its rim soft
+		float dap = 0.7 + 0.3 * vn(wpos.xz * 0.9);
+		float a = smoothstep(0.0, 0.55, UV.x) * dap;
+		float on = clamp((d - fs_near * fs_fade) / (fs_near * (1.0 - fs_fade) + 0.001), 0.0, 1.0);
+		ALBEDO = vec3(1.0 - fs_dark * COLOR.r * a * on * (1.0 - in_bld));
+	} else {
+		float a = max(UV.x * UV.x, COLOR.g);   // (squared: falls away faster than the straight ramp)
+		float fade = 1.0 - smoothstep(far * 0.5, far, d);
+		ALBEDO = vec3(1.0 - strength * COLOR.r * a * fade);
+	}
 }
 """
 const AO_SEEN := 150.0
@@ -7559,10 +7739,11 @@ func _ao_material() -> ShaderMaterial:
 	if _ao_mat == null:
 		_ao_mat = ShaderMaterial.new()
 		var sh := Shader.new()
-		sh.code = AO_SHADER
+		sh.code = _with_far(AO_SHADER)
 		_ao_mat.shader = sh
 		_ao_mat.set_shader_parameter("far", AO_SEEN)
 		_ao_mat.render_priority = -1   # (under the other see-through things: leaves, glass)
+		_far(_ao_mat)
 	return _ao_mat
 
 ## the ground round a building's foot: a strip out from each wall, a fan round each outside
@@ -10177,6 +10358,7 @@ func _set_quality(q: int) -> void:
 	sun.directional_shadow_max_distance = maxf(float(row[1]), 1.0)
 	view.scaling_3d_scale = row[2]
 	_set_blobs(not sun.shadow_enabled)
+	_far_update()
 
 ## Only on the web: a desktop build has a real GPU, and test runs on a software renderer
 ## would step themselves down to nothing.

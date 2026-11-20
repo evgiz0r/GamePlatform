@@ -62,6 +62,23 @@ is a Z coordinate, not a height.
   To judge it, shoot the same view with the layer hidden and shown, and diff the pictures:
   by eye, at a 0.4 strength it was invisible, and traffic and fading HUD labels change
   between shots too.
+- **Shadows past the shadow distance, painted once.** Real shadows end at
+  `directional_shadow_max_distance` (45-75 m is what a browser affords), and past it a city
+  looks flat. With a sun that does not move, sweep each building's outline along the light
+  by its height (the convex hull of the outline and the moved outline is close enough at
+  that distance), draw them white on black into a `SubViewport` (one
+  `RenderingServer.canvas_item_add_triangle_array` call, then the outlines in black so
+  what is on a roof is not "in shadow"), and let the ground shaders darken by it where the
+  real shadows fade out: from `max_distance * directional_shadow_fade_start` to
+  `max_distance`, the same ramp, so there is no seam. A viewport's texture has no
+  mipmaps, and unfiltered shadow edges shimmer badly at a distance, so read it back once
+  (`get_image()`), `generate_mipmaps()` and make an `ImageTexture`. Take the texture
+  read out of any branch (mipmapped reads in non-uniform control flow sparkle at edges).
+  Match the strength by measuring, not by eye: shoot the same block with only the real
+  shadows and with only the painted ones, and compare shadowed / unshadowed brightness.
+  An albedo multiplier is linear and the screen is sRGB: 0.55 off the albedo is what left
+  the same 0.69 on screen as a real shadow did. Under a test's software renderer each frame
+  the bake waits for costs most of a second; in a browser it is a few ms.
 - **Resolution**: the 3D `SubViewport` renders at the real window size (up to 3x the
   640x360 design space, half-step multiples) and is scaled down with linear filtering,
   with 4x MSAA. The kit's nearest-neighbour default is for pixel art and made 3D look
