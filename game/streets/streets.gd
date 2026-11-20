@@ -176,7 +176,8 @@ const STEEP := 0.62
 ## the building's brightness and COLOR.g how far it leans to the second wall tone.
 ## Facades. UV is (metres along this wall, metres above the building's lowest ground);
 ## UV2 is (wall length, roof height). Vertex COLOR carries the building: r brightness,
-## g lean to the second tone, a lean to the stone tone, b the facade style:
+## g lean to the second tone, a lean to the stone tone (1 exactly on a glass tower: a
+## landmark's own curtain wall, landmarks.gd), b the facade style:
 ##   0 punched windows with roller shutters (trisim) and the odd AC unit
 ##   1 balcony rows: a shaded recess per bay behind a parapet
 ##   2 Bauhaus ribbon windows        3 glass tower

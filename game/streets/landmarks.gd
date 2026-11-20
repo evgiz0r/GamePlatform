@@ -24,9 +24,9 @@ extends RefCounted
 const BY_CITY := {
 	"tel_aviv": {
 		"landmarks": [
-			["עזריאלי עגול", {"glass": 0, "crown": [1.0, 7.0]}],     # Azrieli: the round tower
-			["עזריאלי משולש", {"glass": 0, "crown": [1.0, 6.0]}],    # the triangular one
-			["עזריאלי מרובע", {"glass": 0, "crown": [1.0, 6.0]}],    # the square one
+			["עזריאלי עגול", {"glass": 1, "crown": [1.0, 7.0]}],     # Azrieli: the round tower
+			["עזריאלי משולש", {"glass": 1, "crown": [1.0, 6.0]}],    # the triangular one
+			["עזריאלי מרובע", {"glass": 1, "crown": [1.0, 6.0]}],    # the square one
 			["מגדל המטכ\"ל", {"mast": [107.0, 1.2, false]}],         # the Matcal tower, HaKirya
 			["מגדל מרגנית", {"shaft": [118.0, 7.0], "mast": [138.0, 1.6, true]}],   # Marganit: the IDF's radio tower
 		],
