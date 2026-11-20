@@ -3513,6 +3513,10 @@ func _garden_fronts(run: PackedVector2Array, hw: float, sgn: float, key: int, fr
 		if posmod(h >> 9, 100) < 16:   # bougainvillea over the wall, a few clumps
 			for t: float in [0.25, 0.5, 0.75]:
 				var q := _along(on_wall, cum, lerpf(s, e, t)) - (on_wall[0] - run[0]).normalized() * 0.15
+				# only over a wall: in front of shops there is none, and a clump stood on the
+				# open pavement in a filmed walk's way
+				if not walled[_seg_at(cum, lerpf(s, e, t))]:
+					continue
 				if _mine(q) and _push_out(q, 0.4, false) == Vector2.ZERO:
 					var sc := 0.8 + 0.5 * float(posmod(_hash_i(q), 7)) / 6.0
 					(fronts["flowers"] as Array).append(Transform3D(Basis.from_scale(Vector3(1.4, 1.0, 1.1) * sc), _g3(q, 0.62 + 0.3 * sc)))
