@@ -20,7 +20,7 @@ merge, re-check (`tools/check_script.sh`, a playtest, the tests below), never fo
 | `decks.gd` | roads off the ground -- bridges, embankments, cuttings, tunnels: their heights, what is under a point at a level (`surf`), their walls for collisions (`push`), the ground cut away over cuttings (`cut_tri`), and drawing them a square at a time (`build`). See "Off the ground" below |
 | `cities/*.json` | baked towns (`tools/osm_city.py`) and the made-up test town (`tools/fake_city.py`) |
 | `details.gd`, `cities/details/<city>.json` | what a filmed walk showed and OSM lacks, laid over the baked city as it loads (road edits, unmarked zebras, areas, an arcade cut under a block, paving level with the pavement, walls, fences, hedges, bins, railings, bollards, a pole transformer, a barrier, parked motorbikes, trees) and the walks themselves; the format is at the top of `details.gd` |
-| `cities/details/make_givatayim.py` | writes `givatayim.json`: every detail placed along the Ha-Meri passage's own line, with the film's seconds beside what each came from. Edit this, not the JSON, and run it |
+| `cities/details/make_givatayim.py` | writes the Katzenelson-Ha-Meri walk's part of `givatayim.json`: every detail placed along the Ha-Meri passage's own line, with the film's seconds beside what each came from. Edit this, not those items in the JSON, and run it. The file is shared (the Sheinkin-Sirkin walk and its kerb paint were put in by hand): the script marks what it writes `"src": "make_givatayim"` and keeps everything else on a re-run |
 | `textures/` | CC0 photo textures (Poly Haven) and the scripts that made the sky and the leaf atlas; credited in `textures/CREDITS.md` |
 | `tests/` | scene tests, see below |
 
@@ -49,6 +49,17 @@ The ones most often touched, and the functions in them:
   (barred windows, the door in the middle bay), stone courses, plinth and mosaic are
   `WALL_SHADER`'s `ground` / `door` / `stone_k`; worn asphalt is `TONE_SHADER`'s
   `crazing()` and patches. `tests/eye_level.gd` puts a camera where a person stands.
+- **cats, flags on cars** -- the builders call `cat_at(p, y, facing, "sit"/"loaf")` (garden
+  walls in `_garden_fronts`, a parked car's nose in `_build_parked`, bins in furniture's
+  `kerbside`); furniture.gd's `cats()` places `_cat_kit()` (ellipsoids and tubes, the coat
+  an instance colour: `CAT_COATS`, tones `cat_*`), merged into the batches. Flags on parked
+  cars: `_car_flags`, `_flag_kit("car", "il")`. A wall cat's choices come from their own
+  hash: shifting bits out of the plot's `h` (under 2^20) left nothing to choose with, and
+  every one came out sitting. First pass: cats ~12 ms (both models made once), flags ~2 ms.
+- **more contact shadows** -- `_ao_disc` at each street tree's foot (not the parks' and open
+  land's; one height lookup: ~9 us each, 2,340 in 20-24 ms); along a garden wall's foot the
+  pavement itself darkens in KERB_SHADER (COLOR.a: the wall's distance back / 4, set by
+  `_pave_walled`): the strips laid as geometry cost 36-47 ms, this nothing.
 - **after rain** -- `WET_GLSL` (`wet`, `wet_mirror()`: Fresnel, the sky's two colours, a darker
   band low down for the street's buildings) goes in with `FAR_SHADE` (`_with_far`); the tone
   shader soaks hard kinds (2, 3, 6, 7) and lays puddles by noise, the kerb shader its
@@ -440,11 +451,19 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   stone walls (another session's), 6 the details' slabs, 7 pavers in rows; each tested on
   both sides of its number (see the godot-3d skill: a one-sided test once drew this
   passage as wall stones).
-- **Next passes**: the forecourt's slabs may still be too pale in the sun; the shops'
-  glass is one even glow (signs with lettering, the confectionery's yellow panels inside);
-  white bollards round Sheinkin's corner and its second transformer (the kerb pass put
-  bollards at corners: compare with the film); the little street's parked cars and the
-  motorbikes along Ha-Meri. People last.
+- **Pass 6, the little street and the shops' faces**, done: three cars parked along the
+  little street's far side (`parked_car`: the game's own cars; its parking rule turns that
+  kerb down, the corner block stands too near), a tall hedge on the back of the walk's
+  pavement there, a second twin-pole transformer at Sheinkin's corner; the confectionery's
+  sign lettered (a `Label3D` in the game's font, which falls back to Noto Sans Hebrew) and
+  its yellow boards in the window -- only the shop the film shows is named; shop windows
+  dark reflecting glass by day; the slabs warmer (sunlit, the film's are warm beige).
+- **Next passes**: the light itself (the film's afternoon is hazy and warm; the game's shade
+  is dark blue: another session is on the town's light, leave it to them); Sheinkin's
+  corner bollards are white in the film, black-and-yellow in the game (the kerb pass's,
+  city-wide); motorbikes by the blue parking booth at Ha-Meri's corner (no room beside the
+  kerb pass's bollards, hydrant and wall without moving them); the gateposts and graffiti
+  on the little street. People last.
 
 ## Off the ground: bridges, tunnels, cuttings, embankments (`decks.gd`)
 

@@ -1921,7 +1921,7 @@ func _build_tile(t: Vector2i) -> void:
 	_tile = t
 	_set_tiling(true)
 	_batching = true
-	for a: Array in [_stop_lines, _pole_plates, _chimneys, _mall_glass, _lobby_doors, _balcony_flags, _flag_spots, _stop_ads]:
+	for a: Array in [_stop_lines, _pole_plates, _chimneys, _mall_glass, _lobby_doors, _balcony_flags, _flag_spots, _stop_ads, _cat_spots, _car_flags]:
 		a.clear()   # made by one builder for the next, square by square
 	var tk := Time.get_ticks_msec()
 	_ao = CBuf.new(GROUND_CELL)
@@ -2606,6 +2606,11 @@ void fragment() {
 		float joint = 1.0 - smoothstep(jw, jw + max(fw, 0.0015), pv.x);
 		float bevel = smoothstep(jw, jw + 0.012, pv.x);
 		col *= mix(1.0, mix(1.0, 0.66, joint) * mix(0.93, 1.0, bevel), 1.0 - far);
+		if (COLOR.a < 0.99) {   // a garden wall at the back (COLOR.a: how far back / 4): darker at its foot
+			float back = COLOR.a * 4.0;
+			float k = smoothstep(back - 0.6, back, UV.y);
+			col *= 1.0 - 0.36 * k * k;
+		}
 		// the grime of a street: wide soft stains, darker where feet and wheels go
 		float st = h21(floor(wpos.xz / 2.3)) * 0.5 + h21(floor(wpos.xz / 0.9) + 4.1) * 0.5;
 		col *= 0.9 + 0.1 * smoothstep(0.2, 0.8, st);
@@ -2817,6 +2822,7 @@ func _build_kerbs() -> void:
 						continue   # the halves touch: a painted line, no kerb
 					pw = clampf(m * 0.5 - KERB_W, 0.0, PAVE_W)   # each half paves its half of the median
 				var inner := _offset_line(run, hw * sgn)
+				_pave_walled = med and yard and not inner_side
 				# where the paint changes along this kerb: red-white for KERB_RED at an end that
 				# meets a junction, yellow-black along a bus stop on this side
 				var marks := _kerb_marks(r, run, inner, red_ends, stops) if not inner_side else []
@@ -2847,6 +2853,7 @@ func _build_kerbs() -> void:
 							na.lerp(nb, t0).normalized(), na.lerp(nb, t1).normalized(), pw,
 							Color(float(p) / 4.0 + 0.05, 0, 0), along + u0, u1 - u0)
 					along += seg
+				_pave_walled = false
 				if inner_side:
 					continue
 				if not yard:
@@ -2874,6 +2881,7 @@ func _build_kerbs() -> void:
 					wall.quad3(_g3(w_in[i], wy), _g3(w_in[i + 1], wy), _g3(w_out[i + 1], wy), _g3(w_out[i], wy))
 					if _mine(w_in[i]):   # (every square along the street works it out: one records it)
 						add_wall((w_in[i] + w_out[i]) * 0.5, (w_in[i + 1] + w_out[i + 1]) * 0.5, 0.13)
+
 					var fn := Vector3(-(w_in[i + 1] - w_in[i]).y, 0, (w_in[i + 1] - w_in[i]).x).normalized() * -sgn
 					wall.tri(_g3(w_in[i], 0.0), _g3(w_in[i + 1], 0.0), _g3(w_in[i + 1], wy), fn, Color.WHITE)
 					wall.tri(_g3(w_in[i], 0.0), _g3(w_in[i + 1], wy), _g3(w_in[i], wy), fn, Color.WHITE)
@@ -3164,7 +3172,7 @@ func _kerb_piece(kerb: Buf, pave: Buf, a: Vector2, b: Vector2, na: Vector2, nb: 
 		if nrm.y < 0.0:
 			nrm = -nrm
 		nrm = nrm.normalized() if nrm.length_squared() > 0.000001 else Vector3.UP
-		var pc := Color(_pave_code, _leafy((oa + ob) * 0.5 + (na + nb) * pw * 0.25), 1.0)
+		var pc := Color(_pave_code, _leafy((oa + ob) * 0.5 + (na + nb) * pw * 0.25), 1.0, pw / 4.0 if _pave_walled else 1.0)
 		pave.tri(o0, o1, c2, nrm, pc, Vector2(along, 0), Vector2(along + seg, 0), Vector2(along + seg, pw))
 		pave.tri(o0, c2, c3, nrm, pc, Vector2(along, 0), Vector2(along + seg, pw), Vector2(along, pw))
 
@@ -3172,6 +3180,7 @@ func _kerb_piece(kerb: Buf, pave: Buf, a: Vector2, b: Vector2, na: Vector2, nb: 
 ## slabs; Bedford's poured concrete -- and its colours -- reds and browns, greys, sand, all of
 ## them mixed -- as the red of the pavement's vertex colour (see KERB_SHADER)
 var _pave_code := 0.0
+var _pave_walled := false            ## the pavement being laid has a garden wall at its back (KERB_SHADER darkens its foot)
 
 func _set_pave_code(hsh: int) -> void:
 	var pattern := 3
@@ -3248,6 +3257,18 @@ func _garden_fronts(run: PackedVector2Array, hw: float, sgn: float, key: int, fr
 					run_u = _furn.wall_fence(fronts["bars"], fronts["bar_posts"], A, B, 0.95, _tone["railing"], 2.4, true, run_u)
 				else:
 					run_u = _furn.wall_fence(fronts["chain"], fronts["chain_posts"], A, B, 1.3, _tone["fencegreen"], 2.6, false, run_u)
+		# a cat on the wall, where no fence stands on it: one plot in twenty (its own hash: h has
+		# too few bits to share out -- the cats' choices taken from it were all "sit")
+		var hc := posmod(_hash_i(Vector2(float(posmod(key, 100003)), float(plot) + 0.5)), 1000003)
+		if (style < 42 or style >= 76) and hc % 100 < 5:
+			var sm := lerpf(s, e, 0.2 + 0.6 * float((hc / 100) % 100) / 100.0)
+			var q := _along(on_wall, cum, sm)
+			var to_road := (_along(run, cum, sm) - q).normalized()
+			if (hc / 10000) % 10 < 6:
+				cat_at(q, _g3(q, 0.62).y, to_road.rotated(float((hc / 100000) % 7 - 3) * 0.25), "sit")
+			else:
+				var along_w := (_along(on_wall, cum, minf(sm + 0.5, total)) - q).normalized()
+				cat_at(q, _g3(q, 0.62).y, along_w * (1.0 if (hc / 100000) % 2 == 0 else -1.0), "loaf")
 		if posmod(h >> 9, 100) < 16:   # bougainvillea over the wall, a few clumps
 			for t: float in [0.25, 0.5, 0.75]:
 				var q := _along(on_wall, cum, lerpf(s, e, t)) - (on_wall[0] - run[0]).normalized() * 0.15
@@ -4526,6 +4547,8 @@ func _build_trees() -> void:
 		put.call(spec[2], Transform3D(b * Basis.from_scale(cw * jitter * sc), base + b * Vector3(0, float(spec[4]) * sc, 0)),
 			Color(tint.r * g, tint.g * g, tint.b * g, (float(cell) + 0.5) / 4.0))
 		_ao_tree(Vector2(sp.x, sp.y), cw.x * jitter.x * sc * (0.55 if tpart == "ptrunk" else 0.85), float(spec[4]) * sc)
+		if not forest.has(si) and not mtn.has(si):   # the trunk's foot (the street's trees: not the parks', open land's or mountains')
+			_ao_disc(Vector2(sp.x, sp.y), (0.45 if tpart == "ptrunk" else 0.6) * sc, 0.7)
 	# a square that is mostly mountain woods: drawn from further off, as they are seen across
 	# the valley
 	var reach := TREE_RANGE * 1.7 if mtn.size() * 2 > spots.size() else TREE_RANGE
@@ -5917,12 +5940,22 @@ func _build_parked() -> void:
 								* Basis(Vector3.BACK, roll) * Basis(Vector3.FORWARD, -0.05 * sgn)
 							(xf_by[kind] as Array).append(Transform3D(lean, _g3(p, 0.1)))   # half up the kerb
 							_ao_car(p, face, KERB_H + 0.025)
+							var roll2 := posmod(_hash_i(p * 7.0), 1000)
+							if roll2 < 70:   # a flag on a stick at the back window on the road's side
+								var win := p - side * 0.86 - face * 0.5
+								var fly := Vector3(-face.x, 0, -face.y)
+								_car_flags.append(Transform3D(Basis(fly, Vector3.UP, fly.cross(Vector3.UP)),
+									_g3(win, 0.1 + float({"sedan": 1.12, "hatch": 1.15, "suv": 1.32, "van": 1.45}.get(kind, 1.15)))))
+							elif roll2 > 980:   # a cat on the pavement at its nose
+								var cq := p + face * 2.7 + side * 0.45
+								cat_at(cq, _g3(cq, KERB_H).y, -side.rotated(float(roll2 % 5 - 2) * 0.3), "sit")
 							(cols_by[kind] as Array).append(colour)
 							xf.append(0)
 							_add_post(p + face * 1.25, 0.85)
 							_add_post(p - face * 1.25, 0.85)
 					s += 5.6
 	_parked_xf = xf_by   # drawn with the car parks' cars, in one set of batches (_build_lots)
+	await _furn._place(_furn._flag_kit("car", "il"), _car_flags, _furn.NEAR_SEEN, "flags_on_cars")
 	_parked_cols = cols_by
 	_tally("parked", xf.size())
 
@@ -8458,6 +8491,19 @@ func _ao_tree(p: Vector2, r: float, y: float) -> void:
 			_ao.tri(mid, last, q, Vector3.UP, col, one, Vector2.ZERO, Vector2.ZERO, p)
 		last = q
 
+## ---- street cats and flags on cars -------------------------------------------------------
+## The builders say where a cat is (cat_at: on a garden wall, by a bin, at a parked car's nose)
+## and furniture.gd's cats() puts them there; a parked car in fourteen flies a flag from a back
+## window (Israel only). Both a square at a time, with the square.
+var _cat_spots: Array = []           ## this square's cats: [transform, "sit" / "loaf", coat]
+var _car_flags: Array = []           ## this square's flags on parked cars
+
+func cat_at(p: Vector2, y: float, face: Vector2, kind: String) -> void:
+	if not _mine(p):
+		return
+	var yaw := atan2(face.x, face.y) if face.length_squared() > 0.0001 else 0.0
+	_cat_spots.append([Transform3D(Basis(Vector3.UP, yaw), Vector3(p.x, y, p.y)), kind, posmod(_hash_i(p * 3.0), 97)])
+
 ## ---- contact shadows ------------------------------------------------------------------------
 ## Where a wall meets the ground, and under a parked car, less of the sky's light gets in and
 ## the ground is darker: what makes a house stand on the street and a car sit on it, rather
@@ -8590,6 +8636,20 @@ func _ao_footprint(ring: PackedVector2Array, foot := 1.0, w := AO_W, col := Colo
 				_ao.tri(foot3[i1], r0, nx, up, col, one, zero, zero)
 				r0 = nx
 			carry = r0   # (b + o2 * w: where the next wall's strip starts)
+
+## a soft round patch on the ground round c (a tree's trunk): dark in the middle, gone at r
+func _ao_disc(c: Vector2, r: float, k: float) -> void:
+	if _ao == null:
+		return
+	var col := Color(k, 0, 0)
+	var mid := _g3(c, KERB_H + 0.025)   # (one height: a metre across, the ground is level enough)
+	var one := Vector2(1, 0)
+	var last := mid + Vector3(r, 0, 0)
+	for i in range(1, 7):
+		var a := TAU * i / 6.0
+		var q := mid + Vector3(cos(a) * r, 0, sin(a) * r)
+		_ao.tri(mid, last, q, Vector3.UP, col, one, Vector2.ZERO, Vector2.ZERO)
+		last = q
 
 var _ao_cars: Array = []      ## [middle, nose] of the first cars given a patch (for tests)
 
@@ -10038,6 +10098,7 @@ const NATURAL := {
 	"glass": 0.5, "glass2": 0.5, "glass3": 0.5, "glass4": 0.5, "shutter": 0.3, "recess": 0.3, "lobby": 0.35, "flowers": 0.8,
 	"roof": 0.2, "trunk": 0.45, "pole": 0.2, "haze": 0.45, "sky": 0.6, "board": 0.4, "solar": 0.5,
 	"tank": 0.3, "furniture": 0.3, "pavement": 0.2, "pavers_dark": 0.15, "slabs": 0.15, "pavers_grey": 0.1, "kerb": 0.15, "stonewall": 0.45, "roofroom": 0.4,
+	"cat_ginger": 0.6, "cat_grey": 0.1, "cat_black": 0.1, "cat_cream": 0.35, "cat_brown": 0.45,
 	"gable": 0.5, "carglass": 0.4, "cartrim": 0.2, "tyre": 0.15, "rim": 0.2, "concrete": 0.15,
 	"insulator": 0.3, "trafo": 0.4, "cable": 0.2, "railing": 0.3, "brick": 0.7, "rubber": 0.6,
 	"metal": 0.1, "metalrim": 0.1, "skin": 0.75, "hair": 0.5, "shirt_a": 0.6, "shirt_b": 0.4,
@@ -10108,10 +10169,16 @@ func _tones() -> void:
 		# a filmed street's details (details.gd): charcoal pavers under an arcade, a forecourt
 		# of pale poured slabs
 		"pavers_dark": _greyed(ink.lerp(alt, 0.8), 0.85),
-		"slabs": _greyed(ink.lerp(alt, 0.52).lerp(wn, 0.16), 0.5),
+		"slabs": _greyed(ink.lerp(alt, 0.55).lerp(wn, 0.28), 0.38),   # (the film's: warm beige in the sun)
 		"pavers_grey": _greyed(ink.lerp(alt, 0.5), 0.85),
 		"kerb": ink.lerp(alt, 0.45),
 		"stonewall": ink.lerp(wn, 0.3).lerp(alt, 0.2),
+		# street cats' coats
+		"cat_ginger": ink.lerp(wn, 0.6).lerp(Palette.col("hazard"), 0.22),
+		"cat_grey": ink.lerp(bg, 0.48),
+		"cat_black": bg.lerp(ink, 0.1),
+		"cat_cream": ink.lerp(wn, 0.16),
+		"cat_brown": ink.lerp(wn, 0.4).lerp(bg, 0.5),
 		"woodfence": alt.lerp(wn, 0.35).lerp(bg, 0.4),
 		"bush": veg.lerp(bg, 0.58),
 		"roofroom": ink.lerp(wn, 0.12).lerp(alt, 0.1),
