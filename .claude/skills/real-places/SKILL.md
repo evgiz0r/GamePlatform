@@ -697,7 +697,11 @@ the game walking the same route in first person beside it.
   pink and teal in a neon palette, and only beside the film did it show. Pin the hue
   (`Color.from_hsv` with a red's or a road-paint blue's hue) and take saturation and
   brightness from the palette role, so a reskin still moves them; keep the roles for
-  what is the game's own (the HUD, the player's glow).
+  what is the game's own (the HUD, the player's glow). The same for things that are many
+  colours at once: a market's produce and canvases and a beach's umbrellas, coloured by
+  the roles, came out a market of sweets (pinks and purples) and umbrellas all but white
+  (the roles softened toward the background) -- by paint names (red, orange, green, yellow,
+  blue, white), every umbrella and crate read at once.
 - **Panning in the film is how the shops get counted.** Ask the walker to turn the phone to
   each side now and then: the shops across the road, which a forward-facing film never
   shows, came only from those pans.

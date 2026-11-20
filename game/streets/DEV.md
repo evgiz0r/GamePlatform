@@ -18,6 +18,7 @@ merge, re-check (`tools/check_script.sh`, a playtest, the tests below), never fo
 | `furniture.gd` | street furniture built after the places: power lines, lamps and bus-stop kits, flags, ads, fences and hedges, bike racks and scooters |
 | `drivelog.gd` | the drive recorder (see below) |
 | `decks.gd` | roads off the ground -- bridges, embankments, cuttings, tunnels: their heights, what is under a point at a level (`surf`), their walls for collisions (`push`), the ground cut away over cuttings (`cut_tri`), and drawing them a square at a time (`build`). See "Off the ground" below |
+| `beach.gd` | the beaches by the sea, any town: umbrellas with white chairs facing the water, lifeguard towers, the chairs as seats for `_bathers`; set up from the sand areas and the sea, built per square (see "The beach") |
 | `landmarks.gd` | a town's landmarks, found by their building's name in the bake (`BY_CITY`: Tel Aviv's Azrieli towers, the Matcal and Marganit towers, Sarona's houses): a glass of their own, a lit crown, a mast or shaft on the roof, red tile roofs; and in every town the red lights on roofs over 90 m at night. Hooks in streets.gd: `_glass` / `_tile` on a building for `_build_buildings`, `build()` per square, `set_night` |
 | `rails.gd` | railways: the tracks the city file has (`rails`, `platforms`, `stations`), their beds, rails and sleepers, the platforms with canopies and the station's name, and trains running along them (`tick`). See "Railways" below |
 | `cities/*.json` | baked towns (`tools/osm_city.py`) and the made-up test town (`tools/fake_city.py`) |
@@ -1635,7 +1636,39 @@ under 13.5 m) get `_gable`'s roof in a red clay tone over walls of 5.5-7.5 m, st
 the Matcal tower (mast to 107 m) and Marganit (shaft to 118 m, striped mast to 138 m,
 Wikipedia's figures, modelled without photos), Sarona (39 houses); 92 roofs lit, 355
 lights. `found` keeps what was matched, for the test: the city file is let go of once
-built. Test: `tests/landmarks.gd`.
+built. Test: `tests/landmarks.gd`. Since the box grew to the sea: the Shalom Meir tower
+(130 m, a mast to 142 m) and the Opera tower (OSM draws its 21 stepped floors in their
+stone, #f2e1d6, up to 82 m: found, nothing added), 136 roofs lit.
+
+`"market"`: [street name, kind] pieces with stalls down both sides (`_market_line`, set up
+with the landmarks): a place every `STALL_STEP` 2.7 m each side, one in `STALL_GAP` 7 left
+open, 1.6-2.6 m out from the middle (the walkway between); built per square into a CBuf of
+coloured boxes (`_stall`: a counter with four crates of produce tipped toward the walkway,
+a rack of goods behind, four poles, a canvas sloping down to the walkway), skipped where
+`_push_out` finds a building or a post, two posts each. Colours are `_real_col`'s paint
+names (produce: red, orange, green, yellow, maroon; canvas: blue, white, red, green,
+orange, cream): the palette's roles, the first try, made a market of pinks and purples.
+Tel Aviv: HaCarmel's pedestrian piece, 267 places, 228 stalls. Test: `tests/seaside.gd`.
+
+## The beach (`beach.gd`)
+
+Any town with a coast. The sea: a water area held at its level (`y`, the baker's) whose
+outline runs along the map's edge for 50 m+; a beach: an area of kind `sand` (OSM's
+`natural=beach|sand`) with the sea's shore within `BAND.y` + 20 m of it. `setup` lays a
+6.5 m grid over each beach (jittered), and by the distance to the shore puts an umbrella on
+55% of the places 16-52 m up from the water (the wet sand kept clear) and a lifeguard's
+tower at ~14 m, one every 230 m; each in its square. `build()` per square (after the
+landmarks) drops what is on a road or a path (`_off_road` 2 m) or into a kiosk or a post
+(`_push_out` 1.6 m), then: umbrellas (pole and cone, `_chunked`, colours `_real_col`'s),
+each with two white chairs (seat, back, legs as one block; now and then one or none)
+facing the sea, a little askew, whose seats go into `g._beach_spots`; towers as boxes
+(`_tower`: legs, floor, white hut with a blue band and dark window, blue roof, balcony,
+ramp behind, red flag). The sand is the tone "beach" (`_build_ground` maps kind sand to
+it): warmer and darker than a sandpit's "sand", which over a beach read as snow.
+Bathers: streets.gd's `_bathers`, `BATHERS` 10 people made the first time there are chairs,
+placed by `_place_still(..., "sit")` like the bench sitters (only where you cannot see them
+appear: a scene test turns the eye away a moment first, `tests/seaside.gd`'s `settle`).
+Tel Aviv: 9 beaches, ~1085 umbrellas, ~1713 chairs, 10 towers. Test: `tests/seaside.gd`.
 
 ## Tel Aviv (level 7): handoff, 20 November 2026
 
@@ -1695,10 +1728,12 @@ and the ramp-top fix. Where things stand:
   (583, -684); the old run stuck 11 m in and never drove it). Look with
   `tests/street_views.gd` (`STREETS="אלנבי;הכרמל;רוטשילד;הרברט סמואל"`,
   `LOOK="-2468,0;-2660,616"` for the beaches).
-- **Next, for the grown part**: the Carmel market is a bare pedestrian lane (stalls and
-  awnings would make it); the sand is the playgrounds' near-white (a warmer beach tone);
-  the Shalom Meir tower and the Opera tower as landmarks; Ashdod's sea is likely under its
-  floor too (its water at the shore's 0.8, its sea grid 1.1: re-bake it with this baker).
+- **Then, asked for (1, 2, 3)**: the Carmel market's stalls, the beach (warm sand,
+  umbrellas, chairs, lifeguard towers, bathers) and the Shalom Meir and Opera towers -- see
+  "The beach" and "Landmarks" above. Still open: Ashdod's sea is likely under its floor too
+  (its water at the shore's 0.8, its sea grid 1.1: re-bake it with this baker, and it gets
+  beaches); people walking the shore or in the water; the market's shoppers (the walkers
+  keep to pavements).
 - **Open, smaller**: Arvei Nahal's 0.44 m seam (under "Off the ground"); the HaShalom west
   ramp's 8 hole points; 5 bank feet at a kerb; Marganit and Matcal's tops are modelled from
   heights alone.

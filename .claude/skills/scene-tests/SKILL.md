@@ -218,6 +218,11 @@ it is made, with a one-line caption, rather than a report at the end.
 
 ## Gotchas (each cost a run)
 
+- **People that appear only out of sight are never in a still.** A game that places its
+  extras (people in chairs, at stops) only where the player cannot see them appear leaves
+  a staged camera looking at empty seats, however long it waits. Stand at the spot facing
+  away for a few of the game's placing ticks, then turn and take the shot.
+
 - **A collision scan sees only what is solid, and only where it is solid.** A scripted walk
   that scanned clean went through a parked bike's wheel (solid only at its rack's hoop, while
   the bike reached across most of the pavement) and ended with a tree's trunk filling the
