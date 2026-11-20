@@ -629,6 +629,20 @@ keep the old block for the record.
 - Givatayim: 140 roads narrowed to their buildings, 865 building fronts cut back, 3
   buildings left over a road on purpose (passages). Ashdod: 44 and 352.
 - Corners laid piece by piece (touching another road): Givatayim 920, Ashdod 2794.
+- **The whole frame, Tel Aviv** (`tests/perf_dive.gd` level 7, everything built, 20 Nov
+  2026; the view and the shadow pass together): at the start, quality 2, 2.41 M triangles
+  and 635 draws, of them parked cars 1.24 M -- grouped by 400 m square, every one drawn to
+  ~420 m (see "Parked cars" below). With 100 m squares and a far shape: 1.69 M and 641
+  draws; a main road 1.81 -> 1.19 M; from above 2.20 -> 1.38 M. What is left in view at the
+  start: the batched tone meshes 0.87 M, parked cars 0.31 M, tree crowns 0.14 M, palms 0.12
+  M, trunks 0.08 M. The script's own frame while driving, headless: ~3 ms a tick (traffic
+  1.3, people 0.7, traffic's following 0.4, minimap 0.3) -- the cheap part.
+- **Memory, Tel Aviv**: video memory 575 MB, of it 505 MB vertex buffers: 19.5 M static
+  vertices, 16 M of them in the batched tone meshes (every batched copy's vertices written
+  out: 9.6 M from vertex-coloured kits, then tanks 0.8 M, poles 0.8 M, furniture 0.75 M,
+  railings 0.5 M), the contact shadows 1.1 M, kerbs 0.9 M. Triangle soups, none indexed.
+  Nodes 8,134 (4,989 before the parked cars' 100 m squares); 74 shader kinds (each one
+  compiled in the warm-up).
 
 ## Cities
 
@@ -1174,6 +1188,54 @@ towns get them when re-baked. What the game does with them:
 - **Still to do**: level crossings (trains solid, barriers); the light rail where it runs
   on the surface; keeping `electrified=` in the bake; re-baking the other towns (Ashdod has
   a line).
+
+## Handoff: lights, kerbs and paving, islands, quality, menus, performance (20 Nov 2026)
+
+One session's areas, left for whoever picks them up (its context was compacted after this).
+Each line: where the code is, the test, what good reads.
+
+- **Traffic lights**: sites, groups, `flip`, walk lights (`_lights_setup`, `_site_axes`,
+  `_light_group`, `_walk_light`, `_through_lights`; traffic.gd `_light_ahead`). `light_audit`
+  levels 1, 3, 7 -- crossing pairs green together / a road changing group in a junction /
+  walk lights green with cars coming: 0 / 0-1 / 0 (README has the full row).
+- **Autodrive and the map's edge** (`_edge_bound`, `_ap_ways` scoring): `autodrive_edge` 1, 3.
+- **Paving laid once** (`_laid`, `_laid_cut`, `_laid_by`, `_flat_piece` in `_kerb_piece`):
+  `pave_overlap` 7 -- 5,355 m2 overlapping, of it two different pavings ~30 m2 (good); the
+  rest a strip's next piece at a bend, the same paving.
+- **A rounded corner's asphalt is road** (`_corners_at`, `_note_corner_fills` at the start of
+  each square, `_in_corner_fill` inside `_off_road`, signs moved out by `_out_of_corner`):
+  `road_blocks` 1, `city_check` (validate.sh). Givatayim's 2 posts left on the road are a
+  plain post on Aluf David and a tree on Katznelson by Sirkin (on main before this; the
+  filmed walk's details).
+- **Traffic islands** (`_find_islands`, `_island_cut`, `_island_faces`, `_on_island`):
+  `islands` 1, 3 -- 0 points of any island on a road. **Bare ground** is dusty sand (`_tones`).
+- **Bridges at junctions** (decks.gd `_clear_ends`, `_on_street_below`, `_street_at` -- reads
+  `_seg_hash`, because the walls are made in `setup()` before `_asph_hash` exists):
+  `deck_corner` 2 -- Bedford's Union Street turn: 0 wall hits on 4 routes (were 12).
+- **Quality ladder** keeps the sun's shadows at every level (`QUALITY`): switching them off
+  recompiled every shader in the browser, a 3 s freeze each step.
+- **The minimap's route** (`_draw_map_inner`: wide, the destination's colour, a dark edge):
+  `minimap_route` 1. **Go to** (`_open_picker`, `_show_pick_mode`: "jump to" first, "drive
+  to"): `picker` 4. **The start screen's two groups** (`"group"` in `LEVELS`; the shell's
+  `_level_groups`): `tools/menu_shot.sh levels:streets`.
+- **Performance** (`tests/perf_dive.gd` 7; numbers under "Numbers to compare against"):
+  parked cars done (`_draw_parked`, `_parked_far_mesh`, `PARKED_CELL/NEAR/SEEN`; `_chunked`
+  takes `cell_m` and `range_begin`). **In the middle of**: which vertex-coloured kits make
+  the 9.6 M batched vertices -- a debug-only tally in `_batch_add` ("batched by:
+  function:line (n verts)") that `perf_dive` prints as "batched, by who"; the plan was to
+  draw the biggest as multimeshes (one mesh, a transform each) instead of copying their
+  vertices into the batches, then measure memory and draws again. Also open: 74 shader
+  kinds for the warm-up (merging look-alike materials would shorten it); nodes up 3,000 from
+  the parked cars' squares (watch the browser's culling cost).
+- **Waiting on the user**: the test town's hillside roads lean (a finer height grid in
+  tools/fake_city.py, or levelling roads in the game; another session owns the test town's
+  terrain); stop / give-way signs at every junction (asked whether same-class junctions get
+  one -- no answer yet). The Ashdod "grass patches" spot was never pinned down: islands and
+  the ground colour went out without it.
+- **Tests and tools added**: `hitches` + `hitch_parts.py` (frames over 250 ms by phase --
+  only meaningful in a real browser), `top_at` (shots by map point, `CAR=` to put the car
+  anywhere), `street_at` (by street name at its roundabouts), `perf_dive`, `deck_corner`,
+  `islands`, `pave_overlap`, `picker`, `minimap_route`.
 
 ## Open problems
 
