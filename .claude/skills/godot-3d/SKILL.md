@@ -62,6 +62,23 @@ is a Z coordinate, not a height.
   To judge it, shoot the same view with the layer hidden and shown, and diff the pictures:
   by eye, at a 0.4 strength it was invisible, and traffic and fading HUD labels change
   between shots too.
+- **Shadows past the shadow distance, painted once.** Real shadows end at
+  `directional_shadow_max_distance` (45-75 m is what a browser affords), and past it a city
+  looks flat. With a sun that does not move, sweep each building's outline along the light
+  by its height (the convex hull of the outline and the moved outline is close enough at
+  that distance), draw them white on black into a `SubViewport` (one
+  `RenderingServer.canvas_item_add_triangle_array` call, then the outlines in black so
+  what is on a roof is not "in shadow"), and let the ground shaders darken by it where the
+  real shadows fade out: from `max_distance * directional_shadow_fade_start` to
+  `max_distance`, the same ramp, so there is no seam. A viewport's texture has no
+  mipmaps, and unfiltered shadow edges shimmer badly at a distance, so read it back once
+  (`get_image()`), `generate_mipmaps()` and make an `ImageTexture`. Take the texture
+  read out of any branch (mipmapped reads in non-uniform control flow sparkle at edges).
+  Match the strength by measuring, not by eye: shoot the same block with only the real
+  shadows and with only the painted ones, and compare shadowed / unshadowed brightness.
+  An albedo multiplier is linear and the screen is sRGB: 0.55 off the albedo is what left
+  the same 0.69 on screen as a real shadow did. Under a test's software renderer each frame
+  the bake waits for costs most of a second; in a browser it is a few ms.
 - **Resolution**: the 3D `SubViewport` renders at the real window size (up to 3x the
   640x360 design space, half-step multiples) and is scaled down with linear filtering,
   with 4x MSAA. The kit's nearest-neighbour default is for pixel art and made 3D look
@@ -174,11 +191,14 @@ most, in order, last time one did:
   range and add half a square's diagonal to the range.
 - **A camera that rises over the world (a zoom-out, a map view) meets every range at
   once.** Visibility ranges and fog both count from the camera, so from 500 m up the
-  ground right below is already 500 m away: cap the height at about half the longest
-  range you want kept (whatever has a shorter range drops out at the top of the screen
-  first), thin the fog with height (exponential fog at street-level density turns the
-  town below a washed-out white), and push `cam.near` out with the height, or paint
-  laid a few cm over asphalt z-fights. To freeze the world under it without
+  ground right below is already 500 m away. Thinning the fog with height is needed
+  (street-level density turns the town below a washed-out white) but it uncovers the
+  range cut-offs: with ranges per square of a few hundred metres, whole squares of trees
+  and walls pop in as the view pans. While the camera is up, set every range above a
+  threshold to 0 (no limit) and put them back when it comes down; walk the world once,
+  then only its new children. Leave the tiny things (signs, people) on their ranges.
+  Push `cam.near` out with the height, or paint laid a few cm over asphalt z-fights. And
+  lean the view (about 50 degrees down): straight down reads as a plan, not a place. To freeze the world under it without
   `get_tree().paused` (which would freeze the camera too), skip the physics tick and
   set the characters' `process_mode` to disabled, which stops their AnimationPlayers.
   Draw interpolated things at fraction 1 while frozen, or they rock between two ticks.
