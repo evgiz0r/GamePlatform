@@ -1684,7 +1684,9 @@ and the ramp-top fix. Where things stand:
   (`_hold_sea`: the tiles read the sea at -0.1..+1.2 m and the beach 2.5 m under, and
   water lies at its shore's lowest point -- the sea lay under its own floor and the ground
   was drawn white over it). Checks after: `city_check` 19 (12: 18 buildings into a road,
-  1 post 0.3 m into Dizengoff at (-1495, -1306)); `landmarks` 5, 39 tiled, 122 roofs lit;
+  1 post 0.3 m into Dizengoff at (-1495, -1306)); `landmarks` 5, 39 tiled, 136 roofs lit
+  (with the town's survey: 8322 of the 9597 buildings take its measured height; baked
+  after merging that session's baker, so the file has both, and its roads levelled);
   the exam 3 x 60 s 4 checks (the old map 4; one start by the sea at (-2607, 1562)): new
   places, traffic into post 31487 at (-880, 1155) twice at 40 km/h and a bus into one at
   a stop at (-1065, 853); `decks.gd` -- a run now drives Al Parashat Drachim's embankment
