@@ -3725,6 +3725,7 @@ func _build_trees() -> void:
 	var rng := RandomNumberGenerator.new()
 	var spots: Array = []   ## [x, z, scale]
 	var forest := {}        # index into spots -> true
+	var grates: Array = []  # an iron grate round each street tree's trunk, flat on the pavement
 	var k := 1.0 / float(_city_data.get("scale", 10))
 	var tr: Array = _city_data.get("trees", [])
 	for i: int in _tile_trees.get(_tile, []):
@@ -3767,6 +3768,7 @@ func _build_trees() -> void:
 					if _mine(p) and _tree_ok(p, 5.0):
 						_add_post(p, 0.3)
 						spots.append(Vector3(p.x, p.y, sc))
+						grates.append(Transform3D(Basis(Vector3.UP, sc * 9.0), Vector3(p.x, _h(p) + KERB_H + 0.006, p.y)))
 				s += TREE_GAP + rng.randf_range(-2.5, 2.5)
 			s -= L
 	# parks get trees where OSM has few; woods are filled (conifers in the north): each
@@ -3839,6 +3841,9 @@ func _build_trees() -> void:
 			_wild_made += 1
 	_tally("wild_trees", wild)
 	_trees_made += spots.size()
+	if not grates.is_empty():
+		_chunked(_furn.grate_kit(), grates, 120.0)
+		_tally("tree_grates", grates.size())
 	if spots.is_empty():
 		return
 	var look := String(_place.get("look", ""))
@@ -6174,7 +6179,7 @@ void vertex() {
 // of a Voronoi pattern 45 cm across, a hairline as wide as a pixel allows. 1 where there is
 // no crack, darker on one. Only near the eye: further off it is less than a pixel.
 float crazing(vec2 p, float dist, float pxw) {
-	float tired = smoothstep(0.66, 0.8, noise(p / 9.0 + 3.7)) * (1.0 - smoothstep(30.0, 55.0, dist));
+	float tired = smoothstep(0.7, 0.84, noise(p / 9.0 + 3.7)) * (1.0 - smoothstep(30.0, 55.0, dist));
 	if (tired <= 0.0) {
 		return 1.0;
 	}
@@ -6200,7 +6205,7 @@ float crazing(vec2 p, float dist, float pxw) {
 	// not every edge has cracked: some plates are still joined
 	float open = step(0.35, hash(floor(gq + vec2(0.5)) + 41.0));
 	float crack = 1.0 - smoothstep(0.0015, 0.0015 + pxw, edge);
-	return 1.0 - 0.38 * crack * tired * open;
+	return 1.0 - 0.28 * crack * tired * open;
 }
 void fragment() {
 	vec3 c = COLOR.rgb;

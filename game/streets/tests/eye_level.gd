@@ -3,7 +3,7 @@ extends SceneTree
 ## the pavement of the streets nearest a point, looking along each street both ways and once
 ## across it, and once down at the pavement in front. For comparing the city with photos of
 ## the real one. The point: AT="x,z" (metres in the city's frame; the start when not given).
-## Last, the nearest block on columns, from the street. Prints each spot; screenshots
+## Then the nearest zebra from the pavement, and the nearest block on columns from the street. Prints each spot; screenshots
 ## eye_NN_*.png and eye_columns.png in $OUT.
 var g: Node
 
@@ -67,6 +67,29 @@ func _run() -> void:
 			g._sky_follow()
 			await _snap("eye_%02d_%s" % [k, view[0]])
 		k += 1
+	# the nearest zebra, from the pavement 7 m back: what stands at the kerb either side of it
+	var zn := -1
+	var zd := INF
+	for ni: int in g._crossing_nodes:
+		if g._nodes[ni].distance_to(at) < zd:
+			zd = g._nodes[ni].distance_to(at)
+			zn = ni
+	if zn >= 0:
+		var c: Vector2 = g._nodes[zn]
+		for e: Vector2i in g._node_roads[zn]:
+			var r: Dictionary = g._roads[e.x]
+			if not r["drive"]:
+				continue
+			var pts: PackedVector2Array = r["pts"]
+			var d := (pts[mini(e.y + 1, pts.size() - 1)] - pts[maxi(e.y - 1, 0)]).normalized()
+			var side := Vector2(-d.y, d.x)
+			var e2 := c - d * 7.0 + side * (float(r["w"]) * 0.5 + 1.6)
+			var eye := Vector3(e2.x, g._h(e2) + 0.14 + 1.55, e2.y)
+			g.look_from(eye, Vector3(c.x, g._h(c) + 0.6, c.y) - Vector3(side.x, 0, side.y) * 1.5)
+			g._sky_follow()
+			print("zebra %d m from the point" % int(zd))
+			await _snap("eye_zebra")
+			break
 	# the nearest block on columns, from the street: its lobby under the floors
 	var best := -1
 	var bd := INF
