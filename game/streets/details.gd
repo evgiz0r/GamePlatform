@@ -727,7 +727,9 @@ func _shrubs(xf: Array, cols: Array, a: Vector2, e: Vector2, h: float) -> void:
 		cols.append(Color(0.8, 0.92, 0.78, 0.125) if r2 < 0.6 else Color(0.7, 0.88, 0.66, 0.375))
 	_solid(a, e, 0.45)
 
-## Shop fronts along a block's face from a to e, `h` high, facing `face`: bays of about three
+## Shop fronts along a block's face from a to e, `h` high (keep it under an arcade's ceiling:
+## that is counted from the lowest ground under the arcade, so on a slope it is lower than
+## its nominal height), facing `face`: bays of about three
 ## metres of lit glass in light aluminium frames, a dark kick plate under them and a sign band
 ## over them, each shop's band its own colour (the second dark brown: the confectionery's)
 func _shopfront(b, glass, a: Vector2, e: Vector2, h: float, face: Vector2, signs: Array, panels: Array) -> void:
@@ -745,14 +747,16 @@ func _shopfront(b, glass, a: Vector2, e: Vector2, h: float, face: Vector2, signs
 		var s1 := L * float(i + 1) / n
 		var w := s1 - s0
 		var mid := a + d * ((s0 + s1) * 0.5) + out * 0.03
-		g._furn._box(glass, Vector3(mid.x, gy + 1.45, mid.y), Vector3(w - 0.1, 2.2, 0.03), Color.WHITE, bs)
+		# from the top down: the sign band (its top 55 cm), a transom, the glass to the kick plate
+		var top := h - 0.55
+		g._furn._box(glass, Vector3(mid.x, gy + (0.35 + top - 0.05) * 0.5, mid.y), Vector3(w - 0.1, top - 0.4, 0.03), Color.WHITE, bs)
 		g._furn._box(b, Vector3(mid.x, gy + 0.175, mid.y), Vector3(w, 0.35, 0.07), kick, bs)
-		g._furn._box(b, Vector3(mid.x, gy + 2.6, mid.y), Vector3(w, 0.1, 0.09), frame, bs)
+		g._furn._box(b, Vector3(mid.x, gy + top - 0.02, mid.y), Vector3(w, 0.1, 0.09), frame, bs)
 		var band := mid + out * 0.03
-		g._furn._box(b, Vector3(band.x, gy + (2.65 + h) * 0.5, band.y), Vector3(w - 0.04, h - 2.65, 0.1), bands[i % bands.size()], bs)
+		g._furn._box(b, Vector3(band.x, gy + (top + 0.03 + h) * 0.5, band.y), Vector3(w - 0.04, h - top - 0.03, 0.1), bands[i % bands.size()], bs)
 		for x: float in [s0, (s0 + s1) * 0.5, s1]:
 			var q := a + d * x + out * 0.05
-			g._furn._box(b, Vector3(q.x, gy + 1.3, q.y), Vector3(0.12 if x != (s0 + s1) * 0.5 else 0.06, 2.6, 0.08), frame, bs)
+			g._furn._box(b, Vector3(q.x, gy + top * 0.5, q.y), Vector3(0.12 if x != (s0 + s1) * 0.5 else 0.06, top, 0.08), frame, bs)
 		if panels.has(i):   # yellow boards behind the lower glass, either side of the middle
 			for f: float in [0.27, 0.73]:
 				var q := a + d * (s0 + w * f) + out * 0.045
@@ -766,7 +770,7 @@ func _shopfront(b, glass, a: Vector2, e: Vector2, h: float, face: Vector2, signs
 			lb.modulate = g._tone["mark"].lerp(g._tone["markyellow"], 0.15)
 			lb.outline_size = 0
 			var at := band + out * 0.06
-			lb.position = Vector3(at.x, gy + (2.65 + h) * 0.5, at.y)
+			lb.position = Vector3(at.x, gy + (h - 0.55 + h) * 0.5, at.y)
 			lb.rotation.y = atan2(out.x, out.y)
 			lb.visibility_range_end = 120.0
 			g.world.add_child(lb)

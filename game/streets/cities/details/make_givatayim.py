@@ -140,7 +140,7 @@ d = {
         {"kind": "shrubs", "pts": [P(38.2, -2.0), P(56.8, -2.0)], "h": 3.0},   # the tall hedge on the low wall
         # the shops under the arcade (film 15-23 s): lit glass in light frames, each its own
         # sign; the confectionery's, dark brown, faces the zebra
-        {"kind": "shopfront", "pts": SHOPS, "h": 3.25, "face": [round(-ARC_IN[0], 4), round(-ARC_IN[1], 4)],
+        {"kind": "shopfront", "pts": SHOPS, "h": 2.75, "face": [round(-ARC_IN[0], 4), round(-ARC_IN[1], 4)],
          "signs": ["", "קונדיטוריה", "", ""], "panels": [1]},   # (only the film's shop is named)
         # the little street to Sheinkin (film 64-72 s): a tall hedge on the back of the
         # pavement the walk is on
