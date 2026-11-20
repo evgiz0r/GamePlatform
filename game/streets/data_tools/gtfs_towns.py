@@ -22,6 +22,7 @@ from datetime import date
 BOXES = {   # (S, W, N, E), the city files' boxes
     "givatayim": (32.0561, 34.7952, 32.0842, 34.8234),
     "ashdod": (31.7507, 34.6061, 31.8752, 34.7130),
+    "tel_aviv": (32.0576, 34.7579, 32.0872, 34.8037),
 }
 MARGIN = 0.003   # degrees (~300 m) of a line's shape kept past the box
 

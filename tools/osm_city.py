@@ -783,6 +783,11 @@ SURVEYS = [
     {"id": "ramat_gan_muni", "credit": "building storeys © Ramat Gan Municipality",
      "extent": (32.0557, 34.7991, 32.0849, 34.8239),
      "floors": "fl", "ground_counted": True},
+    # Ashdod's map publishes floors only on its public buildings (schools, synagogues, clinics,
+    # malls, sports halls...), ~1,300 of them; the same fields as Ramat Gan's, so taken alike
+    {"id": "ashdod_muni", "credit": "building storeys © Ashdod Municipality",
+     "extent": (31.7715, 34.6241, 31.8324, 34.6851),
+     "floors": "fl", "ground_counted": True},
 ]
 
 

@@ -904,6 +904,97 @@ route that starts in a trap starts at the nearest street with a way out.
 `tests/pockets_map.py` (the picture: red trapped, orange cut off). Widening the bake would
 only move the cut: a way out beyond the barrier cannot be driven.
 
+### Hills, pockets, the end of a green, a divided road's middle (20 Nov 2026, later)
+
+**Autodrive's turns were wide** (the user: "its radius of turning is like double of what it
+should be, it hits the opposing or the next lane a lot"). `tests/turn_width.gd` (a side street
+to a cross street, right and left, the rest of the traffic off) measured it: on Givatayim's
+8 m streets every right turn came out with the car's middle on the middle line of the street it
+turned into (-0.2 to 0.2 m right of it; its lane is 2.1), 1.5-2.2 m off its own plan, at 14-22
+km/h through a corner planned at 12. Three causes, each fixed:
+- **a "go to" route's corners** (`_route_to`: routes, the test routes, routes of your own) were
+  one point per corner, put into the lane square to the way to the *next* point -- the next
+  street's way -- which put it on the middle line of the street it was leaving: the car swung
+  out left over the last 10 m, came round at full lock from there and out over the next
+  street's middle line. Free autodrive (`_ap_leg`/`_ap_turn_into`) laid real corners. Now the
+  route's points closer than 3 m are one corner, at the junction's point (a junction drawn as
+  two points 0.9 m apart was two, the second's curve starting behind the first: the plan
+  doubled back; and keeping the first of two, a slip road's point 3 m short of the street it
+  joined, laid the corner off that street's line -- route 7 came out of the turn 4.7 m from
+  the middle of an 8 m street, over the kerb into a post, and backed off), a corner's
+  curve may start behind the lane point before it (dropped) and run on to the next point when
+  that is no corner itself (lane points it passed are left out), and the route's first point
+  is a corner too when the car is not on it (a side street that is one stretch up to the
+  junction has the junction as its first point: a corner of one point, taken wide);
+- **both laid a right turn tighter than the car turns**: a curve from 5 m before the junction to
+  5 m after through where the two lanes cross is 2-3 m round on an 8 m street, and the car at
+  full lock is ~4.1 m. Now every corner is `_lane_corner`: an arc along the lane in and out
+  along the lane out, at least `AP_TURN_R` (5.5 m) round, starting further back when it needs
+  to (no further than the point before it);
+- **it came into corners fast and steered at a point too far ahead**: braking by how far over
+  its target it is (2 m/s^2 a m/s), it ran ~1.3 m/s over the 2.6 m/s^2 slope down to each corner
+  (now aimed at half a second early); and the point it steers at was 5.4 m ahead at 14 km/h --
+  it started round 6 m early and came out with the turn not done (now 2 + 0.6 v, at least
+  3.5 m: 4.4 m at 14 km/h, the same as before from ~50 km/h).
+After: 0 of 8 over the middle line, the car within 0.5-1.2 m of its plan, right turns out
+1.0-1.4 m right of the middle line at 13-17 km/h (Givatayim, five junctions; Ashdod 0 of 10,
+the test town 0 of 2). The route set after: 10 of 10, 0 hits, 0 reds, 0 rescues, 0 s off the road.
+
+The open items of the handoff below, done:
+- **Traffic sees the player on a hill** (traffic.gd `_level`, `Car.lift`, `_me_lift`). Its
+  level test was height alone (2.5 m, for bridges and tunnels), in every check of the player
+  and of other cars: the car ahead, the junction, oncoming, the lane beside. Now two things
+  are on one level when their heights are within 2.5 m *or* their heights above the ground
+  under each (`lift`: ~0 on the street, a deck's height on a bridge) are. `tests/hill_level.gd`
+  (Givatayim's five steepest unsignalled approaches, 7-10 m of rise in 60 m): before, a car
+  coming down Shim'on Ben Zvi drove into the player standing in the junction (0.1 m) and into
+  them waiting 15 m short of it (0.0 m), slowing only 8-10 m off; elsewhere it slowed 15-26 m
+  off. Now it slows 34-36 m off on all but one (15 m, the same as before: the car's way comes
+  to that junction round a bend), at 3.5-3.7 m/s^2, none closer than 7 m. The test holds the player still by hand: with nobody at the pedals the
+  car rolls down a 15% street (`_drive` holds it only under 0.14 rad).
+- **No traffic put down in a pocket** (`_spawn` skips segments in `_trap`, `_cut_off`,
+  `_outside`). `tests/pockets.gd` now spawns all the cars round 8 places in or by pockets:
+  Givatayim 79 cars, 0 inside.
+- **The exam's give-way waits** are counted apart: "autodrive: gave way 8 s+" (a wait),
+  "autodrive: stuck giving way 30 s+" (a stall, with its incident); "stuck 8 s+" no longer
+  counts a car holding at a junction for traffic.
+- **A car put down somewhere new forgets the last lit junction** (`_land_on_road` resets
+  `_light_site`). It was kept for 120 m driven: a car put back by the light it had just
+  crossed (a "go to", a route's start, a test going round again) drove through its red and
+  the red was not counted. Found by `tests/amber.gd`: every case read "on through, no red"
+  at 50 km/h whatever the light did.
+- **The end of a green, from autodrive's seat** (`_ap_light_v`, `_light_red_in`,
+  `_ap_time_to`, `_ap_brake_for`, `_ap_amber_n`). It went on through an amber whenever it
+  could not stop at 3 m/s^2, and stopped (aiming at 2.6 m/s^2) otherwise -- on a flashing green
+  it did nothing. Now, on the flashing green or the amber, it goes on only if its nose will be
+  over the line before the red at the pace its plan goes there (a corner just past the line
+  slows it first); else it stops -- gently on the flashing green (or decides again on the
+  amber), firmly on the amber if need be (up to 4.5 m/s^2; past that, on through). Once it
+  decides to stop it keeps to it until green, braking at the rate the stop needs and a fifth
+  more: aimed at "the speed that just stops in time from here" the target sat a hair under its
+  speed, and the controller (2 m/s^2 for each m/s over) hardly braked -- the need grew until it
+  gave up and drove on into the red. `tests/amber.gd` (Ashdod, two lights, 50 km/h, the light
+  sent to the end of its green at 10-55 m, straight and left): before, the left turn caught by
+  the amber 40 m out ran the red, and an amber 55 m out stopped it at full brake (8.2 m/s^2):
+  5 of 40 bad. Now 0 of 40: on through from 30 m and nearer, stopped from 40 and 55 m at
+  3.6-3.9 m/s^2, 2.7-11 m short of the line; on a flashing green it goes (6 s to the red).
+  The route set's red (route 5, Ashdod) was this. The traffic's own amber rule is not touched.
+- **Waiting in a divided road's middle** (`_median_gap`, `_ap_split`, `_ap_mid`,
+  `_ap_edge_of`; `_ap_median_ok` turns it off for tests). A junction of points within 18 m is
+  one junction for autodrive (`AP_KNOT`): it waits at the kerb for a gap in every stream it
+  crosses. Now, where a short road of its own runs straight across the middle from one
+  carriageway's point to the other's, with no lights, and the room between the two
+  carriageways' edges is a car and 1.2 m (`AP_MEDIAN_SPARE`), it is two: autodrive crosses the
+  near carriageway when that is clear and waits in the middle for the far one (stopping 0.4 m
+  short of its edge, below it in rank whatever road it came from). Most medians where a street
+  crosses are too narrow for that in the game's geometry (the carriageways are drawn at their
+  guessed widths, 4-10 m, and their points 7-14 m apart): `tests/median_wait.gd` counts every
+  way across a median and the ones deep enough -- Ashdod 9 of 42, Tel Aviv 3 of 17, Givatayim 2
+  of 4, Bedford 8 of 16 -- and of the side-street crossings it can stage (a side street with no
+  lights, straight 34 m), only Givatayim's one has room. Where there is none nothing changes
+  (Ashdod's five staged crossings: the same with and without; 0 hits, no car braking for it;
+  Givatayim's one with room: PASS; Bedford has no side street crossing one to stage).
+
 ### Handoff: autodrive's junctions, the route set, test routes (20 Nov 2026)
 
 This session's areas, for whoever picks them up (its context is compacted after this).
@@ -924,19 +1015,19 @@ Nothing is half done: all of the above is on main.
   upstream of the change being tried (no path window, the level test, the way in read past
   the corner). A result identical to the decimal after a change means the change is not
   reached.
-- **Open**:
-  - route 5's red light (Ashdod, Bnei Brit): at 50 km/h on the amber, "can't stop", and the 3 s
-    amber ran out before the line -- the lights' amber rule, not giving way;
-  - traffic's own player check in `_junction_ahead` still uses `_level` (2.5 m): on a hill a
-    traffic car 50 m off does not see the player at its junction (autodrive now gives way
-    itself, so it matters mostly when you drive);
-  - the exam's "autodrive: stuck 8 s+" counts a give-way wait over 8 s as stuck (leave it:
-    a wait that long is worth a look; traffic spawned round the player makes streams
-    denser than real ones);
-  - autodrive does not wait in a wide median: in a junction of several points within 18 m
-    (`AP_KNOT`) it is committed once in the first;
-  - traffic is not kept from spawning inside a pocket (only from turning into one);
-  - `run_routes.sh`'s top says 40-60 min (it is ~10-12).
+- **Open** (the six that were here are done: see "Hills, pockets, the end of a green, a
+  divided road's middle" above):
+  - a right turn's arc is still tighter than 5.5 m where the point before it on the plan is
+    within a few metres of the junction (it may not start behind it): 3.6-4.3 m at two of
+    Givatayim's four in turn_width. Dropping a plain lane point that the arc would start
+    behind would let it;
+  - autodrive's amber stop ends 3-11 m short of the line (it brakes at the need and a fifth);
+  - `_push_out` sets `_last_hit` even when it only probes (the plan's `_clear_lane`, the nose's
+    safety net): a test reading `_last_hit` must gate on `_crash_cool`, as route_set and
+    give_way do;
+  - few medians are deep enough to wait in where side streets cross (the carriageways' guessed
+    widths): if real ones look wider than the game draws them, it is the widths
+    (`_fit_widths`, the `median` key), not the waiting.
 
 ## Numbers to compare against (November 2026, cloud container, software renderer)
 
@@ -945,7 +1036,10 @@ Nothing is half done: all of the above is on main.
   near-first: Givatayim ~2 s (9 of its 71 squares), Bedford ~1.2 s, Ashdod ~2.8 s, the test
   town ~1.2 s (headless playtest, `build_ms` in the "city" event); the rest of Givatayim
   ~10 s of background building (the "city_built" event). Tel Aviv (the box, 4011 buildings,
-  3667 roads, 59 squares): ~2.2-2.5 s before the car, the rest ~11-12 s.
+  3667 roads, 59 squares): ~2.2-2.5 s before the car, the rest ~11-12 s. After Tel Aviv grew
+  to the sea (9,591 buildings, 6,091 roads), the playtest's "city" event, two runs at once:
+  Tel Aviv parse 2.7 s + build 3.4 s before the car, Ashdod 2.2 + 3.0, Givatayim 1.0 + 2.0
+  (decks_inferred alone 0.8 s of Tel Aviv's parse, 0.24 of Givatayim's).
 - Frame cost at the start view (`tests/frame_cost.gd`, quality 3, Nov 2026, same run):
   Tel Aviv 1.69 M triangles + 0.75 M shadow, 367 draws; Givatayim (Katznelson by Weizmann)
   2.00 M + 1.01 M, 444 draws -- Tel Aviv's towers are no heavier at the start than
@@ -1959,6 +2053,40 @@ Each line: where the code is, the test, what good reads.
   the same code, and nine commits that day changed shader code -- every first load after
   such a build compiles them all again. The step that stands out is the one the warm-up
   gave the most shaders: grouped by code now, the eight steps share them.
+- **Railings across Kaplan** (user: "weird borders in the middle of Kaplan", Tel Aviv's
+  start, autodrive): the Lova Eliav tunnel runs under Kaplan in four OSM pieces, and the one
+  actually under the eastbound half is 19 m -- under `MIN_TUNNEL` (20), so `Decks.infer` put
+  it back on the ground; sandwiched between two tunnel pieces it was dug as a cutting at
+  full depth, and a cutting's railing (posts every 2.4 m, rails at 0.55 and 1.0 m) stood
+  across both lanes, 1 m high, not solid (the car's walls already skipped it). Not the
+  indexing (`STREETS_NO_INDEX=1` showed the same) nor the background build. Fixed at both
+  ends: a short tunnel way under something that joins a tunnel at an end is a piece of it
+  (`short_tu`, grown like the branches), and `_cutting` stands no railing where its line is
+  on a street at grade. `tests/cut_under.gd` 7: cuttings a metre deep or more under a street
+  (expect 0), `AT=x,z` lists the tunnels and cuttings near a point; `start_drive`'s t 21 s
+  shot (`STREETS_BUILD_ALL=0 SECS=21 STEP=3`) is the user's view.
+- **Two give-way signs side by side** (user: "a lot of places have double signs"): a sign
+  with a facing (every inferred one, OSM's with a direction) was given to every way in
+  within 45 degrees of it, and where a slip road merges at a shallow angle the street it
+  joins comes in within 20 degrees: the street got the slip road's triangle (the post of the
+  first pushed the second 0.6-1.5 m out) and its dashed line -- and its traffic gave way to
+  the slip road. Now only the way in nearest the facing gets it. `tests/signs_double.gd`:
+  two poles facing one way within 3 m -- Givatayim 5 of 149, Tel Aviv 9 of 239 before,
+  0 after (poles 149 -> 138 and 239 -> 213: the plates streets had been given at merges).
+  Ashdod (the user's screenshot, "streets 2 / 645") had 2 more of another kind: two lanes of
+  a slip road arriving side by side, each its own sign, and two give-ways OSM maps 2.8 m
+  apart -- now a pole is not stood within 3 m of one of the same kind facing the same way
+  (`_sign_poles`; the second way in keeps its rule and line) (`sign_at` records each pole and its sign record; the city's data is let
+  go after loading, so a test cannot read `_city_data` then).
+- **Open: a garage tunnel's tube above the ground** by Kaplan and Begin (Tel Aviv, two
+  service tunnels of 79 and 50 m from (38, 121) north to (39-44, 164-177)): from a car's
+  height at (55, 175) a long dark box with the tunnel's lamp strips on top stands over the
+  ground (`AT="55,175" UP=40 tests/run.sh top_at 7`, low_0.png). The same before this
+  round's tunnel change -- not caused by it. `cut_under` also lists 4 service cuttings under
+  a street there and elsewhere (garage mouths).
+- **Tel Aviv grew** (another session, the bake workflow's bbox): 4,011 -> 9,597 buildings,
+  3,745 -> 5,963 roads, west to the sea -- Ashdod's size now, and its load with it (see
+  "Numbers to compare against").
 - **Waiting on the user**: the Ashdod "grass patches" spot was never pinned down: islands
   and the ground colour went out without it. **Next**: traffic overlapping at the test town's
   (-639, 261) -- a bus turning off Derekh HaHarim sweeps over the stop line of HaDolev where
@@ -1967,7 +2095,8 @@ Each line: where the code is, the test, what good reads.
   only meaningful in a real browser), `top_at` (shots by map point, `CAR=` to put the car
   anywhere), `street_at` (by street name at its roundabouts), `perf_dive`, `deck_corner`,
   `islands`, `pave_overlap`, `picker`, `minimap_route`, `warm_census`, `index_gain`,
-  `signs_inferred`; `tools/level_roads.py`.
+  `signs_inferred`, `start_drive`, `rails_near`, `cut_under`, `signs_double`;
+  `tools/level_roads.py`.
 
 ## OSM's extra fields and speed limits: handoff (20 Nov 2026)
 
@@ -2091,6 +2220,42 @@ the user's `tools/.cache/` only.
   GovMap and the Survey of Israel were not needed and not checked. The GTFS terms page on
   gov.il cannot be read by tools; the user read it and found nothing against reuse.
   Ramat Gan's layer has no licence text either; the user approved committing it too.
+
+**Second round, same night: "a lot of data, usable later even if not obvious now"** (the
+user's words). `cities/data/` has a `.gdignore` now: Godot imports `.json` as a resource and
+the web export takes every resource, so 20 MB of raw data would have gone to every player
+(the first round's ~6 MB of `.json` did ride in one build). To use a piece, bake it into the
+city file or a small file outside `data/`.
+
+| File | What | Credit |
+|---|---|---|
+| `givatayim_trees.json` | 11,893 tree crowns mapped from the air: centre + radius (OSM has a few dozen trees there) | © Givatayim Municipality |
+| `givatayim_spot_heights.json` | 10,120 surveyed spot heights, m above sea level (some on roofs) | " |
+| `givatayim_land_use.geojson` | 4,006 plots with their statutory use (residential A/B/C, commerce on the ground floor, public, open space, roads...) | " |
+| `givatayim_addresses.json` | 3,593 house-number points, Hebrew and English | " |
+| `givatayim_units.json` | each building's centre, flats and floors (density: how many people live where) | " |
+| `places_givatayim.geojson` | + traffic-light junctions 17, shared scooter/bike parking 180, recycling bins 118 (with kind: clothes, glass...), youth centres 12, defibrillators 93 (place, hours), institutions' protected spaces 148, active building sites 54 (polygons, with what is built), antiquity sites 8 | " |
+| `places_ramat_gan.geojson` | the level-1 box: kindergartens 56, schools 10, building sites 63, advertising columns 264, bus stops' shade (`shade_pct`, `canopy_m2`) 58, commercial plots 4 | © Ramat Gan Municipality |
+| `ashdod_muni.geojson` | 1,300 public buildings with floors, use, kind and name -- Ashdod publishes no layer of all its buildings; applied to `ashdod.json`: 316 heights, guesses 9,499 -> 9,183 | © Ashdod Municipality |
+| `places_ashdod.geojson` | kindergartens 234, schools 133, youth movements 41, pharmacies 22, parks 402 (polygons, names), sculptures 117, sycamores 53, old trees 112, vegetation survey 214 polygons (species), nature sites 31, shelters 76, direction signs 177, city maps 30, billboards 30, bus terminals 8, BRT corridors (stage A 67, B 69 lines), traffic lights 52, bus stops 409 (with their lines), fuel stations 35, covered parking 203, archaeology 31 | " |
+| `ashdod_land_use.geojson`, `ashdod_addresses.json` | 11,629 plots' use; 9,718 house numbers | " |
+| `tel_aviv_trees.json` | 8,515 street trees with species (Hebrew and Latin) | © Tel Aviv-Yafo Municipality (open-data licence) |
+| `tel_aviv_lamp_poles.json`, `tel_aviv_hydrants.json` | 16,894 lamp poles (type, lamps each); 2,102 hydrants | " |
+| `tel_aviv_businesses.json` | 13,125 licensed businesses: what they are, floor, street -- no names (a sole trader's is their own) | " |
+| `places_tel_aviv.geojson` | bus lanes with hours 89, parking zones 7, building sites 790 (stage, use), preserved buildings 2,188, motorbike parking 371, loading-zone signs 386, taxi stands 44, bike paths 210 (width, direction), bike-share stations 717, sculptures 98, notice boards 137 | " |
+| `transit_tel_aviv.json` | level 7's box: 372 stops, 225 lines, 19,482 trips (same format as the others) | Israel Ministry of Transport |
+
+Boxes: Givatayim's and Ramat Gan's are level 1's; Tel Aviv's is level 7's joined with level
+1's west strip; Ashdod's map is the whole town. Scripts: `ramat_gan_layers.py` and
+`tel_aviv_layers.py` (both reachable from anywhere, so a cloud session can refresh them);
+Givatayim's and Ashdod's come only through their map viewers in a browser (see the
+`real-places` skill), so there is no script: the layer ids and fields are in each file's
+`source`. Not fetched: their security cameras, parcels, planning lines and alerts, and any
+manager, phone or key-holder field; Ashdod's bike paths and urban-renewal zones fail on its
+server. Ideas it opens: real tree species and sizes along the streets, lit lamp poles where
+they stand, shopfronts by kind and floor, building sites with hoardings and cranes, paid-
+parking kerbs, bus stops with their real lines and shade, sculptures and defibrillators as
+landmarks, a quiz or errand on real addresses.
 
 ## Handoff: the street's realism and life, loading split, crashes, sounds (20 Nov 2026)
 

@@ -3,7 +3,8 @@ extends SceneTree
 ## the town's main network but against a one-way ("traps"), or no way to them from it ("cut
 ## off"). Prints how many points and how many km of public street each takes, and checks the
 ## two ways round them: a "go to" an address in a cut-off pocket finds a way (to the nearest
-## street that has one), and a route set down in a trap starts outside it. Writes
+## street that has one), and a route set down in a trap starts outside it; and that traffic
+## is not put down inside one. Writes
 ## $OUT/pockets_<city>.json (the points, for tests/pockets_map.py to draw).
 ##   LEVEL=1 STREETS_BUILD_ALL=0 $GODOT --headless --path . -s res://game/streets/tests/pockets.gd
 var g: Node
@@ -97,5 +98,27 @@ func _run() -> void:
 	g._route = {}
 	g._set_auto(false)
 	print("a route from an address in a trap: started outside it %d of %d" % [moved, traps])
-	print("POCKETS: %s" % ("PASS" if found == tried and moved == traps else "FAIL"))
+	# traffic put down round a player standing in or by a pocket: none of it inside one (it
+	# never got out: a trap's one-ways, a cut-off pocket's barrier)
+	var put := 0
+	var inside := 0
+	var tries := 0
+	for marks: Dictionary in [g._trap, g._cut_off]:
+		for n: int in marks:
+			if tries >= 8:
+				break
+			if tries > 0 and (g._nodes[n] as Vector2).distance_to(g._pos) < 300.0:
+				continue
+			tries += 1
+			g._pos = g._nodes[n]
+			for c in g._traffic.cars:
+				c.alive = g._traffic._spawn(c, true)
+				if not c.alive:
+					continue
+				put += 1
+				var on: Dictionary = g._nearest_seg(c.pos, 6.0, true, true)
+				if not on.is_empty() and (g._pocketed(on, g._trap) or g._pocketed(on, g._cut_off)):
+					inside += 1
+	print("traffic put down round %d places in or by a pocket: %d cars, %d inside a pocket" % [tries, put, inside])
+	print("POCKETS: %s" % ("PASS" if found == tried and moved == traps and inside == 0 else "FAIL"))
 	quit(0)

@@ -136,6 +136,15 @@ the parked cars, which stand a third in the road).
     building, the first in `SURVEYS` wins, so measured heights go before floor counts.
   - *Neither had a licence on the page*, only "© the municipality" and a disclaimer. Ask the
     user before committing such a layer, and say so in the notes.
+  - *A town's map viewer usually holds far more than buildings*: trees mapped from the air
+    (crowns), spot heights, land use per plot, house numbers, kindergartens, shelters,
+    bus stops with their lines, signs, sculptures. Many Israeli towns run the same viewer
+    (`v5.gis-net.co.il/v5/<Town>`, two of them checked); its layer list says which are
+    public. Leave out cameras, parcels and any manager, phone or key-holder field.
+  - *Raw data beside a game ships with it*: Godot imports `.json` as a resource and the web
+    export takes every resource, so a folder of source data (20 MB once) goes to every
+    player unless it holds a `.gdignore`. Keep raw extracts in an ignored folder and bake
+    what a feature needs into the city file.
   - *Which Israeli government hosts refuse scripts*: e.data.gov.il (the open-data portal's
     file server, behind CloudFront) answers a script with 403 even from a home connection in
     Israel; the CKAN API on data.gov.il itself answers (`datastore_search`, paged, no SQL),
@@ -269,7 +278,10 @@ the parked cars, which stand a third in the road).
   divided road's median (only the outer way in), and junctions with a mapped sign nearby. Two
   signs at one point must both be kept (code keyed by point kept the last). And a pole tried
   at one spot by the line stood at 44 of 167 corners (the corner's asphalt, a wall): try a
-  few further back and further out.
+  few further back and further out. A sign with a facing belongs to the ONE way in nearest
+  it, not to every way within some angle: a slip road merges at a shallow angle, so the
+  street it joins comes in within 20 degrees of it, and "within 45" gave the street the slip
+  road's give-way too -- two plates side by side, and the street's traffic giving way.
 - **Roundabouts** are closed one-way ways (or tagged junction=roundabout). An AI that plans
   to the end of the way drives the whole circle, then picks "straight on" -- round again.
   Plan only to the next exit, and make staying on less likely with every piece driven.
@@ -415,6 +427,32 @@ the parked cars, which stand a third in the road).
   cars as far along their paths as the gap needs (5-6 s, ~70 m at 50 km/h), aim to stop
   a little short of the line, and do not count a junction it is holding for as entered
   just because it rolled a metre past its line. While it holds, tell traffic not to wait for it.
+- **A corner is an arc from lane to lane, never one point.** A route laid as one point per
+  OSM node, each pushed into the lane square to the way to the next point, puts a corner's
+  point on the middle line of the street being left (the next street's way is square to it):
+  the car swings out before a right turn, comes round at full lock and out over the next
+  street's middle line -- "the turning radius is double what it should be". Lay each corner
+  as an arc tangent to the lane in and the lane out, no tighter than the car can steer (a
+  4.4 m car at 34 degrees is ~4.1 m round: 5-5.5 m), starting further back if it must;
+  merge a junction's points that are a few metres apart first (one junction drawn as two
+  points 0.9 m apart made two corners, the second doubling back over the first) -- keeping
+  the junction's point, not the first of them: a slip road's point 3 m short of the street
+  it joins put the corner off that street's line and the car over the kerb. A curve
+  through the point where the two lanes cross, from 5 m before the junction to 5 m after, is
+  2-3 m round for a right turn on an 8 m street: too tight to follow.
+- **A controller that brakes by how far over its target it is runs behind a braking
+  slope**: at 2 m/s^2 of braking per m/s over, following a 2.6 m/s^2 slope it is ~1.3 m/s
+  fast all the way down, into each corner 5 km/h over. Aim at each corner half a second
+  early. And a stop aimed at "the speed that just stops in time from here" never brakes at
+  all with such a controller: that target is always a hair under the speed, the error stays
+  tiny, the need grows -- command the deceleration instead (aim at the speed now less the
+  braking wanted over the controller's gain).
+- **A pure-pursuit point far ahead starts a corner early and finishes it late**: at 5.4 m
+  ahead at 14 km/h the car began a right turn 6 m early and came out with the turn not done,
+  across its new lane. Keep the point near at a corner's pace (2 + 0.6 v, at least 3.5 m).
+- **The end of a green**: on amber (and a flashing green) go only if the nose is over the
+  line before the red at the pace the plan goes there (a turn just past the line slows it);
+  "too late to stop gently" alone sent a car turning left into the red.
 - **Score the driving, don't eyeball it**: a scripted exam that drives the AI from several
   places in town and counts per minute (stuck, hits, off the road, wrong side, red lights,
   harsh braking per occasion, and traffic's own stalls, overlaps and reds) finds in one run
@@ -436,7 +474,11 @@ to skip the bridge overhead) also skips a car 50-80 m down a 5% street, or 15 m 
 one: the AI did not see the car coming to its junction, nor the car crossing in front of it,
 and side-swiped it -- in the hilly town only; the flat test town never showed it. Both on the
 ground (each within a metre of the ground under it) is one level; otherwise allow a slope's
-rise over the distance between them (~8% of it) on top of the 2.5 m. The same trap in
+rise over the distance between them (~8% of it) on top of the 2.5 m. Cheapest everywhere, in
+every check of every AI car: keep each car's height above the ground under it ("lift": ~0 on
+the street, the deck's height on a bridge) and call two things one level when their heights
+*or* their lifts are within 2.5 m -- traffic judged by height alone drove into a player
+standing in a junction at the foot of a 15% street, slowing 8 m off; by lift, 35 m off. The same trap in
 placing the car: "the nearest road at the car's height" is right on a bridge beside it and
 wrong for a jump across town -- from the valley to an address on a hill it skipped the
 street 32 m away for one 107 m off. Use the car's height only near the car.
@@ -505,6 +547,9 @@ What a driving game on one needed:
   passage through a building), goes back on the ground. Skip roads that only share an end
   point with it (its own next piece "crossed" it), and hold only what is near a crossing:
   holding whole roads, or searching from every junction in town, is slow and over-holds.
+  OSM maps one tunnel as several ways: judge "too short" by the chain, not one piece. A
+  19 m piece under a street, between two longer ones, put back on the ground came out a
+  cutting at full depth between them -- its railings standing across the street's lanes.
 - **A divided road is two decks overlapping at the median** at slightly different heights:
   decide what is under a body by the carriageway it is on first, the nearest height next,
   or it drifts onto the other and falls off its end.
