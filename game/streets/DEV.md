@@ -57,6 +57,23 @@ The ones most often touched, and the functions in them:
   -- no draws of their own. Lit shops' light on the pavement: `_shop_lights`. The night's
   colours: the night branch of `_retint_city` (a little of the palette's player colour, not
   half of it). Shop glass at night 0.85 (2.0 clipped to white).
+- **front gardens' walls and gates** -- `_garden_fronts` lays each plot's wall itself
+  (`_garden_wall`: rubble in the `wall` buffer, or render + coping in fronts' "plaster" /
+  "coping"; its kind and height from the plot's own hash), not the kerb loop any more (that
+  only records `walled` and lays the lawn strip). Gates: `_run_gates` (cached per run side
+  in `_gate_cache`) finds the doors facing the run -- `_doors_of` works out again, from the
+  city's data, the same choices `_build_buildings` makes (style, columns, height), so every
+  square agrees whether or not it has built that building -- and the plots end at them.
+  `_front_gate`: piers, the path (fronts' "path", tone "slabs", its way in the vertex green:
+  `_batch_buf` keeps the green of anything whose first vertex has alpha 0), the arch, the
+  yard car (`_yard_cars`, parked with the street's in `_build_parked`). Greenery over the
+  walls: fronts' "spill" (crown cards, a post under it when it is low). The kerbs stage
+  measured the same with all of it (1.29 s) as without (1.33).
+- **pavement covers, tree pits, recycling** -- covers: KERB_SHADER's pavement branch, one
+  in a 19 m stretch two times in five (`iron` uniform); the pavement's vertex alpha now
+  also says a narrow pavement's width (0.7-0.76: a median's: no covers). Pits:
+  `furniture.pit_kit`, four street trees in ten in Israel. Recycling: `furniture._recycling`
+  (by one junction in four, kits `_paper_bin_kit`, `_cage_kit`, `_glass_bell_kit`).
 - **grass blades** -- GRASS_SHADER on a MultiMesh of 4 m patches (`_build_grass`) whose
   node follows the camera a patch at a time (`_grass_follow`, from `_sky_follow`); a blade's
   three corners sit at its root, the shader grows it where the far-shadow picture's green
@@ -441,6 +458,12 @@ What each round found, so far:
   middle (0.6 m from the kerb on a 7 m street) and the right-hand lane of three on
   Sderot Herzl. Now +0.12 m and 1.1 m clear of the kerb; on three lanes or more the second
   from the right, over to the right-hand one before a right turn.
+- A slip road has no name in OSM: the junction offered it as a way of its own beside the
+  turn it cuts ("four options, one of them weird"), and turning right from the junction
+  itself the car turned from the middle of a three-lane road. It is now named after the
+  street it joins, merged with that turn and taken turning right; a way with no name within
+  20 degrees of another is the same choice; the choice shows from 70 m and autodrive picks
+  for you at 30 m (`tests/junction_offers.gd`: Ashdod's offers of four 95 -> 72).
 - The look-round fires only first in line and about to go (no car within 12 m in front;
   at a light, its green): it looked left and right at every red from behind a queue.
 - Traffic vehicles steer by their front: the front axle runs on the lane rounded over 4 m,
@@ -454,6 +477,19 @@ What each round found, so far:
 - The exam's own counts were off twice: harsh braking per frame (30x one stop) and traffic
   reds judged at every signal point of a junction by the heading mid-turn. Check what a
   counter counts before chasing its number.
+
+## The route set: the same ten drives, again and again
+
+`routes.json` (beside the game: the "Test routes" level lists them) holds ten drives from one address to another (Givatayim 4, Ashdod 3,
+Tel Aviv, Bedford and the test town one each), picked once by `tests/pick_routes.py` (seed
+2026; it keeps away from the places in the privacy rule below). `tests/run_routes.sh [ids]`
+drives them by "go to" and autodrive, two at a time, headless at 60 fixed ticks a second
+(the test town's in ~20 s, a big city's a few minutes), and `route_report.py` draws each
+drive with street names (OUT dir) and appends a dated block to `tests/routes_results.md`:
+arrived, time, distance, hits, the longest wait and what held it, red lights, rescues, time
+off the road. Run it after a change to driving, compare with the last block, look at the
+maps of whatever got worse. Pick a new set (another seed) only to widen what is covered;
+keep the old block for the record.
 
 ## Numbers to compare against (November 2026, cloud container, software renderer)
 

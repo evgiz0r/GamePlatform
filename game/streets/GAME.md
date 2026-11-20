@@ -44,6 +44,17 @@ drive yourself, the "look" button (or G, for glance) switches it on and off.
 > It looks left right on red lights, when it's behind many cars. It should do a look only
 > when it's the first car and it's ready to drive.
 
+**Test routes.** The last place in the list, "Test routes: watch a drive", is a list of ten
+drives, each from one real address to another (four in Givatayim, three in Ashdod, one each
+in Tel Aviv, Bedford and the test town). Pick one: its city loads, the car is set down at
+the first address and autodrive drives to the second while you watch; once there, back to
+the list. The same ten are driven by the tests and their results kept, to see the driving
+get better.
+
+> Lets find some random 10 from-to paths for driving, we would choose randomly and keep
+> track, to cover a bit more driving options. Can you add to the menu "test routes", where
+> I would be able to pick one of the routes and just watch.
+
 **On foot.** The "walk" button (or F) lets the driver out of the door to walk the same city:
 arrows or the stick to walk (a brisk 2.1 m/s) and turn, space to run (6 m/s), over the
 shoulder or (the "seat" button) from the eyes. Out of a moving car you jump: you tumble
@@ -885,6 +896,21 @@ them, thinning out by 18 m. Only at the two top qualities (fewer at the second).
 > people dont have collision and just wonder around, lets add that to the list as well.
 > when some things just pop and have no collision its wierd
 
+**Front gardens as a walk finds them** (from a second walk's video, "1-5"):
+- The garden walls are each plot's own: rough stones in mortar, or rendered and capped with
+  a slab of pale stone, from knee height to over a metre where nothing stands on them.
+- Where a building's door faces the street the wall opens: a gate between two rendered
+  piers, now and then a metal arch with bougainvillea grown over it, and a path of pale
+  slabs with a border of white stones through the garden to the door. Before a deep yard
+  the opening is wider and a car is parked in the yard, nose to the building.
+- Greenery spills out over the pavement from some of the hedges and bare walls, and over
+  the board fences at head height; the walkers step round it.
+- Set into the paving every few dozen metres: a round iron lid in a square frame, or a
+  square iron plate. Four street trees in ten stand in a square of bare earth with a low
+  concrete edge, dead leaves and a drip hose, instead of an iron grate.
+- By one junction in four of the residential streets: a big blue bin for paper, often an
+  orange cage for packaging beside it, now and then a purple bell for glass.
+
 **People who keep clear.** The walkers step round the trees, posts, benches and cabinets on
 the pavement, keep to one side of anyone coming the other way, and step round people standing
 talking and round you on foot; you and the car can no longer go through them (the car stops
@@ -1110,7 +1136,16 @@ pavements everywhere, not only here.
 
 ## Later (said, not built)
 
+- Test routes of your own: "maybe later in the same menu I would be able to enter my own" --
+  from and to with the address picker, kept beside the ten.
+
 - Bridges and tunnels in the real towns: working out each deck's heights from OSM's tags
   and the ground (the test town has them already), then an interchange you drive over and
   under.
 - Not just driving: the same baked city could be walked, or used by another game.
+- Crashes you can see, and things that break ("lets start adding maybe some collision
+  effects and things breaking"): a bin or a recycling bin knocked over and rolling, a
+  bollard or a sign post bent over, a fence panel or a hedge pushed in, sparks and a scrape
+  mark where the car rubs a wall, glass and bits of plastic on the road after a hard hit,
+  dents on the car; people jumping back, or falling, when a car comes at them. Things the
+  car knocks over stay knocked over for a while, then are put back.
