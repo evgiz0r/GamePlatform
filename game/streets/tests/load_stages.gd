@@ -26,7 +26,8 @@ func _run() -> void:
 	keys.sort_custom(func(a, b): return int(st[a]) > int(st[b]))
 	var total := 0
 	for k in keys:
-		total += int(st[k])
+		if not String(k).contains(":"):   # ("kerbs: corners" is a part of "kerbs")
+			total += int(st[k])
 	print("%s: ready after %.1f s; stages add up to %.1f s" % [g._city_name, wall / 1000.0, total / 1000.0])
 	for k in keys:
 		if int(st[k]) >= 50:

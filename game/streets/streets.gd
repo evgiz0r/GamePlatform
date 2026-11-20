@@ -994,11 +994,14 @@ func start(_config: Dictionary) -> void:
 		_show_banner("no city file -- see GAME.md", 30.0)
 		return
 	var t1 := Time.get_ticks_msec()
+	_stage_ms["city file (parse, roads fitted, buildings cut)"] = t1 - t0
 	world_area = _bounds
 	if not await _build_world():
 		return
+	var tw := Time.get_ticks_msec()
 	if not await _warm_up():
 		return
+	_stage_ms["warm up (shaders compiled, 4 frames)"] = Time.get_ticks_msec() - tw
 	_loading.queue_free()
 	var tm := Time.get_ticks_msec()
 	_map_build_cells()
@@ -1892,10 +1895,12 @@ func _build_kerbs() -> void:
 							bushes.append(Transform3D(Basis.from_scale(Vector3(1.3, 0.9, 1.3) * sc), _g3(q, 0.45 * sc)))
 						s += step
 					s -= L
+	var tk := Time.get_ticks_msec()
 	if med:
 		_build_medians(kerb, pave)
 	var corners := CBuf.new(GROUND_CELL)
 	_kerb_corners(kerb, pave, corners, Color((0.25 if med else 0.0) + 0.05, 0, 0))
+	_stage_ms["kerbs: corners and medians"] = Time.get_ticks_msec() - tk
 	_asph_hash = {}
 	_add_mesh(corners, _surface("asphalt"), false, VIEW_RANGE)
 	_kerb_mat = ShaderMaterial.new()
@@ -1930,7 +1935,8 @@ func _median_road(r: Dictionary) -> bool:
 	if not r["drive"] or int(r["o"]) != 0 or r.get("ring", false) or not _kerbed(r):
 		return false
 	var w := float(r["w"])
-	return (r["k"] in ["trunk", "primary", "secondary"] and w >= 11.0) or (r["k"] == "tertiary" and w >= 14.0)
+	# (secondary streets come out 10 m wide, tertiary 9: the main roads, not the side streets)
+	return (r["k"] in ["trunk", "primary", "secondary"] and w >= 9.5) or (r["k"] == "tertiary" and (w >= 12.0 or int(r["l"]) >= 4))
 
 func _build_medians(kerb: Buf, pave: Buf) -> void:
 	var zebra := {}
@@ -10530,9 +10536,13 @@ func _autodrive(dt: float) -> Array:
 	# the car in front, kept a couple of metres and a second or so behind; after waiting
 	# a while, ignore cars crossing the lane (a standoff in a junction) -- never one ahead
 	var lead: Array = _traffic.lead_on(_ap_pts, _pos, clampf(12.0 + _v * 1.2 + _v * _v / 5.2, 18.0, 130.0), _ap_wait > 3.0)
+	if float(lead[0]) < 30.0 and _ap_pass_bus(lead):
+		lead = _traffic.lead_on(_ap_pts, _pos, clampf(12.0 + _v * 1.2 + _v * _v / 5.2, 18.0, 130.0), _ap_wait > 3.0)
 	if float(lead[0]) < INF:
 		var lv: float = lead[1]
-		var room := float(lead[0]) - CAR_LEN - 2.2 - lv * 1.2
+		# from my nose to its back (a bus is two and a half cars long: kept a car's length
+		# from its middle, autodrive drove into its back)
+		var room := float(lead[0]) - CAR_LEN * 0.5 - float(lead[2]) - 2.2 - lv * 1.2
 		var follow := 0.0 if room <= 0.0 else sqrt(lv * lv + 2.0 * 2.6 * room)
 		if follow < vt:
 			vt = follow
@@ -10801,6 +10811,60 @@ func _ap_leg(ri: int, from: int, dir: int) -> void:
 	# gentle-looking many-sided ring of a roundabout both come out as the tight turns
 	# they are. (Points near the old end are redone now that there is road beyond them.)
 	_ap_curves(start - 10)
+
+## Round a bus at its stop: on a road of two lanes or more each way, a bus standing at the
+## kerb ahead is passed in the next lane over when that lane is clear from 15 m behind to 25 m
+## ahead -- moving out over 8 m before it, back in 12 m past it -- instead of queueing behind
+## it for the whole stop (or, as it once did, driving into its back). True when it moved out.
+var _ap_passed := -1                 ## the bus last passed (not again)
+
+func _ap_pass_bus(lead: Array) -> bool:
+	var bi: int = lead[3]
+	if bi < 0 or bi == _ap_passed:
+		return false
+	var bus = _traffic.cars[bi]
+	if bus.kind != "bus" or bus.v > 0.6 or bus.dwell <= 0.0 or _ap_pts.size() < 3:
+		return false
+	var hit := _nearest_seg(_pos, 12.0, true, true)
+	if hit.is_empty():
+		return false
+	var r: Dictionary = _roads[hit["road"]]
+	var n := _lanes_each_way(r)
+	if n < 2:
+		return false
+	var w := float(r["w"])
+	var lane_w := w / n if int(r["o"]) != 0 else (w * 0.5) / n
+	var fwd := _fwd()
+	var left := Vector2(fwd.y, -fwd.x)
+	var gap: float = lead[0]
+	if _ap_turn_ahead() != 0:
+		return false   # (a junction just after it: stay in lane)
+	# the next lane over clear, by every car's middle
+	for c in _traffic.cars:
+		if not c.alive or c == bus:
+			continue
+		var rel: Vector2 = c.pos - _pos
+		var ahead := rel.dot(fwd)
+		var side := rel.dot(left)
+		if ahead > -15.0 and ahead < gap + 25.0 and side > lane_w * 0.4 and side < lane_w * 1.6:
+			return false
+	# out, past, back in: the points of the plan from just ahead to past the bus
+	var s := 0.0
+	var half: float = bus.len * 0.5
+	var start_s := maxf(gap - half - 10.0, 2.0)
+	var end_s := gap + half + 12.0
+	for k in range(1, _ap_pts.size()):
+		s += _ap_pts[k - 1].distance_to(_ap_pts[k])
+		if s > end_s + 8.0:
+			break
+		var t := clampf((s - start_s) / 8.0, 0.0, 1.0) * clampf((end_s + 8.0 - s) / 8.0, 0.0, 1.0)
+		if t <= 0.0:
+			continue
+		var kd := (_ap_pts[mini(k + 1, _ap_pts.size() - 1)] - _ap_pts[k - 1]).normalized()
+		_ap_pts[k] += Vector2(kd.y, -kd.x) * lane_w * t
+	_ap_passed = bi
+	Probe.event("pass_bus", {"lane_w": snappedf(lane_w, 0.1)})
+	return true
 
 ## Into the turn lane: before a left turn, over the last 45 m, the lane on the left of its
 ## way -- the leftmost of a one-way road of several, the one beside the centre line of a

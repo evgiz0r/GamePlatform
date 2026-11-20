@@ -53,9 +53,14 @@ func _run() -> void:
 	var last_hit := ""
 	var odo0: float = g._odo
 	var shot := false
+	var passes := 0
+	var passed_was: int = g._ap_passed
 	while t < 120.0:
 		await physics_frame
 		t += dt
+		if g._ap_passed != passed_was:
+			passed_was = g._ap_passed
+			passes += 1
 		var h = g._last_hit
 		if h != "" and h != last_hit and g._crash_cool > 0.0:
 			var kind: String = h.split(" ")[0]
@@ -107,5 +112,6 @@ func _run() -> void:
 		var lat_me: float = (g._pos - (hit["q"] as Vector2)).dot(Vector2(-d.y, d.x))
 		multi += dt
 		off_sum += absf(lat_me - float(g._lane_off(r))) * dt
+	print("buses passed at their stops: %d" % passes)
 	print("120 s from %.0f m away: %.0f m driven; on multi-lane one-ways %.0f s, %.2f m from the right lane's middle on average; bonks %d; hits %s" % [best, g._odo - odo0, multi, off_sum / maxf(multi, 0.01), bonks, str(hits)])
 	quit(0)
