@@ -557,8 +557,16 @@ the city now has what the walk had underfoot and at eye height:
 - Front gardens plot by plot (14-22 m each, a gap for the gate): a low wall of rough stones in
   mortar, with a clipped hedge behind it, white bars or green chain-link on top, or bare;
   bougainvillea spilling over one in six; the garden shrubs leafy, not smooth balls.
+- The ground darker where things stand on it, as the sky's light reaches less of it there:
+  a soft band out from the foot of every building, darker still in its inside corners; the
+  parking under a block on columns in the shade; a dark patch under every parked car,
+  softening out past its sides. Without it the houses and cars looked as if they hovered a
+  hair above the street. It is one faint layer laid out with the city, so it costs almost
+  nothing while you drive.
 
 > ok lets start as you say
+
+> ok go next
 
 > I took a video on my phone, walking in Givatayim.
 

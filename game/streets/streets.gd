@@ -1777,6 +1777,7 @@ func _build_tile(t: Vector2i) -> void:
 	for a: Array in [_stop_lines, _pole_plates, _chimneys, _mall_glass, _lobby_doors, _balcony_flags, _flag_spots, _stop_ads]:
 		a.clear()   # made by one builder for the next, square by square
 	var tk := Time.get_ticks_msec()
+	_ao = CBuf.new(GROUND_CELL)
 	await _build_ground()
 	tk = _stage("roads", tk)
 	await _build_buildings()
@@ -1795,6 +1796,8 @@ func _build_tile(t: Vector2i) -> void:
 	tk = _stage("lamps", tk)
 	await _build_parked()
 	await _build_lots()
+	_add_mesh(_ao, _ao_material(), false, AO_SEEN)   # (after the buildings and the cars)
+	_ao = null
 	tk = _stage("parked", tk)
 	await _build_signals()
 	await _build_signs()
@@ -3243,6 +3246,7 @@ func _build_buildings() -> void:
 		var raised: float = bd["_base"]
 		var h: float = g_avg + float(bd["_h"])
 		var base: float = g_lo + raised - (0.6 if raised == 0.0 and _hnx > 0 else 0.0)
+
 		var key := _cell(_bld_box_of(ring).get_center(), CHUNK)
 		if not chunks.has(key):
 			chunks[key] = [Buf.new(), Buf.new()]
@@ -3283,6 +3287,12 @@ func _build_buildings() -> void:
 			"sgn": sgn, "gabled": gabled, "pilotis": pilotis, "lip": lip}
 		bd["_look"] = look
 		_bld_kind[bi] = 1 if pilotis else (2 if gabled else 0)
+		if raised == 0.0 and _ao != null:
+			if pilotis:   # the parking under it (round the lobby, 2.2 m in) in the shade, and a little out past its edge
+				_ao_footprint(ring, sqrt(0.55), -2.4, Color(1.0, 0.55, 0.0))
+				_ao_footprint(ring, sqrt(0.55), 1.2)
+			else:
+				_ao_footprint(ring)
 		if pilotis:
 			_lift_on_columns(ring, sgn, base, g_lo + 3.0, roofs, cores, look)
 		elif raised >= 2.0:
@@ -5259,6 +5269,7 @@ func _build_parked() -> void:
 							var lean := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, -pitch) \
 								* Basis(Vector3.BACK, roll) * Basis(Vector3.FORWARD, -0.05 * sgn)
 							(xf_by[kind] as Array).append(Transform3D(lean, _g3(p, 0.1)))   # half up the kerb
+							_ao_car(p, face, KERB_H + 0.025)
 							(cols_by[kind] as Array).append(paint)
 							xf.append(0)
 							_add_post(p + face * 1.25, 0.85)
@@ -5348,6 +5359,7 @@ func _build_lots() -> void:
 						var f := face.rotated(rng.randf_range(-0.05, 0.05))
 						var at := p + u * rng.randf_range(-0.15, 0.15) - face * 0.2
 						(xf_by[kind] as Array).append(Transform3D(Basis(Vector3.UP, atan2(f.x, f.y)), _g3(at, 0.02)))
+						_ao_car(at, f, Y_AREA + 0.035)
 						if taken == 1:
 							_lot_at.append(at)
 						(cols_by[kind] as Array).append(palette[rng.randi() % palette.size()])
@@ -5393,6 +5405,7 @@ func _build_lots() -> void:
 						var kind: String = CAR_MIX[rng.randi() % CAR_MIX.size()]
 						var f := face.rotated(rng.randf_range(-0.05, 0.05))
 						(xf_by[kind] as Array).append(Transform3D(Basis(Vector3.UP, atan2(f.x, f.y)), _g3(p, 0.02)))
+						_ao_car(p, f, Y_AREA + 0.035)
 						(cols_by[kind] as Array).append(palette[rng.randi() % palette.size()])
 						_add_post(p + f * 1.25, 0.85)
 						_add_post(p - f * 1.25, 0.85)
@@ -7466,6 +7479,131 @@ func _signals_tick(dt: float) -> void:
 		_sig_t = 0.0
 		_sig_phase = (_sig_phase + 1) % SIGNAL_CYCLE.size()
 		_apply_signals()
+
+## ---- contact shadows ------------------------------------------------------------------------
+## Where a wall meets the ground, and under a parked car, less of the sky's light gets in and
+## the ground is darker: what makes a house stand on the street and a car sit on it, rather
+## than float over them (the walls' own feet are darker already, in WALL_SHADER). The
+## Compatibility renderer has no ambient occlusion, so it is laid out with the city: soft
+## dark strips multiplied over whatever ground is there -- one mesh a square, drawn after the
+## ground, writing no depth, gone past AO_SEEN. Its ramp is UV.x (1 at the foot, 0 at the
+## rim), its depth COLOR.r, a flat floor to the ramp COLOR.g (the ground under a block on
+## columns, dark all over). It lies a little above the pavement, whatever is under it: on a
+## lawn or a car park it floats a hand's width up, which a soft dark ramp does not show.
+const AO_SHADER := """
+shader_type spatial;
+render_mode unshaded, blend_mul, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
+uniform float strength = 0.62;
+uniform float far = 150.0;
+void fragment() {
+	float a = max(UV.x * UV.x, COLOR.g);   // (squared: falls away faster than the straight ramp)
+	float fade = 1.0 - smoothstep(far * 0.5, far, length(VERTEX));
+	ALBEDO = vec3(1.0 - strength * COLOR.r * a * fade);
+}
+"""
+const AO_SEEN := 150.0
+const AO_W := 1.7             ## how far out from a wall the ground is darker (m)
+var _ao: CBuf = null          ## this square's contact shadows, while it is built (_build_tile)
+var _ao_mat: ShaderMaterial
+
+func _ao_material() -> ShaderMaterial:
+	if _ao_mat == null:
+		_ao_mat = ShaderMaterial.new()
+		var sh := Shader.new()
+		sh.code = AO_SHADER
+		_ao_mat.shader = sh
+		_ao_mat.set_shader_parameter("far", AO_SEEN)
+		_ao_mat.render_priority = -1   # (under the other see-through things: leaves, glass)
+	return _ao_mat
+
+## the ground round a building's foot: a strip out from each wall, a fan round each outside
+## corner. At an inside corner two strips overlap and it is darker still, as it is. (w
+## negative: a strip in under it instead.) Built for every building, so every height is
+## looked up once: it was 150 us a building done plainly, a third of the buildings' build.
+func _ao_footprint(ring: PackedVector2Array, foot := 1.0, w := AO_W, col := Color(1, 0, 0)) -> void:
+	var n := ring.size()
+	if n > 1 and ring[0].distance_squared_to(ring[n - 1]) < 0.0001:
+		n -= 1
+	if n < 3:
+		return
+	var area := 0.0
+	for i in range(n):
+		area += ring[i].cross(ring[(i + 1) % n])
+	var sg := 1.0 if area > 0.0 else -1.0   # out is to the right of each wall going round
+	var y := KERB_H + 0.025
+	var one := Vector2(foot, 0)
+	var zero := Vector2.ZERO
+	var up := Vector3.UP
+	var foot3 := PackedVector3Array()
+	foot3.resize(n)
+	for i in range(n):
+		foot3[i] = _g3(ring[i], y)
+	var carry := Vector3.INF     # the next wall's outer start, made by the corner before it
+	for i in range(n):
+		var i1 := (i + 1) % n
+		var a := ring[i]
+		var b := ring[i1]
+		var L := a.distance_to(b)
+		if L < 0.05:
+			carry = Vector3.INF
+			continue
+		var d := (b - a) / L
+		var o := Vector2(d.y, -d.x) * sg
+		# the strip, in pieces short enough to follow the ground on a hill
+		var k := maxi(1, int(L / 8.0))
+		var f0 := foot3[i]
+		var r0 := carry if carry != Vector3.INF else _g3(a + o * w, y)
+		for j in range(1, k + 1):
+			var p1 := a.lerp(b, float(j) / k)
+			var f1 := foot3[i1] if j == k else _g3(p1, y)
+			var r1 := _g3(p1 + o * w, y)
+			_ao.tri(f0, f1, r1, up, col, one, one, zero)
+			_ao.tri(f0, r1, r0, up, col, one, zero, zero)
+			f0 = f1
+			r0 = r1
+		carry = Vector3.INF
+		# an outside corner at b: a fan from the last wall's strip round to the next one's
+		var c := ring[(i + 2) % n]
+		if c.distance_to(b) < 0.05:
+			continue
+		var d2 := (c - b).normalized()
+		if d.cross(d2) * sg * signf(w) > 0.0:   # (turning towards the inside: the outside opens up)
+			var o2 := Vector2(d2.y, -d2.x) * sg
+			var turn := o.angle_to(o2)
+			var steps := clampi(int(ceil(absf(turn) / 1.6)), 1, 3)   # (a right angle: one; the soft ramp hides the chamfer)
+			for st in range(1, steps + 1):
+				var nx := _g3(b + o.rotated(turn * float(st) / steps) * w, y)
+				_ao.tri(foot3[i1], r0, nx, up, col, one, zero, zero)
+				r0 = nx
+			carry = r0   # (b + o2 * w: where the next wall's strip starts)
+
+var _ao_cars: Array = []      ## [middle, nose] of the first cars given a patch (for tests)
+
+## under a parked car (middle c, nose along fwd): dark under it, softening out past its sides
+func _ao_car(c: Vector2, fwd: Vector2, lift: float) -> void:
+	if _ao == null:
+		return
+	if _ao_cars.size() < 400:
+		_ao_cars.append([c, fwd])
+	var sd := Vector2(fwd.y, -fwd.x)
+	var col := Color(1.0, 0, 0)
+	var inner: Array = []
+	var outer: Array = []
+	for q: Vector2 in [Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), Vector2(-1, 1)]:
+		inner.append(c + sd * q.x * 0.75 + fwd * q.y * 1.95)
+		outer.append(c + sd * q.x * 1.7 + fwd * q.y * 3.1)
+	var one := Vector2(1, 0)
+	var I: Array = []
+	var O: Array = []
+	for i in range(4):
+		I.append(_g3(inner[i], lift))
+		O.append(_g3(outer[i], lift))
+	_ao.tri(I[0], I[1], I[2], Vector3.UP, col, one, one, one)
+	_ao.tri(I[0], I[2], I[3], Vector3.UP, col, one, one, one)
+	for i in range(4):
+		var j := (i + 1) % 4
+		_ao.tri(I[i], I[j], O[j], Vector3.UP, col, one, one, Vector2.ZERO)
+		_ao.tri(I[i], O[j], O[i], Vector3.UP, col, one, Vector2.ZERO, Vector2.ZERO)
 
 ## ---- paint at junctions, speed limits --------------------------------------------------------
 var _stop_lines: Array = []          ## [junction, way in, line before it, road width, one-way, "stop" or ""]

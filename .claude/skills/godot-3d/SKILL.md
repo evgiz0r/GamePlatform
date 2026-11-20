@@ -48,6 +48,20 @@ is a Z coordinate, not a height.
   partly toward grey; if you do, check the palette's accent colours on screen after.)
   Shadows are off by default (`sun.shadow_enabled`); turn them on per game if the look
   needs them, they cost on phones.
+- **Ambient occlusion, faked.** The Compatibility renderer has no SSAO, and without it
+  buildings and parked cars seem to hover over the ground even with sun shadows on (most of
+  a street is in some shadow already, where a sun shadow adds nothing). What works: a layer
+  of soft strips laid out with the world (out from each wall's foot, under each parked car)
+  in a shader with `render_mode unshaded, blend_mul, depth_draw_never, fog_disabled`, its
+  ALBEDO `1 - strength * ramp^2`, faded out with distance in the shader. Multiply needs no
+  sorting against what is under it and doubles up by itself in inside corners, where it
+  should be darker. Lay it a few cm above the highest ground it can be on (the pavement): a
+  soft ramp floating a hand's width over a lawn does not show, one sunk under the pavement
+  is gone. One mesh per merged square: a draw each. Build cost is per corner of every
+  outline, so look each height up once. Darken the walls' own feet in the wall shader too.
+  To judge it, shoot the same view with the layer hidden and shown, and diff the pictures:
+  by eye, at a 0.4 strength it was invisible, and traffic and fading HUD labels change
+  between shots too.
 - **Resolution**: the 3D `SubViewport` renders at the real window size (up to 3x the
   640x360 design space, half-step multiples) and is scaled down with linear filtering,
   with 4x MSAA. The kit's nearest-neighbour default is for pixel art and made 3D look
