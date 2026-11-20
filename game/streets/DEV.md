@@ -404,6 +404,12 @@ What each round found, so far:
   middle (0.6 m from the kerb on a 7 m street) and the right-hand lane of three on
   Sderot Herzl. Now +0.12 m and 1.1 m clear of the kerb; on three lanes or more the second
   from the right, over to the right-hand one before a right turn.
+- A slip road has no name in OSM: the junction offered it as a way of its own beside the
+  turn it cuts ("four options, one of them weird"), and turning right from the junction
+  itself the car turned from the middle of a three-lane road. It is now named after the
+  street it joins, merged with that turn and taken turning right; a way with no name within
+  20 degrees of another is the same choice; the choice shows from 70 m and autodrive picks
+  for you at 30 m (`tests/junction_offers.gd`: Ashdod's offers of four 95 -> 72).
 - The look-round fires only first in line and about to go (no car within 12 m in front;
   at a light, its green): it looked left and right at every red from behind a queue.
 - Traffic vehicles steer by their front: the front axle runs on the lane rounded over 4 m,
@@ -417,6 +423,19 @@ What each round found, so far:
 - The exam's own counts were off twice: harsh braking per frame (30x one stop) and traffic
   reds judged at every signal point of a junction by the heading mid-turn. Check what a
   counter counts before chasing its number.
+
+## The route set: the same ten drives, again and again
+
+`tests/routes.json` holds ten drives from one address to another (Givatayim 4, Ashdod 3,
+Tel Aviv, Bedford and the test town one each), picked once by `tests/pick_routes.py` (seed
+2026; it keeps away from the places in the privacy rule below). `tests/run_routes.sh [ids]`
+drives them by "go to" and autodrive, two at a time, headless at 60 fixed ticks a second
+(the test town's in ~20 s, a big city's a few minutes), and `route_report.py` draws each
+drive with street names (OUT dir) and appends a dated block to `tests/routes_results.md`:
+arrived, time, distance, hits, the longest wait and what held it, red lights, rescues, time
+off the road. Run it after a change to driving, compare with the last block, look at the
+maps of whatever got worse. Pick a new set (another seed) only to widen what is covered;
+keep the old block for the record.
 
 ## Numbers to compare against (November 2026, cloud container, software renderer)
 
