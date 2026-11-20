@@ -27,6 +27,14 @@ data format is at the top of `tools/osm_city.py`; this is about living with it.
   `place` then only its name) -- e.g. read off a screenshot of a map with two landmarks of
   known position for the scale. A box has no boundary: no "welcome to" at the limits, and
   the striped barrier at the map edge is the whole border.
+- **The ground heights see the roofs.** The terrain tiles the baker reads are a surface
+  model (mostly SRTM): in a city centre a cluster of towers comes out as a hill. One
+  centre's grid stood 146 m high under three towers, with slopes of 300%, and the buildings
+  round it sat on the hill's flanks. Look at the grid (`height.h`: max, steepest step) before
+  driving a new city, and bake one with towers or dense blocks with `--bare-ground` (the
+  workflow's `bare_ground`): a grey opening over ~90 m takes out bumps narrower than ~180 m
+  and keeps broad hills and valleys (that centre: 0-38 m, steepest 13%). It also lowers a
+  real hill's crest a little (one town's 86 -> 72 m), so it is not the default.
 - `tools/fake_city.py` makes up a small town with one of every awkward thing (divided
   boulevard, big signalled junction, roundabouts, a one-way pair, a steep hill, car parks)
   in a second, no network. Use it to check a change quickly; check real towns before

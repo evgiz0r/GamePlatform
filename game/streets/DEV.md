@@ -313,7 +313,7 @@ What each round found, so far:
 | 2 | Bedford, Nova Scotia ("north") | place "Bedford, Nova Scotia", include "Hemlock Ravine Park; Kearney Lake; Sandy Lake; Fleetview Drive" |
 | 3 | Ashdod ("med") | place "Ashdod" |
 | 4 | Kiryat Dimyon, made up | `tools/fake_city.py` |
-| 7 | Tel Aviv, a box of the centre ("med") | place "Tel Aviv", bbox "32.0639,34.7795,32.0858,34.8021" (read off the user's map screenshot), margin 150 |
+| 7 | Tel Aviv, a box of the centre ("med") | place "Tel Aviv", bbox "32.0639,34.7795,32.0858,34.8021" (read off the user's map screenshot), margin 150, bare_ground on (without it Azrieli stood on a 146 m hill of its own roofs) |
 
 The start points are public street corners named in `LEVELS`. **The web build is public:
 never use an address the user has mentioned as theirs or their family's -- not as a start,
@@ -520,6 +520,17 @@ before and a tunnel without it is still dropped.
 
 ## Open problems
 
+- **Tel Aviv's bridges and tunnels have no heights** (Nov 2026). OSM tags them but says
+  nothing of how high, so the 2.4 km of bridges (every road over the Ayalon: Moses,
+  Givat HaTahmoshet, Modai, Arvei Nahal, Yitzhak Sadeh, Begin's) lie on the ground and cross
+  the motorway flat, sharing no point with it, and the 4.2 km of drivable tunnels (Lova
+  Eliav 900 m, Uzi Hitman, Carlebach, Begin under Kaplan) are left out. The test town's
+  decks (`y` per point, `decks.gd`) are the way: work the heights out in the bake or at load
+  from `br`/`tu`/`ly`, the ramps being the ways either side.
+- **Givatayim's ground is the terrain tiles' surface model too**: its "steepest 52%" is
+  likely part roofs. Measured on its grid, `--bare-ground` would take the hill's crest
+  86 -> 72 m and the steepest slope 48 -> 16%. Not re-baked: it moves the ground under the
+  filmed walks and every test number, and is the user's call.
 - **Scene tests started with `Flow.start_game` (the `tests/*.gd` way) drew no road surfaces
   in Ashdod round its start** (Nov 2026, cloud container): asphalt, kerbs and zebras missing,
   poles, signs, trees and cars there, from 9 m and from 32 m up (`median_nose`). The same
