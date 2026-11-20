@@ -846,7 +846,7 @@ func _clear_at(m: Vector2) -> bool:
 ## a see-through panel H high from a to e (the shader draws the bars), a post every
 ## `post_every` pieces of about `step` metres
 func _fence_line(panel, posts, a: Vector2, e: Vector2, H: float, col: Color, step: float, rail := false,
-		post_every := 1) -> float:
+		post_every := 1, base := 0.0) -> float:
 	var done := 0.0
 	var run := 0.0
 	var i := 0
@@ -854,8 +854,8 @@ func _fence_line(panel, posts, a: Vector2, e: Vector2, H: float, col: Color, ste
 		var p0: Vector2 = pc[0]
 		var p1: Vector2 = pc[1]
 		var L := p0.distance_to(p1)
-		var y0 := _h(p0)
-		var y1 := _h(p1)
+		var y0 := _h(p0) + base   # (base: standing on a wall that high)
+		var y1 := _h(p1) + base
 		var A := Vector3(p0.x, y0, p0.y)
 		var B := Vector3(p1.x, y1, p1.y)
 		var up := Vector3.UP * H
