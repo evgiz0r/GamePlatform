@@ -767,6 +767,12 @@ Nothing is half done: all of the above is on main.
 
 ## Cities
 
+Re-bake with `main_server_only` on, and diff the counts against the file it replaces
+(`git show HEAD:<file>` and compare roads, buildings, crossings, areas): a mirror twice
+answered with ~12% fewer road pieces. Last re-bakes: Givatayim and Tel Aviv, 20 Nov 2026
+evening, for the extra fields (see "OSM's extra fields and speed limits" below); Ashdod and
+Bedford have not been re-baked since.
+
 | Level | City | Bake (`bake_city.yml` inputs) |
 |---|---|---|
 | 1 | Givatayim (look "med") | place "Givatayim", margin 250 |
@@ -1404,8 +1410,11 @@ towns get them when re-baked. What the game does with them:
   (`set_physics_process(false)`) must set `_prev_yaw` with `_yaw`, or the view blends from
   the car's old heading and looks the wrong way.
 - **Still to do**: level crossings (trains solid, barriers); the light rail where it runs
-  on the surface; keeping `electrified=` in the bake; re-baking the other towns (Ashdod has
-  a line).
+  on the surface; keeping `electrified=` in the bake; re-baking Ashdod (it has a line) and
+  Bedford. Givatayim was re-baked (20 Nov, evening): the Ayalon line's 13 tracks run along
+  its west edge with no station in the box (3 lines, 3 km, 0 bed points over asphalt in
+  `tests/rails.gd` at level 1), and the Red Line's tracks and its Arlozoroff and Abba Hillel
+  stations are underground (light rail, tunnels).
 
 ## Landmarks (`landmarks.gd`)
 
@@ -1525,6 +1534,48 @@ Each line: where the code is, the test, what good reads.
   only meaningful in a real browser), `top_at` (shots by map point, `CAR=` to put the car
   anywhere), `street_at` (by street name at its roundabouts), `perf_dive`, `deck_corner`,
   `islands`, `pave_overlap`, `picker`, `minimap_route`.
+
+## OSM's extra fields and speed limits: handoff (20 Nov 2026)
+
+One session's work, written for whoever picks it up (its context is compacted after this).
+It started from the user asking what the city data lacks for a realistic feel; the answer
+and the outside sources that could fill it are in `IDEAS.md` ("Official data for what OSM
+leaves out").
+
+- **The bake keeps more of OSM** (`tools/osm_city.py`, format at its top): roads' `ms`
+  (speed limit, km/h), `lf`/`lb` (lanes each way), `tl`/`tlf`/`tlb` (turn:lanes as
+  written), `sf` (surface when not asphalt), `sw` (pavement sides), `bus` (bus and taxi
+  lane tags as written); buildings' `k`, `lv`, `col`, `rc`, `rs`, `mat`, `yr`. Each only
+  where tagged: missing means "not known". The bake logs a "tagged:" count per field.
+- **What the game uses: the speed limit.** A road's `speed` (streets.gd, where the city's
+  roads are read) is OSM's `ms`, else the town's own limit for that kind (`_town_limits`
+  -> `_town_ms`: 20+ tagged, a quarter of the kind, 85% one value), else the guess by kind
+  (`DRIVE`, `NORTH_FASTER`). Traffic, autodrive and the speed signs all read that one
+  number. Givatayim: residential 30 (inferred from 184 of 628 tagged), secondary 60 where
+  tagged; Tel Aviv: residential and unclassified 30, the Ayalon 90.
+- **So the residential streets of Givatayim and Tel Aviv are driven at 30 now, not 50.**
+  Route times, the exam and anything timed there before this are at the old speeds:
+  rerun before comparing. Ashdod and Bedford are unchanged until re-baked.
+- **Not used, on purpose**: wall and roof colour, roof shape, material, year -- 0.5-4% of
+  buildings in both towns (and the wall shader takes a palette tint index, not an RGB:
+  a real colour needs its own path); turn lanes and lanes each way (under 1% of pieces);
+  pavement sides (2-16%). `bus` is there for the bus-lanes item in the Tel Aviv handoff
+  above: Tel Aviv has `lanes:psv` on Kaplan and Ayalon South and `busway` on Begin.
+- **Tried and dropped: building heights from the terrain tiles** (surface minus bare
+  ground) -- no use, see the `real-places` skill.
+- **Outside data** (municipal buildings, trees, businesses, GTFS, parking zones): none
+  reachable from this cloud environment (over.org.il, data.gov.il, gisn.tel-aviv.gov.il,
+  gtfs.mot.gov.il all refused), and e.data.gov.il's CDN refuses the cloud even when
+  allowed (Tel Aviv handoff). The list and the licence caveat are in `IDEAS.md`.
+- **Checks, and what good read** (20 Nov 2026, Givatayim and Tel Aviv re-baked):
+  `tests/speed_limits.gd` -- autodrive 40 s never more than 10% over the road's limit
+  (Givatayim: 23 s at 30, 17 s at 50, fastest 51 km/h; Tel Aviv's start stays on 50 roads);
+  `tests/rails.gd` at level 1 -- 13 tracks, 3 lines, 0 bed points over asphalt;
+  `city_check` at level 1 -- 3, the same 3 with the file from before the re-bake (two
+  posts 1 m into Aluf David and Katznelson, the passage's building): not the re-bake's.
+- **Open**: re-bake Ashdod (brings its railway) and Bedford with `main_server_only`; a
+  sign at the start of each 30 street (the game has `signs_zone30`, placed by its own
+  rule, not by `ms`); the speed signs are on main roads only.
 
 ## Open problems
 

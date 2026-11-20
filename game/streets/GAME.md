@@ -1189,8 +1189,10 @@ contributors under the ODbL, which is why the credit sits on screen.
 - **Guessed**: a building with no height gets 4 storeys (by type: houses 2, garages 1,
   offices 5...), varied a storey up or down so a street is not one flat wall. A road with
   no width tag gets one by kind (residential 8 m, room for a parked row each side).
-  A road with no speed limit gets one by kind (50 km/h in town, faster on main roads in
-  the north, 90 on a motorway).
+  A road with no speed limit takes the one most of its town's mapped streets of the same
+  kind have, where enough are mapped and agree (residential streets: 30 in Givatayim and
+  Tel Aviv), else one by kind (50 km/h in town, faster on main roads in the north, 90 on
+  a motorway).
   The rows of street trees along residential streets are added, not mapped. The window
   grid is a pattern, not the real facade. The traffic lights run their own simple cycle.
   What a shop looks like (awning, tables, the bus shelter) is generic. The parked cars
