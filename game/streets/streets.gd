@@ -6671,7 +6671,7 @@ func _build_lamps() -> void:
 									var am := m + arm_dir * 0.9
 									arms.append(Transform3D(face, Vector3(am.x, gy + 6.95, am.y)))
 									heads.append(Transform3D(face, Vector3(lp.x, gy + 6.85, lp.y)))
-								_pool_at.append(Vector3(lp.x + arm_dir.x * 0.5, lp.y + arm_dir.y * 0.5, 7.5))
+								_pool_at.append(Vector3(lp.x + arm_dir.x * 0.5, lp.y + arm_dir.y * 0.5, LAMP_POOL))
 							_add_post(m, 0.18)
 						s += 34.0
 						continue
@@ -6695,7 +6695,7 @@ func _build_lamps() -> void:
 							lanterns.append(Transform3D(Basis(), Vector3(lp.x, gy + 6.85, lp.y)))
 							var fp := p + toward * 0.08
 							_flag_spots.append(Transform3D(bs, Vector3(fp.x, gy + 4.4, fp.y)))
-							_pool_at.append(Vector3(lp.x + toward.x * 0.5, lp.y + toward.y * 0.5, 7.0))
+							_pool_at.append(Vector3(lp.x + toward.x * 0.5, lp.y + toward.y * 0.5, LAMP_POOL - 0.5))
 						else:
 							var face := Basis(Vector3.UP, atan2(-toward.y, toward.x))
 							poles.append(Transform3D(Basis(), Vector3(p.x, gy + 3.5, p.y)))
@@ -6703,7 +6703,7 @@ func _build_lamps() -> void:
 							arms.append(Transform3D(face, Vector3(arm.x, gy + 6.95, arm.y)))
 							var head := p + toward * 1.75
 							heads.append(Transform3D(face, Vector3(head.x, gy + 6.85, head.y)))
-							_pool_at.append(Vector3(head.x + toward.x * 0.6, head.y + toward.y * 0.6, 7.5))
+							_pool_at.append(Vector3(head.x + toward.x * 0.6, head.y + toward.y * 0.6, LAMP_POOL))
 						_add_post(p, 0.15)
 				s += 34.0
 			s -= L
@@ -6770,6 +6770,11 @@ func _partner(c: Vector2, d: Vector2, ri: int, hw: float, o: int) -> Array:
 ## the pools of light under street and park lamps: built the first time it gets dark (a
 ## few thousand discs that follow the hills are not worth the wait if it never does)
 var _pool_at: Array = []             ## Vector3(x, z, radius)
+## A street lamp's pool, and how bright the pools are. Lamps stand every 34 m, the sides
+## taking turns, so on a wide main road one side has one every 68 m: at 7.5 m and 0.75 the
+## user found the main roads at night too dark between them ("slightly stronger").
+const LAMP_POOL := 8.5
+const POOL_STRENGTH := 0.95
 var _pools_made := false
 var _pools_from := 0                 ## _pool_at before this have theirs
 var _shop_lights: Array = []         ## [the window's foot, out to the street, how wide] of every lit shop window
@@ -6801,7 +6806,7 @@ func _make_pools() -> void:
 		pools.tri(m0, b1, b0, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(0.6, 0.72), Vector2(-0.6, 0.72))
 		pools.tri(m0, b0, a0, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(-0.6, 0.72), Vector2(-0.35, 0))
 	_shop_lit_from = _shop_lights.size()
-	for mi: MeshInstance3D in _add_mesh(pools, _glow_mat("lamplight", 0.75), false, LAMP_RANGE):
+	for mi: MeshInstance3D in _add_mesh(pools, _glow_mat("lamplight", POOL_STRENGTH), false, LAMP_RANGE):
 		mi.visible = _night
 		_night_nodes.append(mi)
 

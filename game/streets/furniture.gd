@@ -285,7 +285,7 @@ func wires() -> void:
 				arms.append(Transform3D(abs_, Vector3(p.x, gy + 7.4, p.y)))
 				var hp := p + toward * 2.3
 				heads.append(Transform3D(abs_, Vector3(hp.x, gy + 7.55, hp.y)))
-				g._pool_at.append(Vector3(hp.x + toward.x * 0.5, hp.y + toward.y * 0.5, 7.5))
+				g._pool_at.append(Vector3(hp.x + toward.x * 0.5, hp.y + toward.y * 0.5, g.LAMP_POOL))
 			if last_p != Vector2.INF and last_p.distance_to(p) < spacing * 1.6 \
 					and g._push_out((last_p + p) * 0.5, 0.3, false, false) == Vector2.ZERO:
 				for i in range(at.size()):
