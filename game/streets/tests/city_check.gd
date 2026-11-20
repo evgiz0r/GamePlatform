@@ -4,6 +4,8 @@ extends SceneTree
 ## out (roads, kerbs, walls, furniture, buildings, lights) and after merging one.
 ##
 ##   game/streets/tests/run.sh city_check 1          (1-4; 0 runs all four, one after another)
+##   SHOTS=1 OUT=dir game/streets/tests/run.sh city_check 1    and a picture of the worst two
+##       of each kind that should be 0, from 30 m up (city_<kind>_<n>.png), the place ringed
 ##   LEVEL=1 STREETS_BUILD_ALL=1 $GODOT --headless --path . -s res://game/streets/tests/city_check.gd
 ##
 ## Each count is measured on the thing's body, not its middle (a wall checked at its middle
@@ -23,6 +25,7 @@ extends SceneTree
 ##   on service roads      -- walls and posts on car-park lanes and driveways (barriers and
 ##                            pumps belong there; a bollard row may not)
 var g: Node
+var _found := {}
 const PARKED_R := 0.85   ## a parked car is two posts of this radius (streets.gd)
 
 func _initialize() -> void:
@@ -46,6 +49,8 @@ func _run() -> void:
 	for l: int in ([1, 2, 3, 4] if lvl == 0 else [lvl]):
 		await _load(l)
 		bad += _check()
+		if OS.get_environment("SHOTS") != "" and OS.get_environment("OUT") != "":
+			await _shots()
 	print("CITY CHECK: %d found (0 is good)" % bad)
 	quit(0)
 
@@ -152,6 +157,7 @@ func _check() -> int:
 		var ids: PackedInt32Array = rd["ids"]
 		if l < 5.0 and (g._node_ways(ids[0]) >= 3 or g._node_ways(ids[ids.size() - 1]) >= 3):
 			add.call("stub roads", l, pts[0], "%s, %.1f m (road %d)" % [_name(ri), l, ri])
+	_found = out
 	var failing := ["walls on the road", "posts on the road", "buildings on the road", "lit points alone"]
 	var traps := ["stub roads", "split junctions", "walls on service roads", "posts on service roads"]
 	var found := 0
@@ -166,3 +172,35 @@ func _check() -> int:
 		for e: Array in list.slice(0, 6):
 			print("      at %-14s %s" % [str(Vector2i(e[1])), e[2]])
 	return found
+
+func _snap(name: String) -> void:
+	await create_timer(0.6).timeout   # draw ranges settle after a camera move
+	await RenderingServer.frame_post_draw
+	root.get_viewport().get_texture().get_image().save_png(OS.get_environment("OUT") + "/" + name + ".png")
+	print("shot ", name)
+
+## the worst two of each kind that should be 0, from 30 m up and a little to the south (at
+## 9 m a roof under the camera filled the picture), a red ring round the place
+func _shots() -> void:
+	g.set_physics_process(false)
+	process_frame.disconnect(g._frame)
+	var ring := MeshInstance3D.new()
+	var tm := TorusMesh.new()
+	tm.inner_radius = 2.6
+	tm.outer_radius = 3.0
+	ring.mesh = tm
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color(1, 0.1, 0.1)
+	mat.no_depth_test = true
+	ring.material_override = mat
+	g.add_child(ring)
+	for kind: String in ["walls on the road", "posts on the road", "buildings on the road"]:
+		var list: Array = _found.get(kind, [])
+		for k in range(mini(2, list.size())):
+			var at: Vector2 = list[k][1]
+			var y: float = g._h(at)
+			ring.position = Vector3(at.x, y + 0.3, at.y)
+			g.look_from(Vector3(at.x, y + 30.0, at.y + 12.0), Vector3(at.x, y, at.y))
+			await _snap("city_%s_%s_%d" % [g._city_id, kind.replace(" ", "_"), k + 1])
+	ring.queue_free()

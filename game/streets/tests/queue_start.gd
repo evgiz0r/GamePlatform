@@ -8,17 +8,21 @@ extends SceneTree
 ## that pulls away car after car, not all at once on the same tick like a train.
 ##
 ## Judged against how real queues go (QUEUE CHECK at the end, PASS or FAIL): a driver starts
-## roughly a second after the car in front moves off, and once a queue is moving its cars
-## cross the stop line about 2 s apart -- the first few slower: about 3.8, 3.1, 2.7, 2.4,
-## 2.2 s, then 2.0-2.1 (Greenshields' 1947 counts at signals; the Highway Capacity Manual's
-## base of 1900 cars an hour a lane is 1.9 s). The bands below are wide on purpose -- this
-## watches a few queues of mixed drivers -- and still catch both mistakes made tuning this
-## by eye: a queue that went within 0.3 s of each other (a train), then one whose third car
-## moved 9 s after the green.
+## roughly a second after the car in front moves off, and the cars cross the stop line a
+## little closer one after another -- about 3.1 s after the one in front for the second car,
+## 2.7 the third, 2.4, 2.2, then 2.0-2.1 (Greenshields' 1947 counts at signals; the Highway
+## Capacity Manual's base of 1900 cars an hour a lane is 1.9 s, and today's drivers are
+## quicker than 1947's, so these are generous). Each car's gap is set against the figure for
+## its place in the queue. A queue whose front car is held up past the line (turning across
+## traffic, people on the crossing) is printed but not judged: real counts leave those out
+## too. The bands are wide on purpose -- a few queues of mixed drivers -- and still catch
+## both mistakes made tuning this by eye: a queue that went within 0.3 s of each other (a
+## train), then one whose third car moved 9 s after the green.
 const START_GAP := [0.6, 2.5]     ## s between one car moving off and the next (each)
 const START_MED := [0.8, 2.0]     ## ...their median
-const LINE_GAP := [1.4, 4.5]      ## s between cars crossing the stop line (each)
-const LINE_MED := [1.7, 3.3]      ## ...their median
+const REAL_LINE := [3.8, 3.1, 2.7, 2.4, 2.2, 2.1, 2.0, 2.0]   ## s, by place in the queue (Greenshields)
+const LINE_RATIO := [0.5, 2.0]    ## a car's gap over the line against the real one's (each)
+const LINE_MED := [0.8, 1.2]      ## ...their median: within a fifth of 1947's drivers
 const FIRST := [1.0, 5.5]         ## s from the green to the first car's front over the line
 var g: Node
 var T
@@ -112,6 +116,10 @@ func _run() -> void:
 		print("GREEN at %.0f s: %d cars in the queue" % [run["t0"], run["cars"].size()])
 		var last_moved := -1.0
 		var last_cross := -1.0
+		var sp0: Array = run["cars"][0][2]
+		var held := sp0.size() > 60 and float(sp0[60]) < 5.0
+		if held:
+			print("  (the front car held up past the line: printed, not judged)")
 		for qi in range((run["cars"] as Array).size()):
 			var c: Array = run["cars"][qi]
 			var sp: Array = c[2]
@@ -125,12 +133,14 @@ func _run() -> void:
 				"%.1f s" % moved if moved >= 0.0 else "--", "%.1f s" % cross if cross >= 0.0 else "--",
 				float(sp[mini(60, sp.size() - 1)]) if sp.size() > 0 else 0.0])
 			# (a gap only between two cars that both did it within the 12 s watched)
+			if held:
+				continue
 			if qi == 0 and cross >= 0.0:
 				firsts.append(cross)
 			if qi > 0 and moved >= 0.0 and last_moved >= 0.0:
 				start_gaps.append(moved - last_moved)
 			if qi > 0 and cross >= 0.0 and last_cross >= 0.0:
-				line_gaps.append(cross - last_cross)
+				line_gaps.append((cross - last_cross) / REAL_LINE[mini(qi, REAL_LINE.size() - 1)])
 			last_moved = moved
 			last_cross = cross
 	if OS.get_environment("OUT") != "":
@@ -139,14 +149,14 @@ func _run() -> void:
 	print("QUEUES: %d recorded" % runs.size())
 	var verdict := []
 	verdict.append(_band("start gaps", start_gaps, START_GAP, START_MED))
-	verdict.append(_band("line gaps", line_gaps, LINE_GAP, LINE_MED))
+	verdict.append(_band("line gaps / real ones", line_gaps, LINE_RATIO, LINE_MED, ""))
 	verdict.append(_band("first car over the line", firsts, FIRST, FIRST))
 	var ok := not verdict.has(false) and not start_gaps.is_empty() and not line_gaps.is_empty()
 	print("QUEUE CHECK: %s" % ("PASS" if ok else ("FAIL" if not start_gaps.is_empty() else "NO QUEUES (watch longer, or another junction)")))
 	quit(0)
 
 ## one measure against its bands: each in [lo, hi], the median in [mlo, mhi]; prints it
-func _band(what: String, xs: Array, each: Array, med: Array) -> bool:
+func _band(what: String, xs: Array, each: Array, med: Array, unit := " s") -> bool:
 	if xs.is_empty():
 		print("  %-24s none measured" % what)
 		return true
@@ -156,6 +166,6 @@ func _band(what: String, xs: Array, each: Array, med: Array) -> bool:
 	var outside := s.filter(func(x): return x < each[0] or x > each[1]).size()
 	# a few out of the band are drivers being drivers; a third of them is the model
 	var ok: bool = m >= med[0] and m <= med[1] and outside * 3 <= s.size()
-	print("  %-24s median %.1f s (good %.1f-%.1f), %d of %d outside %.1f-%.1f s, range %.1f-%.1f: %s" % [
-		what, m, med[0], med[1], outside, s.size(), each[0], each[1], s[0], s[s.size() - 1], "ok" if ok else "OFF"])
+	print("  %-24s median %.2f%s (good %.1f-%.1f), %d of %d outside %.1f-%.1f, range %.1f-%.1f: %s" % [
+		what, m, unit, med[0], med[1], outside, s.size(), each[0], each[1], s[0], s[s.size() - 1], "ok" if ok else "OFF"])
 	return ok

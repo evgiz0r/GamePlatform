@@ -14,8 +14,8 @@ extends SceneTree
 ## (tests/bodies.gd), so a bus counts as a bus:
 ##   bodies overlapping -- two traffic cars, autodrive and a car, or a car's body into a
 ##     building, a wall, a hedge or a post (traffic is on rails: nothing else stops it)
-##   over the line at a red -- standing, held by the light, the front more than a metre past
-##     the stop line (a bus once stopped with its middle at the line, 4 m into the junction)
+##   over the line at a red -- stopped for the light, the front more than a metre past the
+##     stop line (a bus once stopped with its middle at the line, 4 m into the junction)
 ##   pushing -- autodrive's foot on the gas, not moving, 3 s in all before it gets 4 m away
 ##     (forward into a post, back, forward again went on for 90 s)
 ##   held by nothing -- standing 10 s+ with no named reason: what holds it (and whatever
@@ -331,6 +331,8 @@ var _tick := 0
 var _pairs := {}        ## "i:j" / "ap:i": bodies overlapping last tick (counted on the way in)
 var _in_solid := {}     ## car index / "ap" -> the tick its body was last seen in a building, wall or post
 var _over := {}         ## "i:node" / "ap:node" -> the tick it was counted standing over that line
+var _stop_why := {}     ## traffic car -> what held it the moment it came to a stop
+var _ap_stop_why := ""
 var _stand := {}        ## traffic car -> seconds standing
 var _ap_stand := 0.0
 var _push_at := Vector2.INF
@@ -403,10 +405,23 @@ func _check(dt: float) -> void:
 					_incident("autodrive into a " + kind2, g._pos, "%.1f m into %s at %.0f km/h, held by %s" % [
 						float(hit2[0]), hit2[1], absf(g._v) * 3.6, g._ap_why])
 				_in_solid["ap"] = _tick
-	# -- standing at a red, held by the light, with the front over the stop line
+	# -- standing at a red, held by the light, with the front over the stop line. Only a car
+	# that came to its stop for the light: one that stopped for people on a crossing a little
+	# past its line, and saw the light go red meanwhile, is held by the light too (and rightly
+	# waits where it stands) -- the first version counted those
 	for i: int in boxes:
 		var c = cars[i]
-		if c.v > 0.3 or c.why != "light":
+		if c.v < 0.3:
+			if not _stop_why.has(i):
+				_stop_why[i] = c.why
+		else:
+			_stop_why.erase(i)
+	for i: int in _stop_why.keys():
+		if not boxes.has(i):
+			_stop_why.erase(i)
+	for i: int in boxes:
+		var c = cars[i]
+		if c.v > 0.3 or c.why != "light" or _stop_why.get(i, "") != "light":
 			continue
 		for j in range(c.k + 1, c.pts.size()):
 			var dist: float = c.cum[j] - c.s
@@ -426,7 +441,12 @@ func _check(dt: float) -> void:
 				_count("check: over the line at a red, traffic")
 				_incident("over the line", c.pos, "%s, its front %.1f m past the stop line" % [c.kind, over])
 			break
-	if absf(g._v) < 0.3 and g._auto and g._ap_why == "light":
+	if absf(g._v) < 0.3:
+		if _ap_stop_why == "":
+			_ap_stop_why = g._ap_why
+	else:
+		_ap_stop_why = ""
+	if absf(g._v) < 0.3 and g._auto and g._ap_why == "light" and _ap_stop_why == "light":
 		var f: Vector2 = g._fwd()
 		var nose: Vector2 = g._pos + f * g.CAR_LEN * 0.5
 		var best := INF
