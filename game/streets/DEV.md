@@ -974,7 +974,12 @@ it is dropped.
   (`_stairs`), the tube 2.8 m high (`FOOT_TUBE`), a little wider than the path, one row of
   lamps. Givatayim: 22 footbridges (the Diamonds Bridge over the Ayalon, Dr Isaac Derazia's),
   3 footpath tunnels; Bedford 24 (most of them its trails' bridges over creeks, spanning bank
-  to bank at the banks' height); Ashdod 8 and 2. `tests/foot_decks.gd` walks them.
+  to bank at the banks' height); Ashdod 6 and 2 (its two spiral stairs left on the ground).
+  `tests/foot_decks.gd` walks them: Givatayim's 8 routes, Bedford's 4, Ashdod's 3, all to
+  their far ends at their full height or depth, 0-18 frames off the level (the walker's
+  height eases after the surface: up to 1 m behind running up 60% stairs). A route's last
+  few metres run on past the path's end and can walk into something (Bedford's Duke Street
+  sidewalk-bridge ends at its abutment: "got 91%" there is that, not the bridge).
   What walking them found: a road bridge's piers stood on a footbridge's foot and across a
   footbridge running alongside a few metres lower (piers now keep off paths and off any deck
   below their top); where three footbridge pieces meet, one piece's railing ran across the
