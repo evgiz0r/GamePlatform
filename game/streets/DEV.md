@@ -57,6 +57,22 @@ The ones most often touched, and the functions in them:
   -- no draws of their own. Lit shops' light on the pavement: `_shop_lights`. The night's
   colours: the night branch of `_retint_city` (a little of the palette's player colour, not
   half of it). Shop glass at night 0.85 (2.0 clipped to white).
+- **grass blades** -- GRASS_SHADER on a MultiMesh of 4 m patches (`_build_grass`) whose
+  node follows the camera a patch at a time (`_grass_follow`, from `_sky_follow`); a blade's
+  three corners sit at its root, the shader grows it where the far-shadow picture's green
+  says grass grows (`_build_far_shadows` paints it: 0.5 open ground, 1 lawns, parks, woods,
+  pitches, front gardens; roads with their pavements and buildings 0) at the ground's
+  height (the height grid as an RF texture, the same triangles as `_h`), by the camera's 3D
+  distance (none from up high). Cull off, so it flips NORMAL back on back faces (they went
+  black). `_grass_quality`: none below 2, 55% of the patches at 2.
+- **people keeping clear** -- `_people_tick` lists everyone (`_people_at`, `_people_who`);
+  a walker steers off its line (`lat`, up to 0.7 m) round anything solid 1.3 m ahead and
+  away from anyone ahead or alongside (to their other side, the right if dead ahead), then
+  two passes of `_push_out` (out of a parked car's one post can be into its other).
+  `_people_push`: people solid to the car (`_collide`) and to you on foot, not in
+  `_push_out` (which also places things as the city builds). `_crash` makes a person a
+  soft knock. People dissolve in over 75-90 m (`_people_lod`, OBJECT_DITHER).
+  `tests/people_clear.gd` (7.6% walking into things, 47 too-close: now 0.1%, 2-9).
 - **cats, flags on cars** -- the builders call `cat_at(p, y, facing, "sit"/"loaf")` (garden
   walls in `_garden_fronts`, a parked car's nose in `_build_parked`, bins in furniture's
   `kerbside`); furniture.gd's `cats()` places `_cat_kit()` (ellipsoids and tubes, the coat
@@ -123,7 +139,10 @@ The ones most often touched, and the functions in them:
   nearest road (`_off_road` -> `_nearest_seg`) was the dear part: half the hedges' 300 ms.
 - **the builders** -- kerbs and pavements `_build_kerbs`, `_street_runs`,
   `_kerb_run_piece`, corners `_kerb_corners` (checked along their length), the asphalt grid
-  `_asph_hash` / `_asphalt_other`; parked cars `_build_parked`, car parks `_build_lots`; the
+  `_asph_hash` / `_asphalt_other`; paving is laid once (`_laid`, `_laid_cut`, `_laid_by`:
+  while a square's kerbs go down, a piece is cut where another street's, side's or corner's
+  is already down -- each patterned along its own street, two at one height flickered on a
+  phone; `tests/pave_overlap.gd` measures it, Tel Aviv had 19,000 m2 laid twice); parked cars `_build_parked`, car parks `_build_lots`; the
   map's edge `_build_edge` / `_keep_inside`.
 - **batching** -- `_batch_add`, `_flush_batches`, the one material `TONE_SHADER` with its
   `tones[64]` / `tone_fx[64]` tables; `_chunked` and `_add_mesh` route into it while building.
@@ -160,9 +179,14 @@ The ones most often touched, and the functions in them:
   on every steep slope too), mountain woods in the tree builder (`MTN_TREES`, drawn from
   further off), `_build_turbines` / `_turbines_tick`; the fog halves in that town
   (`_retint_city`). Only a made-up town with hills gets any of it. `tests/mountains.gd` shoots it.
-- **solid things and the road** -- `_off_road` (a road's edges only) and `_in_junction` (the
-  round asphalt at a junction's point); furniture's `_free` checks both. `tests/road_blocks.gd`
-  finds anything solid on a road's lanes or a junction's asphalt.
+- **solid things and the road** -- `_off_road` (a road's edges, and the asphalt a rounded
+  corner adds out to its curve: `_in_corner_fill`) and `_in_junction` (the round asphalt at a
+  junction's point); furniture's `_free` checks both. The corners' outlines (`_corner_fill`)
+  are noted for every corner reaching a square before anything is built in it
+  (`_note_corner_fills`, from `_corners_at`, the geometry `_kerb_corners` lays): bollards by a
+  zebra near a junction, sign and light poles, trees stood out in them, in front of the kerb.
+  Signs are moved across the corner's kerb instead (`_out_of_corner`). `tests/road_blocks.gd`
+  finds anything solid on a road's lanes, a junction's asphalt or a corner's.
 - **loading** -- the squares round the start are built with the city hidden (`world.visible`)
   and hand a frame back every `FG_US` (`_fg_build`: `_over` / `_pause`), the text ticking;
   `_warm_up` then shows the kinds of surface a few at a time (`_shader_key`; four views only

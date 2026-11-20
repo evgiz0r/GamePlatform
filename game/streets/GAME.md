@@ -133,9 +133,13 @@ destination stays; autodrive picks the route up again from wherever you are.
 Only addresses OpenStreetMap knows are listed: in Givatayim that is about one building in
 six (plus address points), in Bedford almost all of them.
 
-**Jumping there.** The button at the top left of the list switches it between "drive
-there" and "jump there". Jumping puts the car down on the street at the address, in its
-lane, stopped, facing the way that has the address on the kerb side.
+**Jumping there.** At the top left of the list are two choices side by side, "jump to"
+and "drive to", the one in force filled in; "jump to" is chosen when the game starts.
+Jumping puts the car down on the street at the address, in its lane, stopped, facing the
+way that has the address on the kerb side; driving hands the way there to autodrive.
+
+> in the goto option, make it by default jump to. the menu is not so clear so just show two
+> choices. drive to and jump to. where one of them is selected
 
 > Besides go to, I want also jump to. It teleports there, instead of driving.
 
@@ -835,6 +839,19 @@ headlights, yours and the traffic's, glow, and their beams light the road ahead;
 shop window throws its light onto the pavement in front of it. No glow effect over the
 whole picture -- that costs a laptop's browser a millisecond or two every frame -- the
 halos are drawn with the pools, as part of what was drawn already.
+
+**Grass you can see the blades of.** Near you -- on foot most of all -- the lawns, parks and
+front gardens have blades standing up out of them, swaying, a few drier and paler among
+them, thinning out by 18 m. Only at the two top qualities (fewer at the second).
+
+> people dont have collision and just wonder around, lets add that to the list as well.
+> when some things just pop and have no collision its wierd
+
+**People who keep clear.** The walkers step round the trees, posts, benches and cabinets on
+the pavement, keep to one side of anyone coming the other way, and step round people standing
+talking and round you on foot; you and the car can no longer go through them (the car stops
+at a person with a soft knock, never a crash). They no longer pop in at 90 m: they come in
+over the last 15. Cats on the pavement are solid too.
 
 > I took a video on my phone, walking in Givatayim.
 

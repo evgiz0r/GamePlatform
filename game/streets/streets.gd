@@ -987,8 +987,9 @@ var _pick_mode := "streets"          ## or "numbers"
 var _pick_letter := ""               ## "" = every street
 var _pick_page := 0
 var _pick_street := ""
-var _pick_jump := false              ## the picker jumps the car there instead of driving
+var _pick_jump := true               ## the picker jumps the car there (the first choice) instead of driving
 var _pick_jump_btn: Button
+var _pick_drive_btn: Button
 var _pick_title: Label
 var _streets_list: Array = []        ## {name, en, label, count}, sorted, built once per city
 var _dest_lbl: Label
@@ -1669,6 +1670,7 @@ func _build_world() -> bool:
 	_build_setup(_stage("world", t0))
 	var tf := Time.get_ticks_msec()
 	await _build_far_shadows()
+	_build_grass()
 	_stage("far shadows", tf)
 	# the squares round the start before the car is shown; the rest while it drives
 	# (STREETS_BUILD_ALL=1: all of it first -- the scene tests look all over the city)
@@ -1961,6 +1963,7 @@ func _build_tile(t: Vector2i) -> void:
 		a.clear()   # made by one builder for the next, square by square
 	var tk := Time.get_ticks_msec()
 	_ao = CBuf.new(GROUND_CELL)
+	await _note_corner_fills()   # (before anything is stood anywhere: see _off_road)
 	await _build_ground()
 	await _decks.build()
 	tk = _stage("roads", tk)
@@ -2825,6 +2828,7 @@ func _build_kerbs() -> void:
 		"chain": _clip_buf(GROUND_CELL), "chain_posts": _clip_buf(GROUND_CELL), "planks": _clip_buf(GROUND_CELL), "flowers": []}
 	var bushes: Array = []
 	var med := String(_place.get("look", "")) == "med"
+	_laid = {}
 	for ri: int in _tile_roads.get(_tile, []):
 		var r: Dictionary = _roads[ri]
 		if not _kerbed(r):
@@ -2850,6 +2854,7 @@ func _build_kerbs() -> void:
 			if _over():
 				await _pause()
 			for sgn: float in [-1.0, 1.0]:
+				_laid_by = ri * 4 + (0 if sgn < 0.0 else 1)
 				var inner_side := dual and sgn == inner_sgn
 				var pw := PAVE_W
 				if inner_side:
@@ -2941,6 +2946,8 @@ func _build_kerbs() -> void:
 	if _over():
 		await _pause()
 	_add_mesh(corners, _surface("asphalt"), false, VIEW_RANGE)
+	_laid = {}
+	_laid_by = -1
 	if _kerb_mat == null:
 		_kerb_mat = ShaderMaterial.new()
 		var sh := Shader.new()
@@ -3093,6 +3100,7 @@ func _build_medians(kerb: Buf, pave: Buf) -> void:
 					var d := (b - a) / maxf(seg, 0.001)
 					var rt := Vector2(-d.y, d.x)
 					for sgn: float in [1.0, -1.0]:
+						_laid_by = ri * 4 + (2 if sgn < 0.0 else 3)
 						# a kerb at mw each side, its face out to the lanes, paved behind to the middle
 						var na := -rt * sgn
 						_kerb_run_piece(kerb, pave, ri, a + rt * mw * sgn, b + rt * mw * sgn, na, na,
@@ -3200,8 +3208,16 @@ func _kerb_piece(kerb: Buf, pave: Buf, a: Vector2, b: Vector2, na: Vector2, nb: 
 	var face := Vector3(-nm.x, 0, -nm.y)
 	kerb.tri(a0, a1, t1, face, col, Vector2(along, 0), Vector2(along + seg, 0), Vector2(along + seg, 1))
 	kerb.tri(a0, t1, t0, face, col, Vector2(along, 0), Vector2(along + seg, 1), Vector2(along, 1))
-	kerb.tri(t0, t1, o1, Vector3.UP, col, Vector2(along, 0), Vector2(along + seg, 0), Vector2(along + seg, 1))
-	kerb.tri(t0, o1, o0, Vector3.UP, col, Vector2(along, 0), Vector2(along + seg, 1), Vector2(along, 1))
+	_laid_seq += 1
+	var top := PackedVector2Array([a, b, ob, oa])
+	var top_cut := _laid_cut(top)
+	if top_cut.is_empty():
+		kerb.tri(t0, t1, o1, Vector3.UP, col, Vector2(along, 0), Vector2(along + seg, 0), Vector2(along + seg, 1))
+		kerb.tri(t0, o1, o0, Vector3.UP, col, Vector2(along, 0), Vector2(along + seg, 1), Vector2(along, 1))
+	else:
+		for piece: PackedVector2Array in top_cut[0]:
+			_flat_piece(kerb, piece, Vector3.UP, col, a, (b - a) / maxf(seg, 0.001), along, 1.0 / KERB_W)
+	_laid_add(top)
 	if pw > 0.05:
 		var c2 := _g3(ob + nb * pw, KERB_H)
 		var c3 := _g3(oa + na * pw, KERB_H)
@@ -3210,8 +3226,107 @@ func _kerb_piece(kerb: Buf, pave: Buf, a: Vector2, b: Vector2, na: Vector2, nb: 
 			nrm = -nrm
 		nrm = nrm.normalized() if nrm.length_squared() > 0.000001 else Vector3.UP
 		var pc := Color(_pave_code, _leafy((oa + ob) * 0.5 + (na + nb) * pw * 0.25), 1.0, pw / 4.0 if _pave_walled else 1.0)
-		pave.tri(o0, o1, c2, nrm, pc, Vector2(along, 0), Vector2(along + seg, 0), Vector2(along + seg, pw))
-		pave.tri(o0, c2, c3, nrm, pc, Vector2(along, 0), Vector2(along + seg, pw), Vector2(along, pw))
+		var flat := PackedVector2Array([oa, ob, ob + nb * pw, oa + na * pw])
+		var cut := _laid_cut(flat)
+		if cut.is_empty():
+			pave.tri(o0, o1, c2, nrm, pc, Vector2(along, 0), Vector2(along + seg, 0), Vector2(along + seg, pw))
+			pave.tri(o0, c2, c3, nrm, pc, Vector2(along, 0), Vector2(along + seg, pw), Vector2(along, pw))
+		else:
+			for piece: PackedVector2Array in cut[0]:
+				_flat_piece(pave, piece, nrm, pc, oa, (ob - oa) / maxf(oa.distance_to(ob), 0.001), along, 1.0)
+		_laid_add(flat)
+
+## Where two streets' pavements meet at a corner (or cross, or a junction's corner runs onto
+## a street's), each laid whole put pavement over pavement at one height, each patterned along
+## its own street: a phone's depth buffer took one or the other pixel by pixel and the corner
+## flickered between brick and slabs. So while a square's kerbs go down, what is laid is kept
+## (_laid: 4 m cells -> [outline, box, who laid it, id, piece number]) and a later piece is cut
+## where an earlier one (another street's, another side's, a corner's, its own strip's folded
+## round a tight bend) already paves: first laid stays whole.
+## Squares lay roads in the same order (by road, then medians, then corners), so the piece a
+## square keeps was cut by the same pieces whichever square works it out.
+const LAID_CELL := 4.0
+var _laid := {}
+var _laid_by := -1                   ## whose pieces are going down now (a road's side, a corner)
+var _laid_n := 0
+var _laid_seq := 0                   ## pieces laid so far: a strip's next piece only touches the last
+
+func _laid_add(poly: PackedVector2Array) -> void:
+	var box := Rect2(poly[0], Vector2.ZERO)
+	for q in poly:
+		box = box.expand(q)
+	_laid_n += 1
+	var entry := [poly, box, _laid_by, _laid_n, _laid_seq]
+	for cx in range(floori(box.position.x / LAID_CELL), floori(box.end.x / LAID_CELL) + 1):
+		for cz in range(floori(box.position.y / LAID_CELL), floori(box.end.y / LAID_CELL) + 1):
+			var k := Vector2i(cx, cz)
+			if not _laid.has(k):
+				_laid[k] = []
+			(_laid[k] as Array).append(entry)
+
+## [the parts of poly no one else has paved yet] when someone else's pieces overlap it,
+## [] when none do (lay it whole)
+func _laid_cut(poly: PackedVector2Array) -> Array:
+	var box := Rect2(poly[0], Vector2.ZERO)
+	for q in poly:
+		box = box.expand(q)
+	box = box.grow(-0.02)
+	if box.size.x <= 0.0 or box.size.y <= 0.0:
+		return []
+	var over: Array = []
+	var seen := {}
+	for cx in range(floori(box.position.x / LAID_CELL), floori(box.end.x / LAID_CELL) + 1):
+		for cz in range(floori(box.position.y / LAID_CELL), floori(box.end.y / LAID_CELL) + 1):
+			for entry: Array in _laid.get(Vector2i(cx, cz), []):
+				# (a strip's own pieces too, where it folds over itself round a tight bend -- but
+				# not the piece before, which only touches it)
+				var own := int(entry[2]) == _laid_by and absi(int(entry[4]) - _laid_seq) <= 1
+				if not own and not seen.has(entry[3]) and (entry[1] as Rect2).intersects(box):
+					seen[entry[3]] = true
+					over.append(entry)
+	if over.is_empty():
+		return []
+	var pieces: Array = [poly]
+	var touched := false
+	for entry: Array in over:
+		var next: Array = []
+		for p: PackedVector2Array in pieces:
+			var res := Geometry2D.clip_polygons(p, entry[0])
+			if res.size() == 1 and absf(absf(_area_signed(res[0])) - absf(_area_signed(p))) < 0.005:
+				next.append(p)   # (only touching)
+				continue
+			# an outline laid wholly inside this one comes back as a hole (wound the other way
+			# from the outside): keep the piece whole -- a little overlap, not a hole in the ground
+			var big := 0
+			for i in range(res.size()):
+				if absf(_area_signed(res[i])) > absf(_area_signed(res[big])):
+					big = i
+			var holed := false
+			for q: PackedVector2Array in res:
+				if Geometry2D.is_polygon_clockwise(q) != Geometry2D.is_polygon_clockwise(res[big]):
+					holed = true
+			if holed:
+				next.append(p)
+				continue
+			touched = true
+			for q: PackedVector2Array in res:
+				if absf(_area_signed(q)) > 0.01:
+					next.append(q)
+		pieces = next
+	return [pieces] if touched else []
+
+## a flat piece of kerb top or pavement cut to shape: its texture laid as the whole piece's
+## would have been (along the street from `origin` in `dir`, across it in metres * vscale)
+func _flat_piece(buf: Buf, piece: PackedVector2Array, nrm: Vector3, col: Color, origin: Vector2, dir: Vector2,
+		along: float, vscale: float) -> void:
+	var idx := Geometry2D.triangulate_polygon(piece)
+	for i in range(0, idx.size(), 3):
+		var q: Array = [piece[idx[i]], piece[idx[i + 1]], piece[idx[i + 2]]]
+		var uv: Array = []
+		for p: Vector2 in q:
+			var d := p - origin
+			uv.append(Vector2(along + d.dot(dir), absf(d.cross(dir)) * vscale))
+		buf.tri(_g3(q[0], KERB_H), _g3(q[1], KERB_H), _g3(q[2], KERB_H), nrm, col, uv[0], uv[1], uv[2])
 
 ## The paving a street (or a corner) gets: its pattern -- herringbone, rows of bricks, square
 ## slabs; Bedford's poured concrete -- and its colours -- reds and browns, greys, sand, all of
@@ -3378,69 +3493,107 @@ func _walk_pts(pts: PackedVector2Array, k: int, step: int, dist: float) -> Array
 ## the mouth of a T, a straight kerb; between the two halves of a divided road, a flat nose.
 var _corner_cut_at: Array = []        ## corners laid piece by piece: [middle, middle clear] (for tests)
 
+## A junction's corners, worked out from its kerbed arms: one per pair of arms next to each
+## other round it -- [index, A's road, P (A's right edge at the cut), Q (B's left edge), the
+## curve's corner point X (or null), whether it is rounded, A's and B's ways out]. [] when the
+## point is not a junction of three kerbed ways or more.
+func _corners_at(ni: int, count := false) -> Array:
+	var out: Array = []
+	if _kerb_arms(ni) < 3:
+		return out
+	var c := _nodes[ni]
+	var cut := _node_r[ni] + KERB_CUT
+	var arms: Array = []   # [angle, point at the cut, way out there, half width, road]
+	var through: Array = []   # the ways out of pieces too short for a corner of their own
+	for e: Vector2i in _node_roads[ni]:
+		var r: Dictionary = _roads[e.x]
+		if not _kerbed(r):
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		for step: int in [-1, 1]:
+			if e.y + step < 0 or e.y + step >= pts.size():
+				continue
+			var at: Array = _walk_pts(pts, e.y, step, cut)
+			if not at[2]:
+				var q := pts[e.y + step]
+				through.append(atan2(q.y - c.y, q.x - c.x))
+				continue   # too short to reach the corner (a piece across a median)
+			var p: Vector2 = at[0]
+			arms.append([atan2(p.y - c.y, p.x - c.x), p, at[1], float(r["w"]) * 0.5, e.x])
+	if arms.size() < 2:
+		return out
+	arms.sort_custom(func(x, y): return x[0] < y[0])
+	for i in range(arms.size()):
+		var A: Array = arms[i]
+		var B: Array = arms[(i + 1) % arms.size()]
+		var gap: float = fposmod(float(B[0]) - float(A[0]), TAU)
+		if gap > 3.6 or gap < 0.02:
+			continue
+		# no corner across a road that goes out between the two: on a divided road's median
+		# side, the piece of the cross street through the median. (Laid anyway, it ran
+		# straight across the opening; cut up where it lay on the asphalt, what was left
+		# stood out of the island's end as an arrowhead and spikes.)
+		var crossed := false
+		for ang: float in through:
+			var into := fposmod(ang - float(A[0]), TAU)
+			if into > 0.05 and into < gap - 0.05:
+				crossed = true
+				break
+		if crossed:
+			if count and _mine(c):
+				_tally("corners_across_roads", 1)
+			continue
+		var ua: Vector2 = A[2]
+		var ub: Vector2 = B[2]
+		var P: Vector2 = (A[1] as Vector2) + Vector2(-ua.y, ua.x) * float(A[3])   # A's right edge
+		var Q: Vector2 = (B[1] as Vector2) + Vector2(ub.y, -ub.x) * float(B[3])   # B's left edge
+		if P.distance_to(Q) > 45.0:
+			continue
+		var X = Geometry2D.line_intersects_line(P, ua, Q, ub)
+		var round := X != null and gap > 0.35 and gap < 2.9 and (X as Vector2).distance_to(c) < cut * 2.5 \
+			and ((X as Vector2) - P).dot(ua) < 0.0 and ((X as Vector2) - Q).dot(ub) < 0.0
+		out.append([i, int(A[4]), P, Q, X, round, ua, ub])
+	return out
+
+## the rounded corners' curve: from P to Q, bent toward the corner point X
+func _corner_curve(P: Vector2, X: Vector2, Q: Vector2) -> PackedVector2Array:
+	var curve := PackedVector2Array()
+	for k in range(7):
+		var t := k / 6.0
+		curve.append(P * (1.0 - t) * (1.0 - t) + X * 2.0 * (1.0 - t) * t + Q * t * t)
+	return curve
+
+## Before anything stands in a square (trees go in before the kerbs): every rounded corner
+## that reaches it noted in _corner_fill, so _off_road keeps all of it off their asphalt
+func _note_corner_fills() -> void:
+	for ni: int in _nodes_near(60.0):
+		if _over():
+			await _pause()
+		for cn: Array in _corners_at(ni):
+			var key: int = ni * 16 + int(cn[0])
+			if not cn[5] or _corner_fill.has(key):
+				continue
+			var poly := PackedVector2Array([cn[4]])
+			poly.append_array(_corner_curve(cn[2], cn[4], cn[3]))
+			_corner_fill[key] = poly
+			_hash_add(_fill_hash, _bld_box_of(poly), BLD_CELL, key)
+
 func _kerb_corners(kerb: Buf, pave: Buf, fill: Buf, col: Color) -> void:
 	for ni: int in _nodes_near(60.0):   # (every square a corner reaches works it out)
 		if _over():
 			await _pause()
-		if _kerb_arms(ni) < 3:
-			continue
 		var c := _nodes[ni]
-		var cut := _node_r[ni] + KERB_CUT
-		var arms: Array = []   # [angle, point at the cut, way out there, half width, road]
-		var through: Array = []   # the ways out of pieces too short for a corner of their own
-		for e: Vector2i in _node_roads[ni]:
-			var r: Dictionary = _roads[e.x]
-			if not _kerbed(r):
-				continue
-			var pts: PackedVector2Array = r["pts"]
-			for step: int in [-1, 1]:
-				if e.y + step < 0 or e.y + step >= pts.size():
-					continue
-				var at: Array = _walk_pts(pts, e.y, step, cut)
-				if not at[2]:
-					var q := pts[e.y + step]
-					through.append(atan2(q.y - c.y, q.x - c.x))
-					continue   # too short to reach the corner (a piece across a median)
-				var p: Vector2 = at[0]
-				arms.append([atan2(p.y - c.y, p.x - c.x), p, at[1], float(r["w"]) * 0.5, e.x])
-		if arms.size() < 2:
-			continue
-		arms.sort_custom(func(x, y): return x[0] < y[0])
-		for i in range(arms.size()):
-			var A: Array = arms[i]
-			var B: Array = arms[(i + 1) % arms.size()]
-			var gap: float = fposmod(float(B[0]) - float(A[0]), TAU)
-			if gap > 3.6 or gap < 0.02:
-				continue
-			# no corner across a road that goes out between the two: on a divided road's median
-			# side, the piece of the cross street through the median. (Laid anyway, it ran
-			# straight across the opening; cut up where it lay on the asphalt, what was left
-			# stood out of the island's end as an arrowhead and spikes.)
-			var crossed := false
-			for ang: float in through:
-				var into := fposmod(ang - float(A[0]), TAU)
-				if into > 0.05 and into < gap - 0.05:
-					crossed = true
-					break
-			if crossed:
-				if _mine(c):
-					_tally("corners_across_roads", 1)
-				continue
-			var ua: Vector2 = A[2]
-			var ub: Vector2 = B[2]
-			_set_pave_code(_hash_i((_roads[int(A[4])]["pts"] as PackedVector2Array)[0]))   # (the paving of one of its streets)
-			var P: Vector2 = (A[1] as Vector2) + Vector2(-ua.y, ua.x) * float(A[3])   # A's right edge
-			var Q: Vector2 = (B[1] as Vector2) + Vector2(ub.y, -ub.x) * float(B[3])   # B's left edge
-			if P.distance_to(Q) > 45.0:
-				continue
+		for cn: Array in _corners_at(ni, true):
+			var i: int = cn[0]
+			var P: Vector2 = cn[2]
+			var Q: Vector2 = cn[3]
+			var X = cn[4]
+			var round: bool = cn[5]
+			_laid_by = -2 - (ni * 16 + i)
+			_set_pave_code(_hash_i((_roads[int(cn[1])]["pts"] as PackedVector2Array)[0]))   # (the paving of one of its streets)
 			var curve := PackedVector2Array()
-			var X = Geometry2D.line_intersects_line(P, ua, Q, ub)
-			var round := X != null and gap > 0.35 and gap < 2.9 and (X as Vector2).distance_to(c) < cut * 2.5 \
-				and ((X as Vector2) - P).dot(ua) < 0.0 and ((X as Vector2) - Q).dot(ub) < 0.0
 			if round:
-				for k in range(7):
-					var t := k / 6.0
-					curve.append(P * (1.0 - t) * (1.0 - t) + (X as Vector2) * 2.0 * (1.0 - t) * t + Q * t * t)
+				curve = _corner_curve(P, X, Q)
 				# the asphalt out to the curve (the two streets' edges met in a sharp corner)
 				var xg := _g3(X, Y_ROAD)
 				for k in range(6):
@@ -3485,6 +3638,46 @@ func _kerb_corners(kerb: Buf, pave: Buf, fill: Buf, col: Color) -> void:
 				else:
 					_kerb_run_piece(kerb, pave, -1, a, b, nrm, nrm, PAVE_W, col, along, a.distance_to(b))
 				along += a.distance_to(b)
+
+## The asphalt a rounded corner adds out to its curve (_kerb_corners), which no road's width
+## covers: bollards by a zebra near a junction and sign poles at the corner, checked against
+## the roads alone, stood out in it, in front of the kerb. _off_road counts it as road. Noted
+## for every corner reaching a square before anything is built in it (_note_corner_fills),
+## kept for the whole city: ni * 16 + corner -> [the corner point, the curve...].
+var _corner_fill := {}
+var _fill_hash := {}
+
+## p is on (or within `margin` of the kerb of) a rounded corner's asphalt
+func _in_corner_fill(p: Vector2, margin: float) -> bool:
+	for key: int in _near(_fill_hash, p, margin + 0.5, BLD_CELL):
+		var poly: PackedVector2Array = _corner_fill[key]
+		if Geometry2D.is_point_in_polygon(p, poly):
+			return true
+		for k in range(1, poly.size() - 1):
+			if Geometry2D.get_closest_point_to_segment(p, poly[k], poly[k + 1]).distance_to(p) < margin + KERB_W:
+				return true
+	return false
+
+## p moved out of any rounded corner's asphalt it is on (or within `margin` of the kerb of):
+## from the corner's point through p, across the curve and `margin` past its kerb -- onto the
+## corner's pavement. p itself when it is on none.
+func _out_of_corner(p: Vector2, margin: float) -> Vector2:
+	for key: int in _near(_fill_hash, p, margin + 0.5, BLD_CELL):
+		var poly: PackedVector2Array = _corner_fill[key]
+		var x := poly[0]
+		var inside := Geometry2D.is_point_in_polygon(p, poly)
+		var near := false
+		for k in range(1, poly.size() - 1):
+			if Geometry2D.get_closest_point_to_segment(p, poly[k], poly[k + 1]).distance_to(p) < margin + KERB_W:
+				near = true
+		if not inside and not near:
+			continue
+		var dir := (p - x).normalized() if p.distance_to(x) > 0.05 else ((poly[1] + poly[poly.size() - 1]) * 0.5 - x).normalized()
+		for k in range(1, poly.size() - 1):
+			var hit = Geometry2D.segment_intersects_segment(x, x + dir * 200.0, poly[k], poly[k + 1])
+			if hit != null:
+				return (hit as Vector2) + dir * (KERB_W + margin)
+	return p
 
 func _retint_kerbs() -> void:
 	if _roof_mat != null:
@@ -7743,7 +7936,7 @@ func _tree_ok(p: Vector2, spacing: float) -> bool:
 ## stood in the lane, and autodrive drove into it again and again.
 func _off_road(p: Vector2, margin: float) -> bool:
 	var hit := _nearest_seg(p, 14.0, true)
-	return hit.is_empty() or float(hit["edge"]) >= margin
+	return (hit.is_empty() or float(hit["edge"]) >= margin) and not _in_corner_fill(p, margin)
 
 ## p is on (or within `margin` of) the asphalt round a junction's point -- the disc as wide as
 ## its widest road that every junction is laid with, which no one road's lanes cover. Railings
@@ -8591,6 +8784,7 @@ func _far_set(m: ShaderMaterial) -> void:
 func _far_update() -> void:
 	for m: ShaderMaterial in _far_mats:
 		_far_set(m)
+	_grass_retint()   # (the grass reads the same picture's green)
 
 func _build_far_shadows() -> void:
 	if DisplayServer.get_name() == "headless":
@@ -8624,19 +8818,22 @@ func _build_far_shadows() -> void:
 		var b := pts.size()
 		for q in hull:
 			pts.append(q)
-			cols.append(Color.WHITE)
+			cols.append(Color(1, 0, 0))
 		for i in range(1, hull.size() - 1):
 			idx.append_array([b, b + i, b + i + 1])
 		if low == 0.0:
 			lit.append(ring)
+	var fpts := PackedVector2Array()
+	var fcols := PackedColorArray()
+	var fidx := PackedInt32Array()
 	for ring: PackedVector2Array in lit:
 		var tri := Geometry2D.triangulate_polygon(ring)
-		var b := pts.size()
+		var b := fpts.size()
 		for p in ring:
-			pts.append((p - o) / mpp)
-			cols.append(Color.BLACK)
+			fpts.append((p - o) / mpp)
+			fcols.append(Color.BLACK)
 		for i in tri:
-			idx.append(b + i)
+			fidx.append(b + i)
 	var vp := SubViewport.new()
 	vp.size = Vector2i(w, h)
 	vp.disable_3d = true
@@ -8644,20 +8841,63 @@ func _build_far_shadows() -> void:
 	var holder := Node2D.new()
 	vp.add_child(holder)
 	add_child(vp)
-	var item := RenderingServer.canvas_item_create()
-	RenderingServer.canvas_item_set_parent(item, holder.get_canvas_item())
-	RenderingServer.canvas_item_add_rect(item, Rect2(0, 0, w, h), Color.BLACK)
-	RenderingServer.canvas_item_add_triangle_array(item, idx, pts, cols)
+	# In the same picture, green: where grass grows (the blades near the camera, _build_grass):
+	# 0.5 open ground (its own noise decides, as GROUND_SHADER draws it), 1 parks, lawns, woods,
+	# pitches and the front gardens, 0 the roads with their pavements, paths, car parks, plazas,
+	# water and the buildings. Each layer its own canvas item, blended so the red (shadows) and
+	# the green leave each other alone: green and shadows added, roads multiplied by (1, 0, 1).
+	var items: Array = []
+	var mats: Array = []
+	var to_px := Transform2D(Vector2(1.0 / mpp, 0), Vector2(0, 1.0 / mpp), -o / mpp)
+	var layer := func(blend: int, world: bool) -> RID:
+		var it := RenderingServer.canvas_item_create()
+		RenderingServer.canvas_item_set_parent(it, holder.get_canvas_item())
+		RenderingServer.canvas_item_set_draw_index(it, items.size())
+		if world:
+			RenderingServer.canvas_item_set_transform(it, to_px)
+		if blend >= 0:
+			var cm := CanvasItemMaterial.new()
+			cm.blend_mode = blend
+			mats.append(cm)
+			RenderingServer.canvas_item_set_material(it, cm.get_rid())
+		items.append(it)
+		return it
+	var bg: RID = layer.call(-1, false)
+	RenderingServer.canvas_item_add_rect(bg, Rect2(0, 0, w, h), Color(0, 0.5, 0))
+	var green: RID = layer.call(CanvasItemMaterial.BLEND_MODE_ADD, true)
+	var g1 := PackedColorArray([Color(0, 1, 0)])
+	for kind: String in ["park", "grass", "wood", "pitch"]:
+		for ring: PackedVector2Array in _area_rings.get(kind, []):
+			_canvas_ring(green, ring, Color(0, 1, 0))
+	var med := String(_place.get("look", "")) == "med"
+	for r: Dictionary in _roads:
+		if med and r["drive"] and r["k"] in ["residential", "living_street"]:
+			var hw: float = float(r["w"]) * 0.5
+			for sgn: float in [-1.0, 1.0]:   # the front gardens, behind the pavements
+				RenderingServer.canvas_item_add_polyline(green, _offset_line(r["pts"], (hw + PAVE_W + 1.85) * sgn), g1, 3.1)
+	var shade: RID = layer.call(CanvasItemMaterial.BLEND_MODE_ADD, false)
+	RenderingServer.canvas_item_add_triangle_array(shade, idx, pts, cols)
+	var bare: RID = layer.call(CanvasItemMaterial.BLEND_MODE_MUL, true)
+	var keep_red := PackedColorArray([Color(1, 0, 1)])
+	for r: Dictionary in _roads:
+		var wide: float = float(r["w"]) + (2.0 * (KERB_W + PAVE_W) if r["drive"] and _kerbed(r) else 0.6)
+		RenderingServer.canvas_item_add_polyline(bare, r["pts"], keep_red, wide)
+	for kind: String in ["water", "parking", "plaza", "school"]:
+		for ring: PackedVector2Array in _area_rings.get(kind, []):
+			_canvas_ring(bare, ring, Color(1, 0, 1))
+	var feet: RID = layer.call(-1, false)
+	RenderingServer.canvas_item_add_triangle_array(feet, fidx, fpts, fcols)
 	var t1 := Time.get_ticks_usec()
 	await RenderingServer.frame_post_draw
 	await RenderingServer.frame_post_draw
 	var t2 := Time.get_ticks_usec()
 	var img := vp.get_texture().get_image()
-	RenderingServer.free_rid(item)
+	for it: RID in items:
+		RenderingServer.free_rid(it)
 	vp.queue_free()
 	if img == null or img.is_empty():
 		return
-	img.convert(Image.FORMAT_R8)
+	img.convert(Image.FORMAT_RG8)   # (red: the shadows, green: the grass)
 	img.generate_mipmaps()
 	_fs_tex = ImageTexture.create_from_image(img)
 	_fs_rect = Vector4(o.x, o.y, 1.0 / (w * mpp), 1.0 / (h * mpp))
@@ -8666,6 +8906,174 @@ func _build_far_shadows() -> void:
 	# (what it costs apart from the two frames it waits for the drawing: those are a few ms
 	# in a browser, but most of a second under a test's software renderer)
 	_stage_ms["far shadows: work, not the frames"] = (t1 - t0 + Time.get_ticks_usec() - t2) / 1000
+
+## ---- grass blades near the camera --------------------------------------------------------
+## A lawn drawn flat looked like a green carpet from a walker's height. Blades on every lawn
+## would be millions of triangles; instead one patch of them (4 x 4 m, GRASS_BLADES) repeated
+## in a grid that moves with the camera, a square at a time, and the shader grows each blade
+## only where grass grows -- the far-shadow picture's green (_build_far_shadows) -- at the
+## ground's height there (the height grid as a texture, interpolated as _h does), shorter
+## further off and gone by GRASS_REACH. Off at the lowest two qualities; a smaller grid at 2.
+const GRASS_SHADER := """
+shader_type spatial;
+render_mode cull_disabled;
+uniform sampler2D mask : filter_linear, repeat_disable;   // green: where grass grows
+uniform vec4 mask_rect = vec4(0.0);
+uniform sampler2D hmap : filter_nearest, repeat_disable;  // the ground's height grid
+uniform vec4 h_info = vec4(0.0, 0.0, 1.0, 0.0);           // its corner (x, z), its step, 1 if hilly
+uniform ivec2 h_size = ivec2(1, 1);
+uniform vec3 col_a : source_color = vec3(0.3, 0.5, 0.2);   // the lawn
+uniform vec3 col_b : source_color = vec3(0.5, 0.5, 0.25);  // drier blades among it
+uniform float greenness = 0.5;
+uniform float reach = 18.0;
+varying float tip;
+varying vec3 tint;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+float noise(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	vec2 u = f * f * (3.0 - 2.0 * f);
+	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+}
+float ground(vec2 p) {   // as the game's _h: the grid's triangles
+	if (h_info.w < 0.5) { return 0.0; }
+	float fx = clamp((p.x - h_info.x) / h_info.z, 0.0, float(h_size.x) - 1.001);
+	float fz = clamp((p.y - h_info.y) / h_info.z, 0.0, float(h_size.y) - 1.001);
+	int i = int(fx);
+	int j = int(fz);
+	float ax = fx - float(i);
+	float az = fz - float(j);
+	float h00 = texelFetch(hmap, ivec2(i, j), 0).r;
+	float h10 = texelFetch(hmap, ivec2(i + 1, j), 0).r;
+	float h01 = texelFetch(hmap, ivec2(i, j + 1), 0).r;
+	float h11 = texelFetch(hmap, ivec2(i + 1, j + 1), 0).r;
+	if (ax + az <= 1.0) { return h00 + (h10 - h00) * ax + (h01 - h00) * az; }
+	return h11 + (h01 - h11) * (1.0 - ax) + (h10 - h11) * (1.0 - az);
+}
+void vertex() {
+	// a blade's three corners all sit at its root (VERTEX); UV says which corner (x across,
+	// y up), UV2 is the blade's own two random numbers
+	vec3 root = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	vec2 p = root.xz;
+	float gy = ground(p) + (h_info.w > 0.5 ? 0.07 : 0.0) + 0.015;
+	float d = distance(vec3(p.x, gy, p.y), CAMERA_POSITION_WORLD);   // (from up high: none)
+	float m = textureLod(mask, (p - mask_rect.xy) * mask_rect.zw, 0.0).g;
+	float n = noise(p / 70.0) * 0.65 + noise(p / 15.0) * 0.35;
+	float wild = smoothstep(0.62 - greenness * 0.45, 0.78 - greenness * 0.4, n);
+	float grow = m > 0.75 ? 1.0 : (m > 0.25 ? wild * 0.85 : 0.0);
+	grow *= 1.0 - smoothstep(reach * 0.6, reach, d);
+	float h = (0.06 + 0.1 * UV2.x) * grow;
+	float a = UV2.y * 6.2831853;
+	vec3 side = vec3(cos(a), 0.0, sin(a));
+	vec3 lean = vec3(-sin(a), 0.0, cos(a)) * (0.2 + 0.35 * UV2.x);
+	float sway = sin(TIME * 1.7 + p.x * 0.31 + p.y * 0.23) * 0.15 + sin(TIME * 3.1 + p.x * 1.3) * 0.05;
+	vec3 w = vec3(p.x, gy, p.y);
+	if (h > 0.004) {
+		w += side * UV.x * (0.011 + 0.007 * UV2.y) * (1.0 - UV.y)
+			+ (vec3(0.0, 1.0, 0.0) + lean + vec3(sway, 0.0, sway * 0.6)) * UV.y * h;
+	}
+	VERTEX = w - MODEL_MATRIX[3].xyz;   // (the grid moves, it does not turn)
+	NORMAL = vec3(0.0, 1.0, 0.0);
+	tip = UV.y;
+	tint = mix(col_a, col_b, step(0.82, fract(UV2.x * 7.3)) * 0.7 + (1.0 - clamp(m * 2.0 - 1.0, 0.0, 1.0)) * 0.25);
+}
+void fragment() {
+	// (a blade's base as dark as the lawn under it read as black spikes: barely darker, and
+	// the tips lighter than the lawn, as sunlit blades are)
+	ALBEDO = tint * mix(0.9, 1.35, tip);
+	if (!FRONT_FACING) { NORMAL = -NORMAL; }   // (double-sided: seen from behind, the renderer turned it to the ground, and the blade went black)
+	ROUGHNESS = 0.9;
+	SPECULAR = 0.2;
+}
+"""
+const GRASS_PATCH := 4.0             ## metres a patch of blades covers
+const GRASS_BLADES := 520            ## blades a patch (about 32 a square metre)
+const GRASS_REACH := 18.0            ## metres from the camera blades grow to
+var _grass: MultiMeshInstance3D
+var _grass_mat: ShaderMaterial
+
+func _build_grass() -> void:
+	if _fs_tex == null:
+		return   # (no picture of where grass grows: a headless run)
+	var b := Buf.new()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 77
+	for i in range(GRASS_BLADES):
+		var at := Vector3(rng.randf() * GRASS_PATCH, 0, rng.randf() * GRASS_PATCH)
+		var u2 := Vector2(rng.randf(), rng.randf())
+		b.tri(at, at, at, Vector3.UP, Color.WHITE, Vector2(-1, 0), Vector2(1, 0), Vector2(0, 1), u2)
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, b.arrays())
+	_grass_mat = ShaderMaterial.new()
+	var sh := Shader.new()
+	sh.code = GRASS_SHADER
+	_grass_mat.shader = sh
+	am.surface_set_material(0, _grass_mat)
+	if _hnx > 0:
+		var img := Image.create_from_data(_hnx, _hnz, false, Image.FORMAT_RF, _hgrid.to_byte_array())
+		_grass_mat.set_shader_parameter("hmap", ImageTexture.create_from_image(img))
+		_grass_mat.set_shader_parameter("h_info", Vector4(_hx0, _hz0, _hstep, 1.0))
+		_grass_mat.set_shader_parameter("h_size", Vector2i(_hnx, _hnz))
+	_grass_mat.set_shader_parameter("reach", GRASS_REACH)
+	_grass_mat.set_shader_parameter("greenness", 0.85 if String(_place.get("look", "")) == "north" else 0.35)
+	# the grid round the camera, nearest patches first (a smaller grid shows only the first)
+	var k := int(ceil(GRASS_REACH / GRASS_PATCH)) + 1
+	var cells: Array = []
+	for j in range(-k, k):
+		for i in range(-k, k):
+			cells.append(Vector2i(i, j))
+	cells.sort_custom(func(a: Vector2i, c: Vector2i) -> bool:
+		return Vector2(a.x + 0.5, a.y + 0.5).length() < Vector2(c.x + 0.5, c.y + 0.5).length())
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = am
+	mm.instance_count = cells.size()
+	for n in range(cells.size()):
+		var c: Vector2i = cells[n]
+		mm.set_instance_transform(n, Transform3D(Basis(), Vector3(c.x * GRASS_PATCH, 0, c.y * GRASS_PATCH)))
+	mm.custom_aabb = AABB(Vector3(-k * GRASS_PATCH, -600, -k * GRASS_PATCH), Vector3(2 * k * GRASS_PATCH, 1800, 2 * k * GRASS_PATCH))
+	_grass = MultiMeshInstance3D.new()
+	_grass.multimesh = mm
+	_grass.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	world.add_child(_grass)
+	_grass_retint()
+	_grass_quality()
+
+func _grass_retint() -> void:
+	if _grass_mat == null:
+		return
+	_grass_mat.set_shader_parameter("mask", _fs_tex)
+	_grass_mat.set_shader_parameter("mask_rect", _fs_rect)
+	var gr: Color = _tone["grass"]
+	_grass_mat.set_shader_parameter("col_a", gr)
+	_grass_mat.set_shader_parameter("col_b", gr.lerp(_tone.get("sand", gr), 0.45))
+
+## how many of the patches show: all at the top quality, the nearer ones at 2, none below
+func _grass_quality() -> void:
+	if _grass == null:
+		return
+	_grass.visible = _quality >= 2
+	var all := _grass.multimesh.instance_count
+	_grass.multimesh.visible_instance_count = all if _quality >= 3 else int(all * 0.55)
+
+## the grid under the camera, a patch at a time (each frame, with the sky)
+func _grass_follow() -> void:
+	if _grass == null or not _grass.visible:
+		return
+	var c := cam.global_position
+	var at := Vector3(floorf(c.x / GRASS_PATCH) * GRASS_PATCH, 0, floorf(c.z / GRASS_PATCH) * GRASS_PATCH)
+	if at != _grass.position:
+		_grass.position = at
+
+## an outline filled on a canvas item, in one colour (skipped if it will not triangulate)
+func _canvas_ring(item: RID, ring: PackedVector2Array, col: Color) -> void:
+	var tri := Geometry2D.triangulate_polygon(ring)
+	if tri.is_empty():
+		return
+	var c := PackedColorArray()
+	c.resize(ring.size())
+	c.fill(col)
+	RenderingServer.canvas_item_add_triangle_array(item, tri, ring, c)
 
 ## a tree's shadow on the ground (crown r across, its middle y up), for past the real ones:
 ## laid round the foot of its trunk; AO_SHADER moves it out along the sun's way and draws it
@@ -8696,6 +9104,8 @@ func cat_at(p: Vector2, y: float, face: Vector2, kind: String) -> void:
 		return
 	var yaw := atan2(face.x, face.y) if face.length_squared() > 0.0001 else 0.0
 	_cat_spots.append([Transform3D(Basis(Vector3.UP, yaw), Vector3(p.x, y, p.y)), kind, posmod(_hash_i(p * 3.0), 97)])
+	if y - _h(p) < 0.4:   # on the ground (not up on a wall): a small post, not walked through
+		_add_post(p, 0.15)
 
 ## ---- contact shadows ------------------------------------------------------------------------
 ## Where a wall meets the ground, and under a parked car, less of the sky's light gets in and
@@ -9127,6 +9537,13 @@ func _build_street_signs() -> void:
 	var poles: Array = []
 	var marks := CBuf.new(GROUND_CELL)
 	var plant := func(kind: String, p: Vector2, facing: Basis, h: float) -> void:
+		# a spot a set way from the road's edge line, near a junction, can be out on the
+		# asphalt a rounded corner adds: across that corner's kerb instead, onto its pavement
+		var q := _out_of_corner(p, 0.35)
+		if q != p:
+			if _push_out(q, 0.4, true, false) != Vector2.ZERO:
+				return
+			p = q
 		if not plates.has(kind):
 			plates[kind] = []
 		var gy := _h(p)
@@ -10256,6 +10673,7 @@ func _build_sky_dome() -> void:
 func _sky_follow() -> void:
 	if _sky_dome != null:
 		_sky_dome.global_position = cam.global_position
+	_grass_follow()
 
 func _retint_sky_dome() -> void:
 	if _sky_dome == null:
@@ -10285,7 +10703,7 @@ func _sky_photo() -> Texture2D:
 ## to a grass green. Signs, kerb paint, lights and the cars' colours keep theirs: real ones
 ## are bright.
 const NATURAL := {
-	"ground": 0.3, "rock": 0.3, "path": 0.15, "asphalt": 0.08, "parking": 0.08, "plaza": 0.2,
+	"ground": 0.45, "rock": 0.3, "path": 0.15, "asphalt": 0.08, "parking": 0.08, "plaza": 0.2,
 	"grass": 0.6, "pitch": 0.6, "wood": 0.6, "leaf": 0.62, "bush": 0.6, "water": 0.5, "sand": 0.6,
 	"mark": 0.3, "wall": 0.5, "wall2": 0.45, "wall3": 0.6, "wall4": 0.6, "wall5": 0.5, "wall6": 0.3,
 	"glass": 0.5, "glass2": 0.5, "glass3": 0.5, "glass4": 0.5, "shutter": 0.3, "recess": 0.3, "lobby": 0.35, "flowers": 0.8,
@@ -10319,7 +10737,10 @@ func _tones() -> void:
 	var pz := Palette.col("prize")
 	var veg := fr.lerp(wn, 0.3)   # what grows: the palette's green, leaning toward its yellow
 	_tone = {
-		"ground": alt.lerp(ink, 0.42),
+		# bare earth: dusty sand, warmer and lighter than the asphalt. (It was a grey a shade
+		# off the road's, and with the lawn photo's light and dark over it read as asphalt:
+		# a boulevard's middle strip looked like more road, its lawns like grass painted on it.)
+		"ground": alt.lerp(ink, 0.5).lerp(wn, 0.3),
 		"rock": alt.lerp(ink, 0.3).lerp(wn, 0.2),
 		"path": alt.lerp(ink, 0.62),
 		"asphalt": alt.lerp(ink, 0.27),   # (pale grey, as sun-bleached asphalt is)
@@ -11120,8 +11541,9 @@ func _walk(dt: float) -> void:
 	var want := go * (RUN if run and go > 0.0 else WALK) * (0.6 if go < 0.0 else 1.0)
 	_v = move_toward(_v, want, 9.0 * dt)
 	_pos += _fwd() * _v * dt
-	# walls, trees and posts; the cars going by; the car you left
+	# walls, trees and posts; the people; the cars going by; the car you left
 	var push := _push_out(_pos, 0.3, true, false, _y)
+	push += _people_push(_pos + push, 0.3)
 	push += _steep_push(_pos + push, 0.3, _y)
 	push += _deep_push(_pos + push, 0.3, _y)
 	_pos += push
@@ -11723,6 +12145,7 @@ func _set_quality(q: int) -> void:
 	view.scaling_3d_scale = row[2]
 	_set_blobs(not sun.shadow_enabled)
 	_far_update()
+	_grass_quality()
 
 ## Only on the web: a desktop build has a real GPU, and test runs on a software renderer
 ## would step themselves down to nothing.
@@ -12442,6 +12865,13 @@ func _people_lod(a: Actor3D) -> void:
 	for mi: MeshInstance3D in a.find_children("*", "MeshInstance3D", true, false):
 		mi.visibility_range_end = PEOPLE_SEEN
 		mi.visibility_range_end_margin = 5.0
+		# dissolving in over the last 15 m (a dither, no sorting), not there in one frame
+		for si in range(mi.mesh.get_surface_count() if mi.mesh != null else 0):
+			var m := mi.get_active_material(si) as BaseMaterial3D
+			if m != null and m.distance_fade_mode == BaseMaterial3D.DISTANCE_FADE_DISABLED:
+				m.distance_fade_mode = BaseMaterial3D.DISTANCE_FADE_OBJECT_DITHER
+				m.distance_fade_min_distance = PEOPLE_SEEN   # (min past max: gone at min)
+				m.distance_fade_max_distance = PEOPLE_SEEN - 15.0
 
 func _people_awake(a: Actor3D, p: Vector2) -> void:
 	var near := p.distance_to(_pos) < PEOPLE_SEEN + 8.0
@@ -12614,6 +13044,19 @@ func _unseen(p: Vector2) -> bool:
 	return d > PEOPLE_SEEN + 4.0 or (d > 18.0 and to.dot(_fwd()) < -0.35 * d)
 
 func _people_tick(dt: float) -> void:
+	# where everyone is, for the walkers to keep clear of and for the car and you to bump
+	# (everyone placed, wherever they are: a walker 60 m off still has to see the next one)
+	_people_at.clear()
+	_people_who.clear()
+	for list: Array in [_walkers, _chatters, _crossers]:
+		for w: Dictionary in list:
+			var a: Actor3D = w["actor"]
+			if a.visible:
+				_people_at.append(Vector2(a.position.x, a.position.z))
+				_people_who.append(a.get_instance_id())
+	if _walking:
+		_people_at.append(_pos)
+		_people_who.append(0)
 	_people_t -= dt
 	if _people_t <= 0.0:
 		_people_t = 1.5
@@ -12643,6 +13086,33 @@ func _people_tick(dt: float) -> void:
 		w["s"] = s
 		var p := _along(line, cum, s)
 		var ahead := _along(line, cum, clampf(s + float(w["dir"]) * 0.5, 0.0, total)) - p
+		# keeping clear, as people do: round a post, a tree, a bench, a cabinet a step ahead,
+		# to the right of anyone coming the other way (or standing in the way), and never
+		# into anything -- they used to walk through all of it on their line
+		if ahead != Vector2.ZERO:
+			var fw := ahead.normalized()
+			var right := Vector2(-fw.y, fw.x)
+			var want := 0.0
+			var block := _push_out(p + fw * 1.3, 0.35, true, false)   # (0.45 felt the house fronts at the pavement's back and drifted them kerbwards)
+			if block != Vector2.ZERO:
+				want += clampf(block.dot(right) * 2.5, -0.8, 0.8)
+			# someone ahead or alongside within a shoulder's width: a step away from their side
+			# until past them (only "ahead" let them drift back as they drew level), the right
+			# if they are dead ahead
+			var me := a.get_instance_id()
+			for k in range(_people_at.size()):
+				if _people_who[k] == me:
+					continue
+				var rel := _people_at[k] - p
+				var fore := rel.dot(fw)
+				if fore > -0.6 and fore < 2.6:
+					var sr := rel.dot(right)
+					if absf(sr) < 0.85:
+						want += 0.8 if absf(sr) < 0.05 else -signf(sr) * (0.85 - absf(sr))
+			var lat: float = w.get("lat", 0.0)
+			lat = lerpf(lat, clampf(want, -0.7, 0.7), 1.0 - exp(-dt * 3.0))
+			w["lat"] = lat
+			p += right * lat
 		# a car coming at them on the pavement: step aside, towards the buildings
 		var to_car := _pos - p
 		var dodge: float = w["dodge"]
@@ -12656,6 +13126,8 @@ func _people_tick(dt: float) -> void:
 			if side.dot(to_car) > 0.0:
 				side = -side
 			p += side * dodge
+		for _pass in range(2):   # (out of one parked car's post can be into its other)
+			p += _push_out(p, 0.25, true, false)
 		a.position = Vector3(p.x, _h(p) + _pave_top(), p.y)   # (their line is on the pavement)
 		if ahead != Vector2.ZERO:
 			# turning as people do, over a moment: at the end of a block they turned back on
@@ -13137,6 +13609,8 @@ func _collide() -> void:
 		var moved := false
 		for off: float in [CAR_OFF, -CAR_OFF]:
 			var p := _push_out(_pos + fwd * off, CAR_R, true, true, _y)
+			if not _walking:
+				p += _people_push(_pos + fwd * off + p, CAR_R)
 			p += _steep_push(_pos + fwd * off + p, CAR_R, _y)
 			p += _deep_push(_pos + fwd * off + p, CAR_R, _y)
 			if p != Vector2.ZERO:
@@ -13184,6 +13658,10 @@ func _crash(speed: float) -> void:
 	if speed < 1.2 or _crash_cool > 0.0:
 		return
 	_crash_cool = 0.4
+	if _last_hit == "person":   # the car stops at them, a soft knock: never a bang
+		Audio.play("impact_soft", 0.1, -10.0)
+		Probe.event("crash", {"kmh": int(speed * 3.6), "hit": _last_hit, "at": Vector2i(_pos)})
+		return
 	if _auto and (_last_hit.begins_with("building") or _last_hit.begins_with("wall") or _last_hit.begins_with("post")):
 		_ap_bonks += 1.0
 	# a jolt of the camera, not a freeze-frame: the car stops dead and the view with it
@@ -13307,6 +13785,24 @@ func _push_out(c: Vector2, r: float, posts: bool, cars := true, y := NAN) -> Vec
 		if tp != Vector2.ZERO:
 			push += tp
 			_last_hit = "car %d" % _traffic.hit_index
+	return push
+
+## The people in the street as solid things, for what moves at play -- the car (_collide)
+## and you on foot -- and not for _push_out, which also places things as the city builds
+## (a passer-by there would have cost a square its bench). They were walked and driven
+## through like ghosts.
+const PERSON_R := 0.28
+var _people_at := PackedVector2Array()   ## where everyone in the street is now (_people_tick)
+var _people_who := PackedInt64Array()    ## ... and who (an actor's id; 0 you on foot)
+
+func _people_push(c: Vector2, r: float) -> Vector2:
+	var push := Vector2.ZERO
+	for q in _people_at:
+		var d := (c + push) - q
+		var need := r + PERSON_R
+		if d.length_squared() < need * need:
+			push += d.normalized() * (need - d.length()) if d.length() > 0.001 else Vector2(need, 0)
+			_last_hit = "person"
 	return push
 
 func _poly_push(poly: PackedVector2Array, c: Vector2, r: float) -> Vector2:
@@ -15407,9 +15903,14 @@ func _open_picker() -> void:
 	title.size = Vector2(300, 22)
 	_picker.add_child(title)
 	_pick_title = title
-	# drive there (autodrive takes you) or jump there (you are put down on that street)
-	_pick_jump_btn = _bar_button("", Vector2(10, 4), 124, func():
-		_pick_jump = not _pick_jump
+	# jump there (you are put down on that street) or drive there (autodrive takes you): two
+	# choices side by side, the one in force filled in. (One button that said the other
+	# mode -- "⇄ drive there" -- did not read as a choice; the user asked for both, jump first.)
+	_pick_jump_btn = _bar_button("jump to", Vector2(24, 4), 72, func():   # (clear of the shell's score)
+		_pick_jump = true
+		_show_pick_mode())
+	_pick_drive_btn = _bar_button("drive to", Vector2(100, 4), 72, func():
+		_pick_jump = false
 		_show_pick_mode())
 	_show_pick_mode()
 	_pick_letters = Control.new()
@@ -15434,8 +15935,17 @@ func _open_picker() -> void:
 	Probe.event("picker")
 
 func _show_pick_mode() -> void:
-	_pick_jump_btn.text = "⇄ jump there" if _pick_jump else "⇄ drive there"
-	_pick_title.text = "jump to where?" if _pick_jump else "where to?"
+	for b: Button in [_pick_jump_btn, _pick_drive_btn]:
+		var on := (b == _pick_jump_btn) == _pick_jump
+		var sb := (b.get_theme_stylebox("normal") as StyleBoxFlat).duplicate() as StyleBoxFlat
+		sb.bg_color = Palette.col("player").darkened(0.35) if on else Palette.col("bg")
+		sb.border_color = Palette.col("player") if on else Palette.col("accent").darkened(0.45)
+		b.add_theme_stylebox_override("normal", sb)
+		b.add_theme_stylebox_override("hover", sb)
+		b.add_theme_stylebox_override("focus", sb)
+		b.add_theme_color_override("font_color", Palette.col("bg") if on else Palette.col("ink").darkened(0.35))
+		b.add_theme_color_override("font_hover_color", Palette.col("bg") if on else Palette.col("ink"))
+	_pick_title.text = "jump to where?" if _pick_jump else "drive to where?"
 
 func _close_picker() -> void:
 	if _picker != null:

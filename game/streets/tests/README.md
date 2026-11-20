@@ -35,10 +35,14 @@ these numbers the wrong way has broken something.
 | `buildings_on_roads` | 1 | buildings still standing on a road's asphalt | 3 (passages, on purpose) |
 | `corners` | 1 | junction corners the old middle-only check let in whole | 261 (fixed), shots |
 | `map_edge` | 3 | the car coasting into the map's edge | stops nose to the barrier |
-| `road_blocks` | 4 | things solid to the car on a road's lanes: a median over another road, walls, posts (shots from above) | test town: 0 medians, 0 posts; 16 walls across service lanes |
+| `road_blocks` | 4, 1 | things solid to the car on a road's lanes, a junction's middle or a rounded corner's asphalt: a median over another road, walls, posts (bollards, sign poles, railing ends; shots from above) | test town: 0 medians, 0 posts; 16 walls across service lanes. Givatayim: 0 medians, 0 walls, 8 posts (159 before corners' asphalt counted as road: bollards, sign and light poles; the 8 are 3 light poles kept so every way in has one, 4 of the filmed Ha-Meri passage's details, 1 on a service lane) |
 | `medians` | 4 | the raised medians from a driver's seat where they end and bend (shots) | |
 | `mountains` | 4 | the test town's mountains from the car, the hill, a mountainside, and the turbines (shots) | |
 | `go_where` | 4 | zoomed out, a long press on a street: destination set, the view down, the city on, the car there; a quick press does nothing | 9 m from the press, arrived; quick press: none |
+| `picker` | 4 | the "go to…" list: jump to chosen at start, drive to chosen, then a street picked: the car jumped there (shots) | jump first; 48 m from the street's first point after the jump (put in its lane) |
+| `pave_overlap` | 7, 1 | pavement laid twice over one spot (two streets', a street's and a corner's) -- which flickers on a phone between the two patterns -- and kerb tops on pavement; the worst places (shots) | Tel Aviv: 19,360 m2 laid twice before; now 5,355 m2, of it two different pavings 30 m2 (the rest a strip's own next piece at a bend, the same paving laid the same way) |
+| `top_at` | any | shots of places by map point (`AT`), from above and from a car's height, and the car put down anywhere (`CAR=x,z,dx,dz`, off the road too) and shot from the chase camera: for matching a user's screenshot | shots |
+| `street_at` | any | the car put down 25 m before each roundabout (`RINGS_ONLY=0`: each junction) on a street by name (`STREET`), shot from the chase camera | shots |
 | `median_cross` | 4 | the car across a median at 10, 30, 50 km/h: over it, riding up, slowed by the jolts | over at 30 and 50 |
 | `autodrive_edge` | 1, 3 | autodrive put on streets that run off the map, 120 m short, facing out: touches of the barrier, turn-rounds, time near it | Givatayim: touched the barrier 1 (a one-way motorway with no exit), turned round 5, 31 s near it (were 9, 9, 59 s); Ashdod 1, 6, 31 s (10, 12, 71 s) |
 | `feet` | 1 | a walker's feet against the pavement's top | 0.21 = 0.21 |
@@ -53,6 +57,8 @@ these numbers the wrong way has broken something.
 | `wet` | 1 | dry and after rain over the same views (down the start street, back across the zebra, a walker looking down at the pavement), by day and in the evening (shots `wet_*`) | darker ground, puddles with the sky in them, no white flare on sunlit pavers |
 | `street_life` | 1 | the cats and the flags on parked cars: how many, and the nearest two of each up close (`AT="x,z"`; shots `life_*`) | ~1 cat a block; a flag on 1 parked car in 14 |
 | `night` | 1 | the night up close: from the car with its headlights, by the nearest lamps (pools, halos), in front of the nearest lit shop (shots `night_*`) | pools on the pavement too; halos; the shop's light on the ground |
+| `grass` | 1 | the grass blades on and off: a walker by the front gardens, by the nearest park, from the car (shots `grass_*`) | 6-9% of each picture changed; blades only on the lawns |
+| `people_clear` | 1 | the walkers on autodrive for 40 s, ten times a second: how many are more than 10 cm into a post or a wall, how many are closer than 0.45 m to someone; run headless | was 7.6% and 47; now 0.1% and 2-9 |
 | `sound_drive` | 1 | the game's own mix on autodrive, recorded (AudioEffectRecord on the master bus) to `sound_drive.wav` to listen to, its loudness and brightness second by second (`WET=1`: after rain, the tyres hiss); run headless (`OUT=... $GODOT --headless --path . -s res://game/streets/tests/sound_drive.gd`), not with run.sh | -38 dB standing, -31 to -35 driving |
 | `draws`, `frame_cost` | 1 | what is drawn and what it costs per quality level | ~280 draws |
 | `divided_zebra` | 3 | people crossing both halves of a divided road (shots) | |
