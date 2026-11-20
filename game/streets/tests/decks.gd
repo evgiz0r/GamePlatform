@@ -8,6 +8,8 @@ extends SceneTree
 ##
 ##   OUT=/tmp/decks game/streets/tests/run.sh decks 4
 ##   RUNS=tunnel_east SHOTS=0 ...   only those runs (comma-separated), no fixed views
+##   ROUTES="ic:3815,-1520,-51;..." ...   runs from chosen points (name:x,z,heading in degrees
+##                                    [,top]), in any town
 ##   RUNS=none VIEWS=ic_,river ...    no runs, only the views whose names hold one of those
 ##   TRACE=1 ...   at each take-off, the ten frames before it: the surface under the car's
 ##                 middle and axles, the deck it is on (a step between decks, or a crest)
@@ -129,7 +131,16 @@ func _run() -> void:
 	print("decks: ", kinds, ", holes cut in the ground: ", g._decks.holes.size(), ", walls: ", g._decks._walls.size())
 	_grades()
 	var only := OS.get_environment("RUNS").split(",", false)
-	for run: Array in (RUNS if level == 4 else _auto_runs()):
+	# ROUTES="name:x,z,deg[,top];..." -- runs from chosen points instead (any level)
+	var chosen: Array = []
+	for one: String in OS.get_environment("ROUTES").split(";", false):
+		var nv := one.split(":")
+		var v := nv[1].split(",")
+		var run := [nv[0], Vector2(float(v[0]), float(v[1])), deg_to_rad(float(v[2])), 16.0]
+		if v.size() > 3:
+			run.append(v[3])
+		chosen.append(run)
+	for run: Array in (chosen if not chosen.is_empty() else (RUNS if level == 4 else _auto_runs())):
 		if not only.is_empty() and not only.has(run[0]):
 			continue
 		await _drive(run)

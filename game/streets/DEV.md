@@ -1152,12 +1152,25 @@ it is dropped.
   service tunnel. `tests/decks.gd` level 1: the tunnels and bridges driven alone come out
   clean; in the full sequence two runs stall (traffic left by the run before), and two
   cuttings give a short hop.
-- **Still to do**: Ashdod's two tight interchanges near its east edge, where slip roads
-  cross slip roads and the main line at street level -- 15 crossings short of the clearance
-  (8 round x 3840, z -1590; 7 round x 4830, z -4170, with the lowest, 0.5 m; `infer`'s
-  report lists only the first 12); in Tel Aviv, Givat HaTahmoshet's bridge and a slip road
-  over Ayalon South, 3 crossings short (4.8 m the lowest; new: none before footbridges and
-  the ramp tops' rounding went in); grass slopes for cuttings too (they are walled); a
+- **Ashdod's interchanges** (Highway 4 under the motorway at x 3850, z -1590; the
+  motorway's at x 4830, z -4150) had 15 crossings short of the clearance, down to 0.5 m:
+  each link bridge lands on its own continuation, a cloverleaf loop that turns and passes
+  back under the bridge. The road crossed was held to the ground within 80 m of the
+  crossing as the crow flies, so the loop's start -- metres from the crossing, hundreds of
+  metres along the loop -- was held down, and the bridge's end with it. Held within 80 m
+  ALONG the road crossed now: Ashdod 0 short, 0 capped (22 before), every crossing over a
+  road at 6.4 m; Bedford and Givatayim the same as before; Tel Aviv's 3 short crossings (at
+  Givat HaTahmoshet) the same, capped 49 -> 40. `ROUTES=... tests/decks.gd` drives each link
+  bridge and Highway 4 under them: all clean. Ashdod's ten highest, both ways: all clean
+  once merged with the springs' smoothing (another session's: Begin's and Laskov Road's
+  small hops went with it). `street_holes` on Ashdod: 0 holes, 2 points in a wall (both
+  on Laskov Road; 51 before).
+- **Still to do**: in Tel Aviv, Givat HaTahmoshet's bridge and a slip road
+  over Ayalon South, 3 crossings short (4.8 m the lowest; new with the footbridges -- with
+  the paths left out of `infer`, 0 short: a footbridge crossing a road holds that road to
+  the ground for 80 m like a road bridge does, and there the road is a ramp up to a bridge
+  over Ayalon South, so its lift is capped. The fix: a footbridge holds nothing down, and
+  is raised to clear the road's final height there instead); grass slopes for cuttings too (they are walled); a
   long-span bridge's height over water (the MacKay's deck is only as high as its ends);
   pavements at street level beside a cutting (the underpass has none); people on a bridge's
   pavement and beside a cutting; the
@@ -1169,6 +1182,31 @@ it is dropped.
   corner: a corner-furniture question, not a deck one). Ramps' and cuttings' walls are left
   out of the collisions within a junction's corner (`_walls_of`): there they are a step a
   turning car sweeps over.
+- **Handoff -- footbridges, footpath tunnels, the interchanges' clearance (`infer`), 20 Nov
+  2026.** Nothing is half done: footbridges and footpath tunnels are in for Givatayim,
+  Bedford and Ashdod (and Tel Aviv, which runs the same `infer`: 46 footbridges, 2 foot
+  tunnels there, not walked by this session); Ashdod's interchanges are at full clearance.
+  How to check it all, and what good looks like:
+  - The inference's own report: the `decks_inferred` event in a playtest
+    (`tools/playtest.sh streets smart 25`, or `LEVEL=n`) -- `short_of_clear` 0 for
+    Givatayim, Bedford and Ashdod (Tel Aviv 3, at Givat HaTahmoshet), `capped` 0 / 2 / 0,
+    `stair_capped` 8 / 1 / 0, footbridges 22 / 24 / 6, foot tunnels 3 / 0 / 2, the whole
+    pass 0.3-0.8 s.
+  - `tests/foot_decks.gd` (levels 1, 2, 3; headless with `STREETS_BUILD_ALL=0 SHOTS=0
+    $GODOT --headless --fixed-fps 60 --path . -s res://game/streets/tests/foot_decks.gd`,
+    3-5 min a town): every route "got" 97-100% at its clearance; Bedford's Duke Street
+    sidewalk-bridge says 91% (the run-out past the path's end meets the abutment: fine).
+  - `tests/decks.gd` with `ROUTES` on level 3 for the interchanges (the seven runs are in
+    the README row), and plain on levels 4, 2, 3: 0 hits, 0 frames off the level; in the
+    air only the test town's 8-9 frames off its two bridge ends.
+  - `tests/street_holes.gd` level 3: 0 holes, 2 wall points.
+  Open, smallest first: a footbridge whose OSM way ends at a building (a skybridge into a
+  mall) now comes down by a stair at its end instead of meeting the wall; fences don't
+  open for footpaths (`_open_pieces` asks `_off_road`, drivable roads only), so an OSM
+  fence across a path on the ground still blocks a walker; walking up 60% stairs the walker's
+  height trails by up to 1 m for a moment (`_walk`'s easing); Tel Aviv's 3 short
+  crossings, which the footbridges caused (see "Still to do" above for why and the fix --
+  first thing to do when this area is picked up again).
 
 ## Sizes against life (`tests/scale_check.gd`, 20 Nov 2026)
 

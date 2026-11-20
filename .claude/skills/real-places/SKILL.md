@@ -357,6 +357,12 @@ one needed:
   over the tunnel. A hop left after that is a real step in the data (two decks overlapping
   at different heights): trace the frames before the take-off -- surface under the middle
   and each axle, and which deck -- to tell a seam from a crest.
+- **Hold the road a bridge crosses along the road, not as the crow flies.** The road under
+  a bridge is held at street level for some distance either side of the crossing; measure
+  that distance along it. A cloverleaf's link bridge lands on its own loop, which turns
+  and passes back under it: by straight-line distance the loop's start (beside the
+  crossing, hundreds of metres along the loop) was held down, and the bridge's end with it
+  -- 0.5-4 m clear over the roads it crossed.
 - **Footbridges and footpath tunnels are a second network.** Work their heights out the same
   way but along the paths only (footway, path, steps, cycleway...), steep (a ramp ~25%,
   stairs ~60% where OSM maps `highway=steps`), and keep the two networks apart both ways: a
@@ -375,9 +381,8 @@ one needed:
   the ground (a stair) rather than leave a ledge. A spiral stair is often one steps way
   lying on itself: keep a way that comes within ~0.8 m of itself on the ground (not
   1.5 m: an access ramp's hairpin legs are about a path's width apart). Walk every
-  footbridge and tunnel end to end in a test, steered along the path: the counts of a
-  push-back label lie (placing people relabels "last hit" every tick), so measure the
-  displacement that was not the walker's own step.
+  footbridge and tunnel end to end in a test, steered along the path (count pushes by
+  displacement, not by the "last hit" label: see the scene-tests skill).
 - **Water held at its own level** (a river between weirs) is drawn at that level and is too
   deep to drive into; gentle banks otherwise let a car down to drive along the bed under
   the water. Leave lakes that lie at their shore's lowest point alone: a road over an
