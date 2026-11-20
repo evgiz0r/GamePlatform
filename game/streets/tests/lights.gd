@@ -40,7 +40,27 @@ func _run() -> void:
 		if g._nodes[j].distance_to(g._pos) < best:
 			best = g._nodes[j].distance_to(g._pos)
 			jn = j
-	if jn >= 0 and OS.get_environment("OUT") != "":
+	if OS.get_environment("OUT") != "" and not g._light_spots.is_empty():
+		# close up: a car's light from the driver's side of its stop line, and a walk light
+		g.set_physics_process(false)
+		process_frame.disconnect(g._frame)
+		var near: Array = g._light_spots.duplicate()
+		near.sort_custom(func(a, b): return Vector2(a[0].x, a[0].z).distance_to(g._pos) < Vector2(b[0].x, b[0].z).distance_to(g._pos))
+		var hd: Vector3 = near[0][0]
+		var fc: Vector2 = near[0][1]
+		var eye := Vector3(hd.x + fc.x * 7.0, hd.y - 1.6, hd.z + fc.y * 7.0)
+		g.look_from(eye, hd)
+		await _snap("light_close")
+		if not g._walk_spots.is_empty():
+			var ws: Array = g._walk_spots.duplicate()
+			ws.sort_custom(func(a, b): return Vector2(a[0].x, a[0].z).distance_to(g._pos) < Vector2(b[0].x, b[0].z).distance_to(g._pos))
+			var wh: Vector3 = ws[0][0]
+			var wf: Vector2 = ws[0][1]
+			g.look_from(Vector3(wh.x + wf.x * 5.0, wh.y - 1.0, wh.z + wf.y * 5.0), wh)
+			await _snap("walk_close")
+		process_frame.connect(g._frame)
+		g.set_physics_process(true)
+	if jn >= 0 and OS.get_environment("OUT") != "" and OS.get_environment("WIDE") != "":
 		g.set_physics_process(false)
 		var c: Vector2 = g._nodes[jn]
 		var ap: Array = g._sig_ap[jn]

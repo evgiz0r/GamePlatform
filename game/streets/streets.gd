@@ -112,8 +112,8 @@ const CHATTERS := 8
 const PEOPLE_RANGE := 150.0
 const PEOPLE_SEEN := 90.0            ## people further than this are not drawn or animated
 const SIGNAL_CYCLE := [              ## [seconds, phase of the E-W group, phase of N-S]
-	[14.0, "g", "r"], [3.0, "y", "r"], [1.5, "r", "r"],
-	[14.0, "r", "g"], [3.0, "r", "y"], [1.5, "r", "r"],
+	[14.0, "g", "r"], [3.0, "y", "r"], [2.5, "r", "r"],
+	[14.0, "r", "g"], [3.0, "r", "y"], [2.5, "r", "r"],   # (all red 2.5 s: a big junction takes that to clear)
 ]
 
 const SEG_CELL := 24.0               ## spatial hash cell for road segments (m)
@@ -5961,6 +5961,7 @@ func _build_signals() -> void:
 				var gy := _h(p)
 				poles.append(Transform3D(Basis(), Vector3(p.x, gy + 1.7, p.y)))
 				heads.append(Transform3D(face, Vector3(p.x, gy + 3.3, p.y)))
+				_light_spots.append([Vector3(p.x, gy + 3.3, p.y), -dir])   # (for tests: where, facing)
 				# the blue crossing sign strapped to the pole under the light, as in Israel
 				# (Nova Scotia's lights carry walk signals instead): the zebra is just past it
 				if med:
@@ -6011,6 +6012,8 @@ func _build_signals() -> void:
 ## the green man -- in step with the cars' lights (see _apply_signals). People at those
 ## crossings go by them (_walk_light).
 var _ped_mats: Array = []            ## [group][0 red man, 1 green man]
+var _light_spots: Array = []         ## [head, the way it faces] of the cars' lights (for tests)
+var _walk_spots: Array = []          ## the same for the people's
 
 func _build_walk_lights(lit: Dictionary, pole_mesh: Mesh, bulb: Mesh) -> void:
 	var poles: Array = []
@@ -6044,6 +6047,7 @@ func _build_walk_lights(lit: Dictionary, pole_mesh: Mesh, bulb: Mesh) -> void:
 			var face := Basis(Vector3.UP, atan2(across.x, across.y))   # +Z toward the far kerb
 			poles.append(Transform3D(Basis.from_scale(Vector3(0.8, 2.7 / 3.4, 0.8)), Vector3(p.x, gy + 1.35, p.y)))
 			heads.append(Transform3D(face * Basis.from_scale(Vector3(0.7, 0.55, 0.6)), Vector3(p.x, gy + 2.55, p.y)))
+			_walk_spots.append([Vector3(p.x, gy + 2.55, p.y), across])
 			var front := Vector3(across.x, 0.0, across.y) * 0.1
 			lamps[g][0].append(Transform3D(Basis.from_scale(Vector3.ONE * 0.75), Vector3(p.x, gy + 2.67, p.y) + front))
 			lamps[g][1].append(Transform3D(Basis.from_scale(Vector3.ONE * 0.75), Vector3(p.x, gy + 2.43, p.y) + front))
