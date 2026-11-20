@@ -56,11 +56,19 @@ func _run() -> void:
 			groups[g._light_group(j, a[0])] = true
 		if groups.size() < 2:
 			single += 1
+		# (a way from inside the junction -- the road between two of its points -- has no light
+		# and no line: its cars are in the junction already, and it is no way in to conflict)
+		var inside: Array = []
+		for way: Array in g._sig_line.get(j, []):
+			if bool(way[3]):
+				inside.append([way[0], int(way[2])])
+		var from_inside := func(a: Array) -> bool:
+			return inside.any(func(w): return int(w[1]) == int(a[1]) and (w[0] as Vector2).dot(a[0]) > 0.99)
 		for x in range(arms.size()):
 			for y in range(x + 1, arms.size()):
 				var A: Array = arms[x]
 				var B: Array = arms[y]
-				if not A[3] or not B[3]:
+				if not A[3] or not B[3] or from_inside.call(A) or from_inside.call(B):
 					continue
 				var da: Vector2 = A[0]
 				var db: Vector2 = B[0]

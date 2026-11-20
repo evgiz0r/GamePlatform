@@ -183,7 +183,9 @@ func _drive(secs: float) -> void:
 			harsh = false
 		last_p = g._pos
 		last_v = g._v
-		var on: Dictionary = g._nearest_seg(p, 30.0, true, true)
+		# (at the car's own level: up on a bridge, the nearest road at the ground's level is
+		# the one under it, and the HaShalom bridge read as "15.8 m off the asphalt")
+		var on: Dictionary = g._nearest_seg(p, 30.0, true, true, float(g._y))
 		if not on.is_empty() and float(on["edge"]) > 1.0:
 			off += dt
 			if absf(off - 2.0) < dt * 0.5:
