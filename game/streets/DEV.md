@@ -1470,7 +1470,8 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   only in a tick-by-tick line of v, want, acc). `_start_on` now resets acc, braking, react_t,
   still, blocker, holding and the stop sign it last stopped at (all three of its callers put a
   car down afresh: spawns, kerb pull-outs, film cars). Likely the grey SUV's 0-1.5 s spread of
-  pass 12 too. The walk test's TRAFFIC_LOG prints each car's `why` now.
+  pass 12 too. After: the black hatch past the zebra at ~1.8 s (the film's ~2), the white SUV
+  at 3.2, the white hatch at 9. The walk test's TRAFFIC_LOG prints each car's `why` now.
 
 ### Handoff: the filmed walks (20 Nov 2026, after pass 13)
 
