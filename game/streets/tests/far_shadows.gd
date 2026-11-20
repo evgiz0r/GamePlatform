@@ -2,7 +2,7 @@ extends SceneTree
 ## The shadows past the real ones (the game's _build_far_shadows / far_shade): the picture of
 ## the whole city's building shadows it paints at load (far_shadow_map.png), then the same
 ## views with them on and off -- down the street from a driver's height, and over the city
-## from 60 m up -- at the top quality (real shadows to 75 m, these past them) and the lowest
+## from 60 m up and from the zoom-out's 165 m -- at the top quality (real shadows to 75 m, these past them) and the lowest
 ## (no real shadows: these everywhere). Prints the stage's load time and how much of each
 ## picture they darkened. Shots far_<view>_q<quality>_on/off.png in $OUT.
 var g: Node
@@ -112,4 +112,6 @@ func _run() -> void:
 		await _ab("street_q%d" % q, Vector3(e.x, g._h(e) + 3.2, e.y), Vector3(p.x + f.x * 80.0, g._h(p + f * 80.0), p.y + f.y * 80.0))
 		var hi := p - f * 120.0
 		await _ab("over_q%d" % q, Vector3(hi.x, g._h(hi) + 60.0, hi.y), Vector3(p.x + f.x * 200.0, g._h(p), p.y + f.y * 200.0))
+		var zo := p - f * 150.0   # (about where the zoom-out button puts the camera)
+		await _ab("zoom_q%d" % q, Vector3(zo.x, g._h(zo) + 165.0, zo.y), Vector3(p.x, g._h(p), p.y))
 	quit(0)
