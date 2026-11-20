@@ -29,6 +29,17 @@ into the turns.
 
 > First-person / bonnet camera.
 
+**The driver looks around.** Slowing for a junction, a light, a stop or a give-way sign, the
+driver looks left, right and left again (once a junction); into a turn as the wheel goes
+over; at people on the crossing ahead; over the right shoulder reversing. From the seat the
+view turns with the head; from behind, the camera swings a little to where the driver
+looks and the driver's head in the car turns. Autodrive's driver always does it; when you
+drive yourself, the "look" button (or G, for glance) switches it on and off.
+
+> I want the driver to look left and right in the turns, like a real driver with the head.
+> And I want that to be an option for the non-autodrive. For both chase and seat mode there
+> will be some effect of looking. That happens generally on every stop and give way.
+
 **On foot.** The "walk" button (or F) lets the driver out of the door to walk the same city:
 arrows or the stick to walk (a brisk 2.1 m/s) and turn, space to run (6 m/s), over the
 shoulder or (the "seat" button) from the eyes. Out of a moving car you jump: you tumble
@@ -161,7 +172,10 @@ HaGalil down a cutting into the hill and through it in a 440 m tunnel (under HaO
 HaBroshim and the water tower), lit by two rows of lamps, up a cutting on the far side to
 the ring road. Two of the old grid's streets no longer meet the boulevard: HaTamar dips
 under it (a cutting, a short cut-and-cover tunnel, a cutting back up), HaZayit climbs over
-it on embankments and a bridge. Driving, walking and the traffic all keep to their own
+it on embankments and a bridge -- and from HaZayit's flyover two slip roads come down to the
+boulevard and up from it, a half-diamond interchange: the junctions where they meet HaZayit
+are up on its embankments, 7 m over the street, the slip roads merging into and leaving the
+boulevard just short of HaTe'ena. Driving, walking and the traffic all keep to their own
 level: under a bridge you are under it, in the tunnel the hill's houses are not in your
 way, cars overhead do not stop for you.
 
@@ -377,6 +391,16 @@ Painted arrows in the lanes before the junctions of the main roads show the ways
 Parked cars and traffic are a mix of sedans, hatchbacks, SUVs and the odd van, with door
 seams, handles and wheel arches, in the colours real cars come in: mostly white, silver,
 grey and black, with the odd red or blue. Parked cars tilt with the slope they stand on.
+
+**Kerbs and parking, as filmed.** In Givatayim and Ashdod the kerb's paint goes by where on
+the street you are, as a walk filmed down two of Givatayim's streets showed it: blue and
+white along a residential street's parking, red and white for the last few metres before
+every junction and along many main roads, yellow and black in front of a bus stop. The
+parked cars keep to the paint: a nearly unbroken row down a blue-and-white street, half up
+on the pavement, fewer along a plain kerb, none on the red-and-white corners or at a stop.
+
+> ill film myself driving to work and back or whatever. and somehow give you the info back.
+> to make it more nad more realistic ( for the specific path and more general )
 
 > Let's move to cars.
 

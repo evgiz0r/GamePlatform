@@ -208,6 +208,24 @@ func deck_at(p: Vector2, y: float, slack := 1.5) -> int:
 			best = ri
 	return best
 
+## Where another deck's road comes in -- a slip road meeting a road up on its embankment --
+## p (on deck ri, at height y) lies on that road: on its carriageway (`inner` false) or
+## anywhere inside its walls (`inner` true). There a parapet or a walkway opens.
+func open_at(ri: int, p: Vector2, y: float, inner := true) -> bool:
+	var on := _under(p)
+	for rj: int in on:
+		if rj == ri or absf(float(on[rj][1]) - y) > 1.2:
+			continue
+		var r: Dictionary = g._roads[rj]
+		var reach := float(r["w"]) * 0.5 + (float(r["side"]) if inner else 0.2)
+		if float(on[rj][0]) < reach:
+			return true
+	return false
+
+## a deck's own point is at street level there (within half a metre of the ground)
+func _low(r: Dictionary, p: Vector2, y: float) -> bool:
+	return absf(y - float(g._h(p))) < 0.5
+
 ## ---- what you run into: parapets, walls, piers --------------------------------------------
 
 ## one side of each deck: [a, b, lo_a, hi_a, lo_b, hi_b, half thickness, what], kept only
@@ -228,17 +246,18 @@ func _walls_of(ri: int) -> void:
 	var ids: PackedInt32Array = r["ids"]
 	var clear_a := 0.0
 	var clear_b := 0.0
-	if kind in ["em", "cu"]:
-		if (g._node_roads[ids[0]] as Array).size() >= 3:
+	if kind in ["em", "cu"]:   # (at street level: a junction up on an embankment keeps its walls)
+		var last := ids.size() - 1
+		if (g._node_roads[ids[0]] as Array).size() >= 3 and absf(ys[0] - gs[0]) < 0.5:
 			clear_a = float(g._node_r[ids[0]]) + 6.0
-		if (g._node_roads[ids[ids.size() - 1]] as Array).size() >= 3:
-			clear_b = float(g._node_r[ids[ids.size() - 1]]) + 6.0
+		if (g._node_roads[ids[last]] as Array).size() >= 3 and absf(ys[last] - gs[last]) < 0.5:
+			clear_b = float(g._node_r[ids[last]]) + 6.0
 	var total := cum[cum.size() - 1]
 	for sd: float in [-1.0, 1.0]:
 		var line: PackedVector2Array = g._offset_line(pts, off * sd)
 		for j in range(pts.size() - 1):
-			if cum[j + 1] < clear_a or cum[j] > total - clear_b:
-				continue
+			if cum[j] < clear_a or cum[j + 1] > total - clear_b:
+				continue   # (any piece that reaches into the corner)
 			var band := []
 			for k: int in [j, j + 1]:
 				match kind:
@@ -253,6 +272,9 @@ func _walls_of(ri: int) -> void:
 			var rise := maxf(absf(ys[j] - gs[j]), absf(ys[j + 1] - gs[j + 1]))
 			if kind in ["em", "cu"] and rise < 0.3:
 				continue
+			var mid := (line[j] + line[j + 1]) * 0.5
+			if open_at(ri, mid, (ys[j] + ys[j + 1]) * 0.5):
+				continue   # (another deck's road comes in here)
 			_walls.append([line[j], line[j + 1], band[0], band[1], band[2], band[3], WALL_T * 0.5, kind])
 	if kind == "br":
 		for pier: Array in piers(ri):
@@ -497,6 +519,14 @@ func build() -> void:
 		g._ribbon(asphalt, pts, hw, g.Y_ROAD)
 		g._markings(marks, r, yellow)
 		g._on_deck = -1
+		# a junction in the air (only decks meet there): its middle filled, at its height
+		var ids: PackedInt32Array = r["ids"]
+		for n: int in [ids[0], ids[ids.size() - 1]]:
+			if (g._node_roads[n] as Array).size() >= 3 and deck_only(n) and g._mine(g._nodes[n]) \
+					and int((g._node_roads[n] as Array)[0].x) == ri:
+				g._on_deck = ri
+				g._disc(asphalt, g._nodes[n], float(g._node_r[n]) * 1.05, g.Y_ROAD)
+				g._on_deck = -1
 		match String(r["deck"]):
 			"br", "em":
 				_raised(ri, pts, walk, kerb, conc, stone)
@@ -548,16 +578,21 @@ func _edge(ri: int, pts: PackedVector2Array, off: float, lift: float) -> Array:
 	return [up, down]
 
 ## a wall face between two lines (each a PackedVector3Array), facing `face`'s side
-func _face(buf: RefCounted, a: PackedVector3Array, b: PackedVector3Array, out_dir: float, along: PackedVector2Array) -> void:
+func _face(buf: RefCounted, a: PackedVector3Array, b: PackedVector3Array, out_dir: float, along: PackedVector2Array,
+		gap := PackedByteArray()) -> void:
 	for i in range(a.size() - 1):
+		if not gap.is_empty() and (gap[i] == 1 or gap[i + 1] == 1):
+			continue
 		var d := (along[mini(i + 1, along.size() - 1)] - along[i]).normalized()
 		var n := Vector3(-d.y, 0.0, d.x) * out_dir
 		buf.tri(a[i], a[i + 1], b[i + 1], n, Color.WHITE)
 		buf.tri(a[i], b[i + 1], b[i], n, Color.WHITE)
 
 ## a flat strip between two lines, facing up (or down)
-func _strip(buf: RefCounted, a: PackedVector3Array, b: PackedVector3Array, up := true) -> void:
+func _strip(buf: RefCounted, a: PackedVector3Array, b: PackedVector3Array, up := true, gap := PackedByteArray()) -> void:
 	for i in range(a.size() - 1):
+		if not gap.is_empty() and (gap[i] == 1 or gap[i + 1] == 1):
+			continue
 		var n := Vector3.UP if up else Vector3.DOWN
 		buf.tri(a[i], a[i + 1], b[i + 1], n, Color.WHITE)
 		buf.tri(a[i], b[i + 1], b[i], n, Color.WHITE)
@@ -604,15 +639,27 @@ func _raised(ri: int, pts: PackedVector2Array, walk: RefCounted, kerb: RefCounte
 			foot.append(Vector3(vo.x, (outer[1] as PackedFloat32Array)[i] - 0.4, vo.z))
 			under.append(vo + Vector3(0, -SLAB - top, 0))
 		var line: PackedVector2Array = g._offset_line(pts, hw * sd)
+		# gaps: the walkway where it would lie on another road's carriageway (a slip road's
+		# mouth up on the embankment; the street a ramp's foot runs into), the parapet and
+		# its wall where another deck's road comes in
+		var walk_line: PackedVector2Array = g._offset_line(pts, (hw + side * 0.5) * sd)
+		var wall_line: PackedVector2Array = g._offset_line(pts, (hw + side + WALL_T * 0.5) * sd)
+		var gap_walk := PackedByteArray()
+		var gap_wall := PackedByteArray()
+		for i in range(pts.size()):
+			var y := deck_y(ri, pts[i])
+			var low := _low(r, pts[i], y)
+			gap_walk.append(1 if open_at(ri, walk_line[i], y, false) or (low and g._asphalt_other(walk_line[i], ri)) else 0)
+			gap_wall.append(1 if open_at(ri, wall_line[i], y) else 0)
 		if paved:
-			_face(kerb, kerb_in[0], kerb_top[0], -sd, line)
-		_strip(walk if paved else conc, kerb_top[0], inner[0])
-		_face(conc, inner[0], p_in, -sd, line)              # the parapet's inner face
-		_strip(conc, p_in, p_out)                           # its top
+			_face(kerb, kerb_in[0], kerb_top[0], -sd, line, gap_walk)
+		_strip(walk if paved else conc, kerb_top[0], inner[0], true, gap_walk)
+		_face(conc, inner[0], p_in, -sd, line, gap_wall)              # the parapet's inner face
+		_strip(conc, p_in, p_out, true, gap_wall)                     # its top
 		if bridge:
-			_face(conc, p_out, under, sd, line)             # the slab's edge and the parapet's outside
+			_face(conc, p_out, under, sd, line, gap_wall)             # the slab's edge and the parapet's outside
 		else:
-			_face(stone, p_out, foot, sd, line)             # the retaining wall, down into the ground
+			_face(stone, p_out, foot, sd, line, gap_wall)             # the retaining wall, down into the ground
 	if bridge:
 		var lo_l: Array = _edge(ri, pts, -(hw + side + WALL_T), -SLAB)
 		var lo_r: Array = _edge(ri, pts, hw + side + WALL_T, -SLAB)

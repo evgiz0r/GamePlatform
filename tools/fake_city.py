@@ -18,7 +18,8 @@ with one of each thing a real town has, so a change can be looked at in a moment
   ground   that every street crossing it bridges, a footbridge; a tunnel through the hill
            with a cutting down to each mouth; one west-grid street dipping under the
            boulevard (cuttings and a short cut-and-cover tunnel), another flying over it
-           (embankments and a bridge). Each is its own way, tagged as OSM tags them (br, tu,
+           (embankments and a bridge) with two slip roads to and from the boulevard, a
+           half-diamond interchange whose junctions are up on the embankments. Each is its own way, tagged as OSM tags them (br, tu,
            em, cu, layer), with its surface's height at every point (`y`), its ends at the
            ground's; streets on different layers cross without meeting
   places   a strip mall and its car parks, an office tower, a hotel, the town hall on its
@@ -1117,6 +1118,64 @@ def grade_separations(T):
         T.separated.append((nm[1], top, grade))
 
 
+def interchange(T):
+    """HaZayit's flyover made a half-diamond: a slip road climbs from the boulevard's
+    westbound half to a junction up on HaZayit's northern embankment, and another leaves a
+    junction on its southern one and comes down into the eastbound half -- junctions in the
+    air, slip roads merging and diverging. (Toward the town's middle, east: the west side
+    has the roundabout too close.)"""
+    G = T.G
+    x = WEST_NS[0][0]
+    nm = WEST_NS[0][1]
+
+    def piece_at(z):
+        for st in T.streets:
+            if st["name"] == nm[0] and st.get("deck") == "em" and \
+                    min(p[1] for p in st["pts"]) < z < max(p[1] for p in st["pts"]):
+                return st
+        raise RuntimeError("no embankment of %s at z %.0f" % (nm[1], z))
+
+    def on_half(half, xx):
+        """the point of a boulevard half at x, and the way it runs"""
+        best = None
+        for i in range(len(half) - 1):
+            a, b = half[i], half[i + 1]
+            if min(a[0], b[0]) <= xx <= max(a[0], b[0]) and abs(b[0] - a[0]) > 1e-6:
+                t = (xx - a[0]) / (b[0] - a[0])
+                best = (lerp2(a, b, t), unit(sub(b, a)))
+        return best
+
+    T.slips = []
+    for jz, half, x_bv, up in ((-40.0, T.blvd_w, -455.0, True), (30.0, T.blvd_e, -455.0, False)):
+        em = piece_at(jz)
+        yf_main = em["yf"]
+        split_street(T, em, [s_of(em["pts"], (x, jz))])
+        J = (x, jz)
+        yj = yf_main(J)
+        b, d = on_half(half, x_bv)                    # where it meets the boulevard
+        side = 1.0 if jz > 0 else -1.0                 # (south of the eastbound half, north of the westbound)
+        out = mul((0.0, 1.0), side * 1.0)
+        # from the boulevard out to the junction: alongside the boulevard, then round to it
+        ctrl = [b, add(add(b, mul(d, -14.0 if up else -14.0)), mul(out, 2.5)),
+                (x + 62.0, b[1] + side * 10.0), (x + 34.0, jz - side * 2.0), (x + 14.0, jz), J]
+        if not up:   # the eastbound one runs from the junction to the boulevard
+            ctrl = [J, (x + 14.0, jz), (x + 34.0, jz - side * 2.0), (x + 62.0, b[1] + side * 10.0),
+                    add(add(b, mul(d, -14.0)), mul(out, 2.5)), b]
+        line_ = catmull(ctrl, 4.0)
+        gb = G.at(b)
+        L = length(line_)
+        bv_end = line_[0] if up else line_[-1]
+
+        def yf(p, line_=line_, L=L, gb=gb, yj=yj, up=up):
+            t = s_of(line_, p) / max(L, 1e-6)
+            if not up:
+                t = 1.0 - t
+            return gb + (yj - gb) * sm(t)      # level at both ends: into the junction, onto the boulevard
+        st = T.street(line_, "primary_link", ("", ""), 5.5, 1, 1)
+        make_deck(st, "em", yf)
+        T.slips.append((st, L, yj - gb))
+
+
 def river_trees(T):
     """trees along both banks, clear of the streets"""
     pts = T.river
@@ -1237,8 +1296,9 @@ def junctions(T):
     return out
 
 
-DRIVE = {"primary", "secondary", "tertiary", "unclassified", "residential", "living_street", "service"}
-RANK = {"primary": 5, "secondary": 4, "tertiary": 3, "unclassified": 2, "residential": 1, "living_street": 0, "service": -1}
+DRIVE = {"primary", "secondary", "tertiary", "unclassified", "residential", "living_street", "service", "primary_link"}
+RANK = {"primary": 5, "secondary": 4, "tertiary": 3, "unclassified": 2, "primary_link": 2, "residential": 1, "living_street": 0,
+        "service": -1}
 
 
 def zebras(T, J):
@@ -1588,6 +1648,8 @@ def controls(T, J):
             continue
         if any(T.streets[si].get("rb") for si, _ in lst):
             continue
+        if all(T.streets[si].get("deck") for si, _ in lst) or any(T.streets[si]["k"] == "primary_link" for si, _ in lst):
+            continue   # (a junction in the air, a slip road's mouth: no signs, no zebras)
         ranks = [RANK[k] for k in kinds]
         names = {T.streets[si]["name"] for si, _ in lst}
         if N_SHUK[0] in names or (jp[0] < 0 and rng.random() < 0.3) or (jp[0] > 0 and rng.random() < 0.15):
@@ -1859,6 +1921,7 @@ def make(seed, name):
     river(T)
     hill_tunnel(T)
     grade_separations(T)
+    interchange(T)
     bridges(T)
     join(T)
     J = junctions(T)
@@ -1917,6 +1980,8 @@ def main():
         "over it); %s" % (T.bridge_n, x0, x1, x1 - x0, cover,
                           ", ".join("%s %s the boulevard at %.1f m (ramps up to %.0f%%)" % (n, "over" if t > 3 else "under", t, gr * 100)
                                     for n, t, gr in T.separated)))
+    log("the interchange: slip roads %s" % ", ".join("%.0f m climbing %.1f m (up to %.0f%%)" % (L, h, abs(h) / L * 150)
+                                                      for st, L, h in T.slips))
     if len(parts) > 1:
         log("warning: the roads fall into %d separate networks (%s nodes)" % (len(parts), sorted(parts, reverse=True)))
     log("wrote %s (%.1f MB)" % (args.out, os.path.getsize(args.out) / 1e6))

@@ -119,6 +119,20 @@ data format is at the top of `tools/osm_city.py`; this is about living with it.
   them and turns round in a queue of its own. Never take "to the end of this street and
   straight back" as a route's start; stop at the end and turn round there; keep traffic
   out unless there is no other way.
+- **Roads a metre or two long** sit in OSM junctions (a stub between two carriageways, a
+  kink split into its own way). Anything read from "the next two points" -- the way a lane
+  goes, which way to face -- can point backwards there. Read directions over a distance
+  along the path (5 m), never between two points.
+- **A car crossing your path is in it by its nose**, not its middle: one waiting crossways
+  at a junction's edge pokes into the turn. Check its ends as well as its middle.
+- **Queues at a green**: a follower that keeps its gap for the speed the car in front has
+  reached waits until that car is well away -- the third car of a queue moved 9 s after
+  the green. Size the gap on the slower of the two speeds, and start each driver's
+  reaction when the car in front is really moving (0.5 m/s), not when it has rolled a few
+  millimetres (then the whole queue goes at once, like a train).
+- **At signalled junctions the lights decide**: giving way by road rank as at an
+  unsignalled one makes a car with its green wait for a main-road car about to stop at
+  its own red.
 - **Start a plan in the lane**, not at the nearest point of the road's centre line: the
   line from there to the next point (often far down the street) runs diagonally, and the
   car drives left of the middle for the length of the street.
@@ -168,6 +182,12 @@ one needed:
   a cell beyond where a dug river channel starts; a bridge ending on that slope has a crest
   just past its end. End it a cell further out. And keep its end away from junctions (20 m
   or so): a car turning in clipped the parapet's start.
+- **Junctions in the air** (a slip road meeting a road up on its embankment): draw the
+  junction's middle at its height, open the parapet, its wall and the walkway wherever the
+  other road comes in, and let a ramp's walkway give way to the street's asphalt where its
+  foot runs into one. Leaving walls out of a junction's corner (so a turning car does not
+  clip a kerb-high step) is right at street level only: up on an embankment it is a gap to
+  drive off.
 - **Water held at its own level** (a river between weirs) is drawn at that level and is too
   deep to drive into; gentle banks otherwise let a car down to drive along the bed under
   the water. Leave lakes that lie at their shore's lowest point alone: a road over an
@@ -192,6 +212,12 @@ a place and a heading on the baked ground.
   so a gap in the track is a stop and its length the wait. On foot its points were good to
   ~4 m: the side of the street, not the spot on the pavement. Its `c` attribute is not the
   heading (it sat at ~5 for a whole walk): take the heading from the positions, +-3 s.
+- **`tools/gpx_route.py`** does the GPS side: `report` lays the track on the city file and
+  gives the streets in order with their speeds (mean, 85th percentile, top), speed by road
+  kind, every stop with the junction it was at (and whether it has lights), the hardest
+  acceleration and braking -- for a drive, what to tune AI drivers against. `route` gives
+  `{"points": [[seconds, x, z]...]}` timed to the film (`--video` reads its clock) and cut
+  between two named corners (`--from A B --to C D`), for a replay beside the film.
 - **Lining up.** Both come off the phone's clock. The video's file name is its start in
   local time; the mp4's `creation_time` is (on that phone) the *end*, in UTC: start =
   creation_time - duration. The two agreed to ~3 s. GPX times are UTC.
