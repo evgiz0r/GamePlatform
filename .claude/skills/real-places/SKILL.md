@@ -336,6 +336,23 @@ one needed:
   G (s - L/2)) and round humps. And in the car: a rise under it faster than any slope could
   give at its speed is a step (two decks overlapping at a junction in the air, 0.2-0.3 m
   apart), not a climb -- taken as vertical speed, it threw a car 3 m into the air.
+- **Footbridges and footpath tunnels are a second network.** Work their heights out the same
+  way but along the paths only (footway, path, steps, cycleway...), steep (a ramp ~25%,
+  stairs ~60% where OSM maps `highway=steps`), and keep the two networks apart both ways: a
+  sidewalk or a crossing way shares nodes with the street, so a road bridge's or a
+  tunnel's lift leaks onto it (a 6 m dip in a sidewalk, a pavement rising 5 m in 2 m off a
+  ramp) unless a path's point that a street has keeps the street's level, and a path's lift
+  must never spread onto a street's point (it comes down to the pavement there). A
+  footpath tunnel can end under the ground in OSM (the mapper stopped): leave it out. Two
+  traps when people walk it: footbridges branch at sharp angles, so a railing checked
+  against "another deck comes in here" at its middle alone ran across the way onto the
+  next piece -- check walls of narrow decks in short pieces; and OSM fences cross paths
+  right at a footbridge's foot -- a body on a deck off the ground should not meet the
+  fences and posts down on the ground. A road bridge's piers must keep off paths and off
+  any deck below their top (a footbridge alongside, lower, walked into them). Walk every
+  footbridge and tunnel end to end in a test, steered along the path: the counts of a
+  push-back label lie (placing people relabels "last hit" every tick), so measure the
+  displacement that was not the walker's own step.
 - **Water held at its own level** (a river between weirs) is drawn at that level and is too
   deep to drive into; gentle banks otherwise let a car down to drive along the bed under
   the water. Leave lakes that lie at their shore's lowest point alone: a road over an

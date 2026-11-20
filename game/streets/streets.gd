@@ -15136,12 +15136,16 @@ func _any_steep() -> bool:
 func _push_out(c: Vector2, r: float, posts: bool, cars := true, y := NAN) -> Vector2:
 	var push := Vector2.ZERO
 	var ground := true   # at the ground's level (not in a tunnel under it, not on a bridge over it)
+	var low := true      # ... and not on a deck's surface off the ground: fences and posts count
 	if _decks != null and _decks.any():
 		push = _decks.push(c, r, _h(c) if is_nan(y) else y)
 		ground = is_nan(y) or absf(y - _h(c)) < 2.5
 		if ground and not is_nan(y) and y < _h(c) - 0.5:   # in a tunnel: the houses are over its roof
 			var under := _decks.deck_at(c, y, 1.0)
 			ground = under < 0 or String(_roads[under]["deck"]) != "tu"
+		# on a deck off the ground: the fences and posts are down on the ground under it (an
+		# OSM fence across a footbridge's foot stopped you on its first metre up)
+		low = not (posts and ground and not is_nan(y) and _decks.off_ground(c, y))
 	for i: int in (_near(_bld_hash, c, r, BLD_CELL) if ground else []):
 		if _bld_solid[i] == 0:
 			continue
@@ -15152,7 +15156,7 @@ func _push_out(c: Vector2, r: float, posts: bool, cars := true, y := NAN) -> Vec
 		if p != Vector2.ZERO:
 			push += p
 			_last_hit = "building %d" % i
-	if posts and ground:
+	if posts and ground and low:
 		# fences, railings, hedges, garden walls, a shelter's back: thin walls, as segments
 		for i: int in _near(_wall_hash, c, r + 0.5, BLD_CELL):
 			var q := c + push
@@ -15186,7 +15190,10 @@ var _people_who := PackedInt64Array()    ## ... and who (an actor's id; 0 you on
 
 func _people_push(c: Vector2, r: float) -> Vector2:
 	var push := Vector2.ZERO
-	for q in _people_at:
+	for k in range(_people_at.size()):
+		if k < _people_who.size() and _people_who[k] == 0:
+			continue   # (you, on foot, where you were last tick: pushed off that, you ran at 35 m/s)
+		var q := _people_at[k]
 		var d := (c + push) - q
 		var need := r + PERSON_R
 		if d.length_squared() < need * need:
