@@ -1568,6 +1568,24 @@ func _ground_line(pts: PackedVector2Array) -> PackedFloat32Array:
 
 ## a map point on the ground, `lift` above it (a little more on hills: a straight piece
 ## of road between two points can dip under a bend in the ground)
+## Where a person's feet go at p: on top of the pavement beside a kerbed road, on the
+## asphalt, or on the ground's own layer -- each a little over the bare ground height, which
+## is where people stood, a pavement's height (and on the hills the lift) into the slabs.
+func _walk_y(p: Vector2) -> float:
+	var hit := _nearest_seg(p, 5.0, true, true)
+	var on := Y_AREA
+	if not hit.is_empty():
+		var edge: float = hit["edge"]
+		if edge < 0.0:
+			on = Y_ROAD
+		elif edge < KERB_W + PAVE_W + 0.1 and _kerbed(_roads[hit["road"]]):
+			on = KERB_H
+	return _h(p) + on + (0.07 if _hnx > 0 else 0.0)
+
+## a pavement's top over the bare ground
+func _pave_top() -> float:
+	return KERB_H + (0.07 if _hnx > 0 else 0.0)
+
 func _g3(p: Vector2, lift: float) -> Vector3:
 	return Vector3(p.x, _h(p) + lift + (0.07 if _hnx > 0 else 0.0), p.y)
 
@@ -6988,7 +7006,7 @@ func _walk(dt: float) -> void:
 		if d.length() < CAR_R + 0.3 and d.length() > 0.001:
 			_pos += d.normalized() * (CAR_R + 0.3 - d.length())
 	_keep_inside(0.3, false)
-	_y = _h(_pos)
+	_y = _walk_y(_pos)
 	var anim := "Idle" if absf(_v) < 0.15 else ("Run" if absf(_v) > WALK + 0.5 else "Walk")
 	if anim != _me_anim:
 		_me_anim = anim
@@ -7000,7 +7018,7 @@ func _walk(dt: float) -> void:
 ## eyes when the seat view is chosen
 func _foot_camera(dt: float) -> void:
 	var p := _view_pos
-	var gy := _h(p)
+	var gy := _view_y
 	if _cockpit:
 		var fwd := Vector2(cos(_view_yaw), sin(_view_yaw))
 		var eye := Vector3(p.x + fwd.x * 0.15, gy + 1.64, p.y + fwd.y * 0.15)
@@ -7510,7 +7528,7 @@ func _frame() -> void:
 	_view_y = lerpf(_prev_y, _y, f)
 	if _walking:
 		_pose_car(_car_at, _car_yaw_at, _car_y_at)
-		_me.position = Vector3(_view_pos.x, _h(_view_pos), _view_pos.y)
+		_me.position = Vector3(_view_pos.x, _view_y, _view_pos.y)
 		_me.face(Vector3(cos(_view_yaw), 0, sin(_view_yaw)))
 		_traffic.draw(f)
 		_foot_camera(dt)
@@ -8269,7 +8287,7 @@ func _seat_chatters() -> void:
 		c["spot"] = t
 		var off := Vector2(cos(i * 2.4), sin(i * 2.4)) * 0.95
 		var at := t + off
-		a.position = Vector3(at.x, _h(at), at.y)
+		a.position = Vector3(at.x, _walk_y(at), at.y)
 		a.face(Vector3(-off.x, 0, -off.y))
 		a.visible = true
 
@@ -8312,7 +8330,7 @@ func _people_tick(dt: float) -> void:
 			if side.dot(to_car) > 0.0:
 				side = -side
 			p += side * dodge
-		a.position = Vector3(p.x, _h(p), p.y)
+		a.position = Vector3(p.x, _h(p) + _pave_top(), p.y)   # (their line is on the pavement)
 		if ahead != Vector2.ZERO:
 			a.face(Vector3(ahead.x, 0, ahead.y))
 		_people_awake(a, p)
@@ -8454,7 +8472,7 @@ func _crossers_tick(dt: float) -> void:
 					cr["ni"] = -1
 					a.visible = false
 					continue
-		a.position = Vector3(p.x, _h(p), p.y)
+		a.position = Vector3(p.x, _walk_y(p), p.y)
 		var look: Vector2 = (to - from) if state in ["wait", "cross"] else ((from - to) if state == "back" else cr.get("away", to - from))
 		if state == "away" and float(cr["a_off"]) >= float(cr["away_len"]):
 			look = cr["out"]
