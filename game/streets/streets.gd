@@ -9941,7 +9941,7 @@ func _crash(speed: float) -> void:
 	if speed < 1.2 or _crash_cool > 0.0:
 		return
 	_crash_cool = 0.4
-	if _auto and (_last_hit.begins_with("building") or _last_hit.begins_with("wall")):
+	if _auto and (_last_hit.begins_with("building") or _last_hit.begins_with("wall") or _last_hit.begins_with("post")):
 		_ap_bonks += 1.0
 	# a jolt of the camera, not a freeze-frame: the car stops dead and the view with it
 	if speed > 9.0:

@@ -114,6 +114,7 @@ func _run() -> void:
 		var a: Vector2 = g._walls[wi * 2]
 		var b: Vector2 = g._walls[wi * 2 + 1]
 		var m := (a + b) * 0.5
+		g._assist = false   # (the lane-keeping assist steered it off the run-up, into a post)
 		_place(m + nrm * 12.0, (-nrm).angle(), 10.0)
 		var closest := INF
 		for f in range(60 * 3):
