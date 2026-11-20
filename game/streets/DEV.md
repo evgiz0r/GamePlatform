@@ -1275,6 +1275,77 @@ towns get them when re-baked. What the game does with them:
   on the surface; keeping `electrified=` in the bake; re-baking the other towns (Ashdod has
   a line).
 
+## Landmarks (`landmarks.gd`)
+
+What a town is known by and OSM draws as one more box. `BY_CITY[city]["landmarks"]`: each
+a building's name in the bake and what it gets; the tallest building whose middle is inside
+the named outline is the one dressed (OSM put the Marganit tower's name on its 18 m podium
+and mapped the 80 m tower as an unnamed part inside it). `setup` (after `_rails.setup`)
+marks the building -- `_glass` (a glass tone of its own, and COLOR.a 1, the wall shader's
+sign for a landmark's curtain wall: darker, glossier glass in thin dark mullions, not panes
+in white frames) or `_tile` -- before the squares are built; `build()` per square (after
+the rails) adds a crown (a metal band round the top, lit at night through `set_night`), a
+concrete shaft with antenna platforms, a mast (red and white bands if striped) with red
+lights, and on every roof 90 m or more over its ground red aircraft lights at its corners
+(a MultiMesh of quads sized ~1.1% of the distance in the shader, so they stay ~6 px far
+off; pulsing; in `_night_nodes`). `"tiles"`: rectangles whose small houses (80-450 m2,
+under 13.5 m) get `_gable`'s roof in a red clay tone over walls of 5.5-7.5 m, style 0
+(shuttered windows), never on columns. Tel Aviv: Azrieli's three towers (glass 1, crowns),
+the Matcal tower (mast to 107 m) and Marganit (shaft to 118 m, striped mast to 138 m,
+Wikipedia's figures, modelled without photos), Sarona (39 houses); 92 roofs lit, 355
+lights. `found` keeps what was matched, for the test: the city file is let go of once
+built. Test: `tests/landmarks.gd`.
+
+## Tel Aviv (level 7): handoff, 20 November 2026
+
+The session that added Tel Aviv, its bridges and tunnels' fixes, the railway, the landmarks
+and the ramp-top fix. Where things stand:
+
+- **In the middle of: Begin x Kaplan's traffic.** The exam's watch mode stages it:
+  `LEVEL=7 EXAM_AT=-30,160 EXAM_STAND=70 EXAM_SECS=150 STREETS_BUILD_ALL=1 $GODOT --headless
+  --fixed-fps 60 --path . -s res://game/streets/tests/exam.gd` (~5 min). Two runs: 10 and
+  8 checks in 150 s, 0 red runs, 0 over the line. Two kinds, each printed with both cars'
+  lane, shift and what holds them:
+  1. **The right turn from Kaplan eastbound into Begin's southbound slip** (node (-60, 171):
+     Kaplan's 16 m, "4 lanes a way" carriageway, through the 12.8 m link, into the 6.4 m
+     two-lane slip (-60, 171) -> (-65, 183) -> (-80, 221)). Cars from several of Kaplan's
+     lanes funnel into the slip's one lane line at once, carrying shifts of 0.5-5.2 m
+     toward 3.20 as they turn, and stand overlapping by 0.3 m at (-61..-63, 176..179), held
+     by "car" with blocker -2 (none) -- the queue does not see the car merging beside it.
+     And a car cutting that corner at 35-38 km/h ("limit": not slowed for the turn) runs
+     0.3-0.4 m into the poles at (-69.1, 184.0) and (-62, 184), r 0.11, 0.46 m outside the
+     asphalt's edge: the turn is taken too fast and too wide at its start.
+  2. **Kaplan eastbound's queue at that light** (x -81..-85, z 166..176): cars standing in
+     lanes 0-3 (shifts -4, 0, 4, 8) at headings 45-156 degrees on a road that runs due east
+     (90): their lane paths swing across the carriageway near the stop line toward where
+     each turns next, and two lanes' cars overlap standing. Look at how a lane path is laid
+     from Kaplan's tertiary piece (-176, 171) -> (-60, 171) into the junction's links (where
+     `shift` is carried over a road change) before touching the queueing.
+  Fix narrowly in traffic.gd (other sessions work there: read `git log` on it first), then
+  run the watch again and `exam.gd` at level 7 and 1.
+- **Item 8, bus lanes: waiting on the user.** data.gov.il's `nataz_kayam` (existing
+  preference lanes, CC BY): the API answers, but the files on e.data.gov.il come back as a
+  CloudFront 403 from this container even with both hosts allowed in the environment
+  (they are now) -- not to be got round. The user was asked: download `nataz_kayam.csv`
+  (or the SHP zip) and add it to the repo, or bake OSM's own `bus:lanes` / `lanes:psv` /
+  `busway` (osm_city.py keeps none of them yet). Then: match stretches to the roads, paint
+  the lanes, buses and taxis in them, traffic and autopilot out; credit on screen.
+- **The user asked what extending the box to the sea costs** (down to the Carmel market,
+  Allenby, Rothschild): about 4.1 x 3.2 km against 2.4 x 2.7 now, ~2-2.5x the buildings
+  (~9-10k, ~5-6k roads -- Ashdod's size): load before the car ~2.8 s, background build
+  ~25 s, file ~3 MB, frame cost about Givatayim's busiest view. Answered, not started:
+  re-bake with the bake workflow's `bbox` (bare_ground on, margin 150), then the checks.
+- **Open, smaller**: Arvei Nahal's 0.44 m seam (under "Off the ground"); the HaShalom west
+  ramp's 8 hole points; 5 bank feet at a kerb; Marganit and Matcal's tops are modelled from
+  heights alone.
+- **The checks and their numbers now** (all at level 7 unless said): `tests/decks.gd` (with
+  and without `DECK_KINDS=br`, `TRACE=1` to see a take-off) -- 0 frames in the air but
+  Arvei Nahal 9 and one tunnel 1; levels 1, 3, 4 all 0. `tests/street_holes.gd` -- 8 holes,
+  5 walls. `tests/landmarks.gd` -- 5 landmarks, 39 tiled, 92 roofs lit. `tests/rails.gd` --
+  stops at 1379 and 2758 m, stands 0.3 m off. `tests/light_audit.gd` and `exam.gd` as in
+  "Open problems" below. `tests/deck_profile.gd` (`CITY=... AT=x,z`) for a profile in
+  seconds without the game.
+
 ## Handoff: lights, kerbs and paving, islands, quality, menus, performance (20 Nov 2026)
 
 One session's areas, left for whoever picks them up (its context was compacted after this).
@@ -1339,17 +1410,18 @@ Each line: where the code is, the test, what good reads.
   minute; autodrive clean but for 2 brushes of the parapet at the HaShalom bridge's east
   junction, up in the air. Its "off the asphalt" measured to the road below a bridge: now
   at the car's level.
-- **Tel Aviv's decks, what is left** (Nov 2026; `tests/decks.gd` at level 7). Short hops
-  where ramps meet: Moses and Arvei Nahal's embankments (crests at the ramps' tops, the
-  same kind as Bedford's Anderson Lake hop: `infer` has no vertical curve at a ramp's top
-  yet), and a car-park service bridge at the south-west corner that ends at a building
-  (autodrive noses it). 6 points of the HaShalom bridge's west ramp, 0.6-0.9 m under the
-  street beside it, and 41 points where an inferred ramp's wall, a bank's foot or a
-  parapet stands in a street's lanes (Ashdod 51, the test town 10: embankments running
-  tight alongside other roads -- slip roads beside the Ayalon, Yitzhak Sadeh's ramp)
-  (`tests/street_holes.gd`). Two branch ramps out of Lova Eliav's west
-  end are too short to climb out at 10% and lie on the ground. A tunnel's tube is drawn
-  whatever is over it, buildings included (Lova Eliav runs under HaKirya's blocks).
+- **Tel Aviv's decks, what is left** (Nov 2026, after the ramp-top fix -- see "Hops at ramp
+  tops" under "Off the ground"; `tests/decks.gd` at level 7 with `DECK_KINDS=br` for the
+  bridges, without for the tunnels). In the air: Arvei Nahal's seam, 9 frames (a 0.44 m
+  step where a ramp overlaps the deck it leaves), one frame in an unnamed tunnel at
+  (-178, 245); the rest 0. `tests/street_holes.gd`: 8 points of the HaShalom bridge's west
+  ramp 0.7-0.9 m under the street beside it (Givat HaTahmoshet at (129, 173)); 5 points in
+  a deck's wall, all banks' feet at a street's edge (Yitzhak Sadeh's at (-170, 1107), one at
+  (76, -34)) -- `bank_at` lets a foot come within 0.5 m of another road's asphalt, and a car
+  at the kerb brushes it. A car-park service bridge at the south-west corner ends at a
+  building (autodrive noses it). Two branch ramps out of Lova Eliav's west end are too short
+  to climb out at 10% and lie on the ground. A tunnel's tube is drawn whatever is over it,
+  buildings included (Lova Eliav runs under HaKirya's blocks).
 - **Givatayim's ground is the terrain tiles' surface model too**: its "steepest 52%" is
   likely part roofs. Measured on its grid, `--bare-ground` would take the hill's crest
   86 -> 72 m and the steepest slope 48 -> 16%. Not re-baked: it moves the ground under the
