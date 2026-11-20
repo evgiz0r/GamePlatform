@@ -1619,6 +1619,9 @@ leaves out").
   `tests/rails.gd` at level 1 -- 13 tracks, 3 lines, 0 bed points over asphalt;
   `city_check` at level 1 -- 3, the same 3 with the file from before the re-bake (two
   posts 1 m into Aluf David and Katznelson, the passage's building): not the re-bake's.
+- **Bus lanes in Givatayim: OSM marks none** (0 road pieces with `bf`/`bb` in a main-server
+  bake, 20 Nov), though the Ministry of Transport's layer lists 4 stretches there: they
+  would have to be mapped on OSM, or come from that layer (see `IDEAS.md`).
 - **Open**: re-bake Ashdod (brings its railway) and Bedford with `main_server_only`; a
   sign at the start of each 30 street (the game has `signs_zone30`, placed by its own
   rule, not by `ms`); the speed signs are on main roads only.
