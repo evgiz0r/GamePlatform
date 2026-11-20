@@ -278,7 +278,10 @@ one needed:
 - **A bridge's end must be off the bank's slope.** A height grid's triangles bend the ground
   a cell beyond where a dug river channel starts; a bridge ending on that slope has a crest
   just past its end. End it a cell further out. And keep its end away from junctions (20 m
-  or so): a car turning in clipped the parapet's start.
+  or so): a car turning in clipped the parapet's start. Where OSM's own bridge way starts at
+  a junction (its first metres still at street level), leave the parapet and its wall out of
+  the junction's mouth until the deck is half a metre or so up: a car turning out of the side
+  street ran into it.
 - **Junctions in the air** (a slip road meeting a road up on its embankment): draw the
   junction's middle at its height, open the parapet, its wall and the walkway wherever the
   other road comes in, and let a ramp's walkway give way to the street's asphalt where its
