@@ -22,6 +22,9 @@ on:
       include:
         description: "Optional: more places to take in, ';'-separated (a park, a lake, a street near the place)"
         default: ""
+      origin:
+        description: "Optional: lat,lon the metres are measured from -- the old file's \"origin\" when growing a bbox, so every place keeps its coordinates"
+        default: ""
       bbox:
         description: "Optional: south,west,north,east in degrees -- bake this box instead of the whole town (a few neighbourhoods of a big city); place is then only its name"
         default: ""
@@ -55,6 +58,7 @@ jobs:
           MARGIN: ${{ inputs.margin }}
           INCLUDE: ${{ inputs.include }}
           BBOX: ${{ inputs.bbox }}
+          ORIGIN: ${{ inputs.origin }}
           BARE: ${{ inputs.bare_ground }}
           OVERPASS_URL: ${{ inputs.main_server_only && 'https://overpass-api.de/api/interpreter' || '' }}
         run: |
@@ -71,6 +75,12 @@ jobs:
             WHERE=(--bbox "$BBOX" --name "$PLACE")
           else
             WHERE=(--place "$PLACE")
+          fi
+          if [ -n "$ORIGIN" ]; then
+            if ! [[ "$ORIGIN" =~ ^-?[0-9.]+,-?[0-9.]+$ ]]; then
+              echo "origin must be lat,lon in degrees, got: $ORIGIN"; exit 1
+            fi
+            WHERE+=(--origin "$ORIGIN")
           fi
           if [ "$BARE" = "true" ]; then
             WHERE+=(--bare-ground)

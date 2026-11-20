@@ -33,7 +33,7 @@ const LEVELS := [
 	{"name": "A walk in Givatayim: Sheinkin and Sirkin", "group": "Auto Experiments", "city": "givatayim", "look": "med", "walk": "sheinkin_sirkin"},
 	# a box of central Tel Aviv, not the whole city (the workflow's bbox): HaKirya, Azrieli,
 	# Sarona, Montefiore, Bitsaron, the Ayalon. Starts on Kaplan heading east, the towers ahead.
-	{"name": "Tel Aviv: Azrieli and HaKirya", "group": "Cities", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer"},
+	{"name": "Tel Aviv: Azrieli to the sea", "group": "Cities", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer"},
 	# the route set (routes.json, tests/pick_routes.py): pick one of the drives and watch
 	# autodrive take it, from one address to the other, in its own city
 	{"name": "Test routes: watch a drive", "group": "Auto Experiments", "routes": true, "city": "dimyon", "look": "med"},
@@ -852,6 +852,7 @@ var _people_rng := RandomNumberGenerator.new()
 var _hgrid := PackedFloat32Array()   ## ground height (m above the lowest point) on a grid
 var _steep := false                  ## some of the ground is too steep to drive up (see STEEP)
 var _made_up := false                ## the city file is invented (tools/fake_city.py), not OSM's
+var _credits: Array = []              ## other sources the city file took data from, to credit on screen beside OSM
 var _mtn_from := 100000.0            ## the made-up town: above this height the land is mountain (see GROUND_SHADER)
 var _hx0 := 0.0
 var _hz0 := 0.0
@@ -1239,9 +1240,38 @@ func _shader_key(gi: GeometryInstance3D) -> String:
 		m = mesh.surface_get_material(0)
 		if m == null and gi is MeshInstance3D:
 			m = (gi as MeshInstance3D).get_surface_override_material(0)
-	if m is ShaderMaterial and m.has_meta("piece"):   # (each person's own colours, one shader)
-		return "%s:piece" % gi.get_class()
-	return "%s:%d" % [gi.get_class(), m.get_instance_id() if m != null else 0]
+	# what compiles is a shader's CODE, not a material: a ShaderMaterial's Shader, and for a
+	# standard material its set of switches (Godot makes one shader per set and shares it, a
+	# colour or a number is only a uniform). Tel Aviv: 77 materials, 25 codes, 43 programs
+	# (tests/warm_census.gd) -- grouped by material, one step of the warm-up got the 38
+	# people's materials (one shader) and another a dozen shaders.
+	var shadow := "+shadow" if gi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF else ""
+	return "%s:%s%s" % [gi.get_class(), _code_key(m), shadow]
+
+var _code_keys := {}                 ## material id -> _code_key
+func _code_key(m: Material) -> String:
+	if m == null:
+		return "none"
+	if m is ShaderMaterial:
+		var sh := (m as ShaderMaterial).shader
+		return "shader:%d" % (sh.get_instance_id() if sh != null else 0)
+	if _code_keys.has(m.get_instance_id()):
+		return _code_keys[m.get_instance_id()]
+	var parts: Array = [m.get_class()]
+	for p: Dictionary in m.get_property_list():   # its switches: every stored bool and enum, which textures are set
+		if not (int(p["usage"]) & PROPERTY_USAGE_STORAGE):
+			continue
+		var t := int(p["type"])
+		var v = m.get(p["name"])
+		if t == TYPE_BOOL and v:
+			parts.append(p["name"])
+		elif t == TYPE_INT and int(v) != 0 and not String(p["name"]).begins_with("render_priority"):
+			parts.append("%s=%d" % [p["name"], v])
+		elif t == TYPE_OBJECT and v != null and String(p["name"]) != "next_pass":
+			parts.append(p["name"] + "+")
+	var key := " ".join(parts)
+	_code_keys[m.get_instance_id()] = key
+	return key
 var _load_ms := 0                    ## from the city file to the car shown, ms
 
 ## the loading, for the perf view: how long, its biggest stages, the warm-up's four views
@@ -1688,6 +1718,7 @@ func _load_city(id: String) -> bool:
 			_hgrid[i] = float(raw[i]) * k
 		_steep = _any_steep()
 	_made_up = data.has("made_up")
+	_credits = data.get("credits", [])
 	if _made_up and _hnx > 0:
 		_mtn_from = _town_top() + 6.0
 	_decks = Decks.new(self)
@@ -2196,6 +2227,7 @@ func _build_setup(t0: int) -> void:
 	_marks = Marks.new(self)
 	_marks.setup(_city_data, _city_id)
 	_lights_setup()
+	_infer_signs()   # (after the lights: a lit junction has none)
 	_parks_setup()
 	_trees_setup()
 	# every square with anything in it, and every square of the map (open land grows trees)
@@ -4301,8 +4333,7 @@ func _front_gate(gate: Array, run: PackedVector2Array, cum: PackedFloat32Array, 
 		if _mine(c) and depth >= 6.8 and not _kept_clear(c) and _push_out(c, 1.1, false) == Vector2.ZERO \
 				and _push_out(c + nj * 1.4, 1.0, false) == Vector2.ZERO and _clear_of_posts(c, 2.2):
 			_yard_cars.append([Transform3D(Basis(Vector3.UP, atan2(nj.x, nj.y)), _g3(c, 0.08)), CAR_MIX[hk % CAR_MIX.size()], hk])
-			_add_post(c + nj * 1.25, 0.85)
-			_add_post(c - nj * 1.25, 0.85)
+			_add_car_posts(c, nj)
 			_ao_car(c, nj, 0.12)
 	elif hk < 35 and not _kept_clear(wall_mid):
 		# a metal arch over the gate, bougainvillea grown over it
@@ -7517,8 +7548,7 @@ func _build_parked() -> void:
 								cat_at(cq, _g3(cq, KERB_H).y, -side.rotated(float(roll2 % 5 - 2) * 0.3), "sit")
 							(cols_by[kind] as Array).append(colour)
 							xf.append(0)
-							_add_post(p + face * 1.25, 0.85)
-							_add_post(p - face * 1.25, 0.85)
+							_add_car_posts(p, face)
 					elif rng.randf() < PARKED_MOTO:
 						_park_moto(r, ri, run, cum, s, total, hw, sgn, rng, palette, xf_by, cols_by)
 					s += 5.6
@@ -7617,8 +7647,7 @@ func _build_lots() -> void:
 						if taken == 1:
 							_lot_at.append(at)
 						(cols_by[kind] as Array).append(palette[rng.randi() % palette.size()])
-						_add_post(at + f * 1.25, 0.85)
-						_add_post(at - f * 1.25, 0.85)
+						_add_car_posts(at, f)
 						cars += 1
 				uu += 2.5
 			vv += 5.0 + (6.0 if row % 2 == 0 else 0.4)   # the aisle after the first row of a pair
@@ -7661,8 +7690,7 @@ func _build_lots() -> void:
 						(xf_by[kind] as Array).append(Transform3D(Basis(Vector3.UP, atan2(f.x, f.y)), _g3(p, 0.02)))
 						_ao_car(p, f, Y_AREA + 0.035)
 						(cols_by[kind] as Array).append(palette[rng.randi() % palette.size()])
-						_add_post(p + f * 1.25, 0.85)
-						_add_post(p - f * 1.25, 0.85)
+						_add_car_posts(p, f)
 						cars += 1
 				s += 2.5
 	_draw_parked(xf_by, cols_by)
@@ -9315,14 +9343,8 @@ func _flush_batches() -> void:
 			if _over():
 				await _pause()
 			var bat: Buf = b["cells"][ck]
-			var arr := []
-			arr.resize(Mesh.ARRAY_MAX)
-			arr[Mesh.ARRAY_VERTEX] = bat.v
-			arr[Mesh.ARRAY_NORMAL] = bat.n
-			arr[Mesh.ARRAY_COLOR] = bat.c
 			var am := ArrayMesh.new()
-			am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
-			am.surface_set_material(0, b["mat"])
+			await _index_into(am, bat, b["mat"])
 			var mi := MeshInstance3D.new()
 			mi.mesh = am
 			if rc < 99999.0:
@@ -9334,6 +9356,44 @@ func _flush_batches() -> void:
 	_tally("batches", made)
 	_batches = {}
 	_soups = {}
+
+## The merged meshes are triangle soups -- each triangle its own three vertices, built that
+## way -- and most vertices repeat: a quad's two triangles share two, a kit's faces share
+## theirs. Indexed (the same position, normal and colour kept once), Tel Aviv's 9.8 M merged
+## vertices are 5.4 M, 187 MB -> 121 MB (tests/index_gain.gd). SurfaceTool does it in C++,
+## but on the main thread (the web build has none other): a piece of at most INDEX_PIECE
+## vertices at a time, each its own surface, the frame handed back between them -- whole,
+## the biggest square's 170 k vertices took 30 ms here. (Pieces under 65,536 vertices keep
+## 16-bit indices, too.) Only the squares built while driving: the ones round the start are
+## built behind the loading text, where it would add to the wait (the pieces also cost
+## draws: all indexed, Tel Aviv's start view went 669 -> 692 draws, video memory 445 -> 365 MB).
+const INDEX_PIECE := 30000
+func _index_into(am: ArrayMesh, bat: Buf, mat: Material) -> void:
+	var n := bat.v.size()
+	if not _bg_build:
+		var soup := []
+		soup.resize(Mesh.ARRAY_MAX)
+		soup[Mesh.ARRAY_VERTEX] = bat.v
+		soup[Mesh.ARRAY_NORMAL] = bat.n
+		soup[Mesh.ARRAY_COLOR] = bat.c
+		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, soup)
+		am.surface_set_material(0, mat)
+		return
+	for from in range(0, n, INDEX_PIECE):
+		if from > 0 and _over():
+			await _pause()
+		var to := mini(from + INDEX_PIECE, n)
+		var arr := []
+		arr.resize(Mesh.ARRAY_MAX)
+		var whole := from == 0 and to == n
+		arr[Mesh.ARRAY_VERTEX] = bat.v if whole else bat.v.slice(from, to)
+		arr[Mesh.ARRAY_NORMAL] = bat.n if whole else bat.n.slice(from, to)
+		arr[Mesh.ARRAY_COLOR] = bat.c if whole else bat.c.slice(from, to)
+		var st := SurfaceTool.new()
+		st.create_from_arrays(arr)
+		st.index()
+		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, st.commit_to_arrays())
+		am.surface_set_material(am.get_surface_count() - 1, mat)
 
 ## _chunked a couple of hundred copies at a time while building in the background (a
 ## square's trees merged in one go took most of a frame)
@@ -9469,6 +9529,21 @@ func _add_post(p: Vector2, r: float) -> void:
 	_posts.append(p)
 	_post_r.append(r)
 	_hash_add(_post_hash, Rect2(p, Vector2.ZERO).grow(r), BLD_CELL, i)
+
+## A parked car as solid ground: five posts along it. It was two, 0.85 m round at 1.25 m
+## either side of its middle -- 2.5 m apart, a 0.8 m gap between them, and a person (0.25 m)
+## fitted in it: walkers on a pavement with cars parked half up on it went in at the car's
+## nose, came out of its door and back in at its boot. With one more in the middle, the
+## scallops between three round posts still let a shoulder 0.2-0.35 m into the car's side
+## (tests/walk_people.gd); five, 0.7 m apart, the end ones at 1.4 m (reaching 2.25 m, a
+## car's own half-length: at 1.25 its front and back wings were 0.17-0.27 m short), leave
+## about 0.1 m. All 0.85 m: city_check knows a parked car's posts by that, and they reach
+## into the road by design. (The end two first: tests find a parked car as that pair.)
+func _add_car_posts(c: Vector2, along: Vector2) -> void:
+	_add_post(c + along * 1.4, 0.85)
+	_add_post(c - along * 1.4, 0.85)
+	for k: float in [-0.7, 0.0, 0.7]:
+		_add_post(c + along * k, 0.85)
 
 ## a traffic light on the right of every way into a signalled junction, in two groups by
 ## direction so crossing streets take turns
@@ -10944,10 +11019,11 @@ func _ao_car(c: Vector2, fwd: Vector2, lift: float) -> void:
 		_ao.tri(I[i], O[j], O[i], Vector3.UP, col, one, Vector2.ZERO, Vector2.ZERO)
 
 ## ---- paint at junctions, speed limits --------------------------------------------------------
-var _stop_lines: Array = []          ## [junction, way in, line before it, road width, one-way, "stop" or ""]
+var _stop_lines: Array = []          ## [junction, way in, line before it, road width, one-way, "stop", "give" or ""]
 
 ## A solid stop line across the lane at every light and stop sign; STOP painted before a
-## stop sign's line (עצור in Givatayim); SLOW (האט) before a crossing near a school.
+## stop sign's line (עצור in Givatayim); a dashed line at a give-way (and האט before it in
+## the Israeli towns); SLOW (האט) before a crossing near a school.
 func _build_road_paint() -> void:
 	var paint := CBuf.new(GROUND_CELL)
 	var med := String(_place.get("look", "")) == "med"
@@ -10959,6 +11035,16 @@ func _build_road_paint() -> void:
 		var at := c - dir * float(sl[2])
 		var o0 := -(w * 0.5 - 0.25) if sl[4] else 0.15
 		var o1 := w * 0.5 - 0.25
+		if sl[5] == "give":   # a give-way's line is dashed: half a metre on, half off
+			var n := maxi(1, int((o1 - o0) / 1.0))
+			for k in range(n):
+				var d0 := lerpf(o0, o1, float(k) / n)
+				var d1 := d0 + (o1 - o0) / n * 0.5
+				paint.quad3(_g3(at + right * d0, Y_MARK + 0.002), _g3(at + right * d1, Y_MARK + 0.002),
+					_g3(at + right * d1 - dir * 0.3, Y_MARK + 0.002), _g3(at + right * d0 - dir * 0.3, Y_MARK + 0.002))
+			if med:
+				_road_word("האט", at - dir * 2.6 + right * ((o0 + o1) * 0.5), dir)
+			continue
 		paint.quad3(_g3(at + right * o0, Y_MARK + 0.002), _g3(at + right * o1, Y_MARK + 0.002),
 			_g3(at + right * o1 - dir * 0.45, Y_MARK + 0.002), _g3(at + right * o0 - dir * 0.45, Y_MARK + 0.002))
 		if sl[5] == "stop":
@@ -11663,6 +11749,79 @@ func _junction_of(node: int, reach: float) -> int:
 					break
 	return best
 
+## OSM maps few stop and give-way signs (Givatayim 33, Tel Aviv 22), where nearly every side
+## street meeting a bigger one without lights has one. Each such way in gets one here, as a
+## sign facing that way: a stop where the bigger road is a main road (secondary or up) in an
+## Israeli town, a give-way otherwise (and always on a slip road, and in Bedford, where stop
+## signs are rare). Left alone: a slip road merging onto a motorway or trunk road, two
+## streets of one class (first come, as before), roundabouts
+## (their own rule), service roads and driveways, lit junctions, a junction with a sign mapped
+## within SIGN_MAPPED, the gap through a divided road's median (only the outer way in), and a
+## street that goes on through the junction under another class.
+const SIGN_MAPPED := 30.0
+func _infer_signs() -> void:
+	if not _city_data.has("signs"):
+		_city_data["signs"] = []
+	var signs: Array = _city_data["signs"]
+	var mapped := {}
+	for sg: Array in signs:
+		var node := int(sg[0])
+		if node >= 0 and node < _nodes.size():
+			_hash_add(mapped, Rect2(_nodes[node], Vector2.ZERO), SEG_CELL, node)
+	var med := String(_place.get("look", "")) == "med"
+	var added := {"stop": 0, "give_way": 0}
+	for ni in range(_nodes.size()):
+		if _node_roads[ni].size() < 2 or _sig_set.has(ni) or _node_ways(ni) < 3:
+			continue
+		var c := _nodes[ni]
+		var top := 0
+		var names := {}   # the top class's street names here
+		var ring := false
+		for e: Vector2i in _node_roads[ni]:
+			var r: Dictionary = _roads[e.x]
+			if not r["drive"]:
+				continue
+			ring = ring or bool(r["ring"])
+			var rank := int(ROAD_RANK.get(r["k"], 1))
+			if rank > top:
+				top = rank
+				names = {}
+			if rank == top and String(r["name"]) != "":
+				names[String(r["name"])] = true
+		if ring or top < 2:
+			continue
+		var near_sign := false
+		for o: int in _near(mapped, c, SIGN_MAPPED, SEG_CELL):
+			near_sign = near_sign or _nodes[o].distance_to(c) < SIGN_MAPPED
+		for o: int in _near(_sig_hash, c, 30.0, SEG_CELL):
+			near_sign = near_sign or _nodes[o].distance_to(c) < 30.0
+		if near_sign:
+			continue
+		for e: Vector2i in _node_roads[ni]:
+			var r: Dictionary = _roads[e.x]
+			var rank := int(ROAD_RANK.get(r["k"], 1))
+			if not r["drive"] or r["pv"] or rank == 0 or rank >= top or names.has(String(r["name"])):
+				continue
+			if String(r["k"]).ends_with("_link") and top >= 6:
+				continue   # a slip road onto a motorway merges at speed: no line to wait at
+			var pts: PackedVector2Array = r["pts"]
+			for d2: int in [-1, 1]:
+				var from := e.y + d2
+				if from < 0 or from >= pts.size() or (r["o"] != 0 and r["o"] != -d2):
+					continue
+				var back := _points_back(e, d2, SITE_LEG)
+				if not back.is_empty():
+					var o := int(back[back.size() - 1][0])
+					if o != ni and _node_ways(o) >= 3 and _other_half(ni, o, e.x):
+						continue   # across a divided road's median: the outer way in has it
+				var way_in := (c - pts[from]).normalized()
+				var kind := "stop" if med and top >= 4 and not String(r["k"]).ends_with("_link") else "give_way"
+				signs.append([ni, kind, roundi(way_in.x * 100.0), roundi(way_in.y * 100.0)])
+				_bucket(_tile_signs, _tile_of(c), signs.size() - 1)
+				added[kind] += 1
+	_dressing["signs inferred: stop"] = added["stop"]
+	_dressing["signs inferred: give way"] = added["give_way"]
+
 ## Stop and give-way signs: a pole and a plate on the right of each way in they are for.
 ## Which ways: the one OSM says (direction=forward/backward); else, at a junction, the
 ## minor roads into it (all of them if they are all alike); on a plain stretch, both ways.
@@ -11710,11 +11869,19 @@ func _build_signs() -> void:
 					continue   # the main road through has the right of way
 				var line := _node_r[node] + 2.0 if junction else 1.0
 				rules.append([kind, way_in, line])
-				if kind == "stop":
-					_stop_lines.append([c, way_in, line, float(r["w"]), r["o"] != 0, "stop"])
+				if kind == "stop" or kind == "give_way":
+					_stop_lines.append([c, way_in, line, float(r["w"]), r["o"] != 0, "stop" if kind == "stop" else "give"])
 				var right := Vector2(-way_in.y, way_in.x)
-				var p := c - way_in * (line + 0.4) + right * (float(r["w"]) * 0.5 + 0.7)
-				if _push_out(p, 0.3, false) != Vector2.ZERO or not _off_road(p, 0.3):
+				# by the line on the right, or a little further back or out: at a corner the
+				# first spot is often in the corner's asphalt or against a wall (Givatayim: 44
+				# poles of 167 ways in stood at the first spot alone)
+				var p := Vector2.INF
+				for back: float in [0.4, 2.0, 4.0, 6.5]:
+					for out: float in [0.7, 1.3]:
+						var q := c - way_in * (line + back) + right * (float(r["w"]) * 0.5 + out)
+						if p == Vector2.INF and _push_out(q, 0.3, false) == Vector2.ZERO and _off_road(q, 0.3):
+							p = q
+				if p == Vector2.INF:
 					continue
 				var gy := _h(p)
 				poles.append(Transform3D(Basis(), Vector3(p.x, gy + 1.1, p.y)))
@@ -11735,6 +11902,9 @@ func _build_signs() -> void:
 					word.visibility_range_end = 60.0
 					world.add_child(word)
 		if not rules.is_empty():
+			if _signs.has(node):   # (another sign here already, for another way in: both kept)
+				(_signs[node] as Array).append_array(rules)
+				continue
 			_signs[node] = rules
 			_hash_add(_sign_hash, Rect2(c, Vector2.ZERO), SEG_CELL, node)
 	if poles.is_empty():
@@ -14960,7 +15130,8 @@ func _place_walker(w: Dictionary, anywhere: bool) -> void:
 		# a step past it the other carriageway
 		var side := float(r["o"]) if r.has("median") else (1.0 if _people_rng.randf() < 0.5 else -1.0)
 		# the back half of the pavement: the parked cars stand on the front of it
-		var line := _offset_line(run, (float(r["w"]) * 0.5 + _people_rng.randf_range(1.85, 2.2)) * side)
+		var pave := _people_rng.randf_range(1.85, 2.2)
+		var line := _offset_line(run, (float(r["w"]) * 0.5 + pave) * side)
 		line = _pavement_piece(line)
 		if line.size() < 2:
 			continue
@@ -14975,6 +15146,8 @@ func _place_walker(w: Dictionary, anywhere: bool) -> void:
 		w["line"] = line
 		w["cum"] = cum
 		w["s"] = s0
+		w["pave"] = pave
+		w["cross"] = 0.0
 		w.erase("yaw")
 		w["dir"] = 1.0 if _people_rng.randf() < 0.5 else -1.0
 		a.play("Walk_Carry" if w["carry"] else "Walk", true, float(w["speed"]) / 1.35)
@@ -14988,6 +15161,13 @@ func _place_walker(w: Dictionary, anywhere: bool) -> void:
 ## divided road, the next street where two meet at an angle are not -- people walked down
 ## all of those. [] when nothing is left 8 m long.
 func _pavement_piece(line: PackedVector2Array) -> PackedVector2Array:
+	var pieces := _pavement_pieces(line)
+	if pieces.is_empty():
+		return PackedVector2Array()
+	return pieces[_people_rng.randi() % pieces.size()]
+
+## every such stretch of a pavement line, 8 m or more
+func _pavement_pieces(line: PackedVector2Array) -> Array:
 	var pts := PackedVector2Array()
 	for i in range(line.size() - 1):
 		var n := maxi(1, ceili(line[i].distance_to(line[i + 1]) / 1.5))
@@ -15028,9 +15208,72 @@ func _pavement_piece(line: PackedVector2Array) -> PackedVector2Array:
 			pieces.append(cur)
 		cur = PackedVector2Array()
 		length = 0.0
-	if pieces.is_empty():
-		return PackedVector2Array()
-	return pieces[_people_rng.randi() % pieces.size()]
+	return pieces
+
+## At the end of its stretch of pavement a walker walks on, as people do: over the side
+## street's mouth to the same pavement's next block, or round the corner onto the side
+## street's. They turned back on the spot at every block's end instead, pacing one block
+## for good -- in view, people going nowhere. Looks only at the street runs that begin or
+## end near here (a run's whole pavement is checked a metre and a half at a time). False when
+## nothing goes on from here.
+func _walk_on(w: Dictionary, end: Vector2, fw: Vector2) -> bool:
+	var best := PackedVector2Array()
+	var best_score := -INF
+	var roads := {}
+	var side_dir := Vector2(-fw.y, fw.x)
+	for probe: Vector2 in [end + fw * 10.0, end + fw * 5.0 + side_dir * 7.0, end + fw * 5.0 - side_dir * 7.0]:
+		var hit := _nearest_seg(probe, 12.0, true, true)
+		if hit.is_empty() or roads.has(hit["road"]):
+			continue
+		roads[hit["road"]] = true
+		var r: Dictionary = _roads[hit["road"]]
+		if not _kerbed(r) or r.has("ys"):
+			continue
+		for run: PackedVector2Array in _street_runs(r):
+			if minf(run[0].distance_to(end), run[run.size() - 1].distance_to(end)) > 30.0:
+				continue
+			for side: float in ([float(r["o"])] if r.has("median") else [1.0, -1.0]):
+				var line := _offset_line(run, (float(r["w"]) * 0.5 + float(w.get("pave", 2.0))) * side)
+				for piece: PackedVector2Array in _pavement_pieces(line):
+					for back: bool in [false, true]:
+						var n := piece.size()
+						var a := piece[n - 1] if back else piece[0]
+						var b := piece[n - 2] if back else piece[1]
+						var gap := a.distance_to(end)
+						if gap < 1.0 or gap > 18.0:
+							continue   # (its own stretch; or too far to step over to)
+						var go := (b - a).normalized()
+						var step := (a - end) / gap
+						if go.dot(fw) < -0.3 or step.dot(fw) < -0.2:
+							continue   # (not back the way they came)
+						var score := go.dot(fw) - gap * 0.06 + _people_rng.randf() * 0.7
+						if score <= best_score:
+							continue
+						var clear := true   # the step over: not through a building
+						for k in range(1, int(gap)):
+							if _push_out(end.lerp(a, k / gap), 0.3, false, false) != Vector2.ZERO:
+								clear = false
+								break
+						if not clear:
+							continue
+						best_score = score
+						best = PackedVector2Array([end])
+						if back:
+							for k in range(n - 1, -1, -1):
+								best.append(piece[k])
+						else:
+							best.append_array(piece)
+	if best.size() < 3:
+		return false
+	var cum := PackedFloat32Array([0.0])
+	for i in range(1, best.size()):
+		cum.append(cum[i - 1] + best[i - 1].distance_to(best[i]))
+	w["line"] = best
+	w["cum"] = cum
+	w["s"] = 0.0
+	w["dir"] = 1.0
+	w["cross"] = cum[1]   # (the step over: on the asphalt's level, not the pavement's)
+	return true
 
 ## People by the cafe tables near the car, standing about. Re-seated at the nearest tables
 ## every second and a half, they jumped from table to table in plain view as the car moved;
@@ -15209,10 +15452,23 @@ func _place_still(list: Array, spots: Array, how: String) -> void:
 
 ## somewhere nobody would see a person appear or go: beyond the distance people are drawn
 ## at, or well behind the car (and its camera)
+## -- behind by the camera's own look as well as the body's: on foot the head turns from the
+## way you walk (a filmed walk glances 60-90 degrees aside), and "behind the body" was then in
+## plain view -- people appeared on the pavement beside the walk
 func _unseen(p: Vector2) -> bool:
 	var to := p - _pos
 	var d := to.length()
-	return d > PEOPLE_SEEN + 4.0 or (d > 18.0 and to.dot(_fwd()) < -0.35 * d)
+	if d > PEOPLE_SEEN + 4.0:
+		return true
+	if d <= 18.0 or to.dot(_fwd()) >= -0.35 * d:
+		return false
+	if cam == null:
+		return true
+	var cf := -cam.global_transform.basis.z
+	var look := Vector2(cf.x, cf.z)
+	if look.length() < 0.3:
+		return false   # (looking down from high up: the whole ring round you is in view)
+	return to.dot(look.normalized()) < -0.35 * d and not cam.is_position_in_frustum(Vector3(p.x, _h(p) + 1.0, p.y))
 
 func _people_tick(dt: float) -> void:
 	# where everyone is, for the walkers to keep clear of and for the car and you to bump
@@ -15254,9 +15510,25 @@ func _people_tick(dt: float) -> void:
 		var cum: PackedFloat32Array = w["cum"]
 		var total := cum[cum.size() - 1]
 		var s: float = w["s"] + float(w["dir"]) * float(w["speed"]) * dt
-		if s < 0.0 or s > total:   # the end of the block: turn back
-			w["dir"] = -float(w["dir"])
-			s = clampf(s, 0.0, total)
+		if s < 0.0 or s > total:   # the end of the stretch: on over the side street, or round the corner
+			var at_end := line[0] if s < 0.0 else line[line.size() - 1]
+			var came := at_end - (line[1] if s < 0.0 else line[line.size() - 2])
+			if placed:
+				s = clampf(s, 0.0, total)   # (one search a tick: a tick's wait at the end)
+			elif _walk_on(w, at_end, came.normalized()):
+				placed = true
+				line = w["line"]
+				cum = w["cum"]
+				total = cum[cum.size() - 1]
+				s = 0.0
+			elif _unseen(at_end):   # nowhere on from here, out of sight: in at a door, someone else out of one
+				placed = true
+				_place_walker(w, false)
+				continue
+			else:   # in view and nowhere on: back the way they came
+				placed = true
+				w["dir"] = -float(w["dir"])
+				s = clampf(s, 0.0, total)
 		w["s"] = s
 		var p := _along(line, cum, s)
 		var ahead := _along(line, cum, clampf(s + float(w["dir"]) * 0.5, 0.0, total)) - p
@@ -15279,18 +15551,44 @@ func _people_tick(dt: float) -> void:
 					continue
 				var rel := _people_at[k] - p
 				var fore := rel.dot(fw)
+				var sr := rel.dot(right)
+				if _people_who[k] == 0:
+					# you on foot: you do not step round them (a filmed walk keeps its line), so
+					# they make the room, from a few steps off, as people do with someone
+					# walking at them -- at 2.6 m they stepped aside at the last moment, or
+					# were walked through. To the nearer side of you if it has room, else
+					# the other (a walk along the parked cars: stepping away from you was
+					# stepping into a car, pushed back out onto you -- 0.32 m), keeping the
+					# side once picked while it stays clear.
+					if fore > -0.8 and fore < 7.0 and absf(sr) < 1.15:
+						var near_side := sr - 1.15 if sr >= 0.05 else sr + 1.15
+						var far_side := sr + 1.15 if sr >= 0.05 else sr - 1.15
+						var sides: Array = [near_side, far_side]
+						if w.has("me_side") and signf(far_side) == float(w["me_side"]):
+							sides = [far_side, near_side]
+						var pick: float = near_side
+						for cand: float in sides:
+							if _push_out(p + right * clampf(cand, -0.9, 0.9), 0.3, true, false) == Vector2.ZERO:
+								pick = cand
+								break
+						w["me_side"] = signf(pick)
+						want += pick
+					elif fore < -0.8 or fore > 9.0:
+						w.erase("me_side")
+					continue
 				if fore > -0.6 and fore < 2.6:
-					var sr := rel.dot(right)
 					if absf(sr) < 0.85:
 						want += 0.8 if absf(sr) < 0.05 else -signf(sr) * (0.85 - absf(sr))
 			var lat: float = w.get("lat", 0.0)
-			lat = lerpf(lat, clampf(want, -0.7, 0.7), 1.0 - exp(-dt * 3.0))
+			lat = lerpf(lat, clampf(want, -0.9, 0.9), 1.0 - exp(-dt * 3.0))
 			w["lat"] = lat
 			p += right * lat
 		# a car coming at them on the pavement: step aside, towards the buildings
+		# (not you on foot: walking at 1.4 m/s you were "a car" too, and everyone within 6 m
+		# jumped a metre aside -- they make room for you as for anyone, above)
 		var to_car := _pos - p
 		var dodge: float = w["dodge"]
-		if to_car.length() < 6.0 and absf(_v) > 1.0:
+		if to_car.length() < 6.0 and absf(_v) > 1.0 and not _walking:
 			dodge = minf(dodge + dt * 1.4, 1.1)   # a step aside, not a leap
 		else:
 			dodge = maxf(dodge - dt * 0.5, 0.0)
@@ -15302,7 +15600,8 @@ func _people_tick(dt: float) -> void:
 			p += side * dodge
 		for _pass in range(2):   # (out of one parked car's post can be into its other)
 			p += _push_out(p, 0.25, true, false)
-		a.position = Vector3(p.x, _h(p) + _pave_top(), p.y)   # (their line is on the pavement)
+		# (their line is on the pavement, but for a step over a side street's mouth)
+		a.position = Vector3(p.x, _walk_y(p) if s < float(w.get("cross", 0.0)) else _h(p) + _pave_top(), p.y)
 		if ahead != Vector2.ZERO:
 			# turning as people do, over a moment: at the end of a block they turned back on
 			# the spot in one frame, and at every bend of the pavement line they snapped
@@ -15763,6 +16062,8 @@ func _send_crossers() -> void:
 		if span.is_empty():
 			continue   # (next time, another crossing)
 		var flip := _people_rng.randf() < 0.5
+		if not _unseen((span[1] if flip else span[0]) + along):
+			continue   # (the kerb they wait at, not only the crossing's middle, out of sight)
 		cr["ni"] = pick
 		cr["a"] = (span[1] if flip else span[0]) + along
 		cr["b"] = (span[0] if flip else span[1]) + along
@@ -19386,6 +19687,8 @@ func _build_hud() -> void:
 	_osm_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_osm_lbl.position = Vector2(8, 347)
 	_osm_lbl.text = "a made-up town: not a real place" if _made_up else "map data © OpenStreetMap contributors"
+	for c in _credits:   # e.g. a town's own survey of its buildings' heights (tools/osm_city.py)
+		_osm_lbl.text += " · " + String(c)
 	_osm_lbl.modulate.a = 0.7
 	_map = Control.new()
 	_map.position = Vector2(8, 224)

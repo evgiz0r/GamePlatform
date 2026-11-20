@@ -18,7 +18,8 @@ extends RefCounted
 ##   TILE_MAX) get pitched red tile roofs over two old storeys' walls (Sarona's Templer
 ##   houses, restored among the towers)
 ##
-## Sources for the heights: OSM's outlines and heights where it has them; the Marganit
+## Sources for the heights: OSM's outlines and heights where it has them, else the city's
+## own survey (tools/osm_city.py's SURVEYS); the Marganit
 ## tower's mast to 138 m and the Matcal tower's to 107 m are Wikipedia's figures.
 
 const BY_CITY := {
@@ -36,7 +37,7 @@ const BY_CITY := {
 const LAMP_H := 90.0          ## a building this tall (over its ground) carries red lights on its roof
 const FOOT_MIN := 80.0
 const FOOT_MAX := 450.0
-const TILE_MAX := 13.5
+const TILE_MAX := 16.0       ## (the city's survey measures a pitched roof to its ridge: two storeys of Sarona come out 9-16 m)
 const SEEN := 2600.0          ## the night's red lights, seen from across the town
 
 var g: Node
