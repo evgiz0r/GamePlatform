@@ -176,11 +176,12 @@ func _check() -> int:
 func _snap(name: String) -> void:
 	await create_timer(0.6).timeout   # draw ranges settle after a camera move
 	await RenderingServer.frame_post_draw
-	root.get_viewport().get_texture().get_image().save_png(OS.get_environment("OUT") + "/" + name + ".png")
+	g.view.get_texture().get_image().save_png(OS.get_environment("OUT") + "/" + name + ".png")   # (the 3D view alone, no HUD)
 	print("shot ", name)
 
-## the worst two of each kind that should be 0, from 30 m up and a little to the south (at
-## 9 m a roof under the camera filled the picture), a red ring round the place
+## the worst two of each kind that should be 0, from 30 m over the roofs round it and a
+## little to the south (at a flat 30 m up one shot was the inside of a tower block), a red
+## ring round the place
 func _shots() -> void:
 	g.set_physics_process(false)
 	process_frame.disconnect(g._frame)
@@ -194,13 +195,14 @@ func _shots() -> void:
 	mat.albedo_color = Color(1, 0.1, 0.1)
 	mat.no_depth_test = true
 	ring.material_override = mat
-	g.add_child(ring)
+	g.world.add_child(ring)   # (the 3D world: under the game's own Node2D it is never drawn)
 	for kind: String in ["walls on the road", "posts on the road", "buildings on the road"]:
 		var list: Array = _found.get(kind, [])
 		for k in range(mini(2, list.size())):
 			var at: Vector2 = list[k][1]
 			var y: float = g._h(at)
 			ring.position = Vector3(at.x, y + 0.3, at.y)
-			g.look_from(Vector3(at.x, y + 30.0, at.y + 12.0), Vector3(at.x, y, at.y))
+			var up := maxf(30.0, g._roof_near(at, 25.0) + 20.0)
+			g.look_from(Vector3(at.x, y + up, at.y + up * 0.4), Vector3(at.x, y, at.y))
 			await _snap("city_%s_%s_%d" % [g._city_id, kind.replace(" ", "_"), k + 1])
 	ring.queue_free()

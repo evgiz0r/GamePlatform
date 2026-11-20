@@ -539,10 +539,11 @@ func _chain(i: int) -> Array:
 		if c.hit > 0.0:
 			parts.append("%s %d (stunned by a hit)" % [c.kind, i])
 			return [true, parts]
-		if c.v < 0.3 and c.want > 0.5 and not c.why in ["car", "player"]:
+		if c.v < 0.3 and c.want > 0.5 and c.still < 4.0 and not c.why in ["car", "player"]:
 			# wants to go, standing only for its moment to notice (the front of a queue at a
 			# light gone green reads "limit" then: the first version of this check took that
-			# for nothing at all)
+			# for nothing at all). Not for long: a hatch "wanting to go" stood 20 s with
+			# autodrive's car in it, and the second version excused it
 			parts.append("%s %d (pulling away)" % [c.kind, i])
 			return [true, parts]
 		parts.append("%s %d (%s)" % [c.kind, i, c.why])
