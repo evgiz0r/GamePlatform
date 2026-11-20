@@ -128,6 +128,27 @@ three times Givatayim's size and takes longer to load (about 10 s here).
 
 > Ashdod.
 
+**The test town.** The last place, Kiryat Dimyon, is made up (`cities/dimyon.json`, from
+`tools/fake_city.py`): one neighbourhood about 1.3 x 1 km, a fifth of Givatayim's buildings,
+so it loads in about a second and a half. It is for looking at a change quickly, so it has
+one of everything a real town has: a divided boulevard with a big signalled junction, a main
+street and a shopping street lined with shops and cafes, a grid of side streets with a
+one-way pair, a hill whose streets climb at 10-12% round and up to a water tower, two
+roundabouts, a living street, cul-de-sacs, car parks, bus stops, zebras and signs; a strip
+mall, a glass office tower, a hotel, the town hall on its square, a cinema, a school, a
+sports centre, a park with a pond, villas and woods in the foothills. Mountains ring it, and
+past the foothills they are too steep to drive up (see below), so it is a valley you cannot
+leave -- except by the one road that climbs the western mountainside to a lookout terrace
+with a car park and a cafe. The car starts on HaNasi just past HaShuk, in the middle.
+
+> I want to make a new fake city in streets, where we would do quicker simulation and
+> validations. Yes it would not stress as the big cities on latency, but would give a quick
+> look if something got prettier as we are trying to make things more realistic slowly.
+
+> Lets also make that fake city surrounded by some unpassable terrain like a mountain. It
+> shouldn't be too small, like a regular neighborhood where you have most of the features
+> and variety (cars, buses, buildings, types of cars, slopes, landmark and so on).
+
 The minimap (bottom left) shows the real streets and buildings round you, heading up, with
 the city limits in pink. The name of the street you are on is at the top, in Hebrew with
 the English name under it when OSM has one.
@@ -139,6 +160,11 @@ traffic-light poles are solid. Crashes are a bit more game than real: a thud and
 the car bounces back off what it hit and spins if it was hit off-centre, and a hard one
 throws it into a little hop. Too fast over a crest or off a ramp and it leaves the ground
 for a moment and lands with a bump.
+
+**Ground too steep to climb** -- steeper than 62%, about 32 degrees -- is as solid as a
+wall, on foot too, and assist brakes for it; a road is always drivable however steep. No
+real town here has any (Givatayim's steepest is 52%), so it only matters in the test
+town's mountains. Ground that steep is drawn as bare rock, in bands.
 
 > I want the car to be able to "jump" a bit if I drive too fast on slopes. Maybe making
 > the crashes more bouncy as well... slightly less realistic, more "game"-like.
@@ -160,6 +186,14 @@ between two lanes past a queue. On a road with more than one lane each way, cars
 lane, pull out to pass a slower car when the lane beside is clear, drift back right, and
 get into the right lane for the turn ahead (right lane to turn right, left to turn left).
 
+The buses are real buses now -- a rounded box with a band of windows and its pillars, a
+big windscreen under the lit route sign, glazed doors on the kerb side, the air
+conditioning on the roof; a scooter's rider sits it properly, arms bent to the bars and
+knees up, in a helmet with a visor; now and then a delivery truck goes by, a cab with a
+tall white box. Every moving car has its driver, and about a third a passenger, seen
+through the glass (head and shoulders, as they would be from wherever you look); parked
+cars are empty. You can be seen in yours, until you get out.
+
 People wait at the zebra crossings and step out once whatever is coming can still stop;
 traffic and autodrive stop for anyone on a crossing. Drive at someone crossing and they
 hurry back to the kerb, and the game says so, like a red light. On a divided road they
@@ -168,6 +202,13 @@ back half of the pavement (the parked cars stand on the front of it), only on th
 side of a divided road, and off any stretch where the pavement line would run over another
 road -- a service lane or car-park lane alongside, the next street at a corner -- though
 they step across a driveway's mouth.
+
+The people are grown-ups, not the kit's chunky cartoons: smaller heads, hands and feet,
+longer legs and a longer middle (scaled on their skeletons after every animation frame),
+at the height asked for. Faces are a deeper shade of the skin, not big white eyes. Skin
+runs light to dark; hair is mostly dark and brown, with the odd fair, red or grey head;
+shirts and trousers are each picked from a natural range, so no two in a street match.
+That goes for you on foot too.
 
 > More kinds of traffic (buses that stop at the stops, taxis, motorbikes weaving); people
 > crossing at zebras; multi-lane traffic that changes lanes and turns from the right lane.
@@ -206,6 +247,18 @@ Painted arrows in the lanes before the junctions of the main roads show the ways
 Parked cars and traffic are a mix of sedans, hatchbacks, SUVs and the odd van, with door
 seams, handles and wheel arches, in the colours real cars come in: mostly white, silver,
 grey and black, with the odd red or blue. Parked cars tilt with the slope they stand on.
+
+> Let's move to cars.
+
+Every car -- yours, the traffic, the parked ones -- has a real car's body now, not a
+box: rounded at the shoulders, the bonnet and the boot and at its four corners, a cabin
+that narrows to the roof with its pillars and roof rail in the car's colour, the light
+rolling over it. The paint is glossy and reflects the sky (and the road below the
+horizon), more at a glancing look; the glass reflects more. The tyres sit in dark wheel
+wells, on five-spoke rims; head and tail lights follow the corners; the number plates
+carry their characters (yellow in Israel, white in Bedford); there are bumper lips, a
+grille, mirrors and door handles. A car costs about what the box did: the body is built
+once per kind of car, its points shared.
 
 **Trees.** A dozen kinds, picked by the place and where they stand: ficus, acacia, olive,
 cypress, pine, tall pale eucalyptus (the roadsides' and parks' tree) and date and fan palms
@@ -390,6 +443,12 @@ photo only adds the variation round its own average, so `/look` reskins it as be
 Walls are a little darker at the foot, and a faint streak of grime runs down from each
 window sill.
 
+Down at street level: a manhole cover every 55-95 m down a street, a drain grate at the
+kerb every 40-65 m on alternate sides; oil and rubber blotches on the asphalt; road paint
+worn through to the asphalt in patches; kerbs of grainy concrete (the paint wearing with
+it), dirtier at the foot; the red of a no-stopping kerb red, not the palette's pink; flat
+roofs of tar and gravel with dried-puddle stains.
+
 > What would it take to make it more realistic, closer to Unreal and Unity quality of
 > details and resolution?
 
@@ -408,7 +467,8 @@ under 55 frames a second, or stuttering (more than one frame in twelve slower th
 for a few seconds and it steps down a level -- first smoother edges (MSAA) off and
 shorter shadows, then no shadows and a lower 3D resolution and the photo textures off
 (back to the drawn grain). It never steps back up during
-a drive. The frame rate and the level are shown small under the speed. Parked cars and
+a drive. The frame rate, the slowest frame of the last few seconds and the level are shown
+small under the speed. Parked cars and
 traffic are one mesh per car shape (a batch of them costs one draw, not six); every kind
 of shader is drawn once while the city loads, so none of them stalls the first time it
 comes into view; the browser's shadow map is smaller and its filter cheaper.
@@ -431,6 +491,24 @@ grain are strong enough to read at the lowest step's lower resolution.
 
 > I start with textures on the street but after I drive a bit they just vanish.
 
+**Seeing what chokes.** Tap the fps text under the speed (or press P) for the perf view: a
+graph of the last frames' times (green under 20 ms, red over 40), the average frame split
+into the engine's drawing and the game's own parts (traffic, people, autodrive, the
+minimap...), and the last few hitches -- frames much slower than the ones round them --
+with the parts that took their time. Playtests report hitches the same way.
+
+> We need to think how to improve latency a bit. It does choke every few seconds. Do you
+> have some fps counter or something?
+
+What choked, every few seconds: every 60 m driven the minimap went through every street
+and building outline within 360 m (now they are sorted into squares while the city loads,
+and gathering is joining a few arrays); every car left behind was found a new road in the
+same tick, up to 24 tries each, and every walker a new pavement (now one car and one walker
+a tick, a few tries at a time); autodrive planned several legs of road at once (now one a
+tick while there is plenty ahead); and every car re-decided its speed -- lights, signs,
+junctions, the car in front -- every tick (now 20 times a second, a third of them each
+tick). Building outlines on the minimap are plain one-pixel lines.
+
 ## How do you win?
 
 There is no winning. The one game hook: every street of the city you drive down for the
@@ -443,6 +521,18 @@ The real place, recognisably: the street layout, building footprints and heights
 trees and traffic lights where they really are. Daylight, cream apartment blocks with a
 window per storey, tree-lined streets, white dashed lines, zebra crossings. Every colour
 is a palette role mixed for daylight, so `/look` still reskins it.
+
+The kit's palettes are neon on dark, so the daylight mix keeps only part of each colour:
+asphalt, pavements, kerbs and concrete come out as real greys with a hint of the palette,
+walls as whites, creams and soft pastels, plants as greens (the palette's green leaning
+toward its yellow); signs, kerb paint, lights and the cars keep their colour, as real ones
+do. The light is a warm sun, the shade a sky blue, through a film-like curve (bright walls
+roll off rather than clip). The sky is a photograph -- a sunny day with cumulus -- turned
+so its sun stands where the sunlight comes from; the distance fades into its horizon. At
+night it gives way to the dark night sky.
+
+> 1 2 4 5 6 7 (colours and lighting; a real sky; street-level detail; the bus, the scooter
+> and people in the cars; the people; loading near-first)
 
 ## Where the city comes from: a repeatable process
 
@@ -465,6 +555,13 @@ raw download is cached in `tools/.cache/` (not committed), and `--offline` re-ba
 it, so changing the bake does not hit the server again.
 
 If a place's city file is not there yet, the game drives whichever city file is.
+
+The test town is made, not baked: `python3 tools/fake_city.py --out
+game/streets/cities/dimyon.json` (add `--preview plan.png` for a map of it, `--seed` for
+another town). It writes the same format, with `"made_up": 1`, which puts "a made-up town"
+on screen instead of the OpenStreetMap credit. Before writing, it proves the mountains hold:
+it floods the height grid from the middle of town through everything gentler than 62% or
+on a road, and stops if that reaches the edge of the map.
 
 Locally, the network needs to reach an Overpass server (the tool tries
 `overpass-api.de`, then two mirrors); without that, `--print-query` prints a link to
