@@ -35,6 +35,55 @@ const RUNS := [
 func _initialize() -> void:
 	_run()
 
+## a real town (heights worked out as it loads): its highest bridges, driven off both ways --
+## [name, a point on it, the way to face, seconds, "top"]
+func _auto_runs() -> Array:
+	var cand: Array = []
+	for ri: int in g._decks.decks:
+		var r: Dictionary = g._roads[ri]
+		if String(r["deck"]) != "br" or not r["drive"]:
+			continue
+		var ys: PackedFloat32Array = r["ys"]
+		var gs: PackedFloat32Array = r["gs"]
+		var up := 0.0
+		for j in range(ys.size()):
+			up = maxf(up, ys[j] - gs[j])
+		cand.append([up, ri])
+	cand.sort_custom(func(a, b): return a[0] > b[0])
+	var out: Array = []
+	var taken: Array = []
+	for c: Array in cand:
+		var r: Dictionary = g._roads[int(c[1])]
+		var pts: PackedVector2Array = r["pts"]
+		var mid: Vector2 = pts[pts.size() / 2].lerp(pts[(pts.size() - 1) / 2], 0.5)
+		if taken.any(func(t): return (t as Vector2).distance_to(mid) < 150.0):
+			continue
+		taken.append(mid)
+		var d := (pts[pts.size() - 1] - pts[0]).normalized()
+		var nm := "%s_%d" % [String(r["en"] if r["en"] != "" else r["name"]).replace(" ", "_"), int(c[1])]
+		print("bridge %s: %.1f m up, %s" % [nm, c[0], mid])
+		for way: float in ([1.0] if int(r["o"]) != 0 else [1.0, -1.0]):
+			var face := d * way * (float(r["o"]) if int(r["o"]) != 0 else 1.0)
+			out.append([nm + ("" if way > 0 else "_back"), mid, atan2(face.y, face.x), 14.0, "top"])
+		if out.size() >= 10:
+			break
+	return out
+
+## the steepest grade on any deck, and where
+func _grades() -> void:
+	var worst := 0.0
+	var at := ""
+	for ri: int in g._decks.decks:
+		var r: Dictionary = g._roads[ri]
+		var pts: PackedVector2Array = r["pts"]
+		var ys: PackedFloat32Array = r["ys"]
+		for j in range(pts.size() - 1):
+			var L := pts[j].distance_to(pts[j + 1])
+			if L > 2.0 and absf(ys[j + 1] - ys[j]) / L > worst:
+				worst = absf(ys[j + 1] - ys[j]) / L
+				at = "%s %s at %s" % [r["deck"], r["en"] if r["en"] != "" else r["name"], pts[j]]
+	print("steepest deck grade %.0f%% (%s)" % [worst * 100.0, at])
+
 func _snap(name: String) -> void:
 	if DisplayServer.get_name() == "headless":
 		return   # (run headless for the numbers alone: --headless -s ...)
@@ -60,7 +109,8 @@ func _levels_at(p: Vector2) -> Array:
 
 func _run() -> void:
 	await create_timer(0.3).timeout
-	root.get_node("Flow").start_game("streets", {"level": 4})
+	var level := int(OS.get_environment("LEVEL")) if OS.get_environment("LEVEL") != "" else 4
+	root.get_node("Flow").start_game("streets", {"level": level})
 	while g == null or not g._loaded:
 		await create_timer(0.25).timeout
 		for n in root.find_children("*", "Node2D", true, false):
@@ -71,12 +121,13 @@ func _run() -> void:
 		var k := String(g._roads[ri]["deck"])
 		kinds[k] = int(kinds.get(k, 0)) + 1
 	print("decks: ", kinds, ", holes cut in the ground: ", g._decks.holes.size(), ", walls: ", g._decks._walls.size())
+	_grades()
 	var only := OS.get_environment("RUNS").split(",", false)
-	for run: Array in RUNS:
+	for run: Array in (RUNS if level == 4 else _auto_runs()):
 		if not only.is_empty() and not only.has(run[0]):
 			continue
 		await _drive(run)
-	if OS.get_environment("SHOTS") != "0":
+	if OS.get_environment("SHOTS") != "0" and level == 4:
 		await _views()
 	quit()
 
