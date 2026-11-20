@@ -202,6 +202,16 @@ line on a dark one.
 > Trains that act like trains: a front with headlights, lit at night, stopping at the
 > stations; the overhead electric wires; the sound of a train going by.
 
+Its landmarks: the three Azrieli towers -- round, triangular and square -- in one dark,
+glossy blue glass with a band of metal round each top that lights up at night; in HaKirya
+the Matcal tower with its mast and the Marganit tower with its concrete shaft, antenna
+platforms and red-and-white mast up to 138 m; and Sarona's restored Templer houses, two
+storeys under red tile roofs among the lawns and trees, with the towers all round. At night
+every tower over 90 m has red aircraft-warning lights on its roof, slowly pulsing.
+
+> Landmarks: Azrieli round/triangle/square towers in proper glass, lit at night, Sarona,
+> the Kirya (Matcal) tower.
+
 > game streets -- lets add/start working on adding Tel Aviv. Somewhat the area I mentioned.
 > (with a map: Ichilov, Savidor, Azrieli, HaKirya, TLV Mall, Montefiore, Bitsaron,
 > Nahalat Yitshak)

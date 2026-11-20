@@ -336,6 +336,18 @@ one needed:
   G (s - L/2)) and round humps. And in the car: a rise under it faster than any slope could
   give at its speed is a step (two decks overlapping at a junction in the air, 0.2-0.3 m
   apart), not a climb -- taken as vertical speed, it threw a car 3 m into the air.
+- **Most "crests" are kinks, and the car should not feel them one point at a time.** A
+  worked-out profile is points a few metres apart (and a file's heights rounded to 10 cm):
+  a kink at every point. A car that reads the ground's height under its middle each frame
+  feels each kink as its vertical speed jumping in one frame, and a lift-off rule on that
+  throws it up at 40 km/h over grade changes no real car would leave the road on (a real
+  crest needs v^2 x curvature > g). Smooth the ground the springs feel along the car's own
+  path over half a wheelbase of travel (an exponential follow at rate |v| / (wheelbase/2)):
+  every ramp-top hop in four towns went, while a real drop still throws it. Do not sample
+  the height under each axle instead: an axle's point by a tunnel's wall finds the ground
+  over the tunnel. A hop left after that is a real step in the data (two decks overlapping
+  at different heights): trace the frames before the take-off -- surface under the middle
+  and each axle, and which deck -- to tell a seam from a crest.
 - **Footbridges and footpath tunnels are a second network.** Work their heights out the same
   way but along the paths only (footway, path, steps, cycleway...), steep (a ramp ~25%,
   stairs ~60% where OSM maps `highway=steps`), and keep the two networks apart both ways: a

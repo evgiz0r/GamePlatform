@@ -313,7 +313,9 @@ normal, not an accident. What that asks of you:
   happily and the result can still be broken (a function one renamed, a constant the other
   retuned). After merging anything that touches your game, parse it
   (`tools/check_script.sh res://game/<name>/<name>.gd`, seconds) and run the playtest again
-  before pushing to `main`.
+  before pushing to `main`. And `git add` happily stages a file that still has conflict
+  markers in it: before committing a merge, `git diff --cached --check` (or grep for
+  `<<<<<<<`) -- a merge here once published two notes files with both sides and the markers.
 - **A merge can bring new assets** (another session's textures, models). Godot only imports
   them when asked: `tools/playtest.sh` and `tools/shots.sh` now do it when they see assets
   newer than the last import, but if you run the engine yourself, run

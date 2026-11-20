@@ -487,6 +487,13 @@ func _walls_of(ri: int) -> void:
 			if kind == "cu" and (_street_over(line[j]) or _street_over(line[j + 1]) or _street_over(mid)):
 				continue   # (under a street at grade, which carries a car over it: a car on Kaplan
 				           # hit the wall of the Lova Eliav tunnel's cutting where it starts at its kerb)
+			if kind == "tu" and (_street_over(line[j]) or _street_over(line[j + 1]) or _street_over(mid)):
+				# a shallow tube's side under a street at grade: up to under the street, not
+				# through it (Tel Aviv's tunnels by the Kaplan junction stood in its lanes)
+				band[1] = minf(band[1], gs[j] - 0.5)
+				band[3] = minf(band[3], gs[j + 1] - 0.5)
+				if band[1] < band[0] + 0.5 and band[3] < band[2] + 0.5:
+					continue
 			_wall(ri, [line[j], line[j + 1], band[0], band[1], band[2], band[3], WALL_T * 0.5, kind], ys[j], ys[j + 1])
 	if kind == "br":
 		for pier: Array in piers(ri):
@@ -1931,7 +1938,7 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 					yv = nxt
 				var ys: Array = []
 				for y in yv:
-					ys.append(roundi(float(y) / k))
+					ys.append(float(y) / k)   # (not rounded to the file's 10 cm: a step in grade at every point)
 				part["n"] = dn
 				part["y"] = ys
 				if not part.has("br") and not part.has("tu"):
@@ -1945,6 +1952,7 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 				decks += 1
 			made.append(part)
 	data["roads"] = made
+	var rounded := _round_joints(made, pos, ground, k, drv) if round_joints else [0, 0]
 	var low := INF
 	var short := 0
 	var short_at: Array = []
@@ -1961,4 +1969,103 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 	for ri: int in is_tu:
 		ft += 1 if walk.call(roads[ri]) else 0
 	return {"bridges": is_br.size() - fb, "footbridges": fb, "stair_capped": stair_capped, "tunnels": is_tu.size() - ft, "foot_tunnels": ft, "crossings": crossed, "stacked": stacked, "capped": capped, "decks": decks,
-		"over_roads": over_roads.size(), "short_of_clear": short, "lowest_over_road": snappedf(low, 0.1), "short_at": short_at, "tunnels_dropped": dropped}
+		"over_roads": over_roads.size(), "short_of_clear": short, "lowest_over_road": snappedf(low, 0.1), "short_at": short_at, "tunnels_dropped": dropped,
+		"crests_rounded": rounded[0], "cutting_tops_eased": rounded[1]}
+
+static var round_joints := true   ## (a test can switch _round_joints off to compare)
+const VC_L := 32.0            ## a vertical curve's length across a crest
+const EASE_L := 40.0          ## a cutting's top eased into its slope over this far
+
+## Crests the pieces' own rounding left sharp: each lifted piece is rounded with its ends held,
+## so where a bridge meets its ramp, or two ways of one ramp meet, the joint stayed a crest a
+## car took off from at 30-50 km/h (Tel Aviv's Moses and Arvei Nahal ramps). Across each such
+## joint (only those two pieces there) a vertical curve VC_L long: y = y_J + g1 x + (g2 - g1)
+## (x + L/2)^2 / 2L, which only ever lowers. And at a cutting's top, where it meets the
+## street at the street's level, the street's flat eased into the cutting's slope over EASE_L
+## on the cutting's side (a cubic from grade 0 to the slope: never deeper than it was) --
+## coming up out of Ashdod's underpass the car took off at 49 km/h. [crests, tops]
+static func _round_joints(made: Array, pos: Callable, ground: Callable, k: float, drv: Callable) -> Array:
+	var seen := {}   # node -> how many pieces have it (anywhere along them)
+	var ends := {}   # node -> [[piece, at its start?]] for lifted pieces
+	for pi in range(made.size()):
+		var ns: Array = made[pi]["n"]
+		for n in ns:
+			seen[int(n)] = int(seen.get(int(n), 0)) + 1
+		if not made[pi].has("y") or not drv.call(made[pi]):
+			continue   # (a footbridge's own profile, stairs and all, is left as it is)
+		for e: int in [0, ns.size() - 1]:
+			var key := int(ns[e])
+			if not ends.has(key):
+				ends[key] = []
+			(ends[key] as Array).append([pi, e == 0])
+	# the heights away from node n along piece pi: [[metres, metres up, index], ...]
+	var away := func(pi: int, from_start: bool) -> Array:
+		var ns: Array = made[pi]["n"]
+		var ys: Array = made[pi]["y"]
+		var out: Array = []
+		var d := 0.0
+		var idx: Array = range(ns.size()) if from_start else range(ns.size() - 1, -1, -1)
+		for q in range(idx.size()):
+			var i: int = idx[q]
+			if q > 0:
+				d += (pos.call(int(ns[idx[q - 1]])) as Vector2).distance_to(pos.call(int(ns[i])))
+			out.append([d, float(ys[i]) * k, i])
+		return out
+	var slope := func(side: Array) -> float:   # rise per metre away from the joint, over ~12 m
+		for q in range(1, side.size()):
+			if float(side[q][0]) >= 12.0 or q == side.size() - 1:
+				return (float(side[q][1]) - float(side[0][1])) / maxf(float(side[q][0]), 0.5)
+		return 0.0
+	var crests := 0
+	var tops := 0
+	for n: int in ends:
+		var es: Array = ends[n]
+		if es.size() == 2 and int(seen.get(n, 0)) == 2:
+			var a: Array = away.call(int(es[0][0]), bool(es[0][1]))
+			var b: Array = away.call(int(es[1][0]), bool(es[1][1]))
+			if a.size() < 3 or b.size() < 3:
+				continue
+			var g1: float = -float(slope.call(a))   # coming along a toward the joint
+			var g2: float = slope.call(b)           # going on along b
+			if g1 - g2 < 0.025:
+				continue   # (no crest worth the name; a sag is not one either)
+			var L := minf(VC_L, 1.6 * minf(float(a[a.size() - 1][0]), float(b[b.size() - 1][0])))
+			var yj: float = a[0][1]
+			for side: Array in [[a, -1.0, int(es[0][0])], [b, 1.0, int(es[1][0])]]:
+				var pc: Dictionary = made[int(side[2])]
+				var ys: Array = pc["y"]
+				var dug: bool = pc.has("cu") or pc.has("tu")
+				for pt: Array in side[0]:
+					var x: float = float(pt[0]) * float(side[1])
+					if absf(x) > L * 0.5:
+						break
+					var y := yj + g1 * x + (g2 - g1) * pow(x + L * 0.5, 2.0) / (2.0 * L)
+					if not dug:   # (a ramp's crest near the ground: not down into it)
+						y = maxf(y, float(ground.call(int(pc["n"][int(pt[2])]))))
+					if y < float(pt[1]):
+						ys[int(pt[2])] = y / k
+			crests += 1
+		# a cutting's top at the street: eased in from flat
+		for e: Array in es:
+			var part: Dictionary = made[int(e[0])]
+			if not part.has("cu") or int(seen.get(n, 0)) < 2:
+				continue
+			var side: Array = away.call(int(e[0]), bool(e[1]))
+			var y0: float = side[0][1]
+			if absf(y0 - float(ground.call(n))) > 0.3 or side.size() < 3:
+				continue
+			var g: float = slope.call(side)
+			if g > -0.02:
+				continue   # (it rises from here, or barely falls: a sag, not a crest)
+			var L := minf(EASE_L, float(side[side.size() - 1][0]) * 0.8)
+			var ys: Array = part["y"]
+			for pt: Array in side:
+				var x: float = pt[0]
+				if x > L:
+					break
+				var y := y0 + 2.0 * g * x * x / L - g * x * x * x / (L * L)
+				y = minf(y, float(ground.call(int(part["n"][int(pt[2])]))))   # (never up out of the ground)
+				if y > float(pt[1]):
+					ys[int(pt[2])] = y / k
+			tops += 1
+	return [crests, tops]
