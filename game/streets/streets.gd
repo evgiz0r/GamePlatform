@@ -4721,10 +4721,11 @@ func _tone_mat() -> ShaderMaterial:
 		var sh := Shader.new()
 		sh.code = TONE_SHADER
 		_tone_material.shader = sh
-		# Israeli pavements are rows of concrete pavers; Bedford's are poured slabs, the
+		# Israeli pavements are 20 x 10 cm concrete pavers in herringbone, a mix of greys
+		# and red-browns (drawn by textures/herringbone.py); Bedford's are poured slabs, the
 		# photo's slabs blown up to a metre or so
 		var north := String(_place.get("look", "")) == "north"
-		var pave := "concrete_pavement" if north else "concrete_pavers_02"
+		var pave := "concrete_pavement" if north else "herringbone_pavers"
 		_tone_material.set_shader_parameter("asph_tex", _tex("asphalt_02_diff"))
 		_tone_material.set_shader_parameter("asph_nrm", _tex("asphalt_02_nor"))
 		_tone_material.set_shader_parameter("asph_big", _tex("aerial_asphalt_01_diff"))
@@ -4741,7 +4742,7 @@ func _tone_mat() -> ShaderMaterial:
 	return _tone_material
 
 ## The photos under the surfaces: CC0 from Poly Haven (textures/CREDITS.md), 1024 px, the
-## bump maps 512. The shaders divide each by its average colour, so a photo adds detail
+## bump maps 512 -- all but the herringbone pavers, which textures/herringbone.py draws. The shaders divide each by its average colour, so a photo adds detail
 ## without changing the palette's colour. The averages are of the stored (sRGB) values, and
 ## the samplers have no source_color, so they read exactly those: in the Compatibility
 ## renderer source_color does not convert them anyway (measured), and a photo's own smallest
@@ -4751,7 +4752,7 @@ const TEX_MEAN := {
 	"aerial_asphalt_01": Vector3(0.402, 0.385, 0.406),
 	"asphalt_02": Vector3(0.356, 0.353, 0.333),
 	"concrete_pavement": Vector3(0.501, 0.457, 0.403),
-	"concrete_pavers_02": Vector3(0.448, 0.377, 0.314),
+	"herringbone_pavers": Vector3(0.515, 0.474, 0.457),
 	"leafy_grass": Vector3(0.593, 0.516, 0.351),
 	"painted_plaster_wall": Vector3(0.671, 0.639, 0.627),
 	"bark_brown_02": Vector3(0.373, 0.338, 0.251),

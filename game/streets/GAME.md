@@ -409,7 +409,9 @@ out per pixel from where it is, nothing to load, the fine part fading out with d
 **Real textures.** Up close the surfaces are photographs (free CC0 ones from Poly Haven, in
 `textures/`): the asphalt has grit and fine cracks, with a second photo of tyre marks,
 patches and long cracks laid over it at 30 m so it doesn't visibly repeat; Givatayim's and Ashdod's
-pavements are rows of concrete pavers, Bedford's poured concrete slabs; grass and open
+pavements are 20 x 10 cm concrete pavers in herringbone, a mix of greys, charcoal and
+red-browns (drawn by `textures/herringbone.py`, after a walk filmed in Givatayim: no photo
+had them), Bedford's poured concrete slabs; grass and open
 ground are a real lawn; walls are painted render. Each has its bumps, so the low sun picks
 out the cracks and the joints between pavers. The palette still decides every colour: a
 photo only adds the variation round its own average, so `/look` reskins it as before.
@@ -420,6 +422,8 @@ window sill.
 > details and resolution?
 
 > Let's start with the textures.
+
+> I took a video on my phone walking in Givatayim from a coffee shop nearby to my house.
 
 ## Smooth on a laptop and a phone
 
