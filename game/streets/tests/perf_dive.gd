@@ -77,6 +77,10 @@ func _mat_name(m: Material, gi: GeometryInstance3D) -> String:
 		m = gi.material_override
 	if m == null:
 		return "?"
+	for pair: Array in [[g._tone_material, "TONE (batched)"], [g._roof_mat, "ROOF"], [g._wall_mat, "WALL"], [g._kerb_mat, "KERB"],
+			[g._ground_shader_mat, "GROUND"], [g._car_shader_mat, "CAR"]]:
+		if pair[0] != null and m == pair[0]:
+			return pair[1]
 	if m is ShaderMaterial and (m as ShaderMaterial).shader != null:
 		var code := (m as ShaderMaterial).shader.code
 		for key: String in _names:
@@ -189,6 +193,12 @@ func _run() -> void:
 		rows.append([k, verts[k][0], verts[k][1], verts[k][2]])
 	rows.sort_custom(func(a, b): return a[2] > b[2])
 	print("static meshes: %.2f M vertices in all" % (all_v / 1.0e6))
+	var bv: Array = []
+	for k: String in g._dressing:
+		if k.begins_with("batched vertices: "):
+			bv.append([int(g._dressing[k]), k.substr(18)])
+	bv.sort_custom(func(a, b): return a[0] > b[0])
+	print("  batched, by tone: " + ", ".join(bv.slice(0, 14).map(func(x): return "%s %.2f M" % [x[1], x[0] / 1.0e6])))
 	for r: Array in rows.slice(0, 12):
 		print("  %-28s %5d surfaces %6.2f M vertices (%d indexed)" % [r[0], r[1], float(r[2]) / 1.0e6, r[3]])
 	print("video memory %.0f MB, textures %.0f MB, buffers %.0f MB" % [Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0,
