@@ -44,12 +44,15 @@ Drive, freely. The car behaves like a car rather than a toy: about 4 m/s² off t
 if you take a corner too fast (it runs wide), body roll and nose dive. Hold the brake when
 stopped and it goes into reverse, like an automatic.
 
-The car's switches, on screen (top right) and on the keyboard: indicators (Q and E) that
-tick and go off by themselves after the turn, the horn (H: people on a crossing hurry, a
-car stuck in a standoff ahead goes), headlights (L; on by themselves at night), and
-reverse lights when backing. Autodrive signals its own turns.
+The car's switches: headlights (on screen, top right, and L; on by themselves at night),
+and on the keyboard only, indicators (Q and E) that tick and go off by themselves after the
+turn and the horn (H: people on a crossing hurry, a car stuck in a standoff ahead goes);
+reverse lights when backing. Autodrive signals its own turns, an arrow blinking by the
+speed.
 
 > Indicators, horn, headlights, speedometer.
+
+> Remove the honk and turn lights UI, it's not needed.
 
 Keys: up = gas, down = brake (and reverse), left/right = steer. Space switches on
 **autodrive**, which drives the streets by itself in the right-hand lane, slows for
@@ -346,14 +349,18 @@ there) with its pavement behind it and the asphalt filled out to it; across the 
 T the far kerb runs straight. A divided road (OSM: two one-way roads side by side) has
 each half as wide as its lanes, not the class's guessed width, so the halves no longer
 overlap, and between them a kerbed median instead of two pavements. No kerb or pavement
-is laid where it would lie on another road's asphalt, which also leaves a driveway its gap.
+is laid where it would lie on another road's asphalt, which also leaves a driveway its gap;
+a corner is checked along its whole length (checked only at its middle, a kerb could run
+straight across a road's mouth and lay a strip of pavement over the junction).
 
 > There are a lot of broken roads and random sidewalks in the middle. And in general very
 > badly looking crossroads.
 
 **Roads that fit.** A road's width is mostly a guess (OSM rarely says), so where a street's
 buildings stand closer than the guess it is narrowed (to no less than two lanes) instead of
-running under them. The ground's thin layers -- grass, paths, asphalt, paint -- sit a few
+running under them. A building still standing on the road after that, or so close no
+pavement is left, has its front cut back to the road's edge plus a kerb and a strip of
+pavement (not one a road passes under, nor one up on columns). The ground's thin layers -- grass, paths, asphalt, paint -- sit a few
 centimetres apart and the camera's near plane is a little way out, so a phone's coarser
 depth buffer no longer shows grass through the road in green patches.
 
@@ -364,10 +371,26 @@ a little further from the centre line; parked cars stand mostly up on the paveme
 roundabout a car decides at each exit and is ever less likely to stay on, so nobody
 circles and the cars waiting to come on are let in.
 
-**Autodrive** stops for anyone standing on its lane, keeps out of alleys and car-park lanes
+**Autodrive** keeps to the right-hand lane of a one-way road of several (it drove down the
+middle, astride two, and in between the cars in them), counts a car going its way as in
+its lane wherever their bodies would touch, stops for anyone standing on its lane, keeps out of alleys and car-park lanes
 unless there is no other way, prefers turnings back into town at its edge, and if it has
 got nowhere for 40 s (not at a light) it is lifted onto a street a little way toward the
-middle of town and drives on.
+middle of town and drives on. Switched on (or knocked) off the road -- in a yard, a car park,
+between blocks -- it finds its way back round the buildings at a walking pace instead of
+heading straight at the nearest bit of road through the wall in between; with no way out
+in reach, or after running into walls a few times in quick succession, it is put back on
+the nearest street. Face to face with a traffic car in a narrow street, both standing,
+the other car edges past if there is nearly room, and if they are nose to nose it turns
+off out of the story (gone once out of sight, or after a few seconds regardless) rather
+than the two waiting for each other for ever.
+
+> Sometimes the autodrive gets completely stuck in those narrow streets.
+
+**The edge of the map** is a striped barrier with a glowing curtain over it that shows as
+you come near, and a line on the minimap; the car stops against it, nose to the stripes.
+
+> Mark somehow the border of the map, I just hit air and those walls are invisible.
 
 **Car parks.** OSM's parking areas (up to a block's size) are laid out in rows of painted
 bays with most of them taken; a car park mapped only by its lanes (OSM: a parking aisle,
@@ -426,6 +449,13 @@ changes at night or moves stays separate (lamps, lit glass, flags, ads, cars, pe
 so do the trees, which are too many to copy.
 
 > Performance pass: fewer draw calls, faster loading of big cities.
+
+When the browser can't keep up, the game steps its own quality down; at the lowest step
+the real shadows are off, and each car gets a soft dark patch under it instead so it still
+stands on the road (the street went flat the moment it stepped down). The asphalt's wear and
+grain are strong enough to read at the lowest step's lower resolution.
+
+> I start with textures on the street but after I drive a bit they just vanish.
 
 ## How do you win?
 

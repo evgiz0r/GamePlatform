@@ -877,6 +877,7 @@ var _ap_v := PackedFloat32Array()    ## speed allowed at each of those points (c
 var _ap_lim := PackedFloat32Array()  ## the limit on the road leading to each point
 var _ap_end := Vector3i(-1, 0, 0)    ## the last leg planned: road, last index, direction
 var _ap_stuck := 0.0
+var _ap_bonks := 0.0                 ## buildings run into lately (one each, fading)
 var _ap_back := 0.0
 var _ap_turn := 0.0                   ## turning round on the spot to face the planned lane (s left)
 ## the crossing ahead, while autodrive waits for you to pick a way on:
@@ -944,10 +945,8 @@ const ASSIST_BTN := Rect2(376, 334, 70, 20)
 const NIGHT_BTN := Rect2(452, 334, 52, 20)
 const VIEW_BTN := Rect2(578, 98, 52, 20)    ## chase cam / driver's seat (key C too)
 const LIGHTS_BTN := Rect2(578, 122, 52, 20)  ## headlights (key L)
-const BLINK_L_BTN := Rect2(558, 146, 24, 20) ## indicators (keys Q and E) and the horn (H)
-const HORN_BTN := Rect2(585, 146, 28, 20)
-const BLINK_R_BTN := Rect2(616, 146, 24, 20)
-const WALK_BTN := Rect2(578, 170, 52, 20)    ## out of the car and back in (key F)
+## (the indicators and the horn are keys only, Q / E and H: on screen they were clutter)
+const WALK_BTN := Rect2(578, 146, 52, 20)    ## out of the car and back in (key F)
 const STICK_C := Vector2(556, 268)   ## the touch stick sits still, here, on the right
 const STICK_R := 52.0                ## thumb travel (design px) for full lock / full gas
 const STICK_GRAB := 84.0             ## a thumb this close to its centre takes hold of it
@@ -1183,6 +1182,81 @@ func _fit_widths_to_buildings() -> void:
 		_recompute_node_r()
 	_dressing["narrowed"] = narrowed
 
+## What the narrowing leaves (it fits most of a street's length, not every building on it):
+## a building whose front still stands on the road, or so close no pavement is left, has
+## that front cut back to the road's edge plus a kerb and a strip of pavement. OSM's
+## footprints and centre lines are each a little off and the road's width is a guess, so a
+## metre off a facade is the likelier truth than a house standing in the lane. Not a
+## building the road runs under (more than half of it would go: a passage through it, or a
+## guess far too wide), nor one up on columns over it.
+const BLD_CLEAR := 1.5                ## kerb and pavement kept in front of a building (m)
+
+func _clip_buildings(bdata: Array) -> void:
+	var clipped := 0
+	var kept := 0
+	for bi in range(_blds.size()):
+		if _bld_solid[bi] == 0:
+			continue
+		var ring: PackedVector2Array = _blds[bi]
+		var box: Rect2 = _bld_box[bi]
+		var n := ring.size()
+		var cuts: Array = []
+		for code: int in _near(_seg_hash, box.get_center(), box.size.length() * 0.5 + 14.0, SEG_CELL):
+			var r: Dictionary = _roads[code / 4096]
+			if not _kerbed(r):
+				continue
+			var pts: PackedVector2Array = r["pts"]
+			var sj := code % 4096
+			var a := pts[sj]
+			var b := pts[sj + 1]
+			var c := float(r["w"]) * 0.5 + BLD_CLEAR
+			if not box.grow(c).intersects(Rect2(a, Vector2.ZERO).expand(b)):
+				continue
+			for k in range(n):
+				var cp := Geometry2D.get_closest_points_between_segments(a, b, ring[k], ring[(k + 1) % n])
+				if cp[0].distance_to(cp[1]) < c - 0.05:
+					cuts.append([a, b, c])
+					break
+		if cuts.is_empty():
+			continue
+		var area0 := _area_signed(ring)
+		var cur := ring
+		for cut: Array in cuts:
+			var a: Vector2 = cut[0]
+			var b: Vector2 = cut[1]
+			var c: float = cut[2]
+			var d := (b - a).normalized()
+			if d == Vector2.ZERO:
+				continue
+			# the road's strip round this piece, rounded at both ends (squared off, the
+			# outside of every bend and every junction's middle were left uncut)
+			var lane := PackedVector2Array()
+			for k in range(7):
+				lane.append(b + Vector2(-d.y, d.x).rotated(-PI * k / 6.0) * c)
+			for k in range(7):
+				lane.append(a + Vector2(d.y, -d.x).rotated(-PI * k / 6.0) * c)
+			var best := PackedVector2Array()
+			var best_a := 0.0
+			for piece: PackedVector2Array in Geometry2D.clip_polygons(cur, lane):
+				var pa := _area(piece)   # (the largest: never a hole, smaller than its outline)
+				if pa > best_a:
+					best_a = pa
+					best = piece
+			cur = best
+			if cur.size() < 3:
+				break
+		if cur.size() < 3 or _area(cur) < absf(area0) * 0.5:
+			kept += 1
+			continue
+		if signf(_area_signed(cur)) != signf(area0):
+			cur.reverse()
+		_blds[bi] = cur
+		_bld_box[bi] = _bld_box_of(cur)
+		(bdata[bi] as Dictionary)["_ring"] = cur
+		clipped += 1
+	_dressing["bld_clipped"] = clipped
+	_dressing["bld_over_road"] = kept
+
 ## ---- loading the city ---------------------------------------------------------------
 
 func _load_city(id: String) -> bool:
@@ -1297,6 +1371,7 @@ func _load_city(id: String) -> bool:
 	for a: Array in data.get("addrs", []):   # address points that are not on a building
 		_add_address("%s %s" % [a[2], a[3]], Vector2(a[0], a[1]) * k)
 	_fit_widths_to_buildings()
+	_clip_buildings(data["buildings"])
 	_build_graph()
 	_city_data = data
 	return true
@@ -1371,6 +1446,7 @@ func _build_world() -> bool:
 	world.add_child(ground)
 	if _hnx > 0:
 		_build_terrain()
+	_build_edge()
 	if not await _step("streets"):
 		return false
 
@@ -1878,6 +1954,8 @@ func _walk_pts(pts: PackedVector2Array, k: int, step: int, dist: float) -> Array
 ## kerb that curves from one street's edge to the other's (red and white in Israel: no
 ## stopping at a corner), its pavement behind it, and the asphalt filled out to it. Across
 ## the mouth of a T, a straight kerb; between the two halves of a divided road, a flat nose.
+var _corner_cut_at: Array = []        ## corners laid piece by piece: [middle, middle clear] (for tests)
+
 func _kerb_corners(kerb: Buf, pave: Buf, fill: Buf, col: Color) -> void:
 	for ni in range(_nodes.size()):
 		if _kerb_arms(ni) < 3:
@@ -1929,14 +2007,27 @@ func _kerb_corners(kerb: Buf, pave: Buf, fill: Buf, col: Color) -> void:
 				var n := maxi(1, ceili(P.distance_to(Q) / 3.0))
 				for k in range(n + 1):
 					curve.append(P.lerp(Q, float(k) / n))
-			# one look at the corner's middle: clear (nearly always), it goes in whole; else
-			# piece by piece, leaving out what lies on another road
-			var m := curve.size() / 2
-			var mt := (curve[m] - curve[m - 1]).normalized()
-			var mn := Vector2(-mt.y, mt.x)
-			if mn.dot(curve[m] - c) < 0.0:
-				mn = -mn
-			var whole := not _asphalt_other(curve[m] + mn * KERB_W * 0.5, -1) and not _asphalt_other(curve[m] + mn * (KERB_W + PAVE_W * 0.5), -1)
+			# a look along the corner: clear (nearly always), it goes in whole; else piece by
+			# piece, leaving out what lies on another road. (One look at its middle let a kerb
+			# straight across a road's mouth in whole wherever its middle happened to miss
+			# the asphalt -- a strip of pavement across the junction.)
+			var whole := true
+			for k in range(curve.size()):
+				var kt := (curve[mini(k + 1, curve.size() - 1)] - curve[maxi(k - 1, 0)]).normalized()
+				var kn := Vector2(-kt.y, kt.x)
+				if kn.dot(curve[k] - c) < 0.0:
+					kn = -kn
+				if _asphalt_other(curve[k] + kn * KERB_W * 0.5, -1) \
+						or (k == curve.size() / 2 and _asphalt_other(curve[k] + kn * (KERB_W + PAVE_W * 0.5), -1)):
+					whole = false
+					break
+			if not whole:
+				# (and whether the one look at its middle would have let it in whole)
+				var m := curve.size() / 2
+				var mt := (curve[m] - curve[m - 1]).normalized()
+				var mn := Vector2(-mt.y, mt.x) * (1.0 if Vector2(-mt.y, mt.x).dot(curve[m] - c) >= 0.0 else -1.0)
+				_corner_cut_at.append([curve[m], not _asphalt_other(curve[m] + mn * KERB_W * 0.5, -1) \
+					and not _asphalt_other(curve[m] + mn * (KERB_W + PAVE_W * 0.5), -1)])
 			var along := 0.0
 			for k in range(curve.size() - 1):
 				var a := curve[k]
@@ -4618,7 +4709,7 @@ void fragment() {
 const TONE_FX := {
 	"grass": [0.16, 0.08, 0.0, 1.0], "pitch": [0.06, 0.05, 0.0, 1.0], "wood": [0.16, 0.07, 0.0, 1.0],
 	"bush": [0.1, 0.05, 0.0, 1.0], "ground": [0.1, 0.06, 0.0, 1.0], "sand": [0.08, 0.08, 0.0, 1.0],
-	"asphalt": [0.08, 0.06, 0.0, 2.0], "parking": [0.08, 0.05, 0.0, 2.0], "path": [0.06, 0.07, 0.0, 2.0],
+	"asphalt": [0.11, 0.075, 0.0, 2.0], "parking": [0.1, 0.06, 0.0, 2.0], "path": [0.06, 0.07, 0.0, 2.0],
 	"pavement": [0.04, 0.04, 0.6, 3.0], "plaza": [0.05, 0.04, 1.0, 3.0], "mark": [0.0, 0.04, 0.0, 2.0],
 }
 var _tone_list: Array = []           ## the table's tone names, in order
@@ -6525,6 +6616,9 @@ func _retint_city() -> void:
 	_apply_signals_safe()
 	_retint_kerbs()
 	_retint_ground()
+	_retint_edge()
+	if _blob_plane != null:
+		(_blob_plane.material as ShaderMaterial).set_shader_parameter("tint", Palette.col("bg"))
 	for poi: Array in _pois:
 		var lb := poi[2] as Label3D
 		lb.modulate = Palette.col(poi[1])
@@ -6556,21 +6650,93 @@ func _build_car() -> void:
 	_car.add_child(beam)
 	_beam_node = beam
 	_lights_on = _night
+	_blob = MeshInstance3D.new()
+	_blob.mesh = blob_mesh()
+	_blob.scale = Vector3(2.7, 1.0, 5.6)
+	_blob.position = Vector3(0, 0.02, 0)
+	_blob.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_blob.visible = _blobs_on
+	_car.add_child(_blob)
 	_build_cockpit()
 	_build_car_signals()
+
+## Where the real shadows are off (the lowest quality: a phone that could not keep up), a
+## soft dark patch under each car keeps it standing on the road. Without them the street
+## went flat the moment the game stepped down, and the cars floated over it.
+var _blobs_on := false
+var _blob: MeshInstance3D
+var _blob_plane: PlaneMesh
+const BLOB_SHADER := """
+shader_type spatial;
+render_mode unshaded, depth_draw_never, cull_disabled, shadows_disabled;
+uniform vec3 tint : source_color = vec3(0.0);
+void fragment() {
+	vec2 q = abs(UV - 0.5) * 2.0;   // 0 in the middle, 1 at the rim
+	float d = length(max(q - vec2(0.5, 0.68), 0.0) / vec2(0.5, 0.32));
+	ALBEDO = tint;
+	ALPHA = (1.0 - smoothstep(0.0, 1.0, d)) * 0.62;
+}
+"""
+
+## a 1 m square lying flat, the patch's shape and fade in its shader (scaled to each car)
+func blob_mesh() -> PlaneMesh:
+	if _blob_plane == null:
+		_blob_plane = PlaneMesh.new()
+		_blob_plane.size = Vector2(1.0, 1.0)
+		var m := ShaderMaterial.new()
+		var sh := Shader.new()
+		sh.code = BLOB_SHADER
+		m.shader = sh
+		m.set_shader_parameter("tint", Palette.col("bg"))
+		_blob_plane.material = m
+	return _blob_plane
+
+func _set_blobs(on: bool) -> void:
+	_blobs_on = on
+	if _blob != null:
+		_blob.visible = on
+	if _traffic != null:
+		_traffic.show_blobs(on)
 
 func _fwd() -> Vector2:
 	return Vector2(cos(_yaw), sin(_yaw))
 
-## The right-hand lane's line, this far right of a two-way road's middle (one-way: the
-## middle). Every two-way street has two lanes, however narrow; the line sits a little past
-## the lane's own middle, toward the kerb, as drivers do -- at w/4 cars ran close to the
-## centre line and met the traffic coming the other way in it.
+## The right-hand lane's line, this far right of a two-way road's middle. Every two-way
+## street has two lanes, however narrow; the line sits a little past the lane's own middle,
+## toward the kerb, as drivers do -- at w/4 cars ran close to the centre line and met the
+## traffic coming the other way in it. A one-way road of one lane: its middle; of several:
+## the middle of the right-hand one, where traffic drives (autodrive used to take the middle
+## of the road, astride two lanes, and ran in between the cars in them).
 func _lane_off(r: Dictionary) -> float:
-	if int(r["o"]) != 0:
-		return 0.0
 	var w := float(r["w"])
+	if int(r["o"]) != 0:
+		var n := _lanes_each_way(r)
+		return 0.0 if n <= 1 else w * 0.5 - w / n * 0.5
 	return clampf(minf(w * 0.25 + 0.25, w * 0.5 - 0.95), 0.9, 2.6)
+
+## lanes each way: a one-way road's all, half a two-way road's (by the tag, else the width)
+func _lanes_each_way(r: Dictionary) -> int:
+	var l := int(r.get("l", 0))
+	var w := float(r["w"])
+	var n := 1
+	if int(r["o"]) != 0:
+		n = mini(l if l > 0 else int(w / 3.3), int(w / 2.8))
+	else:
+		n = mini(l / 2 if l > 1 else int(w / 6.6), int(w / 5.6))
+	return clampi(n, 1, 4)   # (no more than the width holds: a tagged two lanes narrowed to 4 m is one)
+
+## of road r's lanes going one way, the line of the one nearest `off` metres right of the
+## road's middle
+func _nearest_lane(r: Dictionary, off: float) -> float:
+	var best := _lane_off(r)
+	var n := _lanes_each_way(r)
+	var w := float(r["w"])
+	var span := w if int(r["o"]) != 0 else w * 0.5
+	for i in range(n if n > 1 else 0):
+		var c := w * 0.5 - span / n * (i + 0.5)
+		if absf(c - off) < absf(best - off):
+			best = c
+	return best
 
 ## ---- the driver's seat ----------------------------------------------------------------------
 ## The view from behind the wheel, like a dashcam a little lower: the bonnet through the
@@ -6845,6 +7011,7 @@ func _walk(dt: float) -> void:
 		var d := _pos - (_car_at + cf * off)
 		if d.length() < CAR_R + 0.3 and d.length() > 0.001:
 			_pos += d.normalized() * (CAR_R + 0.3 - d.length())
+	_keep_inside(0.3, false)
 	_y = _h(_pos)
 	var anim := "Idle" if absf(_v) < 0.15 else ("Run" if absf(_v) > WALK + 0.5 else "Walk")
 	if anim != _me_anim:
@@ -7411,6 +7578,7 @@ func _set_quality(q: int) -> void:
 	sun.shadow_enabled = float(row[1]) > 0.0
 	sun.directional_shadow_max_distance = maxf(float(row[1]), 1.0)
 	view.scaling_3d_scale = row[2]
+	_set_blobs(not sun.shadow_enabled)
 
 ## only down, never back up: a laptop that could not keep up once will not later. Only on
 ## the web: a desktop build has a real GPU, and test runs on a software renderer would
@@ -7517,7 +7685,7 @@ func _manual(dt: float) -> Array:
 		_pin_at = _pos
 	return [throttle, brake, steer]
 
-## the assist's nudge: toward the street's direction and the middle of the lane, while
+## the assist's nudge: toward the street's direction and the middle of its lane, while
 ## the car is roughly following the street (not crossing it or turning off it)
 func _assist_steer() -> float:
 	var hit := _nearest_seg(_pos, 12.0, true, true)
@@ -7533,9 +7701,9 @@ func _assist_steer() -> float:
 	var err := fwd.angle_to(d)
 	if absf(err) > 0.6:
 		return 0.0
-	var lane := _lane_off(r)
 	var right := Vector2(-d.y, d.x)
-	var off := (_pos - (hit["q"] as Vector2)).dot(right) - lane
+	var lat := (_pos - (hit["q"] as Vector2)).dot(right)
+	var off := lat - _nearest_lane(r, lat)   # (the lane it is in, of several)
 	return clampf(err * ASSIST_ALIGN - off * ASSIST_LANE, -ASSIST_MAX, ASSIST_MAX)
 
 ## something solid where the car will be in about half a second
@@ -7638,12 +7806,122 @@ func _drive(dt: float, throttle: float, brake: float, steer: float) -> void:
 	var right := Vector2(-fwd.y, fwd.x)
 	_pos += (fwd * _v + right * (_v_lat + _yaw_rate * WHEELBASE * 0.5)) * dt
 	_collide()
-	var edge := _bounds.grow(-8.0)
-	if not edge.has_point(_pos):
-		_pos = _pos.clamp(edge.position, edge.end)
-		_v *= 0.5
+	_keep_inside(CAR_R, true)
 	_fly(dt)
 	_place_car(dt)
+
+## The edge of the map: a striped barrier EDGE metres in from the baked area's rim, with a
+## glowing curtain over it that shows as you come near (it used to be an invisible wall the
+## car stopped dead against). The car's circles (or a walker, r 0.3) are kept off it.
+const EDGE := 6.0
+const EDGE_BAND := 1.1                ## the barrier's height
+const EDGE_CURTAIN := 7.0             ## the curtain's top
+var _edge_mats: Array = []
+var _edge_warned := 0.0
+
+func _keep_inside(r: float, car: bool) -> void:
+	var inside := _bounds.grow(-EDGE - r)
+	var push := Vector2.ZERO
+	var circles: Array = [_pos + _fwd() * CAR_OFF, _pos - _fwd() * CAR_OFF] if car else [_pos]
+	for q: Vector2 in circles:
+		var d := q.clamp(inside.position, inside.end) - q
+		if absf(d.x) > absf(push.x):
+			push.x = d.x
+		if absf(d.y) > absf(push.y):
+			push.y = d.y
+	if push == Vector2.ZERO:
+		return
+	_pos += push
+	if car:
+		var into := -push.normalized().dot(_fwd() * signf(_v)) * absf(_v)
+		_v *= 0.4
+		if into > 0.5:
+			_last_hit = "edge"
+			_crash(into)
+	if Time.get_ticks_msec() * 0.001 > _edge_warned:
+		_edge_warned = Time.get_ticks_msec() * 0.001 + 6.0
+		_show_banner("the edge of the map", 1.4)
+		Probe.event("map_edge", {"at": Vector2i(_pos)})
+
+## the barrier and curtain along the four sides, following the ground, a few metres a piece
+func _build_edge() -> void:
+	_edge_mats = []
+	for curtain: bool in [false, true]:
+		var sh := Shader.new()   # (two: the barrier opaque, only the curtain see-through)
+		sh.code = ("#define CURTAIN\n" if curtain else "") + EDGE_SHADER
+		var m := ShaderMaterial.new()
+		m.shader = sh
+		m.set_shader_parameter("band", EDGE_BAND)
+		m.set_shader_parameter("top", EDGE_CURTAIN)
+		m.render_priority = 1 if curtain else 0
+		_edge_mats.append(m)
+	_retint_edge()
+	var rim := _bounds.grow(-EDGE)
+	var corners := [rim.position, Vector2(rim.end.x, rim.position.y), rim.end, Vector2(rim.position.x, rim.end.y)]
+	for side in range(4):
+		var a: Vector2 = corners[side]
+		var b: Vector2 = corners[(side + 1) % 4]
+		var L := a.distance_to(b)
+		var n := maxi(1, ceili(L / 4.0))
+		for curtain: bool in [false, true]:
+			var st := SurfaceTool.new()
+			st.begin(Mesh.PRIMITIVE_TRIANGLES)
+			for k in range(n):
+				var p0 := a.lerp(b, float(k) / n)
+				var p1 := a.lerp(b, float(k + 1) / n)
+				var g0 := _h(p0)
+				var g1 := _h(p1)
+				var lo0 := g0 + (EDGE_BAND if curtain else -0.4)
+				var lo1 := g1 + (EDGE_BAND if curtain else -0.4)
+				var hi0 := g0 + (EDGE_CURTAIN if curtain else EDGE_BAND)
+				var hi1 := g1 + (EDGE_CURTAIN if curtain else EDGE_BAND)
+				var s0 := L * float(k) / n
+				var s1 := L * float(k + 1) / n
+				var v: Array = [Vector3(p0.x, lo0, p0.y), Vector3(p1.x, lo1, p1.y), Vector3(p1.x, hi1, p1.y), Vector3(p0.x, hi0, p0.y)]
+				var uv: Array = [Vector2(s0, lo0 - g0), Vector2(s1, lo1 - g1), Vector2(s1, hi1 - g1), Vector2(s0, hi0 - g0)]
+				for i: int in [0, 1, 2, 0, 2, 3]:
+					st.set_uv(uv[i])
+					st.add_vertex(v[i])
+			var mi := MeshInstance3D.new()
+			mi.mesh = st.commit()
+			mi.material_override = _edge_mats[1 if curtain else 0]
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			world.add_child(mi)
+
+func _retint_edge() -> void:
+	for m: ShaderMaterial in _edge_mats:
+		m.set_shader_parameter("stripe", Palette.col("hazard"))
+		m.set_shader_parameter("ink", Palette.col("ink"))
+
+const EDGE_SHADER := """
+shader_type spatial;
+render_mode unshaded, cull_disabled, shadows_disabled;
+uniform float band = 1.1;
+uniform float top = 7.0;
+uniform vec3 stripe : source_color = vec3(1.0, 0.2, 0.4);
+uniform vec3 ink : source_color = vec3(1.0);
+varying float dist;
+void vertex() {
+	dist = length((MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).xyz);
+}
+void fragment() {
+#ifndef CURTAIN
+	// chevrons on the barrier: the hazard colour and white, a bright line along its top
+	float s = fract((UV.x + UV.y) / 1.6);
+	vec3 c = s < 0.5 ? stripe : ink;
+	c = mix(c, ink, smoothstep(band - 0.12, band - 0.04, UV.y));
+	ALBEDO = c;
+#else
+	// the curtain: glowing at the barrier, fading up, with faint upright lines; only when
+	// near (a ring of light round the town on the horizon is no help)
+	float h = clamp((UV.y - band) / (top - band), 0.0, 1.0);
+	float lines = 0.75 + 0.25 * step(0.85, fract(UV.x / 3.0));
+	float near = 1.0 - smoothstep(60.0, 180.0, dist);
+	ALBEDO = mix(stripe, ink, 0.25);
+	ALPHA = (1.0 - h) * (1.0 - h) * 0.55 * lines * near;
+#endif
+}
+"""
 
 ## up and down: on the ground the car rides it; over a crest the ground can fall away
 ## faster than the car comes down, and then it flies, with a little lift for the fun of it,
@@ -8406,6 +8684,8 @@ func _crash(speed: float) -> void:
 	if speed < 1.2 or _crash_cool > 0.0:
 		return
 	_crash_cool = 0.4
+	if _auto and _last_hit.begins_with("building"):
+		_ap_bonks += 1.0
 	if speed > 9.0:
 		hit3d(minf(8.0, speed * 0.35))
 		Audio.play("impact_metal")
@@ -8650,6 +8930,10 @@ func _set_auto(on: bool) -> void:
 	_show_banner("autodrive" if on else "you drive", 1.2)
 
 func _autodrive(dt: float) -> Array:
+	# into the walls again and again (a few in quick succession): lost, back to the street
+	_ap_bonks = maxf(0.0, _ap_bonks - dt / 10.0)
+	if _ap_bonks >= 3.0 and _ap_rescue():
+		_ap_pts = PackedVector2Array()
 	if _ap_back > 0.0:     # stuck against something: back off, then plan again
 		_ap_back -= dt
 		_gear = -1
@@ -8839,6 +9123,85 @@ func _ap_point_ahead(look: float) -> Vector2:
 		p = nxt
 	return p
 
+const AP_OFFROAD_V := 4.0             ## m/s, finding its way back to the road
+const WAY_CELL := 2.0
+const WAY_REACH := 36                 ## cells each way from the car: 72 m
+
+## The way from the car back onto a road it can drive, round whatever buildings are in
+## between: a search outward over 2 m squares the car fits through, to the first one well on
+## the asphalt, then pulled straight wherever a straight line is clear. [] when there is none
+## within reach.
+func _way_to_road() -> PackedVector2Array:
+	var origin := _pos
+	var came := {Vector2i.ZERO: Vector2i.ZERO}
+	var wall := {}
+	var queue: Array[Vector2i] = [Vector2i.ZERO]
+	var head := 0
+	var goal := Vector2i.ZERO
+	var found := false
+	var steps: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
+		Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]
+	while head < queue.size():
+		var c: Vector2i = queue[head]
+		head += 1
+		if c != Vector2i.ZERO:
+			var on := _nearest_seg(origin + Vector2(c) * WAY_CELL, 8.0, true, true)
+			if not on.is_empty() and float(on["edge"]) < -1.2:
+				goal = c
+				found = true
+				break
+		for st: Vector2i in steps:
+			var n: Vector2i = c + st
+			if came.has(n) or wall.has(n) or absi(n.x) > WAY_REACH or absi(n.y) > WAY_REACH:
+				continue
+			if _push_out(origin + Vector2(n) * WAY_CELL, 1.3, true, false) != Vector2.ZERO:
+				wall[n] = true
+				continue
+			came[n] = c
+			queue.append(n)
+	if not found:
+		return PackedVector2Array()
+	var cells: Array[Vector2i] = []
+	var at := goal
+	while at != Vector2i.ZERO:
+		cells.append(at)
+		at = came[at]
+	cells.reverse()
+	var out := PackedVector2Array([origin])
+	var i := 0
+	while i < cells.size():
+		var far := i
+		for j in range(cells.size() - 1, i, -1):
+			if _clear_line(out[out.size() - 1], origin + Vector2(cells[j]) * WAY_CELL):
+				far = j
+				break
+		out.append(origin + Vector2(cells[far]) * WAY_CELL)
+		i = far + 1
+	return out
+
+## a car's width clear all the way from a to b (from a little way out of a: the car may be
+## up against a wall where it stands)
+func _clear_line(a: Vector2, b: Vector2) -> bool:
+	var L := a.distance_to(b)
+	var s := minf(1.5, L)
+	while s < L:
+		if _push_out(a.lerp(b, s / L), 1.2, true, false) != Vector2.ZERO:
+			return false
+		s += 1.0
+	return true
+
+## Lost: no way back found, or into the walls again and again. Back onto the nearest street,
+## the way the 40 s unstuck does.
+func _ap_rescue() -> bool:
+	_ap_bonks = 0.0
+	if not _land_on_road(_pos, 80.0, _fwd()):
+		return false
+	_ap_back = 0.0
+	_ap_turn = 0.0
+	_show_banner("autodrive: back on the road", 1.6)
+	Probe.event("autodrive_rescue")
+	return true
+
 func _ap_plan() -> void:
 	_cross = {}
 	_ap_queue = []
@@ -8853,11 +9216,33 @@ func _ap_plan() -> void:
 	var hit := _nearest_seg(_pos, 60.0, true, true)
 	if hit.is_empty():
 		return
+	var heading := _fwd()
+	if float(hit["edge"]) > 1.0:
+		# off the road (a yard, a car park, between blocks): the way back to it round the
+		# buildings. Straight at the nearest bit of road went into the wall in between, backed
+		# off, planned the same again, and into the wall again.
+		var way := _way_to_road()
+		if way.size() < 2:
+			if not _ap_rescue():
+				return
+			hit = _nearest_seg(_pos, 20.0, true, true)
+			if hit.is_empty():
+				return
+			heading = _fwd()
+		else:
+			for q: Vector2 in way:
+				_ap_pts.append(q)
+				_ap_v.append(AP_OFFROAD_V)
+				_ap_lim.append(AP_OFFROAD_V)
+			heading = (way[way.size() - 1] - way[way.size() - 2]).normalized()
+			hit = _nearest_seg(way[way.size() - 1], 12.0, true, true)
+			if hit.is_empty():
+				return
 	var ri: int = hit["road"]
 	var sj: int = hit["seg"]
 	var r: Dictionary = _roads[ri]
 	var pts: PackedVector2Array = r["pts"]
-	var dir := 1 if (pts[sj + 1] - pts[sj]).dot(_fwd()) >= 0.0 else -1
+	var dir := 1 if (pts[sj + 1] - pts[sj]).dot(heading) >= 0.0 else -1
 	if r["o"] != 0:
 		dir = r["o"]
 	_ap_pts.append(hit["q"])
@@ -9732,25 +10117,11 @@ func _draw_hud() -> void:
 	_hud.draw_rect(LIGHTS_BTN, Color(bg, 0.65))
 	_hud.draw_rect(LIGHTS_BTN, Color(lc, 0.9), false, 1.5)
 	_hud.draw_string(_font, LIGHTS_BTN.position + Vector2(0, 15), "lights", HORIZONTAL_ALIGNMENT_CENTER, LIGHTS_BTN.size.x, 11, lc)
-	var green := Palette.col("friend")
-	for side: int in [-1, 1]:
-		var rb := BLINK_L_BTN if side < 0 else BLINK_R_BTN
-		var lit_side := _blink == side
-		var col := green if lit_side else Color(ink, 0.7)
-		_hud.draw_rect(rb, Color(bg, 0.65))
-		_hud.draw_rect(rb, Color(col, 0.9), false, 1.5)
-		var cc := rb.get_center()
-		var s := float(side)
-		_hud.draw_colored_polygon(PackedVector2Array([cc + Vector2(s * 6, 0), cc + Vector2(-s * 4, -6), cc + Vector2(-s * 4, 6)]),
-			Color(col, 1.0 if (lit_side and _blink_lit) or not lit_side else 0.35))
-		# and blinking by the speed, for the chase view
-		if lit_side and _blink_lit:
-			var at := Vector2(500.0 if side < 0 else 633.0, 50.0)
-			_hud.draw_colored_polygon(PackedVector2Array([at + Vector2(s * 7, 0), at + Vector2(-s * 5, -7), at + Vector2(-s * 5, 7)]), green)
-	var hc := Palette.col("hazard") if (_horn_held or _horn_t > 0.0) else Color(ink, 0.8)
-	_hud.draw_rect(HORN_BTN, Color(bg, 0.65))
-	_hud.draw_rect(HORN_BTN, Color(hc, 0.9), false, 1.5)
-	_hud.draw_string(_font, HORN_BTN.position + Vector2(0, 14), "horn", HORIZONTAL_ALIGNMENT_CENTER, HORN_BTN.size.x, 9, hc)
+	# the indicator blinking by the speed, as on a dashboard
+	if _blink != 0 and _blink_lit:
+		var s := float(_blink)
+		var at := Vector2(500.0 if _blink < 0 else 633.0, 50.0)
+		_hud.draw_colored_polygon(PackedVector2Array([at + Vector2(s * 7, 0), at + Vector2(-s * 5, -7), at + Vector2(-s * 5, 7)]), Palette.col("friend"))
 	var near_car := _walking and _pos.distance_to(_car_at) < 3.6
 	var wc := Palette.col("accent") if near_car or not _walking else Color(ink, 0.7)
 	_hud.draw_rect(WALK_BTN, Color(bg, 0.65))
@@ -9843,6 +10214,10 @@ func _draw_map() -> void:
 		_map.draw_multiline(_map_lines["major"], Palette.col("warn"), 3.0 / s)
 	for pts: PackedVector2Array in _map_lines["limits"]:
 		_map.draw_polyline(pts, Color(Palette.col("accent"), 0.8), 1.5 / s)
+	var rim := _bounds.grow(-EDGE)
+	if not rim.grow(-MAP_R * 1.5).has_point(_view_pos):   # the map's edge, when it is in view
+		_map.draw_polyline(PackedVector2Array([rim.position - at, Vector2(rim.end.x, rim.position.y) - at, rim.end - at,
+			Vector2(rim.position.x, rim.end.y) - at, rim.position - at]), Palette.col("hazard"), 3.0 / s)
 	if _auto and _ap_pts.size() > 1:
 		var route := PackedVector2Array()
 		for p in _ap_pts:
@@ -9924,12 +10299,6 @@ func _input(event: InputEvent) -> void:
 				_set_cockpit(not _cockpit)
 			elif LIGHTS_BTN.grow(2).has_point(mb.position):
 				_set_lights(not _lights_on)
-			elif BLINK_L_BTN.grow(2).has_point(mb.position):
-				_set_blink(0 if _blink == -1 else -1)
-			elif BLINK_R_BTN.grow(2).has_point(mb.position):
-				_set_blink(0 if _blink == 1 else 1)
-			elif HORN_BTN.grow(2).has_point(mb.position):
-				_horn_t = 0.6
 			elif WALK_BTN.grow(2).has_point(mb.position):
 				_toggle_walk()
 			elif ASSIST_BTN.grow(4).has_point(mb.position):
@@ -9947,8 +10316,7 @@ func _input(event: InputEvent) -> void:
 			if AUTO_BTN.grow(4).has_point(t.position) or GOTO_BTN.grow(4).has_point(t.position) \
 					or ASSIST_BTN.grow(4).has_point(t.position) or NIGHT_BTN.grow(4).has_point(t.position) \
 					or VIEW_BTN.grow(4).has_point(t.position) or LIGHTS_BTN.grow(2).has_point(t.position) \
-					or BLINK_L_BTN.grow(2).has_point(t.position) or BLINK_R_BTN.grow(2).has_point(t.position) \
-					or HORN_BTN.grow(2).has_point(t.position) or WALK_BTN.grow(2).has_point(t.position) \
+					or WALK_BTN.grow(2).has_point(t.position) \
 					or t.position.y < 36.0:
 				return   # the button (via its emulated click) and the shell's menu/sound row
 			if _stick_id < 0 and t.position.distance_to(STICK_C) <= STICK_GRAB:
