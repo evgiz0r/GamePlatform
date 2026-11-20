@@ -121,6 +121,27 @@ the parked cars, which stand a third in the road).
   - Of 4011 OSM buildings 3138 took a survey height, 232 kept OSM's own; the survey also had
     ~500 small buildings OSM lacks (median 35 m^2, sheds and annexes, 57 over 300 m^2),
     not added.
+  - *Smaller towns publish floors, not heights*, and often only inside a hosted map viewer
+    (one Israeli town's sat behind a Complot "GIS-net" viewer, v5.gis-net.co.il/v5/<Town>:
+    its layer list is `/V5/<Town>/Data/GetJson`, its ArcGIS server answers only through
+    the viewer's own proxy and only from inside the viewer's page -- a script outside gets
+    "Bad Request", and the town's main site sent scripts to an abuse page). Its neighbour
+    published straight to ArcGIS Online under the town's own account (search
+    `arcgis.com/sharing/rest/search?q=owner:<account>`; the `services8.arcgis.com/<org>/...`
+    listing shows its public layers). Both counted the ground floor in their floors (they
+    matched OSM's `building:levels` most often, not one under it), had 0 for sheds (median
+    18 m^2) and one of them a placeholder year (1964 on 40%). A survey with no server the
+    bake can reach is saved once as `data/<id>.geojson` beside the city file and read from
+    there (`survey_extract`), so a re-bake anywhere keeps it; where two surveys cover one
+    building, the first in `SURVEYS` wins, so measured heights go before floor counts.
+  - *Neither had a licence on the page*, only "© the municipality" and a disclaimer. Ask the
+    user before committing such a layer, and say so in the notes.
+  - *Which Israeli government hosts refuse scripts*: e.data.gov.il (the open-data portal's
+    file server, behind CloudFront) answers a script with 403 even from a home connection in
+    Israel; the CKAN API on data.gov.il itself answers (`datastore_search`, paged, no SQL),
+    so read through it -- an evenly spread sample when only shares are needed. gov.il's
+    pages are rendered in the browser and refuse automated readers. gtfs.mot.gov.il serves
+    its files to a plain download.
 - **Government open data may refuse the cloud.** A national portal's API answered, but
   its files came from a CDN host that refused the container even once the environment
   allowed both hosts (a CloudFront 403 page instead of the file: likely by country). Do not
@@ -704,12 +725,20 @@ the game walking the same route in first person beside it.
   showed a row. Decide gardens piece by piece (a shop behind it, or a hand-placed row of
   shopfronts), not by the road's tag or the whole street: the same street had one real
   garden between its shops.
+- **A published height is over the thing's own ground.** A tower's "142 m" (Wikipedia, a
+  survey) is from its foot; a game's y is usually over the height grid's lowest point. A
+  mast built "up to 142" in world y on ground 15 m up ended under the tower's roof: add
+  the ground at the foot to every such figure.
 - **Real things keep real colours.** A car's red paint, a red-and-white kerb, a stop sign, a
   hydrant: built from palette roles directly (hazard for red, player for blue) they came out
   pink and teal in a neon palette, and only beside the film did it show. Pin the hue
   (`Color.from_hsv` with a red's or a road-paint blue's hue) and take saturation and
   brightness from the palette role, so a reskin still moves them; keep the roles for
-  what is the game's own (the HUD, the player's glow).
+  what is the game's own (the HUD, the player's glow). The same for things that are many
+  colours at once: a market's produce and canvases and a beach's umbrellas, coloured by
+  the roles, came out a market of sweets (pinks and purples) and umbrellas all but white
+  (the roles softened toward the background) -- by paint names (red, orange, green, yellow,
+  blue, white), every umbrella and crate read at once.
 - **Panning in the film is how the shops get counted.** Ask the walker to turn the phone to
   each side now and then: the shops across the road, which a forward-facing film never
   shows, came only from those pans.

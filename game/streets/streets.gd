@@ -838,6 +838,7 @@ var _details: RefCounted             ## what a filmed walk added to the city (de
 var _decks: Decks                    ## bridges, embankments, cuttings, tunnels (decks.gd)
 var _rails: Rails                    ## railway tracks, platforms, trains (rails.gd)
 var _marks: Marks                    ## a town's landmarks and its towers' red lights (landmarks.gd)
+var _beach: Beach                    ## the beaches by the sea: umbrellas, chairs, lifeguards (beach.gd)
 var _on_deck := -1                   ## while a deck road is drawn: heights come from it, not the ground
 var _inferred := {}                  ## what decks.gd's infer() made of a real town's bridges (the report)
 var _wired := {}                     ## road index -> true: Bedford's lamps hang off its power poles
@@ -889,6 +890,7 @@ const Details := preload("res://game/streets/details.gd")
 const Decks := preload("res://game/streets/decks.gd")
 const Rails := preload("res://game/streets/rails.gd")
 const Marks := preload("res://game/streets/landmarks.gd")
+const Beach := preload("res://game/streets/beach.gd")
 const DriveLog := preload("res://game/streets/drivelog.gd")
 var _log := DriveLog.new()            ## the last two minutes, for the map page and "save log"
 var _ap_why := ""                     ## what held autodrive's speed down this tick (for the log)
@@ -2230,6 +2232,8 @@ func _build_setup(t0: int) -> void:
 	_rails.setup(_city_data, k)   # (before the trees: nothing grows on a track's bed)
 	_marks = Marks.new(self)
 	_marks.setup(_city_data, _city_id)
+	_beach = Beach.new(self)
+	_beach.setup(_city_data)
 	_lights_setup()
 	_infer_signs()   # (after the lights: a lit junction has none)
 	_parks_setup()
@@ -2266,6 +2270,7 @@ func _build_tile(t: Vector2i) -> void:
 	await _decks.build()
 	await _rails.build()
 	_marks.build()
+	_beach.build()
 	tk = _stage("roads", tk)
 	await _build_buildings()
 	tk = _stage("buildings", tk)
@@ -2403,7 +2408,7 @@ func _build_ground() -> void:
 		var a: Dictionary = all[ai]
 		var kind := String(a["k"])
 		# a school's grounds: paved, under whatever pitches and lawns OSM puts in them
-		var tone := "grass" if kind in ["park", "grass"] else ("ground" if kind == "land" else ("plaza" if kind == "school" else kind))
+		var tone := "grass" if kind in ["park", "grass"] else ("ground" if kind == "land" else ("plaza" if kind == "school" else ("beach" if kind == "sand" else kind)))
 		if not areas.has(tone):
 			areas[tone] = CBuf.new(CHUNK)   # (each square fills only its own piece: no clipping)
 		# islands sit on the sea, parks and car parks on whatever is under them
@@ -7744,6 +7749,11 @@ const CAR_MIX := ["sedan", "sedan", "sedan", "hatch", "hatch", "hatch", "suv", "
 const CAR_SHADER := """
 shader_type spatial;
 uniform float night = 0.0;
+uniform sampler2D plate_font : filter_linear_mipmap, repeat_disable;   // digits 0-9, '-', I, L (_plate_font)
+uniform float plate_style = 0.0;       // 1: an Israeli plate (yellow, black digits, the blue IL strip)
+uniform vec4 plate_blue : source_color;
+uniform float plate_seed = 0.0;        // the player's car: its own number
+varying float plate_id;                // a number of the car's own, steady while it drives
 uniform vec4 lamp : source_color;
 uniform vec4 tail : source_color;
 uniform vec4 sky_top : source_color;   // what the paint and glass reflect: the sky as it is now,
@@ -7780,6 +7790,8 @@ void vertex() {
 	}
 	lcam = transpose(mat3(MODEL_MATRIX)) * (CAMERA_POSITION_WORLD - MODEL_MATRIX[3].xyz);
 	who = fract(sin(dot(MODEL_MATRIX[3].xz, vec2(12.9898, 78.233))) * 43758.5453);
+	// (its copy's number and its paint: steady as it moves, unlike where it is)
+	plate_id = fixed_paint > 0.5 ? plate_seed : float(INSTANCE_ID) * 0.7548777 + dot(INSTANCE_CUSTOM.rgb, vec3(3.1, 5.7, 7.3));
 }
 // where a ray (from o along unit d) first meets an ellipsoid at c with radii r; -1 if not
 float ray_blob(vec3 o, vec3 d, vec3 c, vec3 r) {
@@ -7799,6 +7811,14 @@ vec3 sky_at(float e) {
 }
 float line_cover(float d, float w, float aa) {
 	return clamp((w - d) / aa + 0.5, 0.0, 1.0);
+}
+// how much of glyph g covers (x, y) of its cell (both 0..1, y down): the font is a few
+// pixels a glyph, smoothed, so up close its edge is taken at the half-way grey; further off,
+// where a glyph is a few pixels on screen, its smaller copies average it to grey and that
+// grey is the ink (taken at the half-way grey, a plate was blank from the chase view)
+float plate_glyph(float g, float x, float y, float far) {
+	float a = texture(plate_font, vec2((g + clamp(x, 0.0, 1.0)) / 13.0, clamp(y, 0.0, 1.0))).r;
+	return mix(smoothstep(0.3, 0.7, a), min(a * 1.8, 1.0), far);
 }
 void fragment() {
 	float part = COLOR.a;
@@ -7876,12 +7896,41 @@ void fragment() {
 		float f = 0.12 + 0.88 * pow(1.0 - ndv, 3.0);
 		emit = mix(inside, refl, f);
 		rough = 0.05;
-	} else if (part > 0.6) {     // number plate: a row of dark characters
-		float cell = (UV.x - 0.1) / 0.8 * 7.0;
-		float ch = step(0.1, UV.x) * step(UV.x, 0.9) * step(0.26, UV.y) * step(UV.y, 0.74)
-			* step(0.18, fract(cell)) * step(fract(cell), 0.82);
-		col = mix(col, col * 0.08, ch);
+	} else if (part > 0.6) {     // number plate
 		rough = 0.4;
+		if (plate_style > 0.5) {
+			// as Israel's: yellow, black digits -- 123-45-678, or the older 12-345-67 -- in a
+			// black rim, the blue strip at the left with IL; the digits made up from the car's
+			// own number, never a real one
+			float u = UV.x;
+			float v = UV.y;
+			vec3 ink_col = col * 0.06;
+			float far = smoothstep(0.004, 0.012, fwidth(u));   // (a glyph pixel under one on screen)
+			if (u < 0.115) {
+				col = plate_blue.rgb;
+				float gx = (u - 0.012) / 0.046;
+				if (gx >= 0.0 && gx < 2.0 && v > 0.42 && v < 0.88) {
+					col = mix(col, vec3(1.0), plate_glyph(gx < 1.0 ? 11.0 : 12.0, fract(gx), (v - 0.42) / 0.46, far));
+				}
+			} else {
+				bool eight = fract(plate_id * 3.7) > 0.4;
+				float n = eight ? 10.0 : 9.0;
+				float gx = (u - 0.13) / (0.84 / n);
+				float i = floor(gx);
+				if (i >= 0.0 && i < n && v > 0.18 && v < 0.82) {
+					bool dash = eight ? (i == 3.0 || i == 6.0) : (i == 2.0 || i == 6.0);
+					float g = dash ? 10.0 : floor(fract(sin(plate_id * 12.9898 + i * 78.233) * 43758.5453) * 10.0);
+					col = mix(col, ink_col, plate_glyph(g, fract(gx), (v - 0.18) / 0.64, far));
+				}
+			}
+			float inside = step(0.012, u) * step(u, 0.988) * step(0.06, v) * step(v, 0.94);
+			col = mix(ink_col, col, inside);
+		} else {   // a row of dark characters
+			float cell = (UV.x - 0.1) / 0.8 * 7.0;
+			float ch = step(0.1, UV.x) * step(UV.x, 0.9) * step(0.26, UV.y) * step(UV.y, 0.74)
+				* step(0.18, fract(cell)) * step(fract(cell), 0.82);
+			col = mix(col, col * 0.08, ch);
+		}
 	} else if (part > 0.45) {    // trim
 		rough = 0.55;
 		emit = refl * 0.05;
@@ -7919,6 +7968,35 @@ void fragment() {
 var _car_shader_mat: ShaderMaterial
 var _player_car_mat: ShaderMaterial  ## the same shader on the player's car, its paint its own
 
+## The number plates' characters, for CAR_SHADER: 0-9, a dash, I and L, five by seven pixels
+## each in a cell of seven by nine, smoothed up eightfold (the shader takes the edge at the
+## half-way grey). Made once.
+const PLATE_GLYPHS := [
+	"01110100011000110001100011000101110", "00100011000010000100001000010001110",
+	"01110100010000100010001000100011111", "11111000100010000010000011000101110",
+	"00010001100101010010111110001000010", "11111100001111000001000011000101110",
+	"00110010001000011110100011000101110", "11111000010001000100010000100001000",
+	"01110100011000101110100011000101110", "01110100011000101111000010001001100",
+	"00000000000000001110000000000000000", "01110001000010000100001000010001110",
+	"10000100001000010000100001000011111"]
+var _plate_tex: ImageTexture
+
+func _plate_font() -> ImageTexture:
+	if _plate_tex != null:
+		return _plate_tex
+	var img := Image.create(13 * 7, 9, false, Image.FORMAT_L8)
+	img.fill(Color.BLACK)
+	for gi in range(PLATE_GLYPHS.size()):
+		var bits: String = PLATE_GLYPHS[gi]
+		for r in range(7):
+			for c in range(5):
+				if bits[r * 5 + c] == "1":
+					img.set_pixel(gi * 7 + 1 + c, 1 + r, Color.WHITE)
+	img.resize(13 * 7 * 8, 9 * 8, Image.INTERPOLATE_BILINEAR)
+	img.generate_mipmaps()
+	_plate_tex = ImageTexture.create_from_image(img)
+	return _plate_tex
+
 func _car_material() -> ShaderMaterial:
 	if _car_shader_mat == null:
 		_car_shader_mat = ShaderMaterial.new()
@@ -7928,6 +8006,9 @@ func _car_material() -> ShaderMaterial:
 	for m: ShaderMaterial in [_car_shader_mat, _player_car_mat]:
 		if m == null:
 			continue
+		m.set_shader_parameter("plate_font", _plate_font())
+		m.set_shader_parameter("plate_style", 1.0 if String(_place.get("look", "")) == "med" else 0.0)
+		m.set_shader_parameter("plate_blue", _real_col("blue").lerp(Palette.col("bg"), 0.35))   # (a plate's strip is a deep blue)
 		m.set_shader_parameter("lamp", _tone["lamplight"])
 		m.set_shader_parameter("tail", Palette.col("hazard"))
 		m.set_shader_parameter("night", 1.0 if _night else 0.0)
@@ -8955,7 +9036,30 @@ void fragment() {
 				vec2 uv = p / s;
 				c *= detail(textureGrad(pave_tex, uv, dpx / s, dpy / s).rgb, pave_mean, 0.9);
 				bump = unpack(textureGrad(pave_nrm, uv, dpx / s, dpy / s).rg, 1.0);
-			} else if (fx.w > 6.5) {   // pavers in rows (kind 7), fx.z long and half that wide,
+			} else if (fx.w > 7.5 && fx.w < 8.5) {   // tactile paving (kind 8): slabs fx.z square
+				// laid along `lay`, each with 6 x 6 domes -- the bend of the light on them done by
+				// the normal, so the sun picks them out from its own side; they fade to the slab's
+				// tone with distance before they can shimmer
+				mat2 rot = mat2(vec2(cos(lay), -sin(lay)), vec2(sin(lay), cos(lay)));
+				vec2 q = rot * p / fx.z;
+				vec2 cell = floor(q);
+				vec2 f = fract(q);
+				float fw = max(length(dpx), length(dpy)) / fx.z;
+				c *= 0.93 + 0.12 * hash(cell + 3.7);
+				c *= detail(textureGrad(asph_tex, p / 1.5, dpx / 1.5, dpy / 1.5).rgb, asph_mean, 0.25);
+				vec2 e = min(f, 1.0 - f);
+				c *= 1.0 - 0.25 * (1.0 - smoothstep(0.01, 0.01 + fw * 1.5, min(e.x, e.y)));
+				vec2 dq = fract(f * 6.0) - 0.5;
+				float r = length(dq);
+				float dw = fw * 6.0;
+				float fade = 1.0 - smoothstep(0.2, 0.55, dw);
+				float dome = 1.0 - smoothstep(0.3, 0.3 + dw, r);
+				float ring = smoothstep(0.22, 0.3, r) * (1.0 - smoothstep(0.3, 0.38 + dw, r));
+				c *= 1.0 - (0.22 * ring * fade + 0.05 * (1.0 - fade));
+				vec2 side = (dq * rot) / max(r, 0.001) * clamp(r / 0.3, 0.0, 1.0) * dome * fade * 0.75;
+				side.y = -side.y;   // (the normal's frame: x along +X, y along -Z)
+				bump = vec3(side, sqrt(max(0.0, 1.0 - dot(side, side))));
+			} else if (fx.w > 6.5 && fx.w < 7.5) {   // pavers in rows (kind 7), fx.z long and half that wide,
 				// each row half a paver on from the last, laid along `lay`; the joints fade out
 				// with distance before they can shimmer
 				vec2 q = mat2(vec2(cos(lay), -sin(lay)), vec2(sin(lay), cos(lay))) * p / fx.z;
@@ -9039,7 +9143,8 @@ void fragment() {
 """
 ## the surface each tone gets: [patches, grain, slab size (kind 3) / the lawn photo's colours too
 ## (kind 1: 1 grass, 0 bare earth: its light and dark only), kind (0 none, 1 soft, 2 grained, 3 slabs,
-## 4 rough stones in mortar, 6 poured slabs laid along a line, 7 pavers in rows; the shader tests
+## 4 rough stones in mortar, 6 poured slabs laid along a line, 7 pavers in rows, 8 tactile paving
+## (domed slabs at a crossing's kerbs); the shader tests
 ## each kind's range on both sides, so a new kind never falls into another's branch)]
 const TONE_FX := {
 	"grass": [0.16, 0.08, 1.0, 1.0], "pitch": [0.06, 0.05, 1.0, 1.0], "wood": [0.16, 0.07, 1.0, 1.0],
@@ -9047,6 +9152,7 @@ const TONE_FX := {
 	"asphalt": [0.11, 0.075, 0.0, 2.0], "parking": [0.1, 0.06, 0.0, 2.0], "path": [0.06, 0.07, 0.0, 2.0],
 	"pavement": [0.04, 0.04, 0.6, 3.0], "plaza": [0.05, 0.04, 1.0, 3.0], "mark": [0.0, 0.04, 0.0, 2.0],
 	"pavers_dark": [0.04, 0.04, 0.6, 3.0], "slabs": [0.05, 0.04, 1.0, 6.0], "pavers_grey": [0.04, 0.03, 0.2, 7.0],
+	"tactile": [0.03, 0.03, 0.3, 8.0], "pavers_red": [0.04, 0.04, 0.6, 3.0],
 	"markyellow": [0.0, 0.04, 0.0, 2.0], "metal": [0.0, 0.0, 0.0, 0.0], "metalrim": [0.0, 0.0, 0.0, 0.0],
 	"stonewall": [0.06, 0.04, 0.0, 4.0],
 	"gardenwall": [0.14, 0.05, 1.0, 0.0], "coping": [0.06, 0.05, 0.0, 0.0],
@@ -9963,7 +10069,7 @@ func _build_walk_lights(pole_mesh: Mesh) -> void:
 ## a lit shopfront on the street side of each shop's building, and its name above it
 func _build_pois() -> void:
 	var k := 1.0 / float(_city_data.get("scale", 10))
-	var front := {"glass": [], "post": [], "beam": [], "shutter": []}   ## shop windows and their frames
+	var front := {"glass": [], "glass_k": [], "post": [], "beam": [], "shutter": []}   ## shop windows and their frames (glass_k: what is inside, SHOP_SHADER)
 	var board_cols: Array = []       ## each sign board's colour: dark, white, the shop's, cream
 	var awnings := {"xf": [], "col": []}   ## awning transforms and their colours
 	var crates := new_cbuf(BLD_CELL)    ## fruit and vegetables out in front of a greengrocer
@@ -10016,6 +10122,11 @@ func _build_pois() -> void:
 			var b := Basis(Vector3.UP, face)
 			var at3 := func(q: Vector2, out: float, y: float) -> Vector3: return Vector3(q.x + n.x * out, gy + y, q.y + n.y * out)
 			front["glass"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.05, 1.3)))
+			# what the window shows inside: a counter (cafes, bars, restaurants), racks of
+			# clothes, or shelves of goods (the rest)
+			var inside_k := 1.0 if kind in ["cafe", "restaurant", "fast_food", "ice_cream", "bar", "pub"] else \
+				(0.6 if sub in ["clothes", "shoes", "fashion", "boutique", "jewelry", "bag", "fabric"] else 0.0)
+			front["glass_k"].append(Color(inside_k, 0.0, 0.0, 1.0))
 			if _mine(pos):
 				_shop_lights.append([pos + n * 0.1, n, wide])
 			front["beam"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.08, 2.62)))
@@ -10087,7 +10198,7 @@ func _build_pois() -> void:
 	var r := SIGN_RANGE * 2.0
 	var glass := BoxMesh.new()
 	glass.size = Vector3(3.0, 2.4, 0.06)
-	_chunked(glass, front["glass"], r, [], _shop_glass(), false)
+	_chunked(glass, front["glass"], r, front["glass_k"], _shop_interior(), false)
 	var post := BoxMesh.new()
 	post.size = Vector3(0.14, 2.6, 0.14)
 	_chunked(post, front["post"], r, [], _surface("cartrim"), false)
@@ -10221,6 +10332,140 @@ func _poi_look(kind: String) -> Array:
 	return []
 
 ## the glass of a shop window: dark glass with the shop's light on inside
+## A shop window you see into: behind the glass a room 3.5 m deep, worked out from where you
+## look (the ray from the eye through the glass to the room's back wall, its sides, floor
+## or ceiling -- no geometry), with shelves of goods along the walls, or a cafe's counter
+## and menu board, a tiled floor and a strip light, lit from inside (brighter at night), and
+## the glass's own sheen of the sky over it. Each shop its own mix, from where it stands.
+## (Was a flat lit pane: a shop showed nothing inside. One shader more for a browser to
+## compile while loading, about 7 programs.)
+const SHOP_SHADER := """
+shader_type spatial;
+uniform vec4 light : source_color;      // the shop's light (the tone "shoplight")
+uniform vec4 floor_col : source_color;
+uniform vec4 wall_col : source_color;
+uniform vec4 shelf_col : source_color;
+uniform vec4 goods_a : source_color;
+uniform vec4 goods_b : source_color;
+uniform vec4 goods_c : source_color;
+uniform vec4 goods_d : source_color;
+uniform vec4 sky_col : source_color;
+uniform float lit = 0.7;
+varying vec3 wpos;
+varying vec3 o;
+varying vec3 ax;
+varying vec3 az;
+varying float hw;
+varying float kind;                     // the instance colour's red: 1 a cafe's counter, 0.6 clothes, 0 shelves
+float h21(vec2 p) {
+	vec3 q = fract(vec3(p.xyx) * 0.1031);
+	q += dot(q, q.yzx + 33.33);
+	return fract((q.x + q.y) * q.z);
+}
+void vertex() {
+	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	o = MODEL_MATRIX[3].xyz;
+	ax = normalize(MODEL_MATRIX[0].xyz);
+	az = normalize(MODEL_MATRIX[2].xyz);
+	hw = length(MODEL_MATRIX[0].xyz) * 1.5;
+	kind = COLOR.r;
+}
+// clothes on a rail along a wall: garments hanging side by side, each its own colour
+vec3 racks(float s, float y, float seed) {
+	if (y > 0.62 && y < 0.66) { return shelf_col.rgb * 0.5; }      // the rail
+	if (y < -0.55 || y > 0.62) { return wall_col.rgb; }
+	float cell = floor(s / 0.11);
+	float k = h21(vec2(cell, seed));
+	float len = mix(-0.5, 0.0, h21(vec2(cell * 3.1, seed)));
+	if (y < len || k < 0.08) { return wall_col.rgb * 0.85; }
+	vec3 g = k < 0.3 ? goods_a.rgb : (k < 0.5 ? wall_col.rgb * 0.3 : (k < 0.72 ? goods_d.rgb : wall_col.rgb * 0.9));
+	return g * (0.7 + 0.3 * h21(vec2(cell, 9.0 + seed)));
+}
+// goods on shelves along a wall: s across it, y up (window's frame), seed the shop
+vec3 shelves(float s, float y, float seed, float sparse) {
+	float row = floor((y + 1.05) / 0.42);
+	float in_row = fract((y + 1.05) / 0.42);
+	if (y < -1.05 || y > 1.05) { return wall_col.rgb; }
+	if (in_row < 0.09) { return shelf_col.rgb; }                  // the shelf board
+	float w = mix(0.16, 0.34, h21(vec2(row, seed)));
+	float cell = floor(s / w);
+	float k = h21(vec2(cell * 1.7 + row * 13.1, seed));
+	if (k < 0.12 + sparse * 0.5 || in_row > 0.55 + 0.4 * h21(vec2(cell, row + seed))) { return wall_col.rgb * 0.8; }
+	vec3 g = k < 0.35 ? goods_a.rgb : (k < 0.55 ? goods_b.rgb : (k < 0.78 ? goods_c.rgb : goods_d.rgb));
+	g = mix(g, wall_col.rgb * h21(vec2(cell * 5.3, row + seed)), 0.4);   // (packets, not paint chips)
+	return g * (0.7 + 0.35 * h21(vec2(cell, row * 3.0 + seed)));
+}
+void fragment() {
+	vec3 cam = CAMERA_POSITION_WORLD;
+	vec3 rd = normalize(wpos - cam);
+	vec3 q = vec3(dot(wpos - o, ax), wpos.y - o.y, dot(wpos - o, az));
+	vec3 d = vec3(dot(rd, ax), rd.y, dot(rd, az));
+	float seed = floor(h21(floor(o.xz * 0.5)) * 97.0);
+	float cafe = step(0.8, kind);
+	float clothes = step(0.4, kind) * (1.0 - cafe);
+	vec3 inside = wall_col.rgb * 0.3;
+	if (d.z < -0.01 && q.z > -0.02) {                             // in through the front of the glass
+		float D = 3.5;
+		float t = (-D - q.z) / d.z;
+		int face = 0;                                              // 0 back, 1 side, 2 floor, 3 ceiling
+		if (abs(d.x) > 1e-3) {
+			float ts = (sign(d.x) * hw - q.x) / d.x;
+			if (ts > 0.0 && ts < t) { t = ts; face = 1; }
+		}
+		if (abs(d.y) > 1e-3) {
+			float tf = ((d.y < 0.0 ? -1.3 : 1.55) - q.y) / d.y;
+			if (tf > 0.0 && tf < t) { t = tf; face = d.y < 0.0 ? 2 : 3; }
+		}
+		vec3 h = q + d * t;
+		if (face == 0) {
+			inside = cafe > 0.5 ? (h.y > 0.15 && h.y < 0.95 && abs(h.x) < hw * 0.6 ? shelf_col.rgb * 0.25
+				+ step(0.5, fract(h.y * 9.0)) * step(abs(h.x), hw * 0.55) * 0.18 : wall_col.rgb)
+				: (clothes > 0.5 ? racks(h.x, h.y, seed) : shelves(h.x, h.y, seed, 0.0));
+		} else if (face == 1) {
+			inside = clothes > 0.5 ? racks(h.z, h.y, seed + 31.0) : shelves(h.z, h.y, seed + 31.0, cafe);
+		} else if (face == 2) {
+			vec2 tl = floor(vec2(h.x, h.z) / 0.5);
+			inside = floor_col.rgb * (0.85 + 0.15 * mod(tl.x + tl.y, 2.0));
+		} else {
+			inside = wall_col.rgb * 1.1 + light.rgb * 1.5 * step(abs(h.x), 0.15) * step(fract(h.z * 0.5), 0.7);
+		}
+		// a cafe's counter across the room, half way in, waist high
+		if (cafe > 0.5 && face != 3) {
+			float tc = (-1.6 - q.z) / d.z;
+			vec3 hc = q + d * tc;
+			if (tc > 0.0 && tc < t && hc.y < -0.25 && abs(hc.x) < hw * 0.8) {
+				inside = shelf_col.rgb * (0.55 + 0.1 * step(0.9, fract(hc.x)));
+			}
+		}
+		inside *= 1.0 - 0.35 * smoothstep(1.0, 4.5, t);           // further in, a little darker
+	}
+	float f = 0.06 + 0.94 * pow(1.0 - clamp(dot(-rd, az), 0.0, 1.0), 4.0);
+	ALBEDO = mix(inside * 0.15, sky_col.rgb * 0.5, f);
+	EMISSION = inside * light.rgb * lit * (1.0 - f);
+	ROUGHNESS = 0.1;
+	METALLIC = 0.2;
+}
+"""
+var _shop_mat: ShaderMaterial
+
+func _shop_interior() -> ShaderMaterial:
+	if _shop_mat == null:
+		_shop_mat = ShaderMaterial.new()
+		var sh := Shader.new()
+		sh.code = SHOP_SHADER
+		_shop_mat.shader = sh
+	_shop_mat.set_shader_parameter("light", _tone["shoplight"])
+	_shop_mat.set_shader_parameter("floor_col", _tone["mark"].lerp(_tone["pavement"], 0.4))
+	_shop_mat.set_shader_parameter("wall_col", _tone["mark"].darkened(0.1))
+	_shop_mat.set_shader_parameter("shelf_col", _tone["woodfence"].lightened(0.2))
+	_shop_mat.set_shader_parameter("goods_a", _real_col("red"))
+	_shop_mat.set_shader_parameter("goods_b", _real_col("yellow"))
+	_shop_mat.set_shader_parameter("goods_c", _real_col("green"))
+	_shop_mat.set_shader_parameter("goods_d", _real_col("blue"))
+	_shop_mat.set_shader_parameter("sky_col", (_sky_reflect()[1] as Color) if env != null and env.sky != null else Palette.col("bg_alt"))
+	_shop_mat.set_shader_parameter("lit", 1.4 if _night else 0.45)
+	return _shop_mat
+
 func _shop_glass() -> StandardMaterial3D:
 	if _smat.has("shopglass"):
 		return _smat["shopglass"]
@@ -12709,11 +12954,11 @@ func _sky_photo() -> Texture2D:
 ## are bright.
 const NATURAL := {
 	"ground": 0.45, "rock": 0.3, "path": 0.15, "asphalt": 0.08, "parking": 0.08, "plaza": 0.2,
-	"grass": 0.6, "pitch": 0.6, "wood": 0.6, "leaf": 0.62, "bush": 0.6, "water": 0.5, "sand": 0.6,
+	"grass": 0.6, "pitch": 0.6, "wood": 0.6, "leaf": 0.62, "bush": 0.6, "water": 0.5, "sand": 0.6, "beach": 0.75,
 	"mark": 0.3, "wall": 0.5, "wall2": 0.45, "wall3": 0.6, "wall4": 0.6, "wall5": 0.5, "wall6": 0.3,
 	"glass": 0.5, "glass2": 0.5, "glass3": 0.5, "glass4": 0.5, "shutter": 0.3, "recess": 0.3, "lobby": 0.35, "flowers": 0.8,
 	"roof": 0.2, "trunk": 0.45, "pole": 0.2, "haze": 0.45, "sky": 0.6, "board": 0.4, "solar": 0.5,
-	"tank": 0.3, "furniture": 0.3, "pavement": 0.2, "pavers_dark": 0.15, "slabs": 0.15, "pavers_grey": 0.1, "kerb": 0.15, "stonewall": 0.45, "roofroom": 0.4,
+	"tank": 0.3, "furniture": 0.3, "pavement": 0.2, "pavers_dark": 0.15, "slabs": 0.15, "pavers_grey": 0.1, "tactile": 0.3, "pavers_red": 0.45, "kerb": 0.15, "stonewall": 0.45, "roofroom": 0.4,
 	"gardenwall": 0.3, "coping": 0.4,
 	"cat_ginger": 0.6, "cat_grey": 0.1, "cat_black": 0.1, "cat_cream": 0.35, "cat_brown": 0.45,
 	"gable": 0.5, "carglass": 0.4, "cartrim": 0.2, "tyre": 0.15, "rim": 0.2, "concrete": 0.15,
@@ -12791,6 +13036,9 @@ func _tones() -> void:
 		"pavers_dark": _greyed(ink.lerp(alt, 0.62), 0.85),   # (0.8 read near black under the arcade: the film's are mid-grey in its shade)
 		"slabs": _greyed(ink.lerp(alt, 0.55).lerp(wn, 0.28), 0.38),   # (the film's: warm beige in the sun)
 		"pavers_grey": _greyed(ink.lerp(alt, 0.5), 0.85),
+		# a crossing's kerbs: buff domed slabs; a median's raised ends, red pavers (the film's)
+		"tactile": ink.lerp(alt, 0.5).lerp(wn, 0.4),
+		"pavers_red": Palette.col("hazard").lerp(bg, 0.45).lerp(alt, 0.2),
 		"kerb": ink.lerp(alt, 0.45),
 		"stonewall": ink.lerp(wn, 0.3).lerp(alt, 0.2),
 		"gardenwall": ink.lerp(alt, 0.3).lerp(wn, 0.1),     # a rendered garden wall, weathered
@@ -12821,6 +13069,9 @@ func _tones() -> void:
 		"signred": Color.from_hsv(0.995, clampf(Palette.col("hazard").s, 0.7, 0.92), clampf(Palette.col("hazard").v * 0.85, 0.55, 0.85)),
 		"rubber": ac.lerp(alt, 0.55).lerp(bg, 0.25),
 		"sand": wn.lerp(ink, 0.45).lerp(alt, 0.1),
+		# a beach's: warmer and darker than a sandpit's (the sandpit's tone over a beach's
+		# acres read as snow beside the sea)
+		"beach": wn.lerp(ink, 0.3).lerp(Palette.col("hazard"), 0.06).darkened(0.2),
 		"concrete": ink.lerp(alt, 0.32).lerp(wn, 0.04),
 		"insulator": ink.lerp(alt, 0.15),
 		"trafo": alt.lerp(ink, 0.4).lerp(fr, 0.08),
@@ -12846,6 +13097,8 @@ func _retint_city() -> void:
 		sm.albedo_color = _tone[sm.get_meta("tone", t)]
 	if _smat.has("shopglass"):
 		(_smat["shopglass"] as StandardMaterial3D).emission = _tone["shoplight"]
+	if _shop_mat != null:
+		_shop_interior()   # (its colours from the tones again)
 	_retint_trees()
 	if _wall_mat != null:
 		_wall_mat.set_shader_parameter("wall_a", _tone["wall"])
@@ -12910,6 +13163,8 @@ func _retint_city() -> void:
 	if _smat.has("shopglass"):
 		# (at night 2.0 clipped to a blank white pane; the light spills onto the pavement instead)
 		(_smat["shopglass"] as StandardMaterial3D).emission_energy_multiplier = 0.85 if _night else 0.7
+	if _shop_mat != null:
+		_shop_mat.set_shader_parameter("lit", 1.4 if _night else 0.45)
 	if _night and env != null:
 		var bg := Palette.col("bg")
 		var pl := Palette.col("player")
@@ -13927,6 +14182,7 @@ func _sedan(paint: String) -> Node3D:
 	_car_material()
 	_player_car_mat = _car_shader_mat.duplicate() as ShaderMaterial
 	_player_car_mat.set_meta("paint", paint)
+	_player_car_mat.set_shader_parameter("plate_seed", randf() * 1000.0)
 	_car_material()   # (sets its parameters, the paint among them)
 	var mi := MeshInstance3D.new()
 	mi.mesh = _car_body("sedan", false).mesh(_player_car_mat)
@@ -13971,6 +14227,27 @@ func _sedan_rest(root: Node3D, paint: String) -> Node3D:
 	var plate := "warn" if String(_place.get("look", "")) == "med" else "ink"   # Israeli plates are yellow
 	root.add_child(_part(BoxMesh, Vector3(0, 0.45, 2.28), Vector3(0.52, 0.12, 0.02), mat(plate, 0.1)))
 	root.add_child(_part(BoxMesh, Vector3(0, 0.6, -2.3), Vector3(0.52, 0.12, 0.02), mat(plate, 0.1)))
+	# their faces in the car shader (vertex alpha 0.65: a plate), its digits and strip with the
+	# traffic's -- the boxes alone were blank yellow
+	var pb := Buf.new()
+	var pc := Color(Palette.col(plate), 0.65)
+	for f: Array in [[0.45, 2.28 + 0.012, 1.0], [0.6, -2.3 - 0.012, -1.0]]:
+		var py: float = f[0]
+		var pz: float = f[1]
+		var sg: float = f[2]
+		var A := Vector3(-0.26 * sg, py - 0.06, pz)
+		var B := Vector3(0.26 * sg, py - 0.06, pz)
+		var D := Vector3(0.26 * sg, py + 0.06, pz)
+		var E := Vector3(-0.26 * sg, py + 0.06, pz)
+		pb.tri(A, B, D, Vector3(0, 0, sg), pc, Vector2(0, 1), Vector2(1, 1), Vector2(1, 0))
+		pb.tri(A, D, E, Vector3(0, 0, sg), pc, Vector2(0, 1), Vector2(1, 0), Vector2(0, 0))
+	var pam := ArrayMesh.new()
+	pam.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, pb.arrays())
+	pam.surface_set_material(0, _player_car_mat)
+	var pmi := MeshInstance3D.new()
+	pmi.mesh = pam
+	pmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(pmi)
 	# wheels: a pivot each (front ones steer), a tyre and a rim that roll inside it
 	_wheels.clear()
 	_spinners.clear()
@@ -15567,6 +15844,25 @@ func _place_sitters() -> void:
 func _place_keepers() -> void:
 	_place_still(_keepers, _shop_spots, "wait")
 
+## people in the beach chairs near you (beach.gd's): made the first time there are chairs
+const BATHERS := 10
+var _bathers: Array = []             ## {actor, spot}
+var _beach_spots: Array = []         ## [where, facing] of every beach chair made
+
+func _place_bathers() -> void:
+	if _beach_spots.is_empty():
+		return
+	if _bathers.is_empty():
+		for i in range(BATHERS):
+			var a := Actor3D.new()
+			world.add_child(a)
+			a.set_character(PEOPLE[(i + 2) % PEOPLE.size()], _people_rng.randf_range(ADULT_LO, ADULT_HI))
+			_humanize(a, hash(a.get_instance_id()))
+			_people_lod(a)
+			a.visible = false
+			_bathers.append({"actor": a, "spot": Vector2.INF})
+	_place_still(_bathers, _beach_spots, "sit")
+
 ## people waiting at the bus stops near you, one or two a stop, facing the road
 func _place_waiters() -> void:
 	var spots: Array = []
@@ -15637,7 +15933,7 @@ func _people_tick(dt: float) -> void:
 	# (everyone placed, wherever they are: a walker 60 m off still has to see the next one)
 	_people_at.clear()
 	_people_who.clear()
-	for list: Array in [_walkers, _chatters, _crossers, _sitters, _waiters, _keepers]:
+	for list: Array in [_walkers, _chatters, _crossers, _sitters, _waiters, _keepers, _bathers]:
 		for w: Dictionary in list:
 			var a: Actor3D = w["actor"]
 			if a.visible:
@@ -15653,7 +15949,8 @@ func _people_tick(dt: float) -> void:
 		_place_sitters()
 		_place_waiters()
 		_place_keepers()
-		for list: Array in [_chatters, _sitters, _waiters, _keepers]:
+		_place_bathers()
+		for list: Array in [_chatters, _sitters, _waiters, _keepers, _bathers]:
 			for c: Dictionary in list:
 				var ca: Actor3D = c["actor"]
 				_people_awake(ca, Vector2(ca.position.x, ca.position.z))
