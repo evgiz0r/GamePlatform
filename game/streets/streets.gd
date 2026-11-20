@@ -2369,6 +2369,8 @@ func _build_kerbs() -> void:
 	var pave := kerb   # (the pavement is drawn by the kerb's shader, in the kerb's mesh: no extra draw)
 	var wall := _clip_buf(GROUND_CELL)
 	var garden := _clip_buf(GROUND_CELL)
+	var fronts := {"hedge": _clip_buf(GROUND_CELL), "bars": _clip_buf(GROUND_CELL), "bar_posts": _clip_buf(GROUND_CELL),
+		"chain": _clip_buf(GROUND_CELL), "chain_posts": _clip_buf(GROUND_CELL), "flowers": []}
 	var bushes: Array = []
 	var med := String(_place.get("look", "")) == "med"
 	for ri: int in _tile_roads.get(_tile, []):
@@ -2431,6 +2433,8 @@ func _build_kerbs() -> void:
 					var fn := Vector3(-(w_in[i + 1] - w_in[i]).y, 0, (w_in[i + 1] - w_in[i]).x).normalized() * -sgn
 					wall.tri(_g3(w_in[i], 0.0), _g3(w_in[i + 1], 0.0), _g3(w_in[i + 1], wy), fn, Color.WHITE)
 					wall.tri(_g3(w_in[i], 0.0), _g3(w_in[i + 1], wy), _g3(w_in[i], wy), fn, Color.WHITE)
+				if med:
+					_garden_fronts(run, hw, sgn, _hash_i(run[0]) + int(sgn) * 104729, fronts)
 				var step := 7.0
 				var s := 3.0
 				for i in range(run.size() - 1):
@@ -2461,16 +2465,37 @@ func _build_kerbs() -> void:
 	_add_mesh(kerb, _kerb_mat, false, DETAIL_RANGE * 1.6)
 	_add_mesh(wall, _surface("stonewall"), false, DETAIL_RANGE)
 	_add_mesh(garden, _surface("grass"), false, DETAIL_RANGE * 1.6)
+	if _over():
+		await _pause()
+	_add_mesh(fronts["hedge"], _surface("bush"), true, DETAIL_RANGE * 1.2)
+	_add_mesh(fronts["bars"], _furn._fence_material("railing", 0.15), false, DETAIL_RANGE * 0.8)
+	_add_mesh(fronts["bar_posts"], _surface("railing"), false, DETAIL_RANGE * 0.8)
+	_add_mesh(fronts["chain"], _furn._fence_material("fencegreen", 0.12), false, DETAIL_RANGE * 0.8)
+	_add_mesh(fronts["chain_posts"], _surface("fencegreen"), false, DETAIL_RANGE * 0.8)
+	if not (fronts["flowers"] as Array).is_empty():
+		# bougainvillea: a leafy green shrub (the trees' leaf cards, small) with a smaller
+		# crown of magenta on top of it -- the instance colour turns the leaves into flowers
+		var leaves: Array = []
+		var blooms: Array = []
+		for t: Transform3D in fronts["flowers"]:
+			leaves.append(t * Transform3D(Basis.from_scale(Vector3(0.55, 0.5, 0.5)), Vector3.ZERO))
+			blooms.append(t * Transform3D(Basis.from_scale(Vector3(0.45, 0.35, 0.42)), Vector3(0.0, 0.18, 0.05)))
+		var green: Array = []
+		var pink: Array = []
+		for i in range(leaves.size()):
+			green.append(Color(0.82, 0.95, 0.78, 0.125))   # broad leaves (atlas cell 0)
+			pink.append(Color(2.9, 0.55, 1.9, 0.375))      # small ones (cell 1), magenta
+		_chunked(_tree_meshes["crown"], leaves, DETAIL_RANGE, green, null, false)
+		_chunked(_tree_meshes["crown"], blooms, DETAIL_RANGE, pink, null, false)
+		_tally("bougainvillea", leaves.size())
 	if not bushes.is_empty():
-		var bush := _cached("bush", func() -> Mesh:
-			var m := SphereMesh.new()
-			m.radius = 0.6
-			m.height = 1.2
-			m.radial_segments = 7
-			m.rings = 4
-			m.material = _surface("bush")
-			return m)
-		_chunked(bush, bushes, DETAIL_RANGE)
+		# leafy shrubs: the trees' leaf-card crowns, small (a smooth ball read as a toy)
+		var shrubs: Array = []
+		var cols: Array = []
+		for t: Transform3D in bushes:
+			shrubs.append(t * Transform3D(Basis.from_scale(Vector3(0.5, 0.55, 0.5)), Vector3.ZERO))
+			cols.append(Color(0.8, 0.92, 0.78, 0.125))
+		_chunked(_tree_meshes["crown"], shrubs, DETAIL_RANGE, cols, null, false)
 	_tally("bushes", bushes.size())
 
 ## Israeli main streets are not open down the middle: a raised island divides the two ways.
@@ -2663,6 +2688,51 @@ func _set_pave_code(hsh: int) -> void:
 		if pattern == 2 and colours == 0:
 			colours = 1   # (slabs come grey or sand)
 	_pave_code = (float(pattern * 4 + colours) + 0.5) / 16.0
+
+## A garden's front, plot by plot along one side of a street's run (each 14-22 m, a gap
+## between them where the gates are), as a walk down Givatayim's streets has them: a clipped
+## hedge behind the low wall, white bars or green chain-link on top of it, or the bare wall;
+## bougainvillea spilling over one in six. Keyed to the run, so every square along the
+## street works out the same plots (the fronts are laid like the kerbs: CBuf.clip).
+func _garden_fronts(run: PackedVector2Array, hw: float, sgn: float, key: int, fronts: Dictionary) -> void:
+	var on_wall := _offset_line(run, (hw + PAVE_W + 0.175) * sgn)
+	var behind := _offset_line(run, (hw + PAVE_W + 0.85) * sgn)
+	var cum := PackedFloat32Array([0.0])
+	for i in range(1, run.size()):
+		cum.append(cum[i - 1] + run[i - 1].distance_to(run[i]))
+	var total := cum[cum.size() - 1]
+	var s := 0.0
+	var plot := 0
+	while s < total - 2.0:
+		var h := posmod(key + plot * 7919, 1000003)
+		var e := minf(s + 14.0 + float(posmod(h, 9)), total)
+		var style := posmod(h >> 4, 100)
+		if style < 76:
+			var line := behind if style < 42 else on_wall
+			var pts: Array = [_along(line, cum, s + 0.7)]
+			for i in range(1, line.size() - 1):
+				if cum[i] > s + 0.7 and cum[i] < e - 0.7:
+					pts.append(line[i])
+			pts.append(_along(line, cum, e - 0.7))
+			for k in range(pts.size() - 1):
+				var a: Vector2 = pts[k]
+				var b: Vector2 = pts[k + 1]
+				if a.distance_to(b) < 0.3:
+					continue
+				if style < 42:
+					_furn._hedge_line(fronts["hedge"], a, b)
+				elif style < 62:
+					_furn._fence_line(fronts["bars"], fronts["bar_posts"], a, b, 0.95, _tone["railing"], 2.4, true, 2, 0.62)
+				else:
+					_furn._fence_line(fronts["chain"], fronts["chain_posts"], a, b, 1.3, _tone["fencegreen"], 2.6, false, 2, 0.62)
+		if posmod(h >> 9, 100) < 16:   # bougainvillea over the wall, a few clumps
+			for t: float in [0.25, 0.5, 0.75]:
+				var q := _along(on_wall, cum, lerpf(s, e, t)) - (on_wall[0] - run[0]).normalized() * 0.15
+				if _mine(q) and _push_out(q, 0.4, false) == Vector2.ZERO:
+					var sc := 0.8 + 0.5 * float(posmod(_hash_i(q), 7)) / 6.0
+					(fronts["flowers"] as Array).append(Transform3D(Basis.from_scale(Vector3(1.4, 1.0, 1.1) * sc), _g3(q, 0.62 + 0.3 * sc)))
+		s = e
+		plot += 1
 
 ## how many trees overhang a spot on the pavement, 0..1 (for the leaves on it)
 func _leafy(p: Vector2) -> float:
@@ -6205,6 +6275,29 @@ float crazing(vec2 p, float dist, float pxw) {
 	float crack = 1.0 - smoothstep(0.0015, 0.0015 + pxw, edge);
 	return 1.0 - 0.28 * crack * tired * open;
 }
+// cells of a Voronoi pattern round q: (distance to the nearest edge, in cells; that cell's id)
+vec3 voro(vec2 q) {
+	vec2 gi = floor(q);
+	vec2 gf = q - gi;
+	float d1 = 9.0;
+	float d2 = 9.0;
+	vec2 id = gi;
+	for (int y = -1; y <= 1; y++) {
+		for (int x = -1; x <= 1; x++) {
+			vec2 o = vec2(float(x), float(y));
+			vec2 pt = o + vec2(hash(gi + o), hash(gi + o + 17.3)) * 0.8 + 0.1;
+			float dd = length(gf - pt);
+			if (dd < d1) {
+				d2 = d1;
+				d1 = dd;
+				id = gi + o;
+			} else if (dd < d2) {
+				d2 = dd;
+			}
+		}
+	}
+	return vec3((d2 - d1) * 0.5, id);
+}
 void fragment() {
 	vec3 c = COLOR.rgb;
 	vec4 fx = vec4(0.0);
@@ -6229,7 +6322,14 @@ void fragment() {
 		}
 		// a wall or a kerb's face stays on the noise: laid from above, a photo runs down it in
 		// streaks; kind 0 (a pole's top, a bench, a sign) has no photo at all
-		if (textured > 0.5 && wup > 0.6 && fx.w > 0.5) {
+		if (fx.w > 3.5) {   // kind 4: a wall of rough stones in mortar (garden walls)
+			vec2 q = wup > 0.6 ? p : vec2(wpos.x + wpos.z, wpos.y * 1.3);
+			vec3 vr = voro(q / 0.24);
+			float pxc = (length(dpx) + length(dpy)) / 0.24;
+			float mortar = 1.0 - smoothstep(0.04, 0.04 + pxc * 1.5, vr.x);
+			c *= 0.84 + 0.3 * hash(vr.yz + 5.1);
+			c = mix(c, c * 0.62 + vec3(0.04), mortar * near);
+		} else if (textured > 0.5 && wup > 0.6 && fx.w > 0.5) {
 			if (fx.w < 1.5) {   // grass, earth, sand: a lawn photo, 2 m across (fading out further
 				// off, where its repeat would line up into a grid; see GROUND_SHADER)
 				float kd = 1.0 - smoothstep(25.0, 110.0, length(VERTEX));
@@ -6317,6 +6417,7 @@ const TONE_FX := {
 	"asphalt": [0.11, 0.075, 0.0, 2.0], "parking": [0.1, 0.06, 0.0, 2.0], "path": [0.06, 0.07, 0.0, 2.0],
 	"pavement": [0.04, 0.04, 0.6, 3.0], "plaza": [0.05, 0.04, 1.0, 3.0], "mark": [0.0, 0.04, 0.0, 2.0],
 	"markyellow": [0.0, 0.04, 0.0, 2.0], "metal": [0.0, 0.0, 0.0, 0.0], "metalrim": [0.0, 0.0, 0.0, 0.0],
+	"stonewall": [0.06, 0.04, 0.0, 4.0],
 }
 var _tone_list: Array = []           ## the table's tone names, in order
 var _tone_material: ShaderMaterial
@@ -8485,7 +8586,7 @@ const NATURAL := {
 	"ground": 0.3, "rock": 0.3, "path": 0.15, "asphalt": 0.08, "parking": 0.08, "plaza": 0.2,
 	"grass": 0.6, "pitch": 0.6, "wood": 0.6, "leaf": 0.62, "bush": 0.6, "water": 0.5, "sand": 0.6,
 	"mark": 0.3, "wall": 0.5, "wall2": 0.45, "wall3": 0.6, "wall4": 0.6, "wall5": 0.5, "wall6": 0.3,
-	"glass": 0.5, "glass2": 0.5, "glass3": 0.5, "glass4": 0.5, "shutter": 0.3, "recess": 0.3, "lobby": 0.35,
+	"glass": 0.5, "glass2": 0.5, "glass3": 0.5, "glass4": 0.5, "shutter": 0.3, "recess": 0.3, "lobby": 0.35, "flowers": 0.8,
 	"roof": 0.2, "trunk": 0.45, "pole": 0.2, "haze": 0.45, "sky": 0.6, "board": 0.4, "solar": 0.5,
 	"tank": 0.3, "furniture": 0.3, "pavement": 0.2, "kerb": 0.15, "stonewall": 0.45, "roofroom": 0.4,
 	"gable": 0.5, "carglass": 0.4, "cartrim": 0.2, "tyre": 0.15, "rim": 0.2, "concrete": 0.15,
@@ -8539,6 +8640,7 @@ func _tones() -> void:
 		"shutter": ink.lerp(alt, 0.22),
 		"recess": alt.lerp(bg, 0.25),
 		"lobby": ink.lerp(wn, 0.22).lerp(alt, 0.12),   # the tiled walls of a lobby under a block on columns
+		"flowers": Palette.col("hazard").lerp(Palette.col("accent"), 0.35),   # bougainvillea
 		"roof": ink.lerp(alt, 0.42),
 		"leaf": veg.lerp(bg, 0.52),
 		"trunk": alt.lerp(wn, 0.3),
