@@ -243,6 +243,12 @@ a place and a heading on the baked ground.
   acceleration and braking -- for a drive, what to tune AI drivers against. `route` gives
   `{"points": [[seconds, x, z]...]}` timed to the film (`--video` reads its clock) and cut
   between two named corners (`--from A B --to C D`), for a replay beside the film.
+  A phone's GPS puts a walker in the road on a narrow street: before a route becomes a
+  replay, move each point onto the pavement it was walked on (left or right of the way
+  walked, along a named street) using the game's own road widths, not OSM's -- a game that
+  fits widths to the buildings has narrower roads than the file -- and leave the crossings
+  as they are. Mid-street the points moved 0-2.5 m; at a big junction 10-18 m and onto the
+  asphalt, so the replay ended 25 m short of it.
 - **Lining up.** Both come off the phone's clock. The video's file name is its start in
   local time; the mp4's `creation_time` is (on that phone) the *end*, in UTC: start =
   creation_time - duration. The two agreed to ~3 s. GPX times are UTC.

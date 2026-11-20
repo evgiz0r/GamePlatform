@@ -135,8 +135,9 @@ lane, stopped, facing the way that has the address on the kerb side.
 
 > Besides go to, I want also jump to. It teleports there, instead of driving.
 
-**Places.** Entering the game asks where: Givatayim; Bedford, Nova Scotia; or Ashdod
-(starting at Sderot Herzl and HeHalutzim, its busiest corner for shops). Each place is one
+**Places.** Entering the game asks where: Givatayim (starting on Katznelson just past
+Weizmann, the town's central junction); Bedford, Nova Scotia; or Ashdod (starting at Sderot
+Herzl and HeHalutzim, its busiest corner for shops). Each place is one
 entry in `LEVELS` at the top of `streets.gd` (name, city file, starting corner). Ashdod is
 three times Givatayim's size; it takes longer to build in full, but you are driving in
 about 3 s here, the same as anywhere (see "Loading near-first").
@@ -222,6 +223,19 @@ zone 30 sign at its mouth; lit shop fronts under the arcade.
 > (people a bit less interesting, but the other items, from bigger details we already have
 > to smaller details). And add in the menu an option to view that walk, just till reaching
 > Ha-Meri street. That's all it will do, no other controls.
+
+**A second filmed walk.** "A walk in Givatayim: Sheinkin and Sirkin" replays another walk
+the same way, about a minute and a half: along Sheinkin's pavement to the corner by the
+Roladin cafe, a glance at the traffic, over Sheinkin on the zebra, a look back across at
+the cafe, then up Sirkin's east pavement past its shops toward the lights at Katznelson,
+where it stops. This one was filmed with a GPS track running, so its route and timing come
+from the track rather than by hand: it is 1:42 to 3:08 of its film. On a street this narrow
+the GPS wandered into the road, so each point was moved onto the pavement it was walked on.
+
+Asked whether to add it as a level, from the cafe corner to Katznelson (and whether to
+move Givatayim's start to a busier corner):
+
+> yes to both
 
 The minimap (bottom left) shows the real streets and buildings round you, heading up, with
 the city limits in pink. The name of the street you are on is at the top, in Hebrew with
