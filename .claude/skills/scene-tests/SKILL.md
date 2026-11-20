@@ -68,7 +68,14 @@ A game's `tests/run.sh <test> [level]` wraps that line (see an existing one).
   ground failing to draw, and cost two runs to see it was the camera.
 - **Find the subject by searching**, not by coordinates you guessed: the nearest instance
   of a mesh to the start, a road that runs out to the map's edge with a clear run, the
-  divided-road zebra nearest the start.
+  divided-road zebra nearest the start. Search what the game *built*, not the file it built
+  it from: a game that lets go of its source data once the world is up (to save memory)
+  hands a test looking there an empty list, and the test reports "0 found" for things
+  standing in plain sight.
+- **Look at a building's front from the middle of the road**, facing it at eye height: from
+  the far pavement the cars parked along the kerb hide the shopfront, and a replayed walk's
+  camera looks along the street, past what stands at its side. To check that something was
+  placed (a hydrant by a wall, a shop's awning), aim one still straight at it.
 - **Measure a rate, broken down by cause.** "29% of walkers on asphalt: 444 on service
   lanes, 161 on the inner side of divided roads" pointed straight at both fixes. Then the
   same test after the fix: 0%.
