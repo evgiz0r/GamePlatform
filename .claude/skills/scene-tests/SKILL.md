@@ -215,6 +215,14 @@ it is made, with a one-line caption, rather than a report at the end.
 
 ## Gotchas (each cost a run)
 
+- **A collision scan sees only what is solid, and only where it is solid.** A scripted walk
+  that scanned clean went through a parked bike's wheel (solid only at its rack's hoop, while
+  the bike reached across most of the pavement) and ended with a tree's trunk filling the
+  frame; chairs, crates and low leaves have no collider at all. Beside the scan, list
+  everything drawn by instance round the spot (each `MultiMeshInstance3D` instance's box
+  through its transform: where, how big, how high it starts) and look at the recording one
+  frame every 2 s.
+
 - **Measure the exact condition, and name the blocker once.** "Stood still near the van" also
   counted waiting at a red light past it; "within 20 m, the van ahead, held by a car" did
   not. And when a thing does not happen, print once, a few seconds in, what holds it (which
