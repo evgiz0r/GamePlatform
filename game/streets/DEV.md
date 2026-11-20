@@ -1881,11 +1881,13 @@ The cloud environment allows the host now (the user approved it).
   (`opendatasource.tel-aviv.gov.il`, not reachable from here). The credit on screen:
   "building heights © Tel Aviv-Yafo Municipality".
 - **A re-bake must reach the server too**, or the heights are lost and the bake logs
-  "survey tel_aviv_yafo: cannot reach ...". GitHub's runners reaching it is untested: after a
-  workflow bake of Tel Aviv or Givatayim, look for "survey tel_aviv_yafo: heights for" in its
-  log, or run `--add-surveys` on the result here.
+  "survey tel_aviv_yafo: cannot reach ...". GitHub's runners reach it: the workflow's bakes
+  of Tel Aviv on 20 Nov (the 4.3 x 3.3 km box) came back with 8,322 of 9,597 heights
+  measured. After any bake, check the file's `credits` and its count of `hm`, or run
+  `--add-surveys` on the result here.
 - **Open**: Givatayim's own buildings (GovMap's public layers have no heights, see
-  `IDEAS.md`; its municipality's GIS not found); drawing `pil` (Tel Aviv's blocks on columns, a
+  `IDEAS.md`; its municipality's GIS not found -- `LOCAL_DATA_TASK.md` hands this, with
+  GovMap's places, data.gov.il and GTFS, to a session on the user's own computer); drawing `pil` (Tel Aviv's blocks on columns, a
   third of them -- the ground floor as columns and shade); the ~500 small buildings the
   survey has and OSM lacks (median 35 m^2; 57 over 300 m^2), not added; a tower complex
   OSM maps as one outline keeps OSM's height (splitting it into the survey's pieces would
