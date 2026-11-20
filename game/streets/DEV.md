@@ -18,6 +18,7 @@ merge, re-check (`tools/check_script.sh`, a playtest, the tests below), never fo
 | `furniture.gd` | street furniture built after the places: power lines, lamps and bus-stop kits, flags, ads, fences and hedges, bike racks and scooters |
 | `drivelog.gd` | the drive recorder (see below) |
 | `decks.gd` | roads off the ground -- bridges, embankments, cuttings, tunnels: their heights, what is under a point at a level (`surf`), their walls for collisions (`push`), the ground cut away over cuttings (`cut_tri`), and drawing them a square at a time (`build`). See "Off the ground" below |
+| `landmarks.gd` | a town's landmarks, found by their building's name in the bake (`BY_CITY`: Tel Aviv's Azrieli towers, the Matcal and Marganit towers, Sarona's houses): a glass of their own, a lit crown, a mast or shaft on the roof, red tile roofs; and in every town the red lights on roofs over 90 m at night. Hooks in streets.gd: `_glass` / `_tile` on a building for `_build_buildings`, `build()` per square, `set_night` |
 | `rails.gd` | railways: the tracks the city file has (`rails`, `platforms`, `stations`), their beds, rails and sleepers, the platforms with canopies and the station's name, and trains running along them (`tick`). See "Railways" below |
 | `cities/*.json` | baked towns (`tools/osm_city.py`) and the made-up test town (`tools/fake_city.py`) |
 | `details.gd`, `cities/details/<city>.json` | what a filmed walk showed and OSM lacks, laid over the baked city as it loads (road edits, unmarked zebras, areas, an arcade cut under a block, paving level with the pavement, walls, fences, hedges, bins, railings, bollards, a pole transformer, a barrier, parked motorbikes, trees) and the walks themselves; the format is at the top of `details.gd` |
@@ -1037,6 +1038,27 @@ it is dropped.
   the other's) also found: crests where a cutting meets the street at full grade, and
   humps in a tunnel where a branch climbs out, launch cars at 30-50 km/h (a vertical curve,
   rounding) -- not yet in `infer`.
+- **Hops at ramp tops** (Nov 2026): Moses, Arvei Nahal, Yitzhak Sadeh and the City tunnel's
+  mouth in Tel Aviv, Ashdod's Begin underpass and Laskov bridge, a Givatayim tunnel: 6-51
+  frames in the air each at 30-50 km/h. Not crests a car would really leave the road over
+  (13% of grade change over 30 m needs 0.5 m/s2 at 40 km/h, gravity is 9.8): the profile is
+  points 6 m apart rounded to 10 cm, a kink at every point, and `_fly` took the ground as it
+  came, so a kink was a jump of the ground's speed in one frame, over `LIFTOFF`. Now the
+  springs feel the ground along the car's way smoothed over half a wheelbase of travel
+  (`ride` in `_fly`) and `infer` keeps its heights unrounded; also `_round_joints` puts a
+  32 m vertical curve across a joint where two lifted pieces meet in a crest and eases a
+  cutting's top into the street. Result (`tests/decks.gd`, levels 1, 3, 4, 7 bridges and
+  tunnels): every run 0 frames in the air but Arvei Nahal's 9 and one frame in a Tel Aviv
+  tunnel. Measuring under the axles instead was tried first and is wrong: an axle's point
+  by a tunnel's wall found the ground over the tunnel (37 frames in the air in Givatayim's
+  City tunnel, which had none). `TRACE=1` prints the frames before each take-off;
+  `tests/deck_profile.gd` prints the profile of the decks round a spot, with and without
+  `_round_joints`.
+- **Open: Arvei Nahal's seam** (Tel Aviv, (578, -691)): where Al Parashat Drachim's ramp
+  leaves the wide deck at the knot, the two overlap for a metre or two at heights 0.44 m
+  apart (the ramp falls at 7% from the shared point, the deck is flat), and the car stays on
+  the higher till it ends, then drops: 9 frames in the air at 43 km/h. Wants a ramp leaving
+  a deck held at the deck's height until it is clear of its asphalt.
 - **Where the heights come from.** The test town's maker knows them: each deck's ends at the
   ground, a bridge straight from bank to bank with a little camber, the flyover's and
   underpass's ramps eased up and down to 6.6 m clear of the boulevard (`CLEAR`), the tunnel
@@ -1073,8 +1095,7 @@ it is dropped.
   Begin's known hop and Laskov Road's bridge (three small take-offs on its way down, 30
   frames; its profile is the same with and without this change: the decimetre kinks).
   `street_holes` on Ashdod: 0 holes, 2 points in a wall (both on Laskov Road; 51 before).
-- **Still to do**: Tel Aviv is another session's; a 0.5 s
-  hop out of Menachem Begin's underpass; grass slopes for cuttings too (they are walled); pavements and
+- **Still to do**: Tel Aviv is another session's; grass slopes for cuttings too (they are walled); pavements and
   people beside an inferred cutting; a long-span
   bridge's height over water (the MacKay's deck is only as high as its ends); pavements at street
   level beside a cutting (the underpass has none); people on a bridge's pavement; the
