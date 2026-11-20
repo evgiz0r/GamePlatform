@@ -67,7 +67,8 @@
      1,
      0
     ],
-    "kerb_mid": "blue_white"
+    "kerb_mid": "blue_white",
+    "setts": true
    }
   ],
   "add": [
@@ -2296,7 +2297,8 @@
    "awning": "black",
    "seats": "stools",
    "board": "black",
-   "src": "2:30-2:40, the bar under string lights with bar stools (OSM's unnamed restaurant, 12 m off)"
+   "src": "2:30-2:40, the bar under string lights with bar stools (OSM's unnamed restaurant, 12 m off)",
+   "lights": true
   },
   {
    "add": true,

@@ -45,6 +45,33 @@ right now, offer to add it here rather than letting it get lost in the chat.
   its own: take it from data.gov.il. Its signalled-junction and roundabout layers matched
   OSM's almost exactly -- useful as a check in a scene test, not as data.)
 
+- **Official data for what OSM leaves out, for baked Israeli towns.** A baked town's
+  realism is capped by what OSM knows. In November 2026 OSM had no height for 90% of one
+  town's buildings, 94% of another's, 65% of a city centre's (so they come out ~4 storeys
+  where real streets have 15-25-storey towers behind the low blocks); a few dozen street
+  trees in a town that has thousands; and a handful of the shops a filmed street showed.
+  Where those could come from, biggest difference to the look first -- none checked
+  layer by layer yet, and each needs its host on the network allowlist:
+  - *storeys or heights per building*: municipal GIS buildings layers (Tel Aviv's GisLayers
+    API, apiportal.tel-aviv.gov.il), GovMap / the Survey of Israel;
+  - *street trees with species* (ficus, jacaranda and palms read very differently):
+    municipal tree surveys (Tel Aviv's "urban forest" pages describe one; whether it is
+    downloadable is not checked);
+  - *businesses*, for whole rows of shopfronts: business-licensing layers (רישוי עסקים);
+  - *when a building went up and what it is for* (a 1930s block, a 1960s shikun, a 2000s
+    tower look nothing alike; which ground floors are shops): municipal building and
+    land-use layers;
+  - *buses on their real lines*: the Ministry of Transport's GTFS feed (gtfs.mot.gov.il);
+    bus lanes above;
+  - *paid-parking zones* (the kerb's blue-white paint), *street-light poles*, *road and
+    pavement surfaces* (real widths): municipal layers, where a town publishes them;
+  - *how busy each street is* and *each junction's light timing*: rarely published.
+  OVER (over.org.il, which has an API and an MCP server) gathers many of these layers in
+  one place and is a quick way to find them, but publishes no licence of its own: take
+  each layer from its own publisher, under its licence, and credit it on screen beside
+  OSM's. The terrain tiles the baker already reads cannot stand in for building heights
+  (tried; see the `real-places` skill).
+
 - **Tracking verified music.** Which tracks are confirmed CC0 vs CC-BY, where they came
   from, what has been checked. Today this lives loosely in `assets/CREDITS.md` and a
   note in `assets/INDEX.md`.

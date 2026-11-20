@@ -28,6 +28,9 @@ extends SceneTree
 ##   game/streets/tests/run.sh exam 3
 ##   LEVEL=3 STREETS_BUILD_ALL=1 $GODOT --headless --fixed-fps 60 --path . -s \
 ##       res://game/streets/tests/exam.gd     the same numbers, no window, several times faster
+##   EXAM_AT=-25,160 EXAM_STAND=70 ...   one junction watched: no driving, the car put down off
+##       the road by AT (traffic comes and goes round it), the traffic's checks alone, and only
+##       what happens within EXAM_STAND metres of AT (Tel Aviv's Begin x Kaplan)
 const Bodies = preload("res://game/streets/tests/bodies.gd")
 const CHECKS := ["check: bodies overlapping, traffic", "check: bodies overlapping, autodrive and a car",
 	"check: traffic body into a building", "check: traffic body into a wall", "check: traffic body into a post",
@@ -42,15 +45,30 @@ var T
 var counts := {}
 var where: Array = []                ## [what, Vector2, detail, log file]
 var logs_saved := 0
+var _watch_r := 0.0                    ## EXAM_STAND: watching one junction from beside it, this far
+var _at := Vector2.INF               ## EXAM_AT
 var saved_kind := {}
 
 func _initialize() -> void:
 	_run()
 
 func _count(k: String, n := 1) -> void:
+	if _watch_r > 0.0 and k != "traffic: sent away (stuck) ticks":
+		_pending.append([k, n])   # (counted if the incident that follows is near the junction)
+		return
 	counts[k] = int(counts.get(k, 0)) + n
 
+var _pending: Array = []
+
 func _incident(what: String, at: Vector2, detail: String, save := true) -> void:
+	if _watch_r > 0.0:
+		var keep := at.distance_to(_at) <= _watch_r
+		for pc: Array in _pending:
+			if keep:
+				counts[pc[0]] = int(counts.get(pc[0], 0)) + int(pc[1])
+		_pending.clear()
+		if not keep:
+			return
 	var file := ""
 	# a drive log of the moments before, for the first few of each kind (the recorder keeps
 	# every car near the player and what holds each: draw it with drive_log_map.py)
@@ -85,6 +103,12 @@ func _run() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 77 + lvl
 	var spots: Array = [g._pos]
+	if OS.get_environment("EXAM_AT") != "":
+		var xz := OS.get_environment("EXAM_AT").split(",")
+		_at = Vector2(float(xz[0]), float(xz[1]))
+		spots = [_at]
+		starts = 1
+		_watch_r = float(OS.get_environment("EXAM_STAND")) if OS.get_environment("EXAM_STAND") != "" else 0.0
 	var b: Rect2 = g._bounds.grow(-300.0)
 	for _i in range(200):
 		if spots.size() >= starts:
@@ -101,11 +125,15 @@ func _run() -> void:
 			spots.append(hit["q"])
 	var metres := 0.0
 	for si in range(spots.size()):
-		if si > 0:
+		if _watch_r > 0.0:
+			_stand_by(spots[si])
+			await physics_frame
+		elif si > 0 or _at != Vector2.INF:
 			g._set_auto(false)
 			g._land_on_road(spots[si], 40.0, Vector2.ZERO)
 			await physics_frame
-		g._set_auto(true)
+		if _watch_r <= 0.0:
+			g._set_auto(true)
 		var odo0: float = g._odo
 		await _drive(secs)
 		metres += g._odo - odo0
@@ -131,6 +159,27 @@ func _run() -> void:
 		print("  %-26s at %-14s %s %s" % [w[0], str(Vector2i(w[1])), w[2], ("[" + String(w[3]) + "]") if String(w[3]) != "" else ""])
 	quit(0)
 
+## the car put down off the road beside the junction at `at` -- on the pavement or a plaza,
+## clear of buildings -- and left there: the traffic is made round it
+func _stand_by(at: Vector2) -> void:
+	g._set_auto(false)
+	for r: float in [22.0, 30.0, 40.0, 55.0]:
+		for k in range(24):
+			var p := at + Vector2.from_angle(k * TAU / 24.0) * r
+			var on: Dictionary = g._nearest_seg(p, 30.0, true)
+			if not on.is_empty() and float(on["edge"]) < 3.0:
+				continue
+			if g._push_out(p, 2.5, true, true, g._h(p)) != Vector2.ZERO:
+				continue
+			g._pos = p
+			g._prev_pos = p
+			g._y = g._h(p)
+			g._v = 0.0
+			g._snap_pose()
+			print("  watching from %s, %.0f m from %s" % [Vector2i(p), r, Vector2i(at)])
+			return
+	print("  no spot off the road near %s: watching from the road" % Vector2i(at))
+
 func _drive(secs: float) -> void:
 	var dt := Engine.time_scale / Engine.physics_ticks_per_second
 	var t := 0.0
@@ -153,6 +202,9 @@ func _drive(secs: float) -> void:
 		t += dt
 		var p: Vector2 = g._pos
 		_check(dt)
+		if _watch_r > 0.0:
+			_watch_traffic(dt, t, car_still, overlapping, inside, came_dir)
+			continue
 		# -- autodrive
 		var held: String = g._ap_why
 		if absf(g._v) < 0.3 and not held in ["light", "zebra", "people"] and not (held == "car" and _lead_moving()):
@@ -224,60 +276,7 @@ func _drive(secs: float) -> void:
 				"rescue", "unstuck":
 					_count("autodrive: " + String(ev[1]))
 					_incident(String(ev[1]), p, "")
-		# -- traffic
-		for i in range(T.cars.size()):
-			var c = T.cars[i]
-			if not c.alive:
-				car_still.erase(i)
-				continue
-			if c.v < 0.3 and T._light_ahead(c) > 0.5 and not _queued_at_light(c):
-				car_still[i] = float(car_still.get(i, 0.0)) + dt
-				if absf(float(car_still[i]) - 20.0) < dt * 0.5:
-					_count("traffic: stalls 20 s+")
-					_incident("traffic stall", c.pos, "%s, held by %s, blocker %d" % [c.kind, c.why, c.blocker])
-			else:
-				car_still.erase(i)
-			if c.wait > 25.0:
-				_count("traffic: sent away (stuck) ticks")
-			# a red light run: into a junction's first signalled point on red, by the way the
-			# car came in (its heading before it got there). The points of one junction (a
-			# divided road's are several, 10-30 m apart) are one: a car that went in on
-			# green and turned, judged at the next point by the way it faced mid-turn, read
-			# as running the cross street's red.
-			var in_any := false
-			for n: int in g._near(g._sig_hash, c.pos, 30.0, g.SEG_CELL):
-				if g._nodes[n].distance_to(c.pos) >= g._node_r[n] + 1.0:
-					continue
-				in_any = true
-				var knot: int = g._site_of.get(n, n)
-				var key := "%d:%d" % [i, knot]
-				if not inside.has(key) and c.v > 2.0:
-					var came: Vector2 = came_dir.get(i, Vector2(sin(c.yaw), cos(c.yaw)))
-					if g._light_at(n, came) == "r":
-						_count("traffic: red lights run")
-						_incident("traffic red", c.pos, c.kind)
-				inside[key] = t
-			if not in_any:
-				came_dir[i] = Vector2(sin(c.yaw), cos(c.yaw))
-				for key: String in inside.keys():
-					if key.begins_with("%d:" % i) and t - float(inside[key]) > 8.0:
-						inside.erase(key)
-			for j in range(i + 1, T.cars.size()):
-				var o = T.cars[j]
-				if not o.alive or o.pos.distance_squared_to(c.pos) > 64.0:
-					continue
-				var fwd := Vector2(sin(c.yaw), cos(c.yaw))
-				var rel: Vector2 = o.pos - c.pos
-				var lon := absf(rel.dot(fwd))
-				var lat := absf(rel.dot(Vector2(fwd.y, -fwd.x)))
-				var key := "%d:%d" % [i, j]
-				if lat < 1.6 and lon < (c.len + o.len) * 0.5 - 0.4 and (c.v > 0.5 or o.v > 0.5):
-					if not overlapping.has(key):
-						overlapping[key] = true
-						_count("traffic: cars overlapping")
-						_incident("traffic overlap", c.pos, "%s (%s) & %s (%s)" % [c.kind, c.why, o.kind, o.why])
-				else:
-					overlapping.erase(key)
+		_watch_traffic(dt, t, car_still, overlapping, inside, came_dir)
 		# -- people
 		var movers: Array = [[p, absf(g._v)]]
 		for c in T.cars:
@@ -305,6 +304,76 @@ func _drive(secs: float) -> void:
 				near_people.erase(key)
 	if still >= 8.0:
 		_count("autodrive: seconds stuck", int(still))
+
+
+## one traffic car, all a watched junction's incident needs: where, which way, how fast, on
+## what road and lane, how far shifted off its lane line (changing lanes, filtering), what
+## holds it and who
+func _car_line(i: int) -> String:
+	var c = T.cars[i]
+	var rd: int = c.rd[clampi(c.k, 0, c.rd.size() - 1)] if c.rd.size() > 0 else -1
+	var road: String = ("%s (%s, %d lanes a way)" % [g._roads[rd]["en"] if g._roads[rd]["en"] != "" else g._roads[rd]["name"],
+		g._roads[rd]["k"], g._lanes_each_way(g._roads[rd])]) if rd >= 0 else "?"
+	return "car %d %s at (%.1f, %.1f) heading %.0f, %.1f m/s, %s, lane %d shift %.2f -> %.2f%s, held by %s (blocker %d), k %d of %d" % [
+		i, c.kind, c.pos.x, c.pos.y, rad_to_deg(c.yaw), c.v, road, c.lane_i, c.shift, c.shift_to,
+		", filtering" if c.split else "", c.why, c.blocker, c.k, c.pts.size()]
+
+## the traffic's own checks: stalls, cars sent away, red lights run, cars overlapping
+func _watch_traffic(dt: float, t: float, car_still: Dictionary, overlapping: Dictionary, inside: Dictionary, came_dir: Dictionary) -> void:
+	# -- traffic
+	for i in range(T.cars.size()):
+		var c = T.cars[i]
+		if not c.alive:
+			car_still.erase(i)
+			continue
+		if c.v < 0.3 and T._light_ahead(c) > 0.5 and not _queued_at_light(c):
+			car_still[i] = float(car_still.get(i, 0.0)) + dt
+			if absf(float(car_still[i]) - 20.0) < dt * 0.5:
+				_count("traffic: stalls 20 s+")
+				_incident("traffic stall", c.pos, "%s, held by %s, blocker %d" % [c.kind, c.why, c.blocker])
+		else:
+			car_still.erase(i)
+		if c.wait > 25.0:
+			_count("traffic: sent away (stuck) ticks")
+		# a red light run: into a junction's first signalled point on red, by the way the
+		# car came in (its heading before it got there). The points of one junction (a
+		# divided road's are several, 10-30 m apart) are one: a car that went in on
+		# green and turned, judged at the next point by the way it faced mid-turn, read
+		# as running the cross street's red.
+		var in_any := false
+		for n: int in g._near(g._sig_hash, c.pos, 30.0, g.SEG_CELL):
+			if g._nodes[n].distance_to(c.pos) >= g._node_r[n] + 1.0:
+				continue
+			in_any = true
+			var knot: int = g._site_of.get(n, n)
+			var key := "%d:%d" % [i, knot]
+			if not inside.has(key) and c.v > 2.0:
+				var came: Vector2 = came_dir.get(i, Vector2(sin(c.yaw), cos(c.yaw)))
+				if g._light_at(n, came) == "r":
+					_count("traffic: red lights run")
+					_incident("traffic red", c.pos, c.kind)
+			inside[key] = t
+		if not in_any:
+			came_dir[i] = Vector2(sin(c.yaw), cos(c.yaw))
+			for key: String in inside.keys():
+				if key.begins_with("%d:" % i) and t - float(inside[key]) > 8.0:
+					inside.erase(key)
+		for j in range(i + 1, T.cars.size()):
+			var o = T.cars[j]
+			if not o.alive or o.pos.distance_squared_to(c.pos) > 64.0:
+				continue
+			var fwd := Vector2(sin(c.yaw), cos(c.yaw))
+			var rel: Vector2 = o.pos - c.pos
+			var lon := absf(rel.dot(fwd))
+			var lat := absf(rel.dot(Vector2(fwd.y, -fwd.x)))
+			var key := "%d:%d" % [i, j]
+			if lat < 1.6 and lon < (c.len + o.len) * 0.5 - 0.4 and (c.v > 0.5 or o.v > 0.5):
+				if not overlapping.has(key):
+					overlapping[key] = true
+					_count("traffic: cars overlapping")
+					_incident("traffic overlap", c.pos, "%s (%s) & %s (%s)" % [c.kind, c.why, o.kind, o.why])
+			else:
+				overlapping.erase(key)
 
 func _lead_moving() -> bool:
 	if g._ap_lead < 0.0:
@@ -369,6 +438,8 @@ func _check(dt: float) -> void:
 					_count("check: bodies overlapping, traffic")
 					_incident("bodies overlap", (c.pos + o.pos) * 0.5, "%s (%s, %.0f km/h) & %s (%s, %.0f km/h), %.1f m in" % [
 						c.kind, c.why, c.v * 3.6, o.kind, o.why, o.v * 3.6, d])
+					if _watch_r > 0.0 and (c.pos + o.pos).distance_to(_at * 2.0) <= _watch_r * 2.0:
+						print("    %s\n    %s" % [_car_line(i), _car_line(j)])
 		if c.pos.distance_squared_to(g._pos) < 196.0 and absf(c.y - g._y) < 2.5:
 			var d2 := Bodies.box_depth(pb, boxes[i])
 			if d2 > 0.25:
@@ -396,8 +467,17 @@ func _check(dt: float) -> void:
 					_count("check: traffic body into a " + kind)
 					_incident("traffic into a " + kind, c.pos, "%s (%s, %.0f km/h), %.1f m into %s" % [
 						c.kind, c.why, c.v * 3.6, float(hit[0]), hit[1]])
+					if _watch_r > 0.0 and c.pos.distance_to(_at) <= _watch_r:
+						var what := String(hit[1])
+						var where_s := ""
+						if what.begins_with("post "):
+							var pi := int(what.split(" ")[1])
+							var on: Dictionary = g._nearest_seg(g._posts[pi], 20.0, true)
+							where_s = " -- the post at (%.1f, %.1f), r %.2f, %.2f m %s the asphalt's edge" % [g._posts[pi].x, g._posts[pi].y,
+								g._post_r[pi], absf(float(on.get("edge", 99.0))), "inside" if float(on.get("edge", 99.0)) < 0.0 else "outside"]
+						print("    %s%s" % [_car_line(i), where_s])
 				_in_solid[key] = _tick
-		if absf(g._y - g._h(g._pos)) < 2.5:
+		if absf(g._y - g._h(g._pos)) < 2.5 and _watch_r <= 0.0:   # (watching: the car is only parked by the kerb)
 			var hit2: Array = Bodies.into_solid(g, pb)
 			# (the car is two circles to the game: its corners run a little into what it
 			# brushes, so only past 0.3 m)

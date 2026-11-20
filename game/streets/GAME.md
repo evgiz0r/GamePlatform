@@ -55,6 +55,23 @@ get better.
 > track, to cover a bit more driving options. Can you add to the menu "test routes", where
 > I would be able to pick one of the routes and just watch.
 
+**Routes of your own.** The list has two pages: "the ten" and "yours". On "yours", "+ a new
+one, in" a city: the city loads, the address picker asks "from where?" and then "to
+where?", and autodrive drives it at once. It is kept on "yours" to watch again (up to nine,
+newest first, ✕ to remove one). They are kept in your own browser or phone only, never in
+the game's files: the web build is public.
+
+> Maybe later in the same menu I would be able to enter my own.
+
+**Giving way.** Autodrive comes out of a side street onto a bigger road the way a driver does:
+up to the corner slowly enough to stop, and if a car is coming that it could not get in
+front of with room to spare, it waits at the edge -- looking at that car as it goes by --
+and then goes. Turning left across oncoming traffic at a green, the same. A divided road's
+crossing: it waits while someone is on its half of the road, not while they finish the far
+half.
+
+> Real give-way and left-turn decisions (picked from the list of next steps: "1 2 6 7").
+
 **On foot.** The "walk" button (or F) lets the driver out of the door to walk the same city:
 arrows or the stick to walk (a brisk 2.1 m/s) and turn, space to run (6 m/s), over the
 shoulder or (the "seat" button) from the eyes. Out of a moving car you jump: you tumble
@@ -202,6 +219,16 @@ line on a dark one.
 > Trains that act like trains: a front with headlights, lit at night, stopping at the
 > stations; the overhead electric wires; the sound of a train going by.
 
+Its landmarks: the three Azrieli towers -- round, triangular and square -- in one dark,
+glossy blue glass with a band of metal round each top that lights up at night; in HaKirya
+the Matcal tower with its mast and the Marganit tower with its concrete shaft, antenna
+platforms and red-and-white mast up to 138 m; and Sarona's restored Templer houses, two
+storeys under red tile roofs among the lawns and trees, with the towers all round. At night
+every tower over 90 m has red aircraft-warning lights on its roof, slowly pulsing.
+
+> Landmarks: Azrieli round/triangle/square towers in proper glass, lit at night, Sarona,
+> the Kirya (Matcal) tower.
+
 > game streets -- lets add/start working on adding Tel Aviv. Somewhat the area I mentioned.
 > (with a map: Ichilov, Savidor, Azrieli, HaKirya, TLV Mall, Montefiore, Bitsaron,
 > Nahalat Yitshak)
@@ -338,6 +365,13 @@ than glowing neon. Sheinkin is paved in grey bricks laid in rows, Sirkin in reds
 and black bollards with a yellow band stand along Sirkin's kerb toward Katznelson.
 
 > go with all for that area, and create each time a video for me if possible
+
+Kira Sushi's front has its string lights, two strands of warm bulbs looping under the
+awning and lit by day as in the film; Sirkin's paving has light grey setts laid in a half-
+circle round each street tree and in a band between them. Road signs, crossing barriers,
+hydrants and red-and-white kerbs are a real red, not the palette's pink.
+
+> 3,5
 
 The minimap (bottom left) shows the real streets and buildings round you, heading up, with
 the city limits in pink. The name of the street you are on is at the top, in Hebrew with
@@ -984,6 +1018,19 @@ them, thinning out by 18 m. Only at the two top qualities (fewer at the second).
 - Each person drawn in one go (they were six pieces each): fewer things for the browser to
   draw every frame, nothing different to see.
 
+> 5, 3, 2 (front gardens out of the wait; traffic doing street things; more kinds of people)
+
+**Sooner to the street, and more going on in it:**
+- Loading is about half a second shorter: the front gardens you see first are there when the
+  car appears, the rest of the starting area's follow within a second or two.
+- Now and then a delivery van or a truck stops in the street, half in its lane, hazards
+  flashing, for half a minute or so. Cars behind it go round over the centre line when
+  nothing is coming (on a wider road they change lanes), and so does autodrive.
+- Now and then a car parked at the kerb ahead of you signals as you come up and pulls out in
+  front of you.
+- Someone walking a dog on a lead, a parent pushing a pushchair, a few people sitting on the
+  park benches and a few waiting at the bus stops, facing the road.
+
 **People who keep clear.** The walkers step round the trees, posts, benches and cabinets on
 the pavement, keep to one side of anyone coming the other way, and step round people standing
 talking and round you on foot; you and the car can no longer go through them (the car stops
@@ -1154,40 +1201,43 @@ contributors under the ODbL, which is why the credit sits on screen.
 
 - **Real**: every road's path, kind, width (or lanes), one-way direction and name; every
   building outline; heights and floors where OSM has them; parks, grass, water, car
-  parks; mapped trees; traffic lights and zebra crossings; the city boundary. The hills:
+  parks; mapped trees; traffic lights and zebra crossings; the speed limit where OSM tags
+  it (every driver keeps to it, and the signs show it); the city boundary. The hills:
   the ground follows an open elevation model (AWS terrain tiles), baked in with the city.
   Shops, cafes and bus stops stand where OSM puts them, under their real names.
 - **Guessed**: a building with no height gets 4 storeys (by type: houses 2, garages 1,
   offices 5...), varied a storey up or down so a street is not one flat wall. A road with
   no width tag gets one by kind (residential 8 m, room for a parked row each side).
+  A road with no speed limit takes the one most of its town's mapped streets of the same
+  kind have, where enough are mapped and agree (residential streets: 30 in Givatayim and
+  Tel Aviv), else one by kind (50 km/h in town, faster on main roads in the north, 90 on
+  a motorway).
   The rows of street trees along residential streets are added, not mapped. The window
   grid is a pattern, not the real facade. The traffic lights run their own simple cycle.
   What a shop looks like (awning, tables, the bus shelter) is generic. The parked cars
   (about a quarter of the kerb), the people walking and sitting at cafe tables, rooftop
   solar heaters and rooms (Givatayim), pitched roofs on small houses (Bedford).
-<<<<<<< HEAD
-- **Guessed, in Bedford and Tel Aviv: how high their bridges are, how deep their tunnels.**
-  OSM says which ways are bridges and tunnels but not how high or deep, so the game works
-  it out as the town loads: each overpass rises to clear what it crosses, on ramps up the
-  roads leading to it, an interchange's junctions up on them and its slip roads coming
-  down; each tunnel goes 7 m under the ground over it, cuttings sloping down to it, deeper
-  where a road crosses over. Highway 102's overpasses, the Bedford Bypass, the MacKay
-  Bridge's approach; the Ayalon's bridges, the Begin underpass, the Lova Eliav tunnel.
-  Ramps are walled, not grassy banks, yet.
-- **Not there yet**: bridges in Givatayim and Ashdod (still drawn on the ground), and
-  their tunnels (left out). People crossing anywhere but a zebra.
-=======
-- **Guessed, in Givatayim, Bedford and Ashdod: how high the bridges are, how deep the
-  tunnels.** OSM says which ways are bridges but
-  not how high, so the game works it out as the town loads: each overpass rises to clear
-  what it crosses, on ramps up the roads leading to it, an interchange's junctions up on
-  them and its slip roads coming down. Highway 102's overpasses, the Bedford Bypass, the
-  MacKay Bridge's approach; in Ashdod Highway 4's interchanges and Sderot Menachem Begin's
-  underpass, down a cutting under the road it crosses. The ramps are grass banks with a guardrail along the top where
-  there is room for them, retaining walls where there is not.
-- **Not there yet**: footbridges (still flat on the ground), tunnels under footpaths, and a
-  few road tunnels too short for their cuttings (the Rabin Underpass): left out. People crossing anywhere but a zebra.
->>>>>>> origin/main
+- **Guessed, in Givatayim, Bedford, Ashdod and Tel Aviv: how high the bridges are, how deep
+  the tunnels.** OSM says which ways are bridges and tunnels but not how high or deep, so
+  the game works it out as the town loads: each overpass rises to clear what it crosses, on
+  ramps up the roads leading to it, an interchange's junctions up on them and its slip
+  roads coming down; each road tunnel runs about 6 m under what runs over it, cuttings
+  sloping down to its mouths. Highway 102's overpasses, the Bedford Bypass, the MacKay
+  Bridge's approach (Bedford has no tunnel); in Ashdod Highway 4's interchanges and Sderot
+  Menachem Begin's underpass, down a cutting under the road it crosses. Givatayim and Tel
+  Aviv share a stretch of the Ayalon: Menachem Begin's and Arvey Nahal's bridges over it,
+  Uzi Hitman's tunnel and the City tunnel; Tel Aviv adds the Moda'i bridge, the Begin
+  underpass and the Lova Eliav tunnel. The ramps are grass banks with a guardrail along the
+  top where there is room for them, retaining walls where there is not; the cuttings are
+  walled.
+- **Footbridges and footpath tunnels, guessed the same way.** A footbridge clears the street
+  under it by 5.8 m (3.4 m over another path), paved, with a steel railing; its ramps rise
+  along the footpaths only, steep (25%), and as stairs where OSM maps steps or where a path
+  meets a street before its ramp is down. A footpath tunnel goes 3.6 m under the road, a
+  low tiled tube with one row of lamps, ramps or stairs down to it. Trail bridges over
+  creeks (Bedford's greenway) span from bank to bank.
+- **Not there yet**: a few road tunnels too short for their cuttings (the Rabin Underpass):
+  left out. People crossing anywhere but a zebra.
 
 To make your own street more accurate, fix it on openstreetmap.org (building heights are
 the most useful thing to add) and bake again.
@@ -1216,9 +1266,6 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
 > My sister tells me the scales of the game feel off.
 
 ## Later (said, not built)
-
-- Test routes of your own: "maybe later in the same menu I would be able to enter my own" --
-  from and to with the address picker, kept beside the ten.
 
 - Bridges and tunnels in the real towns: working out each deck's heights from OSM's tags
   and the ground (the test town has them already), then an interchange you drive over and
