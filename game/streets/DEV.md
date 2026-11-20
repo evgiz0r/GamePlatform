@@ -65,11 +65,15 @@ The ones most often touched, and the functions in them:
   that person's colours (linear: `srgb_to_linear`), its distance dither done by hand
   (`fade_from`/`fade_to`, set by `_people_lod`). tests/draws.gd at the start: 217 -> 180
   draws, people 48 -> 8. `_shader_key` keys them all as one kind for the warm-up.
-- **on the walls** -- `_build_facade_kit`: AC units (`furniture.ac_kit`: 0 on arms under a
-  window's sill, 1 up on a balcony's back wall), washing racks (`washing_kit`, three
-  arrangements, under a sill), towels over parapets (`towel_kit`, coloured per copy). All
-  vertex-coloured kits merged into the square's batches: no draws added. Givatayim ~5400
-  AC units, ~520 racks, ~80 towels; `wall_things` keeps 200 of each for tests/wall_things.gd.
+- **on the walls** -- `_build_facade_kit`: AC units (`furniture.ac_kit(0)`, ~130 vertices,
+  on arms under a window's sill or up on a balcony's back wall; at most 4 a block), washing
+  racks (`washing_kit(0)`, under a sill, tinted per copy), towels over parapets
+  (`towel_kit`, coloured per copy). The AC units and racks are drawn instanced
+  (`_instanced`: a MultiMesh per square, a draw or two near you), not merged: merged, the
+  first version (~19,000 AC units of ~230 vertices, ~2,000 racks of ~400 city-wide) made
+  the batches fat -- 19 hitches of ~50 ms in a 25 s playtest while the city built behind,
+  from 3. The towels (few) are merged. `wall_things` keeps 200 of each for
+  tests/wall_things.gd.
 - **street sounds** -- `_build_street_sounds` / `_street_snd_tick` (called from
   `_engine_tick`): birds and crickets are 2D loops, the voices and the dog 3D players (at the
   nearest TALKY place or shop within 70 m; at a random point 45-120 m off every 35-100 s

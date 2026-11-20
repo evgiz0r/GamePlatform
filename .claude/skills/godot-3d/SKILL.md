@@ -288,7 +288,12 @@ most, in order, last time one did:
   palette tone (alpha 0, the number in red) looked up in a `uniform vec4 tones[64]` table
   the material holds -- `/look` rewrites the table, nothing is rebuilt. Keep what changes
   at night or moves (lamps, lit glass, cars, people) out of it. Watch the vertex count per
-  merged mesh (a cap, ~650k, then leave the rest as multimeshes).
+  merged mesh (a cap, ~650k, then leave the rest as multimeshes). And merge only what is
+  few or small: a detailed kit with thousands of copies (an AC unit on every other wall:
+  ~19,000 x ~230 vertices) copies its vertices into the batch every time -- a hundred MB or
+  so of vertices city-wide, and uploading the fatter batches made 50 ms frames while the
+  city built in the background (19 hitches in 25 s, from 3). Instanced (a MultiMesh per
+  square) it is one copy of the kit and 64 bytes a copy, for a draw or two near the eye.
 - **Step quality down when the browser can't keep up -- and back up.** Watch the frame
   rate in 2-second spells on the web only (natively the test renderer would step itself to
   nothing): step down a level after two slow spells in a row (under ~45 fps, or more than

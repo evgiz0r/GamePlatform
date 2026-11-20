@@ -4982,6 +4982,13 @@ var _landmarks: Array = []           ## [where, "playground" | "pitch"]
 ## All of it instanced, in the building's own wall colour.
 var wall_things := {}                ## a few of the AC units, washing racks, towels made (for tests)
 
+## many copies of a kit as instances, never merged into the square's batch (see the AC units)
+func _instanced(mesh: Mesh, xforms: Array, range_end: float, colours: Array = []) -> void:
+	var was := _batching
+	_batching = false
+	_chunked(mesh, xforms, range_end, colours)
+	_batching = was
+
 func _build_facade_kit() -> void:
 	var med := String(_place.get("look", "")) == "med"
 	var north := String(_place.get("look", "")) == "north"
@@ -5049,7 +5056,7 @@ func _build_facade_kit() -> void:
 							kit["balcony"].append(Transform3D(face, Vector3(p.x, g_lo + lv * 3.0, p.y)))
 							kit_col["balcony"].append(wc)
 							var hb := posmod(hsh >> (sk * 3 + lv * 5), 997)
-							if hb % 10 < 4:   # an AC up on the balcony's back wall, over the parapet
+							if hb % 10 < 3:   # an AC up on the balcony's back wall, over the parapet
 								var q := at + (b - a) / L * (0.75 if hb % 2 == 0 else -0.75)
 								(acs[1] as Array).append(Transform3D(face, Vector3(q.x, g_lo + lv * 3.0 + 1.95, q.y)))
 							elif hb % 10 == 4 and hb / 10 % 3 == 0:   # a towel over the parapet
@@ -5070,7 +5077,7 @@ func _build_facade_kit() -> void:
 			# washing under a window
 			var placed := 0
 			var racks := 0
-			var cap := mini(6, 2 + floors)
+			var cap := mini(4, 1 + floors)
 			for i in range(ring.size()):
 				if placed >= cap or floors < 1:
 					break
@@ -5093,7 +5100,7 @@ func _build_facade_kit() -> void:
 						if lv == 0 and (floors < 2 or look["pilotis"]):
 							continue
 						var hh := posmod(hsh + i * 131 + ci * 17 + lv * 7919, 1000)
-						if hh % 100 < (16 if on_st else 9) and placed < cap:
+						if hh % 100 < (13 if on_st else 7) and placed < cap:
 							var p := a + e * ((ci + (0.86 if hh % 2 == 0 else 0.14)) * L / n) + out * 0.02
 							var y := g_lo + lv * 3.0 + (0.32 if lv > 0 else 2.3)   # (under the sill; on the ground floor, over heads)
 							(acs[0] as Array).append(Transform3D(face, Vector3(p.x, y, p.y)))
@@ -5146,10 +5153,16 @@ func _build_facade_kit() -> void:
 		_chunked(_boxm(Vector3.ONE), _mall_glass, 400.0, [], _shop_glass())
 	if not _lobby_doors.is_empty():
 		_chunked(_boxm(Vector3(1.9, 2.4, 0.05)), _lobby_doors, 160.0, [], _shop_glass())
-	for v in range(2):
-		await _chunked_paced(_furn.ac_kit(v), acs[v], 140.0)
-	for k in range(3):
-		await _chunked_paced(_furn.washing_kit(k), washing[k], 120.0)
+	# (thousands of AC units and racks: drawn as instances, a draw or two a square near you,
+	# not merged into the square's batch -- merged, each copied its vertices into it: some
+	# 100 MB of vertices city-wide, and the batches' uploads were frames of 50 ms while
+	# building in the background)
+	_instanced(_furn.ac_kit(0), (acs[0] as Array) + (acs[1] as Array), 140.0)
+	var all_wash: Array = (washing[0] as Array) + (washing[1] as Array) + (washing[2] as Array)
+	var wash_tints: Array = []
+	for t: Transform3D in all_wash:   # (one arrangement; tinted a little copy by copy)
+		wash_tints.append(Color.WHITE.lerp(laundry[posmod(_hash_i(Vector2(t.origin.x, t.origin.z)), laundry.size())], 0.35))
+	_instanced(_furn.washing_kit(0), all_wash, 110.0, wash_tints)
 	await _chunked_paced(_furn.towel_kit(), towels, 120.0, towel_cols)
 	var seen_now := {"ac": acs[0], "ac_balcony": acs[1], "washing": (washing[0] as Array) + (washing[1] as Array) + (washing[2] as Array), "towels": towels}
 	for k: String in seen_now:   # (a few of each kept for the tests: tests/wall_things.gd)

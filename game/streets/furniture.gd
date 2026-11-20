@@ -1426,9 +1426,9 @@ func _cabinet_kit() -> ArrayMesh:
 ## ---- on the buildings' walls (streets.gd _build_facade_kit places them) ----------------------
 
 ## An AC unit's outdoor half, its back to the wall (z = 0), facing +Z, its foot at y = 0: an
-## off-white box stood off the wall on two arms (wall: 0) or on a balcony's wall up high, no
-## arms (1); the fan's round dark grille on the left, slots on the right, the insulated pipes
-## from its end into the wall, the drip hose down and the grey streak the drips leave.
+## off-white box stood off the wall on two arms; the fan's round dark grille on the left,
+## slots on the right, the insulated pipe from its end into the wall, the drip hose down and
+## the grey streak the drips leave. ~130 vertices: there are thousands (drawn instanced).
 func ac_kit(v: int) -> ArrayMesh:
 	var key := "ac%d" % v
 	if _kits.has(key):
@@ -1442,24 +1442,23 @@ func ac_kit(v: int) -> ArrayMesh:
 	var z0 := 0.1   # (off the wall: the arms' length)
 	var zf := z0 + D + 0.004
 	_box(b, Vector3(0, H * 0.5, z0 + D * 0.5), Vector3(W, H, D), body)
-	# the fan: an octagon of dark grille, a pale hub
+	# the fan: a hexagon of dark grille
 	var fc := Vector2(-W * 0.17, H * 0.5)
 	var r := H * 0.4
-	for i in range(8):
-		var a0 := TAU * (i + 0.5) / 8.0
-		var a1 := TAU * (i + 1.5) / 8.0
+	for i in range(6):
+		var a0 := TAU * (i + 0.5) / 6.0
+		var a1 := TAU * (i + 1.5) / 6.0
 		b.tri(Vector3(fc.x, fc.y, zf), Vector3(fc.x + cos(a0) * r, fc.y + sin(a0) * r, zf),
 			Vector3(fc.x + cos(a1) * r, fc.y + sin(a1) * r, zf), Vector3.BACK, dark)
-	_box(b, Vector3(fc.x, fc.y, zf + 0.004), Vector3(0.07, 0.07, 0.01), body.darkened(0.1))
-	# slots on the right
-	for k in range(4):
-		_box(b, Vector3(W * 0.3, H * (0.25 + 0.17 * k), zf), Vector3(W * 0.26, 0.025, 0.006), dark.lightened(0.15))
-	if v == 0:   # two arms from the wall under it
-		for sx: float in [-1.0, 1.0]:
-			_box(b, Vector3(sx * W * 0.36, -0.02, z0 * 0.5 + D * 0.5), Vector3(0.035, 0.04, z0 + D + 0.02), _tone("pole"))
-	# the pipes from its right end into the wall, the drip hose down from its foot
-	_tube(b, Vector3(W * 0.5 + 0.05, H * 0.3, z0 + 0.06), Vector3(W * 0.5 + 0.05, H * 0.3, 0.0), 0.035, 0.035, body.darkened(0.08), 4)
-	_box(b, Vector3(W * 0.5 + 0.025, H * 0.3, z0 + 0.06), Vector3(0.05, 0.07, 0.07), body.darkened(0.08))
+	# slots on the right: flat dark strips on its face
+	for k in range(3):
+		var y0 := H * (0.28 + 0.2 * k)
+		b.tri(Vector3(W * 0.17, y0, zf), Vector3(W * 0.43, y0, zf), Vector3(W * 0.43, y0 + 0.03, zf), Vector3.BACK, dark.lightened(0.15))
+		b.tri(Vector3(W * 0.17, y0, zf), Vector3(W * 0.43, y0 + 0.03, zf), Vector3(W * 0.17, y0 + 0.03, zf), Vector3.BACK, dark.lightened(0.15))
+	for sx: float in [-1.0, 1.0]:   # two arms from the wall under it
+		_tube(b, Vector3(sx * W * 0.36, -0.02, 0.0), Vector3(sx * W * 0.36, -0.02, z0 + D + 0.02), 0.02, 0.02, _tone("pole"), 3)
+	# the pipe from its right end into the wall, the drip hose down from its foot
+	_tube(b, Vector3(W * 0.5 + 0.05, H * 0.3, z0 + 0.06), Vector3(W * 0.5 + 0.05, H * 0.3, 0.0), 0.035, 0.035, body.darkened(0.08), 3)
 	_tube(b, Vector3(W * 0.3, 0.0, z0 + 0.1), Vector3(W * 0.3, -0.45, 0.03), 0.01, 0.01, dark, 3)
 	# the streak the drips leave down the wall (a hair off it)
 	var st: Color = _tone("wall").lerp(_tone("pole"), 0.3).darkened(0.32)
