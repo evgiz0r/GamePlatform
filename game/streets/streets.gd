@@ -19,7 +19,8 @@ extends GameMode3D
 ## mid-town.
 const LEVELS := [
 	{"name": "Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med"},
-	{"name": "Bedford, Nova Scotia", "city": "bedford", "look": "north"},
+	# "decks": "infer" -- its bridges' heights worked out as it loads (decks.gd: infer)
+	{"name": "Bedford, Nova Scotia", "city": "bedford", "look": "north", "decks": "infer"},
 	{"name": "Ashdod", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med"},
 	# made up by tools/fake_city.py: one small town with one of everything, ringed by mountains,
 	# that loads in a moment -- for checking a change, not for exploring
@@ -28,6 +29,9 @@ const LEVELS := [
 	{"name": "A walk in Givatayim: Katzenelson to Ha-Meri", "city": "givatayim", "look": "med", "walk": "katzenelson_hameri"},
 	# a second, timed and placed from the GPS track taken with its film (tools/gpx_route.py)
 	{"name": "A walk in Givatayim: Sheinkin and Sirkin", "city": "givatayim", "look": "med", "walk": "sheinkin_sirkin"},
+	# a box of central Tel Aviv, not the whole city (the workflow's bbox): HaKirya, Azrieli,
+	# Sarona, Montefiore, Bitsaron, the Ayalon. Starts on Kaplan heading east, the towers ahead.
+	{"name": "Tel Aviv: Azrieli and HaKirya", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -811,6 +815,7 @@ var _furn: RefCounted                ## the street furniture builder (furniture.
 var _details: RefCounted             ## what a filmed walk added to the city (details.gd), or null
 var _decks: Decks                    ## bridges, embankments, cuttings, tunnels (decks.gd)
 var _on_deck := -1                   ## while a deck road is drawn: heights come from it, not the ground
+var _inferred := {}                  ## what decks.gd's infer() made of a real town's bridges (the report)
 var _wired := {}                     ## road index -> true: Bedford's lamps hang off its power poles
 var _flag_spots: Array = []          ## a flag on a staff off a lamp post (local X out over the road)
 var _balcony_flags: Array = []       ## a flag hanging off a balcony's parapet
@@ -1101,6 +1106,8 @@ func start(_config: Dictionary) -> void:
 	Probe.event("city", {"name": _city_name, "roads": _roads.size(), "buildings": _blds.size(),
 		"trees": _posts.size(), "streets": _streets.size(), "dressing": _dressing, "stage_ms": _stage_ms,
 		"parse_ms": t1 - t0, "build_ms": Time.get_ticks_msec() - t1})
+	if not _inferred.is_empty():
+		Probe.event("decks_inferred", _inferred)
 	_show_banner(_city_name, 3.0)
 	var dev_cam := OS.get_environment("STREETS_CAM").split(",", false)
 	if dev_cam.size() >= 6 and dev_cam[5] == "1":
@@ -1365,10 +1372,17 @@ func _clip_buildings(bdata: Array) -> void:
 		var cuts: Array = []
 		for code: int in _near(_seg_hash, box.get_center(), box.size.length() * 0.5 + 14.0, SEG_CELL):
 			var r: Dictionary = _roads[code / 4096]
-			if not _kerbed(r) or r.has("ys"):
-				continue   # (a deck: kept clear of the buildings when the town was laid out)
-			var pts: PackedVector2Array = r["pts"]
 			var sj := code % 4096
+			if r.has("ys"):
+				# a deck: cut back like a street where it runs low (an embankment, a bridge's
+				# foot: nothing stands under a deck less than a storey up); never over a
+				# tunnel or a cutting (the houses on the hill above it)
+				if not (String(r["deck"]) in ["em", "br"]) or not r["drive"] \
+						or maxf(r["ys"][sj] - r["gs"][sj], r["ys"][sj + 1] - r["gs"][sj + 1]) > 4.0:
+					continue
+			elif not _kerbed(r):
+				continue
+			var pts: PackedVector2Array = r["pts"]
 			var a := pts[sj]
 			var b := pts[sj + 1]
 			var c := float(r["w"]) * 0.5 + BLD_CLEAR
@@ -1446,6 +1460,10 @@ func _load_city(id: String) -> bool:
 	if not extra.is_empty():
 		_details = Details.new(self, extra)
 		_details.edit_city(data)
+	if String(_place.get("decks", "")) == "infer":   # (OSM has no heights: worked out here)
+		var t_inf := Time.get_ticks_msec()
+		_inferred = Decks.infer(data, DRIVE)
+		_inferred["ms"] = Time.get_ticks_msec() - t_inf
 	_city_name = String(data.get("name", id))
 	var b: Array = data["bounds"]
 	_bounds = Rect2(b[0], b[1], float(b[2]) - float(b[0]), float(b[3]) - float(b[1]))

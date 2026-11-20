@@ -304,7 +304,8 @@ What each round found, so far:
   (the container is slower than a laptop by ~3x; compare ratios). Before the car is shown,
   near-first: Givatayim ~2 s (9 of its 71 squares), Bedford ~1.2 s, Ashdod ~2.8 s, the test
   town ~1.2 s (headless playtest, `build_ms` in the "city" event); the rest of Givatayim
-  ~10 s of background building (the "city_built" event).
+  ~10 s of background building (the "city_built" event). Tel Aviv (the box, 4011 buildings,
+  3667 roads, 59 squares): ~2.2-2.5 s before the car, the rest ~11-12 s.
 - Parked cars by the kerb's paint (Givatayim's start view, `tests/frame_cost.gd`, quality
   3): 1.32 M triangles + 632 k shadow before, 1.54 M + 854 k after (+17%, +35%), draws 292
   -> 294. Measured at the old start, a residential street of blue-white kerbs: the densest case.
@@ -323,6 +324,7 @@ What each round found, so far:
 | 2 | Bedford, Nova Scotia ("north") | place "Bedford, Nova Scotia", include "Hemlock Ravine Park; Kearney Lake; Sandy Lake; Fleetview Drive" |
 | 3 | Ashdod ("med") | place "Ashdod" |
 | 4 | Kiryat Dimyon, made up | `tools/fake_city.py` |
+| 7 | Tel Aviv, a box of the centre ("med") | place "Tel Aviv", bbox "32.0639,34.7795,32.0858,34.8021" (read off the user's map screenshot), margin 150, bare_ground on (without it Azrieli stood on a 146 m hill of its own roofs) |
 
 The start points are public street corners named in `LEVELS`. **The web build is public:
 never use an address the user has mentioned as theirs or their family's -- not as a start,
@@ -518,6 +520,30 @@ before and a tunnel without it is still dropped.
 - **Water held at a level** (`areas[].y`, the test town's river) lies at that level, and is
   too deep to drive or walk into (`_deep_push`): the banks were gentle enough to drive down
   and along the bed under the water. Lakes and ponds without a level are as before.
+- **A real town's heights, worked out as it loads** (`infer` in decks.gd; a place opts in
+  with `"decks": "infer"` in `LEVELS`, Bedford so far). Before the roads are read, the
+  city data gets heights as if baked: where a drivable bridge (a chain of bridge ways 8 m
+  or longer; shorter ones are culverts and stay as they were) crosses a road it must clear
+  it by 6.4 m (a path: 4.4); that lift spreads along the drivable roads at a ramp's grade
+  (5% motorways and slip roads, 7% the rest) as an absolute height -- the road's own
+  grade, not its height over a ground that may fall away too (on Larry Uteck's ramp the
+  ground fell 8%: 15% in all, the car hopped down it) -- through junctions, never onto the
+  roads crossed (held to the ground). A second pass caps every lift by what a ramp from the
+  nearest held point can climb (7% / 10%), so a too-short slip road is steep, not a cliff.
+  Bridge over bridge: OSM's layer, else the lesser road over the main line, clearing the
+  lower's deck. Roads are cut where their ramp meets the ground (a node put there); the
+  lifted pieces get a point every 6 m and their profiles rounded over the crests (junction
+  points kept), footpaths are never lifted. Bedford: 56 bridges, 72 crossings, ~190 deck
+  pieces, 0.2 s; 2 of 63 crossings over roads short of the full clearance (4.8 m the
+  lowest). `LEVEL=2` with `tests/decks.gd` drives its ten highest bridges both ways.
+- **What Bedford found** (the test town had hidden them): a divided road's two carriageways
+  overlap at the median at not quite the same height -- `surf` now ranks what is under a
+  body: the carriageway it is on, then a deck's pavement or parapet, then (where another
+  deck carries on) just past a deck's end, then the ground; of each the one nearest its
+  height. A car on the outside of a bend where two decks meet was past the end of one and
+  before the start of the other, and fell through (hence "just past the end", 3 m, only at
+  deck joints). Buildings OSM maps under a low approach (the MacKay Bridge's) stood in the
+  deck: decks under 4 m up are now cut back from like streets (`_clip_buildings`).
 - **Where the heights come from.** The test town's maker knows them: each deck's ends at the
   ground, a bridge straight from bank to bank with a little camber, the flyover's and
   underpass's ramps eased up and down to 6.6 m clear of the boulevard (`CLEAR`), the tunnel
@@ -534,7 +560,9 @@ before and a tunnel without it is still dropped.
   (a turning car clipped the parapet), a 5 cm switch from a cutting's road to the ground
   where it gets shallow (a hop), and ground triangles left whole over a cutting (an edge
   parallel to the hole's leaves a smaller triangle: compare areas, not corner counts).
-- **Still to do**: heights for the real towns' bridges and tunnels; pavements at street
+- **Still to do**: the inferred heights for Givatayim and Ashdod (and their tunnels);
+  earth embankments with grass slopes rather than walls along inferred ramps; a long-span
+  bridge's height over water (the MacKay's deck is only as high as its ends); pavements at street
   level beside a cutting (the underpass has none); people on a bridge's pavement; the
   minimap draws a tunnel like any street; zooming out from inside the tunnel rises from the
   hilltop (the zoom centres on the ground's height); the heights are whole decimetres, so a
@@ -547,6 +575,17 @@ before and a tunnel without it is still dropped.
 
 ## Open problems
 
+- **Tel Aviv's bridges and tunnels have no heights** (Nov 2026). OSM tags them but says
+  nothing of how high, so the 2.4 km of bridges (every road over the Ayalon: Moses,
+  Givat HaTahmoshet, Modai, Arvei Nahal, Yitzhak Sadeh, Begin's) lie on the ground and cross
+  the motorway flat, sharing no point with it, and the 4.2 km of drivable tunnels (Lova
+  Eliav 900 m, Uzi Hitman, Carlebach, Begin under Kaplan) are left out. The test town's
+  decks (`y` per point, `decks.gd`) are the way: work the heights out in the bake or at load
+  from `br`/`tu`/`ly`, the ramps being the ways either side.
+- **Givatayim's ground is the terrain tiles' surface model too**: its "steepest 52%" is
+  likely part roofs. Measured on its grid, `--bare-ground` would take the hill's crest
+  86 -> 72 m and the steepest slope 48 -> 16%. Not re-baked: it moves the ground under the
+  filmed walks and every test number, and is the user's call.
 - **Scene tests started with `Flow.start_game` (the `tests/*.gd` way) drew no road surfaces
   in Ashdod round its start** (Nov 2026, cloud container): asphalt, kerbs and zebras missing,
   poles, signs, trees and cars there, from 9 m and from 32 m up (`median_nose`). The same
