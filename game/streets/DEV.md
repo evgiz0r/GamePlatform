@@ -249,7 +249,7 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   and zebra stretches moved with them; white hoop railings either side of the zebra on both
   kerbs and the kerb painted red-white 10 m each way (kerb_paint: pieces laid over the
   city's kerb in the kerb shader's colours; a whole road's paint is roads.set's `kerb`); the
-  passage paved in small grey pavers in rows across it (the tone shader's kind 5), level
+  passage paved in small grey pavers in rows across it (the tone shader's kind 7), level
   with the forecourt; its wall rough grey stones on a mortar backing; tall planting both
   sides (shrubs: the trees' leaf-card crowns on the ground, 2.4-3 m) and four more trees, so
   the passage closes in as filmed. Props stand on the higher of the city's pavement

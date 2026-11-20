@@ -6370,7 +6370,7 @@ void fragment() {
 		}
 		// a wall or a kerb's face stays on the noise: laid from above, a photo runs down it in
 		// streaks; kind 0 (a pole's top, a bench, a sign) has no photo at all
-		if (fx.w > 3.5) {   // kind 4: a wall of rough stones in mortar (garden walls)
+		if (fx.w > 3.5 && fx.w < 4.5) {   // kind 4: a wall of rough stones in mortar (garden walls)
 			vec2 q = wup > 0.6 ? p : vec2(wpos.x + wpos.z, wpos.y * 1.3);
 			vec3 vr = voro(q / 0.24);
 			float pxc = (length(dpx) + length(dpy)) / 0.24;
@@ -6434,7 +6434,7 @@ void fragment() {
 				vec2 uv = p / s;
 				c *= detail(textureGrad(pave_tex, uv, dpx / s, dpy / s).rgb, pave_mean, 0.9);
 				bump = unpack(textureGrad(pave_nrm, uv, dpx / s, dpy / s).rg, 1.0);
-			} else if (fx.w > 4.5) {   // pavers in rows (kind 5), fx.z long and half that wide,
+			} else if (fx.w > 6.5) {   // pavers in rows (kind 7), fx.z long and half that wide,
 				// each row half a paver on from the last, laid along `lay`; the joints fade out
 				// with distance before they can shimmer
 				vec2 q = mat2(vec2(cos(lay), -sin(lay)), vec2(sin(lay), cos(lay))) * p / fx.z;
@@ -6448,7 +6448,7 @@ void fragment() {
 				vec2 e = min(f, 1.0 - f) * vec2(1.0, 0.5);
 				float joint = 1.0 - smoothstep(0.02, 0.02 + fw * 1.5, min(e.x, e.y));
 				c *= 1.0 - 0.3 * joint * (1.0 - smoothstep(0.15, 0.4, fw));
-			} else {   // poured concrete slabs (kind 4), fx.z across, laid along `lay`: each a
+			} else {   // poured concrete slabs (kind 6), fx.z across, laid along `lay`: each a
 				// shade of its own, the joints dark, a crack across about one in six
 				vec2 q = mat2(vec2(cos(lay), -sin(lay)), vec2(sin(lay), cos(lay))) * p / fx.z;
 				vec2 cell = floor(q);
@@ -6489,13 +6489,15 @@ void fragment() {
 }
 """
 ## the surface each tone gets: [patches, grain, slab size (kind 3) / the lawn photo's colours too
-## (kind 1: 1 grass, 0 bare earth: its light and dark only), kind (0 none, 1 soft, 2 grained, 3 slabs)]
+## (kind 1: 1 grass, 0 bare earth: its light and dark only), kind (0 none, 1 soft, 2 grained, 3 slabs,
+## 4 rough stones in mortar, 6 poured slabs laid along a line, 7 pavers in rows; the shader tests
+## each kind's range on both sides, so a new kind never falls into another's branch)]
 const TONE_FX := {
 	"grass": [0.16, 0.08, 1.0, 1.0], "pitch": [0.06, 0.05, 1.0, 1.0], "wood": [0.16, 0.07, 1.0, 1.0],
 	"bush": [0.1, 0.05, 1.0, 1.0], "ground": [0.1, 0.06, 0.0, 1.0], "sand": [0.08, 0.08, 0.0, 1.0],
 	"asphalt": [0.11, 0.075, 0.0, 2.0], "parking": [0.1, 0.06, 0.0, 2.0], "path": [0.06, 0.07, 0.0, 2.0],
 	"pavement": [0.04, 0.04, 0.6, 3.0], "plaza": [0.05, 0.04, 1.0, 3.0], "mark": [0.0, 0.04, 0.0, 2.0],
-	"pavers_dark": [0.04, 0.04, 0.6, 3.0], "slabs": [0.05, 0.04, 1.0, 4.0], "pavers_grey": [0.04, 0.03, 0.2, 5.0],
+	"pavers_dark": [0.04, 0.04, 0.6, 3.0], "slabs": [0.05, 0.04, 1.0, 6.0], "pavers_grey": [0.04, 0.03, 0.2, 7.0],
 	"markyellow": [0.0, 0.04, 0.0, 2.0], "metal": [0.0, 0.0, 0.0, 0.0], "metalrim": [0.0, 0.0, 0.0, 0.0],
 	"stonewall": [0.06, 0.04, 0.0, 4.0],
 }

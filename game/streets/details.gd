@@ -33,7 +33,9 @@ extends RefCounted
 ##                                                    to `lift` at its second (a raised
 ##                                                    crossing's slopes)
 ##   lines     [{kind, pts: [[x, z]...], h, base}]   stone_wall, wood_fence, loop_fence, hedge,
-##                                                    shrubs (tall planting h high: leafy masses)
+##                                                    shrubs (tall planting h high: leafy masses),
+##                                                    shopfront (glazed bays h high on a
+##                                                    block's face, facing `face`)
 ##   props     [{kind, at: [x, z], dir: [x, z]}]     bin, hoop_railing, bollard, twin_poles
 ##                                                    (dir: the line through them), barrier
 ##                                                    (dir: the way the boom goes, len),
@@ -252,6 +254,7 @@ func build() -> void:
 	var dark: Color = g._tone["tyre"]
 	var shrubs: Array = []
 	var shrub_cols: Array = []
+	var glass = g.new_cbuf(400.0)
 	for sf: Dictionary in data.get("surfaces", []):
 		_paving(sf)
 	for ln: Dictionary in data.get("lines", []):
@@ -273,6 +276,8 @@ func build() -> void:
 					_solid(a, e, 0.45)
 				"shrubs":
 					_shrubs(shrubs, shrub_cols, a, e, float(ln.get("h", 2.6)))
+				"shopfront":
+					_shopfront(b, glass, a, e, float(ln.get("h", 3.2)), _v2(ln.get("face", [0, 0])))
 	var bikes: Array = []
 	var bike_cols: Array = []
 
@@ -324,6 +329,7 @@ func build() -> void:
 				g._add_post(at, 0.45)
 	g._add_mesh(b, g._vc_mat(), true, 260.0)
 	g._add_mesh(hedge, g._surface("bush"), true, 260.0)
+	g._add_mesh(glass, g._shop_glass(), false, 220.0)
 	if not bikes.is_empty():
 		g._chunked(_moto_kit(), bikes, 170.0, bike_cols, null, true)
 	if not scooters.is_empty():
@@ -701,6 +707,33 @@ func _shrubs(xf: Array, cols: Array, a: Vector2, e: Vector2, h: float) -> void:
 		xf.append(Transform3D(Basis(Vector3.UP, r1 * TAU).scaled(Vector3(w, hh * 0.5, w)), Vector3(p.x, gy + hh * 0.48, p.y)))
 		cols.append(Color(0.8, 0.92, 0.78, 0.125) if r2 < 0.6 else Color(0.7, 0.88, 0.66, 0.375))
 	_solid(a, e, 0.45)
+
+## Shop fronts along a block's face from a to e, `h` high, facing `face`: bays of about three
+## metres of lit glass in light aluminium frames, a dark kick plate under them and a sign band
+## over them, each shop's band its own colour (the second dark brown: the confectionery's)
+func _shopfront(b, glass, a: Vector2, e: Vector2, h: float, face: Vector2) -> void:
+	var L := a.distance_to(e)
+	var d := (e - a) / L
+	var out := face.normalized()
+	var gy: float = maxf(g._walk_y((a + e) * 0.5 + out * 0.6), g._h((a + e) * 0.5) + _lift_at((a + e) * 0.5 + out * 0.6))
+	var bs := Basis(Vector3.UP, atan2(-d.y, d.x))
+	var frame: Color = g._tone["concrete"].lightened(0.3)
+	var kick: Color = g._tone["tyre"].lightened(0.12)
+	var bands: Array = [g._tone["mark"], g._tone["woodfence"].darkened(0.35), g._natural(g._tone["signblue"], 0.55), g._tone["tyre"]]
+	var n := maxi(1, int(round(L / 3.3)))
+	for i in range(n):
+		var s0 := L * float(i) / n
+		var s1 := L * float(i + 1) / n
+		var w := s1 - s0
+		var mid := a + d * ((s0 + s1) * 0.5) + out * 0.03
+		g._furn._box(glass, Vector3(mid.x, gy + 1.45, mid.y), Vector3(w - 0.1, 2.2, 0.03), Color.WHITE, bs)
+		g._furn._box(b, Vector3(mid.x, gy + 0.175, mid.y), Vector3(w, 0.35, 0.07), kick, bs)
+		g._furn._box(b, Vector3(mid.x, gy + 2.6, mid.y), Vector3(w, 0.1, 0.09), frame, bs)
+		var band := mid + out * 0.03
+		g._furn._box(b, Vector3(band.x, gy + (2.65 + h) * 0.5, band.y), Vector3(w - 0.04, h - 2.65, 0.1), bands[i % bands.size()], bs)
+		for x: float in [s0, (s0 + s1) * 0.5, s1]:
+			var q := a + d * x + out * 0.05
+			g._furn._box(b, Vector3(q.x, gy + 1.3, q.y), Vector3(0.12 if x != (s0 + s1) * 0.5 else 0.06, 2.6, 0.08), frame, bs)
 
 ## a steady pseudo-random number in [0, 1) for a stone's size and shade, so a wall comes
 ## out the same every time

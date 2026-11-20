@@ -15,6 +15,13 @@ assert left[0] > 0 and left[1] > 0, left
 def P(s, off=0.0):
     return [round(S0[0] + u[0] * s + left[0] * off, 2), round(S0[1] + u[1] * s + left[1] * off, 2)]
 SPLIT = 58.0
+# the arcade along Katzenelson: the block's street face, and its shops 3 m back behind it
+ARC_A, ARC_E, ARC_DEPTH = (646.9, -664.0), (657.7, -655.6), 3.0
+_ad = ((ARC_E[0] - ARC_A[0]) / math.dist(ARC_A, ARC_E), (ARC_E[1] - ARC_A[1]) / math.dist(ARC_A, ARC_E))
+ARC_IN = (-_ad[1], _ad[0])
+if (P(15, -15)[0] - ARC_A[0]) * ARC_IN[0] + (P(15, -15)[1] - ARC_A[1]) * ARC_IN[1] < 0:
+    ARC_IN = (-ARC_IN[0], -ARC_IN[1])
+SHOPS = [[round(c[0] + ARC_IN[0] * (ARC_DEPTH - 0.03), 2), round(c[1] + ARC_IN[1] * (ARC_DEPTH - 0.03), 2)] for c in (ARC_A, ARC_E)]
 SE = [round(left[0], 4), round(left[1], 4)]        # the way the passage's south-east side lies
 NW = [-SE[0], -SE[1]]
 r2 = lambda p: [round(p[0], 2), round(p[1], 2)]
@@ -94,7 +101,7 @@ d = {
     "crossings": [[661.6, -672.2], [655.1, -664.7]],
     # the block at the passage's north-west corner stands on columns along Katzenelson: shops
     # 3 m back under the upper floors, the walk goes between them and the columns (film 18-23 s)
-    "buildings": [{"near": P(15, -15), "arcade": [[646.9, -664.0], [657.7, -655.6]], "depth": 3.0, "h": 3.4}],
+    "buildings": [{"near": P(15, -15), "arcade": [list(ARC_A), list(ARC_E)], "depth": ARC_DEPTH, "h": 3.4}],
     # paving level with the pavement (film 17-33 s): charcoal herringbone from the kerb in
     # under the arcade, then the forecourt's pale poured slabs, laid square to the passage, out
     # to the two blocks either side and round into the drive past the barrier
@@ -131,6 +138,9 @@ d = {
         {"kind": "shrubs", "pts": [P(45.0, 2.0), P(56.0, 2.0)], "h": 2.4},
         {"kind": "shrubs", "pts": [P(18.0, -2.7), P(37.8, -2.7)], "h": 2.4},   # over the wooden fence
         {"kind": "shrubs", "pts": [P(38.2, -2.0), P(56.8, -2.0)], "h": 3.0},   # the tall hedge on the low wall
+        # the shops under the arcade (film 15-23 s): lit glass in light frames, each its own
+        # sign; the confectionery's, dark brown, faces the zebra
+        {"kind": "shopfront", "pts": SHOPS, "h": 3.25, "face": [round(-ARC_IN[0], 4), round(-ARC_IN[1], 4)]},
     ],
     "props": [
         {"kind": "bin", "at": P(41, -0.95)},
