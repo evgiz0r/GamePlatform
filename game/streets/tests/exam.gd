@@ -100,6 +100,7 @@ func _drive(secs: float) -> void:
 	var inside := {}
 	var near_people := {}
 	var rescues: int = g._log.events.size()
+	var left_t := 0.0
 	var events_seen: int = g._log.events.size()
 	while t < secs:
 		await physics_frame
@@ -148,6 +149,12 @@ func _drive(secs: float) -> void:
 						near_j = true
 				if not near_j and (p - (on["q"] as Vector2)).dot(Vector2(-d.y, d.x)) < -0.5:
 					_count("autodrive: ticks left of the middle")
+					left_t += dt
+					if absf(left_t - 1.5) < dt * 0.5:
+						_incident("left of middle", p, "%s, %.1f m wide, %d lane(s) a way, held by %s" % [
+							r["en"], float(r["w"]), g._lanes_each_way(r), held], false)
+				else:
+					left_t = 0.0
 		# events the game logged: red lights, rescues
 		while events_seen < g._log.events.size():
 			var ev: Array = g._log.events[events_seen]
