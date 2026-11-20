@@ -647,6 +647,15 @@ than the two waiting for each other for ever.
 
 > Sometimes the autodrive gets completely stuck in those narrow streets.
 
+**Autodrive at a dead end** stops a few car lengths short of the end and turns round the
+way a driver does in a narrow street: indicator on, forward on full lock to the far kerb,
+reverse lights and back on the other lock, forward again -- three moves in a cul-de-sac,
+more in a narrower one -- waiting if a car comes up the street, and drives back out. It
+used to try to swing round in one go and ran into the trees and garden walls at the end.
+
+> Autodrive misbehaves at the end of a dead-end street: the car tries to turn round there
+> and drives into a tree or post beside the road.
+
 **From above, point and go.** Zoomed out over the city, hold a finger (or the mouse) on a
 street for half a second: a ring fills under it, then the view comes down to the car and
 autodrive drives there, as "go to" does. A quick press still drags the view.
@@ -803,6 +812,18 @@ an Israeli flag on a stick from a back window. And the ground darker where more 
 it: a soft patch at the foot of every street tree, the pavement darker along the foot of the
 garden walls. All of it built with each square of the city in a few tens of milliseconds,
 and nothing to do while you drive.
+
+> Night that feels like night ... Grass blades near the camera ... lets start with these too.
+> and then go the video from today for more ideas
+
+**A night that feels like night.** The night is dark and only a little blue now (it was a
+teal "day for night" over everything), with the city's own glow low on the horizon. Every
+street lamp has a halo round its head and a warm pool of light under it on the pavement as
+well as the road (the pools used to lie under the pavement, and showed only on the road);
+headlights, yours and the traffic's, glow, and their beams light the road ahead; a lit
+shop window throws its light onto the pavement in front of it. No glow effect over the
+whole picture -- that costs a laptop's browser a millisecond or two every frame -- the
+halos are drawn with the pools, as part of what was drawn already.
 
 > I took a video on my phone, walking in Givatayim.
 
@@ -979,13 +1000,15 @@ contributors under the ODbL, which is why the credit sits on screen.
   What a shop looks like (awning, tables, the bus shelter) is generic. The parked cars
   (about a quarter of the kerb), the people walking and sitting at cafe tables, rooftop
   solar heaters and rooms (Givatayim), pitched roofs on small houses (Bedford).
-- **Guessed, in Bedford: how high its bridges are.** OSM says which ways are bridges but
+- **Guessed, in Bedford and Ashdod: how high the bridges are, how deep the tunnels.** OSM says which ways are bridges but
   not how high, so the game works it out as the town loads: each overpass rises to clear
   what it crosses, on ramps up the roads leading to it, an interchange's junctions up on
   them and its slip roads coming down. Highway 102's overpasses, the Bedford Bypass, the
-  MacKay Bridge's approach. Ramps are walled, not grassy banks, yet.
-- **Not there yet**: bridges in Givatayim and Ashdod (still drawn on the ground), and
-  tunnels in the real towns (left out). People crossing anywhere but a zebra.
+  MacKay Bridge's approach; in Ashdod Highway 4's interchanges and Sderot Menachem Begin's
+  underpass, down a cutting under the road it crosses. The ramps are grass banks with a guardrail along the top where
+  there is room for them, retaining walls where there is not.
+- **Not there yet**: bridges in Givatayim (still drawn on the ground), and tunnels under
+  footpaths (left out). People crossing anywhere but a zebra.
 
 To make your own street more accurate, fix it on openstreetmap.org (building heights are
 the most useful thing to add) and bake again.

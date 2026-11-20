@@ -21,7 +21,7 @@ const LEVELS := [
 	{"name": "Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med"},
 	# "decks": "infer" -- its bridges' heights worked out as it loads (decks.gd: infer)
 	{"name": "Bedford, Nova Scotia", "city": "bedford", "look": "north", "decks": "infer"},
-	{"name": "Ashdod", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med"},
+	{"name": "Ashdod", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med", "decks": "infer"},
 	# made up by tools/fake_city.py: one small town with one of everything, ringed by mountains,
 	# that loads in a moment -- for checking a change, not for exploring
 	{"name": "Kiryat Dimyon (test town)", "city": "dimyon", "start": ["הנשיא", "השוק"], "look": "med"},
@@ -5495,6 +5495,8 @@ func _partner(c: Vector2, d: Vector2, ri: int, hw: float, o: int) -> Array:
 var _pool_at: Array = []             ## Vector3(x, z, radius)
 var _pools_made := false
 var _pools_from := 0                 ## _pool_at before this have theirs
+var _shop_lights: Array = []         ## [the window's foot, out to the street, how wide] of every lit shop window
+var _shop_lit_from := 0
 
 func _make_pools() -> void:
 	_pools_made = true
@@ -5502,8 +5504,27 @@ func _make_pools() -> void:
 	for i in range(_pools_from, _pool_at.size()):
 		var q: Vector3 = _pool_at[i]
 		_pool(pools, Vector2(q.x, q.y), q.z)
+		# the lamp's halo, at its head (a street lamp's ~7 m up, a park globe's ~3.8 m)
+		_halo(pools, _g3(Vector2(q.x, q.y), 3.75 if q.z < 5.0 else 6.9), 0.75 if q.z >= 5.0 else 0.5)
 	_pools_from = _pool_at.size()
-	for mi: MeshInstance3D in _add_mesh(pools, _glow_mat("lamplight", 0.4), false, LAMP_RANGE):
+	# a lit shop window's light on the pavement in front of it
+	for i in range(_shop_lit_from, _shop_lights.size()):
+		var s: Array = _shop_lights[i]
+		var at: Vector2 = s[0]
+		var n: Vector2 = s[1]
+		var w: float = 1.5 * float(s[2])
+		var t := Vector2(-n.y, n.x)
+		var y := KERB_H + 0.03
+		var a0 := _g3(at - t * w, y)
+		var a1 := _g3(at + t * w, y)
+		var b0 := _g3(at - t * (w + 0.8) + n * 2.6, y)
+		var b1 := _g3(at + t * (w + 0.8) + n * 2.6, y)
+		var m0 := _g3(at, y)
+		pools.tri(m0, a1, b1, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(0.35, 0), Vector2(0.6, 0.72))
+		pools.tri(m0, b1, b0, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(0.6, 0.72), Vector2(-0.6, 0.72))
+		pools.tri(m0, b0, a0, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(-0.6, 0.72), Vector2(-0.35, 0))
+	_shop_lit_from = _shop_lights.size()
+	for mi: MeshInstance3D in _add_mesh(pools, _glow_mat("lamplight", 0.75), false, LAMP_RANGE):
 		mi.visible = _night
 		_night_nodes.append(mi)
 
@@ -5948,15 +5969,42 @@ func _sports_pitch(ring: PackedVector2Array, lines: Buf, frames: Buf) -> void:
 var _night := false
 var _night_nodes: Array = []          ## shown only at night: light pools, headlight beams
 
+## UV2.y 1: a halo round a light instead -- every vertex of its quad at the light, UV its
+## corner (-1..1), COLOR.r its size: turned to face the eye here, at least a few pixels across
+## however far, in front of the lamp's own head. It stands in for a glow effect (a bloom over
+## the whole frame), which costs a laptop's browser a millisecond or two every frame: these
+## are drawn with the pools and the beams, no draws of their own. Not fogged (the night's haze
+## added to them turned far pools into cyan blobs); far pools fade out by themselves.
 const GLOW_SHADER := """
 shader_type spatial;
-render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled, skip_vertex_transform;
 uniform vec4 col : source_color;
 uniform float strength = 0.5;
+varying float halo;
+varying float fade;
+void vertex() {
+	halo = UV2.y;
+	if (UV2.y > 0.5) {
+		vec3 c = (MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
+		float d = max(-c.z, 0.1);
+		float s = max(COLOR.r * 1.2, d * 0.009);
+		c += normalize(-c) * min(0.7, d * 0.4);
+		VERTEX = c + vec3(UV, 0.0) * s;
+		fade = 1.0 - smoothstep(450.0, 700.0, d);
+	} else {
+		VERTEX = (MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
+		fade = 1.0 - smoothstep(220.0, 330.0, length(VERTEX));
+	}
+}
 void fragment() {
-	// UV: 0 at the light, 1 at the rim (pools); beams fade along their length and to the sides
-	float k = UV2.x > 0.5 ? (1.0 - UV.y) * (1.0 - UV.y) * (1.0 - UV.x * UV.x) : clamp(1.0 - length(UV), 0.0, 1.0);
-	ALBEDO = col.rgb * k * k * strength;
+	if (halo > 0.5) {   // a bright core and a soft halo round it
+		float t = clamp(1.0 - length(UV), 0.0, 1.0);
+		ALBEDO = col.rgb * (t * t * 0.3 + pow(t, 12.0) * 1.6) * fade;
+	} else {
+		// UV: 0 at the light, 1 at the rim (pools); beams fade along their length and to the sides
+		float k = UV2.x > 0.5 ? (1.0 - UV.y) * (1.0 - UV.y) * (1.0 - UV.x * UV.x) : clamp(1.0 - length(UV), 0.0, 1.0);
+		ALBEDO = col.rgb * k * k * strength * fade;
+	}
 }
 """
 var _glow_mats := {}
@@ -5979,15 +6027,16 @@ func _glow_mat(tone: String, strength: float) -> ShaderMaterial:
 ## and one at the rim, each point's height worked out once
 func _pool(buf: Buf, p: Vector2, r: float) -> void:
 	var seg := 12
-	var mid := _g3(p, 0.09)
+	var y := KERB_H + 0.03   # (over the pavement too: at 0.09 it lay under it, lit only the road)
+	var mid := _g3(p, y)
 	var inner: Array = []
 	var outer: Array = []
 	var dirs: Array = []
 	for i in range(seg):
 		var e := Vector2(cos(TAU * i / seg), sin(TAU * i / seg))
 		dirs.append(e)
-		inner.append(_g3(p + e * r * 0.55, 0.09))
-		outer.append(_g3(p + e * r, 0.09))
+		inner.append(_g3(p + e * r * 0.55, y))
+		outer.append(_g3(p + e * r, y))
 	for i in range(seg):
 		var j := (i + 1) % seg
 		var e0: Vector2 = dirs[i]
@@ -5996,10 +6045,20 @@ func _pool(buf: Buf, p: Vector2, r: float) -> void:
 		buf.tri(inner[i], outer[i], outer[j], Vector3.UP, Color.WHITE, e0 * 0.55, e0, e1)
 		buf.tri(inner[i], outer[j], inner[j], Vector3.UP, Color.WHITE, e0 * 0.55, e1, e1 * 0.55)
 
+## a halo (see GLOW_SHADER) round a light at `at`, `size` metres across near to
+func _halo(b: Buf, at: Vector3, size: float) -> void:
+	var col := Color(size, 0, 0)
+	var u2 := Vector2(0, 1)
+	b.tri(at, at, at, Vector3.BACK, col, Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), u2)
+	b.tri(at, at, at, Vector3.BACK, col, Vector2(-1, -1), Vector2(1, 1), Vector2(-1, 1), u2)
+
 ## a headlight beam on the road, local to a car facing +Z: from the bumper, 26 m out and
-## widening (UV.x across, UV.y along; UV2.x = 1 marks it as a beam for the shader)
+## widening (UV.x across, UV.y along; UV2.x = 1 marks it as a beam for the shader); and a halo
+## round each headlight (the player's car and the traffic's share this mesh)
 func _beam_mesh() -> ArrayMesh:
 	var b := Buf.new()
+	for sx: float in [-0.68, 0.68]:
+		_halo(b, Vector3(sx, 0.68, 2.2), 0.32)
 	var near := 2.3
 	var far := 28.0
 	var steps := 6
@@ -8246,6 +8305,8 @@ func _build_pois() -> void:
 			var b := Basis(Vector3.UP, face)
 			var at3 := func(q: Vector2, out: float, y: float) -> Vector3: return Vector3(q.x + n.x * out, gy + y, q.y + n.y * out)
 			front["glass"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.05, 1.3)))
+			if _mine(pos):
+				_shop_lights.append([pos + n * 0.1, n, wide])
 			front["beam"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.08, 2.62)))
 			for sgn: float in [-1.0, 1.0]:
 				front["post"].append(Transform3D(b, at3.call(pos + along * 1.56 * wide * sgn, 0.08, 1.3)))
@@ -10553,24 +10614,28 @@ func _retint_city() -> void:
 	lamp.emission = _tone["lamplight"]
 	lamp.emission_energy_multiplier = 2.4
 	if _smat.has("shopglass"):
-		(_smat["shopglass"] as StandardMaterial3D).emission_energy_multiplier = 2.0 if _night else 0.7
+		# (at night 2.0 clipped to a blank white pane; the light spills onto the pavement instead)
+		(_smat["shopglass"] as StandardMaterial3D).emission_energy_multiplier = 0.85 if _night else 0.7
 	if _night and env != null:
 		var bg := Palette.col("bg")
 		var pl := Palette.col("player")
 		var ink := Palette.col("ink")
-		var haze := bg.lerp(pl, 0.3).lerp(ink, 0.06)
+		var wn := Palette.col("warn")
+		# a dark night, a little blue (the palette's player colour, lightly: more of it was a
+		# teal "day for night" over everything), the city's own glow low on the horizon
+		var haze := bg.lerp(ink, 0.1).lerp(wn, 0.05)
 		var sky := env.sky.sky_material as ProceduralSkyMaterial
-		sky.sky_top_color = bg.lerp(pl, 0.05)
-		sky.sky_horizon_color = haze
+		sky.sky_top_color = bg.lerp(pl, 0.04)
+		sky.sky_horizon_color = bg.lerp(ink, 0.16).lerp(wn, 0.1)
 		sky.ground_horizon_color = haze
 		sky.ground_bottom_color = bg
 		env.background_color = haze
-		env.ambient_light_color = bg.lerp(pl, 0.5).lerp(ink, 0.25)
-		env.ambient_light_energy = 0.42
+		env.ambient_light_color = bg.lerp(ink, 0.32).lerp(pl, 0.14)
+		env.ambient_light_energy = 0.38
 		env.fog_light_color = haze
 		env.fog_density = FOG_NIGHT
-		sun.light_color = ink.lerp(pl, 0.4)
-		sun.light_energy = 0.18
+		sun.light_color = ink.lerp(pl, 0.15)   # the moon
+		sun.light_energy = 0.14
 		sun.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY   # no sun disc in a night sky
 	if _car_shader_mat != null:   # the cars' reflections, lamps and wells
 		_car_material()
@@ -10611,7 +10676,7 @@ func _build_car() -> void:
 	_body.add_child(_sedan_node)
 	var beam := MeshInstance3D.new()
 	beam.mesh = _beam_mesh()
-	beam.material_override = _glow_mat("lamplight", 0.55)
+	beam.material_override = _glow_mat("lamplight", 0.9)
 	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	beam.visible = _night
 	_car.add_child(beam)
@@ -13488,12 +13553,12 @@ func _camera(dt: float, p: Vector2, yaw: float) -> void:
 ## little as the car pulls away, the eyes leading into a turn
 func _seat_camera(dt: float, yaw: float) -> void:
 	_cam_yaw = yaw
-	_look_turn = lerpf(_look_turn, clampf(_steer * 0.55, -0.3, 0.3), 1.0 - exp(-dt * 3.0))
+	_look_turn = lerpf(_look_turn, clampf(_steer * 0.45, -0.25, 0.25), 1.0 - exp(-dt * 2.0))
 	var xf := _body.global_transform
 	# (the head turned: the eyes a little to that side and back, the view round with it)
-	var head := SEAT + Vector3(sin(_head_yaw) * 0.06, 0, clampf(-_a_long * 0.004, -0.04, 0.04) - (1.0 - cos(_head_yaw)) * 0.05)
+	var head := SEAT + Vector3(sin(_head_yaw * SEAT_HEAD) * 0.06, 0, clampf(-_a_long * 0.004, -0.04, 0.04) - (1.0 - cos(_head_yaw * SEAT_HEAD)) * 0.05)
 	var eye := xf * head
-	var turn := _look_turn - _head_yaw
+	var turn := _look_turn - _head_yaw * SEAT_HEAD
 	var ahead := Vector3(-sin(turn), -0.06, cos(turn)) * 12.0   # +X is the car's left
 	look_from(eye, xf * (head + ahead))
 	cam.fov = lerpf(72.0, 78.0, clampf(absf(_v) / 30.0, 0.0, 1.0))
@@ -13529,32 +13594,56 @@ func _head_tick(dt: float) -> void:
 		_head_plan = []
 	else:
 		_head_check -= dt
-		if _head_check <= 0.0 and _head_plan.is_empty() and absf(_v) < 6.5 and _gear > 0:
-			_head_check = 0.15
-			var j := _junction_ahead_me(26.0)
-			if j >= 0 and (_nodes[j].distance_to(_head_at) > 45.0 or _head_at_t > 12.0):
+		# the look left and right: standing or all but, at a junction, a light or a sign,
+		# once a junction. (Rolling below 23 km/h near any junction, it fired again and again
+		# in slow traffic and turned the seat view half round each time.)
+		if _head_check <= 0.0 and _head_plan.is_empty() and absf(_v) < 2.5 and _gear > 0:
+			_head_check = 0.2
+			var j := _junction_ahead_me(16.0)
+			if j >= 0 and (_nodes[j].distance_to(_head_at) > 45.0 or _head_at_t > 20.0):
 				_head_at = _nodes[j]
 				_head_at_t = 0.0
-				_head_plan = [[0.95, 0.45], [-0.95, 0.5], [0.55, 0.25]]
+				_head_plan = [[0.9, 0.5], [-0.9, 0.55], [0.5, 0.3]]
 		if not _head_plan.is_empty():
-			want = float(_head_plan[0][0])
-			if absf(_head_yaw - want) < 0.1:
-				_head_hold += dt
-				if _head_hold >= float(_head_plan[0][1]):
-					_head_hold = 0.0
-					_head_plan.pop_front()
+			if absf(_v) > 6.0:
+				_head_plan = []   # (off again before it was done: eyes on the road)
+			else:
+				want = float(_head_plan[0][0])
+				if absf(_head_aim - want) < 0.05:
+					_head_hold += dt
+					if _head_hold >= float(_head_plan[0][1]):
+						_head_hold = 0.0
+						_head_plan.pop_front()
 		elif _gear < 0 and absf(_v) > 0.2:
-			want = -1.3   # over the right shoulder, reversing
+			want = -1.2   # over the right shoulder, reversing
 		else:
-			want = clampf(-_steer * 1.6, -0.7, 0.7)   # into the turn (+ steer is right)
-			var at := _person_ahead_me(16.0)
-			if at != Vector2.INF and absf(_v) < 5.0:
-				want = clampf(-_fwd().angle_to(at - _pos), -1.1, 1.1)
-	# a head turns quickly through the middle and slows into where it is going
-	var gap := absf(want - _head_yaw)
-	_head_yaw = move_toward(_head_yaw, want, HEAD_RATE * dt * clampf(gap * 2.5, 0.25, 1.0))
+			# standing for people on the crossing ahead: at one of them, held a moment (the
+			# nearest, chosen afresh every frame, sent the eyes from one to the next)
+			_head_person_t -= dt
+			if absf(_v) < 2.0:
+				if _head_person_t <= 0.0:
+					_head_person = _person_ahead_me(14.0)
+					_head_person_t = 1.5
+				if _head_person != Vector2.INF:
+					want = clampf(-_fwd().angle_to(_head_person - _pos), -1.0, 1.0)
+			else:
+				_head_person = Vector2.INF
+	# eased: the aim moves at a head's pace and the head follows it smoothly. (The steering
+	# was in it too, on top of the seat view's own lead into a turn: every small correction
+	# autodrive made swung the view.)
+	_head_aim = move_toward(_head_aim, want, 2.2 * dt)
+	_head_yaw = lerpf(_head_yaw, _head_aim, 1.0 - exp(-dt * 7.0))
 	if _player_car_mat != null:
-		_player_car_mat.set_shader_parameter("head_turn", _head_yaw)
+		# the head drawn in the car leans a little into a turn as well (the seat view does
+		# that by itself)
+		_head_steer = lerpf(_head_steer, clampf(-_steer * 0.8, -0.35, 0.35), 1.0 - exp(-dt * 3.0))
+		_player_car_mat.set_shader_parameter("head_turn", _head_yaw + _head_steer)
+
+var _head_aim := 0.0                         ## where the head is heading for (eased toward)
+var _head_person := Vector2.INF              ## the person it is looking at, held a moment
+var _head_person_t := 0.0
+var _head_steer := 0.0                       ## the drawn head's lean into a turn
+const SEAT_HEAD := 0.7                       ## how much of the head's turn the seat view takes
 
 func _toggle_look() -> void:
 	_look_on = not _look_on
@@ -14013,6 +14102,8 @@ func _set_auto(on: bool) -> void:
 	_ap_stuck = 0.0
 	_ap_back = 0.0
 	_ap_turn = 0.0
+	_ap_dead = Vector2.INF
+	_ap_kt = {}
 	if on:
 		_gear = 1
 	Probe.event("autodrive", {"on": on})
@@ -14076,8 +14167,18 @@ func _autodrive(dt: float) -> Array:
 			if _cross.is_empty() and _ap_v.size() > 0:
 				_ap_v[_ap_v.size() - 1] = 0.0
 			break
-	# at a dead end's turning point, stopped: on to the lane back, which faces the other
-	# way, so it turns round on the spot just below
+	# at a dead end: stopped short of its end, it turns round there in moves forward and back
+	if _ap_kt.is_empty() and _ap_dead != Vector2.INF and _ap_at_dead():
+		if absf(_v) > 0.3:
+			# (on the brake at the stop: crawling up to the plan's last point, it could roll on
+			# past it, and the speed allowed grew with its distance from it, behind or not)
+			_ap_why = "turning"
+			return [0.0, 1.0, 0.0]
+		_ap_kt_start()
+	if not _ap_kt.is_empty():
+		return _ap_kturn(dt)
+	# at a one-way dead end's turning point, stopped: on to the lane back, which faces the
+	# other way, so it turns round on the spot just below
 	while _ap_pts.size() > 2 and _ap_v[1] == 0.0 and absf(_v) < 1.0 and _pos.distance_to(_ap_pts[1]) < 5.0:
 		_ap_pts.remove_at(0)
 		_ap_v.remove_at(0)
@@ -14467,6 +14568,8 @@ func _ap_rescue() -> bool:
 func _ap_plan() -> void:
 	_cross = {}
 	_ap_queue = []
+	_ap_dead = Vector2.INF
+	_ap_kt = {}
 	_ap_pts = PackedVector2Array()
 	_ap_v = PackedFloat32Array()
 	_ap_lim = PackedFloat32Array()
@@ -14777,16 +14880,22 @@ func _ap_next() -> bool:
 	if ways.is_empty():
 		if back.x < 0:
 			return false
-		# a dead end: stop at its end and turn round there (see _autodrive). Planned as a
-		# lane out and a lane back, the U-turn was a corner a few metres across taken at
-		# 2.5 m/s -- autodrive swung wide past the end, onto the footpath beyond, and drove
-		# on along it at 40 km/h while it worked its way round.
-		var apex := _ap_pts.size() - 1
-		_ap_leg(back.x, back.y, back.z)
-		for k in [apex, apex + 1]:
-			if k > 0 and k < _ap_v.size() - 1:
-				_ap_v[k] = 0.0
-		return true
+		if int(r["o"]) != 0:
+			# a one-way street that just ends (cut by the map's edge, or a mapping slip): the way
+			# back is against it, and planned afresh a turned car would be sent back in. So the
+			# leg back is planned on, with a stop at the end, turned onto on the spot (_autodrive).
+			var apex := _ap_pts.size() - 1
+			_ap_leg(back.x, back.y, back.z)
+			for k in [apex, apex + 1]:
+				if k > 0 and k < _ap_v.size() - 1:
+					_ap_v[k] = 0.0
+			return true
+		# a dead end: stop short of its end and turn round there in moves forward and back (see
+		# "turning round at a dead end"). Planned as a lane out and a lane back, the U-turn was a
+		# corner a few metres across taken at 2.5 m/s -- autodrive swung wide past the end into
+		# the trees and garden walls, or onto the footpath beyond and on along it at 40 km/h.
+		_ap_mark_dead_end()
+		return false
 	# a real crossing (two or more proper streets on): ask, and plan no further for now --
 	# but not round a roundabout, where the exits come too fast to ask at each
 	var main: Array = ways.filter(func(w): return not w["service"])
@@ -14866,6 +14975,169 @@ func _ap_ways(ri: int, ei: int, dir: int) -> Array:
 			ways.append({"leg": Vector3i(e.x, nxt, d2), "turn": came.angle_to(go), "name": r2["name"],
 				"en": r2["en"], "service": r2["k"] == "service", "score": score})
 	return [ways, back]
+
+## ---- turning round at a dead end ----
+## The way back out of a dead end used to be planned straight on from its end: a U-turn in
+## one sweep, which needs ~10 m and a cul-de-sac is 6.5 m across, taken at the 9 km/h the
+## plan's corner speed allowed (and more: the car arrived at 45 km/h and braked late). It ran
+## into the trees and garden walls at the end at 20-30 km/h. For a while it then stopped at
+## the very end and spun round on the spot there, corners over the kerb. Now the plan stops
+## AP_DEAD_ROOM short of the end and the car turns round there the way a driver does in a
+## narrow street: forward on full lock until the nose nears the far kerb (or anything solid),
+## back on the other lock until the tail nears the near one, and so on -- three moves in a
+## 6.5 m street -- until it faces out, waiting for any car coming up the street; then the
+## way out is planned afresh from where it stands. (A one-way street that just ends still
+## stops at its end and turns on the spot.)
+## tests/dead_end_turns.gd drives into every cul-de-sac of a city.
+const AP_DEAD_ROOM := 7.0           ## metres short of a dead end's end it stops to turn round
+const AP_KT_V := 1.3                ## m/s, the crawl of each move
+const AP_KT_KERB := 0.6             ## a move ends when a bumper would be this far (m) over the kerb (the wheels are ~0.9 m in from it)
+const AP_KT_MOVES := 7              ## more than this, or AP_KT_SECS, and the rest is turned on the spot
+const AP_KT_SECS := 30.0
+var _ap_dead := Vector2.INF         ## where the plan stops to turn round (INF: no dead end ahead)
+var _ap_dead_in := Vector2.ZERO     ## ...the way into the dead end there
+var _ap_dead_end := Vector2.ZERO    ## ...and its end
+var _ap_kt := {}                    ## turning round: {to, side, gear, n, t, mt, stop, from, idle}; {} when not
+
+## the plan runs into a dead end (its last leg ends there, _ap_end): cut it back to stop
+## AP_DEAD_ROOM short of the end (and inside the map's edge), and plan nothing past it
+func _ap_mark_dead_end() -> void:
+	var r: Dictionary = _roads[_ap_end.x]
+	var pts: PackedVector2Array = r["pts"]
+	var ei := _ap_end.y
+	var prev := clampi(ei - _ap_end.z, 0, pts.size() - 1)
+	var into := (pts[ei] - pts[prev]).normalized()
+	_ap_dead_end = pts[ei]
+	_ap_dead_in = into if into != Vector2.ZERO else _fwd()
+	_ap_end = Vector3i(-1, 0, 0)
+	var keep := _bounds.grow(-EDGE - CAR_LEN)
+	var n := _ap_pts.size()
+	var k := n - 1   # the last point far enough short of the end (0 if none is)
+	while k > 0 and ((_ap_dead_end - _ap_pts[k]).dot(_ap_dead_in) < AP_DEAD_ROOM or not keep.has_point(_ap_pts[k])):
+		k -= 1
+	var stop := _ap_pts[k]
+	if k < n - 1:
+		var sa := (_ap_dead_end - _ap_pts[k]).dot(_ap_dead_in)
+		var sb := (_ap_dead_end - _ap_pts[k + 1]).dot(_ap_dead_in)
+		if sa > AP_DEAD_ROOM and sa - sb > 0.01:
+			stop = _ap_pts[k].lerp(_ap_pts[k + 1], clampf((sa - AP_DEAD_ROOM) / (sa - sb), 0.0, 1.0))
+			if not keep.has_point(stop):
+				stop = _ap_pts[k]
+	var v := _ap_v[k]
+	var lim := _ap_lim[k]
+	_ap_pts.resize(k + 1)
+	_ap_v.resize(k + 1)
+	_ap_lim.resize(k + 1)
+	if _ap_pts.size() < 2 or stop.distance_to(_ap_pts[k]) > 0.5:   # (a plan is two points at least)
+		_ap_pts.append(stop)
+		_ap_v.append(v)
+		_ap_lim.append(lim)
+	_ap_dead = _ap_pts[_ap_pts.size() - 1]
+
+## at the stop where the plan turns round, or past it (handed over nearer the end than that)
+func _ap_at_dead() -> bool:
+	# (from 2.5 m short: the plan's speeds bring it to a standstill 1.5 m short of a stop)
+	return _pos.distance_to(_ap_dead) < AP_DEAD_ROOM + 5.0 and (_pos - _ap_dead).dot(_ap_dead_in) > -2.5
+
+func _ap_kt_start() -> void:
+	# to face back the way the street runs where the car stands; round to the left from the
+	# right-hand lane (the room is on that side), to the right from the left of the middle
+	var to := -_ap_dead_in
+	var side := -1
+	var hit := _nearest_seg(_pos, 20.0, true, true, _y)
+	if not hit.is_empty():
+		var pts: PackedVector2Array = (_roads[hit["road"]] as Dictionary)["pts"]
+		var d := (pts[int(hit["seg"]) + 1] - pts[int(hit["seg"])]).normalized()
+		to = -d if d.dot(_ap_dead_in) > 0.0 else d
+		if (_pos - (hit["q"] as Vector2)).dot(Vector2(-to.y, to.x)) > 0.4:
+			side = 1   # (right of the middle as it will face: that is the left now)
+	_ap_kt = {"to": to, "side": side, "gear": 1, "n": 1, "t": 0.0, "mt": 0.0, "stop": false, "from": _pos, "idle": 0}
+	_set_blink(side)
+	_show_banner("turning round", 1.2)
+	Probe.event("turning_round", {"at": Vector2i(_pos)})
+	_log.event("turning round")
+
+## a move's end: the circle at that end of the car, `ahead` metres on, would touch something,
+## leave the asphalt (past the kerb, or past the end of the street), or reach the map's edge
+func _ap_kt_blocked(p: Vector2) -> bool:
+	if _push_out(p, CAR_R, true, true, _y) != Vector2.ZERO:
+		return true
+	if not _bounds.grow(-EDGE - CAR_R - 0.3).has_point(p):
+		return true
+	if (p - _ap_dead_end).dot(_ap_dead_in) > -CAR_R:
+		return true
+	var on := _nearest_seg(p, 15.0, true, false, _y)   # (a driveway's mouth is asphalt too)
+	return on.is_empty() or float(on["edge"]) + CAR_R > AP_KT_KERB
+
+func _ap_kturn(dt: float) -> Array:
+	_ap_why = "turning"   # (the drive log's word for it)
+	_ap_kt["t"] += dt
+	_ap_kt["mt"] += dt
+	var to: Vector2 = _ap_kt["to"]
+	var g: int = _ap_kt["gear"]
+	var diff := angle_difference(_yaw, to.angle())
+	if absf(diff) < 0.45:
+		# facing out, near enough for the lane-following to take it from here: stop, then plan
+		if absf(_v) > 0.1:
+			return [0.0, 1.0, 0.0]
+		var spot := int(_ap_kt["n"]) > AP_KT_MOVES or float(_ap_kt["t"]) > AP_KT_SECS
+		Probe.event("turned_round", {"moves": mini(int(_ap_kt["n"]), AP_KT_MOVES), "secs": snappedf(float(_ap_kt["t"]), 0.1), "on_the_spot": spot})
+		_log.event("turned round", "%d moves" % int(_ap_kt["n"]))
+		_ap_kt = {}
+		_ap_dead = Vector2.INF
+		_gear = 1
+		_set_blink(0)   # (it cannot tell a half turn left from one right: off by hand)
+		_ap_pts = PackedVector2Array()   # (planned afresh next tick, facing out)
+		return [0.0, 1.0, 0.0]
+	if int(_ap_kt["n"]) > AP_KT_MOVES or float(_ap_kt["t"]) > AP_KT_SECS:
+		# no room for it (a car parked across, a wall at the kerb): the rest on the spot
+		_yaw = wrapf(_yaw + clampf(diff, -1.7 * dt, 1.7 * dt), -PI, PI)
+		_yaw_rate = 0.0
+		_v = 0.0
+		_v_lat = 0.0
+		return [0.0, 1.0, 0.0]
+	_gear = g
+	var wheel := float(_ap_kt["side"]) * MAX_STEER * g   # forward toward the turn, back the other lock
+	if _ap_kt["stop"]:
+		# between moves: stand, into the other gear, the wheel over (below), then go
+		if absf(_v) > 0.08:
+			return [0.0, 1.0, _steer]
+		_ap_kt["gear"] = -g
+		_ap_kt["n"] = int(_ap_kt["n"]) + 1
+		_ap_kt["mt"] = 0.0
+		_ap_kt["stop"] = false
+		_ap_kt["from"] = _pos
+		_gear = -g
+		return [0.0, 1.0, _steer]
+	# a car coming up the street while it is across it: stand and let it stop or go by, as a
+	# driver halfway through a turn does (the probes at the car's ends miss one coming at its
+	# side). The move's clock stands too.
+	for c in _traffic.cars:
+		if c.alive and c.v > 0.5 and c.pos.distance_to(_pos) < 9.0 \
+				and Vector2(sin(c.yaw), cos(c.yaw)).dot(_pos - c.pos) > 0.0:
+			_ap_kt["mt"] = float(_ap_kt["mt"]) - dt
+			return [0.0, 1.0, _steer]
+	if absf(_steer - wheel) > 0.02 and absf(_v) < 0.3:
+		# the wheel turned over standing still, as a driver does, not snapped from lock to lock
+		return [0.0, 1.0, move_toward(_steer, wheel, 1.8 * dt)]
+	var fwd := _fwd()
+	var end_p := _pos + fwd * float(g) * (CAR_OFF + 0.25 + absf(_v) * 0.3)
+	# the move is over: at the kerb or something solid, or crawling nowhere (a lip, a slope)
+	if _ap_kt_blocked(end_p) or float(_ap_kt["mt"]) > 6.0 or (float(_ap_kt["mt"]) > 2.0 and absf(_v) < 0.05):
+		_ap_kt["stop"] = true
+		# two moves running that got nowhere: boxed in both ways (crosswise in a street not
+		# much longer than the car), the rest on the spot
+		_ap_kt["idle"] = int(_ap_kt["idle"]) + 1 if _pos.distance_to(_ap_kt["from"]) < 0.15 else 0
+		if int(_ap_kt["idle"]) >= 2:
+			_ap_kt["n"] = AP_KT_MOVES + 1
+		return [0.0, 1.0, wheel]
+	var err := AP_KT_V - absf(_v)
+	# (plus what holds it on the slope: backing up a 17% cul-de-sac on the gentle throttle of
+	# the flat it crawled at 0.2 m/s and ran out of time)
+	var hill := MASS * 9.81 * sin(_slope) * g / (ENGINE_F if g > 0 else REVERSE_F)
+	var throttle := clampf(hill + 0.12 + err * 0.6, 0.0, 1.0) if err > 0.0 else 0.0
+	var brake := clampf(-err * 0.5, 0.0, 1.0)
+	return [throttle, brake, wheel]
 
 ## Autodrive's look ahead at a junction: does this way only lead off the map? True when every
 ## way on from it within EDGE_LOOK metres runs into the barrier at the map's edge. (An ordinary
