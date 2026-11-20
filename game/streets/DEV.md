@@ -637,6 +637,14 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   1 min, the recording (`RECORD=1`, 966 frames) about 18.5 min, the side-by-side under 1
   min, the three playtests (levels 5, 1, 6) about a minute together -- the whole chain about
   21 min. Tell the user so when you start it.
+- **Other sessions' city-wide things land on the walks' lines after a merge** -- bollards,
+  café tables, and the front gardens' bougainvillea clumps that hang over a pavement's back
+  (`_add_post` 0.45 m off the garden wall, r 0.22: two of them on walk 2 at 1 s and 29 s).
+  `SCAN=1` finds them; `POSTS_NEAR=x,z,r` lists the posts there and also the nearest road's
+  edge and which way the road lies, so the walk can step to the road side by the right
+  amount. Where a clump and a tree in the pavement leave less than half a metre, the walk
+  goes round the tree's road side as a person would, and Catmull-Rom cuts the corner: keep
+  0.65 m off a tree's centre at the points either side, not just at one.
 - **The film's clock is decoding from its start.** `ffmpeg -ss` before `-i` lands on the
   wrong frames in this clip's first seconds (VLC's variable-rate transcode: 2999 frames in
   100 s, said to be 60 fps); `-vf trim=a:b,setpts=PTS-STARTPTS` agrees with the
