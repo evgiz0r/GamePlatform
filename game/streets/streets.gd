@@ -327,6 +327,28 @@ void fragment() {
 	float seed = floor(COLOR.r * 50.0 + 0.5) * 7.0 + floor(COLOR.a * 10.0 + 0.5) * 13.0 + floor(COLOR.b * 4.0 + 0.5) * 5.0;
 	float r1 = hash(vec2(ci, lv) + seed);
 	float r2 = hash(vec2(ci + 13.0, lv * 3.0) + seed);
+	// Stone and tile, as Givatayim's walls are: COLOR.a high is Jerusalem stone, laid in
+	// courses of blocks; most blocks have a stone plinth to knee height whatever the walls
+	// above; one white block in five is clad in small square mosaic tiles. Drawn only while a
+	// pixel is smaller than the joints are wide apart, an average further off.
+	float stone_k = COLOR.a;
+	bool plinth = up < 0.9 && siding < 0.5 && hash(vec2(seed, 3.7)) < 0.6;
+	if (siding < 0.5 && (stone_k > 0.45 || plinth)) {
+		float course = 0.33;
+		float row = floor(up / course);
+		float bl = 0.55 + 0.35 * hash(vec2(row, seed + 1.0));
+		float xs = along / bl + hash(vec2(row, seed));
+		vec2 f = vec2(fract(xs) * bl, fract(up / course) * course);
+		float jd = min(min(f.x, bl - f.x), min(f.y, course - f.y));
+		vec3 sc = (plinth && stone_k <= 0.45) ? wall_c.rgb * COLOR.r * 0.9 : base;
+		sc *= 0.94 + 0.12 * hash(vec2(floor(xs), row) + seed);
+		base = mix(sc, sc * 0.72, line_cover(jd, 0.005, aa) * (1.0 - smoothstep(0.02, 0.06, aa)));
+	} else if (siding < 0.5 && tk < 0.5 && stone_k < 0.2 && hash(vec2(seed, 9.1)) < 0.2) {
+		vec2 tg = vec2(along, up) / 0.024;
+		vec2 tf = abs(fract(tg) - 0.5);
+		float tj = smoothstep(0.38, 0.46, max(tf.x, tf.y));
+		base *= mix(1.0, (0.97 + 0.05 * hash(floor(tg) + seed)) * mix(1.0, 0.86, tj), 1.0 - smoothstep(0.006, 0.02, aa));
+	}
 	vec3 col = base;
 	float rough = 0.92;
 	// at night some rooms have the light on: warm in homes, cooler in offices
@@ -335,12 +357,25 @@ void fragment() {
 	vec3 emit = vec3(0.0);
 	bool facade = len >= 2.5 && up < top - 0.9;
 	bool upper = up >= 3.0 || top < 10.0;
+	// A block's ground floor: flats behind barred windows (the floors above are style's), the
+	// way in -- a glazed door -- in the middle bay. (A block that really stands on columns has
+	// no wall there at all: its walls start a storey up.)
+	bool ground = !upper && style < 2.5;
+	float wstyle = ground ? 0.0 : style;
+	bool door = ground && n >= 2.0 && ci == floor(n * 0.5);
 	if (siding > 0.5 && style < 0.5 && facade && fract(up / 0.24) < 0.13) {
 		col *= 0.88;
 	}
 	// ---- the flat facade: paint only (far away, and the whole look at the lowest quality)
-	if (facade && upper) {
-		if (style < 0.5 && siding > 0.5) {
+	if (facade && door) {
+		if (fx > 0.27 && fx < 0.73 && fy < 0.78) {
+			col = (fx < 0.3 || fx > 0.7 || fy > 0.75) ? trim.rgb * 0.8 : glass.rgb * 0.7;
+			pl = 0.0;
+			rough = 0.25;
+			emit = lit.rgb * 0.5;
+		}
+	} else if (facade && (upper || ground)) {
+		if (wstyle < 0.5 && siding > 0.5) {
 			if (fx > 0.25 && fx < 0.75 && fy > 0.28 && fy < 0.84) {
 				bool frame = fx < 0.29 || fx > 0.71 || fy < 0.32 || fy > 0.8 || abs(fx - 0.5) < 0.012 || abs(fy - 0.56) < 0.012;
 				col = frame ? trim.rgb : glass.rgb;
@@ -348,7 +383,7 @@ void fragment() {
 				rough = frame ? 0.6 : 0.2;
 				emit = frame ? vec3(0.0) : room;
 			}
-		} else if (style < 0.5) {
+		} else if (wstyle < 0.5) {
 			if (fx > 0.22 && fx < 0.78 && fy > 0.3 && fy < 0.85) {
 				float shut = r1 > 0.45 ? (r1 - 0.45) * 1.6 : 0.0;
 				bool closed = fy > 0.85 - 0.55 * shut;
@@ -399,17 +434,12 @@ void fragment() {
 				emit = r3 < 0.3 ? lit_cool.rgb * (0.7 + 0.3 * r2) : vec3(0.0);
 			}
 		}
-	} else if (facade && up < 2.7) {
-		if (style > 2.5) {
-			if (fx > 0.04) {
-				col = glass.rgb;
-				pl = 0.0;
-				rough = 0.15;
-				emit = lit_cool.rgb * 0.8;
-			}
-		} else if (fx > 0.14) {
-			col = dark.rgb;
+	} else if (facade && up < 2.7 && style > 2.5) {
+		if (fx > 0.04) {
+			col = glass.rgb;
 			pl = 0.0;
+			rough = 0.15;
+			emit = lit_cool.rgb * 0.8;
 		}
 	}
 	emit *= night * 1.25;
@@ -435,13 +465,19 @@ void fragment() {
 		vec3 tint = mix(vec3(1.0), glass.rgb / max(max(glass.r, glass.g), max(glass.b, 0.05)), 0.45);
 		float blur = smoothstep(0.05, 0.2, aa);
 		float wob = (r1 - 0.5) * 0.06;   // no two panes sit quite flat: each reflects a little differently
-		if (upper && style < 0.5) {
+		if ((upper || ground) && wstyle < 0.5) {
 			// punched windows (houses: inside a white casing), a recess, a sliding window or a
-			// roller shutter part-way down, and a stone sill under it
+			// roller shutter part-way down, and a stone sill under it; on a block's ground floor
+			// bars over them, and the door in the middle bay
 			bool house = siding > 0.5;
 			vec2 lo = house ? vec2(0.29 * cw, 0.96) : vec2(0.22 * cw, 0.9);
 			vec2 hi = house ? vec2(0.71 * cw, 2.4) : vec2(0.78 * cw, 2.55);
 			float rd = house ? 0.07 : 0.16;
+			if (door) {
+				lo = vec2(0.28 * cw, 0.0);
+				hi = vec2(0.72 * cw, 2.3);
+				rd = 0.3;
+			}
 			if (p.x > lo.x && p.x < hi.x && p.y > lo.y && p.y < hi.y) {
 				deep_hit = true;
 				vec2 g;
@@ -453,7 +489,7 @@ void fragment() {
 					emit2 = vec3(0.0);
 					rough2 = 0.85;
 				} else {
-					float shut = (r1 > 0.45 && !house) ? (r1 - 0.45) * 1.6 : 0.0;
+					float shut = (r1 > 0.45 && !house && !door) ? (r1 - 0.45) * 1.6 : 0.0;
 					float sy = hi.y - (hi.y - lo.y) * shut;
 					if (g.y > sy) {   // the shutter's slats, and the room's light between them
 						float sl = fract(g.y / 0.045);
@@ -463,7 +499,8 @@ void fragment() {
 						emit2 = room * night * mix(0.06, gap * 0.25, sharp);
 						rough2 = 0.75;
 					} else {
-						vec3 rc = room_at(g, v, cw, 3.5 + 2.0 * r4, r5, wallc, floorc, wall_a.rgb, sofac, lamp, lit_on, blur);
+						vec3 rc = door ? room_at(g, v, cw, 6.0, 1.0, wall_a.rgb, wall_f.rgb * 0.7, wall_a.rgb, wall_a.rgb * 0.8, lit.rgb, 1.0, blur)
+							: room_at(g, v, cw, 3.5 + 2.0 * r4, r5, wallc, floorc, wall_a.rgb, sofac, lamp, lit_on, blur);
 						// a curtain drawn part way across from one side
 						float cur = r2 > 0.55 ? (r2 - 0.55) * 1.4 : 0.0;
 						if ((r4 > 0.5 ? g.x - lo.x : hi.x - g.x) < (hi.x - lo.x) * cur) {
@@ -477,13 +514,17 @@ void fragment() {
 						if (house) {   // a cross of muntins
 							cover = max(cover, line_cover(abs(g.y - (lo.y + hi.y) * 0.5), 0.012, aa));
 						}
+						if (ground && !door) {   // security bars, white, every 13 cm, and a rail across
+							cover = max(cover, line_cover(abs(fract((g.x - lo.x) / 0.13) - 0.5) * 0.13, 0.008, aa));
+							cover = max(cover, line_cover(abs(g.y - (lo.y + sy) * 0.5), 0.01, aa));
+						}
 						col2 = mix(vec3(0.02), trim.rgb * 0.85, cover);
 						emit2 = pane(rc, v, elev + wob, tint, street, 0.11) * (1.0 - cover);
 						rough2 = mix(0.06, 0.5, cover);
 						spec2 = 0.5;
 					}
 				}
-			} else if (!house && p.x > lo.x - 0.06 && p.x < hi.x + 0.06 && p.y < lo.y && p.y > lo.y - 0.12) {
+			} else if (!house && !door && p.x > lo.x - 0.06 && p.x < hi.x + 0.06 && p.y < lo.y && p.y > lo.y - 0.12) {
 				// the sill: its lit top edge, the shadow under it
 				deep_hit = true;
 				col2 = p.y > lo.y - 0.05 ? base * 1.1 : base * 0.74;
@@ -588,20 +629,6 @@ void fragment() {
 					rough2 = mix(0.06, 0.5, cover);
 					spec2 = 0.5;
 				}
-			} else if (fx > 0.14 && up > 0.0) {
-				// the open ground floor between the pillars: a covered space 5 m deep, out of the sun
-				deep_hit = true;
-				vec2 m = -v.xy;
-				float tz = 5.0 / v.z;
-				float ty = m.y < 0.0 ? (0.0 - p.y) / min(m.y, -0.0001) : (2.7 - p.y) / max(m.y, 0.0001);
-				float t = min(tz, ty);
-				float depth = t * v.z;
-				vec3 c = t == tz ? base * 0.62 : (m.y < 0.0 ? wall_f.rgb * 0.45 : base * 0.55);
-				float fall = 1.0 - depth / 9.0;
-				col2 = vec3(0.0);
-				emit2 = c * fall * mix(0.42, r3 < 0.5 ? 0.25 : 0.04, night);
-				rough2 = 0.9;
-				pl = 0.0;
 			}
 		}
 	}
@@ -1735,8 +1762,9 @@ func _build_setup(t0: int) -> void:
 	_build_total = _tiles_todo.size()
 	_stage("setup", t0)
 
-## One square of the city, everything in it, in the order the whole city used to be built
-## in (each kind keeps clear of what went before: trees of buildings, lamps of trees...).
+## One square of the city, everything in it, each kind keeping clear of what went before
+## (trees of buildings, lamps of trees...); the kerbs after the trees, whose leaves lie on
+## their pavements.
 ## In the background each builder stops when the frame's few milliseconds are used up and
 ## goes on in the next frame.
 func _build_tile(t: Vector2i) -> void:
@@ -1746,13 +1774,11 @@ func _build_tile(t: Vector2i) -> void:
 	_tile = t
 	_set_tiling(true)
 	_batching = true
-	for a: Array in [_stop_lines, _pole_plates, _chimneys, _mall_glass, _balcony_flags, _flag_spots, _stop_ads]:
+	for a: Array in [_stop_lines, _pole_plates, _chimneys, _mall_glass, _lobby_doors, _balcony_flags, _flag_spots, _stop_ads]:
 		a.clear()   # made by one builder for the next, square by square
 	var tk := Time.get_ticks_msec()
 	await _build_ground()
 	tk = _stage("roads", tk)
-	await _build_kerbs()
-	tk = _stage("kerbs", tk)
 	await _build_buildings()
 	tk = _stage("buildings", tk)
 	await _build_roof_kit()
@@ -1760,6 +1786,8 @@ func _build_tile(t: Vector2i) -> void:
 	tk = _stage("facades", tk)
 	await _build_trees()
 	tk = _stage("trees", tk)
+	await _build_kerbs()   # (after the trees: the leaves on the pavement are under them)
+	tk = _stage("kerbs", tk)
 	await _furn.wires()
 	tk = _stage("wires", tk)
 	await _build_lamps()
@@ -2164,13 +2192,122 @@ uniform vec4 black : source_color;
 uniform float textured = 1.0;
 uniform sampler2D conc : filter_linear_mipmap_anisotropic, repeat_enable;   // concrete grain
 uniform vec3 conc_mean = vec3(0.5);
+uniform vec4 pave : source_color;      // the pavement's tone: its pavers are mixed from it
+uniform float med = 1.0;               // Israeli streets (else Bedford's poured slabs)
 varying vec3 wpos;
 varying float wup;
 void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	wup = (MODEL_MATRIX * vec4(NORMAL, 0.0)).y;
 }
+float h21(vec2 p) {
+	vec3 q = fract(vec3(p.xyx) * 0.1031);
+	q += dot(q, q.yzx + 33.33);
+	return fract((q.x + q.y) * q.z);
+}
+// One paver under point g (metres: x along the street, y out from the kerb): (distance to
+// its nearest joint in metres, the paver's own cell for its colour).
+vec3 paver(vec2 g, float pattern) {
+	if (pattern < 0.5) {
+		// herringbone, 20 x 10 cm, at 45 degrees to the kerb: in brick widths, cell (cx, cy) is
+		// the left or right half of a lying brick or the lower or upper half of a standing one,
+		// by (cx - cy) and (cx + cy): the staircases of the pattern run along the diagonal
+		vec2 r = vec2(g.x + g.y, g.y - g.x) * 0.70710678 / 0.1;
+		vec2 c = floor(r);
+		vec2 f = r - c;
+		float s = mod(c.x + c.y, 4.0);
+		vec4 e;   // joints on this cell's (left, right, bottom, top)
+		vec2 id = c;
+		if (mod(c.x - c.y, 2.0) < 0.5) {
+			e = s < 1.0 ? vec4(1.0, 0.0, 1.0, 1.0) : vec4(1.0, 1.0, 1.0, 0.0);
+		} else if (s < 2.0) {
+			e = vec4(0.0, 1.0, 1.0, 1.0);
+			id = c - vec2(1.0, 0.0);
+		} else {
+			e = vec4(1.0, 1.0, 0.0, 1.0);
+			id = c - vec2(0.0, 1.0);
+		}
+		float jd = min(min(mix(9.0, f.x, e.x), mix(9.0, 1.0 - f.x, e.y)), min(mix(9.0, f.y, e.z), mix(9.0, 1.0 - f.y, e.w)));
+		return vec3(jd * 0.1, id);
+	}
+	vec2 size = pattern < 1.5 ? vec2(0.2, 0.1) : (pattern < 2.5 ? vec2(0.4, 0.4) : vec2(1.5, 1.2));
+	vec2 r = g / size;
+	if (pattern < 1.5) {
+		r.x += mod(floor(r.y), 2.0) * 0.5;   // stretcher bond: every other row half a brick on
+	}
+	vec2 c = floor(r);
+	vec2 f = r - c;
+	vec2 d = min(f, 1.0 - f) * size;
+	return vec3(min(d.x, d.y), c);
+}
 void fragment() {
+	if (COLOR.b > 0.5) {
+		// The pavement: pavers in the street's own pattern and colours (COLOR.r: pattern x 4 +
+		// colours), laid square to the kerb (UV: metres along, out from the kerb), a row of
+		// them on end along the kerb; fallen leaves under the trees (COLOR.g: how many trees)
+		float code = floor(COLOR.r * 16.0);
+		float pattern = floor(code / 4.0);
+		float mixk = code - pattern * 4.0;
+		vec2 g = UV;
+		bool border = pattern < 1.5 && g.y < 0.2;
+		vec3 pv = border ? paver(vec2(g.x, g.y) * vec2(2.0, 0.5), 1.0) * vec3(0.5, 1.0, 1.0) : paver(g, pattern);
+		float h = h21(pv.yz + (border ? 71.3 : 0.0));
+		float h2 = h21(pv.yz + 13.7);
+		vec3 base = pave.rgb;
+		vec3 col;
+		if (mixk < 0.5) {          // reds and browns, mixed
+			vec3 a = base * vec3(1.32, 0.9, 0.78);
+			vec3 b = base * vec3(1.12, 0.86, 0.76);
+			vec3 cc = base * vec3(0.98, 0.84, 0.82);
+			col = h < 0.4 ? a : (h < 0.75 ? b : cc);
+		} else if (mixk < 1.5) {   // greys, a darker one here and there
+			col = base * (h < 0.15 ? 0.84 : (h < 0.55 ? 0.95 : 1.03));
+		} else if (mixk < 2.5) {   // pale sand
+			col = base * vec3(1.16, 1.1, 0.96) * (0.94 + 0.08 * h);
+		} else {                   // a mix of all of them
+			col = h < 0.3 ? base * vec3(1.3, 0.92, 0.8) : (h < 0.5 ? base * vec3(1.1, 0.95, 0.75) : (h < 0.8 ? base * 0.95 : base * vec3(1.05, 0.9, 0.95)));
+		}
+		if (border) {
+			col = base * 0.86;
+		}
+		col *= 0.92 + 0.12 * h2;
+		// further off than a few pixels a paver, the pattern is its average colour
+		float fw = length(fwidth(g));
+		float far = smoothstep(0.012, 0.05, fw);
+		vec3 avg = mixk < 0.5 ? base * vec3(1.16, 0.88, 0.79) : (mixk < 1.5 ? base * 0.93 : (mixk < 2.5 ? base * vec3(1.16, 1.1, 0.96) : base * vec3(1.12, 0.92, 0.84)));
+		col = mix(col, avg, far);
+		// the joints, sand-filled and dark, and each paver's bevelled edge
+		float jw = 0.004;
+		float joint = 1.0 - smoothstep(jw, jw + max(fw, 0.0015), pv.x);
+		float bevel = smoothstep(jw, jw + 0.012, pv.x);
+		col *= mix(1.0, mix(1.0, 0.66, joint) * mix(0.93, 1.0, bevel), 1.0 - far);
+		// the grime of a street: wide soft stains, darker where feet and wheels go
+		float st = h21(floor(wpos.xz / 2.3)) * 0.5 + h21(floor(wpos.xz / 0.9) + 4.1) * 0.5;
+		col *= 0.9 + 0.1 * smoothstep(0.2, 0.8, st);
+		if (textured > 0.5) {
+			vec3 t = texture(conc, wpos.xz * 0.9).rgb;
+			col *= mix(1.0, clamp(dot(t, vec3(0.333)) / dot(conc_mean, vec3(0.333)), 0.0, 2.0), 0.6);
+		}
+		// leaves: one in some 18 cm squares, more under the trees, yellow to brown, and in
+		// Givatayim the odd bougainvillea petal
+		float leafy = COLOR.g;
+		vec2 lc = floor(wpos.xz / 0.18);
+		float lh = h21(lc);
+		if (leafy > 0.01 && lh < leafy * 0.3 && far < 0.99) {
+			vec2 lp = fract(wpos.xz / 0.18) - 0.5 + (vec2(h21(lc + 3.1), h21(lc + 5.7)) - 0.5) * 0.4;
+			float an = h21(lc + 9.2) * 6.2832;
+			lp = vec2(lp.x * cos(an) - lp.y * sin(an), lp.x * sin(an) + lp.y * cos(an));
+			float m = 1.0 - smoothstep(0.13, 0.17, length(lp * vec2(1.0, 2.3)));
+			float k = h21(lc + 1.7);
+			vec3 leaf = mix(vec3(0.62, 0.52, 0.18), vec3(0.42, 0.3, 0.16), k);
+			if (med > 0.5 && k > 0.88) {
+				leaf = vec3(0.72, 0.16, 0.42);
+			}
+			col = mix(col, leaf, m * (1.0 - far));
+		}
+		ALBEDO = col;
+		ROUGHNESS = 0.9;
+	} else {   // the kerb
 	float pat = floor(COLOR.r * 3.99 + 0.01);
 	float stripe = step(0.5, fract(UV.x * 0.5));
 	vec3 c = plain.rgb;
@@ -2189,6 +2326,7 @@ void fragment() {
 	}
 	ALBEDO = c;
 	ROUGHNESS = 0.85;
+	}
 }
 """
 
@@ -2228,7 +2366,7 @@ var _kerb_mat: ShaderMaterial
 
 func _build_kerbs() -> void:
 	var kerb := _clip_buf(GROUND_CELL)
-	var pave := _clip_buf(GROUND_CELL)
+	var pave := kerb   # (the pavement is drawn by the kerb's shader, in the kerb's mesh: no extra draw)
 	var wall := _clip_buf(GROUND_CELL)
 	var garden := _clip_buf(GROUND_CELL)
 	var bushes: Array = []
@@ -2241,6 +2379,7 @@ func _build_kerbs() -> void:
 			await _pause()
 		var hw: float = float(r["w"]) * 0.5
 		var hsh := _hash_i((r["pts"] as PackedVector2Array)[0])
+		_set_pave_code(hsh)
 		var pat := 0
 		if med:
 			pat = [0, 0, 0, 0, 0, 1, 1, 1, 2, 3][posmod(hsh, 10)]
@@ -2319,8 +2458,7 @@ func _build_kerbs() -> void:
 		_kerb_mat.set_shader_parameter("conc_mean", TEX_MEAN["concrete_pavement"])
 		_kerb_mat.set_shader_parameter("textured", 1.0 if _quality > 0 else 0.0)
 		_retint_kerbs()
-	_add_mesh(kerb, _kerb_mat, false, DETAIL_RANGE)
-	_add_mesh(pave, _surface("pavement"), false, DETAIL_RANGE * 1.6)
+	_add_mesh(kerb, _kerb_mat, false, DETAIL_RANGE * 1.6)
 	_add_mesh(wall, _surface("stonewall"), false, DETAIL_RANGE)
 	_add_mesh(garden, _surface("grass"), false, DETAIL_RANGE * 1.6)
 	if not bushes.is_empty():
@@ -2499,7 +2637,40 @@ func _kerb_piece(kerb: Buf, pave: Buf, a: Vector2, b: Vector2, na: Vector2, nb: 
 	kerb.tri(t0, t1, o1, Vector3.UP, col, Vector2(along, 0), Vector2(along + seg, 0), Vector2(along + seg, 1))
 	kerb.tri(t0, o1, o0, Vector3.UP, col, Vector2(along, 0), Vector2(along + seg, 1), Vector2(along, 1))
 	if pw > 0.05:
-		pave.quad3(o0, o1, _g3(ob + nb * pw, KERB_H), _g3(oa + na * pw, KERB_H))
+		var c2 := _g3(ob + nb * pw, KERB_H)
+		var c3 := _g3(oa + na * pw, KERB_H)
+		var nrm := (c2 - o0).cross(o1 - o0)
+		if nrm.y < 0.0:
+			nrm = -nrm
+		nrm = nrm.normalized() if nrm.length_squared() > 0.000001 else Vector3.UP
+		var pc := Color(_pave_code, _leafy((oa + ob) * 0.5 + (na + nb) * pw * 0.25), 1.0)
+		pave.tri(o0, o1, c2, nrm, pc, Vector2(along, 0), Vector2(along + seg, 0), Vector2(along + seg, pw))
+		pave.tri(o0, c2, c3, nrm, pc, Vector2(along, 0), Vector2(along + seg, pw), Vector2(along, pw))
+
+## The paving a street (or a corner) gets: its pattern -- herringbone, rows of bricks, square
+## slabs; Bedford's poured concrete -- and its colours -- reds and browns, greys, sand, all of
+## them mixed -- as the red of the pavement's vertex colour (see KERB_SHADER)
+var _pave_code := 0.0
+
+func _set_pave_code(hsh: int) -> void:
+	var pattern := 3
+	var colours := 1
+	if String(_place.get("look", "")) != "north":
+		var p := posmod(hsh, 100)
+		pattern = 0 if p < 45 else (1 if p < 75 else 2)
+		var c := posmod(hsh >> 7, 100)
+		colours = 0 if c < 30 else (1 if c < 70 else (2 if c < 85 else 3))
+		if pattern == 2 and colours == 0:
+			colours = 1   # (slabs come grey or sand)
+	_pave_code = (float(pattern * 4 + colours) + 0.5) / 16.0
+
+## how many trees overhang a spot on the pavement, 0..1 (for the leaves on it)
+func _leafy(p: Vector2) -> float:
+	var sum := 0.0
+	for i: int in _near(_post_hash, p, 7.0, BLD_CELL):
+		if absf(_post_r[i] - 0.3) < 0.001:   # (a tree's post)
+			sum += 1.0 - clampf(_posts[i].distance_to(p) / 7.0, 0.0, 1.0)
+	return clampf(sum * 0.7, 0.0, 1.0)
 
 ## the point `dist` metres along a road's points from index k going `step`, and the way on
 func _walk_pts(pts: PackedVector2Array, k: int, step: int, dist: float) -> Array:
@@ -2569,6 +2740,7 @@ func _kerb_corners(kerb: Buf, pave: Buf, fill: Buf, col: Color) -> void:
 				continue
 			var ua: Vector2 = A[2]
 			var ub: Vector2 = B[2]
+			_set_pave_code(_hash_i((_roads[int(A[4])]["pts"] as PackedVector2Array)[0]))   # (the paving of one of its streets)
 			var P: Vector2 = (A[1] as Vector2) + Vector2(-ua.y, ua.x) * float(A[3])   # A's right edge
 			var Q: Vector2 = (B[1] as Vector2) + Vector2(ub.y, -ub.x) * float(B[3])   # B's left edge
 			if P.distance_to(Q) > 45.0:
@@ -2638,6 +2810,8 @@ func _retint_kerbs() -> void:
 	_kerb_mat.set_shader_parameter("blue", _natural(Palette.col("player").lerp(Palette.col("bg"), 0.35), 0.85))
 	_kerb_mat.set_shader_parameter("yellow", Palette.col("warn"))
 	_kerb_mat.set_shader_parameter("black", Palette.col("bg"))
+	_kerb_mat.set_shader_parameter("pave", _tone["pavement"])
+	_kerb_mat.set_shader_parameter("med", 0.0 if String(_place.get("look", "")) == "north" else 1.0)
 
 ## a street's stretches between junctions, each cut short where it meets one (so kerbs
 ## and walls leave the corner open), points every few metres
@@ -3058,7 +3232,7 @@ func _build_buildings() -> void:
 		mi.visibility_range_end = VIEW_RANGE   # past this the haze has it anyway
 		mi.visibility_range_end_margin = 80.0
 		world.add_child(mi)
-	_add_mesh(cores, _surface("recess"), true, VIEW_RANGE * 0.5)
+	_add_mesh(cores, _surface("lobby"), true, VIEW_RANGE * 0.5)
 	if not (gables["roof"] as Buf).empty():
 		if _shingles == null:
 			_shingles = StandardMaterial3D.new()
@@ -3214,6 +3388,8 @@ func _build_facade_kit() -> void:
 	_tally("closed_balconies", (encl[0] as Array).size() + (encl[1] as Array).size())
 	if not _mall_glass.is_empty():
 		_chunked(_boxm(Vector3.ONE), _mall_glass, 400.0, [], _shop_glass())
+	if not _lobby_doors.is_empty():
+		_chunked(_boxm(Vector3(1.9, 2.4, 0.05)), _lobby_doors, 160.0, [], _shop_glass())
 	if not acs.is_empty():
 		var ac := _boxm(Vector3(0.82, 0.55, 0.32))
 		ac.material = _surface("tank")
@@ -3290,6 +3466,7 @@ func _mall_front(edge: Array, g_lo: float, wc: Color, kit: Dictionary, kit_col: 
 		_add_post(q, 0.25)
 
 var _mall_glass: Array = []
+var _lobby_doors: Array = []         ## the glass doors of the lobbies under blocks on columns (this square's)
 
 func _longest_edge(ring: PackedVector2Array, sgn: float) -> Array:
 	var best := 0.0
@@ -3385,7 +3562,7 @@ func _wall_rgb(bright: float, tint: float, stone: float) -> Color:
 func _lift_on_columns(ring: PackedVector2Array, sgn: float, base: float, lift: float, roofs: Buf,
 		cores: Buf, look: Dictionary) -> void:
 	var cols: Array = []
-	var ceil_c := Color(0.62, 0.62, 0.62)
+	var ceil_c := Color(0.86, 0.86, 0.84)   # (light plaster: dark, it read as a hole)
 	var idx := Geometry2D.triangulate_polygon(ring)
 	for i in range(0, idx.size(), 3):
 		var p0 := ring[idx[i]]
@@ -3403,6 +3580,11 @@ func _lift_on_columns(ring: PackedVector2Array, sgn: float, base: float, lift: f
 		for i in range(core.size()):
 			ca += core[i].x * core[(i + 1) % core.size()].y - core[(i + 1) % core.size()].x * core[i].y
 		var cs := 1.0 if ca > 0.0 else -1.0
+		# the lobby's glass door, lit, on the side of the core that faces the street
+		var street := _street_edge(ring, sgn)
+		var to: Vector2 = street[2] if not street.is_empty() else Vector2.ZERO
+		var door: Array = []
+		var best := 0.3
 		for i in range(core.size()):
 			var a := core[i]
 			var b := core[(i + 1) % core.size()]
@@ -3413,6 +3595,13 @@ func _lift_on_columns(ring: PackedVector2Array, sgn: float, base: float, lift: f
 			var nrm := Vector3(out.x, 0.0, out.y)
 			cores.tri(Vector3(a.x, base, a.y), Vector3(b.x, base, b.y), Vector3(b.x, lift, b.y), nrm, Color.WHITE)
 			cores.tri(Vector3(a.x, base, a.y), Vector3(b.x, lift, b.y), Vector3(a.x, lift, a.y), nrm, Color.WHITE)
+			if e.length() >= 2.4 and out.dot(to) > best:
+				best = out.dot(to)
+				door = [(a + b) * 0.5 + out * 0.04, out]
+		if not door.is_empty():
+			var dp: Vector2 = door[0]
+			var dout: Vector2 = door[1]
+			_lobby_doors.append(Transform3D(Basis(Vector3.UP, atan2(dout.x, dout.y)), Vector3(dp.x, base + 1.2, dp.y)))
 	var hgt := lift - base
 	var c := Vector2.ZERO
 	for p in ring:
@@ -5979,6 +6168,38 @@ void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	wup = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz).y;
 }
+// A tired road crazes into small plates: where a noise says this stretch is old, the edges
+// of a Voronoi pattern 45 cm across, a hairline as wide as a pixel allows. 1 where there is
+// no crack, darker on one. Only near the eye: further off it is less than a pixel.
+float crazing(vec2 p, float dist, float pxw) {
+	float tired = smoothstep(0.66, 0.8, noise(p / 9.0 + 3.7)) * (1.0 - smoothstep(30.0, 55.0, dist));
+	if (tired <= 0.0) {
+		return 1.0;
+	}
+	vec2 gq = p / 0.45;
+	vec2 gi = floor(gq);
+	vec2 gf = gq - gi;
+	float d1 = 9.0;
+	float d2 = 9.0;
+	for (int y = -1; y <= 1; y++) {
+		for (int x = -1; x <= 1; x++) {
+			vec2 o = vec2(float(x), float(y));
+			vec2 pt = o + vec2(hash(gi + o), hash(gi + o + 17.3)) * 0.9 + 0.05;
+			float dd = length(gf - pt);
+			if (dd < d1) {
+				d2 = d1;
+				d1 = dd;
+			} else if (dd < d2) {
+				d2 = dd;
+			}
+		}
+	}
+	float edge = (d2 - d1) * 0.22;   // metres to the crack
+	// not every edge has cracked: some plates are still joined
+	float open = step(0.35, hash(floor(gq + vec2(0.5)) + 41.0));
+	float crack = 1.0 - smoothstep(0.0015, 0.0015 + pxw, edge);
+	return 1.0 - 0.38 * crack * tired * open;
+}
 void fragment() {
 	vec3 c = COLOR.rgb;
 	vec4 fx = vec4(0.0);
@@ -6023,6 +6244,24 @@ void fragment() {
 				vec3 b = textureGrad(asph_big, p / 30.0, dpx / 30.0, dpy / 30.0).rgb;
 				c *= mix(1.0, clamp(dot(b, vec3(0.333)) / dot(big_mean, vec3(0.333)), 0.0, 2.0), 0.7 * k);
 				bump = unpack(textureGrad(asph_nrm, uv, dpx / 3.0, dpy / 3.0).rg, 1.0);
+				float dist = length(VERTEX);
+				float pxw = length(dpx) + length(dpy);
+				if (fx.x > 0.0 && dist < 140.0) {
+					// worn, as Givatayim's streets are: one 5 m square in eight patched with
+					// newer, darker asphalt and its sealed seam; crazed plates where it is old;
+					// the light stones of the mix showing, close up
+					vec2 pc = floor(p / 5.0);
+					if (hash(pc + 2.3) < 0.13) {
+						vec2 lo = (pc + vec2(hash(pc + 4.1), hash(pc + 5.3)) * 0.4) * 5.0;
+						vec2 hi = lo + vec2(1.2 + 2.6 * hash(pc + 6.7), 1.0 + 2.2 * hash(pc + 8.9));
+						vec2 d = min(p - lo, hi - p);
+						float inside = step(0.0, min(d.x, d.y));
+						c *= mix(1.0, 0.8, inside);
+						c *= 1.0 - 0.4 * inside * (1.0 - smoothstep(0.02, 0.02 + pxw * 2.0, min(d.x, d.y)));
+					}
+					c *= crazing(p, dist, pxw);
+					c *= 1.0 + step(0.94, hash(floor(p / 0.012))) * 0.4 * (1.0 - smoothstep(3.0, 12.0, dist));
+				}
 				if (fx.x > 0.0) {
 					// oil and rubber: a dark blotch in about one 3 m square in six, oval, soft
 					vec2 cell = floor(p / 3.0);
@@ -6033,9 +6272,11 @@ void fragment() {
 						c *= 1.0 - 0.5 * smoothstep(r, r * 0.35, d) * (0.6 + 0.4 * noise(p * 3.0));
 					}
 				} else {
-					// paint wears through to the asphalt, in patches and in grains
-					float wear = smoothstep(0.5, 0.85, noise(p * 1.3)) * 0.55 + smoothstep(0.62, 0.9, noise(p * 7.0)) * 0.3;
-					c = mix(c, wear_col, wear);
+					// paint wears through to the asphalt, in patches and in grains -- a zebra half
+					// gone, as most are -- and the road's cracks run through it
+					float wear = smoothstep(0.42, 0.8, noise(p * 1.3)) * 0.7 + smoothstep(0.55, 0.9, noise(p * 7.0)) * 0.35;
+					c = mix(c, wear_col, clamp(wear, 0.0, 0.92));
+					c *= crazing(p, dist, pxw);
 				}
 			} else if (fx.w < 3.5) {   // pavement and plazas: pavers, bigger in a plaza
 				float s = pave_m * fx.z / 0.6;
@@ -8259,7 +8500,7 @@ const NATURAL := {
 	"ground": 0.3, "rock": 0.3, "path": 0.15, "asphalt": 0.08, "parking": 0.08, "plaza": 0.2,
 	"grass": 0.6, "pitch": 0.6, "wood": 0.6, "leaf": 0.62, "bush": 0.6, "water": 0.5, "sand": 0.6,
 	"mark": 0.3, "wall": 0.5, "wall2": 0.45, "wall3": 0.6, "wall4": 0.6, "wall5": 0.5, "wall6": 0.3,
-	"glass": 0.5, "glass2": 0.5, "glass3": 0.5, "glass4": 0.5, "shutter": 0.3, "recess": 0.3,
+	"glass": 0.5, "glass2": 0.5, "glass3": 0.5, "glass4": 0.5, "shutter": 0.3, "recess": 0.3, "lobby": 0.35,
 	"roof": 0.2, "trunk": 0.45, "pole": 0.2, "haze": 0.45, "sky": 0.6, "board": 0.4, "solar": 0.5,
 	"tank": 0.3, "furniture": 0.3, "pavement": 0.2, "pavers_dark": 0.15, "slabs": 0.15, "kerb": 0.15, "stonewall": 0.45, "roofroom": 0.4,
 	"gable": 0.5, "carglass": 0.4, "cartrim": 0.2, "tyre": 0.15, "rim": 0.2, "concrete": 0.15,
@@ -8292,7 +8533,7 @@ func _tones() -> void:
 		"ground": alt.lerp(ink, 0.42),
 		"rock": alt.lerp(ink, 0.3).lerp(wn, 0.2),
 		"path": alt.lerp(ink, 0.62),
-		"asphalt": alt.lerp(ink, 0.2),
+		"asphalt": alt.lerp(ink, 0.27),   # (pale grey, as sun-bleached asphalt is)
 		"parking": alt.lerp(ink, 0.32),
 		"plaza": alt.lerp(ink, 0.58).lerp(wn, 0.08),
 		"grass": veg.lerp(bg, 0.48),
@@ -8312,6 +8553,7 @@ func _tones() -> void:
 		"glass": alt.lerp(pl, 0.3),
 		"shutter": ink.lerp(alt, 0.22),
 		"recess": alt.lerp(bg, 0.25),
+		"lobby": ink.lerp(wn, 0.22).lerp(alt, 0.12),   # the tiled walls of a lobby under a block on columns
 		"roof": ink.lerp(alt, 0.42),
 		"leaf": veg.lerp(bg, 0.52),
 		"trunk": alt.lerp(wn, 0.3),
@@ -8362,7 +8604,7 @@ func _tones() -> void:
 		"hair": bg.lerp(alt, 0.5).lerp(wn, 0.08),
 		"shirt_a": pl.lerp(bg, 0.45).lerp(ink, 0.15),
 		"shirt_b": ink.lerp(alt, 0.25),
-		"metal": bg.lerp(alt, 0.6),            # cast iron: manhole covers, drain grates
+		"metal": alt.lerp(ink, 0.22),          # cast iron: manhole covers, drain grates
 		"metalrim": alt.lerp(ink, 0.32),
 	}
 	for k: String in NATURAL:

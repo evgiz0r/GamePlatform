@@ -513,9 +513,10 @@ out per pixel from where it is, nothing to load, the fine part fading out with d
 **Real textures.** Up close the surfaces are photographs (free CC0 ones from Poly Haven, in
 `textures/`): the asphalt has grit and fine cracks, with a second photo of tyre marks,
 patches and long cracks laid over it at 30 m so it doesn't visibly repeat; Givatayim's and Ashdod's
-pavements are 20 x 10 cm concrete pavers in herringbone, a mix of greys, charcoal and
+footways and plazas are 20 x 10 cm concrete pavers in herringbone, a mix of greys, charcoal and
 red-browns (drawn by `textures/herringbone.py`, after a walk filmed in Givatayim: no photo
-had them), Bedford's poured concrete slabs; grass and open
+had them; the pavements along the streets are laid square to the kerb in each street's own
+pattern, see "As it looks on foot"), Bedford's poured concrete slabs; grass and open
 ground are a real lawn; walls are painted render. Each has its bumps, so the low sun picks
 out the cracks and the joints between pavers. The palette still decides every colour: a
 photo only adds the variation round its own average, so `/look` reskins it as before.
@@ -532,6 +533,24 @@ roofs of tar and gravel with dried-puddle stains.
 > details and resolution?
 
 > Let's start with the textures.
+
+**As it looks on foot.** Set beside frames of a phone video of a walk down these streets,
+the city now has what the walk had underfoot and at eye height:
+- Pavements of concrete pavers: herringbone at 45 degrees, rows of bricks, or square slabs,
+  each street its own, in mixed reds and browns, greys, sand, or all of them mixed, with a
+  row on end along the kerb. Leaves on them under the trees (and the odd bougainvillea
+  petal), grime in wide soft stains. Bedford keeps its poured concrete slabs.
+- Blocks' ground floors as they are: flats behind white security bars, the way in a glazed
+  door in the middle bay, lit at night (they used to be dark hollows, a row of black boxes
+  along every street). A stone plinth to knee height on most blocks, Jerusalem stone in
+  courses on the stone-clad ones, small square mosaic tiles on some of the white ones.
+- The lobby under a block on columns light, its glass door lit, the ceiling over the
+  parking pale (it read as a black box from the pavement).
+- Tired roads: patches of newer, darker asphalt with their sealed seams; stretches crazed
+  into small plates; the mix's light stones showing close up; the paint, zebras too, worn
+  half away and cracked with the road. Manhole covers grey cast iron, not black.
+
+> ok lets start as you say
 
 > I took a video on my phone, walking in Givatayim.
 

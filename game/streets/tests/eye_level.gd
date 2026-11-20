@@ -3,7 +3,8 @@ extends SceneTree
 ## the pavement of the streets nearest a point, looking along each street both ways and once
 ## across it, and once down at the pavement in front. For comparing the city with photos of
 ## the real one. The point: AT="x,z" (metres in the city's frame; the start when not given).
-## Prints each spot; screenshots eye_NN_*.png in $OUT.
+## Last, the nearest block on columns, from the street. Prints each spot; screenshots
+## eye_NN_*.png and eye_columns.png in $OUT.
 var g: Node
 
 func _initialize() -> void:
@@ -66,4 +67,24 @@ func _run() -> void:
 			g._sky_follow()
 			await _snap("eye_%02d_%s" % [k, view[0]])
 		k += 1
+	# the nearest block on columns, from the street: its lobby under the floors
+	var best := -1
+	var bd := INF
+	for bi in range(g._bld_kind.size()):
+		if g._bld_kind[bi] == 1:
+			var c: Vector2 = (g._bld_box[bi] as Rect2).get_center()
+			if c.distance_to(at) < bd:
+				bd = c.distance_to(at)
+				best = bi
+	if best >= 0:
+		var box: Rect2 = g._bld_box[best]
+		var c := box.get_center()
+		var hit: Dictionary = g._nearest_seg(c, 60.0, true)
+		var dir: Vector2 = ((hit["q"] as Vector2) - c).normalized() if not hit.is_empty() else Vector2(1, 0)
+		var e2 := c + dir * (box.size.length() * 0.5 + 5.0)
+		var eye := Vector3(e2.x, g._h(e2) + 1.6, e2.y)
+		g.look_from(eye, Vector3(c.x, g._h(c) + 1.4, c.y))
+		g._sky_follow()
+		print("block on columns %d m from the point" % int(bd))
+		await _snap("eye_columns")
 	quit(0)
