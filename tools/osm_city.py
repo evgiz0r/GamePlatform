@@ -885,6 +885,10 @@ def sidewalk_sides(t):
 def bake(raw, name, args):
     box = raw["box"]
     lat0, lon0 = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+    if getattr(args, "origin", None):
+        # a grown box keeps the old file's centre, so every place keeps its metres (a
+        # game's hand-placed fixes, landmarks and tests are pinned to them)
+        lat0, lon0 = (float(v) for v in args.origin.split(","))
     P = Proj(lat0, lon0)
     x0, z1 = P(box[0], box[1])
     x1, z0 = P(box[2], box[3])
@@ -1306,6 +1310,8 @@ def main():
     ap.add_argument("--default-levels", type=int, default=4,
                     help="storeys for a building OSM gives no height for")
     ap.add_argument("--out", help="where to write the city file")
+    ap.add_argument("--origin", help="lat,lon to measure the metres from instead of the box's "
+                    "centre: the old file's \"origin\", when re-baking a bigger box")
     ap.add_argument("--offline", action="store_true", help="bake from tools/.cache only")
     ap.add_argument("--from-file", help="a raw Overpass JSON answer you saved yourself")
     ap.add_argument("--no-terrain", action="store_true", help="skip the ground heights")
