@@ -35,7 +35,7 @@ these numbers the wrong way has broken something.
 | `buildings_on_roads` | 1 | buildings still standing on a road's asphalt | 3 (passages, on purpose) |
 | `corners` | 1 | junction corners the old middle-only check let in whole | 261 (fixed), shots |
 | `map_edge` | 3 | the car coasting into the map's edge | stops nose to the barrier |
-| `road_blocks` | 4, 1 | things solid to the car on a road's lanes, a junction's middle or a rounded corner's asphalt: a median over another road, walls, posts (bollards, sign poles, railing ends; shots from above) | test town: 0 medians, 0 posts; 16 walls across service lanes. Givatayim: (see below) |
+| `road_blocks` | 4, 1 | things solid to the car on a road's lanes, a junction's middle or a rounded corner's asphalt: a median over another road, walls, posts (bollards, sign poles, railing ends; shots from above) | test town: 0 medians, 0 posts; 16 walls across service lanes. Givatayim: 0 medians, 0 walls, 8 posts (159 before corners' asphalt counted as road: bollards, sign and light poles; the 8 are 3 light poles kept so every way in has one, 4 of the filmed Ha-Meri passage's details, 1 on a service lane) |
 | `medians` | 4 | the raised medians from a driver's seat where they end and bend (shots) | |
 | `mountains` | 4 | the test town's mountains from the car, the hill, a mountainside, and the turbines (shots) | |
 | `go_where` | 4 | zoomed out, a long press on a street: destination set, the view down, the city on, the car there; a quick press does nothing | 9 m from the press, arrived; quick press: none |
