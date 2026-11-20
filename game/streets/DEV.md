@@ -49,6 +49,15 @@ The ones most often touched, and the functions in them:
   (barred windows, the door in the middle bay), stone courses, plinth and mosaic are
   `WALL_SHADER`'s `ground` / `door` / `stone_k`; worn asphalt is `TONE_SHADER`'s
   `crazing()` and patches. `tests/eye_level.gd` puts a camera where a person stands.
+- **after rain** -- `WET_GLSL` (`wet`, `wet_mirror()`: Fresnel, the sky's two colours, a darker
+  band low down for the street's buildings) goes in with `FAR_SHADE` (`_with_far`); the tone
+  shader soaks hard kinds (2, 3, 6, 7) and lays puddles by noise, the kerb shader its
+  pavement and kerb, the ground shader darkens. `_set_wet` tweens `_wet_k`, `_far_set`
+  passes it on. Only the puddles are glossy: a whole road at roughness 0.3 took the
+  renderer's flat ambient reflection (the background colour) and went pale grey, and sunlit
+  pavers at 0.6 flared white; soaked ground is 0.68-0.7 with SPECULAR 0.3, puddles 0.08.
+  The tyres' hiss: `_engine_tick` brightens the road loop and lifts the wind loop with
+  `_wet_k`. `tests/wet.gd`.
 - **sound** -- `sounds/make_sounds.py` makes the loops (engine, engine_load, road, wind,
   city; numpy, run it again after changing it, the .wav files are committed and imported
   looping, QOA); "the sounds of driving" in streets.gd plays them: `_build_engine`,

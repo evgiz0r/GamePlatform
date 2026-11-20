@@ -996,6 +996,7 @@ const AUTO_BTN := Rect2(184, 334, 100, 20)
 const GOTO_BTN := Rect2(290, 334, 80, 20)
 const ASSIST_BTN := Rect2(376, 334, 70, 20)
 const NIGHT_BTN := Rect2(452, 334, 52, 20)
+const WET_BTN := Rect2(510, 334, 40, 20)     ## after rain / dry
 const VIEW_BTN := Rect2(578, 98, 52, 20)    ## chase cam / driver's seat (key C too)
 const LIGHTS_BTN := Rect2(578, 122, 52, 20)  ## headlights (key L)
 ## (the indicators and the horn are keys only, Q / E and H: on screen they were clutter)
@@ -2314,6 +2315,8 @@ vec3 paver(vec2 g, float pattern) {
 }
 void fragment() {
 	float fsh = far_shade(wpos, length(VERTEX));   // (before the branches: a texture read)
+	float soak = wet * smoothstep(0.6, 0.8, wup);   // after rain: darker, glossy, the sky in it
+	vec3 wet_emit = wet > 0.001 ? wet_mirror(normalize((INV_VIEW_MATRIX * vec4(VERTEX, 0.0)).xyz)) * soak * 0.05 : vec3(0.0);
 	if (COLOR.b > 0.5) {
 		// The pavement: pavers in the street's own pattern and colours (COLOR.r: pattern x 4 +
 		// colours), laid square to the kerb (UV: metres along, out from the kerb), a row of
@@ -2378,8 +2381,10 @@ void fragment() {
 			}
 			col = mix(col, leaf, m * (1.0 - far));
 		}
-		ALBEDO = col * fsh;
-		ROUGHNESS = 0.9;
+		ALBEDO = col * fsh * mix(1.0, 0.55, soak);
+		ROUGHNESS = mix(0.9, 0.7, soak);
+		SPECULAR = mix(0.5, 0.3, soak);
+		EMISSION = wet_emit;
 	} else {   // the kerb
 	float pat = floor(COLOR.r * 3.99 + 0.01);
 	float stripe = step(0.5, fract(UV.x * 0.5));
@@ -2397,8 +2402,10 @@ void fragment() {
 			c *= mix(0.7, 1.0, UV.y);
 		}
 	}
-	ALBEDO = c * mix(1.0, fsh, step(0.7, wup));
-	ROUGHNESS = 0.85;
+	ALBEDO = c * mix(1.0, fsh, step(0.7, wup)) * mix(1.0, 0.62, wet);
+	ROUGHNESS = mix(0.85, 0.7, wet);
+	SPECULAR = mix(0.5, 0.3, wet);
+	EMISSION = wet_emit;
 	}
 }
 """
@@ -4865,8 +4872,8 @@ void fragment() {
 		tx = normalize(tx - NORMAL * dot(NORMAL, tx));
 		NORMAL = normalize(tx * b.x + cross(NORMAL, tx) * b.y + NORMAL * b.z);
 	}
-	ALBEDO = c * far_shade(wpos, length(VERTEX));
-	ROUGHNESS = 0.95;
+	ALBEDO = c * far_shade(wpos, length(VERTEX)) * mix(1.0, 0.82, wet * step(0.7, wup));   // (wet earth, darker)
+	ROUGHNESS = mix(0.95, 0.75, wet);
 }
 """
 var _ground_shader_mat: ShaderMaterial
@@ -5276,6 +5283,22 @@ func _beam_mesh() -> ArrayMesh:
 	var am := ArrayMesh.new()
 	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, b.arrays())
 	return am
+
+## After rain, or dry (the "wet" button): faded in and out over a second and a half
+var _wet := false
+var _wet_k := 0.0                     ## how wet, 0..1 (the shaders' `wet`)
+var _wet_tween: Tween
+
+func _set_wet(on: bool) -> void:
+	_wet = on
+	if _wet_tween != null:
+		_wet_tween.kill()
+	_wet_tween = create_tween()
+	_wet_tween.tween_method(func(k: float) -> void:
+		_wet_k = k
+		_far_update(), _wet_k, 1.0 if on else 0.0, 1.5)
+	_show_banner("after rain" if on else "dry", 1.2)
+	Probe.event("wet", {"on": on})
 
 ## the time-of-day button: day, then evening, then night, then day again
 func _next_time() -> void:
@@ -6599,10 +6622,31 @@ void fragment() {
 		t = normalize(t - NORMAL * dot(NORMAL, t));
 		NORMAL = normalize(t * bump.x + cross(NORMAL, t) * bump.y + NORMAL * bump.z);
 	}
+	float rough = 0.9;
+	float spec = 0.25;
+	vec3 emit = vec3(0.0);
+	if (wet > 0.001) {   // after rain: hard ground (asphalt, paint, pavers, slabs) dark and glossy,
+		// puddles in its dips; grass and earth a little darker
+		float hard = ((fx.w > 1.5 && fx.w < 3.5) || fx.w > 5.5) ? 1.0 : 0.0;
+		float soak = wet * smoothstep(0.6, 0.8, wup);
+		float pn = noise(p / 2.6) * 0.6 + noise(p / 0.8 + 3.7) * 0.4;
+		float lvl = fx.w < 2.5 ? 0.64 : 0.71;   // (fewer on pavers than on the road)
+		float puddle = hard * soak * smoothstep(lvl, lvl + 0.05, pn);
+		// (only the puddles a mirror: a whole road at a low roughness took the renderer's flat
+		// ambient reflection all over and came out pale grey, not dark and wet)
+		c *= mix(1.0, mix(0.85, 0.5, hard), soak);
+		c *= 1.0 - 0.45 * puddle;
+		rough = mix(mix(rough, 0.68, soak * hard), 0.08, puddle);   // (glossier flared white in the sun)
+		spec = mix(spec, 0.3, soak * hard);
+		spec = mix(spec, 0.5, puddle);
+		vec3 vd = normalize((INV_VIEW_MATRIX * vec4(VERTEX, 0.0)).xyz);
+		emit = wet_mirror(vd) * (soak * hard * 0.05 + puddle * 0.25);
+	}
 	float fsh = far_shade(wpos, length(VERTEX));
 	ALBEDO = c * mix(1.0, fsh, step(0.7, wup));   // (the ground, not a wall or a pole)
-	ROUGHNESS = 0.9;
-	SPECULAR = 0.25;
+	ROUGHNESS = rough;
+	SPECULAR = spec;
+	EMISSION = emit;
 }
 """
 ## the surface each tone gets: [patches, grain, slab size (kind 3) / the lawn photo's colours too
@@ -7676,6 +7720,22 @@ float far_shade(vec3 wp, float dist) {
 	return 1.0 - fs_dark * s * on;
 }
 """
+## After rain (the "wet" button): hard ground darker and glossy, mirroring the sky -- by
+## Fresnel, as water does: little looking down, a lot at a low angle -- and, low down in the
+## mirror, the street's buildings (no screen-space reflections in this renderer: a darker band
+## stands in for them); puddles in the dips nearly mirror-smooth. Read by the tone, kerb and
+## ground shaders (with far_shade, see _with_far); `wet` fades in and out (_set_wet).
+const WET_GLSL := """
+uniform float wet = 0.0;                             // 0 dry .. 1 just after rain
+uniform vec3 wet_sky_top = vec3(0.45, 0.55, 0.7);    // what it mirrors: the sky overhead
+uniform vec3 wet_sky_hor = vec3(0.75);               // and along the horizon
+vec3 wet_mirror(vec3 vd) {   // vd: from the eye to the point, in the world
+	vec3 r = reflect(vd, vec3(0.0, 1.0, 0.0));
+	float fres = 0.04 + 0.96 * pow(1.0 - clamp(-vd.y, 0.0, 1.0), 5.0);
+	vec3 sky = mix(wet_sky_hor, wet_sky_top, smoothstep(0.0, 0.6, r.y));
+	return mix(wet_sky_hor * 0.5, sky, smoothstep(0.02, 0.2, r.y)) * fres;
+}
+"""
 const FS_PX := 2048                  ## the picture's longer side (px): ~1.6 m a pixel over Givatayim
 const FS_DARK_EVE := 0.4             ## the same in the evening: a low sun lights the ground less, so its shadows take less
 const FS_DARK := 0.55                ## the share of the light a shadow takes off the ground (the real ones: tests/far_shadows.gd)
@@ -7686,7 +7746,7 @@ var _far_mats: Array = []
 
 ## a ground shader's code with far_shade() in it
 func _with_far(code: String) -> String:
-	return code.replace("void vertex()", FAR_SHADE + "void vertex()")
+	return code.replace("void vertex()", FAR_SHADE + WET_GLSL + "void vertex()")
 
 ## a ground material to keep in step with the picture, the quality and the night
 func _far(m: ShaderMaterial) -> void:
@@ -7700,6 +7760,11 @@ func _far_set(m: ShaderMaterial) -> void:
 	m.set_shader_parameter("fs_near", sun.directional_shadow_max_distance if sun.shadow_enabled else 0.0)
 	m.set_shader_parameter("fs_fade", sun.directional_shadow_fade_start)
 	m.set_shader_parameter("fs_dark", 0.0 if _night or _fs_tex == null else (FS_DARK_EVE if _evening else FS_DARK))
+	m.set_shader_parameter("wet", _wet_k)
+	if env != null:
+		var rs := _sky_reflect()
+		m.set_shader_parameter("wet_sky_top", rs[0])
+		m.set_shader_parameter("wet_sky_hor", rs[1])
 	if m == _ao_mat:   # the trees' patches: where this sun throws them
 		var L := -sun.global_transform.basis.z if sun.is_inside_tree() else Vector3(0, -1, 0)
 		var off := Vector2(L.x, L.z) / maxf(-L.y, 0.05)
@@ -9379,6 +9444,8 @@ func _retint_city() -> void:
 		lb.modulate = Palette.col(lb.get_meta("role"))
 		lb.outline_modulate = Palette.col("bg")
 	_retint_hud()
+	if sun != null:
+		_far_update()   # (what the wet ground mirrors: the sky as it is now)
 
 func _apply_signals_safe() -> void:
 	if not _sig_mats.is_empty():
@@ -11158,6 +11225,10 @@ func _engine_tick(dt: float) -> void:
 	road.pitch_scale = 0.8 + 0.3 * clampf(v / 20.0, 0.0, 1.5)
 	road.volume_db = base - 8.0 + 26.0 * log(sp) / log(10.0) if v > 0.2 else -80.0
 	wind.volume_db = base - 23.0 + 40.0 * log(maxf(sp, 0.05)) / log(10.0) if v > 2.0 else -80.0
+	if _wet_k > 0.01 and v > 0.5:   # on a wet road the tyres hiss: brighter, and the spray's shh
+		road.pitch_scale *= 1.0 + 0.25 * _wet_k
+		road.volume_db += 2.0 * _wet_k
+		wind.volume_db = maxf(wind.volume_db, base - 15.0 + 20.0 * log(sp * _wet_k) / log(10.0))
 	city.volume_db = base - (16.0 if _walking else 19.0)
 	if _walking:   # idling behind you, quieter the further you walk
 		eng.volume_db -= 4.0 + _pos.distance_to(_car_at) * 0.9
@@ -14124,6 +14195,10 @@ func _draw_hud() -> void:
 	_hud.draw_rect(NIGHT_BTN, Color(bg, 0.65))
 	_hud.draw_rect(NIGHT_BTN, Color(nc, 0.9), false, 1.5)
 	_hud.draw_string(_font, NIGHT_BTN.position + Vector2(0, 15), "day" if _night else ("night" if _evening else "evening"), HORIZONTAL_ALIGNMENT_CENTER, NIGHT_BTN.size.x, 11, nc)
+	var wetc := Palette.col("player") if _wet else Color(ink, 0.8)
+	_hud.draw_rect(WET_BTN, Color(bg, 0.65))
+	_hud.draw_rect(WET_BTN, Color(wetc, 0.9), false, 1.5)
+	_hud.draw_string(_font, WET_BTN.position + Vector2(0, 15), "dry" if _wet else "wet", HORIZONTAL_ALIGNMENT_CENTER, WET_BTN.size.x, 11, wetc)
 	var lc := Palette.col("warn") if _lights_on else Color(ink, 0.8)
 	_hud.draw_rect(LIGHTS_BTN, Color(bg, 0.65))
 	_hud.draw_rect(LIGHTS_BTN, Color(lc, 0.9), false, 1.5)
@@ -14447,6 +14522,8 @@ func _input(event: InputEvent) -> void:
 				_open_picker.call_deferred()   # after this click, so it does not hit the list
 			elif NIGHT_BTN.grow(4).has_point(mb.position):
 				_next_time()
+			elif WET_BTN.grow(3).has_point(mb.position):
+				_set_wet(not _wet)
 			elif VIEW_BTN.grow(4).has_point(mb.position):
 				if _zoomed():
 					_zoom_seat = not _cockpit
@@ -14477,6 +14554,7 @@ func _input(event: InputEvent) -> void:
 		if t.pressed:
 			if AUTO_BTN.grow(4).has_point(t.position) or GOTO_BTN.grow(4).has_point(t.position) \
 					or ASSIST_BTN.grow(4).has_point(t.position) or NIGHT_BTN.grow(4).has_point(t.position) \
+					or WET_BTN.grow(3).has_point(t.position) \
 					or VIEW_BTN.grow(4).has_point(t.position) or LIGHTS_BTN.grow(2).has_point(t.position) \
 					or WALK_BTN.grow(2).has_point(t.position) \
 					or ZOOM_BTN.grow(2).has_point(t.position) or PAUSE_BTN.grow(2).has_point(t.position) \

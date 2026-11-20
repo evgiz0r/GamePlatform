@@ -664,6 +664,14 @@ whenever a car went by, and a coin's jingle every block. Now the engine is a smo
 the tyres' roar, nearly silent at idle; speed is the road and the wind; a passing car is a
 whoosh; the coin for a new street is a quiet tick, the indicator a relay's soft click.
 
+> go next
+
+**After rain.** The "wet" button (beside the time of day; "dry" turns it back) soaks the
+streets over a second and a half: asphalt, paint and pavers go dark, puddles lie in the
+dips holding the sky (and, low down, the buildings across the street), the sun's glare
+runs along the wet road when you drive towards it, grass and earth go a little darker. The
+tyres hiss on it. It goes with any time of day; the evening after rain is the best of it.
+
 > I took a video on my phone, walking in Givatayim.
 
 ## Smooth on a laptop and a phone
