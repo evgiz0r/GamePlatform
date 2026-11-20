@@ -125,6 +125,27 @@ three times Givatayim's size and takes longer to load (about 10 s here).
 
 > Ashdod.
 
+**The test town.** The last place, Kiryat Dimyon, is made up (`cities/dimyon.json`, from
+`tools/fake_city.py`): one neighbourhood about 1.3 x 1 km, a fifth of Givatayim's buildings,
+so it loads in about a second and a half. It is for looking at a change quickly, so it has
+one of everything a real town has: a divided boulevard with a big signalled junction, a main
+street and a shopping street lined with shops and cafes, a grid of side streets with a
+one-way pair, a hill whose streets climb at 10-12% round and up to a water tower, two
+roundabouts, a living street, cul-de-sacs, car parks, bus stops, zebras and signs; a strip
+mall, a glass office tower, a hotel, the town hall on its square, a cinema, a school, a
+sports centre, a park with a pond, villas and woods in the foothills. Mountains ring it, and
+past the foothills they are too steep to drive up (see below), so it is a valley you cannot
+leave -- except by the one road that climbs the western mountainside to a lookout terrace
+with a car park and a cafe. The car starts on HaNasi just past HaShuk, in the middle.
+
+> I want to make a new fake city in streets, where we would do quicker simulation and
+> validations. Yes it would not stress as the big cities on latency, but would give a quick
+> look if something got prettier as we are trying to make things more realistic slowly.
+
+> Lets also make that fake city surrounded by some unpassable terrain like a mountain. It
+> shouldn't be too small, like a regular neighborhood where you have most of the features
+> and variety (cars, buses, buildings, types of cars, slopes, landmark and so on).
+
 The minimap (bottom left) shows the real streets and buildings round you, heading up, with
 the city limits in pink. The name of the street you are on is at the top, in Hebrew with
 the English name under it when OSM has one.
@@ -136,6 +157,11 @@ traffic-light poles are solid. Crashes are a bit more game than real: a thud and
 the car bounces back off what it hit and spins if it was hit off-centre, and a hard one
 throws it into a little hop. Too fast over a crest or off a ramp and it leaves the ground
 for a moment and lands with a bump.
+
+**Ground too steep to climb** -- steeper than 62%, about 32 degrees -- is as solid as a
+wall, on foot too, and assist brakes for it; a road is always drivable however steep. No
+real town here has any (Givatayim's steepest is 52%), so it only matters in the test
+town's mountains. Ground that steep is drawn as bare rock, in bands.
 
 > I want the car to be able to "jump" a bit if I drive too fast on slopes. Maybe making
 > the crashes more bouncy as well... slightly less realistic, more "game"-like.
@@ -435,6 +461,13 @@ raw download is cached in `tools/.cache/` (not committed), and `--offline` re-ba
 it, so changing the bake does not hit the server again.
 
 If a place's city file is not there yet, the game drives whichever city file is.
+
+The test town is made, not baked: `python3 tools/fake_city.py --out
+game/streets/cities/dimyon.json` (add `--preview plan.png` for a map of it, `--seed` for
+another town). It writes the same format, with `"made_up": 1`, which puts "a made-up town"
+on screen instead of the OpenStreetMap credit. Before writing, it proves the mountains hold:
+it floods the height grid from the middle of town through everything gentler than 62% or
+on a road, and stops if that reaches the edge of the map.
 
 Locally, the network needs to reach an Overpass server (the tool tries
 `overpass-api.de`, then two mirrors); without that, `--print-query` prints a link to
