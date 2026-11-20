@@ -1367,6 +1367,7 @@ const BLD_CLEAR := 1.5                ## kerb and pavement kept in front of a bu
 func _clip_buildings(bdata: Array) -> void:
 	var clipped := 0
 	var kept := 0
+	var drop: Array = []
 	for bi in range(_blds.size()):
 		if _bld_solid[bi] == 0:
 			continue
@@ -1426,6 +1427,12 @@ func _clip_buildings(bdata: Array) -> void:
 			if cur.size() < 3:
 				break
 		if cur.size() < 3 or _area(cur) < absf(area0) * 0.5:
+			# A building a road runs under spans it, past both its edges (a passage). One that
+			# only sits in it, small, is a footprint OSM put on the road -- a little house in the
+			# middle of a Bedford street, another across one (city_check): left out
+			if absf(area0) < 400.0 and not _spans_a_cut(ring, cuts):
+				drop.append(bi)
+				continue
 			kept += 1
 			continue
 		if signf(_area_signed(cur)) != signf(area0):
@@ -1436,6 +1443,63 @@ func _clip_buildings(bdata: Array) -> void:
 		clipped += 1
 	_dressing["bld_clipped"] = clipped
 	_dressing["bld_over_road"] = kept
+	_dressing["bld_dropped"] = drop.size()
+	if not drop.is_empty():
+		_drop_buildings(bdata, drop)
+
+## does the outline reach past both edges of one of the roads it was cut by ([a, b, half
+## width + BLD_CLEAR] each): a building over the road, not one standing in it
+func _spans_a_cut(ring: PackedVector2Array, cuts: Array) -> bool:
+	for cut: Array in cuts:
+		var a: Vector2 = cut[0]
+		var b: Vector2 = cut[1]
+		var hw: float = float(cut[2]) - BLD_CLEAR
+		var L := a.distance_to(b)
+		if L < 0.01:
+			continue
+		var d := (b - a) / L
+		var nrm := Vector2(-d.y, d.x)
+		var lo := INF
+		var hi := -INF
+		for v: Vector2 in ring:
+			var t := (v - a).dot(d)
+			if t < -2.0 or t > L + 2.0:
+				continue
+			var lat := (v - a).dot(nrm)
+			lo = minf(lo, lat)
+			hi = maxf(hi, lat)
+		if lo < -hw - 0.5 and hi > hw + 0.5:
+			return true
+	return false
+
+## left out at load, before anything else looks at them: the outlines, their boxes, heights,
+## solidity, the spatial hash and the city's own list, all kept in step
+func _drop_buildings(bdata: Array, drop: Array) -> void:
+	var gone := {}
+	for bi: int in drop:
+		gone[bi] = true
+	var keep_b: Array = []
+	var blds: Array = []
+	var boxes: Array = []
+	var solid := PackedByteArray()
+	var tops := PackedFloat32Array()
+	for bi in range(_blds.size()):
+		if gone.has(bi):
+			continue
+		keep_b.append(bdata[bi])
+		blds.append(_blds[bi])
+		boxes.append(_bld_box[bi])
+		solid.append(_bld_solid[bi])
+		tops.append(_bld_top[bi])
+	bdata.clear()
+	bdata.append_array(keep_b)
+	_blds = blds
+	_bld_box = boxes
+	_bld_solid = solid
+	_bld_top = tops
+	_bld_hash = {}
+	for bi in range(_blds.size()):
+		_hash_add(_bld_hash, _bld_box[bi], BLD_CELL, bi)
 
 ## ---- loading the city ---------------------------------------------------------------
 

@@ -268,6 +268,39 @@ good is 30-70 m past the town's edge, stopped by "steep ground").
 Before anything: `tools/check_script.sh res://game/streets/streets.gd
 res://game/streets/traffic.gd res://game/streets/furniture.gd` (seconds).
 
+### Validation: one command, and handing it to another session
+
+`game/streets/tests/validate.sh` runs the checks below headless, one after another, and
+prints a summary to set beside tests/README.md's last results. It reads the game and
+changes nothing. Quick (default): `city_check` in all four towns and the exam in the test
+town at 2x -- about 5 minutes. `FULL=1`: also the exam in Givatayim and Ashdod at 1x and the
+queue check -- about 40 minutes. Run it in the background (a foreground command is cut off
+at 10 minutes).
+
+What it catches: anything solid standing on a road (walls, hedges, posts by kind, buildings),
+a junction's lights split in two, and in driving -- bodies overlapping or into a wall or
+post, stopping over the line at a red, pushing against something, a car standing with
+nothing holding it, queues pulling away unlike real ones. What it does not see: how
+anything looks (textures, colours, light, pop-in -- that needs pictures and a person: the
+shot tests and `city_check SHOTS=1`), how driving feels (crashes, steering, the camera),
+speed on a phone or in a browser (the profiler, `hitches`), the web build itself, the
+filmed walks (`filmed_walk SCAN=1`), bridges and tunnels (`decks`). A clean validation says
+the town is laid out and drives right by these measures, not that it is right.
+
+Reading it: `city_check` is the same every run, so any change in its counts is real. The
+exam is not -- two runs at 1x differed by half on some counts -- so compare against that
+spread, not against one number, and look at the places it lists before believing a count.
+
+**Handing it to another session** (say: "in streets, run the validation on the latest main
+and report against tests/README.md; don't fix anything"): it should fetch and merge `main`
+first (it validates whatever its own branch holds), run the script in the background, and
+report the summary. Sessions run in their own containers, so one validating does not slow
+another down. Say whether it may fix what it finds: a session that fixes as it goes edits
+code other sessions are in the middle of (traffic, the builders), and two fixes to one
+corner clash; "report only", or "fix X only", keeps it to one owner. A session that pushes
+the README's new numbers publishes `main` (the site rebuilds itself, ~5 minutes); that is
+harmless, but it is a push.
+
 ### The checks that should read 0
 
 A look back over twenty bug fixes (November 2026) found the same few mistakes again and
