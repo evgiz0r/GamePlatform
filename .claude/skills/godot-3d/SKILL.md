@@ -83,6 +83,14 @@ is a Z coordinate, not a height.
   An albedo multiplier is linear and the screen is sRGB: 0.55 off the albedo is what left
   the same 0.69 on screen as a real shadow did. Under a test's software renderer each frame
   the bake waits for costs most of a second; in a browser it is a few ms.
+- **Night glow without a glow effect.** A bloom over the frame costs a browser a millisecond
+  or two a frame; a halo per light, drawn additively in the same mesh as the light's pool on
+  the ground (every vertex of its quad at the light, the corner in UV, turned to the eye in
+  the vertex shader with `skip_vertex_transform`, sized at least ~1% of the distance so far
+  lamps stay points) costs nothing extra. Two traps: an additive material that is fogged
+  gets the fog colour *added* (far pools turned into cyan blobs at night: use
+  `fog_disabled` and fade by distance yourself), and a glow decal laid at the road's height
+  is under the pavement (lay it above the highest surface it can fall on).
 - **Golden hour is warm light and cool shade.** A sunset HDRI tonemapped to the day sky's
   brightness came out as a plain day; keep it darker (half the exposure) so its glow
   survives. Don't put the light where the photo's sun is (5 degrees up made every shadow 12

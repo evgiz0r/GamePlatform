@@ -32,6 +32,19 @@ right now, offer to add it here rather than letting it get lost in the chat.
 
 ## Platform and tooling
 
+- **Bus lanes from official data, for baked Israeli towns.** The city baker
+  (`tools/osm_city.py`) could take the Ministry of Transport's layer of existing bus and
+  priority lanes (data.gov.il, dataset `nataz_kayam`, CC BY: credit it on screen beside
+  OSM's): which stretches of the main roads have a bus-only lane -- on the right, the left,
+  or down the centre behind a median -- its hours, and how many other lanes there are. A
+  driving game on the town could then run buses and taxis in their own lane, paint it
+  (אוטובוס / "BUS"), and keep traffic and its autopilot out of it. In late 2026 the layer had
+  46 stretches in Ashdod and 4 in Givatayim. The stretches are given by street name and
+  from/to, so matching them to OSM's ways is the fiddly part. Needs data.gov.il on the
+  network allowlist. (OVER, over.org.il, mirrors the same layer but publishes no licence of
+  its own: take it from data.gov.il. Its signalled-junction and roundabout layers matched
+  OSM's almost exactly -- useful as a check in a scene test, not as data.)
+
 - **Tracking verified music.** Which tracks are confirmed CC0 vs CC-BY, where they came
   from, what has been checked. Today this lives loosely in `assets/CREDITS.md` and a
   note in `assets/INDEX.md`.
