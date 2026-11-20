@@ -131,6 +131,10 @@ data format is at the top of `tools/osm_city.py`; this is about living with it.
 The baked area ends; don't let it end in an invisible wall. A striped barrier along it
 (following the ground), a soft glow over it that shows when near, a line on the minimap,
 a banner on contact -- and keep the car's own collision circles off exactly that line.
+An AI that picks its way at junctions must see the edge coming: a street that runs off the
+map looks like any other until the barrier. Look a few hundred metres down each way on and
+score down one whose every continuation hits the edge (not ordinary dead ends -- exploring
+those is fine), and end a planned road a few metres short of the barrier as a dead end.
 
 ## Privacy
 

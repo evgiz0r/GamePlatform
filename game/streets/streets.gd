@@ -11684,6 +11684,8 @@ func _ap_plan() -> void:
 	var dir := 1 if (pts[sj + 1] - pts[sj]).dot(heading) >= 0.0 else -1
 	if r["o"] != 0:
 		dir = r["o"]
+	elif _edge_bound(Vector3i(ri, sj + 1 if dir > 0 else sj, dir)) and not _edge_bound(Vector3i(ri, sj if dir > 0 else sj + 1, -dir)):
+		dir = -dir   # that way only runs off the map: the other (it turns round first)
 	_ap_pts.append(hit["q"])
 	_ap_v.append(float(r["speed"]))
 	_ap_lim.append(float(r["speed"]))
@@ -11705,6 +11707,14 @@ func _ap_leg(ri: int, from: int, dir: int) -> void:
 				last = k
 				break
 			k += dir
+	# a road running off the map stops short of the barrier: a dead end there (see _ap_ways)
+	var rim := _bounds.grow(-EDGE - EDGE_ROOM)
+	var k2 := from
+	while k2 != last:
+		if not rim.has_point(pts[k2 + dir]):
+			last = k2
+			break
+		k2 += dir
 	var i := from
 	_ap_turn_lane(ri, from, dir)
 	_ap_turn_into(ri, from, dir, lane)
@@ -11943,6 +11953,7 @@ func _ap_ways(ri: int, ei: int, dir: int) -> Array:
 	var came := (pts[ei] - pts[prev]).normalized()
 	var ways: Array = []
 	var back := Vector3i(-1, 0, 0)
+	var rim := _bounds.grow(-EDGE - EDGE_ROOM)
 	for e: Vector2i in _node_roads[node]:
 		var r2: Dictionary = _roads[e.x]
 		if not r2["drive"] or r2["pv"]:
@@ -11957,6 +11968,8 @@ func _ap_ways(ri: int, ei: int, dir: int) -> Array:
 				continue
 			if r2["o"] != 0 and r2["o"] != d2:
 				continue
+			if not rim.has_point(p2[nxt]):
+				continue   # over the map's edge
 			var go := (p2[nxt] - p2[e.y]).normalized()
 			var c := came.dot(go)
 			if c < -0.7:
@@ -11968,12 +11981,80 @@ func _ap_ways(ri: int, ei: int, dir: int) -> Array:
 				score -= 6.0   # alleys and car-park lanes: only when there is nothing else
 			if not _in_city(p2[nxt]):
 				score -= 2.5   # back toward town rather than out past its edge
+			if _edge_bound(Vector3i(e.x, nxt, d2)):
+				score -= 8.0   # every way on from it runs off the map: only if nothing else
 			if r.get("ring", false):
 				# on a roundabout: off at one of the next exits, never round and round
 				score += (-0.8 - 1.2 * _ap_ring_n) if r2.get("ring", false) else 1.2
 			ways.append({"leg": Vector3i(e.x, nxt, d2), "turn": came.angle_to(go), "name": r2["name"],
 				"en": r2["en"], "service": r2["k"] == "service", "score": score})
 	return [ways, back]
+
+## Autodrive's look ahead at a junction: does this way only lead off the map? True when every
+## way on from it within EDGE_LOOK metres runs into the barrier at the map's edge. (An ordinary
+## dead end -- a cul-de-sac -- does not count: autodrive explores those and turns.) A street
+## running off the map was taken like any other, and the car turned round at the barrier.
+const EDGE_LOOK := 300.0
+const EDGE_ROOM := 4.0               ## a road's points this close to the barrier are past it, for autodrive
+var _edge_memo := {}
+
+func _edge_bound(leg: Vector3i) -> bool:
+	if not _edge_memo.has(leg):
+		_edge_memo[leg] = not _edge_walk(leg, EDGE_LOOK, 0)
+	return _edge_memo[leg]
+
+## can a car going `leg` drive on `budget` metres (or to an ordinary dead end) without
+## reaching the edge, by some way?
+func _edge_walk(leg: Vector3i, budget: float, depth: int) -> bool:
+	var pts: PackedVector2Array = (_roads[leg.x] as Dictionary)["pts"]
+	var rim := _bounds.grow(-EDGE - EDGE_ROOM)
+	var last := pts.size() - 1 if leg.z > 0 else 0
+	var k := leg.y
+	var prev := pts[clampi(leg.y - leg.z, 0, pts.size() - 1)]
+	var d := 0.0
+	while true:
+		if not rim.has_point(pts[k]):
+			return false
+		d += prev.distance_to(pts[k])
+		prev = pts[k]
+		if d >= budget:
+			return true
+		if k == last:
+			break
+		k += leg.z
+	if depth >= 10:
+		return true
+	var ons := _legs_on(leg.x, last, leg.z)
+	if ons.is_empty():
+		return true   # an ordinary dead end
+	for on: Vector3i in ons:
+		if _edge_walk(on, budget - d, depth + 1):
+			return true
+	return false
+
+## the legs autodrive could take on from point ei of road ri arrived at going `dir` (the
+## same as _ap_ways, without the scores; no service lanes)
+func _legs_on(ri: int, ei: int, dir: int) -> Array:
+	var pts: PackedVector2Array = (_roads[ri] as Dictionary)["pts"]
+	var node: int = ((_roads[ri] as Dictionary)["ids"] as PackedInt32Array)[ei]
+	var prev := clampi(ei - dir, 0, pts.size() - 1)
+	var came := (pts[ei] - pts[prev]).normalized()
+	var out: Array = []
+	for e: Vector2i in _node_roads[node]:
+		var r2: Dictionary = _roads[e.x]
+		if not r2["drive"] or r2["pv"] or r2["k"] == "service":
+			continue
+		var p2: PackedVector2Array = r2["pts"]
+		for d2: int in [1, -1]:
+			var nxt := e.y + d2
+			if nxt < 0 or nxt >= p2.size() or (e.x == ri and nxt == prev):
+				continue
+			if r2["o"] != 0 and r2["o"] != d2:
+				continue
+			if came.dot((p2[nxt] - p2[e.y]).normalized()) < -0.7:
+				continue
+			out.append(Vector3i(e.x, nxt, d2))
+	return out
 
 ## One big junction drawn as several. Where a divided road meets a street, each of its halves
 ## meets it at a point of its own, 10-30 m apart (four points where two divided roads cross),

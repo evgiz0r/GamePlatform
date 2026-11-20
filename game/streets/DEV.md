@@ -52,7 +52,9 @@ The ones most often touched, and the functions in them:
   `_ap_turn_into` (the curve through a junction), `_ap_next` / `_ap_ways` (the ways on),
   `_cluster_exits` (a junction drawn as several points offered as one), `_ap_queue` (legs
   across such a junction), `_cross_tick` (the player's choice), off the road `_way_to_road`,
-  lost `_ap_rescue`, stuck for 40 s `_ap_watch`.
+  lost `_ap_rescue`, stuck for 40 s `_ap_watch`. The map's edge: `_edge_bound` (every way on
+  within `EDGE_LOOK` m runs into the barrier: scored down in `_ap_ways`, turned from in
+  `_ap_plan`), `_legs_on`; `_ap_leg` stops a road `EDGE_ROOM` short of the barrier, a dead end.
 - **traffic lights** -- `_lights_setup` makes SITES: each OSM light taken to its junction,
   the other half of a divided road added (`_other_half`), lit points a short road apart
   (`_site_legs`, `SITE_LEG` 36 m) joined, shortest first, no wider than `SITE_SPAN` 50 m;

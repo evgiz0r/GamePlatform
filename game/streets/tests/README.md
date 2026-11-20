@@ -35,6 +35,7 @@ these numbers the wrong way has broken something.
 | `buildings_on_roads` | 1 | buildings still standing on a road's asphalt | 3 (passages, on purpose) |
 | `corners` | 1 | junction corners the old middle-only check let in whole | 261 (fixed), shots |
 | `map_edge` | 3 | the car coasting into the map's edge | stops nose to the barrier |
+| `autodrive_edge` | 1, 3 | autodrive put on streets that run off the map, 120 m short, facing out: touches of the barrier, turn-rounds, time near it | (pending) |
 | `feet` | 1 | a walker's feet against the pavement's top | 0.21 = 0.21 |
 | `feel` | 1 | a crash at 54 km/h; jumping out at 50 km/h; into a fence | rebound 0-1.3 m/s, no hop; 3.4 m tumble, car rolls 37 m; the fence check picks a fence behind a building (stops 6.5 m short) -- to fix |
 | `on_foot` | 1 | getting out, walking, running, a car stopping for you | 2.1 / 6.2 m/s |

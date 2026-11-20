@@ -501,8 +501,15 @@ than the two waiting for each other for ever.
 
 **The edge of the map** is a striped barrier with a glowing curtain over it that shows as
 you come near, and a line on the minimap; the car stops against it, nose to the stripes.
+Autodrive keeps away from it: at a junction it looks a few hundred metres down each way on,
+and a way that only leads off the map is taken only when there is nothing else; on a street
+with no way back short of the edge it turns round where it is, not at the barrier.
 
 > Mark somehow the border of the map, I just hit air and those walls are invisible.
+
+> The autodrive sometimes goes into a road that hits the border of the city where it
+> obviously cannot go. It then turns and does some tricks to go back, but that's weird in
+> the first place.
 
 **Car parks.** OSM's parking areas (up to a block's size) are laid out in rows of painted
 bays with most of them taken; a car park mapped only by its lanes (OSM: a parking aisle,
