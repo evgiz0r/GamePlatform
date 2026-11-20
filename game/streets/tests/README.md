@@ -21,7 +21,7 @@ these numbers the wrong way has broken something.
 | `junction_choices` | 3 | junction prompts during autodrive; a big junction asking twice | 0 twice; 3 knots asked once |
 | `autodrive_lanes` | 3 | autodrive on multi-lane roads: lane accuracy, bumps into cars, hits, buses passed | 0.4 m off the lane's middle, 0 bumps |
 | `autodrive_two_way` | 1 | time left of the centre line on two-way streets, hits | 0 s, none |
-| `autodrive_offroad` | 1 | dropped in yards and between blocks: back on the road? | 8 of 8 |
+| `autodrive_offroad` | 1 | dropped in yards and between blocks: back on the road? | 7 of 8 (Katznelson start; spot 4 is stuck 40 s either way -- it used to be lifted at 40 s, now it backs out and the test's 45 s run out) |
 | `autodrive_corners` | 1, 3 | leaving the asphalt at corners | 0 in Givatayim, 3 brief in Ashdod |
 | `autodrive_narrow` | 1 | standstills in the narrow streets (David Kalai and others) | longest 2 s |
 | `standoff` | 1 | autodrive meeting a car head on in a narrow street | passes, 2.2 m apart |

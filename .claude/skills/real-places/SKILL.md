@@ -255,6 +255,10 @@ one needed:
   (a ramp up meeting a ramp down at the crossing is a crest a car takes off from), and
   treat bridges shorter than ~8 m as culverts. A coarse elevation model (36 m) is smooth
   under an overpass: all the lift has to come from the ramps.
+- **Embankments are banks, not walls**, where there is room: a slope ~1.5 out for each
+  metre down with a guardrail on top, a retaining wall only where the bank's foot would land
+  on another road or in a building. Give the bank's foot a collision line too (a car on the
+  ground drove into the slope).
 - **A divided road is two decks overlapping at the median** at slightly different heights:
   decide what is under a body by the carriageway it is on first, the nearest height next,
   or it drifts onto the other and falls off its end.

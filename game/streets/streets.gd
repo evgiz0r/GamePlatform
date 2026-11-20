@@ -907,6 +907,8 @@ var _odo := 0.0
 var _assist := true
 var _touch_t := 0.0                  ## counts down after the car touched something
 var _pinned_t := 0.0
+var _pinned_back := 0.0              ## of it, seconds the pedal was for reversing
+var _pin_hinted := false
 var _pin_at := Vector2.ZERO          ## where the car was when it started pushing against something
 var _last_hit := ""                  ## what the car last bumped: "building 12" / "post 40", for the report
 
@@ -1679,7 +1681,11 @@ func _build_world() -> bool:
 	for i in range(near.size()):
 		if not await _step("the streets round the start (%d of %d)" % [i + 1, near.size()]):
 			return false
+		_fg_text = _loading.text
+		_fg_build = true
+		_yield_at = Time.get_ticks_usec() + FG_US
 		await _build_tile(near[i])
+		_fg_build = false
 	_tiles_todo = _tiles_todo.filter(func(t): return not _tiles_done.has(t))
 	if _details != null:   # what a filmed walk added: built whole, once (details.gd)
 		await _details.build()
@@ -1718,6 +1724,13 @@ var _crossing_set := {}
 var _white_bollards := {}            ## crossing nodes whose bollards are white, as filmed (details.gd)
 var _bg_build := false               ## building in the background: stop for the frame when over budget
 var _bg_wait := false
+## The squares round the start are built behind the loading text, and each used to go up in one
+## piece: the biggest, "1 of 6", froze a browser's page for seconds (and looked hung). Now
+## they too hand a frame back every FG_US, the text ticking over meanwhile.
+var _fg_build := false
+const FG_US := 80000
+var _fg_text := ""
+var _fg_spin := 0
 var _yield_at := 0
 var _build_us := BUILD_US
 var _build_lbl: Label
@@ -1799,12 +1812,18 @@ func _tally(k: String, n: int) -> void:
 
 ## the frame's building time is used up
 func _over() -> bool:
-	return _bg_build and Time.get_ticks_usec() > _yield_at
+	return (_bg_build or _fg_build) and Time.get_ticks_usec() > _yield_at
 
 ## Building in the background: hand the frame back and go on in the next one. Meanwhile
 ## the game is not building a square, so whatever it makes in between (night's light pools)
 ## is its own, not that square's.
 func _pause() -> void:
+	if _fg_build:   # loading: no game frame to wait for -- just let one be drawn
+		_fg_spin += 1
+		_loading.text = _fg_text + "  " + ["·  ", " · ", "  ·", " · "][_fg_spin % 4]
+		await get_tree().process_frame
+		_yield_at = Time.get_ticks_usec() + FG_US
+		return
 	var was := _tiled
 	var batching := _batching
 	_set_tiling(false)
@@ -11473,6 +11492,7 @@ func _physics_process(dt: float) -> void:
 	_drive(dt, ctl[0], ctl[1], ctl[2])
 	_p("car")
 	_through_lights()
+	_drop_crumb()
 	_check_stop_signs()
 	_p("rules")
 	_names_tick(dt)
@@ -11820,15 +11840,27 @@ func _manual(dt: float) -> Array:
 	# stuck: a pedal down against something and the car getting nowhere -- nose in a
 	# corner, wedged on a tree, rocking between two parked cars. With or without the assist:
 	# nobody wants to sit there.
+	# Not a jump back to the road at once (it was, after 1.2 s: the car popped out of where
+	# you had driven it, which broke the drive): the way out is the way in, in reverse. Only
+	# wedged both ways -- pushed forward and backward and gone nowhere -- is it lifted out.
 	if up + down > 0.5 and _touch_t > 0.0:
 		_pinned_t += dt
+		if down > up:
+			_pinned_back += dt
 		if _pos.distance_to(_pin_at) > 1.2:   # backing out (or sliding off) is working
 			_pin_at = _pos
 			_pinned_t = 0.0
-		elif _pinned_t > RESCUE_AFTER:
+			_pinned_back = 0.0
+		elif _pinned_t > RESCUE_AFTER and _pinned_back < 1.0 and not _pin_hinted:
+			_pin_hinted = true
+			_show_banner("stuck -- back up to get out" if not _touch_seen else "stuck -- pull the stick down to back out", 2.5)
+		elif _pinned_back > 2.5 and _pinned_t > 5.0:
 			_rescue()
+			_pinned_back = 0.0
 	else:
 		_pinned_t = 0.0
+		_pinned_back = 0.0
+		_pin_hinted = false
 		_pin_at = _pos
 	return [throttle, brake, steer]
 
@@ -13287,12 +13319,12 @@ func _camera(dt: float, p: Vector2, yaw: float) -> void:
 ## little as the car pulls away, the eyes leading into a turn
 func _seat_camera(dt: float, yaw: float) -> void:
 	_cam_yaw = yaw
-	_look_turn = lerpf(_look_turn, clampf(_steer * 0.55, -0.3, 0.3), 1.0 - exp(-dt * 3.0))
+	_look_turn = lerpf(_look_turn, clampf(_steer * 0.45, -0.25, 0.25), 1.0 - exp(-dt * 2.0))
 	var xf := _body.global_transform
 	# (the head turned: the eyes a little to that side and back, the view round with it)
-	var head := SEAT + Vector3(sin(_head_yaw) * 0.06, 0, clampf(-_a_long * 0.004, -0.04, 0.04) - (1.0 - cos(_head_yaw)) * 0.05)
+	var head := SEAT + Vector3(sin(_head_yaw * SEAT_HEAD) * 0.06, 0, clampf(-_a_long * 0.004, -0.04, 0.04) - (1.0 - cos(_head_yaw * SEAT_HEAD)) * 0.05)
 	var eye := xf * head
-	var turn := _look_turn - _head_yaw
+	var turn := _look_turn - _head_yaw * SEAT_HEAD
 	var ahead := Vector3(-sin(turn), -0.06, cos(turn)) * 12.0   # +X is the car's left
 	look_from(eye, xf * (head + ahead))
 	cam.fov = lerpf(72.0, 78.0, clampf(absf(_v) / 30.0, 0.0, 1.0))
@@ -13328,32 +13360,56 @@ func _head_tick(dt: float) -> void:
 		_head_plan = []
 	else:
 		_head_check -= dt
-		if _head_check <= 0.0 and _head_plan.is_empty() and absf(_v) < 6.5 and _gear > 0:
-			_head_check = 0.15
-			var j := _junction_ahead_me(26.0)
-			if j >= 0 and (_nodes[j].distance_to(_head_at) > 45.0 or _head_at_t > 12.0):
+		# the look left and right: standing or all but, at a junction, a light or a sign,
+		# once a junction. (Rolling below 23 km/h near any junction, it fired again and again
+		# in slow traffic and turned the seat view half round each time.)
+		if _head_check <= 0.0 and _head_plan.is_empty() and absf(_v) < 2.5 and _gear > 0:
+			_head_check = 0.2
+			var j := _junction_ahead_me(16.0)
+			if j >= 0 and (_nodes[j].distance_to(_head_at) > 45.0 or _head_at_t > 20.0):
 				_head_at = _nodes[j]
 				_head_at_t = 0.0
-				_head_plan = [[0.95, 0.45], [-0.95, 0.5], [0.55, 0.25]]
+				_head_plan = [[0.9, 0.5], [-0.9, 0.55], [0.5, 0.3]]
 		if not _head_plan.is_empty():
-			want = float(_head_plan[0][0])
-			if absf(_head_yaw - want) < 0.1:
-				_head_hold += dt
-				if _head_hold >= float(_head_plan[0][1]):
-					_head_hold = 0.0
-					_head_plan.pop_front()
+			if absf(_v) > 6.0:
+				_head_plan = []   # (off again before it was done: eyes on the road)
+			else:
+				want = float(_head_plan[0][0])
+				if absf(_head_aim - want) < 0.05:
+					_head_hold += dt
+					if _head_hold >= float(_head_plan[0][1]):
+						_head_hold = 0.0
+						_head_plan.pop_front()
 		elif _gear < 0 and absf(_v) > 0.2:
-			want = -1.3   # over the right shoulder, reversing
+			want = -1.2   # over the right shoulder, reversing
 		else:
-			want = clampf(-_steer * 1.6, -0.7, 0.7)   # into the turn (+ steer is right)
-			var at := _person_ahead_me(16.0)
-			if at != Vector2.INF and absf(_v) < 5.0:
-				want = clampf(-_fwd().angle_to(at - _pos), -1.1, 1.1)
-	# a head turns quickly through the middle and slows into where it is going
-	var gap := absf(want - _head_yaw)
-	_head_yaw = move_toward(_head_yaw, want, HEAD_RATE * dt * clampf(gap * 2.5, 0.25, 1.0))
+			# standing for people on the crossing ahead: at one of them, held a moment (the
+			# nearest, chosen afresh every frame, sent the eyes from one to the next)
+			_head_person_t -= dt
+			if absf(_v) < 2.0:
+				if _head_person_t <= 0.0:
+					_head_person = _person_ahead_me(14.0)
+					_head_person_t = 1.5
+				if _head_person != Vector2.INF:
+					want = clampf(-_fwd().angle_to(_head_person - _pos), -1.0, 1.0)
+			else:
+				_head_person = Vector2.INF
+	# eased: the aim moves at a head's pace and the head follows it smoothly. (The steering
+	# was in it too, on top of the seat view's own lead into a turn: every small correction
+	# autodrive made swung the view.)
+	_head_aim = move_toward(_head_aim, want, 2.2 * dt)
+	_head_yaw = lerpf(_head_yaw, _head_aim, 1.0 - exp(-dt * 7.0))
 	if _player_car_mat != null:
-		_player_car_mat.set_shader_parameter("head_turn", _head_yaw)
+		# the head drawn in the car leans a little into a turn as well (the seat view does
+		# that by itself)
+		_head_steer = lerpf(_head_steer, clampf(-_steer * 0.8, -0.35, 0.35), 1.0 - exp(-dt * 3.0))
+		_player_car_mat.set_shader_parameter("head_turn", _head_yaw + _head_steer)
+
+var _head_aim := 0.0                         ## where the head is heading for (eased toward)
+var _head_person := Vector2.INF              ## the person it is looking at, held a moment
+var _head_person_t := 0.0
+var _head_steer := 0.0                       ## the drawn head's lean into a turn
+const SEAT_HEAD := 0.7                       ## how much of the head's turn the seat view takes
 
 func _toggle_look() -> void:
 	_look_on = not _look_on
@@ -13829,8 +13885,14 @@ func _held(cur: float, v: float, why: String) -> float:
 func _autodrive(dt: float) -> Array:
 	# into the walls again and again (a few in quick succession): lost, back to the street
 	_ap_bonks = maxf(0.0, _ap_bonks - dt / 10.0)
-	if _ap_bonks >= 3.0 and _ap_rescue():
+	_ap_backouts = maxf(0.0, _ap_backouts - dt / 30.0)
+	if not _ap_rev.is_empty():
+		return _ap_reverse(dt)
+	if _ap_bonks >= 3.0 and (_ap_backout(40.0) or _ap_rescue()):
+		_ap_bonks = 0.0
 		_ap_pts = PackedVector2Array()
+		if not _ap_rev.is_empty():
+			return _ap_reverse(dt)
 	if _ap_back > 0.0:     # stuck against something: back off, then plan again
 		_ap_back -= dt
 		_gear = -1
@@ -13986,7 +14048,8 @@ func _autodrive(dt: float) -> Array:
 		_ap_stuck += dt
 		if _ap_stuck > 2.0:
 			_ap_stuck = 0.0
-			_ap_back = 1.4
+			if not _ap_backout(10.0):   # (back the way it came; blind, with no way known)
+				_ap_back = 1.4
 			# a push that went nowhere counts as a bump (too slow to be one): three in a row
 			# and it is lost, back to the street. Forward into a post, back, forward into it
 			# again went on for a minute and a half, foot on the gas -- not driving.
@@ -14014,6 +14077,10 @@ func _ap_watch(dt: float, vt: float) -> void:
 	if _ap_mark_t < AP_GIVE_UP:
 		return
 	_ap_mark = Vector2.INF
+	if _ap_backout(45.0):   # the way it came, first: no jump
+		_ap_pts = PackedVector2Array()
+		_log.event("backing out")
+		return
 	var mid := _bounds.get_center()
 	var toward := (mid - _pos).normalized()
 	for reach: float in [40.0, 80.0, 140.0]:
@@ -14157,6 +14224,100 @@ func _clear_line(a: Vector2, b: Vector2) -> bool:
 		s += 1.0
 	return true
 
+## ---- backing out the way it came ----------------------------------------------------------
+## Where the car is, it drove to: the road it came along is a way back out. A crumb is dropped
+## every CRUMB_M driven forward (the last CRUMBS of them); stuck, lost or off the road with no
+## way found, autodrive reverses along them -- slowly, steering, looking behind -- until it
+## is on a street facing along it, and plans on from there. It used to be lifted onto the
+## nearest street, a jump that broke the drive; that is now only for a car with no way back
+## (put down in a yard, or the way behind it blocked).
+const CRUMB_M := 1.5
+const CRUMBS := 70
+const AP_REV_V := 2.2                ## reversing speed (m/s)
+var _crumbs := PackedVector2Array()
+var _ap_rev := PackedVector2Array()  ## the crumbs to back along, the next first
+var _ap_rev_m := 0.0                 ## metres backed so far, and at most
+var _ap_rev_max := 0.0
+var _ap_rev_t := 0.0
+var _ap_backouts := 0.0              ## backing out lately (one off every 30 s): the third in a row is a lift
+
+func _drop_crumb() -> void:
+	if _walking or not _ap_rev.is_empty():
+		return
+	if not _crumbs.is_empty() and _crumbs[_crumbs.size() - 1].distance_to(_pos) > 12.0:
+		_crumbs = PackedVector2Array()   # (put down somewhere else: an old trail leads nowhere)
+	if _v > 0.3 and (_crumbs.is_empty() or _crumbs[_crumbs.size() - 1].distance_to(_pos) >= CRUMB_M):
+		_crumbs.append(_pos)
+		if _crumbs.size() > CRUMBS:
+			_crumbs.remove_at(0)
+
+## start backing out along the crumbs, at most `most` metres; false when there is no trail
+func _ap_backout(most: float) -> bool:
+	if _ap_backouts >= 2.0:
+		return false   # (backed out, drove in, stuck, backed out again: going round in a yard)
+	var rev := PackedVector2Array()
+	for i in range(_crumbs.size() - 1, -1, -1):
+		if _crumbs[i].distance_to(_pos) > 2.0 or not rev.is_empty():
+			rev.append(_crumbs[i])
+	if rev.size() < 2:
+		return false
+	_ap_rev = rev
+	_ap_backouts += 1.0
+	_ap_rev_m = 0.0
+	_ap_rev_max = most
+	_ap_rev_t = 0.0
+	_ap_back = 0.0
+	_ap_turn = 0.0
+	_cross = {}
+	_show_banner("autodrive: backing out", 1.4)
+	Probe.event("autodrive_backout", {"m": int(most)})
+	return true
+
+## one tick of it: [throttle, brake, steer], the gear in reverse
+func _ap_reverse(dt: float) -> Array:
+	_ap_rev_t += dt
+	_gear = -1
+	var fwd := _fwd()
+	var rear := _pos - fwd * WHEELBASE * 0.5
+	while _ap_rev.size() > 1 and _ap_rev[0].distance_to(rear) < 1.6:
+		_ap_rev_m += _ap_rev[0].distance_to(_ap_rev[1])
+		_ap_rev.remove_at(0)
+	# done: out far enough and on a street, along it -- or the trail ran out, or too long
+	var on := _nearest_seg(_pos, 8.0, true, true, _y)
+	var on_street := not on.is_empty() and float(on["edge"]) < -0.3 and _ap_rev_m > 5.0
+	if on_street:
+		var r: Dictionary = _roads[int(on["road"])]
+		var rp: PackedVector2Array = r["pts"]
+		var sj: int = on["seg"]
+		on_street = absf(fwd.dot((rp[sj + 1] - rp[sj]).normalized())) > 0.8
+	var behind := _push_out(_pos - fwd * (CAR_OFF + 0.7 + absf(_v) * 0.4), CAR_R, true, true, _y) != Vector2.ZERO \
+			or not _people_near(_pos - fwd * (CAR_OFF + 1.0), 2.5).is_empty()
+	if on_street or _ap_rev.size() <= 1 or _ap_rev_m >= _ap_rev_max or _ap_rev_t > 25.0 or behind:
+		_ap_rev = PackedVector2Array()
+		_crumbs = PackedVector2Array()   # (that way is used: a fresh trail from here)
+		_gear = 1
+		_ap_pts = PackedVector2Array()
+		if behind and not on_street:
+			_ap_bonks += 1.0   # (blocked behind too: a few of these and it is lifted out)
+		return [0.0, 1.0, 0.0]
+	# pure pursuit backwards: the rear leads, a point a few metres back along the trail
+	var tgt := _ap_rev[_ap_rev.size() - 1]
+	var acc := 0.0
+	for i in range(_ap_rev.size()):
+		if i > 0:
+			acc += _ap_rev[i - 1].distance_to(_ap_rev[i])
+		if _ap_rev[i].distance_to(rear) >= 3.5 or acc > 5.0:
+			tgt = _ap_rev[i]
+			break
+	var to := tgt - rear
+	var alpha := (-fwd).angle_to(to)
+	var steer := clampf(-atan(2.0 * WHEELBASE * sin(alpha) / maxf(to.length(), 1.0)), -MAX_STEER, MAX_STEER)
+	var sp := absf(_v)
+	var throttle := 0.55 if sp < AP_REV_V - 0.3 else 0.0
+	var brake := 0.5 if sp > AP_REV_V + 0.6 else 0.0
+	_ap_why = "backing"
+	return [throttle, brake, steer]
+
 ## Lost: no way back found, or into the walls again and again. Back onto the nearest street,
 ## the way the 40 s unstuck does.
 func _ap_rescue() -> bool:
@@ -14191,6 +14352,8 @@ func _ap_plan() -> void:
 			if way.size() >= 2:
 				from = way[way.size() - 1]
 				heading = (way[way.size() - 1] - way[way.size() - 2]).normalized()
+			elif _ap_backout(45.0):
+				return   # (out the way it came; the trip planned once on the street)
 			elif _ap_rescue():
 				from = _pos
 				heading = _fwd()
@@ -14223,6 +14386,8 @@ func _ap_plan() -> void:
 		# off, planned the same again, and into the wall again.
 		var way := _way_to_road()
 		if way.size() < 2:
+			if _ap_backout(45.0):
+				return   # (out the way it came; planned again once on the street)
 			if not _ap_rescue():
 				return
 			hit = _nearest_seg(_pos, 20.0, true, true, _y)
