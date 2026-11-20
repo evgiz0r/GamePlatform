@@ -1601,7 +1601,9 @@ func _load_city(id: String) -> bool:
 			"en": String(rd.get("name_en", "")), "drive": DRIVE.has(kind), "pv": rd.has("pv"), "sv": String(rd.get("sv", "")),
 			"speed": float(DRIVE.get(kind, 5.0)) * (NORTH_FASTER.get(kind, 1.0) if String(_place.get("look", "")) == "north" else 1.0),
 			# a roundabout's ring: marked by the bake, or a one-way way that closes on itself
-			"ring": rd.has("rb") or (int(rd.get("o", 0)) != 0 and ids.size() > 3 and ids[0] == ids[ids.size() - 1])}
+			"ring": rd.has("rb") or (int(rd.get("o", 0)) != 0 and ids.size() > 3 and ids[0] == ids[ids.size() - 1]),
+			# its bus lanes, each way (the bake's bf / bb: a letter a lane, left to right; "b" a bus lane)
+			"bf": String(rd.get("bf", "")), "bb": String(rd.get("bb", ""))}
 		if rd.has("y") and (rd["y"] as Array).size() == ids.size():
 			# off the ground (decks.gd): the height of its surface at each point
 			var ys := PackedFloat32Array()
@@ -4739,6 +4741,8 @@ func _flat_rect(buf: Buf, c: Vector2, d: Vector2, side: Vector2, along: float, a
 ## lanes: white dashes between them. Main roads in the north also get solid white edge
 ## lines; so do motorways everywhere. No paint across junctions.
 const MAIN_ROADS := {"motorway": true, "trunk": true, "primary": true, "secondary": true, "tertiary": true}
+const BUS_WORD_STEP := 45.0          ## a bus lane's word, painted down it this often
+var _bus_words := 0                  ## how many were painted (for the tests)
 
 func _markings(buf: Buf, r: Dictionary, yellow: Buf) -> void:
 	if not r["drive"] or r["k"] == "service":
@@ -4761,6 +4765,21 @@ func _markings(buf: Buf, r: Dictionary, yellow: Buf) -> void:
 	if (north and main) or r["k"] in ["motorway", "trunk"]:
 		for sg: float in [-1.0, 1.0]:
 			lines.append([sg * (w * 0.5 - 0.35), true, false])
+	# a bus lane: a wide solid line between it and the lanes beside it (no dashes there),
+	# and its word painted down it every so often, read the way it runs
+	var bus_words: Array = []   # [offset, way]
+	if _has_bus_lane(r):
+		var n := _lanes_each_way(r)
+		var span_w := w if int(r["o"]) != 0 else w * 0.5
+		for way: int in ([1, -1] if int(r["o"]) == 0 else [signi(int(r["o"]))]):
+			for idx in range(n):
+				var here := _bus_lane(r, idx, way)
+				if here:
+					bus_words.append([way * (w * 0.5 - span_w / n * (idx + 0.5)), way])
+				if idx < n - 1 and here != _bus_lane(r, idx + 1, way):
+					var off_b := way * (w * 0.5 - span_w / n * (idx + 1))
+					lines = lines.filter(func(ln): return absf(float(ln[0]) - off_b) > 0.5)
+					lines.append([off_b, true, false, 0.12])
 	if lines.is_empty():
 		return
 	var cum := PackedFloat32Array([0.0])
@@ -4795,10 +4814,28 @@ func _markings(buf: Buf, r: Dictionary, yellow: Buf) -> void:
 				var side := Vector2(-d.y, d.x)
 				var oa := a + side * off
 				var ob := b + side * off
-				var hw := 0.07 if not solid else 0.06
+				var hw: float = ln[3] if ln.size() > 3 else (0.07 if not solid else 0.06)
 				target.quad3(_g3(oa - side * hw, Y_MARK), _g3(ob - side * hw, Y_MARK),
 					_g3(ob + side * hw, Y_MARK), _g3(oa + side * hw, Y_MARK))
 			s += step
+	for bw: Array in bus_words:
+		var s2 := ceilf((span.x + 12.0) / BUS_WORD_STEP) * BUS_WORD_STEP - 12.0
+		while s2 < minf(total - 6.0, span.y):
+			var ok2 := s2 > 6.0
+			for c: Vector2 in clear:
+				if absf(s2 - c.x) < c.y + 6.0:
+					ok2 = false
+					break
+			if ok2:
+				var a2 := _along(pts, cum, s2)
+				var d2 := (_along(pts, cum, s2 + 1.0) - a2).normalized()
+				if _tiled and not _tile_rect(_tile).has_point(a2):
+					s2 += BUS_WORD_STEP
+					continue   # (the next square's: each square's stretch overlaps the next)
+				_road_word("אוטובוס" if String(_place.get("look", "")) == "med" else "BUS",
+					a2 + Vector2(-d2.y, d2.x) * float(bw[0]), d2 * float(bw[1]))
+				_bus_words += 1
+			s2 += BUS_WORD_STEP
 
 func _along(pts: PackedVector2Array, cum: PackedFloat32Array, s: float) -> Vector2:
 	for i in range(1, pts.size()):
@@ -12595,8 +12632,13 @@ func _lane_off(r: Dictionary) -> float:
 			return 0.0
 		# three lanes or more: the second from the right, where traffic going straight on
 		# drives (the right-hand one hugged the kerb all along Sderot Herzl); the right-hand
-		# lane is taken before a right turn (_ap_turn_lane)
-		return w * 0.5 - w / n * (1.5 if n >= 3 else 0.5)
+		# lane is taken before a right turn (_ap_turn_lane). Never a bus lane: the next one
+		# left of it (Kaplan's right-hand lane is the buses')
+		var idx := 1 if n >= 3 else 0
+		var dir := 1 if int(r["o"]) > 0 else -1
+		while idx < n - 1 and _bus_lane(r, idx, dir):
+			idx += 1
+		return w * 0.5 - w / n * (idx + 0.5)
 	# (+0.12 past the lane's middle, and 1.1 m clear of the kerb: +0.25 left a car 0.6 m from
 	# the kerb on a 7 m street, and the others, drifting, hugged it)
 	return clampf(minf(w * 0.25 + 0.12, w * 0.5 - 1.1), 0.9, 2.6)
@@ -12611,6 +12653,21 @@ func _lanes_each_way(r: Dictionary) -> int:
 	else:
 		n = mini(l / 2 if l > 1 else int(w / 6.6), int(w / 5.6))
 	return clampi(n, 1, 4)   # (no more than the width holds: a tagged two lanes narrowed to 4 m is one)
+
+## Is lane `idx` (0 the right-hand one) of road r, going `dir` along it (1 its points' way,
+## -1 the other), a bus lane? OSM's lanes are lined up from the right (the bake's letters run
+## left to right); a way with one lane that way has no bus lane, whatever OSM says (a bus
+## lane needs a lane beside it for the rest).
+func _bus_lane(r: Dictionary, idx: int, dir: int) -> bool:
+	var pat := String(r.get("bf" if dir >= 0 else "bb", ""))
+	if pat == "" or _lanes_each_way(r) <= 1:
+		return false
+	var j := pat.length() - 1 - idx
+	return j >= 0 and pat[j] == "b"
+
+## does road r have a bus lane either way
+func _has_bus_lane(r: Dictionary) -> bool:
+	return String(r.get("bf", "")).contains("b") or String(r.get("bb", "")).contains("b")
 
 ## of road r's lanes going one way, the line of the one nearest `off` metres right of the
 ## road's middle

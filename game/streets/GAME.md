@@ -229,6 +229,15 @@ every tower over 90 m has red aircraft-warning lights on its roof, slowly pulsin
 > Landmarks: Azrieli round/triangle/square towers in proper glass, lit at night, Sarona,
 > the Kirya (Matcal) tower.
 
+Bus lanes where OpenStreetMap marks them: Kaplan's westbound right-hand lane from Begin out
+to the box's edge, and the Ayalon's public transport lane on the right going south. A wide
+solid line keeps the lane apart, "אוטובוס" is painted down it every 45 m, buses (and about
+half the taxis) drive in it, other cars keep out of it but for the last 40 m before turning
+right, and the autopilot keeps out of it too. OSM marks few of Tel Aviv's bus lanes in this
+box (none on Begin or Ibn Gabirol), so the rest are not there.
+
+> use the OSM bus lanes
+
 > game streets -- lets add/start working on adding Tel Aviv. Somewhat the area I mentioned.
 > (with a map: Ichilov, Savidor, Azrieli, HaKirya, TLV Mall, Montefiore, Bitsaron,
 > Nahalat Yitshak)
