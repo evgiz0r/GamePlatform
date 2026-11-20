@@ -57,6 +57,22 @@ The ones most often touched, and the functions in them:
   -- no draws of their own. Lit shops' light on the pavement: `_shop_lights`. The night's
   colours: the night branch of `_retint_city` (a little of the palette's player colour, not
   half of it). Shop glass at night 0.85 (2.0 clipped to white).
+- **grass blades** -- GRASS_SHADER on a MultiMesh of 4 m patches (`_build_grass`) whose
+  node follows the camera a patch at a time (`_grass_follow`, from `_sky_follow`); a blade's
+  three corners sit at its root, the shader grows it where the far-shadow picture's green
+  says grass grows (`_build_far_shadows` paints it: 0.5 open ground, 1 lawns, parks, woods,
+  pitches, front gardens; roads with their pavements and buildings 0) at the ground's
+  height (the height grid as an RF texture, the same triangles as `_h`), by the camera's 3D
+  distance (none from up high). Cull off, so it flips NORMAL back on back faces (they went
+  black). `_grass_quality`: none below 2, 55% of the patches at 2.
+- **people keeping clear** -- `_people_tick` lists everyone (`_people_at`, `_people_who`);
+  a walker steers off its line (`lat`, up to 0.7 m) round anything solid 1.3 m ahead and
+  away from anyone ahead or alongside (to their other side, the right if dead ahead), then
+  two passes of `_push_out` (out of a parked car's one post can be into its other).
+  `_people_push`: people solid to the car (`_collide`) and to you on foot, not in
+  `_push_out` (which also places things as the city builds). `_crash` makes a person a
+  soft knock. People dissolve in over 75-90 m (`_people_lod`, OBJECT_DITHER).
+  `tests/people_clear.gd` (7.6% walking into things, 47 too-close: now 0.1%, 2-9).
 - **cats, flags on cars** -- the builders call `cat_at(p, y, facing, "sit"/"loaf")` (garden
   walls in `_garden_fronts`, a parked car's nose in `_build_parked`, bins in furniture's
   `kerbside`); furniture.gd's `cats()` places `_cat_kit()` (ellipsoids and tubes, the coat
