@@ -16803,6 +16803,8 @@ func _autodrive(dt: float) -> Array:
 		# from my nose to its back (a bus is two and a half cars long: kept a car's length
 		# from its middle, autodrive drove into its back)
 		var room := float(lead[0]) - CAR_LEN * 0.5 - float(lead[2]) - 2.2 - lv * 1.2
+		if int(lead[3]) >= 0 and _traffic._parked_double(_traffic.cars[int(lead[3])]):
+			room -= 4.5   # (a delivery van standing: wait well back, room to pull out round it)
 		var follow := 0.0 if room <= 0.0 else sqrt(lv * lv + 2.0 * 2.6 * room)
 		if follow < vt:
 			vt = follow
