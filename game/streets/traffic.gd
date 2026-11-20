@@ -78,6 +78,7 @@ class Car:
 	var blocker := -2                 ## who holds it up: a car's index, -1 the player
 	var why := ""                     ## what holds its speed down (limit, curve, light, car...)
 	var ignore := 0.0                 ## seconds it ignores crossing cars (a standoff broken)
+	var ignore_car := -1              ## ...and this one car, at any angle (a ring of cars each waiting for the next)
 	var squeeze := 0.0                ## seconds it edges past the player (a narrow street's standoff)
 	var hit := 0.0                    ## seconds it sits stunned after the player hit it
 	var retry := 0.0                  ## seconds before trying again to find it a road
@@ -85,6 +86,7 @@ class Car:
 	var passenger := false            ## someone beside the driver (seen through the glass)
 	var last_light := -1000.0         ## s where it last came into a junction with lights...
 	var last_site := -1               ## ...and which (its other points are not stopped at again)
+	var amber_go := -1                ## the lit point it went on for, too late to stop on amber
 	var sign_done := -1               ## the stop sign it has stopped at already
 	var sign_wait := 0.0
 	var holding := false              ## stopping for a stop sign: not taking the junction yet
@@ -419,11 +421,20 @@ func _target(c: Car, i: int, dt: float) -> float:
 		var d2 := q.distance_squared_to(c.pos)
 		if d2 > (look + 6.0) * (look + 6.0) or (q - c.pos).dot(fwd) < -2.0:
 			continue
-		if c.ignore > 0.0 and j < cars.size() and absf(angle_difference(oyaw, c.yaw)) > 0.8:
+		if c.ignore > 0.0 and j < cars.size() and (absf(angle_difference(oyaw, c.yaw)) > 0.8 or j == c.ignore_car):
 			continue   # breaking a standoff: go, and let the crossing car wait
 		if j == cars.size() and c.squeeze > 0.0:
 			continue   # edging past them, slowly
-		var wide := PLAYER_W if j == cars.size() else LANE_W
+		# (a car counts as on my path when the bodies would touch -- its half width, or more
+		# of its length the more it is turned across me, and mine -- not by its middle within
+		# 1.5 m: cars drove through a truck's flank in the next lane, 2.2 m wide)
+		var wide := PLAYER_W
+		if j < cars.size():
+			var oc: Car = cars[j]
+			var th := absf(angle_difference(oyaw, c.yaw))
+			var ohs: Vector2 = CORNERS.get(oc.kind, Vector2(0.9, 2.3))
+			wide = maxf(LANE_W, (CORNERS.get(c.kind, Vector2(0.9, 2.3)) as Vector2).x
+					+ ohs.x * absf(cos(th)) + ohs.y * absf(sin(th)) + 0.1)
 		if c.split:
 			wide = 0.6   # filtering: only what is right in front of the wheel
 		var gap := _path_gap(c, q, look, wide)
@@ -474,11 +485,22 @@ func _target(c: Car, i: int, dt: float) -> float:
 						c.wait = 0.0
 					elif c.wait > 9.0 or not _in_view(c.pos):
 						c.wait = 30.0   # (tick sends it elsewhere)
-				# two cars each waiting for the other in a junction: the lower number goes
+				# cars each waiting for the next round a ring (two in a junction, or side by side
+				# after a merge, or three): the lowest number goes, past the one that holds it at
+				# any angle. Ignoring only crossing cars, two nearly side by side in Ashdod each
+				# held the other for good (the exam's "held by nothing ... a loop")
 				if c.wait > 2.5 and who >= 0:
-					var o: Car = cars[who]
-					if o.blocker == i and o.wait > 2.5 and i < who:
+					var ring: Array = [i]
+					var k := who
+					while k >= 0 and k < cars.size() and ring.size() < 6 and not ring.has(k):
+						var ok: Car = cars[k]
+						if not ok.alive or ok.wait <= 2.5:
+							break
+						ring.append(k)
+						k = ok.blocker
+					if k == i and ring.size() >= 2 and i == ring.min():
 						c.ignore = 3.0
+						c.ignore_car = who
 						c.wait = 0.0
 			return vt
 	c.wait = 0.0
@@ -507,6 +529,8 @@ func _light_ahead(c: Car) -> float:
 		var way: Array = g._way_in(n, dir)
 		if way.is_empty() or way[3]:
 			continue   # not a way into it from outside (inside a junction of several points)
+		if c.amber_go == n:
+			return INF   # it went on amber, too close to stop: through, red or not (see below)
 		# over the line and rolling, or in the junction: committed, through. Over the line but
 		# standing -- stopped there for people on the crossing -- is not: it waited for the
 		# people, then drove on through the red
@@ -525,6 +549,9 @@ func _light_ahead(c: Car) -> float:
 		# is planned at -- the same, and a car that could stop kept its speed (the plan asked
 		# for no braking yet) until it could not, often late in the amber, and crossed on red
 		if state == "y" and c.v * c.v > 2.0 * (BRAKE + 1.0) * maxf(stop, 0.1):
+			# and that stands: going on, it braked as hard as it could the moment the light
+			# turned red and stopped in the junction, a truck 4.5 m past the line (the exam)
+			c.amber_go = n
 			return INF
 		return sqrt(2.0 * BRAKE * maxf(stop - 0.3, 0.0))
 	return INF
@@ -563,6 +590,32 @@ func _held_at_red(o: Car, k: int, n: int) -> bool:
 ## waiting long enough creeps through (the car in front still holds it back), so a jam
 ## cannot lock for good. (The first version was first come, first served, and a car kept
 ## the junction while it sat in a queue: whole crossroads and roundabouts locked up.)
+## how far back from junction point n, along the way car c comes in to its point j, its
+## front must stand for both front corners to be 0.5 m clear of every road crossing there:
+## (w/2 + 0.5 + half width * |cos|) / sin of the angle between them; the road it is on and
+## its straight-on continuation (within ~20 degrees) are not crossing
+func _clear_back(c: Car, j: int, n: int) -> float:
+	var in_dir := _came(c, j)
+	if in_dir.length_squared() < 0.0001:
+		return 0.0
+	in_dir = in_dir.normalized()
+	var hw: float = (CORNERS.get(c.kind, Vector2(0.9, 2.3)) as Vector2).x
+	var need := 0.0
+	for e: Vector2i in _node_roads[n]:
+		var r: Dictionary = _roads[e.x]
+		if not r["drive"]:
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		var u := pts[mini(e.y + 1, pts.size() - 1)] - pts[maxi(e.y - 1, 0)]
+		if u.length_squared() < 0.0001:
+			continue
+		u = u.normalized()
+		var sn := absf(in_dir.cross(u))
+		if sn < 0.35:
+			continue
+		need = maxf(need, (float(r["w"]) * 0.5 + 0.5 + hw * absf(in_dir.dot(u))) / sn)
+	return minf(need, _node_r[n] * 2.5 + 2.0)
+
 func _junction_ahead(c: Car, i: int, dt: float) -> float:
 	for j in range(c.k + 1, c.pts.size() - 1):
 		var dist := c.cum[j] - c.s
@@ -571,7 +624,10 @@ func _junction_ahead(c: Car, i: int, dt: float) -> float:
 		var n := c.node[j]
 		if n < 0 or _ways_out(n) < 3:
 			continue
-		var edge := dist - (_node_r[n] + 1.0 + c.len * 0.5)   # (its front at the junction's edge)
+		# (its front at the junction's edge -- and, at a skewed junction, as far back as keeps
+		# both front corners 0.5 m off each crossing road's asphalt: the same distance along a
+		# slanted way in left a corner in the lane, and the cars going by drove through it)
+		var edge := dist - (maxf(_node_r[n] + 1.0, _clear_back(c, j, n)) + c.len * 0.5)
 		if edge < -1.0:
 			break   # in it already: carry on through
 		var mine := _arrival(c, j, n)
@@ -924,6 +980,15 @@ func _lane_clear(c: Car, i: int, shift: float) -> bool:
 					return false
 	return true
 
+## In the kerb lane: as far toward the middle as keeps this vehicle's side 0.3 m inside the
+## asphalt (its lane line is where a car's is: on a 5 m street a car's side was 0.1 m from the
+## edge and a bus's 0.25 m over it, brushing the kerbside trees and poles -- the exam's
+## "traffic body into a post"). A bus on a narrow street rides a little over the middle, as
+## real ones do.
+func _kerb_room(c: Car, r: Dictionary) -> float:
+	var hw: float = (CORNERS.get(c.kind, Vector2(0.9, 2.3)) as Vector2).x
+	return maxf(0.0, g._lane_off(r) + hw + 0.3 - float(r["w"]) * 0.5)
+
 ## Which lane: on a road with more than one each way, into the right one for the turn
 ## ahead (right lane for a right turn, left for a left), out to overtake a slow car in
 ## front when the lane beside is free, back to the right now and then. A bus keeps to the
@@ -935,7 +1000,7 @@ func _steer_lanes(c: Car, i: int, dt: float, best: float, lead_v: float) -> void
 	if n <= 1:
 		c.lane_i = 0
 		c.split = false
-		c.shift_to = 0.0
+		c.shift_to = _kerb_room(c, r)
 		return
 	var want := c.lane_i
 	var turn: Array = _turn_ahead(c)
@@ -955,7 +1020,7 @@ func _steer_lanes(c: Car, i: int, dt: float, best: float, lead_v: float) -> void
 		if _lane_clear(c, i, _lane_shift(r, step)):
 			c.lane_i = step
 			c.lane_t = 3.0
-	c.shift_to = _lane_shift(r, c.lane_i)
+	c.shift_to = _lane_shift(r, c.lane_i) + (_kerb_room(c, r) if c.lane_i == 0 else 0.0)
 	if c.kind == "moto":
 		if best < 20.0 and lead_v < 2.0:
 			c.split = true
@@ -1124,6 +1189,7 @@ func _start_on(c: Car, ri: int, sj: int, at: Vector2, dir: int) -> bool:
 	c.shift_to = c.shift
 	c.shift_rate = 0.0
 	c.split = false
+	c.amber_go = -1
 	c.served = {}
 	c.dwell = 0.0
 	c.pts = PackedVector2Array([at + Vector2(-along.y, along.x) * lane])

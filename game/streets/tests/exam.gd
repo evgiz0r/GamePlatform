@@ -239,6 +239,11 @@ func _drive(secs: float) -> void:
 				car_still.erase(i)
 			if c.wait > 25.0:
 				_count("traffic: sent away (stuck) ticks")
+				if c.wait - 25.0 < 1.5 / 60.0:   # (once, as it crosses 25 s: what holds it, down the queue)
+					var ch: Array = _chain(i)
+					var o = T.cars[c.blocker] if c.blocker >= 0 and c.blocker < T.cars.size() else null
+					_incident("waited 25 s for a car", c.pos, "%s%s" % [" > ".join(ch[1]),
+						"; the first one %.0f deg across, %.1f m off" % [rad_to_deg(absf(angle_difference(o.yaw, c.yaw))), o.pos.distance_to(c.pos)] if o != null else ""])
 			# a red light run: into a junction's first signalled point on red, by the way the
 			# car came in (its heading before it got there). The points of one junction (a
 			# divided road's are several, 10-30 m apart) are one: a car that went in on
@@ -336,6 +341,7 @@ var _over := {}         ## "i:node" / "ap:node" -> the tick it was counted stand
 var _stop_why := {}     ## traffic car -> what held it the moment it came to a stop
 var _ap_stop_why := ""
 var _last_pos := {}     ## traffic car -> where it was last tick (a jump: put down elsewhere)
+var _hist := {}         ## traffic car -> its last 3 s, for a "held by nothing" record
 var _stand := {}        ## traffic car -> seconds standing
 var _ap_stand := 0.0
 var _push_at := Vector2.INF
@@ -498,7 +504,16 @@ func _check(dt: float) -> void:
 		if _last_pos.has(i) and (_last_pos[i] as Vector2).distance_to(c.pos) > 15.0:
 			_stand.erase(i)
 			_stop_why.erase(i)
+			_hist.erase(i)
 		_last_pos[i] = c.pos
+		# each car's last 3 s, every 0.25 s, for the record when it is found held by nothing
+		if _tick % 15 == 0:
+			var h: Array = _hist.get(i, [])
+			h.append("%.0f:%.1f/%.1f %s r%.1f/%.1f l%.1f b%d h%.1f" % [_tick / 60.0, c.v, c.want, c.why,
+				c.react_t, c.react, c.lead_v, c.blocker, c.hit])
+			if h.size() > 12:
+				h.remove_at(0)
+			_hist[i] = h
 	for i: int in boxes:
 		var c = cars[i]
 		if c.v < 0.3:
@@ -508,6 +523,8 @@ func _check(dt: float) -> void:
 				if not ch[0]:
 					_count("check: held by nothing 10 s+, traffic")
 					var front = T.cars[int(ch[2])] if ch.size() > 2 else c
+					print("    held by nothing, the front car %d's last 3 s (t:v/want why react_t/react lead_v blocker hit): %s" % [
+						int(ch[2]) if ch.size() > 2 else i, " | ".join(_hist.get(int(ch[2]) if ch.size() > 2 else i, []))])
 					_incident("held by nothing", c.pos, "%s; the front one wants %.1f m/s, stood %.0f s, %.0f m from the player%s" % [
 						" > ".join(ch[1]), front.want, front.still, front.pos.distance_to(g._pos),
 						", out of view" if not T._in_view(front.pos) else ""])
@@ -553,12 +570,14 @@ func _chain(i: int) -> Array:
 		if c.hit > 0.0:
 			parts.append("%s %d (stunned by a hit)" % [c.kind, i])
 			return [true, parts]
-		if c.v < 0.3 and c.want > 0.5 and c.react_t < c.react and not c.why in ["car", "player"]:
+		if c.v < 0.3 and c.want > 0.5 and (c.react_t < c.react or c.acc > 0.05) and not c.why in ["car", "player"]:
 			# wants to go, standing only for its moment to notice: its reaction still running
 			# (the front of a queue at a light gone green reads "limit" then). The first version
 			# took that for nothing at all; the second excused only cars that had stood under
 			# 4 s, so one that waited 10 s at a red and had its green that tick read as held by
-			# nothing (four in one exam); one that has reacted and still stands is not excused
+			# nothing (four in one exam); one that has reacted and still stands is not excused --
+			# but one just pulling away is (accelerating, at 0.2 m/s the tick it was looked at:
+			# the third version's last false alarm, a car that had waited at a junction)
 			parts.append("%s %d (pulling away)" % [c.kind, i])
 			return [true, parts, i]
 		parts.append("%s %d (%s)" % [c.kind, i, c.why])
