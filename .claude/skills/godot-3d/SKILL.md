@@ -199,11 +199,14 @@ most, in order, last time one did:
   range and add half a square's diagonal to the range.
 - **A camera that rises over the world (a zoom-out, a map view) meets every range at
   once.** Visibility ranges and fog both count from the camera, so from 500 m up the
-  ground right below is already 500 m away: cap the height at about half the longest
-  range you want kept (whatever has a shorter range drops out at the top of the screen
-  first), thin the fog with height (exponential fog at street-level density turns the
-  town below a washed-out white), and push `cam.near` out with the height, or paint
-  laid a few cm over asphalt z-fights. To freeze the world under it without
+  ground right below is already 500 m away. Thinning the fog with height is needed
+  (street-level density turns the town below a washed-out white) but it uncovers the
+  range cut-offs: with ranges per square of a few hundred metres, whole squares of trees
+  and walls pop in as the view pans. While the camera is up, set every range above a
+  threshold to 0 (no limit) and put them back when it comes down; walk the world once,
+  then only its new children. Leave the tiny things (signs, people) on their ranges.
+  Push `cam.near` out with the height, or paint laid a few cm over asphalt z-fights. And
+  lean the view (about 50 degrees down): straight down reads as a plan, not a place. To freeze the world under it without
   `get_tree().paused` (which would freeze the camera too), skip the physics tick and
   set the characters' `process_mode` to disabled, which stops their AnimationPlayers.
   Draw interpolated things at fraction 1 while frozen, or they rock between two ticks.
@@ -305,6 +308,12 @@ opens a window briefly.
 
 ## GDScript and shader gotchas
 
+- **A shader that branches on a number (a surface kind, a tone's code) tests each value's
+  range on both sides: `fx.w > 3.5 && fx.w < 4.5`, never `fx.w > 3.5`.** Two sessions each
+  added a "kind 4" within the hour; git merged the two shaders without a conflict, and the
+  one-sided test swallowed every higher kind, so a paved passage drew as the other's garden
+  wall stones. After merging a shader, list its branches and the table that feeds them.
+
 - `for w in some_array:` leaves `w` untyped, so `var to := goal - w.position` fails to
   parse ("cannot infer type"). Write `for w: Node3D in some_array:` or annotate the var.
 - `Rect2.get_center()` gives (x, z) for `world_area`; build the `Vector3` by hand.
@@ -318,6 +327,14 @@ opens a window briefly.
 - `Geometry2D.clip_polygons(a, b)` returns several polygons: the pieces, and holes when `b`
   lies wholly inside `a`. Take the largest by area (a hole is always smaller than its
   outline) and fix its winding to match the original's if anything relies on it.
+- **Cutting a hole in a terrain mesh**: clip each triangle that reaches the hole with
+  `Geometry2D.clip_polygons(tri, hole)`, triangulate the pieces, take each new vertex's
+  height and normal from the original triangle (barycentric), and wind them as the ground's
+  own (clockwise seen from above: `(b - a).cross(c - a).y < 0`) or they vanish from above.
+- **A tube seen from inside does not shade itself.** Its faces point inward, so the sun
+  sees their backs and casts no shadow: the inside of a tunnel was lit like the street.
+  Give its meshes `cast_shadow = SHADOW_CASTING_SETTING_DOUBLE_SIDED` (their own instances,
+  not merged into a batch that casts one-sided).
 - Polygon-to-segment distance: `Geometry2D.get_closest_points_between_segments()` over the
   polygon's edges, plus a point-in-polygon test for a segment wholly inside.
 - **A shader error shows only when something draws with it**, as a `SHADER ERROR` in the

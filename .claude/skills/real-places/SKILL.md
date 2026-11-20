@@ -129,6 +129,50 @@ data format is at the top of `tools/osm_city.py`; this is about living with it.
   car came in: a divided road's junction is several signalled points, and judging each by
   the heading mid-turn reads a car that went in on green as running the cross street's red.
 
+## Bridges, tunnels: roads at different levels
+
+OSM tags which ways are bridges (`bridge=yes`, `layer=1`), tunnels (`tunnel=yes`,
+`layer=-1`) and sometimes the ramps (`embankment=yes`, `cutting=yes`), but not how high
+anything is; a bridge way is usually only the span, its ramps ordinary ways. Until the
+heights are worked out, a baked town's bridges lie on the ground and its tunnels are best
+left out. A made-up town can give each such way its surface's height at every point (the
+city format's `y`), and that is enough for a game to do the rest. What a driving game on
+one needed:
+
+- **One height per point is the whole problem.** Everything that asked "how high is the
+  ground here" -- the car, its pitch, the camera, traffic, people, collisions -- now asks
+  "how high is the surface under this, for something at this height": the highest of the
+  ground and the decks there that is no more than a step (~1.2 m) above its feet, else the
+  lowest. Each mover keeps its own height, and that alone keeps a car under a bridge under
+  it and one in a tunnel off the hill above. Start a mover at "the top" (a huge height),
+  and put one down on a road at that road's height.
+- **Each road's nearest segment, never past its ends.** Several segments of one deck are
+  near any point on it; taking the highest of them gave the next one's end height, a
+  stepped surface, and the car took off from every joint (half of a tunnel run airborne).
+  Then a road's end still counted a few metres past it, at its end height. Nearest segment
+  per road first, and drop the road when that is its end and the point lies beyond.
+- **Keep the decks away from the ground's builders.** Kerbs, parked cars, lamps, walkers,
+  fences, signs placed along a deck stand on the ground under a bridge or on the hill over
+  a tunnel. Leave decks out of whatever list those builders walk and draw them separately
+  (asphalt and paint can reuse the ground's own code with the height source swapped).
+- **Every lookup takes a level.** "Nearest road" (a level-less one skips decks far from the
+  ground's level), collisions with buildings, fences and trees (only for a body near the
+  ground's level: a car in a tunnel was shoved out of the houses above), traffic's "car
+  ahead" and the player-against-traffic push, and every look-ahead probe an AI driver makes
+  (autodrive crawled under a hill at 30 km/h, braking for the houses over its head).
+- **Cut the ground open** over a cutting (clip the terrain mesh's triangles round its
+  footprint) and drop any far-off flat ground plane below the deepest deck, or it shows
+  through. Inside a cutting's footprint the ground is never a surface, however shallow:
+  switching to it where the cut is 5 cm deep was a step a car hopped off.
+- **A bridge's end must be off the bank's slope.** A height grid's triangles bend the ground
+  a cell beyond where a dug river channel starts; a bridge ending on that slope has a crest
+  just past its end. End it a cell further out. And keep its end away from junctions (20 m
+  or so): a car turning in clipped the parapet's start.
+- **Water held at its own level** (a river between weirs) is drawn at that level and is too
+  deep to drive into; gentle banks otherwise let a car down to drive along the bed under
+  the water. Leave lakes that lie at their shore's lowest point alone: a road over an
+  inlet runs on ground below their level.
+
 ## The edge of the map
 
 The baked area ends; don't let it end in an invisible wall. A striped barrier along it
