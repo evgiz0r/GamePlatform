@@ -1006,8 +1006,12 @@ it is dropped.
   lower's deck. Roads are cut where their ramp meets the ground (a node put there); the
   lifted pieces get a point every 6 m and their profiles rounded over the crests (junction
   points kept); a road's lift never spreads onto a footpath (below). Bedford: 56 bridges, 72 crossings, ~190 deck
-  pieces, 0.2 s; 2 of 63 crossings over roads short of the full clearance (4.8 m the
-  lowest). `LEVEL=2` with `tests/decks.gd` drives its ten highest bridges both ways.
+  pieces, 0.2 s; 0 of 63 crossings over roads short of the full clearance (2 when first
+  written, 4.8 m the lowest). `LEVEL=2` with `tests/decks.gd` drives its ten highest bridges
+  both ways. What `infer` made of a town -- bridges, tunnels, footbridges, crossings short of
+  the clearance and where (`short_at`: the first 12 only), tunnels left out and why -- is the
+  `decks_inferred` line in any playtest's timeline (`LEVEL=n tools/playtest.sh streets idle
+  10`), no scene test needed.
 - **Tunnels, worked out the same way** (Ashdod): a drivable tunnel way 20 m or longer that
   runs under a road or path lies 6.2 m down along all of it (OSM's tunnel way is the covered
   part); the depth rises back to the ground along the roads either side -- cuttings -- at a
@@ -1018,7 +1022,8 @@ it is dropped.
   it dives under); one under nothing mapped (a passage through a building) is put back on
   the ground (it used to be left out). A body in a tunnel never meets the buildings over it
   (`_push_out`), however shallow the tunnel is there. Ashdod: 46 bridges, 4 tunnels (Menachem Begin's underpass, two service
-  roads), 7 cuttings, 0.3 s. Two traps on the way: a tunnel "crossed" its own next piece
+  roads), 7 cuttings, 0.3 s -- now 2 tunnels: the service roads' are left out, too short for
+  their cuttings (4.7 and 5.4 m of room). Two traps on the way: a tunnel "crossed" its own next piece
   (the shared end point; skip roads that share a point), and holding the whole of every
   road crossed, or seeding the depth's room from every junction in town, made it 15 s and
   held the tunnels' own ends at street level -- only near the crossing (80 m) now.
