@@ -232,6 +232,18 @@ every tower over 90 m has red aircraft-warning lights on its roof, slowly pulsin
 > Landmarks: Azrieli round/triangle/square towers in proper glass, lit at night, Sarona,
 > the Kirya (Matcal) tower.
 
+The beach: warm sand along the sea, rows of umbrellas in blue, orange, red, green and
+yellow, each with a pair of white plastic chairs facing the water and people sitting in
+some, and a lifeguard's hut on stilts every couple of hundred metres, white with a blue
+band and a red flag. The Carmel market: stalls down both sides of HaCarmel with a walkway
+between, counters of tomatoes, oranges, greens and peppers in crates, racks of goods behind
+and canvas awnings over them. The Shalom Meir tower with the antenna on its roof, and the
+Opera tower's stepped stone floors by the sea.
+
+> 1. The Carmel market (stalls, awnings, crowds) 2. The beach (warmer sand, umbrellas,
+> lifeguard towers, people) 3. Landmarks in the new part: the Shalom Meir tower and the
+> Opera tower -- "1,2,3"
+
 Bus lanes where OpenStreetMap marks them: Kaplan's westbound right-hand lane from Begin out
 to the box's edge, and the Ayalon's public transport lane on the right going south. A wide
 solid line keeps the lane apart, "אוטובוס" is painted down it every 45 m, buses (and about

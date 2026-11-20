@@ -225,6 +225,11 @@ it is made, with a one-line caption, rather than a report at the end.
 
 ## Gotchas (each cost a run)
 
+- **People that appear only out of sight are never in a still.** A game that places its
+  extras (people in chairs, at stops) only where the player cannot see them appear leaves
+  a staged camera looking at empty seats, however long it waits. Stand at the spot facing
+  away for a few of the game's placing ticks, then turn and take the shot.
+
 - **Headless, a multimesh's copies read back as nothing.** `--headless` has no real
   rendering server: `MultiMesh.get_instance_transform()` returns the identity, so a test
   reading where a copy was put (a dog at a walker's side) gets (0, 0, 0) for every one and
