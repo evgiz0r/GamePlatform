@@ -260,6 +260,11 @@ The ones most often touched, and the functions in them:
   (`NARROW_LOOK`, up to the next turn) a car moves to a lane that lies within the narrower
   road. At a light, a turn's curve (`_turn_into`) starts no further out than the stop line
   when coming in from outside the junction, so a car waiting to turn stands straight.
+  Sideways only as it rolls: at most `SIDE_PER_V` x its speed, scaled down for a long one
+  (`_place` moves the front axle and lets the back trail it, so a shift while standing
+  turned the body across the next lane). A car whose `shift` is still heading for its
+  `shift_to` stands across two lanes: `_target` counts it in a follower's way by its
+  body's half width and angle (`CORNERS`), not by `LANE_W` from its middle.
 - **bus lanes** -- the bake's `bf` / `bb` (osm_city.py's `bus_lanes`: a letter a lane, left
   to right, "b" a bus lane) on the road as `r["bf"]` / `r["bb"]`; `_bus_lane(r, idx, dir)`
   (lane idx from the right, never on a one-lane way), `_has_bus_lane`. `_markings` paints a
@@ -1575,35 +1580,33 @@ built. Test: `tests/landmarks.gd`.
 The session that added Tel Aviv, its bridges and tunnels' fixes, the railway, the landmarks
 and the ramp-top fix. Where things stand:
 
-- **In the middle of: Begin x Kaplan's traffic.** The exam's watch mode stages it:
-  `LEVEL=7 EXAM_AT=-30,160 EXAM_STAND=70 EXAM_SECS=150 STREETS_BUILD_ALL=1 $GODOT --headless
-  --fixed-fps 60 --path . -s res://game/streets/tests/exam.gd` (~5 min). Two runs: 10 and
-  8 checks in 150 s, 0 red runs, 0 over the line. Two kinds, each printed with both cars'
-  lane, shift and what holds them:
-  1. **The right turn from Kaplan eastbound into Begin's southbound slip** (node (-60, 171):
-     Kaplan's 16 m, "4 lanes a way" carriageway, through the 12.8 m link, into the 6.4 m
-     two-lane slip (-60, 171) -> (-65, 183) -> (-80, 221)). Cars from several of Kaplan's
-     lanes funnel into the slip's one lane line at once, carrying shifts of 0.5-5.2 m
-     toward 3.20 as they turn, and stand overlapping by 0.3 m at (-61..-63, 176..179), held
-     by "car" with blocker -2 (none) -- the queue does not see the car merging beside it.
-     And a car cutting that corner at 35-38 km/h ("limit": not slowed for the turn) runs
-     0.3-0.4 m into the poles at (-69.1, 184.0) and (-62, 184), r 0.11, 0.46 m outside the
-     asphalt's edge: the turn is taken too fast and too wide at its start.
-  2. **Kaplan eastbound's queue at that light** (x -81..-85, z 166..176): cars standing in
-     lanes 0-3 (shifts -4, 0, 4, 8) at headings 45-156 degrees on a road that runs due east
-     (90): their lane paths swing across the carriageway near the stop line toward where
-     each turns next, and two lanes' cars overlap standing. Look at how a lane path is laid
-     from Kaplan's tertiary piece (-176, 171) -> (-60, 171) into the junction's links (where
-     `shift` is carried over a road change) before touching the queueing.
-  Fix narrowly in traffic.gd (other sessions work there: read `git log` on it first), then
-  run the watch again and `exam.gd` at level 7 and 1.
-- **Item 8, bus lanes: waiting on the user.** data.gov.il's `nataz_kayam` (existing
-  preference lanes, CC BY): the API answers, but the files on e.data.gov.il come back as a
-  CloudFront 403 from this container even with both hosts allowed in the environment
-  (they are now) -- not to be got round. The user was asked: download `nataz_kayam.csv`
-  (or the SHP zip) and add it to the repo, or bake OSM's own `bus:lanes` / `lanes:psv` /
-  `busway` (osm_city.py keeps none of them yet). Then: match stretches to the roads, paint
-  the lanes, buses and taxis in them, traffic and autopilot out; credit on screen.
+- **Begin x Kaplan's traffic: fixed down to a few a run** (20 Nov 2026). The exam's watch
+  mode stages it: `LEVEL=7 EXAM_AT=-30,160 EXAM_STAND=70 EXAM_SECS=150 STREETS_BUILD_ALL=1
+  $GODOT --headless --fixed-fps 60 --path . -s res://game/streets/tests/exam.gd` (~5 min;
+  also `EXAM_AT=-45,165`, the eastbound queue). Checks in 150 s: 10 and 8 at first; 1 and 3
+  now (WATCH_NUMBERS). What was wrong and what fixed it, all in traffic.gd (see "lanes" in
+  the code map):
+  1. Cars from Kaplan's four lanes into Begin's two-lane southbound slip kept their lane by
+     *number* across the road change, so the link's lane 1 became the slip's lane 1 on the
+     other side, and the cars crossed and stood on each other: now the nearest lane by
+     where the car physically is. The realigning shift was followed at a lane change's
+     1.4 m/s, so a car ran off the slip's edge into its poles: now `REALIGN` x speed.
+     Before the narrowing (`NARROW_LOOK`) a car moves into a lane the narrower road has.
+  2. Kaplan's eastbound queue stood at 45-156 degrees: a turn's curve (`_turn_into`) began
+     back from the junction's first point, out on the approach, so the waiting cars stood
+     half turned -- now from no further out than the stop line, for ways in from outside
+     the junction only (from inside, it moved inner points' curves and cars ran reds).
+  3. A car shifting while it stood moved its front alone and swung its body across the
+     next lane: sideways only as it rolls (`SIDE_PER_V` x speed, slower for a long one).
+  4. One changing lanes is in the way in both (`_target`: its body's width and angle, not
+     its middle, against the follower's line) -- a bus stopped by the light halfway over.
+  The exam names a delivery van stopped in the street ("held by delivery"), no longer
+  "held by nothing". Left: a car cutting in front of a truck where Kaplan becomes Givat
+  HaTahmoshet (-8, 148), its shift a road change's (not gated by `_lane_clear`).
+- **Bus lanes: done, from OSM** (`bus:lanes`, `lanes:psv`, `busway`; the bake's `bf`/`bb`;
+  see "bus lanes" in the code map and `tests/bus_lanes.gd`). data.gov.il's `nataz_kayam`
+  (the Ministry's layer, more stretches) came back as a CloudFront 403 from this container
+  -- not to be got round; a copy added to the repo by hand would be the way.
 - **The user asked what extending the box to the sea costs** (down to the Carmel market,
   Allenby, Rothschild): about 4.1 x 3.2 km against 2.4 x 2.7 now, ~2-2.5x the buildings
   (~9-10k, ~5-6k roads -- Ashdod's size): load before the car ~2.8 s, background build

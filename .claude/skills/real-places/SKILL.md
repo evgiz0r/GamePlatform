@@ -231,7 +231,17 @@ goes wrong shows up the first time it runs.
   the street.
 - **A car on your lane is a car whose body would touch yours**, not one whose middle is
   near your line: a fixed 1.5 m from the middle let the player's AI run in between two cars
-  in the lanes either side.
+  in the lanes either side. The same for traffic following traffic while one changes lanes:
+  it stands across both, angled, and a long one's back end swings out -- a bus stopped by a
+  light halfway over had its middle 2.7 m from the line of the van behind in the lane it
+  was leaving, and the van drove into it.
+- **Lanes across a road change: by where the car is, not by number.** Roads meeting at a
+  node share its middle line, so lane 2 of a wide four-lane link is lane 1 of the narrow
+  slip it runs on into; kept by number, cars crossed over each other into the slip. Follow
+  the shift a road change makes at a pace that grows with speed (a lane change's fixed
+  1.4 m/s ran cars off a slip's edge), and move over only as the car rolls: a body placed
+  by its front axle with the back trailing turns across the next lane if its front moves
+  sideways while it stands.
 - **Standoffs in narrow streets.** Traffic that waits for the player and a player's AI that
   waits for traffic wait for ever. Give one side a way out: after a few seconds face to
   face, the traffic car edges past if there is nearly room, else turns off (once out of

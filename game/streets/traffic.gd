@@ -458,6 +458,14 @@ func _target(c: Car, i: int, dt: float) -> float:
 		if j == c.pass_i and c.shift > 1.3:
 			continue   # out past its side, going round it
 		var wide := PLAYER_W if j == cars.size() else LANE_W
+		if j < cars.size() and absf((cars[j] as Car).shift_to - (cars[j] as Car).shift) > 0.3 \
+				and absf(angle_difference(oyaw, c.yaw)) < 0.6:
+			# one changing lanes stands across two: its body, not its middle, says whose way
+			# it is in -- a bus stopped by a light halfway over, angled, its back end out, was
+			# 2.7 m to the side of the van behind in the next lane, which drove into it
+			var me_w: Vector2 = CORNERS.get(c.kind, CORNERS["sedan"])
+			var its: Vector2 = CORNERS.get((cars[j] as Car).kind, CORNERS["sedan"])
+			wide = maxf(wide, me_w.x + its.x + absf(sin(angle_difference(oyaw, c.yaw))) * its.y)
 		if c.split:
 			wide = 0.6   # filtering: only what is right in front of the wheel
 		var gap := _path_gap(c, q, look, wide)
