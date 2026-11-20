@@ -1021,6 +1021,19 @@ them, thinning out by 18 m. Only at the two top qualities (fewer at the second).
 - Each person drawn in one go (they were six pieces each): fewer things for the browser to
   draw every frame, nothing different to see.
 
+> 5, 3, 2 (front gardens out of the wait; traffic doing street things; more kinds of people)
+
+**Sooner to the street, and more going on in it:**
+- Loading is about half a second shorter: the front gardens you see first are there when the
+  car appears, the rest of the starting area's follow within a second or two.
+- Now and then a delivery van or a truck stops in the street, half in its lane, hazards
+  flashing, for half a minute or so. Cars behind it go round over the centre line when
+  nothing is coming (on a wider road they change lanes), and so does autodrive.
+- Now and then a car parked at the kerb ahead of you signals as you come up and pulls out in
+  front of you.
+- Someone walking a dog on a lead, a parent pushing a pushchair, a few people sitting on the
+  park benches and a few waiting at the bus stops, facing the road.
+
 **People who keep clear.** The walkers step round the trees, posts, benches and cabinets on
 the pavement, keep to one side of anyone coming the other way, and step round people standing
 talking and round you on foot; you and the car can no longer go through them (the car stops
@@ -1191,12 +1204,17 @@ contributors under the ODbL, which is why the credit sits on screen.
 
 - **Real**: every road's path, kind, width (or lanes), one-way direction and name; every
   building outline; heights and floors where OSM has them; parks, grass, water, car
-  parks; mapped trees; traffic lights and zebra crossings; the city boundary. The hills:
+  parks; mapped trees; traffic lights and zebra crossings; the speed limit where OSM tags
+  it (every driver keeps to it, and the signs show it); the city boundary. The hills:
   the ground follows an open elevation model (AWS terrain tiles), baked in with the city.
   Shops, cafes and bus stops stand where OSM puts them, under their real names.
 - **Guessed**: a building with no height gets 4 storeys (by type: houses 2, garages 1,
   offices 5...), varied a storey up or down so a street is not one flat wall. A road with
   no width tag gets one by kind (residential 8 m, room for a parked row each side).
+  A road with no speed limit takes the one most of its town's mapped streets of the same
+  kind have, where enough are mapped and agree (residential streets: 30 in Givatayim and
+  Tel Aviv), else one by kind (50 km/h in town, faster on main roads in the north, 90 on
+  a motorway).
   The rows of street trees along residential streets are added, not mapped. The window
   grid is a pattern, not the real facade. The traffic lights run their own simple cycle.
   What a shop looks like (awning, tables, the bus shelter) is generic. The parked cars

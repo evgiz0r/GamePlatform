@@ -59,6 +59,37 @@ The ones most often touched, and the functions in them:
   -- no draws of their own. Lit shops' light on the pavement: `_shop_lights`. The night's
   colours: the night branch of `_retint_city` (a little of the palette's player colour, not
   half of it). Shop glass at night 0.85 (2.0 clipped to white).
+- **front gardens split out of loading** -- while the squares round the start are built
+  (`_gardens_split`), `_garden_fronts(..., part)` lays only the plots within GARDENS_NOW
+  (120 m) of the start; each run side is remembered (`_gardens_later`: square -> [run, hw,
+  sgn, key, walled]) and `_build_gardens_later` lays the rest first thing in `_build_rest`,
+  nearest square first, with their yard cars (`_draw_parked`). Same plots, same keys.
+  tests/gardens_later.gd (and STREETS_GARDENS_SPLIT=0 for the old way): Givatayim's 6 start
+  squares 7510 wall pieces and 858 board points both ways; the gardens' part of loading
+  678 -> 128 ms (kerbs 1.47 -> 1.03 s); the rest there 1.2 s after the car appears.
+- **the street's goings-on** (traffic.gd) -- a van or truck (DBL_SHARE of them) gets a
+  delivery stop `dbl_s` ahead when it starts; `_double_park` puts it off past junctions,
+  zebras and roads not in DBL_ROADS, pulls it in toward the kerb as far as there is room,
+  stands it `dbl` s with hazards (blink 2: the blinkers multimesh has four lamps a car
+  now). A follower on a two-way street of one lane each way with it ahead (< 35 m) and
+  `_oncoming_clear` takes `pass_i`: `_steer_lanes` shifts it `_pass_shift` (over the centre
+  line) until past; on wider roads the old "out to pass" does it. Autodrive: `_ap_pass_bus`
+  takes a double-parked van too, and on a one-lane street goes over the line when the other
+  way is clear 45 m past it -- waiting 4.5 m further back than behind a car (room to pull
+  out), its plan given a point every 2 m first (`_ap_densify`) and the bend measured from the
+  car, not the plan's first point (on a straight street that can be 40 m back: the bend
+  landed behind the car and nothing moved; buses had the same bug). `_kerb_tick`: every 35-75 s, while driving a street in
+  DBL_ROADS of one lane each way, the furthest car out of view is parked at the kerb
+  90-150 m ahead in a gap among the parked cars (`kerb`), and pulls out (`_kerb_wait`) when
+  the player is 18-45 m behind. tests/street_goings.gd.
+- **more kinds of people** -- walkers i % 9 == 2 have a dog (`dog_kit`: legs swung by its
+  shader from the instance's custom data), i % 9 == 6 a pushchair (`pram_kit`, the carrying
+  walk); a multimesh each and one for the leads, positioned by `_companion` in the walker
+  loop. SITTERS on `_bench_spots` (park benches) holding the end of SitDown, WAITERS at
+  `_stop_spots` facing the road, placed unseen like the chatters (`_place_still`); a sitter's
+  origin (the feet) 0.42 m in front of the bench's middle. The three multimeshes have no
+  visibility range (it is measured to their middle, the city's: every dog was culled);
+  `_companion` hides those past PEOPLE_SEEN. tests/street_people.gd.
 - **people in one piece** -- `_one_piece` (end of `_humanize`): the Quaternius figure is one
   mesh of six surfaces (Skin, Shirt, Pants, Belt, Face, Hair), each a draw (and a shadow
   draw). Joined once per figure into one surface (shared by everyone with that figure; the
@@ -781,9 +812,22 @@ Nothing is half done: all of the above is on main.
   out: 9.6 M from vertex-coloured kits, then tanks 0.8 M, poles 0.8 M, furniture 0.75 M,
   railings 0.5 M), the contact shadows 1.1 M, kerbs 0.9 M. Triangle soups, none indexed.
   Nodes 8,134 (4,989 before the parked cars' 100 m squares); 74 shader kinds (each one
-  compiled in the warm-up).
+  compiled in the warm-up). Who made the copies (`perf_dive`'s "batched, by who", a debug-only
+  tally in `_batch_add`): the cast-iron grates and pits round the street trees' feet (384 and
+  534 vertices a copy) 3.5 M, balconies and facade kits 2.5 M, roof kits 0.8 M, bins and
+  bollard kits 1.1 M, cats (1,182 a copy) 0.45 M, terraces 0.5 M. Since a kit of more than
+  `BATCH_KIT_VERTS` (200) stays a multimesh: 13.4 M vertices, video memory 445 MB (buffers
+  374 MB, -131), the start view 668 draws (+27) and 1.75 M triangles, 9,278 nodes, 84 shader
+  kinds (materials x instanced: the instanced kits' materials count again, though look-alike
+  StandardMaterial3Ds share one compiled shader).
 
 ## Cities
+
+Re-bake with `main_server_only` on, and diff the counts against the file it replaces
+(`git show HEAD:<file>` and compare roads, buildings, crossings, areas): a mirror twice
+answered with ~12% fewer road pieces. Last re-bakes: Givatayim and Tel Aviv, 20 Nov 2026
+evening, for the extra fields (see "OSM's extra fields and speed limits" below); Ashdod and
+Bedford have not been re-baked since.
 
 | Level | City | Bake (`bake_city.yml` inputs) |
 |---|---|---|
@@ -1168,7 +1212,10 @@ it is dropped.
   held the tunnels' own ends at street level -- only near the crossing (80 m) now.
 - **Footbridges and footpath tunnels** (`infer` again, the same passes on the paths' own
   network: footway, path, steps, cycleway, pedestrian, bridleway). A footbridge chain (8 m or
-  more) clears a street by 5.8 m (`CLEAR_FOOT`; a path by 3.4), its lift spreading along the
+  more) clears a street by 5.8 m (`CLEAR_FOOT`; a path by 3.4) -- the street's final height
+  there, not the ground's: a footbridge holds nothing down (a road bridge holds the street
+  it crosses to the ground); once the streets' lifts are known each footbridge over one is
+  raised to clear it (`foot_over`, `footbridges_raised` in the report) -- its lift spreading along the
   paths only, at 25% (`FOOT_RAMP`) or 60% on OSM's steps (`STAIRS`), and never onto a point a
   street has: a path comes down to the pavement where it meets a street. A footpath tunnel
   under something lies 3.6 m down (`CLEAR_UNDER_FOOT`), its ramps down to it the same way; one
@@ -1304,12 +1351,16 @@ it is dropped.
   once merged with the springs' smoothing (another session's: Begin's and Laskov Road's
   small hops went with it). `street_holes` on Ashdod: 0 holes, 2 points in a wall (both
   on Laskov Road; 51 before).
-- **Still to do**: in Tel Aviv, Givat HaTahmoshet's bridge and a slip road
-  over Ayalon South, 3 crossings short (4.8 m the lowest; new with the footbridges -- with
-  the paths left out of `infer`, 0 short: a footbridge crossing a road holds that road to
-  the ground for 80 m like a road bridge does, and there the road is a ramp up to a bridge
-  over Ayalon South, so its lift is capped. The fix: a footbridge holds nothing down, and
-  is raised to clear the road's final height there instead); grass slopes for cuttings too (they are walled); a
+- **Tel Aviv's Givat HaTahmoshet** (its bridges and a slip road over Ayalon South) came out 3
+  crossings short (4.8 m the lowest) once footbridges went in: a footbridge crossing a
+  street held it to the ground for 80 m, as a road bridge does, and there the street is
+  the ramp up to a bridge, so the bridge's lift was capped. Footbridges hold nothing down
+  now and are raised over the street instead: Tel Aviv 0 short, capped 40 -> 0, one more
+  tunnel dug (27), one footbridge raised (to 8.5 m, over a street's ramp); the other three
+  towns the same. Driven both ways and on the slip road: 0 hits, 0 frames in the air;
+  `street_holes` the same 6 points as before (that ramp's, 0.7-0.9 m) and 6 wall points;
+  its 8 highest footbridges walked, 96-100%.
+- **Still to do**: grass slopes for cuttings too (they are walled); a
   long-span bridge's height over water (the MacKay's deck is only as high as its ends);
   pavements at street level beside a cutting (the underpass has none); people on a bridge's
   pavement and beside a cutting; the
@@ -1328,13 +1379,14 @@ it is dropped.
   How to check it all, and what good looks like:
   - The inference's own report: the `decks_inferred` event in a playtest
     (`tools/playtest.sh streets smart 25`, or `LEVEL=n`) -- `short_of_clear` 0 for
-    Givatayim, Bedford and Ashdod (Tel Aviv 3, at Givat HaTahmoshet), `capped` 0 / 2 / 0,
+    Givatayim, Bedford, Ashdod and Tel Aviv, `capped` 0 / 2 / 0 / 0,
     `stair_capped` 8 / 1 / 0, footbridges 22 / 24 / 6, foot tunnels 3 / 0 / 2, the whole
     pass 0.3-0.8 s.
   - `tests/foot_decks.gd` (levels 1, 2, 3; headless with `STREETS_BUILD_ALL=0 SHOTS=0
     $GODOT --headless --fixed-fps 60 --path . -s res://game/streets/tests/foot_decks.gd`,
-    3-5 min a town): every route "got" 97-100% at its clearance; Bedford's Duke Street
-    sidewalk-bridge says 91% (the run-out past the path's end meets the abutment: fine).
+    3-5 min a town, Tel Aviv (level 7) 8): every route "got" 97-100% at its clearance;
+    Bedford's Duke Street sidewalk-bridge says 91% and Tel Aviv's raised one 96% (the test's
+    run-out past the path's end meets an abutment, a fence: fine).
   - `tests/decks.gd` with `ROUTES` on level 3 for the interchanges (the seven runs are in
     the README row), and plain on levels 4, 2, 3: 0 hits, 0 frames off the level; in the
     air only the test town's 8-9 frames off its two bridge ends.
@@ -1343,9 +1395,11 @@ it is dropped.
   mall) now comes down by a stair at its end instead of meeting the wall; fences don't
   open for footpaths (`_open_pieces` asks `_off_road`, drivable roads only), so an OSM
   fence across a path on the ground still blocks a walker; walking up 60% stairs the walker's
-  height trails by up to 1 m for a moment (`_walk`'s easing); Tel Aviv's 3 short
-  crossings, which the footbridges caused (see "Still to do" above for why and the fix --
-  first thing to do when this area is picked up again).
+  height trails by up to 1 m for a moment (`_walk`'s easing); a sidewalk mapped as its own
+  path bridge beside a road bridge (Givat HaTahmoshet's) gets its own height, 0.6 m under
+  the road's deck beside it, rather than the road's; `ROUTES ... ,top` in tests/decks.gd can
+  still land on a road under the deck where they cross (use `deck_air`, which starts on the
+  highest surface, to drive a particular deck).
 
 ## Sizes against life (`tests/scale_check.gd`, 20 Nov 2026)
 
@@ -1422,8 +1476,11 @@ towns get them when re-baked. What the game does with them:
   (`set_physics_process(false)`) must set `_prev_yaw` with `_yaw`, or the view blends from
   the car's old heading and looks the wrong way.
 - **Still to do**: level crossings (trains solid, barriers); the light rail where it runs
-  on the surface; keeping `electrified=` in the bake; re-baking the other towns (Ashdod has
-  a line).
+  on the surface; keeping `electrified=` in the bake; re-baking Ashdod (it has a line) and
+  Bedford. Givatayim was re-baked (20 Nov, evening): the Ayalon line's 13 tracks run along
+  its west edge with no station in the box (3 lines, 3 km, 0 bed points over asphalt in
+  `tests/rails.gd` at level 1), and the Red Line's tracks and its Arlozoroff and Abba Hillel
+  stations are underground (light rail, tunnels).
 
 ## Landmarks (`landmarks.gd`)
 
@@ -1527,13 +1584,12 @@ Each line: where the code is, the test, what good reads.
   `_level_groups`): `tools/menu_shot.sh levels:streets`.
 - **Performance** (`tests/perf_dive.gd` 7; numbers under "Numbers to compare against"):
   parked cars done (`_draw_parked`, `_parked_far_mesh`, `PARKED_CELL/NEAR/SEEN`; `_chunked`
-  takes `cell_m` and `range_begin`). **In the middle of**: which vertex-coloured kits make
-  the 9.6 M batched vertices -- a debug-only tally in `_batch_add` ("batched by:
-  function:line (n verts)") that `perf_dive` prints as "batched, by who"; the plan was to
-  draw the biggest as multimeshes (one mesh, a transform each) instead of copying their
-  vertices into the batches, then measure memory and draws again. Also open: 74 shader
-  kinds for the warm-up (merging look-alike materials would shorten it); nodes up 3,000 from
-  the parked cars' squares (watch the browser's culling cost).
+  takes `cell_m` and `range_begin`); heavy kits kept as multimeshes (`BATCH_KIT_VERTS`, -131
+  MB in Tel Aviv). **Next**: the batches are triangle soups -- indexing them (`SurfaceTool`'s
+  `index()` while flushing, timed against the load) would cut the remaining 9.8 M batched
+  vertices by about a third; the 84 shader kinds for the warm-up (merging look-alike
+  materials would shorten it); nodes up 4,300 from the parked cars' squares and the kits
+  (watch the browser's culling cost).
 - **Waiting on the user**: the test town's hillside roads lean (a finer height grid in
   tools/fake_city.py, or levelling roads in the game; another session owns the test town's
   terrain); stop / give-way signs at every junction (asked whether same-class junctions get
@@ -1543,6 +1599,80 @@ Each line: where the code is, the test, what good reads.
   only meaningful in a real browser), `top_at` (shots by map point, `CAR=` to put the car
   anywhere), `street_at` (by street name at its roundabouts), `perf_dive`, `deck_corner`,
   `islands`, `pave_overlap`, `picker`, `minimap_route`.
+
+## OSM's extra fields and speed limits: handoff (20 Nov 2026)
+
+One session's work, written for whoever picks it up (its context is compacted after this).
+It started from the user asking what the city data lacks for a realistic feel; the answer
+and the outside sources that could fill it are in `IDEAS.md` ("Official data for what OSM
+leaves out").
+
+- **The bake keeps more of OSM** (`tools/osm_city.py`, format at its top): roads' `ms`
+  (speed limit, km/h), `lf`/`lb` (lanes each way), `tl`/`tlf`/`tlb` (turn:lanes as
+  written), `sf` (surface when not asphalt), `sw` (pavement sides); buildings' `k`, `lv`,
+  `col`, `rc`, `rs`, `mat`, `yr`. (Bus lanes are `bf`/`bb`, the Tel Aviv session's.) Each only
+  where tagged: missing means "not known". The bake logs a "tagged:" count per field.
+- **What the game uses: the speed limit.** A road's `speed` (streets.gd, where the city's
+  roads are read) is OSM's `ms`, else the town's own limit for that kind (`_town_limits`
+  -> `_town_ms`: 20+ tagged, a quarter of the kind, 85% one value), else the guess by kind
+  (`DRIVE`, `NORTH_FASTER`). Traffic, autodrive and the speed signs all read that one
+  number. Givatayim: residential 30 (inferred from 184 of 628 tagged), secondary 60 where
+  tagged; Tel Aviv: residential and unclassified 30, the Ayalon 90.
+- **So the residential streets of Givatayim and Tel Aviv are driven at 30 now, not 50.**
+  Route times, the exam and anything timed there before this are at the old speeds:
+  rerun before comparing. Ashdod and Bedford are unchanged until re-baked.
+- **Not used, on purpose**: wall and roof colour, roof shape, material, year -- 0.5-4% of
+  buildings in both towns (and the wall shader takes a palette tint index, not an RGB:
+  a real colour needs its own path); turn lanes and lanes each way (under 1% of pieces);
+  pavement sides (2-16%).
+- **Tried and dropped: building heights from the terrain tiles** (surface minus bare
+  ground) -- no use, see the `real-places` skill.
+- **Outside data** (municipal buildings, trees, businesses, GTFS, parking zones): none
+  reachable from this cloud environment (over.org.il, data.gov.il, gisn.tel-aviv.gov.il,
+  gtfs.mot.gov.il all refused), and e.data.gov.il's CDN refuses the cloud even when
+  allowed (Tel Aviv handoff). The list and the licence caveat are in `IDEAS.md`.
+- **Checks, and what good read** (20 Nov 2026, Givatayim and Tel Aviv re-baked):
+  `tests/speed_limits.gd` -- autodrive 40 s never more than 10% over the road's limit
+  (Givatayim: 23 s at 30, 17 s at 50, fastest 51 km/h; Tel Aviv's start stays on 50 roads);
+  `tests/rails.gd` at level 1 -- 13 tracks, 3 lines, 0 bed points over asphalt;
+  `city_check` at level 1 -- 3, the same 3 with the file from before the re-bake (two
+  posts 1 m into Aluf David and Katznelson, the passage's building): not the re-bake's.
+- **Bus lanes in Givatayim: OSM marks none** (0 road pieces with `bf`/`bb` in a main-server
+  bake, 20 Nov), though the Ministry of Transport's layer lists 4 stretches there: they
+  would have to be mapped on OSM, or come from that layer (see `IDEAS.md`).
+- **Open**: re-bake Ashdod (brings its railway) and Bedford with `main_server_only`; a
+  sign at the start of each 30 street (the game has `signs_zone30`, placed by its own
+  rule, not by `ms`); the speed signs are on main roads only.
+
+## Handoff: the street's realism and life, loading split, crashes, sounds (20 Nov 2026)
+
+One session's areas (everything under "front gardens", "the street's goings-on", "more kinds
+of people", "people in one piece", "on the walls", "street sounds", "what breaks", "load, part
+by part", "graffiti", "zone and parking signs" near the top of this file, and today's earlier
+realism passes: contact shadows, far shadows, golden hour, night, grass, wet, garden walls and
+gates, pavement covers, recycling, two-wheelers, passages). Shots: `FULL=1 STREETS_BUILD_ALL=0
+RES=1280x720 OUT=<dir> game/streets/tests/run.sh <test> 1`; headless ones: `STREETS_BUILD_ALL=0
+LEVEL=1 $GODOT --headless --path . -s res://game/streets/tests/<test>.gd`.
+
+- **Good numbers (Givatayim, level 1)**: `draws` 184 in view at the start (people 8);
+  `gardens_later` 7510 wall pieces / 858 board points both ways, gardens 96-128 ms of
+  loading (678 unsplit); `load_stages` kerbs ~0.8-1.0 s; `street_goings` autodrive stands 0 s
+  behind the van on both streets, 1-2 cars go round it on the one-lane street (המפנה or
+  שיינקין), the parked car pulls out with the player ~44 m behind and never touched;
+  `street_people` a dog, a pushchair, a sitter, a waiter each within 80 m inside a minute;
+  `street_sounds` birds -31..-34 dB by day by trees, crickets ~-36 at night, voices -20 / -25;
+  `crash_things` a bin knocked, 3 dents, 2-3 glass patches; `wall_things` the person 1
+  surface; playtest smart 25 s passes, hitches 4-9 (container noise: compare with main).
+- **Open**: a dog can be pushed to the far side of a crossing railing (`_companion`'s
+  `_push_out` picks the nearer side); grass blades still poke through a garden path where it
+  crosses a lawn; the sounds are synthesised (make_sounds.py) and the user has not said how
+  they sound; more things that break (sign posts, fence panels, hedges, a scrape mark on the
+  wall) and people who react are on GAME.md's later list; falling rain is on hold (user);
+  the browser's 5-7 s warm-up is shader compiling (see the other handoff's 74 shader kinds).
+  `draws` hung once for 15 minutes and never again (cause unknown: kill it and rerun).
+- **Watch**: hitches in the first seconds of driving now include the start's far gardens
+  (`_build_gardens_later`, before the rest of the city); kits with thousands of copies go
+  through `_instanced`, not the batches (the AC units: 19 hitches of 50 ms when merged).
 
 ## Open problems
 
