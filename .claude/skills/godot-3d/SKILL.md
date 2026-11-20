@@ -96,6 +96,10 @@ is a Z coordinate, not a height.
   people, step away from whichever side they are on and hold it until past (reacting only
   to someone "ahead" lets them drift back as they draw level and brush); then push out of
   whatever is left, twice. Measure it: sample everyone's overlaps over a run.
+- **Built in squares, decided the same in every square.** When one square's builder needs
+  something another square builds (where a building's door is, to lead a path to it), work
+  it out again from the data with the same choices, cached by id -- never read what the
+  other square's builder stored, which is not there yet when that square comes later.
 - **Night glow without a glow effect.** A bloom over the frame costs a browser a millisecond
   or two a frame; a halo per light, drawn additively in the same mesh as the light's pool on
   the ground (every vertex of its quad at the light, the corner in UV, turned to the eye in

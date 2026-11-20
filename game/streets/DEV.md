@@ -57,6 +57,23 @@ The ones most often touched, and the functions in them:
   -- no draws of their own. Lit shops' light on the pavement: `_shop_lights`. The night's
   colours: the night branch of `_retint_city` (a little of the palette's player colour, not
   half of it). Shop glass at night 0.85 (2.0 clipped to white).
+- **front gardens' walls and gates** -- `_garden_fronts` lays each plot's wall itself
+  (`_garden_wall`: rubble in the `wall` buffer, or render + coping in fronts' "plaster" /
+  "coping"; its kind and height from the plot's own hash), not the kerb loop any more (that
+  only records `walled` and lays the lawn strip). Gates: `_run_gates` (cached per run side
+  in `_gate_cache`) finds the doors facing the run -- `_doors_of` works out again, from the
+  city's data, the same choices `_build_buildings` makes (style, columns, height), so every
+  square agrees whether or not it has built that building -- and the plots end at them.
+  `_front_gate`: piers, the path (fronts' "path", tone "slabs", its way in the vertex green:
+  `_batch_buf` keeps the green of anything whose first vertex has alpha 0), the arch, the
+  yard car (`_yard_cars`, parked with the street's in `_build_parked`). Greenery over the
+  walls: fronts' "spill" (crown cards, a post under it when it is low). The kerbs stage
+  measured the same with all of it (1.29 s) as without (1.33).
+- **pavement covers, tree pits, recycling** -- covers: KERB_SHADER's pavement branch, one
+  in a 19 m stretch two times in five (`iron` uniform); the pavement's vertex alpha now
+  also says a narrow pavement's width (0.7-0.76: a median's: no covers). Pits:
+  `furniture.pit_kit`, four street trees in ten in Israel. Recycling: `furniture._recycling`
+  (by one junction in four, kits `_paper_bin_kit`, `_cage_kit`, `_glass_bell_kit`).
 - **grass blades** -- GRASS_SHADER on a MultiMesh of 4 m patches (`_build_grass`) whose
   node follows the camera a patch at a time (`_grass_follow`, from `_sky_follow`); a blade's
   three corners sit at its root, the shader grows it where the far-shadow picture's green
