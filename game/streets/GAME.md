@@ -773,6 +773,18 @@ dips holding the sky (and, low down, the buildings across the street), the sun's
 runs along the wet road when you drive towards it, grass and earth go a little darker. The
 tyres hiss on it. It goes with any time of day; the evening after rain is the best of it.
 
+> some of the stuff we did really causes latency and loading issue i think. other session is
+> fixing something i believe. go 3,7
+> dont want to touch weather yet
+
+**Street cats and flags on cars.** Givatayim's strays: sitting on the garden walls or curled
+up on them, by the bins, on the pavement at a parked car's nose -- ginger, grey, black, cream
+and brown tabbies, holding still as street cats do. About one parked car in fourteen flies
+an Israeli flag on a stick from a back window. And the ground darker where more things meet
+it: a soft patch at the foot of every street tree, the pavement darker along the foot of the
+garden walls. All of it built with each square of the city in a few tens of milliseconds,
+and nothing to do while you drive.
+
 > I took a video on my phone, walking in Givatayim.
 
 ## Smooth on a laptop and a phone
