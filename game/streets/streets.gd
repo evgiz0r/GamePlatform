@@ -5970,7 +5970,9 @@ func _park_moto(r: Dictionary, ri: int, run: PackedVector2Array, cum: PackedFloa
 	var face := (d * sgn).rotated(slant)
 	if not _mine(p) or _no_parking(r, ri, p) or _push_out(p, 0.6, false) != Vector2.ZERO or not _clear_of_posts(p, 1.0):
 		return
-	if not (_off_road(p + face * 0.95, 0.05) and _off_road(p - face * 0.95, 0.05)):
+	# (and its middle by the solid circle it gets below: the ends alone let the circle stand
+	# half a metre into the next street's lane at a corner -- city_check, Ashdod's Ort)
+	if not (_off_road(p + face * 0.95, 0.05) and _off_road(p - face * 0.95, 0.05) and _off_road(p, 0.6)):
 		return
 	var bs := Basis(Vector3.UP, atan2(face.x, face.y)) * Basis(Vector3.BACK, 0.13 * (1.0 if rng.randf() < 0.5 else -1.0))
 	(xf_by["moto_parked"] as Array).append(Transform3D(bs, Vector3(p.x, _walk_y(p), p.y)))   # on the pavement, as people stand
