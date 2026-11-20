@@ -827,7 +827,10 @@ func _fence_material(tone: String, gap: float) -> ShaderMaterial:
 ## pieces of the line a-e that are not on a road or in a building, about `step` long
 ## (roads false: only buildings looked for -- the caller knows it is off the roads, and the
 ## look for the nearest road is the dear one)
-func _open_pieces(a: Vector2, e: Vector2, step: float, roads := true) -> Array:
+## `body`: how far the thing reaches either side of its line (a hedge 0.4 m): kept that much
+## further off the asphalt. A hedge checked with a fence's margins (its middle 0.2 m clear,
+## its ends 0.2 m in) stood half a metre into the lane -- city_check found 18 in Givatayim.
+func _open_pieces(a: Vector2, e: Vector2, step: float, roads := true, body := 0.0) -> Array:
 	var L := a.distance_to(e)
 	var n := maxi(1, int(ceil(L / step)))
 	var out: Array = []
@@ -840,19 +843,19 @@ func _open_pieces(a: Vector2, e: Vector2, step: float, roads := true) -> Array:
 		var j := mini(i + per, n)
 		var q0 := a.lerp(e, float(i) / n)
 		var q1 := a.lerp(e, float(j) / n)
-		var whole := j - i > 1 and _clear_at(q0, roads) and _clear_at(q1, roads) and _clear_at((q0 + q1) * 0.5, roads)
+		var whole := j - i > 1 and _clear_at(q0, roads, body) and _clear_at(q1, roads, body) and _clear_at((q0 + q1) * 0.5, roads, body)
 		for k in range(i, j):
 			var p0 := a.lerp(e, float(k) / n)
 			var p1 := a.lerp(e, float(k + 1) / n)
 			# (a piece by its middle alone could end most of a metre into the road where the
 			# fence met it at a slant: the car ran into the end -- its ends too, where roads count)
-			if whole or _clear_at((p0 + p1) * 0.5, roads) and (not roads or g._off_road(p0, -0.2) and g._off_road(p1, -0.2)):
+			if whole or _clear_at((p0 + p1) * 0.5, roads, body) and (not roads or g._off_road(p0, body - 0.2) and g._off_road(p1, body - 0.2)):
 				out.append([p0, p1])
 		i = j
 	return out
 
-func _clear_at(m: Vector2, roads := true) -> bool:
-	return (not roads or g._off_road(m, 0.2)) and g._push_out(m, 0.15, false, false) == Vector2.ZERO
+func _clear_at(m: Vector2, roads := true, body := 0.0) -> bool:
+	return (not roads or g._off_road(m, 0.2 + body)) and g._push_out(m, 0.15, false, false) == Vector2.ZERO
 
 ## a see-through panel H high from a to e (the shader draws the bars), a post every
 ## `post_every` pieces of about `step` metres
@@ -918,7 +921,7 @@ func wall_fence(panel, posts, A: Vector3, B: Vector3, H: float, col: Color, post
 func _hedge_line(buf, a: Vector2, e: Vector2, roads := true) -> float:
 	var done := 0.0
 	var col := Color.WHITE
-	var pieces := _open_pieces(a, e, 2.5, roads)
+	var pieces := _open_pieces(a, e, 2.5, roads, 0.4)
 	for pi in range(pieces.size()):
 		var pc: Array = pieces[pi]
 		var p0: Vector2 = pc[0]

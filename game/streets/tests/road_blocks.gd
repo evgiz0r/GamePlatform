@@ -1,7 +1,8 @@
 extends SceneTree
 ## Things solid to the car standing in a road: a median's wall running out over a road
 ## it does not belong to (a bend, a junction, a slip road), any other wall (a fence, a garden
-## wall, a barrier) or a post (a pole, a sign, a light) on a road's lanes. Prints each, with
+## wall, a barrier) or a post (a pole, a sign, a light, a bollard) on a road's lanes, a
+## junction's middle or a rounded corner's asphalt. Prints each, with
 ## where, and shoots the worst from above (OUT). Good: none, but medians on their own road.
 var g: Node
 func _initialize() -> void:
@@ -37,6 +38,18 @@ func _road_under(p: Vector2, inset: float, skip: int) -> int:
 		for n: int in [ids[code % 4096], ids[code % 4096 + 1]]:
 			if g._node_ways(n) >= 3 and p.distance_to(g._nodes[n]) < g._node_r[n] * 1.05 - inset:
 				return code / 4096
+	# and the asphalt a rounded corner adds out to its kerb (bollards by a zebra near a
+	# junction stood there, in front of the corner's kerb): reported as the nearest road's
+	for key: int in g._near(g._fill_hash, p, 1.0, g.BLD_CELL):
+		var poly: PackedVector2Array = g._corner_fill[key]
+		if not Geometry2D.is_point_in_polygon(p, poly):
+			continue
+		var edge := INF
+		for k in range(1, poly.size() - 1):
+			edge = minf(edge, Geometry2D.get_closest_point_to_segment(p, poly[k], poly[k + 1]).distance_to(p))
+		if edge > inset:
+			var hit: Dictionary = g._nearest_seg(p, 30.0, true)
+			return int(hit["road"]) if not hit.is_empty() else -1
 	return -1
 
 func _run() -> void:

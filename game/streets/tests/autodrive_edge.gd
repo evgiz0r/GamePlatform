@@ -80,7 +80,7 @@ func _run() -> void:
 			var gap := minf(minf(p.x - rim.position.x, rim.end.x - p.x), minf(p.y - rim.position.y, rim.end.y - p.y))
 			my_near = minf(my_near, gap)
 			if gap < 25.0:
-				near_s += 1.0 / 60.0
+				near_s += Engine.time_scale / Engine.physics_ticks_per_second
 			if g._edge_warned != warned:
 				warned = g._edge_warned
 				my_touch += 1

@@ -29,8 +29,9 @@ into the turns.
 
 > First-person / bonnet camera.
 
-**The driver looks around.** Slowing for a junction, a light, a stop or a give-way sign, the
-driver looks left, right and left again (once a junction); into a turn as the wheel goes
+**The driver looks around.** First in line at a junction, a stop or a give-way sign and
+about to go (at a light, once it is green), the driver looks left, right and left again
+(once a junction; not from behind a queue at a red); into a turn as the wheel goes
 over; at people on the crossing ahead; over the right shoulder reversing. From the seat the
 view turns with the head; from behind, the camera swings a little to where the driver
 looks and the driver's head in the car turns. Autodrive's driver always does it; when you
@@ -39,6 +40,9 @@ drive yourself, the "look" button (or G, for glance) switches it on and off.
 > I want the driver to look left and right in the turns, like a real driver with the head.
 > And I want that to be an option for the non-autodrive. For both chase and seat mode there
 > will be some effect of looking. That happens generally on every stop and give way.
+
+> It looks left right on red lights, when it's behind many cars. It should do a look only
+> when it's the first car and it's ready to drive.
 
 **On foot.** The "walk" button (or F) lets the driver out of the door to walk the same city:
 arrows or the stick to walk (a brisk 2.1 m/s) and turn, space to run (6 m/s), over the
@@ -129,9 +133,13 @@ destination stays; autodrive picks the route up again from wherever you are.
 Only addresses OpenStreetMap knows are listed: in Givatayim that is about one building in
 six (plus address points), in Bedford almost all of them.
 
-**Jumping there.** The button at the top left of the list switches it between "drive
-there" and "jump there". Jumping puts the car down on the street at the address, in its
-lane, stopped, facing the way that has the address on the kerb side.
+**Jumping there.** At the top left of the list are two choices side by side, "jump to"
+and "drive to", the one in force filled in; "jump to" is chosen when the game starts.
+Jumping puts the car down on the street at the address, in its lane, stopped, facing the
+way that has the address on the kerb side; driving hands the way there to autodrive.
+
+> in the goto option, make it by default jump to. the menu is not so clear so just show two
+> choices. drive to and jump to. where one of them is selected
 
 > Besides go to, I want also jump to. It teleports there, instead of driving.
 
@@ -155,9 +163,20 @@ just past Leonardo da Vinci, heading east, HaKirya on the left and the Azrieli t
 ahead. The towers stand at their real heights (OSM has them for the tall ones: Azrieli's
 round tower 187 m, the Spiral 350 m). The map ends at the box's edge (the striped barrier).
 
+The Ayalon runs through it on the ground, and every street over it is a bridge about 6.5 m
+up, on ramps from the streets either side: Arvei Nahal, Moses, Givat HaTahmoshet (the
+HaShalom bridge), Modai, Begin's and Yitzhak Sadeh. The tunnels are dug: Begin dips under
+the Kaplan junction in an underpass both ways, the Lova Eliav tunnel runs under HaKirya and
+Sarona with its links meeting Begin's underpass underground, and Uzi Hitman and the
+Carlebach tunnel go under, each about 6 m down with cuttings up to the street at either
+end. Berkowitz's short tunnel, some car park ramps and two short branch ramps out of
+Lova Eliav stay on the ground (too short to get under the street at a car's grade).
+
 > game streets -- lets add/start working on adding Tel Aviv. Somewhat the area I mentioned.
 > (with a map: Ichilov, Savidor, Azrieli, HaKirya, TLV Mall, Montefiore, Bitsaron,
 > Nahalat Yitshak)
+
+> lets do the bridges and tunnels over the Ayalon
 
 **The test town.** The last place, Kiryat Dimyon, is made up (`cities/dimyon.json`, from
 `tools/fake_city.py`): one neighbourhood about 1.3 x 1 km, a fifth of Givatayim's buildings,
@@ -657,6 +676,15 @@ than the two waiting for each other for ever.
 
 > Sometimes the autodrive gets completely stuck in those narrow streets.
 
+**Autodrive at a dead end** stops a few car lengths short of the end and turns round the
+way a driver does in a narrow street: indicator on, forward on full lock to the far kerb,
+reverse lights and back on the other lock, forward again -- three moves in a cul-de-sac,
+more in a narrower one -- waiting if a car comes up the street, and drives back out. It
+used to try to swing round in one go and ran into the trees and garden walls at the end.
+
+> Autodrive misbehaves at the end of a dead-end street: the car tries to turn round there
+> and drives into a tree or post beside the road.
+
 **From above, point and go.** Zoomed out over the city, hold a finger (or the mouse) on a
 street for half a second: a ring fills under it, then the view comes down to the car and
 autodrive drives there, as "go to" does. A quick press still drags the view.
@@ -813,6 +841,31 @@ an Israeli flag on a stick from a back window. And the ground darker where more 
 it: a soft patch at the foot of every street tree, the pavement darker along the foot of the
 garden walls. All of it built with each square of the city in a few tens of milliseconds,
 and nothing to do while you drive.
+
+> Night that feels like night ... Grass blades near the camera ... lets start with these too.
+> and then go the video from today for more ideas
+
+**A night that feels like night.** The night is dark and only a little blue now (it was a
+teal "day for night" over everything), with the city's own glow low on the horizon. Every
+street lamp has a halo round its head and a warm pool of light under it on the pavement as
+well as the road (the pools used to lie under the pavement, and showed only on the road);
+headlights, yours and the traffic's, glow, and their beams light the road ahead; a lit
+shop window throws its light onto the pavement in front of it. No glow effect over the
+whole picture -- that costs a laptop's browser a millisecond or two every frame -- the
+halos are drawn with the pools, as part of what was drawn already.
+
+**Grass you can see the blades of.** Near you -- on foot most of all -- the lawns, parks and
+front gardens have blades standing up out of them, swaying, a few drier and paler among
+them, thinning out by 18 m. Only at the two top qualities (fewer at the second).
+
+> people dont have collision and just wonder around, lets add that to the list as well.
+> when some things just pop and have no collision its wierd
+
+**People who keep clear.** The walkers step round the trees, posts, benches and cabinets on
+the pavement, keep to one side of anyone coming the other way, and step round people standing
+talking and round you on foot; you and the car can no longer go through them (the car stops
+at a person with a soft knock, never a crash). They no longer pop in at 90 m: they come in
+over the last 15. Cats on the pavement are solid too.
 
 > I took a video on my phone, walking in Givatayim.
 
@@ -989,13 +1042,28 @@ contributors under the ODbL, which is why the credit sits on screen.
   What a shop looks like (awning, tables, the bus shelter) is generic. The parked cars
   (about a quarter of the kerb), the people walking and sitting at cafe tables, rooftop
   solar heaters and rooms (Givatayim), pitched roofs on small houses (Bedford).
-- **Guessed, in Bedford: how high its bridges are.** OSM says which ways are bridges but
+<<<<<<< HEAD
+- **Guessed, in Bedford and Tel Aviv: how high their bridges are, how deep their tunnels.**
+  OSM says which ways are bridges and tunnels but not how high or deep, so the game works
+  it out as the town loads: each overpass rises to clear what it crosses, on ramps up the
+  roads leading to it, an interchange's junctions up on them and its slip roads coming
+  down; each tunnel goes 7 m under the ground over it, cuttings sloping down to it, deeper
+  where a road crosses over. Highway 102's overpasses, the Bedford Bypass, the MacKay
+  Bridge's approach; the Ayalon's bridges, the Begin underpass, the Lova Eliav tunnel.
+  Ramps are walled, not grassy banks, yet.
+- **Not there yet**: bridges in Givatayim and Ashdod (still drawn on the ground), and
+  their tunnels (left out). People crossing anywhere but a zebra.
+=======
+- **Guessed, in Bedford and Ashdod: how high the bridges are, how deep the tunnels.** OSM says which ways are bridges but
   not how high, so the game works it out as the town loads: each overpass rises to clear
   what it crosses, on ramps up the roads leading to it, an interchange's junctions up on
   them and its slip roads coming down. Highway 102's overpasses, the Bedford Bypass, the
-  MacKay Bridge's approach. Ramps are walled, not grassy banks, yet.
-- **Not there yet**: bridges in Givatayim and Ashdod (still drawn on the ground), and
-  tunnels in the real towns (left out). People crossing anywhere but a zebra.
+  MacKay Bridge's approach; in Ashdod Highway 4's interchanges and Sderot Menachem Begin's
+  underpass, down a cutting under the road it crosses. The ramps are grass banks with a guardrail along the top where
+  there is room for them, retaining walls where there is not.
+- **Not there yet**: bridges in Givatayim (still drawn on the ground), and tunnels under
+  footpaths (left out). People crossing anywhere but a zebra.
+>>>>>>> origin/main
 
 To make your own street more accurate, fix it on openstreetmap.org (building heights are
 the most useful thing to add) and bake again.

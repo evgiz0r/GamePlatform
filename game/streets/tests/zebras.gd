@@ -33,7 +33,7 @@ func _run() -> void:
 	var shot := false
 	while t < 60.0:
 		await physics_frame
-		t += 1.0 / 60.0
+		t += Engine.time_scale / Engine.physics_ticks_per_second
 		for i in range(g._crossers.size()):
 			var st: String = g._crossers[i]["state"]
 			var was: String = last.get(i, "off")
@@ -62,10 +62,10 @@ func _run() -> void:
 					process_frame.connect(g._frame)
 					break
 		if g._ap_zebra_v() < 1.0 and absf(g._v) < 0.5:
-			ap_wait += 1.0 / 60.0
+			ap_wait += Engine.time_scale / Engine.physics_ticks_per_second
 		for c in g._traffic.cars:
 			if c.alive and c.v < 0.3 and g._traffic._zebra_ahead(c) < 0.5:
-				car_wait += 1.0 / 60.0
+				car_wait += Engine.time_scale / Engine.physics_ticks_per_second
 	var extra := 0.0
 	while extra < 30.0:
 		var any := false
@@ -75,7 +75,7 @@ func _run() -> void:
 		if any:
 			break
 		await physics_frame
-		extra += 1.0 / 60.0
+		extra += Engine.time_scale / Engine.physics_ticks_per_second
 	print("60 s: crossings started %d, finished %d, hurried back %d; autodrive stood %.1f s, traffic stood %.1f car-s for crossers" % [started, finished, backs, ap_wait, car_wait])
 	g._set_auto(false)
 	g.set_physics_process(false)

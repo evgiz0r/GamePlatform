@@ -51,7 +51,7 @@ func _run() -> void:
 			var gap0: float = T._path_gap(c, ahead, 120.0, 2.0)
 			while t < 7.0:
 				await physics_frame
-				t += 1.0 / 60.0
+				t += Engine.time_scale / Engine.physics_ticks_per_second
 				var d: float = c.pos.distance_to(g._pos)
 				if d < mind:
 					mind = d
