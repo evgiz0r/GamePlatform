@@ -58,6 +58,27 @@ The ones most often touched, and the functions in them:
   -- no draws of their own. Lit shops' light on the pavement: `_shop_lights`. The night's
   colours: the night branch of `_retint_city` (a little of the palette's player colour, not
   half of it). Shop glass at night 0.85 (2.0 clipped to white).
+- **people in one piece** -- `_one_piece` (end of `_humanize`): the Quaternius figure is one
+  mesh of six surfaces (Skin, Shirt, Pants, Belt, Face, Hair), each a draw (and a shadow
+  draw). Joined once per figure into one surface (shared by everyone with that figure; the
+  part's number in the vertex colour's red), drawn with PIECE_SHADER whose `parts[6]` are
+  that person's colours (linear: `srgb_to_linear`), its distance dither done by hand
+  (`fade_from`/`fade_to`, set by `_people_lod`). tests/draws.gd at the start: 217 -> 180
+  draws, people 48 -> 8. `_shader_key` keys them all as one kind for the warm-up.
+- **on the walls** -- `_build_facade_kit`: AC units (`furniture.ac_kit`: 0 on arms under a
+  window's sill, 1 up on a balcony's back wall), washing racks (`washing_kit`, three
+  arrangements, under a sill), towels over parapets (`towel_kit`, coloured per copy). All
+  vertex-coloured kits merged into the square's batches: no draws added. Givatayim ~5400
+  AC units, ~520 racks, ~80 towels; `wall_things` keeps 200 of each for tests/wall_things.gd.
+- **street sounds** -- `_build_street_sounds` / `_street_snd_tick` (called from
+  `_engine_tick`): birds and crickets are 2D loops, the voices and the dog 3D players (at the
+  nearest TALKY place or shop within 70 m; at a random point 45-120 m off every 35-100 s
+  where `_liveliness` > 0.15). Levels worked out twice a second, eased at 10 dB/s; in the
+  car 7-16 dB quieter. A 40 m grid of tree counts (counted as each square plants its trees:
+  most street trees are planted by the game, not in the city file) and of talky places
+  (from the city file at load, before it is let go). The WAVs are made by sounds/make_sounds.py; a new loop
+  needs `edit/loop_mode=2` in its .import (Godot does not loop a WAV without loop points).
+  tests/street_sounds.gd records day and night to listen to.
 - **what breaks** -- knockable things (bins, recycling, bollards) are placed by
   `furniture._place_knock` into multimeshes of their own (`_knock_add`; `_knockable`: post
   index -> [multimesh, copy, transform, mesh, "tumble"/"bend", radius]), not the batches, so

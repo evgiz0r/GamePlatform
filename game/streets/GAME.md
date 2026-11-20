@@ -939,6 +939,25 @@ them, thinning out by 18 m. Only at the two top qualities (fewer at the second).
   glass and bits of plastic on the road and dents in your car where it hit. What you knock
   over stays down while you are near and is back once you have driven out of sight.
 
+> 1, 3, 6, 8 (check what was not seen yet; AC units and washing; background sounds; people
+> in one piece)
+
+**On the walls, in the air, and lighter to draw:**
+- AC units that look like AC units -- an off-white box on two arms, the fan's round grille
+  and the vents, the pipes into the wall, a drip hose and the grey streak the drips leave --
+  under the windows, any side but the street's the most; up on the back wall of some
+  balconies over the parapet. Most blocks show a few (it was three plain boxes at most).
+- A rack of washing under a window now and then: towels, shirts, trousers, socks, a sheet;
+  a towel hung over a balcony's parapet.
+- What a street sounds like besides the traffic: birds in the trees by day (sparrows, a
+  bulbul), louder where there are more trees and in the evening; crickets in the gardens
+  at night; people talking at the cafe, shop or school you pass, from where they are; a dog
+  barking a street or two away now and then. Quieter in the car, the more the faster.
+- Dents you can see: a hard knock pushes the panel in, buckles it, and scrapes the paint
+  round it.
+- Each person drawn in one go (they were six pieces each): fewer things for the browser to
+  draw every frame, nothing different to see.
+
 **People who keep clear.** The walkers step round the trees, posts, benches and cabinets on
 the pavement, keep to one side of anyone coming the other way, and step round people standing
 talking and round you on foot; you and the car can no longer go through them (the car stops

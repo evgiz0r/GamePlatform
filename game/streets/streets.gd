@@ -1116,6 +1116,7 @@ func start(_config: Dictionary) -> void:
 	_traffic = Traffic.new()
 	_traffic.setup(self)
 	_build_engine()
+	_build_street_sounds()
 	_build_signal_sounds()
 	if _place.has("walk"):
 		_film_begin(String(_place["walk"]))
@@ -1217,6 +1218,8 @@ func _shader_key(gi: GeometryInstance3D) -> String:
 		m = mesh.surface_get_material(0)
 		if m == null and gi is MeshInstance3D:
 			m = (gi as MeshInstance3D).get_surface_override_material(0)
+	if m is ShaderMaterial and m.has_meta("piece"):   # (each person's own colours, one shader)
+		return "%s:piece" % gi.get_class()
 	return "%s:%d" % [gi.get_class(), m.get_instance_id() if m != null else 0]
 var _load_ms := 0                    ## from the city file to the car shown, ms
 
@@ -4961,13 +4964,19 @@ var _landmarks: Array = []           ## [where, "playground" | "pitch"]
 ## canopy over the entrance with the blue house-number plate beside it, the columns of the
 ## blocks that stand on them. Bedford: a porch on the street side of a house, a chimney.
 ## All of it instanced, in the building's own wall colour.
+var wall_things := {}                ## a few of the AC units, washing racks, towels made (for tests)
+
 func _build_facade_kit() -> void:
 	var med := String(_place.get("look", "")) == "med"
 	var north := String(_place.get("look", "")) == "north"
 	var kit := {"balcony": [], "column": [], "canopy": [], "porch": [], "post": []}
 	var kit_col := {"balcony": [], "column": [], "canopy": [], "porch": [], "post": []}
 	var encl: Array = [[], []]   # balconies closed in, shutters a little or a lot down
-	var acs: Array = []
+	var acs: Array = [[], []]    # AC units: on the wall on arms, up on a balcony's back wall
+	var washing: Array = [[], [], []]   # racks of washing under windows, three arrangements
+	var towels: Array = []       # over the balconies' parapets
+	var towel_cols: Array = []
+	var laundry: Array = _furn._laundry_cols() if med else []
 	var plates: Array = []
 	var all: Array = _city_data["buildings"]
 	for bi: int in _tile_blds.get(_tile, []):
@@ -5000,6 +5009,7 @@ func _build_facade_kit() -> void:
 		if med and rel <= 32.0:
 			var floors := int((rel + 0.3) / 3.0)
 			# balconies: one or two stacks up the street side
+			var balc_bays := {}   # (the street side's bays with a stack: no AC on arms there)
 			if not street.is_empty() and style != 1 and floors >= 2:
 				var a: Vector2 = street[0]
 				var b: Vector2 = street[1]
@@ -5017,10 +5027,19 @@ func _build_facade_kit() -> void:
 						if sk == 1 and ci == posmod(hsh >> 3, n):
 							ci = (ci + 2) % n
 						var at := a + (b - a) / L * ((ci + 0.5) * cw)
+						balc_bays[ci] = true
 						for lv in range(1, floors):
 							var p := at + out * 0.62
 							kit["balcony"].append(Transform3D(face, Vector3(p.x, g_lo + lv * 3.0, p.y)))
 							kit_col["balcony"].append(wc)
+							var hb := posmod(hsh >> (sk * 3 + lv * 5), 997)
+							if hb % 10 < 4:   # an AC up on the balcony's back wall, over the parapet
+								var q := at + (b - a) / L * (0.75 if hb % 2 == 0 else -0.75)
+								(acs[1] as Array).append(Transform3D(face, Vector3(q.x, g_lo + lv * 3.0 + 1.95, q.y)))
+							elif hb % 10 == 4 and hb / 10 % 3 == 0:   # a towel over the parapet
+								var tx := (hb / 30 % 5 - 2) * 0.35
+								towels.append(Transform3D(face, Vector3(p.x, g_lo + lv * 3.0, p.y)) * Transform3D(Basis(), Vector3(tx, 0, 0)))
+								towel_cols.append(laundry[hb / 7 % laundry.size()])
 							# a third of them closed in, the Israeli way: glass above the parapet
 							# and a roller shutter part-way down
 							if med and posmod(hsh >> (sk * 7 + lv * 3 + 2), 100) < 34:
@@ -5030,24 +5049,43 @@ func _build_facade_kit() -> void:
 								_balcony_flags.append(Transform3D(face, Vector3(p.x, g_lo + lv * 3.0 + 1.02, p.y) + face * Vector3(0, 0, 0.67)))
 					if _bld_kind[bi] == 0:
 						_bld_kind[bi] = 3
-			# AC units: a couple on the walls, beside a window, any side
+			# AC units on their arms beside the windows, any side, the street side's the most
+			# (as filmed: most flats have one or two showing); and now and then a rack of
+			# washing under a window
 			var placed := 0
+			var racks := 0
+			var cap := mini(6, 2 + floors)
 			for i in range(ring.size()):
-				if placed >= 3 or floors < 1:
+				if placed >= cap or floors < 1:
 					break
 				var a := ring[i]
 				var b := ring[(i + 1) % ring.size()]
 				var L := a.distance_to(b)
-				if L < 4.0 or posmod((hsh >> (i % 8)) + i, 3) != 0:
+				if L < 4.0:
 					continue
+				var on_st := not street.is_empty() and a.is_equal_approx(street[0]) and b.is_equal_approx(street[1])
 				var e := (b - a) / L
 				var out := Vector2(e.y, -e.x) * float(look["sgn"])
+				var face := Basis(Vector3.UP, atan2(out.x, out.y))
 				var n := maxi(1, int(L / 3.3))
-				var ci := posmod(hsh + i * 7, n)
-				var lv := posmod(hsh + i * 3, maxi(floors, 1))
-				var p := a + e * ((ci + 0.86) * L / n) + out * 0.2
-				acs.append(Transform3D(Basis(Vector3.UP, atan2(out.x, out.y)), Vector3(p.x, g_lo + lv * 3.0 + 0.75, p.y)))
-				placed += 1
+				for ci in range(n):
+					if placed >= cap:
+						break
+					if on_st and balc_bays.has(ci):
+						continue
+					for lv in range(floors):
+						if lv == 0 and (floors < 2 or look["pilotis"]):
+							continue
+						var hh := posmod(hsh + i * 131 + ci * 17 + lv * 7919, 1000)
+						if hh % 100 < (16 if on_st else 9) and placed < cap:
+							var p := a + e * ((ci + (0.86 if hh % 2 == 0 else 0.14)) * L / n) + out * 0.02
+							var y := g_lo + lv * 3.0 + (0.32 if lv > 0 else 2.3)   # (under the sill; on the ground floor, over heads)
+							(acs[0] as Array).append(Transform3D(face, Vector3(p.x, y, p.y)))
+							placed += 1
+						elif lv > 0 and hh % 100 >= 97 and racks < 2 and not look["pilotis"]:
+							var p := a + e * ((ci + 0.5) * L / n) + out * 0.02
+							(washing[hh / 100 % 3] as Array).append(Transform3D(face, Vector3(p.x, g_lo + lv * 3.0 + 0.75, p.y)))
+							racks += 1
 			# the entrance: a canopy over the door, the lit blue number plate beside it
 			if not street.is_empty() and not look["pilotis"]:
 				var a: Vector2 = street[0]
@@ -5092,10 +5130,19 @@ func _build_facade_kit() -> void:
 		_chunked(_boxm(Vector3.ONE), _mall_glass, 400.0, [], _shop_glass())
 	if not _lobby_doors.is_empty():
 		_chunked(_boxm(Vector3(1.9, 2.4, 0.05)), _lobby_doors, 160.0, [], _shop_glass())
-	if not acs.is_empty():
-		var ac := _boxm(Vector3(0.82, 0.55, 0.32))
-		ac.material = _surface("tank")
-		_chunked(ac, acs, 140.0)
+	for v in range(2):
+		await _chunked_paced(_furn.ac_kit(v), acs[v], 140.0)
+	for k in range(3):
+		await _chunked_paced(_furn.washing_kit(k), washing[k], 120.0)
+	await _chunked_paced(_furn.towel_kit(), towels, 120.0, towel_cols)
+	var seen_now := {"ac": acs[0], "ac_balcony": acs[1], "washing": (washing[0] as Array) + (washing[1] as Array) + (washing[2] as Array), "towels": towels}
+	for k: String in seen_now:   # (a few of each kept for the tests: tests/wall_things.gd)
+		var keep: Array = wall_things.get(k, [])
+		keep.append_array((seen_now[k] as Array).slice(0, maxi(0, 200 - keep.size())))
+		wall_things[k] = keep
+	_tally("ac_units", (acs[0] as Array).size() + (acs[1] as Array).size())
+	_tally("washing_racks", (washing[0] as Array).size() + (washing[1] as Array).size() + (washing[2] as Array).size())
+	_tally("towels", towels.size())
 	if not plates.is_empty():
 		var pl := _boxm(Vector3(0.36, 0.24, 0.04))
 		pl.material = mat("player", 0.6)
@@ -5602,6 +5649,9 @@ func _build_trees() -> void:
 				_mtn_made += 1
 		_tally("mountain_trees", mtn.size())
 	_trees_made += spots.size()
+	for sp: Vector3 in spots:   # (where the birds are: the street sounds)
+		var sc := _cell(Vector2(sp.x, sp.y), SND_CELL)
+		_snd_trees[sc] = int(_snd_trees.get(sc, 0)) + 1
 	if not grates.is_empty():
 		_chunked(_furn.grate_kit(), grates, 120.0)
 	if not pits.is_empty():
@@ -7356,14 +7406,18 @@ varying vec3 lpos;                     // the car's own frame: x across, y up fr
 varying vec3 lnrm;
 varying vec3 lcam;                     // the eye, in that frame
 varying float who;                     // a number of the car's own, for its people's looks
+varying float dented;                  // how near a dent: the paint scuffed and dull there
 void vertex() {
 	custom = INSTANCE_CUSTOM;
 	lpos = VERTEX;
 	lnrm = NORMAL;
-	for (int i = 0; i < 4; i++) {   // pressed in toward the car's middle round each dent
+	dented = 0.0;
+	for (int i = 0; i < 4; i++) {   // pressed in toward the car's middle round each dent, crumpled
 		if (dents[i].w > 0.0) {
-			float k = dents[i].w * (1.0 - smoothstep(0.0, 0.55, distance(VERTEX, dents[i].xyz)));
-			VERTEX -= normalize(vec3(dents[i].x, 0.0, dents[i].z * 0.35) + vec3(0.0001)) * k * 0.2;
+			float k = dents[i].w * (1.0 - smoothstep(0.0, 0.8, distance(VERTEX, dents[i].xyz)));
+			VERTEX -= normalize(vec3(dents[i].x, 0.0, dents[i].z * 0.35) + vec3(0.0001)) * k * 0.3;
+			VERTEX.y += k * (0.05 + 0.04 * sin(VERTEX.x * 19.0 + VERTEX.z * 7.0));   // (the bonnet buckles up)
+			dented = max(dented, k);
 		}
 	}
 	lcam = transpose(mat3(MODEL_MATRIX)) * (CAMERA_POSITION_WORLD - MODEL_MATRIX[3].xyz);
@@ -7490,6 +7544,12 @@ void fragment() {
 	} else {                     // tail lights
 		col = tail.rgb;
 		emit = tail.rgb * (0.25 + 1.1 * night + 2.8 * (custom.a - floor(custom.a * 0.5) * 2.0));
+	}
+	if (dented > 0.0) {   // scraped paint and the primer under it round a dent
+		float sc = clamp(dented * 1.6, 0.0, 0.75) * (0.6 + 0.4 * fract(sin(dot(floor(lpos.xz * 22.0), vec2(12.9898, 78.233))) * 43758.5453));
+		col = mix(col, col * 0.45 + vec3(0.12), sc);
+		rough = mix(rough, 0.9, sc);
+		spec = mix(spec, 0.2, sc);
 	}
 	ALBEDO = col;
 	ROUGHNESS = rough;
@@ -13915,6 +13975,7 @@ func _engine_tick(dt: float) -> void:
 	if _engine.is_empty():
 		return
 	var off := Audio.muted() or finished or _paused
+	_street_snd_tick(dt, off)
 	for i in range(_engine.size()):
 		var p: AudioStreamPlayer = _engine[i]
 		if off and p.playing:
@@ -13990,6 +14051,117 @@ func _engine_tick(dt: float) -> void:
 	else:
 		by.volume_db = -80.0
 
+## ---- the sounds of the street ----------------------------------------------------------------
+## What a walk down a Givatayim street sounds like besides the traffic, made by
+## sounds/make_sounds.py: birds in the trees by day, crickets in the gardens at night,
+## people talking at the cafe, shop or school you are passing, a dog barking a street or two
+## away now and then. Worked out twice a second from where you are -- how many trees round
+## you (a 40 m grid of the trees, counted as they are planted), the nearest place people talk -- and
+## the hour; each eases to its level. In the car they are quieter (the glass, the engine),
+## the more so the faster; on foot they are what you hear. The voices and the dog are where
+## they come from (3D players: they pan as you turn); the birds and crickets are all round.
+const SND_CELL := 40.0
+const TALKY := ["restaurant", "cafe", "fast_food", "bar", "pub", "ice_cream", "school", "kindergarten", "community_centre"]
+var _amb: Array = []                 ## the birds' and the crickets' loops
+var _voices: AudioStreamPlayer3D     ## at the nearest cafe, shop or school
+var _dog: AudioStreamPlayer3D        ## a street or two away, now and then
+var _snd_trees := {}                 ## 40 m cell -> trees in it (counted as each square plants them)
+var _snd_talky := {}                 ## 40 m cell -> places people talk at
+var _amb_t := 0.0
+var _amb_db := [-80.0, -80.0, -80.0] ## where the birds, crickets and voices are easing to (dB)
+var _dog_t := 30.0
+var _amb_rng := RandomNumberGenerator.new()
+
+func _build_street_sounds() -> void:
+	for name: String in ["birds", "crickets"]:
+		var p := AudioStreamPlayer.new()
+		p.stream = load(SND_DIR + name + ".wav")
+		p.volume_db = -80.0
+		add_child(p)
+		_amb.append(p)
+	_voices = AudioStreamPlayer3D.new()
+	_voices.stream = load(SND_DIR + "voices.wav")
+	_voices.volume_db = -80.0
+	_voices.unit_size = 8.0
+	_voices.max_distance = 80.0
+	world.add_child(_voices)
+	_dog = AudioStreamPlayer3D.new()
+	_dog.stream = load(SND_DIR + "dog.wav")
+	_dog.unit_size = 25.0
+	_dog.max_distance = 220.0
+	world.add_child(_dog)
+	_amb_rng.seed = hash(_city_name) + 11
+	var k := 1.0 / float(_city_data.get("scale", 10))
+	for poi: Array in _city_data.get("pois", []):
+		var kind := String(poi[2])
+		if kind in TALKY or kind.begins_with("shop:"):
+			var at := Vector2(poi[0], poi[1]) * k
+			var c := _cell(at, SND_CELL)
+			if not _snd_talky.has(c):
+				_snd_talky[c] = []
+			(_snd_talky[c] as Array).append(at)
+
+func _street_snd_tick(dt: float, off: bool) -> void:
+	if _amb.is_empty():
+		return
+	for p: AudioStreamPlayer in _amb:
+		if off and p.playing:
+			p.stop()
+		elif not off and not p.playing:
+			p.play(_amb_rng.randf_range(0.0, 3.0))
+	if off:
+		if _voices.playing:
+			_voices.stop()
+		if _dog.playing:
+			_dog.stop()
+		return
+	if not _voices.playing:
+		_voices.play()
+	_amb_t -= dt
+	if _amb_t <= 0.0:
+		_amb_t = 0.5
+		var base := linear_to_db(maxf(0.0001, float(SaveData.data.get("volume_sfx", 0.8))))
+		var v := 0.0 if _walking else absf(_v)
+		var hush := 0.0 if _walking else 7.0 + 9.0 * clampf(v / 14.0, 0.0, 1.0)   # (in the car: the glass, the engine)
+		var c := _cell(_pos, SND_CELL)
+		var trees := 0
+		var near := INF
+		var talk := Vector2.INF
+		for dx in range(-1, 2):
+			for dz in range(-1, 2):
+				var cc := c + Vector2i(dx, dz)
+				trees += int(_snd_trees.get(cc, 0))
+				for q: Vector2 in _snd_talky.get(cc, []):
+					if q.distance_to(_pos) < near:
+						near = q.distance_to(_pos)
+						talk = q
+		var green := clampf(float(trees) / 30.0, 0.0, 1.0)
+		# birds by day where there are trees (a dawn-and-dusk chorus: louder in the evening)
+		_amb_db[0] = (base - 25.0 + 9.0 * green + (2.0 if _evening else 0.0) - hush) if (not _night and trees > 0) else -80.0
+		# crickets at night in the gardens, a few starting in the evening
+		_amb_db[1] = (base - 26.0 + 6.0 * green - hush) if _night else ((base - 34.0 - hush) if _evening else -80.0)
+		# people talking at the nearest place they would (fewer at night)
+		if talk != Vector2.INF and near < 70.0:
+			_voices.position = Vector3(talk.x, _h(talk) + 1.4, talk.y)
+			_amb_db[2] = base - 9.0 - hush * 0.8 - (5.0 if _night else 0.0)
+		else:
+			_amb_db[2] = -80.0
+		# a dog, a street or two away, now and then where people live
+		_dog_t -= 0.5
+		if _dog_t <= 0.0:
+			_dog_t = _amb_rng.randf_range(35.0, 100.0)
+			if _liveliness(_pos) > 0.15 and not _dog.playing:
+				var d := Vector2.from_angle(_amb_rng.randf() * TAU) * _amb_rng.randf_range(45.0, 120.0)
+				var at := _pos + d
+				_dog.position = Vector3(at.x, _h(at) + 0.6, at.y)
+				_dog.pitch_scale = _amb_rng.randf_range(0.85, 1.2)
+				_dog.volume_db = base - 4.0 - hush
+				_dog.play()
+	for i in range(2):
+		var p: AudioStreamPlayer = _amb[i]
+		p.volume_db = move_toward(p.volume_db, _amb_db[i], dt * 10.0)
+	_voices.volume_db = move_toward(_voices.volume_db, _amb_db[2], dt * 10.0)
+
 ## ---- people ----------------------------------------------------------------------------------
 
 func _spawn_people() -> void:
@@ -14025,6 +14197,11 @@ func _people_lod(a: Actor3D) -> void:
 	for mi: MeshInstance3D in a.find_children("*", "MeshInstance3D", true, false):
 		mi.visibility_range_end = PEOPLE_SEEN
 		mi.visibility_range_end_margin = 5.0
+		var pm := mi.get_surface_override_material(0) as ShaderMaterial
+		if pm != null and pm.has_meta("piece"):   # (one piece: _one_piece)
+			pm.set_shader_parameter("fade_from", PEOPLE_SEEN)
+			pm.set_shader_parameter("fade_to", PEOPLE_SEEN - 15.0)
+			continue
 		# dissolving in over the last 15 m (a dither, no sorting), not there in one frame
 		for si in range(mi.mesh.get_surface_count() if mi.mesh != null else 0):
 			var m := mi.get_active_material(si) as BaseMaterial3D
@@ -14386,6 +14563,93 @@ func _humanize(a: Actor3D, seed: int) -> void:
 			nm.albedo_color = pick[role]
 			nm.roughness = 0.85
 			mi.set_surface_override_material(si, nm)
+		_one_piece(mi)
+
+## A person in one piece. The figures are one mesh of six parts (skin, shirt, trousers, belt,
+## face, hair), and each part is a surface of its own: a draw call, and another in the
+## shadow pass, every frame -- 8 people in view were 48 of the 217 draws. Joined into one
+## surface, with each vertex's part in its colour's red, and one material per person whose
+## six colours are what the parts were, a person is one draw. The joined mesh is made once
+## per figure and shared (a mesh per person would be ~0.7 MB each).
+const PIECE_SHADER := """
+shader_type spatial;
+uniform vec4 parts[6];
+uniform float fade_from = 1e6;   // gone past this distance...
+uniform float fade_to = 1e6;     // ...dissolving in, a dither, from here
+void fragment() {
+	int i = clamp(int(COLOR.r * 8.0 + 0.5), 0, 5);
+	ALBEDO = parts[i].rgb;
+	ROUGHNESS = 0.85;
+	float d = length((VIEW_MATRIX * vec4(MODEL_MATRIX[3].xyz, 1.0)).xyz);
+	float keep = clamp((fade_from - d) / max(fade_from - fade_to, 0.001), 0.0, 1.0);
+	if (keep < 0.999 && keep < fract(52.9829189 * fract(dot(FRAGCOORD.xy, vec2(0.06711056, 0.00583715))))) {
+		discard;
+	}
+}
+"""
+var _piece_meshes := {}               ## a figure's mesh -> the same in one surface
+var _piece_shader: Shader = null
+
+func _one_piece(mi: MeshInstance3D) -> void:
+	var src := mi.mesh
+	if src == null or src.get_surface_count() < 2 or src.get_surface_count() > 6 or src.get_blend_shape_count() > 0:
+		return
+	if _piece_shader == null:
+		_piece_shader = Shader.new()
+		_piece_shader.code = PIECE_SHADER
+	var one: ArrayMesh = _piece_meshes.get(src)
+	if one == null:
+		var verts := PackedVector3Array()
+		var nrms := PackedVector3Array()
+		var bones := PackedInt32Array()
+		var wts := PackedFloat32Array()
+		var cols := PackedColorArray()
+		var idx := PackedInt32Array()
+		for si in range(src.get_surface_count()):
+			var arr := src.surface_get_arrays(si)
+			var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+			var off := verts.size()
+			if arr[Mesh.ARRAY_BONES] == null or (arr[Mesh.ARRAY_BONES] as PackedInt32Array).size() != v.size() * 4:
+				return   # (not the 4-bone skinned figures this is for)
+			verts.append_array(v)
+			nrms.append_array(arr[Mesh.ARRAY_NORMAL])
+			bones.append_array(arr[Mesh.ARRAY_BONES])
+			wts.append_array(arr[Mesh.ARRAY_WEIGHTS])
+			var part := PackedColorArray()
+			part.resize(v.size())
+			part.fill(Color(float(si) / 8.0, 0.0, 0.0))
+			cols.append_array(part)
+			var ix: PackedInt32Array = arr[Mesh.ARRAY_INDEX] if arr[Mesh.ARRAY_INDEX] != null else PackedInt32Array(range(v.size()))
+			for k in ix:
+				idx.append(k + off)
+		var arrays := []
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = verts
+		arrays[Mesh.ARRAY_NORMAL] = nrms
+		arrays[Mesh.ARRAY_BONES] = bones
+		arrays[Mesh.ARRAY_WEIGHTS] = wts
+		arrays[Mesh.ARRAY_COLOR] = cols
+		arrays[Mesh.ARRAY_INDEX] = idx
+		one = ArrayMesh.new()
+		one.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		_piece_meshes[src] = one
+	var m := ShaderMaterial.new()
+	m.shader = _piece_shader
+	m.set_meta("piece", true)
+	var parts: Array[Vector4] = []
+	for si in range(6):
+		var c := Color.WHITE
+		if si < src.get_surface_count():
+			var sm := mi.get_active_material(si) as BaseMaterial3D
+			if sm != null:
+				c = sm.albedo_color
+		c = c.srgb_to_linear()
+		parts.append(Vector4(c.r, c.g, c.b, 1.0))
+	m.set_shader_parameter("parts", parts)
+	for si in range(src.get_surface_count()):
+		mi.set_surface_override_material(si, null)
+	mi.mesh = one
+	mi.set_surface_override_material(0, m)
 
 ## ---- people crossing at the zebras -----------------------------------------------------------
 ## A few people at the zebra crossings near the car. They wait at the kerb, and cross once
