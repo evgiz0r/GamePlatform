@@ -190,9 +190,12 @@ about 3 s here, the same as anywhere (see "Loading near-first").
 > Ashdod.
 
 **Tel Aviv** is a box of the city centre, not the whole city (all of it would be far too
-much to build and drive smoothly): about 2.4 by 2.7 km, from Ichilov and the Savidor
-station down to Yitzhak Sadeh, and from just west of Ibn Gabirol across the Ayalon to
-Nahalat Yitshak -- HaKirya, Azrieli and Sarona, Montefiore, Bitsaron. It starts on Kaplan
+much to build and drive smoothly): about 4.3 by 3.3 km, from Ichilov and the Savidor
+station down past the Carmel market, and from the sea across the Ayalon to Nahalat
+Yitshak -- the beaches and the promenade (Herbert Samuel), Allenby, the Carmel market,
+Rothschild, Dizengoff's south end, HaKirya, Azrieli and Sarona, Montefiore, Bitsaron. It
+began as 2.4 by 2.7 km, Ibn Gabirol to the Ayalon, and was grown to the sea (November
+2026); the places in the first box kept where they were. It starts on Kaplan
 just past Leonardo da Vinci, heading east, HaKirya on the left and the Azrieli towers
 ahead. The towers stand at their real heights (OSM has them for the tall ones: Azrieli's
 round tower 187 m, the Spiral 350 m). The map ends at the box's edge (the striped barrier).
@@ -245,6 +248,11 @@ box (none on Begin or Ibn Gabirol), so the rest are not there.
 > lets do the bridges and tunnels over the Ayalon
 
 > do 1 and 2, then the railway
+
+> what would it cost extending tel aviv to the sea and down including like carmel market
+> and alenbi, how much more is that
+
+> what next options. lets try to make it bigger
 
 **The test town.** The last place, Kiryat Dimyon, is made up (`cities/dimyon.json`, from
 `tools/fake_city.py`): one neighbourhood about 1.3 x 1 km, a fifth of Givatayim's buildings,
@@ -1068,6 +1076,17 @@ end of a block they walk on over the side street or round the corner, rather tha
 back and pacing the same block. And parked cars are solid along their whole length: people
 no longer walk through the middle of one.
 
+> 3,4,6,7,8 (shops that look open, a faster start, the leftovers, more that breaks, walk 2's route)
+
+**Shops that look open, and the rest.** A shopkeeper stands in the doorway of a few open
+shops near you; sandwich boards stand out in front of many, and corner shops put their crates
+out. Hitting a wall leaves rubber and paint streaks on it; driving into a hedge is soft --
+leaves fly and the car is held, nothing breaks. People, dogs and pushchairs keep clear of a
+parked car's corners too, a dog stays on its walker's side of a railing, grass no longer
+grows through garden paths, and someone with no room to step aside stops to let you pass.
+The walk along Sirkin keeps a step further from the parked cars, as filmed. Loading compiles
+about a tenth fewer graphics programs (most noticeable on a phone or a Windows laptop).
+
 > I took a video on my phone, walking in Givatayim.
 
 ## Smooth on a laptop and a phone
@@ -1231,7 +1250,9 @@ contributors under the ODbL, which is why the credit sits on screen.
 ### What is real and what is guessed
 
 - **Real**: every road's path, kind, width (or lanes), one-way direction and name; every
-  building outline; heights and floors where OSM has them; parks, grass, water, car
+  building outline; heights and floors where OSM has them; in Tel Aviv (the level, and the
+  strip of it at Givatayim's west edge) the city's own measured heights for most of its
+  buildings, from the municipality's 2019 survey (credited on screen); parks, grass, water, car
   parks; mapped trees; traffic lights and zebra crossings; the speed limit where OSM tags
   it (every driver keeps to it, and the signs show it); the city boundary. The hills:
   the ground follows an open elevation model (AWS terrain tiles), baked in with the city.

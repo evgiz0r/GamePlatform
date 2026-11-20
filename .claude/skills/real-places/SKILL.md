@@ -25,6 +25,12 @@ it, a post a circle. A bus is 12 m: half its length is the error, and that is a 
 of road. The tests can lean on the same shapes (in a game with scene tests, a helper like
 `bodies.gd` beside them), and the scored run checks bodies every tick, so a new place this
 goes wrong shows up the first time it runs.
+A fix in one place does not reach its siblings: the AI stopped its front at a light's line
+for weeks while the same code for a stop sign still stopped its middle there (a sedan's nose
+2 m into the crossing street, a bus's at the junction's middle). When one stopping or
+measuring rule is fixed, grep for every other place doing the same thing -- each line it
+stops at, each kerb it pulls toward (a delivery van pulled in by the asphalt's room stood in
+the parked cars, which stand a third in the road).
 
 ## Getting a city
 
@@ -57,6 +63,19 @@ goes wrong shows up the first time it runs.
   `place` then only its name) -- e.g. read off a screenshot of a map with two landmarks of
   known position for the scale. A box has no boundary: no "welcome to" at the limits, and
   the striped barrier at the map edge is the whole border.
+- **Growing a box later: keep its centre** (the workflow's `origin`, the old file's
+  `"origin"`). The metres are measured from the box's middle, so a bigger box moves every
+  place in it -- and a game's hand fixes, landmarks, tests and notes all name places by
+  their metres. With the old origin given, the old places keep their coordinates to the
+  centimetre and the new ground is simply further out.
+- **The sea came out under its own floor.** The terrain tiles read the sea a metre or so
+  either side of 0 and the beach lower still (2.5 m under sea level, four grid points in),
+  and water lies flat at its shore's lowest point: so the sea's surface lay under the
+  ground drawn over it, a white plain where the sea should be. The baker now holds the sea
+  at sea level (the area's `y`), its floor under it and the shore ~110 m in over it, and
+  sets the sea to sea level *before* `--bare-ground`, whose lowest-round-each-point would
+  otherwise carry the sea bed's depths 90 m inland. Bakes from before this have it: look
+  at a coastal town's sea from above before trusting it.
 - **The ground heights see the roofs.** The terrain tiles the baker reads are a surface
   model (mostly SRTM): in a city centre a cluster of towers comes out as a hill. One
   centre's grid stood 146 m high under three towers, with slopes of 300%, and the buildings
@@ -71,11 +90,44 @@ goes wrong shows up the first time it runs.
   showed (100 m against 187), the rest 1-9 m. The tiles are ~30 m and from about 2000, so
   they know neither a block's shape nor anything built since. Building heights have to
   come from OSM or a municipal or national buildings layer.
+- **A town's own survey of its buildings beats OSM's guesses -- mostly.** Some towns
+  publish theirs as an ArcGIS layer (a REST `.../MapServer/<n>` with `/query?...&f=geojson`,
+  2000 a page, `resultOffset` to page on; ask it for `returnCountOnly` first). The baker
+  reads the ones in its `SURVEYS` list (`--add-surveys CITY_FILE` puts them on a file baked
+  already) and credits each on screen. One city centre's, Nov 2026: a measured height on
+  97% of its buildings (roof top minus ground, rooftop rooms included), storeys on 95%,
+  year built on 72%, and whether it stands on columns. What it taught:
+  - *Its outlines are not OSM's*: ~18% smaller (walls, not traced roofs) and ~1.9 m south of
+    them. Keep OSM's outlines (the game's roads were fitted round them) and lend each the
+    height of the survey building covering most of it, 30% or more; measure the shift on
+    one-to-one pairs first and match again with it.
+  - *It is a snapshot*: a 2019 survey had 6-7 m for towers finished since (OSM: 140-160 m),
+    79 m for a 151 m one going up, and a building site's part-built height. Skip what it
+    marks under construction; under 2.2 m a floor, take its floors instead.
+  - *Its height is the top point over the footprint*, roof or not: a tree's crown over a
+    low house, or the tower beside it (two-storey houses at 19-22 m among old trees, a
+    one-storey one at 214 m). Up to 4 floors, over (floors + 2) * 3.5 + 3 m is not the
+    roof: take its floors (~10% of buildings). Not on towers: their floors run 3-4.5 m and
+    the check would cut real ones (a 98 m tower to 80).
+  - *One shape can be a whole complex at its tallest point*: a mall at a tower's foot came
+    out 187 m, a 75 m^2 lobby 109 m. So a height OSM tags outright wins; floors OSM tags win
+    when the survey is over 1.5x or under 2/3 of that and 10 m off (not the same building,
+    or built since); a small outline (a quarter of the survey's shape) under a survey tower
+    keeps its guess.
+  - *It is taller than floor counts*, +4 m on a typical block: the ground floor on columns
+    and the roof rooms that `building:levels` leaves out. Within the band above, take the
+    survey's: it was measured. A rule written against guessed heights (a house is under
+    13.5 m) may need moving: measured to the ridge, a two-storey pitched house is 9-16 m.
+  - Of 4011 OSM buildings 3138 took a survey height, 232 kept OSM's own; the survey also had
+    ~500 small buildings OSM lacks (median 35 m^2, sheds and annexes, 57 over 300 m^2),
+    not added.
 - **Government open data may refuse the cloud.** A national portal's API answered, but
   its files came from a CDN host that refused the container even once the environment
   allowed both hosts (a CloudFront 403 page instead of the file: likely by country). Do not
   dress the request up to get past it; have the user download the file and add it to the
-  repo, or use what OSM has.
+  repo, or use what OSM has. A municipality's own GIS server, on the other hand, answered
+  the container fine once its host was allowed: try the source's own server before asking
+  the user to paste or download anything.
 - **A landmark's name is often on its podium.** OSM names the outline a tower stands on (a
   radio tower's 18 m base) and maps the tower as an unnamed `building:part` inside it (80 m,
   `min_height` the podium's top). To dress a named landmark, take the tallest building
