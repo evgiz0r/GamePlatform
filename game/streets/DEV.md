@@ -874,9 +874,9 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
 A road whose city file has `y` (its surface's height at each node, decimetres above the
 height grid's base) is a **deck**; its OSM tags say what it is built as (`br` bridge, `tu`
 tunnel, `em` embankment, `cu` cutting). `tools/fake_city.py` writes `y` into the test town;
-a real town opted in with `"decks": "infer"` (Bedford, Tel Aviv) gets it worked out as it
-loads (below). Elsewhere a bridge without `y` is drawn on the ground and a tunnel without
-it is dropped.
+a real town opted in with `"decks": "infer"` (all four: Givatayim, Bedford, Ashdod, Tel
+Aviv) gets it worked out as it loads (below). Elsewhere a bridge without `y` is drawn on
+the ground and a tunnel without it is dropped.
 
 - **One height is not enough.** Everything used to ask `_h(p)`, the ground. Now whatever has
   a level asks `_decks.surf(p, y)`: the highest of the ground and the decks under p that is
@@ -927,7 +927,7 @@ it is dropped.
   too deep to drive or walk into (`_deep_push`): the banks were gentle enough to drive down
   and along the bed under the water. Lakes and ponds without a level are as before.
 - **A real town's heights, worked out as it loads** (`infer` in decks.gd; a place opts in
-  with `"decks": "infer"` in `LEVELS`, Bedford so far). Before the roads are read, the
+  with `"decks": "infer"` in `LEVELS`; all four real towns now). Before the roads are read, the
   city data gets heights as if baked: where a drivable bridge (a chain of bridge ways 8 m
   or longer; shorter ones are culverts and stay as they were) crosses a road it must clear
   it by 6.4 m (a path: 4.4); that lift spreads along the drivable roads at a ramp's grade
@@ -1014,11 +1014,6 @@ it is dropped.
   (a turning car clipped the parapet), a 5 cm switch from a cutting's road to the ground
   where it gets shallow (a hop), and ground triangles left whole over a cutting (an edge
   parallel to the hole's leaves a smaller triangle: compare areas, not corner counts).
-<<<<<<< HEAD
-- **Still to do**: the inferred heights for Givatayim and Ashdod (and their tunnels);
-  pavements and people beside an inferred cutting, and the minimap showing a tunnel as one;
-  earth embankments with grass slopes rather than walls along inferred ramps; a long-span
-=======
 - **Givatayim** (with the strip of Ramat Gan and Tel Aviv round it): 11 bridges (Menachem
   Begin's and Arvey Nahal's over the Ayalon), all 23 crossings over roads at full clearance;
   7 tunnels (Uzi Hitman's, the City tunnel's pieces, HaMaayan's), 16 cuttings, 0.3 s. Left
@@ -1026,13 +1021,13 @@ it is dropped.
   service tunnel. `tests/decks.gd` level 1: the tunnels and bridges driven alone come out
   clean; in the full sequence two runs stall (traffic left by the run before), and two
   cuttings give a short hop.
-- **Still to do**: Tel Aviv is another session's;
-  Ashdod's tight interchange at its east edge (x 3850, z -1590: slip roads crossing slip
-  roads at street level -- 15 crossings short of the clearance, 0.5 m the lowest); a 0.5 s
-  hop out of Menachem Begin's underpass; footpath tunnels; grass slopes for cuttings too (they are walled); a long-span
->>>>>>> origin/main
-  bridge's height over water (the MacKay's deck is only as high as its ends); pavements at street
-  level beside a cutting (the underpass has none); people on a bridge's pavement; the
+- **Still to do**: Ashdod's two tight interchanges near its east edge, where slip roads
+  cross slip roads and the main line at street level -- 15 crossings short of the clearance
+  (8 round x 3840, z -1590; 7 round x 4830, z -4170, with the lowest, 0.5 m; `infer`'s
+  report lists only the first 12); a 0.5 s hop out of Menachem Begin's underpass; footpath
+  tunnels; grass slopes for cuttings too (they are walled); a long-span bridge's height over
+  water (the MacKay's deck is only as high as its ends); pavements at street level beside a
+  cutting (the underpass has none); people on a bridge's pavement and beside a cutting; the
   minimap draws a tunnel like any street; zooming out from inside the tunnel rises from the
   hilltop (the zoom centres on the ground's height); the heights are whole decimetres, so a
   deck's grade kinks by up to 2% every 5 m (enough for a 2 cm hop off HaNasi's bridge);
