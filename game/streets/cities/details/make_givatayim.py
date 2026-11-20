@@ -38,9 +38,12 @@ lm = [
     (None, tuple(P(60.5, -2.0))), (None, tuple(P(63, -4.4))),  # onto the little street's pavement, the road on the left
     (80.0, tuple(P(80.5, -4.4))), (81.5, tuple(P(82.0, -4.2))),  # the corner, at the kerb (between
     (82.4, tuple(P(82.0, -4.2))),                                 # its bollards); a look each way first
-    (90.0, tuple(P(90.4, -4.2))),                                 # over Sheinkin
-    (None, tuple(P(91.4, -5.95))), (93.0, tuple(P(94.0, -5.95))), (96.0, tuple(P(97.5, -5.95))),   # into Ha-Meri,
-                                                                    # between the kerb's posts and the garden wall
+    (90.0, tuple(P(90.4, -4.2))), (90.3, tuple(P(90.4, -4.2))),   # over Sheinkin, a beat on the kerb
+                                                                  # (no swing on past it into the bollard)
+    (None, tuple(P(90.5, -6.0))), (93.0, tuple(P(94.0, -5.95))), (96.0, tuple(P(97.5, -5.95))),   # into Ha-Meri:
+                                                                    # round the corner's first bollard, then behind
+                                                                    # the row of them (a metre in from the kerb, and
+                                                                    # more along its edge), short of the garden wall
 ]
 # fill the untimed points by distance between the timed ones
 pts = [list(p) for _, p in lm]
