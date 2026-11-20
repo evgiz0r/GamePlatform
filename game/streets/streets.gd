@@ -8096,7 +8096,8 @@ func _build_pois() -> void:
 			# front, between the building and the street, wherever there is room for it
 			for c: Vector2 in [pos + n * 6.0, pos + n * 8.0, at]:
 				var on := _nearest_seg(c, 15.0, true)
-				if _push_out(c, 3.2, false) == Vector2.ZERO and (on.is_empty() or float(on["edge"]) > 1.5):
+				if _push_out(c, 3.2, false) == Vector2.ZERO and (on.is_empty() or float(on["edge"]) > 1.5) \
+						and _station_fits(c, n):
 					_gas_station(c, n, canopy)
 					station = c
 					break
@@ -8304,6 +8305,17 @@ func _shop_glass() -> StandardMaterial3D:
 	return m
 
 ## a gas station: a canopy on four pillars over two pumps, square to the street
+## every column of a station's canopy and both pumps off the road (the middle 1.5 m off it
+## let a corner column, 4 m from the middle, stand 0.9 m into a primary road -- city_check,
+## Bedford)
+func _station_fits(at: Vector2, n: Vector2) -> bool:
+	var along := Vector2(-n.y, n.x)
+	for sx: float in [-1.0, 1.0]:
+		for sz: float in [-1.0, 1.0]:
+			if not _off_road(at + along * 3.6 * sx + n * 2.2 * sz, 0.45):
+				return false
+	return true
+
 func _gas_station(at: Vector2, n: Vector2, c: Dictionary) -> void:
 	var along := Vector2(-n.y, n.x)
 	var gy := _h(at)
