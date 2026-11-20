@@ -202,7 +202,11 @@ cross both halves, outer kerb to outer kerb. People walking along the street kee
 back half of the pavement (the parked cars stand on the front of it), only on the outer
 side of a divided road, and off any stretch where the pavement line would run over another
 road -- a service lane or car-park lane alongside, the next street at a corner -- though
-they step across a driveway's mouth.
+they step across a driveway's mouth. Their feet are on the pavement's top (on the asphalt
+while crossing, on the ground in a park), not the bare ground's height a kerb below it,
+where they waded into the slabs.
+
+> People walk a bit inside the ground.
 
 The people are grown-ups, not the kit's chunky cartoons: smaller heads, hands and feet,
 longer legs and a longer middle (scaled on their skeletons after every animation frame),
@@ -464,11 +468,16 @@ squares that are only drawn when on screen and near enough (kerbs and road marki
 about 260 m, trees 550 m, buildings 1100 m, people 90 m), shadows cover only the street
 round the car, and the car and camera are drawn between physics ticks so they glide
 however fast the screen redraws. In a browser the game also watches its own frame rate:
-under 55 frames a second, or stuttering (more than one frame in twelve slower than 25 ms),
+under 45 frames a second, or stuttering (more than one frame in ten slower than 33 ms),
 for a few seconds and it steps down a level -- first smoother edges (MSAA) off and
 shorter shadows, then no shadows and a lower 3D resolution and the photo textures off
-(back to the drawn grain). It never steps back up during
-a drive. The frame rate, the slowest frame of the last few seconds and the level are shown
+(back to the drawn grain). A one-off stall (over a quarter of a second: something loading)
+doesn't count -- one half-second stall made a smooth 50 frames a second read as 38. After
+8 s at the screen's full rate it tries the level above again; a level that fails again
+waits longer before the next try (30 s, then 1, 2, 4 minutes), so it never flickers
+between two.
+
+> Sometimes quality drops, even on my PC. It never goes up again, and textures are gone. The frame rate, the slowest frame of the last few seconds and the level are shown
 small under the speed. Parked cars and
 traffic are one mesh per car shape (a batch of them costs one draw, not six); every kind
 of shader is drawn once while the city loads, so none of them stalls the first time it

@@ -100,7 +100,10 @@ working. What it gives you on top: `world` (a `Node3D` to build in), `cam` + `su
 `model("taxi", 3.0)` for the CC0 3D models in `assets/models/` and `Actor3D` for the
 animated people in `assets/characters3d/` (both fall back to shapes when a file is missing).
 Set `world_area` (the X/Z rectangle of your ground) so the ASCII eye knows what to draw.
-Read the `godot-3d` skill before writing one. `game/drop/` is the reference.
+Read the `godot-3d` skill before writing one. `game/drop/` is the reference. The bots see a
+3D world only as dots on a 2D map, so its spatial bugs (a person in the road, a car in a
+wall, a seam in the ground) need scene tests -- scripts that stage the moment and measure
+it, with screenshots: see the `scene-tests` skill.
 
 ## Real places
 
@@ -121,6 +124,11 @@ or two -- for a quick test bench: one neighbourhood with one of each thing a rea
 (divided road, roundabouts, a hill, a mall, a school, shops, bus stops...), ringed by
 mountains too steep to drive up. It writes `"made_up": 1`, so the OSM credit does not
 apply.
+
+OSM data is full of traps for a driving or walking game -- widths are guesses, a divided
+road is two roads, one junction is several points, a car park is only its lanes -- and
+each cost a round of the user's bug reports. Read the `real-places` skill before building
+on a baked city.
 
 ## Hard requirements
 
@@ -165,6 +173,11 @@ automatic checks. Read the ASCII maps: they show spatial bugs (everything spawni
 corner, the player stuck in a wall, a goal outside the play area) that counts alone hide.
 
 Keep runs short (20–30s). They are cheap, but not free.
+
+A playtest passing says the game runs and can be played; it says little about whether a
+3D scene looks right or a system behaves in a particular spot. For that, write a scene
+test (the `scene-tests` skill): stage the situation, measure it, screenshot it, keep the
+script in the game's `tests/` folder.
 
 ## Things this kit learned the hard way
 
@@ -242,6 +255,13 @@ fetches a matching Godot plus the web export templates (`tools/setup_godot.sh`) 
 `tools/publish_web.sh` all just work there. The user's own machine is not reachable from
 that session: never ask them to run something for you or for the path to their install.
 
+These containers are slow at 3D: a city that builds in 5 s on a laptop can take 15 here,
+and a minute of simulated play can take five of wall time under the software renderer.
+Run anything long with the shell's background mode and a long timeout (a foreground
+command is cut off at 10 minutes, and a job you put in the background with `&` inside a
+foreground command dies with it), chain several runs in one background script, and keep
+working while they go. Two Godot runs at once on a 4-core container is about the limit.
+
 ## The web build
 
 `docs/` holds the exported web build that GitHub Pages serves. It is generated, not
@@ -250,6 +270,60 @@ written by hand, and **it publishes itself**: every push to `main` runs
 `/publish` just to get a change online; push it. `git pull` before pushing, because the
 workflow's own commit moves `main`. `/publish` remains for checking a build locally.
 Exporting needs the **standard** Godot build; the .NET/mono one refuses web export outright.
+
+## Several sessions at once
+
+More than one session (on the web, the desktop app, a phone) can be working on the same game
+at the same moment, each on its own branch, all publishing to `main`. Expect it; it is
+normal, not an accident. What that asks of you:
+
+- **Fetch and merge `origin/main` before you test something you mean to publish, and again
+  right before you push.** `git log HEAD..origin/main` shows what the others did since you
+  last looked; read it -- their commit messages say what changed and why.
+- **A clean merge is not a working game.** Git merges two sessions' edits to the same file
+  happily and the result can still be broken (a function one renamed, a constant the other
+  retuned). After merging anything that touches your game, parse it
+  (`tools/check_script.sh res://game/<name>/<name>.gd`, seconds) and run the playtest again
+  before pushing to `main`.
+- **A merge can bring new assets** (another session's textures, models). Godot only imports
+  them when asked: `tools/playtest.sh` and `tools/shots.sh` now do it when they see assets
+  newer than the last import, but if you run the engine yourself, run
+  `$GODOT --headless --path . --import` first, or your screenshots quietly lack them.
+- **Never force-push, never rebase `main`, never "fix" a conflict by taking only your side.**
+  Merge, keep both, and if two changes really contradict each other, keep the user's latest
+  request and say in your reply what you changed of the other session's work.
+- **A user's report may come from a build you did not make.** Their screenshot can show
+  another session's feature, or still show something you already removed (the build had not
+  republished yet, or their browser cached it). Check what build it is from (the HUD, a
+  feature you know is gone) before chasing the bug.
+- **Say so when others' work rides along.** If your push publishes changes from another
+  session, tell the user in a line, so a surprise on screen has an explanation.
+- Editing the same lines at the same time is the one real clash. When you see another
+  session busy in the same corner of the code (its commits keep landing there), keep your
+  change small and focused, and leave its constants and structure alone unless the user
+  asked you to change them.
+
+## Keep what you learn
+
+Every session starts knowing only what is written down. Anything that cost you a debugging
+session -- a gotcha, a measurement, a test that finally showed the bug, a number that
+turned out to matter -- goes into the repo **as part of the same task**, even when that
+makes the task a little longer. The user has asked for this explicitly: the cost of
+writing it down is small next to the next session rediscovering it.
+
+- **Kit-wide lessons** (an engine gotcha, a renderer cost, a way of testing) go in the
+  matching skill under `.claude/skills/` -- `godot-3d`, `godot-2d`, `playtesting`,
+  `scene-tests`, `real-places`, `game-design` -- or in "Things this kit learned the hard
+  way" above. They must not name a game (see "A game is one folder").
+- **Lessons about one game** (how its code is laid out, its tests and what good results
+  look like, its open problems) go in that game's own folder: `GAME.md` for what the
+  player sees and asked for, a `DEV.md` beside it for the developer's notes, its tests in
+  a `tests/` folder there.
+- **Tests you wrote to find a bug are worth keeping.** A scratch script that staged the
+  problem and measured it is the regression test for the fix: put it in the game's
+  `tests/` folder rather than leaving it in a scratch directory that vanishes with the
+  session.
+- Update what is there when it turns out wrong; a stale note is worse than none.
 
 ## Style
 

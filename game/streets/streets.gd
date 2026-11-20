@@ -1468,7 +1468,9 @@ func _build_world() -> bool:
 	_build_edge()
 	_build_setup(_stage("world", t0))
 	# the squares round the start before the car is shown; the rest while it drives
-	var near: Array = _tiles_todo.filter(func(t): return _tile_dist(t, _pos) < NEAR_FIRST)
+	# (STREETS_BUILD_ALL=1: all of it first -- the scene tests look all over the city)
+	var all_first := OS.get_environment("STREETS_BUILD_ALL") == "1"
+	var near: Array = _tiles_todo.filter(func(t): return all_first or _tile_dist(t, _pos) < NEAR_FIRST)
 	near.sort_custom(func(a, b): return _tile_dist(a, _pos) < _tile_dist(b, _pos))
 	for i in range(near.size()):
 		if not await _step("the streets round the start (%d of %d)" % [i + 1, near.size()]):
@@ -1946,6 +1948,24 @@ func _near_part(pts: PackedVector2Array, reach: float) -> PackedVector2Array:
 
 ## a map point on the ground, `lift` above it (a little more on hills: a straight piece
 ## of road between two points can dip under a bend in the ground)
+## Where a person's feet go at p: on top of the pavement beside a kerbed road, on the
+## asphalt, or on the ground's own layer -- each a little over the bare ground height, which
+## is where people stood, a pavement's height (and on the hills the lift) into the slabs.
+func _walk_y(p: Vector2) -> float:
+	var hit := _nearest_seg(p, 5.0, true, true)
+	var on := Y_AREA
+	if not hit.is_empty():
+		var edge: float = hit["edge"]
+		if edge < 0.0:
+			on = Y_ROAD
+		elif edge < KERB_W + PAVE_W + 0.1 and _kerbed(_roads[hit["road"]]):
+			on = KERB_H
+	return _h(p) + on + (0.07 if _hnx > 0 else 0.0)
+
+## a pavement's top over the bare ground
+func _pave_top() -> float:
+	return KERB_H + (0.07 if _hnx > 0 else 0.0)
+
 func _g3(p: Vector2, lift: float) -> Vector3:
 	return Vector3(p.x, _h(p) + lift + (0.07 if _hnx > 0 else 0.0), p.y)
 
@@ -6355,20 +6375,46 @@ func _build_signals() -> void:
 	head_mesh.material = _surface("pole")
 	_chunked(pole_mesh, poles, LAMP_RANGE)
 	_chunked(head_mesh, heads, LAMP_RANGE)
-	var bulb := SphereMesh.new()
-	bulb.radius = 0.11
-	bulb.height = 0.22
-	bulb.radial_segments = 6
-	bulb.rings = 2
 	for g in range(2):
 		for ci in range(3):
-			var ts: Array = []
-			for p: Vector3 in bulbs[g][ci]:
-				ts.append(Transform3D(Basis(), p))
-			if not ts.is_empty():
-				var mi := _multi(bulb, ts)
-				mi.material_override = _sig_mats[g][ci]
+			if not (bulbs[g][ci] as Array).is_empty():
+				_add_bulbs(g, ci, bulbs[g][ci])
+
+var _bulb_mm: Array = []             ## [group][colour] -> the one multimesh of those bulbs, city-wide
+var _bulb_at: Array = []             ## [group][colour] -> their transforms, 12 numbers a bulb
+
+## The bulbs of one colour of one group: one multimesh across the whole city, grown square by
+## square (a multimesh a square was a hundred more draws, the bulbs having no draw range).
+func _add_bulbs(g: int, ci: int, at: Array) -> void:
+	if _bulb_mm.is_empty():
+		var bulb := SphereMesh.new()
+		bulb.radius = 0.11
+		bulb.height = 0.22
+		bulb.radial_segments = 6
+		bulb.rings = 2
+		for gg in range(2):
+			var mms: Array = []
+			var ats: Array = []
+			for c in range(3):
+				var mm := MultiMesh.new()
+				mm.transform_format = MultiMesh.TRANSFORM_3D
+				mm.mesh = bulb
+				var mi := MultiMeshInstance3D.new()
+				mi.multimesh = mm
+				mi.material_override = _sig_mats[gg][c]
 				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				world.add_child(mi)
+				mms.append(mm)
+				ats.append(PackedFloat32Array())
+			_bulb_mm.append(mms)
+			_bulb_at.append(ats)
+	var buf: PackedFloat32Array = _bulb_at[g][ci]
+	for p: Vector3 in at:
+		buf.append_array([1.0, 0.0, 0.0, p.x, 0.0, 1.0, 0.0, p.y, 0.0, 0.0, 1.0, p.z])
+	_bulb_at[g][ci] = buf
+	var mm: MultiMesh = _bulb_mm[g][ci]
+	mm.instance_count = buf.size() / 12
+	mm.buffer = buf
 
 ## Which junctions have lights, for the whole city at once (traffic and autodrive stop at
 ## them wherever they are; the poles go up square by square). OSM often maps a light on one
@@ -8409,7 +8455,7 @@ func _walk(dt: float) -> void:
 		if d.length() < CAR_R + 0.3 and d.length() > 0.001:
 			_pos += d.normalized() * (CAR_R + 0.3 - d.length())
 	_keep_inside(0.3, false)
-	_y = _h(_pos)
+	_y = _walk_y(_pos)
 	var anim := "Idle" if absf(_v) < 0.15 else ("Run" if absf(_v) > WALK + 0.5 else "Walk")
 	if anim != _me_anim:
 		_me_anim = anim
@@ -8421,7 +8467,7 @@ func _walk(dt: float) -> void:
 ## eyes when the seat view is chosen
 func _foot_camera(dt: float) -> void:
 	var p := _view_pos
-	var gy := _h(p)
+	var gy := _view_y
 	if _cockpit:
 		var fwd := Vector2(cos(_view_yaw), sin(_view_yaw))
 		var eye := Vector3(p.x + fwd.x * 0.15, gy + 1.64, p.y + fwd.y * 0.15)
@@ -8893,7 +8939,7 @@ func _frame() -> void:
 	_view_y = lerpf(_prev_y, _y, f)
 	if _walking:
 		_pose_car(_car_at, _car_yaw_at, _car_y_at)
-		_me.position = Vector3(_view_pos.x, _h(_view_pos), _view_pos.y)
+		_me.position = Vector3(_view_pos.x, _view_y, _view_pos.y)
 		_me.face(Vector3(cos(_view_yaw), 0, sin(_view_yaw)))
 		_traffic.draw(f)
 		_p("traffic draw")
@@ -8919,14 +8965,28 @@ const QUALITY := [
 	[Viewport.MSAA_4X, 75.0, 1.0],
 ]
 const QUALITY_WEB := 2               ## where a browser starts
-const FPS_LOW := 55.0                ## below this (or 8% of frames over 25 ms) for two 2-second spells: a step down
+## A step down: two 2-second spells in a row under FPS_LOW, or with more than STUTTER of their
+## frames slower than 33 ms. A step back up: STEP_UP_S seconds at the display's own rate
+## (FPS_FULL) -- unless that level failed lately: then not before its wait is up, a wait
+## that doubles each time it fails again. Hitches (frames over HITCH_S: loading, a shader
+## compiling) are left out of the reckoning: one half-second stall in a spell made a
+## smooth 50 fps read as 38, and a PC stepped itself down to nothing and stayed there.
+const FPS_LOW := 45.0
+const FPS_FULL := 56.0
+const STUTTER := 0.1
+const HITCH_S := 0.25
+const STEP_UP_S := 8.0
 var _quality := 3
 var _shadow_web := false
 var _fps_t := 0.0
 var _fps_frames := 0
-var _fps_long := 0                   ## frames over 25 ms in this spell: stutter, not just slow
+var _fps_long := 0                   ## frames over 33 ms in this spell: stutter, not just slow
 var _fps_low := 0
+var _fps_good := 0.0                 ## seconds at the full rate at this level
 var _fps_wait := 6.0                 ## the first seconds compile shaders and stutter anyway
+var _q_retry_at := {}                ## level -> when it may be tried again (s), after it failed
+var _q_fails := {}                   ## level -> how often it has failed
+var _q_clock := 0.0
 
 func _set_quality(q: int) -> void:
 	if OS.has_feature("web") and not _shadow_web:
@@ -8945,23 +9005,28 @@ func _set_quality(q: int) -> void:
 	view.scaling_3d_scale = row[2]
 	_set_blobs(not sun.shadow_enabled)
 
-## only down, never back up: a laptop that could not keep up once will not later. Only on
-## the web: a desktop build has a real GPU, and test runs on a software renderer would
-## step themselves down to nothing.
+## Only on the web: a desktop build has a real GPU, and test runs on a software renderer
+## would step themselves down to nothing.
 func _watch_fps(dt: float) -> void:
-	if not OS.has_feature("web") or _quality == 0:
+	if not OS.has_feature("web"):
 		return
-	if _bg_build:   # the city still building is not this machine being slow
+	if _bg_build:   # the city still building round you is not this machine being slow
 		_fps_t = 0.0
 		_fps_frames = 0
 		_fps_long = 0
 		return
+	_judge_fps(dt)
+
+func _judge_fps(dt: float) -> void:
+	_q_clock += dt
 	if _fps_wait > 0.0:
 		_fps_wait -= dt
 		return
+	if dt > HITCH_S:
+		return   # a hitch: not the frame rate
 	_fps_t += dt
 	_fps_frames += 1
-	if dt > 0.025:
+	if dt > 0.033:
 		_fps_long += 1
 	if _fps_t < 2.0:
 		return
@@ -8970,15 +9035,29 @@ func _watch_fps(dt: float) -> void:
 	_fps_t = 0.0
 	_fps_frames = 0
 	_fps_long = 0
-	if fps >= FPS_LOW and stutter < 0.08:
-		_fps_low = 0
+	if fps < FPS_LOW or stutter > STUTTER:
+		_fps_good = 0.0
+		_fps_low += 1
+		if _fps_low >= 2 and _quality > 0:
+			_fps_low = 0
+			var failed := _quality
+			_q_fails[failed] = int(_q_fails.get(failed, 0)) + 1
+			_q_retry_at[failed] = _q_clock + minf(30.0 * pow(2.0, float(_q_fails[failed]) - 1.0), 300.0)
+			_set_quality(_quality - 1)
+			_fps_wait = 3.0   # (new shaders compile)
+			Probe.event("quality", {"level": _quality, "fps": int(fps), "down": true})
 		return
-	_fps_low += 1
-	if _fps_low >= 2:
-		_fps_low = 0
-		_set_quality(_quality - 1)
-		_fps_wait = 1.0
-		Probe.event("quality", {"level": _quality, "fps": int(fps)})
+	_fps_low = 0
+	if fps < FPS_FULL or stutter > 0.03:
+		_fps_good = 0.0
+		return
+	_fps_good += 2.0
+	var up := _quality + 1
+	if up < QUALITY.size() and _fps_good >= STEP_UP_S and _q_clock >= float(_q_retry_at.get(up, 0.0)):
+		_fps_good = 0.0
+		_set_quality(up)
+		_fps_wait = 3.0
+		Probe.event("quality", {"level": _quality, "fps": int(fps), "down": false})
 
 ## ---- where a frame's time goes ------------------------------------------------------------
 ## Every part of a physics tick and of a drawn frame is timed (the script's own work, in
@@ -9777,7 +9856,7 @@ func _seat_chatters() -> void:
 		c["spot"] = t
 		var off := Vector2(cos(i * 2.4), sin(i * 2.4)) * 0.95
 		var at := t + off
-		a.position = Vector3(at.x, _h(at), at.y)
+		a.position = Vector3(at.x, _walk_y(at), at.y)
 		a.face(Vector3(-off.x, 0, -off.y))
 		a.visible = true
 
@@ -9824,7 +9903,7 @@ func _people_tick(dt: float) -> void:
 			if side.dot(to_car) > 0.0:
 				side = -side
 			p += side * dodge
-		a.position = Vector3(p.x, _h(p), p.y)
+		a.position = Vector3(p.x, _h(p) + _pave_top(), p.y)   # (their line is on the pavement)
 		if ahead != Vector2.ZERO:
 			a.face(Vector3(ahead.x, 0, ahead.y))
 		_people_awake(a, p)
@@ -10053,7 +10132,7 @@ func _crossers_tick(dt: float) -> void:
 					cr["ni"] = -1
 					a.visible = false
 					continue
-		a.position = Vector3(p.x, _h(p), p.y)
+		a.position = Vector3(p.x, _walk_y(p), p.y)
 		var look: Vector2 = (to - from) if state in ["wait", "cross"] else ((from - to) if state == "back" else cr.get("away", to - from))
 		if state == "away" and float(cr["a_off"]) >= float(cr["away_len"]):
 			look = cr["out"]
