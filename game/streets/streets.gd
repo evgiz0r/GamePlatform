@@ -1612,6 +1612,8 @@ func _load_city(id: String) -> bool:
 			r["yard"] = bool(rd["yard"])   # front gardens along it or not, set by hand
 		if rd.has("pave"):
 			r["pave"] = rd["pave"]   # its paving [pattern, colours], set by hand
+		if rd.has("setts"):
+			r["setts"] = bool(rd["setts"])   # light setts round its trees and between them, as filmed
 		var ri := _roads.size()
 		_roads.append(r)
 		var hw: float = r["w"] * 0.5
@@ -4165,6 +4167,35 @@ func _plank_fence(b: CBuf, a: Vector2, e: Vector2, base: float, h: float) -> voi
 		_furn._box(b, Vector3(p.x, gy + base + h * 0.5, p.y), Vector3(0.08, h, 0.08), wood.darkened(0.2), bs)
 		s += 1.8
 
+## Light grey setts laid in a street's darker paving, as a filmed shopping street has them by
+## its cafes: a half-circle fan round each street tree on the building side, three rows of
+## small square setts with the paving showing in the joints, and a band two setts wide
+## along the line of trees between them. Each sett a little lighter or darker than the next.
+func _sett(b: CBuf, c: Vector2, u: Vector2, size: float) -> void:
+	var v := Vector2(-u.y, u.x)
+	var h := size * 0.5
+	var col: Color = _tone["concrete"].lightened(0.28).darkened(0.1 * float(posmod(_hash_i(c * 13.0), 3)))
+	var y := KERB_H + 0.004
+	b.quad3(_g3(c - u * h - v * h, y), _g3(c + u * h - v * h, y), _g3(c + u * h + v * h, y), _g3(c - u * h + v * h, y), col)
+
+func _sett_fan(b: CBuf, p: Vector2, out: Vector2) -> void:
+	for rr: float in [0.8, 0.95, 1.1]:
+		var n := int(PI * rr / 0.145)
+		for i in range(n + 1):
+			var a := -PI * 0.5 + PI * float(i) / float(n)
+			var u := out.rotated(a)
+			_sett(b, p + u * rr, u, 0.12)
+
+func _sett_band(b: CBuf, a: Vector2, e: Vector2) -> void:
+	var d := (e - a).normalized()
+	var v := Vector2(-d.y, d.x)
+	var L := a.distance_to(e)
+	var t := 1.2
+	while t < L - 1.2:
+		for w: float in [-0.075, 0.075]:
+			_sett(b, a + d * t + v * w, d, 0.12)
+		t += 0.145
+
 ## how many trees overhang a spot on the pavement, 0..1 (for the leaves on it)
 func _leafy(p: Vector2) -> float:
 	var sum := 0.0
@@ -5554,6 +5585,7 @@ func _build_trees() -> void:
 	var spots: Array = []   ## [x, z, scale]
 	var forest := {}        # index into spots -> true
 	var grates: Array = []  # an iron grate round each street tree's trunk, flat on the pavement
+	var setts := new_cbuf(BLD_CELL)   # light setts laid in the paving round trees, where filmed
 	var pits: Array = []    # or a square of bare earth
 	var k := 1.0 / float(_city_data.get("scale", 10))
 	var tr: Array = _city_data.get("trees", [])
@@ -5576,6 +5608,7 @@ func _build_trees() -> void:
 		var ids: PackedInt32Array = r["ids"]
 		var off: float = r["w"] * 0.5 + 1.3
 		var s := rng.randf() * TREE_GAP
+		var last := {}   # side -> the last tree on it (for the setts' band between trees)
 		for j in range(pts.size() - 1):
 			var a := pts[j]
 			var b := pts[j + 1]
@@ -5599,6 +5632,11 @@ func _build_trees() -> void:
 					if _mine(p) and _tree_ok(p, 5.0) and not _in_corner_fill(p, 0.15):
 						_add_post(p, 0.3)
 						spots.append(Vector3(p.x, p.y, sc))
+						if r.get("setts", false):
+							_sett_fan(setts, p, side * sgn)
+							if last.has(sgn) and (last[sgn] as Vector2).distance_to(p) < TREE_GAP * 1.8:
+								_sett_band(setts, last[sgn], p)
+							last[sgn] = p
 						# an iron grate round the trunk, or (four in ten, in Israel) a square of bare
 						# earth with a low concrete edge and the drip hose that waters it
 						var xf := Transform3D(Basis(Vector3.UP, atan2(d.x, d.y)), Vector3(p.x, _h(p) + KERB_H + 0.006, p.y))
@@ -5720,6 +5758,7 @@ func _build_trees() -> void:
 		_chunked(_furn.pit_kit(), pits, 120.0)
 		_tally("tree_pits", pits.size())
 		_tally("tree_grates", grates.size())
+	_add_mesh(setts, _vc_mat(), false, DETAIL_RANGE)
 	if spots.is_empty():
 		return
 	var look := String(_place.get("look", ""))
@@ -9577,6 +9616,7 @@ func _build_pois() -> void:
 	var board_cols: Array = []       ## each sign board's colour: dark, white, the shop's, cream
 	var awnings := {"xf": [], "col": []}   ## awning transforms and their colours
 	var crates := new_cbuf(BLD_CELL)    ## fruit and vegetables out in front of a greengrocer
+	var bulbs: Array = []               ## string lights' bulbs (a shop's look: "lights")
 	var crosses: Array = []          ## pharmacy crosses, sticking out from the wall
 	var canopy := {"roof": [], "pillar": [], "pump": [], "band": []}   ## gas stations
 	var boards: Array = []           ## the sign boards behind the names
@@ -9638,6 +9678,8 @@ func _build_pois() -> void:
 				(awnings["col"] as Array).append(_real_col(awn) if awn != "" else _awning_col(hue, at))
 			if shop.get("crates", sub == "greengrocer"):
 				_crates(crates, pos, n, along, gy, wide)
+			if shop.get("lights", false):
+				_string_lights(crates, bulbs, pos, n, along, gy)
 			if look_k < 10 and kind.begins_with("shop"):   # shut: the roller shutter down
 				front["shutter"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.1, 1.3)))
 			if kind == "pharmacy":
@@ -9704,6 +9746,13 @@ func _build_pois() -> void:
 	awning.size = Vector3(3.3, 0.14, 1.5)
 	_chunked(awning, awnings["xf"], r, awnings["col"], _vc_mat(), true)
 	_add_mesh(crates, _vc_mat(), true, SIGN_RANGE * 1.5)
+	if not bulbs.is_empty():
+		var bulb := SphereMesh.new()
+		bulb.radius = 0.035
+		bulb.height = 0.07
+		bulb.radial_segments = 6
+		bulb.rings = 3
+		_chunked(bulb, bulbs, SIGN_RANGE * 1.5, [], mat("warn", 1.6))
 	if not crosses.is_empty():
 		var cross := ArrayMesh.new()
 		var cb := Buf.new()
@@ -9939,6 +9988,27 @@ func _crates(b: CBuf, pos: Vector2, n: Vector2, along: Vector2, gy: float, wide:
 			_furn._box(b, Vector3(q.x, gy + 0.81, q.y), Vector3(0.36, 0.05, 0.46), produce[(k + j) % 5], bs)  # what is in it
 			k += 1
 		_add_post(c, 0.5)
+
+## string lights along a bar's front, as a filmed one has them lit by day: two strands of warm
+## bulbs looping between hooks every 2 m, 1 m and 2 m out from the wall under the awning
+func _string_lights(wire: CBuf, bulbs: Array, pos: Vector2, n: Vector2, along: Vector2, gy: float) -> void:
+	var dark: Color = _tone["tyre"]
+	for strand: Vector2 in [Vector2(1.0, 2.72), Vector2(2.0, 2.62)]:   # out, hook height
+		var prev := Vector3.INF
+		var s := -4.0
+		while s <= 4.0 + 0.01:
+			var k := fposmod(s + 4.0, 2.0) / 2.0          # 0 at a hook .. 1 at the next
+			var sag := 0.22 * 4.0 * k * (1.0 - k)
+			var q := pos + n * strand.x + along * s
+			var at := Vector3(q.x, gy + strand.y - sag, q.y)
+			if prev.is_finite():
+				var mid := (prev + at) * 0.5
+				var dv := at - prev
+				_furn._box(wire, mid, Vector3(dv.length(), 0.012, 0.012), dark,
+					Basis(Vector3.UP, atan2(-dv.z, dv.x)) * Basis(Vector3.BACK, atan2(dv.y, Vector2(dv.x, dv.z).length())))
+			bulbs.append(Transform3D(Basis(), at - Vector3(0, 0.045, 0)))
+			prev = at
+			s += 0.4
 
 ## an awning's colour when nobody filmed it: the shop's palette colour, muted to a canvas's
 ## (a filmed shopping street had no neon awnings: black, white, dark green, maroon)
@@ -12188,7 +12258,9 @@ func _tones() -> void:
 		"markyellow": wn.lerp(ink, 0.2),
 		"signblue": pl.lerp(bg, 0.4),
 		"signgreen": fr.lerp(bg, 0.45),
-		"signred": Palette.col("hazard").lerp(bg, 0.1),
+		# a sign's red is a traffic sign's red, its strength the palette's: as the palette's hazard
+		# (pink here) stop and no-entry signs, crossing barriers and railings' bands were pink
+		"signred": Color.from_hsv(0.995, clampf(Palette.col("hazard").s, 0.7, 0.92), clampf(Palette.col("hazard").v * 0.85, 0.55, 0.85)),
 		"rubber": ac.lerp(alt, 0.55).lerp(bg, 0.25),
 		"sand": wn.lerp(ink, 0.45).lerp(alt, 0.1),
 		"concrete": ink.lerp(alt, 0.32).lerp(wn, 0.04),
