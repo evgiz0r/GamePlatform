@@ -1233,6 +1233,37 @@ first comes into view while you drive (each one a stall). Every new kind of surf
 it. While it runs the loading text says "getting the graphics ready" (it showed the last
 square, "8 of 8", until the warm-up was over, and looked stuck).
 
+> how can we optimize the bringup, to as 0 up time as possible as the game starts. those
+> steps where i dont know how long i have to wait and its sometimes 3 seconds sometimes 20
+> is annoying
+
+(Of the options offered, picked: start on the build already on the phone, drive sooner, a
+bar that says how long.)
+
+**The build on the phone starts at once.** The wait swung so much mostly because of
+publishing: every push made a new build, and the app downloaded all of it again (78 MB)
+before starting -- after reloading itself once. Now the build already on the phone starts
+straight away and the new one downloads in the background while you play; when all of it
+is there, "new version ready — tap to restart" appears at the top (the next launch is the
+new build anyway). Only the games' file is fetched (39 MB); the engine, as big again,
+changes only with Godot and is kept. Only a very first visit waits for a download.
+
+**Driving after one square, not six.** Before the car is shown: the square the start is in,
+any within 60 m of it, and those the street ahead crosses within 160 m -- what the first
+view looks at. The rest within 320 m goes up right after, in a hurry (16 ms of each frame
+instead of 6, so the first few seconds run a little slower), then at the usual pace. Car on
+the road here: Givatayim 4.4 -> 3.0 s, Tel Aviv 10.1 -> 6.3, Ashdod 8.3 -> 5.9; the rest
+round the car 3-6 s later. A filmed walk and a test route still build all 320 m first: their
+pictures and drives are compared run to run.
+
+**A bar, and "about N s".** Under the loading text: how far it has got, and how long is left,
+from this phone's own last load of that city -- the city file, the setting up, a square, the
+graphics getting ready. That last one is kept twice: as it was on the same build (the
+browser kept the compiled shaders: quick) and on the first load of a new build (it compiles
+them again: the slow case), so the estimate knows which one this is. A city never loaded on
+this phone yet is estimated from another one's; the very first load says "timing it, for
+next time". Slower or quicker than last time so far, the rest is taken to be so too.
+
 > We need to think how to improve latency a bit. It does choke every few seconds. Do you
 > have some fps counter or something?
 
