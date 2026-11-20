@@ -11475,7 +11475,8 @@ func _ap_plan() -> void:
 	var dir := 1 if (pts[sj + 1] - pts[sj]).dot(heading) >= 0.0 else -1
 	if r["o"] != 0:
 		dir = r["o"]
-	_ap_pts.append(hit["q"])
+	var d_first := (pts[sj + 1] - pts[sj]).normalized() * float(dir)
+	_ap_pts.append((hit["q"] as Vector2) + Vector2(-d_first.y, d_first.x) * _lane_off(r))   # (its lane, see _route_to)
 	_ap_v.append(float(r["speed"]))
 	_ap_lim.append(float(r["speed"]))
 	_ap_leg(ri, sj + 1 if dir > 0 else sj, dir)
@@ -11966,7 +11967,11 @@ func _route_to(goal: Vector2, from := Vector2.INF, heading := Vector2.ZERO) -> b
 				first = f0
 	if best.is_empty():
 		return false
-	_ap_pts = PackedVector2Array([s["q"]])
+	# from its own lane, not the middle of the street: from the middle, the line to the next
+	# point down the street ran diagonally across it, and the car drove left of the centre
+	# line for the length of the street (turned round out of a dead end, all of it)
+	var d_first := (pts[sj + 1] - pts[sj]).normalized() * float(dir)
+	_ap_pts = PackedVector2Array([(s["q"] as Vector2) + Vector2(-d_first.y, d_first.x) * _lane_off(r)])
 	_ap_lim = PackedFloat32Array([float(r["speed"])])
 	for i in range(best.size()):
 		var n := int(best[i])

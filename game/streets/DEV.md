@@ -117,6 +117,17 @@ What each round found, so far:
   "to the end and straight back", and off the road the way back onto it comes first.
 - A bus pulled in at a stop: autodrive went round it by a whole lane, which on a two-way
   street put it over the middle. Now to the inner edge of its own side, or it waits.
+- Free autodrive's U-turn at a dead end was a corner a few metres across at 2.5 m/s: it
+  swung past the end onto the footpath beyond and drove along it at 40 km/h (the exam's
+  "18.8 m off the road" and most of its "left of the middle"). Now `_ap_next` marks the two
+  turning points with speed 0 and `_autodrive` steps past them once stopped, so the
+  turn-round-on-the-spot rule takes it. Traffic avoids dead ends (`_dead_end` in
+  traffic.gd); it turned round in them in queues and overlapped there.
+- Plans started at the nearest point of the road's centre line: the car drove diagonally
+  from the middle to its lane over the whole first stretch. Now from its lane.
+- The exam's own counts were off twice: harsh braking per frame (30x one stop) and traffic
+  reds judged at every signal point of a junction by the heading mid-turn. Check what a
+  counter counts before chasing its number.
 
 ## Numbers to compare against (November 2026, cloud container, software renderer)
 

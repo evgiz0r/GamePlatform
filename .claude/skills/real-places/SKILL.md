@@ -108,7 +108,26 @@ data format is at the top of `tools/osm_city.py`; this is about living with it.
   face, the traffic car edges past if there is nearly room, else turns off (once out of
   sight, or after a while regardless).
 - **Give up gracefully**: an AI that has got nowhere for 40 s (not at a light) is lifted
-  onto a street a little way toward the middle of town.
+  onto a street a little way toward the middle of town. Count a push that goes nowhere
+  (foot down, not moving, too slow to register as a hit) toward that too, or the AI noses a
+  bollard, backs off and noses it again for minutes.
+- **Dead ends are everywhere** (cul-de-sacs, streets that end in a footpath), and houses
+  stand at them. Three traps: a route planner that charges nothing for turning round plans
+  "on to the closed end and back" from a house there; a U-turn planned as a lane out and a
+  lane back is a corner a few metres across, which a car takes wide -- onto the footpath
+  that continues past the end; and AI traffic that picks streets at random drives into
+  them and turns round in a queue of its own. Never take "to the end of this street and
+  straight back" as a route's start; stop at the end and turn round there; keep traffic
+  out unless there is no other way.
+- **Start a plan in the lane**, not at the nearest point of the road's centre line: the
+  line from there to the next point (often far down the street) runs diagonally, and the
+  car drives left of the middle for the length of the street.
+- **Score the driving, don't eyeball it**: a scripted exam that drives the AI from several
+  places in town and counts per minute (stuck, hits, off the road, wrong side, red lights,
+  harsh braking per occasion, and traffic's own stalls, overlaps and reds) finds in one run
+  what an afternoon of watching does not. Count a signalled junction as one, by the way the
+  car came in: a divided road's junction is several signalled points, and judging each by
+  the heading mid-turn reads a car that went in on green as running the cross street's red.
 
 ## The edge of the map
 
