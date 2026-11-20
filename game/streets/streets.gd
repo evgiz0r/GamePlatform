@@ -2712,6 +2712,7 @@ void fragment() {
 var _roof_mat: ShaderMaterial
 const PAVE_W := 2.4                  ## pavement width (m)
 const KERB_CUT := 4.5                ## kerbs stop this far past a junction's road edge: the corner's radius
+const SHOP_PAVE := 1.8               ## the pavement this much wider in front of shops (under the building where it stands closer)
 ## Israeli kerb paint goes by where on the street, as a filmed walk showed: blue-white along
 ## a residential street's parking (paid), red-white for the last metres before every
 ## junction (no parking within 12 m of one: the kerb starts KERB_CUT past the corner) and on
@@ -2897,6 +2898,13 @@ func _build_kerbs() -> void:
 						continue   # the halves touch: a painted line, no kerb
 					pw = clampf(m * 0.5 - KERB_W, 0.0, PAVE_W)   # each half paves its half of the median
 				var inner := _offset_line(run, hw * sgn)
+				# the pieces with shops behind them: the pavement runs on to their windows (a
+				# filmed shopping street's was ~4 m, to the shop fronts, not 2.4 m and then grass)
+				# and no garden is laid in front of them
+				var shops := PackedByteArray()
+				shops.resize(run.size())
+				if not inner_side:
+					shops = _shop_pieces(run, hw, sgn)
 				_pave_walled = med and yard and not inner_side
 				# where the paint changes along this kerb: red-white for KERB_RED at an end that
 				# meets a junction, yellow-black along a bus stop on this side
@@ -2925,7 +2933,7 @@ func _build_kerbs() -> void:
 						var t0 := u0 / seg
 						var t1 := u1 / seg
 						_kerb_run_piece(kerb, pave, ri, inner[i].lerp(inner[i + 1], t0), inner[i].lerp(inner[i + 1], t1),
-							na.lerp(nb, t0).normalized(), na.lerp(nb, t1).normalized(), pw,
+							na.lerp(nb, t0).normalized(), na.lerp(nb, t1).normalized(), pw + (SHOP_PAVE if shops[i] else 0.0),
 							Color(float(p) / 4.0 + 0.05, 0, 0), along + u0, u1 - u0)
 					along += seg
 				_pave_walled = false
@@ -2933,7 +2941,6 @@ func _build_kerbs() -> void:
 					continue
 				if not yard:
 					continue
-				var shops := _shop_pieces(run, hw, sgn)   # (no garden in front of a shop)
 				# a low stone wall at the back of the pavement, a garden strip behind it
 				var w_in := _offset_line(run, (hw + PAVE_W + 0.05) * sgn)
 				var w_out := _offset_line(run, (hw + PAVE_W + 0.3) * sgn)

@@ -364,7 +364,9 @@ first:
   the pavement; painted bays on the shopping street. The game filled a quarter of the kerb.
 - **Street trees**: thin trunks in square earth pits at the kerb edge every ~8-10 m, the
   canopies meeting over the pavement; no palms on these streets.
-- **Shops** (second pass, done: `_shop_pieces` keeps gardens out from in front of shops;
+- **Shops** (second pass, done: `_shop_pieces` keeps gardens out from in front of shops and
+  widens the pavement there by `SHOP_PAVE` to the shop windows -- without it a strip of bare
+  grass was left between a 2.4 m pavement and the shopfronts;
   Sirkin's rows are `lines` of kind shopfront in `cities/details/givatayim.json`, placed on
   the city file's building edges parallel to the street just behind its pavement): OSM knew
   six businesses along the walk; the film, panning, showed a row down both sides of Sirkin
