@@ -53,6 +53,21 @@ The ones most often touched, and the functions in them:
   `_cluster_exits` (a junction drawn as several points offered as one), `_ap_queue` (legs
   across such a junction), `_cross_tick` (the player's choice), off the road `_way_to_road`,
   lost `_ap_rescue`, stuck for 40 s `_ap_watch`.
+- **traffic lights** -- `_lights_setup` makes SITES: each OSM light taken to its junction,
+  the other half of a divided road added (`_other_half`), lit points a short road apart
+  (`_site_legs`, `SITE_LEG` 36 m) joined, shortest first, no wider than `SITE_SPAN` 50 m;
+  `_site_axes` (group 1 along the main road, group 2 along the road furthest from it, by
+  direction, never by name) and `_light_group` (the nearer axis, either way along it; `flip`
+  when a neighbouring site needs the road between them in the same group); `_site_ways_in` /
+  `_sig_line` (each way in: its stop line -- behind a zebra near the junction, found by
+  `_points_back` across OSM's road pieces -- and whether it comes from inside the site: no
+  pole, no line); `_light_line`. The cycle is `SIGNAL_CYCLE` (`_MED`: green, flashing green,
+  amber, red, red-and-amber; `_NORTH`), `_signals_tick` / `_apply_signals` (the flashing).
+  `_light_at` gives what a driver reads ("gf" -> "g", "ry" -> "r"). A car is in a site from
+  its nose crossing the line until well out (`_light_site` / `_through_lights` for the player,
+  `last_site` / `_passed_lights` / `_in_site` in traffic.gd) and does not stop at its other
+  points. Walk lights: `_build_walk_lights`, `_zebra_light` (which point a zebra goes by; the
+  people at it ask the same), `_walk_light`.
 - **people** -- walkers `_place_walker` / `_pavement_piece` / `_people_tick`, zebra crossers
   `_send_crossers` / `_zebra_span` / `_away_from` / `_crossers_tick`, the height their feet go
   at `_walk_y` / `_pave_top`, what autodrive stops for `_ap_people_v`.
@@ -63,7 +78,8 @@ The ones most often touched, and the functions in them:
 
 traffic.gd: `tick` (per car: path, lights, signs, the car or player ahead, standoffs,
 `squeeze`), `_next` / `_leg` / `_turn_into` (routes), `_steer_lanes`, `lead_on` (the query
-autodrive uses), `push` (the player against the cars).
+autodrive uses), `push` (the player against the cars). `_junction_ahead` (giving way) skips a
+car `_held_at_red`: one that will stand at its red need not hold up a car with the green.
 
 ## Tests
 

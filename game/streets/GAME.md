@@ -246,25 +246,48 @@ That goes for you on foot too.
 
 **Lights and signs mean something.** Autodrive stops at red lights and stop signs and
 keeps behind the car in front. Drive through a red light, or a stop sign without
-stopping, and it says so. The stop and give-way signs are OSM's (Givatayim has a few
-dozen mapped, Bedford more); the lights run their own cycle: at each junction its main
-road's ways in, then the rest, with 2.5 s of red all round between (it was the whole
-city's east-west streets against its north-south ones, and at a skewed junction both
-streets had green at once). OSM often maps a light on one approach of a junction only;
-the game gives that junction lights on every way in. The lamps are real red, amber and
-green, red at the top, whatever the palette, and dark when out. Cars stop with their front
-at the stop line -- a bus stopped by its middle stood across the junction -- and read the
-light for the way they come in, not the way they are turning.
+stopping, and it says so -- judged as the car's nose crosses the stop line, by the way it
+came in (a car in on the last of the amber was told it ran the red). The stop and give-way
+signs are OSM's (Givatayim has a few dozen mapped, Bedford more); the lights run their own
+cycle. In the Israeli towns they go as they do there: green, three flashes of green, amber,
+red, red and amber together, green. In Bedford: green, amber, red. Between one way's amber
+and the other's green, 2.5 s for the junction to clear.
+
+A junction is one junction however OSM draws it. Where a divided road meets a street it is
+two points 10-30 m apart, where two divided roads cross it is four; the whole knot is one
+set of lights, and a car that has come in on its green goes through all of it. Its ways in
+take turns in two groups by direction -- along its main road, then across it -- the same at
+every point of the knot. (Each point used to choose by street names: a street that changes
+its name at the junction had green together with the street across it, and a car given
+green at one half of a divided road met red at the other half 10 m on and drove through it,
+with the lamps there showing red.) Two junctions a short way apart give the road between
+them the same turn, so a green at one is not a red 30 m on. OSM often maps a light on one
+approach only, sometimes 30 m out; the junction gets lights on every way in from outside,
+and cars stop at its line, not at the mapped point (they stopped 30 m short, where no pole
+stood). Where the usual corner is a wall or a driveway, the pole stands further back, or on
+a divided road's median. The lamps are real red, amber and green, red at the top, whatever
+the palette, and dark when out. Cars stop with their front at the stop line -- a bus stopped
+by its middle stood across the junction -- and read the light for the way they come in, not
+the way they are turning. Where a zebra crosses the way in by the junction the stop line is
+behind it (cars waiting at the red stood on the zebra). A car with the green no longer waits
+for one standing at the red across the junction.
 
 At a zebra by a junction with lights there are walk lights on both kerbs, the red man over
-the green man, in step: green while the road being crossed is held at red. People there
-go on the green man only, with time enough left to get over.
+the green man, in step: green while the road being crossed is held at red and the other way
+has its steady green; the red man comes on with that way's flashing green. Both ways along a
+road share a light, so the green man never shows while cars come one way (in Givatayim it
+did at one zebra in nine). People there step out on the green man only, when there
+is time to be over before the cars across get their green.
 
 > The whole logic of lights and how cars and autodrive go, something is fishy. Let's make
 > the colours clear: red on the top (no go), yellow, green. Maybe add those for people too,
 > matching the lights -- that's how it usually works here, so they don't just cross randomly.
 
 > Buses get stuck in the middle of roads when it's red for them.
+
+> Some crossroads I think are wrong in how they work: the colours, the switching, the AI and
+> autodrive, maybe also not matching the pedestrian lights sometimes. Something not moving
+> properly.
 
 **Signs and paint.** A stop line across the lane at every light and stop sign, STOP
 painted before a stop sign (עצור in Givatayim), SLOW (האט) before a crossing near a

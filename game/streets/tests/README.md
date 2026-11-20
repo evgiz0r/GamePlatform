@@ -28,7 +28,9 @@ these numbers the wrong way has broken something.
 | `roundabouts` | 3 | longest time on a ring, touches, stalls | 5 s, 0, 0 |
 | `junction_traffic` | 1 | traffic: crossing collisions, stalls, creeping through | 0, 0, 0 |
 | `zebras` | 1 | crossings, people hurried back, time traffic stood for them | 12 started, 0 hurried |
-| `lights` | 1, 3 | pairs of ways the old east-west rule had green together; crossing cars in one junction together; close-ups | 31 / 57 fixed; 0 / 7 |
+| `lights` | 1, 3 | junctions with lights; crossing cars in one junction together over 90 s; close-ups | (rerun with sites: pending) |
+| `light_audit` | 1, 3 | every junction with lights: crossing ways with green together, one road's light changing inside a junction, ways in with no light, stop lines on zebras, walk lights green while cars come; then a drive (`DRIVE`, `AT`) counting cars in on red, crossing cars in a junction together, cars creeping in after 6 s (`DYNAMIC_ONLY=1` runs the drive on older code) | Givatayim: 0 crossing pairs green together, 0 roads changing group inside a junction, 0 walk lights wrong, 7 ways in with no pole (were 12, 48, 26, 66) |
+| `lights_at` | 1 | one junction (`AT=x,z,dx,dz`, default the Arvey Nahal knot) from a car at its line, a shot per light state; prints its points, groups, lines, walk lights | shots |
 | `no_entry` | 1, 3 | no-entry signs facing drivers who may go in | 0 / 1 |
 | `buildings_on_roads` | 1 | buildings still standing on a road's asphalt | 3 (passages, on purpose) |
 | `corners` | 1 | junction corners the old middle-only check let in whole | 261 (fixed), shots |

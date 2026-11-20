@@ -65,6 +65,22 @@ data format is at the top of `tools/osm_city.py`; this is about living with it.
   point can be 30-100 m away; a straight line from the junction to it runs down the wrong
   side of the new street, into oncoming traffic. Curve from just short of the junction in
   the current lane to just past it in the right lane of the new street.
+- **Traffic lights at a knot.** Make the knot one signalled junction (a "site"): the lit
+  points a short road apart (~35 m; join the shortest first and cap the site at ~50 m
+  across, or a chain of them swallows the next junction), plus the unlit other half of a
+  divided road. Group its ways in by direction across the whole site -- along the main
+  road, then across it -- never per point and never by street name: a street that changes
+  its name at the junction landed in the same group as the street across it, and per point
+  a road had green at one half of a divided road and red 10 m on. A car is in the site from
+  its nose crossing the stop line and goes through all of it (a fixed "the next 45 m" rule
+  both missed big knots and swallowed separate junctions). Lights and stop lines only on the
+  ways in from outside. A light OSM maps 30 m out on one approach belongs to the junction:
+  stopping at the mapped point stopped cars 30 m short. A zebra mapped a few metres out puts
+  the stop line behind it. Two sites close together: give the road between them the same
+  group. OSM cuts one street into several ways: walk across those joins (a point with two
+  ways) when looking along an approach. Audit every junction in a scene test -- crossing ways
+  sharing a group, a road whose group changes inside a site, ways in with no pole, zebras
+  whose road has green one way -- before driving one: in one town it found 12, 48, 66 and 26.
 - **Roundabouts** are closed one-way ways (or tagged junction=roundabout). An AI that plans
   to the end of the way drives the whole circle, then picks "straight on" -- round again.
   Plan only to the next exit, and make staying on less likely with every piece driven.

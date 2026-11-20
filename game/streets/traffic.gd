@@ -30,7 +30,7 @@ const LANE_W := 1.5          ## a car on my path: its middle within this of my l
 const PLAYER_W := 2.0        ## the player's car counts as in my way from further over: it
                              ## need not be on a lane line, and half in the lane is in it
 const CURVE_LAT := 2.6       ## sideways pull a driver takes a corner at (m/s^2)
-const LIGHT_SKIP := 45.0     ## lights this close after one already passed are the far side of the same junction
+const SITE_KEEP := 120.0     ## metres after which the junction last driven into is forgotten (a car can come back)
 ## how much traffic each kind of road gets, and how keen a driver is to turn into it
 const KIND_W := {"motorway": 1.0, "trunk": 1.0, "primary": 1.0, "secondary": 1.0, "tertiary": 0.85,
 	"motorway_link": 0.6, "trunk_link": 0.6, "primary_link": 0.6, "secondary_link": 0.6,
@@ -64,7 +64,8 @@ class Car:
 	var retry := 0.0                  ## seconds before trying again to find it a road
 	var want := -1.0                  ## the speed it last decided on (-1: decide now)
 	var passenger := false            ## someone beside the driver (seen through the glass)
-	var last_light := -1000.0         ## s at the last light it drove through
+	var last_light := -1000.0         ## s where it last came into a junction with lights...
+	var last_site := -1               ## ...and which (its other points are not stopped at again)
 	var sign_done := -1               ## the stop sign it has stopped at already
 	var sign_wait := 0.0
 	var holding := false              ## stopping for a stop sign: not taking the junction yet
@@ -402,34 +403,50 @@ func _target(c: Car, i: int, dt: float) -> float:
 	c.blocker = -2
 	return vt
 
-## the first traffic light ahead that counts: stop at its line on red, and on amber when
-## there is room to; through on green
+## the first traffic light ahead that counts -- of a junction it is not in already (see the
+## game's _lights_setup: one junction can be several points): stop at its line on red, and on
+## amber when there is room to; through on green
 func _light_ahead(c: Car) -> float:
-	var counted := c.last_light
 	for j in range(c.k + 1, c.pts.size()):
 		var dist := c.cum[j] - c.s
 		if dist > 80.0:
 			break
 		var n := c.node[j]
-		if not g._sig_set.has(n) or c.cum[j] - counted < LIGHT_SKIP:
+		if not g._sig_set.has(n) or _in_site(c, n):
 			continue
-		counted = c.cum[j]
-		# the way it ARRIVES (a few metres back): the node sits mid-curve on a turn, and the
-		# direction there read the cross street's light as often as its own
-		var k := j - 1
-		while k > 0 and c.cum[j] - c.cum[k] < 6.0:
-			k -= 1
-		var dir := c.pts[j] - c.pts[maxi(k, 0)]
+		var dir := _came(c, j)
 		var state: String = g._light_at(n, dir)
-		# the front at the stop line (1.2 m out from the junction's edge), not the middle: a
-		# bus's middle there left its front 4 m into the junction, across the other road
-		var stop := dist - (_node_r[n] + 2.2 + c.len * 0.5)
+		# the front at the stop line, not the middle: a bus's middle there left its front 4 m
+		# into the junction, across the other road
+		var stop: float = dist - (g._light_line(n, dir) + 1.0 + c.len * 0.5)
 		if state == "g" or stop < -1.5:   # (its front over the line: committed, through)
 			return INF
 		if state == "y" and c.v * c.v > 2.0 * BRAKE * maxf(stop, 0.1):
 			return INF   # too late to stop on amber: through
 		return sqrt(2.0 * BRAKE * maxf(stop - 0.3, 0.0))
 	return INF
+
+## the way a car ARRIVES at its point j (a few metres back): the node sits mid-curve on a
+## turn, and the direction there read the cross street's light as often as its own
+func _came(c: Car, j: int) -> Vector2:
+	var k := j - 1
+	while k > 0 and c.cum[j] - c.cum[k] < 6.0:
+		k -= 1
+	return c.pts[j] - c.pts[maxi(k, 0)]
+
+## has this car come into the junction with lights that node n is a point of?
+func _in_site(c: Car, n: int) -> bool:
+	return c.last_site >= 0 and g._site_of.get(n, -2) == c.last_site and c.s - c.last_light < SITE_KEEP
+
+## Is car o (coming to node n at its point k) going to stand at its red there? Then a car
+## with the green need not wait for it. Not if it is in that junction already, or over the line.
+func _held_at_red(o: Car, k: int, n: int) -> bool:
+	if not g._sig_set.has(n) or _in_site(o, n):
+		return false
+	var dir := _came(o, k)
+	if g._light_at(n, dir) != "r":
+		return false
+	return o.cum[k] - o.s - (g._light_line(n, dir) + 1.0 + o.len * 0.5) > -1.0
 
 ## The next junction on my way, and who goes first. A car already in it goes. Then the
 ## bigger road: a roundabout's ring above all (on it you go, coming in you give way), then
@@ -481,6 +498,9 @@ func _junction_ahead(c: Car, i: int, dt: float) -> float:
 				continue
 			if od < _node_r[n] + 1.0:
 				return _hold(c, dt, stop)   # in it now
+			if _held_at_red(o, ok, n):
+				continue   # it will stand at its red: my green is mine (it held cars on a green
+				           # back for a car waiting at the red across, seconds at a time)
 			var o_eta := od / maxf(o.v, 2.0)
 			if o_eta > 5.0:
 				continue
@@ -601,12 +621,20 @@ func _sign_ahead(c: Car, dt: float) -> float:
 		return sqrt(2.0 * BRAKE * maxf(line - 0.3, 0.0))
 	return INF
 
+## a car's front over a stop line: it is in that junction (all its points)
 func _passed_lights(c: Car, before: float) -> void:
-	for j in range(c.k, c.pts.size()):
-		if c.cum[j] > c.s:
+	for j in range(c.k + 1, c.pts.size()):
+		if c.cum[j] - c.s > 30.0:
 			break
-		if c.cum[j] > before and g._sig_set.has(c.node[j]) and c.cum[j] - c.last_light >= LIGHT_SKIP:
-			c.last_light = c.cum[j]
+		var n := c.node[j]
+		if n < 0 or not g._sig_set.has(n):
+			continue
+		var line: float = c.cum[j] - g._light_line(n, _came(c, j)) - c.len * 0.5   # (where its middle is with the front at the line)
+		if line > c.s:
+			break
+		if line > before - 0.01 or (_in_site(c, n) and c.cum[j] > before):
+			c.last_site = g._site_of.get(n, -1)
+			c.last_light = c.s
 
 ## how far along my lane ahead something at q is (centre to centre), or INF if it is not
 ## on it
@@ -948,6 +976,7 @@ func _spawn(c: Car, first: bool) -> bool:
 		c.k = 0
 		c.s = 0.0
 		c.last_light = -1000.0
+		c.last_site = -1
 		_leg(c, ri, sj + 1 if dir > 0 else sj, dir)
 		while c.cum[c.cum.size() - 1] < 140.0:
 			if not _next(c):
