@@ -706,6 +706,14 @@ first:
   `Details.shop_look`); `tests/shop_looks.gd` stands in the street facing each one and
   prints where its front went. Awnings and umbrellas are instance-coloured (`_awning_col`,
   `_real_col`), no longer one glowing palette material per role.
+- **Reds and blues that are real things' colours** (car paint, kerb paint, sign plates,
+  hydrants, scooters, awnings by name) are hue-pinned `Color.from_hsv` with their
+  saturation and brightness taken from the palette: from the palette's hazard and player
+  roles directly they came out pink and teal beside the film. `_real_col(name)` gives the
+  named ones.
+- **Setts and string lights** (details `setts` on a street, `lights` on a shop): `_sett_fan`
+  / `_sett_band` in the street trees' builder (round the trees of that street only),
+  `_string_lights` in `_build_pois` (bulbs in `mat("warn", 1.6)`, wire in the crates' buffer).
 - **Tests after the city is built cannot read `_city_data`**: the game lets go of the city
   file once every square is up (`_city_data = {}` after building), so a scene test looking
   for places there finds none. The built places are in `_pois` ([spot, role, name sign]).
@@ -718,6 +726,49 @@ first:
 - **Small things**: black bollards with a yellow band along the kerb by the main road, a
   red fire hydrant, a push button on the walk light's pole, bar stools and awnings rather
   than umbrellas outside the cafes, green bins.
+
+## The second filmed walk and the GPS pipeline (level 6): handoff
+
+The session that set up filming with GPS (20 Nov 2026) and made "A walk in Givatayim:
+Sheinkin and Sirkin" from it, then worked that stretch over pass by pass. The walk session
+(level 5's) has since extended this walk to the Katznelson corner and owns its route.
+
+- **The pipeline, for the next walk or drive**: the user films (phone, FHD 30, 1x) with Geo
+  Tracker logging GPX at 1 s, uploads both to Drive; the GPX comes through the Drive
+  connector, the video needs the user to share it by link for a few minutes and
+  `drive.usercontent.google.com` allowed (real-places skill, "Filmed walks and drives").
+  `tools/gpx_route.py report` reads the track against the city file; `route --video
+  --from A B --to C D` makes a timed route; `tests/walk_snap.gd` puts it on the back of the
+  pavements (spans of seconds per side and street); the result goes in the details file's
+  `walks`. The film and its track are the user's and stay out of the repo; a route in the
+  game starts and ends only at public corners the user agreed.
+- **This walk's film**: the route is 1:42 to the end of a 3:30 film (walk second 0 = film
+  102.34 s). Side by side: `GODOT_ARGS="--fixed-fps 10" STREETS_BUILD_ALL=0 RECORD=1
+  RES=1280x720 OUT=<dir> tests/run.sh filmed_walk 6` (1066 frames, ~22-25 min here), then
+  `ffmpeg -ss 102.34 -t <frames/10> -i film.mp4 -framerate 10 -i <dir>/f%05d.jpg
+  -filter_complex "[0:v]fps=10,scale=406:720,setsar=1[a];[1:v]crop=406:720:437:0,setsar=1[b];[a][b]hstack=inputs=2:shortest=1"`.
+  The phone's own file seeks right with `-ss` (constant 30 fps); a VLC re-encode does not.
+- **What it put in the game** (each in "What a filmed walk showed" above): kerb paint by
+  place and parking by paint, motorbikes on pavements, board fences on garden walls, no
+  garden in front of shops and the pavement widened there, Sirkin's shopfront rows and each
+  filmed shop's look (`shops`), per-street paving and setts, string lights, bollards, a
+  hydrant and bins, real reds and blues, the start moved to Katznelson by Weizmann.
+- **Its tests and good numbers**: `filmed_spots` (stills from GPS spots: mid-walk spots
+  move 0-2 m onto their pavement), `walk_snap`, `shop_looks` (5 shops on Sirkin, all on
+  walls, Roladin 3 tables under white umbrellas, Kira Sushi's lights and stools),
+  `street_fronts` (~2900 parked motorbikes, ~5800 fence pieces in Givatayim), `filmed_walk`
+  with `SCAN=1` on level 6 (clean after the walk session's moves) and `AT=` for stills.
+  Parking by paint cost +17% triangles at the old start view (frame_cost, above).
+- **The details file is written by a tool too** (`make_givatayim.py`, `json.dump(indent=1,
+  ensure_ascii=False)`, no trailing newline): edit it by loading it and dumping it back with
+  the same settings (the round trip is byte-identical), never by text insertion, or the
+  next re-run reformats your lines into a large diff.
+- **Open**: painted parking bays on Sirkin (not done: the game parks half on the pavement,
+  and an 8 m two-way street has no room for cars wholly in the road beside its lanes); the
+  setts fan round the game's own trees, which are not where the filmed ones are; the
+  west face of Sirkin's last block (5.2 m from the centre line, OSM's upper floors) has no
+  shop row; buildings and light are the realism session's; the drive is to come (the user's
+  next film): `gpx_route.py report` by road kind against autodrive's 50 km/h everywhere.
 
 ## The filmed walk (level 5)
 
