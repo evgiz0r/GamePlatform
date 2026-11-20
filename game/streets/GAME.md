@@ -559,6 +559,14 @@ the city now has what the walk had underfoot and at eye height:
 - Tired roads: patches of newer, darker asphalt with their sealed seams; stretches crazed
   into small plates; the mix's light stones showing close up; the paint, zebras too, worn
   half away and cracked with the road. Manhole covers grey cast iron, not black.
+- At the kerb: a pair of bollards either side of every zebra on both pavements, black with a
+  yellow reflective band (now and then white); on the main roads a white railing instead,
+  4 m either side of the crossing; a red fire hydrant every 130 m or so; grey utility
+  cabinets at the back of the pavement; black bins on the main and shopping streets; an iron
+  grate round every street tree's trunk. All solid to the car.
+- Front gardens plot by plot (14-22 m each, a gap for the gate): a low wall of rough stones in
+  mortar, with a clipped hedge behind it, white bars or green chain-link on top, or bare;
+  bougainvillea spilling over one in six; the garden shrubs leafy, not smooth balls.
 
 > ok lets start as you say
 
