@@ -101,7 +101,8 @@ func _run() -> void:
 	for f: Array in g._marks.found:
 		var at := Vector2(f[3])
 		if String(f[0]) == "מגדל שלום מאיר":
-			await _view("shalom_meir", at + Vector2(140, -100), at, 20.0, 30.0)
+			# (from beside its roof: from the street a nearer tower stands in the way)
+			await _view("shalom_meir", at + Vector2(45, -30), at, 150.0, 8.0)
 		elif String(f[0]) == "מגדל האופרה":
 			await _view("opera_tower", at + Vector2(-150, 120), at, 12.0, 12.0)
 	quit()
