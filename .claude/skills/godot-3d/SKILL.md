@@ -166,6 +166,13 @@ is a Z coordinate, not a height.
   same character side by side at the same distance. Their materials are named `Skin`,
   `Shirt`, `Pants`, `Belt`, `Hair` and `Face` (the eyes, pure white): duplicate them per
   person and give `Face` a darker shade of that person's skin.
+- **A Quaternius figure is six draw calls**, one per material (each surface is a draw, and
+  another in the shadow pass): a crowd of them costs more than a city block. Join the
+  surfaces into one (concatenate vertices, normals, bones, weights, offset the indices; they
+  share one skin), put each vertex's part number in its colour, and draw it with a shader
+  holding the person's colours in a `uniform vec4 parts[6]` -- one draw a person. Build the
+  joined mesh once per figure and share it (a mesh per person is ~0.7 MB); the material is
+  per person. Pass colours as `srgb_to_linear()` (a plain uniform array is not converted).
 - Both helpers fall back to palette shapes + a playtest warning when a file is missing, so
   a game keeps running (and the report tells you which name was wrong).
 - Scenery: a ring of `model()`s around the play area (houses behind, trees on the sides,
@@ -281,7 +288,12 @@ most, in order, last time one did:
   palette tone (alpha 0, the number in red) looked up in a `uniform vec4 tones[64]` table
   the material holds -- `/look` rewrites the table, nothing is rebuilt. Keep what changes
   at night or moves (lamps, lit glass, cars, people) out of it. Watch the vertex count per
-  merged mesh (a cap, ~650k, then leave the rest as multimeshes).
+  merged mesh (a cap, ~650k, then leave the rest as multimeshes). And merge only what is
+  few or small: a detailed kit with thousands of copies (an AC unit on every other wall:
+  ~19,000 x ~230 vertices) copies its vertices into the batch every time -- a hundred MB or
+  so of vertices city-wide, and uploading the fatter batches made 50 ms frames while the
+  city built in the background (19 hitches in 25 s, from 3). Instanced (a MultiMesh per
+  square) it is one copy of the kit and 64 bytes a copy, for a draw or two near the eye.
 - **Step quality down when the browser can't keep up -- and back up.** Watch the frame
   rate in 2-second spells on the web only (natively the test renderer would step itself to
   nothing): step down a level after two slow spells in a row (under ~45 fps, or more than

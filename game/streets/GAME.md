@@ -154,9 +154,15 @@ way that has the address on the kerb side; driving hands the way there to autodr
 
 > Besides go to, I want also jump to. It teleports there, instead of driving.
 
-**Places.** Entering the game asks where: Givatayim (starting on Katznelson just past
-Weizmann, the town's central junction); Bedford, Nova Scotia; or Ashdod (starting at Sderot
-Herzl and HeHalutzim, its busiest corner for shops). Each place is one
+**Places.** Entering the game asks where, in two lists side by side: **Cities** (Givatayim,
+Bedford, Ashdod, Tel Aviv, and the made-up test town last) and **Auto Experiments** (the
+filmed walks and the test routes' drives). Each level's `"group"` puts it in one.
+
+> lets rearrange the menu items instead street. 2 categories: Cities, Auto Experiments (walks
+> + test-drives). no extra button for walks, just split in the menu.
+
+Givatayim starts on Katznelson just past Weizmann, the town's central junction; Ashdod at
+Sderot Herzl and HeHalutzim, its busiest corner for shops. Each place is one
 entry in `LEVELS` at the top of `streets.gd` (name, city file, starting corner). Ashdod is
 three times Givatayim's size; it takes longer to build in full, but you are driving in
 about 3 s here, the same as anywhere (see "Loading near-first").
@@ -185,10 +191,16 @@ Lova Eliav stay on the ground (too short to get under the street at a car's grad
 
 The railway runs down the middle of the Ayalon, between its carriageways and under its
 bridges: three tracks most of the way, more at the stations, on ballast with concrete
-sleepers, and Tel Aviv Savidor and Tel Aviv HaShalom with their platforms, canopies and
-names. Double-deck trains run along it, each line in turn one way then the other, a minute
-or so apart. The Red Line light rail is underground here, so it is not shown. On the
-minimap the tracks are a light line on a dark one.
+sleepers, under the overhead wires on their masts, and Tel Aviv Savidor and Tel Aviv
+HaShalom with their platforms, canopies and names. Double-deck trains run along it, each
+line in turn one way then the other, a minute or so apart: they slow for each station,
+stand half a minute at the platform and pull out with a blast of the horn. Their headlights
+are on and, at night, their windows lit; near the line you hear them go by. The Red Line
+light rail is underground here, so it is not shown. On the minimap the tracks are a light
+line on a dark one.
+
+> Trains that act like trains: a front with headlights, lit at night, stopping at the
+> stations; the overhead electric wires; the sound of a train going by.
 
 > game streets -- lets add/start working on adding Tel Aviv. Somewhat the area I mentioned.
 > (with a map: Ichilov, Savidor, Azrieli, HaKirya, TLV Mall, Montefiore, Bitsaron,
@@ -258,6 +270,14 @@ crosses to the median, waits there looking right, then crosses; at Sheinkin it l
 then left. Cars come down the street to meet it there: one goes by before it steps off, the
 next stops at the zebra for it, and drives on once it is across. The head looks where the
 walk is going and turns into a corner a moment before the feet do.
+
+The phone is held as a hand holds one: tipped down at the pavement ahead as the film is
+(about 16 degrees, read off where the film's horizon sits), never quite still -- a slow sway
+and a little roll, as small and as slow as the film's own, measured from it -- and it looks
+down as well as round: straight down at Katzenelson's stripes on the way over, and at
+Ha-Meri's kerb as it steps up. Both walks hold it this way. And the picture is the phone's:
+its bright end squeezed rather than burnt to white, its shade lifted, warm and a little less
+colourful than the game drives in -- measured from the film, frame against frame.
 
 Over the passes since, the walk's street has been dressed, a stretch at a time, from the
 film: Katzenelson two lanes each way with railings and red-white kerbs at its zebra; the
@@ -938,6 +958,25 @@ them, thinning out by 18 m. Only at the two top qualities (fewer at the second).
   anything solid throws sparks, and so does scraping along a wall; a hard knock leaves
   glass and bits of plastic on the road and dents in your car where it hit. What you knock
   over stays down while you are near and is back once you have driven out of sight.
+
+> 1, 3, 6, 8 (check what was not seen yet; AC units and washing; background sounds; people
+> in one piece)
+
+**On the walls, in the air, and lighter to draw:**
+- AC units that look like AC units -- an off-white box on two arms, the fan's round grille
+  and the vents, the pipes into the wall, a drip hose and the grey streak the drips leave --
+  under the windows, any side but the street's the most; up on the back wall of some
+  balconies over the parapet. Most blocks show a few (it was three plain boxes at most).
+- A rack of washing under a window now and then: towels, shirts, trousers, socks, a sheet;
+  a towel hung over a balcony's parapet.
+- What a street sounds like besides the traffic: birds in the trees by day (sparrows, a
+  bulbul), louder where there are more trees and in the evening; crickets in the gardens
+  at night; people talking at the cafe, shop or school you pass, from where they are; a dog
+  barking a street or two away now and then. Quieter in the car, the more the faster.
+- Dents you can see: a hard knock pushes the panel in, buckles it, and scrapes the paint
+  round it.
+- Each person drawn in one go (they were six pieces each): fewer things for the browser to
+  draw every frame, nothing different to see.
 
 **People who keep clear.** The walkers step round the trees, posts, benches and cabinets on
 the pavement, keep to one side of anyone coming the other way, and step round people standing

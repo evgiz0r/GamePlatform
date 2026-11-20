@@ -58,6 +58,31 @@ The ones most often touched, and the functions in them:
   -- no draws of their own. Lit shops' light on the pavement: `_shop_lights`. The night's
   colours: the night branch of `_retint_city` (a little of the palette's player colour, not
   half of it). Shop glass at night 0.85 (2.0 clipped to white).
+- **people in one piece** -- `_one_piece` (end of `_humanize`): the Quaternius figure is one
+  mesh of six surfaces (Skin, Shirt, Pants, Belt, Face, Hair), each a draw (and a shadow
+  draw). Joined once per figure into one surface (shared by everyone with that figure; the
+  part's number in the vertex colour's red), drawn with PIECE_SHADER whose `parts[6]` are
+  that person's colours (linear: `srgb_to_linear`), its distance dither done by hand
+  (`fade_from`/`fade_to`, set by `_people_lod`). tests/draws.gd at the start: 217 -> 180
+  draws, people 48 -> 8. `_shader_key` keys them all as one kind for the warm-up.
+- **on the walls** -- `_build_facade_kit`: AC units (`furniture.ac_kit(0)`, ~130 vertices,
+  on arms under a window's sill or up on a balcony's back wall; at most 4 a block), washing
+  racks (`washing_kit(0)`, under a sill, tinted per copy), towels over parapets
+  (`towel_kit`, coloured per copy). The AC units and racks are drawn instanced
+  (`_instanced`: a MultiMesh per square, a draw or two near you), not merged: merged, the
+  first version (~19,000 AC units of ~230 vertices, ~2,000 racks of ~400 city-wide) made
+  the batches fat -- 19 hitches of ~50 ms in a 25 s playtest while the city built behind,
+  from 3. The towels (few) are merged. `wall_things` keeps 200 of each for
+  tests/wall_things.gd.
+- **street sounds** -- `_build_street_sounds` / `_street_snd_tick` (called from
+  `_engine_tick`): birds and crickets are 2D loops, the voices and the dog 3D players (at the
+  nearest TALKY place or shop within 70 m; at a random point 45-120 m off every 35-100 s
+  where `_liveliness` > 0.15). Levels worked out twice a second, eased at 10 dB/s; in the
+  car 7-16 dB quieter. A 40 m grid of tree counts (counted as each square plants its trees:
+  most street trees are planted by the game, not in the city file) and of talky places
+  (from the city file at load, before it is let go). The WAVs are made by sounds/make_sounds.py; a new loop
+  needs `edit/loop_mode=2` in its .import (Godot does not loop a WAV without loop points).
+  tests/street_sounds.gd records day and night to listen to.
 - **what breaks** -- knockable things (bins, recycling, bollards) are placed by
   `furniture._place_knock` into multimeshes of their own (`_knock_add`; `_knockable`: post
   index -> [multimesh, copy, transform, mesh, "tumble"/"bend", radius]), not the batches, so
@@ -428,6 +453,11 @@ what became of it:
   piers are off the road); a café table's 0.7 m solid circle reached 0.8 m into the lane
   from a table up against the kerb (the circle now only as big as the room); a cat sat on the
   road by a parked car's nose. Givatayim: 16 posts on the road -> 1; Ashdod 27 -> 0.
+- **Fixed -- walls across streets from the passages between blocks** (another session's work
+  of the same hour, live for a few minutes): each piece of a passage's wall was checked at
+  its middle only, so a long piece of a footway crossing or ending in a street was walled
+  right through it -- 318 walls on Givatayim's roads, 394 on Ashdod's, up to 6 m in, solid
+  to the car. Now checked every 2 m along; and a bike "dropped by the wall" only off the road.
 - **Fixed -- queues cleared slower than real ones.** A trace of the second car (`TRACE=n` in
   queue_start) showed the follow model was not what held it -- what it wanted was always
   above its speed -- but its start: it noticed the car in front only at 0.5 m/s (~0.45 s
@@ -735,6 +765,15 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   amount. Where a clump and a tree in the pavement leave less than half a metre, the walk
   goes round the tree's road side as a person would, and Catmull-Rom cuts the corner: keep
   0.65 m off a tree's centre at the points either side, not just at one.
+- **The scan sees posts only.** A bike in a rack is solid only at its hoop (r 0.35) but
+  reaches 0.85 m each side of it, across most of a pavement; café chairs, crates and low
+  leaves are not posts at all. Walk 2's first full recording went through a parked bike's
+  wheel (86 s) and ended with a tree's trunk filling the frame (1.0 m off), all with a clean
+  scan. `POSTS_NEAR` now also lists everything drawn by instance there -- which group, where,
+  its size, how high it starts and ends -- which told the bike, the tree and a shop's crates
+  apart in one run. Look at a recording one frame every 2 s as well as scanning. Walkers
+  still walk through the city's parked bikes (racks are another session's furniture: giving
+  the bike posts would leave 0.4 m on many pavements, so walkers need a way round first).
 - **The film's clock is decoding from its start.** `ffmpeg -ss` before `-i` lands on the
   wrong frames in this clip's first seconds (VLC's variable-rate transcode: 2999 frames in
   100 s, said to be 60 fps); `-vf trim=a:b,setpts=PTS-STARTPTS` agrees with the
@@ -784,6 +823,46 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   pass's own white ones, at the zebras near a spot); the blue pay booth, a yellow parking
   board and two scooters on Sheinkin's far corner (in the room POSTS_NEAR found between the
   zebra's bollards and a sign pole); the little street's gateposts, one with a heart.
+- **Pass 9, the phone in a hand**, done: measured against the film rather than by eye
+  (`scene-tests` skill, "A camera set beside a real film"). *Tilt*: the film's horizon sits
+  0.30 of the way down its frame nearly all the way (one frame a second, under the arcade, in
+  the passage, on the little street, on Ha-Meri); the replay's sat at 0.36-0.38, the phone
+  11.3 degrees down against the film's ~16. Now `FILM_TILT` -15.6 degrees. *Looks up and
+  down*: a walk's `looks` take a fourth number, degrees up (the film looks straight down at
+  Katzenelson's stripes at 6-8 s, a foot in shot, and at Ha-Meri's kerb as it steps up,
+  92-95 s). *Sway*: `film_shake.py` over the passage (36-52 s) gives the film 0.25 degrees
+  rms across and 0.19 up and down, 0.6 peak to peak, at 0.5-0.8 Hz and nothing at the step
+  rate (the phone's stabiliser); the replay had 0.01 and 0.03 -- dead still. Now
+  `_film_hand()`: sums of slow sines at those sizes across, up and in roll, two thirds of
+  it standing. Ha-Meri's last look (60 right, 91.6-94.5 s) turned the camera onto a tree
+  pit's trunk 0.56 m off the walk; the film looks down at the kerb there instead.
+  Measured on the recording after: 0.11 / 0.10 degrees against the film's 0.25 / 0.19 --
+  `film_shake.py`'s 1 s running mean takes out much of a slow sway, so the sizes in code
+  were doubled to read as the film does (match the tool's reading on both, not the code).
+- **Pass 10, the phone's picture and Ha-Meri's far kerb**, done. *The picture*:
+  `tests/film_look.py` (one frame a second, film against a bare replay) found the phone's HDR
+  squeezing the bright end -- its brightest 1% stops at 0.87, 0.1% clipped; the game clipped
+  4.4% to white and its bright quarter sat far above -- and lifting the dark (the shade on
+  the ground at 0.23 against 0.11), greys a little warm where the game's were a little cyan,
+  colours less saturated (0.159 against 0.190). It is *not* a blown-out sky, as it looked by
+  eye. The fit is a 17-point curve, a 6% warmth fading out over the brightest tones, then
+  saturation x1.129, drawn by `_film_look_layer()` over the finished frame on filmed walks
+  only (`STREETS_FILM_LOOK=0` turns it off, to measure the bare picture or refit). In the
+  game it gives what the fit predicted to the hundredth (levels and saturation, same frames
+  on and off), so the screen texture a canvas shader reads is the same 8-bit sRGB a
+  recording saves. *Ha-Meri*: the film steps up at the raised crossing's far end beside a
+  silver hatchback parked just past it, on a blue-and-white kerb; the game had a red-and-
+  white corner kerb and a front yard's car standing on the pavement (the yard code's road
+  width is not this corner's: its middle 0.6 m off the kerb). Now a `clear` spot there
+  (which the yard car, the greenery over walls and the kerbside furniture all respect), the
+  hatchback (`parked_car` takes `paint` now) and blue-and-white `kerb_paint`. And a
+  bougainvillea from the front gardens had grown across the little street's pavement at eye
+  height by the graffiti gatepost (film 71-76 s, bare): a `clear` spot too.
+  Measured on its recording: sway 0.25 / 0.21 degrees (the film's 0.25 / 0.19); levels at
+  1-99% within 0.05 of the film's, 0.0% clipped, saturation 0.146 (0.159). The look down
+  Ha-Meri at 89-92.5 s is 55 degrees: at 80 the hatchback sat at the frame's right edge
+  where the film has it dead ahead with the kerb on the left (AT stills at 91 and 92.3; the
+  film frame by frame). AT names its stills by whole seconds: 92 and 92.3 save to one file.
 - **Next passes**: the light (another session's: the film's afternoon is hazy and warm);
   people that move as the film's do (the walk's `people` take `to` and `t`; none of the
   four walks yet). The street now matches the film in what stands where: what is left is
@@ -1037,8 +1116,28 @@ towns get them when re-baked. What the game does with them:
   middle half, the station's name (Hebrew and English) under it.
 - **Trains** (`tick`, in `_physics_process`): five double-deck coaches at 22 m/s, one
   train a line, each direction in turn with 40-90 s between; seen, not solid (the Ayalon's
-  line runs where no car goes; a level crossing would need them solid). The minimap draws
-  the tracks light on dark (`map_lines`).
+  line runs where no car goes; a level crossing would need them solid). `s` is coach 0's
+  middle and coach 0 always leads (positions are worked out from the head along the way it
+  runs), so its +Z end has the cab face, windscreen and white lamps and the last coach's
+  -Z end the red ones -- nothing swaps when it reverses. Stops (`_stops_of`): where a
+  platform's middle is within 12 m of the line, one per 120 m; the train brakes at 0.7
+  m/s^2 to stand with its middle at the platform's (measured: 0.3 m off), stands DWELL 30
+  s, pulls away at 0.6 m/s^2. At night (`set_night`, from `_set_night`) the shared window
+  material glows. The minimap draws the tracks light on dark (`map_lines`).
+- **The overhead line** (`_wires`): masts every 50 m on each outer side of the tracks (no
+  other track within 4.5 m that side), each with an arm reaching over its track and any
+  others within 12 m -- from both sides they meet as a portal over three tracks; a contact
+  wire 5.6 m over the rails and a messenger 1.1 m above, the contact wire lowered under a
+  bridge's slab (0.4 m clear) and the messenger left out there. No mast on a road or under
+  a bridge. Every main-line track is wired (the Ayalon line is; the baker does not keep
+  OSM's `electrified=` yet). The arms are one unit box scaled along its own axis
+  (`Basis * Basis.from_scale`): `Basis.scaled()` stretches along the world's axes, and the
+  arms came out skewed along the track.
+- **Sound** (`sound`, from `_engine_tick`, which runs paused too): a 3D rumble on each
+  train's middle coach (`sounds/train.wav`, a 4 s loop: the roar, the bogies' thumps coach
+  by coach, a faint motor whine), louder with its speed, and the horn (`train_horn.wav`)
+  once as it pulls out of a station; silent when muted, paused or the run is over. Both
+  made by `sounds/make_sounds.py train train_horn` (only those: the others stay as they are).
 - **The test**: `tests/rails.gd` (level 7) prints what was set up and how close the beds
   come to roads (0 over asphalt), stands a train at HaShalom and shoots it from beside the
   line and from the platform, both stations from above, and a track close up. Two things
@@ -1046,9 +1145,9 @@ towns get them when re-baked. What the game does with them:
   beside the line the bed was not there (darker now); and a test that holds the world still
   (`set_physics_process(false)`) must set `_prev_yaw` with `_yaw`, or the view blends from
   the car's old heading and looks the wrong way.
-- **Still to do**: a locomotive's face and a train's lights at night; catenary masts and
-  wires (the Ayalon line is electrified); level crossings (trains solid, barriers); the
-  light rail where it runs on the surface; re-baking the other towns (Ashdod has a line).
+- **Still to do**: level crossings (trains solid, barriers); the light rail where it runs
+  on the surface; keeping `electrified=` in the bake; re-baking the other towns (Ashdod has
+  a line).
 
 ## Open problems
 

@@ -143,6 +143,40 @@
    ],
    "r": 8.0,
    "src": "make_givatayim"
+  },
+  {
+   "near": [
+    608.21,
+    -577.67
+   ],
+   "r": 2.5,
+   "src": "make_givatayim"
+  }
+ ],
+ "clear": [
+  {
+   "near": [
+    616.0,
+    -601.3
+   ],
+   "r": 3.0,
+   "src": "make_givatayim"
+  },
+  {
+   "near": [
+    609.47,
+    -577.9
+   ],
+   "r": 3.0,
+   "src": "make_givatayim"
+  },
+  {
+   "near": [
+    486.8,
+    -749.7
+   ],
+   "r": 2.5,
+   "src": "Sheinkin and Sirkin walk, 86 s: the city put a bike rack here and its bicycle filled the pavement the walk was filmed along"
   }
  ],
  "buildings": [
@@ -1285,6 +1319,30 @@
   {
    "kind": "parked_car",
    "at": [
+    605.86,
+    -577.34
+   ],
+   "dir": [
+    -0.6578,
+    0.7532
+   ],
+   "body": "hatch",
+   "paint": "silver",
+   "src": "make_givatayim"
+  },
+  {
+   "kind": "kerb_paint",
+   "at": [
+    606.77,
+    -576.94
+   ],
+   "len": 13.0,
+   "pat": "blue_white",
+   "src": "make_givatayim"
+  },
+  {
+   "kind": "parked_car",
+   "at": [
     626.79,
     -603.27
    ],
@@ -1418,6 +1476,26 @@
     -0.7532
    ],
    "src": "make_givatayim"
+  },
+  {
+   "kind": "hydrant",
+   "at": [
+    488.0,
+    -769.6
+   ],
+   "dir": [
+    -1,
+    0
+   ],
+   "src": "filmed walk, Sheinkin and Sirkin: 3:22, a red hydrant at the back of the pavement by the corner building"
+  },
+  {
+   "kind": "bin",
+   "at": [
+    486.3,
+    -774.1
+   ],
+   "src": "3:26, a bin at the corner by the light's pole"
   },
   {
    "kind": "bollard",
@@ -1672,6 +1750,12 @@
      30
     ],
     [
+     5.4,
+     8.8,
+     0,
+     -30
+    ],
+    [
      8.9,
      12.6,
      70
@@ -1703,13 +1787,14 @@
     ],
     [
      89.0,
-     91.2,
+     92.5,
      55
     ],
     [
-     91.6,
-     94.5,
-     60
+     92.5,
+     95.6,
+     -10,
+     -22
     ]
    ],
    "zebras": [
@@ -2098,13 +2183,13 @@
     ],
     [
      101.0,
-     488.0,
-     -771.2
+     487.5,
+     -770.9
     ],
     [
      106.0,
-     488.0,
-     -771.2
+     487.5,
+     -770.9
     ]
    ],
    "looks": [

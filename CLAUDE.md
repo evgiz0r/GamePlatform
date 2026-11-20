@@ -54,7 +54,11 @@ that screen. The menu itself has no level picking. Self-play skips the start scr
 `config` may have no "level" -- default to 1. When a run reaches a new level, set
 `Flow.current_config["level"] = n` so "play again" resumes there rather than at the start.
 `LEVEL=n tools/playtest.sh <game> ...` (and `tools/shots.sh`) start a run at level n, and
-`tools/menu_shot.sh levels:<game>` screenshots the start screen.
+`tools/menu_shot.sh levels:<game>` screenshots the start screen. Levels that are
+Dictionaries with a `"name"` are picked by name; give them a `"group"` too and the start
+screen lists each group under its heading, side by side (a level's `"sort"` orders it within
+its group; its number is still its place in `LEVELS`, so reordering the screen never
+renumbers the levels).
 
 Nothing outside a game's own folder should ever name that game. If you find yourself
 writing its name in a doc, a tool or another game, that is the thing that will rot when it
@@ -211,6 +215,9 @@ Short, specific, and all of them cost a debugging session:
   percentage slider on the main menu was tried first and reverted: reaching a menu-level
   control meant backing out of whatever game you were adjusting it for, which defeated
   the point.
+- **A WAV you add does not loop on its own.** Godot's import loops a WAV only when the
+  file carries loop points, and a made-up one (numpy, a synth) has none: it plays once and
+  stops. Import it once, set `edit/loop_mode=2` in its `.wav.import`, import again.
 - **`win.ogg` is a two-second jingle**, byte-identical to `music/jingle_1`. It is a bad
   choice for a hit. Use `impact_*` or a `voice_*` line.
 - **The `smart` bot flees anything tagged `"x"` within 90px.** Space out anything it has
