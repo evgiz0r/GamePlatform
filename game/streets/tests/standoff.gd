@@ -60,6 +60,8 @@ func _run() -> void:
 			if n.get_script() != null and String(n.get_script().resource_path).ends_with("streets.gd"):
 				g = n
 	await create_timer(1.0).timeout
+	if OS.get_environment("FULL") == "":
+		g._set_quality(0)   # (what this measures doesn't depend on it, and it runs ~3x faster)
 	var ri := -1
 	for i in range(g._roads.size()):
 		if String(g._roads[i]["en"]) == "David Kalai" and g._roads[i]["drive"]:

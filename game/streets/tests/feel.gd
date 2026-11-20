@@ -27,6 +27,8 @@ func _run() -> void:
 			if n.get_script() != null and String(n.get_script().resource_path).ends_with("streets.gd"):
 				g = n
 	await create_timer(1.0).timeout
+	if OS.get_environment("FULL") == "":
+		g._set_quality(0)   # (what this measures doesn't depend on it, and it runs ~3x faster)
 	var start: Vector2 = g._pos
 	print("walls registered: %d (fences, hedges, garden walls, shelters)" % g._wall_r.size())
 	# 1. a crash: a building wall 14 m ahead with a clear run to it
@@ -84,26 +86,40 @@ func _run() -> void:
 			await _snap("jump_out")
 	print("out at 50 km/h: tumbled %.1f m; the empty car rolled %.1f m and stands at %.1f m/s" % [g._pos.distance_to(me0), g._car_at.distance_to(car0), g._car_v])
 	g._get_in()
-	# 3. into a fence
+	# 3. into a fence: one with a clear 12 m run-up square to it
 	var wi := -1
+	var nrm := Vector2.ZERO
 	for i in range(g._wall_r.size()):
-		var m: Vector2 = (g._walls[i * 2] + g._walls[i * 2 + 1]) * 0.5
-		if m.distance_to(start) < 600.0 and g._wall_r[i] < 0.1 and (g._walls[i * 2] as Vector2).distance_to(g._walls[i * 2 + 1]) > 2.0:
-			wi = i
+		var a0: Vector2 = g._walls[i * 2]
+		var b0: Vector2 = g._walls[i * 2 + 1]
+		var m0 := (a0 + b0) * 0.5
+		if m0.distance_to(start) > 700.0 or g._wall_r[i] > 0.1 or a0.distance_to(b0) < 2.0:
+			continue
+		for sgn: float in [1.0, -1.0]:
+			var n0 := (b0 - a0).orthogonal().normalized() * sgn
+			var clear := true
+			var k := 2.0
+			while k <= 13.0:
+				if g._push_out(m0 + n0 * k, 1.3, true, false) != Vector2.ZERO:
+					clear = false
+					break
+				k += 1.0
+			if clear:
+				wi = i
+				nrm = n0
+				break
+		if wi >= 0:
 			break
 	if wi >= 0:
 		var a: Vector2 = g._walls[wi * 2]
 		var b: Vector2 = g._walls[wi * 2 + 1]
 		var m := (a + b) * 0.5
-		var nrm := (b - a).orthogonal().normalized()
-		var from := m + nrm * 12.0
-		if g._push_out(from, 1.5, true, false) != Vector2.ZERO:
-			from = m - nrm * 12.0
-			nrm = -nrm
-		_place(from, (-nrm).angle(), 10.0)
+		_place(m + nrm * 12.0, (-nrm).angle(), 10.0)
 		var closest := INF
 		for f in range(60 * 3):
 			await physics_frame
 			closest = minf(closest, Geometry2D.get_closest_point_to_segment(g._pos, a, b).distance_to(g._pos))
 		print("into a fence at 36 km/h: the car's middle came within %.2f m of it (through it: under 0.1), last hit %s" % [closest, g._last_hit])
+	else:
+		print("no fence with a clear run-up found near the start")
 	quit(0)

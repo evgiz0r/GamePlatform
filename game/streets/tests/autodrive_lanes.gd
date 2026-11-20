@@ -18,6 +18,8 @@ func _run() -> void:
 			if n.get_script() != null and String(n.get_script().resource_path).ends_with("streets.gd"):
 				g = n
 	await create_timer(1.0).timeout
+	if OS.get_environment("FULL") == "":
+		g._set_quality(0)   # (what this measures doesn't depend on it, and it runs ~3x faster)
 	# onto the nearest one-way road of two lanes or more, in its right lane
 	var best := INF
 	var at := Vector2.ZERO
@@ -65,9 +67,9 @@ func _run() -> void:
 				if g._ap_pts[j].distance_to(g._pos) < 8.0:
 					lane_at = j
 					break
-			print("  hit %s at %.0f s, %.1f m/s, on %s (%s, o %s, w %.1f, lanes %d, lane %.1f), edge %.1f, plan point near: %s, cross %s, steer %.2f" % [h, t, g._v,
+			print("  hit %s at %.0f s, %.1f m/s, on %s (%s, o %s, w %.1f, lanes %d, lane %.1f), edge %.1f, plan point near: %s, cross %s, steer %.2f, backing %s" % [h, t, g._v,
 				rr.get("en", "?"), rr.get("k", "?"), rr.get("o", "?"), float(rr.get("w", 0)), g._lanes_each_way(rr) if not rr.is_empty() else 0,
-				g._lane_off(rr) if not rr.is_empty() else 0.0, float(on.get("edge", 99)), lane_at, not g._cross.is_empty(), g._steer])
+				g._lane_off(rr) if not rr.is_empty() else 0.0, float(on.get("edge", 99)), lane_at, not g._cross.is_empty(), g._steer, g._ap_back > 0.0])
 			if OS.get_environment("OUT") != "" and int(hits[kind]) <= 2:
 				await _snap("hit_%d_%s_%d" % [lvl, kind, int(hits[kind])])
 		last_hit = h
@@ -85,7 +87,7 @@ func _run() -> void:
 			var over := lat < 0.9 + half_w - 0.1 and lon < 2.3 + float(c.len) * 0.5 - 0.2
 			if over and not touching.has(i):
 				bonks += 1
-				print("  bonk at %.0f s: %s %.1f m across, %.1f along, me %.1f m/s" % [t, c.kind, lat, lon, g._v])
+				print("  bonk at %.0f s: %s %.1f m across, %.1f along, me %.1f m/s, it %.1f m/s, backing %s, its blocker %d" % [t, c.kind, lat, lon, g._v, c.v, g._ap_back > 0.0, c.blocker])
 				if not shot and OS.get_environment("OUT") != "":
 					shot = true
 					await _snap("bonk_%d" % lvl)

@@ -9802,6 +9802,19 @@ func _send_crossers() -> void:
 		a.visible = true
 		a.play("Idle", true, _people_rng.randf_range(0.8, 1.1))
 
+## the people (walkers, those at crossings) within r of p
+func _people_near(p: Vector2, r: float) -> Array:
+	var out: Array = []
+	for w: Dictionary in _walkers:
+		var a: Actor3D = w["actor"]
+		if a.visible and Vector2(a.position.x, a.position.z).distance_to(p) < r:
+			out.append(a.position)
+	for cr: Dictionary in _crossers:
+		var a: Actor3D = cr["actor"]
+		if a.visible and Vector2(a.position.x, a.position.z).distance_to(p) < r:
+			out.append(a.position)
+	return out
+
 ## autodrive: anyone standing on the lane ahead -- crossing, hurrying back, stepping aside
 ## off a pavement -- stopped for, whatever the crossing rules say (the speed allowed, or INF)
 func _ap_people_v() -> float:
@@ -10192,9 +10205,16 @@ func _autodrive(dt: float) -> Array:
 	if _ap_back > 0.0:     # stuck against something: back off, then plan again
 		_ap_back -= dt
 		_gear = -1
-		if _ap_back <= 0.0:
+		# looking over the shoulder: anything behind (a car, a post, a wall, someone) and
+		# it stops backing -- it used to reverse its 1.4 s blind, into the car behind
+		var tail := _pos - _fwd() * (CAR_OFF + 0.7 + absf(_v) * 0.4)
+		var behind := _push_out(tail, CAR_R, true, true) != Vector2.ZERO
+		behind = behind or not _people_near(tail, 2.5).is_empty()
+		if behind or _ap_back <= 0.0:
+			_ap_back = 0.0
 			_gear = 1
 			_ap_pts = PackedVector2Array()
+			return [0.0, 1.0, 0.0]
 		return [0.7, 0.0, -signf(_steer) * MAX_STEER * 0.6]
 	if _ap_pts.size() < 2 or _ap_off_route() > 25.0:
 		_ap_plan()
