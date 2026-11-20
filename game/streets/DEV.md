@@ -691,6 +691,14 @@ first:
   `Details.shop_look`); `tests/shop_looks.gd` stands in the street facing each one and
   prints where its front went. Awnings and umbrellas are instance-coloured (`_awning_col`,
   `_real_col`), no longer one glowing palette material per role.
+- **Reds and blues that are real things' colours** (car paint, kerb paint, sign plates,
+  hydrants, scooters, awnings by name) are hue-pinned `Color.from_hsv` with their
+  saturation and brightness taken from the palette: from the palette's hazard and player
+  roles directly they came out pink and teal beside the film. `_real_col(name)` gives the
+  named ones.
+- **Setts and string lights** (details `setts` on a street, `lights` on a shop): `_sett_fan`
+  / `_sett_band` in the street trees' builder (round the trees of that street only),
+  `_string_lights` in `_build_pois` (bulbs in `mat("warn", 1.6)`, wire in the crates' buffer).
 - **Tests after the city is built cannot read `_city_data`**: the game lets go of the city
   file once every square is up (`_city_data = {}` after building), so a scene test looking
   for places there finds none. The built places are in `_pois` ([spot, role, name sign]).
