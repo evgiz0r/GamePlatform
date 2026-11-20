@@ -159,6 +159,12 @@ it is made, with a one-line caption, rather than a report at the end.
 
 ## On a slow cloud container
 
+**Numbers do not need pictures.** A test that drives something and counts what went wrong
+can run headless (`$GODOT --headless --fixed-fps 60 --path . -s res://...`, the screenshot
+calls skipped when `DisplayServer.get_name() == "headless"`): two minutes where the same
+run under the software renderer took twenty. Render only for the shots, and only the runs
+that need them.
+
 **Tests that measure behaviour should not pay for looks.** The software renderer is bound by
 pixels and per-pixel shader work: when a game gained photo textures and per-pixel traced
 windows, a frame went to ~0.8 s and every simulation test ran out of time. Have such tests

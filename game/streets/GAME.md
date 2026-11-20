@@ -34,7 +34,7 @@ driver looks left, right and left again (once a junction); into a turn as the wh
 over; at people on the crossing ahead; over the right shoulder reversing. From the seat the
 view turns with the head; from behind, the camera swings a little to where the driver
 looks and the driver's head in the car turns. Autodrive's driver always does it; when you
-drive yourself, the "look" button (or K) switches it on and off.
+drive yourself, the "look" button (or G, for glance) switches it on and off.
 
 > I want the driver to look left and right in the turns, like a real driver with the head.
 > And I want that to be an option for the non-autodrive. For both chase and seat mode there
@@ -159,6 +159,23 @@ past the foothills they are too steep to drive up (see below), so it is a valley
 leave -- except by the one road that climbs the western mountainside to a lookout terrace
 with a car park and a cafe. The car starts on HaNasi just past HaShuk, in the middle.
 
+> Lets work on adding tunnels/bridges, and maybe more complicated roads. Work in the test
+> town. Change the town if needed (adding river or whatever needed for bridges).
+
+**Off the ground** (the test town first). A river, Nahal Dimyon, crosses the south of the
+town in a valley of its own, from a spring at the foot of the eastern hills to a lake in
+the south-west; its banks are low in the middle of town and steep where it cuts through
+the knoll, and every street that crosses it goes over on a bridge -- concrete parapets, a
+pavement each side, piers standing in the water -- the ring road's on a long skewed one,
+with a footbridge between HaNasi and Rothschild. Derekh HaMinhara goes from HaNasi past
+HaGalil down a cutting into the hill and through it in a 440 m tunnel (under HaOranim,
+HaBroshim and the water tower), lit by two rows of lamps, up a cutting on the far side to
+the ring road. Two of the old grid's streets no longer meet the boulevard: HaTamar dips
+under it (a cutting, a short cut-and-cover tunnel, a cutting back up), HaZayit climbs over
+it on embankments and a bridge. Driving, walking and the traffic all keep to their own
+level: under a bridge you are under it, in the tunnel the hill's houses are not in your
+way, cars overhead do not stop for you.
+
 > I want to make a new fake city in streets, where we would do quicker simulation and
 > validations. Yes it would not stress as the big cities on latency, but would give a quick
 > look if something got prettier as we are trying to make things more realistic slowly.
@@ -187,6 +204,13 @@ then left. Cars come down the street to meet it there: one goes by before it ste
 next stops at the zebra for it, and drives on once it is across. The head looks where the
 walk is going and turns into a corner a moment before the feet do.
 
+Over the passes since, the walk's street has been dressed, a stretch at a time, from the
+film: Katzenelson two lanes each way with railings and red-white kerbs at its zebra; the
+passage paved in grey pavers in rows, its rough stone wall, and tall planting and trees
+closing it in; past Sheinkin the walk crosses Ha-Meri on its raised crossing to the far
+kerb, as the film does, the street's kerbs blue and white, a 30 painted in its lane and the
+zone 30 sign at its mouth; lit shop fronts under the arcade.
+
 > During the walk we collide into a house, the pavement there is not matching in the middle.
 > Let's also add cars, and we look left, right, and they stop for us. Usually we look where
 > we want to walk, and look before turning.
@@ -199,6 +223,38 @@ walk is going and turns into a corner a moment before the feet do.
 The minimap (bottom left) shows the real streets and buildings round you, heading up, with
 the city limits in pink. The name of the street you are on is at the top, in Hebrew with
 the English name under it when OSM has one.
+
+**Zooming out.** "zoom" (on the right, under "walk"; Z, or the mouse wheel down, or two
+fingers pinching together) lifts the view off the car -- or off you, on foot -- up over the
+city, centred on where you are, the way you were facing at the top of the screen, and
+pauses the city: the car, traffic, people and lights hold still where they are, and the
+engine goes quiet. A ring marks you (an arrow on the screen's edge points back if you have
+looked away), and on foot a square marks the car. Up there you look round: drag (or the
+arrows) to move over the town, the wheel or a pinch (or - and =) to go higher or lower --
+from just over the rooftops to about a kilometre of town across the screen -- and Q / E or
+two fingers turning to turn it. The view looks down at a slant (about 50 degrees at the
+highest), not straight down, so the town reads as streets and buildings rather than a plan.
+Zooming in stops at the rooftops; keep zooming in there for about a second (a bar fills
+under "keep zooming in to get back in the car") and it flies back down to the car. "back"
+or Z go straight down. Either way the city goes on. From the driver's seat it rises via the
+chase cam and lands back in the seat. While you are up there the minimap follows the view:
+centred where you are looking, turned the way the screen is, with the part of town on the
+screen outlined, and an arrow for you (on its edge if you are off it). Trees, pavements and
+the rest are drawn all the way across the view while it is up, so nothing pops in as you
+move it.
+
+**Pause.** "pause" (K) holds the city still with the view where it is; "resume" lets it go
+on. Resumed while zoomed out, the city runs under you and the view follows the car, which
+still drives (keys or the stick). The shell's own pause (its menu) is still there too.
+
+> If I would want a zoom out feature, that zooms out from where I am. Maybe it pauses the
+> city (maybe we can add a pause feature anyway), and we can zoom back in (or check around).
+
+> It goes back into my car too quickly if I am zoomed in. Maybe if I am fully zoomed and I
+> still zoom in for a second. I do want to be able to zoom it. I want the map to represent my
+> zoomed view if possible (so it's clearer what I am looking at). Maybe the angle slightly
+> more tilted so it's less from above. When I move while zoomed some buildings just pop in
+> the view, not naturally.
 
 ## What is trying to stop you?
 
@@ -368,9 +424,12 @@ leaflets that dry yellow at the tips, on a ringed palm trunk.
 
 > Traffic, lights and signs that mean something, engine sound, night.
 
-**Sound.** The engine is made in the game, not recorded: a four-cylinder's firing pulses
-pitched by the revs of a five-speed automatic, a brighter layer with the throttle, and
-the nearest car going by.
+**Sound.** The engine is made, not recorded, pitched by the revs of a five-speed
+automatic, with a brighter layer under the throttle. Over it, what speed sounds like from
+inside a car: the tyres' roar on the asphalt, louder and brighter the faster you go, and
+the wind once you are moving quickly; the nearest car going by as the whoosh of its tyres,
+its pitch falling as it passes; and the city far off, always, soft. (See "Sound you do not
+switch off" below for why it changed.)
 
 **Night.** The "night" button: a dark sky and a dim moon, a share of the windows lit (warm
 in homes, cooler in offices), street lamps on with a pool of light under each, shop
@@ -578,8 +637,43 @@ the city now has what the walk had underfoot and at eye height:
 - Front gardens plot by plot (14-22 m each, a gap for the gate): a low wall of rough stones in
   mortar, with a clipped hedge behind it, white bars or green chain-link on top, or bare;
   bougainvillea spilling over one in six; the garden shrubs leafy, not smooth balls.
+- The ground darker where things stand on it, as the sky's light reaches less of it there:
+  a soft band out from the foot of every building, darker still in its inside corners; the
+  parking under a block on columns in the shade; a dark patch under every parked car,
+  softening out past its sides. Without it the houses and cars looked as if they hovered a
+  hair above the street. It is one faint layer laid out with the city, so it costs almost
+  nothing while you drive.
+- Shadows all the way out. The real shadows only reach 45-75 m from the camera (and the
+  lowest quality has none), so past them the whole city used to stand on evenly sunlit
+  ground. Now every building's shadow, and every tree's, lies on the ground as far as you
+  can see, as dark as the real ones and meeting them without a seam; at the lowest quality
+  they are the only shadows there are. The sun never moves, so they are worked out once
+  as the city loads.
 
 > ok lets start as you say
+
+> ok go next
+
+> go next
+
+**Golden hour.** The time-of-day button steps through day, evening and night. The evening is
+the hour before sunset: a sky photographed then, clouds lit gold from below and a glow
+along the horizon where the sun is going down (in the west-south-west, as it sets over
+Givatayim in the autumn); the sun low and orange, so the fronts that face it glow and the
+streets lie in long blue shade; the haze warm towards the sun. Every shadow, the painted
+far ones too, is as long as a low sun makes it. The first switch to the evening takes a
+moment (its far shadows are drawn then), after that it is instant.
+
+> continue?
+
+> lets improve sound a bit. its just annoying noise i have to turn off now
+
+**Sound you do not switch off.** The engine used to be the only sound: a buzz of sharp
+pulses, almost all of it lower than a laptop's or a phone's speaker can play, so what came
+out was a rough flutter, droning even standing still, with a second buzz beating against it
+whenever a car went by, and a coin's jingle every block. Now the engine is a smooth hum under
+the tyres' roar, nearly silent at idle; speed is the road and the wind; a passing car is a
+whoosh; the coin for a new street is a quiet tick, the indicator a relay's soft click.
 
 > I took a video on my phone, walking in Givatayim.
 
@@ -748,10 +842,11 @@ contributors under the ODbL, which is why the credit sits on screen.
   What a shop looks like (awning, tables, the bus shelter) is generic. The parked cars
   (about a quarter of the kerb), the people walking and sitting at cafe tables, rooftop
   solar heaters and rooms (Givatayim), pitched roofs on small houses (Bedford).
-- **Not there yet**: bridges and tunnels as such: roads at different levels are drawn
-  on the ground, and tunnels are dropped (an interchange is flat; motorways and their slip
-  roads at least have no pavements or people along them). People crossing anywhere but a
-  zebra.
+- **Not there yet**: bridges and tunnels in the real towns. OSM says which ways are
+  bridges and tunnels but not how high they are, so there the roads at different levels
+  are still drawn on the ground and tunnels are dropped (an interchange is flat; motorways
+  and their slip roads at least have no pavements or people along them). The test town has
+  them (above), because its maker knows the heights. People crossing anywhere but a zebra.
 
 To make your own street more accurate, fix it on openstreetmap.org (building heights are
 the most useful thing to add) and bake again.
@@ -774,6 +869,7 @@ pavements everywhere, not only here.
 
 ## Later (said, not built)
 
-- Bridges and tunnels: roads at different levels, an interchange you drive over and
+- Bridges and tunnels in the real towns: working out each deck's heights from OSM's tags
+  and the ground (the test town has them already), then an interchange you drive over and
   under.
 - Not just driving: the same baked city could be walked, or used by another game.

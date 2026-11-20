@@ -17,6 +17,7 @@ merge, re-check (`tools/check_script.sh`, a playtest, the tests below), never fo
 | `traffic.gd` | the AI traffic: spawning, paths, lanes, lights and signs, following, standoffs, drawing (multimeshes per car shape) |
 | `furniture.gd` | street furniture built after the places: power lines, lamps and bus-stop kits, flags, ads, fences and hedges, bike racks and scooters |
 | `drivelog.gd` | the drive recorder (see below) |
+| `decks.gd` | roads off the ground -- bridges, embankments, cuttings, tunnels: their heights, what is under a point at a level (`surf`), their walls for collisions (`push`), the ground cut away over cuttings (`cut_tri`), and drawing them a square at a time (`build`). See "Off the ground" below |
 | `cities/*.json` | baked towns (`tools/osm_city.py`) and the made-up test town (`tools/fake_city.py`) |
 | `details.gd`, `cities/details/<city>.json` | what a filmed walk showed and OSM lacks, laid over the baked city as it loads (road edits, unmarked zebras, areas, an arcade cut under a block, paving level with the pavement, walls, fences, hedges, bins, railings, bollards, a pole transformer, a barrier, parked motorbikes, trees) and the walks themselves; the format is at the top of `details.gd` |
 | `cities/details/make_givatayim.py` | writes `givatayim.json`: every detail placed along the Ha-Meri passage's own line, with the film's seconds beside what each came from. Edit this, not the JSON, and run it |
@@ -48,6 +49,41 @@ The ones most often touched, and the functions in them:
   (barred windows, the door in the middle bay), stone courses, plinth and mosaic are
   `WALL_SHADER`'s `ground` / `door` / `stone_k`; worn asphalt is `TONE_SHADER`'s
   `crazing()` and patches. `tests/eye_level.gd` puts a camera where a person stands.
+- **sound** -- `sounds/make_sounds.py` makes the loops (engine, engine_load, road, wind,
+  city; numpy, run it again after changing it, the .wav files are committed and imported
+  looping, QOA); "the sounds of driving" in streets.gd plays them: `_build_engine`,
+  `_engine_tick` (the gearbox, then each layer's pitch and volume a frame; the car going by
+  is the nearest traffic car, its closing speed from its distance a frame ago for the
+  pitch). Levels are relative to `SFX_SCALE`. `tests/sound_drive.gd` records the game's own
+  mix headless. The old engine (pulses below 200 Hz, made at load) measured centroid
+  40-140 Hz, 2-16% above 200 Hz; the new mix 290-550 Hz moving, 45-66% above 200 Hz.
+- **time of day** -- `SKIES` (day, evening: the photo, its sun and colours from `hdr_sky.py`,
+  where the sunlight comes from, its warmth and energy), `_sky_now()`; `_next_time()` (the
+  button: day, evening, night), `_set_evening()`. `_retint_city` reads `_evening` for the
+  ambient (the sky's blue in the evening, not the haze), the sun's colour (ink to warn, and
+  in the evening a little hazard: orange, not lemon) and the haze's glow towards the sun
+  (`fog_sun_scatter`). The far shadows are drawn per sun and kept (`_fs_cache`); the trees'
+  patches are laid at the trunk and moved by the sun in `AO_SHADER` (`sun_off`,
+  `sun_stretch`), so they need no laying again. `FS_DARK_EVE` 0.4: a low sun lights the
+  ground less, so its shadows take less (real 0.76, painted 0.75, `far_shadows` EVENING=1).
+  `STREETS_CAM=...,2` starts in the evening. `tests/time_of_day.gd`.
+- **shadows past the shadows** -- `_build_far_shadows` (after `_build_setup`, at load):
+  every outline swept along the sun by its height (`Geometry2D.convex_hull` of the outline
+  and the outline moved), then the outlines themselves cleared, drawn white on black into a
+  SubViewport (one `canvas_item_add_triangle_array`), read back, mipmapped, ~1.6 m a pixel.
+  `FAR_SHADE` (`far_shade()`) goes into the kerb, tone and ground shaders by `_with_far()`
+  and darkens the ground (faces up) by it past `fs_near * fs_fade` -- the real shadows'
+  own range and fade start -- so the two meet; `_far()` keeps those materials in step with
+  quality and night. Trees: `_ao_tree` in the contact-shadow layer (COLOR.b 1), left out
+  inside a building's shadow. `FS_DARK` 0.55 matches the real shadows (both leave 0.69 of
+  the light on screen, `tests/far_shadows.gd`). ~100 ms of work plus two frames at load.
+- **contact shadows** -- `AO_SHADER` (multiply, no depth, fades out to `AO_SEEN`), one
+  CBuf `_ao` per square made in `_build_tile` and drawn after the cars; `_ao_footprint`
+  (strips out from each building's foot, a fan at outside corners; negative width: in under
+  it, for the parking under a block on columns) and `_ao_car` (parked and car-park cars).
+  Ramp in UV.x, strength COLOR.r, a flat floor COLOR.g. Lies at pavement height + 2.5 cm.
+  First pass: ~115 ms for 1519 buildings once each height was looked up once (308 ms
+  plainly). `tests/contact_shadows.gd` shoots each with the layer on and off.
 - **front gardens** -- `_garden_fronts`, called from the kerbs for each side of a yard
   street in the south, after the low stone wall. Plots keyed to the run (so every square
   along the street works out the same ones) and skipped when nowhere near the square. The
@@ -78,6 +114,25 @@ The ones most often touched, and the functions in them:
   only) / `_judge_fps` (the rule; testable natively), the soft car shadows `_set_blobs`.
 - **where a frame's time goes** -- the profiler: `_p("part")` around each part, hitches
   kept and reported; P or a tap on the fps text shows it.
+- **zoom out and pause** -- "the view from above", after the chase cam: `_paused` stops
+  `_physics_process` (and the people's AnimationPlayers via `process_mode`, the engine
+  sound; traffic is drawn at `f = 1` so it does not rock between two ticks); `_zoom_set`
+  (rising pauses, landing resumes unless paused by hand), `_zoom_camera` (blends whatever
+  camera was placed toward the view from above over the first quarter of the zoom; near
+  plane out and haze thinned with height), `_zoom_pan` / `_pinch_move` / `_zoom_turn`, the
+  marks `_draw_zoom_marks`. The quality watcher ignores frames while zoomed out. Gradual
+  zooming goes through `_zoom_by` (stops at `ZOOM_MIN`; `_zoom_in_more` counts real time of
+  zooming in there, a second lands). While up, `_zoom_far(true)` sets every draw range of
+  `ZOOM_FAR_FROM` (380 m) or more to 0 (no limit) -- above `ZOOM_SMALL` only those of
+  `ZOOM_FAR_HIGH` (650 m) or more: kerbs, walls and lamps are under a pixel there, and
+  lifting them tripled the draws at the top (Givatayim: 898 against 337; driving 296) --
+  and puts them back on landing; it catches
+  what the background build adds meanwhile by world's child count -- ranges count to the
+  middle of a 400 m square, and from up there those cut-offs swept across the screen (the
+  user saw buildings' surroundings pop in as the view moved). The low view is kept over the
+  roofs with `_bld_top` (walls' heights, kept at load) via `_roof_near`. The minimap follows
+  the view (`_draw_map_inner`: `mid`, `yaw`, `r`; `_view_footprint` is the screen's corners
+  on the ground) and drops building outlines past r 450 m (a grey blur, and most of the lines).
 
 traffic.gd: `tick` (per car: path, lights, signs, the car or player ahead, standoffs,
 `squeeze`), `_next` / `_leg` / `_turn_into` (routes), `_steer_lanes`, `lead_on` (the query
@@ -93,6 +148,12 @@ Run the ones near what you change, before and after.
 `run.sh` sets `STREETS_BUILD_ALL=1`: the whole city is built before a test starts, as the
 tests look all over it (the game itself builds near the start first and the rest while you
 drive).
+
+`tests/filmed_spots.gd` stands the camera at chest height on spots from a filmed walk or
+drive (`SPOTS=<json>`, the format is at its top) and screenshots each, to set beside the
+film's stills. The spots file stays in the scratch directory, never the repo: a filmed
+route can start at the user's door. How to get the film and its GPS track in and lined up:
+"Filmed walks and drives" in the `real-places` skill.
 
 Two that are not in the list above: `filmed_walk` (level 5: the walk loads, walks itself,
 stops at Ha-Meri; shots at the landmarks with the nearest wall, `RECORD=1` saves every
@@ -213,6 +274,36 @@ The start points are public street corners named in `LEVELS`. **The web build is
 never use an address the user has mentioned as theirs or their family's -- not as a start,
 not in a test, a commit or a doc.** Scratch tests against one stay in the scratch directory.
 
+## What a filmed walk showed (November 2026)
+
+A walk filmed with GPS along a quiet residential street and a shopping street in
+Givatayim, set beside the game from the same spots (`tests/filmed_spots.gd`). The layout,
+the zebras at the right corners and the lights at the main road matched. The rest, biggest
+first:
+
+- **Buildings**: the game's are white-grey boxes with dark window bands and black ground
+  floors. The real ones are warm cream and sand plaster, balconies with railings (many
+  closed in), AC units on the walls, shutters, shopfronts with awnings on the shopping
+  street; 15-25 storey towers stand behind the low blocks.
+- **Between pavement and building**: front gardens behind low rubble-stone walls, often
+  with a wooden plank fence on top, hedges, bushes, iron gates. The game has a low white
+  wall and grass, or the building right at the pavement.
+- **Pavement**: the game's is near white in the sun. The real one is mid-grey: 20 x 10 cm
+  pavers in straight rows along the residential street, with a darker band along the kerb;
+  rounded brown "antique" pavers with grey cobble arcs by the cafes. Herringbone is right
+  for some streets, not all.
+- **Kerb paint**: blue-and-white along the residential street (paid parking), red-and-white
+  at the corners and driveways. The game paints yellow-and-black.
+- **Parked cars**: an unbroken row on both sides of the residential street, motorbikes and
+  scooters parked on the pavement; painted bays on the shopping street. The game has gaps.
+- **Street trees**: thin trunks in square earth pits at the kerb edge every ~8-10 m, the
+  canopies meeting over the pavement; no palms on these streets.
+- **Light**: the real late afternoon is hazy and warm; the game's sky is saturated blue
+  with cartoon clouds and its sunlight bleaches the ground.
+- **Small things**: black bollards with a yellow band along the kerb by the main road, a
+  red fire hydrant, a push button on the walk light's pole, bar stools and awnings rather
+  than umbrellas outside the cafes, green bins.
+
 ## The filmed walk (level 5)
 
 A walk filmed on a phone in Givatayim, from Katzenelson by the Ha-Meri passage to Ha-Meri
@@ -274,18 +365,98 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   motorbikes and scooters nose to the kerb along the arcade (a gap where the walk comes up
   off the road), two more in the forecourt; the planted bed behind the white fence and the
   trees over the passage's mouth.
-- **Next passes** (seen in the side-by-sides; another session's kerb pass now adds its own
-  bollards and crossing railings city-wide, so check what it put here first): Katzenelson's
-  width at the crossing (the film's pace says its halves are narrower than the game's 9 m:
-  measure from the film and narrow them in the details file); the forecourt's slabs still
-  too pale in the sun; at the zebra's south end the white hoop railing and the red-white
-  kerb; the passage's own paving is small grey pavers in rows, not herringbone, and level
-  with the forecourt (the game steps down 12 cm into it); its stone wall is rough grey stone
-  and its fence darker wood; the corner of Sheinkin is a raised crossing paved in charcoal
-  herringbone with the zebra painted on it, white bollards round the corner, another
-  transformer; Ha-Meri has blue-white kerbs, a Zone 30 sign and a painted 30 ring; the
-  confectionery's front; the shop fronts under the arcade are lit glass in light frames, not
-  the game's dark panels. People last.
+- **Pass 4, Katzenelson's crossing and the passage**, done: Katzenelson's halves set to 7 m
+  (roads.set: two lanes each; the baker's 9 m made the walk sprint), the walk's kerbs, median
+  and zebra stretches moved with them; white hoop railings either side of the zebra on both
+  kerbs and the kerb painted red-white 10 m each way (kerb_paint: pieces laid over the
+  city's kerb in the kerb shader's colours; a whole road's paint is roads.set's `kerb`); the
+  passage paved in small grey pavers in rows across it (the tone shader's kind 7), level
+  with the forecourt; its wall rough grey stones on a mortar backing; tall planting both
+  sides (shrubs: the trees' leaf-card crowns on the ground, 2.4-3 m) and four more trees, so
+  the passage closes in as filmed. Props stand on the higher of the city's pavement
+  (`_walk_y`) and the details' own paving.
+- **Pass 5, Sheinkin to Ha-Meri and the shops**, done: the film crosses Sheinkin, then Ha-Meri
+  on a raised crossing (charcoal herringbone, the zebra painted on it) and steps up its far
+  kerb -- the walk had stayed on the near pavement, so its last ten seconds now go that way,
+  threading the corner's bollards, sign pole, hydrant and tree pits (POSTS_NEAR lists them).
+  The crossing is paving with ramps (`ramps`), the zebra laid on it (`zebra`); Ha-Meri's
+  kerbs blue-white (roads.set `kerb`), a 30 in a red ring painted in its lane in (`ring30`)
+  and the zone 30 sign on the drivers' right (`zone30_sign`); lit shop fronts in light
+  frames under the arcade, the confectionery's sign band dark brown (`shopfront`).
+- **Shader kinds**: the tone shader's surface kinds are 1 grass, 2 asphalt, 3 pavers, 4 rough
+  stone walls (another session's), 6 the details' slabs, 7 pavers in rows; each tested on
+  both sides of its number (see the godot-3d skill: a one-sided test once drew this
+  passage as wall stones).
+- **Next passes**: the forecourt's slabs may still be too pale in the sun; the shops'
+  glass is one even glow (signs with lettering, the confectionery's yellow panels inside);
+  white bollards round Sheinkin's corner and its second transformer (the kerb pass put
+  bollards at corners: compare with the film); the little street's parked cars and the
+  motorbikes along Ha-Meri. People last.
+
+## Off the ground: bridges, tunnels, cuttings, embankments (`decks.gd`)
+
+A road whose city file has `y` (its surface's height at each node, decimetres above the
+height grid's base) is a **deck**; its OSM tags say what it is built as (`br` bridge, `tu`
+tunnel, `em` embankment, `cu` cutting). Only `tools/fake_city.py` writes `y` so far, so only
+the test town has decks; in the real towns a bridge without `y` is drawn on the ground as
+before and a tunnel without it is still dropped.
+
+- **One height is not enough.** Everything used to ask `_h(p)`, the ground. Now whatever has
+  a level asks `_decks.surf(p, y)`: the highest of the ground and the decks under p that is
+  at most `STEP_UP` (1.2 m) above its feet, or the lowest when every one is higher. A car
+  keeps its own `_y` (the player's), `c.y` (traffic) and that decides: under a bridge it
+  stays under, in the tunnel it is not lifted onto the hill. Over an open cutting the
+  ground is not a candidate. The car's physics, pose, slope, air, the chase camera, walking,
+  getting out, the driverless car, traffic's placing and drawing all use it.
+- **Kept off the ground's builders.** Decks go in `_tile_decks`, not `_tile_roads`, so no
+  kerb, parked car, lamp, walker, fence or sign is put along one by the usual builders (they
+  would stand on the ground under a bridge or on the hill over a tunnel); `decks.gd` draws
+  their asphalt (the game's own `_ribbon` and `_markings`, with `_on_deck` set so `_g3` and
+  `_ground_line` take the deck's heights), pavements, parapets, slab, piers, retaining walls,
+  railings, the tube and its lamps. Width fitting, building clipping, medians, dual
+  carriageways skip decks; the asphalt grid the kerbs check takes only their stretches at
+  ground level. A node only decks meet at is left out of `_tile_nodes` (no junction disc).
+- **Levels in the lookups.** `_nearest_seg(..., y)` skips roads more than 3 m from y (no y:
+  the ground's level at p, so building-time callers ignore a bridge overhead); the car's
+  callers pass `_y` (assist, autodrive's planning, the street name on the HUD, back on the
+  road). `_push_out(..., y)` checks the decks' walls (each with the band of heights it is
+  solid over: a parapet from under the slab to its top, an embankment's wall from the
+  ground, a cutting's up to its railing, a tunnel's up to the ceiling) and only checks
+  buildings, fences and trees for a body near the ground's level. Traffic skips cars more
+  than 2.5 m above or below (`_level`, `lead_on(..., y)`, `push(..., y)`).
+- **The ground cut open.** Over a cutting the terrain mesh's triangles are clipped round its
+  footprint (`cut_tri`, in `_build_terrain`), and the far-off flat ground plane is put below
+  the deepest deck (it showed through the hole). The tunnel's tube casts shadows from both
+  faces (its own meshes, not the merged ones) so the sun does not light it inside.
+- **Water held at a level** (`areas[].y`, the test town's river) lies at that level, and is
+  too deep to drive or walk into (`_deep_push`): the banks were gentle enough to drive down
+  and along the bed under the water. Lakes and ponds without a level are as before.
+- **Where the heights come from.** The test town's maker knows them: each deck's ends at the
+  ground, a bridge straight from bank to bank with a little camber, the flyover's and
+  underpass's ramps eased up and down to 6.6 m clear of the boulevard (`CLEAR`), the tunnel
+  a straight line between its ends' heights with a 3 m dip, its mouths wherever the ground
+  is 7 m over the road (`COVER`). For a real town the heights would have to be worked out:
+  OSM tags only the bridge's span (the ramps are ordinary ways, sometimes `embankment=yes`)
+  and says nothing of how high; the baker now keeps `layer`, `embankment` and `cutting`.
+- **The test**: `tests/decks.gd` (level 4) -- see tests/README.md. Its first rounds found,
+  in order: the surface stepped at every joint of a deck (the highest of several nearby
+  segments of one road was taken: half the tunnel run airborne), autodrive crawling at
+  30 km/h under the hill (its look-ahead probes saw the houses above as obstacles),
+  bridges ending on the river bank's slope (the 8 m grid bends the ground a cell past the
+  dug channel: a crest past each end, cars took off), a bridge ending 8 m from a junction
+  (a turning car clipped the parapet), a 5 cm switch from a cutting's road to the ground
+  where it gets shallow (a hop), and ground triangles left whole over a cutting (an edge
+  parallel to the hole's leaves a smaller triangle: compare areas, not corner counts).
+- **Still to do**: heights for the real towns' bridges and tunnels; pavements at street
+  level beside a cutting (the underpass has none); people on a bridge's pavement; the
+  minimap draws a tunnel like any street; zooming out from inside the tunnel rises from the
+  hilltop (the zoom centres on the ground's height); the heights are whole decimetres, so a
+  deck's grade kinks by up to 2% every 5 m (enough for a 2 cm hop off HaNasi's bridge);
+  autodrive turning right off the flyover's foot onto HaRakefet clips a crossing railing's
+  post on the corner about one run in two (the railing reaches 6 m from the zebra, into the
+  corner: a corner-furniture question, not a deck one). Ramps' and cuttings' walls are left
+  out of the collisions within a junction's corner (`_walls_of`): there they are a step a
+  turning car sweeps over.
 
 ## Open problems
 
