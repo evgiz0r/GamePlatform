@@ -40,9 +40,14 @@ func _run() -> void:
 	var flips := 0
 	var n := 0
 	var next_shot := 10.0
+	var phys: int = Engine.get_physics_frames()
 	while t < secs:
 		await process_frame
-		var dt := 1.0 / 60.0
+		# (game time since the last drawn frame: this machine draws a few frames a second, and
+		# counting each as 1/60 s made the view's turning speed look ten times what it was)
+		var now: int = Engine.get_physics_frames()
+		var dt := maxf(float(now - phys) / 60.0, 1.0 / 60.0)
+		phys = now
 		t += dt
 		var cam: Camera3D = g.cam
 		var f := -cam.global_transform.basis.z

@@ -112,6 +112,18 @@ again, compare. Check what each counter really counts before chasing its number:
 counted frames of braking (30 per stop), another judged a car mid-turn by the heading it
 had at that moment, and both sent a round of work the wrong way.
 
+## Cameras and motion: measure the swing
+
+A camera effect that reads well in one screenshot can be sickening in motion -- a look-round
+added to a first-person view fed the steering into the camera twice, and every small
+correction the AI made swung the view ("chaotic, it jumps around"). Before shipping a
+camera or body-motion change, measure it over a minute of driving: how far the view turns
+from ahead, how fast, how often it swings back. And measure in game time, not drawn
+frames: on a slow test machine a frame is several physics ticks, and counting each as
+1/60 s inflated the turning speed tenfold. For vehicles that look like they "jump", measure
+the rear axle's sideways speed -- a real car's is about zero; a body pointed along its
+path from its middle swings its back out at every corner.
+
 ## Showing the user
 
 The user reads pictures, not tables -- a per-minute scorecard of a dozen rows was "hard to

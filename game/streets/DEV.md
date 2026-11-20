@@ -294,6 +294,18 @@ What each round found, so far:
   (`lead_on` now samples a car's nose and tail), and a 1.5 m road at a junction that turned
   the "lane's way" backwards (`lane_dir` now over 5 m of the plan). And a wrong 'unstuck'
   lift after 40 s in a slow queue at a red (`_in_a_queue`).
+- The look-round made the seat view chaotic ("jumps around, looks at random locations"):
+  the steering went into the view twice (its own lead into a turn, and the head's turn on
+  top), the scan fired at every junction below 23 km/h, and the eyes jumped to whichever
+  person was nearest each frame. Now the head has no steering, scans only standing, holds
+  one person, and moves eased; the seat view takes 70% of it. `tests/seat_steady.gd`:
+  swings back 171 -> 67 a minute, 9.4 -> 3.3 deg off ahead on average. What is left is the
+  view's own lead into turns following autodrive's small corrections, and the body.
+- Traffic vehicles steer by their front: the front axle runs on the lane rounded over 4 m,
+  the rear trails a wheelbase behind (`_place` in traffic.gd). The body was pointed along
+  the lane 2.2 m either side of its middle, the same for a car and a bus, and pivoted on
+  its middle at corners. `tests/traffic_motion.gd`: rear sliding sideways 3-7% of moving
+  time -> 0.
 - Queues at a green (`tests/queue_start.gd`, KNOT_AT="-800,-288" in Givatayim): all at
   once at first (a train), then far too slow (third car 9 s); the follow gap now on the
   slower of the two speeds.
