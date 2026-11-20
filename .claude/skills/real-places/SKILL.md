@@ -58,6 +58,15 @@ goes wrong shows up the first time it runs.
   workflow's `bare_ground`): a grey opening over ~90 m takes out bumps narrower than ~180 m
   and keeps broad hills and valleys (that centre: 0-38 m, steepest 13%). It also lowers a
   real hill's crest a little (one town's 86 -> 72 m), so it is not the default.
+- **Government open data may refuse the cloud.** A national portal's API answered, but
+  its files came from a CDN host that refused the container even once the environment
+  allowed both hosts (a CloudFront 403 page instead of the file: likely by country). Do not
+  dress the request up to get past it; have the user download the file and add it to the
+  repo, or use what OSM has.
+- **A landmark's name is often on its podium.** OSM names the outline a tower stands on (a
+  radio tower's 18 m base) and maps the tower as an unnamed `building:part` inside it (80 m,
+  `min_height` the podium's top). To dress a named landmark, take the tallest building
+  standing inside the named outline, not the named one.
 - `tools/fake_city.py` makes up a small town with one of every awkward thing (divided
   boulevard, big signalled junction, roundabouts, a one-way pair, a steep hill, car parks)
   in a second, no network. Use it to check a change quickly; check real towns before
