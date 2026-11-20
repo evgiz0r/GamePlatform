@@ -49,6 +49,14 @@ The ones most often touched, and the functions in them:
   (barred windows, the door in the middle bay), stone courses, plinth and mosaic are
   `WALL_SHADER`'s `ground` / `door` / `stone_k`; worn asphalt is `TONE_SHADER`'s
   `crazing()` and patches. `tests/eye_level.gd` puts a camera where a person stands.
+- **night lights** -- GLOW_SHADER (additive, unfogged, `skip_vertex_transform`) draws the
+  pools (`_pool`, at pavement height + 3 cm), the headlight beams (`_beam_mesh`) and halos
+  (`_halo`: a quad whose vertices all sit at the light, UV2.y 1, turned to the eye in the
+  shader, never under ~1% of the distance across): the lamps' halos go in the pools' mesh
+  (`_make_pools`), the headlights' in the beam mesh the player's car and the traffic share
+  -- no draws of their own. Lit shops' light on the pavement: `_shop_lights`. The night's
+  colours: the night branch of `_retint_city` (a little of the palette's player colour, not
+  half of it). Shop glass at night 0.85 (2.0 clipped to white).
 - **cats, flags on cars** -- the builders call `cat_at(p, y, facing, "sit"/"loaf")` (garden
   walls in `_garden_fronts`, a parked car's nose in `_build_parked`, bins in furniture's
   `kerbside`); furniture.gd's `cats()` places `_cat_kit()` (ellipsoids and tubes, the coat
@@ -216,6 +224,65 @@ good is 30-70 m past the town's edge, stopped by "steep ground").
 
 Before anything: `tools/check_script.sh res://game/streets/streets.gd
 res://game/streets/traffic.gd res://game/streets/furniture.gd` (seconds).
+
+### The checks that should read 0
+
+A look back over twenty bug fixes (November 2026) found the same few mistakes again and
+again, and about half of the bugs made the same day by the change before or by another
+session. So there are checks for what must never happen, each one a kind of bug fixed
+before, all measured on **bodies, not middles** (`tests/bodies.gd`: a vehicle is a box its
+own length and width, a wall a box along all of it, a post a circle -- five of the twenty
+were a long thing judged at its middle):
+
+- **The exam's checks** (`exam.gd`, the "check: ..." lines and the CHECKS total): bodies
+  overlapping (traffic with traffic, autodrive with a car), a body into a building, wall or
+  post, standing over the stop line at a red, autodrive pushing against something 3 s, and
+  standing 10 s+ held by nothing named (followed down the queue to its front). Every tick,
+  every car. They print 0 when clean, so a reader sees they ran.
+- **The city as built** (`city_check.gd`, seconds a city; `LEVEL=0` all four): walls,
+  posts and buildings on a street's asphalt (sampled every metre of them), lit points that
+  belong to no junction; and the traps to stage a test at -- stub roads under 5 m at a
+  junction, lit points under 25 m apart counted as two junctions, walls and posts on
+  service roads.
+- **Queues against real ones** (`queue_start.gd`, QUEUE CHECK: PASS / FAIL): start gaps and
+  stop-line gaps in bands from real counts (Greenshields 1947, the Highway Capacity Manual),
+  not from the last run -- tuned by eye, the queue went from all at once to the third car 9
+  s after the green within the hour.
+
+**A fix comes with what would catch it again** -- a scene test that stages it, or a check
+here. **After merging** (another session's work, or `main`), before pushing: `city_check`
+on the cities the merge touched, the filmed walk's `SCAN=1`, and the exam on the test town
+(`LEVEL=4 EXAM_STARTS=2`, headless: under a minute); the exam on a real town when traffic
+or autodrive changed. Headless runs take the same numbers several times faster:
+`LEVEL=n STREETS_BUILD_ALL=1 $GODOT --headless --fixed-fps 60 --path . -s
+res://game/streets/tests/<test>.gd` (no screenshots).
+
+What the checks found on their first rounds, none fixed yet (numbers in tests/README.md),
+biggest first:
+- **Traffic's bodies brush what stands by the road.** Traffic is on rails: nothing keeps a
+  bus's 2.5 m off the kerb-side trees, poles and bollards of a narrow lane, or a turning
+  bus's corner off the post on the corner (11-21 occasions a run in each town).
+- **A mall's canopy columns stand in the road** (`_mall_front`: 3.2 m out from the front,
+  no road check; fronts are cut back to the road's edge + 1.5 m): two 1.9 m into Zahal by
+  Ashdod's start. The exam had a taxi drive through one at 39 km/h.
+- **Hedges over the kerb into the lane**: 18 in Givatayim, 15 in Ashdod, 0.4-0.6 m in
+  (`city_check SHOTS=1` shows the worst). `walls_on_roads` counts only walls wholly on the
+  asphalt, so it read 0. The worst (Mezulot Yam) is plainly a hedge in the lane beside a
+  parked car; the second (a kerb corner on Sderot HaHaskala) is a hedge ending at the
+  corner and not clearly on the road -- the check measures against a road's straight strip,
+  which at a junction's corner is not where the kerb runs. Look at each before fixing; the
+  check may want corners left out.
+- **Autodrive pushing into a traffic car keeps it there**: `Traffic.bumped` stuns a car for
+  2.5 s on every touch, so one autodrive presses against never pulls away. Givatayim's exam:
+  a hatch "held by the limit" 20 s, autodrive pushing, then a rescue. Read from the code
+  and the logs; stage it in a scene test before fixing.
+- Moving cars overlapping side by side by 0.3-0.5 m (lane changes, scooters filtering); a
+  scooter filtering to the front stops 7 m past the stop line at Ashdod's start junction.
+- Queues clear about a quarter slower than real ones (QUEUE CHECK: FAIL, just).
+- Six places in Ashdod where lit points 8-16 m apart are separate junctions (three at
+  (-1516, 1823)): the setup that once gave green both ways. Watch one with `knot_lights`.
+- In the test town, three queues whose front car stands "held by the limit" with nothing
+  near it: not looked into yet.
 
 ## Seeing what the car did: the drive recorder
 
