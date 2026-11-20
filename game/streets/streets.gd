@@ -3104,7 +3104,10 @@ func _retint_kerbs() -> void:
 	_kerb_mat.set_shader_parameter("white", Palette.col("ink"))
 	# the kerb paint is vivid, as it is on the street, but red rather than the palette's pink
 	_kerb_mat.set_shader_parameter("red", _natural(Palette.col("hazard").lerp(Palette.col("warn"), 0.22), 0.85))
-	_kerb_mat.set_shader_parameter("blue", _natural(Palette.col("player").lerp(Palette.col("bg"), 0.35), 0.85))
+	# and the blue a road paint's blue, not the palette's cyan (beside a filmed street the
+	# game's blue-white kerb read as turquoise-white): the hue pinned, its strength the palette's
+	var pl := Palette.col("player")
+	_kerb_mat.set_shader_parameter("blue", Color.from_hsv(0.6, clampf(pl.s, 0.55, 0.8), clampf(pl.v * 0.62, 0.45, 0.68)))
 	_kerb_mat.set_shader_parameter("yellow", Palette.col("warn"))
 	_kerb_mat.set_shader_parameter("black", Palette.col("bg"))
 	_kerb_mat.set_shader_parameter("pave", _tone["pavement"])

@@ -216,6 +216,9 @@ What each round found, so far:
   near-first: Givatayim ~2 s (9 of its 71 squares), Bedford ~1.2 s, Ashdod ~2.8 s, the test
   town ~1.2 s (headless playtest, `build_ms` in the "city" event); the rest of Givatayim
   ~10 s of background building (the "city_built" event).
+- Parked cars by the kerb's paint (Givatayim's start view, `tests/frame_cost.gd`, quality
+  3): 1.32 M triangles + 632 k shadow before, 1.54 M + 854 k after (+17%, +35%), draws 292
+  -> 294. The start is a residential street of blue-white kerbs, the densest case.
 - Draw calls at the start view: Givatayim ~290, Ashdod ~420 (`tests/draws.gd`), before the
   city was built in squares; since, Givatayim 235 with all of it built (little things are
   grouped per 400 m square, not 220 m) and 200 at the start before the rest is up.
