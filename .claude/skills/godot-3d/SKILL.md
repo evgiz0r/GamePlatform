@@ -59,6 +59,10 @@ is a Z coordinate, not a height.
   soft ramp floating a hand's width over a lawn does not show, one sunk under the pavement
   is gone. One mesh per merged square: a draw each. Build cost is per corner of every
   outline, so look each height up once. Darken the walls' own feet in the wall shader too.
+  A band along something whose ground is already drawn with coordinates across it (a
+  pavement whose UV is metres out from the kerb) is cheaper as a term in that ground's
+  shader, flagged in a spare vertex channel, than as strips of its own: the same band
+  cost 40 ms of build as geometry and nothing as a shader term.
   To judge it, shoot the same view with the layer hidden and shown, and diff the pictures:
   by eye, at a 0.4 strength it was invisible, and traffic and fading HUD labels change
   between shots too.
