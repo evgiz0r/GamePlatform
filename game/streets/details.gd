@@ -70,9 +70,11 @@ extends RefCounted
 ##                                                    cars stop for it (kerb to kerb)
 ##              cars: [[t, [x, z], [dx, dz]]...],    a car sent down the street nearest the
 ##                                                    spot at second t, that way (traffic.gd)
-##              people: [{at, to, t: [from, to], face, who, tall}]}}   who the film shows:
-##                                                    standing at `at` facing `face`, or walking
-##                                                    `at` to `to` between those seconds
+##              people: [{at, to, t: [from, to], face, who, tall, stay}]}}   who the film
+##                                                    shows: standing at `at` facing `face`, or
+##                                                    walking `at` to `to` between those seconds
+##                                                    (there only then, unless `stay`: then it
+##                                                    stands where it got to)
 
 var g: Node                    ## the streets game
 var data := {}

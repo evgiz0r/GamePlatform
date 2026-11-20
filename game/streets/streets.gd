@@ -10745,7 +10745,7 @@ var _film_looks: Array = []          ## Vector3(from, to, radians): a glance to 
 var _film_zebras: Array = []         ## [from, to, kerb, kerb]: on a crossing (or waiting at it)
 var _film_cars: Array = []           ## [second, at, heading]: a car sent down a street
 var _film_sent := 0
-var _film_people: Array = []         ## [actor, from, to, from second, to second]: who the film shows
+var _film_people: Array = []         ## [actor, from, to, from second, to second, stays, arrived]: who the film shows
 
 func _film_begin(id: String) -> void:
 	var walks: Dictionary = _details.data.get("walks", {}) if _details != null else {}
@@ -10783,7 +10783,7 @@ func _film_begin(id: String) -> void:
 		var pace: float = A.distance_to(B) / maxf(float(tt[1]) - float(tt[0]), 0.01)
 		a.play("Walk" if moving else "Idle", true, pace / 1.35 if moving else 1.0)
 		a.visible = not moving
-		_film_people.append([a, A, B, float(tt[0]), float(tt[1])])
+		_film_people.append([a, A, B, float(tt[0]), float(tt[1]), bool(pp.get("stay", false)), false])
 	var p0 := _film_at(0.0)
 	_pos = p0
 	_yaw = (_film_at(1.5) - p0).angle()
@@ -10827,10 +10827,13 @@ func _film_tick(dt: float) -> void:
 			continue
 		var f: float = (_film_t - float(fp[3])) / maxf(float(fp[4]) - float(fp[3]), 0.01)
 		var who: Actor3D = fp[0]
-		who.visible = f >= 0.0 and f <= 1.0
+		who.visible = f >= 0.0 and (f <= 1.0 or fp[5])   # (a walker that stays stands where it got to)
 		if who.visible:
-			var q := A.lerp(B, f)
+			var q := A.lerp(B, clampf(f, 0.0, 1.0))
 			who.position = Vector3(q.x, _walk_y(q), q.y)
+			if f > 1.0 and not fp[6]:
+				fp[6] = true
+				who.play("Idle", true, 1.0)
 	while _film_sent < _film_cars.size() and _film_t >= float(_film_cars[_film_sent][0]):
 		var fc: Array = _film_cars[_film_sent]
 		_film_sent += 1

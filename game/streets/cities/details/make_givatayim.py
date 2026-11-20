@@ -39,7 +39,8 @@ r2 = lambda p: [round(p[0], 2), round(p[1], 2)]
 # kerbs at -13.8 and 3.1, the median from -6.8 to -3.9; about 2.1-2.3 m/s over each half.
 KERB_N, MEDIAN, KERB_S = P(-14.1, -17.4), P(-5.35, -17.35), tuple(P(3.3, -17.3))
 lm = [
-    (0.0, tuple(P(-16.0, -17.4))), (1.6, tuple(KERB_N)), (4.5, tuple(KERB_N)),   # to the north kerb, waiting
+    (0.0, tuple(P(-16.0, -17.4))), (1.6, tuple(KERB_N)), (4.9, tuple(KERB_N)),   # to the north kerb, waiting
+                                                                                 # (the film steps off at 5.3 s)
     (8.7, tuple(MEDIAN)), (13.3, tuple(MEDIAN)),                            # over the near half; waiting
     (17.0, KERB_S), (18.4, tuple(P(6.4, -17.6))),                           # over the far half, up the kerb,
                                                                             # in past the arcade's middle column
@@ -121,6 +122,9 @@ d = {
         # a paver on, level with the forecourt, fence to fence
         {"k": "pavers_grey", "lift": 0.14, "lay": [round(left[0], 4), round(left[1], 4)],
          "p": [P(17.1, -1.35), P(57.8, -1.35), P(57.8, 1.35), P(17.1, 1.35)]},
+        # the little street's pavement the walk is on (film 64-80 s): the same grey pavers in rows
+        {"k": "pavers_grey", "lift": 0.14, "lay": [round(left[0], 4), round(left[1], 4)],
+         "p": [P(58.3, -2.98), P(79.5, -2.98), P(79.5, -5.35), P(58.3, -5.35)]},
         # Ha-Meri's mouth past Sheinkin (film 86.5-92.5 s): a raised crossing, the road paved in
         # charcoal herringbone up to the pavements' height, a metre's ramp either end
         {"k": "pavers_dark", "lift": 0.14,
@@ -190,7 +194,7 @@ d = {
         # corner block stands too near for the game to park them up on that kerb), and a
         # second transformer on twin poles at Sheinkin's corner
         *[{"kind": "parked_car", "at": P(s0, 1.75), "dir": [round(u[0], 4), round(u[1], 4)], "body": kd}
-          for s0, kd in ((63.0, "suv"), (68.4, "hatch"), (73.8, "sedan"))],
+          for s0, kd in ((64.5, "suv"), (69.6, "hatch"), (74.6, "sedan"))],
         {"kind": "twin_poles", "at": P(78.4, -6.5), "dir": SE},
         # the little street's gate (film 66-70 s): two concrete posts, a heart sprayed on one
         {"kind": "gatepost", "at": P(66.0, -6.4), "dir": SE, "heart": True},
@@ -211,14 +215,15 @@ d = {
             "name": "Katzenelson to Ha-Meri, on foot",
             "points": walk,
             # the head turned from the way the walk goes: [from, to, degrees, + right]
-            "looks": [[1.4, 3.9, -70], [3.9, 4.7, 30],          # the near half's traffic comes from the left
+            "looks": [[1.4, 4.4, -70], [4.4, 5.1, 30],          # the near half's traffic comes from the left
                       [8.9, 12.6, 70], [12.6, 13.4, 20],        # the far half's from the right
                       [79.3, 81.0, 60], [81.0, 82.3, -45],      # Sheinkin's from the right; and the other way
                       [84.4, 86.0, 40],                         # half way over, along Sheinkin again
-                      [87.6, 88.6, -55], [89.0, 91.2, 55]],     # back at the corner; then down Ha-Meri
+                      [87.6, 88.6, -55], [89.0, 91.2, 55],      # back at the corner; then down Ha-Meri
+                      [91.6, 94.5, 60]],                        # and down it again, up the far kerb
             # on a crossing, or waiting at its kerb about to go: cars stop for it
             # [from, to, kerb, kerb]
-            "zebras": [[4.0, 8.9, P(-13.8, -17.4), P(-6.8, -17.4)],
+            "zebras": [[4.4, 8.9, P(-13.8, -17.4), P(-6.8, -17.4)],
                        [9.2, 17.0, P(-3.9, -17.35), P(3.1, -17.3)],
                        [81.0, 87.0, P(82.4, -4.2), P(90.4, -4.2)],
                        [87.2, 92.4, P(92.3, -4.0), P(92.3, 4.0)]],
@@ -230,7 +235,8 @@ d = {
             "people": [{"at": P(4.6, -20.6), "face": NW_U, "who": 0},
                        {"at": P(14.4, -5.8), "face": [round(left[0], 4), round(left[1], 4)], "who": 1},
                        {"at": P(14.6, -6.7), "face": [round(-left[0], 4), round(-left[1], 4)], "who": 3},
-                       {"at": P(58.0, 1.9), "face": NW_U, "who": 2}],
+                       # (walking up to the passage's end as the walk comes out of it, then standing)
+                       {"at": P(61.6, 2.1), "to": P(58.4, 2.1), "t": [59.0, 61.4], "stay": True, "who": 2}],
             "cars": [[0.0, P(-10.2, 22), NW], [1.5, P(-10.2, 40), NW],              # one by, one stops
                      [5.0, P(-0.3, -45), SE], [6.5, P(-0.3, -62), SE], [7.5, P(-0.3, -70), SE],
                      [78.0, P(91.15, -55), SE]],
