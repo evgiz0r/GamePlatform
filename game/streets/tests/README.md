@@ -34,13 +34,13 @@ these numbers the wrong way has broken something.
 | `corners` | 1 | junction corners the old middle-only check let in whole | 261 (fixed), shots |
 | `map_edge` | 3 | the car coasting into the map's edge | stops nose to the barrier |
 | `feet` | 1 | a walker's feet against the pavement's top | 0.21 = 0.21 |
-| `feel` | 1 | a crash at 54 km/h; jumping out at 50 km/h; into a fence | rebound 1.3 m/s, no hop; 3.4 m tumble, car rolls 37 m |
+| `feel` | 1 | a crash at 54 km/h; jumping out at 50 km/h; into a fence | rebound 0-1.3 m/s, no hop; 3.4 m tumble, car rolls 37 m; the fence check picks a fence behind a building (stops 6.5 m short) -- to fix |
 | `on_foot` | 1 | getting out, walking, running, a car stopping for you | 2.1 / 6.2 m/s |
 | `quality_ladder` | 1 | the frame-rate watcher fed made-up frame times | stays at 2 through stalls; down at 35 fps; back up at 60 |
 | `quality_look` | 1 | the street at quality 3 and 0 (shots) | |
 | `draws`, `frame_cost` | 1 | what is drawn and what it costs per quality level | ~280 draws |
 | `divided_zebra` | 3 | people crossing both halves of a divided road (shots) | |
-| `load_stages` | 1, 3 | where the build time goes, stage by stage | Ashdod: kerbs 3.0 s, roads 1.9, trees 1.7 |
+| `load_stages` | 1, 3 | where the build time goes, stage by stage (`STREETS_BUILD_ALL=0`: what a player waits for) | Ashdod near-first: ready in 6.8 s here, 2.5 of it shader warm-up; whole city: kerbs 3.0 s, roads 1.9, trees 1.7 |
 | `drive_log` | 3 | the drive recorder: 60 s, the map page, a saved log | ~520 samples |
 
 `drive_log_map.py` draws a saved drive log (the "save log" button on the perf view's map
