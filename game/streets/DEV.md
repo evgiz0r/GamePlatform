@@ -207,6 +207,12 @@ screenshots in `$OUT`. On a cloud container each takes 2-10 minutes: run them in
 background. `tests/README.md` lists them with the last results -- what "good" looks like.
 Run the ones near what you change, before and after.
 
+**Speed.** `SIM_SPEED=2` (run.sh; `STREETS_SIM_SPEED` for the engine straight) runs twice the
+game time a tick, for behaviour counted over minutes while iterating; 1x for how driving
+feels and for numbers written down; 3x only to see that something still runs. The measurements
+and which test is which: "Faster runs" in tests/README.md. Headless is the bigger saving
+whenever no screenshot is wanted.
+
 `run.sh` sets `STREETS_BUILD_ALL=1`: the whole city is built before a test starts, as the
 tests look all over it (the game itself builds near the start first and the rest while you
 drive).
@@ -257,32 +263,43 @@ or autodrive changed. Headless runs take the same numbers several times faster:
 `LEVEL=n STREETS_BUILD_ALL=1 $GODOT --headless --fixed-fps 60 --path . -s
 res://game/streets/tests/<test>.gd` (no screenshots).
 
-What the checks found on their first rounds, none fixed yet (numbers in tests/README.md),
-biggest first:
-- **Traffic's bodies brush what stands by the road.** Traffic is on rails: nothing keeps a
-  bus's 2.5 m off the kerb-side trees, poles and bollards of a narrow lane, or a turning
-  bus's corner off the post on the corner (11-21 occasions a run in each town).
-- **A mall's canopy columns stand in the road** (`_mall_front`: 3.2 m out from the front,
-  no road check; fronts are cut back to the road's edge + 1.5 m): two 1.9 m into Zahal by
-  Ashdod's start. The exam had a taxi drive through one at 39 km/h.
-- **Hedges over the kerb into the lane**: 18 in Givatayim, 15 in Ashdod, 0.4-0.6 m in
-  (`city_check SHOTS=1` shows the worst). `walls_on_roads` counts only walls wholly on the
-  asphalt, so it read 0. The worst (Mezulot Yam) is plainly a hedge in the lane beside a
-  parked car; the second (a kerb corner on Sderot HaHaskala) is a hedge ending at the
-  corner and not clearly on the road -- the check measures against a road's straight strip,
-  which at a junction's corner is not where the kerb runs. Look at each before fixing; the
-  check may want corners left out.
-- **Autodrive pushing into a traffic car keeps it there**: `Traffic.bumped` stuns a car for
-  2.5 s on every touch, so one autodrive presses against never pulls away. Givatayim's exam:
-  a hatch "held by the limit" 20 s, autodrive pushing, then a rescue. Read from the code
-  and the logs; stage it in a scene test before fixing.
+What the checks found on their first rounds (November 2026; numbers in tests/README.md), and
+what became of it:
+- **Fixed -- a mall's canopy columns in the road** (`_mall_front`: 3.2 m out from the front,
+  no road check, fronts cut back to the road's edge + 1.5 m): two 1.9 m into Zahal by
+  Ashdod's start, and the exam had a taxi drive through one. The canopy is now as deep as
+  the room allows, columns only off the road. Also a fuel station's corner columns
+  (`_station_fits`: its middle was checked, not its corners -- Bedford).
+- **Fixed -- hedges over the kerb into the lane** (18 in Givatayim, 15 in Ashdod): OSM's
+  hedges were laid with a fence's margins; `_open_pieces` takes a body width now (0.4 for
+  a hedge). Left: 11 low garden walls in Givatayim, 3 in Ashdod, 0.3-0.5 m in -- the worst
+  is a cul-de-sac's turning bulb at (-1234, 200), with a tree on its asphalt too; others
+  may be the check's weak spot at junction corners (it measures a road's straight strip).
+  Look at each before fixing.
+- **Fixed -- autodrive pushing into a traffic car kept it there**: every touch stunned the
+  car 2.5 s (`Traffic.bumped`), so one pressed against never pulled away (a hatch "held by
+  the limit" 20 s, then a rescue). Only a knock over 1.2 m/s stuns now; Givatayim's exam
+  went from 6 autodrive-into-a-car to 0.
+- **Fixed -- a bus pulling in at a stop** moved 0.9 m toward the kerb whatever the room: on
+  a 6 m street that is 0.9 m over the kerb, into the stop's pole and the trees. It moves
+  only as far as keeps its side 0.3 m on the asphalt.
+- **Fixed -- parked motorbikes' solid circle in the lane** (another session's new bikes, an
+  hour old: their ends were checked, the 1.1 m circle round their middle was not): Ashdod's
+  posts on the road went 12 -> 0 with the columns.
+- **Open -- traffic's bodies over corner posts.** Traffic is on rails; since vehicles steer
+  by their front and the back follows (the other session's change), the back cuts inside a
+  turn, and every car turning at some corners passes over a post there (Givatayim: post 918
+  at (-199, -774), four cars in one run). Wants the turn's line kept wide of the corner by
+  the vehicle's back, in traffic's planning.
+- **Open -- a traffic car that wants to go and does not** (the test town: a scooter wanting
+  8 m/s stood 28 s, 15 m from the player, in view). Not traced yet. A lead: a car decides
+  what it wants every third tick, and one "stop" decision resets its moment to react
+  (`react_t`), so a hold that flickers on and off keeps it standing for ever. Stage it.
 - Moving cars overlapping side by side by 0.3-0.5 m (lane changes, scooters filtering); a
   scooter filtering to the front stops 7 m past the stop line at Ashdod's start junction.
 - Queues clear about a quarter slower than real ones (QUEUE CHECK: FAIL, just).
 - Six places in Ashdod where lit points 8-16 m apart are separate junctions (three at
   (-1516, 1823)): the setup that once gave green both ways. Watch one with `knot_lights`.
-- In the test town, three queues whose front car stands "held by the limit" with nothing
-  near it: not looked into yet.
 
 ## Seeing what the car did: the drive recorder
 
@@ -375,6 +392,25 @@ What each round found, so far:
   (`lead_on` now samples a car's nose and tail), and a 1.5 m road at a junction that turned
   the "lane's way" backwards (`lane_dir` now over 5 m of the plan). And a wrong 'unstuck'
   lift after 40 s in a slow queue at a red (`_in_a_queue`).
+- The look-round made the seat view chaotic ("jumps around, looks at random locations"):
+  the steering went into the view twice (its own lead into a turn, and the head's turn on
+  top), the scan fired at every junction below 23 km/h, and the eyes jumped to whichever
+  person was nearest each frame. Now the head has no steering, scans only standing, holds
+  one person, and moves eased; the seat view takes 70% of it. `tests/seat_steady.gd`:
+  swings back 171 -> 67 a minute, 9.4 -> 3.3 deg off ahead on average. What is left is the
+  view's own lead into turns following autodrive's small corrections, and the body.
+- "They drive straight but stand very much on the right": autodrive follows its line
+  (`tests/lane_position.gd`), so the line was the cause -- 0.25 m past a two-way lane's
+  middle (0.6 m from the kerb on a 7 m street) and the right-hand lane of three on
+  Sderot Herzl. Now +0.12 m and 1.1 m clear of the kerb; on three lanes or more the second
+  from the right, over to the right-hand one before a right turn.
+- The look-round fires only first in line and about to go (no car within 12 m in front;
+  at a light, its green): it looked left and right at every red from behind a queue.
+- Traffic vehicles steer by their front: the front axle runs on the lane rounded over 4 m,
+  the rear trails a wheelbase behind (`_place` in traffic.gd). The body was pointed along
+  the lane 2.2 m either side of its middle, the same for a car and a bus, and pivoted on
+  its middle at corners. `tests/traffic_motion.gd`: rear sliding sideways 3-7% of moving
+  time -> 0.
 - Queues at a green (`tests/queue_start.gd`, KNOT_AT="-800,-288" in Givatayim): all at
   once at first (a train), then far too slow (third car 9 s); the follow gap now on the
   slower of the two speeds.

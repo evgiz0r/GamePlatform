@@ -4154,11 +4154,28 @@ func _mall_front(edge: Array, g_lo: float, wc: Color, kit: Dictionary, kit_col: 
 	var glass := mid + out * 0.08
 	_mall_glass.append(Transform3D(face * Basis.from_scale(Vector3(maxf(L - 1.0, 2.0), 3.4, 0.1)),
 		Vector3(glass.x, g_lo + 1.8, glass.y)))
-	var cp := mid + out * 1.8
-	kit["canopy"].append(Transform3D(face * Basis.from_scale(Vector3(minf(12.0, L * 0.5) / 2.4, 2.4, 3.3)), Vector3(cp.x, g_lo + 4.0, cp.y)))
+	# The canopy and its columns stand on the forecourt, never out over the road: fronts are
+	# cut back to the road's edge + 1.5 m, and columns put 3.2 m out stood 1.7 m into the
+	# lane (two in Zahal by Ashdod's start; a taxi drove through one -- city_check and the
+	# exam's checks found them). The canopy is as deep as the room in front allows; the
+	# columns go only where they are off the road, and a shallow canopy needs none.
+	var width := minf(12.0, L * 0.5)
+	var depth := 3.3
+	while depth > 1.2:
+		var reach := out * (0.15 + depth + 0.3)
+		if _off_road(mid + reach, 0.0) and _off_road(mid + e * width * 0.5 + reach, 0.0) \
+				and _off_road(mid - e * width * 0.5 + reach, 0.0):
+			break
+		depth -= 0.5
+	var cp := mid + out * (0.15 + depth * 0.5)
+	kit["canopy"].append(Transform3D(face * Basis.from_scale(Vector3(width / 2.4, 2.4, depth)), Vector3(cp.x, g_lo + 4.0, cp.y)))
 	kit_col["canopy"].append(wc * 0.9)
+	if depth < 2.0:
+		return
 	for sd: float in [-1.0, 1.0]:
-		var q := mid + e * sd * minf(5.0, L * 0.2) + out * 3.2
+		var q := mid + e * sd * minf(5.0, L * 0.2) + out * (0.15 + depth - 0.25)
+		if not _off_road(q, 0.3) or _in_junction(q, 0.3):
+			continue
 		kit["column"].append(Transform3D(Basis.from_scale(Vector3(0.45, 4.0, 0.45)), Vector3(q.x, g_lo + 2.0, q.y)))
 		kit_col["column"].append(wc)
 		_add_post(q, 0.25)
@@ -6013,7 +6030,9 @@ func _park_moto(r: Dictionary, ri: int, run: PackedVector2Array, cum: PackedFloa
 	var face := (d * sgn).rotated(slant)
 	if not _mine(p) or _no_parking(r, ri, p) or _push_out(p, 0.6, false) != Vector2.ZERO or not _clear_of_posts(p, 1.0):
 		return
-	if not (_off_road(p + face * 0.95, 0.05) and _off_road(p - face * 0.95, 0.05)):
+	# (and its middle by the solid circle it gets below: the ends alone let the circle stand
+	# half a metre into the next street's lane at a corner -- city_check, Ashdod's Ort)
+	if not (_off_road(p + face * 0.95, 0.05) and _off_road(p - face * 0.95, 0.05) and _off_road(p, 0.6)):
 		return
 	var bs := Basis(Vector3.UP, atan2(face.x, face.y)) * Basis(Vector3.BACK, 0.13 * (1.0 if rng.randf() < 0.5 else -1.0))
 	(xf_by["moto_parked"] as Array).append(Transform3D(bs, Vector3(p.x, _walk_y(p), p.y)))   # on the pavement, as people stand
@@ -8137,7 +8156,8 @@ func _build_pois() -> void:
 			# front, between the building and the street, wherever there is room for it
 			for c: Vector2 in [pos + n * 6.0, pos + n * 8.0, at]:
 				var on := _nearest_seg(c, 15.0, true)
-				if _push_out(c, 3.2, false) == Vector2.ZERO and (on.is_empty() or float(on["edge"]) > 1.5):
+				if _push_out(c, 3.2, false) == Vector2.ZERO and (on.is_empty() or float(on["edge"]) > 1.5) \
+						and _station_fits(c, n):
 					_gas_station(c, n, canopy)
 					station = c
 					break
@@ -8347,6 +8367,17 @@ func _shop_glass() -> StandardMaterial3D:
 	return m
 
 ## a gas station: a canopy on four pillars over two pumps, square to the street
+## every column of a station's canopy and both pumps off the road (the middle 1.5 m off it
+## let a corner column, 4 m from the middle, stand 0.9 m into a primary road -- city_check,
+## Bedford)
+func _station_fits(at: Vector2, n: Vector2) -> bool:
+	var along := Vector2(-n.y, n.x)
+	for sx: float in [-1.0, 1.0]:
+		for sz: float in [-1.0, 1.0]:
+			if not _off_road(at + along * 3.6 * sx + n * 2.2 * sz, 0.45):
+				return false
+	return true
+
 func _gas_station(at: Vector2, n: Vector2, c: Dictionary) -> void:
 	var along := Vector2(-n.y, n.x)
 	var gy := _h(at)
@@ -10568,15 +10599,23 @@ func _fwd() -> Vector2:
 ## The right-hand lane's line, this far right of a two-way road's middle. Every two-way
 ## street has two lanes, however narrow; the line sits a little past the lane's own middle,
 ## toward the kerb, as drivers do -- at w/4 cars ran close to the centre line and met the
-## traffic coming the other way in it. A one-way road of one lane: its middle; of several:
-## the middle of the right-hand one, where traffic drives (autodrive used to take the middle
-## of the road, astride two lanes, and ran in between the cars in them).
+## traffic coming the other way in it; at w/4 + 0.25 they hugged the kerb. A one-way road of
+## one lane: its middle; of two: the middle of the right-hand one; of three or more: the
+## second from the right (autodrive used to take the middle of the road, astride two
+## lanes, and ran in between the cars in them).
 func _lane_off(r: Dictionary) -> float:
 	var w := float(r["w"])
 	if int(r["o"]) != 0:
 		var n := _lanes_each_way(r)
-		return 0.0 if n <= 1 else w * 0.5 - w / n * 0.5
-	return clampf(minf(w * 0.25 + 0.25, w * 0.5 - 0.95), 0.9, 2.6)
+		if n <= 1:
+			return 0.0
+		# three lanes or more: the second from the right, where traffic going straight on
+		# drives (the right-hand one hugged the kerb all along Sderot Herzl); the right-hand
+		# lane is taken before a right turn (_ap_turn_lane)
+		return w * 0.5 - w / n * (1.5 if n >= 3 else 0.5)
+	# (+0.12 past the lane's middle, and 1.1 m clear of the kerb: +0.25 left a car 0.6 m from
+	# the kerb on a 7 m street, and the others, drifting, hugged it)
+	return clampf(minf(w * 0.25 + 0.12, w * 0.5 - 1.1), 0.9, 2.6)
 
 ## lanes each way: a one-way road's all, half a two-way road's (by the tag, else the width)
 func _lanes_each_way(r: Dictionary) -> int:
@@ -11505,7 +11544,15 @@ func _start_on(street: String, cross: String) -> bool:
 	Probe.note("start corner: %s never meets %s in %s" % [street, cross, _city_id])
 	return false
 
+## STREETS_SIM_SPEED=n (tests only; tests/run.sh sets it from SIM_SPEED): the game runs n
+## times as much game time a tick. Held here every tick because the shell puts the engine's
+## time scale back to 1 when a game starts and after every hit-stop (a --time-scale on the
+## command line was undone before the first tick). Unset in play: nothing happens.
+var _sim_speed := float(OS.get_environment("STREETS_SIM_SPEED")) if OS.get_environment("STREETS_SIM_SPEED") != "" else 0.0
+
 func _physics_process(dt: float) -> void:
+	if _sim_speed > 0.0 and Engine.time_scale != _sim_speed:
+		Engine.time_scale = _sim_speed
 	_prev_pos = _pos   # where the car was at the last tick, for _frame() to blend from
 	_prev_yaw = _yaw
 	_prev_y = _y
@@ -13125,7 +13172,10 @@ func _collide() -> void:
 		var along := vel - n * vel.dot(n)
 		vel -= along.limit_length(impact * WALL_GRIP)
 		_crash(impact)
-		if _last_hit.begins_with("car "):
+		# a real knock stuns the car hit (2.5 s); leaning on it does not. Every touch used
+		# to, so a car autodrive pressed against never pulled away, and both stood there
+		# (the exam: a hatch "held by the limit" 20 s with autodrive pushing into it)
+		if _last_hit.begins_with("car ") and impact > 1.2:
 			_traffic.bumped(int(_last_hit.substr(4)))
 	_v = vel.dot(fwd)
 	_v_lat = clampf(vel.dot(right), -7.0, 7.0)
@@ -13438,6 +13488,13 @@ func _head_tick(dt: float) -> void:
 		if _head_check <= 0.0 and _head_plan.is_empty() and absf(_v) < 2.5 and _gear > 0:
 			_head_check = 0.2
 			var j := _junction_ahead_me(16.0)
+			# only first in line and about to go: at a light, once it is green (it looked
+			# left and right at every red, from behind a queue of cars); with a car in front,
+			# not yet -- it looks when it is the one pulling out
+			if j >= 0 and _sig_set.has(j) and _light_at(j, _fwd()) not in ["g", ""]:
+				j = -1
+			if j >= 0 and _car_ahead_me(12.0):
+				j = -1
 			if j >= 0 and (_nodes[j].distance_to(_head_at) > 45.0 or _head_at_t > 20.0):
 				_head_at = _nodes[j]
 				_head_at_t = 0.0
@@ -13510,6 +13567,12 @@ func _junction_ahead_me(reach: float) -> int:
 		d += pts[k].distance_to(pts[nk])
 		k = nk
 	return -1
+
+## a car in front within `reach` (on autodrive's planned lane, or straight ahead driving yourself)
+func _car_ahead_me(reach: float) -> bool:
+	var path := _ap_pts if (_auto and _ap_pts.size() >= 2) else PackedVector2Array([_pos, _pos + _fwd() * (reach + 2.0)])
+	var lead: Array = _traffic.lead_on(path, _pos, reach, false)
+	return float(lead[0]) < reach
 
 ## the nearest person in front within `reach` (on a crossing, stepping off the kerb)
 func _person_ahead_me(reach: float) -> Vector2:
@@ -14617,12 +14680,21 @@ func _ap_turn_lane(ri: int, from: int, dir: int) -> void:
 	var c := pts[at]
 	var in_dir := (_ap_pts[m - 1] - _ap_pts[m - 3]).normalized()
 	var out_dir := (pts[from] - c).normalized()
-	if in_dir == Vector2.ZERO or out_dir == Vector2.ZERO or in_dir.angle_to(out_dir) > -0.6:
-		return   # (not a left turn: + is right)
+	if in_dir == Vector2.ZERO or out_dir == Vector2.ZERO:
+		return
+	var turn := in_dir.angle_to(out_dir)   # (+ is right)
 	var n := _lanes_each_way(r_in)
 	var w := float(r_in["w"])
 	var target := 0.0
-	if int(r_in["o"]) != 0:
+	if turn > 0.6:
+		# a right turn off a road of three lanes or more: over to the right-hand lane (the
+		# car goes straight on in the second)
+		if int(r_in["o"]) == 0 or n < 3:
+			return
+		target = w * 0.5 - w / n * 0.5
+	elif turn > -0.6:
+		return   # (straight on)
+	elif int(r_in["o"]) != 0:
 		if n < 2:
 			return
 		target = -(w * 0.5 - w / n * 0.5)

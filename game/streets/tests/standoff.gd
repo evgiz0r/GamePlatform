@@ -85,7 +85,7 @@ func _run() -> void:
 		var shot := false
 		while t < 30.0:
 			await physics_frame
-			t += 1.0 / 60.0
+			t += Engine.time_scale / Engine.physics_ticks_per_second
 			if c.alive:
 				closest = minf(closest, c.pos.distance_to(g._pos))
 				if c.squeeze > 0.0:
@@ -97,7 +97,7 @@ func _run() -> void:
 				print("    %.0f s: v %.1f, gear %d, backing %.1f, turning %.1f, lead %.1f m, last hit %s, plan %d pts, off route %.1f, car %.1f m away v %.1f wait %.1f" % [
 					t, g._v, g._gear, g._ap_back, g._ap_turn, float(lead[0]), g._last_hit, g._ap_pts.size(), g._ap_off_route(), c.pos.distance_to(g._pos), c.v, c.wait])
 			if absf(g._v) < 0.4:
-				still += 1.0 / 60.0
+				still += Engine.time_scale / Engine.physics_ticks_per_second
 				longest = maxf(longest, still)
 			else:
 				still = 0.0

@@ -57,7 +57,7 @@ func _run() -> void:
 	var minv := 99.0
 	while t < 4.0:
 		await physics_frame
-		t += 1.0 / 60.0
+		t += Engine.time_scale / Engine.physics_ticks_per_second
 	var d_rim := minf(minf(g._pos.x - rim.position.x, rim.end.x - g._pos.x), minf(g._pos.y - rim.position.y, rim.end.y - g._pos.y))
 	print("after coasting into it: centre %.1f m from the barrier, v %.1f, last hit %s" % [d_rim, g._v, g._last_hit])
 	await _snap("edge_%d_hit" % lvl)

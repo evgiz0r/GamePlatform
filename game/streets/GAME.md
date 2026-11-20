@@ -29,8 +29,9 @@ into the turns.
 
 > First-person / bonnet camera.
 
-**The driver looks around.** Slowing for a junction, a light, a stop or a give-way sign, the
-driver looks left, right and left again (once a junction); into a turn as the wheel goes
+**The driver looks around.** First in line at a junction, a stop or a give-way sign and
+about to go (at a light, once it is green), the driver looks left, right and left again
+(once a junction; not from behind a queue at a red); into a turn as the wheel goes
 over; at people on the crossing ahead; over the right shoulder reversing. From the seat the
 view turns with the head; from behind, the camera swings a little to where the driver
 looks and the driver's head in the car turns. Autodrive's driver always does it; when you
@@ -39,6 +40,9 @@ drive yourself, the "look" button (or G, for glance) switches it on and off.
 > I want the driver to look left and right in the turns, like a real driver with the head.
 > And I want that to be an option for the non-autodrive. For both chase and seat mode there
 > will be some effect of looking. That happens generally on every stop and give way.
+
+> It looks left right on red lights, when it's behind many cars. It should do a look only
+> when it's the first car and it's ready to drive.
 
 **On foot.** The "walk" button (or F) lets the driver out of the door to walk the same city:
 arrows or the stick to walk (a brisk 2.1 m/s) and turn, space to run (6 m/s), over the
