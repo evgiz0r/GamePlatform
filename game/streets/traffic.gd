@@ -55,6 +55,21 @@ class Car:
 	var prev_pos := Vector2.ZERO
 	var prev_yaw := 0.0
 	var pace := 1.0                   ## this driver's share of the limit
+	## the driver: how hard they pull away, the gap they leave standing and the seconds
+	## behind they keep moving, how long they take to notice the way ahead clear (a light
+	## gone green, the car in front moving off), and their drift in the lane. All the same,
+	## every car pulled away together on the same tick at the same rate, like a train.
+	var accel := 2.0
+	var gap := 2.2
+	var headway := 1.2
+	var react := 0.6
+	var react_t := 0.0
+	var acc := 0.0                    ## its acceleration now (smoothed: no instant pull-away)
+	var lead_v := 0.0                 ## the speed of the car in front, along my way
+	var still := 0.0                  ## seconds standing
+	var drift := 0.0                  ## phase of its wander in the lane
+	var dip := 0.0                    ## the body: nose down braking, up pulling away (visual)
+	var roll := 0.0                   ## the body: leaning out of a turn (visual)
 	var paint := Color.WHITE
 	var kind := "sedan"
 	var braking := 0.0                ## brake lights, 0..1
@@ -202,9 +217,26 @@ func setup(game: Node) -> void:
 			c.kind = g.CAR_MIX[rng.randi() % g.CAR_MIX.size()]
 		c.len = float(LENS.get(c.kind, 4.6))
 		c.passenger = rng.randf() < 0.35
+		_driver(c)
 		c.alive = _spawn(c, true)
 		_hide_or_show(i)
 	retint()
+
+## this car's driver: brisk or easy, close or careful, quick or slow to notice
+func _driver(c: Car) -> void:
+	var brisk := rng.randf()   # one dial for the driver, a little noise on each
+	c.accel = lerpf(1.5, 2.8, brisk) * rng.randf_range(0.9, 1.1)
+	c.gap = lerpf(3.0, 1.6, brisk) * rng.randf_range(0.9, 1.1)
+	c.headway = lerpf(1.8, 0.9, brisk) * rng.randf_range(0.9, 1.1)
+	c.react = lerpf(1.1, 0.35, brisk) * rng.randf_range(0.8, 1.2)
+	c.drift = rng.randf() * TAU
+	match c.kind:
+		"bus", "truck":
+			c.accel = rng.randf_range(0.9, 1.3)
+			c.gap = maxf(c.gap, 2.6)
+		"moto":
+			c.accel = rng.randf_range(2.6, 3.6)
+			c.react = rng.randf_range(0.3, 0.6)
 
 var _blobs: MultiMeshInstance3D
 
@@ -271,8 +303,10 @@ func tick(dt: float) -> void:
 		# tick (with three ticks' time, so its waits still count right); its speed still
 		# follows every tick. A driver reacts slower than that anyway, and deciding it every
 		# tick for every car was most of traffic's time.
-		if c.want < 0.0 or (i + _tick_n) % 3 == 0:
-			c.want = _target(c, i, dt * (1.0 if c.want < 0.0 else 3.0))
+		# (and one far off, out of sight, every sixth tick: nobody sees it think)
+		var every := 3 if c.pos.distance_squared_to(me) < 120.0 * 120.0 or _in_view(c.pos) else 6
+		if c.want < 0.0 or (i + _tick_n) % every == 0:
+			c.want = _target(c, i, dt * (1.0 if c.want < 0.0 else float(every)))
 		var vt := c.want
 		_us("traffic: follow", t2)
 		var ds := clampf(c.shift_to - c.shift, -LANE_MOVE * dt, LANE_MOVE * dt)
@@ -283,8 +317,33 @@ func tick(dt: float) -> void:
 			c.hit -= dt
 			vt = 0.0
 		var was := c.v
-		c.v = move_toward(c.v, vt, (ACCEL if vt > c.v else BRAKE_HARD) * dt)
+		if vt > c.v + 0.05:
+			# the way ahead clear: from standing, a moment to notice; then pulling away, gently
+			# at first (the push builds over half a second or so) and easing off as it nears
+			# the speed it wants
+			if c.v < 0.3 and c.react_t < c.react:
+				# (behind a car, the moment to notice starts when that car is off (0.5 m/s),
+				# not when it has rolled a few millimetres)
+				if not (c.why == "car" and c.lead_v < 0.5):
+					c.react_t += dt
+				c.acc = 0.0
+			else:
+				var want_a := c.accel * clampf(1.0 - pow(c.v / maxf(vt, 1.0), 4.0), 0.2, 1.0)
+				c.acc = move_toward(c.acc, want_a, 4.0 * dt)
+				c.v = minf(c.v + c.acc * dt, vt)
+		else:
+			# slowing: as before, down to what it wants at once if it must (its plans brake at
+			# BRAKE; this is the margin) -- only the pull-away is softened
+			c.v = move_toward(c.v, vt, BRAKE_HARD * dt)
+			c.acc = (c.v - was) / maxf(dt, 0.001)
+			if vt < 0.3:
+				c.react_t = 0.0
+		# the body: nose down braking, a little up pulling away; leaning out of a turn
+		var turn := angle_difference(c.prev_yaw, c.yaw) / maxf(dt, 0.001)
+		c.dip = lerpf(c.dip, clampf(-c.acc * 0.011, -0.03, 0.06), minf(1.0, dt * 6.0))
+		c.roll = lerpf(c.roll, clampf(turn * c.v * 0.012, -0.06, 0.06), minf(1.0, dt * 5.0))
 		c.braking = clampf(c.braking + (dt * 8.0 if c.v < was - 0.01 or c.v < 0.2 else -dt * 4.0), 0.0, 1.0)
+		c.still = c.still + dt if c.v < 0.3 else 0.0
 		var before := c.s
 		c.s = minf(c.s + c.v * dt, c.cum[c.cum.size() - 1])
 		_passed_lights(c, before)
@@ -375,10 +434,14 @@ func _target(c: Car, i: int, dt: float) -> float:
 	if c.squeeze > 0.0:
 		c.squeeze -= dt
 		vt = _held(c, vt, 2.5, "squeezing past")
+	c.lead_v = lead_v if best < INF else 99.0
 	_steer_lanes(c, i, dt, best, lead_v)
 	vt = _held(c, vt, _bus_stop(c, dt), "bus stop")
 	if best < INF:
-		var room := best - (c.len + best_len) * 0.5 - GAP - lead_v * HEADWAY
+		# (the seconds behind at its own speed while it is the slower: a queue pulling away
+		# kept its gap for the speed the car in front had reached, so each waited till that
+		# one was well off -- the third car of a queue moved 9 s after the green)
+		var room := best - (c.len + best_len) * 0.5 - c.gap - minf(lead_v, c.v) * c.headway
 		var follow := sqrt(maxf(0.0, lead_v * lead_v + 2.0 * BRAKE * maxf(room, 0.0)))
 		if room <= 0.0:
 			follow = 0.0
@@ -535,6 +598,24 @@ func _junction_ahead(c: Car, i: int, dt: float) -> float:
 				           # back for a car waiting at the red across, seconds at a time)
 			var o_eta := od / maxf(o.v, 2.0)
 			if o_eta > 5.0:
+				continue
+			if g._sig_set.has(n):
+				# lights: they say who goes. One held at its red is not coming (a car with its
+				# green gave way to one on the main road that was about to stop at its red, sat
+				# out its green and was caught by the next red: a queue on a side street let
+				# one car through a green); one with its green too goes first only when I turn
+				# across it
+				if _in_site(o, n):
+					# already in the junction (a point of it further on), clearing it: its light
+					# there reads the street across, but it is not stopping for it
+					if o_eta < my_eta + 1.5:
+						return _hold(c, dt, stop)
+					continue
+				if g._light_at(n, theirs[0]) != "g":
+					continue
+				var turn_across: bool = (mine[0] as Vector2).dot(mine[1]) < 0.85 and (theirs[0] as Vector2).dot(theirs[1]) >= 0.85
+				if turn_across and o_eta < my_eta + 2.0:
+					return _hold(c, dt, stop)
 				continue
 			var mr: int = mine[2]
 			var orr: int = theirs[2]
@@ -923,7 +1004,11 @@ func lead_on(path: PackedVector2Array, from: Vector2, look: float, ignore_crossi
 		if not is_nan(y) and absf(c.y - y) > LEVEL:
 			continue   # (on a bridge overhead, in a tunnel underneath)
 		var cdir := Vector2(sin(c.yaw), cos(c.yaw))
-		var offs: Array = BODY[c.kind][0] if BODY.has(c.kind) else [-c.len * 0.33, 0.0, c.len * 0.33]
+		var offs: Array = (BODY[c.kind][0] as Array).duplicate() if BODY.has(c.kind) else [-c.len * 0.33, 0.0, c.len * 0.33]
+		# and its nose and tail: one waiting crossways at a junction's edge stuck its nose
+		# into autodrive's turn, its middle well clear of the lane, and autodrive hit the nose
+		offs.append(c.len * 0.5 - 0.3)
+		offs.append(-c.len * 0.5 + 0.3)
 		var rad: float = float(BODY[c.kind][1]) if BODY.has(c.kind) else 0.95
 		var found := INF
 		var same_at := 0.0
@@ -1291,8 +1376,11 @@ func _place(c: Car) -> void:
 		c.yaw = atan2(d.x, d.y)
 		if g._hnx > 0:
 			c.pitch = atan2(float(g._decks.surf(b, c.y)) - float(g._decks.surf(a, c.y)), d.length())
-	if c.shift != 0.0 or c.shift_rate != 0.0:
-		c.pos += Vector2(cos(c.yaw), -sin(c.yaw)) * c.shift   # its lane: left of the line
+	# a little drift in the lane while it moves (nobody holds the line to the centimetre)
+	var wander := sin(_clock * 0.31 + c.drift) * 0.14 * clampf(c.v / 8.0, 0.0, 1.0)
+	var off := c.shift + wander
+	if off != 0.0 or c.shift_rate != 0.0:
+		c.pos += Vector2(cos(c.yaw), -sin(c.yaw)) * off       # its lane: left of the line
 		c.yaw += atan2(c.shift_rate, maxf(c.v, 3.0))         # nose into the lane change
 
 func _in_view(p: Vector2) -> bool:
@@ -1309,7 +1397,8 @@ func draw(f: float) -> void:
 			continue
 		var p := c.prev_pos.lerp(c.pos, f)
 		var yaw := lerp_angle(c.prev_yaw, c.yaw, f)
-		var basis := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, -c.pitch)
+		# (the slope it is on, the nose dipping or lifting, the lean in a turn)
+		var basis := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, -c.pitch + c.dip) * Basis(Vector3.BACK, c.roll)
 		var xf := Transform3D(basis, Vector3(p.x, lerpf(c.prev_y, c.y, f) + float(g.road_top()), p.y))
 		var mm: MultiMesh = _mms[c.kind]
 		mm.set_instance_transform(i, xf)

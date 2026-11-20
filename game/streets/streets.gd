@@ -116,19 +116,20 @@ const PEOPLE_SEEN := 90.0            ## people further than this are not drawn o
 ## The lights' cycle: [seconds, what group 1 (each junction's main road) shows, group 2 (the
 ## roads across it)]. "g" green, "gf" green flashing (it is about to change: still go), "y"
 ## amber, "r" red, "ry" red and amber together (about to go green: still stop). The main road's
-## green the longer, 20 s against 11, as the towns' own lights run (with 14 s each way a main
-## road was stop and go behind every red). 3-3.5 s between one way's amber and the other's
-## green, red all round or red-and-amber: a junction drawn as several points, its stop lines
-## behind the zebras, takes that to clear (at 2.5 s a car in on the last of the amber, turning,
-## met the cars across starting off). Israel's: green, three flashes, amber, red,
-## red-and-amber, green. North America's has neither the flashes nor the red-and-amber.
+## green the longer, 18 s against 13, as the towns' own lights run (with 14 s each way a main
+## road was stop and go behind every red; 11 s for the side street, with drivers who take a
+## moment to pull away, let two cars through -- see DEV.md). 3-3.5 s between one way's amber
+## and the other's green, red all round or red-and-amber: a junction drawn as several points,
+## its stop lines behind the zebras, takes that to clear (at 2.5 s a car in on the last of the
+## amber, turning, met the cars across starting off). Israel's: green, three flashes, amber,
+## red, red-and-amber, green. North America's has neither the flashes nor the red-and-amber.
 const SIGNAL_CYCLE_MED := [
-	[17.0, "g", "r"], [3.0, "gf", "r"], [3.0, "y", "r"], [2.0, "r", "r"], [1.5, "r", "ry"],
-	[8.0, "r", "g"], [3.0, "r", "gf"], [3.0, "r", "y"], [2.0, "r", "r"], [1.5, "ry", "r"],
+	[15.0, "g", "r"], [3.0, "gf", "r"], [3.0, "y", "r"], [2.0, "r", "r"], [1.5, "r", "ry"],
+	[10.0, "r", "g"], [3.0, "r", "gf"], [3.0, "r", "y"], [2.0, "r", "r"], [1.5, "ry", "r"],
 ]
 const SIGNAL_CYCLE_NORTH := [
-	[20.0, "g", "r"], [3.0, "y", "r"], [3.0, "r", "r"],
-	[11.0, "r", "g"], [3.0, "r", "y"], [3.0, "r", "r"],
+	[18.0, "g", "r"], [3.0, "y", "r"], [3.0, "r", "r"],
+	[13.0, "r", "g"], [3.0, "r", "y"], [3.0, "r", "r"],
 ]
 var SIGNAL_CYCLE: Array = SIGNAL_CYCLE_MED   ## this town's (set when the city loads)
 
@@ -1011,6 +1012,7 @@ const AUTO_BTN := Rect2(184, 334, 100, 20)
 const GOTO_BTN := Rect2(290, 334, 80, 20)
 const ASSIST_BTN := Rect2(376, 334, 70, 20)
 const NIGHT_BTN := Rect2(452, 334, 52, 20)
+const WET_BTN := Rect2(510, 334, 40, 20)     ## after rain / dry
 const VIEW_BTN := Rect2(578, 98, 52, 20)    ## chase cam / driver's seat (key C too)
 const LIGHTS_BTN := Rect2(578, 122, 52, 20)  ## headlights (key L)
 ## (the indicators and the horn are keys only, Q / E and H: on screen they were clutter)
@@ -1479,6 +1481,8 @@ func _load_city(id: String) -> bool:
 			r["deck"] = "br" if rd.has("br") else ("tu" if rd.has("tu") else ("em" if rd.has("em") else ("cu" if rd.has("cu") else "")))
 		if rd.has("kerb"):
 			r["kerb"] = int(rd["kerb"])   # its kerb's paint, set by hand (details.gd)
+		if rd.has("kerb_mid"):
+			r["kerb_mid"] = int(rd["kerb_mid"])   # the paint along its middle, set by hand
 		var ri := _roads.size()
 		_roads.append(r)
 		var hw: float = r["w"] * 0.5
@@ -2555,6 +2559,8 @@ vec3 paver(vec2 g, float pattern) {
 }
 void fragment() {
 	float fsh = far_shade(wpos, length(VERTEX));   // (before the branches: a texture read)
+	float soak = wet * smoothstep(0.6, 0.8, wup);   // after rain: darker, glossy, the sky in it
+	vec3 wet_emit = wet > 0.001 ? wet_mirror(normalize((INV_VIEW_MATRIX * vec4(VERTEX, 0.0)).xyz)) * soak * 0.05 : vec3(0.0);
 	if (COLOR.b > 0.5) {
 		// The pavement: pavers in the street's own pattern and colours (COLOR.r: pattern x 4 +
 		// colours), laid square to the kerb (UV: metres along, out from the kerb), a row of
@@ -2619,8 +2625,10 @@ void fragment() {
 			}
 			col = mix(col, leaf, m * (1.0 - far));
 		}
-		ALBEDO = col * fsh;
-		ROUGHNESS = 0.9;
+		ALBEDO = col * fsh * mix(1.0, 0.55, soak);
+		ROUGHNESS = mix(0.9, 0.7, soak);
+		SPECULAR = mix(0.5, 0.3, soak);
+		EMISSION = wet_emit;
 	} else {   // the kerb
 	float pat = floor(COLOR.r * 3.99 + 0.01);
 	float stripe = step(0.5, fract(UV.x * 0.5));
@@ -2638,8 +2646,10 @@ void fragment() {
 			c *= mix(0.7, 1.0, UV.y);
 		}
 	}
-	ALBEDO = c * mix(1.0, fsh, step(0.7, wup));
-	ROUGHNESS = 0.85;
+	ALBEDO = c * mix(1.0, fsh, step(0.7, wup)) * mix(1.0, 0.62, wet);
+	ROUGHNESS = mix(0.85, 0.7, wet);
+	SPECULAR = mix(0.5, 0.3, wet);
+	EMISSION = wet_emit;
 	}
 }
 """
@@ -2674,6 +2684,88 @@ void fragment() {
 var _roof_mat: ShaderMaterial
 const PAVE_W := 2.4                  ## pavement width (m)
 const KERB_CUT := 4.5                ## kerbs stop this far past a junction's road edge: the corner's radius
+## Israeli kerb paint goes by where on the street, as a filmed walk showed: blue-white along
+## a residential street's parking (paid), red-white for the last metres before every
+## junction (no parking within 12 m of one: the kerb starts KERB_CUT past the corner) and on
+## many main roads all along, yellow-black only in front of a bus stop. Not one paint a street.
+const KERB_RED := 9.0
+const KERB_BUS := 9.0                ## yellow-black this far either side of a bus stop
+const KERB_RED_KINDS := ["residential", "unclassified", "tertiary", "secondary", "primary",
+	"tertiary_link", "secondary_link", "primary_link"]
+var _stops_by_road := {}             ## road -> its bus stops' spots on the pavement (for the kerb paint)
+var _stops_mapped := false
+
+## the paint along the middle of a street's kerb (0 plain, 1 red-white, 2 blue-white)
+func _kerb_paint(r: Dictionary, hsh: int) -> int:
+	if r.has("kerb_mid"):
+		return int(r["kerb_mid"])   # as filmed (details.gd)
+	var h := posmod(hsh / 7, 10)
+	match String(r["k"]):
+		"residential", "unclassified":
+			return [2, 2, 2, 2, 2, 2, 0, 0, 0, 1][h]
+		"tertiary", "secondary", "tertiary_link", "secondary_link":
+			return [2, 2, 2, 2, 1, 1, 1, 0, 0, 0][h]
+		"primary", "primary_link", "trunk":
+			return [1, 1, 1, 1, 1, 1, 1, 0, 0, 2][h]
+	return 0
+
+## the bus stops along road ri, where _build_stops puts their shelters
+func _kerb_stops(ri: int) -> PackedVector2Array:
+	if not _stops_mapped:
+		_stops_mapped = true
+		var k := 1.0 / float(_city_data.get("scale", 10))
+		for st: Array in _city_data.get("stops", []):
+			var at := Vector2(st[0], st[1]) * k
+			var hit := _nearest_seg(at, 30.0, true, true)
+			if hit.is_empty():
+				continue
+			var q: Vector2 = hit["q"]
+			var out := (at - q).normalized()
+			if out == Vector2.ZERO:
+				continue
+			var c := q + out * (float(_roads[hit["road"]]["w"]) * 0.5 + 1.9)
+			if not _stops_by_road.has(hit["road"]):
+				_stops_by_road[hit["road"]] = PackedVector2Array()
+			(_stops_by_road[hit["road"]] as PackedVector2Array).append(c)
+	return _stops_by_road.get(ri, PackedVector2Array())
+
+## a run's end p meets a junction (rather than the next OSM piece of the same street)
+func _kerb_junction_end(r: Dictionary, p: Vector2) -> bool:
+	var pts: PackedVector2Array = r["pts"]
+	var ids: PackedInt32Array = r["ids"]
+	for i in range(ids.size()):
+		if pts[i].distance_to(p) < _node_r[ids[i]] + KERB_CUT + 1.5 and _kerb_arms(ids[i]) >= 3:
+			return true
+	return false
+
+## where one kerb's paint changes: Vector3(from, to, paint) in metres along `run`'s middle,
+## later ones over earlier ones. `inner` is the kerb's line on side `sgn`.
+func _kerb_marks(r: Dictionary, run: PackedVector2Array, inner: PackedVector2Array, red_ends: bool,
+		stops: PackedVector2Array) -> Array:
+	var marks: Array = []
+	var total := 0.0
+	for i in range(run.size() - 1):
+		total += run[i].distance_to(run[i + 1])
+	if red_ends:
+		if _kerb_junction_end(r, run[0]):
+			marks.append(Vector3(-1.0, KERB_RED, 1))
+		if _kerb_junction_end(r, run[run.size() - 1]):
+			marks.append(Vector3(total - KERB_RED, total + 1.0, 1))
+	for c: Vector2 in stops:
+		var best := INF
+		var s_at := 0.0
+		var s := 0.0
+		for i in range(run.size() - 1):
+			var q := Geometry2D.get_closest_point_to_segment(c, inner[i], inner[i + 1])
+			var d := q.distance_to(c)
+			var seg := run[i].distance_to(run[i + 1])
+			if d < best:
+				best = d
+				s_at = s + seg * clampf(inner[i].distance_to(q) / maxf(inner[i].distance_to(inner[i + 1]), 0.01), 0.0, 1.0)
+			s += seg
+		if best < 3.5:   # this side's kerb (the other is a road's width further)
+			marks.append(Vector3(s_at - KERB_BUS, s_at + KERB_BUS, 3))
+	return marks
 const KERB_H := 0.14
 const KERB_W := 0.2
 var _kerb_mat: ShaderMaterial
@@ -2696,11 +2788,13 @@ func _build_kerbs() -> void:
 		var hw: float = float(r["w"]) * 0.5
 		var hsh := _hash_i((r["pts"] as PackedVector2Array)[0])
 		_set_pave_code(hsh)
-		var pat := 0
-		if med:
-			pat = [0, 0, 0, 0, 0, 1, 1, 1, 2, 3][posmod(hsh, 10)]
+		# the paint along the middle of the street, and whether its ends are red-white
+		# (_kerb_paint); a kerb set by hand (details.gd) is that paint all along
+		var pat := _kerb_paint(r, hsh) if med else 0
+		var red_ends := med and not r.has("kerb") and String(r["k"]) in KERB_RED_KINDS
 		if r.has("kerb"):
 			pat = int(r["kerb"])   # (as filmed: 0 plain, 1 red-white, 2 blue-white, 3 yellow-black)
+		var stops := _kerb_stops(ri) if med and not r.has("kerb") else PackedVector2Array()
 		var yard: bool = r["k"] in ["residential", "living_street"]
 		var dual := r.has("median")
 		var inner_sgn := -float(r["o"])   # a divided road's other half is on the left of its traffic
@@ -2718,13 +2812,35 @@ func _build_kerbs() -> void:
 						continue   # the halves touch: a painted line, no kerb
 					pw = clampf(m * 0.5 - KERB_W, 0.0, PAVE_W)   # each half paves its half of the median
 				var inner := _offset_line(run, hw * sgn)
-				var col := Color(float(pat) / 4.0 + 0.05, 0, 0) if not inner_side else Color(0.05, 0, 0)   # a median's kerb: plain
+				# where the paint changes along this kerb: red-white for KERB_RED at an end that
+				# meets a junction, yellow-black along a bus stop on this side
+				var marks := _kerb_marks(r, run, inner, red_ends, stops) if not inner_side else []
 				var along := 0.0
 				for i in range(run.size() - 1):
 					var seg := run[i].distance_to(run[i + 1])
 					var na := (inner[i] - run[i]).normalized()
 					var nb := (inner[i + 1] - run[i + 1]).normalized()
-					_kerb_run_piece(kerb, pave, ri, inner[i], inner[i + 1], na, nb, pw, col, along, seg)
+					var cuts: Array = [0.0, seg]
+					for m: Vector3 in marks:
+						for c: float in [m.x, m.y]:
+							if c > along + 0.05 and c < along + seg - 0.05:
+								cuts.append(c - along)
+					cuts.sort()
+					for k in range(cuts.size() - 1):
+						var u0: float = cuts[k]
+						var u1: float = cuts[k + 1]
+						if u1 - u0 < 0.01:
+							continue
+						var p := 0 if inner_side else pat   # a median's kerb: plain
+						var mid := along + (u0 + u1) * 0.5
+						for m: Vector3 in marks:
+							if mid > m.x and mid < m.y:
+								p = int(m.z)
+						var t0 := u0 / seg
+						var t1 := u1 / seg
+						_kerb_run_piece(kerb, pave, ri, inner[i].lerp(inner[i + 1], t0), inner[i].lerp(inner[i + 1], t1),
+							na.lerp(nb, t0).normalized(), na.lerp(nb, t1).normalized(), pw,
+							Color(float(p) / 4.0 + 0.05, 0, 0), along + u0, u1 - u0)
 					along += seg
 				if inner_side:
 					continue
@@ -3286,7 +3402,10 @@ func _retint_kerbs() -> void:
 	_kerb_mat.set_shader_parameter("white", Palette.col("ink"))
 	# the kerb paint is vivid, as it is on the street, but red rather than the palette's pink
 	_kerb_mat.set_shader_parameter("red", _natural(Palette.col("hazard").lerp(Palette.col("warn"), 0.22), 0.85))
-	_kerb_mat.set_shader_parameter("blue", _natural(Palette.col("player").lerp(Palette.col("bg"), 0.35), 0.85))
+	# and the blue a road paint's blue, not the palette's cyan (beside a filmed street the
+	# game's blue-white kerb read as turquoise-white): the hue pinned, its strength the palette's
+	var pl := Palette.col("player")
+	_kerb_mat.set_shader_parameter("blue", Color.from_hsv(0.6, clampf(pl.s, 0.55, 0.8), clampf(pl.v * 0.62, 0.45, 0.68)))
 	_kerb_mat.set_shader_parameter("yellow", Palette.col("warn"))
 	_kerb_mat.set_shader_parameter("black", Palette.col("bg"))
 	_kerb_mat.set_shader_parameter("pave", _tone["pavement"])
@@ -5227,8 +5346,8 @@ void fragment() {
 		tx = normalize(tx - NORMAL * dot(NORMAL, tx));
 		NORMAL = normalize(tx * b.x + cross(NORMAL, tx) * b.y + NORMAL * b.z);
 	}
-	ALBEDO = c * far_shade(wpos, length(VERTEX));
-	ROUGHNESS = 0.95;
+	ALBEDO = c * far_shade(wpos, length(VERTEX)) * mix(1.0, 0.82, wet * step(0.7, wup));   // (wet earth, darker)
+	ROUGHNESS = mix(0.95, 0.75, wet);
 }
 """
 var _ground_shader_mat: ShaderMaterial
@@ -5647,6 +5766,22 @@ func _beam_mesh() -> ArrayMesh:
 	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, b.arrays())
 	return am
 
+## After rain, or dry (the "wet" button): faded in and out over a second and a half
+var _wet := false
+var _wet_k := 0.0                     ## how wet, 0..1 (the shaders' `wet`)
+var _wet_tween: Tween
+
+func _set_wet(on: bool) -> void:
+	_wet = on
+	if _wet_tween != null:
+		_wet_tween.kill()
+	_wet_tween = create_tween()
+	_wet_tween.tween_method(func(k: float) -> void:
+		_wet_k = k
+		_far_update(), _wet_k, 1.0 if on else 0.0, 1.5)
+	_show_banner("after rain" if on else "dry", 1.2)
+	Probe.event("wet", {"on": on})
+
 ## the time-of-day button: day, then evening, then night, then day again
 func _next_time() -> void:
 	if _night:
@@ -5702,8 +5837,26 @@ func _set_night(on: bool) -> void:
 	Probe.event("night", {"on": on})
 
 ## Parked cars down Givatayim's streets, half up on the pavement the way they really
-## park there: one sedan mesh shared by all of them, each in its own colour.
-const PARKED_FILL := 0.26            ## share of the kerb taken
+## park there: one sedan mesh shared by all of them, each in its own colour. How full the
+## kerb is goes by its paint (_kerb_paint): a filmed residential street with blue-white
+## kerbs was an unbroken row both sides; red-white stretches (the corners, bus stops, many
+## main roads) stay all but empty.
+const PARKED_FILL := [0.55, 0.05, 0.72, 0.0]   ## share of the kerb taken: plain, red-white, blue-white, yellow-black
+const PARKED_FILL_LIVING := 0.3
+
+## no parking at p beside road ri: its red-white corner or a bus stop's yellow-black
+func _no_parking(r: Dictionary, ri: int, p: Vector2) -> bool:
+	if r.has("kerb") or not (String(r["k"]) in KERB_RED_KINDS):
+		return false
+	var pts: PackedVector2Array = r["pts"]
+	var ids: PackedInt32Array = r["ids"]
+	for i in range(ids.size()):
+		if pts[i].distance_to(p) < _node_r[ids[i]] + KERB_CUT + KERB_RED + 1.0 and _kerb_arms(ids[i]) >= 3:
+			return true
+	for c: Vector2 in _kerb_stops(ri):
+		if c.distance_to(p) < KERB_BUS + 2.0:
+			return true
+	return false
 func _build_parked() -> void:
 	if String(_place.get("look", "")) != "med":
 		return   # northern suburbs park in driveways
@@ -5721,6 +5874,10 @@ func _build_parked() -> void:
 			await _pause()
 		rng.seed = hash(_city_name) + 11 + ri * 7919   # the road's own: every square parks it alike
 		var hw: float = float(r["w"]) * 0.5
+		var paint := int(r["kerb"]) if r.has("kerb") else _kerb_paint(r, _hash_i((r["pts"] as PackedVector2Array)[0]))
+		var fill: float = PARKED_FILL_LIVING if r["k"] == "living_street" else float(PARKED_FILL[paint])
+		if r["k"] == "tertiary":
+			fill *= 0.85   # a busier street: more of it kept clear
 		for run: PackedVector2Array in _street_runs(r):
 			var cum := PackedFloat32Array([0.0])
 			for i in range(1, run.size()):
@@ -5729,14 +5886,14 @@ func _build_parked() -> void:
 			for sgn: float in [-1.0, 1.0]:
 				var s := 4.0 + rng.randf() * 3.0
 				while s < total - 4.0:
-					if rng.randf() < PARKED_FILL:
+					if rng.randf() < fill:
 						var kind: String = CAR_MIX[rng.randi() % CAR_MIX.size()]
-						var paint: Color = palette[rng.randi() % palette.size()]
+						var colour: Color = palette[rng.randi() % palette.size()]
 						var c := _along(run, cum, s)
 						var d := (_along(run, cum, minf(s + 1.0, total)) - c).normalized()
 						var side := Vector2(-d.y, d.x) * sgn
 						var p := c + side * (hw + 0.6)   # mostly up on the pavement: a third of a car in the road
-						var ok := _mine(p) and _push_out(p, 1.0, false) == Vector2.ZERO
+						var ok := _mine(p) and not _no_parking(r, ri, p) and _push_out(p, 1.0, false) == Vector2.ZERO
 						for i: int in _near(_post_hash, p, 1.4, BLD_CELL):
 							if _posts[i].distance_to(p) < 1.4:
 								ok = false
@@ -5755,7 +5912,7 @@ func _build_parked() -> void:
 								* Basis(Vector3.BACK, roll) * Basis(Vector3.FORWARD, -0.05 * sgn)
 							(xf_by[kind] as Array).append(Transform3D(lean, _g3(p, 0.1)))   # half up the kerb
 							_ao_car(p, face, KERB_H + 0.025)
-							(cols_by[kind] as Array).append(paint)
+							(cols_by[kind] as Array).append(colour)
 							xf.append(0)
 							_add_post(p + face * 1.25, 0.85)
 							_add_post(p - face * 1.25, 0.85)
@@ -5941,6 +6098,7 @@ uniform vec4 well : source_color;      // a wheel well's dark
 uniform float fixed_paint = 0.0;       // 1: paint_col (the player's car), not the copy's own colour
 uniform vec4 paint_col : source_color;
 uniform float occupied = 0.0;          // the player's car: 1 while the player sits in it
+uniform float head_turn = 0.0;         // the player's car: where its driver looks (radians, + left)
 uniform vec4 skin : source_color;      // the people inside: skin, hair, and two shirts to pick from
 uniform vec4 hair : source_color;
 uniform vec4 shirt_a : source_color;
@@ -6032,8 +6190,11 @@ void fragment() {
 					best = th;
 					vec3 hp = lcam + rd * th;
 					n_hit = normalize((hp - head) / vec3(0.1, 0.12, 0.11));
-					// hair on top and at the back, a face in front
-					col_hit = (n_hit.y > 0.35 || n_hit.z < -0.2) ? hair.rgb : skin.rgb;
+					// hair on top and at the back, a face in front -- the front turned with the
+					// player's driver's head as they look left and right
+					float a = (fixed_paint > 0.5 && s == 0) ? head_turn : 0.0;
+					float fz = n_hit.x * sin(a) + n_hit.z * cos(a);
+					col_hit = (n_hit.y > 0.35 || fz < -0.2) ? hair.rgb : skin.rgb;
 				}
 				float tb = ray_blob(lcam, rd, body, vec3(0.21, 0.24, 0.14));
 				if (tb > 0.0 && tb < best) {
@@ -6972,10 +7133,31 @@ void fragment() {
 		t = normalize(t - NORMAL * dot(NORMAL, t));
 		NORMAL = normalize(t * bump.x + cross(NORMAL, t) * bump.y + NORMAL * bump.z);
 	}
+	float rough = 0.9;
+	float spec = 0.25;
+	vec3 emit = vec3(0.0);
+	if (wet > 0.001) {   // after rain: hard ground (asphalt, paint, pavers, slabs) dark and glossy,
+		// puddles in its dips; grass and earth a little darker
+		float hard = ((fx.w > 1.5 && fx.w < 3.5) || fx.w > 5.5) ? 1.0 : 0.0;
+		float soak = wet * smoothstep(0.6, 0.8, wup);
+		float pn = noise(p / 2.6) * 0.6 + noise(p / 0.8 + 3.7) * 0.4;
+		float lvl = fx.w < 2.5 ? 0.64 : 0.71;   // (fewer on pavers than on the road)
+		float puddle = hard * soak * smoothstep(lvl, lvl + 0.05, pn);
+		// (only the puddles a mirror: a whole road at a low roughness took the renderer's flat
+		// ambient reflection all over and came out pale grey, not dark and wet)
+		c *= mix(1.0, mix(0.85, 0.5, hard), soak);
+		c *= 1.0 - 0.45 * puddle;
+		rough = mix(mix(rough, 0.68, soak * hard), 0.08, puddle);   // (glossier flared white in the sun)
+		spec = mix(spec, 0.3, soak * hard);
+		spec = mix(spec, 0.5, puddle);
+		vec3 vd = normalize((INV_VIEW_MATRIX * vec4(VERTEX, 0.0)).xyz);
+		emit = wet_mirror(vd) * (soak * hard * 0.05 + puddle * 0.25);
+	}
 	float fsh = far_shade(wpos, length(VERTEX));
 	ALBEDO = c * mix(1.0, fsh, step(0.7, wup));   // (the ground, not a wall or a pole)
-	ROUGHNESS = 0.9;
-	SPECULAR = 0.25;
+	ROUGHNESS = rough;
+	SPECULAR = spec;
+	EMISSION = emit;
 }
 """
 ## the surface each tone gets: [patches, grain, slab size (kind 3) / the lawn photo's colours too
@@ -8124,6 +8306,22 @@ float far_shade(vec3 wp, float dist) {
 	return 1.0 - fs_dark * s * on;
 }
 """
+## After rain (the "wet" button): hard ground darker and glossy, mirroring the sky -- by
+## Fresnel, as water does: little looking down, a lot at a low angle -- and, low down in the
+## mirror, the street's buildings (no screen-space reflections in this renderer: a darker band
+## stands in for them); puddles in the dips nearly mirror-smooth. Read by the tone, kerb and
+## ground shaders (with far_shade, see _with_far); `wet` fades in and out (_set_wet).
+const WET_GLSL := """
+uniform float wet = 0.0;                             // 0 dry .. 1 just after rain
+uniform vec3 wet_sky_top = vec3(0.45, 0.55, 0.7);    // what it mirrors: the sky overhead
+uniform vec3 wet_sky_hor = vec3(0.75);               // and along the horizon
+vec3 wet_mirror(vec3 vd) {   // vd: from the eye to the point, in the world
+	vec3 r = reflect(vd, vec3(0.0, 1.0, 0.0));
+	float fres = 0.04 + 0.96 * pow(1.0 - clamp(-vd.y, 0.0, 1.0), 5.0);
+	vec3 sky = mix(wet_sky_hor, wet_sky_top, smoothstep(0.0, 0.6, r.y));
+	return mix(wet_sky_hor * 0.5, sky, smoothstep(0.02, 0.2, r.y)) * fres;
+}
+"""
 const FS_PX := 2048                  ## the picture's longer side (px): ~1.6 m a pixel over Givatayim
 const FS_DARK_EVE := 0.4             ## the same in the evening: a low sun lights the ground less, so its shadows take less
 const FS_DARK := 0.55                ## the share of the light a shadow takes off the ground (the real ones: tests/far_shadows.gd)
@@ -8134,7 +8332,7 @@ var _far_mats: Array = []
 
 ## a ground shader's code with far_shade() in it
 func _with_far(code: String) -> String:
-	return code.replace("void vertex()", FAR_SHADE + "void vertex()")
+	return code.replace("void vertex()", FAR_SHADE + WET_GLSL + "void vertex()")
 
 ## a ground material to keep in step with the picture, the quality and the night
 func _far(m: ShaderMaterial) -> void:
@@ -8148,6 +8346,11 @@ func _far_set(m: ShaderMaterial) -> void:
 	m.set_shader_parameter("fs_near", sun.directional_shadow_max_distance if sun.shadow_enabled else 0.0)
 	m.set_shader_parameter("fs_fade", sun.directional_shadow_fade_start)
 	m.set_shader_parameter("fs_dark", 0.0 if _night or _fs_tex == null else (FS_DARK_EVE if _evening else FS_DARK))
+	m.set_shader_parameter("wet", _wet_k)
+	if env != null:
+		var rs := _sky_reflect()
+		m.set_shader_parameter("wet_sky_top", rs[0])
+		m.set_shader_parameter("wet_sky_hor", rs[1])
 	if m == _ao_mat:   # the trees' patches: where this sun throws them
 		var L := -sun.global_transform.basis.z if sun.is_inside_tree() else Vector3(0, -1, 0)
 		var off := Vector2(L.x, L.z) / maxf(-L.y, 0.05)
@@ -10048,6 +10251,8 @@ func _retint_city() -> void:
 		lb.modulate = Palette.col(lb.get_meta("role"))
 		lb.outline_modulate = Palette.col("bg")
 	_retint_hud()
+	if sun != null:
+		_far_update()   # (what the wet ground mirrors: the sky as it is now)
 
 func _apply_signals_safe() -> void:
 	if not _sig_mats.is_empty():
@@ -10681,7 +10886,8 @@ func _build_signal_sounds() -> void:
 	rng.seed = 9
 	for i in range(click.size()):
 		var t := float(i) / rate
-		click[i] = exp(-t * 260.0) * (sin(TAU * 1700.0 * t) + 0.4 * (rng.randf() * 2.0 - 1.0))
+		# a relay's soft tick, not a beep (it was a 1.7 kHz ping)
+		click[i] = exp(-t * 320.0) * (sin(TAU * 1100.0 * t) * 0.6 + 0.5 * (rng.randf() * 2.0 - 1.0))
 	_snd_tick = AudioStreamPlayer.new()
 	_snd_tick.stream = _wav(click, rate, false)
 	add_child(_snd_tick)
@@ -10744,7 +10950,7 @@ func _controls_tick(dt: float) -> void:
 		if _blink != 0 or not lit:
 			var base := linear_to_db(maxf(0.0001, float(SaveData.data.get("volume_sfx", 0.8))))
 			if not Audio.muted() and _snd_tick != null and (_blink != 0):
-				_snd_tick.volume_db = base - 14.0
+				_snd_tick.volume_db = base - 18.0
 				_snd_tick.pitch_scale = 1.0 if lit else 0.82
 				_snd_tick.play()
 	for side: int in _blink_nodes:
@@ -11142,6 +11348,7 @@ func _frame() -> void:
 	_pose_car(_view_pos, _view_yaw, _view_y)
 	_traffic.draw(1.0 if _paused else f)   # (held: where the cars stand, not between two ticks)
 	_p("traffic draw")
+	_head_tick(dt)
 	_camera(dt, _view_pos, _view_yaw)
 	_zoom_camera(dt)
 	_sky_follow()
@@ -11753,89 +11960,47 @@ func _pose_car(p: Vector2, yaw: float, y := NAN) -> void:
 		_car.rotation.x = -pitch
 		_car.rotation.z = roll
 
-## ---- the engine's sound ----------------------------------------------------------------------
-## Made here, not from a file: a half-second loop of a four-cylinder's firing pulses at
-## 1200 rpm (40 a second, uneven from cylinder to cylinder, a half-order shake under them),
-## low-passed. Every part repeats a whole number of times in the loop, so it has no seam.
-## Played at a pitch of rpm / 1200, with a simple automatic gearbox giving the rpm; a second,
-## brighter loop (hiss and higher harmonics on each firing) comes in with the throttle. A
-## looping clip with its pitch changed is cheap and smooth in a browser, where pushing
-## generated audio every frame stutters whenever a frame is late.
+## ---- the sounds of driving -----------------------------------------------------------------
+## Loops made by sounds/make_sounds.py (it says why each is what it is), played at a pitch
+## and a volume set here every frame: the engine at the revs a simple automatic gearbox gives
+## (the loop is the engine at 1200 rpm), louder and brighter under load; the tyres' roar and
+## the wind with the speed; the nearest car going by as its tyres' whoosh, its pitch falling as
+## it passes; the city far off, always. A looping clip with its pitch changed is cheap and
+## smooth in a browser, where pushing generated audio every frame stutters whenever a frame
+## is late. (The engine used to be made here at load: a buzz of sharp pulses almost all
+## below 200 Hz, the only sound there was, and a laptop's speaker turned it into a rough
+## flutter that players switched off.)
 
-const ENGINE_RATE := 22050
-const ENGINE_F0 := 40.0
+const SND_DIR := "res://game/streets/sounds/"
 const IDLE_RPM := 800.0
 const GEAR_RPM := [420.0, 240.0, 165.0, 122.0, 96.0]   ## rpm per m/s, first to fifth
-var _engine: Array = []              ## [rumble, load, traffic going by]
+const SND_LOOPS := ["engine", "engine_load", "road", "wind", "road", "city"]
+var _engine: Array = []              ## players: SND_LOOPS, the second "road" the car going by
 var _rpm := IDLE_RPM
 var _gear_n := 1
 var _load := 0.0
+var _by_id := 0                      ## the car going by, and how fast it closes on you
+var _by_d := INF
+var _by_closing := 0.0
 
 func _build_engine() -> void:
-	for bright: bool in [false, true, false]:
+	for name: String in SND_LOOPS:
 		var p := AudioStreamPlayer.new()
-		p.stream = _engine_loop(bright)
+		p.stream = load(SND_DIR + name + ".wav")
 		p.volume_db = -80.0
 		add_child(p)
 		_engine.append(p)
-
-func _engine_loop(bright: bool) -> AudioStreamWAV:
-	var n := int(ENGINE_RATE * 0.5)
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 5 if bright else 3
-	var lump := [1.0, 0.82, 0.93, 0.78]   # no two cylinders fire quite alike
-	var raw := PackedFloat32Array()
-	raw.resize(n)
-	for i in range(n):
-		var t := float(i) / ENGINE_RATE
-		var cyc := t * ENGINE_F0
-		var k := int(cyc)
-		var ph := cyc - float(k)
-		var pulse: float = exp(-ph * (9.0 if bright else 5.0)) * float(lump[k % 4])
-		var v := pulse + 0.25 * sin(TAU * ENGINE_F0 * 0.5 * t)
-		if bright:
-			v += (rng.randf() * 2.0 - 1.0) * 0.6 * pulse
-			v += 0.3 * sin(TAU * ENGINE_F0 * 3.0 * t) * pulse
-		raw[i] = v
-	# a one-pole low-pass, round the loop twice so its end runs into its start
-	var cut := 0.35 if bright else 0.12
-	var y := 0.0
-	var out := PackedFloat32Array()
-	out.resize(n)
-	for pass_i in range(2):
-		for i in range(n):
-			y += (raw[i] - y) * cut
-			out[i] = y
-	var mean := 0.0
-	for i in range(n):
-		mean += out[i]
-	mean /= n
-	var peak := 0.0001
-	for i in range(n):
-		peak = maxf(peak, absf(out[i] - mean))
-	var data := PackedByteArray()
-	data.resize(n * 2)
-	for i in range(n):
-		data.encode_s16(i * 2, int(clampf((out[i] - mean) / peak * 0.85, -1.0, 1.0) * 32767.0))
-	var w := AudioStreamWAV.new()
-	w.format = AudioStreamWAV.FORMAT_16_BITS
-	w.mix_rate = ENGINE_RATE
-	w.stereo = false
-	w.data = data
-	w.loop_mode = AudioStreamWAV.LOOP_FORWARD
-	w.loop_begin = 0
-	w.loop_end = n
-	return w
 
 func _engine_tick(dt: float) -> void:
 	if _engine.is_empty():
 		return
 	var off := Audio.muted() or finished or _paused
-	for p: AudioStreamPlayer in _engine:
+	for i in range(_engine.size()):
+		var p: AudioStreamPlayer = _engine[i]
 		if off and p.playing:
 			p.stop()
 		elif not off and not p.playing:
-			p.play()
+			p.play(1.5 if i == 4 else 0.0)   # (the car going by: its own stretch of road)
 	if off:
 		return
 	# the gearbox: up a gear sooner on a light foot, later with it down; down below 1250
@@ -11855,19 +12020,36 @@ func _engine_tick(dt: float) -> void:
 	_load = lerpf(_load, _throttle_in, 1.0 - exp(-dt * 6.0))
 	var base := linear_to_db(maxf(0.0001, float(SaveData.data.get("volume_sfx", 0.8))))
 	var pitch := clampf(_rpm / 1200.0, 0.3, 4.0)
-	var rumble: AudioStreamPlayer = _engine[0]
+	var rev := clampf((_rpm - IDLE_RPM) / 3500.0, 0.0, 1.0)
+	var eng: AudioStreamPlayer = _engine[0]
 	var load: AudioStreamPlayer = _engine[1]
-	rumble.pitch_scale = pitch
+	var road: AudioStreamPlayer = _engine[2]
+	var wind: AudioStreamPlayer = _engine[3]
+	var by: AudioStreamPlayer = _engine[4]
+	var city: AudioStreamPlayer = _engine[5]
+	eng.pitch_scale = pitch
 	load.pitch_scale = pitch
-	rumble.volume_db = base - 7.0 + 4.0 * clampf((_rpm - IDLE_RPM) / 3500.0, 0.0, 1.0)
-	load.volume_db = base - 34.0 + 30.0 * sqrt(_load)
+	eng.volume_db = base - 17.0 + 7.0 * rev
+	load.volume_db = base - 38.0 + 26.0 * sqrt(_load)
+	# the tyres' roar and the wind: what speed sounds like (+8 dB a doubling, and brighter;
+	# the wind only at speed, +12 dB a doubling)
+	var sp := clampf(v / 14.0, 0.02, 3.0)
+	road.pitch_scale = 0.8 + 0.3 * clampf(v / 20.0, 0.0, 1.5)
+	road.volume_db = base - 8.0 + 26.0 * log(sp) / log(10.0) if v > 0.2 else -80.0
+	wind.volume_db = base - 23.0 + 40.0 * log(maxf(sp, 0.05)) / log(10.0) if v > 2.0 else -80.0
+	if _wet_k > 0.01 and v > 0.5:   # on a wet road the tyres hiss: brighter, and the spray's shh
+		road.pitch_scale *= 1.0 + 0.25 * _wet_k
+		road.volume_db += 2.0 * _wet_k
+		wind.volume_db = maxf(wind.volume_db, base - 15.0 + 20.0 * log(sp * _wet_k) / log(10.0))
+	city.volume_db = base - (16.0 if _walking else 19.0)
 	if _walking:   # idling behind you, quieter the further you walk
-		rumble.volume_db -= 4.0 + _pos.distance_to(_car_at) * 0.9
+		eng.volume_db -= 4.0 + _pos.distance_to(_car_at) * 0.9
 		load.volume_db = -80.0
-	# the nearest car going by: louder as it nears, its pitch with its speed
-	var by: AudioStreamPlayer = _engine[2]
+	# the nearest car going by: its tyres, louder as it nears, the pitch falling as it passes
+	# (how fast it closes on you, from its distance a frame ago)
 	var near := INF
 	var nv := 0.0
+	var nid := 0
 	if _traffic != null:
 		for c in _traffic.cars:
 			if c.alive and c.v > 1.0:
@@ -11875,9 +12057,16 @@ func _engine_tick(dt: float) -> void:
 				if d < near:
 					near = d
 					nv = c.v
-	if near < 45.0:
-		by.pitch_scale = clampf((IDLE_RPM + nv * 150.0) / 1200.0, 0.4, 3.0)
-		by.volume_db = base - 12.0 - near * 0.55
+					nid = c.get_instance_id() if c is Object else hash(c)
+	if nid == _by_id and dt > 0.0 and near < INF and _by_d < INF:
+		_by_closing = lerpf(_by_closing, (_by_d - near) / dt, 1.0 - exp(-dt * 8.0))
+	elif nid != _by_id:
+		_by_closing = 0.0
+	_by_id = nid
+	_by_d = near
+	if near < 60.0:
+		by.pitch_scale = clampf((0.85 + nv / 40.0) / (1.0 - clampf(_by_closing, -60.0, 60.0) / 343.0), 0.5, 2.5)
+		by.volume_db = base - 7.0 - 24.0 * log(maxf(near, 3.0) / 3.0) / log(10.0)
 	else:
 		by.volume_db = -80.0
 
@@ -12349,7 +12538,21 @@ func _safe_to_cross(mid: Vector2, hw: float) -> bool:
 			return false   # coming, and too close to stop
 	return true
 
+## a car (or the player's) has stood at this crossing a while, kept there by people stepping
+## out one after another: let it go before the next one steps out. A stream of people kept
+## a car waiting 20 s and more; at a crossing without lights people let one through.
+func _kept_waiting(mid: Vector2, hw: float) -> bool:
+	if _me_still > 6.0 and _pos.distance_to(mid) < hw + 14.0 and _fwd().dot((mid - _pos).normalized()) > 0.5:
+		return true
+	for c in _traffic.cars:
+		if c.alive and c.still > 6.0 and c.why == "zebra" and c.pos.distance_to(mid) < hw + 14.0:
+			return true
+	return false
+
+var _me_still := 0.0                  ## seconds the player's car has stood still
+
 func _crossers_tick(dt: float) -> void:
+	_me_still = _me_still + dt if absf(_v) < 0.3 else 0.0
 	if _crossers.is_empty() or _crossing_nodes.is_empty():
 		return
 	_zebra_t -= dt
@@ -12371,7 +12574,8 @@ func _crossers_tick(dt: float) -> void:
 				cr["t"] = float(cr["t"]) - dt
 				if float(cr["t"]) <= 0.0 and _walk_light(cr, from.distance_to(to) / float(cr["speed"])) \
 						and _safe_to_cross((from + to) * 0.5, from.distance_to(to) * 0.5 - 1.1) \
-						and not _box_waiting(cr, (from + to) * 0.5):
+						and not _box_waiting(cr, (from + to) * 0.5) \
+						and not _kept_waiting((from + to) * 0.5, from.distance_to(to) * 0.5):
 					cr["state"] = "cross"
 					a.play("Walk", true, float(cr["speed"]) / 1.35)
 			"cross", "back":
@@ -12888,7 +13092,7 @@ func _camera(dt: float, p: Vector2, yaw: float) -> void:
 	var eye2 := p - back * d
 	var eye := Vector3(eye2.x, maxf(gy + 2.0 + d * 0.14, _decks.surf(eye2, _view_y) + 1.4), eye2.y)
 	eye = _decks.keep_eye(eye, p, _view_y)
-	var ahead := p + back * 4.0
+	var ahead := p + back.rotated(-_head_yaw * 0.5) * 4.0   # (a little round to where the driver looks)
 	var at := Vector3(ahead.x, lerpf(gy, _decks.surf(ahead, _view_y), 0.5) + 1.0, ahead.y)
 	look_from(eye, at)
 	cam.fov = lerpf(64.0, 74.0, spd)
@@ -12899,9 +13103,11 @@ func _seat_camera(dt: float, yaw: float) -> void:
 	_cam_yaw = yaw
 	_look_turn = lerpf(_look_turn, clampf(_steer * 0.55, -0.3, 0.3), 1.0 - exp(-dt * 3.0))
 	var xf := _body.global_transform
-	var head := SEAT + Vector3(0, 0, clampf(-_a_long * 0.004, -0.04, 0.04))
+	# (the head turned: the eyes a little to that side and back, the view round with it)
+	var head := SEAT + Vector3(sin(_head_yaw) * 0.06, 0, clampf(-_a_long * 0.004, -0.04, 0.04) - (1.0 - cos(_head_yaw)) * 0.05)
 	var eye := xf * head
-	var ahead := Vector3(-sin(_look_turn), -0.06, cos(_look_turn)) * 12.0   # +X is the car's left
+	var turn := _look_turn - _head_yaw
+	var ahead := Vector3(-sin(turn), -0.06, cos(turn)) * 12.0   # +X is the car's left
 	look_from(eye, xf * (head + ahead))
 	cam.fov = lerpf(72.0, 78.0, clampf(absf(_v) / 30.0, 0.0, 1.0))
 	if _wheel_node != null:
@@ -12912,6 +13118,96 @@ func _seat_camera(dt: float, yaw: float) -> void:
 		# clockwise over the top)
 		_dial_speed.basis = Basis(Vector3.RIGHT, 0.32) * Basis(Vector3.BACK, -2.2 + 4.4 * clampf(absf(_v) * 3.6 / 200.0, 0.0, 1.0))
 		_dial_rpm.basis = Basis(Vector3.RIGHT, 0.32) * Basis(Vector3.BACK, -2.2 + 4.4 * clampf(_rpm / 7000.0, 0.0, 1.0))
+
+## ---- the driver's head: looking left and right where a driver would ----------------------
+## Slowing for a junction, a light, a stop or give-way sign: left, right, left again (traffic
+## comes from the left first, driving on the right), once a junction; into a turn as the
+## wheel goes over; at people on the crossing ahead; over the right shoulder reversing.
+## Autodrive's driver always does; yours while "look" is on. The seat view turns with the
+## head, the chase camera swings a little toward it, and the head in the car turns.
+const LOOK_BTN := Rect2(578, 218, 52, 20)    ## looking round while you drive yourself (key G: glance)
+const HEAD_RATE := 3.4                       ## rad/s a head turns at, at most
+var _head_yaw := 0.0                         ## where the driver looks: radians left (+) of ahead
+var _head_plan: Array = []                   ## a scan still to do: [[yaw, seconds held], ...]
+var _head_hold := 0.0
+var _head_at := Vector2.INF                  ## where the last scan was (once a junction: its
+var _head_at_t := 0.0                        ## points 10-30 m apart are one) and how long ago
+var _head_check := 0.0
+var _look_on := true                         ## looking round while you drive (autodrive always)
+
+func _head_tick(dt: float) -> void:
+	var want := 0.0
+	_head_at_t += dt
+	if _walking or not (_auto or _look_on):
+		_head_plan = []
+	else:
+		_head_check -= dt
+		if _head_check <= 0.0 and _head_plan.is_empty() and absf(_v) < 6.5 and _gear > 0:
+			_head_check = 0.15
+			var j := _junction_ahead_me(26.0)
+			if j >= 0 and (_nodes[j].distance_to(_head_at) > 45.0 or _head_at_t > 12.0):
+				_head_at = _nodes[j]
+				_head_at_t = 0.0
+				_head_plan = [[0.95, 0.45], [-0.95, 0.5], [0.55, 0.25]]
+		if not _head_plan.is_empty():
+			want = float(_head_plan[0][0])
+			if absf(_head_yaw - want) < 0.1:
+				_head_hold += dt
+				if _head_hold >= float(_head_plan[0][1]):
+					_head_hold = 0.0
+					_head_plan.pop_front()
+		elif _gear < 0 and absf(_v) > 0.2:
+			want = -1.3   # over the right shoulder, reversing
+		else:
+			want = clampf(-_steer * 1.6, -0.7, 0.7)   # into the turn (+ steer is right)
+			var at := _person_ahead_me(16.0)
+			if at != Vector2.INF and absf(_v) < 5.0:
+				want = clampf(-_fwd().angle_to(at - _pos), -1.1, 1.1)
+	# a head turns quickly through the middle and slows into where it is going
+	var gap := absf(want - _head_yaw)
+	_head_yaw = move_toward(_head_yaw, want, HEAD_RATE * dt * clampf(gap * 2.5, 0.25, 1.0))
+	if _player_car_mat != null:
+		_player_car_mat.set_shader_parameter("head_turn", _head_yaw)
+
+func _toggle_look() -> void:
+	_look_on = not _look_on
+	_show_banner("looking round as you drive: " + ("on" if _look_on else "off"), 1.4)
+	Probe.event("look", {"on": _look_on})
+
+## the next junction (3+ ways) or signalled point on the road ahead within `reach`, or -1
+func _junction_ahead_me(reach: float) -> int:
+	var hit := _nearest_seg(_pos, 12.0, true, true)
+	if hit.is_empty():
+		return -1
+	var r: Dictionary = _roads[hit["road"]]
+	var pts: PackedVector2Array = r["pts"]
+	var ids: PackedInt32Array = r["ids"]
+	var sj: int = hit["seg"]
+	var dir := 1 if (pts[sj + 1] - pts[sj]).dot(_fwd()) >= 0.0 else -1
+	var k := sj + 1 if dir > 0 else sj
+	var d := _pos.distance_to(pts[k])
+	while d <= reach:
+		var n := ids[k]
+		if _node_ways(n) >= 3 or _sig_set.has(n) or _signs.has(n):
+			return n
+		var nk := k + dir
+		if nk < 0 or nk >= pts.size():
+			return -1
+		d += pts[k].distance_to(pts[nk])
+		k = nk
+	return -1
+
+## the nearest person in front within `reach` (on a crossing, stepping off the kerb)
+func _person_ahead_me(reach: float) -> Vector2:
+	var best := Vector2.INF
+	var bd := reach
+	for q: Vector3 in _people_near(_pos + _fwd() * reach * 0.5, reach * 0.5 + 2.0):
+		var p := Vector2(q.x, q.z)
+		var d := p.distance_to(_pos)
+		if d < bd and (p - _pos).dot(_fwd()) > 2.0:
+			bd = d
+			best = p
+	return best
 
 func _clear_behind(from: Vector2, dir: Vector2, want: float) -> float:
 	if absf(_view_y - _h(from)) > 2.5:
@@ -13396,7 +13692,12 @@ func _autodrive(dt: float) -> Array:
 	# facing well away from the lane it must take (handed over pointing the wrong way up a
 	# one-way street, or across it): turn round on the spot first. Steering full lock at
 	# it from a standstill put the nose into the kerb and the wall behind it, again and again.
-	var lane_dir := (_ap_pts[1] - _ap_pts[0]).normalized() if _ap_pts.size() > 1 else _fwd()
+	# (the way the lane goes over its next 5 m, not between its next two points: a road
+	# 1.5 m long at a junction pointed back the way the car came, it turned round on the
+	# spot, then swung back across the junction into the oncoming lane and a car there)
+	var lane_dir := (_ap_point_ahead(5.0) - _ap_point_ahead(0.0)).normalized() if _ap_pts.size() > 1 else _fwd()
+	if lane_dir == Vector2.ZERO:
+		lane_dir = _fwd()
 	if _ap_turn <= 0.0 and absf(_v) >= 2.0 and _fwd().dot(lane_dir) < -0.2:
 		# the lane it must take is behind it and it is still rolling (it ran past a dead
 		# end's turning point at 18 km/h): brake to a stop in a straight line, then turn.
@@ -13506,7 +13807,8 @@ var _ap_mark_t := 0.0
 const AP_GIVE_UP := 40.0
 
 func _ap_watch(dt: float, vt: float) -> void:
-	if _ap_mark == Vector2.INF or _pos.distance_to(_ap_mark) > 12.0 or _ap_light_v() < 0.5 or not _cross.is_empty():
+	if _ap_mark == Vector2.INF or _pos.distance_to(_ap_mark) > 12.0 or _ap_light_v() < 0.5 or not _cross.is_empty() \
+			or _in_a_queue():
 		_ap_mark = _pos
 		_ap_mark_t = 0.0
 		return
@@ -13523,6 +13825,18 @@ func _ap_watch(dt: float, vt: float) -> void:
 			Probe.event("autodrive_unstuck")
 			_log.event("unstuck")
 			return
+
+## behind a car that is waiting its turn (at a light, behind another, for people, at a
+## junction) and has not itself been standing for ages: a queue, not stuck. Forty seconds
+## in a slow queue at a red read as stuck, and the car was lifted onto another street.
+func _in_a_queue() -> bool:
+	if _ap_why != "car" or _ap_lead < 0.0:
+		return false
+	var lead: Array = _traffic.lead_on(_ap_pts, _pos, _ap_lead + 1.0, _ap_wait > 3.0)
+	if int(lead[3]) < 0:
+		return false
+	var c = _traffic.cars[int(lead[3])]
+	return c.still < 30.0 or c.why == "light"   # (a light waits a cycle at most; a jam of cars, 30 s)
 
 ## the point `dist` metres along the planned lane from point k (negative = back)
 func _ap_walk(k: int, dist: float) -> Vector2:
@@ -14378,7 +14692,7 @@ func _check_arrival(dt: float) -> void:
 		_auto = false
 		_ap_pts = PackedVector2Array()
 		_clear_dest()
-		Audio.play("coin", 0.05, -2.0)
+		Audio.play("coin", 0.05, -8.0)
 		_show_banner("arrived: " + _dest_name, 3.0)
 		Probe.event("arrived", {"to": _dest_name, "secs": int(_dest_t)})
 
@@ -14656,7 +14970,7 @@ func _explore(dt: float) -> void:
 	if nm != "" and _on_m >= NEW_STREET_M and _streets.has(nm) and not _visited.has(nm):
 		_visited[nm] = true
 		add_score(1)
-		Audio.play("coin", 0.05, -4.0)
+		Audio.play("coin", 0.05, -14.0)   # (a hint, not a jingle: it came every block or so)
 		Probe.event("new_street", {"n": _visited.size()})
 		_show_banner("+ " + nm, 1.6)
 		_count_lbl.text = "streets %d / %d" % [_visited.size(), _streets.size()]
@@ -14992,6 +15306,10 @@ func _draw_hud() -> void:
 	_hud.draw_rect(NIGHT_BTN, Color(bg, 0.65))
 	_hud.draw_rect(NIGHT_BTN, Color(nc, 0.9), false, 1.5)
 	_hud.draw_string(_font, NIGHT_BTN.position + Vector2(0, 15), "day" if _night else ("night" if _evening else "evening"), HORIZONTAL_ALIGNMENT_CENTER, NIGHT_BTN.size.x, 11, nc)
+	var wetc := Palette.col("player") if _wet else Color(ink, 0.8)
+	_hud.draw_rect(WET_BTN, Color(bg, 0.65))
+	_hud.draw_rect(WET_BTN, Color(wetc, 0.9), false, 1.5)
+	_hud.draw_string(_font, WET_BTN.position + Vector2(0, 15), "dry" if _wet else "wet", HORIZONTAL_ALIGNMENT_CENTER, WET_BTN.size.x, 11, wetc)
 	var lc := Palette.col("warn") if _lights_on else Color(ink, 0.8)
 	_hud.draw_rect(LIGHTS_BTN, Color(bg, 0.65))
 	_hud.draw_rect(LIGHTS_BTN, Color(lc, 0.9), false, 1.5)
@@ -15006,6 +15324,11 @@ func _draw_hud() -> void:
 	_hud.draw_rect(WALK_BTN, Color(bg, 0.65))
 	_hud.draw_rect(WALK_BTN, Color(wc, 0.9), false, 1.5)
 	_hud.draw_string(_font, WALK_BTN.position + Vector2(0, 15), "drive" if _walking else "walk", HORIZONTAL_ALIGNMENT_CENTER, WALK_BTN.size.x, 11, wc)
+	if not _walking:
+		var kc := Palette.col("accent") if _look_on else Color(ink, 0.6)
+		_hud.draw_rect(LOOK_BTN, Color(bg, 0.65))
+		_hud.draw_rect(LOOK_BTN, Color(kc, 0.9), false, 1.5)
+		_hud.draw_string(_font, LOOK_BTN.position + Vector2(0, 15), "look", HORIZONTAL_ALIGNMENT_CENTER, LOOK_BTN.size.x, 11, kc)
 	var vc := Palette.col("player") if _cockpit else Color(ink, 0.8)
 	_hud.draw_rect(VIEW_BTN, Color(bg, 0.65))
 	_hud.draw_rect(VIEW_BTN, Color(vc, 0.9), false, 1.5)
@@ -15275,6 +15598,9 @@ func _input(event: InputEvent) -> void:
 				KEY_C:
 					_set_cockpit(not _cockpit)
 					return
+				KEY_G:
+					_toggle_look()
+					return
 				KEY_Q:
 					_set_blink(0 if _blink == -1 else -1)
 					return
@@ -15325,12 +15651,16 @@ func _input(event: InputEvent) -> void:
 				_open_picker.call_deferred()   # after this click, so it does not hit the list
 			elif NIGHT_BTN.grow(4).has_point(mb.position):
 				_next_time()
+			elif WET_BTN.grow(3).has_point(mb.position):
+				_set_wet(not _wet)
 			elif VIEW_BTN.grow(4).has_point(mb.position):
 				if _zoomed():
 					_zoom_seat = not _cockpit
 					_zoom_set(0.0)
 				else:
 					_set_cockpit(not _cockpit)
+			elif LOOK_BTN.grow(2).has_point(mb.position) and not _walking:
+				_toggle_look()
 			elif LIGHTS_BTN.grow(2).has_point(mb.position):
 				_set_lights(not _lights_on)
 			elif WALK_BTN.grow(2).has_point(mb.position):
@@ -15357,8 +15687,9 @@ func _input(event: InputEvent) -> void:
 		if t.pressed:
 			if AUTO_BTN.grow(4).has_point(t.position) or GOTO_BTN.grow(4).has_point(t.position) \
 					or ASSIST_BTN.grow(4).has_point(t.position) or NIGHT_BTN.grow(4).has_point(t.position) \
+					or WET_BTN.grow(3).has_point(t.position) \
 					or VIEW_BTN.grow(4).has_point(t.position) or LIGHTS_BTN.grow(2).has_point(t.position) \
-					or WALK_BTN.grow(2).has_point(t.position) \
+					or WALK_BTN.grow(2).has_point(t.position) or LOOK_BTN.grow(2).has_point(t.position) \
 					or ZOOM_BTN.grow(2).has_point(t.position) or PAUSE_BTN.grow(2).has_point(t.position) \
 					or (_trace_view and TRACE_RECT.has_point(t.position)) \
 					or t.position.y < 36.0:

@@ -190,7 +190,7 @@ func _drive(secs: float) -> void:
 			if not c.alive:
 				car_still.erase(i)
 				continue
-			if c.v < 0.3 and T._light_ahead(c) > 0.5:
+			if c.v < 0.3 and T._light_ahead(c) > 0.5 and not _queued_at_light(c):
 				car_still[i] = float(car_still.get(i, 0.0)) + dt
 				if absf(float(car_still[i]) - 20.0) < dt * 0.5:
 					_count("traffic: stalls 20 s+")
@@ -274,3 +274,15 @@ func _lead_moving() -> bool:
 		return false
 	var c = T.cars[int(lead[3])]
 	return c.wait < 6.0   # (a queue that is moving now and then: not stuck)
+
+## standing in a queue whose front car waits at a red light: waiting, not stalled (with the
+## side streets' longer red, the third car back waited 25 s and read as a stall)
+func _queued_at_light(c) -> bool:
+	var seen := 0
+	var o = c
+	while o.blocker >= 0 and seen < 12:
+		o = T.cars[o.blocker]
+		seen += 1
+		if o.alive and T._light_ahead(o) < 0.5:
+			return true
+	return false
