@@ -4,7 +4,7 @@
 // Incrementing CACHE_VERSION will kick off the install event and force
 // previously cached resources to be updated from the network.
 /** @type {string} */
-const CACHE_VERSION = '1795214656|3910912';
+const CACHE_VERSION = '1795217716|3330817';
 /** @type {string} */
 const CACHE_PREFIX = 'GamePlatform-sw-cache-';
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
@@ -32,23 +32,76 @@ function freshFetch(url) {
 
 self.addEventListener('install', (event) => {
 	// PATCHED by tools/publish_web.sh -- precache with freshFetch, then take over instead of
-	// waiting for every window to close first.
+	// waiting for every window to close first. When an older build is on the device (it
+	// plays meanwhile), the whole new build is fetched first -- the engine copied across if
+	// unchanged, index.pck downloaded -- so the switch to it never waits for a download.
+	// A first install takes over at once: the page's own first load fills its cache.
+	// (Files already in this build's cache are kept: an install cut short resumes.)
 	event.waitUntil((async () => {
 		const cache = await caches.open(CACHE_NAME);
+		const have = async (f) => (await cache.match(f)) !== undefined;
 		await Promise.all(CACHED_FILES.map(async (f) => {
+			if (await have(f)) {
+				return;
+			}
 			const res = await freshFetch(f);
 			if (res.ok) {
 				await cache.put(f, res);
 			}
 		}));
+		const older = (await caches.keys()).some((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME);
+		if (older) {
+			if (!(await have('index.wasm'))) {
+				await reuseEngine(cache);
+			}
+			for (const f of CACHEABLE_FILES) {
+				if (await have(f)) {
+					continue;
+				}
+				const res = await freshFetch(f);
+				if (!res.ok) {
+					throw new Error(f + ': ' + res.status);   // (the old build stays; tried again at the next check)
+				}
+				await cache.put(f, res);
+			}
+		}
 		await self.skipWaiting();
 	})());
 });
 
+// PATCHED by tools/publish_web.sh -- the engine (index.wasm, ~39 MB) only changes with the
+// Godot version, yet every publish starts a new cache and so downloaded it again. If an
+// older build's cache holds the very same file (by its SHA-256, WASM_SHA256 below), copy it
+// across before the old caches are dropped: only index.pck is downloaded after a publish.
+const WASM_SHA256 = '7eda98958eb09135a1acb54a4323a00b1a55af1997f15fa1cdc2b93e3df46656';
+async function reuseEngine(cache) {
+	try {
+		for (const key of await caches.keys()) {
+			if (!key.startsWith(CACHE_PREFIX) || key === CACHE_NAME) {
+				continue;
+			}
+			const old = await (await caches.open(key)).match('index.wasm');
+			if (!old) {
+				continue;
+			}
+			const keep = old.clone();
+			const sum = await crypto.subtle.digest('SHA-256', await old.arrayBuffer());
+			const hex = Array.from(new Uint8Array(sum), (b) => b.toString(16).padStart(2, '0')).join('');
+			if (hex === WASM_SHA256) {
+				await cache.put('index.wasm', keep);
+				return;
+			}
+		}
+	} catch (e) {
+		console.warn('engine not reused from an older build: ', e); // eslint-disable-line no-console
+	}
+}
+
 self.addEventListener('activate', (event) => {
 	// PATCHED by tools/publish_web.sh -- claim the open pages, and if this build replaced
-	// an older one, reload them onto it. Guarded on there having BEEN an older one, so a
-	// first install (or a re-registration of the same build) does not reload for nothing.
+	// an older one, tell them: the page offers a restart onto it (index.html's 'new-build'
+	// listener) instead of being reloaded under the player. Guarded on there having BEEN an
+	// older one, so a first install (or a re-registration of the same build) says nothing.
 	event.waitUntil((async () => {
 		const keys = await caches.keys();
 		const stale = keys.filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME);
@@ -56,7 +109,7 @@ self.addEventListener('activate', (event) => {
 		await self.clients.claim();
 		if (stale.length > 0) {
 			const all = await self.clients.matchAll({ type: 'window' });
-			all.forEach((c) => c.navigate(c.url));
+			all.forEach((c) => c.postMessage({ type: 'new-build' }));
 		}
 	})());
 });

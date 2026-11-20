@@ -35,10 +35,14 @@ The ones most often touched, and the functions in them:
   `_clip_buildings` (fronts still on a road cut back to road + 1.5 m), `_build_graph`.
 - **building the world, near-first** -- `_build_world` does the once-only things
   (`_build_setup`: which roads, nodes, buildings, areas, places reach each 400 m square;
-  the park, tree and light set-ups), then `_build_tile` square by square: the ones within
-  `NEAR_FIRST` of the start behind the loading text, the rest in `_build_rest` while you
-  drive, nearest the car first, every builder stopping when the frame's budget is used up
-  (`if _over(): await _pause()`; `BUILD_US`). Two rules keep squares from doubling or
+  the park, tree and light set-ups), then `_build_tile` square by square: `_first_squares`
+  behind the loading text (a city level: the start's square, any within `NEAR_NOW` 60 m, and
+  those the street ahead crosses within `AHEAD_NOW` 160 m -- usually 1-2; a filmed walk or a
+  test route: all within `NEAR_FIRST` 320 m, as before, also `STREETS_NEAR_FIRST=1`), the
+  rest in `_build_rest` while you drive, nearest the car first -- the rest of NEAR_FIRST in
+  a hurry (`_catch_up`: `CATCH_UP_US` 16 ms a frame, the first seconds only, `_catch_up_ms`
+  when done), then `BUILD_US` -- every builder stopping when the frame's budget is used up
+  (`if _over(): await _pause()`). Two rules keep squares from doubling or
   missing things: what lies along a road or fence is worked out by every square it crosses
   and kept only where its triangles start (`CBuf.clip`, `_near_part`, `_near_span`);
   everything else, and whatever it records (posts, parked cars, lights, tables), belongs
@@ -141,6 +145,24 @@ The ones most often touched, and the functions in them:
   fwidth: taken at the half-way grey, a plate was blank yellow from the chase view). The
   player's car's plates were boxes in a palette material: faces in its car shader now
   (`_sedan_rest`). No real plate, none from a film, is ever used. tests/plates.gd.
+- **cars, more real** -- body kinds as Israeli streets have them (CAR_SHAPES + CAR_MIX):
+  "mini" (a 3.6 m city car), "wagon" (an estate), "mpv" (a tall boxy small van) beside
+  sedan, hatch, suv, van; each kind is listed in the parked squares' `xf_by`, traffic's
+  LENS, CORNERS and kinds loop (a multimesh each: a draw a kind a square). All in CAR_SHADER
+  (no new shader): the car's own `plate_id` picks its rim (five spokes, twelve fine, ten, a
+  steel wheel's cap; a dark alloy now and then; the brake disc and nuts), how dusty it is
+  (more parked: no one in it, custom alpha under 1.5) and how sun-faded (the oldest fifth),
+  scuffed bumper corners, a folded silver sunshade behind a parked car's windscreen (45%);
+  tyres' sidewalls a shade lighter. Parts a few cars have are in every car's mesh and
+  folded away in vertex() on the rest (vertex alpha 0.52 a learner's roof sign with a
+  lamed, 0.54 a new driver's sign in the back window, 0.56 a parking permit on a parked
+  car's windscreen; UV2 their middle, for the shader's drawing): no draws. Wiper arms, a
+  shark-fin aerial, roof rails on an SUV and an estate are trim in the body. The paint mix
+  has more white and silver and a dark green -- appended: a film's car asks traffic for a
+  paint by its place in `_car_paints()` (white 0, silver 4, grey 7, black 9, blue 11, red
+  12). tests/plates.gd shoots them (ends and a side). Cost: the three kinds are ~10 more
+  multimeshes in view at the start (`draws`: 216; about 3 a kind, parked squares and
+  traffic); the playtest 10 hitches alone (17 with a second Godot rendering beside it).
 - **shop interiors** -- SHOP_SHADER on the shop windows (`_shop_interior`, instead of the
   flat lit `_shop_glass`): a room 3.5 m deep traced from the eye through the glass (back
   wall, sides, floor, ceiling -- no geometry), shelves of goods, racks of clothes or a
@@ -392,6 +414,13 @@ The ones most often touched, and the functions in them:
   `_warm_up` then shows the kinds of surface a few at a time (`_shader_key`; four views only
   under a software renderer), each frame timed in `_warm_ms`; `_load_ms`, `_stage_ms`;
   `_load_text` puts them at the bottom of the perf view, so a player's own load can be read.
+  The bar under the text (`_load_bar_begin`, `_load_tick`): phases file / setup / squares /
+  warm (`_load_into`, `_load_sub` at each square and warm-up frame), estimated from this
+  device's last load of the city in `user://streets_load.json` (`_load_save`: ms per phase,
+  per square, the warm-up as on the same build `warm` and on a new build's first load
+  `warm_new`, keyed by res://build.txt); no history for the city: another city's, the file
+  scaled by its size; none: the bar by phase, "timing it, for next time". The city file is
+  one blocking call (`_load_city`): the bar stands still through it.
 - **people** -- walkers `_place_walker` / `_pavement_piece` / `_people_tick`, zebra crossers
   `_send_crossers` / `_zebra_span` / `_away_from` / `_crossers_tick`, the height their feet go
   at `_walk_y` / `_pave_top`, what autodrive stops for `_ap_people_v`.
@@ -1024,6 +1053,27 @@ Nothing is half done: all of the above is on main.
   to the sea (9,591 buildings, 6,091 roads), the playtest's "city" event, two runs at once:
   Tel Aviv parse 2.7 s + build 3.4 s before the car, Ashdod 2.2 + 3.0, Givatayim 1.0 + 2.0
   (decks_inferred alone 0.8 s of Tel Aviv's parse, 0.24 of Givatayim's).
+- **Before the car, near-first cut to what the first view sees** (`tests/start_soon.gd`,
+  headless, 20 Nov 2026, old way with `STREETS_NEAR_FIRST=1`): Givatayim 4.4 -> 3.0 s (6 ->
+  1 square), Tel Aviv 10.1 -> 6.3 (8 -> 1), Ashdod 8.3 -> 5.9 (8 -> 2); the rest within 320
+  m of the car 2.8 / 5.7 / 3.7 s after it, at ~40 frames a second. What is left before the
+  car is mostly the city file (1.5 / 4.3 / 3.4 s) and the setup (0.4-1.4 s).
+  `tests/load_bar.gd`: the bar's second Givatayim load said "about 3 s" with 2.9 left; Tel
+  Aviv from Givatayim's numbers "about 5 s" with 6.6 left (its file takes more than its size
+  says).
+- **Starting a level in a browser, phase by phase** (`tests/web_load.js`: the container's
+  Chromium, the engine's wasm on one thread, SwiftShader drawing; 20 Nov 2026). Givatayim:
+  engine up 1.5 s after the page, the level begun ~4 s; city file 1.8-2.1 s; the squares round the start 17 s (kerbs
+  4.7, far shadows 2.3 -- 0.65 of it work, the rest its two frames -- parked 1.1, trees 1.1,
+  furniture 0.9, places 0.8); warm-up 50 s (twelve frames of 3.6-5.9 s: SwiftShader's
+  drawing, not what a phone pays). Tel Aviv: city file 5.5 s, the squares 36 s (kerbs 8.6,
+  far shadows 4.1, furniture 2.9, roads 2.7, parked 2.2, places 1.9), warm-up 62 s. The CPU
+  stages run ~3-4x the headless numbers above (wasm, one thread). What makes a player's wait
+  swing from a few seconds to twenty (user, Nov 2026): a new build since the last visit
+  (index.pck's 39 MB downloaded again; index.wasm's 39 MB too until the worker learnt to
+  keep it, tools/publish_web.sh -- 77 publishes on 20 Nov alone), shader code changed since
+  the last visit (the browser compiles those again: the warm-up's "x of 12" steps), and the
+  city's size.
 - Frame cost at the start view (`tests/frame_cost.gd`, quality 3, Nov 2026, same run):
   Tel Aviv 1.69 M triangles + 0.75 M shadow, 367 draws; Givatayim (Katznelson by Weizmann)
   2.00 M + 1.01 M, 444 draws -- Tel Aviv's towers are no heavier at the start than
@@ -1412,15 +1462,61 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   call 6 m south-east shows; the city's own guard railing stands beside the bollard where the
   film has none.
 
-### Handoff: the filmed walks (20 Nov 2026, after pass 12)
+- **Pass 13, the pace and the head as filmed, the people moving**, done. Measured on every
+  frame of the film (30 a second), not landmarks or one frame a second: `tests/film_motion.py`
+  reads the camera's facing from the far band's slide across each pair of frames (the median of
+  six tiles: a car passing fills one or two and alone dragged the reading 60 degrees), and the
+  pace from the ground's slide down the frame less the far band's (a pinhole's sums: f
+  sin^2(theta) / (h cos^2(alpha)) pixels a metre). The replay is measured by its
+  `CAMERA_LOG` (the test's new mode: the camera every 0.1 s at the walk's pace, ~10 min at
+  320x180, --fixed-fps 10), not from its recording: at 10 frames a second its pavers'
+  pattern repeats within one frame's slide and its ground read 0.2 m/s for 1.4. Lined up on
+  the passage (36-52 s), the two facings agreed there and on the little street to a degree or
+  two -- the film's summed facing barely drifts over a minute -- and differed at the passage's
+  end (the replay's body turned 50 degrees right onto the little street's pavement, the
+  film's did not), at Sheinkin's corner (the film looks right at 79-81 s and then turns left
+  smoothly to 90 s; the hand-set looks went left at 81 and 88 s) and on Ha-Meri (91-96 s: the
+  film faces the far pavement's white wall and e-scooter, the replay looked down the pavement).
+  `tests/film_fit.py` then fits from the far kerb on (17 s): between kept anchor seconds (17,
+  25.6, 33, 64, 80, 87, 91.5, 96) the replay's own path at the film's share of the distance
+  (the streets' lengths are not the street's), capped at 2.6 m/s, points every 0.5 s; and the
+  head's turn = the film's facing less the body's (the body worked out as `_film_tick` does)
+  every 0.25 s. It writes `cities/details/katzenelson_fit.json`, which `make_givatayim.py`
+  takes in: the walk's points from 17 s and its new `"head"` -- [second, degrees right of the
+  body], played by `_film_tick` where it runs in place of the turn into bends and the looks'
+  turns (their tips up and down still apply). After it: the facing within a few degrees of the
+  film's from 19 s to the end (`motion_after` chart); the pace the film's shape, 0.3-0.4 m/s
+  quicker from 64 s (the replay's streets are longer there) and 2.4 m/s under the arcade (the
+  replay's route from its zebra is ~7 m longer than the street's). Not fitted: 0-17 s -- the
+  film's facing there is cars and stripes (the phone looks down), so the crossing keeps pass
+  12's frame-read looks. Re-fit after moving any walk point past 17 s (`CAMERA_LOG`, then
+  `film_motion.py log`, then `film_fit.py`): the fit follows the path the replay walked.
+  *People*: the man by the far kerb's railing walks there along the confectionery's front
+  (12.6-16.6 s), a third person stands with the two women in the forecourt, and the three
+  "talk" (people's new `talk`: no clip for it in the kit, so each turns a little to the others
+  and back, two slow sines), a woman crosses the passage's end in front of the man in blue
+  (59.4-63.2 s).
 
-- **In progress**: nothing. Pass 12 is on main; the list of what is still different is
+  *Merging main after it*: the black hatch at the crossing passed at 4.4 s, not 2. Not the
+  merged traffic: `send` takes the car furthest off from the pool, and `_start_on` reset its
+  want, wait and hit but not its smoothed `acc` -- this one came with -7 m/s^2 from a hard stop
+  in its last life and braked to 3 m/s with "limit" as its reason and 14 m/s as its want (seen
+  only in a tick-by-tick line of v, want, acc). `_start_on` now resets acc, braking, react_t,
+  still, blocker, holding and the stop sign it last stopped at (all three of its callers put a
+  car down afresh: spawns, kerb pull-outs, film cars). Likely the grey SUV's 0-1.5 s spread of
+  pass 12 too. After: the black hatch past the zebra at ~1.8 s (the film's ~2), the white SUV
+  at 3.2, the white hatch at 9. The walk test's TRAFFIC_LOG prints each car's `why` now.
+
+### Handoff: the filmed walks (20 Nov 2026, after pass 13)
+
+- **In progress**: nothing. Pass 13 is on main; the list of what is still different is
   `WALKS.md` (walk 1's details, behaviour and quality, walk 2's, both walks'), with a Done
   section that points back here.
 - **The biggest open items**, by what the side-by-side shows most: the buildings' faces along
   the route (cream and sand plaster, balconies, shutters: city-wide, another session's); the
   light (hazy, warm, soft shadows: another session's); people that move as the film's do
-  (`people` take `to` and `t`; none of walk 1's four walk yet); the north kerb's paint and the
+  (done for walk 1's: pass 13, but the forecourt's talkers and the man in blue are off the
+  frame when the film shows them: WALKS.md, Behaviour, with the bearings); the north kerb's paint and the
   city's guard railing north-west of the zebra (pass 12, above); the cars parked along
   Katzenelson's far kerb the film shows across the road at 1-2.5 s; the arcade's columns (white with a dark wooden foot) and the second shop; Ha-Meri's
   far pavement (a low white wall, an e-scooter); the camera's last differences (a touch of
@@ -1435,6 +1531,11 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   `STREETS_FILM_LOOK=meter` paints the exposure meter's reading top left. Then the
   side-by-side recipe above, `tests/film_look.py <clip> <frames> 96 --check` (a graded
   recording against the film) and `tests/film_shake.py` (sway, straight stretches only).
+  The movement: `CAMERA_LOG=1` (with `RES=320x180 GODOT_ARGS="--fixed-fps 10"`, ~10 min),
+  then `tests/film_motion.py film <clip> 96 film.csv` (30 s), `film_motion.py log <log>
+  game.csv`, `film_motion.py chart film.csv game.csv out.png`; to re-fit the pace and the
+  head, `tests/film_fit.py film.csv <log> 17,25.6,33,64,80,87,91.5,96 17
+  cities/details/katzenelson_fit.json` and run `make_givatayim.py`.
 - **Good numbers** (walk 1, after pass 12): both walks' scans print only "scan done";
   sway 0.25 / 0.21 degrees rms across / up (the film's 0.25 / 0.19); levels at 1-99% within
   0.05 of the film's, 0.0% clipped, saturation 0.146 (0.159); each second's brightness
@@ -2281,7 +2382,10 @@ LEVEL=1 $GODOT --headless --path . -s res://game/streets/tests/<test>.gd`.
   the browser's 5-7 s warm-up is shader compiling (see the other handoff's 74 shader kinds).
   `draws` hung once for 15 minutes and never again (cause unknown: kill it and rerun).
 - **Watch**: hitches in the first seconds of driving now include the start's far gardens
-  (`_build_gardens_later`, before the rest of the city); kits with thousands of copies go
+  (`_build_gardens_later`, before the rest of the city), and since the city builds only what
+  the first view sees before the car, the catch-up of the rest of NEAR_FIRST (16 ms a frame,
+  `CATCH_UP_US`: frames ~34 ms against ~10 for its 3-6 s; the playtest's smart 25 s showed 12
+  hitches, "building 24", where 4-11 was usual before); kits with thousands of copies go
   through `_instanced`, not the batches (the AC units: 19 hitches of 50 ms when merged).
 
 ## Open problems

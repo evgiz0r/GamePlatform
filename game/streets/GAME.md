@@ -341,6 +341,15 @@ then left. Cars come down the street to meet it there: one goes by before it ste
 next stops at the zebra for it, and drives on once it is across. The head looks where the
 walk is going and turns into a corner a moment before the feet do.
 
+From the far kerb on, it walks at the film's own pace and turns its head as the film's did --
+both measured off every frame of the film, not set by eye: it slows where the film slows (the
+corner of the forecourt, the end of the passage), does not stop at Sheinkin's corner but looks
+right along it and turns left into Ha-Meri bit by bit, and ends facing Ha-Meri's far pavement,
+its white wall and the e-scooter, as the film does. The people the film shows move as they
+did: a man walks along the confectionery to the far kerb's railing and stands there, three
+people talk by the scooter in the forecourt (turning to each other and back), and a woman
+crosses the passage's end in front of the man in blue standing there.
+
 The phone is held as a hand holds one: tipped down at the pavement ahead as the film is
 (about 16 degrees, read off where the film's horizon sits), never quite still -- a slow sway
 and a little roll, as small and as slow as the film's own, measured from it -- and it looks
@@ -1124,6 +1133,17 @@ shelves of goods, racks of clothes, or a cafe's counter and menu board, dim by d
 glowing at night. (There is no store database yet: the shops are OpenStreetMap's and the
 filmed ones; Tel Aviv's council lists 3,387 licensed businesses, which could fill its streets.)
 
+> 1,2,4,5,6,7 (car shapes like the cars here, wheels, Israeli touches, wear, the colour mix,
+> small details)
+
+**Cars like the ones here.** Small city cars, hatchbacks, family sedans, compact SUVs, the
+odd estate and tall boxy small van among them; each car's own wheels (five spokes, fine
+spokes, a steel wheel's cap, now and then dark alloys) with the brake disc behind; dust on
+the cars that have stood a while, sun-faded paint on the older ones, scuffed bumpers; folded
+silver sunshades in parked cars' windscreens and parking permits on many; now and then a
+learner's roof sign or a new driver's sign; wiper arms, shark-fin aerials, roof rails on the
+SUVs and estates; mostly white, silver and grey, as the streets are.
+
 > I took a video on my phone, walking in Givatayim.
 
 ## Smooth on a laptop and a phone
@@ -1212,6 +1232,37 @@ look each way, so the browser compiles every kind of material's shader then and 
 first comes into view while you drive (each one a stall). Every new kind of surface adds to
 it. While it runs the loading text says "getting the graphics ready" (it showed the last
 square, "8 of 8", until the warm-up was over, and looked stuck).
+
+> how can we optimize the bringup, to as 0 up time as possible as the game starts. those
+> steps where i dont know how long i have to wait and its sometimes 3 seconds sometimes 20
+> is annoying
+
+(Of the options offered, picked: start on the build already on the phone, drive sooner, a
+bar that says how long.)
+
+**The build on the phone starts at once.** The wait swung so much mostly because of
+publishing: every push made a new build, and the app downloaded all of it again (78 MB)
+before starting -- after reloading itself once. Now the build already on the phone starts
+straight away and the new one downloads in the background while you play; when all of it
+is there, "new version ready — tap to restart" appears at the top (the next launch is the
+new build anyway). Only the games' file is fetched (39 MB); the engine, as big again,
+changes only with Godot and is kept. Only a very first visit waits for a download.
+
+**Driving after one square, not six.** Before the car is shown: the square the start is in,
+any within 60 m of it, and those the street ahead crosses within 160 m -- what the first
+view looks at. The rest within 320 m goes up right after, in a hurry (16 ms of each frame
+instead of 6, so the first few seconds run a little slower), then at the usual pace. Car on
+the road here: Givatayim 4.4 -> 3.0 s, Tel Aviv 10.1 -> 6.3, Ashdod 8.3 -> 5.9; the rest
+round the car 3-6 s later. A filmed walk and a test route still build all 320 m first: their
+pictures and drives are compared run to run.
+
+**A bar, and "about N s".** Under the loading text: how far it has got, and how long is left,
+from this phone's own last load of that city -- the city file, the setting up, a square, the
+graphics getting ready. That last one is kept twice: as it was on the same build (the
+browser kept the compiled shaders: quick) and on the first load of a new build (it compiles
+them again: the slow case), so the estimate knows which one this is. A city never loaded on
+this phone yet is estimated from another one's; the very first load says "timing it, for
+next time". Slower or quicker than last time so far, the rest is taken to be so too.
 
 > We need to think how to improve latency a bit. It does choke every few seconds. Do you
 > have some fps counter or something?

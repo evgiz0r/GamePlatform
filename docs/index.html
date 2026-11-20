@@ -110,7 +110,46 @@ if ('serviceWorker' in navigator) {
 			lookForNewBuild('index.service.worker.js?t=' + Math.floor(Date.now() / 60000));
 		}
 	});
+	// a new build is on the device (its worker fetched all of it in the background): still
+	// on the splash, nothing to lose -- reload onto it; playing, offer it, never force it
+	navigator.serviceWorker.addEventListener('message', (e) => {
+		if (!e.data || e.data.type !== 'new-build') {
+			return;
+		}
+		if (document.getElementById('status')) {   // (Godot removes the splash once running)
+			window.location.reload();
+			return;
+		}
+		if (document.getElementById('new-build')) {
+			return;
+		}
+		const b = document.createElement('div');
+		b.id = 'new-build';
+		b.textContent = 'new version ready — tap to restart';
+		b.style.cssText = 'position:fixed;top:6px;left:50%;transform:translateX(-50%);z-index:10;'
+			+ 'padding:6px 4px 6px 14px;border-radius:16px;background:rgba(8,8,20,0.85);color:#fff;'
+			+ 'border:1px solid rgba(110,220,255,0.85);box-shadow:0 0 10px rgba(110,220,255,0.5);'
+			+ 'font:14px sans-serif;white-space:nowrap;cursor:pointer;user-select:none;-webkit-user-select:none';
+		b.addEventListener('click', () => window.location.reload());
+		const x = document.createElement('span');   // (later: the next launch is the new build anyway)
+		x.textContent = '×';
+		x.style.cssText = 'margin-left:6px;padding:0 10px;opacity:0.7';
+		x.addEventListener('click', (e2) => {
+			e2.stopPropagation();
+			b.remove();
+		});
+		b.appendChild(x);
+		document.body.appendChild(b);
+	});
 }
+// a first visit: no worker controls the page yet, so the engine would fetch its two big files
+// past it, uncached, and the next visit would download them again. Wait for the worker to
+// take the page over (a second or so; at most 4) so they go into its cache on the way.
+const SW_READY = (!('serviceWorker' in navigator) || navigator.serviceWorker.controller) ? Promise.resolve()
+	: new Promise((ok) => {
+		navigator.serviceWorker.addEventListener('controllerchange', () => ok(), { once: true });
+		setTimeout(ok, 4000);
+	});
 </script>
 </head>
 	<body>
@@ -130,7 +169,7 @@ if ('serviceWorker' in navigator) {
 
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":38940452,"index.wasm":39509339},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":SW_URL};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":38985020,"index.wasm":39509339},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":SW_URL};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
@@ -218,7 +257,7 @@ const engine = new Engine(GODOT_CONFIG);
 		}
 	} else {
 		setStatusMode('progress');
-		engine.startGame({
+		SW_READY.then(() => engine.startGame({
 			'onProgress': function (current, total) {
 				if (current > 0 && total > 0) {
 					statusProgress.value = current;
@@ -228,7 +267,7 @@ const engine = new Engine(GODOT_CONFIG);
 					statusProgress.removeAttribute('max');
 				}
 			},
-		}).then(() => {
+		})).then(() => {
 			setStatusMode('hidden');
 		}, displayFailureNotice);
 	}

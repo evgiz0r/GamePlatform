@@ -1130,6 +1130,7 @@ func start(_config: Dictionary) -> void:
 	_loading.size = Vector2(400, 40)
 	_loading.z_index = 100
 	add_child(_loading)
+	_load_bar_begin()
 	if not await _step("loading " + String(_place["name"])):
 		return
 	var t0 := Time.get_ticks_msec()
@@ -1140,17 +1141,21 @@ func start(_config: Dictionary) -> void:
 		return
 	var t1 := Time.get_ticks_msec()
 	_stage_ms["city file (parse, roads fitted, buildings cut)"] = t1 - t0
+	print("[streets] city file read in %d ms" % (t1 - t0))   # (marks for a browser's log: tests/web_load.js)
+	_load_into("setup")
 	world_area = _bounds
 	_find_start()   # (the squares round it are built first)
 	if not await _build_world():
 		return
 	var tw := Time.get_ticks_msec()
+	print("[streets] the squares round the start built in %d ms; stages %s" % [tw - t1, _stage_ms])
 	print("[streets] warm-up begins")   # (marks for a browser's log: tests/web_shaders.js counts the shaders compiled between)
 	if not await _warm_up():
 		return
 	_stage_ms["warm up (shaders compiled, 4 frames)"] = Time.get_ticks_msec() - tw
 	print("[streets] warm-up done in %d ms, frames %s" % [Time.get_ticks_msec() - tw, _warm_ms])
 	_load_ms = Time.get_ticks_msec() - t0
+	_load_save()
 	_loading.queue_free()
 	var tm := Time.get_ticks_msec()
 	_map_build_cells()
@@ -1199,6 +1204,7 @@ func _warm_up() -> bool:
 	# (on screen first: the frames below are the slow ones, and the text set with them showed
 	# only when they were done -- "8 of 8" stood there seconds)
 	_loading.text = "building %s…\ngetting the graphics ready" % _city_name
+	_load_into("warm", 12)
 	await get_tree().process_frame
 	await get_tree().process_frame
 	if not is_inside_tree():
@@ -1229,11 +1235,13 @@ func _warm_up() -> bool:
 	var adapter := RenderingServer.get_video_adapter_name().to_lower()
 	var soft := adapter.contains("llvmpipe") or adapter.contains("swiftshader") or adapter.contains("software")
 	var steps := 0 if soft else mini(8, keys.size())
+	_load_n = steps + 4
 	for k in range(steps):
 		for key in keys.slice(k * keys.size() / steps, (k + 1) * keys.size() / steps):
 			for gi: GeometryInstance3D in kinds[key]:
 				gi.visible = true
 		_loading.text = "building %s…\ngetting the graphics ready (%d of %d)" % [_city_name, k + 1, steps + 4]
+		_load_sub(k)
 		var ts := Time.get_ticks_msec()
 		await get_tree().process_frame
 		_warm_ms.append(Time.get_ticks_msec() - ts)
@@ -1243,6 +1251,7 @@ func _warm_up() -> bool:
 		gi.visible = true   # (the few not reached above: none, but to be sure)
 	for k in range(4):
 		_loading.text = "building %s…\ngetting the graphics ready (%d of %d)" % [_city_name, steps + k + 1, steps + 4]
+		_load_sub(steps + k)
 		var d := Vector2(cos(k * PI * 0.5), sin(k * PI * 0.5))
 		look_from(Vector3(spot.x - d.x * 20.0, gy + 12.0, spot.y - d.y * 20.0), Vector3(spot.x + d.x * 40.0, gy, spot.y + d.y * 40.0))
 		_sky_follow()
@@ -1318,9 +1327,155 @@ func _step(what: String) -> bool:
 	if not is_inside_tree():
 		return false
 	_loading.text = "building %s…\n%s" % [_city_name if _city_name != "" else String(_place["name"]), what]
+	_load_tick()
 	await get_tree().process_frame
 	await get_tree().process_frame
 	return is_inside_tree()
+
+## ---- the loading bar ----------------------------------------------------------------------
+## A bar under the loading text and "about N s" (user: "those steps where I don't know how long
+## I have to wait -- sometimes 3 seconds, sometimes 20"). The estimate is this device's own last
+## load of the city (LOAD_LOG): the city file, the set-up, one square, the warm-up -- the last
+## kept twice, as it was on the same build (the browser kept its compiled shaders) and on the
+## first load of a new build (it compiles them again: the slow case). No load of this city
+## yet: another city's, its file scaled by size. None at all: the bar by phase, no seconds.
+## Slower or quicker than last time so far, the rest is taken to be so too (`pace`).
+const LOAD_LOG := "user://streets_load.json"
+const LOAD_PHASES := ["file", "setup", "squares", "warm"]
+const LOAD_W := 400.0                ## the bar's width (the loading text's)
+var _load_est := {}                  ## ms: file, setup, square (each), n (squares), warm; empty: no history
+var _load_at := {}                   ## phase -> ms it began
+var _load_phase := "file"
+var _load_n := 1                     ## steps in the phase (squares; the warm-up's frames)
+var _load_i := 0                     ## the step it is on
+var _load_i_at := 0                  ## ms that step began
+var _load_squares := 1.0             ## squares built behind the text this time
+var _load_fill: ColorRect
+var _load_eta: Label
+var _build_id := ""                  ## res://build.txt: which build this is
+
+func _load_bar_begin() -> void:
+	var track := ColorRect.new()
+	track.color = Palette.col("bg_alt")
+	track.position = Vector2(0, 50)
+	track.size = Vector2(LOAD_W, 6)
+	_loading.add_child(track)
+	_load_fill = ColorRect.new()
+	_load_fill.color = Palette.col("accent")
+	_load_fill.position = track.position
+	_load_fill.size = Vector2(0, 6)
+	_loading.add_child(_load_fill)
+	_load_eta = UIKit.label("", 13, "ink")
+	_load_eta.add_theme_font_override("font", _font)
+	_load_eta.position = Vector2(0, 60)
+	_load_eta.size = Vector2(LOAD_W, 20)
+	_load_eta.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_load_eta.modulate.a = 0.8
+	_loading.add_child(_load_eta)
+	if FileAccess.file_exists("res://build.txt"):
+		_build_id = FileAccess.get_file_as_string("res://build.txt").strip_edges()
+	_load_est = _load_guess()
+	_load_into("file")
+
+func _load_log() -> Dictionary:
+	if not FileAccess.file_exists(LOAD_LOG):
+		return {}
+	var d = JSON.parse_string(FileAccess.get_file_as_string(LOAD_LOG))
+	return d if d is Dictionary else {}
+
+func _city_kb(id: String) -> float:
+	var f := FileAccess.open(get_script().resource_path.get_base_dir() + "/cities/" + id + ".json", FileAccess.READ)
+	return f.get_length() / 1024.0 if f != null else 0.0
+
+## what this load should take, from the log
+func _load_guess() -> Dictionary:
+	var log := _load_log()
+	var city := String(_place["city"])
+	var mine: Dictionary = log.get(city, {})
+	var src := mine
+	var scale := 1.0
+	if not src.has("square"):   # this city never loaded here: another one's, the file scaled
+		src = {}
+		for k: String in log:
+			if (log[k] as Dictionary).has("square") and float((log[k] as Dictionary).get("file_kb", 0.0)) > 0.0:
+				src = log[k]
+				break
+		if src.is_empty():
+			return {}
+		scale = _city_kb(city) / float(src["file_kb"])
+	var new_build := String(mine.get("build", "")) != _build_id
+	return {"file": float(src["file"]) * scale, "setup": float(src["setup"]), "square": float(src["square"]),
+		"n": float(src["n"]), "warm": float(src["warm_new"] if new_build else src["warm"])}
+
+func _load_into(phase: String, n: int = 1) -> void:
+	_load_phase = phase
+	_load_at[phase] = Time.get_ticks_msec()
+	_load_n = maxi(n, 1)
+	_load_i = 0
+	_load_i_at = _load_at[phase]
+	if phase == "squares":
+		_load_squares = float(maxi(n, 1))
+		if not _load_est.is_empty():
+			_load_est["n"] = _load_squares
+	_load_tick()
+
+func _load_sub(i: int) -> void:
+	_load_i = i
+	_load_i_at = Time.get_ticks_msec()
+	_load_tick()
+
+func _load_phase_ms(phase: String) -> float:
+	return float(_load_est["square"]) * float(_load_est["n"]) if phase == "squares" else float(_load_est[phase])
+
+func _load_tick() -> void:
+	if _load_fill == null or not is_instance_valid(_load_fill):
+		return
+	var idx := LOAD_PHASES.find(_load_phase)
+	var through := clampf(float(_load_i) / _load_n, 0.0, 1.0)
+	if _load_est.is_empty():   # the first load on this device: the bar by phase alone
+		var w := [0.15, 0.1, 0.5, 0.25]
+		var f := 0.0
+		for i in range(idx):
+			f += w[i]
+		_load_fill.size.x = LOAD_W * (f + w[idx] * through)
+		_load_eta.text = "timing it, for next time"
+		return
+	var now := Time.get_ticks_msec()
+	var total := 0.0
+	var done := 0.0
+	for i in range(LOAD_PHASES.size()):
+		var ms := _load_phase_ms(LOAD_PHASES[i])
+		total += ms
+		if i < idx:
+			done += ms
+	var step := _load_phase_ms(_load_phase) / _load_n
+	done += step * _load_i + minf(float(now - _load_i_at), step * 0.9)
+	var spent := float(now - int(_load_at["file"]))
+	var pace := clampf(spent / done, 0.5, 3.0) if done > 1500.0 else 1.0
+	var left := (total - done) * pace / 1000.0
+	_load_fill.size.x = LOAD_W * clampf(done / maxf(total, 1.0), 0.0, 1.0)
+	_load_eta.text = "almost there" if left < 1.5 else "about %d s" % ceili(left)
+
+## what this load took, for the next one's estimate
+func _load_save() -> void:
+	if not _load_at.has("warm") or not _load_at.has("squares"):
+		return
+	var now := Time.get_ticks_msec()
+	var log := _load_log()
+	var city := String(_place["city"])
+	var old: Dictionary = log.get(city, {})
+	var squares := float(int(_load_at["warm"]) - int(_load_at["squares"]))
+	var warm := float(now - int(_load_at["warm"]))
+	var same := old.has("warm") and String(old.get("build", "")) == _build_id
+	var rec := {"file": float(int(_load_at["setup"]) - int(_load_at["file"])),
+		"setup": float(int(_load_at["squares"]) - int(_load_at["setup"])),
+		"square": squares / maxf(_load_squares, 1.0), "n": _load_squares, "file_kb": _city_kb(city), "build": _build_id,
+		"warm": warm if same or not old.has("warm") else float(old["warm"]),
+		"warm_new": float(old.get("warm_new", warm)) if same else warm}
+	log[city] = rec
+	var f := FileAccess.open(LOAD_LOG, FileAccess.WRITE)
+	if f != null:
+		f.store_string(JSON.stringify(log))
 
 func _exit_tree() -> void:
 	SaveData.data["volume_sfx"] = _sfx_was
@@ -1982,7 +2137,7 @@ func _build_world() -> bool:
 	# the squares round the start before the car is shown; the rest while it drives
 	# (STREETS_BUILD_ALL=1: all of it first -- the scene tests look all over the city)
 	var all_first := OS.get_environment("STREETS_BUILD_ALL") == "1"
-	var near: Array = _tiles_todo.filter(func(t): return all_first or _tile_dist(t, _pos) < NEAR_FIRST)
+	var near: Array = _first_squares(all_first)
 	near.sort_custom(func(a, b): return _tile_dist(a, _pos) < _tile_dist(b, _pos))
 	# (nothing of the city drawn while it goes up: each step's frames drew what was built so far,
 	# and the browser compiled every kind of material's shader the first time -- seconds on the
@@ -1990,7 +2145,9 @@ func _build_world() -> bool:
 	world.visible = false
 	_gardens_split = not all_first and OS.get_environment("STREETS_GARDENS_SPLIT") != "0"   # (=0: all while loading, as before: tests/gardens_later.gd)
 	_gardens_from = _pos
+	_load_into("squares", near.size())
 	for i in range(near.size()):
+		_load_sub(i)
 		if not await _step("the streets round the start (%d of %d)" % [i + 1, near.size()]):
 			return false
 		_fg_text = _loading.text
@@ -2015,8 +2172,13 @@ func _build_world() -> bool:
 ## shop, a parked car -- belongs to the one square its spot is in (_mine), which builds all
 ## of it, and records whatever goes with it (posts, parked cars, lights, tables) just once.
 const TILE := 400.0                  ## = CHUNK = GROUND_CELL = BATCH_CELL
-const NEAR_FIRST := 320.0            ## squares this close to the start are built before you drive
+const NEAR_FIRST := 320.0            ## squares this close to the car are built first: before you drive on a filmed walk or a test route, else in a hurry once you can (CATCH_UP_US)
+const NEAR_NOW := 60.0               ## a city level: squares this close to the start are built before you drive...
+const AHEAD_NOW := 160.0             ## ...and those the street ahead of the car crosses within this far (what the first view looks at)
 const BUILD_US := 6000               ## background building: microseconds a frame (half that when frames run slow)
+const CATCH_UP_US := 16000           ## the same while a square within NEAR_FIRST of the car is still bare (the first seconds of a drive)
+var _catch_up := false               ## a square within NEAR_FIRST of the car is still bare: building at CATCH_UP_US
+var _catch_up_ms := 0                ## when the squares round the car were all built, ms after it was shown (the perf view)
 var _tile := Vector2i.ZERO           ## the square being built
 var _tiled := false                  ## a square is being built (its builders are at work)
 var _tiles_done := {}
@@ -2144,6 +2306,7 @@ func _pause() -> void:
 	if _fg_build:   # loading: no game frame to wait for -- just let one be drawn
 		_fg_spin += 1
 		_loading.text = _fg_text + "  " + ["·  ", " · ", "  ·", " · "][_fg_spin % 4]
+		_load_tick()
 		await get_tree().process_frame
 		_yield_at = Time.get_ticks_usec() + FG_US
 		return
@@ -2353,6 +2516,31 @@ func _build_tile(t: Vector2i) -> void:
 	_set_tiling(false)
 	_batching = false
 
+## The squares built before the car is shown. A city level: the one the start is in and any
+## within NEAR_NOW of it, and those the street ahead crosses within AHEAD_NOW -- what the
+## first view looks at (user: "as close to 0 as possible" -- all of NEAR_FIRST, 6-9 squares,
+## was most of the wait). The rest of NEAR_FIRST follows in a hurry once you can drive
+## (_catch_up). A filmed walk or a test route keeps all of NEAR_FIRST first: their pictures
+## and drives are compared run to run. STREETS_NEAR_FIRST=1: that for every level, as before.
+func _first_squares(all_first: bool) -> Array:
+	var whole := _place.has("walk") or not _route.is_empty() or OS.get_environment("STREETS_NEAR_FIRST") == "1"
+	var ahead := {}
+	for i in range(int(AHEAD_NOW / 10.0) + 1):
+		ahead[_tile_of(_pos + _fwd() * (i * 10.0))] = true
+	var out: Array = []
+	for t: Vector2i in _tiles_todo:
+		var d := _tile_dist(t, _pos)
+		if all_first or (whole and d < NEAR_FIRST) or (not whole and (d < NEAR_NOW or ahead.has(t))):
+			out.append(t)
+	return out
+
+## a square within NEAR_FIRST of the car is still to be built
+func _bare_near() -> bool:
+	for t: Vector2i in _tiles_todo:
+		if _tile_dist(t, _pos) < NEAR_FIRST:
+			return true
+	return false
+
 ## the square to build next: the one nearest where the car will be in a few seconds
 func _next_tile():
 	if _tiles_todo.is_empty():
@@ -2374,14 +2562,24 @@ func _build_rest() -> void:
 	var t0 := Time.get_ticks_msec()
 	var n := 0
 	_bg_build = true
+	var hurry := _bare_near()   # (only in the first seconds: later the build never costs the drive's frames)
+	_catch_up = hurry
+	_build_us = CATCH_UP_US if _catch_up else BUILD_US
 	_yield_at = Time.get_ticks_usec() + _build_us
 	await _build_gardens_later()   # (the start's squares' far gardens, first)
 	while is_inside_tree():
 		var t = _next_tile()
 		if t == null:
 			break
+		_catch_up = hurry and (_tile_dist(t, _pos) < NEAR_FIRST or _bare_near())
 		await _build_tile(t)
 		n += 1
+		if hurry and not _bare_near():
+			hurry = false
+			_catch_up = false
+			_catch_up_ms = Time.get_ticks_msec() - t0
+			print("[streets] the squares round the car built %d ms after it was shown" % _catch_up_ms)
+			Probe.event("near_built", {"ms": _catch_up_ms, "squares": n})
 		if _build_lbl != null:
 			_build_lbl.text = "building the city %d%%" % int(100.0 * _tiles_done.size() / maxf(_build_total, 1.0))
 	if _build_lbl != null:
@@ -3614,8 +3812,8 @@ func _build_gardens_later() -> void:
 		await _add_fronts(fronts, wall)
 		if not _yard_cars.is_empty():   # (their cars, drawn like the street's parked cars)
 			var palette := _car_paints()
-			var xf_by := {"sedan": [], "hatch": [], "suv": [], "van": [], "moto_parked": []}
-			var cols_by := {"sedan": [], "hatch": [], "suv": [], "van": [], "moto_parked": []}
+			var xf_by := {"sedan": [], "hatch": [], "mini": [], "wagon": [], "mpv": [], "suv": [], "van": [], "moto_parked": []}
+			var cols_by := {"sedan": [], "hatch": [], "mini": [], "wagon": [], "mpv": [], "suv": [], "van": [], "moto_parked": []}
 			for yc: Array in _yard_cars:
 				(xf_by[String(yc[1])] as Array).append(yc[0])
 				(cols_by[String(yc[1])] as Array).append(palette[int(yc[2]) % palette.size()])
@@ -7665,8 +7863,8 @@ func _build_parked() -> void:
 		return   # northern suburbs park in driveways
 	var xf: Array = []
 	var cols: Array = []
-	var xf_by := {"sedan": [], "hatch": [], "suv": [], "van": [], "moto_parked": []}
-	var cols_by := {"sedan": [], "hatch": [], "suv": [], "van": [], "moto_parked": []}
+	var xf_by := {"sedan": [], "hatch": [], "mini": [], "wagon": [], "mpv": [], "suv": [], "van": [], "moto_parked": []}
+	var cols_by := {"sedan": [], "hatch": [], "mini": [], "wagon": [], "mpv": [], "suv": [], "van": [], "moto_parked": []}
 	var palette := _car_paints()
 	var rng := RandomNumberGenerator.new()
 	for ri: int in _tile_roads.get(_tile, []):
@@ -7723,7 +7921,7 @@ func _build_parked() -> void:
 								var win := p - side * 0.86 - face * 0.5
 								var fly := Vector3(-face.x, 0, -face.y)
 								_car_flags.append(Transform3D(Basis(fly, Vector3.UP, fly.cross(Vector3.UP)),
-									_g3(win, 0.1 + float({"sedan": 1.12, "hatch": 1.15, "suv": 1.32, "van": 1.45}.get(kind, 1.15)))))
+									_g3(win, 0.1 + float({"sedan": 1.12, "hatch": 1.15, "mini": 1.12, "wagon": 1.12, "mpv": 1.42, "suv": 1.32, "van": 1.45}.get(kind, 1.15)))))
 							elif roll2 > 980:   # a cat on the pavement at its nose
 								var cq := p + face * 2.7 + side * 0.45
 								cat_at(cq, _g3(cq, KERB_H).y, -side.rotated(float(roll2 % 5 - 2) * 0.3), "sit")
@@ -7758,8 +7956,8 @@ func _build_lots() -> void:
 	var rings: Array = _rings_near("parking").filter(_ring_mine)
 	var palette := _car_paints()
 	var rng := RandomNumberGenerator.new()
-	var xf_by := {"sedan": [], "hatch": [], "suv": [], "van": [], "moto_parked": []}
-	var cols_by := {"sedan": [], "hatch": [], "suv": [], "van": [], "moto_parked": []}
+	var xf_by := {"sedan": [], "hatch": [], "mini": [], "wagon": [], "mpv": [], "suv": [], "van": [], "moto_parked": []}
+	var cols_by := {"sedan": [], "hatch": [], "mini": [], "wagon": [], "mpv": [], "suv": [], "van": [], "moto_parked": []}
 	for kind: String in _parked_xf:   # the street's parked cars go in the same batches
 		(xf_by[kind] as Array).append_array(_parked_xf[kind])
 		(cols_by[kind] as Array).append_array(_parked_cols[kind])
@@ -7896,12 +8094,18 @@ func _car_paints() -> Array:
 	var pl := Palette.col("player")
 	var red := Color.from_hsv(0.99, clampf(hz.s, 0.55, 0.8), clampf(hz.v * 0.62, 0.35, 0.6))
 	var blue := Color.from_hsv(0.61, clampf(pl.s, 0.5, 0.75), clampf(pl.v * 0.42, 0.25, 0.48))
+	var fr := Palette.col("friend")
+	var green := Color.from_hsv(0.38, clampf(fr.s, 0.3, 0.5), clampf(fr.v * 0.32, 0.18, 0.3))
+	# (more white and silver at the end: about a third white, a third silver and grey, a tenth
+	# black, a twentieth each blue and red, the odd beige and dark green -- the film's cars
+	# pick a paint by its place in the list, so the first fourteen stay where they are)
 	var out: Array = [white, white, white, white, silver, silver, silver, grey, grey, black, black,
-		blue, red, Palette.col("warn").lerp(ink, 0.5).lerp(alt, 0.2)]
+		blue, red, Palette.col("warn").lerp(ink, 0.5).lerp(alt, 0.2), white, white, silver, grey, green]
 	return out.map(func(c: Color) -> Color: return _natural(c, 0.6))
 
-## parked cars and traffic: mostly sedans and hatchbacks, some SUVs, the odd van
-const CAR_MIX := ["sedan", "sedan", "sedan", "hatch", "hatch", "hatch", "suv", "suv", "van"]
+## parked cars and traffic as an Israeli street has them: small city cars and hatchbacks,
+## family sedans, compact SUVs, now and then an estate, a tall boxy small van, a work van
+const CAR_MIX := ["sedan", "sedan", "sedan", "hatch", "hatch", "mini", "mini", "suv", "suv", "suv", "wagon", "mpv", "van"]
 
 ## the shared car mesh for parked cars and traffic: the sedan's body, wheels, lights and
 ## plates as ONE surface, one draw call a batch (as six surfaces, a patch of parked cars
@@ -7919,6 +8123,8 @@ uniform sampler2D plate_font : filter_linear_mipmap, repeat_disable;   // digits
 uniform float plate_style = 0.0;       // 1: an Israeli plate (yellow, black digits, the blue IL strip)
 uniform vec4 plate_blue : source_color;
 uniform float plate_seed = 0.0;        // the player's car: its own number
+uniform vec4 dust : source_color;      // the street's dust on a car that has stood a while
+uniform vec4 sign_red : source_color;  // a learner's roof sign
 varying float plate_id;                // a number of the car's own, steady while it drives
 uniform vec4 lamp : source_color;
 uniform vec4 tail : source_color;
@@ -7958,6 +8164,16 @@ void vertex() {
 	who = fract(sin(dot(MODEL_MATRIX[3].xz, vec2(12.9898, 78.233))) * 43758.5453);
 	// (its copy's number and its paint: steady as it moves, unlike where it is)
 	plate_id = fixed_paint > 0.5 ? plate_seed : float(INSTANCE_ID) * 0.7548777 + dot(INSTANCE_CUSTOM.rgb, vec3(3.1, 5.7, 7.3));
+	// a few cars' own things, in every car's mesh and folded away on the rest (vertex alpha
+	// 0.52 a learner's roof sign, 0.54 a new driver's sign in the back window, 0.56 a
+	// parking permit on a parked car's windscreen): no draws of their own
+	float code = COLOR.a;
+	bool parked_v = fixed_paint < 0.5 && INSTANCE_CUSTOM.a < 1.5;
+	if ((abs(code - 0.52) < 0.006 && (fixed_paint > 0.5 || fract(plate_id * 13.17) > 0.025))
+			|| (abs(code - 0.54) < 0.006 && (fixed_paint > 0.5 || fract(plate_id * 17.31) > 0.07))
+			|| (abs(code - 0.56) < 0.006 && !(parked_v && fract(plate_id * 19.7) < 0.55))) {
+		VERTEX = vec3(0.0);
+	}
 }
 // where a ray (from o along unit d) first meets an ellipsoid at c with radii r; -1 if not
 float ray_blob(vec3 o, vec3 d, vec3 c, vec3 r) {
@@ -7983,7 +8199,8 @@ float line_cover(float d, float w, float aa) {
 // where a glyph is a few pixels on screen, its smaller copies average it to grey and that
 // grey is the ink (taken at the half-way grey, a plate was blank from the chase view)
 float plate_glyph(float g, float x, float y, float far) {
-	float a = texture(plate_font, vec2((g + clamp(x, 0.0, 1.0)) / 13.0, clamp(y, 0.0, 1.0))).r;
+	// (kept inside its own cell's margin: the font's smaller copies bled the next glyph in)
+	float a = texture(plate_font, vec2((g + clamp(x, 0.1, 0.9)) / 13.0, clamp(y, 0.06, 0.94))).r;
 	return mix(smoothstep(0.3, 0.7, a), min(a * 1.8, 1.0), far);
 }
 void fragment() {
@@ -7998,8 +8215,23 @@ void fragment() {
 	vec3 rw = (INV_VIEW_MATRIX * vec4(reflect(-to_eye, NORMAL), 0.0)).xyz;
 	vec3 refl = sky_at(rw.y) * (1.0 - 0.75 * night);
 	float aa = fwidth(lpos.z) + 0.001;
+	// how long it has stood and how old it is, each car its own: a parked car gathers the
+	// street's dust (on top and low down), an older one's paint is faded by the sun
+	bool parked = fixed_paint < 0.5 && custom.a < 1.5;
+	float dirt = fixed_paint > 0.5 ? 0.12 : (0.12 + 0.6 * fract(plate_id * 5.17)) * (parked ? 1.0 : 0.45);
+	float old = fixed_paint > 0.5 ? 0.0 : smoothstep(0.7, 1.0, fract(plate_id * 7.31));
 	if (part > 0.9) {            // paint
 		col = fixed_paint > 0.5 ? paint_col.rgb : custom.rgb;
+		col = mix(col, vec3(dot(col, vec3(0.3, 0.5, 0.2))) * 1.08 + 0.05, old * 0.4);   // sun-faded
+		float dust_amt = clamp(dirt * (0.6 * max(lnrm.y, 0.0) + 0.4 * (1.0 - smoothstep(0.15, 0.75, lpos.y))), 0.0, 0.6);
+		col = mix(col, dust.rgb, dust_amt);
+		// scuffed bumper corners, on some
+		if (abs(lnrm.z) > 0.55 && lpos.y > 0.3 && lpos.y < 0.58 && fract(plate_id * 2.37) < 0.4) {
+			// thin scratches where a corner met a post: a few, at the bumper's height
+			float sc = step(0.92, fract(sin(dot(floor(vec2(lpos.x * 60.0, lpos.y * 160.0)), vec2(12.9898, 78.233))) * 43758.5453))
+				* smoothstep(0.6, 0.8, abs(lpos.x));
+			col = mix(col, col * 0.6 + 0.08, sc * 0.6);
+		}
 		col *= mix(0.72, 1.0, smoothstep(0.12, 0.55, lpos.y));   // grime, and less light, low down
 		float f = 0.05 + 0.55 * pow(1.0 - ndv, 4.0);
 		float side = abs(lnrm.x);
@@ -8015,9 +8247,10 @@ void fragment() {
 					abs(lpos.z + UV2.x - UV2.y - 0.1));
 				col *= 1.0 - 0.6 * line_cover(d, 0.006, aa);
 			}
-			rough = 0.3;
+			rough = mix(0.3, 0.75, max(old * 0.5, dust_amt * 1.4));
 			metal = 0.1;
 			spec = 0.6;
+			f *= 1.0 - min(dust_amt * 1.4, 0.8) - old * 0.3;
 		}
 		emit = refl * f;
 	} else if (part > 0.7) {     // glass, and whoever sits behind it
@@ -8059,8 +8292,14 @@ void fragment() {
 			inside = best < 1e8 ? col_hit * (0.22 + 0.25 * max(n_hit.y, 0.0) + 0.1 * abs(n_hit.x)) : vec3(0.02);
 			inside *= 1.0 - 0.7 * night;
 		}
+		// a parked car's windscreen, as most have them in summer: a folded silver sunshade
+		if (parked && lnrm.z > 0.3 && lpos.z > 0.0 && fract(plate_id * 9.71) < 0.45) {
+			float fold = step(0.5, fract(lpos.x * 7.0));
+			inside = vec3(0.5 + 0.14 * fold) * (1.0 - 0.6 * night);
+		}
 		float f = 0.12 + 0.88 * pow(1.0 - ndv, 3.0);
 		emit = mix(inside, refl, f);
+		emit = mix(emit, dust.rgb * 0.45, dirt * 0.3);   // (dusty glass)
 		rough = 0.05;
 	} else if (part > 0.6) {     // number plate
 		rough = 0.4;
@@ -8097,18 +8336,52 @@ void fragment() {
 				* step(0.18, fract(cell)) * step(fract(cell), 0.82);
 			col = mix(col, col * 0.08, ch);
 		}
+	} else if (part > 0.51) {    // a sign or a sticker (only on the cars that keep it: vertex())
+		rough = 0.5;
+		vec2 g = vec2(lpos.x - UV2.x, lpos.y - UV2.y);   // from its middle (UV2)
+		if (part < 0.53) {       // a learner's roof sign: a white lamed on red, front and back
+			col = sign_red.rgb;
+			if (abs(lnrm.z) > 0.5) {
+				vec2 q = vec2(g.x * sign(lnrm.z) / 0.19, g.y / 0.1);
+				float l = step(abs(q.x + 0.35), 0.12) * step(0.15, q.y) * step(q.y, 0.95)       // the stroke up
+					+ step(abs(q.y - 0.15), 0.12) * step(-0.35, q.x) * step(q.x, 0.42)          // along the top
+					+ step(abs(q.x - 0.42), 0.12) * step(-0.75, q.y) * step(q.y, 0.15)          // down the right
+					+ step(abs(q.y + 0.75), 0.12) * step(-0.1, q.x) * step(q.x, 0.42);          // the foot
+				col = mix(col, vec3(0.95), clamp(l, 0.0, 1.0));
+			}
+		} else if (part < 0.55) {   // a new driver's sign: white, a red rim, its two words
+			vec2 q = abs(g) / vec2(0.13, 0.06);
+			col = (q.x > 0.85 || q.y > 0.75) ? sign_red.rgb : vec3(0.93);
+			float words = step(q.y, 0.35) * step(0.12, abs(g.x / 0.13 - 0.05)) * step(q.x, 0.7)
+				* step(0.3, fract(g.x * 40.0));
+			col = mix(col, vec3(0.08), words);
+		} else {                    // a parking permit: its colour, a white band
+			col = mix(plate_blue.rgb, vec3(0.92), step(abs(g.y), 0.012));
+		}
 	} else if (part > 0.45) {    // trim
 		rough = 0.55;
 		emit = refl * 0.05;
-	} else if (part > 0.35) {    // a rim: five spokes round the hub, dark between them
+	} else if (part > 0.35) {    // a rim, the car's own pattern: five spokes, twelve fine ones, ten, or a steel wheel's cap
 		float r = length(UV);
-		float sp = cos(atan(UV.y, UV.x) * 5.0);
-		bool solid = r < 0.3 || r > 0.84 || sp > 0.35;
-		col = solid ? col : well.rgb;
-		metal = solid ? 0.7 : 0.0;
+		float a = atan(UV.y, UV.x);
+		float style = floor(fract(plate_id * 4.13) * 4.0);
+		float n = style < 1.0 ? 5.0 : (style < 2.0 ? 12.0 : 10.0);
+		bool solid = r < 0.28 || r > 0.84;
+		if (style < 2.5) {
+			solid = solid || cos(a * n) > (style < 1.0 ? 0.35 : (style < 2.0 ? 0.5 : 0.62));
+		} else {                 // steel, under a plastic cap with vents
+			solid = r < 0.8 && (r < 0.55 || fract(a * 1.2732 + 0.5) > 0.22);
+		}
+		vec3 rim_col = fract(plate_id * 2.9) < 0.22 ? col * 0.32 : col;   // a dark alloy now and then
+		vec3 behind = mix(well.rgb, vec3(0.3), step(0.42, r) * step(r, 0.76) * 0.7);   // the brake disc
+		col = solid ? rim_col : behind;
+		if (r > 0.13 && r < 0.2 && cos(a * 5.0) > 0.9) { col *= 0.45; }       // the wheel nuts
+		metal = solid ? 0.7 : 0.2;
 		rough = 0.35;
 		emit = solid ? refl * 0.25 : vec3(0.0);
-	} else if (part > 0.2) {     // tyres
+	} else if (part > 0.2) {     // tyres: the sidewall a shade lighter than the tread
+		col = abs(lnrm.x) > 0.7 ? col * 1.35 : col;
+		col = mix(col, dust.rgb * 0.5, dirt * 0.4);
 		rough = 0.9;
 		spec = 0.2;
 	} else if (part > 0.05) {    // headlights (and anything lit like them: a taxi's sign)
@@ -8175,6 +8448,8 @@ func _car_material() -> ShaderMaterial:
 		m.set_shader_parameter("plate_font", _plate_font())
 		m.set_shader_parameter("plate_style", 1.0 if String(_place.get("look", "")) == "med" else 0.0)
 		m.set_shader_parameter("plate_blue", _real_col("blue").lerp(Palette.col("bg"), 0.35))   # (a plate's strip is a deep blue)
+		m.set_shader_parameter("dust", (_tone.get("sand", _tone["pavement"]) as Color).lerp(_tone["pavement"], 0.4))
+		m.set_shader_parameter("sign_red", _real_col("red"))
 		m.set_shader_parameter("lamp", _tone["lamplight"])
 		m.set_shader_parameter("tail", Palette.col("hazard"))
 		m.set_shader_parameter("night", 1.0 if _night else 0.0)
@@ -8473,7 +8748,7 @@ func _car_body(kind: String, extras: bool) -> CarMesh:
 	var hl: float = shape[3]
 	var wz: float = shape[4]
 	var wr: float = shape[5]
-	var lift := 0.08 if kind in ["suv", "van"] else (0.12 if kind == "truck" else 0.0)
+	var lift := 0.08 if kind in ["suv", "van"] else (0.05 if kind == "mpv" else (0.12 if kind == "truck" else 0.0))
 	var cm := CarMesh.new()
 	var paint := Color(1, 1, 1, 1.0)
 	var glass := Color(_tone["carglass"], 0.75)
@@ -8511,14 +8786,14 @@ func _car_body(kind: String, extras: bool) -> CarMesh:
 	var c1: Vector2 = cab[1]   # windscreen top
 	var c2: Vector2 = cab[2]   # rear top
 	var c3: Vector2 = cab[3]   # rear foot
-	var pillars: Array = [-0.26] if kind in ["sedan", "hatch"] else [-0.2, -1.25]
+	var pillars: Array = [-0.26] if kind in ["sedan", "hatch"] else ([-0.32] if kind == "mini" else [-0.2, -1.25])
 	var zs: Array = []
 	for k in range(9):
 		zs.append(lerpf(c3.x, c0.x, k / 8.0))
 	zs.append_array([c1.x, c2.x])
 	for pz: float in pillars:
 		zs.append_array([pz - 0.06, pz + 0.06])
-	var back_pillar := c2.x + 0.05 if kind in ["sedan", "hatch"] else c3.x + 0.18
+	var back_pillar := c2.x + 0.05 if kind in ["sedan", "hatch", "mini"] else c3.x + 0.18
 	zs.append(back_pillar)
 	zs.sort()
 	var cz: Array = []
@@ -8561,7 +8836,7 @@ func _car_body(kind: String, extras: bool) -> CarMesh:
 		return glass
 	# the glass carries where the front seats are -- just behind the windscreen's foot, the
 	# cushion a little under the waist -- for the shader's people
-	var seats := Vector2(c0.x - (0.75 if kind == "truck" else (1.3 if kind in ["suv", "van"] else 1.15)), _span_at(low, c0.x).y - 0.45)
+	var seats := Vector2(c0.x - (0.75 if kind == "truck" else (1.3 if kind in ["suv", "van", "mpv"] else 1.15)), _span_at(low, c0.x).y - 0.45)
 	_loft(cm, rings, mids, false, cab_part, Vector2.ZERO, seats)
 	# ---- trim: bumper lips, the grille, mirrors, door handles
 	var tb := Buf.new()
@@ -8582,6 +8857,40 @@ func _car_body(kind: String, extras: bool) -> CarMesh:
 	cm.add_buf(mb, paint)
 	if not extras:
 		return cm
+	# ---- wiper arms at the windscreen's foot, a shark-fin aerial at the roof's back, roof
+	# rails on an SUV and an estate
+	var fit := Buf.new()
+	var ws := func(y: float) -> float:   # the windscreen's surface at height y
+		return lerpf(c0.x, c1.x, clampf((y - c0.y) / maxf(c1.y - c0.y, 0.01), 0.0, 1.0))
+	if kind != "truck":
+		for sx: float in [-1.0, 1.0]:
+			var wy := c0.y + 0.04
+			_box(fit, Vector3(sx * 0.27 - 0.08, wy, float(ws.call(wy)) + 0.02), Vector3(0.5, 0.018, 0.022))
+		if kind in ["sedan", "hatch", "mini", "wagon", "suv"]:
+			_box(fit, Vector3(0, c2.y + 0.04, c2.x + 0.28), Vector3(0.05, 0.07, 0.17))
+		if kind in ["suv", "wagon"]:
+			for sx: float in [-1.0, 1.0]:
+				_box(fit, Vector3(sx * (hw - 0.36), maxf(c1.y, c2.y) + 0.06, (c1.x + c2.x) * 0.5), Vector3(0.035, 0.035, absf(c1.x - c2.x) + 0.3))
+				for foot: float in [c1.x - 0.05, c2.x + 0.05]:
+					_box(fit, Vector3(sx * (hw - 0.36), maxf(c1.y, c2.y) + 0.03, foot), Vector3(0.05, 0.05, 0.08))
+	cm.add_buf(fit, trim)
+	if kind in ["sedan", "hatch", "mini", "wagon", "suv"]:
+		# a learner's roof sign, a new driver's in the back window, a parking permit on the
+		# windscreen: kept only on the cars the shader picks (vertex())
+		var top := maxf(c1.y, c2.y)
+		var lz := (c1.x + c2.x) * 0.5
+		var lb := Buf.new()
+		_box(lb, Vector3(0, top + 0.12, lz), Vector3(0.4, 0.22, 0.07))
+		cm.add_buf(lb, Color(_real_col("red"), 0.52), Vector2(0.0, top + 0.12))
+		var ry := lerpf(c3.y, c2.y, 0.32)
+		var rz := lerpf(c3.x, c2.x, 0.32) - 0.04
+		var nb := Buf.new()
+		_box(nb, Vector3(0.36, ry, rz), Vector3(0.27, 0.13, 0.01))
+		cm.add_buf(nb, Color(1, 1, 1, 0.54), Vector2(0.36, ry))
+		var py := c0.y + 0.09
+		var pb := Buf.new()
+		_box(pb, Vector3(-(hw - 0.42), py, float(ws.call(py)) + 0.025), Vector3(0.09, 0.07, 0.006))
+		cm.add_buf(pb, Color(1, 1, 1, 0.56), Vector2(-(hw - 0.42), py))
 	# ---- wheels: tyres, their sidewalls, five-spoke rims (just proud of the body, in the
 	# dark wells the shader paints round them)
 	var tyre := Color(_tone["tyre"], 0.3)
@@ -13863,11 +14172,15 @@ var _film_step := 0.0                ## metres walked: the head bobs with the st
 var _film_done := false
 var _film_look := 0.0                ## the head turned from the body (radians, + right)
 var _film_looks: Array = []          ## Vector4(from, to, radians across, radians up): a glance
+var _film_head: Array = []           ## Vector2(seconds, radians right of the body): the head's turns
+                                     ## as measured off the film (the walk's "head"); where it runs,
+                                     ## it is the head, in place of the turn into bends and the looks'
+                                     ## turns across (their tips up and down still apply)
 var _film_tilt := 0.0                ## the phone tipped from its usual tilt by the looks (radians, + up)
 var _film_zebras: Array = []         ## [from, to, kerb, kerb]: on a crossing (or waiting at it)
 var _film_cars: Array = []           ## [second, at, heading]: a car sent down a street
 var _film_sent := 0
-var _film_people: Array = []         ## [actor, from, to, from second, to second, stays, arrived]: who the film shows
+var _film_people: Array = []         ## [actor, from, to, from second, to second, stays, arrived, talking's facing or INF]: who the film shows
 
 func _film_begin(id: String) -> void:
 	var walks: Dictionary = _details.data.get("walks", {}) if _details != null else {}
@@ -13882,6 +14195,8 @@ func _film_begin(id: String) -> void:
 		# [from, to, degrees right] and, if there, degrees up (down at a zebra's stripes: -25)
 		_film_looks.append(Vector4(float(l[0]), float(l[1]), deg_to_rad(float(l[2])),
 			deg_to_rad(float(l[3])) if l.size() > 3 else 0.0))
+	for h: Array in w.get("head", []):
+		_film_head.append(Vector2(float(h[0]), deg_to_rad(float(h[1]))))
 	for z: Array in w.get("zebras", []):
 		_film_zebras.append([float(z[0]), float(z[1]), Vector2(z[2][0], z[2][1]), Vector2(z[3][0], z[3][1])])
 	for c: Array in w.get("cars", []):
@@ -13907,7 +14222,10 @@ func _film_begin(id: String) -> void:
 		var pace: float = A.distance_to(B) / maxf(float(tt[1]) - float(tt[0]), 0.01)
 		a.play("Walk" if moving else "Idle", true, pace / 1.35 if moving else 1.0)
 		a.visible = not moving
-		_film_people.append([a, A, B, float(tt[0]), float(tt[1]), bool(pp.get("stay", false)), false])
+		# `talk`: one of a group standing talking -- no clip for it, so the body does it: turning a
+		# little to the one spoken to and back, now and then a wider turn (as the film's do)
+		_film_people.append([a, A, B, float(tt[0]), float(tt[1]), bool(pp.get("stay", false)), false,
+			fd.angle() if bool(pp.get("talk", false)) else INF])
 	var p0 := _film_at(0.0)
 	_pos = p0
 	_yaw = (_film_at(1.5) - p0).angle()
@@ -14022,10 +14340,19 @@ func _film_tick(dt: float) -> void:
 	if ahead.distance_to(p) > 0.3 and far.distance_to(p) > 0.6:
 		turn = clampf(angle_difference((ahead - p).angle(), (far - p).angle()) * 0.7, -0.6, 0.6)
 	var tip := 0.0
+	var head: bool = _film_head.size() > 1 and _film_t >= _film_head[0].x and _film_t <= _film_head[_film_head.size() - 1].x
+	if head:
+		var j := 0
+		while j < _film_head.size() - 2 and _film_head[j + 1].x <= _film_t:
+			j += 1
+		var h0: Vector2 = _film_head[j]
+		var h1: Vector2 = _film_head[j + 1]
+		turn = lerpf(h0.y, h1.y, clampf((_film_t - h0.x) / maxf(h1.x - h0.x, 0.001), 0.0, 1.0))
 	for l: Vector4 in _film_looks:
 		if _film_t > l.x and _film_t < l.y:
 			var k := smoothstep(l.x, l.x + 0.5, _film_t) * (1.0 - smoothstep(l.y - 0.5, l.y, _film_t))
-			turn += l.z * k
+			if not head:
+				turn += l.z * k
 			tip += l.w * k
 	_film_look = lerp_angle(_film_look, turn, 1.0 - exp(-dt * 6.0))
 	_film_tilt = lerpf(_film_tilt, tip, 1.0 - exp(-dt * 6.0))
@@ -14033,6 +14360,10 @@ func _film_tick(dt: float) -> void:
 		var A: Vector2 = fp[1]
 		var B: Vector2 = fp[2]
 		if A == B:
+			var base: float = fp[7]
+			if base < INF:
+				var turn_to := base + 0.26 * sin(_film_t * 1.3 + base * 3.0) + 0.14 * sin(_film_t * 2.9 + base)
+				(fp[0] as Actor3D).face(Vector3(cos(turn_to), 0, sin(turn_to)))
 			continue
 		var f: float = (_film_t - float(fp[3])) / maxf(float(fp[4]) - float(fp[3]), 0.01)
 		var who: Actor3D = fp[0]
@@ -14431,6 +14762,17 @@ const CAR_SHAPES := {
 	"suv": [[Vector2(-2.3, 0.34), Vector2(2.28, 0.34), Vector2(2.36, 0.74), Vector2(2.24, 0.98), Vector2(1.2, 1.1),
 		Vector2(-2.24, 1.14), Vector2(-2.36, 0.74)],
 		[Vector2(1.18, 1.1), Vector2(0.45, 1.74), Vector2(-2.0, 1.76), Vector2(-2.24, 1.14)], 0.96, 2.36, 1.42, 0.38],
+	# a city car (3.6 m, short nose, tall roof), an estate (the sedan's front, the roof run on to
+	# the tail), a small boxy van (4.4 m, 1.9 m tall, near-upright back)
+	"mini": [[Vector2(-1.75, 0.24), Vector2(1.78, 0.24), Vector2(1.84, 0.58), Vector2(1.72, 0.76), Vector2(0.85, 0.9),
+		Vector2(-1.68, 0.96), Vector2(-1.82, 0.6)],
+		[Vector2(0.82, 0.9), Vector2(0.1, 1.47), Vector2(-1.45, 1.46), Vector2(-1.7, 0.96)], 0.8, 1.84, 1.2, 0.29],
+	"wagon": [[Vector2(-2.28, 0.26), Vector2(2.22, 0.26), Vector2(2.3, 0.6), Vector2(2.16, 0.8), Vector2(1.08, 0.94),
+		Vector2(-2.18, 1.0), Vector2(-2.32, 0.62)],
+		[Vector2(1.06, 0.94), Vector2(0.28, 1.44), Vector2(-2.02, 1.45), Vector2(-2.2, 1.0)], 0.9, 2.32, 1.38, 0.33],
+	"mpv": [[Vector2(-2.15, 0.3), Vector2(2.12, 0.3), Vector2(2.2, 0.66), Vector2(2.08, 0.92), Vector2(1.25, 1.02),
+		Vector2(-2.12, 1.06), Vector2(-2.2, 0.66)],
+		[Vector2(1.22, 1.02), Vector2(0.55, 1.84), Vector2(-2.05, 1.86), Vector2(-2.12, 1.08)], 0.92, 2.2, 1.4, 0.33],
 	"van": [[Vector2(-2.45, 0.3), Vector2(2.42, 0.3), Vector2(2.5, 0.7), Vector2(2.4, 0.95), Vector2(1.7, 1.05),
 		Vector2(-2.45, 1.08), Vector2(-2.5, 0.7)],
 		[Vector2(1.68, 1.05), Vector2(1.05, 1.98), Vector2(-2.38, 2.0), Vector2(-2.45, 1.1)], 0.98, 2.5, 1.55, 0.35],
@@ -14744,7 +15086,7 @@ func _frame() -> void:
 	var dt := get_process_delta_time()
 	if _bg_wait:   # the city still building round you: its few milliseconds (_pause)
 		_bg_wait = false
-		_build_us = BUILD_US if dt < 0.022 else BUILD_US / 2
+		_build_us = CATCH_UP_US if _catch_up else (BUILD_US if dt < 0.022 else BUILD_US / 2)
 		_build_tick.emit()
 		_p("building")
 	_watch_fps(dt)

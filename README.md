@@ -68,10 +68,15 @@ next push, because the workflow's commit has moved `main` along.
 `/publish` (`tools/publish_web.sh`) still builds `docs/` locally when you want to check a
 build before pushing, but it is no longer required.
 
-An open or installed copy of the game looks for a new build every time
-it starts and every time it comes back to the foreground, and reloads itself onto it. If a
-phone still shows the old build, close the app fully and reopen it. `docs/` is generated —
-never edit it by hand.
+An open or installed copy of the game looks for a new build every time it starts and every
+time it comes back to the foreground. It never waits for it: the build already on the device
+starts at once, the new one downloads in the background, and once all of it is there a small
+**"new version ready — tap to restart"** appears at the top (the next launch is the new build
+anyway). Only `index.pck` (the games, ~39 MB) is downloaded: the engine file (`index.wasm`, as
+big again) changes only with the Godot version and is carried over. If a phone still shows
+the old build, wait for that offer, or close the app fully and reopen it. Only a first visit
+waits for a download. `docs/` is generated — never edit it by hand. `node
+tools/pwa/update_test.js docs` checks all of this in the container's Chromium.
 
 The menu shows the **build time** at the bottom. That is how you tell from a phone whether
 a change has actually arrived, which matters because an installed app updates itself in

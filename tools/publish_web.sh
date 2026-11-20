@@ -41,6 +41,20 @@ rm -f docs/*.import
 # publish. Phones, which tend to open the game right after a push, hit this every time.
 # Every fetch the worker may cache now goes out under a URL stamped with the build's
 # version and cache:'no-store', so neither cache can answer it.
+#
+# Third: a new cache per build meant every publish (dozens a day while a game is being
+# worked on) sent a phone back for all 78 MB, the engine's 39 MB included, though that
+# file only changes with the Godot version. The new worker now copies the engine out of
+# the old build's cache when its SHA-256 matches, so a publish costs index.pck alone.
+#
+# Fourth (user: "sometimes 3 seconds, sometimes 20"): a new build used to take over at
+# once and reload the page, which then waited for index.pck to download. Now the build
+# already on the device starts at once and the new one downloads in the background while
+# it plays: its worker only takes over once it holds every file, and then nothing is
+# reloaded under the player -- the page offers "new version ready, tap to restart" (or
+# reloads by itself if the old build was still on its splash screen), and the next launch
+# is the new build either way. A first visit (no build on the device yet) still waits for
+# its download, as it must.
 python - <<'SW'
 import io
 p = 'docs/index.service.worker.js'
@@ -66,25 +80,82 @@ function freshFetch(url) {
 
 self.addEventListener('install', (event) => {
 	// PATCHED by tools/publish_web.sh -- precache with freshFetch, then take over instead of
-	// waiting for every window to close first.
+	// waiting for every window to close first. When an older build is on the device (it
+	// plays meanwhile), the whole new build is fetched first -- the engine copied across if
+	// unchanged, index.pck downloaded -- so the switch to it never waits for a download.
+	// A first install takes over at once: the page's own first load fills its cache.
+	// (Files already in this build's cache are kept: an install cut short resumes.)
 	event.waitUntil((async () => {
 		const cache = await caches.open(CACHE_NAME);
+		const have = async (f) => (await cache.match(f)) !== undefined;
 		await Promise.all(CACHED_FILES.map(async (f) => {
+			if (await have(f)) {
+				return;
+			}
 			const res = await freshFetch(f);
 			if (res.ok) {
 				await cache.put(f, res);
 			}
 		}));
+		const older = (await caches.keys()).some((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME);
+		if (older) {
+			if (!(await have('index.wasm'))) {
+				await reuseEngine(cache);
+			}
+			for (const f of CACHEABLE_FILES) {
+				if (await have(f)) {
+					continue;
+				}
+				const res = await freshFetch(f);
+				if (!res.ok) {
+					throw new Error(f + ': ' + res.status);   // (the old build stays; tried again at the next check)
+				}
+				await cache.put(f, res);
+			}
+		}
 		await self.skipWaiting();
 	})());
-});""", 'install handler')
+});
+
+// PATCHED by tools/publish_web.sh -- the engine (index.wasm, ~39 MB) only changes with the
+// Godot version, yet every publish starts a new cache and so downloaded it again. If an
+// older build's cache holds the very same file (by its SHA-256, WASM_SHA256 below), copy it
+// across before the old caches are dropped: only index.pck is downloaded after a publish.
+const WASM_SHA256 = '@WASM_SHA256@';
+async function reuseEngine(cache) {
+	try {
+		for (const key of await caches.keys()) {
+			if (!key.startsWith(CACHE_PREFIX) || key === CACHE_NAME) {
+				continue;
+			}
+			const old = await (await caches.open(key)).match('index.wasm');
+			if (!old) {
+				continue;
+			}
+			const keep = old.clone();
+			const sum = await crypto.subtle.digest('SHA-256', await old.arrayBuffer());
+			const hex = Array.from(new Uint8Array(sum), (b) => b.toString(16).padStart(2, '0')).join('');
+			if (hex === WASM_SHA256) {
+				await cache.put('index.wasm', keep);
+				return;
+			}
+		}
+	} catch (e) {
+		console.warn('engine not reused from an older build: ', e); // eslint-disable-line no-console
+	}
+}""", 'install handler')
+
+import hashlib
+wasm_sha = hashlib.sha256(open('docs/index.wasm', 'rb').read()).hexdigest()
+s = s.replace('@WASM_SHA256@', wasm_sha, 1)
 
 start = s.index("self.addEventListener('activate'")
 end = s.index('/**', start)
 new_activate = """self.addEventListener('activate', (event) => {
 	// PATCHED by tools/publish_web.sh -- claim the open pages, and if this build replaced
-	// an older one, reload them onto it. Guarded on there having BEEN an older one, so a
-	// first install (or a re-registration of the same build) does not reload for nothing.
+	// an older one, tell them: the page offers a restart onto it (index.html's 'new-build'
+	// listener) instead of being reloaded under the player. Guarded on there having BEEN an
+	// older one, so a first install (or a re-registration of the same build) says nothing.
 	event.waitUntil((async () => {
 		const keys = await caches.keys();
 		const stale = keys.filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME);
@@ -92,7 +163,7 @@ new_activate = """self.addEventListener('activate', (event) => {
 		await self.clients.claim();
 		if (stale.length > 0) {
 			const all = await self.clients.matchAll({ type: 'window' });
-			all.forEach((c) => c.navigate(c.url));
+			all.forEach((c) => c.postMessage({ type: 'new-build' }));
 		}
 	})());
 });
@@ -113,13 +184,16 @@ swap("""	// Use the preloaded response, if it's there
 """, 'fetchAndCache')
 
 io.open(p, 'w', encoding='utf-8', newline='').write(s)
-print('service worker: patched for immediate takeover and cache-proof fetches')
+print('service worker: patched for background updates, a kept engine and cache-proof fetches')
 SW
 
 # The browser only looks for a new worker at the URL it was registered under, and GitHub
 # Pages' CDN may answer that with the old worker for up to ten minutes. Register under a
 # URL that changes every minute instead, as early in the page as possible and again when
 # the app comes back to the foreground, so a publish shows up within about a minute.
+# The page also offers the restart onto a new build once its worker has all of it (see
+# "Fourth" above), and on a first visit holds the engine back until the worker controls
+# the page, so the two big files go into its cache instead of being downloaded twice.
 python - <<'HTML'
 import io
 p = 'docs/index.html'
@@ -143,13 +217,56 @@ if ('serviceWorker' in navigator) {
 			lookForNewBuild('index.service.worker.js?t=' + Math.floor(Date.now() / 60000));
 		}
 	});
+	// a new build is on the device (its worker fetched all of it in the background): still
+	// on the splash, nothing to lose -- reload onto it; playing, offer it, never force it
+	navigator.serviceWorker.addEventListener('message', (e) => {
+		if (!e.data || e.data.type !== 'new-build') {
+			return;
+		}
+		if (document.getElementById('status')) {   // (Godot removes the splash once running)
+			window.location.reload();
+			return;
+		}
+		if (document.getElementById('new-build')) {
+			return;
+		}
+		const b = document.createElement('div');
+		b.id = 'new-build';
+		b.textContent = 'new version ready \u2014 tap to restart';
+		b.style.cssText = 'position:fixed;top:6px;left:50%;transform:translateX(-50%);z-index:10;'
+			+ 'padding:6px 4px 6px 14px;border-radius:16px;background:rgba(8,8,20,0.85);color:#fff;'
+			+ 'border:1px solid rgba(110,220,255,0.85);box-shadow:0 0 10px rgba(110,220,255,0.5);'
+			+ 'font:14px sans-serif;white-space:nowrap;cursor:pointer;user-select:none;-webkit-user-select:none';
+		b.addEventListener('click', () => window.location.reload());
+		const x = document.createElement('span');   // (later: the next launch is the new build anyway)
+		x.textContent = '\u00d7';
+		x.style.cssText = 'margin-left:6px;padding:0 10px;opacity:0.7';
+		x.addEventListener('click', (e2) => {
+			e2.stopPropagation();
+			b.remove();
+		});
+		b.appendChild(x);
+		document.body.appendChild(b);
+	});
 }
+// a first visit: no worker controls the page yet, so the engine would fetch its two big files
+// past it, uncached, and the next visit would download them again. Wait for the worker to
+// take the page over (a second or so; at most 4) so they go into its cache on the way.
+const SW_READY = (!('serviceWorker' in navigator) || navigator.serviceWorker.controller) ? Promise.resolve()
+	: new Promise((ok) => {
+		navigator.serviceWorker.addEventListener('controllerchange', () => ok(), { once: true });
+		setTimeout(ok, 4000);
+	});
 </script>
 """
 assert '</head>' in s
 s = s.replace('</head>', head + '</head>', 1)
+for old, new in [('\t\tengine.startGame({', '\t\tSW_READY.then(() => engine.startGame({'),
+                 ("\t\t}).then(() => {\n\t\t\tsetStatusMode('hidden');", "\t\t})).then(() => {\n\t\t\tsetStatusMode('hidden');")]:
+    assert s.count(old) == 1, 'engine start not as expected -- Godot changed its template'
+    s = s.replace(old, new, 1)
 io.open(p, 'w', encoding='utf-8', newline='').write(s)
-print('index.html: registers a minute-stamped worker URL on load and on foreground')
+print('index.html: minute-stamped worker URL, restart offered on a new build, first visit cached')
 HTML
 
 cp tools/pwa/icon_192x192.png docs/index.192x192.png

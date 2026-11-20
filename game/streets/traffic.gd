@@ -20,7 +20,7 @@ const GAP := 2.2             ## bumper to bumper when stopped (m)
 const HEADWAY := 1.2         ## seconds behind the car in front, moving
 const LEN := 4.4
 ## how long each kind is, bumper to bumper (m)
-const LENS := {"sedan": 4.6, "hatch": 4.0, "suv": 4.7, "van": 5.0, "taxi": 4.6, "bus": 11.8, "moto": 1.9, "truck": 6.8}
+const LENS := {"sedan": 4.6, "hatch": 4.0, "mini": 3.6, "wagon": 4.65, "mpv": 4.4, "suv": 4.7, "van": 5.0, "taxi": 4.6, "bus": 11.8, "moto": 1.9, "truck": 6.8}
 ## the player's car against each kind: circles along its length [offsets], radius
 const BODY := {"bus": [[-4.6, -2.3, 0.0, 2.3, 4.6], 1.25], "moto": [[0.0], 0.55], "truck": [[-2.3, 0.0, 2.3], 1.15]}
 const BUS_ROADS := {"primary": true, "secondary": true, "tertiary": true, "trunk": true}
@@ -146,7 +146,8 @@ var _mms := {}                        ## car shape -> its multimesh
 var _beams: MultiMeshInstance3D       ## their beams on the road, at night
 var _blinkers: MultiMesh              ## the indicators that are lit, front and back: one draw
 ## each kind's half width and half length, for where its indicators are
-const CORNERS := {"sedan": Vector2(0.9, 2.25), "hatch": Vector2(0.86, 1.95), "suv": Vector2(0.96, 2.32),
+const CORNERS := {"sedan": Vector2(0.9, 2.25), "hatch": Vector2(0.86, 1.95), "mini": Vector2(0.8, 1.8),
+	"wagon": Vector2(0.9, 2.3), "mpv": Vector2(0.92, 2.18), "suv": Vector2(0.96, 2.32),
 	"van": Vector2(0.98, 2.45), "taxi": Vector2(0.9, 2.25), "bus": Vector2(1.25, 5.85), "moto": Vector2(0.3, 0.8),
 	"truck": Vector2(1.1, 3.35)}
 var _night := false
@@ -165,7 +166,7 @@ func setup(game: Node) -> void:
 	var b: Rect2 = g._bounds
 	var box := AABB(Vector3(b.position.x - 500.0, -200.0, b.position.y - 500.0),
 		Vector3(b.size.x + 1000.0, 600.0, b.size.y + 1000.0))   # no box to recompute every frame
-	for kind: String in ["sedan", "hatch", "suv", "van", "taxi", "bus", "moto", "truck"]:
+	for kind: String in ["sedan", "hatch", "mini", "wagon", "mpv", "suv", "van", "taxi", "bus", "moto", "truck"]:
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_colors = true   # white: the car shader's part colours are vertex colours, see _chunked
@@ -1637,6 +1638,17 @@ func _start_on(c: Car, ri: int, sj: int, at: Vector2, dir: int) -> bool:
 		return false   # (a dead end straight ahead: somewhere else)
 	c.v = c.vmax[0] * 0.7
 	c.want = -1.0
+	# (a car is a pooled object: what it was doing in its last life goes too -- its
+	# acceleration above all, eased towards the new want: a filmed walk's car sent in the
+	# middle of its last life's hard stop braked from 9 to 3 m/s over its first 2 s)
+	c.acc = 0.0
+	c.braking = 0.0
+	c.react_t = 0.0
+	c.still = 0.0
+	c.blocker = -2
+	c.holding = false
+	c.sign_done = -1
+	c.sign_wait = 0.0
 	c.wait = 0.0
 	c.hit = 0.0
 	c.ignore = 0.0
