@@ -28,12 +28,22 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
                cu: 1 in a cutting, ly: OSM's layer when not 0, pv: 1 private (driveways),
                rb: 1 part of a roundabout, sv: a service road's kind -- parking_aisle,
                driveway, alley,
+               ms: the speed limit in km/h, lf / lb: lanes forward / backward,
+               tl / tlf / tlb: OSM's turn:lanes (one way, forward, backward) as written,
+               e.g. "left|through|through;right", sf: surface when not asphalt
+               (paving_stones, sett, concrete...), sw: which sides have a pavement --
+               both, left, right, no, or separate (mapped as footways of their own);
+               each only where OSM tags it, so absent means "not known", not "none",
                y: [height per node]  the road's surface off the ground (a "deck"), in
                   decimetres above `height.base` like the ground grid; the bake leaves it out
                   (OSM has no such heights: tools/fake_city.py writes it for its own bridges
                   and tunnels), and a game draws a road without it on the ground}]
   buildings  [{p: [x, z, ...] counter-clockwise ring, h: height m, b: base height m,
-               g: 1 if the height is a guess, name, addr}]
+               g: 1 if the height is a guess, name, addr,
+               and only where OSM tags them: k: building= (apartments, retail, office...),
+               lv: building:levels, col / rc: wall / roof colour as "#rrggbb", rs:
+               roof:shape (flat, gabled, hipped, dome...), mat: building:material (plaster,
+               concrete, glass, brick...), yr: the year it was built (start_date)}]
   areas      [{p: ring, k: park|grass|wood|water|parking|pitch|plaza|school, y: level}]
              (school: the grounds of a school or kindergarten; y: water that lies at its
              own level, decimetres above `height.base` -- a river held by weirs -- else it
@@ -751,6 +761,75 @@ def num(s):
     return float(m.group(1)) if m else None
 
 
+# maxspeed's implicit values ("IL:urban") for the countries baked so far, km/h
+ZONE_SPEED = {"il:urban": 50, "il:rural": 80, "il:trunk": 90, "il:motorway": 110,
+              "ca:urban": 50, "ca:ns:urban": 50, "ca:rural": 80, "ca:ns:rural": 80,
+              "ca:motorway": 100, "walk": 7, "living_street": 20}
+
+
+def speed_kmh(v):
+    """'50', '30 mph', 'IL:urban', '50;30' -> km/h as an int; 'none', 'signals' -> None."""
+    if not v:
+        return None
+    v = str(v).strip().lower().split(";")[0].strip()
+    if v in ZONE_SPEED:
+        return ZONE_SPEED[v]
+    m = re.match(r"^(\d+(?:\.\d+)?)\s*(mph|km/h|kmh|kph)?$", v)
+    if not m:
+        return None
+    kmh = float(m.group(1)) * (1.609 if m.group(2) == "mph" else 1.0)
+    return int(round(kmh)) if 3 <= kmh <= 150 else None
+
+
+# the colour names mappers use most, as hex (OSM also takes "#rrggbb")
+COLOUR_NAMES = {
+    "white": "#ffffff", "black": "#000000", "gray": "#808080", "grey": "#808080",
+    "lightgray": "#d3d3d3", "lightgrey": "#d3d3d3", "darkgray": "#a9a9a9", "darkgrey": "#a9a9a9",
+    "dimgray": "#696969", "silver": "#c0c0c0", "gainsboro": "#dcdcdc", "whitesmoke": "#f5f5f5",
+    "beige": "#f5f5dc", "cream": "#fffdd0", "ivory": "#fffff0", "linen": "#faf0e6",
+    "antiquewhite": "#faebd7", "wheat": "#f5deb3", "tan": "#d2b48c", "khaki": "#f0e68c",
+    "sandybrown": "#f4a460", "peru": "#cd853f", "sienna": "#a0522d", "brown": "#a52a2a",
+    "maroon": "#800000", "terracotta": "#e2725b", "red": "#ff0000", "darkred": "#8b0000",
+    "orange": "#ffa500", "yellow": "#ffff00", "gold": "#ffd700", "pink": "#ffc0cb",
+    "salmon": "#fa8072", "green": "#008000", "darkgreen": "#006400", "olive": "#808000",
+    "blue": "#0000ff", "lightblue": "#add8e6", "navy": "#000080", "teal": "#008080",
+    "lavender": "#e6e6fa", "purple": "#800080",
+}
+
+
+def colour_hex(v):
+    """'#fff', '#a1b2c3', 'beige', 'light grey' -> '#rrggbb'; anything else -> None."""
+    if not v:
+        return None
+    v = str(v).strip().lower().replace(" ", "").replace("_", "").split(";")[0]
+    if re.match(r"^#[0-9a-f]{6}$", v):
+        return v
+    if re.match(r"^#[0-9a-f]{3}$", v):
+        return "#" + "".join(c * 2 for c in v[1:])
+    return COLOUR_NAMES.get(v)
+
+
+def sidewalk_sides(t):
+    """Which sides of a road have a pavement, from sidewalk / sidewalk:both|left|right:
+    'both', 'left', 'right', 'no' or 'separate' (mapped as footways of their own); None
+    when OSM does not say."""
+    s = t.get("sidewalk")
+    if s in ("both", "left", "right", "no", "separate"):
+        return s
+    if s == "none":
+        return "no"
+    both = t.get("sidewalk:both")
+    if both in ("yes", "no", "separate"):
+        return {"yes": "both", "no": "no", "separate": "separate"}[both]
+    left, right = t.get("sidewalk:left"), t.get("sidewalk:right")
+    if left is None and right is None:
+        return None
+    if left == "separate" and right == "separate":
+        return "separate"
+    on_l, on_r = left == "yes", right == "yes"
+    return "both" if on_l and on_r else ("left" if on_l else ("right" if on_r else "no"))
+
+
 # ---- bake ------------------------------------------------------------------------------
 
 def bake(raw, name, args):
@@ -822,6 +901,30 @@ def bake(raw, name, args):
         oneway = t.get("oneway", "")
         o = 1 if oneway in ("yes", "1", "true") or t.get("junction") in ("roundabout", "circular") \
             else (-1 if oneway == "-1" else 0)
+        # what OSM says when it says it -- the game treats a missing one as "not known"
+        extra = {}
+        ms = speed_kmh(t.get("maxspeed"))
+        if ms is None:   # a different limit each way: the lower one
+            ways = [v for v in (speed_kmh(t.get("maxspeed:forward")),
+                                speed_kmh(t.get("maxspeed:backward"))) if v]
+            ms = min(ways) if ways else None
+        if ms:
+            extra["ms"] = ms
+        for key, field in (("lanes:forward", "lf"), ("lanes:backward", "lb")):
+            v = num(t.get(key))
+            if v and 0 < v < 10:
+                extra[field] = int(v)
+        for key, field in (("turn:lanes", "tl"), ("turn:lanes:forward", "tlf"),
+                           ("turn:lanes:backward", "tlb")):
+            if t.get(key):
+                extra[field] = t[key][:80]
+        if t.get("surface") and t["surface"] not in ("asphalt", "paved"):
+            extra["sf"] = t["surface"][:24]
+        sw = sidewalk_sides(t)
+        if sw:
+            extra["sw"] = sw
+        for f in extra:
+            stats["road_" + f] = stats.get("road_" + f, 0) + 1
         for run in runs:
             if len(run) < 2:
                 continue
@@ -852,6 +955,7 @@ def bake(raw, name, args):
                 road["rb"] = 1
             if kind == "service" and t.get("service") in ("parking_aisle", "driveway", "alley"):
                 road["sv"] = t["service"]
+            road.update(extra)
             out["roads"].append(road)
             stats["roads"] += 1
         for i in range(len(ids)):
@@ -924,6 +1028,26 @@ def bake(raw, name, args):
             b["name"] = t["name"]
         if t.get("addr:street") and t.get("addr:housenumber"):
             b["addr"] = f"{t['addr:street']} {t['addr:housenumber']}"
+        # what it looks like, where OSM says
+        if kind not in ("yes", ""):
+            b["k"] = kind[:24]
+        if levels is not None and 0 < levels < 200:
+            b["lv"] = int(levels)
+        for key, field in (("building:colour", "col"), ("roof:colour", "rc")):
+            c = colour_hex(t.get(key))
+            if c:
+                b[field] = c
+        if t.get("roof:shape"):
+            b["rs"] = t["roof:shape"][:20]
+        mat = t.get("building:material") or t.get("building:facade:material")
+        if mat:
+            b["mat"] = mat[:20]
+        yr = re.search(r"\b(1[5-9]\d\d|20\d\d)\b", t.get("start_date", ""))
+        if yr:
+            b["yr"] = int(yr.group(1))
+        for f in ("k", "lv", "col", "rc", "rs", "mat", "yr"):
+            if f in b:
+                stats["bld_" + f] = stats.get("bld_" + f, 0) + 1
         out["buildings"].append(b)
         stats["buildings"] += 1
 
@@ -1103,6 +1227,14 @@ def bake(raw, name, args):
         f"{stats['areas']} areas, {len(out['trees']) // 2} trees, {len(out['signals'])} "
         f"traffic lights, {len(out.get('rails', []))} rail tracks, {len(out.get('stations', []))} "
         f"stations; {x1 - x0:.0f} x {z1 - z0:.0f} m")
+    # how much of the optional detail OSM had here (the share is of road pieces' ways and
+    # of buildings): worth a look before building anything on one of them
+    nb = max(1, stats["buildings"])
+    log("tagged: buildings " + ", ".join(
+        f"{f} {stats.get('bld_' + f, 0)} ({100 * stats.get('bld_' + f, 0) / nb:.0f}%)"
+        for f in ("k", "lv", "col", "rc", "rs", "mat", "yr")))
+    log("tagged: road ways " + ", ".join(
+        f"{f} {stats.get('road_' + f, 0)}" for f in ("ms", "lf", "lb", "tl", "tlf", "tlb", "sf", "sw")))
     return out
 
 
