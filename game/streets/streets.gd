@@ -12815,7 +12815,7 @@ func _ap_ways(ri: int, ei: int, dir: int) -> Array:
 ## tests/dead_end_turns.gd drives into every cul-de-sac of a city.
 const AP_DEAD_ROOM := 7.0           ## metres short of a dead end's end it stops to turn round
 const AP_KT_V := 1.3                ## m/s, the crawl of each move
-const AP_KT_KERB := 0.15            ## a move ends this far (m) before a car's edge would be over the kerb
+const AP_KT_KERB := 0.6             ## a move ends when a bumper would be this far (m) over the kerb (the wheels are ~0.9 m in from it)
 const AP_KT_MOVES := 7              ## more than this, or AP_KT_SECS, and the rest is turned on the spot
 const AP_KT_SECS := 30.0
 var _ap_dead := Vector2.INF         ## where the plan stops to turn round (INF: no dead end ahead)

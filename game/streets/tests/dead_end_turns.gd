@@ -8,8 +8,9 @@ extends SceneTree
 ##
 ## It once drove at the end, found only the way back offered, and tried to swing round in one
 ## go -- a turn twice as wide as a 6.5 m street -- into a tree or garden wall beside the road
-## at ~20-30 km/h (the test town's HaTzabar, 2026-11). Good now: no hits, a three-point turn
-## in a 6.5 m street (five or seven moves in narrower ones), ~0 m past the asphalt's edge.
+## at ~20-30 km/h (the test town's HaTzabar, 2026-11): 8 of 8 there hit something. Good now
+## (Nov 2026): no hits; a three-point turn in ~11 s in most (four or five moves in some, one
+## of 12 in Givatayim boxed in and finished on the spot); bumpers ~0.2 m over the kerb.
 ##
 ## ONLY=<part of a street's name> for just that one, VERBOSE=1 for the car's state twice a second.
 ## Runs headless too, without screenshots (faster):
@@ -166,6 +167,18 @@ func _run() -> void:
 				print("    t %.1f: %.1f m to the end, v %.1f, gear %d, heading %.2f, why %s, stop %s, turning %s, plan %d, slope %.2f, steer %.2f, touching %s" % [t,
 					to_end.dot(toward), g._v, g._gear, fwd.dot(toward), g._ap_why, str(g._ap_dead), str(g._ap_kt.get("n", "-")), g._ap_pts.size(),
 					g._slope, g._steer, g._last_hit if g._touch_t > 0.0 else "-"])
+				if not g._ap_kt.is_empty():
+					var parts: Array = []
+					for end_s: float in [1.0, -1.0]:
+						var q: Vector2 = g._pos + fwd * end_s * (g.CAR_OFF + 0.25 + absf(g._v) * 0.3)
+						var why := ""
+						if g._push_out(q, g.CAR_R, true, true) != Vector2.ZERO:
+							why = String(g._last_hit)
+						var on: Dictionary = g._nearest_seg(q, 15.0, true, false)
+						parts.append("%s: %s edge %.2f%s" % ["nose" if end_s > 0 else "tail", why if why != "" else "clear,",
+							(float(on["edge"]) + g.CAR_R) if not on.is_empty() else 99.0,
+							", past the end" if (q - g._ap_dead_end).dot(g._ap_dead_in) > -g.CAR_R else ""])
+					print("      " + "; ".join(parts))
 			if to_end.length() < 30.0 and fwd.dot(toward) < 0.9:
 				for off: float in [g.CAR_OFF, -g.CAR_OFF]:
 					var on: Dictionary = g._nearest_seg(g._pos + fwd * off, 20.0, true, false)

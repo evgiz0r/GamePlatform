@@ -520,6 +520,15 @@ than the two waiting for each other for ever.
 
 > Sometimes the autodrive gets completely stuck in those narrow streets.
 
+**Autodrive at a dead end** stops a few car lengths short of the end and turns round the
+way a driver does in a narrow street: indicator on, forward on full lock to the far kerb,
+reverse lights and back on the other lock, forward again -- three moves in a cul-de-sac,
+more in a narrower one -- and drives back out. It used to try to swing round in one go and
+ran into the trees and garden walls at the end.
+
+> Autodrive misbehaves at the end of a dead-end street: the car tries to turn round there
+> and drives into a tree or post beside the road.
+
 **The edge of the map** is a striped barrier with a glowing curtain over it that shows as
 you come near, and a line on the minimap; the car stops against it, nose to the stripes.
 
