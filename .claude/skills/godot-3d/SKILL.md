@@ -79,6 +79,14 @@ is a Z coordinate, not a height.
   An albedo multiplier is linear and the screen is sRGB: 0.55 off the albedo is what left
   the same 0.69 on screen as a real shadow did. Under a test's software renderer each frame
   the bake waits for costs most of a second; in a browser it is a few ms.
+- **Golden hour is warm light and cool shade.** A sunset HDRI tonemapped to the day sky's
+  brightness came out as a plain day; keep it darker (half the exposure) so its glow
+  survives. Don't put the light where the photo's sun is (5 degrees up made every shadow 12
+  times the height of what cast it): 12-15 degrees still reads as evening. Tint the sun
+  orange (yellow alone looked lemon), light the shade with the sky's blue rather than grey
+  haze (with haze the shadows went khaki), and let the fog glow towards the sun
+  (`fog_sun_scatter`). Anything baked for one sun's direction (painted shadows, offsets)
+  either moves in a shader by a uniform or is baked again per sun and kept.
 - **Resolution**: the 3D `SubViewport` renders at the real window size (up to 3x the
   640x360 design space, half-step multiples) and is scaled down with linear filtering,
   with 4x MSAA. The kit's nearest-neighbour default is for pixel art and made 3D look

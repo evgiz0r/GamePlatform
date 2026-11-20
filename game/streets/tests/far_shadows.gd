@@ -3,7 +3,7 @@ extends SceneTree
 ## the whole city's building shadows it paints at load (far_shadow_map.png), then the same
 ## views with them on and off -- down the street from a driver's height, and over the city
 ## from 60 m up and from the zoom-out's 165 m -- at the top quality (real shadows to 75 m, these past them) and the lowest
-## (no real shadows: these everywhere). Prints the stage's load time and how much of each
+## (no real shadows: these everywhere). EVENING=1: in the evening's light. Prints the stage's load time and how much of each
 ## picture they darkened. Shots far_<view>_q<quality>_on/off.png in $OUT.
 var g: Node
 
@@ -17,7 +17,7 @@ func _shot() -> Image:
 
 func _switch(on: bool) -> void:
 	for m: ShaderMaterial in g._far_mats:
-		m.set_shader_parameter("fs_dark", g.FS_DARK if on else 0.0)
+		m.set_shader_parameter("fs_dark", (g.FS_DARK_EVE if g._evening else g.FS_DARK) if on else 0.0)
 
 func _ab(name: String, eye: Vector3, tgt: Vector3) -> void:
 	g.look_from(eye, tgt)
@@ -61,6 +61,9 @@ func _run() -> void:
 			if n.get_script() != null and String(n.get_script().resource_path).ends_with("streets.gd"):
 				g = n
 	await create_timer(1.0).timeout
+	if OS.get_environment("EVENING") == "1":   # the evening's sun and shadows instead
+		await g._set_evening(true)
+		await create_timer(0.5).timeout
 	print("far shadows: built in %d ms, %d of it work (the rest frames), picture %s" % [int(g._stage_ms.get("far shadows", -1)),
 		int(g._stage_ms.get("far shadows: work, not the frames", -1)), g._fs_tex.get_size() if g._fs_tex != null else "none"])
 	if g._fs_tex != null:
@@ -79,6 +82,7 @@ func _run() -> void:
 	g._sky_follow()
 	g._set_quality(3)
 	_switch(false)
+	await create_timer(0.5).timeout
 	(await _shot()).save_png(OS.get_environment("OUT") + "/far_check_real.png")
 	g.sun.shadow_enabled = false
 	g._far_update()

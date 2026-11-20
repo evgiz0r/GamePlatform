@@ -48,6 +48,16 @@ The ones most often touched, and the functions in them:
   (barred windows, the door in the middle bay), stone courses, plinth and mosaic are
   `WALL_SHADER`'s `ground` / `door` / `stone_k`; worn asphalt is `TONE_SHADER`'s
   `crazing()` and patches. `tests/eye_level.gd` puts a camera where a person stands.
+- **time of day** -- `SKIES` (day, evening: the photo, its sun and colours from `hdr_sky.py`,
+  where the sunlight comes from, its warmth and energy), `_sky_now()`; `_next_time()` (the
+  button: day, evening, night), `_set_evening()`. `_retint_city` reads `_evening` for the
+  ambient (the sky's blue in the evening, not the haze), the sun's colour (ink to warn, and
+  in the evening a little hazard: orange, not lemon) and the haze's glow towards the sun
+  (`fog_sun_scatter`). The far shadows are drawn per sun and kept (`_fs_cache`); the trees'
+  patches are laid at the trunk and moved by the sun in `AO_SHADER` (`sun_off`,
+  `sun_stretch`), so they need no laying again. `FS_DARK_EVE` 0.4: a low sun lights the
+  ground less, so its shadows take less (real 0.76, painted 0.75, `far_shadows` EVENING=1).
+  `STREETS_CAM=...,2` starts in the evening. `tests/time_of_day.gd`.
 - **shadows past the shadows** -- `_build_far_shadows` (after `_build_setup`, at load):
   every outline swept along the sun by its height (`Geometry2D.convex_hull` of the outline
   and the outline moved), then the outlines themselves cleared, drawn white on black into a

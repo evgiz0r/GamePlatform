@@ -605,6 +605,16 @@ the city now has what the walk had underfoot and at eye height:
 
 > go next
 
+**Golden hour.** The time-of-day button steps through day, evening and night. The evening is
+the hour before sunset: a sky photographed then, clouds lit gold from below and a glow
+along the horizon where the sun is going down (in the west-south-west, as it sets over
+Givatayim in the autumn); the sun low and orange, so the fronts that face it glow and the
+streets lie in long blue shade; the haze warm towards the sun. Every shadow, the painted
+far ones too, is as long as a low sun makes it. The first switch to the evening takes a
+moment (its far shadows are drawn then), after that it is instant.
+
+> continue?
+
 > I took a video on my phone, walking in Givatayim.
 
 ## Smooth on a laptop and a phone
