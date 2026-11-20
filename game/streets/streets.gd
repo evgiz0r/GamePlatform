@@ -17254,7 +17254,7 @@ func _ap_pass_bus(lead: Array) -> bool:
 		return false
 	var bus = _traffic.cars[bi]
 	var dbl: bool = _traffic._parked_double(bus)
-	if (not dbl and (bus.kind != "bus" or bus.v > 0.6 or bus.dwell <= 0.0)) or _ap_pts.size() < 3:
+	if (not dbl and (bus.kind != "bus" or bus.v > 0.6 or bus.dwell <= 0.0)) or _ap_pts.size() < 2:
 		return false
 	var hit := _nearest_seg(_pos, 12.0, true, true, _y)
 	if hit.is_empty():
@@ -17296,6 +17296,7 @@ func _ap_pass_bus(lead: Array) -> bool:
 	var half: float = bus.len * 0.5
 	var start_s := maxf(gap - half - 10.0, 2.0)
 	var end_s := gap + half + 12.0
+	_ap_densify(end_s + 10.0, 2.0)
 	for k in range(1, _ap_pts.size()):
 		s += _ap_pts[k - 1].distance_to(_ap_pts[k])
 		if s > end_s + 8.0:
@@ -17309,6 +17310,33 @@ func _ap_pass_bus(lead: Array) -> bool:
 	Probe.event("pass_van" if dbl else "pass_bus", {"lane_w": snappedf(lane_w, 0.1)})
 	_log.event("pass van" if dbl else "pass bus")
 	return true
+
+## A point every `step` metres along the plan for its first `upto` metres. Only points move
+## when the plan is bent (round a bus, a delivery van): on a straight street the plan can be
+## two points a block apart, and bending "the points from 2 m to 40 m ahead" moved nothing --
+## autodrive marked the van passed and stood behind it for half a minute (street_goings).
+func _ap_densify(upto: float, step: float) -> void:
+	var np := PackedVector2Array([_ap_pts[0]])
+	var nv := PackedFloat32Array([_ap_v[0]])
+	var nl := PackedFloat32Array([_ap_lim[0]])
+	var acc := 0.0
+	for k in range(1, _ap_pts.size()):
+		var a := _ap_pts[k - 1]
+		var b := _ap_pts[k]
+		var L := a.distance_to(b)
+		if acc < upto and L > step * 1.25:
+			var m := int(L / step)
+			for q in range(1, m):
+				np.append(a.lerp(b, float(q) / m))
+				nv.append(maxf(_ap_v[k - 1], _ap_v[k]))   # (a straight stretch: the braking to point k is seen from these too)
+				nl.append(_ap_lim[k])
+		np.append(b)
+		nv.append(_ap_v[k])
+		nl.append(_ap_lim[k])
+		acc += L
+	_ap_pts = np
+	_ap_v = nv
+	_ap_lim = nl
 
 ## Into the turn lane: before a left turn, over the last 45 m, the lane on the left of its
 ## way -- the leftmost of a one-way road of several, the one beside the centre line of a
