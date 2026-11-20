@@ -1670,11 +1670,35 @@ and the ramp-top fix. Where things stand:
   see "bus lanes" in the code map and `tests/bus_lanes.gd`). data.gov.il's `nataz_kayam`
   (the Ministry's layer, more stretches) came back as a CloudFront 403 from this container
   -- not to be got round; a copy added to the repo by hand would be the way.
-- **The user asked what extending the box to the sea costs** (down to the Carmel market,
-  Allenby, Rothschild): about 4.1 x 3.2 km against 2.4 x 2.7 now, ~2-2.5x the buildings
-  (~9-10k, ~5-6k roads -- Ashdod's size): load before the car ~2.8 s, background build
-  ~25 s, file ~3 MB, frame cost about Givatayim's busiest view. Answered, not started:
-  re-bake with the bake workflow's `bbox` (bare_ground on, margin 150), then the checks.
+- **Grown to the sea** (20 Nov 2026, the user: "lets try to make it bigger"). The bake's
+  bbox `32.0590,34.7595,32.0858,34.8021` (was `32.0639,34.7795,...`), margin 150,
+  bare_ground and main_server_only on, and `origin` `32.07485,34.7908` -- the old box's
+  centre, so every place in the old box kept its metres (the landmarks, the tests'
+  coordinates, the hand fixes; checked: the landmarks found at the same points, the city
+  check's old findings at the same points). Bounds now x -3105..1217, z -1364..1907
+  (4.3 x 3.3 km); 9597 buildings (4011), 5963 roads (3745), 553 lit points (316), 10
+  beaches, the sea 1.6 km^2; the file 2.8 MB (1.4): Ashdod's size. Load before the car,
+  measured beside another run: parse 2.6 s, build 3.3 s. Level renamed "Tel Aviv: Azrieli
+  to the sea". New in the baker for it: `--origin`, beaches (`natural=beach|sand` ->
+  areas of kind `sand`, drawn with the playgrounds' sand), and the sea held at sea level
+  (`_hold_sea`: the tiles read the sea at -0.1..+1.2 m and the beach 2.5 m under, and
+  water lies at its shore's lowest point -- the sea lay under its own floor and the ground
+  was drawn white over it). Checks after: `city_check` 19 (12: 18 buildings into a road,
+  1 post 0.3 m into Dizengoff at (-1495, -1306)); `landmarks` 5, 39 tiled, 136 roofs lit
+  (with the town's survey: 8322 of the 9597 buildings take its measured height; baked
+  after merging that session's baker, so the file has both, and its roads levelled);
+  the exam 3 x 60 s 4 checks (the old map 4; one start by the sea at (-2607, 1562)): new
+  places, traffic into post 31487 at (-880, 1155) twice at 40 km/h and a bus into one at
+  a stop at (-1065, 853); `decks.gd` -- a run now drives Al Parashat Drachim's embankment
+  by the Uzi Hitman tunnel and leaves the ground 11 frames at (580, -690), 40-46 km/h
+  (its profile is the old file's to 0.1%: a crest, dg -6.7% at 43 m along the piece from
+  (583, -684); the old run stuck 11 m in and never drove it). Look with
+  `tests/street_views.gd` (`STREETS="אלנבי;הכרמל;רוטשילד;הרברט סמואל"`,
+  `LOOK="-2468,0;-2660,616"` for the beaches).
+- **Next, for the grown part**: the Carmel market is a bare pedestrian lane (stalls and
+  awnings would make it); the sand is the playgrounds' near-white (a warmer beach tone);
+  the Shalom Meir tower and the Opera tower as landmarks; Ashdod's sea is likely under its
+  floor too (its water at the shore's 0.8, its sea grid 1.1: re-bake it with this baker).
 - **Open, smaller**: Arvei Nahal's 0.44 m seam (under "Off the ground"); the HaShalom west
   ramp's 8 hole points; 5 bank feet at a kerb; Marganit and Matcal's tops are modelled from
   heights alone.
