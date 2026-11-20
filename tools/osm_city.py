@@ -32,7 +32,9 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
                tl / tlf / tlb: OSM's turn:lanes (one way, forward, backward) as written,
                e.g. "left|through|through;right", sf: surface when not asphalt
                (paving_stones, sett, concrete...), sw: which sides have a pavement --
-               both, left, right, no, or separate (mapped as footways of their own);
+               both, left, right, no, or separate (mapped as footways of their own),
+               bus: OSM's bus and taxi lane tags as written, {"bus:lanes": "no|designated",
+               "busway:right": "lane", "lanes:psv": "1", ...};
                each only where OSM tags it, so absent means "not known", not "none",
                y: [height per node]  the road's surface off the ground (a "deck"), in
                   decimetres above `height.base` like the ground grid; the bake leaves it out
@@ -924,6 +926,12 @@ def bake(raw, name, args):
         sw = sidewalk_sides(t)
         if sw:
             extra["sw"] = sw
+        # bus and taxi lanes, as OSM writes them (busway=lane, busway:right=lane,
+        # bus:lanes=no|designated, lanes:psv=1, psv:lanes:forward=..., ...)
+        bus = {k: v[:60] for k, v in t.items()
+               if re.match(r"^(busway|bus:lanes|psv:lanes|lanes:bus|lanes:psv)(:|$)", k)}
+        if bus:
+            extra["bus"] = bus
         for f in extra:
             stats["road_" + f] = stats.get("road_" + f, 0) + 1
         for run in runs:
@@ -1235,7 +1243,7 @@ def bake(raw, name, args):
         f"{f} {stats.get('bld_' + f, 0)} ({100 * stats.get('bld_' + f, 0) / nb:.0f}%)"
         for f in ("k", "lv", "col", "rc", "rs", "mat", "yr")))
     log("tagged: road ways " + ", ".join(
-        f"{f} {stats.get('road_' + f, 0)}" for f in ("ms", "lf", "lb", "tl", "tlf", "tlb", "sf", "sw")))
+        f"{f} {stats.get('road_' + f, 0)}" for f in ("ms", "lf", "lb", "tl", "tlf", "tlb", "sf", "sw", "bus")))
     return out
 
 
