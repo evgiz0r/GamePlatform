@@ -696,7 +696,14 @@ class Buf:
 ## half behind the camera, and drawn again into the shadow map; squares are skipped when
 ## off screen or past their range.
 class CBuf extends Buf:
+	## while one square of the city is built (_build_tile): whether, and which (400 m: TILE)
+	static var tiled := false
+	static var tile := Vector2i.ZERO
 	var cell := 400.0
+	## Laid along a road or a fence that every square it crosses works out in full: keep only
+	## the triangles that start in the square being built. (Otherwise everything goes into
+	## that square's mesh, wherever it reaches: a building over the line is still one.)
+	var clip := false
 	var _parts := {}
 	var _last_key := Vector2i(-99999, -99999)   # triangles come in runs along a street
 	var _last: Buf = null
@@ -707,6 +714,12 @@ class CBuf extends Buf:
 	func tri(a: Vector3, b: Vector3, d: Vector3, nrm: Vector3, col: Color,
 			ua := Vector2.ZERO, ub := Vector2.ZERO, ud := Vector2.ZERO, u2 := Vector2.ZERO) -> void:
 		var key := Vector2i(floori(a.x / cell), floori(a.z / cell))
+		if tiled:
+			var tk := Vector2i(floori(a.x / 400.0), floori(a.z / 400.0))
+			if tk != tile:
+				if clip:
+					return
+				key = Vector2i(floori((tile.x + 0.5) * 400.0 / cell), floori((tile.y + 0.5) * 400.0 / cell))
 		if key != _last_key:
 			_last_key = key
 			_last = _parts.get(key)
@@ -995,6 +1008,7 @@ func start(_config: Dictionary) -> void:
 		return
 	var t1 := Time.get_ticks_msec()
 	world_area = _bounds
+	_find_start()   # (the squares round it are built first)
 	if not await _build_world():
 		return
 	if not await _warm_up():
@@ -1023,6 +1037,7 @@ func start(_config: Dictionary) -> void:
 	var dev_cam := OS.get_environment("STREETS_CAM").split(",", false)
 	if dev_cam.size() >= 6 and dev_cam[5] == "1":
 		_set_night(true)
+	_build_rest()   # the rest of the city, while you drive
 
 var _loading: Label
 
@@ -1425,11 +1440,12 @@ var _stage_ms := {}
 
 func _stage(name: String, t0: int) -> int:
 	var t := Time.get_ticks_msec()
-	_stage_ms[name] = t - t0
+	if not _bg_build:   # (in the background the clock runs on through the frames between)
+		_stage_ms[name] = int(_stage_ms.get(name, 0)) + t - t0
 	return t
 
 func _build_world() -> bool:
-	_batching = true
+	var t0 := Time.get_ticks_msec()
 	# one shadow map over the near streets, not the default four cascades: those drew every
 	# shadow-casting thing in view four more times a frame, more than the view itself
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
@@ -1438,8 +1454,6 @@ func _build_world() -> bool:
 	_build_sky_dome()
 	cam.near = 0.3
 	cam.far = 2200.0
-	var k := 1.0 / float(_city_data.get("scale", 10))
-
 	# the ground, well past the edges so the horizon is not a cliff
 	var ground := MeshInstance3D.new()
 	var pm := PlaneMesh.new()
@@ -1452,110 +1466,348 @@ func _build_world() -> bool:
 	if _hnx > 0:
 		_build_terrain()
 	_build_edge()
-	if not await _step("streets"):
-		return false
+	_build_setup(_stage("world", t0))
+	# the squares round the start before the car is shown; the rest while it drives
+	var near: Array = _tiles_todo.filter(func(t): return _tile_dist(t, _pos) < NEAR_FIRST)
+	near.sort_custom(func(a, b): return _tile_dist(a, _pos) < _tile_dist(b, _pos))
+	for i in range(near.size()):
+		if not await _step("the streets round the start (%d of %d)" % [i + 1, near.size()]):
+			return false
+		await _build_tile(near[i])
+	_tiles_todo = _tiles_todo.filter(func(t): return not _tiles_done.has(t))
+	return true
 
-	var ta := Time.get_ticks_msec()
-	# parks, grass, water, car parks
-	var areas := {}
-	for a: Dictionary in _city_data.get("areas", []):
+## ---- building near-first ------------------------------------------------------------------
+## The city is built a 400 m square at a time -- the squares its meshes are merged in anyway,
+## so building it in pieces costs no extra draws. The squares round the start go in behind
+## the loading text; the rest while you drive, the square nearest where the car is heading
+## first, a few milliseconds a frame (_pause) so the driving never stutters.
+## Anything laid along a road or a fence (asphalt, paint, kerbs, gardens, wires, fences) is
+## worked out in full by every square the line crosses, and each square keeps only the
+## triangles that start in it (CBuf.clip). Everything else -- a building, a tree, a sign, a
+## shop, a parked car -- belongs to the one square its spot is in (_mine), which builds all
+## of it, and records whatever goes with it (posts, parked cars, lights, tables) just once.
+const TILE := 400.0                  ## = CHUNK = GROUND_CELL = BATCH_CELL
+const NEAR_FIRST := 320.0            ## squares this close to the start are built before you drive
+const BUILD_US := 6000               ## background building: microseconds a frame (half that when frames run slow)
+var _tile := Vector2i.ZERO           ## the square being built
+var _tiled := false                  ## a square is being built (its builders are at work)
+var _tiles_done := {}
+var _tiles_todo: Array = []          ## Vector2i: the squares still to build
+var _tile_roads := {}                ## square -> roads whose line (15 m either side) reaches it
+var _tile_nodes := {}                ## square -> the road nodes in it
+var _tile_blds := {}                 ## square -> buildings (by the middle of the outline)
+var _tile_areas := {}                ## square -> the city file's areas that reach it
+var _tile_rings := {}                ## kind -> square -> indices into _area_rings[kind] that reach it
+var _tile_trees := {}                ## square -> mapped trees
+var _tile_pois := {}                 ## square -> places (shops, schools...)
+var _tile_stops := {}                ## square -> bus stops
+var _tile_signs := {}                ## square -> stop and give-way signs
+var _tile_lit := {}                  ## square -> junctions with traffic lights
+var _tile_bars := {}                 ## square -> mapped fences and hedges that reach it
+var _crossing_set := {}
+var _bg_build := false               ## building in the background: stop for the frame when over budget
+var _bg_wait := false
+var _yield_at := 0
+var _build_us := BUILD_US
+var _build_lbl: Label
+var _build_total := 0                ## squares to build, all told (for the HUD)
+var _schools: Array = []             ## schools and kindergartens: SLOW on the road near them
+var _poi_taken := {}                 ## a shopfront spot already used -> how many there
+var _mesh_cache := {}
+var _shingles: StandardMaterial3D
+
+## a mesh made once and shared by every square
+func _cached(key: String, make: Callable) -> Mesh:
+	if not _mesh_cache.has(key):
+		_mesh_cache[key] = make.call()
+	return _mesh_cache[key]
+signal _build_tick
+
+func _tile_of(p: Vector2) -> Vector2i:
+	return Vector2i(floori(p.x / TILE), floori(p.y / TILE))
+
+func _tile_rect(t: Vector2i) -> Rect2:
+	return Rect2(Vector2(t) * TILE, Vector2(TILE, TILE))
+
+## how far p is from square t (0 inside it)
+func _tile_dist(t: Vector2i, p: Vector2) -> float:
+	var r := _tile_rect(t)
+	return p.clamp(r.position, r.end).distance_to(p)
+
+## the squares a box reaches
+func _tiles_over(box: Rect2) -> Array:
+	var out: Array = []
+	for tx in range(floori(box.position.x / TILE), floori(box.end.x / TILE) + 1):
+		for tz in range(floori(box.position.y / TILE), floori(box.end.y / TILE) + 1):
+			out.append(Vector2i(tx, tz))
+	return out
+
+func _bucket(table: Dictionary, t: Vector2i, item) -> void:
+	if not table.has(t):
+		table[t] = []
+	(table[t] as Array).append(item)
+
+## p is in the square being built: what stands there is built (and recorded) by it
+func _mine(p: Vector2) -> bool:
+	return not _tiled or _tile_of(p) == _tile
+
+## p is within m metres of the square being built
+func _near_tile(p: Vector2, m: float) -> bool:
+	return not _tiled or _tile_rect(_tile).grow(m).has_point(p)
+
+## the nodes within m metres of the square being built
+func _nodes_near(m: float) -> Array:
+	var out: Array = []
+	for dx in [-1, 0, 1]:
+		for dz in [-1, 0, 1]:
+			for ni: int in _tile_nodes.get(_tile + Vector2i(dx, dz), []):
+				if _near_tile(_nodes[ni], m):
+					out.append(ni)
+	return out
+
+## the outlines of one kind of area (park, wood, parking...) that reach the square
+func _rings_near(kind: String) -> Array:
+	var all: Array = _area_rings.get(kind, [])
+	var out: Array = []
+	for ri: int in (_tile_rings.get(kind, {}) as Dictionary).get(_tile, []):
+		out.append(all[ri])
+	return out
+
+## an area's outline belongs to the square its box's middle is in
+func _ring_mine(ring: PackedVector2Array) -> bool:
+	return _mine(_bld_box_of(ring).get_center())
+
+## a CBuf for something every square along it works out (see CBuf.clip)
+func _clip_buf(cell: float) -> CBuf:
+	var b := CBuf.new(cell)
+	b.clip = true
+	return b
+
+func _tally(k: String, n: int) -> void:
+	_dressing[k] = int(_dressing.get(k, 0)) + n
+
+## the frame's building time is used up
+func _over() -> bool:
+	return _bg_build and Time.get_ticks_usec() > _yield_at
+
+## Building in the background: hand the frame back and go on in the next one. Meanwhile
+## the game is not building a square, so whatever it makes in between (night's light pools)
+## is its own, not that square's.
+func _pause() -> void:
+	var was := _tiled
+	var batching := _batching
+	_set_tiling(false)
+	_batching = false
+	_bg_wait = true
+	await _build_tick
+	_batching = batching
+	_set_tiling(was)
+	_yield_at = Time.get_ticks_usec() + _build_us
+
+## empty a big table or list a few hundred entries at a time, within the frame's budget
+func _release(table) -> void:
+	if table is Dictionary:
+		var d: Dictionary = table
+		var keys: Array = d.keys()
+		for i in range(keys.size()):
+			d.erase(keys[i])
+			if i % 256 == 255 and _over():
+				await _pause()
+	elif table is Array:
+		var a: Array = table
+		while not a.is_empty():
+			a.resize(maxi(0, a.size() - 256))
+			if _over():
+				await _pause()
+
+func _set_tiling(on: bool) -> void:
+	_tiled = on
+	CBuf.tiled = on
+	CBuf.tile = _tile
+
+## What every square needs from the whole city, worked out once: which roads, junctions,
+## buildings, areas and places reach each square; the outlines of the parks, woods and car
+## parks; what traffic needs everywhere at once (which junctions have lights).
+func _build_setup(t0: int) -> void:
+	var k := 1.0 / float(_city_data.get("scale", 10))
+	_furn = Furniture.new(self)
+	_build_asph_hash()
+	_bld_kind.resize((_city_data["buildings"] as Array).size())
+	_bld_kind.fill(0)
+	for ni in _city_data.get("crossings", []):
+		_crossing_nodes.append(int(ni))
+		_crossing_set[int(ni)] = true
+	var areas: Array = _city_data.get("areas", [])
+	for ai in range(areas.size()):
+		var a: Dictionary = areas[ai]
 		var kind := String(a["k"])
-		# a school's grounds: paved, under whatever pitches and lawns OSM puts in them
-		var tone := "grass" if kind in ["park", "grass"] else ("ground" if kind == "land" else ("plaza" if kind == "school" else kind))
-		if not areas.has(tone):
-			areas[tone] = CBuf.new(CHUNK)
 		var flat: Array = a["p"]
 		var ring := PackedVector2Array()
 		for i in range(0, flat.size(), 2):
 			ring.append(Vector2(flat[i], flat[i + 1]) * k)
-		# islands sit on the sea, parks and car parks on whatever is under them
-		var y := Y_AREA + (0.002 if tone in ["parking", "plaza"] else (0.001 if kind == "land" else 0.0))
-		if kind == "school":
-			y = Y_AREA - 0.001
-		_fill(areas[tone], ring, y, tone == "water")
-		if kind in ["park", "grass", "wood", "pitch", "water", "parking", "plaza", "school"] and ring.size() >= 3:
+		a["_ring"] = ring
+		if ring.size() < 3:
+			continue
+		var over := _tiles_over(_bld_box_of(ring))
+		for t: Vector2i in over:
+			_bucket(_tile_areas, t, ai)
+		if kind in ["park", "grass", "wood", "pitch", "water", "parking", "plaza", "school"]:
 			if not _area_rings.has(kind):
 				_area_rings[kind] = []
+				_tile_rings[kind] = {}
+			for t: Vector2i in over:
+				_bucket(_tile_rings[kind], t, (_area_rings[kind] as Array).size())
 			(_area_rings[kind] as Array).append(ring)
-	for tone: String in areas:
-		_add_mesh(areas[tone], _surface(tone), false, VIEW_RANGE)
-	ta = _stage("areas", ta)
+	for ri in range(_roads.size()):
+		var r: Dictionary = _roads[ri]
+		var pts: PackedVector2Array = r["pts"]
+		var reach := float(r["w"]) * 0.5 + 15.0
+		var seen := {}
+		for j in range(pts.size() - 1):
+			for t: Vector2i in _tiles_over(Rect2(pts[j], Vector2.ZERO).expand(pts[j + 1]).grow(reach)):
+				if not seen.has(t):
+					seen[t] = true
+					_bucket(_tile_roads, t, ri)
+	for ni in range(_nodes.size()):
+		_bucket(_tile_nodes, _tile_of(_nodes[ni]), ni)
+	for bi in range(_bld_box.size()):
+		_bucket(_tile_blds, _tile_of((_bld_box[bi] as Rect2).get_center()), bi)
+	var tr: Array = _city_data.get("trees", [])
+	for i in range(0, tr.size() - 1, 2):
+		_bucket(_tile_trees, _tile_of(Vector2(tr[i], tr[i + 1]) * k), i)
+	var pois: Array = _city_data.get("pois", [])
+	for i in range(pois.size()):
+		_bucket(_tile_pois, _tile_of(Vector2(pois[i][0], pois[i][1]) * k), i)
+		if String(pois[i][2]) in ["school", "kindergarten"]:
+			_schools.append(Vector2(pois[i][0], pois[i][1]) * k)
+	var stops: Array = _city_data.get("stops", [])
+	for i in range(stops.size()):
+		_bucket(_tile_stops, _tile_of(Vector2(stops[i][0], stops[i][1]) * k), i)
+	var signs: Array = _city_data.get("signs", [])
+	for i in range(signs.size()):
+		var node := int(signs[i][0])
+		if node >= 0 and node < _nodes.size():
+			_bucket(_tile_signs, _tile_of(_nodes[node]), i)
+	var bars: Array = _city_data.get("barriers", [])
+	for i in range(bars.size()):
+		var flat: Array = bars[i][0]
+		var seen := {}
+		for j in range(0, flat.size() - 2, 2):
+			var box := Rect2(Vector2(flat[j], flat[j + 1]) * k, Vector2.ZERO).expand(Vector2(flat[j + 2], flat[j + 3]) * k)
+			for t: Vector2i in _tiles_over(box.grow(1.0)):
+				if not seen.has(t):
+					seen[t] = true
+					_bucket(_tile_bars, t, i)
+	_lights_setup()
+	_parks_setup()
+	_trees_setup()
+	# every square with anything in it, and every square of the map (open land grows trees)
+	var todo := {}
+	for table: Dictionary in [_tile_roads, _tile_nodes, _tile_blds, _tile_areas, _tile_trees, _tile_pois]:
+		for t: Vector2i in table:
+			todo[t] = true
+	for t: Vector2i in _tiles_over(_bounds):
+		todo[t] = true
+	_tiles_todo = todo.keys()
+	_build_total = _tiles_todo.size()
+	_stage("setup", t0)
 
-	# roads: asphalt ribbons, with a round patch where roads meet so corners are filled
-	var asphalt := CBuf.new(CHUNK)
-	var paths := CBuf.new(CHUNK)
-	var marks := CBuf.new(GROUND_CELL)
-	var yellow := CBuf.new(GROUND_CELL)
-	for r: Dictionary in _roads:
-		if r["drive"]:
-			_ribbon(asphalt, r["pts"], r["w"] * 0.5, Y_ROAD)
-		else:
-			_ribbon(paths, r["pts"], r["w"] * 0.5, Y_PATH)
-	for i in range(_nodes.size()):
-		if _node_r[i] > 0.0 and (_node_roads[i] as Array).size() >= 2:
-			_disc(asphalt, _nodes[i], _node_r[i] * 1.05, Y_ROAD)
-	for r: Dictionary in _roads:
-		_markings(marks, r, yellow)
-	var metal := CBuf.new(GROUND_CELL)
-	var metal_rim := CBuf.new(GROUND_CELL)
-	_street_metal(metal, metal_rim)
-	_add_mesh(metal_rim, _surface("metalrim"), false, DETAIL_RANGE)
-	_add_mesh(metal, _surface("metal"), false, DETAIL_RANGE)
-	for ni in _city_data.get("crossings", []):
-		_zebra(marks, int(ni))
-		_crossing_nodes.append(int(ni))
-	_add_mesh(paths, _surface("path"), false, VIEW_RANGE * 0.6)
-	_add_mesh(asphalt, _surface("asphalt"), false, VIEW_RANGE)
-	_add_mesh(marks, _surface("mark"), false, DETAIL_RANGE)
-	_add_mesh(yellow, _surface("markyellow"), false, DETAIL_RANGE)
-	ta = _stage("roads", ta)
-	if not await _step("kerbs and gardens"):
-		return false
+## One square of the city, everything in it, in the order the whole city used to be built
+## in (each kind keeps clear of what went before: trees of buildings, lamps of trees...).
+## In the background each builder stops when the frame's few milliseconds are used up and
+## goes on in the next frame.
+func _build_tile(t: Vector2i) -> void:
+	if _over():
+		await _pause()
+	_tiles_done[t] = true
+	_tile = t
+	_set_tiling(true)
+	_batching = true
+	for a: Array in [_stop_lines, _pole_plates, _chimneys, _mall_glass, _balcony_flags, _flag_spots, _stop_ads]:
+		a.clear()   # made by one builder for the next, square by square
 	var tk := Time.get_ticks_msec()
-	_build_kerbs()
+	await _build_ground()
+	tk = _stage("roads", tk)
+	await _build_kerbs()
 	tk = _stage("kerbs", tk)
-	if not await _step("buildings"):
-		return false
-	tk = Time.get_ticks_msec()
-	_build_buildings()
+	await _build_buildings()
 	tk = _stage("buildings", tk)
-	_build_roof_kit()
-	tk = _stage("roofs", tk)
-	_build_facade_kit()
+	await _build_roof_kit()
+	await _build_facade_kit()
 	tk = _stage("facades", tk)
-	if not await _step("trees and lamps"):
-		return false
-	tk = Time.get_ticks_msec()
-	_build_trees()
+	await _build_trees()
 	tk = _stage("trees", tk)
-	_furn = Furniture.new(self)
-	_furn.wires()   # before the lamps: in Bedford those hang off the power poles
+	await _furn.wires()
 	tk = _stage("wires", tk)
-	_build_lamps()
+	await _build_lamps()
+	await _build_parks()
 	tk = _stage("lamps", tk)
-	_build_parks()
-	tk = _stage("parks", tk)
-	_build_parked()
-	_build_lots()
+	await _build_parked()
+	await _build_lots()
 	tk = _stage("parked", tk)
-	if not await _step("shops and places"):
-		return false
-	tk = Time.get_ticks_msec()
-	_build_signals()
-	_build_signs()
-	_build_road_paint()
-	_build_speed_signs()
-	_build_street_signs()
-	_build_pois()
-	_build_stops()
+	await _build_signals()
+	await _build_signs()
+	await _build_road_paint()
+	await _build_speed_signs()
+	await _build_street_signs()
+	tk = _stage("signs", tk)
+	await _build_pois()
+	await _build_stops()
 	tk = _stage("places", tk)
-	_furn.build()
+	await _furn.build()
 	tk = _stage("furniture", tk)
-	_flush_batches()
-	tk = _stage("batches", tk)
+	if _over():
+		await _pause()
+	await _flush_batches()
+	if _pools_made:
+		_make_pools()   # it is night: this square's light pools too
+	_stage("batches", tk)
+	_set_tiling(false)
+	_batching = false
+
+## the square to build next: the one nearest where the car will be in a few seconds
+func _next_tile():
+	if _tiles_todo.is_empty():
+		return null
+	var ahead := _pos + _fwd() * clampf(_v * 4.0, 0.0, 250.0)
+	var best := 0
+	var bd := INF
+	for i in range(_tiles_todo.size()):
+		var d := _tile_dist(_tiles_todo[i], ahead)
+		if d < bd:
+			bd = d
+			best = i
+	var t: Vector2i = _tiles_todo[best]
+	_tiles_todo.remove_at(best)
+	return t
+
+## the rest of the city, a square at a time while the game runs
+func _build_rest() -> void:
+	var t0 := Time.get_ticks_msec()
+	var n := 0
+	_bg_build = true
+	_yield_at = Time.get_ticks_usec() + _build_us
+	while is_inside_tree():
+		var t = _next_tile()
+		if t == null:
+			break
+		await _build_tile(t)
+		n += 1
+		if _build_lbl != null:
+			_build_lbl.text = "building the city %d%%" % int(100.0 * _tiles_done.size() / maxf(_build_total, 1.0))
+	if _build_lbl != null:
+		_build_lbl.text = ""
+	# what was only for building -- the file, the outlines, the squares' lists -- let go of a
+	# little a frame (all at once, it took a frame and a half)
+	for key: String in _city_data.keys():
+		await _release(_city_data[key])
 	_city_data = {}
-	_area_rings = {}
-	return true
+	for table: Dictionary in [_area_rings, _asph_hash, _tile_roads, _tile_nodes, _tile_blds, _tile_areas, _tile_rings,
+			_tile_trees, _tile_pois, _tile_stops, _tile_signs, _tile_lit, _tile_bars]:
+		await _release(table)
+	_bg_build = false
+	Probe.event("city_built", {"squares": n, "ms": Time.get_ticks_msec() - t0, "posts": _posts.size(), "trees": _trees_made, "dressing": _dressing})
 
 ## ground height at p: the same two triangles per grid cell as the terrain mesh, so
 ## anything placed with it sits exactly on the drawn ground. 0 for a flat city.
@@ -1586,6 +1838,111 @@ func _ground_line(pts: PackedVector2Array) -> PackedFloat32Array:
 	for i in range(pts.size()):
 		out[i] = _h(pts[i]) + extra
 	return out
+
+## This square's ground: the parks, lawns, water and car parks, the roads' asphalt and the
+## paths, their paint and zebras, the cast iron in them. All of it laid along lines and
+## outlines that every square they reach works out in full (each keeping its own triangles).
+func _build_ground() -> void:
+	var areas := {}
+	var all: Array = _city_data.get("areas", [])
+	var sq := _tile_rect(_tile)
+	var sq_poly := PackedVector2Array([sq.position, Vector2(sq.end.x, sq.position.y), sq.end, Vector2(sq.position.x, sq.end.y)])
+	for ai: int in _tile_areas.get(_tile, []):
+		if _over():
+			await _pause()
+		var a: Dictionary = all[ai]
+		var kind := String(a["k"])
+		# a school's grounds: paved, under whatever pitches and lawns OSM puts in them
+		var tone := "grass" if kind in ["park", "grass"] else ("ground" if kind == "land" else ("plaza" if kind == "school" else kind))
+		if not areas.has(tone):
+			areas[tone] = CBuf.new(CHUNK)   # (each square fills only its own piece: no clipping)
+		# islands sit on the sea, parks and car parks on whatever is under them
+		var y := Y_AREA + (0.002 if tone in ["parking", "plaza"] else (0.001 if kind == "land" else 0.0))
+		if kind == "school":
+			y = Y_AREA - 0.001
+		var ring: PackedVector2Array = a["_ring"]
+		var flat := INF
+		if tone == "water":   # water lies flat at the lowest point of its whole shore
+			for p in ring:
+				flat = minf(flat, _h(p))
+		for piece: PackedVector2Array in _pieces_in(ring, sq, sq_poly):
+			await _fill(areas[tone], piece, y, tone == "water", flat)
+	for tone: String in areas:
+		if _over():
+			await _pause()
+		_add_mesh(areas[tone], _surface(tone), false, VIEW_RANGE)
+	# roads: asphalt ribbons, with a round patch where roads meet so corners are filled
+	var asphalt := _clip_buf(CHUNK)
+	var paths := _clip_buf(CHUNK)
+	var marks := _clip_buf(GROUND_CELL)
+	var yellow := _clip_buf(GROUND_CELL)
+	var metal := _clip_buf(GROUND_CELL)
+	var metal_rim := _clip_buf(GROUND_CELL)
+	for ri: int in _tile_roads.get(_tile, []):
+		if _over():
+			await _pause()
+		var r: Dictionary = _roads[ri]
+		var part := _near_part(r["pts"], r["w"] * 0.5 + 2.0)
+		if part.size() >= 2:
+			_ribbon(asphalt if r["drive"] else paths, part, r["w"] * 0.5, Y_ROAD if r["drive"] else Y_PATH)
+		_markings(marks, r, yellow)
+		_street_metal(metal, metal_rim, ri)
+	for ni: int in _tile_nodes.get(_tile, []):
+		if _node_r[ni] > 0.0 and (_node_roads[ni] as Array).size() >= 2:
+			_disc(asphalt, _nodes[ni], _node_r[ni] * 1.05, Y_ROAD)
+	for ni: int in _nodes_near(30.0):
+		if _crossing_set.has(ni):
+			_zebra(marks, ni)
+	for job: Array in [[metal_rim, "metalrim", DETAIL_RANGE], [metal, "metal", DETAIL_RANGE], [paths, "path", VIEW_RANGE * 0.6],
+			[asphalt, "asphalt", VIEW_RANGE], [marks, "mark", DETAIL_RANGE], [yellow, "markyellow", DETAIL_RANGE]]:
+		if _over():
+			await _pause()
+		_add_mesh(job[0], _surface(job[1]), false, job[2])
+
+## the parts of an outline inside square `sq` (the whole outline when it lies inside)
+func _pieces_in(ring: PackedVector2Array, sq: Rect2, sq_poly: PackedVector2Array) -> Array:
+	if sq.encloses(_bld_box_of(ring)):
+		return [ring]
+	var cut := Geometry2D.intersect_polygons(ring, sq_poly)
+	if cut.size() <= 1:
+		return cut
+	# an outline that crosses itself can come back with holes: keep the outer pieces (those
+	# turning the same way as the biggest)
+	var big := 0
+	for i in range(cut.size()):
+		if absf(_area_signed(cut[i])) > absf(_area_signed(cut[big])):
+			big = i
+	var way := signf(_area_signed(cut[big]))
+	return cut.filter(func(c): return signf(_area_signed(c)) == way)
+
+## how far along a line (cumulative lengths `cum`) its stretch near the square being built
+## runs: Vector2(from, to); the whole line when no square is being built, (INF, -INF) when
+## none of it is near
+func _near_span(pts: PackedVector2Array, cum: PackedFloat32Array, reach: float) -> Vector2:
+	if not _tiled:
+		return Vector2(0.0, cum[cum.size() - 1])
+	var box := _tile_rect(_tile).grow(reach)
+	var span := Vector2(INF, -INF)
+	for j in range(pts.size() - 1):
+		if box.intersects(Rect2(pts[j], Vector2.ZERO).expand(pts[j + 1]).grow(0.01)):
+			span.x = minf(span.x, cum[j])
+			span.y = maxf(span.y, cum[j + 1])
+	return span
+
+## the stretch of a line near the square being built, with two more points each side so its
+## bends come out just as the whole line's do (empty: none of it is near)
+func _near_part(pts: PackedVector2Array, reach: float) -> PackedVector2Array:
+	var box := _tile_rect(_tile).grow(reach)
+	var i0 := -1
+	var i1 := -1
+	for j in range(pts.size() - 1):
+		if box.intersects(Rect2(pts[j], Vector2.ZERO).expand(pts[j + 1]).grow(0.01)):
+			if i0 < 0:
+				i0 = j
+			i1 = j
+	if i0 < 0:
+		return PackedVector2Array()
+	return pts.slice(maxi(i0 - 2, 0), mini(i1 + 4, pts.size()))
 
 ## a map point on the ground, `lift` above it (a little more on hills: a straight piece
 ## of road between two points can dip under a bend in the ground)
@@ -1678,10 +2035,10 @@ func _add_mesh(buf: Buf, m: Material, shadows: bool, seen := 0.0) -> Array:
 	return made
 
 ## a polygon on the ground
-func _fill(buf: Buf, ring: PackedVector2Array, y: float, level := false) -> void:
+func _fill(buf: Buf, ring: PackedVector2Array, y: float, level := false, flat := INF) -> void:
 	var idx := Geometry2D.triangulate_polygon(ring)
-	var flat_y := INF
-	if level:   # water lies flat, at its shore's lowest point
+	var flat_y := flat
+	if level and flat_y == INF:   # water lies flat, at its shore's lowest point
 		for p in ring:
 			flat_y = minf(flat_y, _h(p))
 	var stack: Array = []
@@ -1689,7 +2046,11 @@ func _fill(buf: Buf, ring: PackedVector2Array, y: float, level := false) -> void
 		stack.append([ring[idx[i]], ring[idx[i + 1]], ring[idx[i + 2]]])
 	# on hills, split triangles until they are small enough to follow the ground
 	var most := _hstep * 0.8 if _hnx > 0 and not level else INF
+	var n := 0
 	while not stack.is_empty():
+		n += 1
+		if n % 256 == 0 and _over():   # (a lawn on a hillside is thousands of little triangles)
+			await _pause()
 		var t: Array = stack.pop_back()
 		var a: Vector2 = t[0]
 		var b: Vector2 = t[1]
@@ -1804,17 +2165,18 @@ const KERB_W := 0.2
 var _kerb_mat: ShaderMaterial
 
 func _build_kerbs() -> void:
-	var kerb := CBuf.new(GROUND_CELL)
-	var pave := CBuf.new(GROUND_CELL)
-	var wall := CBuf.new(GROUND_CELL)
-	var garden := CBuf.new(GROUND_CELL)
+	var kerb := _clip_buf(GROUND_CELL)
+	var pave := _clip_buf(GROUND_CELL)
+	var wall := _clip_buf(GROUND_CELL)
+	var garden := _clip_buf(GROUND_CELL)
 	var bushes: Array = []
 	var med := String(_place.get("look", "")) == "med"
-	_build_asph_hash()
-	for ri in range(_roads.size()):
+	for ri: int in _tile_roads.get(_tile, []):
 		var r: Dictionary = _roads[ri]
 		if not _kerbed(r):
 			continue   # motorways and their slip roads have no pavement
+		if _over():
+			await _pause()
 		var hw: float = float(r["w"]) * 0.5
 		var hsh := _hash_i((r["pts"] as PackedVector2Array)[0])
 		var pat := 0
@@ -1824,6 +2186,10 @@ func _build_kerbs() -> void:
 		var dual := r.has("median")
 		var inner_sgn := -float(r["o"])   # a divided road's other half is on the left of its traffic
 		for run: PackedVector2Array in _street_runs(r, KERB_CUT, true):
+			if not _tile_rect(_tile).grow(hw + PAVE_W + 6.0).intersects(_bld_box_of(run)):
+				continue   # a stretch nowhere near this square
+			if _over():
+				await _pause()
 			for sgn: float in [-1.0, 1.0]:
 				var inner_side := dual and sgn == inner_sgn
 				var pw := PAVE_W
@@ -1868,36 +2234,40 @@ func _build_kerbs() -> void:
 					var L := run[i].distance_to(run[i + 1])
 					while s < L:
 						var q := (w_out[i].lerp(w_out[i + 1], s / L)).lerp(g_out[i].lerp(g_out[i + 1], s / L), 0.45)
-						if posmod(_hash_i(q), 3 if med else 6) == 1 and not _asphalt_other(q, ri) and _push_out(q, 0.8, false) == Vector2.ZERO:
+						if _mine(q) and posmod(_hash_i(q), 3 if med else 6) == 1 and not _asphalt_other(q, ri) and _push_out(q, 0.8, false) == Vector2.ZERO:
 							var sc := 0.7 + 0.5 * float(posmod(_hash_i(q), 5)) / 4.0
 							bushes.append(Transform3D(Basis.from_scale(Vector3(1.3, 0.9, 1.3) * sc), _g3(q, 0.45 * sc)))
 						s += step
 					s -= L
-	var corners := CBuf.new(GROUND_CELL)
-	_kerb_corners(kerb, pave, corners, Color((0.25 if med else 0.0) + 0.05, 0, 0))
-	_asph_hash = {}
+	var corners := _clip_buf(GROUND_CELL)
+	await _kerb_corners(kerb, pave, corners, Color((0.25 if med else 0.0) + 0.05, 0, 0))
+	if _over():
+		await _pause()
 	_add_mesh(corners, _surface("asphalt"), false, VIEW_RANGE)
-	_kerb_mat = ShaderMaterial.new()
-	var sh := Shader.new()
-	sh.code = KERB_SHADER
-	_kerb_mat.shader = sh
-	_kerb_mat.set_shader_parameter("conc", _tex("concrete_pavement_diff"))
-	_kerb_mat.set_shader_parameter("conc_mean", TEX_MEAN["concrete_pavement"])
-	_kerb_mat.set_shader_parameter("textured", 1.0 if _quality > 0 else 0.0)
+	if _kerb_mat == null:
+		_kerb_mat = ShaderMaterial.new()
+		var sh := Shader.new()
+		sh.code = KERB_SHADER
+		_kerb_mat.shader = sh
+		_kerb_mat.set_shader_parameter("conc", _tex("concrete_pavement_diff"))
+		_kerb_mat.set_shader_parameter("conc_mean", TEX_MEAN["concrete_pavement"])
+		_kerb_mat.set_shader_parameter("textured", 1.0 if _quality > 0 else 0.0)
+		_retint_kerbs()
 	_add_mesh(kerb, _kerb_mat, false, DETAIL_RANGE)
 	_add_mesh(pave, _surface("pavement"), false, DETAIL_RANGE * 1.6)
 	_add_mesh(wall, _surface("stonewall"), false, DETAIL_RANGE)
 	_add_mesh(garden, _surface("grass"), false, DETAIL_RANGE * 1.6)
 	if not bushes.is_empty():
-		var bush := SphereMesh.new()
-		bush.radius = 0.6
-		bush.height = 1.2
-		bush.radial_segments = 7
-		bush.rings = 4
-		bush.material = _surface("bush")
+		var bush := _cached("bush", func() -> Mesh:
+			var m := SphereMesh.new()
+			m.radius = 0.6
+			m.height = 1.2
+			m.radial_segments = 7
+			m.rings = 4
+			m.material = _surface("bush")
+			return m)
 		_chunked(bush, bushes, DETAIL_RANGE)
-	_dressing["bushes"] = bushes.size()
-	_retint_kerbs()
+	_tally("bushes", bushes.size())
 
 func _kerbed(r: Dictionary) -> bool:
 	return r["drive"] and not r["pv"] and r["k"] != "service" and not HIGHWAYS.has(r["k"])
@@ -2018,7 +2388,9 @@ func _walk_pts(pts: PackedVector2Array, k: int, step: int, dist: float) -> Array
 var _corner_cut_at: Array = []        ## corners laid piece by piece: [middle, middle clear] (for tests)
 
 func _kerb_corners(kerb: Buf, pave: Buf, fill: Buf, col: Color) -> void:
-	for ni in range(_nodes.size()):
+	for ni: int in _nodes_near(60.0):   # (every square a corner reaches works it out)
+		if _over():
+			await _pause()
 		if _kerb_arms(ni) < 3:
 			continue
 		var c := _nodes[ni]
@@ -2082,7 +2454,7 @@ func _kerb_corners(kerb: Buf, pave: Buf, fill: Buf, col: Color) -> void:
 						or (k == curve.size() / 2 and _asphalt_other(curve[k] + kn * (KERB_W + PAVE_W * 0.5), -1)):
 					whole = false
 					break
-			if not whole:
+			if not whole and _mine(c):
 				# (and whether the one look at its middle would have let it in whole)
 				var m := curve.size() / 2
 				var mt := (curve[m] - curve[m - 1]).normalized()
@@ -2240,49 +2612,56 @@ func _disc(buf: Buf, c: Vector2, r: float, y: float, seg := 14) -> void:
 ## width, and a drain grate at the kerb every 40-65 m, on alternate sides -- flat on the
 ## asphalt, clear of the junctions, merged into the ground like the paint. Kept to a few
 ## triangles each: a big city has thousands.
-func _street_metal(metal: Buf, rim: Buf) -> void:
+func _street_metal(metal: Buf, rim: Buf, ri: int) -> void:
+	var r: Dictionary = _roads[ri]
+	if not r["drive"] or HIGHWAYS.has(r["k"]) or r["k"] == "service":
+		return
 	var rng := RandomNumberGenerator.new()
-	rng.seed = hash(_city_name) + 77
+	rng.seed = hash(_city_name) + 77 + ri * 7919   # the road's own: every square works it out alike
 	var y := Y_MARK + 0.004
-	for r: Dictionary in _roads:
-		if not r["drive"] or HIGHWAYS.has(r["k"]) or r["k"] == "service":
-			continue
-		var pts: PackedVector2Array = r["pts"]
-		var w: float = r["w"]
-		var cum := PackedFloat32Array([0.0])
-		for i in range(1, pts.size()):
-			cum.append(cum[i - 1] + pts[i - 1].distance_to(pts[i]))
-		var total := cum[cum.size() - 1]
-		var clear: Array = []   # the junctions along it: (distance along, how far to keep off)
-		var ids: PackedInt32Array = r["ids"]
-		for i in range(ids.size()):
-			if (_node_roads[ids[i]] as Array).size() >= 2:
-				clear.append(Vector2(cum[i], _node_r[ids[i]] + 1.5))
-		var s := rng.randf_range(10.0, 40.0)
-		while s < total - 4.0:
-			if _clear_of(clear, s):
-				var a := _along(pts, cum, s)
-				var d := (_along(pts, cum, minf(s + 1.0, total)) - a).normalized()
-				var at := a + Vector2(-d.y, d.x) * w * rng.randf_range(-0.25, 0.25)
-				_disc(rim, at, 0.36, y, 8)
-				_disc(metal, at, 0.31, y + 0.002, 8)
-				_dressing["manholes"] = int(_dressing.get("manholes", 0)) + 1
-			s += rng.randf_range(55.0, 95.0)
-		if not _kerbed(r):
-			continue
-		var sg := 1.0 if rng.randf() < 0.5 else -1.0
-		s = rng.randf_range(6.0, 25.0)
-		while s < total - 3.0:
-			if _clear_of(clear, s):
-				var a := _along(pts, cum, s)
-				var d := (_along(pts, cum, minf(s + 1.0, total)) - a).normalized()
-				var side := Vector2(-d.y, d.x) * sg
-				var c := a + side * (w * 0.5 - 0.32)
-				_flat_rect(rim, c, d, side, 0.9, 0.46, y)
-				_flat_rect(metal, c, d, side, 0.78, 0.34, y + 0.002)
-				_dressing["drains"] = int(_dressing.get("drains", 0)) + 1
-			s += rng.randf_range(40.0, 65.0)
-			sg = -sg
+	var pts: PackedVector2Array = r["pts"]
+	var w: float = r["w"]
+	var cum := PackedFloat32Array([0.0])
+	for i in range(1, pts.size()):
+		cum.append(cum[i - 1] + pts[i - 1].distance_to(pts[i]))
+	var total := cum[cum.size() - 1]
+	var clear: Array = []   # the junctions along it: (distance along, how far to keep off)
+	var ids: PackedInt32Array = r["ids"]
+	for i in range(ids.size()):
+		if (_node_roads[ids[i]] as Array).size() >= 2:
+			clear.append(Vector2(cum[i], _node_r[ids[i]] + 1.5))
+	var span := _near_span(pts, cum, 20.0)
+	var s := rng.randf_range(10.0, 40.0)
+	while s < total - 4.0:
+		if _clear_of(clear, s):
+			var off := rng.randf_range(-0.25, 0.25)
+			if s < span.x - 2.0 or s > span.y + 2.0:
+				s += rng.randf_range(55.0, 95.0)
+				continue
+			var a := _along(pts, cum, s)
+			var d := (_along(pts, cum, minf(s + 1.0, total)) - a).normalized()
+			var at := a + Vector2(-d.y, d.x) * w * off
+			_disc(rim, at, 0.36, y, 8)
+			_disc(metal, at, 0.31, y + 0.002, 8)
+			if _mine(at):
+				_tally("manholes", 1)
+		s += rng.randf_range(55.0, 95.0)
+	if not _kerbed(r):
+		return
+	var sg := 1.0 if rng.randf() < 0.5 else -1.0
+	s = rng.randf_range(6.0, 25.0)
+	while s < total - 3.0:
+		if _clear_of(clear, s) and s > span.x - 2.0 and s < span.y + 2.0:
+			var a := _along(pts, cum, s)
+			var d := (_along(pts, cum, minf(s + 1.0, total)) - a).normalized()
+			var side := Vector2(-d.y, d.x) * sg
+			var c := a + side * (w * 0.5 - 0.32)
+			_flat_rect(rim, c, d, side, 0.9, 0.46, y)
+			_flat_rect(metal, c, d, side, 0.78, 0.34, y + 0.002)
+			if _mine(c):
+				_tally("drains", 1)
+		s += rng.randf_range(40.0, 65.0)
+		sg = -sg
 
 func _clear_of(clear: Array, s: float) -> bool:
 	for c: Vector2 in clear:
@@ -2335,14 +2714,17 @@ func _markings(buf: Buf, r: Dictionary, yellow: Buf) -> void:
 		if (_node_roads[ids[i]] as Array).size() >= 2:
 			clear.append(Vector2(cum[i], _node_r[ids[i]] + 2.5))
 	var total := cum[cum.size() - 1]
+	var span := _near_span(pts, cum, 20.0)
+	if span.x > span.y:
+		return
 	for ln: Array in lines:
 		var off: float = ln[0]
 		var solid: bool = ln[1]
 		var target: Buf = yellow if ln[2] else buf
 		var dash := 3.0
 		var step := 3.0 if solid else 8.0
-		var s := 1.5
-		while s + dash < total:
+		var s := 1.5 + maxf(0.0, floorf((span.x - 1.5 - dash) / step)) * step
+		while s + dash < minf(total, span.y + step + dash):
 			var ok := true
 			for c: Vector2 in clear:
 				if absf(s + dash * 0.5 - c.x) < c.y + dash * 0.5:
@@ -2393,29 +2775,34 @@ func _zebra(buf: Buf, ni: int) -> void:
 
 ## every building: walls with a window grid (one shader), flat roofs, merged per chunk
 func _build_buildings() -> void:
-	_wall_mat = ShaderMaterial.new()
-	var sh := Shader.new()
-	sh.code = WALL_SHADER
-	_wall_mat.shader = sh
-	_wall_mat.set_shader_parameter("plaster_tex", _tex("painted_plaster_wall_diff"))
-	_wall_mat.set_shader_parameter("plaster_nrm", _tex("painted_plaster_wall_nor"))
-	_wall_mat.set_shader_parameter("plaster_mean", TEX_MEAN["painted_plaster_wall"])
-	_wall_mat.set_shader_parameter("textured", 1.0 if _quality > 0 else 0.0)
-	_roof_mat = ShaderMaterial.new()
-	var rsh := Shader.new()
-	rsh.code = ROOF_SHADER
-	_roof_mat.shader = rsh
-	_roof_mat.set_shader_parameter("grit", _tex("asphalt_02_diff"))
-	_roof_mat.set_shader_parameter("grit_mean", TEX_MEAN["asphalt_02"])
-	_roof_mat.set_shader_parameter("tone", _tone["roof"])
-	_roof_mat.set_shader_parameter("textured", 1.0 if _quality > 0 else 0.0)
+	if _wall_mat == null:
+		_wall_mat = ShaderMaterial.new()
+		var sh := Shader.new()
+		sh.code = WALL_SHADER
+		_wall_mat.shader = sh
+		_wall_mat.set_shader_parameter("plaster_tex", _tex("painted_plaster_wall_diff"))
+		_wall_mat.set_shader_parameter("plaster_nrm", _tex("painted_plaster_wall_nor"))
+		_wall_mat.set_shader_parameter("plaster_mean", TEX_MEAN["painted_plaster_wall"])
+		_wall_mat.set_shader_parameter("textured", 1.0 if _quality > 0 else 0.0)
+		_roof_mat = ShaderMaterial.new()
+		var rsh := Shader.new()
+		rsh.code = ROOF_SHADER
+		_roof_mat.shader = rsh
+		_roof_mat.set_shader_parameter("grit", _tex("asphalt_02_diff"))
+		_roof_mat.set_shader_parameter("grit_mean", TEX_MEAN["asphalt_02"])
+		_roof_mat.set_shader_parameter("tone", _tone["roof"])
+		_roof_mat.set_shader_parameter("textured", 1.0 if _quality > 0 else 0.0)
 	var roof := _roof_mat
 	var chunks := {}
 	var north := String(_place.get("look", "")) == "north"
 	var med := String(_place.get("look", "")) == "med"
 	var gables := {"roof": CBuf.new(CHUNK), "end": CBuf.new(CHUNK)}
 	var cores := CBuf.new(CHUNK)   # the walled-in middle of a block lifted on columns
-	for bd: Dictionary in _city_data["buildings"]:
+	var all: Array = _city_data["buildings"]
+	for bi: int in _tile_blds.get(_tile, []):
+		if _over():
+			await _pause()
+		var bd: Dictionary = all[bi]
 		var ring: PackedVector2Array = bd["_ring"]
 		# on a slope: walls start below the lowest corner, the roof sits its height above
 		# the average ground, and the window rows count from the lowest corner
@@ -2468,7 +2855,7 @@ func _build_buildings() -> void:
 		var look := {"style": style, "rgb": _wall_rgb(bright, tint, stone), "g_lo": g_lo, "top": h,
 			"sgn": sgn, "gabled": gabled, "pilotis": pilotis, "lip": lip}
 		bd["_look"] = look
-		_bld_kind.append(1 if pilotis else (2 if gabled else 0))
+		_bld_kind[bi] = 1 if pilotis else (2 if gabled else 0)
 		if pilotis:
 			_lift_on_columns(ring, sgn, base, g_lo + 3.0, roofs, cores, look)
 		elif raised >= 2.0:
@@ -2506,6 +2893,8 @@ func _build_buildings() -> void:
 			var p2 := ring[idx[i + 2]]
 			roofs.tri(Vector3(p0.x, h, p0.y), Vector3(p1.x, h, p1.y), Vector3(p2.x, h, p2.y), Vector3.UP, rc)
 	for key: Vector2i in chunks:
+		if _over():
+			await _pause()
 		var walls: Buf = chunks[key][0]
 		var roofs: Buf = chunks[key][1]
 		var am := ArrayMesh.new()
@@ -2522,10 +2911,11 @@ func _build_buildings() -> void:
 		world.add_child(mi)
 	_add_mesh(cores, _surface("recess"), true, VIEW_RANGE * 0.5)
 	if not (gables["roof"] as Buf).empty():
-		var shingles := StandardMaterial3D.new()
-		shingles.vertex_color_use_as_albedo = true
-		shingles.roughness = 0.9
-		_add_mesh(gables["roof"], shingles, true, VIEW_RANGE)
+		if _shingles == null:
+			_shingles = StandardMaterial3D.new()
+			_shingles.vertex_color_use_as_albedo = true
+			_shingles.roughness = 0.9
+		_add_mesh(gables["roof"], _shingles, true, VIEW_RANGE)
 		_add_mesh(gables["end"], _surface("gable"), true, VIEW_RANGE)
 
 func _area(poly: PackedVector2Array) -> float:
@@ -2554,9 +2944,11 @@ func _build_facade_kit() -> void:
 	var encl: Array = [[], []]   # balconies closed in, shutters a little or a lot down
 	var acs: Array = []
 	var plates: Array = []
-	var bi := -1
-	for bd: Dictionary in _city_data["buildings"]:
-		bi += 1
+	var all: Array = _city_data["buildings"]
+	for bi: int in _tile_blds.get(_tile, []):
+		if _over():
+			await _pause()
+		var bd: Dictionary = all[bi]
 		if not bd.has("_look"):
 			continue
 		var look: Dictionary = bd["_look"]
@@ -2661,16 +3053,16 @@ func _build_facade_kit() -> void:
 					kit["post"].append(Transform3D(Basis(), Vector3(q.x, g_lo + 1.3, q.y)))
 					kit_col["post"].append(wc)
 	var tinted := _vc_mat()
-	var meshes := {"balcony": _balcony_mesh(), "column": _boxm(Vector3.ONE), "canopy": _boxm(Vector3(2.4, 0.14, 1.1)),
+	var meshes := {"balcony": _cached("balcony", _balcony_mesh), "column": _boxm(Vector3.ONE), "canopy": _boxm(Vector3(2.4, 0.14, 1.1)),
 		"porch": _boxm(Vector3(3.4, 0.14, 1.9)), "post": _boxm(Vector3(0.14, 2.6, 0.14))}
 	var ranges := {"balcony": 230.0, "column": 260.0, "canopy": 150.0, "porch": 220.0, "post": 160.0}
 	for k: String in kit:
 		if not (kit[k] as Array).is_empty():
-			_chunked(meshes[k], kit[k], ranges[k], kit_col[k], tinted, k != "post")
+			await _chunked_paced(meshes[k], kit[k], ranges[k], kit_col[k], tinted, k != "post")
 	for v in range(2):
 		if not (encl[v] as Array).is_empty():
-			_chunked(_enclosure_mesh(v), encl[v], 230.0, [], tinted)
-	_dressing["closed_balconies"] = (encl[0] as Array).size() + (encl[1] as Array).size()
+			_chunked(_cached("enclosure%d" % v, _enclosure_mesh.bind(v)), encl[v], 230.0, [], tinted)
+	_tally("closed_balconies", (encl[0] as Array).size() + (encl[1] as Array).size())
 	if not _mall_glass.is_empty():
 		_chunked(_boxm(Vector3.ONE), _mall_glass, 400.0, [], _shop_glass())
 	if not acs.is_empty():
@@ -2685,10 +3077,10 @@ func _build_facade_kit() -> void:
 		var ch := _boxm(Vector3(0.7, 2.2, 0.7))
 		ch.material = _surface("brick")
 		_chunked(ch, _chimneys, 450.0, [], null, true)
-	_dressing["balconies"] = (kit["balcony"] as Array).size()
-	_dressing["columns"] = (kit["column"] as Array).size()
-	_dressing["porches"] = (kit["porch"] as Array).size()
-	_dressing["chimneys"] = _chimneys.size()
+	_tally("balconies", (kit["balcony"] as Array).size())
+	_tally("columns", (kit["column"] as Array).size())
+	_tally("porches", (kit["porch"] as Array).size())
+	_tally("chimneys", _chimneys.size())
 
 ## the building's name in big letters along the top of its street side: malls, towers,
 ## the cinema, schools -- the places people give directions by
@@ -2990,19 +3382,25 @@ func _bld_box_of(ring: PackedVector2Array) -> Rect2:
 ## trees: the ones OSM knows, plus a row along each pavement of a residential street
 func _build_trees() -> void:
 	var rng := RandomNumberGenerator.new()
-	rng.seed = hash(_city_name)
 	var spots: Array = []   ## [x, z, scale]
+	var forest := {}        # index into spots -> true
 	var k := 1.0 / float(_city_data.get("scale", 10))
 	var tr: Array = _city_data.get("trees", [])
-	for i in range(0, tr.size(), 2):
+	for i: int in _tile_trees.get(_tile, []):
 		var p := Vector2(tr[i], tr[i + 1]) * k
 		if _tree_ok(p, 2.0):
 			_add_post(p, 0.3)
+			rng.seed = _hash_i(p)
 			spots.append(Vector3(p.x, p.y, rng.randf_range(0.85, 1.3)))
-	for ri in range(_roads.size()):
+	# a row along each pavement of a residential street (the road's own random numbers, so
+	# every square it crosses plants it alike, each its own stretch)
+	for ri: int in _tile_roads.get(_tile, []):
 		var r: Dictionary = _roads[ri]
-		if not TREE_ROADS.has(r["k"]) or spots.size() >= MAX_TREES:
+		if not TREE_ROADS.has(r["k"]) or _trees_made + spots.size() >= MAX_TREES:
 			continue
+		if _over():
+			await _pause()
+		rng.seed = hash(_city_name) + ri * 7919
 		var pts: PackedVector2Array = r["pts"]
 		var ids: PackedInt32Array = r["ids"]
 		var off: float = r["w"] * 0.5 + 1.3
@@ -3024,67 +3422,71 @@ func _build_trees() -> void:
 					if rng.randf() < 0.22:
 						continue
 					var p := a + d * s + side * off * sgn
-					if _tree_ok(p, 5.0):
+					var sc := rng.randf_range(0.8, 1.25)
+					if _mine(p) and _tree_ok(p, 5.0):
 						_add_post(p, 0.3)
-						spots.append(Vector3(p.x, p.y, rng.randf_range(0.8, 1.25)))
+						spots.append(Vector3(p.x, p.y, sc))
 				s += TREE_GAP + rng.randf_range(-2.5, 2.5)
 			s -= L
-	# parks get trees where OSM has few; woods are filled (conifers in the north)
-	var forest := {}   # index into spots -> true
+	# parks get trees where OSM has few; woods are filled (conifers in the north): each
+	# square plants its share of an outline, in its own part of it
+	var sq := _tile_rect(_tile)
 	for kind: String in ["park", "grass", "wood"]:
-		for ring: PackedVector2Array in _area_rings.get(kind, []):
+		for ring: PackedVector2Array in _rings_near(kind):
 			var area := _area(ring)
-			if area < 500.0 or spots.size() >= MAX_TREES + MAX_FOREST:
+			if area < 500.0 or _trees_made + spots.size() >= MAX_TREES + MAX_FOREST:
+				continue
+			var box := _bld_box_of(ring)
+			var part := box.intersection(sq)
+			if part.get_area() <= 0.0:
 				continue
 			var per := 70.0 if kind == "wood" else 160.0
-			var want := mini(int(area / per), 2500)
-			var box := _bld_box_of(ring)
+			var want := roundi(mini(int(area / per), 2500) * part.get_area() / maxf(box.get_area(), 1.0))
+			rng.seed = _hash_i(ring[0]) + _tile.x * 92821 + _tile.y * 68917
 			for _i in range(want * 2):
-				if want <= 0 or spots.size() >= MAX_TREES + MAX_FOREST:
+				if want <= 0 or _trees_made + spots.size() >= MAX_TREES + MAX_FOREST:
 					break
-				var p := Vector2(rng.randf_range(box.position.x, box.end.x), rng.randf_range(box.position.y, box.end.y))
-				if not Geometry2D.is_point_in_polygon(p, ring) or not _tree_ok(p, 4.5 if kind == "wood" else 7.0):
+				if _over():
+					await _pause()
+				var p := Vector2(rng.randf_range(part.position.x, part.end.x), rng.randf_range(part.position.y, part.end.y))
+				var sc := rng.randf_range(0.8, 1.35)
+				if not _mine(p) or not Geometry2D.is_point_in_polygon(p, ring) or not _tree_ok(p, 4.5 if kind == "wood" else 7.0):
 					continue
 				_add_post(p, 0.3)
 				if kind == "wood":
 					forest[spots.size()] = true
-				spots.append(Vector3(p.x, p.y, rng.randf_range(0.8, 1.35)))
+				spots.append(Vector3(p.x, p.y, sc))
 				want -= 1
 	# open land: copses and lone trees where the ground is green, and shrubs, clumped by the
 	# same kind of noise as the ground's colour. Kept off water, car parks and plazas, and
-	# well off the roads. A cap keeps it cheap.
+	# well off the roads; thinned evenly to the city's cap (_trees_setup)
 	var north := String(_place.get("look", "")) == "north"
-	var no_grow := {}
-	var no_rings: Array = []
-	for kind: String in ["water", "parking", "plaza", "pitch"]:
-		for ring: PackedVector2Array in _area_rings.get(kind, []):
-			_hash_add(no_grow, _bld_box_of(ring), 60.0, no_rings.size())
-			no_rings.append(ring)
 	var wild_cap := 15000 if north else 1800
-	var wild := 0
 	var step := 22.0 if north else 16.0
 	var thresh := 0.56 if north else 0.7
 	var nx := int(_bounds.size.x / step)
 	var nz := int(_bounds.size.y / step)
-	# count the green spots first (on every third row and column: an estimate is enough),
-	# then keep each with the same chance, so the cap thins them evenly (stopping at the
-	# cap left the south of the map bare)
-	var green := 0
-	for gz in range(0, nz, 3):
-		for gx in range(0, nx, 3):
+	var gx0 := maxi(0, ceili((sq.position.x - _bounds.position.x) / step - 0.5))
+	var gx1 := mini(nx - 1, floori((sq.end.x - _bounds.position.x) / step - 0.5))
+	var gz0 := maxi(0, ceili((sq.position.y - _bounds.position.y) / step - 0.5))
+	var gz1 := mini(nz - 1, floori((sq.end.y - _bounds.position.y) / step - 0.5))
+	var wild := 0
+	for gz in range(gz0, gz1 + 1):
+		if _over():
+			await _pause()
+		for gx in range(gx0, gx1 + 1):
 			var c := _bounds.position + Vector2(gx + 0.5, gz + 0.5) * step
-			if _vnoise(c / 70.0) * 0.65 + _vnoise(c / 15.0) * 0.35 >= thresh:
-				green += 9
-	var keep := minf(1.0, float(wild_cap) * 1.4 / maxf(green, 1.0))
-	for gz in range(nz):
-		for gx in range(nx):
-			var c := _bounds.position + Vector2(gx + 0.5, gz + 0.5) * step
-			if _vnoise(c / 70.0) * 0.65 + _vnoise(c / 15.0) * 0.35 < thresh or rng.randf() > keep or wild >= wild_cap:
+			if not _mine(c) or _wild_made >= wild_cap:
+				continue
+			if _vnoise(c / 70.0) * 0.65 + _vnoise(c / 15.0) * 0.35 < thresh:
+				continue
+			rng.seed = gx * 73856093 + gz * 19349663
+			if rng.randf() > _wild_keep:
 				continue
 			var p := c + Vector2(rng.randf() - 0.5, rng.randf() - 0.5) * step
 			var blocked := false
-			for ri: int in _near(no_grow, p, 1.0, 60.0):
-				if Geometry2D.is_point_in_polygon(p, no_rings[ri]):
+			for ri: int in _near(_no_grow, p, 1.0, 60.0):
+				if Geometry2D.is_point_in_polygon(p, _no_rings[ri]):
 					blocked = true
 					break
 			if blocked or not _off_road(p, 5.0) or not _tree_ok(p, 6.0):
@@ -3093,22 +3495,12 @@ func _build_trees() -> void:
 			forest[spots.size()] = true
 			spots.append(Vector3(p.x, p.y, rng.randf_range(0.7, 1.25)))
 			wild += 1
-	_dressing["wild_trees"] = wild
+			_wild_made += 1
+	_tally("wild_trees", wild)
+	_trees_made += spots.size()
 	if spots.is_empty():
 		return
 	var look := String(_place.get("look", ""))
-	var leaf := _surface("leaf")   # (the hedges and bushes still use it plain)
-	leaf.vertex_color_use_as_albedo = true
-	_surface("trunk").vertex_color_use_as_albedo = true
-	var mats := _make_tree_mats()
-	var crown := _card_crown(CROWN_LUMPS, 28, mats[0])
-	var palm_trunk := CylinderMesh.new()
-	palm_trunk.top_radius = 0.15
-	palm_trunk.bottom_radius = 0.24
-	palm_trunk.height = 7.0
-	palm_trunk.radial_segments = 8
-	palm_trunk.rings = 1
-	palm_trunk.material = mats[3]
 	var parts := {"trunk": [], "crown": [], "ptrunk": [], "fronds": [], "ftrunk": [], "cone": []}
 	var colours := {"trunk": [], "crown": [], "ptrunk": [], "fronds": [], "ftrunk": [], "cone": []}
 	var put := func(part: String, xf: Transform3D, col: Color) -> void:
@@ -3118,6 +3510,7 @@ func _build_trees() -> void:
 		var sp: Vector3 = spots[si]
 		var sc := sp.z
 		var base := Vector3(sp.x, _h(Vector2(sp.x, sp.y)), sp.y)
+		rng.seed = _hash_i(Vector2(sp.x, sp.y)) + 101   # the tree's own look, wherever it was planted from
 		var spin := Basis(Vector3.UP, rng.randf() * TAU)
 		var g := rng.randf_range(0.85, 1.1)
 		var kind := _tree_kind(look, forest.has(si), rng.randf())
@@ -3141,10 +3534,51 @@ func _build_trees() -> void:
 		put.call(tpart, Transform3D(b * Basis.from_scale(Vector3(tw.x, tw.y, tw.x) * sc), base + b * Vector3(0, trunk_h * 0.5 * tw.y * sc, 0)), bark)
 		put.call(spec[2], Transform3D(b * Basis.from_scale(cw * jitter * sc), base + b * Vector3(0, float(spec[4]) * sc, 0)),
 			Color(tint.r * g, tint.g * g, tint.b * g, (float(cell) + 0.5) / 4.0))
-	var meshes := {"trunk": _trunk_mesh(3, mats[2]), "crown": crown, "ptrunk": palm_trunk, "fronds": _frond_mesh(mats[4]),
-		"ftrunk": _trunk_mesh(0, mats[2]), "cone": _card_cone(70, mats[1])}
 	for part: String in parts:
-		_chunked(meshes[part], parts[part], TREE_RANGE, colours[part], null, true)
+		await _chunked_paced(_tree_meshes[part], parts[part], TREE_RANGE, colours[part], null, true)
+
+var _tree_meshes := {}
+var _trees_made := 0
+var _wild_made := 0
+var _wild_keep := 1.0                ## the share of open land's green spots that get a tree
+var _no_grow := {}
+var _no_rings: Array = []
+
+## What every square's trees share: the meshes, where nothing grows, and how thinly open
+## land is planted -- counted over the whole map first (on every third row and column: an
+## estimate is enough), then each green spot kept with the same chance, so the city's cap
+## thins them evenly (stopping at the cap left the far side of the map bare).
+func _trees_setup() -> void:
+	var north := String(_place.get("look", "")) == "north"
+	for kind: String in ["water", "parking", "plaza", "pitch"]:
+		for ring: PackedVector2Array in _area_rings.get(kind, []):
+			_hash_add(_no_grow, _bld_box_of(ring), 60.0, _no_rings.size())
+			_no_rings.append(ring)
+	var step := 22.0 if north else 16.0
+	var thresh := 0.56 if north else 0.7
+	var wild_cap := 15000 if north else 1800
+	var nx := int(_bounds.size.x / step)
+	var nz := int(_bounds.size.y / step)
+	var green := 0
+	for gz in range(0, nz, 3):
+		for gx in range(0, nx, 3):
+			var c := _bounds.position + Vector2(gx + 0.5, gz + 0.5) * step
+			if _vnoise(c / 70.0) * 0.65 + _vnoise(c / 15.0) * 0.35 >= thresh:
+				green += 9
+	_wild_keep = minf(1.0, float(wild_cap) * 1.4 / maxf(green, 1.0))
+	var leaf := _surface("leaf")   # (the hedges and bushes still use it plain)
+	leaf.vertex_color_use_as_albedo = true
+	_surface("trunk").vertex_color_use_as_albedo = true
+	var mats := _make_tree_mats()
+	var palm_trunk := CylinderMesh.new()
+	palm_trunk.top_radius = 0.15
+	palm_trunk.bottom_radius = 0.24
+	palm_trunk.height = 7.0
+	palm_trunk.radial_segments = 8
+	palm_trunk.rings = 1
+	palm_trunk.material = mats[3]
+	_tree_meshes = {"trunk": _trunk_mesh(3, mats[2]), "crown": _card_crown(CROWN_LUMPS, 28, mats[0]), "ptrunk": palm_trunk,
+		"fronds": _frond_mesh(mats[4]), "ftrunk": _trunk_mesh(0, mats[2]), "cone": _card_cone(70, mats[1])}
 
 ## Trees by kind, after what the streets really have. Givatayim: big dark ficus, light
 ## feathery acacias and jacarandas, round street trees, olives, a few cypresses and Aleppo
@@ -3587,7 +4021,11 @@ func _build_roof_kit() -> void:
 	var tanks: Array = []
 	var rooms: Array = []            ## the stairwell room most blocks have on the roof
 	var rng := RandomNumberGenerator.new()
-	for bd: Dictionary in _city_data["buildings"]:
+	var all: Array = _city_data["buildings"]
+	for bi: int in _tile_blds.get(_tile, []):
+		if _over():
+			await _pause()
+		var bd: Dictionary = all[bi]
 		var rel: float = bd["_h"]
 		if rel < 6.0 or rel > 45.0:
 			continue
@@ -3644,8 +4082,8 @@ func _build_roof_kit() -> void:
 	room.size = Vector3(3.0, 2.6, 3.4)
 	room.material = _surface("roofroom")
 	_chunked(room, rooms, VIEW_RANGE * 0.5)
-	_dressing["roof_rooms"] = rooms.size()
-	_dressing["solar"] = panels.size()
+	_tally("roof_rooms", rooms.size())
+	_tally("solar", panels.size())
 
 ## street lamps along the pavements, every ~34 m, alternating sides
 ## Lamp posts down the streets, every 34 m, the sides taking turns. Most are tall and grey
@@ -3663,11 +4101,13 @@ func _build_lamps() -> void:
 	var ornate: Array = []
 	var doubles: Array = []
 	var lanterns: Array = []
-	var flip := false
-	for ri in range(_roads.size()):
+	for ri: int in _tile_roads.get(_tile, []):
 		var r: Dictionary = _roads[ri]
 		if not r["drive"] or r["pv"] or r["k"] == "service" or _wired.has(ri):
 			continue
+		if _over():
+			await _pause()
+		var flip := posmod(ri, 2) == 0   # (from the road's own start: every square alike)
 		var fancy := med and FANCY_ROADS.has(r["k"])
 		var o := int(r["o"])
 		var dual: bool = o != 0 and (FANCY_ROADS.has(r["k"]) or r["k"] == "trunk") and not r.get("ring", false)
@@ -3694,7 +4134,7 @@ func _build_lamps() -> void:
 						var gap: float = pair[2]
 						var left: Vector2 = pair[3]
 						var m := c + left * (hw + gap * 0.5)
-						if ri < int(pair[0]) and gap >= 1.0 and _off_road(m, 0.25) and _push_out(m, 0.3, false) == Vector2.ZERO \
+						if ri < int(pair[0]) and gap >= 1.0 and _mine(m) and _off_road(m, 0.25) and _push_out(m, 0.3, false) == Vector2.ZERO \
 								and _clear_of_posts(m, 3.0):
 							var gy := _h(m)
 							var bs := Basis(Vector3.UP, atan2(-left.y, left.x))   # local X across the road
@@ -3720,7 +4160,7 @@ func _build_lamps() -> void:
 					var sgn := float(o) if o != 0 else (1.0 if flip else -1.0)
 					var out := side * sgn
 					var p := c + out * (hw + 0.9)
-					var ok := _push_out(p, 0.6, false) == Vector2.ZERO
+					var ok := _mine(p) and _push_out(p, 0.6, false) == Vector2.ZERO
 					var on := _nearest_seg(p, 10.0, true)
 					ok = ok and (on.is_empty() or float(on["edge"]) > 0.4) and _clear_of_posts(p, 2.5)
 					if ok:
@@ -3772,9 +4212,9 @@ func _build_lamps() -> void:
 		lantern.rings = 1
 		lantern.material = _surface("lamp")
 		_chunked(lantern, lanterns, LAMP_RANGE)
-	_dressing["lamps"] = poles.size() + ornate.size() + doubles.size()
-	_dressing["lamps_ornate"] = ornate.size()
-	_dressing["lamps_median"] = doubles.size()
+	_tally("lamps", poles.size() + ornate.size() + doubles.size())
+	_tally("lamps_ornate", ornate.size())
+	_tally("lamps_median", doubles.size())
 
 ## the other half of a dual carriageway beside point c of road ri (heading d along its
 ## points, one-way `o`): [road, nearest point, the gap between their asphalt, the way to
@@ -3809,13 +4249,17 @@ func _partner(c: Vector2, d: Vector2, ri: int, hw: float, o: int) -> Array:
 ## few thousand discs that follow the hills are not worth the wait if it never does)
 var _pool_at: Array = []             ## Vector3(x, z, radius)
 var _pools_made := false
+var _pools_from := 0                 ## _pool_at before this have theirs
 
 func _make_pools() -> void:
 	_pools_made = true
 	var pools := CBuf.new(GROUND_CELL)
-	for q: Vector3 in _pool_at:
+	for i in range(_pools_from, _pool_at.size()):
+		var q: Vector3 = _pool_at[i]
 		_pool(pools, Vector2(q.x, q.y), q.z)
+	_pools_from = _pool_at.size()
 	for mi: MeshInstance3D in _add_mesh(pools, _glow_mat("lamplight", 0.4), false, LAMP_RANGE):
+		mi.visible = _night
 		_night_nodes.append(mi)
 
 ## ---- the bare ground: patches, not one flat colour ------------------------------------------
@@ -3930,21 +4374,29 @@ func _hash01(p: Vector2) -> float:
 ## with their pools). In a big enough park, a playground: a slide tower, swings and a
 ## sandpit on a soft floor. On a sports pitch: its lines, and goals or basketball hoops.
 
-func _build_parks() -> void:
-	var parks: Array = []   # [ring, box]
-	var park_hash := {}
+var _parks: Array = []               ## [outline, box] of the parks and lawns big enough for benches
+var _park_hash := {}
+
+func _parks_setup() -> void:
 	for kind: String in ["park", "grass"]:
 		for ring: PackedVector2Array in _area_rings.get(kind, []):
 			if _area(ring) >= 400.0:
-				_hash_add(park_hash, _bld_box_of(ring), 60.0, parks.size())
-				parks.append([ring, _bld_box_of(ring)])
+				_hash_add(_park_hash, _bld_box_of(ring), 60.0, _parks.size())
+				_parks.append([ring, _bld_box_of(ring)])
+
+func _build_parks() -> void:
+	var parks := _parks
+	var park_hash := _park_hash
 	var benches: Array = []
 	var posts: Array = []
 	var globes: Array = []
-	var flip := false
-	for r: Dictionary in _roads:
+	for ri: int in _tile_roads.get(_tile, []):
+		var r: Dictionary = _roads[ri]
 		if r["drive"]:
 			continue
+		if _over():
+			await _pause()
+		var flip := posmod(ri, 2) == 0
 		var pts: PackedVector2Array = r["pts"]
 		var hw: float = float(r["w"]) * 0.5
 		var s_bench := 6.0
@@ -3972,14 +4424,14 @@ func _build_parks() -> void:
 				flip = not flip
 				var out := side * (1.0 if flip else -1.0)
 				var q := a + d * s_bench + out * (hw + 0.75)
-				if _push_out(q, 0.9, true) == Vector2.ZERO and _off_road(q, 1.0):
+				if _mine(q) and _push_out(q, 0.9, true) == Vector2.ZERO and _off_road(q, 1.0):
 					benches.append(Transform3D(Basis(Vector3.UP, atan2(-out.x, -out.y)), _g3(q, 0.0)))
 					_add_post(q, 0.5)
 				s_bench += 19.0
 			s_bench -= L
 			while s_lamp < L:
 				var q := a + d * s_lamp - side * (hw + 0.6) * (1.0 if flip else -1.0)
-				if _push_out(q, 0.5, true) == Vector2.ZERO and _off_road(q, 1.0):
+				if _mine(q) and _push_out(q, 0.5, true) == Vector2.ZERO and _off_road(q, 1.0):
 					var gy := _h(q)
 					posts.append(Transform3D(Basis(), Vector3(q.x, gy + 1.8, q.y)))
 					globes.append(Transform3D(Basis(), Vector3(q.x, gy + 3.75, q.y)))
@@ -3987,14 +4439,16 @@ func _build_parks() -> void:
 					_add_post(q, 0.1)
 				s_lamp += 27.0
 			s_lamp -= L
-	var bench_buf := Buf.new()
-	_box(bench_buf, Vector3(0, 0.44, 0), Vector3(1.7, 0.07, 0.46))
-	_box(bench_buf, Vector3(0, 0.74, -0.22), Vector3(1.7, 0.36, 0.06))
-	for sx: float in [-0.72, 0.72]:
-		_box(bench_buf, Vector3(sx, 0.22, 0), Vector3(0.07, 0.44, 0.42))
-	var bench := ArrayMesh.new()
-	bench.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, bench_buf.arrays())
-	bench.surface_set_material(0, _surface("furniture"))
+	var bench := _cached("bench", func() -> Mesh:
+		var bench_buf := Buf.new()
+		_box(bench_buf, Vector3(0, 0.44, 0), Vector3(1.7, 0.07, 0.46))
+		_box(bench_buf, Vector3(0, 0.74, -0.22), Vector3(1.7, 0.36, 0.06))
+		for sx: float in [-0.72, 0.72]:
+			_box(bench_buf, Vector3(sx, 0.22, 0), Vector3(0.07, 0.44, 0.42))
+		var am := ArrayMesh.new()
+		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, bench_buf.arrays())
+		am.surface_set_material(0, _surface("furniture"))
+		return am)
 	_chunked(bench, benches, 160.0, [], null, true)
 	var post := CylinderMesh.new()
 	post.top_radius = 0.045
@@ -4015,9 +4469,8 @@ func _build_parks() -> void:
 	var play := {"friend": CBuf.new(CHUNK), "warn": CBuf.new(CHUNK), "accent": CBuf.new(CHUNK),
 		"player": CBuf.new(CHUNK), "pole": CBuf.new(CHUNK), "soft": CBuf.new(CHUNK), "sand": CBuf.new(CHUNK)}
 	var made := 0
-	for pk: Array in parks:
-		var ring: PackedVector2Array = pk[0]
-		if _area(ring) < 1500.0:
+	for ring: PackedVector2Array in _rings_near("park") + _rings_near("grass"):
+		if _area(ring) < 1500.0 or not _ring_mine(ring):
 			continue
 		var spot := _clear_spot(ring, 7.0)
 		if not spot.is_finite():
@@ -4032,13 +4485,16 @@ func _build_parks() -> void:
 	# pitches: lines, and goals or hoops
 	var lines := CBuf.new(GROUND_CELL)
 	var frames := CBuf.new(CHUNK)
-	for ring: PackedVector2Array in _area_rings.get("pitch", []):
-		_sports_pitch(ring, lines, frames)
+	var pitches := 0
+	for ring: PackedVector2Array in _rings_near("pitch"):
+		if _ring_mine(ring):
+			_sports_pitch(ring, lines, frames)
+			pitches += 1
 	_add_mesh(lines, _surface("mark"), false, DETAIL_RANGE)
 	_add_mesh(frames, _surface("mark"), true, 260.0)
-	_dressing["benches"] = benches.size()
-	_dressing["playgrounds"] = made
-	_dressing["pitches"] = (_area_rings.get("pitch", []) as Array).size()
+	_tally("benches", benches.size())
+	_tally("playgrounds", made)
+	_tally("pitches", pitches)
 
 ## a point inside `ring` with nothing solid or a path within `r` of it, nearest its middle
 func _clear_spot(ring: PackedVector2Array, r: float) -> Vector2:
@@ -4314,13 +4770,13 @@ func _build_parked() -> void:
 	var cols_by := {"sedan": [], "hatch": [], "suv": [], "van": []}
 	var palette := _car_paints()
 	var rng := RandomNumberGenerator.new()
-	rng.seed = hash(_city_name) + 11
-	var crossings := {}
-	for ni in _crossing_nodes:
-		crossings[ni] = true
-	for r: Dictionary in _roads:
+	for ri: int in _tile_roads.get(_tile, []):
+		var r: Dictionary = _roads[ri]
 		if not r["drive"] or r["pv"] or not (r["k"] in ["residential", "tertiary", "unclassified", "living_street"]):
 			continue
+		if _over():
+			await _pause()
+		rng.seed = hash(_city_name) + 11 + ri * 7919   # the road's own: every square parks it alike
 		var hw: float = float(r["w"]) * 0.5
 		for run: PackedVector2Array in _street_runs(r):
 			var cum := PackedFloat32Array([0.0])
@@ -4331,11 +4787,13 @@ func _build_parked() -> void:
 				var s := 4.0 + rng.randf() * 3.0
 				while s < total - 4.0:
 					if rng.randf() < PARKED_FILL:
+						var kind: String = CAR_MIX[rng.randi() % CAR_MIX.size()]
+						var paint: Color = palette[rng.randi() % palette.size()]
 						var c := _along(run, cum, s)
 						var d := (_along(run, cum, minf(s + 1.0, total)) - c).normalized()
 						var side := Vector2(-d.y, d.x) * sgn
 						var p := c + side * (hw + 0.6)   # mostly up on the pavement: a third of a car in the road
-						var ok := _push_out(p, 1.0, false) == Vector2.ZERO
+						var ok := _mine(p) and _push_out(p, 1.0, false) == Vector2.ZERO
 						for i: int in _near(_post_hash, p, 1.4, BLD_CELL):
 							if _posts[i].distance_to(p) < 1.4:
 								ok = false
@@ -4352,16 +4810,15 @@ func _build_parked() -> void:
 							var roll := atan2(_h(p + lx * 0.8) - _h(p - lx * 0.8), 1.6)
 							var lean := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, -pitch) \
 								* Basis(Vector3.BACK, roll) * Basis(Vector3.FORWARD, -0.05 * sgn)
-							var kind: String = CAR_MIX[rng.randi() % CAR_MIX.size()]
 							(xf_by[kind] as Array).append(Transform3D(lean, _g3(p, 0.1)))   # half up the kerb
-							(cols_by[kind] as Array).append(palette[rng.randi() % palette.size()])
+							(cols_by[kind] as Array).append(paint)
 							xf.append(0)
 							_add_post(p + face * 1.25, 0.85)
 							_add_post(p - face * 1.25, 0.85)
 					s += 5.6
 	_parked_xf = xf_by   # drawn with the car parks' cars, in one set of batches (_build_lots)
 	_parked_cols = cols_by
-	_dressing["parked"] = xf.size()
+	_tally("parked", xf.size())
 
 ## Car parks: OSM's parking areas -- a block's own lot behind its buildings, a supermarket's
 ## -- laid out in rows of bays along their long side (2.5 m wide, 5 m deep, two rows back to
@@ -4371,12 +4828,12 @@ var _lot_at: Array = []              ## a car in each car park (for tests and to
 var _parked_xf := {}                 ## the street's parked cars by shape, to batch with the car parks'
 var _parked_cols := {}
 const LOT_CARS := 6000               ## car-park cars in a whole city, at most: they are a lot to draw
+var _lot_cars := 0
 
 func _build_lots() -> void:
-	var rings: Array = _area_rings.get("parking", [])
+	var rings: Array = _rings_near("parking").filter(_ring_mine)
 	var palette := _car_paints()
 	var rng := RandomNumberGenerator.new()
-	rng.seed = hash(_city_name) + 31
 	var xf_by := {"sedan": [], "hatch": [], "suv": [], "van": []}
 	var cols_by := {"sedan": [], "hatch": [], "suv": [], "van": []}
 	for kind: String in _parked_xf:   # the street's parked cars go in the same batches
@@ -4391,6 +4848,9 @@ func _build_lots() -> void:
 		var area := _area(ring)
 		if area < 120.0 or area > 8000.0:
 			continue   # (a mall's or a stadium's acres of tarmac: left empty, it is a lot to draw)
+		if _over():
+			await _pause()
+		rng.seed = _hash_i(ring[0]) + 31
 		var n := ring.size()
 		var u := Vector2.RIGHT
 		var longest := 0.0
@@ -4416,6 +4876,8 @@ func _build_lots() -> void:
 		var bays := 0
 		var taken := 0
 		while vv + 5.0 <= vmax - 0.3 and bays < 140:
+			if _over():
+				await _pause()
 			var face := -v if row % 2 == 0 else v   # nose in, away from the aisle
 			var uu := umin + 0.6
 			var placed_any := false
@@ -4432,7 +4894,7 @@ func _build_lots() -> void:
 						var a := p + u * side - v * 2.5
 						var b := p + u * side + v * 2.5
 						lines.quad3(_g3(a - u * 0.05, ly), _g3(b - u * 0.05, ly), _g3(b + u * 0.05, ly), _g3(a + u * 0.05, ly))
-					if rng.randf() < 0.66 and taken < 70 and cars < LOT_CARS:
+					if rng.randf() < 0.66 and taken < 70 and _lot_cars + cars < LOT_CARS:
 						taken += 1
 						var kind: String = CAR_MIX[rng.randi() % CAR_MIX.size()]
 						var f := face.rotated(rng.randf_range(-0.05, 0.05))
@@ -4449,9 +4911,13 @@ func _build_lots() -> void:
 			row += 1
 	# a car park mapped only by its lanes (OSM: service=parking_aisle, as most blocks' own
 	# lots are): a row of bays down each side of each lane
-	for r: Dictionary in _roads:
+	for ri: int in _tile_roads.get(_tile, []):
+		var r: Dictionary = _roads[ri]
 		if r.get("sv", "") != "parking_aisle":
 			continue
+		if _over():
+			await _pause()
+		rng.seed = hash(_city_name) + 31 + ri * 7919
 		var pts: PackedVector2Array = r["pts"]
 		var hw: float = float(r["w"]) * 0.5
 		var taken := 0
@@ -4468,13 +4934,13 @@ func _build_lots() -> void:
 				for sg: float in [-1.0, 1.0]:
 					var face := nrm * sg   # nose in, away from the lane
 					var p := a + d * s + face * (hw + 2.6)
-					if _push_out(p, 1.4, false) != Vector2.ZERO or not _off_road(p, 1.2) or not _clear_of_posts(p, 1.8):
+					if not _mine(p) or _push_out(p, 1.4, false) != Vector2.ZERO or not _off_road(p, 1.2) or not _clear_of_posts(p, 1.8):
 						continue
 					for side: float in [-1.25, 1.25]:
 						var q0 := p + d * side - face * 2.5
 						var q1 := p + d * side + face * 2.5
 						lines.quad3(_g3(q0 - d * 0.05, ly), _g3(q1 - d * 0.05, ly), _g3(q1 + d * 0.05, ly), _g3(q0 + d * 0.05, ly))
-					if rng.randf() < 0.6 and taken < 24 and cars < LOT_CARS:
+					if rng.randf() < 0.6 and taken < 24 and _lot_cars + cars < LOT_CARS:
 						taken += 1
 						var kind: String = CAR_MIX[rng.randi() % CAR_MIX.size()]
 						var f := face.rotated(rng.randf_range(-0.05, 0.05))
@@ -4488,7 +4954,8 @@ func _build_lots() -> void:
 		if not (xf_by[kind] as Array).is_empty():
 			_chunked(_parked_mesh(kind), xf_by[kind], 140.0, cols_by[kind], null, true, true)
 	_add_mesh(lines, _surface("mark"), false, DETAIL_RANGE)
-	_dressing["lot_cars"] = cars
+	_lot_cars += cars
+	_tally("lot_cars", cars)
 
 ## car colours as Israeli streets have them (and Canadian ones are not far off): mostly
 ## white, silver, grey and black, now and then a blue, a red or a beige
@@ -5575,7 +6042,7 @@ func _batch_buf(buf: Buf, m: Material, how: Array, shadows: bool, seen: float) -
 		if part.empty():
 			continue
 		var centre := part.v[0]
-		var ck := _cell(Vector2(centre.x, centre.z), BATCH_CELL)
+		var ck := _tile if _tiled else _cell(Vector2(centre.x, centre.z), BATCH_CELL)
 		var bat: Buf = cells.get(ck)
 		if bat == null:
 			bat = Buf.new()
@@ -5674,7 +6141,7 @@ func _batch_add(mesh: Mesh, xforms: Array, range_end: float, colours: Array, m: 
 	var nv := sv.size()
 	for i in range(xforms.size()):
 		var t: Transform3D = xforms[i]
-		var ck := _cell(Vector2(t.origin.x, t.origin.z), BATCH_CELL)
+		var ck := _tile if _tiled else _cell(Vector2(t.origin.x, t.origin.z), BATCH_CELL)
 		var bat: Buf = cells.get(ck)
 		if bat == null:
 			bat = Buf.new()
@@ -5707,6 +6174,8 @@ func _flush_batches() -> void:
 		var b: Dictionary = _batches[key]
 		var rc: float = b["range"]
 		for ck: Vector2i in b["cells"]:
+			if _over():
+				await _pause()
 			var bat: Buf = b["cells"][ck]
 			var arr := []
 			arr.resize(Mesh.ARRAY_MAX)
@@ -5724,9 +6193,21 @@ func _flush_batches() -> void:
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if b["shadows"] else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			world.add_child(mi)
 			made += 1
-	_dressing["batches"] = made
+	_tally("batches", made)
 	_batches = {}
 	_soups = {}
+
+## _chunked a couple of hundred copies at a time while building in the background (a
+## square's trees merged in one go took most of a frame)
+func _chunked_paced(mesh: Mesh, xforms: Array, range_end: float, colours: Array = [], m: Material = null, shadows := false) -> void:
+	if xforms.size() <= 200 or not (_bg_build and _batching and _batchable(mesh, m, xforms.size())):
+		_chunked(mesh, xforms, range_end, colours, m, shadows)
+		return
+	for i in range(0, xforms.size(), 200):
+		if _over():
+			await _pause()
+		_batch_add(mesh, xforms.slice(i, i + 200), range_end, colours.slice(i, i + 200) if not colours.is_empty() else [],
+			m, shadows)
 
 func _chunked(mesh: Mesh, xforms: Array, range_end: float, colours: Array = [], m: Material = null, shadows := false,
 		custom := false) -> void:
@@ -5737,11 +6218,11 @@ func _chunked(mesh: Mesh, xforms: Array, range_end: float, colours: Array = [], 
 		return
 	# a square about as big as the range: little things (signs, posts, racks) seen 100-150 m
 	# off in 140 m squares were a dozen draws a kind, and a big city tens of thousands of nodes
-	var cell := clampf(range_end, 220.0, CHUNK)
+	var cell := TILE if _tiled else clampf(range_end, 220.0, CHUNK)
 	var groups := {}
 	for i in range(xforms.size()):
 		var t: Transform3D = xforms[i]
-		var key := _cell(Vector2(t.origin.x, t.origin.z), cell)
+		var key := _tile if _tiled else _cell(Vector2(t.origin.x, t.origin.z), cell)
 		if not groups.has(key):
 			groups[key] = []
 		(groups[key] as Array).append(i)
@@ -5821,30 +6302,15 @@ func _build_signals() -> void:
 	var poles: Array = []
 	var heads: Array = []
 	var bulbs: Array = [[[], [], []], [[], [], []]]
-	# OSM often maps a light on one approach only, a few metres out from the junction; then
-	# the other ways in had no light and drove on. Each light is taken to the junction it
-	# stands at (the nearest within 40 m along its road), and the junction gets lights on
-	# every way in. A light far from any junction (a crossing mid-street) stays as it is.
-	var lit := {}
-	for ni in _city_data.get("signals", []):
-		var node := int(ni)
-		if node < 0 or node >= _nodes.size():
-			continue
-		var j := _junction_of(node, 40.0)
-		lit[j if j >= 0 else node] = true
-		if not _sig_set.has(node):   # its own line still counts (see LIGHT_SKIP)
-			_sig_set[node] = true
-			_hash_add(_sig_hash, Rect2(_nodes[node], Vector2.ZERO), SEG_CELL, node)
-	for node: int in lit:
+	for node: int in _tile_lit.get(_tile, []):
+		if _over():
+			await _pause()
 		var c := _nodes[node]
 		var rn := _node_r[node]
 		for e: Vector2i in _node_roads[node]:
 			var r: Dictionary = _roads[e.x]
 			if not r["drive"]:
 				continue
-			if not _sig_set.has(node):
-				_sig_set[node] = true
-				_hash_add(_sig_hash, Rect2(c, Vector2.ZERO), SEG_CELL, node)
 			var pts: PackedVector2Array = r["pts"]
 			for d2: int in [-1, 1]:
 				var from := e.y + d2
@@ -5894,6 +6360,42 @@ func _build_signals() -> void:
 	bulb.height = 0.22
 	bulb.radial_segments = 6
 	bulb.rings = 2
+	for g in range(2):
+		for ci in range(3):
+			var ts: Array = []
+			for p: Vector3 in bulbs[g][ci]:
+				ts.append(Transform3D(Basis(), p))
+			if not ts.is_empty():
+				var mi := _multi(bulb, ts)
+				mi.material_override = _sig_mats[g][ci]
+				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+## Which junctions have lights, for the whole city at once (traffic and autodrive stop at
+## them wherever they are; the poles go up square by square). OSM often maps a light on one
+## approach only, a few metres out from the junction; then the other ways in had no light
+## and drove on. Each light is taken to the junction it stands at (the nearest within 40 m
+## along its road), and the junction gets lights on every way in. A light far from any
+## junction (a crossing mid-street) stays as it is.
+func _lights_setup() -> void:
+	var lit := {}
+	for ni in _city_data.get("signals", []):
+		var node := int(ni)
+		if node < 0 or node >= _nodes.size():
+			continue
+		var j := _junction_of(node, 40.0)
+		lit[j if j >= 0 else node] = true
+		if not _sig_set.has(node):   # its own line still counts (see LIGHT_SKIP)
+			_sig_set[node] = true
+			_hash_add(_sig_hash, Rect2(_nodes[node], Vector2.ZERO), SEG_CELL, node)
+	for node: int in lit:
+		for e: Vector2i in _node_roads[node]:
+			if (_roads[e.x] as Dictionary)["drive"] and not _sig_set.has(node):
+				_sig_set[node] = true
+				_hash_add(_sig_hash, Rect2(_nodes[node], Vector2.ZERO), SEG_CELL, node)
+		_bucket(_tile_lit, _tile_of(_nodes[node]), node)
+	if lit.is_empty():
+		return
+	# the bulbs' colours, shared by every square's lights and switched together
 	_sig_mats = []
 	for g in range(2):
 		var mats: Array = []
@@ -5901,13 +6403,6 @@ func _build_signals() -> void:
 			var m := StandardMaterial3D.new()
 			m.roughness = 0.4
 			mats.append(m)
-			var ts: Array = []
-			for p: Vector3 in bulbs[g][ci]:
-				ts.append(Transform3D(Basis(), p))
-			if not ts.is_empty():
-				var mi := _multi(bulb, ts)
-				mi.material_override = m
-				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		_sig_mats.append(mats)
 	_apply_signals()
 
@@ -5922,8 +6417,12 @@ func _build_pois() -> void:
 	var boards: Array = []           ## the sign boards behind the names
 	var terrace := {"top": [], "leg": [], "seat": [], "back": [], "pole": []}
 	var shades := {}                 ## role -> umbrella transforms
-	var taken := {}                  ## a facade spot already used -> how many there
-	for p: Array in _city_data.get("pois", []):
+	var taken := _poi_taken          ## a facade spot already used -> how many there
+	var all_pois: Array = _city_data.get("pois", [])
+	for pi: int in _tile_pois.get(_tile, []):
+		if _over():
+			await _pause()
+		var p: Array = all_pois[pi]
 		var at := Vector2(p[0], p[1]) * k
 		var kind := String(p[2])
 		if kind in ["shop:vacant", "shop:disused", "shop:no"] or String(p[3]).to_lower() == "vacant":
@@ -6000,6 +6499,9 @@ func _build_pois() -> void:
 		sign.set_meta("role", role)
 		world.add_child(sign)
 		_pois.append([at, role, sign])
+		if not _life.is_empty():   # (built after the people's map of where life is: it counts there too)
+			var lk := _cell(at, LIFE_CELL)
+			_life[lk] = float(_life.get(lk, 0.0)) + 4.0
 	if not boards.is_empty():
 		var plate := BoxMesh.new()
 		plate.size = Vector3(1.0, 0.95, 0.08)
@@ -6008,8 +6510,8 @@ func _build_pois() -> void:
 		# the middle of its box, and the boards vanished away from the town centre)
 		_chunked(plate, boards, SIGN_RANGE * 3.0, board_cols, bmat)
 	_terrace_meshes(terrace, shades)
-	_dressing["tables"] = (terrace["top"] as Array).size()
-	_dressing["shops"] = (front["glass"] as Array).size()
+	_tally("tables", (terrace["top"] as Array).size())
+	_tally("shops", (front["glass"] as Array).size())
 	var r := SIGN_RANGE * 2.0
 	var glass := BoxMesh.new()
 	glass.size = Vector3(3.0, 2.4, 0.06)
@@ -6054,7 +6556,11 @@ func _build_pois() -> void:
 func _build_stops() -> void:
 	var k := 1.0 / float(_city_data.get("scale", 10))
 	var parts := {"back": [], "roof": [], "post": [], "bench": [], "pole": [], "plate": []}
-	for st: Array in _city_data.get("stops", []):
+	var all_stops: Array = _city_data.get("stops", [])
+	for si: int in _tile_stops.get(_tile, []):
+		if _over():
+			await _pause()
+		var st: Array = all_stops[si]
 		var at := Vector2(st[0], st[1]) * k
 		var road := _nearest_seg(at, 30.0, true, true)
 		if road.is_empty():
@@ -6117,7 +6623,7 @@ func _build_stops() -> void:
 	_chunked(_boxm(Vector3(2.0, 0.08, 0.42)), parts["bench"], r, [], _surface("furniture"))
 	_chunked(_boxm(Vector3(0.07, 2.8, 0.07)), parts["pole"], r, [], _surface("pole"))
 	_chunked(_furn.bus_sign_kit(), parts["plate"], r)
-	_dressing["bus_stops"] = (parts["back"] as Array).size()
+	_tally("bus_stops", (parts["back"] as Array).size())
 
 func _boxm(size: Vector3) -> BoxMesh:
 	var b := BoxMesh.new()
@@ -6298,12 +6804,12 @@ func _build_road_paint() -> void:
 		if sl[5] == "stop":
 			_road_word("עצור" if med else "STOP", at - dir * 2.6 + right * ((o0 + o1) * 0.5), dir)
 	# SLOW before the crossings near a school or a kindergarten
-	var schools: Array = []
-	var k := 1.0 / float(_city_data.get("scale", 10))
-	for p: Array in _city_data.get("pois", []):
-		if String(p[2]) in ["school", "kindergarten"]:
-			schools.append(Vector2(p[0], p[1]) * k)
-	for ni: int in _crossing_nodes:
+	var schools := _schools
+	for ni: int in _tile_nodes.get(_tile, []):
+		if not _crossing_set.has(ni):
+			continue
+		if _over():
+			await _pause()
 		var c := _nodes[ni]
 		var near := false
 		for sc: Vector2 in schools:
@@ -6353,9 +6859,12 @@ func _build_speed_signs() -> void:
 	var poles: Array = []
 	var plates: Array = []
 	var rims: Array = []
-	for r: Dictionary in _roads:
+	for ri: int in _tile_roads.get(_tile, []):
+		var r: Dictionary = _roads[ri]
 		if not r["drive"] or r["pv"] or not MAIN_ROADS.has(r["k"]):
 			continue
+		if _over():
+			await _pause()
 		var kmh := int(round(float(r["speed"]) * 3.6 / 10.0)) * 10
 		for run: PackedVector2Array in _street_runs(r):
 			var cum := PackedFloat32Array([0.0])
@@ -6373,7 +6882,7 @@ func _build_speed_signs() -> void:
 				var dir := (b - a).normalized()
 				var right := Vector2(-dir.y, dir.x)
 				var p := a + right * (float(r["w"]) * 0.5 + 0.9)
-				if _push_out(p, 0.4, true, false) != Vector2.ZERO or not _off_road(p, 0.4):
+				if not _mine(p) or _push_out(p, 0.4, true, false) != Vector2.ZERO or not _off_road(p, 0.4):
 					continue
 				var gy := _h(p)
 				var face := Basis(Vector3.UP, atan2(-dir.x, -dir.y))
@@ -6448,7 +6957,7 @@ func _build_speed_signs() -> void:
 		board.material = _surface("mark")
 		_chunked(border, rims, LAMP_RANGE)
 		_chunked(board, plates, LAMP_RANGE)
-	_dressing["speed_signs"] = poles.size()
+	_tally("speed_signs", poles.size())
 
 ## ---- the signs every street has ------------------------------------------------------------
 ## Green street-name plates at the corners (Hebrew and English), a blue roundabout sign on
@@ -6555,7 +7064,9 @@ func _build_street_signs() -> void:
 		return pts[k]
 	var spot_free := func(p: Vector2, margin: float) -> bool:
 		return _off_road(p, margin) and _push_out(p, 0.4, true, false) == Vector2.ZERO
-	for ni in range(_nodes.size()):
+	for ni: int in _tile_nodes.get(_tile, []):
+		if _over():
+			await _pause()
 		var ways := _node_ways(ni)
 		if ways < 2:
 			continue
@@ -6654,7 +7165,9 @@ func _build_street_signs() -> void:
 			_name_signs.append([Transform3D(face * Basis.from_scale(Vector3.ONE * SIGN_SCALE), Vector3(corner.x, _h(corner) + 2.6, corner.y) + face * Vector3(0, 0, 0.04)), text])
 			named += 1
 	# crossing signs, both sides of each zebra
-	for ni: int in _crossing_nodes:
+	for ni: int in _tile_nodes.get(_tile, []):
+		if not _crossing_set.has(ni):
+			continue
 		var c := _nodes[ni]
 		for e: Vector2i in _node_roads[ni]:
 			var r: Dictionary = _roads[e.x]
@@ -6671,8 +7184,8 @@ func _build_street_signs() -> void:
 					plant.call("crossing", sp, toward.call(dir), 2.4)
 			break
 	# car parks: a P by the road at the corner nearest it
-	for ring: PackedVector2Array in _area_rings.get("parking", []):
-		if _area(ring) < 300.0:
+	for ring: PackedVector2Array in _rings_near("parking"):
+		if _area(ring) < 300.0 or not _ring_mine(ring):
 			continue
 		var best := INF
 		var at := Vector2.ZERO
@@ -6695,10 +7208,10 @@ func _build_street_signs() -> void:
 	_chunked(pole, poles, LAMP_RANGE)
 	for kind: String in plates:
 		_chunked(_street_sign_mesh(kind), plates[kind], LAMP_RANGE)
-		_dressing["sign_" + kind] = (plates[kind] as Array).size()
+		_tally("sign_" + kind, (plates[kind] as Array).size())
 	_add_mesh(marks, _surface("mark"), false, DETAIL_RANGE)
-	_dressing["street_signs"] = poles.size()
-	_dressing["street_names"] = named
+	_tally("street_signs", poles.size())
+	_tally("street_names", named)
 
 ## A two-way street splitting into a pair of one-way carriageways at node `ni` (three ways:
 ## the street in, one carriageway out and one back): a blue "keep right" on the nose of the
@@ -6922,7 +7435,11 @@ func _junction_of(node: int, reach: float) -> int:
 func _build_signs() -> void:
 	var poles: Array = []
 	var plates := {"stop": [], "give_way": []}
-	for sg: Array in _city_data.get("signs", []):
+	var all_signs: Array = _city_data.get("signs", [])
+	for si: int in _tile_signs.get(_tile, []):
+		if _over():
+			await _pause()
+		var sg: Array = all_signs[si]
 		var node := int(sg[0])
 		if node < 0 or node >= _nodes.size():
 			continue
@@ -6999,7 +7516,7 @@ func _build_signs() -> void:
 	for kind: String in plates:
 		if not (plates[kind] as Array).is_empty():
 			_chunked(_sign_plate(kind), plates[kind], LAMP_RANGE)
-	_dressing["signs"] = poles.size()
+	_tally("signs", poles.size())
 
 ## the plate, facing +Z: a red octagon in a thin white rim, or a white triangle point down
 ## in a red one; grey behind
@@ -8219,10 +8736,14 @@ func _box(buf: Buf, c: Vector3, size: Vector3) -> void:
 ## start at the place's `start` corner, else on a through road near the middle of town; always in
 ## the right-hand lane, facing the way traffic goes
 func _place_start() -> void:
+	_find_start()
+	_cam_yaw = _yaw
+	_snap_pose()
+
+## where the car starts (_pos, _yaw): the level's corner, else a main road near the middle
+func _find_start() -> void:
 	var spot: Array = _place.get("start", []) if _place.get("city") == _city_id else []
 	if spot.size() == 2 and _start_on(spot[0], spot[1]):
-		_cam_yaw = _yaw
-		_snap_pose()
 		return
 	var mid := _bounds.get_center()
 	if not _boundary.is_empty():
@@ -8253,8 +8774,6 @@ func _place_start() -> void:
 				at = c + Vector2(-dir.y, dir.x) * lane
 	_pos = at
 	_yaw = dir.angle()
-	_cam_yaw = _yaw
-	_snap_pose()
 
 ## put the car on `street` a few metres past where it meets `cross`; false if they never meet
 func _start_on(street: String, cross: String) -> bool:
@@ -8362,6 +8881,11 @@ func _frame() -> void:
 		return
 	_p0()
 	var dt := get_process_delta_time()
+	if _bg_wait:   # the city still building round you: its few milliseconds (_pause)
+		_bg_wait = false
+		_build_us = BUILD_US if dt < 0.022 else BUILD_US / 2
+		_build_tick.emit()
+		_p("building")
 	_watch_fps(dt)
 	var f := Engine.get_physics_interpolation_fraction()
 	_view_pos = _prev_pos.lerp(_pos, f)
@@ -8426,6 +8950,11 @@ func _set_quality(q: int) -> void:
 ## step themselves down to nothing.
 func _watch_fps(dt: float) -> void:
 	if not OS.has_feature("web") or _quality == 0:
+		return
+	if _bg_build:   # the city still building is not this machine being slow
+		_fps_t = 0.0
+		_fps_frames = 0
+		_fps_long = 0
 		return
 	if _fps_wait > 0.0:
 		_fps_wait -= dt
@@ -11052,6 +11581,10 @@ func _build_hud() -> void:
 	_count_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_count_lbl.position = Vector2(10, 32)
 	_count_lbl.text = "streets 0 / %d" % _streets.size()
+	_build_lbl = _label(9, "ink")   # how much of the city is up yet (the rest goes on while you drive)
+	_build_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_build_lbl.position = Vector2(10, 46)
+	_build_lbl.modulate.a = 0.7
 	_speed_lbl = _label(30, "ink")
 	_speed_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_speed_lbl.position = Vector2(496, 30)
