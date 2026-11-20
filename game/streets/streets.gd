@@ -13658,6 +13658,7 @@ func _held(cur: float, v: float, why: String) -> float:
 func _autodrive(dt: float) -> Array:
 	# into the walls again and again (a few in quick succession): lost, back to the street
 	_ap_bonks = maxf(0.0, _ap_bonks - dt / 10.0)
+	_ap_backouts = maxf(0.0, _ap_backouts - dt / 30.0)
 	if not _ap_rev.is_empty():
 		return _ap_reverse(dt)
 	if _ap_bonks >= 3.0 and (_ap_backout(40.0) or _ap_rescue()):
@@ -14001,6 +14002,7 @@ var _ap_rev := PackedVector2Array()  ## the crumbs to back along, the next first
 var _ap_rev_m := 0.0                 ## metres backed so far, and at most
 var _ap_rev_max := 0.0
 var _ap_rev_t := 0.0
+var _ap_backouts := 0.0              ## backing out lately (one off every 30 s): the third in a row is a lift
 
 func _drop_crumb() -> void:
 	if _walking or not _ap_rev.is_empty():
@@ -14014,6 +14016,8 @@ func _drop_crumb() -> void:
 
 ## start backing out along the crumbs, at most `most` metres; false when there is no trail
 func _ap_backout(most: float) -> bool:
+	if _ap_backouts >= 2.0:
+		return false   # (backed out, drove in, stuck, backed out again: going round in a yard)
 	var rev := PackedVector2Array()
 	for i in range(_crumbs.size() - 1, -1, -1):
 		if _crumbs[i].distance_to(_pos) > 2.0 or not rev.is_empty():
@@ -14021,6 +14025,7 @@ func _ap_backout(most: float) -> bool:
 	if rev.size() < 2:
 		return false
 	_ap_rev = rev
+	_ap_backouts += 1.0
 	_ap_rev_m = 0.0
 	_ap_rev_max = most
 	_ap_rev_t = 0.0
