@@ -17293,12 +17293,15 @@ func _ap_pass_bus(lead: Array) -> bool:
 		var side := rel.dot(left)
 		if ahead > -15.0 and ahead < reach and side > lane_w * 0.4 and side < lane_w * 1.6:
 			return false
-	# out, past, back in: the points of the plan from just ahead to past the bus
-	var s := 0.0
+	# out, past, back in: the points of the plan from just ahead to past the bus -- measured
+	# from the car, as the gap is: the plan's first point is the start of the stretch it is
+	# on, which on a straight street can be 40 m back (the bend landed behind the car)
+	var s0 := _ap_pts[0].distance_to(Geometry2D.get_closest_point_to_segment(_pos, _ap_pts[0], _ap_pts[1]))
+	var s := -s0
 	var half: float = bus.len * 0.5
 	var start_s := maxf(gap - half - 10.0, 2.0)
 	var end_s := gap + half + 12.0
-	_ap_densify(end_s + 10.0, 2.0)
+	_ap_densify(s0 + end_s + 10.0, 2.0)
 	for k in range(1, _ap_pts.size()):
 		s += _ap_pts[k - 1].distance_to(_ap_pts[k])
 		if s > end_s + 8.0:
