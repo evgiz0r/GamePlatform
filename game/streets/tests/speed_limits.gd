@@ -24,6 +24,7 @@ func _run() -> void:
 			by[k] = {}
 		var kmh := int(round(float(r["speed"]) * 3.6))
 		by[k][kmh] = int(by[k].get(kmh, 0)) + 1
+	print("the town's own limits by kind (km/h), where its tagged streets agree: %s" % str(g._town_ms))
 	print("road pieces by kind, at km/h:")
 	for k: String in by:
 		print("  %-15s %s" % [k, str(by[k])])

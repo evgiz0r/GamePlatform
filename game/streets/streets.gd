@@ -803,6 +803,7 @@ var _nodes := PackedVector2Array()
 var _node_roads: Array = []          ## per node: Array of Vector2i(road, index along it)
 var _node_r := PackedFloat32Array()  ## per node: half-width of the widest road through it
 var _roads: Array = []               ## {pts, ids, w, k, o, name, en, drive, speed}
+var _town_ms := {}                    ## kind -> the town's own speed limit (km/h), where its mapped streets agree
 var _seg_hash := {}                  ## Vector2i cell -> Array of road * 4096 + segment
 var _blds: Array = []                ## PackedVector2Array outlines, counter-clockwise
 var _bld_box: Array = []             ## Rect2 per building
@@ -1569,6 +1570,7 @@ func _load_city(id: String) -> bool:
 	for i in range(_nodes.size()):
 		_node_roads[i] = []
 
+	_town_ms = _town_limits(data["roads"])
 	for rd: Dictionary in data["roads"]:
 		var kind := String(rd.get("k", ""))
 		if rd.has("tu") and not rd.has("y"):
@@ -1584,7 +1586,8 @@ func _load_city(id: String) -> bool:
 			# OSM's own limit where it has one (`ms`, km/h), else a guess by kind; every driver
 			# and the speed signs read this one number
 			"speed": float(rd["ms"]) / 3.6 if rd.has("ms") and DRIVE.has(kind) \
-				else float(DRIVE.get(kind, 5.0)) * (NORTH_FASTER.get(kind, 1.0) if String(_place.get("look", "")) == "north" else 1.0),
+				else (float(_town_ms[kind]) / 3.6 if _town_ms.has(kind) and DRIVE.has(kind) \
+				else float(DRIVE.get(kind, 5.0)) * (NORTH_FASTER.get(kind, 1.0) if String(_place.get("look", "")) == "north" else 1.0)),
 			# a roundabout's ring: marked by the bake, or a one-way way that closes on itself
 			"ring": rd.has("rb") or (int(rd.get("o", 0)) != 0 and ids.size() > 3 and ids[0] == ids[ids.size() - 1])}
 		if rd.has("y") and (rd["y"] as Array).size() == ids.size():
@@ -10690,6 +10693,32 @@ func _road_word(text: String, at: Vector2, dir: Vector2) -> void:
 	lb.transform = Transform3D(Basis(right3, fwd3 * 2.2, Vector3.UP), _g3(at, Y_MARK + 0.012))
 	lb.visibility_range_end = 70.0
 	world.add_child(lb)
+
+## A town's own speed limit for a kind of street, where enough of them are tagged and they
+## agree: Israeli towns have made most residential streets 30 zones, but OSM tags only some
+## (Givatayim 184 of 622, 95% of them 30), and an untagged street beside a tagged one should
+## not be driven at 50. Needs 20+ tagged, a quarter of that kind's pieces, 85% one value.
+func _town_limits(roads: Array) -> Dictionary:
+	var all := {}
+	var tagged := {}
+	for rd: Dictionary in roads:
+		var k := String(rd.get("k", ""))
+		all[k] = int(all.get(k, 0)) + 1
+		if rd.has("ms"):
+			if not tagged.has(k):
+				tagged[k] = {}
+			tagged[k][int(rd["ms"])] = int(tagged[k].get(int(rd["ms"]), 0)) + 1
+	var out := {}
+	for k: String in tagged:
+		var n := 0
+		var best := 0
+		for v: int in tagged[k]:
+			n += int(tagged[k][v])
+			if best == 0 or int(tagged[k][v]) > int(tagged[k][best]):
+				best = v
+		if n >= 20 and n >= int(all[k]) / 4 and int(tagged[k][best]) >= n * 0.85:
+			out[k] = best
+	return out
 
 ## Speed limits on the main roads: a sign a little after each junction, every way the road
 ## runs. Round and red-rimmed in Givatayim; a white MAXIMUM board in Bedford.
