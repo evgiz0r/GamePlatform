@@ -245,6 +245,11 @@ Short, specific, and all of them cost a debugging session:
   park one. The front page itself never has this problem: it only ever holds the one or
   two `ACTIVE` games plus the "other" button. `tools/menu_shot.sh other` screenshots the
   shelf.
+- **A body in the list of things it keeps clear of pushes itself.** When the player is
+  added to the crowd the others avoid, its own avoidance must skip that entry: otherwise it
+  is shoved off where it stood last tick, along its heading, every tick -- a walker whose
+  speed read 6 m/s crossed 35 m a second. Check a mover's real displacement per tick, not
+  only its speed variable.
 - **Animated art exists in `assets/actors/` only** — five human characters with real
   frames, via `Blob.set_actor()` / `Blob.play()`. Everything else in `assets/` is a single
   static image, so animals and items can only be animated by hand: position, rotation and

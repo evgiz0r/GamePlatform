@@ -252,6 +252,14 @@ it is made, with a one-line caption, rather than a report at the end.
   against what the game asked for and how it scales, not the box alone. Drawing a figure
   alone in a `SubViewport` with its own world, to measure its silhouette, came out empty
   (the figure moved into it was not drawn): do not spend a run on it.
+- **Put a body down at the level of what is there.** A test that places a car or a walker
+  at a point usually gives it the ground's height: on an embankment or a bridge it then
+  drives along underneath, and the run reports "drove nothing" with no error. Start it on
+  the highest surface at that point when the point is on something raised.
+- **A collision's label is not a collision.** A game's "last hit" text can be rewritten by
+  anything that probes for room (placing people tries spots every tick), so counting label
+  changes counts noise. Count the ticks where the body moved other than its own step
+  (displacement minus heading x speed x dt) and read the label only then.
 - Parse-check first: `tools/check_script.sh res://game/<game>/<game>.gd` takes seconds and
   says which line; a broken script makes a scene test fail in a confusing way minutes in.
 

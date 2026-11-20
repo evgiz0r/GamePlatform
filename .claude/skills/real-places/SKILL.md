@@ -372,9 +372,8 @@ one needed:
   the ground (a stair) rather than leave a ledge. A spiral stair is often one steps way
   lying on itself: keep a way that comes within ~0.8 m of itself on the ground (not
   1.5 m: an access ramp's hairpin legs are about a path's width apart). Walk every
-  footbridge and tunnel end to end in a test, steered along the path: the counts of a
-  push-back label lie (placing people relabels "last hit" every tick), so measure the
-  displacement that was not the walker's own step.
+  footbridge and tunnel end to end in a test, steered along the path (count pushes by
+  displacement, not by the "last hit" label: see the scene-tests skill).
 - **Water held at its own level** (a river between weirs) is drawn at that level and is too
   deep to drive into; gentle banks otherwise let a car down to drive along the bed under
   the water. Leave lakes that lie at their shore's lowest point alone: a road over an
