@@ -2,8 +2,9 @@ extends SceneTree
 ## The garden fronts and the pavement's things near a point (AT="x,z", else the start): how
 ## many gates, yard cars, rendered walls, pavement covers' streets, earth tree pits and
 ## recycling bins the squares round it got, then a look from a walker's eye height at the
-## nearest gate and its path, the nearest yard with its car, the nearest earth pit, the
-## nearest recycling bins, and a garden wall run (shots gf_*.png in $OUT).
+## nearest gate and its path, the nearest yard with its car, the nearest recycling bins,
+## zone-30 and parking signs, delivery bikes, bikes on bollards and dropped, a cabinet (its
+## tags), the pavement from above, the nearest passages between blocks (shots gf_*.png in $OUT).
 var g: Node
 
 func _initialize() -> void:
@@ -59,14 +60,17 @@ func _run() -> void:
 		var dp: Vector2 = gt[2]
 		var nj: Vector2 = gt[3]
 		await _look("gf_yard", dp - nj * 3.0, -nj + nj.orthogonal() * 0.4, 9.0, 1.7, 0.8)
-	for kind: String in ["recycle_paper", "bollards"]:
+	for kind: String in ["recycle_paper", "bollards", "signs_zone30", "signs_parking", "delivery_bikes", "bikes_on_bollards", "bikes_dropped", "cabinets"]:
 		var list: Array = (g._furn.where.get(kind, []) as Array).duplicate()
 		if list.is_empty():
 			continue
 		list.sort_custom(func(a, b): return Vector2(a.origin.x, a.origin.z).distance_to(at) < Vector2(b.origin.x, b.origin.z).distance_to(at))
 		var t: Transform3D = list[0]
-		var fwd := Vector2(t.basis.z.x, t.basis.z.z)
-		await _look("gf_" + kind, Vector2(t.origin.x, t.origin.z), fwd + fwd.orthogonal() * 0.5, 4.5, 1.6, 0.6)
+		var fwd := Vector2(t.basis.z.x, t.basis.z.z).normalized()
+		var tall := kind.begins_with("signs")
+		print("%s: %d, nearest %d m" % [kind, list.size(), int(Vector2(t.origin.x, t.origin.z).distance_to(at))])
+		await _look("gf_" + kind, Vector2(t.origin.x, t.origin.z), fwd + fwd.orthogonal() * 0.35, 5.0 if tall else 3.2,
+			1.7, 2.2 if tall else 0.6)
 	# looking down at the pavement along the start street: covers, pits
 	var f: Vector2 = g._fwd()
 	var side := Vector2(-f.y, f.x)
@@ -80,9 +84,13 @@ func _run() -> void:
 		g.look_from(Vector3(over.x - f.x * 4, g._h(over) + 9.0, over.y - f.y * 4), Vector3(over.x + f.x * 16, g._h(over), over.y + f.y * 16))
 		g._sky_follow()
 		await _snap("gf_pavement_above_%d" % int(sd))
-	# the nearest earth tree pit and grate side by side, as a walker sees them
-	var pits: Array = []
-	for k in g._gate_cache:
-		pass
+	# the nearest passage between blocks, from a walker a few metres into it
+	var ps: Array = g.passages.duplicate()
+	ps.sort_custom(func(a, b): return (a[0] as Vector2).distance_to(at) < (b[0] as Vector2).distance_to(at))
+	print("passages walled: %d, nearest %d m" % [ps.size(), int((ps[0][0] as Vector2).distance_to(at)) if ps.size() > 0 else -1])
+	for i in range(mini(2, ps.size())):
+		var m: Vector2 = ps[i][0]
+		var d: Vector2 = ps[i][1]
+		await _look("gf_passage_%d" % i, m, -d, 7.0, 1.6, 1.0)
 	print("tree pits %s, grates %s" % [g._dressing.get("tree_pits", 0), g._dressing.get("tree_grates", 0)])
 	quit(0)
