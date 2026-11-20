@@ -5889,9 +5889,9 @@ func _build_trees() -> void:
 		var fi := int(info[i]) if i + 1 < info.size() else -1
 		var cr := float(info[i + 1]) * 0.1 if i + 1 < info.size() else 0.0
 		if fi >= 0 or cr > 0.0:   # (a town's map: moved onto the pavement or off a wall, not lost)
-			if not _tree_ok(p, 1.5):
-				p = _tree_nudge(p)
-				if p == Vector2.INF or not _tree_ok(p, 1.5):
+			if not _mapped_tree_ok(p):
+				p = _tree_nudge(p, 4.0 if cr > 0.0 else 2.5)
+				if p == Vector2.INF:
 					_tally("trees_mapped_lost", 1)
 					continue
 				_tally("trees_mapped_moved", 1)
@@ -6156,30 +6156,53 @@ func _tree_covered(p: Vector2) -> int:
 			best = maxi(best, int(_tree_cover.get(c + Vector2i(dx, dz), 0)))
 	return best
 
-## A tree a town's map puts in the game's road or against a wall -- the two maps do not quite
-## agree (a road's width is a guess; Tel Aviv plants trees in the parking lane, between the
-## cars) -- moved onto the pavement beside the road, a metre from the kerb, or out from the
-## wall; INF when it is too deep in to be the same place (a boulevard's middle, a courtyard).
-## Half of Tel Aviv's surveyed street trees failed _tree_ok where they stood.
-func _tree_nudge(p: Vector2) -> Vector2:
+## Room for a real tree's trunk (a town's map of its trees): clear of the asphalt by 0.4 m and
+## of a wall by 0.6, 1.2 m from the next post. The made-up trees' room (_tree_ok: 0.7 m and
+## 1.1 m, 2 m apart) needs a 1.8 m gap between kerb and wall, which narrow pavements lack.
+func _mapped_tree_ok(p: Vector2) -> bool:
+	if not _bounds.has_point(p):
+		return false
 	var hit := _nearest_seg(p, 12.0, true)
-	if not hit.is_empty() and float(hit["edge"]) < 0.7:
-		var edge := float(hit["edge"])
-		if edge < -4.5:
+	if not hit.is_empty() and float(hit["edge"]) < 0.4:
+		return false
+	if _push_out(p, 0.6, false) != Vector2.ZERO:
+		return false
+	for i: int in _near(_post_hash, p, 1.2, BLD_CELL):
+		if _posts[i].distance_to(p) < 1.2:
+			return false
+	return true
+
+## A tree a town's map puts in the game's road or in a house -- the maps do not quite agree (a
+## road's width is a guess; Tel Aviv plants trees in the parking lane, between the cars; a
+## crown traced from the air is centred over the roof it overhangs) -- moved onto the pavement
+## beside the road (a metre from the kerb, else 0.6 m) and out to the nearest wall's foot,
+## if it is no more than `deep` metres into the house; INF when no such place is clear (a
+## boulevard's middle, a courtyard OSM draws as roof). Half of Tel Aviv's surveyed street
+## trees and two in five of Givatayim's crowns failed where they stood.
+func _tree_nudge(p: Vector2, deep: float) -> Vector2:
+	var hit := _nearest_seg(p, 12.0, true)
+	var offs: Array = [0.0]
+	var n := Vector2.ZERO
+	if not hit.is_empty() and float(hit["edge"]) < 0.4:
+		if float(hit["edge"]) < -4.5:
 			return Vector2.INF
 		var q: Vector2 = hit["q"]
-		var n := p - q
+		n = p - q
 		if n.length() < 0.05:   # on the middle line: off to one side, the same side every time
 			var rp: PackedVector2Array = _roads[int(hit["road"])]["pts"]
 			var dd := (rp[int(hit["seg"]) + 1] - rp[int(hit["seg"])]).normalized()
 			n = Vector2(-dd.y, dd.x) * (1.0 if _hash_i(p) % 2 == 0 else -1.0)
-		p += n.normalized() * (1.0 - edge)
-	var push := _push_out(p, 1.1, false)
-	if push != Vector2.ZERO:
-		if push.length() > 2.5:
-			return Vector2.INF
-		p += push
-	return p
+		n = n.normalized()
+		offs = [1.0 - float(hit["edge"]), 0.6 - float(hit["edge"])]
+	for off: float in offs:
+		var c: Vector2 = p + n * off
+		var push := _push_out(c, 0.6, false)
+		if push.length() > deep + 0.6:
+			continue
+		c += push
+		if _mapped_tree_ok(c):
+			return c
+	return Vector2.INF
 
 ## The kind of a tree mapped from the air by its crown's radius alone (m): the big ones the
 ## old ficus and eucalyptus, the small ones young trees and olives, between them the

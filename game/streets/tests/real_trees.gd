@@ -49,6 +49,7 @@ func _run() -> void:
 				g = n
 	var d: Dictionary = g._dressing
 	print("real_trees: ", {"trees": g._trees_made, "mapped": d.get("trees_mapped", 0),
+		"moved": d.get("trees_mapped_moved", 0), "lost": d.get("trees_mapped_lost", 0),
 		"made_up_rows": d.get("trees_made_up_rows", 0), "grates": d.get("tree_grates", 0),
 		"pits": d.get("tree_pits", 0), "wild": d.get("wild_trees", 0), "cover_cells": g._tree_cover.size()})
 	print("credit: ", g._osm_lbl.text)
