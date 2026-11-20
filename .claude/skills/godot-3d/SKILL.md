@@ -280,9 +280,14 @@ most, in order, last time one did:
   38 and a PC stepped itself to the bottom. And step up again: after 8 s at the display's
   full rate try the level above; a level that fails again waits longer each time (30 s,
   1, 2, 4 min). "Only down, never up" left a PC at the lowest level for the whole drive
-  after one bad moment. What a level drops, in order: MSAA, shadow distance, then shadows,
-  3D resolution and photo textures. With shadows off, put a soft dark quad under each car
-  (one multimesh) or everything floats and the street goes flat.
+  after one bad moment. What a level drops, in order: MSAA, shadow distance, 3D resolution
+  and photo textures -- **never the shadows themselves**. In the Compatibility renderer a
+  directional light's shadows on or off is a different shader for every material, so a
+  level that switched them off made the browser compile them all again: a freeze of
+  seconds on every step between that level and the next, over and over as the ladder went
+  down and back up (a user saw 3.2 s). Keep shadows on at the bottom with a short reach
+  (25 m round the car) instead; anything else a level changes should be a shader parameter
+  or a buffer size, not a material's feature.
 - **Find stalls by timing the parts.** Time each part of a frame (the script's own work, in
   microseconds) and call a frame much slower than its neighbours a hitch, keeping which
   parts took its time. Every few seconds' stall found that way was periodic work done all

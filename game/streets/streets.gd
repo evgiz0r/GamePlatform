@@ -12327,9 +12327,13 @@ func _frame() -> void:
 	_p("camera, hud")
 
 ## ---- render quality: the web build watches its own frame rate and steps down ---------------
-## Per level: edge smoothing (MSAA), how far shadows reach (0: none), the 3D resolution.
+## Per level: edge smoothing (MSAA), how far shadows reach, the 3D resolution.
+## Every level keeps the sun's shadows, the lowest only near the car: switching them off made
+## the browser compile every material's shader again (with the sun's shadows on or off they are
+## different shaders), a freeze of seconds on each step between levels 1 and 0 -- and the
+## ladder steps back up when the frame rate recovers, and down again. A user saw 3.2 s.
 const QUALITY := [
-	[Viewport.MSAA_DISABLED, 0.0, 0.7],
+	[Viewport.MSAA_DISABLED, 25.0, 0.7],
 	[Viewport.MSAA_DISABLED, 45.0, 0.85],
 	[Viewport.MSAA_2X, 60.0, 1.0],
 	[Viewport.MSAA_4X, 75.0, 1.0],

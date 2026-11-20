@@ -204,6 +204,12 @@ The ones most often touched, and the functions in them:
   at `_walk_y` / `_pave_top`, what autodrive stops for `_ap_people_v`.
 - **render quality** -- `QUALITY`, `_set_quality` (what each level drops), `_watch_fps` (web
   only) / `_judge_fps` (the rule; testable natively), the soft car shadows `_set_blobs`.
+  Every level keeps the sun's shadows (level 0: 25 m): switching them off recompiled every
+  material's shader in the browser, seconds of freeze each time the ladder crossed into or out
+  of level 0. Night still switches them off (once, on the button). `tests/hitches.gd` counts
+  frames over 250 ms / 1 s driving and from above -- but under the test machine's software
+  renderer every Tel Aviv frame takes ~0.8 s, so it shows the script's parts, not a GPU's
+  stalls; a browser on the user's machine is the real measure (the perf view's hitch lines).
 - **where a frame's time goes** -- the profiler: `_p("part")` around each part, hitches
   kept and reported; P or a tap on the fps text shows it.
 - **zoom out and pause** -- "the view from above", after the chase cam: `_paused` stops
