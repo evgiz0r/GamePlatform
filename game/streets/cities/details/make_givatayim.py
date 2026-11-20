@@ -39,7 +39,7 @@ lm = [
     (80.0, tuple(P(80.5, -4.4))), (81.5, tuple(P(82.0, -4.2))),  # the corner, at the kerb (between
     (82.4, tuple(P(82.0, -4.2))),                                 # its bollards); a look each way first
     (90.0, tuple(P(90.4, -4.2))),                                 # over Sheinkin
-    (None, tuple(P(92.5, -5.95))), (93.0, tuple(P(94.0, -5.95))), (96.0, tuple(P(97.5, -5.95))),   # into Ha-Meri,
+    (None, tuple(P(91.4, -5.95))), (93.0, tuple(P(94.0, -5.95))), (96.0, tuple(P(97.5, -5.95))),   # into Ha-Meri,
                                                                     # between the kerb's posts and the garden wall
 ]
 # fill the untimed points by distance between the timed ones
