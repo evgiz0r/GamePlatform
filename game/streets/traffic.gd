@@ -680,7 +680,7 @@ func _junction_ahead(c: Car, i: int, dt: float) -> float:
 		# (not at lights: there the lights decide, and held further back a queue's next car
 		# waited for anything in the junction -- the car ahead of it too: queue_start 1.07x
 		# -> 1.48x)
-		var lit_near: bool = not (g._near(g._sig_hash, g._nodes[n], 25.0, g.SEG_CELL) as Array).is_empty()   # (a junction's unlit points too: its points lie 10-30 m apart; 40 m reached the next junction along -- being measured)
+		var lit_near: bool = not (g._near(g._sig_hash, g._nodes[n], 40.0, g.SEG_CELL) as Array).is_empty()   # (a junction's unlit points too)
 		var back := _node_r[n] + 1.0 if lit_near else maxf(_node_r[n] + 1.0, _clear_back(c, j, n))
 		var edge := dist - (back + c.len * 0.5)
 		if edge < -1.0:
@@ -845,7 +845,10 @@ func _sign_ahead(c: Car, dt: float) -> float:
 		var rule: Array = g._sign_rule(n, dir)
 		if rule.is_empty():
 			continue
-		var line := dist - float(rule[1])
+		# (the front at the painted line, not the middle -- as at a light: with the middle there
+		# a car's nose stood 2 m into the junction, in the crossing street's lane, and the next
+		# car along it drove into it; a bus's stood at the junction's middle)
+		var line := dist - float(rule[1]) - c.len * 0.5
 		if line < -1.0:
 			continue
 		if rule[0] == "give_way":
