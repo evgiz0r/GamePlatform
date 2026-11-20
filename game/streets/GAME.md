@@ -533,7 +533,7 @@ roofs of tar and gravel with dried-puddle stains.
 
 > Let's start with the textures.
 
-> I took a video on my phone walking in Givatayim from a coffee shop nearby to my house.
+> I took a video on my phone, walking in Givatayim.
 
 ## Smooth on a laptop and a phone
 

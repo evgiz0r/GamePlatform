@@ -151,5 +151,7 @@ the game walking the same route in first person beside it.
 A web build is public. Never use an address the user mentions privately -- their home,
 their family's -- as a start point, a test location, or in any committed file, commit
 message or doc. Test against it in a scratch script if asked, and leave it there. A walk
-filmed "from the cafe to my home" is published only as far as a public corner the user
-names; the film, its frames and the rest of the route stay out of the repo.
+the user filmed is published only as far as the public corner they name; the film, its
+frames and the rest of the route stay out of the repo, and so does any word of where the
+walk ended (a quote saying "to my house" beside a route that stops at a named street gives
+the street away).
