@@ -1166,7 +1166,10 @@ func street_life() -> void:
 	var scooters: Array = []
 	var scooter_cols: Array = []
 	var bike_paint := [Palette.col("hazard").lerp(Palette.col("bg"), 0.3), _tone("signblue"), _tone("mark"), _tone("cartrim")]
-	var scooter_paint := [_tone("mark"), _tone("cartrim"), Palette.col("hazard").lerp(Palette.col("bg"), 0.25), _tone("rim")]
+	# (a red scooter is a paint's red: the palette's hazard, pink here, made pink scooters)
+	var hz := Palette.col("hazard")
+	var red := Color.from_hsv(0.99, clampf(hz.s, 0.55, 0.8), clampf(hz.v * 0.62, 0.35, 0.6))
+	var scooter_paint := [_tone("mark"), _tone("cartrim"), red, _tone("rim")]
 	var k := 1.0 / float(g._city_data.get("scale", 10))
 	var taken := _life_taken
 	var all_pois: Array = g._city_data.get("pois", [])
