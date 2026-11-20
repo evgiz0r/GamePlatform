@@ -179,8 +179,20 @@ goes wrong shows up the first time it runs.
   lane back is a corner a few metres across, which a car takes wide -- onto the footpath
   that continues past the end; and AI traffic that picks streets at random drives into
   them and turns round in a queue of its own. Never take "to the end of this street and
-  straight back" as a route's start; stop at the end and turn round there; keep traffic
-  out unless there is no other way.
+  straight back" as a route's start; stop short of the end and turn round there; keep
+  traffic out unless there is no other way.
+- **Turning round takes moves.** A 4.4 m car on 34 degrees of lock needs ~10 m kerb to kerb
+  to come round in one sweep; a cul-de-sac is 6-8 m. Stop ~7 m short of the end (room for
+  the first move) and turn as a driver does: forward on full lock until the nose nears the
+  far kerb or anything solid, back on the other lock, again until it faces out, then plan
+  the way out afresh. Let the bumpers go ~0.6 m over the kerb (the wheels are ~0.9 m in
+  from them): held to 0.15 m it took five moves in 6.5 m, at 0.6 three. Turn the wheel
+  over standing between moves, give the throttle what the slope takes (reversing up a 17%
+  street on the flat's throttle crawled), and turn the rest on the spot if two moves in a
+  row get nowhere. Spinning on the spot at the very end, the plain fix, swings the corners
+  over the kerb and into what stands there. And brake to a standstill at the stop: speed
+  allowed from "distance to the plan's last point" grows again once the point is behind,
+  so an AI crawling up to it rolls on past.
 - **Roads a metre or two long** sit in OSM junctions (a stub between two carriageways, a
   kink split into its own way). Anything read from "the next two points" -- the way a lane
   goes, which way to face -- can point backwards there. Read directions over a distance

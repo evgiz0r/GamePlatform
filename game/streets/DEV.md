@@ -134,9 +134,11 @@ The ones most often touched, and the functions in them:
   `_ap_turn_into` (the curve through a junction), `_ap_next` / `_ap_ways` (the ways on),
   `_cluster_exits` (a junction drawn as several points offered as one), `_ap_queue` (legs
   across such a junction), `_cross_tick` (the player's choice), off the road `_way_to_road`,
-  lost `_ap_rescue`, stuck for 40 s `_ap_watch`. The map's edge: `_edge_bound` (every way on
-  within `EDGE_LOOK` m runs into the barrier: scored down in `_ap_ways`, turned from in
-  `_ap_plan`), `_legs_on`; `_ap_leg` stops a road `EDGE_ROOM` short of the barrier, a dead end.
+  lost `_ap_rescue`, stuck for 40 s `_ap_watch`, turning round at a dead end
+  `_ap_mark_dead_end` (the stop 7 m short) / `_ap_kturn` (the moves forward and back). The
+  map's edge: `_edge_bound` (every way on within `EDGE_LOOK` m runs into the barrier: scored
+  down in `_ap_ways`, turned from in `_ap_plan`), `_legs_on`; `_ap_leg` stops a road
+  `EDGE_ROOM` short of the barrier, a dead end.
 - **traffic lights** -- `_lights_setup` makes SITES: each OSM light taken to its junction,
   the other half of a divided road added (`_other_half`), lit points a short road apart
   (`_site_legs`, `SITE_LEG` 36 m) joined, shortest first, no wider than `SITE_SPAN` 50 m;
@@ -324,10 +326,22 @@ What each round found, so far:
   street put it over the middle. Now to the inner edge of its own side, or it waits.
 - Free autodrive's U-turn at a dead end was a corner a few metres across at 2.5 m/s: it
   swung past the end onto the footpath beyond and drove along it at 40 km/h (the exam's
-  "18.8 m off the road" and most of its "left of the middle"). Now `_ap_next` marks the two
-  turning points with speed 0 and `_autodrive` steps past them once stopped, so the
-  turn-round-on-the-spot rule takes it. Traffic avoids dead ends (`_dead_end` in
-  traffic.gd); it turned round in them in queues and overlapped there.
+  "18.8 m off the road" and most of its "left of the middle"); planned as a lane out and a
+  lane back it also hit the trees and garden walls at the end of all 8 of the test town's
+  cul-de-sacs at 21-29 km/h. For a while it stopped at the end and spun round on the spot.
+  Now (`_ap_mark_dead_end`, `_ap_kturn`) the plan stops 7 m short of the end and the car
+  turns round in moves forward and back on full lock, each ending when a bumper would be
+  0.6 m over the kerb (the wheels stay on the asphalt) or near anything solid, the wheel
+  turned over standing between them, the throttle allowing for the slope (backing up a
+  17% cul-de-sac on the flat's throttle crawled at 0.2 m/s), standing still while a traffic
+  car comes up the street at it (the probes at its ends missed one coming at its side, and
+  it touched them at 5 km/h). Three moves in a 6.5 m street
+  (with only 0.15 m over the kerb allowed it took five); boxed in (two moves running that got
+  nowhere), or past 7 moves or 30 s, it turns the rest on the spot. Then the way out is
+  planned afresh from where it stands. A one-way street that just ends (cut by the map's
+  edge) keeps the stop at the end and the turn on the spot: planned afresh, a turned car would
+  be sent back up the one-way into it. `tests/dead_end_turns.gd`. Traffic avoids dead ends
+  (`_dead_end` in traffic.gd); it turned round in them in queues and overlapped there.
 - Plans started at the nearest point of the road's centre line: the car drove diagonally
   from the middle to its lane over the whole first stretch. Now from its lane.
 - The test trip's one bump: a garden wall of a side street running alongside a main road

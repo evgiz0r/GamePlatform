@@ -13933,6 +13933,8 @@ func _set_auto(on: bool) -> void:
 	_ap_stuck = 0.0
 	_ap_back = 0.0
 	_ap_turn = 0.0
+	_ap_dead = Vector2.INF
+	_ap_kt = {}
 	if on:
 		_gear = 1
 	Probe.event("autodrive", {"on": on})
@@ -13996,8 +13998,18 @@ func _autodrive(dt: float) -> Array:
 			if _cross.is_empty() and _ap_v.size() > 0:
 				_ap_v[_ap_v.size() - 1] = 0.0
 			break
-	# at a dead end's turning point, stopped: on to the lane back, which faces the other
-	# way, so it turns round on the spot just below
+	# at a dead end: stopped short of its end, it turns round there in moves forward and back
+	if _ap_kt.is_empty() and _ap_dead != Vector2.INF and _ap_at_dead():
+		if absf(_v) > 0.3:
+			# (on the brake at the stop: crawling up to the plan's last point, it could roll on
+			# past it, and the speed allowed grew with its distance from it, behind or not)
+			_ap_why = "turning"
+			return [0.0, 1.0, 0.0]
+		_ap_kt_start()
+	if not _ap_kt.is_empty():
+		return _ap_kturn(dt)
+	# at a one-way dead end's turning point, stopped: on to the lane back, which faces the
+	# other way, so it turns round on the spot just below
 	while _ap_pts.size() > 2 and _ap_v[1] == 0.0 and absf(_v) < 1.0 and _pos.distance_to(_ap_pts[1]) < 5.0:
 		_ap_pts.remove_at(0)
 		_ap_v.remove_at(0)
@@ -14387,6 +14399,8 @@ func _ap_rescue() -> bool:
 func _ap_plan() -> void:
 	_cross = {}
 	_ap_queue = []
+	_ap_dead = Vector2.INF
+	_ap_kt = {}
 	_ap_pts = PackedVector2Array()
 	_ap_v = PackedFloat32Array()
 	_ap_lim = PackedFloat32Array()
@@ -14697,16 +14711,22 @@ func _ap_next() -> bool:
 	if ways.is_empty():
 		if back.x < 0:
 			return false
-		# a dead end: stop at its end and turn round there (see _autodrive). Planned as a
-		# lane out and a lane back, the U-turn was a corner a few metres across taken at
-		# 2.5 m/s -- autodrive swung wide past the end, onto the footpath beyond, and drove
-		# on along it at 40 km/h while it worked its way round.
-		var apex := _ap_pts.size() - 1
-		_ap_leg(back.x, back.y, back.z)
-		for k in [apex, apex + 1]:
-			if k > 0 and k < _ap_v.size() - 1:
-				_ap_v[k] = 0.0
-		return true
+		if int(r["o"]) != 0:
+			# a one-way street that just ends (cut by the map's edge, or a mapping slip): the way
+			# back is against it, and planned afresh a turned car would be sent back in. So the
+			# leg back is planned on, with a stop at the end, turned onto on the spot (_autodrive).
+			var apex := _ap_pts.size() - 1
+			_ap_leg(back.x, back.y, back.z)
+			for k in [apex, apex + 1]:
+				if k > 0 and k < _ap_v.size() - 1:
+					_ap_v[k] = 0.0
+			return true
+		# a dead end: stop short of its end and turn round there in moves forward and back (see
+		# "turning round at a dead end"). Planned as a lane out and a lane back, the U-turn was a
+		# corner a few metres across taken at 2.5 m/s -- autodrive swung wide past the end into
+		# the trees and garden walls, or onto the footpath beyond and on along it at 40 km/h.
+		_ap_mark_dead_end()
+		return false
 	# a real crossing (two or more proper streets on): ask, and plan no further for now --
 	# but not round a roundabout, where the exits come too fast to ask at each
 	var main: Array = ways.filter(func(w): return not w["service"])
@@ -14786,6 +14806,169 @@ func _ap_ways(ri: int, ei: int, dir: int) -> Array:
 			ways.append({"leg": Vector3i(e.x, nxt, d2), "turn": came.angle_to(go), "name": r2["name"],
 				"en": r2["en"], "service": r2["k"] == "service", "score": score})
 	return [ways, back]
+
+## ---- turning round at a dead end ----
+## The way back out of a dead end used to be planned straight on from its end: a U-turn in
+## one sweep, which needs ~10 m and a cul-de-sac is 6.5 m across, taken at the 9 km/h the
+## plan's corner speed allowed (and more: the car arrived at 45 km/h and braked late). It ran
+## into the trees and garden walls at the end at 20-30 km/h. For a while it then stopped at
+## the very end and spun round on the spot there, corners over the kerb. Now the plan stops
+## AP_DEAD_ROOM short of the end and the car turns round there the way a driver does in a
+## narrow street: forward on full lock until the nose nears the far kerb (or anything solid),
+## back on the other lock until the tail nears the near one, and so on -- three moves in a
+## 6.5 m street -- until it faces out, waiting for any car coming up the street; then the
+## way out is planned afresh from where it stands. (A one-way street that just ends still
+## stops at its end and turns on the spot.)
+## tests/dead_end_turns.gd drives into every cul-de-sac of a city.
+const AP_DEAD_ROOM := 7.0           ## metres short of a dead end's end it stops to turn round
+const AP_KT_V := 1.3                ## m/s, the crawl of each move
+const AP_KT_KERB := 0.6             ## a move ends when a bumper would be this far (m) over the kerb (the wheels are ~0.9 m in from it)
+const AP_KT_MOVES := 7              ## more than this, or AP_KT_SECS, and the rest is turned on the spot
+const AP_KT_SECS := 30.0
+var _ap_dead := Vector2.INF         ## where the plan stops to turn round (INF: no dead end ahead)
+var _ap_dead_in := Vector2.ZERO     ## ...the way into the dead end there
+var _ap_dead_end := Vector2.ZERO    ## ...and its end
+var _ap_kt := {}                    ## turning round: {to, side, gear, n, t, mt, stop, from, idle}; {} when not
+
+## the plan runs into a dead end (its last leg ends there, _ap_end): cut it back to stop
+## AP_DEAD_ROOM short of the end (and inside the map's edge), and plan nothing past it
+func _ap_mark_dead_end() -> void:
+	var r: Dictionary = _roads[_ap_end.x]
+	var pts: PackedVector2Array = r["pts"]
+	var ei := _ap_end.y
+	var prev := clampi(ei - _ap_end.z, 0, pts.size() - 1)
+	var into := (pts[ei] - pts[prev]).normalized()
+	_ap_dead_end = pts[ei]
+	_ap_dead_in = into if into != Vector2.ZERO else _fwd()
+	_ap_end = Vector3i(-1, 0, 0)
+	var keep := _bounds.grow(-EDGE - CAR_LEN)
+	var n := _ap_pts.size()
+	var k := n - 1   # the last point far enough short of the end (0 if none is)
+	while k > 0 and ((_ap_dead_end - _ap_pts[k]).dot(_ap_dead_in) < AP_DEAD_ROOM or not keep.has_point(_ap_pts[k])):
+		k -= 1
+	var stop := _ap_pts[k]
+	if k < n - 1:
+		var sa := (_ap_dead_end - _ap_pts[k]).dot(_ap_dead_in)
+		var sb := (_ap_dead_end - _ap_pts[k + 1]).dot(_ap_dead_in)
+		if sa > AP_DEAD_ROOM and sa - sb > 0.01:
+			stop = _ap_pts[k].lerp(_ap_pts[k + 1], clampf((sa - AP_DEAD_ROOM) / (sa - sb), 0.0, 1.0))
+			if not keep.has_point(stop):
+				stop = _ap_pts[k]
+	var v := _ap_v[k]
+	var lim := _ap_lim[k]
+	_ap_pts.resize(k + 1)
+	_ap_v.resize(k + 1)
+	_ap_lim.resize(k + 1)
+	if _ap_pts.size() < 2 or stop.distance_to(_ap_pts[k]) > 0.5:   # (a plan is two points at least)
+		_ap_pts.append(stop)
+		_ap_v.append(v)
+		_ap_lim.append(lim)
+	_ap_dead = _ap_pts[_ap_pts.size() - 1]
+
+## at the stop where the plan turns round, or past it (handed over nearer the end than that)
+func _ap_at_dead() -> bool:
+	# (from 2.5 m short: the plan's speeds bring it to a standstill 1.5 m short of a stop)
+	return _pos.distance_to(_ap_dead) < AP_DEAD_ROOM + 5.0 and (_pos - _ap_dead).dot(_ap_dead_in) > -2.5
+
+func _ap_kt_start() -> void:
+	# to face back the way the street runs where the car stands; round to the left from the
+	# right-hand lane (the room is on that side), to the right from the left of the middle
+	var to := -_ap_dead_in
+	var side := -1
+	var hit := _nearest_seg(_pos, 20.0, true, true, _y)
+	if not hit.is_empty():
+		var pts: PackedVector2Array = (_roads[hit["road"]] as Dictionary)["pts"]
+		var d := (pts[int(hit["seg"]) + 1] - pts[int(hit["seg"])]).normalized()
+		to = -d if d.dot(_ap_dead_in) > 0.0 else d
+		if (_pos - (hit["q"] as Vector2)).dot(Vector2(-to.y, to.x)) > 0.4:
+			side = 1   # (right of the middle as it will face: that is the left now)
+	_ap_kt = {"to": to, "side": side, "gear": 1, "n": 1, "t": 0.0, "mt": 0.0, "stop": false, "from": _pos, "idle": 0}
+	_set_blink(side)
+	_show_banner("turning round", 1.2)
+	Probe.event("turning_round", {"at": Vector2i(_pos)})
+	_log.event("turning round")
+
+## a move's end: the circle at that end of the car, `ahead` metres on, would touch something,
+## leave the asphalt (past the kerb, or past the end of the street), or reach the map's edge
+func _ap_kt_blocked(p: Vector2) -> bool:
+	if _push_out(p, CAR_R, true, true, _y) != Vector2.ZERO:
+		return true
+	if not _bounds.grow(-EDGE - CAR_R - 0.3).has_point(p):
+		return true
+	if (p - _ap_dead_end).dot(_ap_dead_in) > -CAR_R:
+		return true
+	var on := _nearest_seg(p, 15.0, true, false, _y)   # (a driveway's mouth is asphalt too)
+	return on.is_empty() or float(on["edge"]) + CAR_R > AP_KT_KERB
+
+func _ap_kturn(dt: float) -> Array:
+	_ap_why = "turning"   # (the drive log's word for it)
+	_ap_kt["t"] += dt
+	_ap_kt["mt"] += dt
+	var to: Vector2 = _ap_kt["to"]
+	var g: int = _ap_kt["gear"]
+	var diff := angle_difference(_yaw, to.angle())
+	if absf(diff) < 0.45:
+		# facing out, near enough for the lane-following to take it from here: stop, then plan
+		if absf(_v) > 0.1:
+			return [0.0, 1.0, 0.0]
+		var spot := int(_ap_kt["n"]) > AP_KT_MOVES or float(_ap_kt["t"]) > AP_KT_SECS
+		Probe.event("turned_round", {"moves": mini(int(_ap_kt["n"]), AP_KT_MOVES), "secs": snappedf(float(_ap_kt["t"]), 0.1), "on_the_spot": spot})
+		_log.event("turned round", "%d moves" % int(_ap_kt["n"]))
+		_ap_kt = {}
+		_ap_dead = Vector2.INF
+		_gear = 1
+		_set_blink(0)   # (it cannot tell a half turn left from one right: off by hand)
+		_ap_pts = PackedVector2Array()   # (planned afresh next tick, facing out)
+		return [0.0, 1.0, 0.0]
+	if int(_ap_kt["n"]) > AP_KT_MOVES or float(_ap_kt["t"]) > AP_KT_SECS:
+		# no room for it (a car parked across, a wall at the kerb): the rest on the spot
+		_yaw = wrapf(_yaw + clampf(diff, -1.7 * dt, 1.7 * dt), -PI, PI)
+		_yaw_rate = 0.0
+		_v = 0.0
+		_v_lat = 0.0
+		return [0.0, 1.0, 0.0]
+	_gear = g
+	var wheel := float(_ap_kt["side"]) * MAX_STEER * g   # forward toward the turn, back the other lock
+	if _ap_kt["stop"]:
+		# between moves: stand, into the other gear, the wheel over (below), then go
+		if absf(_v) > 0.08:
+			return [0.0, 1.0, _steer]
+		_ap_kt["gear"] = -g
+		_ap_kt["n"] = int(_ap_kt["n"]) + 1
+		_ap_kt["mt"] = 0.0
+		_ap_kt["stop"] = false
+		_ap_kt["from"] = _pos
+		_gear = -g
+		return [0.0, 1.0, _steer]
+	# a car coming up the street while it is across it: stand and let it stop or go by, as a
+	# driver halfway through a turn does (the probes at the car's ends miss one coming at its
+	# side). The move's clock stands too.
+	for c in _traffic.cars:
+		if c.alive and c.v > 0.5 and c.pos.distance_to(_pos) < 9.0 \
+				and Vector2(sin(c.yaw), cos(c.yaw)).dot(_pos - c.pos) > 0.0:
+			_ap_kt["mt"] = float(_ap_kt["mt"]) - dt
+			return [0.0, 1.0, _steer]
+	if absf(_steer - wheel) > 0.02 and absf(_v) < 0.3:
+		# the wheel turned over standing still, as a driver does, not snapped from lock to lock
+		return [0.0, 1.0, move_toward(_steer, wheel, 1.8 * dt)]
+	var fwd := _fwd()
+	var end_p := _pos + fwd * float(g) * (CAR_OFF + 0.25 + absf(_v) * 0.3)
+	# the move is over: at the kerb or something solid, or crawling nowhere (a lip, a slope)
+	if _ap_kt_blocked(end_p) or float(_ap_kt["mt"]) > 6.0 or (float(_ap_kt["mt"]) > 2.0 and absf(_v) < 0.05):
+		_ap_kt["stop"] = true
+		# two moves running that got nowhere: boxed in both ways (crosswise in a street not
+		# much longer than the car), the rest on the spot
+		_ap_kt["idle"] = int(_ap_kt["idle"]) + 1 if _pos.distance_to(_ap_kt["from"]) < 0.15 else 0
+		if int(_ap_kt["idle"]) >= 2:
+			_ap_kt["n"] = AP_KT_MOVES + 1
+		return [0.0, 1.0, wheel]
+	var err := AP_KT_V - absf(_v)
+	# (plus what holds it on the slope: backing up a 17% cul-de-sac on the gentle throttle of
+	# the flat it crawled at 0.2 m/s and ran out of time)
+	var hill := MASS * 9.81 * sin(_slope) * g / (ENGINE_F if g > 0 else REVERSE_F)
+	var throttle := clampf(hill + 0.12 + err * 0.6, 0.0, 1.0) if err > 0.0 else 0.0
+	var brake := clampf(-err * 0.5, 0.0, 1.0)
+	return [throttle, brake, wheel]
 
 ## Autodrive's look ahead at a junction: does this way only lead off the map? True when every
 ## way on from it within EDGE_LOOK metres runs into the barrier at the map's edge. (An ordinary
