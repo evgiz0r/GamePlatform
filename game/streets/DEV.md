@@ -20,7 +20,7 @@ merge, re-check (`tools/check_script.sh`, a playtest, the tests below), never fo
 | `decks.gd` | roads off the ground -- bridges, embankments, cuttings, tunnels: their heights, what is under a point at a level (`surf`), their walls for collisions (`push`), the ground cut away over cuttings (`cut_tri`), and drawing them a square at a time (`build`). See "Off the ground" below |
 | `cities/*.json` | baked towns (`tools/osm_city.py`) and the made-up test town (`tools/fake_city.py`) |
 | `details.gd`, `cities/details/<city>.json` | what a filmed walk showed and OSM lacks, laid over the baked city as it loads (road edits, unmarked zebras, areas, an arcade cut under a block, paving level with the pavement, walls, fences, hedges, bins, railings, bollards, a pole transformer, a barrier, parked motorbikes, trees) and the walks themselves; the format is at the top of `details.gd` |
-| `cities/details/make_givatayim.py` | writes `givatayim.json`: every detail placed along the Ha-Meri passage's own line, with the film's seconds beside what each came from. Edit this, not the JSON, and run it |
+| `cities/details/make_givatayim.py` | writes the Katzenelson-Ha-Meri walk's part of `givatayim.json`: every detail placed along the Ha-Meri passage's own line, with the film's seconds beside what each came from. Edit this, not those items in the JSON, and run it. The file is shared (the Sheinkin-Sirkin walk and its kerb paint were put in by hand): the script marks what it writes `"src": "make_givatayim"` and keeps everything else on a re-run |
 | `textures/` | CC0 photo textures (Poly Haven) and the scripts that made the sky and the leaf atlas; credited in `textures/CREDITS.md` |
 | `tests/` | scene tests, see below |
 
@@ -49,6 +49,26 @@ The ones most often touched, and the functions in them:
   (barred windows, the door in the middle bay), stone courses, plinth and mosaic are
   `WALL_SHADER`'s `ground` / `door` / `stone_k`; worn asphalt is `TONE_SHADER`'s
   `crazing()` and patches. `tests/eye_level.gd` puts a camera where a person stands.
+- **cats, flags on cars** -- the builders call `cat_at(p, y, facing, "sit"/"loaf")` (garden
+  walls in `_garden_fronts`, a parked car's nose in `_build_parked`, bins in furniture's
+  `kerbside`); furniture.gd's `cats()` places `_cat_kit()` (ellipsoids and tubes, the coat
+  an instance colour: `CAT_COATS`, tones `cat_*`), merged into the batches. Flags on parked
+  cars: `_car_flags`, `_flag_kit("car", "il")`. A wall cat's choices come from their own
+  hash: shifting bits out of the plot's `h` (under 2^20) left nothing to choose with, and
+  every one came out sitting. First pass: cats ~12 ms (both models made once), flags ~2 ms.
+- **more contact shadows** -- `_ao_disc` at each street tree's foot (not the parks' and open
+  land's; one height lookup: ~9 us each, 2,340 in 20-24 ms); along a garden wall's foot the
+  pavement itself darkens in KERB_SHADER (COLOR.a: the wall's distance back / 4, set by
+  `_pave_walled`): the strips laid as geometry cost 36-47 ms, this nothing.
+- **after rain** -- `WET_GLSL` (`wet`, `wet_mirror()`: Fresnel, the sky's two colours, a darker
+  band low down for the street's buildings) goes in with `FAR_SHADE` (`_with_far`); the tone
+  shader soaks hard kinds (2, 3, 6, 7) and lays puddles by noise, the kerb shader its
+  pavement and kerb, the ground shader darkens. `_set_wet` tweens `_wet_k`, `_far_set`
+  passes it on. Only the puddles are glossy: a whole road at roughness 0.3 took the
+  renderer's flat ambient reflection (the background colour) and went pale grey, and sunlit
+  pavers at 0.6 flared white; soaked ground is 0.68-0.7 with SPECULAR 0.3, puddles 0.08.
+  The tyres' hiss: `_engine_tick` brightens the road loop and lifts the wind loop with
+  `_wet_k`. `tests/wet.gd`.
 - **sound** -- `sounds/make_sounds.py` makes the loops (engine, engine_load, road, wind,
   city; numpy, run it again after changing it, the .wav files are committed and imported
   looping, QOA); "the sounds of driving" in streets.gd plays them: `_build_engine`,
@@ -106,7 +126,38 @@ The ones most often touched, and the functions in them:
   `_ap_turn_into` (the curve through a junction), `_ap_next` / `_ap_ways` (the ways on),
   `_cluster_exits` (a junction drawn as several points offered as one), `_ap_queue` (legs
   across such a junction), `_cross_tick` (the player's choice), off the road `_way_to_road`,
-  lost `_ap_rescue`, stuck for 40 s `_ap_watch`.
+  lost `_ap_rescue`, stuck for 40 s `_ap_watch`. The map's edge: `_edge_bound` (every way on
+  within `EDGE_LOOK` m runs into the barrier: scored down in `_ap_ways`, turned from in
+  `_ap_plan`), `_legs_on`; `_ap_leg` stops a road `EDGE_ROOM` short of the barrier, a dead end.
+- **traffic lights** -- `_lights_setup` makes SITES: each OSM light taken to its junction,
+  the other half of a divided road added (`_other_half`), lit points a short road apart
+  (`_site_legs`, `SITE_LEG` 36 m) joined, shortest first, no wider than `SITE_SPAN` 50 m;
+  `_site_axes` (group 1 along the main road, group 2 along the road furthest from it, by
+  direction, never by name) and `_light_group` (the nearer axis, either way along it; `flip`
+  when a neighbouring site needs the road between them in the same group); `_site_ways_in` /
+  `_sig_line` (each way in: its stop line -- behind a zebra near the junction, found by
+  `_points_back` across OSM's road pieces -- and whether it comes from inside the site: no
+  pole, no line); `_light_line`. The cycle is `SIGNAL_CYCLE` (`_MED`: green, flashing green,
+  amber, red, red-and-amber; `_NORTH`), `_signals_tick` / `_apply_signals` (the flashing).
+  `_light_at` gives what a driver reads ("gf" -> "g", "ry" -> "r"). A car is in a site from
+  its nose crossing the line until well out (`_light_site` / `_through_lights` for the player,
+  `last_site` / `_passed_lights` / `_in_site` in traffic.gd) and does not stop at its other
+  points. Walk lights: `_build_walk_lights`, `_zebra_light` (which point a zebra goes by; the
+  people at it ask the same), `_walk_light`, `_box_waiting` (not in front of a car already in
+  the junction, waiting to get out over the crossing).
+- **the made-up town's mountains** -- `_mtn_from` (`_town_top()` + 6 m: above it the land is
+  mountain), the `mountains` part of `GROUND_SHADER` (rock beds, soil, scrub, cloud shadows;
+  on every steep slope too), mountain woods in the tree builder (`MTN_TREES`, drawn from
+  further off), `_build_turbines` / `_turbines_tick`; the fog halves in that town
+  (`_retint_city`). Only a made-up town with hills gets any of it. `tests/mountains.gd` shoots it.
+- **solid things and the road** -- `_off_road` (a road's edges only) and `_in_junction` (the
+  round asphalt at a junction's point); furniture's `_free` checks both. `tests/road_blocks.gd`
+  finds anything solid on a road's lanes or a junction's asphalt.
+- **loading** -- the squares round the start are built with the city hidden (`world.visible`)
+  and hand a frame back every `FG_US` (`_fg_build`: `_over` / `_pause`), the text ticking;
+  `_warm_up` then shows the kinds of surface a few at a time (`_shader_key`; four views only
+  under a software renderer), each frame timed in `_warm_ms`; `_load_ms`, `_stage_ms`;
+  `_load_text` puts them at the bottom of the perf view, so a player's own load can be read.
 - **people** -- walkers `_place_walker` / `_pavement_piece` / `_people_tick`, zebra crossers
   `_send_crossers` / `_zebra_span` / `_away_from` / `_crossers_tick`, the height their feet go
   at `_walk_y` / `_pave_top`, what autodrive stops for `_ap_people_v`.
@@ -136,7 +187,8 @@ The ones most often touched, and the functions in them:
 
 traffic.gd: `tick` (per car: path, lights, signs, the car or player ahead, standoffs,
 `squeeze`), `_next` / `_leg` / `_turn_into` (routes), `_steer_lanes`, `lead_on` (the query
-autodrive uses), `push` (the player against the cars).
+autodrive uses), `push` (the player against the cars). `_junction_ahead` (giving way) skips a
+car `_held_at_red`: one that will stand at its red need not hold up a car with the green.
 
 ## Tests
 
@@ -192,6 +244,8 @@ What each round found, so far:
 - A divided road's junction is several signalled points 10-30 m apart; each picked its own
   main road and they disagreed (green both ways across the knot: 43 red lights run by
   traffic a run in Ashdod). The points within 40 m now share one main road and groups.
+  (Since: a junction is a site, its groups by direction -- see "traffic lights" above; by
+  name, a street that changed its name at the junction had green with the one across it.)
 - Red or green was looked up by the direction of the stretch the car was on at the moment
   (mid-turn, diagonal), not the way it came in: now the arrival direction, 6 m back.
 - "Go to" planned from the way the car faced only, and from the nearest street as if the
@@ -253,7 +307,11 @@ What each round found, so far:
   (the container is slower than a laptop by ~3x; compare ratios). Before the car is shown,
   near-first: Givatayim ~2 s (9 of its 71 squares), Bedford ~1.2 s, Ashdod ~2.8 s, the test
   town ~1.2 s (headless playtest, `build_ms` in the "city" event); the rest of Givatayim
-  ~10 s of background building (the "city_built" event).
+  ~10 s of background building (the "city_built" event). Tel Aviv (the box, 4011 buildings,
+  3667 roads, 59 squares): ~2.2-2.5 s before the car, the rest ~11-12 s.
+- Parked cars by the kerb's paint (Givatayim's start view, `tests/frame_cost.gd`, quality
+  3): 1.32 M triangles + 632 k shadow before, 1.54 M + 854 k after (+17%, +35%), draws 292
+  -> 294. Measured at the old start, a residential street of blue-white kerbs: the densest case.
 - Draw calls at the start view: Givatayim ~290, Ashdod ~420 (`tests/draws.gd`), before the
   city was built in squares; since, Givatayim 235 with all of it built (little things are
   grouped per 400 m square, not 220 m) and 200 at the start before the rest is up.
@@ -269,10 +327,17 @@ What each round found, so far:
 | 2 | Bedford, Nova Scotia ("north") | place "Bedford, Nova Scotia", include "Hemlock Ravine Park; Kearney Lake; Sandy Lake; Fleetview Drive" |
 | 3 | Ashdod ("med") | place "Ashdod" |
 | 4 | Kiryat Dimyon, made up | `tools/fake_city.py` |
+| 7 | Tel Aviv, a box of the centre ("med") | place "Tel Aviv", bbox "32.0639,34.7795,32.0858,34.8021" (read off the user's map screenshot), margin 150, bare_ground on (without it Azrieli stood on a 146 m hill of its own roofs) |
 
 The start points are public street corners named in `LEVELS`. **The web build is public:
 never use an address the user has mentioned as theirs or their family's -- not as a start,
 not in a test, a commit or a doc.** Scratch tests against one stay in the scratch directory.
+
+Givatayim's start moved on 20 November 2026 to Katznelson by Weizmann, at the user's
+request (it had been a quiet residential corner since the city was added). Results of tests
+that look "near the start" (the narrowest streets, the nearest lights or roundabout, the
+exam's first place, the draws and frame cost at the start view) from before then are from
+the old corner: rerun before comparing.
 
 ## What a filmed walk showed (November 2026)
 
@@ -285,17 +350,21 @@ first:
   floors. The real ones are warm cream and sand plaster, balconies with railings (many
   closed in), AC units on the walls, shutters, shopfronts with awnings on the shopping
   street; 15-25 storey towers stand behind the low blocks.
-- **Between pavement and building**: front gardens behind low rubble-stone walls, often
+- **Between pavement and building** (wooden boards on a fifth of the walls done,
+  `_plank_fence` in `_garden_fronts`): front gardens behind low rubble-stone walls, often
   with a wooden plank fence on top, hedges, bushes, iron gates. The game has a low white
   wall and grass, or the building right at the pavement.
 - **Pavement**: the game's is near white in the sun. The real one is mid-grey: 20 x 10 cm
   pavers in straight rows along the residential street, with a darker band along the kerb;
   rounded brown "antique" pavers with grey cobble arcs by the cafes. Herringbone is right
   for some streets, not all.
-- **Kerb paint**: blue-and-white along the residential street (paid parking), red-and-white
-  at the corners and driveways. The game paints yellow-and-black.
-- **Parked cars**: an unbroken row on both sides of the residential street, motorbikes and
-  scooters parked on the pavement; painted bays on the shopping street. The game has gaps.
+- **Kerb paint** (done: `_kerb_paint`, `_kerb_marks`): blue-and-white along the residential
+  street (paid parking), red-and-white at the corners and driveways. The game painted one
+  paint a whole street, a tenth of them yellow-and-black.
+- **Parked cars** (done, fill by the kerb's paint, `PARKED_FILL`; motorbikes too,
+  `_park_moto`, `tests/street_fronts.gd`): an
+  unbroken row on both sides of the residential street, motorbikes and scooters parked on
+  the pavement; painted bays on the shopping street. The game filled a quarter of the kerb.
 - **Street trees**: thin trunks in square earth pits at the kerb edge every ~8-10 m, the
   canopies meeting over the pavement; no palms on these streets.
 - **Light**: the real late afternoon is hazy and warm; the game's sky is saturated blue
@@ -352,6 +421,10 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   (`Traffic.send`: the car furthest away, not a bus, onto the road nearest the spot, that
   way). The game's halves of Katzenelson are 9 m: the walk crosses each at 2.3-2.5 m/s to
   keep the film's times; the film's own speed suggests the real halves are narrower.
+- **How long a pass takes to check** (one Godot run at a time): the scan (`SCAN=1`) about 5
+  min, the recording (`RECORD=1`, 966 frames) 18-20 min, the side-by-side 1 min, each
+  playtest of a Givatayim level 3-4 min -- the whole chain (scan, record, video, playtests
+  of levels 5, 1 and 6) about 40 min. Tell the user so when you start it.
 - **The film's clock is decoding from its start.** `ffmpeg -ss` before `-i` lands on the
   wrong frames in this clip's first seconds (VLC's variable-rate transcode: 2999 frames in
   100 s, said to be 60 fps); `-vf trim=a:b,setpts=PTS-STARTPTS` agrees with the
@@ -387,11 +460,25 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   stone walls (another session's), 6 the details' slabs, 7 pavers in rows; each tested on
   both sides of its number (see the godot-3d skill: a one-sided test once drew this
   passage as wall stones).
-- **Next passes**: the forecourt's slabs may still be too pale in the sun; the shops'
-  glass is one even glow (signs with lettering, the confectionery's yellow panels inside);
-  white bollards round Sheinkin's corner and its second transformer (the kerb pass put
-  bollards at corners: compare with the film); the little street's parked cars and the
-  motorbikes along Ha-Meri. People last.
+- **Pass 6, the little street and the shops' faces**, done: three cars parked along the
+  little street's far side (`parked_car`: the game's own cars; its parking rule turns that
+  kerb down, the corner block stands too near), a tall hedge on the back of the walk's
+  pavement there, a second twin-pole transformer at Sheinkin's corner; the confectionery's
+  sign lettered (a `Label3D` in the game's font, which falls back to Noto Sans Hebrew) and
+  its yellow boards in the window -- only the shop the film shows is named; shop windows
+  dark reflecting glass by day; the slabs warmer (sunlit, the film's are warm beige).
+- **Pass 7, people and the last small things**, done: the people the film shows, where it
+  shows them (walks' `people`: standing, or walking between two spots over two film
+  seconds -- a man by the far kerb's railing, two women in the forecourt, a man at the
+  passage's end); the bollards round Sheinkin's corner white (`white_bollards`: the kerb
+  pass's own white ones, at the zebras near a spot); the blue pay booth, a yellow parking
+  board and two scooters on Sheinkin's far corner (in the room POSTS_NEAR found between the
+  zebra's bollards and a sign pole); the little street's gateposts, one with a heart.
+- **Next passes**: the light (another session's: the film's afternoon is hazy and warm);
+  people that move as the film's do (the walk's `people` take `to` and `t`; none of the
+  four walks yet). The street now matches the film in what stands where: what is left is
+  look -- the buildings' plaster, balconies and shutters along the route (another session's
+  city-wide work), the shops' lettering beyond the one the film names.
 
 ## Off the ground: bridges, tunnels, cuttings, embankments (`decks.gd`)
 
@@ -428,9 +515,40 @@ before and a tunnel without it is still dropped.
   footprint (`cut_tri`, in `_build_terrain`), and the far-off flat ground plane is put below
   the deepest deck (it showed through the hole). The tunnel's tube casts shadows from both
   faces (its own meshes, not the merged ones) so the sun does not light it inside.
+- **Junctions in the air.** Where only decks meet (the interchange's slip roads joining
+  HaZayit up on its embankment) the junction is drawn by `decks.gd` at its height (no node
+  in `_tile_nodes`, so no signs or lights there). A parapet, its wall and the walkway open
+  wherever another deck's road comes in (`open_at`, drawing and collisions alike), and a
+  ramp's walkway gives way to a street's asphalt where its foot runs into one (the slip road
+  merging into the boulevard). Walls are left out of the collisions in a junction's corner
+  only at street level -- up on the embankment that would leave a gap to drive off.
 - **Water held at a level** (`areas[].y`, the test town's river) lies at that level, and is
   too deep to drive or walk into (`_deep_push`): the banks were gentle enough to drive down
   and along the bed under the water. Lakes and ponds without a level are as before.
+- **A real town's heights, worked out as it loads** (`infer` in decks.gd; a place opts in
+  with `"decks": "infer"` in `LEVELS`, Bedford so far). Before the roads are read, the
+  city data gets heights as if baked: where a drivable bridge (a chain of bridge ways 8 m
+  or longer; shorter ones are culverts and stay as they were) crosses a road it must clear
+  it by 6.4 m (a path: 4.4); that lift spreads along the drivable roads at a ramp's grade
+  (5% motorways and slip roads, 7% the rest) as an absolute height -- the road's own
+  grade, not its height over a ground that may fall away too (on Larry Uteck's ramp the
+  ground fell 8%: 15% in all, the car hopped down it) -- through junctions, never onto the
+  roads crossed (held to the ground). A second pass caps every lift by what a ramp from the
+  nearest held point can climb (7% / 10%), so a too-short slip road is steep, not a cliff.
+  Bridge over bridge: OSM's layer, else the lesser road over the main line, clearing the
+  lower's deck. Roads are cut where their ramp meets the ground (a node put there); the
+  lifted pieces get a point every 6 m and their profiles rounded over the crests (junction
+  points kept), footpaths are never lifted. Bedford: 56 bridges, 72 crossings, ~190 deck
+  pieces, 0.2 s; 2 of 63 crossings over roads short of the full clearance (4.8 m the
+  lowest). `LEVEL=2` with `tests/decks.gd` drives its ten highest bridges both ways.
+- **What Bedford found** (the test town had hidden them): a divided road's two carriageways
+  overlap at the median at not quite the same height -- `surf` now ranks what is under a
+  body: the carriageway it is on, then a deck's pavement or parapet, then (where another
+  deck carries on) just past a deck's end, then the ground; of each the one nearest its
+  height. A car on the outside of a bend where two decks meet was past the end of one and
+  before the start of the other, and fell through (hence "just past the end", 3 m, only at
+  deck joints). Buildings OSM maps under a low approach (the MacKay Bridge's) stood in the
+  deck: decks under 4 m up are now cut back from like streets (`_clip_buildings`).
 - **Where the heights come from.** The test town's maker knows them: each deck's ends at the
   ground, a bridge straight from bank to bank with a little camber, the flyover's and
   underpass's ramps eased up and down to 6.6 m clear of the boulevard (`CLEAR`), the tunnel
@@ -447,7 +565,9 @@ before and a tunnel without it is still dropped.
   (a turning car clipped the parapet), a 5 cm switch from a cutting's road to the ground
   where it gets shallow (a hop), and ground triangles left whole over a cutting (an edge
   parallel to the hole's leaves a smaller triangle: compare areas, not corner counts).
-- **Still to do**: heights for the real towns' bridges and tunnels; pavements at street
+- **Still to do**: the inferred heights for Givatayim and Ashdod (and their tunnels);
+  earth embankments with grass slopes rather than walls along inferred ramps; a long-span
+  bridge's height over water (the MacKay's deck is only as high as its ends); pavements at street
   level beside a cutting (the underpass has none); people on a bridge's pavement; the
   minimap draws a tunnel like any street; zooming out from inside the tunnel rises from the
   hilltop (the zoom centres on the ground's height); the heights are whole decimetres, so a
@@ -460,6 +580,17 @@ before and a tunnel without it is still dropped.
 
 ## Open problems
 
+- **Tel Aviv's bridges and tunnels have no heights** (Nov 2026). OSM tags them but says
+  nothing of how high, so the 2.4 km of bridges (every road over the Ayalon: Moses,
+  Givat HaTahmoshet, Modai, Arvei Nahal, Yitzhak Sadeh, Begin's) lie on the ground and cross
+  the motorway flat, sharing no point with it, and the 4.2 km of drivable tunnels (Lova
+  Eliav 900 m, Uzi Hitman, Carlebach, Begin under Kaplan) are left out. The test town's
+  decks (`y` per point, `decks.gd`) are the way: work the heights out in the bake or at load
+  from `br`/`tu`/`ly`, the ramps being the ways either side.
+- **Givatayim's ground is the terrain tiles' surface model too**: its "steepest 52%" is
+  likely part roofs. Measured on its grid, `--bare-ground` would take the hill's crest
+  86 -> 72 m and the steepest slope 48 -> 16%. Not re-baked: it moves the ground under the
+  filmed walks and every test number, and is the user's call.
 - **Scene tests started with `Flow.start_game` (the `tests/*.gd` way) drew no road surfaces
   in Ashdod round its start** (Nov 2026, cloud container): asphalt, kerbs and zebras missing,
   poles, signs, trees and cars there, from 9 m and from 32 m up (`median_nose`). The same

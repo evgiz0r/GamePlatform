@@ -8,6 +8,7 @@ extends SceneTree
 ##
 ##   OUT=/tmp/decks game/streets/tests/run.sh decks 4
 ##   RUNS=tunnel_east SHOTS=0 ...   only those runs (comma-separated), no fixed views
+##   RUNS=none VIEWS=ic_,river ...    no runs, only the views whose names hold one of those
 ##   STREETS_BUILD_ALL=0 SHOTS=0 $GODOT --headless --fixed-fps 60 --path . -s \
 ##       res://game/streets/tests/decks.gd     the numbers alone, in a minute or two
 ##
@@ -16,7 +17,8 @@ extends SceneTree
 ## (no ground over a cutting, no road floating over a gap, lamps lit in the tunnel).
 var g: Node
 
-## [name, a point near the start, the way to face (radians, 0 east, +z south), seconds]
+## [name, a point near the start, the way to face (radians, 0 east, +z south), seconds,
+## "top" to start on the highest road there rather than the one at the ground's level]
 const RUNS := [
 	["tunnel_east", Vector2(108, -250), 0.0, 40.0],
 	["tunnel_west", Vector2(628, -250), PI, 40.0],
@@ -24,10 +26,63 @@ const RUNS := [
 	["underpass", Vector2(-105, -108), PI * 0.5, 22.0],
 	["river_bridge", Vector2(0, 350), PI * 0.5, 16.0],
 	["ring_bridge", Vector2(578, 368), 2.4, 16.0],
+	# the interchange: up the westbound slip road into the junction on HaZayit's embankment,
+	# and down the eastbound one from the junction into the boulevard (started up on it)
+	["slip_up", Vector2(-475, -21), PI, 16.0],
+	["slip_down", Vector2(-528, 30), 0.0, 16.0, "top"],
 ]
 
 func _initialize() -> void:
 	_run()
+
+## a real town (heights worked out as it loads): its highest bridges, driven off both ways --
+## [name, a point on it, the way to face, seconds, "top"]
+func _auto_runs() -> Array:
+	var cand: Array = []
+	for ri: int in g._decks.decks:
+		var r: Dictionary = g._roads[ri]
+		if String(r["deck"]) != "br" or not r["drive"]:
+			continue
+		var ys: PackedFloat32Array = r["ys"]
+		var gs: PackedFloat32Array = r["gs"]
+		var up := 0.0
+		for j in range(ys.size()):
+			up = maxf(up, ys[j] - gs[j])
+		cand.append([up, ri])
+	cand.sort_custom(func(a, b): return a[0] > b[0])
+	var out: Array = []
+	var taken: Array = []
+	for c: Array in cand:
+		var r: Dictionary = g._roads[int(c[1])]
+		var pts: PackedVector2Array = r["pts"]
+		var mid: Vector2 = pts[pts.size() / 2].lerp(pts[(pts.size() - 1) / 2], 0.5)
+		if taken.any(func(t): return (t as Vector2).distance_to(mid) < 150.0):
+			continue
+		taken.append(mid)
+		var d := (pts[pts.size() - 1] - pts[0]).normalized()
+		var nm := "%s_%d" % [String(r["en"] if r["en"] != "" else r["name"]).replace(" ", "_"), int(c[1])]
+		print("bridge %s: %.1f m up, %s" % [nm, c[0], mid])
+		for way: float in ([1.0] if int(r["o"]) != 0 else [1.0, -1.0]):
+			var face := d * way * (float(r["o"]) if int(r["o"]) != 0 else 1.0)
+			out.append([nm + ("" if way > 0 else "_back"), mid, atan2(face.y, face.x), 14.0, "top"])
+		if out.size() >= 10:
+			break
+	return out
+
+## the steepest grade on any deck, and where
+func _grades() -> void:
+	var worst := 0.0
+	var at := ""
+	for ri: int in g._decks.decks:
+		var r: Dictionary = g._roads[ri]
+		var pts: PackedVector2Array = r["pts"]
+		var ys: PackedFloat32Array = r["ys"]
+		for j in range(pts.size() - 1):
+			var L := pts[j].distance_to(pts[j + 1])
+			if L > 2.0 and absf(ys[j + 1] - ys[j]) / L > worst:
+				worst = absf(ys[j + 1] - ys[j]) / L
+				at = "%s %s at %s" % [r["deck"], r["en"] if r["en"] != "" else r["name"], pts[j]]
+	print("steepest deck grade %.0f%% (%s)" % [worst * 100.0, at])
 
 func _snap(name: String) -> void:
 	if DisplayServer.get_name() == "headless":
@@ -54,7 +109,8 @@ func _levels_at(p: Vector2) -> Array:
 
 func _run() -> void:
 	await create_timer(0.3).timeout
-	root.get_node("Flow").start_game("streets", {"level": 4})
+	var level := int(OS.get_environment("LEVEL")) if OS.get_environment("LEVEL") != "" else 4
+	root.get_node("Flow").start_game("streets", {"level": level})
 	while g == null or not g._loaded:
 		await create_timer(0.25).timeout
 		for n in root.find_children("*", "Node2D", true, false):
@@ -65,12 +121,13 @@ func _run() -> void:
 		var k := String(g._roads[ri]["deck"])
 		kinds[k] = int(kinds.get(k, 0)) + 1
 	print("decks: ", kinds, ", holes cut in the ground: ", g._decks.holes.size(), ", walls: ", g._decks._walls.size())
+	_grades()
 	var only := OS.get_environment("RUNS").split(",", false)
-	for run: Array in RUNS:
+	for run: Array in (RUNS if level == 4 else _auto_runs()):
 		if not only.is_empty() and not only.has(run[0]):
 			continue
 		await _drive(run)
-	if OS.get_environment("SHOTS") != "0":
+	if OS.get_environment("SHOTS") != "0" and level == 4:
 		await _views()
 	quit()
 
@@ -80,7 +137,7 @@ func _drive(run: Array) -> void:
 	var face := Vector2(cos(float(run[2])), sin(float(run[2])))
 	if g._auto:
 		g._set_auto(false)
-	g._y = g._h(at)
+	g._y = g._decks.surf(at, 1.0e6) if run.size() > 4 else g._h(at)
 	if not g._land_on_road(at, 30.0, face):
 		print("%s: no road near %s" % [name, at])
 		return
@@ -137,6 +194,12 @@ func _drive(run: Array) -> void:
 ## the surface there, z). "top": the highest surface (a bridge's deck, the hill over a
 ## tunnel), "low": the lowest (the ground under a bridge, a tunnel's road)
 func _view(name: String, eye: Vector3, look: Vector3, mode := "top") -> void:
+	var want := OS.get_environment("VIEWS").split(",", false)
+	var wanted := want.is_empty()
+	for w: String in want:
+		wanted = wanted or name.contains(w)
+	if not wanted:
+		return
 	var e2 := Vector2(eye.x, eye.z)
 	var l2 := Vector2(look.x, look.z)
 	var lv := 1.0e6 if mode == "top" else -1.0e6
@@ -170,6 +233,14 @@ func _views() -> void:
 	await _view("view_underpass", Vector3(-103, 1.8, -95), Vector3(-105, 1.0, -22), "low")
 	await _view("view_underpass_over", Vector3(-118, 1.7, -27), Vector3(-105, -4.0, -55), "top")
 	await _view("view_underpass_air", Vector3(-160, 30, -110), Vector3(-105, 0, -40))
+	# the interchange: the junction up on HaZayit's embankment, down a slip road, its merge
+	# into the boulevard, from the air
+	await _view("view_ic_junction", Vector3(-543, 1.6, 62), Vector3(-536, 0.5, 26))
+	await _view("view_ic_slip", Vector3(-512, 1.6, 26), Vector3(-458, 0.5, -1))
+	await _view("view_ic_merge", Vector3(-418, 1.6, -1), Vector3(-480, 2.0, 8), "low")
+	await _view("view_ic_air", Vector3(-455, 40, 95), Vector3(-515, 0, -5))
+	await _view("view_ic_above", Vector3(-522, 22, 52), Vector3(-543, 0, 28))
+	await _view("view_ic_into", Vector3(-518, 1.6, 31), Vector3(-560, 0.5, 29))
 	# the hill's tunnel: into its west mouth, inside it, out of its east mouth, the hill above
 	await _view("view_tunnel_west", Vector3(104, 2.0, -252), Vector3(170, 0.5, -250), "low")
 	await _view("view_tunnel_inside", Vector3(300, 1.8, -248), Vector3(380, 1.5, -250), "low")

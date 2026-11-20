@@ -8,7 +8,8 @@
     "near": [
      641.59,
      -622.87
-    ]
+    ],
+    "src": "make_givatayim"
    }
   ],
   "set": [
@@ -19,7 +20,8 @@
      661.57,
      -672.2
     ],
-    "w": 7.0
+    "w": 7.0,
+    "src": "make_givatayim"
    },
    {
     "k": "tertiary",
@@ -28,7 +30,8 @@
      655.13,
      -664.68
     ],
-    "w": 7.0
+    "w": 7.0,
+    "src": "make_givatayim"
    },
    {
     "k": "residential",
@@ -37,7 +40,26 @@
      595.54,
      -570.15
     ],
-    "kerb": "blue_white"
+    "kerb": "blue_white",
+    "src": "make_givatayim"
+   },
+   {
+    "k": "residential",
+    "name": "שיינקין",
+    "near": [
+     539.23,
+     -640.24
+    ],
+    "kerb_mid": "blue_white"
+   },
+   {
+    "k": "residential",
+    "name": "סירקין",
+    "near": [
+     480.82,
+     -720.97
+    ],
+    "kerb_mid": "blue_white"
    }
   ],
   "add": [
@@ -55,7 +77,8 @@
     "k": "footway",
     "w": 2.6,
     "name": "המרי",
-    "name_en": "HaMeri"
+    "name_en": "HaMeri",
+    "src": "make_givatayim"
    },
    {
     "pts": [
@@ -71,7 +94,8 @@
     "k": "residential",
     "w": 5.5,
     "name": "המרי",
-    "name_en": "HaMeri"
+    "name_en": "HaMeri",
+    "src": "make_givatayim"
    }
   ]
  },
@@ -84,6 +108,16 @@
    655.1,
    -664.7
   ]
+ ],
+ "white_bollards": [
+  {
+   "near": [
+    609.82,
+    -589.54
+   ],
+   "r": 12.0,
+   "src": "make_givatayim"
+  }
  ],
  "buildings": [
   {
@@ -102,7 +136,8 @@
     ]
    ],
    "depth": 3.0,
-   "h": 3.4
+   "h": 3.4,
+   "src": "make_givatayim"
   }
  ],
  "surfaces": [
@@ -126,7 +161,8 @@
      644.6,
      -662.2
     ]
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "k": "slabs",
@@ -180,7 +216,8 @@
      669.76,
      -646.92
     ]
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "k": "pavers_grey",
@@ -206,7 +243,8 @@
      657.67,
      -639.23
     ]
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "k": "pavers_dark",
@@ -250,7 +288,8 @@
       -581.45
      ]
     ]
-   ]
+   ],
+   "src": "make_givatayim"
   }
  ],
  "lines": [
@@ -266,7 +305,8 @@
      -625.27
     ]
    ],
-   "h": 0.8
+   "h": 0.8,
+   "src": "make_givatayim"
   },
   {
    "kind": "wood_fence",
@@ -281,7 +321,8 @@
     ]
    ],
    "base": 0.75,
-   "h": 1.15
+   "h": 1.15,
+   "src": "make_givatayim"
   },
   {
    "kind": "hedge",
@@ -294,7 +335,8 @@
      629.27,
      -611.06
     ]
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "loop_fence",
@@ -308,7 +350,8 @@
      -609.94
     ]
    ],
-   "h": 0.9
+   "h": 0.9,
+   "src": "make_givatayim"
   },
   {
    "kind": "loop_fence",
@@ -322,7 +365,8 @@
      -639.16
     ]
    ],
-   "h": 0.9
+   "h": 0.9,
+   "src": "make_givatayim"
   },
   {
    "kind": "hedge",
@@ -335,7 +379,8 @@
      652.74,
      -631.99
     ]
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "hedge",
@@ -348,7 +393,8 @@
      656.84,
      -634.11
     ]
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "hedge",
@@ -361,7 +407,8 @@
      644.15,
      -622.62
     ]
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "shrubs",
@@ -375,7 +422,8 @@
      -632.09
     ]
    ],
-   "h": 2.6
+   "h": 2.6,
+   "src": "make_givatayim"
   },
   {
    "kind": "shrubs",
@@ -389,7 +437,8 @@
      -622.18
     ]
    ],
-   "h": 2.4
+   "h": 2.4,
+   "src": "make_givatayim"
   },
   {
    "kind": "shrubs",
@@ -403,7 +452,8 @@
      -617.91
     ]
    ],
-   "h": 2.8
+   "h": 2.8,
+   "src": "make_givatayim"
   },
   {
    "kind": "shrubs",
@@ -417,7 +467,8 @@
      -609.51
     ]
    ],
-   "h": 2.4
+   "h": 2.4,
+   "src": "make_givatayim"
   },
   {
    "kind": "shrubs",
@@ -431,7 +482,8 @@
      -626.31
     ]
    ],
-   "h": 2.4
+   "h": 2.4,
+   "src": "make_givatayim"
   },
   {
    "kind": "shrubs",
@@ -445,7 +497,8 @@
      -611.54
     ]
    ],
-   "h": 3.0
+   "h": 3.0,
+   "src": "make_givatayim"
   },
   {
    "kind": "shopfront",
@@ -459,11 +512,51 @@
      -653.26
     ]
    ],
-   "h": 3.25,
+   "h": 2.75,
    "face": [
     0.6139,
     -0.7894
-   ]
+   ],
+   "signs": [
+    "",
+    "קונדיטוריה",
+    "",
+    ""
+   ],
+   "panels": [
+    1
+   ],
+   "src": "make_givatayim"
+  },
+  {
+   "kind": "shrubs",
+   "pts": [
+    [
+     624.34,
+     -612.71
+    ],
+    [
+     620.07,
+     -607.81
+    ]
+   ],
+   "h": 2.3,
+   "src": "make_givatayim"
+  },
+  {
+   "kind": "shrubs",
+   "pts": [
+    [
+     617.43,
+     -604.8
+    ],
+    [
+     616.12,
+     -603.29
+    ]
+   ],
+   "h": 2.3,
+   "src": "make_givatayim"
   }
  ],
  "props": [
@@ -472,7 +565,8 @@
    "at": [
     640.21,
     -622.75
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "hoop_railing",
@@ -483,7 +577,8 @@
    "dir": [
     -0.6578,
     0.7532
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "hoop_railing",
@@ -494,63 +589,72 @@
    "dir": [
     -0.6578,
     0.7532
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "bollard",
    "at": [
     653.98,
     -647.1
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "bollard",
    "at": [
     655.19,
     -646.05
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "bollard",
    "at": [
     656.39,
     -644.99
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "bollard",
    "at": [
     658.2,
     -643.41
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "bollard",
    "at": [
     659.71,
     -642.1
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "bollard",
    "at": [
     660.91,
     -641.05
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "bollard",
    "at": [
     662.12,
     -639.99
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "bollard",
    "at": [
     656.97,
     -641.7
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "twin_poles",
@@ -561,7 +665,8 @@
    "dir": [
     0.7532,
     0.6578
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "globe_lamp",
@@ -569,14 +674,16 @@
     657.79,
     -637.93
    ],
-   "h": 2.7
+   "h": 2.7,
+   "src": "make_givatayim"
   },
   {
    "kind": "manhole",
    "at": [
     660.47,
     -645.41
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "barrier",
@@ -588,7 +695,8 @@
     0.7532,
     0.6578
    ],
-   "len": 4.0
+   "len": 4.0,
+   "src": "make_givatayim"
   },
   {
    "kind": "motorbike",
@@ -600,7 +708,8 @@
    "dir": [
     0.6578,
     -0.7532
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "scooter",
@@ -612,7 +721,8 @@
    "dir": [
     0.6578,
     -0.7532
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "motorbike",
@@ -624,7 +734,8 @@
    "dir": [
     0.6578,
     -0.7532
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "motorbike",
@@ -636,7 +747,8 @@
    "dir": [
     0.6578,
     -0.7532
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "scooter",
@@ -648,7 +760,8 @@
    "dir": [
     0.6578,
     -0.7532
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "motorbike",
@@ -660,7 +773,8 @@
    "dir": [
     0.6578,
     -0.7532
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "motorbike",
@@ -672,7 +786,8 @@
    "dir": [
     0.6578,
     -0.7532
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "scooter",
@@ -684,7 +799,8 @@
    "dir": [
     0.6578,
     -0.7532
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "motorbike",
@@ -696,7 +812,8 @@
    "dir": [
     0.6578,
     -0.7532
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "motorbike",
@@ -708,7 +825,8 @@
    "dir": [
     0.6578,
     -0.7532
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "scooter",
@@ -720,7 +838,8 @@
    "dir": [
     0.6578,
     -0.7532
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "motorbike",
@@ -732,7 +851,8 @@
    "dir": [
     0.6578,
     -0.7532
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "motorbike",
@@ -744,7 +864,8 @@
    "dir": [
     0.6578,
     -0.7532
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "scooter",
@@ -756,7 +877,8 @@
    "dir": [
     0.6578,
     -0.7532
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "motorbike",
@@ -768,7 +890,8 @@
    "dir": [
     0.6578,
     -0.7532
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "motorbike",
@@ -780,7 +903,8 @@
    "dir": [
     0.6578,
     -0.7532
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "scooter",
@@ -792,7 +916,8 @@
    "dir": [
     0.6578,
     -0.7532
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "scooter",
@@ -804,7 +929,8 @@
    "dir": [
     0.7532,
     0.6578
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "hoop_railing",
@@ -815,7 +941,8 @@
    "dir": [
     0.7532,
     0.6578
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "hoop_railing",
@@ -826,7 +953,8 @@
    "dir": [
     0.7532,
     0.6578
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "hoop_railing",
@@ -837,7 +965,8 @@
    "dir": [
     0.7532,
     0.6578
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "hoop_railing",
@@ -848,7 +977,8 @@
    "dir": [
     0.7532,
     0.6578
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "kerb_paint",
@@ -857,7 +987,8 @@
     -666.27
    ],
    "len": 10.0,
-   "pat": "red_white"
+   "pat": "red_white",
+   "src": "make_givatayim"
   },
   {
    "kind": "kerb_paint",
@@ -866,7 +997,8 @@
     -657.59
    ],
    "len": 10.0,
-   "pat": "red_white"
+   "pat": "red_white",
+   "src": "make_givatayim"
   },
   {
    "kind": "kerb_paint",
@@ -875,7 +1007,8 @@
     -679.3
    ],
    "len": 10.0,
-   "pat": "red_white"
+   "pat": "red_white",
+   "src": "make_givatayim"
   },
   {
    "kind": "kerb_paint",
@@ -884,7 +1017,8 @@
     -670.62
    ],
    "len": 10.0,
-   "pat": "red_white"
+   "pat": "red_white",
+   "src": "make_givatayim"
   },
   {
    "kind": "zebra",
@@ -897,7 +1031,8 @@
     0.7532
    ],
    "w": 3.0,
-   "len": 8.0
+   "len": 8.0,
+   "src": "make_givatayim"
   },
   {
    "kind": "ring30",
@@ -908,7 +1043,8 @@
    "dir": [
     -0.6578,
     0.7532
-   ]
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "zone30_sign",
@@ -919,7 +1055,133 @@
    "dir": [
     0.6578,
     -0.7532
-   ]
+   ],
+   "src": "make_givatayim"
+  },
+  {
+   "kind": "parked_car",
+   "at": [
+    627.77,
+    -604.4
+   ],
+   "dir": [
+    -0.6578,
+    0.7532
+   ],
+   "body": "suv",
+   "src": "make_givatayim"
+  },
+  {
+   "kind": "parked_car",
+   "at": [
+    624.22,
+    -600.33
+   ],
+   "dir": [
+    -0.6578,
+    0.7532
+   ],
+   "body": "hatch",
+   "src": "make_givatayim"
+  },
+  {
+   "kind": "parked_car",
+   "at": [
+    620.67,
+    -596.27
+   ],
+   "dir": [
+    -0.6578,
+    0.7532
+   ],
+   "body": "sedan",
+   "src": "make_givatayim"
+  },
+  {
+   "kind": "twin_poles",
+   "at": [
+    611.43,
+    -598.23
+   ],
+   "dir": [
+    0.7532,
+    0.6578
+   ],
+   "src": "make_givatayim"
+  },
+  {
+   "kind": "gatepost",
+   "at": [
+    619.66,
+    -607.5
+   ],
+   "dir": [
+    0.7532,
+    0.6578
+   ],
+   "heart": true,
+   "src": "make_givatayim"
+  },
+  {
+   "kind": "gatepost",
+   "at": [
+    617.69,
+    -605.24
+   ],
+   "dir": [
+    0.7532,
+    0.6578
+   ],
+   "src": "make_givatayim"
+  },
+  {
+   "kind": "booth",
+   "at": [
+    601.74,
+    -588.5
+   ],
+   "dir": [
+    0.6578,
+    -0.7532
+   ],
+   "src": "make_givatayim"
+  },
+  {
+   "kind": "sign_board",
+   "at": [
+    601.75,
+    -589.42
+   ],
+   "dir": [
+    0.6578,
+    -0.7532
+   ],
+   "src": "make_givatayim"
+  },
+  {
+   "kind": "scooter",
+   "at": [
+    602.82,
+    -588.22
+   ],
+   "dir": [
+    0.6578,
+    -0.7532
+   ],
+   "src": "make_givatayim"
+  },
+  {
+   "kind": "scooter",
+   "box": true,
+   "at": [
+    600.85,
+    -589.01
+   ],
+   "dir": [
+    0.6578,
+    -0.7532
+   ],
+   "src": "make_givatayim"
   },
   {
    "kind": "scooter",
@@ -930,7 +1192,8 @@
    "dir": [
     0.6578,
     -0.7532
-   ]
+   ],
+   "src": "make_givatayim"
   }
  ],
  "trees": [
@@ -1198,6 +1461,52 @@
      ]
     ]
    ],
+   "people": [
+    {
+     "at": [
+      649.36,
+      -663.09
+     ],
+     "face": [
+      0.6578,
+      -0.7532
+     ],
+     "who": 0
+    },
+    {
+     "at": [
+      654.06,
+      -645.97
+     ],
+     "face": [
+      0.7532,
+      0.6578
+     ],
+     "who": 1
+    },
+    {
+     "at": [
+      653.25,
+      -646.41
+     ],
+     "face": [
+      -0.7532,
+      -0.6578
+     ],
+     "who": 3
+    },
+    {
+     "at": [
+      631.18,
+      -608.07
+     ],
+     "face": [
+      0.6578,
+      -0.7532
+     ],
+     "who": 2
+    }
+   ],
    "cars": [
     [
      0.0,
@@ -1263,6 +1572,238 @@
      [
       0.7532,
       0.6578
+     ]
+    ]
+   ]
+  },
+  "sheinkin_sirkin": {
+   "name": "Sheinkin and Sirkin, on foot",
+   "film": "from 1:42 of the film to 3:08, the GPS track taken with it (tools/gpx_route.py route, game/streets/tests/walk_snap.gd onto the pavements)",
+   "points": [
+    [
+     0.0,
+     490.31,
+     -658.62
+    ],
+    [
+     2.0,
+     487.98,
+     -659.26
+    ],
+    [
+     4.0,
+     485.46,
+     -659.95
+    ],
+    [
+     6.0,
+     483.3,
+     -660.54
+    ],
+    [
+     8.0,
+     483.27,
+     -664.8
+    ],
+    [
+     10.0,
+     483.9,
+     -667.25
+    ],
+    [
+     12.0,
+     484.72,
+     -669.57
+    ],
+    [
+     14.0,
+     485.61,
+     -671.76
+    ],
+    [
+     16.0,
+     485.67,
+     -674.22
+    ],
+    [
+     18.0,
+     485.73,
+     -676.88
+    ],
+    [
+     20.0,
+     485.8,
+     -679.57
+    ],
+    [
+     21.0,
+     485.82,
+     -680.52
+    ],
+    [
+     23.0,
+     485.85,
+     -681.76
+    ],
+    [
+     27.0,
+     485.85,
+     -681.76
+    ],
+    [
+     29.0,
+     485.95,
+     -685.49
+    ],
+    [
+     30.0,
+     485.97,
+     -686.57
+    ],
+    [
+     32.0,
+     486.03,
+     -688.74
+    ],
+    [
+     34.0,
+     486.08,
+     -691.04
+    ],
+    [
+     36.0,
+     486.14,
+     -693.31
+    ],
+    [
+     38.0,
+     486.2,
+     -695.82
+    ],
+    [
+     40.0,
+     486.27,
+     -698.66
+    ],
+    [
+     42.0,
+     486.34,
+     -701.34
+    ],
+    [
+     44.0,
+     486.41,
+     -704.06
+    ],
+    [
+     46.0,
+     486.46,
+     -706.45
+    ],
+    [
+     48.0,
+     486.52,
+     -708.78
+    ],
+    [
+     50.0,
+     486.58,
+     -711.09
+    ],
+    [
+     52.0,
+     486.65,
+     -713.9
+    ],
+    [
+     54.0,
+     486.71,
+     -716.53
+    ],
+    [
+     56.0,
+     486.78,
+     -719.26
+    ],
+    [
+     58.0,
+     486.86,
+     -722.4
+    ],
+    [
+     60.0,
+     486.92,
+     -725.05
+    ],
+    [
+     62.0,
+     486.98,
+     -727.48
+    ],
+    [
+     64.0,
+     487.05,
+     -729.94
+    ],
+    [
+     66.0,
+     487.11,
+     -732.58
+    ],
+    [
+     68.0,
+     487.18,
+     -735.46
+    ],
+    [
+     69.0,
+     487.22,
+     -736.92
+    ],
+    [
+     79.0,
+     487.22,
+     -736.92
+    ],
+    [
+     82.0,
+     487.38,
+     -743.46
+    ],
+    [
+     84.0,
+     487.44,
+     -745.99
+    ],
+    [
+     86.0,
+     487.5,
+     -748.16
+    ]
+   ],
+   "looks": [
+    [
+     4.5,
+     6.8,
+     -45
+    ],
+    [
+     21.5,
+     25.5,
+     -75
+    ]
+   ],
+   "zebras": [
+    [
+     6.0,
+     14.0,
+     [
+      483.3,
+      -660.54
+     ],
+     [
+      485.61,
+      -671.76
      ]
     ]
    ]

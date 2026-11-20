@@ -4,7 +4,7 @@ extends SceneTree
 ## $OUT/sound_drive.wav to listen to, printing its loudness and how much of it a laptop's or a
 ## phone's speaker can play (above 200 Hz) second by second, with the speed. Run it headless,
 ## where the frames are fast (the silent audio driver still mixes, a little faster than real
-## time, so the picture is right, not the timing):
+## time, so the picture is right, not the timing). WET=1: after rain.
 ##   OUT=/tmp/x $GODOT --headless --path . -s res://game/streets/tests/sound_drive.gd
 var g: Node
 var rec: AudioEffectRecord
@@ -21,6 +21,9 @@ func _run() -> void:
 			if n.get_script() != null and String(n.get_script().resource_path).ends_with("streets.gd"):
 				g = n
 	await create_timer(1.0).timeout
+	if OS.get_environment("WET") == "1":   # after rain: the tyres hiss
+		g._set_wet(true)
+		await create_timer(2.0).timeout
 	rec = AudioEffectRecord.new()
 	AudioServer.add_bus_effect(0, rec)
 	rec.set_recording_active(true)

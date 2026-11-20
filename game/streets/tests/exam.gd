@@ -209,7 +209,7 @@ func _drive(secs: float) -> void:
 				if g._nodes[n].distance_to(c.pos) >= g._node_r[n] + 1.0:
 					continue
 				in_any = true
-				var knot: int = g._sig_knot.get(g._sig_owner.get(n, n), g._sig_owner.get(n, n))
+				var knot: int = g._site_of.get(n, n)
 				var key := "%d:%d" % [i, knot]
 				if not inside.has(key) and c.v > 2.0:
 					var came: Vector2 = came_dir.get(i, Vector2(sin(c.yaw), cos(c.yaw)))
