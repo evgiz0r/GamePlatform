@@ -71,6 +71,38 @@ these numbers the wrong way has broken something.
 | `door_to_door` | 1 | a "go to" trip from a house on a side street to another 900-1600 m away (`SEED` picks the pair) | SEED 3: arrives in 235 s, no hits, longest wait 16 s behind a car; was 390 s with 2 min stuck at a dead end |
 | `zoom_out` | 4, 1 | zoom out from the car: the city held still (car, traffic, people), dragged, turned, landed, moving again; the pause button; from the seat and on foot (shots) | Givatayim: held 0.00 m up, looking round and paused; lowest view inside a building at 0 of 16 spots; one notch in at the lowest stays up, 1.4 s of it comes down; ranges put back; moving again after landing, camera back at 3 m; seat restored. Up 137 m (default, 282 draws), 441 m (top, 368 draws; 296 driving) |
 
+## Faster runs: `SIM_SPEED`
+
+`SIM_SPEED=n` (run.sh) or `STREETS_SIM_SPEED=n` (straight from the engine) runs n times as
+much game time a tick: the game holds the engine's time scale at n every tick (the shell puts
+it back to 1 when a game starts, so `--time-scale` does nothing). Tests count time by the real
+tick (`Engine.time_scale / Engine.physics_ticks_per_second`), never 1/60. `sim_cost.gd`
+measures what a game second costs.
+
+Measured on the test town's exam (headless, 4 starts x 75 s, November 2026):
+
+| | 1x | 1x again | 2x | 3x |
+|---|---|---|---|---|
+| wall time (6 s of it loading) | 66 s | 66 s | 43 s | 33 s |
+| CHECKS total | 13 | 12 | 13 | 6 |
+| autodrive hits a car | 2 | 1 | 2 | 1 |
+| bodies overlapping (traffic) | 6 | 5 | 10 | 4 |
+| traffic: cars overlapping | 11 | 7 | 11 | 18 |
+| harsh braking | 50 | 27 | 15 | 12 |
+| ticks left of the middle | 14 | 15 | 6 | 1 |
+
+Two runs at 1x differ a lot by themselves; 2x stays within that, 3x does not. So:
+- **1x** for how driving feels and anything measured tick by tick (crashes, steering,
+  the seat view, `feel`, `head_look`, `seat_steady`, `on_foot`, `decks`' heights, the filmed
+  walk, recorded frames), and for the numbers written in this table.
+- **2x** for behaviour counted over minutes while iterating (the exam, `dead_ends`,
+  `door_to_door`, `knot_lights`, `queue_start`, traffic) -- harsh braking reads lower (a
+  jerk spread over a longer tick) and "ticks left of the middle" counts ticks. Check the
+  final result at 1x.
+- **3x** for a quick "does it still run" only: the counts drift.
+- `city_check` drives nothing: speed does not apply. Headless (`--headless --fixed-fps 60`)
+  is the bigger saving for anything without screenshots.
+
 `drive_log_map.py` draws a saved drive log (the "save log" button on the perf view's map
 page, or `drive_log.gd`'s output) over the city: `python3 game/streets/tests/drive_log_map.py
 drive-....json [out.png]` (`--from`/`--to` seconds to zoom on a stretch). `exam_chart.py`

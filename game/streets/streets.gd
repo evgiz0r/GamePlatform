@@ -11470,7 +11470,15 @@ func _start_on(street: String, cross: String) -> bool:
 	Probe.note("start corner: %s never meets %s in %s" % [street, cross, _city_id])
 	return false
 
+## STREETS_SIM_SPEED=n (tests only; tests/run.sh sets it from SIM_SPEED): the game runs n
+## times as much game time a tick. Held here every tick because the shell puts the engine's
+## time scale back to 1 when a game starts and after every hit-stop (a --time-scale on the
+## command line was undone before the first tick). Unset in play: nothing happens.
+var _sim_speed := float(OS.get_environment("STREETS_SIM_SPEED")) if OS.get_environment("STREETS_SIM_SPEED") != "" else 0.0
+
 func _physics_process(dt: float) -> void:
+	if _sim_speed > 0.0 and Engine.time_scale != _sim_speed:
+		Engine.time_scale = _sim_speed
 	_prev_pos = _pos   # where the car was at the last tick, for _frame() to blend from
 	_prev_yaw = _yaw
 	_prev_y = _y

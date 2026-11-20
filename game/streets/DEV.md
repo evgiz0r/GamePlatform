@@ -197,6 +197,12 @@ screenshots in `$OUT`. On a cloud container each takes 2-10 minutes: run them in
 background. `tests/README.md` lists them with the last results -- what "good" looks like.
 Run the ones near what you change, before and after.
 
+**Speed.** `SIM_SPEED=2` (run.sh; `STREETS_SIM_SPEED` for the engine straight) runs twice the
+game time a tick, for behaviour counted over minutes while iterating; 1x for how driving
+feels and for numbers written down; 3x only to see that something still runs. The measurements
+and which test is which: "Faster runs" in tests/README.md. Headless is the bigger saving
+whenever no screenshot is wanted.
+
 `run.sh` sets `STREETS_BUILD_ALL=1`: the whole city is built before a test starts, as the
 tests look all over it (the game itself builds near the start first and the rest while you
 drive).

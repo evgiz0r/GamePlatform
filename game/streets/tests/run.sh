@@ -34,17 +34,18 @@ x=()
 if [ -z "${DISPLAY:-}" ] && command -v xvfb-run >/dev/null; then
 	x=(xvfb-run -a -s "-screen 0 1280x720x24")
 fi
-# SIM_SPEED=n: n times as much game time a tick (Godot's --time-scale), so a run needs n times
+# SIM_SPEED=n: n times as much game time a tick (the engine's time scale), so a run needs n times
 # fewer ticks a game second. For behaviour counted over minutes (the exam, traffic, queues,
 # dead ends, lights) -- not for how driving feels (crashes, steering, the seat view, filmed
 # walks, recorded frames), where each tick's precision is the thing measured. What it changes
 # and the numbers: "Faster runs" in README.md here. Tests count time by the real tick
 # (Engine.time_scale / Engine.physics_ticks_per_second), never by 1/60.
-speed=()
+# (Not --time-scale: the shell puts the time scale back to 1 when a game starts. The game holds
+# STREETS_SIM_SPEED itself, every tick.)
 if [ -n "${SIM_SPEED:-}" ] && [ "${SIM_SPEED}" != "1" ]; then
-	speed=(--time-scale "$SIM_SPEED")
+	export STREETS_SIM_SPEED="$SIM_SPEED"
 fi
 # a smaller window: the software renderer is bound by pixels (RES=1280x720 for big shots);
 # GODOT_ARGS: more engine flags, e.g. "--fixed-fps 10" to record frames at a steady clock
 exec "${x[@]}" "$godot" --path . --rendering-driver opengl3 --audio-driver Dummy --resolution "${RES:-960x540}" \
-	"${speed[@]}" ${GODOT_ARGS:-} -s "res://game/streets/tests/$test.gd"
+	${GODOT_ARGS:-} -s "res://game/streets/tests/$test.gd"
