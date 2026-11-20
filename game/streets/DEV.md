@@ -1860,8 +1860,8 @@ The cloud environment allows the host now (the user approved it).
   "survey tel_aviv_yafo: cannot reach ...". GitHub's runners reaching it is untested: after a
   workflow bake of Tel Aviv or Givatayim, look for "survey tel_aviv_yafo: heights for" in its
   log, or run `--add-surveys` on the result here.
-- **Open**: Givatayim's own buildings (its municipality's GIS, or the national GovMap
-  buildings layer: neither found yet); drawing `pil` (Tel Aviv's blocks on columns, a
+- **Open**: Givatayim's own buildings (GovMap's public layers have no heights, see
+  `IDEAS.md`; its municipality's GIS not found); drawing `pil` (Tel Aviv's blocks on columns, a
   third of them -- the ground floor as columns and shade); the ~500 small buildings the
   survey has and OSM lacks (median 35 m^2; 57 over 300 m^2), not added; a tower complex
   OSM maps as one outline keeps OSM's height (splitting it into the survey's pieces would
