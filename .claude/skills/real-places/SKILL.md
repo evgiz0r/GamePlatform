@@ -119,6 +119,20 @@ data format is at the top of `tools/osm_city.py`; this is about living with it.
   them and turns round in a queue of its own. Never take "to the end of this street and
   straight back" as a route's start; stop at the end and turn round there; keep traffic
   out unless there is no other way.
+- **Roads a metre or two long** sit in OSM junctions (a stub between two carriageways, a
+  kink split into its own way). Anything read from "the next two points" -- the way a lane
+  goes, which way to face -- can point backwards there. Read directions over a distance
+  along the path (5 m), never between two points.
+- **A car crossing your path is in it by its nose**, not its middle: one waiting crossways
+  at a junction's edge pokes into the turn. Check its ends as well as its middle.
+- **Queues at a green**: a follower that keeps its gap for the speed the car in front has
+  reached waits until that car is well away -- the third car of a queue moved 9 s after
+  the green. Size the gap on the slower of the two speeds, and start each driver's
+  reaction when the car in front is really moving (0.5 m/s), not when it has rolled a few
+  millimetres (then the whole queue goes at once, like a train).
+- **At signalled junctions the lights decide**: giving way by road rank as at an
+  unsignalled one makes a car with its green wait for a main-road car about to stop at
+  its own red.
 - **Start a plan in the lane**, not at the nearest point of the road's centre line: the
   line from there to the next point (often far down the street) runs diagonally, and the
   car drives left of the middle for the length of the street.

@@ -175,6 +175,13 @@ What each round found, so far:
   "what holds each car" showed it (light, car, junction, light).
 - At crossings without lights, a stream of people kept cars 20 s+; once a car has stood
   there 6 s the next person lets it go (`_kept_waiting`).
+- Test drives 6 and 7 each found a bump: a car waiting crossways with its nose in the turn
+  (`lead_on` now samples a car's nose and tail), and a 1.5 m road at a junction that turned
+  the "lane's way" backwards (`lane_dir` now over 5 m of the plan). And a wrong 'unstuck'
+  lift after 40 s in a slow queue at a red (`_in_a_queue`).
+- Queues at a green (`tests/queue_start.gd`, KNOT_AT="-800,-288" in Givatayim): all at
+  once at first (a train), then far too slow (third car 9 s); the follow gap now on the
+  slower of the two speeds.
 - The exam's own counts were off twice: harsh braking per frame (30x one stop) and traffic
   reds judged at every signal point of a junction by the heading mid-turn. Check what a
   counter counts before chasing its number.
