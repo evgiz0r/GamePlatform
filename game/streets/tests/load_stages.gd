@@ -31,7 +31,11 @@ func _run() -> void:
 			total += int(st[k])
 	print("%s: ready after %.1f s; stages add up to %.1f s" % [g._city_name, wall / 1000.0, total / 1000.0])
 	for k in keys:
-		if int(st[k]) >= 50:
+		if int(st[k]) >= 50 and not String(k).contains(":"):
+			print("  %6d ms  %4.1f%%  %s" % [int(st[k]), 100.0 * int(st[k]) / maxf(total, 1), k])
+	print("parts of those stages:")
+	for k in keys:
+		if String(k).contains(":") and int(st[k]) >= 5:
 			print("  %6d ms  %4.1f%%  %s" % [int(st[k]), 100.0 * int(st[k]) / maxf(total, 1), k])
 	print("median: %s m" % str(g._dressing.get("median_m", 0)))
 	if OS.get_environment("OUT") != "":

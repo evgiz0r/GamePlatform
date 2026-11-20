@@ -163,6 +163,19 @@ func _place(mesh: Mesh, xforms: Array, seen: float, name: String, shadows := fal
 		where[name] = []
 	(where[name] as Array).append_array(xforms)
 
+## like _place, but each copy can be knocked over (g._knock_add): its own multimesh, not the
+## batches, so one copy can be hidden or bent; `posts` the index of each copy's solid post
+func _place_knock(mesh: Mesh, xforms: Array, posts: Array, seen: float, name: String, how: String) -> void:
+	if xforms.is_empty():
+		return
+	if g._over():
+		await g._pause()
+	g._knock_add(mesh, xforms, posts, seen, how)
+	_count[name] = int(_count.get(name, 0)) + xforms.size()
+	if not where.has(name):
+		where[name] = []
+	(where[name] as Array).append_array(xforms)
+
 func _mark(name: String, p: Vector2) -> void:
 	if not where.has(name):
 		where[name] = []
@@ -437,14 +450,29 @@ func retint() -> void:
 
 ## ---- everything else, built after the places ------------------------------------------------
 func build() -> void:
+	var t := Time.get_ticks_usec()
 	await flags()
+	t = _timed("flags", t)
 	await ads()
+	t = _timed("ads", t)
 	await fences()
+	t = _timed("fences, hedges, railings", t)
 	await kerbside()   # (before the racks and scooters: they keep clear of these)
+	t = _timed("kerbside (bollards, hydrants, bins, cabinets, recycling)", t)
+	if med:
+		await street_signs()
+		t = _timed("zone and parking signs", t)
 	await street_life()
+	t = _timed("bike racks, scooters", t)
 	await cats()
+	_timed("cats", t)
 	for k: String in _count:
 		g._dressing[k] = _count[k]
+
+## a part of the furniture's build timed for the loading's list (the game's _part)
+func _timed(name: String, t0: int) -> int:
+	g._part_time("furniture: " + name, t0)
+	return Time.get_ticks_usec()
 
 func set_night(on: bool) -> void:
 	if _ad_mat != null:
@@ -976,6 +1004,9 @@ func kerbside() -> void:
 	var hydrants: Array = []
 	var cabinets: Array = []
 	var bins: Array = []
+	var bin_posts: Array = []        # (each one's solid post: what the car knocks over, g._knock)
+	var bollard_posts: Array = []
+	var white_posts: Array = []
 	for ni: int in g._tile_nodes.get(g._tile, []):
 		if not g._crossing_set.has(ni):
 			continue
@@ -1017,6 +1048,7 @@ func kerbside() -> void:
 							var p := c + d * way * (2.1 + 1.3 * k) + side * sg * (hw + 0.42)
 							if _free(p, 0.15, 0.3, 0.7):
 								(bollard_white if white else bollards).append(Transform3D(Basis(), Vector3(p.x, _h(p) + kh, p.y)))
+								(white_posts if white else bollard_posts).append(g._posts.size())
 								g._add_post(p, 0.11)
 			break   # one road is enough: the zebra's own (as the game lays it)
 	for ri: int in g._tile_roads.get(g._tile, []):
@@ -1044,19 +1076,174 @@ func kerbside() -> void:
 				var p: Vector2 = sp[0]
 				if g._mine(p) and _free(p, 0.2, 0.4, 1.0):
 					bins.append(Transform3D(Basis(Vector3.UP, _rnd(p.round() + Vector2(1, 1)) * TAU), Vector3(p.x, _h(p) + kh, p.y)))
+					bin_posts.append(g._posts.size())
 					g._add_post(p, 0.3)
 					if med and _rnd(p.round() + Vector2(5, 2)) < 0.25:   # a cat by the bin, as there often is
 						var d: Vector2 = sp[1]
 						var c := p + d * (0.5 if _rnd(p.round() + Vector2(2, 9)) < 0.5 else -0.5)
 						g.cat_at(c, _h(c) + kh, -(sp[2] as Vector2).rotated((_rnd(p.round() + Vector2(4, 4)) - 0.5) * 2.0), "sit")
-	await _place(_bollard_kit(false), bollards, NEAR_SEEN * 1.2, "bollards")
-	await _place(_bollard_kit(true), bollard_white, NEAR_SEEN * 1.2, "bollards_white")
+	# a bike locked to one bollard in eight, leaning on it, along the kerb on its pavement side
+	var lean_bikes: Array = []
+	var lean_cols: Array = []
+	var paint := [Palette.col("hazard").lerp(Palette.col("bg"), 0.3), _tone("signblue"), _tone("mark"), _tone("cartrim")]
+	for t: Transform3D in bollards + bollard_white:
+		var bp := Vector2(t.origin.x, t.origin.z)
+		if _rnd(Vector2i((bp * 10.0).round())) > 0.125:
+			continue
+		var hit: Dictionary = g._nearest_seg(bp, 8.0, true)
+		if hit.is_empty():
+			continue
+		var r: Dictionary = g._roads[hit["road"]]
+		var pts: PackedVector2Array = r["pts"]
+		var d := (pts[int(hit["seg"]) + 1] - pts[int(hit["seg"])]).normalized()
+		var out := (bp - (hit["q"] as Vector2)).normalized()
+		var c := bp + out * 0.32 + d * 0.15
+		if not _free(c, 0.5, 0.5, 0.0) or not g._clear_of_posts(c + d * 0.6, 0.35) or not g._clear_of_posts(c - d * 0.6, 0.35):
+			continue
+		var bs := Basis(Vector3.UP, atan2(-d.y, d.x)) * Basis(Vector3.RIGHT, 0.2 if out.dot(Vector2(-d.y, d.x)) < 0.0 else -0.2)
+		lean_bikes.append(Transform3D(bs, Vector3(c.x, _h(c) + kh, c.y)))
+		lean_cols.append(paint[int(_rnd(Vector2i((bp * 7.0).round())) * 4.0) % 4])
+		g._add_post(c, 0.35)
+	await _place(_bike_kit(), lean_bikes, NEAR_SEEN, "bikes_on_bollards", false, lean_cols)
+	await _place_knock(_bollard_kit(false), bollards, bollard_posts, NEAR_SEEN * 1.2, "bollards", "bend")
+	await _place_knock(_bollard_kit(true), bollard_white, white_posts, NEAR_SEEN * 1.2, "bollards_white", "bend")
 	await _place(_rail_kit(), rails, NEAR_SEEN * 1.3, "railings_at_crossings")
 	await _place(_hydrant_kit(), hydrants, NEAR_SEEN, "hydrants")
 	await _place(_cabinet_kit(), cabinets, SEEN * 0.6, "cabinets", true)
-	await _place(_bin_kit(), bins, NEAR_SEEN, "bins")
+	await _place_knock(_bin_kit(), bins, bin_posts, NEAR_SEEN, "bins", "tumble")
 	if med:
 		await _recycling()
+
+## ---- the residential streets' own signs ---------------------------------------------------
+## As a walk finds them in Givatayim: where a residential street leaves a main road, a 30
+## sign for the slow zone (a blue square, a red ring, 30 in black) on the right a few metres
+## in; along a street whose kerb is painted blue and white, now and then the blue P of paid
+## parking with its yellow plate of hours under it. Meshes with their digits in them, not
+## text, so they go in the batches like the rest (a Label3D is a draw of its own).
+func street_signs() -> void:
+	var zone: Array = []
+	var parking: Array = []
+	for ni: int in g._tile_nodes.get(g._tile, []):
+		var arms: Array = g._node_roads[ni]
+		if arms.size() < 3:
+			continue
+		var main_there := false
+		for e: Vector2i in arms:
+			if MAIN.has((g._roads[e.x] as Dictionary)["k"]):
+				main_there = true
+		if not main_there:
+			continue
+		if g._over():
+			await g._pause()
+		var c: Vector2 = g._nodes[ni]
+		for e: Vector2i in arms:
+			var r: Dictionary = g._roads[e.x]
+			if not r["drive"] or not (r["k"] in ["residential", "living_street"]):
+				continue
+			var pts: PackedVector2Array = r["pts"]
+			for step: int in [-1, 1]:
+				if e.y + step < 0 or e.y + step >= pts.size():
+					continue
+				if r["o"] != 0 and r["o"] != step:
+					continue   # (one way out of it: nobody drives in here)
+				if _rnd(ni * 31 + e.x * 7 + step) > 0.75:
+					continue
+				var d := (pts[e.y + step] - c).normalized()
+				var right := Vector2(-d.y, d.x)
+				var p := c + d * (float(g._node_r[ni]) + 7.0) + right * (float(r["w"]) * 0.5 + 0.55)
+				if not (g._mine(p) and _free(p, 0.35, 0.4, 0.8)):
+					continue
+				zone.append(Transform3D(Basis(Vector3.UP, atan2(-d.x, -d.y)), Vector3(p.x, _h(p) + g.KERB_H, p.y)))
+				g._add_post(p, 0.07)
+	for ri: int in g._tile_roads.get(g._tile, []):
+		var r: Dictionary = g._roads[ri]
+		if not r["drive"] or r["pv"] or FAST.has(r["k"]) or r["k"] == "service":
+			continue
+		var paint: int = int(r["kerb"]) if r.has("kerb") else int(g._kerb_paint(r, g._hash_i((r["pts"] as PackedVector2Array)[0])))
+		if paint != 2:
+			continue
+		if g._over():
+			await g._pause()
+		var hw: float = float(r["w"]) * 0.5
+		var sd := 1.0 if posmod(ri, 2) == 1 else -1.0
+		for sp: Array in _walk_road(r, 85.0, 25.0 + _rnd(ri + 41) * 40.0, hw + 0.5, sd, 12.0):
+			var p: Vector2 = sp[0]
+			var d: Vector2 = sp[1]
+			if not (g._mine(p) and _free(p, 0.35, 0.4, 1.0)):
+				continue
+			var way := d * (1.0 if sd > 0.0 else -1.0)   # (facing the traffic on its side)
+			parking.append(Transform3D(Basis(Vector3.UP, atan2(-way.x, -way.y)), Vector3(p.x, _h(p) + g.KERB_H, p.y)))
+			g._add_post(p, 0.07)
+	await _place(_zone30_kit(), zone, NEAR_SEEN * 1.6, "signs_zone30")
+	await _place(_parking_sign_kit(), parking, NEAR_SEEN * 1.6, "signs_parking")
+
+## seven-segment digits on a sign, in a vertical plane at z, the digit's middle at (x, y),
+## h high
+func _digit(b, n: int, x: float, y: float, z: float, h: float, col: Color) -> void:
+	var w := h * 0.55
+	var s := h * 0.13
+	var segs: String = ["abcdef", "bc", "abged", "abgcd", "fgbc", "afgcd", "afgedc", "abc", "abcdefg", "abcdfg"][n]
+	var at := {"a": [Vector3(x, y + h * 0.5, z), Vector3(w, s, 0.01)], "d": [Vector3(x, y - h * 0.5, z), Vector3(w, s, 0.01)],
+		"g": [Vector3(x, y, z), Vector3(w, s, 0.01)],
+		"b": [Vector3(x + w * 0.5, y + h * 0.25, z), Vector3(s, h * 0.5 + s, 0.01)], "c": [Vector3(x + w * 0.5, y - h * 0.25, z), Vector3(s, h * 0.5 + s, 0.01)],
+		"f": [Vector3(x - w * 0.5, y + h * 0.25, z), Vector3(s, h * 0.5 + s, 0.01)], "e": [Vector3(x - w * 0.5, y - h * 0.25, z), Vector3(s, h * 0.5 + s, 0.01)]}
+	for k: String in segs:
+		_box(b, at[k][0], at[k][1], col)
+
+## a disc (or a ring from r0 out to r1) in the plane z = zz, facing +Z, round (0, y)
+func _disc(b, y: float, zz: float, r0: float, r1: float, col: Color, seg := 20) -> void:
+	for i in range(seg):
+		var a0 := TAU * i / seg
+		var a1 := TAU * (i + 1) / seg
+		var p0 := Vector3(cos(a0), sin(a0) + 0.0, 0)
+		var p1 := Vector3(cos(a1), sin(a1), 0)
+		var c := Vector3(0, y, zz)
+		b.tri(c + p0 * r0, c + p1 * r0, c + p1 * r1, Vector3.BACK, col)
+		b.tri(c + p0 * r0, c + p1 * r1, c + p0 * r1, Vector3.BACK, col)
+
+## the slow zone's sign on its pole, facing +Z: a blue square, a white rim, a red ring, 30
+func _zone30_kit() -> ArrayMesh:
+	if _kits.has("zone30"):
+		return _kits["zone30"]
+	var b = g.new_buf()
+	var grey := _tone("pole")
+	_tube(b, Vector3.ZERO, Vector3(0, 2.75, 0), 0.035, 0.035, grey, 6)
+	var y := 2.35
+	_box(b, Vector3(0, y, 0.04), Vector3(0.62, 0.62, 0.02), _tone("mark"))
+	_box(b, Vector3(0, y, 0.05), Vector3(0.56, 0.56, 0.02), _tone("signblue"))
+	_disc(b, y, 0.062, 0.0, 0.22, _tone("mark"))
+	_disc(b, y, 0.064, 0.17, 0.22, _tone("signred"))
+	var ink := Palette.col("bg")
+	_digit(b, 3, -0.062, y, 0.068, 0.15, ink)
+	_digit(b, 0, 0.062, y, 0.068, 0.15, ink)
+	var am: ArrayMesh = _mesh(b)
+	_kits["zone30"] = am
+	return am
+
+## paid parking: a blue square with a white P, and under it a yellow plate of hours (lines of
+## black where the text is), on a pole, facing +Z
+func _parking_sign_kit() -> ArrayMesh:
+	if _kits.has("parking_sign"):
+		return _kits["parking_sign"]
+	var b = g.new_buf()
+	_tube(b, Vector3.ZERO, Vector3(0, 2.7, 0), 0.035, 0.035, _tone("pole"), 6)
+	var y := 2.4
+	var white := _tone("mark")
+	_box(b, Vector3(0, y, 0.04), Vector3(0.5, 0.5, 0.02), white)
+	_box(b, Vector3(0, y, 0.05), Vector3(0.46, 0.46, 0.02), _tone("signblue"))
+	# the P: its stem and its bowl
+	_box(b, Vector3(-0.07, y, 0.062), Vector3(0.05, 0.3, 0.01), white)
+	_box(b, Vector3(0.0, y + 0.125, 0.062), Vector3(0.14, 0.05, 0.01), white)
+	_box(b, Vector3(0.0, y + 0.015, 0.062), Vector3(0.14, 0.05, 0.01), white)
+	_box(b, Vector3(0.07, y + 0.07, 0.062), Vector3(0.05, 0.16, 0.01), white)
+	# the plate of hours
+	var yellow := Palette.col("warn")
+	_box(b, Vector3(0, y - 0.39, 0.04), Vector3(0.5, 0.24, 0.02), yellow)
+	for i in range(3):
+		_box(b, Vector3(0, y - 0.31 - 0.065 * i, 0.052), Vector3(0.36 - 0.06 * float(i % 2), 0.025, 0.01), Palette.col("bg"))
+	var am: ArrayMesh = _mesh(b)
+	_kits["parking_sign"] = am
+	return am
 
 ## ---- recycling -----------------------------------------------------------------------------
 ## By one junction in six of the residential streets, at the back of the pavement a few metres
@@ -1066,6 +1253,9 @@ func _recycling() -> void:
 	var paper: Array = []
 	var cages: Array = []
 	var glass: Array = []
+	var paper_posts: Array = []
+	var cage_posts: Array = []
+	var glass_posts: Array = []
 	for ni: int in g._tile_nodes.get(g._tile, []):
 		if (g._node_roads[ni] as Array).size() < 3 or _rnd(ni * 13 + 5) > 0.25:
 			continue
@@ -1095,12 +1285,13 @@ func _recycling() -> void:
 					continue
 				var xf := Transform3D(face, Vector3(p.x, _h(p) + g.KERB_H, p.y))
 				(paper if kind == "paper" else (cages if kind == "cage" else glass)).append(xf)
+				(paper_posts if kind == "paper" else (cage_posts if kind == "cage" else glass_posts)).append(g._posts.size())
 				g._add_post(p, 0.55 if kind != "glass" else 0.5)
 				k += 1
 			break   # one corner of the junction
-	await _place(_paper_bin_kit(), paper, NEAR_SEEN * 1.2, "recycle_paper")
-	await _place(_cage_kit(), cages, NEAR_SEEN * 1.2, "recycle_cages")
-	await _place(_glass_bell_kit(), glass, NEAR_SEEN * 1.2, "recycle_glass")
+	await _place_knock(_paper_bin_kit(), paper, paper_posts, NEAR_SEEN * 1.2, "recycle_paper", "tumble")
+	await _place_knock(_cage_kit(), cages, cage_posts, NEAR_SEEN * 1.2, "recycle_cages", "tumble")
+	await _place_knock(_glass_bell_kit(), glass, glass_posts, NEAR_SEEN * 1.2, "recycle_glass", "tumble")
 
 ## the paper bin: a blue box 1.0 x 0.8 x 1.3 m, its lid a shade darker, a slot on the front
 ## (+Z) and a white label over it
@@ -1203,7 +1394,10 @@ func _hydrant_kit() -> ArrayMesh:
 	if _kits.has("hydrant"):
 		return _kits["hydrant"]
 	var b = g.new_buf()
-	var red: Color = _tone("signred")
+	# a hydrant's red is a paint's red: the signs' red is the palette's hazard, pink here, and
+	# a filmed corner's red hydrant came out pink
+	var hz := Palette.col("hazard")
+	var red := Color.from_hsv(0.995, clampf(hz.s, 0.65, 0.9), clampf(hz.v * 0.8, 0.5, 0.8))
 	_tube(b, Vector3.ZERO, Vector3(0, 0.08, 0), 0.15, 0.15, red.darkened(0.2), 10)   # the flange
 	_tube(b, Vector3(0, 0.08, 0), Vector3(0, 0.55, 0), 0.11, 0.1, red, 10)
 	_tube(b, Vector3(0, 0.55, 0), Vector3(0, 0.66, 0), 0.12, 0.05, red, 10)
@@ -1223,12 +1417,138 @@ func _cabinet_kit() -> ArrayMesh:
 	var b = g.new_buf()
 	var grey: Color = _tone("pole").lerp(_tone("mark"), 0.25)
 	_box(b, Vector3(0, 0.06, 0), Vector3(1.1, 0.12, 0.5), _tone("concrete") if g._tone.has("concrete") else grey.darkened(0.2))
-	_box(b, Vector3(0, 0.77, 0), Vector3(1.0, 1.3, 0.4), grey)
+	_box(b, Vector3(0, 0.77, 0), Vector3(1.0, 1.3, 0.4), Color(grey, 0.5))   # (alpha 0.5: tags and stickers on it, TONE_SHADER)
 	_box(b, Vector3(0, 1.45, 0), Vector3(1.06, 0.06, 0.46), grey.darkened(0.12))   # its lid
 	_box(b, Vector3(0, 0.77, 0.205), Vector3(0.015, 1.2, 0.01), grey.darkened(0.45))   # the doors' seam
 	_box(b, Vector3(0.3, 1.2, 0.205), Vector3(0.25, 0.12, 0.01), grey.darkened(0.3))  # a vent
 	var am: ArrayMesh = _mesh(b)
 	_kits["cabinet"] = am
+	return am
+
+## ---- on the buildings' walls (streets.gd _build_facade_kit places them) ----------------------
+
+## An AC unit's outdoor half, its back to the wall (z = 0), facing +Z, its foot at y = 0: an
+## off-white box stood off the wall on two arms; the fan's round dark grille on the left,
+## slots on the right, the insulated pipe from its end into the wall, the drip hose down and
+## the grey streak the drips leave. ~130 vertices: there are thousands (drawn instanced).
+func ac_kit(v: int) -> ArrayMesh:
+	var key := "ac%d" % v
+	if _kits.has(key):
+		return _kits[key]
+	var b = g.new_buf()
+	var body: Color = _tone("tank").lerp(_tone("pole"), 0.12)
+	var dark: Color = _tone("pole").darkened(0.55)
+	var W := 0.8 if v == 0 else 0.7
+	var H := 0.55 if v == 0 else 0.5
+	var D := 0.27
+	var z0 := 0.1   # (off the wall: the arms' length)
+	var zf := z0 + D + 0.004
+	_box(b, Vector3(0, H * 0.5, z0 + D * 0.5), Vector3(W, H, D), body)
+	# the fan: a hexagon of dark grille
+	var fc := Vector2(-W * 0.17, H * 0.5)
+	var r := H * 0.4
+	for i in range(6):
+		var a0 := TAU * (i + 0.5) / 6.0
+		var a1 := TAU * (i + 1.5) / 6.0
+		b.tri(Vector3(fc.x, fc.y, zf), Vector3(fc.x + cos(a0) * r, fc.y + sin(a0) * r, zf),
+			Vector3(fc.x + cos(a1) * r, fc.y + sin(a1) * r, zf), Vector3.BACK, dark)
+	# slots on the right: flat dark strips on its face
+	for k in range(3):
+		var y0 := H * (0.28 + 0.2 * k)
+		b.tri(Vector3(W * 0.17, y0, zf), Vector3(W * 0.43, y0, zf), Vector3(W * 0.43, y0 + 0.03, zf), Vector3.BACK, dark.lightened(0.15))
+		b.tri(Vector3(W * 0.17, y0, zf), Vector3(W * 0.43, y0 + 0.03, zf), Vector3(W * 0.17, y0 + 0.03, zf), Vector3.BACK, dark.lightened(0.15))
+	for sx: float in [-1.0, 1.0]:   # two arms from the wall under it
+		_tube(b, Vector3(sx * W * 0.36, -0.02, 0.0), Vector3(sx * W * 0.36, -0.02, z0 + D + 0.02), 0.02, 0.02, _tone("pole"), 3)
+	# the pipe from its right end into the wall, the drip hose down from its foot
+	_tube(b, Vector3(W * 0.5 + 0.05, H * 0.3, z0 + 0.06), Vector3(W * 0.5 + 0.05, H * 0.3, 0.0), 0.035, 0.035, body.darkened(0.08), 3)
+	_tube(b, Vector3(W * 0.3, 0.0, z0 + 0.1), Vector3(W * 0.3, -0.45, 0.03), 0.01, 0.01, dark, 3)
+	# the streak the drips leave down the wall (a hair off it)
+	var st: Color = _tone("wall").lerp(_tone("pole"), 0.3).darkened(0.32)
+	b.tri(Vector3(W * 0.3 - 0.05, -0.4, 0.004), Vector3(W * 0.3 + 0.05, -0.4, 0.004), Vector3(W * 0.3 + 0.012, -1.3, 0.004), Vector3.BACK, st)
+	b.tri(Vector3(W * 0.3 - 0.05, -0.4, 0.004), Vector3(W * 0.3 + 0.012, -1.3, 0.004), Vector3(W * 0.3 - 0.012, -1.3, 0.004), Vector3.BACK, st)
+	var am: ArrayMesh = _mesh(b)
+	_kits[key] = am
+	return am
+
+## the colours washing comes in: whites and greys the most, then the palette's own, muted
+func _laundry_cols() -> Array:
+	var ink := Palette.col("ink")
+	var alt := Palette.col("bg_alt")
+	return [ink.lerp(alt, 0.05), ink.lerp(alt, 0.2), ink.lerp(alt, 0.5), _natural(Palette.col("player").lerp(ink, 0.3), 0.5),
+		_natural(Palette.col("hazard").lerp(ink, 0.25), 0.5), _natural(Palette.col("warn").lerp(ink, 0.2), 0.5),
+		_natural(Palette.col("friend").lerp(ink, 0.3), 0.45), _natural(Palette.col("accent").lerp(ink, 0.3), 0.45),
+		_natural(Palette.col("player").lerp(Palette.col("bg"), 0.5), 0.5), alt.lerp(Palette.col("bg"), 0.3)]
+
+## A washing rack under a window, the Israeli way: two arms out from the wall at the top
+## (y = 0), four lines along it, and on them towels, shirts, trousers, a sheet, socks. Three
+## arrangements (k).
+func washing_kit(k: int) -> ArrayMesh:
+	var key := "wash%d" % k
+	if _kits.has(key):
+		return _kits[key]
+	var b = g.new_buf()
+	var metal: Color = _tone("pole").lightened(0.25)
+	var L := 1.5
+	for sx: float in [-1.0, 1.0]:
+		_box(b, Vector3(sx * L * 0.5, 0, 0.33), Vector3(0.025, 0.025, 0.66), metal)
+		_tube(b, Vector3(sx * L * 0.5, -0.3, 0.0), Vector3(sx * L * 0.5, 0.0, 0.5), 0.01, 0.01, metal, 3)
+	var lines := [0.15, 0.3, 0.45, 0.6]
+	for z: float in lines:
+		_tube(b, Vector3(-L * 0.5, -0.005, z), Vector3(L * 0.5, -0.005, z), 0.004, 0.004, metal, 3)
+	var cols := _laundry_cols()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7 + k * 31
+	for li in range(lines.size()):
+		var z: float = lines[li]
+		var x := -L * 0.5 + 0.06
+		while x < L * 0.5 - 0.2:
+			if rng.randf() < 0.3:   # a gap
+				x += rng.randf_range(0.1, 0.3)
+				continue
+			var c: Color = cols[mini(rng.randi() % cols.size(), rng.randi() % cols.size())]   # (whites more often)
+			var kind := rng.randi() % 5
+			var w := 0.0
+			var h := 0.0
+			if kind == 0:   # a towel
+				w = rng.randf_range(0.35, 0.5)
+				h = rng.randf_range(0.45, 0.65)
+				_box(b, Vector3(x + w * 0.5, -h * 0.5, z), Vector3(w, h, 0.012), c)
+			elif kind == 1:   # a shirt: a body and its sleeves
+				w = 0.42
+				h = 0.55
+				_box(b, Vector3(x + w * 0.5, -h * 0.5 - 0.02, z), Vector3(w * 0.7, h, 0.012), c)
+				_box(b, Vector3(x + w * 0.5, -0.09, z), Vector3(w, 0.16, 0.012), c)
+			elif kind == 2:   # trousers: two legs
+				w = 0.36
+				h = rng.randf_range(0.7, 0.9)
+				for sx2: float in [-1.0, 1.0]:
+					_box(b, Vector3(x + w * 0.5 + sx2 * 0.085, -h * 0.5, z), Vector3(0.15, h, 0.012), c)
+			elif kind == 3:   # socks, a few
+				w = 0.3
+				for s in range(3):
+					_box(b, Vector3(x + 0.05 + s * 0.1, -0.12, z), Vector3(0.07, 0.24, 0.012), cols[rng.randi() % cols.size()])
+			else:   # a sheet folded over the line
+				w = rng.randf_range(0.6, 0.9)
+				h = rng.randf_range(0.5, 0.8)
+				if x + w > L * 0.5 - 0.05:
+					w = L * 0.5 - 0.05 - x
+				_box(b, Vector3(x + w * 0.5, -h * 0.5, z), Vector3(w, h, 0.012), c)
+			x += w + rng.randf_range(0.02, 0.08)
+	var am: ArrayMesh = _mesh(b)
+	_kits[key] = am
+	return am
+
+## a towel or a rug hung over a balcony's parapet (its front at z = 0.62, top at y = 1.0),
+## white: the copy's colour is its colour
+func towel_kit() -> ArrayMesh:
+	if _kits.has("towel"):
+		return _kits["towel"]
+	var b = g.new_buf()
+	_box(b, Vector3(0, 1.01, 0.58), Vector3(0.55, 0.012, 0.12), Color.WHITE)
+	_box(b, Vector3(0, 0.72, 0.646), Vector3(0.55, 0.58, 0.012), Color.WHITE)
+	_box(b, Vector3(0, 0.9, 0.513), Vector3(0.55, 0.22, 0.012), Color.WHITE)
+	var am: ArrayMesh = _mesh(b)
+	_kits["towel"] = am
 	return am
 
 ## a street bin: a dark drum on a short post, a ring round its mouth
@@ -1324,6 +1644,13 @@ func street_life() -> void:
 	var scooter_paint := [_tone("mark"), _tone("cartrim"), red, _tone("rim")]
 	var k := 1.0 / float(g._city_data.get("scale", 10))
 	var taken := _life_taken
+	var delivery: Array = []
+	var delivery_cols: Array = []
+	# the delivery services' boxes: a bright blue and an orange (the hue pinned, its strength
+	# the palette's, as the kerb paint's)
+	var pl := Palette.col("player")
+	var box_paint := [Color.from_hsv(0.54, clampf(pl.s, 0.6, 0.9), clampf(pl.v, 0.6, 0.9)),
+		Color.from_hsv(0.07, clampf(hz.s, 0.65, 0.9), clampf(hz.v, 0.65, 0.9))]
 	var all_pois: Array = g._city_data.get("pois", [])
 	for pi: int in g._tile_pois.get(g._tile, []):
 		var p: Array = all_pois[pi]
@@ -1331,6 +1658,23 @@ func street_life() -> void:
 		if not (kind.begins_with("shop:") or kind in ["cafe", "restaurant", "fast_food", "ice_cream", "bar", "pub",
 				"school", "library", "bank", "pharmacy", "community_centre"]):
 			continue
+		if med and kind in ["restaurant", "fast_food", "cafe"] and _rnd(Vector2i((Vector2(p[0], p[1]) * 0.1).round()) + Vector2i(5, 5)) < 0.45:
+			# a delivery rider's e-bike on its stand at the kerb, its box on the back, waiting
+			var ka := 1.0 / float(g._city_data.get("scale", 10))
+			var at2 := Vector2(p[0], p[1]) * ka
+			var hit2: Dictionary = g._nearest_seg(at2, 40.0, true, true)
+			if not hit2.is_empty() and not FAST.has((g._roads[hit2["road"]] as Dictionary)["k"]):
+				var r2: Dictionary = g._roads[hit2["road"]]
+				var q2: Vector2 = hit2["q"]
+				var out2 := (at2 - q2).normalized()
+				var pts2: PackedVector2Array = r2["pts"]
+				var d2 := (pts2[int(hit2["seg"]) + 1] - pts2[int(hit2["seg"])]).normalized()
+				var bp := q2 + out2 * (float(r2["w"]) * 0.5 + 0.7) + d2 * (2.5 + _rnd(pi + 7) * 2.0)
+				if out2 != Vector2.ZERO and g._mine(bp) and _free(bp, 0.45, 0.6, 1.0):
+					var lean := Basis(Vector3.UP, atan2(-d2.y, d2.x)) * Basis(Vector3.RIGHT, 0.14)
+					delivery.append(Transform3D(lean, Vector3(bp.x, _h(bp) + g.KERB_H, bp.y)))
+					delivery_cols.append(box_paint[int(_rnd(pi + 3) * 2.0) % 2])
+					g._add_post(bp, 0.5)
 		var at := Vector2(p[0], p[1]) * k
 		var cell := Vector2i((at / 25.0).round())
 		if taken.has(cell):
@@ -1385,6 +1729,7 @@ func street_life() -> void:
 				g._add_post(s, 0.45)
 	await _place(_rack_kit(), racks, NEAR_SEEN, "bike_racks")
 	await _place(_bike_kit(), bikes, NEAR_SEEN, "bikes", false, bike_cols)
+	await _place(_delivery_kit(), delivery, NEAR_SEEN, "delivery_bikes", false, delivery_cols)
 	await _place(_scooter_kit(), scooters, NEAR_SEEN * 1.2, "scooters", false, scooter_cols)
 
 ## ---- street cats ---------------------------------------------------------------------------
@@ -1514,6 +1859,40 @@ func _bike_kit() -> ArrayMesh:
 	_tube(b, head, head + Vector3(0, 0.14, 0), 0.02, 0.02, frame, 4)
 	_tube(b, head + Vector3(0, 0.14, -0.26), head + Vector3(0, 0.14, 0.26), 0.018, 0.018, tyre, 4)
 	return _mesh(b)
+
+## a delivery rider's e-bike, along local X like the bike: the bike, darker, a battery on
+## its down tube and a big box on a rack over the back wheel (white: the copy's colour
+## paints it, a delivery service's)
+func _delivery_kit() -> ArrayMesh:
+	if _kits.has("delivery"):
+		return _kits["delivery"]
+	var b = g.new_buf()
+	var frame := _tone("cartrim")
+	var tyre := _tone("tyre")
+	for cx: float in [-0.52, 0.52]:
+		var prev := Vector3(cx + 0.33, 0.34, 0)
+		for i in range(1, 11):
+			var t := TAU * i / 10.0
+			var q := Vector3(cx + cos(t) * 0.33, 0.34 + sin(t) * 0.33, 0)
+			_tube(b, prev, q, 0.03, 0.03, tyre, 4)
+			prev = q
+	var rear := Vector3(-0.52, 0.34, 0)
+	var front := Vector3(0.52, 0.34, 0)
+	var crank := Vector3(-0.05, 0.3, 0)
+	var seat := Vector3(-0.2, 0.82, 0)
+	var head := Vector3(0.38, 0.82, 0)
+	for pair: Array in [[rear, crank], [crank, seat], [seat, rear], [crank, head], [seat, head], [head, front]]:
+		_tube(b, pair[0], pair[1], 0.026, 0.026, frame, 4)
+	_box(b, crank.lerp(head, 0.45) + Vector3(0, -0.02, 0), Vector3(0.34, 0.09, 0.08), tyre, Basis(Vector3.BACK, 0.75))   # the battery
+	_box(b, seat + Vector3(0, 0.08, 0), Vector3(0.24, 0.05, 0.1), tyre)
+	_tube(b, head, head + Vector3(0, 0.16, 0), 0.02, 0.02, frame, 4)
+	_tube(b, head + Vector3(0, 0.16, -0.28), head + Vector3(0, 0.16, 0.28), 0.018, 0.018, tyre, 4)
+	_box(b, Vector3(-0.55, 0.72, 0), Vector3(0.36, 0.04, 0.3), frame)                   # the rack
+	_box(b, Vector3(-0.55, 0.96, 0), Vector3(0.42, 0.44, 0.42), Color.WHITE)           # the box
+	_box(b, Vector3(-0.55, 1.19, 0), Vector3(0.43, 0.02, 0.43), Color(0.85, 0.85, 0.85))
+	var am: ArrayMesh = _mesh(b)
+	_kits["delivery"] = am
+	return am
 
 ## a scooter, nose along local +Z: two small wheels, the floor, the leg shield and the
 ## seat over the engine (the body is white: each copy's colour paints it)

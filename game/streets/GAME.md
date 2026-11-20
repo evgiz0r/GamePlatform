@@ -185,10 +185,16 @@ Lova Eliav stay on the ground (too short to get under the street at a car's grad
 
 The railway runs down the middle of the Ayalon, between its carriageways and under its
 bridges: three tracks most of the way, more at the stations, on ballast with concrete
-sleepers, and Tel Aviv Savidor and Tel Aviv HaShalom with their platforms, canopies and
-names. Double-deck trains run along it, each line in turn one way then the other, a minute
-or so apart. The Red Line light rail is underground here, so it is not shown. On the
-minimap the tracks are a light line on a dark one.
+sleepers, under the overhead wires on their masts, and Tel Aviv Savidor and Tel Aviv
+HaShalom with their platforms, canopies and names. Double-deck trains run along it, each
+line in turn one way then the other, a minute or so apart: they slow for each station,
+stand half a minute at the platform and pull out with a blast of the horn. Their headlights
+are on and, at night, their windows lit; near the line you hear them go by. The Red Line
+light rail is underground here, so it is not shown. On the minimap the tracks are a light
+line on a dark one.
+
+> Trains that act like trains: a front with headlights, lit at night, stopping at the
+> stations; the overhead electric wires; the sound of a train going by.
 
 > game streets -- lets add/start working on adding Tel Aviv. Somewhat the area I mentioned.
 > (with a map: Ichilov, Savidor, Azrieli, HaKirya, TLV Mall, Montefiore, Bitsaron,
@@ -928,6 +934,44 @@ them, thinning out by 18 m. Only at the two top qualities (fewer at the second).
 - By one junction in four of the residential streets: a big blue bin for paper, often an
   orange cage for packaging beside it, now and then a purple bell for glass.
 
+> 1-4, 8, 10. people who react not needed yet, maybe later.
+
+**More of the street, and things that break:**
+- Bikes locked to the bollards, leaning on them; now and then one dropped on the pavement
+  by a garden wall; a delivery rider's e-bike with its big blue or orange box outside the
+  restaurants and cafes (the motorbikes parked up on the pavement came earlier).
+- Where a residential street leaves a main road, the slow zone's 30 sign on the right a
+  few metres in; along the blue-and-white kerbs now and then the blue P of paid parking
+  with its yellow plate of hours.
+- Passages between blocks walled on both sides: rendered and capped, or rough stone,
+  sometimes boards along the top of one side, sometimes a row of bike hoops.
+- Tags and stickers: scribbled tags and bubble letters low on the rendered garden walls,
+  gate piers and grey cabinets, stickers on the poles.
+- Knock a bin or a recycling bin and it goes flying and tumbles; hit a bollard and it bends
+  over at its foot (the driving assist still brakes for bollards, not for bins). Hitting
+  anything solid throws sparks, and so does scraping along a wall; a hard knock leaves
+  glass and bits of plastic on the road and dents in your car where it hit. What you knock
+  over stays down while you are near and is back once you have driven out of sight.
+
+> 1, 3, 6, 8 (check what was not seen yet; AC units and washing; background sounds; people
+> in one piece)
+
+**On the walls, in the air, and lighter to draw:**
+- AC units that look like AC units -- an off-white box on two arms, the fan's round grille
+  and the vents, the pipes into the wall, a drip hose and the grey streak the drips leave --
+  under the windows, any side but the street's the most; up on the back wall of some
+  balconies over the parapet. Most blocks show a few (it was three plain boxes at most).
+- A rack of washing under a window now and then: towels, shirts, trousers, socks, a sheet;
+  a towel hung over a balcony's parapet.
+- What a street sounds like besides the traffic: birds in the trees by day (sparrows, a
+  bulbul), louder where there are more trees and in the evening; crickets in the gardens
+  at night; people talking at the cafe, shop or school you pass, from where they are; a dog
+  barking a street or two away now and then. Quieter in the car, the more the faster.
+- Dents you can see: a hard knock pushes the panel in, buckles it, and scrapes the paint
+  round it.
+- Each person drawn in one go (they were six pieces each): fewer things for the browser to
+  draw every frame, nothing different to see.
+
 **People who keep clear.** The walkers step round the trees, posts, benches and cabinets on
 the pavement, keep to one side of anyone coming the other way, and step round people standing
 talking and round you on foot; you and the car can no longer go through them (the car stops
@@ -1168,9 +1212,7 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   and the ground (the test town has them already), then an interchange you drive over and
   under.
 - Not just driving: the same baked city could be walked, or used by another game.
-- Crashes you can see, and things that break ("lets start adding maybe some collision
-  effects and things breaking"): a bin or a recycling bin knocked over and rolling, a
-  bollard or a sign post bent over, a fence panel or a hedge pushed in, sparks and a scrape
-  mark where the car rubs a wall, glass and bits of plastic on the road after a hard hit,
-  dents on the car; people jumping back, or falling, when a car comes at them. Things the
-  car knocks over stay knocked over for a while, then are put back.
+- Crashes, what is still to come: a sign post bent, a fence panel or a hedge pushed in, a
+  scrape mark on the wall the car rubbed.
+- People who react ("not needed yet, maybe later"): jumping back, or falling, when a car
+  comes at them; glancing at you; stopping at the kerb before they step out.

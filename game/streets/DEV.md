@@ -58,6 +58,57 @@ The ones most often touched, and the functions in them:
   -- no draws of their own. Lit shops' light on the pavement: `_shop_lights`. The night's
   colours: the night branch of `_retint_city` (a little of the palette's player colour, not
   half of it). Shop glass at night 0.85 (2.0 clipped to white).
+- **people in one piece** -- `_one_piece` (end of `_humanize`): the Quaternius figure is one
+  mesh of six surfaces (Skin, Shirt, Pants, Belt, Face, Hair), each a draw (and a shadow
+  draw). Joined once per figure into one surface (shared by everyone with that figure; the
+  part's number in the vertex colour's red), drawn with PIECE_SHADER whose `parts[6]` are
+  that person's colours (linear: `srgb_to_linear`), its distance dither done by hand
+  (`fade_from`/`fade_to`, set by `_people_lod`). tests/draws.gd at the start: 217 -> 180
+  draws, people 48 -> 8. `_shader_key` keys them all as one kind for the warm-up.
+- **on the walls** -- `_build_facade_kit`: AC units (`furniture.ac_kit(0)`, ~130 vertices,
+  on arms under a window's sill or up on a balcony's back wall; at most 4 a block), washing
+  racks (`washing_kit(0)`, under a sill, tinted per copy), towels over parapets
+  (`towel_kit`, coloured per copy). The AC units and racks are drawn instanced
+  (`_instanced`: a MultiMesh per square, a draw or two near you), not merged: merged, the
+  first version (~19,000 AC units of ~230 vertices, ~2,000 racks of ~400 city-wide) made
+  the batches fat -- 19 hitches of ~50 ms in a 25 s playtest while the city built behind,
+  from 3. The towels (few) are merged. `wall_things` keeps 200 of each for
+  tests/wall_things.gd.
+- **street sounds** -- `_build_street_sounds` / `_street_snd_tick` (called from
+  `_engine_tick`): birds and crickets are 2D loops, the voices and the dog 3D players (at the
+  nearest TALKY place or shop within 70 m; at a random point 45-120 m off every 35-100 s
+  where `_liveliness` > 0.15). Levels worked out twice a second, eased at 10 dB/s; in the
+  car 7-16 dB quieter. A 40 m grid of tree counts (counted as each square plants its trees:
+  most street trees are planted by the game, not in the city file) and of talky places
+  (from the city file at load, before it is let go). The WAVs are made by sounds/make_sounds.py; a new loop
+  needs `edit/loop_mode=2` in its .import (Godot does not loop a WAV without loop points).
+  tests/street_sounds.gd records day and night to listen to.
+- **what breaks** -- knockable things (bins, recycling, bollards) are placed by
+  `furniture._place_knock` into multimeshes of their own (`_knock_add`; `_knockable`: post
+  index -> [multimesh, copy, transform, mesh, "tumble"/"bend", radius]), not the batches, so
+  one copy can be hidden or bent: +1-3 draws a square near you. `_collide` hands a
+  knockable post to `_knock` (the car let through, slowed a little or, a bollard, a lot);
+  "tumble" hides the copy and throws a RigidBody3D (its mesh, a box shape, a 40 m slab to
+  land on -- the city has no physics of its own); `_knock_tick` puts it back after
+  KNOCK_BACK_S once you are 70 m off. `_light_thing`: the assist does not brake for bins.
+  `_sparks_at` (one CPUParticles3D, reused), `_glass_at` (a mesh of shards, 6 kept, 90 s),
+  `_dent` (CAR_SHADER's `dents[4]`, the player's material only). `tests/crash_things.gd`
+  (assist off, else it brakes first; a person waiting by a bollard stops the car short).
+- **load, part by part** -- `_part_time("stage: part", t0)` adds to `_stage_ms` while
+  loading; `tests/load_stages.gd` lists the parts. Measured headless (what the work costs,
+  without the frames drawn while loading): 3.9 s of stages in Givatayim; kerbs 1.7 s, of it
+  the front gardens 0.7-0.8 (board fences 0.17, walls 0.14, hedges 0.09, gates 0.15, the
+  plot loop the rest) and corners 0.28; the city file 0.55; buildings 0.16 (contact
+  shadows 0.08); trees 0.15 (their shadows on the ground 0.05); furniture 0.14; far
+  shadows' work 0.17. Under xvfb the "warm up" is 5-7 s, but that is four frames of the
+  software renderer: stripping the grass, the contact-shadow layer, the far shade and the
+  wet code out of the shaders did not shorten it (5.2, 5.5, 7.1 s: noise).
+- **graffiti** -- TONE_SHADER's `graffiti()`: on a face of a tone whose TONE_FX z is 1 with
+  kind 0 ("gardenwall", "pole") or a kit's face with vertex alpha 0.3-0.7 (the cabinet's
+  body); height above the ground from the height grid (`_set_hmap`, shared with the grass;
+  the tone material is made before the grid is read, so `_retint_tone_mat` hands it over).
+- **zone and parking signs** -- `furniture.street_signs`: meshes with 7-segment digits
+  (`_digit`), not Label3D (a draw each). **Passages** -- `_build_passages` (its own stage).
 - **front gardens' walls and gates** -- `_garden_fronts` lays each plot's wall itself
   (`_garden_wall`: rubble in the `wall` buffer, or render + coping in fronts' "plaster" /
   "coping"; its kind and height from the plot's own hash), not the kerb loop any more (that
@@ -402,12 +453,23 @@ what became of it:
   piers are off the road); a café table's 0.7 m solid circle reached 0.8 m into the lane
   from a table up against the kerb (the circle now only as big as the room); a cat sat on the
   road by a parked car's nose. Givatayim: 16 posts on the road -> 1; Ashdod 27 -> 0.
-- **Open -- queues clear about a fifth slower than real ones**: straight on, unimpeded, 28
-  gaps over the line at 1.22x Greenshields' (the band is 1.2). Three 15-minute watches of
-  one build read 1.18 / 1.44 / 1.57 -- watch 40 minutes. Two tries did not move it: easing
-  the pull-away against the cruising speed, and noticing the car in front at 0.35 m/s
-  (start gaps stayed 1.4 s); the time goes in the follow model (decided every third tick,
-  the headway kept from a standstill). Left for whoever owns traffic's driving.
+- **Fixed -- walls across streets from the passages between blocks** (another session's work
+  of the same hour, live for a few minutes): each piece of a passage's wall was checked at
+  its middle only, so a long piece of a footway crossing or ending in a street was walled
+  right through it -- 318 walls on Givatayim's roads, 394 on Ashdod's, up to 6 m in, solid
+  to the car. Now checked every 2 m along; and a bike "dropped by the wall" only off the road.
+- **Fixed -- queues cleared slower than real ones.** A trace of the second car (`TRACE=n` in
+  queue_start) showed the follow model was not what held it -- what it wanted was always
+  above its speed -- but its start: it noticed the car in front only at 0.5 m/s (~0.45 s
+  after that car began to creep) and then took 0.35-1.1 s to react, ~1.2 s a car against
+  ~1 s at real signals. Now 0.3 m/s and 0.3-0.9 s. At 1x, 40 minutes, gaps between two cars
+  both going straight on: 1.07x Greenshields' (the old drivers on the same test: 1.44x),
+  start gaps 1.0 s. The test needed fixing first, four ways: speeds sampled by ticks (at 2x
+  the old sampling skipped most), the line crossed by the rear wheels as Greenshields timed
+  it, gaps judged only between two cars going straight on (a second car turning off and
+  giving way read as a slow queue), and 40 minutes of watching (three 15-minute watches of
+  one build read 1.18 / 1.44 / 1.57). At 2x it read 1.17x: final numbers at 1x. Tried and no
+  help: easing the pull-away against the cruising speed.
 
 ## Seeing what the car did: the drive recorder
 
@@ -1025,8 +1087,28 @@ towns get them when re-baked. What the game does with them:
   middle half, the station's name (Hebrew and English) under it.
 - **Trains** (`tick`, in `_physics_process`): five double-deck coaches at 22 m/s, one
   train a line, each direction in turn with 40-90 s between; seen, not solid (the Ayalon's
-  line runs where no car goes; a level crossing would need them solid). The minimap draws
-  the tracks light on dark (`map_lines`).
+  line runs where no car goes; a level crossing would need them solid). `s` is coach 0's
+  middle and coach 0 always leads (positions are worked out from the head along the way it
+  runs), so its +Z end has the cab face, windscreen and white lamps and the last coach's
+  -Z end the red ones -- nothing swaps when it reverses. Stops (`_stops_of`): where a
+  platform's middle is within 12 m of the line, one per 120 m; the train brakes at 0.7
+  m/s^2 to stand with its middle at the platform's (measured: 0.3 m off), stands DWELL 30
+  s, pulls away at 0.6 m/s^2. At night (`set_night`, from `_set_night`) the shared window
+  material glows. The minimap draws the tracks light on dark (`map_lines`).
+- **The overhead line** (`_wires`): masts every 50 m on each outer side of the tracks (no
+  other track within 4.5 m that side), each with an arm reaching over its track and any
+  others within 12 m -- from both sides they meet as a portal over three tracks; a contact
+  wire 5.6 m over the rails and a messenger 1.1 m above, the contact wire lowered under a
+  bridge's slab (0.4 m clear) and the messenger left out there. No mast on a road or under
+  a bridge. Every main-line track is wired (the Ayalon line is; the baker does not keep
+  OSM's `electrified=` yet). The arms are one unit box scaled along its own axis
+  (`Basis * Basis.from_scale`): `Basis.scaled()` stretches along the world's axes, and the
+  arms came out skewed along the track.
+- **Sound** (`sound`, from `_engine_tick`, which runs paused too): a 3D rumble on each
+  train's middle coach (`sounds/train.wav`, a 4 s loop: the roar, the bogies' thumps coach
+  by coach, a faint motor whine), louder with its speed, and the horn (`train_horn.wav`)
+  once as it pulls out of a station; silent when muted, paused or the run is over. Both
+  made by `sounds/make_sounds.py train train_horn` (only those: the others stay as they are).
 - **The test**: `tests/rails.gd` (level 7) prints what was set up and how close the beds
   come to roads (0 over asphalt), stands a train at HaShalom and shoots it from beside the
   line and from the platform, both stations from above, and a track close up. Two things
@@ -1034,9 +1116,9 @@ towns get them when re-baked. What the game does with them:
   beside the line the bed was not there (darker now); and a test that holds the world still
   (`set_physics_process(false)`) must set `_prev_yaw` with `_yaw`, or the view blends from
   the car's old heading and looks the wrong way.
-- **Still to do**: a locomotive's face and a train's lights at night; catenary masts and
-  wires (the Ayalon line is electrified); level crossings (trains solid, barriers); the
-  light rail where it runs on the surface; re-baking the other towns (Ashdod has a line).
+- **Still to do**: level crossings (trains solid, barriers); the light rail where it runs
+  on the surface; keeping `electrified=` in the bake; re-baking the other towns (Ashdod has
+  a line).
 
 ## Open problems
 
