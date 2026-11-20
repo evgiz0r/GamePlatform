@@ -11155,7 +11155,21 @@ func _safe_to_cross(mid: Vector2, hw: float) -> bool:
 			return false   # coming, and too close to stop
 	return true
 
+## a car (or the player's) has stood at this crossing a while, kept there by people stepping
+## out one after another: let it go before the next one steps out. A stream of people kept
+## a car waiting 20 s and more; at a crossing without lights people let one through.
+func _kept_waiting(mid: Vector2, hw: float) -> bool:
+	if _me_still > 6.0 and _pos.distance_to(mid) < hw + 14.0 and _fwd().dot((mid - _pos).normalized()) > 0.5:
+		return true
+	for c in _traffic.cars:
+		if c.alive and c.still > 6.0 and c.why == "zebra" and c.pos.distance_to(mid) < hw + 14.0:
+			return true
+	return false
+
+var _me_still := 0.0                  ## seconds the player's car has stood still
+
 func _crossers_tick(dt: float) -> void:
+	_me_still = _me_still + dt if absf(_v) < 0.3 else 0.0
 	if _crossers.is_empty() or _crossing_nodes.is_empty():
 		return
 	_zebra_t -= dt
@@ -11176,7 +11190,8 @@ func _crossers_tick(dt: float) -> void:
 			"wait":
 				cr["t"] = float(cr["t"]) - dt
 				if float(cr["t"]) <= 0.0 and _walk_light(cr, from.distance_to(to) / float(cr["speed"])) \
-						and _safe_to_cross((from + to) * 0.5, from.distance_to(to) * 0.5 - 1.1):
+						and _safe_to_cross((from + to) * 0.5, from.distance_to(to) * 0.5 - 1.1) \
+						and not _kept_waiting((from + to) * 0.5, from.distance_to(to) * 0.5):
 					cr["state"] = "cross"
 					a.play("Walk", true, float(cr["speed"]) / 1.35)
 			"cross", "back":

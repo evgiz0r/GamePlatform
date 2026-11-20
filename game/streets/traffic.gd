@@ -63,6 +63,8 @@ class Car:
 	var react := 0.6
 	var react_t := 0.0
 	var acc := 0.0                    ## its acceleration now (smoothed: no instant pull-away)
+	var lead_v := 0.0                 ## the speed of the car in front, along my way
+	var still := 0.0                  ## seconds standing
 	var drift := 0.0                  ## phase of its wander in the lane
 	var dip := 0.0                    ## the body: nose down braking, up pulling away (visual)
 	var roll := 0.0                   ## the body: leaning out of a turn (visual)
@@ -316,7 +318,11 @@ func tick(dt: float) -> void:
 			# at first (the push builds over half a second or so) and easing off as it nears
 			# the speed it wants
 			if c.v < 0.3 and c.react_t < c.react:
-				c.react_t += dt
+				# (behind a car, the moment to notice starts when that car is really off, not
+				# when it has rolled a few millimetres: else a whole queue went in the same
+				# second, like a train)
+				if not (c.why == "car" and c.lead_v < 1.0):
+					c.react_t += dt
 				c.acc = 0.0
 			else:
 				var want_a := c.accel * clampf(1.0 - pow(c.v / maxf(vt, 1.0), 4.0), 0.2, 1.0)
@@ -334,6 +340,7 @@ func tick(dt: float) -> void:
 		c.dip = lerpf(c.dip, clampf(-c.acc * 0.011, -0.03, 0.06), minf(1.0, dt * 6.0))
 		c.roll = lerpf(c.roll, clampf(turn * c.v * 0.012, -0.06, 0.06), minf(1.0, dt * 5.0))
 		c.braking = clampf(c.braking + (dt * 8.0 if c.v < was - 0.01 or c.v < 0.2 else -dt * 4.0), 0.0, 1.0)
+		c.still = c.still + dt if c.v < 0.3 else 0.0
 		var before := c.s
 		c.s = minf(c.s + c.v * dt, c.cum[c.cum.size() - 1])
 		_passed_lights(c, before)
@@ -422,6 +429,7 @@ func _target(c: Car, i: int, dt: float) -> float:
 	if c.squeeze > 0.0:
 		c.squeeze -= dt
 		vt = _held(c, vt, 2.5, "squeezing past")
+	c.lead_v = lead_v if best < INF else 99.0
 	_steer_lanes(c, i, dt, best, lead_v)
 	vt = _held(c, vt, _bus_stop(c, dt), "bus stop")
 	if best < INF:
