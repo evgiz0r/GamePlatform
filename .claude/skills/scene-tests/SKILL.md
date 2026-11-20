@@ -203,6 +203,12 @@ it is made, with a one-line caption, rather than a report at the end.
 
 ## Gotchas (each cost a run)
 
+- **Measure the exact condition, and name the blocker once.** "Stood still near the van" also
+  counted waiting at a red light past it; "within 20 m, the van ahead, held by a car" did
+  not. And when a thing does not happen, print once, a few seconds in, what holds it (which
+  car, how far off the path its middle is, the flags that gate it) -- one diagnostic line
+  found a bend applied 40 m behind the car after three runs of guessing.
+
 - **Don't annotate with a `class_name` type that uses autoloads** (`var a: Actor3D`) in a
   `-s` script: it is compiled before the autoloads exist and fails ("Identifier not found:
   Probe"), taking the whole test with it. Use the base type (`Node3D`). A cast counts too

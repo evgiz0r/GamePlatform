@@ -1923,6 +1923,8 @@ func _build_world() -> bool:
 	# and the browser compiled every kind of material's shader the first time -- seconds on the
 	# first square, "1 of 6", which looked stuck. The warm-up does that, in steps it can show.)
 	world.visible = false
+	_gardens_split = not all_first and OS.get_environment("STREETS_GARDENS_SPLIT") != "0"   # (=0: all while loading, as before: tests/gardens_later.gd)
+	_gardens_from = _pos
 	for i in range(near.size()):
 		if not await _step("the streets round the start (%d of %d)" % [i + 1, near.size()]):
 			return false
@@ -1931,6 +1933,7 @@ func _build_world() -> bool:
 		_yield_at = Time.get_ticks_usec() + FG_US
 		await _build_tile(near[i])
 		_fg_build = false
+	_gardens_split = false
 	_tiles_todo = _tiles_todo.filter(func(t): return not _tiles_done.has(t))
 	if _details != null:   # what a filmed walk added: built whole, once (details.gd)
 		await _details.build()
@@ -2292,6 +2295,7 @@ func _build_rest() -> void:
 	var n := 0
 	_bg_build = true
 	_yield_at = Time.get_ticks_usec() + _build_us
+	await _build_gardens_later()   # (the start's squares' far gardens, first)
 	while is_inside_tree():
 		var t = _next_tile()
 		if t == null:
@@ -3277,10 +3281,7 @@ func _build_kerbs() -> void:
 	var pave := kerb   # (the pavement is drawn by the kerb's shader, in the kerb's mesh: no extra draw)
 	var wall := _clip_buf(GROUND_CELL)
 	var garden := _clip_buf(GROUND_CELL)
-	var fronts := {"hedge": _clip_buf(GROUND_CELL), "bars": _clip_buf(GROUND_CELL), "bar_posts": _clip_buf(GROUND_CELL),
-		"chain": _clip_buf(GROUND_CELL), "chain_posts": _clip_buf(GROUND_CELL), "planks": _clip_buf(GROUND_CELL), "flowers": [],
-		"plaster": _clip_buf(GROUND_CELL), "coping": _clip_buf(GROUND_CELL), "path": _clip_buf(GROUND_CELL), "spill": [],
-		"dropped": []}
+	var fronts := _new_fronts()
 	var bushes: Array = []
 	var med := String(_place.get("look", "")) == "med"
 	_laid = {}
@@ -3394,7 +3395,14 @@ func _build_kerbs() -> void:
 				var gates: Array = []
 				if med:
 					var tgf := Time.get_ticks_usec()
-					gates = await _garden_fronts(run, hw, sgn, _hash_i(run[0]) + int(sgn) * 104729, fronts, walled, wall)
+					var gkey := _hash_i(run[0]) + int(sgn) * 104729
+					var part := 0
+					if _gardens_split:   # (loading: the near plots now, the rest just after)
+						part = 1
+						if not _gardens_later.has(_tile):
+							_gardens_later[_tile] = []
+						(_gardens_later[_tile] as Array).append([run, hw, sgn, gkey, walled])
+					gates = await _garden_fronts(run, hw, sgn, gkey, fronts, walled, wall, part)
 					_part_time("kerbs: front gardens (walls, gates, paths, fences, hedges)", tgf)
 				var step := 7.0
 				var s := 3.0
@@ -3436,8 +3444,27 @@ func _build_kerbs() -> void:
 		_kerb_mat.set_shader_parameter("textured", 1.0 if _quality > 0 else 0.0)
 		_retint_kerbs()
 	_add_mesh(kerb, _kerb_mat, false, DETAIL_RANGE * 1.6)
-	_add_mesh(wall, _surface("stonewall"), false, DETAIL_RANGE)
 	_add_mesh(garden, _surface("grass"), false, DETAIL_RANGE * 1.6)
+	await _add_fronts(fronts, wall)
+	if not bushes.is_empty():
+		# leafy shrubs: the trees' leaf-card crowns, small (a smooth ball read as a toy)
+		var shrubs: Array = []
+		var cols: Array = []
+		for t: Transform3D in bushes:
+			shrubs.append(t * Transform3D(Basis.from_scale(Vector3(0.5, 0.55, 0.5)), Vector3.ZERO))
+			cols.append(Color(0.8, 0.92, 0.78, 0.125))
+		_chunked(_tree_meshes["crown"], shrubs, DETAIL_RANGE, cols, null, false)
+	_tally("bushes", bushes.size())
+
+## the front gardens' walls, gates, fences, hedges, flowers... a square's worth, into meshes
+func _new_fronts() -> Dictionary:
+	return {"hedge": _clip_buf(GROUND_CELL), "bars": _clip_buf(GROUND_CELL), "bar_posts": _clip_buf(GROUND_CELL),
+		"chain": _clip_buf(GROUND_CELL), "chain_posts": _clip_buf(GROUND_CELL), "planks": _clip_buf(GROUND_CELL), "flowers": [],
+		"plaster": _clip_buf(GROUND_CELL), "coping": _clip_buf(GROUND_CELL), "path": _clip_buf(GROUND_CELL), "spill": [],
+		"dropped": []}
+
+func _add_fronts(fronts: Dictionary, wall: CBuf) -> void:
+	_add_mesh(wall, _surface("stonewall"), false, DETAIL_RANGE)
 	if _over():
 		await _pause()
 	_add_mesh(fronts["hedge"], _surface("bush"), true, DETAIL_RANGE * 1.2)
@@ -3479,15 +3506,46 @@ func _build_kerbs() -> void:
 			ccols.append(Color(0.74, 0.9, 0.7, 0.125))
 		_chunked(_tree_meshes["crown"], clumps, DETAIL_RANGE, ccols, null, false)
 		_tally("spilling_over", clumps.size())
-	if not bushes.is_empty():
-		# leafy shrubs: the trees' leaf-card crowns, small (a smooth ball read as a toy)
-		var shrubs: Array = []
-		var cols: Array = []
-		for t: Transform3D in bushes:
-			shrubs.append(t * Transform3D(Basis.from_scale(Vector3(0.5, 0.55, 0.5)), Vector3.ZERO))
-			cols.append(Color(0.8, 0.92, 0.78, 0.125))
-		_chunked(_tree_meshes["crown"], shrubs, DETAIL_RANGE, cols, null, false)
-	_tally("bushes", bushes.size())
+
+## Front gardens are the biggest single part of loading (~0.7 s in Givatayim: walls, gates,
+## paths, fences, hedges, flowers). While loading, only the plots within GARDENS_NOW of the
+## start -- what you see first -- are laid; the rest of those squares' plots are laid first
+## thing once you are driving, nearest square first, before the rest of the city
+## (_build_gardens_later). The same plots, the same keys: nothing different, only later.
+const GARDENS_NOW := 120.0
+var _gardens_split := false          ## loading the squares round the start: lay only the near plots
+var _gardens_from := Vector2.ZERO    ## where "near" is measured from (the start)
+var _gardens_later := {}             ## square -> [[run, hw, sgn, key, walled], ...] (their far plots)
+
+func _build_gardens_later() -> void:
+	var tiles: Array = _gardens_later.keys()
+	tiles.sort_custom(func(a, b): return _tile_dist(a, _pos) < _tile_dist(b, _pos))
+	for t: Vector2i in tiles:
+		if _over():
+			await _pause()
+		_tile = t
+		_set_tiling(true)
+		_batching = true
+		_yard_cars.clear()
+		var wall := _clip_buf(GROUND_CELL)
+		var fronts := _new_fronts()
+		for job: Array in _gardens_later[t]:
+			await _garden_fronts(job[0], job[1], job[2], job[3], fronts, job[4], wall, 2)
+		await _add_fronts(fronts, wall)
+		if not _yard_cars.is_empty():   # (their cars, drawn like the street's parked cars)
+			var palette := _car_paints()
+			var xf_by := {"sedan": [], "hatch": [], "suv": [], "van": [], "moto_parked": []}
+			var cols_by := {"sedan": [], "hatch": [], "suv": [], "van": [], "moto_parked": []}
+			for yc: Array in _yard_cars:
+				(xf_by[String(yc[1])] as Array).append(yc[0])
+				(cols_by[String(yc[1])] as Array).append(palette[int(yc[2]) % palette.size()])
+			_tally("yard_cars", _yard_cars.size())
+			_draw_parked(xf_by, cols_by)
+			_yard_cars.clear()
+		await _flush_batches()
+		_set_tiling(false)
+		_batching = false
+	_gardens_later = {}
 
 ## Israeli main streets are not open down the middle: a raised island divides the two ways.
 ## A wide two-way main road (OSM maps many as one road) gets one, MEDIAN_W wide, kerbed both
@@ -3859,7 +3917,7 @@ func _set_pave_code(hsh: int, filmed: Array = []) -> void:
 ## works out the same plots (the fronts are laid like the kerbs: CBuf.clip). Returns the
 ## gates: [s along the run, half the opening, ...] (_run_gates).
 func _garden_fronts(run: PackedVector2Array, hw: float, sgn: float, key: int, fronts: Dictionary,
-		walled: PackedByteArray, wall: CBuf) -> Array:
+		walled: PackedByteArray, wall: CBuf, part := 0) -> Array:
 	var on_wall := _offset_line(run, (hw + PAVE_W + 0.175) * sgn)
 	var behind := _offset_line(run, (hw + PAVE_W + 0.85) * sgn)
 	var cum := PackedFloat32Array([0.0])
@@ -3902,9 +3960,10 @@ func _garden_fronts(run: PackedVector2Array, hw: float, sgn: float, key: int, fr
 		pts.append(_along(line, cum, fe0))
 		box = box.expand(pts[pts.size() - 1])
 		box = box.expand(_along(line, cum, s)).expand(_along(line, cum, e))
-		if _tiled and not near.intersects(box.grow(1.0)):
-			s = e   # a plot nowhere near this square: its own square lays it (same plots, same key)
-			plot += 1
+		if (_tiled and not near.intersects(box.grow(1.0))) or \
+				(part != 0 and (box.get_center().distance_to(_gardens_from) > GARDENS_NOW) != (part == 2)):
+			s = e   # a plot nowhere near this square: its own square lays it (same plots, same key);
+			plot += 1   # (or, loading, one for later: _build_gardens_later)
 			trim_s = trim_e
 			continue
 		if _over():
@@ -6880,6 +6939,7 @@ func _build_parks() -> void:
 				var q := a + d * s_bench + out * (hw + 0.75)
 				if _mine(q) and _push_out(q, 0.9, true) == Vector2.ZERO and _off_road(q, 1.0):
 					benches.append(Transform3D(Basis(Vector3.UP, atan2(-out.x, -out.y)), _g3(q, 0.0)))
+					_bench_spots.append([q, -out])   # (where someone sits: _place_sitters)
 					_add_post(q, 0.5)
 				s_bench += 19.0
 			s_bench -= L
@@ -14682,6 +14742,14 @@ func _spawn_people() -> void:
 		var w := {"actor": a, "line": PackedVector2Array(), "cum": PackedFloat32Array(), "s": 0.0,
 			"dir": 1.0, "speed": _people_rng.randf_range(1.1, 1.6), "dodge": 0.0,
 			"carry": _people_rng.randf() < 0.22}
+		if i % 9 == 2:   # someone walking a dog (slower: it stops to sniff)
+			w["dog"] = true
+			w["speed"] = _people_rng.randf_range(0.9, 1.2)
+			w["carry"] = false
+		elif i % 9 == 6:   # a parent pushing a pushchair (arms forward: the carrying walk)
+			w["pram"] = true
+			w["carry"] = true
+			w["speed"] = _people_rng.randf_range(1.0, 1.3)
 		_walkers.append(w)
 		_place_walker(w, true)
 	for i in range(CHATTERS):
@@ -14694,6 +14762,19 @@ func _spawn_people() -> void:
 		a.visible = false
 		_chatters.append({"actor": a, "spot": Vector2.INF})
 	_seat_chatters()
+	for i in range(SITTERS + WAITERS):
+		var a := Actor3D.new()
+		world.add_child(a)
+		a.set_character(PEOPLE[(i + 1) % PEOPLE.size()], _people_rng.randf_range(ADULT_LO, ADULT_HI))
+		_humanize(a, hash(a.get_instance_id()))
+		_people_lod(a)
+		a.visible = false
+		if i < SITTERS:
+			_sitters.append({"actor": a, "spot": Vector2.INF})
+		else:
+			a.play("Idle", true, _people_rng.randf_range(0.7, 1.0))
+			_waiters.append({"actor": a, "spot": Vector2.INF})
+	_build_companions()
 
 ## A person is about eight meshes (body, head, hair, clothes...), each its own draw call
 ## and its own skinning every frame: thirty-six of them were three hundred draws, more
@@ -14879,6 +14960,145 @@ func _seat_chatters() -> void:
 
 var _chatters_sat := false
 
+## ---- more kinds of people -----------------------------------------------------------------
+## Not only walkers and people at the cafe tables: two in eighteen walkers have a dog on a
+## lead, trotting a step ahead on their right (its legs swung in its shader: dog_kit), two
+## push a pushchair; a few people sit on the park benches and a few wait at the bus stops.
+## The sitters and the waiters are put where nobody sees them appear, the cafe tables' way
+## (_unseen), and taken away out of sight. The dogs, the pushchairs and the leads are a
+## multimesh each (3 draws in all); the sitters and waiters are people like the rest.
+const SITTERS := 3
+const WAITERS := 4
+var _sitters: Array = []             ## {actor, spot}: on the park benches near you
+var _waiters: Array = []             ## {actor, spot}: at the bus stops near you
+var _bench_spots: Array = []         ## [where, facing] of every bench made
+var _dogs: MultiMesh
+var _prams: MultiMesh
+var _leads: MultiMesh
+
+func _build_companions() -> void:
+	var nd := 0
+	var np := 0
+	for w: Dictionary in _walkers:
+		if w.has("dog"):
+			w["dog_i"] = nd
+			nd += 1
+		elif w.has("pram"):
+			w["pram_i"] = np
+			np += 1
+	var hide := Transform3D(Basis(), Vector3(0, -500, 0))
+	var box := AABB(Vector3(_bounds.position.x - 500.0, -600.0, _bounds.position.y - 500.0), Vector3(_bounds.size.x + 1000.0, 1200.0, _bounds.size.y + 1000.0))
+	var coats: Array = [Palette.col("ink").lerp(Palette.col("bg_alt"), 0.1), _natural(Palette.col("warn").lerp(Palette.col("bg"), 0.45), 0.4),
+		Palette.col("bg").lerp(Palette.col("bg_alt"), 0.25), _natural(Palette.col("warn").lerp(Palette.col("ink"), 0.35), 0.35)]
+	var made: Array = []
+	for spec: Array in [["dog", nd], ["pram", np], ["leash", nd]]:
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_custom_data = spec[0] == "dog"
+		mm.use_colors = spec[0] == "pram"
+		mm.mesh = _furn.dog_kit() if spec[0] == "dog" else (_furn.pram_kit() if spec[0] == "pram" else _furn.leash_kit())
+		mm.instance_count = int(spec[1])
+		mm.custom_aabb = box
+		for k in range(int(spec[1])):
+			mm.set_instance_transform(k, hide)
+			if spec[0] == "dog":
+				var cc: Color = (coats[k % coats.size()] as Color).srgb_to_linear()
+				mm.set_instance_custom_data(k, Color(0.0, cc.r, cc.g, cc.b))
+			elif spec[0] == "pram":
+				mm.set_instance_color(k, [Palette.col("player").lerp(Palette.col("bg"), 0.5), Palette.col("bg").lerp(Palette.col("bg_alt"), 0.4),
+					_natural(Palette.col("hazard").lerp(Palette.col("bg"), 0.4), 0.5)][k % 3])
+		var mi := MultiMeshInstance3D.new()
+		mi.multimesh = mm
+		# (no visibility range: it is measured to the multimesh's own middle -- the city's --
+		# and hid every dog; _companion hides the far ones itself)
+		world.add_child(mi)
+		made.append(mm)
+	_dogs = made[0]
+	_prams = made[1]
+	_leads = made[2]
+
+## a walker's dog or pushchair, where they are now (and gone with them when they are out of sight)
+func _companion(w: Dictionary, p: Vector2) -> void:
+	var a: Actor3D = w["actor"]
+	var yaw: float = w.get("yaw", 0.0)
+	var fw := Vector2(cos(yaw), sin(yaw))
+	var right := Vector2(-fw.y, fw.x)
+	var show := a.visible and p.distance_to(_pos) < PEOPLE_SEEN
+	var turn := Basis(Vector3.UP, atan2(fw.x, fw.y))
+	if w.has("dog_i"):
+		var k: int = w["dog_i"]
+		if not show:
+			_dogs.set_instance_transform(k, Transform3D(Basis(), Vector3(0, -500, 0)))
+			_leads.set_instance_transform(k, Transform3D(Basis(), Vector3(0, -500, 0)))
+			return
+		var dp := p + fw * 0.95 + right * 0.4
+		dp += _push_out(dp, 0.25, true, false)
+		var y := _h(dp) + _pave_top()
+		_dogs.set_instance_transform(k, Transform3D(turn, Vector3(dp.x, y, dp.y)))
+		var cd := _dogs.get_instance_custom_data(k)
+		_dogs.set_instance_custom_data(k, Color(1.0, cd.g, cd.b, cd.a))
+		var hand := Vector3(p.x, a.position.y + 0.82, p.y) + Vector3(right.x, 0, right.y) * 0.22
+		var collar := Vector3(dp.x, y + 0.45, dp.y) + Vector3(fw.x, 0, fw.y) * 0.24
+		var span := collar - hand
+		var lb := Basis.looking_at(-span.normalized(), Vector3.UP) if span.length() > 0.05 else Basis()
+		_leads.set_instance_transform(k, Transform3D(lb.scaled_local(Vector3(1, 1, span.length())), hand))
+	elif w.has("pram_i"):
+		var k: int = w["pram_i"]
+		if not show:
+			_prams.set_instance_transform(k, Transform3D(Basis(), Vector3(0, -500, 0)))
+			return
+		var pp := p + fw * 0.42
+		_prams.set_instance_transform(k, Transform3D(turn, Vector3(pp.x, _h(pp) + _pave_top(), pp.y)))
+
+## people sitting on the park benches near you, a few, put there unseen
+func _place_sitters() -> void:
+	_place_still(_sitters, _bench_spots, "sit")
+
+## people waiting at the bus stops near you, one or two a stop, facing the road
+func _place_waiters() -> void:
+	var spots: Array = []
+	for sp: Vector2 in _stop_spots:
+		if sp.distance_to(_pos) < PEOPLE_RANGE:
+			var hit := _nearest_seg(sp, 15.0, true, true)
+			if not hit.is_empty():
+				var to: Vector2 = ((hit["q"] as Vector2) - sp).normalized()
+				var along := Vector2(-to.y, to.x)
+				spots.append([sp + along * 1.4, to])
+				spots.append([sp - along * 1.1 - to * 0.3, to])
+	_place_still(_waiters, spots, "wait")
+
+func _place_still(list: Array, spots: Array, how: String) -> void:
+	var taken := {}
+	for c: Dictionary in list:
+		if (c["actor"] as Actor3D).visible:
+			taken[c["spot"]] = true
+	var free: Array = spots.filter(func(s): return (s[0] as Vector2).distance_to(_pos) < PEOPLE_RANGE and not taken.has(s[0]) and _unseen(s[0]))
+	free.sort_custom(func(a, b): return (a[0] as Vector2).distance_to(_pos) < (b[0] as Vector2).distance_to(_pos))
+	for c: Dictionary in list:
+		var a: Actor3D = c["actor"]
+		var at: Vector2 = c["spot"]
+		if a.visible and (not _unseen(at) or at.distance_to(_pos) < PEOPLE_RANGE):
+			continue   # (where it is: stays while seen, or near)
+		if free.is_empty():
+			if a.visible and at.distance_to(_pos) >= PEOPLE_RANGE:
+				a.visible = false
+			continue
+		var s: Array = free.pop_front()
+		var q: Vector2 = s[0]
+		var face: Vector2 = s[1]
+		c["spot"] = q
+		if how == "sit":   # on the seat: the sitting pose's hips over it, a little forward
+			var sq := q + face * 0.42   # (the origin is at the feet: the hips sit ~0.4 m behind them)
+			a.position = Vector3(sq.x, _h(sq), sq.y)
+			a.face(Vector3(face.x, 0, face.y))
+			a.play("SitDown", false)
+			if a.anim != null:
+				a.anim.seek(a.anim.current_animation_length, true)   # (sat already)
+		else:
+			a.position = Vector3(q.x, _walk_y(q), q.y)
+			a.face(Vector3(face.x, 0, face.y))
+		a.visible = true
+
 ## somewhere nobody would see a person appear or go: beyond the distance people are drawn
 ## at, or well behind the car (and its camera)
 func _unseen(p: Vector2) -> bool:
@@ -14891,7 +15111,7 @@ func _people_tick(dt: float) -> void:
 	# (everyone placed, wherever they are: a walker 60 m off still has to see the next one)
 	_people_at.clear()
 	_people_who.clear()
-	for list: Array in [_walkers, _chatters, _crossers]:
+	for list: Array in [_walkers, _chatters, _crossers, _sitters, _waiters]:
 		for w: Dictionary in list:
 			var a: Actor3D = w["actor"]
 			if a.visible:
@@ -14904,9 +15124,12 @@ func _people_tick(dt: float) -> void:
 	if _people_t <= 0.0:
 		_people_t = 1.5
 		_seat_chatters()
-		for c: Dictionary in _chatters:
-			var ca: Actor3D = c["actor"]
-			_people_awake(ca, Vector2(ca.position.x, ca.position.z))
+		_place_sitters()
+		_place_waiters()
+		for list: Array in [_chatters, _sitters, _waiters]:
+			for c: Dictionary in list:
+				var ca: Actor3D = c["actor"]
+				_people_awake(ca, Vector2(ca.position.x, ca.position.z))
 	# one walker a tick is found a new place (a search along the pavements): several at once
 	# when the car had driven on was a stutter
 	var placed := false
@@ -14980,6 +15203,8 @@ func _people_tick(dt: float) -> void:
 			yaw = lerp_angle(yaw, want, 1.0 - exp(-dt * 5.0))
 			w["yaw"] = yaw
 			a.face(Vector3(cos(yaw), 0, sin(yaw)))
+		if w.has("dog") or w.has("pram"):
+			_companion(w, p)
 		_people_awake(a, p)
 		if p.distance_to(_pos) > PEOPLE_RANGE and not placed:
 			placed = true
@@ -17178,6 +17403,8 @@ func _autodrive(dt: float) -> Array:
 		# from my nose to its back (a bus is two and a half cars long: kept a car's length
 		# from its middle, autodrive drove into its back)
 		var room := float(lead[0]) - CAR_LEN * 0.5 - float(lead[2]) - 2.2 - lv * 1.2
+		if int(lead[3]) >= 0 and _traffic._parked_double(_traffic.cars[int(lead[3])]):
+			room -= 4.5   # (a delivery van standing: wait well back, room to pull out round it)
 		var follow := 0.0 if room <= 0.0 else sqrt(lv * lv + 2.0 * 2.6 * room)
 		if follow < vt:
 			vt = follow
@@ -17619,6 +17846,8 @@ func _ap_leg(ri: int, from: int, dir: int) -> void:
 ## kerb ahead is passed in the next lane over when that lane is clear from 15 m behind to 25 m
 ## ahead -- moving out over 8 m before it, back in 12 m past it -- instead of queueing behind
 ## it for the whole stop (or, as it once did, driving into its back). True when it moved out.
+## A delivery van standing in the street (traffic.gd _double_park) the same, and on a street of
+## one lane each way over the centre line, when nothing is coming for 45 m past it.
 var _ap_passed := -1                 ## the bus last passed (not again)
 
 func _ap_pass_bus(lead: Array) -> bool:
@@ -17626,18 +17855,21 @@ func _ap_pass_bus(lead: Array) -> bool:
 	if bi < 0 or bi == _ap_passed:
 		return false
 	var bus = _traffic.cars[bi]
-	if bus.kind != "bus" or bus.v > 0.6 or bus.dwell <= 0.0 or _ap_pts.size() < 3:
+	var dbl: bool = _traffic._parked_double(bus)
+	if (not dbl and (bus.kind != "bus" or bus.v > 0.6 or bus.dwell <= 0.0)) or _ap_pts.size() < 2:
 		return false
 	var hit := _nearest_seg(_pos, 12.0, true, true, _y)
 	if hit.is_empty():
 		return false
 	var r: Dictionary = _roads[hit["road"]]
 	var n := _lanes_each_way(r)
-	if n < 2:
+	if n < 2 and not (dbl and int(r["o"]) == 0):
 		return false
 	var w := float(r["w"])
 	var lane_w := w / n if int(r["o"]) != 0 else (w * 0.5) / n
-	if int(r["o"]) == 0:
+	if n < 2:   # (a delivery van in a street of one lane each way: over the centre line)
+		lane_w = clampf(2.0 * _lane_off(r), 2.3, 3.4)
+	elif int(r["o"]) == 0:
 		# a two-way road: over to the inner lane of its own side -- by a whole lane from where
 		# autodrive drives (a little in from the right lane's middle) it crossed the centre
 		var inner := (w * 0.5) / n * 0.5
@@ -17651,20 +17883,25 @@ func _ap_pass_bus(lead: Array) -> bool:
 	var gap: float = lead[0]
 	if _ap_turn_ahead() != 0:
 		return false   # (a junction just after it: stay in lane)
-	# the next lane over clear, by every car's middle
+	# the next lane over clear, by every car's middle (the other way's: further, they come at you)
+	var reach := gap + (45.0 if n < 2 else 25.0)
 	for c in _traffic.cars:
 		if not c.alive or c == bus:
 			continue
 		var rel: Vector2 = c.pos - _pos
 		var ahead := rel.dot(fwd)
 		var side := rel.dot(left)
-		if ahead > -15.0 and ahead < gap + 25.0 and side > lane_w * 0.4 and side < lane_w * 1.6:
+		if ahead > -15.0 and ahead < reach and side > lane_w * 0.4 and side < lane_w * 1.6:
 			return false
-	# out, past, back in: the points of the plan from just ahead to past the bus
-	var s := 0.0
+	# out, past, back in: the points of the plan from just ahead to past the bus -- measured
+	# from the car, as the gap is: the plan's first point is the start of the stretch it is
+	# on, which on a straight street can be 40 m back (the bend landed behind the car)
+	var s0 := _ap_pts[0].distance_to(Geometry2D.get_closest_point_to_segment(_pos, _ap_pts[0], _ap_pts[1]))
+	var s := -s0
 	var half: float = bus.len * 0.5
 	var start_s := maxf(gap - half - 10.0, 2.0)
 	var end_s := gap + half + 12.0
+	_ap_densify(s0 + end_s + 10.0, 2.0)
 	for k in range(1, _ap_pts.size()):
 		s += _ap_pts[k - 1].distance_to(_ap_pts[k])
 		if s > end_s + 8.0:
@@ -17675,9 +17912,36 @@ func _ap_pass_bus(lead: Array) -> bool:
 		var kd := (_ap_pts[mini(k + 1, _ap_pts.size() - 1)] - _ap_pts[k - 1]).normalized()
 		_ap_pts[k] += Vector2(kd.y, -kd.x) * lane_w * t
 	_ap_passed = bi
-	Probe.event("pass_bus", {"lane_w": snappedf(lane_w, 0.1)})
-	_log.event("pass bus")
+	Probe.event("pass_van" if dbl else "pass_bus", {"lane_w": snappedf(lane_w, 0.1)})
+	_log.event("pass van" if dbl else "pass bus")
 	return true
+
+## A point every `step` metres along the plan for its first `upto` metres. Only points move
+## when the plan is bent (round a bus, a delivery van): on a straight street the plan can be
+## two points a block apart, and bending "the points from 2 m to 40 m ahead" moved nothing --
+## autodrive marked the van passed and stood behind it for half a minute (street_goings).
+func _ap_densify(upto: float, step: float) -> void:
+	var np := PackedVector2Array([_ap_pts[0]])
+	var nv := PackedFloat32Array([_ap_v[0]])
+	var nl := PackedFloat32Array([_ap_lim[0]])
+	var acc := 0.0
+	for k in range(1, _ap_pts.size()):
+		var a := _ap_pts[k - 1]
+		var b := _ap_pts[k]
+		var L := a.distance_to(b)
+		if acc < upto and L > step * 1.25:
+			var m := int(L / step)
+			for q in range(1, m):
+				np.append(a.lerp(b, float(q) / m))
+				nv.append(maxf(_ap_v[k - 1], _ap_v[k]))   # (a straight stretch: the braking to point k is seen from these too)
+				nl.append(_ap_lim[k])
+		np.append(b)
+		nv.append(_ap_v[k])
+		nl.append(_ap_lim[k])
+		acc += L
+	_ap_pts = np
+	_ap_v = nv
+	_ap_lim = nl
 
 ## Into the turn lane: before a left turn, over the last 45 m, the lane on the left of its
 ## way -- the leftmost of a one-way road of several, the one beside the centre line of a
