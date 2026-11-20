@@ -54,6 +54,10 @@ focused, or leave them to them.
       face (a screen, a card slot); the scooters' colours (film 82-86 s).
 - [ ] Ha-Meri: trees in square earth pits along the kerb every ~8-10 m; cars parked
       both sides (the game's do it); a delivery scooter (film 88-96 s).
+- [ ] Ha-Meri's far kerb (film 91-96 s): the film reaches it beside a parked white
+      hatchback, on a blue-and-white painted kerb, a few metres from the corner, and steps
+      up onto a pavement by a stone-and-plaster garden wall; the game's walk lands among the
+      corner's white bollards and red-and-white kerb, by a car's nose and a tree pit.
 - [ ] Small things: drain grates at the kerbs, utility cabinets at corners, stickers and
       graffiti on poles, a fire hydrant, chewing-gum stains on the slabs.
 
@@ -63,11 +67,6 @@ focused, or leave them to them.
       does not give way.
 - [ ] More traffic on Katzenelson: a steady stream both ways, a bus, a delivery scooter
       weaving (film 0-17 s); parked cars along its kerbs.
-- [ ] The phone in a hand, not on a rail: a slow sway and roll, small bumps with each
-      step, a lag when the walk turns (the film's whole length).
-- [ ] The film looks down at the ground a lot (the zebra 5-8 s, the passage floor 36-56 s)
-      and up at the buildings now and then; the replay keeps one pitch. Looks up and down
-      as well as left and right.
 - [ ] Looks at things as the film does: at the shop fronts under the arcade (film 18-21 s),
       at the people in the forecourt (25-27 s), at the bin (50 s), at the man walking
       out of the passage (60-63 s).
@@ -137,6 +136,11 @@ Its film is not in this repo or this machine's scratch: a session needs a clip o
       (bollards, cabinets, motorbikes, tables) keep landing on the walks' lines.
 
 ## Done
+- Pass 9 of walk 1, both walks (DEV.md): the phone in a hand -- tipped 15.6 degrees down
+  as the film's horizon says (it was 11.3), swaying slowly as the film's does (0.25 degrees
+  rms, 0.5-0.8 Hz, `tests/film_shake.py`; the steps' jolts are stabilised out of the film,
+  so none are added) and rolling a little; looks up and down as well as across (down at
+  Katzenelson's stripes 6-8 s and Ha-Meri's kerb 92-95 s, where it had looked into a tree).
 - Passes 1-8 of walk 1 (DEV.md, "The filmed walk"): the street's geometry, the arcade,
   the forecourt, the passage, the little street, the crossings and their cars, the
   people standing, the booth, the bollards, the shops, the head's looks.

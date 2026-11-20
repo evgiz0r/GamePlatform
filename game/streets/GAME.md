@@ -250,6 +250,12 @@ then left. Cars come down the street to meet it there: one goes by before it ste
 next stops at the zebra for it, and drives on once it is across. The head looks where the
 walk is going and turns into a corner a moment before the feet do.
 
+The phone is held as a hand holds one: tipped down at the pavement ahead as the film is
+(about 16 degrees, read off where the film's horizon sits), never quite still -- a slow sway
+and a little roll, as small and as slow as the film's own, measured from it -- and it looks
+down as well as round: straight down at Katzenelson's stripes on the way over, and at
+Ha-Meri's kerb as it steps up. Both walks hold it this way.
+
 Over the passes since, the walk's street has been dressed, a stretch at a time, from the
 film: Katzenelson two lanes each way with railings and red-white kerbs at its zebra; the
 passage paved in grey pavers in rows, its rough stone wall, and tall planting and trees

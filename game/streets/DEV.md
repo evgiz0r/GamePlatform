@@ -694,6 +694,19 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   pass's own white ones, at the zebras near a spot); the blue pay booth, a yellow parking
   board and two scooters on Sheinkin's far corner (in the room POSTS_NEAR found between the
   zebra's bollards and a sign pole); the little street's gateposts, one with a heart.
+- **Pass 9, the phone in a hand**, done: measured against the film rather than by eye
+  (`scene-tests` skill, "A camera set beside a real film"). *Tilt*: the film's horizon sits
+  0.30 of the way down its frame nearly all the way (one frame a second, under the arcade, in
+  the passage, on the little street, on Ha-Meri); the replay's sat at 0.36-0.38, the phone
+  11.3 degrees down against the film's ~16. Now `FILM_TILT` -15.6 degrees. *Looks up and
+  down*: a walk's `looks` take a fourth number, degrees up (the film looks straight down at
+  Katzenelson's stripes at 6-8 s, a foot in shot, and at Ha-Meri's kerb as it steps up,
+  92-95 s). *Sway*: `film_shake.py` over the passage (36-52 s) gives the film 0.25 degrees
+  rms across and 0.19 up and down, 0.6 peak to peak, at 0.5-0.8 Hz and nothing at the step
+  rate (the phone's stabiliser); the replay had 0.01 and 0.03 -- dead still. Now
+  `_film_hand()`: sums of slow sines at those sizes across, up and in roll, two thirds of
+  it standing. Ha-Meri's last look (60 right, 91.6-94.5 s) turned the camera onto a tree
+  pit's trunk 0.56 m off the walk; the film looks down at the kerb there instead.
 - **Next passes**: the light (another session's: the film's afternoon is hazy and warm);
   people that move as the film's do (the walk's `people` take `to` and `t`; none of the
   four walks yet). The street now matches the film in what stands where: what is left is

@@ -12124,7 +12124,8 @@ var _film_t := 0.0
 var _film_step := 0.0                ## metres walked: the head bobs with the steps
 var _film_done := false
 var _film_look := 0.0                ## the head turned from the body (radians, + right)
-var _film_looks: Array = []          ## Vector3(from, to, radians): a glance to one side
+var _film_looks: Array = []          ## Vector4(from, to, radians across, radians up): a glance
+var _film_tilt := 0.0                ## the phone tipped from its usual tilt by the looks (radians, + up)
 var _film_zebras: Array = []         ## [from, to, kerb, kerb]: on a crossing (or waiting at it)
 var _film_cars: Array = []           ## [second, at, heading]: a car sent down a street
 var _film_sent := 0
@@ -12140,7 +12141,9 @@ func _film_begin(id: String) -> void:
 		_film.append(Vector3(float(p[1]), float(p[2]), float(p[0])))
 	var w: Dictionary = walks[id]
 	for l: Array in w.get("looks", []):
-		_film_looks.append(Vector3(float(l[0]), float(l[1]), deg_to_rad(float(l[2]))))
+		# [from, to, degrees right] and, if there, degrees up (down at a zebra's stripes: -25)
+		_film_looks.append(Vector4(float(l[0]), float(l[1]), deg_to_rad(float(l[2])),
+			deg_to_rad(float(l[3])) if l.size() > 3 else 0.0))
 	for z: Array in w.get("zebras", []):
 		_film_zebras.append([float(z[0]), float(z[1]), Vector2(z[2][0], z[2][1]), Vector2(z[3][0], z[3][1])])
 	for c: Array in w.get("cars", []):
@@ -12199,10 +12202,14 @@ func _film_tick(dt: float) -> void:
 	var far := _film_at(_film_t + 3.4)
 	if ahead.distance_to(p) > 0.3 and far.distance_to(p) > 0.6:
 		turn = clampf(angle_difference((ahead - p).angle(), (far - p).angle()) * 0.7, -0.6, 0.6)
-	for l: Vector3 in _film_looks:
+	var tip := 0.0
+	for l: Vector4 in _film_looks:
 		if _film_t > l.x and _film_t < l.y:
-			turn += l.z * smoothstep(l.x, l.x + 0.5, _film_t) * (1.0 - smoothstep(l.y - 0.5, l.y, _film_t))
+			var k := smoothstep(l.x, l.x + 0.5, _film_t) * (1.0 - smoothstep(l.y - 0.5, l.y, _film_t))
+			turn += l.z * k
+			tip += l.w * k
 	_film_look = lerp_angle(_film_look, turn, 1.0 - exp(-dt * 6.0))
+	_film_tilt = lerpf(_film_tilt, tip, 1.0 - exp(-dt * 6.0))
 	for fp: Array in _film_people:
 		var A: Vector2 = fp[1]
 		var B: Vector2 = fp[2]
@@ -12347,10 +12354,16 @@ func _foot_camera(dt: float) -> void:
 		var fwd := Vector2(cos(_view_yaw + _film_look), sin(_view_yaw + _film_look))
 		var eye := Vector3(p.x + fwd.x * 0.15, gy + 1.64, p.y + fwd.y * 0.15)
 		var down := -0.08
-		if not _film.is_empty():   # a phone held at the chest, looking a little down, bobbing with each step
+		var hand := Vector3.ZERO
+		if not _film.is_empty():   # a phone held at the chest, looking down, bobbing with each step
 			eye.y += -0.2 + sin(_film_step * PI / 0.72) * 0.022 * clampf(_v / 1.2, 0.0, 1.0)
-			down = -0.2
+			hand = _film_hand()
+			fwd = Vector2(cos(_view_yaw + _film_look + hand.x), sin(_view_yaw + _film_look + hand.x))
+			down = tan(clampf(FILM_TILT + _film_tilt + hand.y, -1.4, 0.6))
 		look_from(eye, eye + Vector3(fwd.x, down, fwd.y) * 10.0)
+		if hand.z != 0.0:   # (rolled about its own axis after aiming; kept as the shake's base)
+			cam.rotate_object_local(Vector3(0, 0, 1), hand.z)
+			_cam_base = cam.transform
 		# fields of view are up and down: 58 is ~92 across a 16:9 screen, about what the eyes
 		# take in; a filmed walk keeps a phone's (70: an upright phone's frame, set beside its
 		# film). Wider made the near loom and the street look small and far (scale_check)
@@ -12365,6 +12378,25 @@ func _foot_camera(dt: float) -> void:
 	eye = _decks.keep_eye(eye, p, gy)
 	look_from(eye, Vector3(p.x + back.x * 2.0, gy + 1.35, p.y + back.y * 2.0))
 	cam.fov = 56.0   # (was 66: see the eyes' view above)
+
+## the phone's tilt below level on a filmed walk: the film's horizon sits 0.30 of the way
+## down its frame (one frame a second over walk 1, under the arcade, in the passage, on the
+## little street), which at a 70 degree field is 15.6 degrees down. (It was 11.3: the
+## horizon at 0.36, the street seen too level and the near pavement cut off.)
+const FILM_TILT := -0.272
+## the hand's own sway on a filmed walk (radians: across, up, roll), slow and never still: the
+## film's image drifts 0.2-0.25 degrees rms each way on a straight stretch, peak to peak about
+## 0.6, mostly at 0.5-0.8 Hz -- the phone's stabiliser takes out the steps' quicker jolts, so
+## there is no step rhythm in it (measured frame to frame by phase correlation over the
+## passage, 36-52 s). Sums of sines at unrelated rates: never repeating, the same each run.
+## Calmer standing (two thirds).
+func _film_hand() -> Vector3:
+	var t := _film_t
+	var k := deg_to_rad(1.0) * lerpf(0.65, 1.0, clampf(_v / 1.0, 0.0, 1.0))
+	return Vector3(
+		(0.26 * sin(t * TAU * 0.55 + 0.4) + 0.17 * sin(t * TAU * 0.79 + 2.1) + 0.11 * sin(t * TAU * 0.37 + 4.0)) * k,
+		(0.20 * sin(t * TAU * 0.63 + 1.3) + 0.14 * sin(t * TAU * 0.47 + 3.3) + 0.09 * sin(t * TAU * 0.91 + 5.2)) * k,
+		(0.30 * sin(t * TAU * 0.43 + 2.7) + 0.18 * sin(t * TAU * 0.71 + 0.9)) * k)
 
 ## the indicators at the car's four corners, and the reverse lights (+X is the car's left)
 func _build_car_signals() -> void:

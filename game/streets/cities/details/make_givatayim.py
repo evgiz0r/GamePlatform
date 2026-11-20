@@ -217,13 +217,17 @@ d = {
         "katzenelson_hameri": {
             "name": "Katzenelson to Ha-Meri, on foot",
             "points": walk,
-            # the head turned from the way the walk goes: [from, to, degrees, + right]
+            # the head turned from the way the walk goes: [from, to, degrees, + right] and, if
+            # given, degrees up (the phone already tilts 15.6 down: streets.gd's FILM_TILT)
             "looks": [[1.4, 4.4, -70], [4.4, 5.1, 30],          # the near half's traffic comes from the left
+                      [5.4, 8.8, 0, -30],                       # then down at the stripes, a foot in shot (6 s)
                       [8.9, 12.6, 70], [12.6, 13.4, 20],        # the far half's from the right
                       [79.3, 81.0, 60], [81.0, 82.3, -45],      # Sheinkin's from the right; and the other way
                       [84.4, 86.0, 40],                         # half way over, along Sheinkin again
                       [87.6, 88.6, -55], [89.0, 91.2, 55],      # back at the corner; then down Ha-Meri
-                      [91.6, 94.5, 60]],                        # and down it again, up the far kerb
+                      [92.0, 95.6, -10, -22]],                  # down at the far kerb's blue and white
+                                                                # as it steps up beside a parked car (not
+                                                                # right: a tree pit stands there, 0.6 m off)
             # on a crossing, or waiting at its kerb about to go: cars stop for it
             # [from, to, kerb, kerb]
             "zebras": [[4.4, 8.9, P(-13.8, -17.4), P(-6.8, -17.4)],

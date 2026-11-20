@@ -124,6 +124,22 @@ frames: on a slow test machine a frame is several physics ticks, and counting ea
 the rear axle's sideways speed -- a real car's is about zero; a body pointed along its
 path from its middle swings its back out at every corner.
 
+**A camera set beside a real film: measure the film too.** Two numbers carried a replay of
+a phone film further than any amount of looking. *Where the horizon sits*: tile the film one
+frame a second with a line drawn at a fraction of the frame's height, the replay likewise,
+and read off where the street's vanishing point falls in each. A pinhole camera tipped p
+below level puts it at 0.5 - tan(p) / (2 tan(fov/2)) of the way down, so a few hundredths
+of the frame are degrees of tilt (one replay sat at 0.36 against the film's 0.30: 11 degrees
+down against 16, the street seen too level). *How the hand shakes*: the image's shift from
+frame to frame by phase correlation (numpy FFTs, no OpenCV needed), summed into angles, the
+slow turns taken out with a 1 s running mean, then rms and the spectrum. A phone's
+stabiliser takes the steps' jolts out: what is left is a slow drift of a few tenths of a
+degree at about 0.5-0.8 Hz, not a bob at the step rate, so a replay should sway slowly
+rather than bounce. Measure on straight stretches only: through a corner the image moves
+too far between frames, the correlation locks on the wrong peak, and it reads tens of
+degrees of nonsense. Run the same measure on the replay's recording -- it shows what the
+replay does, not what the code was meant to do.
+
 **Checks that should read 0, every tick.** Counting what went wrong per minute finds the
 big things; checks of what must never happen find the bugs before anyone looks for them.
 Each is a kind of bug already fixed once, written so it cannot come back unseen: bodies
