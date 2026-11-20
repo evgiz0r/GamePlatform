@@ -8413,14 +8413,28 @@ const QUALITY := [
 	[Viewport.MSAA_4X, 75.0, 1.0],
 ]
 const QUALITY_WEB := 2               ## where a browser starts
-const FPS_LOW := 55.0                ## below this (or 8% of frames over 25 ms) for two 2-second spells: a step down
+## A step down: two 2-second spells in a row under FPS_LOW, or with more than STUTTER of their
+## frames slower than 33 ms. A step back up: STEP_UP_S seconds at the display's own rate
+## (FPS_FULL) -- unless that level failed lately: then not before its wait is up, a wait
+## that doubles each time it fails again. Hitches (frames over HITCH_S: loading, a shader
+## compiling) are left out of the reckoning: one half-second stall in a spell made a
+## smooth 50 fps read as 38, and a PC stepped itself down to nothing and stayed there.
+const FPS_LOW := 45.0
+const FPS_FULL := 56.0
+const STUTTER := 0.1
+const HITCH_S := 0.25
+const STEP_UP_S := 8.0
 var _quality := 3
 var _shadow_web := false
 var _fps_t := 0.0
 var _fps_frames := 0
-var _fps_long := 0                   ## frames over 25 ms in this spell: stutter, not just slow
+var _fps_long := 0                   ## frames over 33 ms in this spell: stutter, not just slow
 var _fps_low := 0
+var _fps_good := 0.0                 ## seconds at the full rate at this level
 var _fps_wait := 6.0                 ## the first seconds compile shaders and stutter anyway
+var _q_retry_at := {}                ## level -> when it may be tried again (s), after it failed
+var _q_fails := {}                   ## level -> how often it has failed
+var _q_clock := 0.0
 
 func _set_quality(q: int) -> void:
 	if OS.has_feature("web") and not _shadow_web:
@@ -8439,18 +8453,22 @@ func _set_quality(q: int) -> void:
 	view.scaling_3d_scale = row[2]
 	_set_blobs(not sun.shadow_enabled)
 
-## only down, never back up: a laptop that could not keep up once will not later. Only on
-## the web: a desktop build has a real GPU, and test runs on a software renderer would
-## step themselves down to nothing.
+## Only on the web: a desktop build has a real GPU, and test runs on a software renderer
+## would step themselves down to nothing.
 func _watch_fps(dt: float) -> void:
-	if not OS.has_feature("web") or _quality == 0:
-		return
+	if OS.has_feature("web"):
+		_judge_fps(dt)
+
+func _judge_fps(dt: float) -> void:
+	_q_clock += dt
 	if _fps_wait > 0.0:
 		_fps_wait -= dt
 		return
+	if dt > HITCH_S:
+		return   # a hitch: not the frame rate
 	_fps_t += dt
 	_fps_frames += 1
-	if dt > 0.025:
+	if dt > 0.033:
 		_fps_long += 1
 	if _fps_t < 2.0:
 		return
@@ -8459,15 +8477,29 @@ func _watch_fps(dt: float) -> void:
 	_fps_t = 0.0
 	_fps_frames = 0
 	_fps_long = 0
-	if fps >= FPS_LOW and stutter < 0.08:
-		_fps_low = 0
+	if fps < FPS_LOW or stutter > STUTTER:
+		_fps_good = 0.0
+		_fps_low += 1
+		if _fps_low >= 2 and _quality > 0:
+			_fps_low = 0
+			var failed := _quality
+			_q_fails[failed] = int(_q_fails.get(failed, 0)) + 1
+			_q_retry_at[failed] = _q_clock + minf(30.0 * pow(2.0, float(_q_fails[failed]) - 1.0), 300.0)
+			_set_quality(_quality - 1)
+			_fps_wait = 3.0   # (new shaders compile)
+			Probe.event("quality", {"level": _quality, "fps": int(fps), "down": true})
 		return
-	_fps_low += 1
-	if _fps_low >= 2:
-		_fps_low = 0
-		_set_quality(_quality - 1)
-		_fps_wait = 1.0
-		Probe.event("quality", {"level": _quality, "fps": int(fps)})
+	_fps_low = 0
+	if fps < FPS_FULL or stutter > 0.03:
+		_fps_good = 0.0
+		return
+	_fps_good += 2.0
+	var up := _quality + 1
+	if up < QUALITY.size() and _fps_good >= STEP_UP_S and _q_clock >= float(_q_retry_at.get(up, 0.0)):
+		_fps_good = 0.0
+		_set_quality(up)
+		_fps_wait = 3.0
+		Probe.event("quality", {"level": _quality, "fps": int(fps), "down": false})
 
 ## ---- where a frame's time goes ------------------------------------------------------------
 ## Every part of a physics tick and of a drawn frame is timed (the script's own work, in
