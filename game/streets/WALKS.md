@@ -54,10 +54,9 @@ focused, or leave them to them.
       face (a screen, a card slot); the scooters' colours (film 82-86 s).
 - [ ] Ha-Meri: trees in square earth pits along the kerb every ~8-10 m; cars parked
       both sides (the game's do it); a delivery scooter (film 88-96 s).
-- [ ] Ha-Meri's far kerb (film 91-96 s): the film reaches it beside a parked white
-      hatchback, on a blue-and-white painted kerb, a few metres from the corner, and steps
-      up onto a pavement by a stone-and-plaster garden wall; the game's walk lands among the
-      corner's white bollards and red-and-white kerb, by a car's nose and a tree pit.
+- [ ] Ha-Meri's far pavement (film 93-96 s): the low wall white plaster and stone with a
+      hedge over it, an e-scooter (a kick scooter, teal) parked against it; the kerb jogs
+      out where the parking bay starts.
 - [ ] Small things: drain grates at the kerbs, utility cabinets at corners, stickers and
       graffiti on poles, a fire hydrant, chewing-gum stains on the slabs.
 
@@ -83,8 +82,8 @@ focused, or leave them to them.
       and blue-grey, not near black; the sky pale near the horizon. *(city-wide)*
 - [ ] Dappled shade under the passage's trees: patches of sun through the leaves moving
       on the pavers (film 33-56 s); the game's crowns cast plain blobs.
-- [ ] The camera's own look: the phone's exposure (bright sky blown out, shade lifted),
-      a touch of motion blur in the steps, its slight wide-angle bend at the edges.
+- [ ] The camera's own look, what is left of it: a touch of motion blur in the steps, its
+      slight wide-angle bend at the edges, its sharpening halo on edges against the sky.
 - [ ] Materials: plaster stained under the windows, concrete posts rough, the slabs'
       cracks sharper, the asphalt's patches; the zebra's paint worn to grey in the wheel
       tracks.
@@ -142,6 +141,12 @@ Its film is not in this repo or this machine's scratch: a session needs a clip o
       (bollards, cabinets, motorbikes, tables) keep landing on the walks' lines.
 
 ## Done
+- Pass 10 of walk 1, both walks' picture (DEV.md): the phone's picture measured and laid
+  over the replays (`tests/film_look.py`: the bright end squeezed, not blown -- 0.1% clipped
+  against the game's 4.4%; shade lifted; greys warmed; colour a little less); Ha-Meri's far
+  kerb as filmed (a silver hatchback past the crossing, blue and white paint, no yard car on
+  the pavement); the bougainvillea off the little street's pavement; the hand's sway doubled
+  to read as the film's does.
 - Pass 9 of walk 1, both walks (DEV.md): the phone in a hand -- tipped 15.6 degrees down
   as the film's horizon says (it was 11.3), swaying slowly as the film's does (0.25 degrees
   rms, 0.5-0.8 Hz, `tests/film_shake.py`; the steps' jolts are stabilised out of the film,

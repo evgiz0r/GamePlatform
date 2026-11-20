@@ -138,7 +138,15 @@ degree at about 0.5-0.8 Hz, not a bob at the step rate, so a replay should sway 
 rather than bounce. Measure on straight stretches only: through a corner the image moves
 too far between frames, the correlation locks on the wrong peak, and it reads tens of
 degrees of nonsense. Run the same measure on the replay's recording -- it shows what the
-replay does, not what the code was meant to do.
+replay does, not what the code was meant to do. *The picture*: levels at 1-99%, the share
+clipped, saturation and the near-greys' colour, one frame a second over both, then a tone
+curve that maps one's levels onto the other's -- a phone's HDR squeezes its bright end and
+lifts its shade, which by eye passed for "a blown-out sky" and was the opposite. Content
+differs (the game's materials are not the street's), so fit a moderate warmth rather than
+the whole gap (fitted freely it turned grey pavers mauve) and look at the graded frames
+beside the film before trusting the numbers. A canvas shader over the finished frame reads
+the same 8-bit sRGB a recording saves, so a grade fitted on recorded frames in numpy carries
+into the game exactly -- check it with the same moments graded and bare.
 
 **Checks that should read 0, every tick.** Counting what went wrong per minute finds the
 big things; checks of what must never happen find the bugs before anyone looks for them.

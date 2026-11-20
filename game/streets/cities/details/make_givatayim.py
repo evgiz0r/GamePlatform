@@ -109,7 +109,14 @@ d = {
     "white_bollards": [{"near": P(86.0, -2.0), "r": 12.0}],
     # Sirkin, where the Sheinkin-Sirkin walk waits and looks left to the shops (its 70-74 s):
     # no car parked beside it, nor across the way in the line to the shops
-    "no_parking": [{"near": [485.5, -737.5], "r": 8.0}, {"near": [478.5, -742.0], "r": 8.0}],
+    "no_parking": [{"near": [485.5, -737.5], "r": 8.0}, {"near": [478.5, -742.0], "r": 8.0},
+                   # Ha-Meri's far kerb past the crossing: the film's silver hatchback is there
+                   # (a prop), in the road; the game parked one half up on the pavement
+                   {"near": P(96.0, 4.6), "r": 2.5}],
+    # bare where the film is bare: the little street's pavement by the graffiti gatepost (film
+    # 71-76 s) had a front garden's bougainvillea hung across it at eye height
+    "clear": [{"near": [616.0, -601.3], "r": 3.0},
+              {"near": P(95.0, 5.4), "r": 3.0}],   # and Ha-Meri's far pavement where it steps up
     # the block at the passage's north-west corner stands on columns along Katzenelson: shops
     # 3 m back under the upper floors, the walk goes between them and the columns (film 18-23 s)
     "buildings": [{"near": P(15, -15), "arcade": [list(ARC_A), list(ARC_E)], "depth": ARC_DEPTH, "h": 3.4}],
@@ -193,6 +200,11 @@ d = {
         {"kind": "zebra", "at": P(92.4, 0), "dir": [round(u[0], 4), round(u[1], 4)], "w": 3.0, "len": 8.0},
         {"kind": "ring30", "at": P(99.5, 0.0), "dir": [round(u[0], 4), round(u[1], 4)]},
         {"kind": "zone30_sign", "at": P(95.6, -4.7), "dir": [round(-u[0], 4), round(-u[1], 4)]},
+        # Ha-Meri's far kerb where the walk steps up (film 91-95 s): a silver hatchback parked
+        # just past the raised crossing, its kerb blue and white (the game painted it red and
+        # white as a corner's, and stood a front yard's car on the pavement there: `clear`)
+        {"kind": "parked_car", "at": P(97.8, 3.05), "dir": [round(u[0], 4), round(u[1], 4)], "body": "hatch", "paint": "silver"},
+        {"kind": "kerb_paint", "at": P(97.5, 4.0), "len": 13.0, "pat": "blue_white"},
         # the little street (film 64-76 s): cars parked along its far side, in the road (the
         # corner block stands too near for the game to park them up on that kerb), and a
         # second transformer on twin poles at Sheinkin's corner
@@ -224,8 +236,9 @@ d = {
                       [8.9, 12.6, 70], [12.6, 13.4, 20],        # the far half's from the right
                       [79.3, 81.0, 60], [81.0, 82.3, -45],      # Sheinkin's from the right; and the other way
                       [84.4, 86.0, 40],                         # half way over, along Sheinkin again
-                      [87.6, 88.6, -55], [89.0, 91.2, 55],      # back at the corner; then down Ha-Meri
-                      [92.0, 95.6, -10, -22]],                  # down at the far kerb's blue and white
+                      [87.6, 88.6, -55], [89.0, 92.5, 80],      # back at the corner; then down Ha-Meri,
+                                                                # the hatchback ahead by the kerb (to 92.3)
+                      [92.5, 95.6, -10, -22]],                  # down at the far kerb's blue and white
                                                                 # as it steps up beside a parked car (not
                                                                 # right: a tree pit stands there, 0.6 m off)
             # on a crossing, or waiting at its kerb about to go: cars stop for it
@@ -263,7 +276,7 @@ def _mark(sec):
             item["src"] = SRC
 for sec in ("drop", "set", "add"):
     _mark(d["roads"].get(sec, []))
-for sec in ("buildings", "surfaces", "lines", "props", "areas", "white_bollards", "no_parking"):
+for sec in ("buildings", "surfaces", "lines", "props", "areas", "white_bollards", "no_parking", "clear"):
     _mark(d.get(sec, []))
 def _bare(item):
     return {k: v for k, v in item.items() if k != "src"} if isinstance(item, dict) else item

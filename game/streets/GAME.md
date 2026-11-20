@@ -254,7 +254,9 @@ The phone is held as a hand holds one: tipped down at the pavement ahead as the 
 (about 16 degrees, read off where the film's horizon sits), never quite still -- a slow sway
 and a little roll, as small and as slow as the film's own, measured from it -- and it looks
 down as well as round: straight down at Katzenelson's stripes on the way over, and at
-Ha-Meri's kerb as it steps up. Both walks hold it this way.
+Ha-Meri's kerb as it steps up. Both walks hold it this way. And the picture is the phone's:
+its bright end squeezed rather than burnt to white, its shade lifted, warm and a little less
+colourful than the game drives in -- measured from the film, frame against frame.
 
 Over the passes since, the walk's street has been dressed, a stretch at a time, from the
 film: Katzenelson two lanes each way with railings and red-white kerbs at its zebra; the

@@ -1754,6 +1754,14 @@ var _crossing_set := {}
 var _white_bollards := {}            ## crossing nodes whose bollards are white, as filmed (details.gd)
 var _no_park: Array = []             ## [spot, radius]: no car parked at the kerb there (details.gd)
 var _keep_clear: Array = []          ## [spot, radius]: none of the city's kerbside things there (details.gd)
+
+## a spot a filmed walk shows bare, where the city's own kerbside things and a front garden's
+## greenery over the pavement are not put (details.gd's `clear`)
+func _kept_clear(p: Vector2) -> bool:
+	for kc: Array in _keep_clear:
+		if p.distance_to(kc[0]) <= kc[1]:
+			return true
+	return false
 var _bg_build := false               ## building in the background: stop for the frame when over budget
 var _bg_wait := false
 ## The squares round the start are built behind the loading text, and each used to go up in one
@@ -3627,7 +3635,7 @@ func _garden_fronts(run: PackedVector2Array, hw: float, sgn: float, key: int, fr
 				# open pavement in a filmed walk's way
 				if not walled[_seg_at(cum, lerpf(fs0, fe0, t))]:
 					continue
-				if _mine(q) and _push_out(q, 0.4, false) == Vector2.ZERO:
+				if _mine(q) and not _kept_clear(q) and _push_out(q, 0.4, false) == Vector2.ZERO:
 					var sc := 0.8 + 0.5 * float(posmod(_hash_i(q), 7)) / 6.0
 					(fronts["flowers"] as Array).append(Transform3D(Basis.from_scale(Vector3(1.4, 1.0, 1.1) * sc), _g3(q, top + 0.3 * sc)))
 		# greenery spilling out over the pavement: from behind a hedge's wall, a bare wall, now
@@ -3641,8 +3649,8 @@ func _garden_fronts(run: PackedVector2Array, hw: float, sgn: float, key: int, fr
 				var sm := lerpf(fs0, fe0, u)
 				var q := _along(on_wall, cum, sm)
 				var to_road := (_along(run, cum, sm) - q).normalized()
-				if not _mine(q) or not walled[_seg_at(cum, sm)]:
-					continue   # (no wall to spill over: in front of shops, the open pavement)
+				if not _mine(q) or not walled[_seg_at(cum, sm)] or _kept_clear(q):
+					continue   # (no wall to spill over: in front of shops, the open pavement; or a film shows none)
 				var sc := 0.85 + 0.45 * float(posmod(_hash_i(q * 2.0), 7)) / 6.0
 				var over := style >= 36 and style < 56   # (over the boards: above them, head high)
 				var cy := top + (1.15 if over else 0.35 * sc)
@@ -3877,13 +3885,13 @@ func _front_gate(gate: Array, run: PackedVector2Array, cum: PackedFloat32Array, 
 	if yard:
 		# a car in the yard, nose to the building, if it is clear
 		var c := q + nj * (hw + PAVE_W + 0.3 + 3.3)
-		if _mine(c) and depth >= 6.8 and _push_out(c, 1.1, false) == Vector2.ZERO \
+		if _mine(c) and depth >= 6.8 and not _kept_clear(c) and _push_out(c, 1.1, false) == Vector2.ZERO \
 				and _push_out(c + nj * 1.4, 1.0, false) == Vector2.ZERO and _clear_of_posts(c, 2.2):
 			_yard_cars.append([Transform3D(Basis(Vector3.UP, atan2(nj.x, nj.y)), _g3(c, 0.08)), CAR_MIX[hk % CAR_MIX.size()], hk])
 			_add_post(c + nj * 1.25, 0.85)
 			_add_post(c - nj * 1.25, 0.85)
 			_ao_car(c, nj, 0.12)
-	elif hk < 35:
+	elif hk < 35 and not _kept_clear(wall_mid):
 		# a metal arch over the gate, bougainvillea grown over it
 		var col: Color = _tone["railing"]
 		var feet: Array = []
@@ -12184,7 +12192,53 @@ func _film_begin(id: String) -> void:
 	_prev_pos = p0
 	_cam_yaw = _yaw
 	_hud.visible = false
+	if OS.get_environment("STREETS_FILM_LOOK") != "0":   # (=0: the game's own picture, to measure it bare)
+		_film_look_layer()
 	Probe.event("film", {"walk": id, "seconds": _film[_film.size() - 1].z})
+
+## The phone's picture over a filmed walk: a grade on the finished frame, under the shell's
+## buttons. Measured, one frame a second over walk 1, film against replay (game/streets/
+## tests/film_look.py): the phone's HDR squeezes the bright end (its brightest 1% stops at
+## 0.87; the game clipped 4.4% of the frame to white) and lifts the dark (its shade on the
+## ground at 0.23 against 0.11), its greys a little warm (the game's a little cyan), its
+## colours less saturated. FILM_CURVE takes the game's levels to the film's at 17 points,
+## the same on each channel; a 6% warmth fades out over the brightest tones (on the pale sky
+## it read pink; fitted, it went to 16% and grey pavers went mauve); then saturation back up
+## by FILM_SAT, as the flatter curve takes some out. Only the walks: the game's own look is
+## other sessions' (the light, the haze) and drives on.
+const FILM_CURVE := [0.050, 0.090, 0.160, 0.237, 0.304, 0.364, 0.415, 0.453, 0.480, 0.510, 0.543,
+	0.575, 0.607, 0.644, 0.690, 0.774, 0.876]
+const FILM_WARM := 1.06
+const FILM_SAT := 1.129
+func _film_look_layer() -> void:
+	var sh := Shader.new()
+	sh.code = """shader_type canvas_item;
+uniform sampler2D screen_tex : hint_screen_texture, filter_linear;
+const float CURVE[17] = float[17](%s);
+float tone(float v) {
+	float x = clamp(v, 0.0, 1.0) * 16.0;
+	int i = min(int(floor(x)), 15);
+	return mix(CURVE[i], CURVE[i + 1], x - float(i));
+}
+void fragment() {
+	vec3 c = texture(screen_tex, SCREEN_UV).rgb;
+	float l0 = dot(c, vec3(0.2126, 0.7152, 0.0722));
+	c *= mix(vec3(1.0), vec3(%f, 1.0, 1.0), 1.0 - smoothstep(0.6, 0.9, l0));
+	c = vec3(tone(c.r), tone(c.g), tone(c.b));
+	float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+	COLOR = vec4(clamp(vec3(l) + (c - vec3(l)) * %f, 0.0, 1.0), 1.0);
+}
+""" % [", ".join(FILM_CURVE.map(func(v: float) -> String: return "%.3f" % v)), FILM_WARM, FILM_SAT]
+	var mat := ShaderMaterial.new()
+	mat.shader = sh
+	var layer := CanvasLayer.new()
+	layer.layer = 1   # (over the world, under the shell's buttons: Flow's layer is 10)
+	var r := ColorRect.new()
+	r.set_anchors_preset(Control.PRESET_FULL_RECT)
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	r.material = mat
+	layer.add_child(r)
+	add_child(layer)
 
 func _film_tick(dt: float) -> void:
 	_film_t += dt
@@ -12406,18 +12460,19 @@ func _foot_camera(dt: float) -> void:
 ## horizon at 0.36, the street seen too level and the near pavement cut off.)
 const FILM_TILT := -0.272
 ## the hand's own sway on a filmed walk (radians: across, up, roll), slow and never still: the
-## film's image drifts 0.2-0.25 degrees rms each way on a straight stretch, peak to peak about
-## 0.6, mostly at 0.5-0.8 Hz -- the phone's stabiliser takes out the steps' quicker jolts, so
-## there is no step rhythm in it (measured frame to frame by phase correlation over the
-## passage, 36-52 s). Sums of sines at unrelated rates: never repeating, the same each run.
-## Calmer standing (two thirds).
+## film's image drifts 0.25 degrees rms across and 0.19 up and down on a straight stretch, peak
+## to peak about 0.6, mostly at 0.5-0.8 Hz -- the phone's stabiliser takes out the steps'
+## quicker jolts, so there is no step rhythm in it (tests/film_shake.py over the passage,
+## 36-52 s; its 1 s running mean takes out much of a slow sway, so match what it reads on the
+## replay's recording, not the sizes here: these read 0.11 and 0.10 at half these sizes).
+## Sums of sines at unrelated rates: never repeating, the same each run. Calmer standing.
 func _film_hand() -> Vector3:
 	var t := _film_t
 	var k := deg_to_rad(1.0) * lerpf(0.65, 1.0, clampf(_v / 1.0, 0.0, 1.0))
 	return Vector3(
-		(0.26 * sin(t * TAU * 0.55 + 0.4) + 0.17 * sin(t * TAU * 0.79 + 2.1) + 0.11 * sin(t * TAU * 0.37 + 4.0)) * k,
-		(0.20 * sin(t * TAU * 0.63 + 1.3) + 0.14 * sin(t * TAU * 0.47 + 3.3) + 0.09 * sin(t * TAU * 0.91 + 5.2)) * k,
-		(0.30 * sin(t * TAU * 0.43 + 2.7) + 0.18 * sin(t * TAU * 0.71 + 0.9)) * k)
+		(0.57 * sin(t * TAU * 0.55 + 0.4) + 0.37 * sin(t * TAU * 0.79 + 2.1) + 0.24 * sin(t * TAU * 0.37 + 4.0)) * k,
+		(0.38 * sin(t * TAU * 0.63 + 1.3) + 0.27 * sin(t * TAU * 0.47 + 3.3) + 0.17 * sin(t * TAU * 0.91 + 5.2)) * k,
+		(0.45 * sin(t * TAU * 0.43 + 2.7) + 0.27 * sin(t * TAU * 0.71 + 0.9)) * k)
 
 ## the indicators at the car's four corners, and the reverse lights (+X is the car's left)
 func _build_car_signals() -> void:

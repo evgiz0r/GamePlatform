@@ -37,7 +37,7 @@ func _run() -> void:
 		for spot: String in OS.get_environment("POSTS_NEAR").split(";", false):
 			var q := spot.split_floats(",")
 			var c := Vector2(q[0], q[1])
-			print("-- near %s" % c)
+			print("-- near %s (kept clear by the details file: %s, of %d spots)" % [c, g._kept_clear(c), g._keep_clear.size()])
 			for i in range(g._posts.size()):
 				if g._posts[i].distance_to(c) <= q[2]:
 					print("post %d at %s r %.2f" % [i, Vector2(snappedf(g._posts[i].x, 0.1), snappedf(g._posts[i].y, 0.1)), g._post_r[i]])

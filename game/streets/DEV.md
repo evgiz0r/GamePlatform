@@ -716,6 +716,28 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   `_film_hand()`: sums of slow sines at those sizes across, up and in roll, two thirds of
   it standing. Ha-Meri's last look (60 right, 91.6-94.5 s) turned the camera onto a tree
   pit's trunk 0.56 m off the walk; the film looks down at the kerb there instead.
+  Measured on the recording after: 0.11 / 0.10 degrees against the film's 0.25 / 0.19 --
+  `film_shake.py`'s 1 s running mean takes out much of a slow sway, so the sizes in code
+  were doubled to read as the film does (match the tool's reading on both, not the code).
+- **Pass 10, the phone's picture and Ha-Meri's far kerb**, done. *The picture*:
+  `tests/film_look.py` (one frame a second, film against a bare replay) found the phone's HDR
+  squeezing the bright end -- its brightest 1% stops at 0.87, 0.1% clipped; the game clipped
+  4.4% to white and its bright quarter sat far above -- and lifting the dark (the shade on
+  the ground at 0.23 against 0.11), greys a little warm where the game's were a little cyan,
+  colours less saturated (0.159 against 0.190). It is *not* a blown-out sky, as it looked by
+  eye. The fit is a 17-point curve, a 6% warmth fading out over the brightest tones, then
+  saturation x1.129, drawn by `_film_look_layer()` over the finished frame on filmed walks
+  only (`STREETS_FILM_LOOK=0` turns it off, to measure the bare picture or refit). In the
+  game it gives what the fit predicted to the hundredth (levels and saturation, same frames
+  on and off), so the screen texture a canvas shader reads is the same 8-bit sRGB a
+  recording saves. *Ha-Meri*: the film steps up at the raised crossing's far end beside a
+  silver hatchback parked just past it, on a blue-and-white kerb; the game had a red-and-
+  white corner kerb and a front yard's car standing on the pavement (the yard code's road
+  width is not this corner's: its middle 0.6 m off the kerb). Now a `clear` spot there
+  (which the yard car, the greenery over walls and the kerbside furniture all respect), the
+  hatchback (`parked_car` takes `paint` now) and blue-and-white `kerb_paint`. And a
+  bougainvillea from the front gardens had grown across the little street's pavement at eye
+  height by the graffiti gatepost (film 71-76 s, bare): a `clear` spot too.
 - **Next passes**: the light (another session's: the film's afternoon is hazy and warm);
   people that move as the film's do (the walk's `people` take `to` and `t`; none of the
   four walks yet). The street now matches the film in what stands where: what is left is

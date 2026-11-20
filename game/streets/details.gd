@@ -36,8 +36,10 @@ extends RefCounted
 ##                                                    near (a view the film had, kept open)
 ##   clear     [{near: [x, z], r}]                   none of the city's own kerbside things
 ##                                                    (bike racks, scooters, bins, cabinets:
-##                                                    furniture.gd's _free) within r of near --
-##                                                    the film shows nothing there
+##                                                    furniture.gd's _free) and no front
+##                                                    garden's greenery over the pavement
+##                                                    within r of near -- the film shows
+##                                                    nothing there
 ##   areas     [{k, p: [[x, z]...]}]                 as the city file's areas (plaza, park...)
 ##   buildings [{near: [x, z], arcade: [[x, z], [x, z]], depth, h}]   the building holding
 ##                                                    `near` gets an arcade along that line
@@ -426,7 +428,11 @@ func build() -> void:
 				var kc: Dictionary = (g.get_script() as GDScript).get_script_constant_map()
 				var f := d.rotated(0.03 * (_rnd(k, 3) - 0.5))
 				(cars[kind][0] as Array).append(Transform3D(Basis(Vector3.UP, atan2(f.x, f.y)), g._g3(at, float(kc["Y_ROAD"]))))
-				(cars[kind][1] as Array).append(paints[(k * 5) % paints.size()])
+				# `paint`: the colour a film shows (_car_paints' order), or one picked
+				var pi := (k * 5) % paints.size()
+				if pr.has("paint"):
+					pi = int({"white": 0, "silver": 4, "grey": 7, "black": 9, "blue": 11, "red": 12}.get(String(pr["paint"]), pi))
+				(cars[kind][1] as Array).append(paints[pi])
 				g._add_post(at + f * 1.25, 0.85)
 				g._add_post(at - f * 1.25, 0.85)
 			"zebra":
