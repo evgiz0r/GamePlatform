@@ -20,7 +20,7 @@ const GAP := 2.2             ## bumper to bumper when stopped (m)
 const HEADWAY := 1.2         ## seconds behind the car in front, moving
 const LEN := 4.4
 ## how long each kind is, bumper to bumper (m)
-const LENS := {"sedan": 4.6, "hatch": 4.0, "suv": 4.7, "van": 5.0, "taxi": 4.6, "bus": 11.8, "moto": 1.9, "truck": 6.8}
+const LENS := {"sedan": 4.6, "hatch": 4.0, "mini": 3.6, "wagon": 4.65, "mpv": 4.4, "suv": 4.7, "van": 5.0, "taxi": 4.6, "bus": 11.8, "moto": 1.9, "truck": 6.8}
 ## the player's car against each kind: circles along its length [offsets], radius
 const BODY := {"bus": [[-4.6, -2.3, 0.0, 2.3, 4.6], 1.25], "moto": [[0.0], 0.55], "truck": [[-2.3, 0.0, 2.3], 1.15]}
 const BUS_ROADS := {"primary": true, "secondary": true, "tertiary": true, "trunk": true}
@@ -62,6 +62,7 @@ class Car:
 	var yaw := 0.0                    ## atan2(dir.x, dir.y): the multimesh's way of turning
 	var pitch := 0.0
 	var y := 0.0                      ## the height of the surface under it: the ground, or a bridge or a tunnel's road
+	var lift := 0.0                   ## y above the ground under it: about 0 on the street, a deck's height on a bridge (see _level)
 	var prev_y := 0.0
 	var rear := Vector2.INF           ## where its rear axle is (trailing the front: see _place)
 	var prev_pos := Vector2.ZERO
@@ -136,6 +137,7 @@ var g: Node                           ## the game: its road graph, lights, groun
 var cars: Array = []
 var rng := RandomNumberGenerator.new()
 var hit_index := -1                   ## the car the player last bumped
+var _me_lift := 0.0                   ## the player's height above the ground under it, this tick (see _level)
 var _clock := 0.0
 var _degree := {}                     ## node -> how many ways out of it (3+: a junction)
 const TAKE_AHEAD := 22.0              ## who goes first at a junction is settled this far before it
@@ -144,7 +146,8 @@ var _mms := {}                        ## car shape -> its multimesh
 var _beams: MultiMeshInstance3D       ## their beams on the road, at night
 var _blinkers: MultiMesh              ## the indicators that are lit, front and back: one draw
 ## each kind's half width and half length, for where its indicators are
-const CORNERS := {"sedan": Vector2(0.9, 2.25), "hatch": Vector2(0.86, 1.95), "suv": Vector2(0.96, 2.32),
+const CORNERS := {"sedan": Vector2(0.9, 2.25), "hatch": Vector2(0.86, 1.95), "mini": Vector2(0.8, 1.8),
+	"wagon": Vector2(0.9, 2.3), "mpv": Vector2(0.92, 2.18), "suv": Vector2(0.96, 2.32),
 	"van": Vector2(0.98, 2.45), "taxi": Vector2(0.9, 2.25), "bus": Vector2(1.25, 5.85), "moto": Vector2(0.3, 0.8),
 	"truck": Vector2(1.1, 3.35)}
 var _night := false
@@ -163,7 +166,7 @@ func setup(game: Node) -> void:
 	var b: Rect2 = g._bounds
 	var box := AABB(Vector3(b.position.x - 500.0, -200.0, b.position.y - 500.0),
 		Vector3(b.size.x + 1000.0, 600.0, b.size.y + 1000.0))   # no box to recompute every frame
-	for kind: String in ["sedan", "hatch", "suv", "van", "taxi", "bus", "moto", "truck"]:
+	for kind: String in ["sedan", "hatch", "mini", "wagon", "mpv", "suv", "van", "taxi", "bus", "moto", "truck"]:
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_colors = true   # white: the car shader's part colours are vertex colours, see _chunked
@@ -300,6 +303,7 @@ func tick(dt: float) -> void:
 	_tick_n += 1
 	_kerb_tick(dt)
 	var me: Vector2 = g._pos
+	_me_lift = float(g._y) - float(g._h(me))
 	# One car a tick is put back near the player: driving off leaves several behind at once,
 	# and finding each a new road in the same tick (up to 24 tries apiece) was a stutter every
 	# few seconds. One that found nowhere this time looks again a moment later.
@@ -437,7 +441,7 @@ func _target(c: Car, i: int, dt: float) -> float:
 		var ov: float
 		var oyaw: float
 		if j == cars.size():
-			if not _level(c, float(g._y)):
+			if not _level(c, float(g._y), _me_lift):
 				continue   # (overhead on a bridge, or under it)
 			q = g._pos
 			ov = maxf(float(g._v), 0.0)
@@ -447,7 +451,7 @@ func _target(c: Car, i: int, dt: float) -> float:
 			if j == i:
 				continue
 			var o: Car = cars[j]
-			if not o.alive or not _level(c, o.y):
+			if not o.alive or not _level(c, o.y, o.lift):
 				continue
 			q = o.pos
 			ov = o.v
@@ -696,7 +700,7 @@ func _junction_ahead(c: Car, i: int, dt: float) -> float:
 		var rel := me_at - c.pos
 		var fwd := Vector2(sin(c.yaw), cos(c.yaw))
 		# (not while autodrive stands giving way at this junction: it waits for me, I go)
-		if _level(c, float(g._y)) and not g._ap_giving.has(n) and not (rel.dot(fwd) < 0.0 and absf(rel.dot(Vector2(-fwd.y, fwd.x))) < 2.5):
+		if _level(c, float(g._y), _me_lift) and not g._ap_giving.has(n) and not (rel.dot(fwd) < 0.0 and absf(rel.dot(Vector2(-fwd.y, fwd.x))) < 2.5):
 			var pd := me_at.distance_to(node_at)
 			var pv := maxf(float(g._v), 0.0)
 			var pfwd := Vector2(cos(float(g._yaw)), sin(float(g._yaw)))
@@ -994,12 +998,12 @@ func _oncoming_clear(c: Car, i: int, reach: float, over: float) -> bool:
 	for j in range(cars.size() + 1):
 		var q: Vector2
 		if j == cars.size():
-			if not _level(c, float(g._y)):
+			if not _level(c, float(g._y), _me_lift):
 				continue
 			q = g._pos
 		else:
 			var o: Car = cars[j]
-			if j == i or not o.alive or not _level(c, o.y) or _parked_double(o):
+			if j == i or not o.alive or not _level(c, o.y, o.lift) or _parked_double(o):
 				continue
 			q = o.pos
 		if q.distance_squared_to(c.pos) > (reach + 10.0) * (reach + 10.0):
@@ -1251,11 +1255,11 @@ func _lane_clear(c: Car, i: int, shift: float) -> bool:
 	for j in range(cars.size() + 1):
 		var q: Vector2
 		if j == cars.size():
-			if not _level(c, float(g._y)):
+			if not _level(c, float(g._y), _me_lift):
 				continue
 			q = g._pos
 		else:
-			if j == i or not (cars[j] as Car).alive or not _level(c, (cars[j] as Car).y):
+			if j == i or not (cars[j] as Car).alive or not _level(c, (cars[j] as Car).y, (cars[j] as Car).lift):
 				continue
 			q = (cars[j] as Car).pos
 		if q.distance_squared_to(c.pos) > 900.0:
@@ -1558,6 +1562,8 @@ func _spawn(c: Car, first: bool) -> bool:
 		var r: Dictionary = _roads[ri]
 		if r["k"] == "service" or rng.randf() > float(KIND_W.get(r["k"], 0.25)):
 			continue
+		if g._pocketed(hit, g._trap) or g._pocketed(hit, g._cut_off) or g._pocketed(hit, g._outside):
+			continue   # (in a pocket at the map's edge: a car put down there never got out -- see _find_pockets)
 		if c.kind == "bus" and not BUS_ROADS.has(r["k"]):
 			continue
 		var at: Vector2 = hit["q"]
@@ -1623,6 +1629,7 @@ func _start_on(c: Car, ri: int, sj: int, at: Vector2, dir: int) -> bool:
 	c.last_light = -1000.0
 	c.last_site = -1
 	c.y = g._decks.deck_y(ri, at) if r.has("ys") else float(g._h(at))
+	c.lift = c.y - float(g._h(at))
 	_leg(c, ri, sj + 1 if dir > 0 else sj, dir)
 	while c.cum[c.cum.size() - 1] < 140.0:
 		if not _next(c):
@@ -1966,6 +1973,7 @@ func _place(c: Car) -> void:
 	var d := front - c.rear
 	c.pos = (front + c.rear) * 0.5
 	c.y = g._decks.surf(c.pos, c.y)
+	c.lift = c.y - float(g._h(c.pos))
 	if d.length_squared() > 0.01:
 		c.yaw = atan2(d.x, d.y)
 		if g._hnx > 0:
@@ -2046,11 +2054,14 @@ func push(p: Vector2, r: float, y := NAN) -> Vector2:
 	return out
 
 ## two things this much apart in height are on different levels (a bridge and the street under
-## it, a tunnel and the hill over it) and do not meet
+## it, a tunnel and the hill over it) and do not meet -- unless each is as high above the ground
+## under it as the other (`lift`): both on the street, a hill between them. By height alone a
+## car coming down a slope to a junction was 3-4 m above the player standing in it 50 m on,
+## and passed over it as if on a bridge.
 const LEVEL := 2.5
 
-func _level(c: Car, y: float) -> bool:
-	return absf(c.y - y) <= LEVEL
+func _level(c: Car, y: float, lift: float) -> bool:
+	return absf(c.y - y) <= LEVEL or absf(c.lift - lift) <= LEVEL
 
 func bumped(i: int) -> void:
 	if i >= 0 and i < cars.size():

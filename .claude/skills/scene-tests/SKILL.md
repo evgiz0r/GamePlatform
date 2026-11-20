@@ -237,6 +237,24 @@ it is made, with a one-line caption, rather than a report at the end.
 
 ## Gotchas (each cost a run)
 
+- **Read braking over half a second, not a tick.** A follower that steps its speed to its
+  target each tick (an AI car at its hard-braking limit) reads 7.5 m/s^2 in every case; a car
+  coming to rest whose last creep is zeroed reads 15. Average the speed's drop over ~30 ticks
+  and count only the moments the thing you test is the reason (`why == "player"`).
+- **A test that puts the car back at the same place resets "the last one passed".** State
+  kept per place for a while after passing it (the last lit junction crossed, for 120 m
+  driven) goes on applying when a test -- or the game's own "go to" -- sets the car down by the
+  same place again: the car ignored the red there and the red went uncounted, every case
+  reading "on through, no red". If every case reads the same however you vary it, suspect the
+  staging before the code under test, and reset such state wherever the car is put down.
+- **A "last thing hit" that probes also write is not a hit.** A game whose collision helper
+  records what it touched every time it is called -- by the planner checking a lane spot, by
+  the AI's look-ahead at its nose -- shows "wall 6156" (130 m away) as the last hit. Count a
+  hit only with the game's own crash flag (here `_crash_cool`), and find what really blocked
+  the AI by calling the same probe yourself at that moment.
+- **Hold a parked player by hand on a hill** (its position and speed each physics frame):
+  with nobody at the pedals it rolls down a 15% street, 100 m in a case.
+
 - **People that appear only out of sight are never in a still.** A game that places its
   extras (people in chairs, at stops) only where the player cannot see them appear leaves
   a staged camera looking at empty seats, however long it waits. Stand at the spot facing

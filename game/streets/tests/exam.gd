@@ -2,7 +2,9 @@ extends SceneTree
 ## The driving exam: autodrive from several places in a city (the start and EXAM_STARTS-1
 ## more spread over the town), EXAM_SECS each, with the traffic and the people about, and
 ## everything that went wrong counted:
-##   autodrive -- stuck (8 s+ standing, not for a light, a zebra or a queue that moves), hits
+##   autodrive -- stuck (8 s+ standing, not for a light, a zebra or a queue that moves), giving
+##     way at a junction 8 s+ (a wait, apart from stuck: a stream of cars can hold it there;
+##     past 30 s it counts as stuck giving way, with its incident), hits
 ##     by kind (over 2 m/s), off the asphalt, left of the middle of a two-way street, red
 ##     lights run, rescues ("back on the road" / "unstuck"), harsh braking (over 6 m/s^2:
 ##     the times it happened, and what for)
@@ -184,6 +186,7 @@ func _drive(secs: float) -> void:
 	var dt := Engine.time_scale / Engine.physics_ticks_per_second
 	var t := 0.0
 	var still := 0.0
+	var giving := 0.0
 	var off := 0.0
 	var last_hit := ""
 	var last_v: float = g._v
@@ -207,7 +210,19 @@ func _drive(secs: float) -> void:
 			continue
 		# -- autodrive
 		var held: String = g._ap_why
-		if absf(g._v) < 0.3 and not held in ["light", "zebra", "people"] and not (held == "car" and _lead_moving()):
+		# giving way at a junction: a wait, not a stall, counted on its own -- with the stalls
+		# it hid them (traffic spawned round the player makes streams denser than real ones);
+		# it takes a smaller gap after 12 s (AP_GIVE_PATIENT), so 30 s is a stall after all
+		if absf(g._v) < 0.3 and held == "junction" and not g._ap_giving.is_empty():
+			giving += dt
+			if absf(giving - 8.0) < dt * 0.5:
+				_count("autodrive: gave way 8 s+")
+			if absf(giving - 30.0) < dt * 0.5:
+				_count("autodrive: stuck giving way 30 s+")
+				_incident("stuck giving way", p, "for car %d" % g._ap_give_car)
+		else:
+			giving = 0.0
+		if absf(g._v) < 0.3 and not held in ["light", "zebra", "people", "junction"] and not (held == "car" and _lead_moving()):
 			still += dt
 			if absf(still - 8.0) < dt * 0.5:
 				_count("autodrive: stuck 8 s+")

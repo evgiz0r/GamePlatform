@@ -68,7 +68,15 @@ up to the corner slowly enough to stop, and if a car is coming that it could not
 front of with room to spare, it waits at the edge -- looking at that car as it goes by --
 and then goes. Turning left across oncoming traffic at a green, the same. A divided road's
 crossing: it waits while someone is on its half of the road, not while they finish the far
-half.
+half. Crossing a divided road where the middle is deep enough for the car, it crosses the near
+side when that is clear and waits in the middle for the far one (most medians where a side
+street crosses are too narrow for that, and it waits at the kerb for both).
+
+**Turns.** Autodrive turns as a driver does: from its lane, round, into the right-hand lane of
+the street it turns into, no tighter than the car can steer and slowly enough to stay in lane.
+
+> the car is turning pretty badly, waaaay too wide. its radius of turning is like double of
+> what it should be, it hits the oposing or the next lane a lot
 
 > Real give-way and left-turn decisions (picked from the list of next steps: "1 2 6 7").
 
@@ -554,7 +562,9 @@ red, red and amber together, green. In Bedford: green, amber, red. The main road
 the longer, 18 s against the side streets' 13. Between one way's amber
 and the other's green, 3-3.5 s for the junction to clear. A car that can still stop on amber
 stops; one too close goes (traffic used to cruise on until it could not stop, often late in
-the amber, and cross on red).
+the amber, and cross on red). Autodrive, at the end of a green (the flashing green or the
+amber), goes on only if it will be over the line before the red at the pace it is going --
+slowing for a turn just past the line counts -- and otherwise stops, firmly if it has to.
 
 A junction is one junction however OSM draws it. Where a divided road meets a street it is
 two points 10-30 m apart, where two divided roads cross it is four; the whole knot is one
@@ -1003,7 +1013,9 @@ and nothing to do while you drive.
 **A night that feels like night.** The night is dark and only a little blue now (it was a
 teal "day for night" over everything), with the city's own glow low on the horizon. Every
 street lamp has a halo round its head and a warm pool of light under it on the pavement as
-well as the road (the pools used to lie under the pavement, and showed only on the road);
+well as the road (the pools used to lie under the pavement, and showed only on the road;
+and a little brighter and wider since, out to 8.5 m from the lamp: on a main road, where the
+lamps take turns a side, it went dark between them);
 headlights, yours and the traffic's, glow, and their beams light the road ahead; a lit
 shop window throws its light onto the pavement in front of it. No glow effect over the
 whole picture -- that costs a laptop's browser a millisecond or two every frame -- the
@@ -1109,6 +1121,28 @@ parked car's corners too, a dog stays on its walker's side of a railing, grass n
 grows through garden paths, and someone with no room to step aside stops to let you pass.
 The walk along Sirkin keeps a step further from the parked cars, as filmed. Loading compiles
 about a tenth fewer graphics programs (most noticeable on a phone or a Windows laptop).
+
+> lets add real driver plates, that would improve the look a lot. lets think about the cars a
+> bit more how to make even more real. besides lets do - 1,2(i think we added db of stores so
+> we have many of them now!?) , 6
+
+**Plates and shop windows.** Every car carries an Israeli plate -- yellow, black digits in a
+black rim, the blue IL strip -- each a made-up number of its own (never a real one), readable
+up close and from the chase view. Shop windows show the shop inside, in depth as you pass:
+shelves of goods, racks of clothes, or a cafe's counter and menu board, dim by day and
+glowing at night. (There is no store database yet: the shops are OpenStreetMap's and the
+filmed ones; Tel Aviv's council lists 3,387 licensed businesses, which could fill its streets.)
+
+> 1,2,4,5,6,7 (car shapes like the cars here, wheels, Israeli touches, wear, the colour mix,
+> small details)
+
+**Cars like the ones here.** Small city cars, hatchbacks, family sedans, compact SUVs, the
+odd estate and tall boxy small van among them; each car's own wheels (five spokes, fine
+spokes, a steel wheel's cap, now and then dark alloys) with the brake disc behind; dust on
+the cars that have stood a while, sun-faded paint on the older ones, scuffed bumpers; folded
+silver sunshades in parked cars' windscreens and parking permits on many; now and then a
+learner's roof sign or a new driver's sign; wiper arms, shark-fin aerials, roof rails on the
+SUVs and estates; mostly white, silver and grey, as the streets are.
 
 > I took a video on my phone, walking in Givatayim.
 
@@ -1350,3 +1384,7 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   scrape mark on the wall the car rubbed.
 - People who react ("not needed yet, maybe later"): jumping back, or falling, when a car
   comes at them; glancing at you; stopping at the kerb before they step out.
+- A "green wave": "any crossroads i approach switches to green for my car" -- a switch for
+  the player's car (driving or autodrive) that turns each light it comes up to green its
+  way, through the usual change for the cross street (amber, red) so the traffic there stops
+  as it would.

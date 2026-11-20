@@ -2,8 +2,8 @@
 # Drive the route set (routes.json) and report: maps of each drive and a block in
 # routes_results.md. Two at a time, headless at 60 fixed ticks a second, real speed (1x).
 #   game/streets/tests/run_routes.sh [route ids...]   (default: all)   OUT=dir for the maps
-# About 4-12 minutes a route here (the city's loading is most of a short one); all ten,
-# two at a time, ~40-60 minutes.
+# The test town's in ~20 s, a big city's a few minutes (its loading is much of it); all ten,
+# two at a time, ~10-12 minutes (November 2026).
 set -u
 # (all in one function, read whole before it runs: an edit to this file while it ran made
 # bash read on from the wrong place, 'ython3: command not found')

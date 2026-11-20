@@ -874,6 +874,8 @@ const SITE_KEEP := 120.0             ## metres after which the last junction is 
 ## ---- stop and give-way signs, where OSM has them ----
 var _signs := {}                     ## graph node -> [[kind, way in (Vector2), line before the node (m)], ...]
 var _sign_hash := {}
+var sign_at: Array = []               ## each pole stood: [where, way in, kind, node, its sign record] (tests/signs_double.gd)
+var _sign_poles := {}                 ## cell -> index into sign_at (one pole where two would stand)
 var _stopped_odo := 0.0              ## the odometer when the car was last (nearly) stopped
 var _sign_odo := -1000.0             ## ... at the last stop sign it went through
 var _ap_sign_done := -1              ## autodrive: the stop sign it has stopped at already
@@ -3575,8 +3577,8 @@ func _build_gardens_later() -> void:
 		await _add_fronts(fronts, wall)
 		if not _yard_cars.is_empty():   # (their cars, drawn like the street's parked cars)
 			var palette := _car_paints()
-			var xf_by := {"sedan": [], "hatch": [], "suv": [], "van": [], "moto_parked": []}
-			var cols_by := {"sedan": [], "hatch": [], "suv": [], "van": [], "moto_parked": []}
+			var xf_by := {"sedan": [], "hatch": [], "mini": [], "wagon": [], "mpv": [], "suv": [], "van": [], "moto_parked": []}
+			var cols_by := {"sedan": [], "hatch": [], "mini": [], "wagon": [], "mpv": [], "suv": [], "van": [], "moto_parked": []}
 			for yc: Array in _yard_cars:
 				(xf_by[String(yc[1])] as Array).append(yc[0])
 				(cols_by[String(yc[1])] as Array).append(palette[int(yc[2]) % palette.size()])
@@ -6681,7 +6683,7 @@ func _build_lamps() -> void:
 									var am := m + arm_dir * 0.9
 									arms.append(Transform3D(face, Vector3(am.x, gy + 6.95, am.y)))
 									heads.append(Transform3D(face, Vector3(lp.x, gy + 6.85, lp.y)))
-								_pool_at.append(Vector3(lp.x + arm_dir.x * 0.5, lp.y + arm_dir.y * 0.5, 7.5))
+								_pool_at.append(Vector3(lp.x + arm_dir.x * 0.5, lp.y + arm_dir.y * 0.5, LAMP_POOL))
 							_add_post(m, 0.18)
 						s += 34.0
 						continue
@@ -6705,7 +6707,7 @@ func _build_lamps() -> void:
 							lanterns.append(Transform3D(Basis(), Vector3(lp.x, gy + 6.85, lp.y)))
 							var fp := p + toward * 0.08
 							_flag_spots.append(Transform3D(bs, Vector3(fp.x, gy + 4.4, fp.y)))
-							_pool_at.append(Vector3(lp.x + toward.x * 0.5, lp.y + toward.y * 0.5, 7.0))
+							_pool_at.append(Vector3(lp.x + toward.x * 0.5, lp.y + toward.y * 0.5, LAMP_POOL - 0.5))
 						else:
 							var face := Basis(Vector3.UP, atan2(-toward.y, toward.x))
 							poles.append(Transform3D(Basis(), Vector3(p.x, gy + 3.5, p.y)))
@@ -6713,7 +6715,7 @@ func _build_lamps() -> void:
 							arms.append(Transform3D(face, Vector3(arm.x, gy + 6.95, arm.y)))
 							var head := p + toward * 1.75
 							heads.append(Transform3D(face, Vector3(head.x, gy + 6.85, head.y)))
-							_pool_at.append(Vector3(head.x + toward.x * 0.6, head.y + toward.y * 0.6, 7.5))
+							_pool_at.append(Vector3(head.x + toward.x * 0.6, head.y + toward.y * 0.6, LAMP_POOL))
 						_add_post(p, 0.15)
 				s += 34.0
 			s -= L
@@ -6780,6 +6782,11 @@ func _partner(c: Vector2, d: Vector2, ri: int, hw: float, o: int) -> Array:
 ## the pools of light under street and park lamps: built the first time it gets dark (a
 ## few thousand discs that follow the hills are not worth the wait if it never does)
 var _pool_at: Array = []             ## Vector3(x, z, radius)
+## A street lamp's pool, and how bright the pools are. Lamps stand every 34 m, the sides
+## taking turns, so on a wide main road one side has one every 68 m: at 7.5 m and 0.75 the
+## user found the main roads at night too dark between them ("slightly stronger").
+const LAMP_POOL := 8.5
+const POOL_STRENGTH := 0.95
 var _pools_made := false
 var _pools_from := 0                 ## _pool_at before this have theirs
 var _shop_lights: Array = []         ## [the window's foot, out to the street, how wide] of every lit shop window
@@ -6811,7 +6818,7 @@ func _make_pools() -> void:
 		pools.tri(m0, b1, b0, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(0.6, 0.72), Vector2(-0.6, 0.72))
 		pools.tri(m0, b0, a0, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(-0.6, 0.72), Vector2(-0.35, 0))
 	_shop_lit_from = _shop_lights.size()
-	for mi: MeshInstance3D in _add_mesh(pools, _glow_mat("lamplight", 0.75), false, LAMP_RANGE):
+	for mi: MeshInstance3D in _add_mesh(pools, _glow_mat("lamplight", POOL_STRENGTH), false, LAMP_RANGE):
 		mi.visible = _night
 		_night_nodes.append(mi)
 
@@ -7492,8 +7499,8 @@ func _build_parked() -> void:
 		return   # northern suburbs park in driveways
 	var xf: Array = []
 	var cols: Array = []
-	var xf_by := {"sedan": [], "hatch": [], "suv": [], "van": [], "moto_parked": []}
-	var cols_by := {"sedan": [], "hatch": [], "suv": [], "van": [], "moto_parked": []}
+	var xf_by := {"sedan": [], "hatch": [], "mini": [], "wagon": [], "mpv": [], "suv": [], "van": [], "moto_parked": []}
+	var cols_by := {"sedan": [], "hatch": [], "mini": [], "wagon": [], "mpv": [], "suv": [], "van": [], "moto_parked": []}
 	var palette := _car_paints()
 	var rng := RandomNumberGenerator.new()
 	for ri: int in _tile_roads.get(_tile, []):
@@ -7550,7 +7557,7 @@ func _build_parked() -> void:
 								var win := p - side * 0.86 - face * 0.5
 								var fly := Vector3(-face.x, 0, -face.y)
 								_car_flags.append(Transform3D(Basis(fly, Vector3.UP, fly.cross(Vector3.UP)),
-									_g3(win, 0.1 + float({"sedan": 1.12, "hatch": 1.15, "suv": 1.32, "van": 1.45}.get(kind, 1.15)))))
+									_g3(win, 0.1 + float({"sedan": 1.12, "hatch": 1.15, "mini": 1.12, "wagon": 1.12, "mpv": 1.42, "suv": 1.32, "van": 1.45}.get(kind, 1.15)))))
 							elif roll2 > 980:   # a cat on the pavement at its nose
 								var cq := p + face * 2.7 + side * 0.45
 								cat_at(cq, _g3(cq, KERB_H).y, -side.rotated(float(roll2 % 5 - 2) * 0.3), "sit")
@@ -7585,8 +7592,8 @@ func _build_lots() -> void:
 	var rings: Array = _rings_near("parking").filter(_ring_mine)
 	var palette := _car_paints()
 	var rng := RandomNumberGenerator.new()
-	var xf_by := {"sedan": [], "hatch": [], "suv": [], "van": [], "moto_parked": []}
-	var cols_by := {"sedan": [], "hatch": [], "suv": [], "van": [], "moto_parked": []}
+	var xf_by := {"sedan": [], "hatch": [], "mini": [], "wagon": [], "mpv": [], "suv": [], "van": [], "moto_parked": []}
+	var cols_by := {"sedan": [], "hatch": [], "mini": [], "wagon": [], "mpv": [], "suv": [], "van": [], "moto_parked": []}
 	for kind: String in _parked_xf:   # the street's parked cars go in the same batches
 		(xf_by[kind] as Array).append_array(_parked_xf[kind])
 		(cols_by[kind] as Array).append_array(_parked_cols[kind])
@@ -7723,12 +7730,18 @@ func _car_paints() -> Array:
 	var pl := Palette.col("player")
 	var red := Color.from_hsv(0.99, clampf(hz.s, 0.55, 0.8), clampf(hz.v * 0.62, 0.35, 0.6))
 	var blue := Color.from_hsv(0.61, clampf(pl.s, 0.5, 0.75), clampf(pl.v * 0.42, 0.25, 0.48))
+	var fr := Palette.col("friend")
+	var green := Color.from_hsv(0.38, clampf(fr.s, 0.3, 0.5), clampf(fr.v * 0.32, 0.18, 0.3))
+	# (more white and silver at the end: about a third white, a third silver and grey, a tenth
+	# black, a twentieth each blue and red, the odd beige and dark green -- the film's cars
+	# pick a paint by its place in the list, so the first fourteen stay where they are)
 	var out: Array = [white, white, white, white, silver, silver, silver, grey, grey, black, black,
-		blue, red, Palette.col("warn").lerp(ink, 0.5).lerp(alt, 0.2)]
+		blue, red, Palette.col("warn").lerp(ink, 0.5).lerp(alt, 0.2), white, white, silver, grey, green]
 	return out.map(func(c: Color) -> Color: return _natural(c, 0.6))
 
-## parked cars and traffic: mostly sedans and hatchbacks, some SUVs, the odd van
-const CAR_MIX := ["sedan", "sedan", "sedan", "hatch", "hatch", "hatch", "suv", "suv", "van"]
+## parked cars and traffic as an Israeli street has them: small city cars and hatchbacks,
+## family sedans, compact SUVs, now and then an estate, a tall boxy small van, a work van
+const CAR_MIX := ["sedan", "sedan", "sedan", "hatch", "hatch", "mini", "mini", "suv", "suv", "suv", "wagon", "mpv", "van"]
 
 ## the shared car mesh for parked cars and traffic: the sedan's body, wheels, lights and
 ## plates as ONE surface, one draw call a batch (as six surfaces, a patch of parked cars
@@ -7742,6 +7755,13 @@ const CAR_MIX := ["sedan", "sedan", "sedan", "hatch", "hatch", "hatch", "suv", "
 const CAR_SHADER := """
 shader_type spatial;
 uniform float night = 0.0;
+uniform sampler2D plate_font : filter_linear_mipmap, repeat_disable;   // digits 0-9, '-', I, L (_plate_font)
+uniform float plate_style = 0.0;       // 1: an Israeli plate (yellow, black digits, the blue IL strip)
+uniform vec4 plate_blue : source_color;
+uniform float plate_seed = 0.0;        // the player's car: its own number
+uniform vec4 dust : source_color;      // the street's dust on a car that has stood a while
+uniform vec4 sign_red : source_color;  // a learner's roof sign
+varying float plate_id;                // a number of the car's own, steady while it drives
 uniform vec4 lamp : source_color;
 uniform vec4 tail : source_color;
 uniform vec4 sky_top : source_color;   // what the paint and glass reflect: the sky as it is now,
@@ -7778,6 +7798,18 @@ void vertex() {
 	}
 	lcam = transpose(mat3(MODEL_MATRIX)) * (CAMERA_POSITION_WORLD - MODEL_MATRIX[3].xyz);
 	who = fract(sin(dot(MODEL_MATRIX[3].xz, vec2(12.9898, 78.233))) * 43758.5453);
+	// (its copy's number and its paint: steady as it moves, unlike where it is)
+	plate_id = fixed_paint > 0.5 ? plate_seed : float(INSTANCE_ID) * 0.7548777 + dot(INSTANCE_CUSTOM.rgb, vec3(3.1, 5.7, 7.3));
+	// a few cars' own things, in every car's mesh and folded away on the rest (vertex alpha
+	// 0.52 a learner's roof sign, 0.54 a new driver's sign in the back window, 0.56 a
+	// parking permit on a parked car's windscreen): no draws of their own
+	float code = COLOR.a;
+	bool parked_v = fixed_paint < 0.5 && INSTANCE_CUSTOM.a < 1.5;
+	if ((abs(code - 0.52) < 0.006 && (fixed_paint > 0.5 || fract(plate_id * 13.17) > 0.025))
+			|| (abs(code - 0.54) < 0.006 && (fixed_paint > 0.5 || fract(plate_id * 17.31) > 0.07))
+			|| (abs(code - 0.56) < 0.006 && !(parked_v && fract(plate_id * 19.7) < 0.55))) {
+		VERTEX = vec3(0.0);
+	}
 }
 // where a ray (from o along unit d) first meets an ellipsoid at c with radii r; -1 if not
 float ray_blob(vec3 o, vec3 d, vec3 c, vec3 r) {
@@ -7798,6 +7830,15 @@ vec3 sky_at(float e) {
 float line_cover(float d, float w, float aa) {
 	return clamp((w - d) / aa + 0.5, 0.0, 1.0);
 }
+// how much of glyph g covers (x, y) of its cell (both 0..1, y down): the font is a few
+// pixels a glyph, smoothed, so up close its edge is taken at the half-way grey; further off,
+// where a glyph is a few pixels on screen, its smaller copies average it to grey and that
+// grey is the ink (taken at the half-way grey, a plate was blank from the chase view)
+float plate_glyph(float g, float x, float y, float far) {
+	// (kept inside its own cell's margin: the font's smaller copies bled the next glyph in)
+	float a = texture(plate_font, vec2((g + clamp(x, 0.1, 0.9)) / 13.0, clamp(y, 0.06, 0.94))).r;
+	return mix(smoothstep(0.3, 0.7, a), min(a * 1.8, 1.0), far);
+}
 void fragment() {
 	float part = COLOR.a;
 	vec3 col = COLOR.rgb;
@@ -7810,8 +7851,23 @@ void fragment() {
 	vec3 rw = (INV_VIEW_MATRIX * vec4(reflect(-to_eye, NORMAL), 0.0)).xyz;
 	vec3 refl = sky_at(rw.y) * (1.0 - 0.75 * night);
 	float aa = fwidth(lpos.z) + 0.001;
+	// how long it has stood and how old it is, each car its own: a parked car gathers the
+	// street's dust (on top and low down), an older one's paint is faded by the sun
+	bool parked = fixed_paint < 0.5 && custom.a < 1.5;
+	float dirt = fixed_paint > 0.5 ? 0.12 : (0.12 + 0.6 * fract(plate_id * 5.17)) * (parked ? 1.0 : 0.45);
+	float old = fixed_paint > 0.5 ? 0.0 : smoothstep(0.7, 1.0, fract(plate_id * 7.31));
 	if (part > 0.9) {            // paint
 		col = fixed_paint > 0.5 ? paint_col.rgb : custom.rgb;
+		col = mix(col, vec3(dot(col, vec3(0.3, 0.5, 0.2))) * 1.08 + 0.05, old * 0.4);   // sun-faded
+		float dust_amt = clamp(dirt * (0.6 * max(lnrm.y, 0.0) + 0.4 * (1.0 - smoothstep(0.15, 0.75, lpos.y))), 0.0, 0.6);
+		col = mix(col, dust.rgb, dust_amt);
+		// scuffed bumper corners, on some
+		if (abs(lnrm.z) > 0.55 && lpos.y > 0.3 && lpos.y < 0.58 && fract(plate_id * 2.37) < 0.4) {
+			// thin scratches where a corner met a post: a few, at the bumper's height
+			float sc = step(0.92, fract(sin(dot(floor(vec2(lpos.x * 60.0, lpos.y * 160.0)), vec2(12.9898, 78.233))) * 43758.5453))
+				* smoothstep(0.6, 0.8, abs(lpos.x));
+			col = mix(col, col * 0.6 + 0.08, sc * 0.6);
+		}
 		col *= mix(0.72, 1.0, smoothstep(0.12, 0.55, lpos.y));   // grime, and less light, low down
 		float f = 0.05 + 0.55 * pow(1.0 - ndv, 4.0);
 		float side = abs(lnrm.x);
@@ -7827,9 +7883,10 @@ void fragment() {
 					abs(lpos.z + UV2.x - UV2.y - 0.1));
 				col *= 1.0 - 0.6 * line_cover(d, 0.006, aa);
 			}
-			rough = 0.3;
+			rough = mix(0.3, 0.75, max(old * 0.5, dust_amt * 1.4));
 			metal = 0.1;
 			spec = 0.6;
+			f *= 1.0 - min(dust_amt * 1.4, 0.8) - old * 0.3;
 		}
 		emit = refl * f;
 	} else if (part > 0.7) {     // glass, and whoever sits behind it
@@ -7871,27 +7928,96 @@ void fragment() {
 			inside = best < 1e8 ? col_hit * (0.22 + 0.25 * max(n_hit.y, 0.0) + 0.1 * abs(n_hit.x)) : vec3(0.02);
 			inside *= 1.0 - 0.7 * night;
 		}
+		// a parked car's windscreen, as most have them in summer: a folded silver sunshade
+		if (parked && lnrm.z > 0.3 && lpos.z > 0.0 && fract(plate_id * 9.71) < 0.45) {
+			float fold = step(0.5, fract(lpos.x * 7.0));
+			inside = vec3(0.5 + 0.14 * fold) * (1.0 - 0.6 * night);
+		}
 		float f = 0.12 + 0.88 * pow(1.0 - ndv, 3.0);
 		emit = mix(inside, refl, f);
+		emit = mix(emit, dust.rgb * 0.45, dirt * 0.3);   // (dusty glass)
 		rough = 0.05;
-	} else if (part > 0.6) {     // number plate: a row of dark characters
-		float cell = (UV.x - 0.1) / 0.8 * 7.0;
-		float ch = step(0.1, UV.x) * step(UV.x, 0.9) * step(0.26, UV.y) * step(UV.y, 0.74)
-			* step(0.18, fract(cell)) * step(fract(cell), 0.82);
-		col = mix(col, col * 0.08, ch);
+	} else if (part > 0.6) {     // number plate
 		rough = 0.4;
+		if (plate_style > 0.5) {
+			// as Israel's: yellow, black digits -- 123-45-678, or the older 12-345-67 -- in a
+			// black rim, the blue strip at the left with IL; the digits made up from the car's
+			// own number, never a real one
+			float u = UV.x;
+			float v = UV.y;
+			vec3 ink_col = col * 0.06;
+			float far = smoothstep(0.004, 0.012, fwidth(u));   // (a glyph pixel under one on screen)
+			if (u < 0.115) {
+				col = plate_blue.rgb;
+				float gx = (u - 0.012) / 0.046;
+				if (gx >= 0.0 && gx < 2.0 && v > 0.42 && v < 0.88) {
+					col = mix(col, vec3(1.0), plate_glyph(gx < 1.0 ? 11.0 : 12.0, fract(gx), (v - 0.42) / 0.46, far));
+				}
+			} else {
+				bool eight = fract(plate_id * 3.7) > 0.4;
+				float n = eight ? 10.0 : 9.0;
+				float gx = (u - 0.13) / (0.84 / n);
+				float i = floor(gx);
+				if (i >= 0.0 && i < n && v > 0.18 && v < 0.82) {
+					bool dash = eight ? (i == 3.0 || i == 6.0) : (i == 2.0 || i == 6.0);
+					float g = dash ? 10.0 : floor(fract(sin(plate_id * 12.9898 + i * 78.233) * 43758.5453) * 10.0);
+					col = mix(col, ink_col, plate_glyph(g, fract(gx), (v - 0.18) / 0.64, far));
+				}
+			}
+			float inside = step(0.012, u) * step(u, 0.988) * step(0.06, v) * step(v, 0.94);
+			col = mix(ink_col, col, inside);
+		} else {   // a row of dark characters
+			float cell = (UV.x - 0.1) / 0.8 * 7.0;
+			float ch = step(0.1, UV.x) * step(UV.x, 0.9) * step(0.26, UV.y) * step(UV.y, 0.74)
+				* step(0.18, fract(cell)) * step(fract(cell), 0.82);
+			col = mix(col, col * 0.08, ch);
+		}
+	} else if (part > 0.51) {    // a sign or a sticker (only on the cars that keep it: vertex())
+		rough = 0.5;
+		vec2 g = vec2(lpos.x - UV2.x, lpos.y - UV2.y);   // from its middle (UV2)
+		if (part < 0.53) {       // a learner's roof sign: a white lamed on red, front and back
+			col = sign_red.rgb;
+			if (abs(lnrm.z) > 0.5) {
+				vec2 q = vec2(g.x * sign(lnrm.z) / 0.19, g.y / 0.1);
+				float l = step(abs(q.x + 0.35), 0.12) * step(0.15, q.y) * step(q.y, 0.95)       // the stroke up
+					+ step(abs(q.y - 0.15), 0.12) * step(-0.35, q.x) * step(q.x, 0.42)          // along the top
+					+ step(abs(q.x - 0.42), 0.12) * step(-0.75, q.y) * step(q.y, 0.15)          // down the right
+					+ step(abs(q.y + 0.75), 0.12) * step(-0.1, q.x) * step(q.x, 0.42);          // the foot
+				col = mix(col, vec3(0.95), clamp(l, 0.0, 1.0));
+			}
+		} else if (part < 0.55) {   // a new driver's sign: white, a red rim, its two words
+			vec2 q = abs(g) / vec2(0.13, 0.06);
+			col = (q.x > 0.85 || q.y > 0.75) ? sign_red.rgb : vec3(0.93);
+			float words = step(q.y, 0.35) * step(0.12, abs(g.x / 0.13 - 0.05)) * step(q.x, 0.7)
+				* step(0.3, fract(g.x * 40.0));
+			col = mix(col, vec3(0.08), words);
+		} else {                    // a parking permit: its colour, a white band
+			col = mix(plate_blue.rgb, vec3(0.92), step(abs(g.y), 0.012));
+		}
 	} else if (part > 0.45) {    // trim
 		rough = 0.55;
 		emit = refl * 0.05;
-	} else if (part > 0.35) {    // a rim: five spokes round the hub, dark between them
+	} else if (part > 0.35) {    // a rim, the car's own pattern: five spokes, twelve fine ones, ten, or a steel wheel's cap
 		float r = length(UV);
-		float sp = cos(atan(UV.y, UV.x) * 5.0);
-		bool solid = r < 0.3 || r > 0.84 || sp > 0.35;
-		col = solid ? col : well.rgb;
-		metal = solid ? 0.7 : 0.0;
+		float a = atan(UV.y, UV.x);
+		float style = floor(fract(plate_id * 4.13) * 4.0);
+		float n = style < 1.0 ? 5.0 : (style < 2.0 ? 12.0 : 10.0);
+		bool solid = r < 0.28 || r > 0.84;
+		if (style < 2.5) {
+			solid = solid || cos(a * n) > (style < 1.0 ? 0.35 : (style < 2.0 ? 0.5 : 0.62));
+		} else {                 // steel, under a plastic cap with vents
+			solid = r < 0.8 && (r < 0.55 || fract(a * 1.2732 + 0.5) > 0.22);
+		}
+		vec3 rim_col = fract(plate_id * 2.9) < 0.22 ? col * 0.32 : col;   // a dark alloy now and then
+		vec3 behind = mix(well.rgb, vec3(0.3), step(0.42, r) * step(r, 0.76) * 0.7);   // the brake disc
+		col = solid ? rim_col : behind;
+		if (r > 0.13 && r < 0.2 && cos(a * 5.0) > 0.9) { col *= 0.45; }       // the wheel nuts
+		metal = solid ? 0.7 : 0.2;
 		rough = 0.35;
 		emit = solid ? refl * 0.25 : vec3(0.0);
-	} else if (part > 0.2) {     // tyres
+	} else if (part > 0.2) {     // tyres: the sidewall a shade lighter than the tread
+		col = abs(lnrm.x) > 0.7 ? col * 1.35 : col;
+		col = mix(col, dust.rgb * 0.5, dirt * 0.4);
 		rough = 0.9;
 		spec = 0.2;
 	} else if (part > 0.05) {    // headlights (and anything lit like them: a taxi's sign)
@@ -7917,6 +8043,35 @@ void fragment() {
 var _car_shader_mat: ShaderMaterial
 var _player_car_mat: ShaderMaterial  ## the same shader on the player's car, its paint its own
 
+## The number plates' characters, for CAR_SHADER: 0-9, a dash, I and L, five by seven pixels
+## each in a cell of seven by nine, smoothed up eightfold (the shader takes the edge at the
+## half-way grey). Made once.
+const PLATE_GLYPHS := [
+	"01110100011000110001100011000101110", "00100011000010000100001000010001110",
+	"01110100010000100010001000100011111", "11111000100010000010000011000101110",
+	"00010001100101010010111110001000010", "11111100001111000001000011000101110",
+	"00110010001000011110100011000101110", "11111000010001000100010000100001000",
+	"01110100011000101110100011000101110", "01110100011000101111000010001001100",
+	"00000000000000001110000000000000000", "01110001000010000100001000010001110",
+	"10000100001000010000100001000011111"]
+var _plate_tex: ImageTexture
+
+func _plate_font() -> ImageTexture:
+	if _plate_tex != null:
+		return _plate_tex
+	var img := Image.create(13 * 7, 9, false, Image.FORMAT_L8)
+	img.fill(Color.BLACK)
+	for gi in range(PLATE_GLYPHS.size()):
+		var bits: String = PLATE_GLYPHS[gi]
+		for r in range(7):
+			for c in range(5):
+				if bits[r * 5 + c] == "1":
+					img.set_pixel(gi * 7 + 1 + c, 1 + r, Color.WHITE)
+	img.resize(13 * 7 * 8, 9 * 8, Image.INTERPOLATE_BILINEAR)
+	img.generate_mipmaps()
+	_plate_tex = ImageTexture.create_from_image(img)
+	return _plate_tex
+
 func _car_material() -> ShaderMaterial:
 	if _car_shader_mat == null:
 		_car_shader_mat = ShaderMaterial.new()
@@ -7926,6 +8081,11 @@ func _car_material() -> ShaderMaterial:
 	for m: ShaderMaterial in [_car_shader_mat, _player_car_mat]:
 		if m == null:
 			continue
+		m.set_shader_parameter("plate_font", _plate_font())
+		m.set_shader_parameter("plate_style", 1.0 if String(_place.get("look", "")) == "med" else 0.0)
+		m.set_shader_parameter("plate_blue", _real_col("blue").lerp(Palette.col("bg"), 0.35))   # (a plate's strip is a deep blue)
+		m.set_shader_parameter("dust", (_tone.get("sand", _tone["pavement"]) as Color).lerp(_tone["pavement"], 0.4))
+		m.set_shader_parameter("sign_red", _real_col("red"))
 		m.set_shader_parameter("lamp", _tone["lamplight"])
 		m.set_shader_parameter("tail", Palette.col("hazard"))
 		m.set_shader_parameter("night", 1.0 if _night else 0.0)
@@ -8224,7 +8384,7 @@ func _car_body(kind: String, extras: bool) -> CarMesh:
 	var hl: float = shape[3]
 	var wz: float = shape[4]
 	var wr: float = shape[5]
-	var lift := 0.08 if kind in ["suv", "van"] else (0.12 if kind == "truck" else 0.0)
+	var lift := 0.08 if kind in ["suv", "van"] else (0.05 if kind == "mpv" else (0.12 if kind == "truck" else 0.0))
 	var cm := CarMesh.new()
 	var paint := Color(1, 1, 1, 1.0)
 	var glass := Color(_tone["carglass"], 0.75)
@@ -8262,14 +8422,14 @@ func _car_body(kind: String, extras: bool) -> CarMesh:
 	var c1: Vector2 = cab[1]   # windscreen top
 	var c2: Vector2 = cab[2]   # rear top
 	var c3: Vector2 = cab[3]   # rear foot
-	var pillars: Array = [-0.26] if kind in ["sedan", "hatch"] else [-0.2, -1.25]
+	var pillars: Array = [-0.26] if kind in ["sedan", "hatch"] else ([-0.32] if kind == "mini" else [-0.2, -1.25])
 	var zs: Array = []
 	for k in range(9):
 		zs.append(lerpf(c3.x, c0.x, k / 8.0))
 	zs.append_array([c1.x, c2.x])
 	for pz: float in pillars:
 		zs.append_array([pz - 0.06, pz + 0.06])
-	var back_pillar := c2.x + 0.05 if kind in ["sedan", "hatch"] else c3.x + 0.18
+	var back_pillar := c2.x + 0.05 if kind in ["sedan", "hatch", "mini"] else c3.x + 0.18
 	zs.append(back_pillar)
 	zs.sort()
 	var cz: Array = []
@@ -8312,7 +8472,7 @@ func _car_body(kind: String, extras: bool) -> CarMesh:
 		return glass
 	# the glass carries where the front seats are -- just behind the windscreen's foot, the
 	# cushion a little under the waist -- for the shader's people
-	var seats := Vector2(c0.x - (0.75 if kind == "truck" else (1.3 if kind in ["suv", "van"] else 1.15)), _span_at(low, c0.x).y - 0.45)
+	var seats := Vector2(c0.x - (0.75 if kind == "truck" else (1.3 if kind in ["suv", "van", "mpv"] else 1.15)), _span_at(low, c0.x).y - 0.45)
 	_loft(cm, rings, mids, false, cab_part, Vector2.ZERO, seats)
 	# ---- trim: bumper lips, the grille, mirrors, door handles
 	var tb := Buf.new()
@@ -8333,6 +8493,40 @@ func _car_body(kind: String, extras: bool) -> CarMesh:
 	cm.add_buf(mb, paint)
 	if not extras:
 		return cm
+	# ---- wiper arms at the windscreen's foot, a shark-fin aerial at the roof's back, roof
+	# rails on an SUV and an estate
+	var fit := Buf.new()
+	var ws := func(y: float) -> float:   # the windscreen's surface at height y
+		return lerpf(c0.x, c1.x, clampf((y - c0.y) / maxf(c1.y - c0.y, 0.01), 0.0, 1.0))
+	if kind != "truck":
+		for sx: float in [-1.0, 1.0]:
+			var wy := c0.y + 0.04
+			_box(fit, Vector3(sx * 0.27 - 0.08, wy, float(ws.call(wy)) + 0.02), Vector3(0.5, 0.018, 0.022))
+		if kind in ["sedan", "hatch", "mini", "wagon", "suv"]:
+			_box(fit, Vector3(0, c2.y + 0.04, c2.x + 0.28), Vector3(0.05, 0.07, 0.17))
+		if kind in ["suv", "wagon"]:
+			for sx: float in [-1.0, 1.0]:
+				_box(fit, Vector3(sx * (hw - 0.36), maxf(c1.y, c2.y) + 0.06, (c1.x + c2.x) * 0.5), Vector3(0.035, 0.035, absf(c1.x - c2.x) + 0.3))
+				for foot: float in [c1.x - 0.05, c2.x + 0.05]:
+					_box(fit, Vector3(sx * (hw - 0.36), maxf(c1.y, c2.y) + 0.03, foot), Vector3(0.05, 0.05, 0.08))
+	cm.add_buf(fit, trim)
+	if kind in ["sedan", "hatch", "mini", "wagon", "suv"]:
+		# a learner's roof sign, a new driver's in the back window, a parking permit on the
+		# windscreen: kept only on the cars the shader picks (vertex())
+		var top := maxf(c1.y, c2.y)
+		var lz := (c1.x + c2.x) * 0.5
+		var lb := Buf.new()
+		_box(lb, Vector3(0, top + 0.12, lz), Vector3(0.4, 0.22, 0.07))
+		cm.add_buf(lb, Color(_real_col("red"), 0.52), Vector2(0.0, top + 0.12))
+		var ry := lerpf(c3.y, c2.y, 0.32)
+		var rz := lerpf(c3.x, c2.x, 0.32) - 0.04
+		var nb := Buf.new()
+		_box(nb, Vector3(0.36, ry, rz), Vector3(0.27, 0.13, 0.01))
+		cm.add_buf(nb, Color(1, 1, 1, 0.54), Vector2(0.36, ry))
+		var py := c0.y + 0.09
+		var pb := Buf.new()
+		_box(pb, Vector3(-(hw - 0.42), py, float(ws.call(py)) + 0.025), Vector3(0.09, 0.07, 0.006))
+		cm.add_buf(pb, Color(1, 1, 1, 0.56), Vector2(-(hw - 0.42), py))
 	# ---- wheels: tyres, their sidewalls, five-spoke rims (just proud of the body, in the
 	# dark wells the shader paints round them)
 	var tyre := Color(_tone["tyre"], 0.3)
@@ -9403,7 +9597,7 @@ func _flush_batches() -> void:
 const INDEX_PIECE := 30000
 func _index_into(am: ArrayMesh, bat: Buf, mat: Material) -> void:
 	var n := bat.v.size()
-	if not _bg_build:
+	if not _bg_build or OS.get_environment("STREETS_NO_INDEX") == "1":   # (=1: as before, to compare)
 		var soup := []
 		soup.resize(Mesh.ARRAY_MAX)
 		soup[Mesh.ARRAY_VERTEX] = bat.v
@@ -9986,7 +10180,7 @@ func _build_walk_lights(pole_mesh: Mesh) -> void:
 ## a lit shopfront on the street side of each shop's building, and its name above it
 func _build_pois() -> void:
 	var k := 1.0 / float(_city_data.get("scale", 10))
-	var front := {"glass": [], "post": [], "beam": [], "shutter": []}   ## shop windows and their frames
+	var front := {"glass": [], "glass_k": [], "post": [], "beam": [], "shutter": []}   ## shop windows and their frames (glass_k: what is inside, SHOP_SHADER)
 	var board_cols: Array = []       ## each sign board's colour: dark, white, the shop's, cream
 	var awnings := {"xf": [], "col": []}   ## awning transforms and their colours
 	var crates := new_cbuf(BLD_CELL)    ## fruit and vegetables out in front of a greengrocer
@@ -10039,6 +10233,11 @@ func _build_pois() -> void:
 			var b := Basis(Vector3.UP, face)
 			var at3 := func(q: Vector2, out: float, y: float) -> Vector3: return Vector3(q.x + n.x * out, gy + y, q.y + n.y * out)
 			front["glass"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.05, 1.3)))
+			# what the window shows inside: a counter (cafes, bars, restaurants), racks of
+			# clothes, or shelves of goods (the rest)
+			var inside_k := 1.0 if kind in ["cafe", "restaurant", "fast_food", "ice_cream", "bar", "pub"] else \
+				(0.6 if sub in ["clothes", "shoes", "fashion", "boutique", "jewelry", "bag", "fabric"] else 0.0)
+			front["glass_k"].append(Color(inside_k, 0.0, 0.0, 1.0))
 			if _mine(pos):
 				_shop_lights.append([pos + n * 0.1, n, wide])
 			front["beam"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.08, 2.62)))
@@ -10110,7 +10309,7 @@ func _build_pois() -> void:
 	var r := SIGN_RANGE * 2.0
 	var glass := BoxMesh.new()
 	glass.size = Vector3(3.0, 2.4, 0.06)
-	_chunked(glass, front["glass"], r, [], _shop_glass(), false)
+	_chunked(glass, front["glass"], r, front["glass_k"], _shop_interior(), false)
 	var post := BoxMesh.new()
 	post.size = Vector3(0.14, 2.6, 0.14)
 	_chunked(post, front["post"], r, [], _surface("cartrim"), false)
@@ -10244,6 +10443,140 @@ func _poi_look(kind: String) -> Array:
 	return []
 
 ## the glass of a shop window: dark glass with the shop's light on inside
+## A shop window you see into: behind the glass a room 3.5 m deep, worked out from where you
+## look (the ray from the eye through the glass to the room's back wall, its sides, floor
+## or ceiling -- no geometry), with shelves of goods along the walls, or a cafe's counter
+## and menu board, a tiled floor and a strip light, lit from inside (brighter at night), and
+## the glass's own sheen of the sky over it. Each shop its own mix, from where it stands.
+## (Was a flat lit pane: a shop showed nothing inside. One shader more for a browser to
+## compile while loading, about 7 programs.)
+const SHOP_SHADER := """
+shader_type spatial;
+uniform vec4 light : source_color;      // the shop's light (the tone "shoplight")
+uniform vec4 floor_col : source_color;
+uniform vec4 wall_col : source_color;
+uniform vec4 shelf_col : source_color;
+uniform vec4 goods_a : source_color;
+uniform vec4 goods_b : source_color;
+uniform vec4 goods_c : source_color;
+uniform vec4 goods_d : source_color;
+uniform vec4 sky_col : source_color;
+uniform float lit = 0.7;
+varying vec3 wpos;
+varying vec3 o;
+varying vec3 ax;
+varying vec3 az;
+varying float hw;
+varying float kind;                     // the instance colour's red: 1 a cafe's counter, 0.6 clothes, 0 shelves
+float h21(vec2 p) {
+	vec3 q = fract(vec3(p.xyx) * 0.1031);
+	q += dot(q, q.yzx + 33.33);
+	return fract((q.x + q.y) * q.z);
+}
+void vertex() {
+	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	o = MODEL_MATRIX[3].xyz;
+	ax = normalize(MODEL_MATRIX[0].xyz);
+	az = normalize(MODEL_MATRIX[2].xyz);
+	hw = length(MODEL_MATRIX[0].xyz) * 1.5;
+	kind = COLOR.r;
+}
+// clothes on a rail along a wall: garments hanging side by side, each its own colour
+vec3 racks(float s, float y, float seed) {
+	if (y > 0.62 && y < 0.66) { return shelf_col.rgb * 0.5; }      // the rail
+	if (y < -0.55 || y > 0.62) { return wall_col.rgb; }
+	float cell = floor(s / 0.11);
+	float k = h21(vec2(cell, seed));
+	float len = mix(-0.5, 0.0, h21(vec2(cell * 3.1, seed)));
+	if (y < len || k < 0.08) { return wall_col.rgb * 0.85; }
+	vec3 g = k < 0.3 ? goods_a.rgb : (k < 0.5 ? wall_col.rgb * 0.3 : (k < 0.72 ? goods_d.rgb : wall_col.rgb * 0.9));
+	return g * (0.7 + 0.3 * h21(vec2(cell, 9.0 + seed)));
+}
+// goods on shelves along a wall: s across it, y up (window's frame), seed the shop
+vec3 shelves(float s, float y, float seed, float sparse) {
+	float row = floor((y + 1.05) / 0.42);
+	float in_row = fract((y + 1.05) / 0.42);
+	if (y < -1.05 || y > 1.05) { return wall_col.rgb; }
+	if (in_row < 0.09) { return shelf_col.rgb; }                  // the shelf board
+	float w = mix(0.16, 0.34, h21(vec2(row, seed)));
+	float cell = floor(s / w);
+	float k = h21(vec2(cell * 1.7 + row * 13.1, seed));
+	if (k < 0.12 + sparse * 0.5 || in_row > 0.55 + 0.4 * h21(vec2(cell, row + seed))) { return wall_col.rgb * 0.8; }
+	vec3 g = k < 0.35 ? goods_a.rgb : (k < 0.55 ? goods_b.rgb : (k < 0.78 ? goods_c.rgb : goods_d.rgb));
+	g = mix(g, wall_col.rgb * h21(vec2(cell * 5.3, row + seed)), 0.4);   // (packets, not paint chips)
+	return g * (0.7 + 0.35 * h21(vec2(cell, row * 3.0 + seed)));
+}
+void fragment() {
+	vec3 cam = CAMERA_POSITION_WORLD;
+	vec3 rd = normalize(wpos - cam);
+	vec3 q = vec3(dot(wpos - o, ax), wpos.y - o.y, dot(wpos - o, az));
+	vec3 d = vec3(dot(rd, ax), rd.y, dot(rd, az));
+	float seed = floor(h21(floor(o.xz * 0.5)) * 97.0);
+	float cafe = step(0.8, kind);
+	float clothes = step(0.4, kind) * (1.0 - cafe);
+	vec3 inside = wall_col.rgb * 0.3;
+	if (d.z < -0.01 && q.z > -0.02) {                             // in through the front of the glass
+		float D = 3.5;
+		float t = (-D - q.z) / d.z;
+		int face = 0;                                              // 0 back, 1 side, 2 floor, 3 ceiling
+		if (abs(d.x) > 1e-3) {
+			float ts = (sign(d.x) * hw - q.x) / d.x;
+			if (ts > 0.0 && ts < t) { t = ts; face = 1; }
+		}
+		if (abs(d.y) > 1e-3) {
+			float tf = ((d.y < 0.0 ? -1.3 : 1.55) - q.y) / d.y;
+			if (tf > 0.0 && tf < t) { t = tf; face = d.y < 0.0 ? 2 : 3; }
+		}
+		vec3 h = q + d * t;
+		if (face == 0) {
+			inside = cafe > 0.5 ? (h.y > 0.15 && h.y < 0.95 && abs(h.x) < hw * 0.6 ? shelf_col.rgb * 0.25
+				+ step(0.5, fract(h.y * 9.0)) * step(abs(h.x), hw * 0.55) * 0.18 : wall_col.rgb)
+				: (clothes > 0.5 ? racks(h.x, h.y, seed) : shelves(h.x, h.y, seed, 0.0));
+		} else if (face == 1) {
+			inside = clothes > 0.5 ? racks(h.z, h.y, seed + 31.0) : shelves(h.z, h.y, seed + 31.0, cafe);
+		} else if (face == 2) {
+			vec2 tl = floor(vec2(h.x, h.z) / 0.5);
+			inside = floor_col.rgb * (0.85 + 0.15 * mod(tl.x + tl.y, 2.0));
+		} else {
+			inside = wall_col.rgb * 1.1 + light.rgb * 1.5 * step(abs(h.x), 0.15) * step(fract(h.z * 0.5), 0.7);
+		}
+		// a cafe's counter across the room, half way in, waist high
+		if (cafe > 0.5 && face != 3) {
+			float tc = (-1.6 - q.z) / d.z;
+			vec3 hc = q + d * tc;
+			if (tc > 0.0 && tc < t && hc.y < -0.25 && abs(hc.x) < hw * 0.8) {
+				inside = shelf_col.rgb * (0.55 + 0.1 * step(0.9, fract(hc.x)));
+			}
+		}
+		inside *= 1.0 - 0.35 * smoothstep(1.0, 4.5, t);           // further in, a little darker
+	}
+	float f = 0.06 + 0.94 * pow(1.0 - clamp(dot(-rd, az), 0.0, 1.0), 4.0);
+	ALBEDO = mix(inside * 0.15, sky_col.rgb * 0.5, f);
+	EMISSION = inside * light.rgb * lit * (1.0 - f);
+	ROUGHNESS = 0.1;
+	METALLIC = 0.2;
+}
+"""
+var _shop_mat: ShaderMaterial
+
+func _shop_interior() -> ShaderMaterial:
+	if _shop_mat == null:
+		_shop_mat = ShaderMaterial.new()
+		var sh := Shader.new()
+		sh.code = SHOP_SHADER
+		_shop_mat.shader = sh
+	_shop_mat.set_shader_parameter("light", _tone["shoplight"])
+	_shop_mat.set_shader_parameter("floor_col", _tone["mark"].lerp(_tone["pavement"], 0.4))
+	_shop_mat.set_shader_parameter("wall_col", _tone["mark"].darkened(0.1))
+	_shop_mat.set_shader_parameter("shelf_col", _tone["woodfence"].lightened(0.2))
+	_shop_mat.set_shader_parameter("goods_a", _real_col("red"))
+	_shop_mat.set_shader_parameter("goods_b", _real_col("yellow"))
+	_shop_mat.set_shader_parameter("goods_c", _real_col("green"))
+	_shop_mat.set_shader_parameter("goods_d", _real_col("blue"))
+	_shop_mat.set_shader_parameter("sky_col", (_sky_reflect()[1] as Color) if env != null and env.sky != null else Palette.col("bg_alt"))
+	_shop_mat.set_shader_parameter("lit", 1.4 if _night else 0.45)
+	return _shop_mat
+
 func _shop_glass() -> StandardMaterial3D:
 	if _smat.has("shopglass"):
 		return _smat["shopglass"]
@@ -11982,6 +12315,18 @@ func _build_signs() -> void:
 				top = maxi(top, int(ROAD_RANK.get(r["k"], 1)))
 				bottom = mini(bottom, int(ROAD_RANK.get(r["k"], 1)))
 		var rules: Array = []
+		# a sign facing one way is for the one way in nearest that way: a slip road merging at
+		# a shallow angle comes in within 45 degrees of the street it joins, and both got its
+		# give-way -- two plates side by side, and the street's own traffic giving way to it
+		var best := 0.7
+		if facing != Vector2.ZERO:
+			for e: Vector2i in _node_roads[node]:
+				var r: Dictionary = _roads[e.x]
+				var pts: PackedVector2Array = r["pts"]
+				for d2: int in [-1, 1]:
+					var from := e.y + d2
+					if r["drive"] and not r["pv"] and from >= 0 and from < pts.size() and (r["o"] == 0 or r["o"] == -d2):
+						best = maxf(best, (c - pts[from]).normalized().dot(facing))
 		for e: Vector2i in _node_roads[node]:
 			var r: Dictionary = _roads[e.x]
 			if not r["drive"] or r["pv"]:
@@ -11995,7 +12340,7 @@ func _build_signs() -> void:
 					continue   # arriving from `from` is travelling -d2 along the road
 				var way_in := (c - pts[from]).normalized()
 				if facing != Vector2.ZERO:
-					if way_in.dot(facing) < 0.7:
+					if way_in.dot(facing) < best - 0.0001:
 						continue
 				elif junction and top != bottom and int(ROAD_RANK.get(r["k"], 1)) >= top:
 					continue   # the main road through has the right of way
@@ -12015,7 +12360,18 @@ func _build_signs() -> void:
 							p = q
 				if p == Vector2.INF:
 					continue
+				# one plate where two would stand side by side: two lanes of a slip road arriving
+				# together, or two signs OSM maps a metre or two apart (Ashdod) -- the rules and
+				# lines stay, each way in still gives way
+				var twin := false
+				for o: int in _near(_sign_poles, p, 3.0, SEG_CELL):
+					var tw: Array = sign_at[o]
+					twin = twin or ((tw[0] as Vector2).distance_to(p) < 3.0 and tw[2] == kind and (tw[1] as Vector2).dot(way_in) > 0.85)
+				if twin:
+					continue
 				var gy := _h(p)
+				_hash_add(_sign_poles, Rect2(p, Vector2.ZERO), SEG_CELL, sign_at.size())
+				sign_at.append([p, way_in, kind, node, sg])
 				poles.append(Transform3D(Basis(), Vector3(p.x, gy + 1.1, p.y)))
 				(plates[kind] as Array).append(Transform3D(Basis(Vector3.UP, atan2(-way_in.x, -way_in.y)) * Basis.from_scale(Vector3.ONE * SIGN_SCALE), Vector3(p.x, gy + 2.3, p.y)))
 				_add_post(p, 0.08)
@@ -12281,12 +12637,72 @@ func _ap_light_v() -> float:
 			stop = 0.0   # (standing a little over it -- stopped there for people on a crossing --
 			             # is not through: it waits for its green where it stands)
 		var state := _light_at(n, f[2])
+		var raw := String(SIGNAL_CYCLE[_sig_phase][_light_group(n, f[2])])
+		if raw == "g":
+			_ap_amber_n = -1
+			return INF
+		if _ap_amber_n == n:
+			return _ap_brake_for(stop)   # (stopping for it already: kept to, through to its red)
+		if raw == "gf" or raw == "y":
+			# the green ending (flashing) or amber: on only if the nose is over the line before
+			# the red, at the pace the plan goes up to it -- "too late to stop" alone (at
+			# 3 m/s^2) went on at 50 km/h into a left turn, slowed for the corner, and the
+			# amber ran out short of the line (the route set's one red, Ashdod's Bnei Brit)
+			# (standing, or nearly: not off on an amber -- one stopped over its line for people
+			# on the crossing waits there for its green)
+			if (raw == "gf" or _v > 2.0) and _ap_time_to(stop + 1.0) < _light_red_in(n, f[2]) - 0.3:
+				return INF
+			# else stop: gently on the flashing green (or on, deciding again on the amber),
+			# firmly on the amber if need be (too late even for that: on through)
+			if _v * _v > 2.0 * (2.6 if raw == "gf" else 4.5) * maxf(stop - 0.5, 0.1):
+				return INF
+			_ap_amber_n = n
+			return _ap_brake_for(stop)
 		if state == "g":
 			return INF
-		if state == "y" and _v * _v > 2.0 * 3.0 * maxf(stop, 0.1):
-			return INF   # too late to stop on amber
 		return sqrt(2.0 * 2.6 * maxf(stop - 0.5, 0.0))
 	return INF
+
+## Stopping for a light that is changing: the speed to aim at now to brake at what the stop
+## needs, and a fifth more. (Aimed at "the speed that just stops in time from here", the
+## target sat a hair under the speed and the controller -- braking by how far over it is --
+## hardly braked: the need grew and grew, and it gave up and drove on into the red.)
+var _ap_amber_n := -1                ## the lit point it decided to stop at as its green ended (kept to until green again)
+
+func _ap_brake_for(stop: float) -> float:
+	var room := stop - 0.5
+	if room <= 0.2:
+		return 0.0
+	var need := maxf(_v, 0.0) * maxf(_v, 0.0) / (2.0 * room)
+	return maxf(_v - clampf(need * 1.2, 1.5, 6.0) * 0.5, 0.0)   # (autodrive brakes 2 m/s^2 for each m/s over: see _autodrive)
+
+## seconds until the light at lit point n facing traffic going `dir` turns red (0: red, or
+## red and amber, now)
+func _light_red_in(n: int, dir: Vector2) -> float:
+	var grp := _light_group(n, dir)
+	var acc := 0.0
+	for k in range(SIGNAL_CYCLE.size()):
+		var ph: Array = SIGNAL_CYCLE[(_sig_phase + k) % SIGNAL_CYCLE.size()]
+		if String(ph[grp]) in ["r", "ry"]:
+			return acc
+		acc += float(ph[0]) - (_sig_t if k == 0 else 0.0)
+	return INF
+
+## autodrive: seconds to drive `dist` metres along the plan, at the pace it goes there --
+## halfway between the speed now and the slowest the plan allows by then and a few metres on
+## (a corner just past a stop line slows the car before it); speeding up is not counted on
+func _ap_time_to(dist: float) -> float:
+	var vc := maxf(_v, 3.0)   # (holding its speed, unless the plan slows it)
+	var along := 0.0
+	var p := _pos
+	for i in range(1, mini(_ap_pts.size(), _ap_v.size())):
+		along += p.distance_to(_ap_pts[i])
+		p = _ap_pts[i]
+		if _ap_v[i] > 0.0:
+			vc = minf(vc, _ap_v[i])
+		if along > dist + 8.0:
+			break
+	return maxf(dist, 0.0) / maxf((maxf(_v, 0.0) + vc) * 0.5, 1.0)
 
 ## the light facing traffic that arrives at node `n` going `dir`, as a driver reads it: "g"
 ## (flashing green too: still go), "y", "r" (red-and-amber too: still stop), or "" where
@@ -12852,6 +13268,8 @@ func _retint_city() -> void:
 		sm.albedo_color = _tone[sm.get_meta("tone", t)]
 	if _smat.has("shopglass"):
 		(_smat["shopglass"] as StandardMaterial3D).emission = _tone["shoplight"]
+	if _shop_mat != null:
+		_shop_interior()   # (its colours from the tones again)
 	_retint_trees()
 	if _wall_mat != null:
 		_wall_mat.set_shader_parameter("wall_a", _tone["wall"])
@@ -12916,6 +13334,8 @@ func _retint_city() -> void:
 	if _smat.has("shopglass"):
 		# (at night 2.0 clipped to a blank white pane; the light spills onto the pavement instead)
 		(_smat["shopglass"] as StandardMaterial3D).emission_energy_multiplier = 0.85 if _night else 0.7
+	if _shop_mat != null:
+		_shop_mat.set_shader_parameter("lit", 1.4 if _night else 0.45)
 	if _night and env != null:
 		var bg := Palette.col("bg")
 		var pl := Palette.col("player")
@@ -13955,6 +14375,7 @@ func _sedan(paint: String) -> Node3D:
 	_car_material()
 	_player_car_mat = _car_shader_mat.duplicate() as ShaderMaterial
 	_player_car_mat.set_meta("paint", paint)
+	_player_car_mat.set_shader_parameter("plate_seed", randf() * 1000.0)
 	_car_material()   # (sets its parameters, the paint among them)
 	var mi := MeshInstance3D.new()
 	mi.mesh = _car_body("sedan", false).mesh(_player_car_mat)
@@ -13977,6 +14398,17 @@ const CAR_SHAPES := {
 	"suv": [[Vector2(-2.3, 0.34), Vector2(2.28, 0.34), Vector2(2.36, 0.74), Vector2(2.24, 0.98), Vector2(1.2, 1.1),
 		Vector2(-2.24, 1.14), Vector2(-2.36, 0.74)],
 		[Vector2(1.18, 1.1), Vector2(0.45, 1.74), Vector2(-2.0, 1.76), Vector2(-2.24, 1.14)], 0.96, 2.36, 1.42, 0.38],
+	# a city car (3.6 m, short nose, tall roof), an estate (the sedan's front, the roof run on to
+	# the tail), a small boxy van (4.4 m, 1.9 m tall, near-upright back)
+	"mini": [[Vector2(-1.75, 0.24), Vector2(1.78, 0.24), Vector2(1.84, 0.58), Vector2(1.72, 0.76), Vector2(0.85, 0.9),
+		Vector2(-1.68, 0.96), Vector2(-1.82, 0.6)],
+		[Vector2(0.82, 0.9), Vector2(0.1, 1.47), Vector2(-1.45, 1.46), Vector2(-1.7, 0.96)], 0.8, 1.84, 1.2, 0.29],
+	"wagon": [[Vector2(-2.28, 0.26), Vector2(2.22, 0.26), Vector2(2.3, 0.6), Vector2(2.16, 0.8), Vector2(1.08, 0.94),
+		Vector2(-2.18, 1.0), Vector2(-2.32, 0.62)],
+		[Vector2(1.06, 0.94), Vector2(0.28, 1.44), Vector2(-2.02, 1.45), Vector2(-2.2, 1.0)], 0.9, 2.32, 1.38, 0.33],
+	"mpv": [[Vector2(-2.15, 0.3), Vector2(2.12, 0.3), Vector2(2.2, 0.66), Vector2(2.08, 0.92), Vector2(1.25, 1.02),
+		Vector2(-2.12, 1.06), Vector2(-2.2, 0.66)],
+		[Vector2(1.22, 1.02), Vector2(0.55, 1.84), Vector2(-2.05, 1.86), Vector2(-2.12, 1.08)], 0.92, 2.2, 1.4, 0.33],
 	"van": [[Vector2(-2.45, 0.3), Vector2(2.42, 0.3), Vector2(2.5, 0.7), Vector2(2.4, 0.95), Vector2(1.7, 1.05),
 		Vector2(-2.45, 1.08), Vector2(-2.5, 0.7)],
 		[Vector2(1.68, 1.05), Vector2(1.05, 1.98), Vector2(-2.38, 2.0), Vector2(-2.45, 1.1)], 0.98, 2.5, 1.55, 0.35],
@@ -13999,6 +14431,27 @@ func _sedan_rest(root: Node3D, paint: String) -> Node3D:
 	var plate := "warn" if String(_place.get("look", "")) == "med" else "ink"   # Israeli plates are yellow
 	root.add_child(_part(BoxMesh, Vector3(0, 0.45, 2.28), Vector3(0.52, 0.12, 0.02), mat(plate, 0.1)))
 	root.add_child(_part(BoxMesh, Vector3(0, 0.6, -2.3), Vector3(0.52, 0.12, 0.02), mat(plate, 0.1)))
+	# their faces in the car shader (vertex alpha 0.65: a plate), its digits and strip with the
+	# traffic's -- the boxes alone were blank yellow
+	var pb := Buf.new()
+	var pc := Color(Palette.col(plate), 0.65)
+	for f: Array in [[0.45, 2.28 + 0.012, 1.0], [0.6, -2.3 - 0.012, -1.0]]:
+		var py: float = f[0]
+		var pz: float = f[1]
+		var sg: float = f[2]
+		var A := Vector3(-0.26 * sg, py - 0.06, pz)
+		var B := Vector3(0.26 * sg, py - 0.06, pz)
+		var D := Vector3(0.26 * sg, py + 0.06, pz)
+		var E := Vector3(-0.26 * sg, py + 0.06, pz)
+		pb.tri(A, B, D, Vector3(0, 0, sg), pc, Vector2(0, 1), Vector2(1, 1), Vector2(1, 0))
+		pb.tri(A, D, E, Vector3(0, 0, sg), pc, Vector2(0, 1), Vector2(1, 0), Vector2(0, 0))
+	var pam := ArrayMesh.new()
+	pam.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, pb.arrays())
+	pam.surface_set_material(0, _player_car_mat)
+	var pmi := MeshInstance3D.new()
+	pmi.mesh = pam
+	pmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(pmi)
 	# wheels: a pivot each (front ones steer), a tyre and a rim that roll inside it
 	_wheels.clear()
 	_spinners.clear()
@@ -14692,6 +15145,12 @@ func _land_on_road(near: Vector2, reach: float, prefer: Vector2) -> bool:
 	_steer_in = 0.0
 	_pin_at = _pos
 	_y = _decks.deck_y(int(hit["road"]), at) if r.has("ys") else _h(at)
+	# somewhere new: no junction with lights just driven through (kept for 120 m driven, it
+	# made a car put down by the one it had last crossed drive through its red, uncounted --
+	# tests/amber.gd going round the same light again)
+	_light_site = -1
+	_light_odo = -1000.0
+	_trail = PackedVector2Array()
 	_snap_pose()
 	return true
 
@@ -16420,6 +16879,10 @@ var _ap_js: Array = []               ## the junctions on the plan ahead: [metres
 var _ap_js_odo := 0.0                ## ...as the odometer stood when they were found (every 0.25 s)
 var _ap_js_t := 0.0
 var _ap_js_head := Vector2.INF       ## (the plan's first point then: a new plan, found afresh)
+var _ap_median_ok := true            ## waits in a divided road's middle where the car fits (tests/median_wait.gd turns it off to compare)
+var _median_gaps := {}               ## Vector2i(n1, n2) -> _median_gap's answer, worked out once
+var _median_far := {}                ## ...and the far carriageway's half width (where to stop in the middle)
+const AP_MEDIAN_SPARE := 1.2         ## m beyond the car's length a median needs to be waited in (both ends and the stop's error)
 
 ## traffic car o on my level: both on the ground (a hill between us is not a level -- 50-80 m
 ## off on Givatayim's slopes the car coming was 3-4 m below and was passed over as if on a
@@ -16428,6 +16891,64 @@ func _same_level(o) -> bool:
 	if absf(_y - _h(_pos)) < 1.0 and absf(float(o.y) - _h(o.pos)) < 1.0:
 		return true
 	return absf(float(o.y) - _y) <= 2.5 + 0.08 * (o.pos as Vector2).distance_to(_pos)
+
+## Room to stand in the middle of a divided road between its junction points n1 and n2 (one
+## on each carriageway, joined by a short road of their own across the middle, no lights at
+## either): metres between the two carriageways' edges, less a car and a little either end;
+## below 0, none. There a driver crosses the near carriageway when it is clear and waits in
+## the middle for the far one. Taken as one junction (AP_KNOT), autodrive stood at the kerb
+## for a gap in both streams at once. (Most medians where a street crosses are narrower than
+## that -- Ashdod's eight first: 2-4.5 m between the edges -- and stay one junction.)
+func _median_gap(n1: int, n2: int) -> float:
+	var key := Vector2i(n1, n2)
+	if _median_gaps.has(key):
+		return _median_gaps[key]
+	var out := -1.0
+	if not _sig_set.has(n1) and not _sig_set.has(n2):
+		for e: Vector2i in _node_roads[n1]:
+			var r: Dictionary = _roads[e.x]
+			var ids: PackedInt32Array = r["ids"]
+			if not r["drive"] or r.has("median") or r.get("ring", false) or ids.size() < 2:
+				continue
+			if not ((ids[0] == n1 and ids[ids.size() - 1] == n2) or (ids[0] == n2 and ids[ids.size() - 1] == n1)):
+				continue
+			var wa := -1.0
+			var wb := -1.0
+			var a := -1
+			for e1: Vector2i in _node_roads[n1]:
+				if (_roads[e1.x] as Dictionary).has("median"):
+					a = e1.x
+					wa = float(_roads[e1.x]["w"])
+			for e2: Vector2i in _node_roads[n2]:
+				if (_roads[e2.x] as Dictionary).has("median") and e2.x != a:
+					wb = float(_roads[e2.x]["w"])
+			if wa < 0.0 or wb < 0.0:
+				continue
+			var L := 0.0
+			var pts: PackedVector2Array = r["pts"]
+			for i in range(pts.size() - 1):
+				L += pts[i].distance_to(pts[i + 1])
+			if L > AP_KNOT + 6.0 or L > _nodes[n1].distance_to(_nodes[n2]) * 1.3:
+				continue   # (not straight across: a lane looping round between the two, 252 m long)
+			out = L - (wa + wb) * 0.5 - (CAR_LEN + AP_MEDIAN_SPARE)
+			_median_far[key] = wb * 0.5
+			break
+	_median_gaps[key] = out
+	return out
+
+func _ap_split(n1: int, n2: int) -> bool:
+	return _ap_median_ok and _median_gap(n1, n2) >= 0.0
+
+var _ap_mid := Vector2i(-1, -1)       ## the median on the plan it can wait in: [near point, far point]
+
+## where the car's middle stops for junction j of _ap_give_v's list ([along, node, enter,
+## leave]): the nose a metre short of where the plan comes in; in a median, 0.4 m short of the
+## far carriageway's edge (where the plan comes into its radius, its tail was still in the
+## near carriageway's lanes)
+func _ap_edge_of(j: Array) -> float:
+	if int(j[1]) == _ap_mid.y:
+		return float(j[0]) - float(_median_far.get(_ap_mid, 0.0)) - 0.4 - CAR_LEN * 0.5
+	return float(j[2]) + 0.5 - CAR_LEN * 0.5
 
 ## the point `along` metres along the plan (cum: the distance to each of its points)
 func _ap_at(cum: PackedFloat32Array, along: float) -> Vector2:
@@ -16523,11 +17044,22 @@ func _ap_give_v(dt: float) -> float:
 	# the first not yet driven into, and the rest of the same junction after it
 	# (one it was holding for counts as not yet driven into until its nose is at the middle: the
 	# car stops a metre or two past its line, and at -1 it read that as in, and went)
+	# a divided road's middle on the way, deep enough to wait in: [near point, far point], kept
+	# while the far one is ahead (the near one drops off the list behind the car)
+	for k in range(1, js.size()):
+		if _ap_split(int(js[k - 1][1]), int(js[k][1])):
+			_ap_mid = Vector2i(int(js[k - 1][1]), int(js[k][1]))
+			break
+	var mid_ahead := false
+	for j: Array in js:
+		mid_ahead = mid_ahead or int(j[1]) == _ap_mid.y
+	if not mid_ahead:
+		_ap_mid = Vector2i(-1, -1)
 	var first := -1
 	for k in range(js.size()):
 		var n: int = js[k][1]
 		var past := -(_node_r[n] + 1.0) if was.has(n) else -1.0
-		if float(js[k][2]) + 0.5 - CAR_LEN * 0.5 >= past:   # (its edge: where the plan comes in)
+		if _ap_edge_of(js[k]) >= past:
 			first = k
 			break
 	if first < 0 or float(js[first][0]) > reach + 20.0:
@@ -16535,11 +17067,12 @@ func _ap_give_v(dt: float) -> float:
 		return INF
 	if first > 0:
 		var pn: int = js[first - 1][1]
-		if float(js[first - 1][0]) > -(_node_r[pn] + CAR_LEN * 0.5) and float(js[first][0]) - float(js[first - 1][0]) < AP_KNOT:
+		if float(js[first - 1][0]) > -(_node_r[pn] + CAR_LEN * 0.5) and float(js[first][0]) - float(js[first - 1][0]) < AP_KNOT \
+				and not _ap_split(pn, int(js[first][1])):
 			_ap_give_t = 0.0
 			return INF   # in the junction already: through it, not stopping in the middle
 	var n0: int = js[first][1]
-	var edge: float = float(js[first][2]) + 0.5 - CAR_LEN * 0.5   # (my nose a metre short of where the plan comes in)
+	var edge := _ap_edge_of(js[first])
 	if _v * _v > 2.0 * 5.0 * maxf(edge, 0.0) + 1.0 and not was.has(n0):
 		_ap_give_t = 0.0
 		return INF   # too late to stop short of it
@@ -16548,7 +17081,8 @@ func _ap_give_v(dt: float) -> float:
 	var in0 := (_ap_at(cum, float(js[first][2])) - _ap_at(cum, float(js[first][2]) - 6.0)).normalized()
 	var on := _nearest_seg(_ap_at(cum, float(js[first][2]) - 3.0), 8.0, true, false, _y)
 	var my_rank := _rank_of(_roads[on["road"]]) if not on.is_empty() else 1
-	if not _sign_rule(n0, in0).is_empty():
+	# (in a divided road's middle, the far carriageway next: below it, whatever road it came from)
+	if not _sign_rule(n0, in0).is_empty() or n0 == _ap_mid.y:
 		my_rank = -1
 	var gap := AP_GAP if _ap_give_t < AP_GIVE_PATIENT else 0.3
 	var hold := false
@@ -16559,8 +17093,8 @@ func _ap_give_v(dt: float) -> float:
 		var enter: float = js[k][2]
 		var leave: float = js[k][3]
 		var n: int = js[k][1]
-		if along - float(js[first][0]) > AP_KNOT:
-			break
+		if along - float(js[first][0]) > AP_KNOT or (k > first and _ap_split(int(js[k - 1][1]), n)):
+			break   # (the rest is the far carriageway: waited for in the middle)
 		var r := _node_r[n]
 		var my_in := (_ap_at(cum, enter) - _ap_at(cum, enter - 6.0)).normalized()
 		var my_out := (_ap_at(cum, leave + 6.0) - _ap_at(cum, leave)).normalized()
@@ -16706,7 +17240,7 @@ func _ap_give_v(dt: float) -> float:
 					return sqrt(25.0 + 2.0 * 2.6 * maxf(edge, 0.0))
 		return INF
 	for k in range(first, js.size()):
-		if float(js[k][0]) - float(js[first][0]) > AP_KNOT:
+		if float(js[k][0]) - float(js[first][0]) > AP_KNOT or (k > first and _ap_split(int(js[k - 1][1]), int(js[k][1]))):
 			break
 		_ap_giving[int(js[k][1])] = true
 	_ap_give_car = hold_car
@@ -18090,7 +18624,10 @@ func _autodrive(dt: float) -> Array:
 	# pure pursuit on a point ahead of the rear axle
 	var fwd := _fwd()
 	var rear := _pos - fwd * WHEELBASE * 0.5
-	var look := clampf(3.5 + absf(_v) * 0.5, 5.0, 16.0)
+	# (the point it steers at: nearer at a corner's pace -- 5.4 m ahead at 14 km/h, it started
+	# round a right turn 6 m early, came out with the turn not done and crossed its new lane
+	# toward the middle line by a metre; the same as before from ~50 km/h)
+	var look := clampf(2.0 + absf(_v) * 0.6, 3.5, 16.0)
 	var tgt := _ap_point_ahead(look)
 	var to := tgt - rear
 	var alpha := fwd.angle_to(to)
@@ -18118,7 +18655,10 @@ func _autodrive(dt: float) -> Array:
 			break
 		# (a stop -- a dead end's turning point -- a metre and a half short, so the car is
 		# standing when it gets there rather than rolling past)
-		var to_go := dist if _ap_v[i] > 0.0 else maxf(dist - 1.5, 0.0)
+		# (and a corner aimed at half a second early: braking by how far over its target it is,
+		# 2 m/s^2 a m/s, it ran ~1.3 m/s over the 2.6 m/s^2 slope down to each corner, into it
+		# 5-7 km/h faster than planned and out wide -- tests/turn_width.gd)
+		var to_go := maxf(dist - absf(_v) * 0.5, 0.0) if _ap_v[i] > 0.0 else maxf(dist - 1.5, 0.0)
 		vt = _held(vt, sqrt(_ap_v[i] * _ap_v[i] + 2.0 * 2.6 * to_go), "curve")
 	vt = _held(vt, _ap_light_v(), "light")
 	vt = _held(vt, _ap_sign_v(dt), "sign")
@@ -18759,19 +19299,53 @@ func _ap_turn_into(ri: int, from: int, dir: int, lane: float) -> void:
 	var rin := Vector2(-in_dir.y, in_dir.x)
 	var rout := Vector2(-out_dir.y, out_dir.x)
 	var lane_in := (_ap_pts[n - 1] - c).dot(rin)
-	var back := minf(_node_r[node] + 1.0, before.distance_to(c) * 0.8)
-	var ahead := minf(_node_r[node] + 1.0, c.distance_to(pts[from]) * 0.8)
-	var E := c - in_dir * back + rin * lane_in
-	var X := c + out_dir * ahead + rout * lane
-	var K = Geometry2D.line_intersects_line(E, in_dir, X, -out_dir)
-	var k2: Vector2 = K if K != null and (K as Vector2).distance_to(c) < back + ahead + 4.0 else (E + X) * 0.5
+	# round from the lane it is in to the next street's (an arc no tighter than the car can
+	# drive: see _lane_corner), ending short of that street's next point
+	var arc := _lane_corner(c, in_dir, out_dir, lane_in, lane, _node_r[node] + 1.0, before, pts[from] + rout * lane)
+	if arc.is_empty():
+		return
 	var v := _ap_v[n - 1]
 	var lim := _ap_lim[n - 1]
-	_ap_pts[n - 1] = E
-	for t: float in [0.25, 0.5, 0.75, 1.0]:
-		_ap_pts.append(E * (1.0 - t) * (1.0 - t) + k2 * 2.0 * (1.0 - t) * t + X * t * t)
+	_ap_pts[n - 1] = arc[0]
+	for i in range(1, arc.size()):
+		_ap_pts.append(arc[i])
 		_ap_v.append(v)
 		_ap_lim.append(minf(lim, float(r["speed"])))
+
+## The way round a corner from one lane into the next at junction point c: an arc that runs
+## along the lane it comes in on (lane_in right of din, the way in) and leaves along the lane
+## it goes out in (lane_out right of dout), of radius at least AP_TURN_R -- starting no further
+## back than the point before it (`after`) and ending short of the point after (`before`).
+## The points from where it leaves the lane in to where it is in the lane out; [] when the two
+## ways are too near straight on (or straight back) to need one.
+## (Laid as a curve from 5 m before the junction to 5 m after through that crossing point, a
+## right turn into an 8 m street was 2-3 m round: tighter than the car turns at full lock
+## (~4.1 m), and it came out wide, over the middle line of the street it turned into.)
+const AP_TURN_R := 5.5
+
+func _lane_corner(c: Vector2, din: Vector2, dout: Vector2, lane_in: float, lane_out: float, reach: float, after: Vector2, before: Vector2) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	var th := din.angle_to(dout)   # (+ is right)
+	if absf(th) < 0.2 or absf(th) > 2.9:
+		return out
+	var rin := Vector2(-din.y, din.x)
+	var rout := Vector2(-dout.y, dout.x)
+	var K = Geometry2D.line_intersects_line(c + rin * lane_in, din, c + rout * lane_out, dout)
+	if K == null:
+		return out
+	var k: Vector2 = K
+	var tn := tan(absf(th) * 0.5)
+	# from `reach` before the junction's point along the lane (as before), or further back
+	# if the radius needs it -- the room allowing
+	var T := maxf((k - c).dot(din) + reach, AP_TURN_R * tn)
+	T = clampf(T, 0.5, maxf(minf((k - after).dot(din) - 0.5, (before - k).dot(dout) - 0.5), 0.5))
+	var E := k - din * T
+	var R := T / tn
+	var O := E + rin * R * signf(th)
+	var steps := maxi(2, ceili(R * absf(th) / 1.5))
+	for i in range(steps + 1):
+		out.append(O + (E - O).rotated(th * float(i) / steps))
+	return out
 
 func _ap_curves(from_k: int) -> void:
 	for k in range(maxi(1, from_k), _ap_pts.size() - 1):
@@ -19368,16 +19942,72 @@ func _route_to(goal: Vector2, from := Vector2.INF, heading := Vector2.ZERO) -> b
 	var d_first := (pts[sj + 1] - pts[sj]).normalized() * float(dir)
 	_ap_pts = PackedVector2Array([(s["q"] as Vector2) + Vector2(-d_first.y, d_first.x) * _lane_off(r)])
 	_ap_lim = PackedFloat32Array([float(r["speed"])])
+	# The path's points, with the lane of the road coming into each; of two closer than 3 m one
+	# kept -- the junction's (a junction drawn as two points 0.9 m apart was two corners, the
+	# second's curve starting behind the first: the plan doubled back on itself; and keeping the
+	# first of two, a slip road's point 3 m short of the street it joins, laid the corner off
+	# that street's line: the car came out 4.7 m from the middle of an 8 m street, into a post)
+	var cl: Array = []   # [point, lane in, speed in, node]
 	for i in range(best.size()):
 		var n := int(best[i])
-		var prv := _ap_pts[_ap_pts.size() - 1]
-		var nxt: Vector2 = _nodes[best[i + 1]] if i + 1 < best.size() else g["q"]
 		var e: Vector3i = _edge_of.get(Vector2i(int(best[i - 1]), n), Vector3i(s["road"], 0, 1)) if i > 0 else Vector3i(s["road"], 0, dir)
 		var road: Dictionary = _roads[e.x]
-		var d := (nxt - prv).normalized()
-		var lane := _lane_off(road)
-		_ap_pts.append(_nodes[n] + Vector2(-d.y, d.x) * lane)
-		_ap_lim.append(float(road["speed"]))
+		var prev_at: Vector2 = (cl[cl.size() - 1][0] as Vector2) if not cl.is_empty() else (s["q"] as Vector2)
+		if not cl.is_empty() and _nodes[n].distance_to(prev_at) < 3.0 and i + 1 < best.size():
+			if _node_ways(n) >= 3 and _node_ways(int(cl[cl.size() - 1][3])) < 3:
+				cl[cl.size() - 1] = [_nodes[n], cl[cl.size() - 1][1], cl[cl.size() - 1][2], n]   # (the junction's point, the lane in as before)
+			continue
+		cl.append([_nodes[n], _lane_off(road), float(road["speed"]), n])
+	var plain := true   # (the last point laid is a lane point, not the end of a corner)
+	var arc_end := Vector2.INF   # (the last corner's end, and its way out: lane points it has passed are left out)
+	var arc_out := Vector2.ZERO
+	for i in range(cl.size()):
+		var c: Vector2 = cl[i][0]
+		var lane: float = cl[i][1]
+		var spd: float = cl[i][2]
+		var prv := _ap_pts[_ap_pts.size() - 1]
+		var before_c: Vector2 = (cl[i - 1][0] as Vector2) if i > 0 else (s["q"] as Vector2)
+		var nxt: Vector2 = (cl[i + 1][0] as Vector2) if i + 1 < cl.size() else (g["q"] as Vector2)
+		var din := (c - before_c).normalized()
+		var dout := (nxt - c).normalized()
+		# (the first point too, when the car is not on it already: a side street that is one
+		# stretch up to the junction has the junction as its first point, and it was a corner
+		# of one point, taken wide)
+		if (i > 0 or c.distance_to(before_c) > 3.0) and din != Vector2.ZERO and dout != Vector2.ZERO and absf(din.angle_to(dout)) >= 0.35:
+			# A corner: in along its lane, round, and out in the next street's lane, as free
+			# autodrive turns (see _lane_corner). One point at the corner, put into the lane
+			# square to the way to the next point (the next street's way), sat on the middle
+			# line of the street it was leaving: a right turn swung out left over the last
+			# 10 m, came round at full lock from there and out over the next street's middle
+			# line, into the oncoming lane (tests/turn_width.gd: 4 of 4 in Givatayim).
+			var lane2: float = cl[i + 1][1] if i + 1 < cl.size() else _lane_off(gr)
+			var spd2: float = cl[i + 1][2] if i + 1 < cl.size() else float(gr["speed"])
+			var from_pt := prv
+			if plain and _ap_pts.size() > 1:
+				from_pt = _ap_pts[_ap_pts.size() - 2]   # (the last lane point lies on the way in: the curve may start behind it)
+			# (out as far as the next point if that is no corner itself, else under half way to it)
+			var upto := c + (nxt - c) * 0.45
+			if i + 2 < cl.size() and absf(dout.angle_to(((cl[i + 2][0] as Vector2) - nxt).normalized())) < 0.35:
+				upto = nxt
+			var arc := _lane_corner(c, din, dout, lane, lane2, _node_r[int(cl[i][3])] + 1.0, from_pt, upto)
+			if not arc.is_empty():
+				if plain and _ap_pts.size() > 1 and (arc[0] - prv).dot(din) < 0.3:
+					_ap_pts.remove_at(_ap_pts.size() - 1)   # (it starts behind that lane point)
+					_ap_lim.remove_at(_ap_lim.size() - 1)
+				for q: Vector2 in arc:
+					_ap_pts.append(q)
+					_ap_lim.append(minf(spd, spd2))
+				plain = false
+				arc_end = arc[arc.size() - 1]
+				arc_out = dout
+				continue
+		var d := (nxt - before_c).normalized()
+		var lp := c + Vector2(-d.y, d.x) * lane
+		if arc_end != Vector2.INF and (lp - arc_end).dot(arc_out) < 0.5:
+			continue   # (the last corner's curve ran past it)
+		_ap_pts.append(lp)
+		_ap_lim.append(spd)
+		plain = true
 	# the last stretch along the goal's segment, to the kerb in front of the address
 	var last_dir := (gr["pts"] as PackedVector2Array)[gj + 1] - (gr["pts"] as PackedVector2Array)[gj]
 	last_dir = last_dir.normalized() * float(best_dir)
