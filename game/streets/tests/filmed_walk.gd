@@ -7,7 +7,10 @@ extends SceneTree
 ## named by the walk's own clock (run with --fixed-fps 10 for a frame per 0.1 s): the game's
 ## half of a side-by-side video (DEV.md, "The filmed walk"). SCAN=1 walks the whole route a
 ## quarter second at a time and prints every stretch of it inside a building or a post;
-## POSTS_NEAR=x,z,r lists the posts round a spot, to route the walk between them.
+## POSTS_NEAR="x,z,r;x,z,r" lists the posts round each spot (to route the walk between them), the
+## nearest road's edge, and everything drawn by instance there (what the scan cannot see);
+## TRAFFIC_LOG=from,to the cars round the walk every quarter second (AT jumps the walk's clock,
+## so a scripted car's timing shows only here or in a recording).
 var g: Node
 const LANDMARKS := "8,28,40,55,70,84,94"   # the zebra, the forecourt, the passage, its end, the little street, Sheinkin, Ha-Meri
 
@@ -31,20 +34,41 @@ func _run() -> void:
 	print("walk of %.0f s, %d points, from %s to %s, on foot %s, hud shown %s" % [last, g._film.size(),
 		Vector2i(g._film_at(0.0)), Vector2i(g._film_at(last)), g._walking, g._hud.visible])
 	if OS.get_environment("POSTS_NEAR") != "":
-		# POSTS_NEAR=x,z,r: every post (anything round and solid) within r of x,z, to route a
-		# walk between them
-		var q := OS.get_environment("POSTS_NEAR").split_floats(",")
-		var c := Vector2(q[0], q[1])
-		for i in range(g._posts.size()):
-			if g._posts[i].distance_to(c) <= q[2]:
-				print("post %d at %s r %.2f" % [i, Vector2(snappedf(g._posts[i].x, 0.1), snappedf(g._posts[i].y, 0.1)), g._post_r[i]])
-		# and where the kerb is: the nearest road's centre line and how far its edge is (a walk
-		# keeps to the pavement: edge 0.3 to KERB_W + PAVE_W)
-		var hit: Dictionary = g._nearest_seg(c, 8.0, true, true)
-		if not hit.is_empty():
-			var q2: Vector2 = hit["q"]
-			print("road %d: its centre line nearest at %s, %.2f m from the edge (negative: in the road), road side %s"
-				% [hit["road"], Vector2(snappedf(q2.x, 0.1), snappedf(q2.y, 0.1)), hit["edge"], (q2 - c).normalized()])
+		# POSTS_NEAR="x,z,r;x,z,r": every post (anything round and solid) within r of x,z, to
+		# route a walk between them; and where the kerb is
+		for spot: String in OS.get_environment("POSTS_NEAR").split(";", false):
+			var q := spot.split_floats(",")
+			var c := Vector2(q[0], q[1])
+			print("-- near %s (kept clear by the details file: %s, of %d spots)" % [c, g._kept_clear(c), g._keep_clear.size()])
+			for i in range(g._posts.size()):
+				if g._posts[i].distance_to(c) <= q[2]:
+					print("post %d at %s r %.2f" % [i, Vector2(snappedf(g._posts[i].x, 0.1), snappedf(g._posts[i].y, 0.1)), g._post_r[i]])
+			# the nearest road's centre line and how far its edge is (a walk keeps to the
+			# pavement: edge 0.3 to KERB_W + PAVE_W)
+			var hit: Dictionary = g._nearest_seg(c, 8.0, true, true)
+			if not hit.is_empty():
+				var q2: Vector2 = hit["q"]
+				print("road %d: its centre line nearest at %s, %.2f m from the edge (negative: in the road), road side %s"
+					% [hit["road"], Vector2(snappedf(q2.x, 0.1), snappedf(q2.y, 0.1)), hit["edge"], (q2 - c).normalized()])
+			# and everything drawn by the instance there, solid or not (a bike in its rack, a
+			# chair, a tree's crown hanging low): which group, where, its size and how low it
+			# comes -- a post marks only part of some of these, and the scan sees only posts
+			for n: Node in root.find_children("*", "MultiMeshInstance3D", true, false):
+				var mmi := n as MultiMeshInstance3D
+				if mmi.multimesh == null or mmi.multimesh.mesh == null or not mmi.is_visible_in_tree():
+					continue
+				var mm := mmi.multimesh
+				var ab := mm.mesh.get_aabb()
+				var count := mm.visible_instance_count if mm.visible_instance_count >= 0 else mm.instance_count
+				for i in range(count):
+					var xf := mmi.global_transform * mm.get_instance_transform(i)
+					var p := xf.origin
+					if Vector2(p.x, p.z).distance_to(c) > q[2]:
+						continue
+					var box := xf * ab
+					print("drawn %s/%s at %s, %.1f x %.1f m, %.1f to %.1f m up, %.2f m off" % [mmi.get_parent().name, mmi.name,
+						Vector2(snappedf(p.x, 0.1), snappedf(p.z, 0.1)), box.size.x, box.size.z,
+						box.position.y - g._h(Vector2(p.x, p.z)), box.end.y - g._h(Vector2(p.x, p.z)), Vector2(p.x, p.z).distance_to(c)])
 		quit()
 		return
 	if OS.get_environment("SCAN") == "1":
@@ -75,6 +99,28 @@ func _run() -> void:
 		if was != "":
 			print("INSIDE %s from %.2f to the end" % [was, from])
 		print("scan done")
+		quit()
+		return
+	if OS.get_environment("TRAFFIC_LOG") != "":
+		# TRAFFIC_LOG=from,to: the walk at its own pace from the start (scripted cars are sent
+		# by its clock, which AT jumps), and every quarter second from `from` to `to` each car
+		# within 40 m: where it is from the walker, its speed, lane, kind, whether it drives on
+		# past the walk's zebras ("through")
+		var span := OS.get_environment("TRAFFIC_LOG").split_floats(",")
+		var next := span[0]
+		while g._film_t <= span[1]:
+			await physics_frame
+			if g._film_t < next:
+				continue
+			next += 0.25
+			var line := "%6.2f s:" % g._film_t
+			for c in g._traffic.cars:
+				if not c.alive or c.pos.distance_to(g._pos) > 40.0:
+					continue
+				var rel: Vector2 = c.pos - g._pos
+				line += "  [%s %s %.1f m/s lane %d%s at %.0f m]" % [c.kind, Vector2i(rel), c.v, c.lane_i,
+					" through" if c.film_through else "", rel.length()]
+			print(line)
 		quit()
 		return
 	if OS.get_environment("RECORD") == "1":

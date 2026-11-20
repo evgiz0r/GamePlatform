@@ -29,6 +29,10 @@ on:
         description: "Take buildings out of the ground heights (a city of towers otherwise stands on hills of its own roofs)"
         type: boolean
         default: false
+      main_server_only:
+        description: "Ask only overpass-api.de, waiting and retrying when it is busy, never a mirror (a mirror can answer with older data: compare a re-bake's counts with the file it replaces)"
+        type: boolean
+        default: false
 
 concurrency:
   group: bake-${{ github.ref }}
@@ -52,6 +56,7 @@ jobs:
           INCLUDE: ${{ inputs.include }}
           BBOX: ${{ inputs.bbox }}
           BARE: ${{ inputs.bare_ground }}
+          OVERPASS_URL: ${{ inputs.main_server_only && 'https://overpass-api.de/api/interpreter' || '' }}
         run: |
           if ! [[ "$OUT" =~ ^game/[A-Za-z0-9_-]+/[A-Za-z0-9_/-]+\.json$ ]]; then
             echo "out must be a .json path inside a game folder, got: $OUT"; exit 1
@@ -88,8 +93,13 @@ jobs:
             echo "the city file did not change"; exit 0
           fi
           git commit -m "bake $PLACE from OpenStreetMap"
-          git pull --rebase
-          git push
+          # someone may push to the branch between the pull and the push (a session working
+          # on it): pull and push again rather than lose the bake
+          for i in 1 2 3 4 5; do
+            git pull --rebase && git push && exit 0
+            sleep $((i * 10))
+          done
+          exit 1
 
       - name: re-publish the web build
         if: github.ref == 'refs/heads/main'

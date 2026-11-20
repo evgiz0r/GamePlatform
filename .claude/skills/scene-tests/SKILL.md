@@ -61,14 +61,29 @@ A game's `tests/run.sh <test> [level]` wraps that line (see an existing one).
   `g.look_from(eye, target)` and snap. Unfrozen, the game's own camera moves it back.
 - **Stage the situation directly.** Put the player at a point and heading, send one AI car
   at it down a chosen road, set a quality level, drop the car in a courtyard. Waiting for it
-  to happen by itself costs minutes and may never happen in a test run.
+  to happen by itself costs minutes and may never happen in a test run. For two drivers
+  meeting at a junction: clear the rest of the traffic (and keep it off), send the other
+  car when the player is ~35 m out at the distance that makes them arrive together, and
+  skip the case when the map makes it not a meeting (where the main road bends, the car
+  "from the side" came up behind instead).
+- **When a fix changes nothing to the decimal, the code you changed is not reached.** Put a
+  print at each filter before it (behind an env variable, taken out after) and run the one
+  case: a decision that ignored a car turned out, three times running, to drop it at a
+  filter upstream of the one being tuned.
 - **Put a looking-down camera well above the roofs** (30 m and more in a town), not at
   roof height: a camera 9 m up over a junction sat just above a building, and its flat
   roof filled half of every shot as a featureless pale plane -- it looked exactly like the
   ground failing to draw, and cost two runs to see it was the camera.
 - **Find the subject by searching**, not by coordinates you guessed: the nearest instance
   of a mesh to the start, a road that runs out to the map's edge with a clear run, the
-  divided-road zebra nearest the start.
+  divided-road zebra nearest the start. Search what the game *built*, not the file it built
+  it from: a game that lets go of its source data once the world is up (to save memory)
+  hands a test looking there an empty list, and the test reports "0 found" for things
+  standing in plain sight.
+- **Look at a building's front from the middle of the road**, facing it at eye height: from
+  the far pavement the cars parked along the kerb hide the shopfront, and a replayed walk's
+  camera looks along the street, past what stands at its side. To check that something was
+  placed (a hydrant by a wall, a shop's awning), aim one still straight at it.
 - **Measure a rate, broken down by cause.** "29% of walkers on asphalt: 444 on service
   lanes, 161 on the inner side of divided roads" pointed straight at both fixes. Then the
   same test after the fix: 0%.
@@ -124,6 +139,42 @@ frames: on a slow test machine a frame is several physics ticks, and counting ea
 the rear axle's sideways speed -- a real car's is about zero; a body pointed along its
 path from its middle swings its back out at every corner.
 
+**A camera set beside a real film: measure the film too.** Two numbers carried a replay of
+a phone film further than any amount of looking. *Where the horizon sits*: tile the film one
+frame a second with a line drawn at a fraction of the frame's height, the replay likewise,
+and read off where the street's vanishing point falls in each. A pinhole camera tipped p
+below level puts it at 0.5 - tan(p) / (2 tan(fov/2)) of the way down, so a few hundredths
+of the frame are degrees of tilt (one replay sat at 0.36 against the film's 0.30: 11 degrees
+down against 16, the street seen too level). *How the hand shakes*: the image's shift from
+frame to frame by phase correlation (numpy FFTs, no OpenCV needed), summed into angles, the
+slow turns taken out with a 1 s running mean, then rms and the spectrum. A phone's
+stabiliser takes the steps' jolts out: what is left is a slow drift of a few tenths of a
+degree at about 0.5-0.8 Hz, not a bob at the step rate, so a replay should sway slowly
+rather than bounce. Measure on straight stretches only: through a corner the image moves
+too far between frames, the correlation locks on the wrong peak, and it reads tens of
+degrees of nonsense. Run the same measure on the replay's recording -- it shows what the
+replay does, not what the code was meant to do. *The picture*: levels at 1-99%, the share
+clipped, saturation and the near-greys' colour, one frame a second over both, then a tone
+curve that maps one's levels onto the other's -- a phone's HDR squeezes its bright end and
+lifts its shade, which by eye passed for "a blown-out sky" and was the opposite. Content
+differs (the game's materials are not the street's), so fit a moderate warmth rather than
+the whole gap (fitted freely it turned grey pavers mauve) and look at the graded frames
+beside the film before trusting the numbers. A canvas shader over the finished frame reads
+the same 8-bit sRGB a recording saves, so a grade fitted on recorded frames in numpy carries
+into the game exactly -- check it with the same moments graded and bare. *Exposure*: a
+phone's brightness second to second barely moves (it exposes for what it sees) while a
+fixed-exposure replay's swings with the scene -- a roofed arcade read half the film's, and no
+curve or exposure lifted it until the floor's own colour was fixed: measure the two apart. A
+shader can meter the whole frame off the screen texture's mipmaps (`filter_linear_mipmap`, a
+few `textureLod` taps at a high mip) in the Compatibility renderer too; paint the reading
+in a corner once and compare it with the frame's true mean before trusting it.
+
+**A test that jumps a scene's clock cannot show what is timed by it.** Stills taken by
+setting a replay's time and running a third of a second skip every scripted event in
+between: cars sent at a second never drove their distance, and the stills showed none of
+them. Log timed things at the scene's own pace from its start (a trace every quarter second
+of what is near) or record it.
+
 **Checks that should read 0, every tick.** Counting what went wrong per minute finds the
 big things; checks of what must never happen find the bugs before anyone looks for them.
 Each is a kind of bug already fixed once, written so it cannot come back unseen: bodies
@@ -134,7 +185,10 @@ pushing against something without moving, and standing still with nothing named 
 limit at a standstill is not). Print every check with its count even at 0, so a reader
 sees it ran. The first version of a check finds its own false alarms first (the front of a
 queue in its moment to react at a green read "held by nothing"): run it once in the small
-test town and read every hit before trusting the number.
+test town and read every hit before trusting the number. When a check fires, print the
+last few seconds of everyone involved with it (speed, what it wanted, what held it, a few
+times a second): a car "held by nothing" is usually explained by what it did just before,
+and without that history each one costs a staged re-run.
 
 **A check of the world as built**, before anything drives it: walls, posts and buildings
 on the road, a junction's points each deciding alone, roads too short to have a direction.
@@ -164,11 +218,43 @@ it is made, with a one-line caption, rather than a report at the end.
 
 ## Gotchas (each cost a run)
 
+- **A collision scan sees only what is solid, and only where it is solid.** A scripted walk
+  that scanned clean went through a parked bike's wheel (solid only at its rack's hoop, while
+  the bike reached across most of the pavement) and ended with a tree's trunk filling the
+  frame; chairs, crates and low leaves have no collider at all. Beside the scan, list
+  everything drawn by instance round the spot (each `MultiMeshInstance3D` instance's box
+  through its transform: where, how big, how high it starts) and look at the recording one
+  frame every 2 s.
+
+- **Measure the exact condition, and name the blocker once.** "Stood still near the van" also
+  counted waiting at a red light past it; "within 20 m, the van ahead, held by a car" did
+  not. And when a thing does not happen, print once, a few seconds in, what holds it (which
+  car, how far off the path its middle is, the flags that gate it) -- one diagnostic line
+  found a bend applied 40 m behind the car after three runs of guessing.
+
 - **Don't annotate with a `class_name` type that uses autoloads** (`var a: Actor3D`) in a
   `-s` script: it is compiled before the autoloads exist and fails ("Identifier not found:
-  Probe"), taking the whole test with it. Use the base type (`Node3D`).
+  Probe"), taking the whole test with it. Use the base type (`Node3D`). A cast counts too
+  (`x as Actor3D`), and the damage reaches past the test: the class stays broken for the
+  run, so the game's own `Actor3D.new()` fails and the city has no people -- a crossing test
+  ran "PASS" with every case quietly erroring out on an empty list of crossers.
+- **Do the work in `_initialize()`, never `_init()`.** In `_init()` the autoloads are not up
+  yet, so `load()`ing the game's own script there (even just to read a constant) fails
+  ("Compilation failed"), and the error comes before `quit()`: the run sat silent until its
+  10-minute timeout.
 - `var x := g.some_member` cannot infer a type through an untyped node: annotate it.
 - **Forget `OUT` and the screenshots land in `/`.** Check the folder after the first run.
+  The same with two jobs started at once: `SP=dir && (job1 > $SP/a.log) & (job2 > $SP/b.log)`
+  sets `SP` for the first only -- the second wrote its log to `/b.log`. `export` it first.
+- **`await RenderingServer.frame_post_draw` never returns under `--headless`**: a test that
+  takes a shot there hangs until its timeout, silently (a run "took 25 minutes" that way and
+  printed nothing). Skip shots when `DisplayServer.get_name() == "headless"`, or run the shot
+  test under xvfb (`tests/run.sh` does).
+- **A check that never fires may be running too early.** One worked out while loading
+  (walls along a raised road, leaving out pieces on a street) asked a lookup grid that is
+  only built later in the load: it answered "no street" everywhere and the fix changed
+  nothing, two runs in a row. When a fix has no effect, print what the check sees at the
+  moment it runs, not afterwards.
 - A script error mid-test prints `SCRIPT ERROR` and the test may hang to its timeout: grep
   the output for it, and always run under `timeout`. One in the background goes on taking
   a core until then, slowing every run beside it: kill it once you have seen the error.
@@ -177,7 +263,10 @@ it is made, with a one-line caption, rather than a report at the end.
 - A test that is already running keeps the code it loaded; one that starts later in a
   queued batch picks up your newer edits (and the newer bugs).
 - The software renderer's frame rates are meaningless in absolute terms. Compare levels
-  or before/after on the same box, never against a target. Anything that steps quality
+  or before/after on the same box, never against a target. Nor can it show a browser's
+  stalls: with every frame of a big city at ~0.8 s, a hitch log there measures the renderer.
+  What carries over is counts (draw calls, triangles, vertices, nodes, shader kinds) and the
+  script's own time; a GPU stall needs the user's browser (a profiler view in the game). Anything that steps quality
   down by frame rate must be off natively, or every test run steps itself to nothing.
 - **New assets from a merge are not imported** until something runs the importer: a test
   run straight from the engine draws without them ("Failed loading resource" in the log).
@@ -203,6 +292,14 @@ it is made, with a one-line caption, rather than a report at the end.
   tick's position and heading lerped to this one) keeps blending from the last tick
   while physics is stopped: set the "previous" values with the new ones, or the shot
   looks along the player's old heading.
+- **A game may let go of its source data once it is built** (a city's file, outlines, lists
+  per square freed a little a frame after the last square): a test that reads them after
+  "loaded" (and a runner that builds everything first makes that at once) hits an empty
+  array mid-run. Have the module record what a test needs as it sets up, and read that.
+- **Pick a still's eye over open ground.** An eye placed by coordinates alone stood inside a
+  cafe's arcade, and two more had a tower a few metres in front: three of five shots
+  wasted, ten minutes a run. Put it over a road (a street's points are in the data), or high
+  over the roofs, and aim at the subject's middle.
 - **A marker for a 3D shot goes in the game's 3D world**, not under the game's node: a
   3D game's own node is a 2D one, and a ring added under it is never drawn.
 - **A skinned model's box is its rest pose's.** `MeshInstance3D.get_aabb()` (and the shell's
@@ -211,6 +308,14 @@ it is made, with a one-line caption, rather than a report at the end.
   against what the game asked for and how it scales, not the box alone. Drawing a figure
   alone in a `SubViewport` with its own world, to measure its silhouette, came out empty
   (the figure moved into it was not drawn): do not spend a run on it.
+- **Put a body down at the level of what is there.** A test that places a car or a walker
+  at a point usually gives it the ground's height: on an embankment or a bridge it then
+  drives along underneath, and the run reports "drove nothing" with no error. Start it on
+  the highest surface at that point when the point is on something raised.
+- **A collision's label is not a collision.** A game's "last hit" text can be rewritten by
+  anything that probes for room (placing people tries spots every tick), so counting label
+  changes counts noise. Count the ticks where the body moved other than its own step
+  (displacement minus heading x speed x dt) and read the label only then.
 - Parse-check first: `tools/check_script.sh res://game/<game>/<game>.gd` takes seconds and
   says which line; a broken script makes a scene test fail in a confusing way minutes in.
 
@@ -221,6 +326,14 @@ can run headless (`$GODOT --headless --fixed-fps 60 --path . -s res://...`, the 
 calls skipped when `DisplayServer.get_name() == "headless"`): two minutes where the same
 run under the software renderer took twenty. Render only for the shots, and only the runs
 that need them.
+
+**A function from data to data needs no game at all.** When the question is what one step
+of the load makes of the data (heights worked out for a map, a parser, a picker), call it
+straight from a `-s` script on the data file: no scene, no world built, no renderer, so
+several maps in the time one load would take. Read the game's constants from its script
+(`load("res://game/<game>/<game>.gd").SOME_CONST`, in `_initialize()`, see Gotchas). To get
+more out of it than it reports (a list it caps), load a scratch copy with the cap raised
+rather than touching the game.
 
 **Tests that measure behaviour should not pay for looks.** The software renderer is bound by
 pixels and per-pixel shader work: when a game gained photo textures and per-pixel traced
@@ -241,6 +354,14 @@ behaviour counted over minutes, and three things are in the way:
   per tick reads gentler, anything counted in ticks shrinks, coarse steps overlap more.
   Run the same test twice at 1x first -- one game's exam differed by half between two 1x
   runs -- and accept a speed whose counts stay within that spread (there: 2x yes, 3x no).
+  The same before calling a change a regression: run the base branch beside yours (a git
+  worktree with `.godot` copied in) -- one exam read 11 and 12 on a branch and "7-9" in the
+  notes, and the base itself read 8 and 12.
+  A pass/fail check over a noisy measure is no better: near variants of one change read
+  1.19 to 1.62 on a queue check's 40-minute watch, so a bisect over single runs chased
+  noise. Run base and candidate back to back on a doubled watch before bisecting, and do
+  it in a worktree, not by copying versions over the file in your own tree: while the
+  copy stands the tree cannot be committed or merged.
   Keep 1x for how driving feels (crashes, steering, frames) and for numbers written down.
 
 A city that builds in 5 s on a laptop can take 15 there, and a minute of game time five of

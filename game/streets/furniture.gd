@@ -186,6 +186,8 @@ func _mark(name: String, p: Vector2) -> void:
 ## on the pavement: off the asphalt by `margin`, out of buildings by `room`, `posts` metres
 ## from the nearest lamp, tree or sign
 func _free(p: Vector2, margin: float, room: float, posts: float) -> bool:
+	if g._kept_clear(p):   # (where a filmed walk shows nothing: details.gd's `clear`)
+		return false
 	return g._off_road(p, margin) and not g._in_junction(p, margin) \
 			and g._push_out(p, room, false, false) == Vector2.ZERO and g._clear_of_posts(p, posts)
 
@@ -1547,6 +1549,95 @@ func towel_kit() -> ArrayMesh:
 	_box(b, Vector3(0, 0.9, 0.513), Vector3(0.55, 0.22, 0.012), Color.WHITE)
 	var am: ArrayMesh = _mesh(b)
 	_kits["towel"] = am
+	return am
+
+## ---- the people's company (streets.gd _companions) ---------------------------------------------
+
+## A dog, facing +Z, feet at y = 0, about knee high: its coat white (the copy's coat is in its
+## custom data), a dark nose and eyes; the legs' vertices carry their number in the colour's
+## alpha (0.2, 0.4, 0.6, 0.8; the rest 1) for the dog shader to swing them.
+func dog_kit() -> ArrayMesh:
+	if _kits.has("dog"):
+		return _kits["dog"]
+	var b = g.new_buf()
+	var coat := Color.WHITE
+	var dark := Color(0.12, 0.1, 0.09)
+	_box(b, Vector3(0, 0.36, 0), Vector3(0.2, 0.2, 0.52), coat)                 # the body
+	_box(b, Vector3(0, 0.5, 0.31), Vector3(0.16, 0.16, 0.17), coat)            # the head
+	_box(b, Vector3(0, 0.46, 0.43), Vector3(0.09, 0.08, 0.1), coat)            # the snout
+	_box(b, Vector3(0, 0.48, 0.485), Vector3(0.05, 0.04, 0.02), dark)           # the nose
+	for sx: float in [-1.0, 1.0]:
+		_box(b, Vector3(sx * 0.045, 0.535, 0.395), Vector3(0.025, 0.025, 0.01), dark)   # an eye
+		_box(b, Vector3(sx * 0.065, 0.6, 0.27), Vector3(0.04, 0.09, 0.06), coat, Basis(Vector3.BACK, sx * 0.3))   # an ear
+	_box(b, Vector3(0, 0.46, -0.31), Vector3(0.04, 0.04, 0.2), coat, Basis(Vector3.RIGHT, -0.7))   # the tail
+	var k := 0
+	for z: float in [0.19, -0.19]:
+		for sx: float in [-1.0, 1.0]:
+			k += 1
+			_box(b, Vector3(sx * 0.07, 0.14, z), Vector3(0.06, 0.3, 0.06), Color(1, 1, 1, 0.2 * k))
+	var am: ArrayMesh = _mesh(b, _dog_material())
+	_kits["dog"] = am
+	return am
+
+var _dog_mat: ShaderMaterial
+func _dog_material() -> ShaderMaterial:
+	if _dog_mat == null:
+		_dog_mat = ShaderMaterial.new()
+		var sh := Shader.new()
+		sh.code = """
+shader_type spatial;
+varying vec3 coat;
+void vertex() {
+	coat = INSTANCE_CUSTOM.gba;
+	if (COLOR.a < 0.95) {   // a leg: swung at the hip (0.29 m), the pairs in turn
+		float leg = floor(COLOR.a * 5.0 + 0.5);
+		float side = mod(leg, 2.0) * 2.0 - 1.0;
+		float pair = leg > 2.5 ? 1.0 : -1.0;
+		float a = sin(TIME * 9.0 + float(INSTANCE_ID) * 1.7) * 0.55 * INSTANCE_CUSTOM.r * side * pair;
+		float dy = VERTEX.y - 0.29;
+		VERTEX.z += sin(a) * dy * -1.0;
+		VERTEX.y = 0.29 + cos(a) * dy;
+	} else {   // the body bobs with the trot
+		VERTEX.y += abs(sin(TIME * 9.0 + float(INSTANCE_ID) * 1.7)) * 0.025 * INSTANCE_CUSTOM.r;
+	}
+}
+void fragment() {
+	ALBEDO = COLOR.r > 0.5 ? coat : COLOR.rgb;
+	ROUGHNESS = 0.9;
+}
+"""
+		_dog_mat.shader = sh
+	return _dog_mat
+
+## A pushchair, facing +Z (the way it is pushed), its handle at z = 0: a seat-basket under a
+## folding hood on four small wheels, white where the copy's colour shows
+func pram_kit() -> ArrayMesh:
+	if _kits.has("pram"):
+		return _kits["pram"]
+	var b = g.new_buf()
+	var frame: Color = _tone("pole").darkened(0.3)
+	var tyre := Color(0.08, 0.08, 0.08)
+	_box(b, Vector3(0, 0.5, 0.45), Vector3(0.42, 0.26, 0.55), Color.WHITE)          # the basket
+	_box(b, Vector3(0, 0.74, 0.32), Vector3(0.44, 0.24, 0.32), Color.WHITE, Basis(Vector3.RIGHT, -0.35))   # the hood
+	_box(b, Vector3(0, 0.66, 0.66), Vector3(0.36, 0.06, 0.12), Color.WHITE.darkened(0.2))   # the blanket
+	for sx: float in [-1.0, 1.0]:
+		_tube(b, Vector3(sx * 0.2, 1.0, 0.0), Vector3(sx * 0.2, 0.18, 0.62), 0.012, 0.012, frame, 4)   # the push bar's side
+		_tube(b, Vector3(sx * 0.2, 0.4, 0.2), Vector3(sx * 0.2, 0.12, 0.08), 0.012, 0.012, frame, 4)
+		for z: float in [0.08, 0.62]:
+			_box(b, Vector3(sx * 0.22, 0.09, z), Vector3(0.04, 0.17, 0.17), tyre)
+	_tube(b, Vector3(-0.21, 1.0, 0.0), Vector3(0.21, 1.0, 0.0), 0.016, 0.016, frame, 4)   # the handle
+	var am: ArrayMesh = _mesh(b)
+	_kits["pram"] = am
+	return am
+
+## a lead: a thin dark strap a metre long along +Z (scaled to reach)
+func leash_kit() -> ArrayMesh:
+	if _kits.has("leash"):
+		return _kits["leash"]
+	var b = g.new_buf()
+	_box(b, Vector3(0, 0, 0.5), Vector3(0.012, 0.012, 1.0), Color(0.15, 0.12, 0.1))
+	var am: ArrayMesh = _mesh(b)
+	_kits["leash"] = am
 	return am
 
 ## a street bin: a dark drum on a short post, a ring round its mouth

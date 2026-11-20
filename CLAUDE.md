@@ -54,7 +54,11 @@ that screen. The menu itself has no level picking. Self-play skips the start scr
 `config` may have no "level" -- default to 1. When a run reaches a new level, set
 `Flow.current_config["level"] = n` so "play again" resumes there rather than at the start.
 `LEVEL=n tools/playtest.sh <game> ...` (and `tools/shots.sh`) start a run at level n, and
-`tools/menu_shot.sh levels:<game>` screenshots the start screen.
+`tools/menu_shot.sh levels:<game>` screenshots the start screen. Levels that are
+Dictionaries with a `"name"` are picked by name; give them a `"group"` too and the start
+screen lists each group under its heading, side by side (a level's `"sort"` orders it within
+its group; its number is still its place in `LEVELS`, so reordering the screen never
+renumbers the levels).
 
 Nothing outside a game's own folder should ever name that game. If you find yourself
 writing its name in a doc, a tool or another game, that is the thing that will rot when it
@@ -241,6 +245,11 @@ Short, specific, and all of them cost a debugging session:
   park one. The front page itself never has this problem: it only ever holds the one or
   two `ACTIVE` games plus the "other" button. `tools/menu_shot.sh other` screenshots the
   shelf.
+- **A body in the list of things it keeps clear of pushes itself.** When the player is
+  added to the crowd the others avoid, its own avoidance must skip that entry: otherwise it
+  is shoved off where it stood last tick, along its heading, every tick -- a walker whose
+  speed read 6 m/s crossed 35 m a second. Check a mover's real displacement per tick, not
+  only its speed variable.
 - **Animated art exists in `assets/actors/` only** — five human characters with real
   frames, via `Blob.set_actor()` / `Blob.play()`. Everything else in `assets/` is a single
   static image, so animals and items can only be animated by hand: position, rotation and
@@ -280,6 +289,7 @@ once each take about half again as long):
 | a playtest of a small 2D game, 20-30 s of play | 1-2 min |
 | a playtest of a big 3D city game (loading the city is most of it) | under 1 min to 5 min |
 | a scene test on a big city: load, then stills or a scan | 1-7 min |
+| ten headless drives across the big cities, two at a time (`--fixed-fps 60`, lowest quality) | 10-12 min |
 | recording 100 s of play frame by frame (1280x720, `--fixed-fps 10`) | 18-20 min |
 | turning frames into a video with ffmpeg | 1-2 min |
 | the site republishing after a push to `main` | about 5 min |
@@ -309,7 +319,12 @@ normal, not an accident. What that asks of you:
   happily and the result can still be broken (a function one renamed, a constant the other
   retuned). After merging anything that touches your game, parse it
   (`tools/check_script.sh res://game/<name>/<name>.gd`, seconds) and run the playtest again
-  before pushing to `main`.
+  before pushing to `main`. And `git add` happily stages a file that still has conflict
+  markers in it: before committing a merge, `git diff --cached --check` (or grep for
+  `<<<<<<<`) -- a merge here once published two notes files with both sides and the markers.
+  A notes file breaks nothing, so they then sat on `main` for hours through a dozen more
+  merges, sessions editing inside them; `--cached --check` cannot see markers already
+  committed, so before pushing, `git grep -nE '^(<<<<<<<|=======|>>>>>>>)( |$)'` too.
 - **A merge can bring new assets** (another session's textures, models). Godot only imports
   them when asked: `tools/playtest.sh` and `tools/shots.sh` now do it when they see assets
   newer than the last import, but if you run the engine yourself, run
@@ -349,6 +364,15 @@ writing it down is small next to the next session rediscovering it.
   `tests/` folder rather than leaving it in a scratch directory that vanishes with the
   session.
 - Update what is there when it turns out wrong; a stale note is worse than none.
+
+**Suggest compacting past ~60%.** The user wants a session compacted once its context is
+more than about 60% full, not left to fill up. Only the user can do it (`/compact` is
+theirs to type; you cannot run it), and only they see the percentage, so judge by the
+session's length -- long rounds of screenshots, videos and big file reads fill it fastest
+-- and at a natural pause (after a push, before starting something new) suggest it in one
+line. Write what is worth keeping first (above, and a handoff in the game's `DEV.md`: what
+you were in the middle of, the open items, the tests and their good numbers), so nothing
+lives only in the context that is about to be summarised.
 
 ## Style
 
