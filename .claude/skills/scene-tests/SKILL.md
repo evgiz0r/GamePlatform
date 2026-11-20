@@ -213,6 +213,11 @@ it is made, with a one-line caption, rather than a report at the end.
   same place again: the car ignored the red there and the red went uncounted, every case
   reading "on through, no red". If every case reads the same however you vary it, suspect the
   staging before the code under test, and reset such state wherever the car is put down.
+- **A "last thing hit" that probes also write is not a hit.** A game whose collision helper
+  records what it touched every time it is called -- by the planner checking a lane spot, by
+  the AI's look-ahead at its nose -- shows "wall 6156" (130 m away) as the last hit. Count a
+  hit only with the game's own crash flag (here `_crash_cool`), and find what really blocked
+  the AI by calling the same probe yourself at that moment.
 - **Hold a parked player by hand on a hill** (its position and speed each physics frame):
   with nobody at the pedals it rolls down a 15% street, 100 m in a case.
 

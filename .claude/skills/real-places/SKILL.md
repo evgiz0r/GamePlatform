@@ -268,7 +268,9 @@ goes wrong shows up the first time it runs.
   as an arc tangent to the lane in and the lane out, no tighter than the car can steer (a
   4.4 m car at 34 degrees is ~4.1 m round: 5-5.5 m), starting further back if it must;
   merge a junction's points that are a few metres apart first (one junction drawn as two
-  points 0.9 m apart made two corners, the second doubling back over the first). A curve
+  points 0.9 m apart made two corners, the second doubling back over the first) -- keeping
+  the junction's point, not the first of them: a slip road's point 3 m short of the street
+  it joins put the corner off that street's line and the car over the kerb. A curve
   through the point where the two lanes cross, from 5 m before the junction to 5 m after, is
   2-3 m round for a right turn on an 8 m street: too tight to follow.
 - **A controller that brakes by how far over its target it is runs behind a braking

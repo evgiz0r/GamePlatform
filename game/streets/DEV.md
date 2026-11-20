@@ -739,8 +739,11 @@ km/h through a corner planned at 12. Three causes, each fixed:
   street's way -- which put it on the middle line of the street it was leaving: the car swung
   out left over the last 10 m, came round at full lock from there and out over the next
   street's middle line. Free autodrive (`_ap_leg`/`_ap_turn_into`) laid real corners. Now the
-  route's points closer than 4 m are one corner (a junction drawn as two points 0.9 m apart
-  was two, the second's curve starting behind the first: the plan doubled back), a corner's
+  route's points closer than 3 m are one corner, at the junction's point (a junction drawn as
+  two points 0.9 m apart was two, the second's curve starting behind the first: the plan
+  doubled back; and keeping the first of two, a slip road's point 3 m short of the street it
+  joined, laid the corner off that street's line -- route 7 came out of the turn 4.7 m from
+  the middle of an 8 m street, over the kerb into a post, and backed off), a corner's
   curve may start behind the lane point before it (dropped) and run on to the next point when
   that is no corner itself (lane points it passed are left out);
 - **both laid a right turn tighter than the car turns**: a curve from 5 m before the junction to
@@ -808,7 +811,8 @@ The open items of the handoff below, done:
   way across a median and the ones deep enough -- Ashdod 9 of 42, Tel Aviv 3 of 17, Givatayim 2
   of 4, Bedford 8 of 16 -- and of the side-street crossings it can stage (a side street with no
   lights, straight 34 m), only Givatayim's one has room. Where there is none nothing changes
-  (Ashdod's five staged crossings: the same with and without; 0 hits, no car braking for it).
+  (Ashdod's five staged crossings: the same with and without; 0 hits, no car braking for it;
+  Givatayim's one with room: PASS; Bedford has no side street crossing one to stage).
 
 ### Handoff: autodrive's junctions, the route set, test routes (20 Nov 2026)
 

@@ -194,7 +194,10 @@ func _run() -> void:
 					t_off += float(res["across_in"])
 	g._ap_median_ok = true
 	print("median wait: across in %.0f s all told waiting in the middle, %.0f s as one junction" % [t_on, t_off])
-	print("MEDIAN WAIT: %s (%d of %d bad)" % ["PASS" if bad == 0 and runs > 0 else "FAIL", bad, runs])
+	if runs == 0:
+		print("MEDIAN WAIT: nothing to stage here (no side street crosses a divided road without lights)")
+	else:
+		print("MEDIAN WAIT: %s (%d of %d bad)" % ["PASS" if bad == 0 else "FAIL", bad, runs])
 	quit(0)
 
 func _case(p: Array, go: String, wait_ok: bool) -> Dictionary:
