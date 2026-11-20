@@ -1013,8 +1013,28 @@ towns get them when re-baked. What the game does with them:
   middle half, the station's name (Hebrew and English) under it.
 - **Trains** (`tick`, in `_physics_process`): five double-deck coaches at 22 m/s, one
   train a line, each direction in turn with 40-90 s between; seen, not solid (the Ayalon's
-  line runs where no car goes; a level crossing would need them solid). The minimap draws
-  the tracks light on dark (`map_lines`).
+  line runs where no car goes; a level crossing would need them solid). `s` is coach 0's
+  middle and coach 0 always leads (positions are worked out from the head along the way it
+  runs), so its +Z end has the cab face, windscreen and white lamps and the last coach's
+  -Z end the red ones -- nothing swaps when it reverses. Stops (`_stops_of`): where a
+  platform's middle is within 12 m of the line, one per 120 m; the train brakes at 0.7
+  m/s^2 to stand with its middle at the platform's (measured: 0.3 m off), stands DWELL 30
+  s, pulls away at 0.6 m/s^2. At night (`set_night`, from `_set_night`) the shared window
+  material glows. The minimap draws the tracks light on dark (`map_lines`).
+- **The overhead line** (`_wires`): masts every 50 m on each outer side of the tracks (no
+  other track within 4.5 m that side), each with an arm reaching over its track and any
+  others within 12 m -- from both sides they meet as a portal over three tracks; a contact
+  wire 5.6 m over the rails and a messenger 1.1 m above, the contact wire lowered under a
+  bridge's slab (0.4 m clear) and the messenger left out there. No mast on a road or under
+  a bridge. Every main-line track is wired (the Ayalon line is; the baker does not keep
+  OSM's `electrified=` yet). The arms are one unit box scaled along its own axis
+  (`Basis * Basis.from_scale`): `Basis.scaled()` stretches along the world's axes, and the
+  arms came out skewed along the track.
+- **Sound** (`sound`, from `_engine_tick`, which runs paused too): a 3D rumble on each
+  train's middle coach (`sounds/train.wav`, a 4 s loop: the roar, the bogies' thumps coach
+  by coach, a faint motor whine), louder with its speed, and the horn (`train_horn.wav`)
+  once as it pulls out of a station; silent when muted, paused or the run is over. Both
+  made by `sounds/make_sounds.py train train_horn` (only those: the others stay as they are).
 - **The test**: `tests/rails.gd` (level 7) prints what was set up and how close the beds
   come to roads (0 over asphalt), stands a train at HaShalom and shoots it from beside the
   line and from the platform, both stations from above, and a track close up. Two things
@@ -1022,9 +1042,9 @@ towns get them when re-baked. What the game does with them:
   beside the line the bed was not there (darker now); and a test that holds the world still
   (`set_physics_process(false)`) must set `_prev_yaw` with `_yaw`, or the view blends from
   the car's old heading and looks the wrong way.
-- **Still to do**: a locomotive's face and a train's lights at night; catenary masts and
-  wires (the Ayalon line is electrified); level crossings (trains solid, barriers); the
-  light rail where it runs on the surface; re-baking the other towns (Ashdod has a line).
+- **Still to do**: level crossings (trains solid, barriers); the light rail where it runs
+  on the surface; keeping `electrified=` in the bake; re-baking the other towns (Ashdod has
+  a line).
 
 ## Open problems
 

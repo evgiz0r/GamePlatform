@@ -191,10 +191,16 @@ Lova Eliav stay on the ground (too short to get under the street at a car's grad
 
 The railway runs down the middle of the Ayalon, between its carriageways and under its
 bridges: three tracks most of the way, more at the stations, on ballast with concrete
-sleepers, and Tel Aviv Savidor and Tel Aviv HaShalom with their platforms, canopies and
-names. Double-deck trains run along it, each line in turn one way then the other, a minute
-or so apart. The Red Line light rail is underground here, so it is not shown. On the
-minimap the tracks are a light line on a dark one.
+sleepers, under the overhead wires on their masts, and Tel Aviv Savidor and Tel Aviv
+HaShalom with their platforms, canopies and names. Double-deck trains run along it, each
+line in turn one way then the other, a minute or so apart: they slow for each station,
+stand half a minute at the platform and pull out with a blast of the horn. Their headlights
+are on and, at night, their windows lit; near the line you hear them go by. The Red Line
+light rail is underground here, so it is not shown. On the minimap the tracks are a light
+line on a dark one.
+
+> Trains that act like trains: a front with headlights, lit at night, stopping at the
+> stations; the overhead electric wires; the sound of a train going by.
 
 > game streets -- lets add/start working on adding Tel Aviv. Somewhat the area I mentioned.
 > (with a map: Ichilov, Savidor, Azrieli, HaKirya, TLV Mall, Montefiore, Bitsaron,

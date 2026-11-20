@@ -54,7 +54,7 @@ extends RefCounted
 ##   props     [{kind, at: [x, z], dir: [x, z]}]     bin, hoop_railing, bollard, twin_poles
 ##                                                    (dir: the line through them), barrier
 ##                                                    (dir: the way the boom goes, len),
-##                                                    globe_lamp (h), manhole, motorbike and
+##                                                    globe_lamp (h), manhole, hydrant, motorbike and
 ##                                                    scooter (dir: the nose; box: a top box),
 ##                                                    kerb_paint (at: by the kerb of the road
 ##                                                    nearest; len, pat: red_white...),
@@ -382,6 +382,7 @@ func build() -> void:
 	var bike_cols: Array = []
 
 	var scooters: Array = []
+	var hydrants: Array = []   ## red fire hydrants (the furniture's own kit)
 	var scooter_cols: Array = []
 	var boxes: Array = []
 	var cars := {}   ## kind -> [transforms, paints]
@@ -396,6 +397,9 @@ func build() -> void:
 		match String(pr["kind"]):
 			"bin":
 				_bin(b, at, y, dark)
+			"hydrant":
+				hydrants.append(Transform3D(Basis(Vector3.UP, atan2(d.x, d.y)), Vector3(at.x, y, at.y)))
+				g._add_post(at, 0.2)
 			"hoop_railing":
 				_hoop(b, at, y, d, white)
 			"bollard":
@@ -452,6 +456,8 @@ func build() -> void:
 		g._chunked(_moto_kit(), bikes, 170.0, bike_cols, null, true)
 	if not scooters.is_empty():
 		g._chunked(g._furn._scooter_kit(), scooters, 170.0, scooter_cols, null, true)
+	if not hydrants.is_empty():
+		g._chunked(g._furn._hydrant_kit(), hydrants, 170.0, [], null, true)
 	if not boxes.is_empty():
 		g._chunked(_box_kit(), boxes, 170.0, [], null, true)
 	for kind: String in cars:

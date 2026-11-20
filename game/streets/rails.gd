@@ -323,6 +323,25 @@ func _mat(name: String) -> StandardMaterial3D:
 			m.albedo_color = Palette.col("bg").lerp(Palette.col("bg_alt"), 0.4)
 			m.roughness = 0.15
 			m.metallic_specular = 0.8
+		"under":
+			m.albedo_color = Palette.col("bg").lerp(Palette.col("bg_alt"), 0.3)
+		"mast":      # galvanised steel
+			m.albedo_color = (tone["metal"] as Color).lerp(tone["concrete"], 0.4)
+			m.metallic = 0.5
+			m.roughness = 0.5
+		"wire":
+			m.albedo_color = Palette.col("bg").lerp(Palette.col("bg_alt"), 0.25)
+			m.cull_mode = BaseMaterial3D.CULL_DISABLED
+		"lamp":      # headlights: lit day and night, as trains run
+			m.albedo_color = Palette.col("ink")
+			m.emission_enabled = true
+			m.emission = Palette.col("ink").lerp(Palette.col("warn"), 0.15)
+			m.emission_energy_multiplier = 2.5
+		"taillamp":
+			m.albedo_color = Palette.col("hazard")
+			m.emission_enabled = true
+			m.emission = Palette.col("hazard")
+			m.emission_energy_multiplier = 2.0
 		"roof":   # canopies and roofs: grey metal (the palette's bg_alt alone came out lilac)
 			m.albedo_color = (tone["metal"] as Color).lerp(tone["concrete"], 0.55)
 	_mats[name] = m
@@ -408,6 +427,113 @@ func build() -> void:
 		g._chunked(sm, sleepers, NEAR)
 	for pi: int in pl_list:
 		_platform(pi)
+	await _wires(list)
+
+## ---- the overhead line ---------------------------------------------------------------------
+
+const WIRE_H := 5.6           ## the contact wire over the rails' top
+const MESSENGER := 1.1        ## the messenger wire above it
+const MAST_STEP := 50.0
+const MAST_OFF := 3.2         ## a mast beside its track's middle
+const MAST_H := 7.6
+
+## Masts every MAST_STEP on each outer side of the tracks (a side with no other track within
+## 8 m), each with an arm reaching in over its track and the others on that side -- from both
+## sides they meet over a corridor of three like a portal; a contact wire and a messenger
+## over each track, coming down to clear a bridge's slab. Every main-line track is wired
+## (the Ayalon line is; the baker does not keep OSM's electrified= yet). No mast on a road or
+## under a bridge.
+func _wires(list: Array) -> void:
+	var wire: RefCounted = g._clip_buf(g.GROUND_CELL)
+	var masts: Array = []
+	var arms: Array = []
+	var top_y := BED_TOP + 0.18 + RAIL_H
+	for ti: int in list:
+		if String(tracks[ti][1]) != "rail" or String(tracks[ti][3]) in ["yard", "siding", "spur"]:
+			continue
+		if g._over():
+			await g._pause()
+		var pts: PackedVector2Array = tracks[ti][0]
+		# the wires: each point's height, under a bridge the slab's underside less 0.4 m
+		var hs := PackedFloat32Array()
+		for p in pts:
+			var gy := _y(p)
+			var h := gy + top_y + WIRE_H
+			if g._decks != null and g._decks.any():
+				for ri: int in g._decks._under(p):
+					var dy: float = g._decks._under(p)[ri][1]
+					if dy > gy + 2.0:
+						h = minf(h, dy - g._decks.SLAB - 0.4)
+			hs.append(maxf(h, gy + top_y + 4.6))
+		for j in range(pts.size() - 1):
+			if not g._mine(pts[j]):
+				continue
+			var d := (pts[j + 1] - pts[j]).normalized()
+			var n := Vector2(-d.y, d.x) * 0.025
+			for lift: float in [0.0, MESSENGER]:
+				if lift > 0.0 and hs[j] < _y(pts[j]) + top_y + WIRE_H - 0.1:
+					continue   # (under a bridge: the contact wire alone)
+				var a0 := Vector3(pts[j].x, hs[j] + lift, pts[j].y)
+				var a1 := Vector3(pts[j + 1].x, hs[j + 1] + lift, pts[j + 1].y)
+				var o := Vector3(n.x, 0.0, n.y)
+				wire.quad3(a0 - o, a1 - o, a1 + o, a0 + o)   # (seen from below)
+				wire.quad3(a0 + o, a1 + o, a1 + o + Vector3(0, 0.05, 0), a0 + o + Vector3(0, 0.05, 0))
+		# the masts
+		var cum := 0.0
+		var next := MAST_STEP * 0.5
+		for j in range(pts.size() - 1):
+			var L := pts[j].distance_to(pts[j + 1])
+			var d := (pts[j + 1] - pts[j]) / maxf(L, 0.001)
+			while next < cum + L:
+				var p := pts[j] + d * (next - cum)
+				next += MAST_STEP
+				if not g._mine(p):
+					continue
+				for sd: float in [1.0, -1.0]:
+					var side := Vector2(-d.y, d.x) * sd
+					if _other_track(p + side * 4.0, ti, 4.5):
+						continue   # (another track on this side: its mast, or one further out)
+					var mp := p + side * MAST_OFF
+					var on: Dictionary = g._nearest_seg(mp, 6.0, true)
+					if not on.is_empty() and float(on["edge"]) < 0.6:
+						continue   # (no mast in a road)
+					if g._decks != null and g._decks.any() and not g._decks._under(mp).is_empty():
+						continue   # (nor under a bridge)
+					# the arm: in over this track and any others on the far side, up to 12 m
+					var reach := MAST_OFF + 0.6
+					for k in range(1, 4):
+						if _other_track(p - side * (4.2 * k), ti, 1.6):
+							reach = MAST_OFF + 4.2 * k + 0.6
+					var gy := _y(mp)
+					masts.append(Transform3D(Basis(), Vector3(mp.x, gy + MAST_H * 0.5, mp.y)))
+					var am := mp - side * reach * 0.5
+					# (the length along the arm's own axis: Basis.scaled() stretches along the
+					# world's, and the arms came out skewed along the track)
+					var arm_b := Basis(Vector3.UP, atan2(side.x, side.y)) * Basis.from_scale(Vector3(1.0, 1.0, reach))
+					arms.append(Transform3D(arm_b, Vector3(am.x, gy + MAST_H - 0.6, am.y)))
+			cum += L
+	g._add_mesh(wire, _mat("wire"), false, NEAR)
+	var mm := BoxMesh.new()
+	mm.size = Vector3(0.3, MAST_H, 0.3)
+	mm.material = _mat("mast")
+	g._chunked(mm, masts, SEEN * 0.5)
+	var am_mesh := BoxMesh.new()
+	am_mesh.size = Vector3(0.14, 0.18, 1.0)
+	am_mesh.material = _mat("mast")
+	g._chunked(am_mesh, arms, SEEN * 0.5)
+
+## another track than ti within r of p
+func _other_track(p: Vector2, ti: int, r: float) -> bool:
+	for cx in range(floori((p.x - r) / CELL), floori((p.x + r) / CELL) + 1):
+		for cz in range(floori((p.y - r) / CELL), floori((p.y + r) / CELL) + 1):
+			for code: int in _seg_hash.get(Vector2i(cx, cz), []):
+				if code / 4096 == ti:
+					continue
+				var pts: PackedVector2Array = tracks[code / 4096][0]
+				var j := code % 4096
+				if Geometry2D.get_closest_point_to_segment(p, pts[j], pts[j + 1]).distance_to(p) < r:
+					return true
+	return false
 
 ## a platform: a slab up at the coaches' floor, a yellow line along its edge by the track,
 ## a canopy over its middle, the station's name on it
@@ -486,6 +612,29 @@ func _platform(pi: int) -> void:
 
 ## ---- trains ------------------------------------------------------------------------------
 
+## the places on line li a train stops: where a platform lies beside its track (its middle
+## within 12 m of the line), one for each station's group of platforms, metres along
+func _stops_of(li: int) -> PackedFloat32Array:
+	var path: PackedVector2Array = lines[li][0]
+	var cum: PackedFloat32Array = lines[li][1]
+	var out := PackedFloat32Array()
+	for ring: PackedVector2Array in platforms:
+		var c := Vector2.ZERO
+		for p in ring:
+			c += p
+		c /= ring.size()
+		var best := 12.0
+		var at := -1.0
+		for j in range(path.size() - 1):
+			var q := Geometry2D.get_closest_point_to_segment(c, path[j], path[j + 1])
+			if q.distance_to(c) < best:
+				best = q.distance_to(c)
+				at = cum[j] + path[j].distance_to(q)
+		if at >= 0.0 and not Array(out).any(func(x): return absf(x - at) < 120.0):
+			out.append(at)
+	out.sort()
+	return out
+
 func _make_train() -> Node3D:
 	var root := Node3D.new()
 	for i in range(COACHES):
@@ -515,7 +664,7 @@ func _make_train() -> Node3D:
 		var under := MeshInstance3D.new()   # bogies and the frame, dark, under the body
 		var um := BoxMesh.new()
 		um.size = Vector3(COACH_W - 0.5, 0.8, COACH_L - 2.0)
-		um.material = _mat("window")
+		um.material = _mat("under")
 		under.mesh = um
 		under.position.y = 0.55
 		coach.add_child(under)
@@ -526,10 +675,74 @@ func _make_train() -> Node3D:
 		roof.mesh = rm
 		roof.position.y = COACH_H + 0.1
 		coach.add_child(roof)
+		# a cab at each end of the train (it runs either way, push-pull): the front's face,
+		# its windscreen and lamps -- white ahead (coach 0 leads, its +Z end), red behind
+		if i == 0 or i == COACHES - 1:
+			var end := COACH_L * 0.5 if i == 0 else -COACH_L * 0.5
+			var out := signf(end)
+			_box(coach, Vector3(COACH_W - 0.1, 1.9, 0.3), Vector3(0.0, 1.95, end + out * 0.1), "stripe")
+			_box(coach, Vector3(COACH_W - 0.5, 0.9, 0.3), Vector3(0.0, 3.25, end + out * 0.12), "window")
+			for sx: float in [-0.95, 0.95]:
+				_box(coach, Vector3(0.38, 0.22, 0.12), Vector3(sx, 1.35, end + out * 0.28), "lamp" if i == 0 else "taillamp")
 		for m: Node in coach.get_children():
 			(m as GeometryInstance3D).visibility_range_end = TRAIN_SEEN
+		# its sound: the rumble from the middle coach, the horn from the leading one
+		if i == COACHES / 2 or i == 0:
+			var sp := AudioStreamPlayer3D.new()
+			sp.name = "rumble" if i == COACHES / 2 else "horn"
+			sp.stream = load(SND_DIR + ("train.wav" if i == COACHES / 2 else "train_horn.wav"))
+			sp.unit_size = 14.0 if i == COACHES / 2 else 30.0
+			sp.max_distance = 500.0 if i == COACHES / 2 else 900.0
+			sp.position.y = 1.5
+			coach.add_child(sp)
 		root.add_child(coach)
 	return root
+
+const SND_DIR := "res://game/streets/sounds/"
+
+## The trains heard (from the game's engine-sound step, which runs paused too): the rumble
+## while a train is out, louder with its speed (and a low hum standing at a platform), the horn
+## once as it pulls away from one; silent when the sound is off, paused or the run is over.
+func sound(off: bool) -> void:
+	var base := linear_to_db(maxf(0.0001, float(SaveData.data.get("volume_sfx", 0.8))))
+	for tr: Dictionary in trains:
+		var node: Node3D = tr["node"]
+		var coaches: Array = node.get_children()
+		var rumble: AudioStreamPlayer3D = (coaches[COACHES / 2] as Node3D).get_node("rumble")
+		var horn: AudioStreamPlayer3D = (coaches[0] as Node3D).get_node("horn")
+		var out := node.visible and not off
+		if not out:
+			if rumble.playing:
+				rumble.stop()
+			if horn.playing:
+				horn.stop()
+			tr["horn"] = false
+			continue
+		if not rumble.playing:
+			rumble.play(fmod(float(tr["line"]) * 1.3, 4.0))
+		var v: float = tr["v"]
+		rumble.volume_db = base + (2.0 + 20.0 * log(maxf(v, 0.4) / TRAIN_V) / log(10.0))
+		rumble.pitch_scale = 0.75 + 0.25 * clampf(v / TRAIN_V, 0.0, 1.2)
+		if bool(tr.get("horn", false)):
+			tr["horn"] = false
+			horn.volume_db = base - 2.0
+			horn.play()
+
+func _box(parent: Node3D, size: Vector3, at: Vector3, mat: String) -> void:
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = size
+	bm.material = _mat(mat)
+	mi.mesh = bm
+	mi.position = at
+	parent.add_child(mi)
+
+## the dark: the coaches' windows lit warm (one material, shared)
+func set_night(on: bool) -> void:
+	var w := _mat("window")
+	w.emission_enabled = on
+	w.emission = Palette.col("ink").lerp(Palette.col("warn"), 0.45)
+	w.emission_energy_multiplier = 0.9
 
 ## the point and heading a distance s along line li
 func _along(li: int, s: float) -> Array:
@@ -541,7 +754,13 @@ func _along(li: int, s: float) -> Array:
 	var t := (s - cum[j]) / maxf(cum[j + 1] - cum[j], 0.001)
 	return [path[j].lerp(path[j + 1], t), (path[j + 1] - path[j]).normalized()]
 
-## a train on each line, one direction or the other in turn, a while apart
+const ACCEL := 0.6            ## m/s^2 pulling away
+const DECEL := 0.7            ## braking for a station
+const DWELL := 30.0           ## seconds at a platform
+
+## A train on each line, one direction then the other, a while apart; slowing for each
+## station's platforms, standing DWELL at them with its middle at the platform's, pulling
+## away again. `s` is coach 0's middle (the leading coach, whichever way it runs).
 func tick(dt: float) -> void:
 	if lines.is_empty():
 		return
@@ -550,38 +769,69 @@ func tick(dt: float) -> void:
 			var node := _make_train()
 			node.visible = false
 			g.world.add_child(node)
-			trains.append({"line": li, "s": 0.0, "dir": 1 if li % 2 == 0 else -1, "wait": 8.0 + li * 25.0, "node": node})
+			trains.append({"line": li, "s": 0.0, "dir": 1 if li % 2 == 0 else -1, "wait": 8.0 + li * 25.0,
+					"node": node, "v": TRAIN_V, "dwell": 0.0, "served": -INF, "stops": _stops_of(li)})
+	var train_l := COACHES * (COACH_L + COACH_GAP)
+	var mid_off := (COACHES - 1) * (COACH_L + COACH_GAP) * 0.5   # coach 0 to the train's middle
 	for tr: Dictionary in trains:
 		var cum: PackedFloat32Array = lines[int(tr["line"])][1]
 		var total: float = cum[cum.size() - 1]
-		var train_l := COACHES * (COACH_L + COACH_GAP)
+		var dir := int(tr["dir"])
 		if float(tr["wait"]) > 0.0:
 			tr["wait"] = float(tr["wait"]) - dt
 			if float(tr["wait"]) <= 0.0:
-				tr["s"] = -train_l if int(tr["dir"]) > 0 else total + train_l
+				tr["s"] = -train_l if dir > 0 else total + train_l
+				tr["v"] = TRAIN_V
+				tr["served"] = -INF
 				(tr["node"] as Node3D).visible = true
 			continue
-		tr["s"] = float(tr["s"]) + TRAIN_V * dt * int(tr["dir"])
+		if float(tr["dwell"]) > 0.0:
+			tr["dwell"] = float(tr["dwell"]) - dt
+			if float(tr["dwell"]) <= 0.0:
+				tr["horn"] = true   # (pulling out: heard once, see sound())
+		else:
+			# the next stop ahead not yet served: brake to stand with the middle at it
+			var to_stop := INF
+			for st: float in tr["stops"]:
+				if absf(st - float(tr["served"])) < 1.0:
+					continue
+				var d := (st + mid_off * dir - float(tr["s"])) * dir
+				if d > -0.5 and d < to_stop:
+					to_stop = d
+			var want := TRAIN_V
+			if to_stop < INF:
+				want = minf(TRAIN_V, sqrt(2.0 * DECEL * maxf(to_stop, 0.0)))
+			var v: float = tr["v"]
+			v = minf(v + ACCEL * dt, want) if v < want else want
+			if to_stop < 0.4 and v < 0.6:
+				v = 0.0
+				tr["dwell"] = DWELL
+				for st: float in tr["stops"]:   # (which one it is standing at)
+					if absf(st + mid_off * dir - float(tr["s"])) < 2.0:
+						tr["served"] = st
+				Probe.event("train_stop", {"line": int(tr["line"])})
+			tr["v"] = v
+			tr["s"] = float(tr["s"]) + v * dt * dir
 		var s: float = tr["s"]
-		if (int(tr["dir"]) > 0 and s > total + train_l) or (int(tr["dir"]) < 0 and s < -train_l):
+		if (dir > 0 and s > total + train_l) or (dir < 0 and s < -train_l):
 			tr["wait"] = 40.0 + fmod(float(tr["line"]) * 37.0, 50.0)
-			tr["dir"] = -int(tr["dir"])
+			tr["dir"] = -dir
 			(tr["node"] as Node3D).visible = false
 			continue
 		var coaches: Array = (tr["node"] as Node3D).get_children()
 		for i in range(coaches.size()):
-			var sc := s - float(i) * (COACH_L + COACH_GAP) * int(tr["dir"])
+			var sc := s - float(i) * (COACH_L + COACH_GAP) * dir
 			var coach: Node3D = coaches[i]
 			if sc < 0.0 or sc > total:
 				coach.visible = false
 				continue
 			coach.visible = true
 			# the coach's ends on the line, its body between them
-			var f: Array = _along(int(tr["line"]), sc + COACH_L * 0.45 * int(tr["dir"]))
-			var b: Array = _along(int(tr["line"]), sc - COACH_L * 0.45 * int(tr["dir"]))
+			var f: Array = _along(int(tr["line"]), sc + COACH_L * 0.45 * dir)
+			var b: Array = _along(int(tr["line"]), sc - COACH_L * 0.45 * dir)
 			var fp: Vector2 = f[0]
 			var bp: Vector2 = b[0]
 			var mid := (fp + bp) * 0.5
-			var fwd := (fp - bp).normalized() if fp.distance_to(bp) > 0.1 else (f[1] as Vector2)
+			var fwd := (fp - bp).normalized() if fp.distance_to(bp) > 0.1 else (f[1] as Vector2) * dir
 			coach.position = Vector3(mid.x, _y(mid) + BED_TOP + 0.18 + RAIL_H, mid.y)
 			coach.rotation = Vector3(0.0, atan2(fwd.x, fwd.y), 0.0)
