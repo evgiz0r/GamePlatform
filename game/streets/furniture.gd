@@ -173,7 +173,7 @@ func _mark(name: String, p: Vector2) -> void:
 ## on the pavement: off the asphalt by `margin`, out of buildings by `room`, `posts` metres
 ## from the nearest lamp, tree or sign
 func _free(p: Vector2, margin: float, room: float, posts: float) -> bool:
-	return g._off_road(p, margin) and not g._in_junction(p, margin) \
+	return g._off_road(p, margin) and not g._in_junction(p, margin) and not g._in_corner_fill(p, margin) \
 			and g._push_out(p, room, false, false) == Vector2.ZERO and g._clear_of_posts(p, posts)
 
 func _h(p: Vector2) -> float:
@@ -1000,7 +1000,7 @@ func kerbside() -> void:
 							# stood out in the road)
 							var ends_ok := true
 							for q: Vector2 in [m - d * 0.6, m + d * 0.6]:
-								if not g._off_road(q, 0.1) or g._in_junction(q, 0.1):
+								if not g._off_road(q, 0.1) or g._in_junction(q, 0.1) or g._in_corner_fill(q, 0.1):
 									ends_ok = false
 							if not ends_ok:
 								break

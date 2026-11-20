@@ -129,9 +129,13 @@ destination stays; autodrive picks the route up again from wherever you are.
 Only addresses OpenStreetMap knows are listed: in Givatayim that is about one building in
 six (plus address points), in Bedford almost all of them.
 
-**Jumping there.** The button at the top left of the list switches it between "drive
-there" and "jump there". Jumping puts the car down on the street at the address, in its
-lane, stopped, facing the way that has the address on the kerb side.
+**Jumping there.** At the top left of the list are two choices side by side, "jump to"
+and "drive to", the one in force filled in; "jump to" is chosen when the game starts.
+Jumping puts the car down on the street at the address, in its lane, stopped, facing the
+way that has the address on the kerb side; driving hands the way there to autodrive.
+
+> in the goto option, make it by default jump to. the menu is not so clear so just show two
+> choices. drive to and jump to. where one of them is selected
 
 > Besides go to, I want also jump to. It teleports there, instead of driving.
 

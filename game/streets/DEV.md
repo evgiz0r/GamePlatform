@@ -115,7 +115,10 @@ The ones most often touched, and the functions in them:
   nearest road (`_off_road` -> `_nearest_seg`) was the dear part: half the hedges' 300 ms.
 - **the builders** -- kerbs and pavements `_build_kerbs`, `_street_runs`,
   `_kerb_run_piece`, corners `_kerb_corners` (checked along their length), the asphalt grid
-  `_asph_hash` / `_asphalt_other`; parked cars `_build_parked`, car parks `_build_lots`; the
+  `_asph_hash` / `_asphalt_other`; paving is laid once (`_laid`, `_laid_cut`, `_laid_by`:
+  while a square's kerbs go down, a piece is cut where another street's, side's or corner's
+  is already down -- each patterned along its own street, two at one height flickered on a
+  phone; `tests/pave_overlap.gd` measures it, Tel Aviv had 19,000 m2 laid twice); parked cars `_build_parked`, car parks `_build_lots`; the
   map's edge `_build_edge` / `_keep_inside`.
 - **batching** -- `_batch_add`, `_flush_batches`, the one material `TONE_SHADER` with its
   `tones[64]` / `tone_fx[64]` tables; `_chunked` and `_add_mesh` route into it while building.
@@ -150,9 +153,11 @@ The ones most often touched, and the functions in them:
   on every steep slope too), mountain woods in the tree builder (`MTN_TREES`, drawn from
   further off), `_build_turbines` / `_turbines_tick`; the fog halves in that town
   (`_retint_city`). Only a made-up town with hills gets any of it. `tests/mountains.gd` shoots it.
-- **solid things and the road** -- `_off_road` (a road's edges only) and `_in_junction` (the
-  round asphalt at a junction's point); furniture's `_free` checks both. `tests/road_blocks.gd`
-  finds anything solid on a road's lanes or a junction's asphalt.
+- **solid things and the road** -- `_off_road` (a road's edges only), `_in_junction` (the
+  round asphalt at a junction's point) and `_in_corner_fill` (the asphalt a rounded corner adds
+  out to its curve, `_corner_fill`, recorded by `_kerb_corners`: bollards 2-3 m from a zebra
+  near a junction stood in it); furniture's `_free` checks all three. `tests/road_blocks.gd`
+  finds anything solid on a road's lanes, a junction's asphalt or a corner's.
 - **loading** -- the squares round the start are built with the city hidden (`world.visible`)
   and hand a frame back every `FG_US` (`_fg_build`: `_over` / `_pause`), the text ticking;
   `_warm_up` then shows the kinds of surface a few at a time (`_shader_key`; four views only

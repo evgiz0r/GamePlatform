@@ -74,7 +74,15 @@ data format is at the top of `tools/osm_city.py`; this is about living with it.
 - **The ground's thin layers z-fight on phones.** Grass, paths, asphalt and paint a few
   millimetres apart showed grass through the road in green patches on a phone's coarser
   depth buffer. Keep them centimetres apart and the camera's near plane at 0.3 m or more
-  (only a cockpit view needs it closer).
+  (only a cockpit view needs it closer). Two pieces at the *same* height are worse: where two
+  streets' pavements meet at a corner (or cross, or a corner's paving runs onto a street's),
+  each laid whole, each with its own pattern, the corner flickered between brick and slabs.
+  Lay paving once: keep what is down while building and cut each later piece where an
+  earlier one already paves, in an order every square of the map repeats.
+- **Bare ground must not look like asphalt.** A grey a shade off the road's, with a photo's
+  light and dark over it, read as more road: a boulevard's wide middle strip looked like
+  lanes and its lawns like grass painted on them ("grass patches on the road"). Give open
+  land its own colour -- dusty sand, dry earth -- clearly apart from the asphalt.
 
 ## Junctions and roundabouts
 
@@ -111,8 +119,10 @@ data format is at the top of `tools/osm_city.py`; this is about living with it.
 - **A junction's asphalt is more than its roads.** Laid as a disc at the junction's point (as
   wide as its widest road) and rounded at the corners, it is covered by no single road's
   width. Anything placed "off the road" by distance to the roads' centre lines -- railings,
-  bollards, a hydrant -- can stand in a junction's mouth. Check the disc too, and check both
-  ends of anything long (a railing panel), not its middle.
+  bollards, a hydrant -- can stand in a junction's mouth. Check the disc too, and the asphalt
+  each rounded corner adds out to its kerb (keep those outlines as the corners are laid:
+  bollards a few metres from a zebra near a junction stood there, in front of the kerb), and
+  check both ends of anything long (a railing panel), not its middle.
 - **Kerbs at corners**: cut kerb runs only where three or more kerbed ways meet (two OSM
   pieces of one street join at a node too), round the corners, and check a corner kerb
   against other roads' asphalt along its whole length -- checked at its middle only, a

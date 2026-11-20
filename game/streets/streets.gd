@@ -986,8 +986,9 @@ var _pick_mode := "streets"          ## or "numbers"
 var _pick_letter := ""               ## "" = every street
 var _pick_page := 0
 var _pick_street := ""
-var _pick_jump := false              ## the picker jumps the car there instead of driving
+var _pick_jump := true               ## the picker jumps the car there (the first choice) instead of driving
 var _pick_jump_btn: Button
+var _pick_drive_btn: Button
 var _pick_title: Label
 var _streets_list: Array = []        ## {name, en, label, count}, sorted, built once per city
 var _dest_lbl: Label
@@ -2824,6 +2825,7 @@ func _build_kerbs() -> void:
 		"chain": _clip_buf(GROUND_CELL), "chain_posts": _clip_buf(GROUND_CELL), "planks": _clip_buf(GROUND_CELL), "flowers": []}
 	var bushes: Array = []
 	var med := String(_place.get("look", "")) == "med"
+	_laid = {}
 	for ri: int in _tile_roads.get(_tile, []):
 		var r: Dictionary = _roads[ri]
 		if not _kerbed(r):
@@ -2849,6 +2851,7 @@ func _build_kerbs() -> void:
 			if _over():
 				await _pause()
 			for sgn: float in [-1.0, 1.0]:
+				_laid_by = ri * 4 + (0 if sgn < 0.0 else 1)
 				var inner_side := dual and sgn == inner_sgn
 				var pw := PAVE_W
 				if inner_side:
@@ -2940,6 +2943,8 @@ func _build_kerbs() -> void:
 	if _over():
 		await _pause()
 	_add_mesh(corners, _surface("asphalt"), false, VIEW_RANGE)
+	_laid = {}
+	_laid_by = -1
 	if _kerb_mat == null:
 		_kerb_mat = ShaderMaterial.new()
 		var sh := Shader.new()
@@ -3092,6 +3097,7 @@ func _build_medians(kerb: Buf, pave: Buf) -> void:
 					var d := (b - a) / maxf(seg, 0.001)
 					var rt := Vector2(-d.y, d.x)
 					for sgn: float in [1.0, -1.0]:
+						_laid_by = ri * 4 + (2 if sgn < 0.0 else 3)
 						# a kerb at mw each side, its face out to the lanes, paved behind to the middle
 						var na := -rt * sgn
 						_kerb_run_piece(kerb, pave, ri, a + rt * mw * sgn, b + rt * mw * sgn, na, na,
@@ -3199,8 +3205,16 @@ func _kerb_piece(kerb: Buf, pave: Buf, a: Vector2, b: Vector2, na: Vector2, nb: 
 	var face := Vector3(-nm.x, 0, -nm.y)
 	kerb.tri(a0, a1, t1, face, col, Vector2(along, 0), Vector2(along + seg, 0), Vector2(along + seg, 1))
 	kerb.tri(a0, t1, t0, face, col, Vector2(along, 0), Vector2(along + seg, 1), Vector2(along, 1))
-	kerb.tri(t0, t1, o1, Vector3.UP, col, Vector2(along, 0), Vector2(along + seg, 0), Vector2(along + seg, 1))
-	kerb.tri(t0, o1, o0, Vector3.UP, col, Vector2(along, 0), Vector2(along + seg, 1), Vector2(along, 1))
+	_laid_seq += 1
+	var top := PackedVector2Array([a, b, ob, oa])
+	var top_cut := _laid_cut(top)
+	if top_cut.is_empty():
+		kerb.tri(t0, t1, o1, Vector3.UP, col, Vector2(along, 0), Vector2(along + seg, 0), Vector2(along + seg, 1))
+		kerb.tri(t0, o1, o0, Vector3.UP, col, Vector2(along, 0), Vector2(along + seg, 1), Vector2(along, 1))
+	else:
+		for piece: PackedVector2Array in top_cut[0]:
+			_flat_piece(kerb, piece, Vector3.UP, col, a, (b - a) / maxf(seg, 0.001), along, 1.0 / KERB_W)
+	_laid_add(top)
 	if pw > 0.05:
 		var c2 := _g3(ob + nb * pw, KERB_H)
 		var c3 := _g3(oa + na * pw, KERB_H)
@@ -3209,8 +3223,107 @@ func _kerb_piece(kerb: Buf, pave: Buf, a: Vector2, b: Vector2, na: Vector2, nb: 
 			nrm = -nrm
 		nrm = nrm.normalized() if nrm.length_squared() > 0.000001 else Vector3.UP
 		var pc := Color(_pave_code, _leafy((oa + ob) * 0.5 + (na + nb) * pw * 0.25), 1.0, pw / 4.0 if _pave_walled else 1.0)
-		pave.tri(o0, o1, c2, nrm, pc, Vector2(along, 0), Vector2(along + seg, 0), Vector2(along + seg, pw))
-		pave.tri(o0, c2, c3, nrm, pc, Vector2(along, 0), Vector2(along + seg, pw), Vector2(along, pw))
+		var flat := PackedVector2Array([oa, ob, ob + nb * pw, oa + na * pw])
+		var cut := _laid_cut(flat)
+		if cut.is_empty():
+			pave.tri(o0, o1, c2, nrm, pc, Vector2(along, 0), Vector2(along + seg, 0), Vector2(along + seg, pw))
+			pave.tri(o0, c2, c3, nrm, pc, Vector2(along, 0), Vector2(along + seg, pw), Vector2(along, pw))
+		else:
+			for piece: PackedVector2Array in cut[0]:
+				_flat_piece(pave, piece, nrm, pc, oa, (ob - oa) / maxf(oa.distance_to(ob), 0.001), along, 1.0)
+		_laid_add(flat)
+
+## Where two streets' pavements meet at a corner (or cross, or a junction's corner runs onto
+## a street's), each laid whole put pavement over pavement at one height, each patterned along
+## its own street: a phone's depth buffer took one or the other pixel by pixel and the corner
+## flickered between brick and slabs. So while a square's kerbs go down, what is laid is kept
+## (_laid: 4 m cells -> [outline, box, who laid it, id, piece number]) and a later piece is cut
+## where an earlier one (another street's, another side's, a corner's, its own strip's folded
+## round a tight bend) already paves: first laid stays whole.
+## Squares lay roads in the same order (by road, then medians, then corners), so the piece a
+## square keeps was cut by the same pieces whichever square works it out.
+const LAID_CELL := 4.0
+var _laid := {}
+var _laid_by := -1                   ## whose pieces are going down now (a road's side, a corner)
+var _laid_n := 0
+var _laid_seq := 0                   ## pieces laid so far: a strip's next piece only touches the last
+
+func _laid_add(poly: PackedVector2Array) -> void:
+	var box := Rect2(poly[0], Vector2.ZERO)
+	for q in poly:
+		box = box.expand(q)
+	_laid_n += 1
+	var entry := [poly, box, _laid_by, _laid_n, _laid_seq]
+	for cx in range(floori(box.position.x / LAID_CELL), floori(box.end.x / LAID_CELL) + 1):
+		for cz in range(floori(box.position.y / LAID_CELL), floori(box.end.y / LAID_CELL) + 1):
+			var k := Vector2i(cx, cz)
+			if not _laid.has(k):
+				_laid[k] = []
+			(_laid[k] as Array).append(entry)
+
+## [the parts of poly no one else has paved yet] when someone else's pieces overlap it,
+## [] when none do (lay it whole)
+func _laid_cut(poly: PackedVector2Array) -> Array:
+	var box := Rect2(poly[0], Vector2.ZERO)
+	for q in poly:
+		box = box.expand(q)
+	box = box.grow(-0.02)
+	if box.size.x <= 0.0 or box.size.y <= 0.0:
+		return []
+	var over: Array = []
+	var seen := {}
+	for cx in range(floori(box.position.x / LAID_CELL), floori(box.end.x / LAID_CELL) + 1):
+		for cz in range(floori(box.position.y / LAID_CELL), floori(box.end.y / LAID_CELL) + 1):
+			for entry: Array in _laid.get(Vector2i(cx, cz), []):
+				# (a strip's own pieces too, where it folds over itself round a tight bend -- but
+				# not the piece before, which only touches it)
+				var own := int(entry[2]) == _laid_by and absi(int(entry[4]) - _laid_seq) <= 1
+				if not own and not seen.has(entry[3]) and (entry[1] as Rect2).intersects(box):
+					seen[entry[3]] = true
+					over.append(entry)
+	if over.is_empty():
+		return []
+	var pieces: Array = [poly]
+	var touched := false
+	for entry: Array in over:
+		var next: Array = []
+		for p: PackedVector2Array in pieces:
+			var res := Geometry2D.clip_polygons(p, entry[0])
+			if res.size() == 1 and absf(absf(_area_signed(res[0])) - absf(_area_signed(p))) < 0.005:
+				next.append(p)   # (only touching)
+				continue
+			# an outline laid wholly inside this one comes back as a hole (wound the other way
+			# from the outside): keep the piece whole -- a little overlap, not a hole in the ground
+			var big := 0
+			for i in range(res.size()):
+				if absf(_area_signed(res[i])) > absf(_area_signed(res[big])):
+					big = i
+			var holed := false
+			for q: PackedVector2Array in res:
+				if Geometry2D.is_polygon_clockwise(q) != Geometry2D.is_polygon_clockwise(res[big]):
+					holed = true
+			if holed:
+				next.append(p)
+				continue
+			touched = true
+			for q: PackedVector2Array in res:
+				if absf(_area_signed(q)) > 0.01:
+					next.append(q)
+		pieces = next
+	return [pieces] if touched else []
+
+## a flat piece of kerb top or pavement cut to shape: its texture laid as the whole piece's
+## would have been (along the street from `origin` in `dir`, across it in metres * vscale)
+func _flat_piece(buf: Buf, piece: PackedVector2Array, nrm: Vector3, col: Color, origin: Vector2, dir: Vector2,
+		along: float, vscale: float) -> void:
+	var idx := Geometry2D.triangulate_polygon(piece)
+	for i in range(0, idx.size(), 3):
+		var q: Array = [piece[idx[i]], piece[idx[i + 1]], piece[idx[i + 2]]]
+		var uv: Array = []
+		for p: Vector2 in q:
+			var d := p - origin
+			uv.append(Vector2(along + d.dot(dir), absf(d.cross(dir)) * vscale))
+		buf.tri(_g3(q[0], KERB_H), _g3(q[1], KERB_H), _g3(q[2], KERB_H), nrm, col, uv[0], uv[1], uv[2])
 
 ## The paving a street (or a corner) gets: its pattern -- herringbone, rows of bricks, square
 ## slabs; Bedford's poured concrete -- and its colours -- reds and browns, greys, sand, all of
@@ -3427,6 +3540,7 @@ func _kerb_corners(kerb: Buf, pave: Buf, fill: Buf, col: Color) -> void:
 				continue
 			var ua: Vector2 = A[2]
 			var ub: Vector2 = B[2]
+			_laid_by = -2 - (ni * 16 + i)
 			_set_pave_code(_hash_i((_roads[int(A[4])]["pts"] as PackedVector2Array)[0]))   # (the paving of one of its streets)
 			var P: Vector2 = (A[1] as Vector2) + Vector2(-ua.y, ua.x) * float(A[3])   # A's right edge
 			var Q: Vector2 = (B[1] as Vector2) + Vector2(ub.y, -ub.x) * float(B[3])   # B's left edge
@@ -3444,6 +3558,12 @@ func _kerb_corners(kerb: Buf, pave: Buf, fill: Buf, col: Color) -> void:
 				var xg := _g3(X, Y_ROAD)
 				for k in range(6):
 					fill.tri(xg, _g3(curve[k], Y_ROAD), _g3(curve[k + 1], Y_ROAD), Vector3.UP, Color.WHITE)
+				var key := ni * 16 + i
+				if not _corner_fill.has(key):
+					var poly := PackedVector2Array([X])
+					poly.append_array(curve)
+					_corner_fill[key] = poly
+					_hash_add(_fill_hash, _bld_box_of(poly), BLD_CELL, key)
 			else:
 				var n := maxi(1, ceili(P.distance_to(Q) / 3.0))
 				for k in range(n + 1):
@@ -3484,6 +3604,45 @@ func _kerb_corners(kerb: Buf, pave: Buf, fill: Buf, col: Color) -> void:
 				else:
 					_kerb_run_piece(kerb, pave, -1, a, b, nrm, nrm, PAVE_W, col, along, a.distance_to(b))
 				along += a.distance_to(b)
+
+## The asphalt a rounded corner adds out to its curve (_kerb_corners), which no road's width
+## covers: a bollard by a zebra near a junction, checked against the roads alone, stood out
+## in it, in front of the kerb. Kept for the whole city (the furniture is laid after the
+## kerbs, square by square): ni * 16 + corner -> [the corner point, the curve...].
+var _corner_fill := {}
+var _fill_hash := {}
+
+## p is on (or within `margin` of the kerb of) a rounded corner's asphalt
+func _in_corner_fill(p: Vector2, margin: float) -> bool:
+	for key: int in _near(_fill_hash, p, margin + 0.5, BLD_CELL):
+		var poly: PackedVector2Array = _corner_fill[key]
+		if Geometry2D.is_point_in_polygon(p, poly):
+			return true
+		for k in range(1, poly.size() - 1):
+			if Geometry2D.get_closest_point_to_segment(p, poly[k], poly[k + 1]).distance_to(p) < margin + KERB_W:
+				return true
+	return false
+
+## p moved out of any rounded corner's asphalt it is on (or within `margin` of the kerb of):
+## from the corner's point through p, across the curve and `margin` past its kerb -- onto the
+## corner's pavement. p itself when it is on none.
+func _out_of_corner(p: Vector2, margin: float) -> Vector2:
+	for key: int in _near(_fill_hash, p, margin + 0.5, BLD_CELL):
+		var poly: PackedVector2Array = _corner_fill[key]
+		var x := poly[0]
+		var inside := Geometry2D.is_point_in_polygon(p, poly)
+		var near := false
+		for k in range(1, poly.size() - 1):
+			if Geometry2D.get_closest_point_to_segment(p, poly[k], poly[k + 1]).distance_to(p) < margin + KERB_W:
+				near = true
+		if not inside and not near:
+			continue
+		var dir := (p - x).normalized() if p.distance_to(x) > 0.05 else ((poly[1] + poly[poly.size() - 1]) * 0.5 - x).normalized()
+		for k in range(1, poly.size() - 1):
+			var hit = Geometry2D.segment_intersects_segment(x, x + dir * 200.0, poly[k], poly[k + 1])
+			if hit != null:
+				return (hit as Vector2) + dir * (KERB_W + margin)
+	return p
 
 func _retint_kerbs() -> void:
 	if _roof_mat != null:
@@ -9034,6 +9193,13 @@ func _build_street_signs() -> void:
 	var poles: Array = []
 	var marks := CBuf.new(GROUND_CELL)
 	var plant := func(kind: String, p: Vector2, facing: Basis, h: float) -> void:
+		# a spot a set way from the road's edge line, near a junction, can be out on the
+		# asphalt a rounded corner adds: across that corner's kerb instead, onto its pavement
+		var q := _out_of_corner(p, 0.35)
+		if q != p:
+			if _push_out(q, 0.4, true, false) != Vector2.ZERO:
+				return
+			p = q
 		if not plates.has(kind):
 			plates[kind] = []
 		var gy := _h(p)
@@ -10192,7 +10358,7 @@ func _sky_photo() -> Texture2D:
 ## to a grass green. Signs, kerb paint, lights and the cars' colours keep theirs: real ones
 ## are bright.
 const NATURAL := {
-	"ground": 0.3, "rock": 0.3, "path": 0.15, "asphalt": 0.08, "parking": 0.08, "plaza": 0.2,
+	"ground": 0.45, "rock": 0.3, "path": 0.15, "asphalt": 0.08, "parking": 0.08, "plaza": 0.2,
 	"grass": 0.6, "pitch": 0.6, "wood": 0.6, "leaf": 0.62, "bush": 0.6, "water": 0.5, "sand": 0.6,
 	"mark": 0.3, "wall": 0.5, "wall2": 0.45, "wall3": 0.6, "wall4": 0.6, "wall5": 0.5, "wall6": 0.3,
 	"glass": 0.5, "glass2": 0.5, "glass3": 0.5, "glass4": 0.5, "shutter": 0.3, "recess": 0.3, "lobby": 0.35, "flowers": 0.8,
@@ -10226,7 +10392,10 @@ func _tones() -> void:
 	var pz := Palette.col("prize")
 	var veg := fr.lerp(wn, 0.3)   # what grows: the palette's green, leaning toward its yellow
 	_tone = {
-		"ground": alt.lerp(ink, 0.42),
+		# bare earth: dusty sand, warmer and lighter than the asphalt. (It was a grey a shade
+		# off the road's, and with the lawn photo's light and dark over it read as asphalt:
+		# a boulevard's middle strip looked like more road, its lawns like grass painted on it.)
+		"ground": alt.lerp(ink, 0.5).lerp(wn, 0.3),
 		"rock": alt.lerp(ink, 0.3).lerp(wn, 0.2),
 		"path": alt.lerp(ink, 0.62),
 		"asphalt": alt.lerp(ink, 0.27),   # (pale grey, as sun-bleached asphalt is)
@@ -15056,9 +15225,14 @@ func _open_picker() -> void:
 	title.size = Vector2(300, 22)
 	_picker.add_child(title)
 	_pick_title = title
-	# drive there (autodrive takes you) or jump there (you are put down on that street)
-	_pick_jump_btn = _bar_button("", Vector2(10, 4), 124, func():
-		_pick_jump = not _pick_jump
+	# jump there (you are put down on that street) or drive there (autodrive takes you): two
+	# choices side by side, the one in force filled in. (One button that said the other
+	# mode -- "⇄ drive there" -- did not read as a choice; the user asked for both, jump first.)
+	_pick_jump_btn = _bar_button("jump to", Vector2(24, 4), 72, func():   # (clear of the shell's score)
+		_pick_jump = true
+		_show_pick_mode())
+	_pick_drive_btn = _bar_button("drive to", Vector2(100, 4), 72, func():
+		_pick_jump = false
 		_show_pick_mode())
 	_show_pick_mode()
 	_pick_letters = Control.new()
@@ -15083,8 +15257,17 @@ func _open_picker() -> void:
 	Probe.event("picker")
 
 func _show_pick_mode() -> void:
-	_pick_jump_btn.text = "⇄ jump there" if _pick_jump else "⇄ drive there"
-	_pick_title.text = "jump to where?" if _pick_jump else "where to?"
+	for b: Button in [_pick_jump_btn, _pick_drive_btn]:
+		var on := (b == _pick_jump_btn) == _pick_jump
+		var sb := (b.get_theme_stylebox("normal") as StyleBoxFlat).duplicate() as StyleBoxFlat
+		sb.bg_color = Palette.col("player").darkened(0.35) if on else Palette.col("bg")
+		sb.border_color = Palette.col("player") if on else Palette.col("accent").darkened(0.45)
+		b.add_theme_stylebox_override("normal", sb)
+		b.add_theme_stylebox_override("hover", sb)
+		b.add_theme_stylebox_override("focus", sb)
+		b.add_theme_color_override("font_color", Palette.col("bg") if on else Palette.col("ink").darkened(0.35))
+		b.add_theme_color_override("font_hover_color", Palette.col("bg") if on else Palette.col("ink"))
+	_pick_title.text = "jump to where?" if _pick_jump else "drive to where?"
 
 func _close_picker() -> void:
 	if _picker != null:
