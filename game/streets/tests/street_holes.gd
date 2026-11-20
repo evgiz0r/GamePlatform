@@ -4,11 +4,13 @@ extends SceneTree
 ## (`_decks.surf(p, ground)`). Over a cutting the ground is cut away and `surf` gives the
 ## cutting's road -- so a street at grade that crosses one is a hole a car falls through
 ## (a car on Kaplan dropped into the Lova Eliav tunnel's cutting under its outer lanes and
-## hit the tunnel's wall). Prints each street with points over a hole, and where.
+## hit the tunnel's wall). And whether a deck's wall stands there, solid at street level
+## (`_decks.push`: a cutting's wall where it starts at a street's kerb stopped a car on the
+## street). Prints each street with points over a hole or in a wall, and where.
 ##
 ##   LEVEL=7 $GODOT --headless --path . -s res://game/streets/tests/street_holes.gd
 ##
-## Good: 0 points over a hole.
+## Good: 0 points over a hole, 0 in a wall.
 var g: Node
 
 func _initialize() -> void:
@@ -25,7 +27,9 @@ func _run() -> void:
 				g = n
 	var samples := 0
 	var holes := 0
+	var walled := 0
 	var where := {}   # street -> [count, first point, depth]
+	var walls := {}   # street -> [count, first point]
 	for r: Dictionary in g._roads:
 		if not r["drive"] or r.has("ys"):
 			continue
@@ -46,6 +50,12 @@ func _run() -> void:
 					var ground: float = g._h(p)
 					var under: float = g._decks.surf(p, ground)
 					samples += 1
+					if g._decks.push(p, 0.3, ground + 0.3) != Vector2.ZERO:
+						walled += 1
+						var wn := String(r["en"] if r["en"] != "" else r["name"]) + " (" + _wall_kind(p, ground + 0.3) + ")"
+						if not walls.has(wn):
+							walls[wn] = [0, p]
+						walls[wn][0] = int(walls[wn][0]) + 1
 					if under < ground - 0.5:
 						holes += 1
 						var nm := String(r["en"] if r["en"] != "" else r["name"])
@@ -55,5 +65,16 @@ func _run() -> void:
 				s += 2.0
 	for nm: String in where:
 		print("  %s: %d points over a hole, first at (%.0f, %.0f), %.1f m down" % [nm, where[nm][0], where[nm][1].x, where[nm][1].y, where[nm][2]])
-	print("street_holes: %d points over a hole of %d sampled on the streets" % [holes, samples])
+	for nm: String in walls:
+		print("  %s: %d points in a deck's wall, first at (%.0f, %.0f)" % [nm, walls[nm][0], walls[nm][1].x, walls[nm][1].y])
+	print("street_holes: %d points over a hole, %d in a deck's wall, of %d sampled on the streets" % [holes, walled, samples])
 	quit()
+
+## what kind of deck wall stands at p for a body at y: a parapet, a bank's foot, a pier...
+func _wall_kind(p: Vector2, y: float) -> String:
+	for i: int in g._near(g._decks._wall_hash, p, 1.0, g._decks.CELL):
+		var w: Array = g._decks._walls[i]
+		var q := Geometry2D.get_closest_point_to_segment(p, w[0], w[1])
+		if q.distance_to(p) < float(w[6]) + 0.3:
+			return String(w[7])
+	return "?"

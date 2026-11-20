@@ -293,7 +293,11 @@ one needed:
   (a cutting), a street at grade crossing it -- across an underpass's mouth, over a
   cutting's shallow top -- must still carry a car: its asphalt counts as ground. Test it
   by sampling every street's asphalt for "what would a car here stand on", not by driving
-  the tunnels: the tunnels drove clean while a thousand street points were holes.
+  the tunnels: the tunnels drove clean while a thousand street points were holes. Sample
+  for walls the same way: a cutting's wall where it starts at a street's kerb stopped cars
+  on the street, and a bridge's piers -- checked against the lanes below at their middle
+  only, while each spans the deck's width -- stood in a motorway's lanes where the bridge
+  crossed it at a slant.
 - **More tunnel traps, from one city centre**: the other half of a divided road crossing
   the tunnel's line by a metre where the halves close in at a mouth is not "a road over
   it" (it held an underpass up); a short tunnel way under nothing but joining a tunnel

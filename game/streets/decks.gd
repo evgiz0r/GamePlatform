@@ -392,6 +392,9 @@ func _walls_of(ri: int) -> void:
 			var mid := (line[j] + line[j + 1]) * 0.5
 			if open_at(ri, mid, (ys[j] + ys[j + 1]) * 0.5):
 				continue   # (another deck's road comes in here)
+			if kind == "cu" and (_street_over(line[j]) or _street_over(line[j + 1]) or _street_over(mid)):
+				continue   # (under a street at grade, which carries a car over it: a car on Kaplan
+				           # hit the wall of the Lova Eliav tunnel's cutting where it starts at its kerb)
 			_walls.append([line[j], line[j + 1], band[0], band[1], band[2], band[3], WALL_T * 0.5, kind])
 	if kind == "br":
 		for pier: Array in piers(ri):
@@ -440,9 +443,16 @@ func piers(ri: int) -> Array:
 			continue
 		var d: Vector2 = (g._along(pts, cum, minf(at + 1.0, total)) - g._along(pts, cum, maxf(at - 1.0, 0.0))).normalized()
 		var across := Vector2(-d.y, d.x)
-		var on: Dictionary = g._nearest_seg(p, 30.0, true)
-		if not on.is_empty() and int(on["road"]) != ri and not is_deck(g._roads[int(on["road"])]) and float(on["edge"]) < 1.0:
-			continue   # (someone else's lanes)
+		# (someone else's lanes, anywhere along the pier: it spans the deck's width, and checked
+		# at its middle only, piers of a bridge crossing the Ayalon at a slant stood in its lanes)
+		var in_lanes := false
+		for f: float in [-1.0, -0.5, 0.0, 0.5, 1.0]:
+			var on: Dictionary = g._nearest_seg(p + across * (half - 0.6) * f, 30.0, true)
+			if not on.is_empty() and int(on["road"]) != ri and not is_deck(g._roads[int(on["road"])]) and float(on["edge"]) < 1.0:
+				in_lanes = true
+				break
+		if in_lanes:
+			continue
 		var clash := false
 		for o: Array in out:
 			if (o[0] as Vector2).distance_to(p) < 6.0:

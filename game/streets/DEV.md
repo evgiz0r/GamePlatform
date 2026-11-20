@@ -694,9 +694,14 @@ it is dropped.
   cutting or a tunnel (`_street_over`, looked up only there), the street carries a body at
   its level: the ground counts over the cutting, and anything under it at all is passed
   over -- a street across an underpass's mouth, a cutting's shallow top under a street's
-  lanes. `tests/street_holes.gd` samples every street's asphalt for it: Tel Aviv 1011
-  points over a hole, then 357, 76, 30, 6 (the last on the HaShalom bridge's west ramp,
-  0.6-0.9 m: a bridge ramp, not a tunnel); the test town 1, then 0.
+  lanes. A cutting's wall where a street's asphalt lies over it is not solid either (a car
+  on Kaplan hit the Lova Eliav cutting's wall where it starts at the kerb).
+  `tests/street_holes.gd` samples every street's asphalt for both -- what a car there
+  stands on, and whether a deck's wall stands there at street level: Tel Aviv 1011 points
+  over a hole, then 6 (on the HaShalom bridge's west ramp, 0.6-0.9 m: a bridge ramp, not a
+  tunnel); the test town 1, then 0. Walls: Tel Aviv 66, Ashdod 80 -- piers standing in the
+  Ayalon's lanes among them (a pier spans the deck's width, and was checked against other
+  roads' lanes at its middle only: now at five points across), then 41 and 51.
 - **What Tel Aviv found** (another session wrote its own tunnel inference first, a
   mirror of `infer`; this one's found, and its fixes kept): the other half of a divided
   road crossing a tunnel's line where the halves close in at a mouth counted as a road over
@@ -758,7 +763,10 @@ it is dropped.
   same kind as Bedford's Anderson Lake hop: `infer` has no vertical curve at a ramp's top
   yet), and a car-park service bridge at the south-west corner that ends at a building
   (autodrive noses it). 6 points of the HaShalom bridge's west ramp, 0.6-0.9 m under the
-  street beside it (`tests/street_holes.gd`). Two branch ramps out of Lova Eliav's west
+  street beside it, and 41 points where an inferred ramp's wall, a bank's foot or a
+  parapet stands in a street's lanes (Ashdod 51, the test town 10: embankments running
+  tight alongside other roads -- slip roads beside the Ayalon, Yitzhak Sadeh's ramp)
+  (`tests/street_holes.gd`). Two branch ramps out of Lova Eliav's west
   end are too short to climb out at 10% and lie on the ground. A tunnel's tube is drawn
   whatever is over it, buildings included (Lova Eliav runs under HaKirya's blocks).
 - **Givatayim's ground is the terrain tiles' surface model too**: its "steepest 52%" is
