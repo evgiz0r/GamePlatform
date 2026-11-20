@@ -90,6 +90,20 @@ The ones most often touched, and the functions in them:
   origin (the feet) 0.42 m in front of the bench's middle. The three multimeshes have no
   visibility range (it is measured to their middle, the city's: every dog was culled);
   `_companion` hides those past PEOPLE_SEEN. tests/street_people.gd.
+- **people round you on foot** (the user, on walk 2's replay: "people are popping randomly
+  and moving aimlessly on my path, and no collision between them and the parked cars") --
+  `_unseen` (where people may appear or be swapped out) takes the camera's own heading and
+  frustum as well as the body's: on foot the head turns (`_film_look`, 60-90 degrees), and a
+  cafe table's person was re-seated 2.3 m in plain view. The walkers' "car coming at them"
+  dodge skips you on foot (it fired at walking pace: a metre's jump as you passed); you are
+  given way to from 7 m instead (the `_people_who == 0` branch of the side step, up to 0.9 m).
+  At the end of its stretch a walker walks on (`_walk_on`): the pavement pieces of the runs
+  that begin or end within 30 m, the one 1-18 m ahead going on most straight, reached over
+  the side street's mouth (not through a building); `cross` is that step's length, walked at
+  `_walk_y`'s level. Nowhere on: swapped out if unseen, else back the way it came. Parked
+  cars are five posts (`_add_car_posts`): the old two left a 0.8 m gap at the car's middle a
+  walker stood in. A crosser's kerb is checked unseen, not only the crossing's middle.
+  tests/walk_people.gd.
 - **people in one piece** -- `_one_piece` (end of `_humanize`): the Quaternius figure is one
   mesh of six surfaces (Skin, Shirt, Pants, Belt, Face, Hair), each a draw (and a shadow
   draw). Joined once per figure into one surface (shared by everyone with that figure; the
@@ -249,6 +263,29 @@ The ones most often touched, and the functions in them:
   `tones[64]` / `tone_fx[64]` tables; `_chunked` and `_add_mesh` route into it while building.
 - **lanes** -- `_lane_off(r)` (right lane's line), `_lanes_each_way(r)` (capped by width),
   `_nearest_lane`, `_clear_lane`. traffic.gd's `_lane`, `_lanes_dir`, `_lane_shift` use them.
+  A traffic car's lane is `lane_i` (0 the right-hand one) and `shift` (metres left of the
+  road's lane line, moving to `shift_to`). Onto the next road (`_steer_lanes`, `shift_rd`)
+  it takes the lane it is in by where it lies, not by number: roads meeting at a node share
+  its middle line, so the second lane of a 12.8 m four-lane link is the first lane of the
+  6.4 m slip it runs on into (kept by number, the link's second-lane cars all crossed into
+  the slip's other lane and stood on each other: Begin x Kaplan). A shift a road change
+  makes is followed at `REALIGN` x the speed (`realign`), not a lane change's 1.4 m/s (at
+  that pace a car ran off the slip's edge into its poles for 25 m). Before a narrowing
+  (`NARROW_LOOK`, up to the next turn) a car moves to a lane that lies within the narrower
+  road. At a light, a turn's curve (`_turn_into`) starts no further out than the stop line
+  when coming in from outside the junction, so a car waiting to turn stands straight.
+  Sideways only as it rolls: at most `SIDE_PER_V` x its speed, scaled down for a long one
+  (`_place` moves the front axle and lets the back trail it, so a shift while standing
+  turned the body across the next lane). A car whose `shift` is still heading for its
+  `shift_to` stands across two lanes: `_target` counts it in a follower's way by its
+  body's half width and angle (`CORNERS`), not by `LANE_W` from its middle.
+- **bus lanes** -- the bake's `bf` / `bb` (osm_city.py's `bus_lanes`: a letter a lane, left
+  to right, "b" a bus lane) on the road as `r["bf"]` / `r["bb"]`; `_bus_lane(r, idx, dir)`
+  (lane idx from the right, never on a one-lane way), `_has_bus_lane`. `_markings` paints a
+  wide solid line beside it and `_road_word` "אוטובוס" (BUS outside "med") every
+  `BUS_WORD_STEP`; traffic.gd: buses and half the taxis (`bus_ok`) take it, others keep out
+  (`_off_bus_lanes`) but for the last `BUS_TURN_IN` m before a right turn; `_lane_off`
+  never puts autodrive's line in one. Test: `tests/bus_lanes.gd`.
 - **autodrive** -- `_autodrive` (per tick: replanning, pursuit, speed from corners, lights,
   signs, zebras, people, the car ahead via `traffic.lead_on`), `_ap_plan`, `_ap_leg`,
   `_ap_turn_into` (the curve through a junction), `_ap_next` / `_ap_ways` (the ways on),
@@ -502,6 +539,54 @@ what became of it:
   giving way read as a slow queue), and 40 minutes of watching (three 15-minute watches of
   one build read 1.18 / 1.44 / 1.57). At 2x it read 1.17x: final numbers at 1x. Tried and no
   help: easing the pull-away against the cruising speed.
+
+### Handoff: the checks, validation, traffic's last findings (20 Nov 2026)
+
+**Where it stands.** On `main` (84d3122), `FULL=1 validate.sh`: city checks 0 everywhere
+except Givatayim's 1 post and 1 building (the passage, on purpose); exams test town 12,
+Givatayim 12, Ashdod 17; queue PASS, 1.11x. What the exams still find is traffic's: cars
+overlapping (at junction edges, and alongside a truck's flank), held by nothing 10 s+,
+traffic into kerb-side posts (Givatayim 6-9 of them), a truck stopping 4.5 m past the line.
+
+**In progress: those traffic findings**, on branch `claude/brave-hopper-cmk1ky` (3cce448,
+not on `main`), plus a candidate not yet committed:
+- *Two cars waiting for each other.* The old way out (ignore the other car) worked only
+  head-on (angles 0.8 rad+ apart); two cars at a skewed junction, each in the other's path,
+  stood for good. Now a car waiting 2.5 s+ walks the chain of who holds whom (6 deep); on a
+  loop the lowest-numbered car ignores the one in front for 3 s (`ignore_car`).
+- *Giving way, the front corners in a skewed junction's lanes.* `_clear_back` stops a car
+  far enough back that its corners clear the crossing roads. It made queues at lights
+  slower (1.62x): the second car braked for "junction" inside a lit junction. The candidate
+  uses it only at unlit junctions.
+- *Overlapping a truck's flank.* `_path_gap` judged "on my path" by a car's middle; now a bus
+  or truck alongside going my way counts by both bodies' half-widths (the candidate: only
+  those, other cars keep the lane's width -- the full body width for all read 1.25-1.34).
+- *Kerb-side posts.* The kerb lane keeps each vehicle's side 0.3 m on the asphalt
+  (`_kerb_room`); the candidate only on single-lane roads, so a bus keeps to its lane.
+- *The truck past the line.* It committed on amber and then braked at the red (`amber_go`
+  now holds the commitment through that light).
+- The exam (in 3cce448): a "held by nothing" incident prints each car's last 3 s (`_hist`,
+  every 15 ticks), and a car waiting 25 s+ for a car is an incident with the chain.
+
+Measured on the branch: exams 4 / 11 / 9 (test town / Givatayim / Ashdod), held by nothing
+0; but the queue 1.62x, FAIL. Variants at 2x, 40 minutes, read 1.19 to 1.46 -- inside what
+one build reads on that watch -- so an A/B of base (473ee07's traffic) against the candidate
+at 80 minutes each is the next number. **Since then `main`'s traffic.gd moved a lot**
+(lanes by body, bus lanes, sideways only as it rolls, a long vehicle moving over gently):
+whoever carries this on merges it onto that first and measures again.
+
+**Open:** the queue regression (decide by the A/B, then `FULL=1` on the merge); cars
+overlapping at junction edges; whatever of the post and overlap counts survives the merge.
+
+**Commands** (all headless, in the background):
+- `game/streets/tests/validate.sh` (~4 min) and `FULL=1` (~12 min). Good: city 0 (Givatayim
+  1+1 as above), exams about 4-17 a town and noisy, queue PASS.
+- One check by itself: `LEVEL=1 STREETS_BUILD_ALL=1 $GODOT --headless --fixed-fps 60 --path .
+  -s res://game/streets/tests/exam.gd` (`EXAM_STARTS=2` halves it; `STREETS_SIM_SPEED=2`).
+- The queue: `STREETS_SIM_SPEED=2 LEVEL=1 KNOT_AT="-800,-288" SECS=2400 STREETS_BUILD_ALL=1
+  $GODOT --headless --fixed-fps 60 --path . -s res://game/streets/tests/queue_start.gd`
+  (~4 min; `SECS=4800` to compare two builds). Good: "line gaps / real ones" 0.8-1.2.
+- A car that stands: `tests/traffic_stuck.gd`; the second car of a queue: `TRACE=n`.
 
 ## Seeing what the car did: the drive recorder
 
@@ -805,6 +890,12 @@ Nothing is half done: all of the above is on main.
 
 ## Cities
 
+Re-bake with `main_server_only` on, and diff the counts against the file it replaces
+(`git show HEAD:<file>` and compare roads, buildings, crossings, areas): a mirror twice
+answered with ~12% fewer road pieces. Last re-bakes: Givatayim and Tel Aviv, 20 Nov 2026
+evening, for the extra fields (see "OSM's extra fields and speed limits" below); Ashdod and
+Bedford have not been re-baked since.
+
 | Level | City | Bake (`bake_city.yml` inputs) |
 |---|---|---|
 | 1 | Givatayim (look "med") | place "Givatayim", margin 250 |
@@ -939,8 +1030,8 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
 - **The route** is `walks.katzenelson_hameri.points` in `cities/details/givatayim.json`
   (written by `make_givatayim.py` beside it):
   [seconds, x, z], the seconds the film's. Landmarks in the film: off the north kerb 1.5 s,
-  the far kerb 16 s (so the road there is ~17 m across by walking time; the game's two
-  9 m halves are right), the forecourt 25 s, into the passage 33 s, out of it 64 s, the
+  the far kerb 16 s (the road ~17 m across by walking time with its median; the game's
+  halves are 7 m each since pass 4), the forecourt 25 s, into the passage 33 s, out of it 64 s, the
   corner of Sheinkin 80 s, over it 90 s, into Ha-Meri 93-96 s. The game's pavement from the
   zebra to the passage is ~7 m longer than the film's, so the walk hurries there (2.2 m/s).
 - **The walk starts where its film does**: `_find_start` puts `_pos` at the walk's first
@@ -961,10 +1052,16 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   connector if the session has one. Everything else a pass needs is here. That clip came out **mirrored** (a shop sign read
   backwards): flip it (`hflip`). Record the game's half with
   `GODOT_ARGS="--fixed-fps 10" STREETS_BUILD_ALL=0 RECORD=1 OUT=... game/streets/tests/run.sh
-  filmed_walk 5` (1280x720; about 1 frame a second in the container: 15 minutes), crop the middle 406x720
+  filmed_walk 5` (1280x720; about 18.5 minutes for its 966 frames), crop the middle 406x720
   (the 70 degree vertical field of view then matches a phone held upright) and `hstack` the
   two. The film itself is the user's: it, its frames and anything past Ha-Meri never go in
-  the repo.
+  the repo. The recipe that made every side-by-side so far (frames symlinked to
+  `g%05d.jpg` from 0 in their own order first, so frame 0 is the walk's 0 s): `ffmpeg -i clip.mp4
+  -framerate 10 -i g%05d.jpg -filter_complex "[0:v]hflip,scale=406:720,fps=30,trim=0:96,
+  setpts=PTS-STARTPTS[a];[1:v]crop=406:720:437:0,fps=30,trim=0:96,setpts=PTS-STARTPTS[b];
+  [a][b]hstack=inputs=2[v]" -map "[v]" -c:v libx264 -crf 24 -pix_fmt yuv420p out.mp4`, with
+  `drawtext` labels ("phone", "game", `%{eif\:t\:d} s` at the foot) -- 36 MB; re-encode at
+  `-crf 30` (13 MB) to send it.
 - **Crossing like a person (pass 3).** The film waits at Katzenelson's north kerb 1.6-4.5 s
   looking left (a white SUV goes by), crosses the near half, waits on the median 8.7-13.3 s
   looking right (cars stop at the zebra; one drives on), and is at the far kerb at 17 s;
@@ -1088,11 +1185,72 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   Ha-Meri at 89-92.5 s is 55 degrees: at 80 the hatchback sat at the frame's right edge
   where the film has it dead ahead with the kerb on the left (AT stills at 91 and 92.3; the
   film frame by frame). AT names its stills by whole seconds: 92 and 92.3 save to one file.
-- **Next passes**: the light (another session's: the film's afternoon is hazy and warm);
-  people that move as the film's do (the walk's `people` take `to` and `t`; none of the
-  four walks yet). The street now matches the film in what stands where: what is left is
-  look -- the buildings' plaster, balconies and shutters along the route (another session's
-  city-wide work), the shops' lettering beyond the one the film names.
+- **Pass 11, the arcade's dark and Katzenelson's traffic**, done. *The arcade*: under it the
+  film's floor read 0.39, the game's 0.14-0.18. Two causes, measured apart. The phone exposes
+  for what it sees: the film's brightness second to second held at 0.45 +- 0.055 while the
+  replay's swung 0.48 +- 0.12 (0.28 under the arcade, 0.64 on the sunny forecourt) -- so the
+  grade got an exposure (`FILM_EXPO`): a meter reading the whole screen off its mipmaps (16
+  taps at mip 7 read the true mean within 0.015; `STREETS_FILM_LOOK=meter` paints the reading
+  in a corner to check it), the frame pulled towards 0.45 by (0.45 / mean)^0.75 in light, the
+  curve refitted after it (0.455 +- 0.070 fitted). But exposure alone left the floor at 0.31 in
+  every setting: the arcade's "charcoal" pavers were five times darker than the game's other
+  paving. `pavers_dark` now 0.62 of the way to bg_alt (was 0.8): the floor 0.31-0.36 in AT
+  stills against the film's 0.38-0.41. *The traffic*: the film at 8-14 s, half a second at a
+  time -- a white hatchback by in the far half's lane by the median as the walk reaches it
+  (9 s), a white sedan stopped in its kerb lane (9.5-12 s), a grey SUV driving on past the
+  walk in the median lane, close (12.5-13.5 s); the walk faces across meanwhile (its look right
+  was 70 degrees, now 15). `Traffic.send` takes `opts`: "lane" kerb / median, "through" (past
+  the walk's own zebras only: `_zebra_ahead` skips the film-tagged ones), "kind", "paint".
+  A sent car starts at 70% of its street's pace: 28 m to the zebra on Katzenelson is 2.5 s.
+  AT stills jump the walk's clock, so scripted cars never drive their timing in them:
+  `TRAFFIC_LOG=from,to` runs the walk at its pace and logs the cars round it -- the hatchback
+  3 m in front at 9.0 s, the SUV 4 m in front at 13.0-13.5 s.
+  Measured on its recording: each second's brightness 0.471 +- 0.061 (the film's 0.454 +-
+  0.055); levels within 0.05 of the film's, 0.0% clipped, saturation 0.146. In the
+  side-by-side the hatchback passes at 8.5 s (the film's 9), the sedan waits from 10 s, and
+  the SUV crosses in front at 13 s where the film's does at 12-13 s: send it half a second
+  sooner if it matters.
+
+### Handoff: the filmed walks (20 Nov 2026, after pass 11)
+
+- **In progress**: nothing. Pass 11 is on main; the list of what is still different is
+  `WALKS.md` (walk 1's details, behaviour and quality, walk 2's, both walks'), with a Done
+  section that points back here.
+- **The biggest open items**, by what the side-by-side shows most: the buildings' faces along
+  the route (cream and sand plaster, balconies, shutters: city-wide, another session's); the
+  light (hazy, warm, soft shadows: another session's); people that move as the film's do
+  (`people` take `to` and `t`; none of walk 1's four walk yet); a steadier stream of cars on
+  Katzenelson (the film has a car by every few seconds both ways, the replay only the five
+  sent); the arcade's columns (white with a dark wooden foot) and the second shop; Ha-Meri's
+  far pavement (a low white wall, an e-scooter); the camera's last differences (a touch of
+  motion blur, the lens's bend at the edges). Walk 2 has no side-by-side: its film (1:42-3:08
+  of the user's video) has not reached a session; ask for it as a clip under 10 MB.
+- **Commands** (all `tests/run.sh filmed_walk <level>`, `STREETS_BUILD_ALL=0`, `OUT=` a scratch
+  folder): `SCAN=1` (posts and buildings on the line, a minute); `POSTS_NEAR="x,z,r;..."`
+  (posts, the kerb's distance, everything drawn by instance, whether a `clear` spot covers
+  it); `AT=s,s,...` (stills; jumps the clock); `TRAFFIC_LOG=from,to` (cars at the walk's own
+  pace); `RECORD=1` with `RES=1280x720 GODOT_ARGS="--fixed-fps 10"` (18.5 min). The grade:
+  `STREETS_FILM_LOOK=0` records the bare picture (to refit with `film_look.py`),
+  `STREETS_FILM_LOOK=meter` paints the exposure meter's reading top left. Then the
+  side-by-side recipe above, `tests/film_look.py <clip> <frames> 96 --check` (a graded
+  recording against the film) and `tests/film_shake.py` (sway, straight stretches only).
+- **Good numbers** (walk 1, after pass 11): both walks' scans print only "scan done";
+  sway 0.25 / 0.21 degrees rms across / up (the film's 0.25 / 0.19); levels at 1-99% within
+  0.05 of the film's, 0.0% clipped, saturation 0.146 (0.159); each second's brightness
+  0.471 +- 0.061 (0.454 +- 0.055); the arcade's floor 0.31-0.36 (0.38-0.41); the horizon
+  0.30 of the way down (`FILM_TILT`). Playtests of levels 5, 1 and 6 survive 25 s; validate's
+  Givatayim keeps its known 2 posts and 1 building on the road (the café table, the
+  passage's building) and the test town's checks read 4-12.
+- **Walk 1's coordinates for new props**: `P(s, off)` in `make_givatayim.py` along S0-S1
+  (above). Katzenelson runs along `off`: its near half s -13.8 to -6.8, the median, its far
+  half -3.9 to 3.1; Ha-Meri along the passage's line with its south-east kerb at off +4; the
+  raised crossing s 89.6-96, its zebra at P(92.4, 0). The generator owns the items it marks
+  `"src": "make_givatayim"` and keeps everyone else's -- other sessions add props to the same
+  file, and walk 2's points were edited by hand there (not by the generator).
+- **Where the camera's numbers live**: streets.gd's `FILM_TILT`, `FILM_CURVE`, `FILM_WARM`,
+  `FILM_SAT`, `FILM_EXPO` and `_film_hand()` (sway sizes, doubled to read as the film's
+  through `film_shake.py`'s filter). A change to the game's materials or light moves the
+  grade's fit: re-record bare and refit rather than nudging the curve by eye.
 
 ## Off the ground: bridges, tunnels, cuttings, embankments (`decks.gd`)
 
@@ -1452,8 +1610,11 @@ towns get them when re-baked. What the game does with them:
   (`set_physics_process(false)`) must set `_prev_yaw` with `_yaw`, or the view blends from
   the car's old heading and looks the wrong way.
 - **Still to do**: level crossings (trains solid, barriers); the light rail where it runs
-  on the surface; keeping `electrified=` in the bake; re-baking the other towns (Ashdod has
-  a line).
+  on the surface; keeping `electrified=` in the bake; re-baking Ashdod (it has a line) and
+  Bedford. Givatayim was re-baked (20 Nov, evening): the Ayalon line's 13 tracks run along
+  its west edge with no station in the box (3 lines, 3 km, 0 bed points over asphalt in
+  `tests/rails.gd` at level 1), and the Red Line's tracks and its Arlozoroff and Abba Hillel
+  stations are underground (light rail, tunnels).
 
 ## Landmarks (`landmarks.gd`)
 
@@ -1481,35 +1642,34 @@ built. Test: `tests/landmarks.gd`.
 The session that added Tel Aviv, its bridges and tunnels' fixes, the railway, the landmarks
 and the ramp-top fix. Where things stand:
 
-- **In the middle of: Begin x Kaplan's traffic.** The exam's watch mode stages it:
-  `LEVEL=7 EXAM_AT=-30,160 EXAM_STAND=70 EXAM_SECS=150 STREETS_BUILD_ALL=1 $GODOT --headless
-  --fixed-fps 60 --path . -s res://game/streets/tests/exam.gd` (~5 min). Two runs: 10 and
-  8 checks in 150 s, 0 red runs, 0 over the line. Two kinds, each printed with both cars'
-  lane, shift and what holds them:
-  1. **The right turn from Kaplan eastbound into Begin's southbound slip** (node (-60, 171):
-     Kaplan's 16 m, "4 lanes a way" carriageway, through the 12.8 m link, into the 6.4 m
-     two-lane slip (-60, 171) -> (-65, 183) -> (-80, 221)). Cars from several of Kaplan's
-     lanes funnel into the slip's one lane line at once, carrying shifts of 0.5-5.2 m
-     toward 3.20 as they turn, and stand overlapping by 0.3 m at (-61..-63, 176..179), held
-     by "car" with blocker -2 (none) -- the queue does not see the car merging beside it.
-     And a car cutting that corner at 35-38 km/h ("limit": not slowed for the turn) runs
-     0.3-0.4 m into the poles at (-69.1, 184.0) and (-62, 184), r 0.11, 0.46 m outside the
-     asphalt's edge: the turn is taken too fast and too wide at its start.
-  2. **Kaplan eastbound's queue at that light** (x -81..-85, z 166..176): cars standing in
-     lanes 0-3 (shifts -4, 0, 4, 8) at headings 45-156 degrees on a road that runs due east
-     (90): their lane paths swing across the carriageway near the stop line toward where
-     each turns next, and two lanes' cars overlap standing. Look at how a lane path is laid
-     from Kaplan's tertiary piece (-176, 171) -> (-60, 171) into the junction's links (where
-     `shift` is carried over a road change) before touching the queueing.
-  Fix narrowly in traffic.gd (other sessions work there: read `git log` on it first), then
-  run the watch again and `exam.gd` at level 7 and 1.
-- **Item 8, bus lanes: waiting on the user.** data.gov.il's `nataz_kayam` (existing
-  preference lanes, CC BY): the API answers, but the files on e.data.gov.il come back as a
-  CloudFront 403 from this container even with both hosts allowed in the environment
-  (they are now) -- not to be got round. The user was asked: download `nataz_kayam.csv`
-  (or the SHP zip) and add it to the repo, or bake OSM's own `bus:lanes` / `lanes:psv` /
-  `busway` (osm_city.py keeps none of them yet). Then: match stretches to the roads, paint
-  the lanes, buses and taxis in them, traffic and autopilot out; credit on screen.
+- **Begin x Kaplan's traffic: fixed down to a few a run** (20 Nov 2026). The exam's watch
+  mode stages it: `LEVEL=7 EXAM_AT=-30,160 EXAM_STAND=70 EXAM_SECS=150 STREETS_BUILD_ALL=1
+  $GODOT --headless --fixed-fps 60 --path . -s res://game/streets/tests/exam.gd` (~5 min;
+  also `EXAM_AT=-45,165`, the eastbound queue). Checks in 150 s: 10 and 8 at first; now 0 at
+  (-30, 160) and 1 at (-45, 165) (a "held by nothing" where Begin's slip meets a delivery
+  truck's queue). The exam at level 7, 3 x 60 s: 8 then 4; level 1: 4 and 4. What was wrong and what fixed it, all in traffic.gd (see "lanes" in
+  the code map):
+  1. Cars from Kaplan's four lanes into Begin's two-lane southbound slip kept their lane by
+     *number* across the road change, so the link's lane 1 became the slip's lane 1 on the
+     other side, and the cars crossed and stood on each other: now the nearest lane by
+     where the car physically is. The realigning shift was followed at a lane change's
+     1.4 m/s, so a car ran off the slip's edge into its poles: now `REALIGN` x speed.
+     Before the narrowing (`NARROW_LOOK`) a car moves into a lane the narrower road has.
+  2. Kaplan's eastbound queue stood at 45-156 degrees: a turn's curve (`_turn_into`) began
+     back from the junction's first point, out on the approach, so the waiting cars stood
+     half turned -- now from no further out than the stop line, for ways in from outside
+     the junction only (from inside, it moved inner points' curves and cars ran reds).
+  3. A car shifting while it stood moved its front alone and swung its body across the
+     next lane: sideways only as it rolls (`SIDE_PER_V` x speed, slower for a long one).
+  4. One changing lanes is in the way in both (`_target`: its body's width and angle, not
+     its middle, against the follower's line) -- a bus stopped by the light halfway over.
+  The exam names a delivery van stopped in the street ("held by delivery"), no longer
+  "held by nothing". Left: a car cutting in front of a truck where Kaplan becomes Givat
+  HaTahmoshet (-8, 148), its shift a road change's (not gated by `_lane_clear`).
+- **Bus lanes: done, from OSM** (`bus:lanes`, `lanes:psv`, `busway`; the bake's `bf`/`bb`;
+  see "bus lanes" in the code map and `tests/bus_lanes.gd`). data.gov.il's `nataz_kayam`
+  (the Ministry's layer, more stretches) came back as a CloudFront 403 from this container
+  -- not to be got round; a copy added to the repo by hand would be the way.
 - **The user asked what extending the box to the sea costs** (down to the Carmel market,
   Allenby, Rothschild): about 4.1 x 3.2 km against 2.4 x 2.7 now, ~2-2.5x the buildings
   (~9-10k, ~5-6k roads -- Ashdod's size): load before the car ~2.8 s, background build
@@ -1611,6 +1771,50 @@ Each line: where the code is, the test, what good reads.
   `islands`, `pave_overlap`, `picker`, `minimap_route`, `warm_census`, `index_gain`,
   `signs_inferred`; `tools/level_roads.py`.
 
+## OSM's extra fields and speed limits: handoff (20 Nov 2026)
+
+One session's work, written for whoever picks it up (its context is compacted after this).
+It started from the user asking what the city data lacks for a realistic feel; the answer
+and the outside sources that could fill it are in `IDEAS.md` ("Official data for what OSM
+leaves out").
+
+- **The bake keeps more of OSM** (`tools/osm_city.py`, format at its top): roads' `ms`
+  (speed limit, km/h), `lf`/`lb` (lanes each way), `tl`/`tlf`/`tlb` (turn:lanes as
+  written), `sf` (surface when not asphalt), `sw` (pavement sides); buildings' `k`, `lv`,
+  `col`, `rc`, `rs`, `mat`, `yr`. (Bus lanes are `bf`/`bb`, the Tel Aviv session's.) Each only
+  where tagged: missing means "not known". The bake logs a "tagged:" count per field.
+- **What the game uses: the speed limit.** A road's `speed` (streets.gd, where the city's
+  roads are read) is OSM's `ms`, else the town's own limit for that kind (`_town_limits`
+  -> `_town_ms`: 20+ tagged, a quarter of the kind, 85% one value), else the guess by kind
+  (`DRIVE`, `NORTH_FASTER`). Traffic, autodrive and the speed signs all read that one
+  number. Givatayim: residential 30 (inferred from 184 of 628 tagged), secondary 60 where
+  tagged; Tel Aviv: residential and unclassified 30, the Ayalon 90.
+- **So the residential streets of Givatayim and Tel Aviv are driven at 30 now, not 50.**
+  Route times, the exam and anything timed there before this are at the old speeds:
+  rerun before comparing. Ashdod and Bedford are unchanged until re-baked.
+- **Not used, on purpose**: wall and roof colour, roof shape, material, year -- 0.5-4% of
+  buildings in both towns (and the wall shader takes a palette tint index, not an RGB:
+  a real colour needs its own path); turn lanes and lanes each way (under 1% of pieces);
+  pavement sides (2-16%).
+- **Tried and dropped: building heights from the terrain tiles** (surface minus bare
+  ground) -- no use, see the `real-places` skill.
+- **Outside data** (municipal buildings, trees, businesses, GTFS, parking zones): none
+  reachable from this cloud environment (over.org.il, data.gov.il, gisn.tel-aviv.gov.il,
+  gtfs.mot.gov.il all refused), and e.data.gov.il's CDN refuses the cloud even when
+  allowed (Tel Aviv handoff). The list and the licence caveat are in `IDEAS.md`.
+- **Checks, and what good read** (20 Nov 2026, Givatayim and Tel Aviv re-baked):
+  `tests/speed_limits.gd` -- autodrive 40 s never more than 10% over the road's limit
+  (Givatayim: 23 s at 30, 17 s at 50, fastest 51 km/h; Tel Aviv's start stays on 50 roads);
+  `tests/rails.gd` at level 1 -- 13 tracks, 3 lines, 0 bed points over asphalt;
+  `city_check` at level 1 -- 3, the same 3 with the file from before the re-bake (two
+  posts 1 m into Aluf David and Katznelson, the passage's building): not the re-bake's.
+- **Bus lanes in Givatayim: OSM marks none** (0 road pieces with `bf`/`bb` in a main-server
+  bake, 20 Nov), though the Ministry of Transport's layer lists 4 stretches there: they
+  would have to be mapped on OSM, or come from that layer (see `IDEAS.md`).
+- **Open**: re-bake Ashdod (brings its railway) and Bedford with `main_server_only`; a
+  sign at the start of each 30 street (the game has `signs_zone30`, placed by its own
+  rule, not by `ms`); the speed signs are on main roads only.
+
 ## Handoff: the street's realism and life, loading split, crashes, sounds (20 Nov 2026)
 
 One session's areas (everything under "front gardens", "the street's goings-on", "more kinds
@@ -1629,8 +1833,15 @@ LEVEL=1 $GODOT --headless --path . -s res://game/streets/tests/<test>.gd`.
   `street_people` a dog, a pushchair, a sitter, a waiter each within 80 m inside a minute;
   `street_sounds` birds -31..-34 dB by day by trees, crickets ~-36 at night, voices -20 / -25;
   `crash_things` a bin knocked, 3 dents, 2-3 glass patches; `wall_things` the person 1
-  surface; playtest smart 25 s passes, hitches 4-9 (container noise: compare with main).
-- **Open**: a dog can be pushed to the far side of a crossing railing (`_companion`'s
+  surface; playtest smart 25 s passes, hitches 4-11 (container noise: compare with main, run
+  alone -- 16 with a second Godot running beside it). `walk_people` (level 6, headless,
+  `--fixed-fps 10`, ~4 min): 0 pops, 0-1 turned in view, 0 within 0.6 m of you, deepest into
+  a parked car 0.17-0.27 m (a car's end corner; was 0.55 in its middle), 5-7 people met
+  within 40 m; `people_clear` 0.0% in a post or wall.
+- **Open**: walk 2's streets are thin (5-7 people within 40 m over its 106 s); people still
+  graze a parked car's end corners by ~0.15 m (round posts); the walk's own line runs
+  against parked cars at 60-70 s (WALKS.md), where people giving way pass on its far side;
+  a dog can be pushed to the far side of a crossing railing (`_companion`'s
   `_push_out` picks the nearer side); grass blades still poke through a garden path where it
   crosses a lawn; the sounds are synthesised (make_sounds.py) and the user has not said how
   they sound; more things that break (sign posts, fence panels, hedges, a scrape mark on the

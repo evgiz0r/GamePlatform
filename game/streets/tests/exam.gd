@@ -39,7 +39,7 @@ const CHECKS := ["check: bodies overlapping, traffic", "check: bodies overlappin
 	"check: autodrive pushing 3 s+", "check: held by nothing 10 s+, traffic", "check: held by nothing 10 s+, autodrive"]
 ## what may hold a car standing still (anything else -- the limit, a curve -- is nothing)
 const NAMED := ["light", "zebra", "people", "sign", "junction", "player", "bus stop", "squeezing past",
-	"blocked", "choice", "turning", "backing", "pushing"]
+	"blocked", "choice", "turning", "backing", "pushing", "delivery"]   # (delivery: a van double-parked to unload)
 var g: Node
 var T
 var counts := {}
@@ -314,11 +314,30 @@ func _car_line(i: int) -> String:
 	var rd: int = c.rd[clampi(c.k, 0, c.rd.size() - 1)] if c.rd.size() > 0 else -1
 	var road: String = ("%s (%s, %d lanes a way)" % [g._roads[rd]["en"] if g._roads[rd]["en"] != "" else g._roads[rd]["name"],
 		g._roads[rd]["k"], g._lanes_each_way(g._roads[rd])]) if rd >= 0 else "?"
-	return "car %d %s at (%.1f, %.1f) heading %.0f, %.1f m/s, %s, lane %d shift %.2f -> %.2f%s, held by %s (blocker %d), k %d of %d" % [
+	var ahead: Array = []   # the roads its plan runs on from here: [road, which way along it]
+	for j in range(c.k, mini(c.rd.size(), c.k + 12)):
+		var rj: int = c.rd[j]
+		if rj < 0 or (not ahead.is_empty() and int(ahead[-1][0]) == rj):
+			continue
+		var rp: PackedVector2Array = g._roads[rj]["pts"]
+		var way := "?"
+		if j + 1 < c.pts.size():
+			var seg: Vector2 = c.pts[j + 1] - c.pts[j]
+			var best := INF
+			for q in range(rp.size() - 1):
+				var dq: float = Geometry2D.get_closest_point_to_segment(c.pts[j], rp[q], rp[q + 1]).distance_to(c.pts[j])
+				if dq < best:
+					best = dq
+					way = "+" if (rp[q + 1] - rp[q]).dot(seg) >= 0.0 else "-"
+		ahead.append([rj, way])
+	var plan := " > ".join(ahead.map(func(a): return "%s%s(o%d)" % [g._roads[a[0]]["en"] if g._roads[a[0]]["en"] != "" else g._roads[a[0]]["name"], a[1], int(g._roads[a[0]]["o"])]))
+	return "car %d %s at (%.1f, %.1f) heading %.0f, %.1f m/s, %s, lane %d shift %.2f -> %.2f%s, held by %s (blocker %d), k %d of %d; plan %s" % [
 		i, c.kind, c.pos.x, c.pos.y, rad_to_deg(c.yaw), c.v, road, c.lane_i, c.shift, c.shift_to,
-		", filtering" if c.split else "", c.why, c.blocker, c.k, c.pts.size()]
+		", filtering" if c.split else "", c.why, c.blocker, c.k, c.pts.size(), plan]
 
 ## the traffic's own checks: stalls, cars sent away, red lights run, cars overlapping
+var site_was := {}   ## traffic car -> the junction with lights it was last in, as the game had it while outside every lit point
+
 func _watch_traffic(dt: float, t: float, car_still: Dictionary, overlapping: Dictionary, inside: Dictionary, came_dir: Dictionary) -> void:
 	# -- traffic
 	for i in range(T.cars.size()):
@@ -349,12 +368,23 @@ func _watch_traffic(dt: float, t: float, car_still: Dictionary, overlapping: Dic
 			var key := "%d:%d" % [i, knot]
 			if not inside.has(key) and c.v > 2.0:
 				var came: Vector2 = came_dir.get(i, Vector2(sin(c.yaw), cos(c.yaw)))
+				# already in this junction, by another of its lights whose middle it went
+				# wide of (the game's own record, from before it came to this point): going on
+				# through its inner points is not running their red
+				if int(site_was.get(i, -1)) == knot:
+					inside[key] = t
+					continue
 				if g._light_at(n, came) == "r":
 					_count("traffic: red lights run")
 					_incident("traffic red", c.pos, c.kind)
+					if _watch_r > 0.0 and c.pos.distance_to(_at) <= _watch_r:
+						print("    red at point %d (%s, r %.1f), came heading %.0f; last site %d (this %d), %.1f m since its last light\n    %s" % [
+							n, Vector2i(g._nodes[n]), g._node_r[n], rad_to_deg(atan2(came.x, came.y)), c.last_site, knot,
+							c.s - c.last_light, _car_line(i)])
 			inside[key] = t
 		if not in_any:
 			came_dir[i] = Vector2(sin(c.yaw), cos(c.yaw))
+			site_was[i] = c.last_site
 			for key: String in inside.keys():
 				if key.begins_with("%d:" % i) and t - float(inside[key]) > 8.0:
 					inside.erase(key)

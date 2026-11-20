@@ -441,8 +441,7 @@ func build() -> void:
 				if pr.has("paint"):
 					pi = int({"white": 0, "silver": 4, "grey": 7, "black": 9, "blue": 11, "red": 12}.get(String(pr["paint"]), pi))
 				(cars[kind][1] as Array).append(paints[pi])
-				g._add_post(at + f * 1.25, 0.85)
-				g._add_post(at - f * 1.25, 0.85)
+				g._add_car_posts(at, f)
 			"zebra":
 				_zebra(b, at, y, d, float(pr.get("w", 3.0)), float(pr.get("len", 8.0)))
 			"ring30":
