@@ -244,6 +244,29 @@ or autodrive changed. Headless runs take the same numbers several times faster:
 `LEVEL=n STREETS_BUILD_ALL=1 $GODOT --headless --fixed-fps 60 --path . -s
 res://game/streets/tests/<test>.gd` (no screenshots).
 
+What the checks found on their first rounds, none fixed yet (numbers in tests/README.md),
+biggest first:
+- **Traffic's bodies brush what stands by the road.** Traffic is on rails: nothing keeps a
+  bus's 2.5 m off the kerb-side trees, poles and bollards of a narrow lane, or a turning
+  bus's corner off the post on the corner (11-21 occasions a run in each town).
+- **A mall's canopy columns stand in the road** (`_mall_front`: 3.2 m out from the front,
+  no road check; fronts are cut back to the road's edge + 1.5 m): two 1.9 m into Zahal by
+  Ashdod's start. The exam had a taxi drive through one at 39 km/h.
+- **Hedges over the kerb into the lane**: 18 in Givatayim, 15 in Ashdod, 0.4-0.6 m in
+  (`city_check SHOTS=1` shows the worst). `walls_on_roads` counts only walls wholly on the
+  asphalt, so it read 0.
+- **Autodrive pushing into a traffic car keeps it there**: `Traffic.bumped` stuns a car for
+  2.5 s on every touch, so one autodrive presses against never pulls away. Givatayim's exam:
+  a hatch "held by the limit" 20 s, autodrive pushing, then a rescue. Read from the code
+  and the logs; stage it in a scene test before fixing.
+- Moving cars overlapping side by side by 0.3-0.5 m (lane changes, scooters filtering); a
+  scooter filtering to the front stops 7 m past the stop line at Ashdod's start junction.
+- Queues clear about a quarter slower than real ones (QUEUE CHECK: FAIL, just).
+- Six places in Ashdod where lit points 8-16 m apart are separate junctions (three at
+  (-1516, 1823)): the setup that once gave green both ways. Watch one with `knot_lights`.
+- In the test town, three queues whose front car stands "held by the limit" with nothing
+  near it: not looked into yet.
+
 ## Seeing what the car did: the drive recorder
 
 `drivelog.gd` keeps the last two minutes, ten times a second: the car (where, heading,

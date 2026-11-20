@@ -158,7 +158,8 @@ it is made, with a one-line caption, rather than a report at the end.
 - `var x := g.some_member` cannot infer a type through an untyped node: annotate it.
 - **Forget `OUT` and the screenshots land in `/`.** Check the folder after the first run.
 - A script error mid-test prints `SCRIPT ERROR` and the test may hang to its timeout: grep
-  the output for it, and always run under `timeout`.
+  the output for it, and always run under `timeout`. One in the background goes on taking
+  a core until then, slowing every run beside it: kill it once you have seen the error.
 - `grep` in a pipe holds its output until the process exits; use `--line-buffered` to
   watch progress.
 - A test that is already running keeps the code it loaded; one that starts later in a
@@ -182,6 +183,13 @@ it is made, with a one-line caption, rather than a report at the end.
   (1280x720) and crop the middle: `ffmpeg -vf crop=406:720:437:0`. Mind that the crop sees
   far less sideways than the shot: check the whole frame before deciding something is
   missing.
+- **Freezing the game for stills freezes what follows the camera.** With the game's frame
+  stopped (so its camera does not move yours back), anything it moves with the camera each
+  frame -- a sky dome, a far-off ground plane -- stays where it was: a shot a kilometre away
+  was a flat blank, the camera outside the dome. Call the game's own follow step after
+  placing the camera.
+- **A marker for a 3D shot goes in the game's 3D world**, not under the game's node: a
+  3D game's own node is a 2D one, and a ring added under it is never drawn.
 - Parse-check first: `tools/check_script.sh res://game/<game>/<game>.gd` takes seconds and
   says which line; a broken script makes a scene test fail in a confusing way minutes in.
 

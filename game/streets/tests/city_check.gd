@@ -204,5 +204,7 @@ func _shots() -> void:
 			ring.position = Vector3(at.x, y + 0.3, at.y)
 			var up := maxf(30.0, g._roof_near(at, 25.0) + 20.0)
 			g.look_from(Vector3(at.x, y + up, at.y + up * 0.4), Vector3(at.x, y, at.y))
+			g._sky_follow()   # (the sky dome follows the camera in the game's frame, stopped here: a
+			                  # kilometre from the start the camera was outside it, a blank picture)
 			await _snap("city_%s_%s_%d" % [g._city_id, kind.replace(" ", "_"), k + 1])
 	ring.queue_free()
