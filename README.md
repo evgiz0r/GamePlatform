@@ -71,7 +71,9 @@ build before pushing, but it is no longer required.
 An open or installed copy of the game looks for a new build every time
 it starts and every time it comes back to the foreground, and reloads itself onto it. If a
 phone still shows the old build, close the app fully and reopen it. `docs/` is generated —
-never edit it by hand.
+never edit it by hand. A new build costs a returning player only `index.pck` (the games,
+~39 MB): the engine file (`index.wasm`, as big again) changes only with the Godot version,
+and the new build's worker copies it over from the old one's cache when it is the same file.
 
 The menu shows the **build time** at the bottom. That is how you tell from a phone whether
 a change has actually arrived, which matters because an installed app updates itself in

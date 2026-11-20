@@ -41,6 +41,11 @@ rm -f docs/*.import
 # publish. Phones, which tend to open the game right after a push, hit this every time.
 # Every fetch the worker may cache now goes out under a URL stamped with the build's
 # version and cache:'no-store', so neither cache can answer it.
+#
+# Third: a new cache per build meant every publish (dozens a day while a game is being
+# worked on) sent a phone back for all 78 MB, the engine's 39 MB included, though that
+# file only changes with the Godot version. The new worker now copies the engine out of
+# the old build's cache when its SHA-256 matches, so a publish costs index.pck alone.
 python - <<'SW'
 import io
 p = 'docs/index.service.worker.js'
@@ -75,9 +80,42 @@ self.addEventListener('install', (event) => {
 				await cache.put(f, res);
 			}
 		}));
+		await reuseEngine(cache);
 		await self.skipWaiting();
 	})());
-});""", 'install handler')
+});
+
+// PATCHED by tools/publish_web.sh -- the engine (index.wasm, ~39 MB) only changes with the
+// Godot version, yet every publish starts a new cache and so downloaded it again. If an
+// older build's cache holds the very same file (by its SHA-256, WASM_SHA256 below), copy it
+// across before the old caches are dropped: only index.pck is downloaded after a publish.
+const WASM_SHA256 = '@WASM_SHA256@';
+async function reuseEngine(cache) {
+	try {
+		for (const key of await caches.keys()) {
+			if (!key.startsWith(CACHE_PREFIX) || key === CACHE_NAME) {
+				continue;
+			}
+			const old = await (await caches.open(key)).match('index.wasm');
+			if (!old) {
+				continue;
+			}
+			const keep = old.clone();
+			const sum = await crypto.subtle.digest('SHA-256', await old.arrayBuffer());
+			const hex = Array.from(new Uint8Array(sum), (b) => b.toString(16).padStart(2, '0')).join('');
+			if (hex === WASM_SHA256) {
+				await cache.put('index.wasm', keep);
+				return;
+			}
+		}
+	} catch (e) {
+		console.warn('engine not reused from an older build: ', e); // eslint-disable-line no-console
+	}
+}""", 'install handler')
+
+import hashlib
+wasm_sha = hashlib.sha256(open('docs/index.wasm', 'rb').read()).hexdigest()
+s = s.replace('@WASM_SHA256@', wasm_sha, 1)
 
 start = s.index("self.addEventListener('activate'")
 end = s.index('/**', start)

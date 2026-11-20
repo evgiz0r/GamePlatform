@@ -1022,6 +1022,19 @@ Nothing is half done: all of the above is on main.
   to the sea (9,591 buildings, 6,091 roads), the playtest's "city" event, two runs at once:
   Tel Aviv parse 2.7 s + build 3.4 s before the car, Ashdod 2.2 + 3.0, Givatayim 1.0 + 2.0
   (decks_inferred alone 0.8 s of Tel Aviv's parse, 0.24 of Givatayim's).
+- **Starting a level in a browser, phase by phase** (`tests/web_load.js`: the container's
+  Chromium, the engine's wasm on one thread, SwiftShader drawing; 20 Nov 2026). Givatayim:
+  engine up 1.5 s after the page, the level begun ~4 s; city file 1.8-2.1 s; the squares round the start 17 s (kerbs
+  4.7, far shadows 2.3 -- 0.65 of it work, the rest its two frames -- parked 1.1, trees 1.1,
+  furniture 0.9, places 0.8); warm-up 50 s (twelve frames of 3.6-5.9 s: SwiftShader's
+  drawing, not what a phone pays). Tel Aviv: city file 5.5 s, the squares 36 s (kerbs 8.6,
+  far shadows 4.1, furniture 2.9, roads 2.7, parked 2.2, places 1.9), warm-up 62 s. The CPU
+  stages run ~3-4x the headless numbers above (wasm, one thread). What makes a player's wait
+  swing from a few seconds to twenty (user, Nov 2026): a new build since the last visit
+  (index.pck's 39 MB downloaded again; index.wasm's 39 MB too until the worker learnt to
+  keep it, tools/publish_web.sh -- 77 publishes on 20 Nov alone), shader code changed since
+  the last visit (the browser compiles those again: the warm-up's "x of 12" steps), and the
+  city's size.
 - Frame cost at the start view (`tests/frame_cost.gd`, quality 3, Nov 2026, same run):
   Tel Aviv 1.69 M triangles + 0.75 M shadow, 367 draws; Givatayim (Katznelson by Weizmann)
   2.00 M + 1.01 M, 444 draws -- Tel Aviv's towers are no heavier at the start than

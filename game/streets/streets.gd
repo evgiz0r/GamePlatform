@@ -1118,11 +1118,13 @@ func start(_config: Dictionary) -> void:
 		return
 	var t1 := Time.get_ticks_msec()
 	_stage_ms["city file (parse, roads fitted, buildings cut)"] = t1 - t0
+	print("[streets] city file read in %d ms" % (t1 - t0))   # (marks for a browser's log: tests/web_load.js)
 	world_area = _bounds
 	_find_start()   # (the squares round it are built first)
 	if not await _build_world():
 		return
 	var tw := Time.get_ticks_msec()
+	print("[streets] the squares round the start built in %d ms; stages %s" % [tw - t1, _stage_ms])
 	print("[streets] warm-up begins")   # (marks for a browser's log: tests/web_shaders.js counts the shaders compiled between)
 	if not await _warm_up():
 		return
