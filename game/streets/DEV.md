@@ -438,6 +438,30 @@ before and a tunnel without it is still dropped.
 - **Water held at a level** (`areas[].y`, the test town's river) lies at that level, and is
   too deep to drive or walk into (`_deep_push`): the banks were gentle enough to drive down
   and along the bed under the water. Lakes and ponds without a level are as before.
+- **A real town's heights, worked out as it loads** (`infer` in decks.gd; a place opts in
+  with `"decks": "infer"` in `LEVELS`, Bedford so far). Before the roads are read, the
+  city data gets heights as if baked: where a drivable bridge (a chain of bridge ways 8 m
+  or longer; shorter ones are culverts and stay as they were) crosses a road it must clear
+  it by 6.4 m (a path: 4.4); that lift spreads along the drivable roads at a ramp's grade
+  (5% motorways and slip roads, 7% the rest) as an absolute height -- the road's own
+  grade, not its height over a ground that may fall away too (on Larry Uteck's ramp the
+  ground fell 8%: 15% in all, the car hopped down it) -- through junctions, never onto the
+  roads crossed (held to the ground). A second pass caps every lift by what a ramp from the
+  nearest held point can climb (7% / 10%), so a too-short slip road is steep, not a cliff.
+  Bridge over bridge: OSM's layer, else the lesser road over the main line, clearing the
+  lower's deck. Roads are cut where their ramp meets the ground (a node put there); the
+  lifted pieces get a point every 6 m and their profiles rounded over the crests (junction
+  points kept), footpaths are never lifted. Bedford: 56 bridges, 72 crossings, ~190 deck
+  pieces, 0.2 s; 2 of 63 crossings over roads short of the full clearance (4.8 m the
+  lowest). `LEVEL=2` with `tests/decks.gd` drives its ten highest bridges both ways.
+- **What Bedford found** (the test town had hidden them): a divided road's two carriageways
+  overlap at the median at not quite the same height -- `surf` now ranks what is under a
+  body: the carriageway it is on, then a deck's pavement or parapet, then (where another
+  deck carries on) just past a deck's end, then the ground; of each the one nearest its
+  height. A car on the outside of a bend where two decks meet was past the end of one and
+  before the start of the other, and fell through (hence "just past the end", 3 m, only at
+  deck joints). Buildings OSM maps under a low approach (the MacKay Bridge's) stood in the
+  deck: decks under 4 m up are now cut back from like streets (`_clip_buildings`).
 - **Where the heights come from.** The test town's maker knows them: each deck's ends at the
   ground, a bridge straight from bank to bank with a little camber, the flyover's and
   underpass's ramps eased up and down to 6.6 m clear of the boulevard (`CLEAR`), the tunnel
@@ -454,7 +478,9 @@ before and a tunnel without it is still dropped.
   (a turning car clipped the parapet), a 5 cm switch from a cutting's road to the ground
   where it gets shallow (a hop), and ground triangles left whole over a cutting (an edge
   parallel to the hole's leaves a smaller triangle: compare areas, not corner counts).
-- **Still to do**: heights for the real towns' bridges and tunnels; pavements at street
+- **Still to do**: the inferred heights for Givatayim and Ashdod (and their tunnels);
+  earth embankments with grass slopes rather than walls along inferred ramps; a long-span
+  bridge's height over water (the MacKay's deck is only as high as its ends); pavements at street
   level beside a cutting (the underpass has none); people on a bridge's pavement; the
   minimap draws a tunnel like any street; zooming out from inside the tunnel rises from the
   hilltop (the zoom centres on the ground's height); the heights are whole decimetres, so a

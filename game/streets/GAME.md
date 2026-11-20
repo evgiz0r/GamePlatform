@@ -845,11 +845,13 @@ contributors under the ODbL, which is why the credit sits on screen.
   What a shop looks like (awning, tables, the bus shelter) is generic. The parked cars
   (about a quarter of the kerb), the people walking and sitting at cafe tables, rooftop
   solar heaters and rooms (Givatayim), pitched roofs on small houses (Bedford).
-- **Not there yet**: bridges and tunnels in the real towns. OSM says which ways are
-  bridges and tunnels but not how high they are, so there the roads at different levels
-  are still drawn on the ground and tunnels are dropped (an interchange is flat; motorways
-  and their slip roads at least have no pavements or people along them). The test town has
-  them (above), because its maker knows the heights. People crossing anywhere but a zebra.
+- **Guessed, in Bedford: how high its bridges are.** OSM says which ways are bridges but
+  not how high, so the game works it out as the town loads: each overpass rises to clear
+  what it crosses, on ramps up the roads leading to it, an interchange's junctions up on
+  them and its slip roads coming down. Highway 102's overpasses, the Bedford Bypass, the
+  MacKay Bridge's approach. Ramps are walled, not grassy banks, yet.
+- **Not there yet**: bridges in Givatayim and Ashdod (still drawn on the ground), and
+  tunnels in the real towns (left out). People crossing anywhere but a zebra.
 
 To make your own street more accurate, fix it on openstreetmap.org (building heights are
 the most useful thing to add) and bake again.

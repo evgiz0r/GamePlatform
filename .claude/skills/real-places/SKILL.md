@@ -188,6 +188,19 @@ one needed:
   foot runs into one. Leaving walls out of a junction's corner (so a turning car does not
   clip a kerb-high step) is right at street level only: up on an embankment it is a gap to
   drive off.
+- **Working the heights out from OSM** (what worked for one Canadian town's interchanges):
+  each bridge must clear what it crosses (a road by ~6.4 m, a path by ~4.4); spread that
+  lift along the drivable roads at a ramp's grade, as an absolute height (the ground under
+  a ramp can fall away as steeply as the ramp does), through junctions but never onto the
+  roads crossed; then cap every lift by what a ramp from the nearest road held on the ground
+  can climb, so a short slip road is steep instead of a cliff. Cut roads where their ramp
+  meets the ground, never lift footpaths, densify the lifted pieces and round their crests
+  (a ramp up meeting a ramp down at the crossing is a crest a car takes off from), and
+  treat bridges shorter than ~8 m as culverts. A coarse elevation model (36 m) is smooth
+  under an overpass: all the lift has to come from the ramps.
+- **A divided road is two decks overlapping at the median** at slightly different heights:
+  decide what is under a body by the carriageway it is on first, the nearest height next,
+  or it drifts onto the other and falls off its end.
 - **Water held at its own level** (a river between weirs) is drawn at that level and is too
   deep to drive into; gentle banks otherwise let a car down to drive along the bed under
   the water. Leave lakes that lie at their shore's lowest point alone: a road over an
