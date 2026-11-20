@@ -63,7 +63,8 @@ right now, offer to add it here rather than letting it get lost in the chat.
     for the towns one game needed, from a municipal map, data.gov.il (the CKAN API: its
     file server refuses scripts) and the Ministry of Transport's GTFS;
   - *street trees with species* (ficus, jacaranda and palms read very differently):
-    municipal tree surveys (Tel Aviv's is downloadable: layer 628, below);
+    done for two towns, read by the baker (`TREE_SURVEYS`): a street-tree inventory with
+    species, and crowns traced from the air with their size;
   - *businesses*, for whole rows of shopfronts: business-licensing layers (רישוי עסקים);
   - *when a building went up and what it is for* (a 1930s block, a 1960s shikun, a 2000s
     tower look nothing alike; which ground floors are shops): municipal building and
