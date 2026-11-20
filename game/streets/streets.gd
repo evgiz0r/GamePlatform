@@ -2978,12 +2978,21 @@ func _build_kerbs() -> void:
 				var g_out := _offset_line(run, (hw + PAVE_W + 3.4) * sgn)
 				var walled := PackedByteArray()   # which pieces of the run have the wall (for the fronts on it)
 				walled.resize(run.size())
+				# each point of the wall's line off every road by the game's own test (the
+				# roads' strips and the rounded corners' asphalt), once a point: the asphalt
+				# grid alone let 11 of Givatayim's walls stand 0.3-0.5 m into a road's mouth
+				# or a corner (city_check)
+				var w_clear := PackedByteArray()
+				w_clear.resize(run.size())
+				for i in range(run.size()):
+					w_clear[i] = 1 if _off_road(w_in[i], 0.05) else 0
 				for i in range(run.size() - 1):
 					if shops[i]:
 						continue
 					# (not where it would lie on another road: a garden strip of one street ran
 					# over the asphalt of the next where they met at an angle)
-					if _asphalt_other((w_out[i] + w_out[i + 1] + g_out[i] + g_out[i + 1]) * 0.25, ri) \
+					if not w_clear[i] or not w_clear[i + 1] \
+							or _asphalt_other((w_out[i] + w_out[i + 1] + g_out[i] + g_out[i + 1]) * 0.25, ri) \
 							or _asphalt_other(w_in[i], -1) or _asphalt_other(w_in[i + 1], -1) \
 							or _asphalt_other((w_in[i] + w_in[i + 1]) * 0.5, -1):
 						continue   # (nor where the wall itself would, on any road, its own too at
@@ -4893,7 +4902,9 @@ func _build_trees() -> void:
 						continue
 					var p := a + d * s + side * off * sgn
 					var sc := rng.randf_range(0.8, 1.25)
-					if _mine(p) and _tree_ok(p, 5.0):
+					# (and not on a rounded corner's asphalt: a street's trees, spaced along it,
+					# landed on the next street's corner -- city_check)
+					if _mine(p) and _tree_ok(p, 5.0) and not _in_corner_fill(p, 0.15):
 						_add_post(p, 0.3)
 						spots.append(Vector3(p.x, p.y, sc))
 						grates.append(Transform3D(Basis(Vector3.UP, sc * 9.0), Vector3(p.x, _h(p) + KERB_H + 0.006, p.y)))
@@ -4921,7 +4932,8 @@ func _build_trees() -> void:
 					await _pause()
 				var p := Vector2(rng.randf_range(part.position.x, part.end.x), rng.randf_range(part.position.y, part.end.y))
 				var sc := rng.randf_range(0.8, 1.35)
-				if not _mine(p) or not Geometry2D.is_point_in_polygon(p, ring) or not _tree_ok(p, 4.5 if kind == "wood" else 7.0):
+				if not _mine(p) or not Geometry2D.is_point_in_polygon(p, ring) or not _tree_ok(p, 4.5 if kind == "wood" else 7.0) \
+						or _in_corner_fill(p, 0.15):
 					continue
 				_add_post(p, 0.3)
 				if kind == "wood":
@@ -8254,8 +8266,18 @@ func _build_signals() -> void:
 				var on := _nearest_seg(q, 12.0, true)
 				if not on.is_empty() and float(on["edge"]) < 0.4:
 					continue   # never plant it in a lane
+				if _in_corner_fill(q, 0.15):
+					continue   # nor on a rounded corner's asphalt (the first spot, at the corner,
+					           # often was: city_check, 32 of Givatayim's 40 posts on the road)
 				p = q
 				break
+			if p == Vector2.INF and not spots.is_empty():
+				# none clear: the corner's spot, moved off its asphalt onto its pavement -- a way
+				# in with no pole had cars stopping for a light nobody could see
+				var q0 := _out_of_corner(c - dir * float(spots[0][0]) + right * float(spots[0][1]), 0.3)
+				var on0 := _nearest_seg(q0, 12.0, true)
+				if _push_out(q0, 0.3, false) == Vector2.ZERO and (on0.is_empty() or float(on0["edge"]) >= 0.4):
+					p = q0
 			if p == Vector2.INF:
 				continue
 			var g := _light_group(node, dir) - 1
@@ -8386,6 +8408,30 @@ func _lights_setup() -> void:
 		up[a] = b
 		(members[b] as Array).append_array(members[a])
 		members.erase(a)
+	# lit points close together that no short piece of road joins -- the two halves of a
+	# divided road's crossing mid-street, each half a crossing of its own -- are one: the
+	# halves ran their own phases, green on one and red on the other for someone crossing
+	# (city_check's "split junctions": six on Sderot Herzl in Ashdod, 8-16 m apart)
+	var lit_keys: Array = lit.keys()
+	for ai in range(lit_keys.size()):
+		for bi in range(ai + 1, lit_keys.size()):
+			var pa: int = lit_keys[ai]
+			var pb: int = lit_keys[bi]
+			if _nodes[pa].distance_to(_nodes[pb]) > 16.0:
+				continue
+			var ra := _site_root(up, pa)
+			var rb := _site_root(up, pb)
+			if ra == rb:
+				continue
+			var span := 0.0
+			for p: int in members[ra]:
+				for q: int in members[rb]:
+					span = maxf(span, _nodes[p].distance_to(_nodes[q]))
+			if span > SITE_SPAN:
+				continue
+			up[ra] = rb
+			(members[rb] as Array).append_array(members[ra])
+			members.erase(ra)
 	_sites = []
 	for rt: int in members:
 		for n: int in members[rt]:
