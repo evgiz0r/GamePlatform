@@ -1104,15 +1104,16 @@ contributors under the ODbL, which is why the credit sits on screen.
 - **Not there yet**: bridges in Givatayim and Ashdod (still drawn on the ground), and
   their tunnels (left out). People crossing anywhere but a zebra.
 =======
-- **Guessed, in Bedford and Ashdod: how high the bridges are, how deep the tunnels.** OSM says which ways are bridges but
+- **Guessed, in Givatayim, Bedford and Ashdod: how high the bridges are, how deep the
+  tunnels.** OSM says which ways are bridges but
   not how high, so the game works it out as the town loads: each overpass rises to clear
   what it crosses, on ramps up the roads leading to it, an interchange's junctions up on
   them and its slip roads coming down. Highway 102's overpasses, the Bedford Bypass, the
   MacKay Bridge's approach; in Ashdod Highway 4's interchanges and Sderot Menachem Begin's
   underpass, down a cutting under the road it crosses. The ramps are grass banks with a guardrail along the top where
   there is room for them, retaining walls where there is not.
-- **Not there yet**: bridges in Givatayim (still drawn on the ground), and tunnels under
-  footpaths (left out). People crossing anywhere but a zebra.
+- **Not there yet**: footbridges (still flat on the ground), tunnels under footpaths, and a
+  few road tunnels too short for their cuttings (the Rabin Underpass): left out. People crossing anywhere but a zebra.
 >>>>>>> origin/main
 
 To make your own street more accurate, fix it on openstreetmap.org (building heights are

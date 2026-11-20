@@ -827,8 +827,10 @@ it is dropped.
   ramp's grade, never through a junction (that stays at street level) nor onto what it runs
   under, kept as negative lifts so the rest treats bridges and tunnels alike. Where the
   nearest held point (what it runs under, a junction) is too close for the cuttings to get
-  down at 10%, the tunnel stays on the ground; one under nothing mapped (a passage through
-  a building) is put back on the ground too (it used to be dropped). Footpath tunnels are
+  down at 8.5%, the tunnel is left out as before (on the ground it would run across the roads
+  it dives under); one under nothing mapped (a passage through a building) is put back on
+  the ground (it used to be left out). A body in a tunnel never meets the buildings over it
+  (`_push_out`), however shallow the tunnel is there. Footpath tunnels are
   still left out. Ashdod: 46 bridges, 4 tunnels (Menachem Begin's underpass, two service
   roads), 7 cuttings, 0.3 s. Two traps on the way: a tunnel "crossed" its own next piece
   (the shared end point; skip roads that share a point), and holding the whole of every
@@ -896,7 +898,14 @@ it is dropped.
   pavements and people beside an inferred cutting, and the minimap showing a tunnel as one;
   earth embankments with grass slopes rather than walls along inferred ramps; a long-span
 =======
-- **Still to do**: the inferred heights for Givatayim (Tel Aviv is another session's);
+- **Givatayim** (with the strip of Ramat Gan and Tel Aviv round it): 11 bridges (Menachem
+  Begin's and Arvey Nahal's over the Ayalon), all 23 crossings over roads at full clearance;
+  7 tunnels (Uzi Hitman's, the City tunnel's pieces, HaMaayan's), 16 cuttings, 0.3 s. Left
+  out, too short for their cuttings: the Rabin Underpass, a piece of the City tunnel, a
+  service tunnel. `tests/decks.gd` level 1: the tunnels and bridges driven alone come out
+  clean; in the full sequence two runs stall (traffic left by the run before), and two
+  cuttings give a short hop.
+- **Still to do**: Tel Aviv is another session's;
   Ashdod's tight interchange at its east edge (x 3850, z -1590: slip roads crossing slip
   roads at street level -- 15 crossings short of the clearance, 0.5 m the lowest); a 0.5 s
   hop out of Menachem Begin's underpass; footpath tunnels; grass slopes for cuttings too (they are walled); a long-span

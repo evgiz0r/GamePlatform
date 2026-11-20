@@ -18,7 +18,7 @@ extends GameMode3D
 ## the car on the first just past the second. Without one it starts on a main road
 ## mid-town.
 const LEVELS := [
-	{"name": "Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med"},
+	{"name": "Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer"},
 	# "decks": "infer" -- its bridges' heights worked out as it loads (decks.gd: infer)
 	{"name": "Bedford, Nova Scotia", "city": "bedford", "look": "north", "decks": "infer"},
 	{"name": "Ashdod", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med", "decks": "infer"},
@@ -1397,9 +1397,9 @@ func _clip_buildings(bdata: Array) -> void:
 				# a deck: cut back like a street where it runs low (an embankment, a bridge's
 				# foot: nothing stands under a deck less than a storey up); never over a
 				# tunnel or a cutting (the houses on the hill above it)
-				if not (String(r["deck"]) in ["em", "br"]) or not r["drive"] \
-						or maxf(r["ys"][sj] - r["gs"][sj], r["ys"][sj + 1] - r["gs"][sj + 1]) > 4.0:
-					continue
+				if not (String(r["deck"]) in ["em", "br", "cu"]) or not r["drive"] \
+						or maxf(absf(r["ys"][sj] - r["gs"][sj]), absf(r["ys"][sj + 1] - r["gs"][sj + 1])) > 4.0:
+					continue   # (a cutting too, where it is shallow: a car came up one into a block)
 			elif not _kerbed(r):
 				continue
 			var pts: PackedVector2Array = r["pts"]
@@ -14665,6 +14665,9 @@ func _push_out(c: Vector2, r: float, posts: bool, cars := true, y := NAN) -> Vec
 	if _decks != null and _decks.any():
 		push = _decks.push(c, r, _h(c) if is_nan(y) else y)
 		ground = is_nan(y) or absf(y - _h(c)) < 2.5
+		if ground and not is_nan(y) and y < _h(c) - 0.5:   # in a tunnel: the houses are over its roof
+			var under := _decks.deck_at(c, y, 1.0)
+			ground = under < 0 or String(_roads[under]["deck"]) != "tu"
 	for i: int in (_near(_bld_hash, c, r, BLD_CELL) if ground else []):
 		if _bld_solid[i] == 0:
 			continue
