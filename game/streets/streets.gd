@@ -19,7 +19,8 @@ extends GameMode3D
 ## mid-town.
 const LEVELS := [
 	{"name": "Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med"},
-	{"name": "Bedford, Nova Scotia", "city": "bedford", "look": "north"},
+	# "decks": "infer" -- its bridges' heights worked out as it loads (decks.gd: infer)
+	{"name": "Bedford, Nova Scotia", "city": "bedford", "look": "north", "decks": "infer"},
 	{"name": "Ashdod", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med"},
 	# made up by tools/fake_city.py: one small town with one of everything, ringed by mountains,
 	# that loads in a moment -- for checking a change, not for exploring
@@ -28,6 +29,9 @@ const LEVELS := [
 	{"name": "A walk in Givatayim: Katzenelson to Ha-Meri", "city": "givatayim", "look": "med", "walk": "katzenelson_hameri"},
 	# a second, timed and placed from the GPS track taken with its film (tools/gpx_route.py)
 	{"name": "A walk in Givatayim: Sheinkin and Sirkin", "city": "givatayim", "look": "med", "walk": "sheinkin_sirkin"},
+	# a box of central Tel Aviv, not the whole city (the workflow's bbox): HaKirya, Azrieli,
+	# Sarona, Montefiore, Bitsaron, the Ayalon. Starts on Kaplan heading east, the towers ahead.
+	{"name": "Tel Aviv: Azrieli and HaKirya", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -811,6 +815,7 @@ var _furn: RefCounted                ## the street furniture builder (furniture.
 var _details: RefCounted             ## what a filmed walk added to the city (details.gd), or null
 var _decks: Decks                    ## bridges, embankments, cuttings, tunnels (decks.gd)
 var _on_deck := -1                   ## while a deck road is drawn: heights come from it, not the ground
+var _inferred := {}                  ## what decks.gd's infer() made of a real town's bridges (the report)
 var _wired := {}                     ## road index -> true: Bedford's lamps hang off its power poles
 var _flag_spots: Array = []          ## a flag on a staff off a lamp post (local X out over the road)
 var _balcony_flags: Array = []       ## a flag hanging off a balcony's parapet
@@ -1103,6 +1108,8 @@ func start(_config: Dictionary) -> void:
 	Probe.event("city", {"name": _city_name, "roads": _roads.size(), "buildings": _blds.size(),
 		"trees": _posts.size(), "streets": _streets.size(), "dressing": _dressing, "stage_ms": _stage_ms,
 		"parse_ms": t1 - t0, "build_ms": Time.get_ticks_msec() - t1})
+	if not _inferred.is_empty():
+		Probe.event("decks_inferred", _inferred)
 	_show_banner(_city_name, 3.0)
 	var dev_cam := OS.get_environment("STREETS_CAM").split(",", false)
 	if dev_cam.size() >= 6 and dev_cam[5] == "1":
@@ -1367,10 +1374,17 @@ func _clip_buildings(bdata: Array) -> void:
 		var cuts: Array = []
 		for code: int in _near(_seg_hash, box.get_center(), box.size.length() * 0.5 + 14.0, SEG_CELL):
 			var r: Dictionary = _roads[code / 4096]
-			if not _kerbed(r) or r.has("ys"):
-				continue   # (a deck: kept clear of the buildings when the town was laid out)
-			var pts: PackedVector2Array = r["pts"]
 			var sj := code % 4096
+			if r.has("ys"):
+				# a deck: cut back like a street where it runs low (an embankment, a bridge's
+				# foot: nothing stands under a deck less than a storey up); never over a
+				# tunnel or a cutting (the houses on the hill above it)
+				if not (String(r["deck"]) in ["em", "br"]) or not r["drive"] \
+						or maxf(r["ys"][sj] - r["gs"][sj], r["ys"][sj + 1] - r["gs"][sj + 1]) > 4.0:
+					continue
+			elif not _kerbed(r):
+				continue
+			var pts: PackedVector2Array = r["pts"]
 			var a := pts[sj]
 			var b := pts[sj + 1]
 			var c := float(r["w"]) * 0.5 + BLD_CLEAR
@@ -1448,6 +1462,10 @@ func _load_city(id: String) -> bool:
 	if not extra.is_empty():
 		_details = Details.new(self, extra)
 		_details.edit_city(data)
+	if String(_place.get("decks", "")) == "infer":   # (OSM has no heights: worked out here)
+		var t_inf := Time.get_ticks_msec()
+		_inferred = Decks.infer(data, DRIVE)
+		_inferred["ms"] = Time.get_ticks_msec() - t_inf
 	_city_name = String(data.get("name", id))
 	var b: Array = data["bounds"]
 	_bounds = Rect2(b[0], b[1], float(b[2]) - float(b[0]), float(b[3]) - float(b[1]))
@@ -1703,6 +1721,7 @@ var _tile_signs := {}                ## square -> stop and give-way signs
 var _tile_lit := {}                  ## square -> junctions with traffic lights
 var _tile_bars := {}                 ## square -> mapped fences and hedges that reach it
 var _crossing_set := {}
+var _white_bollards := {}            ## crossing nodes whose bollards are white, as filmed (details.gd)
 var _bg_build := false               ## building in the background: stop for the frame when over budget
 var _bg_wait := false
 ## The squares round the start are built behind the loading text, and each used to go up in one
@@ -1937,7 +1956,7 @@ func _build_tile(t: Vector2i) -> void:
 	_tile = t
 	_set_tiling(true)
 	_batching = true
-	for a: Array in [_stop_lines, _pole_plates, _chimneys, _mall_glass, _lobby_doors, _balcony_flags, _flag_spots, _stop_ads]:
+	for a: Array in [_stop_lines, _pole_plates, _chimneys, _mall_glass, _lobby_doors, _balcony_flags, _flag_spots, _stop_ads, _cat_spots, _car_flags]:
 		a.clear()   # made by one builder for the next, square by square
 	var tk := Time.get_ticks_msec()
 	_ao = CBuf.new(GROUND_CELL)
@@ -2622,6 +2641,11 @@ void fragment() {
 		float joint = 1.0 - smoothstep(jw, jw + max(fw, 0.0015), pv.x);
 		float bevel = smoothstep(jw, jw + 0.012, pv.x);
 		col *= mix(1.0, mix(1.0, 0.66, joint) * mix(0.93, 1.0, bevel), 1.0 - far);
+		if (COLOR.a < 0.99) {   // a garden wall at the back (COLOR.a: how far back / 4): darker at its foot
+			float back = COLOR.a * 4.0;
+			float k = smoothstep(back - 0.6, back, UV.y);
+			col *= 1.0 - 0.36 * k * k;
+		}
 		// the grime of a street: wide soft stains, darker where feet and wheels go
 		float st = h21(floor(wpos.xz / 2.3)) * 0.5 + h21(floor(wpos.xz / 0.9) + 4.1) * 0.5;
 		col *= 0.9 + 0.1 * smoothstep(0.2, 0.8, st);
@@ -2797,7 +2821,7 @@ func _build_kerbs() -> void:
 	var wall := _clip_buf(GROUND_CELL)
 	var garden := _clip_buf(GROUND_CELL)
 	var fronts := {"hedge": _clip_buf(GROUND_CELL), "bars": _clip_buf(GROUND_CELL), "bar_posts": _clip_buf(GROUND_CELL),
-		"chain": _clip_buf(GROUND_CELL), "chain_posts": _clip_buf(GROUND_CELL), "flowers": []}
+		"chain": _clip_buf(GROUND_CELL), "chain_posts": _clip_buf(GROUND_CELL), "planks": _clip_buf(GROUND_CELL), "flowers": []}
 	var bushes: Array = []
 	var med := String(_place.get("look", "")) == "med"
 	for ri: int in _tile_roads.get(_tile, []):
@@ -2833,6 +2857,7 @@ func _build_kerbs() -> void:
 						continue   # the halves touch: a painted line, no kerb
 					pw = clampf(m * 0.5 - KERB_W, 0.0, PAVE_W)   # each half paves its half of the median
 				var inner := _offset_line(run, hw * sgn)
+				_pave_walled = med and yard and not inner_side
 				# where the paint changes along this kerb: red-white for KERB_RED at an end that
 				# meets a junction, yellow-black along a bus stop on this side
 				var marks := _kerb_marks(r, run, inner, red_ends, stops) if not inner_side else []
@@ -2863,6 +2888,7 @@ func _build_kerbs() -> void:
 							na.lerp(nb, t0).normalized(), na.lerp(nb, t1).normalized(), pw,
 							Color(float(p) / 4.0 + 0.05, 0, 0), along + u0, u1 - u0)
 					along += seg
+				_pave_walled = false
 				if inner_side:
 					continue
 				if not yard:
@@ -2890,6 +2916,7 @@ func _build_kerbs() -> void:
 					wall.quad3(_g3(w_in[i], wy), _g3(w_in[i + 1], wy), _g3(w_out[i + 1], wy), _g3(w_out[i], wy))
 					if _mine(w_in[i]):   # (every square along the street works it out: one records it)
 						add_wall((w_in[i] + w_out[i]) * 0.5, (w_in[i + 1] + w_out[i + 1]) * 0.5, 0.13)
+
 					var fn := Vector3(-(w_in[i + 1] - w_in[i]).y, 0, (w_in[i + 1] - w_in[i]).x).normalized() * -sgn
 					wall.tri(_g3(w_in[i], 0.0), _g3(w_in[i + 1], 0.0), _g3(w_in[i + 1], wy), fn, Color.WHITE)
 					wall.tri(_g3(w_in[i], 0.0), _g3(w_in[i + 1], wy), _g3(w_in[i], wy), fn, Color.WHITE)
@@ -2933,6 +2960,7 @@ func _build_kerbs() -> void:
 	_add_mesh(fronts["bar_posts"], _surface("railing"), false, DETAIL_RANGE * 0.8)
 	_add_mesh(fronts["chain"], _furn._fence_material("fencegreen", 0.12), false, DETAIL_RANGE * 0.8)
 	_add_mesh(fronts["chain_posts"], _surface("fencegreen"), false, DETAIL_RANGE * 0.8)
+	_add_mesh(fronts["planks"], _vc_mat(), true, DETAIL_RANGE * 0.8)
 	if not (fronts["flowers"] as Array).is_empty():
 		# bougainvillea: a leafy green shrub (the trees' leaf cards, small) with a smaller
 		# crown of magenta on top of it -- the instance colour turns the leaves into flowers
@@ -3180,7 +3208,7 @@ func _kerb_piece(kerb: Buf, pave: Buf, a: Vector2, b: Vector2, na: Vector2, nb: 
 		if nrm.y < 0.0:
 			nrm = -nrm
 		nrm = nrm.normalized() if nrm.length_squared() > 0.000001 else Vector3.UP
-		var pc := Color(_pave_code, _leafy((oa + ob) * 0.5 + (na + nb) * pw * 0.25), 1.0)
+		var pc := Color(_pave_code, _leafy((oa + ob) * 0.5 + (na + nb) * pw * 0.25), 1.0, pw / 4.0 if _pave_walled else 1.0)
 		pave.tri(o0, o1, c2, nrm, pc, Vector2(along, 0), Vector2(along + seg, 0), Vector2(along + seg, pw))
 		pave.tri(o0, c2, c3, nrm, pc, Vector2(along, 0), Vector2(along + seg, pw), Vector2(along, pw))
 
@@ -3188,6 +3216,7 @@ func _kerb_piece(kerb: Buf, pave: Buf, a: Vector2, b: Vector2, na: Vector2, nb: 
 ## slabs; Bedford's poured concrete -- and its colours -- reds and browns, greys, sand, all of
 ## them mixed -- as the red of the pavement's vertex colour (see KERB_SHADER)
 var _pave_code := 0.0
+var _pave_walled := false            ## the pavement being laid has a garden wall at its back (KERB_SHADER darkens its foot)
 
 func _set_pave_code(hsh: int) -> void:
 	var pattern := 3
@@ -3203,8 +3232,9 @@ func _set_pave_code(hsh: int) -> void:
 
 ## A garden's front, plot by plot along one side of a street's run (each 14-22 m, a gap
 ## between them where the gates are), as a walk down Givatayim's streets has them: a clipped
-## hedge behind the low wall, white bars or green chain-link on top of it, or the bare wall;
-## bougainvillea spilling over one in six. Keyed to the run, so every square along the
+## hedge behind the low wall, a fence of wooden boards on top of it (a second filmed walk:
+## the commonest front down a whole street), white bars or green chain-link, or the bare
+## wall; bougainvillea spilling over one in six. Keyed to the run, so every square along the
 ## street works out the same plots (the fronts are laid like the kerbs: CBuf.clip).
 func _garden_fronts(run: PackedVector2Array, hw: float, sgn: float, key: int, fronts: Dictionary,
 		walled: PackedByteArray) -> void:
@@ -3221,7 +3251,7 @@ func _garden_fronts(run: PackedVector2Array, hw: float, sgn: float, key: int, fr
 		var h := posmod(key + plot * 7919, 1000003)
 		var e := minf(s + 14.0 + float(posmod(h, 9)), total)
 		var style := posmod(h >> 4, 100)
-		var line := behind if style < 42 else on_wall
+		var line := behind if style < 36 else on_wall
 		var pts: Array = [_along(line, cum, s + 0.7)]
 		var seg: Array = [_seg_at(cum, s + 0.7)]   # the piece of the run each stretch starts on
 		var box := Rect2(pts[0], Vector2.ZERO)
@@ -3238,7 +3268,7 @@ func _garden_fronts(run: PackedVector2Array, hw: float, sgn: float, key: int, fr
 			continue
 		if _over():
 			await _pause()
-		if style < 42:
+		if style < 36:
 			# a hedge behind the wall, on the garden strip: off the roads where the strip is
 			# (looked at already), but it can still run into a house, so it looks for those
 			for k in range(pts.size() - 1):
@@ -3247,11 +3277,18 @@ func _garden_fronts(run: PackedVector2Array, hw: float, sgn: float, key: int, fr
 					# (its ends clear of the asphalt by its half width: where the strip met
 					# another street at a bend, one stood 0.4 m into the road)
 					_furn._hedge_line(fronts["hedge"], pts[k], pts[k + 1], false)
-		elif style < 76:
+		elif style < 56:
+			# wooden boards on the wall, its top to about head height, where the wall is
+			for k in range(pts.size() - 1):
+				var a: Vector2 = pts[k]
+				var b: Vector2 = pts[k + 1]
+				if walled[int(seg[k])] and a.distance_to(b) >= 0.3:
+					_plank_fence(fronts["planks"], a, b, 0.62, 0.95 + 0.25 * float(posmod(h >> 11, 3)) / 2.0)
+		elif style < 78:
 			# bars or chain-link on the wall: only where the wall is, which was looked at
 			# already and is solid already, so no looking again and no walls of its own --
 			# and in one panel per piece of the wall, its foot along the wall's top
-			var bars := style < 62
+			var bars := style < 67
 			var run_u := 0.0
 			for k in range(pts.size() - 1):
 				var a: Vector2 = pts[k]
@@ -3264,6 +3301,18 @@ func _garden_fronts(run: PackedVector2Array, hw: float, sgn: float, key: int, fr
 					run_u = _furn.wall_fence(fronts["bars"], fronts["bar_posts"], A, B, 0.95, _tone["railing"], 2.4, true, run_u)
 				else:
 					run_u = _furn.wall_fence(fronts["chain"], fronts["chain_posts"], A, B, 1.3, _tone["fencegreen"], 2.6, false, run_u)
+		# a cat on the wall, where no fence stands on it: one plot in twenty (its own hash: h has
+		# too few bits to share out -- the cats' choices taken from it were all "sit")
+		var hc := posmod(_hash_i(Vector2(float(posmod(key, 100003)), float(plot) + 0.5)), 1000003)
+		if (style < 42 or style >= 76) and hc % 100 < 5:
+			var sm := lerpf(s, e, 0.2 + 0.6 * float((hc / 100) % 100) / 100.0)
+			var q := _along(on_wall, cum, sm)
+			var to_road := (_along(run, cum, sm) - q).normalized()
+			if (hc / 10000) % 10 < 6:
+				cat_at(q, _g3(q, 0.62).y, to_road.rotated(float((hc / 100000) % 7 - 3) * 0.25), "sit")
+			else:
+				var along_w := (_along(on_wall, cum, minf(sm + 0.5, total)) - q).normalized()
+				cat_at(q, _g3(q, 0.62).y, along_w * (1.0 if (hc / 100000) % 2 == 0 else -1.0), "loaf")
 		if posmod(h >> 9, 100) < 16:   # bougainvillea over the wall, a few clumps
 			for t: float in [0.25, 0.5, 0.75]:
 				var q := _along(on_wall, cum, lerpf(s, e, t)) - (on_wall[0] - run[0]).normalized() * 0.15
@@ -3272,6 +3321,28 @@ func _garden_fronts(run: PackedVector2Array, hw: float, sgn: float, key: int, fr
 					(fronts["flowers"] as Array).append(Transform3D(Basis.from_scale(Vector3(1.4, 1.0, 1.1) * sc), _g3(q, 0.62 + 0.3 * sc)))
 		s = e
 		plot += 1
+
+## horizontal wooden boards with thin gaps between, on posts, from `base` above the ground up
+## `h`, from a to b (as details.gd's filmed wooden fences; the boards' tones vary a little)
+func _plank_fence(b: CBuf, a: Vector2, e: Vector2, base: float, h: float) -> void:
+	var L := a.distance_to(e)
+	var d := (e - a) / L
+	var gy := minf(_h(a), _h(e))   # (level boards: on a slope the low end's foot is in the wall)
+	var bs := Basis(Vector3.UP, atan2(-d.y, d.x))
+	var mid := (a + e) * 0.5
+	var wood: Color = _tone["woodfence"]
+	_plank_at.append(mid)
+	var y := base
+	var k := 0
+	while y + 0.12 <= base + h + 0.01:
+		_furn._box(b, Vector3(mid.x, gy + y + 0.06, mid.y), Vector3(L, 0.12, 0.03), wood.darkened(0.08 * float(k % 3)), bs)
+		y += 0.145
+		k += 1
+	var s := 0.0
+	while s <= L:
+		var p := a + d * s
+		_furn._box(b, Vector3(p.x, gy + base + h * 0.5, p.y), Vector3(0.08, h, 0.08), wood.darkened(0.2), bs)
+		s += 1.8
 
 ## how many trees overhang a spot on the pavement, 0..1 (for the leaves on it)
 func _leafy(p: Vector2) -> float:
@@ -4542,6 +4613,8 @@ func _build_trees() -> void:
 		put.call(spec[2], Transform3D(b * Basis.from_scale(cw * jitter * sc), base + b * Vector3(0, float(spec[4]) * sc, 0)),
 			Color(tint.r * g, tint.g * g, tint.b * g, (float(cell) + 0.5) / 4.0))
 		_ao_tree(Vector2(sp.x, sp.y), cw.x * jitter.x * sc * (0.55 if tpart == "ptrunk" else 0.85), float(spec[4]) * sc)
+		if not forest.has(si) and not mtn.has(si):   # the trunk's foot (the street's trees: not the parks', open land's or mountains')
+			_ao_disc(Vector2(sp.x, sp.y), (0.45 if tpart == "ptrunk" else 0.6) * sc, 0.7)
 	# a square that is mostly mountain woods: drawn from further off, as they are seen across
 	# the valley
 	var reach := TREE_RANGE * 1.7 if mtn.size() * 2 > spots.size() else TREE_RANGE
@@ -5864,6 +5937,30 @@ func _set_night(on: bool) -> void:
 ## main roads) stay all but empty.
 const PARKED_FILL := [0.55, 0.05, 0.72, 0.0]   ## share of the kerb taken: plain, red-white, blue-white, yellow-black
 const PARKED_FILL_LIVING := 0.3
+const PARKED_MOTO := 0.3             ## a gap between the parked cars that has a motorbike or scooter in it
+
+## A motorbike or scooter parked up on the pavement in a gap between the cars, as they stand
+## all along a filmed residential street in Givatayim: on the front half of the pavement (the
+## back half is where people walk), along the kerb or at a slant to it, leaning on its stand.
+func _park_moto(r: Dictionary, ri: int, run: PackedVector2Array, cum: PackedFloat32Array, s: float, total: float,
+		hw: float, sgn: float, rng: RandomNumberGenerator, palette: Array, xf_by: Dictionary, cols_by: Dictionary) -> void:
+	var slant := rng.randf_range(-0.7, 0.7) if rng.randf() < 0.4 else rng.randf_range(-0.12, 0.12)
+	var colour: Color = palette[rng.randi() % palette.size()]
+	var c := _along(run, cum, s + rng.randf_range(-1.5, 1.5))
+	var d := (_along(run, cum, minf(s + 1.0, total)) - c).normalized()
+	var side := Vector2(-d.y, d.x) * sgn
+	var p := c + side * (hw + KERB_W + 0.75)
+	var face := (d * sgn).rotated(slant)
+	if not _mine(p) or _no_parking(r, ri, p) or _push_out(p, 0.6, false) != Vector2.ZERO or not _clear_of_posts(p, 1.0):
+		return
+	if not (_off_road(p + face * 0.95, 0.05) and _off_road(p - face * 0.95, 0.05)):
+		return
+	var bs := Basis(Vector3.UP, atan2(face.x, face.y)) * Basis(Vector3.BACK, 0.13 * (1.0 if rng.randf() < 0.5 else -1.0))
+	(xf_by["moto_parked"] as Array).append(Transform3D(bs, Vector3(p.x, _walk_y(p), p.y)))   # on the pavement, as people stand
+	(cols_by["moto_parked"] as Array).append(colour)
+	_add_post(p, 0.55)
+	_moto_at.append(p)
+	_tally("parked_moto", 1)
 
 ## no parking at p beside road ri: its red-white corner or a bus stop's yellow-black
 func _no_parking(r: Dictionary, ri: int, p: Vector2) -> bool:
@@ -5883,8 +5980,8 @@ func _build_parked() -> void:
 		return   # northern suburbs park in driveways
 	var xf: Array = []
 	var cols: Array = []
-	var xf_by := {"sedan": [], "hatch": [], "suv": [], "van": []}
-	var cols_by := {"sedan": [], "hatch": [], "suv": [], "van": []}
+	var xf_by := {"sedan": [], "hatch": [], "suv": [], "van": [], "moto_parked": []}
+	var cols_by := {"sedan": [], "hatch": [], "suv": [], "van": [], "moto_parked": []}
 	var palette := _car_paints()
 	var rng := RandomNumberGenerator.new()
 	for ri: int in _tile_roads.get(_tile, []):
@@ -5933,12 +6030,24 @@ func _build_parked() -> void:
 								* Basis(Vector3.BACK, roll) * Basis(Vector3.FORWARD, -0.05 * sgn)
 							(xf_by[kind] as Array).append(Transform3D(lean, _g3(p, 0.1)))   # half up the kerb
 							_ao_car(p, face, KERB_H + 0.025)
+							var roll2 := posmod(_hash_i(p * 7.0), 1000)
+							if roll2 < 70:   # a flag on a stick at the back window on the road's side
+								var win := p - side * 0.86 - face * 0.5
+								var fly := Vector3(-face.x, 0, -face.y)
+								_car_flags.append(Transform3D(Basis(fly, Vector3.UP, fly.cross(Vector3.UP)),
+									_g3(win, 0.1 + float({"sedan": 1.12, "hatch": 1.15, "suv": 1.32, "van": 1.45}.get(kind, 1.15)))))
+							elif roll2 > 980:   # a cat on the pavement at its nose
+								var cq := p + face * 2.7 + side * 0.45
+								cat_at(cq, _g3(cq, KERB_H).y, -side.rotated(float(roll2 % 5 - 2) * 0.3), "sit")
 							(cols_by[kind] as Array).append(colour)
 							xf.append(0)
 							_add_post(p + face * 1.25, 0.85)
 							_add_post(p - face * 1.25, 0.85)
+					elif rng.randf() < PARKED_MOTO:
+						_park_moto(r, ri, run, cum, s, total, hw, sgn, rng, palette, xf_by, cols_by)
 					s += 5.6
 	_parked_xf = xf_by   # drawn with the car parks' cars, in one set of batches (_build_lots)
+	await _furn._place(_furn._flag_kit("car", "il"), _car_flags, _furn.NEAR_SEEN, "flags_on_cars")
 	_parked_cols = cols_by
 	_tally("parked", xf.size())
 
@@ -5947,6 +6056,8 @@ func _build_parked() -> void:
 ## front across a 6 m aisle), the bays painted, and about three in four taken. Bays that
 ## would stick out of the lot, into a building, onto a road or onto a tree are left out.
 var _lot_at: Array = []              ## a car in each car park (for tests and tours)
+var _moto_at := PackedVector2Array()  ## each motorbike parked on a pavement (for tests: tests/street_fronts.gd)
+var _plank_at := PackedVector2Array() ## a point along each piece of wooden board fence on a garden wall (for tests)
 var _parked_xf := {}                 ## the street's parked cars by shape, to batch with the car parks'
 var _parked_cols := {}
 const LOT_CARS := 6000               ## car-park cars in a whole city, at most: they are a lot to draw
@@ -5956,8 +6067,8 @@ func _build_lots() -> void:
 	var rings: Array = _rings_near("parking").filter(_ring_mine)
 	var palette := _car_paints()
 	var rng := RandomNumberGenerator.new()
-	var xf_by := {"sedan": [], "hatch": [], "suv": [], "van": []}
-	var cols_by := {"sedan": [], "hatch": [], "suv": [], "van": []}
+	var xf_by := {"sedan": [], "hatch": [], "suv": [], "van": [], "moto_parked": []}
+	var cols_by := {"sedan": [], "hatch": [], "suv": [], "van": [], "moto_parked": []}
 	for kind: String in _parked_xf:   # the street's parked cars go in the same batches
 		(xf_by[kind] as Array).append_array(_parked_xf[kind])
 		(cols_by[kind] as Array).append_array(_parked_cols[kind])
@@ -6305,6 +6416,8 @@ func _parked_mesh(kind := "sedan") -> ArrayMesh:
 		return _bus_mesh()
 	if kind == "moto":
 		return _moto_mesh()
+	if kind == "moto_parked":
+		return _moto_mesh(false)
 	if kind == "truck":
 		return _truck_mesh()
 	var taxi := kind == "taxi"
@@ -6785,8 +6898,8 @@ func _bus_mesh() -> ArrayMesh:
 ## A scooter and its rider, 1.9 m, made of rounded pieces: two small spoked wheels, the
 ## body and the leg shield in its colour, a dark seat and floorboard, the handlebars, a lamp
 ## at each end; the rider in a dark jacket and trousers, arms out to the bars, a helmet
-## with its visor. Faces +Z.
-func _moto_mesh() -> ArrayMesh:
+## with its visor. Faces +Z. Without `rider`: one parked on the pavement.
+func _moto_mesh(rider := true) -> ArrayMesh:
 	var cm := CarMesh.new()
 	var paint := Color(1, 1, 1, 1.0)
 	var trim := Color(_tone["cartrim"], 0.5)
@@ -6807,6 +6920,14 @@ func _moto_mesh() -> ArrayMesh:
 	_blobm(cm, Vector3(0, 0.98, 0.57), Vector3(0.07, 0.06, 0.03), Color(_tone["tank"], 0.1), 8, 4)
 	_blobm(cm, Vector3(0, 0.62, -0.84), Vector3(0.07, 0.04, 0.03), Color(_tone["tank"], 0.0), 8, 4)
 	# the rider, leaning a little to the bars: a torso, arms bent at the elbow, knees up
+	if rider:
+		_moto_rider(cm, jacket, legs, helmet)
+	var am := cm.mesh(_car_material())
+	am.custom_aabb = am.get_aabb().grow(0.1)
+	_car_meshes["moto" if rider else "moto_parked"] = am
+	return am
+
+func _moto_rider(cm: CarMesh, jacket: Color, legs: Color, helmet: Color) -> void:
 	_limb(cm, Vector3(0, 0.98, -0.22), Vector3(0, 1.5, -0.06), 0.16, jacket)
 	for sx: float in [-1.0, 1.0]:
 		var shoulder := Vector3(sx * 0.18, 1.42, -0.07)
@@ -6821,10 +6942,6 @@ func _moto_mesh() -> ArrayMesh:
 		_limb(cm, knee, foot, 0.065, legs)
 	_blobm(cm, Vector3(0, 1.66, 0.0), Vector3(0.13, 0.14, 0.14), helmet)          # the helmet
 	_blobm(cm, Vector3(0, 1.64, 0.1), Vector3(0.1, 0.055, 0.06), Color(_tone["carglass"], 0.75), 8, 4)   # its visor
-	var am := cm.mesh(_car_material())
-	am.custom_aabb = am.get_aabb().grow(0.1)
-	_car_meshes["moto"] = am
-	return am
 
 ## A delivery truck, 6.8 m: a van's cab (CAR_SHAPES "truck", built like the cars) with a
 ## tall white box behind it, its back doors' seam and hinges. Faces +Z.
@@ -8474,6 +8591,19 @@ func _ao_tree(p: Vector2, r: float, y: float) -> void:
 			_ao.tri(mid, last, q, Vector3.UP, col, one, Vector2.ZERO, Vector2.ZERO, p)
 		last = q
 
+## ---- street cats and flags on cars -------------------------------------------------------
+## The builders say where a cat is (cat_at: on a garden wall, by a bin, at a parked car's nose)
+## and furniture.gd's cats() puts them there; a parked car in fourteen flies a flag from a back
+## window (Israel only). Both a square at a time, with the square.
+var _cat_spots: Array = []           ## this square's cats: [transform, "sit" / "loaf", coat]
+var _car_flags: Array = []           ## this square's flags on parked cars
+
+func cat_at(p: Vector2, y: float, face: Vector2, kind: String) -> void:
+	if not _mine(p):
+		return
+	var yaw := atan2(face.x, face.y) if face.length_squared() > 0.0001 else 0.0
+	_cat_spots.append([Transform3D(Basis(Vector3.UP, yaw), Vector3(p.x, y, p.y)), kind, posmod(_hash_i(p * 3.0), 97)])
+
 ## ---- contact shadows ------------------------------------------------------------------------
 ## Where a wall meets the ground, and under a parked car, less of the sky's light gets in and
 ## the ground is darker: what makes a house stand on the street and a car sit on it, rather
@@ -8606,6 +8736,20 @@ func _ao_footprint(ring: PackedVector2Array, foot := 1.0, w := AO_W, col := Colo
 				_ao.tri(foot3[i1], r0, nx, up, col, one, zero, zero)
 				r0 = nx
 			carry = r0   # (b + o2 * w: where the next wall's strip starts)
+
+## a soft round patch on the ground round c (a tree's trunk): dark in the middle, gone at r
+func _ao_disc(c: Vector2, r: float, k: float) -> void:
+	if _ao == null:
+		return
+	var col := Color(k, 0, 0)
+	var mid := _g3(c, KERB_H + 0.025)   # (one height: a metre across, the ground is level enough)
+	var one := Vector2(1, 0)
+	var last := mid + Vector3(r, 0, 0)
+	for i in range(1, 7):
+		var a := TAU * i / 6.0
+		var q := mid + Vector3(cos(a) * r, 0, sin(a) * r)
+		_ao.tri(mid, last, q, Vector3.UP, col, one, Vector2.ZERO, Vector2.ZERO)
+		last = q
 
 var _ao_cars: Array = []      ## [middle, nose] of the first cars given a patch (for tests)
 
@@ -10054,6 +10198,7 @@ const NATURAL := {
 	"glass": 0.5, "glass2": 0.5, "glass3": 0.5, "glass4": 0.5, "shutter": 0.3, "recess": 0.3, "lobby": 0.35, "flowers": 0.8,
 	"roof": 0.2, "trunk": 0.45, "pole": 0.2, "haze": 0.45, "sky": 0.6, "board": 0.4, "solar": 0.5,
 	"tank": 0.3, "furniture": 0.3, "pavement": 0.2, "pavers_dark": 0.15, "slabs": 0.15, "pavers_grey": 0.1, "kerb": 0.15, "stonewall": 0.45, "roofroom": 0.4,
+	"cat_ginger": 0.6, "cat_grey": 0.1, "cat_black": 0.1, "cat_cream": 0.35, "cat_brown": 0.45,
 	"gable": 0.5, "carglass": 0.4, "cartrim": 0.2, "tyre": 0.15, "rim": 0.2, "concrete": 0.15,
 	"insulator": 0.3, "trafo": 0.4, "cable": 0.2, "railing": 0.3, "brick": 0.7, "rubber": 0.6,
 	"metal": 0.1, "metalrim": 0.1, "skin": 0.75, "hair": 0.5, "shirt_a": 0.6, "shirt_b": 0.4,
@@ -10124,10 +10269,16 @@ func _tones() -> void:
 		# a filmed street's details (details.gd): charcoal pavers under an arcade, a forecourt
 		# of pale poured slabs
 		"pavers_dark": _greyed(ink.lerp(alt, 0.8), 0.85),
-		"slabs": _greyed(ink.lerp(alt, 0.52).lerp(wn, 0.16), 0.5),
+		"slabs": _greyed(ink.lerp(alt, 0.55).lerp(wn, 0.28), 0.38),   # (the film's: warm beige in the sun)
 		"pavers_grey": _greyed(ink.lerp(alt, 0.5), 0.85),
 		"kerb": ink.lerp(alt, 0.45),
 		"stonewall": ink.lerp(wn, 0.3).lerp(alt, 0.2),
+		# street cats' coats
+		"cat_ginger": ink.lerp(wn, 0.6).lerp(Palette.col("hazard"), 0.22),
+		"cat_grey": ink.lerp(bg, 0.48),
+		"cat_black": bg.lerp(ink, 0.1),
+		"cat_cream": ink.lerp(wn, 0.16),
+		"cat_brown": ink.lerp(wn, 0.4).lerp(bg, 0.5),
 		"woodfence": alt.lerp(wn, 0.35).lerp(bg, 0.4),
 		"bush": veg.lerp(bg, 0.58),
 		"roofroom": ink.lerp(wn, 0.12).lerp(alt, 0.1),
@@ -10678,6 +10829,7 @@ var _film_looks: Array = []          ## Vector3(from, to, radians): a glance to 
 var _film_zebras: Array = []         ## [from, to, kerb, kerb]: on a crossing (or waiting at it)
 var _film_cars: Array = []           ## [second, at, heading]: a car sent down a street
 var _film_sent := 0
+var _film_people: Array = []         ## [actor, from, to, from second, to second]: who the film shows
 
 func _film_begin(id: String) -> void:
 	var walks: Dictionary = _details.data.get("walks", {}) if _details != null else {}
@@ -10695,6 +10847,27 @@ func _film_begin(id: String) -> void:
 	for c: Array in w.get("cars", []):
 		_film_cars.append([float(c[0]), Vector2(c[1][0], c[1][1]), Vector2(c[2][0], c[2][1])])
 	_film_cars.sort_custom(func(a, b): return a[0] < b[0])
+	# the people the film shows, where it shows them: standing, or walking from `at` to `to`
+	# between two of its seconds (and not there before or after)
+	for pp: Dictionary in w.get("people", []):
+		var a := Actor3D.new()
+		world.add_child(a)
+		var who := int(pp.get("who", _film_people.size()))
+		a.set_character(PEOPLE[who % PEOPLE.size()], float(pp.get("tall", 1.72)))
+		_humanize(a, 9001 + who * 31)
+		_people_lod(a)
+		var A := Vector2(float(pp["at"][0]), float(pp["at"][1]))
+		var B := Vector2(float(pp["to"][0]), float(pp["to"][1])) if pp.has("to") else A
+		var tt: Array = pp.get("t", [0.0, 0.0])
+		a.position = Vector3(A.x, _walk_y(A), A.y)
+		var fc: Array = pp.get("face", [1, 0])
+		var fd: Vector2 = (B - A).normalized() if B != A else Vector2(float(fc[0]), float(fc[1])).normalized()
+		a.face(Vector3(fd.x, 0, fd.y))
+		var moving := B != A
+		var pace: float = A.distance_to(B) / maxf(float(tt[1]) - float(tt[0]), 0.01)
+		a.play("Walk" if moving else "Idle", true, pace / 1.35 if moving else 1.0)
+		a.visible = not moving
+		_film_people.append([a, A, B, float(tt[0]), float(tt[1])])
 	var p0 := _film_at(0.0)
 	_pos = p0
 	_yaw = (_film_at(1.5) - p0).angle()
@@ -10731,6 +10904,17 @@ func _film_tick(dt: float) -> void:
 		if _film_t > l.x and _film_t < l.y:
 			turn += l.z * smoothstep(l.x, l.x + 0.5, _film_t) * (1.0 - smoothstep(l.y - 0.5, l.y, _film_t))
 	_film_look = lerp_angle(_film_look, turn, 1.0 - exp(-dt * 6.0))
+	for fp: Array in _film_people:
+		var A: Vector2 = fp[1]
+		var B: Vector2 = fp[2]
+		if A == B:
+			continue
+		var f: float = (_film_t - float(fp[3])) / maxf(float(fp[4]) - float(fp[3]), 0.01)
+		var who: Actor3D = fp[0]
+		who.visible = f >= 0.0 and f <= 1.0
+		if who.visible:
+			var q := A.lerp(B, f)
+			who.position = Vector3(q.x, _walk_y(q), q.y)
 	while _film_sent < _film_cars.size() and _film_t >= float(_film_cars[_film_sent][0]):
 		var fc: Array = _film_cars[_film_sent]
 		_film_sent += 1

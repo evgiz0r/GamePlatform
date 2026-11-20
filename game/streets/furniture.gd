@@ -440,6 +440,7 @@ func build() -> void:
 	await fences()
 	await kerbside()   # (before the racks and scooters: they keep clear of these)
 	await street_life()
+	await cats()
 	for k: String in _count:
 		g._dressing[k] = _count[k]
 
@@ -503,6 +504,8 @@ func _flag_material() -> ShaderMaterial:
 ## A flag as a mesh. "fly": tied along its left edge at the origin, flying along +X, top
 ## at y 0 (for a flagpole). "hang": hanging from its top edge, centred, facing +Z (off a
 ## balcony). "staff": on a short staff up and out along +X from a lamp post, hanging from it.
+## "car": a small one on a plastic stick clipped to a car's window (the origin), the stick up
+## and a little back, the flag flying back along +X.
 func _flag_kit(how: String, country: String) -> ArrayMesh:
 	var key := how + country
 	if _kits.has(key):
@@ -518,6 +521,10 @@ func _flag_kit(how: String, country: String) -> ArrayMesh:
 		var sb := Basis(Vector3.BACK, tilt)
 		_tube(b, Vector3.ZERO, sb * Vector3(W + 0.35, 0, 0), 0.025, 0.02, _tone("mark"), 4)
 		xf = Transform3D(sb, sb * Vector3(0.25, -0.02, 0))
+	elif how == "car":   # 40 x 30 cm on a 55 cm stick (the cloth drawn at 0.38 of a full flag's size)
+		var top := Vector3(0.07, 0.55, 0)
+		_tube(b, Vector3.ZERO, top, 0.008, 0.006, _tone("cartrim"), 4)
+		xf = Transform3D(Basis().scaled(Vector3(0.38, 0.38, 1.0)), top)
 	# the cloth, cut into a grid so it can bend; UV.x says how free each corner is
 	var slack := func(u: float, v: float) -> float:
 		return u / W if how == "fly" else clampf(-v / H, 0.0, 1.0)
@@ -981,7 +988,7 @@ func kerbside() -> void:
 			var side := Vector2(-d.y, d.x)
 			var hw: float = float(r["w"]) * 0.5
 			var railed: bool = med and MAIN.has(r["k"])
-			var white := _rnd(ni * 7 + 3) < 0.25
+			var white: bool = _rnd(ni * 7 + 3) < 0.25 or g._white_bollards.has(ni)   # (or as filmed: details.gd)
 			for sg: float in [-1.0, 1.0]:          # both pavements
 				for way: float in [-1.0, 1.0]:     # both sides of the zebra
 					if railed:   # 1.2 m panels from 2.1 m out to 6 m
@@ -1033,6 +1040,10 @@ func kerbside() -> void:
 				if g._mine(p) and _free(p, 0.2, 0.4, 1.0):
 					bins.append(Transform3D(Basis(Vector3.UP, _rnd(p.round() + Vector2(1, 1)) * TAU), Vector3(p.x, _h(p) + kh, p.y)))
 					g._add_post(p, 0.3)
+					if med and _rnd(p.round() + Vector2(5, 2)) < 0.25:   # a cat by the bin, as there often is
+						var d: Vector2 = sp[1]
+						var c := p + d * (0.5 if _rnd(p.round() + Vector2(2, 9)) < 0.5 else -0.5)
+						g.cat_at(c, _h(c) + kh, -(sp[2] as Vector2).rotated((_rnd(p.round() + Vector2(4, 4)) - 0.5) * 2.0), "sit")
 	await _place(_bollard_kit(false), bollards, NEAR_SEEN * 1.2, "bollards")
 	await _place(_bollard_kit(true), bollard_white, NEAR_SEEN * 1.2, "bollards_white")
 	await _place(_rail_kit(), rails, NEAR_SEEN * 1.3, "railings_at_crossings")
@@ -1220,6 +1231,95 @@ func street_life() -> void:
 	await _place(_rack_kit(), racks, NEAR_SEEN, "bike_racks")
 	await _place(_bike_kit(), bikes, NEAR_SEEN, "bikes", false, bike_cols)
 	await _place(_scooter_kit(), scooters, NEAR_SEEN * 1.2, "scooters", false, scooter_cols)
+
+## ---- street cats ---------------------------------------------------------------------------
+## Givatayim's strays, as a walk down its streets has them: sitting on a garden wall or curled
+## up on it, by the bins, on the pavement at a parked car's nose (the game picks the spots:
+## cat_at). A few ellipsoids and tubes, white and pale grey with tabby stripes, that each
+## cat's coat (its instance colour) tints -- ginger, grey, black, cream, brown. They hold
+## still, as street cats mostly do: nothing to do per frame, and merged into the batches like
+## the rest of the kit (no draws of their own).
+const CAT_COATS := ["cat_ginger", "cat_ginger", "cat_grey", "cat_black", "cat_cream", "cat_brown", "cat_grey", "cat_ginger"]
+
+func cats() -> void:
+	for kind: String in ["sit", "loaf"]:
+		var xf: Array = []
+		var cols: Array = []
+		for c: Array in g._cat_spots:
+			if c[1] == kind:
+				xf.append(c[0])
+				cols.append(_tone(CAT_COATS[int(c[2]) % CAT_COATS.size()]))
+		await _place(_cat_kit(kind), xf, NEAR_SEEN * 0.7, "cats_" + kind, false, cols)
+
+## an ellipsoid of radii r round c, turned by bs; `stripes`: every other strip of its upper
+## half darker (a tabby's)
+func _ellipsoid(b, c: Vector3, r: Vector3, col: Color, bs := Basis(), stripes := false, seg := 7, rings := 4) -> void:
+	var P := func(i: int, j: int) -> Vector3:
+		var la := -PI * 0.5 + PI * j / rings
+		var lo := TAU * i / seg
+		return Vector3(cos(la) * sin(lo), sin(la), cos(la) * cos(lo))
+	for j in range(rings):
+		for i in range(seg):
+			var u := [P.call(i, j), P.call(i + 1, j), P.call(i + 1, j + 1), P.call(i, j + 1)]
+			var w: Array = []
+			for q: Vector3 in u:
+				w.append(c + bs * (q * r))
+			var n := (bs * (((u[0] + u[2]) as Vector3) * 0.5 / r)).normalized()
+			var k := col
+			if stripes and j >= rings / 2 and i % 2 == 0:
+				k = col * 0.72
+			k = Color(k.r, k.g, k.b) * (0.86 if n.y > 0.55 else 1.0)   # (the back a shade darker)
+			b.tri(w[0], w[1], w[2], n, k)
+			b.tri(w[0], w[2], w[3], n, k)
+
+## an ear: a thin pyramid from a base round `at` up to `tip`
+func _ear(b, at: Vector3, tip: Vector3, col: Color) -> void:
+	var s := Vector3(0.022, 0, 0)
+	var f := Vector3(0, 0, 0.012)
+	var base := [at - s - f, at + s - f, at + f]
+	for i in range(3):
+		var p0: Vector3 = base[i]
+		var p1: Vector3 = base[(i + 1) % 3]
+		b.tri(p0, p1, tip, (p0 + p1 - at * 2.0).normalized() + Vector3.UP * 0.3, col)
+
+## a cat facing +Z, its feet at y 0: "sit" (upright on its haunches, about 30 cm tall, the
+## tail round its paws) or "loaf" (lying with its paws tucked under, 40 cm long)
+func _cat_kit(kind: String) -> ArrayMesh:
+	var key := "cat_" + kind
+	if _kits.has(key):
+		return _kits[key]
+	var b = g.new_buf()
+	var fur := Color(0.84, 0.84, 0.84)   # (vertex colours are stored 0..1: the fur below white,
+	var pale := Color(1.0, 0.98, 0.94)   # so the muzzle and chest can be lighter)
+	var dark := Color(0.06, 0.06, 0.05)   # eyes and nose: not tinted by the coat
+	var head := Vector3(0, 0.275, 0.055)
+	if kind == "sit":
+		_ellipsoid(b, Vector3(0, 0.075, -0.03), Vector3(0.09, 0.075, 0.10), fur, Basis(), true)          # haunches
+		_ellipsoid(b, Vector3(0, 0.16, 0.025), Vector3(0.062, 0.1, 0.06), fur, Basis(Vector3.RIGHT, 0.25), true)   # chest
+		_ellipsoid(b, Vector3(0, 0.17, 0.06), Vector3(0.04, 0.06, 0.03), pale)                          # bib
+		for sx: float in [-1.0, 1.0]:   # front legs
+			_tube(b, Vector3(0.028 * sx, 0.13, 0.06), Vector3(0.03 * sx, 0.0, 0.075), 0.017, 0.015, fur, 5)
+		# the tail, along the ground round the front paws
+		var tail := [Vector3(0.0, 0.03, -0.12), Vector3(0.08, 0.02, -0.08), Vector3(0.11, 0.016, 0.0),
+			Vector3(0.09, 0.016, 0.07), Vector3(0.045, 0.016, 0.1)]
+		for i in range(tail.size() - 1):
+			_tube(b, tail[i], tail[i + 1], 0.019, 0.017, fur if i % 2 == 0 else fur * 0.72, 5)
+	else:
+		head = Vector3(0, 0.14, 0.17)
+		_ellipsoid(b, Vector3(0, 0.075, 0.0), Vector3(0.095, 0.075, 0.17), fur, Basis(), true)          # the loaf
+		_ellipsoid(b, Vector3(0, 0.06, 0.13), Vector3(0.05, 0.045, 0.04), pale)                          # chest, paws tucked
+		var tail := [Vector3(-0.06, 0.02, -0.15), Vector3(-0.1, 0.018, -0.04), Vector3(-0.1, 0.018, 0.07)]
+		for i in range(tail.size() - 1):
+			_tube(b, tail[i], tail[i + 1], 0.019, 0.017, fur if i % 2 == 0 else fur * 0.72, 5)
+	_ellipsoid(b, head, Vector3(0.058, 0.052, 0.056), fur, Basis(), true)
+	_ellipsoid(b, head + Vector3(0, -0.013, 0.05), Vector3(0.027, 0.02, 0.02), pale)   # muzzle
+	_ellipsoid(b, head + Vector3(0, -0.006, 0.068), Vector3(0.007, 0.005, 0.004), dark, Basis(), false, 4, 2)   # nose
+	for sx: float in [-1.0, 1.0]:
+		_ear(b, head + Vector3(0.033 * sx, 0.038, -0.004), head + Vector3(0.045 * sx, 0.085, -0.01), fur)
+		_ellipsoid(b, head + Vector3(0.022 * sx, 0.012, 0.05), Vector3(0.009, 0.007, 0.005), dark, Basis(), false, 4, 2)   # eyes
+	var am: ArrayMesh = _mesh(b)
+	_kits[key] = am
+	return am
 
 ## a hoop of tube, its plane across local X (bikes go in along X)
 func _rack_kit() -> ArrayMesh:
