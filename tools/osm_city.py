@@ -28,6 +28,12 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
                cu: 1 in a cutting, ly: OSM's layer when not 0, pv: 1 private (driveways),
                rb: 1 part of a roundabout, sv: a service road's kind -- parking_aisle,
                driveway, alley,
+               bf / bb: the bus lanes going the way's own way (forward, node order) / the
+                  other way: a letter a lane, left to right as a driver going that way sees
+                  them, "b" a bus (public transport) lane, "-" any other -- from OSM's
+                  bus:lanes / psv:lanes, lanes:bus / lanes:psv (a count: the rightmost) or
+                  busway=lane (the rightmost); left out when OSM marks none. A way that is
+                  all bus (highway=busway) is its kind, not these,
                y: [height per node]  the road's surface off the ground (a "deck"), in
                   decimetres above `height.base` like the ground grid; the bake leaves it out
                   (OSM has no such heights: tools/fake_city.py writes it for its own bridges
@@ -743,6 +749,49 @@ def flat(pts):
     return out
 
 
+def bus_lanes(t, lanes, o):
+    """the bus lanes a way's tags mark, per way of travel: {"bf": "--b", "bb": "b"} (see the
+    format above); {} when there are none"""
+    def pattern(v):
+        if not v:
+            return ""
+        parts = [p.strip() for p in v.split("|")]
+        if not any(p in ("designated", "only") for p in parts):
+            return ""
+        return "".join("b" if p in ("designated", "only") else "-" for p in parts)
+
+    def count(v, n):
+        k = int(num(v) or 0)
+        if k <= 0:
+            return ""
+        n = int(n) if n and n > k else k
+        return "-" * (n - k) + "b" * k
+
+    two_way = o == 0
+    lanes = int(lanes or 0)
+    each = lanes // 2 if two_way and lanes else lanes
+    out = {}
+    for way, keys in (("bf", ("forward",) if two_way else ("", "forward")), ("bb", ("backward",) if two_way else ())):
+        got = ""
+        for sfx in keys:
+            tail = (":" + sfx) if sfx else ""
+            got = got or pattern(t.get("bus:lanes" + tail)) or pattern(t.get("psv:lanes" + tail)) \
+                or count(t.get("lanes:bus" + tail), each) or count(t.get("lanes:psv" + tail), each)
+        if got:
+            out[way] = got
+    # busway=lane / busway:right / busway:left / busway:both: the rightmost lane each way
+    side = {"busway": "both", "busway:both": "both", "busway:right": "right", "busway:left": "left"}
+    for key, where in side.items():
+        if t.get(key) in ("lane", "opposite_lane"):
+            if where in ("both", "right") and "bf" not in out and o != -1:
+                out["bf"] = "-" * max(each - 1, 0) + "b"
+            if (where in ("both", "left") and two_way) or (o == -1 and where != "left"):
+                out.setdefault("bb", "-" * max(each - 1, 0) + "b")
+    if o == -1 and "bf" in out:   # (the way is drawn against its travel: its lanes are the "other" way's)
+        out["bb"] = out.pop("bf")
+    return out
+
+
 def num(s):
     """'12', '12.5 m', '12;14' -> 12.0; anything else -> None."""
     if s is None:
@@ -852,6 +901,9 @@ def bake(raw, name, args):
                 road["rb"] = 1
             if kind == "service" and t.get("service") in ("parking_aisle", "driveway", "alley"):
                 road["sv"] = t["service"]
+            road.update(bus_lanes(t, lanes, o))
+            if "bf" in road or "bb" in road:
+                stats["bus_lanes"] = stats.get("bus_lanes", 0) + 1
             out["roads"].append(road)
             stats["roads"] += 1
         for i in range(len(ids)):
@@ -1102,7 +1154,7 @@ def bake(raw, name, args):
         f"{stats['buildings']} buildings ({stats['guessed']} with guessed heights), "
         f"{stats['areas']} areas, {len(out['trees']) // 2} trees, {len(out['signals'])} "
         f"traffic lights, {len(out.get('rails', []))} rail tracks, {len(out.get('stations', []))} "
-        f"stations; {x1 - x0:.0f} x {z1 - z0:.0f} m")
+        f"stations, {stats.get('bus_lanes', 0)} road pieces with bus lanes; {x1 - x0:.0f} x {z1 - z0:.0f} m")
     return out
 
 
