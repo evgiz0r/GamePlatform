@@ -82,16 +82,24 @@ goes wrong shows up the first time it runs.
     them. Keep OSM's outlines (the game's roads were fitted round them) and lend each the
     height of the survey building covering most of it, 30% or more; measure the shift on
     one-to-one pairs first and match again with it.
-  - *It is a snapshot*: a 2019 survey had 6-7 m for towers finished since (OSM: 140-160 m)
-    and a building site's part-built height. Skip what it marks under construction.
+  - *It is a snapshot*: a 2019 survey had 6-7 m for towers finished since (OSM: 140-160 m),
+    79 m for a 151 m one going up, and a building site's part-built height. Skip what it
+    marks under construction; under 2.2 m a floor, take its floors instead.
+  - *Its height is the top point over the footprint*, roof or not: a tree's crown over a
+    low house, or the tower beside it (two-storey houses at 19-22 m among old trees, a
+    one-storey one at 214 m). Up to 4 floors, over (floors + 2) * 3.5 + 3 m is not the
+    roof: take its floors (~10% of buildings). Not on towers: their floors run 3-4.5 m and
+    the check would cut real ones (a 98 m tower to 80).
   - *One shape can be a whole complex at its tallest point*: a mall at a tower's foot came
     out 187 m, a 75 m^2 lobby 109 m. So a height OSM tags outright wins; floors OSM tags win
-    when the survey is over twice or under half that and 10 m off (not the same building);
-    a small outline (a quarter of the survey's shape) under a survey tower keeps its guess.
-  - *It is taller than floor counts*, +4-5 m on a typical block: the ground floor on columns
+    when the survey is over 1.5x or under 2/3 of that and 10 m off (not the same building,
+    or built since); a small outline (a quarter of the survey's shape) under a survey tower
+    keeps its guess.
+  - *It is taller than floor counts*, +4 m on a typical block: the ground floor on columns
     and the roof rooms that `building:levels` leaves out. Within the band above, take the
-    survey's: it was measured.
-  - Of 4011 OSM buildings 3121 took a survey height, 249 kept OSM's own; the survey also had
+    survey's: it was measured. A rule written against guessed heights (a house is under
+    13.5 m) may need moving: measured to the ridge, a two-storey pitched house is 9-16 m.
+  - Of 4011 OSM buildings 3138 took a survey height, 232 kept OSM's own; the survey also had
     ~500 small buildings OSM lacks (median 35 m^2, sheds and annexes, 57 over 300 m^2),
     not added.
 - **Government open data may refuse the cloud.** A national portal's API answered, but

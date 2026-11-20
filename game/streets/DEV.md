@@ -1642,10 +1642,14 @@ The cloud environment allows the host now (the user approved it).
 - **What the files have now**: buildings' `h` from the survey with `hm: 1` and no `g`;
   `yr` (where OSM had none) and `pil: 1` (columns) from it; `credits` at the top, which the
   game appends to the OSM line bottom left (`_credits`, `_osm_lbl`).
-  Tel Aviv: 3121 of 4011 buildings take the survey's height (median +4.6 m on what they had;
-  guesses left 402 of 2623), OSM's own kept on 249 (the record towers, the post-2019 ones);
-  `yr` on 3106, `pil` on 1293. Givatayim: its Tel Aviv strip only, 1047 of 6243 (guesses
-  left 4726); Givatayim itself is not in this layer.
+  Tel Aviv: 3138 of 4011 buildings take the survey's height (median +4.0 m on what they had;
+  guesses left 401 of 2623), OSM's own kept on 232 (the record towers, the post-2019 ones);
+  462 survey heights out of line with their floors (trees over low houses) taken from the
+  floors; `yr` on 2964, `pil` on 1291. Givatayim: its Tel Aviv strip only, 1039 of 6243
+  (guesses left ~4730); Givatayim itself is not in this layer.
+- **Landmarks** (`tests/landmarks.gd`): measured to the ridge, Sarona's two-storey Templer
+  houses are 9-16 m, so `TILE_MAX` went 13.5 -> 16 (with 13.5 the tiled count fell 39 ->
+  30). Lit roofs 92 -> 102 and lamps 355 -> 395: more buildings over 90 m now.
 - **Licence**: the municipality's open-data licence (as quoted in 2012 and in the portal's
   FAQ) lets anyone copy, publish and process the data for any lawful purpose, crediting the
   source, as-is. Not checked: whether layer 513 itself is in the open-data catalogue

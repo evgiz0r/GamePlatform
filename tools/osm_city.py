@@ -669,12 +669,18 @@ def terrain_grid(P, box, bounds, step, zoom=13, bare=False):
 #   field and the values that mean it stands on columns or has an open ground floor;
 #   skip: (field, values) of things not to take a height from (sheds, bus shelters, and a
 #   building site, which a survey catches part-built).
+# Its height is the top point over the footprint, so a tree's crown over a low house or the
+# tower beside it can be taken for the roof (a one-storey house at 214 m, two-storey ones at
+# 19-22 m): where that is out of line with its floors -- under 2.2 m a floor (part-built),
+# or, up to 4 floors, over (floors + 2) * 3.5 + 3 m (a tree reaches no higher; a tower's
+# floors vary too much to judge it so) -- its floors give the height instead.
 # Where OSM knows better it wins (Tel Aviv's survey is of 2019, and one shape there can be
 # a whole tower complex with the tower's height):
 #   - a height OSM tags outright (mappers look towers up; the survey had 6 m for a 160 m
 #     tower finished since, and 187 m for the mall at the tower's foot);
-#   - floors OSM tags that put it more than twice as tall or half as tall as the survey,
-#     and 10 m off: not the same building (a lobby beside a tower, a tower built since).
+#   - floors OSM tags that put it over 1.5 times as tall or under 2/3 as tall as the
+#     survey, and 10 m off: not the same building (a lobby beside a tower), or one built
+#     since (a 151 m tower the survey caught at 79 m).
 #     Nearer than that the survey wins: it counts the ground floor on columns and the
 #     rooftop rooms, which floor counts leave out (+5 m on a typical block);
 #   - a small outline (a quarter of the survey shape or less) under a survey tower over
@@ -734,7 +740,7 @@ def survey_fetch(s, box, offline):
 def osm_height_kind(b):
     """Where a baked building's height came from: "guess", "levels" (building:levels, plus
     roof:levels, at LEVEL_H a storey and a metre of roof) or "tag" (OSM's height=)."""
-    if b.get("g"):
+    if b.get("g") or b.get("hm"):   # (hm: a survey's own, from an earlier run: take it again)
         return "guess"
     if b.get("lv"):
         f = (b["h"] - 1.0) / LEVEL_H
@@ -772,10 +778,14 @@ def survey_apply(buildings, P, s, feats, stats):
         if pr.get(s["skip"][0]) in s["skip"][1]:
             continue
         h, fl = pr.get(s["h"]), pr.get(s["floors"])
+        est = (fl + 1) * LEVEL_H + 1.5 if fl and fl > 0 else None   # its floors, ground floor uncounted
         if h and h >= 2.0:
             h = float(h)
-        elif fl and fl > 0:
-            h = (fl + 1) * LEVEL_H + 1.5   # what its floors measure here, ground floor uncounted
+            if est and (h < fl * 2.2 or (fl <= 4 and h > (fl + 2) * 3.5 + 3.0)):
+                h = est   # the top point over it was a tree's crown or the tower next door
+                stats["survey_floors"] = stats.get("survey_floors", 0) + 1
+        elif est:
+            h = est
         else:
             continue
         polys = [g["coordinates"]] if g.get("type") == "Polygon" else g.get("coordinates", [])
@@ -852,7 +862,7 @@ def survey_apply(buildings, P, s, feats, stats):
         if own == "guess":
             same = not (sb["h"] > 30.0 and centroid(ring)[2] < 0.25 * sb["a"])
         else:
-            same = 0.5 <= sb["h"] / h <= 2.0 or abs(sb["h"] - h) <= 10.0
+            same = 0.67 <= sb["h"] / h <= 1.5 or abs(sb["h"] - h) <= 10.0
         if not same or own == "tag":
             kept += 1
         if not same:
@@ -870,8 +880,9 @@ def survey_apply(buildings, P, s, feats, stats):
     stats["guessed"] = sum(1 for b in buildings if b.get("g"))
     stats["surveyed"] = stats.get("surveyed", 0) + n
     log(f"survey {s['id']}: heights for {n} of {len(buildings)} buildings ({pil} on columns; "
-        f"OSM's own kept on {kept} it covers), its outlines shifted {shift[0]:+.1f}, "
-        f"{shift[1]:+.1f} m onto OSM's")
+        f"OSM's own kept on {kept} it covers; {stats.get('survey_floors', 0)} of its heights "
+        f"out of line with its floors, taken from those), its outlines shifted "
+        f"{shift[0]:+.1f}, {shift[1]:+.1f} m onto OSM's")
 
 
 def join_chains(segments):
