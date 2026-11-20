@@ -14,6 +14,12 @@ sound there was. Now the road's roar carries the speed and the engine sits under
   road.wav         3 s    tyres on asphalt: a pinkish roar from 90 Hz to 1.4 kHz, a hump at 800
   wind.wav         3 s    wind round the car: 300 Hz - 3.5 kHz
   city.wav         8 s    the city round you, far off: low and soft, slowly breathing
+  train.wav        4 s    a train going by (rails.gd, a 3D sound on each train): the wheels'
+                          roar on the rails, the bogies' thump coach by coach (three coaches
+                          a loop, so the rhythm loops too), a faint electric motor's whine
+  train_horn.wav   1.4 s  its horn, two tones, pulling out of a station (not a loop)
+
+`python3 make_sounds.py train train_horn` makes only those (the rest are left as they are).
 """
 import os
 import wave
@@ -67,8 +73,40 @@ def engine(load):
     return x / np.abs(x).max()
 
 
+def train():
+    n = int(R * 4.0)
+    t = np.arange(n) / R
+    roar = shaped_noise(4.0, lambda f: f ** -0.6 * bp(f, 60, 1600), 31)
+    # the bogies: three coaches a loop, two bogies a coach, two axles a bogie, each a dull thump
+    thump = np.zeros(n)
+    burst = shaped_noise(4.0, lambda f: bp(f, 70, 380), 32)
+    per = 4.0 / 3.0
+    for c in range(3):
+        for at in (0.08, 0.10 + per * 0.62):
+            for ax in (0.0, 0.11):
+                t0 = c * per + at + ax
+                env = np.exp(-np.maximum(t - t0, 0) / 0.035) * (t >= t0)
+                thump += env * burst
+    whine = sum(a * np.sin(2 * np.pi * f * t + ph) for f, a, ph in ((440, 1.0, 0.0), (880, 0.4, 1.3), (1320, 0.2, 2.1)))
+    x = roar + 0.9 * thump / np.abs(thump).max() + 0.08 * whine
+    return x / np.abs(x).max()
+
+
+def train_horn():
+    n = int(R * 1.4)
+    t = np.arange(n) / R
+    x = np.zeros(n)
+    for f0 in (370.0, 440.0):
+        vib = 1 + 0.004 * np.sin(2 * np.pi * 5.5 * t)
+        for h in range(1, 7):
+            x += np.sin(2 * np.pi * f0 * h * np.cumsum(vib) / R) / h
+    env = np.minimum(t / 0.05, 1.0) * np.minimum((1.4 - t) / 0.3, 1.0)
+    x *= env
+    return x / np.abs(x).max()
+
+
 SOUNDS = {"engine": lambda: engine(False), "engine_load": lambda: engine(True), "road": road,
-          "wind": wind, "city": city}
+          "wind": wind, "city": city, "train": train, "train_horn": train_horn}
 
 
 def save(path, x):
@@ -80,6 +118,10 @@ def save(path, x):
 
 
 if __name__ == "__main__":
+    import sys
+    only = sys.argv[1:]
     for name, make in SOUNDS.items():
+        if only and name not in only:
+            continue
         save(os.path.join(HERE, name + ".wav"), make())
         print(name + ".wav")

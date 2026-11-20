@@ -7023,6 +7023,8 @@ func _set_night(on: bool) -> void:
 		_traffic.set_night(on)
 	if _furn != null:
 		_furn.set_night(on)
+	if _rails != null:
+		_rails.set_night(on)
 	if _car_shader_mat != null:
 		_car_material()
 	_far_update()
@@ -13915,6 +13917,8 @@ func _engine_tick(dt: float) -> void:
 	if _engine.is_empty():
 		return
 	var off := Audio.muted() or finished or _paused
+	if _rails != null:
+		_rails.sound(off)
 	for i in range(_engine.size()):
 		var p: AudioStreamPlayer = _engine[i]
 		if off and p.playing:
