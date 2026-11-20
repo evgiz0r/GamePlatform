@@ -68,6 +68,9 @@ func _run() -> void:
 				break
 		process_frame.connect(g._frame)
 		g.set_physics_process(true)
+		if OS.get_environment("SHOTS_ONLY") != "":
+			quit(0)
+			return
 	if jn >= 0 and OS.get_environment("OUT") != "" and OS.get_environment("WIDE") != "":
 		g.set_physics_process(false)
 		var c: Vector2 = g._nodes[jn]

@@ -7468,10 +7468,13 @@ func _signal_cols() -> Array:
 	return [Color.from_hsv(0.0, sat, 1.0), Color.from_hsv(0.11, sat, 1.0), Color.from_hsv(0.40, sat, 0.95)]
 
 func _light_lamp(m: StandardMaterial3D, col: Color, on: bool) -> void:
-	m.albedo_color = col if on else col.lerp(Palette.col("bg").darkened(0.6), 0.9)
+	# (a strong glow came out white: the film-like tone curve bleaches anything much over 1,
+	# so the lamp keeps its colour in the glass and glows only a little past it)
+	m.albedo_color = col * 0.5 if on else col.lerp(Palette.col("bg").darkened(0.6), 0.9)
 	m.emission_enabled = on
 	m.emission = col
-	m.emission_energy_multiplier = 3.0
+	m.emission_energy_multiplier = 0.9
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED if on else BaseMaterial3D.SHADING_MODE_PER_PIXEL
 
 func _apply_signals() -> void:
 	var step: Array = SIGNAL_CYCLE[_sig_phase]
