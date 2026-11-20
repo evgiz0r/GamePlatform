@@ -547,6 +547,19 @@ before and a tunnel without it is still dropped.
   points kept), footpaths are never lifted. Bedford: 56 bridges, 72 crossings, ~190 deck
   pieces, 0.2 s; 2 of 63 crossings over roads short of the full clearance (4.8 m the
   lowest). `LEVEL=2` with `tests/decks.gd` drives its ten highest bridges both ways.
+- **Tunnels, worked out the same way** (Ashdod): a drivable tunnel way 20 m or longer that
+  runs under a road or path lies 6.2 m down along all of it (OSM's tunnel way is the covered
+  part); the depth rises back to the ground along the roads either side -- cuttings -- at a
+  ramp's grade, never through a junction (that stays at street level) nor onto what it runs
+  under, kept as negative lifts so the rest treats bridges and tunnels alike. Where the
+  nearest held point (what it runs under, a junction) is too close for the cuttings to get
+  down at 10%, the tunnel stays on the ground; one under nothing mapped (a passage through
+  a building) is put back on the ground too (it used to be dropped). Footpath tunnels are
+  still left out. Ashdod: 46 bridges, 4 tunnels (Menachem Begin's underpass, two service
+  roads), 7 cuttings, 0.3 s. Two traps on the way: a tunnel "crossed" its own next piece
+  (the shared end point; skip roads that share a point), and holding the whole of every
+  road crossed, or seeding the depth's room from every junction in town, made it 15 s and
+  held the tunnels' own ends at street level -- only near the crossing (80 m) now.
 - **What Bedford found** (the test town had hidden them): a divided road's two carriageways
   overlap at the median at not quite the same height -- `surf` now ranks what is under a
   body: the carriageway it is on, then a deck's pavement or parapet, then (where another
@@ -571,8 +584,10 @@ before and a tunnel without it is still dropped.
   (a turning car clipped the parapet), a 5 cm switch from a cutting's road to the ground
   where it gets shallow (a hop), and ground triangles left whole over a cutting (an edge
   parallel to the hole's leaves a smaller triangle: compare areas, not corner counts).
-- **Still to do**: the inferred heights for Givatayim and Ashdod (and their tunnels; Tel
-  Aviv is another session's); grass slopes for cuttings too (they are walled); a long-span
+- **Still to do**: the inferred heights for Givatayim (Tel Aviv is another session's);
+  Ashdod's tight interchange at its east edge (x 3850, z -1590: slip roads crossing slip
+  roads at street level -- 15 crossings short of the clearance, 0.5 m the lowest); a 0.5 s
+  hop out of Menachem Begin's underpass; footpath tunnels; grass slopes for cuttings too (they are walled); a long-span
   bridge's height over water (the MacKay's deck is only as high as its ends); pavements at street
   level beside a cutting (the underpass has none); people on a bridge's pavement; the
   minimap draws a tunnel like any street; zooming out from inside the tunnel rises from the

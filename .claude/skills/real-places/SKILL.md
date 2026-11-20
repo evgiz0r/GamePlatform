@@ -247,6 +247,12 @@ one needed:
   metre down with a guardrail on top, a retaining wall only where the bank's foot would land
   on another road or in a building. Give the bank's foot a collision line too (a car on the
   ground drove into the slope).
+- **Tunnels mirror bridges**: a drivable tunnel way under something lies a full clearance
+  down along all of it, cuttings rising back to street level along the roads either side,
+  never through a junction; one too short for its cuttings, or under nothing mapped (a
+  passage through a building), goes back on the ground. Skip roads that only share an end
+  point with it (its own next piece "crossed" it), and hold only what is near a crossing:
+  holding whole roads, or searching from every junction in town, is slow and over-holds.
 - **A divided road is two decks overlapping at the median** at slightly different heights:
   decide what is under a body by the carriageway it is on first, the nearest height next,
   or it drifts onto the other and falls off its end.
