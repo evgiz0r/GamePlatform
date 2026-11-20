@@ -18805,7 +18805,10 @@ func _route_to(goal: Vector2, from := Vector2.INF, heading := Vector2.ZERO) -> b
 		var nxt: Vector2 = (cl[i + 1][0] as Vector2) if i + 1 < cl.size() else (g["q"] as Vector2)
 		var din := (c - before_c).normalized()
 		var dout := (nxt - c).normalized()
-		if i > 0 and din != Vector2.ZERO and dout != Vector2.ZERO and absf(din.angle_to(dout)) >= 0.35:
+		# (the first point too, when the car is not on it already: a side street that is one
+		# stretch up to the junction has the junction as its first point, and it was a corner
+		# of one point, taken wide)
+		if (i > 0 or c.distance_to(before_c) > 3.0) and din != Vector2.ZERO and dout != Vector2.ZERO and absf(din.angle_to(dout)) >= 0.35:
 			# A corner: in along its lane, round, and out in the next street's lane, as free
 			# autodrive turns (see _lane_corner). One point at the corner, put into the lane
 			# square to the way to the next point (the next street's way), sat on the middle

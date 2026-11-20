@@ -745,7 +745,9 @@ km/h through a corner planned at 12. Three causes, each fixed:
   joined, laid the corner off that street's line -- route 7 came out of the turn 4.7 m from
   the middle of an 8 m street, over the kerb into a post, and backed off), a corner's
   curve may start behind the lane point before it (dropped) and run on to the next point when
-  that is no corner itself (lane points it passed are left out);
+  that is no corner itself (lane points it passed are left out), and the route's first point
+  is a corner too when the car is not on it (a side street that is one stretch up to the
+  junction has the junction as its first point: a corner of one point, taken wide);
 - **both laid a right turn tighter than the car turns**: a curve from 5 m before the junction to
   5 m after through where the two lanes cross is 2-3 m round on an 8 m street, and the car at
   full lock is ~4.1 m. Now every corner is `_lane_corner`: an arc along the lane in and out
@@ -757,7 +759,8 @@ km/h through a corner planned at 12. Three causes, each fixed:
   it started round 6 m early and came out with the turn not done (now 2 + 0.6 v, at least
   3.5 m: 4.4 m at 14 km/h, the same as before from ~50 km/h).
 After: 0 of 8 over the middle line, the car within 0.5-1.2 m of its plan, right turns out
-1.0-1.4 m right of the middle line at 13-17 km/h (Givatayim, five junctions).
+1.0-1.4 m right of the middle line at 13-17 km/h (Givatayim, five junctions; Ashdod 0 of 10,
+the test town 0 of 2). The route set after: 10 of 10, 0 hits, 0 reds, 0 rescues, 0 s off the road.
 
 The open items of the handoff below, done:
 - **Traffic sees the player on a hill** (traffic.gd `_level`, `Car.lift`, `_me_lift`). Its
