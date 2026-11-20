@@ -25,6 +25,12 @@ it, a post a circle. A bus is 12 m: half its length is the error, and that is a 
 of road. The tests can lean on the same shapes (in a game with scene tests, a helper like
 `bodies.gd` beside them), and the scored run checks bodies every tick, so a new place this
 goes wrong shows up the first time it runs.
+A fix in one place does not reach its siblings: the AI stopped its front at a light's line
+for weeks while the same code for a stop sign still stopped its middle there (a sedan's nose
+2 m into the crossing street, a bus's at the junction's middle). When one stopping or
+measuring rule is fixed, grep for every other place doing the same thing -- each line it
+stops at, each kerb it pulls toward (a delivery van pulled in by the asphalt's room stood in
+the parked cars, which stand a third in the road).
 
 ## Getting a city
 
@@ -115,6 +121,27 @@ goes wrong shows up the first time it runs.
   - Of 4011 OSM buildings 3138 took a survey height, 232 kept OSM's own; the survey also had
     ~500 small buildings OSM lacks (median 35 m^2, sheds and annexes, 57 over 300 m^2),
     not added.
+  - *Smaller towns publish floors, not heights*, and often only inside a hosted map viewer
+    (one Israeli town's sat behind a Complot "GIS-net" viewer, v5.gis-net.co.il/v5/<Town>:
+    its layer list is `/V5/<Town>/Data/GetJson`, its ArcGIS server answers only through
+    the viewer's own proxy and only from inside the viewer's page -- a script outside gets
+    "Bad Request", and the town's main site sent scripts to an abuse page). Its neighbour
+    published straight to ArcGIS Online under the town's own account (search
+    `arcgis.com/sharing/rest/search?q=owner:<account>`; the `services8.arcgis.com/<org>/...`
+    listing shows its public layers). Both counted the ground floor in their floors (they
+    matched OSM's `building:levels` most often, not one under it), had 0 for sheds (median
+    18 m^2) and one of them a placeholder year (1964 on 40%). A survey with no server the
+    bake can reach is saved once as `data/<id>.geojson` beside the city file and read from
+    there (`survey_extract`), so a re-bake anywhere keeps it; where two surveys cover one
+    building, the first in `SURVEYS` wins, so measured heights go before floor counts.
+  - *Neither had a licence on the page*, only "© the municipality" and a disclaimer. Ask the
+    user before committing such a layer, and say so in the notes.
+  - *Which Israeli government hosts refuse scripts*: e.data.gov.il (the open-data portal's
+    file server, behind CloudFront) answers a script with 403 even from a home connection in
+    Israel; the CKAN API on data.gov.il itself answers (`datastore_search`, paged, no SQL),
+    so read through it -- an evenly spread sample when only shares are needed. gov.il's
+    pages are rendered in the browser and refuse automated readers. gtfs.mot.gov.il serves
+    its files to a plain download.
 - **Government open data may refuse the cloud.** A national portal's API answered, but
   its files came from a CDN host that refused the container even once the environment
   allowed both hosts (a CloudFront 403 page instead of the file: likely by country). Do not
