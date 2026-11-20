@@ -4,6 +4,10 @@
 //   $GODOT --headless --path . --export-release "Web" /some/dir/index.html
 //   node game/streets/tests/web_load.js /some/dir [level]
 //
+// RUNS=n loads the level n times in the same browser (its stored data kept between, as a
+// player's is): the second load's loading bar estimates from the first, and the browser has
+// the shaders the first compiled. SHOT=dir saves the loading screen a moment after the city
+// file is read (load_<run>.png) and the first view (driving_<run>.png).
 // Goes straight into the level by the shell's self-play args (no menu), and prints when the
 // engine was up, when the city file was read, when the squares round the start were built
 // (with every stage's ms so far, `_stage_ms`, slowest first), and when the warm-up was
@@ -20,6 +24,8 @@ const { chromium } = require('playwright');
 
 const dir = process.argv[2];
 const level = process.argv[3] || '1';
+const runs = Number(process.env.RUNS || '1');
+const shots = process.env.SHOT || '';
 if (!dir || !fs.existsSync(path.join(dir, 'index.html'))) {
   console.error('usage: node web_load.js <exported web dir> [level]');
   process.exit(1);
@@ -48,7 +54,8 @@ const server = http.createServer((req, res) => {
   const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader',
     '--ignore-gpu-blocklist', '--enable-webgl'] });
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
-  const t0 = Date.now();
+  let t0 = Date.now();
+  let run = 1;
   const mark = (s) => console.log(`${((Date.now() - t0) / 1000).toFixed(1).padStart(6)} s  ${s}`);
   let done = false;
   page.on('console', (m) => {
@@ -56,22 +63,36 @@ const server = http.createServer((req, res) => {
     if (/SCRIPT ERROR|USER ERROR/.test(t)) mark('game: ' + t.split('\n')[0]);
     if (!t.startsWith('[streets]')) return;
     if (t.startsWith('[streets] warm-up done')) done = true;
+    if (shots && t.startsWith('[streets] city file read')) {
+      const r = run;
+      setTimeout(() => page.screenshot({ path: path.join(shots, `load_${r}.png`) }).catch(() => {}), 300);
+    }
     const i = t.indexOf('; stages ');
     if (i < 0) { mark(t); return; }
     mark(t.slice(0, i));
     const st = JSON.parse(t.slice(i + 9));
     Object.entries(st).sort((a, b) => b[1] - a[1]).forEach(([k, v]) => console.log(`${String(v).padStart(14)} ms  ${k}`));
   });
-  await page.goto(`http://localhost:${server.address().port}/`);
-  mark('page loaded');
-  await page.waitForFunction(() => {
-    const s = document.getElementById('status');
-    return !s || s.style.display === 'none' || getComputedStyle(s).visibility === 'hidden';   // (Godot removes it)
-  }, null, { timeout: 120000 }).catch(() => {});
-  mark('engine up (splash gone)');
-  const limit = Date.now() + 900000;
-  while (!done && Date.now() < limit) await page.waitForTimeout(500);
-  mark(done ? 'the car can be driven' : 'gave up waiting');
+  for (run = 1; run <= runs; run += 1) {
+    if (runs > 1) console.log(`--- load ${run} of ${runs}`);
+    t0 = Date.now();
+    done = false;
+    await page.goto(`http://localhost:${server.address().port}/`);
+    mark('page loaded');
+    await page.waitForFunction(() => {
+      const s = document.getElementById('status');
+      return !s || s.style.display === 'none' || getComputedStyle(s).visibility === 'hidden';   // (Godot removes it)
+    }, null, { timeout: 120000 }).catch(() => {});
+    mark('engine up (splash gone)');
+    const limit = Date.now() + 900000;
+    while (!done && Date.now() < limit) await page.waitForTimeout(500);
+    mark(done ? 'the car can be driven' : 'gave up waiting');
+    if (shots && done) {
+      await page.waitForTimeout(1500);
+      await page.screenshot({ path: path.join(shots, `driving_${run}.png`) }).catch(() => {});
+    }
+    await page.waitForTimeout(3000);   // (the game's stored data written out)
+  }
   await browser.close();
   server.close();
 })();

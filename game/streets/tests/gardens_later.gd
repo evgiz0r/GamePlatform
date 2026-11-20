@@ -13,6 +13,10 @@ func _initialize() -> void:
 	_run()
 
 func _run() -> void:
+	# the start's squares as they were measured: all within NEAR_FIRST before the car (since a
+	# city level builds only what its first view sees first, their count would depend on when
+	# the background build got to them)
+	OS.set_environment("STREETS_NEAR_FIRST", "1")
 	await create_timer(0.3).timeout
 	root.get_node("Flow").start_game("streets", {"level": int(OS.get_environment("LEVEL")) if OS.get_environment("LEVEL") != "" else 1})
 	while g == null or not g._loaded:

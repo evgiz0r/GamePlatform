@@ -1108,6 +1108,7 @@ func start(_config: Dictionary) -> void:
 	_loading.size = Vector2(400, 40)
 	_loading.z_index = 100
 	add_child(_loading)
+	_load_bar_begin()
 	if not await _step("loading " + String(_place["name"])):
 		return
 	var t0 := Time.get_ticks_msec()
@@ -1119,6 +1120,7 @@ func start(_config: Dictionary) -> void:
 	var t1 := Time.get_ticks_msec()
 	_stage_ms["city file (parse, roads fitted, buildings cut)"] = t1 - t0
 	print("[streets] city file read in %d ms" % (t1 - t0))   # (marks for a browser's log: tests/web_load.js)
+	_load_into("setup")
 	world_area = _bounds
 	_find_start()   # (the squares round it are built first)
 	if not await _build_world():
@@ -1131,6 +1133,7 @@ func start(_config: Dictionary) -> void:
 	_stage_ms["warm up (shaders compiled, 4 frames)"] = Time.get_ticks_msec() - tw
 	print("[streets] warm-up done in %d ms, frames %s" % [Time.get_ticks_msec() - tw, _warm_ms])
 	_load_ms = Time.get_ticks_msec() - t0
+	_load_save()
 	_loading.queue_free()
 	var tm := Time.get_ticks_msec()
 	_map_build_cells()
@@ -1179,6 +1182,7 @@ func _warm_up() -> bool:
 	# (on screen first: the frames below are the slow ones, and the text set with them showed
 	# only when they were done -- "8 of 8" stood there seconds)
 	_loading.text = "building %s…\ngetting the graphics ready" % _city_name
+	_load_into("warm", 12)
 	await get_tree().process_frame
 	await get_tree().process_frame
 	if not is_inside_tree():
@@ -1209,11 +1213,13 @@ func _warm_up() -> bool:
 	var adapter := RenderingServer.get_video_adapter_name().to_lower()
 	var soft := adapter.contains("llvmpipe") or adapter.contains("swiftshader") or adapter.contains("software")
 	var steps := 0 if soft else mini(8, keys.size())
+	_load_n = steps + 4
 	for k in range(steps):
 		for key in keys.slice(k * keys.size() / steps, (k + 1) * keys.size() / steps):
 			for gi: GeometryInstance3D in kinds[key]:
 				gi.visible = true
 		_loading.text = "building %s…\ngetting the graphics ready (%d of %d)" % [_city_name, k + 1, steps + 4]
+		_load_sub(k)
 		var ts := Time.get_ticks_msec()
 		await get_tree().process_frame
 		_warm_ms.append(Time.get_ticks_msec() - ts)
@@ -1223,6 +1229,7 @@ func _warm_up() -> bool:
 		gi.visible = true   # (the few not reached above: none, but to be sure)
 	for k in range(4):
 		_loading.text = "building %s…\ngetting the graphics ready (%d of %d)" % [_city_name, steps + k + 1, steps + 4]
+		_load_sub(steps + k)
 		var d := Vector2(cos(k * PI * 0.5), sin(k * PI * 0.5))
 		look_from(Vector3(spot.x - d.x * 20.0, gy + 12.0, spot.y - d.y * 20.0), Vector3(spot.x + d.x * 40.0, gy, spot.y + d.y * 40.0))
 		_sky_follow()
@@ -1298,9 +1305,155 @@ func _step(what: String) -> bool:
 	if not is_inside_tree():
 		return false
 	_loading.text = "building %s…\n%s" % [_city_name if _city_name != "" else String(_place["name"]), what]
+	_load_tick()
 	await get_tree().process_frame
 	await get_tree().process_frame
 	return is_inside_tree()
+
+## ---- the loading bar ----------------------------------------------------------------------
+## A bar under the loading text and "about N s" (user: "those steps where I don't know how long
+## I have to wait -- sometimes 3 seconds, sometimes 20"). The estimate is this device's own last
+## load of the city (LOAD_LOG): the city file, the set-up, one square, the warm-up -- the last
+## kept twice, as it was on the same build (the browser kept its compiled shaders) and on the
+## first load of a new build (it compiles them again: the slow case). No load of this city
+## yet: another city's, its file scaled by size. None at all: the bar by phase, no seconds.
+## Slower or quicker than last time so far, the rest is taken to be so too (`pace`).
+const LOAD_LOG := "user://streets_load.json"
+const LOAD_PHASES := ["file", "setup", "squares", "warm"]
+const LOAD_W := 400.0                ## the bar's width (the loading text's)
+var _load_est := {}                  ## ms: file, setup, square (each), n (squares), warm; empty: no history
+var _load_at := {}                   ## phase -> ms it began
+var _load_phase := "file"
+var _load_n := 1                     ## steps in the phase (squares; the warm-up's frames)
+var _load_i := 0                     ## the step it is on
+var _load_i_at := 0                  ## ms that step began
+var _load_squares := 1.0             ## squares built behind the text this time
+var _load_fill: ColorRect
+var _load_eta: Label
+var _build_id := ""                  ## res://build.txt: which build this is
+
+func _load_bar_begin() -> void:
+	var track := ColorRect.new()
+	track.color = Palette.col("bg_alt")
+	track.position = Vector2(0, 50)
+	track.size = Vector2(LOAD_W, 6)
+	_loading.add_child(track)
+	_load_fill = ColorRect.new()
+	_load_fill.color = Palette.col("accent")
+	_load_fill.position = track.position
+	_load_fill.size = Vector2(0, 6)
+	_loading.add_child(_load_fill)
+	_load_eta = UIKit.label("", 13, "ink")
+	_load_eta.add_theme_font_override("font", _font)
+	_load_eta.position = Vector2(0, 60)
+	_load_eta.size = Vector2(LOAD_W, 20)
+	_load_eta.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_load_eta.modulate.a = 0.8
+	_loading.add_child(_load_eta)
+	if FileAccess.file_exists("res://build.txt"):
+		_build_id = FileAccess.get_file_as_string("res://build.txt").strip_edges()
+	_load_est = _load_guess()
+	_load_into("file")
+
+func _load_log() -> Dictionary:
+	if not FileAccess.file_exists(LOAD_LOG):
+		return {}
+	var d = JSON.parse_string(FileAccess.get_file_as_string(LOAD_LOG))
+	return d if d is Dictionary else {}
+
+func _city_kb(id: String) -> float:
+	var f := FileAccess.open(get_script().resource_path.get_base_dir() + "/cities/" + id + ".json", FileAccess.READ)
+	return f.get_length() / 1024.0 if f != null else 0.0
+
+## what this load should take, from the log
+func _load_guess() -> Dictionary:
+	var log := _load_log()
+	var city := String(_place["city"])
+	var mine: Dictionary = log.get(city, {})
+	var src := mine
+	var scale := 1.0
+	if not src.has("square"):   # this city never loaded here: another one's, the file scaled
+		src = {}
+		for k: String in log:
+			if (log[k] as Dictionary).has("square") and float((log[k] as Dictionary).get("file_kb", 0.0)) > 0.0:
+				src = log[k]
+				break
+		if src.is_empty():
+			return {}
+		scale = _city_kb(city) / float(src["file_kb"])
+	var new_build := String(mine.get("build", "")) != _build_id
+	return {"file": float(src["file"]) * scale, "setup": float(src["setup"]), "square": float(src["square"]),
+		"n": float(src["n"]), "warm": float(src["warm_new"] if new_build else src["warm"])}
+
+func _load_into(phase: String, n: int = 1) -> void:
+	_load_phase = phase
+	_load_at[phase] = Time.get_ticks_msec()
+	_load_n = maxi(n, 1)
+	_load_i = 0
+	_load_i_at = _load_at[phase]
+	if phase == "squares":
+		_load_squares = float(maxi(n, 1))
+		if not _load_est.is_empty():
+			_load_est["n"] = _load_squares
+	_load_tick()
+
+func _load_sub(i: int) -> void:
+	_load_i = i
+	_load_i_at = Time.get_ticks_msec()
+	_load_tick()
+
+func _load_phase_ms(phase: String) -> float:
+	return float(_load_est["square"]) * float(_load_est["n"]) if phase == "squares" else float(_load_est[phase])
+
+func _load_tick() -> void:
+	if _load_fill == null or not is_instance_valid(_load_fill):
+		return
+	var idx := LOAD_PHASES.find(_load_phase)
+	var through := clampf(float(_load_i) / _load_n, 0.0, 1.0)
+	if _load_est.is_empty():   # the first load on this device: the bar by phase alone
+		var w := [0.15, 0.1, 0.5, 0.25]
+		var f := 0.0
+		for i in range(idx):
+			f += w[i]
+		_load_fill.size.x = LOAD_W * (f + w[idx] * through)
+		_load_eta.text = "timing it, for next time"
+		return
+	var now := Time.get_ticks_msec()
+	var total := 0.0
+	var done := 0.0
+	for i in range(LOAD_PHASES.size()):
+		var ms := _load_phase_ms(LOAD_PHASES[i])
+		total += ms
+		if i < idx:
+			done += ms
+	var step := _load_phase_ms(_load_phase) / _load_n
+	done += step * _load_i + minf(float(now - _load_i_at), step * 0.9)
+	var spent := float(now - int(_load_at["file"]))
+	var pace := clampf(spent / done, 0.5, 3.0) if done > 1500.0 else 1.0
+	var left := (total - done) * pace / 1000.0
+	_load_fill.size.x = LOAD_W * clampf(done / maxf(total, 1.0), 0.0, 1.0)
+	_load_eta.text = "almost there" if left < 1.5 else "about %d s" % ceili(left)
+
+## what this load took, for the next one's estimate
+func _load_save() -> void:
+	if not _load_at.has("warm") or not _load_at.has("squares"):
+		return
+	var now := Time.get_ticks_msec()
+	var log := _load_log()
+	var city := String(_place["city"])
+	var old: Dictionary = log.get(city, {})
+	var squares := float(int(_load_at["warm"]) - int(_load_at["squares"]))
+	var warm := float(now - int(_load_at["warm"]))
+	var same := old.has("warm") and String(old.get("build", "")) == _build_id
+	var rec := {"file": float(int(_load_at["setup"]) - int(_load_at["file"])),
+		"setup": float(int(_load_at["squares"]) - int(_load_at["setup"])),
+		"square": squares / maxf(_load_squares, 1.0), "n": _load_squares, "file_kb": _city_kb(city), "build": _build_id,
+		"warm": warm if same or not old.has("warm") else float(old["warm"]),
+		"warm_new": float(old.get("warm_new", warm)) if same else warm}
+	log[city] = rec
+	var f := FileAccess.open(LOAD_LOG, FileAccess.WRITE)
+	if f != null:
+		f.store_string(JSON.stringify(log))
 
 func _exit_tree() -> void:
 	SaveData.data["volume_sfx"] = _sfx_was
@@ -1958,7 +2111,7 @@ func _build_world() -> bool:
 	# the squares round the start before the car is shown; the rest while it drives
 	# (STREETS_BUILD_ALL=1: all of it first -- the scene tests look all over the city)
 	var all_first := OS.get_environment("STREETS_BUILD_ALL") == "1"
-	var near: Array = _tiles_todo.filter(func(t): return all_first or _tile_dist(t, _pos) < NEAR_FIRST)
+	var near: Array = _first_squares(all_first)
 	near.sort_custom(func(a, b): return _tile_dist(a, _pos) < _tile_dist(b, _pos))
 	# (nothing of the city drawn while it goes up: each step's frames drew what was built so far,
 	# and the browser compiled every kind of material's shader the first time -- seconds on the
@@ -1966,7 +2119,9 @@ func _build_world() -> bool:
 	world.visible = false
 	_gardens_split = not all_first and OS.get_environment("STREETS_GARDENS_SPLIT") != "0"   # (=0: all while loading, as before: tests/gardens_later.gd)
 	_gardens_from = _pos
+	_load_into("squares", near.size())
 	for i in range(near.size()):
+		_load_sub(i)
 		if not await _step("the streets round the start (%d of %d)" % [i + 1, near.size()]):
 			return false
 		_fg_text = _loading.text
@@ -1991,8 +2146,13 @@ func _build_world() -> bool:
 ## shop, a parked car -- belongs to the one square its spot is in (_mine), which builds all
 ## of it, and records whatever goes with it (posts, parked cars, lights, tables) just once.
 const TILE := 400.0                  ## = CHUNK = GROUND_CELL = BATCH_CELL
-const NEAR_FIRST := 320.0            ## squares this close to the start are built before you drive
+const NEAR_FIRST := 320.0            ## squares this close to the car are built first: before you drive on a filmed walk or a test route, else in a hurry once you can (CATCH_UP_US)
+const NEAR_NOW := 60.0               ## a city level: squares this close to the start are built before you drive...
+const AHEAD_NOW := 160.0             ## ...and those the street ahead of the car crosses within this far (what the first view looks at)
 const BUILD_US := 6000               ## background building: microseconds a frame (half that when frames run slow)
+const CATCH_UP_US := 16000           ## the same while a square within NEAR_FIRST of the car is still bare (the first seconds of a drive)
+var _catch_up := false               ## a square within NEAR_FIRST of the car is still bare: building at CATCH_UP_US
+var _catch_up_ms := 0                ## when the squares round the car were all built, ms after it was shown (the perf view)
 var _tile := Vector2i.ZERO           ## the square being built
 var _tiled := false                  ## a square is being built (its builders are at work)
 var _tiles_done := {}
@@ -2120,6 +2280,7 @@ func _pause() -> void:
 	if _fg_build:   # loading: no game frame to wait for -- just let one be drawn
 		_fg_spin += 1
 		_loading.text = _fg_text + "  " + ["·  ", " · ", "  ·", " · "][_fg_spin % 4]
+		_load_tick()
 		await get_tree().process_frame
 		_yield_at = Time.get_ticks_usec() + FG_US
 		return
@@ -2318,6 +2479,31 @@ func _build_tile(t: Vector2i) -> void:
 	_set_tiling(false)
 	_batching = false
 
+## The squares built before the car is shown. A city level: the one the start is in and any
+## within NEAR_NOW of it, and those the street ahead crosses within AHEAD_NOW -- what the
+## first view looks at (user: "as close to 0 as possible" -- all of NEAR_FIRST, 6-9 squares,
+## was most of the wait). The rest of NEAR_FIRST follows in a hurry once you can drive
+## (_catch_up). A filmed walk or a test route keeps all of NEAR_FIRST first: their pictures
+## and drives are compared run to run. STREETS_NEAR_FIRST=1: that for every level, as before.
+func _first_squares(all_first: bool) -> Array:
+	var whole := _place.has("walk") or not _route.is_empty() or OS.get_environment("STREETS_NEAR_FIRST") == "1"
+	var ahead := {}
+	for i in range(int(AHEAD_NOW / 10.0) + 1):
+		ahead[_tile_of(_pos + _fwd() * (i * 10.0))] = true
+	var out: Array = []
+	for t: Vector2i in _tiles_todo:
+		var d := _tile_dist(t, _pos)
+		if all_first or (whole and d < NEAR_FIRST) or (not whole and (d < NEAR_NOW or ahead.has(t))):
+			out.append(t)
+	return out
+
+## a square within NEAR_FIRST of the car is still to be built
+func _bare_near() -> bool:
+	for t: Vector2i in _tiles_todo:
+		if _tile_dist(t, _pos) < NEAR_FIRST:
+			return true
+	return false
+
 ## the square to build next: the one nearest where the car will be in a few seconds
 func _next_tile():
 	if _tiles_todo.is_empty():
@@ -2339,14 +2525,24 @@ func _build_rest() -> void:
 	var t0 := Time.get_ticks_msec()
 	var n := 0
 	_bg_build = true
+	var hurry := _bare_near()   # (only in the first seconds: later the build never costs the drive's frames)
+	_catch_up = hurry
+	_build_us = CATCH_UP_US if _catch_up else BUILD_US
 	_yield_at = Time.get_ticks_usec() + _build_us
 	await _build_gardens_later()   # (the start's squares' far gardens, first)
 	while is_inside_tree():
 		var t = _next_tile()
 		if t == null:
 			break
+		_catch_up = hurry and (_tile_dist(t, _pos) < NEAR_FIRST or _bare_near())
 		await _build_tile(t)
 		n += 1
+		if hurry and not _bare_near():
+			hurry = false
+			_catch_up = false
+			_catch_up_ms = Time.get_ticks_msec() - t0
+			print("[streets] the squares round the car built %d ms after it was shown" % _catch_up_ms)
+			Probe.event("near_built", {"ms": _catch_up_ms, "squares": n})
 		if _build_lbl != null:
 			_build_lbl.text = "building the city %d%%" % int(100.0 * _tiles_done.size() / maxf(_build_total, 1.0))
 	if _build_lbl != null:
@@ -14580,7 +14776,7 @@ func _frame() -> void:
 	var dt := get_process_delta_time()
 	if _bg_wait:   # the city still building round you: its few milliseconds (_pause)
 		_bg_wait = false
-		_build_us = BUILD_US if dt < 0.022 else BUILD_US / 2
+		_build_us = CATCH_UP_US if _catch_up else (BUILD_US if dt < 0.022 else BUILD_US / 2)
 		_build_tick.emit()
 		_p("building")
 	_watch_fps(dt)

@@ -334,7 +334,8 @@ normal, not an accident. What that asks of you:
   request and say in your reply what you changed of the other session's work.
 - **A user's report may come from a build you did not make.** Their screenshot can show
   another session's feature, or still show something you already removed (the build had not
-  republished yet, or their browser cached it). Check what build it is from (the HUD, a
+  republished yet, or the phone was still playing the build it had: a new one downloads in
+  the background and waits for "new version ready, tap to restart" or the next launch). Check what build it is from (the HUD, a
   feature you know is gone) before chasing the bug.
 - **Say so when others' work rides along.** If your push publishes changes from another
   session, tell the user in a line, so a surprise on screen has an explanation.

@@ -35,10 +35,14 @@ The ones most often touched, and the functions in them:
   `_clip_buildings` (fronts still on a road cut back to road + 1.5 m), `_build_graph`.
 - **building the world, near-first** -- `_build_world` does the once-only things
   (`_build_setup`: which roads, nodes, buildings, areas, places reach each 400 m square;
-  the park, tree and light set-ups), then `_build_tile` square by square: the ones within
-  `NEAR_FIRST` of the start behind the loading text, the rest in `_build_rest` while you
-  drive, nearest the car first, every builder stopping when the frame's budget is used up
-  (`if _over(): await _pause()`; `BUILD_US`). Two rules keep squares from doubling or
+  the park, tree and light set-ups), then `_build_tile` square by square: `_first_squares`
+  behind the loading text (a city level: the start's square, any within `NEAR_NOW` 60 m, and
+  those the street ahead crosses within `AHEAD_NOW` 160 m -- usually 1-2; a filmed walk or a
+  test route: all within `NEAR_FIRST` 320 m, as before, also `STREETS_NEAR_FIRST=1`), the
+  rest in `_build_rest` while you drive, nearest the car first -- the rest of NEAR_FIRST in
+  a hurry (`_catch_up`: `CATCH_UP_US` 16 ms a frame, the first seconds only, `_catch_up_ms`
+  when done), then `BUILD_US` -- every builder stopping when the frame's budget is used up
+  (`if _over(): await _pause()`). Two rules keep squares from doubling or
   missing things: what lies along a road or fence is worked out by every square it crosses
   and kept only where its triangles start (`CBuf.clip`, `_near_part`, `_near_span`);
   everything else, and whatever it records (posts, parked cars, lights, tables), belongs
@@ -390,6 +394,13 @@ The ones most often touched, and the functions in them:
   `_warm_up` then shows the kinds of surface a few at a time (`_shader_key`; four views only
   under a software renderer), each frame timed in `_warm_ms`; `_load_ms`, `_stage_ms`;
   `_load_text` puts them at the bottom of the perf view, so a player's own load can be read.
+  The bar under the text (`_load_bar_begin`, `_load_tick`): phases file / setup / squares /
+  warm (`_load_into`, `_load_sub` at each square and warm-up frame), estimated from this
+  device's last load of the city in `user://streets_load.json` (`_load_save`: ms per phase,
+  per square, the warm-up as on the same build `warm` and on a new build's first load
+  `warm_new`, keyed by res://build.txt); no history for the city: another city's, the file
+  scaled by its size; none: the bar by phase, "timing it, for next time". The city file is
+  one blocking call (`_load_city`): the bar stands still through it.
 - **people** -- walkers `_place_walker` / `_pavement_piece` / `_people_tick`, zebra crossers
   `_send_crossers` / `_zebra_span` / `_away_from` / `_crossers_tick`, the height their feet go
   at `_walk_y` / `_pave_top`, what autodrive stops for `_ap_people_v`.
@@ -1022,6 +1033,14 @@ Nothing is half done: all of the above is on main.
   to the sea (9,591 buildings, 6,091 roads), the playtest's "city" event, two runs at once:
   Tel Aviv parse 2.7 s + build 3.4 s before the car, Ashdod 2.2 + 3.0, Givatayim 1.0 + 2.0
   (decks_inferred alone 0.8 s of Tel Aviv's parse, 0.24 of Givatayim's).
+- **Before the car, near-first cut to what the first view sees** (`tests/start_soon.gd`,
+  headless, 20 Nov 2026, old way with `STREETS_NEAR_FIRST=1`): Givatayim 4.4 -> 3.0 s (6 ->
+  1 square), Tel Aviv 10.1 -> 6.3 (8 -> 1), Ashdod 8.3 -> 5.9 (8 -> 2); the rest within 320
+  m of the car 2.8 / 5.7 / 3.7 s after it, at ~40 frames a second. What is left before the
+  car is mostly the city file (1.5 / 4.3 / 3.4 s) and the setup (0.4-1.4 s).
+  `tests/load_bar.gd`: the bar's second Givatayim load said "about 3 s" with 2.9 left; Tel
+  Aviv from Givatayim's numbers "about 5 s" with 6.6 left (its file takes more than its size
+  says).
 - **Starting a level in a browser, phase by phase** (`tests/web_load.js`: the container's
   Chromium, the engine's wasm on one thread, SwiftShader drawing; 20 Nov 2026). Givatayim:
   engine up 1.5 s after the page, the level begun ~4 s; city file 1.8-2.1 s; the squares round the start 17 s (kerbs
