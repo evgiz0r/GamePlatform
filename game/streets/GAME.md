@@ -314,8 +314,9 @@ lacks are in `cities/details/givatayim.json` (see below).
 > Can we create a video, 1st person view like my phone, side by side with video from the
 > phone, up until Ha-Meri.
 
-It crosses like a person: it waits at Katzenelson's kerb looking left at the traffic coming,
-crosses to the median, waits there looking right, then crosses; at Sheinkin it looks right,
+It crosses like a person: it waits two metres back from Katzenelson's kerb facing across,
+steps up beside the bollard, glances right, crosses to the gap in the median, waits there
+watching the far half, then crosses; at Sheinkin it looks right,
 then left. Cars come down the street to meet it there: one goes by before it steps off, the
 next stops at the zebra for it, and drives on once it is across. The head looks where the
 walk is going and turns into a corner a moment before the feet do.
@@ -330,12 +331,15 @@ colourful than the game drives in -- measured from the film, frame against frame
 its exposure for what it looks at, as a phone does, so the shade under the arcade is no
 darker than the film's and the sunny forecourt no brighter.
 
-On Katzenelson the far half's traffic is the film's: a white hatchback goes by as the walk
+On Katzenelson the traffic is the film's: a black hatchback and then a white SUV go by in
+the near half while the walk waits at the kerb; a white hatchback goes by as the walk
 reaches the median, a white car waits in the kerb lane, and a grey SUV does not give way --
 it drives on past, close, in the lane by the median, while the walk waits.
 
 Over the passes since, the walk's street has been dressed, a stretch at a time, from the
-film: Katzenelson two lanes each way with railings and red-white kerbs at its zebra; the
+film: Katzenelson two lanes each way with railings and red-white kerbs at its zebra, the
+dotted slabs for blind walkers at its kerb and through the median's gap, the median's ends
+raised blocks of red pavers with a no-U-turn sign, a black bollard with a steel top; the
 passage paved in grey pavers in rows, its rough stone wall, and tall planting and trees
 closing it in; past Sheinkin the walk crosses Ha-Meri on its raised crossing to the far
 kerb, as the film does, the street's kerbs blue and white, a 30 painted in its lane and the

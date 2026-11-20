@@ -1267,18 +1267,45 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   side-by-side the hatchback passes at 8.5 s (the film's 9), the sedan waits from 10 s, and
   the SUV crosses in front at 13 s where the film's does at 12-13 s: send it half a second
   sooner if it matters.
+- **Pass 12, Katzenelson's crossing as filmed (film 0-13 s)**, done. The film a quarter second
+  at a time showed what the side-by-side's seconds had hidden. *The ground*: buff domed
+  slabs (tactile paving) along the north kerb across the zebra and filling the cut through
+  the median, the median's ends either side of the cut raised blocks -- red pavers in a grey
+  concrete kerb, a "no U-turn" sign on the south-east one -- and a black bollard with a steel
+  top on the slabs at the zebra's north-west edge. The tone shader's kind 8 (`tactile`:
+  0.3 m slabs, 6 x 6 domes each, lit by bending the normal, fading to the slab's tone before
+  they shimmer), `pavers_red`, a raised block as a `kerb` surface with paving a shade higher
+  and inset on it, `bollard` `top: "grey"`, `no_uturn_sign`, `kerb_paint` `pat: "plain"`
+  (bare kerb over a street's paint). *Where it stands and looks*: the far side's shop fronts
+  sit level in the film's frame at 1-2.5 s, so it faces straight across, not 70 degrees left
+  as by eye; the bollard's foot sits 0.68 of the way down the frame -- with the horizon at
+  0.30 and a 70 degree field that is 30 degrees down, 2.5 m off -- so it waits 2 m back from
+  the kerb, then steps up beside the bollard (3.7 s); on the median it stands by the cut's
+  south-east side, the sign's block half a metre off (7.7-9 s). A walk's first facing is the
+  way from its point at 0 s to its point at 1.5 s (`_film_begin`): a first step along the kerb
+  had it face up the street for its whole wait. *The cars*: the film shows five in its first
+  17 s, not a stream: a black hatchback by in the near half's lane by the median (2 s), a white
+  SUV close past the kerb (3 s), then the far half's three. A car sent 39 m up the near half
+  was held 2 s at a junction 32 m off and crawled past at 7 s (`TRAFFIC_LOG`): send from past
+  it. Measured on the recording: the hatchback at 1.5-2 s, the SUV in front at 3 s, the grey
+  SUV at 12.4 s (the film's 12-13); brightness 0.473 +- 0.061, levels as pass 11's.
+  Still wrong there: the north kerb north-west of the zebra shows the city's blue and white
+  where pass 4's red and white `kerb_paint` (at P(-14.0, -23.95)) should be -- it finds the
+  right road, segment, side and height (printed) and draws nothing visible, while the same
+  call 6 m south-east shows; the city's own guard railing stands beside the bollard where the
+  film has none.
 
-### Handoff: the filmed walks (20 Nov 2026, after pass 11)
+### Handoff: the filmed walks (20 Nov 2026, after pass 12)
 
-- **In progress**: nothing. Pass 11 is on main; the list of what is still different is
+- **In progress**: nothing. Pass 12 is on main; the list of what is still different is
   `WALKS.md` (walk 1's details, behaviour and quality, walk 2's, both walks'), with a Done
   section that points back here.
 - **The biggest open items**, by what the side-by-side shows most: the buildings' faces along
   the route (cream and sand plaster, balconies, shutters: city-wide, another session's); the
   light (hazy, warm, soft shadows: another session's); people that move as the film's do
-  (`people` take `to` and `t`; none of walk 1's four walk yet); a steadier stream of cars on
-  Katzenelson (the film has a car by every few seconds both ways, the replay only the five
-  sent); the arcade's columns (white with a dark wooden foot) and the second shop; Ha-Meri's
+  (`people` take `to` and `t`; none of walk 1's four walk yet); the north kerb's paint and the
+  city's guard railing north-west of the zebra (pass 12, above); the cars parked along
+  Katzenelson's far kerb the film shows across the road at 1-2.5 s; the arcade's columns (white with a dark wooden foot) and the second shop; Ha-Meri's
   far pavement (a low white wall, an e-scooter); the camera's last differences (a touch of
   motion blur, the lens's bend at the edges). Walk 2 has no side-by-side: its film (1:42-3:08
   of the user's video) has not reached a session; ask for it as a clip under 10 MB.
@@ -1291,16 +1318,18 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   `STREETS_FILM_LOOK=meter` paints the exposure meter's reading top left. Then the
   side-by-side recipe above, `tests/film_look.py <clip> <frames> 96 --check` (a graded
   recording against the film) and `tests/film_shake.py` (sway, straight stretches only).
-- **Good numbers** (walk 1, after pass 11): both walks' scans print only "scan done";
+- **Good numbers** (walk 1, after pass 12): both walks' scans print only "scan done";
   sway 0.25 / 0.21 degrees rms across / up (the film's 0.25 / 0.19); levels at 1-99% within
   0.05 of the film's, 0.0% clipped, saturation 0.146 (0.159); each second's brightness
-  0.471 +- 0.061 (0.454 +- 0.055); the arcade's floor 0.31-0.36 (0.38-0.41); the horizon
-  0.30 of the way down (`FILM_TILT`). Playtests of levels 5, 1 and 6 survive 25 s; validate's
+  0.473 +- 0.061 (0.454 +- 0.055); the arcade's floor 0.31-0.36 (0.38-0.41); the horizon
+  0.30 of the way down (`FILM_TILT`); `TRAFFIC_LOG=0,14`: the black hatchback within 10 m at
+  1.5-2 s, the white SUV 4-5 m off at 3-3.5 s, the white hatchback 3 m at 9 s, the grey SUV
+  3 m at 12.5 s. Playtests of levels 5, 1 and 6 survive 25 s; validate's
   Givatayim keeps its known 2 posts and 1 building on the road (the café table, the
   passage's building) and the test town's checks read 4-12.
 - **Walk 1's coordinates for new props**: `P(s, off)` in `make_givatayim.py` along S0-S1
-  (above). Katzenelson runs along `off`: its near half s -13.8 to -6.8, the median, its far
-  half -3.9 to 3.1; Ha-Meri along the passage's line with its south-east kerb at off +4; the
+  (above). Katzenelson runs along `off` (within 2 degrees): its near half s -13.8 to -6.8, the median, its far
+  half -3.9 to 3.1, the zebra 3 m wide at off -17.37 (the city's zebras are 3 m); Ha-Meri along the passage's line with its south-east kerb at off +4; the
   raised crossing s 89.6-96, its zebra at P(92.4, 0). The generator owns the items it marks
   `"src": "make_givatayim"` and keeps everyone else's -- other sessions add props to the same
   file, and walk 2's points were edited by hand there (not by the generator).

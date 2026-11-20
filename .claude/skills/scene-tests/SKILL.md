@@ -168,6 +168,13 @@ curve or exposure lifted it until the floor's own colour was fixed: measure the 
 shader can meter the whole frame off the screen texture's mipmaps (`filter_linear_mipmap`, a
 few `textureLod` taps at a high mip) in the Compatibility renderer too; paint the reading
 in a corner once and compare it with the frame's true mean before trusting it.
+*Which way it faces and how far things are*: the fronts across a street sit level in the
+frame when the camera faces square to them, and stripes or kerbs tilt toward the side it is
+turned to; a thing's foot y of the way down the frame is tilt + atan((y - 0.5) * 2 tan(fov/2))
+below level, so eye height / tan of that is how far off it stands. A wait that read by eye as
+"looking left for the traffic" faced straight across, two metres back from where the replay
+stood. Read the film four frames a second for this, not one: at one a second a car that
+passed in a second and a half, and the turn of the head, fell between the frames.
 
 **A test that jumps a scene's clock cannot show what is timed by it.** Stills taken by
 setting a replay's time and running a third of a second skip every scripted event in
