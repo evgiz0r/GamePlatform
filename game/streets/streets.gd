@@ -7664,10 +7664,14 @@ func _build_far_shadows() -> void:
 
 ## a tree's shadow on the ground (crown r across, its middle y up), for past the real ones:
 ## longer along the sun's way, as a ball's is
+var _sun_way := Vector3.ZERO   ## the way the sunlight goes (it never moves: worked out once)
+
 func _ao_tree(p: Vector2, r: float, y: float) -> void:
 	if _ao == null:
 		return
-	var L := -sun.global_transform.basis.z
+	if _sun_way == Vector3.ZERO:
+		_sun_way = -sun.global_transform.basis.z
+	var L := _sun_way
 	if L.y > -0.05:
 		return
 	var off := Vector2(L.x, L.z) / -L.y
