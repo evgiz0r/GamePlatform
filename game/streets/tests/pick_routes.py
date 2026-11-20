@@ -118,7 +118,7 @@ def main(argv):
                            "from_at": [round(a[1][0], 1), round(a[1][1], 1)], "to": b[0],
                            "to_at": [round(b[1][0], 1), round(b[1][1], 1)], "crow_m": int(d)})
             picked += 1
-    out = os.path.join(HERE, "routes.json")
+    out = os.path.join(HERE, "..", "routes.json")   # (the game reads it: the "Test routes" level)
     json.dump({"seed": seed, "routes": routes}, open(out, "w"), ensure_ascii=False, indent=1)
     for r in routes:
         print("%2d  %-10s %s -> %s  (%d m)" % (r["id"], r["city"], r["from"], r["to"], r["crow_m"]))

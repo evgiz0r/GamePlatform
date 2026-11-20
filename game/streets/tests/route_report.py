@@ -70,7 +70,7 @@ def main(argv):
             wait = "%.0f s (%s, %s)" % (w[0], w[1] or "?", w[3] or "a road")
         hits = "; ".join("%s at %d km/h on %s" % (h[0], h[1], h[3] or "a road") for h in r["hits"]) or "0"
         rows.append("| %d | %s | %s -> %s | %s | %.1f min | %.1f km | %s | %s | %d | %s | %.0f s |" % (
-            n, r["city"], r["from"], r["to"], "yes" if r["arrived"] else "**no** (%d m left)" % r["left_m"],
+            n, r["city"], r["from"], r["to"], "yes" if r["arrived"] else ("**no way found**" if r.get("no_way") else "**no** (%d m left)" % r["left_m"]),
             r["secs"] / 60.0, r["metres"] / 1000.0, hits, wait or "-", r["reds"],
             ", ".join("%s at %d s" % (x[0], x[1]) for x in r["rescues"]) or "0", r["off_road_s"]))
     block = ["", "## %s (commit %s)" % (datetime.date.today().isoformat(), commit), "",

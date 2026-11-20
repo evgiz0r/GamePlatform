@@ -32,6 +32,9 @@ const LEVELS := [
 	# a box of central Tel Aviv, not the whole city (the workflow's bbox): HaKirya, Azrieli,
 	# Sarona, Montefiore, Bitsaron, the Ayalon. Starts on Kaplan heading east, the towers ahead.
 	{"name": "Tel Aviv: Azrieli and HaKirya", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med"},
+	# the route set (routes.json, tests/pick_routes.py): pick one of the drives and watch
+	# autodrive take it, from one address to the other, in its own city
+	{"name": "Test routes: watch a drive", "routes": true, "city": "dimyon", "look": "med"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -1054,6 +1057,11 @@ func start(_config: Dictionary) -> void:
 	_make_font()
 	_tones()
 	_place = LEVELS[clampi(int(_config.get("level", 1)), 1, LEVELS.size()) - 1]
+	if _place.get("routes", false):
+		_route_list_open()   # no city: the list of drives, each starting its own city
+		return
+	if _config.has("route"):
+		_route = _route_by_id(int(_config["route"]))
 	SIGNAL_CYCLE = SIGNAL_CYCLE_NORTH if String(_place.get("look", "")) == "north" else SIGNAL_CYCLE_MED
 	var dev := OS.get_environment("STREETS_CAM").split(",", false)
 	if dev.size() >= 5:
@@ -1104,6 +1112,8 @@ func start(_config: Dictionary) -> void:
 		_film_begin(String(_place["walk"]))
 	_dressing["traffic"] = _traffic.alive_count()
 	_loaded = true
+	if not _route.is_empty():
+		_route_begin()
 	track3d(_car, "@")
 	Probe.event("city", {"name": _city_name, "roads": _roads.size(), "buildings": _blds.size(),
 		"trees": _posts.size(), "streets": _streets.size(), "dressing": _dressing, "stage_ms": _stage_ms,
@@ -11471,6 +11481,10 @@ func _place_start() -> void:
 
 ## where the car starts (_pos, _yaw): the level's corner, else a main road near the middle
 func _find_start() -> void:
+	# a drive of the route set starts at its address (set down properly once built: _route_begin)
+	if not _route.is_empty():
+		_pos = Vector2(float(_route["from_at"][0]), float(_route["from_at"][1]))
+		return
 	# a filmed walk starts where its film does: the squares round there are built first, or
 	# its first seconds walked over bare grass while the town built round somewhere else
 	if _place.has("walk") and _details != null:
@@ -14488,6 +14502,8 @@ func _ap_plan() -> void:
 		if not _route_to(_dest, from, heading):
 			_show_banner("can't find a way there from here", 2.0)
 			_clear_dest()
+			if not _route.is_empty():   # a drive of the route set: back to the list
+				get_tree().create_timer(3.0).timeout.connect(func(): Flow.start_game("streets", {"level": _routes_level()}))
 			return
 		if way.size() >= 2:
 			var off_v := PackedFloat32Array()
@@ -15407,6 +15423,9 @@ func _check_arrival(dt: float) -> void:
 		Audio.play("coin", 0.05, -8.0)
 		_show_banner("arrived: " + _dest_name, 3.0)
 		Probe.event("arrived", {"to": _dest_name, "secs": int(_dest_t)})
+		if not _route.is_empty():   # a drive of the route set: back to the list in a moment
+			_show_banner("route %d arrived in %d:%02d -- back to the list" % [int(_route["id"]), int(_dest_t) / 60, int(_dest_t) % 60], 4.0)
+			get_tree().create_timer(4.5).timeout.connect(func(): Flow.start_game("streets", {"level": _routes_level()}))
 
 ## ---- the address picker: streets, then house numbers ---------------------------------------
 ## Built for thumbs: no scrolling list (a phone's finger lands on a button, not the list)
@@ -15475,6 +15494,80 @@ func _close_picker() -> void:
 	if _picker != null:
 		_picker.queue_free()
 		_picker = null
+
+## ---- the route set: ten drives to pick from and watch ---------------------------------------
+## (routes.json, picked by tests/pick_routes.py; tests/run_routes.sh drives them headless and
+## keeps their results.) The "Test routes" level opens the list with no city behind it; a
+## pick starts that route's own city with {"route": id}: the car set down at its "from", "go
+## to" its "to" on autodrive, and once there, back to the list.
+const ROUTES_FILE := "res://game/streets/routes.json"
+const CITY_NAMES := {"givatayim": "Givatayim", "ashdod": "Ashdod", "tel_aviv": "Tel Aviv", "bedford": "Bedford", "dimyon": "test town"}
+var _route := {}                       ## the drive of the route set being watched, or {}
+var _route_ui: Control                 ## the list of them, while it is up
+
+func _routes() -> Array:
+	var f := FileAccess.open(ROUTES_FILE, FileAccess.READ)
+	if f == null:
+		return []
+	var data = JSON.parse_string(f.get_as_text())
+	return (data as Dictionary).get("routes", []) if data is Dictionary else []
+
+func _route_by_id(id: int) -> Dictionary:
+	for r: Dictionary in _routes():
+		if int(r["id"]) == id:
+			return r
+	return {}
+
+func _routes_level() -> int:
+	for i in range(LEVELS.size()):
+		if (LEVELS[i] as Dictionary).get("routes", false):
+			return i + 1
+	return 1
+
+func _route_list_open() -> void:
+	_route_ui = Control.new()
+	_route_ui.size = Vector2(640, 360)
+	_route_ui.z_index = 90
+	add_child(_route_ui)
+	var dim := ColorRect.new()
+	dim.color = Color(Palette.col("bg"), 0.96)
+	dim.size = Vector2(640, 360)
+	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_route_ui.add_child(dim)
+	var title := UIKit.label("test routes: pick one and watch autodrive drive it", 15, "player")
+	title.add_theme_font_override("font", _font)
+	title.position = Vector2(20, 40)
+	title.size = Vector2(600, 22)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_route_ui.add_child(title)
+	var routes := _routes()
+	if routes.is_empty():
+		var none := UIKit.label("no routes.json", 13, "ink")
+		none.position = Vector2(20, 80)
+		_route_ui.add_child(none)
+		return
+	for i in range(routes.size()):
+		var r: Dictionary = routes[i]
+		var text := "%d  %s:  %s  →  %s" % [int(r["id"]), CITY_NAMES.get(r["city"], r["city"]), r["from"], r["to"]]
+		var b := _tap_button(text, func(): Flow.start_game("streets", {"level": int(r["level"]), "route": int(r["id"])}))
+		b.add_theme_font_override("font", _font)
+		b.add_theme_font_size_override("font_size", 11)
+		b.clip_text = true
+		b.position = Vector2(14 + (i / 5) * 310, 72 + (i % 5) * 52)
+		b.size = Vector2(300, 44)
+		b.custom_minimum_size = Vector2(300, 44)
+		_route_ui.add_child(b)
+	# (later: a button to make your own -- from and to with the address picker -- kept with these)
+
+## a drive of the route set: down at its start address, "go to" its end, autodrive on
+func _route_begin() -> void:
+	var from := Vector2(float(_route["from_at"][0]), float(_route["from_at"][1]))
+	var to := Vector2(float(_route["to_at"][0]), float(_route["to_at"][1]))
+	_land_on_road(from, 60.0, Vector2.ZERO)
+	_set_dest(to, String(_route["to"]))
+	_set_auto(true)
+	_show_banner("route %d: %s → %s" % [int(_route["id"]), _route["from"], _route["to"]], 4.0)
+	Probe.event("route", {"id": int(_route["id"])})
 
 ## a drawn button that _pick_tap() can press
 func _tap_button(text: String, cb: Callable) -> Button:
@@ -16264,6 +16357,15 @@ func _view_footprint() -> PackedVector2Array:
 ## it takes the wheel back from autodrive. ----------------------------------------------------
 
 func _input(event: InputEvent) -> void:
+	if _route_ui != null:   # the list of test routes: no city behind it
+		var mt := event as InputEventMouseButton
+		if mt != null and mt.pressed and mt.button_index == MOUSE_BUTTON_LEFT and not Flow.pointer_over_hud():
+			for b: Button in _route_ui.find_children("*", "Button", true, false):
+				if b.get_global_rect().has_point(mt.position):
+					Audio.play("click", 0.05, -8.0)
+					(b.get_meta("cb") as Callable).call()
+					return
+		return
 	if not _loaded or not _film.is_empty():
 		return
 	if _picker != null:   # everything goes to the picker while it is open

@@ -426,7 +426,7 @@ What each round found, so far:
 
 ## The route set: the same ten drives, again and again
 
-`tests/routes.json` holds ten drives from one address to another (Givatayim 4, Ashdod 3,
+`routes.json` (beside the game: the "Test routes" level lists them) holds ten drives from one address to another (Givatayim 4, Ashdod 3,
 Tel Aviv, Bedford and the test town one each), picked once by `tests/pick_routes.py` (seed
 2026; it keeps away from the places in the privacy rule below). `tests/run_routes.sh [ids]`
 drives them by "go to" and autodrive, two at a time, headless at 60 fixed ticks a second

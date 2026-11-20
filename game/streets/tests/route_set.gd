@@ -1,5 +1,5 @@
 extends SceneTree
-## One drive of the route set (tests/routes.json, picked by pick_routes.py): ROUTE=n. The car
+## One drive of the route set (routes.json beside the game, picked by pick_routes.py): ROUTE=n. The car
 ## set down at its "from" address, "go to" its "to", autodrive there (TRIP_SECS, default 600).
 ## Prints one line "ROUTE RESULT {...}" (arrived, seconds, metres, hits, standstills of 5 s+
 ## and what held them, red lights run, rescues, seconds off the asphalt) for
@@ -19,7 +19,7 @@ func _save_log(n: int, tag: String) -> String:
 
 func _run() -> void:
 	var n := int(OS.get_environment("ROUTE")) if OS.get_environment("ROUTE") != "" else 1
-	var f := FileAccess.open("res://game/streets/tests/routes.json", FileAccess.READ)
+	var f := FileAccess.open("res://game/streets/routes.json", FileAccess.READ)
 	var all: Dictionary = JSON.parse_string(f.get_as_text())
 	var route: Dictionary = {}
 	for r: Dictionary in all["routes"]:
@@ -45,6 +45,7 @@ func _run() -> void:
 	await physics_frame
 	g._set_dest(to, String(route["to"]))
 	g._set_auto(true)
+	var planned := true
 	var dt := Engine.time_scale / Engine.physics_ticks_per_second
 	var t := 0.0
 	var odo0: float = g._odo
@@ -65,7 +66,10 @@ func _run() -> void:
 		dt = Engine.time_scale / Engine.physics_ticks_per_second
 		t += dt
 		if not g._dest_on:
-			arrived = true
+			# arrived -- or gave up at once: "can't find a way there from here" clears the
+			# destination too (a route read as arrived in 0 s with 1.3 km to go)
+			arrived = g._pos.distance_to(to) < 40.0
+			planned = arrived or t > 2.0
 			break
 		if absf(g._v) < 0.3:
 			if still == 0.0:
@@ -96,7 +100,7 @@ func _run() -> void:
 	for s: Array in stills:
 		longest = maxf(longest, float(s[0]))
 	var res := {"id": n, "city": route["city"], "from": route["from"], "to": route["to"],
-		"arrived": arrived, "secs": int(t), "metres": int(g._odo - odo0),
+		"arrived": arrived, "no_way": not planned, "secs": int(t), "metres": int(g._odo - odo0),
 		"left_m": int(g._pos.distance_to(to)), "hits": hits, "stills": stills,
 		"longest_wait": snappedf(longest, 0.1), "reds": g._reds - reds0, "rescues": rescues,
 		"off_road_s": snappedf(off, 0.1)}
