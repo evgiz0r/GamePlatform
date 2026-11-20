@@ -329,7 +329,7 @@ func build() -> void:
 				g._add_post(at, 0.45)
 	g._add_mesh(b, g._vc_mat(), true, 260.0)
 	g._add_mesh(hedge, g._surface("bush"), true, 260.0)
-	g._add_mesh(glass, g._shop_glass(), false, 220.0)
+	g._add_mesh(glass, _window_glass(), false, 220.0)
 	if not bikes.is_empty():
 		g._chunked(_moto_kit(), bikes, 170.0, bike_cols, null, true)
 	if not scooters.is_empty():
@@ -734,6 +734,17 @@ func _shopfront(b, glass, a: Vector2, e: Vector2, h: float, face: Vector2) -> vo
 		for x: float in [s0, (s0 + s1) * 0.5, s1]:
 			var q := a + d * x + out * 0.05
 			g._furn._box(b, Vector3(q.x, gy + 1.3, q.y), Vector3(0.12 if x != (s0 + s1) * 0.5 else 0.06, 2.6, 0.08), frame, bs)
+
+## A shop window by day: dark glass that reflects, the shop's light showing faintly through
+## (the game's lit shop glass, made for a street at night, glowed as a flat cream wall in
+## the arcade's shade)
+func _window_glass() -> StandardMaterial3D:
+	var m := g._shop_glass().duplicate() as StandardMaterial3D
+	m.albedo_color = g._tone["carglass"]
+	m.emission_energy_multiplier = 0.2
+	m.roughness = 0.08
+	m.metallic = 0.5
+	return m
 
 ## a steady pseudo-random number in [0, 1) for a stone's size and shade, so a wall comes
 ## out the same every time
