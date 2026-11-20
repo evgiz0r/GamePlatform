@@ -57,6 +57,39 @@ The ones most often touched, and the functions in them:
   -- no draws of their own. Lit shops' light on the pavement: `_shop_lights`. The night's
   colours: the night branch of `_retint_city` (a little of the palette's player colour, not
   half of it). Shop glass at night 0.85 (2.0 clipped to white).
+- **front gardens' walls and gates** -- `_garden_fronts` lays each plot's wall itself
+  (`_garden_wall`: rubble in the `wall` buffer, or render + coping in fronts' "plaster" /
+  "coping"; its kind and height from the plot's own hash), not the kerb loop any more (that
+  only records `walled` and lays the lawn strip). Gates: `_run_gates` (cached per run side
+  in `_gate_cache`) finds the doors facing the run -- `_doors_of` works out again, from the
+  city's data, the same choices `_build_buildings` makes (style, columns, height), so every
+  square agrees whether or not it has built that building -- and the plots end at them.
+  `_front_gate`: piers, the path (fronts' "path", tone "slabs", its way in the vertex green:
+  `_batch_buf` keeps the green of anything whose first vertex has alpha 0), the arch, the
+  yard car (`_yard_cars`, parked with the street's in `_build_parked`). Greenery over the
+  walls: fronts' "spill" (crown cards, a post under it when it is low). The kerbs stage
+  measured the same with all of it (1.29 s) as without (1.33).
+- **pavement covers, tree pits, recycling** -- covers: KERB_SHADER's pavement branch, one
+  in a 19 m stretch two times in five (`iron` uniform); the pavement's vertex alpha now
+  also says a narrow pavement's width (0.7-0.76: a median's: no covers). Pits:
+  `furniture.pit_kit`, four street trees in ten in Israel. Recycling: `furniture._recycling`
+  (by one junction in four, kits `_paper_bin_kit`, `_cage_kit`, `_glass_bell_kit`).
+- **grass blades** -- GRASS_SHADER on a MultiMesh of 4 m patches (`_build_grass`) whose
+  node follows the camera a patch at a time (`_grass_follow`, from `_sky_follow`); a blade's
+  three corners sit at its root, the shader grows it where the far-shadow picture's green
+  says grass grows (`_build_far_shadows` paints it: 0.5 open ground, 1 lawns, parks, woods,
+  pitches, front gardens; roads with their pavements and buildings 0) at the ground's
+  height (the height grid as an RF texture, the same triangles as `_h`), by the camera's 3D
+  distance (none from up high). Cull off, so it flips NORMAL back on back faces (they went
+  black). `_grass_quality`: none below 2, 55% of the patches at 2.
+- **people keeping clear** -- `_people_tick` lists everyone (`_people_at`, `_people_who`);
+  a walker steers off its line (`lat`, up to 0.7 m) round anything solid 1.3 m ahead and
+  away from anyone ahead or alongside (to their other side, the right if dead ahead), then
+  two passes of `_push_out` (out of a parked car's one post can be into its other).
+  `_people_push`: people solid to the car (`_collide`) and to you on foot, not in
+  `_push_out` (which also places things as the city builds). `_crash` makes a person a
+  soft knock. People dissolve in over 75-90 m (`_people_lod`, OBJECT_DITHER).
+  `tests/people_clear.gd` (7.6% walking into things, 47 too-close: now 0.1%, 2-9).
 - **cats, flags on cars** -- the builders call `cat_at(p, y, facing, "sit"/"loaf")` (garden
   walls in `_garden_fronts`, a parked car's nose in `_build_parked`, bins in furniture's
   `kerbside`); furniture.gd's `cats()` places `_cat_kit()` (ellipsoids and tubes, the coat
@@ -123,7 +156,10 @@ The ones most often touched, and the functions in them:
   nearest road (`_off_road` -> `_nearest_seg`) was the dear part: half the hedges' 300 ms.
 - **the builders** -- kerbs and pavements `_build_kerbs`, `_street_runs`,
   `_kerb_run_piece`, corners `_kerb_corners` (checked along their length), the asphalt grid
-  `_asph_hash` / `_asphalt_other`; parked cars `_build_parked`, car parks `_build_lots`; the
+  `_asph_hash` / `_asphalt_other`; paving is laid once (`_laid`, `_laid_cut`, `_laid_by`:
+  while a square's kerbs go down, a piece is cut where another street's, side's or corner's
+  is already down -- each patterned along its own street, two at one height flickered on a
+  phone; `tests/pave_overlap.gd` measures it, Tel Aviv had 19,000 m2 laid twice); parked cars `_build_parked`, car parks `_build_lots`; the
   map's edge `_build_edge` / `_keep_inside`.
 - **batching** -- `_batch_add`, `_flush_batches`, the one material `TONE_SHADER` with its
   `tones[64]` / `tone_fx[64]` tables; `_chunked` and `_add_mesh` route into it while building.
@@ -160,9 +196,21 @@ The ones most often touched, and the functions in them:
   on every steep slope too), mountain woods in the tree builder (`MTN_TREES`, drawn from
   further off), `_build_turbines` / `_turbines_tick`; the fog halves in that town
   (`_retint_city`). Only a made-up town with hills gets any of it. `tests/mountains.gd` shoots it.
-- **solid things and the road** -- `_off_road` (a road's edges only) and `_in_junction` (the
-  round asphalt at a junction's point); furniture's `_free` checks both. `tests/road_blocks.gd`
-  finds anything solid on a road's lanes or a junction's asphalt.
+- **traffic islands** -- `_find_islands` (in `_build_setup`): a park, lawn or plaza under
+  `ISLAND_MAX` with three quarters of its edge within 3 m of a street's asphalt is an island;
+  `_island_cut` takes the roads' asphalt (+0.1 m: its face stands behind a street's own kerb),
+  the junctions' discs and the paths through it off it; `_build_ground` lays the pieces at
+  `ISLAND_Y` (4 cm under a pavement's top, so a street's pavement over its edge stays on top),
+  `_island_faces` the kerb face round them, `_on_island` gives the car the median's jolt.
+  Givatayim 19 pieces, Ashdod 41; `tests/islands.gd` checks none is on a road.
+- **solid things and the road** -- `_off_road` (a road's edges, and the asphalt a rounded
+  corner adds out to its curve: `_in_corner_fill`) and `_in_junction` (the round asphalt at a
+  junction's point); furniture's `_free` checks both. The corners' outlines (`_corner_fill`)
+  are noted for every corner reaching a square before anything is built in it
+  (`_note_corner_fills`, from `_corners_at`, the geometry `_kerb_corners` lays): bollards by a
+  zebra near a junction, sign and light poles, trees stood out in them, in front of the kerb.
+  Signs are moved across the corner's kerb instead (`_out_of_corner`). `tests/road_blocks.gd`
+  finds anything solid on a road's lanes, a junction's asphalt or a corner's.
 - **loading** -- the squares round the start are built with the city hidden (`world.visible`)
   and hand a frame back every `FG_US` (`_fg_build`: `_over` / `_pause`), the text ticking;
   `_warm_up` then shows the kinds of surface a few at a time (`_shader_key`; four views only
@@ -173,6 +221,12 @@ The ones most often touched, and the functions in them:
   at `_walk_y` / `_pave_top`, what autodrive stops for `_ap_people_v`.
 - **render quality** -- `QUALITY`, `_set_quality` (what each level drops), `_watch_fps` (web
   only) / `_judge_fps` (the rule; testable natively), the soft car shadows `_set_blobs`.
+  Every level keeps the sun's shadows (level 0: 25 m): switching them off recompiled every
+  material's shader in the browser, seconds of freeze each time the ladder crossed into or out
+  of level 0. Night still switches them off (once, on the button). `tests/hitches.gd` counts
+  frames over 250 ms / 1 s driving and from above -- but under the test machine's software
+  renderer every Tel Aviv frame takes ~0.8 s, so it shows the script's parts, not a GPU's
+  stalls; a browser on the user's machine is the real measure (the perf view's hitch lines).
 - **where a frame's time goes** -- the profiler: `_p("part")` around each part, hitches
   kept and reported; P or a tap on the fps text shows it.
 - **zoom out and pause** -- "the view from above", after the chase cam: `_paused` stops
@@ -503,6 +557,27 @@ first:
   the pavement; painted bays on the shopping street. The game filled a quarter of the kerb.
 - **Street trees**: thin trunks in square earth pits at the kerb edge every ~8-10 m, the
   canopies meeting over the pavement; no palms on these streets.
+- **Shops** (second pass, done: `_shop_pieces` keeps gardens out from in front of shops and
+  widens the pavement there by `SHOP_PAVE` to the shop windows -- without it a strip of bare
+  grass was left between a 2.4 m pavement and the shopfronts;
+  Sirkin's rows are `lines` of kind shopfront in `cities/details/givatayim.json`, placed on
+  the city file's building edges parallel to the street just behind its pavement): OSM knew
+  six businesses along the walk; the film, panning, showed a row down both sides of Sirkin
+  -- a green corner shop, a bar under string lights with bar stools, shuttered shops,
+  Roladin's posters on its Sirkin side, the sabich stand's red umbrella and the
+  greengrocer's produce across the street, white scalloped awnings near Katznelson. The
+  game had gardens there and one bright awning per OSM shop. Each shop's own look is now in
+  the details file's `shops` (details.gd has the format; `_build_pois` reads it through
+  `Details.shop_look`); `tests/shop_looks.gd` stands in the street facing each one and
+  prints where its front went. Awnings and umbrellas are instance-coloured (`_awning_col`,
+  `_real_col`), no longer one glowing palette material per role.
+- **Tests after the city is built cannot read `_city_data`**: the game lets go of the city
+  file once every square is up (`_city_data = {}` after building), so a scene test looking
+  for places there finds none. The built places are in `_pois` ([spot, role, name sign]).
+- **The map's outline at the kerb**: on Sirkin's west side the sabich stand's building
+  outline runs to within ~1 m of the kerb (OSM's upper floors), so no terrace fitted; a
+  cafe's table and umbrella may now stand right at its window when the shop's look asks for
+  an umbrella (`_terrace`'s third try).
 - **Light**: the real late afternoon is hazy and warm; the game's sky is saturated blue
   with cartoon clouds and its sunlight bleaches the ground.
 - **Small things**: black bollards with a yellow band along the kerb by the main road, a
@@ -557,10 +632,11 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   (`Traffic.send`: the car furthest away, not a bus, onto the road nearest the spot, that
   way). The game's halves of Katzenelson are 9 m: the walk crosses each at 2.3-2.5 m/s to
   keep the film's times; the film's own speed suggests the real halves are narrower.
-- **How long a pass takes to check** (one Godot run at a time): the scan (`SCAN=1`) about 5
-  min, the recording (`RECORD=1`, 966 frames) 18-20 min, the side-by-side 1 min, each
-  playtest of a Givatayim level 3-4 min -- the whole chain (scan, record, video, playtests
-  of levels 5, 1 and 6) about 40 min. Tell the user so when you start it.
+- **How long a pass takes to check** (one Godot run at a time; measured 20 Nov 2026 after the
+  city learnt to load in steps -- it was twice as slow before): the scan (`SCAN=1`) about
+  1 min, the recording (`RECORD=1`, 966 frames) about 18.5 min, the side-by-side under 1
+  min, the three playtests (levels 5, 1, 6) about a minute together -- the whole chain about
+  21 min. Tell the user so when you start it.
 - **The film's clock is decoding from its start.** `ffmpeg -ss` before `-i` lands on the
   wrong frames in this clip's first seconds (VLC's variable-rate transcode: 2999 frames in
   100 s, said to be 60 fps); `-vf trim=a:b,setpts=PTS-STARTPTS` agrees with the
@@ -620,9 +696,10 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
 
 A road whose city file has `y` (its surface's height at each node, decimetres above the
 height grid's base) is a **deck**; its OSM tags say what it is built as (`br` bridge, `tu`
-tunnel, `em` embankment, `cu` cutting). Only `tools/fake_city.py` writes `y` so far, so only
-the test town has decks; in the real towns a bridge without `y` is drawn on the ground as
-before and a tunnel without it is still dropped.
+tunnel, `em` embankment, `cu` cutting). `tools/fake_city.py` writes `y` into the test town;
+a real town opted in with `"decks": "infer"` (Bedford, Tel Aviv) gets it worked out as it
+loads (below). Elsewhere a bridge without `y` is drawn on the ground and a tunnel without
+it is dropped.
 
 - **One height is not enough.** Everything used to ask `_h(p)`, the ground. Now whatever has
   a level asks `_decks.surf(p, y)`: the highest of the ground and the decks under p that is
@@ -704,6 +781,39 @@ before and a tunnel without it is still dropped.
   before the start of the other, and fell through (hence "just past the end", 3 m, only at
   deck joints). Buildings OSM maps under a low approach (the MacKay Bridge's) stood in the
   deck: decks under 4 m up are now cut back from like streets (`_clip_buildings`).
+- **`surf` and the streets over them.** `surf` ranks a deck whose carriageway a body is
+  over before the ground (the divided roads' overlap, above) -- and a tunnel 7 m under a
+  street is one: a car on Kaplan dropped into Lova Eliav and hit its wall. A deck more than
+  1.5 m under ground the body can reach is now passed over (inside the tunnel the ground
+  overhead is out of reach, so it is still found). And on a street's asphalt over a
+  cutting or a tunnel (`_street_over`, looked up only there), the street carries a body at
+  its level: the ground counts over the cutting, and anything under it at all is passed
+  over -- a street across an underpass's mouth, a cutting's shallow top under a street's
+  lanes. A cutting's wall where a street's asphalt lies over it is not solid either (a car
+  on Kaplan hit the Lova Eliav cutting's wall where it starts at the kerb).
+  `tests/street_holes.gd` samples every street's asphalt for both -- what a car there
+  stands on, and whether a deck's wall stands there at street level: Tel Aviv 1011 points
+  over a hole, then 6 (on the HaShalom bridge's west ramp, 0.6-0.9 m: a bridge ramp, not a
+  tunnel); the test town 1, then 0. Walls: Tel Aviv 66, Ashdod 80 -- piers standing in the
+  Ayalon's lanes among them (a pier spans the deck's width, and was checked against other
+  roads' lanes at its middle only: now at five points across), then 41 and 51.
+- **What Tel Aviv found** (another session wrote its own tunnel inference first, a
+  mirror of `infer`; this one's found, and its fixes kept): the other half of a divided
+  road crossing a tunnel's line where the halves close in at a mouth counted as a road over
+  it and held Begin's southbound underpass on the ground (same name: skipped); Lova Eliav's
+  two short links into Begin's underpass run under nothing mapped, so they went back on the
+  ground as passages, the junction they meet became a street junction, and held the tunnel's
+  east end up (a tunnel way below the ground that joins a tunnel at an end is a branch,
+  dug with it). With both: 34 tunnels dug, the rest put back on the ground are car park
+  ramps, a passage under a building and two branch ramps too short to climb out. And the
+  car's own physics: it took the surface's rise in a frame as its climb, so the 0.2-0.3 m
+  seam where two decks overlap at a junction in the air read as 17 m/s up and threw the car
+  3 m over the Modai bridge -- a rise faster than STEP_GRADE (0.3) of the speed is now a
+  step, climbed (`_fly`); Modai's 197 frames in the air became 6, and the test town and
+  Bedford are the same with and without it. Building its own version first (dropped for
+  the other's) also found: crests where a cutting meets the street at full grade, and
+  humps in a tunnel where a branch climbs out, launch cars at 30-50 km/h (a vertical curve,
+  rounding) -- not yet in `infer`.
 - **Where the heights come from.** The test town's maker knows them: each deck's ends at the
   ground, a bridge straight from bank to bank with a little camber, the flyover's and
   underpass's ramps eased up and down to 6.6 m clear of the boulevard (`CLEAR`), the tunnel
@@ -720,10 +830,16 @@ before and a tunnel without it is still dropped.
   (a turning car clipped the parapet), a 5 cm switch from a cutting's road to the ground
   where it gets shallow (a hop), and ground triangles left whole over a cutting (an edge
   parallel to the hole's leaves a smaller triangle: compare areas, not corner counts).
+<<<<<<< HEAD
+- **Still to do**: the inferred heights for Givatayim and Ashdod (and their tunnels);
+  pavements and people beside an inferred cutting, and the minimap showing a tunnel as one;
+  earth embankments with grass slopes rather than walls along inferred ramps; a long-span
+=======
 - **Still to do**: the inferred heights for Givatayim (Tel Aviv is another session's);
   Ashdod's tight interchange at its east edge (x 3850, z -1590: slip roads crossing slip
   roads at street level -- 15 crossings short of the clearance, 0.5 m the lowest); a 0.5 s
   hop out of Menachem Begin's underpass; footpath tunnels; grass slopes for cuttings too (they are walled); a long-span
+>>>>>>> origin/main
   bridge's height over water (the MacKay's deck is only as high as its ends); pavements at street
   level beside a cutting (the underpass has none); people on a bridge's pavement; the
   minimap draws a tunnel like any street; zooming out from inside the tunnel rises from the
@@ -737,13 +853,17 @@ before and a tunnel without it is still dropped.
 
 ## Open problems
 
-- **Tel Aviv's bridges and tunnels have no heights** (Nov 2026). OSM tags them but says
-  nothing of how high, so the 2.4 km of bridges (every road over the Ayalon: Moses,
-  Givat HaTahmoshet, Modai, Arvei Nahal, Yitzhak Sadeh, Begin's) lie on the ground and cross
-  the motorway flat, sharing no point with it, and the 4.2 km of drivable tunnels (Lova
-  Eliav 900 m, Uzi Hitman, Carlebach, Begin under Kaplan) are left out. The test town's
-  decks (`y` per point, `decks.gd`) are the way: work the heights out in the bake or at load
-  from `br`/`tu`/`ly`, the ramps being the ways either side.
+- **Tel Aviv's decks, what is left** (Nov 2026; `tests/decks.gd` at level 7). Short hops
+  where ramps meet: Moses and Arvei Nahal's embankments (crests at the ramps' tops, the
+  same kind as Bedford's Anderson Lake hop: `infer` has no vertical curve at a ramp's top
+  yet), and a car-park service bridge at the south-west corner that ends at a building
+  (autodrive noses it). 6 points of the HaShalom bridge's west ramp, 0.6-0.9 m under the
+  street beside it, and 41 points where an inferred ramp's wall, a bank's foot or a
+  parapet stands in a street's lanes (Ashdod 51, the test town 10: embankments running
+  tight alongside other roads -- slip roads beside the Ayalon, Yitzhak Sadeh's ramp)
+  (`tests/street_holes.gd`). Two branch ramps out of Lova Eliav's west
+  end are too short to climb out at 10% and lie on the ground. A tunnel's tube is drawn
+  whatever is over it, buildings included (Lova Eliav runs under HaKirya's blocks).
 - **Givatayim's ground is the terrain tiles' surface model too**: its "steepest 52%" is
   likely part roofs. Measured on its grid, `--bare-ground` would take the hill's crest
   86 -> 72 m and the steepest slope 48 -> 16%. Not re-baked: it moves the ground under the

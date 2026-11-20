@@ -1053,6 +1053,115 @@ func kerbside() -> void:
 	await _place(_hydrant_kit(), hydrants, NEAR_SEEN, "hydrants")
 	await _place(_cabinet_kit(), cabinets, SEEN * 0.6, "cabinets", true)
 	await _place(_bin_kit(), bins, NEAR_SEEN, "bins")
+	if med:
+		await _recycling()
+
+## ---- recycling -----------------------------------------------------------------------------
+## By one junction in six of the residential streets, at the back of the pavement a few metres
+## round the corner, as Givatayim has them: a big blue bin for paper, often an orange cage for
+## packaging beside it, now and then a purple bell for glass. Solid (posts).
+func _recycling() -> void:
+	var paper: Array = []
+	var cages: Array = []
+	var glass: Array = []
+	for ni: int in g._tile_nodes.get(g._tile, []):
+		if (g._node_roads[ni] as Array).size() < 3 or _rnd(ni * 13 + 5) > 0.25:
+			continue
+		if g._over():
+			await g._pause()
+		var c: Vector2 = g._nodes[ni]
+		for e: Vector2i in g._node_roads[ni]:
+			var r: Dictionary = g._roads[e.x]
+			if not r["drive"] or not (r["k"] in ["residential", "living_street", "tertiary"]):
+				continue
+			var pts: PackedVector2Array = r["pts"]
+			var nb := e.y + 1 if e.y + 1 < pts.size() else e.y - 1
+			var d := (pts[nb] - pts[e.y]).normalized()   # away from the junction
+			var side := Vector2(-d.y, d.x) * (1.0 if _rnd(ni * 7 + 1) < 0.5 else -1.0)
+			var back: float = float(r["w"]) * 0.5 + g.KERB_W + g.PAVE_W - 0.5
+			var at := c + d * (float(g._node_r[ni]) + 7.0 + _rnd(ni * 3 + 2) * 6.0) + side * back
+			var face := Basis(Vector3.UP, atan2(-side.x, -side.y))   # front to the street
+			var kinds := ["paper"]
+			if _rnd(ni * 11 + 3) < 0.6:
+				kinds.append("cage")
+			if _rnd(ni * 17 + 9) < 0.3:
+				kinds.append("glass")
+			var k := 0
+			for kind: String in kinds:
+				var p := at + d * (float(k) * 1.35)
+				if not (g._mine(p) and _free(p, 0.6, 0.6, 0.9)):
+					continue
+				var xf := Transform3D(face, Vector3(p.x, _h(p) + g.KERB_H, p.y))
+				(paper if kind == "paper" else (cages if kind == "cage" else glass)).append(xf)
+				g._add_post(p, 0.55 if kind != "glass" else 0.5)
+				k += 1
+			break   # one corner of the junction
+	await _place(_paper_bin_kit(), paper, NEAR_SEEN * 1.2, "recycle_paper")
+	await _place(_cage_kit(), cages, NEAR_SEEN * 1.2, "recycle_cages")
+	await _place(_glass_bell_kit(), glass, NEAR_SEEN * 1.2, "recycle_glass")
+
+## the paper bin: a blue box 1.0 x 0.8 x 1.3 m, its lid a shade darker, a slot on the front
+## (+Z) and a white label over it
+func _paper_bin_kit() -> ArrayMesh:
+	if _kits.has("paper_bin"):
+		return _kits["paper_bin"]
+	var b = g.new_buf()
+	var blue: Color = _tone("signblue")
+	_box(b, Vector3(0, 0.62, 0), Vector3(1.0, 1.2, 0.8), blue)
+	_box(b, Vector3(0, 1.26, 0), Vector3(1.04, 0.1, 0.84), blue.darkened(0.25))
+	_box(b, Vector3(0, 1.0, 0.401), Vector3(0.6, 0.07, 0.01), _tone("tyre"))
+	_box(b, Vector3(0, 0.78, 0.401), Vector3(0.42, 0.18, 0.01), _tone("mark"))
+	for sx: float in [-0.42, 0.42]:   # its wheels' housings
+		_box(b, Vector3(sx, 0.06, 0.25), Vector3(0.1, 0.12, 0.16), _tone("tyre"))
+	var am: ArrayMesh = _mesh(b)
+	_kits["paper_bin"] = am
+	return am
+
+## the packaging cage: an orange frame 1.1 x 0.9 x 1.6 m, open bars all round
+func _cage_kit() -> ArrayMesh:
+	if _kits.has("cage"):
+		return _kits["cage"]
+	var b = g.new_buf()
+	var orange: Color = Palette.col("hazard").lerp(Palette.col("warn"), 0.55)
+	var hw := 0.55
+	var hd := 0.45
+	var H := 1.6
+	for y: float in [0.05, H * 0.5, H]:   # rims
+		_box(b, Vector3(0, y, hd), Vector3(2 * hw, 0.05, 0.05), orange)
+		_box(b, Vector3(0, y, -hd), Vector3(2 * hw, 0.05, 0.05), orange)
+		_box(b, Vector3(hw, y, 0), Vector3(0.05, 0.05, 2 * hd), orange)
+		_box(b, Vector3(-hw, y, 0), Vector3(0.05, 0.05, 2 * hd), orange)
+	for i in range(7):   # the bars, front and back
+		var x := -hw + 2.0 * hw * float(i) / 6.0
+		_box(b, Vector3(x, H * 0.5, hd), Vector3(0.025, H, 0.025), orange)
+		_box(b, Vector3(x, H * 0.5, -hd), Vector3(0.025, H, 0.025), orange)
+	for i in range(1, 5):   # and the sides
+		var z := -hd + 2.0 * hd * float(i) / 5.0
+		_box(b, Vector3(hw, H * 0.5, z), Vector3(0.025, H, 0.025), orange)
+		_box(b, Vector3(-hw, H * 0.5, z), Vector3(0.025, H, 0.025), orange)
+	# what is in it: a heap of plastic bottles and cartons, a lighter mass half way up
+	_box(b, Vector3(0, 0.32, 0), Vector3(2 * hw - 0.1, 0.55, 2 * hd - 0.1), _tone("mark").lerp(_tone("signblue"), 0.15))
+	_box(b, Vector3(0.1, 0.68, -0.05), Vector3(0.7, 0.2, 0.55), _tone("mark").lerp(orange, 0.2))
+	var am: ArrayMesh = _mesh(b)
+	_kits["cage"] = am
+	return am
+
+## the glass bell: a purple dome 1.4 m high, a round mouth near the top
+func _glass_bell_kit() -> ArrayMesh:
+	if _kits.has("glass_bell"):
+		return _kits["glass_bell"]
+	var b = g.new_buf()
+	var purple: Color = _natural(Palette.col("prize"), 0.7)
+	_tube(b, Vector3(0, 0, 0), Vector3(0, 1.1, 0), 0.55, 0.45, purple, 12)
+	_tube(b, Vector3(0, 1.1, 0), Vector3(0, 1.4, 0), 0.45, 0.12, purple.darkened(0.08), 12)
+	_box(b, Vector3(0, 1.05, 0.47), Vector3(0.2, 0.2, 0.02), _tone("tyre"))   # the mouth
+	var am: ArrayMesh = _mesh(b)
+	_kits["glass_bell"] = am
+	return am
+
+## a palette colour with only `keep` of its saturation (as the game's own _natural)
+func _natural(c: Color, keep: float) -> Color:
+	return g._natural(c, keep)
 
 ## a bollard, 0.85 m: black with a yellow reflective band near the top, or plain white
 func _bollard_kit(white: bool) -> ArrayMesh:
@@ -1133,6 +1242,44 @@ func _bin_kit() -> ArrayMesh:
 	_kits["bin"] = am
 	return am
 
+## A tree pit of bare earth, 1.1 m square, its edge a low concrete kerb along the street (+Z),
+## dead leaves on the soil and a black drip hose looped round the trunk
+func pit_kit() -> ArrayMesh:
+	if _kits.has("pit"):
+		return _kits["pit"]
+	var b = g.new_buf()
+	var soil: Color = _tone("ground").darkened(0.42)
+	var edge: Color = _tone("kerb")
+	var hose: Color = _tone("tyre")
+	var leaf: Color = _tone("ground").lerp(_tone("woodfence"), 0.5)
+	var s := 0.55
+	b.flat(Vector2(-s, -s), Vector2(s, -s), Vector2(s, s), Vector2(-s, s), 0.012, soil)   # (just over the pavers: under them it was not seen)
+	for side: int in range(4):   # the edging: 7 cm wide, its top 3 cm over the pavers
+		var bs := Basis(Vector3.UP, PI * 0.5 * side)
+		_box(b, bs * Vector3(0, 0.02, s + 0.035), Vector3(2.0 * s + 0.14, 0.07, 0.07), edge, bs)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 41
+	for i in range(14):   # leaves on the soil
+		var c := Vector3(rng.randf_range(-s + 0.05, s - 0.05), 0.016, rng.randf_range(-s + 0.05, s - 0.05))
+		if Vector2(c.x, c.z).length() < 0.2:
+			continue
+		var a := rng.randf() * TAU
+		var u := Vector3(cos(a), 0, sin(a)) * 0.05
+		var w := Vector3(-sin(a), 0, cos(a)) * 0.025
+		b.tri(c - u, c + w, c + u, Vector3.UP, leaf.darkened(rng.randf() * 0.3))
+		b.tri(c - u, c + u, c - w, Vector3.UP, leaf.darkened(rng.randf() * 0.3))
+	var prev := Vector3.ZERO
+	for i in range(13):   # the hose, round the trunk and away under the edge
+		var a := TAU * i / 12.0
+		var p := Vector3(cos(a) * 0.32, 0.024, sin(a) * 0.32)
+		if i > 0:
+			_tube(b, prev, p, 0.009, 0.009, hose, 4)
+		prev = p
+	_tube(b, Vector3(0.32, 0.024, 0), Vector3(0.32, 0.024, s + 0.08), 0.009, 0.009, hose, 4)
+	var am: ArrayMesh = _mesh(b)
+	_kits["pit"] = am
+	return am
+
 ## an iron tree grate round a street tree's trunk, flat on the pavement: a ring of slots
 ## round a plain rim, the soil showing in the middle (for the game's street trees)
 func grate_kit() -> ArrayMesh:
@@ -1169,7 +1316,10 @@ func street_life() -> void:
 	var scooters: Array = []
 	var scooter_cols: Array = []
 	var bike_paint := [Palette.col("hazard").lerp(Palette.col("bg"), 0.3), _tone("signblue"), _tone("mark"), _tone("cartrim")]
-	var scooter_paint := [_tone("mark"), _tone("cartrim"), Palette.col("hazard").lerp(Palette.col("bg"), 0.25), _tone("rim")]
+	# (a red scooter is a paint's red: the palette's hazard, pink here, made pink scooters)
+	var hz := Palette.col("hazard")
+	var red := Color.from_hsv(0.99, clampf(hz.s, 0.55, 0.8), clampf(hz.v * 0.62, 0.35, 0.6))
+	var scooter_paint := [_tone("mark"), _tone("cartrim"), red, _tone("rim")]
 	var k := 1.0 / float(g._city_data.get("scale", 10))
 	var taken := _life_taken
 	var all_pois: Array = g._city_data.get("pois", [])

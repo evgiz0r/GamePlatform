@@ -144,9 +144,13 @@ destination stays; autodrive picks the route up again from wherever you are.
 Only addresses OpenStreetMap knows are listed: in Givatayim that is about one building in
 six (plus address points), in Bedford almost all of them.
 
-**Jumping there.** The button at the top left of the list switches it between "drive
-there" and "jump there". Jumping puts the car down on the street at the address, in its
-lane, stopped, facing the way that has the address on the kerb side.
+**Jumping there.** At the top left of the list are two choices side by side, "jump to"
+and "drive to", the one in force filled in; "jump to" is chosen when the game starts.
+Jumping puts the car down on the street at the address, in its lane, stopped, facing the
+way that has the address on the kerb side; driving hands the way there to autodrive.
+
+> in the goto option, make it by default jump to. the menu is not so clear so just show two
+> choices. drive to and jump to. where one of them is selected
 
 > Besides go to, I want also jump to. It teleports there, instead of driving.
 
@@ -170,9 +174,20 @@ just past Leonardo da Vinci, heading east, HaKirya on the left and the Azrieli t
 ahead. The towers stand at their real heights (OSM has them for the tall ones: Azrieli's
 round tower 187 m, the Spiral 350 m). The map ends at the box's edge (the striped barrier).
 
+The Ayalon runs through it on the ground, and every street over it is a bridge about 6.5 m
+up, on ramps from the streets either side: Arvei Nahal, Moses, Givat HaTahmoshet (the
+HaShalom bridge), Modai, Begin's and Yitzhak Sadeh. The tunnels are dug: Begin dips under
+the Kaplan junction in an underpass both ways, the Lova Eliav tunnel runs under HaKirya and
+Sarona with its links meeting Begin's underpass underground, and Uzi Hitman and the
+Carlebach tunnel go under, each about 6 m down with cuttings up to the street at either
+end. Berkowitz's short tunnel, some car park ramps and two short branch ramps out of
+Lova Eliav stay on the ground (too short to get under the street at a car's grade).
+
 > game streets -- lets add/start working on adding Tel Aviv. Somewhat the area I mentioned.
 > (with a map: Ichilov, Savidor, Azrieli, HaKirya, TLV Mall, Montefiore, Bitsaron,
 > Nahalat Yitshak)
+
+> lets do the bridges and tunnels over the Ayalon
 
 **The test town.** The last place, Kiryat Dimyon, is made up (`cities/dimyon.json`, from
 `tools/fake_city.py`): one neighbourhood about 1.3 x 1 km, a fifth of Givatayim's buildings,
@@ -263,6 +278,31 @@ Asked whether to add it as a level, from the cafe corner to Katznelson (and whet
 move Givatayim's start to a busier corner):
 
 > yes to both
+
+Sirkin, as the film showed it on a second pass: its ground floors are shops -- rows of lit
+glass bays with their sign bands down both sides of the filmed stretch, Roladin's name over
+its side on Sirkin -- and the pavement runs up to them, where the game had laid low garden
+walls and hedges (OSM calls Sirkin residential). The one real front garden between them,
+behind its low white fence, stays. Everywhere else too, no garden is laid in front of a
+shop OSM knows. Cars and scooters come in a car paint's red and a dark blue, not pink and
+teal.
+
+> can we iterate a bit more [...] what can we itertate there to improve realism. i did also
+> photo some of the shops around
+
+> the shops are from the video, i rotated and you could see ( sabih, fruit shop ), maybe
+> roladin somewhere too
+
+Each of those shops looks as filmed: Roladin under a black awning with white umbrellas over
+its tables; the sabich stand's black awning and a red umbrella over a table at its window;
+the green corner greengrocer with crates of fruit and vegetables out front and no awning,
+and another across Sirkin by the sabich, under a green awning; Kira Sushi's black front with
+a ledge and a row of tall bar stools; white awnings along the block by the computer shop.
+Everywhere, awnings and cafe umbrellas come in a canvas's colours (black, white, muted) rather
+than glowing neon. Sheinkin is paved in grey bricks laid in rows, Sirkin in reds and browns,
+and black bollards with a yellow band stand along Sirkin's kerb toward Katznelson.
+
+> go with all for that area, and create each time a video for me if possible
 
 The minimap (bottom left) shows the real streets and buildings round you, heading up, with
 the city limits in pink. The name of the street you are on is at the top, in Hebrew with
@@ -610,6 +650,19 @@ overlap, and between them a kerbed median instead of two pavements. No kerb or p
 is laid where it would lie on another road's asphalt, which also leaves a driveway its gap;
 a corner is checked along its whole length (checked only at its middle, a kerb could run
 straight across a road's mouth and lay a strip of pavement over the junction).
+Where two streets' pavements meet, each is laid once: a corner flickered between two pavings
+laid over each other at one height. Nothing stands on a rounded corner's asphalt -- bollards,
+sign and light poles were placed out on it, in front of the kerb.
+
+**Traffic islands.** A lawn or paved patch with road nearly all round it -- the island at a
+roundabout's mouth, a roundabout's middle, where a boulevard's halves part -- stands a kerb's
+height above the road with a kerb round it, and the car goes over it with a jolt, as over a
+median. It lay flat, level with the asphalt:
+
+> some wierd grass patches on the road
+
+Open ground between streets is dusty sand; it was a grey like the asphalt's, and an empty
+strip read as more road.
 
 > There are a lot of broken roads and random sidewalks in the middle. And in general very
 > badly looking crossroads.
@@ -836,6 +889,34 @@ shop window throws its light onto the pavement in front of it. No glow effect ov
 whole picture -- that costs a laptop's browser a millisecond or two every frame -- the
 halos are drawn with the pools, as part of what was drawn already.
 
+**Grass you can see the blades of.** Near you -- on foot most of all -- the lawns, parks and
+front gardens have blades standing up out of them, swaying, a few drier and paler among
+them, thinning out by 18 m. Only at the two top qualities (fewer at the second).
+
+> people dont have collision and just wonder around, lets add that to the list as well.
+> when some things just pop and have no collision its wierd
+
+**Front gardens as a walk finds them** (from a second walk's video, "1-5"):
+- The garden walls are each plot's own: rough stones in mortar, or rendered and capped with
+  a slab of pale stone, from knee height to over a metre where nothing stands on them.
+- Where a building's door faces the street the wall opens: a gate between two rendered
+  piers, now and then a metal arch with bougainvillea grown over it, and a path of pale
+  slabs with a border of white stones through the garden to the door. Before a deep yard
+  the opening is wider and a car is parked in the yard, nose to the building.
+- Greenery spills out over the pavement from some of the hedges and bare walls, and over
+  the board fences at head height; the walkers step round it.
+- Set into the paving every few dozen metres: a round iron lid in a square frame, or a
+  square iron plate. Four street trees in ten stand in a square of bare earth with a low
+  concrete edge, dead leaves and a drip hose, instead of an iron grate.
+- By one junction in four of the residential streets: a big blue bin for paper, often an
+  orange cage for packaging beside it, now and then a purple bell for glass.
+
+**People who keep clear.** The walkers step round the trees, posts, benches and cabinets on
+the pavement, keep to one side of anyone coming the other way, and step round people standing
+talking and round you on foot; you and the car can no longer go through them (the car stops
+at a person with a soft knock, never a crash). They no longer pop in at 90 m: they come in
+over the last 15. Cats on the pavement are solid too.
+
 > I took a video on my phone, walking in Givatayim.
 
 ## Smooth on a laptop and a phone
@@ -1011,6 +1092,18 @@ contributors under the ODbL, which is why the credit sits on screen.
   What a shop looks like (awning, tables, the bus shelter) is generic. The parked cars
   (about a quarter of the kerb), the people walking and sitting at cafe tables, rooftop
   solar heaters and rooms (Givatayim), pitched roofs on small houses (Bedford).
+<<<<<<< HEAD
+- **Guessed, in Bedford and Tel Aviv: how high their bridges are, how deep their tunnels.**
+  OSM says which ways are bridges and tunnels but not how high or deep, so the game works
+  it out as the town loads: each overpass rises to clear what it crosses, on ramps up the
+  roads leading to it, an interchange's junctions up on them and its slip roads coming
+  down; each tunnel goes 7 m under the ground over it, cuttings sloping down to it, deeper
+  where a road crosses over. Highway 102's overpasses, the Bedford Bypass, the MacKay
+  Bridge's approach; the Ayalon's bridges, the Begin underpass, the Lova Eliav tunnel.
+  Ramps are walled, not grassy banks, yet.
+- **Not there yet**: bridges in Givatayim and Ashdod (still drawn on the ground), and
+  their tunnels (left out). People crossing anywhere but a zebra.
+=======
 - **Guessed, in Bedford and Ashdod: how high the bridges are, how deep the tunnels.** OSM says which ways are bridges but
   not how high, so the game works it out as the town loads: each overpass rises to clear
   what it crosses, on ramps up the roads leading to it, an interchange's junctions up on
@@ -1020,6 +1113,7 @@ contributors under the ODbL, which is why the credit sits on screen.
   there is room for them, retaining walls where there is not.
 - **Not there yet**: bridges in Givatayim (still drawn on the ground), and tunnels under
   footpaths (left out). People crossing anywhere but a zebra.
+>>>>>>> origin/main
 
 To make your own street more accurate, fix it on openstreetmap.org (building heights are
 the most useful thing to add) and bake again.
@@ -1049,3 +1143,9 @@ pavements everywhere, not only here.
   and the ground (the test town has them already), then an interchange you drive over and
   under.
 - Not just driving: the same baked city could be walked, or used by another game.
+- Crashes you can see, and things that break ("lets start adding maybe some collision
+  effects and things breaking"): a bin or a recycling bin knocked over and rolling, a
+  bollard or a sign post bent over, a fence panel or a hedge pushed in, sparks and a scrape
+  mark where the car rubs a wall, glass and bits of plastic on the road after a hard hit,
+  dents on the car; people jumping back, or falling, when a car comes at them. Things the
+  car knocks over stay knocked over for a while, then are put back.

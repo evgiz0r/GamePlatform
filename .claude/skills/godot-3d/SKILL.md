@@ -83,6 +83,23 @@ is a Z coordinate, not a height.
   An albedo multiplier is linear and the screen is sRGB: 0.55 off the albedo is what left
   the same 0.69 on screen as a real shadow did. Under a test's software renderer each frame
   the bake waits for costs most of a second; in a browser it is a few ms.
+- **Grass blades without millions of triangles.** One patch of blades in a grid that moves
+  with the camera a patch at a time, the vertex shader growing each blade only where a
+  top-down mask says grass grows (paint the mask into a spare channel of a picture you bake
+  anyway) at the ground's height (the height grid as a float texture, `texelFetch`, the same
+  triangles the game interpolates on). With `cull_disabled` the renderer turns a back face's
+  normal to the ground: flip it back (`if (!FRONT_FACING) NORMAL = -NORMAL;`) or every blade
+  seen from behind is black. Fade by the camera's 3D distance, or from above you pay for
+  blades you cannot see.
+- **People who walk through things.** Walkers on a fixed line need steering, not just a
+  push: look a step ahead for anything solid and edge off the line before it; for other
+  people, step away from whichever side they are on and hold it until past (reacting only
+  to someone "ahead" lets them drift back as they draw level and brush); then push out of
+  whatever is left, twice. Measure it: sample everyone's overlaps over a run.
+- **Built in squares, decided the same in every square.** When one square's builder needs
+  something another square builds (where a building's door is, to lead a path to it), work
+  it out again from the data with the same choices, cached by id -- never read what the
+  other square's builder stored, which is not there yet when that square comes later.
 - **Night glow without a glow effect.** A bloom over the frame costs a browser a millisecond
   or two a frame; a halo per light, drawn additively in the same mesh as the light's pool on
   the ground (every vertex of its quad at the light, the corner in UV, turned to the eye in
@@ -267,9 +284,14 @@ most, in order, last time one did:
   38 and a PC stepped itself to the bottom. And step up again: after 8 s at the display's
   full rate try the level above; a level that fails again waits longer each time (30 s,
   1, 2, 4 min). "Only down, never up" left a PC at the lowest level for the whole drive
-  after one bad moment. What a level drops, in order: MSAA, shadow distance, then shadows,
-  3D resolution and photo textures. With shadows off, put a soft dark quad under each car
-  (one multimesh) or everything floats and the street goes flat.
+  after one bad moment. What a level drops, in order: MSAA, shadow distance, 3D resolution
+  and photo textures -- **never the shadows themselves**. In the Compatibility renderer a
+  directional light's shadows on or off is a different shader for every material, so a
+  level that switched them off made the browser compile them all again: a freeze of
+  seconds on every step between that level and the next, over and over as the ladder went
+  down and back up (a user saw 3.2 s). Keep shadows on at the bottom with a short reach
+  (25 m round the car) instead; anything else a level changes should be a shader parameter
+  or a buffer size, not a material's feature.
 - **Find stalls by timing the parts.** Time each part of a frame (the script's own work, in
   microseconds) and call a frame much slower than its neighbours a hitch, keeping which
   parts took its time. Every few seconds' stall found that way was periodic work done all
