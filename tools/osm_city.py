@@ -68,7 +68,8 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
   pois       [[x, z, kind, name, name_en], ...]   shops, restaurants, schools... (kind:
              the amenity/tourism value, or "shop:<type>" e.g. "shop:supermarket")
   height     {x0, z0, step, nx, nz, base, h: [...]}  ground height on a grid, decimetres above
-             `base` (metres above sea level), row by row from (x0, z0); absent = flat
+             `base` (metres above sea level), row by row from (x0, z0); absent = flat. Cut
+             and filled along the roads so each is level side to side (tools/level_roads.py)
   signals    [node indices]   traffic lights that sit on the road graph
   crossings  [node indices]
   signs      [[node index, "stop"|"give_way", dx, dz], ...]   stop and give-way signs on
@@ -103,6 +104,8 @@ import time
 import urllib.parse
 import urllib.request
 import zlib
+
+import level_roads   # (tools/, beside this file)
 
 # Public Overpass servers, tried in order: the main one turns some clients away (a 406 for
 # a link opened in a browser, resets from some networks), the others are full mirrors.
@@ -1610,6 +1613,7 @@ def main():
                                        ).lower()).strip("_") or "city"
     raw = fetch(args, slug)
     city = bake(raw, name, args)
+    level_roads.level(city)   # the roads level side to side on the height grid (tools/level_roads.py)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(city, f, ensure_ascii=False, separators=(",", ":"))

@@ -18,6 +18,7 @@ var _kit_mat: StandardMaterial3D
 var _ad_mat: ShaderMaterial
 var _flag_mat: ShaderMaterial
 var _fence_mats := {}
+var _fence_shader: Shader
 var _kits := {}
 var _count := {}
 var where := {}                ## kind -> transforms of what went in (for tests and tours)
@@ -845,9 +846,10 @@ func _fence_material(tone: String, gap: float) -> ShaderMaterial:
 	if _fence_mats.has(tone):
 		return _fence_mats[tone]
 	var m := ShaderMaterial.new()
-	var sh := Shader.new()
-	sh.code = FENCE_SHADER
-	m.shader = sh
+	if _fence_shader == null:   # (one Shader for every colour: each Shader is compiled on its own)
+		_fence_shader = Shader.new()
+		_fence_shader.code = FENCE_SHADER
+	m.shader = _fence_shader
 	m.set_shader_parameter("col", _tone(tone))
 	m.set_shader_parameter("gap", gap)
 	m.set_meta("tone", tone)

@@ -176,6 +176,18 @@ goes wrong shows up the first time it runs.
   lanes and its lawns like grass painted on them ("grass patches on the road"). Give open
   land its own colour -- dusty sand, dry earth -- clearly apart from the asphalt.
 
+- **Roads lean with the hillside.** The ground comes from terrain tiles on a grid (a point
+  every 8-46 m), and a road laid on it tilts across with the slope: in one hilly town 28% of
+  the roads' length leaned over 6% side to side, the worst over 30% (a real street: its 2%
+  crown). Cut and fill the GRID, not the road: each grid point near a road takes the height
+  of the road's centre line at the point nearest it, fully out to a cell's diagonal past the
+  pavement (every triangle reaching the asphalt then has all its corners on the road's
+  level), blending back over one more cell, the nearest asphalt edge winning. The road keeps
+  its climb, everything standing on the ground (kerbs, houses, cars, people) follows, and it
+  costs nothing at load: `tools/level_roads.py` does it to a baked file, and both bakers call
+  it. What is left is two roads at different levels within a cell (an interchange's slip
+  roads, a lane below a street): only a finer grid fixes those.
+
 ## Junctions and roundabouts
 
 - **One junction is often several points.** A divided road meets a street at one node per
@@ -208,6 +220,16 @@ goes wrong shows up the first time it runs.
   ways) when looking along an approach. Audit every junction in a scene test -- crossing ways
   sharing a group, a road whose group changes inside a site, ways in with no pole, zebras
   whose road has green one way -- before driving one: in one town it found 12, 48, 66 and 26.
+- **OSM maps few stop and give-way signs** -- a few dozen in a town of thousands of
+  junctions. Work out the rest: a way in of a smaller class into a junction without lights
+  gets one (a stop before a main road where that is the custom, a give-way otherwise; a slip
+  road gives way), with its facing, so it is one sign per way in. Leave out two streets of
+  one class (unmarked in life too, and which is "main" would be a guess), roundabouts,
+  driveways, a street going on through the junction under another class, the gap through a
+  divided road's median (only the outer way in), and junctions with a mapped sign nearby. Two
+  signs at one point must both be kept (code keyed by point kept the last). And a pole tried
+  at one spot by the line stood at 44 of 167 corners (the corner's asphalt, a wall): try a
+  few further back and further out.
 - **Roundabouts** are closed one-way ways (or tagged junction=roundabout). An AI that plans
   to the end of the way drives the whole circle, then picks "straight on" -- round again.
   Plan only to the next exit, and make staying on less likely with every piece driven.
@@ -247,6 +269,29 @@ goes wrong shows up the first time it runs.
   for "someone on the crossing" waits through most of its green for a person on the other
   half. Give the crossing the person's position and pace, and let a car wait only while
   they are on its carriageway (plus a metre) or about to step onto it.
+- **"Out of sight" is the camera's, not the body's.** Putting people where nobody sees
+  them appear (beyond the drawn distance, or well behind you) by the way the car or the
+  walker faces holds while the camera looks that way too. On foot the head turns -- a
+  filmed walk glances 60-90 degrees aside -- and "behind the body" is then in plain view:
+  someone at a cafe table was re-seated 2.3 m in front of the camera. Test the camera's
+  own heading and its frustum as well.
+- **A parked car as round posts: closer together than their radius.** Two circles of
+  0.85 m at either end of a car leave a 0.8 m gap at its middle, and a walker (0.25 m)
+  stood in it -- on a pavement with cars half up on it they went in at the nose and out at
+  the boot. Even one more in the middle let a shoulder 0.2-0.35 m into the car's side in
+  the scallops between circles, and posts ending short of the car's ends left its wings
+  0.2-0.3 m open; five, 0.7 m apart, the end ones at the car's half-length less their
+  radius, leave about 0.1 m. The same goes for anything long made of posts (a bus, a skip,
+  a bench).
+- **Walkers walk on at the end of a stretch.** Turning back at every block's end paces
+  one block forever, and in view it reads as aimless. Go on over the side street's mouth
+  to the same pavement's next block, or round the corner; turn back only where nothing
+  goes on, and swap someone out only where nobody sees.
+- **You on foot are not a car to them.** A rule that steps people aside from a car coming
+  at them on the pavement (within some metres, moving faster than a walk) fires for the
+  player walking too, at walking pace: everyone jumped a metre aside as you passed. Give
+  way to you on foot as to anyone, from a few steps off -- a replayed walk cannot step
+  round them.
 
 ## AI drivers in a real town
 
@@ -264,7 +309,17 @@ goes wrong shows up the first time it runs.
   the street.
 - **A car on your lane is a car whose body would touch yours**, not one whose middle is
   near your line: a fixed 1.5 m from the middle let the player's AI run in between two cars
-  in the lanes either side.
+  in the lanes either side. The same for traffic following traffic while one changes lanes:
+  it stands across both, angled, and a long one's back end swings out -- a bus stopped by a
+  light halfway over had its middle 2.7 m from the line of the van behind in the lane it
+  was leaving, and the van drove into it.
+- **Lanes across a road change: by where the car is, not by number.** Roads meeting at a
+  node share its middle line, so lane 2 of a wide four-lane link is lane 1 of the narrow
+  slip it runs on into; kept by number, cars crossed over each other into the slip. Follow
+  the shift a road change makes at a pace that grows with speed (a lane change's fixed
+  1.4 m/s ran cars off a slip's edge), and move over only as the car rolls: a body placed
+  by its front axle with the back trailing turns across the next lane if its front moves
+  sideways while it stands.
 - **Standoffs in narrow streets.** Traffic that waits for the player and a player's AI that
   waits for traffic wait for ever. Give one side a way out: after a few seconds face to
   face, the traffic car edges past if there is nearly room, else turns off (once out of
