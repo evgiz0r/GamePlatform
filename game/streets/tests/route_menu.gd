@@ -46,7 +46,9 @@ func _run() -> void:
 	ev.pressed = true
 	ev.position = at
 	ev.global_position = at
-	root.push_input(ev)
+	# (to the game's own _input, where a real tap arrives already in its 640x360 layout: pushed
+	# into the window it was read as window pixels and landed on another button)
+	g._input(ev)
 	# the route's city loads
 	var waited := 0.0
 	g = null

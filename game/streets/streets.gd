@@ -15556,14 +15556,16 @@ func _route_list_open() -> void:
 		return
 	for i in range(routes.size()):
 		var r: Dictionary = routes[i]
-		var text := "%d  %s:  %s  →  %s" % [int(r["id"]), CITY_NAMES.get(r["city"], r["city"]), r["from"], r["to"]]
+		# (each address on its own line: a Hebrew address and an arrow on one line came out
+		# with the arrow pointing from the end to the start)
+		var text := "%d  %s\nfrom  %s\nto  %s" % [int(r["id"]), CITY_NAMES.get(r["city"], r["city"]), r["from"], r["to"]]
 		var b := _tap_button(text, func(): Flow.start_game("streets", {"level": int(r["level"]), "route": int(r["id"])}))
 		b.add_theme_font_override("font", _font)
-		b.add_theme_font_size_override("font_size", 11)
+		b.add_theme_font_size_override("font_size", 10)
 		b.clip_text = true
-		b.position = Vector2(14 + (i / 5) * 310, 72 + (i % 5) * 52)
-		b.size = Vector2(300, 44)
-		b.custom_minimum_size = Vector2(300, 44)
+		b.position = Vector2(14 + (i / 5) * 310, 68 + (i % 5) * 56)
+		b.size = Vector2(300, 52)
+		b.custom_minimum_size = Vector2(300, 52)
 		_route_ui.add_child(b)
 	# (later: a button to make your own -- from and to with the address picker -- kept with these)
 
