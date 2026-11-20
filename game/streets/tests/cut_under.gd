@@ -3,7 +3,9 @@ extends SceneTree
 ## is a trench through the street, its railings across the lanes -- what a user saw across
 ## Tel Aviv's Kaplan ("weird borders"), where a 19 m piece of the Lova Eliav tunnel, too
 ## short alone for a tunnel, was put on the ground between two tunnel pieces and dug as a
-## cutting. Expect 0 such places; also prints the tunnels and cuttings near AT (x,z; optional).
+## cutting. Counted only where it is a metre deep or more (where its railing stands), not where
+## it comes up to the street it ends at. Expect 0; also prints the tunnels and cuttings near AT
+## (x,z; optional).
 ##   tests/run.sh cut_under 7
 var g: Node
 func _initialize() -> void:
@@ -43,7 +45,8 @@ func _run() -> void:
 			var s := 0.0
 			while s <= L and hit == Vector2.INF:
 				var p := pts[j].lerp(pts[j + 1], s / maxf(L, 0.001))
-				if g._decks._street_over(p):
+				# (deep enough for its railing -- a metre -- not its end coming up to the street it joins)
+				if g._decks._street_over(p) and g._h(p) - g._decks.deck_y(ri, p) > 1.0:
 					hit = p
 				s += 1.0
 		if hit != Vector2.INF:

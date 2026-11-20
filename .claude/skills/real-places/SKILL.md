@@ -248,7 +248,10 @@ the parked cars, which stand a third in the road).
   divided road's median (only the outer way in), and junctions with a mapped sign nearby. Two
   signs at one point must both be kept (code keyed by point kept the last). And a pole tried
   at one spot by the line stood at 44 of 167 corners (the corner's asphalt, a wall): try a
-  few further back and further out.
+  few further back and further out. A sign with a facing belongs to the ONE way in nearest
+  it, not to every way within some angle: a slip road merges at a shallow angle, so the
+  street it joins comes in within 20 degrees of it, and "within 45" gave the street the slip
+  road's give-way too -- two plates side by side, and the street's traffic giving way.
 - **Roundabouts** are closed one-way ways (or tagged junction=roundabout). An AI that plans
   to the end of the way drives the whole circle, then picks "straight on" -- round again.
   Plan only to the next exit, and make staying on less likely with every piece driven.
@@ -484,6 +487,9 @@ What a driving game on one needed:
   passage through a building), goes back on the ground. Skip roads that only share an end
   point with it (its own next piece "crossed" it), and hold only what is near a crossing:
   holding whole roads, or searching from every junction in town, is slow and over-holds.
+  OSM maps one tunnel as several ways: judge "too short" by the chain, not one piece. A
+  19 m piece under a street, between two longer ones, put back on the ground came out a
+  cutting at full depth between them -- its railings standing across the street's lanes.
 - **A divided road is two decks overlapping at the median** at slightly different heights:
   decide what is under a body by the carriageway it is on first, the nearest height next,
   or it drifts onto the other and falls off its end.

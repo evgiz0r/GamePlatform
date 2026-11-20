@@ -1854,6 +1854,30 @@ Each line: where the code is, the test, what good reads.
   the same code, and nine commits that day changed shader code -- every first load after
   such a build compiles them all again. The step that stands out is the one the warm-up
   gave the most shaders: grouped by code now, the eight steps share them.
+- **Railings across Kaplan** (user: "weird borders in the middle of Kaplan", Tel Aviv's
+  start, autodrive): the Lova Eliav tunnel runs under Kaplan in four OSM pieces, and the one
+  actually under the eastbound half is 19 m -- under `MIN_TUNNEL` (20), so `Decks.infer` put
+  it back on the ground; sandwiched between two tunnel pieces it was dug as a cutting at
+  full depth, and a cutting's railing (posts every 2.4 m, rails at 0.55 and 1.0 m) stood
+  across both lanes, 1 m high, not solid (the car's walls already skipped it). Not the
+  indexing (`STREETS_NO_INDEX=1` showed the same) nor the background build. Fixed at both
+  ends: a short tunnel way under something that joins a tunnel at an end is a piece of it
+  (`short_tu`, grown like the branches), and `_cutting` stands no railing where its line is
+  on a street at grade. `tests/cut_under.gd` 7: cuttings a metre deep or more under a street
+  (expect 0), `AT=x,z` lists the tunnels and cuttings near a point; `start_drive`'s t 21 s
+  shot (`STREETS_BUILD_ALL=0 SECS=21 STEP=3`) is the user's view.
+- **Two give-way signs side by side** (user: "a lot of places have double signs"): a sign
+  with a facing (every inferred one, OSM's with a direction) was given to every way in
+  within 45 degrees of it, and where a slip road merges at a shallow angle the street it
+  joins comes in within 20 degrees: the street got the slip road's triangle (the post of the
+  first pushed the second 0.6-1.5 m out) and its dashed line -- and its traffic gave way to
+  the slip road. Now only the way in nearest the facing gets it. `tests/signs_double.gd`:
+  two poles facing one way within 3 m -- Givatayim 5 of 149, Tel Aviv 9 of 239 before,
+  0 after (poles 149 -> 138 and 239 -> 213: the plates streets had been given at merges) (`sign_at` records each pole and its sign record; the city's data is let
+  go after loading, so a test cannot read `_city_data` then).
+- **Tel Aviv grew** (another session, the bake workflow's bbox): 4,011 -> 9,597 buildings,
+  3,745 -> 5,963 roads, west to the sea -- Ashdod's size now, and its load with it (see
+  "Numbers to compare against").
 - **Waiting on the user**: the Ashdod "grass patches" spot was never pinned down: islands
   and the ground colour went out without it. **Next**: traffic overlapping at the test town's
   (-639, 261) -- a bus turning off Derekh HaHarim sweeps over the stop line of HaDolev where
@@ -1862,7 +1886,8 @@ Each line: where the code is, the test, what good reads.
   only meaningful in a real browser), `top_at` (shots by map point, `CAR=` to put the car
   anywhere), `street_at` (by street name at its roundabouts), `perf_dive`, `deck_corner`,
   `islands`, `pave_overlap`, `picker`, `minimap_route`, `warm_census`, `index_gain`,
-  `signs_inferred`; `tools/level_roads.py`.
+  `signs_inferred`, `start_drive`, `rails_near`, `cut_under`, `signs_double`;
+  `tools/level_roads.py`.
 
 ## OSM's extra fields and speed limits: handoff (20 Nov 2026)
 

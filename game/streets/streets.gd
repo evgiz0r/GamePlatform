@@ -11958,6 +11958,18 @@ func _build_signs() -> void:
 				top = maxi(top, int(ROAD_RANK.get(r["k"], 1)))
 				bottom = mini(bottom, int(ROAD_RANK.get(r["k"], 1)))
 		var rules: Array = []
+		# a sign facing one way is for the one way in nearest that way: a slip road merging at
+		# a shallow angle comes in within 45 degrees of the street it joins, and both got its
+		# give-way -- two plates side by side, and the street's own traffic giving way to it
+		var best := 0.7
+		if facing != Vector2.ZERO:
+			for e: Vector2i in _node_roads[node]:
+				var r: Dictionary = _roads[e.x]
+				var pts: PackedVector2Array = r["pts"]
+				for d2: int in [-1, 1]:
+					var from := e.y + d2
+					if r["drive"] and not r["pv"] and from >= 0 and from < pts.size() and (r["o"] == 0 or r["o"] == -d2):
+						best = maxf(best, (c - pts[from]).normalized().dot(facing))
 		for e: Vector2i in _node_roads[node]:
 			var r: Dictionary = _roads[e.x]
 			if not r["drive"] or r["pv"]:
@@ -11971,7 +11983,7 @@ func _build_signs() -> void:
 					continue   # arriving from `from` is travelling -d2 along the road
 				var way_in := (c - pts[from]).normalized()
 				if facing != Vector2.ZERO:
-					if way_in.dot(facing) < 0.7:
+					if way_in.dot(facing) < best - 0.0001:
 						continue
 				elif junction and top != bottom and int(ROAD_RANK.get(r["k"], 1)) >= top:
 					continue   # the main road through has the right of way
