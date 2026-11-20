@@ -1111,8 +1111,8 @@ var _loading: Label
 ## still up. A browser compiles each shader the first time something uses it, and that
 ## stalls the frame: better here than as each kind of thing first comes into view.
 func _warm_up() -> bool:
-	# (on screen first, the camera where it was: the frames below are the slow ones, and the
-	# text set with them showed only when they were done -- "8 of 8" stood there seconds)
+	# (on screen first: the frames below are the slow ones, and the text set with them showed
+	# only when they were done -- "8 of 8" stood there seconds)
 	_loading.text = "building %s…\ngetting the graphics ready" % _city_name
 	await get_tree().process_frame
 	await get_tree().process_frame
@@ -1121,7 +1121,43 @@ func _warm_up() -> bool:
 	var mid := _bounds.get_center()
 	var spot := _pos if _pos != Vector2.ZERO else mid
 	var gy := _h(spot)
+	# The city's kinds of surface a few at a time, a frame each, so the shaders compile in
+	# steps the text can count (all at once, one frame took the lot: a long freeze)
+	look_from(Vector3(spot.x - 20.0, gy + 12.0, spot.y), Vector3(spot.x + 40.0, gy, spot.y))
+	_sky_follow()
+	var kinds := {}   # material (and whether instanced) -> its nodes
+	var shown: Array = []
+	for n: Node in world.find_children("*", "GeometryInstance3D", true, false):
+		var gi := n as GeometryInstance3D
+		if not gi.visible:
+			continue   # (hidden on purpose: night's beams, the beacon)
+		gi.visible = false
+		shown.append(gi)
+		var key := _shader_key(gi)
+		if not kinds.has(key):
+			kinds[key] = []
+		(kinds[key] as Array).append(gi)
+	world.visible = true
+	var keys: Array = kinds.keys()
+	# (in steps only on a real graphics chip: under a software renderer -- the tests' -- every
+	# frame of the town costs seconds to draw, and there is no compiling worth spreading)
+	var adapter := RenderingServer.get_video_adapter_name().to_lower()
+	var soft := adapter.contains("llvmpipe") or adapter.contains("swiftshader") or adapter.contains("software")
+	var steps := 0 if soft else mini(8, keys.size())
+	for k in range(steps):
+		for key in keys.slice(k * keys.size() / steps, (k + 1) * keys.size() / steps):
+			for gi: GeometryInstance3D in kinds[key]:
+				gi.visible = true
+		_loading.text = "building %s…\ngetting the graphics ready (%d of %d)" % [_city_name, k + 1, steps + 4]
+		var ts := Time.get_ticks_msec()
+		await get_tree().process_frame
+		_warm_ms.append(Time.get_ticks_msec() - ts)
+		if not is_inside_tree():
+			return false
+	for gi: GeometryInstance3D in shown:
+		gi.visible = true   # (the few not reached above: none, but to be sure)
 	for k in range(4):
+		_loading.text = "building %s…\ngetting the graphics ready (%d of %d)" % [_city_name, steps + k + 1, steps + 4]
 		var d := Vector2(cos(k * PI * 0.5), sin(k * PI * 0.5))
 		look_from(Vector3(spot.x - d.x * 20.0, gy + 12.0, spot.y - d.y * 20.0), Vector3(spot.x + d.x * 40.0, gy, spot.y + d.y * 40.0))
 		_sky_follow()
@@ -1132,7 +1168,22 @@ func _warm_up() -> bool:
 			return false
 	return true
 
-var _warm_ms: Array = []             ## each warm-up view's frame, ms
+var _warm_ms: Array = []             ## each warm-up frame, ms: the kinds of surface a few at a time, then the four views
+
+## what a mesh is drawn with, as far as compiling it goes: its material(s), and whether it is
+## instanced (a multimesh is another shader variant)
+func _shader_key(gi: GeometryInstance3D) -> String:
+	var m: Material = gi.material_override
+	var mesh: Mesh = null
+	if gi is MeshInstance3D:
+		mesh = (gi as MeshInstance3D).mesh
+	elif gi is MultiMeshInstance3D and (gi as MultiMeshInstance3D).multimesh != null:
+		mesh = (gi as MultiMeshInstance3D).multimesh.mesh
+	if m == null and mesh != null and mesh.get_surface_count() > 0:
+		m = mesh.surface_get_material(0)
+		if m == null and gi is MeshInstance3D:
+			m = (gi as MeshInstance3D).get_surface_override_material(0)
+	return "%s:%d" % [gi.get_class(), m.get_instance_id() if m != null else 0]
 var _load_ms := 0                    ## from the city file to the car shown, ms
 
 ## the loading, for the perf view: how long, its biggest stages, the warm-up's four views
@@ -1144,7 +1195,7 @@ func _load_text() -> String:
 	var top: Array = []
 	for p: Array in parts.slice(0, 4):
 		top.append("%s %.1f s" % [String(p[0]).get_slice(" (", 0), p[1] / 1000.0])
-	return "loaded in %.1f s: %s\nwarm-up views (ms): %s" % [_load_ms / 1000.0, ", ".join(top), ", ".join(_warm_ms.map(func(x): return str(x)))]
+	return "loaded in %.1f s: %s\nwarm-up frames (ms): %s" % [_load_ms / 1000.0, ", ".join(top), ", ".join(_warm_ms.map(func(x): return str(x)))]
 
 ## show what is being built and let a frame be drawn; false if the game was left meanwhile
 func _step(what: String) -> bool:
@@ -1597,6 +1648,10 @@ func _build_world() -> bool:
 	var all_first := OS.get_environment("STREETS_BUILD_ALL") == "1"
 	var near: Array = _tiles_todo.filter(func(t): return all_first or _tile_dist(t, _pos) < NEAR_FIRST)
 	near.sort_custom(func(a, b): return _tile_dist(a, _pos) < _tile_dist(b, _pos))
+	# (nothing of the city drawn while it goes up: each step's frames drew what was built so far,
+	# and the browser compiled every kind of material's shader the first time -- seconds on the
+	# first square, "1 of 6", which looked stuck. The warm-up does that, in steps it can show.)
+	world.visible = false
 	for i in range(near.size()):
 		if not await _step("the streets round the start (%d of %d)" % [i + 1, near.size()]):
 			return false
@@ -2789,6 +2844,55 @@ func _mark_medians() -> void:
 		if _median_road(r):
 			r["mid"] = MEDIAN_W * 0.5
 
+## A median is a kerb's height over the road, not a wall: the car goes over it, with a jolt.
+## (It was a wall as high as the sky, which a car looked able to roll straight over, and the
+## player could not.) Each axle going up or down it kicks the car on its springs and costs it
+## some speed, the faster the harder; while the wheels are on it the car rides that much higher.
+var _medians := PackedVector2Array()   ## two points a stretch of median
+var _median_r := PackedFloat32Array()  ## half its width
+var _median_hash := {}
+var _median_on := [false, false]       ## front and back axle on a median now
+var _median_lift := 0.0                ## how high the car rides on it (m), eased
+
+func _add_median(a: Vector2, b: Vector2, half: float) -> void:
+	var i := _median_r.size()
+	_medians.append(a)
+	_medians.append(b)
+	_median_r.append(half)
+	_hash_add(_median_hash, Rect2(a, Vector2.ZERO).expand(b).grow(half), BLD_CELL, i)
+
+func _on_median(p: Vector2) -> bool:
+	for i: int in _near(_median_hash, p, 1.0, BLD_CELL):
+		var a := _medians[i * 2]
+		var b := _medians[i * 2 + 1]
+		if Geometry2D.get_closest_point_to_segment(p, a, b).distance_to(p) < _median_r[i] + 0.15:
+			return true
+	return false
+
+func _median_tick(dt: float) -> void:
+	if _medians.is_empty() or _walking or _air:
+		return
+	var fwd := _fwd()
+	var on := 0
+	for k in range(2):
+		var wheel := _pos + fwd * (WHEELBASE * 0.5 if k == 0 else -WHEELBASE * 0.5)
+		var now := _on_median(wheel)
+		if now:
+			on += 1
+		if now != _median_on[k]:
+			_median_on[k] = now
+			var j := clampf(absf(_v) / 12.0, 0.08, 1.0)   # (walking pace a nudge, 45 km/h a thump)
+			# up the kerb the near end rises, off it it drops onto its springs
+			var up_front := (k == 0) == now
+			_pitch = clampf(_pitch + (-0.035 if up_front else 0.035) * j * signf(_v if _v != 0.0 else 1.0), -0.12, 0.12)
+			_v *= 1.0 - 0.07 * j
+			shake3d(0.3 + 1.2 * j)
+			Audio.play("impact_soft", 0.1, -10.0 + 6.0 * j)
+			if j > 0.5 and k == 0 and now:
+				Probe.event("median", {"kmh": int(absf(_v) * 3.6)})
+	_median_lift = move_toward(_median_lift, KERB_H * on * 0.5, dt * 1.6)
+	_y += _median_lift
+
 func _build_medians(kerb: Buf, pave: Buf) -> void:
 	var zebra := {}
 	for ni: int in _crossing_nodes:
@@ -2828,7 +2932,7 @@ func _build_medians(kerb: Buf, pave: Buf) -> void:
 						_kerb_run_piece(kerb, pave, ri, a + rt * mw * sgn, b + rt * mw * sgn, na, na,
 								maxf(mw - KERB_W, 0.0), Color(0.05, 0, 0), cum, seg)
 					if _mine(a):   # (recorded once, by the square it starts in)
-						add_wall(a, b, mw)
+						_add_median(a, b, mw)
 						made += seg
 				cum += seg
 	_tally("median_m", int(made))
@@ -6321,17 +6425,20 @@ func _car_body(kind: String, extras: bool) -> CarMesh:
 func _lamp(cm: CarMesh, low: PackedVector2Array, hw: float, cx: float, cy: float, w: float, h: float, front: bool, col: Color) -> void:
 	var s := 1.0 if front else -1.0
 	var grid: Array = []
+	# (2.5 cm proud of the body, five points across to follow its curve: at 8 mm and three
+	# points the body bulged through between them and the two fought for the pixels, the lamp
+	# a speckle of red on white -- worst on a phone's coarser depth buffer)
 	for row in range(2):
 		var y := cy + (float(row) - 0.5) * h
 		var line: Array = []
-		for k in range(3):
-			var x := cx + (float(k) - 1.0) * w * 0.5
-			var z := _end_at(low, y, front) - s * (_plan_in(x, hw) - 0.008)
+		for k in range(5):
+			var x := cx + (float(k) - 2.0) * w * 0.25
+			var z := _end_at(low, y, front) - s * (_plan_in(x, hw) - 0.025)
 			var nrm := Vector3(x / hw * 0.7, 0.1, s).normalized()
 			line.append(cm.vert(Vector3(x, y, z), nrm, col))
 		grid.append(line)
 	var out := Vector3(cx / hw * 0.7, 0.1, s)
-	for k in range(2):
+	for k in range(4):
 		cm.tri(grid[0][k], grid[0][k + 1], grid[1][k + 1], out)
 		cm.tri(grid[0][k], grid[1][k + 1], grid[1][k], out)
 
@@ -11013,6 +11120,7 @@ func _frame() -> void:
 		_build_tick.emit()
 		_p("building")
 	_watch_fps(dt)
+	_hold_tick(dt)
 	if _blades != null:
 		_turbines_tick()
 	var f := Engine.get_physics_interpolation_fraction()
@@ -11458,6 +11566,7 @@ func _drive(dt: float, throttle: float, brake: float, steer: float) -> void:
 	_collide()
 	_keep_inside(CAR_R, true)
 	_fly(dt)
+	_median_tick(dt)
 	_place_car(dt)
 
 ## The edge of the map: a striped barrier EDGE metres in from the baked area's rim, with a
@@ -12926,6 +13035,70 @@ func _zoom_in_more() -> void:
 	_zoom_push_ms = now
 	if _zoom_push >= ZOOM_PUSH:
 		_zoom_set(0.0)
+
+## ---- going where you point, from above ------------------------------------------------------
+## Up over the city a long press (a finger or the mouse, held HOLD_S without moving more than
+## HOLD_SLOP) on the ground sends you there: the destination is the nearest point of a street
+## to it, the view comes down to the car, the city goes on, and autodrive drives there as
+## "go to" does. A quick press still drags the view; while held, a ring fills under it.
+const HOLD_S := 0.55
+const HOLD_SLOP := 10.0
+var _hold_at := Vector2.INF          ## where the press on the view came down (screen), INF: none
+var _hold_t := 0.0                   ## seconds it has been held, counted frame by frame (a slow
+                                     ## frame, or a test's slow renderer, is not a long press)
+
+func _hold_move(at: Vector2) -> void:
+	if _hold_at != Vector2.INF and at.distance_to(_hold_at) > HOLD_SLOP:
+		_hold_at = Vector2.INF   # dragging the view about, not pointing
+
+func _hold_progress() -> float:
+	if _hold_at == Vector2.INF or not _zoomed() or _fingers.size() >= 2:
+		return 0.0
+	return clampf((_hold_t - 0.12) / (HOLD_S - 0.12), 0.0, 1.0)   # (a moment before it shows: a drag)
+
+func _hold_tick(dt: float) -> void:
+	if _hold_at == Vector2.INF:
+		return
+	_hold_t += minf(dt, 0.1)
+	if not _zoomed() or _fingers.size() >= 2:
+		_hold_at = Vector2.INF
+		return
+	if _hold_progress() >= 1.0:
+		var at := _hold_at
+		_hold_at = Vector2.INF
+		_drag = false
+		_go_where(at)
+
+## the ground under a point of the screen: the flat plane at the view's height, then again at
+## the ground's height where that landed (twice: hills)
+func _screen_ground(at: Vector2) -> Vector2:
+	var y := _h(_view_pos + _zoom_off)
+	var p := Vector2.INF
+	for _k in range(3):
+		var g3 := ground_point(at, y)
+		if g3 == Vector3.INF:
+			return p
+		p = Vector2(g3.x, g3.z)
+		y = _h(p)
+	return p
+
+func _go_where(at: Vector2) -> void:
+	var p := _screen_ground(at)
+	if p == Vector2.INF:
+		return
+	var hit := _nearest_seg(p, 80.0, true, true)
+	if hit.is_empty():
+		_show_banner("no street near there", 1.5)
+		return
+	if _walking:
+		_show_banner("back in the car to drive there", 2.0)
+		return
+	var r: Dictionary = _roads[int(hit["road"])]
+	var name := String(r["name"]) if String(r["name"]) != "" else "the spot you picked"
+	Probe.event("go_where", {"to": name})
+	_zoom_resume = true   # (down at the car, the city goes on: it is a drive)
+	_zoom_set(0.0)
+	_set_dest(hit["q"], name)
 
 ## how far the push to come down has gone (0..1); 0 once it has stopped a moment
 func _zoom_pushing() -> float:
@@ -14846,12 +15019,20 @@ func _draw_hud() -> void:
 	_hud.draw_rect(PAUSE_BTN, Color(pc, 0.9), false, 1.5)
 	_hud.draw_string(_font, PAUSE_BTN.position + Vector2(0, 15), "resume" if _paused else "pause", HORIZONTAL_ALIGNMENT_CENTER, PAUSE_BTN.size.x, 11, pc)
 	_draw_zoom_marks()
+	var hold := _hold_progress()
+	if hold > 0.0:   # the press filling a ring: let go before it closes and nothing happens
+		var hc := Palette.col("friend")
+		_hud.draw_arc(_hold_at, 14.0, 0.0, TAU, 32, Color(Palette.col("bg"), 0.5), 5.0)
+		_hud.draw_arc(_hold_at, 14.0, -PI * 0.5, -PI * 0.5 + TAU * hold, 32, hc, 4.0)
+		_hud.draw_circle(_hold_at, 3.0, hc)
 	if _paused:
 		_hud_text(Vector2(170, 62), "PAUSED", 300, 13, Palette.col("warn"))
 		if _zoom > 0.0:
 			var hint := "drag to look round · pinch to zoom and turn" if _touch_seen \
 					else "drag or arrows to look round · wheel to zoom · Q E to turn · Z back"
 			_hud_text(Vector2(120, 77), hint, 400, 9, ink)
+			if _zoom > ZOOM_MIN + 0.001:
+				_hud_text(Vector2(120, 88), ("hold a finger" if _touch_seen else "hold the mouse") + " on a street to drive there", 400, 9, Palette.col("friend"))
 	if _zoom > 0.0 and _zoom <= ZOOM_MIN + 0.001:   # at the lowest: how to get back in
 		var push := _zoom_pushing()
 		var pl := Palette.col("player")
@@ -15110,6 +15291,7 @@ func _input(event: InputEvent) -> void:
 					_toggle_perf()
 					return
 	if event is InputEventMouseMotion:
+		_hold_move((event as InputEventMouseMotion).position)
 		if _drag and _fingers.size() < 2:   # (two fingers: the pinch has it)
 			_zoom_pan((event as InputEventMouseMotion).relative)
 		return
@@ -15117,6 +15299,7 @@ func _input(event: InputEvent) -> void:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_LEFT and not mb.pressed:
 			_drag = false
+			_hold_at = Vector2.INF
 		if mb.pressed and mb.button_index in [MOUSE_BUTTON_WHEEL_DOWN, MOUSE_BUTTON_WHEEL_UP] \
 				and not Flow.pointer_over_hud():
 			# down (toward you) goes up over the city, as on a map; a trackpad sends fractions
@@ -15162,6 +15345,8 @@ func _input(event: InputEvent) -> void:
 				_toggle_pause()
 			elif _zoomed() and not (_touch_seen and not _paused and mb.position.distance_to(STICK_C) <= STICK_GRAB):
 				_drag = true   # (a thumb on the stick, the city running under you, is driving)
+				_hold_at = mb.position   # (held there, not dragged: go there -- _hold_tick)
+				_hold_t = 0.0
 		return
 	if event is InputEventScreenTouch:
 		var t := event as InputEventScreenTouch

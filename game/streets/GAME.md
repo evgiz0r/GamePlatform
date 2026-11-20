@@ -587,6 +587,19 @@ than the two waiting for each other for ever.
 
 > Sometimes the autodrive gets completely stuck in those narrow streets.
 
+**From above, point and go.** Zoomed out over the city, hold a finger (or the mouse) on a
+street for half a second: a ring fills under it, then the view comes down to the car and
+autodrive drives there, as "go to" does. A quick press still drags the view.
+
+> When I'm zoomed out, I want to be able to click on some ground and that will become the
+> destination, maybe a long tap, and it will go back to the car and start driving like "go to".
+
+**Medians** are a kerb's height, and the car goes over them -- with a jolt for each axle, the
+faster the harder, riding up on it -- rather than stopping dead at an invisible wall.
+
+> The border is too low for my car not to pass. Either a higher border, or I can tackle it
+> and pass it.
+
 **The edge of the map** is a striped barrier with a glowing curtain over it that shows as
 you come near, and a line on the minimap; the car stops against it, nose to the stripes.
 Autodrive keeps away from it: at a junction it looks a few hundred metres down each way on,

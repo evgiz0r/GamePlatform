@@ -38,6 +38,8 @@ these numbers the wrong way has broken something.
 | `road_blocks` | 4 | things solid to the car on a road's lanes: a median over another road, walls, posts (shots from above) | test town: 0 medians, 0 posts; 16 walls across service lanes |
 | `medians` | 4 | the raised medians from a driver's seat where they end and bend (shots) | |
 | `mountains` | 4 | the test town's mountains from the car, the hill, a mountainside, and the turbines (shots) | |
+| `go_where` | 4 | zoomed out, a long press on a street: destination set, the view down, the city on, the car there; a quick press does nothing | 9 m from the press, arrived; quick press: none |
+| `median_cross` | 4 | the car across a median at 10, 30, 50 km/h: over it, riding up, slowed by the jolts | over at 30 and 50 |
 | `autodrive_edge` | 1, 3 | autodrive put on streets that run off the map, 120 m short, facing out: touches of the barrier, turn-rounds, time near it | Givatayim: touched the barrier 1 (a one-way motorway with no exit), turned round 5, 31 s near it (were 9, 9, 59 s); Ashdod 1, 6, 31 s (10, 12, 71 s) |
 | `feet` | 1 | a walker's feet against the pavement's top | 0.21 = 0.21 |
 | `feel` | 1 | a crash at 54 km/h; jumping out at 50 km/h; into a fence | rebound 0-1.3 m/s, no hop; 3.4 m tumble, car rolls 37 m; the fence check picks a fence behind a building (stops 6.5 m short) -- to fix |

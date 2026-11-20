@@ -86,7 +86,8 @@ func _run() -> void:
 	var medians := found.filter(func(f): return String(f[1]).begins_with("median"))
 	var walls := found.filter(func(f): return f[1] == "wall")
 	var posts := found.filter(func(f): return String(f[1]).begins_with("post"))
-	print("solid in a road: median pieces over another road %d, walls %d, posts %d" % [medians.size(), walls.size(), posts.size()])
+	var on_street := found.filter(func(f): return (g._roads[int(f[3])] as Dictionary)["k"] != "service")
+	print("solid in a road: median pieces over another road %d, walls %d, posts %d (on a street, not a service lane: %d)" % [medians.size(), walls.size(), posts.size(), on_street.size()])
 	for f: Array in found.slice(0, 40):
 		print("  %s at %s: %.1f m over '%s' (%s)" % [f[1], (f[0] as Vector2).round(), f[2], g._roads[int(f[3])]["name"], g._roads[int(f[3])]["k"]])
 	if OS.get_environment("OUT") == "" or found.is_empty():
