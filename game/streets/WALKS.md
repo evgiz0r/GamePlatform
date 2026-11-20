@@ -100,9 +100,11 @@ Its film is not in this repo or this machine's scratch: a session needs a clip o
 - [ ] The café tables and umbrellas on Sirkin stand on the walk's line: the walk goes
       through three of them at 57-63 s (`SCAN=1`). Move the walk or the tables as the film
       has them.
-- [ ] The walk runs right against cars parked half up on the pavement (60-70 s); the film
+- [x] The walk runs right against cars parked half up on the pavement (60-70 s); the film
       walks clear of them -- put the walk on the pavement's back half there, or park
-      those cars in the road.
+      those cars in the road. *(Its points at 52-68 s moved 0.3-0.6 m toward the shops: the
+      cars' sides 1.1 m off, not 0.2-0.5; the trees at Sirkin's kerb ~1 m, not 0.65; the
+      shopfronts 1.6 m. The stop at 69-79 s is where it was.)*
 - [ ] The Roladin corner: its shop front, terrace and awning as filmed.
 - [ ] Sirkin's shops: the computer shop, Ovad's Sabich (its yellow awning is in), a second
       shop beside it the map does not have (the user: two shops at 1:11).

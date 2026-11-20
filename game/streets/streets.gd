@@ -1119,9 +1119,11 @@ func start(_config: Dictionary) -> void:
 	if not await _build_world():
 		return
 	var tw := Time.get_ticks_msec()
+	print("[streets] warm-up begins")   # (marks for a browser's log: tests/web_shaders.js counts the shaders compiled between)
 	if not await _warm_up():
 		return
 	_stage_ms["warm up (shaders compiled, 4 frames)"] = Time.get_ticks_msec() - tw
+	print("[streets] warm-up done in %d ms, frames %s" % [Time.get_ticks_msec() - tw, _warm_ms])
 	_load_ms = Time.get_ticks_msec() - t0
 	_loading.queue_free()
 	var tm := Time.get_ticks_msec()
@@ -4308,6 +4310,7 @@ func _front_gate(gate: Array, run: PackedVector2Array, cum: PackedFloat32Array, 
 	var lay := Color(0.0, fposmod(atan2(nj.y, nj.x), PI) / PI, 0.0, 0.0)
 	var steps := maxi(1, int(ceil((depth + 0.3) / 2.5)))
 	var path: CBuf = fronts["path"]
+	_grass_cut((start + end) * 0.5, nj, (depth + 0.28) * 0.5 + 0.1, w + 0.15)
 	for k in range(steps):
 		var u0 := float(k) / steps
 		var u1 := float(k + 1) / steps
@@ -9513,15 +9516,17 @@ func new_cbuf(cell: float) -> CBuf:
 ## never added -- and the car drove through them.
 var _walls := PackedVector2Array()   ## two points a wall
 var _wall_r := PackedFloat32Array()  ## half its thickness
+var _wall_soft := PackedByteArray()  ## 1: a hedge, that gives (no dent, no glass, leaves fly)
 var _wall_hash := {}
 
-func add_wall(a: Vector2, b: Vector2, half: float) -> void:
+func add_wall(a: Vector2, b: Vector2, half: float, soft := false) -> void:
 	if a.distance_squared_to(b) < 0.0001:
 		return
 	var i := _wall_r.size()
 	_walls.append(a)
 	_walls.append(b)
 	_wall_r.append(half)
+	_wall_soft.append(1 if soft else 0)
 	_hash_add(_wall_hash, Rect2(a, Vector2.ZERO).expand(b).grow(half), BLD_CELL, i)
 
 func _add_post(p: Vector2, r: float) -> void:
@@ -9544,6 +9549,40 @@ func _add_car_posts(c: Vector2, along: Vector2) -> void:
 	_add_post(c - along * 1.4, 0.85)
 	for k: float in [-0.7, 0.0, 0.7]:
 		_add_post(c + along * k, 0.85)
+	var i := _car_box_c.size()
+	_car_box_c.append(c)
+	_car_box_u.append(along.normalized())
+	_hash_add(_car_box_hash, Rect2(c, Vector2.ZERO).grow(2.4), BLD_CELL, i)
+
+## Out of a parked car's own outline, for the people, the dogs and the pushchairs: 4.5 x
+## 1.84 m, the corners rounded 0.3 m. Its posts are round, and left its corners and wings a
+## shoulder's width open (0.15 m: tests/walk_people.gd). (The car and you on foot still go
+## by the posts: a box's corners would be new things to scrape past on a narrow street.)
+var _car_box_c := PackedVector2Array()
+var _car_box_u := PackedVector2Array()
+var _car_box_hash := {}
+const CAR_BOX := Vector2(2.25, 0.92)   ## half length, half width
+const CAR_BOX_ROUND := 0.3
+
+func _car_box_push(c: Vector2, r: float) -> Vector2:
+	var push := Vector2.ZERO
+	for i: int in _near(_car_box_hash, c, r, BLD_CELL):
+		var q := c + push - _car_box_c[i]
+		var u := _car_box_u[i]
+		var v := Vector2(-u.y, u.x)
+		var a := q.dot(u)
+		var b := q.dot(v)
+		var ex := absf(a) - (CAR_BOX.x - CAR_BOX_ROUND)
+		var ey := absf(b) - (CAR_BOX.y - CAR_BOX_ROUND)
+		var out := Vector2(maxf(ex, 0.0), maxf(ey, 0.0))
+		var dist := out.length() + minf(maxf(ex, ey), 0.0) - CAR_BOX_ROUND   # (signed: inside, below 0)
+		if dist >= r:
+			continue
+		var sa := 1.0 if a >= 0.0 else -1.0
+		var sb := 1.0 if b >= 0.0 else -1.0
+		var n := (u * sa * out.x + v * sb * out.y).normalized() if out != Vector2.ZERO else (u * sa if ex > ey else v * sb)
+		push += n * (r - dist)
+	return push
 
 ## a traffic light on the right of every way into a signalled junction, in two groups by
 ## direction so crossing streets take turns
@@ -9981,8 +10020,13 @@ func _build_pois() -> void:
 			if awn != "none" and (look_k >= 28 or awn != ""):   # most have an awning; some just the sign over the window
 				(awnings["xf"] as Array).append(Transform3D(b * Basis(Vector3.RIGHT, 0.33) * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.72, 2.9)))
 				(awnings["col"] as Array).append(_real_col(awn) if awn != "" else _awning_col(hue, at))
-			if shop.get("crates", sub == "greengrocer"):
+			var has_crates: bool = shop.get("crates", sub in ["greengrocer", "convenience", "kiosk"] and look_k < 70)
+			if has_crates:
 				_crates(crates, pos, n, along, gy, wide)
+			elif look_k >= 10 and look_k < 50 and kind.begins_with("shop"):   # open: an A-frame board out front
+				_a_board(crates, pos + n * 1.15 + along * (1.25 * wide), n, along, gy, look_k)
+			if look_k >= 10 and _mine(pos):   # (not a shut one) a shopkeeper may stand in its door
+				_shop_spots.append([pos + n * 0.5 + along * (0.6 if look_k % 2 == 0 else -0.6), n])
 			if shop.get("lights", false):
 				_string_lights(crates, bulbs, pos, n, along, gy)
 			if look_k < 10 and kind.begins_with("shop"):   # shut: the roller shutter down
@@ -10293,6 +10337,21 @@ func _crates(b: CBuf, pos: Vector2, n: Vector2, along: Vector2, gy: float, wide:
 			_furn._box(b, Vector3(q.x, gy + 0.81, q.y), Vector3(0.36, 0.05, 0.46), produce[(k + j) % 5], bs)  # what is in it
 			k += 1
 		_add_post(c, 0.5)
+
+## a sandwich board out in front of an open shop: two boards leaning together, chalk-black
+## or white, in a wooden frame
+func _a_board(b: CBuf, c: Vector2, n: Vector2, along: Vector2, gy: float, k: int) -> void:
+	if _push_out(c, 0.35, true, false) != Vector2.ZERO or not _off_road(c, 0.6):
+		return
+	var face: Color = _tone["tyre"].darkened(0.3) if k % 3 != 0 else Palette.col("ink").lerp(Palette.col("bg_alt"), 0.1)
+	var frame: Color = _tone["woodfence"].lightened(0.1)
+	for side: float in [-1.0, 1.0]:   # each board leans in from 0.17 m out at its foot
+		var bs := Basis(Vector3.UP, atan2(n.x, n.y)) * Basis(Vector3.RIGHT, -side * 0.2)   # (tops together)
+		var q := c + n * side * 0.085
+		_furn._box(b, Vector3(q.x, gy + 0.43, q.y), Vector3(0.58, 0.86, 0.035), frame, bs)
+		var f := c + n * side * 0.105
+		_furn._box(b, Vector3(f.x, gy + 0.45, f.y), Vector3(0.48, 0.66, 0.012), face, bs)
+	_add_post(c, 0.3)
 
 ## string lights along a bar's front, as a filmed one has them lit by day: two strands of warm
 ## bulbs looping between hooks every 2 m, 1 m and 2 m out from the wall under the awning
@@ -10663,6 +10722,9 @@ uniform vec3 col_a : source_color = vec3(0.3, 0.5, 0.2);   // the lawn
 uniform vec3 col_b : source_color = vec3(0.5, 0.5, 0.25);  // drier blades among it
 uniform float greenness = 0.5;
 uniform float reach = 18.0;
+uniform int cut_n = 0;           // the garden paths near the camera (_grass_cuts): no blades on them
+uniform vec4 cut_a[24];          // each one's middle (x, z) and its way along (x, z)
+uniform vec2 cut_b[24];          // ... its half length and half width
 varying float tip;
 varying vec3 tint;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
@@ -10699,6 +10761,12 @@ void vertex() {
 	float wild = smoothstep(0.62 - greenness * 0.45, 0.78 - greenness * 0.4, n);
 	float grow = m > 0.75 ? 1.0 : (m > 0.25 ? wild * 0.85 : 0.0);
 	grow *= 1.0 - smoothstep(reach * 0.6, reach, d);
+	for (int i = 0; i < cut_n; i++) {
+		vec2 r = p - cut_a[i].xy;
+		if (abs(dot(r, cut_a[i].zw)) < cut_b[i].x && abs(dot(r, vec2(-cut_a[i].w, cut_a[i].z))) < cut_b[i].y) {
+			grow = 0.0;
+		}
+	}
 	float h = (0.06 + 0.1 * UV2.x) * grow;
 	float a = UV2.y * 6.2831853;
 	vec3 side = vec3(cos(a), 0.0, sin(a));
@@ -10798,6 +10866,40 @@ func _grass_follow() -> void:
 	var at := Vector3(floorf(c.x / GRASS_PATCH) * GRASS_PATCH, 0, floorf(c.z / GRASS_PATCH) * GRASS_PATCH)
 	if at != _grass.position:
 		_grass.position = at
+		_grass_cuts_near(Vector2(c.x, c.z))
+
+## The front gardens' paths across their lawns, to keep the blades off (grass poked up
+## through the slabs). The picture of where grass grows is a metre or two a pixel and drawn
+## before most gardens are laid, so it cannot hold a 1.3 m path; the shader is handed the
+## ones near the camera instead, as the grid moves (24 at most: about a street's worth).
+var _cut_c := PackedVector2Array()    ## a path's middle
+var _cut_u := PackedVector2Array()    ## its way along (unit)
+var _cut_s := PackedVector2Array()    ## its half length, half width
+var _cut_hash := {}
+
+func _grass_cut(c: Vector2, u: Vector2, half_len: float, half_w: float) -> void:
+	var i := _cut_c.size()
+	_cut_c.append(c)
+	_cut_u.append(u)
+	_cut_s.append(Vector2(half_len, half_w))
+	_hash_add(_cut_hash, Rect2(c, Vector2.ZERO).grow(half_len + half_w), BLD_CELL, i)
+
+func _grass_cuts_near(c: Vector2) -> void:
+	if _grass_mat == null:
+		return
+	var near: Array = _near(_cut_hash, c, GRASS_REACH + 2.0, BLD_CELL).duplicate()   # (one cell: the hash's own array)
+	near.sort_custom(func(a: int, b: int) -> bool: return _cut_c[a].distance_squared_to(c) < _cut_c[b].distance_squared_to(c))
+	var a: Array = []
+	var b: Array = []
+	for i: int in near.slice(0, 24):
+		a.append(Vector4(_cut_c[i].x, _cut_c[i].y, _cut_u[i].x, _cut_u[i].y))
+		b.append(_cut_s[i])
+	while a.size() < 24:
+		a.append(Vector4.ZERO)
+		b.append(Vector2.ZERO)
+	_grass_mat.set_shader_parameter("cut_a", a)
+	_grass_mat.set_shader_parameter("cut_b", b)
+	_grass_mat.set_shader_parameter("cut_n", mini(near.size(), 24))
 
 ## an outline filled on a canvas item, in one colour (skipped if it will not triangulate)
 func _canvas_ring(item: RID, ring: PackedVector2Array, col: Color) -> void:
@@ -14621,11 +14723,12 @@ func _keep_inside(r: float, car: bool) -> void:
 ## the barrier and curtain along the four sides, following the ground, a few metres a piece
 func _build_edge() -> void:
 	_edge_mats = []
+	var sh := Shader.new()   # (one for the barrier and the curtain: the barrier's alpha 1)
+	sh.code = EDGE_SHADER
 	for curtain: bool in [false, true]:
-		var sh := Shader.new()   # (two: the barrier opaque, only the curtain see-through)
-		sh.code = ("#define CURTAIN\n" if curtain else "") + EDGE_SHADER
 		var m := ShaderMaterial.new()
 		m.shader = sh
+		m.set_shader_parameter("curtain", curtain)
 		m.set_shader_parameter("band", EDGE_BAND)
 		m.set_shader_parameter("top", EDGE_CURTAIN)
 		m.render_priority = 1 if curtain else 0
@@ -14675,26 +14778,28 @@ uniform float band = 1.1;
 uniform float top = 7.0;
 uniform vec3 stripe : source_color = vec3(1.0, 0.2, 0.4);
 uniform vec3 ink : source_color = vec3(1.0);
+uniform bool curtain = false;   // (one shader for both: two were two sets of programs to compile)
 varying float dist;
 void vertex() {
 	dist = length((MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).xyz);
 }
 void fragment() {
-#ifndef CURTAIN
-	// chevrons on the barrier: the hazard colour and white, a bright line along its top
-	float s = fract((UV.x + UV.y) / 1.6);
-	vec3 c = s < 0.5 ? stripe : ink;
-	c = mix(c, ink, smoothstep(band - 0.12, band - 0.04, UV.y));
-	ALBEDO = c;
-#else
-	// the curtain: glowing at the barrier, fading up, with faint upright lines; only when
-	// near (a ring of light round the town on the horizon is no help)
-	float h = clamp((UV.y - band) / (top - band), 0.0, 1.0);
-	float lines = 0.75 + 0.25 * step(0.85, fract(UV.x / 3.0));
-	float near = 1.0 - smoothstep(60.0, 180.0, dist);
-	ALBEDO = mix(stripe, ink, 0.25);
-	ALPHA = (1.0 - h) * (1.0 - h) * 0.55 * lines * near;
-#endif
+	if (!curtain) {
+		// chevrons on the barrier: the hazard colour and white, a bright line along its top
+		float s = fract((UV.x + UV.y) / 1.6);
+		vec3 c = s < 0.5 ? stripe : ink;
+		c = mix(c, ink, smoothstep(band - 0.12, band - 0.04, UV.y));
+		ALBEDO = c;
+		ALPHA = 1.0;
+	} else {
+		// the curtain: glowing at the barrier, fading up, with faint upright lines; only when
+		// near (a ring of light round the town on the horizon is no help)
+		float h = clamp((UV.y - band) / (top - band), 0.0, 1.0);
+		float lines = 0.75 + 0.25 * step(0.85, fract(UV.x / 3.0));
+		float near = 1.0 - smoothstep(60.0, 180.0, dist);
+		ALBEDO = mix(stripe, ink, 0.25);
+		ALPHA = (1.0 - h) * (1.0 - h) * 0.55 * lines * near;
+	}
 }
 """
 
@@ -15040,7 +15145,7 @@ func _spawn_people() -> void:
 		a.visible = false
 		_chatters.append({"actor": a, "spot": Vector2.INF})
 	_seat_chatters()
-	for i in range(SITTERS + WAITERS):
+	for i in range(SITTERS + WAITERS + KEEPERS):
 		var a := Actor3D.new()
 		world.add_child(a)
 		a.set_character(PEOPLE[(i + 1) % PEOPLE.size()], _people_rng.randf_range(ADULT_LO, ADULT_HI))
@@ -15049,9 +15154,12 @@ func _spawn_people() -> void:
 		a.visible = false
 		if i < SITTERS:
 			_sitters.append({"actor": a, "spot": Vector2.INF})
-		else:
+		elif i < SITTERS + WAITERS:
 			a.play("Idle", true, _people_rng.randf_range(0.7, 1.0))
 			_waiters.append({"actor": a, "spot": Vector2.INF})
+		else:
+			a.play("Idle", true, _people_rng.randf_range(0.6, 0.9))
+			_keepers.append({"actor": a, "spot": Vector2.INF})
 	_build_companions()
 
 ## A person is about eight meshes (body, head, hair, clothes...), each its own draw call
@@ -15320,6 +15428,9 @@ var _chatters_sat := false
 ## multimesh each (3 draws in all); the sitters and waiters are people like the rest.
 const SITTERS := 3
 const WAITERS := 4
+const KEEPERS := 3                   ## shopkeepers in their doorways near you, looking out at the street
+var _keepers: Array = []             ## {actor, spot}
+var _shop_spots: Array = []          ## [a doorway's spot, out to the street] of every open shop
 var _sitters: Array = []             ## {actor, spot}: on the park benches near you
 var _waiters: Array = []             ## {actor, spot}: at the bus stops near you
 var _bench_spots: Array = []         ## [where, facing] of every bench made
@@ -15382,8 +15493,16 @@ func _companion(w: Dictionary, p: Vector2) -> void:
 			_dogs.set_instance_transform(k, Transform3D(Basis(), Vector3(0, -500, 0)))
 			_leads.set_instance_transform(k, Transform3D(Basis(), Vector3(0, -500, 0)))
 			return
-		var dp := p + fw * 0.95 + right * 0.4
-		dp += _push_out(dp, 0.25, true, false)
+		# trotting ahead on the right -- or the left, or at heel, whichever has no fence or
+		# railing between them (pushed out of one, it went to the nearer side: the far one)
+		var dp := p + fw * 0.25   # (nowhere else clear: tight at heel)
+		for cand: Vector2 in [p + fw * 0.95 + right * 0.4, p + fw * 0.95 - right * 0.4, p + fw * 0.55, p - fw * 0.35 + right * 0.3]:
+			var q := cand + _car_box_push(cand, 0.25)
+			q += _push_out(q, 0.25, true, false)
+			if not _wall_between(p, q):   # (checked where it ends up: pushed out of a post, it could cross)
+				dp = q
+				break
+		w["dog_at"] = dp   # (for the tests: a headless run reads a multimesh's copies back as nothing)
 		var y := _h(dp) + _pave_top()
 		_dogs.set_instance_transform(k, Transform3D(turn, Vector3(dp.x, y, dp.y)))
 		var cd := _dogs.get_instance_custom_data(k)
@@ -15399,11 +15518,24 @@ func _companion(w: Dictionary, p: Vector2) -> void:
 			_prams.set_instance_transform(k, Transform3D(Basis(), Vector3(0, -500, 0)))
 			return
 		var pp := p + fw * 0.42
+		pp += _car_box_push(pp, 0.3)
+		w["pram_at"] = pp
 		_prams.set_instance_transform(k, Transform3D(turn, Vector3(pp.x, _h(pp) + _pave_top(), pp.y)))
+
+## a fence, railing, hedge or wall between a and b (as the walls are kept: their middle lines)
+func _wall_between(a: Vector2, b: Vector2) -> bool:
+	for i: int in _near(_wall_hash, (a + b) * 0.5, a.distance_to(b) * 0.5 + 0.3, BLD_CELL):
+		if Geometry2D.segment_intersects_segment(a, b, _walls[i * 2], _walls[i * 2 + 1]) != null:
+			return true
+	return false
 
 ## people sitting on the park benches near you, a few, put there unseen
 func _place_sitters() -> void:
 	_place_still(_sitters, _bench_spots, "sit")
+
+## shopkeepers in the doorways of the open shops near you (a few: they are people like the rest)
+func _place_keepers() -> void:
+	_place_still(_keepers, _shop_spots, "wait")
 
 ## people waiting at the bus stops near you, one or two a stop, facing the road
 func _place_waiters() -> void:
@@ -15475,7 +15607,7 @@ func _people_tick(dt: float) -> void:
 	# (everyone placed, wherever they are: a walker 60 m off still has to see the next one)
 	_people_at.clear()
 	_people_who.clear()
-	for list: Array in [_walkers, _chatters, _crossers, _sitters, _waiters]:
+	for list: Array in [_walkers, _chatters, _crossers, _sitters, _waiters, _keepers]:
 		for w: Dictionary in list:
 			var a: Actor3D = w["actor"]
 			if a.visible:
@@ -15490,7 +15622,8 @@ func _people_tick(dt: float) -> void:
 		_seat_chatters()
 		_place_sitters()
 		_place_waiters()
-		for list: Array in [_chatters, _sitters, _waiters]:
+		_place_keepers()
+		for list: Array in [_chatters, _sitters, _waiters, _keepers]:
 			for c: Dictionary in list:
 				var ca: Actor3D = c["actor"]
 				_people_awake(ca, Vector2(ca.position.x, ca.position.z))
@@ -15509,7 +15642,8 @@ func _people_tick(dt: float) -> void:
 			continue
 		var cum: PackedFloat32Array = w["cum"]
 		var total := cum[cum.size() - 1]
-		var s: float = w["s"] + float(w["dir"]) * float(w["speed"]) * dt
+		var s: float = w["s"] + (0.0 if w.get("hold_me", false) else float(w["dir"]) * float(w["speed"]) * dt)
+		w["hold_me"] = false   # (set again below while you are still in the way)
 		if s < 0.0 or s > total:   # the end of the stretch: on over the side street, or round the corner
 			var at_end := line[0] if s < 0.0 else line[line.size() - 1]
 			var came := at_end - (line[1] if s < 0.0 else line[line.size() - 2])
@@ -15566,13 +15700,23 @@ func _people_tick(dt: float) -> void:
 						var sides: Array = [near_side, far_side]
 						if w.has("me_side") and signf(far_side) == float(w["me_side"]):
 							sides = [far_side, near_side]
+						# each side as far as it is clear (a full step, or less: a parked car one
+						# side, a shop's stool the other), the one leaving the most room
 						var pick: float = near_side
+						var room := -1.0
 						for cand: float in sides:
-							if _push_out(p + right * clampf(cand, -0.9, 0.9), 0.3, true, false) == Vector2.ZERO:
-								pick = cand
-								break
+							var full := clampf(cand, -0.9, 0.9)
+							for frac: float in [1.0, 0.7, 0.45, 0.2]:
+								var step := full * frac
+								if _push_out(p + right * step, 0.3, true, false) == Vector2.ZERO and _car_box_push(p + right * step, 0.3) == Vector2.ZERO:
+									if absf(sr - step) > room + 0.05:
+										room = absf(sr - step)
+										pick = step
+									break
 						w["me_side"] = signf(pick)
 						want += pick
+						# no room to pass at all: they stop and let you by, as people do
+						w["hold_me"] = room < 0.6 and fore > 0.3 and fore < 3.5
 					elif fore < -0.8 or fore > 9.0:
 						w.erase("me_side")
 					continue
@@ -15599,6 +15743,7 @@ func _people_tick(dt: float) -> void:
 				side = -side
 			p += side * dodge
 		for _pass in range(2):   # (out of one parked car's post can be into its other)
+			p += _car_box_push(p, 0.25)
 			p += _push_out(p, 0.25, true, false)
 		# (their line is on the pavement, but for a step over a side street's mouth)
 		a.position = Vector3(p.x, _walk_y(p) if s < float(w.get("cross", 0.0)) else _h(p) + _pave_top(), p.y)
@@ -16509,6 +16654,7 @@ func _clear_lane(p: Vector2, d: Vector2, lane: float) -> Vector2:
 func _collide() -> void:
 	var fwd := _fwd()
 	var total := Vector2.ZERO
+	_knock_hit = -1
 	var at_front := Vector2.ZERO
 	var at_back := Vector2.ZERO
 	# a few passes: out of a wall can be into a tree, and one push each left the car
@@ -16533,10 +16679,12 @@ func _collide() -> void:
 			break
 	if total == Vector2.ZERO:
 		return
-	# a bin, a recycling bin or a bollard: knocked over or bent (_knock), not a wall to stop at
-	if _last_hit.begins_with("post ") and absf(_v) > 1.2 and _knockable.has(int(_last_hit.substr(5))):
+	# a bin, a recycling bin or a bollard: knocked over or bent (_knock), not a wall to stop at --
+	# whatever else it touched in the same moment (a bin between two parked cars: the last
+	# thing touched was a car's bumper, and the bin stopped the car like a wall)
+	if _knock_hit >= 0 and absf(_v) > 1.2 and _knockable.has(_knock_hit):
 		_pos -= total
-		_knock(int(_last_hit.substr(5)))
+		_knock(_knock_hit)
 		return
 	_touch_t = 0.5
 	var n := total.normalized()
@@ -16545,13 +16693,14 @@ func _collide() -> void:
 	var end := _pos + fwd * (CAR_OFF if at_front.length() >= at_back.length() else -CAR_OFF)
 	var touch := end - n * CAR_R
 	_contact = Vector3(touch.x, _y + 0.45, touch.y)
+	_contact_n = n
 	var vel := fwd * _v + right * _v_lat
 	var vn := vel.dot(n)
 	if vn < 0.0:
 		var impact := -vn
 		# a real knock bounces a little; leaning on a wall at walking pace does not (the
 		# bounce back and push in again was a judder that held the car there)
-		vel -= n * vn * (1.0 + (BOUNCE if impact > 2.0 else 0.0))
+		vel -= n * vn * (1.0 + (BOUNCE if impact > 2.0 and not _soft_hit() else 0.0))
 		# a knock off one end turns the car about the other, as a real one does -- a little:
 		# it used to spin it like a top and hop it off the ground, more pinball than crash
 		if impact > 2.0:
@@ -16584,6 +16733,15 @@ func _crash(speed: float) -> void:
 		return
 	if _auto and (_last_hit.begins_with("building") or _last_hit.begins_with("wall") or _last_hit.begins_with("post")):
 		_ap_bonks += 1.0
+	if _soft_hit():   # a hedge gives: leaves fly, the car is held, nothing broken
+		_leaves_at(_contact, Vector3(_contact_n.x, 0.6, _contact_n.y), clampf(speed / 8.0, 0.4, 1.0))
+		_v *= 0.7
+		shake3d(minf(1.5, speed * 0.12))
+		Audio.play("impact_soft", 0.1, -4.0)
+		Probe.event("crash", {"kmh": int(speed * 3.6), "hit": "hedge", "at": Vector2i(_pos), "street": _on_name, "auto": _auto})
+		return
+	if speed > 2.5 and (_last_hit.begins_with("building") or _last_hit.begins_with("wall")):
+		_scrape_at(_contact, _contact_n, speed)
 	# what a knock leaves: sparks, a dent where it hit, glass on the road after a hard one
 	if speed > 3.0:
 		_sparks_at(_contact, Vector3.UP, clampf(speed / 10.0, 0.5, 1.0))
@@ -16617,6 +16775,8 @@ const KNOCKED_MAX := 12
 var _knockable := {}                 ## post index -> [multimesh, copy, its transform, mesh, "tumble"/"bend", the post's radius]
 var _knocked: Array = []             ## {id, k, body, ground, t}
 var _contact := Vector3.ZERO         ## where the car last touched something (_collide)
+var _contact_n := Vector2.ZERO       ## ... and the way it was pushed off it (out of what it hit)
+var _knock_hit := -1                 ## a knockable post touched in this tick's pushes (_collide), or -1
 
 func _knock_add(mesh: Mesh, xforms: Array, posts: Array, seen: float, how: String) -> void:
 	var mm := MultiMesh.new()
@@ -16758,6 +16918,97 @@ func _sparks_at(p: Vector3, out: Vector3, k: float) -> void:
 	_sparks.direction = out.normalized()
 	_sparks.amount = int(14 + 24 * k)
 	_sparks.restart()
+
+## what the car last hit was a hedge
+func _soft_hit() -> bool:
+	if not _last_hit.begins_with("wall "):
+		return false
+	var i := int(_last_hit.substr(5))
+	return i >= 0 and i < _wall_soft.size() and _wall_soft[i] == 1
+
+## leaves off a hedge the car went into: the sparks' kind of burst (the same material's
+## shader: no new one to compile), green, slower, drifting down
+var _leaf_burst: CPUParticles3D
+
+func _leaves_at(p: Vector3, out: Vector3, k: float) -> void:
+	if _leaf_burst == null:
+		_leaf_burst = CPUParticles3D.new()
+		_leaf_burst.one_shot = true
+		_leaf_burst.emitting = false
+		_leaf_burst.amount = 40
+		_leaf_burst.lifetime = 1.6
+		_leaf_burst.explosiveness = 0.9
+		_leaf_burst.spread = 75.0
+		_leaf_burst.initial_velocity_min = 1.0
+		_leaf_burst.initial_velocity_max = 3.2
+		_leaf_burst.gravity = Vector3(0, -2.2, 0)
+		_leaf_burst.damping_min = 1.5
+		_leaf_burst.damping_max = 3.0
+		_leaf_burst.angular_velocity_min = -360.0
+		_leaf_burst.angular_velocity_max = 360.0
+		_leaf_burst.scale_amount_min = 0.6
+		_leaf_burst.scale_amount_max = 1.3
+		var q := QuadMesh.new()
+		q.size = Vector2(0.07, 0.05)
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+		var leaf: Color = _tone.get("hedge", _tone.get("grass", Palette.col("friend")))
+		m.albedo_color = leaf.darkened(0.15)
+		m.emission_enabled = true
+		m.emission = leaf.darkened(0.6)
+		m.emission_energy_multiplier = 1.0
+		q.material = m
+		_leaf_burst.mesh = q
+		world.add_child(_leaf_burst)
+	_leaf_burst.global_position = p + Vector3.UP * 0.4
+	_leaf_burst.direction = out.normalized()
+	_leaf_burst.amount = int(18 + 30 * k)
+	_leaf_burst.restart()
+
+## Where the car hit a wall or a building: streaks of its rubber and paint on it at bumper
+## height, along the way it scraped -- the wall marked, not only the car. A few kept, for a
+## few minutes (like the glass).
+var _scrapes: Array = []             ## [mesh instance, when]
+
+func _scrape_at(at: Vector3, n: Vector2, speed: float) -> void:
+	if n == Vector2.ZERO:
+		return
+	var b := Buf.new()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(at.x * 17.0 + at.z * 5.0)
+	var along := Vector2(-n.y, n.x)
+	var face := Vector3(n.x, 0.0, n.y)
+	var c := Vector2(at.x, at.z) + n * 0.03   # (just off the wall's face, on the car's side)
+	var gy := _h(Vector2(at.x, at.z))
+	var dark: Color = _tone["cartrim"].darkened(0.55)
+	var paint: Color = Palette.col("bg_alt").lerp(Palette.col("ink"), 0.55)
+	var length := clampf(0.5 + speed * 0.12, 0.6, 2.4)
+	for i in range(int(clampf(speed * 0.8, 3.0, 9.0))):
+		var y := gy + rng.randf_range(0.28, 0.72)
+		var l := length * rng.randf_range(0.45, 1.0)
+		var o := rng.randf_range(-0.3, 0.3)
+		var hgt := rng.randf_range(0.012, 0.05)
+		var col := dark if rng.randf() < 0.65 else paint
+		var a := c + along * (o - l * 0.5)
+		var e := c + along * (o + l * 0.5)
+		var A := Vector3(a.x, y, a.y)
+		var E := Vector3(e.x, y + rng.randf_range(-0.04, 0.04), e.y)
+		var up := Vector3.UP * hgt
+		b.tri(A, E, E + up, face, col)
+		b.tri(A, E + up, A + up, face, col)
+		b.tri(A, E + up, E, -face, col)   # (and the other way round: whichever way it winds)
+		b.tri(A, A + up, E + up, -face, col)
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, b.arrays())
+	am.surface_set_material(0, _vc_mat())
+	var mi := MeshInstance3D.new()
+	mi.mesh = am
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	world.add_child(mi)
+	_scrapes.append([mi, Time.get_ticks_msec()])
+	while _scrapes.size() > 8 or (not _scrapes.is_empty() and Time.get_ticks_msec() - int(_scrapes[0][1]) > 240000):
+		(_scrapes.pop_front()[0] as Node).queue_free()
 
 ## glass and bits of plastic on the road where a hard knock was, for a minute and a half
 var _glass: Array = []               ## [mesh instance, when]
@@ -16921,6 +17172,8 @@ func _push_out(c: Vector2, r: float, posts: bool, cars := true, y := NAN) -> Vec
 			if d.length() < need:
 				push += d.normalized() * (need - d.length()) if d.length() > 0.001 else Vector2(need, 0)
 				_last_hit = "post %d" % i
+				if _knockable.has(i):
+					_knock_hit = i
 	if posts and _traffic != null and cars:
 		var tp := _traffic.push(c + push, r, y)
 		if tp != Vector2.ZERO:
