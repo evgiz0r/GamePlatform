@@ -185,7 +185,10 @@ pushing against something without moving, and standing still with nothing named 
 limit at a standstill is not). Print every check with its count even at 0, so a reader
 sees it ran. The first version of a check finds its own false alarms first (the front of a
 queue in its moment to react at a green read "held by nothing"): run it once in the small
-test town and read every hit before trusting the number.
+test town and read every hit before trusting the number. When a check fires, print the
+last few seconds of everyone involved with it (speed, what it wanted, what held it, a few
+times a second): a car "held by nothing" is usually explained by what it did just before,
+and without that history each one costs a staged re-run.
 
 **A check of the world as built**, before anything drives it: walls, posts and buildings
 on the road, a junction's points each deciding alone, roads too short to have a direction.
@@ -354,6 +357,11 @@ behaviour counted over minutes, and three things are in the way:
   The same before calling a change a regression: run the base branch beside yours (a git
   worktree with `.godot` copied in) -- one exam read 11 and 12 on a branch and "7-9" in the
   notes, and the base itself read 8 and 12.
+  A pass/fail check over a noisy measure is no better: near variants of one change read
+  1.19 to 1.62 on a queue check's 40-minute watch, so a bisect over single runs chased
+  noise. Run base and candidate back to back on a doubled watch before bisecting, and do
+  it in a worktree, not by copying versions over the file in your own tree: while the
+  copy stands the tree cannot be committed or merged.
   Keep 1x for how driving feels (crashes, steering, frames) and for numbers written down.
 
 A city that builds in 5 s on a laptop can take 15 there, and a minute of game time five of

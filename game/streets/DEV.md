@@ -526,6 +526,54 @@ what became of it:
   one build read 1.18 / 1.44 / 1.57). At 2x it read 1.17x: final numbers at 1x. Tried and no
   help: easing the pull-away against the cruising speed.
 
+### Handoff: the checks, validation, traffic's last findings (20 Nov 2026)
+
+**Where it stands.** On `main` (84d3122), `FULL=1 validate.sh`: city checks 0 everywhere
+except Givatayim's 1 post and 1 building (the passage, on purpose); exams test town 12,
+Givatayim 12, Ashdod 17; queue PASS, 1.11x. What the exams still find is traffic's: cars
+overlapping (at junction edges, and alongside a truck's flank), held by nothing 10 s+,
+traffic into kerb-side posts (Givatayim 6-9 of them), a truck stopping 4.5 m past the line.
+
+**In progress: those traffic findings**, on branch `claude/brave-hopper-cmk1ky` (3cce448,
+not on `main`), plus a candidate not yet committed:
+- *Two cars waiting for each other.* The old way out (ignore the other car) worked only
+  head-on (angles 0.8 rad+ apart); two cars at a skewed junction, each in the other's path,
+  stood for good. Now a car waiting 2.5 s+ walks the chain of who holds whom (6 deep); on a
+  loop the lowest-numbered car ignores the one in front for 3 s (`ignore_car`).
+- *Giving way, the front corners in a skewed junction's lanes.* `_clear_back` stops a car
+  far enough back that its corners clear the crossing roads. It made queues at lights
+  slower (1.62x): the second car braked for "junction" inside a lit junction. The candidate
+  uses it only at unlit junctions.
+- *Overlapping a truck's flank.* `_path_gap` judged "on my path" by a car's middle; now a bus
+  or truck alongside going my way counts by both bodies' half-widths (the candidate: only
+  those, other cars keep the lane's width -- the full body width for all read 1.25-1.34).
+- *Kerb-side posts.* The kerb lane keeps each vehicle's side 0.3 m on the asphalt
+  (`_kerb_room`); the candidate only on single-lane roads, so a bus keeps to its lane.
+- *The truck past the line.* It committed on amber and then braked at the red (`amber_go`
+  now holds the commitment through that light).
+- The exam (in 3cce448): a "held by nothing" incident prints each car's last 3 s (`_hist`,
+  every 15 ticks), and a car waiting 25 s+ for a car is an incident with the chain.
+
+Measured on the branch: exams 4 / 11 / 9 (test town / Givatayim / Ashdod), held by nothing
+0; but the queue 1.62x, FAIL. Variants at 2x, 40 minutes, read 1.19 to 1.46 -- inside what
+one build reads on that watch -- so an A/B of base (473ee07's traffic) against the candidate
+at 80 minutes each is the next number. **Since then `main`'s traffic.gd moved a lot**
+(lanes by body, bus lanes, sideways only as it rolls, a long vehicle moving over gently):
+whoever carries this on merges it onto that first and measures again.
+
+**Open:** the queue regression (decide by the A/B, then `FULL=1` on the merge); cars
+overlapping at junction edges; whatever of the post and overlap counts survives the merge.
+
+**Commands** (all headless, in the background):
+- `game/streets/tests/validate.sh` (~4 min) and `FULL=1` (~12 min). Good: city 0 (Givatayim
+  1+1 as above), exams about 4-17 a town and noisy, queue PASS.
+- One check by itself: `LEVEL=1 STREETS_BUILD_ALL=1 $GODOT --headless --fixed-fps 60 --path .
+  -s res://game/streets/tests/exam.gd` (`EXAM_STARTS=2` halves it; `STREETS_SIM_SPEED=2`).
+- The queue: `STREETS_SIM_SPEED=2 LEVEL=1 KNOT_AT="-800,-288" SECS=2400 STREETS_BUILD_ALL=1
+  $GODOT --headless --fixed-fps 60 --path . -s res://game/streets/tests/queue_start.gd`
+  (~4 min; `SECS=4800` to compare two builds). Good: "line gaps / real ones" 0.8-1.2.
+- A car that stands: `tests/traffic_stuck.gd`; the second car of a queue: `TRACE=n`.
+
 ## Seeing what the car did: the drive recorder
 
 `drivelog.gd` keeps the last two minutes, ten times a second: the car (where, heading,
