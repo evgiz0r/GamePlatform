@@ -126,6 +126,8 @@ func _drive(secs: float) -> void:
 		var dv: float = (g._v - last_v) / dt
 		if dv < -6.0 and absf(last_v) > 3.0:
 			_count("autodrive: harsh braking ticks")
+			# and what for (a bump stops the car too: that is a hit, counted above)
+			_count("autodrive: harsh braking, %s" % ("a bump" if g._crash_cool > 0.0 else "for " + held))
 		last_v = g._v
 		var on: Dictionary = g._nearest_seg(p, 30.0, true, true)
 		if not on.is_empty() and float(on["edge"]) > 1.0:

@@ -19,12 +19,27 @@ import math
 import os
 import sys
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WHY_COL = {"limit": (90, 200, 120), "curve": (60, 160, 230), "light": (230, 60, 60), "sign": (230, 140, 40),
            "zebra": (240, 220, 60), "people": (240, 220, 60), "car": (170, 100, 230), "blocked": (240, 90, 160),
            "choice": (120, 200, 240), "": (150, 150, 150)}
+WHY_NAME = {"limit": "nothing (the speed limit)", "curve": "a bend or a turn", "light": "a traffic light",
+            "sign": "a stop / give-way sign", "zebra": "people on a crossing", "car": "the car ahead",
+            "blocked": "blocked, backing out", "choice": "a junction (which way?)"}
+
+
+def _font(size):
+    for f in ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/TTF/DejaVuSans.ttf"):
+        try:
+            return ImageFont.truetype(f, size)
+        except OSError:
+            pass
+    return ImageFont.load_default()
+
+
+FONT = _font(14)
 
 
 def main(argv):
@@ -55,7 +70,7 @@ def main(argv):
     span = max(x1 - x0, z1 - z0, 120)
     cx, cz = (x0 + x1) / 2, (z0 + z1) / 2
     x0, z0 = cx - span / 2, cz - span / 2
-    strip = 160
+    strip = 240
     W, H = size, size + strip
     sc = size / span
     img = Image.new("RGB", (W, H), (24, 26, 34))
@@ -143,20 +158,38 @@ def main(argv):
             d.ellipse([p[0] - 3, p[1] - 3, p[0] + 3, p[1] + 3], fill=(90, 170, 255))
             d.text((p[0] + 5, p[1] + 3), "%ds %s %s" % (ev[0], ev[1], ev[2] if ev[2] != "" else ""), fill=(140, 190, 255))
     # the strip: speed by time, coloured by what held it
-    y0 = size + 10
+    y0, hh, lx = size + 34, 130, 64          # top of the plot, its height, left margin
     ta, tb = samples[0]["t"], samples[-1]["t"]
+    top_v = 60.0 / 3.6                        # the plot's top: 60 km/h
     d.rectangle([0, size, W, H], fill=(16, 18, 24))
+    d.text((10, size + 8), "speed (km/h) against time -- the line's colour says what autodrive was slowing down for",
+           fill=(230, 230, 230), font=FONT)
+
+    def TX(t):
+        return lx + (t - ta) / max(tb - ta, 1) * (W - lx - 20)
+
+    def VY(v):
+        return y0 + hh - min(abs(v) / top_v, 1) * hh
+    for kmh in (0, 20, 40, 60):
+        y = VY(kmh / 3.6)
+        d.line([lx, y, W - 20, y], fill=(44, 48, 60), width=1)
+        d.text((10, y - 8), "%d" % kmh, fill=(150, 150, 160), font=FONT)
+    step = 30 if tb - ta > 90 else 10
+    t = math.ceil(ta / step) * step
+    while t <= tb:
+        d.line([TX(t), y0 + hh, TX(t), y0 + hh + 5], fill=(150, 150, 160), width=1)
+        d.text((TX(t) - 12, y0 + hh + 6), "%d s" % t, fill=(150, 150, 160), font=FONT)
+        t += step
     for a, b in zip(samples, samples[1:]):
-        xa = (a["t"] - ta) / max(tb - ta, 1) * (W - 20) + 10
-        xb = (b["t"] - ta) / max(tb - ta, 1) * (W - 20) + 10
-        ya = y0 + 120 - min(abs(a["v"]) / 16.0, 1) * 120
-        yb = y0 + 120 - min(abs(b["v"]) / 16.0, 1) * 120
-        d.line([xa, ya, xb, yb], fill=WHY_COL.get(b.get("why", ""), (200, 200, 200)), width=2)
+        d.line([TX(a["t"]), VY(a["v"]), TX(b["t"]), VY(b["v"])],
+               fill=WHY_COL.get(b.get("why", ""), (200, 200, 200)), width=2)
     x = 10
     for why, col in WHY_COL.items():
-        if why:
-            d.text((x, y0 + 128), why, fill=col)
-            x += 60
+        if why and why != "people":
+            name = WHY_NAME.get(why, why)
+            d.rectangle([x, y0 + hh + 32, x + 12, y0 + hh + 44], fill=col)
+            d.text((x + 17, y0 + hh + 30), name, fill=(220, 220, 220), font=FONT)
+            x += 30 + int(d.textlength(name, font=FONT))
     d.text((10, 6), "%s  %s  %.0f-%.0f s  (grid: the streets as drawn; blue: autodrive's plan every 2 s)" % (
         log.get("name", log["city"]), log.get("made", ""), ta, tb), fill=(230, 230, 230))
     img.save(out)

@@ -92,6 +92,32 @@ twice) draws it as a map; "save log" there downloads it (a browser) or writes it
 by speed, the plan every 2 s, the other cars, the events, and a strip of speed against time
 coloured by what held it. Then stage that spot in a scene test.
 
+## The driving exam and the test trip: the loop for driving behaviour
+
+`tests/run.sh exam <level>` drives autodrive from the start and three more places spread
+over the town (`EXAM_STARTS`, `EXAM_SECS`), with the traffic and people about, and counts
+per minute what went wrong: autodrive stuck, hits by kind, off the asphalt, left of the
+middle, red lights run, rescues, harsh braking (split by what it braked for), and for
+traffic stalls, overlaps and red lights. Then the worst places, with drive logs saved for
+the first ten (`user://drive_logs/exam-*.json`). Fix the top of the list, run it again,
+and draw both printouts with `exam_chart.py`. `tests/run.sh door_to_door 1` is the same
+for one trip as a player makes it ("go to" an address): arrived or not, time, every
+standstill and what held it, a log every two minutes and a screenshot every 30 s.
+
+What each round found, so far:
+- A divided road's junction is several signalled points 10-30 m apart; each picked its own
+  main road and they disagreed (green both ways across the knot: 43 red lights run by
+  traffic a run in Ashdod). The points within 40 m now share one main road and groups.
+- Red or green was looked up by the direction of the stretch the car was on at the moment
+  (mid-turn, diagonal), not the way it came in: now the arrival direction, 6 m back.
+- "Go to" planned from the way the car faced only, and from the nearest street as if the
+  car were on it. From a house at a dead end it planned on to the closed end and a U-turn
+  there (no cost for the turn), swung round into the fence, and crept along the footpath
+  beside the road into its bollards for a minute and a half. Now: both ways out, never
+  "to the end and straight back", and off the road the way back onto it comes first.
+- A bus pulled in at a stop: autodrive went round it by a whole lane, which on a two-way
+  street put it over the middle. Now to the inner edge of its own side, or it waits.
+
 ## Numbers to compare against (November 2026, cloud container, software renderer)
 
 - Build time in full: Givatayim ~6 s, Bedford ~9 s, Ashdod ~15 s, the test town ~1.2 s

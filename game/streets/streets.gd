@@ -11399,9 +11399,39 @@ func _ap_plan() -> void:
 	_ap_v = PackedFloat32Array()
 	_ap_lim = PackedFloat32Array()
 	if _dest_on:
-		if not _route_to(_dest):
+		# off the road (on a footpath, in a yard): first the way back onto it, as below. The
+		# trip planned from the nearest street as if the car were on it, and autodrive drove
+		# along the footpath beside it into the bollards at its end, for a minute and a half.
+		var from := _pos
+		var heading := _fwd()
+		var way := PackedVector2Array()
+		var on := _nearest_seg(_pos, 60.0, true, true)
+		if not on.is_empty() and float(on["edge"]) > 1.0:
+			way = _way_to_road()
+			if way.size() >= 2:
+				from = way[way.size() - 1]
+				heading = (way[way.size() - 1] - way[way.size() - 2]).normalized()
+			elif _ap_rescue():
+				from = _pos
+				heading = _fwd()
+		if not _route_to(_dest, from, heading):
 			_show_banner("can't find a way there from here", 2.0)
 			_clear_dest()
+			return
+		if way.size() >= 2:
+			var off_v := PackedFloat32Array()
+			off_v.resize(way.size() - 1)
+			off_v.fill(AP_OFFROAD_V)
+			way.resize(way.size() - 1)   # (the route starts where the way ends)
+			way.append_array(_ap_pts)
+			_ap_pts = way
+			off_v.append_array(_ap_v)
+			_ap_v = off_v
+			var off_l := PackedFloat32Array()
+			off_l.resize(_ap_pts.size() - _ap_lim.size())
+			off_l.fill(AP_OFFROAD_V)
+			off_l.append_array(_ap_lim)
+			_ap_lim = off_l
 		return
 	var hit := _nearest_seg(_pos, 60.0, true, true)
 	if hit.is_empty():
@@ -11501,6 +11531,15 @@ func _ap_pass_bus(lead: Array) -> bool:
 		return false
 	var w := float(r["w"])
 	var lane_w := w / n if int(r["o"]) != 0 else (w * 0.5) / n
+	if int(r["o"]) == 0:
+		# a two-way road: over to the inner lane of its own side -- by a whole lane from where
+		# autodrive drives (a little in from the right lane's middle) it crossed the centre
+		var inner := (w * 0.5) / n * 0.5
+		if inner < float(r.get("mid", 0.0)) + 1.15:
+			return false
+		lane_w = _lane_off(r) - inner
+		if lane_w < 1.5:
+			return false
 	var fwd := _fwd()
 	var left := Vector2(fwd.y, -fwd.x)
 	var gap: float = lead[0]
@@ -11849,8 +11888,12 @@ func _cross_rect(i: int, n: int) -> Rect2:
 ## ---- going to an address ------------------------------------------------------------------
 
 ## plan the shortest legal way from the car to the kerb nearest `goal` into the autodrive lane
-func _route_to(goal: Vector2) -> bool:
-	var s := _nearest_seg(_pos, 40.0, true, true)
+func _route_to(goal: Vector2, from := Vector2.INF, heading := Vector2.ZERO) -> bool:
+	if from == Vector2.INF:
+		from = _pos
+	if heading == Vector2.ZERO:
+		heading = _fwd()
+	var s := _nearest_seg(from, 40.0, true, true)
 	var g := _nearest_seg(goal, 150.0, true, true)
 	if s.is_empty() or g.is_empty():
 		return false
@@ -11858,7 +11901,7 @@ func _route_to(goal: Vector2) -> bool:
 	var ids: PackedInt32Array = r["ids"]
 	var pts: PackedVector2Array = r["pts"]
 	var sj: int = s["seg"]
-	var ahead := (pts[sj + 1] - pts[sj]).dot(_fwd()) >= 0.0
+	var ahead := (pts[sj + 1] - pts[sj]).dot(heading) >= 0.0
 	# Either way along the street it stands in (a two-way one), whichever makes the shorter
 	# trip -- the way it faces only breaks a near tie (turning round costs ~15 m). It took the
 	# way the car faced, and leaving a house facing away from the route it swerved across a
@@ -11884,6 +11927,11 @@ func _route_to(goal: Vector2) -> bool:
 			var path := _astar.get_id_path(f0, end[0])
 			if path.is_empty():
 				continue
+			if path.size() >= 2 and path[1] == (ids[sj] if d0 > 0 else ids[sj + 1]):
+				continue   # on to the end of its street and straight back (a dead end): the
+				           # other way round is the same trip without the U-turn. It took this
+				           # one from a house at a dead end, swung round in the closed end and
+				           # into the fence there.
 			var other := gids[gj + 1] if end[1] == 1 else gids[gj]
 			if path.size() >= 2 and path[path.size() - 2] == other:
 				continue   # it drives past the address to the far end, then U-turns back: no
