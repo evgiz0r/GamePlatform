@@ -236,7 +236,7 @@ d = {
                       [8.9, 12.6, 70], [12.6, 13.4, 20],        # the far half's from the right
                       [79.3, 81.0, 60], [81.0, 82.3, -45],      # Sheinkin's from the right; and the other way
                       [84.4, 86.0, 40],                         # half way over, along Sheinkin again
-                      [87.6, 88.6, -55], [89.0, 92.5, 80],      # back at the corner; then down Ha-Meri,
+                      [87.6, 88.6, -55], [89.0, 92.5, 55],      # back at the corner; then down Ha-Meri,
                                                                 # the hatchback ahead by the kerb (to 92.3)
                       [92.5, 95.6, -10, -22]],                  # down at the far kerb's blue and white
                                                                 # as it steps up beside a parked car (not

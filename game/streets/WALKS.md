@@ -78,6 +78,11 @@ focused, or leave them to them.
       at 76-90 s).
 
 ### Quality
+- [ ] Under the arcade (film 15-24 s) the film's pavers are nearly as bright as the open
+      pavement's -- the phone's HDR lifts dark areas locally, not by one curve -- and the
+      game's are near black. A global grade cannot lift one area: either the arcade's shade
+      gets more light (ambient under a roof) or the grade gets a local, blurred-luminance
+      term as phones do.
 - [ ] The light: the film's late morning is bright, slightly hazy, warm; shadows soft-edged
       and blue-grey, not near black; the sky pale near the horizon. *(city-wide)*
 - [ ] Dappled shade under the passage's trees: patches of sun through the leaves moving

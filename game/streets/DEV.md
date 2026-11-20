@@ -796,6 +796,11 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   hatchback (`parked_car` takes `paint` now) and blue-and-white `kerb_paint`. And a
   bougainvillea from the front gardens had grown across the little street's pavement at eye
   height by the graffiti gatepost (film 71-76 s, bare): a `clear` spot too.
+  Measured on its recording: sway 0.25 / 0.21 degrees (the film's 0.25 / 0.19); levels at
+  1-99% within 0.05 of the film's, 0.0% clipped, saturation 0.146 (0.159). The look down
+  Ha-Meri at 89-92.5 s is 55 degrees: at 80 the hatchback sat at the frame's right edge
+  where the film has it dead ahead with the kerb on the left (AT stills at 91 and 92.3; the
+  film frame by frame). AT names its stills by whole seconds: 92 and 92.3 save to one file.
 - **Next passes**: the light (another session's: the film's afternoon is hazy and warm);
   people that move as the film's do (the walk's `people` take `to` and `t`; none of the
   four walks yet). The street now matches the film in what stands where: what is left is
