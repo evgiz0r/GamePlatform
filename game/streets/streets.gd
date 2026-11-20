@@ -31,7 +31,7 @@ const LEVELS := [
 	{"name": "A walk in Givatayim: Sheinkin and Sirkin", "city": "givatayim", "look": "med", "walk": "sheinkin_sirkin"},
 	# a box of central Tel Aviv, not the whole city (the workflow's bbox): HaKirya, Azrieli,
 	# Sarona, Montefiore, Bitsaron, the Ayalon. Starts on Kaplan heading east, the towers ahead.
-	{"name": "Tel Aviv: Azrieli and HaKirya", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med"},
+	{"name": "Tel Aviv: Azrieli and HaKirya", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -900,6 +900,7 @@ var _view_y := 0.0
 var _spin := 0.0                     ## a knock's spin, dying away (rad/s)
 const AIR_G := 7.5                   ## gravity in the air: floatier than 9.8, for longer jumps
 const LIFTOFF := 1.3                 ## the ground falling away this much faster than the car (m/s)
+const STEP_GRADE := 0.3              ## steeper than this under the car is a step, not a slope (_fly)
 var _roll := 0.0
 var _pitch := 0.0
 var _crash_cool := 0.0
@@ -1463,6 +1464,9 @@ func _load_city(id: String) -> bool:
 	if String(_place.get("decks", "")) == "infer":   # (OSM has no heights: worked out here)
 		var t_inf := Time.get_ticks_msec()
 		_inferred = Decks.infer(data, DRIVE)
+		var dug := Decks.infer_tunnels(data, DRIVE)   # (after the bridges: clear of their ramps)
+		if not dug.is_empty():
+			_inferred["tunnels"] = dug
 		_inferred["ms"] = Time.get_ticks_msec() - t_inf
 	_city_name = String(data.get("name", id))
 	var b: Array = data["bounds"]
@@ -11983,6 +11987,12 @@ func _fly(dt: float) -> void:
 	var ground: float = _decks.surf(_pos, _y)   # (a bridge's deck, a tunnel's road: whatever is under it)
 	var gv := (ground - _ground_was) / maxf(dt, 0.001)   # the ground's own rise or fall, under the car
 	_ground_was = ground
+	# A rise faster than any slope gives at this speed is a step -- the seam where two decks
+	# overlap, up at a junction in the air, a few tenths of a metre apart -- climbed, not a
+	# ramp: taken as the car's own climb, 0.3 m in a frame was 17 m/s up, and on the flat
+	# beyond it the car flew 3 m over the bridge.
+	if gv > absf(_v) * STEP_GRADE + 0.5:
+		gv = 0.0
 	if _air:
 		_vy -= AIR_G * dt
 		_y += _vy * dt

@@ -1256,3 +1256,414 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 			short += 1
 	return {"bridges": is_br.size(), "crossings": crossed, "stacked": stacked, "capped": capped, "decks": decks,
 		"over_roads": over_roads.size(), "short_of_clear": short, "lowest_over_road": snappedf(low, 0.1)}
+
+## ---- depths for a real town's tunnels: infer()'s other half -------------------------------
+##
+## OSM says which ways are tunnels (`tu`) and their layer, not how deep. A tunnel mapped below
+## the ground (layer under 0; a layer-0 "tunnel" is a passage under a building, left as it
+## was) is put COVER under the ground at every point (a point every 6 m first); the dip
+## spreads out along the drivable roads at a ramp's grade -- the approaches, cut into the
+## ground (cuttings) -- and never steeper than CAP down from what stays where it is: a
+## junction in the open (its side streets do not dip with the approach), a tunnel's mouth
+## that opens onto a junction or splits off a road that carries on (an underpass leaving the
+## surface lanes), a bridge's ramp (run after infer()), and the points either side of where a
+## road crosses over. Under each such road the tunnel must have its tube, or the road would
+## cross an open hole and a car on it fall in: there the depth wins over the cap. Where a
+## tunnel is shallower than its tube (a mouth just off a junction) it is drawn as a cutting.
+## Each road is cut where its dip runs out, as infer() cuts the ramps. A car park's ramp (a
+## service way) is no tunnel worth the name: those stay left out. DECKS_DEBUG=1 prints each
+## road over a tunnel and any still over a shallow one.
+const COVER := 7.0            ## a tunnel's road this far under the ground over it (the tube, TUBE_H, and its roof)
+const MIN_TUNNEL := 25.0
+
+static func infer_tunnels(data: Dictionary, drive: Dictionary) -> Dictionary:
+	var hg: Dictionary = data.get("height", {})
+	if hg.is_empty() or data["roads"].is_empty():
+		return {}
+	var k := 1.0 / float(data.get("scale", 10))
+	var nd: Array = data["nodes"]
+	var roads: Array = data["roads"]
+	var pos := func(i: int) -> Vector2: return Vector2(float(nd[i * 2]), float(nd[i * 2 + 1])) * k
+	var add_node := func(p: Vector2) -> int:
+		nd.append(roundi(p.x / k))
+		nd.append(roundi(p.y / k))
+		return nd.size() / 2 - 1
+	var drv := func(r: Dictionary) -> bool: return drive.has(String(r.get("k", "")))
+	var gnd := {}
+	var ground := func(n: int) -> float:
+		if not gnd.has(n):
+			gnd[n] = _hgt(hg, pos.call(n), k)
+		return gnd[n]
+	var at := {}
+	for ri in range(roads.size()):
+		for n in roads[ri]["n"]:
+			if not at.has(int(n)):
+				at[int(n)] = []
+			(at[int(n)] as Array).append(ri)
+	# the tunnels worth the name: drivable, not a service way, below the ground, in chains
+	# of ways at least MIN_TUNNEL long that meet a road in the open somewhere
+	var dug := func(r: Dictionary) -> bool:
+		return r.has("tu") and not r.has("y") and drv.call(r) and String(r["k"]) != "service" \
+			and int(r.get("ly", 0)) < 0
+	var is_tu := {}
+	var seen := {}
+	for ri in range(roads.size()):
+		if seen.has(ri) or not dug.call(roads[ri]):
+			continue
+		var comp: Array = [ri]
+		seen[ri] = true
+		var todo: Array = [ri]
+		var total := 0.0
+		var opens := false
+		while not todo.is_empty():
+			var a: int = todo.pop_back()
+			var ns: Array = roads[a]["n"]
+			for j in range(ns.size() - 1):
+				total += (pos.call(int(ns[j])) as Vector2).distance_to(pos.call(int(ns[j + 1])))
+			for e in ns:
+				for b: int in at[int(e)]:
+					if dug.call(roads[b]):
+						if not seen.has(b):
+							seen[b] = true
+							comp.append(b)
+							todo.append(b)
+					elif drv.call(roads[b]) and not roads[b].has("tu"):
+						opens = true
+		if total >= MIN_TUNNEL and opens:
+			for b: int in comp:
+				is_tu[b] = true
+	if is_tu.is_empty():
+		return {}
+	# a point every few metres along each tunnel before its depth is worked out: one of two
+	# points was a straight line between its mouths, and a shallow mouth took it all up
+	for ri: int in is_tu:
+		var ns: Array = roads[ri]["n"]
+		var out: Array = [ns[0]]
+		for j in range(ns.size() - 1):
+			var a: Vector2 = pos.call(int(ns[j]))
+			var b: Vector2 = pos.call(int(ns[j + 1]))
+			var parts := maxi(1, ceili(a.distance_to(b) / 6.0))
+			for q in range(1, parts):
+				out.append(add_node.call(a.lerp(b, float(q) / parts)))
+			out.append(ns[j + 1])
+		roads[ri]["n"] = out
+	at = {}
+	for ri in range(roads.size()):
+		for n in roads[ri]["n"]:
+			if not at.has(int(n)):
+				at[int(n)] = []
+			(at[int(n)] as Array).append(ri)
+	# What stays where it is: any road already off the ground (a bridge's ramp); a junction in
+	# the open (three ways or more: an approach's side street does not dip with it, the
+	# approach steepens instead); a tunnel's mouth that opens onto a junction or splits off a
+	# road that carries on (an underpass leaving the surface lanes: its own way goes down
+	# from there; one that opens onto its approach alone lets the dip run on); and, below,
+	# the points either side of where a road crosses over a tunnel.
+	var held := {}
+	for ri in range(roads.size()):
+		if roads[ri].has("y"):
+			for n in roads[ri]["n"]:
+				held[int(n)] = true
+	var on_tu := {}
+	for ri: int in is_tu:
+		for n in roads[ri]["n"]:
+			on_tu[int(n)] = true
+	# a tunnel's approach: an open way with a tunnel at one of its ends (it dips anyway, so
+	# a mouth on it -- a branch tunnel joining an underpass's exit, underground -- is no
+	# split off a road that stays up)
+	var approach := {}
+	for ri in range(roads.size()):
+		var ns: Array = roads[ri]["n"]
+		if not roads[ri].has("tu") and (on_tu.has(int(ns[0])) or on_tu.has(int(ns[ns.size() - 1]))):
+			approach[ri] = true
+	for n: int in at:
+		var ends := 0   # open drivable ways out of n (a way through n counts twice)
+		var ends_up := 0   # ... not counting a tunnel's approach
+		for ri: int in at[n]:
+			var r: Dictionary = roads[ri]
+			if not drv.call(r) or r.has("tu"):
+				continue
+			var ns: Array = r["n"]
+			var e := 1 if (int(ns[0]) == n or int(ns[ns.size() - 1]) == n) else 2
+			ends += e
+			if not approach.has(ri):
+				ends_up += e
+		if ends >= 3 or (on_tu.has(n) and ends_up >= 2):
+			held[n] = true
+	var cell := 32.0
+	var grid := {}
+	for ri in range(roads.size()):
+		if is_tu.has(ri) or roads[ri].has("tu"):
+			continue
+		var ns: Array = roads[ri]["n"]
+		for j in range(ns.size() - 1):
+			var a: Vector2 = pos.call(int(ns[j]))
+			var b: Vector2 = pos.call(int(ns[j + 1]))
+			for cx in range(floori(minf(a.x, b.x) / cell), floori(maxf(a.x, b.x) / cell) + 1):
+				for cz in range(floori(minf(a.y, b.y) / cell), floori(maxf(a.y, b.y) / cell) + 1):
+					var key := Vector2i(cx, cz)
+					if not grid.has(key):
+						grid[key] = []
+					(grid[key] as Array).append(ri * 4096 + j)
+	var under := 0
+	var over: Array = []   # the tunnel's point nearest each road over it
+	for ri: int in is_tu:
+		var ns: Array = roads[ri]["n"]
+		var own := String(roads[ri].get("name", ""))
+		var mine := {}   # (its points as ints: the file's come as floats, and 7 in [7.0] is false)
+		for n in ns:
+			mine[int(n)] = true
+		for j in range(ns.size() - 1):
+			var a: Vector2 = pos.call(int(ns[j]))
+			var b: Vector2 = pos.call(int(ns[j + 1]))
+			var done := {}
+			for cx in range(floori(minf(a.x, b.x) / cell), floori(maxf(a.x, b.x) / cell) + 1):
+				for cz in range(floori(minf(a.y, b.y) / cell), floori(maxf(a.y, b.y) / cell) + 1):
+					for code: int in grid.get(Vector2i(cx, cz), []):
+						if done.has(code):
+							continue
+						done[code] = true
+						var rj := code / 4096
+						var sj := code % 4096
+						var ms: Array = roads[rj]["n"]
+						if not drv.call(roads[rj]) or mine.has(int(ms[sj])) or mine.has(int(ms[sj + 1])):
+							continue
+						# (the other half of a divided road is not over it: its approach can
+						# cross the tunnel's line by a metre or two where the halves close in)
+						if own != "" and String(roads[rj].get("name", "")) == own:
+							continue
+						if Geometry2D.segment_intersects_segment(a, b, pos.call(int(ms[sj])), pos.call(int(ms[sj + 1]))) == null:
+							continue
+						held[int(ms[sj])] = true   # (its height there is between these two)
+						held[int(ms[sj + 1])] = true
+						var x: Vector2 = Geometry2D.segment_intersects_segment(a, b, pos.call(int(ms[sj])), pos.call(int(ms[sj + 1])))
+						over.append(int(ns[j]) if a.distance_to(x) < b.distance_to(x) else int(ns[j + 1]))
+						if OS.get_environment("DECKS_DEBUG") != "":
+							print("  %s over tunnel %s at %s" % [roads[rj].get("name", "-"), roads[ri].get("name", "-"), x])
+						under += 1
+	# the dip: COVER at every point of a tunnel, spreading out along the drivable roads, each
+	# step rising by its ramp's grade (an absolute height, as the ground may slope too)
+	var dip := {}
+	for ri: int in is_tu:
+		for n in roads[ri]["n"]:
+			if not held.has(int(n)):
+				dip[int(n)] = COVER
+	# (a work queue: a point is looked at again whenever it gets deeper)
+	var spread := func(seeds: Array, steep: bool) -> void:
+		var queue: Array = seeds.duplicate()
+		var queued := {}
+		for n in queue:
+			queued[n] = true
+		var qi := 0
+		while qi < queue.size():
+			var u: int = queue[qi]
+			qi += 1
+			queued.erase(u)
+			var bottom_u := float(ground.call(u)) - float(dip[u])
+			for ri: int in at.get(u, []):
+				var r: Dictionary = roads[ri]
+				if not drv.call(r) or r.has("y") or (r.has("tu") and not is_tu.has(ri)):
+					continue
+				var grade: float = (CAP_FAST if steep else RAMP_FAST) if FAST.has(String(r["k"])) else (CAP if steep else RAMP)
+				var ns: Array = r["n"]
+				for j in range(ns.size()):
+					if int(ns[j]) != u:
+						continue
+					for step: int in [-1, 1]:
+						if j + step < 0 or j + step >= ns.size():
+							continue
+						var v := int(ns[j + step])
+						if held.has(v):
+							continue
+						var dv := float(ground.call(v)) - (bottom_u + grade * (pos.call(u) as Vector2).distance_to(pos.call(v)))
+						if dv > float(dip.get(v, 0.0)) + 0.01 and dv > 0.0:
+							dip[v] = dv
+							if not queued.has(v):
+								queued[v] = true
+								queue.append(v)
+	spread.call(dip.keys(), false)
+	# no approach steeper than CAP down from a point that stays where it is
+	var floor_at := {}   # the lowest the road may be there (a height)
+	var near_dip := {}
+	for n in dip:
+		var p: Vector2 = pos.call(n)
+		near_dip[Vector2i(floori(p.x / 64.0), floori(p.y / 64.0))] = true
+	var queue: Array = []
+	for n in held:
+		if not at.has(n):
+			continue
+		var p: Vector2 = pos.call(n)
+		var c := Vector2i(floori(p.x / 64.0), floori(p.y / 64.0))
+		var close := false
+		for dx in range(-2, 3):
+			for dz in range(-2, 3):
+				close = close or near_dip.has(c + Vector2i(dx, dz))
+		if close:
+			floor_at[n] = float(ground.call(n))
+			queue.append(n)
+	var queued := {}
+	for n in queue:
+		queued[n] = true
+	var qi := 0
+	while qi < queue.size():
+		var u: int = queue[qi]
+		qi += 1
+		queued.erase(u)
+		var fu: float = floor_at[u]
+		if float(ground.call(u)) - fu > COVER + 1.0:
+			continue
+		for ri: int in at.get(u, []):
+			var r: Dictionary = roads[ri]
+			if not drv.call(r):
+				continue
+			var grade := CAP_FAST if FAST.has(String(r["k"])) else CAP
+			var ns: Array = r["n"]
+			for j in range(ns.size()):
+				if int(ns[j]) != u:
+					continue
+				for step: int in [-1, 1]:
+					if j + step < 0 or j + step >= ns.size():
+						continue
+					var v := int(ns[j + step])
+					var fv := fu - grade * (pos.call(u) as Vector2).distance_to(pos.call(v))
+					if fv > float(floor_at.get(v, -INF)) + 0.01:
+						floor_at[v] = fv
+						if not queued.has(v):
+							queued[v] = true
+							queue.append(v)
+	var capped := 0
+	for n in dip:
+		var room := float(ground.call(n)) - float(floor_at.get(n, -INF))
+		if float(dip[n]) > room + 0.01:
+			dip[n] = maxf(room, 0.0)
+			capped += 1
+	# Under a road that crosses over it a tunnel must have its tube, or the road crosses an
+	# open hole: there the depth wins over the cap, and spreads at the cap's grade -- a
+	# steeper way down rather than a car falling through a street.
+	var deepened: Array = []
+	for n: int in over:
+		if float(dip.get(n, 0.0)) < TUBE_H + 0.8 and not held.has(n):
+			dip[n] = TUBE_H + 0.8
+			deepened.append(n)
+	if not deepened.is_empty():
+		spread.call(deepened, true)
+	# where an approach runs out part way along a segment: a point there, on the ground
+	for ri in range(roads.size()):
+		var r: Dictionary = roads[ri]
+		if not drv.call(r) or r.has("tu") or r.has("y"):
+			continue
+		var ns: Array = r["n"]
+		if not ns.any(func(n): return float(dip.get(int(n), 0.0)) > 0.05):
+			continue
+		var grade := RAMP_FAST if FAST.has(String(r["k"])) else RAMP
+		var out: Array = [ns[0]]
+		for j in range(ns.size() - 1):
+			var da := float(dip.get(int(ns[j]), 0.0))
+			var db := float(dip.get(int(ns[j + 1]), 0.0))
+			if (da > 0.05) != (db > 0.05):
+				var a: Vector2 = pos.call(int(ns[j]))
+				var b: Vector2 = pos.call(int(ns[j + 1]))
+				var L := maxf(a.distance_to(b), 0.001)
+				var g_from := float(ground.call(int(ns[j]) if da > db else int(ns[j + 1])))
+				var g_to := float(ground.call(int(ns[j + 1]) if da > db else int(ns[j])))
+				var closing := grade - (g_to - g_from) / L
+				var t := (maxf(da, db) / closing) / L if closing > 0.001 else 1.0
+				if t < 0.98:
+					out.append(add_node.call(a.lerp(b, t) if da > db else b.lerp(a, t)))
+			out.append(ns[j + 1])
+		r["n"] = out
+	# each road cut into its dipped runs (decks) and the rest; a dipped run a point every few
+	# metres, its sags and crests rounded, never above the ground (a tunnel: under its cover)
+	var made: Array = []
+	var decks := 0
+	var shallow := 0
+	var deepest := 0.0
+	var down := func(n) -> bool: return float(dip.get(int(n), 0.0)) > 0.05
+	for ri in range(roads.size()):
+		var r: Dictionary = roads[ri]
+		var ns: Array = r["n"]
+		if not is_tu.has(ri) and (not drv.call(r) or r.has("y") or r.has("tu") or not ns.any(down)):
+			made.append(r)
+			continue
+		var runs: Array = []
+		if is_tu.has(ri):
+			runs = [[0, ns.size() - 1, true]]
+		else:
+			var start := 0
+			for j in range(ns.size() - 1):
+				var seg_dn: bool = down.call(ns[j]) or down.call(ns[j + 1])
+				var nxt_dn: bool = j + 2 < ns.size() and (down.call(ns[j + 1]) or down.call(ns[j + 2]))
+				if j + 1 == ns.size() - 1 or seg_dn != nxt_dn:
+					runs.append([start, j + 1, seg_dn])
+					start = j + 1
+		for run: Array in runs:
+			var part := r.duplicate()
+			part["n"] = ns.slice(int(run[0]), int(run[1]) + 1)
+			if bool(run[2]):
+				var pn: Array = part["n"]
+				var dn: Array = [pn[0]]
+				var df: Array = [float(dip.get(int(pn[0]), 0.0))]
+				var fixed: Array = [true]
+				for j in range(pn.size() - 1):
+					var a: Vector2 = pos.call(int(pn[j]))
+					var b: Vector2 = pos.call(int(pn[j + 1]))
+					var da := float(dip.get(int(pn[j]), 0.0))
+					var db := float(dip.get(int(pn[j + 1]), 0.0))
+					var parts := maxi(1, ceili(a.distance_to(b) / 6.0))
+					for q in range(1, parts):
+						dn.append(add_node.call(a.lerp(b, float(q) / parts)))
+						df.append(lerpf(da, db, float(q) / parts))
+						fixed.append(false)
+					dn.append(pn[j + 1])
+					df.append(db)
+					fixed.append(j + 1 == pn.size() - 1 or (at.get(int(pn[j + 1]), []) as Array).size() > 1)
+				var yv: Array = []
+				var ceil_y: Array = []
+				for j in range(dn.size()):
+					var gj := float(ground.call(int(dn[j])))
+					yv.append(gj - float(df[j]))
+					# (a cutting never above the ground; a tunnel never above where it was put,
+					# so its cover stays: its sags are left sharp, a car does not take off from one)
+					ceil_y.append(gj - float(df[j]) if part.has("tu") else gj)
+				for _pass in range(8):
+					var nxt := yv.duplicate()
+					for j in range(1, dn.size() - 1):
+						if not bool(fixed[j]):
+							nxt[j] = minf(0.25 * float(yv[j - 1]) + 0.5 * float(yv[j]) + 0.25 * float(yv[j + 1]), float(ceil_y[j]))
+					yv = nxt
+				# a tunnel only where the tube fits under the ground (with a little roof): its
+				# shallow end, down from a junction, is a cutting open to the sky
+				var inside: Array = []
+				for j in range(dn.size()):
+					deepest = maxf(deepest, float(ground.call(int(dn[j]))) - float(yv[j]))
+					inside.append(part.has("tu") and float(ground.call(int(dn[j]))) - float(yv[j]) >= TUBE_H + 0.6)
+				var from := 0
+				for j in range(1, dn.size()):
+					var seg_in: bool = inside[j - 1] and inside[j]
+					if j < dn.size() - 1 and seg_in == (inside[j] and inside[j + 1]):
+						continue
+					var piece := part.duplicate()
+					piece["n"] = dn.slice(from, j + 1)
+					var ys: Array = []
+					for q in range(from, j + 1):
+						ys.append(roundi(float(yv[q]) / k))
+					piece["y"] = ys
+					if not seg_in:
+						piece.erase("tu")
+						piece["cu"] = 1
+						shallow += 1 if part.has("tu") else 0
+					made.append(piece)
+					decks += 1
+					from = j
+				continue
+			made.append(part)
+	data["roads"] = made
+	# a road over a tunnel that is shallower than its tube there crosses an open cutting
+	var short := 0
+	for n: int in over:
+		if float(dip.get(n, 0.0)) < TUBE_H + 0.6:
+			short += 1
+			if OS.get_environment("DECKS_DEBUG") != "":
+				print("  over a shallow tunnel: %s, %.1f m down" % [pos.call(n), float(dip.get(n, 0.0))])
+	return {"tunnels": is_tu.size(), "under": under, "short_of_cover": short, "capped": capped, "decks": decks, "shallow_ends": shallow,
+		"deepest": snappedf(deepest, 0.1)}
