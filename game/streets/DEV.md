@@ -18,6 +18,7 @@ merge, re-check (`tools/check_script.sh`, a playtest, the tests below), never fo
 | `furniture.gd` | street furniture built after the places: power lines, lamps and bus-stop kits, flags, ads, fences and hedges, bike racks and scooters |
 | `drivelog.gd` | the drive recorder (see below) |
 | `decks.gd` | roads off the ground -- bridges, embankments, cuttings, tunnels: their heights, what is under a point at a level (`surf`), their walls for collisions (`push`), the ground cut away over cuttings (`cut_tri`), and drawing them a square at a time (`build`). See "Off the ground" below |
+| `landmarks.gd` | a town's landmarks, found by their building's name in the bake (`BY_CITY`: Tel Aviv's Azrieli towers, the Matcal and Marganit towers, Sarona's houses): a glass of their own, a lit crown, a mast or shaft on the roof, red tile roofs; and in every town the red lights on roofs over 90 m at night. Hooks in streets.gd: `_glass` / `_tile` on a building for `_build_buildings`, `build()` per square, `set_night` |
 | `rails.gd` | railways: the tracks the city file has (`rails`, `platforms`, `stations`), their beds, rails and sleepers, the platforms with canopies and the station's name, and trains running along them (`tick`). See "Railways" below |
 | `cities/*.json` | baked towns (`tools/osm_city.py`) and the made-up test town (`tools/fake_city.py`) |
 | `details.gd`, `cities/details/<city>.json` | what a filmed walk showed and OSM lacks, laid over the baked city as it loads (road edits, unmarked zebras, areas, an arcade cut under a block, paving level with the pavement, walls, fences, hedges, bins, railings, bollards, a pole transformer, a barrier, parked motorbikes, trees) and the walks themselves; the format is at the top of `details.gd` |
@@ -874,9 +875,9 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
 A road whose city file has `y` (its surface's height at each node, decimetres above the
 height grid's base) is a **deck**; its OSM tags say what it is built as (`br` bridge, `tu`
 tunnel, `em` embankment, `cu` cutting). `tools/fake_city.py` writes `y` into the test town;
-a real town opted in with `"decks": "infer"` (all four: Givatayim, Bedford, Ashdod, Tel
-Aviv) gets it worked out as it loads (below). Elsewhere a bridge without `y` is drawn on
-the ground and a tunnel without it is dropped.
+a real town opted in with `"decks": "infer"` (Givatayim, Bedford, Ashdod, Tel Aviv) gets it worked out as it
+loads (below). Elsewhere a bridge without `y` is drawn on the ground and a tunnel without
+it is dropped.
 
 - **One height is not enough.** Everything used to ask `_h(p)`, the ground. Now whatever has
   a level asks `_decks.surf(p, y)`: the highest of the ground and the decks under p that is
@@ -927,7 +928,7 @@ the ground and a tunnel without it is dropped.
   too deep to drive or walk into (`_deep_push`): the banks were gentle enough to drive down
   and along the bed under the water. Lakes and ponds without a level are as before.
 - **A real town's heights, worked out as it loads** (`infer` in decks.gd; a place opts in
-  with `"decks": "infer"` in `LEVELS`; all four real towns now). Before the roads are read, the
+  with `"decks": "infer"` in `LEVELS`). Before the roads are read, the
   city data gets heights as if baked: where a drivable bridge (a chain of bridge ways 8 m
   or longer; shorter ones are culverts and stay as they were) crosses a road it must clear
   it by 6.4 m (a path: 4.4); that lift spreads along the drivable roads at a ramp's grade
@@ -939,7 +940,7 @@ the ground and a tunnel without it is dropped.
   Bridge over bridge: OSM's layer, else the lesser road over the main line, clearing the
   lower's deck. Roads are cut where their ramp meets the ground (a node put there); the
   lifted pieces get a point every 6 m and their profiles rounded over the crests (junction
-  points kept), footpaths are never lifted. Bedford: 56 bridges, 72 crossings, ~190 deck
+  points kept); a road's lift never spreads onto a footpath (below). Bedford: 56 bridges, 72 crossings, ~190 deck
   pieces, 0.2 s; 2 of 63 crossings over roads short of the full clearance (4.8 m the
   lowest). `LEVEL=2` with `tests/decks.gd` drives its ten highest bridges both ways.
 - **Tunnels, worked out the same way** (Ashdod): a drivable tunnel way 20 m or longer that
@@ -951,12 +952,51 @@ the ground and a tunnel without it is dropped.
   down at 8.5%, the tunnel is left out as before (on the ground it would run across the roads
   it dives under); one under nothing mapped (a passage through a building) is put back on
   the ground (it used to be left out). A body in a tunnel never meets the buildings over it
-  (`_push_out`), however shallow the tunnel is there. Footpath tunnels are
-  still left out. Ashdod: 46 bridges, 4 tunnels (Menachem Begin's underpass, two service
+  (`_push_out`), however shallow the tunnel is there. Ashdod: 46 bridges, 4 tunnels (Menachem Begin's underpass, two service
   roads), 7 cuttings, 0.3 s. Two traps on the way: a tunnel "crossed" its own next piece
   (the shared end point; skip roads that share a point), and holding the whole of every
   road crossed, or seeding the depth's room from every junction in town, made it 15 s and
   held the tunnels' own ends at street level -- only near the crossing (80 m) now.
+- **Footbridges and footpath tunnels** (`infer` again, the same passes on the paths' own
+  network: footway, path, steps, cycleway, pedestrian, bridleway). A footbridge chain (8 m or
+  more) clears a street by 5.8 m (`CLEAR_FOOT`; a path by 3.4), its lift spreading along the
+  paths only, at 25% (`FOOT_RAMP`) or 60% on OSM's steps (`STAIRS`), and never onto a point a
+  street has: a path comes down to the pavement where it meets a street. A footpath tunnel
+  under something lies 3.6 m down (`CLEAR_UNDER_FOOT`), its ramps down to it the same way; one
+  that ends under the ground (the City tunnel's footpath stops there in OSM) is left out.
+  The networks are kept apart: a road's lift never spreads onto a path, and a path's point
+  that a street has keeps the street's level (`lift_of`) -- without that, a sidewalk joined
+  to a tunnel's road at one node got a 6 m dip and became a deck, and the pavement off a
+  bridge's ramp rose 5 m in 2 m. A last pass holds every path to stairs' steepness from the
+  nearest street point (`stair_capped`, 0 in all three towns once the networks were apart;
+  run only near lifted paths -- from every street point Ashdod's load took 2 s). Drawn:
+  paved like the pavements (`Y_PATH`), a 0.6 m slab (`FOOT_SLAB`), a steel railing instead
+  of the parapet (`_railing`), treads every 17 cm where a path deck is steeper than 30%
+  (`_stairs`), the tube 2.8 m high (`FOOT_TUBE`), a little wider than the path, one row of
+  lamps. Givatayim: 22 footbridges (the Diamonds Bridge over the Ayalon, Dr Isaac Derazia's),
+  3 footpath tunnels; Bedford 24 (most of them its trails' bridges over creeks, spanning bank
+  to bank at the banks' height); Ashdod 6 and 2 (its two spiral stairs left on the ground).
+  `tests/foot_decks.gd` walks them: Givatayim's 8 routes, Bedford's 4, Ashdod's 3, all to
+  their far ends at their full height or depth, 0-18 frames off the level (the walker's
+  height eases after the surface: up to 1 m behind running up 60% stairs). A route's last
+  few metres run on past the path's end and can walk into something (Bedford's Duke Street
+  sidewalk-bridge ends at its abutment: "got 91%" there is that, not the bridge).
+  What walking them found: a road bridge's piers stood on a footbridge's foot and across a
+  footbridge running alongside a few metres lower (piers now keep off paths and off any deck
+  below their top); where three footbridge pieces meet, one piece's railing ran across the
+  way onto the next (walls were checked for "another deck comes in here" at their middle;
+  a footpath's are now cut into metre pieces, each checked, and its deck drawn every metre);
+  a two-point stair ramp down to a tunnel tied the embankment/cutting vote and came out an
+  embankment, with no hole cut in the ground (a tie goes by the sum); an OSM fence across a
+  footbridge's foot stopped you on its first metre up (a body on a deck off the ground no
+  longer meets the fences and posts down on the ground: `off_ground`); Duke Street's
+  sidewalk, mapped as its own footbridge beside the road's, stops 2.5 m up on the span (a
+  path's dead end now holds the ground like a street's point: it comes down by a stair);
+  and a spiral stair mapped as one steps way lies on itself, its railings crossing (a path
+  that comes within 0.8 m of itself stays on the ground and holds it; a ramp's hairpin legs
+  are further apart -- 1.5 m caught the Diamonds Bridge's zig-zag ramp). And one not about
+  decks: on foot you pushed yourself off where you stood last tick (the people list has you
+  in it, `_people_push` did not skip you) and ran at 35 m/s.
 - **What Bedford found** (the test town had hidden them): a divided road's two carriageways
   overlap at the median at not quite the same height -- `surf` now ranks what is under a
   body: the carriageway it is on, then a deck's pavement or parapet, then (where another
@@ -998,6 +1038,27 @@ the ground and a tunnel without it is dropped.
   the other's) also found: crests where a cutting meets the street at full grade, and
   humps in a tunnel where a branch climbs out, launch cars at 30-50 km/h (a vertical curve,
   rounding) -- not yet in `infer`.
+- **Hops at ramp tops** (Nov 2026): Moses, Arvei Nahal, Yitzhak Sadeh and the City tunnel's
+  mouth in Tel Aviv, Ashdod's Begin underpass and Laskov bridge, a Givatayim tunnel: 6-51
+  frames in the air each at 30-50 km/h. Not crests a car would really leave the road over
+  (13% of grade change over 30 m needs 0.5 m/s2 at 40 km/h, gravity is 9.8): the profile is
+  points 6 m apart rounded to 10 cm, a kink at every point, and `_fly` took the ground as it
+  came, so a kink was a jump of the ground's speed in one frame, over `LIFTOFF`. Now the
+  springs feel the ground along the car's way smoothed over half a wheelbase of travel
+  (`ride` in `_fly`) and `infer` keeps its heights unrounded; also `_round_joints` puts a
+  32 m vertical curve across a joint where two lifted pieces meet in a crest and eases a
+  cutting's top into the street. Result (`tests/decks.gd`, levels 1, 3, 4, 7 bridges and
+  tunnels): every run 0 frames in the air but Arvei Nahal's 9 and one frame in a Tel Aviv
+  tunnel. Measuring under the axles instead was tried first and is wrong: an axle's point
+  by a tunnel's wall found the ground over the tunnel (37 frames in the air in Givatayim's
+  City tunnel, which had none). `TRACE=1` prints the frames before each take-off;
+  `tests/deck_profile.gd` prints the profile of the decks round a spot, with and without
+  `_round_joints`.
+- **Open: Arvei Nahal's seam** (Tel Aviv, (578, -691)): where Al Parashat Drachim's ramp
+  leaves the wide deck at the knot, the two overlap for a metre or two at heights 0.44 m
+  apart (the ramp falls at 7% from the shared point, the deck is flat), and the car stays on
+  the higher till it ends, then drops: 9 frames in the air at 43 km/h. Wants a ramp leaving
+  a deck held at the deck's height until it is clear of its asphalt.
 - **Where the heights come from.** The test town's maker knows them: each deck's ends at the
   ground, a bridge straight from bank to bank with a little camber, the flyover's and
   underpass's ramps eased up and down to 6.6 m clear of the boulevard (`CLEAR`), the tunnel
@@ -1024,11 +1085,12 @@ the ground and a tunnel without it is dropped.
 - **Still to do**: Ashdod's two tight interchanges near its east edge, where slip roads
   cross slip roads and the main line at street level -- 15 crossings short of the clearance
   (8 round x 3840, z -1590; 7 round x 4830, z -4170, with the lowest, 0.5 m; `infer`'s
-  report lists only the first 12); a 0.5 s hop out of Menachem Begin's underpass; footpath
-  tunnels; grass slopes for cuttings too (they are walled); a long-span bridge's height over
-  water (the MacKay's deck is only as high as its ends); pavements at street level beside a
-  cutting (the underpass has none); people on a bridge's pavement and beside a cutting; the
-  minimap draws a tunnel like any street; zooming out from inside the tunnel rises from the
+  report lists only the first 12); in Tel Aviv, Givat HaTahmoshet's bridge and a slip road
+  over Ayalon South, 3 crossings short (4.8 m the lowest; new: none before footbridges and
+  the ramp tops' rounding went in); grass slopes for cuttings too (they are walled); a
+  long-span bridge's height over water (the MacKay's deck is only as high as its ends);
+  pavements at street level beside a cutting (the underpass has none); people on a bridge's
+  pavement and beside a cutting; the minimap draws a tunnel like any street; zooming out from inside the tunnel rises from the
   hilltop (the zoom centres on the ground's height); the heights are whole decimetres, so a
   deck's grade kinks by up to 2% every 5 m (enough for a 2 cm hop off HaNasi's bridge);
   autodrive turning right off the flyover's foot onto HaRakefet clips a crossing railing's

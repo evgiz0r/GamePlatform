@@ -176,7 +176,8 @@ const STEEP := 0.62
 ## the building's brightness and COLOR.g how far it leans to the second wall tone.
 ## Facades. UV is (metres along this wall, metres above the building's lowest ground);
 ## UV2 is (wall length, roof height). Vertex COLOR carries the building: r brightness,
-## g lean to the second tone, a lean to the stone tone, b the facade style:
+## g lean to the second tone, a lean to the stone tone (1 exactly on a glass tower: a
+## landmark's own curtain wall, landmarks.gd), b the facade style:
 ##   0 punched windows with roller shutters (trisim) and the odd AC unit
 ##   1 balcony rows: a shaded recess per bay behind a parapet
 ##   2 Bauhaus ribbon windows        3 glass tower
@@ -456,6 +457,16 @@ void fragment() {
 				pl = 0.0;
 				rough = 0.2;
 				emit = room;
+			}
+		} else if (COLOR.a > 0.95) {
+			// a landmark's curtain wall (COLOR.a 1: landmarks.gd): one darker, glossier glass
+			// in thin dark mullions, not panes in white frames
+			col = tower * 0.32;
+			pl = 0.0;
+			if (fx > 0.015 && fx < 0.985 && fy > 0.04 && fy < 0.97) {
+				col = tower * (0.5 + 0.06 * r1);
+				rough = 0.05;
+				emit = r3 < 0.3 ? lit_cool.rgb * (0.7 + 0.3 * r2) : vec3(0.0);
 			}
 		} else {
 			if (fx > 0.04 && fx < 0.96 && fy > 0.08 && fy < 0.96) {
@@ -825,6 +836,7 @@ var _furn: RefCounted                ## the street furniture builder (furniture.
 var _details: RefCounted             ## what a filmed walk added to the city (details.gd), or null
 var _decks: Decks                    ## bridges, embankments, cuttings, tunnels (decks.gd)
 var _rails: Rails                    ## railway tracks, platforms, trains (rails.gd)
+var _marks: Marks                    ## a town's landmarks and its towers' red lights (landmarks.gd)
 var _on_deck := -1                   ## while a deck road is drawn: heights come from it, not the ground
 var _inferred := {}                  ## what decks.gd's infer() made of a real town's bridges (the report)
 var _wired := {}                     ## road index -> true: Bedford's lamps hang off its power poles
@@ -872,6 +884,7 @@ const Furniture := preload("res://game/streets/furniture.gd")
 const Details := preload("res://game/streets/details.gd")
 const Decks := preload("res://game/streets/decks.gd")
 const Rails := preload("res://game/streets/rails.gd")
+const Marks := preload("res://game/streets/landmarks.gd")
 const DriveLog := preload("res://game/streets/drivelog.gd")
 var _log := DriveLog.new()            ## the last two minutes, for the map page and "save log"
 var _ap_why := ""                     ## what held autodrive's speed down this tick (for the log)
@@ -1599,6 +1612,8 @@ func _load_city(id: String) -> bool:
 			r["yard"] = bool(rd["yard"])   # front gardens along it or not, set by hand
 		if rd.has("pave"):
 			r["pave"] = rd["pave"]   # its paving [pattern, colours], set by hand
+		if rd.has("setts"):
+			r["setts"] = bool(rd["setts"])   # light setts round its trees and between them, as filmed
 		var ri := _roads.size()
 		_roads.append(r)
 		var hw: float = r["w"] * 0.5
@@ -2056,6 +2071,8 @@ func _build_setup(t0: int) -> void:
 					_bucket(_tile_bars, t, i)
 	_rails = Rails.new(self)
 	_rails.setup(_city_data, k)   # (before the trees: nothing grows on a track's bed)
+	_marks = Marks.new(self)
+	_marks.setup(_city_data, _city_id)
 	_lights_setup()
 	_parks_setup()
 	_trees_setup()
@@ -2090,6 +2107,7 @@ func _build_tile(t: Vector2i) -> void:
 	await _build_ground()
 	await _decks.build()
 	await _rails.build()
+	_marks.build()
 	tk = _stage("roads", tk)
 	await _build_buildings()
 	tk = _stage("buildings", tk)
@@ -4025,7 +4043,7 @@ func _doors_of(bi: int) -> Array:
 			g_sum += gh
 		var top := g_sum / maxf(n, 1) + rel - g_lo
 		var pilotis := style <= 1 and rel >= 7.0 and rel <= 22.0 and raised == 0.0 \
-			and absf(area) * 0.5 > 140.0 and posmod(hsh >> 11, 100) < 35 and not bd.has("shops")
+			and absf(area) * 0.5 > 140.0 and posmod(hsh >> 11, 100) < 35 and not bd.has("shops") and not bd.has("_tile")
 		if raised == 0.0 and not pilotis and style < 3 and top >= 10.0 and n >= 3:
 			var sg := 1.0 if area > 0.0 else -1.0
 			for i in range(n):
@@ -4148,6 +4166,35 @@ func _plank_fence(b: CBuf, a: Vector2, e: Vector2, base: float, h: float) -> voi
 		var p := a + d * s
 		_furn._box(b, Vector3(p.x, gy + base + h * 0.5, p.y), Vector3(0.08, h, 0.08), wood.darkened(0.2), bs)
 		s += 1.8
+
+## Light grey setts laid in a street's darker paving, as a filmed shopping street has them by
+## its cafes: a half-circle fan round each street tree on the building side, three rows of
+## small square setts with the paving showing in the joints, and a band two setts wide
+## along the line of trees between them. Each sett a little lighter or darker than the next.
+func _sett(b: CBuf, c: Vector2, u: Vector2, size: float) -> void:
+	var v := Vector2(-u.y, u.x)
+	var h := size * 0.5
+	var col: Color = _tone["concrete"].lightened(0.28).darkened(0.1 * float(posmod(_hash_i(c * 13.0), 3)))
+	var y := KERB_H + 0.004
+	b.quad3(_g3(c - u * h - v * h, y), _g3(c + u * h - v * h, y), _g3(c + u * h + v * h, y), _g3(c - u * h + v * h, y), col)
+
+func _sett_fan(b: CBuf, p: Vector2, out: Vector2) -> void:
+	for rr: float in [0.8, 0.95, 1.1]:
+		var n := int(PI * rr / 0.145)
+		for i in range(n + 1):
+			var a := -PI * 0.5 + PI * float(i) / float(n)
+			var u := out.rotated(a)
+			_sett(b, p + u * rr, u, 0.12)
+
+func _sett_band(b: CBuf, a: Vector2, e: Vector2) -> void:
+	var d := (e - a).normalized()
+	var v := Vector2(-d.y, d.x)
+	var L := a.distance_to(e)
+	var t := 1.2
+	while t < L - 1.2:
+		for w: float in [-0.075, 0.075]:
+			_sett(b, a + d * t + v * w, d, 0.12)
+		t += 0.145
 
 ## how many trees overhang a spot on the pavement, 0..1 (for the leaves on it)
 func _leafy(p: Vector2) -> float:
@@ -4732,10 +4779,14 @@ func _build_buildings() -> void:
 			tk = 0 if pick < 34 else (1 if pick < 48 else (2 if pick < 62 else (3 if pick < 76 else 4)))
 		else:
 			tk = 0 if pick < 54 else (1 if pick < 62 else (2 if pick < 74 else (3 if pick < 84 else 4)))
+		if bd.has("_glass"):   # a landmark's own glass (landmarks.gd)
+			tk = int(bd["_glass"])
 		var tint := float(tk) / 4.0
 		var stone := float(posmod(hsh >> 5, 5)) * 0.18   # 0 white .. 0.72 beige stone
+		if bd.has("_glass"):
+			stone = 1.0   # (the shader's sign for a landmark's curtain wall)
 		var rel := float(bd["_h"])
-		var style: int = 3 if rel > 32.0 else (0 if rel < 10.0 else [0, 0, 0, 0, 1, 1, 1, 2, 0, 1][posmod(hsh >> 7, 10)])
+		var style: int = 3 if rel > 32.0 else (0 if rel < 10.0 or bd.has("_tile") else [0, 0, 0, 0, 1, 1, 1, 2, 0, 1][posmod(hsh >> 7, 10)])
 		var col := Color(bright, tint, float(style) / 4.0 + 0.05, stone)
 		var n := ring.size()
 		var area := 0.0
@@ -4744,11 +4795,11 @@ func _build_buildings() -> void:
 		var sgn := 1.0 if area > 0.0 else -1.0
 		# a pitched roof only on a house that stands on the ground: a raised "building" is a
 		# canopy or a carport (OSM: a roof on stilts), and a house roof on it flew
-		var gabled := north and rel < 10.0 and absf(area) * 0.5 < 450.0 and raised == 0.0
+		var gabled := (north and rel < 10.0 and absf(area) * 0.5 < 450.0 and raised == 0.0) or bd.has("_tile")
 		# "komat amudim": many Givatayim blocks stand on columns, the ground floor open for
 		# parking round a walled-in stairwell and lobby
 		var pilotis := med and style <= 1 and rel >= 7.0 and rel <= 22.0 and raised == 0.0 \
-			and absf(area) * 0.5 > 140.0 and posmod(hsh >> 11, 100) < 35 and not bd.has("shops")
+			and absf(area) * 0.5 > 140.0 and posmod(hsh >> 11, 100) < 35 and not bd.has("shops") and not bd.has("_tile")
 		var wall_base := g_lo + 3.0 if pilotis else base
 		# flat roofs have a low parapet round them; the facade's window grid still stops
 		# at the roof itself (u2.y)
@@ -4795,7 +4846,7 @@ func _build_buildings() -> void:
 				walls.tri(ar, a1, b1, -nrm, col, Vector2(0, h - g_lo), Vector2(0, y1), Vector2(len, y1), u2)
 				walls.tri(ar, b1, br, -nrm, col, Vector2(0, h - g_lo), Vector2(len, y1), Vector2(len, h - g_lo), u2)
 		if gabled:
-			_gable(gables, ring, h, hsh)
+			_gable(gables, ring, h, hsh, bd.has("_tile"))
 		var idx := Geometry2D.triangulate_polygon(ring)
 		var rc := Color(bright * 0.95, bright * 0.95, bright * 0.95)
 		for i in range(0, idx.size(), 3):
@@ -5459,7 +5510,7 @@ func _stilts(ring: PackedVector2Array, sgn: float, ground: float, under: float, 
 
 ## a pitched roof over a house: the footprint's tightest rectangle, the ridge along its
 ## long side, eaves a little past the walls, shingles grey or red-brown
-func _gable(g: Dictionary, ring: PackedVector2Array, top: float, hsh: int) -> void:
+func _gable(g: Dictionary, ring: PackedVector2Array, top: float, hsh: int, tiled := false) -> void:
 	var best := INF
 	var u := Vector2.RIGHT
 	var lo := Vector2.ZERO
@@ -5500,6 +5551,8 @@ func _gable(g: Dictionary, ring: PackedVector2Array, top: float, hsh: int) -> vo
 	var shades := [Palette.col("bg").lerp(Palette.col("bg_alt"), 0.6), Palette.col("hazard").lerp(Palette.col("bg"), 0.55),
 		Palette.col("warn").lerp(Palette.col("bg"), 0.62), Palette.col("bg_alt").lerp(Palette.col("ink"), 0.25)]
 	var col: Color = shades[posmod(hsh >> 9, shades.size())]
+	if tiled:   # red clay tiles (Sarona's Templer houses), a little weathered one from the next
+		col = Palette.col("hazard").lerp(Palette.col("warn"), 0.4).lerp(Palette.col("bg"), 0.3 + 0.12 * float(posmod(hsh >> 9, 3)))
 	var r0: Vector3 = P.call(lo.x, cy, top + rise)
 	var r1: Vector3 = P.call(hi.x, cy, top + rise)
 	for side: Array in [[lo.y, 1.0], [hi.y, -1.0]]:
@@ -5532,6 +5585,7 @@ func _build_trees() -> void:
 	var spots: Array = []   ## [x, z, scale]
 	var forest := {}        # index into spots -> true
 	var grates: Array = []  # an iron grate round each street tree's trunk, flat on the pavement
+	var setts := new_cbuf(BLD_CELL)   # light setts laid in the paving round trees, where filmed
 	var pits: Array = []    # or a square of bare earth
 	var k := 1.0 / float(_city_data.get("scale", 10))
 	var tr: Array = _city_data.get("trees", [])
@@ -5554,6 +5608,7 @@ func _build_trees() -> void:
 		var ids: PackedInt32Array = r["ids"]
 		var off: float = r["w"] * 0.5 + 1.3
 		var s := rng.randf() * TREE_GAP
+		var last := {}   # side -> the last tree on it (for the setts' band between trees)
 		for j in range(pts.size() - 1):
 			var a := pts[j]
 			var b := pts[j + 1]
@@ -5577,6 +5632,11 @@ func _build_trees() -> void:
 					if _mine(p) and _tree_ok(p, 5.0) and not _in_corner_fill(p, 0.15):
 						_add_post(p, 0.3)
 						spots.append(Vector3(p.x, p.y, sc))
+						if r.get("setts", false):
+							_sett_fan(setts, p, side * sgn)
+							if last.has(sgn) and (last[sgn] as Vector2).distance_to(p) < TREE_GAP * 1.8:
+								_sett_band(setts, last[sgn], p)
+							last[sgn] = p
 						# an iron grate round the trunk, or (four in ten, in Israel) a square of bare
 						# earth with a low concrete edge and the drip hose that waters it
 						var xf := Transform3D(Basis(Vector3.UP, atan2(d.x, d.y)), Vector3(p.x, _h(p) + KERB_H + 0.006, p.y))
@@ -5698,6 +5758,7 @@ func _build_trees() -> void:
 		_chunked(_furn.pit_kit(), pits, 120.0)
 		_tally("tree_pits", pits.size())
 		_tally("tree_grates", grates.size())
+	_add_mesh(setts, _vc_mat(), false, DETAIL_RANGE)
 	if spots.is_empty():
 		return
 	var look := String(_place.get("look", ""))
@@ -7115,6 +7176,8 @@ func _set_night(on: bool) -> void:
 		_furn.set_night(on)
 	if _rails != null:
 		_rails.set_night(on)
+	if _marks != null:
+		_marks.set_night(on)
 	if _car_shader_mat != null:
 		_car_material()
 	_far_update()
@@ -9553,6 +9616,7 @@ func _build_pois() -> void:
 	var board_cols: Array = []       ## each sign board's colour: dark, white, the shop's, cream
 	var awnings := {"xf": [], "col": []}   ## awning transforms and their colours
 	var crates := new_cbuf(BLD_CELL)    ## fruit and vegetables out in front of a greengrocer
+	var bulbs: Array = []               ## string lights' bulbs (a shop's look: "lights")
 	var crosses: Array = []          ## pharmacy crosses, sticking out from the wall
 	var canopy := {"roof": [], "pillar": [], "pump": [], "band": []}   ## gas stations
 	var boards: Array = []           ## the sign boards behind the names
@@ -9614,6 +9678,8 @@ func _build_pois() -> void:
 				(awnings["col"] as Array).append(_real_col(awn) if awn != "" else _awning_col(hue, at))
 			if shop.get("crates", sub == "greengrocer"):
 				_crates(crates, pos, n, along, gy, wide)
+			if shop.get("lights", false):
+				_string_lights(crates, bulbs, pos, n, along, gy)
 			if look_k < 10 and kind.begins_with("shop"):   # shut: the roller shutter down
 				front["shutter"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.1, 1.3)))
 			if kind == "pharmacy":
@@ -9680,6 +9746,13 @@ func _build_pois() -> void:
 	awning.size = Vector3(3.3, 0.14, 1.5)
 	_chunked(awning, awnings["xf"], r, awnings["col"], _vc_mat(), true)
 	_add_mesh(crates, _vc_mat(), true, SIGN_RANGE * 1.5)
+	if not bulbs.is_empty():
+		var bulb := SphereMesh.new()
+		bulb.radius = 0.035
+		bulb.height = 0.07
+		bulb.radial_segments = 6
+		bulb.rings = 3
+		_chunked(bulb, bulbs, SIGN_RANGE * 1.5, [], mat("warn", 1.6))
 	if not crosses.is_empty():
 		var cross := ArrayMesh.new()
 		var cb := Buf.new()
@@ -9915,6 +9988,27 @@ func _crates(b: CBuf, pos: Vector2, n: Vector2, along: Vector2, gy: float, wide:
 			_furn._box(b, Vector3(q.x, gy + 0.81, q.y), Vector3(0.36, 0.05, 0.46), produce[(k + j) % 5], bs)  # what is in it
 			k += 1
 		_add_post(c, 0.5)
+
+## string lights along a bar's front, as a filmed one has them lit by day: two strands of warm
+## bulbs looping between hooks every 2 m, 1 m and 2 m out from the wall under the awning
+func _string_lights(wire: CBuf, bulbs: Array, pos: Vector2, n: Vector2, along: Vector2, gy: float) -> void:
+	var dark: Color = _tone["tyre"]
+	for strand: Vector2 in [Vector2(1.0, 2.72), Vector2(2.0, 2.62)]:   # out, hook height
+		var prev := Vector3.INF
+		var s := -4.0
+		while s <= 4.0 + 0.01:
+			var k := fposmod(s + 4.0, 2.0) / 2.0          # 0 at a hook .. 1 at the next
+			var sag := 0.22 * 4.0 * k * (1.0 - k)
+			var q := pos + n * strand.x + along * s
+			var at := Vector3(q.x, gy + strand.y - sag, q.y)
+			if prev.is_finite():
+				var mid := (prev + at) * 0.5
+				var dv := at - prev
+				_furn._box(wire, mid, Vector3(dv.length(), 0.012, 0.012), dark,
+					Basis(Vector3.UP, atan2(-dv.z, dv.x)) * Basis(Vector3.BACK, atan2(dv.y, Vector2(dv.x, dv.z).length())))
+			bulbs.append(Transform3D(Basis(), at - Vector3(0, 0.045, 0)))
+			prev = at
+			s += 0.4
 
 ## an awning's colour when nobody filmed it: the shop's palette colour, muted to a canvas's
 ## (a filmed shopping street had no neon awnings: black, white, dark green, maroon)
@@ -12164,7 +12258,9 @@ func _tones() -> void:
 		"markyellow": wn.lerp(ink, 0.2),
 		"signblue": pl.lerp(bg, 0.4),
 		"signgreen": fr.lerp(bg, 0.45),
-		"signred": Palette.col("hazard").lerp(bg, 0.1),
+		# a sign's red is a traffic sign's red, its strength the palette's: as the palette's hazard
+		# (pink here) stop and no-entry signs, crossing barriers and railings' bands were pink
+		"signred": Color.from_hsv(0.995, clampf(Palette.col("hazard").s, 0.7, 0.92), clampf(Palette.col("hazard").v * 0.85, 0.55, 0.85)),
 		"rubber": ac.lerp(alt, 0.55).lerp(bg, 0.25),
 		"sand": wn.lerp(ink, 0.45).lerp(alt, 0.1),
 		"concrete": ink.lerp(alt, 0.32).lerp(wn, 0.04),
@@ -14123,8 +14219,15 @@ void fragment() {
 ## and lands with a thump (and a bounce if it came down hard)
 func _fly(dt: float) -> void:
 	var ground: float = _decks.surf(_pos, _y)   # (a bridge's deck, a tunnel's road: whatever is under it)
-	var gv := (ground - _ground_was) / maxf(dt, 0.001)   # the ground's own rise or fall, under the car
-	_ground_was = ground
+	# What the springs feel is the ground along the way the car came, smoothed over half a
+	# wheelbase of travel: a deck's profile is points 6 m apart with a kink at each, and taken
+	# as it came a kink was a jolt in one frame -- at a ramp's top at 50 km/h enough to throw
+	# the car up (Tel Aviv's ramps, Ashdod's underpass) -- and so was a seam of a few
+	# centimetres between two decks. A real drop still throws it. (Not the heights under the
+	# axles: an axle's point by a tunnel's wall found the ground over the tunnel.)
+	var ride := lerpf(_ground_was, ground, clampf(dt * maxf(absf(_v), 2.0) / (WHEELBASE * 0.5), 0.0, 1.0))
+	var gv := (ride - _ground_was) / maxf(dt, 0.001)   # the ground's own rise or fall, under the car
+	_ground_was = ride
 	# A rise faster than any slope gives at this speed is a step -- the seam where two decks
 	# overlap, up at a junction in the air, a few tenths of a metre apart -- climbed, not a
 	# ramp: taken as the car's own climb, 0.3 m in a frame was 17 m/s up, and on the flat
@@ -15657,12 +15760,16 @@ func _any_steep() -> bool:
 func _push_out(c: Vector2, r: float, posts: bool, cars := true, y := NAN) -> Vector2:
 	var push := Vector2.ZERO
 	var ground := true   # at the ground's level (not in a tunnel under it, not on a bridge over it)
+	var low := true      # ... and not on a deck's surface off the ground: fences and posts count
 	if _decks != null and _decks.any():
 		push = _decks.push(c, r, _h(c) if is_nan(y) else y)
 		ground = is_nan(y) or absf(y - _h(c)) < 2.5
 		if ground and not is_nan(y) and y < _h(c) - 0.5:   # in a tunnel: the houses are over its roof
 			var under := _decks.deck_at(c, y, 1.0)
 			ground = under < 0 or String(_roads[under]["deck"]) != "tu"
+		# on a deck off the ground: the fences and posts are down on the ground under it (an
+		# OSM fence across a footbridge's foot stopped you on its first metre up)
+		low = not (posts and ground and not is_nan(y) and _decks.off_ground(c, y))
 	for i: int in (_near(_bld_hash, c, r, BLD_CELL) if ground else []):
 		if _bld_solid[i] == 0:
 			continue
@@ -15673,7 +15780,7 @@ func _push_out(c: Vector2, r: float, posts: bool, cars := true, y := NAN) -> Vec
 		if p != Vector2.ZERO:
 			push += p
 			_last_hit = "building %d" % i
-	if posts and ground:
+	if posts and ground and low:
 		# fences, railings, hedges, garden walls, a shelter's back: thin walls, as segments
 		for i: int in _near(_wall_hash, c, r + 0.5, BLD_CELL):
 			var q := c + push
@@ -15707,7 +15814,10 @@ var _people_who := PackedInt64Array()    ## ... and who (an actor's id; 0 you on
 
 func _people_push(c: Vector2, r: float) -> Vector2:
 	var push := Vector2.ZERO
-	for q in _people_at:
+	for k in range(_people_at.size()):
+		if k < _people_who.size() and _people_who[k] == 0:
+			continue   # (you, on foot, where you were last tick: pushed off that, you ran at 35 m/s)
+		var q := _people_at[k]
 		var d := (c + push) - q
 		var need := r + PERSON_R
 		if d.length_squared() < need * need:

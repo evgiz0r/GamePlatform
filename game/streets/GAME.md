@@ -202,6 +202,16 @@ line on a dark one.
 > Trains that act like trains: a front with headlights, lit at night, stopping at the
 > stations; the overhead electric wires; the sound of a train going by.
 
+Its landmarks: the three Azrieli towers -- round, triangular and square -- in one dark,
+glossy blue glass with a band of metal round each top that lights up at night; in HaKirya
+the Matcal tower with its mast and the Marganit tower with its concrete shaft, antenna
+platforms and red-and-white mast up to 138 m; and Sarona's restored Templer houses, two
+storeys under red tile roofs among the lawns and trees, with the towers all round. At night
+every tower over 90 m has red aircraft-warning lights on its roof, slowly pulsing.
+
+> Landmarks: Azrieli round/triangle/square towers in proper glass, lit at night, Sarona,
+> the Kirya (Matcal) tower.
+
 > game streets -- lets add/start working on adding Tel Aviv. Somewhat the area I mentioned.
 > (with a map: Ichilov, Savidor, Azrieli, HaKirya, TLV Mall, Montefiore, Bitsaron,
 > Nahalat Yitshak)
@@ -1159,22 +1169,27 @@ contributors under the ODbL, which is why the credit sits on screen.
   What a shop looks like (awning, tables, the bus shelter) is generic. The parked cars
   (about a quarter of the kerb), the people walking and sitting at cafe tables, rooftop
   solar heaters and rooms (Givatayim), pitched roofs on small houses (Bedford).
-- **Guessed, in all four real towns (Givatayim, Bedford, Ashdod, Tel Aviv): how high the
-  bridges are, how deep the tunnels.** OSM says which ways are bridges and tunnels but not
-  how high or deep, so the game works it out as the town loads: each overpass rises to
-  clear what it crosses, on ramps up the roads leading to it, an interchange's junctions up
-  on them and its slip roads coming down; each road tunnel runs about 6 m under the ground
-  over it, with cuttings sloping down to its mouths. Highway 102's overpasses, the Bedford
-  Bypass, the MacKay Bridge's approach (Bedford has no road tunnel); in Ashdod Highway 4's
-  interchanges and Sderot Menachem Begin's underpass, down a cutting under the road it
-  crosses. Givatayim and Tel Aviv share a stretch of the Ayalon: Menachem Begin's and Arvey
-  Nahal's bridges over it, Uzi Hitman's tunnel and the City tunnel; Tel Aviv adds the
-  Moda'i bridge, the Begin underpass and the Lova Eliav tunnel. The ramps are grass banks
-  with a guardrail along the top where there is room for them, retaining walls where there
-  is not; the cuttings are walled.
-- **Not there yet**: footbridges (still flat on the ground), footpath tunnels, and a few
-  road tunnels too short for their cuttings (the Rabin Underpass): left out. People
-  crossing anywhere but a zebra.
+- **Guessed, in Givatayim, Bedford, Ashdod and Tel Aviv: how high the bridges are, how deep
+  the tunnels.** OSM says which ways are bridges and tunnels but not how high or deep, so
+  the game works it out as the town loads: each overpass rises to clear what it crosses, on
+  ramps up the roads leading to it, an interchange's junctions up on them and its slip
+  roads coming down; each road tunnel runs about 6 m under what runs over it, cuttings
+  sloping down to its mouths. Highway 102's overpasses, the Bedford Bypass, the MacKay
+  Bridge's approach (Bedford has no tunnel); in Ashdod Highway 4's interchanges and Sderot
+  Menachem Begin's underpass, down a cutting under the road it crosses. Givatayim and Tel
+  Aviv share a stretch of the Ayalon: Menachem Begin's and Arvey Nahal's bridges over it,
+  Uzi Hitman's tunnel and the City tunnel; Tel Aviv adds the Moda'i bridge, the Begin
+  underpass and the Lova Eliav tunnel. The ramps are grass banks with a guardrail along the
+  top where there is room for them, retaining walls where there is not; the cuttings are
+  walled.
+- **Footbridges and footpath tunnels, guessed the same way.** A footbridge clears the street
+  under it by 5.8 m (3.4 m over another path), paved, with a steel railing; its ramps rise
+  along the footpaths only, steep (25%), and as stairs where OSM maps steps or where a path
+  meets a street before its ramp is down. A footpath tunnel goes 3.6 m under the road, a
+  low tiled tube with one row of lamps, ramps or stairs down to it. Trail bridges over
+  creeks (Bedford's greenway) span from bank to bank.
+- **Not there yet**: a few road tunnels too short for their cuttings (the Rabin Underpass):
+  left out. People crossing anywhere but a zebra.
 
 To make your own street more accurate, fix it on openstreetmap.org (building heights are
 the most useful thing to add) and bake again.
