@@ -49,6 +49,14 @@ The ones most often touched, and the functions in them:
   (barred windows, the door in the middle bay), stone courses, plinth and mosaic are
   `WALL_SHADER`'s `ground` / `door` / `stone_k`; worn asphalt is `TONE_SHADER`'s
   `crazing()` and patches. `tests/eye_level.gd` puts a camera where a person stands.
+- **sound** -- `sounds/make_sounds.py` makes the loops (engine, engine_load, road, wind,
+  city; numpy, run it again after changing it, the .wav files are committed and imported
+  looping, QOA); "the sounds of driving" in streets.gd plays them: `_build_engine`,
+  `_engine_tick` (the gearbox, then each layer's pitch and volume a frame; the car going by
+  is the nearest traffic car, its closing speed from its distance a frame ago for the
+  pitch). Levels are relative to `SFX_SCALE`. `tests/sound_drive.gd` records the game's own
+  mix headless. The old engine (pulses below 200 Hz, made at load) measured centroid
+  40-140 Hz, 2-16% above 200 Hz; the new mix 290-550 Hz moving, 45-66% above 200 Hz.
 - **time of day** -- `SKIES` (day, evening: the photo, its sun and colours from `hdr_sky.py`,
   where the sunlight comes from, its warmth and energy), `_sky_now()`; `_next_time()` (the
   button: day, evening, night), `_set_evening()`. `_retint_city` reads `_evening` for the

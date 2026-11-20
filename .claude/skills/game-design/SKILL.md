@@ -110,6 +110,16 @@ Given equal mechanics, the juicier game is the better game. Budget real effort h
 
 A prototype with great juice feels finished. A deep game with no juice feels broken.
 
+**But a sound that plays all the time is not juice, it is the room the player sits in.** An
+engine or a hum that never stops must be the quietest, smoothest thing in the mix, and it
+must live where a laptop's or a phone's speaker can play it: those give almost nothing below
+200 Hz, so a synthesized engine of low, sharp pulses comes out as a rough flutter (pulses
+20-150 times a second are what the ear calls rough), and players mute the game. Carry
+motion in the 200-1500 Hz band instead -- a car's speed is the tyres' roar and the wind
+far more than its engine -- keep the engine a soft hum under it, and turn a jingle that
+fires every few seconds down to a tick. Judge it by listening, or by recording the game's
+own mix (see the playtesting skill) and measuring how much of it is above 200 Hz.
+
 ## Scope: what to refuse politely
 
 These are large. If asked, say so plainly and offer the smaller version:
