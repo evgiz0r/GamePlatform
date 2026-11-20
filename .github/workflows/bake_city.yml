@@ -25,6 +25,10 @@ on:
       bbox:
         description: "Optional: south,west,north,east in degrees -- bake this box instead of the whole town (a few neighbourhoods of a big city); place is then only its name"
         default: ""
+      bare_ground:
+        description: "Take buildings out of the ground heights (a city of towers otherwise stands on hills of its own roofs)"
+        type: boolean
+        default: false
 
 concurrency:
   group: bake-${{ github.ref }}
@@ -47,6 +51,7 @@ jobs:
           MARGIN: ${{ inputs.margin }}
           INCLUDE: ${{ inputs.include }}
           BBOX: ${{ inputs.bbox }}
+          BARE: ${{ inputs.bare_ground }}
         run: |
           if ! [[ "$OUT" =~ ^game/[A-Za-z0-9_-]+/[A-Za-z0-9_/-]+\.json$ ]]; then
             echo "out must be a .json path inside a game folder, got: $OUT"; exit 1
@@ -61,6 +66,9 @@ jobs:
             WHERE=(--bbox "$BBOX" --name "$PLACE")
           else
             WHERE=(--place "$PLACE")
+          fi
+          if [ "$BARE" = "true" ]; then
+            WHERE+=(--bare-ground)
           fi
           if [ -n "$INCLUDE" ]; then
             python3 tools/osm_city.py "${WHERE[@]}" --margin "$MARGIN" --include "$INCLUDE" --out "$OUT"
