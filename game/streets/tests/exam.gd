@@ -336,6 +336,8 @@ func _car_line(i: int) -> String:
 		", filtering" if c.split else "", c.why, c.blocker, c.k, c.pts.size(), plan]
 
 ## the traffic's own checks: stalls, cars sent away, red lights run, cars overlapping
+var site_was := {}   ## traffic car -> the junction with lights it was last in, as the game had it while outside every lit point
+
 func _watch_traffic(dt: float, t: float, car_still: Dictionary, overlapping: Dictionary, inside: Dictionary, came_dir: Dictionary) -> void:
 	# -- traffic
 	for i in range(T.cars.size()):
@@ -366,6 +368,12 @@ func _watch_traffic(dt: float, t: float, car_still: Dictionary, overlapping: Dic
 			var key := "%d:%d" % [i, knot]
 			if not inside.has(key) and c.v > 2.0:
 				var came: Vector2 = came_dir.get(i, Vector2(sin(c.yaw), cos(c.yaw)))
+				# already in this junction, by another of its lights whose middle it went
+				# wide of (the game's own record, from before it came to this point): going on
+				# through its inner points is not running their red
+				if int(site_was.get(i, -1)) == knot:
+					inside[key] = t
+					continue
 				if g._light_at(n, came) == "r":
 					_count("traffic: red lights run")
 					_incident("traffic red", c.pos, c.kind)
@@ -376,6 +384,7 @@ func _watch_traffic(dt: float, t: float, car_still: Dictionary, overlapping: Dic
 			inside[key] = t
 		if not in_any:
 			came_dir[i] = Vector2(sin(c.yaw), cos(c.yaw))
+			site_was[i] = c.last_site
 			for key: String in inside.keys():
 				if key.begins_with("%d:" % i) and t - float(inside[key]) > 8.0:
 					inside.erase(key)

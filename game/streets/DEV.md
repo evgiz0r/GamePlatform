@@ -218,6 +218,24 @@ The ones most often touched, and the functions in them:
   `tones[64]` / `tone_fx[64]` tables; `_chunked` and `_add_mesh` route into it while building.
 - **lanes** -- `_lane_off(r)` (right lane's line), `_lanes_each_way(r)` (capped by width),
   `_nearest_lane`, `_clear_lane`. traffic.gd's `_lane`, `_lanes_dir`, `_lane_shift` use them.
+  A traffic car's lane is `lane_i` (0 the right-hand one) and `shift` (metres left of the
+  road's lane line, moving to `shift_to`). Onto the next road (`_steer_lanes`, `shift_rd`)
+  it takes the lane it is in by where it lies, not by number: roads meeting at a node share
+  its middle line, so the second lane of a 12.8 m four-lane link is the first lane of the
+  6.4 m slip it runs on into (kept by number, the link's second-lane cars all crossed into
+  the slip's other lane and stood on each other: Begin x Kaplan). A shift a road change
+  makes is followed at `REALIGN` x the speed (`realign`), not a lane change's 1.4 m/s (at
+  that pace a car ran off the slip's edge into its poles for 25 m). Before a narrowing
+  (`NARROW_LOOK`, up to the next turn) a car moves to a lane that lies within the narrower
+  road. At a light, a turn's curve (`_turn_into`) starts no further out than the stop line
+  when coming in from outside the junction, so a car waiting to turn stands straight.
+- **bus lanes** -- the bake's `bf` / `bb` (osm_city.py's `bus_lanes`: a letter a lane, left
+  to right, "b" a bus lane) on the road as `r["bf"]` / `r["bb"]`; `_bus_lane(r, idx, dir)`
+  (lane idx from the right, never on a one-lane way), `_has_bus_lane`. `_markings` paints a
+  wide solid line beside it and `_road_word` "אוטובוס" (BUS outside "med") every
+  `BUS_WORD_STEP`; traffic.gd: buses and half the taxis (`bus_ok`) take it, others keep out
+  (`_off_bus_lanes`) but for the last `BUS_TURN_IN` m before a right turn; `_lane_off`
+  never puts autodrive's line in one. Test: `tests/bus_lanes.gd`.
 - **autodrive** -- `_autodrive` (per tick: replanning, pursuit, speed from corners, lights,
   signs, zebras, people, the car ahead via `traffic.lead_on`), `_ap_plan`, `_ap_leg`,
   `_ap_turn_into` (the curve through a junction), `_ap_next` / `_ap_ways` (the ways on),
