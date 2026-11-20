@@ -15166,22 +15166,61 @@ func _cluster_exits(ways: Array, came: Vector2, depth: int, seen: Dictionary) ->
 			"service": false, "score": w["score"]})
 	if depth > 0:
 		return out
+	# a slip road (a short way with no name of its own, cutting a corner) is the turn into the
+	# street it joins: named after that street, so it is not offered as a way of its own --
+	# "it gave four options, one of them weird"
+	for x: Dictionary in out:
+		if x["name"] == "":
+			var joins := _slip_joins(x["legs"].back())
+			if joins >= 0:
+				x["name"] = String((_roads[joins] as Dictionary)["name"])
+				x["en"] = String((_roads[joins] as Dictionary)["en"])
+				x["slip"] = true
 	# the same way out reached two ways round (or the same street, the same way, from two
-	# of its points): the one across fewer of them
+	# of its points): the one across fewer of them -- but turning right, the slip road, the
+	# turn from the kerb side (from the junction itself it turned from the middle of the road)
 	var keep: Array = []
 	for x: Dictionary in out:
 		var dup := -1
 		for i in range(keep.size()):
 			var k2: Dictionary = keep[i]
+			var apart := absf(angle_difference(k2["turn"], x["turn"]))
 			if (k2["legs"] as Array).back() == (x["legs"] as Array).back() \
-					or (x["name"] != "" and k2["name"] == x["name"] and absf(angle_difference(k2["turn"], x["turn"])) < 0.5):
+					or (x["name"] != "" and k2["name"] == x["name"] and apart < 0.7) \
+					or ((x["name"] == "" or k2["name"] == "") and apart < 0.35):
+				# (and a way with no name within 20 degrees of another: two buttons a degree
+				# apart, one of them "no name" -- a service road beside the junction, a slip)
 				dup = i
 				break
 		if dup < 0:
 			keep.append(x)
-		elif (x["legs"] as Array).size() < (keep[dup]["legs"] as Array).size():
-			keep[dup] = x
+		else:
+			var k3: Dictionary = keep[dup]
+			var x_slip: bool = x.get("slip", false) and float(x["turn"]) > 0.3
+			var k_slip: bool = k3.get("slip", false) and float(k3["turn"]) > 0.3
+			if x_slip and not k_slip or (x_slip == k_slip and k3["name"] == "" and x["name"] != "") \
+					or (x_slip == k_slip and (k3["name"] == "") == (x["name"] == "") and (x["legs"] as Array).size() < (k3["legs"] as Array).size()):
+				keep[dup] = x
 	return keep
+
+## the named street a short unnamed way (a slip road) runs into: its road, or -1
+func _slip_joins(leg: Vector3i) -> int:
+	var r: Dictionary = _roads[leg.x]
+	var pts: PackedVector2Array = r["pts"]
+	var last := pts.size() - 1 if leg.z > 0 else 0
+	var L := 0.0
+	var k := leg.y - leg.z
+	while k != last:
+		L += pts[k].distance_to(pts[k + leg.z])
+		k += leg.z
+	if L > 90.0:
+		return -1
+	var end_node: int = (r["ids"] as PackedInt32Array)[last]
+	for e: Vector2i in _node_roads[end_node]:
+		var r2: Dictionary = _roads[e.x]
+		if e.x != leg.x and r2["drive"] and String(r2["name"]) != "":
+			return e.x
+	return -1
 
 ## the crossing ahead: take your pick (or ours, once it is too late to wait for yours)
 func _cross_tick() -> void:
@@ -15205,7 +15244,8 @@ func _cross_tick() -> void:
 	# go on: chosen, or too close to wait -- or crawling with the plan nearly used up (a car
 	# handed over beside a crossing, that could not get within 10 m of its point, waited
 	# there for ever and drifted into the parked cars)
-	if _cross["chosen"] or d < maxf(10.0, _v * 1.3) or (absf(_v) < 1.5 and d < 26.0):
+	# (undecided: ours at 30 m, not at the last moment -- room to get into the lane for it)
+	if _cross["chosen"] or d < maxf(30.0, _v * 2.5) or (absf(_v) < 1.5 and d < 26.0):
 		var w: Dictionary = ways[_cross["pick"]]
 		var legs: Array = w["legs"]
 		var leg: Vector3i = legs[0]
@@ -15220,9 +15260,10 @@ func _cross_pick(i: int) -> void:
 	_cross["chosen"] = true
 	Audio.play("click", 0.05, -6.0)
 
-## the choices are up from CROSS_SHOW_S seconds (and at least 45 m) out
+## the choices are up from CROSS_SHOW_S seconds (and at least 70 m) out -- early enough to
+## move into the lane for the turn once one is picked (at 45 m it turned from the middle)
 func _cross_showing() -> bool:
-	return not _cross.is_empty() and _pos.distance_to(_cross["at"]) < maxf(45.0, _v * CROSS_SHOW_S)
+	return not _cross.is_empty() and _pos.distance_to(_cross["at"]) < maxf(70.0, _v * CROSS_SHOW_S)
 
 func _cross_rect(i: int, n: int) -> Rect2:
 	var w := 78.0
