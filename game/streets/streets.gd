@@ -3575,8 +3575,8 @@ func _build_gardens_later() -> void:
 		await _add_fronts(fronts, wall)
 		if not _yard_cars.is_empty():   # (their cars, drawn like the street's parked cars)
 			var palette := _car_paints()
-			var xf_by := {"sedan": [], "hatch": [], "suv": [], "van": [], "moto_parked": []}
-			var cols_by := {"sedan": [], "hatch": [], "suv": [], "van": [], "moto_parked": []}
+			var xf_by := {"sedan": [], "hatch": [], "mini": [], "wagon": [], "mpv": [], "suv": [], "van": [], "moto_parked": []}
+			var cols_by := {"sedan": [], "hatch": [], "mini": [], "wagon": [], "mpv": [], "suv": [], "van": [], "moto_parked": []}
 			for yc: Array in _yard_cars:
 				(xf_by[String(yc[1])] as Array).append(yc[0])
 				(cols_by[String(yc[1])] as Array).append(palette[int(yc[2]) % palette.size()])
@@ -7492,8 +7492,8 @@ func _build_parked() -> void:
 		return   # northern suburbs park in driveways
 	var xf: Array = []
 	var cols: Array = []
-	var xf_by := {"sedan": [], "hatch": [], "suv": [], "van": [], "moto_parked": []}
-	var cols_by := {"sedan": [], "hatch": [], "suv": [], "van": [], "moto_parked": []}
+	var xf_by := {"sedan": [], "hatch": [], "mini": [], "wagon": [], "mpv": [], "suv": [], "van": [], "moto_parked": []}
+	var cols_by := {"sedan": [], "hatch": [], "mini": [], "wagon": [], "mpv": [], "suv": [], "van": [], "moto_parked": []}
 	var palette := _car_paints()
 	var rng := RandomNumberGenerator.new()
 	for ri: int in _tile_roads.get(_tile, []):
@@ -7550,7 +7550,7 @@ func _build_parked() -> void:
 								var win := p - side * 0.86 - face * 0.5
 								var fly := Vector3(-face.x, 0, -face.y)
 								_car_flags.append(Transform3D(Basis(fly, Vector3.UP, fly.cross(Vector3.UP)),
-									_g3(win, 0.1 + float({"sedan": 1.12, "hatch": 1.15, "suv": 1.32, "van": 1.45}.get(kind, 1.15)))))
+									_g3(win, 0.1 + float({"sedan": 1.12, "hatch": 1.15, "mini": 1.12, "wagon": 1.12, "mpv": 1.42, "suv": 1.32, "van": 1.45}.get(kind, 1.15)))))
 							elif roll2 > 980:   # a cat on the pavement at its nose
 								var cq := p + face * 2.7 + side * 0.45
 								cat_at(cq, _g3(cq, KERB_H).y, -side.rotated(float(roll2 % 5 - 2) * 0.3), "sit")
@@ -7585,8 +7585,8 @@ func _build_lots() -> void:
 	var rings: Array = _rings_near("parking").filter(_ring_mine)
 	var palette := _car_paints()
 	var rng := RandomNumberGenerator.new()
-	var xf_by := {"sedan": [], "hatch": [], "suv": [], "van": [], "moto_parked": []}
-	var cols_by := {"sedan": [], "hatch": [], "suv": [], "van": [], "moto_parked": []}
+	var xf_by := {"sedan": [], "hatch": [], "mini": [], "wagon": [], "mpv": [], "suv": [], "van": [], "moto_parked": []}
+	var cols_by := {"sedan": [], "hatch": [], "mini": [], "wagon": [], "mpv": [], "suv": [], "van": [], "moto_parked": []}
 	for kind: String in _parked_xf:   # the street's parked cars go in the same batches
 		(xf_by[kind] as Array).append_array(_parked_xf[kind])
 		(cols_by[kind] as Array).append_array(_parked_cols[kind])
@@ -7723,12 +7723,18 @@ func _car_paints() -> Array:
 	var pl := Palette.col("player")
 	var red := Color.from_hsv(0.99, clampf(hz.s, 0.55, 0.8), clampf(hz.v * 0.62, 0.35, 0.6))
 	var blue := Color.from_hsv(0.61, clampf(pl.s, 0.5, 0.75), clampf(pl.v * 0.42, 0.25, 0.48))
+	var fr := Palette.col("friend")
+	var green := Color.from_hsv(0.38, clampf(fr.s, 0.3, 0.5), clampf(fr.v * 0.32, 0.18, 0.3))
+	# (more white and silver at the end: about a third white, a third silver and grey, a tenth
+	# black, a twentieth each blue and red, the odd beige and dark green -- the film's cars
+	# pick a paint by its place in the list, so the first fourteen stay where they are)
 	var out: Array = [white, white, white, white, silver, silver, silver, grey, grey, black, black,
-		blue, red, Palette.col("warn").lerp(ink, 0.5).lerp(alt, 0.2)]
+		blue, red, Palette.col("warn").lerp(ink, 0.5).lerp(alt, 0.2), white, white, silver, grey, green]
 	return out.map(func(c: Color) -> Color: return _natural(c, 0.6))
 
-## parked cars and traffic: mostly sedans and hatchbacks, some SUVs, the odd van
-const CAR_MIX := ["sedan", "sedan", "sedan", "hatch", "hatch", "hatch", "suv", "suv", "van"]
+## parked cars and traffic as an Israeli street has them: small city cars and hatchbacks,
+## family sedans, compact SUVs, now and then an estate, a tall boxy small van, a work van
+const CAR_MIX := ["sedan", "sedan", "sedan", "hatch", "hatch", "mini", "mini", "suv", "suv", "suv", "wagon", "mpv", "van"]
 
 ## the shared car mesh for parked cars and traffic: the sedan's body, wheels, lights and
 ## plates as ONE surface, one draw call a batch (as six surfaces, a patch of parked cars
@@ -7746,6 +7752,8 @@ uniform sampler2D plate_font : filter_linear_mipmap, repeat_disable;   // digits
 uniform float plate_style = 0.0;       // 1: an Israeli plate (yellow, black digits, the blue IL strip)
 uniform vec4 plate_blue : source_color;
 uniform float plate_seed = 0.0;        // the player's car: its own number
+uniform vec4 dust : source_color;      // the street's dust on a car that has stood a while
+uniform vec4 sign_red : source_color;  // a learner's roof sign
 varying float plate_id;                // a number of the car's own, steady while it drives
 uniform vec4 lamp : source_color;
 uniform vec4 tail : source_color;
@@ -7785,6 +7793,16 @@ void vertex() {
 	who = fract(sin(dot(MODEL_MATRIX[3].xz, vec2(12.9898, 78.233))) * 43758.5453);
 	// (its copy's number and its paint: steady as it moves, unlike where it is)
 	plate_id = fixed_paint > 0.5 ? plate_seed : float(INSTANCE_ID) * 0.7548777 + dot(INSTANCE_CUSTOM.rgb, vec3(3.1, 5.7, 7.3));
+	// a few cars' own things, in every car's mesh and folded away on the rest (vertex alpha
+	// 0.52 a learner's roof sign, 0.54 a new driver's sign in the back window, 0.56 a
+	// parking permit on a parked car's windscreen): no draws of their own
+	float code = COLOR.a;
+	bool parked_v = fixed_paint < 0.5 && INSTANCE_CUSTOM.a < 1.5;
+	if ((abs(code - 0.52) < 0.006 && (fixed_paint > 0.5 || fract(plate_id * 13.17) > 0.025))
+			|| (abs(code - 0.54) < 0.006 && (fixed_paint > 0.5 || fract(plate_id * 17.31) > 0.07))
+			|| (abs(code - 0.56) < 0.006 && !(parked_v && fract(plate_id * 19.7) < 0.55))) {
+		VERTEX = vec3(0.0);
+	}
 }
 // where a ray (from o along unit d) first meets an ellipsoid at c with radii r; -1 if not
 float ray_blob(vec3 o, vec3 d, vec3 c, vec3 r) {
@@ -7810,7 +7828,8 @@ float line_cover(float d, float w, float aa) {
 // where a glyph is a few pixels on screen, its smaller copies average it to grey and that
 // grey is the ink (taken at the half-way grey, a plate was blank from the chase view)
 float plate_glyph(float g, float x, float y, float far) {
-	float a = texture(plate_font, vec2((g + clamp(x, 0.0, 1.0)) / 13.0, clamp(y, 0.0, 1.0))).r;
+	// (kept inside its own cell's margin: the font's smaller copies bled the next glyph in)
+	float a = texture(plate_font, vec2((g + clamp(x, 0.1, 0.9)) / 13.0, clamp(y, 0.06, 0.94))).r;
 	return mix(smoothstep(0.3, 0.7, a), min(a * 1.8, 1.0), far);
 }
 void fragment() {
@@ -7825,8 +7844,23 @@ void fragment() {
 	vec3 rw = (INV_VIEW_MATRIX * vec4(reflect(-to_eye, NORMAL), 0.0)).xyz;
 	vec3 refl = sky_at(rw.y) * (1.0 - 0.75 * night);
 	float aa = fwidth(lpos.z) + 0.001;
+	// how long it has stood and how old it is, each car its own: a parked car gathers the
+	// street's dust (on top and low down), an older one's paint is faded by the sun
+	bool parked = fixed_paint < 0.5 && custom.a < 1.5;
+	float dirt = fixed_paint > 0.5 ? 0.12 : (0.12 + 0.6 * fract(plate_id * 5.17)) * (parked ? 1.0 : 0.45);
+	float old = fixed_paint > 0.5 ? 0.0 : smoothstep(0.7, 1.0, fract(plate_id * 7.31));
 	if (part > 0.9) {            // paint
 		col = fixed_paint > 0.5 ? paint_col.rgb : custom.rgb;
+		col = mix(col, vec3(dot(col, vec3(0.3, 0.5, 0.2))) * 1.08 + 0.05, old * 0.4);   // sun-faded
+		float dust_amt = clamp(dirt * (0.6 * max(lnrm.y, 0.0) + 0.4 * (1.0 - smoothstep(0.15, 0.75, lpos.y))), 0.0, 0.6);
+		col = mix(col, dust.rgb, dust_amt);
+		// scuffed bumper corners, on some
+		if (abs(lnrm.z) > 0.55 && lpos.y > 0.3 && lpos.y < 0.58 && fract(plate_id * 2.37) < 0.4) {
+			// thin scratches where a corner met a post: a few, at the bumper's height
+			float sc = step(0.92, fract(sin(dot(floor(vec2(lpos.x * 60.0, lpos.y * 160.0)), vec2(12.9898, 78.233))) * 43758.5453))
+				* smoothstep(0.6, 0.8, abs(lpos.x));
+			col = mix(col, col * 0.6 + 0.08, sc * 0.6);
+		}
 		col *= mix(0.72, 1.0, smoothstep(0.12, 0.55, lpos.y));   // grime, and less light, low down
 		float f = 0.05 + 0.55 * pow(1.0 - ndv, 4.0);
 		float side = abs(lnrm.x);
@@ -7842,9 +7876,10 @@ void fragment() {
 					abs(lpos.z + UV2.x - UV2.y - 0.1));
 				col *= 1.0 - 0.6 * line_cover(d, 0.006, aa);
 			}
-			rough = 0.3;
+			rough = mix(0.3, 0.75, max(old * 0.5, dust_amt * 1.4));
 			metal = 0.1;
 			spec = 0.6;
+			f *= 1.0 - min(dust_amt * 1.4, 0.8) - old * 0.3;
 		}
 		emit = refl * f;
 	} else if (part > 0.7) {     // glass, and whoever sits behind it
@@ -7886,8 +7921,14 @@ void fragment() {
 			inside = best < 1e8 ? col_hit * (0.22 + 0.25 * max(n_hit.y, 0.0) + 0.1 * abs(n_hit.x)) : vec3(0.02);
 			inside *= 1.0 - 0.7 * night;
 		}
+		// a parked car's windscreen, as most have them in summer: a folded silver sunshade
+		if (parked && lnrm.z > 0.3 && lpos.z > 0.0 && fract(plate_id * 9.71) < 0.45) {
+			float fold = step(0.5, fract(lpos.x * 7.0));
+			inside = vec3(0.5 + 0.14 * fold) * (1.0 - 0.6 * night);
+		}
 		float f = 0.12 + 0.88 * pow(1.0 - ndv, 3.0);
 		emit = mix(inside, refl, f);
+		emit = mix(emit, dust.rgb * 0.45, dirt * 0.3);   // (dusty glass)
 		rough = 0.05;
 	} else if (part > 0.6) {     // number plate
 		rough = 0.4;
@@ -7924,18 +7965,52 @@ void fragment() {
 				* step(0.18, fract(cell)) * step(fract(cell), 0.82);
 			col = mix(col, col * 0.08, ch);
 		}
+	} else if (part > 0.51) {    // a sign or a sticker (only on the cars that keep it: vertex())
+		rough = 0.5;
+		vec2 g = vec2(lpos.x - UV2.x, lpos.y - UV2.y);   // from its middle (UV2)
+		if (part < 0.53) {       // a learner's roof sign: a white lamed on red, front and back
+			col = sign_red.rgb;
+			if (abs(lnrm.z) > 0.5) {
+				vec2 q = vec2(g.x * sign(lnrm.z) / 0.19, g.y / 0.1);
+				float l = step(abs(q.x + 0.35), 0.12) * step(0.15, q.y) * step(q.y, 0.95)       // the stroke up
+					+ step(abs(q.y - 0.15), 0.12) * step(-0.35, q.x) * step(q.x, 0.42)          // along the top
+					+ step(abs(q.x - 0.42), 0.12) * step(-0.75, q.y) * step(q.y, 0.15)          // down the right
+					+ step(abs(q.y + 0.75), 0.12) * step(-0.1, q.x) * step(q.x, 0.42);          // the foot
+				col = mix(col, vec3(0.95), clamp(l, 0.0, 1.0));
+			}
+		} else if (part < 0.55) {   // a new driver's sign: white, a red rim, its two words
+			vec2 q = abs(g) / vec2(0.13, 0.06);
+			col = (q.x > 0.85 || q.y > 0.75) ? sign_red.rgb : vec3(0.93);
+			float words = step(q.y, 0.35) * step(0.12, abs(g.x / 0.13 - 0.05)) * step(q.x, 0.7)
+				* step(0.3, fract(g.x * 40.0));
+			col = mix(col, vec3(0.08), words);
+		} else {                    // a parking permit: its colour, a white band
+			col = mix(plate_blue.rgb, vec3(0.92), step(abs(g.y), 0.012));
+		}
 	} else if (part > 0.45) {    // trim
 		rough = 0.55;
 		emit = refl * 0.05;
-	} else if (part > 0.35) {    // a rim: five spokes round the hub, dark between them
+	} else if (part > 0.35) {    // a rim, the car's own pattern: five spokes, twelve fine ones, ten, or a steel wheel's cap
 		float r = length(UV);
-		float sp = cos(atan(UV.y, UV.x) * 5.0);
-		bool solid = r < 0.3 || r > 0.84 || sp > 0.35;
-		col = solid ? col : well.rgb;
-		metal = solid ? 0.7 : 0.0;
+		float a = atan(UV.y, UV.x);
+		float style = floor(fract(plate_id * 4.13) * 4.0);
+		float n = style < 1.0 ? 5.0 : (style < 2.0 ? 12.0 : 10.0);
+		bool solid = r < 0.28 || r > 0.84;
+		if (style < 2.5) {
+			solid = solid || cos(a * n) > (style < 1.0 ? 0.35 : (style < 2.0 ? 0.5 : 0.62));
+		} else {                 // steel, under a plastic cap with vents
+			solid = r < 0.8 && (r < 0.55 || fract(a * 1.2732 + 0.5) > 0.22);
+		}
+		vec3 rim_col = fract(plate_id * 2.9) < 0.22 ? col * 0.32 : col;   // a dark alloy now and then
+		vec3 behind = mix(well.rgb, vec3(0.3), step(0.42, r) * step(r, 0.76) * 0.7);   // the brake disc
+		col = solid ? rim_col : behind;
+		if (r > 0.13 && r < 0.2 && cos(a * 5.0) > 0.9) { col *= 0.45; }       // the wheel nuts
+		metal = solid ? 0.7 : 0.2;
 		rough = 0.35;
 		emit = solid ? refl * 0.25 : vec3(0.0);
-	} else if (part > 0.2) {     // tyres
+	} else if (part > 0.2) {     // tyres: the sidewall a shade lighter than the tread
+		col = abs(lnrm.x) > 0.7 ? col * 1.35 : col;
+		col = mix(col, dust.rgb * 0.5, dirt * 0.4);
 		rough = 0.9;
 		spec = 0.2;
 	} else if (part > 0.05) {    // headlights (and anything lit like them: a taxi's sign)
@@ -8002,6 +8077,8 @@ func _car_material() -> ShaderMaterial:
 		m.set_shader_parameter("plate_font", _plate_font())
 		m.set_shader_parameter("plate_style", 1.0 if String(_place.get("look", "")) == "med" else 0.0)
 		m.set_shader_parameter("plate_blue", _real_col("blue").lerp(Palette.col("bg"), 0.35))   # (a plate's strip is a deep blue)
+		m.set_shader_parameter("dust", (_tone.get("sand", _tone["pavement"]) as Color).lerp(_tone["pavement"], 0.4))
+		m.set_shader_parameter("sign_red", _real_col("red"))
 		m.set_shader_parameter("lamp", _tone["lamplight"])
 		m.set_shader_parameter("tail", Palette.col("hazard"))
 		m.set_shader_parameter("night", 1.0 if _night else 0.0)
@@ -8300,7 +8377,7 @@ func _car_body(kind: String, extras: bool) -> CarMesh:
 	var hl: float = shape[3]
 	var wz: float = shape[4]
 	var wr: float = shape[5]
-	var lift := 0.08 if kind in ["suv", "van"] else (0.12 if kind == "truck" else 0.0)
+	var lift := 0.08 if kind in ["suv", "van"] else (0.05 if kind == "mpv" else (0.12 if kind == "truck" else 0.0))
 	var cm := CarMesh.new()
 	var paint := Color(1, 1, 1, 1.0)
 	var glass := Color(_tone["carglass"], 0.75)
@@ -8338,14 +8415,14 @@ func _car_body(kind: String, extras: bool) -> CarMesh:
 	var c1: Vector2 = cab[1]   # windscreen top
 	var c2: Vector2 = cab[2]   # rear top
 	var c3: Vector2 = cab[3]   # rear foot
-	var pillars: Array = [-0.26] if kind in ["sedan", "hatch"] else [-0.2, -1.25]
+	var pillars: Array = [-0.26] if kind in ["sedan", "hatch"] else ([-0.32] if kind == "mini" else [-0.2, -1.25])
 	var zs: Array = []
 	for k in range(9):
 		zs.append(lerpf(c3.x, c0.x, k / 8.0))
 	zs.append_array([c1.x, c2.x])
 	for pz: float in pillars:
 		zs.append_array([pz - 0.06, pz + 0.06])
-	var back_pillar := c2.x + 0.05 if kind in ["sedan", "hatch"] else c3.x + 0.18
+	var back_pillar := c2.x + 0.05 if kind in ["sedan", "hatch", "mini"] else c3.x + 0.18
 	zs.append(back_pillar)
 	zs.sort()
 	var cz: Array = []
@@ -8388,7 +8465,7 @@ func _car_body(kind: String, extras: bool) -> CarMesh:
 		return glass
 	# the glass carries where the front seats are -- just behind the windscreen's foot, the
 	# cushion a little under the waist -- for the shader's people
-	var seats := Vector2(c0.x - (0.75 if kind == "truck" else (1.3 if kind in ["suv", "van"] else 1.15)), _span_at(low, c0.x).y - 0.45)
+	var seats := Vector2(c0.x - (0.75 if kind == "truck" else (1.3 if kind in ["suv", "van", "mpv"] else 1.15)), _span_at(low, c0.x).y - 0.45)
 	_loft(cm, rings, mids, false, cab_part, Vector2.ZERO, seats)
 	# ---- trim: bumper lips, the grille, mirrors, door handles
 	var tb := Buf.new()
@@ -8409,6 +8486,40 @@ func _car_body(kind: String, extras: bool) -> CarMesh:
 	cm.add_buf(mb, paint)
 	if not extras:
 		return cm
+	# ---- wiper arms at the windscreen's foot, a shark-fin aerial at the roof's back, roof
+	# rails on an SUV and an estate
+	var fit := Buf.new()
+	var ws := func(y: float) -> float:   # the windscreen's surface at height y
+		return lerpf(c0.x, c1.x, clampf((y - c0.y) / maxf(c1.y - c0.y, 0.01), 0.0, 1.0))
+	if kind != "truck":
+		for sx: float in [-1.0, 1.0]:
+			var wy := c0.y + 0.04
+			_box(fit, Vector3(sx * 0.27 - 0.08, wy, float(ws.call(wy)) + 0.02), Vector3(0.5, 0.018, 0.022))
+		if kind in ["sedan", "hatch", "mini", "wagon", "suv"]:
+			_box(fit, Vector3(0, c2.y + 0.04, c2.x + 0.28), Vector3(0.05, 0.07, 0.17))
+		if kind in ["suv", "wagon"]:
+			for sx: float in [-1.0, 1.0]:
+				_box(fit, Vector3(sx * (hw - 0.36), maxf(c1.y, c2.y) + 0.06, (c1.x + c2.x) * 0.5), Vector3(0.035, 0.035, absf(c1.x - c2.x) + 0.3))
+				for foot: float in [c1.x - 0.05, c2.x + 0.05]:
+					_box(fit, Vector3(sx * (hw - 0.36), maxf(c1.y, c2.y) + 0.03, foot), Vector3(0.05, 0.05, 0.08))
+	cm.add_buf(fit, trim)
+	if kind in ["sedan", "hatch", "mini", "wagon", "suv"]:
+		# a learner's roof sign, a new driver's in the back window, a parking permit on the
+		# windscreen: kept only on the cars the shader picks (vertex())
+		var top := maxf(c1.y, c2.y)
+		var lz := (c1.x + c2.x) * 0.5
+		var lb := Buf.new()
+		_box(lb, Vector3(0, top + 0.12, lz), Vector3(0.4, 0.22, 0.07))
+		cm.add_buf(lb, Color(_real_col("red"), 0.52), Vector2(0.0, top + 0.12))
+		var ry := lerpf(c3.y, c2.y, 0.32)
+		var rz := lerpf(c3.x, c2.x, 0.32) - 0.04
+		var nb := Buf.new()
+		_box(nb, Vector3(0.36, ry, rz), Vector3(0.27, 0.13, 0.01))
+		cm.add_buf(nb, Color(1, 1, 1, 0.54), Vector2(0.36, ry))
+		var py := c0.y + 0.09
+		var pb := Buf.new()
+		_box(pb, Vector3(-(hw - 0.42), py, float(ws.call(py)) + 0.025), Vector3(0.09, 0.07, 0.006))
+		cm.add_buf(pb, Color(1, 1, 1, 0.56), Vector2(-(hw - 0.42), py))
 	# ---- wheels: tyres, their sidewalls, five-spoke rims (just proud of the body, in the
 	# dark wells the shader paints round them)
 	var tyre := Color(_tone["tyre"], 0.3)
@@ -14175,6 +14286,17 @@ const CAR_SHAPES := {
 	"suv": [[Vector2(-2.3, 0.34), Vector2(2.28, 0.34), Vector2(2.36, 0.74), Vector2(2.24, 0.98), Vector2(1.2, 1.1),
 		Vector2(-2.24, 1.14), Vector2(-2.36, 0.74)],
 		[Vector2(1.18, 1.1), Vector2(0.45, 1.74), Vector2(-2.0, 1.76), Vector2(-2.24, 1.14)], 0.96, 2.36, 1.42, 0.38],
+	# a city car (3.6 m, short nose, tall roof), an estate (the sedan's front, the roof run on to
+	# the tail), a small boxy van (4.4 m, 1.9 m tall, near-upright back)
+	"mini": [[Vector2(-1.75, 0.24), Vector2(1.78, 0.24), Vector2(1.84, 0.58), Vector2(1.72, 0.76), Vector2(0.85, 0.9),
+		Vector2(-1.68, 0.96), Vector2(-1.82, 0.6)],
+		[Vector2(0.82, 0.9), Vector2(0.1, 1.47), Vector2(-1.45, 1.46), Vector2(-1.7, 0.96)], 0.8, 1.84, 1.2, 0.29],
+	"wagon": [[Vector2(-2.28, 0.26), Vector2(2.22, 0.26), Vector2(2.3, 0.6), Vector2(2.16, 0.8), Vector2(1.08, 0.94),
+		Vector2(-2.18, 1.0), Vector2(-2.32, 0.62)],
+		[Vector2(1.06, 0.94), Vector2(0.28, 1.44), Vector2(-2.02, 1.45), Vector2(-2.2, 1.0)], 0.9, 2.32, 1.38, 0.33],
+	"mpv": [[Vector2(-2.15, 0.3), Vector2(2.12, 0.3), Vector2(2.2, 0.66), Vector2(2.08, 0.92), Vector2(1.25, 1.02),
+		Vector2(-2.12, 1.06), Vector2(-2.2, 0.66)],
+		[Vector2(1.22, 1.02), Vector2(0.55, 1.84), Vector2(-2.05, 1.86), Vector2(-2.12, 1.08)], 0.92, 2.2, 1.4, 0.33],
 	"van": [[Vector2(-2.45, 0.3), Vector2(2.42, 0.3), Vector2(2.5, 0.7), Vector2(2.4, 0.95), Vector2(1.7, 1.05),
 		Vector2(-2.45, 1.08), Vector2(-2.5, 0.7)],
 		[Vector2(1.68, 1.05), Vector2(1.05, 1.98), Vector2(-2.38, 2.0), Vector2(-2.45, 1.1)], 0.98, 2.5, 1.55, 0.35],

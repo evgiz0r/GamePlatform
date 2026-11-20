@@ -139,6 +139,24 @@ The ones most often touched, and the functions in them:
   fwidth: taken at the half-way grey, a plate was blank yellow from the chase view). The
   player's car's plates were boxes in a palette material: faces in its car shader now
   (`_sedan_rest`). No real plate, none from a film, is ever used. tests/plates.gd.
+- **cars, more real** -- body kinds as Israeli streets have them (CAR_SHAPES + CAR_MIX):
+  "mini" (a 3.6 m city car), "wagon" (an estate), "mpv" (a tall boxy small van) beside
+  sedan, hatch, suv, van; each kind is listed in the parked squares' `xf_by`, traffic's
+  LENS, CORNERS and kinds loop (a multimesh each: a draw a kind a square). All in CAR_SHADER
+  (no new shader): the car's own `plate_id` picks its rim (five spokes, twelve fine, ten, a
+  steel wheel's cap; a dark alloy now and then; the brake disc and nuts), how dusty it is
+  (more parked: no one in it, custom alpha under 1.5) and how sun-faded (the oldest fifth),
+  scuffed bumper corners, a folded silver sunshade behind a parked car's windscreen (45%);
+  tyres' sidewalls a shade lighter. Parts a few cars have are in every car's mesh and
+  folded away in vertex() on the rest (vertex alpha 0.52 a learner's roof sign with a
+  lamed, 0.54 a new driver's sign in the back window, 0.56 a parking permit on a parked
+  car's windscreen; UV2 their middle, for the shader's drawing): no draws. Wiper arms, a
+  shark-fin aerial, roof rails on an SUV and an estate are trim in the body. The paint mix
+  has more white and silver and a dark green -- appended: a film's car asks traffic for a
+  paint by its place in `_car_paints()` (white 0, silver 4, grey 7, black 9, blue 11, red
+  12). tests/plates.gd shoots them (ends and a side). Cost: the three kinds are ~10 more
+  multimeshes in view at the start (`draws`: 216; about 3 a kind, parked squares and
+  traffic); the playtest 10 hitches alone (17 with a second Godot rendering beside it).
 - **shop interiors** -- SHOP_SHADER on the shop windows (`_shop_interior`, instead of the
   flat lit `_shop_glass`): a room 3.5 m deep traced from the eye through the glass (back
   wall, sides, floor, ceiling -- no geometry), shelves of goods, racks of clothes or a
