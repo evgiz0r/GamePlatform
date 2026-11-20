@@ -247,9 +247,24 @@ That goes for you on foot too.
 **Lights and signs mean something.** Autodrive stops at red lights and stop signs and
 keeps behind the car in front. Drive through a red light, or a stop sign without
 stopping, and it says so. The stop and give-way signs are OSM's (Givatayim has a few
-dozen mapped, Bedford more); the lights run their own cycle, east-west streets then
-north-south. OSM often maps a light on one approach of a junction only; the game gives
-that junction lights on every way in.
+dozen mapped, Bedford more); the lights run their own cycle: at each junction its main
+road's ways in, then the rest, with 2.5 s of red all round between (it was the whole
+city's east-west streets against its north-south ones, and at a skewed junction both
+streets had green at once). OSM often maps a light on one approach of a junction only;
+the game gives that junction lights on every way in. The lamps are real red, amber and
+green, red at the top, whatever the palette, and dark when out. Cars stop with their front
+at the stop line -- a bus stopped by its middle stood across the junction -- and read the
+light for the way they come in, not the way they are turning.
+
+At a zebra by a junction with lights there are walk lights on both kerbs, the red man over
+the green man, in step: green while the road being crossed is held at red. People there
+go on the green man only, with time enough left to get over.
+
+> The whole logic of lights and how cars and autodrive go, something is fishy. Let's make
+> the colours clear: red on the top (no go), yellow, green. Maybe add those for people too,
+> matching the lights -- that's how it usually works here, so they don't just cross randomly.
+
+> Buses get stuck in the middle of roads when it's red for them.
 
 **Signs and paint.** A stop line across the lane at every light and stop sign, STOP
 painted before a stop sign (עצור in Givatayim), SLOW (האט) before a crossing near a
@@ -262,8 +277,10 @@ Every street has the signs a real one has: a green name plate at the corners (ר
 Hebrew name over the English in Givatayim, the name alone in Bedford), a blue roundabout
 sign on every way into one, a blue crossing sign on both sides of each zebra (and in
 Givatayim on the traffic-light poles too), a P at car parks, no entry at the wrong end of
-a one-way street and the blue one-way arrow at its corner, "turn this way" where only one
-way out is allowed, and "keep right" where a street splits round an island. Givatayim's
+a one-way street (where its traffic comes out: it stood at the end you may drive in by,
+and autodrive drove in under it) and the blue one-way arrow at its corner, "turn this way"
+where only one way out is allowed (not at one point of a junction drawn as several), and
+"keep right" where a street splits round an island. Givatayim's
 stop sign is the Israeli one, the red octagon with the white hand; Bedford's says STOP.
 Painted arrows in the lanes before the junctions of the main roads show the ways out.
 
@@ -425,6 +442,19 @@ straight from the junction to the new street's next point, down its wrong side).
 a little further from the centre line; parked cars stand mostly up on the pavement. On a
 roundabout a car decides at each exit and is ever less likely to stay on, so nobody
 circles and the cars waiting to come on are let in.
+
+**Main streets have a divider.** A wide two-way main road in the Israeli towns (OSM maps
+many as one road) has a raised island down the middle, kerbed and paved, solid to the car,
+stopping short of each junction and open at each zebra -- they are not open down the
+middle there.
+
+> Usually in Israel main streets have a clear border between the sides, it's not open.
+
+**Autodrive** moves into the left lane (or toward the centre line) over the last 45 m
+before a left turn, keeps behind a bus by its back, not a car's length behind its middle,
+and passes a bus standing at its stop in the next lane when that lane is clear.
+
+> We turn left from the left lane. / Keeps bumping into stopping buses.
 
 **Autodrive** keeps to the right-hand lane of a one-way road of several (it drove down the
 middle, astride two, and in between the cars in them), counts a car going its way as in
