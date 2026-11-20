@@ -28,6 +28,7 @@ if (P(15, -15)[0] - ARC_A[0]) * ARC_IN[0] + (P(15, -15)[1] - ARC_A[1]) * ARC_IN[
 SHOPS = [[round(c[0] + ARC_IN[0] * (ARC_DEPTH - 0.03), 2), round(c[1] + ARC_IN[1] * (ARC_DEPTH - 0.03), 2)] for c in (ARC_A, ARC_E)]
 SE = [round(left[0], 4), round(left[1], 4)]        # the way the passage's south-east side lies
 NW = [-SE[0], -SE[1]]
+NW_U = [round(-u[0], 4), round(-u[1], 4)]          # back up the passage's line, towards Katzenelson
 r2 = lambda p: [round(p[0], 2), round(p[1], 2)]
 
 # the walk: landmarks timed to the film, the points between timed by distance
@@ -103,6 +104,8 @@ d = {
         ],
     },
     "crossings": [[661.6, -672.2], [655.1, -664.7]],
+    # the bollards round Sheinkin's corner with Ha-Meri are white (film 76-86 s)
+    "white_bollards": [{"near": P(86.0, -2.0), "r": 12.0}],
     # the block at the passage's north-west corner stands on columns along Katzenelson: shops
     # 3 m back under the upper floors, the walk goes between them and the columns (film 18-23 s)
     "buildings": [{"near": P(15, -15), "arcade": [list(ARC_A), list(ARC_E)], "depth": ARC_DEPTH, "h": 3.4}],
@@ -148,7 +151,8 @@ d = {
          "signs": ["", "קונדיטוריה", "", ""], "panels": [1]},   # (only the film's shop is named)
         # the little street to Sheinkin (film 64-72 s): a tall hedge on the back of the
         # pavement the walk is on
-        {"kind": "shrubs", "pts": [P(59.0, -6.3), P(71.5, -6.3)], "h": 2.3},
+        {"kind": "shrubs", "pts": [P(59.0, -6.3), P(65.5, -6.3)], "h": 2.3},
+        {"kind": "shrubs", "pts": [P(69.5, -6.3), P(71.5, -6.3)], "h": 2.3},   # (a gate between)
     ],
     "props": [
         {"kind": "bin", "at": P(41, -0.95)},
@@ -188,6 +192,15 @@ d = {
         *[{"kind": "parked_car", "at": P(s0, 1.75), "dir": [round(u[0], 4), round(u[1], 4)], "body": kd}
           for s0, kd in ((63.0, "suv"), (68.4, "hatch"), (73.8, "sedan"))],
         {"kind": "twin_poles", "at": P(78.4, -6.5), "dir": SE},
+        # the little street's gate (film 66-70 s): two concrete posts, a heart sprayed on one
+        {"kind": "gatepost", "at": P(66.0, -6.4), "dir": SE, "heart": True},
+        {"kind": "gatepost", "at": P(69.0, -6.4), "dir": SE},
+        # over Sheinkin, on its far corner by Ha-Meri (film 82-86 s): the blue pay booth, a
+        # yellow parking board, scooters by it (between the zebra's bollards and a sign pole)
+        {"kind": "booth", "at": P(92.1, -7.4), "dir": [round(-u[0], 4), round(-u[1], 4)]},
+        {"kind": "sign_board", "at": P(91.4, -8.0), "dir": [round(-u[0], 4), round(-u[1], 4)]},
+        {"kind": "scooter", "at": P(91.6, -6.4), "dir": [round(-u[0], 4), round(-u[1], 4)]},
+        {"kind": "scooter", "box": True, "at": P(92.3, -8.4), "dir": [round(-u[0], 4), round(-u[1], 4)]},
         {"kind": "scooter", "at": P(15.2, -5.2), "dir": [round(-u[0], 4), round(-u[1], 4)]},
     ],
     # the trees over the passage's mouth: in the planted bed, and in the yard behind the fence
@@ -212,6 +225,12 @@ d = {
             # cars sent down a street at a second, to meet the walk there: [second, at, heading]
             # (both halves of Katzenelson are one-way: the near one towards the north-west,
             # the far one towards the south-east; Sheinkin towards the south-east too)
+            # who the film shows (people last, as asked): a man by the railing at the far kerb,
+            # two women talking in the forecourt by the scooter, a man at the passage's end
+            "people": [{"at": P(4.6, -20.6), "face": NW_U, "who": 0},
+                       {"at": P(14.4, -5.8), "face": [round(left[0], 4), round(left[1], 4)], "who": 1},
+                       {"at": P(14.6, -6.7), "face": [round(-left[0], 4), round(-left[1], 4)], "who": 3},
+                       {"at": P(58.0, 1.9), "face": NW_U, "who": 2}],
             "cars": [[0.0, P(-10.2, 22), NW], [1.5, P(-10.2, 40), NW],              # one by, one stops
                      [5.0, P(-0.3, -45), SE], [6.5, P(-0.3, -62), SE], [7.5, P(-0.3, -70), SE],
                      [78.0, P(91.15, -55), SE]],
@@ -231,7 +250,7 @@ def _mark(sec):
             item["src"] = SRC
 for sec in ("drop", "set", "add"):
     _mark(d["roads"].get(sec, []))
-for sec in ("buildings", "surfaces", "lines", "props", "areas"):
+for sec in ("buildings", "surfaces", "lines", "props", "areas", "white_bollards"):
     _mark(d.get(sec, []))
 def _bare(item):
     return {k: v for k, v in item.items() if k != "src"} if isinstance(item, dict) else item

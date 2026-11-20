@@ -981,7 +981,7 @@ func kerbside() -> void:
 			var side := Vector2(-d.y, d.x)
 			var hw: float = float(r["w"]) * 0.5
 			var railed: bool = med and MAIN.has(r["k"])
-			var white := _rnd(ni * 7 + 3) < 0.25
+			var white: bool = _rnd(ni * 7 + 3) < 0.25 or g._white_bollards.has(ni)   # (or as filmed: details.gd)
 			for sg: float in [-1.0, 1.0]:          # both pavements
 				for way: float in [-1.0, 1.0]:     # both sides of the zebra
 					if railed:   # 1.2 m panels from 2.1 m out to 6 m

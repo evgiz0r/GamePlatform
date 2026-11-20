@@ -24,6 +24,8 @@ extends RefCounted
 ##                                                    its middle, the red-white corners and
 ##                                                    bus stops kept (streets.gd _kerb_marks)
 ##   crossings [[x, z], ...]                         zebras at the road nodes nearest these
+##   white_bollards [{near: [x, z], r}]              the bollards by every zebra within r of
+##                                                    near are white (the game picks a few)
 ##   areas     [{k, p: [[x, z]...]}]                 as the city file's areas (plaza, park...)
 ##   buildings [{near: [x, z], arcade: [[x, z], [x, z]], depth, h}]   the building holding
 ##                                                    `near` gets an arcade along that line
@@ -54,7 +56,11 @@ extends RefCounted
 ##                                                    road, read along dir), zone30_sign (dir:
 ##                                                    the way it faces), parked_car (in the
 ##                                                    road by its kerb, nose along dir; body:
-##                                                    sedan, hatch, suv, van).
+##                                                    sedan, hatch, suv, van), booth (a blue
+##                                                    pay booth, its face along dir),
+##                                                    sign_board (a yellow board on a pole),
+##                                                    gatepost (concrete, face along dir; heart:
+##                                                    a red graffiti heart on that face).
 ##                                                    Anything on a lifted surface stands on it.
 ##   trees     [[x, z], ...]                         more trees for the city's own builder
 ##   walks     {id: {name, points: [[t, x, z]...],   two points at one spot: it waits there
@@ -62,8 +68,11 @@ extends RefCounted
 ##                                                    (+ right), to see the traffic coming
 ##              zebras: [[from, to, [x, z], [x, z]]...],  waiting at a crossing or on it:
 ##                                                    cars stop for it (kerb to kerb)
-##              cars: [[t, [x, z], [dx, dz]]...]}}   a car sent down the street nearest the
+##              cars: [[t, [x, z], [dx, dz]]...],    a car sent down the street nearest the
 ##                                                    spot at second t, that way (traffic.gd)
+##              people: [{at, to, t: [from, to], face, who, tall}]}}   who the film shows:
+##                                                    standing at `at` facing `face`, or walking
+##                                                    `at` to `to` between those seconds
 
 var g: Node                    ## the streets game
 var data := {}
@@ -121,6 +130,12 @@ func edit_city(city: Dictionary) -> void:
 			if ad.has(key):
 				r[key] = ad[key]
 		city["roads"].append(r)
+	for wb: Dictionary in data.get("white_bollards", []):
+		var c := _v2(wb["near"])
+		var r := float(wb.get("r", 10.0))
+		for i in range(nodes.size() / 2):
+			if Vector2(nodes[i * 2], nodes[i * 2 + 1]).distance_to(c * sc) <= r * sc:
+				g._white_bollards[i] = true
 	var cross: Array = city.get("crossings", [])
 	for p: Array in data.get("crossings", []):
 		cross.append(_nearest_node(nodes, _v2(p), sc))
@@ -316,6 +331,12 @@ func build() -> void:
 				_barrier(b, at, y, d, float(pr.get("len", 4.0)))
 			"globe_lamp":
 				_globe_lamp(b, at, y, float(pr.get("h", 2.7)))
+			"gatepost":
+				_gatepost(b, at, y, d, bool(pr.get("heart", false)))
+			"booth":
+				_booth(b, at, y, d)
+			"sign_board":
+				_sign_board(b, at, y, d)
 			"parked_car":
 				var kind := String(pr.get("body", ["sedan", "hatch", "suv"][k % 3]))
 				if not cars.has(kind):
@@ -562,6 +583,50 @@ func _zone30_sign(b, at: Vector2, y: float, d: Vector2) -> void:
 	_round(b, c, right, Vector3.UP, 0.22, nrm, 0.05, red)
 	_thirty(b, c, right, Vector3.UP, 0.17, nrm, 0.03, g._tone["tyre"])
 	g._add_post(at, 0.1)
+
+## a square concrete gatepost a little taller than a man, its face along `d`; `heart`: a red
+## heart sprayed on that face, a hand across
+func _gatepost(b, at: Vector2, y: float, d: Vector2, heart: bool) -> void:
+	var bs := Basis(Vector3.UP, atan2(-d.y, d.x) + PI * 0.5)
+	var conc: Color = g._tone["concrete"]
+	g._furn._box(b, Vector3(at.x, y + 0.85, at.y), Vector3(0.42, 1.7, 0.42), conc, bs)
+	g._furn._box(b, Vector3(at.x, y + 1.73, at.y), Vector3(0.48, 0.06, 0.48), conc.darkened(0.1), bs)
+	if heart:
+		var nrm := Vector3(d.x, 0, d.y)
+		var right := Vector3(-d.y, 0, d.x)
+		var c := Vector3(at.x, y + 1.05, at.y) + nrm * 0.215
+		var red: Color = (g._kerb_mat.get_shader_parameter("red") if g._kerb_mat != null else g._tone["signred"])
+		var prev := Vector3.ZERO
+		for i in range(29):
+			var t := TAU * float(i) / 28.0
+			var hx := 16.0 * pow(sin(t), 3)
+			var hy := 13.0 * cos(t) - 5.0 * cos(2.0 * t) - 2.0 * cos(3.0 * t) - cos(4.0 * t)
+			var q := c + right * hx * 0.0065 + Vector3.UP * hy * 0.0065
+			if i > 0:
+				_stroke(b, prev, q, nrm, 0.022, 0.004, red)
+			prev = q
+	g._add_post(at, 0.3)
+
+## a parking pay booth: a blue cabinet a little taller than a man, a dark panel and a slot on
+## its face (`d` the way it faces), a grey cap
+func _booth(b, at: Vector2, y: float, d: Vector2) -> void:
+	var bs := Basis(Vector3.UP, atan2(-d.y, d.x) + PI * 0.5)
+	var blue: Color = g._natural(g._tone["signblue"], 0.7)
+	g._furn._box(b, Vector3(at.x, y + 0.95, at.y), Vector3(0.75, 1.9, 0.55), blue, bs)
+	g._furn._box(b, Vector3(at.x, y + 1.93, at.y), Vector3(0.82, 0.08, 0.62), g._tone["concrete"], bs)
+	var f := at + d * 0.28
+	g._furn._box(b, Vector3(f.x, y + 1.4, f.y), Vector3(0.42, 0.3, 0.02), g._tone["tyre"], bs)
+	g._furn._box(b, Vector3(f.x, y + 1.05, f.y), Vector3(0.3, 0.05, 0.02), g._tone["mark"], bs)
+	g._add_post(at, 0.42)
+
+## a yellow information board (parking times) on a grey pole, facing `d`
+func _sign_board(b, at: Vector2, y: float, d: Vector2) -> void:
+	var p := Vector3(at.x, y, at.y)
+	g._furn._tube(b, p, p + Vector3.UP * 2.5, 0.03, 0.03, g._tone["pole"], 6)
+	var bs := Basis(Vector3.UP, atan2(-d.y, d.x) + PI * 0.5)
+	var face := p + Vector3.UP * 2.2 + Vector3(d.x, 0, d.y) * 0.04
+	g._furn._box(b, face, Vector3(0.45, 0.55, 0.02), g._tone["markyellow"], bs)
+	g._add_post(at, 0.08)
 
 ## a black steel bollard with a yellow band near the top; now and then one worn grey
 func _bollard(b, at: Vector2, y: float, k: int) -> void:
