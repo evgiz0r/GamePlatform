@@ -179,13 +179,52 @@ The baked area ends; don't let it end in an invisible wall. A striped barrier al
 (following the ground), a soft glow over it that shows when near, a line on the minimap,
 a banner on contact -- and keep the car's own collision circles off exactly that line.
 
-## Checking a street against a filmed walk
+## Filmed walks and drives
+
+The map says where things are; a film of the street says what they look like. The useful
+recording is a phone video **and** a GPS track taken at the same time, so every frame has
+a place and a heading on the baked ground.
+
+- **Recording.** Phone video at 1080p30 on the main 1x lens (the wide lens warps). A GPS
+  logger that exports GPX at a point a second with its extended data -- speed, accuracy,
+  satellites (Geo Tracker on Android did: min distance at its lowest, compass off, battery
+  optimisation off or Android stops it mid-drive). It saves nothing while you stand still,
+  so a gap in the track is a stop and its length the wait. On foot its points were good to
+  ~4 m: the side of the street, not the spot on the pavement. Its `c` attribute is not the
+  heading (it sat at ~5 for a whole walk): take the heading from the positions, +-3 s.
+- **Lining up.** Both come off the phone's clock. The video's file name is its start in
+  local time; the mp4's `creation_time` is (on that phone) the *end*, in UTC: start =
+  creation_time - duration. The two agreed to ~3 s. GPX times are UTC.
+- **Getting the video into a cloud session.** The Google Drive connector downloads only
+  files under 10 MB: fine for the GPX, never for a video (a few minutes is 300-400 MB).
+  Allow `drive.usercontent.google.com` in the session's environment, ask the user to set
+  the file to "Anyone with the link" in Drive (a session changing a file's sharing itself
+  was refused by the safety check: it is the user's step), fetch it with
+  `curl -L "https://drive.usercontent.google.com/download?id=<id>&export=download&confirm=t"`,
+  then tell them to set it back to Restricted (check with the connector's permissions call).
+- **Comparing.** Project the GPX with the bake's own flat projection (`Proj` in
+  `tools/osm_city.py`, origin from the city file), cut stills every ~10 s and at the stops
+  (`ffmpeg -ss <t> -i v.mp4 -frames:v 1` was right on the phone's own file; on a re-encoded
+  clip decode instead, see below), label each with the nearest street, then stand
+  the game's camera on the same spots and heading (a scene test with the dev camera at
+  chest height, ~1.35 m; a 70 degree vertical field is about a phone's main lens held
+  upright, so crop the middle 9:16 of a landscape shot) and set the pairs side by side.
+  What differs, biggest first, is the work list.
+- **Putting the camera on the pavement.** On a narrow street the raw GPS point is the
+  middle of the road. Put each spot on the pavement of the side the film shows (left or
+  right of the way the walker faces) at half the road's width + ~1.6 m. Mid-walk that moved
+  the spots 0-2 m; in the first half-minute of the track and next to a big junction 6-12 m,
+  and there the nearest street can be the wrong one (the cross street) -- check those
+  pairs by eye, or name the street. The film's heading can differ from the walking
+  direction: a walker who turns to look at a shop is not looking where they go.
+
+Without a GPS track, or when the session cannot reach Drive:
 
 The fastest way to see what is wrong with a street is the user filming it on a phone and
 the game walking the same route in first person beside it.
 
-- **Getting footage in.** The connectors cap downloads at about 10-12 MB, OneDrive's will
-  not hand over a video at all, and a phone's 3-minute video is ~350 MB (emailed, it turns
+- **Getting footage in without opening the network.** The connectors cap downloads at
+  about 10-12 MB, OneDrive's will not hand over a video at all, and a phone's 3-minute video is ~350 MB (emailed, it turns
   into a Drive link, which is not the file). Two ways that work: frames, with VLC's scene
   filter writing a JPG every few seconds into a synced folder (images come through the
   OneDrive connector one by one: a helper agent can read and describe all of them without
@@ -235,3 +274,9 @@ the user filmed is published only as far as the public corner they name; the fil
 frames and the rest of the route stay out of the repo, and so does any word of where the
 walk ended (a quote saying "to my house" beside a route that stops at a named street gives
 the street away).
+
+A filmed walk or drive very often starts or ends at the user's door, and a GPS track
+recorded "just to test" at home is their address to a few metres. Keep the video, the GPX,
+the stills and the projected route in the scratch directory; commit what was learned (a
+fence, a kerb colour, a walking speed), and trim any route that goes into the game back to
+public corners. Ask where it started if it is not obvious.

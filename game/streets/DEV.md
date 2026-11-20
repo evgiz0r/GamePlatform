@@ -149,6 +149,12 @@ Run the ones near what you change, before and after.
 tests look all over it (the game itself builds near the start first and the rest while you
 drive).
 
+`tests/filmed_spots.gd` stands the camera at chest height on spots from a filmed walk or
+drive (`SPOTS=<json>`, the format is at its top) and screenshots each, to set beside the
+film's stills. The spots file stays in the scratch directory, never the repo: a filmed
+route can start at the user's door. How to get the film and its GPS track in and lined up:
+"Filmed walks and drives" in the `real-places` skill.
+
 Two that are not in the list above: `filmed_walk` (level 5: the walk loads, walks itself,
 stops at Ha-Meri; shots at the landmarks with the nearest wall, `RECORD=1` saves every
 frame) and `steep_ground` (level 4: the car flat out at the mountains eight ways round;
@@ -237,6 +243,36 @@ What each round found, so far:
 The start points are public street corners named in `LEVELS`. **The web build is public:
 never use an address the user has mentioned as theirs or their family's -- not as a start,
 not in a test, a commit or a doc.** Scratch tests against one stay in the scratch directory.
+
+## What a filmed walk showed (November 2026)
+
+A walk filmed with GPS along a quiet residential street and a shopping street in
+Givatayim, set beside the game from the same spots (`tests/filmed_spots.gd`). The layout,
+the zebras at the right corners and the lights at the main road matched. The rest, biggest
+first:
+
+- **Buildings**: the game's are white-grey boxes with dark window bands and black ground
+  floors. The real ones are warm cream and sand plaster, balconies with railings (many
+  closed in), AC units on the walls, shutters, shopfronts with awnings on the shopping
+  street; 15-25 storey towers stand behind the low blocks.
+- **Between pavement and building**: front gardens behind low rubble-stone walls, often
+  with a wooden plank fence on top, hedges, bushes, iron gates. The game has a low white
+  wall and grass, or the building right at the pavement.
+- **Pavement**: the game's is near white in the sun. The real one is mid-grey: 20 x 10 cm
+  pavers in straight rows along the residential street, with a darker band along the kerb;
+  rounded brown "antique" pavers with grey cobble arcs by the cafes. Herringbone is right
+  for some streets, not all.
+- **Kerb paint**: blue-and-white along the residential street (paid parking), red-and-white
+  at the corners and driveways. The game paints yellow-and-black.
+- **Parked cars**: an unbroken row on both sides of the residential street, motorbikes and
+  scooters parked on the pavement; painted bays on the shopping street. The game has gaps.
+- **Street trees**: thin trunks in square earth pits at the kerb edge every ~8-10 m, the
+  canopies meeting over the pavement; no palms on these streets.
+- **Light**: the real late afternoon is hazy and warm; the game's sky is saturated blue
+  with cartoon clouds and its sunlight bleaches the ground.
+- **Small things**: black bollards with a yellow band along the kerb by the main road, a
+  red fire hydrant, a push button on the walk light's pole, bar stools and awnings rather
+  than umbrellas outside the cafes, green bins.
 
 ## The filmed walk (level 5)
 
