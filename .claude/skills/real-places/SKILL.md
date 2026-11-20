@@ -146,6 +146,13 @@ a place and a heading on the baked ground.
   chest height, ~1.35 m; a 70 degree vertical field is about a phone's main lens held
   upright, so crop the middle 9:16 of a landscape shot) and set the pairs side by side.
   What differs, biggest first, is the work list.
+- **Putting the camera on the pavement.** On a narrow street the raw GPS point is the
+  middle of the road. Put each spot on the pavement of the side the film shows (left or
+  right of the way the walker faces) at half the road's width + ~1.6 m. Mid-walk that moved
+  the spots 0-2 m; in the first half-minute of the track and next to a big junction 6-12 m,
+  and there the nearest street can be the wrong one (the cross street) -- check those
+  pairs by eye, or name the street. The film's heading can differ from the walking
+  direction: a walker who turns to look at a shop is not looking where they go.
 
 ## Privacy
 
