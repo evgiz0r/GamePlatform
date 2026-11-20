@@ -41,6 +41,13 @@ goes wrong shows up the first time it runs.
   file is made (`bare_ground`, a margin)? Compare the counts with the last bake (the log
   says which server answered); if the data moved, keep the main server's bake and redo only
   what changed -- the ground grid is the same tiles and the same code whatever answered.
+  It happened again to two towns at once (a mirror: 12% fewer road pieces, fewer crossings
+  and areas), while the main server's bake minutes later matched the old files to a road.
+  To re-bake for a new field, run the workflow with `main_server_only` (it waits out the
+  main server's 502s, a minute or two, instead of falling back) and diff the counts against
+  the file it replaces: only the new fields should differ. And do not push to the branch
+  while a bake runs on it: the workflow now pulls and pushes again, but one bake was lost
+  to that race before it did.
 - **Allowing `overpass-api.de` in a cloud environment is not enough**: the proxy lets the
   connection through and the server resets it during the TLS handshake (it turns some
   networks away; its mirrors are other hosts). Go straight to the workflow.
@@ -58,6 +65,12 @@ goes wrong shows up the first time it runs.
   workflow's `bare_ground`): a grey opening over ~90 m takes out bumps narrower than ~180 m
   and keeps broad hills and valleys (that centre: 0-38 m, steepest 13%). It also lowers a
   real hill's crest a little (one town's 86 -> 72 m), so it is not the default.
+- **The same tiles cannot fill in missing building heights.** Tried (Nov 2026): the
+  surface over each footprint minus the bare ground, against 1370 buildings whose height
+  OSM knows in a city centre. Correlation 0.1-0.2; of the twelve tallest (160-350 m) one
+  showed (100 m against 187), the rest 1-9 m. The tiles are ~30 m and from about 2000, so
+  they know neither a block's shape nor anything built since. Building heights have to
+  come from OSM or a municipal or national buildings layer.
 - **Government open data may refuse the cloud.** A national portal's API answered, but
   its files came from a CDN host that refused the container even once the environment
   allowed both hosts (a CloudFront 403 page instead of the file: likely by country). Do not
@@ -67,6 +80,20 @@ goes wrong shows up the first time it runs.
   radio tower's 18 m base) and maps the tower as an unnamed `building:part` inside it (80 m,
   `min_height` the podium's top). To dress a named landmark, take the tallest building
   standing inside the named outline, not the named one.
+- **What OSM tags beyond the shapes, and what is worth using.** The baker keeps them where
+  present (format at the top of `osm_city.py`) and logs a count per town ("tagged:" lines).
+  An Israeli town and a city centre, Nov 2026: speed limits on ~20% of drivable road
+  pieces, the residential ones nearly all 30 (213 of 216; 174 of 184) -- worth driving by;
+  storeys on 9-34% of buildings (already their heights); wall colour 1-4%, roof shape 1-4%,
+  material under 2%, year built ~0%; turn lanes and lanes each way under 1%; pavement sides
+  2-16%; bus or taxi lanes on a dozen pieces of the city centre's main roads. Colours, roofs and years
+  are too sparse to style a town by -- they would set a few buildings apart at random --
+  so count before building on a field.
+- **A tag on some streets of a kind and not others** (a speed limit) makes neighbouring
+  streets that look the same behave differently: 30 on a tagged residential street, the
+  guessed 50 on the next. Where enough of a kind are tagged and agree (20+, a quarter of
+  that kind, 85% one value), take that as the town's own default for the kind; otherwise
+  keep the guess by kind. Both came out residential 30, as their mapped streets say.
 - `tools/fake_city.py` makes up a small town with one of every awkward thing (divided
   boulevard, big signalled junction, roundabouts, a one-way pair, a steep hill, car parks)
   in a second, no network. Use it to check a change quickly; check real towns before
@@ -227,7 +254,17 @@ goes wrong shows up the first time it runs.
   the street.
 - **A car on your lane is a car whose body would touch yours**, not one whose middle is
   near your line: a fixed 1.5 m from the middle let the player's AI run in between two cars
-  in the lanes either side.
+  in the lanes either side. The same for traffic following traffic while one changes lanes:
+  it stands across both, angled, and a long one's back end swings out -- a bus stopped by a
+  light halfway over had its middle 2.7 m from the line of the van behind in the lane it
+  was leaving, and the van drove into it.
+- **Lanes across a road change: by where the car is, not by number.** Roads meeting at a
+  node share its middle line, so lane 2 of a wide four-lane link is lane 1 of the narrow
+  slip it runs on into; kept by number, cars crossed over each other into the slip. Follow
+  the shift a road change makes at a pace that grows with speed (a lane change's fixed
+  1.4 m/s ran cars off a slip's edge), and move over only as the car rolls: a body placed
+  by its front axle with the back trailing turns across the next lane if its front moves
+  sideways while it stands.
 - **Standoffs in narrow streets.** Traffic that waits for the player and a player's AI that
   waits for traffic wait for ever. Give one side a way out: after a few seconds face to
   face, the traffic car edges past if there is nearly room, else turns off (once out of

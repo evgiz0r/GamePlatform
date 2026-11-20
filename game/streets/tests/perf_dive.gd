@@ -199,6 +199,13 @@ func _run() -> void:
 			bv.append([int(g._dressing[k]), k.substr(18)])
 	bv.sort_custom(func(a, b): return a[0] > b[0])
 	print("  batched, by tone: " + ", ".join(bv.slice(0, 14).map(func(x): return "%s %.2f M" % [x[1], x[0] / 1.0e6])))
+	# and by who added them (debug builds: the function and line, the kit's vertices)
+	var bm: Array = []
+	for k: String in g._dressing:
+		if k.begins_with("batched by: "):
+			bm.append([int(g._dressing[k]), k.substr(12)])
+	bm.sort_custom(func(x, y): return x[0] > y[0])
+	print("  batched, by who: " + ", ".join(bm.slice(0, 16).map(func(x): return "%s %.2f M" % [x[1], x[0] / 1.0e6])))
 	for r: Array in rows.slice(0, 12):
 		print("  %-28s %5d surfaces %6.2f M vertices (%d indexed)" % [r[0], r[1], float(r[2]) / 1.0e6, r[3]])
 	print("video memory %.0f MB, textures %.0f MB, buffers %.0f MB" % [Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0,

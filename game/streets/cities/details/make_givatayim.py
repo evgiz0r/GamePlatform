@@ -233,7 +233,8 @@ d = {
             # given, degrees up (the phone already tilts 15.6 down: streets.gd's FILM_TILT)
             "looks": [[1.4, 4.4, -70], [4.4, 5.1, 30],          # the near half's traffic comes from the left
                       [5.4, 8.8, 0, -30],                       # then down at the stripes, a foot in shot (6 s)
-                      [8.9, 12.6, 70], [12.6, 13.4, 20],        # the far half's from the right
+                      [8.9, 12.6, 15], [12.6, 13.4, 20],        # the far half's from the right (a glance:
+                                                                # the film faces across, 9.5-12 s)
                       [79.3, 81.0, 60], [81.0, 82.3, -45],      # Sheinkin's from the right; and the other way
                       [84.4, 86.0, 40],                         # half way over, along Sheinkin again
                       [87.6, 88.6, -55], [89.0, 92.5, 55],      # back at the corner; then down Ha-Meri,
@@ -257,8 +258,17 @@ d = {
                        {"at": P(14.6, -6.7), "face": [round(-left[0], 4), round(-left[1], 4)], "who": 3},
                        # (walking up to the passage's end as the walk comes out of it, then standing)
                        {"at": P(61.6, 2.1), "to": P(58.4, 2.1), "t": [59.0, 61.4], "stay": True, "who": 2}],
+            # [second, at, heading] and what the film shows of it: "lane" kerb or median,
+            # "through" (it drives on past the walk at the zebra), "kind"
             "cars": [[0.0, P(-10.2, 22), NW], [1.5, P(-10.2, 40), NW],              # one by, one stops
-                     [5.0, P(-0.3, -45), SE], [6.5, P(-0.3, -62), SE], [7.5, P(-0.3, -70), SE],
+                     # the far half's: a white hatchback by in the lane by the median as the walk
+                     # reaches it (film 8.5-9 s), a white sedan stopped in the kerb lane (9.5-12 s),
+                     # then a grey SUV driving on in the median lane past the walk waiting there
+                     # (12.5-13.5 s). Each is sent 28 m off at 70% of the street's pace: 2.5 s.
+                     [6.4, P(-0.3, -45), SE, {"lane": "median", "through": True, "kind": "hatch", "paint": "white"}],
+                     [6.5, P(-0.3, -62), SE, {"lane": "kerb", "kind": "sedan", "paint": "white"}],
+                     [7.5, P(-0.3, -70), SE, {"lane": "kerb"}],
+                     [10.5, P(-0.3, -45), SE, {"lane": "median", "through": True, "kind": "suv", "paint": "grey"}],
                      [78.0, P(91.15, -55), SE]],
         }
     },

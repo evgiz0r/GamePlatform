@@ -229,6 +229,15 @@ every tower over 90 m has red aircraft-warning lights on its roof, slowly pulsin
 > Landmarks: Azrieli round/triangle/square towers in proper glass, lit at night, Sarona,
 > the Kirya (Matcal) tower.
 
+Bus lanes where OpenStreetMap marks them: Kaplan's westbound right-hand lane from Begin out
+to the box's edge, and the Ayalon's public transport lane on the right going south. A wide
+solid line keeps the lane apart, "אוטובוס" is painted down it every 45 m, buses (and about
+half the taxis) drive in it, other cars keep out of it but for the last 40 m before turning
+right, and the autopilot keeps out of it too. OSM marks few of Tel Aviv's bus lanes in this
+box (none on Begin or Ibn Gabirol), so the rest are not there.
+
+> use the OSM bus lanes
+
 > game streets -- lets add/start working on adding Tel Aviv. Somewhat the area I mentioned.
 > (with a map: Ichilov, Savidor, Azrieli, HaKirya, TLV Mall, Montefiore, Bitsaron,
 > Nahalat Yitshak)
@@ -304,7 +313,13 @@ and a little roll, as small and as slow as the film's own, measured from it -- a
 down as well as round: straight down at Katzenelson's stripes on the way over, and at
 Ha-Meri's kerb as it steps up. Both walks hold it this way. And the picture is the phone's:
 its bright end squeezed rather than burnt to white, its shade lifted, warm and a little less
-colourful than the game drives in -- measured from the film, frame against frame.
+colourful than the game drives in -- measured from the film, frame against frame. It sets
+its exposure for what it looks at, as a phone does, so the shade under the arcade is no
+darker than the film's and the sunny forecourt no brighter.
+
+On Katzenelson the far half's traffic is the film's: a white hatchback goes by as the walk
+reaches the median, a white car waits in the kerb lane, and a grey SUV does not give way --
+it drives on past, close, in the lane by the median, while the walk waits.
 
 Over the passes since, the walk's street has been dressed, a stretch at a time, from the
 film: Katzenelson two lanes each way with railings and red-white kerbs at its zebra; the
@@ -1206,12 +1221,17 @@ contributors under the ODbL, which is why the credit sits on screen.
 
 - **Real**: every road's path, kind, width (or lanes), one-way direction and name; every
   building outline; heights and floors where OSM has them; parks, grass, water, car
-  parks; mapped trees; traffic lights and zebra crossings; the city boundary. The hills:
+  parks; mapped trees; traffic lights and zebra crossings; the speed limit where OSM tags
+  it (every driver keeps to it, and the signs show it); the city boundary. The hills:
   the ground follows an open elevation model (AWS terrain tiles), baked in with the city.
   Shops, cafes and bus stops stand where OSM puts them, under their real names.
 - **Guessed**: a building with no height gets 4 storeys (by type: houses 2, garages 1,
   offices 5...), varied a storey up or down so a street is not one flat wall. A road with
   no width tag gets one by kind (residential 8 m, room for a parked row each side).
+  A road with no speed limit takes the one most of its town's mapped streets of the same
+  kind have, where enough are mapped and agree (residential streets: 30 in Givatayim and
+  Tel Aviv), else one by kind (50 km/h in town, faster on main roads in the north, 90 on
+  a motorway).
   The rows of street trees along residential streets are added, not mapped. The window
   grid is a pattern, not the real facade. The traffic lights run their own simple cycle.
   What a shop looks like (awning, tables, the bus shelter) is generic. The parked cars

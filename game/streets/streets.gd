@@ -814,6 +814,7 @@ var _nodes := PackedVector2Array()
 var _node_roads: Array = []          ## per node: Array of Vector2i(road, index along it)
 var _node_r := PackedFloat32Array()  ## per node: half-width of the widest road through it
 var _roads: Array = []               ## {pts, ids, w, k, o, name, en, drive, speed}
+var _town_ms := {}                    ## kind -> the town's own speed limit (km/h), where its mapped streets agree
 var _seg_hash := {}                  ## Vector2i cell -> Array of road * 4096 + segment
 var _blds: Array = []                ## PackedVector2Array outlines, counter-clockwise
 var _bld_box: Array = []             ## Rect2 per building
@@ -1587,6 +1588,7 @@ func _load_city(id: String) -> bool:
 	for i in range(_nodes.size()):
 		_node_roads[i] = []
 
+	_town_ms = _town_limits(data["roads"])
 	for rd: Dictionary in data["roads"]:
 		var kind := String(rd.get("k", ""))
 		if rd.has("tu") and not rd.has("y"):
@@ -1599,9 +1601,15 @@ func _load_city(id: String) -> bool:
 		var r := {"pts": pts, "ids": ids, "w": float(rd.get("w", 6.0)), "k": kind,
 			"o": int(rd.get("o", 0)), "l": int(rd.get("l", 0)), "name": String(rd.get("name", "")),
 			"en": String(rd.get("name_en", "")), "drive": DRIVE.has(kind), "pv": rd.has("pv"), "sv": String(rd.get("sv", "")),
-			"speed": float(DRIVE.get(kind, 5.0)) * (NORTH_FASTER.get(kind, 1.0) if String(_place.get("look", "")) == "north" else 1.0),
+			# OSM's own limit where it has one (`ms`, km/h), else a guess by kind; every driver
+			# and the speed signs read this one number
+			"speed": float(rd["ms"]) / 3.6 if rd.has("ms") and DRIVE.has(kind) \
+				else (float(_town_ms[kind]) / 3.6 if _town_ms.has(kind) and DRIVE.has(kind) \
+				else float(DRIVE.get(kind, 5.0)) * (NORTH_FASTER.get(kind, 1.0) if String(_place.get("look", "")) == "north" else 1.0)),
 			# a roundabout's ring: marked by the bake, or a one-way way that closes on itself
-			"ring": rd.has("rb") or (int(rd.get("o", 0)) != 0 and ids.size() > 3 and ids[0] == ids[ids.size() - 1])}
+			"ring": rd.has("rb") or (int(rd.get("o", 0)) != 0 and ids.size() > 3 and ids[0] == ids[ids.size() - 1]),
+			# its bus lanes, each way (the bake's bf / bb: a letter a lane, left to right; "b" a bus lane)
+			"bf": String(rd.get("bf", "")), "bb": String(rd.get("bb", ""))}
 		if rd.has("y") and (rd["y"] as Array).size() == ids.size():
 			# off the ground (decks.gd): the height of its surface at each point
 			var ys := PackedFloat32Array()
@@ -4797,6 +4805,9 @@ func _flat_rect(buf: Buf, c: Vector2, d: Vector2, side: Vector2, along: float, a
 ## lanes: white dashes between them. Main roads in the north also get solid white edge
 ## lines; so do motorways everywhere. No paint across junctions.
 const MAIN_ROADS := {"motorway": true, "trunk": true, "primary": true, "secondary": true, "tertiary": true}
+const BUS_WORD_STEP := 45.0          ## a bus lane's word, painted down it this often
+var _bus_words := 0                  ## how many were painted (for the tests)
+var _bus_word_at: Array = []         ## where the first few are, and the way each reads (for the tests)
 
 func _markings(buf: Buf, r: Dictionary, yellow: Buf) -> void:
 	if not r["drive"] or r["k"] == "service":
@@ -4819,6 +4830,21 @@ func _markings(buf: Buf, r: Dictionary, yellow: Buf) -> void:
 	if (north and main) or r["k"] in ["motorway", "trunk"]:
 		for sg: float in [-1.0, 1.0]:
 			lines.append([sg * (w * 0.5 - 0.35), true, false])
+	# a bus lane: a wide solid line between it and the lanes beside it (no dashes there),
+	# and its word painted down it every so often, read the way it runs
+	var bus_words: Array = []   # [offset, way]
+	if _has_bus_lane(r):
+		var n := _lanes_each_way(r)
+		var span_w := w if int(r["o"]) != 0 else w * 0.5
+		for way: int in ([1, -1] if int(r["o"]) == 0 else [signi(int(r["o"]))]):
+			for idx in range(n):
+				var here := _bus_lane(r, idx, way)
+				if here:
+					bus_words.append([way * (w * 0.5 - span_w / n * (idx + 0.5)), way])
+				if idx < n - 1 and here != _bus_lane(r, idx + 1, way):
+					var off_b := way * (w * 0.5 - span_w / n * (idx + 1))
+					lines = lines.filter(func(ln): return absf(float(ln[0]) - off_b) > 0.5)
+					lines.append([off_b, true, false, 0.12])
 	if lines.is_empty():
 		return
 	var cum := PackedFloat32Array([0.0])
@@ -4853,10 +4879,30 @@ func _markings(buf: Buf, r: Dictionary, yellow: Buf) -> void:
 				var side := Vector2(-d.y, d.x)
 				var oa := a + side * off
 				var ob := b + side * off
-				var hw := 0.07 if not solid else 0.06
+				var hw: float = ln[3] if ln.size() > 3 else (0.07 if not solid else 0.06)
 				target.quad3(_g3(oa - side * hw, Y_MARK), _g3(ob - side * hw, Y_MARK),
 					_g3(ob + side * hw, Y_MARK), _g3(oa + side * hw, Y_MARK))
 			s += step
+	for bw: Array in bus_words:
+		var s2 := ceilf((span.x + 12.0) / BUS_WORD_STEP) * BUS_WORD_STEP - 12.0
+		while s2 < minf(total - 6.0, span.y):
+			var ok2 := s2 > 6.0
+			for c: Vector2 in clear:
+				if absf(s2 - c.x) < c.y + 6.0:
+					ok2 = false
+					break
+			if ok2:
+				var a2 := _along(pts, cum, s2)
+				var d2 := (_along(pts, cum, s2 + 1.0) - a2).normalized()
+				if _tiled and not _tile_rect(_tile).has_point(a2):
+					s2 += BUS_WORD_STEP
+					continue   # (the next square's: each square's stretch overlaps the next)
+				_road_word("אוטובוס" if String(_place.get("look", "")) == "med" else "BUS",
+					a2 + Vector2(-d2.y, d2.x) * float(bw[0]), d2 * float(bw[1]))
+				_bus_words += 1
+				if _bus_word_at.size() < 8:
+					_bus_word_at.append([a2 + Vector2(-d2.y, d2.x) * float(bw[0]), d2 * float(bw[1])])
+			s2 += BUS_WORD_STEP
 
 func _along(pts: PackedVector2Array, cum: PackedFloat32Array, s: float) -> Vector2:
 	for i in range(1, pts.size()):
@@ -8580,6 +8626,11 @@ var _soups := {}
 const BATCH_CELL := 400.0
 const BATCH_RANGES := [140.0, 200.0, 270.0, 340.0, 460.0, 700.0, 1150.0]
 const BATCH_VERTS := 650000          ## more than this in one call: left as a multimesh (trees, balconies)
+## A kit of more vertices than this stays a multimesh however few: merged, every copy's vertices
+## are written out (a 534-vertex tree trunk is 13 KB a copy merged, 64 bytes a copy as an
+## instance). Tel Aviv's merged meshes held 16 M vertices, 9.6 M of them copies of kits --
+## trunks 3.5 M, cats, terraces, bins -- most of its 505 MB of vertex buffers (perf_dive).
+const BATCH_KIT_VERTS := 200
 
 ## ONE material for every merged mesh: a vertex either carries its colour (alpha 1: signs,
 ## kits, balconies) or the number of a tone of the palette (alpha 0, the number in red),
@@ -9197,7 +9248,8 @@ func _batchable(mesh: Mesh, m: Material, count: int) -> bool:
 	var sm := mt as StandardMaterial3D
 	if sm.emission_enabled or sm.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED or sm == _smat.get("lamp"):
 		return false
-	return (_soup(mesh)[0] as PackedVector3Array).size() * count <= BATCH_VERTS
+	var nv := (_soup(mesh)[0] as PackedVector3Array).size()
+	return nv <= BATCH_KIT_VERTS and nv * count <= BATCH_VERTS
 
 func _batch_add(mesh: Mesh, xforms: Array, range_end: float, colours: Array, m: Material, shadows: bool) -> void:
 	var mt: Material = m if m != null else mesh.surface_get_material(0)
@@ -9214,6 +9266,13 @@ func _batch_add(mesh: Mesh, xforms: Array, range_end: float, colours: Array, m: 
 	var white: bool = soup[3]
 	var nv := sv.size()
 	_tally("batched vertices: " + (_tone_of(mt) if _tone_of(mt) != "" else "coloured kits"), nv * xforms.size())   # (tests/perf_dive.gd)
+	if OS.is_debug_build():   # (and by who added them: the first caller that is not the batching itself)
+		var who := "?"
+		for fr: Dictionary in get_stack():
+			if not String(fr["function"]) in ["_batch_add", "_chunked", "_chunked_paced", "_place", "_tally"]:
+				who = "%s:%d (%d verts)" % [fr["function"], fr["line"], nv]
+				break
+		_tally("batched by: " + who, nv * xforms.size())
 	for i in range(xforms.size()):
 		var t: Transform3D = xforms[i]
 		var ck := _tile if _tiled else _cell(Vector2(t.origin.x, t.origin.z), BATCH_CELL)
@@ -10964,6 +11023,32 @@ func _road_word(text: String, at: Vector2, dir: Vector2) -> void:
 	lb.visibility_range_end = 70.0
 	world.add_child(lb)
 
+## A town's own speed limit for a kind of street, where enough of them are tagged and they
+## agree: Israeli towns have made most residential streets 30 zones, but OSM tags only some
+## (Givatayim 184 of 622, 95% of them 30), and an untagged street beside a tagged one should
+## not be driven at 50. Needs 20+ tagged, a quarter of that kind's pieces, 85% one value.
+func _town_limits(roads: Array) -> Dictionary:
+	var all := {}
+	var tagged := {}
+	for rd: Dictionary in roads:
+		var k := String(rd.get("k", ""))
+		all[k] = int(all.get(k, 0)) + 1
+		if rd.has("ms"):
+			if not tagged.has(k):
+				tagged[k] = {}
+			tagged[k][int(rd["ms"])] = int(tagged[k].get(int(rd["ms"]), 0)) + 1
+	var out := {}
+	for k: String in tagged:
+		var n := 0
+		var best := 0
+		for v: int in tagged[k]:
+			n += int(tagged[k][v])
+			if best == 0 or int(tagged[k][v]) > int(tagged[k][best]):
+				best = v
+		if n >= 20 and n >= int(all[k]) / 4 and int(tagged[k][best]) >= n * 0.85:
+			out[k] = best
+	return out
+
 ## Speed limits on the main roads: a sign a little after each junction, every way the road
 ## runs. Round and red-rimmed in Givatayim; a white MAXIMUM board in Bedford.
 func _build_speed_signs() -> void:
@@ -12412,7 +12497,7 @@ func _tones() -> void:
 		"pavement": _greyed(ink.lerp(alt, 0.48).lerp(wn, 0.04), 0.65),
 		# a filmed street's details (details.gd): charcoal pavers under an arcade, a forecourt
 		# of pale poured slabs
-		"pavers_dark": _greyed(ink.lerp(alt, 0.8), 0.85),
+		"pavers_dark": _greyed(ink.lerp(alt, 0.62), 0.85),   # (0.8 read near black under the arcade: the film's are mid-grey in its shade)
 		"slabs": _greyed(ink.lerp(alt, 0.55).lerp(wn, 0.28), 0.38),   # (the film's: warm beige in the sun)
 		"pavers_grey": _greyed(ink.lerp(alt, 0.5), 0.85),
 		"kerb": ink.lerp(alt, 0.45),
@@ -12666,8 +12751,13 @@ func _lane_off(r: Dictionary) -> float:
 			return 0.0
 		# three lanes or more: the second from the right, where traffic going straight on
 		# drives (the right-hand one hugged the kerb all along Sderot Herzl); the right-hand
-		# lane is taken before a right turn (_ap_turn_lane)
-		return w * 0.5 - w / n * (1.5 if n >= 3 else 0.5)
+		# lane is taken before a right turn (_ap_turn_lane). Never a bus lane: the next one
+		# left of it (Kaplan's right-hand lane is the buses')
+		var idx := 1 if n >= 3 else 0
+		var dir := 1 if int(r["o"]) > 0 else -1
+		while idx < n - 1 and _bus_lane(r, idx, dir):
+			idx += 1
+		return w * 0.5 - w / n * (idx + 0.5)
 	# (+0.12 past the lane's middle, and 1.1 m clear of the kerb: +0.25 left a car 0.6 m from
 	# the kerb on a 7 m street, and the others, drifting, hugged it)
 	return clampf(minf(w * 0.25 + 0.12, w * 0.5 - 1.1), 0.9, 2.6)
@@ -12682,6 +12772,21 @@ func _lanes_each_way(r: Dictionary) -> int:
 	else:
 		n = mini(l / 2 if l > 1 else int(w / 6.6), int(w / 5.6))
 	return clampi(n, 1, 4)   # (no more than the width holds: a tagged two lanes narrowed to 4 m is one)
+
+## Is lane `idx` (0 the right-hand one) of road r, going `dir` along it (1 its points' way,
+## -1 the other), a bus lane? OSM's lanes are lined up from the right (the bake's letters run
+## left to right); a way with one lane that way has no bus lane, whatever OSM says (a bus
+## lane needs a lane beside it for the rest).
+func _bus_lane(r: Dictionary, idx: int, dir: int) -> bool:
+	var pat := String(r.get("bf" if dir >= 0 else "bb", ""))
+	if pat == "" or _lanes_each_way(r) <= 1:
+		return false
+	var j := pat.length() - 1 - idx
+	return j >= 0 and pat[j] == "b"
+
+## does road r have a bus lane either way
+func _has_bus_lane(r: Dictionary) -> bool:
+	return String(r.get("bf", "")).contains("b") or String(r.get("bb", "")).contains("b")
 
 ## of road r's lanes going one way, the line of the one nearest `off` metres right of the
 ## road's middle
@@ -13008,7 +13113,7 @@ func _film_begin(id: String) -> void:
 	for z: Array in w.get("zebras", []):
 		_film_zebras.append([float(z[0]), float(z[1]), Vector2(z[2][0], z[2][1]), Vector2(z[3][0], z[3][1])])
 	for c: Array in w.get("cars", []):
-		_film_cars.append([float(c[0]), Vector2(c[1][0], c[1][1]), Vector2(c[2][0], c[2][1])])
+		_film_cars.append([float(c[0]), Vector2(c[1][0], c[1][1]), Vector2(c[2][0], c[2][1]), c[3] if c.size() > 3 else {}])
 	_film_cars.sort_custom(func(a, b): return a[0] < b[0])
 	# the people the film shows, where it shows them: standing, or walking from `at` to `to`
 	# between two of its seconds (and not there before or after)
@@ -13058,31 +13163,66 @@ func _film_begin(id: String) -> void:
 ## it read pink; fitted, it went to 16% and grey pavers went mauve); then saturation back up
 ## by FILM_SAT, as the flatter curve takes some out. Only the walks: the game's own look is
 ## other sessions' (the light, the haze) and drives on.
-const FILM_CURVE := [0.050, 0.090, 0.160, 0.237, 0.304, 0.364, 0.415, 0.453, 0.480, 0.510, 0.543,
-	0.575, 0.607, 0.644, 0.690, 0.774, 0.876]
+const FILM_CURVE := [0.048, 0.083, 0.147, 0.224, 0.294, 0.356, 0.411, 0.452, 0.481, 0.508, 0.538,
+	0.572, 0.609, 0.653, 0.704, 0.786, 0.880]
 const FILM_WARM := 1.06
-const FILM_SAT := 1.129
+const FILM_SAT := 1.088
+## the phone's auto-exposure: [target, strength, least, most] -- the frame's mean brightness
+## pulled towards target by (target / mean)^strength, in light, within least..most. The film's
+## brightness second to second holds at 0.45 +- 0.055 (its exposure follows the view); the
+## replay's swung 0.48 +- 0.12, dark under the arcade (0.28), bright on the sunny forecourt
+## (0.64). With this, 0.455 +- 0.070 (fitted, tests/film_look.py; the curve after it).
+const FILM_EXPO := [0.45, 0.75, 0.6, 2.0]
 func _film_look_layer() -> void:
 	var sh := Shader.new()
 	sh.code = """shader_type canvas_item;
-uniform sampler2D screen_tex : hint_screen_texture, filter_linear;
+uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
+uniform float expo_target = 0.45;
+uniform float expo_k = 0.0;
+uniform float expo_min = 0.6;
+uniform float expo_max = 2.0;
+uniform int debug = 0;
+const vec3 LUM = vec3(0.2126, 0.7152, 0.0722);
 const float CURVE[17] = float[17](%s);
 float tone(float v) {
 	float x = clamp(v, 0.0, 1.0) * 16.0;
 	int i = min(int(floor(x)), 15);
 	return mix(CURVE[i], CURVE[i + 1], x - float(i));
 }
+// the phone's meter: the frame's mean brightness, from the screen shrunk 128 times (its mipmaps)
+float meter() {
+	float m = 0.0;
+	for (int i = 0; i < 4; i++) {
+		for (int j = 0; j < 4; j++) {
+			m += dot(textureLod(screen_tex, vec2((float(i) + 0.5) / 4.0, (float(j) + 0.5) / 4.0), 7.0).rgb, LUM);
+		}
+	}
+	return m / 16.0;
+}
 void fragment() {
-	vec3 c = texture(screen_tex, SCREEN_UV).rgb;
-	float l0 = dot(c, vec3(0.2126, 0.7152, 0.0722));
-	c *= mix(vec3(1.0), vec3(%f, 1.0, 1.0), 1.0 - smoothstep(0.6, 0.9, l0));
-	c = vec3(tone(c.r), tone(c.g), tone(c.b));
-	float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
-	COLOR = vec4(clamp(vec3(l) + (c - vec3(l)) * %f, 0.0, 1.0), 1.0);
+	vec3 c = textureLod(screen_tex, SCREEN_UV, 0.0).rgb;
+	float m = meter();
+	if (debug == 1) {
+		COLOR = vec4(SCREEN_UV.x < 0.1 && SCREEN_UV.y < 0.1 ? vec3(m) : c, 1.0);
+	} else {
+		// exposure, in light (not in the picture's code values), as the phone sets it
+		float gain = clamp(pow(expo_target / max(m, 0.02), expo_k), expo_min, expo_max);
+		c = pow(pow(c, vec3(2.2)) * gain, vec3(1.0 / 2.2));
+		float l0 = dot(c, LUM);
+		c *= mix(vec3(1.0), vec3(%f, 1.0, 1.0), 1.0 - smoothstep(0.6, 0.9, l0));
+		c = vec3(tone(c.r), tone(c.g), tone(c.b));
+		float l = dot(c, LUM);
+		COLOR = vec4(clamp(vec3(l) + (c - vec3(l)) * %f, 0.0, 1.0), 1.0);
+	}
 }
 """ % [", ".join(FILM_CURVE.map(func(v: float) -> String: return "%.3f" % v)), FILM_WARM, FILM_SAT]
 	var mat := ShaderMaterial.new()
 	mat.shader = sh
+	mat.set_shader_parameter("expo_target", FILM_EXPO[0])
+	mat.set_shader_parameter("expo_k", FILM_EXPO[1])
+	mat.set_shader_parameter("expo_min", FILM_EXPO[2])
+	mat.set_shader_parameter("expo_max", FILM_EXPO[3])
+	mat.set_shader_parameter("debug", 1 if OS.get_environment("STREETS_FILM_LOOK") == "meter" else 0)
 	var layer := CanvasLayer.new()
 	layer.layer = 1   # (over the world, under the shell's buttons: Flow's layer is 10)
 	var r := ColorRect.new()
@@ -13154,7 +13294,7 @@ func _film_tick(dt: float) -> void:
 	while _film_sent < _film_cars.size() and _film_t >= float(_film_cars[_film_sent][0]):
 		var fc: Array = _film_cars[_film_sent]
 		_film_sent += 1
-		if _traffic != null and not _traffic.send(fc[1], fc[2]):
+		if _traffic != null and not _traffic.send(fc[1], fc[2], fc[3]):
 			Probe.note("film: no street to send a car down at %s" % fc[1])
 	var anim := "Idle" if _v < 0.15 else "Walk"
 	if anim != _me_anim:
