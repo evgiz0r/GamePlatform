@@ -104,6 +104,41 @@ The ones most often touched, and the functions in them:
   cars are five posts (`_add_car_posts`): the old two left a 0.8 m gap at the car's middle a
   walker stood in. A crosser's kerb is checked unseen, not only the crossing's middle.
   tests/walk_people.gd.
+- **shaders a browser compiles** (`tests/web_shaders.js`: a web export run in the container's
+  Chromium, straight into a level by the shell's self-play args, every WebGL program linked
+  counted before, during and after `_warm_up`, by material and variant; `tests/shader_kinds.gd`
+  lists the built-in material kinds and the game's shaders with who uses them, headless).
+  Givatayim: 225 programs (176 in the warm-up, 6 after it while driving), now 205 (156):
+  the flags and the ads one shader (`FLAG_SHADER`, `wave`/`rough`), every fence one Shader
+  resource (`_fence_shader`), the map edge's barrier and curtain one (`curtain` uniform, the
+  barrier's alpha 1). Each game shader costs ~7 programs (alone and instanced, the shadow
+  map's depth, and an additive pass: the Compatibility renderer draws a shadowed light --
+  the sun -- as a second pass with its own variant, 39 programs of the 205); the built-in
+  materials 43 (`_surface`'s plain kind and the glowing one; merging them was backed out:
+  `emission_enabled` is what `_tone_of`/`_merge_as` read as "lit, keep out of the batches"
+  and several lights switch it at night). The browser's own time per program is not
+  measurable here: its status check after a compile also waits for the last frame, seconds
+  of software rendering (the 25-line roof shader read 180 ms a program). Count programs.
+- **leftovers** -- people out of a parked car's own outline as well as its posts
+  (`_car_box_push`, 4.5 x 1.84 m rounded 0.3 m; `_add_car_posts` records it; the car and
+  you on foot still go by the posts): walk_people's deepest into a car 0.17-0.27 -> 0.00 m.
+  A dog's spot is the first of four (right ahead, left ahead, ahead, at heel) with no fence
+  or railing between it and its walker where it ends up after its push (`_wall_between`).
+  Garden paths keep the grass blades off (`_grass_cut` at each path, `_grass_cuts_near`
+  hands the shader the 24 nearest as the blade grid moves: the grass picture is 1-2 m a
+  pixel and drawn before most gardens exist). Walkers who cannot make room for you (a parked
+  car one side, a shop's stool the other) take the side with most room, and stop (`hold_me`)
+  if that is under 0.6 m.
+- **what breaks, more** -- a knock on a wall or a building at over 2.5 m/s leaves streaks of
+  rubber and paint on it at bumper height (`_scrape_at`, 8 kept, 4 minutes); hedges are soft
+  walls (`add_wall(..., soft)`, `_wall_soft`): no bounce, dent or glass, the car held to 70%,
+  leaves fly (`_leaves_at`, the sparks' material kind). Signs bending was not done: they are
+  merged into the batches, and each kind knockable would be a draw a square.
+- **shops that look open** -- KEEPERS (3) people stand in open shops' doorways near you
+  (`_shop_spots`, placed unseen like the waiters, `_place_keepers`); an A-frame board out in
+  front of ~40% of the open shops (`_a_board`, into the crates' mesh: no draws); corner
+  shops and kiosks put out crates as the greengrocers do. Lit interiors seen through the
+  glass were not done (a textured glass is a new material kind to compile).
 - **people in one piece** -- `_one_piece` (end of `_humanize`): the Quaternius figure is one
   mesh of six surfaces (Skin, Shirt, Pants, Belt, Face, Hair), each a draw (and a shadow
   draw). Joined once per figure into one surface (shared by everyone with that figure; the
@@ -1932,7 +1967,13 @@ LEVEL=1 $GODOT --headless --path . -s res://game/streets/tests/<test>.gd`.
   `--fixed-fps 10`, ~4 min): 0 pops, 0-1 turned in view, 0 within 0.6 m of you, deepest into
   a parked car 0.17-0.27 m (a car's end corner; was 0.55 in its middle), 5-7 people met
   within 40 m; `people_clear` 0.0% in a post or wall.
-- **Open**: walk 2's streets are thin (5-7 people within 40 m over its 106 s); people still
+- **Open**: `crash_things` no longer knocks its bin or bends its bollard -- the car stops
+  dead short of them, going back at -1 m/s -- on main as well as here (20 Nov, evening;
+  the building crash still dents and leaves glass): something since this morning, not
+  people in the way (cleared from its path now) and not the parked cars' posts. Walk 1's
+  end (93 s) had a walker 0.37 m off you once. The shop shots (`shop_looks` 6) face down the
+  street, not at a front: the boards and shopkeepers have not been seen in a picture yet.
+  Walk 2's streets are thin (5-7 people within 40 m over its 106 s); people still
   graze a parked car's end corners by ~0.15 m (round posts); the walk's own line runs
   against parked cars at 60-70 s (WALKS.md), where people giving way pass on its far side;
   a dog can be pushed to the far side of a crossing railing (`_companion`'s

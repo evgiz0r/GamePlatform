@@ -218,6 +218,12 @@ it is made, with a one-line caption, rather than a report at the end.
 
 ## Gotchas (each cost a run)
 
+- **Headless, a multimesh's copies read back as nothing.** `--headless` has no real
+  rendering server: `MultiMesh.get_instance_transform()` returns the identity, so a test
+  reading where a copy was put (a dog at a walker's side) gets (0, 0, 0) for every one and
+  measures nonsense (2112 "dogs across a fence"). Have the game keep the positions it set in
+  its own data for tests to read, or run the test with a display.
+
 - **A collision scan sees only what is solid, and only where it is solid.** A scripted walk
   that scanned clean went through a parked bike's wheel (solid only at its rack's hoop, while
   the bike reached across most of the pavement) and ended with a tree's trunk filling the

@@ -55,7 +55,7 @@ func _run() -> void:
 			car_hash[key] = []
 		car_hash[key].append(k)
 	print("walk of %.0f s on level %d from %.0f s; %d parked cars known" % [end, lv, g._film_t, cars.size()])
-	var counts := {"pop": 0, "turned": 0, "swerve": 0, "close": 0, "in car": 0}
+	var counts := {"pop": 0, "turned": 0, "swerve": 0, "close": 0, "in car": 0, "dog across": 0}
 	var shown := {}
 	var in_car_now := {}
 	var swerving := {}
@@ -93,6 +93,14 @@ func _run() -> void:
 					counts["close"] += 1
 					closest = minf(closest, d)
 					_say(shown, "close", "%5.1f s  close: a %s %.2f m from the walker at %s" % [t, kind, d, Vector2i(me)])
+				if w.has("dog_at") and d < float(g.PEOPLE_SEEN):   # its dog on its own side of any fence or railing
+					var dg := Vector3(w["dog_at"].x, 0.0, w["dog_at"].y)
+					var across: bool = g._wall_between(p, Vector2(dg.x, dg.z))
+					if across and not w.get("was_across", false):
+						counts["dog across"] = int(counts.get("dog across", 0)) + 1
+						_say(shown, "dog across", "%5.1f s  dog across: a fence or railing between a walker at %s and its dog at %s (%.1f m apart), %.0f m from the walker" % [t,
+							Vector2i(p), Vector2i(dg.x, dg.z), p.distance_to(Vector2(dg.x, dg.z)), d])
+					w["was_across"] = across
 				if kind == "walker" and w.has("line") and (w["line"] as PackedVector2Array).size() >= 2:
 					var off := absf(float(w.get("lat", 0.0))) + float(w.get("dodge", 0.0))
 					if d < 8.0 and off > 0.5 and not swerving.get(id, false):
@@ -108,13 +116,15 @@ func _run() -> void:
 						counts["turned"] += 1
 						_say(shown, "turned", "%5.1f s  turned: a walker turns back at the end of its stretch, %.0f m away in view" % [t, d])
 					w["was_key"] = key
-		# the dogs and pushchairs, where shown
-		for spec: Array in [["dog", g._dogs, 0.25], ["pushchair", g._prams, 0.3]]:
-			var mm: MultiMesh = spec[1]
-			for k in range(mm.instance_count if mm != null else 0):
-				var o := mm.get_instance_transform(k).origin
-				if o.y > -100.0:
-					bodies.append([spec[0] + str(k), spec[0], Vector2(o.x, o.z), spec[2]])
+		# the dogs and pushchairs, where shown (where the game put them: a headless run reads a
+		# multimesh's copies back as nothing)
+		for w: Dictionary in g._walkers:
+			var wa: Node3D = w["actor"]
+			if not wa.visible or Vector2(wa.position.x, wa.position.z).distance_to(me) > float(g.PEOPLE_SEEN):
+				continue
+			for spec: Array in [["dog_at", "dog", 0.25], ["pram_at", "pushchair", 0.3]]:
+				if w.has(spec[0]):
+					bodies.append([spec[1] + str(wa.get_instance_id()), spec[1], w[spec[0]], spec[2]])
 		# into a parked car's body: 4.3 x 1.8 m, someone's middle closer to it than their own size
 		for b: Array in bodies:
 			var p: Vector2 = b[2]

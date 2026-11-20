@@ -1074,6 +1074,17 @@ end of a block they walk on over the side street or round the corner, rather tha
 back and pacing the same block. And parked cars are solid along their whole length: people
 no longer walk through the middle of one.
 
+> 3,4,6,7,8 (shops that look open, a faster start, the leftovers, more that breaks, walk 2's route)
+
+**Shops that look open, and the rest.** A shopkeeper stands in the doorway of a few open
+shops near you; sandwich boards stand out in front of many, and corner shops put their crates
+out. Hitting a wall leaves rubber and paint streaks on it; driving into a hedge is soft --
+leaves fly and the car is held, nothing breaks. People, dogs and pushchairs keep clear of a
+parked car's corners too, a dog stays on its walker's side of a railing, grass no longer
+grows through garden paths, and someone with no room to step aside stops to let you pass.
+The walk along Sirkin keeps a step further from the parked cars, as filmed. Loading compiles
+about a tenth fewer graphics programs (most noticeable on a phone or a Windows laptop).
+
 > I took a video on my phone, walking in Givatayim.
 
 ## Smooth on a laptop and a phone

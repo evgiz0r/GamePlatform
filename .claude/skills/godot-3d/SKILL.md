@@ -400,6 +400,27 @@ is rarely the one you would guess. What cost the most, in order, last time one d
   file at all -- worn patches, grain, slab joints -- is a cheap hash noise (no `sin`) of
   the world position in the fragment shader: nothing to load.
 
+### Shader programs: count them in a browser
+
+(What compiles is shader code -- the bullet on it above. This is how to see it, and what
+else costs programs.)
+
+- **Count in a real browser.** Locally nothing compiles after the first run (the shader
+  cache), but a web export can be run in Playwright's Chromium with an init script wrapping
+  `WebGL2RenderingContext.prototype.linkProgram`: count the programs linked before, during
+  and after the game's warm-up, and name each by its variant's `#define`s and its material's
+  uniform names. Count, don't time: under SwiftShader the status check after a compile also
+  waits for the frames before it, seconds of software rendering.
+- **About seven programs a game shader**: drawn alone and as a multimesh, the shadow map's
+  depth pass for both, and an **additive pass for every light that casts shadows** -- in the
+  Compatibility renderer the sun with shadows on is a second pass with its own variant for
+  every lit shader.
+- **A `#define` variant is another shader.** Two looks of one thing (a barrier and its
+  see-through curtain) as one shader with a uniform switch compile once.
+- **Before switching a built-in material's flag to share a shader, look for code that reads
+  the flag** to mean something else (a batcher keeping anything with emission on out of its
+  merged meshes, lights that switch emission at night).
+
 ## Self-play
 
 The bots and the ASCII map are 2D and stay that way: `track3d()` keeps a 2D proxy per
