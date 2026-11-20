@@ -18777,40 +18777,65 @@ func _route_to(goal: Vector2, from := Vector2.INF, heading := Vector2.ZERO) -> b
 	var d_first := (pts[sj + 1] - pts[sj]).normalized() * float(dir)
 	_ap_pts = PackedVector2Array([(s["q"] as Vector2) + Vector2(-d_first.y, d_first.x) * _lane_off(r)])
 	_ap_lim = PackedFloat32Array([float(r["speed"])])
+	# The path's points, with the lane of the road coming into each; points closer than 4 m to
+	# the one kept before them dropped (a junction drawn as two points 0.9 m apart was two
+	# corners, the second's curve starting behind the first: the plan doubled back on itself)
+	var cl: Array = []   # [point, lane in, speed in, node]
 	for i in range(best.size()):
 		var n := int(best[i])
-		var c: Vector2 = _nodes[n]
-		var prv := _ap_pts[_ap_pts.size() - 1]
-		var nxt: Vector2 = _nodes[best[i + 1]] if i + 1 < best.size() else g["q"]
 		var e: Vector3i = _edge_of.get(Vector2i(int(best[i - 1]), n), Vector3i(s["road"], 0, 1)) if i > 0 else Vector3i(s["road"], 0, dir)
 		var road: Dictionary = _roads[e.x]
-		var lane := _lane_off(road)
-		var came: Vector2 = c - (_nodes[best[i - 1]] if i > 0 else (s["q"] as Vector2))
-		var din := came.normalized()
+		var prev_at: Vector2 = (cl[cl.size() - 1][0] as Vector2) if not cl.is_empty() else (s["q"] as Vector2)
+		if _nodes[n].distance_to(prev_at) < 4.0 and i + 1 < best.size():
+			continue
+		cl.append([_nodes[n], _lane_off(road), float(road["speed"]), n])
+	var plain := true   # (the last point laid is a lane point, not the end of a corner)
+	var arc_end := Vector2.INF   # (the last corner's end, and its way out: lane points it has passed are left out)
+	var arc_out := Vector2.ZERO
+	for i in range(cl.size()):
+		var c: Vector2 = cl[i][0]
+		var lane: float = cl[i][1]
+		var spd: float = cl[i][2]
+		var prv := _ap_pts[_ap_pts.size() - 1]
+		var before_c: Vector2 = (cl[i - 1][0] as Vector2) if i > 0 else (s["q"] as Vector2)
+		var nxt: Vector2 = (cl[i + 1][0] as Vector2) if i + 1 < cl.size() else (g["q"] as Vector2)
+		var din := (c - before_c).normalized()
 		var dout := (nxt - c).normalized()
 		if i > 0 and din != Vector2.ZERO and dout != Vector2.ZERO and absf(din.angle_to(dout)) >= 0.35:
 			# A corner: in along its lane, round, and out in the next street's lane, as free
-			# autodrive turns (_ap_turn_into). One point at the corner, put into the lane square
-			# to the way to the next point (the next street's way), sat on the middle line of
-			# the street it was leaving: a right turn swung out left over the last 10 m, came
-			# round at full lock from there and out over the next street's middle line, into
-			# the oncoming lane (tests/turn_width.gd: 4 of 4 in Givatayim).
-			var e2: Vector3i = _edge_of.get(Vector2i(n, int(best[i + 1])), e) if i + 1 < best.size() else Vector3i(g["road"], 0, 1)
-			var lane2 := _lane_off(_roads[e2.x])
-			var arc := _lane_corner(c, din, dout, lane, lane2, _node_r[n] + 1.0, prv, c + (nxt - c) * 0.45)
-			if arc.is_empty():
-				var d0 := (nxt - prv).normalized()
-				_ap_pts.append(c + Vector2(-d0.y, d0.x) * lane)
-				_ap_lim.append(float(road["speed"]))
+			# autodrive turns (see _lane_corner). One point at the corner, put into the lane
+			# square to the way to the next point (the next street's way), sat on the middle
+			# line of the street it was leaving: a right turn swung out left over the last
+			# 10 m, came round at full lock from there and out over the next street's middle
+			# line, into the oncoming lane (tests/turn_width.gd: 4 of 4 in Givatayim).
+			var lane2: float = cl[i + 1][1] if i + 1 < cl.size() else _lane_off(gr)
+			var spd2: float = cl[i + 1][2] if i + 1 < cl.size() else float(gr["speed"])
+			var from_pt := prv
+			if plain and _ap_pts.size() > 1:
+				from_pt = _ap_pts[_ap_pts.size() - 2]   # (the last lane point lies on the way in: the curve may start behind it)
+			# (out as far as the next point if that is no corner itself, else under half way to it)
+			var upto := c + (nxt - c) * 0.45
+			if i + 2 < cl.size() and absf(dout.angle_to(((cl[i + 2][0] as Vector2) - nxt).normalized())) < 0.35:
+				upto = nxt
+			var arc := _lane_corner(c, din, dout, lane, lane2, _node_r[int(cl[i][3])] + 1.0, from_pt, upto)
+			if not arc.is_empty():
+				if plain and _ap_pts.size() > 1 and (arc[0] - prv).dot(din) < 0.3:
+					_ap_pts.remove_at(_ap_pts.size() - 1)   # (it starts behind that lane point)
+					_ap_lim.remove_at(_ap_lim.size() - 1)
+				for q: Vector2 in arc:
+					_ap_pts.append(q)
+					_ap_lim.append(minf(spd, spd2))
+				plain = false
+				arc_end = arc[arc.size() - 1]
+				arc_out = dout
 				continue
-			var lim2 := float((_roads[e2.x] as Dictionary)["speed"])
-			for q: Vector2 in arc:
-				_ap_pts.append(q)
-				_ap_lim.append(minf(float(road["speed"]), lim2))
-			continue
-		var d := (nxt - prv).normalized()
-		_ap_pts.append(c + Vector2(-d.y, d.x) * lane)
-		_ap_lim.append(float(road["speed"]))
+		var d := (nxt - before_c).normalized()
+		var lp := c + Vector2(-d.y, d.x) * lane
+		if arc_end != Vector2.INF and (lp - arc_end).dot(arc_out) < 0.5:
+			continue   # (the last corner's curve ran past it)
+		_ap_pts.append(lp)
+		_ap_lim.append(spd)
+		plain = true
 	# the last stretch along the goal's segment, to the kerb in front of the address
 	var last_dir := (gr["pts"] as PackedVector2Array)[gj + 1] - (gr["pts"] as PackedVector2Array)[gj]
 	last_dir = last_dir.normalized() * float(best_dir)
