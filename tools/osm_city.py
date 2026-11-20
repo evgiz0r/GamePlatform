@@ -139,6 +139,9 @@ def overpass(query, tries=3):
                 remark = answer.get("remark", "")
                 if "error" in remark.lower() or "timed out" in remark.lower():
                     raise RuntimeError(remark.strip())
+                # (a mirror can serve older data: one answered a city centre with a fifth of
+                # its footways missing -- say which, so a re-bake can be compared)
+                log(f"  answered by {urllib.parse.urlparse(url).netloc}")
                 return answer
             except Exception as e:  # rate limits and timeouts are routine on public servers
                 log(f"  {urllib.parse.urlparse(url).netloc}: {e}")
@@ -525,7 +528,38 @@ def png_pixels(data):
     return w, h, bpp, out
 
 
-def terrain_grid(P, box, bounds, step, zoom=13):
+BARE_R = 90.0   # metres: --bare-ground takes out bumps narrower than twice this
+
+
+def _square(g, nx, nz, k, f):
+    """f (min, max or the mean) over the square of radius k cells round each cell, in two
+    passes (rows, then columns)."""
+    a = [0.0] * len(g)
+    for j in range(nz):
+        row = g[j * nx:(j + 1) * nx]
+        for i in range(nx):
+            a[j * nx + i] = f(row[max(0, i - k):i + k + 1])
+    b = [0.0] * len(g)
+    for i in range(nx):
+        col = a[i::nx]
+        for j in range(nz):
+            b[j * nx + i] = f(col[max(0, j - k):j + k + 1])
+    return b
+
+
+def bare_ground(grid, nx, nz, step):
+    """The tiles are a surface model: in a city centre they see the roofs, and a cluster of
+    towers comes out as a hill (Azrieli's stood 146 m over the Ayalon, slopes of 300%).
+    Each point becomes the highest of the lowest round it (a grey opening over BARE_R): any
+    bump narrower than ~2 * BARE_R goes, broad hills and valleys stay; then a mean over half
+    that, as the opening leaves flat steps. Over Givatayim it took the hill's crest 86 -> 72 m
+    and its steepest slope 48% -> 16%, so it is asked for (--bare-ground), not the default."""
+    k = max(1, round(BARE_R / step))
+    opened = _square(_square(grid, nx, nz, k, min), nx, nz, k, max)
+    return _square(opened, nx, nz, max(1, k // 2), lambda v: sum(v) / len(v))
+
+
+def terrain_grid(P, box, bounds, step, zoom=13, bare=False):
     """Ground height on a regular grid over the bounds, in metres above its lowest point."""
     x0, z0, x1, z1 = bounds
     nx, nz = int(math.ceil((x1 - x0) / step)) + 1, int(math.ceil((z1 - z0) / step)) + 1
@@ -562,6 +596,10 @@ def terrain_grid(P, box, bounds, step, zoom=13):
         for i in range(nx):
             x, z = x0 + i * step, z0 + j * step
             grid.append(height(P.lat0 - z / P.my, P.lon0 + x / P.mx))
+    if bare:
+        raw_top = max(grid)
+        grid = bare_ground(grid, nx, nz, step)
+        log(f"ground: roofs taken out (--bare-ground), the top {raw_top:.0f} -> {max(grid):.0f} m")
     # one light blur: the data is a surface model, rooftops make bumps
     blur = grid[:]
     for j in range(nz):
@@ -993,7 +1031,8 @@ def bake(raw, name, args):
     if not args.no_terrain:
         try:
             span = max(x1 - x0, z1 - z0)
-            out["height"] = terrain_grid(P, box, (x0, z0, x1, z1), max(12.0, round(span / 300.0)))
+            out["height"] = terrain_grid(P, box, (x0, z0, x1, z1), max(12.0, round(span / 300.0)),
+                                         bare=args.bare_ground)
         except Exception as e:   # flat is better than no city
             log(f"ground: no height data ({e}); the city stays flat")
 
@@ -1022,6 +1061,9 @@ def main():
     ap.add_argument("--offline", action="store_true", help="bake from tools/.cache only")
     ap.add_argument("--from-file", help="a raw Overpass JSON answer you saved yourself")
     ap.add_argument("--no-terrain", action="store_true", help="skip the ground heights")
+    ap.add_argument("--bare-ground", action="store_true",
+                    help="take buildings out of the ground heights (a city of towers comes "
+                         "out of the terrain tiles as hills)")
     ap.add_argument("--print-query", action="store_true",
                     help="print a browser link that downloads the raw data, for --from-file")
     args = ap.parse_args()

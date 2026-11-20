@@ -59,6 +59,10 @@ is a Z coordinate, not a height.
   soft ramp floating a hand's width over a lawn does not show, one sunk under the pavement
   is gone. One mesh per merged square: a draw each. Build cost is per corner of every
   outline, so look each height up once. Darken the walls' own feet in the wall shader too.
+  A band along something whose ground is already drawn with coordinates across it (a
+  pavement whose UV is metres out from the kerb) is cheaper as a term in that ground's
+  shader, flagged in a spare vertex channel, than as strips of its own: the same band
+  cost 40 ms of build as geometry and nothing as a shader term.
   To judge it, shoot the same view with the layer hidden and shown, and diff the pictures:
   by eye, at a 0.4 strength it was invisible, and traffic and fading HUD labels change
   between shots too.
@@ -87,6 +91,14 @@ is a Z coordinate, not a height.
   haze (with haze the shadows went khaki), and let the fog glow towards the sun
   (`fog_sun_scatter`). Anything baked for one sun's direction (painted shadows, offsets)
   either moves in a shader by a uniform or is baked again per sun and kept.
+- **Wet ground: dark, and only the puddles glossy.** Lowering a whole road's ROUGHNESS
+  to make it wet lets the renderer's ambient reflection (with a colour background, that
+  flat colour, at Fresnel's full strength at a low angle) wash over it: it came out pale
+  grey, the opposite of wet, and sunlit paving at 0.6 flared white. Darken the albedo by
+  about half, keep the soaked surface rough-ish (~0.7, SPECULAR 0.3), and make puddles
+  (noise in the dips) the near-mirrors (0.08) that catch the sky and the sun's glare. A
+  reflection of the sky added as EMISSION (reflect the view, Fresnel, sky colours) wants a
+  darker band low down where a street's buildings would be.
 - **Resolution**: the 3D `SubViewport` renders at the real window size (up to 3x the
   640x360 design space, half-step multiples) and is scaled down with linear filtering,
   with 4x MSAA. The kit's nearest-neighbour default is for pixel art and made 3D look

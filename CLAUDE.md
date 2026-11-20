@@ -117,7 +117,8 @@ metres on the X/Z ground. The format is documented at the top of the tool. It ne
 © OpenStreetMap contributors (ODbL): a game that shows it must credit that on screen.
 OSM rarely knows building heights; the tool guesses those and marks the guesses. When the
 session's network cannot reach Overpass, run the "bake a real city" GitHub workflow
-(`.github/workflows/bake_city.yml`, inputs `place` and `out`) instead: it bakes on GitHub's
+(`.github/workflows/bake_city.yml`, inputs `place` and `out`, or `bbox` for a few
+neighbourhoods of a big city) instead: it bakes on GitHub's
 machines and commits the file, and you can start it with the GitHub tools.
 
 `tools/fake_city.py` makes up a town in the same format instead -- no network, a second
