@@ -367,7 +367,9 @@ the green man, in step: green while the road being crossed is held at red and th
 has its steady green; the red man comes on with that way's flashing green. Both ways along a
 road share a light, so the green man never shows while cars come one way (in Givatayim it
 did at one zebra in nine). People there step out on the green man only, when there
-is time to be over before the cars across get their green.
+is time to be over before the cars across get their green, and not in front of a car already
+in the junction waiting to get out over their crossing (one after another they kept it
+standing in a big junction for 25 s, the cars across going round it).
 
 > The whole logic of lights and how cars and autodrive go, something is fishy. Let's make
 > the colours clear: red on the top (no go), yellow, green. Maybe add those for people too,
@@ -664,7 +666,10 @@ the city now has what the walk had underfoot and at eye height:
   yellow reflective band (now and then white); on the main roads a white railing instead,
   4 m either side of the crossing; a red fire hydrant every 130 m or so; grey utility
   cabinets at the back of the pavement; black bins on the main and shopping streets; an iron
-  grate round every street tree's trunk. All solid to the car.
+  grate round every street tree's trunk. All solid to the car, and never on the road: a
+  railing or a bollard by a zebra near a corner stood out on the junction's asphalt (it was
+  checked against the roads' edges, and a junction's round middle and corners are neither).
+  Columns under a building over a road (a passage) stand beside the lanes, not in them.
 - Front gardens plot by plot (14-22 m each, a gap for the gate): a low wall of rough stones in
   mortar, with a clipped hedge behind it, white bars or green chain-link on top, or bare;
   bougainvillea spilling over one in six; the garden shrubs leafy, not smooth balls.
@@ -776,7 +781,15 @@ grain are strong enough to read at the lowest step's lower resolution.
 graph of the last frames' times (green under 20 ms, red over 40), the average frame split
 into the engine's drawing and the game's own parts (traffic, people, autodrive, the
 minimap...), and the last few hitches -- frames much slower than the ones round them --
-with the parts that took their time. Playtests report hitches the same way.
+with the parts that took their time. Playtests report hitches the same way. Its last lines
+are the loading: how long it took, the slowest stages, and how long each of the four views of
+the warm-up took (the graphics getting ready -- see below).
+
+The warm-up: before the car is shown the city is drawn four times from above the start, one
+look each way, so the browser compiles every kind of material's shader then and not as each
+first comes into view while you drive (each one a stall). Every new kind of surface adds to
+it. While it runs the loading text says "getting the graphics ready" (it showed the last
+square, "8 of 8", until the warm-up was over, and looked stuck).
 
 > We need to think how to improve latency a bit. It does choke every few seconds. Do you
 > have some fps counter or something?

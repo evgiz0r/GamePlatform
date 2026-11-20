@@ -1074,6 +1074,7 @@ func start(_config: Dictionary) -> void:
 	if not await _warm_up():
 		return
 	_stage_ms["warm up (shaders compiled, 4 frames)"] = Time.get_ticks_msec() - tw
+	_load_ms = Time.get_ticks_msec() - t0
 	_loading.queue_free()
 	var tm := Time.get_ticks_msec()
 	_map_build_cells()
@@ -1110,7 +1111,13 @@ var _loading: Label
 ## still up. A browser compiles each shader the first time something uses it, and that
 ## stalls the frame: better here than as each kind of thing first comes into view.
 func _warm_up() -> bool:
-	_loading.text = "building %s…\ngetting ready" % _city_name
+	# (on screen first, the camera where it was: the frames below are the slow ones, and the
+	# text set with them showed only when they were done -- "8 of 8" stood there seconds)
+	_loading.text = "building %s…\ngetting the graphics ready" % _city_name
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if not is_inside_tree():
+		return false
 	var mid := _bounds.get_center()
 	var spot := _pos if _pos != Vector2.ZERO else mid
 	var gy := _h(spot)
@@ -1118,10 +1125,26 @@ func _warm_up() -> bool:
 		var d := Vector2(cos(k * PI * 0.5), sin(k * PI * 0.5))
 		look_from(Vector3(spot.x - d.x * 20.0, gy + 12.0, spot.y - d.y * 20.0), Vector3(spot.x + d.x * 40.0, gy, spot.y + d.y * 40.0))
 		_sky_follow()
+		var tk := Time.get_ticks_msec()
 		await get_tree().process_frame
+		_warm_ms.append(Time.get_ticks_msec() - tk)   # (each view's frame: the perf view shows them)
 		if not is_inside_tree():
 			return false
 	return true
+
+var _warm_ms: Array = []             ## each warm-up view's frame, ms
+var _load_ms := 0                    ## from the city file to the car shown, ms
+
+## the loading, for the perf view: how long, its biggest stages, the warm-up's four views
+func _load_text() -> String:
+	var parts: Array = []
+	for k: String in _stage_ms:
+		parts.append([k, int(_stage_ms[k])])
+	parts.sort_custom(func(a, b): return a[1] > b[1])
+	var top: Array = []
+	for p: Array in parts.slice(0, 4):
+		top.append("%s %.1f s" % [String(p[0]).get_slice(" (", 0), p[1] / 1000.0])
+	return "loaded in %.1f s: %s\nwarm-up views (ms): %s" % [_load_ms / 1000.0, ", ".join(top), ", ".join(_warm_ms.map(func(x): return str(x)))]
 
 ## show what is being built and let a frame be drawn; false if the game was left meanwhile
 func _step(what: String) -> bool:
@@ -3997,6 +4020,8 @@ func _stilts(ring: PackedVector2Array, sgn: float, ground: float, under: float, 
 		var steps := maxi(1, int(L / 6.0))
 		for k in range(steps):
 			var q := a + d * (L * float(k) / steps) + inward * 0.3 + (d * 0.3 if k == 0 else Vector2.ZERO)
+			if not _off_road(q, 0.3) or _in_junction(q, 0.3):
+				continue   # (a building over a road -- a passage -- has none in the lanes)
 			cols.append(Transform3D(Basis.from_scale(Vector3(0.35, hgt, 0.35)), Vector3(q.x, ground + hgt * 0.5, q.y)))
 			_add_post(q, 0.25)
 	var idx := Geometry2D.triangulate_polygon(ring)
@@ -7213,6 +7238,22 @@ func _tree_ok(p: Vector2, spacing: float) -> bool:
 func _off_road(p: Vector2, margin: float) -> bool:
 	var hit := _nearest_seg(p, 14.0, true)
 	return hit.is_empty() or float(hit["edge"]) >= margin
+
+## p is on (or within `margin` of) the asphalt round a junction's point -- the disc as wide as
+## its widest road that every junction is laid with, which no one road's lanes cover. Railings
+## and bollards by a zebra near a corner, checked against the roads' edges only, stood there
+## in the junction's mouth.
+func _in_junction(p: Vector2, margin: float) -> bool:
+	for code: int in _near(_seg_hash, p, 12.0, SEG_CELL):
+		var r: Dictionary = _roads[code / 4096]
+		if not r["drive"]:
+			continue
+		var ids: PackedInt32Array = r["ids"]
+		var sj: int = code % 4096
+		for n: int in [ids[sj], ids[sj + 1]]:
+			if p.distance_to(_nodes[n]) < _node_r[n] * 1.05 + margin and _node_ways(n) >= 3:
+				return true
+	return false
 
 ## nothing round (a tree, a lamp, a sign) stands within `d` metres of p
 func _clear_of_posts(p: Vector2, d: float) -> bool:
@@ -12161,6 +12202,28 @@ func _walk_light(cr: Dictionary, need: float) -> bool:
 
 ## nothing coming that could not stop before the crossing (middle `mid`, `hw` from it to
 ## either kerb), and nothing standing on it
+## At a crossing with walk lights: a car already in the junction (over its stop line) that
+## stands or crawls toward the crossing, waiting to get out over it. On the green man people
+## stepped out in front of it one after another, and it stood in the junction 25 s while the
+## cars across, on their green, went round it. Not a car waiting at its own red short of the
+## line: people cross in front of those.
+func _box_waiting(cr: Dictionary, mid: Vector2) -> bool:
+	var n: int = cr.get("sig", -1)
+	if n < 0 or not _site_of.has(n):
+		return false
+	var site: int = _site_of[n]
+	var movers: Array = []
+	if _light_site == site and _odo - _light_odo < SITE_KEEP:
+		movers.append([_pos, _fwd() * signf(_v) if _v != 0.0 else _fwd(), absf(_v)])
+	for c in _traffic.cars:
+		if c.alive and c.last_site == site and c.s - c.last_light < _traffic.SITE_KEEP:
+			movers.append([c.pos, Vector2(sin(c.yaw), cos(c.yaw)), c.v])
+	for m: Array in movers:
+		var to: Vector2 = mid - (m[0] as Vector2)
+		if float(m[2]) < 2.5 and to.length() < 22.0 and (m[1] as Vector2).dot(to.normalized()) > 0.4:
+			return true
+	return false
+
 func _safe_to_cross(mid: Vector2, hw: float) -> bool:
 	var movers: Array = [[_pos, _fwd() * signf(_v), absf(_v)]]
 	for c in _traffic.cars:
@@ -12198,7 +12261,8 @@ func _crossers_tick(dt: float) -> void:
 			"wait":
 				cr["t"] = float(cr["t"]) - dt
 				if float(cr["t"]) <= 0.0 and _walk_light(cr, from.distance_to(to) / float(cr["speed"])) \
-						and _safe_to_cross((from + to) * 0.5, from.distance_to(to) * 0.5 - 1.1):
+						and _safe_to_cross((from + to) * 0.5, from.distance_to(to) * 0.5 - 1.1) \
+						and not _box_waiting(cr, (from + to) * 0.5):
 					cr["state"] = "cross"
 					a.play("Walk", true, float(cr["speed"]) / 1.35)
 			"cross", "back":
@@ -14542,8 +14606,8 @@ func _tick_hud() -> void:
 	_speed_lbl.text = str(int(round(absf(_v) * 3.6)))
 	_fps_lbl.text = "%d fps · worst %d ms · quality %d" % [Engine.get_frames_per_second(), int(_worst_ms()), _quality]
 	if _perf_view:
-		_perf_lbl.text = "frame time, last %d frames (lines: 16 and 33 ms)\n%s\nhitches (slowest parts, ms):\n%s" % [
-			_frame_ms.size(), _prof_avg, "\n".join(_hitches) if not _hitches.is_empty() else "none yet"]
+		_perf_lbl.text = "frame time, last %d frames (lines: 16 and 33 ms)\n%s\nhitches (slowest parts, ms):\n%s\n%s" % [
+			_frame_ms.size(), _prof_avg, "\n".join(_hitches) if not _hitches.is_empty() else "none yet", _load_text()]
 	if _dest_on:
 		var left := _pos.distance_to(_dest)
 		if _auto and _ap_pts.size() > 1:

@@ -115,12 +115,18 @@ The ones most often touched, and the functions in them:
   its nose crossing the line until well out (`_light_site` / `_through_lights` for the player,
   `last_site` / `_passed_lights` / `_in_site` in traffic.gd) and does not stop at its other
   points. Walk lights: `_build_walk_lights`, `_zebra_light` (which point a zebra goes by; the
-  people at it ask the same), `_walk_light`.
+  people at it ask the same), `_walk_light`, `_box_waiting` (not in front of a car already in
+  the junction, waiting to get out over the crossing).
 - **the made-up town's mountains** -- `_mtn_from` (`_town_top()` + 6 m: above it the land is
   mountain), the `mountains` part of `GROUND_SHADER` (rock beds, soil, scrub, cloud shadows;
   on every steep slope too), mountain woods in the tree builder (`MTN_TREES`, drawn from
   further off), `_build_turbines` / `_turbines_tick`; the fog halves in that town
   (`_retint_city`). Only a made-up town with hills gets any of it. `tests/mountains.gd` shoots it.
+- **solid things and the road** -- `_off_road` (a road's edges only) and `_in_junction` (the
+  round asphalt at a junction's point); furniture's `_free` checks both. `tests/road_blocks.gd`
+  finds anything solid on a road's lanes or a junction's asphalt.
+- **loading** -- `_warm_up` (four views, each frame timed in `_warm_ms`), `_load_ms`, `_stage_ms`;
+  `_load_text` puts them at the bottom of the perf view, so a player's own load can be read.
 - **people** -- walkers `_place_walker` / `_pavement_piece` / `_people_tick`, zebra crossers
   `_send_crossers` / `_zebra_span` / `_away_from` / `_crossers_tick`, the height their feet go
   at `_walk_y` / `_pave_top`, what autodrive stops for `_ap_people_v`.

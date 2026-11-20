@@ -84,6 +84,11 @@ data format is at the top of `tools/osm_city.py`; this is about living with it.
 - **Roundabouts** are closed one-way ways (or tagged junction=roundabout). An AI that plans
   to the end of the way drives the whole circle, then picks "straight on" -- round again.
   Plan only to the next exit, and make staying on less likely with every piece driven.
+- **A junction's asphalt is more than its roads.** Laid as a disc at the junction's point (as
+  wide as its widest road) and rounded at the corners, it is covered by no single road's
+  width. Anything placed "off the road" by distance to the roads' centre lines -- railings,
+  bollards, a hydrant -- can stand in a junction's mouth. Check the disc too, and check both
+  ends of anything long (a railing panel), not its middle.
 - **Kerbs at corners**: cut kerb runs only where three or more kerbed ways meet (two OSM
   pieces of one street join at a node too), round the corners, and check a corner kerb
   against other roads' asphalt along its whole length -- checked at its middle only, a

@@ -27,6 +27,16 @@ func _road_under(p: Vector2, inset: float, skip: int) -> int:
 		var cp := Geometry2D.get_closest_point_to_segment(p, pts[sj], pts[sj + 1])
 		if p.distance_to(cp) < float(r["w"]) * 0.5 - inset:
 			return ri
+	# the asphalt round a junction's point (a disc as wide as its widest road), which no one
+	# road's lanes cover: a railing or bollard at a corner stood there
+	for code: int in g._near(g._seg_hash, p, 12.0, g.SEG_CELL):
+		var r2: Dictionary = g._roads[code / 4096]
+		if not r2["drive"] or r2["pv"]:
+			continue
+		var ids: PackedInt32Array = r2["ids"]
+		for n: int in [ids[code % 4096], ids[code % 4096 + 1]]:
+			if g._node_ways(n) >= 3 and p.distance_to(g._nodes[n]) < g._node_r[n] * 1.05 - inset:
+				return code / 4096
 	return -1
 
 func _run() -> void:
