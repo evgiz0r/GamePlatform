@@ -72,6 +72,7 @@ func _run() -> void:
 	var dt := 1.0 / 60.0
 	var odo0: float = g._odo
 	var still := 0.0
+	var held := ""
 	var stills: Array = []
 	var hits: Array = []
 	var last_hit := ""
@@ -89,10 +90,12 @@ func _run() -> void:
 			arrived = true
 			break
 		if absf(g._v) < 0.3:
+			if still == 0.0:
+				held = g._log._why(g)   # (what held it as it stopped: a zebra, a car, turning round...)
 			still += dt
 		else:
 			if still >= 3.0:
-				stills.append("%.0f s at %s, held by %s" % [still, Vector2i(g._pos), g._ap_why])
+				stills.append("%.0f s at %s, held by %s" % [still, Vector2i(g._pos), held])
 			still = 0.0
 		var h: String = g._last_hit
 		if h != last_hit and h != "" and g._crash_cool > 0.35 and absf(last_v) > 1.0:

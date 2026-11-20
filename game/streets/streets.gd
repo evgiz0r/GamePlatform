@@ -2246,8 +2246,12 @@ func _build_kerbs() -> void:
 				for i in range(run.size() - 1):
 					# (not where it would lie on another road: a garden strip of one street ran
 					# over the asphalt of the next where they met at an angle)
-					if _asphalt_other((w_out[i] + w_out[i + 1] + g_out[i] + g_out[i + 1]) * 0.25, ri):
-						continue
+					if _asphalt_other((w_out[i] + w_out[i + 1] + g_out[i] + g_out[i + 1]) * 0.25, ri) \
+							or _asphalt_other(w_in[i], -1) or _asphalt_other(w_in[i + 1], -1) \
+							or _asphalt_other((w_in[i] + w_in[i + 1]) * 0.5, -1):
+						continue   # (nor where the wall itself would, on any road, its own too at
+						           # a sharp bend: by the garden's middle alone, a wall stood
+						           # across the next street, and autodrive hit it)
 					garden.quad3(_g3(w_out[i], 0.03), _g3(w_out[i + 1], 0.03), _g3(g_out[i + 1], 0.03), _g3(g_out[i], 0.03))
 					if not med:
 						continue   # northern lawns run open to the pavement

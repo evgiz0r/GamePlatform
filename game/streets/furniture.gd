@@ -834,7 +834,9 @@ func _open_pieces(a: Vector2, e: Vector2, step: float) -> Array:
 		for k in range(i, j):
 			var p0 := a.lerp(e, float(k) / n)
 			var p1 := a.lerp(e, float(k + 1) / n)
-			if whole or _clear_at((p0 + p1) * 0.5):
+			# (a piece by its middle alone could end most of a metre into the road where the
+			# fence met it at a slant: the car ran into the end)
+			if whole or _clear_at((p0 + p1) * 0.5) and g._off_road(p0, -0.2) and g._off_road(p1, -0.2):
 				out.append([p0, p1])
 		i = j
 	return out

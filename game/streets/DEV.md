@@ -125,6 +125,10 @@ What each round found, so far:
   traffic.gd); it turned round in them in queues and overlapped there.
 - Plans started at the nearest point of the road's centre line: the car drove diagonally
   from the middle to its lane over the whole first stretch. Now from its lane.
+- The test trip's one bump: a garden wall of a side street running alongside a main road
+  lay across the main road (checked by the garden strip's middle only). 41 walls in
+  Givatayim stood on a road (garden walls at bends and across neighbours, OSM fence pieces
+  checked by their middle); `tests/walls_on_roads.gd` counts them, now 0.
 - The exam's own counts were off twice: harsh braking per frame (30x one stop) and traffic
   reds judged at every signal point of a junction by the heading mid-turn. Check what a
   counter counts before chasing its number.

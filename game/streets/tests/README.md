@@ -43,8 +43,9 @@ these numbers the wrong way has broken something.
 | `load_stages` | 1, 3 | where the build time goes, stage by stage (`STREETS_BUILD_ALL=0`: what a player waits for) | Ashdod near-first: ready in 6.8 s here, 2.5 of it shader warm-up; whole city: kerbs 3.0 s, roads 1.9, trees 1.7 |
 | `drive_log` | 3 | the drive recorder: 60 s, the map page, a saved log | ~520 samples |
 | `exam` | 1, 3 | the driving exam: autodrive from 4 places for 75 s each, everything that went wrong per minute (see DEV.md) | see DEV.md's scorecard |
-| `dead_ends` | 1 | "go to" from 8 dead ends, parked facing the closed end: out of the street in 40 s? hits, time off the road | (first run below) |
-| `door_to_door` | 1 | a "go to" trip from a house on a side street to another 900-1600 m away (`SEED` picks the pair) | SEED 3: arrives; was 390 s with 2 min stuck at a dead end |
+| `dead_ends` | 1 | "go to" from 8 dead ends, parked facing the closed end: out of the street in 40 s? hits, time off the road | 8 of 8 out, 0 hits, 0 s off the road |
+| `walls_on_roads` | 1 | walls the car collides with (garden walls, fences, hedges, shelter backs) standing on a road's asphalt; `WALL_AT=x,z` lists those near a point | 0 (was 41: garden walls of one street laid across the next) |
+| `door_to_door` | 1 | a "go to" trip from a house on a side street to another 900-1600 m away (`SEED` picks the pair) | SEED 3: arrives in 257 s, one 7 km/h bump (a garden wall on the road, since fixed); was 390 s with 2 min stuck at a dead end |
 
 `drive_log_map.py` draws a saved drive log (the "save log" button on the perf view's map
 page, or `drive_log.gd`'s output) over the city: `python3 game/streets/tests/drive_log_map.py
