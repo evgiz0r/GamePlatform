@@ -206,6 +206,38 @@ The minimap (bottom left) shows the real streets and buildings round you, headin
 the city limits in pink. The name of the street you are on is at the top, in Hebrew with
 the English name under it when OSM has one.
 
+**Zooming out.** "zoom" (on the right, under "walk"; Z, or the mouse wheel down, or two
+fingers pinching together) lifts the view off the car -- or off you, on foot -- up over the
+city, centred on where you are, the way you were facing at the top of the screen, and
+pauses the city: the car, traffic, people and lights hold still where they are, and the
+engine goes quiet. A ring marks you (an arrow on the screen's edge points back if you have
+looked away), and on foot a square marks the car. Up there you look round: drag (or the
+arrows) to move over the town, the wheel or a pinch (or - and =) to go higher or lower --
+from just over the rooftops to about a kilometre of town across the screen -- and Q / E or
+two fingers turning to turn it. The view looks down at a slant (about 50 degrees at the
+highest), not straight down, so the town reads as streets and buildings rather than a plan.
+Zooming in stops at the rooftops; keep zooming in there for about a second (a bar fills
+under "keep zooming in to get back in the car") and it flies back down to the car. "back"
+or Z go straight down. Either way the city goes on. From the driver's seat it rises via the
+chase cam and lands back in the seat. While you are up there the minimap follows the view:
+centred where you are looking, turned the way the screen is, with the part of town on the
+screen outlined, and an arrow for you (on its edge if you are off it). Trees, pavements and
+the rest are drawn all the way across the view while it is up, so nothing pops in as you
+move it.
+
+**Pause.** "pause" (K) holds the city still with the view where it is; "resume" lets it go
+on. Resumed while zoomed out, the city runs under you and the view follows the car, which
+still drives (keys or the stick). The shell's own pause (its menu) is still there too.
+
+> If I would want a zoom out feature, that zooms out from where I am. Maybe it pauses the
+> city (maybe we can add a pause feature anyway), and we can zoom back in (or check around).
+
+> It goes back into my car too quickly if I am zoomed in. Maybe if I am fully zoomed and I
+> still zoom in for a second. I do want to be able to zoom it. I want the map to represent my
+> zoomed view if possible (so it's clearer what I am looking at). Maybe the angle slightly
+> more tilted so it's less from above. When I move while zoomed some buildings just pop in
+> the view, not naturally.
+
 ## What is trying to stop you?
 
 Nothing yet, on purpose: this is a driving sim first. Buildings, trees, parked cars,
@@ -590,10 +622,18 @@ the city now has what the walk had underfoot and at eye height:
   softening out past its sides. Without it the houses and cars looked as if they hovered a
   hair above the street. It is one faint layer laid out with the city, so it costs almost
   nothing while you drive.
+- Shadows all the way out. The real shadows only reach 45-75 m from the camera (and the
+  lowest quality has none), so past them the whole city used to stand on evenly sunlit
+  ground. Now every building's shadow, and every tree's, lies on the ground as far as you
+  can see, as dark as the real ones and meeting them without a seam; at the lowest quality
+  they are the only shadows there are. The sun never moves, so they are worked out once
+  as the city loads.
 
 > ok lets start as you say
 
 > ok go next
+
+> go next
 
 > I took a video on my phone, walking in Givatayim.
 

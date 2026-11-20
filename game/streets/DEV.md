@@ -49,6 +49,16 @@ The ones most often touched, and the functions in them:
   (barred windows, the door in the middle bay), stone courses, plinth and mosaic are
   `WALL_SHADER`'s `ground` / `door` / `stone_k`; worn asphalt is `TONE_SHADER`'s
   `crazing()` and patches. `tests/eye_level.gd` puts a camera where a person stands.
+- **shadows past the shadows** -- `_build_far_shadows` (after `_build_setup`, at load):
+  every outline swept along the sun by its height (`Geometry2D.convex_hull` of the outline
+  and the outline moved), then the outlines themselves cleared, drawn white on black into a
+  SubViewport (one `canvas_item_add_triangle_array`), read back, mipmapped, ~1.6 m a pixel.
+  `FAR_SHADE` (`far_shade()`) goes into the kerb, tone and ground shaders by `_with_far()`
+  and darkens the ground (faces up) by it past `fs_near * fs_fade` -- the real shadows'
+  own range and fade start -- so the two meet; `_far()` keeps those materials in step with
+  quality and night. Trees: `_ao_tree` in the contact-shadow layer (COLOR.b 1), left out
+  inside a building's shadow. `FS_DARK` 0.55 matches the real shadows (both leave 0.69 of
+  the light on screen, `tests/far_shadows.gd`). ~100 ms of work plus two frames at load.
 - **contact shadows** -- `AO_SHADER` (multiply, no depth, fades out to `AO_SEEN`), one
   CBuf `_ao` per square made in `_build_tile` and drawn after the cars; `_ao_footprint`
   (strips out from each building's foot, a fan at outside corners; negative width: in under
@@ -86,6 +96,25 @@ The ones most often touched, and the functions in them:
   only) / `_judge_fps` (the rule; testable natively), the soft car shadows `_set_blobs`.
 - **where a frame's time goes** -- the profiler: `_p("part")` around each part, hitches
   kept and reported; P or a tap on the fps text shows it.
+- **zoom out and pause** -- "the view from above", after the chase cam: `_paused` stops
+  `_physics_process` (and the people's AnimationPlayers via `process_mode`, the engine
+  sound; traffic is drawn at `f = 1` so it does not rock between two ticks); `_zoom_set`
+  (rising pauses, landing resumes unless paused by hand), `_zoom_camera` (blends whatever
+  camera was placed toward the view from above over the first quarter of the zoom; near
+  plane out and haze thinned with height), `_zoom_pan` / `_pinch_move` / `_zoom_turn`, the
+  marks `_draw_zoom_marks`. The quality watcher ignores frames while zoomed out. Gradual
+  zooming goes through `_zoom_by` (stops at `ZOOM_MIN`; `_zoom_in_more` counts real time of
+  zooming in there, a second lands). While up, `_zoom_far(true)` sets every draw range of
+  `ZOOM_FAR_FROM` (380 m) or more to 0 (no limit) -- above `ZOOM_SMALL` only those of
+  `ZOOM_FAR_HIGH` (650 m) or more: kerbs, walls and lamps are under a pixel there, and
+  lifting them tripled the draws at the top (Givatayim: 898 against 337; driving 296) --
+  and puts them back on landing; it catches
+  what the background build adds meanwhile by world's child count -- ranges count to the
+  middle of a 400 m square, and from up there those cut-offs swept across the screen (the
+  user saw buildings' surroundings pop in as the view moved). The low view is kept over the
+  roofs with `_bld_top` (walls' heights, kept at load) via `_roof_near`. The minimap follows
+  the view (`_draw_map_inner`: `mid`, `yaw`, `r`; `_view_footprint` is the screen's corners
+  on the ground) and drops building outlines past r 450 m (a grey blur, and most of the lines).
 
 traffic.gd: `tick` (per car: path, lights, signs, the car or player ahead, standoffs,
 `squeeze`), `_next` / `_leg` / `_turn_into` (routes), `_steer_lanes`, `lead_on` (the query

@@ -778,6 +778,7 @@ var _blds: Array = []                ## PackedVector2Array outlines, counter-clo
 var _bld_box: Array = []             ## Rect2 per building
 var _bld_solid := PackedByteArray()  ## 0 for a building raised on stilts you can drive under
 var _bld_kind := PackedByteArray()   ## 1 a block on columns, 2 a house with a pitched roof, 3 balconies
+var _bld_top := PackedFloat32Array() ## its walls' height (m), for a view from above kept over the roofs
 var _bld_hash := {}
 var _posts := PackedVector2Array()   ## round things you can hit: trees, signal poles
 var _post_r := PackedFloat32Array()
@@ -999,6 +1000,8 @@ const VIEW_BTN := Rect2(578, 98, 52, 20)    ## chase cam / driver's seat (key C 
 const LIGHTS_BTN := Rect2(578, 122, 52, 20)  ## headlights (key L)
 ## (the indicators and the horn are keys only, Q / E and H: on screen they were clutter)
 const WALK_BTN := Rect2(578, 146, 52, 20)    ## out of the car and back in (key F)
+const ZOOM_BTN := Rect2(578, 170, 52, 20)    ## up over the city and back down (key Z, the wheel, a pinch)
+const PAUSE_BTN := Rect2(578, 194, 52, 20)   ## the city holds still, and goes on (key K)
 const STICK_C := Vector2(556, 268)   ## the touch stick sits still, here, on the right
 const STICK_R := 52.0                ## thumb travel (design px) for full lock / full gas
 const STICK_GRAB := 84.0             ## a thumb this close to its centre takes hold of it
@@ -1423,6 +1426,7 @@ func _load_city(id: String) -> bool:
 		_blds.append(ring)
 		_bld_box.append(box)
 		_bld_solid.append(1 if base < 2.4 else 0)
+		_bld_top.append(h)
 		_hash_add(_bld_hash, box, BLD_CELL, bi)
 		bd["_h"] = h
 		bd["_ring"] = ring
@@ -1538,6 +1542,9 @@ func _build_world() -> bool:
 		_build_terrain()
 	_build_edge()
 	_build_setup(_stage("world", t0))
+	var tf := Time.get_ticks_msec()
+	await _build_far_shadows()
+	_stage("far shadows", tf)
 	# the squares round the start before the car is shown; the rest while it drives
 	# (STREETS_BUILD_ALL=1: all of it first -- the scene tests look all over the city)
 	var all_first := OS.get_environment("STREETS_BUILD_ALL") == "1"
@@ -2301,6 +2308,7 @@ vec3 paver(vec2 g, float pattern) {
 	return vec3(min(d.x, d.y), c);
 }
 void fragment() {
+	float fsh = far_shade(wpos, length(VERTEX));   // (before the branches: a texture read)
 	if (COLOR.b > 0.5) {
 		// The pavement: pavers in the street's own pattern and colours (COLOR.r: pattern x 4 +
 		// colours), laid square to the kerb (UV: metres along, out from the kerb), a row of
@@ -2365,7 +2373,7 @@ void fragment() {
 			}
 			col = mix(col, leaf, m * (1.0 - far));
 		}
-		ALBEDO = col;
+		ALBEDO = col * fsh;
 		ROUGHNESS = 0.9;
 	} else {   // the kerb
 	float pat = floor(COLOR.r * 3.99 + 0.01);
@@ -2384,7 +2392,7 @@ void fragment() {
 			c *= mix(0.7, 1.0, UV.y);
 		}
 	}
-	ALBEDO = c;
+	ALBEDO = c * mix(1.0, fsh, step(0.7, wup));
 	ROUGHNESS = 0.85;
 	}
 }
@@ -2523,8 +2531,9 @@ func _build_kerbs() -> void:
 	if _kerb_mat == null:
 		_kerb_mat = ShaderMaterial.new()
 		var sh := Shader.new()
-		sh.code = KERB_SHADER
+		sh.code = _with_far(KERB_SHADER)
 		_kerb_mat.shader = sh
+		_far(_kerb_mat)
 		_kerb_mat.set_shader_parameter("conc", _tex("concrete_pavement_diff"))
 		_kerb_mat.set_shader_parameter("conc_mean", TEX_MEAN["concrete_pavement"])
 		_kerb_mat.set_shader_parameter("textured", 1.0 if _quality > 0 else 0.0)
@@ -4058,6 +4067,7 @@ func _build_trees() -> void:
 		put.call(tpart, Transform3D(b * Basis.from_scale(Vector3(tw.x, tw.y, tw.x) * sc), base + b * Vector3(0, trunk_h * 0.5 * tw.y * sc, 0)), bark)
 		put.call(spec[2], Transform3D(b * Basis.from_scale(cw * jitter * sc), base + b * Vector3(0, float(spec[4]) * sc, 0)),
 			Color(tint.r * g, tint.g * g, tint.b * g, (float(cell) + 0.5) / 4.0))
+		_ao_tree(Vector2(sp.x, sp.y), cw.x * jitter.x * sc * (0.55 if tpart == "ptrunk" else 0.85), float(spec[4]) * sc)
 	for part: String in parts:
 		await _chunked_paced(_tree_meshes[part], parts[part], TREE_RANGE, colours[part], null, true)
 
@@ -4848,7 +4858,7 @@ void fragment() {
 		tx = normalize(tx - NORMAL * dot(NORMAL, tx));
 		NORMAL = normalize(tx * b.x + cross(NORMAL, tx) * b.y + NORMAL * b.z);
 	}
-	ALBEDO = c;
+	ALBEDO = c * far_shade(wpos, length(VERTEX));
 	ROUGHNESS = 0.95;
 }
 """
@@ -4858,8 +4868,9 @@ func _ground_mat() -> ShaderMaterial:
 	if _ground_shader_mat == null:
 		_ground_shader_mat = ShaderMaterial.new()
 		var sh := Shader.new()
-		sh.code = GROUND_SHADER
+		sh.code = _with_far(GROUND_SHADER)
 		_ground_shader_mat.shader = sh
+		_far(_ground_shader_mat)
 		_ground_shader_mat.set_shader_parameter("grass_tex", _tex("leafy_grass_diff"))
 		_ground_shader_mat.set_shader_parameter("grass_nrm", _tex("leafy_grass_nor"))
 		_ground_shader_mat.set_shader_parameter("grass_mean", TEX_MEAN["leafy_grass"])
@@ -5279,6 +5290,7 @@ func _set_night(on: bool) -> void:
 		_furn.set_night(on)
 	if _car_shader_mat != null:
 		_car_material()
+	_far_update()
 	_show_banner("night" if on else "day", 1.2)
 	Probe.event("night", {"on": on})
 
@@ -6536,7 +6548,8 @@ void fragment() {
 		t = normalize(t - NORMAL * dot(NORMAL, t));
 		NORMAL = normalize(t * bump.x + cross(NORMAL, t) * bump.y + NORMAL * bump.z);
 	}
-	ALBEDO = c;
+	float fsh = far_shade(wpos, length(VERTEX));
+	ALBEDO = c * mix(1.0, fsh, step(0.7, wup));   // (the ground, not a wall or a pole)
 	ROUGHNESS = 0.9;
 	SPECULAR = 0.25;
 }
@@ -6559,8 +6572,9 @@ func _tone_mat() -> ShaderMaterial:
 	if _tone_material == null:
 		_tone_material = ShaderMaterial.new()
 		var sh := Shader.new()
-		sh.code = TONE_SHADER
+		sh.code = _with_far(TONE_SHADER)
 		_tone_material.shader = sh
+		_far(_tone_material)
 		# Israeli pavements are 20 x 10 cm concrete pavers in herringbone, a mix of greys
 		# and red-browns (drawn by textures/herringbone.py); Bedford's are poured slabs, the
 		# photo's slabs blown up to a metre or so
@@ -7587,6 +7601,157 @@ func _signals_tick(dt: float) -> void:
 		_sig_phase = (_sig_phase + 1) % SIGNAL_CYCLE.size()
 		_apply_signals()
 
+## ---- shadows past the shadows -----------------------------------------------------------------
+## The real shadows reach 45-75 m from the camera (none at the lowest quality): past that the
+## whole city stood on evenly sunlit ground, flat as a map, and that is most of what you see
+## from the car. The sun does not move, so every building's shadow is painted once, at load,
+## into one picture of the whole city seen from above (each outline swept along the sun's
+## way by its height, then the outline itself cleared: whatever is on a roof is not in its
+## shadow), read back and mipmapped (a picture drawn straight into a viewport has no
+## mipmaps, and its edges shimmered off in the distance). The ground's shaders darken by it
+## where the real shadows fade out (far_shade), so the two meet without a seam; the trees'
+## shadows go in the contact-shadow layer, square by square, as the trees are planted.
+const FAR_SHADE := """
+uniform sampler2D far_shadow : filter_linear_mipmap_anisotropic, repeat_disable, hint_default_black;
+uniform vec4 fs_rect = vec4(0.0);   // the picture's corner (x, z) and 1 / its size in metres
+uniform float fs_near = 60.0;       // where the real shadows end (0: there are none)
+uniform float fs_fade = 0.8;        // ... and where they start fading out, a share of that
+uniform float fs_dark = 0.0;        // how much of the light a shadow takes (0: at night, no picture)
+float far_shade(vec3 wp, float dist) {
+	float s = texture(far_shadow, (wp.xz - fs_rect.xy) * fs_rect.zw).r;
+	float on = clamp((dist - fs_near * fs_fade) / (fs_near * (1.0 - fs_fade) + 0.001), 0.0, 1.0);
+	return 1.0 - fs_dark * s * on;
+}
+"""
+const FS_PX := 2048                  ## the picture's longer side (px): ~1.6 m a pixel over Givatayim
+const FS_DARK := 0.55                ## the share of the light a shadow takes off the ground (the real ones: tests/far_shadows.gd)
+var _fs_tex: ImageTexture = null
+var _fs_rect := Vector4.ZERO
+var _far_mats: Array = []
+
+## a ground shader's code with far_shade() in it
+func _with_far(code: String) -> String:
+	return code.replace("void vertex()", FAR_SHADE + "void vertex()")
+
+## a ground material to keep in step with the picture, the quality and the night
+func _far(m: ShaderMaterial) -> void:
+	if not _far_mats.has(m):
+		_far_mats.append(m)
+	_far_set(m)
+
+func _far_set(m: ShaderMaterial) -> void:
+	m.set_shader_parameter("far_shadow", _fs_tex)
+	m.set_shader_parameter("fs_rect", _fs_rect)
+	m.set_shader_parameter("fs_near", sun.directional_shadow_max_distance if sun.shadow_enabled else 0.0)
+	m.set_shader_parameter("fs_fade", sun.directional_shadow_fade_start)
+	m.set_shader_parameter("fs_dark", 0.0 if _night or _fs_tex == null else FS_DARK)
+
+func _far_update() -> void:
+	for m: ShaderMaterial in _far_mats:
+		_far_set(m)
+
+func _build_far_shadows() -> void:
+	if DisplayServer.get_name() == "headless":
+		return   # (nothing is drawn: a headless playtest)
+	var L := -sun.global_transform.basis.z   # the way the sunlight goes
+	if L.y > -0.05:
+		return
+	var off := Vector2(L.x, L.z) / -L.y      # a shadow's reach on the ground per metre of height
+	var t0 := Time.get_ticks_usec()
+	var mpp := maxf(1.0, maxf(_bounds.size.x, _bounds.size.y) / FS_PX)
+	var w := int(ceil(_bounds.size.x / mpp))
+	var h := int(ceil(_bounds.size.y / mpp))
+	var o := _bounds.position
+	var pts := PackedVector2Array()
+	var cols := PackedColorArray()
+	var idx := PackedInt32Array()
+	var lit: Array = []   # the outlines, cleared after all the shadows are in
+	for bd: Dictionary in _city_data["buildings"]:
+		var ring: PackedVector2Array = bd["_ring"]
+		if ring.size() < 3:
+			continue
+		var top := float(bd["_h"])
+		var low := float(bd["_base"])
+		var px := PackedVector2Array()
+		for p in ring:
+			px.append((p - o + off * low) / mpp)
+			px.append((p - o + off * top) / mpp)
+		var hull := Geometry2D.convex_hull(px)
+		if hull.size() > 1 and hull[0] == hull[hull.size() - 1]:
+			hull.remove_at(hull.size() - 1)
+		var b := pts.size()
+		for q in hull:
+			pts.append(q)
+			cols.append(Color.WHITE)
+		for i in range(1, hull.size() - 1):
+			idx.append_array([b, b + i, b + i + 1])
+		if low == 0.0:
+			lit.append(ring)
+	for ring: PackedVector2Array in lit:
+		var tri := Geometry2D.triangulate_polygon(ring)
+		var b := pts.size()
+		for p in ring:
+			pts.append((p - o) / mpp)
+			cols.append(Color.BLACK)
+		for i in tri:
+			idx.append(b + i)
+	var vp := SubViewport.new()
+	vp.size = Vector2i(w, h)
+	vp.disable_3d = true
+	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	var holder := Node2D.new()
+	vp.add_child(holder)
+	add_child(vp)
+	var item := RenderingServer.canvas_item_create()
+	RenderingServer.canvas_item_set_parent(item, holder.get_canvas_item())
+	RenderingServer.canvas_item_add_rect(item, Rect2(0, 0, w, h), Color.BLACK)
+	RenderingServer.canvas_item_add_triangle_array(item, idx, pts, cols)
+	var t1 := Time.get_ticks_usec()
+	await RenderingServer.frame_post_draw
+	await RenderingServer.frame_post_draw
+	var t2 := Time.get_ticks_usec()
+	var img := vp.get_texture().get_image()
+	RenderingServer.free_rid(item)
+	vp.queue_free()
+	if img == null or img.is_empty():
+		return
+	img.convert(Image.FORMAT_R8)
+	img.generate_mipmaps()
+	_fs_tex = ImageTexture.create_from_image(img)
+	_fs_rect = Vector4(o.x, o.y, 1.0 / (w * mpp), 1.0 / (h * mpp))
+	_far_update()
+	# (what it costs apart from the two frames it waits for the drawing: those are a few ms
+	# in a browser, but most of a second under a test's software renderer)
+	_stage_ms["far shadows: work, not the frames"] = (t1 - t0 + Time.get_ticks_usec() - t2) / 1000
+
+## a tree's shadow on the ground (crown r across, its middle y up), for past the real ones:
+## longer along the sun's way, as a ball's is
+var _sun_way := Vector3.ZERO   ## the way the sunlight goes (it never moves: worked out once)
+
+func _ao_tree(p: Vector2, r: float, y: float) -> void:
+	if _ao == null:
+		return
+	if _sun_way == Vector3.ZERO:
+		_sun_way = -sun.global_transform.basis.z
+	var L := _sun_way
+	if L.y > -0.05:
+		return
+	var off := Vector2(L.x, L.z) / -L.y
+	var c := p + off * y
+	var along := off.normalized() if off.length() > 0.01 else Vector2(1, 0)
+	var across := along.orthogonal()
+	var stretch := 1.0 / clampf(-L.y, 0.3, 1.0)
+	var col := Color(0.8, 0.0, 1.0)
+	var mid := _g3(c, KERB_H + 0.03)
+	var one := Vector2(1, 0)
+	var last := Vector3.ZERO
+	for k in range(9):
+		var a := TAU * k / 8.0
+		var q := _g3(c + along * cos(a) * r * stretch + across * sin(a) * r, KERB_H + 0.03)
+		if k > 0:
+			_ao.tri(mid, last, q, Vector3.UP, col, one, Vector2.ZERO, Vector2.ZERO)
+		last = q
+
 ## ---- contact shadows ------------------------------------------------------------------------
 ## Where a wall meets the ground, and under a parked car, less of the sky's light gets in and
 ## the ground is darker: what makes a house stand on the street and a car sit on it, rather
@@ -7597,15 +7762,38 @@ func _signals_tick(dt: float) -> void:
 ## rim), its depth COLOR.r, a flat floor to the ramp COLOR.g (the ground under a block on
 ## columns, dark all over). It lies a little above the pavement, whatever is under it: on a
 ## lawn or a car park it floats a hand's width up, which a soft dark ramp does not show.
+## COLOR.b 1: a tree's shadow instead (see "shadows past the shadows" below), there only
+## where the real ones have ended, and not inside a building's.
 const AO_SHADER := """
 shader_type spatial;
 render_mode unshaded, blend_mul, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
 uniform float strength = 0.62;
 uniform float far = 150.0;
+varying vec3 wpos;
+float h21(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+float vn(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+void vertex() {
+	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+}
 void fragment() {
-	float a = max(UV.x * UV.x, COLOR.g);   // (squared: falls away faster than the straight ramp)
-	float fade = 1.0 - smoothstep(far * 0.5, far, length(VERTEX));
-	ALBEDO = vec3(1.0 - strength * COLOR.r * a * fade);
+	float d = length(VERTEX);
+	float in_bld = texture(far_shadow, (wpos.xz - fs_rect.xy) * fs_rect.zw).r;
+	if (COLOR.b > 0.5) {
+		// a crown lets some light through: the shadow dappled, its rim soft
+		float dap = 0.7 + 0.3 * vn(wpos.xz * 0.9);
+		float a = smoothstep(0.0, 0.55, UV.x) * dap;
+		float on = clamp((d - fs_near * fs_fade) / (fs_near * (1.0 - fs_fade) + 0.001), 0.0, 1.0);
+		ALBEDO = vec3(1.0 - fs_dark * COLOR.r * a * on * (1.0 - in_bld));
+	} else {
+		float a = max(UV.x * UV.x, COLOR.g);   // (squared: falls away faster than the straight ramp)
+		float fade = 1.0 - smoothstep(far * 0.5, far, d);
+		ALBEDO = vec3(1.0 - strength * COLOR.r * a * fade);
+	}
 }
 """
 const AO_SEEN := 150.0
@@ -7617,10 +7805,11 @@ func _ao_material() -> ShaderMaterial:
 	if _ao_mat == null:
 		_ao_mat = ShaderMaterial.new()
 		var sh := Shader.new()
-		sh.code = AO_SHADER
+		sh.code = _with_far(AO_SHADER)
 		_ao_mat.shader = sh
 		_ao_mat.set_shader_parameter("far", AO_SEEN)
 		_ao_mat.render_priority = -1   # (under the other see-through things: leaves, glass)
+		_far(_ao_mat)
 	return _ao_mat
 
 ## the ground round a building's foot: a strip out from each wall, a fan round each outside
@@ -9034,7 +9223,7 @@ func _retint_city() -> void:
 		env.ambient_light_energy = 0.55
 		env.fog_enabled = true
 		env.fog_light_color = hor
-		env.fog_density = 0.0018
+		env.fog_density = FOG_DAY
 		env.fog_sky_affect = 0.0
 		# a film-like curve: the bright walls roll off instead of clipping, the shade deepens
 		env.tonemap_mode = Environment.TONE_MAPPER_ACES
@@ -9075,7 +9264,7 @@ func _retint_city() -> void:
 		env.ambient_light_color = bg.lerp(pl, 0.5).lerp(ink, 0.25)
 		env.ambient_light_energy = 0.42
 		env.fog_light_color = haze
-		env.fog_density = 0.0026
+		env.fog_density = FOG_NIGHT
 		sun.light_color = ink.lerp(pl, 0.4)
 		sun.light_energy = 0.18
 		sun.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY   # no sun disc in a night sky
@@ -10085,6 +10274,9 @@ func _physics_process(dt: float) -> void:
 	_prev_y = _y
 	if not _loaded or finished or _picker != null:
 		return   # the address picker is open: the world waits
+	if _paused:   # paused (or looking from above): everything holds; the engine falls quiet
+		_engine_tick(dt)
+		return
 	_p0()
 	_signals_tick(dt)
 	_crash_cool = maxf(0.0, _crash_cool - dt)
@@ -10176,17 +10368,19 @@ func _frame() -> void:
 		_pose_car(_car_at, _car_yaw_at, _car_y_at)
 		_me.position = Vector3(_view_pos.x, _view_y, _view_pos.y)
 		_me.face(Vector3(cos(_view_yaw), 0, sin(_view_yaw)))
-		_traffic.draw(f)
+		_traffic.draw(1.0 if _paused else f)
 		_p("traffic draw")
 		_foot_camera(dt)
+		_zoom_camera(dt)
 		_sky_follow()
 		_tick_hud()
 		_p("camera, hud")
 		return
 	_pose_car(_view_pos, _view_yaw, _view_y)
-	_traffic.draw(f)
+	_traffic.draw(1.0 if _paused else f)   # (held: where the cars stand, not between two ticks)
 	_p("traffic draw")
 	_camera(dt, _view_pos, _view_yaw)
+	_zoom_camera(dt)
 	_sky_follow()
 	_tick_hud()
 	_p("camera, hud")
@@ -10239,13 +10433,15 @@ func _set_quality(q: int) -> void:
 	sun.directional_shadow_max_distance = maxf(float(row[1]), 1.0)
 	view.scaling_3d_scale = row[2]
 	_set_blobs(not sun.shadow_enabled)
+	_far_update()
 
 ## Only on the web: a desktop build has a real GPU, and test runs on a software renderer
 ## would step themselves down to nothing.
 func _watch_fps(dt: float) -> void:
 	if not OS.has_feature("web"):
 		return
-	if _bg_build:   # the city still building round you is not this machine being slow
+	if _bg_build or _zoom_v > 0.0:   # the city still building round you, or the whole of it in
+		# view from above, is not this machine being slow
 		_fps_t = 0.0
 		_fps_frames = 0
 		_fps_long = 0
@@ -10870,7 +11066,7 @@ func _engine_loop(bright: bool) -> AudioStreamWAV:
 func _engine_tick(dt: float) -> void:
 	if _engine.is_empty():
 		return
-	var off := Audio.muted() or finished
+	var off := Audio.muted() or finished or _paused
 	for p: AudioStreamPlayer in _engine:
 		if off and p.playing:
 			p.stop()
@@ -11941,6 +12137,329 @@ func _clear_behind(from: Vector2, dir: Vector2, want: float) -> float:
 				return maxf(2.2, s - 0.8)
 		s += 0.5
 	return want
+
+## ---- the view from above: zoom out from where you are, the city paused -------------------
+## "zoom" (Z, the mouse wheel down, two fingers pinching) lifts the view off the car -- or off
+## you, on foot -- up over the city, centred on where you are, the way you were facing at the
+## top of the screen, and pauses the city: the car, traffic, people, lights and the engine
+## hold still. Up there: drag (or the arrows) to move over the city, the wheel / a pinch / - and
+## = to go higher or lower, Q and E (or two fingers turning) to turn it. Zooming in stops at
+## the lowest view (about rooftop height); only a second more of zooming in there comes back
+## down to the car (it came down at the first notch too far, and that was too easy to do by
+## accident). "back" or Z come down at once, and the city goes on. "pause" (K) holds the city
+## with the view where it is; "resume" while up there lets it run on under you, the view
+## following the car (the car still drives, the touch stick too). The minimap follows the
+## view: centred where you look, turned as the screen is, wide enough to hold what is on
+## screen, which it outlines.
+## The usual camera is placed first; this blends it toward the view from above (the bottom
+## of the zoom, below ZOOM_MIN), so it rises out of whatever view you had. From the driver's
+## seat it goes via the chase cam (the car's body is not drawn from the seat) and lands back in
+## the seat. The view leans (52 degrees down at most, not 70: from straight above the town read
+## as a plan, not a place).
+## Draw ranges: whatever is drawn only near the camera (trees, pavements, kerbs, a square's
+## little things -- its range counts to the middle of its 400 m square) is drawn at any
+## distance while the view is up (_zoom_far): from 150-500 m up those cut-offs swept across the
+## screen as the view moved, and whole squares of trees and walls popped in.
+
+const ZOOM_NEAR := 9.0               ## metres from the view's centre at the bottom of the zoom
+const ZOOM_FAR := 560.0              ## ... and at the top: about 1.1 km of town across the screen
+const ZOOM_MIN := 0.16               ## the lowest the view goes: 17 m off, about rooftop height
+const ZOOM_BLEND := 0.12             ## below this the usual camera is blended in (rising, landing)
+const ZOOM_UP := 0.72                ## where "zoom" and Z take it: 140 m up
+const ZOOM_STEP := 0.1               ## one notch of the wheel, one press of - or =
+const ZOOM_PUSH := 1.0               ## seconds of zooming in at the lowest that come down to the car
+const ZOOM_FAR_FROM := 380.0         ## draw ranges at least this long are lifted while the view is up...
+const ZOOM_FAR_HIGH := 650.0         ## ... and above ZOOM_SMALL, only these: kerbs, garden walls,
+const ZOOM_SMALL := 0.8              ## lamps, fences are under a pixel from there, and drawing them
+                                     ## across the town tripled the draws (Givatayim at the top: 898
+                                     ## all lifted, 337 like this, 296 driving; no visible difference)
+const FOG_DAY := 0.0018              ## the haze's density: by day, at night (see the look)
+const FOG_NIGHT := 0.0026
+var _paused := false                 ## the city holds still: the car, traffic, people, lights, sound
+var _zoom := 0.0                     ## where the view is going: 0 the usual view .. 1 the highest
+var _zoom_v := 0.0                   ## where it is, eased
+var _zoom_off := Vector2.ZERO        ## the view's centre from the car (or you), dragged about
+var _zoom_yaw := 0.0                 ## the way the top of the screen faces
+var _zoom_yaw_to := 0.0              ## ... turning to this (Q / E)
+var _zoom_seat := false              ## it rose from the driver's seat: lands back in it
+var _zoom_resume := false            ## landing lets the city go on (it was not paused before)
+var _drag := false                   ## the mouse (or one finger) is dragging the view about
+var _fingers := {}                   ## touch index -> where: fingers down off the stick and buttons
+var _pinch := Vector2.ZERO           ## two of them: (distance apart, angle) at the last move
+var _pinch0 := 0.0                   ## their distance apart when they came down
+var _zoom_push := 0.0                ## seconds of zooming in at the lowest so far
+var _zoom_push_ms := 0               ## when the last of it came
+var _zoom_lift := 0.0                ## metres the view is raised to clear the roofs under it
+var _zoom_ranges: Array = []         ## [node, its draw range] lifted while the view is up
+var _zoom_ranges_n := -1             ## world's child count when they were gathered (-1: not lifted)
+var _zoom_cut := 0.0                 ## the shortest range lifted now (ZOOM_FAR_FROM or ZOOM_FAR_HIGH)
+
+func _zoomed() -> bool:
+	return _zoom > 0.0 or _zoom_v > 0.0
+
+func _zoom_dist(z: float) -> float:
+	return ZOOM_NEAR * pow(ZOOM_FAR / ZOOM_NEAR, z)
+
+func _zoom_pitch(z: float) -> float:
+	return deg_to_rad(lerpf(22.0, 52.0, smoothstep(0.0, 0.8, z)))
+
+## the view up to `z` (0..1, the lowest ZOOM_MIN), or at 0 back down to the car
+func _zoom_set(z: float) -> void:
+	z = clampf(z, 0.0, 1.0)
+	if z > 0.0:
+		z = maxf(z, ZOOM_MIN)
+	_zoom_push = 0.0
+	if z > 0.0 and not _zoomed():   # rising: from where you are, the way you face; the city holds
+		_zoom_off = Vector2.ZERO
+		_zoom_yaw = _view_yaw if _cockpit else _cam_yaw
+		_zoom_yaw_to = _zoom_yaw
+		_zoom_seat = _cockpit
+		if _cockpit:
+			_set_cockpit(false)
+		_zoom_resume = not _paused
+		_set_paused(true)
+		Probe.event("zoom_out", {"z": z})
+	elif z == 0.0 and _zoom > 0.0:
+		Probe.event("zoom_in")
+	_zoom = z
+
+## zooming bit by bit (the wheel, - and =, a pinch): out lifts the view off the car; in stops
+## at the lowest, where a second more of it comes back down
+func _zoom_by(dz: float) -> void:
+	if dz > 0.0:
+		_zoom_set(_zoom + dz)
+	elif _zoom > 0.0:
+		if _zoom > ZOOM_MIN + 0.001:
+			_zoom_set(_zoom + dz)
+		else:
+			_zoom_in_more()
+
+## zooming in at the lowest: kept up for ZOOM_PUSH seconds (gaps under 0.6 s), back to the car
+func _zoom_in_more() -> void:
+	var now := Time.get_ticks_msec()
+	var gap := float(now - _zoom_push_ms) / 1000.0
+	_zoom_push = 0.0 if gap > 0.6 else _zoom_push + gap
+	_zoom_push_ms = now
+	if _zoom_push >= ZOOM_PUSH:
+		_zoom_set(0.0)
+
+## how far the push to come down has gone (0..1); 0 once it has stopped a moment
+func _zoom_pushing() -> float:
+	if _zoom_push <= 0.0 or Time.get_ticks_msec() - _zoom_push_ms > 600:
+		return 0.0
+	return clampf(_zoom_push / ZOOM_PUSH, 0.0, 1.0)
+
+## the highest roof (walls' height) within `r` metres of `p`; 0 over open ground
+func _roof_near(p: Vector2, r: float) -> float:
+	var top := 0.0
+	for i: int in _near(_bld_hash, p, r, BLD_CELL):
+		if i < _bld_top.size() and _bld_top[i] > top and (_bld_box[i] as Rect2).grow(r).has_point(p):
+			top = _bld_top[i]
+	return top
+
+## while the view is up, everything with a draw range of `cut` or more is drawn at any distance
+## (range 0); back as it was when it comes down. What the city builds meanwhile (it builds on
+## round the car in the background) is caught as it is added: world's new children.
+func _zoom_far(on: bool, cut := ZOOM_FAR_FROM) -> void:
+	if not on:
+		if _zoom_ranges_n < 0:
+			return
+		for e: Array in _zoom_ranges:
+			if is_instance_valid(e[0]):
+				(e[0] as GeometryInstance3D).visibility_range_end = e[1]
+		_zoom_ranges.clear()
+		_zoom_ranges_n = -1
+		_zoom_cut = 0.0
+		return
+	var n := world.get_child_count()
+	if n < _zoom_ranges_n:   # something taken out: start again
+		_zoom_far(false)
+	if cut != _zoom_cut:   # higher or lower: the small things' ranges back, or lifted too
+		_zoom_cut = cut
+		for e: Array in _zoom_ranges:
+			if is_instance_valid(e[0]):
+				(e[0] as GeometryInstance3D).visibility_range_end = 0.0 if float(e[1]) >= cut else float(e[1])
+	if n == _zoom_ranges_n:
+		return
+	for i in range(maxi(_zoom_ranges_n, 0), n):
+		var c := world.get_child(i)
+		var list: Array = c.find_children("*", "GeometryInstance3D", true, false)
+		list.append(c)
+		for gi in list:
+			var end := (gi as GeometryInstance3D).visibility_range_end if gi is GeometryInstance3D else 0.0
+			if end >= ZOOM_FAR_FROM:
+				_zoom_ranges.append([gi, end])
+				if end >= cut:
+					(gi as GeometryInstance3D).visibility_range_end = 0.0
+	_zoom_ranges_n = n
+
+func _toggle_pause() -> void:
+	_set_paused(not _paused)
+	_zoom_resume = false   # paused or resumed by hand: landing leaves it as it is
+	if not _paused:
+		_show_banner("resumed", 0.8)
+
+## the city holds still: the ticks stop (_physics_process), and so do the people's legs
+func _set_paused(on: bool) -> void:
+	if on == _paused:
+		return
+	_paused = on
+	var mode := Node.PROCESS_MODE_DISABLED if on else Node.PROCESS_MODE_INHERIT
+	for list: Array in [_walkers, _chatters, _crossers]:
+		for w: Dictionary in list:
+			(w["actor"] as Node).process_mode = mode
+	if _me != null:
+		_me.process_mode = mode
+	Probe.event("pause", {"on": on})
+
+## after the usual camera is placed: blend it toward the view from above
+func _zoom_camera(dt: float) -> void:
+	if not _zoomed():
+		return
+	_zoom_v = lerpf(_zoom_v, _zoom, 1.0 - exp(-dt * 3.0))
+	if absf(_zoom_v - _zoom) < 0.002:
+		_zoom_v = _zoom
+	if _zoom_v <= 0.0:   # landed: the usual view, as it was
+		_zoom_v = 0.0
+		_zoom_off = Vector2.ZERO
+		_zoom_lift = 0.0
+		_zoom_far(false)
+		cam.near = 0.05 if _cockpit else 0.3
+		env.fog_density = FOG_NIGHT if _night else FOG_DAY
+		if _zoom_seat:
+			_set_cockpit(true)
+		_zoom_seat = false
+		if _zoom_resume:
+			_set_paused(false)
+		_zoom_resume = false
+		return
+	var z := _zoom_v
+	var dist := _zoom_dist(z)
+	var pitch := _zoom_pitch(z)
+	var fw := Vector2(cos(_zoom_yaw), sin(_zoom_yaw))
+	var lf := Vector2(fw.y, -fw.x)
+	if _zoom == 0.0:   # coming down: home to the car, facing the way the usual view does
+		_zoom_off = _zoom_off.lerp(Vector2.ZERO, 1.0 - exp(-dt * 3.5))
+		_zoom_yaw_to = _cam_yaw
+	elif _paused:   # the arrows move the view while the city holds (while it runs they drive)
+		var d := PInput.dir()
+		if d != Vector2.ZERO:
+			_zoom_off += (-lf * d.x - fw * d.y) * dist * 0.8 * dt
+			_zoom_keep_in()
+	_zoom_yaw = lerp_angle(_zoom_yaw, _zoom_yaw_to, 1.0 - exp(-dt * 6.0))
+	var w := smoothstep(0.0, ZOOM_BLEND, z)
+	_zoom_far(w > 0.5, ZOOM_FAR_FROM if z < ZOOM_SMALL else ZOOM_FAR_HIGH)
+	var c2 := _view_pos + _zoom_off
+	var gy := _h(c2)
+	var back := dist * cos(pitch)
+	var up := dist * sin(pitch)
+	if up < 40.0:   # low: not inside the block behind
+		back = minf(back, _clear_behind(c2, -fw, back))
+	var e2 := c2 - fw * back
+	# low over the town: over the roofs round the eye, not in them (up quickly, down gently)
+	var need := 0.0
+	if up < 150.0:
+		need = maxf(0.0, _h(e2) + _roof_near(e2, 8.0) + 4.0 - (gy + up))
+	_zoom_lift = lerpf(_zoom_lift, need, 1.0 - exp(-dt * (12.0 if need > _zoom_lift else 2.0)))
+	var eye := Vector3(e2.x, maxf(gy + up + _zoom_lift, _h(e2) + 2.0), e2.y)
+	var at := Vector3(c2.x, gy + 1.0, c2.y)
+	var over := Transform3D(Basis.looking_at(at - eye, Vector3.UP), eye)
+	cam.transform = cam.transform.interpolate_with(over, w)
+	_cam_base = cam.transform   # (the shell shakes the camera from here)
+	cam.fov = lerpf(cam.fov, 58.0, w)
+	# up high: nothing is near, so the near plane goes out with the view and the thin layers
+	# (paint on asphalt on ground) keep their depth; the haze thins so the town below is clear
+	cam.near = lerpf(0.05 if _cockpit else 0.3, maxf(0.3, dist * 0.15), w)
+	env.fog_density = (FOG_NIGHT if _night else FOG_DAY) * lerpf(1.0, 0.2, smoothstep(0.2, 1.0, z))
+
+## the view's centre kept over the town
+func _zoom_keep_in() -> void:
+	var c := (_view_pos + _zoom_off).clamp(world_area.position, world_area.end)
+	_zoom_off = c - _view_pos
+
+## a drag of `rel` design pixels: the ground under the pointer goes with it
+func _zoom_pan(rel: Vector2) -> void:
+	var z := _zoom_v
+	var mpp := 2.0 * _zoom_dist(z) * tan(deg_to_rad(cam.fov) * 0.5) / play_area.size.y
+	var fw := Vector2(cos(_zoom_yaw), sin(_zoom_yaw))
+	var lf := Vector2(fw.y, -fw.x)
+	_zoom_off += lf * rel.x * mpp + fw * rel.y * mpp / maxf(sin(_zoom_pitch(z)), 0.3)
+	_zoom_keep_in()
+
+## Q / E, or two fingers turning: the view turns about its centre
+func _zoom_turn(by: float) -> void:
+	_zoom_yaw_to += by
+
+## two fingers on the screen moved: apart to zoom in, together to zoom out, round to turn
+func _pinch_move() -> void:
+	var ps: Array = _fingers.values()
+	var a: Vector2 = ps[0]
+	var b: Vector2 = ps[1]
+	var d := a.distance_to(b)
+	var ang := (b - a).angle()
+	if d < 8.0:
+		return
+	if not _zoomed():   # a pinch together lifts the view (on the first good squeeze)
+		if _pinch0 > 0.0 and d < _pinch0 * 0.8:
+			_zoom_set(ZOOM_MIN)
+			_pinch = Vector2(d, ang)
+		return
+	if _pinch.x > 0.0 and _zoom > 0.0:
+		var z := _zoom - log(d / _pinch.x) / log(ZOOM_FAR / ZOOM_NEAR)
+		if z < ZOOM_MIN and d > _pinch.x:   # spreading on at the lowest: the push to come down
+			_zoom_in_more()
+		if _zoom > 0.0:
+			_zoom = clampf(z, ZOOM_MIN, 1.0)
+			_zoom_v = _zoom   # (under the fingers, no easing)
+			_zoom_yaw_to -= wrapf(ang - _pinch.y, -PI, PI)   # the town turns with the fingers
+			_zoom_yaw = _zoom_yaw_to
+	_pinch = Vector2(d, ang)
+
+## a line of HUD text with the labels' dark outline, readable over a pale town from above
+func _hud_text(at: Vector2, text: String, width: float, size: int, col: Color) -> void:
+	_hud.draw_string_outline(_font, at, text, HORIZONTAL_ALIGNMENT_CENTER, width, size, 4, Color(Palette.col("bg"), col.a))
+	_hud.draw_string(_font, at, text, HORIZONTAL_ALIGNMENT_CENTER, width, size, col)
+
+## where you are, from above: a ring that breathes round you and an arrow the way you face;
+## off the screen (dragged away), an arrow at its edge pointing back. On foot, the car too.
+func _draw_zoom_marks() -> void:
+	if _zoom_v < 0.05:
+		return
+	var a := smoothstep(0.05, ZOOM_MIN - 0.02, _zoom_v)   # (all there from the lowest view up)
+	var col := Palette.col("player")
+	var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.006)
+	var me3 := Vector3(_view_pos.x, _view_y + 1.0, _view_pos.y)
+	var inner := Rect2(14, 44, 556, 262)   # (clear of the buttons on the right and along the bottom)
+	if _walking:
+		var car3 := Vector3(_car_at.x, _car_y_at + 1.0, _car_at.y)
+		if not cam.is_position_behind(car3):
+			var cs := to_screen(car3)
+			if inner.has_point(cs):
+				var ac := Color(Palette.col("accent"), a * 0.9)
+				_hud.draw_rect(Rect2(cs - Vector2(5, 5), Vector2(10, 10)), ac, false, 2.0)
+				_hud_text(cs + Vector2(-20, 18), "car", 40, 9, ac)
+	var behind := cam.is_position_behind(me3)
+	var s := to_screen(me3)
+	if not behind and inner.has_point(s):
+		_hud.draw_arc(s, 9.0 + pulse * 5.0, 0.0, TAU, 32, Color(col, a * (0.95 - pulse * 0.55)), 2.0)
+		_hud.draw_circle(s, 4.0, Color(col, a))
+		var ahead := to_screen(me3 + Vector3(cos(_view_yaw), 0.0, sin(_view_yaw)) * _zoom_dist(_zoom_v) * 0.05)
+		var v := (ahead - s).normalized()
+		if v != Vector2.ZERO:
+			var n := Vector2(-v.y, v.x)
+			_hud.draw_colored_polygon(PackedVector2Array([s + v * 22.0, s + v * 13.0 + n * 5.0, s + v * 13.0 - n * 5.0]), Color(col, a))
+		return
+	# off the screen: an arrow on its edge, pointing to where you are
+	var mid := play_area.get_center()
+	var to := (s - mid) * (-1.0 if behind else 1.0)
+	if to.length() < 1.0:
+		return
+	var k := minf(absf((inner.size.x * 0.5) / to.x) if to.x != 0.0 else INF, absf((inner.size.y * 0.5) / to.y) if to.y != 0.0 else INF)
+	var at := mid + to * k
+	var v := to.normalized()
+	var n := Vector2(-v.y, v.x)
+	_hud.draw_colored_polygon(PackedVector2Array([at, at - v * 12.0 + n * 7.0, at - v * 12.0 - n * 7.0]), Color(col, a))
+	_hud_text(at - v * 26.0 + Vector2(-20, 4), "you", 40, 9, Color(col, a))
 
 ## ---- autodrive: follow the road graph in the right-hand lane, preferring new streets ----
 
@@ -13553,6 +14072,28 @@ func _draw_hud() -> void:
 	_hud.draw_rect(VIEW_BTN, Color(bg, 0.65))
 	_hud.draw_rect(VIEW_BTN, Color(vc, 0.9), false, 1.5)
 	_hud.draw_string(_font, VIEW_BTN.position + Vector2(0, 15), "chase" if _cockpit else "seat", HORIZONTAL_ALIGNMENT_CENTER, VIEW_BTN.size.x, 11, vc)
+	var zc := Palette.col("accent") if _zoom > 0.0 else Color(ink, 0.8)
+	_hud.draw_rect(ZOOM_BTN, Color(bg, 0.65))
+	_hud.draw_rect(ZOOM_BTN, Color(zc, 0.9), false, 1.5)
+	_hud.draw_string(_font, ZOOM_BTN.position + Vector2(0, 15), "back" if _zoom > 0.0 else "zoom", HORIZONTAL_ALIGNMENT_CENTER, ZOOM_BTN.size.x, 11, zc)
+	var pc := Palette.col("warn") if _paused else Color(ink, 0.8)
+	_hud.draw_rect(PAUSE_BTN, Color(bg, 0.65))
+	_hud.draw_rect(PAUSE_BTN, Color(pc, 0.9), false, 1.5)
+	_hud.draw_string(_font, PAUSE_BTN.position + Vector2(0, 15), "resume" if _paused else "pause", HORIZONTAL_ALIGNMENT_CENTER, PAUSE_BTN.size.x, 11, pc)
+	_draw_zoom_marks()
+	if _paused:
+		_hud_text(Vector2(170, 62), "PAUSED", 300, 13, Palette.col("warn"))
+		if _zoom > 0.0:
+			var hint := "drag to look round · pinch to zoom and turn" if _touch_seen \
+					else "drag or arrows to look round · wheel to zoom · Q E to turn · Z back"
+			_hud_text(Vector2(120, 77), hint, 400, 9, ink)
+	if _zoom > 0.0 and _zoom <= ZOOM_MIN + 0.001:   # at the lowest: how to get back in
+		var push := _zoom_pushing()
+		var pl := Palette.col("player")
+		_hud_text(Vector2(120, 91), "keep zooming in to get back in the car" if push == 0.0 else "back to the car…", 400, 9, pl)
+		if push > 0.0:
+			_hud.draw_rect(Rect2(260, 96, 120, 4), Color(bg, 0.7))
+			_hud.draw_rect(Rect2(260, 96, 120.0 * push, 4), pl)
 	if _touch_seen:
 		var held := _stick_id >= 0
 		var c := STICK_C
@@ -13604,11 +14145,10 @@ func _map_build_cells() -> void:
 
 ## the lines round `at` (in the city's coordinates: "at" in the result is where they were
 ## gathered, for knowing when to gather again)
-func _map_gather() -> Dictionary:
+func _map_gather(at: Vector2, r: float) -> Dictionary:
 	if _map_cells.is_empty():
 		_map_build_cells()
-	var at := _view_pos
-	var reach := MAP_R * 1.45 + MAP_MOVE   # the map's corners, wherever the car turns
+	var reach := r * 1.45 + MAP_MOVE * r / MAP_R   # the map's corners, wherever the car turns
 	# (plain local arrays: appending through `dict[k] as PackedVector2Array` goes to a copy)
 	var blds := PackedVector2Array()
 	var paths := PackedVector2Array()
@@ -13635,7 +14175,7 @@ func _map_gather() -> Dictionary:
 		var d: Vector2 = (poi[0] as Vector2) - at
 		if absf(d.x) < reach and absf(d.y) < reach:
 			places.append([poi[0], poi[1]])
-	return {"at": at, "blds": blds, "paths": paths, "minor": minor, "major": major,
+	return {"at": at, "r": r, "blds": blds, "paths": paths, "minor": minor, "major": major,
 		"limits": limits, "places": places}
 
 ## the minimap: streets and building outlines round the car, heading up
@@ -13649,14 +14189,28 @@ func _draw_map_inner() -> void:
 	var ink := Palette.col("ink")
 	var bg := Palette.col("bg")
 	_map.draw_rect(Rect2(Vector2.ZERO, sz), Color(bg, 0.72))
-	if _map_lines.is_empty() or (_map_lines["at"] as Vector2).distance_to(_view_pos) > MAP_MOVE:
-		_map_lines = _map_gather()
+	# the view from above: the map follows it -- centred where you look, turned as the screen
+	# is, wide enough to hold the ground on screen (outlined below); the usual map otherwise
+	var zw := smoothstep(0.0, ZOOM_BLEND, _zoom_v) if _zoomed() else 0.0
+	var mid := _view_pos + _zoom_off * zw
+	var yaw := lerp_angle(_view_yaw, _zoom_yaw, zw)
+	var r := MAP_R
+	var foot := PackedVector2Array()
+	if zw > 0.0:
+		foot = _view_footprint()
+		var far := 0.0
+		for q: Vector2 in foot:
+			far = maxf(far, q.distance_to(mid))
+		r = lerpf(MAP_R, maxf(MAP_R, far * 1.2), zw)
+	if _map_lines.is_empty() or (_map_lines["at"] as Vector2).distance_to(mid) > MAP_MOVE * r / MAP_R \
+			or r > float(_map_lines["r"]) or r < float(_map_lines["r"]) * 0.5:
+		_map_lines = _map_gather(mid, r * 1.3 if r > MAP_R else MAP_R)   # (growing: some to spare)
 	var at := Vector2.ZERO   # the lines are in the city's own coordinates
-	var s := sz.x * 0.5 / MAP_R
+	var s := sz.x * 0.5 / r
 	# heading up round the middle of the map, the car in the middle
-	_map.draw_set_transform_matrix(Transform2D(-PI * 0.5 - _view_yaw, Vector2(s, s), 0.0, sz * 0.5)
-		* Transform2D(0.0, -_view_pos))
-	if not (_map_lines["blds"] as PackedVector2Array).is_empty():
+	var xf := Transform2D(-PI * 0.5 - yaw, Vector2(s, s), 0.0, sz * 0.5) * Transform2D(0.0, -mid)
+	_map.draw_set_transform_matrix(xf)
+	if r < 450.0 and not (_map_lines["blds"] as PackedVector2Array).is_empty():   # (wider: a grey blur)
 		# plain one-pixel lines: wide ones are rebuilt as strips every frame, and the outlines
 		# are most of the map's lines
 		_map.draw_multiline(_map_lines["blds"], Color(ink, 0.3), -1.0)
@@ -13669,7 +14223,8 @@ func _draw_map_inner() -> void:
 	for pts: PackedVector2Array in _map_lines["limits"]:
 		_map.draw_polyline(pts, Color(Palette.col("accent"), 0.8), 1.5 / s)
 	var rim := _bounds.grow(-EDGE)
-	if not rim.grow(-MAP_R * 1.5).has_point(_view_pos):   # the map's edge, when it is in view
+	var deep := rim.grow(-r * 1.5)   # (a map wider than the town: no inside at all)
+	if deep.size.x <= 0.0 or deep.size.y <= 0.0 or not deep.has_point(mid):   # the map's edge, when it is in view
 		_map.draw_polyline(PackedVector2Array([rim.position - at, Vector2(rim.end.x, rim.position.y) - at, rim.end - at,
 			Vector2(rim.position.x, rim.end.y) - at, rim.position - at]), Palette.col("hazard"), 3.0 / s)
 	if _auto and _ap_pts.size() > 1:
@@ -13688,10 +14243,40 @@ func _draw_map_inner() -> void:
 	if _dest_on:
 		_map.draw_circle(_dest - at, 6.0 / s, Palette.col("accent"))
 		_map.draw_arc(_dest - at, 11.0 / s, 0.0, TAU, 24, Color(Palette.col("accent"), 0.6), 1.5 / s)
+	if foot.size() == 4:   # what is on the screen
+		_map.draw_colored_polygon(foot, Color(Palette.col("player"), 0.13 * zw))
+		var ring := foot.duplicate()
+		ring.append(foot[0])
+		_map.draw_polyline(ring, Color(Palette.col("player"), 0.85 * zw), 1.5 / s)
 	_map.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	var c := sz * 0.5
-	_map.draw_colored_polygon(PackedVector2Array([c + Vector2(0, -7), c + Vector2(5, 5), c + Vector2(-5, 5)]), Palette.col("player"))
+	# you: in the middle and heading up, or (the view dragged away) where you are, or an
+	# arrow on the map's edge pointing there
+	var me := xf * _view_pos
+	var fw := (xf.basis_xform(Vector2(cos(_view_yaw), sin(_view_yaw)))).normalized()
+	var sd := Vector2(-fw.y, fw.x)
+	var box := Rect2(Vector2.ZERO, sz).grow(-7.0)
+	if not box.has_point(me):
+		var c := sz * 0.5
+		var d := me - c
+		var k := minf(absf(box.size.x * 0.5 / d.x) if d.x != 0.0 else INF, absf(box.size.y * 0.5 / d.y) if d.y != 0.0 else INF)
+		me = c + d * k
+		fw = d.normalized()
+		sd = Vector2(-fw.y, fw.x)
+	_map.draw_colored_polygon(PackedVector2Array([me + fw * 7.0, me - fw * 5.0 + sd * 5.0, me - fw * 5.0 - sd * 5.0]), Palette.col("player"))
 	_map.draw_rect(Rect2(Vector2.ZERO, sz), Color(ink, 0.5), false, 1.0)
+
+## the ground on screen: where the four corners of the view meet it, in the city's metres
+## (empty if a corner looks above the horizon)
+func _view_footprint() -> PackedVector2Array:
+	var y := _h(_view_pos + _zoom_off)
+	var out := PackedVector2Array()
+	for sc: Vector2 in [play_area.position, Vector2(play_area.end.x, play_area.position.y), play_area.end,
+			Vector2(play_area.position.x, play_area.end.y)]:
+		var g := ground_point(sc, y)
+		if g == Vector3.INF:
+			return PackedVector2Array()
+		out.append(Vector2(g.x, g.z))
+	return out
 
 ## ---- touch: one stick that stays put on the right -- thumb on it, drag up for gas, down
 ## to brake (and reverse once stopped), sideways to steer; let go and it centres. Grabbing
@@ -13711,6 +14296,9 @@ func _input(event: InputEvent) -> void:
 				_turn(-1)
 		return
 	var key := event as InputEventKey
+	if key != null and key.echo and key.pressed and key.keycode in [KEY_MINUS, KEY_KP_SUBTRACT, KEY_EQUAL, KEY_PLUS, KEY_KP_ADD]:
+		_zoom_by(ZOOM_STEP * (1.0 if key.keycode in [KEY_MINUS, KEY_KP_SUBTRACT] else -1.0))
+		return
 	if key != null and not key.echo:
 		# the view and the car's switches, straight off the keyboard: none of them drives the
 		# car, so the bots (which play through PInput) have no use for them
@@ -13718,7 +14306,26 @@ func _input(event: InputEvent) -> void:
 			_horn_held = key.pressed
 			return
 		if key.pressed:
+			if _zoomed() and key.keycode in [KEY_Q, KEY_E, KEY_C]:
+				if key.keycode == KEY_C:   # the seat from up there: down into it
+					_zoom_seat = not _cockpit
+					_zoom_set(0.0)
+				else:
+					_zoom_turn(PI / 8.0 * (-1.0 if key.keycode == KEY_Q else 1.0))   # Q left, E right
+				return
 			match key.keycode:
+				KEY_Z:
+					_zoom_set(0.0 if _zoom > 0.0 else ZOOM_UP)
+					return
+				KEY_MINUS, KEY_KP_SUBTRACT:
+					_zoom_by(ZOOM_STEP)
+					return
+				KEY_EQUAL, KEY_PLUS, KEY_KP_ADD:
+					_zoom_by(-ZOOM_STEP)
+					return
+				KEY_K, KEY_PAUSE:
+					_toggle_pause()
+					return
 				KEY_C:
 					_set_cockpit(not _cockpit)
 					return
@@ -13737,8 +14344,20 @@ func _input(event: InputEvent) -> void:
 				KEY_P:
 					_toggle_perf()
 					return
+	if event is InputEventMouseMotion:
+		if _drag and _fingers.size() < 2:   # (two fingers: the pinch has it)
+			_zoom_pan((event as InputEventMouseMotion).relative)
+		return
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
+		if mb.button_index == MOUSE_BUTTON_LEFT and not mb.pressed:
+			_drag = false
+		if mb.pressed and mb.button_index in [MOUSE_BUTTON_WHEEL_DOWN, MOUSE_BUTTON_WHEEL_UP] \
+				and not Flow.pointer_over_hud():
+			# down (toward you) goes up over the city, as on a map; a trackpad sends fractions
+			var step := ZOOM_STEP * (mb.factor if mb.factor > 0.0 else 1.0)
+			_zoom_by(step if mb.button_index == MOUSE_BUTTON_WHEEL_DOWN else -step)
+			return
 		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT and not Flow.pointer_over_hud():
 			if _auto and _cross_showing() and not _cross["chosen"]:
 				for i in range((_cross["ways"] as Array).size()):
@@ -13759,7 +14378,11 @@ func _input(event: InputEvent) -> void:
 			elif NIGHT_BTN.grow(4).has_point(mb.position):
 				_set_night(not _night)
 			elif VIEW_BTN.grow(4).has_point(mb.position):
-				_set_cockpit(not _cockpit)
+				if _zoomed():
+					_zoom_seat = not _cockpit
+					_zoom_set(0.0)
+				else:
+					_set_cockpit(not _cockpit)
 			elif LIGHTS_BTN.grow(2).has_point(mb.position):
 				_set_lights(not _lights_on)
 			elif WALK_BTN.grow(2).has_point(mb.position):
@@ -13768,6 +14391,12 @@ func _input(event: InputEvent) -> void:
 				_assist = not _assist
 				_show_banner("driving assist " + ("on" if _assist else "off"), 1.2)
 				Probe.event("assist", {"on": _assist})
+			elif ZOOM_BTN.grow(2).has_point(mb.position):
+				_zoom_set(0.0 if _zoom > 0.0 else ZOOM_UP)
+			elif PAUSE_BTN.grow(2).has_point(mb.position):
+				_toggle_pause()
+			elif _zoomed() and not (_touch_seen and not _paused and mb.position.distance_to(STICK_C) <= STICK_GRAB):
+				_drag = true   # (a thumb on the stick, the city running under you, is driving)
 		return
 	if event is InputEventScreenTouch:
 		var t := event as InputEventScreenTouch
@@ -13780,18 +14409,32 @@ func _input(event: InputEvent) -> void:
 					or ASSIST_BTN.grow(4).has_point(t.position) or NIGHT_BTN.grow(4).has_point(t.position) \
 					or VIEW_BTN.grow(4).has_point(t.position) or LIGHTS_BTN.grow(2).has_point(t.position) \
 					or WALK_BTN.grow(2).has_point(t.position) \
+					or ZOOM_BTN.grow(2).has_point(t.position) or PAUSE_BTN.grow(2).has_point(t.position) \
 					or (_trace_view and TRACE_RECT.has_point(t.position)) \
 					or t.position.y < 36.0:
 				return   # the button (via its emulated click) and the shell's menu/sound row
-			if _stick_id < 0 and t.position.distance_to(STICK_C) <= STICK_GRAB:
+			if _stick_id < 0 and t.position.distance_to(STICK_C) <= STICK_GRAB and not _paused:
 				_stick_id = t.index
 				_stick = ((t.position - STICK_C) / STICK_R).limit_length(1.0)
 				if _auto:
 					_set_auto(false)
-		elif t.index == _stick_id:
-			_stick_id = -1
-			_stick = Vector2.ZERO
+			else:   # a finger on the view: one drags it about (as the mouse), two pinch and turn
+				_fingers[t.index] = t.position
+				_pinch = Vector2.ZERO
+				if _fingers.size() == 2:
+					var ps: Array = _fingers.values()
+					_pinch0 = (ps[0] as Vector2).distance_to(ps[1])
+		else:
+			_fingers.erase(t.index)
+			_pinch = Vector2.ZERO
+			if t.index == _stick_id:
+				_stick_id = -1
+				_stick = Vector2.ZERO
 	elif event is InputEventScreenDrag:
 		var dr := event as InputEventScreenDrag
 		if dr.index == _stick_id:
 			_stick = ((dr.position - STICK_C) / STICK_R).limit_length(1.0)
+		elif _fingers.has(dr.index):
+			_fingers[dr.index] = dr.position
+			if _fingers.size() == 2:
+				_pinch_move()
