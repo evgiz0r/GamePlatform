@@ -601,7 +601,8 @@ What each round found, so far:
 Tel Aviv, Bedford and the test town one each), picked once by `tests/pick_routes.py` (seed
 2026; it keeps away from the places in the privacy rule below). `tests/run_routes.sh [ids]`
 drives them by "go to" and autodrive, two at a time, headless at 60 fixed ticks a second
-(the test town's in ~20 s, a big city's a few minutes), and `route_report.py` draws each
+(the test town's in ~20 s, a big city's a few minutes; all ten ~10-12 min here, not the
+40-60 the script's top says), and `route_report.py` draws each
 drive with street names (OUT dir) and appends a dated block to `tests/routes_results.md`:
 arrived, time, distance, hits, the longest wait and what held it, red lights, rescues, time
 off the road. Run it after a change to driving, compare with the last block, look at the
@@ -683,8 +684,8 @@ by while they were still on the far half (they take ~18 s); from the far kerb it
 **Pockets** (`_find_pockets`). The bake cuts each town at its edge, and with it the far ends
 of one-way streets: some streets have no way back to the town but against a one-way
 (`_trap`), others no way to them from it (`_cut_off`), and points past the barrier are on no
-way at all (`_outside`). Inside the edge, public streets: Givatayim 8.7 km trapped and 8.9 cut
-off of 156; Tel Aviv 6.3 / 9.4 of 144; Ashdod 8.3 / 7.3 of 555; Bedford 24.7 / 26.4 of 321
+way at all (`_outside`). Inside the edge, public streets: Givatayim 8.0 km trapped and 8.5 cut
+off of 157; Tel Aviv 6.3 / 9.4 of 144; Ashdod 8.3 / 7.3 of 555; Bedford 24.7 / 26.4 of 321
 (16%: a whole estate in one corner); the test town none. Found once at load on the graph
 the routes use (20-170 ms). Traffic (-6) and free autodrive (-8) do not turn into a trap
 from outside one; "go to" an address in a cut-off pocket goes to the nearest street with a
@@ -693,6 +694,40 @@ route that starts in a trap starts at the nearest street with a way out.
 `tests/pockets.gd` (counts, those two checks, `$OUT/pockets_<city>.json`) and
 `tests/pockets_map.py` (the picture: red trapped, orange cut off). Widening the bake would
 only move the cut: a way out beyond the barrier cannot be driven.
+
+### Handoff: autodrive's junctions, the route set, test routes (20 Nov 2026)
+
+This session's areas, for whoever picks them up (its context is compacted after this).
+Nothing is half done: all of the above is on main.
+- **Where the code is**: `_ap_give_v` and its helpers (`_ap_at`, `_same_level`, `_rank_of`;
+  the cache `_ap_js` of [along, node, enter, leave]) by `_ap_zebra_v` in streets.gd, called
+  from `_autodrive` as "junction"; traffic.gd reads `g._ap_giving` in `_junction_ahead` and has
+  the `can_stop` rule there; `_zebra_clear` (both); `_find_pockets`, `_pocketed`,
+  `_nearest_seg_out` after `_build_graph`; the routes list and routes of your own after
+  `ROUTES_FILE` (`_route_list_open`, `_route_new_row`, `_made_pick`, `_cancel_picker`).
+- **The tests and good numbers**: `give_way` (LEVEL 4, 1; headless; `GW_NODE=n VERBOSE=1`
+  for one junction second by second) -- PASS, test town 10 of 10, Givatayim 8 of 8,
+  30-60 us a tick; `zebra_halves` (1, 4) PASS; `pockets` (1, 2, 3, 7) PASS; `my_route` (4,
+  through `tests/run.sh`: it takes shots) PASS; `run_routes.sh` -- the last block of
+  `tests/routes_results.md`: 10 of 10 arrived, 0 hits, 0 rescues, longest waits 9-40 s.
+- **How the bugs were found**: a decision that ignores a car is found fastest by a print at
+  each filter in turn (a `GW_DBG`-style env check, removed after); each time it was a filter
+  upstream of the change being tried (no path window, the level test, the way in read past
+  the corner). A result identical to the decimal after a change means the change is not
+  reached.
+- **Open**:
+  - route 5's red light (Ashdod, Bnei Brit): at 50 km/h on the amber, "can't stop", and the 3 s
+    amber ran out before the line -- the lights' amber rule, not giving way;
+  - traffic's own player check in `_junction_ahead` still uses `_level` (2.5 m): on a hill a
+    traffic car 50 m off does not see the player at its junction (autodrive now gives way
+    itself, so it matters mostly when you drive);
+  - the exam's "autodrive: stuck 8 s+" counts a give-way wait over 8 s as stuck (leave it:
+    a wait that long is worth a look; traffic spawned round the player makes streams
+    denser than real ones);
+  - autodrive does not wait in a wide median: in a junction of several points within 18 m
+    (`AP_KNOT`) it is committed once in the first;
+  - traffic is not kept from spawning inside a pocket (only from turning into one);
+  - `run_routes.sh`'s top says 40-60 min (it is ~10-12).
 
 ## Numbers to compare against (November 2026, cloud container, software renderer)
 

@@ -289,6 +289,7 @@ once each take about half again as long):
 | a playtest of a small 2D game, 20-30 s of play | 1-2 min |
 | a playtest of a big 3D city game (loading the city is most of it) | under 1 min to 5 min |
 | a scene test on a big city: load, then stills or a scan | 1-7 min |
+| ten headless drives across the big cities, two at a time (`--fixed-fps 60`, lowest quality) | 10-12 min |
 | recording 100 s of play frame by frame (1280x720, `--fixed-fps 10`) | 18-20 min |
 | turning frames into a video with ffmpeg | 1-2 min |
 | the site republishing after a push to `main` | about 5 min |

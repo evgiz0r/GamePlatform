@@ -61,7 +61,15 @@ A game's `tests/run.sh <test> [level]` wraps that line (see an existing one).
   `g.look_from(eye, target)` and snap. Unfrozen, the game's own camera moves it back.
 - **Stage the situation directly.** Put the player at a point and heading, send one AI car
   at it down a chosen road, set a quality level, drop the car in a courtyard. Waiting for it
-  to happen by itself costs minutes and may never happen in a test run.
+  to happen by itself costs minutes and may never happen in a test run. For two drivers
+  meeting at a junction: clear the rest of the traffic (and keep it off), send the other
+  car when the player is ~35 m out at the distance that makes them arrive together, and
+  skip the case when the map makes it not a meeting (where the main road bends, the car
+  "from the side" came up behind instead).
+- **When a fix changes nothing to the decimal, the code you changed is not reached.** Put a
+  print at each filter before it (behind an env variable, taken out after) and run the one
+  case: a decision that ignored a car turned out, three times running, to drop it at a
+  filter upstream of the one being tuned.
 - **Put a looking-down camera well above the roofs** (30 m and more in a town), not at
   roof height: a camera 9 m up over a junction sat just above a building, and its flat
   roof filled half of every shot as a featureless pale plane -- it looked exactly like the

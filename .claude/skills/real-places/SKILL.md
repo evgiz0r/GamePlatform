@@ -274,7 +274,10 @@ to skip the bridge overhead) also skips a car 50-80 m down a 5% street, or 15 m 
 one: the AI did not see the car coming to its junction, nor the car crossing in front of it,
 and side-swiped it -- in the hilly town only; the flat test town never showed it. Both on the
 ground (each within a metre of the ground under it) is one level; otherwise allow a slope's
-rise over the distance between them (~8% of it) on top of the 2.5 m.
+rise over the distance between them (~8% of it) on top of the 2.5 m. The same trap in
+placing the car: "the nearest road at the car's height" is right on a bridge beside it and
+wrong for a jump across town -- from the valley to an address on a hill it skipped the
+street 32 m away for one 107 m off. Use the car's height only near the car.
 
 What a driving game on one needed:
 
