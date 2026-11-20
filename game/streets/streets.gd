@@ -9412,14 +9412,14 @@ func _add_post(p: Vector2, r: float) -> void:
 ## fitted in it: walkers on a pavement with cars parked half up on it went in at the car's
 ## nose, came out of its door and back in at its boot. With one more in the middle, the
 ## scallops between three round posts still let a shoulder 0.2-0.35 m into the car's side
-## (tests/walk_people.gd); five, 0.625 m apart, leave about 0.1 m (and the ends' corners,
-## rounder than a car's). All 0.85 m: city_check knows a parked car's posts by that, and
-## they reach into the road by design. (The end two first: tests and the traffic find a
-## parked car as that pair.)
+## (tests/walk_people.gd); five, 0.7 m apart, the end ones at 1.4 m (reaching 2.25 m, a
+## car's own half-length: at 1.25 its front and back wings were 0.17-0.27 m short), leave
+## about 0.1 m. All 0.85 m: city_check knows a parked car's posts by that, and they reach
+## into the road by design. (The end two first: tests find a parked car as that pair.)
 func _add_car_posts(c: Vector2, along: Vector2) -> void:
-	_add_post(c + along * 1.25, 0.85)
-	_add_post(c - along * 1.25, 0.85)
-	for k: float in [-0.625, 0.0, 0.625]:
+	_add_post(c + along * 1.4, 0.85)
+	_add_post(c - along * 1.4, 0.85)
+	for k: float in [-0.7, 0.0, 0.7]:
 		_add_post(c + along * k, 0.85)
 
 ## a traffic light on the right of every way into a signalled junction, in two groups by

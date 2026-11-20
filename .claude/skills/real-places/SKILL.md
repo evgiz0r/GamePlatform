@@ -197,8 +197,10 @@ goes wrong shows up the first time it runs.
   0.85 m at either end of a car leave a 0.8 m gap at its middle, and a walker (0.25 m)
   stood in it -- on a pavement with cars half up on it they went in at the nose and out at
   the boot. Even one more in the middle let a shoulder 0.2-0.35 m into the car's side in
-  the scallops between circles; five, the middle three 0.625 m apart, leave a few cm. The
-  same goes for anything long made of posts (a bus, a skip, a bench).
+  the scallops between circles, and posts ending short of the car's ends left its wings
+  0.2-0.3 m open; five, 0.7 m apart, the end ones at the car's half-length less their
+  radius, leave about 0.1 m. The same goes for anything long made of posts (a bus, a skip,
+  a bench).
 - **Walkers walk on at the end of a stretch.** Turning back at every block's end paces
   one block forever, and in view it reads as aimless. Go on over the side street's mouth
   to the same pavement's next block, or round the corner; turn back only where nothing

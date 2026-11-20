@@ -9,7 +9,7 @@ extends SceneTree
 ##   swerve    a walker within 8 m stepping more than 0.5 m off its line, and how far
 ##   close     someone within 0.6 m of the walker (two bodies in one place: walked through)
 ##   in car    someone (or a dog, a pushchair) more than 0.15 m into a parked car's body (4.4 x
-##             1.8 m, its corners rounded; the car found as its end posts, 2.5 m apart)
+##             1.8 m, its corners rounded; the car found as its end posts, 2.8 m apart)
 ## UNTIL=s stops there. SEED=n another day's people (who goes where hangs on frame times as well as the seed).
 ## FROM=s starts the walk s seconds in (walk 2's Sirkin is from about 45 s; a whole walk takes
 ## 15 minutes of wall time here, mostly the street's own tick). Run headless at a fixed tick
@@ -41,11 +41,11 @@ func _run() -> void:
 		g._film_t = float(OS.get_environment("FROM"))
 		for i in range(20):   # (the people round the new spot put out, unseen, before counting)
 			await process_frame
-	# the parked cars: two posts of 0.85 m, 2.5 m apart, one after the other
+	# the parked cars: their end posts, 0.85 m, 2.8 m apart, one after the other (_add_car_posts)
 	var cars: Array = []   # [middle, along]
 	for i in range(g._posts.size() - 1):
 		if is_equal_approx(g._post_r[i], 0.85) and is_equal_approx(g._post_r[i + 1], 0.85) \
-				and absf(g._posts[i].distance_to(g._posts[i + 1]) - 2.5) < 0.02:
+				and absf(g._posts[i].distance_to(g._posts[i + 1]) - 2.8) < 0.02:
 			cars.append([(g._posts[i] + g._posts[i + 1]) * 0.5, (g._posts[i] - g._posts[i + 1]).normalized()])
 	var car_hash := {}
 	for k in range(cars.size()):
