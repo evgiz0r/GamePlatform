@@ -4,7 +4,8 @@
 # screenshots. See README.md here for the list and what "good" looks like for each.
 #
 #   game/streets/tests/run.sh <test> [level]        level: 1 Givatayim, 2 Bedford, 3 Ashdod,
-#                                                  4 the made-up test town (default 1)
+#                                                  4 the made-up test town, 5 the filmed walk
+#                                                  (default 1)
 #   OUT=/some/dir game/streets/tests/run.sh map_edge 3
 #
 # Screenshots go to $OUT (default /tmp/streets-tests/<test>). The tests that measure behaviour
@@ -16,9 +17,6 @@ cd "$(dirname "$0")/../../.."
 test="${1:?which test? (ls game/streets/tests/*.gd)}"
 level="${2:-1}"
 export LEVEL="$level"
-# the whole city built before the test starts (the game builds it near-first, the rest while
-# you drive: a test counting signs or lights would see only the squares round the start)
-export STREETS_BUILD_ALL="${STREETS_BUILD_ALL:-1}"
 # the whole city built before the test starts (the game builds near the start first and the
 # rest while you drive; a test looking elsewhere would find it not up yet). A test of that
 # loading itself sets STREETS_BUILD_ALL=0.
