@@ -14,9 +14,19 @@ data format is at the top of `tools/osm_city.py`; this is about living with it.
 - `tools/osm_city.py` needs Overpass. From a cloud session that cannot reach it, start the
   "bake a real city" workflow (`.github/workflows/bake_city.yml`, inputs `place`, `out`,
   and for an odd shape `margin` and `include` -- extra named areas to pull in). It commits
-  the file to `main` itself; fetch and merge before your next push. Overpass is sometimes
-  down: a failed run is worth one retry later, and a run stuck "queued" for an hour can be
-  abandoned and started again.
+  the file to the branch it was run on (`main` by default; run it on your own branch to
+  check the city before it goes out); fetch and merge before your next push. Overpass is
+  sometimes down: a failed run is worth one retry later, and a run stuck "queued" for an
+  hour can be abandoned and started again.
+- **Allowing `overpass-api.de` in a cloud environment is not enough**: the proxy lets the
+  connection through and the server resets it during the TLS handshake (it turns some
+  networks away; its mirrors are other hosts). Go straight to the workflow.
+- **A big city whole is too much.** Givatayim (3 km^2) builds in ~6 s on a cloud
+  container, a 47 km^2 town in ~15 s, and a city centre is denser than either. For a few
+  neighbourhoods of one, give the workflow `bbox` (south,west,north,east in degrees,
+  `place` then only its name) -- e.g. read off a screenshot of a map with two landmarks of
+  known position for the scale. A box has no boundary: no "welcome to" at the limits, and
+  the striped barrier at the map edge is the whole border.
 - `tools/fake_city.py` makes up a small town with one of every awkward thing (divided
   boulevard, big signalled junction, roundabouts, a one-way pair, a steep hill, car parks)
   in a second, no network. Use it to check a change quickly; check real towns before
