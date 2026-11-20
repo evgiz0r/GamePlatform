@@ -8975,7 +8975,13 @@ func _batch_add(mesh: Mesh, xforms: Array, range_end: float, colours: Array, m: 
 	var white: bool = soup[3]
 	var nv := sv.size()
 	_tally("batched vertices: " + (_tone_of(mt) if _tone_of(mt) != "" else "coloured kits"), nv * xforms.size())   # (tests/perf_dive.gd)
-	_tally("batched mesh: %d" % mesh.get_instance_id(), nv * xforms.size())
+	if OS.is_debug_build():   # (and by who added them: the first caller that is not the batching itself)
+		var who := "?"
+		for fr: Dictionary in get_stack():
+			if not String(fr["function"]) in ["_batch_add", "_chunked", "_chunked_paced", "_place", "_tally"]:
+				who = "%s:%d (%d verts)" % [fr["function"], fr["line"], nv]
+				break
+		_tally("batched by: " + who, nv * xforms.size())
 	for i in range(xforms.size()):
 		var t: Transform3D = xforms[i]
 		var ck := _tile if _tiled else _cell(Vector2(t.origin.x, t.origin.z), BATCH_CELL)
