@@ -106,7 +106,8 @@ func _run() -> void:
 	if OS.get_environment("TRAFFIC_LOG") != "":
 		# TRAFFIC_LOG=from,to: the walk at its own pace from the start (scripted cars are sent
 		# by its clock, which AT jumps), and every quarter second from `from` to `to` each car
-		# within 40 m: where it is from the walker, its speed, lane, kind, whether it drives on
+		# within 40 m: where it is from the walker, its speed and what holds it down (traffic.gd's
+		# `why`), lane, kind, whether it drives on
 		# past the walk's zebras ("through")
 		var span := OS.get_environment("TRAFFIC_LOG").split_floats(",")
 		var next := span[0]
@@ -120,7 +121,7 @@ func _run() -> void:
 				if not c.alive or c.pos.distance_to(g._pos) > 40.0:
 					continue
 				var rel: Vector2 = c.pos - g._pos
-				line += "  [%s %s %.1f m/s lane %d%s at %.0f m]" % [c.kind, Vector2i(rel), c.v, c.lane_i,
+				line += "  [%s %s %.1f m/s (%s) lane %d%s at %.0f m]" % [c.kind, Vector2i(rel), c.v, c.why, c.lane_i,
 					" through" if c.film_through else "", rel.length()]
 			print(line)
 		quit()

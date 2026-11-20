@@ -1463,6 +1463,15 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   and back, two slow sines), a woman crosses the passage's end in front of the man in blue
   (59.4-63.2 s).
 
+  *Merging main after it*: the black hatch at the crossing passed at 4.4 s, not 2. Not the
+  merged traffic: `send` takes the car furthest off from the pool, and `_start_on` reset its
+  want, wait and hit but not its smoothed `acc` -- this one came with -7 m/s^2 from a hard stop
+  in its last life and braked to 3 m/s with "limit" as its reason and 14 m/s as its want (seen
+  only in a tick-by-tick line of v, want, acc). `_start_on` now resets acc, braking, react_t,
+  still, blocker, holding and the stop sign it last stopped at (all three of its callers put a
+  car down afresh: spawns, kerb pull-outs, film cars). Likely the grey SUV's 0-1.5 s spread of
+  pass 12 too. The walk test's TRAFFIC_LOG prints each car's `why` now.
+
 ### Handoff: the filmed walks (20 Nov 2026, after pass 13)
 
 - **In progress**: nothing. Pass 13 is on main; the list of what is still different is
