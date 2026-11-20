@@ -43,7 +43,9 @@ is a Z coordinate, not a height.
 - **No glow.** `Environment.glow_enabled` inside the 3D `SubViewport` washed the whole
   frame flat bright purple under the Compatibility renderer (4.7.2, seen in `shots.sh`).
   Emissive materials (`mat(role, 0.5..0.9)`) on the dark background give the neon look
-  without it. Tonemapper is linear on purpose: filmic turned the pink accent orange.
+  without it. Tonemapper is linear on purpose: filmic turned the pink accent orange. (A
+  later realistic-looking game switched to ACES after mixing its ground and wall tones
+  partly toward grey; if you do, check the palette's accent colours on screen after.)
   Shadows are off by default (`sun.shadow_enabled`); turn them on per game if the look
   needs them, they cost on phones.
 - **Resolution**: the 3D `SubViewport` renders at the real window size (up to 3x the
@@ -72,6 +74,16 @@ is a Z coordinate, not a height.
   its colormap renders pure white** (it cached a missing texture) -- the cure is to delete
   its `.glb.import` and import again. Seen twice; hence the two-step import in the tool. Quaternius characters embed their
   textures, so they never have this problem.
+- **Quaternius people read as cartoons** (big head and hands, near-black skin, white slit
+  eyes). Grown-up proportions come from scaling bones: head ~0.64, hands ~0.7, feet ~0.85,
+  upper legs 1.16 along Y, abdomen 1.06 along Y, the whole model x1.06 to keep its height.
+  Setting `set_bone_pose_scale` once does nothing -- the animation sets every pose each
+  frame. Do it from a `SkeletonModifier3D` subclass added under the `Skeleton3D`, in
+  `_process_modification_with_delta()`. Reading `get_bone_pose_scale()` back after the
+  frame says 1.0 even when it works (the pose is put back after skinning): judge by eye,
+  same character side by side at the same distance. Their materials are named `Skin`,
+  `Shirt`, `Pants`, `Belt`, `Hair` and `Face` (the eyes, pure white): duplicate them per
+  person and give `Face` a darker shade of that person's skin.
 - Both helpers fall back to palette shapes + a playtest warning when a file is missing, so
   a game keeps running (and the report tells you which name was wrong).
 - Scenery: a ring of `model()`s around the play area (houses behind, trees on the sides,
@@ -163,10 +175,65 @@ most, in order, last time one did:
   (it multiplies in an instance colour that is not there). Turn `use_colors` on and set
   every instance colour to white.
 - MSAA is the big pixel cost; `view.msaa_3d` and `view.scaling_3d_scale` can be lowered
-  at runtime. A game can watch its frame rate on the web (`OS.has_feature("web")`) and
-  step down. Not natively: test runs use a software renderer and would step to nothing.
-  Godot caps a frame's time step at 8 physics ticks, so a measured frame rate never reads
-  below 7.5 fps however slow the frames really are.
+  at runtime. Godot caps a frame's time step at 8 physics ticks, so a measured frame rate
+  never reads below 7.5 fps however slow the frames really are.
+- **Merge the static world into a few big meshes.** Hundreds of separate pieces (road
+  surfaces, kerbs, paint, poles, signs) are hundreds of draws. Merging them while the level
+  builds into one `ArrayMesh` per square (a few hundred metres) and per draw-range class,
+  all with ONE `ShaderMaterial`, took one city view from about 425 draws to 290. The trick
+  that keeps the palette: a vertex either carries its colour (alpha 1) or the number of a
+  palette tone (alpha 0, the number in red) looked up in a `uniform vec4 tones[64]` table
+  the material holds -- `/look` rewrites the table, nothing is rebuilt. Keep what changes
+  at night or moves (lamps, lit glass, cars, people) out of it. Watch the vertex count per
+  merged mesh (a cap, ~650k, then leave the rest as multimeshes).
+- **Step quality down when the browser can't keep up -- and back up.** Watch the frame
+  rate in 2-second spells on the web only (natively the test renderer would step itself to
+  nothing): step down a level after two slow spells in a row (under ~45 fps, or more than
+  one frame in ten over 33 ms). Leave hitches (frames over a quarter second: loading, a
+  shader compiling) out of the count -- one half-second stall made a smooth 50 fps read as
+  38 and a PC stepped itself to the bottom. And step up again: after 8 s at the display's
+  full rate try the level above; a level that fails again waits longer each time (30 s,
+  1, 2, 4 min). "Only down, never up" left a PC at the lowest level for the whole drive
+  after one bad moment. What a level drops, in order: MSAA, shadow distance, then shadows,
+  3D resolution and photo textures. With shadows off, put a soft dark quad under each car
+  (one multimesh) or everything floats and the street goes flat.
+- **Find stalls by timing the parts.** Time each part of a frame (the script's own work, in
+  microseconds) and call a frame much slower than its neighbours a hitch, keeping which
+  parts took its time. Every few seconds' stall found that way was periodic work done all
+  at once: a minimap re-gathering every outline in range each time the car moved 60 m
+  (bucket them once at load), every left-behind AI car respawned in one tick (one a tick),
+  an AI planning several legs of its route at once (one a tick), every car deciding its
+  speed every tick (20 Hz, staggered).
+- **Build a big world near-first; the rest while it runs.** Build it in the same squares
+  its meshes are merged into (so pieces cost no extra draws): only the squares round the
+  start before the player sees anything, the rest in a coroutine a few ms a frame, nearest
+  where the player is heading first. A city that took 7-18 s to load started in 1-3 s.
+  What made the squares add up to exactly the old all-at-once world:
+  - Anything laid along a line (road surface, paint, kerbs, wires, fences) is worked out
+    in full by every square the line crosses, and each square keeps only the triangles
+    whose first vertex is in it. Everything else, and whatever it records (posts, parked
+    cars, lights), belongs to the one square its anchor point is in, and all its triangles
+    go into that square's mesh.
+  - One random sequence across the whole world comes out different once the order changes.
+    Seed per item (per road, per outline, per grid cell) so every square works out the same
+    positions, and draw every random number whether or not the item is placed.
+  - Work out only the stretch of a long line near the square (with two points more each
+    side so its mitred bends match), or a 3 km road's paint is redone for every square.
+  - Pause inside every loop (`if over_budget(): await pause()`), between mesh creations
+    (`add_surface_from_arrays` on a big array is several ms), inside polygon subdivision on
+    hills, and while letting go of a big parsed JSON (freeing it at once took 40 ms).
+  - **A function that contains `await` must be awaited by every caller**, or the part after
+    its pause runs later, in another square's context. List the coroutines and grep their
+    calls. Pause on a signal the game itself emits once a frame, not `process_frame`: when
+    the game is left mid-build, its own signal dies with it and the coroutine just stops.
+  - Turn off the frame-rate quality watcher while building: the build is not the machine
+    being slow. Check the result by comparing every item count with the old build.
+- **Photo textures under a palette.** Divide the photo by its own average colour and
+  multiply by the palette tone: the photo gives the grain, the tone the colour, and `/look`
+  still reskins it. Fade fine detail and repeating photos out with distance (a repeat shows
+  as a grid far off) and turn them off at the lowest quality level. Variation that needs no
+  file at all -- worn patches, grain, slab joints -- is a cheap hash noise (no `sin`) of
+  the world position in the fragment shader: nothing to load.
 
 ## Self-play
 
@@ -178,10 +245,29 @@ binding. Then `tools/playtest.sh <game> smart 25` and `idle 25` as for any game.
 frames: `tools/shots.sh <game> smart 9 2` — the headless driver renders nothing, so this
 opens a window briefly.
 
-## GDScript gotchas met while building `drop`
+## GDScript and shader gotchas
 
 - `for w in some_array:` leaves `w` untyped, so `var to := goal - w.position` fails to
   parse ("cannot infer type"). Write `for w: Node3D in some_array:` or annotate the var.
 - `Rect2.get_center()` gives (x, z) for `world_area`; build the `Vector3` by hand.
 - A `MeshInstance3D`'s `global_position` inside a `RigidBody3D` follows the body's
   tumble, which is exactly what per-cell hit checks want.
+- A member variable with the same name as a function (`var _blob_mesh` beside
+  `func _blob_mesh()`) is a parse error that stops the whole script loading; so is a local
+  lambda named like a built-in (`var free := func...`). In a long script, grep the name
+  first. `tools/check_script.sh res://game/<name>/<name>.gd` finds these in seconds.
+- `{node: true}` keys the dictionary by the *value* of `node`, not the string "node".
+- `Geometry2D.clip_polygons(a, b)` returns several polygons: the pieces, and holes when `b`
+  lies wholly inside `a`. Take the largest by area (a hole is always smaller than its
+  outline) and fix its winding to match the original's if anything relies on it.
+- Polygon-to-segment distance: `Geometry2D.get_closest_points_between_segments()` over the
+  polygon's edges, plus a point-in-polygon test for a segment wholly inside.
+- **Writing `ALPHA` anywhere in a shader makes the material transparent** (sorted, no depth
+  prepass, other objects show through it oddly), even in a branch that never runs. For an
+  opaque and a see-through variant of one shader, prefix the code with `#define CURTAIN\n`
+  for one of them and wrap the alpha in `#ifdef` -- two `Shader`s, one source.
+- Distance from the camera in a spatial shader: `length((MODELVIEW_MATRIX * vec4(VERTEX,
+  1.0)).xyz)` in `vertex()` into a varying (or `length(VERTEX)` in `fragment()`, already
+  in view space).
+- A procedural `PlaneMesh` lies in X/Z with UV.x across, UV.y along: scale it per instance
+  for footprints (soft shadows, decals) rather than building one mesh per size.

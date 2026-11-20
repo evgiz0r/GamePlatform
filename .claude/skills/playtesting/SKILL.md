@@ -50,6 +50,12 @@ Read them spatially. They reveal things numbers cannot:
 
 **Warnings** — missing sounds, actors outside the play area. Cheap to fix, usually real.
 
+Two traps in the timeline's numbers: `Probe.event()` keeps the Dictionary it is given, not
+a copy, so a dictionary the game goes on filling shows its final state at its first
+timestamp (pass `d.duplicate()` for a snapshot). And the headless run is `--fixed-fps 60`
+as fast as it can go: event times are game seconds, while anything the game measures with
+`Time.get_ticks_msec()` is wall time, and the two drift apart.
+
 **Checks** — automatic pass/fail. A `FAIL` must be fixed before showing the user.
 
 ## Diagnosing
@@ -114,3 +120,15 @@ Runs are cheap but not free; each report is a couple of thousand tokens.
 4. Fix the top `FAIL`, then re-run only the bot that failed.
 5. When both pass and the counts look healthy, hand it to the human. They are the only one
    who can tell you whether it is *fun*.
+
+## When the bots cannot see it
+
+A playtest passing in a 3D game says little: the bots see the world as dots on a 2D map,
+and a "smart" bot that survives 25 s says nothing about a person walking in the road, a car
+inside a wall, a deadlock in one narrow street or a texture gone at one quality level.
+For those, write a scene test -- stage the situation, measure it, screenshot it -- see the
+`scene-tests` skill. A game's `tests/` folder may already hold one for what you are
+touching: run it before and after your change.
+
+And before any run, `tools/check_script.sh res://game/<name>/<name>.gd`: a script that does
+not compile fails a playtest in a confusing way minutes in; this says which line, in seconds.

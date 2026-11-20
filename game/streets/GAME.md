@@ -121,7 +121,8 @@ lane, stopped, facing the way that has the address on the kerb side.
 **Places.** Entering the game asks where: Givatayim; Bedford, Nova Scotia; or Ashdod
 (starting at Sderot Herzl and HeHalutzim, its busiest corner for shops). Each place is one
 entry in `LEVELS` at the top of `streets.gd` (name, city file, starting corner). Ashdod is
-three times Givatayim's size and takes longer to load (about 10 s here).
+three times Givatayim's size; it takes longer to build in full, but you are driving in
+about 3 s here, the same as anywhere (see "Loading near-first").
 
 > Lets make a menu where I pick a place we have. Starting with Givatayim. Can we add
 > Bedford, Nova Scotia.
@@ -205,6 +206,14 @@ between two lanes past a queue. On a road with more than one lane each way, cars
 lane, pull out to pass a slower car when the lane beside is clear, drift back right, and
 get into the right lane for the turn ahead (right lane to turn right, left to turn left).
 
+The buses are real buses now -- a rounded box with a band of windows and its pillars, a
+big windscreen under the lit route sign, glazed doors on the kerb side, the air
+conditioning on the roof; a scooter's rider sits it properly, arms bent to the bars and
+knees up, in a helmet with a visor; now and then a delivery truck goes by, a cab with a
+tall white box. Every moving car has its driver, and about a third a passenger, seen
+through the glass (head and shoulders, as they would be from wherever you look); parked
+cars are empty. You can be seen in yours, until you get out.
+
 People wait at the zebra crossings and step out once whatever is coming can still stop;
 traffic and autodrive stop for anyone on a crossing. Drive at someone crossing and they
 hurry back to the kerb, and the game says so, like a red light. On a divided road they
@@ -212,7 +221,18 @@ cross both halves, outer kerb to outer kerb. People walking along the street kee
 back half of the pavement (the parked cars stand on the front of it), only on the outer
 side of a divided road, and off any stretch where the pavement line would run over another
 road -- a service lane or car-park lane alongside, the next street at a corner -- though
-they step across a driveway's mouth.
+they step across a driveway's mouth. Their feet are on the pavement's top (on the asphalt
+while crossing, on the ground in a park), not the bare ground's height a kerb below it,
+where they waded into the slabs.
+
+> People walk a bit inside the ground.
+
+The people are grown-ups, not the kit's chunky cartoons: smaller heads, hands and feet,
+longer legs and a longer middle (scaled on their skeletons after every animation frame),
+at the height asked for. Faces are a deeper shade of the skin, not big white eyes. Skin
+runs light to dark; hair is mostly dark and brown, with the odd fair, red or grey head;
+shirts and trousers are each picked from a natural range, so no two in a street match.
+That goes for you on foot too.
 
 > More kinds of traffic (buses that stop at the stops, taxis, motorbikes weaving); people
 > crossing at zebras; multi-lane traffic that changes lanes and turns from the right lane.
@@ -251,6 +271,18 @@ Painted arrows in the lanes before the junctions of the main roads show the ways
 Parked cars and traffic are a mix of sedans, hatchbacks, SUVs and the odd van, with door
 seams, handles and wheel arches, in the colours real cars come in: mostly white, silver,
 grey and black, with the odd red or blue. Parked cars tilt with the slope they stand on.
+
+> Let's move to cars.
+
+Every car -- yours, the traffic, the parked ones -- has a real car's body now, not a
+box: rounded at the shoulders, the bonnet and the boot and at its four corners, a cabin
+that narrows to the roof with its pillars and roof rail in the car's colour, the light
+rolling over it. The paint is glossy and reflects the sky (and the road below the
+horizon), more at a glancing look; the glass reflects more. The tyres sit in dark wheel
+wells, on five-spoke rims; head and tail lights follow the corners; the number plates
+carry their characters (yellow in Israel, white in Bedford); there are bumper lips, a
+grille, mirrors and door handles. A car costs about what the box did: the body is built
+once per kind of car, its points shared.
 
 **Trees.** A dozen kinds, picked by the place and where they stand: ficus, acacia, olive,
 cypress, pine, tall pale eucalyptus (the roadsides' and parks' tree) and date and fan palms
@@ -437,6 +469,12 @@ photo only adds the variation round its own average, so `/look` reskins it as be
 Walls are a little darker at the foot, and a faint streak of grime runs down from each
 window sill.
 
+Down at street level: a manhole cover every 55-95 m down a street, a drain grate at the
+kerb every 40-65 m on alternate sides; oil and rubber blotches on the asphalt; road paint
+worn through to the asphalt in patches; kerbs of grainy concrete (the paint wearing with
+it), dirtier at the foot; the red of a no-stopping kerb red, not the palette's pink; flat
+roofs of tar and gravel with dried-puddle stains.
+
 > What would it take to make it more realistic, closer to Unreal and Unity quality of
 > details and resolution?
 
@@ -453,11 +491,17 @@ squares that are only drawn when on screen and near enough (kerbs and road marki
 about 260 m, trees 550 m, buildings 1100 m, people 90 m), shadows cover only the street
 round the car, and the car and camera are drawn between physics ticks so they glide
 however fast the screen redraws. In a browser the game also watches its own frame rate:
-under 55 frames a second, or stuttering (more than one frame in twelve slower than 25 ms),
+under 45 frames a second, or stuttering (more than one frame in ten slower than 33 ms),
 for a few seconds and it steps down a level -- first smoother edges (MSAA) off and
 shorter shadows, then no shadows and a lower 3D resolution and the photo textures off
-(back to the drawn grain). It never steps back up during
-a drive. The frame rate and the level are shown small under the speed. Parked cars and
+(back to the drawn grain). A one-off stall (over a quarter of a second: something loading)
+doesn't count -- one half-second stall made a smooth 50 frames a second read as 38. After
+8 s at the screen's full rate it tries the level above again; a level that fails again
+waits longer before the next try (30 s, then 1, 2, 4 minutes), so it never flickers
+between two.
+
+> Sometimes quality drops, even on my PC. It never goes up again, and textures are gone. The frame rate, the slowest frame of the last few seconds and the level are shown
+small under the speed. Parked cars and
 traffic are one mesh per car shape (a batch of them costs one draw, not six); every kind
 of shader is drawn once while the city loads, so none of them stalls the first time it
 comes into view; the browser's shadow map is smaller and its filter cheaper.
@@ -473,12 +517,51 @@ so do the trees, which are too many to copy.
 
 > Performance pass: fewer draw calls, faster loading of big cities.
 
+**Loading near-first.** The city is built a 400 m square at a time -- the squares its
+meshes are merged in anyway, so building it in pieces costs no extra draws. Only the
+squares within about 300 m of the start go up behind the loading text (Givatayim's 9 of
+71), so the car is on the road in about 2 s here (it was 7), Bedford in 1.2 (was 11.7) and
+Ashdod in 2.8 (was 18); a phone takes two or three times as long. The rest goes up while
+you drive, the square nearest where the car is heading first, a few milliseconds a frame
+(6, or 3 when frames already run slow), so the driving does not stutter; "building the city
+40%" under the street count says how far it has got. Givatayim is all up within about 20 s
+of driving here, Ashdod within a couple of minutes. Nothing is left out: when it is done the
+city is the one the old all-at-once build made, lamp for lamp. Anything laid along a road or
+a fence (asphalt, paint, kerbs, garden walls, wires, fences) is worked out by every square
+it crosses, each keeping the triangles that start in it, so nothing shows where two squares
+meet; a building, a tree, a sign, a shop or a parked car belongs to the one square it
+stands in. What only the building needed -- the parsed city file, the outlines, each
+square's lists -- is let go of a little a frame once it is all up. Which junctions have
+traffic lights is worked out for the whole city before you drive, so traffic stops at them
+everywhere at once.
+
+> what would near load gain? latency? im afraid we will start losing a lot of details in a
+> city. maybe 400m is ok.
+
 When the browser can't keep up, the game steps its own quality down; at the lowest step
 the real shadows are off, and each car gets a soft dark patch under it instead so it still
 stands on the road (the street went flat the moment it stepped down). The asphalt's wear and
 grain are strong enough to read at the lowest step's lower resolution.
 
 > I start with textures on the street but after I drive a bit they just vanish.
+
+**Seeing what chokes.** Tap the fps text under the speed (or press P) for the perf view: a
+graph of the last frames' times (green under 20 ms, red over 40), the average frame split
+into the engine's drawing and the game's own parts (traffic, people, autodrive, the
+minimap...), and the last few hitches -- frames much slower than the ones round them --
+with the parts that took their time. Playtests report hitches the same way.
+
+> We need to think how to improve latency a bit. It does choke every few seconds. Do you
+> have some fps counter or something?
+
+What choked, every few seconds: every 60 m driven the minimap went through every street
+and building outline within 360 m (now they are sorted into squares while the city loads,
+and gathering is joining a few arrays); every car left behind was found a new road in the
+same tick, up to 24 tries each, and every walker a new pavement (now one car and one walker
+a tick, a few tries at a time); autodrive planned several legs of road at once (now one a
+tick while there is plenty ahead); and every car re-decided its speed -- lights, signs,
+junctions, the car in front -- every tick (now 20 times a second, a third of them each
+tick). Building outlines on the minimap are plain one-pixel lines.
 
 ## How do you win?
 
@@ -492,6 +575,18 @@ The real place, recognisably: the street layout, building footprints and heights
 trees and traffic lights where they really are. Daylight, cream apartment blocks with a
 window per storey, tree-lined streets, white dashed lines, zebra crossings. Every colour
 is a palette role mixed for daylight, so `/look` still reskins it.
+
+The kit's palettes are neon on dark, so the daylight mix keeps only part of each colour:
+asphalt, pavements, kerbs and concrete come out as real greys with a hint of the palette,
+walls as whites, creams and soft pastels, plants as greens (the palette's green leaning
+toward its yellow); signs, kerb paint, lights and the cars keep their colour, as real ones
+do. The light is a warm sun, the shade a sky blue, through a film-like curve (bright walls
+roll off rather than clip). The sky is a photograph -- a sunny day with cumulus -- turned
+so its sun stands where the sunlight comes from; the distance fades into its horizon. At
+night it gives way to the dark night sky.
+
+> 1 2 4 5 6 7 (colours and lighting; a real sky; street-level detail; the bus, the scooter
+> and people in the cars; the people; loading near-first)
 
 ## Where the city comes from: a repeatable process
 
@@ -565,6 +660,4 @@ pavements everywhere, not only here.
 
 - Bridges and tunnels: roads at different levels, an interchange you drive over and
   under.
-- Faster loading of a big city (Ashdod takes about 10 s here, mostly roads, kerbs and
-  trees), e.g. by building the far parts after the drive starts.
 - Not just driving: the same baked city could be walked, or used by another game.

@@ -20,9 +20,9 @@ const GAP := 2.2             ## bumper to bumper when stopped (m)
 const HEADWAY := 1.2         ## seconds behind the car in front, moving
 const LEN := 4.4
 ## how long each kind is, bumper to bumper (m)
-const LENS := {"sedan": 4.6, "hatch": 4.0, "suv": 4.7, "van": 5.0, "taxi": 4.6, "bus": 11.8, "moto": 1.9}
+const LENS := {"sedan": 4.6, "hatch": 4.0, "suv": 4.7, "van": 5.0, "taxi": 4.6, "bus": 11.8, "moto": 1.9, "truck": 6.8}
 ## the player's car against each kind: circles along its length [offsets], radius
-const BODY := {"bus": [[-4.6, -2.3, 0.0, 2.3, 4.6], 1.25], "moto": [[0.0], 0.55]}
+const BODY := {"bus": [[-4.6, -2.3, 0.0, 2.3, 4.6], 1.25], "moto": [[0.0], 0.55], "truck": [[-2.3, 0.0, 2.3], 1.15]}
 const BUS_ROADS := {"primary": true, "secondary": true, "tertiary": true, "trunk": true}
 const LANE_MOVE := 1.4       ## sideways speed changing lanes (m/s): about 2.5 s a lane
 const DWELL := 7.0           ## seconds a bus stands at a stop
@@ -61,6 +61,9 @@ class Car:
 	var ignore := 0.0                 ## seconds it ignores crossing cars (a standoff broken)
 	var squeeze := 0.0                ## seconds it edges past the player (a narrow street's standoff)
 	var hit := 0.0                    ## seconds it sits stunned after the player hit it
+	var retry := 0.0                  ## seconds before trying again to find it a road
+	var want := -1.0                  ## the speed it last decided on (-1: decide now)
+	var passenger := false            ## someone beside the driver (seen through the glass)
 	var last_light := -1000.0         ## s at the last light it drove through
 	var sign_done := -1               ## the stop sign it has stopped at already
 	var sign_wait := 0.0
@@ -96,7 +99,8 @@ var _beams: MultiMeshInstance3D       ## their beams on the road, at night
 var _blinkers: MultiMesh              ## the indicators that are lit, front and back: one draw
 ## each kind's half width and half length, for where its indicators are
 const CORNERS := {"sedan": Vector2(0.9, 2.25), "hatch": Vector2(0.86, 1.95), "suv": Vector2(0.96, 2.32),
-	"van": Vector2(0.98, 2.45), "taxi": Vector2(0.9, 2.25), "bus": Vector2(1.25, 5.85), "moto": Vector2(0.3, 0.8)}
+	"van": Vector2(0.98, 2.45), "taxi": Vector2(0.9, 2.25), "bus": Vector2(1.25, 5.85), "moto": Vector2(0.3, 0.8),
+	"truck": Vector2(1.1, 3.35)}
 var _night := false
 var _roads: Array
 var _node_roads: Array
@@ -113,7 +117,7 @@ func setup(game: Node) -> void:
 	var b: Rect2 = g._bounds
 	var box := AABB(Vector3(b.position.x - 500.0, -200.0, b.position.y - 500.0),
 		Vector3(b.size.x + 1000.0, 600.0, b.size.y + 1000.0))   # no box to recompute every frame
-	for kind: String in ["sedan", "hatch", "suv", "van", "taxi", "bus", "moto"]:
+	for kind: String in ["sedan", "hatch", "suv", "van", "taxi", "bus", "moto", "truck"]:
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_colors = true   # white: the car shader's part colours are vertex colours, see _chunked
@@ -188,9 +192,12 @@ func setup(game: Node) -> void:
 			c.pace = rng.randf_range(0.95, 1.12)
 		elif roll < (0.27 if med else 0.2):
 			c.kind = "taxi"
+		elif roll < (0.32 if med else 0.25):
+			c.kind = "truck"
 		else:
 			c.kind = g.CAR_MIX[rng.randi() % g.CAR_MIX.size()]
 		c.len = float(LENS.get(c.kind, 4.6))
+		c.passenger = rng.randf() < 0.35
 		c.alive = _spawn(c, true)
 		_hide_or_show(i)
 	retint()
@@ -221,22 +228,48 @@ func alive_count() -> int:
 
 ## ---- every physics tick ------------------------------------------------------------------
 
+var _tick_n := 0
+
 func tick(dt: float) -> void:
 	_clock += dt
+	_tick_n += 1
 	var me: Vector2 = g._pos
+	# One car a tick is put back near the player: driving off leaves several behind at once,
+	# and finding each a new road in the same tick (up to 24 tries apiece) was a stutter every
+	# few seconds. One that found nowhere this time looks again a moment later.
+	var spawned := false
 	for i in range(cars.size()):
 		var c: Car = cars[i]
 		c.prev_pos = c.pos
 		c.prev_yaw = c.yaw
 		if not c.alive or c.pos.distance_to(me) > NEAR or (c.wait > 25.0 and (not _in_view(c.pos) or c.blocker == -1)):
+			c.retry -= dt
+			if spawned or c.retry > 0.0:
+				continue
+			spawned = true
+			var t0 := Time.get_ticks_usec()
 			c.alive = _spawn(c, false)
+			_us("traffic: respawn", t0)
+			if not c.alive:
+				c.retry = 0.1
 			_hide_or_show(i)
 			continue
+		var t1 := Time.get_ticks_usec()
 		while c.cum[c.cum.size() - 1] - c.s < 140.0:
 			if not _next(c):
 				break
 		_trim(c)
-		var vt := _target(c, i, dt)
+		var t2 := Time.get_ticks_usec()
+		_us("traffic: route", t1, t2)
+		# What the car wants -- the limit, the corners, lights, signs, who goes first at a
+		# junction, the car in front -- is decided 20 times a second, a third of the cars each
+		# tick (with three ticks' time, so its waits still count right); its speed still
+		# follows every tick. A driver reacts slower than that anyway, and deciding it every
+		# tick for every car was most of traffic's time.
+		if c.want < 0.0 or (i + _tick_n) % 3 == 0:
+			c.want = _target(c, i, dt * (1.0 if c.want < 0.0 else 3.0))
+		var vt := c.want
+		_us("traffic: follow", t2)
 		var ds := clampf(c.shift_to - c.shift, -LANE_MOVE * dt, LANE_MOVE * dt)
 		c.shift += ds
 		c.shift_rate = ds / maxf(dt, 0.001)
@@ -254,6 +287,13 @@ func tick(dt: float) -> void:
 			c.alive = false   # the end of a road with nowhere on: gone, back elsewhere next tick
 			continue
 		_place(c)
+
+## time spent in one part of the tick, for the game's frame profiler (sub-parts of "traffic":
+## a name with a colon is not added to the frame's script total again)
+func _us(part: String, t0: int, t1: int = -1) -> void:
+	if t1 < 0:
+		t1 = Time.get_ticks_usec()
+	g._prof[part] = int(g._prof.get(part, 0)) + t1 - t0
 
 ## the speed this car wants now: the limit, the corners ahead braked down to in time, a
 ## red light ahead, the car in front
@@ -838,7 +878,8 @@ func lead_on(path: PackedVector2Array, from: Vector2, look: float, ignore_crossi
 func _spawn(c: Car, first: bool) -> bool:
 	var me: Vector2 = g._pos
 	var look := Vector2(cos(float(g._yaw)), sin(float(g._yaw)))
-	for _try in range(24):
+	# a few tries a tick once driving (the rest on later ticks: see tick()), more at the start
+	for _try in range(24 if first else 8):
 		var ang := rng.randf() * TAU
 		var d := rng.randf_range(35.0 if first else SPAWN_MIN, SPAWN_MAX)
 		var q := me + Vector2(cos(ang), sin(ang)) * d
@@ -893,6 +934,7 @@ func _spawn(c: Car, first: bool) -> bool:
 		if c.cum[c.cum.size() - 1] < 20.0:
 			continue
 		c.v = c.vmax[0] * 0.7
+		c.want = -1.0
 		c.wait = 0.0
 		c.hit = 0.0
 		c.ignore = 0.0
@@ -1131,7 +1173,9 @@ func draw(f: float) -> void:
 		var xf := Transform3D(basis, Vector3(p.x, float(g._h(p)) + float(g.road_top()), p.y))
 		var mm: MultiMesh = _mms[c.kind]
 		mm.set_instance_transform(i, xf)
-		mm.set_instance_custom_data(i, Color(c.paint, c.braking))
+		# alpha: the brake light, plus 2 for a driver, 4 for a driver and a passenger (the car
+		# shader draws them through the glass)
+		mm.set_instance_custom_data(i, Color(c.paint, c.braking + (4.0 if c.passenger else 2.0)))
 		if _night:
 			_beams.multimesh.set_instance_transform(i, xf)
 		if _blobs.visible:

@@ -22,9 +22,17 @@ fi
 
 # First run after a fresh clone has no .godot/ import cache. Without this the engine
 # blocks instead of running, which looks like a hang -- the first thing a new user hits.
+# Assets added since the last import (a merge brought another session's textures) are
+# imported too: a run never imports by itself, so it went on without them, quietly
+# ("Failed loading resource" in the log, the look missing from every screenshot).
 if [ ! -d .godot ]; then
   echo "First run: importing assets, this takes about ten seconds..." >&2
   "$BIN" --headless --path . --import >/dev/null 2>&1
+  touch .godot/.import_stamp
+elif [ ! -f .godot/.import_stamp ] || [ -n "$(find game assets -name '*.import' -newer .godot/.import_stamp 2>/dev/null | head -n 1)" ]; then
+  echo "New assets since the last import: importing them..." >&2
+  "$BIN" --headless --path . --import >/dev/null 2>&1
+  touch .godot/.import_stamp
 fi
 "$BIN" --headless --fixed-fps 60 --path . -- \
   --sim="$GAME" --bot="$BOT" --seconds="$SECS" --level="${LEVEL:-0}" 2>&1 \
