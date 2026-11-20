@@ -6,6 +6,20 @@ extends SceneTree
 ## line per car and writes $OUT/queue_start.json for
 ## queue_start_chart.py: speed against time, one line per car in queue order -- a queue
 ## that pulls away car after car, not all at once on the same tick like a train.
+##
+## Judged against how real queues go (QUEUE CHECK at the end, PASS or FAIL): a driver starts
+## roughly a second after the car in front moves off, and once a queue is moving its cars
+## cross the stop line about 2 s apart -- the first few slower: about 3.8, 3.1, 2.7, 2.4,
+## 2.2 s, then 2.0-2.1 (Greenshields' 1947 counts at signals; the Highway Capacity Manual's
+## base of 1900 cars an hour a lane is 1.9 s). The bands below are wide on purpose -- this
+## watches a few queues of mixed drivers -- and still catch both mistakes made tuning this
+## by eye: a queue that went within 0.3 s of each other (a train), then one whose third car
+## moved 9 s after the green.
+const START_GAP := [0.6, 2.5]     ## s between one car moving off and the next (each)
+const START_MED := [0.8, 2.0]     ## ...their median
+const LINE_GAP := [1.4, 4.5]      ## s between cars crossing the stop line (each)
+const LINE_MED := [1.7, 3.3]      ## ...their median
+const FIRST := [1.0, 5.5]         ## s from the green to the first car's front over the line
 var g: Node
 var T
 
@@ -35,7 +49,7 @@ func _run() -> void:
 	var dt := 1.0 / 60.0
 	var last_phase: int = g._sig_phase
 	var runs: Array = []      # each: {"t0", "cars": [[queue position, kind, [speeds every 0.1 s]]]}
-	var open: Array = []      # runs still recording: [run, [car indices], start t]
+	var open: Array = []      # runs still recording: [run, [car indices], start t, line point, its way]
 	while t < secs:
 		await physics_frame
 		t += dt
@@ -67,11 +81,22 @@ func _run() -> void:
 								break
 					if chain.size() < 2:
 						continue
-					var run := {"t0": t, "cars": []}
+					var run := {"t0": t, "cars": [], "cross": []}
 					for qi in range(chain.size()):
 						run["cars"].append([qi + 1, T.cars[chain[qi]].kind, []])
+						run["cross"].append(-1.0)
 					runs.append(run)
-					open.append([run, chain, t])
+					# the stop line: a metre past the first car's front (it stops that short)
+					var c0 = T.cars[chain[0]]
+					var d0 := Vector2(sin(c0.yaw), cos(c0.yaw))
+					open.append([run, chain, t, c0.pos + d0 * (c0.len * 0.5 + 1.0), d0])
+		# each car's front over the line: every tick
+		for o: Array in open:
+			for k in range((o[1] as Array).size()):
+				var c = T.cars[o[1][k]]
+				if c.alive and float(o[0]["cross"][k]) < 0.0 \
+						and (c.pos + Vector2(sin(c.yaw), cos(c.yaw)) * c.len * 0.5 - (o[3] as Vector2)).dot(o[4]) > 0.0:
+					o[0]["cross"][k] = snappedf(t - float(o[2]), 0.01)
 		# record 10 times a second
 		if int(t * 60.0) % 6 == 0:
 			for o: Array in open:
@@ -80,19 +105,57 @@ func _run() -> void:
 					var c = T.cars[o[1][k]]
 					(run["cars"][k][2] as Array).append(snappedf(c.v * 3.6, 0.1) if c.alive else -1.0)
 		open = open.filter(func(o): return t - float(o[2]) < 12.0)
+	var start_gaps: Array = []
+	var line_gaps: Array = []
+	var firsts: Array = []
 	for run: Dictionary in runs:
 		print("GREEN at %.0f s: %d cars in the queue" % [run["t0"], run["cars"].size()])
-		for c: Array in run["cars"]:
+		var last_moved := -1.0
+		var last_cross := -1.0
+		for qi in range((run["cars"] as Array).size()):
+			var c: Array = run["cars"][qi]
 			var sp: Array = c[2]
 			var moved := -1.0
 			for k in range(sp.size()):
 				if float(sp[k]) > 1.0:
 					moved = k * 0.1
 					break
-			print("  car %d (%s): moving after %s, %.0f km/h after 6 s" % [c[0], c[1],
-				"%.1f s" % moved if moved >= 0.0 else "--", float(sp[mini(60, sp.size() - 1)]) if sp.size() > 0 else 0.0])
+			var cross: float = run["cross"][qi]
+			print("  car %d (%s): moving after %s, over the line after %s, %.0f km/h after 6 s" % [c[0], c[1],
+				"%.1f s" % moved if moved >= 0.0 else "--", "%.1f s" % cross if cross >= 0.0 else "--",
+				float(sp[mini(60, sp.size() - 1)]) if sp.size() > 0 else 0.0])
+			# (a gap only between two cars that both did it within the 12 s watched)
+			if qi == 0 and cross >= 0.0:
+				firsts.append(cross)
+			if qi > 0 and moved >= 0.0 and last_moved >= 0.0:
+				start_gaps.append(moved - last_moved)
+			if qi > 0 and cross >= 0.0 and last_cross >= 0.0:
+				line_gaps.append(cross - last_cross)
+			last_moved = moved
+			last_cross = cross
 	if OS.get_environment("OUT") != "":
 		var f := FileAccess.open(OS.get_environment("OUT") + "/queue_start.json", FileAccess.WRITE)
 		f.store_string(JSON.stringify({"city": g._city_name, "runs": runs}))
 	print("QUEUES: %d recorded" % runs.size())
+	var verdict := []
+	verdict.append(_band("start gaps", start_gaps, START_GAP, START_MED))
+	verdict.append(_band("line gaps", line_gaps, LINE_GAP, LINE_MED))
+	verdict.append(_band("first car over the line", firsts, FIRST, FIRST))
+	var ok := not verdict.has(false) and not start_gaps.is_empty() and not line_gaps.is_empty()
+	print("QUEUE CHECK: %s" % ("PASS" if ok else ("FAIL" if not start_gaps.is_empty() else "NO QUEUES (watch longer, or another junction)")))
 	quit(0)
+
+## one measure against its bands: each in [lo, hi], the median in [mlo, mhi]; prints it
+func _band(what: String, xs: Array, each: Array, med: Array) -> bool:
+	if xs.is_empty():
+		print("  %-24s none measured" % what)
+		return true
+	var s := xs.duplicate()
+	s.sort()
+	var m: float = s[s.size() / 2]
+	var outside := s.filter(func(x): return x < each[0] or x > each[1]).size()
+	# a few out of the band are drivers being drivers; a third of them is the model
+	var ok: bool = m >= med[0] and m <= med[1] and outside * 3 <= s.size()
+	print("  %-24s median %.1f s (good %.1f-%.1f), %d of %d outside %.1f-%.1f s, range %.1f-%.1f: %s" % [
+		what, m, med[0], med[1], outside, s.size(), each[0], each[1], s[0], s[s.size() - 1], "ok" if ok else "OFF"])
+	return ok

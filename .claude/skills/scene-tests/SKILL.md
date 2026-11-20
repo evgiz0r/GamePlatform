@@ -112,6 +112,34 @@ again, compare. Check what each counter really counts before chasing its number:
 counted frames of braking (30 per stop), another judged a car mid-turn by the heading it
 had at that moment, and both sent a round of work the wrong way.
 
+**Checks that should read 0, every tick.** Counting what went wrong per minute finds the
+big things; checks of what must never happen find the bugs before anyone looks for them.
+Each is a kind of bug already fixed once, written so it cannot come back unseen: bodies
+overlapping (measured by their outlines -- see "the whole body, not its middle" in the
+`real-places` skill), a body into a wall or post, standing over the stop line at a red,
+pushing against something without moving, and standing still with nothing named holding it
+(follow what holds it down the queue: a car that holds the next one is a reason, the speed
+limit at a standstill is not). Print every check with its count even at 0, so a reader
+sees it ran. The first version of a check finds its own false alarms first (the front of a
+queue in its moment to react at a green read "held by nothing"): run it once in the small
+test town and read every hit before trusting the number.
+
+**A check of the world as built**, before anything drives it: walls, posts and buildings
+on the road, a junction's points each deciding alone, roads too short to have a direction.
+Seconds a city, so run it on every city after changing how one is laid out.
+
+**A target from the real world, not from the last run.** A behaviour tuned by eye swings
+both ways: one queue at a green went all at once within 0.3 s, the fix had its third car
+move 9 s after the green, the next fix again. Real numbers exist for most of what traffic
+does (cars cross a stop line about 2 s apart once a queue is moving, Greenshields 1947 and
+the Highway Capacity Manual); put them in the test as bands it passes or fails.
+
+**A fix comes with what would catch it again**: the scene test that staged it, or a check
+in the scored run. Half of one day's twenty fixes had neither, and were guarded only by a
+per-minute total that random traffic moves about anyway. And about half of those twenty
+bugs had been made the same day -- by the change before, or another session's -- so after
+merging, run the quick checks (the world check, the route scans) before pushing.
+
 ## Showing the user
 
 The user reads pictures, not tables -- a per-minute scorecard of a dozen rows was "hard to

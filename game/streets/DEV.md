@@ -212,6 +212,38 @@ good is 30-70 m past the town's edge, stopped by "steep ground").
 Before anything: `tools/check_script.sh res://game/streets/streets.gd
 res://game/streets/traffic.gd res://game/streets/furniture.gd` (seconds).
 
+### The checks that should read 0
+
+A look back over twenty bug fixes (November 2026) found the same few mistakes again and
+again, and about half of the bugs made the same day by the change before or by another
+session. So there are checks for what must never happen, each one a kind of bug fixed
+before, all measured on **bodies, not middles** (`tests/bodies.gd`: a vehicle is a box its
+own length and width, a wall a box along all of it, a post a circle -- five of the twenty
+were a long thing judged at its middle):
+
+- **The exam's checks** (`exam.gd`, the "check: ..." lines and the CHECKS total): bodies
+  overlapping (traffic with traffic, autodrive with a car), a body into a building, wall or
+  post, standing over the stop line at a red, autodrive pushing against something 3 s, and
+  standing 10 s+ held by nothing named (followed down the queue to its front). Every tick,
+  every car. They print 0 when clean, so a reader sees they ran.
+- **The city as built** (`city_check.gd`, seconds a city; `LEVEL=0` all four): walls,
+  posts and buildings on a street's asphalt (sampled every metre of them), lit points that
+  belong to no junction; and the traps to stage a test at -- stub roads under 5 m at a
+  junction, lit points under 25 m apart counted as two junctions, walls and posts on
+  service roads.
+- **Queues against real ones** (`queue_start.gd`, QUEUE CHECK: PASS / FAIL): start gaps and
+  stop-line gaps in bands from real counts (Greenshields 1947, the Highway Capacity Manual),
+  not from the last run -- tuned by eye, the queue went from all at once to the third car 9
+  s after the green within the hour.
+
+**A fix comes with what would catch it again** -- a scene test that stages it, or a check
+here. **After merging** (another session's work, or `main`), before pushing: `city_check`
+on the cities the merge touched, the filmed walk's `SCAN=1`, and the exam on the test town
+(`LEVEL=4 EXAM_STARTS=2`, headless: under a minute); the exam on a real town when traffic
+or autodrive changed. Headless runs take the same numbers several times faster:
+`LEVEL=n STREETS_BUILD_ALL=1 $GODOT --headless --fixed-fps 60 --path . -s
+res://game/streets/tests/<test>.gd` (no screenshots).
+
 ## Seeing what the car did: the drive recorder
 
 `drivelog.gd` keeps the last two minutes, ten times a second: the car (where, heading,

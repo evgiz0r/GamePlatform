@@ -9,9 +9,34 @@ extends SceneTree
 ##   traffic -- stalls (20 s+ not at a red light), two cars overlapping, red lights run,
 ##     cars sent away for being stuck
 ##   people -- a moving car within a metre of someone
+## and the checks ("check: ..."), which should all read 0. Each one is a kind of bug fixed
+## before that a check like it would have caught at once; they measure bodies, not middles
+## (tests/bodies.gd), so a bus counts as a bus:
+##   bodies overlapping -- two traffic cars, autodrive and a car, or a car's body into a
+##     building, a wall, a hedge or a post (traffic is on rails: nothing else stops it)
+##   over the line at a red -- standing, held by the light, the front more than a metre past
+##     the stop line (a bus once stopped with its middle at the line, 4 m into the junction)
+##   pushing -- autodrive's foot on the gas, not moving, 3 s in all before it gets 4 m away
+##     (forward into a post, back, forward again went on for 90 s)
+##   held by nothing -- standing 10 s+ with no named reason: what holds it (and whatever
+##     holds that, down a queue) is the speed limit, a curve, a car that is gone, or a loop
+##     of cars each waiting for the next
 ## Per minute driven, so runs of different lengths compare; and the worst places, each with
 ## the drive log of the moments before (user://drive_logs/exam-*.json: draw them with
 ## tests/drive_log_map.py). The loop: run it, look at the top of the list, fix, run it again.
+##
+##   game/streets/tests/run.sh exam 3
+##   LEVEL=3 STREETS_BUILD_ALL=1 $GODOT --headless --fixed-fps 60 --path . -s \
+##       res://game/streets/tests/exam.gd     the same numbers, no window, several times faster
+const Bodies = preload("res://game/streets/tests/bodies.gd")
+const CHECKS := ["check: bodies overlapping, traffic", "check: bodies overlapping, autodrive and a car",
+	"check: traffic body into a building", "check: traffic body into a wall", "check: traffic body into a post",
+	"check: autodrive body into a building", "check: autodrive body into a wall", "check: autodrive body into a post",
+	"check: over the line at a red, traffic", "check: over the line at a red, autodrive",
+	"check: autodrive pushing 3 s+", "check: held by nothing 10 s+, traffic", "check: held by nothing 10 s+, autodrive"]
+## what may hold a car standing still (anything else -- the limit, a curve -- is nothing)
+const NAMED := ["light", "zebra", "people", "sign", "junction", "player", "bus stop", "squeezing past",
+	"blocked", "choice", "turning", "backing", "pushing"]
 var g: Node
 var T
 var counts := {}
@@ -30,7 +55,7 @@ func _incident(what: String, at: Vector2, detail: String, save := true) -> void:
 	# a drive log of the moments before, for the first few of each kind (the recorder keeps
 	# every car near the player and what holds each: draw it with drive_log_map.py)
 	var kind_n := int(saved_kind.get(what, 0))
-	if save and kind_n < 3 and logs_saved < int(OS.get_environment("EXAM_LOGS") if OS.get_environment("EXAM_LOGS") != "" else "12"):
+	if save and kind_n < 3 and logs_saved < int(OS.get_environment("EXAM_LOGS") if OS.get_environment("EXAM_LOGS") != "" else "20"):
 		saved_kind[what] = kind_n + 1
 		logs_saved += 1
 		file = g._log.save(g).replace(".json", "")
@@ -55,6 +80,8 @@ func _run() -> void:
 	if OS.get_environment("FULL") == "":
 		g._set_quality(0)
 	T = g._traffic
+	for k: String in CHECKS:
+		counts[k] = 0   # (printed even when nothing was found: a 0 says the check ran)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 77 + lvl
 	var spots: Array = [g._pos]
@@ -89,9 +116,19 @@ func _run() -> void:
 	keys.sort()
 	for k in keys:
 		print("  %-34s %5d   %.2f a minute" % [k, int(counts[k]), int(counts[k]) / mins])
+	var checks_found := 0
+	for k: String in CHECKS:
+		checks_found += int(counts[k])
+	print("CHECKS: %d found (0 is good)" % checks_found)
+	# the places, a few of each kind (one kind found everywhere does not hide the rest)
 	print("worst places:")
-	for w: Array in where.slice(0, 25):
-		print("  %-18s at %-14s %s %s" % [w[0], str(Vector2i(w[1])), w[2], ("[" + String(w[3]) + "]") if String(w[3]) != "" else ""])
+	var shown := {}
+	for w: Array in where:
+		var n := int(shown.get(w[0], 0))
+		if n >= 4:
+			continue
+		shown[w[0]] = n + 1
+		print("  %-26s at %-14s %s %s" % [w[0], str(Vector2i(w[1])), w[2], ("[" + String(w[3]) + "]") if String(w[3]) != "" else ""])
 	quit(0)
 
 func _drive(secs: float) -> void:
@@ -115,6 +152,7 @@ func _drive(secs: float) -> void:
 		await physics_frame
 		t += dt
 		var p: Vector2 = g._pos
+		_check(dt)
 		# -- autodrive
 		var held: String = g._ap_why
 		if absf(g._v) < 0.3 and not held in ["light", "zebra", "people"] and not (held == "car" and _lead_moving()):
@@ -286,3 +324,213 @@ func _queued_at_light(c) -> bool:
 		if o.alive and T._light_ahead(o) < 0.5:
 			return true
 	return false
+
+## ---- the checks: bodies, not middles (see the top of this file and tests/bodies.gd) -------
+
+var _tick := 0
+var _pairs := {}        ## "i:j" / "ap:i": bodies overlapping last tick (counted on the way in)
+var _in_solid := {}     ## car index / "ap" -> the tick its body was last seen in a building, wall or post
+var _over := {}         ## "i:node" / "ap:node" -> the tick it was counted standing over that line
+var _stand := {}        ## traffic car -> seconds standing
+var _ap_stand := 0.0
+var _push_at := Vector2.INF
+var _push_s := 0.0
+var _push_counted := false
+
+func _check(dt: float) -> void:
+	_tick += 1
+	var cars: Array = T.cars
+	var boxes := {}
+	for i in range(cars.size()):
+		if cars[i].alive:
+			boxes[i] = Bodies.car_box(cars[i])
+	var pb: Array = Bodies.player_box(g)
+	# -- bodies overlapping: traffic with traffic (both standing too: put down on each other
+	# is as wrong as driving into each other), autodrive with traffic
+	var now := {}
+	for i: int in boxes:
+		var c = cars[i]
+		for j: int in boxes:
+			if j <= i:
+				continue
+			var o = cars[j]
+			if c.pos.distance_squared_to(o.pos) > 196.0 or absf(c.y - o.y) > 2.5:
+				continue
+			var d := Bodies.box_depth(boxes[i], boxes[j])
+			if d > 0.25:
+				var key := "%d:%d" % [i, j]
+				now[key] = true
+				if not _pairs.has(key):
+					_count("check: bodies overlapping, traffic")
+					_incident("bodies overlap", (c.pos + o.pos) * 0.5, "%s (%s, %.0f km/h) & %s (%s, %.0f km/h), %.1f m in" % [
+						c.kind, c.why, c.v * 3.6, o.kind, o.why, o.v * 3.6, d])
+		if c.pos.distance_squared_to(g._pos) < 196.0 and absf(c.y - g._y) < 2.5:
+			var d2 := Bodies.box_depth(pb, boxes[i])
+			if d2 > 0.25:
+				var key2 := "ap:%d" % i
+				now[key2] = true
+				if not _pairs.has(key2):
+					_count("check: bodies overlapping, autodrive and a car")
+					_incident("autodrive in a car", g._pos, "%s (%s), %.1f m in; autodrive %.0f km/h, held by %s" % [
+						c.kind, c.why, d2, absf(g._v) * 3.6, g._ap_why])
+	_pairs = now
+	# -- a body into a building, a wall (fence, hedge, garden wall) or a post (tree, pole,
+	# bollard): traffic is on rails, so nothing but the lane it was given keeps it out
+	# Once an occasion: a bus brushing a row of street trees is one, not one a tree; it is
+	# over when that car has been clear of everything for a second.
+	if _tick % 6 == 0:
+		for i: int in boxes:
+			var c = cars[i]
+			if absf(c.y - g._h(c.pos)) > 2.5:
+				continue   # (on a bridge, in a tunnel)
+			var hit: Array = Bodies.into_solid(g, boxes[i])
+			if float(hit[0]) > 0.2:
+				var key := "%d" % i
+				if _tick - int(_in_solid.get(key, -100000)) > 60:
+					var kind := String(hit[1]).split(" ")[0]
+					_count("check: traffic body into a " + kind)
+					_incident("traffic into a " + kind, c.pos, "%s (%s, %.0f km/h), %.1f m into %s" % [
+						c.kind, c.why, c.v * 3.6, float(hit[0]), hit[1]])
+				_in_solid[key] = _tick
+		if absf(g._y - g._h(g._pos)) < 2.5:
+			var hit2: Array = Bodies.into_solid(g, pb)
+			# (the car is two circles to the game: its corners run a little into what it
+			# brushes, so only past 0.3 m)
+			if float(hit2[0]) > 0.3:
+				if _tick - int(_in_solid.get("ap", -100000)) > 60:
+					var kind2 := String(hit2[1]).split(" ")[0]
+					_count("check: autodrive body into a " + kind2)
+					_incident("autodrive into a " + kind2, g._pos, "%.1f m into %s at %.0f km/h, held by %s" % [
+						float(hit2[0]), hit2[1], absf(g._v) * 3.6, g._ap_why])
+				_in_solid["ap"] = _tick
+	# -- standing at a red, held by the light, with the front over the stop line
+	for i: int in boxes:
+		var c = cars[i]
+		if c.v > 0.3 or c.why != "light":
+			continue
+		for j in range(c.k + 1, c.pts.size()):
+			var dist: float = c.cum[j] - c.s
+			if dist > 60.0:
+				break
+			var n: int = c.node[j]
+			if not g._sig_set.has(n):
+				continue
+			var dir: Vector2 = T._came(c, j)
+			var way: Array = g._way_in(n, dir)
+			if way.is_empty() or way[3]:
+				continue
+			var over: float = float(way[1]) - (dist - c.len * 0.5)
+			var key := "%d:%d" % [i, n]
+			if over > 1.0 and g._light_at(n, dir) == "r" and _tick - int(_over.get(key, -100000)) > 3600:
+				_over[key] = _tick
+				_count("check: over the line at a red, traffic")
+				_incident("over the line", c.pos, "%s, its front %.1f m past the stop line" % [c.kind, over])
+			break
+	if absf(g._v) < 0.3 and g._auto and g._ap_why == "light":
+		var f: Vector2 = g._fwd()
+		var nose: Vector2 = g._pos + f * g.CAR_LEN * 0.5
+		var best := INF
+		var bn := -1
+		var bway: Array = []
+		for n: int in g._near(g._sig_hash, g._pos, 40.0, g.SEG_CELL):
+			var way: Array = g._way_in(n, f)
+			if way.is_empty() or way[3]:
+				continue
+			var rel: Vector2 = g._nodes[n] - g._pos
+			var w0: Vector2 = way[0]
+			if rel.dot(w0) <= 0.0 or absf(rel.cross(w0)) > g._node_r[n] + 8.0:
+				continue   # behind, or off to the side: not the one it waits at
+			if rel.dot(w0) < best:
+				best = rel.dot(w0)
+				bn = n
+				bway = way
+		if bn >= 0:
+			var w1: Vector2 = bway[0]
+			var over2: float = (nose - (g._nodes[bn] - w1 * float(bway[1]))).dot(w1)
+			var key4 := "ap:%d" % bn
+			if over2 > 1.0 and g._light_at(bn, w1) == "r" and _tick - int(_over.get(key4, -100000)) > 3600:
+				_over[key4] = _tick
+				_count("check: over the line at a red, autodrive")
+				_incident("autodrive over the line", g._pos, "its nose %.1f m past the stop line" % over2)
+	# -- pushing: foot on the gas against something, not moving; backing off and pushing
+	# again is the same occasion until the car gets 4 m away (or is lifted elsewhere)
+	var pushing: bool = g._auto and g._ap_back <= 0.0 and g._ap_turn <= 0.0 and g._ap_stuck > 0.3
+	if pushing:
+		if _push_at == Vector2.INF:
+			_push_at = g._pos
+		_push_s += dt
+		if _push_s >= 3.0 and not _push_counted:
+			_push_counted = true
+			_count("check: autodrive pushing 3 s+")
+			_incident("pushing", g._pos, "against %s" % g._last_hit)
+	if _push_at != Vector2.INF and g._pos.distance_to(_push_at) > 4.0:
+		_push_at = Vector2.INF
+		_push_s = 0.0
+		_push_counted = false
+	# -- standing 10 s with nothing named holding it (down the queue to whoever is at its front)
+	for i: int in boxes:
+		var c = cars[i]
+		if c.v < 0.3:
+			_stand[i] = float(_stand.get(i, 0.0)) + dt
+			if absf(float(_stand[i]) - 10.0) < dt * 0.5:
+				var ch: Array = _chain(i)
+				if not ch[0]:
+					_count("check: held by nothing 10 s+, traffic")
+					_incident("held by nothing", c.pos, " > ".join(ch[1]))
+		else:
+			_stand.erase(i)
+	for i: int in _stand.keys():
+		if not boxes.has(i):
+			_stand.erase(i)
+	if g._auto and absf(g._v) < 0.3:
+		_ap_stand += dt
+		if absf(_ap_stand - 10.0) < dt * 0.5:
+			var why: String = g._log._why(g)
+			var parts: Array = ["autodrive (%s)" % why]
+			var named := why in NAMED
+			if why == "car":
+				var lead: Array = T.lead_on(g._ap_pts, g._pos, maxf(g._ap_lead, 0.0) + 1.0, g._ap_wait > 3.0)
+				if int(lead[3]) >= 0:
+					var ch2: Array = _chain(int(lead[3]))
+					named = ch2[0]
+					parts.append_array(ch2[1])
+				else:
+					parts.append("no car ahead")
+			if not named:
+				_count("check: held by nothing 10 s+, autodrive")
+				_incident("autodrive held by nothing", g._pos, " > ".join(parts))
+	else:
+		_ap_stand = 0.0
+
+## what holds traffic car i, down the queue: [named?, ["sedan 4 (car)", "bus 9 (light)"]].
+## Not named: the limit or a curve at a standstill, a car that is gone, or a loop.
+func _chain(i: int) -> Array:
+	var parts: Array = []
+	var seen := {}
+	while true:
+		var c = T.cars[i]
+		if seen.has(i):
+			parts.append("a loop")
+			return [false, parts]
+		seen[i] = true
+		if not c.alive:
+			parts.append("a car that is gone")
+			return [false, parts]
+		if c.hit > 0.0:
+			parts.append("%s %d (stunned by a hit)" % [c.kind, i])
+			return [true, parts]
+		if c.v < 0.3 and c.want > 0.5 and not c.why in ["car", "player"]:
+			# wants to go, standing only for its moment to notice (the front of a queue at a
+			# light gone green reads "limit" then: the first version of this check took that
+			# for nothing at all)
+			parts.append("%s %d (pulling away)" % [c.kind, i])
+			return [true, parts]
+		parts.append("%s %d (%s)" % [c.kind, i, c.why])
+		if c.why == "car" and c.v < 0.3:
+			if c.blocker < 0 or c.blocker >= T.cars.size():
+				parts.append("no car")
+				return [false, parts]
+			i = c.blocker
+			continue
+		return [c.why in NAMED or c.why == "car" or c.v > 0.3, parts]
+	return [false, parts]
