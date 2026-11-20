@@ -293,7 +293,8 @@ What each round found, so far:
   (the container is slower than a laptop by ~3x; compare ratios). Before the car is shown,
   near-first: Givatayim ~2 s (9 of its 71 squares), Bedford ~1.2 s, Ashdod ~2.8 s, the test
   town ~1.2 s (headless playtest, `build_ms` in the "city" event); the rest of Givatayim
-  ~10 s of background building (the "city_built" event).
+  ~10 s of background building (the "city_built" event). Tel Aviv (the box, 4011 buildings,
+  3667 roads, 59 squares): ~2.2-2.5 s before the car, the rest ~11-12 s.
 - Parked cars by the kerb's paint (Givatayim's start view, `tests/frame_cost.gd`, quality
   3): 1.32 M triangles + 632 k shadow before, 1.54 M + 854 k after (+17%, +35%), draws 292
   -> 294. Measured at the old start, a residential street of blue-white kerbs: the densest case.
@@ -312,6 +313,7 @@ What each round found, so far:
 | 2 | Bedford, Nova Scotia ("north") | place "Bedford, Nova Scotia", include "Hemlock Ravine Park; Kearney Lake; Sandy Lake; Fleetview Drive" |
 | 3 | Ashdod ("med") | place "Ashdod" |
 | 4 | Kiryat Dimyon, made up | `tools/fake_city.py` |
+| 7 | Tel Aviv, a box of the centre ("med") | place "Tel Aviv", bbox "32.0639,34.7795,32.0858,34.8021" (read off the user's map screenshot), margin 150 |
 
 The start points are public street corners named in `LEVELS`. **The web build is public:
 never use an address the user has mentioned as theirs or their family's -- not as a start,

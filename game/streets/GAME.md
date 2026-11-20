@@ -147,6 +147,18 @@ about 3 s here, the same as anywhere (see "Loading near-first").
 
 > Ashdod.
 
+**Tel Aviv** is a box of the city centre, not the whole city (all of it would be far too
+much to build and drive smoothly): about 2.4 by 2.7 km, from Ichilov and the Savidor
+station down to Yitzhak Sadeh, and from just west of Ibn Gabirol across the Ayalon to
+Nahalat Yitshak -- HaKirya, Azrieli and Sarona, Montefiore, Bitsaron. It starts on Kaplan
+just past Leonardo da Vinci, heading east, HaKirya on the left and the Azrieli towers
+ahead. The towers stand at their real heights (OSM has them for the tall ones: Azrieli's
+round tower 187 m, the Spiral 350 m). The map ends at the box's edge (the striped barrier).
+
+> game streets -- lets add/start working on adding Tel Aviv. Somewhat the area I mentioned.
+> (with a map: Ichilov, Savidor, Azrieli, HaKirya, TLV Mall, Montefiore, Bitsaron,
+> Nahalat Yitshak)
+
 **The test town.** The last place, Kiryat Dimyon, is made up (`cities/dimyon.json`, from
 `tools/fake_city.py`): one neighbourhood about 1.3 x 1 km, a fifth of Givatayim's buildings,
 so it loads in about a second and a half. It is for looking at a change quickly, so it has
