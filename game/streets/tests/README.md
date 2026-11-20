@@ -44,7 +44,15 @@ these numbers the wrong way has broken something.
 | `divided_zebra` | 3 | people crossing both halves of a divided road (shots) | |
 | `load_stages` | 1, 3 | where the build time goes, stage by stage (`STREETS_BUILD_ALL=0`: what a player waits for) | Ashdod near-first: ready in 6.8 s here, 2.5 of it shader warm-up; whole city: kerbs 3.0 s, roads 1.9, trees 1.7 |
 | `drive_log` | 3 | the drive recorder: 60 s, the map page, a saved log | ~520 samples |
+| `exam` | 1, 3 | the driving exam: autodrive from 4 places for 75 s each, everything that went wrong per minute (see DEV.md) | see DEV.md's scorecard |
+| `dead_ends` | 1 | "go to" from 8 dead ends, parked facing the closed end: out of the street in 40 s? hits, time off the road. Then free autodrive driving into each: stops at the end, turns, comes out? (`DEAD_ONLY=n`: just the n-th, driving in) | 8 of 8 out, 0 hits; driving in 7 of 8 (stops ~2 m short), the one at (522, 356) being looked at |
+| `walls_on_roads` | 1 | walls the car collides with (garden walls, fences, hedges, shelter backs) standing on a road's asphalt; `WALL_AT=x,z` lists those near a point | 0 (was 41: garden walls of one street laid across the next) |
+| `door_to_door` | 1 | a "go to" trip from a house on a side street to another 900-1600 m away (`SEED` picks the pair) | SEED 3: arrives in 235 s, no hits, longest wait 16 s behind a car; was 390 s with 2 min stuck at a dead end |
 
 `drive_log_map.py` draws a saved drive log (the "save log" button on the perf view's map
 page, or `drive_log.gd`'s output) over the city: `python3 game/streets/tests/drive_log_map.py
-drive-....json [out.png]`.
+drive-....json [out.png]` (`--from`/`--to` seconds to zoom on a stretch). `exam_chart.py`
+draws two exam printouts side by side as a scorecard (`exam_chart.py out.png
+"Givatayim:round1.txt:round2.txt:round3.txt" ...`); `side_by_side.py` puts two pictures
+side by side under a title each (a drive before and after a fix). The map names the
+streets driven and the main roads in view, with a legend for the path's colours (speed).
