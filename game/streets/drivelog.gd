@@ -113,6 +113,8 @@ func _what(g) -> String:
 	var why := _why(g)
 	if why in ["blocked", "pushing", "backing"]:
 		return g._last_hit
+	if why == "junction" and g._ap_give_car >= 0:
+		return "car %d" % g._ap_give_car   # (giving way to it)
 	if why == "car" and g._ap_lead >= 0.0:
 		var lead: Array = g._traffic.lead_on(g._ap_pts, g._pos, g._ap_lead + 1.0, g._ap_wait > 3.0)
 		return "car %d" % int(lead[3]) if int(lead[3]) >= 0 else ""

@@ -55,6 +55,23 @@ get better.
 > track, to cover a bit more driving options. Can you add to the menu "test routes", where
 > I would be able to pick one of the routes and just watch.
 
+**Routes of your own.** The list has two pages: "the ten" and "yours". On "yours", "+ a new
+one, in" a city: the city loads, the address picker asks "from where?" and then "to
+where?", and autodrive drives it at once. It is kept on "yours" to watch again (up to nine,
+newest first, ✕ to remove one). They are kept in your own browser or phone only, never in
+the game's files: the web build is public.
+
+> Maybe later in the same menu I would be able to enter my own.
+
+**Giving way.** Autodrive comes out of a side street onto a bigger road the way a driver does:
+up to the corner slowly enough to stop, and if a car is coming that it could not get in
+front of with room to spare, it waits at the edge -- looking at that car as it goes by --
+and then goes. Turning left across oncoming traffic at a green, the same. A divided road's
+crossing: it waits while someone is on its half of the road, not while they finish the far
+half.
+
+> Real give-way and left-turn decisions (picked from the list of next steps: "1 2 6 7").
+
 **On foot.** The "walk" button (or F) lets the driver out of the door to walk the same city:
 arrows or the stick to walk (a brisk 2.1 m/s) and turn, space to run (6 m/s), over the
 shoulder or (the "seat" button) from the eyes. Out of a moving car you jump: you tumble
@@ -1180,12 +1197,15 @@ contributors under the ODbL, which is why the credit sits on screen.
   the tunnels.** OSM says which ways are bridges and tunnels but not how high or deep, so
   the game works it out as the town loads: each overpass rises to clear what it crosses, on
   ramps up the roads leading to it, an interchange's junctions up on them and its slip
-  roads coming down; each tunnel goes down under what runs over it, cuttings sloping down
-  to it. Highway 102's overpasses, the Bedford Bypass, the MacKay Bridge's approach; in
-  Ashdod Highway 4's interchanges and Sderot Menachem Begin's underpass; the Ayalon's
-  bridges, the Begin underpass and the Lova Eliav tunnel in Tel Aviv. The ramps are grass
-  banks with a guardrail along the top where there is room for them, retaining walls where
-  there is not.
+  roads coming down; each road tunnel runs about 6 m under what runs over it, cuttings
+  sloping down to its mouths. Highway 102's overpasses, the Bedford Bypass, the MacKay
+  Bridge's approach (Bedford has no tunnel); in Ashdod Highway 4's interchanges and Sderot
+  Menachem Begin's underpass, down a cutting under the road it crosses. Givatayim and Tel
+  Aviv share a stretch of the Ayalon: Menachem Begin's and Arvey Nahal's bridges over it,
+  Uzi Hitman's tunnel and the City tunnel; Tel Aviv adds the Moda'i bridge, the Begin
+  underpass and the Lova Eliav tunnel. The ramps are grass banks with a guardrail along the
+  top where there is room for them, retaining walls where there is not; the cuttings are
+  walled.
 - **Footbridges and footpath tunnels, guessed the same way.** A footbridge clears the street
   under it by 5.8 m (3.4 m over another path), paved, with a steel railing; its ramps rise
   along the footpaths only, steep (25%), and as stairs where OSM maps steps or where a path
@@ -1222,9 +1242,6 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
 > My sister tells me the scales of the game feel off.
 
 ## Later (said, not built)
-
-- Test routes of your own: "maybe later in the same menu I would be able to enter my own" --
-  from and to with the address picker, kept beside the ten.
 
 - Bridges and tunnels in the real towns: working out each deck's heights from OSM's tags
   and the ground (the test town has them already), then an interchange you drive over and

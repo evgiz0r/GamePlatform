@@ -306,6 +306,18 @@ func _drive(secs: float) -> void:
 		_count("autodrive: seconds stuck", int(still))
 
 
+## one traffic car, all a watched junction's incident needs: where, which way, how fast, on
+## what road and lane, how far shifted off its lane line (changing lanes, filtering), what
+## holds it and who
+func _car_line(i: int) -> String:
+	var c = T.cars[i]
+	var rd: int = c.rd[clampi(c.k, 0, c.rd.size() - 1)] if c.rd.size() > 0 else -1
+	var road: String = ("%s (%s, %d lanes a way)" % [g._roads[rd]["en"] if g._roads[rd]["en"] != "" else g._roads[rd]["name"],
+		g._roads[rd]["k"], g._lanes_each_way(g._roads[rd])]) if rd >= 0 else "?"
+	return "car %d %s at (%.1f, %.1f) heading %.0f, %.1f m/s, %s, lane %d shift %.2f -> %.2f%s, held by %s (blocker %d), k %d of %d" % [
+		i, c.kind, c.pos.x, c.pos.y, rad_to_deg(c.yaw), c.v, road, c.lane_i, c.shift, c.shift_to,
+		", filtering" if c.split else "", c.why, c.blocker, c.k, c.pts.size()]
+
 ## the traffic's own checks: stalls, cars sent away, red lights run, cars overlapping
 func _watch_traffic(dt: float, t: float, car_still: Dictionary, overlapping: Dictionary, inside: Dictionary, came_dir: Dictionary) -> void:
 	# -- traffic
@@ -426,6 +438,8 @@ func _check(dt: float) -> void:
 					_count("check: bodies overlapping, traffic")
 					_incident("bodies overlap", (c.pos + o.pos) * 0.5, "%s (%s, %.0f km/h) & %s (%s, %.0f km/h), %.1f m in" % [
 						c.kind, c.why, c.v * 3.6, o.kind, o.why, o.v * 3.6, d])
+					if _watch_r > 0.0 and (c.pos + o.pos).distance_to(_at * 2.0) <= _watch_r * 2.0:
+						print("    %s\n    %s" % [_car_line(i), _car_line(j)])
 		if c.pos.distance_squared_to(g._pos) < 196.0 and absf(c.y - g._y) < 2.5:
 			var d2 := Bodies.box_depth(pb, boxes[i])
 			if d2 > 0.25:
@@ -453,6 +467,15 @@ func _check(dt: float) -> void:
 					_count("check: traffic body into a " + kind)
 					_incident("traffic into a " + kind, c.pos, "%s (%s, %.0f km/h), %.1f m into %s" % [
 						c.kind, c.why, c.v * 3.6, float(hit[0]), hit[1]])
+					if _watch_r > 0.0 and c.pos.distance_to(_at) <= _watch_r:
+						var what := String(hit[1])
+						var where_s := ""
+						if what.begins_with("post "):
+							var pi := int(what.split(" ")[1])
+							var on: Dictionary = g._nearest_seg(g._posts[pi], 20.0, true)
+							where_s = " -- the post at (%.1f, %.1f), r %.2f, %.2f m %s the asphalt's edge" % [g._posts[pi].x, g._posts[pi].y,
+								g._post_r[pi], absf(float(on.get("edge", 99.0))), "inside" if float(on.get("edge", 99.0)) < 0.0 else "outside"]
+						print("    %s%s" % [_car_line(i), where_s])
 				_in_solid[key] = _tick
 		if absf(g._y - g._h(g._pos)) < 2.5 and _watch_r <= 0.0:   # (watching: the car is only parked by the kerb)
 			var hit2: Array = Bodies.into_solid(g, pb)

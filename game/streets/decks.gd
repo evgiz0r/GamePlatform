@@ -1401,9 +1401,25 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 						hits.append([a.distance_to(x) / maxf(a.distance_to(b), 0.001), x, need,
 							roads[rj].get("name_en", roads[rj].get("name", roads[rj]["k"]))])
 						if under_road:   # (the road crossed stays on the ground, where it passes under)
-							for m in ms:
-								if (pos.call(int(m)) as Vector2).distance_to(x) < 80.0:
-									pinned[int(m)] = true
+							# within 80 m of the crossing ALONG it, not as the crow flies: a
+							# cloverleaf's loop starts at the bridge's own end and passes back under
+							# it -- its start, metres away in a straight line but hundreds along the
+							# loop, was held down, and so the bridge's end with it (Ashdod's
+							# interchanges: 0.5-4 m clear over the roads it crossed)
+							var back := (pos.call(int(ms[sj])) as Vector2).distance_to(x)
+							for q in range(sj, -1, -1):
+								if q < sj:
+									back += (pos.call(int(ms[q])) as Vector2).distance_to(pos.call(int(ms[q + 1])))
+								if back >= 80.0:
+									break
+								pinned[int(ms[q])] = true
+							var fwd := (pos.call(int(ms[sj + 1])) as Vector2).distance_to(x)
+							for q in range(sj + 1, ms.size()):
+								if q > sj + 1:
+									fwd += (pos.call(int(ms[q - 1])) as Vector2).distance_to(pos.call(int(ms[q])))
+								if fwd >= 80.0:
+									break
+								pinned[int(ms[q])] = true
 			hits.sort_custom(func(p, q): return p[0] < q[0])
 			for hit: Array in hits:
 				var n: int = add_node.call(hit[1])

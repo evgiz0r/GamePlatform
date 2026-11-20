@@ -582,14 +582,18 @@ func _junction_ahead(c: Car, i: int, dt: float) -> float:
 		var node_at := _nodes_at(n)
 		var rel := me_at - c.pos
 		var fwd := Vector2(sin(c.yaw), cos(c.yaw))
-		if _level(c, float(g._y)) and not (rel.dot(fwd) < 0.0 and absf(rel.dot(Vector2(-fwd.y, fwd.x))) < 2.5):
+		# (not while autodrive stands giving way at this junction: it waits for me, I go)
+		if _level(c, float(g._y)) and not g._ap_giving.has(n) and not (rel.dot(fwd) < 0.0 and absf(rel.dot(Vector2(-fwd.y, fwd.x))) < 2.5):
 			var pd := me_at.distance_to(node_at)
 			var pv := maxf(float(g._v), 0.0)
 			var pfwd := Vector2(cos(float(g._yaw)), sin(float(g._yaw)))
 			if pd < _node_r[n] + 3.0:
 				return _hold(c, dt, stop)
+			# (autodrive gives way by itself now: a car too close to stop comfortably for it goes
+			# on, and autodrive waits; one that stood on its brakes for autodrive was the worse)
+			var can_stop: bool = not g._auto or c.v * c.v <= 2.0 * BRAKE * maxf(edge - 0.3, 0.0) + 2.0
 			if pd < _node_r[n] + 30.0 and pv > 1.5 and pfwd.dot(node_at - me_at) > 0.0 \
-					and pd / pv < my_eta + 1.5:
+					and pd / pv < my_eta + 1.5 and can_stop:
 				return _hold(c, dt, stop)
 		for oi in range(cars.size()):
 			if oi == i:
@@ -799,6 +803,8 @@ func _zebra_ahead(c: Car) -> float:
 				break
 			var cp := Geometry2D.get_closest_point_to_segment(mid, c.pts[j], c.pts[j + 1])
 			if cp.distance_to(mid) < float(z[1]):
+				if g._zebra_clear(z, cp):
+					break   # (the person is on the other half of a divided road, or not there yet)
 				var stop := base + c.pts[j].distance_to(cp) - 4.0 - c.len * 0.5
 				if stop > -1.5:   # (over the line already: through)
 					best = minf(best, sqrt(2.0 * BRAKE * maxf(stop - 0.3, 0.0)))
@@ -1030,8 +1036,9 @@ func lead_on(path: PackedVector2Array, from: Vector2, look: float, ignore_crossi
 	for c: Car in cars:
 		if not c.alive or c.pos.distance_squared_to(from) > (look + c.len * 0.5 + 6.0) * (look + c.len * 0.5 + 6.0):
 			continue
-		if not is_nan(y) and absf(c.y - y) > LEVEL:
-			continue   # (on a bridge overhead, in a tunnel underneath)
+		if not is_nan(y) and absf(c.y - y) > LEVEL + 0.08 * c.pos.distance_to(from):
+			continue   # (on a bridge overhead, in a tunnel underneath -- not just down a hill:
+			           # 60 m ahead on a 6% street a car is 3.6 m lower, and was not seen)
 		var cdir := Vector2(sin(c.yaw), cos(c.yaw))
 		var offs: Array = (BODY[c.kind][0] as Array).duplicate() if BODY.has(c.kind) else [-c.len * 0.33, 0.0, c.len * 0.33]
 		# and its nose and tail: one waiting crossways at a junction's edge stuck its nose
@@ -1344,6 +1351,9 @@ func _next(c: Car) -> bool:
 			# overlapped there (a dozen times a run in one cul-de-sac)
 			if _dead_end(r2, nxt, d2):
 				score -= 4.0
+			# nor into a pocket whose only ways out run off the map (see the game's _find_pockets)
+			if g._trap.has((r2["ids"] as PackedInt32Array)[nxt]) and not g._trap.has(node):
+				score -= 6.0
 			if r.get("ring", false):
 				# on a roundabout: off it at one of the next few exits, never round and round
 				score += (-0.6 - 1.1 * c.ring_n) if r2.get("ring", false) else 1.0

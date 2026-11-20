@@ -61,7 +61,15 @@ A game's `tests/run.sh <test> [level]` wraps that line (see an existing one).
   `g.look_from(eye, target)` and snap. Unfrozen, the game's own camera moves it back.
 - **Stage the situation directly.** Put the player at a point and heading, send one AI car
   at it down a chosen road, set a quality level, drop the car in a courtyard. Waiting for it
-  to happen by itself costs minutes and may never happen in a test run.
+  to happen by itself costs minutes and may never happen in a test run. For two drivers
+  meeting at a junction: clear the rest of the traffic (and keep it off), send the other
+  car when the player is ~35 m out at the distance that makes them arrive together, and
+  skip the case when the map makes it not a meeting (where the main road bends, the car
+  "from the side" came up behind instead).
+- **When a fix changes nothing to the decimal, the code you changed is not reached.** Put a
+  print at each filter before it (behind an env variable, taken out after) and run the one
+  case: a decision that ignored a car turned out, three times running, to drop it at a
+  filter upstream of the one being tuned.
 - **Put a looking-down camera well above the roofs** (30 m and more in a town), not at
   roof height: a camera 9 m up over a junction sat just above a building, and its flat
   roof filled half of every shot as a featureless pale plane -- it looked exactly like the
@@ -197,11 +205,22 @@ it is made, with a one-line caption, rather than a report at the end.
 
 - **Don't annotate with a `class_name` type that uses autoloads** (`var a: Actor3D`) in a
   `-s` script: it is compiled before the autoloads exist and fails ("Identifier not found:
-  Probe"), taking the whole test with it. Use the base type (`Node3D`).
+  Probe"), taking the whole test with it. Use the base type (`Node3D`). A cast counts too
+  (`x as Actor3D`), and the damage reaches past the test: the class stays broken for the
+  run, so the game's own `Actor3D.new()` fails and the city has no people -- a crossing test
+  ran "PASS" with every case quietly erroring out on an empty list of crossers.
+- **Do the work in `_initialize()`, never `_init()`.** In `_init()` the autoloads are not up
+  yet, so `load()`ing the game's own script there (even just to read a constant) fails
+  ("Compilation failed"), and the error comes before `quit()`: the run sat silent until its
+  10-minute timeout.
 - `var x := g.some_member` cannot infer a type through an untyped node: annotate it.
 - **Forget `OUT` and the screenshots land in `/`.** Check the folder after the first run.
   The same with two jobs started at once: `SP=dir && (job1 > $SP/a.log) & (job2 > $SP/b.log)`
   sets `SP` for the first only -- the second wrote its log to `/b.log`. `export` it first.
+- **`await RenderingServer.frame_post_draw` never returns under `--headless`**: a test that
+  takes a shot there hangs until its timeout, silently (a run "took 25 minutes" that way and
+  printed nothing). Skip shots when `DisplayServer.get_name() == "headless"`, or run the shot
+  test under xvfb (`tests/run.sh` does).
 - **A check that never fires may be running too early.** One worked out while loading
   (walls along a raised road, leaving out pieces on a street) asked a lookup grid that is
   only built later in the load: it answered "no street" everywhere and the fix changed
@@ -244,6 +263,14 @@ it is made, with a one-line caption, rather than a report at the end.
   tick's position and heading lerped to this one) keeps blending from the last tick
   while physics is stopped: set the "previous" values with the new ones, or the shot
   looks along the player's old heading.
+- **A game may let go of its source data once it is built** (a city's file, outlines, lists
+  per square freed a little a frame after the last square): a test that reads them after
+  "loaded" (and a runner that builds everything first makes that at once) hits an empty
+  array mid-run. Have the module record what a test needs as it sets up, and read that.
+- **Pick a still's eye over open ground.** An eye placed by coordinates alone stood inside a
+  cafe's arcade, and two more had a tower a few metres in front: three of five shots
+  wasted, ten minutes a run. Put it over a road (a street's points are in the data), or high
+  over the roofs, and aim at the subject's middle.
 - **A marker for a 3D shot goes in the game's 3D world**, not under the game's node: a
   3D game's own node is a 2D one, and a ring added under it is never drawn.
 - **A skinned model's box is its rest pose's.** `MeshInstance3D.get_aabb()` (and the shell's
@@ -252,6 +279,14 @@ it is made, with a one-line caption, rather than a report at the end.
   against what the game asked for and how it scales, not the box alone. Drawing a figure
   alone in a `SubViewport` with its own world, to measure its silhouette, came out empty
   (the figure moved into it was not drawn): do not spend a run on it.
+- **Put a body down at the level of what is there.** A test that places a car or a walker
+  at a point usually gives it the ground's height: on an embankment or a bridge it then
+  drives along underneath, and the run reports "drove nothing" with no error. Start it on
+  the highest surface at that point when the point is on something raised.
+- **A collision's label is not a collision.** A game's "last hit" text can be rewritten by
+  anything that probes for room (placing people tries spots every tick), so counting label
+  changes counts noise. Count the ticks where the body moved other than its own step
+  (displacement minus heading x speed x dt) and read the label only then.
 - Parse-check first: `tools/check_script.sh res://game/<game>/<game>.gd` takes seconds and
   says which line; a broken script makes a scene test fail in a confusing way minutes in.
 
@@ -262,6 +297,14 @@ can run headless (`$GODOT --headless --fixed-fps 60 --path . -s res://...`, the 
 calls skipped when `DisplayServer.get_name() == "headless"`): two minutes where the same
 run under the software renderer took twenty. Render only for the shots, and only the runs
 that need them.
+
+**A function from data to data needs no game at all.** When the question is what one step
+of the load makes of the data (heights worked out for a map, a parser, a picker), call it
+straight from a `-s` script on the data file: no scene, no world built, no renderer, so
+several maps in the time one load would take. Read the game's constants from its script
+(`load("res://game/<game>/<game>.gd").SOME_CONST`, in `_initialize()`, see Gotchas). To get
+more out of it than it reports (a list it caps), load a scratch copy with the cap raised
+rather than touching the game.
 
 **Tests that measure behaviour should not pay for looks.** The software renderer is bound by
 pixels and per-pixel shader work: when a game gained photo textures and per-pixel traced

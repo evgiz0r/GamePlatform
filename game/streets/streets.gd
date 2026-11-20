@@ -1082,10 +1082,13 @@ func start(_config: Dictionary) -> void:
 	_tones()
 	_place = LEVELS[clampi(int(_config.get("level", 1)), 1, LEVELS.size()) - 1]
 	if _place.get("routes", false):
+		_route_page = String(_config.get("page", "set"))
 		_route_list_open()   # no city: the list of drives, each starting its own city
 		return
 	if _config.has("route"):
 		_route = _route_by_id(int(_config["route"]))
+	if _config.get("make_route", false):
+		_making = "from"   # (the picker opens once the city is up)
 	SIGNAL_CYCLE = SIGNAL_CYCLE_NORTH if String(_place.get("look", "")) == "north" else SIGNAL_CYCLE_MED
 	var dev := OS.get_environment("STREETS_CAM").split(",", false)
 	if dev.size() >= 5:
@@ -1139,6 +1142,8 @@ func start(_config: Dictionary) -> void:
 	_loaded = true
 	if not _route.is_empty():
 		_route_begin()
+	elif _making != "":
+		_open_picker()
 	track3d(_car, "@")
 	Probe.event("city", {"name": _city_name, "roads": _roads.size(), "buildings": _blds.size(),
 		"trees": _posts.size(), "streets": _streets.size(), "dressing": _dressing, "stage_ms": _stage_ms,
@@ -1722,6 +1727,112 @@ func _build_graph() -> void:
 	# Givatayim, or to a close in Bedford, found no way at all (tests/route_check.gd)
 	for pass_pv: bool in [false, true]:
 		_graph_roads(pass_pv)
+	_find_pockets()
+
+## ---- pockets: streets you can drive into and not out of, or not into at all -----------------
+## The bake cuts the town off at its edge, and with it the far ends of some one-way streets. A
+## street whose every way out is a one-way running off the map (or a few such streets together)
+## is a pocket: drive in, and the only way out is against a one-way. Others can only be got
+## into from beyond the edge. Of the real towns' public streets 7-13% were one or the other
+## (Givatayim 23 km of 172, Tel Aviv 21 of 173, Bedford 41 of 560, Ashdod 18 of 779; the made-up
+## test town none). Found once, on the graph the routes are planned on, inside the map's edge:
+## _trap (no way back to the town's main network from there: traffic and autodrive keep out
+## unless already in) and _cut_off (no way to it from there: a destination in one is reached
+## at the nearest street that has a way, a route's start in a trap moves to the nearest street
+## with a way out).
+var _trap := {}                      ## node -> true: no way from it back to the main network
+var _cut_off := {}                   ## node -> true: no way to it from the main network
+var _outside := {}                   ## node -> true: past the map's edge (the barrier), on no way at all
+
+func _find_pockets() -> void:
+	_trap = {}
+	_cut_off = {}
+	_outside = {}
+	var rim := _bounds.grow(-EDGE - EDGE_ROOM)
+	var fwd := {}
+	var bwd := {}
+	for key: Vector2i in _edge_of:
+		if not rim.has_point(_nodes[key.x]) or not rim.has_point(_nodes[key.y]):
+			# (over the map's edge: no way on there. Left unmarked, the nearest street "with a
+			# way in" to a pocket's address was found past the barrier, and no way to that)
+			for n: int in [key.x, key.y]:
+				if not rim.has_point(_nodes[n]):
+					_outside[n] = true
+			continue
+		if not fwd.has(key.x):
+			fwd[key.x] = []
+		(fwd[key.x] as Array).append(key.y)
+		if not bwd.has(key.y):
+			bwd[key.y] = []
+		(bwd[key.y] as Array).append(key.x)
+	var all := {}
+	for n: int in fwd:
+		all[n] = true
+	for n: int in bwd:
+		all[n] = true
+	if all.is_empty():
+		return
+	# the main network: what can be got to and back from a busy junction in the middle (the
+	# nearest few tried, in case one is itself in a pocket)
+	var mid := _bounds.get_center()
+	var hubs: Array = all.keys().filter(func(n: int) -> bool: return fwd.has(n) and (fwd[n] as Array).size() >= 2)
+	hubs.sort_custom(func(a: int, b: int) -> bool: return _nodes[a].distance_squared_to(mid) < _nodes[b].distance_squared_to(mid))
+	for hub: int in hubs.slice(0, 5):
+		var reach_f := _graph_reach(hub, fwd)
+		var reach_b := _graph_reach(hub, bwd)
+		var main := 0
+		for n: int in reach_f:
+			if reach_b.has(n):
+				main += 1
+		if main < all.size() * 0.4:
+			continue
+		for n: int in all:
+			if not reach_b.has(n):
+				_trap[n] = true
+			if not reach_f.has(n):
+				_cut_off[n] = true
+		break
+
+## a road segment ({road, seg, ...} from _nearest_seg) either end of which is marked: in a
+## pocket, or its mouth (where the one end that is not can be the wrong way to arrive by)
+func _pocketed(hit: Dictionary, marks: Dictionary) -> bool:
+	if marks.is_empty():
+		return false
+	var ids: PackedInt32Array = (_roads[hit["road"]] as Dictionary)["ids"]
+	return marks.has(ids[int(hit["seg"])]) or marks.has(ids[int(hit["seg"]) + 1])
+
+## the public street segment nearest p, within reach, clear of the pockets of `marks` (both
+## its ends); q is its middle, not its nearest point, which can be the junction at its end
+func _nearest_seg_out(p: Vector2, reach: float, marks: Dictionary) -> Dictionary:
+	var best := {}
+	var bd := INF
+	for code: int in _near(_seg_hash, p, reach, SEG_CELL):
+		var ri := code / 4096
+		var sj := code % 4096
+		var r: Dictionary = _roads[ri]
+		if not r["drive"] or r["pv"]:
+			continue
+		var ids: PackedInt32Array = r["ids"]
+		if marks.has(ids[sj]) or marks.has(ids[sj + 1]) or _outside.has(ids[sj]) or _outside.has(ids[sj + 1]):
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		var q := Geometry2D.get_closest_point_to_segment(p, pts[sj], pts[sj + 1])
+		var d := q.distance_to(p)
+		if d < bd and d < reach:
+			bd = d
+			best = {"road": ri, "seg": sj, "q": (pts[sj] + pts[sj + 1]) * 0.5, "edge": d - float(r["w"]) * 0.5}
+	return best
+
+func _graph_reach(from: int, adj: Dictionary) -> Dictionary:
+	var seen := {from: true}
+	var todo: Array = [from]
+	while not todo.is_empty():
+		var n: int = todo.pop_back()
+		for m: int in adj.get(n, []):
+			if not seen.has(m):
+				seen[m] = true
+				todo.append(m)
+	return seen
 
 func _graph_roads(private: bool) -> void:
 	for ri in range(_roads.size()):
@@ -12998,7 +13109,7 @@ func _film_tick(dt: float) -> void:
 ## the crossings the walk is waiting at or on, in with the people on zebras (tagged, so the
 ## last tick's go: the list is only rebuilt where a town has people crossing)
 func _film_on_zebras() -> void:
-	_zebras_on = _zebras_on.filter(func(z: Array) -> bool: return z.size() < 4)
+	_zebras_on = _zebras_on.filter(func(z: Array) -> bool: return not (z.size() == 4 and typeof(z[3]) == TYPE_STRING))
 	for z: Array in _film_zebras:
 		if _film_t >= float(z[0]) and _film_t <= float(z[1]):
 			var a: Vector2 = z[2]
@@ -14025,7 +14136,10 @@ func _rescue() -> void:
 ## `reach`), clear of parked cars and trees; facing `prefer` where the street allows,
 ## else (prefer = zero) the way that has `near` on the kerb side. False if no street.
 func _land_on_road(near: Vector2, reach: float, prefer: Vector2) -> bool:
-	var hit := _nearest_seg(near, reach, true, true, _y)
+	# at the car's own height only near the car (on a bridge, the road on it, not the one under
+	# it); elsewhere the ground's there. A route's start up the test town's hill went by the car's
+	# height in the valley: the street 32 m from the address was skipped for one 107 m off.
+	var hit := _nearest_seg(near, reach, true, true, _y) if near.distance_to(_pos) < 40.0 else {}
 	if hit.is_empty():
 		hit = _nearest_seg(near, reach, true, true)
 	if hit.is_empty():
@@ -15032,7 +15146,7 @@ func _one_piece(mi: MeshInstance3D) -> void:
 const CROSSERS := 5
 const CROSS_NEAR := 110.0
 var _crossers: Array = []            ## {actor, ni, a, b, s, state, t, speed}
-var _zebras_on: Array = []           ## crossings with someone on them now: [middle, half width + 1, across]
+var _zebras_on: Array = []           ## crossings with someone on them now: [middle, half width + 1, across, where, pace across]
 var _zebra_t := 0.0
 var _zebra_warned := -1              ## the crossing the player was last told off at
 
@@ -15189,7 +15303,10 @@ func _crossers_tick(dt: float) -> void:
 				var sp: float = cr["speed"] * (2.4 if state == "back" else 1.0)
 				cr["s"] = clampf(float(cr["s"]) + (sp if state == "cross" else -sp) * dt / maxf(w, 0.1), 0.0, 1.0)
 				p = from.lerp(to, float(cr["s"]))
-				_zebras_on.append([(from + to) * 0.5, from.distance_to(to) * 0.5 - 0.1, (to - from).normalized()])
+				# (and where the person is, and their pace across: cars wait only while they are
+				# on that car's half of the road, see _zebra_clear)
+				_zebras_on.append([(from + to) * 0.5, from.distance_to(to) * 0.5 - 0.1, (to - from).normalized(), p,
+					float(cr["speed"]) * (1.0 if state == "cross" else -2.4)])
 				# the player bearing down on them: back to the kerb they came from
 				if state == "cross" and p.distance_to(_pos) < 5.5 and absf(_v) > 2.0 and (p - _pos).dot(_fwd() * signf(_v)) > 0.0:
 					cr["state"] = "back"
@@ -15356,6 +15473,28 @@ func _ap_people_v() -> float:
 			base += a.distance_to(b)
 	return best
 
+## A crossing with someone on it, met by a car's lane at cp: is the person clear of that car's
+## half of the road -- over on the far carriageway of a divided road, or not on it yet nor
+## about to be? On a divided road people cross the lot, kerb to kerb (18 to 22 m on
+## Givatayim's, some 15 s on foot), and a car on one half waited for all of it: it stood
+## through most of its green for someone on the other half, then through a whole red -- 41 s
+## on the route set's first drive. A road that is not divided is one half: they wait for all
+## of it. A filmed walk's crossing (no one person on it): never clear.
+func _zebra_clear(z: Array, cp: Vector2) -> bool:
+	if z.size() < 5:
+		return false
+	var on := _nearest_seg(cp, 6.0, true)
+	if on.is_empty():
+		return false
+	var hw := float((_roads[on["road"]] as Dictionary)["w"]) * 0.5
+	var lat := ((z[3] as Vector2) - (on["q"] as Vector2)).dot(z[2])
+	var pace: float = z[4]
+	if absf(lat) < hw + 1.0:
+		return false   # on my half, or at its edge
+	if lat * pace < 0.0 and absf(lat) < hw + 1.0 + absf(pace) * 2.5:
+		return false   # coming my way: on it in a moment
+	return true
+
 ## autodrive: stop short of a crossing with someone on it (the speed allowed now, or INF)
 func _ap_zebra_v() -> float:
 	if _zebras_on.is_empty() or _ap_pts.size() < 2:
@@ -15373,12 +15512,331 @@ func _ap_zebra_v() -> float:
 			var b := _ap_pts[j + 1]
 			var cp := Geometry2D.get_closest_point_to_segment(mid, a, b)
 			if cp.distance_to(mid) < float(z[1]):
+				if _zebra_clear(z, cp):
+					break   # (on the other half, or not there yet)
 				var stop := base + a.distance_to(cp) - 4.5 - CAR_OFF
 				if stop > -1.5:
 					best = minf(best, sqrt(2.0 * 2.6 * maxf(stop - 0.3, 0.0)))
 				break
 			base += a.distance_to(b)
 	return best
+
+## ---- giving way at a junction (autodrive) ------------------------------------------------
+## Coming to a junction: the cars that go before it there, and whether the gap ahead of the
+## first of them is big enough to go in and clear its way. If not, autodrive stops at the
+## junction's edge and waits. Who goes first is traffic.gd's rule (_junction_ahead) from this
+## side: a car in the junction already; at lights the green says (with mine green I still let
+## one going straight on its green by when I turn across it); without, the bigger road (a
+## roundabout's ring above all, a way in with a give-way or stop sign below all), then between
+## equals one going straight before one turning, then whoever gets there first. Whether two
+## ways meet is read from the two paths themselves: they cross, or end in the same lane.
+## Before this autodrive stopped only for a car already on its lane: it pulled out of side
+## streets in front of cars on the main road, and they (traffic always lets the player go)
+## stood on their brakes for it -- 7.5 m/s^2 in every meeting give_way.gd staged.
+const AP_GAP := 1.5                  ## s to spare between clearing a car's way and it getting there
+const AP_GIVE_PATIENT := 12.0        ## s standing, after which a smaller gap will do
+const AP_KNOT := 18.0                ## junction points closer than this after the first: one junction
+var _ap_giving := {}                 ## the nodes of the junction autodrive gives way at (traffic does not wait for it there)
+var _ap_give_car := -1               ## the car it waits for (the head turns to it), or -1
+var _ap_give_t := 0.0                ## seconds standing, giving way
+var _ap_give_us := 0                 ## microseconds spent in _ap_give_v, all told (tests/give_way.gd: its cost a tick)
+var _ap_js: Array = []               ## the junctions on the plan ahead: [metres along it, node], nearest first...
+var _ap_js_odo := 0.0                ## ...as the odometer stood when they were found (every 0.25 s)
+var _ap_js_t := 0.0
+var _ap_js_head := Vector2.INF       ## (the plan's first point then: a new plan, found afresh)
+
+## traffic car o on my level: both on the ground (a hill between us is not a level -- 50-80 m
+## off on Givatayim's slopes the car coming was 3-4 m below and was passed over as if on a
+## bridge), else within 2.5 m and a slope's rise over the distance between us
+func _same_level(o) -> bool:
+	if absf(_y - _h(_pos)) < 1.0 and absf(float(o.y) - _h(o.pos)) < 1.0:
+		return true
+	return absf(float(o.y) - _y) <= 2.5 + 0.08 * (o.pos as Vector2).distance_to(_pos)
+
+## the point `along` metres along the plan (cum: the distance to each of its points)
+func _ap_at(cum: PackedFloat32Array, along: float) -> Vector2:
+	var n := mini(cum.size(), _ap_pts.size())
+	if along <= cum[0]:
+		return _ap_pts[0]
+	for i in range(1, n):
+		if cum[i] >= along:
+			var f := (along - cum[i - 1]) / maxf(cum[i] - cum[i - 1], 0.001)
+			return _ap_pts[i - 1].lerp(_ap_pts[i], f)
+	return _ap_pts[n - 1]
+
+func _rank_of(r: Dictionary) -> int:
+	return 10 if r.get("ring", false) else int(ROAD_RANK.get(r["k"], 1))
+
+func _ap_give_v(dt: float) -> float:
+	_ap_give_car = -1
+	var was := _ap_giving   # (holding for these last tick)
+	_ap_giving = {}
+	if _traffic == null or _ap_pts.size() < 2:
+		_ap_give_t = 0.0
+		return INF
+	# the plan ahead, the distance along it to each point
+	var reach := 26.0 + absf(_v) * 1.8
+	var cum := PackedFloat32Array()
+	var base := -_ap_pts[0].distance_to(Geometry2D.get_closest_point_to_segment(_pos, _ap_pts[0], _ap_pts[1]))
+	cum.append(base)
+	for i in range(1, _ap_pts.size()):
+		base += _ap_pts[i - 1].distance_to(_ap_pts[i])
+		cum.append(base)
+		if base > reach + 45.0:
+			break
+	# the junctions on it (graph nodes of three ways or more) and how far along: found afresh
+	# every quarter second (or for a new plan), in between moved up by the distance driven.
+	# Every road segment by every point of the plan, every tick, was a millisecond or two.
+	_ap_js_t -= dt
+	if _ap_js_t <= 0.0 or _ap_js_head != _ap_pts[0]:
+		_ap_js_t = 0.25
+		_ap_js_head = _ap_pts[0]
+		_ap_js_odo = _odo
+		var seen := {}
+		for i in range(cum.size()):
+			if cum[i] < -15.0:
+				continue
+			for code: int in _near(_seg_hash, _ap_pts[i], 3.0, SEG_CELL):
+				var ids: PackedInt32Array = (_roads[code / 4096] as Dictionary)["ids"]
+				var sj := code % 4096
+				for n: int in [ids[sj], ids[sj + 1]]:
+					if not seen.has(n) and _nodes[n].distance_squared_to(_ap_pts[i]) < (_node_r[n] + 6.0) * (_node_r[n] + 6.0):
+						seen[n] = true
+		_ap_js = []
+		for n: int in seen:
+			if _traffic._ways_out(n) < 3:
+				continue
+			var bd := INF
+			var along := 0.0
+			for i in range(cum.size() - 1):
+				var q := Geometry2D.get_closest_point_to_segment(_nodes[n], _ap_pts[i], _ap_pts[i + 1])
+				var d := q.distance_squared_to(_nodes[n])
+				if d < bd:
+					bd = d
+					along = cum[i] + _ap_pts[i].distance_to(q)
+			if bd >= (_node_r[n] + 5.0) * (_node_r[n] + 5.0):
+				continue
+			# where the plan comes into the junction and leaves it (within its radius and a
+			# metre and a half): the way in and out are read there. Read either side of the point
+			# nearest the middle, a left turn's way in came out along the road it turns onto --
+			# the way the car coming along it goes -- and that car was passed over as following.
+			var rr := _node_r[n] + 1.5
+			var enter := along
+			var leave := along
+			var found_in := false
+			for i in range(cum.size() - 1):
+				var a := _ap_pts[i]
+				var b := _ap_pts[i + 1]
+				var steps := maxi(1, ceili(a.distance_to(b)))
+				for t in range(steps + 1):
+					var p := a.lerp(b, float(t) / steps)
+					if p.distance_to(_nodes[n]) <= rr:
+						var at_c := cum[i] + a.distance_to(p)
+						if not found_in:
+							enter = at_c
+							found_in = true
+						leave = at_c
+					elif found_in and cum[i] + a.distance_to(p) > along + rr * 2.0:
+						break
+			_ap_js.append([along, n, enter, leave])
+		_ap_js.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
+	var moved := _odo - _ap_js_odo
+	var js: Array = []
+	for j: Array in _ap_js:
+		js.append([float(j[0]) - moved, j[1], float(j[2]) - moved, float(j[3]) - moved])
+	# the first not yet driven into, and the rest of the same junction after it
+	# (one it was holding for counts as not yet driven into until its nose is at the middle: the
+	# car stops a metre or two past its line, and at -1 it read that as in, and went)
+	var first := -1
+	for k in range(js.size()):
+		var n: int = js[k][1]
+		var past := -(_node_r[n] + 1.0) if was.has(n) else -1.0
+		if float(js[k][2]) + 0.5 - CAR_LEN * 0.5 >= past:   # (its edge: where the plan comes in)
+			first = k
+			break
+	if first < 0 or float(js[first][0]) > reach + 20.0:
+		_ap_give_t = 0.0
+		return INF
+	if first > 0:
+		var pn: int = js[first - 1][1]
+		if float(js[first - 1][0]) > -(_node_r[pn] + CAR_LEN * 0.5) and float(js[first][0]) - float(js[first - 1][0]) < AP_KNOT:
+			_ap_give_t = 0.0
+			return INF   # in the junction already: through it, not stopping in the middle
+	var n0: int = js[first][1]
+	var edge: float = float(js[first][2]) + 0.5 - CAR_LEN * 0.5   # (my nose a metre short of where the plan comes in)
+	if _v * _v > 2.0 * 5.0 * maxf(edge, 0.0) + 1.0 and not was.has(n0):
+		_ap_give_t = 0.0
+		return INF   # too late to stop short of it
+	var stop := sqrt(2.0 * 2.6 * maxf(edge - 1.2, 0.0))   # (it runs a metre or so past where it aims)
+	# the road I come in on, and its rank (a sign on my way in: below everything)
+	var in0 := (_ap_at(cum, float(js[first][2])) - _ap_at(cum, float(js[first][2]) - 6.0)).normalized()
+	var on := _nearest_seg(_ap_at(cum, float(js[first][2]) - 3.0), 8.0, true, false, _y)
+	var my_rank := _rank_of(_roads[on["road"]]) if not on.is_empty() else 1
+	if not _sign_rule(n0, in0).is_empty():
+		my_rank = -1
+	var gap := AP_GAP if _ap_give_t < AP_GIVE_PATIENT else 0.3
+	var hold := false
+	var hold_car := -1
+	var hold_d := INF
+	for k in range(first, js.size()):
+		var along: float = js[k][0]
+		var enter: float = js[k][2]
+		var leave: float = js[k][3]
+		var n: int = js[k][1]
+		if along - float(js[first][0]) > AP_KNOT:
+			break
+		var r := _node_r[n]
+		var my_in := (_ap_at(cum, enter) - _ap_at(cum, enter - 6.0)).normalized()
+		var my_out := (_ap_at(cum, leave + 6.0) - _ap_at(cum, leave)).normalized()
+		if my_in == Vector2.ZERO:
+			my_in = _fwd()
+		if my_out == Vector2.ZERO:
+			my_out = my_in   # (the plan ends at it: a choice still to make)
+		var my_turn := my_in.dot(my_out) < 0.85
+		# the seconds to get there and through it from here: at the plan's own speed through it
+		# (a corner's), not pulling away flat out -- reckoned that way it judged it could get in
+		# first, then slowed for its turn and the car on the main road stood on its brakes
+		var v_in := 13.9
+		for i in range(cum.size()):
+			if cum[i] > along - r - 2.0 and cum[i] < along + r + 6.0 and i < _ap_v.size() and _ap_v[i] > 0.0:
+				v_in = minf(v_in, _ap_v[i])
+		v_in = maxf(v_in, 3.0)
+		var v0 := maxf(_v, 0.0)
+		var my_t := maxf(along, 0.0) / maxf((v0 + v_in) * 0.5, 1.5)   # (there, at that pace)
+		var clear_t := my_t + (2.0 * r + CAR_LEN) / v_in
+		# my way through it: the plan from a little before it to a little after
+		var mine := PackedVector2Array()
+		mine.append(_ap_at(cum, maxf(enter - 4.0, cum[0])))
+		for i in range(cum.size()):
+			if cum[i] > enter - 4.0 and cum[i] < leave + 8.0:
+				mine.append(_ap_pts[i])
+		mine.append(_ap_at(cum, leave + 8.0))
+		var sig := _sig_set.has(n)
+		var my_light := _light_at(n, my_in) if sig else ""
+		if sig and my_light not in ["g", ""]:
+			continue   # (the light holds me: _ap_light_v)
+		for oi in range(_traffic.cars.size()):
+			var o = _traffic.cars[oi]
+			if not o.alive or o.pos.distance_squared_to(_nodes[n]) > 12100.0 or not _same_level(o):
+				continue
+			# where n comes on its way, up to 110 m ahead (traffic's own look, 55 m, is 4.6 s at
+			# 12 m/s: less than the gap wanted, and a car further off was not seen coming)
+			var ok := -1
+			for q in range(maxi(o.k - 3, 0), o.pts.size()):
+				var qd: float = o.cum[q] - o.s
+				if qd > 110.0:
+					break
+				if o.node[q] == n and qd > -(r + 5.0):
+					ok = q
+					break
+			if ok < 0:
+				continue
+			var od: float = o.cum[ok] - o.s
+			var theirs: Array = _traffic._arrival(o, ok, n)
+			if (theirs[0] as Vector2).dot(my_in) > 0.85:
+				continue   # coming my way: behind me, or ahead on my lane (the car-ahead check's)
+			var in_it: bool = od - o.len * 0.5 < r + 1.0
+			if o.v < 0.5 and not in_it:
+				continue   # standing short of it: waiting for something (a light, a queue, me)
+			# their way through it from where they are, on their lane: its two ends put in between
+			# their points (a long straight street has few: none within the window, and the car
+			# was passed over as having no way through at all)
+			var w0: float = maxf(o.s, o.cum[ok] - r - 8.0)
+			var w1: float = o.cum[ok] + r + 8.0
+			if w1 <= w0:
+				continue
+			var path := PackedVector2Array([_traffic._at(o, w0)])
+			for q in range(maxi(o.k, 0), o.pts.size()):
+				var c_at: float = o.cum[q]
+				if c_at <= w0:
+					continue
+				if c_at >= w1:
+					break
+				path.append(o.pts[q])
+			path.append(_traffic._at(o, w1))
+			if o.shift != 0.0:   # (in a lane to the left of the line: shift metres)
+				for q in range(path.size()):
+					var dq := (path[mini(q + 1, path.size() - 1)] - path[maxi(q - 1, 0)]).normalized()
+					path[q] += Vector2(dq.y, -dq.x) * o.shift
+			var meet := false
+			for a in range(mine.size() - 1):
+				for b in range(path.size() - 1):
+					if Geometry2D.segment_intersects_segment(mine[a], mine[a + 1], path[b], path[b + 1]) != null:
+						meet = true
+						break
+				if meet:
+					break
+			if not meet:
+				# or passing so close the bodies would touch (two turns through the same corner
+				# of a junction that miss each other by a metre or two)
+				for a in range(mine.size()):
+					for b in range(path.size() - 1):
+						if Geometry2D.get_closest_point_to_segment(mine[a], path[b], path[b + 1]).distance_squared_to(mine[a]) < 2.4 * 2.4:
+							meet = true
+							break
+					if meet:
+						break
+			if not meet and (theirs[1] as Vector2).dot(my_out) > 0.85:
+				# into the same lane after it: one behind the other, too close
+				meet = absf((path[path.size() - 1] - mine[mine.size() - 1]).dot(Vector2(-my_out.y, my_out.x))) < 2.0
+			if not meet:
+				continue
+			var o_eta := maxf(od - r - 1.0 - o.len * 0.5, 0.0) / maxf(o.v, 1.0)
+			var theirs_first := in_it
+			if not theirs_first:
+				var o_turn: bool = (theirs[0] as Vector2).dot(theirs[1]) < 0.85
+				if sig:
+					var lt := _light_at(n, theirs[0])
+					if lt == "g":
+						theirs_first = my_turn and not o_turn
+					elif o.v > 2.0 and _traffic._in_site(o, n):
+						theirs_first = true   # clearing it on the last of its green
+				else:
+					var o_rank: int = theirs[2]
+					if not _sign_rule(n, theirs[0]).is_empty():
+						o_rank = -1
+					if o_rank != my_rank:
+						theirs_first = o_rank > my_rank
+					elif my_turn != o_turn:
+						theirs_first = my_turn
+					else:
+						# first come, first served -- and to count as first it must be clearly so,
+						# reckoned at its pace through the corner: by its speed coming up to it, it
+						# was 2 s ahead, slowed for the turn, got there 1.5 s ahead, and the car
+						# (turning too) stood on its brakes
+						theirs_first = o_eta < my_t + 1.0
+			if not theirs_first:
+				continue
+			if in_it or o_eta < clear_t + gap:
+				# waited long (a stream of cars, a few seconds apart: 40 s on Ashdod's HaSachlav):
+				# one far enough off to slow down comfortably lets it out, as drivers in a stream
+				# do -- traffic waits for it then (it can stop: see traffic's _junction_ahead)
+				if not in_it and _ap_give_t > AP_GIVE_PATIENT and od - r - 1.0 - o.len * 0.5 > o.v * o.v / (2.0 * 2.5) + 4.0:
+					continue
+				hold = true
+				if od < hold_d:
+					hold_d = od
+					hold_car = oi
+	if not hold:
+		_ap_give_t = 0.0
+		# a side street coming out on a bigger road with no lights: up to it at a pace it can
+		# stop from, looking (it came out at 30 km/h and only then saw what was coming)
+		# (not a slip road merging: that is joined at speed, the gap test is enough)
+		var my_kind := String((_roads[on["road"]] as Dictionary)["k"]) if not on.is_empty() else ""
+		if not _sig_set.has(n0) and my_rank >= 0 and not my_kind.ends_with("_link"):
+			for e: Vector2i in _node_roads[n0]:
+				var rr: Dictionary = _roads[e.x]
+				if rr["drive"] and _rank_of(rr) > my_rank:
+					return sqrt(25.0 + 2.0 * 2.6 * maxf(edge, 0.0))
+		return INF
+	for k in range(first, js.size()):
+		if float(js[k][0]) - float(js[first][0]) > AP_KNOT:
+			break
+		_ap_giving[int(js[k][1])] = true
+	_ap_give_car = hold_car
+	if absf(_v) < 0.3:
+		_ap_give_t += dt
+	return stop
 
 ## A lane point for centre-line point p (road direction d): `lane` to the right, or less,
 ## or the middle, or a little to the left, whichever first leaves the car room (nose, middle
@@ -16040,6 +16498,9 @@ func _head_tick(dt: float) -> void:
 						_head_plan.pop_front()
 		elif _gear < 0 and absf(_v) > 0.2:
 			want = -1.2   # over the right shoulder, reversing
+		elif _auto and _ap_give_car >= 0 and absf(_v) < 3.0 and _traffic.cars[_ap_give_car].alive:
+			# giving way: at the car it waits for, following it by
+			want = clampf(-_fwd().angle_to(_traffic.cars[_ap_give_car].pos - _pos), -1.2, 1.2)
 		else:
 			# standing for people on the crossing ahead: at one of them, held a moment (the
 			# nearest, chosen afresh every frame, sent the eyes from one to the next)
@@ -16679,6 +17140,10 @@ func _autodrive(dt: float) -> Array:
 	vt = _held(vt, _ap_sign_v(dt), "sign")
 	vt = _held(vt, _ap_zebra_v(), "zebra")
 	vt = _held(vt, _ap_people_v(), "people")
+	var tg := Time.get_ticks_usec()
+	vt = _held(vt, _ap_give_v(dt), "junction")
+	_prof["autodrive: give way"] = int(_prof.get("autodrive: give way", 0)) + Time.get_ticks_usec() - tg
+	_ap_give_us += Time.get_ticks_usec() - tg
 	if not _cross.is_empty() and not _cross["chosen"]:
 		_ap_why = "choice" if vt >= CROSS_V else _ap_why
 	if ahead_blocked:
@@ -16733,7 +17198,7 @@ const AP_GIVE_UP := 40.0
 
 func _ap_watch(dt: float, vt: float) -> void:
 	if _ap_mark == Vector2.INF or _pos.distance_to(_ap_mark) > 12.0 or _ap_light_v() < 0.5 or not _cross.is_empty() \
-			or _in_a_queue():
+			or _in_a_queue() or not _ap_giving.is_empty():
 		_ap_mark = _pos
 		_ap_mark_t = 0.0
 		return
@@ -17410,6 +17875,8 @@ func _ap_ways(ri: int, ei: int, dir: int) -> Array:
 				score -= 2.5   # back toward town rather than out past its edge
 			if _edge_bound(Vector3i(e.x, nxt, d2)):
 				score -= 8.0   # every way on from it runs off the map: only if nothing else
+			elif _trap.has((r2["ids"] as PackedInt32Array)[nxt]) and not _trap.has(node):
+				score -= 8.0   # into a pocket, with no way back out (see _find_pockets)
 			if r.get("ring", false):
 				# on a roundabout: off at one of the next exits, never round and round
 				score += (-0.8 - 1.2 * _ap_ring_n) if r2.get("ring", false) else 1.2
@@ -17817,6 +18284,10 @@ func _route_to(goal: Vector2, from := Vector2.INF, heading := Vector2.ZERO) -> b
 		heading = _fwd()
 	var s := _nearest_seg(from, 40.0, true, true, _y if from.distance_to(_pos) < 30.0 else NAN)
 	var g := _nearest_seg(goal, 150.0, true, true)
+	if not g.is_empty() and _pocketed(g, _cut_off):
+		# in a pocket that can be driven into only from beyond the map's edge: to the nearest
+		# street that has a way in (see _find_pockets)
+		g = _nearest_seg_out(goal, 400.0, _cut_off)
 	if s.is_empty() or g.is_empty():
 		return false
 	var r: Dictionary = _roads[s["road"]]
@@ -17947,7 +18418,8 @@ func _check_arrival(dt: float) -> void:
 		Probe.event("arrived", {"to": _dest_name, "secs": int(_dest_t)})
 		if not _route.is_empty():   # a drive of the route set: back to the list in a moment
 			_show_banner("route %d arrived in %d:%02d -- back to the list" % [int(_route["id"]), int(_dest_t) / 60, int(_dest_t) % 60], 4.0)
-			get_tree().create_timer(4.5).timeout.connect(func(): Flow.start_game("streets", {"level": _routes_level()}))
+			var page := "mine" if _route.get("mine", false) else "set"
+			get_tree().create_timer(4.5).timeout.connect(func(): Flow.start_game("streets", {"level": _routes_level(), "page": page}))
 
 ## ---- the address picker: streets, then house numbers ---------------------------------------
 ## Built for thumbs: no scrolling list (a phone's finger lands on a button, not the list)
@@ -18000,7 +18472,7 @@ func _open_picker() -> void:
 	_picker.add_child(_pick_body)
 	_pick_prev = _bar_button("◀", Vector2(20, 331), 90, func(): _turn(-1))
 	_pick_next = _bar_button("▶", Vector2(410, 331), 90, func(): _turn(1))
-	_bar_button("close", Vector2(530, 331), 90, _close_picker)
+	_bar_button("close", Vector2(530, 331), 90, _cancel_picker)
 	_pick_page_lbl = UIKit.label("", 12, "ink")
 	_pick_page_lbl.add_theme_font_override("font", _font)
 	_pick_page_lbl.text_direction = Control.TEXT_DIRECTION_LTR
@@ -18025,6 +18497,12 @@ func _show_pick_mode() -> void:
 		b.add_theme_color_override("font_color", Palette.col("bg") if on else Palette.col("ink").darkened(0.35))
 		b.add_theme_color_override("font_hover_color", Palette.col("bg") if on else Palette.col("ink"))
 	_pick_title.text = "jump to where?" if _pick_jump else "drive to where?"
+	if _making != "":
+		# making a route of your own: from, then to (no jumping or driving yet)
+		_pick_jump_btn.visible = false
+		_pick_drive_btn.visible = false
+		_pick_title.text = "your route: from where?" if _making == "from" else "your route: to where?"
+		_pick_title.position.x = 24.0
 
 func _close_picker() -> void:
 	if _picker != null:
@@ -18048,8 +18526,31 @@ func _routes() -> Array:
 	var data = JSON.parse_string(f.get_as_text())
 	return (data as Dictionary).get("routes", []) if data is Dictionary else []
 
+## Routes of your own: made from the list ("+ a new one", a city, then from and to with the
+## address picker), kept in this browser or device only (user://, never in the game's files:
+## the web build is public, and a route from home names home). Up to MY_ROUTES_MAX, newest
+## first; their ids from MY_ROUTE_ID0 up, apart from the set's.
+const MY_ROUTES_FILE := "user://my_routes.json"
+const MY_ROUTES_MAX := 9
+const MY_ROUTE_ID0 := 1001
+var _route_page := "set"              ## the list's page: "set" (the ten) or "mine"
+var _making := ""                     ## making a route of your own: "from", "to", or ""
+var _making_from: Array = []          ## [label, where] picked for its "from"
+
+func _my_routes() -> Array:
+	var f := FileAccess.open(MY_ROUTES_FILE, FileAccess.READ)
+	if f == null:
+		return []
+	var data = JSON.parse_string(f.get_as_text())
+	return (data as Dictionary).get("routes", []) if data is Dictionary else []
+
+func _save_my_routes(routes: Array) -> void:
+	var f := FileAccess.open(MY_ROUTES_FILE, FileAccess.WRITE)
+	if f != null:
+		f.store_string(JSON.stringify({"routes": routes}))
+
 func _route_by_id(id: int) -> Dictionary:
-	for r: Dictionary in _routes():
+	for r: Dictionary in _routes() + _my_routes():
 		if int(r["id"]) == id:
 			return r
 	return {}
@@ -18060,7 +18561,46 @@ func _routes_level() -> int:
 			return i + 1
 	return 1
 
+## the level that drives a city (not a filmed walk in it, not this list)
+func _city_level(cid: String) -> int:
+	for i in range(LEVELS.size()):
+		var lv: Dictionary = LEVELS[i]
+		if lv.get("city", "") == cid and not lv.has("walk") and not lv.get("routes", false):
+			return i + 1
+	return 1
+
+## the picker's pick while making a route: its "from", then its "to" -- saved, and driven
+func _made_pick(label: String, at: Vector2) -> void:
+	if _making == "from":
+		_making_from = [label, at]
+		_making = "to"
+		_open_picker()
+		return
+	_making = ""
+	var from: Vector2 = _making_from[1]
+	var mine := _my_routes()
+	var id := MY_ROUTE_ID0
+	for r: Dictionary in mine:
+		id = maxi(id, int(r["id"]) + 1)
+	var lvl := _city_level(_city_id)
+	var r := {"id": id, "level": lvl, "city": _city_id, "from": _making_from[0], "from_at": [snappedf(from.x, 0.1), snappedf(from.y, 0.1)],
+		"to": label, "to_at": [snappedf(at.x, 0.1), snappedf(at.y, 0.1)], "crow_m": int(from.distance_to(at)), "mine": true}
+	mine.push_front(r)
+	_save_my_routes(mine.slice(0, MY_ROUTES_MAX))
+	Probe.event("route_made", {"id": id, "m": int(from.distance_to(at))})
+	_route = r
+	_route_begin()
+
+## the picker's "close": while making a route, back to the list (it came from there)
+func _cancel_picker() -> void:
+	_close_picker()
+	if _making != "":
+		_making = ""
+		Flow.start_game("streets", {"level": _routes_level(), "page": "mine"})
+
 func _route_list_open() -> void:
+	if _route_ui != null:
+		_route_ui.queue_free()
 	_route_ui = Control.new()
 	_route_ui.size = Vector2(640, 360)
 	_route_ui.z_index = 90
@@ -18072,36 +18612,84 @@ func _route_list_open() -> void:
 	_route_ui.add_child(dim)
 	var title := UIKit.label("test routes: pick one and watch autodrive drive it", 13, "player")
 	title.add_theme_font_override("font", _font)
-	title.position = Vector2(20, 34)
+	title.position = Vector2(20, 30)
 	title.size = Vector2(600, 20)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_route_ui.add_child(title)
-	var routes := _routes()
-	if routes.is_empty():
+	# two pages: the set's ten, and yours
+	var mine := _my_routes()
+	for k in range(2):
+		var page: String = ["set", "mine"][k]
+		var tab := _tap_button(["the ten", "yours (%d)" % mine.size()][k], func(): _route_page = page; _route_list_open())
+		tab.add_theme_font_override("font", _font)
+		tab.add_theme_font_size_override("font_size", 11)
+		tab.modulate = Color(1, 1, 1, 1.0 if page == _route_page else 0.5)
+		_route_ui.add_child(tab)
+		# (sized once in the tree, _put: sized before, they kept the kit's 180x34 minimum and
+		# overlapped -- a tap on "test town" started Bedford)
+		_put(tab, Vector2(220 + k * 104, 52), Vector2(96, 22))
+	var routes := _routes() if _route_page == "set" else mine
+	if _route_page == "mine":
+		_route_new_row(routes.size())
+	elif routes.is_empty():
 		var none := UIKit.label("no routes.json", 13, "ink")
-		none.position = Vector2(20, 80)
+		none.position = Vector2(20, 84)
 		_route_ui.add_child(none)
-		return
 	for i in range(routes.size()):
 		var r: Dictionary = routes[i]
 		# ("from" and "to" between the two addresses, not an arrow: a Hebrew address, an arrow
 		# and another came out as one right-to-left run, the arrow pointing from end to start)
-		var text := "%d   %s:   from  %s   to  %s" % [int(r["id"]), CITY_NAMES.get(r["city"], r["city"]), r["from"], r["to"]]
+		var text := "%s:   from  %s   to  %s" % [CITY_NAMES.get(r["city"], r["city"]), r["from"], r["to"]]
+		if not r.get("mine", false):
+			text = "%d   %s" % [int(r["id"]), text]
+		var w := 612.0 if not r.get("mine", false) else 572.0
 		var b := _tap_button(text, func(): Flow.start_game("streets", {"level": int(r["level"]), "route": int(r["id"])}))
 		b.add_theme_font_override("font", _font)
 		b.add_theme_font_size_override("font_size", 10)
 		b.clip_text = true
-		b.position = Vector2(14, 56 + i * 30)   # (the buttons' own style is ~29 tall at this size)
-		b.size = Vector2(612, 28)
-		b.custom_minimum_size = Vector2(612, 28)
+		var y := 80.0 + (i + (1 if _route_page == "mine" else 0)) * 27.0
 		_route_ui.add_child(b)
-	# (later: a button to make your own -- from and to with the address picker -- kept with these)
+		_put(b, Vector2(14, y), Vector2(w, 25))
+		if r.get("mine", false):
+			var id := int(r["id"])
+			var x := _tap_button("✕", func(): _save_my_routes(_my_routes().filter(func(q): return int(q["id"]) != id)); _route_list_open())
+			x.add_theme_font_override("font", _font)
+			x.add_theme_font_size_override("font_size", 11)
+			_route_ui.add_child(x)
+			_put(x, Vector2(590, y), Vector2(36, 25))
+
+## "+ a new one": the cities to make it in, one button each (the city loads, then the picker
+## asks from where and to where)
+func _route_new_row(have: int) -> void:
+	var lbl := UIKit.label("+ a new one, in" if have < MY_ROUTES_MAX else "+ a new one (the oldest goes), in", 11, "ink")
+	lbl.add_theme_font_override("font", _font)
+	lbl.position = Vector2(14, 83)
+	lbl.size = Vector2(170, 20)
+	_route_ui.add_child(lbl)
+	var cities: Array = ["givatayim", "tel_aviv", "ashdod", "bedford", "dimyon"]
+	for k in range(cities.size()):
+		var cid: String = cities[k]
+		var b := _tap_button(CITY_NAMES[cid], func(): Flow.start_game("streets", {"level": _city_level(cid), "make_route": true}))
+		b.add_theme_font_override("font", _font)
+		b.add_theme_font_size_override("font_size", 10)
+		_route_ui.add_child(b)
+		_put(b, Vector2(190 + k * 87, 80), Vector2(83, 25))
 
 ## a drive of the route set: down at its start address, "go to" its end, autodrive on
 func _route_begin() -> void:
 	var from := Vector2(float(_route["from_at"][0]), float(_route["from_at"][1]))
 	var to := Vector2(float(_route["to_at"][0]), float(_route["to_at"][1]))
-	_land_on_road(from, 60.0, Vector2.ZERO)
+	# (the nearest street within 150 m, as "jump to" lands: an address the picker offers can be
+	# up a lane or a path well off any public street, and at 60 m the car was left where it was)
+	_land_on_road(from, 150.0, Vector2.ZERO)
+	var on := _nearest_seg(_pos, 10.0, true, true, _y)
+	if not on.is_empty() and _pocketed(on, _trap):
+		# a pocket with no way out but against a one-way (its way out is off the map): from the
+		# nearest street that has one
+		var out := _nearest_seg_out(from, 400.0, _trap)
+		if not out.is_empty():
+			_land_on_road(out["q"], 5.0, Vector2.ZERO)
+			_show_banner("no way out of there: from the nearest street that has one", 3.0)
 	_set_dest(to, String(_route["to"]))
 	_set_auto(true)
 	_show_banner("route %d: %s → %s" % [int(_route["id"]), _route["from"], _route["to"]], 4.0)
@@ -18272,6 +18860,9 @@ func _go(street: String, _i: int) -> void:
 
 func _go_to(label: String, at: Vector2) -> void:
 	_close_picker()
+	if _making != "":
+		_made_pick(label, at)
+		return
 	if _pick_jump:
 		_jump_to(at, label)
 	else:
