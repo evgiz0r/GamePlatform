@@ -352,6 +352,19 @@ func _clear_ends(ri: int) -> Vector2:
 		out.y = float(g._node_r[ids[last]]) + 6.0
 	return out
 
+## A raised deck's wall from a to b (the deck rise_a, rise_b over the ground there) standing on
+## a street at ground level, where the deck is still too low for that street's cars to pass
+## under it: left out. Bedford's highway bridge rises from Union Street's junction, and the
+## short one-way links between the two run beside its first metres: its side wall stood
+## across both of them and autodrive ran into it on every way through the turn.
+const UNDER_CLEAR := 3.0
+func _on_street_below(ri: int, a: Vector2, b: Vector2, rise_a: float, rise_b: float) -> bool:
+	for k in range(3):
+		var t := k * 0.5
+		if lerpf(rise_a, rise_b, t) < UNDER_CLEAR and g._asphalt_other(a.lerp(b, t), ri):
+			return true
+	return false
+
 ## one side of each deck: [a, b, lo_a, hi_a, lo_b, hi_b, half thickness, what], kept only
 ## where there is something to hit (an embankment's or a cutting's wall where it stands up)
 func _walls_of(ri: int) -> void:
@@ -410,6 +423,8 @@ func _walls_of(ri: int) -> void:
 			var mid := (line[j] + line[j + 1]) * 0.5
 			if open_at(ri, mid, (ys[j] + ys[j + 1]) * 0.5):
 				continue   # (another deck's road comes in here)
+			if kind in ["br", "em"] and _on_street_below(ri, line[j], line[j + 1], ys[j] - gs[j], ys[j + 1] - gs[j + 1]):
+				continue
 			if kind == "cu" and (_street_over(line[j]) or _street_over(line[j + 1]) or _street_over(mid)):
 				continue   # (under a street at grade, which carries a car over it: a car on Kaplan
 				           # hit the wall of the Lova Eliav tunnel's cutting where it starts at its kerb)
@@ -804,9 +819,12 @@ func _raised(ri: int, pts: PackedVector2Array, walk: RefCounted, kerb: RefCounte
 				along += pts[i - 1].distance_to(pts[i])
 			var y := deck_y(ri, pts[i])
 			var low := _low(r, pts[i], y)
-			var corner := (along < clear.x or along > total - clear.y) and absf(y - g._h(pts[i])) < CLEAR_LOW
+			var corner: bool = (along < clear.x or along > total - clear.y) and absf(y - g._h(pts[i])) < CLEAR_LOW
+			# (and where the wall would stand on a street at ground level the deck is too low
+			# to pass over: see _on_street_below)
+			var on_street: bool = y - g._h(pts[i]) < UNDER_CLEAR and g._asphalt_other(wall_line[i], ri)
 			gap_walk.append(1 if open_at(ri, walk_line[i], y, false) or (low and g._asphalt_other(walk_line[i], ri)) else 0)
-			gap_wall.append(1 if open_at(ri, wall_line[i], y) or corner else 0)
+			gap_wall.append(1 if open_at(ri, wall_line[i], y) or corner or on_street else 0)
 		# a grass bank where there is room (bank_at), else the wall: a point is the bank's
 		# only when it and both its neighbours are, so the wall reaches into each change
 		var outs := _outs(pts, sd)
