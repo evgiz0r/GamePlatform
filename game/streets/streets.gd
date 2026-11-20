@@ -838,6 +838,7 @@ var _details: RefCounted             ## what a filmed walk added to the city (de
 var _decks: Decks                    ## bridges, embankments, cuttings, tunnels (decks.gd)
 var _rails: Rails                    ## railway tracks, platforms, trains (rails.gd)
 var _marks: Marks                    ## a town's landmarks and its towers' red lights (landmarks.gd)
+var _beach: Beach                    ## the beaches by the sea: umbrellas, chairs, lifeguards (beach.gd)
 var _on_deck := -1                   ## while a deck road is drawn: heights come from it, not the ground
 var _inferred := {}                  ## what decks.gd's infer() made of a real town's bridges (the report)
 var _wired := {}                     ## road index -> true: Bedford's lamps hang off its power poles
@@ -887,6 +888,7 @@ const Details := preload("res://game/streets/details.gd")
 const Decks := preload("res://game/streets/decks.gd")
 const Rails := preload("res://game/streets/rails.gd")
 const Marks := preload("res://game/streets/landmarks.gd")
+const Beach := preload("res://game/streets/beach.gd")
 const DriveLog := preload("res://game/streets/drivelog.gd")
 var _log := DriveLog.new()            ## the last two minutes, for the map page and "save log"
 var _ap_why := ""                     ## what held autodrive's speed down this tick (for the log)
@@ -2228,6 +2230,8 @@ func _build_setup(t0: int) -> void:
 	_rails.setup(_city_data, k)   # (before the trees: nothing grows on a track's bed)
 	_marks = Marks.new(self)
 	_marks.setup(_city_data, _city_id)
+	_beach = Beach.new(self)
+	_beach.setup(_city_data)
 	_lights_setup()
 	_infer_signs()   # (after the lights: a lit junction has none)
 	_parks_setup()
@@ -2264,6 +2268,7 @@ func _build_tile(t: Vector2i) -> void:
 	await _decks.build()
 	await _rails.build()
 	_marks.build()
+	_beach.build()
 	tk = _stage("roads", tk)
 	await _build_buildings()
 	tk = _stage("buildings", tk)
@@ -2401,7 +2406,7 @@ func _build_ground() -> void:
 		var a: Dictionary = all[ai]
 		var kind := String(a["k"])
 		# a school's grounds: paved, under whatever pitches and lawns OSM puts in them
-		var tone := "grass" if kind in ["park", "grass"] else ("ground" if kind == "land" else ("plaza" if kind == "school" else kind))
+		var tone := "grass" if kind in ["park", "grass"] else ("ground" if kind == "land" else ("plaza" if kind == "school" else ("beach" if kind == "sand" else kind)))
 		if not areas.has(tone):
 			areas[tone] = CBuf.new(CHUNK)   # (each square fills only its own piece: no clipping)
 		# islands sit on the sea, parks and car parks on whatever is under them
@@ -9024,7 +9029,30 @@ void fragment() {
 				vec2 uv = p / s;
 				c *= detail(textureGrad(pave_tex, uv, dpx / s, dpy / s).rgb, pave_mean, 0.9);
 				bump = unpack(textureGrad(pave_nrm, uv, dpx / s, dpy / s).rg, 1.0);
-			} else if (fx.w > 6.5) {   // pavers in rows (kind 7), fx.z long and half that wide,
+			} else if (fx.w > 7.5 && fx.w < 8.5) {   // tactile paving (kind 8): slabs fx.z square
+				// laid along `lay`, each with 6 x 6 domes -- the bend of the light on them done by
+				// the normal, so the sun picks them out from its own side; they fade to the slab's
+				// tone with distance before they can shimmer
+				mat2 rot = mat2(vec2(cos(lay), -sin(lay)), vec2(sin(lay), cos(lay)));
+				vec2 q = rot * p / fx.z;
+				vec2 cell = floor(q);
+				vec2 f = fract(q);
+				float fw = max(length(dpx), length(dpy)) / fx.z;
+				c *= 0.93 + 0.12 * hash(cell + 3.7);
+				c *= detail(textureGrad(asph_tex, p / 1.5, dpx / 1.5, dpy / 1.5).rgb, asph_mean, 0.25);
+				vec2 e = min(f, 1.0 - f);
+				c *= 1.0 - 0.25 * (1.0 - smoothstep(0.01, 0.01 + fw * 1.5, min(e.x, e.y)));
+				vec2 dq = fract(f * 6.0) - 0.5;
+				float r = length(dq);
+				float dw = fw * 6.0;
+				float fade = 1.0 - smoothstep(0.2, 0.55, dw);
+				float dome = 1.0 - smoothstep(0.3, 0.3 + dw, r);
+				float ring = smoothstep(0.22, 0.3, r) * (1.0 - smoothstep(0.3, 0.38 + dw, r));
+				c *= 1.0 - (0.22 * ring * fade + 0.05 * (1.0 - fade));
+				vec2 side = (dq * rot) / max(r, 0.001) * clamp(r / 0.3, 0.0, 1.0) * dome * fade * 0.75;
+				side.y = -side.y;   // (the normal's frame: x along +X, y along -Z)
+				bump = vec3(side, sqrt(max(0.0, 1.0 - dot(side, side))));
+			} else if (fx.w > 6.5 && fx.w < 7.5) {   // pavers in rows (kind 7), fx.z long and half that wide,
 				// each row half a paver on from the last, laid along `lay`; the joints fade out
 				// with distance before they can shimmer
 				vec2 q = mat2(vec2(cos(lay), -sin(lay)), vec2(sin(lay), cos(lay))) * p / fx.z;
@@ -9108,7 +9136,8 @@ void fragment() {
 """
 ## the surface each tone gets: [patches, grain, slab size (kind 3) / the lawn photo's colours too
 ## (kind 1: 1 grass, 0 bare earth: its light and dark only), kind (0 none, 1 soft, 2 grained, 3 slabs,
-## 4 rough stones in mortar, 6 poured slabs laid along a line, 7 pavers in rows; the shader tests
+## 4 rough stones in mortar, 6 poured slabs laid along a line, 7 pavers in rows, 8 tactile paving
+## (domed slabs at a crossing's kerbs); the shader tests
 ## each kind's range on both sides, so a new kind never falls into another's branch)]
 const TONE_FX := {
 	"grass": [0.16, 0.08, 1.0, 1.0], "pitch": [0.06, 0.05, 1.0, 1.0], "wood": [0.16, 0.07, 1.0, 1.0],
@@ -9116,6 +9145,7 @@ const TONE_FX := {
 	"asphalt": [0.11, 0.075, 0.0, 2.0], "parking": [0.1, 0.06, 0.0, 2.0], "path": [0.06, 0.07, 0.0, 2.0],
 	"pavement": [0.04, 0.04, 0.6, 3.0], "plaza": [0.05, 0.04, 1.0, 3.0], "mark": [0.0, 0.04, 0.0, 2.0],
 	"pavers_dark": [0.04, 0.04, 0.6, 3.0], "slabs": [0.05, 0.04, 1.0, 6.0], "pavers_grey": [0.04, 0.03, 0.2, 7.0],
+	"tactile": [0.03, 0.03, 0.3, 8.0], "pavers_red": [0.04, 0.04, 0.6, 3.0],
 	"markyellow": [0.0, 0.04, 0.0, 2.0], "metal": [0.0, 0.0, 0.0, 0.0], "metalrim": [0.0, 0.0, 0.0, 0.0],
 	"stonewall": [0.06, 0.04, 0.0, 4.0],
 	"gardenwall": [0.14, 0.05, 1.0, 0.0], "coping": [0.06, 0.05, 0.0, 0.0],
@@ -12894,11 +12924,11 @@ func _sky_photo() -> Texture2D:
 ## are bright.
 const NATURAL := {
 	"ground": 0.45, "rock": 0.3, "path": 0.15, "asphalt": 0.08, "parking": 0.08, "plaza": 0.2,
-	"grass": 0.6, "pitch": 0.6, "wood": 0.6, "leaf": 0.62, "bush": 0.6, "water": 0.5, "sand": 0.6,
+	"grass": 0.6, "pitch": 0.6, "wood": 0.6, "leaf": 0.62, "bush": 0.6, "water": 0.5, "sand": 0.6, "beach": 0.75,
 	"mark": 0.3, "wall": 0.5, "wall2": 0.45, "wall3": 0.6, "wall4": 0.6, "wall5": 0.5, "wall6": 0.3,
 	"glass": 0.5, "glass2": 0.5, "glass3": 0.5, "glass4": 0.5, "shutter": 0.3, "recess": 0.3, "lobby": 0.35, "flowers": 0.8,
 	"roof": 0.2, "trunk": 0.45, "pole": 0.2, "haze": 0.45, "sky": 0.6, "board": 0.4, "solar": 0.5,
-	"tank": 0.3, "furniture": 0.3, "pavement": 0.2, "pavers_dark": 0.15, "slabs": 0.15, "pavers_grey": 0.1, "kerb": 0.15, "stonewall": 0.45, "roofroom": 0.4,
+	"tank": 0.3, "furniture": 0.3, "pavement": 0.2, "pavers_dark": 0.15, "slabs": 0.15, "pavers_grey": 0.1, "tactile": 0.3, "pavers_red": 0.45, "kerb": 0.15, "stonewall": 0.45, "roofroom": 0.4,
 	"gardenwall": 0.3, "coping": 0.4,
 	"cat_ginger": 0.6, "cat_grey": 0.1, "cat_black": 0.1, "cat_cream": 0.35, "cat_brown": 0.45,
 	"gable": 0.5, "carglass": 0.4, "cartrim": 0.2, "tyre": 0.15, "rim": 0.2, "concrete": 0.15,
@@ -12976,6 +13006,9 @@ func _tones() -> void:
 		"pavers_dark": _greyed(ink.lerp(alt, 0.62), 0.85),   # (0.8 read near black under the arcade: the film's are mid-grey in its shade)
 		"slabs": _greyed(ink.lerp(alt, 0.55).lerp(wn, 0.28), 0.38),   # (the film's: warm beige in the sun)
 		"pavers_grey": _greyed(ink.lerp(alt, 0.5), 0.85),
+		# a crossing's kerbs: buff domed slabs; a median's raised ends, red pavers (the film's)
+		"tactile": ink.lerp(alt, 0.5).lerp(wn, 0.4),
+		"pavers_red": Palette.col("hazard").lerp(bg, 0.45).lerp(alt, 0.2),
 		"kerb": ink.lerp(alt, 0.45),
 		"stonewall": ink.lerp(wn, 0.3).lerp(alt, 0.2),
 		"gardenwall": ink.lerp(alt, 0.3).lerp(wn, 0.1),     # a rendered garden wall, weathered
@@ -13006,6 +13039,9 @@ func _tones() -> void:
 		"signred": Color.from_hsv(0.995, clampf(Palette.col("hazard").s, 0.7, 0.92), clampf(Palette.col("hazard").v * 0.85, 0.55, 0.85)),
 		"rubber": ac.lerp(alt, 0.55).lerp(bg, 0.25),
 		"sand": wn.lerp(ink, 0.45).lerp(alt, 0.1),
+		# a beach's: warmer and darker than a sandpit's (the sandpit's tone over a beach's
+		# acres read as snow beside the sea)
+		"beach": wn.lerp(ink, 0.3).lerp(Palette.col("hazard"), 0.06).darkened(0.2),
 		"concrete": ink.lerp(alt, 0.32).lerp(wn, 0.04),
 		"insulator": ink.lerp(alt, 0.15),
 		"trafo": alt.lerp(ink, 0.4).lerp(fr, 0.08),
@@ -15778,6 +15814,25 @@ func _place_sitters() -> void:
 func _place_keepers() -> void:
 	_place_still(_keepers, _shop_spots, "wait")
 
+## people in the beach chairs near you (beach.gd's): made the first time there are chairs
+const BATHERS := 10
+var _bathers: Array = []             ## {actor, spot}
+var _beach_spots: Array = []         ## [where, facing] of every beach chair made
+
+func _place_bathers() -> void:
+	if _beach_spots.is_empty():
+		return
+	if _bathers.is_empty():
+		for i in range(BATHERS):
+			var a := Actor3D.new()
+			world.add_child(a)
+			a.set_character(PEOPLE[(i + 2) % PEOPLE.size()], _people_rng.randf_range(ADULT_LO, ADULT_HI))
+			_humanize(a, hash(a.get_instance_id()))
+			_people_lod(a)
+			a.visible = false
+			_bathers.append({"actor": a, "spot": Vector2.INF})
+	_place_still(_bathers, _beach_spots, "sit")
+
 ## people waiting at the bus stops near you, one or two a stop, facing the road
 func _place_waiters() -> void:
 	var spots: Array = []
@@ -15848,7 +15903,7 @@ func _people_tick(dt: float) -> void:
 	# (everyone placed, wherever they are: a walker 60 m off still has to see the next one)
 	_people_at.clear()
 	_people_who.clear()
-	for list: Array in [_walkers, _chatters, _crossers, _sitters, _waiters, _keepers]:
+	for list: Array in [_walkers, _chatters, _crossers, _sitters, _waiters, _keepers, _bathers]:
 		for w: Dictionary in list:
 			var a: Actor3D = w["actor"]
 			if a.visible:
@@ -15864,7 +15919,8 @@ func _people_tick(dt: float) -> void:
 		_place_sitters()
 		_place_waiters()
 		_place_keepers()
-		for list: Array in [_chatters, _sitters, _waiters, _keepers]:
+		_place_bathers()
+		for list: Array in [_chatters, _sitters, _waiters, _keepers, _bathers]:
 			for c: Dictionary in list:
 				var ca: Actor3D = c["actor"]
 				_people_awake(ca, Vector2(ca.position.x, ca.position.z))

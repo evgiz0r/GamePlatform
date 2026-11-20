@@ -55,7 +55,13 @@ right now, offer to add it here rather than letting it get lost in the chat.
   MapServer) also has street trees with species (layer 628), lamp poles (543), licensed
   businesses (964), public-transport lanes with hours (611), parking zones (544):
   - *storeys or heights per building*: done for Tel Aviv (its GIS's buildings layer, in the
-    baker's `SURVEYS`); other towns' municipal layers, GovMap / the Survey of Israel;
+    baker's `SURVEYS`), and for Givatayim and the part of Ramat Gan beside it (their
+    municipal layers' floor counts, saved once as extracts beside the city file because
+    the first answers only inside its map viewer; see the `real-places` skill); other
+    towns' municipal layers, GovMap / the Survey of Israel;
+  - *kindergartens, shelters, gardens; the mix of cars; bus lanes; real bus lines*: done
+    for the towns one game needed, from a municipal map, data.gov.il (the CKAN API: its
+    file server refuses scripts) and the Ministry of Transport's GTFS;
   - *street trees with species* (ficus, jacaranda and palms read very differently):
     municipal tree surveys (Tel Aviv's is downloadable: layer 628, below);
   - *businesses*, for whole rows of shopfronts: business-licensing layers (רישוי עסקים);
