@@ -50,7 +50,7 @@ func _run() -> void:
 			break
 	g._set_auto(false)
 	var t := 0.0
-	var dt := 1.0 / 60.0
+	var dt := Engine.time_scale / Engine.physics_ticks_per_second
 	var last_phase: int = g._sig_phase
 	var runs: Array = []      # each: {"t0", "cars": [[queue position, kind, [speeds every 0.1 s]]]}
 	var open: Array = []      # runs still recording: [run, [car indices], start t, line point, its way]

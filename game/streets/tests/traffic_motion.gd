@@ -28,7 +28,7 @@ func _run() -> void:
 	T = g._traffic
 	var secs := float(OS.get_environment("SECS")) if OS.get_environment("SECS") != "" else 90.0
 	g._set_auto(true)
-	var dt := 1.0 / 60.0
+	var dt := Engine.time_scale / Engine.physics_ticks_per_second
 	var t := 0.0
 	var prev := {}          # car -> [pos, yaw]
 	var moving := {}        # kind -> seconds moving

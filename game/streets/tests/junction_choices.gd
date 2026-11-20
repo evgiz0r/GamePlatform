@@ -29,7 +29,7 @@ func _run() -> void:
 	var far := 0.0
 	for f in range(60 * 100):
 		await physics_frame
-		t += 1.0 / 60.0
+		t += Engine.time_scale / Engine.physics_ticks_per_second
 		far = maxf(far, g._pos.distance_to(start))
 		if g._cross.is_empty():
 			continue

@@ -27,7 +27,7 @@ func _run() -> void:
 	var hits := {}
 	var stuck := 0.0
 	var max_stuck := 0.0
-	var dt := 1.0 / 60.0
+	var dt := Engine.time_scale / Engine.physics_ticks_per_second
 	while t < 90.0:
 		await physics_frame
 		t += dt

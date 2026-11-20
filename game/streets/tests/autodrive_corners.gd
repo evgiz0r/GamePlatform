@@ -31,7 +31,7 @@ func _run() -> void:
 	var odo0: float = g._odo
 	while t < 150.0:
 		await physics_frame
-		t += 1.0 / 60.0
+		t += Engine.time_scale / Engine.physics_ticks_per_second
 		var on: Dictionary = g._nearest_seg(g._pos, 30.0, true, true)
 		var edge: float = float(on["edge"]) if not on.is_empty() else 99.0
 		if edge > 0.8:
@@ -56,12 +56,12 @@ func _run() -> void:
 				if shots < 2 and OS.get_environment("OUT") != "":
 					shots += 1
 					await _snap("offroad_%d" % shots)
-			off += 1.0 / 60.0
-			off_total += 1.0 / 60.0
+			off += Engine.time_scale / Engine.physics_ticks_per_second
+			off_total += Engine.time_scale / Engine.physics_ticks_per_second
 		else:
 			off = 0.0
 		if absf(g._v) < 0.3 and g._ap_light_v() > 0.5:
-			still += 1.0 / 60.0
+			still += Engine.time_scale / Engine.physics_ticks_per_second
 			longest_still = maxf(longest_still, still)
 		else:
 			still = 0.0
