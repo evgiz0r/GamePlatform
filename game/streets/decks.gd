@@ -330,6 +330,28 @@ func _low(r: Dictionary, p: Vector2, y: float) -> bool:
 
 ## ---- what you run into: parapets, walls, piers --------------------------------------------
 
+## Where a deck starts at street level at a junction, how far along from each end (x: the
+## first, y: the last) it keeps no wall: a car turning in sweeps over the corner. An
+## embankment's or a cutting's wall is a kerb-high step there (one clipped it at 10 km/h); a
+## bridge's parapet stood full height across the side street's mouth (Bedford: autodrive
+## turning from Union Street hit the highway bridge's), so a bridge leaves its parapet out
+## there only while it is still within CLEAR_LOW of the ground -- not over a drop.
+const CLEAR_LOW := 0.6
+func _clear_ends(ri: int) -> Vector2:
+	var r: Dictionary = g._roads[ri]
+	if not String(r["deck"]) in ["em", "cu", "br"]:
+		return Vector2.ZERO   # (at street level: a junction up on an embankment keeps its walls)
+	var ids: PackedInt32Array = r["ids"]
+	var ys: PackedFloat32Array = r["ys"]
+	var gs: PackedFloat32Array = r["gs"]
+	var out := Vector2.ZERO
+	var last := ids.size() - 1
+	if (g._node_roads[ids[0]] as Array).size() >= 3 and absf(ys[0] - gs[0]) < 0.5:
+		out.x = float(g._node_r[ids[0]]) + 6.0
+	if (g._node_roads[ids[last]] as Array).size() >= 3 and absf(ys[last] - gs[last]) < 0.5:
+		out.y = float(g._node_r[ids[last]]) + 6.0
+	return out
+
 ## one side of each deck: [a, b, lo_a, hi_a, lo_b, hi_b, half thickness, what], kept only
 ## where there is something to hit (an embankment's or a cutting's wall where it stands up)
 func _walls_of(ri: int) -> void:
@@ -346,14 +368,9 @@ func _walls_of(ri: int) -> void:
 	for i in range(1, pts.size()):
 		cum.append(cum[i - 1] + pts[i - 1].distance_to(pts[i]))
 	var ids: PackedInt32Array = r["ids"]
-	var clear_a := 0.0
-	var clear_b := 0.0
-	if kind in ["em", "cu"]:   # (at street level: a junction up on an embankment keeps its walls)
-		var last := ids.size() - 1
-		if (g._node_roads[ids[0]] as Array).size() >= 3 and absf(ys[0] - gs[0]) < 0.5:
-			clear_a = float(g._node_r[ids[0]]) + 6.0
-		if (g._node_roads[ids[last]] as Array).size() >= 3 and absf(ys[last] - gs[last]) < 0.5:
-			clear_b = float(g._node_r[ids[last]]) + 6.0
+	var clear := _clear_ends(ri)
+	var clear_a := clear.x
+	var clear_b := clear.y
 	var total := cum[cum.size() - 1]
 	for sd: float in [-1.0, 1.0]:
 		var line: PackedVector2Array = g._offset_line(pts, off * sd)
@@ -362,8 +379,9 @@ func _walls_of(ri: int) -> void:
 		for j in range(pts.size()):
 			banks.append(bank_at(ri, pts[j], outs[j], ys[j]) if kind == "em" else -1.0)
 		for j in range(pts.size() - 1):
-			if cum[j] < clear_a or cum[j + 1] > total - clear_b:
-				continue   # (any piece that reaches into the corner)
+			if (cum[j] < clear_a or cum[j + 1] > total - clear_b) \
+					and (kind != "br" or maxf(absf(ys[j] - gs[j]), absf(ys[j + 1] - gs[j + 1])) < CLEAR_LOW):
+				continue   # (any piece that reaches into the corner; a bridge's only while it is low)
 			if banks[j] >= 0.0 and banks[j + 1] >= 0.0 and maxf(banks[j], banks[j + 1]) > 0.0:
 				# a bank: the guardrail along its top stops a car on the deck; its foot, as
 				# steep as a wall, stops one on the ground beside it
@@ -775,11 +793,20 @@ func _raised(ri: int, pts: PackedVector2Array, walk: RefCounted, kerb: RefCounte
 		var wall_line: PackedVector2Array = g._offset_line(pts, (hw + side + WALL_T * 0.5) * sd)
 		var gap_walk := PackedByteArray()
 		var gap_wall := PackedByteArray()
+		# (and a bridge's parapet where it starts low at a junction: see _clear_ends)
+		var clear := _clear_ends(ri) if bridge else Vector2.ZERO
+		var total := 0.0
+		for i in range(1, pts.size()):
+			total += pts[i - 1].distance_to(pts[i])
+		var along := 0.0
 		for i in range(pts.size()):
+			if i > 0:
+				along += pts[i - 1].distance_to(pts[i])
 			var y := deck_y(ri, pts[i])
 			var low := _low(r, pts[i], y)
+			var corner := (along < clear.x or along > total - clear.y) and absf(y - g._h(pts[i])) < CLEAR_LOW
 			gap_walk.append(1 if open_at(ri, walk_line[i], y, false) or (low and g._asphalt_other(walk_line[i], ri)) else 0)
-			gap_wall.append(1 if open_at(ri, wall_line[i], y) else 0)
+			gap_wall.append(1 if open_at(ri, wall_line[i], y) or corner else 0)
 		# a grass bank where there is room (bank_at), else the wall: a point is the bank's
 		# only when it and both its neighbours are, so the wall reaches into each change
 		var outs := _outs(pts, sd)
