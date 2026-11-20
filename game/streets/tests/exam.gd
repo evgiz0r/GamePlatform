@@ -4,7 +4,8 @@ extends SceneTree
 ## everything that went wrong counted:
 ##   autodrive -- stuck (8 s+ standing, not for a light, a zebra or a queue that moves), hits
 ##     by kind (over 2 m/s), off the asphalt, left of the middle of a two-way street, red
-##     lights run, rescues ("back on the road" / "unstuck"), harsh braking (over 6 m/s^2)
+##     lights run, rescues ("back on the road" / "unstuck"), harsh braking (over 6 m/s^2:
+##     the times it happened, and what for)
 ##   traffic -- stalls (20 s+ not at a red light), two cars overlapping, red lights run,
 ##     cars sent away for being stuck
 ##   people -- a moving car within a metre of someone
@@ -97,10 +98,13 @@ func _drive(secs: float) -> void:
 	var last_v: float = g._v
 	var car_still := {}
 	var overlapping := {}
-	var inside := {}
+	var inside := {}      ## "car:junction" -> when it was last inside one of its points
+	var came_dir := {}    ## car -> its heading when last outside every signalled point
 	var near_people := {}
 	var rescues: int = g._log.events.size()
 	var left_t := 0.0
+	var harsh := false
+	var last_p: Vector2 = g._pos
 	var events_seen: int = g._log.events.size()
 	while t < secs:
 		await physics_frame
@@ -124,10 +128,17 @@ func _drive(secs: float) -> void:
 			_incident("hit " + kind, p, "%.0f km/h, held by %s" % [absf(last_v) * 3.6, held])
 		last_hit = h
 		var dv: float = (g._v - last_v) / dt
-		if dv < -6.0 and absf(last_v) > 3.0:
-			_count("autodrive: harsh braking ticks")
-			# and what for (a bump stops the car too: that is a hit, counted above)
-			_count("autodrive: harsh braking, %s" % ("a bump" if g._crash_cool > 0.0 else "for " + held))
+		# harsh braking: each time it starts (frames of it overstated a single stop by 30x),
+		# and what for (a bump stops the car too: that is a hit, counted above; a lift back
+		# onto the road sets the speed to 0 -- not braking at all)
+		if dv < -6.0 and absf(last_v) > 3.0 and g._pos.distance_to(last_p) < 2.0:
+			if not harsh:
+				_count("autodrive: harsh braking")
+				_count("autodrive: harsh braking, %s" % ("a bump" if g._crash_cool > 0.0 else "for " + held))
+				harsh = true
+		elif dv > -3.0:
+			harsh = false
+		last_p = g._pos
 		last_v = g._v
 		var on: Dictionary = g._nearest_seg(p, 30.0, true, true)
 		if not on.is_empty() and float(on["edge"]) > 1.0:
@@ -183,17 +194,29 @@ func _drive(secs: float) -> void:
 				car_still.erase(i)
 			if c.wait > 25.0:
 				_count("traffic: sent away (stuck) ticks")
+			# a red light run: into a junction's first signalled point on red, by the way the
+			# car came in (its heading before it got there). The points of one junction (a
+			# divided road's are several, 10-30 m apart) are one: a car that went in on
+			# green and turned, judged at the next point by the way it faced mid-turn, read
+			# as running the cross street's red.
+			var in_any := false
 			for n: int in g._near(g._sig_hash, c.pos, 30.0, g.SEG_CELL):
-				var in_now: bool = g._nodes[n].distance_to(c.pos) < g._node_r[n] + 1.0
-				var key := "%d:%d" % [i, n]
-				if in_now and not inside.has(key) and c.v > 2.0:
-					if g._light_at(n, Vector2(sin(c.yaw), cos(c.yaw))) == "r":
+				if g._nodes[n].distance_to(c.pos) >= g._node_r[n] + 1.0:
+					continue
+				in_any = true
+				var knot: int = g._sig_owner.get(n, n)
+				var key := "%d:%d" % [i, knot]
+				if not inside.has(key) and c.v > 2.0:
+					var came: Vector2 = came_dir.get(i, Vector2(sin(c.yaw), cos(c.yaw)))
+					if g._light_at(n, came) == "r":
 						_count("traffic: red lights run")
 						_incident("traffic red", c.pos, c.kind, false)
-				if in_now:
-					inside[key] = true
-				else:
-					inside.erase(key)
+				inside[key] = t
+			if not in_any:
+				came_dir[i] = Vector2(sin(c.yaw), cos(c.yaw))
+				for key: String in inside.keys():
+					if key.begins_with("%d:" % i) and t - float(inside[key]) > 8.0:
+						inside.erase(key)
 			for j in range(i + 1, T.cars.size()):
 				var o = T.cars[j]
 				if not o.alive or o.pos.distance_squared_to(c.pos) > 64.0:

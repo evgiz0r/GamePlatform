@@ -11140,6 +11140,12 @@ func _autodrive(dt: float) -> Array:
 			if _cross.is_empty() and _ap_v.size() > 0:
 				_ap_v[_ap_v.size() - 1] = 0.0
 			break
+	# at a dead end's turning point, stopped: on to the lane back, which faces the other
+	# way, so it turns round on the spot just below
+	while _ap_pts.size() > 2 and _ap_v[1] == 0.0 and absf(_v) < 1.0 and _pos.distance_to(_ap_pts[1]) < 5.0:
+		_ap_pts.remove_at(0)
+		_ap_v.remove_at(0)
+		_ap_lim.remove_at(0)
 	# facing well away from the lane it must take (handed over pointing the wrong way up a
 	# one-way street, or across it): turn round on the spot first. Steering full lock at
 	# it from a standstill put the nose into the kerb and the wall behind it, again and again.
@@ -11660,6 +11666,8 @@ func _ap_turn_into(ri: int, from: int, dir: int, lane: float) -> void:
 
 func _ap_curves(from_k: int) -> void:
 	for k in range(maxi(1, from_k), _ap_pts.size() - 1):
+		if _ap_v[k] == 0.0:
+			continue   # a stop to turn round at (a dead end's U-turn): kept
 		var a := _ap_walk(k, -5.0)
 		var b := _ap_pts[k]
 		var c := _ap_walk(k, 5.0)
@@ -11692,7 +11700,15 @@ func _ap_next() -> bool:
 	if ways.is_empty():
 		if back.x < 0:
 			return false
+		# a dead end: stop at its end and turn round there (see _autodrive). Planned as a
+		# lane out and a lane back, the U-turn was a corner a few metres across taken at
+		# 2.5 m/s -- autodrive swung wide past the end, onto the footpath beyond, and drove
+		# on along it at 40 km/h while it worked its way round.
+		var apex := _ap_pts.size() - 1
 		_ap_leg(back.x, back.y, back.z)
+		for k in [apex, apex + 1]:
+			if k > 0 and k < _ap_v.size() - 1:
+				_ap_v[k] = 0.0
 		return true
 	# a real crossing (two or more proper streets on): ask, and plan no further for now --
 	# but not round a roundabout, where the exits come too fast to ask at each

@@ -1105,6 +1105,11 @@ func _next(c: Car) -> bool:
 			if straight < -0.7:
 				continue
 			var score := straight * 1.4 + float(KIND_W.get(r2["k"], 0.25)) * 1.2 + rng.randf() * 1.5
+			# into a dead end only when there is nothing else: the cars went in through
+			# traffic, turned round at the end in a queue of others doing the same, and
+			# overlapped there (a dozen times a run in one cul-de-sac)
+			if _dead_end(r2, nxt, d2):
+				score -= 4.0
 			if r.get("ring", false):
 				# on a roundabout: off it at one of the next few exits, never round and round
 				score += (-0.6 - 1.1 * c.ring_n) if r2.get("ring", false) else 1.0
@@ -1119,6 +1124,18 @@ func _next(c: Car) -> bool:
 		return false
 	c.ring_n = c.ring_n + 1 if (_roads[best.x] as Dictionary).get("ring", false) else 0
 	_leg(c, best.x, best.y, best.z)
+	return true
+
+## road r from point k on, going dir: does it end in a dead end with no turning on the way?
+func _dead_end(r: Dictionary, k: int, dir: int) -> bool:
+	var ids: PackedInt32Array = r["ids"]
+	var last := ids.size() - 1 if dir > 0 else 0
+	if g._node_ways(ids[last]) > 1:
+		return false
+	while k != last:
+		if g._node_ways(ids[k]) >= 3:
+			return false
+		k += dir
 	return true
 
 ## drop what is well behind, so the path stays short
