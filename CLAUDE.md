@@ -54,7 +54,11 @@ that screen. The menu itself has no level picking. Self-play skips the start scr
 `config` may have no "level" -- default to 1. When a run reaches a new level, set
 `Flow.current_config["level"] = n` so "play again" resumes there rather than at the start.
 `LEVEL=n tools/playtest.sh <game> ...` (and `tools/shots.sh`) start a run at level n, and
-`tools/menu_shot.sh levels:<game>` screenshots the start screen.
+`tools/menu_shot.sh levels:<game>` screenshots the start screen. Levels that are
+Dictionaries with a `"name"` are picked by name; give them a `"group"` too and the start
+screen lists each group under its heading, side by side (a level's `"sort"` orders it within
+its group; its number is still its place in `LEVELS`, so reordering the screen never
+renumbers the levels).
 
 Nothing outside a game's own folder should ever name that game. If you find yourself
 writing its name in a doc, a tool or another game, that is the thing that will rot when it

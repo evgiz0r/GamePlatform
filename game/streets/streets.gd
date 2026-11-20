@@ -18,23 +18,25 @@ extends GameMode3D
 ## the car on the first just past the second. Without one it starts on a main road
 ## mid-town.
 const LEVELS := [
-	{"name": "Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer"},
+	# (the start screen lists them in two groups, "group"; a level's number stays its place here,
+	# which the tests and notes go by)
+	{"name": "Givatayim", "group": "Cities", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer"},
 	# "decks": "infer" -- its bridges' heights worked out as it loads (decks.gd: infer)
-	{"name": "Bedford, Nova Scotia", "city": "bedford", "look": "north", "decks": "infer"},
-	{"name": "Ashdod", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med", "decks": "infer"},
+	{"name": "Bedford, Nova Scotia", "group": "Cities", "city": "bedford", "look": "north", "decks": "infer"},
+	{"name": "Ashdod", "group": "Cities", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med", "decks": "infer"},
 	# made up by tools/fake_city.py: one small town with one of everything, ringed by mountains,
 	# that loads in a moment -- for checking a change, not for exploring
-	{"name": "Kiryat Dimyon (test town)", "city": "dimyon", "start": ["הנשיא", "השוק"], "look": "med"},
+	{"name": "Kiryat Dimyon (test town)", "group": "Cities", "sort": 99, "city": "dimyon", "start": ["הנשיא", "השוק"], "look": "med"},
 	# a walk filmed in Givatayim, replayed in first person on its own (cities/details/givatayim.json)
-	{"name": "A walk in Givatayim: Katzenelson to Ha-Meri", "city": "givatayim", "look": "med", "walk": "katzenelson_hameri"},
+	{"name": "A walk in Givatayim: Katzenelson to Ha-Meri", "group": "Auto Experiments", "city": "givatayim", "look": "med", "walk": "katzenelson_hameri"},
 	# a second, timed and placed from the GPS track taken with its film (tools/gpx_route.py)
-	{"name": "A walk in Givatayim: Sheinkin and Sirkin", "city": "givatayim", "look": "med", "walk": "sheinkin_sirkin"},
+	{"name": "A walk in Givatayim: Sheinkin and Sirkin", "group": "Auto Experiments", "city": "givatayim", "look": "med", "walk": "sheinkin_sirkin"},
 	# a box of central Tel Aviv, not the whole city (the workflow's bbox): HaKirya, Azrieli,
 	# Sarona, Montefiore, Bitsaron, the Ayalon. Starts on Kaplan heading east, the towers ahead.
-	{"name": "Tel Aviv: Azrieli and HaKirya", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer"},
+	{"name": "Tel Aviv: Azrieli and HaKirya", "group": "Cities", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer"},
 	# the route set (routes.json, tests/pick_routes.py): pick one of the drives and watch
 	# autodrive take it, from one address to the other, in its own city
-	{"name": "Test routes: watch a drive", "routes": true, "city": "dimyon", "look": "med"},
+	{"name": "Test routes: watch a drive", "group": "Auto Experiments", "routes": true, "city": "dimyon", "look": "med"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -7383,9 +7385,7 @@ func _build_lots() -> void:
 						_add_post(p - f * 1.25, 0.85)
 						cars += 1
 				s += 2.5
-	for kind: String in xf_by:
-		if not (xf_by[kind] as Array).is_empty():
-			_chunked(_parked_mesh(kind), xf_by[kind], 140.0, cols_by[kind], null, true, true)
+	_draw_parked(xf_by, cols_by)
 	_add_mesh(lines, _surface("mark"), false, DETAIL_RANGE)
 	_lot_cars += cars
 	_tally("lot_cars", cars)
@@ -7630,6 +7630,112 @@ func _car_material() -> ShaderMaterial:
 	return _car_shader_mat
 
 var _car_meshes := {}
+
+## Parked cars, the street's and the car parks': in PARKED_CELL squares, the full car out to
+## PARKED_NEAR from its square's middle, past that one plain shape for every kind
+## (_parked_far_mesh, stretched to each kind's size), no shadow, out to PARKED_SEEN. They were
+## one multimesh a 400 m square, drawn out to its middle's range plus 284 m: every parked car
+## within ~420 m, the full ~1,300-triangle car, 1.24 M triangles of a Tel Aviv frame's 2.4 M
+## (tests/perf_dive.gd).
+const PARKED_CELL := 100.0
+const PARKED_NEAR := 70.0
+const PARKED_SEEN := 140.0
+func _draw_parked(xf_by: Dictionary, cols_by: Dictionary) -> void:
+	var far_xf: Array = []
+	var far_cols: Array = []
+	for kind: String in xf_by:
+		var list: Array = xf_by[kind]
+		if list.is_empty():
+			continue
+		if not CAR_SHAPES.has(kind) or kind == "truck":   # (motorbikes: small, and few)
+			_chunked(_parked_mesh(kind), list, PARKED_SEEN, cols_by[kind], null, true, true, PARKED_CELL)
+			continue
+		_chunked(_parked_mesh(kind), list, PARKED_NEAR, cols_by[kind], null, true, true, PARKED_CELL)
+		var sc := _far_scale(kind)
+		for i in range(list.size()):
+			var t: Transform3D = list[i]
+			far_xf.append(Transform3D(t.basis * Basis.from_scale(sc), t.origin))
+			far_cols.append(cols_by[kind][i])
+	if not far_xf.is_empty():
+		_chunked(_parked_far_mesh(), far_xf, PARKED_SEEN, far_cols, null, false, true, PARKED_CELL,
+			PARKED_NEAR + PARKED_CELL * 0.71)
+
+## a kind's size against the sedan's, the plain shape's (across, up, along)
+func _far_scale(kind: String) -> Vector3:
+	var a: Array = CAR_SHAPES[kind]
+	var b: Array = CAR_SHAPES["sedan"]
+	var top := func(sh: Array) -> float:
+		var t := 0.0
+		for p: Vector2 in sh[1]:
+			t = maxf(t, p.y)
+		return t + (0.08 if sh == CAR_SHAPES["suv"] or sh == CAR_SHAPES["van"] else 0.0)
+	return Vector3(float(a[2]) / float(b[2]), float(top.call(a)) / float(top.call(b)), float(a[3]) / float(b[3]))
+
+## The parked car seen from afar: the sedan's two side outlines (CAR_SHAPES) pushed across its
+## width -- the body in paint, the cabin's sides and ends glass and its roof paint -- and four
+## blocks of tyre: some 60 triangles, the same outline and the same part codes for CAR_SHADER
+## (the paint comes from each car's own colour, as the full car's does).
+var _car_far: ArrayMesh
+func _parked_far_mesh() -> ArrayMesh:
+	if _car_far != null:
+		return _car_far
+	var shape: Array = CAR_SHAPES["sedan"]
+	var hw: float = shape[2]
+	var wz: float = shape[4]
+	var wr: float = shape[5]
+	var cm := CarMesh.new()
+	var paint := Color(1, 1, 1, 1.0)
+	var glass := Color(_tone["carglass"], 0.75)
+	_far_prism(cm, PackedVector2Array(shape[0]), hw * 0.98, paint, paint, paint)
+	_far_prism(cm, PackedVector2Array(shape[1]), hw * 0.84, glass, glass, paint)
+	var tyres := Buf.new()
+	for sx: float in [-1.0, 1.0]:
+		for sz: float in [-1.0, 1.0]:
+			_box(tyres, Vector3(sx * (hw - 0.2), wr, sz * wz), Vector3(0.22, wr * 2.0, wr * 2.0))
+	cm.add_buf(tyres, Color(_tone["tyre"], 0.3))
+	_car_far = cm.mesh(_car_material())
+	_car_far.custom_aabb = _car_far.get_aabb().grow(0.1)
+	return _car_far
+
+## a side outline (x along the car, y up) pushed `half` either side of the middle: its two
+## faces in `side`, its edges in `edge`, the highest edge (a cabin's roof) in `roof`
+func _far_prism(cm: CarMesh, outline: PackedVector2Array, half: float, side: Color, edge: Color, roof: Color) -> void:
+	var idx := Geometry2D.triangulate_polygon(outline)
+	for sx: float in [-1.0, 1.0]:
+		var nrm := Vector3(sx, 0, 0)
+		var base := cm.v.size()
+		for p: Vector2 in outline:
+			cm.vert(Vector3(sx * half, p.y, p.x), nrm, side)
+		for i in range(0, idx.size(), 3):
+			cm.tri(base + idx[i], base + idx[i + 1], base + idx[i + 2], nrm)
+	var mid := Vector2.ZERO
+	for p: Vector2 in outline:
+		mid += p
+	mid /= outline.size()
+	var top := -1
+	var top_y := -INF
+	for i in range(outline.size()):
+		var y := (outline[i].y + outline[(i + 1) % outline.size()].y) * 0.5
+		if y > top_y:
+			top_y = y
+			top = i
+	for i in range(outline.size()):
+		var a := outline[i]
+		var b := outline[(i + 1) % outline.size()]
+		if a.distance_to(b) < 0.001:
+			continue
+		var d := (b - a).normalized()
+		var n2 := Vector2(-d.y, d.x)
+		if n2.dot((a + b) * 0.5 - mid) < 0.0:
+			n2 = -n2
+		var nrm := Vector3(0, n2.y, n2.x)
+		var col := roof if i == top else edge
+		var i0 := cm.vert(Vector3(-half, a.y, a.x), nrm, col)
+		var i1 := cm.vert(Vector3(half, a.y, a.x), nrm, col)
+		var i2 := cm.vert(Vector3(half, b.y, b.x), nrm, col)
+		var i3 := cm.vert(Vector3(-half, b.y, b.x), nrm, col)
+		cm.tri(i0, i1, i2, nrm)
+		cm.tri(i0, i2, i3, nrm)
 
 func _parked_mesh(kind := "sedan") -> ArrayMesh:
 	if _car_meshes.has(kind):
@@ -8758,6 +8864,10 @@ func _range_class(seen: float) -> float:
 ## a whole Buf (already in world space) into the merged meshes
 func _batch_buf(buf: Buf, m: Material, how: Array, shadows: bool, seen: float) -> void:
 	var rc := _range_class(seen)
+	var nb := 0
+	for pk: Vector2i in buf.parts():
+		nb += (buf.parts()[pk] as Buf).v.size()
+	_tally("batched vertices: " + (_tone_of(m) if _tone_of(m) != "" else "coloured"), nb)   # (tests/perf_dive.gd)
 	var key := "U|%s|%d" % [shadows, int(rc)]
 	if not _batches.has(key):
 		_batches[key] = {"mat": _tone_mat(), "shadows": shadows, "range": rc, "cells": {}}
@@ -8873,6 +8983,7 @@ func _batch_add(mesh: Mesh, xforms: Array, range_end: float, colours: Array, m: 
 	var sc: PackedColorArray = soup[2]
 	var white: bool = soup[3]
 	var nv := sv.size()
+	_tally("batched vertices: " + (_tone_of(mt) if _tone_of(mt) != "" else "coloured kits"), nv * xforms.size())   # (tests/perf_dive.gd)
 	for i in range(xforms.size()):
 		var t: Transform3D = xforms[i]
 		var ck := _tile if _tiled else _cell(Vector2(t.origin.x, t.origin.z), BATCH_CELL)
@@ -8944,7 +9055,7 @@ func _chunked_paced(mesh: Mesh, xforms: Array, range_end: float, colours: Array 
 			m, shadows)
 
 func _chunked(mesh: Mesh, xforms: Array, range_end: float, colours: Array = [], m: Material = null, shadows := false,
-		custom := false) -> void:
+		custom := false, cell_m := 0.0, range_begin := 0.0) -> void:
 	if xforms.is_empty():
 		return
 	if _batching and not custom and _batchable(mesh, m, xforms.size()):
@@ -8952,11 +9063,13 @@ func _chunked(mesh: Mesh, xforms: Array, range_end: float, colours: Array = [], 
 		return
 	# a square about as big as the range: little things (signs, posts, racks) seen 100-150 m
 	# off in 140 m squares were a dozen draws a kind, and a big city tens of thousands of nodes
-	var cell := TILE if _tiled else clampf(range_end, 220.0, CHUNK)
+	# (`cell_m`: squares that size whatever is being built -- a square's range counts to its
+	# middle, so a 400 m one drew what it held out to its range plus 284 m)
+	var cell := cell_m if cell_m > 0.0 else (TILE if _tiled else clampf(range_end, 220.0, CHUNK))
 	var groups := {}
 	for i in range(xforms.size()):
 		var t: Transform3D = xforms[i]
-		var key := _tile if _tiled else _cell(Vector2(t.origin.x, t.origin.z), cell)
+		var key := _tile if _tiled and cell_m <= 0.0 else _cell(Vector2(t.origin.x, t.origin.z), cell)
 		if not groups.has(key):
 			groups[key] = []
 		(groups[key] as Array).append(i)
@@ -8982,6 +9095,9 @@ func _chunked(mesh: Mesh, xforms: Array, range_end: float, colours: Array = [], 
 		mmi.multimesh = mm
 		mmi.visibility_range_end = range_end + cell * 0.71
 		mmi.visibility_range_end_margin = 20.0
+		if range_begin > 0.0:
+			mmi.visibility_range_begin = range_begin
+			mmi.visibility_range_begin_margin = 20.0
 		if m != null:
 			mmi.material_override = m
 		if not shadows:
