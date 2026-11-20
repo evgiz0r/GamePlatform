@@ -1,8 +1,9 @@
 extends SceneTree
 ## A queue at a red light pulling away when it turns green: watches one signalled junction
 ## (KNOT_AT="x,z", LEVEL; default the big one on Sderot Herzl in Ashdod) for SECS seconds
-## and, each time cars stood in a queue at its red go green, records every one's speed for
-## the next 12 s. Prints a line per car and writes $OUT/queue_start.json for
+## and, each time a queue standing at its red (a car held by the light, the car held up by
+## it, and so on) gets the green, records every one's speed for the next 12 s. Prints a
+## line per car and writes $OUT/queue_start.json for
 ## queue_start_chart.py: speed against time, one line per car in queue order -- a queue
 ## that pulls away car after car, not all at once on the same tick like a train.
 var g: Node
@@ -43,29 +44,34 @@ func _run() -> void:
 			last_phase = g._sig_phase
 			var step: Array = g.SIGNAL_CYCLE[g._sig_phase]
 			if "g" in step:
-				# the cars standing within 60 m of the junction, held by a light or the car in
-				# front, heading toward it: a queue, nearest the junction first
-				var queue: Array = []
+				# real queues: a car standing at the red (held by the light), then the car
+				# held up by it, and the one held up by that... (cars standing at the fronts
+				# of different lanes of the same junction all go together, rightly: they are
+				# not a queue -- the first version took them for one)
+				var fronts: Array = []
 				for i in range(T.cars.size()):
 					var c = T.cars[i]
-					if not c.alive or c.v > 0.3 or c.pos.distance_to(at) > 60.0:
+					if c.alive and c.v < 0.3 and c.why == "light" and c.pos.distance_to(at) < 70.0 \
+							and T._light_ahead(c) == INF:   # (its own light the one gone green)
+						fronts.append(i)
+				for f: int in fronts:
+					var chain: Array = [f]
+					var grew := true
+					while grew and chain.size() < 8:
+						grew = false
+						for i in range(T.cars.size()):
+							var c = T.cars[i]
+							if c.alive and c.v < 0.3 and c.blocker == chain[chain.size() - 1] and not chain.has(i):
+								chain.append(i)
+								grew = true
+								break
+					if chain.size() < 2:
 						continue
-					if not (c.why in ["light", "car"]):
-						continue
-					var fwd := Vector2(sin(c.yaw), cos(c.yaw))
-					if (at - c.pos).dot(fwd) < 0.0:
-						continue
-					queue.append([c.pos.distance_to(at), i])
-				if queue.size() >= 2:
-					queue.sort_custom(func(a, b): return a[0] < b[0])
 					var run := {"t0": t, "cars": []}
-					var idx: Array = []
-					for qi in range(queue.size()):
-						var i: int = queue[qi][1]
-						run["cars"].append([qi + 1, T.cars[i].kind, []])
-						idx.append(i)
+					for qi in range(chain.size()):
+						run["cars"].append([qi + 1, T.cars[chain[qi]].kind, []])
 					runs.append(run)
-					open.append([run, idx, t])
+					open.append([run, chain, t])
 		# record 10 times a second
 		if int(t * 60.0) % 6 == 0:
 			for o: Array in open:
