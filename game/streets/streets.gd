@@ -852,6 +852,7 @@ var _people_rng := RandomNumberGenerator.new()
 var _hgrid := PackedFloat32Array()   ## ground height (m above the lowest point) on a grid
 var _steep := false                  ## some of the ground is too steep to drive up (see STEEP)
 var _made_up := false                ## the city file is invented (tools/fake_city.py), not OSM's
+var _credits: Array = []              ## other sources the city file took data from, to credit on screen beside OSM
 var _mtn_from := 100000.0            ## the made-up town: above this height the land is mountain (see GROUND_SHADER)
 var _hx0 := 0.0
 var _hz0 := 0.0
@@ -1686,6 +1687,7 @@ func _load_city(id: String) -> bool:
 			_hgrid[i] = float(raw[i]) * k
 		_steep = _any_steep()
 	_made_up = data.has("made_up")
+	_credits = data.get("credits", [])
 	if _made_up and _hnx > 0:
 		_mtn_from = _town_top() + 6.0
 	_decks = Decks.new(self)
@@ -19291,6 +19293,8 @@ func _build_hud() -> void:
 	_osm_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_osm_lbl.position = Vector2(8, 347)
 	_osm_lbl.text = "a made-up town: not a real place" if _made_up else "map data © OpenStreetMap contributors"
+	for c in _credits:   # e.g. a town's own survey of its buildings' heights (tools/osm_city.py)
+		_osm_lbl.text += " · " + String(c)
 	_osm_lbl.modulate.a = 0.7
 	_map = Control.new()
 	_map.position = Vector2(8, 224)

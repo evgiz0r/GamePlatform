@@ -1609,10 +1609,11 @@ leaves out").
   pavement sides (2-16%).
 - **Tried and dropped: building heights from the terrain tiles** (surface minus bare
   ground) -- no use, see the `real-places` skill.
-- **Outside data** (municipal buildings, trees, businesses, GTFS, parking zones): none
-  reachable from this cloud environment (over.org.il, data.gov.il, gisn.tel-aviv.gov.il,
-  gtfs.mot.gov.il all refused), and e.data.gov.il's CDN refuses the cloud even when
-  allowed (Tel Aviv handoff). The list and the licence caveat are in `IDEAS.md`.
+- **Outside data** (municipal buildings, trees, businesses, GTFS, parking zones): at first
+  none was reachable (over.org.il, data.gov.il, gisn.tel-aviv.gov.il, gtfs.mot.gov.il all
+  refused), and e.data.gov.il's CDN refuses the cloud even when allowed (Tel Aviv handoff).
+  Tel Aviv's own GIS server answers once its host is allowed: see the next section. The
+  list and the licence caveat are in `IDEAS.md`.
 - **Checks, and what good read** (20 Nov 2026, Givatayim and Tel Aviv re-baked):
   `tests/speed_limits.gd` -- autodrive 40 s never more than 10% over the road's limit
   (Givatayim: 23 s at 30, 17 s at 50, fastest 51 km/h; Tel Aviv's start stays on 50 roads);
@@ -1625,6 +1626,41 @@ leaves out").
 - **Open**: re-bake Ashdod (brings its railway) and Bedford with `main_server_only`; a
   sign at the start of each 30 street (the game has `signs_zone30`, placed by its own
   rule, not by `ms`); the speed signs are on main roads only.
+
+## Tel Aviv's own survey: building heights (20 Nov 2026)
+
+Tel Aviv-Yafo's GIS publishes its buildings layer (`gisn.tel-aviv.gov.il`, IView2 MapServer
+layer 513 "מבנים", 45,758 buildings): a measured height (`gova_simplex_2019`, roof top
+minus ground, 97%), floors (95%), year built (72%), columns / open ground floor
+(`t_amudim`), and kind (regular, temporary, bus shelter, public, under construction).
+The cloud environment allows the host now (the user approved it).
+
+- **Where it goes**: `tools/osm_city.py`'s `SURVEYS` step -- part of every bake whose box
+  overlaps the layer, or alone on a baked file: `python3 tools/osm_city.py --add-surveys
+  game/streets/cities/tel_aviv.json` (~45 s; Givatayim ~25 s). The rules (what OSM keeps,
+  the 1.9 m shift, the 2019 towers) are in the `real-places` skill and at `SURVEYS`.
+- **What the files have now**: buildings' `h` from the survey with `hm: 1` and no `g`;
+  `yr` (where OSM had none) and `pil: 1` (columns) from it; `credits` at the top, which the
+  game appends to the OSM line bottom left (`_credits`, `_osm_lbl`).
+  Tel Aviv: 3121 of 4011 buildings take the survey's height (median +4.6 m on what they had;
+  guesses left 402 of 2623), OSM's own kept on 249 (the record towers, the post-2019 ones);
+  `yr` on 3106, `pil` on 1293. Givatayim: its Tel Aviv strip only, 1047 of 6243 (guesses
+  left 4726); Givatayim itself is not in this layer.
+- **Licence**: the municipality's open-data licence (as quoted in 2012 and in the portal's
+  FAQ) lets anyone copy, publish and process the data for any lawful purpose, crediting the
+  source, as-is. Not checked: whether layer 513 itself is in the open-data catalogue
+  (`opendatasource.tel-aviv.gov.il`, not reachable from here). The credit on screen:
+  "building heights © Tel Aviv-Yafo Municipality".
+- **A re-bake must reach the server too**, or the heights are lost and the bake logs
+  "survey tel_aviv_yafo: cannot reach ...". GitHub's runners reaching it is untested: after a
+  workflow bake of Tel Aviv or Givatayim, look for "survey tel_aviv_yafo: heights for" in its
+  log, or run `--add-surveys` on the result here.
+- **Open**: Givatayim's own buildings (its municipality's GIS, or the national GovMap
+  buildings layer: neither found yet); drawing `pil` (Tel Aviv's blocks on columns, a
+  third of them -- the ground floor as columns and shade); the ~500 small buildings the
+  survey has and OSM lacks (median 35 m^2; 57 over 300 m^2), not added; a tower complex
+  OSM maps as one outline keeps OSM's height (splitting it into the survey's pieces would
+  give the podium and the tower each their own).
 
 ## Handoff: the street's realism and life, loading split, crashes, sounds (20 Nov 2026)
 

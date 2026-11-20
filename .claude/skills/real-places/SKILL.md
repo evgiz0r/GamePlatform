@@ -71,11 +71,36 @@ goes wrong shows up the first time it runs.
   showed (100 m against 187), the rest 1-9 m. The tiles are ~30 m and from about 2000, so
   they know neither a block's shape nor anything built since. Building heights have to
   come from OSM or a municipal or national buildings layer.
+- **A town's own survey of its buildings beats OSM's guesses -- mostly.** Some towns
+  publish theirs as an ArcGIS layer (a REST `.../MapServer/<n>` with `/query?...&f=geojson`,
+  2000 a page, `resultOffset` to page on; ask it for `returnCountOnly` first). The baker
+  reads the ones in its `SURVEYS` list (`--add-surveys CITY_FILE` puts them on a file baked
+  already) and credits each on screen. One city centre's, Nov 2026: a measured height on
+  97% of its buildings (roof top minus ground, rooftop rooms included), storeys on 95%,
+  year built on 72%, and whether it stands on columns. What it taught:
+  - *Its outlines are not OSM's*: ~18% smaller (walls, not traced roofs) and ~1.9 m south of
+    them. Keep OSM's outlines (the game's roads were fitted round them) and lend each the
+    height of the survey building covering most of it, 30% or more; measure the shift on
+    one-to-one pairs first and match again with it.
+  - *It is a snapshot*: a 2019 survey had 6-7 m for towers finished since (OSM: 140-160 m)
+    and a building site's part-built height. Skip what it marks under construction.
+  - *One shape can be a whole complex at its tallest point*: a mall at a tower's foot came
+    out 187 m, a 75 m^2 lobby 109 m. So a height OSM tags outright wins; floors OSM tags win
+    when the survey is over twice or under half that and 10 m off (not the same building);
+    a small outline (a quarter of the survey's shape) under a survey tower keeps its guess.
+  - *It is taller than floor counts*, +4-5 m on a typical block: the ground floor on columns
+    and the roof rooms that `building:levels` leaves out. Within the band above, take the
+    survey's: it was measured.
+  - Of 4011 OSM buildings 3121 took a survey height, 249 kept OSM's own; the survey also had
+    ~500 small buildings OSM lacks (median 35 m^2, sheds and annexes, 57 over 300 m^2),
+    not added.
 - **Government open data may refuse the cloud.** A national portal's API answered, but
   its files came from a CDN host that refused the container even once the environment
   allowed both hosts (a CloudFront 403 page instead of the file: likely by country). Do not
   dress the request up to get past it; have the user download the file and add it to the
-  repo, or use what OSM has.
+  repo, or use what OSM has. A municipality's own GIS server, on the other hand, answered
+  the container fine once its host was allowed: try the source's own server before asking
+  the user to paste or download anything.
 - **A landmark's name is often on its podium.** OSM names the outline a tower stands on (a
   radio tower's 18 m base) and maps the tower as an unnamed `building:part` inside it (80 m,
   `min_height` the podium's top). To dress a named landmark, take the tallest building

@@ -1194,7 +1194,9 @@ contributors under the ODbL, which is why the credit sits on screen.
 ### What is real and what is guessed
 
 - **Real**: every road's path, kind, width (or lanes), one-way direction and name; every
-  building outline; heights and floors where OSM has them; parks, grass, water, car
+  building outline; heights and floors where OSM has them; in Tel Aviv (the level, and the
+  strip of it at Givatayim's west edge) the city's own measured heights for most of its
+  buildings, from the municipality's 2019 survey (credited on screen); parks, grass, water, car
   parks; mapped trees; traffic lights and zebra crossings; the speed limit where OSM tags
   it (every driver keeps to it, and the signs show it); the city boundary. The hills:
   the ground follows an open elevation model (AWS terrain tiles), baked in with the city.
