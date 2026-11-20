@@ -6,14 +6,22 @@ extends RefCounted
 ## tests/drive_log_map.py draws a saved one over the city's streets.
 ##
 ## A sample: t, x, z, yaw, v, steer, gear, auto, why (what held autodrive's speed down: limit,
-## curve, light, sign, zebra, people, car, blocked, choice, backing, turning), plan (the
+## curve, light, sign, zebra, people, car, blocked, choice -- or what it was doing instead of
+## driving its lane: backing, turning, pushing; see _why()), plan (the
 ## next points of autodrive's lane, every 5 m for 40 m), lead (metres to the car ahead on
-## it, or -1), cars: [[id, kind, x, z, yaw, v, blocker], ...] within 50 m (at most 10).
+## it, or -1), what (the thing holding it: "car 12" for the car ahead, "wall 15285", "post
+## 3", "building 9" when blocked or pushing), cars: [[id, kind, x, z, yaw, v, blocker, why],
+## ...] within 50 m (at most 10; blocker: the car holding it up, -1 the player, -2 none).
 ## Events: [t, what, detail] -- hits, rescues, junction choices, quality steps.
 
 const HZ := 10.0
 const KEEP_S := 120.0
 const NEAR := 50.0
+## where the cars are recorded around, and how far, and how many (a test watching a junction
+## away from the player's car sets these: the player's car by default)
+var near := NEAR
+var around := Vector2.INF
+var most := 10
 
 var samples: Array = []              ## oldest first, KEEP_S of them at most
 var events: Array = []
@@ -43,12 +51,13 @@ func tick(g, dt: float) -> void:
 	if g._traffic != null:
 		for i in range(g._traffic.cars.size()):
 			var c = g._traffic.cars[i]
-			if c.alive and c.pos.distance_to(g._pos) < NEAR and cars.size() < 10:
+			var centre: Vector2 = g._pos if around == Vector2.INF else around
+			if c.alive and c.pos.distance_to(centre) < near and cars.size() < most:
 				cars.append([i, c.kind, snappedf(c.pos.x, 0.1), snappedf(c.pos.y, 0.1), snappedf(c.yaw, 0.01),
-					snappedf(c.v, 0.1), c.blocker])
+					snappedf(c.v, 0.1), c.blocker, c.why])
 	samples.append({"t": snappedf(_t, 0.01), "x": snappedf(g._pos.x, 0.01), "z": snappedf(g._pos.y, 0.01),
 		"yaw": snappedf(g._yaw, 0.001), "v": snappedf(g._v, 0.01), "steer": snappedf(g._steer, 0.001),
-		"gear": g._gear, "auto": g._auto, "walk": g._walking, "why": g._ap_why if g._auto else "",
+		"gear": g._gear, "auto": g._auto, "walk": g._walking, "why": _why(g), "what": _what(g),
 		"plan": plan, "lead": snappedf(g._ap_lead, 0.1), "cars": cars})
 	while samples.size() > int(KEEP_S * HZ):
 		samples.pop_front()
@@ -80,3 +89,31 @@ func save(g) -> String:
 	f.store_string(text)
 	f.close()
 	return ProjectSettings.globalize_path("user://drive_logs/" + name)
+
+## What held the car: what autodrive slowed for (its speed target's reason), unless it was
+## busy otherwise -- backing off something, turning round on the spot, or pushing: foot on
+## the gas and not moving, held by something it did not see coming (its plan said "the
+## speed limit", and a log read "limit" at 0 km/h for a minute: the car was up against a
+## post the whole time).
+func _why(g) -> String:
+	if not g._auto:
+		return ""
+	if g._ap_back > 0.0:
+		return "backing"
+	if g._ap_turn > 0.0:
+		return "turning"
+	if g._ap_stuck > 0.3:
+		return "pushing"
+	return g._ap_why
+
+## the thing holding the car: the car ahead it follows, or what its nose is against
+func _what(g) -> String:
+	if not g._auto:
+		return ""
+	var why := _why(g)
+	if why in ["blocked", "pushing", "backing"]:
+		return g._last_hit
+	if why == "car" and g._ap_lead >= 0.0:
+		var lead: Array = g._traffic.lead_on(g._ap_pts, g._pos, g._ap_lead + 1.0, g._ap_wait > 3.0)
+		return "car %d" % int(lead[3]) if int(lead[3]) >= 0 else ""
+	return ""

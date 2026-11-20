@@ -96,7 +96,31 @@ events), a debug page that draws it as a map, and a button that saves it --
 browser, a file under `user://` elsewhere. Ask the user for the file, draw it with a small
 script (Python and Pillow are enough: the level's own data gives the map), and stage that
 spot in a scene test. Record the reason for each decision, not just the outcome: "held by:
-car" against "held by: zebra" is usually the whole diagnosis.
+car" against "held by: zebra" is usually the whole diagnosis. Record what it was doing
+instead of driving too (backing off, turning round, pushing against something without
+moving): a log once read "speed limit" at 0 km/h for a minute because the plan wanted the
+limit while the car was pressed against a post. And record *which* thing held it (the car
+in front by its id, the wall by its index) -- for the other actors as well as the player's.
+
+## A scored run: the exam
+
+Once there is a recorder, a script can drive the AI from several places for a minute or
+so each and count what went wrong per minute (stuck, hits by kind, off the road, wrong
+side, red lights, harsh braking, and the other actors' own stalls and overlaps), listing
+the worst places with the log of the moments before each. Fix the top of the list, run
+again, compare. Check what each counter really counts before chasing its number: one
+counted frames of braking (30 per stop), another judged a car mid-turn by the heading it
+had at that moment, and both sent a round of work the wrong way.
+
+## Showing the user
+
+The user reads pictures, not tables -- a per-minute scorecard of a dozen rows was "hard to
+read". What worked: the map of one drive, the path coloured by speed with a legend for the
+colours, **street names** on it (the streets driven in bold, the main roads in grey; a
+real town's names give the user their bearings at once), start and end marked, a strip of
+speed against time coloured by what held the car; the same drive before and after side by
+side under a one-line title each; and a few bullets of what changed. Send each picture as
+it is made, with a one-line caption, rather than a report at the end.
 
 ## Gotchas (each cost a run)
 
@@ -124,6 +148,12 @@ car" against "held by: zebra" is usually the whole diagnosis.
 - **A game that builds its world in the background is not finished when it says loaded.**
   Wait for its "all built" flag, or have the runner switch the background build off, before
   measuring anything away from the start.
+- **A portrait window still gives a 16:9 picture.** The project keeps its aspect, so a
+  test run at `--resolution 406x720` (to match a phone's upright video) saved 406x228
+  shots, and tiling them to the phone's shape stretched them into nonsense. Render 16:9
+  (1280x720) and crop the middle: `ffmpeg -vf crop=406:720:437:0`. Mind that the crop sees
+  far less sideways than the shot: check the whole frame before deciding something is
+  missing.
 - Parse-check first: `tools/check_script.sh res://game/<game>/<game>.gd` takes seconds and
   says which line; a broken script makes a scene test fail in a confusing way minutes in.
 

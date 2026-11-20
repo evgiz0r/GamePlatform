@@ -108,7 +108,26 @@ data format is at the top of `tools/osm_city.py`; this is about living with it.
   face, the traffic car edges past if there is nearly room, else turns off (once out of
   sight, or after a while regardless).
 - **Give up gracefully**: an AI that has got nowhere for 40 s (not at a light) is lifted
-  onto a street a little way toward the middle of town.
+  onto a street a little way toward the middle of town. Count a push that goes nowhere
+  (foot down, not moving, too slow to register as a hit) toward that too, or the AI noses a
+  bollard, backs off and noses it again for minutes.
+- **Dead ends are everywhere** (cul-de-sacs, streets that end in a footpath), and houses
+  stand at them. Three traps: a route planner that charges nothing for turning round plans
+  "on to the closed end and back" from a house there; a U-turn planned as a lane out and a
+  lane back is a corner a few metres across, which a car takes wide -- onto the footpath
+  that continues past the end; and AI traffic that picks streets at random drives into
+  them and turns round in a queue of its own. Never take "to the end of this street and
+  straight back" as a route's start; stop at the end and turn round there; keep traffic
+  out unless there is no other way.
+- **Start a plan in the lane**, not at the nearest point of the road's centre line: the
+  line from there to the next point (often far down the street) runs diagonally, and the
+  car drives left of the middle for the length of the street.
+- **Score the driving, don't eyeball it**: a scripted exam that drives the AI from several
+  places in town and counts per minute (stuck, hits, off the road, wrong side, red lights,
+  harsh braking per occasion, and traffic's own stalls, overlaps and reds) finds in one run
+  what an afternoon of watching does not. Count a signalled junction as one, by the way the
+  car came in: a divided road's junction is several signalled points, and judging each by
+  the heading mid-turn reads a car that went in on green as running the cross street's red.
 
 ## The edge of the map
 
@@ -133,6 +152,11 @@ the game walking the same route in first person beside it.
   sideways), and its transcode of a portrait video can come out **mirrored**: check a shop
   sign's text before believing which side anything is on, and flip with ffmpeg `hflip`.
   Reading sides off a mirrored clip put a fence on the wrong side for a whole pass.
+- **Seek by decoding, not with `-ss`.** A phone clip re-encoded at a variable frame rate
+  (VLC's transcode is one) can make `ffmpeg -ss <t> -i clip` land seconds off in its first
+  stretch, while `-vf trim=<a>:<b>,setpts=PTS-STARTPTS` (decoding from the start) agrees
+  with the clip's own clock: a contact sheet cut with `-ss` once put a 14 s road crossing
+  in the first 3 s. Cut contact sheets the way the side-by-side is cut.
 - **Matching the two.** A contact sheet at one frame a second gives the landmarks' times;
   walking time gives distances (people walk 1.2-1.3 m/s): a road that takes 15 s to cross
   is ~17 m, whatever OSM's guessed width says. Time the game's walk to the same landmarks,
@@ -145,6 +169,18 @@ the game walking the same route in first person beside it.
   class. Fixing it in OSM is best; until the user does, a hand-placed layer over the baked
   file (road edits, zebras, walls, fences, railings) survives a re-bake, where editing the
   baked file would not.
+- **A block's outline is its upper floors.** OSM traces buildings from above, so where the
+  ground floor stands back under the upper ones (an arcade of shops along a main road, a
+  block on columns) the outline runs out over the pavement, and a walk filmed under it goes
+  "through" the building: from inside, its walls are not drawn, so a first-person replay
+  looks open and nothing seems wrong until a check says the walker is inside a footprint.
+  Measure the walk's points against the footprints. What worked: cut the strip off as a
+  building of its own raised 3-3.5 m (a raised building stands on columns and is not
+  solid), the rest standing back behind it, both outlines starting at the same corner when
+  the look comes from a hash of the first corner.
+- **A level that starts at a filmed spot must say so before the city builds.** A game that
+  builds near its start first builds round wherever its start finder lands; a walk placed
+  after that crosses bare ground until the background builder catches up.
 
 ## Privacy
 

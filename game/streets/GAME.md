@@ -170,6 +170,16 @@ lacks are in `cities/details/givatayim.json` (see below).
 > Can we create a video, 1st person view like my phone, side by side with video from the
 > phone, up until Ha-Meri.
 
+It crosses like a person: it waits at Katzenelson's kerb looking left at the traffic coming,
+crosses to the median, waits there looking right, then crosses; at Sheinkin it looks right,
+then left. Cars come down the street to meet it there: one goes by before it steps off, the
+next stops at the zebra for it, and drives on once it is across. The head looks where the
+walk is going and turns into a corner a moment before the feet do.
+
+> During the walk we collide into a house, the pavement there is not matching in the middle.
+> Let's also add cars, and we look left, right, and they stop for us. Usually we look where
+> we want to walk, and look before turning.
+
 > Let's try to enhance that specific walk, very realistic, in depth, slow, iteratively
 > (people a bit less interesting, but the other items, from bigger details we already have
 > to smaller details). And add in the menu an option to view that walk, just till reaching
@@ -557,8 +567,16 @@ the city now has what the walk had underfoot and at eye height:
 - Front gardens plot by plot (14-22 m each, a gap for the gate): a low wall of rough stones in
   mortar, with a clipped hedge behind it, white bars or green chain-link on top, or bare;
   bougainvillea spilling over one in six; the garden shrubs leafy, not smooth balls.
+- The ground darker where things stand on it, as the sky's light reaches less of it there:
+  a soft band out from the foot of every building, darker still in its inside corners; the
+  parking under a block on columns in the shade; a dark patch under every parked car,
+  softening out past its sides. Without it the houses and cars looked as if they hovered a
+  hair above the street. It is one faint layer laid out with the city, so it costs almost
+  nothing while you drive.
 
 > ok lets start as you say
+
+> ok go next
 
 > I took a video on my phone, walking in Givatayim.
 
@@ -742,8 +760,13 @@ does not map -- stone walls, wooden fences, low white fences, hedges, bins, the 
 railings at a passage's end -- placed by hand from a walk filmed along it. Givatayim's has
 the Ha-Meri passage: OSM draws it as one footpath from Katzenelson to Sheinkin, where the
 film shows a paved forecourt, the passage itself between its fences, and a short street
-with parked cars down to Sheinkin. It also holds walks, routes timed to their film, that a
-place in `LEVELS` can replay. A footpath in town (not in a park) is paved like the
+with parked cars down to Sheinkin. The second pass dressed the passage's north end as the
+film shows it: the corner block stands on columns along Katzenelson, shops back under the
+upper floors and a row of motorbikes nose to the kerb; charcoal pavers under the arcade,
+the forecourt's pale poured slabs with a manhole; black bollards banded yellow across it,
+the transformer on twin poles at the passage's mouth, a garden lamp, the barrier across the
+next block's drive, and the planted bed and trees where the passage begins. It also holds
+walks, routes timed to their film, that a place in `LEVELS` can replay. A footpath in town (not in a park) is paved like the
 pavements everywhere, not only here.
 
 ## Later (said, not built)

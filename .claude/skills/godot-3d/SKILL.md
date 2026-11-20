@@ -48,6 +48,20 @@ is a Z coordinate, not a height.
   partly toward grey; if you do, check the palette's accent colours on screen after.)
   Shadows are off by default (`sun.shadow_enabled`); turn them on per game if the look
   needs them, they cost on phones.
+- **Ambient occlusion, faked.** The Compatibility renderer has no SSAO, and without it
+  buildings and parked cars seem to hover over the ground even with sun shadows on (most of
+  a street is in some shadow already, where a sun shadow adds nothing). What works: a layer
+  of soft strips laid out with the world (out from each wall's foot, under each parked car)
+  in a shader with `render_mode unshaded, blend_mul, depth_draw_never, fog_disabled`, its
+  ALBEDO `1 - strength * ramp^2`, faded out with distance in the shader. Multiply needs no
+  sorting against what is under it and doubles up by itself in inside corners, where it
+  should be darker. Lay it a few cm above the highest ground it can be on (the pavement): a
+  soft ramp floating a hand's width over a lawn does not show, one sunk under the pavement
+  is gone. One mesh per merged square: a draw each. Build cost is per corner of every
+  outline, so look each height up once. Darken the walls' own feet in the wall shader too.
+  To judge it, shoot the same view with the layer hidden and shown, and diff the pictures:
+  by eye, at a 0.4 strength it was invisible, and traffic and fading HUD labels change
+  between shots too.
 - **Resolution**: the 3D `SubViewport` renders at the real window size (up to 3x the
   640x360 design space, half-step multiples) and is scaled down with linear filtering,
   with 4x MSAA. The kit's nearest-neighbour default is for pixel art and made 3D look
@@ -228,6 +242,14 @@ most, in order, last time one did:
     the game is left mid-build, its own signal dies with it and the coroutine just stops.
   - Turn off the frame-rate quality watcher while building: the build is not the machine
     being slow. Check the result by comparing every item count with the old build.
+- **Kilometres of small dressing cost in the checks, not the triangles.** A fence or hedge
+  along every front garden, laid by the helper that checks each 2.5 m piece for roads and
+  houses, doubled a build stage. Timed piece by piece, the look for the nearest road was
+  half of it. When a caller already knows the line is clear (it stands on a wall that was
+  checked, on a strip that was), pass that down and skip the check; lay one panel per
+  piece of the line it follows rather than many short ones; and leave out faces that are
+  inside the thing (the ends between two pieces of a hedge). Build stages on these
+  containers swing 20% between runs, so time the part itself, not the stage around it.
 - **Photo textures under a palette.** Divide the photo by its own average colour and
   multiply by the palette tone: the photo gives the grain, the tone the colour, and `/look`
   still reskins it. Fade fine detail and repeating photos out with distance (a repeat shows
