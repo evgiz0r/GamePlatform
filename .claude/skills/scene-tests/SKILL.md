@@ -124,6 +124,12 @@ car" against "held by: zebra" is usually the whole diagnosis.
 - **A game that builds its world in the background is not finished when it says loaded.**
   Wait for its "all built" flag, or have the runner switch the background build off, before
   measuring anything away from the start.
+- **A portrait window still gives a 16:9 picture.** The project keeps its aspect, so a
+  test run at `--resolution 406x720` (to match a phone's upright video) saved 406x228
+  shots, and tiling them to the phone's shape stretched them into nonsense. Render 16:9
+  (1280x720) and crop the middle: `ffmpeg -vf crop=406:720:437:0`. Mind that the crop sees
+  far less sideways than the shot: check the whole frame before deciding something is
+  missing.
 - Parse-check first: `tools/check_script.sh res://game/<game>/<game>.gd` takes seconds and
   says which line; a broken script makes a scene test fail in a confusing way minutes in.
 

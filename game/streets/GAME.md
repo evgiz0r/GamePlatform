@@ -715,8 +715,13 @@ does not map -- stone walls, wooden fences, low white fences, hedges, bins, the 
 railings at a passage's end -- placed by hand from a walk filmed along it. Givatayim's has
 the Ha-Meri passage: OSM draws it as one footpath from Katzenelson to Sheinkin, where the
 film shows a paved forecourt, the passage itself between its fences, and a short street
-with parked cars down to Sheinkin. It also holds walks, routes timed to their film, that a
-place in `LEVELS` can replay. A footpath in town (not in a park) is paved like the
+with parked cars down to Sheinkin. The second pass dressed the passage's north end as the
+film shows it: the corner block stands on columns along Katzenelson, shops back under the
+upper floors and a row of motorbikes nose to the kerb; charcoal pavers under the arcade,
+the forecourt's pale poured slabs with a manhole; black bollards banded yellow across it,
+the transformer on twin poles at the passage's mouth, a garden lamp, the barrier across the
+next block's drive, and the planted bed and trees where the passage begins. It also holds
+walks, routes timed to their film, that a place in `LEVELS` can replay. A footpath in town (not in a park) is paved like the
 pavements everywhere, not only here.
 
 ## Later (said, not built)

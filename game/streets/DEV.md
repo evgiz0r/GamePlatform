@@ -18,7 +18,8 @@ merge, re-check (`tools/check_script.sh`, a playtest, the tests below), never fo
 | `furniture.gd` | street furniture built after the places: power lines, lamps and bus-stop kits, flags, ads, fences and hedges, bike racks and scooters |
 | `drivelog.gd` | the drive recorder (see below) |
 | `cities/*.json` | baked towns (`tools/osm_city.py`) and the made-up test town (`tools/fake_city.py`) |
-| `details.gd`, `cities/details/<city>.json` | what a filmed walk showed and OSM lacks, laid over the baked city as it loads (road edits, unmarked zebras, areas, walls, fences, hedges, bins, railings) and the walks themselves; the format is at the top of `details.gd` |
+| `details.gd`, `cities/details/<city>.json` | what a filmed walk showed and OSM lacks, laid over the baked city as it loads (road edits, unmarked zebras, areas, an arcade cut under a block, paving level with the pavement, walls, fences, hedges, bins, railings, bollards, a pole transformer, a barrier, parked motorbikes, trees) and the walks themselves; the format is at the top of `details.gd` |
+| `cities/details/make_givatayim.py` | writes `givatayim.json`: every detail placed along the Ha-Meri passage's own line, with the film's seconds beside what each came from. Edit this, not the JSON, and run it |
 | `textures/` | CC0 photo textures (Poly Haven) and the scripts that made the sky and the leaf atlas; credited in `textures/CREDITS.md` |
 | `tests/` | scene tests, see below |
 
@@ -132,12 +133,17 @@ past Sheinkin, replayed in first person (`_film_begin` / `_film_tick` / `_film_a
 streets.gd, "a filmed walk, replayed"). It is how that street is being made realistic: a
 pass at a time, biggest differences first, each pass checked with a side-by-side video.
 
-- **The route** is `walks.katzenelson_hameri.points` in `cities/details/givatayim.json`:
+- **The route** is `walks.katzenelson_hameri.points` in `cities/details/givatayim.json`
+  (written by `make_givatayim.py` beside it):
   [seconds, x, z], the seconds the film's. Landmarks in the film: off the north kerb 1.5 s,
   the far kerb 16 s (so the road there is ~17 m across by walking time; the game's two
   9 m halves are right), the forecourt 25 s, into the passage 33 s, out of it 64 s, the
   corner of Sheinkin 80 s, over it 90 s, into Ha-Meri 93-96 s. The game's pavement from the
   zebra to the passage is ~7 m longer than the film's, so the walk hurries there (2.2 m/s).
+- **The walk starts where its film does**: `_find_start` puts `_pos` at the walk's first
+  point before the city is built, so the squares round the walk go up first. Before that
+  the game built round the middle of town and the walk's first seconds crossed bare grass
+  (and a scene test jumping along it shot empty ground).
 - **The passage's coordinates** were worked out along its own line: S0 (667.9, -653.0) on
   Katzenelson to S1 (611.3, -588.2) on Sheinkin (both baked nodes); a point is `s` metres
   along it and `off` to the south-east (negative: north-west). Walking it south-west: the
@@ -154,14 +160,23 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   (the 70 degree vertical field of view then matches a phone held upright) and `hstack` the
   two. The film itself is the user's: it, its frames and anything past Ha-Meri never go in
   the repo.
-- **Next passes** (seen in the first side-by-side): the forecourt is big plain concrete
-  slabs with black-and-yellow bollards, a transformer on twin lattice poles and a parking
-  barrier; at the zebra's south end the white hoop railing and the red-white kerb, and the
-  game's building there stands too close; the passage's stone wall is rough grey stone and
-  its fence darker wood; the corner of Sheinkin is a raised crossing paved in charcoal
-  herringbone with the zebra painted on it, white bollards round the corner, another
-  transformer; Ha-Meri has blue-white kerbs, a Zone 30 sign and a painted 30 ring; the
-  confectionery's front; motorbikes in a row on the pavement.
+- **Pass 2, the forecourt (film 17-34 s)**, done: the block at the passage's north-west
+  corner got its arcade along Katzenelson (OSM's outline is the upper floors': the walk ran
+  1.3 m inside it, through a wall drawn only from outside), shops behind the columns (never
+  pilotis); charcoal herringbone under the arcade and pale poured slabs over the forecourt,
+  level with the pavement; a row of bollards across it, the twin-pole transformer on its
+  plinth, the barrier across the next block's drive, a globe lamp, a manhole; seventeen
+  motorbikes and scooters nose to the kerb along the arcade (a gap where the walk comes up
+  off the road), two more in the forecourt; the planted bed behind the white fence and the
+  trees over the passage's mouth.
+- **Next passes** (seen in the side-by-sides): at the zebra's south end the white hoop
+  railing and the red-white kerb; the passage's own paving is small grey pavers in rows, not
+  herringbone, and level with the forecourt (the game steps down 12 cm into it); its stone
+  wall is rough grey stone and its fence darker wood; the corner of Sheinkin is a raised
+  crossing paved in charcoal herringbone with the zebra painted on it, white bollards round
+  the corner, another transformer; Ha-Meri has blue-white kerbs, a Zone 30 sign and a
+  painted 30 ring; the confectionery's front; the shop fronts under the arcade are lit
+  glass in light frames, not the game's dark panels. People last.
 
 ## Open problems
 

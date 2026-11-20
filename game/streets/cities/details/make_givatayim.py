@@ -1,0 +1,126 @@
+"""Writes cities/details/givatayim.json: what a walk filmed in Givatayim showed along the
+Ha-Meri passage that OpenStreetMap does not (see details.gd for the format, DEV.md "The filmed
+walk" for how it was measured). Run it from anywhere: python3 make_givatayim.py
+
+Everything is placed along the passage's own line: P(s, off) is `s` metres from its end on
+Katzenelson towards Sheinkin and `off` to the south-east (negative: north-west). Walking it
+south-west, the south-east side is on the left."""
+import json, math, os
+S0 = (667.9, -653.0)          # the passage's end on Katzenelson (a baked node)
+S1 = (611.3, -588.2)          # its end on Sheinkin (a baked node)
+L = math.dist(S0, S1)
+u = ((S1[0] - S0[0]) / L, (S1[1] - S0[1]) / L)
+left = (u[1], -u[0])          # the south-east side
+assert left[0] > 0 and left[1] > 0, left
+def P(s, off=0.0):
+    return [round(S0[0] + u[0] * s + left[0] * off, 2), round(S0[1] + u[1] * s + left[1] * off, 2)]
+SPLIT = 58.0
+r2 = lambda p: [round(p[0], 2), round(p[1], 2)]
+
+# the walk: landmarks timed to the film, the points between timed by distance
+lm = [
+    (0.0, (665.9, -677.2)), (1.5, (664.5, -675.6)),            # off the north kerb of Katzenelson
+    (15.5, (652.2, -661.3)), (17.0, (651.0, -659.9)),          # over both halves, onto the south pavement
+    (None, (655.5, -656.0)), (None, (659.8, -652.0)),          # along it, past the motorbikes
+    (25.0, tuple(P(7.5))), (33.0, tuple(P(17))),               # the forecourt, into the passage
+    (None, tuple(P(30))), (None, tuple(P(45))),
+    (64.0, tuple(P(SPLIT))),                                   # out of it at the railings
+    (None, tuple(P(60.5, -2.0))), (None, tuple(P(63, -4.4))),  # onto the little street's pavement, the road on the left
+    (80.0, tuple(P(80.5, -4.6))), (81.5, tuple(P(82.3, -4.6))),  # the corner, at the kerb
+    (90.0, tuple(P(90.4, -4.6))),                                 # over Sheinkin
+    (None, tuple(P(92.5, -5.2))), (93.0, tuple(P(94.0, -5.8))), (96.0, tuple(P(97.5, -6.0))),   # into Ha-Meri
+]
+# fill the untimed points by distance between the timed ones
+pts = [list(p) for _, p in lm]
+times = [t for t, _ in lm]
+i = 0
+while i < len(lm):
+    if times[i] is None:
+        j = i
+        while times[j] is None:
+            j += 1
+        a = i - 1
+        seg = [math.dist(pts[k], pts[k + 1]) for k in range(a, j)]
+        tot = sum(seg)
+        acc = 0.0
+        for k in range(i, j):
+            acc += seg[k - a - 1]
+            times[k] = times[a] + (times[j] - times[a]) * acc / tot
+        i = j
+    i += 1
+walk = [[round(t, 2), round(p[0], 2), round(p[1], 2)] for t, p in zip(times, pts)]
+
+d = {
+    "about": "Givatayim as a walk filmed along it showed it, where OpenStreetMap does not: the "
+             "short street at the south end of the Ha-Meri passage (the map draws it all as one "
+             "footpath), the zebra across Katzenelson by the passage (unmarked), the paved "
+             "forecourt at the passage's north end, the walls, fences and hedge down the passage, "
+             "the bin in it and the railings at its end. Metres on the city file's ground.",
+    "roads": {
+        "drop": [{"k": "footway", "name": "המרי", "near": P(40)}],
+        "add": [
+            {"pts": [list(S0), P(SPLIT)], "k": "footway", "w": 2.6, "name": "המרי", "name_en": "HaMeri"},
+            {"pts": [P(SPLIT), list(S1)], "k": "residential", "w": 5.5, "name": "המרי", "name_en": "HaMeri"},
+        ],
+    },
+    "crossings": [[661.6, -672.2], [655.1, -664.7]],
+    # the block at the passage's north-west corner stands on columns along Katzenelson: shops
+    # 3 m back under the upper floors, the walk goes between them and the columns (film 18-23 s)
+    "buildings": [{"near": P(15, -15), "arcade": [[646.9, -664.0], [657.7, -655.6]], "depth": 3.0, "h": 3.4}],
+    # paving level with the pavement (film 17-33 s): charcoal herringbone from the kerb in
+    # under the arcade, then the forecourt's pale poured slabs, laid square to the passage, out
+    # to the two blocks either side and round into the drive past the barrier
+    "surfaces": [
+        {"k": "pavers_dark", "lift": 0.14, "p": [P(4.55, -23.6), P(4.55, -6.0), P(8.4, -6.0), P(8.4, -23.6)]},
+        {"k": "slabs", "lift": 0.14, "lay": [round(u[0], 4), round(u[1], 4)],
+         "p": [P(4.55, -6.0), P(8.4, -6.0), P(8.4, -7.9), P(17.1, -7.9), P(17.1, 1.35), P(17.1, 5.0),
+               P(22.0, 5.0), P(22.0, 10.5), P(16.3, 10.5), P(16.3, 5.4), P(4.55, 5.4)]},
+    ],
+    "lines": [
+        {"kind": "stone_wall", "pts": [P(17, -1.35), P(38, -1.35)], "h": 0.8},
+        {"kind": "wood_fence", "pts": [P(17, -1.35), P(38, -1.35)], "base": 0.75, "h": 1.15},
+        {"kind": "hedge", "pts": [P(38, -1.5), P(57, -1.5)]},
+        {"kind": "loop_fence", "pts": [P(17, 1.35), P(56, 1.35)], "h": 0.9},
+        {"kind": "loop_fence", "pts": [P(17.2, 5.0), P(17.2, 1.35)], "h": 0.9},   # round the planted bed's front
+        # the planted bed behind the white fence, and its strip on along the next block
+        {"kind": "hedge", "pts": [P(17.8, 2.4), P(25.8, 2.4)]},
+        {"kind": "hedge", "pts": [P(18.2, 4.1), P(21.5, 4.1)]},
+        {"kind": "hedge", "pts": [P(26.2, 2.1), P(38.5, 2.1)]},
+    ],
+    "props": [
+        {"kind": "bin", "at": P(41, -0.95)},
+        {"kind": "hoop_railing", "at": P(56.6, -0.85), "dir": [round(u[0], 4), round(u[1], 4)]},
+        {"kind": "hoop_railing", "at": P(56.6, 0.85), "dir": [round(u[0], 4), round(u[1], 4)]},
+        # the forecourt (film 24-33 s): a loose row of bollards across it with a gap to walk
+        # through, one more at the passage's mouth; the transformer's twin poles on their plinth
+        # just right of the mouth; a garden lamp at the bed's corner; a manhole in the slabs;
+        # the barrier across the drive to the next block's car park
+        *[{"kind": "bollard", "at": P(13.6, o)} for o in (-6.6, -5.0, -3.4, -1.0, 1.0, 2.6, 4.2)],
+        {"kind": "bollard", "at": P(15.7, -0.8)},
+        {"kind": "twin_poles", "at": P(16.6, -2.25), "dir": [round(left[0], 4), round(left[1], 4)]},
+        {"kind": "globe_lamp", "at": P(18.0, 2.3), "h": 2.7},
+        {"kind": "manhole", "at": P(10.6, -0.6)},
+        {"kind": "barrier", "at": P(21.6, 5.3), "dir": [round(left[0], 4), round(left[1], 4)], "len": 4.0},
+        # motorbikes and scooters nose to the kerb all along the arcade (film 17-24 s), a gap
+        # where the walk comes up off the road; two more parked out in the forecourt
+        *[{"kind": "scooter" if i % 3 == 1 else "motorbike", "box": i % 4 == 2,
+           "at": P(4.75 + (0.15 if i % 2 else 0.0), o), "dir": [round(-u[0], 4), round(-u[1], 4)]}
+          for i, o in enumerate((-22.2, -21.2, -20.2, -19.2, -15.8, -14.8, -13.8, -12.8, -11.8, -10.6,
+                                 -9.4, -8.2, -6.6, -5.5, -4.4, -3.2, -2.0))],
+        {"kind": "scooter", "box": True, "at": P(8.2, -3.6), "dir": [round(left[0], 4), round(left[1], 4)]},
+        {"kind": "scooter", "at": P(15.2, -5.2), "dir": [round(-u[0], 4), round(-u[1], 4)]},
+    ],
+    # the trees over the passage's mouth: in the planted bed, and in the yard behind the fence
+    "trees": [P(19.6, 3.3), P(23.6, 3.8), P(21.5, -4.2), P(28.5, -4.8), P(35.5, -4.2)],
+    "walks": {
+        "katzenelson_hameri": {
+            "name": "Katzenelson to Ha-Meri, on foot",
+            "points": walk,
+        }
+    },
+}
+out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "givatayim.json")
+with open(out, "w", encoding="utf-8") as f:
+    json.dump(d, f, ensure_ascii=False, indent=1)
+print("wrote", out, len(walk), "walk points, last t", walk[-1][0])
+print("speeds:", [round(math.dist(walk[k][1:], walk[k+1][1:]) / max(walk[k+1][0]-walk[k][0], 1e-3), 2) for k in range(len(walk)-1)])
