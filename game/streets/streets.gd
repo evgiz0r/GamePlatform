@@ -6558,6 +6558,8 @@ func _lights_setup() -> void:
 		knots.append(knot)
 	for knot: Array in knots:
 		_signal_groups(knot)
+		for node: int in knot:
+			_sig_knot[node] = knot[0]
 	for node: int in lit:
 		for e: Vector2i in _node_roads[node]:
 			if (_roads[e.x] as Dictionary)["drive"] and not _sig_set.has(node):
@@ -8016,8 +8018,10 @@ func _ap_light_v() -> float:
 			continue
 		var n: int = f[1]
 		var stop := along - (_node_r[n] + 2.2 + CAR_LEN * 0.5)   # (the nose at the stop line)
-		if stop < -1.5:
-			return INF   # over the line already
+		if stop < -1.5 and (_v > 2.0 or along - CAR_LEN * 0.5 < _node_r[n]):
+			return INF   # over the line already, rolling (or in the junction): through
+		# (standing a little over the line -- stopped there for people on a crossing -- is
+		# not through: it waits for its green where it stands)
 		var state := _light_at(n, f[2])
 		if state == "g":
 			return INF
@@ -8057,6 +8061,8 @@ func _light_group(n: int, dir: Vector2) -> int:
 
 var _sig_ap := {}                    ## junction node -> [[way in (unit), group], ...]
 var _sig_owner := {}                 ## a node with a light of its own -> the junction it belongs to
+var _sig_knot := {}                  ## a junction's point -> the one id of all its points (a divided road's
+                                     ## junction is several points 10-30 m apart: one junction)
 
 ## the ways in at the points of one junction (one point, or the few of a junction drawn as
 ## several) and their signal groups: the main road -- the busiest kind, then the widest --

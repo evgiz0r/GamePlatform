@@ -434,7 +434,10 @@ func _light_ahead(c: Car) -> float:
 		# the front at the stop line (1.2 m out from the junction's edge), not the middle: a
 		# bus's middle there left its front 4 m into the junction, across the other road
 		var stop := dist - (_node_r[n] + 2.2 + c.len * 0.5)
-		if state == "g" or stop < -1.5:   # (its front over the line: committed, through)
+		# its front over the line and rolling, or in the junction: committed, through. Over
+		# the line but standing -- stopped there for people on the crossing -- is not: it
+		# waited for the people, then drove on through the red.
+		if state == "g" or stop < -1.5 and (c.v > 2.0 or dist - c.len * 0.5 < _node_r[n]):
 			return INF
 		if state == "y" and c.v * c.v > 2.0 * BRAKE * maxf(stop, 0.1):
 			return INF   # too late to stop on amber: through

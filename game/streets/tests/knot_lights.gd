@@ -33,7 +33,7 @@ func _run() -> void:
 			pts.append(n)
 	print("signalled points within 60 m of %s: %d" % [Vector2i(at), pts.size()])
 	for n: int in pts:
-		var owner: int = g._sig_owner.get(n, n)
+		var owner: int = g._sig_knot.get(g._sig_owner.get(n, n), g._sig_owner.get(n, n))
 		var names: Array = []
 		for e: Vector2i in g._node_roads[n]:
 			names.append("%s (%s)" % [(g._roads[e.x] as Dictionary)["en"], (g._roads[e.x] as Dictionary)["k"]])
@@ -72,7 +72,7 @@ func _run() -> void:
 				if g._nodes[n].distance_to(c.pos) >= g._node_r[n] + 1.0:
 					continue
 				in_any = true
-				var key := "%d:%d" % [i, g._sig_owner.get(n, n)]
+				var key := "%d:%d" % [i, g._sig_knot.get(g._sig_owner.get(n, n), g._sig_owner.get(n, n))]
 				if not inside.has(key) and c.v > 2.0:
 					entries += 1
 					var cd: Vector2 = came.get(i, Vector2(sin(c.yaw), cos(c.yaw)))
