@@ -8379,9 +8379,9 @@ func _light_group(n: int, dir: Vector2) -> int:
 		return 1
 	var site: Dictionary = _sites[s]
 	var g := 1
-	if float(site["a2"]) >= 0.0:
-		var a := fposmod(dir.angle(), PI)
-		g = 1 if _axis_gap(a, site["a1"]) <= _axis_gap(a, site["a2"]) else 2
+	if float(site["hi"]) >= 0.0:
+		# in group 1's arc (lo to hi, round the half circle), or not
+		g = 1 if fposmod(fposmod(dir.angle(), PI) - float(site["lo"]), PI) <= fposmod(float(site["hi"]) - float(site["lo"]), PI) else 2
 	return 3 - g if site.has("flip") else g
 
 ## the way into lit point n that traffic going `dir` takes ([way in, line, road, from inside]
@@ -8408,7 +8408,7 @@ func _light_line(n: int, dir: Vector2) -> float:
 			line = way[1]
 	return line
 
-var _sites: Array = []               ## per junction with lights: {nodes, c (middle), a1, a2 (its two axes, radians mod PI; a2 -1: one), flip (groups swapped)}
+var _sites: Array = []               ## per junction with lights: {nodes, c (middle), lo, hi (group 1's arc of directions, radians mod PI; hi -1: one group), flip (groups swapped)}
 var _site_of := {}                   ## each lit point -> its site
 var _sig_line := {}                  ## lit point -> [[way in (unit), stop line (m), road, from inside the site], ...]
 const SITE_LEG := 36.0               ## lit points this close along a road are one junction...
@@ -8484,20 +8484,50 @@ func _site_axes(nodes: Array) -> Dictionary:
 				if e.y + d2 >= 0 and e.y + d2 < pts.size() and (r["o"] == 0 or r["o"] == -d2):
 					arms.append([fposmod((pts[e.y + d2] - pts[e.y]).angle(), PI), int(ROAD_RANK.get(r["k"], 1)),
 							float(r["w"]) * (2.0 if r.has("median") else 1.0)])
-	var a1 := 0.0
-	var a2 := -1.0
-	if not arms.is_empty():
-		var main: Array = arms[0]
-		for a: Array in arms:
-			if int(a[1]) > int(main[1]) or (int(a[1]) == int(main[1]) and float(a[2]) > float(main[2])):
-				main = a
-		a1 = main[0]
-		var far := deg_to_rad(20.0)
-		for a: Array in arms:
-			if _axis_gap(a[0], a1) > far:
-				far = _axis_gap(a[0], a1)
-				a2 = a[0]
-	return {"nodes": nodes, "c": c / maxf(nodes.size(), 1.0), "a1": a1, "a2": a2}
+	# the ways' directions, alike within 6 degrees taken as one, round the half circle
+	var dirs: Array = []
+	for a: Array in arms:
+		if not dirs.any(func(d): return _axis_gap(d, a[0]) < deg_to_rad(6.0)):
+			dirs.append(a[0])
+	dirs.sort()
+	var out := {"nodes": nodes, "c": c / maxf(nodes.size(), 1.0), "lo": 0.0, "hi": -1.0}
+	var k := dirs.size()
+	if k < 2 or dirs.all(func(d): return _axis_gap(d, dirs[0]) < deg_to_rad(20.0)):
+		return out   # all one way (a crossing mid-street): one group
+	# Two groups are two arcs of the half circle. Every split tried (a few ways in: a handful),
+	# the one with the fewest pairs of ways crossing (over 53 degrees apart) in the same group;
+	# among those, the widest gap between the groups. (It took the main road and whichever way
+	# lay furthest from it, and where three streets met at 50-60 degrees, two that crossed
+	# shared a green.)
+	var best_cost := INF
+	for i in range(k):
+		for n in range(1, k):
+			var g1: Array = []
+			var g2: Array = []
+			for q in range(k):
+				((g1 if (q - i + k) % k < n else g2) as Array).append(dirs[q])
+			var cost := 0.0
+			for grp: Array in [g1, g2]:
+				for x in range(grp.size()):
+					for y in range(x + 1, grp.size()):
+						if _axis_gap(grp[x], grp[y]) > deg_to_rad(53.0):
+							cost += 1.0
+			var sep := PI
+			for x: float in g1:
+				for y: float in g2:
+					sep = minf(sep, _axis_gap(x, y))
+			cost -= sep * 0.01
+			if cost < best_cost:
+				best_cost = cost
+				# group 1's arc: from halfway between the first of it and the way before, to
+				# halfway between the last of it and the way after
+				var first: float = dirs[i]
+				var before: float = dirs[(i - 1 + k) % k]
+				var last: float = dirs[(i + n - 1) % k]
+				var after: float = dirs[(i + n) % k]
+				out["lo"] = fposmod(first - fposmod(first - before, PI) * 0.5, PI)
+				out["hi"] = fposmod(last + fposmod(after - last, PI) * 0.5, PI)
+	return out
 
 ## The ways into lit point `node`: [way in (unit), stop line before the node (m), road, from
 ## inside the site]. The line is 1.2 m out from the junction's edge, or behind a zebra painted

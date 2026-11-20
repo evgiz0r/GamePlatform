@@ -41,8 +41,8 @@ func _run() -> void:
 		quit(1)
 		return
 	var st: Dictionary = g._sites[site]
-	print("site %d: %d points round %s, axes %d and %d degrees%s" % [site, (st["nodes"] as Array).size(), (st["c"] as Vector2).round(),
-			int(rad_to_deg(st["a1"])), int(rad_to_deg(st["a2"])), " (groups swapped)" if st.has("flip") else ""])
+	print("site %d: %d points round %s, group 1 the ways from %d to %d degrees%s" % [site, (st["nodes"] as Array).size(), (st["c"] as Vector2).round(),
+			int(rad_to_deg(st["lo"])), int(rad_to_deg(st["hi"])), " (groups swapped)" if st.has("flip") else ""])
 	var pick: Array = []
 	var pick_n := -1
 	var pick_dot := -2.0
