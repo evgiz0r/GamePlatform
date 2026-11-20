@@ -1638,7 +1638,10 @@ Wikipedia's figures, modelled without photos), Sarona (39 houses); 92 roofs lit,
 lights. `found` keeps what was matched, for the test: the city file is let go of once
 built. Test: `tests/landmarks.gd`. Since the box grew to the sea: the Shalom Meir tower
 (130 m, a mast to 142 m) and the Opera tower (OSM draws its 21 stepped floors in their
-stone, #f2e1d6, up to 82 m: found, nothing added), 136 roofs lit.
+stone, #f2e1d6, up to 82 m: found, nothing added), 136 roofs lit. A shaft's and a mast's
+`to` is over the ground at the building's foot (the figures are towers' heights): it was
+taken as the world's y (over the height grid's base) and Shalom Meir's mast, on ground
+15 m up, ended under its own roof; the Kirya's were short by their ground too.
 
 `"market"`: [street name, kind] pieces with stalls down both sides (`_market_line`, set up
 with the landmarks): a place every `STALL_STEP` 2.7 m each side, one in `STALL_GAP` 7 left

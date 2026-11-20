@@ -692,6 +692,10 @@ the game walking the same route in first person beside it.
   showed a row. Decide gardens piece by piece (a shop behind it, or a hand-placed row of
   shopfronts), not by the road's tag or the whole street: the same street had one real
   garden between its shops.
+- **A published height is over the thing's own ground.** A tower's "142 m" (Wikipedia, a
+  survey) is from its foot; a game's y is usually over the height grid's lowest point. A
+  mast built "up to 142" in world y on ground 15 m up ended under the tower's roof: add
+  the ground at the foot to every such figure.
 - **Real things keep real colours.** A car's red paint, a red-and-white kerb, a stop sign, a
   hydrant: built from palette roles directly (hazard for red, player for blue) they came out
   pink and teal in a neon palette, and only beside the film did it show. Pin the hue
