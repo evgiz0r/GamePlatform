@@ -102,6 +102,13 @@ is a Z coordinate, not a height.
   bend that copy and throw a RigidBody3D with its mesh -- with a slab to land on, if the
   world has no physics of its own -- and put it back once the player is out of sight. Make
   sure a braking assist does not brake for what is meant to be knocked aside.
+- **Split the costliest builder by distance, not the squares by number.** When one kind of
+  dressing is most of the wait before the player can move (front gardens were 0.7 s of
+  3.9), lay only the part within the first view's reach while loading, remember what the
+  rest needs (its inputs, not its results), and lay it first thing in the background
+  build, nearest first. Deterministic keys make it the same either way -- prove that with
+  a test that counts the result both ways (an env switch for the old way), or it will
+  quietly drop or double things at the seam.
 - **Built in squares, decided the same in every square.** When one square's builder needs
   something another square builds (where a building's door is, to lead a path to it), work
   it out again from the data with the same choices, cached by id -- never read what the
@@ -175,6 +182,11 @@ is a Z coordinate, not a height.
   holding the person's colours in a `uniform vec4 parts[6]` -- one draw a person. Build the
   joined mesh once per figure and share it (a mesh per person is ~0.7 MB); the material is
   per person. Pass colours as `srgb_to_linear()` (a plain uniform array is not converted).
+- **No `visibility_range_end` on a multimesh that spans the world.** The distance is measured
+  to the instance node's own middle -- for a city-wide multimesh (dogs, pushchairs moved
+  about by code, a custom AABB over the whole map) that is the city's middle, so the whole
+  multimesh vanished whenever the camera was ~90 m from it, wherever the copies were. Hide
+  far copies yourself (a transform 500 m down) and leave the range off.
 - Both helpers fall back to palette shapes + a playtest warning when a file is missing, so
   a game keeps running (and the report tells you which name was wrong).
 - Scenery: a ring of `model()`s around the play area (houses behind, trees on the sides,

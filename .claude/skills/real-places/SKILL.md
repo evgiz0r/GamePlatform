@@ -190,6 +190,13 @@ goes wrong shows up the first time it runs.
 
 ## AI drivers in a real town
 
+- **A straight street is two points.** A driving plan built from OSM nodes can have one point
+  per block. Anything that bends the plan by moving its points (round a stopped bus or van,
+  into a turn lane) must first add points along the stretch it bends (every 2 m), and must
+  measure "metres ahead" from the car's projection onto the plan, not from the plan's first
+  point -- which is the start of the current stretch and can be 40 m behind. Both together
+  had autodrive "pass" a van with a bend that landed behind it, then stand there.
+
 - **Off the road** (handed over in a yard, knocked onto a lawn), heading straight for the
   nearest road goes through the wall in between, backs off and does it again. Search
   outward over 2 m squares the car fits through to the nearest asphalt and drive that.
