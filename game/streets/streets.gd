@@ -8413,6 +8413,11 @@ var _soups := {}
 const BATCH_CELL := 400.0
 const BATCH_RANGES := [140.0, 200.0, 270.0, 340.0, 460.0, 700.0, 1150.0]
 const BATCH_VERTS := 650000          ## more than this in one call: left as a multimesh (trees, balconies)
+## A kit of more vertices than this stays a multimesh however few: merged, every copy's vertices
+## are written out (a 534-vertex tree trunk is 13 KB a copy merged, 64 bytes a copy as an
+## instance). Tel Aviv's merged meshes held 16 M vertices, 9.6 M of them copies of kits --
+## trunks 3.5 M, cats, terraces, bins -- most of its 505 MB of vertex buffers (perf_dive).
+const BATCH_KIT_VERTS := 200
 
 ## ONE material for every merged mesh: a vertex either carries its colour (alpha 1: signs,
 ## kits, balconies) or the number of a tone of the palette (alpha 0, the number in red),
@@ -9030,7 +9035,8 @@ func _batchable(mesh: Mesh, m: Material, count: int) -> bool:
 	var sm := mt as StandardMaterial3D
 	if sm.emission_enabled or sm.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED or sm == _smat.get("lamp"):
 		return false
-	return (_soup(mesh)[0] as PackedVector3Array).size() * count <= BATCH_VERTS
+	var nv := (_soup(mesh)[0] as PackedVector3Array).size()
+	return nv <= BATCH_KIT_VERTS and nv * count <= BATCH_VERTS
 
 func _batch_add(mesh: Mesh, xforms: Array, range_end: float, colours: Array, m: Material, shadows: bool) -> void:
 	var mt: Material = m if m != null else mesh.surface_get_material(0)
