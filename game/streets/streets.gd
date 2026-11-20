@@ -4293,8 +4293,7 @@ func _front_gate(gate: Array, run: PackedVector2Array, cum: PackedFloat32Array, 
 		if _mine(c) and depth >= 6.8 and not _kept_clear(c) and _push_out(c, 1.1, false) == Vector2.ZERO \
 				and _push_out(c + nj * 1.4, 1.0, false) == Vector2.ZERO and _clear_of_posts(c, 2.2):
 			_yard_cars.append([Transform3D(Basis(Vector3.UP, atan2(nj.x, nj.y)), _g3(c, 0.08)), CAR_MIX[hk % CAR_MIX.size()], hk])
-			_add_post(c + nj * 1.25, 0.85)
-			_add_post(c - nj * 1.25, 0.85)
+			_add_car_posts(c, nj)
 			_ao_car(c, nj, 0.12)
 	elif hk < 35 and not _kept_clear(wall_mid):
 		# a metal arch over the gate, bougainvillea grown over it
@@ -7471,8 +7470,7 @@ func _build_parked() -> void:
 								cat_at(cq, _g3(cq, KERB_H).y, -side.rotated(float(roll2 % 5 - 2) * 0.3), "sit")
 							(cols_by[kind] as Array).append(colour)
 							xf.append(0)
-							_add_post(p + face * 1.25, 0.85)
-							_add_post(p - face * 1.25, 0.85)
+							_add_car_posts(p, face)
 					elif rng.randf() < PARKED_MOTO:
 						_park_moto(r, ri, run, cum, s, total, hw, sgn, rng, palette, xf_by, cols_by)
 					s += 5.6
@@ -7571,8 +7569,7 @@ func _build_lots() -> void:
 						if taken == 1:
 							_lot_at.append(at)
 						(cols_by[kind] as Array).append(palette[rng.randi() % palette.size()])
-						_add_post(at + f * 1.25, 0.85)
-						_add_post(at - f * 1.25, 0.85)
+						_add_car_posts(at, f)
 						cars += 1
 				uu += 2.5
 			vv += 5.0 + (6.0 if row % 2 == 0 else 0.4)   # the aisle after the first row of a pair
@@ -7615,8 +7612,7 @@ func _build_lots() -> void:
 						(xf_by[kind] as Array).append(Transform3D(Basis(Vector3.UP, atan2(f.x, f.y)), _g3(p, 0.02)))
 						_ao_car(p, f, Y_AREA + 0.035)
 						(cols_by[kind] as Array).append(palette[rng.randi() % palette.size()])
-						_add_post(p + f * 1.25, 0.85)
-						_add_post(p - f * 1.25, 0.85)
+						_add_car_posts(p, f)
 						cars += 1
 				s += 2.5
 	_draw_parked(xf_by, cols_by)
@@ -9410,6 +9406,21 @@ func _add_post(p: Vector2, r: float) -> void:
 	_posts.append(p)
 	_post_r.append(r)
 	_hash_add(_post_hash, Rect2(p, Vector2.ZERO).grow(r), BLD_CELL, i)
+
+## A parked car as solid ground: five posts along it. It was two, 0.85 m round at 1.25 m
+## either side of its middle -- 2.5 m apart, a 0.8 m gap between them, and a person (0.25 m)
+## fitted in it: walkers on a pavement with cars parked half up on it went in at the car's
+## nose, came out of its door and back in at its boot. With one more in the middle, the
+## scallops between three round posts still let a shoulder 0.2-0.35 m into the car's side
+## (tests/walk_people.gd); five, 0.625 m apart, leave about 0.1 m (and the ends' corners,
+## rounder than a car's). All 0.85 m: city_check knows a parked car's posts by that, and
+## they reach into the road by design. (The end two first: tests and the traffic find a
+## parked car as that pair.)
+func _add_car_posts(c: Vector2, along: Vector2) -> void:
+	_add_post(c + along * 1.25, 0.85)
+	_add_post(c - along * 1.25, 0.85)
+	for k: float in [-0.625, 0.0, 0.625]:
+		_add_post(c + along * k, 0.85)
 
 ## a traffic light on the right of every way into a signalled junction, in two groups by
 ## direction so crossing streets take turns
@@ -14820,7 +14831,8 @@ func _place_walker(w: Dictionary, anywhere: bool) -> void:
 		# a step past it the other carriageway
 		var side := float(r["o"]) if r.has("median") else (1.0 if _people_rng.randf() < 0.5 else -1.0)
 		# the back half of the pavement: the parked cars stand on the front of it
-		var line := _offset_line(run, (float(r["w"]) * 0.5 + _people_rng.randf_range(1.85, 2.2)) * side)
+		var pave := _people_rng.randf_range(1.85, 2.2)
+		var line := _offset_line(run, (float(r["w"]) * 0.5 + pave) * side)
 		line = _pavement_piece(line)
 		if line.size() < 2:
 			continue
@@ -14835,6 +14847,8 @@ func _place_walker(w: Dictionary, anywhere: bool) -> void:
 		w["line"] = line
 		w["cum"] = cum
 		w["s"] = s0
+		w["pave"] = pave
+		w["cross"] = 0.0
 		w.erase("yaw")
 		w["dir"] = 1.0 if _people_rng.randf() < 0.5 else -1.0
 		a.play("Walk_Carry" if w["carry"] else "Walk", true, float(w["speed"]) / 1.35)
@@ -14848,6 +14862,13 @@ func _place_walker(w: Dictionary, anywhere: bool) -> void:
 ## divided road, the next street where two meet at an angle are not -- people walked down
 ## all of those. [] when nothing is left 8 m long.
 func _pavement_piece(line: PackedVector2Array) -> PackedVector2Array:
+	var pieces := _pavement_pieces(line)
+	if pieces.is_empty():
+		return PackedVector2Array()
+	return pieces[_people_rng.randi() % pieces.size()]
+
+## every such stretch of a pavement line, 8 m or more
+func _pavement_pieces(line: PackedVector2Array) -> Array:
 	var pts := PackedVector2Array()
 	for i in range(line.size() - 1):
 		var n := maxi(1, ceili(line[i].distance_to(line[i + 1]) / 1.5))
@@ -14888,9 +14909,72 @@ func _pavement_piece(line: PackedVector2Array) -> PackedVector2Array:
 			pieces.append(cur)
 		cur = PackedVector2Array()
 		length = 0.0
-	if pieces.is_empty():
-		return PackedVector2Array()
-	return pieces[_people_rng.randi() % pieces.size()]
+	return pieces
+
+## At the end of its stretch of pavement a walker walks on, as people do: over the side
+## street's mouth to the same pavement's next block, or round the corner onto the side
+## street's. They turned back on the spot at every block's end instead, pacing one block
+## for good -- in view, people going nowhere. Looks only at the street runs that begin or
+## end near here (a run's whole pavement is checked a metre and a half at a time). False when
+## nothing goes on from here.
+func _walk_on(w: Dictionary, end: Vector2, fw: Vector2) -> bool:
+	var best := PackedVector2Array()
+	var best_score := -INF
+	var roads := {}
+	var side_dir := Vector2(-fw.y, fw.x)
+	for probe: Vector2 in [end + fw * 10.0, end + fw * 5.0 + side_dir * 7.0, end + fw * 5.0 - side_dir * 7.0]:
+		var hit := _nearest_seg(probe, 12.0, true, true)
+		if hit.is_empty() or roads.has(hit["road"]):
+			continue
+		roads[hit["road"]] = true
+		var r: Dictionary = _roads[hit["road"]]
+		if not _kerbed(r) or r.has("ys"):
+			continue
+		for run: PackedVector2Array in _street_runs(r):
+			if minf(run[0].distance_to(end), run[run.size() - 1].distance_to(end)) > 30.0:
+				continue
+			for side: float in ([float(r["o"])] if r.has("median") else [1.0, -1.0]):
+				var line := _offset_line(run, (float(r["w"]) * 0.5 + float(w.get("pave", 2.0))) * side)
+				for piece: PackedVector2Array in _pavement_pieces(line):
+					for back: bool in [false, true]:
+						var n := piece.size()
+						var a := piece[n - 1] if back else piece[0]
+						var b := piece[n - 2] if back else piece[1]
+						var gap := a.distance_to(end)
+						if gap < 1.0 or gap > 18.0:
+							continue   # (its own stretch; or too far to step over to)
+						var go := (b - a).normalized()
+						var step := (a - end) / gap
+						if go.dot(fw) < -0.3 or step.dot(fw) < -0.2:
+							continue   # (not back the way they came)
+						var score := go.dot(fw) - gap * 0.06 + _people_rng.randf() * 0.7
+						if score <= best_score:
+							continue
+						var clear := true   # the step over: not through a building
+						for k in range(1, int(gap)):
+							if _push_out(end.lerp(a, k / gap), 0.3, false, false) != Vector2.ZERO:
+								clear = false
+								break
+						if not clear:
+							continue
+						best_score = score
+						best = PackedVector2Array([end])
+						if back:
+							for k in range(n - 1, -1, -1):
+								best.append(piece[k])
+						else:
+							best.append_array(piece)
+	if best.size() < 3:
+		return false
+	var cum := PackedFloat32Array([0.0])
+	for i in range(1, best.size()):
+		cum.append(cum[i - 1] + best[i - 1].distance_to(best[i]))
+	w["line"] = best
+	w["cum"] = cum
+	w["s"] = 0.0
+	w["dir"] = 1.0
+	w["cross"] = cum[1]   # (the step over: on the asphalt's level, not the pavement's)
+	return true
 
 ## People by the cafe tables near the car, standing about. Re-seated at the nearest tables
 ## every second and a half, they jumped from table to table in plain view as the car moved;
@@ -15069,10 +15153,23 @@ func _place_still(list: Array, spots: Array, how: String) -> void:
 
 ## somewhere nobody would see a person appear or go: beyond the distance people are drawn
 ## at, or well behind the car (and its camera)
+## -- behind by the camera's own look as well as the body's: on foot the head turns from the
+## way you walk (a filmed walk glances 60-90 degrees aside), and "behind the body" was then in
+## plain view -- people appeared on the pavement beside the walk
 func _unseen(p: Vector2) -> bool:
 	var to := p - _pos
 	var d := to.length()
-	return d > PEOPLE_SEEN + 4.0 or (d > 18.0 and to.dot(_fwd()) < -0.35 * d)
+	if d > PEOPLE_SEEN + 4.0:
+		return true
+	if d <= 18.0 or to.dot(_fwd()) >= -0.35 * d:
+		return false
+	if cam == null:
+		return true
+	var cf := -cam.global_transform.basis.z
+	var look := Vector2(cf.x, cf.z)
+	if look.length() < 0.3:
+		return false   # (looking down from high up: the whole ring round you is in view)
+	return to.dot(look.normalized()) < -0.35 * d and not cam.is_position_in_frustum(Vector3(p.x, _h(p) + 1.0, p.y))
 
 func _people_tick(dt: float) -> void:
 	# where everyone is, for the walkers to keep clear of and for the car and you to bump
@@ -15114,9 +15211,25 @@ func _people_tick(dt: float) -> void:
 		var cum: PackedFloat32Array = w["cum"]
 		var total := cum[cum.size() - 1]
 		var s: float = w["s"] + float(w["dir"]) * float(w["speed"]) * dt
-		if s < 0.0 or s > total:   # the end of the block: turn back
-			w["dir"] = -float(w["dir"])
-			s = clampf(s, 0.0, total)
+		if s < 0.0 or s > total:   # the end of the stretch: on over the side street, or round the corner
+			var at_end := line[0] if s < 0.0 else line[line.size() - 1]
+			var came := at_end - (line[1] if s < 0.0 else line[line.size() - 2])
+			if placed:
+				s = clampf(s, 0.0, total)   # (one search a tick: a tick's wait at the end)
+			elif _walk_on(w, at_end, came.normalized()):
+				placed = true
+				line = w["line"]
+				cum = w["cum"]
+				total = cum[cum.size() - 1]
+				s = 0.0
+			elif _unseen(at_end):   # nowhere on from here, out of sight: in at a door, someone else out of one
+				placed = true
+				_place_walker(w, false)
+				continue
+			else:   # in view and nowhere on: back the way they came
+				placed = true
+				w["dir"] = -float(w["dir"])
+				s = clampf(s, 0.0, total)
 		w["s"] = s
 		var p := _along(line, cum, s)
 		var ahead := _along(line, cum, clampf(s + float(w["dir"]) * 0.5, 0.0, total)) - p
@@ -15139,18 +15252,44 @@ func _people_tick(dt: float) -> void:
 					continue
 				var rel := _people_at[k] - p
 				var fore := rel.dot(fw)
+				var sr := rel.dot(right)
+				if _people_who[k] == 0:
+					# you on foot: you do not step round them (a filmed walk keeps its line), so
+					# they make the room, from a few steps off, as people do with someone
+					# walking at them -- at 2.6 m they stepped aside at the last moment, or
+					# were walked through. To the nearer side of you if it has room, else
+					# the other (a walk along the parked cars: stepping away from you was
+					# stepping into a car, pushed back out onto you -- 0.32 m), keeping the
+					# side once picked while it stays clear.
+					if fore > -0.8 and fore < 7.0 and absf(sr) < 1.15:
+						var near_side := sr - 1.15 if sr >= 0.05 else sr + 1.15
+						var far_side := sr + 1.15 if sr >= 0.05 else sr - 1.15
+						var sides: Array = [near_side, far_side]
+						if w.has("me_side") and signf(far_side) == float(w["me_side"]):
+							sides = [far_side, near_side]
+						var pick: float = near_side
+						for cand: float in sides:
+							if _push_out(p + right * clampf(cand, -0.9, 0.9), 0.3, true, false) == Vector2.ZERO:
+								pick = cand
+								break
+						w["me_side"] = signf(pick)
+						want += pick
+					elif fore < -0.8 or fore > 9.0:
+						w.erase("me_side")
+					continue
 				if fore > -0.6 and fore < 2.6:
-					var sr := rel.dot(right)
 					if absf(sr) < 0.85:
 						want += 0.8 if absf(sr) < 0.05 else -signf(sr) * (0.85 - absf(sr))
 			var lat: float = w.get("lat", 0.0)
-			lat = lerpf(lat, clampf(want, -0.7, 0.7), 1.0 - exp(-dt * 3.0))
+			lat = lerpf(lat, clampf(want, -0.9, 0.9), 1.0 - exp(-dt * 3.0))
 			w["lat"] = lat
 			p += right * lat
 		# a car coming at them on the pavement: step aside, towards the buildings
+		# (not you on foot: walking at 1.4 m/s you were "a car" too, and everyone within 6 m
+		# jumped a metre aside -- they make room for you as for anyone, above)
 		var to_car := _pos - p
 		var dodge: float = w["dodge"]
-		if to_car.length() < 6.0 and absf(_v) > 1.0:
+		if to_car.length() < 6.0 and absf(_v) > 1.0 and not _walking:
 			dodge = minf(dodge + dt * 1.4, 1.1)   # a step aside, not a leap
 		else:
 			dodge = maxf(dodge - dt * 0.5, 0.0)
@@ -15162,7 +15301,8 @@ func _people_tick(dt: float) -> void:
 			p += side * dodge
 		for _pass in range(2):   # (out of one parked car's post can be into its other)
 			p += _push_out(p, 0.25, true, false)
-		a.position = Vector3(p.x, _h(p) + _pave_top(), p.y)   # (their line is on the pavement)
+		# (their line is on the pavement, but for a step over a side street's mouth)
+		a.position = Vector3(p.x, _walk_y(p) if s < float(w.get("cross", 0.0)) else _h(p) + _pave_top(), p.y)
 		if ahead != Vector2.ZERO:
 			# turning as people do, over a moment: at the end of a block they turned back on
 			# the spot in one frame, and at every bend of the pavement line they snapped
@@ -15623,6 +15763,8 @@ func _send_crossers() -> void:
 		if span.is_empty():
 			continue   # (next time, another crossing)
 		var flip := _people_rng.randf() < 0.5
+		if not _unseen((span[1] if flip else span[0]) + along):
+			continue   # (the kerb they wait at, not only the crossing's middle, out of sight)
 		cr["ni"] = pick
 		cr["a"] = (span[1] if flip else span[0]) + along
 		cr["b"] = (span[0] if flip else span[1]) + along

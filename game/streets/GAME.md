@@ -1031,6 +1031,17 @@ talking and round you on foot; you and the car can no longer go through them (th
 at a person with a soft knock, never a crash). They no longer pop in at 90 m: they come in
 over the last 15. Cats on the pavement are solid too.
 
+> i look at the latest video of the walk in sirkin, people are popping randomly and moving
+> aimlessly on my path, and no collision between them and the parked cars.
+
+**People round you on foot.** Nobody appears or is moved where you can see it, wherever
+your head turns on a walk (a person at a cafe table used to jump to the next table in view
+as you glanced at the shops). The people coming at you make room from a few steps off, to
+whichever side has space, rather than jumping a metre aside as if you were a car. At the
+end of a block they walk on over the side street or round the corner, rather than turning
+back and pacing the same block. And parked cars are solid along their whole length: people
+no longer walk through the middle of one.
+
 > I took a video on my phone, walking in Givatayim.
 
 ## Smooth on a laptop and a phone

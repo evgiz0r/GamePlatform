@@ -187,6 +187,27 @@ goes wrong shows up the first time it runs.
   for "someone on the crossing" waits through most of its green for a person on the other
   half. Give the crossing the person's position and pace, and let a car wait only while
   they are on its carriageway (plus a metre) or about to step onto it.
+- **"Out of sight" is the camera's, not the body's.** Putting people where nobody sees
+  them appear (beyond the drawn distance, or well behind you) by the way the car or the
+  walker faces holds while the camera looks that way too. On foot the head turns -- a
+  filmed walk glances 60-90 degrees aside -- and "behind the body" is then in plain view:
+  someone at a cafe table was re-seated 2.3 m in front of the camera. Test the camera's
+  own heading and its frustum as well.
+- **A parked car as round posts: closer together than their radius.** Two circles of
+  0.85 m at either end of a car leave a 0.8 m gap at its middle, and a walker (0.25 m)
+  stood in it -- on a pavement with cars half up on it they went in at the nose and out at
+  the boot. Even one more in the middle let a shoulder 0.2-0.35 m into the car's side in
+  the scallops between circles; five, the middle three 0.625 m apart, leave a few cm. The
+  same goes for anything long made of posts (a bus, a skip, a bench).
+- **Walkers walk on at the end of a stretch.** Turning back at every block's end paces
+  one block forever, and in view it reads as aimless. Go on over the side street's mouth
+  to the same pavement's next block, or round the corner; turn back only where nothing
+  goes on, and swap someone out only where nobody sees.
+- **You on foot are not a car to them.** A rule that steps people aside from a car coming
+  at them on the pavement (within some metres, moving faster than a walk) fires for the
+  player walking too, at walking pace: everyone jumped a metre aside as you passed. Give
+  way to you on foot as to anyone, from a few steps off -- a replayed walk cannot step
+  round them.
 
 ## AI drivers in a real town
 

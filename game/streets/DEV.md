@@ -90,6 +90,20 @@ The ones most often touched, and the functions in them:
   origin (the feet) 0.42 m in front of the bench's middle. The three multimeshes have no
   visibility range (it is measured to their middle, the city's: every dog was culled);
   `_companion` hides those past PEOPLE_SEEN. tests/street_people.gd.
+- **people round you on foot** (the user, on walk 2's replay: "people are popping randomly
+  and moving aimlessly on my path, and no collision between them and the parked cars") --
+  `_unseen` (where people may appear or be swapped out) takes the camera's own heading and
+  frustum as well as the body's: on foot the head turns (`_film_look`, 60-90 degrees), and a
+  cafe table's person was re-seated 2.3 m in plain view. The walkers' "car coming at them"
+  dodge skips you on foot (it fired at walking pace: a metre's jump as you passed); you are
+  given way to from 7 m instead (the `_people_who == 0` branch of the side step, up to 0.9 m).
+  At the end of its stretch a walker walks on (`_walk_on`): the pavement pieces of the runs
+  that begin or end within 30 m, the one 1-18 m ahead going on most straight, reached over
+  the side street's mouth (not through a building); `cross` is that step's length, walked at
+  `_walk_y`'s level. Nowhere on: swapped out if unseen, else back the way it came. Parked
+  cars are five posts (`_add_car_posts`): the old two left a 0.8 m gap at the car's middle a
+  walker stood in. A crosser's kerb is checked unseen, not only the crossing's middle.
+  tests/walk_people.gd.
 - **people in one piece** -- `_one_piece` (end of `_humanize`): the Quaternius figure is one
   mesh of six surfaces (Skin, Shirt, Pants, Belt, Face, Hair), each a draw (and a shadow
   draw). Joined once per figure into one surface (shared by everyone with that figure; the
