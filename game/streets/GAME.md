@@ -277,7 +277,13 @@ and a little roll, as small and as slow as the film's own, measured from it -- a
 down as well as round: straight down at Katzenelson's stripes on the way over, and at
 Ha-Meri's kerb as it steps up. Both walks hold it this way. And the picture is the phone's:
 its bright end squeezed rather than burnt to white, its shade lifted, warm and a little less
-colourful than the game drives in -- measured from the film, frame against frame.
+colourful than the game drives in -- measured from the film, frame against frame. It sets
+its exposure for what it looks at, as a phone does, so the shade under the arcade is no
+darker than the film's and the sunny forecourt no brighter.
+
+On Katzenelson the far half's traffic is the film's: a white hatchback goes by as the walk
+reaches the median, a white car waits in the kerb lane, and a grey SUV does not give way --
+it drives on past, close, in the lane by the median, while the walk waits.
 
 Over the passes since, the walk's street has been dressed, a stretch at a time, from the
 film: Katzenelson two lanes each way with railings and red-white kerbs at its zebra; the

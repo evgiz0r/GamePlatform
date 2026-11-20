@@ -61,9 +61,6 @@ focused, or leave them to them.
       graffiti on poles, a fire hydrant, chewing-gum stains on the slabs.
 
 ### Behaviour
-- [ ] On the median the film's grey SUV drives on in the other lane while the white cars
-      wait (film 12-14 s); in the game every car stops. One car in the far lane that
-      does not give way.
 - [ ] More traffic on Katzenelson: a steady stream both ways, a bus, a delivery scooter
       weaving (film 0-17 s); parked cars along its kerbs.
 - [ ] Looks at things as the film does: at the shop fronts under the arcade (film 18-21 s),
@@ -78,11 +75,6 @@ focused, or leave them to them.
       at 76-90 s).
 
 ### Quality
-- [ ] Under the arcade (film 15-24 s) the film's pavers are nearly as bright as the open
-      pavement's -- the phone's HDR lifts dark areas locally, not by one curve -- and the
-      game's are near black. A global grade cannot lift one area: either the arcade's shade
-      gets more light (ambient under a roof) or the grade gets a local, blurred-luminance
-      term as phones do.
 - [ ] The light: the film's late morning is bright, slightly hazy, warm; shadows soft-edged
       and blue-grey, not near black; the sky pale near the horizon. *(city-wide)*
 - [ ] Dappled shade under the passage's trees: patches of sun through the leaves moving
@@ -146,6 +138,10 @@ Its film is not in this repo or this machine's scratch: a session needs a clip o
       (bollards, cabinets, motorbikes, tables) keep landing on the walks' lines.
 
 ## Done
+- Pass 11 of walk 1 (DEV.md): the phone exposes for what it sees (both walks: the arcade, the
+  passage's shade and the sunny forecourt held near the film's steady brightness) and the
+  arcade's paving mid-grey, not near black; Katzenelson's far half as filmed -- a white
+  hatchback by, a white sedan waiting in the kerb lane, a grey SUV driving on past the walk.
 - Pass 10 of walk 1, both walks' picture (DEV.md): the phone's picture measured and laid
   over the replays (`tests/film_look.py`: the bright end squeezed, not blown -- 0.1% clipped
   against the game's 4.4%; shade lifted; greys warmed; colour a little less); Ha-Meri's far

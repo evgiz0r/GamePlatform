@@ -863,6 +863,26 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   Ha-Meri at 89-92.5 s is 55 degrees: at 80 the hatchback sat at the frame's right edge
   where the film has it dead ahead with the kerb on the left (AT stills at 91 and 92.3; the
   film frame by frame). AT names its stills by whole seconds: 92 and 92.3 save to one file.
+- **Pass 11, the arcade's dark and Katzenelson's traffic**, done. *The arcade*: under it the
+  film's floor read 0.39, the game's 0.14-0.18. Two causes, measured apart. The phone exposes
+  for what it sees: the film's brightness second to second held at 0.45 +- 0.055 while the
+  replay's swung 0.48 +- 0.12 (0.28 under the arcade, 0.64 on the sunny forecourt) -- so the
+  grade got an exposure (`FILM_EXPO`): a meter reading the whole screen off its mipmaps (16
+  taps at mip 7 read the true mean within 0.015; `STREETS_FILM_LOOK=meter` paints the reading
+  in a corner to check it), the frame pulled towards 0.45 by (0.45 / mean)^0.75 in light, the
+  curve refitted after it (0.455 +- 0.070 fitted). But exposure alone left the floor at 0.31 in
+  every setting: the arcade's "charcoal" pavers were five times darker than the game's other
+  paving. `pavers_dark` now 0.62 of the way to bg_alt (was 0.8): the floor 0.31-0.36 in AT
+  stills against the film's 0.38-0.41. *The traffic*: the film at 8-14 s, half a second at a
+  time -- a white hatchback by in the far half's lane by the median as the walk reaches it
+  (9 s), a white sedan stopped in its kerb lane (9.5-12 s), a grey SUV driving on past the
+  walk in the median lane, close (12.5-13.5 s); the walk faces across meanwhile (its look right
+  was 70 degrees, now 15). `Traffic.send` takes `opts`: "lane" kerb / median, "through" (past
+  the walk's own zebras only: `_zebra_ahead` skips the film-tagged ones), "kind", "paint".
+  A sent car starts at 70% of its street's pace: 28 m to the zebra on Katzenelson is 2.5 s.
+  AT stills jump the walk's clock, so scripted cars never drive their timing in them:
+  `TRAFFIC_LOG=from,to` runs the walk at its pace and logs the cars round it -- the hatchback
+  3 m in front at 9.0 s, the SUV 4 m in front at 13.0-13.5 s.
 - **Next passes**: the light (another session's: the film's afternoon is hazy and warm);
   people that move as the film's do (the walk's `people` take `to` and `t`; none of the
   four walks yet). The street now matches the film in what stands where: what is left is
