@@ -4,8 +4,8 @@
 # screenshots. See README.md here for the list and what "good" looks like for each.
 #
 #   game/streets/tests/run.sh <test> [level]        level: 1 Givatayim, 2 Bedford, 3 Ashdod,
-#                                                  4 the made-up test town, 5 the filmed walk
-#                                                  (default 1)
+#                                                  4 the made-up test town, 5 the filmed walk,
+#                                                  7 Tel Aviv (default 1)
 #   OUT=/some/dir game/streets/tests/run.sh map_edge 3
 #
 # Screenshots go to $OUT (default /tmp/streets-tests/<test>). The tests that measure behaviour

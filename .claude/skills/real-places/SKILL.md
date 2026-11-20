@@ -31,9 +31,33 @@ goes wrong shows up the first time it runs.
 - `tools/osm_city.py` needs Overpass. From a cloud session that cannot reach it, start the
   "bake a real city" workflow (`.github/workflows/bake_city.yml`, inputs `place`, `out`,
   and for an odd shape `margin` and `include` -- extra named areas to pull in). It commits
-  the file to `main` itself; fetch and merge before your next push. Overpass is sometimes
-  down: a failed run is worth one retry later, and a run stuck "queued" for an hour can be
-  abandoned and started again.
+  the file to the branch it was run on (`main` by default; run it on your own branch to
+  check the city before it goes out); fetch and merge before your next push. Overpass is
+  sometimes down: a failed run is worth one retry later, and a run stuck "queued" for an
+  hour can be abandoned and started again.
+- **The mirrors can be behind.** When the main Overpass server fails, the baker falls back
+  to mirrors, and one answered a city centre with older data: 261 fewer footways of 1222,
+  23 fewer areas, a few more of other roads, the same day. Re-baking only to change how the
+  file is made (`bare_ground`, a margin)? Compare the counts with the last bake (the log
+  says which server answered); if the data moved, keep the main server's bake and redo only
+  what changed -- the ground grid is the same tiles and the same code whatever answered.
+- **Allowing `overpass-api.de` in a cloud environment is not enough**: the proxy lets the
+  connection through and the server resets it during the TLS handshake (it turns some
+  networks away; its mirrors are other hosts). Go straight to the workflow.
+- **A big city whole is too much.** Givatayim (3 km^2) builds in ~6 s on a cloud
+  container, a 47 km^2 town in ~15 s, and a city centre is denser than either. For a few
+  neighbourhoods of one, give the workflow `bbox` (south,west,north,east in degrees,
+  `place` then only its name) -- e.g. read off a screenshot of a map with two landmarks of
+  known position for the scale. A box has no boundary: no "welcome to" at the limits, and
+  the striped barrier at the map edge is the whole border.
+- **The ground heights see the roofs.** The terrain tiles the baker reads are a surface
+  model (mostly SRTM): in a city centre a cluster of towers comes out as a hill. One
+  centre's grid stood 146 m high under three towers, with slopes of 300%, and the buildings
+  round it sat on the hill's flanks. Look at the grid (`height.h`: max, steepest step) before
+  driving a new city, and bake one with towers or dense blocks with `--bare-ground` (the
+  workflow's `bare_ground`): a grey opening over ~90 m takes out bumps narrower than ~180 m
+  and keeps broad hills and valleys (that centre: 0-38 m, steepest 13%). It also lowers a
+  real hill's crest a little (one town's 86 -> 72 m), so it is not the default.
 - `tools/fake_city.py` makes up a small town with one of every awkward thing (divided
   boulevard, big signalled junction, roundabouts, a one-way pair, a steep hill, car parks)
   in a second, no network. Use it to check a change quickly; check real towns before
@@ -226,6 +250,23 @@ one needed:
   foot runs into one. Leaving walls out of a junction's corner (so a turning car does not
   clip a kerb-high step) is right at street level only: up on an embankment it is a gap to
   drive off.
+- **Working the heights out from OSM** (what worked for one Canadian town's interchanges):
+  each bridge must clear what it crosses (a road by ~6.4 m, a path by ~4.4); spread that
+  lift along the drivable roads at a ramp's grade, as an absolute height (the ground under
+  a ramp can fall away as steeply as the ramp does), through junctions but never onto the
+  roads crossed; then cap every lift by what a ramp from the nearest road held on the ground
+  can climb, so a short slip road is steep instead of a cliff. Cut roads where their ramp
+  meets the ground, never lift footpaths, densify the lifted pieces and round their crests
+  (a ramp up meeting a ramp down at the crossing is a crest a car takes off from), and
+  treat bridges shorter than ~8 m as culverts. A coarse elevation model (36 m) is smooth
+  under an overpass: all the lift has to come from the ramps.
+- **Embankments are banks, not walls**, where there is room: a slope ~1.5 out for each
+  metre down with a guardrail on top, a retaining wall only where the bank's foot would land
+  on another road or in a building. Give the bank's foot a collision line too (a car on the
+  ground drove into the slope).
+- **A divided road is two decks overlapping at the median** at slightly different heights:
+  decide what is under a body by the carriageway it is on first, the nearest height next,
+  or it drifts onto the other and falls off its end.
 - **Water held at its own level** (a river between weirs) is drawn at that level and is too
   deep to drive into; gentle banks otherwise let a car down to drive along the bed under
   the water. Leave lakes that lie at their shore's lowest point alone: a road over an
