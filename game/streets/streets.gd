@@ -5755,7 +5755,10 @@ func _build_lamps() -> void:
 					var p := c + out * (hw + 0.9)
 					var ok := _mine(p) and _push_out(p, 0.6, false) == Vector2.ZERO
 					var on := _nearest_seg(p, 10.0, true)
-					ok = ok and (on.is_empty() or float(on["edge"]) > 0.4) and _clear_of_posts(p, 2.5)
+					# (and off a rounded corner's asphalt: checked by the straight strips alone, a
+					# lamp stood 0.5 m onto a corner -- city_check)
+					ok = ok and (on.is_empty() or float(on["edge"]) > 0.4) and _clear_of_posts(p, 2.5) \
+							and not _in_corner_fill(p, 0.15)
 					if ok:
 						var gy := _h(p)
 						var toward := -out
