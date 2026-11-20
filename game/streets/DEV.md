@@ -401,12 +401,17 @@ what became of it:
   piers are off the road); a café table's 0.7 m solid circle reached 0.8 m into the lane
   from a table up against the kerb (the circle now only as big as the room); a cat sat on the
   road by a parked car's nose. Givatayim: 16 posts on the road -> 1; Ashdod 27 -> 0.
-- **Open -- queues clear about a fifth slower than real ones**: straight on, unimpeded, 28
-  gaps over the line at 1.22x Greenshields' (the band is 1.2). Three 15-minute watches of
-  one build read 1.18 / 1.44 / 1.57 -- watch 40 minutes. Two tries did not move it: easing
-  the pull-away against the cruising speed, and noticing the car in front at 0.35 m/s
-  (start gaps stayed 1.4 s); the time goes in the follow model (decided every third tick,
-  the headway kept from a standstill). Left for whoever owns traffic's driving.
+- **Fixed -- queues cleared about a fifth slower than real ones.** A trace of the second car
+  (`TRACE=n` in queue_start) showed the follow model was not what held it -- what it wanted
+  was always above its speed -- but its start: it noticed the car in front only at 0.5 m/s
+  (~0.45 s after that car began to creep) and then took 0.35-1.1 s to react, ~1.2 s a car
+  against ~1 s at real signals. Now 0.3 m/s and 0.3-0.9 s: start gaps 1.4 -> 1.2 s, gaps
+  over the line 1.26x -> 1.17x Greenshields' (straight on, unimpeded, by the rear wheels as he
+  timed them). Two things that did not help, for the record: easing the pull-away against
+  the cruising speed, and the notice threshold alone. The measurement itself needed three
+  fixes first -- speeds sampled by ticks (at 2x the old sampling skipped most), only queues
+  going straight on judged, and crossings timed at the rear wheels -- and 40 minutes of
+  watching: three 15-minute watches of one build read 1.18 / 1.44 / 1.57.
 
 ## Seeing what the car did: the drive recorder
 
