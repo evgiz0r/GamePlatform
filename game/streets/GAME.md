@@ -454,6 +454,9 @@ white along a residential street's parking, red and white for the last few metre
 every junction and along many main roads, yellow and black in front of a bus stop. The
 parked cars keep to the paint: a nearly unbroken row down a blue-and-white street, half up
 on the pavement, fewer along a plain kerb, none on the red-and-white corners or at a stop.
+In about a third of the gaps between them a motorbike or scooter stands up on the pavement,
+along the kerb or at a slant, leaning on its stand; people walk past on the back half. Many
+of the low stone garden walls carry a fence of dark wooden boards to about head height.
 
 > ill film myself driving to work and back or whatever. and somehow give you the info back.
 > to make it more nad more realistic ( for the specific path and more general )

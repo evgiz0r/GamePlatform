@@ -347,7 +347,8 @@ first:
   floors. The real ones are warm cream and sand plaster, balconies with railings (many
   closed in), AC units on the walls, shutters, shopfronts with awnings on the shopping
   street; 15-25 storey towers stand behind the low blocks.
-- **Between pavement and building**: front gardens behind low rubble-stone walls, often
+- **Between pavement and building** (wooden boards on a fifth of the walls done,
+  `_plank_fence` in `_garden_fronts`): front gardens behind low rubble-stone walls, often
   with a wooden plank fence on top, hedges, bushes, iron gates. The game has a low white
   wall and grass, or the building right at the pavement.
 - **Pavement**: the game's is near white in the sun. The real one is mid-grey: 20 x 10 cm
@@ -357,7 +358,8 @@ first:
 - **Kerb paint** (done: `_kerb_paint`, `_kerb_marks`): blue-and-white along the residential
   street (paid parking), red-and-white at the corners and driveways. The game painted one
   paint a whole street, a tenth of them yellow-and-black.
-- **Parked cars** (done, fill by the kerb's paint, `PARKED_FILL`; motorbikes not yet): an
+- **Parked cars** (done, fill by the kerb's paint, `PARKED_FILL`; motorbikes too,
+  `_park_moto`, `tests/street_fronts.gd`): an
   unbroken row on both sides of the residential street, motorbikes and scooters parked on
   the pavement; painted bays on the shopping street. The game filled a quarter of the kerb.
 - **Street trees**: thin trunks in square earth pits at the kerb edge every ~8-10 m, the
