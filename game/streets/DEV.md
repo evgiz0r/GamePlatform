@@ -75,7 +75,10 @@ The ones most often touched, and the functions in them:
   `_oncoming_clear` takes `pass_i`: `_steer_lanes` shifts it `_pass_shift` (over the centre
   line) until past; on wider roads the old "out to pass" does it. Autodrive: `_ap_pass_bus`
   takes a double-parked van too, and on a one-lane street goes over the line when the other
-  way is clear 45 m past it. `_kerb_tick`: every 35-75 s, while driving a street in
+  way is clear 45 m past it -- waiting 4.5 m further back than behind a car (room to pull
+  out), its plan given a point every 2 m first (`_ap_densify`) and the bend measured from the
+  car, not the plan's first point (on a straight street that can be 40 m back: the bend
+  landed behind the car and nothing moved; buses had the same bug). `_kerb_tick`: every 35-75 s, while driving a street in
   DBL_ROADS of one lane each way, the furthest car out of view is parked at the kerb
   90-150 m ahead in a gap among the parked cars (`kerb`), and pulls out (`_kerb_wait`) when
   the player is 18-45 m behind. tests/street_goings.gd.
@@ -83,8 +86,10 @@ The ones most often touched, and the functions in them:
   shader from the instance's custom data), i % 9 == 6 a pushchair (`pram_kit`, the carrying
   walk); a multimesh each and one for the leads, positioned by `_companion` in the walker
   loop. SITTERS on `_bench_spots` (park benches) holding the end of SitDown, WAITERS at
-  `_stop_spots` facing the road, placed unseen like the chatters (`_place_still`).
-  tests/street_people.gd.
+  `_stop_spots` facing the road, placed unseen like the chatters (`_place_still`); a sitter's
+  origin (the feet) 0.42 m in front of the bench's middle. The three multimeshes have no
+  visibility range (it is measured to their middle, the city's: every dog was culled);
+  `_companion` hides those past PEOPLE_SEEN. tests/street_people.gd.
 - **people in one piece** -- `_one_piece` (end of `_humanize`): the Quaternius figure is one
   mesh of six surfaces (Skin, Shirt, Pants, Belt, Face, Hair), each a draw (and a shadow
   draw). Joined once per figure into one surface (shared by everyone with that figure; the
@@ -1561,6 +1566,36 @@ Each line: where the code is, the test, what good reads.
   only meaningful in a real browser), `top_at` (shots by map point, `CAR=` to put the car
   anywhere), `street_at` (by street name at its roundabouts), `perf_dive`, `deck_corner`,
   `islands`, `pave_overlap`, `picker`, `minimap_route`.
+
+## Handoff: the street's realism and life, loading split, crashes, sounds (20 Nov 2026)
+
+One session's areas (everything under "front gardens", "the street's goings-on", "more kinds
+of people", "people in one piece", "on the walls", "street sounds", "what breaks", "load, part
+by part", "graffiti", "zone and parking signs" near the top of this file, and today's earlier
+realism passes: contact shadows, far shadows, golden hour, night, grass, wet, garden walls and
+gates, pavement covers, recycling, two-wheelers, passages). Shots: `FULL=1 STREETS_BUILD_ALL=0
+RES=1280x720 OUT=<dir> game/streets/tests/run.sh <test> 1`; headless ones: `STREETS_BUILD_ALL=0
+LEVEL=1 $GODOT --headless --path . -s res://game/streets/tests/<test>.gd`.
+
+- **Good numbers (Givatayim, level 1)**: `draws` 184 in view at the start (people 8);
+  `gardens_later` 7510 wall pieces / 858 board points both ways, gardens 96-128 ms of
+  loading (678 unsplit); `load_stages` kerbs ~0.8-1.0 s; `street_goings` autodrive stands 0 s
+  behind the van on both streets, 1-2 cars go round it on the one-lane street (המפנה or
+  שיינקין), the parked car pulls out with the player ~44 m behind and never touched;
+  `street_people` a dog, a pushchair, a sitter, a waiter each within 80 m inside a minute;
+  `street_sounds` birds -31..-34 dB by day by trees, crickets ~-36 at night, voices -20 / -25;
+  `crash_things` a bin knocked, 3 dents, 2-3 glass patches; `wall_things` the person 1
+  surface; playtest smart 25 s passes, hitches 4-9 (container noise: compare with main).
+- **Open**: a dog can be pushed to the far side of a crossing railing (`_companion`'s
+  `_push_out` picks the nearer side); grass blades still poke through a garden path where it
+  crosses a lawn; the sounds are synthesised (make_sounds.py) and the user has not said how
+  they sound; more things that break (sign posts, fence panels, hedges, a scrape mark on the
+  wall) and people who react are on GAME.md's later list; falling rain is on hold (user);
+  the browser's 5-7 s warm-up is shader compiling (see the other handoff's 74 shader kinds).
+  `draws` hung once for 15 minutes and never again (cause unknown: kill it and rerun).
+- **Watch**: hitches in the first seconds of driving now include the start's far gardens
+  (`_build_gardens_later`, before the rest of the city); kits with thousands of copies go
+  through `_instanced`, not the batches (the AC units: 19 hitches of 50 ms when merged).
 
 ## Open problems
 

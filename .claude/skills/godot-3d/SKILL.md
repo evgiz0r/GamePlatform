@@ -182,6 +182,11 @@ is a Z coordinate, not a height.
   holding the person's colours in a `uniform vec4 parts[6]` -- one draw a person. Build the
   joined mesh once per figure and share it (a mesh per person is ~0.7 MB); the material is
   per person. Pass colours as `srgb_to_linear()` (a plain uniform array is not converted).
+- **No `visibility_range_end` on a multimesh that spans the world.** The distance is measured
+  to the instance node's own middle -- for a city-wide multimesh (dogs, pushchairs moved
+  about by code, a custom AABB over the whole map) that is the city's middle, so the whole
+  multimesh vanished whenever the camera was ~90 m from it, wherever the copies were. Hide
+  far copies yourself (a transform 500 m down) and leave the range off.
 - Both helpers fall back to palette shapes + a playtest warning when a file is missing, so
   a game keeps running (and the report tells you which name was wrong).
 - Scenery: a ring of `model()`s around the play area (houses behind, trees on the sides,
