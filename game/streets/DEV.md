@@ -256,7 +256,7 @@ What each round found, so far:
   ~10 s of background building (the "city_built" event).
 - Parked cars by the kerb's paint (Givatayim's start view, `tests/frame_cost.gd`, quality
   3): 1.32 M triangles + 632 k shadow before, 1.54 M + 854 k after (+17%, +35%), draws 292
-  -> 294. The start is a residential street of blue-white kerbs, the densest case.
+  -> 294. Measured at the old start, a residential street of blue-white kerbs: the densest case.
 - Draw calls at the start view: Givatayim ~290, Ashdod ~420 (`tests/draws.gd`), before the
   city was built in squares; since, Givatayim 235 with all of it built (little things are
   grouped per 400 m square, not 220 m) and 200 at the start before the rest is up.
@@ -276,6 +276,12 @@ What each round found, so far:
 The start points are public street corners named in `LEVELS`. **The web build is public:
 never use an address the user has mentioned as theirs or their family's -- not as a start,
 not in a test, a commit or a doc.** Scratch tests against one stay in the scratch directory.
+
+Givatayim's start moved on 20 November 2026 to Katznelson by Weizmann, at the user's
+request (it had been a quiet residential corner since the city was added). Results of tests
+that look "near the start" (the narrowest streets, the nearest lights or roundabout, the
+exam's first place, the draws and frame cost at the start view) from before then are from
+the old corner: rerun before comparing.
 
 ## What a filmed walk showed (November 2026)
 
