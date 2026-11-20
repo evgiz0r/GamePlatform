@@ -2738,7 +2738,10 @@ func _garden_fronts(run: PackedVector2Array, hw: float, sgn: float, key: int, fr
 			# a hedge behind the wall, on the garden strip: off the roads where the strip is
 			# (looked at already), but it can still run into a house, so it looks for those
 			for k in range(pts.size() - 1):
-				if walled[int(seg[k])] and (pts[k] as Vector2).distance_to(pts[k + 1]) >= 0.3:
+				if walled[int(seg[k])] and (pts[k] as Vector2).distance_to(pts[k + 1]) >= 0.3 \
+						and _off_road(pts[k], 0.45) and _off_road(pts[k + 1], 0.45):
+					# (its ends clear of the asphalt by its half width: where the strip met
+					# another street at a bend, one stood 0.4 m into the road)
 					_furn._hedge_line(fronts["hedge"], pts[k], pts[k + 1], false)
 		elif style < 76:
 			# bars or chain-link on the wall: only where the wall is, which was looked at
