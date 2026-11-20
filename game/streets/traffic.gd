@@ -1376,7 +1376,7 @@ func _place(c: Car) -> void:
 	# corner it pivoted on its middle: a bus's back swung out across the lane, a car's nose
 	# snapped round at each kink in its line -- "they jump around".
 	var wb := clampf(c.len * 0.6, 1.3, 7.0)
-	var wander := sin(_clock * 0.31 + c.drift) * 0.14 * clampf(c.v / 8.0, 0.0, 1.0)
+	var wander := sin(_clock * 0.31 + c.drift) * 0.1 * clampf(c.v / 8.0, 0.0, 1.0)
 	var off := c.shift + wander
 	# (the front on the lane rounded over 4 m: the lane line has corners in it -- a bend in
 	# the map's road -- and a front run exactly round each flicked the heading at 2.5 rad/s)

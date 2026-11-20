@@ -10567,15 +10567,23 @@ func _fwd() -> Vector2:
 ## The right-hand lane's line, this far right of a two-way road's middle. Every two-way
 ## street has two lanes, however narrow; the line sits a little past the lane's own middle,
 ## toward the kerb, as drivers do -- at w/4 cars ran close to the centre line and met the
-## traffic coming the other way in it. A one-way road of one lane: its middle; of several:
-## the middle of the right-hand one, where traffic drives (autodrive used to take the middle
-## of the road, astride two lanes, and ran in between the cars in them).
+## traffic coming the other way in it; at w/4 + 0.25 they hugged the kerb. A one-way road of
+## one lane: its middle; of two: the middle of the right-hand one; of three or more: the
+## second from the right (autodrive used to take the middle of the road, astride two
+## lanes, and ran in between the cars in them).
 func _lane_off(r: Dictionary) -> float:
 	var w := float(r["w"])
 	if int(r["o"]) != 0:
 		var n := _lanes_each_way(r)
-		return 0.0 if n <= 1 else w * 0.5 - w / n * 0.5
-	return clampf(minf(w * 0.25 + 0.25, w * 0.5 - 0.95), 0.9, 2.6)
+		if n <= 1:
+			return 0.0
+		# three lanes or more: the second from the right, where traffic going straight on
+		# drives (the right-hand one hugged the kerb all along Sderot Herzl); the right-hand
+		# lane is taken before a right turn (_ap_turn_lane)
+		return w * 0.5 - w / n * (1.5 if n >= 3 else 0.5)
+	# (+0.12 past the lane's middle, and 1.1 m clear of the kerb: +0.25 left a car 0.6 m from
+	# the kerb on a 7 m street, and the others, drifting, hugged it)
+	return clampf(minf(w * 0.25 + 0.12, w * 0.5 - 1.1), 0.9, 2.6)
 
 ## lanes each way: a one-way road's all, half a two-way road's (by the tag, else the width)
 func _lanes_each_way(r: Dictionary) -> int:
@@ -14609,12 +14617,21 @@ func _ap_turn_lane(ri: int, from: int, dir: int) -> void:
 	var c := pts[at]
 	var in_dir := (_ap_pts[m - 1] - _ap_pts[m - 3]).normalized()
 	var out_dir := (pts[from] - c).normalized()
-	if in_dir == Vector2.ZERO or out_dir == Vector2.ZERO or in_dir.angle_to(out_dir) > -0.6:
-		return   # (not a left turn: + is right)
+	if in_dir == Vector2.ZERO or out_dir == Vector2.ZERO:
+		return
+	var turn := in_dir.angle_to(out_dir)   # (+ is right)
 	var n := _lanes_each_way(r_in)
 	var w := float(r_in["w"])
 	var target := 0.0
-	if int(r_in["o"]) != 0:
+	if turn > 0.6:
+		# a right turn off a road of three lanes or more: over to the right-hand lane (the
+		# car goes straight on in the second)
+		if int(r_in["o"]) == 0 or n < 3:
+			return
+		target = w * 0.5 - w / n * 0.5
+	elif turn > -0.6:
+		return   # (straight on)
+	elif int(r_in["o"]) != 0:
 		if n < 2:
 			return
 		target = -(w * 0.5 - w / n * 0.5)
