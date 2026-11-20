@@ -1526,7 +1526,7 @@ and the ramp-top fix. Where things stand:
   "Open problems" below. `tests/deck_profile.gd` (`CITY=... AT=x,z`) for a profile in
   seconds without the game.
 
-## Handoff: lights, kerbs and paving, islands, quality, menus, performance (20 Nov 2026)
+## Handoff: lights, kerbs and paving, islands, quality, menus, performance, signs, level roads (20 Nov 2026)
 
 One session's areas, left for whoever picks them up (its context was compacted after this).
 Each line: where the code is, the test, what good reads.
@@ -1558,20 +1558,58 @@ Each line: where the code is, the test, what good reads.
 - **Performance** (`tests/perf_dive.gd` 7; numbers under "Numbers to compare against"):
   parked cars done (`_draw_parked`, `_parked_far_mesh`, `PARKED_CELL/NEAR/SEEN`; `_chunked`
   takes `cell_m` and `range_begin`); heavy kits kept as multimeshes (`BATCH_KIT_VERTS`, -131
-  MB in Tel Aviv). **Next**: the batches are triangle soups -- indexing them (`SurfaceTool`'s
-  `index()` while flushing, timed against the load) would cut the remaining 9.8 M batched
-  vertices by about a third; the 84 shader kinds for the warm-up (merging look-alike
-  materials would shorten it); nodes up 4,300 from the parked cars' squares and the kits
-  (watch the browser's culling cost).
-- **Waiting on the user**: the test town's hillside roads lean (a finer height grid in
-  tools/fake_city.py, or levelling roads in the game; another session owns the test town's
-  terrain); stop / give-way signs at every junction (asked whether same-class junctions get
-  one -- no answer yet). The Ashdod "grass patches" spot was never pinned down: islands and
-  the ground colour went out without it.
+  MB in Tel Aviv). **The merged meshes indexed** (`_index_into`, `INDEX_PIECE`): Tel Aviv's
+  9.8 M merged vertices are 5.4 M different ones (`index_gain` 7: 187 -> 121 MB); done in
+  pieces of 30,000 vertices (the slowest 6.4 ms here; whole, the biggest square's 170 k took
+  30 ms -- no threads in the web build), each piece a surface: all indexed, the start view
+  went 669 -> 692 draws and video memory 445 -> 365 MB. Only the squares built while
+  driving (`_bg_build`) are indexed: the start's are behind the loading text, where it
+  would add to the wait (+1-2 s here) and its draws would be in the first view. So
+  `STREETS_BUILD_ALL=1` (the tests' default) indexes nothing: measure it with
+  `STREETS_BUILD_ALL=0 tests/run.sh perf_dive 7` (it waits for the rest to be built).
+- **The warm-up's steps by shader code** (`_shader_key`, `_code_key`): a browser compiles a
+  shader per CODE (a ShaderMaterial's Shader; a standard material's set of switches -- Godot
+  shares one shader between all materials with the same flags, colours are uniforms), not
+  per material. `warm_census` 7: 77 materials were 25 codes, 43 programs (codes x plain /
+  instanced x the shadow pass); grouped by material, one step of eight had all 38 people's
+  materials (one shader) and another a dozen shaders. Now 35 kinds, 42 programs (the fences'
+  two colours had a Shader each: one now). Merging look-alike standard materials saves
+  nothing -- they already share. What is left is real: to shorten the warm-up, fewer shader
+  codes (the dog's own shader, one ROOF-like code for one node...) or fewer shadow casters.
+  `_get_shader_rid()` called from a script hangs Godot (don't); the census reads the
+  switches instead.
+- **Stop and give-way signs everywhere** (`_infer_signs`, in `_build_setup` after the
+  lights): a way in of a smaller class into a junction without lights, OSM's own sign not
+  within `SIGN_MAPPED`: a stop before secondary-and-up in the Israeli towns, else a give-way
+  (slip roads, Bedford). Left alone: same class meeting (the user was asked; the suggestion
+  was to leave them, no answer), roundabouts, service roads, a street going on under another
+  class, the gap through a divided road's median (`_points_back` + `_other_half`). Each way
+  in is its own sign entry with its facing, through the same `_build_signs` as OSM's -- which
+  kept only the LAST sign at a node (a second overwrote the first's rules: fixed). The pole
+  tries 8 spots (further back, further out): at the first alone only 44 of 167 stood.
+  Give-ways get a dashed line (and האט in "med"). `signs_inferred` 1: 23 stop + 87 give way
+  added to OSM's 33, 140 junctions, 151 of 167 poles. Traffic stops / slows for them as for
+  OSM's: watch the exam's numbers.
+- **Roads level side to side** (`tools/level_roads.py`, called by both bakers; the five city
+  files levelled in place): the height grid (8-46 m a point) tilted a road with the
+  hillside -- Givatayim 28% of its length over 6% across. Grid points near a road take its
+  centre line's height (fully to a cell's diagonal past the pavement, blending back over one
+  more cell; the nearest asphalt edge wins). Over 3/6/10% across, before -> after: test town
+  24.7/14.9/8.1 -> 2.4/0.6/0.2%, Givatayim 56.6/27.7/10.0 -> 16.5/6.0/1.8, Tel Aviv
+  24.9/5.4/0.2 -> 8.4/1.9/0.3, Bedford 52.8/26.4/9.3 -> 24.2/8.8/2.6, Ashdod 22.8/4.2/0.3 ->
+  11.6/1.9/0.2. What is left is where two roads at different levels share a cell (the
+  Ayalon interchange's slip roads, a service lane below a street) -- a finer grid's job.
+  `python3 tools/level_roads.py --check city.json` measures without writing (the same
+  triangles as `_h`); `road_tilt` 4 measures in the game.
+- **Waiting on the user**: the Ashdod "grass patches" spot was never pinned down: islands
+  and the ground colour went out without it. **Next**: traffic overlapping at the test town's
+  (-639, 261) -- a bus turning off Derekh HaHarim sweeps over the stop line of HaDolev where
+  cars wait (the junction is two points at one place joined by 0 m pieces, fake_city's).
 - **Tests and tools added**: `hitches` + `hitch_parts.py` (frames over 250 ms by phase --
   only meaningful in a real browser), `top_at` (shots by map point, `CAR=` to put the car
   anywhere), `street_at` (by street name at its roundabouts), `perf_dive`, `deck_corner`,
-  `islands`, `pave_overlap`, `picker`, `minimap_route`.
+  `islands`, `pave_overlap`, `picker`, `minimap_route`, `warm_census`, `index_gain`,
+  `signs_inferred`; `tools/level_roads.py`.
 
 ## Handoff: the street's realism and life, loading split, crashes, sounds (20 Nov 2026)
 

@@ -270,6 +270,11 @@ boulevard just short of HaTe'ena. Driving, walking and the traffic all keep to t
 level: under a bridge you are under it, in the tunnel the hill's houses are not in your
 way, cars overhead do not stop for you.
 
+**Streets are level side to side on a hillside**, as real ones are: the hill is cut into on
+the uphill side and filled on the downhill one, and the street keeps only its climb along
+its length. (The ground comes from terrain data on a grid, and laid straight on it a street
+across a hillside leaned with it -- HaOranim 13%, the lookout road 37%; in every town.)
+
 > I want to make a new fake city in streets, where we would do quicker simulation and
 > validations. Yes it would not stress as the big cities on latency, but would give a quick
 > look if something got prettier as we are trying to make things more realistic slowly.
@@ -491,7 +496,11 @@ That goes for you on foot too.
 keeps behind the car in front. Drive through a red light, or a stop sign without
 stopping, and it says so -- judged as the car's nose crosses the stop line, by the way it
 came in (a car in on the last of the amber was told it ran the red). The stop and give-way
-signs are OSM's (Givatayim has a few dozen mapped, Bedford more); the lights run their own
+signs are OSM's where it maps them (Givatayim a few dozen, Bedford more), and everywhere
+else a side street meeting a bigger street without lights gets one, as real towns do: a
+stop before a main road in the Israeli towns, a give-way otherwise (and in Bedford). Two
+streets of the same size meeting have none (first come, as before), nor roundabouts, nor
+driveways; the lights run their own
 cycle. In the Israeli towns they go as they do there: green, three flashes of green, amber,
 red, red and amber together, green. In Bedford: green, amber, red. The main road's green is
 the longer, 18 s against the side streets' 13. Between one way's amber
@@ -540,8 +549,8 @@ standing in a big junction for 25 s, the cars across going round it).
 > properly.
 
 **Signs and paint.** A stop line across the lane at every light and stop sign, STOP
-painted before a stop sign (עצור in Givatayim), SLOW (האט) before a crossing near a
-school, speed limit signs a little after each junction on the main roads (round and
+painted before a stop sign (עצור in Givatayim), a dashed line at a give-way (with האט
+before it in the Israeli towns), SLOW (האט) before a crossing near a school, speed limit signs a little after each junction on the main roads (round and
 red-rimmed in Givatayim, a white MAXIMUM board in Bedford). Bedford's centre lines are
 yellow, as in Nova Scotia: a solid double line on main roads, dashed on side streets,
 with white edge lines.

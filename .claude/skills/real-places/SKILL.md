@@ -116,6 +116,18 @@ goes wrong shows up the first time it runs.
   lanes and its lawns like grass painted on them ("grass patches on the road"). Give open
   land its own colour -- dusty sand, dry earth -- clearly apart from the asphalt.
 
+- **Roads lean with the hillside.** The ground comes from terrain tiles on a grid (a point
+  every 8-46 m), and a road laid on it tilts across with the slope: in one hilly town 28% of
+  the roads' length leaned over 6% side to side, the worst over 30% (a real street: its 2%
+  crown). Cut and fill the GRID, not the road: each grid point near a road takes the height
+  of the road's centre line at the point nearest it, fully out to a cell's diagonal past the
+  pavement (every triangle reaching the asphalt then has all its corners on the road's
+  level), blending back over one more cell, the nearest asphalt edge winning. The road keeps
+  its climb, everything standing on the ground (kerbs, houses, cars, people) follows, and it
+  costs nothing at load: `tools/level_roads.py` does it to a baked file, and both bakers call
+  it. What is left is two roads at different levels within a cell (an interchange's slip
+  roads, a lane below a street): only a finer grid fixes those.
+
 ## Junctions and roundabouts
 
 - **One junction is often several points.** A divided road meets a street at one node per
@@ -148,6 +160,16 @@ goes wrong shows up the first time it runs.
   ways) when looking along an approach. Audit every junction in a scene test -- crossing ways
   sharing a group, a road whose group changes inside a site, ways in with no pole, zebras
   whose road has green one way -- before driving one: in one town it found 12, 48, 66 and 26.
+- **OSM maps few stop and give-way signs** -- a few dozen in a town of thousands of
+  junctions. Work out the rest: a way in of a smaller class into a junction without lights
+  gets one (a stop before a main road where that is the custom, a give-way otherwise; a slip
+  road gives way), with its facing, so it is one sign per way in. Leave out two streets of
+  one class (unmarked in life too, and which is "main" would be a guess), roundabouts,
+  driveways, a street going on through the junction under another class, the gap through a
+  divided road's median (only the outer way in), and junctions with a mapped sign nearby. Two
+  signs at one point must both be kept (code keyed by point kept the last). And a pole tried
+  at one spot by the line stood at 44 of 167 corners (the corner's asphalt, a wall): try a
+  few further back and further out.
 - **Roundabouts** are closed one-way ways (or tagged junction=roundabout). An AI that plans
   to the end of the way drives the whole circle, then picks "straight on" -- round again.
   Plan only to the next exit, and make staying on less likely with every piece driven.
