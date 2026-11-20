@@ -11226,6 +11226,10 @@ func _autodrive(dt: float) -> Array:
 		if _ap_stuck > 2.0:
 			_ap_stuck = 0.0
 			_ap_back = 1.4
+			# a push that went nowhere counts as a bump (too slow to be one): three in a row
+			# and it is lost, back to the street. Forward into a post, back, forward into it
+			# again went on for a minute and a half, foot on the gas -- not driving.
+			_ap_bonks += 1.0
 			Probe.event("autodrive_stuck")
 	else:
 		_ap_stuck = 0.0
