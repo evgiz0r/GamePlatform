@@ -55,10 +55,15 @@ right now, offer to add it here rather than letting it get lost in the chat.
   MapServer) also has street trees with species (layer 628), lamp poles (543), licensed
   businesses (964), public-transport lanes with hours (611), parking zones (544):
   - *storeys or heights per building*: done for Tel Aviv (its GIS's buildings layer, in the
-    baker's `SURVEYS`); other towns' municipal layers, GovMap / the Survey of Israel;
+    baker's `SURVEYS`), and for Givatayim and the part of Ramat Gan beside it (their
+    municipal layers' floor counts, saved once as extracts beside the city file because
+    the first answers only inside its map viewer; see the `real-places` skill); other
+    towns' municipal layers, GovMap / the Survey of Israel;
+  - *kindergartens, shelters, gardens; the mix of cars; bus lanes; real bus lines*: done
+    for the towns one game needed, from a municipal map, data.gov.il (the CKAN API: its
+    file server refuses scripts) and the Ministry of Transport's GTFS;
   - *street trees with species* (ficus, jacaranda and palms read very differently):
-    municipal tree surveys (Tel Aviv's "urban forest" pages describe one; whether it is
-    downloadable is not checked);
+    municipal tree surveys (Tel Aviv's is downloadable: layer 628, below);
   - *businesses*, for whole rows of shopfronts: business-licensing layers (רישוי עסקים);
   - *when a building went up and what it is for* (a 1930s block, a 1960s shikun, a 2000s
     tower look nothing alike; which ground floors are shops): municipal building and
@@ -73,6 +78,36 @@ right now, offer to add it here rather than letting it get lost in the chat.
   each layer from its own publisher, under its licence, and credit it on screen beside
   OSM's. The terrain tiles the baker already reads cannot stand in for building heights
   (tried; see the `real-places` skill).
+
+  What Tel Aviv's GIS holds, checked 20 Nov 2026 (layer id, then how many fall in a
+  2.4 x 2.7 km box of the centre; ArcGIS REST `query`, `f=geojson`, `outSR=4326`; the list
+  of all 256 layers is `IView2/MapServer?f=json`):
+  - street trees with species and survey year (628): 3,743, where OSM has 178; tree canopy
+    outlines 2024 (574); special trees (865);
+  - construction sites with their stage (499): 328; building permits saying what is built
+    (772): 1,724 -- cranes, hoardings, a block half-clad, the city's commonest sight;
+  - buildings to preserve (682): 401, and the White City's declared area (671) -- with the
+    survey's year, which blocks get the Bauhaus look;
+  - licensed businesses with name and kind (964): 3,387, where OSM has 775 places;
+  - lamp poles with their type (543): 7,105; hydrants (673): 815; motorbike parking (951):
+    160; loading-zone signs with their hours (449): 113; taxi stands (691); bike paths with
+    width (577); bike-share stations (835); sculptures (606); notice boards (841);
+    drinking fountains (994);
+  - kindergartens (768): 85, where OSM has 7; public shelters (592): 77, none in OSM;
+    playgrounds (696): 54; daycare (624): 15 -- a kindergarten's fenced yard with its
+    shade sail, a shelter's sign and concrete entrance;
+  - signalled junctions (547): 109; the Ministry of Transport's bus stops (956): 235;
+    light-rail lines and stations (760-766, 954);
+  - how busy a street is: traffic noise at 4 m (786) as a stand-in; Waze jams (892), live
+    only.
+  GovMap (govmap.gov.il) is national, so it covers the neighbouring towns too: it shows
+  kindergartens, shelters, schools and bus stops, but none of its public layers has
+  building heights (a search for "גובה" gives ground contours and noise maps only). Its
+  real-estate deals layer may give each sale's floor, whose highest per address would
+  stand in for a building's storeys -- not checked. It is not reachable from the cloud
+  yet, and the address its page reads from (a browser's Network tab) is needed first.
+  National, each needing its host allowed: the vehicle registry on data.gov.il (the real
+  mix of makes, models and colours, for traffic and parked cars); GTFS above.
 
 - **Tracking verified music.** Which tracks are confirmed CC0 vs CC-BY, where they came
   from, what has been checked. Today this lives loosely in `assets/CREDITS.md` and a

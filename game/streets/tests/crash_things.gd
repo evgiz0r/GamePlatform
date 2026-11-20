@@ -23,6 +23,13 @@ func _place(p: Vector2, yaw: float, v: float) -> void:
 
 ## drive straight at the thing at `at` from 9 m back along `d`, at v m/s, for `secs`
 func _run_at(name: String, at: Vector2, d: Vector2, v: float, secs: float) -> Dictionary:
+	# nobody standing on the way (the car stops at a person, softly: a shopkeeper in a doorway
+	# or someone at a stop by the bin stopped it short, and nothing was knocked)
+	for list: Array in [g._walkers, g._chatters, g._sitters, g._waiters, g._keepers, g._crossers]:
+		for w: Dictionary in list:
+			var a: Node3D = w["actor"]
+			if a.visible and Vector2(a.position.x, a.position.z).distance_to(at - d * 4.5) < 7.0:
+				a.visible = false
 	_place(at - d * 9.0, d.angle(), v)
 	var before: int = g._knocked.size()
 	var min_v := v

@@ -771,12 +771,50 @@ SURVEYS = [
      "oid": "oid_mivne", "h": "gova_simplex_2019", "floors": "ms_komot", "year": "year",
      "pilotis": ("t_amudim", ("כן", "קיימת קומה מפולשת")),
      "skip": ("t_sug_mivne", ("מבנה ארעי", "תחנת אוטובוס", "מבנה בבנייה"))},
+    # A survey with no server the bake can reach (no "url") is read only from a saved extract,
+    # data/<id>.geojson beside the city file -- fetched once by hand where the site answers,
+    # and committed, so a re-bake anywhere keeps it. Floors only, no measured height; its
+    # floor count includes the ground floor ("ground_counted").
+    {"id": "givatayim_muni", "credit": "building storeys © Givatayim Municipality",
+     "extent": (32.0587, 34.7982, 32.0815, 34.8207),
+     "floors": "fl", "ground_counted": True},
+    # Ramat Gan's (its ArcGIS Online buildings layer, NUM_FLOORS; the extract is only the
+    # part a baked box needed; that layer's `year` is mostly a placeholder, 1964, so not taken)
+    {"id": "ramat_gan_muni", "credit": "building storeys © Ramat Gan Municipality",
+     "extent": (32.0557, 34.7991, 32.0849, 34.8239),
+     "floors": "fl", "ground_counted": True},
 ]
 
 
-def survey_fetch(s, box, offline):
-    """The survey's buildings in the box as GeoJSON features (lon/lat), from the cache when
-    it has them; None when the server cannot be reached (the bake then keeps OSM's guesses)."""
+def survey_extract(s, box, data_dir):
+    """The survey's buildings in the box from a saved extract (data_dir/<id>.geojson), or None."""
+    path = os.path.join(data_dir, s["id"] + ".geojson") if data_dir else None
+    if not path or not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as f:
+        feats = json.load(f).get("features", [])
+    out = []
+    for ft in feats:
+        g = ft.get("geometry") or {}
+        polys = [g["coordinates"]] if g.get("type") == "Polygon" else g.get("coordinates", [])
+        xs = [c[0] for p in polys for c in p[0]]
+        ys = [c[1] for p in polys for c in p[0]]
+        if xs and min(ys) < box[2] and box[0] < max(ys) and min(xs) < box[3] and box[1] < max(xs):
+            out.append(ft)
+    log(f"survey {s['id']}: {len(out)} buildings from {os.path.relpath(path)}")
+    return out
+
+
+def survey_fetch(s, box, offline, data_dir=None):
+    """The survey's buildings in the box as GeoJSON features (lon/lat): from a saved extract
+    beside the city file (data/<id>.geojson) when there is one, else from the cache, else
+    the server; None when none of those has it (the bake then keeps OSM's guesses)."""
+    got = survey_extract(s, box, data_dir)
+    if got is not None:
+        return got
+    if not s.get("url"):
+        log(f"survey {s['id']}: no {s['id']}.geojson in {data_dir or '(no city folder)'}, skipped")
+        return None
     path = os.path.join(CACHE, "survey_%s_%.4f_%.4f_%.4f_%.4f.json" % ((s["id"],) + tuple(box)))
     if os.path.exists(path):
         with open(path, encoding="utf-8") as f:
@@ -784,7 +822,7 @@ def survey_fetch(s, box, offline):
     if offline:
         log(f"survey {s['id']}: not in tools/.cache, skipped (--offline)")
         return None
-    fields = [s["h"], s["floors"], s["year"], s["pilotis"][0], s["skip"][0]]
+    fields = [s["h"], s["floors"], s["year"], s["pilotis"][0], s["skip"][0]]   # (a url survey has them all)
     feats, off = [], 0
     try:
         while True:
@@ -852,12 +890,15 @@ def centroid(ring):
 def survey_apply(buildings, P, s, feats, stats):
     """Give each OSM outline the height of the survey building covering most of it."""
     surv = []
+    floors0 = stats.get("survey_floors", 0)   # (stats is shared by the surveys of one run)
+    skip, pilotis = s.get("skip", (None, ())), s.get("pilotis", (None, ()))
+    ground = 0 if s.get("ground_counted") else 1   # floors to add for an uncounted ground floor
     for f in feats:
         g, pr = f.get("geometry") or {}, f.get("properties") or {}
-        if pr.get(s["skip"][0]) in s["skip"][1]:
+        if skip[0] and pr.get(skip[0]) in skip[1]:
             continue
-        h, fl = pr.get(s["h"]), pr.get(s["floors"])
-        est = (fl + 1) * LEVEL_H + 1.5 if fl and fl > 0 else None   # its floors, ground floor uncounted
+        h, fl = pr.get(s.get("h")), pr.get(s["floors"])
+        est = (fl + ground) * LEVEL_H + 1.5 if fl and fl > 0 else None   # from its floors
         if h and h >= 2.0:
             h = float(h)
             if est and (h < fl * 2.2 or (fl <= 4 and h > (fl + 2) * 3.5 + 3.0)):
@@ -872,8 +913,8 @@ def survey_apply(buildings, P, s, feats, stats):
             rings = [[P(c[1], c[0]) for c in r] for r in poly if len(r) >= 4]
             if rings:
                 surv.append({"rings": rings, "h": h, "a": centroid(rings[0])[2],
-                             "yr": pr.get(s["year"]),
-                             "pil": pr.get(s["pilotis"][0]) in s["pilotis"][1]})
+                             "yr": pr.get(s.get("year")),
+                             "pil": bool(pilotis[0]) and pr.get(pilotis[0]) in pilotis[1]})
     if not surv:
         return
     outl = [[(b["p"][i] / SCALE, b["p"][i + 1] / SCALE) for i in range(0, len(b["p"]), 2)]
@@ -932,7 +973,10 @@ def survey_apply(buildings, P, s, feats, stats):
         shift = (dx[len(dx) // 2], dz[len(dz) // 2])
         grid = index(shift)
     n = pil = kept = 0
+    done = stats.setdefault("_surveyed", set())   # ids of buildings an earlier survey in this run set
     for b, ring in zip(buildings, outl):
+        if id(b) in done:   # (on a town's edge two surveys can both cover it: the first, the
+            continue        # better one -- SURVEYS lists measured heights before floor counts -- wins)
         share, hits = cover(ring, grid, shift)
         if share < 0.3:
             continue
@@ -951,6 +995,7 @@ def survey_apply(buildings, P, s, feats, stats):
             b.pop("g", None)
             b["hm"] = 1
             n += 1
+            done.add(id(b))
         if sb["yr"] and 1800 <= sb["yr"] <= 2100 and "yr" not in b:
             b["yr"] = int(sb["yr"])
         if sb["pil"]:
@@ -959,7 +1004,7 @@ def survey_apply(buildings, P, s, feats, stats):
     stats["guessed"] = sum(1 for b in buildings if b.get("g"))
     stats["surveyed"] = stats.get("surveyed", 0) + n
     log(f"survey {s['id']}: heights for {n} of {len(buildings)} buildings ({pil} on columns; "
-        f"OSM's own kept on {kept} it covers; {stats.get('survey_floors', 0)} of its heights "
+        f"OSM's own kept on {kept} it covers; {stats.get('survey_floors', 0) - floors0} of its heights "
         f"out of line with its floors, taken from those), its outlines shifted "
         f"{shift[0]:+.1f}, {shift[1]:+.1f} m onto OSM's")
 
@@ -1593,7 +1638,8 @@ def bake(raw, name, args):
         for s in SURVEYS:
             e = s["extent"]
             if box[0] < e[2] and e[0] < box[2] and box[1] < e[3] and e[1] < box[3]:
-                feats = survey_fetch(s, box, args.offline)
+                data_dir = os.path.join(os.path.dirname(os.path.abspath(args.out)), "data") if args.out else None
+                feats = survey_fetch(s, box, args.offline, data_dir)
                 if feats:
                     survey_apply(out["buildings"], P, s, feats, stats)
                     out.setdefault("credits", []).append(s["credit"])
@@ -1636,7 +1682,7 @@ def add_surveys(path, offline):
     for s in SURVEYS:
         e = s["extent"]
         if box[0] < e[2] and e[0] < box[2] and box[1] < e[3] and e[1] < box[3]:
-            feats = survey_fetch(s, box, offline)
+            feats = survey_fetch(s, box, offline, os.path.join(os.path.dirname(os.path.abspath(path)), "data"))
             if feats:
                 survey_apply(city["buildings"], P, s, feats, stats)
                 if s["credit"] not in city.setdefault("credits", []):
