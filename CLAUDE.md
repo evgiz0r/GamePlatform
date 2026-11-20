@@ -263,6 +263,24 @@ command is cut off at 10 minutes, and a job you put in the background with `&` i
 foreground command dies with it), chain several runs in one background script, and keep
 working while they go. Two Godot runs at once on a 4-core container is about the limit.
 
+**Say how long a wait will be.** The user asked for this: whenever you start something they
+will wait on (a background run, a recording, a push that republishes the site), tell them
+roughly how long it should take, and when you report back on a long chain, what is left and
+how long that should take. Measured on these containers, one Godot run at a time (two at
+once each take about half again as long):
+
+| What | About |
+|---|---|
+| `tools/check_script.sh`, git fetch / merge / push | seconds |
+| a playtest of a small 2D game, 20-30 s of play | 1-2 min |
+| a playtest of a big 3D city game (loading the city is most of it) | 3-5 min |
+| a scene test on a big city: load, then stills or a scan | 5-7 min |
+| recording 100 s of play frame by frame (1280x720, `--fixed-fps 10`) | 18-20 min |
+| turning frames into a video with ffmpeg | 1-2 min |
+| the site republishing after a push to `main` | about 5 min |
+
+A game's own notes can hold its own times (`DEV.md`).
+
 ## The web build
 
 `docs/` holds the exported web build that GitHub Pages serves. It is generated, not

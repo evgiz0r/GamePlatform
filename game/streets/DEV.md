@@ -414,6 +414,10 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   (`Traffic.send`: the car furthest away, not a bus, onto the road nearest the spot, that
   way). The game's halves of Katzenelson are 9 m: the walk crosses each at 2.3-2.5 m/s to
   keep the film's times; the film's own speed suggests the real halves are narrower.
+- **How long a pass takes to check** (one Godot run at a time): the scan (`SCAN=1`) about 5
+  min, the recording (`RECORD=1`, 966 frames) 18-20 min, the side-by-side 1 min, each
+  playtest of a Givatayim level 3-4 min -- the whole chain (scan, record, video, playtests
+  of levels 5, 1 and 6) about 40 min. Tell the user so when you start it.
 - **The film's clock is decoding from its start.** `ffmpeg -ss` before `-i` lands on the
   wrong frames in this clip's first seconds (VLC's variable-rate transcode: 2999 frames in
   100 s, said to be 60 fps); `-vf trim=a:b,setpts=PTS-STARTPTS` agrees with the
