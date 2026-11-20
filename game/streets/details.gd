@@ -15,11 +15,14 @@ extends RefCounted
 ##                                                    that pass within 3 m of `near`
 ##              add: [{pts: [[x, z]...], k, w, name, name_en, o, l, sv}],   ends within 1 m of
 ##                                                    a baked node join it
-##              set: [{k, name, near: [x, z], w, l, kerb}]}   the baked roads of that kind and
-##                                                    name passing within 3 m of `near` get
-##                                                    that width, lanes, kerb paint (plain,
-##                                                    red_white, blue_white, yellow_black: a
-##                                                    whole way, junction to junction)
+##              set: [{k, name, near: [x, z], w, l, kerb, kerb_mid}]}   the baked roads of
+##                                                    that kind and name passing within 3 m of
+##                                                    `near` get that width, lanes, kerb paint
+##                                                    (plain, red_white, blue_white,
+##                                                    yellow_black: a whole way, junction to
+##                                                    junction) or kerb_mid: the paint along
+##                                                    its middle, the red-white corners and
+##                                                    bus stops kept (streets.gd _kerb_marks)
 ##   crossings [[x, z], ...]                         zebras at the road nodes nearest these
 ##   areas     [{k, p: [[x, z]...]}]                 as the city file's areas (plaza, park...)
 ##   buildings [{near: [x, z], arcade: [[x, z], [x, z]], depth, h}]   the building holding
@@ -104,6 +107,8 @@ func edit_city(city: Dictionary) -> void:
 						r[key] = st[key]
 				if st.has("kerb"):
 					r["kerb"] = KERB_PAINT.find(String(st["kerb"]))
+				if st.has("kerb_mid"):
+					r["kerb_mid"] = KERB_PAINT.find(String(st["kerb_mid"]))
 				hit += 1
 		if hit == 0:
 			Probe.note("details: no %s road '%s' at %s to set" % [st.get("k", ""), st.get("name", ""), near])
