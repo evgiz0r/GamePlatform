@@ -52,4 +52,14 @@ func _run() -> void:
 			if walls <= 25:
 				print("  wall %s - %s, %.1f m, off the road: %s" % [a.round(), b.round(), a.distance_to(b), g._off_road(m, 0.0)])
 	print("walls within 40 m of the way: %d" % walls)
+	var rails := 0
+	for ra: Array in g._furn.rail_at:
+		var m: Vector2 = ra[0]
+		var d: Vector2 = ra[1]
+		if near.call(m) < 40.0:
+			rails += 1
+			if rails <= 20:
+				print("  railing panel at %s running %s, ends off the road: %s" % [m.snapped(Vector2(0.1, 0.1)), d.snapped(Vector2(0.01, 0.01)),
+					g._off_road(m - d * 0.6, 0.0) and g._off_road(m + d * 0.6, 0.0)])
+	print("railing panels within 40 m of the way: %d" % rails)
 	quit(0)

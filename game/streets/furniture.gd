@@ -20,6 +20,7 @@ var _flag_mat: ShaderMaterial
 var _fence_mats := {}
 var _fence_shader: Shader
 var _kits := {}
+var rail_at: Array = []              ## every railing panel by a zebra: [middle, the way it runs] (tests)
 var _count := {}
 var where := {}                ## kind -> transforms of what went in (for tests and tours)
 var _flag_seen := {}           ## 60 m squares that have their flagpole
@@ -1043,6 +1044,7 @@ func kerbside() -> void:
 							if not ends_ok:
 								break
 							rails.append(Transform3D(Basis(Vector3.UP, atan2(-d.y, d.x)), Vector3(m.x, _h(m) + kh, m.y)))
+							rail_at.append([m, d])   # (tests/rails_near.gd, start_drive.gd)
 							g._add_post(m - d * 0.6, 0.06)
 							g._add_post(m + d * 0.6, 0.06)
 					else:

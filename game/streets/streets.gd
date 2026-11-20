@@ -9373,7 +9373,7 @@ func _flush_batches() -> void:
 const INDEX_PIECE := 30000
 func _index_into(am: ArrayMesh, bat: Buf, mat: Material) -> void:
 	var n := bat.v.size()
-	if not _bg_build:
+	if not _bg_build or OS.get_environment("STREETS_NO_INDEX") == "1":   # (=1: as before, to compare)
 		var soup := []
 		soup.resize(Mesh.ARRAY_MAX)
 		soup[Mesh.ARRAY_VERTEX] = bat.v
