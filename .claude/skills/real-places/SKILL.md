@@ -336,6 +336,12 @@ one needed:
   G (s - L/2)) and round humps. And in the car: a rise under it faster than any slope could
   give at its speed is a step (two decks overlapping at a junction in the air, 0.2-0.3 m
   apart), not a climb -- taken as vertical speed, it threw a car 3 m into the air.
+- **Hold the road a bridge crosses along the road, not as the crow flies.** The road under
+  a bridge is held at street level for some distance either side of the crossing; measure
+  that distance along it. A cloverleaf's link bridge lands on its own loop, which turns
+  and passes back under it: by straight-line distance the loop's start (beside the
+  crossing, hundreds of metres along the loop) was held down, and the bridge's end with it
+  -- 0.5-4 m clear over the roads it crossed.
 - **Footbridges and footpath tunnels are a second network.** Work their heights out the same
   way but along the paths only (footway, path, steps, cycleway...), steep (a ramp ~25%,
   stairs ~60% where OSM maps `highway=steps`), and keep the two networks apart both ways: a

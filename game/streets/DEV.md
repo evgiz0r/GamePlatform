@@ -1060,9 +1060,20 @@ it is dropped.
   service tunnel. `tests/decks.gd` level 1: the tunnels and bridges driven alone come out
   clean; in the full sequence two runs stall (traffic left by the run before), and two
   cuttings give a short hop.
-- **Still to do**: Tel Aviv is another session's;
-  Ashdod's tight interchange at its east edge (x 3850, z -1590: slip roads crossing slip
-  roads at street level -- 15 crossings short of the clearance, 0.5 m the lowest); a 0.5 s
+- **Ashdod's interchanges** (Highway 4 under the motorway at x 3850, z -1590; the
+  motorway's at x 4830, z -4150) had 15 crossings short of the clearance, down to 0.5 m:
+  each link bridge lands on its own continuation, a cloverleaf loop that turns and passes
+  back under the bridge. The road crossed was held to the ground within 80 m of the
+  crossing as the crow flies, so the loop's start -- metres from the crossing, hundreds of
+  metres along the loop -- was held down, and the bridge's end with it. Held within 80 m
+  ALONG the road crossed now: Ashdod 0 short, 0 capped (22 before), every crossing over a
+  road at 6.4 m; Bedford and Givatayim the same as before; Tel Aviv's 3 short crossings (at
+  Givat HaTahmoshet) the same, capped 49 -> 40. `ROUTES=... tests/decks.gd` drives each link
+  bridge and Highway 4 under them: all clean. Ashdod's ten highest, both ways: clean but for
+  Begin's known hop and Laskov Road's bridge (three small take-offs on its way down, 30
+  frames; its profile is the same with and without this change: the decimetre kinks).
+  `street_holes` on Ashdod: 0 holes, 2 points in a wall (both on Laskov Road; 51 before).
+- **Still to do**: Tel Aviv is another session's; a 0.5 s
   hop out of Menachem Begin's underpass; grass slopes for cuttings too (they are walled); pavements and
   people beside an inferred cutting; a long-span
   bridge's height over water (the MacKay's deck is only as high as its ends); pavements at street
