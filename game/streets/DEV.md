@@ -924,6 +924,27 @@ it is dropped.
   the other's) also found: crests where a cutting meets the street at full grade, and
   humps in a tunnel where a branch climbs out, launch cars at 30-50 km/h (a vertical curve,
   rounding) -- not yet in `infer`.
+- **Hops at ramp tops** (Nov 2026): Moses, Arvei Nahal, Yitzhak Sadeh and the City tunnel's
+  mouth in Tel Aviv, Ashdod's Begin underpass and Laskov bridge, a Givatayim tunnel: 6-51
+  frames in the air each at 30-50 km/h. Not crests a car would really leave the road over
+  (13% of grade change over 30 m needs 0.5 m/s2 at 40 km/h, gravity is 9.8): the profile is
+  points 6 m apart rounded to 10 cm, a kink at every point, and `_fly` took the ground as it
+  came, so a kink was a jump of the ground's speed in one frame, over `LIFTOFF`. Now the
+  springs feel the ground along the car's way smoothed over half a wheelbase of travel
+  (`ride` in `_fly`) and `infer` keeps its heights unrounded; also `_round_joints` puts a
+  32 m vertical curve across a joint where two lifted pieces meet in a crest and eases a
+  cutting's top into the street. Result (`tests/decks.gd`, levels 1, 3, 4, 7 bridges and
+  tunnels): every run 0 frames in the air but Arvei Nahal's 9 and one frame in a Tel Aviv
+  tunnel. Measuring under the axles instead was tried first and is wrong: an axle's point
+  by a tunnel's wall found the ground over the tunnel (37 frames in the air in Givatayim's
+  City tunnel, which had none). `TRACE=1` prints the frames before each take-off;
+  `tests/deck_profile.gd` prints the profile of the decks round a spot, with and without
+  `_round_joints`.
+- **Open: Arvei Nahal's seam** (Tel Aviv, (578, -691)): where Al Parashat Drachim's ramp
+  leaves the wide deck at the knot, the two overlap for a metre or two at heights 0.44 m
+  apart (the ramp falls at 7% from the shared point, the deck is flat), and the car stays on
+  the higher till it ends, then drops: 9 frames in the air at 43 km/h. Wants a ramp leaving
+  a deck held at the deck's height until it is clear of its asphalt.
 - **Where the heights come from.** The test town's maker knows them: each deck's ends at the
   ground, a bridge straight from bank to bank with a little camber, the flyover's and
   underpass's ramps eased up and down to 6.6 m clear of the boulevard (`CLEAR`), the tunnel
@@ -940,11 +961,6 @@ it is dropped.
   (a turning car clipped the parapet), a 5 cm switch from a cutting's road to the ground
   where it gets shallow (a hop), and ground triangles left whole over a cutting (an edge
   parallel to the hole's leaves a smaller triangle: compare areas, not corner counts).
-<<<<<<< HEAD
-- **Still to do**: the inferred heights for Givatayim and Ashdod (and their tunnels);
-  pavements and people beside an inferred cutting, and the minimap showing a tunnel as one;
-  earth embankments with grass slopes rather than walls along inferred ramps; a long-span
-=======
 - **Givatayim** (with the strip of Ramat Gan and Tel Aviv round it): 11 bridges (Menachem
   Begin's and Arvey Nahal's over the Ayalon), all 23 crossings over roads at full clearance;
   7 tunnels (Uzi Hitman's, the City tunnel's pieces, HaMaayan's), 16 cuttings, 0.3 s. Left
@@ -954,9 +970,8 @@ it is dropped.
   cuttings give a short hop.
 - **Still to do**: Tel Aviv is another session's;
   Ashdod's tight interchange at its east edge (x 3850, z -1590: slip roads crossing slip
-  roads at street level -- 15 crossings short of the clearance, 0.5 m the lowest); a 0.5 s
-  hop out of Menachem Begin's underpass; footpath tunnels; grass slopes for cuttings too (they are walled); a long-span
->>>>>>> origin/main
+  roads at street level -- 15 crossings short of the clearance, 0.5 m the lowest); footpath
+  tunnels; grass slopes for cuttings too (they are walled); a long-span
   bridge's height over water (the MacKay's deck is only as high as its ends); pavements at street
   level beside a cutting (the underpass has none); people on a bridge's pavement; the
   minimap draws a tunnel like any street; zooming out from inside the tunnel rises from the

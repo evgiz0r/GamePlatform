@@ -455,6 +455,16 @@ void fragment() {
 				rough = 0.2;
 				emit = room;
 			}
+		} else if (COLOR.a > 0.95) {
+			// a landmark's curtain wall (COLOR.a 1: landmarks.gd): one darker, glossier glass
+			// in thin dark mullions, not panes in white frames
+			col = tower * 0.32;
+			pl = 0.0;
+			if (fx > 0.015 && fx < 0.985 && fy > 0.04 && fy < 0.97) {
+				col = tower * (0.5 + 0.06 * r1);
+				rough = 0.05;
+				emit = r3 < 0.3 ? lit_cool.rgb * (0.7 + 0.3 * r2) : vec3(0.0);
+			}
 		} else {
 			if (fx > 0.04 && fx < 0.96 && fy > 0.08 && fy < 0.96) {
 				col = tower * (0.85 + 0.3 * r1);
@@ -823,6 +833,7 @@ var _furn: RefCounted                ## the street furniture builder (furniture.
 var _details: RefCounted             ## what a filmed walk added to the city (details.gd), or null
 var _decks: Decks                    ## bridges, embankments, cuttings, tunnels (decks.gd)
 var _rails: Rails                    ## railway tracks, platforms, trains (rails.gd)
+var _marks: Marks                    ## a town's landmarks and its towers' red lights (landmarks.gd)
 var _on_deck := -1                   ## while a deck road is drawn: heights come from it, not the ground
 var _inferred := {}                  ## what decks.gd's infer() made of a real town's bridges (the report)
 var _wired := {}                     ## road index -> true: Bedford's lamps hang off its power poles
@@ -870,6 +881,7 @@ const Furniture := preload("res://game/streets/furniture.gd")
 const Details := preload("res://game/streets/details.gd")
 const Decks := preload("res://game/streets/decks.gd")
 const Rails := preload("res://game/streets/rails.gd")
+const Marks := preload("res://game/streets/landmarks.gd")
 const DriveLog := preload("res://game/streets/drivelog.gd")
 var _log := DriveLog.new()            ## the last two minutes, for the map page and "save log"
 var _ap_why := ""                     ## what held autodrive's speed down this tick (for the log)
@@ -2042,6 +2054,8 @@ func _build_setup(t0: int) -> void:
 					_bucket(_tile_bars, t, i)
 	_rails = Rails.new(self)
 	_rails.setup(_city_data, k)   # (before the trees: nothing grows on a track's bed)
+	_marks = Marks.new(self)
+	_marks.setup(_city_data, _city_id)
 	_lights_setup()
 	_parks_setup()
 	_trees_setup()
@@ -2076,6 +2090,7 @@ func _build_tile(t: Vector2i) -> void:
 	await _build_ground()
 	await _decks.build()
 	await _rails.build()
+	_marks.build()
 	tk = _stage("roads", tk)
 	await _build_buildings()
 	tk = _stage("buildings", tk)
@@ -4011,7 +4026,7 @@ func _doors_of(bi: int) -> Array:
 			g_sum += gh
 		var top := g_sum / maxf(n, 1) + rel - g_lo
 		var pilotis := style <= 1 and rel >= 7.0 and rel <= 22.0 and raised == 0.0 \
-			and absf(area) * 0.5 > 140.0 and posmod(hsh >> 11, 100) < 35 and not bd.has("shops")
+			and absf(area) * 0.5 > 140.0 and posmod(hsh >> 11, 100) < 35 and not bd.has("shops") and not bd.has("_tile")
 		if raised == 0.0 and not pilotis and style < 3 and top >= 10.0 and n >= 3:
 			var sg := 1.0 if area > 0.0 else -1.0
 			for i in range(n):
@@ -4718,10 +4733,14 @@ func _build_buildings() -> void:
 			tk = 0 if pick < 34 else (1 if pick < 48 else (2 if pick < 62 else (3 if pick < 76 else 4)))
 		else:
 			tk = 0 if pick < 54 else (1 if pick < 62 else (2 if pick < 74 else (3 if pick < 84 else 4)))
+		if bd.has("_glass"):   # a landmark's own glass (landmarks.gd)
+			tk = int(bd["_glass"])
 		var tint := float(tk) / 4.0
 		var stone := float(posmod(hsh >> 5, 5)) * 0.18   # 0 white .. 0.72 beige stone
+		if bd.has("_glass"):
+			stone = 1.0   # (the shader's sign for a landmark's curtain wall)
 		var rel := float(bd["_h"])
-		var style: int = 3 if rel > 32.0 else (0 if rel < 10.0 else [0, 0, 0, 0, 1, 1, 1, 2, 0, 1][posmod(hsh >> 7, 10)])
+		var style: int = 3 if rel > 32.0 else (0 if rel < 10.0 or bd.has("_tile") else [0, 0, 0, 0, 1, 1, 1, 2, 0, 1][posmod(hsh >> 7, 10)])
 		var col := Color(bright, tint, float(style) / 4.0 + 0.05, stone)
 		var n := ring.size()
 		var area := 0.0
@@ -4730,11 +4749,11 @@ func _build_buildings() -> void:
 		var sgn := 1.0 if area > 0.0 else -1.0
 		# a pitched roof only on a house that stands on the ground: a raised "building" is a
 		# canopy or a carport (OSM: a roof on stilts), and a house roof on it flew
-		var gabled := north and rel < 10.0 and absf(area) * 0.5 < 450.0 and raised == 0.0
+		var gabled := (north and rel < 10.0 and absf(area) * 0.5 < 450.0 and raised == 0.0) or bd.has("_tile")
 		# "komat amudim": many Givatayim blocks stand on columns, the ground floor open for
 		# parking round a walled-in stairwell and lobby
 		var pilotis := med and style <= 1 and rel >= 7.0 and rel <= 22.0 and raised == 0.0 \
-			and absf(area) * 0.5 > 140.0 and posmod(hsh >> 11, 100) < 35 and not bd.has("shops")
+			and absf(area) * 0.5 > 140.0 and posmod(hsh >> 11, 100) < 35 and not bd.has("shops") and not bd.has("_tile")
 		var wall_base := g_lo + 3.0 if pilotis else base
 		# flat roofs have a low parapet round them; the facade's window grid still stops
 		# at the roof itself (u2.y)
@@ -4781,7 +4800,7 @@ func _build_buildings() -> void:
 				walls.tri(ar, a1, b1, -nrm, col, Vector2(0, h - g_lo), Vector2(0, y1), Vector2(len, y1), u2)
 				walls.tri(ar, b1, br, -nrm, col, Vector2(0, h - g_lo), Vector2(len, y1), Vector2(len, h - g_lo), u2)
 		if gabled:
-			_gable(gables, ring, h, hsh)
+			_gable(gables, ring, h, hsh, bd.has("_tile"))
 		var idx := Geometry2D.triangulate_polygon(ring)
 		var rc := Color(bright * 0.95, bright * 0.95, bright * 0.95)
 		for i in range(0, idx.size(), 3):
@@ -5388,7 +5407,7 @@ func _stilts(ring: PackedVector2Array, sgn: float, ground: float, under: float, 
 
 ## a pitched roof over a house: the footprint's tightest rectangle, the ridge along its
 ## long side, eaves a little past the walls, shingles grey or red-brown
-func _gable(g: Dictionary, ring: PackedVector2Array, top: float, hsh: int) -> void:
+func _gable(g: Dictionary, ring: PackedVector2Array, top: float, hsh: int, tiled := false) -> void:
 	var best := INF
 	var u := Vector2.RIGHT
 	var lo := Vector2.ZERO
@@ -5429,6 +5448,8 @@ func _gable(g: Dictionary, ring: PackedVector2Array, top: float, hsh: int) -> vo
 	var shades := [Palette.col("bg").lerp(Palette.col("bg_alt"), 0.6), Palette.col("hazard").lerp(Palette.col("bg"), 0.55),
 		Palette.col("warn").lerp(Palette.col("bg"), 0.62), Palette.col("bg_alt").lerp(Palette.col("ink"), 0.25)]
 	var col: Color = shades[posmod(hsh >> 9, shades.size())]
+	if tiled:   # red clay tiles (Sarona's Templer houses), a little weathered one from the next
+		col = Palette.col("hazard").lerp(Palette.col("warn"), 0.4).lerp(Palette.col("bg"), 0.3 + 0.12 * float(posmod(hsh >> 9, 3)))
 	var r0: Vector3 = P.call(lo.x, cy, top + rise)
 	var r1: Vector3 = P.call(hi.x, cy, top + rise)
 	for side: Array in [[lo.y, 1.0], [hi.y, -1.0]]:
@@ -7041,6 +7062,8 @@ func _set_night(on: bool) -> void:
 		_furn.set_night(on)
 	if _rails != null:
 		_rails.set_night(on)
+	if _marks != null:
+		_marks.set_night(on)
 	if _car_shader_mat != null:
 		_car_material()
 	_far_update()
@@ -13826,8 +13849,15 @@ void fragment() {
 ## and lands with a thump (and a bounce if it came down hard)
 func _fly(dt: float) -> void:
 	var ground: float = _decks.surf(_pos, _y)   # (a bridge's deck, a tunnel's road: whatever is under it)
-	var gv := (ground - _ground_was) / maxf(dt, 0.001)   # the ground's own rise or fall, under the car
-	_ground_was = ground
+	# What the springs feel is the ground along the way the car came, smoothed over half a
+	# wheelbase of travel: a deck's profile is points 6 m apart with a kink at each, and taken
+	# as it came a kink was a jolt in one frame -- at a ramp's top at 50 km/h enough to throw
+	# the car up (Tel Aviv's ramps, Ashdod's underpass) -- and so was a seam of a few
+	# centimetres between two decks. A real drop still throws it. (Not the heights under the
+	# axles: an axle's point by a tunnel's wall found the ground over the tunnel.)
+	var ride := lerpf(_ground_was, ground, clampf(dt * maxf(absf(_v), 2.0) / (WHEELBASE * 0.5), 0.0, 1.0))
+	var gv := (ride - _ground_was) / maxf(dt, 0.001)   # the ground's own rise or fall, under the car
+	_ground_was = ride
 	# A rise faster than any slope gives at this speed is a step -- the seam where two decks
 	# overlap, up at a junction in the air, a few tenths of a metre apart -- climbed, not a
 	# ramp: taken as the car's own climb, 0.3 m in a frame was 17 m/s up, and on the flat
