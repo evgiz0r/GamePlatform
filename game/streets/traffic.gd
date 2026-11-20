@@ -52,6 +52,7 @@ class Car:
 	var pitch := 0.0
 	var y := 0.0                      ## the height of the surface under it: the ground, or a bridge or a tunnel's road
 	var prev_y := 0.0
+	var rear := Vector2.INF           ## where its rear axle is (trailing the front: see _place)
 	var prev_pos := Vector2.ZERO
 	var prev_yaw := 0.0
 	var pace := 1.0                   ## this driver's share of the limit
@@ -1070,6 +1071,7 @@ func _start_on(c: Car, ri: int, sj: int, at: Vector2, dir: int) -> bool:
 	c.hit = 0.0
 	c.ignore = 0.0
 	c.squeeze = 0.0
+	c.rear = Vector2.INF   # (placed afresh: its back on the lane behind it)
 	_place(c)
 	c.prev_pos = c.pos
 	c.prev_yaw = c.yaw
@@ -1318,21 +1320,34 @@ func _at(c: Car, s: float) -> Vector2:
 ## the corners of the lane line instead of pivoting on them
 func _place(c: Car) -> void:
 	_seek(c)
-	var a := _at(c, c.s - 2.2)
-	var b := _at(c, c.s + 2.2)
-	c.pos = (a + b) * 0.5
+	# A vehicle steers by its front wheels and its back follows: the front axle runs on its
+	# lane (shifted into the lane it is in, with its little drift), the rear axle trails it
+	# a wheelbase behind, pulled along, never sliding sideways. The body was pointed along the
+	# lane 2.2 m either side of its middle, the same for a car and a 12 m bus, so at every
+	# corner it pivoted on its middle: a bus's back swung out across the lane, a car's nose
+	# snapped round at each kink in its line -- "they jump around".
+	var wb := clampf(c.len * 0.6, 1.3, 7.0)
+	var wander := sin(_clock * 0.31 + c.drift) * 0.14 * clampf(c.v / 8.0, 0.0, 1.0)
+	var off := c.shift + wander
+	var f0 := _at(c, c.s + wb * 0.5)
+	var td := _at(c, c.s + wb * 0.5 + 1.0) - f0
+	var ty := atan2(td.x, td.y) if td.length_squared() > 0.0001 else c.yaw
+	var front := f0 + Vector2(cos(ty), -sin(ty)) * off   # (its lane: left of the line)
+	if c.rear == Vector2.INF or c.rear.distance_to(front) > wb * 1.6:
+		# placed afresh (a new start, sent elsewhere): its back on the lane behind
+		var r0 := _at(c, c.s - wb * 0.5)
+		var rd := f0 - r0
+		var ry := atan2(rd.x, rd.y) if rd.length_squared() > 0.0001 else ty
+		c.rear = r0 + Vector2(cos(ry), -sin(ry)) * off
+	else:
+		c.rear = front + (c.rear - front).normalized() * wb
+	var d := front - c.rear
+	c.pos = (front + c.rear) * 0.5
 	c.y = g._decks.surf(c.pos, c.y)
-	var d := b - a
 	if d.length_squared() > 0.01:
 		c.yaw = atan2(d.x, d.y)
 		if g._hnx > 0:
-			c.pitch = atan2(float(g._decks.surf(b, c.y)) - float(g._decks.surf(a, c.y)), d.length())
-	# a little drift in the lane while it moves (nobody holds the line to the centimetre)
-	var wander := sin(_clock * 0.31 + c.drift) * 0.14 * clampf(c.v / 8.0, 0.0, 1.0)
-	var off := c.shift + wander
-	if off != 0.0 or c.shift_rate != 0.0:
-		c.pos += Vector2(cos(c.yaw), -sin(c.yaw)) * off       # its lane: left of the line
-		c.yaw += atan2(c.shift_rate, maxf(c.v, 3.0))         # nose into the lane change
+			c.pitch = atan2(float(g._decks.surf(front, c.y)) - float(g._decks.surf(c.rear, c.y)), d.length())
 
 func _in_view(p: Vector2) -> bool:
 	var look := Vector2(cos(float(g._yaw)), sin(float(g._yaw)))
