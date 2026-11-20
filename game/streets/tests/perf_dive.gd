@@ -11,20 +11,20 @@ var g: Node
 func _initialize() -> void:
 	_run()
 
-func _info(kind: int, what: int) -> int:
-	return root.get_viewport().get_render_info(kind, what)
+var _names := {}   # a distinctive line of each of the game's shaders -> the constant's name
+
+func _info(what: int) -> int:
+	return RenderingServer.get_rendering_info(what)
 
 func _sample(label: String) -> void:
 	# a few frames to settle, then the numbers of the last
 	for i in range(4):
 		await process_frame
 	await RenderingServer.frame_post_draw
-	var vp := Viewport.RENDER_INFO_TYPE_VISIBLE
-	var sh := Viewport.RENDER_INFO_TYPE_SHADOW
-	print("%-26s view: %5d draws %8d tris %5d objects | shadows: %5d draws %8d tris %5d objects" % [label,
-		_info(vp, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME), _info(vp, Viewport.RENDER_INFO_PRIMITIVES_IN_FRAME),
-		_info(vp, Viewport.RENDER_INFO_OBJECTS_IN_FRAME), _info(sh, Viewport.RENDER_INFO_DRAW_CALLS_IN_FRAME),
-		_info(sh, Viewport.RENDER_INFO_PRIMITIVES_IN_FRAME), _info(sh, Viewport.RENDER_INFO_OBJECTS_IN_FRAME)])
+	# (the whole frame: the view, the shadow map and the HUD together)
+	print("%-26s %5d draws %9d triangles %5d objects" % [label,
+		_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME), _info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME),
+		_info(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME)])
 
 ## the drawables in view (range and frustum) by kind, the biggest few by triangles
 func _kinds(label: String) -> void:
@@ -79,8 +79,10 @@ func _mat_name(m: Material, gi: GeometryInstance3D) -> String:
 		return "?"
 	if m is ShaderMaterial and (m as ShaderMaterial).shader != null:
 		var code := (m as ShaderMaterial).shader.code
-		var i := code.find("//")
-		return "shader#%d" % (hash(code) % 1000) if i < 0 else "shader#%d" % (hash(code) % 1000)
+		for key: String in _names:
+			if code.contains(key):
+				return _names[key]
+		return "shader#%d" % (hash(code) % 1000)
 	if m is StandardMaterial3D:
 		return "std " + (m as StandardMaterial3D).albedo_color.to_html(false)
 	return m.get_class()
@@ -103,6 +105,16 @@ func _run() -> void:
 				g = n
 	await create_timer(1.0).timeout
 	print(g._load_text())
+	# the game's shaders by name: each constant's longest line, looked for in a material's code
+	for sc: Script in [g.get_script(), g._furn.get_script()]:
+		var consts := sc.get_script_constant_map()
+		for k: String in consts:
+			if typeof(consts[k]) == TYPE_STRING and String(consts[k]).contains("shader_type"):
+				var longest := ""
+				for line: String in String(consts[k]).split("\n"):
+					if line.strip_edges().length() > longest.length() and not line.strip_edges().begins_with("//"):
+						longest = line.strip_edges()
+				_names[longest] = k
 	var start: Vector2 = g._pos
 	# a main road's spot: the longest primary or secondary road's middle
 	var main := start
@@ -154,6 +166,31 @@ func _run() -> void:
 		elif gi is MeshInstance3D:
 			meshes += 1
 	print("scene: %d nodes, %d mesh instances, %d multimeshes (%d instances), %d shader kinds (materials x instanced)" % [nodes, meshes, mms, inst, keys.size()])
+	# the static meshes' vertices by material (each a vertex of a triangle soup unless indexed):
+	# where the buffers' memory goes
+	var verts := {}   # name -> [meshes, vertices, indexed meshes]
+	var all_v := 0
+	for mi: MeshInstance3D in root.find_children("*", "MeshInstance3D", true, false):
+		if mi.mesh == null or not mi.mesh is ArrayMesh:
+			continue
+		var am := mi.mesh as ArrayMesh
+		for si in range(am.get_surface_count()):
+			var name := _mat_name(am.surface_get_material(si), mi)
+			if not verts.has(name):
+				verts[name] = [0, 0, 0]
+			var n := am.surface_get_array_len(si)
+			verts[name][0] += 1
+			verts[name][1] += n
+			if am.surface_get_array_index_len(si) > 0:
+				verts[name][2] += 1
+			all_v += n
+	var rows: Array = []
+	for k: String in verts:
+		rows.append([k, verts[k][0], verts[k][1], verts[k][2]])
+	rows.sort_custom(func(a, b): return a[2] > b[2])
+	print("static meshes: %.2f M vertices in all" % (all_v / 1.0e6))
+	for r: Array in rows.slice(0, 12):
+		print("  %-28s %5d surfaces %6.2f M vertices (%d indexed)" % [r[0], r[1], float(r[2]) / 1.0e6, r[3]])
 	print("video memory %.0f MB, textures %.0f MB, buffers %.0f MB" % [Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0,
 		Performance.get_monitor(Performance.RENDER_TEXTURE_MEM_USED) / 1048576.0, Performance.get_monitor(Performance.RENDER_BUFFER_MEM_USED) / 1048576.0])
 	quit(0)
