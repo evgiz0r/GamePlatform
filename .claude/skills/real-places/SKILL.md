@@ -9,6 +9,23 @@ A baked city looks finished on the minimap and is full of traps up close. Each s
 below was a round of the user's bug reports in a driving game built on baked towns. The
 data format is at the top of `tools/osm_city.py`; this is about living with it.
 
+## The rule under a quarter of the bugs: the whole body, not its middle
+
+Anything long -- a car, a bus, a wall, a hedge, a fence piece, a kerb corner -- judged at
+its middle point is the most repeated bug in a driving game on real streets. In one day
+five fixes out of twenty were this one mistake, each found and fixed on its own: a bus
+stopping for a red with its middle at the line (its front 4 m into the junction), the AI
+keeping its distance from a bus's middle (inside its back), a car waiting crossways seen
+by its middle (its nose in the turn, hit), garden walls and hedges checked at their middle
+(their ends on the next road). It is written down below five times, in the section where
+each was met; this is the one rule behind all of them. **Every check of where something is
+uses its outline**: a vehicle is a box its own length and width (its front at the stop
+line, its back for the gap), a wall is a box its length and thickness checked along all of
+it, a post a circle. A bus is 12 m: half its length is the error, and that is a car's width
+of road. The tests can lean on the same shapes (in a game with scene tests, a helper like
+`bodies.gd` beside them), and the scored run checks bodies every tick, so a new place this
+goes wrong shows up the first time it runs.
+
 ## Getting a city
 
 - `tools/osm_city.py` needs Overpass. From a cloud session that cannot reach it, start the

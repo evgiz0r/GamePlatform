@@ -112,6 +112,34 @@ again, compare. Check what each counter really counts before chasing its number:
 counted frames of braking (30 per stop), another judged a car mid-turn by the heading it
 had at that moment, and both sent a round of work the wrong way.
 
+**Checks that should read 0, every tick.** Counting what went wrong per minute finds the
+big things; checks of what must never happen find the bugs before anyone looks for them.
+Each is a kind of bug already fixed once, written so it cannot come back unseen: bodies
+overlapping (measured by their outlines -- see "the whole body, not its middle" in the
+`real-places` skill), a body into a wall or post, standing over the stop line at a red,
+pushing against something without moving, and standing still with nothing named holding it
+(follow what holds it down the queue: a car that holds the next one is a reason, the speed
+limit at a standstill is not). Print every check with its count even at 0, so a reader
+sees it ran. The first version of a check finds its own false alarms first (the front of a
+queue in its moment to react at a green read "held by nothing"): run it once in the small
+test town and read every hit before trusting the number.
+
+**A check of the world as built**, before anything drives it: walls, posts and buildings
+on the road, a junction's points each deciding alone, roads too short to have a direction.
+Seconds a city, so run it on every city after changing how one is laid out.
+
+**A target from the real world, not from the last run.** A behaviour tuned by eye swings
+both ways: one queue at a green went all at once within 0.3 s, the fix had its third car
+move 9 s after the green, the next fix again. Real numbers exist for most of what traffic
+does (cars cross a stop line about 2 s apart once a queue is moving, Greenshields 1947 and
+the Highway Capacity Manual); put them in the test as bands it passes or fails.
+
+**A fix comes with what would catch it again**: the scene test that staged it, or a check
+in the scored run. Half of one day's twenty fixes had neither, and were guarded only by a
+per-minute total that random traffic moves about anyway. And about half of those twenty
+bugs had been made the same day -- by the change before, or another session's -- so after
+merging, run the quick checks (the world check, the route scans) before pushing.
+
 ## Showing the user
 
 The user reads pictures, not tables -- a per-minute scorecard of a dozen rows was "hard to
@@ -130,7 +158,8 @@ it is made, with a one-line caption, rather than a report at the end.
 - `var x := g.some_member` cannot infer a type through an untyped node: annotate it.
 - **Forget `OUT` and the screenshots land in `/`.** Check the folder after the first run.
 - A script error mid-test prints `SCRIPT ERROR` and the test may hang to its timeout: grep
-  the output for it, and always run under `timeout`.
+  the output for it, and always run under `timeout`. One in the background goes on taking
+  a core until then, slowing every run beside it: kill it once you have seen the error.
 - `grep` in a pipe holds its output until the process exits; use `--line-buffered` to
   watch progress.
 - A test that is already running keeps the code it loaded; one that starts later in a
@@ -154,6 +183,13 @@ it is made, with a one-line caption, rather than a report at the end.
   (1280x720) and crop the middle: `ffmpeg -vf crop=406:720:437:0`. Mind that the crop sees
   far less sideways than the shot: check the whole frame before deciding something is
   missing.
+- **Freezing the game for stills freezes what follows the camera.** With the game's frame
+  stopped (so its camera does not move yours back), anything it moves with the camera each
+  frame -- a sky dome, a far-off ground plane -- stays where it was: a shot a kilometre away
+  was a flat blank, the camera outside the dome. Call the game's own follow step after
+  placing the camera.
+- **A marker for a 3D shot goes in the game's 3D world**, not under the game's node: a
+  3D game's own node is a 2D one, and a ring added under it is never drawn.
 - Parse-check first: `tools/check_script.sh res://game/<game>/<game>.gd` takes seconds and
   says which line; a broken script makes a scene test fail in a confusing way minutes in.
 
