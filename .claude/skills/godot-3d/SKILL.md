@@ -234,8 +234,13 @@ Opening shot: interpolate camera pose from an outside point to the seat, both ex
 
 A world of thousands of objects that runs fine on the desktop can crawl in a laptop
 browser (WebGL, one thread). Measure before guessing: `view.get_render_info(TYPE, WHAT)`
-gives draw calls and triangles for the visible pass and the shadow pass. What cost the
-most, in order, last time one did:
+gives draw calls and triangles for the visible pass and the shadow pass (in one test run
+under the Compatibility renderer it read 0 throughout; `RenderingServer.get_rendering_info(
+RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)` and its `_PRIMITIVES_`/`_OBJECTS_`
+siblings gave the whole frame's). Counts like these are the same on any machine, so a test
+container's software renderer can measure them even though its frame times mean nothing.
+Then list what is in view by material and add up its triangles: the biggest single item
+is rarely the one you would guess. What cost the most, in order, last time one did:
 
 - **The default sun shadow is four cascades**: every caster is drawn again per cascade.
   `sun.directional_shadow_mode = SHADOW_ORTHOGONAL` with a short
@@ -248,7 +253,12 @@ most, in order, last time one did:
 - **Visibility range counts to the middle of a node's box**, not its nearest point. A
   multimesh over a 400 m square with a 160 m range draws every copy in the square, and
   none when the camera sits near a corner. Make the squares no bigger than about 0.6x the
-  range and add half a square's diagonal to the range.
+  range and add half a square's diagonal to the range. (Forgotten once for a city's parked
+  cars -- grouped by the 400 m squares the city is built in, a 140 m range drew every one
+  out to 420 m: 1.24 M of a 2.4 M-triangle frame. In 100 m squares, the full car out to
+  ~70 m and a plain few-dozen-triangle shape with its own `visibility_range_begin` past it:
+  0.3 M.) A distant copy needs only the silhouette: the same side outline pushed across the
+  width reads as the same car at 80 m.
 - **A camera that rises over the world (a zoom-out, a map view) meets every range at
   once.** Visibility ranges and fog both count from the camera, so from 500 m up the
   ground right below is already 500 m away. Thinning the fog with height is needed
