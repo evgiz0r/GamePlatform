@@ -788,6 +788,10 @@ const ROAD_RANK := {"motorway": 6, "trunk": 6, "primary": 5, "secondary": 4, "te
 ## ---- traffic ----
 const Traffic := preload("res://game/streets/traffic.gd")
 const Furniture := preload("res://game/streets/furniture.gd")
+const DriveLog := preload("res://game/streets/drivelog.gd")
+var _log := DriveLog.new()            ## the last two minutes, for the map page and "save log"
+var _ap_why := ""                     ## what held autodrive's speed down this tick (for the log)
+var _ap_lead := -1.0                  ## metres to the car ahead on its lane, or -1
 var _traffic: Traffic = null
 var _ap_wait := 0.0                  ## autodrive held up by a car this long
 
@@ -8656,6 +8660,7 @@ func _physics_process(dt: float) -> void:
 		_p("crossers")
 		_explore(dt)
 		_p("explore")
+		_log.tick(self, dt)
 		return
 	if PInput.just_pressed("action_a") and not _auto:
 		_set_auto(true)
@@ -8686,6 +8691,8 @@ func _physics_process(dt: float) -> void:
 	_check_arrival(dt)
 	_explore(dt)
 	_p("explore")
+	_log.tick(self, dt)
+	_p("log")
 
 ## ---- every drawn frame -------------------------------------------------------------------
 ## The car moves in fixed physics ticks (60 a second). Drawn as it was at the last tick,
@@ -8812,6 +8819,7 @@ func _judge_fps(dt: float) -> void:
 			_set_quality(_quality - 1)
 			_fps_wait = 3.0   # (new shaders compile)
 			Probe.event("quality", {"level": _quality, "fps": int(fps), "down": true})
+		_log.event("quality", _quality)
 		return
 	_fps_low = 0
 	if fps < FPS_FULL or stutter > 0.03:
@@ -10435,6 +10443,13 @@ func _set_auto(on: bool) -> void:
 	Probe.event("autodrive", {"on": on})
 	_show_banner("autodrive" if on else "you drive", 1.2)
 
+## the lower of two speeds, noting what the new one is for when it is the lower
+func _held(cur: float, v: float, why: String) -> float:
+	if v < cur:
+		_ap_why = why
+		return v
+	return cur
+
 func _autodrive(dt: float) -> Array:
 	# into the walls again and again (a few in quick succession): lost, back to the street
 	_ap_bonks = maxf(0.0, _ap_bonks - dt / 10.0)
@@ -10519,6 +10534,7 @@ func _autodrive(dt: float) -> Array:
 	# keep the limit, and slow for the corners ahead: at most the speed from which each
 	# one can still be braked down to in time
 	var vt: float = _ap_lim[1]
+	_ap_why = "limit"
 	var dist := 0.0
 	var p := _pos
 	for i in range(1, _ap_pts.size()):
@@ -10526,18 +10542,21 @@ func _autodrive(dt: float) -> Array:
 		p = _ap_pts[i]
 		if dist > 90.0:
 			break
-		vt = minf(vt, sqrt(_ap_v[i] * _ap_v[i] + 2.0 * 2.6 * dist))
-	vt = minf(vt, _ap_light_v())
-	vt = minf(vt, _ap_sign_v(dt))
-	vt = minf(vt, _ap_zebra_v())
-	vt = minf(vt, _ap_people_v())
+		vt = _held(vt, sqrt(_ap_v[i] * _ap_v[i] + 2.0 * 2.6 * dist), "curve")
+	vt = _held(vt, _ap_light_v(), "light")
+	vt = _held(vt, _ap_sign_v(dt), "sign")
+	vt = _held(vt, _ap_zebra_v(), "zebra")
+	vt = _held(vt, _ap_people_v(), "people")
+	if not _cross.is_empty() and not _cross["chosen"]:
+		_ap_why = "choice" if vt >= CROSS_V else _ap_why
 	if ahead_blocked:
-		vt = minf(vt, 2.5)
+		vt = _held(vt, 2.5, "blocked")
 	# the car in front, kept a couple of metres and a second or so behind; after waiting
 	# a while, ignore cars crossing the lane (a standoff in a junction) -- never one ahead
 	var lead: Array = _traffic.lead_on(_ap_pts, _pos, clampf(12.0 + _v * 1.2 + _v * _v / 5.2, 18.0, 130.0), _ap_wait > 3.0)
 	if float(lead[0]) < 30.0 and _ap_pass_bus(lead):
 		lead = _traffic.lead_on(_ap_pts, _pos, clampf(12.0 + _v * 1.2 + _v * _v / 5.2, 18.0, 130.0), _ap_wait > 3.0)
+	_ap_lead = float(lead[0]) if float(lead[0]) < INF else -1.0
 	if float(lead[0]) < INF:
 		var lv: float = lead[1]
 		# from my nose to its back (a bus is two and a half cars long: kept a car's length
@@ -10546,6 +10565,7 @@ func _autodrive(dt: float) -> Array:
 		var follow := 0.0 if room <= 0.0 else sqrt(lv * lv + 2.0 * 2.6 * room)
 		if follow < vt:
 			vt = follow
+			_ap_why = "car"
 			_ap_wait = _ap_wait + dt if _v < 0.3 else 0.0
 		else:
 			_ap_wait = 0.0
@@ -10590,6 +10610,7 @@ func _ap_watch(dt: float, vt: float) -> void:
 			_ap_pts = PackedVector2Array()
 			_show_banner("autodrive: unstuck", 1.6)
 			Probe.event("autodrive_unstuck")
+			_log.event("unstuck")
 			return
 
 ## the point `dist` metres along the planned lane from point k (negative = back)
@@ -10723,6 +10744,7 @@ func _ap_rescue() -> bool:
 	_ap_turn = 0.0
 	_show_banner("autodrive: back on the road", 1.6)
 	Probe.event("autodrive_rescue")
+	_log.event("rescue")
 	return true
 
 func _ap_plan() -> void:
@@ -10864,6 +10886,7 @@ func _ap_pass_bus(lead: Array) -> bool:
 		_ap_pts[k] += Vector2(kd.y, -kd.x) * lane_w * t
 	_ap_passed = bi
 	Probe.event("pass_bus", {"lane_w": snappedf(lane_w, 0.1)})
+	_log.event("pass bus")
 	return true
 
 ## Into the turn lane: before a left turn, over the last 45 m, the lane on the left of its
@@ -11160,6 +11183,7 @@ func _cross_tick() -> void:
 		var legs: Array = w["legs"]
 		var leg: Vector3i = legs[0]
 		Probe.event("crossing", {"turn": int(rad_to_deg(w["turn"])), "chosen": _cross["chosen"], "legs": legs.size()})
+		_log.event("junction", "%+d deg%s" % [int(rad_to_deg(w["turn"])), " (chosen)" if _cross["chosen"] else ""])
 		_cross = {}
 		_ap_queue = legs.slice(1)
 		_ap_leg(leg.x, leg.y, leg.z)
@@ -11699,13 +11723,154 @@ func _tick_hud() -> void:
 	_hud.queue_redraw()
 	_map.queue_redraw()
 
+## P (or a tap on the fps text): the frame times, then the drive map, then off
 func _toggle_perf() -> void:
-	_perf_view = not _perf_view
+	if not _perf_view and not _trace_view:
+		_perf_view = true
+	elif _perf_view:
+		_perf_view = false
+		_trace_view = true
+		_trace_roads = PackedVector2Array()
+	else:
+		_trace_view = false
 	_perf_lbl.visible = _perf_view
+
+## ---- the drive map: the last two minutes from the recorder (drivelog.gd), drawn north up --
+## Your track coloured by speed (red standing, green at the limit), autodrive's lane ahead,
+## the other cars' tracks faint, a cross where something was hit, a ring where it was put
+## back on the road, a dot and the seconds where it stood still (not at a light) 3 s or more.
+## "save log" downloads the two minutes as JSON (tests/drive_log_map.py draws one).
+const TRACE_RECT := Rect2(96, 36, 448, 252)
+const TRACE_SAVE := Rect2(452, 262, 84, 20)
+var _trace_view := false
+var _trace_roads := PackedVector2Array()   ## the streets in view, world metres, gathered on opening
+var _trace_box := Rect2()
+
+func _trace_frame() -> Rect2:
+	var box := Rect2(_pos, Vector2.ZERO)
+	for sm: Dictionary in _log.samples:
+		box = box.expand(Vector2(float(sm["x"]), float(sm["z"])))
+	box = box.grow(25.0)
+	var want := TRACE_RECT.size.x / TRACE_RECT.size.y
+	if box.size.x / maxf(box.size.y, 1.0) < want:
+		box = box.grow_individual((box.size.y * want - box.size.x) * 0.5, 0, (box.size.y * want - box.size.x) * 0.5, 0)
+	else:
+		box = box.grow_individual(0, (box.size.x / want - box.size.y) * 0.5, 0, (box.size.x / want - box.size.y) * 0.5)
+	if box.size.x < 150.0:
+		box = box.grow((150.0 - box.size.x) * 0.5)
+	return box
+
+func _draw_trace() -> void:
+	var ink := Palette.col("ink")
+	var bg := Palette.col("bg")
+	_hud.draw_rect(TRACE_RECT, Color(bg, 0.9))
+	if _trace_roads.is_empty():
+		_trace_box = _trace_frame()
+		var seen := {}
+		for code: int in _near(_seg_hash, _trace_box.get_center(), maxf(_trace_box.size.x, _trace_box.size.y) * 0.5, SEG_CELL):
+			if seen.has(code):
+				continue
+			seen[code] = true
+			var r: Dictionary = _roads[code / 4096]
+			if not r["drive"]:
+				continue
+			var pts: PackedVector2Array = r["pts"]
+			_trace_roads.append(pts[code % 4096])
+			_trace_roads.append(pts[code % 4096 + 1])
+	var box := _trace_box
+	var sc := TRACE_RECT.size.x / box.size.x
+	var to := func(p: Vector2) -> Vector2: return TRACE_RECT.position + (p - box.position) * sc
+	var roads := PackedVector2Array()
+	for p: Vector2 in _trace_roads:
+		roads.append(to.call(p))
+	if not roads.is_empty():
+		_hud.draw_multiline(roads, Color(ink, 0.25), maxf(1.0, 7.0 * sc))
+	# the other cars, faint
+	var tracks := {}
+	for sm: Dictionary in _log.samples:
+		for c: Array in sm["cars"]:
+			if not tracks.has(c[0]):
+				tracks[c[0]] = PackedVector2Array()
+			(tracks[c[0]] as PackedVector2Array).append(to.call(Vector2(float(c[2]), float(c[3]))))
+	for id in tracks:
+		var tr: PackedVector2Array = tracks[id]
+		for k in range(1, tr.size()):
+			if tr[k - 1].distance_to(tr[k]) < 25.0 * sc:   # (sent elsewhere: no line across)
+				_hud.draw_line(tr[k - 1], tr[k], Color(ink, 0.3), 1.0)
+	# mine, by speed; and the standstills
+	var prev := Vector2.INF
+	var still := 0.0
+	var still_at := Vector2.ZERO
+	for sm: Dictionary in _log.samples:
+		var q: Vector2 = to.call(Vector2(float(sm["x"]), float(sm["z"])))
+		var v := absf(float(sm["v"]))
+		if prev != Vector2.INF and prev.distance_to(q) < 40.0:
+			var k := clampf(v / 14.0, 0.0, 1.0)
+			_hud.draw_line(prev, q, Palette.col("hazard").lerp(Palette.col("friend"), k), 2.0)
+		prev = q
+		if v < 0.3 and sm["why"] != "light":
+			if still == 0.0:
+				still_at = q
+			still += 1.0 / DriveLog.HZ
+		else:
+			if still >= 3.0:
+				_hud.draw_circle(still_at, 2.5, Palette.col("warn"))
+				_hud.draw_string(_font, still_at + Vector2(3, -3), "%ds" % int(still), HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Palette.col("warn"))
+			still = 0.0
+	# what happened
+	for ev: Array in _log.events:
+		var at := Vector2.INF
+		for sm: Dictionary in _log.samples:
+			if float(sm["t"]) >= float(ev[0]):
+				at = to.call(Vector2(float(sm["x"]), float(sm["z"])))
+				break
+		if at == Vector2.INF:
+			continue
+		match String(ev[1]):
+			"hit":
+				_hud.draw_line(at - Vector2(4, 4), at + Vector2(4, 4), Palette.col("hazard"), 2.0)
+				_hud.draw_line(at - Vector2(4, -4), at + Vector2(4, -4), Palette.col("hazard"), 2.0)
+			"rescue", "unstuck":
+				_hud.draw_arc(at, 6.0, 0.0, TAU, 16, Palette.col("warn"), 1.5)
+			"junction", "pass bus":
+				_hud.draw_circle(at, 2.0, Palette.col("accent"))
+	# autodrive's lane ahead, and the car
+	if _auto and _ap_pts.size() > 1:
+		var lane := PackedVector2Array()
+		var s := 0.0
+		for k in range(_ap_pts.size()):
+			if k > 0:
+				s += _ap_pts[k - 1].distance_to(_ap_pts[k])
+			if s > 80.0:
+				break
+			lane.append(to.call(_ap_pts[k]))
+		_hud.draw_polyline(lane, Color(Palette.col("accent"), 0.9), 1.5)
+	var c: Vector2 = to.call(_pos)
+	var f := _fwd()
+	var sd := Vector2(-f.y, f.x)
+	_hud.draw_colored_polygon(PackedVector2Array([c + f * 7.0, c - f * 4.0 + sd * 4.0, c - f * 4.0 - sd * 4.0]), Palette.col("player"))
+	var metres := 0.0
+	for k in range(1, _log.samples.size()):
+		var a: Dictionary = _log.samples[k - 1]
+		var b: Dictionary = _log.samples[k]
+		metres += Vector2(float(a["x"]), float(a["z"])).distance_to(Vector2(float(b["x"]), float(b["z"])))
+	var why: String = _ap_why if _auto else "(you drive)"
+	_hud.draw_string(_font, TRACE_RECT.position + Vector2(6, 13), "the last %d s, %d m · held by: %s · tap the fps text to close" % [
+		int(_log.samples.size() / DriveLog.HZ), int(metres), why], HORIZONTAL_ALIGNMENT_LEFT, TRACE_RECT.size.x - 12, 9, ink)
+	_hud.draw_rect(TRACE_SAVE, Color(bg, 0.9))
+	_hud.draw_rect(TRACE_SAVE, Color(Palette.col("accent"), 0.9), false, 1.5)
+	_hud.draw_string(_font, TRACE_SAVE.position + Vector2(0, 14), "save log", HORIZONTAL_ALIGNMENT_CENTER, TRACE_SAVE.size.x, 10, Palette.col("accent"))
+
+func _save_log() -> void:
+	var where := _log.save(self)
+	_show_banner(("drive log saved: " + where.get_file()) if where != "" else "could not save the log", 2.5)
+	Probe.event("drive_log", {"file": where})
 
 func _draw_hud() -> void:
 	var ink := Palette.col("ink")
 	var bg := Palette.col("bg")
+	if _trace_view:
+		_draw_trace()
 	if _perf_view and not _frame_ms.is_empty():
 		# the last frames' times as bars, oldest on the left; 16 and 33 ms marked
 		var box := Rect2(8, 96, 150, 30)
@@ -11970,6 +12135,10 @@ func _input(event: InputEvent) -> void:
 						return
 			if PERF_RECT.has_point(mb.position):
 				_toggle_perf()
+			elif _trace_view and TRACE_SAVE.grow(3).has_point(mb.position):
+				_save_log()
+			elif _trace_view and TRACE_RECT.has_point(mb.position):
+				pass   # (a tap on the map is not a tap on the road under it)
 			elif AUTO_BTN.grow(4).has_point(mb.position):
 				if not _walking:
 					_set_auto(not _auto)
@@ -11999,6 +12168,7 @@ func _input(event: InputEvent) -> void:
 					or ASSIST_BTN.grow(4).has_point(t.position) or NIGHT_BTN.grow(4).has_point(t.position) \
 					or VIEW_BTN.grow(4).has_point(t.position) or LIGHTS_BTN.grow(2).has_point(t.position) \
 					or WALK_BTN.grow(2).has_point(t.position) \
+					or (_trace_view and TRACE_RECT.has_point(t.position)) \
 					or t.position.y < 36.0:
 				return   # the button (via its emulated click) and the shell's menu/sound row
 			if _stick_id < 0 and t.position.distance_to(STICK_C) <= STICK_GRAB:

@@ -82,6 +82,18 @@ A game's `tests/run.sh <test> [level]` wraps that line (see an existing one).
   and paste them into one sheet. Differences that are invisible flipping between files are
   obvious next to each other.
 
+## When the user saw it and you cannot: a recorder
+
+A report like "it drove into the bus" names a moment you will not hit in a test run. Give
+the game a flight recorder: a ring buffer of the last minute or two at ~10 Hz (the player's
+pose and controls, what the AI planned and *why it chose its speed*, the actors nearby,
+events), a debug page that draws it as a map, and a button that saves it --
+`JavaScriptBridge.download_buffer(text.to_utf8_buffer(), name, "application/json")` in a
+browser, a file under `user://` elsewhere. Ask the user for the file, draw it with a small
+script (Python and Pillow are enough: the level's own data gives the map), and stage that
+spot in a scene test. Record the reason for each decision, not just the outcome: "held by:
+car" against "held by: zebra" is usually the whole diagnosis.
+
 ## Gotchas (each cost a run)
 
 - **Don't annotate with a `class_name` type that uses autoloads** (`var a: Actor3D`) in a

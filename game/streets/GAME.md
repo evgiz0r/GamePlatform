@@ -499,7 +499,17 @@ doesn't count -- one half-second stall made a smooth 50 frames a second read as 
 waits longer before the next try (30 s, then 1, 2, 4 minutes), so it never flickers
 between two.
 
-> Sometimes quality drops, even on my PC. It never goes up again, and textures are gone. The frame rate, the slowest frame of the last few seconds and the level are shown
+> Sometimes quality drops, even on my PC. It never goes up again, and textures are gone.
+
+**The drive map.** A second tap on the fps text (or P twice) shows the last two minutes as a
+map: your track coloured by speed, autodrive's lane ahead and what is holding it back, the
+cars round you, a cross where something was hit and a dot where it stood still. "save log"
+downloads those two minutes as a file to send, to see exactly what the car and the cars
+round it did.
+
+> Maybe we can log the path of our car (and maybe some adjacent cars) on a 2D map to
+> reproduce why they were driving badly, and view the path the car took, to fix its
+> accuracy. The frame rate, the slowest frame of the last few seconds and the level are shown
 small under the speed. Parked cars and
 traffic are one mesh per car shape (a batch of them costs one draw, not six); every kind
 of shader is drawn once while the city loads, so none of them stalls the first time it
