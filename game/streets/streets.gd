@@ -2450,6 +2450,7 @@ func _kerb_corners(kerb: Buf, pave: Buf, fill: Buf, col: Color) -> void:
 		var c := _nodes[ni]
 		var cut := _node_r[ni] + KERB_CUT
 		var arms: Array = []   # [angle, point at the cut, way out there, half width, road]
+		var through: Array = []   # the ways out of pieces too short for a corner of their own
 		for e: Vector2i in _node_roads[ni]:
 			var r: Dictionary = _roads[e.x]
 			if not _kerbed(r):
@@ -2460,6 +2461,8 @@ func _kerb_corners(kerb: Buf, pave: Buf, fill: Buf, col: Color) -> void:
 					continue
 				var at: Array = _walk_pts(pts, e.y, step, cut)
 				if not at[2]:
+					var q := pts[e.y + step]
+					through.append(atan2(q.y - c.y, q.x - c.x))
 					continue   # too short to reach the corner (a piece across a median)
 				var p: Vector2 = at[0]
 				arms.append([atan2(p.y - c.y, p.x - c.x), p, at[1], float(r["w"]) * 0.5, e.x])
@@ -2471,6 +2474,20 @@ func _kerb_corners(kerb: Buf, pave: Buf, fill: Buf, col: Color) -> void:
 			var B: Array = arms[(i + 1) % arms.size()]
 			var gap: float = fposmod(float(B[0]) - float(A[0]), TAU)
 			if gap > 3.6 or gap < 0.02:
+				continue
+			# no corner across a road that goes out between the two: on a divided road's median
+			# side, the piece of the cross street through the median. (Laid anyway, it ran
+			# straight across the opening; cut up where it lay on the asphalt, what was left
+			# stood out of the island's end as an arrowhead and spikes.)
+			var crossed := false
+			for ang: float in through:
+				var into := fposmod(ang - float(A[0]), TAU)
+				if into > 0.05 and into < gap - 0.05:
+					crossed = true
+					break
+			if crossed:
+				if _mine(c):
+					_tally("corners_across_roads", 1)
 				continue
 			var ua: Vector2 = A[2]
 			var ub: Vector2 = B[2]
