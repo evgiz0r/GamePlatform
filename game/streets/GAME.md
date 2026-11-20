@@ -603,6 +603,19 @@ overlap, and between them a kerbed median instead of two pavements. No kerb or p
 is laid where it would lie on another road's asphalt, which also leaves a driveway its gap;
 a corner is checked along its whole length (checked only at its middle, a kerb could run
 straight across a road's mouth and lay a strip of pavement over the junction).
+Where two streets' pavements meet, each is laid once: a corner flickered between two pavings
+laid over each other at one height. Nothing stands on a rounded corner's asphalt -- bollards,
+sign and light poles were placed out on it, in front of the kerb.
+
+**Traffic islands.** A lawn or paved patch with road nearly all round it -- the island at a
+roundabout's mouth, a roundabout's middle, where a boulevard's halves part -- stands a kerb's
+height above the road with a kerb round it, and the car goes over it with a jolt, as over a
+median. It lay flat, level with the asphalt:
+
+> some wierd grass patches on the road
+
+Open ground between streets is dusty sand; it was a grey like the asphalt's, and an empty
+strip read as more road.
 
 > There are a lot of broken roads and random sidewalks in the middle. And in general very
 > badly looking crossroads.

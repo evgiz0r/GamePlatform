@@ -179,6 +179,13 @@ The ones most often touched, and the functions in them:
   on every steep slope too), mountain woods in the tree builder (`MTN_TREES`, drawn from
   further off), `_build_turbines` / `_turbines_tick`; the fog halves in that town
   (`_retint_city`). Only a made-up town with hills gets any of it. `tests/mountains.gd` shoots it.
+- **traffic islands** -- `_find_islands` (in `_build_setup`): a park, lawn or plaza under
+  `ISLAND_MAX` with three quarters of its edge within 3 m of a street's asphalt is an island;
+  `_island_cut` takes the roads' asphalt (+0.1 m: its face stands behind a street's own kerb),
+  the junctions' discs and the paths through it off it; `_build_ground` lays the pieces at
+  `ISLAND_Y` (4 cm under a pavement's top, so a street's pavement over its edge stays on top),
+  `_island_faces` the kerb face round them, `_on_island` gives the car the median's jolt.
+  Givatayim 19 pieces, Ashdod 41; `tests/islands.gd` checks none is on a road.
 - **solid things and the road** -- `_off_road` (a road's edges, and the asphalt a rounded
   corner adds out to its curve: `_in_corner_fill`) and `_in_junction` (the round asphalt at a
   junction's point); furniture's `_free` checks both. The corners' outlines (`_corner_fill`)

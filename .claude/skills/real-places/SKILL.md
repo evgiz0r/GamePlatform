@@ -96,6 +96,12 @@ goes wrong shows up the first time it runs.
   each laid whole, each with its own pattern, the corner flickered between brick and slabs.
   Lay paving once: keep what is down while building and cut each later piece where an
   earlier one already paves, in an order every square of the map repeats.
+- **Traffic islands are areas, and areas lie flat.** OSM maps the island at a roundabout's
+  mouth, a roundabout's middle and the strip where a divided road's halves part as a grass
+  (or paved) area; drawn on the ground like a park, with no kerb where no street laid one, it
+  lay level with the asphalt -- "grass patches on the road". An area with road nearly all
+  round it is an island: raise it to about kerb height with a kerb face, cut back off every
+  road's asphalt, the junctions' asphalt and the paths through it.
 - **Bare ground must not look like asphalt.** A grey a shade off the road's, with a photo's
   light and dark over it, read as more road: a boulevard's wide middle strip looked like
   lanes and its lawns like grass painted on them ("grass patches on the road"). Give open
