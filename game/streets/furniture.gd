@@ -1201,7 +1201,10 @@ func _hydrant_kit() -> ArrayMesh:
 	if _kits.has("hydrant"):
 		return _kits["hydrant"]
 	var b = g.new_buf()
-	var red: Color = _tone("signred")
+	# a hydrant's red is a paint's red: the signs' red is the palette's hazard, pink here, and
+	# a filmed corner's red hydrant came out pink
+	var hz := Palette.col("hazard")
+	var red := Color.from_hsv(0.995, clampf(hz.s, 0.65, 0.9), clampf(hz.v * 0.8, 0.5, 0.8))
 	_tube(b, Vector3.ZERO, Vector3(0, 0.08, 0), 0.15, 0.15, red.darkened(0.2), 10)   # the flange
 	_tube(b, Vector3(0, 0.08, 0), Vector3(0, 0.55, 0), 0.11, 0.1, red, 10)
 	_tube(b, Vector3(0, 0.55, 0), Vector3(0, 0.66, 0), 0.12, 0.05, red, 10)
