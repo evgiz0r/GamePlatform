@@ -5,10 +5,10 @@ description: 'How to build a 3D game in this kit — the GameMode3D contract (sh
 
 # 3D games in this kit
 
-The kit was 2D-only until `game/drop/` (2026-09). Everything 3D lives in one shell file,
+The kit was 2D-only until `drop` (2026-09, now parked in `reference/drop/`). Everything 3D lives in one shell file,
 `shell/game_mode_3d.gd`, and games extend `GameMode3D` instead of `GameMode`. Same
 one-`Node2D` scene, same `start()`, same verbs (`add_score`, `lose_life`, `win`...), same
-menu / pause / HUD / palette / self-play. Read `game/drop/drop.gd` end to end once: it is
+menu / pause / HUD / palette / self-play. Read `reference/drop/drop.gd` end to end once: it is
 the reference and it is short.
 
 ## What GameMode3D gives you
@@ -48,6 +48,37 @@ is a Z coordinate, not a height.
   partly toward grey; if you do, check the palette's accent colours on screen after.)
   Shadows are off by default (`sun.shadow_enabled`); turn them on per game if the look
   needs them, they cost on phones.
+- **Ambient occlusion, faked.** The Compatibility renderer has no SSAO, and without it
+  buildings and parked cars seem to hover over the ground even with sun shadows on (most of
+  a street is in some shadow already, where a sun shadow adds nothing). What works: a layer
+  of soft strips laid out with the world (out from each wall's foot, under each parked car)
+  in a shader with `render_mode unshaded, blend_mul, depth_draw_never, fog_disabled`, its
+  ALBEDO `1 - strength * ramp^2`, faded out with distance in the shader. Multiply needs no
+  sorting against what is under it and doubles up by itself in inside corners, where it
+  should be darker. Lay it a few cm above the highest ground it can be on (the pavement): a
+  soft ramp floating a hand's width over a lawn does not show, one sunk under the pavement
+  is gone. One mesh per merged square: a draw each. Build cost is per corner of every
+  outline, so look each height up once. Darken the walls' own feet in the wall shader too.
+  To judge it, shoot the same view with the layer hidden and shown, and diff the pictures:
+  by eye, at a 0.4 strength it was invisible, and traffic and fading HUD labels change
+  between shots too.
+- **Shadows past the shadow distance, painted once.** Real shadows end at
+  `directional_shadow_max_distance` (45-75 m is what a browser affords), and past it a city
+  looks flat. With a sun that does not move, sweep each building's outline along the light
+  by its height (the convex hull of the outline and the moved outline is close enough at
+  that distance), draw them white on black into a `SubViewport` (one
+  `RenderingServer.canvas_item_add_triangle_array` call, then the outlines in black so
+  what is on a roof is not "in shadow"), and let the ground shaders darken by it where the
+  real shadows fade out: from `max_distance * directional_shadow_fade_start` to
+  `max_distance`, the same ramp, so there is no seam. A viewport's texture has no
+  mipmaps, and unfiltered shadow edges shimmer badly at a distance, so read it back once
+  (`get_image()`), `generate_mipmaps()` and make an `ImageTexture`. Take the texture
+  read out of any branch (mipmapped reads in non-uniform control flow sparkle at edges).
+  Match the strength by measuring, not by eye: shoot the same block with only the real
+  shadows and with only the painted ones, and compare shadowed / unshadowed brightness.
+  An albedo multiplier is linear and the screen is sRGB: 0.55 off the albedo is what left
+  the same 0.69 on screen as a real shadow did. Under a test's software renderer each frame
+  the bake waits for costs most of a second; in a browser it is a few ms.
 - **Resolution**: the 3D `SubViewport` renders at the real window size (up to 3x the
   640x360 design space, half-step multiples) and is scaled down with linear filtering,
   with 4x MSAA. The kit's nearest-neighbour default is for pixel art and made 3D look
@@ -122,7 +153,7 @@ is a Z coordinate, not a height.
 - The project does not pin a 3D physics engine; the default works headless and on the
   web build. Do not add Jolt to `project.godot` for one game.
 
-## Rail games: a road that bends (`game/drive_by/`)
+## Rail games: a road that bends (`reference/drive_by/`)
 
 Do not scroll the world past a fixed camera; **move the camera along a curve** and build
 the world in road coordinates. `drive_by` keeps `u` (distance along the road) and `lat`
@@ -158,6 +189,17 @@ most, in order, last time one did:
   multimesh over a 400 m square with a 160 m range draws every copy in the square, and
   none when the camera sits near a corner. Make the squares no bigger than about 0.6x the
   range and add half a square's diagonal to the range.
+- **A camera that rises over the world (a zoom-out, a map view) meets every range at
+  once.** Visibility ranges and fog both count from the camera, so from 500 m up the
+  ground right below is already 500 m away: cap the height at about half the longest
+  range you want kept (whatever has a shorter range drops out at the top of the screen
+  first), thin the fog with height (exponential fog at street-level density turns the
+  town below a washed-out white), and push `cam.near` out with the height, or paint
+  laid a few cm over asphalt z-fights. To freeze the world under it without
+  `get_tree().paused` (which would freeze the camera too), skip the physics tick and
+  set the characters' `process_mode` to disabled, which stops their AnimationPlayers.
+  Draw interpolated things at fraction 1 while frozen, or they rock between two ticks.
+  Keep the frame-rate watcher (if any) out of it: the whole world in view costs more.
 - **A Quaternius character is about eight meshes**: eight draw calls and eight skinnings.
   Thirty of them out-drew the whole city. Give their `MeshInstance3D`s a
   `visibility_range_end` (~90 m) and set `anim.active = false` beyond it.
@@ -228,6 +270,14 @@ most, in order, last time one did:
     the game is left mid-build, its own signal dies with it and the coroutine just stops.
   - Turn off the frame-rate quality watcher while building: the build is not the machine
     being slow. Check the result by comparing every item count with the old build.
+- **Kilometres of small dressing cost in the checks, not the triangles.** A fence or hedge
+  along every front garden, laid by the helper that checks each 2.5 m piece for roads and
+  houses, doubled a build stage. Timed piece by piece, the look for the nearest road was
+  half of it. When a caller already knows the line is clear (it stands on a wall that was
+  checked, on a strip that was), pass that down and skip the check; lay one panel per
+  piece of the line it follows rather than many short ones; and leave out faces that are
+  inside the thing (the ends between two pieces of a hedge). Build stages on these
+  containers swing 20% between runs, so time the part itself, not the stage around it.
 - **Photo textures under a palette.** Divide the photo by its own average colour and
   multiply by the palette tone: the photo gives the grain, the tone the colour, and `/look`
   still reskins it. Fade fine detail and repeating photos out with distance (a repeat shows
@@ -262,6 +312,14 @@ opens a window briefly.
   outline) and fix its winding to match the original's if anything relies on it.
 - Polygon-to-segment distance: `Geometry2D.get_closest_points_between_segments()` over the
   polygon's edges, plus a point-in-polygon test for a segment wholly inside.
+- **A shader error shows only when something draws with it**, as a `SHADER ERROR` in the
+  log, and the material then draws nothing: the script parse check, a headless playtest and
+  the bots all pass. Render a screenshot after any shader edit and grep its log. Godot also
+  refuses `return` inside `fragment()`: write the cases as `if / else`.
+- **Comparing with photos of the real place** finds what a screenshot from the game's own
+  camera never shows: stand a camera where a person stands (1.5 m up, on the pavement) and
+  look along, across and down, beside frames of a walk there. That is how a row of black
+  boxes along every street (painted hollow ground floors on solid buildings) turned up.
 - **Writing `ALPHA` anywhere in a shader makes the material transparent** (sorted, no depth
   prepass, other objects show through it oddly), even in a branch that never runs. For an
   opaque and a see-through variant of one shader, prefix the code with `#define CURTAIN\n`

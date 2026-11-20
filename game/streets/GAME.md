@@ -156,9 +156,57 @@ with a car park and a cafe. The car starts on HaNasi just past HaShuk, in the mi
 > shouldn't be too small, like a regular neighborhood where you have most of the features
 > and variety (cars, buses, buildings, types of cars, slopes, landmark and so on).
 
+**A filmed walk.** "A walk in Givatayim: Katzenelson to Ha-Meri" replays, in first person,
+a walk filmed on a phone: off the north kerb of Katzenelson by the Ha-Meri passage, over
+both halves on the zebra, along the south pavement and over the paved forecourt, down the
+passage between its wooden fence and its low white fence, out along the little street at
+its end, over Sheinkin at the corner and into Ha-Meri, where it stops. It walks on its own,
+from the eyes of someone holding a phone at the chest, about a minute and a half, timed so
+it passes each place when the film did: the two can be watched side by side, which is how
+the street is being made more like the real one, a pass at a time, the big things first.
+No controls, no driving HUD; exit leaves. The route and what the film showed that the map
+lacks are in `cities/details/givatayim.json` (see below).
+
+> Can we create a video, 1st person view like my phone, side by side with video from the
+> phone, up until Ha-Meri.
+
+It crosses like a person: it waits at Katzenelson's kerb looking left at the traffic coming,
+crosses to the median, waits there looking right, then crosses; at Sheinkin it looks right,
+then left. Cars come down the street to meet it there: one goes by before it steps off, the
+next stops at the zebra for it, and drives on once it is across. The head looks where the
+walk is going and turns into a corner a moment before the feet do.
+
+> During the walk we collide into a house, the pavement there is not matching in the middle.
+> Let's also add cars, and we look left, right, and they stop for us. Usually we look where
+> we want to walk, and look before turning.
+
+> Let's try to enhance that specific walk, very realistic, in depth, slow, iteratively
+> (people a bit less interesting, but the other items, from bigger details we already have
+> to smaller details). And add in the menu an option to view that walk, just till reaching
+> Ha-Meri street. That's all it will do, no other controls.
+
 The minimap (bottom left) shows the real streets and buildings round you, heading up, with
 the city limits in pink. The name of the street you are on is at the top, in Hebrew with
 the English name under it when OSM has one.
+
+**Zooming out.** "zoom" (on the right, under "walk"; Z, or the mouse wheel down, or two
+fingers pinching together) lifts the view off the car -- or off you, on foot -- up over the
+city, centred on where you are, the way you were facing at the top of the screen, and
+pauses the city: the car, traffic, people and lights hold still where they are, and the
+engine goes quiet. A ring marks you (an arrow on the screen's edge points back if you have
+looked away), and on foot a square marks the car. Up there you look round: drag (or the
+arrows) to move over the town, the wheel or a pinch (or - and =) to go higher or lower --
+the highest shows about a kilometre of town across the screen -- and Q / E or two fingers
+turning to turn it. "back" (Z again, or zooming all the way in) flies back down to the car
+and the city goes on. From the driver's seat it rises via the chase cam and lands back in
+the seat.
+
+**Pause.** "pause" (K) holds the city still with the view where it is; "resume" lets it go
+on. Resumed while zoomed out, the city runs under you and the view follows the car, which
+still drives (keys or the stick). The shell's own pause (its menu) is still there too.
+
+> If I would want a zoom out feature, that zooms out from where I am. Maybe it pauses the
+> city (maybe we can add a pause feature anyway), and we can zoom back in (or check around).
 
 ## What is trying to stop you?
 
@@ -250,7 +298,8 @@ stopping, and it says so -- judged as the car's nose crosses the stop line, by t
 came in (a car in on the last of the amber was told it ran the red). The stop and give-way
 signs are OSM's (Givatayim has a few dozen mapped, Bedford more); the lights run their own
 cycle. In the Israeli towns they go as they do there: green, three flashes of green, amber,
-red, red and amber together, green. In Bedford: green, amber, red. Between one way's amber
+red, red and amber together, green. In Bedford: green, amber, red. The main road's green is
+the longer, 20 s against the side streets' 11. Between one way's amber
 and the other's green, 3-3.5 s for the junction to clear. A car that can still stop on amber
 stops; one too close goes (traffic used to cruise on until it could not stop, often late in
 the amber, and cross on red).
@@ -538,7 +587,10 @@ out per pixel from where it is, nothing to load, the fine part fading out with d
 **Real textures.** Up close the surfaces are photographs (free CC0 ones from Poly Haven, in
 `textures/`): the asphalt has grit and fine cracks, with a second photo of tyre marks,
 patches and long cracks laid over it at 30 m so it doesn't visibly repeat; Givatayim's and Ashdod's
-pavements are rows of concrete pavers, Bedford's poured concrete slabs; grass and open
+footways and plazas are 20 x 10 cm concrete pavers in herringbone, a mix of greys, charcoal and
+red-browns (drawn by `textures/herringbone.py`, after a walk filmed in Givatayim: no photo
+had them; the pavements along the streets are laid square to the kerb in each street's own
+pattern, see "As it looks on foot"), Bedford's poured concrete slabs; grass and open
 ground are a real lawn; walls are painted render. Each has its bumps, so the low sun picks
 out the cracks and the joints between pavers. The palette still decides every colour: a
 photo only adds the variation round its own average, so `/look` reskins it as before.
@@ -555,6 +607,50 @@ roofs of tar and gravel with dried-puddle stains.
 > details and resolution?
 
 > Let's start with the textures.
+
+**As it looks on foot.** Set beside frames of a phone video of a walk down these streets,
+the city now has what the walk had underfoot and at eye height:
+- Pavements of concrete pavers: herringbone at 45 degrees, rows of bricks, or square slabs,
+  each street its own, in mixed reds and browns, greys, sand, or all of them mixed, with a
+  row on end along the kerb. Leaves on them under the trees (and the odd bougainvillea
+  petal), grime in wide soft stains. Bedford keeps its poured concrete slabs.
+- Blocks' ground floors as they are: flats behind white security bars, the way in a glazed
+  door in the middle bay, lit at night (they used to be dark hollows, a row of black boxes
+  along every street). A stone plinth to knee height on most blocks, Jerusalem stone in
+  courses on the stone-clad ones, small square mosaic tiles on some of the white ones.
+- The lobby under a block on columns light, its glass door lit, the ceiling over the
+  parking pale (it read as a black box from the pavement).
+- Tired roads: patches of newer, darker asphalt with their sealed seams; stretches crazed
+  into small plates; the mix's light stones showing close up; the paint, zebras too, worn
+  half away and cracked with the road. Manhole covers grey cast iron, not black.
+- At the kerb: a pair of bollards either side of every zebra on both pavements, black with a
+  yellow reflective band (now and then white); on the main roads a white railing instead,
+  4 m either side of the crossing; a red fire hydrant every 130 m or so; grey utility
+  cabinets at the back of the pavement; black bins on the main and shopping streets; an iron
+  grate round every street tree's trunk. All solid to the car.
+- Front gardens plot by plot (14-22 m each, a gap for the gate): a low wall of rough stones in
+  mortar, with a clipped hedge behind it, white bars or green chain-link on top, or bare;
+  bougainvillea spilling over one in six; the garden shrubs leafy, not smooth balls.
+- The ground darker where things stand on it, as the sky's light reaches less of it there:
+  a soft band out from the foot of every building, darker still in its inside corners; the
+  parking under a block on columns in the shade; a dark patch under every parked car,
+  softening out past its sides. Without it the houses and cars looked as if they hovered a
+  hair above the street. It is one faint layer laid out with the city, so it costs almost
+  nothing while you drive.
+- Shadows all the way out. The real shadows only reach 45-75 m from the camera (and the
+  lowest quality has none), so past them the whole city used to stand on evenly sunlit
+  ground. Now every building's shadow, and every tree's, lies on the ground as far as you
+  can see, as dark as the real ones and meeting them without a seam; at the lowest quality
+  they are the only shadows there are. The sun never moves, so they are worked out once
+  as the city loads.
+
+> ok lets start as you say
+
+> ok go next
+
+> go next
+
+> I took a video on my phone, walking in Givatayim.
 
 ## Smooth on a laptop and a phone
 
@@ -728,6 +824,22 @@ contributors under the ODbL, which is why the credit sits on screen.
 
 To make your own street more accurate, fix it on openstreetmap.org (building heights are
 the most useful thing to add) and bake again.
+
+**What a walk showed.** `cities/details/<city>.json`, when there is one, is laid over the
+baked city as it loads (`details.gd` has the format): road edits (drop a baked road, add
+one), zebras the map leaves unmarked, extra areas, and what stands along a street that OSM
+does not map -- stone walls, wooden fences, low white fences, hedges, bins, the white hoop
+railings at a passage's end -- placed by hand from a walk filmed along it. Givatayim's has
+the Ha-Meri passage: OSM draws it as one footpath from Katzenelson to Sheinkin, where the
+film shows a paved forecourt, the passage itself between its fences, and a short street
+with parked cars down to Sheinkin. The second pass dressed the passage's north end as the
+film shows it: the corner block stands on columns along Katzenelson, shops back under the
+upper floors and a row of motorbikes nose to the kerb; charcoal pavers under the arcade,
+the forecourt's pale poured slabs with a manhole; black bollards banded yellow across it,
+the transformer on twin poles at the passage's mouth, a garden lamp, the barrier across the
+next block's drive, and the planted bed and trees where the passage begins. It also holds
+walks, routes timed to their film, that a place in `LEVELS` can replay. A footpath in town (not in a park) is paved like the
+pavements everywhere, not only here.
 
 ## Later (said, not built)
 

@@ -2,8 +2,8 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dkilwveyvtdep"
-path.s3tc="res://.godot/imported/concrete_pavers_02_nor.jpg-fb17f5110b98de2b56a8d7e4910dfaa4.s3tc.ctex"
+uid="uid://okmp8d3we7ru"
+path.s3tc="res://.godot/imported/herringbone_pavers_diff.jpg-f9957a362267a28e387123af234d951d.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
@@ -11,8 +11,8 @@ metadata={
 
 [deps]
 
-source_file="res://game/streets/textures/concrete_pavers_02_nor.jpg"
-dest_files=["res://.godot/imported/concrete_pavers_02_nor.jpg-fb17f5110b98de2b56a8d7e4910dfaa4.s3tc.ctex"]
+source_file="res://game/streets/textures/herringbone_pavers_diff.jpg"
+dest_files=["res://.godot/imported/herringbone_pavers_diff.jpg-f9957a362267a28e387123af234d951d.s3tc.ctex"]
 
 [params]
 
@@ -22,7 +22,7 @@ compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
-compress/normal_map=1
+compress/normal_map=0
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1
@@ -37,5 +37,5 @@ process/premult_alpha=false
 process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
-process/size_limit=512
+process/size_limit=0
 detect_3d/compress_to=0
