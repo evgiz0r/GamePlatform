@@ -1,7 +1,8 @@
 extends SceneTree
 ## The number plates up close (CAR_SHADER's plate, its digits from _plate_font): your car's
 ## back from the chase view, then the parked cars nearest the start from 3 m behind and
-## in front -- each a number of its own, made up (shots plate_*.png in $OUT).
+## in front -- each a number of its own, made up -- and from its side, three quarters on (its
+## wheels, doors, roof fittings, wear) (shots plate_*.png in $OUT).
 ##   FULL=1 STREETS_BUILD_ALL=0 RES=1280x720 OUT=<dir> game/streets/tests/run.sh plates 1
 var g: Node
 
@@ -44,5 +45,16 @@ func _run() -> void:
 			g.look_from(Vector3(eye.x, y + 1.0, eye.y), Vector3(plate.x, y + 0.55, plate.y))
 			g._sky_follow()
 			await _snap("plate_%d_%s" % [k, "a" if end > 0.0 else "b"])
+		# and from its side, three quarters on (its wheels, doors, roof, the dust on it)
+		var side := Vector2(-u.y, u.x)
+		for sd: float in [1.0, -1.0]:
+			var eye2 := c + side * sd * 4.2 + u * 1.6
+			if g._push_out(eye2, 0.3, false) != Vector2.ZERO:
+				continue   # (a wall there)
+			var y2: float = g._h(c)
+			g.look_from(Vector3(eye2.x, y2 + 1.5, eye2.y), Vector3(c.x, y2 + 0.7, c.y))
+			g._sky_follow()
+			await _snap("plate_%d_side" % k)
+			break
 	print("shots in ", OS.get_environment("OUT"))
 	quit()

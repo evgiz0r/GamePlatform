@@ -1124,6 +1124,17 @@ shelves of goods, racks of clothes, or a cafe's counter and menu board, dim by d
 glowing at night. (There is no store database yet: the shops are OpenStreetMap's and the
 filmed ones; Tel Aviv's council lists 3,387 licensed businesses, which could fill its streets.)
 
+> 1,2,4,5,6,7 (car shapes like the cars here, wheels, Israeli touches, wear, the colour mix,
+> small details)
+
+**Cars like the ones here.** Small city cars, hatchbacks, family sedans, compact SUVs, the
+odd estate and tall boxy small van among them; each car's own wheels (five spokes, fine
+spokes, a steel wheel's cap, now and then dark alloys) with the brake disc behind; dust on
+the cars that have stood a while, sun-faded paint on the older ones, scuffed bumpers; folded
+silver sunshades in parked cars' windscreens and parking permits on many; now and then a
+learner's roof sign or a new driver's sign; wiper arms, shark-fin aerials, roof rails on the
+SUVs and estates; mostly white, silver and grey, as the streets are.
+
 > I took a video on my phone, walking in Givatayim.
 
 ## Smooth on a laptop and a phone
