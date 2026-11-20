@@ -348,6 +348,27 @@ one needed:
   over the tunnel. A hop left after that is a real step in the data (two decks overlapping
   at different heights): trace the frames before the take-off -- surface under the middle
   and each axle, and which deck -- to tell a seam from a crest.
+- **Footbridges and footpath tunnels are a second network.** Work their heights out the same
+  way but along the paths only (footway, path, steps, cycleway...), steep (a ramp ~25%,
+  stairs ~60% where OSM maps `highway=steps`), and keep the two networks apart both ways: a
+  sidewalk or a crossing way shares nodes with the street, so a road bridge's or a
+  tunnel's lift leaks onto it (a 6 m dip in a sidewalk, a pavement rising 5 m in 2 m off a
+  ramp) unless a path's point that a street has keeps the street's level, and a path's lift
+  must never spread onto a street's point (it comes down to the pavement there). A
+  footpath tunnel can end under the ground in OSM (the mapper stopped): leave it out. Two
+  traps when people walk it: footbridges branch at sharp angles, so a railing checked
+  against "another deck comes in here" at its middle alone ran across the way onto the
+  next piece -- check walls of narrow decks in short pieces; and OSM fences cross paths
+  right at a footbridge's foot -- a body on a deck off the ground should not meet the
+  fences and posts down on the ground. A road bridge's piers must keep off paths and off
+  any deck below their top (a footbridge alongside, lower, walked into them). A bridge's
+  sidewalk mapped as its own way can stop dead on the span: bring a path's dead end down to
+  the ground (a stair) rather than leave a ledge. A spiral stair is often one steps way
+  lying on itself: keep a way that comes within ~0.8 m of itself on the ground (not
+  1.5 m: an access ramp's hairpin legs are about a path's width apart). Walk every
+  footbridge and tunnel end to end in a test, steered along the path: the counts of a
+  push-back label lie (placing people relabels "last hit" every tick), so measure the
+  displacement that was not the walker's own step.
 - **Water held at its own level** (a river between weirs) is drawn at that level and is too
   deep to drive into; gentle banks otherwise let a car down to drive along the bed under
   the water. Leave lakes that lie at their shore's lowest point alone: a road over an

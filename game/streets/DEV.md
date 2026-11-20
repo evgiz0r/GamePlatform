@@ -58,6 +58,31 @@ The ones most often touched, and the functions in them:
   -- no draws of their own. Lit shops' light on the pavement: `_shop_lights`. The night's
   colours: the night branch of `_retint_city` (a little of the palette's player colour, not
   half of it). Shop glass at night 0.85 (2.0 clipped to white).
+- **people in one piece** -- `_one_piece` (end of `_humanize`): the Quaternius figure is one
+  mesh of six surfaces (Skin, Shirt, Pants, Belt, Face, Hair), each a draw (and a shadow
+  draw). Joined once per figure into one surface (shared by everyone with that figure; the
+  part's number in the vertex colour's red), drawn with PIECE_SHADER whose `parts[6]` are
+  that person's colours (linear: `srgb_to_linear`), its distance dither done by hand
+  (`fade_from`/`fade_to`, set by `_people_lod`). tests/draws.gd at the start: 217 -> 180
+  draws, people 48 -> 8. `_shader_key` keys them all as one kind for the warm-up.
+- **on the walls** -- `_build_facade_kit`: AC units (`furniture.ac_kit(0)`, ~130 vertices,
+  on arms under a window's sill or up on a balcony's back wall; at most 4 a block), washing
+  racks (`washing_kit(0)`, under a sill, tinted per copy), towels over parapets
+  (`towel_kit`, coloured per copy). The AC units and racks are drawn instanced
+  (`_instanced`: a MultiMesh per square, a draw or two near you), not merged: merged, the
+  first version (~19,000 AC units of ~230 vertices, ~2,000 racks of ~400 city-wide) made
+  the batches fat -- 19 hitches of ~50 ms in a 25 s playtest while the city built behind,
+  from 3. The towels (few) are merged. `wall_things` keeps 200 of each for
+  tests/wall_things.gd.
+- **street sounds** -- `_build_street_sounds` / `_street_snd_tick` (called from
+  `_engine_tick`): birds and crickets are 2D loops, the voices and the dog 3D players (at the
+  nearest TALKY place or shop within 70 m; at a random point 45-120 m off every 35-100 s
+  where `_liveliness` > 0.15). Levels worked out twice a second, eased at 10 dB/s; in the
+  car 7-16 dB quieter. A 40 m grid of tree counts (counted as each square plants its trees:
+  most street trees are planted by the game, not in the city file) and of talky places
+  (from the city file at load, before it is let go). The WAVs are made by sounds/make_sounds.py; a new loop
+  needs `edit/loop_mode=2` in its .import (Godot does not loop a WAV without loop points).
+  tests/street_sounds.gd records day and night to listen to.
 - **what breaks** -- knockable things (bins, recycling, bollards) are placed by
   `furniture._place_knock` into multimeshes of their own (`_knock_add`; `_knockable`: post
   index -> [multimesh, copy, transform, mesh, "tumble"/"bend", radius]), not the batches, so
@@ -740,6 +765,15 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   amount. Where a clump and a tree in the pavement leave less than half a metre, the walk
   goes round the tree's road side as a person would, and Catmull-Rom cuts the corner: keep
   0.65 m off a tree's centre at the points either side, not just at one.
+- **The scan sees posts only.** A bike in a rack is solid only at its hoop (r 0.35) but
+  reaches 0.85 m each side of it, across most of a pavement; café chairs, crates and low
+  leaves are not posts at all. Walk 2's first full recording went through a parked bike's
+  wheel (86 s) and ended with a tree's trunk filling the frame (1.0 m off), all with a clean
+  scan. `POSTS_NEAR` now also lists everything drawn by instance there -- which group, where,
+  its size, how high it starts and ends -- which told the bike, the tree and a shop's crates
+  apart in one run. Look at a recording one frame every 2 s as well as scanning. Walkers
+  still walk through the city's parked bikes (racks are another session's furniture: giving
+  the bike posts would leave 0.4 m on many pavements, so walkers need a way round first).
 - **The film's clock is decoding from its start.** `ffmpeg -ss` before `-i` lands on the
   wrong frames in this clip's first seconds (VLC's variable-rate transcode: 2999 frames in
   100 s, said to be 60 fps); `-vf trim=a:b,setpts=PTS-STARTPTS` agrees with the
@@ -789,6 +823,46 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   pass's own white ones, at the zebras near a spot); the blue pay booth, a yellow parking
   board and two scooters on Sheinkin's far corner (in the room POSTS_NEAR found between the
   zebra's bollards and a sign pole); the little street's gateposts, one with a heart.
+- **Pass 9, the phone in a hand**, done: measured against the film rather than by eye
+  (`scene-tests` skill, "A camera set beside a real film"). *Tilt*: the film's horizon sits
+  0.30 of the way down its frame nearly all the way (one frame a second, under the arcade, in
+  the passage, on the little street, on Ha-Meri); the replay's sat at 0.36-0.38, the phone
+  11.3 degrees down against the film's ~16. Now `FILM_TILT` -15.6 degrees. *Looks up and
+  down*: a walk's `looks` take a fourth number, degrees up (the film looks straight down at
+  Katzenelson's stripes at 6-8 s, a foot in shot, and at Ha-Meri's kerb as it steps up,
+  92-95 s). *Sway*: `film_shake.py` over the passage (36-52 s) gives the film 0.25 degrees
+  rms across and 0.19 up and down, 0.6 peak to peak, at 0.5-0.8 Hz and nothing at the step
+  rate (the phone's stabiliser); the replay had 0.01 and 0.03 -- dead still. Now
+  `_film_hand()`: sums of slow sines at those sizes across, up and in roll, two thirds of
+  it standing. Ha-Meri's last look (60 right, 91.6-94.5 s) turned the camera onto a tree
+  pit's trunk 0.56 m off the walk; the film looks down at the kerb there instead.
+  Measured on the recording after: 0.11 / 0.10 degrees against the film's 0.25 / 0.19 --
+  `film_shake.py`'s 1 s running mean takes out much of a slow sway, so the sizes in code
+  were doubled to read as the film does (match the tool's reading on both, not the code).
+- **Pass 10, the phone's picture and Ha-Meri's far kerb**, done. *The picture*:
+  `tests/film_look.py` (one frame a second, film against a bare replay) found the phone's HDR
+  squeezing the bright end -- its brightest 1% stops at 0.87, 0.1% clipped; the game clipped
+  4.4% to white and its bright quarter sat far above -- and lifting the dark (the shade on
+  the ground at 0.23 against 0.11), greys a little warm where the game's were a little cyan,
+  colours less saturated (0.159 against 0.190). It is *not* a blown-out sky, as it looked by
+  eye. The fit is a 17-point curve, a 6% warmth fading out over the brightest tones, then
+  saturation x1.129, drawn by `_film_look_layer()` over the finished frame on filmed walks
+  only (`STREETS_FILM_LOOK=0` turns it off, to measure the bare picture or refit). In the
+  game it gives what the fit predicted to the hundredth (levels and saturation, same frames
+  on and off), so the screen texture a canvas shader reads is the same 8-bit sRGB a
+  recording saves. *Ha-Meri*: the film steps up at the raised crossing's far end beside a
+  silver hatchback parked just past it, on a blue-and-white kerb; the game had a red-and-
+  white corner kerb and a front yard's car standing on the pavement (the yard code's road
+  width is not this corner's: its middle 0.6 m off the kerb). Now a `clear` spot there
+  (which the yard car, the greenery over walls and the kerbside furniture all respect), the
+  hatchback (`parked_car` takes `paint` now) and blue-and-white `kerb_paint`. And a
+  bougainvillea from the front gardens had grown across the little street's pavement at eye
+  height by the graffiti gatepost (film 71-76 s, bare): a `clear` spot too.
+  Measured on its recording: sway 0.25 / 0.21 degrees (the film's 0.25 / 0.19); levels at
+  1-99% within 0.05 of the film's, 0.0% clipped, saturation 0.146 (0.159). The look down
+  Ha-Meri at 89-92.5 s is 55 degrees: at 80 the hatchback sat at the frame's right edge
+  where the film has it dead ahead with the kerb on the left (AT stills at 91 and 92.3; the
+  film frame by frame). AT names its stills by whole seconds: 92 and 92.3 save to one file.
 - **Next passes**: the light (another session's: the film's afternoon is hazy and warm);
   people that move as the film's do (the walk's `people` take `to` and `t`; none of the
   four walks yet). The street now matches the film in what stands where: what is left is
@@ -800,7 +874,7 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
 A road whose city file has `y` (its surface's height at each node, decimetres above the
 height grid's base) is a **deck**; its OSM tags say what it is built as (`br` bridge, `tu`
 tunnel, `em` embankment, `cu` cutting). `tools/fake_city.py` writes `y` into the test town;
-a real town opted in with `"decks": "infer"` (Bedford, Tel Aviv) gets it worked out as it
+a real town opted in with `"decks": "infer"` (Givatayim, Bedford, Ashdod, Tel Aviv) gets it worked out as it
 loads (below). Elsewhere a bridge without `y` is drawn on the ground and a tunnel without
 it is dropped.
 
@@ -853,7 +927,7 @@ it is dropped.
   too deep to drive or walk into (`_deep_push`): the banks were gentle enough to drive down
   and along the bed under the water. Lakes and ponds without a level are as before.
 - **A real town's heights, worked out as it loads** (`infer` in decks.gd; a place opts in
-  with `"decks": "infer"` in `LEVELS`, Bedford so far). Before the roads are read, the
+  with `"decks": "infer"` in `LEVELS`). Before the roads are read, the
   city data gets heights as if baked: where a drivable bridge (a chain of bridge ways 8 m
   or longer; shorter ones are culverts and stay as they were) crosses a road it must clear
   it by 6.4 m (a path: 4.4); that lift spreads along the drivable roads at a ramp's grade
@@ -865,7 +939,7 @@ it is dropped.
   Bridge over bridge: OSM's layer, else the lesser road over the main line, clearing the
   lower's deck. Roads are cut where their ramp meets the ground (a node put there); the
   lifted pieces get a point every 6 m and their profiles rounded over the crests (junction
-  points kept), footpaths are never lifted. Bedford: 56 bridges, 72 crossings, ~190 deck
+  points kept); a road's lift never spreads onto a footpath (below). Bedford: 56 bridges, 72 crossings, ~190 deck
   pieces, 0.2 s; 2 of 63 crossings over roads short of the full clearance (4.8 m the
   lowest). `LEVEL=2` with `tests/decks.gd` drives its ten highest bridges both ways.
 - **Tunnels, worked out the same way** (Ashdod): a drivable tunnel way 20 m or longer that
@@ -877,12 +951,51 @@ it is dropped.
   down at 8.5%, the tunnel is left out as before (on the ground it would run across the roads
   it dives under); one under nothing mapped (a passage through a building) is put back on
   the ground (it used to be left out). A body in a tunnel never meets the buildings over it
-  (`_push_out`), however shallow the tunnel is there. Footpath tunnels are
-  still left out. Ashdod: 46 bridges, 4 tunnels (Menachem Begin's underpass, two service
+  (`_push_out`), however shallow the tunnel is there. Ashdod: 46 bridges, 4 tunnels (Menachem Begin's underpass, two service
   roads), 7 cuttings, 0.3 s. Two traps on the way: a tunnel "crossed" its own next piece
   (the shared end point; skip roads that share a point), and holding the whole of every
   road crossed, or seeding the depth's room from every junction in town, made it 15 s and
   held the tunnels' own ends at street level -- only near the crossing (80 m) now.
+- **Footbridges and footpath tunnels** (`infer` again, the same passes on the paths' own
+  network: footway, path, steps, cycleway, pedestrian, bridleway). A footbridge chain (8 m or
+  more) clears a street by 5.8 m (`CLEAR_FOOT`; a path by 3.4), its lift spreading along the
+  paths only, at 25% (`FOOT_RAMP`) or 60% on OSM's steps (`STAIRS`), and never onto a point a
+  street has: a path comes down to the pavement where it meets a street. A footpath tunnel
+  under something lies 3.6 m down (`CLEAR_UNDER_FOOT`), its ramps down to it the same way; one
+  that ends under the ground (the City tunnel's footpath stops there in OSM) is left out.
+  The networks are kept apart: a road's lift never spreads onto a path, and a path's point
+  that a street has keeps the street's level (`lift_of`) -- without that, a sidewalk joined
+  to a tunnel's road at one node got a 6 m dip and became a deck, and the pavement off a
+  bridge's ramp rose 5 m in 2 m. A last pass holds every path to stairs' steepness from the
+  nearest street point (`stair_capped`, 0 in all three towns once the networks were apart;
+  run only near lifted paths -- from every street point Ashdod's load took 2 s). Drawn:
+  paved like the pavements (`Y_PATH`), a 0.6 m slab (`FOOT_SLAB`), a steel railing instead
+  of the parapet (`_railing`), treads every 17 cm where a path deck is steeper than 30%
+  (`_stairs`), the tube 2.8 m high (`FOOT_TUBE`), a little wider than the path, one row of
+  lamps. Givatayim: 22 footbridges (the Diamonds Bridge over the Ayalon, Dr Isaac Derazia's),
+  3 footpath tunnels; Bedford 24 (most of them its trails' bridges over creeks, spanning bank
+  to bank at the banks' height); Ashdod 6 and 2 (its two spiral stairs left on the ground).
+  `tests/foot_decks.gd` walks them: Givatayim's 8 routes, Bedford's 4, Ashdod's 3, all to
+  their far ends at their full height or depth, 0-18 frames off the level (the walker's
+  height eases after the surface: up to 1 m behind running up 60% stairs). A route's last
+  few metres run on past the path's end and can walk into something (Bedford's Duke Street
+  sidewalk-bridge ends at its abutment: "got 91%" there is that, not the bridge).
+  What walking them found: a road bridge's piers stood on a footbridge's foot and across a
+  footbridge running alongside a few metres lower (piers now keep off paths and off any deck
+  below their top); where three footbridge pieces meet, one piece's railing ran across the
+  way onto the next (walls were checked for "another deck comes in here" at their middle;
+  a footpath's are now cut into metre pieces, each checked, and its deck drawn every metre);
+  a two-point stair ramp down to a tunnel tied the embankment/cutting vote and came out an
+  embankment, with no hole cut in the ground (a tie goes by the sum); an OSM fence across a
+  footbridge's foot stopped you on its first metre up (a body on a deck off the ground no
+  longer meets the fences and posts down on the ground: `off_ground`); Duke Street's
+  sidewalk, mapped as its own footbridge beside the road's, stops 2.5 m up on the span (a
+  path's dead end now holds the ground like a street's point: it comes down by a stair);
+  and a spiral stair mapped as one steps way lies on itself, its railings crossing (a path
+  that comes within 0.8 m of itself stays on the ground and holds it; a ramp's hairpin legs
+  are further apart -- 1.5 m caught the Diamonds Bridge's zig-zag ramp). And one not about
+  decks: on foot you pushed yourself off where you stood last tick (the people list has you
+  in it, `_people_push` did not skip you) and ran at 35 m/s.
 - **What Bedford found** (the test town had hidden them): a divided road's two carriageways
   overlap at the median at not quite the same height -- `surf` now ranks what is under a
   body: the carriageway it is on, then a deck's pavement or parapet, then (where another
@@ -970,8 +1083,8 @@ it is dropped.
   cuttings give a short hop.
 - **Still to do**: Tel Aviv is another session's;
   Ashdod's tight interchange at its east edge (x 3850, z -1590: slip roads crossing slip
-  roads at street level -- 15 crossings short of the clearance, 0.5 m the lowest); footpath
-  tunnels; grass slopes for cuttings too (they are walled); a long-span
+  roads at street level -- 15 crossings short of the clearance, 0.5 m the lowest); grass slopes for cuttings too (they are walled); pavements and
+  people beside an inferred cutting; a long-span
   bridge's height over water (the MacKay's deck is only as high as its ends); pavements at street
   level beside a cutting (the underpass has none); people on a bridge's pavement; the
   minimap draws a tunnel like any street; zooming out from inside the tunnel rises from the

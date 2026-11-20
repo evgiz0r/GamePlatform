@@ -178,6 +178,32 @@ func _show_levels(g: Dictionary) -> void:
 	var names := _level_names(String(g["id"]))
 	var named := names.any(func(x): return x != "")
 	var nodes: Array = [UIKit.label(String(g["title"]).to_upper(), 30, "player")]
+	# Levels that also carry a "group" are listed under their group's heading, the groups side
+	# by side in the order they first appear (within one, by "sort" if given, else in order).
+	# A level's number is still its place in LEVELS: grouping only changes where it is shown.
+	var groups := _level_groups(String(g["id"]))
+	if named and not groups.is_empty():
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 16)
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		for grp: Array in groups:
+			var col := VBoxContainer.new()
+			col.add_theme_constant_override("separation", 6)
+			col.add_child(UIKit.label(String(grp[0]), 15, "accent"))
+			for level: int in grp[1]:
+				var lv := level
+				var b := UIKit.button(names[level - 1], func(): start_game(g["id"], {"level": lv}))
+				b.custom_minimum_size = Vector2(250, 30)
+				b.add_theme_font_size_override("font_size", 13)
+				col.add_child(b)
+			row.add_child(col)
+		nodes.append(row)
+		var back_g := UIKit.button("menu", goto_menu)
+		back_g.custom_minimum_size = Vector2(200, 30)
+		back_g.add_theme_font_size_override("font_size", 14)
+		nodes.append(back_g)
+		_show_column(nodes)
+		return
 	if named:
 		nodes.append(UIKit.label("pick one", 13, "accent"))
 	else:
@@ -272,6 +298,31 @@ func _level_count(sub: String) -> int:
 		return 0
 	var levels = scr.get_script_constant_map().get("LEVELS")
 	return levels.size() if levels is Array else 0
+
+## The levels' groups, when they carry a "group": [[heading, [level numbers...]], ...] in the
+## order each group first appears, its levels by "sort" (default: their place). [] if none do.
+func _level_groups(sub: String) -> Array:
+	var scr := load(GAMES_DIR + sub + "/" + sub + ".gd") as Script
+	var levels = scr.get_script_constant_map().get("LEVELS") if scr != null else null
+	if not levels is Array:
+		return []
+	var order: Array = []
+	var members := {}
+	for i in range((levels as Array).size()):
+		var lv = levels[i]
+		if not lv is Dictionary or not (lv as Dictionary).has("group"):
+			continue
+		var name := String(lv["group"])
+		if not members.has(name):
+			order.append(name)
+			members[name] = []
+		(members[name] as Array).append([float(lv.get("sort", i)), i + 1])
+	var out: Array = []
+	for name: String in order:
+		var list: Array = members[name]
+		list.sort_custom(func(a, b): return a[0] < b[0])
+		out.append([name, list.map(func(x): return x[1])])
+	return out
 
 ## Each level's "name", or "" for a level without one (or that is not a Dictionary).
 func _level_names(sub: String) -> Array:

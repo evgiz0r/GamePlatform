@@ -142,7 +142,10 @@ func _run() -> void:
 		await _snap("crash_glass")
 	# the car's dent, from outside
 	var cp: Vector3 = g._car.global_position
-	g.look_from(cp + Vector3(3.5, 1.8, 3.5), cp + Vector3(0, 0.6, 0))
+	var body: Node3D = g._sedan_node.get_child(0)
+	var f3: Vector3 = body.global_transform.basis.z.normalized()   # (the dents' frame: z forward)
+	var s3 := f3.cross(Vector3.UP).normalized()
+	g.look_from(cp + f3 * 3.6 + s3 * 1.6 + Vector3(0, 1.5, 0), cp + f3 * 1.6 + Vector3(0, 0.5, 0))
 	g._sky_follow()
 	await create_timer(0.5).timeout
 	await _snap("crash_dent")

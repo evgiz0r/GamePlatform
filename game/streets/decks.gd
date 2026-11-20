@@ -24,6 +24,10 @@ const SLAB := 1.1             ## a bridge's depth under its road
 const PARAPET := 1.05         ## the parapet's height over the walkway
 const WALL_T := 0.35          ## parapets and walls: thick
 const TUBE_H := 5.4           ## a tunnel's ceiling over the road
+const FOOT_SLAB := 0.6        ## a footbridge's depth under its path
+const FOOT_TUBE := 2.8        ## a footpath tunnel's ceiling
+const TREAD := 0.17           ## a stair's rise: a footpath deck steeper than STEEP is drawn as stairs
+const STEEP := 0.3
 const PIER_STEP := 17.0       ## a bridge's piers: about this far apart
 const BANK := 1.5             ## an embankment's grass bank: metres out for each metre down
 const GUARD_H := 0.75         ## the guardrail along the top of a bank
@@ -53,7 +57,7 @@ func any() -> bool:
 ## of a street with pavements, a narrow ledge in a tunnel, a shoulder in a cutting
 static func side_of(r: Dictionary, kerbed: bool) -> float:
 	if not r["drive"]:
-		return 0.0
+		return 0.4 if String(r["deck"]) == "tu" else 0.0   # (a footpath tunnel: a little wider than its path)
 	match String(r["deck"]):
 		"tu":
 			return 0.9
@@ -112,8 +116,9 @@ func setup() -> void:
 func _meets_ground(n: int, ri: int) -> bool:
 	for e: Vector2i in g._node_roads[n]:
 		var r: Dictionary = g._roads[e.x]
-		if e.x != ri and r["drive"] and not r.has("ys"):
-			return true   # (a footpath meeting a deck up on its embankment is not a way down)
+		if e.x != ri and (r["drive"] or not g._roads[ri]["drive"]) and not r.has("ys"):
+			return true   # (a footpath meeting a road's deck up on its embankment is not a way down;
+			              # a footbridge's stairs come down to the path they meet)
 	return false
 
 ## every road at node n is a deck (a joint between two of them: no junction is drawn there)
@@ -128,6 +133,13 @@ func deck_only(n: int) -> bool:
 
 static func is_deck(r: Dictionary) -> bool:
 	return r.has("ys")
+
+## a bridge's depth under its road, a tunnel's ceiling over it: a footpath's are smaller
+static func slab_of(r: Dictionary) -> float:
+	return SLAB if r["drive"] else FOOT_SLAB
+
+static func tube_of(r: Dictionary) -> float:
+	return TUBE_H if r["drive"] else FOOT_TUBE
 
 ## the height of road ri's surface level with p (as the ground's: add the road's own lift)
 func deck_y(ri: int, p: Vector2) -> float:
@@ -268,6 +280,17 @@ func deck_at(p: Vector2, y: float, slack := 1.5) -> int:
 			bd = dy
 			best = ri
 	return best
+
+## p at height y stands on a deck (between its walls, at its level) that is off the ground
+## there: the fences, hedges and posts down on the ground are under it (or over it)
+func off_ground(p: Vector2, y: float) -> bool:
+	var on := _under(p)
+	for ri: int in on:
+		var r: Dictionary = g._roads[ri]
+		if absf(float(on[ri][1]) - y) < 0.6 and float(on[ri][0]) < float(r["w"]) * 0.5 + float(r["side"]) \
+				and absf(float(on[ri][1]) - float(g._h(p))) > 0.3:
+			return true
+	return false
 
 ## Where another deck's road comes in -- a slip road meeting a road up on its embankment --
 ## p (on deck ri, at height y) lies on that road: on its carriageway (`inner` false) or
@@ -437,9 +460,7 @@ func _walls_of(ri: int) -> void:
 			if banks[j] >= 0.0 and banks[j + 1] >= 0.0 and maxf(banks[j], banks[j + 1]) > 0.0:
 				# a bank: the guardrail along its top stops a car on the deck; its foot, as
 				# steep as a wall, stops one on the ground beside it
-				var mid_b := (line[j] + line[j + 1]) * 0.5
-				if not open_at(ri, mid_b, (ys[j] + ys[j + 1]) * 0.5):
-					_walls.append([line[j], line[j + 1], ys[j] - 0.3, ys[j] + 0.9, ys[j + 1] - 0.3, ys[j + 1] + 0.9, 0.1, "guardrail"])
+				_wall(ri, [line[j], line[j + 1], ys[j] - 0.3, ys[j] + 0.9, ys[j + 1] - 0.3, ys[j + 1] + 0.9, 0.1, "guardrail"], ys[j], ys[j + 1])
 				var e0 := float(r["w"]) * 0.5 + float(r["side"])
 				var f0 := pts[j] + outs[j] * (e0 + banks[j])
 				var f1 := pts[j + 1] + outs[j + 1] * (e0 + banks[j + 1])
@@ -449,19 +470,17 @@ func _walls_of(ri: int) -> void:
 			for k: int in [j, j + 1]:
 				match kind:
 					"br":
-						band.append_array([ys[k] - SLAB - 0.2, ys[k] + walk + PARAPET])
+						band.append_array([ys[k] - slab_of(r) - 0.2, ys[k] + walk + PARAPET])
 					"em":
 						band.append_array([gs[k] - 1.0, ys[k] + walk + PARAPET])
 					"cu":
 						band.append_array([ys[k] - 0.3, maxf(gs[k], ys[k]) + 1.1])
 					_:
-						band.append_array([ys[k] - 0.3, ys[k] + TUBE_H])
+						band.append_array([ys[k] - 0.3, ys[k] + tube_of(r)])
 			var rise := maxf(absf(ys[j] - gs[j]), absf(ys[j + 1] - gs[j + 1]))
 			if kind in ["em", "cu"] and rise < 0.3:
 				continue
 			var mid := (line[j] + line[j + 1]) * 0.5
-			if open_at(ri, mid, (ys[j] + ys[j + 1]) * 0.5):
-				continue   # (another deck's road comes in here)
 			if kind in ["br", "em"] and _on_street_below(ri, line[j], line[j + 1], ys[j] - gs[j], ys[j + 1] - gs[j + 1],
 					NEAR_STREET if (cum[j] < near_a or cum[j + 1] > total - near_b) else -0.25):
 				continue
@@ -475,15 +494,32 @@ func _walls_of(ri: int) -> void:
 				band[3] = minf(band[3], gs[j + 1] - 0.5)
 				if band[1] < band[0] + 0.5 and band[3] < band[2] + 0.5:
 					continue
-			_walls.append([line[j], line[j + 1], band[0], band[1], band[2], band[3], WALL_T * 0.5, kind])
+			_wall(ri, [line[j], line[j + 1], band[0], band[1], band[2], band[3], WALL_T * 0.5, kind], ys[j], ys[j + 1])
 	if kind == "br":
 		for pier: Array in piers(ri):
 			var c: Vector2 = pier[0]
 			var across: Vector2 = pier[1]
 			var half: float = pier[2]
-			var top: float = pier[3] - SLAB
+			var top: float = pier[3] - slab_of(r)
 			var foot: float = g._h(c) - 1.0
 			_walls.append([c - across * half, c + across * half, foot, top, foot, top, float(pier[4]) * 0.5, "pier"])
+
+## a wall of deck ri (`w` as in _walls; ya, yb the deck's surface at its ends), left out
+## where another deck's road comes in (open_at). A footpath's in pieces of a metre or so,
+## each looked at: footbridges branch at sharp angles, and a railing checked at its middle
+## alone ran across the way onto the next (one of the Diamonds Bridge's three ends).
+func _wall(ri: int, w: Array, ya: float, yb: float) -> void:
+	var a: Vector2 = w[0]
+	var b: Vector2 = w[1]
+	var n := 1 if g._roads[ri]["drive"] else maxi(1, ceili(a.distance_to(b) / 1.2))
+	for k in range(n):
+		var t0 := float(k) / n
+		var t1 := float(k + 1) / n
+		var p0 := a.lerp(b, t0)
+		var p1 := a.lerp(b, t1)
+		if open_at(ri, (p0 + p1) * 0.5, lerpf(ya, yb, (t0 + t1) * 0.5)):
+			continue   # (another deck's road comes in here)
+		_walls.append([p0, p1, lerpf(w[2], w[4], t0), lerpf(w[3], w[5], t0), lerpf(w[2], w[4], t1), lerpf(w[3], w[5], t1), w[6], w[7]])
 
 ## Where a bridge stands on the ground below: [middle, across (unit), half its width across,
 ## the deck's height there, its thickness along the road], every PIER_STEP or so wherever the
@@ -527,13 +563,29 @@ func piers(ri: int) -> Array:
 		# at its middle only, piers of a bridge crossing the Ayalon at a slant stood in its lanes)
 		var in_lanes := false
 		for f: float in [-1.0, -0.5, 0.0, 0.5, 1.0]:
-			var on: Dictionary = g._nearest_seg(p + across * (half - 0.6) * f, 30.0, true)
-			if not on.is_empty() and int(on["road"]) != ri and not is_deck(g._roads[int(on["road"])]) and float(on["edge"]) < 1.0:
+			# (any road at the ground's level there: a footpath, a footbridge's foot -- a road
+			# bridge's pier stood on the foot of the footbridge under it; _nearest_seg passes
+			# over the decks up in the air)
+			var on: Dictionary = g._nearest_seg(p + across * (half - 0.6) * f, 30.0, false)
+			if not on.is_empty() and int(on["road"]) != ri and float(on["edge"]) < 1.0 \
+					and not (is_deck(g._roads[int(on["road"])]) and g._roads[int(on["road"])]["drive"]):
 				in_lanes = true
 				break
 			if g._rails != null and g._rails.on_track(p + across * (half - 0.6) * f, 2.8):
 				in_lanes = true   # (nor on a railway's track: the trains under a bridge run through)
 				break
+		# nor through another deck below its top, anywhere across (every metre: a footbridge
+		# running alongside a road bridge, lower, walked into the road bridge's piers; a
+		# sidewalk mapped as its own footbridge came down beside one's abutment)
+		var steps := maxi(2, ceili((half - 0.6) * 2.0))
+		for k in range(steps + 1):
+			var q := p + across * (half - 0.6) * (2.0 * float(k) / steps - 1.0)
+			var below: Dictionary = _under(q)
+			for rj: int in below:
+				var o: Dictionary = g._roads[rj]
+				if rj != ri and float(below[rj][0]) < float(o["w"]) * 0.5 + float(o["side"]) + WALL_T + 0.3 \
+						and float(below[rj][1]) < y - 0.5:
+					in_lanes = true
 		if in_lanes:
 			continue
 		var clash := false
@@ -680,7 +732,7 @@ func keep_eye(eye: Vector3, car: Vector2, y: float) -> Vector3:
 	var q: Vector2 = on["q"]
 	if e2.distance_to(q) > room:
 		e2 = q + (e2 - q).normalized() * room
-	var top: float = deck_y(ri, e2) + g.road_top() + TUBE_H - 0.7
+	var top: float = deck_y(ri, e2) + g.road_top() + tube_of(r) - 0.7
 	return Vector3(e2.x, minf(eye.y, top), e2.y)
 
 func _nearest_on(ri: int, p: Vector2) -> Dictionary:
@@ -724,11 +776,16 @@ func build() -> void:
 		if g._over():
 			await g._pause()
 		var r: Dictionary = g._roads[ri]
-		var pts: PackedVector2Array = _dense(r["pts"], 4.0)
+		var pts: PackedVector2Array = _dense(r["pts"], 4.0 if r["drive"] else 1.0)
 		var hw := float(r["w"]) * 0.5
 		g._on_deck = ri
-		g._ribbon(asphalt, pts, hw, g.Y_ROAD)
-		g._markings(marks, r, yellow)
+		if r["drive"]:
+			g._ribbon(asphalt, pts, hw, g.Y_ROAD)
+			g._markings(marks, r, yellow)
+		else:   # (a footbridge, a footpath tunnel: paved like the pavements)
+			g._ribbon(walk, pts, hw, g.Y_PATH)
+			if String(r["deck"]) != "tu":
+				_stairs(ri, pts, conc)
 		g._on_deck = -1
 		# a junction in the air (only decks meet there): its middle filled, at its height
 		var ids: PackedInt32Array = r["ids"]
@@ -829,7 +886,9 @@ func _raised(ri: int, pts: PackedVector2Array, walk: RefCounted, kerb: RefCounte
 	var side := float(r["side"])
 	var bridge := String(r["deck"]) == "br"
 	var paved := side > 1.0
-	var top: float = g.KERB_H if paved else g.Y_ROAD
+	var top: float = g.KERB_H if paved else (g.Y_ROAD if r["drive"] else g.Y_PATH)
+	var slab := slab_of(r)
+	var railed: bool = not r["drive"]   # (a footbridge: a steel railing on its edge, not a parapet)
 	for sd: float in [-1.0, 1.0]:
 		var kerb_in: Array = _edge(ri, pts, hw * sd, g.Y_ROAD - 0.02)
 		var kerb_top: Array = _edge(ri, pts, hw * sd, top)
@@ -845,11 +904,11 @@ func _raised(ri: int, pts: PackedVector2Array, walk: RefCounted, kerb: RefCounte
 			var vi: Vector3 = (inner[0] as PackedVector3Array)[i]
 			var vo: Vector3 = (outer[0] as PackedVector3Array)[i]
 			var drop: float = vo.y - top - (outer[1] as PackedFloat32Array)[i]
-			var ph := PARAPET if bridge else PARAPET * clampf((drop - 0.15) / 0.6, 0.0, 1.0)
+			var ph := 0.0 if railed else (PARAPET if bridge else PARAPET * clampf((drop - 0.15) / 0.6, 0.0, 1.0))
 			p_in.append(vi + Vector3(0, ph, 0))
 			p_out.append(vo + Vector3(0, ph, 0))
 			foot.append(Vector3(vo.x, (outer[1] as PackedFloat32Array)[i] - 0.4, vo.z))
-			under.append(vo + Vector3(0, -SLAB - top, 0))
+			under.append(vo + Vector3(0, -slab - top, 0))
 		var line: PackedVector2Array = g._offset_line(pts, hw * sd)
 		# gaps: the walkway where it would lie on another road's carriageway (a slip road's
 		# mouth up on the embankment; the street a ramp's foot runs into), the parapet and
@@ -900,9 +959,12 @@ func _raised(ri: int, pts: PackedVector2Array, walk: RefCounted, kerb: RefCounte
 		else:
 			_face(stone, p_out, foot, sd, line, gap_w)             # the retaining wall, down into the ground
 			_bank(ri, pts, sd, outs, widths, gap_bank, inner[0], grass, rail, top)
+		if railed:
+			var rl: Array = _edge(ri, pts, (hw + side + WALL_T * 0.5) * sd, top)
+			_railing(rail, rl[0], gap_w if bridge else gap_wall)
 	if bridge:
-		var lo_l: Array = _edge(ri, pts, -(hw + side + WALL_T), -SLAB)
-		var lo_r: Array = _edge(ri, pts, hw + side + WALL_T, -SLAB)
+		var lo_l: Array = _edge(ri, pts, -(hw + side + WALL_T), -slab)
+		var lo_r: Array = _edge(ri, pts, hw + side + WALL_T, -slab)
 		_strip(conc, lo_l[0], lo_r[0], false)
 		for pier: Array in piers(ri):
 			var c: Vector2 = pier[0]
@@ -912,7 +974,7 @@ func _raised(ri: int, pts: PackedVector2Array, walk: RefCounted, kerb: RefCounte
 			var along := Vector2(across.y, -across.x)
 			var half: float = pier[2]
 			var thick: float = pier[4]
-			var y_top: float = float(pier[3]) - SLAB + (g.road_top() - g.Y_ROAD)
+			var y_top: float = float(pier[3]) - slab + (g.road_top() - g.Y_ROAD)
 			var y_bot: float = g._h(c) - 1.5
 			var mid := Vector3(c.x, (y_top + y_bot) * 0.5, c.y)
 			g._obox(conc, mid, Vector3(half * 2.0, y_top - y_bot, thick), atan2(along.x, along.y))
@@ -939,6 +1001,61 @@ func _raised(ri: int, pts: PackedVector2Array, walk: RefCounted, kerb: RefCounte
 			var gy: float = g._h(p) - 1.0
 			var c := p + d * 0.6
 			g._obox(stone, Vector3(c.x, (y + gy) * 0.5, c.y), Vector3((hw + side + WALL_T) * 2.0, y - gy, 1.2), atan2(d.x, d.y))
+
+## a footbridge's railing along a line on its edge: a post every 1.6 m, a handrail on top
+## and a mid rail, skipping the gaps
+func _railing(rail: RefCounted, line: PackedVector3Array, gap: PackedByteArray) -> void:
+	var acc := 0.0
+	for i in range(line.size() - 1):
+		var p0: Vector3 = line[i]
+		var p1: Vector3 = line[i + 1]
+		var L := Vector2(p1.x - p0.x, p1.z - p0.z).length()
+		if gap[i] == 1 or gap[i + 1] == 1 or L < 0.01:
+			acc = 0.0
+			continue
+		var m := (p0 + p1) * 0.5
+		var yaw := atan2(p1.x - p0.x, p1.z - p0.z)
+		var pitch := -atan2(p1.y - p0.y, L)
+		if g._mine(Vector2(m.x, m.z)):
+			g._obox(rail, m + Vector3(0, PARAPET, 0), Vector3(0.07, 0.07, L + 0.03), yaw, pitch)
+			g._obox(rail, m + Vector3(0, PARAPET * 0.5, 0), Vector3(0.04, 0.04, L + 0.03), yaw, pitch)
+		while acc < L:
+			var q := p0.lerp(p1, acc / L)
+			if g._mine(Vector2(q.x, q.z)):
+				g._obox(rail, q + Vector3(0, PARAPET * 0.5, 0), Vector3(0.06, PARAPET, 0.06), yaw)
+			acc += 1.6
+		acc -= L
+
+## Stairs where a footpath deck is steeper than STEEP (OSM's steps, the foot of a footbridge
+## that meets a street before its ramp is down): a block for each tread, its top TREAD over
+## the last, standing on the ramp the path is walked on.
+func _stairs(ri: int, pts: PackedVector2Array, conc: RefCounted) -> void:
+	var r: Dictionary = g._roads[ri]
+	var w := float(r["w"])
+	var e: float = g.road_top() - g.Y_ROAD + g.Y_PATH
+	for i in range(pts.size() - 1):
+		var a := pts[i]
+		var b := pts[i + 1]
+		var L := a.distance_to(b)
+		if L < 0.05:
+			continue
+		var ya := deck_y(ri, a)
+		var yb := deck_y(ri, b)
+		if absf(yb - ya) / L < STEEP:
+			continue
+		var lo := minf(ya, yb)
+		var hi := maxf(ya, yb)
+		var yaw := atan2(b.x - a.x, b.y - a.y)
+		var k := ceilf(lo / TREAD)
+		while k * TREAD < hi:
+			var y1 := minf((k + 1.0) * TREAD, hi)
+			var t0 := (k * TREAD - ya) / (yb - ya)
+			var t1 := (y1 - ya) / (yb - ya)
+			var c := a.lerp(b, (t0 + t1) * 0.5)
+			if g._mine(c):
+				var run := absf(t1 - t0) * L
+				g._obox(conc, Vector3(c.x, y1 + e - TREAD * 0.5, c.y), Vector3(w, TREAD, run + 0.01), yaw)
+			k += 1.0
 
 ## the grass bank down one side of an embankment, from the walkway's (or shoulder's) edge
 ## to the ground BANK out for each metre down, and the guardrail along its top
@@ -1045,23 +1162,26 @@ func _tunnel(ri: int, pts: PackedVector2Array, walk: RefCounted, kerb: RefCounte
 	var hw := float(r["w"]) * 0.5
 	var side := float(r["side"])
 	var e: float = g.road_top() - g.Y_ROAD
+	var foot: bool = not r["drive"]   # (a footpath's: its floor paved wall to wall, lower, one row of lamps)
+	var th := tube_of(r)
 	for sd: float in [-1.0, 1.0]:
 		var line: PackedVector2Array = g._offset_line(pts, hw * sd)
 		var k_lo: Array = _edge(ri, pts, hw * sd, g.Y_ROAD - 0.02)
-		var k_hi: Array = _edge(ri, pts, hw * sd, g.KERB_H + 0.12)
-		var w_lo: Array = _edge(ri, pts, (hw + side) * sd, g.KERB_H + 0.12)
-		var w_band: Array = _edge(ri, pts, (hw + side) * sd, 2.8)
-		var w_hi: Array = _edge(ri, pts, (hw + side) * sd, TUBE_H)
-		_face(kerb, k_lo[0], k_hi[0], -sd, line)
+		var k_hi: Array = _edge(ri, pts, hw * sd, g.Y_PATH if foot else g.KERB_H + 0.12)
+		var w_lo: Array = _edge(ri, pts, (hw + side) * sd, g.Y_PATH if foot else g.KERB_H + 0.12)
+		var w_band: Array = _edge(ri, pts, (hw + side) * sd, 1.5 if foot else 2.8)
+		var w_hi: Array = _edge(ri, pts, (hw + side) * sd, th)
+		if not foot:
+			_face(kerb, k_lo[0], k_hi[0], -sd, line)
 		_strip(walk, k_hi[0], w_lo[0])
 		_face(tile, w_lo[0], w_band[0], -sd, line)
 		_face(tube, w_band[0], w_hi[0], -sd, line)
-	var c_l: Array = _edge(ri, pts, -(hw + side), TUBE_H)
-	var c_r: Array = _edge(ri, pts, hw + side, TUBE_H)
+	var c_l: Array = _edge(ri, pts, -(hw + side), th)
+	var c_r: Array = _edge(ri, pts, hw + side, th)
 	_strip(tube, c_l[0], c_r[0], false)
-	# lamps: a row each side under the ceiling, a fitting every 5 m
-	for sd: float in [-1.0, 1.0]:
-		var row: Array = _edge(ri, pts, (hw - 0.6) * sd, TUBE_H - 0.12)
+	# lamps: a row each side under the ceiling (one down the middle of a footpath's), a fitting every 5 m
+	for sd: float in ([0.0] if foot else [-1.0, 1.0]):
+		var row: Array = _edge(ri, pts, (hw - 0.6) * sd, th - 0.12)
 		var line: PackedVector2Array = g._offset_line(pts, (hw - 0.6) * sd)
 		var acc := 0.0
 		for i in range(line.size() - 1):
@@ -1085,7 +1205,7 @@ func _tunnel(ri: int, pts: PackedVector2Array, walk: RefCounted, kerb: RefCounte
 			continue
 		var into := (src[1 if end == 0 else end - 1] - p).normalized()
 		var across := Vector2(-into.y, into.x)
-		var y0 := deck_y(ri, p) + e + TUBE_H
+		var y0 := deck_y(ri, p) + e + th
 		var reach := hw + side + WALL_T + 0.8
 		var top := y0
 		for k in range(-4, 5):
@@ -1116,6 +1236,16 @@ const RAMP := 0.07            ## ... on anything else
 const MIN_BRIDGE := 8.0
 const CLEAR_UNDER := 6.2      ## a tunnel's road under what it crosses: 4.8 m clear, the roof, a little earth
 const MIN_TUNNEL := 20.0
+## Footbridges and footpath tunnels: a footbridge clears a street by CLEAR_FOOT (a path by
+## CLEAR_FOOT_PATH) and its lift spreads only along the paths -- a steep ramp, or stairs where
+## OSM maps steps -- and comes down to the pavement wherever a path meets a street; a footpath
+## tunnel lies CLEAR_UNDER_FOOT down, its ramps down to it along the paths too.
+const CLEAR_FOOT := 5.8
+const CLEAR_FOOT_PATH := 3.4
+const CLEAR_UNDER_FOOT := 3.6
+const FOOT_RAMP := 0.25
+const STAIRS := 0.6
+const WALK := {"footway": true, "path": true, "steps": true, "cycleway": true, "pedestrian": true, "bridleway": true}
 const CAP_DIG := 0.085        ## a cutting's steepest: coming up out of one onto a junction at 50 km/h,
                               ## 10% was a crest the car took off from      ## shorter "tunnels" are passages under a building: on the ground
 const FAST := {"motorway": true, "trunk": true, "motorway_link": true, "trunk_link": true, "primary_link": true}
@@ -1158,6 +1288,24 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 		nd.append(roundi(p.y / k))
 		return nd.size() / 2 - 1
 	var drv := func(r: Dictionary) -> bool: return drive.has(String(r.get("k", "")))
+	# A path that coils over itself (a spiral stair mapped as one way, a switchback) cannot be
+	# a deck -- its railings would cross it -- so it stays on the ground, and counts as the
+	# ground for the paths that meet it (as a street's point does).
+	for r: Dictionary in roads:
+		if not WALK.has(String(r.get("k", ""))):
+			continue
+		var ns: Array = r["n"]
+		for i in range(ns.size() - 1):
+			for j in range(i + 2, ns.size() - 1):
+				var cl := Geometry2D.get_closest_points_between_segments(pos.call(int(ns[i])), pos.call(int(ns[i + 1])),
+					pos.call(int(ns[j])), pos.call(int(ns[j + 1])))
+				if (cl[0] as Vector2).distance_to(cl[1]) < 0.8:   # (a spiral lies on itself; a ramp's hairpin legs are a path apart)
+					r["_coil"] = true
+			if r.has("_coil"):
+				break
+	var walk := func(r: Dictionary) -> bool: return WALK.has(String(r.get("k", ""))) and not r.has("_coil")
+	var net := func(r: Dictionary) -> int: return 1 if drv.call(r) else (2 if walk.call(r) else 0)
+	var foot_grade := func(r: Dictionary) -> float: return STAIRS if String(r["k"]) == "steps" else FOOT_RAMP
 	var gnd := {}
 	var ground := func(n: int) -> float:
 		if not gnd.has(n):
@@ -1174,7 +1322,7 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 	var seen := {}
 	for ri in range(roads.size()):
 		var r: Dictionary = roads[ri]
-		if seen.has(ri) or not r.has("br") or not drv.call(r) or r.has("y"):
+		if seen.has(ri) or not r.has("br") or int(net.call(r)) == 0 or r.has("y"):
 			continue
 		var comp: Array = [ri]
 		seen[ri] = true
@@ -1187,7 +1335,7 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 				total += (pos.call(int(ns[j])) as Vector2).distance_to(pos.call(int(ns[j + 1])))
 			for e in [ns[0], ns[ns.size() - 1]]:
 				for b: int in at[int(e)]:
-					if not seen.has(b) and roads[b].has("br") and drv.call(roads[b]):
+					if not seen.has(b) and roads[b].has("br") and int(net.call(roads[b])) == int(net.call(r)):
 						seen[b] = true
 						comp.append(b)
 						todo.append(b)
@@ -1196,7 +1344,7 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 				is_br[b] = true
 	var any_tu := false
 	for r: Dictionary in roads:
-		any_tu = any_tu or (r.has("tu") and drv.call(r) and not r.has("y"))
+		any_tu = any_tu or (r.has("tu") and int(net.call(r)) > 0 and not r.has("y"))
 	if is_br.is_empty() and not any_tu:
 		return {}
 	# every other road's segments in a grid, to find what each bridge crosses
@@ -1248,7 +1396,9 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 						if x == null:
 							continue
 						var under_road: bool = drv.call(roads[rj])
-						hits.append([a.distance_to(x) / maxf(a.distance_to(b), 0.001), x, CLEAR_ROAD if under_road else CLEAR_PATH,
+						var over_foot: bool = walk.call(roads[ri])
+						var need := (CLEAR_FOOT if over_foot else CLEAR_ROAD) if under_road else (CLEAR_FOOT_PATH if over_foot else CLEAR_PATH)
+						hits.append([a.distance_to(x) / maxf(a.distance_to(b), 0.001), x, need,
 							roads[rj].get("name_en", roads[rj].get("name", roads[rj]["k"]))])
 						if under_road:   # (the road crossed stays on the ground, where it passes under)
 							for m in ms:
@@ -1258,7 +1408,7 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 			for hit: Array in hits:
 				var n: int = add_node.call(hit[1])
 				out.append(n)
-				if float(hit[2]) >= CLEAR_ROAD:
+				if float(hit[2]) >= CLEAR_ROAD and drv.call(roads[ri]):
 					over_roads.append(n)
 					over_name[n] = "%s over %s" % [roads[ri].get("name_en", roads[ri].get("name", roads[ri]["k"])), hit[3]]
 				lift[n] = maxf(float(lift.get(n, 0.0)), float(hit[2]))
@@ -1273,6 +1423,11 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 			if not at.has(int(n)):
 				at[int(n)] = []
 			(at[int(n)] as Array).append(ri)
+	var on_street := {}   # every point on a drivable road: a footbridge's stairs end there
+	for r: Dictionary in roads:
+		if drv.call(r) or r.has("_coil"):
+			for n in r["n"]:
+				on_street[int(n)] = true
 	var spread := func(seeds: Array, frozen: Dictionary) -> void:
 		var queue: Array = seeds.duplicate()
 		while not queue.is_empty():
@@ -1285,9 +1440,10 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 			var lu: float = lift[u]
 			for ri: int in at.get(u, []):
 				var r: Dictionary = roads[ri]
-				if not drv.call(r):
-					continue
-				var grade := RAMP_FAST if FAST.has(String(r["k"])) else RAMP
+				var foot: bool = walk.call(r)
+				if (not drv.call(r) and not foot) or (foot and on_street.has(u)):
+					continue   # (a road's lift never spreads onto a path: the pavement off a ramp stays down)
+				var grade: float = foot_grade.call(r) if foot else (RAMP_FAST if FAST.has(String(r["k"])) else RAMP)
 				var ns: Array = r["n"]
 				for j in range(ns.size()):
 					if int(ns[j]) != u:
@@ -1296,8 +1452,8 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 						if j + step < 0 or j + step >= ns.size():
 							continue
 						var v := int(ns[j + step])
-						if (pinned.has(v) and not is_br.has(ri)) or frozen.has(v):
-							continue
+						if (pinned.has(v) and not is_br.has(ri)) or frozen.has(v) or (foot and on_street.has(v)):
+							continue   # (a path comes down to the pavement where it meets a street)
 						# (the road's own grade, not its height over a ground that may fall away too)
 						var top_v := float(ground.call(u)) + lu - grade * (pos.call(u) as Vector2).distance_to(pos.call(v))
 						var lv := top_v - float(ground.call(v))
@@ -1330,6 +1486,10 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 						continue
 					var la := int(ra.get("ly", 1))
 					var lb := int(rb.get("ly", 1))
+					var fa: bool = walk.call(ra)
+					var fb: bool = walk.call(rb)
+					if fa != fb and la == lb:
+						continue   # (a footbridge and a road's bridge at one layer: OSM says nothing of which is over)
 					var a_up := la > lb if la != lb else int(MAIN_LINE.get(String(ra["k"]), 0)) < int(MAIN_LINE.get(String(rb["k"]), 0))
 					var up_n: Array = na if a_up else nb
 					var lo_n: Array = nb if a_up else na
@@ -1341,7 +1501,10 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 					var u0: Vector2 = pos.call(int(up_n[uj]))
 					var u1: Vector2 = pos.call(int(up_n[uj + 1]))
 					var un := int(up_n[uj]) if u0.distance_to(x) < u1.distance_to(x) else int(up_n[uj + 1])
-					later[un] = maxf(float(later.get(un, 0.0)), lo_lift + CLEAR_ROAD)
+					var up_foot: bool = fa if a_up else fb
+					var lo_foot: bool = fb if a_up else fa
+					var need := (CLEAR_FOOT_PATH if lo_foot else CLEAR_FOOT) if up_foot else (CLEAR_PATH if lo_foot else CLEAR_ROAD)
+					later[un] = maxf(float(later.get(un, 0.0)), lo_lift + need)
 					for q in lo_n:
 						later["frozen_%d" % int(q)] = true
 					stacked += 1
@@ -1408,7 +1571,7 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 	var branch: Array = []   # tunnel ways under nothing mapped: a passage, or a branch of a tunnel
 	for ri in range(roads.size()):
 		var r: Dictionary = roads[ri]
-		if not r.has("tu") or not drv.call(r) or r.has("y"):
+		if not r.has("tu") or int(net.call(r)) == 0 or r.has("y"):
 			continue
 		var ns: Array = r["n"]
 		var own := String(r.get("name", ""))
@@ -1437,7 +1600,7 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 		if over.is_empty() and int(r.get("ly", 0)) < 0 and String(r["k"]) != "service":
 			branch.append(ri)   # (decided below: on the ground, unless it joins a tunnel)
 			continue
-		if over.is_empty() or total < MIN_TUNNEL:
+		if over.is_empty() or total < (MIN_TUNNEL if drv.call(r) else 6.0):
 			r.erase("tu")   # (on the ground, where the game drew it before it had tunnels)
 			continue
 		is_tu[ri] = true
@@ -1465,6 +1628,26 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 				grew = true
 	for ri: int in branch:
 		roads[ri].erase("tu")
+	var dropped: Array = []   # tunnels left out, and why (the report)
+	# A footpath tunnel that ends under the ground (OSM's path stops there, or the bake cut
+	# it off) would be a tube into the earth: left out (its tag kept, so the game drops it),
+	# and so is one that only leads on into such a tunnel.
+	var shut := true
+	while shut:
+		shut = false
+		for ri: int in is_tu.keys():
+			if not walk.call(roads[ri]):
+				continue
+			var ns: Array = roads[ri]["n"]
+			for e in [ns[0], ns[ns.size() - 1]]:
+				var out := false
+				for rj: int in at.get(int(e), []):
+					out = out or (rj != ri and (is_tu.has(rj) or not roads[rj].has("tu")))
+				if not out:
+					is_tu.erase(ri)
+					dropped.append("%s at (%d, %d): ends under the ground" % [roads[ri].get("name", roads[ri]["k"]), int(pos.call(int(e)).x), int(pos.call(int(e)).y)])
+					shut = true
+					break
 	var junction := func(n: int) -> bool:   # more than two ways out of n, along drivable roads
 		var ends := 0
 		for rj: int in at.get(n, []):
@@ -1477,7 +1660,6 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 	# CLEAR_UNDER between them is too short for its cuttings: it is left out, as before.
 	var room := {}
 	var rq: Array = []
-	var dropped: Array = []
 	var near_tu: Array = []   # (only near a tunnel does it matter: the whole town took 15 s)
 	for ri: int in is_tu:
 		for n in roads[ri]["n"]:
@@ -1525,6 +1707,10 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 						if not rq.has(v):
 							rq.append(v)
 	for ri: int in is_tu.keys():
+		if walk.call(roads[ri]):   # (a footpath tunnel: its ramps may be steep, stairs even)
+			for n in roads[ri]["n"]:
+				dig[int(n)] = CLEAR_UNDER_FOOT
+			continue
 		var deep_enough := true
 		for n in roads[ri]["n"]:
 			deep_enough = deep_enough and float(room.get(int(n), INF)) >= CLEAR_UNDER - 0.8
@@ -1551,9 +1737,10 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 		dq.remove_at(best)
 		for ri: int in at.get(u, []):
 			var r: Dictionary = roads[ri]
-			if not drv.call(r) or is_tu.has(ri):
+			var foot: bool = walk.call(r)
+			if (not drv.call(r) and not foot) or is_tu.has(ri) or (foot and on_street.has(u)):
 				continue
-			var grade := RAMP_FAST if FAST.has(String(r["k"])) else RAMP
+			var grade: float = foot_grade.call(r) if foot else (RAMP_FAST if FAST.has(String(r["k"])) else RAMP)
 			var ns: Array = r["n"]
 			for j in range(ns.size()):
 				if int(ns[j]) != u:
@@ -1562,7 +1749,7 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 					if j + step < 0 or j + step >= ns.size():
 						continue
 					var v := int(ns[j + step])
-					if pinned.has(v) or junction.call(v):
+					if pinned.has(v) or (not foot and junction.call(v)) or (foot and on_street.has(v)):
 						continue   # (the cutting comes up to a junction, which stays at street level)
 					var bot := float(ground.call(u)) - float(dig[u]) + grade * (pos.call(u) as Vector2).distance_to(pos.call(v))
 					var dv := float(ground.call(v)) - bot
@@ -1573,22 +1760,94 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 	for n in dig:
 		if float(lift.get(n, 0.0)) <= 0.05:
 			lift[n] = -minf(float(dig[n]), float(room.get(n, INF)))
+	# A path is no steeper than stairs: up or down at most STAIRS for each metre (along the
+	# paths) from the nearest point where one meets a street, which stays at street level. A
+	# footbridge whose path meets a street before its ramp is down (OSM's stairs unmapped, or
+	# a lift) comes down by a stair there, not a 5 m drop in 2 m.
+	var walk_at := {}
+	for r: Dictionary in roads:
+		if walk.call(r):
+			for n in r["n"]:
+				walk_at[int(n)] = true
+	var fd := {}      # node -> [metres along the paths to a street, that street point's ground]
+	var fq: Array = []
+	var near_lift := {}   # (only near a lifted path: from every street point, Ashdod took 2 s)
+	for n in walk_at:
+		if not on_street.has(n) and absf(float(lift.get(n, 0.0))) > 0.05:
+			var c: Vector2 = (pos.call(n) as Vector2) / 16.0
+			near_lift[Vector2i(floori(c.x), floori(c.y))] = true
+	for n in walk_at:
+		# (and where a path ends at nothing -- a bridge's sidewalk OSM stops on the span --
+		# it comes down by a stair to the ground there, not off a ledge)
+		var dead: bool = (at.get(n, []) as Array).size() == 1 and int(roads[int(at[n][0])]["n"][0]) == n \
+			or (at.get(n, []) as Array).size() == 1 and int((roads[int(at[n][0])]["n"] as Array)[-1]) == n
+		if (on_street.has(n) or dead) and not near_lift.is_empty():
+			var c: Vector2 = (pos.call(n) as Vector2) / 16.0
+			var close := false
+			for dx in range(-1, 2):
+				for dz in range(-1, 2):
+					close = close or near_lift.has(Vector2i(floori(c.x) + dx, floori(c.y) + dz))
+			if close:
+				fd[n] = [0.0, float(ground.call(n))]
+				fq.append(n)
+	while not fq.is_empty():
+		var best := 0
+		for i in range(fq.size()):
+			if float(fd[fq[i]][0]) < float(fd[fq[best]][0]):
+				best = i
+		var u: int = fq[best]
+		fq.remove_at(best)
+		var du: float = fd[u][0]
+		if du * STAIRS > CLEAR_FOOT + 1.0:
+			continue
+		for ri: int in at.get(u, []):
+			if not walk.call(roads[ri]):
+				continue
+			var ns: Array = roads[ri]["n"]
+			for j in range(ns.size()):
+				if int(ns[j]) != u:
+					continue
+				for step: int in [-1, 1]:
+					if j + step < 0 or j + step >= ns.size():
+						continue
+					var v := int(ns[j + step])
+					var dv := du + (pos.call(u) as Vector2).distance_to(pos.call(v))
+					if not fd.has(v) or dv < float(fd[v][0]) - 0.01:
+						fd[v] = [dv, fd[u][1]]
+						if not fq.has(v):
+							fq.append(v)
+	var stair_capped := 0
+	for n in lift:
+		if on_street.has(n) or not fd.has(n):
+			continue
+		var gs := float(fd[n][1])
+		var reach := STAIRS * float(fd[n][0])
+		var hi := gs + reach - float(ground.call(n))   # (the most lift there, and the most depth)
+		var lo := float(ground.call(n)) - (gs - reach)
+		var l := float(lift[n])
+		if l > maxf(hi, 0.0) + 0.01 or -l > maxf(lo, 0.0) + 0.01:
+			lift[n] = clampf(l, -maxf(lo, 0.0), maxf(hi, 0.0))
+			stair_capped += 1
+	# a path's own points that are a street's too keep the street's level: never a road's lift
+	# (the pavement off a bridge's ramp, a path joined to a tunnel's road, stays on the ground)
+	var lift_of := func(r: Dictionary, n: int) -> float:
+		return 0.0 if walk.call(r) and on_street.has(n) else float(lift.get(n, 0.0))
 	# where a ramp runs out part way along a segment: a node there, on the ground
 	for ri in range(roads.size()):
 		var r: Dictionary = roads[ri]
-		if not drv.call(r) or is_br.has(ri) or is_tu.has(ri):
+		if int(net.call(r)) == 0 or is_br.has(ri) or is_tu.has(ri):
 			continue
 		var ns: Array = r["n"]
 		var any := false
 		for n in ns:
-			any = any or absf(float(lift.get(int(n), 0.0))) > 0.05
+			any = any or absf(float(lift_of.call(r, int(n)))) > 0.05
 		if not any:
 			continue
-		var grade := RAMP_FAST if FAST.has(String(r["k"])) else RAMP
+		var grade: float = foot_grade.call(r) if walk.call(r) else (RAMP_FAST if FAST.has(String(r["k"])) else RAMP)
 		var out: Array = [ns[0]]
 		for j in range(ns.size() - 1):
-			var la := float(lift.get(int(ns[j]), 0.0))
-			var lb := float(lift.get(int(ns[j + 1]), 0.0))
+			var la := float(lift_of.call(r, int(ns[j])))
+			var lb := float(lift_of.call(r, int(ns[j + 1])))
 			if (absf(la) > 0.05) != (absf(lb) > 0.05):
 				var a: Vector2 = pos.call(int(ns[j]))
 				var b: Vector2 = pos.call(int(ns[j + 1]))
@@ -1610,8 +1869,8 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 	for ri in range(roads.size()):
 		var r: Dictionary = roads[ri]
 		var ns: Array = r["n"]
-		var up := func(n) -> bool: return absf(float(lift.get(int(n), 0.0))) > 0.05
-		if not is_br.has(ri) and not is_tu.has(ri) and (not drv.call(r) or not ns.any(up)):   # (a footpath stays on the ground)
+		var up := func(n) -> bool: return absf(float(lift_of.call(r, int(n)))) > 0.05
+		if not is_br.has(ri) and not is_tu.has(ri) and (int(net.call(r)) == 0 or not ns.any(up)):
 			made.append(r)
 			continue
 		var runs: Array = []   # [from, to, off the ground?]
@@ -1630,19 +1889,19 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 			part["n"] = ns.slice(int(run[0]), int(run[1]) + 1)
 			if bool(run[2]):
 				var pn: Array = part["n"]
-				var g0 := float(ground.call(int(pn[0]))) + float(lift.get(int(pn[0]), 0.0))
-				var g1 := float(ground.call(int(pn[pn.size() - 1]))) + float(lift.get(int(pn[pn.size() - 1]), 0.0))
+				var g0 := float(ground.call(int(pn[0]))) + float(lift_of.call(r, int(pn[0])))
+				var g1 := float(ground.call(int(pn[pn.size() - 1]))) + float(lift_of.call(r, int(pn[pn.size() - 1])))
 				# a point every few metres, the lift straight between the road's own points,
 				# so the profile can be rounded over its crests (a bridge's peak, where two
 				# ramps meet, was a sharp crest a car took off from)
 				var dn: Array = [pn[0]]
-				var lf: Array = [float(lift.get(int(pn[0]), 0.0))]
+				var lf: Array = [float(lift_of.call(r, int(pn[0])))]
 				var fixed: Array = [true]
 				for j in range(pn.size() - 1):
 					var a: Vector2 = pos.call(int(pn[j]))
 					var b: Vector2 = pos.call(int(pn[j + 1]))
-					var la := float(lift.get(int(pn[j]), 0.0))
-					var lb := float(lift.get(int(pn[j + 1]), 0.0))
+					var la := float(lift_of.call(r, int(pn[j])))
+					var lb := float(lift_of.call(r, int(pn[j + 1])))
 					var parts := maxi(1, ceili(a.distance_to(b) / 6.0))
 					for q in range(1, parts):
 						dn.append(add_node.call(a.lerp(b, float(q) / parts)))
@@ -1686,11 +1945,14 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 					var dug_n := 0
 					for v in lf:
 						dug_n += 1 if float(v) < 0.0 else -1
-					part["cu" if dug_n > 0 else "em"] = 1
+					var sum_l := 0.0
+					for v in lf:
+						sum_l += float(v)
+					part["cu" if dug_n > 0 or (dug_n == 0 and sum_l < 0.0) else "em"] = 1   # (a two-point ramp ties)
 				decks += 1
 			made.append(part)
 	data["roads"] = made
-	var rounded := _round_joints(made, pos, ground, k) if round_joints else [0, 0]
+	var rounded := _round_joints(made, pos, ground, k, drv) if round_joints else [0, 0]
 	var low := INF
 	var short := 0
 	var short_at: Array = []
@@ -1700,7 +1962,13 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 			short += 1
 			if short_at.size() < 12:
 				short_at.append("%s at (%d, %d): %.1f m" % [over_name.get(n, "?"), int(pos.call(n).x), int(pos.call(n).y), float(lift.get(n, 0.0))])
-	return {"bridges": is_br.size(), "tunnels": is_tu.size(), "crossings": crossed, "stacked": stacked, "capped": capped, "decks": decks,
+	var fb := 0
+	var ft := 0
+	for ri: int in is_br:
+		fb += 1 if walk.call(roads[ri]) else 0
+	for ri: int in is_tu:
+		ft += 1 if walk.call(roads[ri]) else 0
+	return {"bridges": is_br.size() - fb, "footbridges": fb, "stair_capped": stair_capped, "tunnels": is_tu.size() - ft, "foot_tunnels": ft, "crossings": crossed, "stacked": stacked, "capped": capped, "decks": decks,
 		"over_roads": over_roads.size(), "short_of_clear": short, "lowest_over_road": snappedf(low, 0.1), "short_at": short_at, "tunnels_dropped": dropped,
 		"crests_rounded": rounded[0], "cutting_tops_eased": rounded[1]}
 
@@ -1716,15 +1984,15 @@ const EASE_L := 40.0          ## a cutting's top eased into its slope over this 
 ## street at the street's level, the street's flat eased into the cutting's slope over EASE_L
 ## on the cutting's side (a cubic from grade 0 to the slope: never deeper than it was) --
 ## coming up out of Ashdod's underpass the car took off at 49 km/h. [crests, tops]
-static func _round_joints(made: Array, pos: Callable, ground: Callable, k: float) -> Array:
+static func _round_joints(made: Array, pos: Callable, ground: Callable, k: float, drv: Callable) -> Array:
 	var seen := {}   # node -> how many pieces have it (anywhere along them)
 	var ends := {}   # node -> [[piece, at its start?]] for lifted pieces
 	for pi in range(made.size()):
 		var ns: Array = made[pi]["n"]
 		for n in ns:
 			seen[int(n)] = int(seen.get(int(n), 0)) + 1
-		if not made[pi].has("y"):
-			continue
+		if not made[pi].has("y") or not drv.call(made[pi]):
+			continue   # (a footbridge's own profile, stairs and all, is left as it is)
 		for e: int in [0, ns.size() - 1]:
 			var key := int(ns[e])
 			if not ends.has(key):
