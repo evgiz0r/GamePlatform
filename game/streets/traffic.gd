@@ -318,10 +318,9 @@ func tick(dt: float) -> void:
 			# at first (the push builds over half a second or so) and easing off as it nears
 			# the speed it wants
 			if c.v < 0.3 and c.react_t < c.react:
-				# (behind a car, the moment to notice starts when that car is really off, not
-				# when it has rolled a few millimetres: else a whole queue went in the same
-				# second, like a train)
-				if not (c.why == "car" and c.lead_v < 1.0):
+				# (behind a car, the moment to notice starts when that car is off (0.5 m/s),
+				# not when it has rolled a few millimetres)
+				if not (c.why == "car" and c.lead_v < 0.5):
 					c.react_t += dt
 				c.acc = 0.0
 			else:
@@ -433,7 +432,10 @@ func _target(c: Car, i: int, dt: float) -> float:
 	_steer_lanes(c, i, dt, best, lead_v)
 	vt = _held(c, vt, _bus_stop(c, dt), "bus stop")
 	if best < INF:
-		var room := best - (c.len + best_len) * 0.5 - c.gap - lead_v * c.headway
+		# (the seconds behind at its own speed while it is the slower: a queue pulling away
+		# kept its gap for the speed the car in front had reached, so each waited till that
+		# one was well off -- the third car of a queue moved 9 s after the green)
+		var room := best - (c.len + best_len) * 0.5 - c.gap - minf(lead_v, c.v) * c.headway
 		var follow := sqrt(maxf(0.0, lead_v * lead_v + 2.0 * BRAKE * maxf(room, 0.0)))
 		if room <= 0.0:
 			follow = 0.0

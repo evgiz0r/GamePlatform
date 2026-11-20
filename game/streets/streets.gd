@@ -11879,7 +11879,12 @@ func _autodrive(dt: float) -> Array:
 	# facing well away from the lane it must take (handed over pointing the wrong way up a
 	# one-way street, or across it): turn round on the spot first. Steering full lock at
 	# it from a standstill put the nose into the kerb and the wall behind it, again and again.
-	var lane_dir := (_ap_pts[1] - _ap_pts[0]).normalized() if _ap_pts.size() > 1 else _fwd()
+	# (the way the lane goes over its next 5 m, not between its next two points: a road
+	# 1.5 m long at a junction pointed back the way the car came, it turned round on the
+	# spot, then swung back across the junction into the oncoming lane and a car there)
+	var lane_dir := (_ap_point_ahead(5.0) - _ap_point_ahead(0.0)).normalized() if _ap_pts.size() > 1 else _fwd()
+	if lane_dir == Vector2.ZERO:
+		lane_dir = _fwd()
 	if _ap_turn <= 0.0 and absf(_v) >= 2.0 and _fwd().dot(lane_dir) < -0.2:
 		# the lane it must take is behind it and it is still rolling (it ran past a dead
 		# end's turning point at 18 km/h): brake to a stop in a straight line, then turn.
