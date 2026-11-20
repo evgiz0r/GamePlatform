@@ -18777,16 +18777,20 @@ func _route_to(goal: Vector2, from := Vector2.INF, heading := Vector2.ZERO) -> b
 	var d_first := (pts[sj + 1] - pts[sj]).normalized() * float(dir)
 	_ap_pts = PackedVector2Array([(s["q"] as Vector2) + Vector2(-d_first.y, d_first.x) * _lane_off(r)])
 	_ap_lim = PackedFloat32Array([float(r["speed"])])
-	# The path's points, with the lane of the road coming into each; points closer than 4 m to
-	# the one kept before them dropped (a junction drawn as two points 0.9 m apart was two
-	# corners, the second's curve starting behind the first: the plan doubled back on itself)
+	# The path's points, with the lane of the road coming into each; of two closer than 3 m one
+	# kept -- the junction's (a junction drawn as two points 0.9 m apart was two corners, the
+	# second's curve starting behind the first: the plan doubled back on itself; and keeping the
+	# first of two, a slip road's point 3 m short of the street it joins, laid the corner off
+	# that street's line: the car came out 4.7 m from the middle of an 8 m street, into a post)
 	var cl: Array = []   # [point, lane in, speed in, node]
 	for i in range(best.size()):
 		var n := int(best[i])
 		var e: Vector3i = _edge_of.get(Vector2i(int(best[i - 1]), n), Vector3i(s["road"], 0, 1)) if i > 0 else Vector3i(s["road"], 0, dir)
 		var road: Dictionary = _roads[e.x]
 		var prev_at: Vector2 = (cl[cl.size() - 1][0] as Vector2) if not cl.is_empty() else (s["q"] as Vector2)
-		if _nodes[n].distance_to(prev_at) < 4.0 and i + 1 < best.size():
+		if not cl.is_empty() and _nodes[n].distance_to(prev_at) < 3.0 and i + 1 < best.size():
+			if _node_ways(n) >= 3 and _node_ways(int(cl[cl.size() - 1][3])) < 3:
+				cl[cl.size() - 1] = [_nodes[n], cl[cl.size() - 1][1], cl[cl.size() - 1][2], n]   # (the junction's point, the lane in as before)
 			continue
 		cl.append([_nodes[n], _lane_off(road), float(road["speed"]), n])
 	var plain := true   # (the last point laid is a lane point, not the end of a corner)
