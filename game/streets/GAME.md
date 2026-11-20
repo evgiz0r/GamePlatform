@@ -201,7 +201,11 @@ cross both halves, outer kerb to outer kerb. People walking along the street kee
 back half of the pavement (the parked cars stand on the front of it), only on the outer
 side of a divided road, and off any stretch where the pavement line would run over another
 road -- a service lane or car-park lane alongside, the next street at a corner -- though
-they step across a driveway's mouth.
+they step across a driveway's mouth. Their feet are on the pavement's top (on the asphalt
+while crossing, on the ground in a park), not the bare ground's height a kerb below it,
+where they waded into the slabs.
+
+> People walk a bit inside the ground.
 
 The people are grown-ups, not the kit's chunky cartoons: smaller heads, hands and feet,
 longer legs and a longer middle (scaled on their skeletons after every animation frame),
