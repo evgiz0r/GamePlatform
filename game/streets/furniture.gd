@@ -1423,6 +1423,132 @@ func _cabinet_kit() -> ArrayMesh:
 	_kits["cabinet"] = am
 	return am
 
+## ---- on the buildings' walls (streets.gd _build_facade_kit places them) ----------------------
+
+## An AC unit's outdoor half, its back to the wall (z = 0), facing +Z, its foot at y = 0: an
+## off-white box stood off the wall on two arms; the fan's round dark grille on the left,
+## slots on the right, the insulated pipe from its end into the wall, the drip hose down and
+## the grey streak the drips leave. ~130 vertices: there are thousands (drawn instanced).
+func ac_kit(v: int) -> ArrayMesh:
+	var key := "ac%d" % v
+	if _kits.has(key):
+		return _kits[key]
+	var b = g.new_buf()
+	var body: Color = _tone("tank").lerp(_tone("pole"), 0.12)
+	var dark: Color = _tone("pole").darkened(0.55)
+	var W := 0.8 if v == 0 else 0.7
+	var H := 0.55 if v == 0 else 0.5
+	var D := 0.27
+	var z0 := 0.1   # (off the wall: the arms' length)
+	var zf := z0 + D + 0.004
+	_box(b, Vector3(0, H * 0.5, z0 + D * 0.5), Vector3(W, H, D), body)
+	# the fan: a hexagon of dark grille
+	var fc := Vector2(-W * 0.17, H * 0.5)
+	var r := H * 0.4
+	for i in range(6):
+		var a0 := TAU * (i + 0.5) / 6.0
+		var a1 := TAU * (i + 1.5) / 6.0
+		b.tri(Vector3(fc.x, fc.y, zf), Vector3(fc.x + cos(a0) * r, fc.y + sin(a0) * r, zf),
+			Vector3(fc.x + cos(a1) * r, fc.y + sin(a1) * r, zf), Vector3.BACK, dark)
+	# slots on the right: flat dark strips on its face
+	for k in range(3):
+		var y0 := H * (0.28 + 0.2 * k)
+		b.tri(Vector3(W * 0.17, y0, zf), Vector3(W * 0.43, y0, zf), Vector3(W * 0.43, y0 + 0.03, zf), Vector3.BACK, dark.lightened(0.15))
+		b.tri(Vector3(W * 0.17, y0, zf), Vector3(W * 0.43, y0 + 0.03, zf), Vector3(W * 0.17, y0 + 0.03, zf), Vector3.BACK, dark.lightened(0.15))
+	for sx: float in [-1.0, 1.0]:   # two arms from the wall under it
+		_tube(b, Vector3(sx * W * 0.36, -0.02, 0.0), Vector3(sx * W * 0.36, -0.02, z0 + D + 0.02), 0.02, 0.02, _tone("pole"), 3)
+	# the pipe from its right end into the wall, the drip hose down from its foot
+	_tube(b, Vector3(W * 0.5 + 0.05, H * 0.3, z0 + 0.06), Vector3(W * 0.5 + 0.05, H * 0.3, 0.0), 0.035, 0.035, body.darkened(0.08), 3)
+	_tube(b, Vector3(W * 0.3, 0.0, z0 + 0.1), Vector3(W * 0.3, -0.45, 0.03), 0.01, 0.01, dark, 3)
+	# the streak the drips leave down the wall (a hair off it)
+	var st: Color = _tone("wall").lerp(_tone("pole"), 0.3).darkened(0.32)
+	b.tri(Vector3(W * 0.3 - 0.05, -0.4, 0.004), Vector3(W * 0.3 + 0.05, -0.4, 0.004), Vector3(W * 0.3 + 0.012, -1.3, 0.004), Vector3.BACK, st)
+	b.tri(Vector3(W * 0.3 - 0.05, -0.4, 0.004), Vector3(W * 0.3 + 0.012, -1.3, 0.004), Vector3(W * 0.3 - 0.012, -1.3, 0.004), Vector3.BACK, st)
+	var am: ArrayMesh = _mesh(b)
+	_kits[key] = am
+	return am
+
+## the colours washing comes in: whites and greys the most, then the palette's own, muted
+func _laundry_cols() -> Array:
+	var ink := Palette.col("ink")
+	var alt := Palette.col("bg_alt")
+	return [ink.lerp(alt, 0.05), ink.lerp(alt, 0.2), ink.lerp(alt, 0.5), _natural(Palette.col("player").lerp(ink, 0.3), 0.5),
+		_natural(Palette.col("hazard").lerp(ink, 0.25), 0.5), _natural(Palette.col("warn").lerp(ink, 0.2), 0.5),
+		_natural(Palette.col("friend").lerp(ink, 0.3), 0.45), _natural(Palette.col("accent").lerp(ink, 0.3), 0.45),
+		_natural(Palette.col("player").lerp(Palette.col("bg"), 0.5), 0.5), alt.lerp(Palette.col("bg"), 0.3)]
+
+## A washing rack under a window, the Israeli way: two arms out from the wall at the top
+## (y = 0), four lines along it, and on them towels, shirts, trousers, a sheet, socks. Three
+## arrangements (k).
+func washing_kit(k: int) -> ArrayMesh:
+	var key := "wash%d" % k
+	if _kits.has(key):
+		return _kits[key]
+	var b = g.new_buf()
+	var metal: Color = _tone("pole").lightened(0.25)
+	var L := 1.5
+	for sx: float in [-1.0, 1.0]:
+		_box(b, Vector3(sx * L * 0.5, 0, 0.33), Vector3(0.025, 0.025, 0.66), metal)
+		_tube(b, Vector3(sx * L * 0.5, -0.3, 0.0), Vector3(sx * L * 0.5, 0.0, 0.5), 0.01, 0.01, metal, 3)
+	var lines := [0.15, 0.3, 0.45, 0.6]
+	for z: float in lines:
+		_tube(b, Vector3(-L * 0.5, -0.005, z), Vector3(L * 0.5, -0.005, z), 0.004, 0.004, metal, 3)
+	var cols := _laundry_cols()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7 + k * 31
+	for li in range(lines.size()):
+		var z: float = lines[li]
+		var x := -L * 0.5 + 0.06
+		while x < L * 0.5 - 0.2:
+			if rng.randf() < 0.3:   # a gap
+				x += rng.randf_range(0.1, 0.3)
+				continue
+			var c: Color = cols[mini(rng.randi() % cols.size(), rng.randi() % cols.size())]   # (whites more often)
+			var kind := rng.randi() % 5
+			var w := 0.0
+			var h := 0.0
+			if kind == 0:   # a towel
+				w = rng.randf_range(0.35, 0.5)
+				h = rng.randf_range(0.45, 0.65)
+				_box(b, Vector3(x + w * 0.5, -h * 0.5, z), Vector3(w, h, 0.012), c)
+			elif kind == 1:   # a shirt: a body and its sleeves
+				w = 0.42
+				h = 0.55
+				_box(b, Vector3(x + w * 0.5, -h * 0.5 - 0.02, z), Vector3(w * 0.7, h, 0.012), c)
+				_box(b, Vector3(x + w * 0.5, -0.09, z), Vector3(w, 0.16, 0.012), c)
+			elif kind == 2:   # trousers: two legs
+				w = 0.36
+				h = rng.randf_range(0.7, 0.9)
+				for sx2: float in [-1.0, 1.0]:
+					_box(b, Vector3(x + w * 0.5 + sx2 * 0.085, -h * 0.5, z), Vector3(0.15, h, 0.012), c)
+			elif kind == 3:   # socks, a few
+				w = 0.3
+				for s in range(3):
+					_box(b, Vector3(x + 0.05 + s * 0.1, -0.12, z), Vector3(0.07, 0.24, 0.012), cols[rng.randi() % cols.size()])
+			else:   # a sheet folded over the line
+				w = rng.randf_range(0.6, 0.9)
+				h = rng.randf_range(0.5, 0.8)
+				if x + w > L * 0.5 - 0.05:
+					w = L * 0.5 - 0.05 - x
+				_box(b, Vector3(x + w * 0.5, -h * 0.5, z), Vector3(w, h, 0.012), c)
+			x += w + rng.randf_range(0.02, 0.08)
+	var am: ArrayMesh = _mesh(b)
+	_kits[key] = am
+	return am
+
+## a towel or a rug hung over a balcony's parapet (its front at z = 0.62, top at y = 1.0),
+## white: the copy's colour is its colour
+func towel_kit() -> ArrayMesh:
+	if _kits.has("towel"):
+		return _kits["towel"]
+	var b = g.new_buf()
+	_box(b, Vector3(0, 1.01, 0.58), Vector3(0.55, 0.012, 0.12), Color.WHITE)
+	_box(b, Vector3(0, 0.72, 0.646), Vector3(0.55, 0.58, 0.012), Color.WHITE)
+	_box(b, Vector3(0, 0.9, 0.513), Vector3(0.55, 0.22, 0.012), Color.WHITE)
+	var am: ArrayMesh = _mesh(b)
+	_kits["towel"] = am
+	return am
+
 ## a street bin: a dark drum on a short post, a ring round its mouth
 func _bin_kit() -> ArrayMesh:
 	if _kits.has("bin"):
