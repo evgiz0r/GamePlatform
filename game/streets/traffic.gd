@@ -455,7 +455,7 @@ func _target(c: Car, i: int, dt: float) -> float:
 		var d2 := q.distance_squared_to(c.pos)
 		if d2 > (look + 6.0) * (look + 6.0) or (q - c.pos).dot(fwd) < -2.0:
 			continue
-		if c.ignore > 0.0 and j < cars.size() and (absf(angle_difference(oyaw, c.yaw)) > 0.8 or j == c.ignore_car):
+		if c.ignore > 0.0 and j < cars.size() and absf(angle_difference(oyaw, c.yaw)) > 0.8:
 			continue   # breaking a standoff: go, and let the crossing car wait
 		if j == cars.size() and c.squeeze > 0.0:
 			continue   # edging past them, slowly
@@ -479,6 +479,8 @@ func _target(c: Car, i: int, dt: float) -> float:
 				wide = maxf(wide, me_w.x + its.x + 0.1)
 		if c.split:
 			wide = 0.6   # filtering: only what is right in front of the wheel
+		if c.ignore > 0.0 and j == c.ignore_car:
+			wide = 0.6   # breaking a ring: past the one it waited for, unless it is square in front
 		var gap := _path_gap(c, q, look, wide)
 		if gap < best:
 			best = gap
