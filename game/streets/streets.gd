@@ -7933,18 +7933,28 @@ func _ap_sign_v(dt: float) -> float:
 ## same junction), and whether it went through on red
 var _reds := 0
 
+var _came_at := Vector2.INF            ## where the car was a few metres back
+var _came_dir := Vector2.ZERO          ## and the way it has come since: how it arrived
+
 func _through_lights() -> void:
+	if _came_at == Vector2.INF or _pos.distance_to(_came_at) > 6.0:
+		if _came_at != Vector2.INF:
+			_came_dir = (_pos - _came_at).normalized()
+		_came_at = _pos
 	if _odo - _light_odo < LIGHT_SKIP or _v < 1.0:
 		return
 	for n: int in _near(_sig_hash, _pos, 16.0, SEG_CELL):
 		if _nodes[n].distance_to(_pos) > _node_r[n] + 2.5:
 			continue
 		_light_odo = _odo
-		if _light_at(n, _fwd()) == "r" and _v > 2.5:
+		# (the light of the way it came in: by its heading mid-turn, a turn on green read
+		# the cross street's red)
+		if _light_at(n, _came_dir if _came_dir != Vector2.ZERO else _fwd()) == "r" and _v > 2.5:
 			_reds += 1
 			_show_banner("ran a red light", 1.8)
 			shake3d(1.5)
 			Probe.event("red_light", {"street": _on_name, "kmh": int(_v * 3.6), "auto": _auto})
+			_log.event("red light")
 		return
 
 ## autodrive: the first light on the planned lane that counts. Red: come to a stop at its
