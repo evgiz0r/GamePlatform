@@ -142,7 +142,10 @@ The ones most often touched, and the functions in them:
 - **solid things and the road** -- `_off_road` (a road's edges only) and `_in_junction` (the
   round asphalt at a junction's point); furniture's `_free` checks both. `tests/road_blocks.gd`
   finds anything solid on a road's lanes or a junction's asphalt.
-- **loading** -- `_warm_up` (four views, each frame timed in `_warm_ms`), `_load_ms`, `_stage_ms`;
+- **loading** -- the squares round the start are built with the city hidden (`world.visible`)
+  and hand a frame back every `FG_US` (`_fg_build`: `_over` / `_pause`), the text ticking;
+  `_warm_up` then shows the kinds of surface a few at a time (`_shader_key`; four views only
+  under a software renderer), each frame timed in `_warm_ms`; `_load_ms`, `_stage_ms`;
   `_load_text` puts them at the bottom of the perf view, so a player's own load can be read.
 - **people** -- walkers `_place_walker` / `_pavement_piece` / `_people_tick`, zebra crossers
   `_send_crossers` / `_zebra_span` / `_away_from` / `_crossers_tick`, the height their feet go

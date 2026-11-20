@@ -1663,7 +1663,11 @@ func _build_world() -> bool:
 	for i in range(near.size()):
 		if not await _step("the streets round the start (%d of %d)" % [i + 1, near.size()]):
 			return false
+		_fg_text = _loading.text
+		_fg_build = true
+		_yield_at = Time.get_ticks_usec() + FG_US
 		await _build_tile(near[i])
+		_fg_build = false
 	_tiles_todo = _tiles_todo.filter(func(t): return not _tiles_done.has(t))
 	if _details != null:   # what a filmed walk added: built whole, once (details.gd)
 		await _details.build()
@@ -1701,6 +1705,13 @@ var _tile_bars := {}                 ## square -> mapped fences and hedges that 
 var _crossing_set := {}
 var _bg_build := false               ## building in the background: stop for the frame when over budget
 var _bg_wait := false
+## The squares round the start are built behind the loading text, and each used to go up in one
+## piece: the biggest, "1 of 6", froze a browser's page for seconds (and looked hung). Now
+## they too hand a frame back every FG_US, the text ticking over meanwhile.
+var _fg_build := false
+const FG_US := 80000
+var _fg_text := ""
+var _fg_spin := 0
 var _yield_at := 0
 var _build_us := BUILD_US
 var _build_lbl: Label
@@ -1782,12 +1793,18 @@ func _tally(k: String, n: int) -> void:
 
 ## the frame's building time is used up
 func _over() -> bool:
-	return _bg_build and Time.get_ticks_usec() > _yield_at
+	return (_bg_build or _fg_build) and Time.get_ticks_usec() > _yield_at
 
 ## Building in the background: hand the frame back and go on in the next one. Meanwhile
 ## the game is not building a square, so whatever it makes in between (night's light pools)
 ## is its own, not that square's.
 func _pause() -> void:
+	if _fg_build:   # loading: no game frame to wait for -- just let one be drawn
+		_fg_spin += 1
+		_loading.text = _fg_text + "  " + ["·  ", " · ", "  ·", " · "][_fg_spin % 4]
+		await get_tree().process_frame
+		_yield_at = Time.get_ticks_usec() + FG_US
+		return
 	var was := _tiled
 	var batching := _batching
 	_set_tiling(false)
