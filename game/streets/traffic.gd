@@ -1329,8 +1329,12 @@ func _place(c: Car) -> void:
 	var wb := clampf(c.len * 0.6, 1.3, 7.0)
 	var wander := sin(_clock * 0.31 + c.drift) * 0.14 * clampf(c.v / 8.0, 0.0, 1.0)
 	var off := c.shift + wander
-	var f0 := _at(c, c.s + wb * 0.5)
-	var td := _at(c, c.s + wb * 0.5 + 1.0) - f0
+	# (the front on the lane rounded over 4 m: the lane line has corners in it -- a bend in
+	# the map's road -- and a front run exactly round each flicked the heading at 2.5 rad/s)
+	var fa := _at(c, c.s + wb * 0.5 - 2.0)
+	var fb := _at(c, c.s + wb * 0.5 + 2.0)
+	var f0 := (fa + fb) * 0.5
+	var td := fb - fa
 	var ty := atan2(td.x, td.y) if td.length_squared() > 0.0001 else c.yaw
 	var front := f0 + Vector2(cos(ty), -sin(ty)) * off   # (its lane: left of the line)
 	if c.rear == Vector2.INF or c.rear.distance_to(front) > wb * 1.6:
