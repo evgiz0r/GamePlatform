@@ -1176,7 +1176,10 @@ it is dropped.
   held the tunnels' own ends at street level -- only near the crossing (80 m) now.
 - **Footbridges and footpath tunnels** (`infer` again, the same passes on the paths' own
   network: footway, path, steps, cycleway, pedestrian, bridleway). A footbridge chain (8 m or
-  more) clears a street by 5.8 m (`CLEAR_FOOT`; a path by 3.4), its lift spreading along the
+  more) clears a street by 5.8 m (`CLEAR_FOOT`; a path by 3.4) -- the street's final height
+  there, not the ground's: a footbridge holds nothing down (a road bridge holds the street
+  it crosses to the ground); once the streets' lifts are known each footbridge over one is
+  raised to clear it (`foot_over`, `footbridges_raised` in the report) -- its lift spreading along the
   paths only, at 25% (`FOOT_RAMP`) or 60% on OSM's steps (`STAIRS`), and never onto a point a
   street has: a path comes down to the pavement where it meets a street. A footpath tunnel
   under something lies 3.6 m down (`CLEAR_UNDER_FOOT`), its ramps down to it the same way; one
@@ -1312,12 +1315,16 @@ it is dropped.
   once merged with the springs' smoothing (another session's: Begin's and Laskov Road's
   small hops went with it). `street_holes` on Ashdod: 0 holes, 2 points in a wall (both
   on Laskov Road; 51 before).
-- **Still to do**: in Tel Aviv, Givat HaTahmoshet's bridge and a slip road
-  over Ayalon South, 3 crossings short (4.8 m the lowest; new with the footbridges -- with
-  the paths left out of `infer`, 0 short: a footbridge crossing a road holds that road to
-  the ground for 80 m like a road bridge does, and there the road is a ramp up to a bridge
-  over Ayalon South, so its lift is capped. The fix: a footbridge holds nothing down, and
-  is raised to clear the road's final height there instead); grass slopes for cuttings too (they are walled); a
+- **Tel Aviv's Givat HaTahmoshet** (its bridges and a slip road over Ayalon South) came out 3
+  crossings short (4.8 m the lowest) once footbridges went in: a footbridge crossing a
+  street held it to the ground for 80 m, as a road bridge does, and there the street is
+  the ramp up to a bridge, so the bridge's lift was capped. Footbridges hold nothing down
+  now and are raised over the street instead: Tel Aviv 0 short, capped 40 -> 0, one more
+  tunnel dug (27), one footbridge raised (to 8.5 m, over a street's ramp); the other three
+  towns the same. Driven both ways and on the slip road: 0 hits, 0 frames in the air;
+  `street_holes` the same 6 points as before (that ramp's, 0.7-0.9 m) and 6 wall points;
+  its 8 highest footbridges walked, 96-100%.
+- **Still to do**: grass slopes for cuttings too (they are walled); a
   long-span bridge's height over water (the MacKay's deck is only as high as its ends);
   pavements at street level beside a cutting (the underpass has none); people on a bridge's
   pavement and beside a cutting; the
@@ -1336,13 +1343,14 @@ it is dropped.
   How to check it all, and what good looks like:
   - The inference's own report: the `decks_inferred` event in a playtest
     (`tools/playtest.sh streets smart 25`, or `LEVEL=n`) -- `short_of_clear` 0 for
-    Givatayim, Bedford and Ashdod (Tel Aviv 3, at Givat HaTahmoshet), `capped` 0 / 2 / 0,
+    Givatayim, Bedford, Ashdod and Tel Aviv, `capped` 0 / 2 / 0 / 0,
     `stair_capped` 8 / 1 / 0, footbridges 22 / 24 / 6, foot tunnels 3 / 0 / 2, the whole
     pass 0.3-0.8 s.
   - `tests/foot_decks.gd` (levels 1, 2, 3; headless with `STREETS_BUILD_ALL=0 SHOTS=0
     $GODOT --headless --fixed-fps 60 --path . -s res://game/streets/tests/foot_decks.gd`,
-    3-5 min a town): every route "got" 97-100% at its clearance; Bedford's Duke Street
-    sidewalk-bridge says 91% (the run-out past the path's end meets the abutment: fine).
+    3-5 min a town, Tel Aviv (level 7) 8): every route "got" 97-100% at its clearance;
+    Bedford's Duke Street sidewalk-bridge says 91% and Tel Aviv's raised one 96% (the test's
+    run-out past the path's end meets an abutment, a fence: fine).
   - `tests/decks.gd` with `ROUTES` on level 3 for the interchanges (the seven runs are in
     the README row), and plain on levels 4, 2, 3: 0 hits, 0 frames off the level; in the
     air only the test town's 8-9 frames off its two bridge ends.
@@ -1351,9 +1359,11 @@ it is dropped.
   mall) now comes down by a stair at its end instead of meeting the wall; fences don't
   open for footpaths (`_open_pieces` asks `_off_road`, drivable roads only), so an OSM
   fence across a path on the ground still blocks a walker; walking up 60% stairs the walker's
-  height trails by up to 1 m for a moment (`_walk`'s easing); Tel Aviv's 3 short
-  crossings, which the footbridges caused (see "Still to do" above for why and the fix --
-  first thing to do when this area is picked up again).
+  height trails by up to 1 m for a moment (`_walk`'s easing); a sidewalk mapped as its own
+  path bridge beside a road bridge (Givat HaTahmoshet's) gets its own height, 0.6 m under
+  the road's deck beside it, rather than the road's; `ROUTES ... ,top` in tests/decks.gd can
+  still land on a road under the deck where they cross (use `deck_air`, which starts on the
+  highest surface, to drive a particular deck).
 
 ## Sizes against life (`tests/scale_check.gd`, 20 Nov 2026)
 

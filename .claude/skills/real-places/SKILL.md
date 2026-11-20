@@ -402,7 +402,10 @@ What a driving game on one needed:
   next piece -- check walls of narrow decks in short pieces; and OSM fences cross paths
   right at a footbridge's foot -- a body on a deck off the ground should not meet the
   fences and posts down on the ground. A road bridge's piers must keep off paths and off
-  any deck below their top (a footbridge alongside, lower, walked into them). A bridge's
+  any deck below their top (a footbridge alongside, lower, walked into them). A footbridge
+  must not hold the street it crosses to the ground the way a road bridge does: that
+  street may be the ramp up to a road bridge, which then cannot reach its clearance --
+  raise the footbridge over the street's final height instead. A bridge's
   sidewalk mapped as its own way can stop dead on the span: bring a path's dead end down to
   the ground (a stair) rather than leave a ledge. A spiral stair is often one steps way
   lying on itself: keep a way that comes within ~0.8 m of itself on the ground (not
