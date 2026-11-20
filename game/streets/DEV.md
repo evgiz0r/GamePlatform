@@ -1092,8 +1092,12 @@ it is dropped.
   lower's deck. Roads are cut where their ramp meets the ground (a node put there); the
   lifted pieces get a point every 6 m and their profiles rounded over the crests (junction
   points kept); a road's lift never spreads onto a footpath (below). Bedford: 56 bridges, 72 crossings, ~190 deck
-  pieces, 0.2 s; 2 of 63 crossings over roads short of the full clearance (4.8 m the
-  lowest). `LEVEL=2` with `tests/decks.gd` drives its ten highest bridges both ways.
+  pieces, 0.2 s; 0 of 63 crossings over roads short of the full clearance (2 when first
+  written, 4.8 m the lowest). `LEVEL=2` with `tests/decks.gd` drives its ten highest bridges
+  both ways. What `infer` made of a town -- bridges, tunnels, footbridges, crossings short of
+  the clearance and where (`short_at`: the first 12 only), tunnels left out and why -- is the
+  `decks_inferred` line in any playtest's timeline (`LEVEL=n tools/playtest.sh streets idle
+  10`), no scene test needed.
 - **Tunnels, worked out the same way** (Ashdod): a drivable tunnel way 20 m or longer that
   runs under a road or path lies 6.2 m down along all of it (OSM's tunnel way is the covered
   part); the depth rises back to the ground along the roads either side -- cuttings -- at a
@@ -1104,7 +1108,8 @@ it is dropped.
   it dives under); one under nothing mapped (a passage through a building) is put back on
   the ground (it used to be left out). A body in a tunnel never meets the buildings over it
   (`_push_out`), however shallow the tunnel is there. Ashdod: 46 bridges, 4 tunnels (Menachem Begin's underpass, two service
-  roads), 7 cuttings, 0.3 s. Two traps on the way: a tunnel "crossed" its own next piece
+  roads), 7 cuttings, 0.3 s -- now 2 tunnels: the service roads' are left out, too short for
+  their cuttings (4.7 and 5.4 m of room). Two traps on the way: a tunnel "crossed" its own next piece
   (the shared end point; skip roads that share a point), and holding the whole of every
   road crossed, or seeding the depth's room from every junction in town, made it 15 s and
   held the tunnels' own ends at street level -- only near the crossing (80 m) now.
@@ -1247,8 +1252,11 @@ it is dropped.
   small hops went with it). `street_holes` on Ashdod: 0 holes, 2 points in a wall (both
   on Laskov Road; 51 before).
 - **Still to do**: in Tel Aviv, Givat HaTahmoshet's bridge and a slip road
-  over Ayalon South, 3 crossings short (4.8 m the lowest; new: none before footbridges and
-  the ramp tops' rounding went in); grass slopes for cuttings too (they are walled); a
+  over Ayalon South, 3 crossings short (4.8 m the lowest; new with the footbridges -- with
+  the paths left out of `infer`, 0 short: a footbridge crossing a road holds that road to
+  the ground for 80 m like a road bridge does, and there the road is a ramp up to a bridge
+  over Ayalon South, so its lift is capped. The fix: a footbridge holds nothing down, and
+  is raised to clear the road's final height there instead); grass slopes for cuttings too (they are walled); a
   long-span bridge's height over water (the MacKay's deck is only as high as its ends);
   pavements at street level beside a cutting (the underpass has none); people on a bridge's
   pavement and beside a cutting; the
@@ -1283,7 +1291,8 @@ it is dropped.
   open for footpaths (`_open_pieces` asks `_off_road`, drivable roads only), so an OSM
   fence across a path on the ground still blocks a walker; walking up 60% stairs the walker's
   height trails by up to 1 m for a moment (`_walk`'s easing); Tel Aviv's 3 short
-  crossings.
+  crossings, which the footbridges caused (see "Still to do" above for why and the fix --
+  first thing to do when this area is picked up again).
 
 ## Sizes against life (`tests/scale_check.gd`, 20 Nov 2026)
 

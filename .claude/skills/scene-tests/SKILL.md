@@ -201,6 +201,10 @@ it is made, with a one-line caption, rather than a report at the end.
   (`x as Actor3D`), and the damage reaches past the test: the class stays broken for the
   run, so the game's own `Actor3D.new()` fails and the city has no people -- a crossing test
   ran "PASS" with every case quietly erroring out on an empty list of crossers.
+- **Do the work in `_initialize()`, never `_init()`.** In `_init()` the autoloads are not up
+  yet, so `load()`ing the game's own script there (even just to read a constant) fails
+  ("Compilation failed"), and the error comes before `quit()`: the run sat silent until its
+  10-minute timeout.
 - `var x := g.some_member` cannot infer a type through an untyped node: annotate it.
 - **Forget `OUT` and the screenshots land in `/`.** Check the folder after the first run.
   The same with two jobs started at once: `SP=dir && (job1 > $SP/a.log) & (job2 > $SP/b.log)`
@@ -285,6 +289,14 @@ can run headless (`$GODOT --headless --fixed-fps 60 --path . -s res://...`, the 
 calls skipped when `DisplayServer.get_name() == "headless"`): two minutes where the same
 run under the software renderer took twenty. Render only for the shots, and only the runs
 that need them.
+
+**A function from data to data needs no game at all.** When the question is what one step
+of the load makes of the data (heights worked out for a map, a parser, a picker), call it
+straight from a `-s` script on the data file: no scene, no world built, no renderer, so
+several maps in the time one load would take. Read the game's constants from its script
+(`load("res://game/<game>/<game>.gd").SOME_CONST`, in `_initialize()`, see Gotchas). To get
+more out of it than it reports (a list it caps), load a scratch copy with the cap raised
+rather than touching the game.
 
 **Tests that measure behaviour should not pay for looks.** The software renderer is bound by
 pixels and per-pixel shader work: when a game gained photo textures and per-pixel traced
