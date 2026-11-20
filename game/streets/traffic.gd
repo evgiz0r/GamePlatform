@@ -25,6 +25,7 @@ const LENS := {"sedan": 4.6, "hatch": 4.0, "suv": 4.7, "van": 5.0, "taxi": 4.6, 
 const BODY := {"bus": [[-4.6, -2.3, 0.0, 2.3, 4.6], 1.25], "moto": [[0.0], 0.55], "truck": [[-2.3, 0.0, 2.3], 1.15]}
 const BUS_ROADS := {"primary": true, "secondary": true, "tertiary": true, "trunk": true}
 const LANE_MOVE := 1.4       ## sideways speed changing lanes (m/s): about 2.5 s a lane
+const SIDE_PER_V := 0.35     ## sideways at most this share of the speed (about 19 degrees)
 const REALIGN := 0.3        ## following a road change's new lane line: sideways at this share of the speed
 const NARROW_LOOK := 90.0   ## how far ahead a car looks for its way narrowing to fewer lanes
 const BUS_TURN_IN := 40.0    ## a car turning right off a road with a bus lane moves into it this close to the turn
@@ -335,6 +336,10 @@ func tick(dt: float) -> void:
 		var vt := c.want
 		_us("traffic: follow", t2)
 		var lat := maxf(LANE_MOVE, c.v * REALIGN) if c.realign else LANE_MOVE
+		# Sideways only as it rolls, like a car steering: its back trails the front (_place),
+		# so a shift while it stood moved the front alone and swung the body round -- cars
+		# waiting at Kaplan's light stood 60 degrees across the next lane, on its cars
+		lat = minf(lat, c.v * SIDE_PER_V)
 		var ds := clampf(c.shift_to - c.shift, -lat * dt, lat * dt)
 		if c.realign and absf(c.shift_to - c.shift - ds) < 0.05:
 			c.realign = false
