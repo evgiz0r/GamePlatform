@@ -18,7 +18,7 @@ extends GameMode3D
 ## the car on the first just past the second. Without one it starts on a main road
 ## mid-town.
 const LEVELS := [
-	{"name": "Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med"},
+	{"name": "Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer"},
 	# "decks": "infer" -- its bridges' heights worked out as it loads (decks.gd: infer)
 	{"name": "Bedford, Nova Scotia", "city": "bedford", "look": "north", "decks": "infer"},
 	{"name": "Ashdod", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med", "decks": "infer"},
@@ -822,6 +822,7 @@ var _table_spots: Array = []         ## Vector2 of every cafe table
 var _furn: RefCounted                ## the street furniture builder (furniture.gd)
 var _details: RefCounted             ## what a filmed walk added to the city (details.gd), or null
 var _decks: Decks                    ## bridges, embankments, cuttings, tunnels (decks.gd)
+var _rails: Rails                    ## railway tracks, platforms, trains (rails.gd)
 var _on_deck := -1                   ## while a deck road is drawn: heights come from it, not the ground
 var _inferred := {}                  ## what decks.gd's infer() made of a real town's bridges (the report)
 var _wired := {}                     ## road index -> true: Bedford's lamps hang off its power poles
@@ -868,6 +869,7 @@ const Traffic := preload("res://game/streets/traffic.gd")
 const Furniture := preload("res://game/streets/furniture.gd")
 const Details := preload("res://game/streets/details.gd")
 const Decks := preload("res://game/streets/decks.gd")
+const Rails := preload("res://game/streets/rails.gd")
 const DriveLog := preload("res://game/streets/drivelog.gd")
 var _log := DriveLog.new()            ## the last two minutes, for the map page and "save log"
 var _ap_why := ""                     ## what held autodrive's speed down this tick (for the log)
@@ -1397,9 +1399,9 @@ func _clip_buildings(bdata: Array) -> void:
 				# a deck: cut back like a street where it runs low (an embankment, a bridge's
 				# foot: nothing stands under a deck less than a storey up); never over a
 				# tunnel or a cutting (the houses on the hill above it)
-				if not (String(r["deck"]) in ["em", "br"]) or not r["drive"] \
-						or maxf(r["ys"][sj] - r["gs"][sj], r["ys"][sj + 1] - r["gs"][sj + 1]) > 4.0:
-					continue
+				if not (String(r["deck"]) in ["em", "br", "cu"]) or not r["drive"] \
+						or maxf(absf(r["ys"][sj] - r["gs"][sj]), absf(r["ys"][sj + 1] - r["gs"][sj + 1])) > 4.0:
+					continue   # (a cutting too, where it is shallow: a car came up one into a block)
 			elif not _kerbed(r):
 				continue
 			var pts: PackedVector2Array = r["pts"]
@@ -2026,6 +2028,8 @@ func _build_setup(t0: int) -> void:
 				if not seen.has(t):
 					seen[t] = true
 					_bucket(_tile_bars, t, i)
+	_rails = Rails.new(self)
+	_rails.setup(_city_data, k)   # (before the trees: nothing grows on a track's bed)
 	_lights_setup()
 	_parks_setup()
 	_trees_setup()
@@ -2059,6 +2063,7 @@ func _build_tile(t: Vector2i) -> void:
 	await _note_corner_fills()   # (before anything is stood anywhere: see _off_road)
 	await _build_ground()
 	await _decks.build()
+	await _rails.build()
 	tk = _stage("roads", tk)
 	await _build_buildings()
 	tk = _stage("buildings", tk)
@@ -12893,6 +12898,8 @@ func _physics_process(dt: float) -> void:
 		return
 	_p0()
 	_signals_tick(dt)
+	if _rails != null:
+		_rails.tick(dt)
 	_crash_cool = maxf(0.0, _crash_cool - dt)
 	_touch_t = maxf(0.0, _touch_t - dt)
 	_p("lights")
@@ -14665,6 +14672,9 @@ func _push_out(c: Vector2, r: float, posts: bool, cars := true, y := NAN) -> Vec
 	if _decks != null and _decks.any():
 		push = _decks.push(c, r, _h(c) if is_nan(y) else y)
 		ground = is_nan(y) or absf(y - _h(c)) < 2.5
+		if ground and not is_nan(y) and y < _h(c) - 0.5:   # in a tunnel: the houses are over its roof
+			var under := _decks.deck_at(c, y, 1.0)
+			ground = under < 0 or String(_roads[under]["deck"]) != "tu"
 	for i: int in (_near(_bld_hash, c, r, BLD_CELL) if ground else []):
 		if _bld_solid[i] == 0:
 			continue
@@ -17661,12 +17671,13 @@ func _map_gather(at: Vector2, r: float) -> Dictionary:
 		var pts := ring.duplicate()
 		pts.append(ring[0])
 		limits.append(pts)
+	var rails: PackedVector2Array = _rails.map_lines(at, reach) if _rails != null else PackedVector2Array()
 	var places: Array = []
 	for poi: Array in _pois:
 		var d: Vector2 = (poi[0] as Vector2) - at
 		if absf(d.x) < reach and absf(d.y) < reach:
 			places.append([poi[0], poi[1]])
-	return {"at": at, "r": r, "blds": blds, "paths": paths, "minor": minor, "major": major,
+	return {"at": at, "r": r, "blds": blds, "paths": paths, "minor": minor, "major": major, "rails": rails,
 		"limits": limits, "places": places}
 
 ## the minimap: streets and building outlines round the car, heading up
@@ -17707,6 +17718,9 @@ func _draw_map_inner() -> void:
 		_map.draw_multiline(_map_lines["blds"], Color(ink, 0.3), -1.0)
 	if not (_map_lines["paths"] as PackedVector2Array).is_empty():
 		_map.draw_multiline(_map_lines["paths"], Color(ink, 0.3), 1.0 / s)
+	if not (_map_lines.get("rails", PackedVector2Array()) as PackedVector2Array).is_empty():   # a railway: light on dark
+		_map.draw_multiline(_map_lines["rails"], Color(bg, 0.9), 3.0 / s)
+		_map.draw_multiline(_map_lines["rails"], Color(ink, 0.6), 1.0 / s)
 	if not (_map_lines["minor"] as PackedVector2Array).is_empty():
 		_map.draw_multiline(_map_lines["minor"], Color(ink, 0.75), 2.0 / s)
 	if not (_map_lines["major"] as PackedVector2Array).is_empty():
@@ -17722,7 +17736,16 @@ func _draw_map_inner() -> void:
 		var route := PackedVector2Array()
 		for p in _ap_pts:
 			route.append(p - at)
-		_map.draw_polyline(route, Color(Palette.col("friend"), 0.8), 1.5 / s)
+		# as a navigation app draws it: wider than any road, in the destination's own colour
+		# (the line leads to the dot), on a dark edge that parts it from whatever road is under
+		# it. (A thin line in the palette's mint, 1.5 px, was lost among the yellow main roads,
+		# the white streets and the white dots of the traffic.)
+		var col := Palette.col("accent")
+		_map.draw_polyline(route, Color(bg, 0.95), 7.0 / s)
+		_map.draw_polyline(route, col, 4.0 / s)
+		for p: Vector2 in [route[0], route[route.size() - 1]]:   # (round ends, not cut-off ones)
+			_map.draw_circle(p, 3.5 / s, Color(bg, 0.95))
+			_map.draw_circle(p, 2.0 / s, col)
 	for pl: Array in _map_lines["places"]:
 		_map.draw_circle(pl[0], 1.8 / s, Palette.col(pl[1]))
 	if _traffic != null:

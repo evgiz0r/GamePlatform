@@ -330,6 +330,77 @@ func _low(r: Dictionary, p: Vector2, y: float) -> bool:
 
 ## ---- what you run into: parapets, walls, piers --------------------------------------------
 
+## Where a deck starts at street level at a junction, how far along from each end (x: the
+## first, y: the last) it keeps no wall: a car turning in sweeps over the corner. An
+## embankment's or a cutting's wall is a kerb-high step there (one clipped it at 10 km/h); a
+## bridge's parapet stood full height across the side street's mouth (Bedford: autodrive
+## turning from Union Street hit the highway bridge's), so a bridge leaves its parapet out
+## there only while it is still within CLEAR_LOW of the ground -- not over a drop.
+const CLEAR_LOW := 0.6
+func _clear_ends(ri: int) -> Vector2:
+	var r: Dictionary = g._roads[ri]
+	if not String(r["deck"]) in ["em", "cu", "br"]:
+		return Vector2.ZERO   # (at street level: a junction up on an embankment keeps its walls)
+	var ids: PackedInt32Array = r["ids"]
+	var ys: PackedFloat32Array = r["ys"]
+	var gs: PackedFloat32Array = r["gs"]
+	var out := Vector2.ZERO
+	var last := ids.size() - 1
+	if (g._node_roads[ids[0]] as Array).size() >= 3 and absf(ys[0] - gs[0]) < 0.5:
+		out.x = float(g._node_r[ids[0]]) + 6.0
+	if (g._node_roads[ids[last]] as Array).size() >= 3 and absf(ys[last] - gs[last]) < 0.5:
+		out.y = float(g._node_r[ids[last]]) + 6.0
+	return out
+
+## A raised deck's wall from a to b (the deck rise_a, rise_b over the ground there) standing on
+## a street at ground level, where the deck is still too low for that street's cars to pass
+## under it: left out. Bedford's highway bridge rises from Union Street's junction, and the
+## short one-way links between the two run beside its first metres: its side wall stood
+## across both of them and autodrive ran into it on every way through the turn.
+## Near a junction end (JUNCTION_REACH along the deck) a piece is also left out where it comes
+## within NEAR_STREET of such a street's carriageway: there the link roads of a junction run
+## past the deck's first metres, and a wall ending 0.2 m off one's edge was hit by every car
+## turning along it. Elsewhere only a wall on the carriageway is (a street running beside an
+## embankment keeps the wall between them).
+const UNDER_CLEAR := 3.0
+const NEAR_STREET := 1.0
+const JUNCTION_REACH := 25.0
+func _on_street_below(ri: int, a: Vector2, b: Vector2, rise_a: float, rise_b: float, margin := -0.25) -> bool:
+	var n := maxi(2, ceili(a.distance_to(b) / 0.5))
+	for k in range(n + 1):
+		var t := float(k) / n
+		if lerpf(rise_a, rise_b, t) < UNDER_CLEAR and _street_at(a.lerp(b, t), ri, margin):
+			return true
+	return false
+
+## how far along from each end (x first, y last) a deck counts as near a junction (an end
+## where three roads or more meet): JUNCTION_REACH, else 0
+func _junction_ends(ri: int) -> Vector2:
+	var ids: PackedInt32Array = g._roads[ri]["ids"]
+	return Vector2(JUNCTION_REACH if (g._node_roads[ids[0]] as Array).size() >= 3 else 0.0,
+		JUNCTION_REACH if (g._node_roads[ids[ids.size() - 1]] as Array).size() >= 3 else 0.0)
+
+## p is on the carriageway of a drivable road other than ri (or within `margin` past its edge)
+## where that road is at ground level (a road, or a deck's piece within half a metre of the ground). From the roads' own
+## grid: the walls are worked out while the city loads, before the asphalt's grid is made
+## (with that one, the check above found nothing and the wall stayed).
+func _street_at(p: Vector2, ri: int, margin := -0.25) -> bool:
+	for code: int in g._near(g._seg_hash, p, 8.0, g.SEG_CELL):
+		var rj: int = code / 4096
+		if rj == ri:
+			continue
+		var r: Dictionary = g._roads[rj]
+		if not r["drive"]:
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		var sj: int = code % 4096
+		if r.has("ys") and r.has("gs") and (absf(float(r["ys"][sj]) - float(r["gs"][sj])) > 0.5
+				or absf(float(r["ys"][sj + 1]) - float(r["gs"][sj + 1])) > 0.5):
+			continue
+		if Geometry2D.get_closest_point_to_segment(p, pts[sj], pts[sj + 1]).distance_to(p) < float(r["w"]) * 0.5 + margin:
+			return true
+	return false
+
 ## one side of each deck: [a, b, lo_a, hi_a, lo_b, hi_b, half thickness, what], kept only
 ## where there is something to hit (an embankment's or a cutting's wall where it stands up)
 func _walls_of(ri: int) -> void:
@@ -346,15 +417,13 @@ func _walls_of(ri: int) -> void:
 	for i in range(1, pts.size()):
 		cum.append(cum[i - 1] + pts[i - 1].distance_to(pts[i]))
 	var ids: PackedInt32Array = r["ids"]
-	var clear_a := 0.0
-	var clear_b := 0.0
-	if kind in ["em", "cu"]:   # (at street level: a junction up on an embankment keeps its walls)
-		var last := ids.size() - 1
-		if (g._node_roads[ids[0]] as Array).size() >= 3 and absf(ys[0] - gs[0]) < 0.5:
-			clear_a = float(g._node_r[ids[0]]) + 6.0
-		if (g._node_roads[ids[last]] as Array).size() >= 3 and absf(ys[last] - gs[last]) < 0.5:
-			clear_b = float(g._node_r[ids[last]]) + 6.0
+	var clear := _clear_ends(ri)
+	var clear_a := clear.x
+	var clear_b := clear.y
 	var total := cum[cum.size() - 1]
+	var near := _junction_ends(ri)
+	var near_a := near.x
+	var near_b := near.y
 	for sd: float in [-1.0, 1.0]:
 		var line: PackedVector2Array = g._offset_line(pts, off * sd)
 		var outs := _outs(pts, sd)
@@ -362,8 +431,9 @@ func _walls_of(ri: int) -> void:
 		for j in range(pts.size()):
 			banks.append(bank_at(ri, pts[j], outs[j], ys[j]) if kind == "em" else -1.0)
 		for j in range(pts.size() - 1):
-			if cum[j] < clear_a or cum[j + 1] > total - clear_b:
-				continue   # (any piece that reaches into the corner)
+			if (cum[j] < clear_a or cum[j + 1] > total - clear_b) \
+					and (kind != "br" or maxf(absf(ys[j] - gs[j]), absf(ys[j + 1] - gs[j + 1])) < CLEAR_LOW):
+				continue   # (any piece that reaches into the corner; a bridge's only while it is low)
 			if banks[j] >= 0.0 and banks[j + 1] >= 0.0 and maxf(banks[j], banks[j + 1]) > 0.0:
 				# a bank: the guardrail along its top stops a car on the deck; its foot, as
 				# steep as a wall, stops one on the ground beside it
@@ -392,6 +462,9 @@ func _walls_of(ri: int) -> void:
 			var mid := (line[j] + line[j + 1]) * 0.5
 			if open_at(ri, mid, (ys[j] + ys[j + 1]) * 0.5):
 				continue   # (another deck's road comes in here)
+			if kind in ["br", "em"] and _on_street_below(ri, line[j], line[j + 1], ys[j] - gs[j], ys[j + 1] - gs[j + 1],
+					NEAR_STREET if (cum[j] < near_a or cum[j + 1] > total - near_b) else -0.25):
+				continue
 			if kind == "cu" and (_street_over(line[j]) or _street_over(line[j + 1]) or _street_over(mid)):
 				continue   # (under a street at grade, which carries a car over it: a car on Kaplan
 				           # hit the wall of the Lova Eliav tunnel's cutting where it starts at its kerb)
@@ -450,6 +523,9 @@ func piers(ri: int) -> Array:
 			var on: Dictionary = g._nearest_seg(p + across * (half - 0.6) * f, 30.0, true)
 			if not on.is_empty() and int(on["road"]) != ri and not is_deck(g._roads[int(on["road"])]) and float(on["edge"]) < 1.0:
 				in_lanes = true
+				break
+			if g._rails != null and g._rails.on_track(p + across * (half - 0.6) * f, 2.8):
+				in_lanes = true   # (nor on a railway's track: the trains under a bridge run through)
 				break
 		if in_lanes:
 			continue
@@ -775,11 +851,25 @@ func _raised(ri: int, pts: PackedVector2Array, walk: RefCounted, kerb: RefCounte
 		var wall_line: PackedVector2Array = g._offset_line(pts, (hw + side + WALL_T * 0.5) * sd)
 		var gap_walk := PackedByteArray()
 		var gap_wall := PackedByteArray()
+		# (and a bridge's parapet where it starts low at a junction: see _clear_ends)
+		var clear := _clear_ends(ri) if bridge else Vector2.ZERO
+		var near := _junction_ends(ri)
+		var total := 0.0
+		for i in range(1, pts.size()):
+			total += pts[i - 1].distance_to(pts[i])
+		var along := 0.0
 		for i in range(pts.size()):
+			if i > 0:
+				along += pts[i - 1].distance_to(pts[i])
 			var y := deck_y(ri, pts[i])
 			var low := _low(r, pts[i], y)
+			var corner: bool = (along < clear.x or along > total - clear.y) and absf(y - g._h(pts[i])) < CLEAR_LOW
+			# (and where the wall would stand on a street at ground level the deck is too low
+			# to pass over: see _on_street_below)
+			var margin := NEAR_STREET if (along < near.x or along > total - near.y) else -0.25
+			var on_street: bool = y - g._h(pts[i]) < UNDER_CLEAR and _street_at(wall_line[i], ri, margin)
 			gap_walk.append(1 if open_at(ri, walk_line[i], y, false) or (low and g._asphalt_other(walk_line[i], ri)) else 0)
-			gap_wall.append(1 if open_at(ri, wall_line[i], y) else 0)
+			gap_wall.append(1 if open_at(ri, wall_line[i], y) or corner or on_street else 0)
 		# a grass bank where there is room (bank_at), else the wall: a point is the bank's
 		# only when it and both its neighbours are, so the wall reaches into each change
 		var outs := _outs(pts, sd)
@@ -1018,7 +1108,9 @@ const RAMP_FAST := 0.05       ## a ramp's grade on a motorway, a trunk road, a s
 const RAMP := 0.07            ## ... on anything else
 const MIN_BRIDGE := 8.0
 const CLEAR_UNDER := 6.2      ## a tunnel's road under what it crosses: 4.8 m clear, the roof, a little earth
-const MIN_TUNNEL := 20.0      ## shorter "tunnels" are passages under a building: on the ground
+const MIN_TUNNEL := 20.0
+const CAP_DIG := 0.085        ## a cutting's steepest: coming up out of one onto a junction at 50 km/h,
+                              ## 10% was a crest the car took off from      ## shorter "tunnels" are passages under a building: on the ground
 const FAST := {"motorway": true, "trunk": true, "motorway_link": true, "trunk_link": true, "primary_link": true}
 const CAP_FAST := 0.07        ## the steepest a ramp may be, when there is no room for a gentler one
 const CAP := 0.10
@@ -1375,7 +1467,7 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 		return ends >= 3
 	# how deep each point may be: CAP down for each metre from the nearest point held at street
 	# level (what a tunnel runs under, a junction off it). A tunnel that cannot get down to
-	# CLEAR_UNDER between them is too short for its cuttings: it stays on the ground.
+	# CLEAR_UNDER between them is too short for its cuttings: it is left out, as before.
 	var room := {}
 	var rq: Array = []
 	var dropped: Array = []
@@ -1420,7 +1512,7 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 					if j + step < 0 or j + step >= mn.size():
 						continue
 					var v := int(mn[j + step])
-					var rv := float(room[u]) + CAP * (pos.call(u) as Vector2).distance_to(pos.call(v))
+					var rv := float(room[u]) + CAP_DIG * (pos.call(u) as Vector2).distance_to(pos.call(v))
 					if rv < float(room.get(v, INF)) - 0.01:
 						room[v] = rv
 						if not rq.has(v):
@@ -1438,9 +1530,8 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 					why = int(n)
 			dropped.append("%s at (%d, %d): %.1f m room, held %s" % [roads[ri].get("name_en", roads[ri].get("name", roads[ri]["k"])),
 				int(pos.call(why).x), int(pos.call(why).y), mr, "pinned" if pinned.has(why) else ("junction" if junction.call(why) else "near")])
-			is_tu.erase(ri)
-			roads[ri].erase("tu")
-			continue
+			is_tu.erase(ri)   # (left a tunnel without heights: left out, as before -- on the ground
+			continue          # it would run across the roads it dives under)
 		for n in roads[ri]["n"]:
 			dig[int(n)] = CLEAR_UNDER
 	var dq: Array = dig.keys()
