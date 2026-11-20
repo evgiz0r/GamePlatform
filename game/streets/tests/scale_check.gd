@@ -3,7 +3,9 @@ extends SceneTree
 ## (the player's, traffic's by kind, the parked ones), the bus, motorbikes and scooters, the
 ## people, the street's widths, kerbs and pavements, and the cameras' heights and fields of
 ## view (a wide field of view makes near things loom and the rest look small and far, which
-## reads as "the scale is off" as surely as a wrong size). Prints a table: what, the game's
+## reads as "the scale is off" as surely as a wrong size). People are measured by their
+## model's box divided by _humanize's 1.06 (drawing one alone in a SubViewport of its own
+## world came out empty: moved people are not drawn there). Prints a table: what, the game's
 ## size, life's range, and OFF where the game falls outside it. Level 1 (Givatayim).
 ## Good: nothing OFF that is not explained in DEV.md.
 var g: Node
@@ -65,6 +67,10 @@ func _run() -> void:
 		_row("a motorbike: length", maxf(mk.size.x, mk.size.z), 2.0, 2.25)
 		_row("a motorbike: height", mk.size.y, 1.05, 1.25)
 	print("---- people (the game's own: a test script cannot make an Actor3D, it uses autoloads)")
+	var kc0: Dictionary = (g.get_script() as GDScript).get_script_constant_map()
+	_row("grown-ups asked: the shortest", float(kc0["ADULT_LO"]), 1.5, 1.6)
+	_row("grown-ups asked: the tallest", float(kc0["ADULT_HI"]), 1.8, 1.9)
+	_row("grown-ups asked: on average", (float(kc0["ADULT_LO"]) + float(kc0["ADULT_HI"])) * 0.5, 1.66, 1.74)
 	var who: Array = [["you, on foot", g._me]]
 	for k in range(mini(6, g._walkers.size())):
 		who.append(["a walker %d" % k, g._walkers[k]["actor"]])
@@ -79,9 +85,9 @@ func _run() -> void:
 		var ab := _box(a)
 		a.visible = vis
 		var asked: float = float(a.get("height")) if a.get("height") != null else 0.0
-		_row("%s (asked %.2f m): height" % [wv[0], asked], ab.size.y, 1.55, 1.95)
-		if asked > 0.0:
-			print("%-44s %7.2f   (built over asked)" % ["", ab.size.y / asked])
+		# the box is the model's before its bones are scaled (_humanize: a smaller head, longer
+		# legs, then the whole 1.06 up to give back the height asked): as drawn, box / 1.06
+		_row("%s (asked %.2f m): height as drawn" % [wv[0], asked], ab.size.y / 1.06, 1.5, 1.9)
 	print("---- the street")
 	var lanes: Dictionary = {}
 	for r: Dictionary in g._roads:
@@ -107,9 +113,11 @@ func _run() -> void:
 	_row("on foot, from the eyes: eye height", 1.64, 1.5, 1.7)
 	_row("in the car, from the seat: eye height", float((kc["SEAT"] as Vector3).y), 1.1, 1.3)
 	var aspect := 16.0 / 9.0
-	for v: Array in [["on foot, behind", 66.0], ["on foot, from the eyes", 70.0], ["driving, slow", 64.0], ["driving, fast", 74.0]]:
+	# (as set in streets.gd's cameras: keep these in step when they change)
+	for v: Array in [["on foot, behind", 56.0], ["on foot, from the eyes", 58.0], ["driving, slow", 54.0], ["driving, fast", 62.0],
+			["the seat, slow", 58.0], ["the seat, fast", 64.0]]:
 		var vf: float = v[1]
 		var hf := rad_to_deg(2.0 * atan(tan(deg_to_rad(vf) * 0.5) * aspect))
-		_row("%s: field of view up and down" % v[0], vf, 40.0, 60.0, "deg")
+		_row("%s: field of view up and down" % v[0], vf, 45.0, 65.0, "deg")
 		print("%-44s %7.1f deg across on a 16:9 screen (the eye's sharp field ~60, a phone's camera ~65-75)" % ["", hf])
 	quit()

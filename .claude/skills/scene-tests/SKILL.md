@@ -202,6 +202,12 @@ it is made, with a one-line caption, rather than a report at the end.
   placing the camera.
 - **A marker for a 3D shot goes in the game's 3D world**, not under the game's node: a
   3D game's own node is a 2D one, and a ring added under it is never drawn.
+- **A skinned model's box is its rest pose's.** `MeshInstance3D.get_aabb()` (and the shell's
+  `aabb_of`) knows nothing of bones scaled at run time, so a game that resizes a figure's
+  head or legs through its skeleton draws it at a height the box does not say. Measure
+  against what the game asked for and how it scales, not the box alone. Drawing a figure
+  alone in a `SubViewport` with its own world, to measure its silhouette, came out empty
+  (the figure moved into it was not drawn): do not spend a run on it.
 - Parse-check first: `tools/check_script.sh res://game/<game>/<game>.gd` takes seconds and
   says which line; a broken script makes a scene test fail in a confusing way minutes in.
 

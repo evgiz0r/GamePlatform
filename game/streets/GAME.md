@@ -1097,6 +1097,13 @@ next block's drive, and the planted bed and trees where the passage begins. It a
 walks, routes timed to their film, that a place in `LEVELS` can replay. A footpath in town (not in a park) is paved like the
 pavements everywhere, not only here.
 
+**Sizes as in life.** Cars, the bus, lanes, kerbs and storeys were already life-size; the
+people were a little tall (now 1.55-1.85 m, about 1.70 on average) and the views far wider
+than the eye's (now about 85-95 degrees across a wide screen, not 96-113), which made the
+near loom and the street look small and far. The filmed walks keep a phone's view.
+
+> My sister tells me the scales of the game feel off.
+
 ## Later (said, not built)
 
 - Bridges and tunnels in the real towns: working out each deck's heights from OSM's tags

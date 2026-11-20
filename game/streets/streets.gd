@@ -115,6 +115,11 @@ const SIGN_RANGE := 110.0            ## signs further than this are not drawn
 ## People on the pavements: walkers kept around the car (respawned near it when left far
 ## behind), and some standing about by the cafe tables
 const PEOPLE := ["Casual_Male", "Casual_Female", "Casual2_Male", "Casual2_Female", "Casual3_Female"]
+## grown-ups' heights, as drawn (_humanize gives back the height its smaller head took): about
+## life's spread round its ~1.70 average. They were 1.62-1.88 (1.75 on average): a street of
+## tall people, one reason the scale felt off (tests/scale_check.gd)
+const ADULT_LO := 1.55
+const ADULT_HI := 1.85
 const WALKERS := 18
 const CHATTERS := 8
 const PEOPLE_RANGE := 150.0
@@ -11511,7 +11516,7 @@ func _get_out() -> void:
 	if _me == null:
 		_me = Actor3D.new()
 		world.add_child(_me)
-		_me.set_character(PEOPLE[1], 1.76)
+		_me.set_character(PEOPLE[1], 1.66)   # (a woman's figure: Israel's women average ~1.63, men ~1.77)
 		_humanize(_me, hash(_me.get_instance_id()))
 	_me.visible = true
 	_me_anim = ""
@@ -11610,7 +11615,7 @@ func _film_begin(id: String) -> void:
 		var a := Actor3D.new()
 		world.add_child(a)
 		var who := int(pp.get("who", _film_people.size()))
-		a.set_character(PEOPLE[who % PEOPLE.size()], float(pp.get("tall", 1.72)))
+		a.set_character(PEOPLE[who % PEOPLE.size()], float(pp.get("tall", 1.70)))
 		_humanize(a, 9001 + who * 31)
 		_people_lod(a)
 		var A := Vector2(float(pp["at"][0]), float(pp["at"][1]))
@@ -11809,7 +11814,10 @@ func _foot_camera(dt: float) -> void:
 			eye.y += -0.2 + sin(_film_step * PI / 0.72) * 0.022 * clampf(_v / 1.2, 0.0, 1.0)
 			down = -0.2
 		look_from(eye, eye + Vector3(fwd.x, down, fwd.y) * 10.0)
-		cam.fov = 70.0
+		# fields of view are up and down: 58 is ~92 across a 16:9 screen, about what the eyes
+		# take in; a filmed walk keeps a phone's (70: an upright phone's frame, set beside its
+		# film). Wider made the near loom and the street look small and far (scale_check)
+		cam.fov = 70.0 if not _film.is_empty() else 58.0
 		return
 	_cam_yaw = lerp_angle(_cam_yaw, _view_yaw, 1.0 - exp(-dt * 4.0))
 	var back := Vector2(cos(_cam_yaw), sin(_cam_yaw))
@@ -11819,7 +11827,7 @@ func _foot_camera(dt: float) -> void:
 	var eye := Vector3(e2.x, maxf(gy + 2.0, _decks.surf(e2, gy) + 1.3), e2.y)
 	eye = _decks.keep_eye(eye, p, gy)
 	look_from(eye, Vector3(p.x + back.x * 2.0, gy + 1.35, p.y + back.y * 2.0))
-	cam.fov = 66.0
+	cam.fov = 56.0   # (was 66: see the eyes' view above)
 
 ## the indicators at the car's four corners, and the reverse lights (+X is the car's left)
 func _build_car_signals() -> void:
@@ -13076,7 +13084,7 @@ func _spawn_people() -> void:
 	for i in range(WALKERS):
 		var a := Actor3D.new()
 		world.add_child(a)
-		a.set_character(PEOPLE[i % PEOPLE.size()], _people_rng.randf_range(1.62, 1.88))
+		a.set_character(PEOPLE[i % PEOPLE.size()], _people_rng.randf_range(ADULT_LO, ADULT_HI))
 		_humanize(a, hash(a.get_instance_id()))
 		_people_lod(a)
 		var w := {"actor": a, "line": PackedVector2Array(), "cum": PackedFloat32Array(), "s": 0.0,
@@ -13087,7 +13095,7 @@ func _spawn_people() -> void:
 	for i in range(CHATTERS):
 		var a := Actor3D.new()
 		world.add_child(a)
-		a.set_character(PEOPLE[(i + 2) % PEOPLE.size()], _people_rng.randf_range(1.62, 1.88))
+		a.set_character(PEOPLE[(i + 2) % PEOPLE.size()], _people_rng.randf_range(ADULT_LO, ADULT_HI))
 		_humanize(a, hash(a.get_instance_id()))
 		_people_lod(a)
 		a.play("Idle", true, _people_rng.randf_range(0.8, 1.1))
@@ -13481,7 +13489,7 @@ func _spawn_crossers() -> void:
 	for i in range(CROSSERS):
 		var a := Actor3D.new()
 		world.add_child(a)
-		a.set_character(PEOPLE[(i + 3) % PEOPLE.size()], _people_rng.randf_range(1.6, 1.86))
+		a.set_character(PEOPLE[(i + 3) % PEOPLE.size()], _people_rng.randf_range(ADULT_LO, ADULT_HI - 0.02))
 		_humanize(a, hash(a.get_instance_id()))
 		_people_lod(a)
 		a.visible = false
@@ -14169,7 +14177,7 @@ func _camera(dt: float, p: Vector2, yaw: float) -> void:
 	var ahead := p + back.rotated(-_head_yaw * 0.5) * 4.0   # (a little round to where the driver looks)
 	var at := Vector3(ahead.x, lerpf(gy, _decks.surf(ahead, _view_y), 0.5) + 1.0, ahead.y)
 	look_from(eye, at)
-	cam.fov = lerpf(64.0, 74.0, spd)
+	cam.fov = lerpf(54.0, 62.0, spd)   # (was 64-74: ~96-106 across, the street looked small and far)
 
 ## from the driver's seat: with the body as it pitches and leans, the head pushed back a
 ## little as the car pulls away, the eyes leading into a turn
@@ -14183,7 +14191,7 @@ func _seat_camera(dt: float, yaw: float) -> void:
 	var turn := _look_turn - _head_yaw * SEAT_HEAD
 	var ahead := Vector3(-sin(turn), -0.06, cos(turn)) * 12.0   # +X is the car's left
 	look_from(eye, xf * (head + ahead))
-	cam.fov = lerpf(72.0, 78.0, clampf(absf(_v) / 30.0, 0.0, 1.0))
+	cam.fov = lerpf(58.0, 64.0, clampf(absf(_v) / 30.0, 0.0, 1.0))   # (was 72-78: up to 113 across)
 	if _wheel_node != null:
 		_wheel_node.rotation.z = _steer * 15.0 * 0.5
 	# the needles: 0-200 km/h and 0-7000 rpm round 4.4 radians, from the bottom left
