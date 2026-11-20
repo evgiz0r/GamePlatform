@@ -872,6 +872,7 @@ const SITE_KEEP := 120.0             ## metres after which the last junction is 
 ## ---- stop and give-way signs, where OSM has them ----
 var _signs := {}                     ## graph node -> [[kind, way in (Vector2), line before the node (m)], ...]
 var _sign_hash := {}
+var sign_at: Array = []               ## each pole stood: [where, way in, kind, node, its sign record] (tests/signs_double.gd)
 var _stopped_odo := 0.0              ## the odometer when the car was last (nearly) stopped
 var _sign_odo := -1000.0             ## ... at the last stop sign it went through
 var _ap_sign_done := -1              ## autodrive: the stop sign it has stopped at already
@@ -11887,6 +11888,7 @@ func _build_signs() -> void:
 				if p == Vector2.INF:
 					continue
 				var gy := _h(p)
+				sign_at.append([p, way_in, kind, node, sg])
 				poles.append(Transform3D(Basis(), Vector3(p.x, gy + 1.1, p.y)))
 				(plates[kind] as Array).append(Transform3D(Basis(Vector3.UP, atan2(-way_in.x, -way_in.y)) * Basis.from_scale(Vector3.ONE * SIGN_SCALE), Vector3(p.x, gy + 2.3, p.y)))
 				_add_post(p, 0.08)
