@@ -49,7 +49,23 @@ func _run() -> void:
 				L += pts[k].distance_to(pts[k + 1])
 			if L < 35.0 or pts[side].distance_to(pts[inner]) < 10.0 or not g._in_city(pts[side]):
 				continue
-			ends.append([pts[side], (pts[side] - pts[inner]).normalized()])
+			# where to start driving in: 45 m back along the street itself (a straight 45 m
+			# back from a short one's end put the car on the cross street), or 80% of a
+			# shorter one
+			var back := minf(45.0, L * 0.8)
+			var k := side
+			var p := pts[side]
+			var step := 1 if side == 0 else -1
+			while back > 0.0 and k + step >= 0 and k + step < pts.size():
+				var seg := p.distance_to(pts[k + step])
+				if seg >= back:
+					p = p + (pts[k + step] - p) * (back / seg)
+					back = 0.0
+					break
+				back -= seg
+				p = pts[k + step]
+				k += step
+			ends.append([pts[side], (pts[side] - pts[inner]).normalized(), p])
 	ends.sort_custom(func(a, b): return (a[0] as Vector2).x < (b[0] as Vector2).x)
 	var picked: Array = []
 	var step := maxi(1, ends.size() / want)
@@ -120,7 +136,9 @@ func _run() -> void:
 		var into: Vector2 = picked[i][1]
 		g._clear_dest()
 		g._set_auto(false)
-		if not g._land_on_road(e - into * 45.0, 20.0, into):
+		var from: Vector2 = picked[i][2]
+		var toward := (e - from).normalized()
+		if not g._land_on_road(from, 6.0, toward):
 			continue
 		await physics_frame
 		g._set_auto(true)
