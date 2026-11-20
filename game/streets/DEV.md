@@ -75,6 +75,12 @@ Run the ones near what you change, before and after.
 tests look all over it (the game itself builds near the start first and the rest while you
 drive).
 
+`tests/filmed_spots.gd` stands the camera at chest height on spots from a filmed walk or
+drive (`SPOTS=<json>`, the format is at its top) and screenshots each, to set beside the
+film's stills. The spots file stays in the scratch directory, never the repo: a filmed
+route can start at the user's door. How to get the film and its GPS track in and lined up:
+"Filmed walks and drives" in the `real-places` skill.
+
 Before anything: `tools/check_script.sh res://game/streets/streets.gd
 res://game/streets/traffic.gd res://game/streets/furniture.gd` (seconds).
 

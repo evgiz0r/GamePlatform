@@ -116,8 +116,45 @@ The baked area ends; don't let it end in an invisible wall. A striped barrier al
 (following the ground), a soft glow over it that shows when near, a line on the minimap,
 a banner on contact -- and keep the car's own collision circles off exactly that line.
 
+## Filmed walks and drives
+
+The map says where things are; a film of the street says what they look like. The useful
+recording is a phone video **and** a GPS track taken at the same time, so every frame has
+a place and a heading on the baked ground.
+
+- **Recording.** Phone video at 1080p30 on the main 1x lens (the wide lens warps). A GPS
+  logger that exports GPX at a point a second with its extended data -- speed, accuracy,
+  satellites (Geo Tracker on Android did: min distance at its lowest, compass off, battery
+  optimisation off or Android stops it mid-drive). It saves nothing while you stand still,
+  so a gap in the track is a stop and its length the wait. On foot its points were good to
+  ~4 m: the side of the street, not the spot on the pavement. Its `c` attribute is not the
+  heading (it sat at ~5 for a whole walk): take the heading from the positions, +-3 s.
+- **Lining up.** Both come off the phone's clock. The video's file name is its start in
+  local time; the mp4's `creation_time` is (on that phone) the *end*, in UTC: start =
+  creation_time - duration. The two agreed to ~3 s. GPX times are UTC.
+- **Getting the video into a cloud session.** The Google Drive connector downloads only
+  files under 10 MB: fine for the GPX, never for a video (a few minutes is 300-400 MB).
+  Allow `drive.usercontent.google.com` in the session's environment, ask the user to set
+  the file to "Anyone with the link" in Drive (a session changing a file's sharing itself
+  was refused by the safety check: it is the user's step), fetch it with
+  `curl -L "https://drive.usercontent.google.com/download?id=<id>&export=download&confirm=t"`,
+  then tell them to set it back to Restricted (check with the connector's permissions call).
+- **Comparing.** Project the GPX with the bake's own flat projection (`Proj` in
+  `tools/osm_city.py`, origin from the city file), cut stills with `ffmpeg -ss <t> -i v.mp4
+  -frames:v 1` every ~10 s and at the stops, label each with the nearest street, then stand
+  the game's camera on the same spots and heading (a scene test with the dev camera at
+  chest height, ~1.35 m; a 70 degree vertical field is about a phone's main lens held
+  upright, so crop the middle 9:16 of a landscape shot) and set the pairs side by side.
+  What differs, biggest first, is the work list.
+
 ## Privacy
 
 A web build is public. Never use an address the user mentions privately -- their home,
 their family's -- as a start point, a test location, or in any committed file, commit
 message or doc. Test against it in a scratch script if asked, and leave it there.
+
+A filmed walk or drive very often starts or ends at the user's door, and a GPS track
+recorded "just to test" at home is their address to a few metres. Keep the video, the GPX,
+the stills and the projected route in the scratch directory; commit what was learned (a
+fence, a kerb colour, a walking speed), and trim any route that goes into the game back to
+public corners. Ask where it started if it is not obvious.
