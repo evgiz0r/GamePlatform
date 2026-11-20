@@ -945,7 +945,11 @@ func lead_on(path: PackedVector2Array, from: Vector2, look: float, ignore_crossi
 		if not c.alive or c.pos.distance_squared_to(from) > (look + c.len * 0.5 + 6.0) * (look + c.len * 0.5 + 6.0):
 			continue
 		var cdir := Vector2(sin(c.yaw), cos(c.yaw))
-		var offs: Array = BODY[c.kind][0] if BODY.has(c.kind) else [-c.len * 0.33, 0.0, c.len * 0.33]
+		var offs: Array = (BODY[c.kind][0] as Array).duplicate() if BODY.has(c.kind) else [-c.len * 0.33, 0.0, c.len * 0.33]
+		# and its nose and tail: one waiting crossways at a junction's edge stuck its nose
+		# into autodrive's turn, its middle well clear of the lane, and autodrive hit the nose
+		offs.append(c.len * 0.5 - 0.3)
+		offs.append(-c.len * 0.5 + 0.3)
 		var rad: float = float(BODY[c.kind][1]) if BODY.has(c.kind) else 0.95
 		var found := INF
 		var same_at := 0.0

@@ -11989,7 +11989,8 @@ var _ap_mark_t := 0.0
 const AP_GIVE_UP := 40.0
 
 func _ap_watch(dt: float, vt: float) -> void:
-	if _ap_mark == Vector2.INF or _pos.distance_to(_ap_mark) > 12.0 or _ap_light_v() < 0.5 or not _cross.is_empty():
+	if _ap_mark == Vector2.INF or _pos.distance_to(_ap_mark) > 12.0 or _ap_light_v() < 0.5 or not _cross.is_empty() \
+			or _in_a_queue():
 		_ap_mark = _pos
 		_ap_mark_t = 0.0
 		return
@@ -12006,6 +12007,18 @@ func _ap_watch(dt: float, vt: float) -> void:
 			Probe.event("autodrive_unstuck")
 			_log.event("unstuck")
 			return
+
+## behind a car that is waiting its turn (at a light, behind another, for people, at a
+## junction) and has not itself been standing for ages: a queue, not stuck. Forty seconds
+## in a slow queue at a red read as stuck, and the car was lifted onto another street.
+func _in_a_queue() -> bool:
+	if _ap_why != "car" or _ap_lead < 0.0:
+		return false
+	var lead: Array = _traffic.lead_on(_ap_pts, _pos, _ap_lead + 1.0, _ap_wait > 3.0)
+	if int(lead[3]) < 0:
+		return false
+	var c = _traffic.cars[int(lead[3])]
+	return c.still < 30.0 or c.why == "light"   # (a light waits a cycle at most; a jam of cars, 30 s)
 
 ## the point `dist` metres along the planned lane from point k (negative = back)
 func _ap_walk(k: int, dist: float) -> Vector2:
