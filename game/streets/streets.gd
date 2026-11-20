@@ -1892,6 +1892,8 @@ func _build_kerbs() -> void:
 							bushes.append(Transform3D(Basis.from_scale(Vector3(1.3, 0.9, 1.3) * sc), _g3(q, 0.45 * sc)))
 						s += step
 					s -= L
+	if med:
+		_build_medians(kerb, pave)
 	var corners := CBuf.new(GROUND_CELL)
 	_kerb_corners(kerb, pave, corners, Color((0.25 if med else 0.0) + 0.05, 0, 0))
 	_asph_hash = {}
@@ -1917,6 +1919,59 @@ func _build_kerbs() -> void:
 		_chunked(bush, bushes, DETAIL_RANGE)
 	_dressing["bushes"] = bushes.size()
 	_retint_kerbs()
+
+## Israeli main streets are not open down the middle: a raised island divides the two ways.
+## A wide two-way main road (OSM maps many as one road) gets one, MEDIAN_W wide, kerbed both
+## sides and paved on top, solid to the car; it stops short of every junction (turning across
+## is still possible there) and leaves a gap at each zebra. r["mid"] is its half width.
+const MEDIAN_W := 1.2
+
+func _median_road(r: Dictionary) -> bool:
+	if not r["drive"] or int(r["o"]) != 0 or r.get("ring", false) or not _kerbed(r):
+		return false
+	var w := float(r["w"])
+	return (r["k"] in ["trunk", "primary", "secondary"] and w >= 11.0) or (r["k"] == "tertiary" and w >= 14.0)
+
+func _build_medians(kerb: Buf, pave: Buf) -> void:
+	var zebra := {}
+	for ni: int in _crossing_nodes:
+		zebra[ni] = true
+	var made := 0.0
+	var mw := MEDIAN_W * 0.5
+	for ri in range(_roads.size()):
+		var r: Dictionary = _roads[ri]
+		if not _median_road(r):
+			continue
+		r["mid"] = mw
+		# the zebras on it, to leave a gap at
+		var gaps: Array = []
+		var ids: PackedInt32Array = r["ids"]
+		for k in range(ids.size()):
+			if zebra.has(ids[k]):
+				gaps.append(_nodes[ids[k]])
+		for run: PackedVector2Array in _street_runs(r, KERB_CUT, true):
+			var cum := 0.0
+			for i in range(run.size() - 1):
+				var a := run[i]
+				var b := run[i + 1]
+				var seg := a.distance_to(b)
+				var mid := (a + b) * 0.5
+				var gap := false
+				for gp: Vector2 in gaps:
+					if Geometry2D.get_closest_point_to_segment(gp, a, b).distance_to(gp) < 3.5:
+						gap = true
+				if not gap:
+					var d := (b - a) / maxf(seg, 0.001)
+					var rt := Vector2(-d.y, d.x)
+					for sgn: float in [1.0, -1.0]:
+						# a kerb at mw each side, its face out to the lanes, paved behind to the middle
+						var na := -rt * sgn
+						_kerb_run_piece(kerb, pave, ri, a + rt * mw * sgn, b + rt * mw * sgn, na, na,
+								maxf(mw - KERB_W, 0.0), Color(0.05, 0, 0), cum, seg)
+					add_wall(a, b, mw)
+					made += seg
+				cum += seg
+	_dressing["median_m"] = int(made)
 
 func _kerbed(r: Dictionary) -> bool:
 	return r["drive"] and not r["pv"] and r["k"] != "service" and not HIGHWAYS.has(r["k"])
@@ -5868,9 +5923,12 @@ func _build_signals() -> void:
 			continue
 		var j := _junction_of(node, 40.0)
 		lit[j if j >= 0 else node] = true
+		_sig_owner[node] = j if j >= 0 else node
 		if not _sig_set.has(node):   # its own line still counts (see LIGHT_SKIP)
 			_sig_set[node] = true
 			_hash_add(_sig_hash, Rect2(_nodes[node], Vector2.ZERO), SEG_CELL, node)
+	for node: int in lit:
+		_signal_groups(node)
 	for node: int in lit:
 		var c := _nodes[node]
 		var rn := _node_r[node]
@@ -5898,7 +5956,7 @@ func _build_signals() -> void:
 				var on := _nearest_seg(p, 12.0, true)
 				if not on.is_empty() and float(on["edge"]) < 0.4:
 					continue   # OSM puts the light's node a few metres out; never plant it in a lane
-				var g := 0 if absf(dir.x) >= absf(dir.y) else 1
+				var g := _light_group(node, dir) - 1
 				var face := Basis(Vector3.UP, atan2(-dir.x, -dir.y))   # +Z of the head toward the traffic
 				var gy := _h(p)
 				poles.append(Transform3D(Basis(), Vector3(p.x, gy + 1.7, p.y)))
@@ -5945,7 +6003,71 @@ func _build_signals() -> void:
 				mi.material_override = m
 				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		_sig_mats.append(mats)
+	_build_walk_lights(lit, pole_mesh, bulb)
 	_apply_signals()
+
+## People's lights at each zebra by a junction with lights: a short pole at each end of the
+## crossing with a head looking across at whoever waits on the other side -- the red man over
+## the green man -- in step with the cars' lights (see _apply_signals). People at those
+## crossings go by them (_walk_light).
+var _ped_mats: Array = []            ## [group][0 red man, 1 green man]
+
+func _build_walk_lights(lit: Dictionary, pole_mesh: Mesh, bulb: Mesh) -> void:
+	var poles: Array = []
+	var heads: Array = []
+	var lamps: Array = [[[], []], [[], []]]
+	for ni: int in _crossing_nodes:
+		var z := _zebra_geom(ni)
+		if z.is_empty():
+			continue
+		var j := -1
+		var jd := 30.0
+		for n: int in _near(_sig_hash, z[0], 30.0, SEG_CELL):
+			var owner: int = _sig_owner.get(n, n)
+			if lit.has(owner) and _nodes[n].distance_to(z[0]) < jd:
+				jd = _nodes[n].distance_to(z[0])
+				j = owner
+		if j < 0:
+			continue
+		var span := _zebra_span(z)
+		if span.is_empty():
+			continue
+		var g := _light_group(j, z[3]) - 1
+		for k in range(2):
+			var here: Vector2 = span[k]
+			var there: Vector2 = span[1 - k]
+			var across := (there - here).normalized()
+			var p := here - across * 0.35
+			if _push_out(p, 0.3, true, false) != Vector2.ZERO:
+				continue
+			var gy := _h(p)
+			var face := Basis(Vector3.UP, atan2(across.x, across.y))   # +Z toward the far kerb
+			poles.append(Transform3D(Basis.from_scale(Vector3(0.8, 2.7 / 3.4, 0.8)), Vector3(p.x, gy + 1.35, p.y)))
+			heads.append(Transform3D(face * Basis.from_scale(Vector3(0.7, 0.55, 0.6)), Vector3(p.x, gy + 2.55, p.y)))
+			var front := Vector3(across.x, 0.0, across.y) * 0.1
+			lamps[g][0].append(Transform3D(Basis.from_scale(Vector3.ONE * 0.75), Vector3(p.x, gy + 2.67, p.y) + front))
+			lamps[g][1].append(Transform3D(Basis.from_scale(Vector3.ONE * 0.75), Vector3(p.x, gy + 2.43, p.y) + front))
+			_add_post(p, 0.1)
+	_dressing["walk_lights"] = poles.size()
+	_ped_mats = []
+	if poles.is_empty():
+		return
+	_chunked(pole_mesh, poles, LAMP_RANGE)
+	var head_mesh := BoxMesh.new()
+	head_mesh.size = Vector3(0.34, 1.0, 0.3)
+	head_mesh.material = _surface("pole")
+	_chunked(head_mesh, heads, LAMP_RANGE)
+	for g in range(2):
+		var mats: Array = []
+		for ci in range(2):
+			var m := StandardMaterial3D.new()
+			m.roughness = 0.4
+			mats.append(m)
+			if not (lamps[g][ci] as Array).is_empty():
+				var mi := _multi(bulb, lamps[g][ci])
+				mi.material_override = m
+				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_ped_mats.append(mats)
 
 ## a lit shopfront on the street side of each shop's building, and its name above it
 func _build_pois() -> void:
@@ -6559,6 +6681,8 @@ func _name_fit(text: String) -> float:
 	var h := lines.size() * (_font.get_height(40) - 6.0)
 	return minf(0.0058, minf(1.06 / w, 0.25 / maxf(h, 1.0)))
 
+var _planted: Array = []             ## [kind, where, the way its face looks(, road)] of the signs that order
+
 func _build_street_signs() -> void:
 	var med := String(_place.get("look", "")) == "med"
 	var plates := {}     # kind -> transforms
@@ -6572,6 +6696,8 @@ func _build_street_signs() -> void:
 		(plates[kind] as Array).append(Transform3D(facing * Basis.from_scale(Vector3.ONE * SIGN_SCALE), Vector3(p.x, gy + h, p.y)))
 		poles.append(Transform3D(Basis.from_scale(Vector3(1, h / 2.2, 1)), Vector3(p.x, gy + h * 0.5, p.y)))
 		_add_post(p, 0.06)
+		if kind in ["noentry", "turn_l", "turn_r"]:   # (for tests: which way each one faces)
+			_planted.append([kind, p, Vector2((facing * Vector3.BACK).x, (facing * Vector3.BACK).z)])
 	var toward := func(dir: Vector2) -> Basis: return Basis(Vector3.UP, atan2(-dir.x, -dir.y))
 	var side_spot := func(c: Vector2, dir: Vector2, back: float, w: float) -> Vector2:
 		return c - dir * back + Vector2(-dir.y, dir.x) * (w * 0.5 + 0.8)
@@ -6614,11 +6740,17 @@ func _build_street_signs() -> void:
 				var dir := (c - pts[from]).normalized()
 				if r["o"] == 0 or r["o"] == -d2:
 					arrivals.append([dir, r, c.distance_to(pts[from])])
-				elif ways >= 3 and r["o"] != 0:
-					# the far end of a one-way street, seen from the junction: no entry
-					var sp: Vector2 = side_spot.call(c, -dir, -(_node_r[ni] + 3.0), float(r["w"]))
-					if _off_road(sp, 0.4) and _push_out(sp, 0.4, true, false) == Vector2.ZERO:
-						plant.call("noentry", sp, toward.call(-dir), 2.2)
+				if ways >= 3 and r["o"] == -d2 and not _short_link(r, e.y, d2):
+					# a one-way street whose traffic comes out here: driving into it from the
+					# junction is against it -- no entry, facing whoever would turn in, on the
+					# right and (a wide one) the left. (It stood at the other end, where
+					# going in is the way the street runs: autodrive drove in under it.)
+					var w: float = r["w"]
+					for sd: float in ([1.0, -1.0] if w >= 9.0 else [1.0]):
+						var sp: Vector2 = c - dir * (_node_r[ni] + 3.0) + Vector2(dir.y, -dir.x) * sd * (w * 0.5 + 0.8)
+						if _off_road(sp, 0.4) and _push_out(sp, 0.4, true, false) == Vector2.ZERO:
+							plant.call("noentry", sp, toward.call(-dir), 2.2)
+							(_planted.back() as Array).append(e.x)
 		if ways < 3:
 			continue
 		for a: Array in arrivals:
@@ -6639,7 +6771,10 @@ func _build_street_signs() -> void:
 				_lane_arrows(marks, ni, dir, r)
 			# only one way out (the street across the end is one-way): the blue "turn this
 			# way" across the junction, facing the street coming in
-			if not r.get("ring", false) and not ring_ahead:
+			# (not at one point of a junction drawn as several: the ways on from one point
+			# are not the junction's -- "turn left" stood where the road runs straight on
+			# through the next point)
+			if not r.get("ring", false) and not ring_ahead and not _in_knot(ni):
 				var mv := _moves(ni, dir)
 				if mv.size() == 1 and not mv.has("s"):
 					for extra: float in [0.8, 1.8, 2.8, 3.8]:
@@ -6814,6 +6949,34 @@ func _lane_arrows(buf: Buf, ni: int, dir: Vector2, r: Dictionary) -> void:
 
 ## the ways out of junction `ni` for a car arriving going `dir`: "s" straight on, "r" right,
 ## "l" left (never back the way it came, never the wrong way down a one-way)
+## a short piece (under 30 m) from point k of road r going `step` to another junction: a link
+## inside a junction drawn as several points, not a street
+func _short_link(r: Dictionary, k: int, step: int) -> bool:
+	var pts: PackedVector2Array = r["pts"]
+	var ids: PackedInt32Array = r["ids"]
+	var run := 0.0
+	var i := k
+	while i + step >= 0 and i + step < pts.size():
+		run += pts[i].distance_to(pts[i + step])
+		i += step
+		if run > 30.0:
+			return false
+		if _node_ways(ids[i]) >= 3:
+			return true
+	return false
+
+## node ni is one point of a junction drawn as several: another junction point within 30 m
+## along one of its roads
+func _in_knot(ni: int) -> bool:
+	for e: Vector2i in _node_roads[ni]:
+		var r: Dictionary = _roads[e.x]
+		if not r["drive"]:
+			continue
+		for step: int in [1, -1]:
+			if _short_link(r, e.y, step):
+				return true
+	return false
+
 func _moves(ni: int, dir: Vector2) -> Dictionary:
 	var c := _nodes[ni]
 	var moves := {}
@@ -7192,7 +7355,13 @@ func _ap_light_v() -> float:
 			var b := _ap_pts[j + 1]
 			var cp := Geometry2D.get_closest_point_to_segment(c, a, b)
 			if cp.distance_to(c) < 4.5:
-				found.append([base + a.distance_to(cp), n, b - a])
+				# the way in, a few metres back (mid-turn the lane runs diagonally across)
+				var k := j
+				var back := a.distance_to(cp)
+				while k > 0 and back < 6.0:
+					back += _ap_pts[k - 1].distance_to(_ap_pts[k])
+					k -= 1
+				found.append([base + a.distance_to(cp), n, cp - _ap_pts[k]])
 				break
 			base += a.distance_to(b)
 	if found.is_empty():
@@ -7222,21 +7391,87 @@ func _light_at(n: int, dir: Vector2) -> String:
 	if not _sig_set.has(n):
 		return ""
 	var step: Array = SIGNAL_CYCLE[_sig_phase]
-	return step[1 if absf(dir.x) >= absf(dir.y) else 2]
+	return step[_light_group(n, dir)]
+
+## Which of the two signal groups (1 or 2, the columns of SIGNAL_CYCLE) the traffic arriving at
+## node n going `dir` belongs to. Each junction's own: its main road's ways in are one group,
+## every other way in the other (by name, else by the angle to the main road). It was the
+## city's east-west against north-south, so at a skewed junction both streets could have
+## green at once, and the cars met in the middle.
+func _light_group(n: int, dir: Vector2) -> int:
+	var j: int = _sig_owner.get(n, n)
+	var ap: Array = _sig_ap.get(j, [])
+	if ap.is_empty():
+		return 1 if absf(dir.x) >= absf(dir.y) else 2
+	var d := dir.normalized()
+	var best := -2.0
+	var grp := 1
+	for a: Array in ap:
+		var dt := (a[0] as Vector2).dot(d)
+		if dt > best:
+			best = dt
+			grp = a[1]
+	return grp
+
+var _sig_ap := {}                    ## junction node -> [[way in (unit), group], ...]
+var _sig_owner := {}                 ## a node with a light of its own -> the junction it belongs to
+
+## the ways in at junction `node` and their signal groups
+func _signal_groups(node: int) -> void:
+	var c := _nodes[node]
+	var arms: Array = []   # [way in, rank, name, width]
+	for e: Vector2i in _node_roads[node]:
+		var r: Dictionary = _roads[e.x]
+		if not r["drive"]:
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		for d2: int in [-1, 1]:
+			var from := e.y + d2
+			if from < 0 or from >= pts.size():
+				continue
+			arms.append([(c - pts[from]).normalized(), int(ROAD_RANK.get(r["k"], 1)), String(r["name"]), float(r["w"])])
+	if arms.is_empty():
+		return
+	var main: Array = arms[0]
+	for a: Array in arms:
+		if int(a[1]) > int(main[1]) or (int(a[1]) == int(main[1]) and float(a[3]) > float(main[3])):
+			main = a
+	var axis: Vector2 = main[0]
+	var ap: Array = []
+	for a: Array in arms:
+		var same: bool = String(main[2]) != "" and String(a[2]) == String(main[2])
+		if String(main[2]) == "" or String(a[2]) == "":
+			same = absf((a[0] as Vector2).dot(axis)) >= 0.7
+		ap.append([a[0], 1 if same else 2])
+	_sig_ap[node] = ap
+
+## A signal's colours are what a driver reads, so they are red, amber and green whatever the
+## palette: each keeps the palette's strength of colour but takes the signal's own hue (the
+## palette's pink "red", yellow and mint "green" read as anything but a traffic light). Lit:
+## glowing; out: nearly black behind the glass.
+func _signal_cols() -> Array:
+	var sat := clampf(maxf(Palette.col("hazard").s, Palette.col("friend").s), 0.8, 1.0)
+	return [Color.from_hsv(0.0, sat, 1.0), Color.from_hsv(0.11, sat, 1.0), Color.from_hsv(0.40, sat, 0.95)]
+
+func _light_lamp(m: StandardMaterial3D, col: Color, on: bool) -> void:
+	m.albedo_color = col if on else col.lerp(Palette.col("bg").darkened(0.6), 0.9)
+	m.emission_enabled = on
+	m.emission = col
+	m.emission_energy_multiplier = 3.0
 
 func _apply_signals() -> void:
 	var step: Array = SIGNAL_CYCLE[_sig_phase]
-	var roles := ["hazard", "warn", "friend"]
+	var cols := _signal_cols()
 	var keys := ["r", "y", "g"]
 	for g in range(_sig_mats.size()):
 		for ci in range(3):
-			var m: StandardMaterial3D = _sig_mats[g][ci]
-			var on: bool = step[1 + g] == keys[ci]
-			var col := Palette.col(roles[ci])
-			m.albedo_color = col if on else col.lerp(Palette.col("bg"), 0.8)
-			m.emission_enabled = on
-			m.emission = col
-			m.emission_energy_multiplier = 2.2
+			_light_lamp(_sig_mats[g][ci], cols[ci], step[1 + g] == keys[ci])
+	# the people's lights: the green man while the road they cross is held at red and the
+	# other way has its green; the red man the rest of the time (amber, all-red included)
+	for g in range(_ped_mats.size()):
+		var walk: bool = step[1 + g] == "r" and step[2 - g] == "g"
+		_light_lamp(_ped_mats[g][0], cols[0], not walk)
+		_light_lamp(_ped_mats[g][1], cols[2], walk)
 
 ## ---- the sky: a photograph -----------------------------------------------------------------
 ## By day the sky is a photo (textures/sky_day.jpg: the upper half of Poly Haven's CC0
@@ -9607,27 +9842,20 @@ func _zebra_span(z: Array) -> Array:
 			return []
 	return [a, b]
 
-## At a crossing by a junction with lights, a person steps out only while the cars on the road
-## being crossed have red, and only with time enough left on it to get across (`need`
-## seconds): they walked out in front of cars that had just got their green, and every car
-## through the junction stopped in the middle of it for them. Anywhere else: always.
+## At a crossing by a junction with lights, people go by the walk light (see _build_walk_lights):
+## they step out on the green man only, with time enough left on it -- they walked out in front
+## of cars that had just got their green, and every car through the junction stopped in the
+## middle of it for them. Anywhere else: always.
 func _walk_light(cr: Dictionary, need: float) -> bool:
 	var n: int = cr.get("sig", -1)
 	if n < 0 or not _sig_set.has(n):
 		return true
-	var d: Vector2 = cr["sig_dir"]
-	var axis := 1 if absf(d.x) >= absf(d.y) else 2   # (the cars' group, as _light_at reads it)
-	var left := 0.0
-	var k := _sig_phase
-	var first := true
-	for _i in range(SIGNAL_CYCLE.size()):
-		var step: Array = SIGNAL_CYCLE[k]
-		if step[axis] != "r":
-			break
-		left += float(step[0]) - (_sig_t if first else 0.0)
-		first = false
-		k = (k + 1) % SIGNAL_CYCLE.size()
-	return left >= need + 1.5
+	var grp := _light_group(n, cr["sig_dir"])
+	var step: Array = SIGNAL_CYCLE[_sig_phase]
+	if not (step[grp] == "r" and step[3 - grp] == "g"):
+		return false   # the red man
+	# the green man, with time enough left on it to be most of the way over
+	return float(step[0]) - _sig_t >= minf(need, 8.0) + 1.0
 
 ## nothing coming that could not stop before the crossing (middle `mid`, `hw` from it to
 ## either kerb), and nothing standing on it
@@ -10548,6 +10776,7 @@ func _ap_leg(ri: int, from: int, dir: int) -> void:
 				break
 			k += dir
 	var i := from
+	_ap_turn_lane(ri, from, dir)
 	_ap_turn_into(ri, from, dir, lane)
 	var start := maxi(_ap_pts.size() - 6, 0)
 	while true:
@@ -10568,6 +10797,47 @@ func _ap_leg(ri: int, from: int, dir: int) -> void:
 	# gentle-looking many-sided ring of a roundabout both come out as the tight turns
 	# they are. (Points near the old end are redone now that there is road beyond them.)
 	_ap_curves(start - 10)
+
+## Into the turn lane: before a left turn, over the last 45 m, the lane on the left of its
+## way -- the leftmost of a one-way road of several, the one beside the centre line of a
+## two-way road of several, and toward the centre line on a road of one each way. People turn
+## left from the left lane; autodrive turned across the lanes from the right-hand one.
+func _ap_turn_lane(ri: int, from: int, dir: int) -> void:
+	var m := _ap_pts.size()
+	if _ap_end.x < 0 or m < 4:
+		return
+	var r_in: Dictionary = _roads[_ap_end.x]
+	var pts: PackedVector2Array = _roads[ri]["pts"]
+	var at := from - dir
+	if at < 0 or at >= pts.size() or r_in.get("ring", false):
+		return
+	var c := pts[at]
+	var in_dir := (_ap_pts[m - 1] - _ap_pts[m - 3]).normalized()
+	var out_dir := (pts[from] - c).normalized()
+	if in_dir == Vector2.ZERO or out_dir == Vector2.ZERO or in_dir.angle_to(out_dir) > -0.6:
+		return   # (not a left turn: + is right)
+	var n := _lanes_each_way(r_in)
+	var w := float(r_in["w"])
+	var target := 0.0
+	if int(r_in["o"]) != 0:
+		if n < 2:
+			return
+		target = -(w * 0.5 - w / n * 0.5)
+	else:
+		target = (w * 0.5) / n * 0.5 if n >= 2 else _lane_off(r_in) * 0.55
+		target = maxf(target, float(r_in.get("mid", 0.0)) + 1.15)   # (clear of a median)
+	var shift := target - _lane_off(r_in)
+	if absf(shift) < 0.3:
+		return
+	var s := 0.0
+	for k in range(m - 1, 1, -1):   # (not the points right by the car: no swerve)
+		if k < m - 1:
+			s += _ap_pts[k].distance_to(_ap_pts[k + 1])
+		if s > 45.0:
+			break
+		var kd := (_ap_pts[mini(k + 1, m - 1)] - _ap_pts[k - 1]).normalized()
+		var right := Vector2(-kd.y, kd.x)
+		_ap_pts[k] += right * shift * clampf((45.0 - s) / 25.0, 0.0, 1.0)
 
 ## Into the next road at a junction: the last road ended on the junction's point, and the
 ## next road's first point can be 30-100 m down it -- the straight line between them ran

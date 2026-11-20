@@ -414,9 +414,12 @@ func _light_ahead(c: Car) -> float:
 		if not g._sig_set.has(n) or c.cum[j] - counted < LIGHT_SKIP:
 			continue
 		counted = c.cum[j]
-		var dir := c.pts[j] - c.pts[maxi(j - 1, 0)]
-		if dir.length_squared() < 0.01 and j >= 2:
-			dir = c.pts[j] - c.pts[j - 2]
+		# the way it ARRIVES (a few metres back): the node sits mid-curve on a turn, and the
+		# direction there read the cross street's light as often as its own
+		var k := j - 1
+		while k > 0 and c.cum[j] - c.cum[k] < 6.0:
+			k -= 1
+		var dir := c.pts[j] - c.pts[maxi(k, 0)]
 		var state: String = g._light_at(n, dir)
 		var stop := dist - (_node_r[n] + 2.0)
 		if state == "g" or stop < -0.5:
