@@ -421,8 +421,10 @@ func _light_ahead(c: Car) -> float:
 			k -= 1
 		var dir := c.pts[j] - c.pts[maxi(k, 0)]
 		var state: String = g._light_at(n, dir)
-		var stop := dist - (_node_r[n] + 2.0)
-		if state == "g" or stop < -0.5:
+		# the front at the stop line (1.2 m out from the junction's edge), not the middle: a
+		# bus's middle there left its front 4 m into the junction, across the other road
+		var stop := dist - (_node_r[n] + 2.2 + c.len * 0.5)
+		if state == "g" or stop < -1.5:   # (its front over the line: committed, through)
 			return INF
 		if state == "y" and c.v * c.v > 2.0 * BRAKE * maxf(stop, 0.1):
 			return INF   # too late to stop on amber: through
@@ -444,7 +446,7 @@ func _junction_ahead(c: Car, i: int, dt: float) -> float:
 		var n := c.node[j]
 		if n < 0 or _ways_out(n) < 3:
 			continue
-		var edge := dist - (_node_r[n] + 2.0)
+		var edge := dist - (_node_r[n] + 1.0 + c.len * 0.5)   # (its front at the junction's edge)
 		if edge < -1.0:
 			break   # in it already: carry on through
 		var mine := _arrival(c, j, n)

@@ -7383,8 +7383,8 @@ func _ap_light_v() -> float:
 		if along - counted < LIGHT_SKIP:
 			continue
 		var n: int = f[1]
-		var stop := along - (_node_r[n] + 2.5)
-		if stop < -0.5:
+		var stop := along - (_node_r[n] + 2.2 + CAR_LEN * 0.5)   # (the nose at the stop line)
+		if stop < -1.5:
 			return INF   # over the line already
 		var state := _light_at(n, f[2])
 		if state == "g":
