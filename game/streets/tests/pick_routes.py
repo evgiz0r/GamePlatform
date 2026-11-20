@@ -7,7 +7,8 @@ same drives can be run again and again (tests/route_set.gd) and their results co
 Per city a share of the ten (Givatayim 4, Ashdod 3, Tel Aviv, Bedford and the test town one
 each); the two ends real addresses (a building's or an address point's) within 40 m of a
 public drivable road, on different streets, a real drive apart (0.8-2.5 km as the crow
-flies; less in the small test town). Run it again only to start a new set -- results are
+flies; less in the small test town), and joined by the road graph one-ways and all (a
+street by the map's edge can be a pocket with no way out). Run it again only to start a new set -- results are
 tracked against the routes' numbers.
 
 PRIVACY (see DEV.md): the web build is public. Nothing within 800 m of the corner of Ha-Meri
@@ -56,6 +57,53 @@ def main(argv):
         for r in c["roads"]:
             if r.get("k") in DRIVE and "pv" not in r:
                 roads.append([(N[2 * n] * k, N[2 * n + 1] * k) for n in r["n"]])
+        # the road graph as the game routes on it (one-ways one way; private roads too, the
+        # game takes them where there is no other way), to keep only pairs it joins: by the
+        # map's edge a street can be a pocket every way out of which is a one-way in (the
+        # way out is beyond the edge of the bake) -- "go to" found no way from Timna
+        adj = {}
+        for r in c["roads"]:
+            if r.get("k") not in DRIVE and r.get("k") != "service":
+                continue
+            o = r.get("o", 0) or 0
+            for a, b in zip(r["n"], r["n"][1:]):
+                if o != -1:
+                    adj.setdefault(a, set()).add(b)
+                if o != 1:
+                    adj.setdefault(b, set()).add(a)
+        node_xy = {}
+        for r in c["roads"]:
+            if r.get("k") in DRIVE and "pv" not in r:
+                for n in r["n"]:
+                    node_xy[n] = (N[2 * n] * k, N[2 * n + 1] * k)
+        ncell = {}
+        for n, q in node_xy.items():
+            ncell.setdefault((int(q[0] // 50), int(q[1] // 50)), []).append(n)
+
+        def near_node(p):
+            best, bn = 1e9, None
+            for dx in (-1, 0, 1):
+                for dz in (-1, 0, 1):
+                    for n in ncell.get((int(p[0] // 50) + dx, int(p[1] // 50) + dz), []):
+                        d = math.dist(p, node_xy[n])
+                        if d < best:
+                            best, bn = d, n
+            return bn
+
+        reach_memo = {}
+
+        def reach(n):
+            if n not in reach_memo:
+                seen, todo = {n}, [n]
+                while todo:
+                    x = todo.pop()
+                    for y in adj.get(x, ()):
+                        if y not in seen:
+                            seen.add(y)
+                            todo.append(y)
+                reach_memo[n] = seen
+            return reach_memo[n]
+
         # a coarse grid of the roads, to find the nearest one quickly
         grid = {}
         for ri, pts in enumerate(roads):
@@ -114,6 +162,9 @@ def main(argv):
             d = math.dist(a[1], b[1])
             if a[0].rsplit(" ", 1)[0] == b[0].rsplit(" ", 1)[0] or not (lo <= d <= hi):
                 continue
+            na, nb = near_node(a[1]), near_node(b[1])
+            if na is None or nb is None or nb not in reach(na) or len(reach(na)) < 200:
+                continue   # (the graph does not join them: a pocket by the map's edge)
             routes.append({"id": len(routes) + 1, "level": level, "city": cid, "from": a[0],
                            "from_at": [round(a[1][0], 1), round(a[1][1], 1)], "to": b[0],
                            "to_at": [round(b[1][0], 1), round(b[1][1], 1)], "crow_m": int(d)})

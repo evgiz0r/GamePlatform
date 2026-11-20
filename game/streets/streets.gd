@@ -1617,9 +1617,17 @@ func _add_address(full: String, at: Vector2) -> void:
 ## the drivable roads as a directed graph for routing (Godot's AStar2D, distance-weighted)
 func _build_graph() -> void:
 	_astar = AStar2D.new()
+	# public roads first; then private ones (a compound's way in, a gated close) at six times
+	# the cost of each point only they reach -- taken only where there is no other way. Left
+	# out, a street whose only ways out are private was cut off: "go to" from Timna in
+	# Givatayim, or to a close in Bedford, found no way at all (tests/route_check.gd)
+	for pass_pv: bool in [false, true]:
+		_graph_roads(pass_pv)
+
+func _graph_roads(private: bool) -> void:
 	for ri in range(_roads.size()):
 		var r: Dictionary = _roads[ri]
-		if not r["drive"] or r["pv"]:
+		if not r["drive"] or bool(r["pv"]) != private:
 			continue
 		var ids: PackedInt32Array = r["ids"]
 		for j in range(ids.size() - 1):
@@ -1629,7 +1637,7 @@ func _build_graph() -> void:
 				continue
 			for id: int in [a, b]:
 				if not _astar.has_point(id):
-					_astar.add_point(id, _nodes[id])
+					_astar.add_point(id, _nodes[id], 6.0 if private else 1.0)
 			if r["o"] != -1:
 				_astar.connect_points(a, b, false)
 				_edge_of[Vector2i(a, b)] = Vector3i(ri, j, 1)

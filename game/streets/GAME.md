@@ -44,6 +44,17 @@ drive yourself, the "look" button (or G, for glance) switches it on and off.
 > It looks left right on red lights, when it's behind many cars. It should do a look only
 > when it's the first car and it's ready to drive.
 
+**Test routes.** The last place in the list, "Test routes: watch a drive", is a list of ten
+drives, each from one real address to another (four in Givatayim, three in Ashdod, one each
+in Tel Aviv, Bedford and the test town). Pick one: its city loads, the car is set down at
+the first address and autodrive drives to the second while you watch; once there, back to
+the list. The same ten are driven by the tests and their results kept, to see the driving
+get better.
+
+> Lets find some random 10 from-to paths for driving, we would choose randomly and keep
+> track, to cover a bit more driving options. Can you add to the menu "test routes", where
+> I would be able to pick one of the routes and just watch.
+
 **On foot.** The "walk" button (or F) lets the driver out of the door to walk the same city:
 arrows or the stick to walk (a brisk 2.1 m/s) and turn, space to run (6 m/s), over the
 shoulder or (the "seat" button) from the eyes. Out of a moving car you jump: you tumble
@@ -1030,6 +1041,9 @@ walks, routes timed to their film, that a place in `LEVELS` can replay. A footpa
 pavements everywhere, not only here.
 
 ## Later (said, not built)
+
+- Test routes of your own: "maybe later in the same menu I would be able to enter my own" --
+  from and to with the address picker, kept beside the ten.
 
 - Bridges and tunnels in the real towns: working out each deck's heights from OSM's tags
   and the ground (the test town has them already), then an interchange you drive over and
