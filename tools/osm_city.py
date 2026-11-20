@@ -53,7 +53,8 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
   areas      [{p: ring, k: park|grass|wood|water|parking|pitch|plaza|school|sand, y: level}]
              (sand: a beach, natural=beach or sand)
              (school: the grounds of a school or kindergarten; y: water that lies at its
-             own level, decimetres above `height.base` -- a river held by weirs -- else it
+             own level, decimetres above `height.base` -- a river held by weirs, the sea at
+             sea level (the ground under it held lower, the shore higher) -- else it
              lies at its shore's lowest point)
   barriers   [[[x, z, x, z, ...], "fence"|"hedge"], ...]   fences and hedges as lines
   trees      [x, z, ...]
@@ -591,8 +592,44 @@ def bare_ground(grid, nx, nz, step):
     return _square(opened, nx, nz, max(1, k // 2), lambda v: sum(v) / len(v))
 
 
-def terrain_grid(P, box, bounds, step, zoom=13, bare=False):
-    """Ground height on a regular grid over the bounds, in metres above its lowest point."""
+def _in_ring(x, z, ring):
+    inside = False
+    j = len(ring) - 1
+    for i in range(len(ring)):
+        xi, zi = ring[i]
+        xj, zj = ring[j]
+        if (zi > z) != (zj > z) and x < (xj - xi) * (z - zi) / (zj - zi) + xi:
+            inside = not inside
+        j = i
+    return inside
+
+
+def _wet_cells(sea, x0, z0, step, nx, nz):
+    """Which grid points lie in the sea (in a sea polygon, not on an island in it)."""
+    rings, isles = sea
+
+    def boxed(rs):
+        return [(r, min(p[0] for p in r), min(p[1] for p in r), max(p[0] for p in r),
+                 max(p[1] for p in r)) for r in rs if len(r) >= 3]
+
+    def hit(x, z, bs):
+        return any(a <= x <= c and b <= z <= d and _in_ring(x, z, r) for r, a, b, c, d in bs)
+
+    br, bi = boxed(rings), boxed(isles)
+    wet = [False] * (nx * nz)
+    for j in range(nz):
+        for i in range(nx):
+            x, z = x0 + i * step, z0 + j * step
+            wet[j * nx + i] = hit(x, z, br) and not hit(x, z, bi)
+    return wet
+
+
+def terrain_grid(P, box, bounds, step, zoom=13, bare=False, sea=None):
+    """Ground height on a regular grid over the bounds, in metres above its lowest point.
+    With `sea` (the sea polygons and the islands in them) the sea floor is held under sea
+    level and the shore over it: the tiles read the sea a metre or so either side of 0 and
+    the shore lower than that in places, and water lies flat at the lowest point of its
+    shore, so the sea came out under its own floor (the ground drawn white over it)."""
     x0, z0, x1, z1 = bounds
     nx, nz = int(math.ceil((x1 - x0) / step)) + 1, int(math.ceil((z1 - z0) / step)) + 1
     n = 2 ** zoom
@@ -628,6 +665,11 @@ def terrain_grid(P, box, bounds, step, zoom=13, bare=False):
         for i in range(nx):
             x, z = x0 + i * step, z0 + j * step
             grid.append(height(P.lat0 - z / P.my, P.lon0 + x / P.mx))
+    wet = _wet_cells(sea, x0, z0, step, nx, nz) if sea and sea[0] else None
+    if wet:
+        # (sea level before --bare-ground, whose lowest-round-each-point would carry the sea
+        # bed's depths 90 m inland)
+        grid = [0.0 if w else v for v, w in zip(grid, wet)]
     if bare:
         raw_top = max(grid)
         grid = bare_ground(grid, nx, nz, step)
@@ -644,6 +686,19 @@ def terrain_grid(P, box, bounds, step, zoom=13, bare=False):
                         acc += grid[jj * nx + ii]
                         cnt += 1
             blur[j * nx + i] = acc / cnt
+    if wet:
+        # the floor 1.5 m under (0.3 m beside the shore, so the ground meets the water near
+        # the coastline), the land beside it at least 0.3 m over
+        for j in range(nz):
+            for i in range(nx):
+                k = j * nx + i
+                near = [wet[jj * nx + ii] for jj in (j - 1, j, j + 1) for ii in (i - 1, i, i + 1)
+                        if 0 <= ii < nx and 0 <= jj < nz]
+                if wet[k]:
+                    blur[k] = -0.3 if not all(near) else -1.5
+                elif any(near):
+                    blur[k] = max(blur[k], 0.3)
+        log(f"ground: {sum(wet)} grid points in the sea, held under sea level")
     base = min(blur)
     log(f"ground: {nx} x {nz} grid every {step:.0f} m from {len(tiles)} tiles, "
         f"{base:.0f} to {max(blur):.0f} m above sea level")
@@ -1168,12 +1223,15 @@ def bake(raw, name, args):
     coast = [[P(g["lat"], g["lon"]) for g in e["geometry"] if g] for e in elements
              if e["type"] == "way" and e.get("tags", {}).get("natural") == "coastline"
              and "geometry" in e]
+    sea, sea_areas = None, []
     if coast:
         water, islands = sea_polygons(coast, (x0, z0, x1, z1))
+        sea = (water, islands)
         for ring in water:
             r = clean_ring(ring, 0.5)
             if r:
-                out["areas"].append({"p": flat(r), "k": "water"})
+                sea_areas.append({"p": flat(r), "k": "water"})
+                out["areas"].append(sea_areas[-1])
         for ring in islands:
             r = clean_ring(ring, 0.5)
             if r:
@@ -1277,7 +1335,9 @@ def bake(raw, name, args):
         try:
             span = max(x1 - x0, z1 - z0)
             out["height"] = terrain_grid(P, box, (x0, z0, x1, z1), max(12.0, round(span / 300.0)),
-                                         bare=args.bare_ground)
+                                         bare=args.bare_ground, sea=sea)
+            for a in sea_areas:   # the sea at sea level, as a river is held at its weirs'
+                a["y"] = int(round(-out["height"]["base"] * SCALE))
         except Exception as e:   # flat is better than no city
             log(f"ground: no height data ({e}); the city stays flat")
 
