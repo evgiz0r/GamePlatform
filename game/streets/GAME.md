@@ -979,7 +979,8 @@ contributors under the ODbL, which is why the credit sits on screen.
   not how high, so the game works it out as the town loads: each overpass rises to clear
   what it crosses, on ramps up the roads leading to it, an interchange's junctions up on
   them and its slip roads coming down. Highway 102's overpasses, the Bedford Bypass, the
-  MacKay Bridge's approach. Ramps are walled, not grassy banks, yet.
+  MacKay Bridge's approach. The ramps are grass banks with a guardrail along the top where
+  there is room for them, retaining walls where there is not.
 - **Not there yet**: bridges in Givatayim and Ashdod (still drawn on the ground), and
   tunnels in the real towns (left out). People crossing anywhere but a zebra.
 

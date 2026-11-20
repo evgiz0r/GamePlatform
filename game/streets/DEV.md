@@ -512,6 +512,12 @@ before and a tunnel without it is still dropped.
   footprint (`cut_tri`, in `_build_terrain`), and the far-off flat ground plane is put below
   the deepest deck (it showed through the hole). The tunnel's tube casts shadows from both
   faces (its own meshes, not the merged ones) so the sun does not light it inside.
+- **Embankments are grass banks** (`bank_at`, `_bank`): from the walkway's or shoulder's
+  edge down to the ground, 1.5 m out for each metre down, a steel guardrail on posts along
+  the top -- wherever the bank's middle and foot land clear of other roads and buildings;
+  elsewhere (the test town's ramps between houses) the retaining wall and parapet as before,
+  the wall reaching a segment into each change. Collisions match: on a bank a guardrail for
+  the car on top and the bank's foot (as steep as a wall) for one on the ground beside it.
 - **Junctions in the air.** Where only decks meet (the interchange's slip roads joining
   HaZayit up on its embankment) the junction is drawn by `decks.gd` at its height (no node
   in `_tile_nodes`, so no signs or lights there). A parapet, its wall and the walkway open
@@ -562,8 +568,8 @@ before and a tunnel without it is still dropped.
   (a turning car clipped the parapet), a 5 cm switch from a cutting's road to the ground
   where it gets shallow (a hop), and ground triangles left whole over a cutting (an edge
   parallel to the hole's leaves a smaller triangle: compare areas, not corner counts).
-- **Still to do**: the inferred heights for Givatayim and Ashdod (and their tunnels);
-  earth embankments with grass slopes rather than walls along inferred ramps; a long-span
+- **Still to do**: the inferred heights for Givatayim and Ashdod (and their tunnels; Tel
+  Aviv is another session's); grass slopes for cuttings too (they are walled); a long-span
   bridge's height over water (the MacKay's deck is only as high as its ends); pavements at street
   level beside a cutting (the underpass has none); people on a bridge's pavement; the
   minimap draws a tunnel like any street; zooming out from inside the tunnel rises from the

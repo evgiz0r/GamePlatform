@@ -25,6 +25,8 @@ const PARAPET := 1.05         ## the parapet's height over the walkway
 const WALL_T := 0.35          ## parapets and walls: thick
 const TUBE_H := 5.4           ## a tunnel's ceiling over the road
 const PIER_STEP := 17.0       ## a bridge's piers: about this far apart
+const BANK := 1.5             ## an embankment's grass bank: metres out for each metre down
+const GUARD_H := 0.75         ## the guardrail along the top of a bank
 const CELL := 24.0
 const SEEN := 700.0           ## the big pieces are drawn this far
 const NEAR_SEEN := 260.0      ## railings, lamps, paint
@@ -253,6 +255,47 @@ func open_at(ri: int, p: Vector2, y: float, inner := true) -> bool:
 			return true
 	return false
 
+## An embankment slopes down to the ground as a grass bank (BANK out for each metre down),
+## a guardrail along its top, wherever there is room: not where its foot would land on
+## another road or in a building (the old streets' ramps between their houses) -- there it
+## is a retaining wall and a parapet. The bank's width at a point of deck ri (p on its middle
+## line, `out` the unit way outward on that side, y its surface there): > 0 a bank that wide,
+## 0 too low to need either, -1 a wall.
+func bank_at(ri: int, p: Vector2, out: Vector2, y: float) -> float:
+	var r: Dictionary = g._roads[ri]
+	if String(r["deck"]) != "em":
+		return -1.0
+	var edge := float(r["w"]) * 0.5 + float(r["side"])
+	var top := p + out * edge
+	var drop: float = y - float(g._h(top))
+	if drop < 0.4:
+		return 0.0
+	var width := drop * BANK
+	for f: float in [0.5, 1.0]:
+		var q := top + out * width * f
+		var on: Dictionary = g._nearest_seg(q, 12.0, true)
+		if not on.is_empty() and int(on["road"]) != ri and float(on["edge"]) < 0.5:
+			return -1.0
+		if _in_building(q, 0.6):
+			return -1.0
+	return width
+
+func _in_building(c: Vector2, rad: float) -> bool:
+	for i: int in g._near(g._bld_hash, c, rad, g.BLD_CELL):
+		if g._bld_solid[i] == 0 or not (g._bld_box[i] as Rect2).grow(rad).has_point(c):
+			continue
+		if g._poly_push(g._blds[i], c, rad) != Vector2.ZERO:
+			return true
+	return false
+
+## the unit way out from a line's middle on side sd, at each of its points
+func _outs(pts: PackedVector2Array, sd: float) -> PackedVector2Array:
+	var one: PackedVector2Array = g._offset_line(pts, sd)
+	var out := PackedVector2Array()
+	for i in range(pts.size()):
+		out.append((one[i] - pts[i]).normalized())
+	return out
+
 ## a deck's own point is at street level there (within half a metre of the ground)
 func _low(r: Dictionary, p: Vector2, y: float) -> bool:
 	return absf(y - float(g._h(p))) < 0.5
@@ -286,9 +329,24 @@ func _walls_of(ri: int) -> void:
 	var total := cum[cum.size() - 1]
 	for sd: float in [-1.0, 1.0]:
 		var line: PackedVector2Array = g._offset_line(pts, off * sd)
+		var outs := _outs(pts, sd)
+		var banks := PackedFloat32Array()
+		for j in range(pts.size()):
+			banks.append(bank_at(ri, pts[j], outs[j], ys[j]) if kind == "em" else -1.0)
 		for j in range(pts.size() - 1):
 			if cum[j] < clear_a or cum[j + 1] > total - clear_b:
 				continue   # (any piece that reaches into the corner)
+			if banks[j] >= 0.0 and banks[j + 1] >= 0.0 and maxf(banks[j], banks[j + 1]) > 0.0:
+				# a bank: the guardrail along its top stops a car on the deck; its foot, as
+				# steep as a wall, stops one on the ground beside it
+				var mid_b := (line[j] + line[j + 1]) * 0.5
+				if not open_at(ri, mid_b, (ys[j] + ys[j + 1]) * 0.5):
+					_walls.append([line[j], line[j + 1], ys[j] - 0.3, ys[j] + 0.9, ys[j + 1] - 0.3, ys[j + 1] + 0.9, 0.1, "guardrail"])
+				var e0 := float(r["w"]) * 0.5 + float(r["side"])
+				var f0 := pts[j] + outs[j] * (e0 + banks[j])
+				var f1 := pts[j + 1] + outs[j + 1] * (e0 + banks[j + 1])
+				_walls.append([f0, f1, gs[j] - 1.0, gs[j] + 1.0, gs[j + 1] - 1.0, gs[j + 1] + 1.0, 0.3, "bank"])
+				continue
 			var band := []
 			for k: int in [j, j + 1]:
 				match kind:
@@ -540,6 +598,7 @@ func build() -> void:
 	var tile: RefCounted = g._clip_buf(g.CHUNK)      # a tunnel's tiled walls
 	var tube: RefCounted = g._clip_buf(g.CHUNK)      # its ceiling and upper walls
 	var lamps: RefCounted = g._clip_buf(g.GROUND_CELL)
+	var grass: RefCounted = g._clip_buf(g.CHUNK)     # embankments' banks
 	for ri: int in list:
 		if g._over():
 			await g._pause()
@@ -560,14 +619,14 @@ func build() -> void:
 				g._on_deck = -1
 		match String(r["deck"]):
 			"br", "em":
-				_raised(ri, pts, walk, kerb, conc, stone)
+				_raised(ri, pts, walk, kerb, conc, stone, grass, rail)
 			"cu":
 				_cutting(ri, pts, conc, rail)
 			"tu":
 				_tunnel(ri, pts, walk, kerb, tile, tube, lamps)
 	for job: Array in [[asphalt, "asphalt", SEEN, false], [marks, "mark", NEAR_SEEN, false], [yellow, "markyellow", NEAR_SEEN, false],
 			[walk, "pavement", SEEN, false], [kerb, "kerb", NEAR_SEEN, false], [conc, "concrete", SEEN, true],
-			[stone, "stonewall", SEEN, true], [rail, "railing", NEAR_SEEN, true]]:
+			[stone, "stonewall", SEEN, true], [rail, "railing", NEAR_SEEN, true], [grass, "grass", SEEN, false]]:
 		g._add_mesh(job[0], g._surface(job[1]), job[3], job[2])
 	# the tube: its own meshes, casting shadows from both faces so the sun stays out of it
 	for job: Array in [[tile, g._surface("lobby")], [tube, g._surface("recess")]]:
@@ -642,7 +701,8 @@ func _shifted(line: PackedVector3Array, dy: float) -> PackedVector3Array:
 
 ## A bridge or an embankment: the pavement (or a shoulder) each side, the parapets, and under
 ## it a slab on piers (a bridge) or retaining walls down to the ground (an embankment).
-func _raised(ri: int, pts: PackedVector2Array, walk: RefCounted, kerb: RefCounted, conc: RefCounted, stone: RefCounted) -> void:
+func _raised(ri: int, pts: PackedVector2Array, walk: RefCounted, kerb: RefCounted, conc: RefCounted, stone: RefCounted,
+		grass: RefCounted, rail: RefCounted) -> void:
 	var r: Dictionary = g._roads[ri]
 	var hw := float(r["w"]) * 0.5
 	var side := float(r["side"])
@@ -682,15 +742,29 @@ func _raised(ri: int, pts: PackedVector2Array, walk: RefCounted, kerb: RefCounte
 			var low := _low(r, pts[i], y)
 			gap_walk.append(1 if open_at(ri, walk_line[i], y, false) or (low and g._asphalt_other(walk_line[i], ri)) else 0)
 			gap_wall.append(1 if open_at(ri, wall_line[i], y) else 0)
+		# a grass bank where there is room (bank_at), else the wall: a point is the bank's
+		# only when it and both its neighbours are, so the wall reaches into each change
+		var outs := _outs(pts, sd)
+		var widths := PackedFloat32Array()
+		for i in range(pts.size()):
+			widths.append(-1.0 if bridge else bank_at(ri, pts[i], outs[i], deck_y(ri, pts[i])))
+		var gap_bank := PackedByteArray()
+		var gap_w := PackedByteArray()
+		for i in range(pts.size()):
+			var b_here := widths[i] > 0.0
+			var b_all := b_here and (i == 0 or widths[i - 1] >= 0.0) and (i == pts.size() - 1 or widths[i + 1] >= 0.0)
+			gap_bank.append(0 if b_here or (widths[i] == 0.0) else 1)
+			gap_w.append(1 if gap_wall[i] == 1 or b_all else 0)
 		if paved:
 			_face(kerb, kerb_in[0], kerb_top[0], -sd, line, gap_walk)
 		_strip(walk if paved else conc, kerb_top[0], inner[0], true, gap_walk)
-		_face(conc, inner[0], p_in, -sd, line, gap_wall)              # the parapet's inner face
-		_strip(conc, p_in, p_out, true, gap_wall)                     # its top
+		_face(conc, inner[0], p_in, -sd, line, gap_w)              # the parapet's inner face
+		_strip(conc, p_in, p_out, true, gap_w)                     # its top
 		if bridge:
-			_face(conc, p_out, under, sd, line, gap_wall)             # the slab's edge and the parapet's outside
+			_face(conc, p_out, under, sd, line, gap_w)             # the slab's edge and the parapet's outside
 		else:
-			_face(stone, p_out, foot, sd, line, gap_wall)             # the retaining wall, down into the ground
+			_face(stone, p_out, foot, sd, line, gap_w)             # the retaining wall, down into the ground
+			_bank(ri, pts, sd, outs, widths, gap_bank, inner[0], grass, rail, top)
 	if bridge:
 		var lo_l: Array = _edge(ri, pts, -(hw + side + WALL_T), -SLAB)
 		var lo_r: Array = _edge(ri, pts, hw + side + WALL_T, -SLAB)
@@ -730,6 +804,42 @@ func _raised(ri: int, pts: PackedVector2Array, walk: RefCounted, kerb: RefCounte
 			var gy: float = g._h(p) - 1.0
 			var c := p + d * 0.6
 			g._obox(stone, Vector3(c.x, (y + gy) * 0.5, c.y), Vector3((hw + side + WALL_T) * 2.0, y - gy, 1.2), atan2(d.x, d.y))
+
+## the grass bank down one side of an embankment, from the walkway's (or shoulder's) edge
+## to the ground BANK out for each metre down, and the guardrail along its top
+func _bank(ri: int, pts: PackedVector2Array, sd: float, outs: PackedVector2Array, widths: PackedFloat32Array,
+		gap: PackedByteArray, edge_top: PackedVector3Array, grass: RefCounted, rail: RefCounted, top: float) -> void:
+	var r: Dictionary = g._roads[ri]
+	var e0 := float(r["w"]) * 0.5 + float(r["side"])
+	var lift: float = g.road_top() - g.Y_ROAD
+	var feet := PackedVector3Array()
+	for i in range(pts.size()):
+		var f := pts[i] + outs[i] * (e0 + maxf(widths[i], 0.0))
+		feet.append(Vector3(f.x, float(g._h(f)) + lift - 0.15, f.y))
+	for i in range(pts.size() - 1):
+		if gap[i] == 1 or gap[i + 1] == 1 or maxf(widths[i], widths[i + 1]) <= 0.0:
+			continue
+		grass.quad3(edge_top[i] + Vector3(0, -0.03, 0), edge_top[i + 1] + Vector3(0, -0.03, 0), feet[i + 1], feet[i])
+	# the guardrail: a post every 2 m, a steel beam along them
+	var rl: PackedVector2Array = g._offset_line(pts, (e0 - 0.15) * sd)
+	var acc := 0.0
+	for i in range(pts.size() - 1):
+		var L := rl[i].distance_to(rl[i + 1])
+		if gap[i] == 1 or gap[i + 1] == 1 or minf(widths[i], widths[i + 1]) <= 0.0:
+			acc = 0.0
+			continue
+		var y0: float = edge_top[i].y
+		var y1: float = edge_top[i + 1].y
+		var yaw := atan2(rl[i + 1].x - rl[i].x, rl[i + 1].y - rl[i].y)
+		var m := (rl[i] + rl[i + 1]) * 0.5
+		if g._mine(m):
+			g._obox(rail, Vector3(m.x, (y0 + y1) * 0.5 + GUARD_H - 0.17, m.y), Vector3(0.05, 0.3, L + 0.02), yaw, -atan2(y1 - y0, L))
+		while acc < L:
+			var q := rl[i].lerp(rl[i + 1], acc / maxf(L, 0.001))
+			if g._mine(q):
+				g._obox(rail, Vector3(q.x, lerpf(y0, y1, acc / maxf(L, 0.001)) + GUARD_H * 0.5, q.y), Vector3(0.1, GUARD_H, 0.1), yaw)
+			acc += 2.0
+		acc -= L
 
 ## A cutting: a shoulder each side, walls up to the ground with a coping, a railing along the
 ## top where it is deep enough to fall into. (The ground over it is cut away: cut_tri.)
