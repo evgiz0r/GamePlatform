@@ -1893,6 +1893,43 @@ The cloud environment allows the host now (the user approved it).
   OSM maps as one outline keeps OSM's height (splitting it into the survey's pieces would
   give the podium and the tower each their own).
 
+## Data fetched on the user's computer: Givatayim's storeys, places, cars, bus lanes, GTFS (21 Nov 2026)
+
+A session on the user's own computer in Israel did `LOCAL_DATA_TASK.md` (now marked done).
+Everything is in `game/streets/cities/data/`, small enough to commit; the scripts that
+fetched what can be fetched again are in `game/streets/data_tools/`. Raw downloads are in
+the user's `tools/.cache/` only.
+
+| File | What | Source, licence, credit line |
+|---|---|---|
+| `givatayim_muni.geojson` (1.1 MB) | 3,073 building outlines with `fl`, floors incl. the ground floor | Givatayim Municipality's map (Complot GIS-net viewer, layer "מבנים - 2025"); no licence published, only "© עיריית גבעתיים" -- the user approved committing it. "building storeys © Givatayim Municipality" |
+| `ramat_gan_muni.geojson` (1.5 MB) | 2,704 outlines with `fl` (NUM_FLOORS), the level-1 box only | Ramat Gan Municipality's own ArcGIS Online layer `building_23_02_2025`; no licence text on the item. "building storeys © Ramat Gan Municipality" |
+| `places_givatayim.geojson` (37 KB) | points: kindergarten 87, daycare 35 (no names: private ones are named after people), school 14, shelter 37 (type, above/underground), public_garden 43, community_garden 9, dog_park 16 (gardens as centroid + `area_m2`) | Givatayim's map as above. "places © Givatayim Municipality". No playgrounds layer is published there |
+| `vehicle_mix.json` | shares of makes (Hebrew names as registered, maker + country, e.g. "טויוטה יפן" and "טויוטה טורקיה" are both Toyota) with top models, colours, year bands, fuel, private/commercial | Ministry of Transport register on data.gov.il, "Other (Open)"; a 300,000-row evenly spread sample of 4.2 M via the CKAN API (`vehicle_mix.py`). "vehicle mix: Israel Ministry of Transport, data.gov.il" |
+| `bus_lanes.json` | public-transport lanes: givatayim 20 stretches, ashdod 47, tel_aviv 122; start/end points, street, direction, hours, taxis, lanes | Ministry of Transport `nataz_kayam` on data.gov.il, CC BY (`bus_lanes.py`). "bus lanes: Israel Ministry of Transport (CC BY)" |
+| `transit_givatayim.json` (1.05 MB), `transit_ashdod.json` (1.7 MB) | stops, routes (line, operator, direction, headsign), shapes clipped to the box, every trip of Tue 24 Nov 2026 with its stop times in the box. Givatayim: 213 stops, 132 lines, 11,252 trips; Ashdod: 598 stops, 102 lines, 4,184 trips | Ministry of Transport GTFS (`gtfs_towns.py`, format in its docstring). "public transport: Israel Ministry of Transport" |
+
+- **Heights on level 1** (`--add-surveys`, `SURVEYS` now has `givatayim_muni` and
+  `ramat_gan_muni` after Tel Aviv's): measured or surveyed 1,039 -> 5,861 of 6,243
+  buildings, guesses 4,726 -> 213. Givatayim's survey set 2,373, Ramat Gan's 2,449, OSM's
+  own tagged height kept on 65. No outline under 300 m^2 over 40 m. Spot checks: IM
+  Givatayim 1 was a 13 m guess, now 31 floors (94.5 m); the "Beyond" office tower stays at
+  OSM's 307.5 m (survey 78 floors). Floors become `fl * 3 + 1.5` m (the ground floor is in
+  the count -- they matched OSM's `building:levels` most often), so a 3-storey block is
+  10.5 m. A re-bake anywhere reads the two extracts (`survey_extract`); no network needed.
+- **What a cloud session should do with it**: run `landmarks` and a playtest of level 1
+  (heights changed on 4,800 buildings: lit roofs, lamps and the tiled count may move);
+  draw the places (a kindergarten's fenced yard and shade sail, a shelter's sign and
+  concrete entrance -- `places_givatayim.geojson`); colour and pick the traffic's and the
+  parked cars' models from `vehicle_mix.json` (41% white "שנהב לבן", then silvers, blacks
+  and greys; 80% petrol, ~10% electric or hybrid); mark the bus lanes by matching
+  `bus_lanes.json`'s street names and end points to the roads (the baker's OSM `bf`/`bb`
+  have some already); run buses on `transit_*.json`'s lines and times.
+- **Open**: Ashdod's heights (not in this task's sources: Ashdod's own GIS not looked at);
+  GovMap and the Survey of Israel were not needed and not checked. The GTFS terms page on
+  gov.il cannot be read by tools; the user read it and found nothing against reuse.
+  Ramat Gan's layer has no licence text either; the user approved committing it too.
+
 ## Handoff: the street's realism and life, loading split, crashes, sounds (20 Nov 2026)
 
 One session's areas (everything under "front gardens", "the street's goings-on", "more kinds
