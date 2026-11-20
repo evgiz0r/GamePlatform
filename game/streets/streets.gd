@@ -24,6 +24,8 @@ const LEVELS := [
 	# made up by tools/fake_city.py: one small town with one of everything, ringed by mountains,
 	# that loads in a moment -- for checking a change, not for exploring
 	{"name": "Kiryat Dimyon (test town)", "city": "dimyon", "start": ["הנשיא", "השוק"], "look": "med"},
+	# a walk filmed in Givatayim, replayed in first person on its own (cities/details/givatayim.json)
+	{"name": "A walk in Givatayim: Katzenelson to Ha-Meri", "city": "givatayim", "look": "med", "walk": "katzenelson_hameri"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -788,6 +790,7 @@ var _walkers: Array = []             ## {actor, line (PackedVector2Array), cum, 
 var _chatters: Array = []            ## {actor, spot}
 var _table_spots: Array = []         ## Vector2 of every cafe table
 var _furn: RefCounted                ## the street furniture builder (furniture.gd)
+var _details: RefCounted             ## what a filmed walk added to the city (details.gd), or null
 var _wired := {}                     ## road index -> true: Bedford's lamps hang off its power poles
 var _flag_spots: Array = []          ## a flag on a staff off a lamp post (local X out over the road)
 var _balcony_flags: Array = []       ## a flag hanging off a balcony's parapet
@@ -828,6 +831,7 @@ const ROAD_RANK := {"motorway": 6, "trunk": 6, "primary": 5, "secondary": 4, "te
 ## ---- traffic ----
 const Traffic := preload("res://game/streets/traffic.gd")
 const Furniture := preload("res://game/streets/furniture.gd")
+const Details := preload("res://game/streets/details.gd")
 const DriveLog := preload("res://game/streets/drivelog.gd")
 var _log := DriveLog.new()            ## the last two minutes, for the map page and "save log"
 var _ap_why := ""                     ## what held autodrive's speed down this tick (for the log)
@@ -1061,6 +1065,8 @@ func start(_config: Dictionary) -> void:
 	_traffic.setup(self)
 	_build_engine()
 	_build_signal_sounds()
+	if _place.has("walk"):
+		_film_begin(String(_place["walk"]))
 	_dressing["traffic"] = _traffic.alive_count()
 	_loaded = true
 	track3d(_car, "@")
@@ -1333,6 +1339,10 @@ func _load_city(id: String) -> bool:
 		return false
 	var k := 1.0 / float(data.get("scale", 10))
 	_city_id = path.get_file().get_basename()
+	var extra := Details.load_for(dir, _city_id)
+	if not extra.is_empty():
+		_details = Details.new(self, extra)
+		_details.edit_city(data)
 	_city_name = String(data.get("name", id))
 	var b: Array = data["bounds"]
 	_bounds = Rect2(b[0], b[1], float(b[2]) - float(b[0]), float(b[3]) - float(b[1]))
@@ -1512,6 +1522,8 @@ func _build_world() -> bool:
 			return false
 		await _build_tile(near[i])
 	_tiles_todo = _tiles_todo.filter(func(t): return not _tiles_done.has(t))
+	if _details != null:   # what a filmed walk added: built whole, once (details.gd)
+		_details.build()
 	return true
 
 ## ---- building near-first ------------------------------------------------------------------
@@ -1912,6 +1924,7 @@ func _build_ground() -> void:
 	# roads: asphalt ribbons, with a round patch where roads meet so corners are filled
 	var asphalt := _clip_buf(CHUNK)
 	var paths := _clip_buf(CHUNK)
+	var walks := _clip_buf(CHUNK)   # footpaths in town: paved like the pavements
 	var marks := _clip_buf(GROUND_CELL)
 	var yellow := _clip_buf(GROUND_CELL)
 	var metal := _clip_buf(GROUND_CELL)
@@ -1922,7 +1935,8 @@ func _build_ground() -> void:
 		var r: Dictionary = _roads[ri]
 		var part := _near_part(r["pts"], r["w"] * 0.5 + 2.0)
 		if part.size() >= 2:
-			_ribbon(asphalt if r["drive"] else paths, part, r["w"] * 0.5, Y_ROAD if r["drive"] else Y_PATH)
+			var under: Buf = asphalt if r["drive"] else (walks if _paved_walk(r) else paths)
+			_ribbon(under, part, r["w"] * 0.5, Y_ROAD if r["drive"] else Y_PATH)
 		_markings(marks, r, yellow)
 		_street_metal(metal, metal_rim, ri)
 	for ni: int in _tile_nodes.get(_tile, []):
@@ -1931,7 +1945,7 @@ func _build_ground() -> void:
 	for ni: int in _nodes_near(30.0):
 		if _crossing_set.has(ni):
 			_zebra(marks, ni)
-	for job: Array in [[metal_rim, "metalrim", DETAIL_RANGE], [metal, "metal", DETAIL_RANGE], [paths, "path", VIEW_RANGE * 0.6],
+	for job: Array in [[metal_rim, "metalrim", DETAIL_RANGE], [metal, "metal", DETAIL_RANGE], [paths, "path", VIEW_RANGE * 0.6], [walks, "pavement", VIEW_RANGE * 0.6],
 			[asphalt, "asphalt", VIEW_RANGE], [marks, "mark", DETAIL_RANGE], [yellow, "markyellow", DETAIL_RANGE]]:
 		if _over():
 			await _pause()
@@ -2051,6 +2065,26 @@ func _build_terrain() -> void:
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			mi.visibility_range_end = VIEW_RANGE + blk * _hstep * 0.71 + 300.0
 			world.add_child(mi)
+
+## A footpath in town -- a passage between blocks, steps, a pedestrian street -- is paved
+## like the pavements; in a park, a wood or on grass it stays a path. (A walk filmed in
+## Givatayim: its passages are pavers between garden walls, not trails through a lawn.)
+const PAVED_WALKS := {"footway": true, "pedestrian": true, "steps": true}
+
+func _paved_walk(r: Dictionary) -> bool:
+	if r.has("_paved"):
+		return r["_paved"]
+	var paved := PAVED_WALKS.has(r["k"])
+	if paved:
+		var pts: PackedVector2Array = r["pts"]
+		var mid := pts[pts.size() / 2].lerp(pts[(pts.size() - 1) / 2], 0.5)
+		for kind: String in ["park", "grass", "wood"]:
+			for ring: PackedVector2Array in _area_rings.get(kind, []):
+				if _bld_box_of(ring).has_point(mid) and Geometry2D.is_point_in_polygon(mid, ring):
+					paved = false
+					break
+	r["_paved"] = paved   # each square asks again: worked out once a road
+	return paved
 
 func _surface(tone: String) -> StandardMaterial3D:
 	if _smat.has(tone):
@@ -2665,6 +2699,7 @@ func _kerb_corners(kerb: Buf, pave: Buf, fill: Buf, col: Color) -> void:
 		var c := _nodes[ni]
 		var cut := _node_r[ni] + KERB_CUT
 		var arms: Array = []   # [angle, point at the cut, way out there, half width, road]
+		var through: Array = []   # the ways out of pieces too short for a corner of their own
 		for e: Vector2i in _node_roads[ni]:
 			var r: Dictionary = _roads[e.x]
 			if not _kerbed(r):
@@ -2675,6 +2710,8 @@ func _kerb_corners(kerb: Buf, pave: Buf, fill: Buf, col: Color) -> void:
 					continue
 				var at: Array = _walk_pts(pts, e.y, step, cut)
 				if not at[2]:
+					var q := pts[e.y + step]
+					through.append(atan2(q.y - c.y, q.x - c.x))
 					continue   # too short to reach the corner (a piece across a median)
 				var p: Vector2 = at[0]
 				arms.append([atan2(p.y - c.y, p.x - c.x), p, at[1], float(r["w"]) * 0.5, e.x])
@@ -2686,6 +2723,20 @@ func _kerb_corners(kerb: Buf, pave: Buf, fill: Buf, col: Color) -> void:
 			var B: Array = arms[(i + 1) % arms.size()]
 			var gap: float = fposmod(float(B[0]) - float(A[0]), TAU)
 			if gap > 3.6 or gap < 0.02:
+				continue
+			# no corner across a road that goes out between the two: on a divided road's median
+			# side, the piece of the cross street through the median. (Laid anyway, it ran
+			# straight across the opening; cut up where it lay on the asphalt, what was left
+			# stood out of the island's end as an arrowhead and spikes.)
+			var crossed := false
+			for ang: float in through:
+				var into := fposmod(ang - float(A[0]), TAU)
+				if into > 0.05 and into < gap - 0.05:
+					crossed = true
+					break
+			if crossed:
+				if _mine(c):
+					_tally("corners_across_roads", 1)
 				continue
 			var ua: Vector2 = A[2]
 			var ub: Vector2 = B[2]
@@ -6271,10 +6322,11 @@ func _tone_mat() -> ShaderMaterial:
 		var sh := Shader.new()
 		sh.code = TONE_SHADER
 		_tone_material.shader = sh
-		# Israeli pavements are rows of concrete pavers; Bedford's are poured slabs, the
+		# Israeli pavements are 20 x 10 cm concrete pavers in herringbone, a mix of greys
+		# and red-browns (drawn by textures/herringbone.py); Bedford's are poured slabs, the
 		# photo's slabs blown up to a metre or so
 		var north := String(_place.get("look", "")) == "north"
-		var pave := "concrete_pavement" if north else "concrete_pavers_02"
+		var pave := "concrete_pavement" if north else "herringbone_pavers"
 		_tone_material.set_shader_parameter("asph_tex", _tex("asphalt_02_diff"))
 		_tone_material.set_shader_parameter("asph_nrm", _tex("asphalt_02_nor"))
 		_tone_material.set_shader_parameter("asph_big", _tex("aerial_asphalt_01_diff"))
@@ -6291,7 +6343,7 @@ func _tone_mat() -> ShaderMaterial:
 	return _tone_material
 
 ## The photos under the surfaces: CC0 from Poly Haven (textures/CREDITS.md), 1024 px, the
-## bump maps 512. The shaders divide each by its average colour, so a photo adds detail
+## bump maps 512 -- all but the herringbone pavers, which textures/herringbone.py draws. The shaders divide each by its average colour, so a photo adds detail
 ## without changing the palette's colour. The averages are of the stored (sRGB) values, and
 ## the samplers have no source_color, so they read exactly those: in the Compatibility
 ## renderer source_color does not convert them anyway (measured), and a photo's own smallest
@@ -6301,7 +6353,7 @@ const TEX_MEAN := {
 	"aerial_asphalt_01": Vector3(0.402, 0.385, 0.406),
 	"asphalt_02": Vector3(0.356, 0.353, 0.333),
 	"concrete_pavement": Vector3(0.501, 0.457, 0.403),
-	"concrete_pavers_02": Vector3(0.448, 0.377, 0.314),
+	"herringbone_pavers": Vector3(0.502, 0.489, 0.483),
 	"leafy_grass": Vector3(0.593, 0.516, 0.351),
 	"painted_plaster_wall": Vector3(0.671, 0.639, 0.627),
 	"bark_brown_02": Vector3(0.373, 0.338, 0.251),
@@ -8441,6 +8493,12 @@ static func _natural(c: Color, keep: float) -> Color:
 	var l := c.get_luminance()
 	return Color(lerpf(l, c.r, keep), lerpf(l, c.g, keep), lerpf(l, c.b, keep), c.a)
 
+## a palette colour with most of its tint taken out (`k` 1: grey of the same brightness) --
+## concrete is grey, whatever colour the palette's light is
+func _greyed(c: Color, k: float) -> Color:
+	var l := c.get_luminance()
+	return c.lerp(Color(l, l, l, c.a), k)
+
 func _tones() -> void:
 	var bg := Palette.col("bg")
 	var alt := Palette.col("bg_alt")
@@ -8490,9 +8548,10 @@ func _tones() -> void:
 		"furniture": alt.lerp(ink, 0.35),
 		"paint": pl.lerp(alt, 0.5).lerp(ink, 0.12),
 		"shoplight": ink.lerp(wn, 0.45),
-		"pavement": ink.lerp(alt, 0.3).lerp(wn, 0.05),
+		"pavement": _greyed(ink.lerp(alt, 0.48).lerp(wn, 0.04), 0.65),
 		"kerb": ink.lerp(alt, 0.45),
 		"stonewall": ink.lerp(wn, 0.3).lerp(alt, 0.2),
+		"woodfence": alt.lerp(wn, 0.35).lerp(bg, 0.4),
 		"bush": veg.lerp(bg, 0.58),
 		"roofroom": ink.lerp(wn, 0.12).lerp(alt, 0.1),
 		"gable": ink.lerp(wn, 0.15),
@@ -9013,6 +9072,76 @@ func _get_in() -> void:
 	Probe.event("walk", {"on": false})
 	_show_banner("driving", 1.0)
 
+## ---- a filmed walk, replayed ------------------------------------------------------------------
+## A place in LEVELS with a "walk" replays a walk someone filmed: in first person, from the
+## eyes of someone holding a phone at the chest, on its own, with no controls and no driving
+## HUD. The route is in the city's details file (details.gd) as [seconds, x, z] points timed
+## to the film, so it passes each place when the film did and the two can be watched side
+## by side. At the end it stands still.
+
+var _film: Array = []                ## Vector3(x, z, seconds): the route, in time order
+var _film_t := 0.0
+var _film_step := 0.0                ## metres walked: the head bobs with the steps
+var _film_done := false
+
+func _film_begin(id: String) -> void:
+	var walks: Dictionary = _details.data.get("walks", {}) if _details != null else {}
+	var pts: Array = (walks.get(id, {}) as Dictionary).get("points", [])
+	if pts.size() < 2:
+		Probe.note("no walk '%s' in this city's details file" % id)
+		return
+	for p: Array in pts:
+		_film.append(Vector3(float(p[1]), float(p[2]), float(p[0])))
+	var p0 := _film_at(0.0)
+	_pos = p0
+	_yaw = (_film_at(1.5) - p0).angle()
+	_v = 0.0
+	_snap_pose()
+	_cockpit = true
+	_get_out()
+	_car.visible = false
+	_pos = p0
+	_prev_pos = p0
+	_cam_yaw = _yaw
+	_hud.visible = false
+	Probe.event("film", {"walk": id, "seconds": _film[_film.size() - 1].z})
+
+func _film_tick(dt: float) -> void:
+	_film_t += dt
+	var p := _film_at(_film_t)
+	var moved := p.distance_to(_pos)
+	_film_step += moved
+	_v = moved / maxf(dt, 0.001)
+	_pos = p
+	_y = _h(p)
+	var ahead := _film_at(_film_t + 1.6)
+	if ahead.distance_to(p) > 0.3:
+		_yaw = lerp_angle(_yaw, (ahead - p).angle(), 1.0 - exp(-dt * 2.2))
+	var anim := "Idle" if _v < 0.15 else "Walk"
+	if anim != _me_anim:
+		_me_anim = anim
+		_me.play(anim, true, 1.0 if anim == "Idle" else maxf(_v / WALK, 0.5))
+	if _film_t >= _film[_film.size() - 1].z and not _film_done:
+		_film_done = true
+		Probe.event("film_end", {"at": Vector2i(p)})
+
+## where the walk is at time t: a smooth curve (Catmull-Rom) through the timed points
+func _film_at(t: float) -> Vector2:
+	var n := _film.size()
+	if t <= _film[0].z:
+		return Vector2(_film[0].x, _film[0].y)
+	if t >= _film[n - 1].z:
+		return Vector2(_film[n - 1].x, _film[n - 1].y)
+	var i := 0
+	while i < n - 2 and _film[i + 1].z <= t:
+		i += 1
+	var a: Vector3 = _film[maxi(i - 1, 0)]
+	var b: Vector3 = _film[i]
+	var c: Vector3 = _film[i + 1]
+	var d: Vector3 = _film[mini(i + 2, n - 1)]
+	var u := (t - b.z) / maxf(c.z - b.z, 0.001)
+	return Vector2(b.x, b.y).cubic_interpolate(Vector2(c.x, c.y), Vector2(a.x, a.y), Vector2(d.x, d.y), u)
+
 ## the empty car rolling on after you jumped out: no driver, so no steering and no power,
 ## slowing as a car in gear does with the foot off (a couple of m/s each second); into a
 ## wall or a car it stops short, with a bang
@@ -9093,7 +9222,11 @@ func _foot_camera(dt: float) -> void:
 	if _cockpit:
 		var fwd := Vector2(cos(_view_yaw), sin(_view_yaw))
 		var eye := Vector3(p.x + fwd.x * 0.15, gy + 1.64, p.y + fwd.y * 0.15)
-		look_from(eye, eye + Vector3(fwd.x, -0.08, fwd.y) * 10.0)
+		var down := -0.08
+		if not _film.is_empty():   # a phone held at the chest, looking a little down, bobbing with each step
+			eye.y += -0.2 + sin(_film_step * PI / 0.72) * 0.022 * clampf(_v / 1.2, 0.0, 1.0)
+			down = -0.2
+		look_from(eye, eye + Vector3(fwd.x, down, fwd.y) * 10.0)
 		cam.fov = 70.0
 		return
 	_cam_yaw = lerp_angle(_cam_yaw, _view_yaw, 1.0 - exp(-dt * 4.0))
@@ -9488,8 +9621,11 @@ func _physics_process(dt: float) -> void:
 	if _walking:
 		_traffic.tick(dt)
 		_p("traffic")
-		_walk(dt)
-		_controls_tick(dt)
+		if not _film.is_empty():
+			_film_tick(dt)
+		else:
+			_walk(dt)
+			_controls_tick(dt)
 		_p("walk")
 		_names_tick(dt)
 		_p("names")
@@ -12942,7 +13078,7 @@ func _draw_map_inner() -> void:
 ## it takes the wheel back from autodrive. ----------------------------------------------------
 
 func _input(event: InputEvent) -> void:
-	if not _loaded:
+	if not _loaded or not _film.is_empty():
 		return
 	if _picker != null:   # everything goes to the picker while it is open
 		var mb := event as InputEventMouseButton

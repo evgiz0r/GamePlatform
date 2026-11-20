@@ -116,8 +116,42 @@ The baked area ends; don't let it end in an invisible wall. A striped barrier al
 (following the ground), a soft glow over it that shows when near, a line on the minimap,
 a banner on contact -- and keep the car's own collision circles off exactly that line.
 
+## Checking a street against a filmed walk
+
+The fastest way to see what is wrong with a street is the user filming it on a phone and
+the game walking the same route in first person beside it.
+
+- **Getting footage in.** The connectors cap downloads at about 10-12 MB, OneDrive's will
+  not hand over a video at all, and a phone's 3-minute video is ~350 MB (emailed, it turns
+  into a Drive link, which is not the file). Two ways that work: frames, with VLC's scene
+  filter writing a JPG every few seconds into a synced folder (images come through the
+  OneDrive connector one by one: a helper agent can read and describe all of them without
+  filling the main conversation), or a short clip under 10 MB (VLC
+  `--sout=#transcode{vcodec=h264,vb=600,scale=0.3}`, `--stop-time`), sent as a real email
+  attachment, which the Gmail download tool saves to disk.
+- **Orientation.** VLC's scene filter ignores the phone's rotation flag (frames come out
+  sideways), and its transcode of a portrait video can come out **mirrored**: check a shop
+  sign's text before believing which side anything is on, and flip with ffmpeg `hflip`.
+  Reading sides off a mirrored clip put a fence on the wrong side for a whole pass.
+- **Matching the two.** A contact sheet at one frame a second gives the landmarks' times;
+  walking time gives distances (people walk 1.2-1.3 m/s): a road that takes 15 s to cross
+  is ~17 m, whatever OSM's guessed width says. Time the game's walk to the same landmarks,
+  so the two pass each place together. A phone held upright sees about 70 degrees
+  vertically: render 16:9 at that and crop the middle 9:16.
+- **What footage showed the map gets wrong**: a passage drawn as one footpath that is
+  really a forecourt, the passage and a short street with parked cars; a footpath's end
+  joined to the nearest junction point rather than where it meets the street; a crossing
+  mapped as a footpath between the two kerbs with no crossing tag, so no zebra; widths by
+  class. Fixing it in OSM is best; until the user does, a hand-placed layer over the baked
+  file (road edits, zebras, walls, fences, railings) survives a re-bake, where editing the
+  baked file would not.
+
 ## Privacy
 
 A web build is public. Never use an address the user mentions privately -- their home,
 their family's -- as a start point, a test location, or in any committed file, commit
-message or doc. Test against it in a scratch script if asked, and leave it there.
+message or doc. Test against it in a scratch script if asked, and leave it there. A walk
+the user filmed is published only as far as the public corner they name; the film, its
+frames and the rest of the route stay out of the repo, and so does any word of where the
+walk ended (a quote saying "to my house" beside a route that stops at a named street gives
+the street away).

@@ -156,6 +156,25 @@ with a car park and a cafe. The car starts on HaNasi just past HaShuk, in the mi
 > shouldn't be too small, like a regular neighborhood where you have most of the features
 > and variety (cars, buses, buildings, types of cars, slopes, landmark and so on).
 
+**A filmed walk.** "A walk in Givatayim: Katzenelson to Ha-Meri" replays, in first person,
+a walk filmed on a phone: off the north kerb of Katzenelson by the Ha-Meri passage, over
+both halves on the zebra, along the south pavement and over the paved forecourt, down the
+passage between its wooden fence and its low white fence, out along the little street at
+its end, over Sheinkin at the corner and into Ha-Meri, where it stops. It walks on its own,
+from the eyes of someone holding a phone at the chest, about a minute and a half, timed so
+it passes each place when the film did: the two can be watched side by side, which is how
+the street is being made more like the real one, a pass at a time, the big things first.
+No controls, no driving HUD; exit leaves. The route and what the film showed that the map
+lacks are in `cities/details/givatayim.json` (see below).
+
+> Can we create a video, 1st person view like my phone, side by side with video from the
+> phone, up until Ha-Meri.
+
+> Let's try to enhance that specific walk, very realistic, in depth, slow, iteratively
+> (people a bit less interesting, but the other items, from bigger details we already have
+> to smaller details). And add in the menu an option to view that walk, just till reaching
+> Ha-Meri street. That's all it will do, no other controls.
+
 The minimap (bottom left) shows the real streets and buildings round you, heading up, with
 the city limits in pink. The name of the street you are on is at the top, in Hebrew with
 the English name under it when OSM has one.
@@ -494,7 +513,10 @@ out per pixel from where it is, nothing to load, the fine part fading out with d
 **Real textures.** Up close the surfaces are photographs (free CC0 ones from Poly Haven, in
 `textures/`): the asphalt has grit and fine cracks, with a second photo of tyre marks,
 patches and long cracks laid over it at 30 m so it doesn't visibly repeat; Givatayim's and Ashdod's
-pavements are rows of concrete pavers, Bedford's poured concrete slabs; grass and open
+footways and plazas are 20 x 10 cm concrete pavers in herringbone, a mix of greys, charcoal and
+red-browns (drawn by `textures/herringbone.py`, after a walk filmed in Givatayim: no photo
+had them; the pavements along the streets are laid square to the kerb in each street's own
+pattern, see "As it looks on foot"), Bedford's poured concrete slabs; grass and open
 ground are a real lawn; walls are painted render. Each has its bumps, so the low sun picks
 out the cracks and the joints between pavers. The palette still decides every colour: a
 photo only adds the variation round its own average, so `/look` reskins it as before.
@@ -529,6 +551,8 @@ the city now has what the walk had underfoot and at eye height:
   half away and cracked with the road. Manhole covers grey cast iron, not black.
 
 > ok lets start as you say
+
+> I took a video on my phone, walking in Givatayim.
 
 ## Smooth on a laptop and a phone
 
@@ -702,6 +726,17 @@ contributors under the ODbL, which is why the credit sits on screen.
 
 To make your own street more accurate, fix it on openstreetmap.org (building heights are
 the most useful thing to add) and bake again.
+
+**What a walk showed.** `cities/details/<city>.json`, when there is one, is laid over the
+baked city as it loads (`details.gd` has the format): road edits (drop a baked road, add
+one), zebras the map leaves unmarked, extra areas, and what stands along a street that OSM
+does not map -- stone walls, wooden fences, low white fences, hedges, bins, the white hoop
+railings at a passage's end -- placed by hand from a walk filmed along it. Givatayim's has
+the Ha-Meri passage: OSM draws it as one footpath from Katzenelson to Sheinkin, where the
+film shows a paved forecourt, the passage itself between its fences, and a short street
+with parked cars down to Sheinkin. It also holds walks, routes timed to their film, that a
+place in `LEVELS` can replay. A footpath in town (not in a park) is paved like the
+pavements everywhere, not only here.
 
 ## Later (said, not built)
 
