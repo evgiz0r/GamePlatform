@@ -62,6 +62,10 @@ A game's `tests/run.sh <test> [level]` wraps that line (see an existing one).
 - **Stage the situation directly.** Put the player at a point and heading, send one AI car
   at it down a chosen road, set a quality level, drop the car in a courtyard. Waiting for it
   to happen by itself costs minutes and may never happen in a test run.
+- **Put a looking-down camera well above the roofs** (30 m and more in a town), not at
+  roof height: a camera 9 m up over a junction sat just above a building, and its flat
+  roof filled half of every shot as a featureless pale plane -- it looked exactly like the
+  ground failing to draw, and cost two runs to see it was the camera.
 - **Find the subject by searching**, not by coordinates you guessed: the nearest instance
   of a mesh to the start, a road that runs out to the map's edge with a clear run, the
   divided-road zebra nearest the start.

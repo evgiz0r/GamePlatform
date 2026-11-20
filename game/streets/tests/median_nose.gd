@@ -30,10 +30,12 @@ func _run() -> void:
 	g.set_physics_process(false)
 	process_frame.disconnect(g._frame)
 	var c := Vector2(-1772, 2250)   # the middle of the junction's four light points
-	var views := [["n_e", Vector2(18, -26)], ["s_w", Vector2(-20, 24)], ["e", Vector2(30, 4)]]
+	# from well above the roofs round it (at 9 m one was right under the camera, a white
+	# plane over half the picture)
+	var views := [["n_e", Vector2(14, -20)], ["s_w", Vector2(-16, 19)], ["e", Vector2(24, 3)]]
 	for v: Array in views:
 		var off: Vector2 = v[1]
-		var eye := Vector3(c.x + off.x, g._h(c) + 9.0, c.y + off.y)
+		var eye := Vector3(c.x + off.x, g._h(c) + 32.0, c.y + off.y)
 		g.look_from(eye, Vector3(c.x, g._h(c), c.y))
 		await _snap("nose_" + String(v[0]))
 	quit()
