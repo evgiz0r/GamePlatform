@@ -1,7 +1,8 @@
 extends SceneTree
-## Walk snap: a filmed walk's GPS route moved onto the pavements it was walked on, by the game's
-## own roads (its widths are not OSM's: they are fitted to the buildings), for a replay that
-## keeps to the pavement where a phone's GPS (good to ~4 m) wanders into the road.
+## Walk snap: a filmed walk's GPS route moved onto the back half of the pavements it was
+## walked on, by the game's own roads (its widths are not OSM's: they are fitted to the
+## buildings), for a replay that keeps to the pavement where a phone's GPS (good to ~4 m)
+## wanders into the road.
 ##   ROUTE  {"points": [[t, x, z]...]}  (tools/gpx_route.py route)
 ##   SIDES  [[from, to, "left"|"right", "street name"], ...]  seconds of the route: on that
 ##          side of the way walked, along the named street (Hebrew, as the city file has it);
@@ -10,6 +11,10 @@ extends SceneTree
 ## and whether it stands on any road's asphalt, and each crossing's kerb-to-kerb ends.
 ##   ROUTE=... SIDES=... game/streets/tests/run.sh walk_snap 1
 var g: Node
+## how far past the road's edge: the back half of the pavement, as the game's own walkers keep
+## (the parked cars stand on the front half and the street trees at the kerb: at 1.6 m a
+## filmed walk ran through their bumpers and trunks)
+const BACK := 2.0
 
 func _initialize() -> void:
 	_run()
@@ -34,7 +39,7 @@ func _on_pavement(p: Vector2, yaw: float, side: String, street: String) -> Vecto
 				n = -n
 			if side == "right":
 				n = -n
-			at = q + n * (float(r["w"]) * 0.5 + 1.6)
+			at = q + n * (float(r["w"]) * 0.5 + BACK)
 	return at
 
 func _run() -> void:
