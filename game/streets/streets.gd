@@ -3008,6 +3008,17 @@ func _build_passages() -> void:
 				var q: Vector2 = ((lines["in"] as PackedVector2Array)[i] + (lines["in"] as PackedVector2Array)[i + 1]) * 0.5
 				var q2: Vector2 = ((lines["out"] as PackedVector2Array)[i] + (lines["out"] as PackedVector2Array)[i + 1]) * 0.5
 				walled[i] = 1 if (_off_road(q, 1.0) and _push_out(q2, 0.3, false) == Vector2.ZERO) else 0
+				# along all of the piece, not its middle alone: a long piece of a footway that
+				# crosses or ends in a street was clear at its middle and walled right through
+				# the street (city_check: 318 walls on Givatayim's roads, up to 6 m in)
+				if walled[i]:
+					var a_in: Vector2 = (lines["in"] as PackedVector2Array)[i]
+					var b_in: Vector2 = (lines["in"] as PackedVector2Array)[i + 1]
+					var steps := maxi(1, int(ceil(a_in.distance_to(b_in) / 2.0)))
+					for k in range(steps + 1):
+						if not _off_road(a_in.lerp(b_in, float(k) / steps), 0.3):
+							walled[i] = 0
+							break
 			var plaster := (hsh + int(sgn > 0.0)) % 10 < 6
 			var wh := (1.05 + 0.45 * float((hsh / 10) % 10) / 9.0) if plaster else 0.8
 			_garden_wall(fronts, wall, lines, cum, walled, 3.0, total - 3.0, wh, plaster, sgn)
@@ -3838,7 +3849,9 @@ func _garden_fronts(run: PackedVector2Array, hw: float, sgn: float, key: int, fr
 			var to_road := (_along(run, cum, sm) - q).normalized()
 			var c := q + to_road * 0.45
 			var d := (_along(lines["in"], cum, minf(sm + 1.0, total)) - q).normalized()
-			if _mine(c) and _clear_of_posts(c, 1.0):
+			# (off the road: where the wall's line runs into a street the wall is not laid,
+			# and a dropped bike there lay 2.9 m into Shapira -- city_check)
+			if _mine(c) and _clear_of_posts(c, 1.0) and _off_road(c, 0.45):
 				(fronts["dropped"] as Array).append(Transform3D(Basis(Vector3.UP, atan2(-d.y, d.x))
 					* Basis(Vector3.RIGHT, PI * 0.5 - 0.12), _g3(c, KERB_H + 0.05)))
 				_add_post(c, 0.4)

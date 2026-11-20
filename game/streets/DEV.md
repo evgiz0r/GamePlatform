@@ -428,6 +428,11 @@ what became of it:
   piers are off the road); a café table's 0.7 m solid circle reached 0.8 m into the lane
   from a table up against the kerb (the circle now only as big as the room); a cat sat on the
   road by a parked car's nose. Givatayim: 16 posts on the road -> 1; Ashdod 27 -> 0.
+- **Fixed -- walls across streets from the passages between blocks** (another session's work
+  of the same hour, live for a few minutes): each piece of a passage's wall was checked at
+  its middle only, so a long piece of a footway crossing or ending in a street was walled
+  right through it -- 318 walls on Givatayim's roads, 394 on Ashdod's, up to 6 m in, solid
+  to the car. Now checked every 2 m along; and a bike "dropped by the wall" only off the road.
 - **Fixed -- queues cleared slower than real ones.** A trace of the second car (`TRACE=n` in
   queue_start) showed the follow model was not what held it -- what it wanted was always
   above its speed -- but its start: it noticed the car in front only at 0.5 m/s (~0.45 s
