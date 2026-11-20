@@ -25,6 +25,12 @@ it, a post a circle. A bus is 12 m: half its length is the error, and that is a 
 of road. The tests can lean on the same shapes (in a game with scene tests, a helper like
 `bodies.gd` beside them), and the scored run checks bodies every tick, so a new place this
 goes wrong shows up the first time it runs.
+A fix in one place does not reach its siblings: the AI stopped its front at a light's line
+for weeks while the same code for a stop sign still stopped its middle there (a sedan's nose
+2 m into the crossing street, a bus's at the junction's middle). When one stopping or
+measuring rule is fixed, grep for every other place doing the same thing -- each line it
+stops at, each kerb it pulls toward (a delivery van pulled in by the asphalt's room stood in
+the parked cars, which stand a third in the road).
 
 ## Getting a city
 
