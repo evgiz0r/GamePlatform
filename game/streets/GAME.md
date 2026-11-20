@@ -501,6 +501,18 @@ trees and traffic lights where they really are. Daylight, cream apartment blocks
 window per storey, tree-lined streets, white dashed lines, zebra crossings. Every colour
 is a palette role mixed for daylight, so `/look` still reskins it.
 
+The kit's palettes are neon on dark, so the daylight mix keeps only part of each colour:
+asphalt, pavements, kerbs and concrete come out as real greys with a hint of the palette,
+walls as whites, creams and soft pastels, plants as greens (the palette's green leaning
+toward its yellow); signs, kerb paint, lights and the cars keep their colour, as real ones
+do. The light is a warm sun, the shade a sky blue, through a film-like curve (bright walls
+roll off rather than clip). The sky is a photograph -- a sunny day with cumulus -- turned
+so its sun stands where the sunlight comes from; the distance fades into its horizon. At
+night it gives way to the dark night sky.
+
+> 1 2 4 5 6 7 (colours and lighting; a real sky; street-level detail; the bus, the scooter
+> and people in the cars; the people; loading near-first)
+
 ## Where the city comes from: a repeatable process
 
 Nothing about a city is in the code. A city is one JSON file in `cities/`, baked from

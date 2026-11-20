@@ -1037,6 +1037,7 @@ func _warm_up() -> bool:
 	for k in range(4):
 		var d := Vector2(cos(k * PI * 0.5), sin(k * PI * 0.5))
 		look_from(Vector3(spot.x - d.x * 20.0, gy + 12.0, spot.y - d.y * 20.0), Vector3(spot.x + d.x * 40.0, gy, spot.y + d.y * 40.0))
+		_sky_follow()
 		await get_tree().process_frame
 		if not is_inside_tree():
 			return false
@@ -1434,6 +1435,7 @@ func _build_world() -> bool:
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
 	_set_quality(QUALITY_WEB if OS.has_feature("web") else QUALITY.size() - 1)
 	sun.rotation_degrees = Vector3(-50, -28, 0)
+	_build_sky_dome()
 	cam.near = 0.3
 	cam.far = 2200.0
 	var k := 1.0 / float(_city_data.get("scale", 10))
@@ -4366,8 +4368,9 @@ func _car_paints() -> Array:
 	var silver := ink.lerp(alt, 0.32)
 	var grey := alt.lerp(ink, 0.22)
 	var black := bg.lerp(alt, 0.35)
-	return [white, white, white, white, silver, silver, silver, grey, grey, black, black,
+	var out: Array = [white, white, white, white, silver, silver, silver, grey, grey, black, black,
 		Palette.col("player").lerp(bg, 0.55), Palette.col("hazard").lerp(bg, 0.4), Palette.col("warn").lerp(ink, 0.5).lerp(alt, 0.2)]
+	return out.map(func(c: Color) -> Color: return _natural(c, 0.6))
 
 ## parked cars and traffic: mostly sedans and hatchbacks, some SUVs, the odd van
 const CAR_MIX := ["sedan", "sedan", "sedan", "hatch", "hatch", "hatch", "suv", "suv", "van"]
@@ -4496,9 +4499,9 @@ func _car_material() -> ShaderMaterial:
 		m.set_shader_parameter("street", _tone["asphalt"])
 		m.set_shader_parameter("well", (_tone["tyre"] as Color).darkened(0.55))
 		if env != null and env.sky != null:
-			var sk := env.sky.sky_material as ProceduralSkyMaterial
-			m.set_shader_parameter("sky_top", sk.sky_top_color)
-			m.set_shader_parameter("sky_hor", sk.sky_horizon_color)
+			var rs := _sky_reflect()
+			m.set_shader_parameter("sky_top", rs[0])
+			m.set_shader_parameter("sky_hor", rs[1])
 		if m == _player_car_mat:
 			m.set_shader_parameter("fixed_paint", 1.0)
 			m.set_shader_parameter("paint_col", _tone[String(m.get_meta("paint", "paint"))])
@@ -6843,7 +6846,120 @@ func _apply_signals() -> void:
 			m.emission = col
 			m.emission_energy_multiplier = 2.2
 
+## ---- the sky: a photograph -----------------------------------------------------------------
+## By day the sky is a photo (textures/sky_day.jpg: the upper half of Poly Haven's CC0
+## "kloofendal_48d_partly_cloudy_puresky", tonemapped by textures/hdr_sky.py), on a dome that
+## follows the camera, drawn unlit and through no fog. It is turned so the sun in it stands
+## where the sunlight comes from, and fades into the fog at the horizon. The shell keeps its
+## own procedural sky behind it (it retints that on a palette change), which shows at night,
+## when the dome is hidden. The palette's sky tone tints it lightly, as it does everything.
+const SKY_SUN_U := 0.595             ## where the photo's sun is, across it (0..1)
+const SKY_MEAN := Vector3(0.626, 0.686, 0.792)      ## its average colour, as stored
+const SKY_HORIZON := Vector3(0.742, 0.758, 0.801)   ## its colour along the horizon
+const SKY_SHADER := """
+shader_type spatial;
+render_mode unshaded, fog_disabled, cull_front, shadows_disabled;
+uniform sampler2D photo : filter_linear, repeat_enable;
+uniform vec3 tint = vec3(1.0);
+uniform vec3 horizon = vec3(0.75);
+uniform float turn = 0.0;
+varying vec3 dir;
+void vertex() { dir = VERTEX; }
+void fragment() {
+	vec3 d = normalize(dir);
+	float up = clamp(d.y, 0.0, 1.0);
+	float u = atan(d.x, -d.z) / 6.2831853 + 0.5 + turn;
+	float v = 1.0 - asin(up) / 1.5707963;
+	vec3 c = texture(photo, vec2(u, v)).rgb;
+	ALBEDO = mix(horizon, c * tint, smoothstep(0.0, 0.07, up));
+}
+"""
+var _sky_dome: MeshInstance3D
+var _sky_mat: ShaderMaterial
+
+## the palette's say in the sky: its sky tone's hue (not its brightness) over the photo's
+func _sky_tint() -> Vector3:
+	var t: Color = _tone.get("sky", Color(0.6, 0.7, 0.8))
+	var lt := maxf(t.get_luminance(), 0.01)
+	var m := SKY_MEAN
+	var lm := m.dot(Vector3(0.2126, 0.7152, 0.0722))
+	var ratio := Vector3(t.r / lt, t.g / lt, t.b / lt) / (m / lm)
+	return Vector3.ONE.lerp(ratio, 0.25)
+
+## one of the photo's colours, tinted as the dome draws it
+func _sky_col(c: Vector3) -> Color:
+	var t := _sky_tint()
+	return Color(c.x * t.x, c.y * t.y, c.z * t.z)
+
+## what the glass and the paint reflect: [overhead, horizon], the photo's by day
+func _sky_reflect() -> Array:
+	if _night or _sky_dome == null:
+		var sk := env.sky.sky_material as ProceduralSkyMaterial
+		return [sk.sky_top_color, sk.sky_horizon_color]
+	return [_sky_col(SKY_MEAN), _sky_col(SKY_HORIZON)]
+
+func _build_sky_dome() -> void:
+	var tex := load(TEX_DIR + "sky_day.jpg") as Texture2D
+	if tex == null:
+		return
+	_sky_mat = ShaderMaterial.new()
+	var sh := Shader.new()
+	sh.code = SKY_SHADER
+	_sky_mat.shader = sh
+	_sky_mat.set_shader_parameter("photo", tex)
+	var mesh := SphereMesh.new()
+	mesh.radius = 1900.0
+	mesh.height = 1900.0
+	mesh.is_hemisphere = true
+	mesh.radial_segments = 32
+	mesh.rings = 10
+	mesh.material = _sky_mat
+	_sky_dome = MeshInstance3D.new()
+	_sky_dome.mesh = mesh
+	_sky_dome.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_sky_dome.extra_cull_margin = 4000.0
+	world.add_child(_sky_dome)
+	_retint_sky_dome()
+
+## the dome round the camera, wherever it went this frame
+func _sky_follow() -> void:
+	if _sky_dome != null:
+		_sky_dome.global_position = cam.global_position
+
+func _retint_sky_dome() -> void:
+	if _sky_dome == null:
+		return
+	_sky_dome.visible = not _night
+	var t := _sky_tint()
+	_sky_mat.set_shader_parameter("tint", t)
+	_sky_mat.set_shader_parameter("horizon", Vector3(SKY_HORIZON.x * t.x, SKY_HORIZON.y * t.y, SKY_HORIZON.z * t.z))
+	# turn the photo so its sun is where the light comes from (the light shines down its -Z)
+	var to_sun := sun.global_transform.basis.z if sun.is_inside_tree() else Basis.from_euler(sun.rotation).z
+	_sky_mat.set_shader_parameter("turn", SKY_SUN_U - (atan2(to_sun.x, -to_sun.z) / TAU + 0.5))
+
 ## ---- look: every colour is a palette role, mixed for daylight ---------------------------
+## The kit's palettes are neon on dark. A street in daylight is greys, creams and greens, so
+## each tone, still mixed from the palette's roles (so /look still reskins it), keeps only
+## part of its colour (NATURAL: the share of its saturation kept, the rest going to its own
+## brightness): asphalt, pavements, kerbs and concrete nearly none, walls about half, plants
+## more -- and plants lean from the palette's "friend" toward its "warn", which takes a mint
+## to a grass green. Signs, kerb paint, lights and the cars' colours keep theirs: real ones
+## are bright.
+const NATURAL := {
+	"ground": 0.3, "rock": 0.3, "path": 0.15, "asphalt": 0.08, "parking": 0.08, "plaza": 0.2,
+	"grass": 0.6, "pitch": 0.6, "wood": 0.6, "leaf": 0.62, "bush": 0.6, "water": 0.5, "sand": 0.6,
+	"mark": 0.3, "wall": 0.5, "wall2": 0.45, "wall3": 0.6, "wall4": 0.6, "wall5": 0.5, "wall6": 0.3,
+	"glass": 0.5, "glass2": 0.5, "glass3": 0.5, "glass4": 0.5, "shutter": 0.3, "recess": 0.3,
+	"roof": 0.2, "trunk": 0.45, "pole": 0.2, "haze": 0.45, "sky": 0.6, "board": 0.4, "solar": 0.5,
+	"tank": 0.3, "furniture": 0.3, "pavement": 0.2, "kerb": 0.15, "stonewall": 0.45, "roofroom": 0.4,
+	"gable": 0.5, "carglass": 0.4, "cartrim": 0.2, "tyre": 0.15, "rim": 0.2, "concrete": 0.15,
+	"insulator": 0.3, "trafo": 0.4, "cable": 0.2, "railing": 0.3, "brick": 0.7, "rubber": 0.6,
+}
+
+## a palette colour with only `keep` of its saturation, the rest toward its own brightness
+static func _natural(c: Color, keep: float) -> Color:
+	var l := c.get_luminance()
+	return Color(lerpf(l, c.r, keep), lerpf(l, c.g, keep), lerpf(l, c.b, keep), c.a)
 
 func _tones() -> void:
 	var bg := Palette.col("bg")
@@ -6854,6 +6970,7 @@ func _tones() -> void:
 	var wn := Palette.col("warn")
 	var ac := Palette.col("accent")
 	var pz := Palette.col("prize")
+	var veg := fr.lerp(wn, 0.3)   # what grows: the palette's green, leaning toward its yellow
 	_tone = {
 		"ground": alt.lerp(ink, 0.42),
 		"rock": alt.lerp(ink, 0.3).lerp(wn, 0.2),
@@ -6861,9 +6978,9 @@ func _tones() -> void:
 		"asphalt": alt.lerp(ink, 0.2),
 		"parking": alt.lerp(ink, 0.32),
 		"plaza": alt.lerp(ink, 0.58).lerp(wn, 0.08),
-		"grass": fr.lerp(bg, 0.48),
-		"pitch": fr.lerp(bg, 0.36),
-		"wood": fr.lerp(bg, 0.6),
+		"grass": veg.lerp(bg, 0.48),
+		"pitch": veg.lerp(bg, 0.36),
+		"wood": veg.lerp(bg, 0.6),
 		"water": pl.lerp(bg, 0.42),
 		"mark": ink,
 		"wall": ink.lerp(wn, 0.1),
@@ -6879,7 +6996,7 @@ func _tones() -> void:
 		"shutter": ink.lerp(alt, 0.22),
 		"recess": alt.lerp(bg, 0.25),
 		"roof": ink.lerp(alt, 0.42),
-		"leaf": fr.lerp(bg, 0.52),
+		"leaf": veg.lerp(bg, 0.52),
 		"trunk": alt.lerp(wn, 0.3),
 		"pole": alt.lerp(ink, 0.3),
 		"sky": pl.lerp(pz, 0.35).lerp(bg, 0.32),
@@ -6895,7 +7012,7 @@ func _tones() -> void:
 		"pavement": ink.lerp(alt, 0.3).lerp(wn, 0.05),
 		"kerb": ink.lerp(alt, 0.45),
 		"stonewall": ink.lerp(wn, 0.3).lerp(alt, 0.2),
-		"bush": fr.lerp(bg, 0.58),
+		"bush": veg.lerp(bg, 0.58),
 		"roofroom": ink.lerp(wn, 0.12).lerp(alt, 0.1),
 		"gable": ink.lerp(wn, 0.15),
 		"carglass": bg.lerp(pl, 0.12),
@@ -6920,6 +7037,9 @@ func _tones() -> void:
 		"fencegreen": fr.lerp(bg, 0.55),
 		"railing": ink.lerp(alt, 0.12),
 	}
+	for k: String in NATURAL:
+		if _tone.has(k):
+			_tone[k] = _natural(_tone[k], float(NATURAL[k]))
 
 func _retint_city() -> void:
 	_tones()
@@ -6943,24 +7063,31 @@ func _retint_city() -> void:
 		_wall_mat.set_shader_parameter("shutter", _tone["shutter"])
 		_wall_mat.set_shader_parameter("dark", _tone["recess"])
 	if env != null:
+		# by day the photo sky (_sky_dome) sets the haze: the fog takes its horizon, so far
+		# streets melt into the sky, and the shade its blue
+		var hor := _sky_col(SKY_HORIZON)
 		var sky := env.sky.sky_material as ProceduralSkyMaterial
-		sky.sky_top_color = _tone["sky"]
-		sky.sky_horizon_color = _tone["haze"]
-		sky.ground_horizon_color = _tone["haze"]
+		sky.sky_top_color = _sky_col(SKY_MEAN)
+		sky.sky_horizon_color = hor
+		sky.ground_horizon_color = hor
 		sky.ground_bottom_color = _tone["ground"]
 		sky.sky_curve = 0.12
-		env.background_color = _tone["haze"]
+		env.background_color = hor
 		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-		env.ambient_light_color = _tone["haze"]
+		env.ambient_light_color = _sky_col(SKY_MEAN).lerp(_tone["haze"], 0.4)
 		env.ambient_light_energy = 0.55
 		env.fog_enabled = true
-		env.fog_light_color = _tone["haze"]
+		env.fog_light_color = hor
 		env.fog_density = 0.0018
 		env.fog_sky_affect = 0.0
+		# a film-like curve: the bright walls roll off instead of clipping, the shade deepens
+		env.tonemap_mode = Environment.TONE_MAPPER_ACES
+		env.tonemap_exposure = 1.0
 	if sun != null:
-		sun.light_color = Palette.col("ink").lerp(Palette.col("warn"), 0.12)
-		sun.light_energy = 1.05
+		sun.light_color = Palette.col("ink").lerp(Palette.col("warn"), 0.22)
+		sun.light_energy = 1.1
 		sun.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_AND_SKY
+	_retint_sky_dome()
 	if _wall_mat != null:
 		_wall_mat.set_shader_parameter("lit", _tone["lit"])
 		_wall_mat.set_shader_parameter("lit_cool", _tone["litcool"])
@@ -6999,9 +7126,9 @@ func _retint_city() -> void:
 	if _car_shader_mat != null:   # the cars' reflections, lamps and wells
 		_car_material()
 	if _wall_mat != null and env != null:   # what the windows reflect: the sky as it is now
-		var sk := env.sky.sky_material as ProceduralSkyMaterial
-		_wall_mat.set_shader_parameter("sky_top", sk.sky_top_color)
-		_wall_mat.set_shader_parameter("sky_hor", sk.sky_horizon_color)
+		var rs := _sky_reflect()
+		_wall_mat.set_shader_parameter("sky_top", rs[0])
+		_wall_mat.set_shader_parameter("sky_hor", rs[1])
 	_apply_signals_safe()
 	_retint_kerbs()
 	_retint_ground()
@@ -7880,6 +8007,7 @@ func _frame() -> void:
 		_traffic.draw(f)
 		_p("traffic draw")
 		_foot_camera(dt)
+		_sky_follow()
 		_tick_hud()
 		_p("camera, hud")
 		return
@@ -7887,6 +8015,7 @@ func _frame() -> void:
 	_traffic.draw(f)
 	_p("traffic draw")
 	_camera(dt, _view_pos, _view_yaw)
+	_sky_follow()
 	_tick_hud()
 	_p("camera, hud")
 

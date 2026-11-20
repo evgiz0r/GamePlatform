@@ -28,3 +28,10 @@ To swap one: download the same id's `diff_1k.jpg` and `nor_gl_1k.jpg`, keep the 
 settings (VRAM compressed, mipmaps on, normal maps flagged and capped at 512), and put its
 average colour in `TEX_MEAN` in `streets.gd`: the mean of the file's stored (sRGB) values,
 0-1 per channel. The shaders divide by it, so a wrong average tints the whole surface.
+
+`sky_day.jpg` is the sky half of Poly Haven's CC0 HDRI
+[kloofendal_48d_partly_cloudy_puresky](https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky)
+(the 4k .hdr), tonemapped (ACES) and cut to 4096x1024 by `hdr_sky.py`:
+`python3 hdr_sky.py <the .hdr> sky_day.jpg 4096`. It prints where the sun is across the
+photo (`SKY_SUN_U`) and its average and horizon colours (`SKY_MEAN`, `SKY_HORIZON`) for
+`streets.gd`. Imported lossy (WebP), no mipmaps: it is only ever the background.
