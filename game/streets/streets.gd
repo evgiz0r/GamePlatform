@@ -854,6 +854,28 @@ var _hgrid := PackedFloat32Array()   ## ground height (m above the lowest point)
 var _steep := false                  ## some of the ground is too steep to drive up (see STEEP)
 var _made_up := false                ## the city file is invented (tools/fake_city.py), not OSM's
 var _credits: Array = []              ## other sources the city file took data from, to credit on screen beside OSM
+
+## The towns' own data in one credit, what and then whose: "building heights, trees © the
+## Tel Aviv-Yafo, Givatayim and Ramat Gan municipalities" (a line for each of five ran off
+## the screen)
+func _credit_line(credits: Array) -> String:
+	var what: Array = []
+	var who: Array = []
+	for c in credits:
+		var parts := String(c).split(" © ", true, 1)
+		var w := "trees" if parts[0].contains("tree") else ("building heights" if parts[0].begins_with("building") else parts[0])
+		if not what.has(w):
+			what.append(w)
+		if parts.size() > 1 and not who.has(parts[1]):
+			who.append(parts[1])
+	var towns: Array = []
+	for o: String in who:
+		if o.ends_with(" Municipality"):
+			towns.append(o.trim_suffix(" Municipality"))
+	var owners := ", ".join(who)
+	if who.size() > 1 and towns.size() == who.size():
+		owners = "the %s and %s municipalities" % [", ".join(towns.slice(0, -1)), towns[-1]]
+	return ", ".join(what) + " © " + owners
 var _mtn_from := 100000.0            ## the made-up town: above this height the land is mountain (see GROUND_SHADER)
 var _hx0 := 0.0
 var _hz0 := 0.0
@@ -1585,6 +1607,8 @@ func _drop_buildings(bdata: Array, drop: Array) -> void:
 func _load_city(id: String) -> bool:
 	var dir: String = get_script().resource_path.get_base_dir() + "/cities/"
 	var path := dir + id + ".json"
+	if OS.get_environment("STREETS_CITY_FILE") != "":   # a test's other copy (before and after a re-bake)
+		path = OS.get_environment("STREETS_CITY_FILE")
 	if not FileAccess.file_exists(path):
 		# not baked yet: drive whichever city is there rather than nothing
 		var any := ""
@@ -2205,6 +2229,13 @@ func _build_setup(t0: int) -> void:
 	var tr: Array = _city_data.get("trees", [])
 	for i in range(0, tr.size() - 1, 2):
 		_bucket(_tile_trees, _tile_of(Vector2(tr[i], tr[i + 1]) * k), i)
+	# where a town's own map of its trees covers (the city file's tree_surveys): its street
+	# trees are all mapped there (1), or every tree is, from the air (2) -- none made up
+	for ts: Dictionary in _city_data.get("tree_surveys", []):
+		var cover := 2 if int(ts.get("all", 0)) == 1 else 1
+		for t in range(int(ts["from"]), int(ts["to"])):
+			var tc := _cell(Vector2(tr[2 * t], tr[2 * t + 1]) * k, TREE_COVER)
+			_tree_cover[tc] = maxi(int(_tree_cover.get(tc, 0)), cover)
 	var pois: Array = _city_data.get("pois", [])
 	for i in range(pois.size()):
 		_bucket(_tile_pois, _tile_of(Vector2(pois[i][0], pois[i][1]) * k), i)
@@ -5846,17 +5877,50 @@ func _build_trees() -> void:
 	var pits: Array = []    # or a square of bare earth
 	var k := 1.0 / float(_city_data.get("scale", 10))
 	var tr: Array = _city_data.get("trees", [])
+	var info: Array = _city_data.get("tree_info", [])   # [form, crown dm] a tree, from a town's own map
+	var forms: Array = _city_data.get("tree_forms", [])
+	var fixed := {}     # index into spots -> the kind its species gives it
+	var mapped := 0
+	var look := String(_place.get("look", ""))
 	for i: int in _tile_trees.get(_tile, []):
 		var p := Vector2(tr[i], tr[i + 1]) * k
-		if _tree_ok(p, 2.0):
-			_add_post(p, 0.3)
-			rng.seed = _hash_i(p)
-			spots.append(Vector3(p.x, p.y, rng.randf_range(0.85, 1.3)))
+		var fi := int(info[i]) if i + 1 < info.size() else -1
+		var cr := float(info[i + 1]) * 0.1 if i + 1 < info.size() else 0.0
+		if not _tree_ok(p, 1.5 if fi >= 0 or cr > 0.0 else 2.0):
+			continue
+		_add_post(p, 0.3)
+		rng.seed = _hash_i(p)
+		var sc := rng.randf_range(0.85, 1.3)
+		var kind := String(forms[fi]) if fi >= 0 and fi < forms.size() and TREE_KINDS.has(forms[fi]) else ""
+		if cr > 0.0:   # a crown mapped from the air: as big as it, and a kind that fits its size
+			if kind == "":
+				kind = _crown_kind(cr, rng.randf(), look)
+			var spec: Array = TREE_KINDS[kind]
+			if String(spec[0]) != "ptrunk":
+				sc = clampf(cr / (spec[3] as Vector3).x, 0.45, 2.4)
+		if kind != "":
+			fixed[spots.size()] = kind
+		# on the pavement: an iron grate round the trunk, or a square of bare earth, as the
+		# made-up street rows have (they are not made where a town's map covers)
+		if fi >= 0 or cr > 0.0:
+			var hit := _nearest_seg(p, 6.0, true)
+			if not hit.is_empty() and float(hit["edge"]) < 3.0 and TREE_ROADS.has(_roads[int(hit["road"])]["k"]):
+				var rp: PackedVector2Array = _roads[int(hit["road"])]["pts"]
+				var dd := rp[int(hit["seg"]) + 1] - rp[int(hit["seg"])]
+				var gxf := Transform3D(Basis(Vector3.UP, atan2(dd.x, dd.y)), Vector3(p.x, _h(p) + KERB_H + 0.006, p.y))
+				if look == "med" and posmod(_hash_i(p * 5.0), 10) < 4:
+					pits.append(gxf)
+				else:
+					grates.append(Transform3D(Basis(Vector3.UP, sc * 9.0), gxf.origin))
+		spots.append(Vector3(p.x, p.y, sc))
+		mapped += 1
+	_tally("trees_mapped", mapped)
+	_trees_mapped += mapped
 	# a row along each pavement of a residential street (the road's own random numbers, so
 	# every square it crosses plants it alike, each its own stretch)
 	for ri: int in _tile_roads.get(_tile, []):
 		var r: Dictionary = _roads[ri]
-		if not TREE_ROADS.has(r["k"]) or _trees_made + spots.size() >= MAX_TREES:
+		if not TREE_ROADS.has(r["k"]) or _trees_made - _trees_mapped + spots.size() - mapped >= MAX_TREES:
 			continue
 		if _over():
 			await _pause()
@@ -5886,9 +5950,10 @@ func _build_trees() -> void:
 					var sc := rng.randf_range(0.8, 1.25)
 					# (and not on a rounded corner's asphalt: a street's trees, spaced along it,
 					# landed on the next street's corner -- city_check)
-					if _mine(p) and _tree_ok(p, 5.0) and not _in_corner_fill(p, 0.15):
+					if _mine(p) and _tree_covered(p) == 0 and _tree_ok(p, 5.0) and not _in_corner_fill(p, 0.15):
 						_add_post(p, 0.3)
 						spots.append(Vector3(p.x, p.y, sc))
+						_tally("trees_made_up_rows", 1)
 						if r.get("setts", false):
 							_sett_fan(setts, p, side * sgn)
 							if last.has(sgn) and (last[sgn] as Vector2).distance_to(p) < TREE_GAP * 1.8:
@@ -5909,7 +5974,7 @@ func _build_trees() -> void:
 	for kind: String in ["park", "grass", "wood"]:
 		for ring: PackedVector2Array in _rings_near(kind):
 			var area := _area(ring)
-			if area < 500.0 or _trees_made + spots.size() >= MAX_TREES + MAX_FOREST:
+			if area < 500.0 or _trees_made - _trees_mapped + spots.size() - mapped >= MAX_TREES + MAX_FOREST:
 				continue
 			var box := _bld_box_of(ring)
 			var part := box.intersection(sq)
@@ -5919,14 +5984,14 @@ func _build_trees() -> void:
 			var want := roundi(mini(int(area / per), 2500) * part.get_area() / maxf(box.get_area(), 1.0))
 			rng.seed = _hash_i(ring[0]) + _tile.x * 92821 + _tile.y * 68917
 			for _i in range(want * 2):
-				if want <= 0 or _trees_made + spots.size() >= MAX_TREES + MAX_FOREST:
+				if want <= 0 or _trees_made - _trees_mapped + spots.size() - mapped >= MAX_TREES + MAX_FOREST:
 					break
 				if _over():
 					await _pause()
 				var p := Vector2(rng.randf_range(part.position.x, part.end.x), rng.randf_range(part.position.y, part.end.y))
 				var sc := rng.randf_range(0.8, 1.35)
-				if not _mine(p) or not Geometry2D.is_point_in_polygon(p, ring) or not _tree_ok(p, 4.5 if kind == "wood" else 7.0) \
-						or _in_corner_fill(p, 0.15):
+				if not _mine(p) or not Geometry2D.is_point_in_polygon(p, ring) or _tree_covered(p) >= 2 \
+						or not _tree_ok(p, 4.5 if kind == "wood" else 7.0) or _in_corner_fill(p, 0.15):
 					continue
 				_add_post(p, 0.3)
 				if kind == "wood":
@@ -5965,7 +6030,7 @@ func _build_trees() -> void:
 				if Geometry2D.is_point_in_polygon(p, _no_rings[ri]):
 					blocked = true
 					break
-			if blocked or not _off_road(p, 5.0) or not _tree_ok(p, 6.0):
+			if blocked or _tree_covered(p) >= 2 or not _off_road(p, 5.0) or not _tree_ok(p, 6.0):
 				continue
 			_add_post(p, 0.3)
 			forest[spots.size()] = true
@@ -6018,7 +6083,6 @@ func _build_trees() -> void:
 	_add_mesh(setts, _vc_mat(), false, DETAIL_RANGE)
 	if spots.is_empty():
 		return
-	var look := String(_place.get("look", ""))
 	var parts := {"trunk": [], "crown": [], "ptrunk": [], "fronds": [], "ftrunk": [], "cone": []}
 	var colours := {"trunk": [], "crown": [], "ptrunk": [], "fronds": [], "ftrunk": [], "cone": []}
 	var put := func(part: String, xf: Transform3D, col: Color) -> void:
@@ -6032,6 +6096,8 @@ func _build_trees() -> void:
 		var spin := Basis(Vector3.UP, rng.randf() * TAU)
 		var g := rng.randf_range(0.85, 1.1)
 		var kind := _tree_kind(look, forest.has(si), rng.randf())
+		if fixed.has(si):
+			kind = fixed[si]
 		if mtn.has(si):
 			var mr := rng.randf()
 			kind = "pine" if mr < 0.66 else ("cypress" if mr < 0.9 else "olive")
@@ -6067,6 +6133,32 @@ func _build_trees() -> void:
 		await _chunked_paced(_tree_meshes[part], parts[part], reach, colours[part], null, true)
 
 var _tree_meshes := {}
+const TREE_COVER := 40.0             ## a town's tree map covers within 40-80 m of its trees (cells this big)
+var _tree_cover := {}                ## TREE_COVER cell -> 1 its street trees are mapped, 2 every tree is
+var _trees_mapped := 0               ## trees from the city file (they do not count toward the caps)
+
+## How much of p's trees a town's own map has: 0 none (make them up), 1 the street trees,
+## 2 every tree (mapped from the air: yards and parks too)
+func _tree_covered(p: Vector2) -> int:
+	var c := _cell(p, TREE_COVER)
+	var best := 0
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			best = maxi(best, int(_tree_cover.get(c + Vector2i(dx, dz), 0)))
+	return best
+
+## The kind of a tree mapped from the air by its crown's radius alone (m): the big ones the
+## old ficus and eucalyptus, the small ones young trees and olives, between them the
+## street's usual mix
+func _crown_kind(r: float, x: float, look: String) -> String:
+	if look == "north":
+		return _tree_kind(look, false, x)
+	if r >= 5.5:
+		return "ficus" if x < 0.7 else "eucalyptus"
+	if r < 1.3:
+		return "olive" if x < 0.4 else "round"
+	return _tree_kind(look, false, x)
+
 const MTN_TREES := 3000              ## the made-up town's mountain woods, all told
 var _mtn_made := 0
 var _trees_made := 0
@@ -20504,8 +20596,8 @@ func _build_hud() -> void:
 	_osm_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_osm_lbl.position = Vector2(8, 347)
 	_osm_lbl.text = "a made-up town: not a real place" if _made_up else "map data © OpenStreetMap contributors"
-	for c in _credits:   # e.g. a town's own survey of its buildings' heights (tools/osm_city.py)
-		_osm_lbl.text += " · " + String(c)
+	if not _credits.is_empty():   # a town's own surveys of its buildings and trees (tools/osm_city.py)
+		_osm_lbl.text += " · " + _credit_line(_credits)
 	_osm_lbl.modulate.a = 0.7
 	_map = Control.new()
 	_map.position = Vector2(8, 224)

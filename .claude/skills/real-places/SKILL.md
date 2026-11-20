@@ -151,6 +151,20 @@ the parked cars, which stand a third in the road).
     so read through it -- an evenly spread sample when only shares are needed. gov.il's
     pages are rendered in the browser and refuse automated readers. gtfs.mot.gov.il serves
     its files to a plain download.
+- **A town's map of its trees comes in two kinds, and each covers a different part.** A
+  street-tree inventory (each public tree's place and species, no size) says nothing of
+  yards; crowns traced from the air (every tree, yards and parks too, only a centre and a
+  radius) say nothing of species. So where a map covers, stop making up only what it
+  covers: no invented street rows within reach of an inventory's trees, and no invented
+  street, park or open-land trees within reach of an aerial one -- but keep making up the
+  yards' trees an inventory leaves out. Coverage by distance to the map's own trees (40-80
+  m) needs no town boundary and does not bleed far into the next town. An aerial "crown"
+  far bigger than a tree (here up to 54 m across) is a grove's canopy: split it into
+  trees of a usual size, or one giant ball stands over a park. Species to a handful of
+  forms (fan palm, date palm, ficus, feathery, round, olive, pine, cypress, eucalyptus) by
+  a word in the local name is enough; the long tail (hundreds of names, most a few trees)
+  falls to "round". Count the real trees apart from the made-up ones in any cap on how many
+  are drawn, or the real ones use it up and the next town's streets go bare.
 - **Government open data may refuse the cloud.** A national portal's API answered, but
   its files came from a CDN host that refused the container even once the environment
   allowed both hosts (a CloudFront 403 page instead of the file: likely by country). Do not

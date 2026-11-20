@@ -65,6 +65,13 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
              lies at its shore's lowest point)
   barriers   [[[x, z, x, z, ...], "fence"|"hedge"], ...]   fences and hedges as lines
   trees      [x, z, ...]
+  tree_info  [form, crown, ...]   beside `trees`, two numbers a tree: its form, an index into
+             `tree_forms` ("ficus", "fan" (palm), "date" (palm), "acacia" (feathery),
+             "round", "olive", "pine", "cypress", "eucalyptus"; -1 not known), and its
+             crown's radius in decimetres (0 not known). Only where a town's own map of its
+             trees was taken (see TREE_SURVEYS); OSM's trees are [-1, 0]
+  tree_surveys [{id, all, from, to}]   the trees [from, to) each such map brought; all: 1 it
+             maps every tree (from the air: yards and parks too), 0 the street trees only
   addrs      [[x, z, street, number], ...]   address points not on a building outline
   stops      [[x, z, name], ...]   bus stops
   pois       [[x, z, kind, name, name_en], ...]   shops, restaurants, schools... (kind:
@@ -1648,6 +1655,9 @@ def bake(raw, name, args):
                 if feats:
                     survey_apply(out["buildings"], P, s, feats, stats)
                     out.setdefault("credits", []).append(s["credit"])
+        if args.out:
+            for c in tree_surveys_apply(out, P, os.path.join(os.path.dirname(os.path.abspath(args.out)), "data")):
+                out.setdefault("credits", []).append(c)
 
     if not args.no_terrain:
         try:
@@ -1675,6 +1685,108 @@ def bake(raw, name, args):
     return out
 
 
+# ---- a town's own map of its trees ---------------------------------------------------------
+# Read only from a saved extract beside the city file (data/<file>, fetched by hand where the
+# town's site answers): each tree's place, and its species or the size of its crown as mapped
+# from the air. They join OSM's trees -- OSM's own within 3 m of one are taken as the same tree
+# and dropped -- with `tree_info` beside them, and `tree_surveys` says which trees each survey
+# brought and whether it maps every tree ("all": from the air, so yards and parks too) or the
+# street trees alone (a game should not make up its own where one covers).
+TREE_SURVEYS = [
+    {"id": "tel_aviv_trees", "file": "tel_aviv_trees.json", "rows": "rows", "all": False,
+     "credit": "street trees © Tel Aviv-Yafo Municipality"},   # [lon, lat, species, latin, where]
+    {"id": "givatayim_trees", "file": "givatayim_trees.json", "rows": "trees", "all": True,
+     "credit": "trees © Givatayim Municipality"},              # [lon, lat, crown radius m]
+]
+# The form a species grows into, by a word in its Hebrew name (the first that matches; else
+# "round": a bottle tree, a hackberry, a lagerstroemia...). Feathery crowns (jacaranda,
+# rosewood, melia, tipu, tamarisk, flamboyant, pepper tree) are "acacia".
+TREE_FORMS = [("וושינגטוניה", "fan"), ("פיקוס", "ficus"), ("תמר", "date"), ("דקל", "date"),
+              ("ציקס", "date"), ("צייקס", "date"), ("ברוש", "cypress"), ("תויה", "cypress"),
+              ("אורן", "pine"), ("קזוארינה", "pine"), ("קוזהרינה", "pine"),
+              ("אקליפטוס", "eucalyptus"), ("זית", "olive"), ("חרוב", "olive"), ("הדר", "olive"),
+              ("לימון", "olive"), ("סיגלון", "acacia"), ("סיסם", "acacia"), ("מילה", "acacia"),
+              ("אזדרכת", "acacia"), ("מכנף", "acacia"), ("אשל", "acacia"), ("צאלון", "acacia"),
+              ("שיטה", "acacia"), ("אלביציה", "acacia"), ("פלפלון", "acacia"), ("פלפילון", "acacia")]
+CROWN_SPLIT = 7.0   # a crown wider than this (m, radius) is a grove's canopy: several trees
+
+
+def tree_surveys_apply(out, P, data_dir):
+    """Adds the tree surveys whose extracts are in data_dir to the city's trees; returns the
+    credits of those that brought any. Applied again, it first takes its earlier trees out."""
+    x0, z0, x1, z1 = out["bounds"]
+    trees, info = list(out.get("trees", [])), list(out.get("tree_info") or [])
+    if out.get("tree_surveys"):
+        n0 = min(s["from"] for s in out["tree_surveys"])
+        trees, info = trees[:2 * n0], info[:2 * n0]
+    if len(info) != len(trees):
+        info = [-1, 0] * (len(trees) // 2)
+    forms = list(out.get("tree_forms") or [])
+
+    def form(species):
+        name = next((f for w, f in TREE_FORMS if w in (species or "")), "round")
+        if name not in forms:
+            forms.append(name)
+        return forms.index(name)
+
+    got, surveys, credits = [], [], []
+    for s in TREE_SURVEYS:
+        path = os.path.join(data_dir, s["file"]) if data_dir else None
+        if not path or not os.path.exists(path):
+            continue
+        with open(path, encoding="utf-8") as f:
+            rows = json.load(f)[s["rows"]]
+        start, split = len(got), 0
+        for row in rows:
+            x, z = P(row[1], row[0])
+            if not (x0 <= x <= x1 and z0 <= z <= z1):
+                continue
+            if not s["all"]:
+                got.append((x, z, form(row[2]), 0.0))
+                continue
+            r = float(row[2] or 0.0)
+            if r <= CROWN_SPLIT:
+                got.append((x, z, -1, r))
+                continue
+            # a canopy: trees of ~4.5 m crowns, sown evenly over 80% of it (a sunflower)
+            n = max(2, min(60, round(0.7 * (r / 4.5) ** 2)))
+            split += 1
+            for i in range(n):
+                d, a = 0.8 * r * math.sqrt((i + 0.5) / n), i * 2.39996
+                got.append((x + d * math.cos(a), z + d * math.sin(a), -1, 4.5))
+        if len(got) > start:
+            surveys.append({"id": s["id"], "all": 1 if s["all"] else 0,
+                            "from": len(trees) // 2 + start, "to": len(trees) // 2 + len(got)})
+            credits.append(s["credit"])
+            log(f"trees {s['id']}: {len(got) - start} in the box"
+                + (f" ({split} canopies split into trees)" if split else ""))
+    if not got:
+        return []
+    # OSM's trees a survey maps too (within 3 m of one of its trees)
+    near = {}
+    for x, z, _, _ in got:
+        near.setdefault((int(x // 3), int(z // 3)), []).append((x, z))
+    kt, ki, dropped = [], [], 0
+    for i in range(len(trees) // 2):
+        x, z = trees[2 * i] / SCALE, trees[2 * i + 1] / SCALE
+        cx, cz = int(x // 3), int(z // 3)
+        if any((x - a) ** 2 + (z - b) ** 2 < 9.0 for gx in (cx - 1, cx, cx + 1)
+               for gz in (cz - 1, cz, cz + 1) for a, b in near.get((gx, gz), ())):
+            dropped += 1
+            continue
+        kt += trees[2 * i:2 * i + 2]
+        ki += info[2 * i:2 * i + 2]
+    for s in surveys:   # (the survey trees follow the OSM ones kept)
+        s["from"] -= dropped
+        s["to"] -= dropped
+    for x, z, k, r in got:
+        kt += [q(x), q(z)]
+        ki += [k, int(round(r * 10))]
+    out["trees"], out["tree_info"], out["tree_forms"], out["tree_surveys"] = kt, ki, forms, surveys
+    log(f"trees: {len(got)} from the town's own maps, {dropped} of OSM's dropped as the same trees")
+    return credits
+
+
 def add_surveys(path, offline):
     """The survey step alone, on a city file baked already (its OSM data is left as it is)."""
     with open(path, encoding="utf-8") as f:
@@ -1692,7 +1804,11 @@ def add_surveys(path, offline):
                 survey_apply(city["buildings"], P, s, feats, stats)
                 if s["credit"] not in city.setdefault("credits", []):
                     city["credits"].append(s["credit"])
-    if not stats:
+    tree_credits = tree_surveys_apply(city, P, os.path.join(os.path.dirname(os.path.abspath(path)), "data"))
+    for c in tree_credits:
+        if c not in city.setdefault("credits", []):
+            city["credits"].append(c)
+    if not stats and not tree_credits:
         log("no survey covers this town (or none could be reached): file left as it was")
         return
     with open(path, "w", encoding="utf-8") as f:

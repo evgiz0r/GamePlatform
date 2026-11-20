@@ -45,6 +45,8 @@ The ones most often touched, and the functions in them:
   to the square its spot is in (`_mine`, `_ring_mine`). A builder that is a coroutine must
   be awaited everywhere, or what it builds after a pause lands in the wrong square.
   `STREETS_BUILD_ALL=1` builds every square before the car is shown (the tests do).
+  `STREETS_CITY_FILE=/path/x.json` drives that file instead of the level's own (the same
+  test on a file from before a re-bake: `tests/real_trees.gd`).
 - **looks at street level** -- the pavement is drawn by `KERB_SHADER` in the kerb's own
   mesh (vertex COLOR.b 1: a pavement; COLOR.r the street's paving, `_set_pave_code`;
   COLOR.g its leaves, `_leafy`; UV metres along and out from the kerb), so it costs no draw
