@@ -12,7 +12,7 @@ extends RefCounted
 ##                    lit at night (Azrieli's tops are lit)
 ##   "shaft": [to, w] a concrete shaft on its roof, w square, up to `to` metres over the
 ##                    ground, with two antenna platforms round it
-##   "mast": [to, w, striped]  a mast on the roof (or on the shaft) up to `to`, w thick,
+##   "mast": [to, w, striped]  a mast on the roof (or on the shaft) up to `to` m over the ground, w thick,
 ##                    red and white bands if striped, a red light at its tip
 ## "market": [[street name, kind], ...] -- stalls down both sides of each such piece of street,
 ##   a walkway kept down its middle: a counter of produce in crates, a rack of goods behind,
@@ -239,6 +239,10 @@ func build() -> void:
 			lamps.append_array(_roof_corners(ring, top + 0.7))
 			continue
 		var what: Dictionary = it[2]
+		# (a shaft's and a mast's heights are over the ground at the building's foot -- the
+		# figures are a tower's height -- not over the map's lowest point: Shalom Meir's ground
+		# stands 15 m up, and its mast to "142" ended under its own roof)
+		var ground := top - float(g._city_data["buildings"][bi]["_h"])
 		if what.has("crown"):
 			_crown(ring, top - float(what["crown"][1]), top - float(what["crown"][0]))
 		var foot := top
@@ -246,15 +250,16 @@ func build() -> void:
 		if what.has("shaft"):
 			var s: Array = what["shaft"]
 			var w := float(s[1])
-			_box(Vector3(w, float(s[0]) - top, w), Vector3(mid.x, (top + float(s[0])) * 0.5, mid.y), "concrete")
+			var s_to := ground + float(s[0])
+			_box(Vector3(w, s_to - top, w), Vector3(mid.x, (top + s_to) * 0.5, mid.y), "concrete")
 			for f: float in [0.55, 0.85]:   # its antenna platforms
-				var y := lerpf(top, float(s[0]), f)
+				var y := lerpf(top, s_to, f)
 				_disc(w * 0.85, 0.7, Vector3(mid.x, y, mid.y), "concrete")
-			foot = float(s[0])
-			lamps.append(Vector3(mid.x + w * 0.5 + 0.3, float(s[0]) + 0.3, mid.y))
+			foot = s_to
+			lamps.append(Vector3(mid.x + w * 0.5 + 0.3, s_to + 0.3, mid.y))
 		if what.has("mast"):
 			var m: Array = what["mast"]
-			var to := float(m[0])
+			var to := ground + float(m[0])
 			var bands := 7 if bool(m[2]) else 1
 			for b in range(bands):
 				var y0 := lerpf(foot, to, float(b) / bands)
