@@ -70,7 +70,8 @@ extends RefCounted
 ##                                                    globe_lamp (h), manhole, hydrant, motorbike and
 ##                                                    scooter (dir: the nose; box: a top box),
 ##                                                    kerb_paint (at: by the kerb of the road
-##                                                    nearest; len, pat: red_white...),
+##                                                    nearest; len, pat: red_white...; plain
+##                                                    for bare kerb over a street's paint),
 ##                                                    zebra (dir: along the road, w: how wide
 ##                                                    the crossing, len: kerb to kerb; laid on
 ##                                                    the paving there), ring30 (painted on the
@@ -594,7 +595,7 @@ func _up(p: Vector2, lift: float) -> Vector3:
 ## is one pattern from junction to junction: "set" in roads gives a whole way's)
 func _kerb_paint(b, at: Vector2, L: float, pat: int) -> void:
 	var hit: Dictionary = g._nearest_seg(at, 15.0, true, true)
-	if hit.is_empty() or pat <= 0:
+	if hit.is_empty() or pat < 0:
 		return
 	var r: Dictionary = g._roads[int(hit["road"])]
 	var pts: PackedVector2Array = r["pts"]
@@ -609,7 +610,9 @@ func _kerb_paint(b, at: Vector2, L: float, pat: int) -> void:
 	var kw: float = kc["KERB_W"]
 	var kh: float = kc["KERB_H"]
 	var white: Color = mat.get_shader_parameter("white")
-	var paint: Color = mat.get_shader_parameter(["", "red", "blue", "yellow"][pat])
+	var paint: Color = mat.get_shader_parameter(["plain", "red", "blue", "yellow"][pat])
+	if pat == 0:   # plain: the bare kerb over a street's paint (a crossing's dropped kerb)
+		white = paint
 	if pat == 3:
 		white = mat.get_shader_parameter("black")
 	var lift: float = 0.07 if g._hnx > 0 else 0.0

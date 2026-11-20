@@ -37,7 +37,7 @@ r2 = lambda p: [round(p[0], 2), round(p[1], 2)]
 # watching the far half's from the right (cars stop at the zebra, one drives on), over it,
 # the far kerb at 17 s. Its halves are set to 7 m (two lanes each, see "roads" below): the
 # kerbs at -13.8 and 3.1, the median from -6.8 to -3.9; about 2.1-2.3 m/s over each half.
-KERB_N, MEDIAN, KERB_S = P(-14.1, -17.4), P(-5.35, -16.9), tuple(P(3.3, -17.3))   # (in the median's cut, nearer its south-east side: film 9 s)
+KERB_N, MEDIAN, KERB_S = P(-14.1, -17.4), P(-5.35, -16.6), tuple(P(3.3, -17.3))   # (in the median's cut, near its south-east side: film 7.7-9 s)
 lm = [
     # (pass 12, the film a quarter second at a time: it stands 2 m back from the kerb facing
     # across till 2.7 s, a black bollard 2 m ahead at the zebra's north-west edge, then steps up
@@ -206,7 +206,12 @@ d = {
         {"kind": "scooter", "box": True, "at": P(8.2, -3.6), "dir": [round(left[0], 4), round(left[1], 4)]},
         # the zebra over Katzenelson (film 0-1 s and 15-17.5 s): a white hoop railing either
         # side of it on both kerbs, and the kerbs painted red and white 10 m each way
-        *[{"kind": "hoop_railing", "at": P(sk, -17.35 + o), "dir": SE} for sk in (3.45, -14.15) for o in (-2.4, 2.4)],
+        # (the north kerb's north-west one a metre further off: the film waits beside the zebra
+        # with nothing between it and the road, 1-4.5 s)
+        *[{"kind": "hoop_railing", "at": P(sk, -17.35 + o - (1.2 if sk < 0 and o < 0 else 0.0)), "dir": SE}
+          for sk in (3.45, -14.15) for o in (-2.4, 2.4)],
+        # the north kerb bare grey across the zebra (the city painted it blue and white there)
+        {"kind": "kerb_paint", "at": P(-14.0, -17.37), "len": 3.6, "pat": "plain"},
         # a black bollard with a steel top on the domed slabs at the zebra's north-west edge
         # (film 1-3 s), and the round "no U-turn" sign on the median's raised end by the cut,
         # facing the near half's drivers (film 7.6-8.6 s)
