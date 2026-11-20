@@ -126,7 +126,10 @@ goes wrong shows up the first time it runs.
   divided road. Group its ways in by direction across the whole site -- along the main
   road, then across it -- never per point and never by street name: a street that changes
   its name at the junction landed in the same group as the street across it, and per point
-  a road had green at one half of a divided road and red 10 m on. A car is in the site from
+  a road had green at one half of a divided road and red 10 m on. Only the ways in from
+  outside count: the road between two of the site's own points has no light, and its
+  direction, counted, forced a split at skewed junctions (55-65 degrees) that gave
+  crossing streets one green. A car is in the site from
   its nose crossing the stop line and goes through all of it (a fixed "the next 45 m" rule
   both missed big knots and swallowed separate junctions). Lights and stop lines only on the
   ways in from outside. A light OSM maps 30 m out on one approach belongs to the junction:
@@ -263,7 +266,11 @@ one needed:
   ground's level), collisions with buildings, fences and trees (only for a body near the
   ground's level: a car in a tunnel was shoved out of the houses above), traffic's "car
   ahead" and the player-against-traffic push, and every look-ahead probe an AI driver makes
-  (autodrive crawled under a hill at 30 km/h, braking for the houses over its head).
+  (autodrive crawled under a hill at 30 km/h, braking for the houses over its head). The
+  builders and the tests too: traffic lights for a way in on a bridge's deck were tried at
+  the ground's level, found the road below or the deck's wall at every spot, and never put
+  up (stand them on the parapet at the deck's height, and no ground-level post under
+  them); a test's "off the asphalt" measured a car on a bridge to the road under it.
 - **Cut the ground open** over a cutting (clip the terrain mesh's triangles round its
   footprint) and drop any far-off flat ground plane below the deepest deck, or it shows
   through. Inside a cutting's footprint the ground is never a surface, however shallow:

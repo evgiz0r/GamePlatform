@@ -8246,14 +8246,31 @@ func _build_signals() -> void:
 			# driveway, a slip road), further back along the kerb, then a little further from it;
 			# on a one-way road (a divided road's half: its median) the left will do. A way in
 			# with no pole had cars stopping for a light nobody could see.
+			# A way in on a bridge's deck (a ramp landing at the junction, a slip road meeting
+			# one up on its embankment): tried at the ground's level, every spot beside it was
+			# the road below or the deck's own wall, and cars stopped for a light with no pole
+			# (Tel Aviv's Modai bridge, the HaShalom interchange). There the pole stands on the
+			# parapet's line at the deck's height, kept out of other roads' lanes at that level.
+			var deck: bool = r.has("ys") and r.has("side")
+			if deck:
+				reach = float(r["w"]) * 0.5 + float(r["side"]) + Decks.WALL_T * 0.5
 			var spots: Array = []
-			for out: float in [0.0, 0.8]:
+			for out: float in ([0.0] if deck else [0.0, 0.8]):
 				for sgn: float in ([1.0, -1.0] if r["o"] != 0 else [1.0]):
 					for back: float in [rn + 1.5, float(way[1]) + 0.6, float(way[1]) + 3.0, float(way[1]) + 6.0]:
 						spots.append([back, (reach + out) * sgn])
 			var p := Vector2.INF
+			var py := NAN
 			for sp: Array in spots:
 				var q := c - dir * float(sp[0]) + right * float(sp[1])
+				if deck:
+					var ly: float = _decks.deck_y(int(way[2]), q)
+					var on_d := _nearest_seg(q, 12.0, true, false, ly)
+					if not on_d.is_empty() and int(on_d["road"]) != int(way[2]) and float(on_d["edge"]) < 0.4:
+						continue
+					p = q
+					py = ly
+					break
 				if _push_out(q, 0.3, false) != Vector2.ZERO:
 					continue
 				var on := _nearest_seg(q, 12.0, true)
@@ -8265,7 +8282,7 @@ func _build_signals() -> void:
 				continue
 			var g := _light_group(node, dir) - 1
 			var face := Basis(Vector3.UP, atan2(-dir.x, -dir.y))   # +Z of the head toward the traffic
-			var gy := _h(p)
+			var gy := _h(p) if is_nan(py) else py
 			poles.append(Transform3D(Basis(), Vector3(p.x, gy + 1.7, p.y)))
 			heads.append(Transform3D(face, Vector3(p.x, gy + 3.3, p.y)))
 			_light_spots.append([Vector3(p.x, gy + 3.3, p.y), -dir])   # (for tests: where, facing)
@@ -8277,7 +8294,8 @@ func _build_signals() -> void:
 			var front := Vector3(-dir.x, 0.0, -dir.y) * 0.17
 			for ci in range(3):
 				bulbs[g][ci].append(Vector3(p.x, gy + 3.3 + 0.3 - 0.3 * ci, p.y) + front)
-			_add_post(p, 0.15)
+			if is_nan(py) or py - _h(p) < 1.0:
+				_add_post(p, 0.15)   # (posts are solid at the ground's level: not one up on a bridge)
 	if poles.is_empty():
 		return
 	var pole_mesh := CylinderMesh.new()
@@ -10736,6 +10754,8 @@ func _other_half(j: int, o: int, leg: int) -> bool:
 func _site_axes(nodes: Array) -> Dictionary:
 	var c := Vector2.ZERO
 	var arms: Array = []   # [direction mod PI, rank, width]: each way into each point
+	var all_arms: Array = []
+	var sid: int = _site_of.get(nodes[0], -1)
 	for n: int in nodes:
 		c += _nodes[n]
 		for e: Vector2i in _node_roads[n]:
@@ -10749,8 +10769,22 @@ func _site_axes(nodes: Array) -> Dictionary:
 			# in Bedford, and two streets crossing had green together
 			for d2: int in [-1, 1]:
 				if e.y + d2 >= 0 and e.y + d2 < pts.size() and (r["o"] == 0 or r["o"] == -d2):
-					arms.append([fposmod((pts[e.y + d2] - pts[e.y]).angle(), PI), int(ROAD_RANK.get(r["k"], 1)),
-							float(r["w"]) * (2.0 if r.has("median") else 1.0)])
+					var arm := [fposmod((pts[e.y + d2] - pts[e.y]).angle(), PI), int(ROAD_RANK.get(r["k"], 1)),
+							float(r["w"]) * (2.0 if r.has("median") else 1.0)]
+					all_arms.append(arm)
+					# (and not a way from inside the junction -- the road between two of its
+					# points, as `_site_ways_in` finds: it has no light, and its direction
+					# skewed the split; at a skewed junction in Tel Aviv a street shared its
+					# green with the one across it)
+					var inside := false
+					for back: Array in _points_back(e, d2, SITE_LEG + 4.0):
+						if int(back[0]) != n and _site_of.get(int(back[0]), -1) == sid:
+							inside = true
+							break
+					if not inside:
+						arms.append(arm)
+	if arms.size() < 2:
+		arms = all_arms
 	# the ways' directions, alike within 6 degrees taken as one, round the half circle
 	var dirs: Array = []
 	for a: Array in arms:

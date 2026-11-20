@@ -817,6 +817,20 @@ it is dropped.
 
 ## Open problems
 
+- **Tel Aviv's lights and the exam, first round** (Nov 2026). `light_audit` at level 7:
+  4 junctions where crossing streets shared a green, all skewed (55-65 degrees): the ways
+  from inside a junction (the road between two of its points, no light) were counted in
+  `_site_axes`' split into two groups, and their directions forced a bad one (Weizmann
+  shared its green with Dafna and Berkovich) -- now left out (the audit skips them too);
+  0, and the other towns unchanged. 8 ways in with no light: poles were never put up on a
+  bridge's deck (every spot beside it was tried at the ground's level: the road below or
+  the deck's wall) -- now on the parapet's line at the deck's height, and no post at the
+  ground's level under it; 5 left, the same kinds as the other towns'. The exam: 25 checks,
+  then 16 -- traffic into kerbside trees and a corner bollard (Begin x Kaplan), cars
+  overlapping where Begin's slip roads merge, "held by nothing" loops there, ~1 red run a
+  minute; autodrive clean but for 2 brushes of the parapet at the HaShalom bridge's east
+  junction, up in the air. Its "off the asphalt" measured to the road below a bridge: now
+  at the car's level.
 - **Tel Aviv's decks, what is left** (Nov 2026; `tests/decks.gd` at level 7). Short hops
   where ramps meet: Moses and Arvei Nahal's embankments (crests at the ramps' tops, the
   same kind as Bedford's Anderson Lake hop: `infer` has no vertical curve at a ramp's top
