@@ -58,6 +58,12 @@ goes wrong shows up the first time it runs.
   workflow's `bare_ground`): a grey opening over ~90 m takes out bumps narrower than ~180 m
   and keeps broad hills and valleys (that centre: 0-38 m, steepest 13%). It also lowers a
   real hill's crest a little (one town's 86 -> 72 m), so it is not the default.
+- **The same tiles cannot fill in missing building heights.** Tried (Nov 2026): the
+  surface over each footprint minus the bare ground, against 1370 buildings whose height
+  OSM knows in a city centre. Correlation 0.1-0.2; of the twelve tallest (160-350 m) one
+  showed (100 m against 187), the rest 1-9 m. The tiles are ~30 m and from about 2000, so
+  they know neither a block's shape nor anything built since. Building heights have to
+  come from OSM or a municipal or national buildings layer.
 - `tools/fake_city.py` makes up a small town with one of every awkward thing (divided
   boulevard, big signalled junction, roundabouts, a one-way pair, a steep hill, car parks)
   in a second, no network. Use it to check a change quickly; check real towns before

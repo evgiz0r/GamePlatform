@@ -496,7 +496,8 @@ def join_rings(segments):
 
 # ---- ground height ----------------------------------------------------------------------
 # AWS's open terrain tiles ("terrarium" PNGs: height = R*256 + G + B/256 - 32768 metres),
-# mostly SRTM: ~30 m detail, a surface model (it sees some rooftops), free, no key.
+# mostly SRTM: ~30 m detail, a surface model (it sees some rooftops), free, no key. Too
+# coarse and too old (~2000) to fill in buildings' missing heights: tried, see real-places.
 TERRAIN = os.environ.get("TERRAIN_URL",
                          "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png")
 
