@@ -8,7 +8,9 @@ extends SceneTree
 ## half of a side-by-side video (DEV.md, "The filmed walk"). SCAN=1 walks the whole route a
 ## quarter second at a time and prints every stretch of it inside a building or a post;
 ## POSTS_NEAR="x,z,r;x,z,r" lists the posts round each spot (to route the walk between them), the
-## nearest road's edge, and everything drawn by instance there (what the scan cannot see).
+## nearest road's edge, and everything drawn by instance there (what the scan cannot see);
+## TRAFFIC_LOG=from,to the cars round the walk every quarter second (AT jumps the walk's clock,
+## so a scripted car's timing shows only here or in a recording).
 var g: Node
 const LANDMARKS := "8,28,40,55,70,84,94"   # the zebra, the forecourt, the passage, its end, the little street, Sheinkin, Ha-Meri
 
@@ -97,6 +99,28 @@ func _run() -> void:
 		if was != "":
 			print("INSIDE %s from %.2f to the end" % [was, from])
 		print("scan done")
+		quit()
+		return
+	if OS.get_environment("TRAFFIC_LOG") != "":
+		# TRAFFIC_LOG=from,to: the walk at its own pace from the start (scripted cars are sent
+		# by its clock, which AT jumps), and every quarter second from `from` to `to` each car
+		# within 40 m: where it is from the walker, its speed, lane, kind, whether it drives on
+		# past the walk's zebras ("through")
+		var span := OS.get_environment("TRAFFIC_LOG").split_floats(",")
+		var next := span[0]
+		while g._film_t <= span[1]:
+			await physics_frame
+			if g._film_t < next:
+				continue
+			next += 0.25
+			var line := "%6.2f s:" % g._film_t
+			for c in g._traffic.cars:
+				if not c.alive or c.pos.distance_to(g._pos) > 40.0:
+					continue
+				var rel: Vector2 = c.pos - g._pos
+				line += "  [%s %s %.1f m/s lane %d%s at %.0f m]" % [c.kind, Vector2i(rel), c.v, c.lane_i,
+					" through" if c.film_through else "", rel.length()]
+			print(line)
 		quit()
 		return
 	if OS.get_environment("RECORD") == "1":

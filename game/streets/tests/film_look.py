@@ -10,12 +10,14 @@ The clip is the phone's film of the walk (stored on its side and mirrored, as th
 takes it: hflip, 406x720); the frames are a recording (`RECORD=1 RES=1280x720 GODOT_ARGS=
 "--fixed-fps 10" tests/run.sh filmed_walk <level>`), cropped to the phone's shape. Record the
 replay to fit with STREETS_FILM_LOOK=0 (the game's own picture): fitting a graded replay fits
-the grade on top of itself. Prints, for each: luminance and channel levels at 1-99%, the share
+the grade on top of itself. Keep the frames whole (1280x720): the meter reads the whole screen. Prints, for each: luminance and channel levels at 1-99%, the share
 clipped to white and crushed to black, mean saturation, the near-greys' colour (white
 balance), the top sixth (sky, upper walls) and the bottom third (the ground).
 
-The fit: a tone curve at 17 points mapping the replay's luminance levels onto the film's, the
-same on each channel; a fixed warmth on red that fades out over the brightest tones (fitted
+The fit: first the phone's auto-exposure -- each frame's whole-screen mean brightness (what
+the shader's meter reads off the screen's mipmaps) pulled towards EXPO's target by
+(target / mean)^strength, in light; then a tone curve at 17 points mapping the replay's
+luminance levels onto the film's, the same on each channel; a fixed warmth on red that fades out over the brightest tones (fitted
 freely it went to 16% and grey pavers went mauve; full strength on the pale sky read pink);
 saturation scaled to the film's mean. Content differs (the game's materials are not the
 street's), so read the numbers with the side-by-side open. Needs numpy and ffmpeg. Keep the
@@ -29,6 +31,7 @@ import numpy as np
 W, H = 203, 360
 X = np.linspace(0, 1, 17)
 WARM = 1.06
+EXPO = (0.45, 0.75, 0.6, 2.0)   # target, strength, least, most: streets.gd's FILM_EXPO
 Q = [1, 5, 10, 25, 50, 75, 90, 95, 99]
 
 
@@ -45,6 +48,21 @@ def film(clip, secs):
 def replay(frames, secs):
     return grab(["-framerate", "10", "-pattern_type", "glob", "-i", f"{frames}/*.jpg", "-vf",
                  f"crop=406:720:437:0,fps=30,trim=0:{secs},setpts=PTS-STARTPTS,fps=1,scale={W}:{H}"])
+
+
+def meter(frames, secs):
+    """each second's whole-screen mean brightness, as the shader's meter reads it"""
+    raw = subprocess.run(["ffmpeg", "-loglevel", "error", "-framerate", "10", "-pattern_type", "glob", "-i",
+                          f"{frames}/*.jpg", "-vf", f"fps=30,trim=0:{secs},setpts=PTS-STARTPTS,fps=1,scale=160:90",
+                          "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], capture_output=True, check=True).stdout
+    full = np.frombuffer(raw, np.uint8).reshape(-1, 90, 160, 3).astype(np.float32) / 255.0
+    return lum(full).mean((1, 2))
+
+
+def expose(x, m):
+    target, k, lo, hi = EXPO
+    gain = np.clip((target / np.maximum(m, 0.02)) ** k, lo, hi)
+    return np.clip(((x ** 2.2) * gain[:, None, None, None]) ** (1 / 2.2), 0, 1)
 
 
 def lum(x):
@@ -105,12 +123,19 @@ def main():
     f, g = film(clip, secs), replay(frames, secs)
     stats("film", f)
     stats("replay", g)
+    mf, mg = lum(f).mean((1, 2)), lum(g).mean((1, 2))
+    print(f"  each second's mean: film {mf.mean():.3f} +- {mf.std():.3f}, replay {mg.mean():.3f} +- {mg.std():.3f}"
+          " (the phone's exposure holds it steady)")
     if "--check" in sys.argv:
         return
+    g = expose(g, meter(frames, secs))
     curve, s = fit(f, g)
     print("FILM_CURVE := [" + ", ".join(f"{v:.3f}" for v in curve) + "]")
     print(f"FILM_WARM := {WARM}   FILM_SAT := {s:.3f}")
-    stats("replay graded", grade(g, curve, s))
+    out = grade(g, curve, s)
+    stats("replay graded", out)
+    mo = lum(out).mean((1, 2))
+    print(f"  each second's mean graded: {mo.mean():.3f} +- {mo.std():.3f}")
 
 
 if __name__ == "__main__":

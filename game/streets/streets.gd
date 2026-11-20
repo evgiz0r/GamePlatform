@@ -12136,7 +12136,7 @@ func _tones() -> void:
 		"pavement": _greyed(ink.lerp(alt, 0.48).lerp(wn, 0.04), 0.65),
 		# a filmed street's details (details.gd): charcoal pavers under an arcade, a forecourt
 		# of pale poured slabs
-		"pavers_dark": _greyed(ink.lerp(alt, 0.8), 0.85),
+		"pavers_dark": _greyed(ink.lerp(alt, 0.62), 0.85),   # (0.8 read near black under the arcade: the film's are mid-grey in its shade)
 		"slabs": _greyed(ink.lerp(alt, 0.55).lerp(wn, 0.28), 0.38),   # (the film's: warm beige in the sun)
 		"pavers_grey": _greyed(ink.lerp(alt, 0.5), 0.85),
 		"kerb": ink.lerp(alt, 0.45),
@@ -12730,7 +12730,7 @@ func _film_begin(id: String) -> void:
 	for z: Array in w.get("zebras", []):
 		_film_zebras.append([float(z[0]), float(z[1]), Vector2(z[2][0], z[2][1]), Vector2(z[3][0], z[3][1])])
 	for c: Array in w.get("cars", []):
-		_film_cars.append([float(c[0]), Vector2(c[1][0], c[1][1]), Vector2(c[2][0], c[2][1])])
+		_film_cars.append([float(c[0]), Vector2(c[1][0], c[1][1]), Vector2(c[2][0], c[2][1]), c[3] if c.size() > 3 else {}])
 	_film_cars.sort_custom(func(a, b): return a[0] < b[0])
 	# the people the film shows, where it shows them: standing, or walking from `at` to `to`
 	# between two of its seconds (and not there before or after)
@@ -12780,31 +12780,66 @@ func _film_begin(id: String) -> void:
 ## it read pink; fitted, it went to 16% and grey pavers went mauve); then saturation back up
 ## by FILM_SAT, as the flatter curve takes some out. Only the walks: the game's own look is
 ## other sessions' (the light, the haze) and drives on.
-const FILM_CURVE := [0.050, 0.090, 0.160, 0.237, 0.304, 0.364, 0.415, 0.453, 0.480, 0.510, 0.543,
-	0.575, 0.607, 0.644, 0.690, 0.774, 0.876]
+const FILM_CURVE := [0.048, 0.083, 0.147, 0.224, 0.294, 0.356, 0.411, 0.452, 0.481, 0.508, 0.538,
+	0.572, 0.609, 0.653, 0.704, 0.786, 0.880]
 const FILM_WARM := 1.06
-const FILM_SAT := 1.129
+const FILM_SAT := 1.088
+## the phone's auto-exposure: [target, strength, least, most] -- the frame's mean brightness
+## pulled towards target by (target / mean)^strength, in light, within least..most. The film's
+## brightness second to second holds at 0.45 +- 0.055 (its exposure follows the view); the
+## replay's swung 0.48 +- 0.12, dark under the arcade (0.28), bright on the sunny forecourt
+## (0.64). With this, 0.455 +- 0.070 (fitted, tests/film_look.py; the curve after it).
+const FILM_EXPO := [0.45, 0.75, 0.6, 2.0]
 func _film_look_layer() -> void:
 	var sh := Shader.new()
 	sh.code = """shader_type canvas_item;
-uniform sampler2D screen_tex : hint_screen_texture, filter_linear;
+uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
+uniform float expo_target = 0.45;
+uniform float expo_k = 0.0;
+uniform float expo_min = 0.6;
+uniform float expo_max = 2.0;
+uniform int debug = 0;
+const vec3 LUM = vec3(0.2126, 0.7152, 0.0722);
 const float CURVE[17] = float[17](%s);
 float tone(float v) {
 	float x = clamp(v, 0.0, 1.0) * 16.0;
 	int i = min(int(floor(x)), 15);
 	return mix(CURVE[i], CURVE[i + 1], x - float(i));
 }
+// the phone's meter: the frame's mean brightness, from the screen shrunk 128 times (its mipmaps)
+float meter() {
+	float m = 0.0;
+	for (int i = 0; i < 4; i++) {
+		for (int j = 0; j < 4; j++) {
+			m += dot(textureLod(screen_tex, vec2((float(i) + 0.5) / 4.0, (float(j) + 0.5) / 4.0), 7.0).rgb, LUM);
+		}
+	}
+	return m / 16.0;
+}
 void fragment() {
-	vec3 c = texture(screen_tex, SCREEN_UV).rgb;
-	float l0 = dot(c, vec3(0.2126, 0.7152, 0.0722));
-	c *= mix(vec3(1.0), vec3(%f, 1.0, 1.0), 1.0 - smoothstep(0.6, 0.9, l0));
-	c = vec3(tone(c.r), tone(c.g), tone(c.b));
-	float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
-	COLOR = vec4(clamp(vec3(l) + (c - vec3(l)) * %f, 0.0, 1.0), 1.0);
+	vec3 c = textureLod(screen_tex, SCREEN_UV, 0.0).rgb;
+	float m = meter();
+	if (debug == 1) {
+		COLOR = vec4(SCREEN_UV.x < 0.1 && SCREEN_UV.y < 0.1 ? vec3(m) : c, 1.0);
+	} else {
+		// exposure, in light (not in the picture's code values), as the phone sets it
+		float gain = clamp(pow(expo_target / max(m, 0.02), expo_k), expo_min, expo_max);
+		c = pow(pow(c, vec3(2.2)) * gain, vec3(1.0 / 2.2));
+		float l0 = dot(c, LUM);
+		c *= mix(vec3(1.0), vec3(%f, 1.0, 1.0), 1.0 - smoothstep(0.6, 0.9, l0));
+		c = vec3(tone(c.r), tone(c.g), tone(c.b));
+		float l = dot(c, LUM);
+		COLOR = vec4(clamp(vec3(l) + (c - vec3(l)) * %f, 0.0, 1.0), 1.0);
+	}
 }
 """ % [", ".join(FILM_CURVE.map(func(v: float) -> String: return "%.3f" % v)), FILM_WARM, FILM_SAT]
 	var mat := ShaderMaterial.new()
 	mat.shader = sh
+	mat.set_shader_parameter("expo_target", FILM_EXPO[0])
+	mat.set_shader_parameter("expo_k", FILM_EXPO[1])
+	mat.set_shader_parameter("expo_min", FILM_EXPO[2])
+	mat.set_shader_parameter("expo_max", FILM_EXPO[3])
+	mat.set_shader_parameter("debug", 1 if OS.get_environment("STREETS_FILM_LOOK") == "meter" else 0)
 	var layer := CanvasLayer.new()
 	layer.layer = 1   # (over the world, under the shell's buttons: Flow's layer is 10)
 	var r := ColorRect.new()
@@ -12876,7 +12911,7 @@ func _film_tick(dt: float) -> void:
 	while _film_sent < _film_cars.size() and _film_t >= float(_film_cars[_film_sent][0]):
 		var fc: Array = _film_cars[_film_sent]
 		_film_sent += 1
-		if _traffic != null and not _traffic.send(fc[1], fc[2]):
+		if _traffic != null and not _traffic.send(fc[1], fc[2], fc[3]):
 			Probe.note("film: no street to send a car down at %s" % fc[1])
 	var anim := "Idle" if _v < 0.15 else "Walk"
 	if anim != _me_anim:
