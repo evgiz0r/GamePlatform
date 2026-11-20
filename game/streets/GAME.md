@@ -208,10 +208,25 @@ seams, handles and wheel arches, in the colours real cars come in: mostly white,
 grey and black, with the odd red or blue. Parked cars tilt with the slope they stand on.
 
 **Trees.** A dozen kinds, picked by the place and where they stand: ficus, acacia, olive,
-cypress, pine and date and fan palms in Givatayim; maple, oak, birch and spruce in Bedford.
-Each tree varies in size, lean and shade, and crowns are clumps, not one ball.
+cypress, pine, tall pale eucalyptus (the roadsides' and parks' tree) and date and fan palms
+in Givatayim; maple, oak, birch and spruce in Bedford. Each tree varies in size, lean and
+shade, and crowns are clumps, not one ball.
 
 > More variety for the trees? They seem all bland and the same.
+
+They are made of leaves now, not coloured shapes. A crown is a cloud of small cards, each a
+cluster of real leaves (photos of leaves, cut out and arranged: broad ones for the ficus,
+the plane-like street trees, maples and oaks; small narrow ones for olives, birches and
+eucalyptus; feathery fronds for the acacias and for about a third of the round street
+trees, like the melias and jacarandas; needle sprays for pines, cypresses and spruces).
+The cards always face you, so a crown looks full from every side, lit like a soft ball,
+darker inside and underneath, with lighter clumps here and there; every tree's outline is
+its own, and the crowns sway a little in the wind. Through the gaps you see the branches
+fork up from a barked trunk; the shadows on the ground are dappled. Conifers have a dense
+dark middle, so a cypress is the narrow column it should be. Palm fronds are cut into
+leaflets that dry yellow at the tips, on a ringed palm trunk.
+
+> No, let's do trees, maybe some more texture and variety, then we will try the cars.
 
 > Traffic, lights and signs that mean something, engine sound, night.
 
@@ -243,6 +258,24 @@ sign boards, an awning or none, now and then one shut behind its shutter.
 
 > More varied buildings: plaster colours, glass towers, shopfront variety, shutters on
 > balconies.
+
+**Windows with depth.** Up close (within about 150 m) a window is not painted on: the glass
+sits back in the wall, so driving past you see the sides of the opening and the shadow
+under its top; it has an aluminium frame and the bar down the middle of a sliding window
+(Bedford's: white casings with a cross of muntins), a stone sill with a shadow under it,
+and the roller shutter, where it is down, is made of slats. Behind the glass is a room --
+back wall, side walls, floor and ceiling, in that flat's own colours, with a sofa, a door
+through or a picture, sometimes a curtain half drawn -- dim by day, lit by its lamp at
+night if the light is on (and through a shutter, light shows between the slats). The
+glass reflects the sky, and the street when you look down at it, more at a glancing look.
+Balconies are real hollows, their side walls, tiled floor and the slab over them seen
+from below, a glass door at the back; a tower's offices show through its tinted glass and
+its lobby is lit at night; the open ground floor of a block on columns is a shaded space
+you see into. None of it is geometry or costs anything to load: it is all worked out per
+pixel by the walls' shader, from where you look. Further off, and at the lowest web
+quality level, the windows go back to paint.
+
+> Can we somehow improve the buildings?
 
 **Landmarks.** A big named building (a mall, a tower, the cinema, a school) has its name
 in large letters along the top of its street side; a mall has glass shopfronts all along
@@ -347,6 +380,21 @@ out per pixel from where it is, nothing to load, the fine part fading out with d
 > buildings; roundabouts where cars get stuck or circle; autodrive not stopping for
 > people; some non-flat texture on big empty grey or green areas.
 
+**Real textures.** Up close the surfaces are photographs (free CC0 ones from Poly Haven, in
+`textures/`): the asphalt has grit and fine cracks, with a second photo of tyre marks,
+patches and long cracks laid over it at 30 m so it doesn't visibly repeat; Givatayim's and Ashdod's
+pavements are rows of concrete pavers, Bedford's poured concrete slabs; grass and open
+ground are a real lawn; walls are painted render. Each has its bumps, so the low sun picks
+out the cracks and the joints between pavers. The palette still decides every colour: a
+photo only adds the variation round its own average, so `/look` reskins it as before.
+Walls are a little darker at the foot, and a faint streak of grime runs down from each
+window sill.
+
+> What would it take to make it more realistic, closer to Unreal and Unity quality of
+> details and resolution?
+
+> Let's start with the textures.
+
 ## Smooth on a laptop and a phone
 
 > It's pretty choppy and laggy now. I'm trying on a laptop browser.
@@ -358,7 +406,8 @@ round the car, and the car and camera are drawn between physics ticks so they gl
 however fast the screen redraws. In a browser the game also watches its own frame rate:
 under 55 frames a second, or stuttering (more than one frame in twelve slower than 25 ms),
 for a few seconds and it steps down a level -- first smoother edges (MSAA) off and
-shorter shadows, then no shadows and a lower 3D resolution. It never steps back up during
+shorter shadows, then no shadows and a lower 3D resolution and the photo textures off
+(back to the drawn grain). It never steps back up during
 a drive. The frame rate and the level are shown small under the speed. Parked cars and
 traffic are one mesh per car shape (a batch of them costs one draw, not six); every kind
 of shader is drawn once while the city loads, so none of them stalls the first time it
