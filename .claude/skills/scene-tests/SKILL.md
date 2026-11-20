@@ -161,7 +161,19 @@ differs (the game's materials are not the street's), so fit a moderate warmth ra
 the whole gap (fitted freely it turned grey pavers mauve) and look at the graded frames
 beside the film before trusting the numbers. A canvas shader over the finished frame reads
 the same 8-bit sRGB a recording saves, so a grade fitted on recorded frames in numpy carries
-into the game exactly -- check it with the same moments graded and bare.
+into the game exactly -- check it with the same moments graded and bare. *Exposure*: a
+phone's brightness second to second barely moves (it exposes for what it sees) while a
+fixed-exposure replay's swings with the scene -- a roofed arcade read half the film's, and no
+curve or exposure lifted it until the floor's own colour was fixed: measure the two apart. A
+shader can meter the whole frame off the screen texture's mipmaps (`filter_linear_mipmap`, a
+few `textureLod` taps at a high mip) in the Compatibility renderer too; paint the reading
+in a corner once and compare it with the frame's true mean before trusting it.
+
+**A test that jumps a scene's clock cannot show what is timed by it.** Stills taken by
+setting a replay's time and running a third of a second skip every scripted event in
+between: cars sent at a second never drove their distance, and the stills showed none of
+them. Log timed things at the scene's own pace from its start (a trace every quarter second
+of what is near) or record it.
 
 **Checks that should read 0, every tick.** Counting what went wrong per minute finds the
 big things; checks of what must never happen find the bugs before anyone looks for them.
@@ -202,6 +214,14 @@ side under a one-line title each; and a few bullets of what changed. Send each p
 it is made, with a one-line caption, rather than a report at the end.
 
 ## Gotchas (each cost a run)
+
+- **A collision scan sees only what is solid, and only where it is solid.** A scripted walk
+  that scanned clean went through a parked bike's wheel (solid only at its rack's hoop, while
+  the bike reached across most of the pavement) and ended with a tree's trunk filling the
+  frame; chairs, crates and low leaves have no collider at all. Beside the scan, list
+  everything drawn by instance round the spot (each `MultiMeshInstance3D` instance's box
+  through its transform: where, how big, how high it starts) and look at the recording one
+  frame every 2 s.
 
 - **Measure the exact condition, and name the blocker once.** "Stood still near the van" also
   counted waiting at a red light past it; "within 20 m, the van ahead, held by a car" did

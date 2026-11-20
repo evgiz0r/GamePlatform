@@ -108,6 +108,7 @@ class Car:
 	var shift_to := 0.0
 	var shift_rate := 0.0
 	var lane_t := 0.0                 ## seconds before it will think of changing lanes again
+	var film_through := false         ## a filmed walk's car that drives on past it at a zebra (send)
 	var split := false                ## a scooter filtering between the lanes past a queue
 	var bus_ok := false               ## may drive in a bus lane: a bus, and half the taxis
 	var shift_rd := -1                ## the road its shift_to is a lane of
@@ -831,8 +832,8 @@ func _zebra_ahead(c: Car) -> float:
 	var best := INF
 	for z: Array in g._zebras_on:
 		var mid: Vector2 = z[0]
-		if mid.distance_squared_to(c.pos) > 4900.0:
-			continue
+		if mid.distance_squared_to(c.pos) > 4900.0 or (c.film_through and z.size() >= 4):
+			continue   # (a filmed walk's car that drove on: past the walk's own zebras only)
 		for j in range(c.k, c.pts.size() - 1):
 			var base := c.cum[j] - c.s
 			if base > 70.0:
@@ -1498,6 +1499,7 @@ func _start_on(c: Car, ri: int, sj: int, at: Vector2, dir: int) -> bool:
 	c.vmax = PackedFloat32Array([float(r["speed"]) * c.pace])
 	c.k = 0
 	c.s = 0.0
+	c.film_through = false
 	c.last_light = -1000.0
 	c.last_site = -1
 	c.y = g._decks.deck_y(ri, at) if r.has("ys") else float(g._h(at))
@@ -1523,17 +1525,24 @@ func _start_on(c: Car, ri: int, sj: int, at: Vector2, dir: int) -> bool:
 ## A car put on the road nearest `at` (within 25 m), heading the way `heading` points (a
 ## one-way street's own way whatever it says), at its road's pace: for a scripted moment, a
 ## filmed walk's cars. It is the car furthest from the player, out of sight as a rule.
-## False when there is no road there.
-func send(at: Vector2, heading: Vector2) -> bool:
+## False when there is no road there. `opts`: "lane" "kerb" or "median" (the right-hand lane,
+## or the one by the middle of the road, where it has two or more a way), "through" true (it
+## drives on past the walk at a zebra, as one did in a film while the cars in the other lane
+## waited), "kind" (one of that body if there is one), "paint" (white, silver, grey, black,
+## blue, red: _car_paints' order, as details.gd's parked cars take it).
+func send(at: Vector2, heading: Vector2, opts: Dictionary = {}) -> bool:
 	var far: Car = null
 	var fd := -1.0
-	for c: Car in cars:
-		if c.kind == "bus":
-			continue   # (a bus down a side street)
-		var d: float = INF if not c.alive else c.pos.distance_to(g._pos)
-		if d > fd:
-			fd = d
-			far = c
+	for pass_kind: bool in [true, false]:
+		if far != null or (pass_kind and not opts.has("kind")):
+			continue
+		for c: Car in cars:
+			if c.kind == "bus" or (pass_kind and c.kind != String(opts["kind"])):
+				continue   # (a bus down a side street)
+			var d: float = INF if not c.alive else c.pos.distance_to(g._pos)
+			if d > fd:
+				fd = d
+				far = c
 	var hit: Dictionary = g._nearest_seg(at, 25.0, true, true)
 	if far == null or hit.is_empty():
 		return false
@@ -1545,6 +1554,18 @@ func send(at: Vector2, heading: Vector2) -> bool:
 	if r["o"] != 0:
 		dir = int(r["o"])
 	far.alive = _start_on(far, ri, sj, hit["q"], dir)
+	if far.alive and opts.has("lane"):
+		var n := _lanes_dir(r)
+		far.lane_i = 0 if String(opts["lane"]) == "kerb" else n - 1
+		far.shift = _lane_shift(r, far.lane_i)
+		far.shift_to = far.shift
+		far.lane_t = 30.0   # (and keeps to it past the walk)
+	far.film_through = bool(opts.get("through", false))
+	if opts.has("paint"):
+		var pal: Array = g._car_paints()
+		var pi := int({"white": 0, "silver": 4, "grey": 7, "black": 9, "blue": 11, "red": 12}.get(String(opts["paint"]), -1))
+		if pi >= 0:
+			far.paint = pal[pi]
 	return far.alive
 
 ## the right-hand lane's offset from the middle of a road. Every two-way street gets two,

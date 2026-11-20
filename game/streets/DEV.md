@@ -963,8 +963,8 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
 - **The route** is `walks.katzenelson_hameri.points` in `cities/details/givatayim.json`
   (written by `make_givatayim.py` beside it):
   [seconds, x, z], the seconds the film's. Landmarks in the film: off the north kerb 1.5 s,
-  the far kerb 16 s (so the road there is ~17 m across by walking time; the game's two
-  9 m halves are right), the forecourt 25 s, into the passage 33 s, out of it 64 s, the
+  the far kerb 16 s (the road ~17 m across by walking time with its median; the game's
+  halves are 7 m each since pass 4), the forecourt 25 s, into the passage 33 s, out of it 64 s, the
   corner of Sheinkin 80 s, over it 90 s, into Ha-Meri 93-96 s. The game's pavement from the
   zebra to the passage is ~7 m longer than the film's, so the walk hurries there (2.2 m/s).
 - **The walk starts where its film does**: `_find_start` puts `_pos` at the walk's first
@@ -985,10 +985,16 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   connector if the session has one. Everything else a pass needs is here. That clip came out **mirrored** (a shop sign read
   backwards): flip it (`hflip`). Record the game's half with
   `GODOT_ARGS="--fixed-fps 10" STREETS_BUILD_ALL=0 RECORD=1 OUT=... game/streets/tests/run.sh
-  filmed_walk 5` (1280x720; about 1 frame a second in the container: 15 minutes), crop the middle 406x720
+  filmed_walk 5` (1280x720; about 18.5 minutes for its 966 frames), crop the middle 406x720
   (the 70 degree vertical field of view then matches a phone held upright) and `hstack` the
   two. The film itself is the user's: it, its frames and anything past Ha-Meri never go in
-  the repo.
+  the repo. The recipe that made every side-by-side so far (frames symlinked to
+  `g%05d.jpg` from 0 in their own order first, so frame 0 is the walk's 0 s): `ffmpeg -i clip.mp4
+  -framerate 10 -i g%05d.jpg -filter_complex "[0:v]hflip,scale=406:720,fps=30,trim=0:96,
+  setpts=PTS-STARTPTS[a];[1:v]crop=406:720:437:0,fps=30,trim=0:96,setpts=PTS-STARTPTS[b];
+  [a][b]hstack=inputs=2[v]" -map "[v]" -c:v libx264 -crf 24 -pix_fmt yuv420p out.mp4`, with
+  `drawtext` labels ("phone", "game", `%{eif\:t\:d} s` at the foot) -- 36 MB; re-encode at
+  `-crf 30` (13 MB) to send it.
 - **Crossing like a person (pass 3).** The film waits at Katzenelson's north kerb 1.6-4.5 s
   looking left (a white SUV goes by), crosses the near half, waits on the median 8.7-13.3 s
   looking right (cars stop at the zebra; one drives on), and is at the far kerb at 17 s;
@@ -1112,11 +1118,72 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   Ha-Meri at 89-92.5 s is 55 degrees: at 80 the hatchback sat at the frame's right edge
   where the film has it dead ahead with the kerb on the left (AT stills at 91 and 92.3; the
   film frame by frame). AT names its stills by whole seconds: 92 and 92.3 save to one file.
-- **Next passes**: the light (another session's: the film's afternoon is hazy and warm);
-  people that move as the film's do (the walk's `people` take `to` and `t`; none of the
-  four walks yet). The street now matches the film in what stands where: what is left is
-  look -- the buildings' plaster, balconies and shutters along the route (another session's
-  city-wide work), the shops' lettering beyond the one the film names.
+- **Pass 11, the arcade's dark and Katzenelson's traffic**, done. *The arcade*: under it the
+  film's floor read 0.39, the game's 0.14-0.18. Two causes, measured apart. The phone exposes
+  for what it sees: the film's brightness second to second held at 0.45 +- 0.055 while the
+  replay's swung 0.48 +- 0.12 (0.28 under the arcade, 0.64 on the sunny forecourt) -- so the
+  grade got an exposure (`FILM_EXPO`): a meter reading the whole screen off its mipmaps (16
+  taps at mip 7 read the true mean within 0.015; `STREETS_FILM_LOOK=meter` paints the reading
+  in a corner to check it), the frame pulled towards 0.45 by (0.45 / mean)^0.75 in light, the
+  curve refitted after it (0.455 +- 0.070 fitted). But exposure alone left the floor at 0.31 in
+  every setting: the arcade's "charcoal" pavers were five times darker than the game's other
+  paving. `pavers_dark` now 0.62 of the way to bg_alt (was 0.8): the floor 0.31-0.36 in AT
+  stills against the film's 0.38-0.41. *The traffic*: the film at 8-14 s, half a second at a
+  time -- a white hatchback by in the far half's lane by the median as the walk reaches it
+  (9 s), a white sedan stopped in its kerb lane (9.5-12 s), a grey SUV driving on past the
+  walk in the median lane, close (12.5-13.5 s); the walk faces across meanwhile (its look right
+  was 70 degrees, now 15). `Traffic.send` takes `opts`: "lane" kerb / median, "through" (past
+  the walk's own zebras only: `_zebra_ahead` skips the film-tagged ones), "kind", "paint".
+  A sent car starts at 70% of its street's pace: 28 m to the zebra on Katzenelson is 2.5 s.
+  AT stills jump the walk's clock, so scripted cars never drive their timing in them:
+  `TRAFFIC_LOG=from,to` runs the walk at its pace and logs the cars round it -- the hatchback
+  3 m in front at 9.0 s, the SUV 4 m in front at 13.0-13.5 s.
+  Measured on its recording: each second's brightness 0.471 +- 0.061 (the film's 0.454 +-
+  0.055); levels within 0.05 of the film's, 0.0% clipped, saturation 0.146. In the
+  side-by-side the hatchback passes at 8.5 s (the film's 9), the sedan waits from 10 s, and
+  the SUV crosses in front at 13 s where the film's does at 12-13 s: send it half a second
+  sooner if it matters.
+
+### Handoff: the filmed walks (20 Nov 2026, after pass 11)
+
+- **In progress**: nothing. Pass 11 is on main; the list of what is still different is
+  `WALKS.md` (walk 1's details, behaviour and quality, walk 2's, both walks'), with a Done
+  section that points back here.
+- **The biggest open items**, by what the side-by-side shows most: the buildings' faces along
+  the route (cream and sand plaster, balconies, shutters: city-wide, another session's); the
+  light (hazy, warm, soft shadows: another session's); people that move as the film's do
+  (`people` take `to` and `t`; none of walk 1's four walk yet); a steadier stream of cars on
+  Katzenelson (the film has a car by every few seconds both ways, the replay only the five
+  sent); the arcade's columns (white with a dark wooden foot) and the second shop; Ha-Meri's
+  far pavement (a low white wall, an e-scooter); the camera's last differences (a touch of
+  motion blur, the lens's bend at the edges). Walk 2 has no side-by-side: its film (1:42-3:08
+  of the user's video) has not reached a session; ask for it as a clip under 10 MB.
+- **Commands** (all `tests/run.sh filmed_walk <level>`, `STREETS_BUILD_ALL=0`, `OUT=` a scratch
+  folder): `SCAN=1` (posts and buildings on the line, a minute); `POSTS_NEAR="x,z,r;..."`
+  (posts, the kerb's distance, everything drawn by instance, whether a `clear` spot covers
+  it); `AT=s,s,...` (stills; jumps the clock); `TRAFFIC_LOG=from,to` (cars at the walk's own
+  pace); `RECORD=1` with `RES=1280x720 GODOT_ARGS="--fixed-fps 10"` (18.5 min). The grade:
+  `STREETS_FILM_LOOK=0` records the bare picture (to refit with `film_look.py`),
+  `STREETS_FILM_LOOK=meter` paints the exposure meter's reading top left. Then the
+  side-by-side recipe above, `tests/film_look.py <clip> <frames> 96 --check` (a graded
+  recording against the film) and `tests/film_shake.py` (sway, straight stretches only).
+- **Good numbers** (walk 1, after pass 11): both walks' scans print only "scan done";
+  sway 0.25 / 0.21 degrees rms across / up (the film's 0.25 / 0.19); levels at 1-99% within
+  0.05 of the film's, 0.0% clipped, saturation 0.146 (0.159); each second's brightness
+  0.471 +- 0.061 (0.454 +- 0.055); the arcade's floor 0.31-0.36 (0.38-0.41); the horizon
+  0.30 of the way down (`FILM_TILT`). Playtests of levels 5, 1 and 6 survive 25 s; validate's
+  Givatayim keeps its known 2 posts and 1 building on the road (the café table, the
+  passage's building) and the test town's checks read 4-12.
+- **Walk 1's coordinates for new props**: `P(s, off)` in `make_givatayim.py` along S0-S1
+  (above). Katzenelson runs along `off`: its near half s -13.8 to -6.8, the median, its far
+  half -3.9 to 3.1; Ha-Meri along the passage's line with its south-east kerb at off +4; the
+  raised crossing s 89.6-96, its zebra at P(92.4, 0). The generator owns the items it marks
+  `"src": "make_givatayim"` and keeps everyone else's -- other sessions add props to the same
+  file, and walk 2's points were edited by hand there (not by the generator).
+- **Where the camera's numbers live**: streets.gd's `FILM_TILT`, `FILM_CURVE`, `FILM_WARM`,
+  `FILM_SAT`, `FILM_EXPO` and `_film_hand()` (sway sizes, doubled to read as the film's
+  through `film_shake.py`'s filter). A change to the game's materials or light moves the
+  grade's fit: re-record bare and refit rather than nudging the curve by eye.
 
 ## Off the ground: bridges, tunnels, cuttings, embankments (`decks.gd`)
 
