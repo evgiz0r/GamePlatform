@@ -148,6 +148,23 @@ past the foothills they are too steep to drive up (see below), so it is a valley
 leave -- except by the one road that climbs the western mountainside to a lookout terrace
 with a car park and a cafe. The car starts on HaNasi just past HaShuk, in the middle.
 
+> Lets work on adding tunnels/bridges, and maybe more complicated roads. Work in the test
+> town. Change the town if needed (adding river or whatever needed for bridges).
+
+**Off the ground** (the test town first). A river, Nahal Dimyon, crosses the south of the
+town in a valley of its own, from a spring at the foot of the eastern hills to a lake in
+the south-west; its banks are low in the middle of town and steep where it cuts through
+the knoll, and every street that crosses it goes over on a bridge -- concrete parapets, a
+pavement each side, piers standing in the water -- the ring road's on a long skewed one,
+with a footbridge between HaNasi and Rothschild. Derekh HaMinhara goes from HaNasi past
+HaGalil down a cutting into the hill and through it in a 440 m tunnel (under HaOranim,
+HaBroshim and the water tower), lit by two rows of lamps, up a cutting on the far side to
+the ring road. Two of the old grid's streets no longer meet the boulevard: HaTamar dips
+under it (a cutting, a short cut-and-cover tunnel, a cutting back up), HaZayit climbs over
+it on embankments and a bridge. Driving, walking and the traffic all keep to their own
+level: under a bridge you are under it, in the tunnel the hill's houses are not in your
+way, cars overhead do not stop for you.
+
 > I want to make a new fake city in streets, where we would do quicker simulation and
 > validations. Yes it would not stress as the big cities on latency, but would give a quick
 > look if something got prettier as we are trying to make things more realistic slowly.
@@ -745,10 +762,11 @@ contributors under the ODbL, which is why the credit sits on screen.
   What a shop looks like (awning, tables, the bus shelter) is generic. The parked cars
   (about a quarter of the kerb), the people walking and sitting at cafe tables, rooftop
   solar heaters and rooms (Givatayim), pitched roofs on small houses (Bedford).
-- **Not there yet**: bridges and tunnels as such: roads at different levels are drawn
-  on the ground, and tunnels are dropped (an interchange is flat; motorways and their slip
-  roads at least have no pavements or people along them). People crossing anywhere but a
-  zebra.
+- **Not there yet**: bridges and tunnels in the real towns. OSM says which ways are
+  bridges and tunnels but not how high they are, so there the roads at different levels
+  are still drawn on the ground and tunnels are dropped (an interchange is flat; motorways
+  and their slip roads at least have no pavements or people along them). The test town has
+  them (above), because its maker knows the heights. People crossing anywhere but a zebra.
 
 To make your own street more accurate, fix it on openstreetmap.org (building heights are
 the most useful thing to add) and bake again.
@@ -771,6 +789,7 @@ pavements everywhere, not only here.
 
 ## Later (said, not built)
 
-- Bridges and tunnels: roads at different levels, an interchange you drive over and
+- Bridges and tunnels in the real towns: working out each deck's heights from OSM's tags
+  and the ground (the test town has them already), then an interchange you drive over and
   under.
 - Not just driving: the same baked city could be walked, or used by another game.

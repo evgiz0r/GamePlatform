@@ -792,6 +792,8 @@ var _chatters: Array = []            ## {actor, spot}
 var _table_spots: Array = []         ## Vector2 of every cafe table
 var _furn: RefCounted                ## the street furniture builder (furniture.gd)
 var _details: RefCounted             ## what a filmed walk added to the city (details.gd), or null
+var _decks: Decks                    ## bridges, embankments, cuttings, tunnels (decks.gd)
+var _on_deck := -1                   ## while a deck road is drawn: heights come from it, not the ground
 var _wired := {}                     ## road index -> true: Bedford's lamps hang off its power poles
 var _flag_spots: Array = []          ## a flag on a staff off a lamp post (local X out over the road)
 var _balcony_flags: Array = []       ## a flag hanging off a balcony's parapet
@@ -833,6 +835,7 @@ const ROAD_RANK := {"motorway": 6, "trunk": 6, "primary": 5, "secondary": 4, "te
 const Traffic := preload("res://game/streets/traffic.gd")
 const Furniture := preload("res://game/streets/furniture.gd")
 const Details := preload("res://game/streets/details.gd")
+const Decks := preload("res://game/streets/decks.gd")
 const DriveLog := preload("res://game/streets/drivelog.gd")
 var _log := DriveLog.new()            ## the last two minutes, for the map page and "save log"
 var _ap_why := ""                     ## what held autodrive's speed down this tick (for the log)
@@ -1155,7 +1158,7 @@ func _fit_dual_carriageways() -> void:
 	for ri in range(_roads.size()):
 		var r: Dictionary = _roads[ri]
 		var o := int(r["o"])
-		if not r["drive"] or o == 0 or r.get("ring", false) or r["k"] == "service":
+		if not r["drive"] or o == 0 or r.get("ring", false) or r["k"] == "service" or r.has("ys"):
 			continue
 		var pts: PackedVector2Array = r["pts"]
 		var hw: float = float(r["w"]) * 0.5
@@ -1200,7 +1203,7 @@ func _fit_widths_to_buildings() -> void:
 	var narrowed := 0
 	for ri in range(_roads.size()):
 		var r: Dictionary = _roads[ri]
-		if not r["drive"] or HIGHWAYS.has(r["k"]) or r["k"] == "service":
+		if not r["drive"] or HIGHWAYS.has(r["k"]) or r["k"] == "service" or r.has("ys"):
 			continue
 		var hw := float(r["w"]) * 0.5
 		var min_hw := 2.7 if int(r["o"]) == 0 else 1.8
@@ -1263,8 +1266,8 @@ func _clip_buildings(bdata: Array) -> void:
 		var cuts: Array = []
 		for code: int in _near(_seg_hash, box.get_center(), box.size.length() * 0.5 + 14.0, SEG_CELL):
 			var r: Dictionary = _roads[code / 4096]
-			if not _kerbed(r):
-				continue
+			if not _kerbed(r) or r.has("ys"):
+				continue   # (a deck: kept clear of the buildings when the town was laid out)
 			var pts: PackedVector2Array = r["pts"]
 			var sj := code % 4096
 			var a := pts[sj]
@@ -1359,8 +1362,8 @@ func _load_city(id: String) -> bool:
 
 	for rd: Dictionary in data["roads"]:
 		var kind := String(rd.get("k", ""))
-		if rd.has("tu"):
-			continue   # tunnels are underground; there is no underground yet
+		if rd.has("tu") and not rd.has("y"):
+			continue   # a tunnel the file gives no heights for: it would be drawn on the ground
 		var ids := PackedInt32Array()
 		var pts := PackedVector2Array()
 		for n in rd["n"]:
@@ -1372,6 +1375,13 @@ func _load_city(id: String) -> bool:
 			"speed": float(DRIVE.get(kind, 5.0)) * (NORTH_FASTER.get(kind, 1.0) if String(_place.get("look", "")) == "north" else 1.0),
 			# a roundabout's ring: marked by the bake, or a one-way way that closes on itself
 			"ring": rd.has("rb") or (int(rd.get("o", 0)) != 0 and ids.size() > 3 and ids[0] == ids[ids.size() - 1])}
+		if rd.has("y") and (rd["y"] as Array).size() == ids.size():
+			# off the ground (decks.gd): the height of its surface at each point
+			var ys := PackedFloat32Array()
+			for v in rd["y"]:
+				ys.append(float(v) * k)
+			r["ys"] = ys
+			r["deck"] = "br" if rd.has("br") else ("tu" if rd.has("tu") else ("em" if rd.has("em") else ("cu" if rd.has("cu") else "")))
 		var ri := _roads.size()
 		_roads.append(r)
 		var hw: float = r["w"] * 0.5
@@ -1432,6 +1442,19 @@ func _load_city(id: String) -> bool:
 			_hgrid[i] = float(raw[i]) * k
 		_steep = _any_steep()
 	_made_up = data.has("made_up")
+	_decks = Decks.new(self)
+	_decks.setup()
+	for a: Dictionary in data.get("areas", []):
+		if a.get("k") == "water" and a.has("y"):   # a river held at its level: too deep to drive into
+			var ring := PackedVector2Array()
+			var flat: Array = a["p"]
+			for i in range(0, flat.size() - 1, 2):
+				ring.append(Vector2(flat[i], flat[i + 1]) * k)
+			var box := Rect2(ring[0], Vector2.ZERO)
+			for q in ring:
+				box = box.expand(q)
+			_hash_add(_deep_hash, box, BLD_CELL, _deep.size())
+			_deep.append([ring, float(a["y"]) * k, box])
 	for a: Array in data.get("addrs", []):   # address points that are not on a building
 		_add_address("%s %s" % [a[2], a[3]], Vector2(a[0], a[1]) * k)
 	_fit_widths_to_buildings()
@@ -1507,6 +1530,8 @@ func _build_world() -> bool:
 	pm.material = _ground_mat()
 	ground.mesh = pm
 	ground.position = Vector3(_bounds.get_center().x, -0.4 if _hnx > 0 else 0.0, _bounds.get_center().y)
+	if _decks.any():   # (under the deepest cutting: it shows through the hole cut for it)
+		ground.position.y = minf(ground.position.y, _decks.lowest - 1.0)
 	ground.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	world.add_child(ground)
 	if _hnx > 0:
@@ -1545,6 +1570,7 @@ var _tiled := false                  ## a square is being built (its builders ar
 var _tiles_done := {}
 var _tiles_todo: Array = []          ## Vector2i: the squares still to build
 var _tile_roads := {}                ## square -> roads whose line (15 m either side) reaches it
+var _tile_decks := {}                ## the same for the decks (decks.gd), which only it draws
 var _tile_nodes := {}                ## square -> the road nodes in it
 var _tile_blds := {}                 ## square -> buildings (by the middle of the outline)
 var _tile_areas := {}                ## square -> the city file's areas that reach it
@@ -1718,9 +1744,11 @@ func _build_setup(t0: int) -> void:
 			for t: Vector2i in _tiles_over(Rect2(pts[j], Vector2.ZERO).expand(pts[j + 1]).grow(reach)):
 				if not seen.has(t):
 					seen[t] = true
-					_bucket(_tile_roads, t, ri)
+					# a deck is drawn by decks.gd: none of the ground's builders see it
+					_bucket(_tile_decks if r.has("ys") else _tile_roads, t, ri)
 	for ni in range(_nodes.size()):
-		_bucket(_tile_nodes, _tile_of(_nodes[ni]), ni)
+		if not _decks.deck_only(ni):
+			_bucket(_tile_nodes, _tile_of(_nodes[ni]), ni)
 	for bi in range(_bld_box.size()):
 		_bucket(_tile_blds, _tile_of((_bld_box[bi] as Rect2).get_center()), bi)
 	var tr: Array = _city_data.get("trees", [])
@@ -1780,6 +1808,7 @@ func _build_tile(t: Vector2i) -> void:
 	var tk := Time.get_ticks_msec()
 	_ao = CBuf.new(GROUND_CELL)
 	await _build_ground()
+	await _decks.build()
 	tk = _stage("roads", tk)
 	await _build_buildings()
 	tk = _stage("buildings", tk)
@@ -1857,7 +1886,7 @@ func _build_rest() -> void:
 	for key: String in _city_data.keys():
 		await _release(_city_data[key])
 	_city_data = {}
-	for table: Dictionary in [_area_rings, _asph_hash, _tile_roads, _tile_nodes, _tile_blds, _tile_areas, _tile_rings,
+	for table: Dictionary in [_area_rings, _asph_hash, _tile_roads, _tile_decks, _tile_nodes, _tile_blds, _tile_areas, _tile_rings,
 			_tile_trees, _tile_pois, _tile_stops, _tile_signs, _tile_lit, _tile_bars]:
 		await _release(table)
 	_bg_build = false
@@ -1890,8 +1919,12 @@ func _ground_line(pts: PackedVector2Array) -> PackedFloat32Array:
 	out.resize(pts.size())
 	var extra := 0.07 if _hnx > 0 else 0.0
 	for i in range(pts.size()):
-		out[i] = _h(pts[i]) + extra
+		out[i] = _hh(pts[i]) + extra
 	return out
+
+## the ground's height, or while a deck road is drawn (_on_deck) that road's surface
+func _hh(p: Vector2) -> float:
+	return _h(p) if _on_deck < 0 else _decks.deck_y(_on_deck, p)
 
 ## This square's ground: the parks, lawns, water and car parks, the roads' asphalt and the
 ## paths, their paint and zebras, the cast iron in them. All of it laid along lines and
@@ -1916,7 +1949,9 @@ func _build_ground() -> void:
 			y = Y_AREA - 0.001
 		var ring: PackedVector2Array = a["_ring"]
 		var flat := INF
-		if tone == "water":   # water lies flat at the lowest point of its whole shore
+		if tone == "water" and a.has("y"):   # a river held at its level by weirs
+			flat = float(a["y"]) / float(_city_data.get("scale", 10))
+		elif tone == "water":   # water lies flat at the lowest point of its whole shore
 			for p in ring:
 				flat = minf(flat, _h(p))
 		for piece: PackedVector2Array in _pieces_in(ring, sq, sq_poly):
@@ -2005,8 +2040,9 @@ func _near_part(pts: PackedVector2Array, reach: float) -> PackedVector2Array:
 ## Where a person's feet go at p: on top of the pavement beside a kerbed road, on the
 ## asphalt, or on the ground's own layer -- each a little over the bare ground height, which
 ## is where people stood, a pavement's height (and on the hills the lift) into the slabs.
-func _walk_y(p: Vector2) -> float:
-	var hit := _nearest_seg(p, 5.0, true, true)
+func _walk_y(p: Vector2, y := NAN) -> float:
+	var base := _h(p) if is_nan(y) else _decks.surf(p, y)   # (on a bridge, in a tunnel: its road)
+	var hit := _nearest_seg(p, 5.0, true, true, NAN if is_nan(y) else base)
 	var on := Y_AREA
 	if not hit.is_empty():
 		var edge: float = hit["edge"]
@@ -2014,14 +2050,14 @@ func _walk_y(p: Vector2) -> float:
 			on = Y_ROAD
 		elif edge < KERB_W + PAVE_W + 0.1 and _kerbed(_roads[hit["road"]]):
 			on = KERB_H
-	return _h(p) + on + (0.07 if _hnx > 0 else 0.0)
+	return base + on + (0.07 if _hnx > 0 else 0.0)
 
 ## a pavement's top over the bare ground
 func _pave_top() -> float:
 	return KERB_H + (0.07 if _hnx > 0 else 0.0)
 
 func _g3(p: Vector2, lift: float) -> Vector3:
-	return Vector3(p.x, _h(p) + lift + (0.07 if _hnx > 0 else 0.0), p.y)
+	return Vector3(p.x, _hh(p) + lift + (0.07 if _hnx > 0 else 0.0), p.y)
 
 ## the ground itself: one mesh over the city's height grid, smooth-shaded
 func _build_terrain() -> void:
@@ -2052,10 +2088,30 @@ func _build_terrain() -> void:
 					bv.append(verts[j * _hnx + i])
 					bn.append(norms[j * _hnx + i])
 			idx = PackedInt32Array()
+			var holes := _decks.any() and not _decks.holes.is_empty()
+			var bbox := Rect2(_hx0 + bi * _hstep, _hz0 + bj * _hstep, (i1 - bi) * _hstep, (j1 - bj) * _hstep)
+			if holes:
+				holes = false
+				for hb: Rect2 in _decks.hole_boxes:
+					holes = holes or hb.intersects(bbox)
 			for j in range(j1 - bj):
 				for i in range(i1 - bi):
 					var a := j * w + i
-					idx.append_array(PackedInt32Array([a, a + 1, a + w, a + 1, a + w + 1, a + w]))
+					if not holes:
+						idx.append_array(PackedInt32Array([a, a + 1, a + w, a + 1, a + w + 1, a + w]))
+						continue
+					# over a cutting the ground is cut away (decks.gd): a triangle that reaches
+					# one is clipped round it
+					for t: PackedInt32Array in [PackedInt32Array([a, a + 1, a + w]), PackedInt32Array([a + 1, a + w + 1, a + w])]:
+						var pieces: Array = _decks.cut_tri([bv[t[0]], bv[t[1]], bv[t[2]]], [bn[t[0]], bn[t[1]], bn[t[2]]])
+						if pieces.size() == 1 and (pieces[0][0] as Array)[0] == bv[t[0]] and (pieces[0][0] as Array)[1] == bv[t[1]]:
+							idx.append_array(t)
+							continue
+						for pc: Array in pieces:
+							for m in range(3):
+								idx.append(bv.size())
+								bv.append(pc[0][m])
+								bn.append(pc[1][m])
 			var arr := []
 			arr.resize(Mesh.ARRAY_MAX)
 			arr[Mesh.ARRAY_VERTEX] = bv
@@ -2516,7 +2572,7 @@ func _build_kerbs() -> void:
 const MEDIAN_W := 1.2
 
 func _median_road(r: Dictionary) -> bool:
-	if not r["drive"] or int(r["o"]) != 0 or r.get("ring", false) or not _kerbed(r):
+	if not r["drive"] or int(r["o"]) != 0 or r.get("ring", false) or not _kerbed(r) or r.has("ys"):
 		return false
 	var w := float(r["w"])
 	# (secondary streets come out 10 m wide, tertiary 9: the main roads, not the side streets)
@@ -2606,6 +2662,8 @@ func _build_asph_hash() -> void:
 		var pts: PackedVector2Array = r["pts"]
 		var hw: float = float(r["w"]) * 0.5
 		for j in range(pts.size() - 1):
+			if r.has("ys") and (absf(r["ys"][j] - r["gs"][j]) > 0.5 or absf(r["ys"][j + 1] - r["gs"][j + 1]) > 0.5):
+				continue   # (a bridge over a street, a tunnel under one: not in its way)
 			_hash_add(_asph_hash, Rect2(pts[j], Vector2.ZERO).expand(pts[j + 1]).grow(hw), ASPH_CELL, ri * 4096 + j)
 
 func _asphalt_other(p: Vector2, ri: int) -> bool:
@@ -4695,7 +4753,7 @@ func _partner(c: Vector2, d: Vector2, ri: int, hw: float, o: int) -> Array:
 		if rj == ri:
 			continue
 		var r2: Dictionary = _roads[rj]
-		if not r2["drive"] or int(r2["o"]) == 0:
+		if not r2["drive"] or int(r2["o"]) == 0 or r2.has("ys"):
 			continue
 		var p2: PackedVector2Array = r2["pts"]
 		var sj := code % 4096
@@ -9365,7 +9423,7 @@ func _get_out() -> void:
 	var fwd := _fwd()
 	var left := Vector2(fwd.y, -fwd.x)
 	var door := _pos + left * 1.4
-	if _push_out(door, 0.35, true) != Vector2.ZERO:
+	if _push_out(door, 0.35, true, true, _y) != Vector2.ZERO:
 		door = _pos - left * 1.4   # a wall on that side: out of the other door
 	if _me == null:
 		_me = Actor3D.new()
@@ -9398,7 +9456,7 @@ func _get_out() -> void:
 		_yaw = _jump_v.angle()
 		_prev_yaw = _yaw
 	_v = 0.0
-	_y = _walk_y(door)
+	_y = _walk_y(door, _car_y_at)
 	_prev_y = _y
 	_cam_dist = 3.4
 	Probe.event("walk", {"on": true, "jumped": moving, "kmh": int(absf(_car_v) * 3.6)})
@@ -9466,6 +9524,7 @@ func _film_begin(id: String) -> void:
 	_pos = p0
 	_yaw = (_film_at(1.5) - p0).angle()
 	_v = 0.0
+	_y = 1.0e6
 	_snap_pose()
 	_cockpit = true
 	_get_out()
@@ -9483,7 +9542,7 @@ func _film_tick(dt: float) -> void:
 	_film_step += moved
 	_v = moved / maxf(dt, 0.001)
 	_pos = p
-	_y = _h(p)
+	_y = _decks.surf(p, _y)
 	var ahead := _film_at(_film_t + 1.6)
 	if ahead.distance_to(p) > 0.3:
 		_yaw = lerp_angle(_yaw, (ahead - p).angle(), 1.0 - exp(-dt * 2.2))
@@ -9556,9 +9615,9 @@ func _coast_car(dt: float) -> void:
 	var push := Vector2.ZERO
 	for off: float in [CAR_OFF, -CAR_OFF]:
 		var c := _car_at + fwd * off
-		var p := _push_out(c, CAR_R, true, false)
+		var p := _push_out(c, CAR_R, true, false, _car_y_at)
 		if _traffic != null:
-			p += _traffic.push(c + p, CAR_R)
+			p += _traffic.push(c + p, CAR_R, _car_y_at)
 		if p.length() > push.length():
 			push = p
 	var rim := _bounds.grow(-EDGE - CAR_R - CAR_OFF)
@@ -9572,7 +9631,7 @@ func _coast_car(dt: float) -> void:
 		_car_v *= 0.15 if into > 1.5 else 0.6
 		if absf(_car_v) < 0.3:
 			_car_v = 0.0
-	_car_y_at = _h(_car_at)
+	_car_y_at = _decks.surf(_car_at, _car_y_at)
 
 func _walk(dt: float) -> void:
 	_coast_car(dt)
@@ -9581,9 +9640,9 @@ func _walk(dt: float) -> void:
 		_tumble -= dt
 		_pos += _jump_v * dt
 		_jump_v *= exp(-dt * 3.2)
-		_pos += _push_out(_pos, 0.3, true)
+		_pos += _push_out(_pos, 0.3, true, true, _y)
 		_keep_inside(0.3, false)
-		_y = _walk_y(_pos)
+		_y = _walk_y(_pos, _y)
 		if _tumble <= 0.0:
 			_me_anim = ""
 		return
@@ -9598,17 +9657,18 @@ func _walk(dt: float) -> void:
 	_v = move_toward(_v, want, 9.0 * dt)
 	_pos += _fwd() * _v * dt
 	# walls, trees and posts; the cars going by; the car you left
-	var push := _push_out(_pos, 0.3, true)
-	push += _steep_push(_pos + push, 0.3)
+	var push := _push_out(_pos, 0.3, true, false, _y)
+	push += _steep_push(_pos + push, 0.3, _y)
+	push += _deep_push(_pos + push, 0.3, _y)
 	_pos += push
-	_pos += _traffic.push(_pos, 0.3)
+	_pos += _traffic.push(_pos, 0.3, _y)
 	var cf := Vector2(cos(_car_yaw_at), sin(_car_yaw_at))
 	for off: float in [CAR_OFF, -CAR_OFF]:
 		var d := _pos - (_car_at + cf * off)
 		if d.length() < CAR_R + 0.3 and d.length() > 0.001:
 			_pos += d.normalized() * (CAR_R + 0.3 - d.length())
 	_keep_inside(0.3, false)
-	_y = lerpf(_y, _walk_y(_pos), 1.0 - exp(-dt * 12.0))   # up and down kerbs in a step, not a jump
+	_y = lerpf(_y, _walk_y(_pos, _y), 1.0 - exp(-dt * 12.0))   # up and down kerbs in a step, not a jump
 	var anim := "Idle" if absf(_v) < 0.15 else ("Run" if absf(_v) > WALK + 0.5 else "Walk")
 	if anim != _me_anim:
 		_me_anim = anim
@@ -9636,7 +9696,8 @@ func _foot_camera(dt: float) -> void:
 	var clear := _clear_behind(p, -back, 3.4)
 	_cam_dist = clear if clear < _cam_dist else lerpf(_cam_dist, clear, 1.0 - exp(-dt * 2.0))
 	var e2 := p - back * _cam_dist
-	var eye := Vector3(e2.x, maxf(gy + 2.0, _h(e2) + 1.3), e2.y)
+	var eye := Vector3(e2.x, maxf(gy + 2.0, _decks.surf(e2, gy) + 1.3), e2.y)
+	eye = _decks.keep_eye(eye, p, gy)
 	look_from(eye, Vector3(p.x + back.x * 2.0, gy + 1.35, p.y + back.y * 2.0))
 	cam.fov = 66.0
 
@@ -9941,6 +10002,7 @@ func _box(buf: Buf, c: Vector3, size: Vector3) -> void:
 func _place_start() -> void:
 	_find_start()
 	_cam_yaw = _yaw
+	_y = 1.0e6   # (the top of whatever is there: the street, not a tunnel under it)
 	_snap_pose()
 
 ## where the car starts (_pos, _yaw): the level's corner, else a main road near the middle
@@ -10347,7 +10409,7 @@ func _worst_ms() -> float:
 ## straight behind
 func _snap_pose() -> void:
 	_air = false
-	_y = _h(_pos)
+	_y = _decks.surf(_pos, _y)
 	_vy = 0.0
 	_spin = 0.0
 	_ground_was = _y
@@ -10421,7 +10483,7 @@ func _manual(dt: float) -> Array:
 ## the assist's nudge: toward the street's direction and the middle of its lane, while
 ## the car is roughly following the street (not crossing it or turning off it)
 func _assist_steer() -> float:
-	var hit := _nearest_seg(_pos, 12.0, true, true)
+	var hit := _nearest_seg(_pos, 12.0, true, true, _y)
 	if hit.is_empty():
 		return 0.0
 	var r: Dictionary = _roads[hit["road"]]
@@ -10444,7 +10506,7 @@ func _blocked_ahead() -> bool:
 	var fwd := _fwd()
 	for k: float in [0.6, 1.0]:
 		var p := _pos + fwd * (CAR_LEN * 0.5 + 0.8 + _v * 0.45 * k) + Vector2(-fwd.y, fwd.x) * _steer * 3.0 * k
-		if _push_out(p, 0.6, true) != Vector2.ZERO or _steep_push(p, 0.6) != Vector2.ZERO:
+		if _push_out(p, 0.6, true, true, _y) != Vector2.ZERO or _steep_push(p, 0.6, _y) != Vector2.ZERO:
 			return true
 	return false
 
@@ -10459,7 +10521,9 @@ func _rescue() -> void:
 ## `reach`), clear of parked cars and trees; facing `prefer` where the street allows,
 ## else (prefer = zero) the way that has `near` on the kerb side. False if no street.
 func _land_on_road(near: Vector2, reach: float, prefer: Vector2) -> bool:
-	var hit := _nearest_seg(near, reach, true, true)
+	var hit := _nearest_seg(near, reach, true, true, _y)
+	if hit.is_empty():
+		hit = _nearest_seg(near, reach, true, true)
 	if hit.is_empty():
 		return false
 	var r: Dictionary = _roads[hit["road"]]
@@ -10479,8 +10543,9 @@ func _land_on_road(near: Vector2, reach: float, prefer: Vector2) -> bool:
 	# the car are clear
 	for s: float in [0.0, 5.0, -5.0, 10.0, -10.0, 15.0, -15.0, 20.0]:
 		var p := at + d * s
-		if _push_out(p + d * CAR_OFF, CAR_R, true) == Vector2.ZERO \
-				and _push_out(p - d * CAR_OFF, CAR_R, true) == Vector2.ZERO:
+		var py := _decks.deck_y(int(hit["road"]), p) if r.has("ys") else _h(p)
+		if _push_out(p + d * CAR_OFF, CAR_R, true, true, py) == Vector2.ZERO \
+				and _push_out(p - d * CAR_OFF, CAR_R, true, true, py) == Vector2.ZERO:
 			at = p
 			break
 	_pos = at
@@ -10491,6 +10556,7 @@ func _land_on_road(near: Vector2, reach: float, prefer: Vector2) -> bool:
 	_gear = 1
 	_steer_in = 0.0
 	_pin_at = _pos
+	_y = _decks.deck_y(int(hit["road"]), at) if r.has("ys") else _h(at)
 	_snap_pose()
 	return true
 
@@ -10515,7 +10581,7 @@ func _drive(dt: float, throttle: float, brake: float, steer: float) -> void:
 		resist += ENGINE_BRAKE * signf(v)
 	if _hnx > 0 and not _air:   # gravity along the road: uphill slows you, downhill pulls
 		var fwd0 := _fwd()
-		_slope = atan2(_h(_pos + fwd0 * 1.4) - _h(_pos - fwd0 * 1.4), 2.8)
+		_slope = atan2(_decks.surf(_pos + fwd0 * 1.4, _y) - _decks.surf(_pos - fwd0 * 1.4, _y), 2.8)
 		resist += MASS * 9.81 * sin(_slope)
 	var nv := v + (f - resist) / MASS * dt
 	if v != 0.0 and signf(nv) != signf(v) and throttle <= 0.01:
@@ -10660,7 +10726,7 @@ void fragment() {
 ## faster than the car comes down, and then it flies, with a little lift for the fun of it,
 ## and lands with a thump (and a bounce if it came down hard)
 func _fly(dt: float) -> void:
-	var ground := _h(_pos)
+	var ground: float = _decks.surf(_pos, _y)   # (a bridge's deck, a tunnel's road: whatever is under it)
 	var gv := (ground - _ground_was) / maxf(dt, 0.001)   # the ground's own rise or fall, under the car
 	_ground_was = ground
 	if _air:
@@ -10695,7 +10761,7 @@ func _fly(dt: float) -> void:
 func _hop(up: float) -> void:
 	if not _air:
 		_air = true
-		_y = _h(_pos)
+		_y = _decks.surf(_pos, _y)
 	_vy = maxf(_vy, up)
 
 func _place_car(dt: float) -> void:
@@ -10712,7 +10778,9 @@ func _place_car(dt: float) -> void:
 ## the car's body where the map says, sitting on the slope: nose up a hill, leaning across
 ## a camber
 func _pose_car(p: Vector2, yaw: float, y := NAN) -> void:
-	_car.position = Vector3(p.x, (_h(p) if is_nan(y) else maxf(y, _h(p))) + road_top(), p.y)
+	var at := _y if is_nan(y) else y   # (the level it is at: under a bridge, on it, in a tunnel)
+	var g0: float = _decks.surf(p, at)
+	_car.position = Vector3(p.x, (g0 if is_nan(y) else maxf(y, g0)) + road_top(), p.y)
 	_car.rotation.y = PI * 0.5 - yaw
 	if _air:   # in the air the nose follows the flight
 		_car.rotation.x = lerp_angle(_car.rotation.x, -atan2(_vy, maxf(absf(_v), 3.0)) * 0.8, 0.15)
@@ -10720,8 +10788,8 @@ func _pose_car(p: Vector2, yaw: float, y := NAN) -> void:
 	if _hnx > 0:
 		var fwd := Vector2(cos(yaw), sin(yaw))
 		var side := Vector2(-fwd.y, fwd.x)
-		var pitch := atan2(_h(p + fwd * 1.4) - _h(p - fwd * 1.4), 2.8)
-		var roll := atan2(_h(p - side * 0.8) - _h(p + side * 0.8), 1.6)
+		var pitch := atan2(_decks.surf(p + fwd * 1.4, at) - _decks.surf(p - fwd * 1.4, at), 2.8)
+		var roll := atan2(_decks.surf(p - side * 0.8, at) - _decks.surf(p + side * 0.8, at), 1.6)
 		_car.rotation.x = -pitch
 		_car.rotation.z = roll
 
@@ -10931,8 +10999,8 @@ func _place_walker(w: Dictionary, anywhere: bool) -> void:
 		if hit.is_empty():
 			continue
 		var r: Dictionary = _roads[hit["road"]]
-		if not _kerbed(r):
-			continue   # no pavement: a motorway, a slip road, a service lane, a private way
+		if not _kerbed(r) or r.has("ys"):
+			continue   # no pavement: a motorway, a slip road, a service lane, a private way, a bridge
 		# as many people as the place has life: by its homes, shops and cafes
 		if _people_rng.randf() > _liveliness(hit["q"]):
 			continue
@@ -11526,8 +11594,8 @@ func _clear_lane(p: Vector2, d: Vector2, lane: float) -> Vector2:
 	var right := Vector2(-d.y, d.x)
 	for off: float in [lane, lane * 0.6, lane * 0.25, 0.0, -0.7, 0.7]:
 		var q := p + right * off
-		if _push_out(q, 1.2, true, false) == Vector2.ZERO and _push_out(q + d * 1.4, 1.15, true, false) == Vector2.ZERO \
-				and _push_out(q - d * 1.4, 1.15, true, false) == Vector2.ZERO:
+		if _push_out(q, 1.2, true, false, _y) == Vector2.ZERO and _push_out(q + d * 1.4, 1.15, true, false, _y) == Vector2.ZERO \
+				and _push_out(q - d * 1.4, 1.15, true, false, _y) == Vector2.ZERO:
 			return q
 	return p + right * lane
 
@@ -11543,8 +11611,9 @@ func _collide() -> void:
 	for _pass in range(3):
 		var moved := false
 		for off: float in [CAR_OFF, -CAR_OFF]:
-			var p := _push_out(_pos + fwd * off, CAR_R, true)
-			p += _steep_push(_pos + fwd * off + p, CAR_R)
+			var p := _push_out(_pos + fwd * off, CAR_R, true, true, _y)
+			p += _steep_push(_pos + fwd * off + p, CAR_R, _y)
+			p += _deep_push(_pos + fwd * off + p, CAR_R, _y)
 			if p != Vector2.ZERO:
 				total += p
 				_pos += p
@@ -11605,9 +11674,9 @@ func _crash(speed: float) -> void:
 ## Ground too steep to climb is a wall (STEEP): a circle whose uphill edge is on it is moved
 ## back downhill to where the ground is gentle enough. A road is always drivable, however
 ## steep. Nothing to do in a city without such ground.
-func _steep_push(c: Vector2, r: float) -> Vector2:
-	if not _steep:
-		return Vector2.ZERO
+func _steep_push(c: Vector2, r: float, y := NAN) -> Vector2:
+	if not _steep or (not is_nan(y) and absf(y - _h(c)) > 2.5):
+		return Vector2.ZERO   # (on a bridge, in a tunnel: the slopes round it are not in the way)
 	var g := _grade(c)
 	if g == Vector2.ZERO:
 		return Vector2.ZERO
@@ -11626,6 +11695,36 @@ func _steep_push(c: Vector2, r: float) -> Vector2:
 	_last_hit = "steep ground"
 	return -up * s
 
+## Water held at its own level (a river between weirs, the test town's) is too deep to drive
+## or walk into: a circle whose lowest edge would be in it more than DEEP is moved back up the
+## bank. Water that lies at its shore's lowest point (every lake and pond OSM maps) is left
+## as it was: a road across a lake's inlet runs on ground the water's level is above.
+const DEEP := 0.35
+var _deep: Array = []                ## [outline, level, box]
+var _deep_hash := {}
+
+func _deep_push(c: Vector2, r: float, y: float) -> Vector2:
+	if _deep.is_empty() or absf(y - _h(c)) > 2.5:
+		return Vector2.ZERO   # (on a bridge over it)
+	var gr := _grade(c)
+	var up := gr.normalized() if gr != Vector2.ZERO else Vector2.ZERO
+	var low := c - up * r
+	for i: int in _near(_deep_hash, low, 0.1, BLD_CELL):
+		var d: Array = _deep[i]
+		if not (d[2] as Rect2).has_point(low) or not Geometry2D.is_point_in_polygon(low, d[0]):
+			continue
+		var lv: float = d[1]
+		if _h(low) > lv - DEEP or up == Vector2.ZERO:
+			continue
+		var s := 0.0
+		while s < 4.0:
+			s += 0.25
+			if _h(low + up * s) > lv - DEEP:
+				break
+		_last_hit = "deep water"
+		return up * s
+	return Vector2.ZERO
+
 ## which way and how steeply the ground rises at p (metres up per metre across)
 func _grade(p: Vector2) -> Vector2:
 	return Vector2(_h(p + Vector2(1, 0)) - _h(p - Vector2(1, 0)), _h(p + Vector2(0, 1)) - _h(p - Vector2(0, 1))) * 0.5
@@ -11640,10 +11739,15 @@ func _any_steep() -> bool:
 				return true
 	return false
 
-## how far to move a circle so it overlaps nothing solid
-func _push_out(c: Vector2, r: float, posts: bool, cars := true) -> Vector2:
+## how far to move a circle so it overlaps nothing solid (its feet at y: a deck's walls are
+## solid only at their own heights; without a y, the ground's level)
+func _push_out(c: Vector2, r: float, posts: bool, cars := true, y := NAN) -> Vector2:
 	var push := Vector2.ZERO
-	for i: int in _near(_bld_hash, c, r, BLD_CELL):
+	var ground := true   # at the ground's level (not in a tunnel under it, not on a bridge over it)
+	if _decks != null and _decks.any():
+		push = _decks.push(c, r, _h(c) if is_nan(y) else y)
+		ground = is_nan(y) or absf(y - _h(c)) < 2.5
+	for i: int in (_near(_bld_hash, c, r, BLD_CELL) if ground else []):
 		if _bld_solid[i] == 0:
 			continue
 		var box: Rect2 = _bld_box[i]
@@ -11653,7 +11757,7 @@ func _push_out(c: Vector2, r: float, posts: bool, cars := true) -> Vector2:
 		if p != Vector2.ZERO:
 			push += p
 			_last_hit = "building %d" % i
-	if posts:
+	if posts and ground:
 		# fences, railings, hedges, garden walls, a shelter's back: thin walls, as segments
 		for i: int in _near(_wall_hash, c, r + 0.5, BLD_CELL):
 			var q := c + push
@@ -11670,11 +11774,11 @@ func _push_out(c: Vector2, r: float, posts: bool, cars := true) -> Vector2:
 			if d.length() < need:
 				push += d.normalized() * (need - d.length()) if d.length() > 0.001 else Vector2(need, 0)
 				_last_hit = "post %d" % i
-		if _traffic != null and cars:
-			var tp := _traffic.push(c + push, r)
-			if tp != Vector2.ZERO:
-				push += tp
-				_last_hit = "car %d" % _traffic.hit_index
+	if posts and _traffic != null and cars:
+		var tp := _traffic.push(c + push, r, y)
+		if tp != Vector2.ZERO:
+			push += tp
+			_last_hit = "car %d" % _traffic.hit_index
 	return push
 
 func _poly_push(poly: PackedVector2Array, c: Vector2, r: float) -> Vector2:
@@ -11725,10 +11829,14 @@ func _near(h: Dictionary, p: Vector2, r: float, size: float) -> Array:
 	return seen.keys()
 
 ## the closest road segment to p within max_d: {road, seg, q (closest point), edge (metres
-## past the asphalt's edge, negative when on it)}; {} when there is none
-func _nearest_seg(p: Vector2, max_d: float, drivable: bool, public := false) -> Dictionary:
+## past the asphalt's edge, negative when on it)}; {} when there is none. Only roads at the
+## level of y count (within LEVEL_SLACK of it: not the bridge overhead, not the tunnel
+## underneath); without a y, the ground's level at p.
+const LEVEL_SLACK := 3.0
+func _nearest_seg(p: Vector2, max_d: float, drivable: bool, public := false, y := NAN) -> Dictionary:
 	var best := {}
 	var bd := INF
+	var levels := _decks != null and _decks.any()
 	for code: int in _near(_seg_hash, p, max_d, SEG_CELL):
 		var ri := code / 4096
 		var sj := code % 4096
@@ -11739,6 +11847,10 @@ func _nearest_seg(p: Vector2, max_d: float, drivable: bool, public := false) -> 
 			continue
 		var pts: PackedVector2Array = r["pts"]
 		var q := Geometry2D.get_closest_point_to_segment(p, pts[sj], pts[sj + 1])
+		if levels and (r.has("ys") or not is_nan(y)):
+			var at := _decks.seg_y(ri, sj, q) if r.has("ys") else _h(q)
+			if absf(at - (_h(p) if is_nan(y) else y)) > LEVEL_SLACK:
+				continue
 		var edge := p.distance_to(q) - float(r["w"]) * 0.5
 		if edge < bd:
 			bd = edge
@@ -11773,7 +11885,7 @@ func _camera(dt: float, p: Vector2, yaw: float) -> void:
 		var at2 := p + fw * _dev_cam[0] + lf * _dev_cam[1]
 		var dy := yaw - deg_to_rad(_dev_cam[3])
 		var tl := deg_to_rad(_dev_cam[4])
-		var eye := Vector3(at2.x, _h(at2) + _dev_cam[2], at2.y)
+		var eye := Vector3(at2.x, _decks.surf(at2, _view_y) + _dev_cam[2], at2.y)
 		look_from(eye, eye + Vector3(cos(dy) * cos(tl), sin(tl), sin(dy) * cos(tl)))
 		cam.fov = 70.0
 		return
@@ -11787,11 +11899,13 @@ func _camera(dt: float, p: Vector2, yaw: float) -> void:
 	var clear := _clear_behind(p, -back, want)
 	_cam_dist = clear if clear < _cam_dist else lerpf(_cam_dist, clear, 1.0 - exp(-dt * 1.5))
 	var d := _cam_dist
-	var gy := _h(p) + maxf(_view_y - _h(p), 0.0) * 0.8   # up with the car when it flies
+	var gp: float = _decks.surf(p, _view_y)   # (the deck it is on, the tunnel's road)
+	var gy := gp + maxf(_view_y - gp, 0.0) * 0.8   # up with the car when it flies
 	var eye2 := p - back * d
-	var eye := Vector3(eye2.x, maxf(gy + 2.0 + d * 0.14, _h(eye2) + 1.4), eye2.y)
+	var eye := Vector3(eye2.x, maxf(gy + 2.0 + d * 0.14, _decks.surf(eye2, _view_y) + 1.4), eye2.y)
+	eye = _decks.keep_eye(eye, p, _view_y)
 	var ahead := p + back * 4.0
-	var at := Vector3(ahead.x, lerpf(gy, _h(ahead), 0.5) + 1.0, ahead.y)
+	var at := Vector3(ahead.x, lerpf(gy, _decks.surf(ahead, _view_y), 0.5) + 1.0, ahead.y)
 	look_from(eye, at)
 	cam.fov = lerpf(64.0, 74.0, spd)
 
@@ -11816,6 +11930,8 @@ func _seat_camera(dt: float, yaw: float) -> void:
 		_dial_rpm.basis = Basis(Vector3.RIGHT, 0.32) * Basis(Vector3.BACK, -2.2 + 4.4 * clampf(_rpm / 7000.0, 0.0, 1.0))
 
 func _clear_behind(from: Vector2, dir: Vector2, want: float) -> float:
+	if absf(_view_y - _h(from)) > 2.5:
+		return want   # (in a tunnel, on a bridge: the houses round it are not behind the car)
 	var s := 1.0
 	while s <= want + 0.6:
 		var p := from + dir * s
@@ -11861,7 +11977,7 @@ func _autodrive(dt: float) -> Array:
 		# looking over the shoulder: anything behind (a car, a post, a wall, someone) and
 		# it stops backing -- it used to reverse its 1.4 s blind, into the car behind
 		var tail := _pos - _fwd() * (CAR_OFF + 0.7 + absf(_v) * 0.4)
-		var behind := _push_out(tail, CAR_R, true, true) != Vector2.ZERO
+		var behind := _push_out(tail, CAR_R, true, true, _y) != Vector2.ZERO
 		behind = behind or not _people_near(tail, 2.5).is_empty()
 		if behind or _ap_back <= 0.0:
 			_ap_back = 0.0
@@ -11937,7 +12053,7 @@ func _autodrive(dt: float) -> Array:
 	# corner, a building on a bend) steers it away, and slows it if it is dead ahead. The
 	# planned lane is clear; this catches the car drifting off it.
 	var nose := _pos + fwd * (CAR_OFF + 0.5 + absf(_v) * 0.3)
-	var shove := _push_out(nose, 1.15, true, false)
+	var shove := _push_out(nose, 1.15, true, false, _y)
 	var ahead_blocked := false
 	if shove != Vector2.ZERO:
 		var side := Vector2(-fwd.y, fwd.x)
@@ -11968,9 +12084,9 @@ func _autodrive(dt: float) -> Array:
 		vt = _held(vt, 2.5, "blocked")
 	# the car in front, kept a couple of metres and a second or so behind; after waiting
 	# a while, ignore cars crossing the lane (a standoff in a junction) -- never one ahead
-	var lead: Array = _traffic.lead_on(_ap_pts, _pos, clampf(12.0 + _v * 1.2 + _v * _v / 5.2, 18.0, 130.0), _ap_wait > 3.0)
+	var lead: Array = _traffic.lead_on(_ap_pts, _pos, clampf(12.0 + _v * 1.2 + _v * _v / 5.2, 18.0, 130.0), _ap_wait > 3.0, _y)
 	if float(lead[0]) < 30.0 and _ap_pass_bus(lead):
-		lead = _traffic.lead_on(_ap_pts, _pos, clampf(12.0 + _v * 1.2 + _v * _v / 5.2, 18.0, 130.0), _ap_wait > 3.0)
+		lead = _traffic.lead_on(_ap_pts, _pos, clampf(12.0 + _v * 1.2 + _v * _v / 5.2, 18.0, 130.0), _ap_wait > 3.0, _y)
 	_ap_lead = float(lead[0]) if float(lead[0]) < INF else -1.0
 	if float(lead[0]) < INF:
 		var lv: float = lead[1]
@@ -12108,7 +12224,7 @@ func _way_to_road() -> PackedVector2Array:
 		var c: Vector2i = queue[head]
 		head += 1
 		if c != Vector2i.ZERO:
-			var on := _nearest_seg(origin + Vector2(c) * WAY_CELL, 8.0, true, true)
+			var on := _nearest_seg(origin + Vector2(c) * WAY_CELL, 8.0, true, true, _y)
 			if not on.is_empty() and float(on["edge"]) < -1.2:
 				goal = c
 				found = true
@@ -12117,7 +12233,7 @@ func _way_to_road() -> PackedVector2Array:
 			var n: Vector2i = c + st
 			if came.has(n) or wall.has(n) or absi(n.x) > WAY_REACH or absi(n.y) > WAY_REACH:
 				continue
-			if _push_out(origin + Vector2(n) * WAY_CELL, 1.3, true, false) != Vector2.ZERO:
+			if _push_out(origin + Vector2(n) * WAY_CELL, 1.3, true, false, _y) != Vector2.ZERO:
 				wall[n] = true
 				continue
 			came[n] = c
@@ -12148,7 +12264,7 @@ func _clear_line(a: Vector2, b: Vector2) -> bool:
 	var L := a.distance_to(b)
 	var s := minf(1.5, L)
 	while s < L:
-		if _push_out(a.lerp(b, s / L), 1.2, true, false) != Vector2.ZERO:
+		if _push_out(a.lerp(b, s / L), 1.2, true, false, _y) != Vector2.ZERO:
 			return false
 		s += 1.0
 	return true
@@ -12179,7 +12295,7 @@ func _ap_plan() -> void:
 		var from := _pos
 		var heading := _fwd()
 		var way := PackedVector2Array()
-		var on := _nearest_seg(_pos, 60.0, true, true)
+		var on := _nearest_seg(_pos, 60.0, true, true, _y)
 		if not on.is_empty() and float(on["edge"]) > 1.0:
 			way = _way_to_road()
 			if way.size() >= 2:
@@ -12207,7 +12323,7 @@ func _ap_plan() -> void:
 			off_l.append_array(_ap_lim)
 			_ap_lim = off_l
 		return
-	var hit := _nearest_seg(_pos, 60.0, true, true)
+	var hit := _nearest_seg(_pos, 60.0, true, true, _y)
 	if hit.is_empty():
 		return
 	var heading := _fwd()
@@ -12219,7 +12335,7 @@ func _ap_plan() -> void:
 		if way.size() < 2:
 			if not _ap_rescue():
 				return
-			hit = _nearest_seg(_pos, 20.0, true, true)
+			hit = _nearest_seg(_pos, 20.0, true, true, _y)
 			if hit.is_empty():
 				return
 			heading = _fwd()
@@ -12297,7 +12413,7 @@ func _ap_pass_bus(lead: Array) -> bool:
 	var bus = _traffic.cars[bi]
 	if bus.kind != "bus" or bus.v > 0.6 or bus.dwell <= 0.0 or _ap_pts.size() < 3:
 		return false
-	var hit := _nearest_seg(_pos, 12.0, true, true)
+	var hit := _nearest_seg(_pos, 12.0, true, true, _y)
 	if hit.is_empty():
 		return false
 	var r: Dictionary = _roads[hit["road"]]
@@ -12678,7 +12794,7 @@ func _route_to(goal: Vector2, from := Vector2.INF, heading := Vector2.ZERO) -> b
 		from = _pos
 	if heading == Vector2.ZERO:
 		heading = _fwd()
-	var s := _nearest_seg(from, 40.0, true, true)
+	var s := _nearest_seg(from, 40.0, true, true, _y if from.distance_to(_pos) < 30.0 else NAN)
 	var g := _nearest_seg(goal, 150.0, true, true)
 	if s.is_empty() or g.is_empty():
 		return false
@@ -13068,7 +13184,7 @@ func _explore(dt: float) -> void:
 	if _scan_t > 0.0:
 		return
 	_scan_t = 0.15
-	var hit := _nearest_seg(_pos, 14.0, true)
+	var hit := _nearest_seg(_pos, 14.0, true, false, _y)
 	var nm := ""
 	var en := ""
 	if not hit.is_empty() and float(hit["edge"]) < 1.5:

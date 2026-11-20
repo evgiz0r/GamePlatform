@@ -282,6 +282,14 @@ opens a window briefly.
 - `Geometry2D.clip_polygons(a, b)` returns several polygons: the pieces, and holes when `b`
   lies wholly inside `a`. Take the largest by area (a hole is always smaller than its
   outline) and fix its winding to match the original's if anything relies on it.
+- **Cutting a hole in a terrain mesh**: clip each triangle that reaches the hole with
+  `Geometry2D.clip_polygons(tri, hole)`, triangulate the pieces, take each new vertex's
+  height and normal from the original triangle (barycentric), and wind them as the ground's
+  own (clockwise seen from above: `(b - a).cross(c - a).y < 0`) or they vanish from above.
+- **A tube seen from inside does not shade itself.** Its faces point inward, so the sun
+  sees their backs and casts no shadow: the inside of a tunnel was lit like the street.
+  Give its meshes `cast_shadow = SHADOW_CASTING_SETTING_DOUBLE_SIDED` (their own instances,
+  not merged into a batch that casts one-sided).
 - Polygon-to-segment distance: `Geometry2D.get_closest_points_between_segments()` over the
   polygon's edges, plus a point-in-polygon test for a segment wholly inside.
 - **A shader error shows only when something draws with it**, as a `SHADER ERROR` in the

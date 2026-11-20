@@ -17,6 +17,7 @@ merge, re-check (`tools/check_script.sh`, a playtest, the tests below), never fo
 | `traffic.gd` | the AI traffic: spawning, paths, lanes, lights and signs, following, standoffs, drawing (multimeshes per car shape) |
 | `furniture.gd` | street furniture built after the places: power lines, lamps and bus-stop kits, flags, ads, fences and hedges, bike racks and scooters |
 | `drivelog.gd` | the drive recorder (see below) |
+| `decks.gd` | roads off the ground -- bridges, embankments, cuttings, tunnels: their heights, what is under a point at a level (`surf`), their walls for collisions (`push`), the ground cut away over cuttings (`cut_tri`), and drawing them a square at a time (`build`). See "Off the ground" below |
 | `cities/*.json` | baked towns (`tools/osm_city.py`) and the made-up test town (`tools/fake_city.py`) |
 | `details.gd`, `cities/details/<city>.json` | what a filmed walk showed and OSM lacks, laid over the baked city as it loads (road edits, unmarked zebras, areas, an arcade cut under a block, paving level with the pavement, walls, fences, hedges, bins, railings, bollards, a pole transformer, a barrier, parked motorbikes, trees) and the walks themselves; the format is at the top of `details.gd` |
 | `cities/details/make_givatayim.py` | writes `givatayim.json`: every detail placed along the Ha-Meri passage's own line, with the film's seconds beside what each came from. Edit this, not the JSON, and run it |
@@ -263,6 +264,53 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   transformer; Ha-Meri has blue-white kerbs, a Zone 30 sign and a painted 30 ring; the
   confectionery's front; the shop fronts under the arcade are lit glass in light frames, not
   the game's dark panels. People last.
+
+## Off the ground: bridges, tunnels, cuttings, embankments (`decks.gd`)
+
+A road whose city file has `y` (its surface's height at each node, decimetres above the
+height grid's base) is a **deck**; its OSM tags say what it is built as (`br` bridge, `tu`
+tunnel, `em` embankment, `cu` cutting). Only `tools/fake_city.py` writes `y` so far, so only
+the test town has decks; in the real towns a bridge without `y` is drawn on the ground as
+before and a tunnel without it is still dropped.
+
+- **One height is not enough.** Everything used to ask `_h(p)`, the ground. Now whatever has
+  a level asks `_decks.surf(p, y)`: the highest of the ground and the decks under p that is
+  at most `STEP_UP` (1.2 m) above its feet, or the lowest when every one is higher. A car
+  keeps its own `_y` (the player's), `c.y` (traffic) and that decides: under a bridge it
+  stays under, in the tunnel it is not lifted onto the hill. Over an open cutting the
+  ground is not a candidate. The car's physics, pose, slope, air, the chase camera, walking,
+  getting out, the driverless car, traffic's placing and drawing all use it.
+- **Kept off the ground's builders.** Decks go in `_tile_decks`, not `_tile_roads`, so no
+  kerb, parked car, lamp, walker, fence or sign is put along one by the usual builders (they
+  would stand on the ground under a bridge or on the hill over a tunnel); `decks.gd` draws
+  their asphalt (the game's own `_ribbon` and `_markings`, with `_on_deck` set so `_g3` and
+  `_ground_line` take the deck's heights), pavements, parapets, slab, piers, retaining walls,
+  railings, the tube and its lamps. Width fitting, building clipping, medians, dual
+  carriageways skip decks; the asphalt grid the kerbs check takes only their stretches at
+  ground level. A node only decks meet at is left out of `_tile_nodes` (no junction disc).
+- **Levels in the lookups.** `_nearest_seg(..., y)` skips roads more than 3 m from y (no y:
+  the ground's level at p, so building-time callers ignore a bridge overhead); the car's
+  callers pass `_y` (assist, autodrive's planning, the street name on the HUD, back on the
+  road). `_push_out(..., y)` checks the decks' walls (each with the band of heights it is
+  solid over: a parapet from under the slab to its top, an embankment's wall from the
+  ground, a cutting's up to its railing, a tunnel's up to the ceiling) and only checks
+  buildings, fences and trees for a body near the ground's level. Traffic skips cars more
+  than 2.5 m above or below (`_level`, `lead_on(..., y)`, `push(..., y)`).
+- **The ground cut open.** Over a cutting the terrain mesh's triangles are clipped round its
+  footprint (`cut_tri`, in `_build_terrain`), and the far-off flat ground plane is put below
+  the deepest deck (it showed through the hole). The tunnel's tube casts shadows from both
+  faces (its own meshes, not the merged ones) so the sun does not light it inside.
+- **Water held at a level** (`areas[].y`, the test town's river) lies at that level, and is
+  too deep to drive or walk into (`_deep_push`): the banks were gentle enough to drive down
+  and along the bed under the water. Lakes and ponds without a level are as before.
+- **Where the heights come from.** The test town's maker knows them: each deck's ends at the
+  ground, a bridge straight from bank to bank with a little camber, the flyover's and
+  underpass's ramps eased up and down to 6.6 m clear of the boulevard (`CLEAR`), the tunnel
+  a straight line between its ends' heights with a 3 m dip, its mouths wherever the ground
+  is 7 m over the road (`COVER`). For a real town the heights would have to be worked out:
+  OSM tags only the bridge's span (the ramps are ordinary ways, sometimes `embankment=yes`)
+  and says nothing of how high; the baker now keeps `layer`, `embankment` and `cutting`.
+- **The test**: `tests/decks.gd` (level 4) -- see tests/README.md.
 
 ## Open problems
 
