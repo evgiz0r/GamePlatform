@@ -160,7 +160,9 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   2.7-3.5 m south-east of that street's line.
 - **The side-by-side.** The film reached the session as a 100 s clip under 10 MB (VLC
   transcode, emailed as an attachment: the connectors will not hand over anything bigger,
-  nor a video from OneDrive at all). That clip came out **mirrored** (a shop sign read
+  nor a video from OneDrive at all). It is not in the repo and must not be: a new session
+  that needs it asks the user for it again, or fetches that attachment through the mail
+  connector if the session has one. Everything else a pass needs is here. That clip came out **mirrored** (a shop sign read
   backwards): flip it (`hflip`). Record the game's half with
   `GODOT_ARGS="--fixed-fps 10" STREETS_BUILD_ALL=0 RECORD=1 OUT=... game/streets/tests/run.sh
   filmed_walk 5` (1280x720; about 1 frame a second in the container: 15 minutes), crop the middle 406x720
@@ -192,14 +194,18 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   motorbikes and scooters nose to the kerb along the arcade (a gap where the walk comes up
   off the road), two more in the forecourt; the planted bed behind the white fence and the
   trees over the passage's mouth.
-- **Next passes** (seen in the side-by-sides): at the zebra's south end the white hoop
-  railing and the red-white kerb; the passage's own paving is small grey pavers in rows, not
-  herringbone, and level with the forecourt (the game steps down 12 cm into it); its stone
-  wall is rough grey stone and its fence darker wood; the corner of Sheinkin is a raised
-  crossing paved in charcoal herringbone with the zebra painted on it, white bollards round
-  the corner, another transformer; Ha-Meri has blue-white kerbs, a Zone 30 sign and a
-  painted 30 ring; the confectionery's front; the shop fronts under the arcade are lit
-  glass in light frames, not the game's dark panels. People last.
+- **Next passes** (seen in the side-by-sides; another session's kerb pass now adds its own
+  bollards and crossing railings city-wide, so check what it put here first): Katzenelson's
+  width at the crossing (the film's pace says its halves are narrower than the game's 9 m:
+  measure from the film and narrow them in the details file); the forecourt's slabs still
+  too pale in the sun; at the zebra's south end the white hoop railing and the red-white
+  kerb; the passage's own paving is small grey pavers in rows, not herringbone, and level
+  with the forecourt (the game steps down 12 cm into it); its stone wall is rough grey stone
+  and its fence darker wood; the corner of Sheinkin is a raised crossing paved in charcoal
+  herringbone with the zebra painted on it, white bollards round the corner, another
+  transformer; Ha-Meri has blue-white kerbs, a Zone 30 sign and a painted 30 ring; the
+  confectionery's front; the shop fronts under the arcade are lit glass in light frames, not
+  the game's dark panels. People last.
 
 ## Open problems
 
