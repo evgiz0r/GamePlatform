@@ -14,8 +14,10 @@ extends SceneTree
 ## Capacity Manual's base of 1900 cars an hour a lane is 1.9 s, and today's drivers are
 ## quicker than 1947's, so these are generous). Each car's gap is set against the figure for
 ## its place in the queue. A queue whose front car is held up past the line (turning across
-## traffic, people on the crossing) is printed but not judged: real counts leave those out
-## too. The bands are wide on purpose -- a few queues of mixed drivers -- and still catch
+## traffic, people on the crossing), or turns off at all, is printed but not judged: real
+## counts are of a lane going straight on. One 15-minute watch is too few queues to judge
+## by -- three on one build read 1.18, 1.44 and 1.57 -- so watch 40 minutes (SECS=2400; at
+## STREETS_SIM_SPEED=2 about 3 minutes here). The bands are wide on purpose -- a few queues of mixed drivers -- and still catch
 ## both mistakes made tuning this by eye: a queue that went within 0.3 s of each other (a
 ## train), then one whose third car moved 9 s after the green.
 const START_GAP := [0.6, 2.5]     ## s between one car moving off and the next (each)
@@ -54,6 +56,7 @@ func _run() -> void:
 	var last_phase: int = g._sig_phase
 	var runs: Array = []      # each: {"t0", "cars": [[queue position, kind, [speeds every 0.1 s]]]}
 	var open: Array = []      # runs still recording: [run, [car indices], start t, line point, its way]
+	var rec_tick := 0
 	while t < secs:
 		await physics_frame
 		t += dt
@@ -85,7 +88,7 @@ func _run() -> void:
 								break
 					if chain.size() < 2:
 						continue
-					var run := {"t0": t, "cars": [], "cross": []}
+					var run := {"t0": t, "cars": [], "cross": [], "yaw0": T.cars[chain[0]].yaw, "turned": 0.0}
 					for qi in range(chain.size()):
 						run["cars"].append([qi + 1, T.cars[chain[qi]].kind, []])
 						run["cross"].append(-1.0)
@@ -101,8 +104,16 @@ func _run() -> void:
 				if c.alive and float(o[0]["cross"][k]) < 0.0 \
 						and (c.pos + Vector2(sin(c.yaw), cos(c.yaw)) * c.len * 0.5 - (o[3] as Vector2)).dot(o[4]) > 0.0:
 					o[0]["cross"][k] = snappedf(t - float(o[2]), 0.01)
-		# record 10 times a second
-		if int(t * 60.0) % 6 == 0:
+		# the front car's turn so far (a queue turning off is slower, and not what real counts
+		# of a lane's flow measure)
+		for o: Array in open:
+			var c0 = T.cars[o[1][0]]
+			if c0.alive:
+				o[0]["turned"] = maxf(float(o[0]["turned"]), absf(angle_difference(float(o[0]["yaw0"]), c0.yaw)))
+		# record 10 times a second, by ticks (by int(t * 60) % 6, rounding at 2x skipped most
+		# samples: queues read as never moving, and the held-up filter judged the wrong ones)
+		rec_tick += 1
+		if rec_tick % maxi(1, roundi(0.1 / dt)) == 0:
 			for o: Array in open:
 				var run: Dictionary = o[0]
 				for k in range((o[1] as Array).size()):
@@ -120,6 +131,9 @@ func _run() -> void:
 		var held := sp0.size() > 60 and float(sp0[60]) < 5.0
 		if held:
 			print("  (the front car held up past the line: printed, not judged)")
+		elif float(run.get("turned", 0.0)) > 0.5:
+			held = true
+			print("  (the front car turned off: printed, not judged -- the real counts are a lane going straight on)")
 		for qi in range((run["cars"] as Array).size()):
 			var c: Array = run["cars"][qi]
 			var sp: Array = c[2]

@@ -38,6 +38,13 @@ func _run() -> void:
 		for i in range(g._posts.size()):
 			if g._posts[i].distance_to(c) <= q[2]:
 				print("post %d at %s r %.2f" % [i, Vector2(snappedf(g._posts[i].x, 0.1), snappedf(g._posts[i].y, 0.1)), g._post_r[i]])
+		# and where the kerb is: the nearest road's centre line and how far its edge is (a walk
+		# keeps to the pavement: edge 0.3 to KERB_W + PAVE_W)
+		var hit: Dictionary = g._nearest_seg(c, 8.0, true, true)
+		if not hit.is_empty():
+			var q2: Vector2 = hit["q"]
+			print("road %d: its centre line nearest at %s, %.2f m from the edge (negative: in the road), road side %s"
+				% [hit["road"], Vector2(snappedf(q2.x, 0.1), snappedf(q2.y, 0.1)), hit["edge"], (q2 - c).normalized()])
 		quit()
 		return
 	if OS.get_environment("SCAN") == "1":
