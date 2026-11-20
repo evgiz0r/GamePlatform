@@ -13388,11 +13388,15 @@ var _film_step := 0.0                ## metres walked: the head bobs with the st
 var _film_done := false
 var _film_look := 0.0                ## the head turned from the body (radians, + right)
 var _film_looks: Array = []          ## Vector4(from, to, radians across, radians up): a glance
+var _film_head: Array = []           ## Vector2(seconds, radians right of the body): the head's turns
+                                     ## as measured off the film (the walk's "head"); where it runs,
+                                     ## it is the head, in place of the turn into bends and the looks'
+                                     ## turns across (their tips up and down still apply)
 var _film_tilt := 0.0                ## the phone tipped from its usual tilt by the looks (radians, + up)
 var _film_zebras: Array = []         ## [from, to, kerb, kerb]: on a crossing (or waiting at it)
 var _film_cars: Array = []           ## [second, at, heading]: a car sent down a street
 var _film_sent := 0
-var _film_people: Array = []         ## [actor, from, to, from second, to second, stays, arrived]: who the film shows
+var _film_people: Array = []         ## [actor, from, to, from second, to second, stays, arrived, talking's facing or INF]: who the film shows
 
 func _film_begin(id: String) -> void:
 	var walks: Dictionary = _details.data.get("walks", {}) if _details != null else {}
@@ -13407,6 +13411,8 @@ func _film_begin(id: String) -> void:
 		# [from, to, degrees right] and, if there, degrees up (down at a zebra's stripes: -25)
 		_film_looks.append(Vector4(float(l[0]), float(l[1]), deg_to_rad(float(l[2])),
 			deg_to_rad(float(l[3])) if l.size() > 3 else 0.0))
+	for h: Array in w.get("head", []):
+		_film_head.append(Vector2(float(h[0]), deg_to_rad(float(h[1]))))
 	for z: Array in w.get("zebras", []):
 		_film_zebras.append([float(z[0]), float(z[1]), Vector2(z[2][0], z[2][1]), Vector2(z[3][0], z[3][1])])
 	for c: Array in w.get("cars", []):
@@ -13432,7 +13438,10 @@ func _film_begin(id: String) -> void:
 		var pace: float = A.distance_to(B) / maxf(float(tt[1]) - float(tt[0]), 0.01)
 		a.play("Walk" if moving else "Idle", true, pace / 1.35 if moving else 1.0)
 		a.visible = not moving
-		_film_people.append([a, A, B, float(tt[0]), float(tt[1]), bool(pp.get("stay", false)), false])
+		# `talk`: one of a group standing talking -- no clip for it, so the body does it: turning a
+		# little to the one spoken to and back, now and then a wider turn (as the film's do)
+		_film_people.append([a, A, B, float(tt[0]), float(tt[1]), bool(pp.get("stay", false)), false,
+			fd.angle() if bool(pp.get("talk", false)) else INF])
 	var p0 := _film_at(0.0)
 	_pos = p0
 	_yaw = (_film_at(1.5) - p0).angle()
@@ -13547,10 +13556,19 @@ func _film_tick(dt: float) -> void:
 	if ahead.distance_to(p) > 0.3 and far.distance_to(p) > 0.6:
 		turn = clampf(angle_difference((ahead - p).angle(), (far - p).angle()) * 0.7, -0.6, 0.6)
 	var tip := 0.0
+	var head: bool = _film_head.size() > 1 and _film_t >= _film_head[0].x and _film_t <= _film_head[_film_head.size() - 1].x
+	if head:
+		var j := 0
+		while j < _film_head.size() - 2 and _film_head[j + 1].x <= _film_t:
+			j += 1
+		var h0: Vector2 = _film_head[j]
+		var h1: Vector2 = _film_head[j + 1]
+		turn = lerpf(h0.y, h1.y, clampf((_film_t - h0.x) / maxf(h1.x - h0.x, 0.001), 0.0, 1.0))
 	for l: Vector4 in _film_looks:
 		if _film_t > l.x and _film_t < l.y:
 			var k := smoothstep(l.x, l.x + 0.5, _film_t) * (1.0 - smoothstep(l.y - 0.5, l.y, _film_t))
-			turn += l.z * k
+			if not head:
+				turn += l.z * k
 			tip += l.w * k
 	_film_look = lerp_angle(_film_look, turn, 1.0 - exp(-dt * 6.0))
 	_film_tilt = lerpf(_film_tilt, tip, 1.0 - exp(-dt * 6.0))
@@ -13558,6 +13576,10 @@ func _film_tick(dt: float) -> void:
 		var A: Vector2 = fp[1]
 		var B: Vector2 = fp[2]
 		if A == B:
+			var base: float = fp[7]
+			if base < INF:
+				var turn_to := base + 0.26 * sin(_film_t * 1.3 + base * 3.0) + 0.14 * sin(_film_t * 2.9 + base)
+				(fp[0] as Actor3D).face(Vector3(cos(turn_to), 0, sin(turn_to)))
 			continue
 		var f: float = (_film_t - float(fp[3])) / maxf(float(fp[4]) - float(fp[3]), 0.01)
 		var who: Actor3D = fp[0]

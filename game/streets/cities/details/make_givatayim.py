@@ -88,6 +88,19 @@ while i < len(lm):
     i += 1
 walk = [[round(t, 2), round(p[0], 2), round(p[1], 2)] for t, p in zip(times, pts)]
 
+# from the far kerb on (17 s), the walk at the film's own pace and the head turned as the
+# film's is, both measured off the film frame by frame (tests/film_motion.py, fitted by
+# tests/film_fit.py onto the replay's own path: the same streets, the film's timing) -- in
+# katzenelson_fit.json beside this. Re-fit it after moving any point above past 17 s: it
+# follows the path the replay walked when it was measured.
+FIT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "katzenelson_fit.json")
+head = []
+if os.path.exists(FIT):
+    fit = json.load(open(FIT))
+    t0 = fit["points"][0][0]
+    walk = [w for w in walk if w[0] < t0] + fit["points"]
+    head = fit["head"]
+
 d = {
     "about": "Givatayim as a walk filmed along it showed it, where OpenStreetMap does not: the "
              "short street at the south end of the Ha-Meri passage (the map draws it all as one "
@@ -253,6 +266,10 @@ d = {
         "katzenelson_hameri": {
             "name": "Katzenelson to Ha-Meri, on foot",
             "points": walk,
+            # [second, degrees right of the body] every quarter second, as the film's head
+            # turned (katzenelson_fit.json): where it runs, the looks below only tip the phone
+            # up and down
+            "head": head,
             # the head turned from the way the walk goes: [from, to, degrees, + right] and, if
             # given, degrees up (the phone already tilts 15.6 down: streets.gd's FILM_TILT)
             "looks": [[4.0, 5.1, 25],                           # (it faces across while it waits: the
@@ -279,11 +296,19 @@ d = {
             # the far one towards the south-east; Sheinkin towards the south-east too)
             # who the film shows (people last, as asked): a man by the railing at the far kerb,
             # two women talking in the forecourt by the scooter, a man at the passage's end
-            "people": [{"at": P(4.6, -20.6), "face": NW_U, "who": 0},
-                       {"at": P(14.4, -5.8), "face": [round(left[0], 4), round(left[1], 4)], "who": 1},
-                       {"at": P(14.6, -6.7), "face": [round(-left[0], 4), round(-left[1], 4)], "who": 3},
+            # (pass 13, the film two frames a second: the man by the far kerb's railing walks there
+            # along the confectionery's front, 13.5-16.5 s, and stands; a third in white stands
+            # with the two women, all three talking -- turning to each other and back, the
+            # characters have no clip for it; a woman in black crosses the passage's end in front
+            # of the man in blue, 59.5-62 s)
+            "people": [{"at": P(6.5, -12.5), "to": P(4.6, -20.6), "t": [12.6, 16.6], "stay": True, "who": 0},
+                       {"at": P(14.4, -5.8), "face": [round(left[0], 4), round(left[1], 4)], "who": 1, "talk": True},
+                       {"at": P(14.6, -6.7), "face": [round(-left[0], 4), round(-left[1], 4)], "who": 3, "talk": True},
+                       {"at": P(15.5, -4.9), "face": [round(-u[0] - left[0], 4), round(-u[1] - left[1], 4)], "who": 2,
+                        "talk": True, "tall": 1.78},
                        # (walking up to the passage's end as the walk comes out of it, then standing)
-                       {"at": P(61.6, 2.1), "to": P(58.4, 2.1), "t": [59.0, 61.4], "stay": True, "who": 2}],
+                       {"at": P(61.6, 2.1), "to": P(58.4, 2.1), "t": [59.0, 61.4], "stay": True, "who": 2},
+                       {"at": P(60.2, -3.2), "to": P(59.8, 3.4), "t": [59.4, 63.2], "who": 4}],
             # [second, at, heading] and what the film shows of it: "lane" kerb or median,
             # "through" (it drives on past the walk at the zebra), "kind"
             # the near half's (film 1-4.5 s): a black hatchback by in the lane by the median
