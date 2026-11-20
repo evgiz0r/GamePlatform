@@ -155,9 +155,21 @@ just past Leonardo da Vinci, heading east, HaKirya on the left and the Azrieli t
 ahead. The towers stand at their real heights (OSM has them for the tall ones: Azrieli's
 round tower 187 m, the Spiral 350 m). The map ends at the box's edge (the striped barrier).
 
+The Ayalon runs through it on the ground, and every street over it is a bridge about 6.5 m
+up, on ramps from the streets either side: Arvei Nahal, Moses, Givat HaTahmoshet (the
+HaShalom bridge), Modai, Begin's and Yitzhak Sadeh. The tunnels are dug: Begin dips under
+the Kaplan junction in an underpass, the Lova Eliav tunnel runs under HaKirya and Sarona
+with its branches meeting underground, Uzi Hitman and the Carlebach tunnel go under, and
+one under Jabotinsky at the map's east edge. Each sits 7 m down with cuttings up to the
+street at either end (about 2.2 km of tunnel and 2 km of cutting); Berkowitz's, too short to
+get under the street at a car's grade, is an open cutting, and the car parks' ramps are
+still left out.
+
 > game streets -- lets add/start working on adding Tel Aviv. Somewhat the area I mentioned.
 > (with a map: Ichilov, Savidor, Azrieli, HaKirya, TLV Mall, Montefiore, Bitsaron,
 > Nahalat Yitshak)
+
+> lets do the bridges and tunnels over the Ayalon
 
 **The test town.** The last place, Kiryat Dimyon, is made up (`cities/dimyon.json`, from
 `tools/fake_city.py`): one neighbourhood about 1.3 x 1 km, a fifth of Givatayim's buildings,
@@ -972,13 +984,16 @@ contributors under the ODbL, which is why the credit sits on screen.
   What a shop looks like (awning, tables, the bus shelter) is generic. The parked cars
   (about a quarter of the kerb), the people walking and sitting at cafe tables, rooftop
   solar heaters and rooms (Givatayim), pitched roofs on small houses (Bedford).
-- **Guessed, in Bedford: how high its bridges are.** OSM says which ways are bridges but
-  not how high, so the game works it out as the town loads: each overpass rises to clear
-  what it crosses, on ramps up the roads leading to it, an interchange's junctions up on
-  them and its slip roads coming down. Highway 102's overpasses, the Bedford Bypass, the
-  MacKay Bridge's approach. Ramps are walled, not grassy banks, yet.
+- **Guessed, in Bedford and Tel Aviv: how high their bridges are, how deep their tunnels.**
+  OSM says which ways are bridges and tunnels but not how high or deep, so the game works
+  it out as the town loads: each overpass rises to clear what it crosses, on ramps up the
+  roads leading to it, an interchange's junctions up on them and its slip roads coming
+  down; each tunnel goes 7 m under the ground over it, cuttings sloping down to it, deeper
+  where a road crosses over. Highway 102's overpasses, the Bedford Bypass, the MacKay
+  Bridge's approach; the Ayalon's bridges, the Begin underpass, the Lova Eliav tunnel.
+  Ramps are walled, not grassy banks, yet.
 - **Not there yet**: bridges in Givatayim and Ashdod (still drawn on the ground), and
-  tunnels in the real towns (left out). People crossing anywhere but a zebra.
+  their tunnels (left out). People crossing anywhere but a zebra.
 
 To make your own street more accurate, fix it on openstreetmap.org (building heights are
 the most useful thing to add) and bake again.

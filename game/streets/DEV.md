@@ -469,9 +469,10 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
 
 A road whose city file has `y` (its surface's height at each node, decimetres above the
 height grid's base) is a **deck**; its OSM tags say what it is built as (`br` bridge, `tu`
-tunnel, `em` embankment, `cu` cutting). Only `tools/fake_city.py` writes `y` so far, so only
-the test town has decks; in the real towns a bridge without `y` is drawn on the ground as
-before and a tunnel without it is still dropped.
+tunnel, `em` embankment, `cu` cutting). `tools/fake_city.py` writes `y` into the test town;
+a real town opted in with `"decks": "infer"` (Bedford, Tel Aviv) gets it worked out as it
+loads (below). Elsewhere a bridge without `y` is drawn on the ground and a tunnel without
+it is dropped.
 
 - **One height is not enough.** Everything used to ask `_h(p)`, the ground. Now whatever has
   a level asks `_decks.surf(p, y)`: the highest of the ground and the decks under p that is
@@ -534,6 +535,54 @@ before and a tunnel without it is still dropped.
   before the start of the other, and fell through (hence "just past the end", 3 m, only at
   deck joints). Buildings OSM maps under a low approach (the MacKay Bridge's) stood in the
   deck: decks under 4 m up are now cut back from like streets (`_clip_buildings`).
+- **A real town's tunnels** (`infer_tunnels` in decks.gd, run right after `infer` for a
+  place with `"decks": "infer"`; Tel Aviv first). A drivable tunnel mapped below the ground
+  (layer under 0, not a service way: car park ramps stay left out; a layer-0 "tunnel" is a
+  passage under a building and is left too) gets a point every 6 m and COVER (7 m) under
+  the ground at each; the dip spreads along the drivable roads at the ramps' grade (the
+  approaches become cuttings), capped at CAP's grade down from what stays where it is: a
+  junction in the open (3+ ways: an approach's side streets do not dip, the approach
+  steepens), a tunnel's mouth splitting off a road that carries on (unless that road is
+  itself a tunnel's approach -- Lova Eliav's branches join Begin's underpass exit
+  underground), a bridge's ramp, and the two points either side of where a road crosses
+  over. Under such a road the tube must fit (TUBE_H + 0.6), so there the depth wins over
+  the cap and spreads at CAP's grade: a cutting under a street at grade is an open hole,
+  and `surf` gives no ground over a cutting -- a car on the street would fall in. Where a
+  tunnel is shallower than its tube (a mouth just off a junction) it is a cutting. Each
+  run eases into its slope over EASE (30 m) where it leaves the street, and its profile is
+  rounded (16 passes; under a street over it, never above where the tube fits; elsewhere a
+  hump where a branch climbs out is rounded off, opening a little of it). The tube must fit
+  under the whole width of a road over it (its half-width + 4 m), not its middle line. A
+  scrap of tube under 12 m between cuttings, under no street, is cutting. Each cutting is
+  narrowed to fit beside the streets running along its top (not those crossing it), never
+  under 3.4 m. Tel Aviv: 31 tunnel ways, 22 roads over them, 0 short of cover, ~2.2 km of
+  tube and 2 km of cutting, 9 cuttings narrowed, 0.13 s. `DECKS_DEBUG=1` prints each road
+  over a tunnel.
+- **`surf` and the streets over them.** `surf` ranks a deck whose carriageway a body is
+  over before the ground (the divided roads' overlap, above) -- and a tunnel 7 m under a
+  street is one: a car on Kaplan dropped into Lova Eliav and hit its wall. A deck more than
+  1.5 m under ground the body can reach is now passed over (inside the tunnel the ground
+  overhead is out of reach, so it is still found). And on a street's asphalt over a
+  cutting or a tunnel (`_street_over`, looked up only there), the street carries a body at
+  its level: the ground counts over the cutting, and anything under it at all is passed
+  over -- a street across an underpass's mouth, a cutting's shallow top under a street's
+  lanes. `tests/street_holes.gd` samples every street's asphalt for it: Tel Aviv 1011
+  points over a hole, then 357, 76, 30, 6 (the last on the HaShalom bridge's west ramp,
+  0.6-0.9 m: a bridge ramp, not a tunnel); the test town 1, then 0.
+- **What Tel Aviv found**, in order: OSM node ids come out of JSON as floats, and
+  `7 in [7.0]` is false in GDScript -- a street meeting a tunnel at a shared point counted
+  as crossing over it and held the mouth up (compare ints, or a dict of ints); the other
+  carriageway of a divided road crossing the tunnel's line by a metre where the halves
+  close in counted as a road over it (same name: skipped); a 67 m tunnel of two points was
+  one straight line, and its shallow mouth took the whole of it up (a point every 6 m
+  first); holding every point of a road over a tunnel froze half the network (now the two
+  points either side); a hump in a tunnel where a branch climbs out, 6.1 m against 7.0
+  either side, launched cars at 32 km/h (rounded); the street meeting a cutting's full
+  grade at one point, at 47 km/h (eased). And the car's own physics: it took the surface's
+  rise in a frame as its climb, so the 0.2-0.3 m seam where two decks overlap at a junction
+  in the air read as 17 m/s up and threw the car 3 m over the Modai bridge -- a rise faster
+  than STEP_GRADE (0.3) of the speed is now a step, climbed (`_fly`); Modai's 197 frames in
+  the air became 6. Same results with and without it in the test town and Bedford.
 - **Where the heights come from.** The test town's maker knows them: each deck's ends at the
   ground, a bridge straight from bank to bank with a little camber, the flyover's and
   underpass's ramps eased up and down to 6.6 m clear of the boulevard (`CLEAR`), the tunnel
@@ -551,6 +600,7 @@ before and a tunnel without it is still dropped.
   where it gets shallow (a hop), and ground triangles left whole over a cutting (an edge
   parallel to the hole's leaves a smaller triangle: compare areas, not corner counts).
 - **Still to do**: the inferred heights for Givatayim and Ashdod (and their tunnels);
+  pavements and people beside an inferred cutting, and the minimap showing a tunnel as one;
   earth embankments with grass slopes rather than walls along inferred ramps; a long-span
   bridge's height over water (the MacKay's deck is only as high as its ends); pavements at street
   level beside a cutting (the underpass has none); people on a bridge's pavement; the
@@ -565,13 +615,13 @@ before and a tunnel without it is still dropped.
 
 ## Open problems
 
-- **Tel Aviv's bridges and tunnels have no heights** (Nov 2026). OSM tags them but says
-  nothing of how high, so the 2.4 km of bridges (every road over the Ayalon: Moses,
-  Givat HaTahmoshet, Modai, Arvei Nahal, Yitzhak Sadeh, Begin's) lie on the ground and cross
-  the motorway flat, sharing no point with it, and the 4.2 km of drivable tunnels (Lova
-  Eliav 900 m, Uzi Hitman, Carlebach, Begin under Kaplan) are left out. The test town's
-  decks (`y` per point, `decks.gd`) are the way: work the heights out in the bake or at load
-  from `br`/`tu`/`ly`, the ramps being the ways either side.
+- **Tel Aviv's decks, what is left** (Nov 2026; `tests/decks.gd` at level 7). Short hops
+  where ramps meet: Moses and Arvei Nahal's embankments (crests on the bridges' ramps, the
+  same kind as Bedford's Anderson Lake hop -- `infer`'s ramp tops have no vertical curve
+  yet, the tunnels' cuttings have, `EASE`), and a car-park service bridge at the south-west
+  corner that ends at a building (autodrive noses it). A tunnel's tube is drawn whatever
+  is over it, buildings included (Lova Eliav runs under HaKirya's blocks). The car parks'
+  ramps under the towers are still left out, so a tunnel branch into one is missing.
 - **Givatayim's ground is the terrain tiles' surface model too**: its "steepest 52%" is
   likely part roofs. Measured on its grid, `--bare-ground` would take the hill's crest
   86 -> 72 m and the steepest slope 48 -> 16%. Not re-baked: it moves the ground under the

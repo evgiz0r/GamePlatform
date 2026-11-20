@@ -246,6 +246,27 @@ one needed:
 - **A divided road is two decks overlapping at the median** at slightly different heights:
   decide what is under a body by the carriageway it is on first, the nearest height next,
   or it drifts onto the other and falls off its end.
+- **Tunnels are the mirror image, with a trap of their own.** A tunnel way (layer under 0;
+  a layer-0 "tunnel" is mostly a passage under a building) wants cover all along (a tube
+  and its roof, ~7 m) and its approaches become cuttings. But a game that cuts the ground
+  open over a cutting has no ground there, so **a street that crosses over a cutting is an
+  open hole a car falls into**: wherever a road crosses over, the tunnel must be deep
+  enough for its tube, even if that makes the approach steeper. What else it took: a point
+  every few metres along each tunnel before working out depths (one straight line between
+  its two mouths let a shallow mouth lift all of it); holding only the two points either
+  side of where a road crosses over, not the whole road (that froze half the network);
+  a mouth that splits off a road carrying on stays at street level, unless that road is
+  itself another tunnel's approach (branches meet underground); a junction in the open
+  stays up too (its side streets do not dip with the approach); the other half of a
+  divided road crossing the tunnel's line by a metre where the halves close in is not "a
+  road over it"; car park ramps (service ways) are left out, and nothing is worked out
+  through them; where the tunnel is shallower than its tube, draw it as a cutting.
+- **Crests launch cars.** A ramp or cutting that meets the flat at full grade in one point,
+  or a hump where a branch climbs out of a tunnel, is a crest a car takes off from at
+  30-50 km/h. Ease into the slope over ~30 m (a vertical curve: depth G s^2 / 2L, then
+  G (s - L/2)) and round humps. And in the car: a rise under it faster than any slope could
+  give at its speed is a step (two decks overlapping at a junction in the air, 0.2-0.3 m
+  apart), not a climb -- taken as vertical speed, it threw a car 3 m into the air.
 - **Water held at its own level** (a river between weirs) is drawn at that level and is too
   deep to drive into; gentle banks otherwise let a car down to drive along the bed under
   the water. Leave lakes that lie at their shore's lowest point alone: a road over an

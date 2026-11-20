@@ -129,6 +129,11 @@ playtest reports are readable. A game without it produces an empty report.
   it; the shell resets it on every transition.
 - **`_process(delta)` delta is scaled by `time_scale`.** Use `_physics_process` when you
   need real time during hitstop.
+- **Every number `JSON.parse_string` gives back is a float**, ids and indices included,
+  and `7 in [7.0]` (and `Array.has`) is false: the int and the float are different types to
+  it, though `7 == 7.0` is true. Looking up a node id from your own code in an array read
+  from a JSON file silently never matches. Cast both sides (`int(a) == int(b)`) or build a
+  dictionary keyed by `int(...)` first.
 
 ## Signals
 
