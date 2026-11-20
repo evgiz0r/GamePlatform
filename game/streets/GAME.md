@@ -193,6 +193,13 @@ then left. Cars come down the street to meet it there: one goes by before it ste
 next stops at the zebra for it, and drives on once it is across. The head looks where the
 walk is going and turns into a corner a moment before the feet do.
 
+Over the passes since, the walk's street has been dressed, a stretch at a time, from the
+film: Katzenelson two lanes each way with railings and red-white kerbs at its zebra; the
+passage paved in grey pavers in rows, its rough stone wall, and tall planting and trees
+closing it in; past Sheinkin the walk crosses Ha-Meri on its raised crossing to the far
+kerb, as the film does, the street's kerbs blue and white, a 30 painted in its lane and the
+zone 30 sign at its mouth; lit shop fronts under the arcade.
+
 > During the walk we collide into a house, the pavement there is not matching in the middle.
 > Let's also add cars, and we look left, right, and they stop for us. Usually we look where
 > we want to walk, and look before turning.

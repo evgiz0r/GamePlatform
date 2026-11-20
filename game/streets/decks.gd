@@ -220,9 +220,25 @@ func _walls_of(ri: int) -> void:
 	var kind := String(r["deck"])
 	var off := float(r["w"]) * 0.5 + float(r["side"]) + WALL_T * 0.5
 	var walk: float = g.KERB_H if float(r["side"]) > 1.0 else 0.0
+	# Where a ramp or a cutting starts at a junction its wall is a kerb-high step, and a car
+	# turning in sweeps over the corner: no wall to hit there (one clipped it at 10 km/h).
+	var cum := PackedFloat32Array([0.0])
+	for i in range(1, pts.size()):
+		cum.append(cum[i - 1] + pts[i - 1].distance_to(pts[i]))
+	var ids: PackedInt32Array = r["ids"]
+	var clear_a := 0.0
+	var clear_b := 0.0
+	if kind in ["em", "cu"]:
+		if (g._node_roads[ids[0]] as Array).size() >= 3:
+			clear_a = float(g._node_r[ids[0]]) + 6.0
+		if (g._node_roads[ids[ids.size() - 1]] as Array).size() >= 3:
+			clear_b = float(g._node_r[ids[ids.size() - 1]]) + 6.0
+	var total := cum[cum.size() - 1]
 	for sd: float in [-1.0, 1.0]:
 		var line: PackedVector2Array = g._offset_line(pts, off * sd)
 		for j in range(pts.size() - 1):
+			if cum[j + 1] < clear_a or cum[j] > total - clear_b:
+				continue
 			var band := []
 			for k: int in [j, j + 1]:
 				match kind:

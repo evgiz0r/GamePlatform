@@ -6,7 +6,8 @@ extends SceneTree
 ## same seconds. RECORD=1 instead plays the whole walk from the start and saves every frame,
 ## named by the walk's own clock (run with --fixed-fps 10 for a frame per 0.1 s): the game's
 ## half of a side-by-side video (DEV.md, "The filmed walk"). SCAN=1 walks the whole route a
-## quarter second at a time and prints every stretch of it inside a building or a post.
+## quarter second at a time and prints every stretch of it inside a building or a post;
+## POSTS_NEAR=x,z,r lists the posts round a spot, to route the walk between them.
 var g: Node
 const LANDMARKS := "8,28,40,55,70,84,94"   # the zebra, the forecourt, the passage, its end, the little street, Sheinkin, Ha-Meri
 
@@ -29,6 +30,16 @@ func _run() -> void:
 	var last: float = g._film[g._film.size() - 1].z
 	print("walk of %.0f s, %d points, from %s to %s, on foot %s, hud shown %s" % [last, g._film.size(),
 		Vector2i(g._film_at(0.0)), Vector2i(g._film_at(last)), g._walking, g._hud.visible])
+	if OS.get_environment("POSTS_NEAR") != "":
+		# POSTS_NEAR=x,z,r: every post (anything round and solid) within r of x,z, to route a
+		# walk between them
+		var q := OS.get_environment("POSTS_NEAR").split_floats(",")
+		var c := Vector2(q[0], q[1])
+		for i in range(g._posts.size()):
+			if g._posts[i].distance_to(c) <= q[2]:
+				print("post %d at %s r %.2f" % [i, Vector2(snappedf(g._posts[i].x, 0.1), snappedf(g._posts[i].y, 0.1)), g._post_r[i]])
+		quit()
+		return
 	if OS.get_environment("SCAN") == "1":
 		# the whole route, every quarter second: each stretch inside a building or a post
 		# (anything solid: a bollard, a parked bike) -- a replayed walk goes through walls

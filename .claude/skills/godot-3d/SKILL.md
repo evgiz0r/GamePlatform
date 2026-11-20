@@ -300,6 +300,12 @@ opens a window briefly.
 
 ## GDScript and shader gotchas
 
+- **A shader that branches on a number (a surface kind, a tone's code) tests each value's
+  range on both sides: `fx.w > 3.5 && fx.w < 4.5`, never `fx.w > 3.5`.** Two sessions each
+  added a "kind 4" within the hour; git merged the two shaders without a conflict, and the
+  one-sided test swallowed every higher kind, so a paved passage drew as the other's garden
+  wall stones. After merging a shader, list its branches and the table that feeds them.
+
 - `for w in some_array:` leaves `w` untyped, so `var to := goal - w.position` fails to
   parse ("cannot infer type"). Write `for w: Node3D in some_array:` or annotate the var.
 - `Rect2.get_center()` gives (x, z) for `world_area`; build the `Vector3` by hand.

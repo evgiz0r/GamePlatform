@@ -281,18 +281,33 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   motorbikes and scooters nose to the kerb along the arcade (a gap where the walk comes up
   off the road), two more in the forecourt; the planted bed behind the white fence and the
   trees over the passage's mouth.
-- **Next passes** (seen in the side-by-sides; another session's kerb pass now adds its own
-  bollards and crossing railings city-wide, so check what it put here first): Katzenelson's
-  width at the crossing (the film's pace says its halves are narrower than the game's 9 m:
-  measure from the film and narrow them in the details file); the forecourt's slabs still
-  too pale in the sun; at the zebra's south end the white hoop railing and the red-white
-  kerb; the passage's own paving is small grey pavers in rows, not herringbone, and level
-  with the forecourt (the game steps down 12 cm into it); its stone wall is rough grey stone
-  and its fence darker wood; the corner of Sheinkin is a raised crossing paved in charcoal
-  herringbone with the zebra painted on it, white bollards round the corner, another
-  transformer; Ha-Meri has blue-white kerbs, a Zone 30 sign and a painted 30 ring; the
-  confectionery's front; the shop fronts under the arcade are lit glass in light frames, not
-  the game's dark panels. People last.
+- **Pass 4, Katzenelson's crossing and the passage**, done: Katzenelson's halves set to 7 m
+  (roads.set: two lanes each; the baker's 9 m made the walk sprint), the walk's kerbs, median
+  and zebra stretches moved with them; white hoop railings either side of the zebra on both
+  kerbs and the kerb painted red-white 10 m each way (kerb_paint: pieces laid over the
+  city's kerb in the kerb shader's colours; a whole road's paint is roads.set's `kerb`); the
+  passage paved in small grey pavers in rows across it (the tone shader's kind 7), level
+  with the forecourt; its wall rough grey stones on a mortar backing; tall planting both
+  sides (shrubs: the trees' leaf-card crowns on the ground, 2.4-3 m) and four more trees, so
+  the passage closes in as filmed. Props stand on the higher of the city's pavement
+  (`_walk_y`) and the details' own paving.
+- **Pass 5, Sheinkin to Ha-Meri and the shops**, done: the film crosses Sheinkin, then Ha-Meri
+  on a raised crossing (charcoal herringbone, the zebra painted on it) and steps up its far
+  kerb -- the walk had stayed on the near pavement, so its last ten seconds now go that way,
+  threading the corner's bollards, sign pole, hydrant and tree pits (POSTS_NEAR lists them).
+  The crossing is paving with ramps (`ramps`), the zebra laid on it (`zebra`); Ha-Meri's
+  kerbs blue-white (roads.set `kerb`), a 30 in a red ring painted in its lane in (`ring30`)
+  and the zone 30 sign on the drivers' right (`zone30_sign`); lit shop fronts in light
+  frames under the arcade, the confectionery's sign band dark brown (`shopfront`).
+- **Shader kinds**: the tone shader's surface kinds are 1 grass, 2 asphalt, 3 pavers, 4 rough
+  stone walls (another session's), 6 the details' slabs, 7 pavers in rows; each tested on
+  both sides of its number (see the godot-3d skill: a one-sided test once drew this
+  passage as wall stones).
+- **Next passes**: the forecourt's slabs may still be too pale in the sun; the shops'
+  glass is one even glow (signs with lettering, the confectionery's yellow panels inside);
+  white bollards round Sheinkin's corner and its second transformer (the kerb pass put
+  bollards at corners: compare with the film); the little street's parked cars and the
+  motorbikes along Ha-Meri. People last.
 
 ## Off the ground: bridges, tunnels, cuttings, embankments (`decks.gd`)
 
@@ -352,7 +367,12 @@ before and a tunnel without it is still dropped.
   level beside a cutting (the underpass has none); people on a bridge's pavement; the
   minimap draws a tunnel like any street; zooming out from inside the tunnel rises from the
   hilltop (the zoom centres on the ground's height); the heights are whole decimetres, so a
-  deck's grade kinks by up to 2% every 5 m (enough for a 2 cm hop off HaNasi's bridge).
+  deck's grade kinks by up to 2% every 5 m (enough for a 2 cm hop off HaNasi's bridge);
+  autodrive turning right off the flyover's foot onto HaRakefet clips a crossing railing's
+  post on the corner about one run in two (the railing reaches 6 m from the zebra, into the
+  corner: a corner-furniture question, not a deck one). Ramps' and cuttings' walls are left
+  out of the collisions within a junction's corner (`_walls_of`): there they are a step a
+  turning car sweeps over.
 
 ## Open problems
 
