@@ -564,20 +564,21 @@ func piers(ri: int) -> Array:
 					and not (is_deck(g._roads[int(on["road"])]) and g._roads[int(on["road"])]["drive"]):
 				in_lanes = true
 				break
-			# (nor through another deck below its top: a footbridge running alongside a road
-			# bridge, lower, walked into the road bridge's piers)
-			var q := p + across * (half - 0.6) * f
+			if g._rails != null and g._rails.on_track(p + across * (half - 0.6) * f, 2.8):
+				in_lanes = true   # (nor on a railway's track: the trains under a bridge run through)
+				break
+		# nor through another deck below its top, anywhere across (every metre: a footbridge
+		# running alongside a road bridge, lower, walked into the road bridge's piers; a
+		# sidewalk mapped as its own footbridge came down beside one's abutment)
+		var steps := maxi(2, ceili((half - 0.6) * 2.0))
+		for k in range(steps + 1):
+			var q := p + across * (half - 0.6) * (2.0 * float(k) / steps - 1.0)
 			var below: Dictionary = _under(q)
 			for rj: int in below:
 				var o: Dictionary = g._roads[rj]
 				if rj != ri and float(below[rj][0]) < float(o["w"]) * 0.5 + float(o["side"]) + WALL_T + 0.3 \
 						and float(below[rj][1]) < y - 0.5:
 					in_lanes = true
-			if in_lanes:
-				break
-			if g._rails != null and g._rails.on_track(p + across * (half - 0.6) * f, 2.8):
-				in_lanes = true   # (nor on a railway's track: the trains under a bridge run through)
-				break
 		if in_lanes:
 			continue
 		var clash := false
