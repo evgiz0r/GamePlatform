@@ -175,7 +175,7 @@ func _case(p: Array, go: String, wait_ok: bool) -> Dictionary:
 	var sr: Dictionary = g._roads[s.x]
 	var into := 1 if s.y == (sr["pts"] as PackedVector2Array).size() - 1 else -1
 	var start: Array = _along(s.x, s.y, -into, 34.0)
-	var h := (g._nodes[n1] - (start[0] as Vector2)).normalized()
+	var h: Vector2 = ((g._nodes[n1] as Vector2) - (start[0] as Vector2)).normalized()
 	var ob := int(g._roads[b.x]["o"])
 	var dest: Array = _along(b.x, b.y, ob, 100.0) if go == "onto the far side" else _along(p[6][0], p[6][1], p[6][2], 60.0)
 	if dest.is_empty():
@@ -198,7 +198,7 @@ func _case(p: Array, go: String, wait_ok: bool) -> Dictionary:
 	var b_at := -1.0
 	var r1: float = g._node_r[n1]
 	var r2: float = g._node_r[n2]
-	var link_d := (g._nodes[n2] - g._nodes[n1]).normalized()
+	var link_d: Vector2 = ((g._nodes[n2] as Vector2) - (g._nodes[n1] as Vector2)).normalized()
 	var stood_kerb := 0.0
 	var stood_mid := 0.0
 	var tail_in := false
