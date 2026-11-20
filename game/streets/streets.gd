@@ -838,6 +838,7 @@ var _details: RefCounted             ## what a filmed walk added to the city (de
 var _decks: Decks                    ## bridges, embankments, cuttings, tunnels (decks.gd)
 var _rails: Rails                    ## railway tracks, platforms, trains (rails.gd)
 var _marks: Marks                    ## a town's landmarks and its towers' red lights (landmarks.gd)
+var _beach: Beach                    ## the beaches by the sea: umbrellas, chairs, lifeguards (beach.gd)
 var _on_deck := -1                   ## while a deck road is drawn: heights come from it, not the ground
 var _inferred := {}                  ## what decks.gd's infer() made of a real town's bridges (the report)
 var _wired := {}                     ## road index -> true: Bedford's lamps hang off its power poles
@@ -887,6 +888,7 @@ const Details := preload("res://game/streets/details.gd")
 const Decks := preload("res://game/streets/decks.gd")
 const Rails := preload("res://game/streets/rails.gd")
 const Marks := preload("res://game/streets/landmarks.gd")
+const Beach := preload("res://game/streets/beach.gd")
 const DriveLog := preload("res://game/streets/drivelog.gd")
 var _log := DriveLog.new()            ## the last two minutes, for the map page and "save log"
 var _ap_why := ""                     ## what held autodrive's speed down this tick (for the log)
@@ -2226,6 +2228,8 @@ func _build_setup(t0: int) -> void:
 	_rails.setup(_city_data, k)   # (before the trees: nothing grows on a track's bed)
 	_marks = Marks.new(self)
 	_marks.setup(_city_data, _city_id)
+	_beach = Beach.new(self)
+	_beach.setup(_city_data)
 	_lights_setup()
 	_infer_signs()   # (after the lights: a lit junction has none)
 	_parks_setup()
@@ -2262,6 +2266,7 @@ func _build_tile(t: Vector2i) -> void:
 	await _decks.build()
 	await _rails.build()
 	_marks.build()
+	_beach.build()
 	tk = _stage("roads", tk)
 	await _build_buildings()
 	tk = _stage("buildings", tk)
@@ -2399,7 +2404,7 @@ func _build_ground() -> void:
 		var a: Dictionary = all[ai]
 		var kind := String(a["k"])
 		# a school's grounds: paved, under whatever pitches and lawns OSM puts in them
-		var tone := "grass" if kind in ["park", "grass"] else ("ground" if kind == "land" else ("plaza" if kind == "school" else kind))
+		var tone := "grass" if kind in ["park", "grass"] else ("ground" if kind == "land" else ("plaza" if kind == "school" else ("beach" if kind == "sand" else kind)))
 		if not areas.has(tone):
 			areas[tone] = CBuf.new(CHUNK)   # (each square fills only its own piece: no clipping)
 		# islands sit on the sea, parks and car parks on whatever is under them
@@ -12577,7 +12582,7 @@ func _sky_photo() -> Texture2D:
 ## are bright.
 const NATURAL := {
 	"ground": 0.45, "rock": 0.3, "path": 0.15, "asphalt": 0.08, "parking": 0.08, "plaza": 0.2,
-	"grass": 0.6, "pitch": 0.6, "wood": 0.6, "leaf": 0.62, "bush": 0.6, "water": 0.5, "sand": 0.6,
+	"grass": 0.6, "pitch": 0.6, "wood": 0.6, "leaf": 0.62, "bush": 0.6, "water": 0.5, "sand": 0.6, "beach": 0.75,
 	"mark": 0.3, "wall": 0.5, "wall2": 0.45, "wall3": 0.6, "wall4": 0.6, "wall5": 0.5, "wall6": 0.3,
 	"glass": 0.5, "glass2": 0.5, "glass3": 0.5, "glass4": 0.5, "shutter": 0.3, "recess": 0.3, "lobby": 0.35, "flowers": 0.8,
 	"roof": 0.2, "trunk": 0.45, "pole": 0.2, "haze": 0.45, "sky": 0.6, "board": 0.4, "solar": 0.5,
@@ -12689,6 +12694,9 @@ func _tones() -> void:
 		"signred": Color.from_hsv(0.995, clampf(Palette.col("hazard").s, 0.7, 0.92), clampf(Palette.col("hazard").v * 0.85, 0.55, 0.85)),
 		"rubber": ac.lerp(alt, 0.55).lerp(bg, 0.25),
 		"sand": wn.lerp(ink, 0.45).lerp(alt, 0.1),
+		# a beach's: warmer and darker than a sandpit's (the sandpit's tone over a beach's
+		# acres read as snow beside the sea)
+		"beach": wn.lerp(ink, 0.3).lerp(Palette.col("hazard"), 0.06).darkened(0.2),
 		"concrete": ink.lerp(alt, 0.32).lerp(wn, 0.04),
 		"insulator": ink.lerp(alt, 0.15),
 		"trafo": alt.lerp(ink, 0.4).lerp(fr, 0.08),
@@ -15405,6 +15413,25 @@ func _companion(w: Dictionary, p: Vector2) -> void:
 func _place_sitters() -> void:
 	_place_still(_sitters, _bench_spots, "sit")
 
+## people in the beach chairs near you (beach.gd's): made the first time there are chairs
+const BATHERS := 10
+var _bathers: Array = []             ## {actor, spot}
+var _beach_spots: Array = []         ## [where, facing] of every beach chair made
+
+func _place_bathers() -> void:
+	if _beach_spots.is_empty():
+		return
+	if _bathers.is_empty():
+		for i in range(BATHERS):
+			var a := Actor3D.new()
+			world.add_child(a)
+			a.set_character(PEOPLE[(i + 2) % PEOPLE.size()], _people_rng.randf_range(ADULT_LO, ADULT_HI))
+			_humanize(a, hash(a.get_instance_id()))
+			_people_lod(a)
+			a.visible = false
+			_bathers.append({"actor": a, "spot": Vector2.INF})
+	_place_still(_bathers, _beach_spots, "sit")
+
 ## people waiting at the bus stops near you, one or two a stop, facing the road
 func _place_waiters() -> void:
 	var spots: Array = []
@@ -15475,7 +15502,7 @@ func _people_tick(dt: float) -> void:
 	# (everyone placed, wherever they are: a walker 60 m off still has to see the next one)
 	_people_at.clear()
 	_people_who.clear()
-	for list: Array in [_walkers, _chatters, _crossers, _sitters, _waiters]:
+	for list: Array in [_walkers, _chatters, _crossers, _sitters, _waiters, _bathers]:
 		for w: Dictionary in list:
 			var a: Actor3D = w["actor"]
 			if a.visible:
@@ -15490,7 +15517,8 @@ func _people_tick(dt: float) -> void:
 		_seat_chatters()
 		_place_sitters()
 		_place_waiters()
-		for list: Array in [_chatters, _sitters, _waiters]:
+		_place_bathers()
+		for list: Array in [_chatters, _sitters, _waiters, _bathers]:
 			for c: Dictionary in list:
 				var ca: Actor3D = c["actor"]
 				_people_awake(ca, Vector2(ca.position.x, ca.position.z))

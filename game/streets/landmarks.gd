@@ -14,6 +14,9 @@ extends RefCounted
 ##                    ground, with two antenna platforms round it
 ##   "mast": [to, w, striped]  a mast on the roof (or on the shaft) up to `to`, w thick,
 ##                    red and white bands if striped, a red light at its tip
+## "market": [[street name, kind], ...] -- stalls down both sides of each such piece of street,
+##   a walkway kept down its middle: a counter of produce in crates, a rack of goods behind,
+##   poles and a sloping canvas over it (the Carmel market, down HaCarmel's pedestrian street)
 ## "tiles": rectangles whose small houses (a footprint FOOT_MIN-FOOT_MAX m2, no taller than
 ##   TILE_MAX) get pitched red tile roofs over two old storeys' walls (Sarona's Templer
 ##   houses, restored among the towers)
@@ -30,7 +33,10 @@ const BY_CITY := {
 			["עזריאלי מרובע", {"glass": 1, "crown": [1.0, 6.0]}],    # the square one
 			["מגדל המטכ\"ל", {"mast": [107.0, 1.2, false]}],         # the Matcal tower, HaKirya
 			["מגדל מרגנית", {"shaft": [118.0, 7.0], "mast": [138.0, 1.6, true]}],   # Marganit: the IDF's radio tower
+			["מגדל שלום מאיר", {"mast": [142.0, 1.0, false]}],    # Shalom Meir (1965): the antenna on its roof
+			["מגדל האופרה", {}],   # the Opera tower by the sea: OSM draws its stepped floors in their stone
 		],
+		"market": [["הכרמל", "pedestrian"]],   # the Carmel market
 		"tiles": [Rect2(-560, 180, 400, 230)],   # Sarona
 	},
 }
@@ -78,10 +84,90 @@ func setup(data: Dictionary, city: String) -> void:
 			bd["_h"] = clampf(float(bd["_h"]), 5.5, 7.5)   # (two storeys under the eaves)
 			g._bld_top[bi] = bd["_h"]
 			count["tiled"] = int(count.get("tiled", 0)) + 1
+	for mk: Array in cfg.get("market", []):
+		_market_line(String(mk[0]), String(mk[1]))
 	for bi in range(blds.size()):
 		if float(blds[bi]["_h"]) >= LAMP_H:
 			_add(bi, ["lamps", bi, {}])
 			count["lit_roofs"] = int(count.get("lit_roofs", 0)) + 1
+
+const STALL_STEP := 2.7       ## a stall every this many metres along the street, each side
+const STALL_GAP := 7          ## every so many places on a side left open (a doorway, an alley)
+
+## stalls down both sides of each piece of street so named: one item per stall, in the square
+## it stands in, [where, along, out (away from the walkway), seed]
+func _market_line(name: String, kind: String) -> void:
+	for r: Dictionary in g._roads:
+		if String(r["name"]) != name or String(r["k"]) != kind:
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		var off := clampf(float(r["w"]) * 0.5 - 0.95, 1.6, 2.6)
+		var total := 0.0
+		for j in range(pts.size() - 1):
+			total += pts[j].distance_to(pts[j + 1])
+		var s := 6.0
+		var n := 0
+		while s < total - 6.0:
+			var at := _along(pts, s)
+			var p: Vector2 = at[0]
+			var a: Vector2 = at[1]
+			for side: float in [-1.0, 1.0]:
+				var seed := hash(Vector2i(p.round()) * int(side + 2.0))
+				if posmod(n + (seed % 3), STALL_GAP) == 0:
+					continue
+				var o := Vector2(-a.y, a.x) * side
+				var c := p + o * off
+				var t: Vector2i = g._tile_of(c)
+				if not _tile_items.has(t):
+					_tile_items[t] = []
+				(_tile_items[t] as Array).append(["stall", -1, [c, a, o, seed]])
+				count["stall_places"] = int(count.get("stall_places", 0)) + 1
+			s += STALL_STEP
+			n += 1
+
+## the point s metres along a line, and the way along it there
+func _along(pts: PackedVector2Array, s: float) -> Array:
+	for j in range(pts.size() - 1):
+		var seg := pts[j].distance_to(pts[j + 1])
+		if s <= seg and seg > 0.01:
+			var d := (pts[j + 1] - pts[j]) / seg
+			return [pts[j] + d * s, d]
+		s -= seg
+	var d2 := (pts[pts.size() - 1] - pts[pts.size() - 2]).normalized()
+	return [pts[pts.size() - 1], d2]
+
+## a market stall at c, its walkway side toward -o: a counter of crates, a rack behind, four
+## poles and a canvas sloping down toward the walkway
+func _stall(b, c: Vector2, o: Vector2, seed: int) -> void:
+	var gy: float = g._h(c)
+	var x3 := Vector3(o.y, 0.0, -o.x)
+	var z3 := Vector3(o.x, 0.0, o.y)
+	var bs := Basis(x3, Vector3.UP, z3)
+	var base := Vector3(c.x, gy, c.y)
+	var P := func(u: float, v: float, w: float) -> Vector3: return base + x3 * u + Vector3.UP * v + z3 * w
+	var wood: Color = g._tone["woodfence"]
+	var metal: Color = g._tone["metal"]
+	# produce in its own colours (the palette's purples and pinks made a market of sweets):
+	# tomatoes, oranges, greens, lemons and peppers, aubergines
+	var goods := ["red", "orange", "green", "yellow", "maroon", "green", "red"]
+	var cols: Array = []
+	for k in range(6):
+		cols.append(g._real_col(goods[posmod(seed / (k + 3) + k, goods.size())]))
+	g._furn._box(b, P.call(0.0, 0.45, 0.0), Vector3(2.3, 0.9, 1.1), wood, bs)   # the counter
+	for k in range(4):   # crates of produce on it, tipped toward the walkway
+		g._furn._box(b, P.call(-0.85 + 0.567 * k, 0.97, -0.12), Vector3(0.52, 0.14, 0.72), cols[k],
+			bs * Basis(Vector3.RIGHT, 0.18))
+	g._furn._box(b, P.call(0.0, 0.95, 0.68), Vector3(2.3, 1.9, 0.24), wood.darkened(0.25), bs)   # the rack
+	for row in range(2):
+		for k in range(4):
+			g._furn._box(b, P.call(-0.85 + 0.567 * k, 1.2 + 0.42 * row, 0.5), Vector3(0.5, 0.26, 0.14),
+				cols[(k + row * 2 + 1) % cols.size()], bs)
+	for u: float in [-1.18, 1.18]:
+		for w: float in [-0.6, 0.78]:
+			g._furn._box(b, P.call(u, 1.25 + (0.0 if w < 0.0 else 0.2), w), Vector3(0.05, 2.5 + (0.0 if w < 0.0 else 0.4), 0.05), metal, bs)
+	var hue: String = ["blue", "white", "red", "green", "orange", "cream", "blue"][posmod(seed >> 4, 7)]
+	var canvas: Color = g._real_col(hue).lerp(g._real_col("white"), 0.15)
+	g._furn._box(b, P.call(0.0, 2.6, 0.1), Vector3(2.55, 0.04, 2.0), canvas, bs * Basis(Vector3.RIGHT, -0.2))
 
 func _add(bi: int, item: Array) -> void:
 	var t: Vector2i = g._tile_of(_mid(g._city_data["buildings"][bi]["_ring"]))
@@ -129,7 +215,23 @@ func build() -> void:
 	if items.is_empty():
 		return
 	var lamps: Array = []
+	var stalls = null
 	for it: Array in items:
+		if String(it[0]) == "stall":
+			var st: Array = it[2]
+			var c: Vector2 = st[0]
+			var o: Vector2 = st[2]
+			# (not into a building, a wall or what stands there already)
+			if g._push_out(c, 0.9, true) != Vector2.ZERO:
+				continue
+			if stalls == null:
+				stalls = g.new_cbuf(400.0)
+			_stall(stalls, c, o, int(st[3]))
+			var a: Vector2 = st[1]
+			g._add_post(c + a * 0.7, 0.65)
+			g._add_post(c - a * 0.7, 0.65)
+			count["stalls"] = int(count.get("stalls", 0)) + 1
+			continue
 		var bi: int = it[1]
 		var ring: PackedVector2Array = g._city_data["buildings"][bi]["_ring"]
 		var top := _top(bi)
@@ -163,6 +265,8 @@ func build() -> void:
 			lamps.append(Vector3(mid.x, lerpf(foot, to, 0.5), mid.y))
 	if not lamps.is_empty():
 		_lamps(lamps)
+	if stalls != null:
+		g._add_mesh(stalls, g._vc_mat(), true, 400.0)
 
 ## the corners of a roof that a light goes on: its outline's furthest points each way
 func _roof_corners(ring: PackedVector2Array, y: float) -> Array:
