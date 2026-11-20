@@ -63,5 +63,5 @@ func _run() -> void:
 		if first.has(k):
 			var a: Node3D = first[k]
 			print("%s: %d m from the camera" % [k, int(a.global_position.distance_to(g.cam.global_position))])
-			await _look_at_person("sp_" + k, a, 3.2, 1.5, 1.6)
+			await _look_at_person("sp_" + k, a, 1.0, 1.4, 3.0)   # (from the side: what is ahead of them shows)
 	quit(0)

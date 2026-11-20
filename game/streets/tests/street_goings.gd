@@ -103,6 +103,14 @@ func _delivery(label: String, ri: int) -> void:
 		var rel: Vector2 = van.pos - g._pos
 		if standing and absf(g._v) < 0.3 and rel.length() < 25.0 and rel.dot(g._fwd()) > 0.0 and g._ap_why == "car":
 			ap_wait += dt
+			if absf(ap_wait - 3.0) < dt * 0.5:   # (what holds it: once, three seconds in)
+				var lead: Array = tr.lead_on(g._ap_pts, g._pos, 40.0, false, g._y)
+				var lat := INF
+				for k in range(g._ap_pts.size() - 1):
+					lat = minf(lat, Geometry2D.get_closest_point_to_segment(van.pos, g._ap_pts[k], g._ap_pts[k + 1]).distance_to(van.pos))
+				var li: int = int(lead[3])
+				print("   held 3 s: by car %d (%s, the van is %d) at %.1f m; the van's middle %.2f m off autodrive's path; passed %d; turn ahead %d" % [
+					li, tr.cars[li].kind if li >= 0 else "-", vi, float(lead[0]), lat, g._ap_passed, g._ap_turn_ahead()])
 		if passed_at < 0.0 and g._ap_passed == vi:
 			passed_at = t
 			print("%5.1f s  autodrive goes round it (stood %.1f s behind first)" % [t, ap_wait])

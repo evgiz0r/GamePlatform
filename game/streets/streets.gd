@@ -14760,7 +14760,8 @@ func _build_companions() -> void:
 					_natural(Palette.col("hazard").lerp(Palette.col("bg"), 0.4), 0.5)][k % 3])
 		var mi := MultiMeshInstance3D.new()
 		mi.multimesh = mm
-		mi.visibility_range_end = PEOPLE_SEEN
+		# (no visibility range: it is measured to the multimesh's own middle -- the city's --
+		# and hid every dog; _companion hides the far ones itself)
 		world.add_child(mi)
 		made.append(mm)
 	_dogs = made[0]
@@ -14838,7 +14839,7 @@ func _place_still(list: Array, spots: Array, how: String) -> void:
 		var face: Vector2 = s[1]
 		c["spot"] = q
 		if how == "sit":   # on the seat: the sitting pose's hips over it, a little forward
-			var sq := q + face * 0.12
+			var sq := q + face * 0.42   # (the origin is at the feet: the hips sit ~0.4 m behind them)
 			a.position = Vector3(sq.x, _h(sq), sq.y)
 			a.face(Vector3(face.x, 0, face.y))
 			a.play("SitDown", false)
