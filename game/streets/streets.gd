@@ -17725,7 +17725,16 @@ func _draw_map_inner() -> void:
 		var route := PackedVector2Array()
 		for p in _ap_pts:
 			route.append(p - at)
-		_map.draw_polyline(route, Color(Palette.col("friend"), 0.8), 1.5 / s)
+		# as a navigation app draws it: wider than any road, in the destination's own colour
+		# (the line leads to the dot), on a dark edge that parts it from whatever road is under
+		# it. (A thin line in the palette's mint, 1.5 px, was lost among the yellow main roads,
+		# the white streets and the white dots of the traffic.)
+		var col := Palette.col("accent")
+		_map.draw_polyline(route, Color(bg, 0.95), 7.0 / s)
+		_map.draw_polyline(route, col, 4.0 / s)
+		for p: Vector2 in [route[0], route[route.size() - 1]]:   # (round ends, not cut-off ones)
+			_map.draw_circle(p, 3.5 / s, Color(bg, 0.95))
+			_map.draw_circle(p, 2.0 / s, col)
 	for pl: Array in _map_lines["places"]:
 		_map.draw_circle(pl[0], 1.8 / s, Palette.col(pl[1]))
 	if _traffic != null:

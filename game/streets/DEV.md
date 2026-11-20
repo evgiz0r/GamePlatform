@@ -802,6 +802,11 @@ it is dropped.
   ramp's walkway gives way to a street's asphalt where its foot runs into one (the slip road
   merging into the boulevard). Walls are left out of the collisions in a junction's corner
   only at street level -- up on the embankment that would leave a gap to drive off.
+  `_clear_ends` says how far: the junction's middle + 6 m from an end that starts at street
+  level at a junction. A bridge (`br`) too, but only while its deck is within `CLEAR_LOW`
+  (0.6 m) of the ground, and its drawn parapet with it (`_raised`'s `gap_wall`): Bedford's
+  highway bridge starts at Union Street's junction, and autodrive turning out of Union Street
+  ran into its parapet. `tests/deck_corner.gd` drives that turn every way.
 - **Water held at a level** (`areas[].y`, the test town's river) lies at that level, and is
   too deep to drive or walk into (`_deep_push`): the banks were gentle enough to drive down
   and along the bed under the water. Lakes and ponds without a level are as before.
