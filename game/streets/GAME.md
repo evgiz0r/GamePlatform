@@ -147,6 +147,18 @@ about 3 s here, the same as anywhere (see "Loading near-first").
 
 > Ashdod.
 
+**Tel Aviv** is a box of the city centre, not the whole city (all of it would be far too
+much to build and drive smoothly): about 2.4 by 2.7 km, from Ichilov and the Savidor
+station down to Yitzhak Sadeh, and from just west of Ibn Gabirol across the Ayalon to
+Nahalat Yitshak -- HaKirya, Azrieli and Sarona, Montefiore, Bitsaron. It starts on Kaplan
+just past Leonardo da Vinci, heading east, HaKirya on the left and the Azrieli towers
+ahead. The towers stand at their real heights (OSM has them for the tall ones: Azrieli's
+round tower 187 m, the Spiral 350 m). The map ends at the box's edge (the striped barrier).
+
+> game streets -- lets add/start working on adding Tel Aviv. Somewhat the area I mentioned.
+> (with a map: Ichilov, Savidor, Azrieli, HaKirya, TLV Mall, Montefiore, Bitsaron,
+> Nahalat Yitshak)
+
 **The test town.** The last place, Kiryat Dimyon, is made up (`cities/dimyon.json`, from
 `tools/fake_city.py`): one neighbourhood about 1.3 x 1 km, a fifth of Givatayim's buildings,
 so it loads in about a second and a half. It is for looking at a change quickly, so it has
@@ -442,6 +454,9 @@ white along a residential street's parking, red and white for the last few metre
 every junction and along many main roads, yellow and black in front of a bus stop. The
 parked cars keep to the paint: a nearly unbroken row down a blue-and-white street, half up
 on the pavement, fewer along a plain kerb, none on the red-and-white corners or at a stop.
+In about a third of the gaps between them a motorbike or scooter stands up on the pavement,
+along the kerb or at a slant, leaning on its stand; people walk past on the back half. Many
+of the low stone garden walls carry a fence of dark wooden boards to about head height.
 
 > ill film myself driving to work and back or whatever. and somehow give you the info back.
 > to make it more nad more realistic ( for the specific path and more general )
@@ -782,6 +797,18 @@ dips holding the sky (and, low down, the buildings across the street), the sun's
 runs along the wet road when you drive towards it, grass and earth go a little darker. The
 tyres hiss on it. It goes with any time of day; the evening after rain is the best of it.
 
+> some of the stuff we did really causes latency and loading issue i think. other session is
+> fixing something i believe. go 3,7
+> dont want to touch weather yet
+
+**Street cats and flags on cars.** Givatayim's strays: sitting on the garden walls or curled
+up on them, by the bins, on the pavement at a parked car's nose -- ginger, grey, black, cream
+and brown tabbies, holding still as street cats do. About one parked car in fourteen flies
+an Israeli flag on a stick from a back window. And the ground darker where more things meet
+it: a soft patch at the foot of every street tree, the pavement darker along the foot of the
+garden walls. All of it built with each square of the city in a few tens of milliseconds,
+and nothing to do while you drive.
+
 > I took a video on my phone, walking in Givatayim.
 
 ## Smooth on a laptop and a phone
@@ -957,11 +984,13 @@ contributors under the ODbL, which is why the credit sits on screen.
   What a shop looks like (awning, tables, the bus shelter) is generic. The parked cars
   (about a quarter of the kerb), the people walking and sitting at cafe tables, rooftop
   solar heaters and rooms (Givatayim), pitched roofs on small houses (Bedford).
-- **Not there yet**: bridges and tunnels in the real towns. OSM says which ways are
-  bridges and tunnels but not how high they are, so there the roads at different levels
-  are still drawn on the ground and tunnels are dropped (an interchange is flat; motorways
-  and their slip roads at least have no pavements or people along them). The test town has
-  them (above), because its maker knows the heights. People crossing anywhere but a zebra.
+- **Guessed, in Bedford: how high its bridges are.** OSM says which ways are bridges but
+  not how high, so the game works it out as the town loads: each overpass rises to clear
+  what it crosses, on ramps up the roads leading to it, an interchange's junctions up on
+  them and its slip roads coming down. Highway 102's overpasses, the Bedford Bypass, the
+  MacKay Bridge's approach. Ramps are walled, not grassy banks, yet.
+- **Not there yet**: bridges in Givatayim and Ashdod (still drawn on the ground), and
+  tunnels in the real towns (left out). People crossing anywhere but a zebra.
 
 To make your own street more accurate, fix it on openstreetmap.org (building heights are
 the most useful thing to add) and bake again.
