@@ -59,6 +59,7 @@ class Car:
 	var wait := 0.0                   ## seconds held up by another car
 	var blocker := -2                 ## who holds it up: a car's index, -1 the player
 	var ignore := 0.0                 ## seconds it ignores crossing cars (a standoff broken)
+	var squeeze := 0.0                ## seconds it edges past the player (a narrow street's standoff)
 	var hit := 0.0                    ## seconds it sits stunned after the player hit it
 	var retry := 0.0                  ## seconds before trying again to find it a road
 	var want := -1.0                  ## the speed it last decided on (-1: decide now)
@@ -155,6 +156,19 @@ func setup(game: Node) -> void:
 	bmi.multimesh = _blinkers
 	bmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	g.world.add_child(bmi)
+	# a soft patch under each car, for when the real shadows are off (g._set_blobs)
+	var sm := MultiMesh.new()
+	sm.transform_format = MultiMesh.TRANSFORM_3D
+	sm.mesh = g.blob_mesh()
+	sm.instance_count = COUNT
+	sm.custom_aabb = box
+	for k in range(COUNT):
+		sm.set_instance_transform(k, Transform3D(Basis(), Vector3(0, -500, 0)))
+	_blobs = MultiMeshInstance3D.new()
+	_blobs.multimesh = sm
+	_blobs.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_blobs.visible = g._blobs_on
+	g.world.add_child(_blobs)
 	var palette: Array = g._car_paints()
 	var med := String(g._place.get("look", "")) == "med"
 	# the city's buses: Givatayim's in the blue and the green of its two companies, Bedford's white
@@ -182,6 +196,12 @@ func setup(game: Node) -> void:
 		c.alive = _spawn(c, true)
 		_hide_or_show(i)
 	retint()
+
+var _blobs: MultiMeshInstance3D
+
+func show_blobs(on: bool) -> void:
+	if _blobs != null:
+		_blobs.visible = on
 
 func retint() -> void:
 	pass   # the car shader is the game's, retinted with it
@@ -217,7 +237,7 @@ func tick(dt: float) -> void:
 		var c: Car = cars[i]
 		c.prev_pos = c.pos
 		c.prev_yaw = c.yaw
-		if not c.alive or c.pos.distance_to(me) > NEAR or (c.wait > 25.0 and not _in_view(c.pos)):
+		if not c.alive or c.pos.distance_to(me) > NEAR or (c.wait > 25.0 and (not _in_view(c.pos) or c.blocker == -1)):
 			c.retry -= dt
 			if spawned or c.retry > 0.0:
 				continue
@@ -318,6 +338,8 @@ func _target(c: Car, i: int, dt: float) -> float:
 			continue
 		if c.ignore > 0.0 and j < cars.size() and absf(angle_difference(oyaw, c.yaw)) > 0.8:
 			continue   # breaking a standoff: go, and let the crossing car wait
+		if j == cars.size() and c.squeeze > 0.0:
+			continue   # edging past them, slowly
 		var wide := PLAYER_W if j == cars.size() else LANE_W
 		if c.split:
 			wide = 0.6   # filtering: only what is right in front of the wheel
@@ -337,6 +359,9 @@ func _target(c: Car, i: int, dt: float) -> float:
 			best_len = 4.6
 			lead_v = 0.0
 	c.ignore = maxf(0.0, c.ignore - dt)
+	if c.squeeze > 0.0:
+		c.squeeze -= dt
+		vt = minf(vt, 2.5)
 	_steer_lanes(c, i, dt, best, lead_v)
 	vt = minf(vt, _bus_stop(c, dt))
 	if best < INF:
@@ -349,6 +374,18 @@ func _target(c: Car, i: int, dt: float) -> float:
 			if c.v < 0.3:
 				c.wait += dt
 				c.blocker = who
+				# Face to face with the player in a narrow street, both standing (the player
+				# waits for it, it waits for the player, for ever -- and autodrive with
+				# them): if there is nearly room, it edges by, brushing past; if they are
+				# nose to nose, it is gone once out of sight, or after a while regardless
+				if who == -1 and c.wait > 3.5 and absf(float(g._v)) < 0.5:
+					var pr := _proj(c, g._pos, 4.0, 30.0)
+					var lat := absf(pr.y - c.shift) if pr.x != INF else 0.0
+					if lat > 1.2:
+						c.squeeze = 5.0
+						c.wait = 0.0
+					elif c.wait > 9.0 or not _in_view(c.pos):
+						c.wait = 30.0   # (tick sends it elsewhere)
 				# two cars each waiting for the other in a junction: the lower number goes
 				if c.wait > 2.5 and who >= 0:
 					var o: Car = cars[who]
@@ -654,14 +691,7 @@ func _signal(c: Car, dt: float) -> void:
 
 ## lanes each way on road r: OSM's count when it has one, else what the width holds
 func _lanes_dir(r: Dictionary) -> int:
-	var l := int(r.get("l", 0))
-	var w := float(r["w"])
-	var n := 1
-	if int(r["o"]) != 0:
-		n = l if l > 0 else int(w / 3.3)
-	else:
-		n = l / 2 if l > 1 else int(w / 6.6)
-	return clampi(n, 1, 4)
+	return g._lanes_each_way(r)
 
 ## how far left of the lane line lane `idx` (from the right) of road r lies
 func _lane_shift(r: Dictionary, idx: int) -> float:
@@ -820,11 +850,17 @@ func lead_on(path: PackedVector2Array, from: Vector2, look: float, ignore_crossi
 			var a := path[j]
 			var b := path[j + 1]
 			var cp := Geometry2D.get_closest_point_to_segment(c.pos, a, b)
-			if cp.distance_to(c.pos) < LANE_W:
+			var dir := (b - a).normalized()
+			var cdir := Vector2(sin(c.yaw), cos(c.yaw))
+			var same := dir.dot(cdir)
+			# one going my way is in it wherever the bodies would touch: my half width, its,
+			# and a hand's breadth (by its middle alone, at 1.5 m, one in the next lane on a
+			# narrow road was not, and autodrive ran in between two of them)
+			var wide := LANE_W
+			if same > 0.6:
+				wide = maxf(LANE_W, 0.9 + (float(BODY[c.kind][1]) if BODY.has(c.kind) else 0.95) + 0.25)
+			if cp.distance_to(c.pos) < wide:
 				var along := base + a.distance_to(cp)
-				var dir := (b - a).normalized()
-				var cdir := Vector2(sin(c.yaw), cos(c.yaw))
-				var same := dir.dot(cdir)
 				if along > 0.5 and along < best and not (ignore_crossing and same < 0.6):
 					best = along
 					bv = c.v * maxf(same, 0.0)
@@ -897,6 +933,7 @@ func _spawn(c: Car, first: bool) -> bool:
 		c.wait = 0.0
 		c.hit = 0.0
 		c.ignore = 0.0
+		c.squeeze = 0.0
 		_place(c)
 		c.prev_pos = c.pos
 		c.prev_yaw = c.yaw
@@ -1134,6 +1171,9 @@ func draw(f: float) -> void:
 		mm.set_instance_custom_data(i, Color(c.paint, c.braking))
 		if _night:
 			_beams.multimesh.set_instance_transform(i, xf)
+		if _blobs.visible:
+			var cs: Vector2 = CORNERS.get(c.kind, Vector2(0.9, 2.25))
+			_blobs.multimesh.set_instance_transform(i, xf * Transform3D(Basis.from_scale(Vector3(cs.x * 2.0 + 0.8, 1.0, cs.y * 2.0 + 1.0)), Vector3(0, 0.02, 0)))
 		# the indicators: the car's right is its -X
 		var lit := c.blink != 0 and fmod(_clock + float(i) * 0.13, 0.7) < 0.36
 		if lit:
@@ -1154,6 +1194,8 @@ func _hide_or_show(i: int) -> void:
 			_blinkers.set_instance_transform(i * 2 + 1, Transform3D(Basis(), Vector3(0, -500, 0)))
 		if _beams != null:
 			_beams.multimesh.set_instance_transform(i, Transform3D(Basis(), Vector3(0, -500, 0)))
+		if _blobs != null:
+			_blobs.multimesh.set_instance_transform(i, Transform3D(Basis(), Vector3(0, -500, 0)))
 
 ## ---- the player's car against them --------------------------------------------------------
 

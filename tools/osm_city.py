@@ -44,6 +44,7 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
   signs      [[node index, "stop"|"give_way", dx, dz], ...]   stop and give-way signs on
              the road graph; (dx, dz) x100 is the way of travel they face (from the sign's
              direction=forward/backward along its road), (0, 0) when OSM does not say
+  made_up    1 in a town tools/fake_city.py made up (no OSM data, no credit owed); absent here
 
 Road kinds keep OSM's highway values (primary, residential, footway ...); a game decides
 which are drivable. Everything here is (c) OpenStreetMap contributors, ODbL: a game that

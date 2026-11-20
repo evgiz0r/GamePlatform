@@ -44,12 +44,15 @@ Drive, freely. The car behaves like a car rather than a toy: about 4 m/s² off t
 if you take a corner too fast (it runs wide), body roll and nose dive. Hold the brake when
 stopped and it goes into reverse, like an automatic.
 
-The car's switches, on screen (top right) and on the keyboard: indicators (Q and E) that
-tick and go off by themselves after the turn, the horn (H: people on a crossing hurry, a
-car stuck in a standoff ahead goes), headlights (L; on by themselves at night), and
-reverse lights when backing. Autodrive signals its own turns.
+The car's switches: headlights (on screen, top right, and L; on by themselves at night),
+and on the keyboard only, indicators (Q and E) that tick and go off by themselves after the
+turn and the horn (H: people on a crossing hurry, a car stuck in a standoff ahead goes);
+reverse lights when backing. Autodrive signals its own turns, an arrow blinking by the
+speed.
 
 > Indicators, horn, headlights, speedometer.
+
+> Remove the honk and turn lights UI, it's not needed.
 
 Keys: up = gas, down = brake (and reverse), left/right = steer. Space switches on
 **autodrive**, which drives the streets by itself in the right-hand lane, slows for
@@ -125,6 +128,27 @@ three times Givatayim's size and takes longer to load (about 10 s here).
 
 > Ashdod.
 
+**The test town.** The last place, Kiryat Dimyon, is made up (`cities/dimyon.json`, from
+`tools/fake_city.py`): one neighbourhood about 1.3 x 1 km, a fifth of Givatayim's buildings,
+so it loads in about a second and a half. It is for looking at a change quickly, so it has
+one of everything a real town has: a divided boulevard with a big signalled junction, a main
+street and a shopping street lined with shops and cafes, a grid of side streets with a
+one-way pair, a hill whose streets climb at 10-12% round and up to a water tower, two
+roundabouts, a living street, cul-de-sacs, car parks, bus stops, zebras and signs; a strip
+mall, a glass office tower, a hotel, the town hall on its square, a cinema, a school, a
+sports centre, a park with a pond, villas and woods in the foothills. Mountains ring it, and
+past the foothills they are too steep to drive up (see below), so it is a valley you cannot
+leave -- except by the one road that climbs the western mountainside to a lookout terrace
+with a car park and a cafe. The car starts on HaNasi just past HaShuk, in the middle.
+
+> I want to make a new fake city in streets, where we would do quicker simulation and
+> validations. Yes it would not stress as the big cities on latency, but would give a quick
+> look if something got prettier as we are trying to make things more realistic slowly.
+
+> Lets also make that fake city surrounded by some unpassable terrain like a mountain. It
+> shouldn't be too small, like a regular neighborhood where you have most of the features
+> and variety (cars, buses, buildings, types of cars, slopes, landmark and so on).
+
 The minimap (bottom left) shows the real streets and buildings round you, heading up, with
 the city limits in pink. The name of the street you are on is at the top, in Hebrew with
 the English name under it when OSM has one.
@@ -136,6 +160,11 @@ traffic-light poles are solid. Crashes are a bit more game than real: a thud and
 the car bounces back off what it hit and spins if it was hit off-centre, and a hard one
 throws it into a little hop. Too fast over a crest or off a ramp and it leaves the ground
 for a moment and lands with a bump.
+
+**Ground too steep to climb** -- steeper than 62%, about 32 degrees -- is as solid as a
+wall, on foot too, and assist brakes for it; a road is always drivable however steep. No
+real town here has any (Givatayim's steepest is 52%), so it only matters in the test
+town's mountains. Ground that steep is drawn as bare rock, in bands.
 
 > I want the car to be able to "jump" a bit if I drive too fast on slopes. Maybe making
 > the crashes more bouncy as well... slightly less realistic, more "game"-like.
@@ -320,14 +349,18 @@ there) with its pavement behind it and the asphalt filled out to it; across the 
 T the far kerb runs straight. A divided road (OSM: two one-way roads side by side) has
 each half as wide as its lanes, not the class's guessed width, so the halves no longer
 overlap, and between them a kerbed median instead of two pavements. No kerb or pavement
-is laid where it would lie on another road's asphalt, which also leaves a driveway its gap.
+is laid where it would lie on another road's asphalt, which also leaves a driveway its gap;
+a corner is checked along its whole length (checked only at its middle, a kerb could run
+straight across a road's mouth and lay a strip of pavement over the junction).
 
 > There are a lot of broken roads and random sidewalks in the middle. And in general very
 > badly looking crossroads.
 
 **Roads that fit.** A road's width is mostly a guess (OSM rarely says), so where a street's
 buildings stand closer than the guess it is narrowed (to no less than two lanes) instead of
-running under them. The ground's thin layers -- grass, paths, asphalt, paint -- sit a few
+running under them. A building still standing on the road after that, or so close no
+pavement is left, has its front cut back to the road's edge plus a kerb and a strip of
+pavement (not one a road passes under, nor one up on columns). The ground's thin layers -- grass, paths, asphalt, paint -- sit a few
 centimetres apart and the camera's near plane is a little way out, so a phone's coarser
 depth buffer no longer shows grass through the road in green patches.
 
@@ -338,10 +371,26 @@ a little further from the centre line; parked cars stand mostly up on the paveme
 roundabout a car decides at each exit and is ever less likely to stay on, so nobody
 circles and the cars waiting to come on are let in.
 
-**Autodrive** stops for anyone standing on its lane, keeps out of alleys and car-park lanes
+**Autodrive** keeps to the right-hand lane of a one-way road of several (it drove down the
+middle, astride two, and in between the cars in them), counts a car going its way as in
+its lane wherever their bodies would touch, stops for anyone standing on its lane, keeps out of alleys and car-park lanes
 unless there is no other way, prefers turnings back into town at its edge, and if it has
 got nowhere for 40 s (not at a light) it is lifted onto a street a little way toward the
-middle of town and drives on.
+middle of town and drives on. Switched on (or knocked) off the road -- in a yard, a car park,
+between blocks -- it finds its way back round the buildings at a walking pace instead of
+heading straight at the nearest bit of road through the wall in between; with no way out
+in reach, or after running into walls a few times in quick succession, it is put back on
+the nearest street. Face to face with a traffic car in a narrow street, both standing,
+the other car edges past if there is nearly room, and if they are nose to nose it turns
+off out of the story (gone once out of sight, or after a few seconds regardless) rather
+than the two waiting for each other for ever.
+
+> Sometimes the autodrive gets completely stuck in those narrow streets.
+
+**The edge of the map** is a striped barrier with a glowing curtain over it that shows as
+you come near, and a line on the minimap; the car stops against it, nose to the stripes.
+
+> Mark somehow the border of the map, I just hit air and those walls are invisible.
 
 **Car parks.** OSM's parking areas (up to a block's size) are laid out in rows of painted
 bays with most of them taken; a car park mapped only by its lanes (OSM: a parking aisle,
@@ -402,6 +451,13 @@ so do the trees, which are too many to copy.
 
 > Performance pass: fewer draw calls, faster loading of big cities.
 
+When the browser can't keep up, the game steps its own quality down; at the lowest step
+the real shadows are off, and each car gets a soft dark patch under it instead so it still
+stands on the road (the street went flat the moment it stepped down). The asphalt's wear and
+grain are strong enough to read at the lowest step's lower resolution.
+
+> I start with textures on the street but after I drive a bit they just vanish.
+
 **Seeing what chokes.** Tap the fps text under the speed (or press P) for the perf view: a
 graph of the last frames' times (green under 20 ms, red over 40), the average frame split
 into the engine's drawing and the game's own parts (traffic, people, autodrive, the
@@ -454,6 +510,13 @@ raw download is cached in `tools/.cache/` (not committed), and `--offline` re-ba
 it, so changing the bake does not hit the server again.
 
 If a place's city file is not there yet, the game drives whichever city file is.
+
+The test town is made, not baked: `python3 tools/fake_city.py --out
+game/streets/cities/dimyon.json` (add `--preview plan.png` for a map of it, `--seed` for
+another town). It writes the same format, with `"made_up": 1`, which puts "a made-up town"
+on screen instead of the OpenStreetMap credit. Before writing, it proves the mountains hold:
+it floods the height grid from the middle of town through everything gentler than 62% or
+on a road, and stops if that reaches the edge of the map.
 
 Locally, the network needs to reach an Overpass server (the tool tries
 `overpass-api.de`, then two mirrors); without that, `--print-query` prints a link to

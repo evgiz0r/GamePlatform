@@ -116,6 +116,12 @@ session's network cannot reach Overpass, run the "bake a real city" GitHub workf
 (`.github/workflows/bake_city.yml`, inputs `place` and `out`) instead: it bakes on GitHub's
 machines and commits the file, and you can start it with the GitHub tools.
 
+`tools/fake_city.py` makes up a town in the same format instead -- no network, a second
+or two -- for a quick test bench: one neighbourhood with one of each thing a real town has
+(divided road, roundabouts, a hill, a mall, a school, shops, bus stops...), ringed by
+mountains too steep to drive up. It writes `"made_up": 1`, so the OSM credit does not
+apply.
+
 ## Hard requirements
 
 - **Input**: read `PInput`, never `Input`. `PInput.dir()`, `PInput.pressed("action_a")`,
