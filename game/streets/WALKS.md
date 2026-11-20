@@ -71,6 +71,19 @@ focused, or leave them to them.
 - [ ] The arcade stretch (17-25.6 s) is 2.4 m/s: the replay's route from the zebra to the
       forecourt is ~7 m longer than the street's (its zebra stands further up); moving the
       zebra to the film's place would let it walk at the film's 1.3.
+- [ ] The talkers are off the frame when the film shows them. At 26 s the film has the
+      two women in the middle of its frame, ~9 m off, right of the bollards by a motorbike;
+      the game faces the same way (the facing traces agree there) but has them 40-45 deg
+      right, behind the hedge (seen only at 21-22 s, at the frame's edge) -- in every pass
+      since 7. Where the film puts them lands on the passage's mouth in the game, so the
+      forecourt's layout (the arcade's end, the passage's mouth, the bollards) or the walk's
+      line across it is off: measure the bollards' and the passage's bearings in the film's
+      25-28 s frames first, then move whichever is wrong.
+- [ ] The passage's end (61-67 s): the film walks on along a pavement between the hedge
+      (right) and hoop railings (left), the man in blue standing at the railing; the game
+      steps out towards the road (its 63-65 s frames are the road and the far kerb), so the
+      man in blue is off the frame. The little street's near pavement there is missing or
+      too narrow.
 - [ ] A cyclist or an e-scooter rider passing on Sheinkin (common there; check the film
       at 76-90 s).
 

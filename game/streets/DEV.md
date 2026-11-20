@@ -1342,7 +1342,8 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
 - **The biggest open items**, by what the side-by-side shows most: the buildings' faces along
   the route (cream and sand plaster, balconies, shutters: city-wide, another session's); the
   light (hazy, warm, soft shadows: another session's); people that move as the film's do
-  (done for walk 1's: pass 13); the north kerb's paint and the
+  (done for walk 1's: pass 13, but the forecourt's talkers and the man in blue are off the
+  frame when the film shows them: WALKS.md, Behaviour, with the bearings); the north kerb's paint and the
   city's guard railing north-west of the zebra (pass 12, above); the cars parked along
   Katzenelson's far kerb the film shows across the road at 1-2.5 s; the arcade's columns (white with a dark wooden foot) and the second shop; Ha-Meri's
   far pavement (a low white wall, an e-scooter); the camera's last differences (a touch of
