@@ -957,6 +957,20 @@ func _steer_lanes(c: Car, i: int, dt: float, best: float, lead_v: float) -> void
 			c.shift_rd = rid1
 		c.shift_to = 0.0
 		return
+	# Onto the next road: the lane of it the car is in, where it is, not the same number. Two
+	# roads drawn on the node they share lie on one middle line, so the second lane of a
+	# four-lane link is the first of the two-lane slip it runs on into (its numbers kept,
+	# the link's second lane's cars all crossed over into the slip's other lane and stood on
+	# each other there, at Begin x Kaplan).
+	var rid0: int = c.rd[mini(c.k + 1, c.rd.size() - 1)]
+	if rid0 != c.shift_rd and c.shift_rd >= 0 and c.shift_rd < _roads.size():
+		var phys: float = _lane(_roads[c.shift_rd]) - c.shift   # right of the middle line, now
+		var near_d := INF
+		for idx in range(n):
+			var dd := absf(_lane(r) - _lane_shift(r, idx) - phys)
+			if dd < near_d:
+				near_d = dd
+				c.lane_i = idx
 	var want := c.lane_i
 	var turn: Array = _turn_ahead(c)
 	var vnow: float = c.vmax[mini(c.k + 1, c.vmax.size() - 1)]
@@ -985,13 +999,30 @@ func _steer_lanes(c: Car, i: int, dt: float, best: float, lead_v: float) -> void
 	# go on, in good time and with a look (clamped at the fork, cars from three lanes slid
 	# into one at once, on top of each other -- Begin's slip off Kaplan)
 	var n_on := n
+	var narrow := -1
 	var look := minf(NARROW_LOOK, float(turn[1]) if int(turn[0]) != 0 else INF)   # (up to a turn: the turn picks the lane)
 	for j in range(c.k + 1, c.pts.size()):
 		if c.cum[j] - c.s > look:
 			break
-		if c.rd[j] >= 0:
-			n_on = mini(n_on, _lanes_dir(_roads[c.rd[j]]))
-	want = mini(want, n_on - 1)
+		if c.rd[j] >= 0 and _lanes_dir(_roads[c.rd[j]]) < n_on:
+			n_on = _lanes_dir(_roads[c.rd[j]])
+			narrow = c.rd[j]
+	if narrow >= 0:
+		# the lanes that go on are the ones lying within the narrower road (on the same
+		# middle line): the nearest of those to where the car would be
+		var rn: Dictionary = _roads[narrow]
+		var half := (float(rn["w"]) if int(rn["o"]) != 0 else float(rn["w"]) * 0.5) * 0.5
+		var mid_n := 0.0 if int(rn["o"]) != 0 else float(rn["w"]) * 0.25   # (a two-way road's lanes this way: its right half)
+		var best_w := want
+		var best_d := INF
+		for idx in range(n):
+			var centre := _lane(r) - _lane_shift(r, idx)
+			if absf(centre - mid_n) > half - 0.8:
+				continue   # (ends: its lane does not go on)
+			if absi(idx - want) < best_d:
+				best_d = absi(idx - want)
+				best_w = idx
+		want = best_w if best_d < INF else mini(want, n_on - 1)
 	if bus_i >= 0 and not c.bus_ok and not (int(turn[0]) > 0 and float(turn[1]) < BUS_TURN_IN):
 		want = _off_bus_lanes(r, want, way, n)
 		if g._bus_lane(r, c.lane_i, way):
