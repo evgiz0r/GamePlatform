@@ -43,6 +43,7 @@ these numbers the wrong way has broken something.
 | `divided_zebra` | 3 | people crossing both halves of a divided road (shots) | |
 | `load_stages` | 1, 3 | where the build time goes, stage by stage (`STREETS_BUILD_ALL=0`: what a player waits for) | Ashdod near-first: ready in 6.8 s here, 2.5 of it shader warm-up; whole city: kerbs 3.0 s, roads 1.9, trees 1.7 |
 | `drive_log` | 3 | the drive recorder: 60 s, the map page, a saved log | ~520 samples |
+| `zoom_out` | 4, 1 | zoom out from the car: the city held still (car, traffic, people), dragged, turned, landed, moving again; the pause button; from the seat and on foot (shots) | RESULT |
 
 `drive_log_map.py` draws a saved drive log (the "save log" button on the perf view's map
 page, or `drive_log.gd`'s output) over the city: `python3 game/streets/tests/drive_log_map.py
