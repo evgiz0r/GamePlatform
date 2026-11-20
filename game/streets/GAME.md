@@ -154,9 +154,15 @@ way that has the address on the kerb side; driving hands the way there to autodr
 
 > Besides go to, I want also jump to. It teleports there, instead of driving.
 
-**Places.** Entering the game asks where: Givatayim (starting on Katznelson just past
-Weizmann, the town's central junction); Bedford, Nova Scotia; or Ashdod (starting at Sderot
-Herzl and HeHalutzim, its busiest corner for shops). Each place is one
+**Places.** Entering the game asks where, in two lists side by side: **Cities** (Givatayim,
+Bedford, Ashdod, Tel Aviv, and the made-up test town last) and **Auto Experiments** (the
+filmed walks and the test routes' drives). Each level's `"group"` puts it in one.
+
+> lets rearrange the menu items instead street. 2 categories: Cities, Auto Experiments (walks
+> + test-drives). no extra button for walks, just split in the menu.
+
+Givatayim starts on Katznelson just past Weizmann, the town's central junction; Ashdod at
+Sderot Herzl and HeHalutzim, its busiest corner for shops. Each place is one
 entry in `LEVELS` at the top of `streets.gd` (name, city file, starting corner). Ashdod is
 three times Givatayim's size; it takes longer to build in full, but you are driving in
 about 3 s here, the same as anywhere (see "Loading near-first").

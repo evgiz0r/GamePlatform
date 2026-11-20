@@ -18,23 +18,25 @@ extends GameMode3D
 ## the car on the first just past the second. Without one it starts on a main road
 ## mid-town.
 const LEVELS := [
-	{"name": "Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer"},
+	# (the start screen lists them in two groups, "group"; a level's number stays its place here,
+	# which the tests and notes go by)
+	{"name": "Givatayim", "group": "Cities", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer"},
 	# "decks": "infer" -- its bridges' heights worked out as it loads (decks.gd: infer)
-	{"name": "Bedford, Nova Scotia", "city": "bedford", "look": "north", "decks": "infer"},
-	{"name": "Ashdod", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med", "decks": "infer"},
+	{"name": "Bedford, Nova Scotia", "group": "Cities", "city": "bedford", "look": "north", "decks": "infer"},
+	{"name": "Ashdod", "group": "Cities", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med", "decks": "infer"},
 	# made up by tools/fake_city.py: one small town with one of everything, ringed by mountains,
 	# that loads in a moment -- for checking a change, not for exploring
-	{"name": "Kiryat Dimyon (test town)", "city": "dimyon", "start": ["הנשיא", "השוק"], "look": "med"},
+	{"name": "Kiryat Dimyon (test town)", "group": "Cities", "sort": 99, "city": "dimyon", "start": ["הנשיא", "השוק"], "look": "med"},
 	# a walk filmed in Givatayim, replayed in first person on its own (cities/details/givatayim.json)
-	{"name": "A walk in Givatayim: Katzenelson to Ha-Meri", "city": "givatayim", "look": "med", "walk": "katzenelson_hameri"},
+	{"name": "A walk in Givatayim: Katzenelson to Ha-Meri", "group": "Auto Experiments", "city": "givatayim", "look": "med", "walk": "katzenelson_hameri"},
 	# a second, timed and placed from the GPS track taken with its film (tools/gpx_route.py)
-	{"name": "A walk in Givatayim: Sheinkin and Sirkin", "city": "givatayim", "look": "med", "walk": "sheinkin_sirkin"},
+	{"name": "A walk in Givatayim: Sheinkin and Sirkin", "group": "Auto Experiments", "city": "givatayim", "look": "med", "walk": "sheinkin_sirkin"},
 	# a box of central Tel Aviv, not the whole city (the workflow's bbox): HaKirya, Azrieli,
 	# Sarona, Montefiore, Bitsaron, the Ayalon. Starts on Kaplan heading east, the towers ahead.
-	{"name": "Tel Aviv: Azrieli and HaKirya", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer"},
+	{"name": "Tel Aviv: Azrieli and HaKirya", "group": "Cities", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer"},
 	# the route set (routes.json, tests/pick_routes.py): pick one of the drives and watch
 	# autodrive take it, from one address to the other, in its own city
-	{"name": "Test routes: watch a drive", "routes": true, "city": "dimyon", "look": "med"},
+	{"name": "Test routes: watch a drive", "group": "Auto Experiments", "routes": true, "city": "dimyon", "look": "med"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
