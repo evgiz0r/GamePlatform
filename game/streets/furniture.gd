@@ -818,7 +818,9 @@ func _fence_material(tone: String, gap: float) -> ShaderMaterial:
 	return m
 
 ## pieces of the line a-e that are not on a road or in a building, about `step` long
-func _open_pieces(a: Vector2, e: Vector2, step: float) -> Array:
+## (roads false: only buildings looked for -- the caller knows it is off the roads, and the
+## look for the nearest road is the dear one)
+func _open_pieces(a: Vector2, e: Vector2, step: float, roads := true) -> Array:
 	var L := a.distance_to(e)
 	var n := maxi(1, int(ceil(L / step)))
 	var out: Array = []
@@ -831,17 +833,19 @@ func _open_pieces(a: Vector2, e: Vector2, step: float) -> Array:
 		var j := mini(i + per, n)
 		var q0 := a.lerp(e, float(i) / n)
 		var q1 := a.lerp(e, float(j) / n)
-		var whole := j - i > 1 and _clear_at(q0) and _clear_at(q1) and _clear_at((q0 + q1) * 0.5)
+		var whole := j - i > 1 and _clear_at(q0, roads) and _clear_at(q1, roads) and _clear_at((q0 + q1) * 0.5, roads)
 		for k in range(i, j):
 			var p0 := a.lerp(e, float(k) / n)
 			var p1 := a.lerp(e, float(k + 1) / n)
-			if whole or _clear_at((p0 + p1) * 0.5):
+			# (a piece by its middle alone could end most of a metre into the road where the
+			# fence met it at a slant: the car ran into the end -- its ends too, where roads count)
+			if whole or _clear_at((p0 + p1) * 0.5, roads) and (not roads or g._off_road(p0, -0.2) and g._off_road(p1, -0.2)):
 				out.append([p0, p1])
 		i = j
 	return out
 
-func _clear_at(m: Vector2) -> bool:
-	return g._off_road(m, 0.2) and g._push_out(m, 0.15, false, false) == Vector2.ZERO
+func _clear_at(m: Vector2, roads := true) -> bool:
+	return (not roads or g._off_road(m, 0.2)) and g._push_out(m, 0.15, false, false) == Vector2.ZERO
 
 ## a see-through panel H high from a to e (the shader draws the bars), a post every
 ## `post_every` pieces of about `step` metres
@@ -879,13 +883,42 @@ func _fence_line(panel, posts, a: Vector2, e: Vector2, H: float, col: Color, ste
 		done += L
 	return done
 
+## a fence standing on a wall, A to B its foot along the wall's top (laid straight, one
+## panel, a post every `post_gap` metres): for the front gardens, whose wall was already
+## checked clear and made solid. Takes and returns the distance along for the bars.
+func wall_fence(panel, posts, A: Vector3, B: Vector3, H: float, col: Color, post_gap: float, rail: bool,
+		run: float) -> float:
+	var L := Vector2(A.x, A.z).distance_to(Vector2(B.x, B.z))
+	var up := Vector3.UP * H
+	var n := (B - A).cross(Vector3.UP).normalized()
+	var u2 := Vector2(H, 0)
+	panel.tri(A, B, B + up, n, col, Vector2(run, 0), Vector2(run + L, 0), Vector2(run + L, H), u2)
+	panel.tri(A, B + up, A + up, n, col, Vector2(run, 0), Vector2(run + L, H), Vector2(run, H), u2)
+	var np := maxi(1, int(round(L / post_gap)))
+	for k in range(np):   # a post: four sides, no ends (nobody sees its top)
+		var o0 := A.lerp(B, float(k) / np)
+		for f: Array in [[Vector3(0.03, 0, 0), Vector3(0, 0, 0.03)], [Vector3(-0.03, 0, 0), Vector3(0, 0, 0.03)],
+				[Vector3(0, 0, 0.03), Vector3(0.03, 0, 0)], [Vector3(0, 0, -0.03), Vector3(0.03, 0, 0)]]:
+			var o: Vector3 = o0 + f[0]
+			var u: Vector3 = f[1]
+			posts.tri(o - u, o + u, o + u + up, (f[0] as Vector3).normalized(), col)
+			posts.tri(o - u, o + u + up, o - u + up, (f[0] as Vector3).normalized(), col)
+	if rail:   # a solid round top rail
+		_tube(posts, A + up, B + up, 0.035, 0.035, col, 4)
+	return run + L
+
 ## a hedge from a to e: a clipped green bank about a metre high, its top a little uneven
-func _hedge_line(buf, a: Vector2, e: Vector2) -> float:
+func _hedge_line(buf, a: Vector2, e: Vector2, roads := true) -> float:
 	var done := 0.0
 	var col := Color.WHITE
-	for pc: Array in _open_pieces(a, e, 2.5):
+	var pieces := _open_pieces(a, e, 2.5, roads)
+	for pi in range(pieces.size()):
+		var pc: Array = pieces[pi]
 		var p0: Vector2 = pc[0]
 		var p1: Vector2 = pc[1]
+		# an end only where the hedge stops: between two pieces of it the end is inside it
+		var open0 := pi == 0 or (pieces[pi - 1][1] as Vector2) != p0
+		var open1 := pi == pieces.size() - 1 or (pieces[pi + 1][0] as Vector2) != p1
 		var d := (p1 - p0).normalized()
 		var s := Vector2(-d.y, d.x)
 		if g._mine(p0):
@@ -907,6 +940,8 @@ func _hedge_line(buf, a: Vector2, e: Vector2) -> float:
 		buf.tri(top[0], top[1], top[2], Vector3.UP, col)
 		buf.tri(top[0], top[2], top[3], Vector3.UP, col)
 		for i in range(4):
+			if i == 1 and not open1 or i == 3 and not open0:
+				continue
 			var j := (i + 1) % 4
 			var n := Vector3(((lo[i] as Vector2) + (lo[j] as Vector2) - p0 - p1).x, 0.4, ((lo[i] as Vector2) + (lo[j] as Vector2) - p0 - p1).y).normalized()
 			buf.tri(foot[i], foot[j], top[j], n, col)
