@@ -20,9 +20,9 @@ const GAP := 2.2             ## bumper to bumper when stopped (m)
 const HEADWAY := 1.2         ## seconds behind the car in front, moving
 const LEN := 4.4
 ## how long each kind is, bumper to bumper (m)
-const LENS := {"sedan": 4.6, "hatch": 4.0, "suv": 4.7, "van": 5.0, "taxi": 4.6, "bus": 11.8, "moto": 1.9}
+const LENS := {"sedan": 4.6, "hatch": 4.0, "suv": 4.7, "van": 5.0, "taxi": 4.6, "bus": 11.8, "moto": 1.9, "truck": 6.8}
 ## the player's car against each kind: circles along its length [offsets], radius
-const BODY := {"bus": [[-4.6, -2.3, 0.0, 2.3, 4.6], 1.25], "moto": [[0.0], 0.55]}
+const BODY := {"bus": [[-4.6, -2.3, 0.0, 2.3, 4.6], 1.25], "moto": [[0.0], 0.55], "truck": [[-2.3, 0.0, 2.3], 1.15]}
 const BUS_ROADS := {"primary": true, "secondary": true, "tertiary": true, "trunk": true}
 const LANE_MOVE := 1.4       ## sideways speed changing lanes (m/s): about 2.5 s a lane
 const DWELL := 7.0           ## seconds a bus stands at a stop
@@ -63,6 +63,7 @@ class Car:
 	var hit := 0.0                    ## seconds it sits stunned after the player hit it
 	var retry := 0.0                  ## seconds before trying again to find it a road
 	var want := -1.0                  ## the speed it last decided on (-1: decide now)
+	var passenger := false            ## someone beside the driver (seen through the glass)
 	var last_light := -1000.0         ## s at the last light it drove through
 	var sign_done := -1               ## the stop sign it has stopped at already
 	var sign_wait := 0.0
@@ -98,7 +99,8 @@ var _beams: MultiMeshInstance3D       ## their beams on the road, at night
 var _blinkers: MultiMesh              ## the indicators that are lit, front and back: one draw
 ## each kind's half width and half length, for where its indicators are
 const CORNERS := {"sedan": Vector2(0.9, 2.25), "hatch": Vector2(0.86, 1.95), "suv": Vector2(0.96, 2.32),
-	"van": Vector2(0.98, 2.45), "taxi": Vector2(0.9, 2.25), "bus": Vector2(1.25, 5.85), "moto": Vector2(0.3, 0.8)}
+	"van": Vector2(0.98, 2.45), "taxi": Vector2(0.9, 2.25), "bus": Vector2(1.25, 5.85), "moto": Vector2(0.3, 0.8),
+	"truck": Vector2(1.1, 3.35)}
 var _night := false
 var _roads: Array
 var _node_roads: Array
@@ -115,7 +117,7 @@ func setup(game: Node) -> void:
 	var b: Rect2 = g._bounds
 	var box := AABB(Vector3(b.position.x - 500.0, -200.0, b.position.y - 500.0),
 		Vector3(b.size.x + 1000.0, 600.0, b.size.y + 1000.0))   # no box to recompute every frame
-	for kind: String in ["sedan", "hatch", "suv", "van", "taxi", "bus", "moto"]:
+	for kind: String in ["sedan", "hatch", "suv", "van", "taxi", "bus", "moto", "truck"]:
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_colors = true   # white: the car shader's part colours are vertex colours, see _chunked
@@ -190,9 +192,12 @@ func setup(game: Node) -> void:
 			c.pace = rng.randf_range(0.95, 1.12)
 		elif roll < (0.27 if med else 0.2):
 			c.kind = "taxi"
+		elif roll < (0.32 if med else 0.25):
+			c.kind = "truck"
 		else:
 			c.kind = g.CAR_MIX[rng.randi() % g.CAR_MIX.size()]
 		c.len = float(LENS.get(c.kind, 4.6))
+		c.passenger = rng.randf() < 0.35
 		c.alive = _spawn(c, true)
 		_hide_or_show(i)
 	retint()
@@ -1168,7 +1173,9 @@ func draw(f: float) -> void:
 		var xf := Transform3D(basis, Vector3(p.x, float(g._h(p)) + float(g.road_top()), p.y))
 		var mm: MultiMesh = _mms[c.kind]
 		mm.set_instance_transform(i, xf)
-		mm.set_instance_custom_data(i, Color(c.paint, c.braking))
+		# alpha: the brake light, plus 2 for a driver, 4 for a driver and a passenger (the car
+		# shader draws them through the glass)
+		mm.set_instance_custom_data(i, Color(c.paint, c.braking + (4.0 if c.passenger else 2.0)))
 		if _night:
 			_beams.multimesh.set_instance_transform(i, xf)
 		if _blobs.visible:

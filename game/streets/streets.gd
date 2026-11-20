@@ -3849,7 +3849,8 @@ void vertex() {
 }
 void fragment() {
 	float n = noise(wpos.xz / 70.0) * 0.65 + noise(wpos.xz / 15.0) * 0.35;
-	vec3 c = mix(base.rgb, green.rgb, smoothstep(0.62 - greenness * 0.45, 0.78 - greenness * 0.4, n));
+	float g = smoothstep(0.62 - greenness * 0.45, 0.78 - greenness * 0.4, n);
+	vec3 c = mix(base.rgb, green.rgb, g);
 	c = mix(c, dark.rgb, smoothstep(0.62, 0.9, noise(wpos.xz / 31.0 + 17.0)) * 0.55);
 	// a mountainside steeper than any town street is bare rock, in bands and blotches
 	float bare = smoothstep(0.86, 0.74, wup + (noise(wpos.xz / 9.0) - 0.5) * 0.08);
@@ -3865,8 +3866,14 @@ void fragment() {
 		vec3 t = texture(grass_tex, uv).rgb;
 		vec3 t2 = texture(grass_tex, vec2(wpos.z, -wpos.x) * 0.137 + vec2(0.31, 0.77)).rgb;
 		float lawn = 1.0 - bare * 0.6;   // less of the lawn photo on bare rock
-		c *= mix(vec3(1.0), clamp(t / grass_mean, vec3(0.0), vec3(2.6)), 0.85 * kd * lawn);
-		c *= mix(vec3(1.0), clamp(t2 / grass_mean, vec3(0.0), vec3(2.6)), 0.3 * lawn * (1.0 - smoothstep(60.0, 260.0, length(VERTEX))));
+		// the lawn's colours only where it is grass: bare earth (and rock) takes just its light
+		// and dark -- its greens and yellows on grey earth came out as speckles of colour
+		vec3 lw = vec3(0.2126, 0.7152, 0.0722);
+		float gg = g * (1.0 - bare);
+		vec3 d1 = mix(vec3(dot(t, lw) / dot(grass_mean, lw)), t / grass_mean, gg);
+		vec3 d2 = mix(vec3(dot(t2, lw) / dot(grass_mean, lw)), t2 / grass_mean, gg);
+		c *= mix(vec3(1.0), clamp(d1, vec3(0.0), vec3(2.6)), 0.85 * kd * lawn);
+		c *= mix(vec3(1.0), clamp(d2, vec3(0.0), vec3(2.6)), 0.3 * lawn * (1.0 - smoothstep(60.0, 260.0, length(VERTEX))));
 		vec2 xy = (texture(grass_nrm, uv).rg * 2.0 - 1.0) * 0.8 * kd;
 		vec3 b = vec3(xy, sqrt(max(0.0, 1.0 - dot(xy, xy))));
 		vec3 tx = (VIEW_MATRIX * vec4(1.0, 0.0, 0.0, 0.0)).xyz;
@@ -4520,13 +4527,34 @@ uniform vec4 street : source_color;    // and the road below the horizon
 uniform vec4 well : source_color;      // a wheel well's dark
 uniform float fixed_paint = 0.0;       // 1: paint_col (the player's car), not the copy's own colour
 uniform vec4 paint_col : source_color;
+uniform float occupied = 0.0;          // the player's car: 1 while the player sits in it
+uniform vec4 skin : source_color;      // the people inside: skin, hair, and two shirts to pick from
+uniform vec4 hair : source_color;
+uniform vec4 shirt_a : source_color;
+uniform vec4 shirt_b : source_color;
 varying vec4 custom;
 varying vec3 lpos;                     // the car's own frame: x across, y up from the road, z forward
 varying vec3 lnrm;
+varying vec3 lcam;                     // the eye, in that frame
+varying float who;                     // a number of the car's own, for its people's looks
 void vertex() {
 	custom = INSTANCE_CUSTOM;
 	lpos = VERTEX;
 	lnrm = NORMAL;
+	lcam = transpose(mat3(MODEL_MATRIX)) * (CAMERA_POSITION_WORLD - MODEL_MATRIX[3].xyz);
+	who = fract(sin(dot(MODEL_MATRIX[3].xz, vec2(12.9898, 78.233))) * 43758.5453);
+}
+// where a ray (from o along unit d) first meets an ellipsoid at c with radii r; -1 if not
+float ray_blob(vec3 o, vec3 d, vec3 c, vec3 r) {
+	vec3 oo = (o - c) / r;
+	vec3 dd = d / r;
+	float a = dot(dd, dd);
+	float b = dot(oo, dd);
+	float k = b * b - a * (dot(oo, oo) - 1.0);
+	if (k < 0.0) {
+		return -1.0;
+	}
+	return (-b - sqrt(k)) / a;
 }
 vec3 sky_at(float e) {
 	return e > 0.0 ? mix(sky_hor.rgb, sky_top.rgb, smoothstep(0.0, 0.5, e))
@@ -4569,8 +4597,44 @@ void fragment() {
 			spec = 0.6;
 		}
 		emit = refl * f;
-	} else if (part > 0.7) {     // glass
-		emit = refl * (0.12 + 0.88 * pow(1.0 - ndv, 3.0));
+	} else if (part > 0.7) {     // glass, and whoever sits behind it
+		vec3 inside = vec3(0.0);
+		// UV2 on a car's glass: (front seats' z, their cushion's height); traffic's custom
+		// alpha 2+ has a driver, 4+ a passenger too (the rest of it is the brake light)
+		float occ = fixed_paint > 0.5 ? occupied : floor(custom.a * 0.5);
+		if (UV2.y > 0.0 && occ > 0.5) {
+			vec3 rd = normalize(lpos - lcam);
+			float best = 1e9;
+			vec3 col_hit = vec3(0.0);
+			vec3 n_hit = vec3(0.0, 1.0, 0.0);
+			for (int s = 0; s < 2; s++) {
+				if (s == 1 && occ < 1.5) {
+					break;
+				}
+				float x = s == 0 ? 0.36 : -0.36;   // the driver on the car's left (+X)
+				vec3 head = vec3(x, UV2.y + 0.6, UV2.x);
+				vec3 body = vec3(x, UV2.y + 0.28, UV2.x - 0.05);
+				float th = ray_blob(lcam, rd, head, vec3(0.1, 0.12, 0.11));
+				if (th > 0.0 && th < best) {
+					best = th;
+					vec3 hp = lcam + rd * th;
+					n_hit = normalize((hp - head) / vec3(0.1, 0.12, 0.11));
+					// hair on top and at the back, a face in front
+					col_hit = (n_hit.y > 0.35 || n_hit.z < -0.2) ? hair.rgb : skin.rgb;
+				}
+				float tb = ray_blob(lcam, rd, body, vec3(0.21, 0.24, 0.14));
+				if (tb > 0.0 && tb < best) {
+					best = tb;
+					n_hit = normalize((lcam + rd * tb - body) / vec3(0.21, 0.24, 0.14));
+					col_hit = mix(shirt_a.rgb, shirt_b.rgb, fract(who * (s == 0 ? 1.0 : 7.3)));
+				}
+			}
+			// lit dimly from the windows above and the side, the cabin itself dark
+			inside = best < 1e8 ? col_hit * (0.22 + 0.25 * max(n_hit.y, 0.0) + 0.1 * abs(n_hit.x)) : vec3(0.02);
+			inside *= 1.0 - 0.7 * night;
+		}
+		float f = 0.12 + 0.88 * pow(1.0 - ndv, 3.0);
+		emit = mix(inside, refl, f);
 		rough = 0.05;
 	} else if (part > 0.6) {     // number plate: a row of dark characters
 		float cell = (UV.x - 0.1) / 0.8 * 7.0;
@@ -4597,7 +4661,7 @@ void fragment() {
 		rough = 0.1;
 	} else {                     // tail lights
 		col = tail.rgb;
-		emit = tail.rgb * (0.25 + 1.1 * night + 2.8 * custom.a);
+		emit = tail.rgb * (0.25 + 1.1 * night + 2.8 * (custom.a - floor(custom.a * 0.5) * 2.0));
 	}
 	ALBEDO = col;
 	ROUGHNESS = rough;
@@ -4623,6 +4687,10 @@ func _car_material() -> ShaderMaterial:
 		m.set_shader_parameter("night", 1.0 if _night else 0.0)
 		m.set_shader_parameter("street", _tone["asphalt"])
 		m.set_shader_parameter("well", (_tone["tyre"] as Color).darkened(0.55))
+		m.set_shader_parameter("skin", _tone["skin"])
+		m.set_shader_parameter("hair", _tone["hair"])
+		m.set_shader_parameter("shirt_a", _tone["shirt_a"])
+		m.set_shader_parameter("shirt_b", _tone["shirt_b"])
 		if env != null and env.sky != null:
 			var rs := _sky_reflect()
 			m.set_shader_parameter("sky_top", rs[0])
@@ -4630,6 +4698,7 @@ func _car_material() -> ShaderMaterial:
 		if m == _player_car_mat:
 			m.set_shader_parameter("fixed_paint", 1.0)
 			m.set_shader_parameter("paint_col", _tone[String(m.get_meta("paint", "paint"))])
+			m.set_shader_parameter("occupied", 0.0 if _walking else 1.0)
 	return _car_shader_mat
 
 var _car_meshes := {}
@@ -4641,6 +4710,8 @@ func _parked_mesh(kind := "sedan") -> ArrayMesh:
 		return _bus_mesh()
 	if kind == "moto":
 		return _moto_mesh()
+	if kind == "truck":
+		return _truck_mesh()
 	var taxi := kind == "taxi"
 	var cm := _car_body("sedan" if taxi else kind, true)
 	if taxi:
@@ -4753,7 +4824,8 @@ func _plan_in(x: float, hw: float) -> float:
 ## over the grid and turned away from each station's middle; `part.call(i, j)` colours the
 ## quad from station i, ring point j. A vertex is shared by the quads of one part only, so
 ## glass and paint keep their own edges.
-func _loft(cm: CarMesh, rings: Array, mids: PackedVector3Array, closed: bool, part: Callable, t2: Vector2) -> void:
+func _loft(cm: CarMesh, rings: Array, mids: PackedVector3Array, closed: bool, part: Callable, t2: Vector2,
+		glass_t2 := Vector2.ZERO) -> void:
 	var count := rings.size()
 	var m: int = (rings[0] as PackedVector3Array).size()
 	var nrm: Array = []
@@ -4783,7 +4855,8 @@ func _loft(cm: CarMesh, rings: Array, mids: PackedVector3Array, closed: bool, pa
 			for ij: Vector2i in [Vector2i(i, j), Vector2i(i + 1, j), Vector2i(i + 1, j1), Vector2i(i, j1)]:
 				var key := (ij.x * 1000 + ij.y) * 1000 + pid
 				if not made.has(key):
-					made[key] = cm.vert((rings[ij.x] as PackedVector3Array)[ij.y], (nrm[ij.x] as PackedVector3Array)[ij.y], col, Vector2.ZERO, t2)
+					made[key] = cm.vert((rings[ij.x] as PackedVector3Array)[ij.y], (nrm[ij.x] as PackedVector3Array)[ij.y], col, Vector2.ZERO,
+						glass_t2 if pid == 75 else t2)
 				q.append(made[key])
 			var out: Vector3 = ((rings[i] as PackedVector3Array)[j] + (rings[i + 1] as PackedVector3Array)[j1]) * 0.5 - (mids[i] + mids[i + 1]) * 0.5
 			cm.tri(q[0], q[1], q[2], out)
@@ -4799,7 +4872,7 @@ func _car_body(kind: String, extras: bool) -> CarMesh:
 	var hl: float = shape[3]
 	var wz: float = shape[4]
 	var wr: float = shape[5]
-	var lift := 0.08 if kind in ["suv", "van"] else 0.0
+	var lift := 0.08 if kind in ["suv", "van"] else (0.12 if kind == "truck" else 0.0)
 	var cm := CarMesh.new()
 	var paint := Color(1, 1, 1, 1.0)
 	var glass := Color(_tone["carglass"], 0.75)
@@ -4885,7 +4958,10 @@ func _car_body(kind: String, extras: bool) -> CarMesh:
 			if absf(zc - pz) < 0.06:
 				return paint                  # the B-pillar (an SUV's and a van's C too)
 		return glass
-	_loft(cm, rings, mids, false, cab_part, Vector2.ZERO)
+	# the glass carries where the front seats are -- just behind the windscreen's foot, the
+	# cushion a little under the waist -- for the shader's people
+	var seats := Vector2(c0.x - (0.75 if kind == "truck" else (1.3 if kind in ["suv", "van"] else 1.15)), _span_at(low, c0.x).y - 0.45)
+	_loft(cm, rings, mids, false, cab_part, Vector2.ZERO, seats)
 	# ---- trim: bumper lips, the grille, mirrors, door handles
 	var tb := Buf.new()
 	var zf := _end_at(low, 0.4 + lift, true)
@@ -4895,7 +4971,7 @@ func _car_body(kind: String, extras: bool) -> CarMesh:
 	var gy := 0.58 + lift
 	_box(tb, Vector3(0, gy, _end_at(low, gy, true) - 0.025), Vector3(0.72, 0.13, 0.06))
 	for sx: float in [-1.0, 1.0]:
-		for hz: float in [c0.x - 0.42, float(pillars[0]) - 0.4]:
+		for hz: float in ([c0.x - 0.42] if kind == "truck" else [c0.x - 0.42, float(pillars[0]) - 0.4]):
 			var hy := _span_at(low, hz).y - 0.11
 			_box(tb, Vector3(sx * (_plan_w(hz, hw, hl) + 0.004), hy, hz), Vector3(0.02, 0.035, 0.15))
 	cm.add_buf(tb, trim)
@@ -4952,9 +5028,9 @@ func _lamp(cm: CarMesh, low: PackedVector2Array, hw: float, cx: float, cy: float
 
 ## a tyre round the X axis at c, its outer side facing `side` (+1/-1): tread, sidewall, and the
 ## rim (UV: the disc's own -1..1, for the shader's spokes)
-func _wheel(cm: CarMesh, c: Vector3, r: float, side: float, tyre: Color, rim: Color) -> void:
+func _wheel(cm: CarMesh, c: Vector3, r: float, side: float, tyre: Color, rim: Color, half := 0.11,
+		both := false) -> void:
 	var seg := 10
-	var half := 0.11
 	var rr := r * 0.62
 	var out := Vector3(side, 0, 0)
 	var tread: Array = []
@@ -4971,13 +5047,24 @@ func _wheel(cm: CarMesh, c: Vector3, r: float, side: float, tyre: Color, rim: Co
 		cm.tri(a0[0], a1[1], a0[1], dir)
 		cm.tri(a0[2], a1[2], a1[3], out)
 		cm.tri(a0[2], a1[3], a0[3], out)
-	var hub := cm.vert(c + out * (half - 0.004), out, rim, Vector2.ZERO)
-	var ring: Array = []
-	for k in range(seg + 1):
-		var a := TAU * k / seg
-		ring.append(cm.vert(c + Vector3(0, cos(a), sin(a)) * rr + out * (half - 0.004), out, rim, Vector2(cos(a), sin(a))))
-	for k in range(seg):
-		cm.tri(hub, ring[k], ring[k + 1], out)
+	for o: Vector3 in ([out, -out] if both else [out]):
+		var hub := cm.vert(c + o * (half - 0.004), o, rim, Vector2.ZERO)
+		var ring: Array = []
+		for k in range(seg + 1):
+			var a := TAU * k / seg
+			ring.append(cm.vert(c + Vector3(0, cos(a), sin(a)) * rr + o * (half - 0.004), o, rim, Vector2(cos(a), sin(a))))
+		for k in range(seg):
+			cm.tri(hub, ring[k], ring[k + 1], o)
+		if both and o == -out:   # the far side's sidewall too (a scooter is seen from both)
+			for k in range(seg):
+				var a0 := TAU * k / seg
+				var a1 := TAU * (k + 1) / seg
+				var p0 := cm.vert(c + Vector3(0, cos(a0), sin(a0)) * r + o * half, o, tyre)
+				var p1 := cm.vert(c + Vector3(0, cos(a1), sin(a1)) * r + o * half, o, tyre)
+				var q0 := cm.vert(c + Vector3(0, cos(a0), sin(a0)) * rr + o * half, o, tyre)
+				var q1 := cm.vert(c + Vector3(0, cos(a1), sin(a1)) * rr + o * half, o, tyre)
+				cm.tri(p0, p1, q1, o)
+				cm.tri(p0, q1, q0, o)
 
 ## parts [Buf, colour with the part code in alpha] as one surface in the car shader
 func _car_parts_mesh(parts: Array) -> ArrayMesh:
@@ -4995,73 +5082,193 @@ func _car_parts_mesh(parts: Array) -> ArrayMesh:
 	am.surface_set_material(0, _car_material())
 	return am
 
-## A city bus, 11.8 m: the body in its colour below and above a band of windows all round,
-## pillars between them, a big windscreen, the route sign over it, two doors on the right
-## (the kerb side: the car's -X), an air-conditioning box on the roof. Faces +Z.
+## A city bus, 11.8 m: a rounded box -- the body in its colour below and above a band of
+## windows all round, pillars between them, a big windscreen with the lit route sign over
+## it, glazed doors on the kerb side (the car's -X), the air-conditioning box on the roof,
+## the wheels in dark wells. One loft like the cars' (see _car_body), its ends flat faces
+## in bands. Faces +Z.
 func _bus_mesh() -> ArrayMesh:
-	var paint := Buf.new()
-	var glass := Buf.new()
-	var trim := Buf.new()
-	var tyre := Buf.new()
-	var lights := Buf.new()
-	var tails := Buf.new()
-	var route := Buf.new()
+	var cm := CarMesh.new()
 	var hw := 1.25
 	var hl := 5.9
-	_box(paint, Vector3(0, 0.78, 0), Vector3(hw * 2.0, 0.86, hl * 2.0))
-	_box(glass, Vector3(0, 1.9, 0), Vector3(hw * 2.0 - 0.04, 1.38, hl * 2.0 - 0.04))
-	_box(paint, Vector3(0, 2.8, 0), Vector3(hw * 2.0, 0.42, hl * 2.0))
+	var rc := 0.3                       # the plan's corner radius
+	var paint := Color(1, 1, 1, 1.0)
+	var glass := Color(_tone["carglass"], 0.75)
+	var trim := Color(_tone["cartrim"], 0.5)
+	var wheels := Vector2(3.0, 0.5)     # (both axles' |z|, wheel radius): the wells
+	var ys: Array = [0.32, 0.42, 1.0, 2.55, 2.9, 3.05]   # bottom, sill, window foot, top, roof edge, roof
+	var pillars: Array = []
 	for i in range(9):
-		var z := -hl + 0.7 + i * 1.32
-		for sx: float in [-1.0, 1.0]:
-			_box(trim, Vector3(sx * (hw - 0.005), 1.9, z), Vector3(0.03, 1.38, 0.12))
-	_box(trim, Vector3(0, 3.12, -1.2), Vector3(1.6, 0.22, 2.8))
-	_box(glass, Vector3(0, 1.55, hl + 0.01), Vector3(hw * 2.0 - 0.22, 1.5, 0.02))
-	_box(route, Vector3(0, 2.5, hl + 0.02), Vector3(1.7, 0.26, 0.02))
-	for z: float in [hl - 1.05, -0.4]:
-		_box(glass, Vector3(-hw - 0.01, 1.35, z), Vector3(0.02, 2.0, 1.15))
-	for wz: float in [hl - 2.6, -hl + 3.1]:
-		for sx: float in [-1.0, 1.0]:
-			_cyl_x(tyre, Vector3(sx * (hw - 0.18), 0.5, wz), 0.5, 0.32, 12)
+		pillars.append(-hl + 0.7 + i * 1.32)
+	var doors: Array = [Vector2(3.65, 4.85), Vector2(-0.9, 0.35)]
+	var zs: Array = []
+	for d: float in [0.0, 0.04, 0.1, 0.18, 0.3]:
+		zs.append_array([-hl + d, hl - d])
+	for pz: float in pillars:
+		zs.append_array([pz - 0.06, pz + 0.06])
+	for dz: Vector2 in doors:
+		zs.append_array([dz.x, dz.y])
+	zs.append_array([-hl + 0.6, hl - 0.6])
+	zs.sort()
+	var st: Array = []
+	for z: float in zs:
+		if st.is_empty() or z - float(st[-1]) > 0.01:
+			st.append(z)
+	var rings: Array = []
+	var mids := PackedVector3Array()
+	for z: float in st:
+		var d := absf(z) - (hl - rc)
+		var w := hw if d <= 0.0 else hw - rc + sqrt(maxf(rc * rc - d * d, 0.0))
+		var half: Array = [Vector2(0.0, ys[0]), Vector2(w - 0.08, ys[0]), Vector2(w, ys[1]), Vector2(w, ys[2]),
+			Vector2(w, ys[3]), Vector2(w, ys[4]), Vector2(w - 0.15, ys[5]), Vector2(0.0, float(ys[5]) + 0.02)]
+		var ring := PackedVector3Array()
+		for p: Vector2 in half:
+			ring.append(Vector3(p.x, p.y, z))
+		for k in range(half.size() - 2, 0, -1):
+			ring.append(Vector3(-(half[k] as Vector2).x, (half[k] as Vector2).y, z))
+		rings.append(ring)
+		mids.append(Vector3(0.0, 1.6, z))
+	var part := func(i: int, j: int) -> Color:
+		var zc := (float(st[i]) + float(st[i + 1])) * 0.5
+		var kerb := j >= 7
+		var band := j if j < 7 else 13 - j   # the same band on either side
+		for dz: Vector2 in doors:
+			if kerb and zc > dz.x and zc < dz.y and (band == 2 or band == 3):
+				return glass                  # the doors, glazed top to bottom
+		if band == 3:
+			if absf(zc) > hl - 0.45:
+				return paint                  # the corners
+			for pz: float in pillars:
+				if absf(zc - pz) < 0.06:
+					return paint
+			return glass
+		return trim if band <= 1 else paint
+	_loft(cm, rings, mids, true, part, wheels)
+	# the two ends: flat faces in bands -- bumper, panel, windscreen (rear window), route sign
+	for front: bool in [true, false]:
+		var z := hl if front else -hl
+		var s := 1.0 if front else -1.0
+		var w := hw - rc
+		var bands: Array = [[ys[0], ys[1], trim], [ys[1], ys[2], paint], [ys[2], ys[3], glass],
+			[ys[3], ys[4], Color(Palette.col("warn"), 0.1) if front else paint], [ys[4], ys[5], paint]]
+		for b: Array in bands:
+			var y0: float = b[0]
+			var y1: float = b[1]
+			var w0 := w - (0.08 if y0 <= float(ys[0]) else 0.0)
+			var w1 := w - (0.15 if y1 >= float(ys[5]) else 0.0)
+			var a := cm.vert(Vector3(-w0, y0, z), Vector3(0, 0, s), b[2])
+			var bb := cm.vert(Vector3(w0, y0, z), Vector3(0, 0, s), b[2])
+			var c := cm.vert(Vector3(w1, y1, z), Vector3(0, 0, s), b[2])
+			var e := cm.vert(Vector3(-w1, y1, z), Vector3(0, 0, s), b[2])
+			cm.tri(a, bb, c, Vector3(0, 0, s))
+			cm.tri(a, c, e, Vector3(0, 0, s))
+	# the roof's air conditioning, the mirrors on their arms
+	var tb := Buf.new()
+	_box(tb, Vector3(0, 3.2, -1.2), Vector3(1.6, 0.26, 2.8))
 	for sx: float in [-1.0, 1.0]:
-		_box(lights, Vector3(sx * (hw - 0.32), 0.62, hl + 0.02), Vector3(0.36, 0.16, 0.04))
-		_box(tails, Vector3(sx * (hw - 0.18), 0.95, -hl - 0.02), Vector3(0.2, 0.42, 0.04))
-	var am := _car_parts_mesh([[paint, Color(1, 1, 1, 1.0)], [glass, Color(_tone["carglass"], 0.75)],
-		[trim, Color(_tone["cartrim"], 0.5)], [tyre, Color(_tone["tyre"], 0.3)], [route, Color(Palette.col("warn"), 0.1)],
-		[lights, Color(_tone["tank"], 0.1)], [tails, Color(_tone["tank"], 0.0)]])
+		_box(tb, Vector3(sx * (hw + 0.12), 2.15, hl - 0.25), Vector3(0.06, 0.4, 0.1))
+	cm.add_buf(tb, trim)
+	# lights low on the front, tall ones at the back; a plate
+	var lamps := Buf.new()
+	var tails := Buf.new()
+	for sx: float in [-1.0, 1.0]:
+		_box(lamps, Vector3(sx * (hw - 0.45), 0.62, hl + 0.01), Vector3(0.36, 0.14, 0.03))
+		_box(tails, Vector3(sx * (hw - 0.22), 1.0, -hl - 0.01), Vector3(0.2, 0.42, 0.03))
+	cm.add_buf(lamps, Color(_tone["tank"], 0.1))
+	cm.add_buf(tails, Color(_tone["tank"], 0.0))
+	for wz: float in [wheels.x, -wheels.x]:
+		for sx: float in [-1.0, 1.0]:
+			_wheel(cm, Vector3(sx * (hw - 0.2), wheels.y, wz), wheels.y, sx, Color(_tone["tyre"], 0.3), Color(_tone["rim"], 0.4), 0.16)
+	var am := cm.mesh(_car_material())
+	am.custom_aabb = am.get_aabb().grow(0.1)
 	_car_meshes["bus"] = am
 	return am
 
-## A scooter and its rider, 1.9 m: two small wheels, the body in its colour, the leg
-## shield, handlebars, the rider in a dark jacket and a white helmet. Faces +Z.
+## A scooter and its rider, 1.9 m, made of rounded pieces: two small spoked wheels, the
+## body and the leg shield in its colour, a dark seat and floorboard, the handlebars, a lamp
+## at each end; the rider in a dark jacket and trousers, arms out to the bars, a helmet
+## with its visor. Faces +Z.
 func _moto_mesh() -> ArrayMesh:
-	var paint := Buf.new()
-	var trim := Buf.new()
-	var rider := Buf.new()
-	var helmet := Buf.new()
-	var tyre := Buf.new()
-	var lights := Buf.new()
-	var tails := Buf.new()
-	_cyl_x(tyre, Vector3(0, 0.28, 0.66), 0.28, 0.12, 10)
-	_cyl_x(tyre, Vector3(0, 0.28, -0.62), 0.28, 0.12, 10)
-	_box(paint, Vector3(0, 0.46, -0.28), Vector3(0.38, 0.34, 0.92))
-	_box(paint, Vector3(0, 0.36, 0.2), Vector3(0.3, 0.1, 0.5))
-	_box(paint, Vector3(0, 0.82, 0.5), Vector3(0.42, 0.8, 0.14))
-	_box(trim, Vector3(0, 0.7, -0.3), Vector3(0.32, 0.1, 0.62))
-	_box(trim, Vector3(0, 1.12, 0.52), Vector3(0.66, 0.05, 0.05))
-	_box(rider, Vector3(0, 0.82, -0.1), Vector3(0.4, 0.2, 0.5))      # thighs
-	_box(rider, Vector3(0, 1.2, -0.22), Vector3(0.44, 0.62, 0.28))   # body
+	var cm := CarMesh.new()
+	var paint := Color(1, 1, 1, 1.0)
+	var trim := Color(_tone["cartrim"], 0.5)
+	var jacket := Color(_tone["cartrim"].lerp(_tone["carglass"], 0.3), 0.5)
+	var legs := Color(_tone["cartrim"].darkened(0.2), 0.5)
+	var helmet := Color(_tone["mark"], 0.5)
+	for wz: float in [0.62, -0.62]:
+		_wheel(cm, Vector3(0, 0.25, wz), 0.25, 1.0, Color(_tone["tyre"], 0.3), Color(_tone["rim"], 0.4), 0.05, true)
+	_blobm(cm, Vector3(0, 0.55, -0.32), Vector3(0.2, 0.2, 0.5), paint)            # the body over the back wheel
+	_blobm(cm, Vector3(0, 0.62, 0.42), Vector3(0.22, 0.32, 0.07), paint)          # the leg shield
+	_blobm(cm, Vector3(0, 0.44, 0.63), Vector3(0.08, 0.05, 0.2), paint)           # the front mudguard
+	_blobm(cm, Vector3(0, 0.77, -0.3), Vector3(0.16, 0.06, 0.38), trim)           # the seat
+	var tb := Buf.new()
+	_box(tb, Vector3(0, 0.36, 0.08), Vector3(0.32, 0.06, 0.52))                   # the floorboard
+	_box(tb, Vector3(0, 0.86, 0.5), Vector3(0.05, 0.46, 0.05))                    # the column
+	_box(tb, Vector3(0, 1.08, 0.48), Vector3(0.62, 0.04, 0.04))                   # the bars
+	cm.add_buf(tb, trim)
+	_blobm(cm, Vector3(0, 0.98, 0.57), Vector3(0.07, 0.06, 0.03), Color(_tone["tank"], 0.1), 8, 4)
+	_blobm(cm, Vector3(0, 0.62, -0.84), Vector3(0.07, 0.04, 0.03), Color(_tone["tank"], 0.0), 8, 4)
+	# the rider, leaning a little to the bars: a torso, arms bent at the elbow, knees up
+	_limb(cm, Vector3(0, 0.98, -0.22), Vector3(0, 1.5, -0.06), 0.16, jacket)
 	for sx: float in [-1.0, 1.0]:
-		_box(rider, Vector3(sx * 0.25, 1.24, 0.15), Vector3(0.1, 0.1, 0.52))   # arms
-		_box(rider, Vector3(sx * 0.14, 0.55, 0.22), Vector3(0.12, 0.42, 0.12))  # shins
-	_box(helmet, Vector3(0, 1.66, -0.12), Vector3(0.3, 0.3, 0.33))
-	_box(lights, Vector3(0, 1.0, 0.58), Vector3(0.16, 0.1, 0.04))
-	_box(tails, Vector3(0, 0.66, -0.75), Vector3(0.16, 0.07, 0.04))
-	var am := _car_parts_mesh([[paint, Color(1, 1, 1, 1.0)], [trim, Color(_tone["cartrim"], 0.5)],
-		[rider, Color(_tone["cartrim"].lerp(_tone["carglass"], 0.3), 0.5)], [helmet, Color(_tone["mark"], 0.5)],
-		[tyre, Color(_tone["tyre"], 0.3)], [lights, Color(_tone["tank"], 0.1)], [tails, Color(_tone["tank"], 0.0)]])
+		var shoulder := Vector3(sx * 0.18, 1.42, -0.07)
+		var elbow := Vector3(sx * 0.26, 1.2, 0.17)
+		var hand := Vector3(sx * 0.3, 1.1, 0.45)
+		_limb(cm, shoulder, elbow, 0.06, jacket)
+		_limb(cm, elbow, hand, 0.05, jacket)
+		var hip := Vector3(sx * 0.11, 0.9, -0.2)
+		var knee := Vector3(sx * 0.15, 0.93, 0.2)
+		var foot := Vector3(sx * 0.14, 0.42, 0.2)
+		_limb(cm, hip, knee, 0.08, legs)
+		_limb(cm, knee, foot, 0.065, legs)
+	_blobm(cm, Vector3(0, 1.66, 0.0), Vector3(0.13, 0.14, 0.14), helmet)          # the helmet
+	_blobm(cm, Vector3(0, 1.64, 0.1), Vector3(0.1, 0.055, 0.06), Color(_tone["carglass"], 0.75), 8, 4)   # its visor
+	var am := cm.mesh(_car_material())
+	am.custom_aabb = am.get_aabb().grow(0.1)
 	_car_meshes["moto"] = am
 	return am
+
+## A delivery truck, 6.8 m: a van's cab (CAR_SHAPES "truck", built like the cars) with a
+## tall white box behind it, its back doors' seam and hinges. Faces +Z.
+func _truck_mesh() -> ArrayMesh:
+	var cm := _car_body("truck", true)
+	var box := Buf.new()
+	_box(box, Vector3(0, 2.13, -0.98), Vector3(2.3, 2.36, 4.8))
+	cm.add_buf(box, Color(_tone["tank"], 0.5))
+	var seam := Buf.new()
+	_box(seam, Vector3(0, 2.13, -3.385), Vector3(0.03, 2.2, 0.02))
+	for sx: float in [-1.0, 1.0]:
+		for hy: float in [1.3, 2.9]:
+			_box(seam, Vector3(sx * 1.05, hy, -3.385), Vector3(0.1, 0.06, 0.02))
+	cm.add_buf(seam, Color(_tone["cartrim"], 0.5))
+	var am := cm.mesh(_car_material())
+	am.custom_aabb = am.get_aabb().grow(0.1)
+	_car_meshes["truck"] = am
+	return am
+
+## a limb from a to b: a long rounded piece, `rad` thick
+func _limb(cm: CarMesh, a: Vector3, b: Vector3, rad: float, col: Color) -> void:
+	var up := (b - a).normalized()
+	var side := up.cross(Vector3.FORWARD if absf(up.z) < 0.9 else Vector3.RIGHT).normalized()
+	var fwd := side.cross(up)
+	_blobm(cm, (a + b) * 0.5, Vector3(rad, a.distance_to(b) * 0.5 + rad * 0.6, rad), col, 8, 5, Basis(side, up, fwd))
+
+## a rounded blob (an ellipsoid at c with radii r, turned by `turn`), smooth, in one colour
+func _blobm(cm: CarMesh, c: Vector3, r: Vector3, col: Color, seg := 10, rings := 6, turn := Basis()) -> void:
+	var first := cm.v.size()
+	for i in range(rings + 1):
+		var th := PI * i / rings
+		for j in range(seg + 1):
+			var ph := TAU * j / seg
+			var u := Vector3(sin(th) * cos(ph), cos(th), sin(th) * sin(ph))
+			cm.vert(c + turn * (u * r), (turn * (u / r)).normalized(), col)
+	for i in range(rings):
+		for j in range(seg):
+			var a := first + i * (seg + 1) + j
+			var b := a + seg + 1
+			var out: Vector3 = (cm.v[a] + cm.v[b + 1]) * 0.5 - c
+			cm.tri(a, b, b + 1, out)
+			cm.tri(a, b + 1, a + 1, out)
 
 ## a low cylinder lying along x (a wheel)
 func _cyl_x(buf: Buf, c: Vector3, r: float, w: float, seg: int) -> void:
@@ -5184,7 +5391,10 @@ void fragment() {
 				// off, where its repeat would line up into a grid; see GROUND_SHADER)
 				float kd = 1.0 - smoothstep(25.0, 110.0, length(VERTEX));
 				vec2 uv = p * 0.5;
-				c *= detail(textureGrad(grass_tex, uv, dpx * 0.5, dpy * 0.5).rgb, grass_mean, 0.85 * kd);
+				vec3 t = textureGrad(grass_tex, uv, dpx * 0.5, dpy * 0.5).rgb;
+				vec3 lw = vec3(0.2126, 0.7152, 0.0722);
+				vec3 t_grey = grass_mean * (dot(t, lw) / dot(grass_mean, lw));   // its brightness, the lawn's average colour
+				c *= detail(mix(t_grey, t, fx.z), grass_mean, 0.85 * kd);
 				bump = unpack(textureGrad(grass_nrm, uv, dpx * 0.5, dpy * 0.5).rg, 0.8 * kd);
 			} else if (fx.w < 2.5) {   // asphalt: fine grit 3 m across over 30 m of patches and tyre marks
 				vec2 uv = p / 3.0;
@@ -5236,10 +5446,11 @@ void fragment() {
 	SPECULAR = 0.25;
 }
 """
-## the surface each tone gets: [patches, grain, slab size, kind (0 none, 1 soft, 2 grained, 3 slabs)]
+## the surface each tone gets: [patches, grain, slab size (kind 3) / the lawn photo's colours too
+## (kind 1: 1 grass, 0 bare earth: its light and dark only), kind (0 none, 1 soft, 2 grained, 3 slabs)]
 const TONE_FX := {
-	"grass": [0.16, 0.08, 0.0, 1.0], "pitch": [0.06, 0.05, 0.0, 1.0], "wood": [0.16, 0.07, 0.0, 1.0],
-	"bush": [0.1, 0.05, 0.0, 1.0], "ground": [0.1, 0.06, 0.0, 1.0], "sand": [0.08, 0.08, 0.0, 1.0],
+	"grass": [0.16, 0.08, 1.0, 1.0], "pitch": [0.06, 0.05, 1.0, 1.0], "wood": [0.16, 0.07, 1.0, 1.0],
+	"bush": [0.1, 0.05, 1.0, 1.0], "ground": [0.1, 0.06, 0.0, 1.0], "sand": [0.08, 0.08, 0.0, 1.0],
 	"asphalt": [0.11, 0.075, 0.0, 2.0], "parking": [0.1, 0.06, 0.0, 2.0], "path": [0.06, 0.07, 0.0, 2.0],
 	"pavement": [0.04, 0.04, 0.6, 3.0], "plaza": [0.05, 0.04, 1.0, 3.0], "mark": [0.0, 0.04, 0.0, 2.0],
 	"markyellow": [0.0, 0.04, 0.0, 2.0], "metal": [0.0, 0.0, 0.0, 0.0], "metalrim": [0.0, 0.0, 0.0, 0.0],
@@ -7097,7 +7308,7 @@ const NATURAL := {
 	"tank": 0.3, "furniture": 0.3, "pavement": 0.2, "kerb": 0.15, "stonewall": 0.45, "roofroom": 0.4,
 	"gable": 0.5, "carglass": 0.4, "cartrim": 0.2, "tyre": 0.15, "rim": 0.2, "concrete": 0.15,
 	"insulator": 0.3, "trafo": 0.4, "cable": 0.2, "railing": 0.3, "brick": 0.7, "rubber": 0.6,
-	"metal": 0.1, "metalrim": 0.1,
+	"metal": 0.1, "metalrim": 0.1, "skin": 0.75, "hair": 0.5, "shirt_a": 0.6, "shirt_b": 0.4,
 }
 
 ## a palette colour with only `keep` of its saturation, the rest toward its own brightness
@@ -7180,6 +7391,10 @@ func _tones() -> void:
 		"lampgreen": fr.lerp(bg, 0.74),
 		"fencegreen": fr.lerp(bg, 0.55),
 		"railing": ink.lerp(alt, 0.12),
+		"skin": ink.lerp(wn, 0.38).lerp(Palette.col("hazard"), 0.12).lerp(bg, 0.2),   # people in the cars
+		"hair": bg.lerp(alt, 0.5).lerp(wn, 0.08),
+		"shirt_a": pl.lerp(bg, 0.45).lerp(ink, 0.15),
+		"shirt_b": ink.lerp(alt, 0.25),
 		"metal": bg.lerp(alt, 0.6),            # cast iron: manhole covers, drain grates
 		"metalrim": alt.lerp(ink, 0.32),
 	}
@@ -7620,6 +7835,7 @@ func _get_out() -> void:
 	_me.visible = true
 	_me_anim = ""
 	_walking = true
+	_car_material()   # (you, seen through the windows, get in or out)
 	_set_cockpit(_cockpit)   # (from the eyes if the seat view was on)
 	if _cockpit_node != null:
 		_cockpit_node.visible = false
@@ -7640,6 +7856,7 @@ func _get_in() -> void:
 		_show_banner("walk back to the car (%d m)" % int(d), 1.4)
 		return
 	_walking = false
+	_car_material()   # (you, seen through the windows, get in or out)
 	_me.visible = false
 	_set_cockpit(_cockpit)   # back to the view it was in
 	_pos = _car_at
@@ -7881,6 +8098,9 @@ func _sedan(paint: String) -> Node3D:
 ## (windscreen foot, windscreen top, rear top, rear foot), half-width, half-length, wheel
 ## base half, wheel radius]. The sedan is the player's; parked cars and traffic mix all four.
 const CAR_SHAPES := {
+	"truck": [[Vector2(-3.4, 0.42), Vector2(3.32, 0.42), Vector2(3.4, 0.8), Vector2(3.3, 1.12), Vector2(2.6, 1.18),
+		Vector2(1.5, 1.2), Vector2(1.45, 0.95), Vector2(-3.4, 0.95)],
+		[Vector2(2.55, 1.18), Vector2(2.05, 2.3), Vector2(1.55, 2.32), Vector2(1.5, 1.2)], 1.1, 3.4, 2.2, 0.42],
 	"sedan": [[Vector2(-2.24, 0.24), Vector2(2.22, 0.24), Vector2(2.3, 0.6), Vector2(2.16, 0.78), Vector2(1.08, 0.93),
 		Vector2(-1.62, 1.0), Vector2(-2.16, 0.97), Vector2(-2.3, 0.62)],
 		[Vector2(1.06, 0.93), Vector2(0.28, 1.42), Vector2(-0.86, 1.44), Vector2(-1.6, 1.0)], 0.9, 2.3, 1.38, 0.33],

@@ -186,6 +186,14 @@ between two lanes past a queue. On a road with more than one lane each way, cars
 lane, pull out to pass a slower car when the lane beside is clear, drift back right, and
 get into the right lane for the turn ahead (right lane to turn right, left to turn left).
 
+The buses are real buses now -- a rounded box with a band of windows and its pillars, a
+big windscreen under the lit route sign, glazed doors on the kerb side, the air
+conditioning on the roof; a scooter's rider sits it properly, arms bent to the bars and
+knees up, in a helmet with a visor; now and then a delivery truck goes by, a cab with a
+tall white box. Every moving car has its driver, and about a third a passenger, seen
+through the glass (head and shoulders, as they would be from wherever you look); parked
+cars are empty. You can be seen in yours, until you get out.
+
 People wait at the zebra crossings and step out once whatever is coming can still stop;
 traffic and autodrive stop for anyone on a crossing. Drive at someone crossing and they
 hurry back to the kerb, and the game says so, like a red light. On a divided road they
