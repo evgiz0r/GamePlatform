@@ -39,6 +39,7 @@ these numbers the wrong way has broken something.
 | `quality_ladder` | 1 | the frame-rate watcher fed made-up frame times | stays at 2 through stalls; down at 35 fps; back up at 60 |
 | `quality_look` | 1 | the street at quality 3 and 0 (shots) | |
 | `eye_level` | 1 | the streets at a walker's eye height round a point (`AT="x,z"`, default the start), along, back, across and down, the nearest zebra and the nearest block on columns: for comparing with photos of the real street (shots) | ground floors barred windows, not black; bollards at the zebra |
+| `contact_shadows` | 1 | the contact-shadow layer on and off, same view: the nearest building's foot, block on columns, parked car round a point (`AT="x,z"`); how much of each picture got darker (shots `ao_*_on/off`) | wall ~4% darker, by up to 0.5; car ~6% |
 | `draws`, `frame_cost` | 1 | what is drawn and what it costs per quality level | ~280 draws |
 | `divided_zebra` | 3 | people crossing both halves of a divided road (shots) | |
 | `load_stages` | 1, 3 | where the build time goes, stage by stage (`STREETS_BUILD_ALL=0`: what a player waits for) | Ashdod near-first: ready in 6.8 s here, 2.5 of it shader warm-up; whole city: kerbs 3.0 s, roads 1.9, trees 1.7 |
@@ -47,6 +48,7 @@ these numbers the wrong way has broken something.
 | `dead_ends` | 1 | "go to" from 8 dead ends, parked facing the closed end: out of the street in 40 s? hits, time off the road. Then free autodrive driving into each: stops at the end, turns, comes out? (`DEAD_ONLY=n`: just the n-th, driving in) | 8 of 8 out, 0 hits; driving in 7 of 8 (stops ~2 m short), the one at (522, 356) being looked at |
 | `walls_on_roads` | 1 | walls the car collides with (garden walls, fences, hedges, shelter backs) standing on a road's asphalt; `WALL_AT=x,z` lists those near a point | 0 (was 41: garden walls of one street laid across the next) |
 | `door_to_door` | 1 | a "go to" trip from a house on a side street to another 900-1600 m away (`SEED` picks the pair) | SEED 3: arrives in 235 s, no hits, longest wait 16 s behind a car; was 390 s with 2 min stuck at a dead end |
+| `zoom_out` | 4, 1 | zoom out from the car: the city held still (car, traffic, people), dragged, turned, landed, moving again; the pause button; from the seat and on foot (shots) | held 0.00 m up, looking round and paused; moving again after landing, camera back at 3 m; seat restored. Up 165 m (default), 526 m (top) |
 
 `drive_log_map.py` draws a saved drive log (the "save log" button on the perf view's map
 page, or `drive_log.gd`'s output) over the city: `python3 game/streets/tests/drive_log_map.py

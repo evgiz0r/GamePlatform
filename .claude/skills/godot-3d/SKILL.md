@@ -48,6 +48,20 @@ is a Z coordinate, not a height.
   partly toward grey; if you do, check the palette's accent colours on screen after.)
   Shadows are off by default (`sun.shadow_enabled`); turn them on per game if the look
   needs them, they cost on phones.
+- **Ambient occlusion, faked.** The Compatibility renderer has no SSAO, and without it
+  buildings and parked cars seem to hover over the ground even with sun shadows on (most of
+  a street is in some shadow already, where a sun shadow adds nothing). What works: a layer
+  of soft strips laid out with the world (out from each wall's foot, under each parked car)
+  in a shader with `render_mode unshaded, blend_mul, depth_draw_never, fog_disabled`, its
+  ALBEDO `1 - strength * ramp^2`, faded out with distance in the shader. Multiply needs no
+  sorting against what is under it and doubles up by itself in inside corners, where it
+  should be darker. Lay it a few cm above the highest ground it can be on (the pavement): a
+  soft ramp floating a hand's width over a lawn does not show, one sunk under the pavement
+  is gone. One mesh per merged square: a draw each. Build cost is per corner of every
+  outline, so look each height up once. Darken the walls' own feet in the wall shader too.
+  To judge it, shoot the same view with the layer hidden and shown, and diff the pictures:
+  by eye, at a 0.4 strength it was invisible, and traffic and fading HUD labels change
+  between shots too.
 - **Resolution**: the 3D `SubViewport` renders at the real window size (up to 3x the
   640x360 design space, half-step multiples) and is scaled down with linear filtering,
   with 4x MSAA. The kit's nearest-neighbour default is for pixel art and made 3D look
@@ -158,6 +172,17 @@ most, in order, last time one did:
   multimesh over a 400 m square with a 160 m range draws every copy in the square, and
   none when the camera sits near a corner. Make the squares no bigger than about 0.6x the
   range and add half a square's diagonal to the range.
+- **A camera that rises over the world (a zoom-out, a map view) meets every range at
+  once.** Visibility ranges and fog both count from the camera, so from 500 m up the
+  ground right below is already 500 m away: cap the height at about half the longest
+  range you want kept (whatever has a shorter range drops out at the top of the screen
+  first), thin the fog with height (exponential fog at street-level density turns the
+  town below a washed-out white), and push `cam.near` out with the height, or paint
+  laid a few cm over asphalt z-fights. To freeze the world under it without
+  `get_tree().paused` (which would freeze the camera too), skip the physics tick and
+  set the characters' `process_mode` to disabled, which stops their AnimationPlayers.
+  Draw interpolated things at fraction 1 while frozen, or they rock between two ticks.
+  Keep the frame-rate watcher (if any) out of it: the whole world in view costs more.
 - **A Quaternius character is about eight meshes**: eight draw calls and eight skinnings.
   Thirty of them out-drew the whole city. Give their `MeshInstance3D`s a
   `visibility_range_end` (~90 m) and set `anim.active = false` beyond it.

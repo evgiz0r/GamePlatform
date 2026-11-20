@@ -48,6 +48,13 @@ The ones most often touched, and the functions in them:
   (barred windows, the door in the middle bay), stone courses, plinth and mosaic are
   `WALL_SHADER`'s `ground` / `door` / `stone_k`; worn asphalt is `TONE_SHADER`'s
   `crazing()` and patches. `tests/eye_level.gd` puts a camera where a person stands.
+- **contact shadows** -- `AO_SHADER` (multiply, no depth, fades out to `AO_SEEN`), one
+  CBuf `_ao` per square made in `_build_tile` and drawn after the cars; `_ao_footprint`
+  (strips out from each building's foot, a fan at outside corners; negative width: in under
+  it, for the parking under a block on columns) and `_ao_car` (parked and car-park cars).
+  Ramp in UV.x, strength COLOR.r, a flat floor COLOR.g. Lies at pavement height + 2.5 cm.
+  First pass: ~115 ms for 1519 buildings once each height was looked up once (308 ms
+  plainly). `tests/contact_shadows.gd` shoots each with the layer on and off.
 - **front gardens** -- `_garden_fronts`, called from the kerbs for each side of a yard
   street in the south, after the low stone wall. Plots keyed to the run (so every square
   along the street works out the same ones) and skipped when nowhere near the square. The
@@ -78,6 +85,15 @@ The ones most often touched, and the functions in them:
   only) / `_judge_fps` (the rule; testable natively), the soft car shadows `_set_blobs`.
 - **where a frame's time goes** -- the profiler: `_p("part")` around each part, hitches
   kept and reported; P or a tap on the fps text shows it.
+- **zoom out and pause** -- "the view from above", after the chase cam: `_paused` stops
+  `_physics_process` (and the people's AnimationPlayers via `process_mode`, the engine
+  sound; traffic is drawn at `f = 1` so it does not rock between two ticks); `_zoom_set`
+  (rising pauses, landing resumes unless paused by hand), `_zoom_camera` (blends whatever
+  camera was placed toward the view from above over the first quarter of the zoom; near
+  plane out and haze thinned with height), `_zoom_pan` / `_pinch_move` / `_zoom_turn`, the
+  marks `_draw_zoom_marks`. The quality watcher ignores frames while zoomed out. The top of
+  the zoom (`ZOOM_FAR`) is held to about half of `VIEW_RANGE` because draw ranges are
+  distances from the camera: higher, the trees at the top of the screen go, then buildings.
 
 traffic.gd: `tick` (per car: path, lights, signs, the car or player ahead, standoffs,
 `squeeze`), `_next` / `_leg` / `_turn_into` (routes), `_steer_lanes`, `lead_on` (the query

@@ -189,6 +189,25 @@ The minimap (bottom left) shows the real streets and buildings round you, headin
 the city limits in pink. The name of the street you are on is at the top, in Hebrew with
 the English name under it when OSM has one.
 
+**Zooming out.** "zoom" (on the right, under "walk"; Z, or the mouse wheel down, or two
+fingers pinching together) lifts the view off the car -- or off you, on foot -- up over the
+city, centred on where you are, the way you were facing at the top of the screen, and
+pauses the city: the car, traffic, people and lights hold still where they are, and the
+engine goes quiet. A ring marks you (an arrow on the screen's edge points back if you have
+looked away), and on foot a square marks the car. Up there you look round: drag (or the
+arrows) to move over the town, the wheel or a pinch (or - and =) to go higher or lower --
+the highest shows about a kilometre of town across the screen -- and Q / E or two fingers
+turning to turn it. "back" (Z again, or zooming all the way in) flies back down to the car
+and the city goes on. From the driver's seat it rises via the chase cam and lands back in
+the seat.
+
+**Pause.** "pause" (K) holds the city still with the view where it is; "resume" lets it go
+on. Resumed while zoomed out, the city runs under you and the view follows the car, which
+still drives (keys or the stick). The shell's own pause (its menu) is still there too.
+
+> If I would want a zoom out feature, that zooms out from where I am. Maybe it pauses the
+> city (maybe we can add a pause feature anyway), and we can zoom back in (or check around).
+
 ## What is trying to stop you?
 
 Nothing yet, on purpose: this is a driving sim first. Buildings, trees, parked cars,
@@ -567,8 +586,16 @@ the city now has what the walk had underfoot and at eye height:
 - Front gardens plot by plot (14-22 m each, a gap for the gate): a low wall of rough stones in
   mortar, with a clipped hedge behind it, white bars or green chain-link on top, or bare;
   bougainvillea spilling over one in six; the garden shrubs leafy, not smooth balls.
+- The ground darker where things stand on it, as the sky's light reaches less of it there:
+  a soft band out from the foot of every building, darker still in its inside corners; the
+  parking under a block on columns in the shade; a dark patch under every parked car,
+  softening out past its sides. Without it the houses and cars looked as if they hovered a
+  hair above the street. It is one faint layer laid out with the city, so it costs almost
+  nothing while you drive.
 
 > ok lets start as you say
+
+> ok go next
 
 > I took a video on my phone, walking in Givatayim.
 
