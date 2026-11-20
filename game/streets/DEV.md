@@ -1161,8 +1161,11 @@ it is dropped.
   small hops went with it). `street_holes` on Ashdod: 0 holes, 2 points in a wall (both
   on Laskov Road; 51 before).
 - **Still to do**: in Tel Aviv, Givat HaTahmoshet's bridge and a slip road
-  over Ayalon South, 3 crossings short (4.8 m the lowest; new: none before footbridges and
-  the ramp tops' rounding went in); grass slopes for cuttings too (they are walled); a
+  over Ayalon South, 3 crossings short (4.8 m the lowest; new with the footbridges -- with
+  the paths left out of `infer`, 0 short: a footbridge crossing a road holds that road to
+  the ground for 80 m like a road bridge does, and there the road is a ramp up to a bridge
+  over Ayalon South, so its lift is capped. The fix: a footbridge holds nothing down, and
+  is raised to clear the road's final height there instead); grass slopes for cuttings too (they are walled); a
   long-span bridge's height over water (the MacKay's deck is only as high as its ends);
   pavements at street level beside a cutting (the underpass has none); people on a bridge's
   pavement and beside a cutting; the
@@ -1197,7 +1200,8 @@ it is dropped.
   open for footpaths (`_open_pieces` asks `_off_road`, drivable roads only), so an OSM
   fence across a path on the ground still blocks a walker; walking up 60% stairs the walker's
   height trails by up to 1 m for a moment (`_walk`'s easing); Tel Aviv's 3 short
-  crossings.
+  crossings, which the footbridges caused (see "Still to do" above for why and the fix --
+  first thing to do when this area is picked up again).
 
 ## Sizes against life (`tests/scale_check.gd`, 20 Nov 2026)
 
