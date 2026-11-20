@@ -114,10 +114,11 @@ const CHATTERS := 8
 const PEOPLE_RANGE := 150.0
 const PEOPLE_SEEN := 90.0            ## people further than this are not drawn or animated
 const SIGNAL_CYCLE := [              ## [seconds, phase of group 1 (the junction's main road), of group 2]
-	[20.0, "g", "r"], [3.0, "y", "r"], [2.5, "r", "r"],
-	[11.0, "r", "g"], [3.0, "r", "y"], [2.5, "r", "r"],   # (all red 2.5 s: a big junction takes that to clear)
-]   # (the main road's green the longer, as the town's own lights run: with 14 s each way a
-    # main road was stop and go behind every red; see DEV.md for what the exam made of it)
+	[18.0, "g", "r"], [3.0, "y", "r"], [2.5, "r", "r"],
+	[13.0, "r", "g"], [3.0, "r", "y"], [2.5, "r", "r"],   # (all red 2.5 s: a big junction takes that to clear)
+]   # (the main road's green the longer, as the town's own lights run -- but 11 s for the side
+    # street, with drivers who take a moment to pull away, let two cars through a green; see
+    # DEV.md)
 
 const SEG_CELL := 24.0               ## spatial hash cell for road segments (m)
 const BLD_CELL := 24.0
@@ -5571,6 +5572,7 @@ uniform vec4 well : source_color;      // a wheel well's dark
 uniform float fixed_paint = 0.0;       // 1: paint_col (the player's car), not the copy's own colour
 uniform vec4 paint_col : source_color;
 uniform float occupied = 0.0;          // the player's car: 1 while the player sits in it
+uniform float head_turn = 0.0;         // the player's car: where its driver looks (radians, + left)
 uniform vec4 skin : source_color;      // the people inside: skin, hair, and two shirts to pick from
 uniform vec4 hair : source_color;
 uniform vec4 shirt_a : source_color;
@@ -5662,8 +5664,11 @@ void fragment() {
 					best = th;
 					vec3 hp = lcam + rd * th;
 					n_hit = normalize((hp - head) / vec3(0.1, 0.12, 0.11));
-					// hair on top and at the back, a face in front
-					col_hit = (n_hit.y > 0.35 || n_hit.z < -0.2) ? hair.rgb : skin.rgb;
+					// hair on top and at the back, a face in front -- the front turned with the
+					// player's driver's head as they look left and right
+					float a = (fixed_paint > 0.5 && s == 0) ? head_turn : 0.0;
+					float fz = n_hit.x * sin(a) + n_hit.z * cos(a);
+					col_hit = (n_hit.y > 0.35 || fz < -0.2) ? hair.rgb : skin.rgb;
 				}
 				float tb = ray_blob(lcam, rd, body, vec3(0.21, 0.24, 0.14));
 				if (tb > 0.0 && tb < best) {
@@ -10471,6 +10476,7 @@ func _frame() -> void:
 	_pose_car(_view_pos, _view_yaw, _view_y)
 	_traffic.draw(1.0 if _paused else f)   # (held: where the cars stand, not between two ticks)
 	_p("traffic draw")
+	_head_tick(dt)
 	_camera(dt, _view_pos, _view_yaw)
 	_zoom_camera(dt)
 	_sky_follow()
@@ -11627,7 +11633,21 @@ func _safe_to_cross(mid: Vector2, hw: float) -> bool:
 			return false   # coming, and too close to stop
 	return true
 
+## a car (or the player's) has stood at this crossing a while, kept there by people stepping
+## out one after another: let it go before the next one steps out. A stream of people kept
+## a car waiting 20 s and more; at a crossing without lights people let one through.
+func _kept_waiting(mid: Vector2, hw: float) -> bool:
+	if _me_still > 6.0 and _pos.distance_to(mid) < hw + 14.0 and _fwd().dot((mid - _pos).normalized()) > 0.5:
+		return true
+	for c in _traffic.cars:
+		if c.alive and c.still > 6.0 and c.why == "zebra" and c.pos.distance_to(mid) < hw + 14.0:
+			return true
+	return false
+
+var _me_still := 0.0                  ## seconds the player's car has stood still
+
 func _crossers_tick(dt: float) -> void:
+	_me_still = _me_still + dt if absf(_v) < 0.3 else 0.0
 	if _crossers.is_empty() or _crossing_nodes.is_empty():
 		return
 	_zebra_t -= dt
@@ -11648,7 +11668,8 @@ func _crossers_tick(dt: float) -> void:
 			"wait":
 				cr["t"] = float(cr["t"]) - dt
 				if float(cr["t"]) <= 0.0 and _walk_light(cr, from.distance_to(to) / float(cr["speed"])) \
-						and _safe_to_cross((from + to) * 0.5, from.distance_to(to) * 0.5 - 1.1):
+						and _safe_to_cross((from + to) * 0.5, from.distance_to(to) * 0.5 - 1.1) \
+						and not _kept_waiting((from + to) * 0.5, from.distance_to(to) * 0.5):
 					cr["state"] = "cross"
 					a.play("Walk", true, float(cr["speed"]) / 1.35)
 			"cross", "back":
@@ -12170,7 +12191,7 @@ func _camera(dt: float, p: Vector2, yaw: float) -> void:
 	var eye2 := p - back * d
 	var eye := Vector3(eye2.x, maxf(gy + 2.0 + d * 0.14, _decks.surf(eye2, _view_y) + 1.4), eye2.y)
 	eye = _decks.keep_eye(eye, p, _view_y)
-	var ahead := p + back * 4.0
+	var ahead := p + back.rotated(-_head_yaw * 0.5) * 4.0   # (a little round to where the driver looks)
 	var at := Vector3(ahead.x, lerpf(gy, _decks.surf(ahead, _view_y), 0.5) + 1.0, ahead.y)
 	look_from(eye, at)
 	cam.fov = lerpf(64.0, 74.0, spd)
@@ -12181,9 +12202,11 @@ func _seat_camera(dt: float, yaw: float) -> void:
 	_cam_yaw = yaw
 	_look_turn = lerpf(_look_turn, clampf(_steer * 0.55, -0.3, 0.3), 1.0 - exp(-dt * 3.0))
 	var xf := _body.global_transform
-	var head := SEAT + Vector3(0, 0, clampf(-_a_long * 0.004, -0.04, 0.04))
+	# (the head turned: the eyes a little to that side and back, the view round with it)
+	var head := SEAT + Vector3(sin(_head_yaw) * 0.06, 0, clampf(-_a_long * 0.004, -0.04, 0.04) - (1.0 - cos(_head_yaw)) * 0.05)
 	var eye := xf * head
-	var ahead := Vector3(-sin(_look_turn), -0.06, cos(_look_turn)) * 12.0   # +X is the car's left
+	var turn := _look_turn - _head_yaw
+	var ahead := Vector3(-sin(turn), -0.06, cos(turn)) * 12.0   # +X is the car's left
 	look_from(eye, xf * (head + ahead))
 	cam.fov = lerpf(72.0, 78.0, clampf(absf(_v) / 30.0, 0.0, 1.0))
 	if _wheel_node != null:
@@ -12194,6 +12217,96 @@ func _seat_camera(dt: float, yaw: float) -> void:
 		# clockwise over the top)
 		_dial_speed.basis = Basis(Vector3.RIGHT, 0.32) * Basis(Vector3.BACK, -2.2 + 4.4 * clampf(absf(_v) * 3.6 / 200.0, 0.0, 1.0))
 		_dial_rpm.basis = Basis(Vector3.RIGHT, 0.32) * Basis(Vector3.BACK, -2.2 + 4.4 * clampf(_rpm / 7000.0, 0.0, 1.0))
+
+## ---- the driver's head: looking left and right where a driver would ----------------------
+## Slowing for a junction, a light, a stop or give-way sign: left, right, left again (traffic
+## comes from the left first, driving on the right), once a junction; into a turn as the
+## wheel goes over; at people on the crossing ahead; over the right shoulder reversing.
+## Autodrive's driver always does; yours while "look" is on. The seat view turns with the
+## head, the chase camera swings a little toward it, and the head in the car turns.
+const LOOK_BTN := Rect2(578, 218, 52, 20)    ## looking round while you drive yourself (key G: glance)
+const HEAD_RATE := 3.4                       ## rad/s a head turns at, at most
+var _head_yaw := 0.0                         ## where the driver looks: radians left (+) of ahead
+var _head_plan: Array = []                   ## a scan still to do: [[yaw, seconds held], ...]
+var _head_hold := 0.0
+var _head_at := Vector2.INF                  ## where the last scan was (once a junction: its
+var _head_at_t := 0.0                        ## points 10-30 m apart are one) and how long ago
+var _head_check := 0.0
+var _look_on := true                         ## looking round while you drive (autodrive always)
+
+func _head_tick(dt: float) -> void:
+	var want := 0.0
+	_head_at_t += dt
+	if _walking or not (_auto or _look_on):
+		_head_plan = []
+	else:
+		_head_check -= dt
+		if _head_check <= 0.0 and _head_plan.is_empty() and absf(_v) < 6.5 and _gear > 0:
+			_head_check = 0.15
+			var j := _junction_ahead_me(26.0)
+			if j >= 0 and (_nodes[j].distance_to(_head_at) > 45.0 or _head_at_t > 12.0):
+				_head_at = _nodes[j]
+				_head_at_t = 0.0
+				_head_plan = [[0.95, 0.45], [-0.95, 0.5], [0.55, 0.25]]
+		if not _head_plan.is_empty():
+			want = float(_head_plan[0][0])
+			if absf(_head_yaw - want) < 0.1:
+				_head_hold += dt
+				if _head_hold >= float(_head_plan[0][1]):
+					_head_hold = 0.0
+					_head_plan.pop_front()
+		elif _gear < 0 and absf(_v) > 0.2:
+			want = -1.3   # over the right shoulder, reversing
+		else:
+			want = clampf(-_steer * 1.6, -0.7, 0.7)   # into the turn (+ steer is right)
+			var at := _person_ahead_me(16.0)
+			if at != Vector2.INF and absf(_v) < 5.0:
+				want = clampf(-_fwd().angle_to(at - _pos), -1.1, 1.1)
+	# a head turns quickly through the middle and slows into where it is going
+	var gap := absf(want - _head_yaw)
+	_head_yaw = move_toward(_head_yaw, want, HEAD_RATE * dt * clampf(gap * 2.5, 0.25, 1.0))
+	if _player_car_mat != null:
+		_player_car_mat.set_shader_parameter("head_turn", _head_yaw)
+
+func _toggle_look() -> void:
+	_look_on = not _look_on
+	_show_banner("looking round as you drive: " + ("on" if _look_on else "off"), 1.4)
+	Probe.event("look", {"on": _look_on})
+
+## the next junction (3+ ways) or signalled point on the road ahead within `reach`, or -1
+func _junction_ahead_me(reach: float) -> int:
+	var hit := _nearest_seg(_pos, 12.0, true, true)
+	if hit.is_empty():
+		return -1
+	var r: Dictionary = _roads[hit["road"]]
+	var pts: PackedVector2Array = r["pts"]
+	var ids: PackedInt32Array = r["ids"]
+	var sj: int = hit["seg"]
+	var dir := 1 if (pts[sj + 1] - pts[sj]).dot(_fwd()) >= 0.0 else -1
+	var k := sj + 1 if dir > 0 else sj
+	var d := _pos.distance_to(pts[k])
+	while d <= reach:
+		var n := ids[k]
+		if _node_ways(n) >= 3 or _sig_set.has(n) or _signs.has(n):
+			return n
+		var nk := k + dir
+		if nk < 0 or nk >= pts.size():
+			return -1
+		d += pts[k].distance_to(pts[nk])
+		k = nk
+	return -1
+
+## the nearest person in front within `reach` (on a crossing, stepping off the kerb)
+func _person_ahead_me(reach: float) -> Vector2:
+	var best := Vector2.INF
+	var bd := reach
+	for q: Vector3 in _people_near(_pos + _fwd() * reach * 0.5, reach * 0.5 + 2.0):
+		var p := Vector2(q.x, q.z)
+		var d := p.distance_to(_pos)
+		if d < bd and (p - _pos).dot(_fwd()) > 2.0:
+			bd = d
+			best = p
+	return best
 
 func _clear_behind(from: Vector2, dir: Vector2, want: float) -> float:
 	if absf(_view_y - _h(from)) > 2.5:
@@ -12609,7 +12722,12 @@ func _autodrive(dt: float) -> Array:
 	# facing well away from the lane it must take (handed over pointing the wrong way up a
 	# one-way street, or across it): turn round on the spot first. Steering full lock at
 	# it from a standstill put the nose into the kerb and the wall behind it, again and again.
-	var lane_dir := (_ap_pts[1] - _ap_pts[0]).normalized() if _ap_pts.size() > 1 else _fwd()
+	# (the way the lane goes over its next 5 m, not between its next two points: a road
+	# 1.5 m long at a junction pointed back the way the car came, it turned round on the
+	# spot, then swung back across the junction into the oncoming lane and a car there)
+	var lane_dir := (_ap_point_ahead(5.0) - _ap_point_ahead(0.0)).normalized() if _ap_pts.size() > 1 else _fwd()
+	if lane_dir == Vector2.ZERO:
+		lane_dir = _fwd()
 	if _ap_turn <= 0.0 and absf(_v) >= 2.0 and _fwd().dot(lane_dir) < -0.2:
 		# the lane it must take is behind it and it is still rolling (it ran past a dead
 		# end's turning point at 18 km/h): brake to a stop in a straight line, then turn.
@@ -12719,7 +12837,8 @@ var _ap_mark_t := 0.0
 const AP_GIVE_UP := 40.0
 
 func _ap_watch(dt: float, vt: float) -> void:
-	if _ap_mark == Vector2.INF or _pos.distance_to(_ap_mark) > 12.0 or _ap_light_v() < 0.5 or not _cross.is_empty():
+	if _ap_mark == Vector2.INF or _pos.distance_to(_ap_mark) > 12.0 or _ap_light_v() < 0.5 or not _cross.is_empty() \
+			or _in_a_queue():
 		_ap_mark = _pos
 		_ap_mark_t = 0.0
 		return
@@ -12736,6 +12855,18 @@ func _ap_watch(dt: float, vt: float) -> void:
 			Probe.event("autodrive_unstuck")
 			_log.event("unstuck")
 			return
+
+## behind a car that is waiting its turn (at a light, behind another, for people, at a
+## junction) and has not itself been standing for ages: a queue, not stuck. Forty seconds
+## in a slow queue at a red read as stuck, and the car was lifted onto another street.
+func _in_a_queue() -> bool:
+	if _ap_why != "car" or _ap_lead < 0.0:
+		return false
+	var lead: Array = _traffic.lead_on(_ap_pts, _pos, _ap_lead + 1.0, _ap_wait > 3.0)
+	if int(lead[3]) < 0:
+		return false
+	var c = _traffic.cars[int(lead[3])]
+	return c.still < 30.0 or c.why == "light"   # (a light waits a cycle at most; a jam of cars, 30 s)
 
 ## the point `dist` metres along the planned lane from point k (negative = back)
 func _ap_walk(k: int, dist: float) -> Vector2:
@@ -14138,6 +14269,11 @@ func _draw_hud() -> void:
 	_hud.draw_rect(WALK_BTN, Color(bg, 0.65))
 	_hud.draw_rect(WALK_BTN, Color(wc, 0.9), false, 1.5)
 	_hud.draw_string(_font, WALK_BTN.position + Vector2(0, 15), "drive" if _walking else "walk", HORIZONTAL_ALIGNMENT_CENTER, WALK_BTN.size.x, 11, wc)
+	if not _walking:
+		var kc := Palette.col("accent") if _look_on else Color(ink, 0.6)
+		_hud.draw_rect(LOOK_BTN, Color(bg, 0.65))
+		_hud.draw_rect(LOOK_BTN, Color(kc, 0.9), false, 1.5)
+		_hud.draw_string(_font, LOOK_BTN.position + Vector2(0, 15), "look", HORIZONTAL_ALIGNMENT_CENTER, LOOK_BTN.size.x, 11, kc)
 	var vc := Palette.col("player") if _cockpit else Color(ink, 0.8)
 	_hud.draw_rect(VIEW_BTN, Color(bg, 0.65))
 	_hud.draw_rect(VIEW_BTN, Color(vc, 0.9), false, 1.5)
@@ -14399,6 +14535,9 @@ func _input(event: InputEvent) -> void:
 				KEY_C:
 					_set_cockpit(not _cockpit)
 					return
+				KEY_G:
+					_toggle_look()
+					return
 				KEY_Q:
 					_set_blink(0 if _blink == -1 else -1)
 					return
@@ -14453,6 +14592,8 @@ func _input(event: InputEvent) -> void:
 					_zoom_set(0.0)
 				else:
 					_set_cockpit(not _cockpit)
+			elif LOOK_BTN.grow(2).has_point(mb.position) and not _walking:
+				_toggle_look()
 			elif LIGHTS_BTN.grow(2).has_point(mb.position):
 				_set_lights(not _lights_on)
 			elif WALK_BTN.grow(2).has_point(mb.position):
@@ -14478,7 +14619,7 @@ func _input(event: InputEvent) -> void:
 			if AUTO_BTN.grow(4).has_point(t.position) or GOTO_BTN.grow(4).has_point(t.position) \
 					or ASSIST_BTN.grow(4).has_point(t.position) or NIGHT_BTN.grow(4).has_point(t.position) \
 					or VIEW_BTN.grow(4).has_point(t.position) or LIGHTS_BTN.grow(2).has_point(t.position) \
-					or WALK_BTN.grow(2).has_point(t.position) \
+					or WALK_BTN.grow(2).has_point(t.position) or LOOK_BTN.grow(2).has_point(t.position) \
 					or ZOOM_BTN.grow(2).has_point(t.position) or PAUSE_BTN.grow(2).has_point(t.position) \
 					or (_trace_view and TRACE_RECT.has_point(t.position)) \
 					or t.position.y < 36.0:

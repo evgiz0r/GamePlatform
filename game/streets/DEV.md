@@ -213,6 +213,36 @@ What each round found, so far:
   lay across the main road (checked by the garden strip's middle only). 41 walls in
   Givatayim stood on a road (garden walls at bends and across neighbours, OSM fence pieces
   checked by their middle); `tests/walls_on_roads.gd` counts them, now 0.
+- Ashdod's red lights run by traffic were mostly one junction (Sderot Herzl x HaGdud
+  HaIvri, five signalled points 5-15 m apart): its points shared groups but not an id, so
+  a car clearing the junction in the all-red was counted again at the next point; and a
+  car stopped for a zebra a little over its stop line took itself for committed and drove
+  on through the red once the people had crossed. `_sig_knot` gives a junction's points one
+  id; over the line counts as through only when rolling or in the junction.
+  `tests/knot_lights.gd` watches one junction and prints what each car that ran the red
+  saw before (5 of 40 on red, now 1 of 17).
+- Main roads get the longer green (18 s, side streets 13 s, was 14 each): group 1 at every
+  junction is its main road. 20/11 first: with drivers who take a moment to pull away, a
+  side street's queue got two cars through a green, and the test trip waited 97 s at one
+  junction.
+- Traffic drivers have character (`_driver` in traffic.gd: one easy-to-brisk dial with
+  noise -- pull-away, standing gap, headway, reaction, drift in the lane), pull away with
+  the push building up, and their bodies dip, lift and lean (drawn only). Each car's
+  moment to react starts when the car in front is really off (1 m/s): from when it had
+  rolled a few millimetres, a whole queue went within 0.3 s (`tests/queue_start.gd`).
+- At a signalled junction the lights decide: a car gives way only to one already in it,
+  and turning across, to one coming with its green. It gave way by road rank, as at an
+  unsignalled one, to a main-road car about to stop at its own red -- the drive log's
+  "what holds each car" showed it (light, car, junction, light).
+- At crossings without lights, a stream of people kept cars 20 s+; once a car has stood
+  there 6 s the next person lets it go (`_kept_waiting`).
+- Test drives 6 and 7 each found a bump: a car waiting crossways with its nose in the turn
+  (`lead_on` now samples a car's nose and tail), and a 1.5 m road at a junction that turned
+  the "lane's way" backwards (`lane_dir` now over 5 m of the plan). And a wrong 'unstuck'
+  lift after 40 s in a slow queue at a red (`_in_a_queue`).
+- Queues at a green (`tests/queue_start.gd`, KNOT_AT="-800,-288" in Givatayim): all at
+  once at first (a train), then far too slow (third car 9 s); the follow gap now on the
+  slower of the two speeds.
 - The exam's own counts were off twice: harsh braking per frame (30x one stop) and traffic
   reds judged at every signal point of a junction by the heading mid-turn. Check what a
   counter counts before chasing its number.
