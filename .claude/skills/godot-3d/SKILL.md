@@ -380,6 +380,28 @@ is rarely the one you would guess. What cost the most, in order, last time one d
   file at all -- worn patches, grain, slab joints -- is a cheap hash noise (no `sin`) of
   the world position in the fragment shader: nothing to load.
 
+### Shader programs: count them in a browser
+
+A browser compiles every shader program the first time something is drawn with it, and each
+stalls that frame (tens of ms on a phone or through ANGLE on Windows). In the Compatibility
+renderer one game shader is about **seven programs**: drawn alone and as a multimesh, into
+the shadow map (both again), and an **additive pass for a light that casts shadows** -- the
+sun with shadows on gets its own variant for every lit shader. So:
+
+- **One `Shader` resource per shader code.** `Shader.new()` each time a material is made
+  (a fence material per colour) is a set of programs each, even with the same code: make
+  the Shader once and give it to every material.
+- **A `#define` variant is another shader.** Two looks of one thing (a barrier and its
+  see-through curtain) as one shader with a uniform switch compile once.
+- **Built-in materials are one shader per feature mix** (emission on, vertex colour,
+  unshaded, a texture...): a look-alike with one flag different is another set of programs.
+  Before merging two by switching a flag on, look for code that reads that flag to mean
+  something else (a batcher keeping glowing things apart).
+- **Count them in the browser, do not time them there.** Wrap `WebGL2RenderingContext`'s
+  `linkProgram` in Playwright's Chromium (an init script) and count by phase; under
+  SwiftShader the status check after a compile also waits for the frames before it, so the
+  times are not the compiler's.
+
 ## Self-play
 
 The bots and the ASCII map are 2D and stay that way: `track3d()` keeps a 2D proxy per

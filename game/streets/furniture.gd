@@ -18,6 +18,7 @@ var _kit_mat: StandardMaterial3D
 var _ad_mat: ShaderMaterial
 var _flag_mat: ShaderMaterial
 var _fence_mats := {}
+var _fence_shader: Shader   ## one for every fence's material: a Shader each was its own compile in a browser
 var _kits := {}
 var _count := {}
 var where := {}                ## kind -> transforms of what went in (for tests and tours)
@@ -34,36 +35,33 @@ const FAST := {"motorway": true, "trunk": true, "motorway_link": true, "trunk_li
 ## the wind the flags on flagpoles fly in (they all agree, as real ones do)
 const WIND := Vector2(0.8, -0.6)
 
+## The flags and the ads, one shader (two were two sets of programs for a browser to
+## compile while loading): a flag's cloth waves (`wave` 1; UV.x how free a bit of it is, 0
+## where it is tied on, 1 at the free edge), an ad's face glows (vertex alpha 1) and its frame
+## does not (alpha 0).
 const FLAG_SHADER := """
 shader_type spatial;
 render_mode cull_disabled;
 uniform float glow = 0.0;
+uniform float wave = 1.0;
+uniform float rough = 0.85;
 void vertex() {
-	// UV.x: how free this bit of cloth is (0 where it is tied on, 1 at the free edge)
-	vec3 o = MODEL_MATRIX[3].xyz;
-	float ph = o.x * 0.37 + o.z * 0.23;
-	float w = UV.x;
-	VERTEX.z += (sin(TIME * 3.4 + VERTEX.x * 3.1 + VERTEX.y * 1.7 + ph) * 0.1
-		+ sin(TIME * 5.3 + VERTEX.x * 6.0 + ph * 1.7) * 0.035) * w;
+	if (wave > 0.5) {
+		vec3 o = MODEL_MATRIX[3].xyz;
+		float ph = o.x * 0.37 + o.z * 0.23;
+		float w = UV.x;
+		VERTEX.z += (sin(TIME * 3.4 + VERTEX.x * 3.1 + VERTEX.y * 1.7 + ph) * 0.1
+			+ sin(TIME * 5.3 + VERTEX.x * 6.0 + ph * 1.7) * 0.035) * w;
+	}
 }
 void fragment() {
 	ALBEDO = COLOR.rgb;
-	ROUGHNESS = 0.85;
+	ROUGHNESS = rough;
 	if (!FRONT_FACING) { NORMAL = -NORMAL; }
-	EMISSION = COLOR.rgb * glow;
+	EMISSION = COLOR.rgb * glow * mix(COLOR.a, 1.0, wave);
 }
 """
-
-## an ad's face glows (vertex alpha 1), its frame does not (alpha 0)
-const AD_SHADER := """
-shader_type spatial;
-uniform float glow = 0.12;
-void fragment() {
-	ALBEDO = COLOR.rgb;
-	ROUGHNESS = 0.4;
-	EMISSION = COLOR.rgb * glow * COLOR.a;
-}
-"""
+var _flag_shader: Shader
 
 ## a mesh fence as one see-through panel: bars every `gap` metres, a rail top and bottom;
 ## UV is metres along it and up it, UV2.x its height. Far off, where a bar is less than a
@@ -526,10 +524,14 @@ func flags() -> void:
 func _flag_material() -> ShaderMaterial:
 	if _flag_mat == null:
 		_flag_mat = ShaderMaterial.new()
-		var sh := Shader.new()
-		sh.code = FLAG_SHADER
-		_flag_mat.shader = sh
+		_flag_mat.shader = _flag_shader_one()
 	return _flag_mat
+
+func _flag_shader_one() -> Shader:
+	if _flag_shader == null:
+		_flag_shader = Shader.new()
+		_flag_shader.code = FLAG_SHADER
+	return _flag_shader
 
 ## A flag as a mesh. "fly": tied along its left edge at the origin, flying along +X, top
 ## at y 0 (for a flagpole). "hang": hanging from its top edge, centred, facing +Z (off a
@@ -676,9 +678,9 @@ func ads() -> void:
 func _ad_material() -> ShaderMaterial:
 	if _ad_mat == null:
 		_ad_mat = ShaderMaterial.new()
-		var sh := Shader.new()
-		sh.code = AD_SHADER
-		_ad_mat.shader = sh
+		_ad_mat.shader = _flag_shader_one()   # (still: no wave; its face's glow by vertex alpha)
+		_ad_mat.set_shader_parameter("wave", 0.0)
+		_ad_mat.set_shader_parameter("rough", 0.4)
 		_ad_mat.set_shader_parameter("glow", 1.1 if g._night else 0.12)
 	return _ad_mat
 
@@ -845,9 +847,10 @@ func _fence_material(tone: String, gap: float) -> ShaderMaterial:
 	if _fence_mats.has(tone):
 		return _fence_mats[tone]
 	var m := ShaderMaterial.new()
-	var sh := Shader.new()
-	sh.code = FENCE_SHADER
-	m.shader = sh
+	if _fence_shader == null:
+		_fence_shader = Shader.new()
+		_fence_shader.code = FENCE_SHADER
+	m.shader = _fence_shader
 	m.set_shader_parameter("col", _tone(tone))
 	m.set_shader_parameter("gap", gap)
 	m.set_meta("tone", tone)
@@ -962,7 +965,7 @@ func _hedge_line(buf, a: Vector2, e: Vector2, roads := true) -> float:
 		var d := (p1 - p0).normalized()
 		var s := Vector2(-d.y, d.x)
 		if g._mine(p0):
-			g.add_wall(p0, p1, 0.4)
+			g.add_wall(p0, p1, 0.4, true)   # (soft: the car goes into a hedge, it gives)
 		var h0 := 0.9 + _rnd(Vector2i((p0 * 3.0).round())) * 0.35
 		var h1 := 0.9 + _rnd(Vector2i((p1 * 3.0).round())) * 0.35
 		var y0 := _h(p0)
