@@ -2329,7 +2329,10 @@ LEVEL=1 $GODOT --headless --path . -s res://game/streets/tests/<test>.gd`.
   the browser's 5-7 s warm-up is shader compiling (see the other handoff's 74 shader kinds).
   `draws` hung once for 15 minutes and never again (cause unknown: kill it and rerun).
 - **Watch**: hitches in the first seconds of driving now include the start's far gardens
-  (`_build_gardens_later`, before the rest of the city); kits with thousands of copies go
+  (`_build_gardens_later`, before the rest of the city), and since the city builds only what
+  the first view sees before the car, the catch-up of the rest of NEAR_FIRST (16 ms a frame,
+  `CATCH_UP_US`: frames ~34 ms against ~10 for its 3-6 s; the playtest's smart 25 s showed 12
+  hitches, "building 24", where 4-11 was usual before); kits with thousands of copies go
   through `_instanced`, not the batches (the AC units: 19 hitches of 50 ms when merged).
 
 ## Open problems
