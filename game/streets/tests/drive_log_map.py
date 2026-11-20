@@ -2,7 +2,7 @@
 """Draw a saved drive log (the "save log" button on the drive map page) over the city.
 
     python3 game/streets/tests/drive_log_map.py drive-givatayim-....json [out.png]
-        [--from SECONDS] [--to SECONDS] [--size 1600]
+        [--from SECONDS] [--to SECONDS] [--size 1600] [--at X,Z --span METRES]
 
 The streets (each as wide as the game draws it) and the buildings from the city file the
 log names; the car's track coloured by speed (red standing, yellow, green at 50 km/h) with
@@ -20,6 +20,7 @@ Reads only the two JSON files; needs Pillow.
 import json
 import math
 import os
+import re
 import sys
 
 from PIL import Image, ImageDraw, ImageFont
@@ -73,7 +74,7 @@ def _seg_dist(p, a, b):
     return math.hypot(p[0] - ax - dx * t, p[1] - az - dz * t)
 
 
-def draw_names(d, city, nodes, k, samples, P, inside, sc):
+def draw_names(d, city, nodes, k, samples, P, inside, sc, ends=True):
     """Street names for context: the streets the car drove along in bold white at the middle
     of its stretch on each, the main roads in view in grey, the start and the end marked.
     Labels that would overlap one already placed are left out."""
@@ -128,7 +129,7 @@ def draw_names(d, city, nodes, k, samples, P, inside, sc):
         if label(name, P((a[0] + b[0]) / 2, (a[1] + b[1]) / 2), FONT, (175, 180, 195)):
             seen.add(name)
     # start and end of the path
-    for smp, what, col in ((samples[0], "start", (120, 220, 140)), (samples[-1], "end", (240, 120, 120))):
+    for smp, what, col in [] if not ends else ((samples[0], "start", (120, 220, 140)), (samples[-1], "end", (240, 120, 120))):
         p = P(smp["x"], smp["z"])
         d.ellipse([p[0] - 8, p[1] - 8, p[0] + 8, p[1] + 8], outline=col, width=3)
         d.text((p[0] + 11, p[1] - 22), what, font=FONT_B, fill=col, stroke_width=3, stroke_fill=(16, 18, 24))
@@ -161,6 +162,9 @@ def main(argv):
     x0, x1, z0, z1 = min(xs) - 40, max(xs) + 40, min(zs) - 40, max(zs) + 40
     span = max(x1 - x0, z1 - z0, 120)
     cx, cz = (x0 + x1) / 2, (z0 + z1) / 2
+    if "at" in opts:   # framed on a place (a junction watched), not on the player's car
+        cx, cz = (float(v) for v in opts["at"].split(","))
+        span = float(opts.get("span", 160))
     x0, z0 = cx - span / 2, cz - span / 2
     strip = 262
     W, H = size, size + strip
@@ -272,6 +276,15 @@ def main(argv):
             continue
         at = min(samples, key=lambda s: abs(s["t"] - ev[0]))
         p = P(at["x"], at["z"])
+        who = re.match(r"car (\d+)", str(ev[2]))
+        if who:   # an event about a traffic car: at that car, ringed in red
+            row = next((c for c in at["cars"] if c[0] == int(who.group(1))), None)
+            if row:
+                p = P(row[2], row[3])
+                d.ellipse([p[0] - 10, p[1] - 10, p[0] + 10, p[1] + 10], outline=(255, 70, 70), width=3)
+                d.text((p[0] + 12, p[1] - 8), "%ds %s (%s)" % (ev[0], ev[1], row[1]), fill=(255, 140, 140),
+                       font=FONT_S, stroke_width=2, stroke_fill=(16, 18, 24))
+                continue
         if ev[1] == "hit":
             d.line([p[0] - 7, p[1] - 7, p[0] + 7, p[1] + 7], fill=(255, 60, 60), width=3)
             d.line([p[0] - 7, p[1] + 7, p[0] + 7, p[1] - 7], fill=(255, 60, 60), width=3)
@@ -320,7 +333,7 @@ def main(argv):
             x += wide
     d.text((10, 6), "%s  %s  %.0f-%.0f s  (grid: the streets as drawn; blue: autodrive's plan every 2 s)" % (
         log.get("name", log["city"]), log.get("made", ""), ta, tb), fill=(230, 230, 230))
-    draw_names(d, city, nodes, k, samples, P, inside, sc)
+    draw_names(d, city, nodes, k, samples, P, inside, sc, ends="at" not in opts)
     # what the path's colour means: a bar from standing to 50 km/h, on a dark plate
     lx, ly = 10, 26
     d.rectangle([lx - 6, ly - 4, lx + 330, ly + 40], fill=(16, 18, 24))

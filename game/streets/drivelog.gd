@@ -17,6 +17,11 @@ extends RefCounted
 const HZ := 10.0
 const KEEP_S := 120.0
 const NEAR := 50.0
+## where the cars are recorded around, and how far, and how many (a test watching a junction
+## away from the player's car sets these: the player's car by default)
+var near := NEAR
+var around := Vector2.INF
+var most := 10
 
 var samples: Array = []              ## oldest first, KEEP_S of them at most
 var events: Array = []
@@ -46,7 +51,8 @@ func tick(g, dt: float) -> void:
 	if g._traffic != null:
 		for i in range(g._traffic.cars.size()):
 			var c = g._traffic.cars[i]
-			if c.alive and c.pos.distance_to(g._pos) < NEAR and cars.size() < 10:
+			var centre: Vector2 = g._pos if around == Vector2.INF else around
+			if c.alive and c.pos.distance_to(centre) < near and cars.size() < most:
 				cars.append([i, c.kind, snappedf(c.pos.x, 0.1), snappedf(c.pos.y, 0.1), snappedf(c.yaw, 0.01),
 					snappedf(c.v, 0.1), c.blocker, c.why])
 	samples.append({"t": snappedf(_t, 0.01), "x": snappedf(g._pos.x, 0.01), "z": snappedf(g._pos.y, 0.01),

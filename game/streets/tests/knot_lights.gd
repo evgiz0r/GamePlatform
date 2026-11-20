@@ -4,8 +4,10 @@ extends SceneTree
 ## junction's signalled points on red (by the way it came in, once per junction, as the exam
 ## counts it) is printed with what it saw in the 4 s before: its distance to the point, its
 ## speed, what held it, the speed its light check allowed, and the light as it read it then.
-## Lists the junction's points, its main road and groups first. Made for a junction in Ashdod
-## where the exam kept counting traffic through on red.
+## Lists the junction's points, its main road and groups first; saves a drive log centred on
+## the junction for each of the first three (user://drive_logs/knot-*.json: draw with
+## drive_log_map.py --at x,z --span 160). Made for a junction in Ashdod where the exam kept
+## counting traffic through on red.
 var g: Node
 var T
 
@@ -44,6 +46,11 @@ func _run() -> void:
 		if g._land_on_road(q, 30.0, Vector2.ZERO) and g._pos.distance_to(at) > 80.0:
 			break
 	g._set_auto(false)
+	# the recorder on the junction (not the parked car), to draw the red lights run with
+	# drive_log_map.py --at x,z --span 160
+	g._log.around = at
+	g._log.near = 90.0
+	g._log.most = 40
 	var hist := {}       # car -> Array of [t, pos, v, why, light speed, light read]
 	var inside := {}
 	var came := {}
@@ -78,6 +85,13 @@ func _run() -> void:
 					var cd: Vector2 = came.get(i, Vector2(sin(c.yaw), cos(c.yaw)))
 					if g._light_at(n, cd) == "r":
 						reds += 1
+						g._log.event("red light run", "car %d" % i)
+						if reds <= 3:
+							await create_timer(2.0).timeout   # (a little of what came after)
+							var f: String = g._log.save(g)
+							var named := f.get_base_dir() + "/knot-%s-%d.json" % [g._city_id, reds]
+							DirAccess.rename_absolute(f, named)
+							print("  log: ", named)
 						if reds <= 12:
 							print("RED: car %d (%s) into point %d at %.1f m/s, came %s, group %d, phase %d, last light at %.1f (s %.1f)" % [
 								i, c.kind, n, c.v, cd, g._light_group(n, cd), g._sig_phase, c.last_light, c.s])
