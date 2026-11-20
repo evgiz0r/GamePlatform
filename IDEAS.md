@@ -50,10 +50,12 @@ right now, offer to add it here rather than letting it get lost in the chat.
   town's buildings, 94% of another's, 65% of a city centre's (so they come out ~4 storeys
   where real streets have 15-25-storey towers behind the low blocks); a few dozen street
   trees in a town that has thousands; and a handful of the shops a filmed street showed.
-  Where those could come from, biggest difference to the look first -- none checked
-  layer by layer yet, and each needs its host on the network allowlist:
-  - *storeys or heights per building*: municipal GIS buildings layers (Tel Aviv's GisLayers
-    API, apiportal.tel-aviv.gov.il), GovMap / the Survey of Israel;
+  Where those could come from, biggest difference to the look first -- each needs its host
+  on the network allowlist. Tel Aviv's GIS (gisn.tel-aviv.gov.il, ArcGIS REST, IView2
+  MapServer) also has street trees with species (layer 628), lamp poles (543), licensed
+  businesses (964), public-transport lanes with hours (611), parking zones (544):
+  - *storeys or heights per building*: done for Tel Aviv (its GIS's buildings layer, in the
+    baker's `SURVEYS`); other towns' municipal layers, GovMap / the Survey of Israel;
   - *street trees with species* (ficus, jacaranda and palms read very differently):
     municipal tree surveys (Tel Aviv's "urban forest" pages describe one; whether it is
     downloadable is not checked);

@@ -84,11 +84,44 @@ goes wrong shows up the first time it runs.
   showed (100 m against 187), the rest 1-9 m. The tiles are ~30 m and from about 2000, so
   they know neither a block's shape nor anything built since. Building heights have to
   come from OSM or a municipal or national buildings layer.
+- **A town's own survey of its buildings beats OSM's guesses -- mostly.** Some towns
+  publish theirs as an ArcGIS layer (a REST `.../MapServer/<n>` with `/query?...&f=geojson`,
+  2000 a page, `resultOffset` to page on; ask it for `returnCountOnly` first). The baker
+  reads the ones in its `SURVEYS` list (`--add-surveys CITY_FILE` puts them on a file baked
+  already) and credits each on screen. One city centre's, Nov 2026: a measured height on
+  97% of its buildings (roof top minus ground, rooftop rooms included), storeys on 95%,
+  year built on 72%, and whether it stands on columns. What it taught:
+  - *Its outlines are not OSM's*: ~18% smaller (walls, not traced roofs) and ~1.9 m south of
+    them. Keep OSM's outlines (the game's roads were fitted round them) and lend each the
+    height of the survey building covering most of it, 30% or more; measure the shift on
+    one-to-one pairs first and match again with it.
+  - *It is a snapshot*: a 2019 survey had 6-7 m for towers finished since (OSM: 140-160 m),
+    79 m for a 151 m one going up, and a building site's part-built height. Skip what it
+    marks under construction; under 2.2 m a floor, take its floors instead.
+  - *Its height is the top point over the footprint*, roof or not: a tree's crown over a
+    low house, or the tower beside it (two-storey houses at 19-22 m among old trees, a
+    one-storey one at 214 m). Up to 4 floors, over (floors + 2) * 3.5 + 3 m is not the
+    roof: take its floors (~10% of buildings). Not on towers: their floors run 3-4.5 m and
+    the check would cut real ones (a 98 m tower to 80).
+  - *One shape can be a whole complex at its tallest point*: a mall at a tower's foot came
+    out 187 m, a 75 m^2 lobby 109 m. So a height OSM tags outright wins; floors OSM tags win
+    when the survey is over 1.5x or under 2/3 of that and 10 m off (not the same building,
+    or built since); a small outline (a quarter of the survey's shape) under a survey tower
+    keeps its guess.
+  - *It is taller than floor counts*, +4 m on a typical block: the ground floor on columns
+    and the roof rooms that `building:levels` leaves out. Within the band above, take the
+    survey's: it was measured. A rule written against guessed heights (a house is under
+    13.5 m) may need moving: measured to the ridge, a two-storey pitched house is 9-16 m.
+  - Of 4011 OSM buildings 3138 took a survey height, 232 kept OSM's own; the survey also had
+    ~500 small buildings OSM lacks (median 35 m^2, sheds and annexes, 57 over 300 m^2),
+    not added.
 - **Government open data may refuse the cloud.** A national portal's API answered, but
   its files came from a CDN host that refused the container even once the environment
   allowed both hosts (a CloudFront 403 page instead of the file: likely by country). Do not
   dress the request up to get past it; have the user download the file and add it to the
-  repo, or use what OSM has.
+  repo, or use what OSM has. A municipality's own GIS server, on the other hand, answered
+  the container fine once its host was allowed: try the source's own server before asking
+  the user to paste or download anything.
 - **A landmark's name is often on its podium.** OSM names the outline a tower stands on (a
   radio tower's 18 m base) and maps the tower as an unnamed `building:part` inside it (80 m,
   `min_height` the podium's top). To dress a named landmark, take the tallest building
@@ -156,6 +189,18 @@ goes wrong shows up the first time it runs.
   lanes and its lawns like grass painted on them ("grass patches on the road"). Give open
   land its own colour -- dusty sand, dry earth -- clearly apart from the asphalt.
 
+- **Roads lean with the hillside.** The ground comes from terrain tiles on a grid (a point
+  every 8-46 m), and a road laid on it tilts across with the slope: in one hilly town 28% of
+  the roads' length leaned over 6% side to side, the worst over 30% (a real street: its 2%
+  crown). Cut and fill the GRID, not the road: each grid point near a road takes the height
+  of the road's centre line at the point nearest it, fully out to a cell's diagonal past the
+  pavement (every triangle reaching the asphalt then has all its corners on the road's
+  level), blending back over one more cell, the nearest asphalt edge winning. The road keeps
+  its climb, everything standing on the ground (kerbs, houses, cars, people) follows, and it
+  costs nothing at load: `tools/level_roads.py` does it to a baked file, and both bakers call
+  it. What is left is two roads at different levels within a cell (an interchange's slip
+  roads, a lane below a street): only a finer grid fixes those.
+
 ## Junctions and roundabouts
 
 - **One junction is often several points.** A divided road meets a street at one node per
@@ -188,6 +233,16 @@ goes wrong shows up the first time it runs.
   ways) when looking along an approach. Audit every junction in a scene test -- crossing ways
   sharing a group, a road whose group changes inside a site, ways in with no pole, zebras
   whose road has green one way -- before driving one: in one town it found 12, 48, 66 and 26.
+- **OSM maps few stop and give-way signs** -- a few dozen in a town of thousands of
+  junctions. Work out the rest: a way in of a smaller class into a junction without lights
+  gets one (a stop before a main road where that is the custom, a give-way otherwise; a slip
+  road gives way), with its facing, so it is one sign per way in. Leave out two streets of
+  one class (unmarked in life too, and which is "main" would be a guess), roundabouts,
+  driveways, a street going on through the junction under another class, the gap through a
+  divided road's median (only the outer way in), and junctions with a mapped sign nearby. Two
+  signs at one point must both be kept (code keyed by point kept the last). And a pole tried
+  at one spot by the line stood at 44 of 167 corners (the corner's asphalt, a wall): try a
+  few further back and further out.
 - **Roundabouts** are closed one-way ways (or tagged junction=roundabout). An AI that plans
   to the end of the way drives the whole circle, then picks "straight on" -- round again.
   Plan only to the next exit, and make staying on less likely with every piece driven.
@@ -227,6 +282,29 @@ goes wrong shows up the first time it runs.
   for "someone on the crossing" waits through most of its green for a person on the other
   half. Give the crossing the person's position and pace, and let a car wait only while
   they are on its carriageway (plus a metre) or about to step onto it.
+- **"Out of sight" is the camera's, not the body's.** Putting people where nobody sees
+  them appear (beyond the drawn distance, or well behind you) by the way the car or the
+  walker faces holds while the camera looks that way too. On foot the head turns -- a
+  filmed walk glances 60-90 degrees aside -- and "behind the body" is then in plain view:
+  someone at a cafe table was re-seated 2.3 m in front of the camera. Test the camera's
+  own heading and its frustum as well.
+- **A parked car as round posts: closer together than their radius.** Two circles of
+  0.85 m at either end of a car leave a 0.8 m gap at its middle, and a walker (0.25 m)
+  stood in it -- on a pavement with cars half up on it they went in at the nose and out at
+  the boot. Even one more in the middle let a shoulder 0.2-0.35 m into the car's side in
+  the scallops between circles, and posts ending short of the car's ends left its wings
+  0.2-0.3 m open; five, 0.7 m apart, the end ones at the car's half-length less their
+  radius, leave about 0.1 m. The same goes for anything long made of posts (a bus, a skip,
+  a bench).
+- **Walkers walk on at the end of a stretch.** Turning back at every block's end paces
+  one block forever, and in view it reads as aimless. Go on over the side street's mouth
+  to the same pavement's next block, or round the corner; turn back only where nothing
+  goes on, and swap someone out only where nobody sees.
+- **You on foot are not a car to them.** A rule that steps people aside from a car coming
+  at them on the pavement (within some metres, moving faster than a walk) fires for the
+  player walking too, at walking pace: everyone jumped a metre aside as you passed. Give
+  way to you on foot as to anyone, from a few steps off -- a replayed walk cannot step
+  round them.
 
 ## AI drivers in a real town
 
