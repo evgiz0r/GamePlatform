@@ -1967,16 +1967,16 @@ LEVEL=1 $GODOT --headless --path . -s res://game/streets/tests/<test>.gd`.
   שיינקין), the parked car pulls out with the player ~44 m behind and never touched;
   `street_people` a dog, a pushchair, a sitter, a waiter each within 80 m inside a minute;
   `street_sounds` birds -31..-34 dB by day by trees, crickets ~-36 at night, voices -20 / -25;
-  `crash_things` a bin knocked, 3 dents, 2-3 glass patches; `wall_things` the person 1
+  `crash_things` a bin knocked, a bollard bent, 3 dents, 2-3 glass patches (its "clear run"
+  checks the car's nose all the way in, the target left out: checking the middle only, it
+  picked a bin with a new give-way sign's pole 0.5 m in front, and the car stopped at the
+  pole -- the game was right; `TRACE=1` prints what is solid at the nose each tick); `wall_things` the person 1
   surface; playtest smart 25 s passes, hitches 4-11 (container noise: compare with main, run
   alone -- 16 with a second Godot running beside it). `walk_people` (level 6, headless,
   `--fixed-fps 10`, ~4 min): 0 pops, 0-1 turned in view, 0 within 0.6 m of you, deepest into
   a parked car 0.17-0.27 m (a car's end corner; was 0.55 in its middle), 5-7 people met
   within 40 m; `people_clear` 0.0% in a post or wall.
-- **Open**: `crash_things` no longer knocks its bin or bends its bollard -- the car stops
-  dead short of them, going back at -1 m/s -- on main as well as here (20 Nov, evening;
-  the building crash still dents and leaves glass): something since this morning, not
-  people in the way (cleared from its path now) and not the parked cars' posts. Walk 1's
+- **Open**: Walk 1's
   end (93 s) had a walker 0.37 m off you once. The shop shots (`shop_looks` 6) face down the
   street, not at a front: the boards and shopkeepers have not been seen in a picture yet.
   Walk 2's streets are thin (5-7 people within 40 m over its 106 s); people still
