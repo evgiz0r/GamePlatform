@@ -58,11 +58,15 @@ func _run() -> void:
 			if h.size() > 150:
 				h.remove_at(0)
 			hist[i] = h
-			if c.v < 0.3 and c.want > 0.5:
+			# (close behind a car that stands -- under ~2 m to close, see traffic.gd's moment to
+			# react -- is a queue, held by that car: not this)
+			var queued: bool = c.why == "car" and c.lead_v < 0.5 and c.want < 3.5
+			if c.v < 0.3 and c.want > 0.5 and not queued:
 				stood[i] = float(stood.get(i, 0.0)) + dt
-			elif c.v >= 0.3:
+			else:
 				stood.erase(i)
-				done.erase(i)
+				if c.v >= 0.3:
+					done.erase(i)
 			if float(stood.get(i, 0.0)) >= stuck_s and not done.has(i):
 				done[i] = true
 				cases += 1

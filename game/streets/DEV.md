@@ -342,10 +342,7 @@ what became of it:
   (`_station_fits`: its middle was checked, not its corners -- Bedford).
 - **Fixed -- hedges over the kerb into the lane** (18 in Givatayim, 15 in Ashdod): OSM's
   hedges were laid with a fence's margins; `_open_pieces` takes a body width now (0.4 for
-  a hedge). Left: 11 low garden walls in Givatayim, 3 in Ashdod, 0.3-0.5 m in -- the worst
-  is a cul-de-sac's turning bulb at (-1234, 200), with a tree on its asphalt too; others
-  may be the check's weak spot at junction corners (it measures a road's straight strip).
-  Look at each before fixing.
+  a hedge). The low garden walls left after that (11 / 3) are fixed too, below.
 - **Fixed -- autodrive pushing into a traffic car kept it there**: every touch stunned the
   car 2.5 s (`Traffic.bumped`), so one pressed against never pulled away (a hatch "held by
   the limit" 20 s, then a rescue). Only a knock over 1.2 m/s stuns now; Givatayim's exam
@@ -356,20 +353,32 @@ what became of it:
 - **Fixed -- parked motorbikes' solid circle in the lane** (another session's new bikes, an
   hour old: their ends were checked, the 1.1 m circle round their middle was not): Ashdod's
   posts on the road went 12 -> 0 with the columns.
-- **Open -- traffic's bodies over corner posts.** Traffic is on rails; since vehicles steer
-  by their front and the back follows (the other session's change), the back cuts inside a
-  turn, and every car turning at some corners passes over a post there (Givatayim: post 918
-  at (-199, -774), four cars in one run). Wants the turn's line kept wide of the corner by
-  the vehicle's back, in traffic's planning.
-- **Open -- a traffic car that wants to go and does not** (the test town: a scooter wanting
-  8 m/s stood 28 s, 15 m from the player, in view). Not traced yet. A lead: a car decides
-  what it wants every third tick, and one "stop" decision resets its moment to react
-  (`react_t`), so a hold that flickers on and off keeps it standing for ever. Stage it.
-- Moving cars overlapping side by side by 0.3-0.5 m (lane changes, scooters filtering); a
-  scooter filtering to the front stops 7 m past the stop line at Ashdod's start junction.
-- Queues clear about a quarter slower than real ones (QUEUE CHECK: FAIL, just).
-- Six places in Ashdod where lit points 8-16 m apart are separate junctions (three at
-  (-1516, 1823)): the setup that once gave green both ways. Watch one with `knot_lights`.
+- **Fixed -- traffic's backs over corner posts**: since vehicles steer by the front, the back
+  cuts inside a turn by about wb^2/2R; `_turn_into` now swings the arc out by that much
+  (capped at 1.5 m), as a driver does.
+- **Fixed -- cars that would not roll up**: behind a standing car the moment to react
+  waited for it to move off even with metres still to close (one stood 6 m short); now
+  only when under ~2 m short, and a car waiting to react stands instead of creeping at
+  0.26 m/s. `tests/traffic_stuck.gd` prints such a car's last two seconds tick by tick.
+- **Fixed -- two cars changing into one lane from both sides at once** (`_lane_clear` now
+  counts a car moving into the lane too), and **a scooter filtering over the line at
+  walking pace on amber** stopping on the crossing at the red (moving at all, 0.5 m/s, is
+  committed now; it was 2).
+- **Fixed -- posts on corners' asphalt**: once `city_check` measured the rounded corners as
+  road, 40 posts in Givatayim and 66 in Ashdod stood on one -- light poles mostly (their
+  spots were checked against the straight strips only), trees, lamps. Each now keeps off a
+  corner's asphalt; a light pole with no clear spot is moved onto the corner's pavement so
+  every way in keeps one.
+- **Fixed -- garden walls into a road's mouth or a corner**: each point of the wall's line
+  is checked with `_off_road` (strips and corners), not only the asphalt grid.
+- **Fixed -- a divided road's crossing mid-street split in two**: lit points under 16 m
+  apart that no road piece joins are one site now (six on Sderot Herzl).
+- **Fixed -- small buildings standing in a road**: a house in the middle of a Bedford
+  street, another across one. A building cutting back would take more than half of is
+  kept only when it spans the road (past both edges: a passage) or is big (400 m2+);
+  otherwise it is left out at load (`_drop_buildings`).
+- Queues: the QUEUE CHECK passes on main as merged (other sessions' traffic changes):
+  line gaps 1.10x the real ones at 2x.
 
 ## Seeing what the car did: the drive recorder
 
