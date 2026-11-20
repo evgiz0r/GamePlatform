@@ -601,10 +601,18 @@ the city now has what the walk had underfoot and at eye height:
   softening out past its sides. Without it the houses and cars looked as if they hovered a
   hair above the street. It is one faint layer laid out with the city, so it costs almost
   nothing while you drive.
+- Shadows all the way out. The real shadows only reach 45-75 m from the camera (and the
+  lowest quality has none), so past them the whole city used to stand on evenly sunlit
+  ground. Now every building's shadow, and every tree's, lies on the ground as far as you
+  can see, as dark as the real ones and meeting them without a seam; at the lowest quality
+  they are the only shadows there are. The sun never moves, so they are worked out once
+  as the city loads.
 
 > ok lets start as you say
 
 > ok go next
+
+> go next
 
 > I took a video on my phone, walking in Givatayim.
 
