@@ -4153,11 +4153,28 @@ func _mall_front(edge: Array, g_lo: float, wc: Color, kit: Dictionary, kit_col: 
 	var glass := mid + out * 0.08
 	_mall_glass.append(Transform3D(face * Basis.from_scale(Vector3(maxf(L - 1.0, 2.0), 3.4, 0.1)),
 		Vector3(glass.x, g_lo + 1.8, glass.y)))
-	var cp := mid + out * 1.8
-	kit["canopy"].append(Transform3D(face * Basis.from_scale(Vector3(minf(12.0, L * 0.5) / 2.4, 2.4, 3.3)), Vector3(cp.x, g_lo + 4.0, cp.y)))
+	# The canopy and its columns stand on the forecourt, never out over the road: fronts are
+	# cut back to the road's edge + 1.5 m, and columns put 3.2 m out stood 1.7 m into the
+	# lane (two in Zahal by Ashdod's start; a taxi drove through one -- city_check and the
+	# exam's checks found them). The canopy is as deep as the room in front allows; the
+	# columns go only where they are off the road, and a shallow canopy needs none.
+	var width := minf(12.0, L * 0.5)
+	var depth := 3.3
+	while depth > 1.2:
+		var reach := out * (0.15 + depth + 0.3)
+		if _off_road(mid + reach, 0.0) and _off_road(mid + e * width * 0.5 + reach, 0.0) \
+				and _off_road(mid - e * width * 0.5 + reach, 0.0):
+			break
+		depth -= 0.5
+	var cp := mid + out * (0.15 + depth * 0.5)
+	kit["canopy"].append(Transform3D(face * Basis.from_scale(Vector3(width / 2.4, 2.4, depth)), Vector3(cp.x, g_lo + 4.0, cp.y)))
 	kit_col["canopy"].append(wc * 0.9)
+	if depth < 2.0:
+		return
 	for sd: float in [-1.0, 1.0]:
-		var q := mid + e * sd * minf(5.0, L * 0.2) + out * 3.2
+		var q := mid + e * sd * minf(5.0, L * 0.2) + out * (0.15 + depth - 0.25)
+		if not _off_road(q, 0.3) or _in_junction(q, 0.3):
+			continue
 		kit["column"].append(Transform3D(Basis.from_scale(Vector3(0.45, 4.0, 0.45)), Vector3(q.x, g_lo + 2.0, q.y)))
 		kit_col["column"].append(wc)
 		_add_post(q, 0.25)
@@ -13053,7 +13070,10 @@ func _collide() -> void:
 		var along := vel - n * vel.dot(n)
 		vel -= along.limit_length(impact * WALL_GRIP)
 		_crash(impact)
-		if _last_hit.begins_with("car "):
+		# a real knock stuns the car hit (2.5 s); leaning on it does not. Every touch used
+		# to, so a car autodrive pressed against never pulled away, and both stood there
+		# (the exam: a hatch "held by the limit" 20 s with autodrive pushing into it)
+		if _last_hit.begins_with("car ") and impact > 1.2:
 			_traffic.bumped(int(_last_hit.substr(4)))
 	_v = vel.dot(fwd)
 	_v_lat = clampf(vel.dot(right), -7.0, 7.0)
