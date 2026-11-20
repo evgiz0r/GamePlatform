@@ -257,7 +257,11 @@ biggest first:
   Ashdod's start. The exam had a taxi drive through one at 39 km/h.
 - **Hedges over the kerb into the lane**: 18 in Givatayim, 15 in Ashdod, 0.4-0.6 m in
   (`city_check SHOTS=1` shows the worst). `walls_on_roads` counts only walls wholly on the
-  asphalt, so it read 0.
+  asphalt, so it read 0. The worst (Mezulot Yam) is plainly a hedge in the lane beside a
+  parked car; the second (a kerb corner on Sderot HaHaskala) is a hedge ending at the
+  corner and not clearly on the road -- the check measures against a road's straight strip,
+  which at a junction's corner is not where the kerb runs. Look at each before fixing; the
+  check may want corners left out.
 - **Autodrive pushing into a traffic car keeps it there**: `Traffic.bumped` stuns a car for
   2.5 s on every touch, so one autodrive presses against never pulls away. Givatayim's exam:
   a hatch "held by the limit" 20 s, autodrive pushing, then a rescue. Read from the code
