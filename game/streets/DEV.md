@@ -456,12 +456,18 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   sign lettered (a `Label3D` in the game's font, which falls back to Noto Sans Hebrew) and
   its yellow boards in the window -- only the shop the film shows is named; shop windows
   dark reflecting glass by day; the slabs warmer (sunlit, the film's are warm beige).
-- **Next passes**: the light itself (the film's afternoon is hazy and warm; the game's shade
-  is dark blue: another session is on the town's light, leave it to them); Sheinkin's
-  corner bollards are white in the film, black-and-yellow in the game (the kerb pass's,
-  city-wide); motorbikes by the blue parking booth at Ha-Meri's corner (no room beside the
-  kerb pass's bollards, hydrant and wall without moving them); the gateposts and graffiti
-  on the little street. People last.
+- **Pass 7, people and the last small things**, done: the people the film shows, where it
+  shows them (walks' `people`: standing, or walking between two spots over two film
+  seconds -- a man by the far kerb's railing, two women in the forecourt, a man at the
+  passage's end); the bollards round Sheinkin's corner white (`white_bollards`: the kerb
+  pass's own white ones, at the zebras near a spot); the blue pay booth, a yellow parking
+  board and two scooters on Sheinkin's far corner (in the room POSTS_NEAR found between the
+  zebra's bollards and a sign pole); the little street's gateposts, one with a heart.
+- **Next passes**: the light (another session's: the film's afternoon is hazy and warm);
+  people that move as the film's do (the walk's `people` take `to` and `t`; none of the
+  four walks yet). The street now matches the film in what stands where: what is left is
+  look -- the buildings' plaster, balconies and shutters along the route (another session's
+  city-wide work), the shops' lettering beyond the one the film names.
 
 ## Off the ground: bridges, tunnels, cuttings, embankments (`decks.gd`)
 
