@@ -37,8 +37,6 @@ focused, or leave them to them.
       boxes, yellow number plates; a bicycle among them (film 19-24 s).
 - [ ] The forecourt: the red-ringed round sign on its own pole by the twin poles (film
       29-31 s); the transformer's box and cables up the poles.
-- [ ] Two people standing by the scooter in the forecourt are there; the film has a third
-      walking out of the passage towards the camera at 25 s.
 - [ ] The passage: yellow leaves scattered on the pavers (film 36-52 s); the tall white
       lamp pole with stickers in the middle of it (film 40-44 s); the rough concrete low
       wall under the tall hedge (film 44-52 s); the bin's black slotted body is right,
@@ -63,14 +61,16 @@ focused, or leave them to them.
 ### Behaviour
 - [ ] Katzenelson's traffic past 17 s, seen from the arcade and the forecourt (the film's
       first 17 s have five cars, all now sent as filmed).
-- [ ] Looks at things as the film does: at the shop fronts under the arcade (film 18-21 s),
-      at the people in the forecourt (25-27 s), at the bin (50 s), at the man walking
-      out of the passage (60-63 s).
-- [ ] People that move: the woman pair talking (gestures, turning), the man walking up at
-      the passage's end, passers-by on Katzenelson and Ha-Meri walking past both ways.
-- [ ] The walk's pace as filmed: slower under the arcade and in the passage, quicker over
-      the zebras; small pauses where the film stops (check against the clip second by
-      second, not only the landmarks).
+- [ ] The head's turns on the crossing (0-17 s) measured, not set by eye: the film's facing
+      there reads wrong (cars fill the frame, the phone looks down at the stripes) --
+      mask the cars, or read the facing off the kerb and stripes' lines.
+- [ ] The talkers' hands: the characters have no talking or gesturing clip, so the three in
+      the forecourt only turn to each other; a clip would need adding to the kit's art.
+- [ ] Passers-by on Katzenelson and Ha-Meri walking past both ways (the city's walkers are
+      there, not the film's).
+- [ ] The arcade stretch (17-25.6 s) is 2.4 m/s: the replay's route from the zebra to the
+      forecourt is ~7 m longer than the street's (its zebra stands further up); moving the
+      zebra to the film's place would let it walk at the film's 1.3.
 - [ ] A cyclist or an e-scooter rider passing on Sheinkin (common there; check the film
       at 76-90 s).
 
@@ -140,6 +140,12 @@ Its film is not in this repo or this machine's scratch: a session needs a clip o
       (bollards, cabinets, motorbikes, tables) keep landing on the walks' lines.
 
 ## Done
+- Pass 13 of walk 1 (DEV.md): from the far kerb on, the walk's pace and the head's turns as the
+  film's, measured on every frame (the camera's facing within a few degrees of the film's from
+  19 s to the end; the pace's ups and downs, no stop at Sheinkin's corner); the film's people
+  moving -- the man walking along the confectionery to the far kerb's railing, a third with
+  the women in the forecourt, all three talking with their bodies, a woman crossing the
+  passage's end in front of the man in blue.
 - Pass 12 of walk 1 (DEV.md): Katzenelson's crossing as filmed -- tactile paving at the north
   kerb and through the median's cut, the median's ends raised red-paver blocks in a concrete
   kerb with a no-U-turn sign, a black bollard with a steel top; the walk waits 2 m back

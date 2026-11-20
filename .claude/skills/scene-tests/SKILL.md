@@ -175,6 +175,18 @@ below level, so eye height / tan of that is how far off it stands. A wait that r
 "looking left for the traffic" faced straight across, two metres back from where the replay
 stood. Read the film four frames a second for this, not one: at one a second a car that
 passed in a second and a half, and the turn of the head, fell between the frames.
+*The whole walk's movement*: on every frame (30 a second, where a turn is a few pixels a frame),
+sum the far band's slide across for the facing and take the ground band's slide down less the
+far band's for the pace (a pinhole's numbers turn pixels into degrees and metres). Read each
+band as several tiles and take the median: a car passing fills a tile, and a whole-band
+reading followed it for 60 degrees. Measure the replay by logging its camera, not from its
+recording: its repeating paving slid more than one repeat between frames and read a fifth of
+its pace. Line the two facings up on a straight stretch -- summed over a minute and a half the
+film's drifted by a degree or two -- and the differences are the head's turns to copy (the
+head = the film's facing less the body's) and the pace's shape to copy (the share of each
+stretch's distance, between landmark times kept, since a replayed place's lengths are not
+the real one's). The up-and-down summed this way is not usable: while the camera looks down,
+its far band is ground, and walking forward reads as tipping down.
 
 **A test that jumps a scene's clock cannot show what is timed by it.** Stills taken by
 setting a replay's time and running a third of a second skip every scripted event in

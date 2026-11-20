@@ -1299,15 +1299,50 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   call 6 m south-east shows; the city's own guard railing stands beside the bollard where the
   film has none.
 
-### Handoff: the filmed walks (20 Nov 2026, after pass 12)
+- **Pass 13, the pace and the head as filmed, the people moving**, done. Measured on every
+  frame of the film (30 a second), not landmarks or one frame a second: `tests/film_motion.py`
+  reads the camera's facing from the far band's slide across each pair of frames (the median of
+  six tiles: a car passing fills one or two and alone dragged the reading 60 degrees), and the
+  pace from the ground's slide down the frame less the far band's (a pinhole's sums: f
+  sin^2(theta) / (h cos^2(alpha)) pixels a metre). The replay is measured by its
+  `CAMERA_LOG` (the test's new mode: the camera every 0.1 s at the walk's pace, ~10 min at
+  320x180, --fixed-fps 10), not from its recording: at 10 frames a second its pavers'
+  pattern repeats within one frame's slide and its ground read 0.2 m/s for 1.4. Lined up on
+  the passage (36-52 s), the two facings agreed there and on the little street to a degree or
+  two -- the film's summed facing barely drifts over a minute -- and differed at the passage's
+  end (the replay's body turned 50 degrees right onto the little street's pavement, the
+  film's did not), at Sheinkin's corner (the film looks right at 79-81 s and then turns left
+  smoothly to 90 s; the hand-set looks went left at 81 and 88 s) and on Ha-Meri (91-96 s: the
+  film faces the far pavement's white wall and e-scooter, the replay looked down the pavement).
+  `tests/film_fit.py` then fits from the far kerb on (17 s): between kept anchor seconds (17,
+  25.6, 33, 64, 80, 87, 91.5, 96) the replay's own path at the film's share of the distance
+  (the streets' lengths are not the street's), capped at 2.6 m/s, points every 0.5 s; and the
+  head's turn = the film's facing less the body's (the body worked out as `_film_tick` does)
+  every 0.25 s. It writes `cities/details/katzenelson_fit.json`, which `make_givatayim.py`
+  takes in: the walk's points from 17 s and its new `"head"` -- [second, degrees right of the
+  body], played by `_film_tick` where it runs in place of the turn into bends and the looks'
+  turns (their tips up and down still apply). After it: the facing within a few degrees of the
+  film's from 19 s to the end (`motion_after` chart); the pace the film's shape, 0.3-0.4 m/s
+  quicker from 64 s (the replay's streets are longer there) and 2.4 m/s under the arcade (the
+  replay's route from its zebra is ~7 m longer than the street's). Not fitted: 0-17 s -- the
+  film's facing there is cars and stripes (the phone looks down), so the crossing keeps pass
+  12's frame-read looks. Re-fit after moving any walk point past 17 s (`CAMERA_LOG`, then
+  `film_motion.py log`, then `film_fit.py`): the fit follows the path the replay walked.
+  *People*: the man by the far kerb's railing walks there along the confectionery's front
+  (12.6-16.6 s), a third person stands with the two women in the forecourt, and the three
+  "talk" (people's new `talk`: no clip for it in the kit, so each turns a little to the others
+  and back, two slow sines), a woman crosses the passage's end in front of the man in blue
+  (59.4-63.2 s).
 
-- **In progress**: nothing. Pass 12 is on main; the list of what is still different is
+### Handoff: the filmed walks (20 Nov 2026, after pass 13)
+
+- **In progress**: nothing. Pass 13 is on main; the list of what is still different is
   `WALKS.md` (walk 1's details, behaviour and quality, walk 2's, both walks'), with a Done
   section that points back here.
 - **The biggest open items**, by what the side-by-side shows most: the buildings' faces along
   the route (cream and sand plaster, balconies, shutters: city-wide, another session's); the
   light (hazy, warm, soft shadows: another session's); people that move as the film's do
-  (`people` take `to` and `t`; none of walk 1's four walk yet); the north kerb's paint and the
+  (done for walk 1's: pass 13); the north kerb's paint and the
   city's guard railing north-west of the zebra (pass 12, above); the cars parked along
   Katzenelson's far kerb the film shows across the road at 1-2.5 s; the arcade's columns (white with a dark wooden foot) and the second shop; Ha-Meri's
   far pavement (a low white wall, an e-scooter); the camera's last differences (a touch of
@@ -1322,6 +1357,11 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   `STREETS_FILM_LOOK=meter` paints the exposure meter's reading top left. Then the
   side-by-side recipe above, `tests/film_look.py <clip> <frames> 96 --check` (a graded
   recording against the film) and `tests/film_shake.py` (sway, straight stretches only).
+  The movement: `CAMERA_LOG=1` (with `RES=320x180 GODOT_ARGS="--fixed-fps 10"`, ~10 min),
+  then `tests/film_motion.py film <clip> 96 film.csv` (30 s), `film_motion.py log <log>
+  game.csv`, `film_motion.py chart film.csv game.csv out.png`; to re-fit the pace and the
+  head, `tests/film_fit.py film.csv <log> 17,25.6,33,64,80,87,91.5,96 17
+  cities/details/katzenelson_fit.json` and run `make_givatayim.py`.
 - **Good numbers** (walk 1, after pass 12): both walks' scans print only "scan done";
   sway 0.25 / 0.21 degrees rms across / up (the film's 0.25 / 0.19); levels at 1-99% within
   0.05 of the film's, 0.0% clipped, saturation 0.146 (0.159); each second's brightness

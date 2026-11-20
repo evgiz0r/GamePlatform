@@ -333,6 +333,15 @@ then left. Cars come down the street to meet it there: one goes by before it ste
 next stops at the zebra for it, and drives on once it is across. The head looks where the
 walk is going and turns into a corner a moment before the feet do.
 
+From the far kerb on, it walks at the film's own pace and turns its head as the film's did --
+both measured off every frame of the film, not set by eye: it slows where the film slows (the
+corner of the forecourt, the end of the passage), does not stop at Sheinkin's corner but looks
+right along it and turns left into Ha-Meri bit by bit, and ends facing Ha-Meri's far pavement,
+its white wall and the e-scooter, as the film does. The people the film shows move as they
+did: a man walks along the confectionery to the far kerb's railing and stands there, three
+people talk by the scooter in the forecourt (turning to each other and back), and a woman
+crosses the passage's end in front of the man in blue standing there.
+
 The phone is held as a hand holds one: tipped down at the pavement ahead as the film is
 (about 16 degrees, read off where the film's horizon sits), never quite still -- a slow sway
 and a little roll, as small and as slow as the film's own, measured from it -- and it looks
