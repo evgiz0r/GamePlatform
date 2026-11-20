@@ -59,6 +59,7 @@ class Car:
 	var wait := 0.0                   ## seconds held up by another car
 	var blocker := -2                 ## who holds it up: a car's index, -1 the player
 	var ignore := 0.0                 ## seconds it ignores crossing cars (a standoff broken)
+	var squeeze := 0.0                ## seconds it edges past the player (a narrow street's standoff)
 	var hit := 0.0                    ## seconds it sits stunned after the player hit it
 	var last_light := -1000.0         ## s at the last light it drove through
 	var sign_done := -1               ## the stop sign it has stopped at already
@@ -227,7 +228,7 @@ func tick(dt: float) -> void:
 		var c: Car = cars[i]
 		c.prev_pos = c.pos
 		c.prev_yaw = c.yaw
-		if not c.alive or c.pos.distance_to(me) > NEAR or (c.wait > 25.0 and not _in_view(c.pos)):
+		if not c.alive or c.pos.distance_to(me) > NEAR or (c.wait > 25.0 and (not _in_view(c.pos) or c.blocker == -1)):
 			c.alive = _spawn(c, false)
 			_hide_or_show(i)
 			continue
@@ -302,6 +303,8 @@ func _target(c: Car, i: int, dt: float) -> float:
 			continue
 		if c.ignore > 0.0 and j < cars.size() and absf(angle_difference(oyaw, c.yaw)) > 0.8:
 			continue   # breaking a standoff: go, and let the crossing car wait
+		if j == cars.size() and c.squeeze > 0.0:
+			continue   # edging past them, slowly
 		var wide := PLAYER_W if j == cars.size() else LANE_W
 		if c.split:
 			wide = 0.6   # filtering: only what is right in front of the wheel
@@ -321,6 +324,9 @@ func _target(c: Car, i: int, dt: float) -> float:
 			best_len = 4.6
 			lead_v = 0.0
 	c.ignore = maxf(0.0, c.ignore - dt)
+	if c.squeeze > 0.0:
+		c.squeeze -= dt
+		vt = minf(vt, 2.5)
 	_steer_lanes(c, i, dt, best, lead_v)
 	vt = minf(vt, _bus_stop(c, dt))
 	if best < INF:
@@ -333,6 +339,18 @@ func _target(c: Car, i: int, dt: float) -> float:
 			if c.v < 0.3:
 				c.wait += dt
 				c.blocker = who
+				# Face to face with the player in a narrow street, both standing (the player
+				# waits for it, it waits for the player, for ever -- and autodrive with
+				# them): if there is nearly room, it edges by, brushing past; if they are
+				# nose to nose, it is gone once out of sight, or after a while regardless
+				if who == -1 and c.wait > 3.5 and absf(float(g._v)) < 0.5:
+					var pr := _proj(c, g._pos, 4.0, 30.0)
+					var lat := absf(pr.y - c.shift) if pr.x != INF else 0.0
+					if lat > 1.2:
+						c.squeeze = 5.0
+						c.wait = 0.0
+					elif c.wait > 9.0 or not _in_view(c.pos):
+						c.wait = 30.0   # (tick sends it elsewhere)
 				# two cars each waiting for the other in a junction: the lower number goes
 				if c.wait > 2.5 and who >= 0:
 					var o: Car = cars[who]
@@ -878,6 +896,7 @@ func _spawn(c: Car, first: bool) -> bool:
 		c.wait = 0.0
 		c.hit = 0.0
 		c.ignore = 0.0
+		c.squeeze = 0.0
 		_place(c)
 		c.prev_pos = c.pos
 		c.prev_yaw = c.yaw

@@ -321,7 +321,17 @@ middle of town and drives on. Switched on (or knocked) off the road -- in a yard
 between blocks -- it finds its way back round the buildings at a walking pace instead of
 heading straight at the nearest bit of road through the wall in between; with no way out
 in reach, or after running into walls a few times in quick succession, it is put back on
-the nearest street.
+the nearest street. Face to face with a traffic car in a narrow street, both standing,
+the other car edges past if there is nearly room, and if they are nose to nose it turns
+off out of the story (gone once out of sight, or after a few seconds regardless) rather
+than the two waiting for each other for ever.
+
+> Sometimes the autodrive gets completely stuck in those narrow streets.
+
+**The edge of the map** is a striped barrier with a glowing curtain over it that shows as
+you come near, and a line on the minimap; the car stops against it, nose to the stripes.
+
+> Mark somehow the border of the map, I just hit air and those walls are invisible.
 
 **Car parks.** OSM's parking areas (up to a block's size) are laid out in rows of painted
 bays with most of them taken; a car park mapped only by its lanes (OSM: a parking aisle,
