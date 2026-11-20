@@ -232,6 +232,16 @@ def main(argv):
             x += wide
     d.text((10, 6), "%s  %s  %.0f-%.0f s  (grid: the streets as drawn; blue: autodrive's plan every 2 s)" % (
         log.get("name", log["city"]), log.get("made", ""), ta, tb), fill=(230, 230, 230))
+    # what the path's colour means: a bar from standing to 50 km/h, on a dark plate
+    lx, ly = 10, 26
+    d.rectangle([lx - 6, ly - 4, lx + 330, ly + 40], fill=(16, 18, 24))
+    d.text((lx, ly), "the car's path, coloured by its speed:", fill=(230, 230, 230), font=FONT)
+    for k in range(200):
+        d.line([lx + k, ly + 20, lx + k, ly + 30], fill=speed_col(k / 200 * 14.0))
+    for kmh in (0, 25, 50):
+        x = lx + kmh / 50.4 * 200
+        d.text((x - 4, ly + 30), "%d" % kmh, fill=(200, 200, 200), font=FONT_S)
+    d.text((lx + 210, ly + 18), "km/h", fill=(200, 200, 200), font=FONT)
     img.save(out)
     print(out)
     return 0
