@@ -10,7 +10,9 @@ a tick and the second every 5 s; autodrive's lane ahead every 2 s as a thin blue
 plan it was following); the other cars' tracks in grey; hits (red X), rescues (orange
 ring), junction choices (blue dot), standstills of 3 s or more (orange dot and the
 seconds, with what held it); traffic cars standing 5 s or more not at a light (violet ring,
-seconds and what held them, a line to the car holding them up). A strip along the bottom: speed against time, coloured by what
+seconds and what held them, a line to the car holding them up). Street names: the streets
+the car drove along in bold white, the main roads in view in grey; the start and the end
+ringed. A strip along the bottom: speed against time, coloured by what
 held autodrive back (limit, curve, light, car, people...).
 
 Reads only the two JSON files; needs Pillow.
@@ -33,8 +35,9 @@ WHY_NAME = {"limit": "nothing (the speed limit)", "curve": "a bend or a turn", "
             "backing": "backing off", "turning": "turning round", "pushing": "pushing, not moving (stuck)"}
 
 
-def _font(size):
-    for f in ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/TTF/DejaVuSans.ttf"):
+def _font(size, bold=False):
+    b = "-Bold" if bold else ""
+    for f in ("/usr/share/fonts/truetype/dejavu/DejaVuSans%s.ttf" % b, "/usr/share/fonts/TTF/DejaVuSans%s.ttf" % b):
         try:
             return ImageFont.truetype(f, size)
         except OSError:
@@ -44,6 +47,91 @@ def _font(size):
 
 FONT = _font(14)
 FONT_S = _font(11)
+FONT_B = _font(16, bold=True)
+
+
+MAIN_KINDS = ("motorway", "trunk", "primary", "secondary", "tertiary")
+DRIVE_KINDS = MAIN_KINDS + ("unclassified", "residential", "living_street", "service", "road",
+                            "motorway_link", "trunk_link", "primary_link", "secondary_link", "tertiary_link")
+
+
+def road_name(r):
+    """English name if the map has one, else the local one (Hebrew drawn letter by letter
+    comes out backwards without a text shaper: reverse it)"""
+    en = r.get("name_en", "")
+    if en:
+        return en
+    nm = r.get("name", "")
+    return nm[::-1] if any("\u0590" <= ch <= "\u05ff" for ch in nm) else nm
+
+
+def _seg_dist(p, a, b):
+    ax, az = a
+    dx, dz = b[0] - ax, b[1] - az
+    L = dx * dx + dz * dz
+    t = 0.0 if L == 0 else max(0.0, min(1.0, ((p[0] - ax) * dx + (p[1] - az) * dz) / L))
+    return math.hypot(p[0] - ax - dx * t, p[1] - az - dz * t)
+
+
+def draw_names(d, city, nodes, k, samples, P, inside, sc):
+    """Street names for context: the streets the car drove along in bold white at the middle
+    of its stretch on each, the main roads in view in grey, the start and the end marked.
+    Labels that would overlap one already placed are left out."""
+    roads = []
+    for r in city["roads"]:
+        if r.get("k") not in DRIVE_KINDS or not road_name(r):
+            continue
+        pts = [(nodes[2 * n] * k, nodes[2 * n + 1] * k) for n in r["n"]]
+        if any(inside(x, z, 60) for x, z in pts):
+            roads.append((road_name(r), r.get("k"), pts))
+    placed = []
+
+    def label(text, at, font, fill):
+        w = d.textlength(text, font=font)
+        x, y = at[0] - w / 2, at[1] - 9
+        box = (x - 4, y - 3, x + w + 4, y + 20)
+        if any(not (box[2] < b[0] or box[0] > b[2] or box[3] < b[1] or box[1] > b[3]) for b in placed):
+            return False
+        placed.append(box)
+        d.text((x, y), text, font=font, fill=fill, stroke_width=3, stroke_fill=(16, 18, 24))
+        return True
+    # the streets driven: each second's sample matched to the nearest named street
+    runs = []   # [name, [samples]]
+    for smp in samples[::10]:
+        best, bd = None, 9.0
+        q = (smp["x"], smp["z"])
+        for name, kind, pts in roads:
+            for a, b in zip(pts, pts[1:]):
+                dd = _seg_dist(q, a, b)
+                if dd < bd:
+                    best, bd = name, dd
+        if best and runs and runs[-1][0] == best:
+            runs[-1][1].append(smp)
+        elif best:
+            runs.append([best, [smp]])
+    driven = set()
+    for name, smps in runs:
+        if len(smps) < 4 or name in driven:   # (4 s or more along it)
+            continue
+        mid = smps[len(smps) // 2]
+        if label(name, P(mid["x"], mid["z"]), FONT_B, (255, 255, 255)):
+            driven.add(name)
+    # the main roads in view, once each, at the middle of their stretch in view
+    seen = set()
+    for name, kind, pts in sorted(roads, key=lambda r: MAIN_KINDS.index(r[1]) if r[1] in MAIN_KINDS else 9):
+        if kind not in MAIN_KINDS or name in seen or name in driven:
+            continue
+        vis = [p for p in pts if inside(p[0], p[1], -20)]
+        if len(vis) < 2:
+            continue
+        a, b = vis[len(vis) // 2 - 1], vis[len(vis) // 2]
+        if label(name, P((a[0] + b[0]) / 2, (a[1] + b[1]) / 2), FONT, (175, 180, 195)):
+            seen.add(name)
+    # start and end of the path
+    for smp, what, col in ((samples[0], "start", (120, 220, 140)), (samples[-1], "end", (240, 120, 120))):
+        p = P(smp["x"], smp["z"])
+        d.ellipse([p[0] - 8, p[1] - 8, p[0] + 8, p[1] + 8], outline=col, width=3)
+        d.text((p[0] + 11, p[1] - 22), what, font=FONT_B, fill=col, stroke_width=3, stroke_fill=(16, 18, 24))
 
 
 def main(argv):
@@ -232,6 +320,7 @@ def main(argv):
             x += wide
     d.text((10, 6), "%s  %s  %.0f-%.0f s  (grid: the streets as drawn; blue: autodrive's plan every 2 s)" % (
         log.get("name", log["city"]), log.get("made", ""), ta, tb), fill=(230, 230, 230))
+    draw_names(d, city, nodes, k, samples, P, inside, sc)
     # what the path's colour means: a bar from standing to 50 km/h, on a dark plate
     lx, ly = 10, 26
     d.rectangle([lx - 6, ly - 4, lx + 330, ly + 40], fill=(16, 18, 24))

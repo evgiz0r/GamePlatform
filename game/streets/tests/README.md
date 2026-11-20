@@ -51,4 +51,6 @@ these numbers the wrong way has broken something.
 page, or `drive_log.gd`'s output) over the city: `python3 game/streets/tests/drive_log_map.py
 drive-....json [out.png]` (`--from`/`--to` seconds to zoom on a stretch). `exam_chart.py`
 draws two exam printouts side by side as a scorecard (`exam_chart.py out.png
-"Givatayim:before.txt:after.txt" ...`).
+"Givatayim:round1.txt:round2.txt:round3.txt" ...`); `side_by_side.py` puts two pictures
+side by side under a title each (a drive before and after a fix). The map names the
+streets driven and the main roads in view, with a legend for the path's colours (speed).
