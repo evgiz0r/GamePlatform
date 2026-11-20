@@ -13,6 +13,24 @@
   ],
   "set": [
    {
+    "k": "residential",
+    "name": "שיינקין",
+    "near": [
+     539.23,
+     -640.24
+    ],
+    "kerb_mid": "blue_white"
+   },
+   {
+    "k": "residential",
+    "name": "סירקין",
+    "near": [
+     480.82,
+     -720.97
+    ],
+    "kerb_mid": "blue_white"
+   },
+   {
     "k": "tertiary",
     "name": "כצנלסון",
     "near": [

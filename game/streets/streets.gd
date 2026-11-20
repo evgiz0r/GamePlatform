@@ -1389,6 +1389,8 @@ func _load_city(id: String) -> bool:
 			r["deck"] = "br" if rd.has("br") else ("tu" if rd.has("tu") else ("em" if rd.has("em") else ("cu" if rd.has("cu") else "")))
 		if rd.has("kerb"):
 			r["kerb"] = int(rd["kerb"])   # its kerb's paint, set by hand (details.gd)
+		if rd.has("kerb_mid"):
+			r["kerb_mid"] = int(rd["kerb_mid"])   # the paint along its middle, set by hand
 		var ri := _roads.size()
 		_roads.append(r)
 		var hw: float = r["w"] * 0.5
@@ -2433,6 +2435,88 @@ void fragment() {
 var _roof_mat: ShaderMaterial
 const PAVE_W := 2.4                  ## pavement width (m)
 const KERB_CUT := 4.5                ## kerbs stop this far past a junction's road edge: the corner's radius
+## Israeli kerb paint goes by where on the street, as a filmed walk showed: blue-white along
+## a residential street's parking (paid), red-white for the last metres before every
+## junction (no parking within 12 m of one: the kerb starts KERB_CUT past the corner) and on
+## many main roads all along, yellow-black only in front of a bus stop. Not one paint a street.
+const KERB_RED := 9.0
+const KERB_BUS := 9.0                ## yellow-black this far either side of a bus stop
+const KERB_RED_KINDS := ["residential", "unclassified", "tertiary", "secondary", "primary",
+	"tertiary_link", "secondary_link", "primary_link"]
+var _stops_by_road := {}             ## road -> its bus stops' spots on the pavement (for the kerb paint)
+var _stops_mapped := false
+
+## the paint along the middle of a street's kerb (0 plain, 1 red-white, 2 blue-white)
+func _kerb_paint(r: Dictionary, hsh: int) -> int:
+	if r.has("kerb_mid"):
+		return int(r["kerb_mid"])   # as filmed (details.gd)
+	var h := posmod(hsh / 7, 10)
+	match String(r["k"]):
+		"residential", "unclassified":
+			return [2, 2, 2, 2, 2, 2, 0, 0, 0, 1][h]
+		"tertiary", "secondary", "tertiary_link", "secondary_link":
+			return [2, 2, 2, 2, 1, 1, 1, 0, 0, 0][h]
+		"primary", "primary_link", "trunk":
+			return [1, 1, 1, 1, 1, 1, 1, 0, 0, 2][h]
+	return 0
+
+## the bus stops along road ri, where _build_stops puts their shelters
+func _kerb_stops(ri: int) -> PackedVector2Array:
+	if not _stops_mapped:
+		_stops_mapped = true
+		var k := 1.0 / float(_city_data.get("scale", 10))
+		for st: Array in _city_data.get("stops", []):
+			var at := Vector2(st[0], st[1]) * k
+			var hit := _nearest_seg(at, 30.0, true, true)
+			if hit.is_empty():
+				continue
+			var q: Vector2 = hit["q"]
+			var out := (at - q).normalized()
+			if out == Vector2.ZERO:
+				continue
+			var c := q + out * (float(_roads[hit["road"]]["w"]) * 0.5 + 1.9)
+			if not _stops_by_road.has(hit["road"]):
+				_stops_by_road[hit["road"]] = PackedVector2Array()
+			(_stops_by_road[hit["road"]] as PackedVector2Array).append(c)
+	return _stops_by_road.get(ri, PackedVector2Array())
+
+## a run's end p meets a junction (rather than the next OSM piece of the same street)
+func _kerb_junction_end(r: Dictionary, p: Vector2) -> bool:
+	var pts: PackedVector2Array = r["pts"]
+	var ids: PackedInt32Array = r["ids"]
+	for i in range(ids.size()):
+		if pts[i].distance_to(p) < _node_r[ids[i]] + KERB_CUT + 1.5 and _kerb_arms(ids[i]) >= 3:
+			return true
+	return false
+
+## where one kerb's paint changes: Vector3(from, to, paint) in metres along `run`'s middle,
+## later ones over earlier ones. `inner` is the kerb's line on side `sgn`.
+func _kerb_marks(r: Dictionary, run: PackedVector2Array, inner: PackedVector2Array, red_ends: bool,
+		stops: PackedVector2Array) -> Array:
+	var marks: Array = []
+	var total := 0.0
+	for i in range(run.size() - 1):
+		total += run[i].distance_to(run[i + 1])
+	if red_ends:
+		if _kerb_junction_end(r, run[0]):
+			marks.append(Vector3(-1.0, KERB_RED, 1))
+		if _kerb_junction_end(r, run[run.size() - 1]):
+			marks.append(Vector3(total - KERB_RED, total + 1.0, 1))
+	for c: Vector2 in stops:
+		var best := INF
+		var s_at := 0.0
+		var s := 0.0
+		for i in range(run.size() - 1):
+			var q := Geometry2D.get_closest_point_to_segment(c, inner[i], inner[i + 1])
+			var d := q.distance_to(c)
+			var seg := run[i].distance_to(run[i + 1])
+			if d < best:
+				best = d
+				s_at = s + seg * clampf(inner[i].distance_to(q) / maxf(inner[i].distance_to(inner[i + 1]), 0.01), 0.0, 1.0)
+			s += seg
+		if best < 3.5:   # this side's kerb (the other is a road's width further)
+			marks.append(Vector3(s_at - KERB_BUS, s_at + KERB_BUS, 3))
+	return marks
 const KERB_H := 0.14
 const KERB_W := 0.2
 var _kerb_mat: ShaderMaterial
@@ -2455,11 +2539,13 @@ func _build_kerbs() -> void:
 		var hw: float = float(r["w"]) * 0.5
 		var hsh := _hash_i((r["pts"] as PackedVector2Array)[0])
 		_set_pave_code(hsh)
-		var pat := 0
-		if med:
-			pat = [0, 0, 0, 0, 0, 1, 1, 1, 2, 3][posmod(hsh, 10)]
+		# the paint along the middle of the street, and whether its ends are red-white
+		# (_kerb_paint); a kerb set by hand (details.gd) is that paint all along
+		var pat := _kerb_paint(r, hsh) if med else 0
+		var red_ends := med and not r.has("kerb") and String(r["k"]) in KERB_RED_KINDS
 		if r.has("kerb"):
 			pat = int(r["kerb"])   # (as filmed: 0 plain, 1 red-white, 2 blue-white, 3 yellow-black)
+		var stops := _kerb_stops(ri) if med and not r.has("kerb") else PackedVector2Array()
 		var yard: bool = r["k"] in ["residential", "living_street"]
 		var dual := r.has("median")
 		var inner_sgn := -float(r["o"])   # a divided road's other half is on the left of its traffic
@@ -2477,13 +2563,35 @@ func _build_kerbs() -> void:
 						continue   # the halves touch: a painted line, no kerb
 					pw = clampf(m * 0.5 - KERB_W, 0.0, PAVE_W)   # each half paves its half of the median
 				var inner := _offset_line(run, hw * sgn)
-				var col := Color(float(pat) / 4.0 + 0.05, 0, 0) if not inner_side else Color(0.05, 0, 0)   # a median's kerb: plain
+				# where the paint changes along this kerb: red-white for KERB_RED at an end that
+				# meets a junction, yellow-black along a bus stop on this side
+				var marks := _kerb_marks(r, run, inner, red_ends, stops) if not inner_side else []
 				var along := 0.0
 				for i in range(run.size() - 1):
 					var seg := run[i].distance_to(run[i + 1])
 					var na := (inner[i] - run[i]).normalized()
 					var nb := (inner[i + 1] - run[i + 1]).normalized()
-					_kerb_run_piece(kerb, pave, ri, inner[i], inner[i + 1], na, nb, pw, col, along, seg)
+					var cuts: Array = [0.0, seg]
+					for m: Vector3 in marks:
+						for c: float in [m.x, m.y]:
+							if c > along + 0.05 and c < along + seg - 0.05:
+								cuts.append(c - along)
+					cuts.sort()
+					for k in range(cuts.size() - 1):
+						var u0: float = cuts[k]
+						var u1: float = cuts[k + 1]
+						if u1 - u0 < 0.01:
+							continue
+						var p := 0 if inner_side else pat   # a median's kerb: plain
+						var mid := along + (u0 + u1) * 0.5
+						for m: Vector3 in marks:
+							if mid > m.x and mid < m.y:
+								p = int(m.z)
+						var t0 := u0 / seg
+						var t1 := u1 / seg
+						_kerb_run_piece(kerb, pave, ri, inner[i].lerp(inner[i + 1], t0), inner[i].lerp(inner[i + 1], t1),
+							na.lerp(nb, t0).normalized(), na.lerp(nb, t1).normalized(), pw,
+							Color(float(p) / 4.0 + 0.05, 0, 0), along + u0, u1 - u0)
 					along += seg
 				if inner_side:
 					continue
@@ -5332,8 +5440,26 @@ func _set_night(on: bool) -> void:
 	Probe.event("night", {"on": on})
 
 ## Parked cars down Givatayim's streets, half up on the pavement the way they really
-## park there: one sedan mesh shared by all of them, each in its own colour.
-const PARKED_FILL := 0.26            ## share of the kerb taken
+## park there: one sedan mesh shared by all of them, each in its own colour. How full the
+## kerb is goes by its paint (_kerb_paint): a filmed residential street with blue-white
+## kerbs was an unbroken row both sides; red-white stretches (the corners, bus stops, many
+## main roads) stay all but empty.
+const PARKED_FILL := [0.55, 0.05, 0.72, 0.0]   ## share of the kerb taken: plain, red-white, blue-white, yellow-black
+const PARKED_FILL_LIVING := 0.3
+
+## no parking at p beside road ri: its red-white corner or a bus stop's yellow-black
+func _no_parking(r: Dictionary, ri: int, p: Vector2) -> bool:
+	if r.has("kerb") or not (String(r["k"]) in KERB_RED_KINDS):
+		return false
+	var pts: PackedVector2Array = r["pts"]
+	var ids: PackedInt32Array = r["ids"]
+	for i in range(ids.size()):
+		if pts[i].distance_to(p) < _node_r[ids[i]] + KERB_CUT + KERB_RED + 1.0 and _kerb_arms(ids[i]) >= 3:
+			return true
+	for c: Vector2 in _kerb_stops(ri):
+		if c.distance_to(p) < KERB_BUS + 2.0:
+			return true
+	return false
 func _build_parked() -> void:
 	if String(_place.get("look", "")) != "med":
 		return   # northern suburbs park in driveways
@@ -5351,6 +5477,10 @@ func _build_parked() -> void:
 			await _pause()
 		rng.seed = hash(_city_name) + 11 + ri * 7919   # the road's own: every square parks it alike
 		var hw: float = float(r["w"]) * 0.5
+		var paint := int(r["kerb"]) if r.has("kerb") else _kerb_paint(r, _hash_i((r["pts"] as PackedVector2Array)[0]))
+		var fill: float = PARKED_FILL_LIVING if r["k"] == "living_street" else float(PARKED_FILL[paint])
+		if r["k"] == "tertiary":
+			fill *= 0.85   # a busier street: more of it kept clear
 		for run: PackedVector2Array in _street_runs(r):
 			var cum := PackedFloat32Array([0.0])
 			for i in range(1, run.size()):
@@ -5359,14 +5489,14 @@ func _build_parked() -> void:
 			for sgn: float in [-1.0, 1.0]:
 				var s := 4.0 + rng.randf() * 3.0
 				while s < total - 4.0:
-					if rng.randf() < PARKED_FILL:
+					if rng.randf() < fill:
 						var kind: String = CAR_MIX[rng.randi() % CAR_MIX.size()]
-						var paint: Color = palette[rng.randi() % palette.size()]
+						var colour: Color = palette[rng.randi() % palette.size()]
 						var c := _along(run, cum, s)
 						var d := (_along(run, cum, minf(s + 1.0, total)) - c).normalized()
 						var side := Vector2(-d.y, d.x) * sgn
 						var p := c + side * (hw + 0.6)   # mostly up on the pavement: a third of a car in the road
-						var ok := _mine(p) and _push_out(p, 1.0, false) == Vector2.ZERO
+						var ok := _mine(p) and not _no_parking(r, ri, p) and _push_out(p, 1.0, false) == Vector2.ZERO
 						for i: int in _near(_post_hash, p, 1.4, BLD_CELL):
 							if _posts[i].distance_to(p) < 1.4:
 								ok = false
@@ -5385,7 +5515,7 @@ func _build_parked() -> void:
 								* Basis(Vector3.BACK, roll) * Basis(Vector3.FORWARD, -0.05 * sgn)
 							(xf_by[kind] as Array).append(Transform3D(lean, _g3(p, 0.1)))   # half up the kerb
 							_ao_car(p, face, KERB_H + 0.025)
-							(cols_by[kind] as Array).append(paint)
+							(cols_by[kind] as Array).append(colour)
 							xf.append(0)
 							_add_post(p + face * 1.25, 0.85)
 							_add_post(p - face * 1.25, 0.85)

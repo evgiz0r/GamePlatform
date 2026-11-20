@@ -378,6 +378,16 @@ Parked cars and traffic are a mix of sedans, hatchbacks, SUVs and the odd van, w
 seams, handles and wheel arches, in the colours real cars come in: mostly white, silver,
 grey and black, with the odd red or blue. Parked cars tilt with the slope they stand on.
 
+**Kerbs and parking, as filmed.** In Givatayim and Ashdod the kerb's paint goes by where on
+the street you are, as a walk filmed down two of Givatayim's streets showed it: blue and
+white along a residential street's parking, red and white for the last few metres before
+every junction and along many main roads, yellow and black in front of a bus stop. The
+parked cars keep to the paint: a nearly unbroken row down a blue-and-white street, half up
+on the pavement, fewer along a plain kerb, none on the red-and-white corners or at a stop.
+
+> ill film myself driving to work and back or whatever. and somehow give you the info back.
+> to make it more nad more realistic ( for the specific path and more general )
+
 > Let's move to cars.
 
 Every car -- yours, the traffic, the parked ones -- has a real car's body now, not a

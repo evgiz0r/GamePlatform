@@ -254,10 +254,12 @@ first:
   pavers in straight rows along the residential street, with a darker band along the kerb;
   rounded brown "antique" pavers with grey cobble arcs by the cafes. Herringbone is right
   for some streets, not all.
-- **Kerb paint**: blue-and-white along the residential street (paid parking), red-and-white
-  at the corners and driveways. The game paints yellow-and-black.
-- **Parked cars**: an unbroken row on both sides of the residential street, motorbikes and
-  scooters parked on the pavement; painted bays on the shopping street. The game has gaps.
+- **Kerb paint** (done: `_kerb_paint`, `_kerb_marks`): blue-and-white along the residential
+  street (paid parking), red-and-white at the corners and driveways. The game painted one
+  paint a whole street, a tenth of them yellow-and-black.
+- **Parked cars** (done, fill by the kerb's paint, `PARKED_FILL`; motorbikes not yet): an
+  unbroken row on both sides of the residential street, motorbikes and scooters parked on
+  the pavement; painted bays on the shopping street. The game filled a quarter of the kerb.
 - **Street trees**: thin trunks in square earth pits at the kerb edge every ~8-10 m, the
   canopies meeting over the pavement; no palms on these streets.
 - **Light**: the real late afternoon is hazy and warm; the game's sky is saturated blue

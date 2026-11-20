@@ -192,6 +192,12 @@ a place and a heading on the baked ground.
   so a gap in the track is a stop and its length the wait. On foot its points were good to
   ~4 m: the side of the street, not the spot on the pavement. Its `c` attribute is not the
   heading (it sat at ~5 for a whole walk): take the heading from the positions, +-3 s.
+- **`tools/gpx_route.py`** does the GPS side: `report` lays the track on the city file and
+  gives the streets in order with their speeds (mean, 85th percentile, top), speed by road
+  kind, every stop with the junction it was at (and whether it has lights), the hardest
+  acceleration and braking -- for a drive, what to tune AI drivers against. `route` gives
+  `{"points": [[seconds, x, z]...]}` timed to the film (`--video` reads its clock) and cut
+  between two named corners (`--from A B --to C D`), for a replay beside the film.
 - **Lining up.** Both come off the phone's clock. The video's file name is its start in
   local time; the mp4's `creation_time` is (on that phone) the *end*, in UTC: start =
   creation_time - duration. The two agreed to ~3 s. GPX times are UTC.
