@@ -29,11 +29,14 @@ KERB_N, MEDIAN, KERB_S = P(-14.1, -17.4), P(-5.35, -17.35), tuple(P(3.3, -17.3))
 lm = [
     (0.0, tuple(P(-16.0, -17.4))), (1.6, tuple(KERB_N)), (4.5, tuple(KERB_N)),   # to the north kerb, waiting
     (8.7, tuple(MEDIAN)), (13.3, tuple(MEDIAN)),                            # over the near half; waiting
-    (17.0, KERB_S), (18.2, tuple(P(5.5, -17.0))),                           # over the far half, up the kerb
-    (20.6, tuple(P(6.6, -11.3))), (None, tuple(P(6.9, -5.4))),              # along it under the arcade (the
+    (17.0, KERB_S), (18.4, tuple(P(6.4, -17.6))),                           # over the far half, up the kerb,
+                                                                            # in past the arcade's middle column
+    (21.0, tuple(P(6.6, -11.3))), (None, tuple(P(6.9, -5.4))),              # along it under the arcade (the
                                                                             # middle of it: the columns are at 5.2-5.8),
                                                                             # clear of the sign post at the corner
-    (25.0, tuple(P(7.5))), (33.0, tuple(P(17))),               # the forecourt, into the passage
+    (25.6, tuple(P(7.5))), (33.0, tuple(P(17))),               # the forecourt, into the passage
+                                                               # (the game's zebra is a few metres further
+                                                               # up the street than the film's: brisk to here)
     (None, tuple(P(30))), (None, tuple(P(45))),
     (64.0, tuple(P(SPLIT))),                                   # out of it at the railings
     (None, tuple(P(60.5, -2.0))), (None, tuple(P(63, -4.4))),  # onto the little street's pavement, the road on the left
