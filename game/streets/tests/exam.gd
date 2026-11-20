@@ -39,7 +39,7 @@ const CHECKS := ["check: bodies overlapping, traffic", "check: bodies overlappin
 	"check: autodrive pushing 3 s+", "check: held by nothing 10 s+, traffic", "check: held by nothing 10 s+, autodrive"]
 ## what may hold a car standing still (anything else -- the limit, a curve -- is nothing)
 const NAMED := ["light", "zebra", "people", "sign", "junction", "player", "bus stop", "squeezing past",
-	"blocked", "choice", "turning", "backing", "pushing"]
+	"blocked", "choice", "turning", "backing", "pushing", "delivery"]   # (delivery: a van double-parked to unload)
 var g: Node
 var T
 var counts := {}
