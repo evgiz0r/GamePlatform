@@ -69,8 +69,9 @@ func _run() -> void:
 		var fwd := Vector2(t.basis.z.x, t.basis.z.z).normalized()
 		var tall := kind.begins_with("signs")
 		print("%s: %d, nearest %d m" % [kind, list.size(), int(Vector2(t.origin.x, t.origin.z).distance_to(at))])
-		await _look("gf_" + kind, Vector2(t.origin.x, t.origin.z), fwd + fwd.orthogonal() * 0.35, 5.0 if tall else 3.2,
-			1.7, 2.2 if tall else 0.6)
+		# (small things from a little above: a walker's eye at their side was often inside a parked car)
+		await _look("gf_" + kind, Vector2(t.origin.x, t.origin.z), fwd + fwd.orthogonal() * 0.35, 5.0 if tall else 2.6,
+			1.7 if tall else 2.9, 2.2 if tall else 0.4)
 	# looking down at the pavement along the start street: covers, pits
 	var f: Vector2 = g._fwd()
 	var side := Vector2(-f.y, f.x)
