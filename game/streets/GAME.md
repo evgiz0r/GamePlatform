@@ -385,7 +385,8 @@ under 55 frames a second, or stuttering (more than one frame in twelve slower th
 for a few seconds and it steps down a level -- first smoother edges (MSAA) off and
 shorter shadows, then no shadows and a lower 3D resolution and the photo textures off
 (back to the drawn grain). It never steps back up during
-a drive. The frame rate and the level are shown small under the speed. Parked cars and
+a drive. The frame rate, the slowest frame of the last few seconds and the level are shown
+small under the speed. Parked cars and
 traffic are one mesh per car shape (a batch of them costs one draw, not six); every kind
 of shader is drawn once while the city loads, so none of them stalls the first time it
 comes into view; the browser's shadow map is smaller and its filter cheaper.
@@ -400,6 +401,24 @@ changes at night or moves stays separate (lamps, lit glass, flags, ads, cars, pe
 so do the trees, which are too many to copy.
 
 > Performance pass: fewer draw calls, faster loading of big cities.
+
+**Seeing what chokes.** Tap the fps text under the speed (or press P) for the perf view: a
+graph of the last frames' times (green under 20 ms, red over 40), the average frame split
+into the engine's drawing and the game's own parts (traffic, people, autodrive, the
+minimap...), and the last few hitches -- frames much slower than the ones round them --
+with the parts that took their time. Playtests report hitches the same way.
+
+> We need to think how to improve latency a bit. It does choke every few seconds. Do you
+> have some fps counter or something?
+
+What choked, every few seconds: every 60 m driven the minimap went through every street
+and building outline within 360 m (now they are sorted into squares while the city loads,
+and gathering is joining a few arrays); every car left behind was found a new road in the
+same tick, up to 24 tries each, and every walker a new pavement (now one car and one walker
+a tick, a few tries at a time); autodrive planned several legs of road at once (now one a
+tick while there is plenty ahead); and every car re-decided its speed -- lights, signs,
+junctions, the car in front -- every tick (now 20 times a second, a third of them each
+tick). Building outlines on the minimap are plain one-pixel lines.
 
 ## How do you win?
 

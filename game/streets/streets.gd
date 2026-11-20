@@ -992,6 +992,9 @@ func start(_config: Dictionary) -> void:
 	if not await _warm_up():
 		return
 	_loading.queue_free()
+	var tm := Time.get_ticks_msec()
+	_map_build_cells()
+	_stage("minimap", tm)
 	_build_car()
 	_place_start()
 	_build_hud()
@@ -7287,39 +7290,57 @@ func _physics_process(dt: float) -> void:
 	_prev_y = _y
 	if not _loaded or finished or _picker != null:
 		return   # the address picker is open: the world waits
+	_p0()
 	_signals_tick(dt)
 	_crash_cool = maxf(0.0, _crash_cool - dt)
 	_touch_t = maxf(0.0, _touch_t - dt)
+	_p("lights")
 	if _walking:
 		_traffic.tick(dt)
+		_p("traffic")
 		_walk(dt)
 		_controls_tick(dt)
+		_p("walk")
 		_names_tick(dt)
+		_p("names")
 		_engine_tick(dt)
+		_p("sound")
 		_people_tick(dt)
+		_p("people")
 		_crossers_tick(dt)
+		_p("crossers")
 		_explore(dt)
+		_p("explore")
 		return
 	if PInput.just_pressed("action_a") and not _auto:
 		_set_auto(true)
 	elif PInput.just_pressed("action_b") and _auto:
 		_set_auto(false)
 	_traffic.tick(dt)
+	_p("traffic")
 	var ctl: Array = _autodrive(dt) if _auto else _manual(dt)
 	if _auto:
 		var turn := _ap_turn_ahead()
 		if turn != 0 and _blink != turn:
 			_set_blink(turn)
+	_p("autodrive")
 	_controls_tick(dt)
 	_drive(dt, ctl[0], ctl[1], ctl[2])
+	_p("car")
 	_through_lights()
 	_check_stop_signs()
+	_p("rules")
 	_names_tick(dt)
+	_p("names")
 	_engine_tick(dt)
+	_p("sound")
 	_people_tick(dt)
+	_p("people")
 	_crossers_tick(dt)
+	_p("crossers")
 	_check_arrival(dt)
 	_explore(dt)
+	_p("explore")
 
 ## ---- every drawn frame -------------------------------------------------------------------
 ## The car moves in fixed physics ticks (60 a second). Drawn as it was at the last tick,
@@ -7333,8 +7354,10 @@ var _view_pos := Vector2.ZERO        ## where the car is drawn this frame (the m
 var _view_yaw := 0.0
 
 func _frame() -> void:
+	_prof_frame()
 	if not _loaded or _car == null or _picker != null:
 		return
+	_p0()
 	var dt := get_process_delta_time()
 	_watch_fps(dt)
 	var f := Engine.get_physics_interpolation_fraction()
@@ -7346,13 +7369,17 @@ func _frame() -> void:
 		_me.position = Vector3(_view_pos.x, _h(_view_pos), _view_pos.y)
 		_me.face(Vector3(cos(_view_yaw), 0, sin(_view_yaw)))
 		_traffic.draw(f)
+		_p("traffic draw")
 		_foot_camera(dt)
 		_tick_hud()
+		_p("camera, hud")
 		return
 	_pose_car(_view_pos, _view_yaw, _view_y)
 	_traffic.draw(f)
+	_p("traffic draw")
 	_camera(dt, _view_pos, _view_yaw)
 	_tick_hud()
+	_p("camera, hud")
 
 ## ---- render quality: the web build watches its own frame rate and steps down ---------------
 ## Per level: edge smoothing (MSAA), how far shadows reach (0: none), the 3D resolution.
@@ -7417,6 +7444,116 @@ func _watch_fps(dt: float) -> void:
 		_set_quality(_quality - 1)
 		_fps_wait = 1.0
 		Probe.event("quality", {"level": _quality, "fps": int(fps)})
+
+## ---- where a frame's time goes ------------------------------------------------------------
+## Every part of a physics tick and of a drawn frame is timed (the script's own work, in
+## microseconds). The time from one drawn frame to the next that no part accounts for is
+## the engine's: drawing the 3D, the shadows, the browser. A frame much slower than the ones
+## round it is a hitch: the parts that took its time are kept (the perf view, P or a tap on
+## the fps text, shows them with a graph of the last frames) and reported as a "hitch" event
+## and a [hitch] line, so a playtest names what chokes.
+const PERF_FRAMES := 150
+const PERF_RECT := Rect2(486, 74, 146, 20)   ## the fps text: tap it for the perf view
+var _prof := {}                      ## part -> microseconds since the last drawn frame began
+var _prof_t := 0
+var _frame_at := 0
+var _frame_ms := PackedFloat32Array()   ## the last frames' times, ms, oldest overwritten first
+var _frame_i := 0
+var _hitches: Array = []             ## newest first, a few: "12.3 s  95 ms  people 61 · rest 30"
+var _hitch_n := 0
+var _prof_sum := {}                  ## part -> microseconds over the current 2 s spell
+var _prof_n := 0                     ## frames in it
+var _prof_wall := 0.0                ## their total time, ms
+var _prof_spell := 0
+var _prof_avg := ""                  ## the last spell's average frame, part by part
+var _perf_view := false
+var _perf_lbl: Label
+
+func _p0() -> void:
+	_prof_t = Time.get_ticks_usec()
+
+## the part that just finished: its time goes to `part`, and the next part starts now
+func _p(part: String) -> void:
+	var t := Time.get_ticks_usec()
+	_prof[part] = int(_prof.get(part, 0)) + (t - _prof_t)
+	_prof_t = t
+
+## at the start of every drawn frame: the one before is done (its drawing, then this frame's
+## physics ticks), so its time and its parts are complete
+func _prof_frame() -> void:
+	var now := Time.get_ticks_usec()
+	if _frame_at == 0:
+		_frame_at = now
+		_prof = {}
+		return
+	var ms := (now - _frame_at) / 1000.0
+	_frame_at = now
+	if _frame_ms.size() < PERF_FRAMES:
+		_frame_ms.append(ms)
+	else:
+		_frame_ms[_frame_i] = ms
+		_frame_i = (_frame_i + 1) % PERF_FRAMES
+	if ms > 25.0 and _frame_ms.size() > 30:
+		var sorted := _frame_ms.duplicate()
+		sorted.sort()
+		var typical := sorted[sorted.size() / 2]
+		if ms > maxf(25.0, typical * 2.0 + 8.0):
+			_hitch(ms, typical)
+	# the average frame over a 2 s spell, part by part: what it costs all the time, not in spikes
+	for k: String in _prof:
+		_prof_sum[k] = int(_prof_sum.get(k, 0)) + int(_prof[k])
+	_prof_n += 1
+	_prof_wall += ms
+	if now - _prof_spell > 2000000 and _prof_n > 0:
+		var parts: Array = []
+		var script_ms := 0.0
+		for k: String in _prof_sum:
+			var pm := float(_prof_sum[k]) / 1000.0 / _prof_n
+			if not ":" in k:
+				script_ms += pm
+			parts.append([pm, k])
+		parts.sort_custom(func(a: Array, b: Array) -> bool: return a[0] > b[0])
+		var words: Array = []
+		for i in range(mini(5, parts.size())):
+			words.append("%s %.1f" % [parts[i][1], float(parts[i][0])])
+		_prof_avg = "average %.1f ms: drawing and engine %.1f · script %.1f (%s)" % [_prof_wall / _prof_n,
+			_prof_wall / _prof_n - script_ms, script_ms, ", ".join(words)]
+		_prof_sum = {}
+		_prof_n = 0
+		_prof_wall = 0.0
+		_prof_spell = now
+	_prof = {}
+
+func _hitch(ms: float, typical: float) -> void:
+	var parts: Array = []
+	var script_ms := 0.0
+	for k: String in _prof:
+		var pm := float(_prof[k]) / 1000.0
+		if not ":" in k:   # "traffic: route" is already inside "traffic"
+			script_ms += pm
+		parts.append([pm, k])
+	parts.sort_custom(func(a: Array, b: Array) -> bool: return a[0] > b[0])
+	var words: Array = []
+	for i in range(mini(5, parts.size())):
+		if float(parts[i][0]) >= 1.0:
+			words.append("%s %d" % [parts[i][1], int(round(float(parts[i][0])))])
+	words.append("rest %d" % int(round(ms - script_ms)))
+	var line := "%.1f s  %d ms (usual %d)  %s" % [Time.get_ticks_msec() / 1000.0, int(ms), int(typical), " · ".join(words)]
+	_hitches.push_front(line)
+	if _hitches.size() > 4:
+		_hitches.pop_back()
+	_hitch_n += 1
+	print("[hitch] ", line)
+	if _hitch_n <= 40:
+		Probe.event("hitch", {"ms": int(ms), "usual": int(typical), "parts": " · ".join(words),
+			"nodes": int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))})
+
+## the slowest of the last frames (ms)
+func _worst_ms() -> float:
+	var w := 0.0
+	for v in _frame_ms:
+		w = maxf(w, v)
+	return w
 
 ## after a jump (the start, "back on the road"): no blending from where it was, camera
 ## straight behind
@@ -7883,7 +8020,9 @@ func _liveliness(p: Vector2) -> float:
 ## a walker onto a pavement near the car (ahead of it rather than behind when it moves)
 func _place_walker(w: Dictionary, anywhere: bool) -> void:
 	var a: Actor3D = w["actor"]
-	for _try in range(12):
+	# a few tries a call, not a dozen: each walks a whole street's pavement, and a walker that
+	# found nothing is simply tried again on a later tick (one walker a tick, _people_tick)
+	for _try in range(12 if anywhere else 4):
 		var ang := _people_rng.randf() * TAU
 		if not anywhere and absf(_v) > 2.0:
 			ang = _yaw + _people_rng.randf_range(-0.9, 0.9)
@@ -8003,13 +8142,17 @@ func _people_tick(dt: float) -> void:
 		for c: Dictionary in _chatters:
 			var ca: Actor3D = c["actor"]
 			_people_awake(ca, Vector2(ca.position.x, ca.position.z))
+	# one walker a tick is found a new place (a search along the pavements): several at once
+	# when the car had driven on was a stutter
+	var placed := false
 	for w: Dictionary in _walkers:
 		var a: Actor3D = w["actor"]
 		var line: PackedVector2Array = w["line"]
 		if line.size() < 2:   # found no place last time: look again now and then
 			w["retry"] = float(w.get("retry", 0.0)) - dt
-			if float(w["retry"]) <= 0.0:
+			if float(w["retry"]) <= 0.0 and not placed:
 				w["retry"] = 2.0
+				placed = true
 				_place_walker(w, false)
 			continue
 		var cum: PackedFloat32Array = w["cum"]
@@ -8038,7 +8181,8 @@ func _people_tick(dt: float) -> void:
 		if ahead != Vector2.ZERO:
 			a.face(Vector3(ahead.x, 0, ahead.y))
 		_people_awake(a, p)
-		if p.distance_to(_pos) > PEOPLE_RANGE:
+		if p.distance_to(_pos) > PEOPLE_RANGE and not placed:
+			placed = true
 			_place_walker(w, false)
 
 ## ---- people crossing at the zebras -----------------------------------------------------------
@@ -8607,7 +8751,13 @@ func _autodrive(dt: float) -> Array:
 		_ap_v.remove_at(0)
 		_ap_lim.remove_at(0)
 	_cross_tick()
+	var legs := 0
 	while _ap_len() < 160.0:
+		# one leg a tick while there is plenty ahead: planning one is a few milliseconds (more
+		# in a browser), and several in the same tick showed as a stutter
+		if legs > 0 and _ap_len() > 90.0:
+			break
+		legs += 1
 		if not _ap_next():
 			# nowhere further (and no crossing waiting on a choice): stop at the end of the
 			# plan instead of running on past it, off the road and into whatever is there
@@ -9570,6 +9720,11 @@ func _build_hud() -> void:
 	_fps_lbl.position = Vector2(496, 79)
 	_fps_lbl.size = Vector2(130, 12)
 	_fps_lbl.modulate.a = 0.55
+	_perf_lbl = _label(7, "ink")
+	_perf_lbl.position = Vector2(8, 128)
+	_perf_lbl.size = Vector2(330, 60)
+	_perf_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_perf_lbl.visible = false
 	_dest_lbl = _label(12, "accent")
 	_dest_lbl.text_direction = Control.TEXT_DIRECTION_LTR   # "→ <Hebrew street> 47 · 930 m" reads left to right
 	_dest_lbl.position = Vector2(150, 314)
@@ -9612,7 +9767,10 @@ func _show_banner(msg: String, secs: float) -> void:
 
 func _tick_hud() -> void:
 	_speed_lbl.text = str(int(round(absf(_v) * 3.6)))
-	_fps_lbl.text = "%d fps · quality %d" % [Engine.get_frames_per_second(), _quality]
+	_fps_lbl.text = "%d fps · worst %d ms · quality %d" % [Engine.get_frames_per_second(), int(_worst_ms()), _quality]
+	if _perf_view:
+		_perf_lbl.text = "frame time, last %d frames (lines: 16 and 33 ms)\n%s\nhitches (slowest parts, ms):\n%s" % [
+			_frame_ms.size(), _prof_avg, "\n".join(_hitches) if not _hitches.is_empty() else "none yet"]
 	if _dest_on:
 		var left := _pos.distance_to(_dest)
 		if _auto and _ap_pts.size() > 1:
@@ -9624,9 +9782,27 @@ func _tick_hud() -> void:
 	_hud.queue_redraw()
 	_map.queue_redraw()
 
+func _toggle_perf() -> void:
+	_perf_view = not _perf_view
+	_perf_lbl.visible = _perf_view
+
 func _draw_hud() -> void:
 	var ink := Palette.col("ink")
 	var bg := Palette.col("bg")
+	if _perf_view and not _frame_ms.is_empty():
+		# the last frames' times as bars, oldest on the left; 16 and 33 ms marked
+		var box := Rect2(8, 96, 150, 30)
+		_hud.draw_rect(box, Color(bg, 0.7))
+		var n := _frame_ms.size()
+		var w := box.size.x / PERF_FRAMES
+		for i in range(n):
+			var v: float = _frame_ms[(_frame_i + i) % n] if n == PERF_FRAMES else _frame_ms[i]
+			var h := minf(v / 50.0, 1.0) * box.size.y
+			var c := Palette.col("friend") if v < 20.0 else (Palette.col("warn") if v < 40.0 else Palette.col("hazard"))
+			_hud.draw_rect(Rect2(box.position.x + i * w, box.end.y - h, maxf(w, 1.0), h), c)
+		for ms: float in [16.7, 33.3]:
+			var y := box.end.y - ms / 50.0 * box.size.y
+			_hud.draw_line(Vector2(box.position.x, y), Vector2(box.end.x, y), Color(ink, 0.35), 1.0)
 	var on := Palette.col("friend") if _auto else ink
 	_hud.draw_rect(AUTO_BTN, Color(bg, 0.65))
 	_hud.draw_rect(AUTO_BTN, Color(on, 0.9), false, 1.5)
@@ -9716,62 +9892,94 @@ func _draw_hud() -> void:
 const MAP_MOVE := 60.0
 var _map_lines := {}
 
+## The minimap's lines, sorted once (while the city loads) into squares of the map, in the
+## city's own coordinates: building outlines, paths, minor and major streets. Gathering the
+## ones round the car is then joining the squares' arrays, not walking every outline and
+## street in 360 m: that walk, every 60 m driven, was a stutter every few seconds.
+const MAP_CELL := 120.0
+var _map_cells := {}                 ## Vector2i -> {"blds", "paths", "minor", "major"}
+
+func _map_build_cells() -> void:
+	_map_cells = {}
+	var cell_of := func(p: Vector2) -> Dictionary:
+		var key := Vector2i(floori(p.x / MAP_CELL), floori(p.y / MAP_CELL))
+		if not _map_cells.has(key):
+			_map_cells[key] = {"blds": PackedVector2Array(), "paths": PackedVector2Array(),
+				"minor": PackedVector2Array(), "major": PackedVector2Array()}
+		return _map_cells[key]
+	for poly: PackedVector2Array in _blds:
+		if poly.is_empty():
+			continue
+		var out: PackedVector2Array = cell_of.call(poly[0])["blds"]
+		for j in range(poly.size()):
+			out.append(poly[j])
+			out.append(poly[(j + 1) % poly.size()])
+	for r: Dictionary in _roads:
+		var pts: PackedVector2Array = r["pts"]
+		var kind := "paths" if (not r["drive"] or r["pv"]) else ("major" if float(r["w"]) >= 9.0 else "minor")
+		for j in range(pts.size() - 1):
+			var out: PackedVector2Array = cell_of.call((pts[j] + pts[j + 1]) * 0.5)[kind]
+			out.append(pts[j])
+			out.append(pts[j + 1])
+
+## the lines round `at` (in the city's coordinates: "at" in the result is where they were
+## gathered, for knowing when to gather again)
 func _map_gather() -> Dictionary:
+	if _map_cells.is_empty():
+		_map_build_cells()
 	var at := _view_pos
 	var reach := MAP_R * 1.45 + MAP_MOVE   # the map's corners, wherever the car turns
+	# (plain local arrays: appending through `dict[k] as PackedVector2Array` goes to a copy)
 	var blds := PackedVector2Array()
-	for i: int in _near(_bld_hash, at, reach, BLD_CELL):
-		var poly: PackedVector2Array = _blds[i]
-		for j in range(poly.size()):
-			blds.append(poly[j] - at)
-			blds.append(poly[(j + 1) % poly.size()] - at)
-	var major := PackedVector2Array()
-	var minor := PackedVector2Array()
 	var paths := PackedVector2Array()
-	for code: int in _near(_seg_hash, at, reach, SEG_CELL):
-		var r: Dictionary = _roads[code / 4096]
-		var pts: PackedVector2Array = r["pts"]
-		var j := code % 4096
-		if not r["drive"] or r["pv"]:
-			paths.append(pts[j] - at)
-			paths.append(pts[j + 1] - at)
-		elif float(r["w"]) >= 9.0:
-			major.append(pts[j] - at)
-			major.append(pts[j + 1] - at)
-		else:
-			minor.append(pts[j] - at)
-			minor.append(pts[j + 1] - at)
+	var minor := PackedVector2Array()
+	var major := PackedVector2Array()
+	var c0 := Vector2i(floori((at.x - reach) / MAP_CELL), floori((at.y - reach) / MAP_CELL))
+	var c1 := Vector2i(floori((at.x + reach) / MAP_CELL), floori((at.y + reach) / MAP_CELL))
+	for cz in range(c0.y, c1.y + 1):
+		for cx in range(c0.x, c1.x + 1):
+			var cell: Dictionary = _map_cells.get(Vector2i(cx, cz), {})
+			if cell.is_empty():
+				continue
+			blds.append_array(cell["blds"])
+			paths.append_array(cell["paths"])
+			minor.append_array(cell["minor"])
+			major.append_array(cell["major"])
 	var limits: Array = []
 	for ring: PackedVector2Array in _boundary:
-		var pts := PackedVector2Array()
-		for p in ring:
-			pts.append(p - at)
-		pts.append(ring[0] - at)
+		var pts := ring.duplicate()
+		pts.append(ring[0])
 		limits.append(pts)
 	var places: Array = []
 	for poi: Array in _pois:
 		var d: Vector2 = (poi[0] as Vector2) - at
 		if absf(d.x) < reach and absf(d.y) < reach:
-			places.append([d, poi[1]])
+			places.append([poi[0], poi[1]])
 	return {"at": at, "blds": blds, "paths": paths, "minor": minor, "major": major,
 		"limits": limits, "places": places}
 
 ## the minimap: streets and building outlines round the car, heading up
 func _draw_map() -> void:
+	var t0 := Time.get_ticks_usec()
+	_draw_map_inner()
+	_prof["minimap"] = int(_prof.get("minimap", 0)) + Time.get_ticks_usec() - t0
+
+func _draw_map_inner() -> void:
 	var sz := _map.size
 	var ink := Palette.col("ink")
 	var bg := Palette.col("bg")
 	_map.draw_rect(Rect2(Vector2.ZERO, sz), Color(bg, 0.72))
 	if _map_lines.is_empty() or (_map_lines["at"] as Vector2).distance_to(_view_pos) > MAP_MOVE:
 		_map_lines = _map_gather()
-	var at: Vector2 = _map_lines["at"]
+	var at := Vector2.ZERO   # the lines are in the city's own coordinates
 	var s := sz.x * 0.5 / MAP_R
-	# heading up round the middle of the map, and the gathered lines shifted from where
-	# they were gathered to where the car is now
+	# heading up round the middle of the map, the car in the middle
 	_map.draw_set_transform_matrix(Transform2D(-PI * 0.5 - _view_yaw, Vector2(s, s), 0.0, sz * 0.5)
-		* Transform2D(0.0, at - _view_pos))
+		* Transform2D(0.0, -_view_pos))
 	if not (_map_lines["blds"] as PackedVector2Array).is_empty():
-		_map.draw_multiline(_map_lines["blds"], Color(ink, 0.22), 1.0 / s)
+		# plain one-pixel lines: wide ones are rebuilt as strips every frame, and the outlines
+		# are most of the map's lines
+		_map.draw_multiline(_map_lines["blds"], Color(ink, 0.3), -1.0)
 	if not (_map_lines["paths"] as PackedVector2Array).is_empty():
 		_map.draw_multiline(_map_lines["paths"], Color(ink, 0.3), 1.0 / s)
 	if not (_map_lines["minor"] as PackedVector2Array).is_empty():
@@ -9842,6 +10050,9 @@ func _input(event: InputEvent) -> void:
 				KEY_F:
 					_toggle_walk()
 					return
+				KEY_P:
+					_toggle_perf()
+					return
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT and not Flow.pointer_over_hud():
@@ -9850,7 +10061,9 @@ func _input(event: InputEvent) -> void:
 					if _cross_rect(i, (_cross["ways"] as Array).size()).grow(3).has_point(mb.position):
 						_cross_pick(i)
 						return
-			if AUTO_BTN.grow(4).has_point(mb.position):
+			if PERF_RECT.has_point(mb.position):
+				_toggle_perf()
+			elif AUTO_BTN.grow(4).has_point(mb.position):
 				if not _walking:
 					_set_auto(not _auto)
 			elif GOTO_BTN.grow(4).has_point(mb.position):
