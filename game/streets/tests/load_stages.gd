@@ -1,7 +1,8 @@
 extends SceneTree
 ## Where the build time goes: the file's parse and every stage of building the city
 ## (_stage_ms), slowest first, with how much each is of the whole; then a look along a main
-## street with a median (the latest addition) if the city has one.
+## street with a median (the latest addition) if the city has one. Run it with
+## STREETS_BUILD_ALL=0 for what a player waits for (the squares round the start only).
 var g: Node
 func _initialize() -> void:
 	_run()
