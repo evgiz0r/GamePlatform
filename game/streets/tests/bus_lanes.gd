@@ -6,8 +6,10 @@ extends SceneTree
 ## times a car that may not use one was in it other than before a right turn. Views of
 ## Kaplan's bus lane (shots).
 ##
-##   OUT=/tmp/bus game/streets/tests/run.sh bus_lanes 7
-##   LEVEL=7 STREETS_BUILD_ALL=1 $GODOT --headless --fixed-fps 60 --path . -s res://game/streets/tests/bus_lanes.gd
+##   OUT=/tmp/bus game/streets/tests/run.sh bus_lanes 7     the lists and the shots (no traffic
+##       count: drawn, its 90 s took 20 minutes; SECS=90 to have it anyway)
+##   LEVEL=7 STREETS_BUILD_ALL=1 $GODOT --headless --fixed-fps 60 --path . -s \
+##       res://game/streets/tests/bus_lanes.gd     the lists and the traffic count, ~4 min
 ##
 ## Good: Kaplan's westbound pieces and the Ayalon's listed, words painted, autodrive's lane
 ## on each not a bus lane; buses most of their time in the bus lane, 0 seconds of cars that
@@ -69,6 +71,14 @@ func _run() -> void:
 	if g._city_id != "tel_aviv":
 		quit()
 		return
+	if DisplayServer.get_name() != "headless":
+		g._car.visible = false
+		await _view("kaplan_bus_lane", Vector2(-290, 160), Vector2(-420, 154), 1.6, -4.0)
+		await _view("kaplan_bus_lane_above", Vector2(-300, 175), Vector2(-380, 152), 14.0, -28.0)
+		g._car.visible = true
+		if OS.get_environment("SECS") == "":
+			quit()
+			return
 	# the traffic beside Kaplan's westbound bus lane
 	var secs := float(OS.get_environment("SECS")) if OS.get_environment("SECS") != "" else 90.0
 	if OS.get_environment("FULL") == "":
@@ -118,8 +128,4 @@ func _run() -> void:
 	for kind: String in on_bus_road:
 		print("  %-6s %6.1f / %6.1f" % [kind, float(on_bus_road[kind]), float(in_bus.get(kind, 0.0))])
 	print("cars that may not use it, in it but for a right turn: %.1f s%s" % [wrong, (" at %s" % [wrong_at.map(func(p): return Vector2i(p))]) if wrong > 0.0 else ""])
-	if DisplayServer.get_name() != "headless":
-		g._car.visible = false
-		await _view("kaplan_bus_lane", Vector2(-290, 160), Vector2(-420, 154), 1.6, -4.0)
-		await _view("kaplan_bus_lane_above", Vector2(-300, 175), Vector2(-380, 152), 14.0, -28.0)
 	quit()
