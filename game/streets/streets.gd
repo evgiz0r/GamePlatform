@@ -3904,6 +3904,12 @@ func _front_gate(gate: Array, run: PackedVector2Array, cum: PackedFloat32Array, 
 	var t := Vector2(-nj.y, nj.x)
 	var wall_mid := q + nj * (hw + PAVE_W + 0.175)
 	var cop: CBuf = fronts["coping"]
+	# no gate where its piers would stand on a road: where the wall's line crosses another
+	# street's mouth or a corner the wall itself is not laid, and the piers stood up to 4 m
+	# into the next street (city_check: 15 in Givatayim, 20 in Ashdod)
+	for side: float in [-1.0, 1.0]:
+		if not _off_road(wall_mid + t * side * (half + 0.18), 0.25):
+			return
 	# the piers either side
 	for side: float in [-1.0, 1.0]:
 		var pc := wall_mid + t * side * (half + 0.18)
@@ -9352,6 +9358,7 @@ func _terrace(pos: Vector2, n: Vector2, along: Vector2, umb: Color, t: Dictionar
 		# to the road with the upper floors) up against the window: a filmed sabich stand's
 		# tables and red umbrella were on a pavement the game had all but none of
 		var c := Vector2.INF
+		var room := 0.7   # (the solid circle: no bigger than the room to the road's edge)
 		for tr: Vector3 in [Vector3(2.6, 0.9, 0.9), Vector3(1.6, 0.6, 0.4), Vector3(1.1, 0.45, -0.1)]:   # out, room, edge
 			if tr.x < 1.5 and (off != 0.0 or not umbrellas):
 				continue   # (that close: one table, and only for an umbrella someone filmed)
@@ -9359,6 +9366,8 @@ func _terrace(pos: Vector2, n: Vector2, along: Vector2, umb: Color, t: Dictionar
 			var on := _nearest_seg(q, 12.0, true)
 			if _push_out(q, tr.y, false) == Vector2.ZERO and (on.is_empty() or float(on["edge"]) >= tr.z):
 				c = q
+				if not on.is_empty():
+					room = clampf(float(on["edge"]), 0.25, 0.7)
 				break
 		if not c.is_finite():
 			continue
@@ -9377,7 +9386,8 @@ func _terrace(pos: Vector2, n: Vector2, along: Vector2, umb: Color, t: Dictionar
 			t["pole"].append(Transform3D(Basis(), Vector3(c.x, gy + 1.2, c.y)))
 			(shades["xf"] as Array).append(Transform3D(Basis(), Vector3(c.x, gy + 2.35, c.y)))
 			(shades["col"] as Array).append(umb)
-		_add_post(c, 0.7)
+		# (a 0.7 m circle round a table up against the kerb stood 0.8 m into the lane: city_check)
+		_add_post(c, room)
 
 ## a bar's front: a narrow ledge along it 0.9 m out and a row of tall stools at it
 func _bar_stools(pos: Vector2, n: Vector2, along: Vector2, t: Dictionary) -> void:
@@ -9942,6 +9952,8 @@ var _car_flags: Array = []           ## this square's flags on parked cars
 func cat_at(p: Vector2, y: float, face: Vector2, kind: String) -> void:
 	if not _mine(p):
 		return
+	if y - _h(p) < 0.4 and not _off_road(p, 0.2):
+		return   # no cat sitting on the road (by a parked car's nose: city_check)
 	var yaw := atan2(face.x, face.y) if face.length_squared() > 0.0001 else 0.0
 	_cat_spots.append([Transform3D(Basis(Vector3.UP, yaw), Vector3(p.x, y, p.y)), kind, posmod(_hash_i(p * 3.0), 97)])
 	if y - _h(p) < 0.4:   # on the ground (not up on a wall): a small post, not walked through

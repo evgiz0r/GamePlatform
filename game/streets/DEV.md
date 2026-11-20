@@ -290,8 +290,9 @@ res://game/streets/traffic.gd res://game/streets/furniture.gd` (seconds).
 `game/streets/tests/validate.sh` runs the checks below headless, one after another, and
 prints a summary to set beside tests/README.md's last results. It reads the game and
 changes nothing. Quick (default): `city_check` in all four towns and the exam in the test
-town at 2x -- about 5 minutes. `FULL=1`: also the exam in Givatayim and Ashdod at 1x and the
-queue check -- about 40 minutes. Run it in the background (a foreground command is cut off
+town at 2x -- about 4 minutes. `FULL=1`: also the exam in Givatayim and Ashdod at 1x and the
+queue check -- about 10 minutes in all (November 2026, measured: city checks 10-96 s each,
+the exams 46 / 89 / 140 s, the queue watch ~3 min). Run it in the background (a foreground command is cut off
 at 10 minutes).
 
 What it catches: anything solid standing on a road (walls, hedges, posts by kind, buildings),
@@ -394,8 +395,18 @@ what became of it:
   street, another across one. A building cutting back would take more than half of is
   kept only when it spans the road (past both edges: a passage) or is big (400 m2+);
   otherwise it is left out at load (`_drop_buildings`).
-- Queues: the QUEUE CHECK passes on main as merged (other sessions' traffic changes):
-  line gaps 1.10x the real ones at 2x.
+- **Fixed -- gate piers, café tables and cats in the road** (other sessions' work of the same
+  hour, caught by `city_check` after a merge): a garden gate's piers stood up to 4 m into the
+  next street where the wall's line crossed its mouth (the gate now goes only where both
+  piers are off the road); a café table's 0.7 m solid circle reached 0.8 m into the lane
+  from a table up against the kerb (the circle now only as big as the room); a cat sat on the
+  road by a parked car's nose. Givatayim: 16 posts on the road -> 1; Ashdod 27 -> 0.
+- **Open -- queues clear about a fifth slower than real ones**: straight on, unimpeded, 28
+  gaps over the line at 1.22x Greenshields' (the band is 1.2). Three 15-minute watches of
+  one build read 1.18 / 1.44 / 1.57 -- watch 40 minutes. Two tries did not move it: easing
+  the pull-away against the cruising speed, and noticing the car in front at 0.35 m/s
+  (start gaps stayed 1.4 s); the time goes in the follow model (decided every third tick,
+  the headway kept from a standstill). Left for whoever owns traffic's driving.
 
 ## Seeing what the car did: the drive recorder
 

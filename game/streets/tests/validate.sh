@@ -2,10 +2,10 @@
 # The streets validation: the checks that should read 0, in one go, headless, one Godot run
 # at a time, and a summary at the end to set beside the last results in README.md here.
 #
-#   game/streets/tests/validate.sh           quick, ~10 min: the city as built in all four
+#   game/streets/tests/validate.sh           quick, ~4 min: the city as built in all four
 #                                            towns, and the driving exam in the test town at 2x
 #   FULL=1 game/streets/tests/validate.sh    also the exam in Givatayim and Ashdod at 1x and
-#                                            the queue check in Givatayim: ~1 h more
+#                                            the queue check in Givatayim: ~6 min more
 #
 # It changes nothing and fixes nothing: it reads the game and prints counts. Each run's whole
 # output is in $OUT (default /tmp/streets-validate), the drive logs of the worst places under
@@ -34,7 +34,7 @@ run exam4 4 2 exam 1800
 if [ -n "${FULL:-}" ]; then
 	run exam1 1 1 exam 3600
 	run exam3 3 1 exam 3600
-	KNOT_AT="-800,-288" SECS=900 run queue1 1 2 queue_start 3600
+	KNOT_AT="-800,-288" SECS=2400 run queue1 1 2 queue_start 3600
 fi
 echo
 echo "=== STREETS VALIDATION ($(git rev-parse --short HEAD)) ==="
