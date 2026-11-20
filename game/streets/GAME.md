@@ -282,6 +282,17 @@ teal.
 > the shops are from the video, i rotated and you could see ( sabih, fruit shop ), maybe
 > roladin somewhere too
 
+Each of those shops looks as filmed: Roladin under a black awning with white umbrellas over
+its tables; the sabich stand's black awning and a red umbrella over a table at its window;
+the green corner greengrocer with crates of fruit and vegetables out front and no awning,
+and another across Sirkin by the sabich, under a green awning; Kira Sushi's black front with
+a ledge and a row of tall bar stools; white awnings along the block by the computer shop.
+Everywhere, awnings and cafe umbrellas come in a canvas's colours (black, white, muted) rather
+than glowing neon. Sheinkin is paved in grey bricks laid in rows, Sirkin in reds and browns,
+and black bollards with a yellow band stand along Sirkin's kerb toward Katznelson.
+
+> go with all for that area, and create each time a video for me if possible
+
 The minimap (bottom left) shows the real streets and buildings round you, heading up, with
 the city limits in pink. The name of the street you are on is at the top, in Hebrew with
 the English name under it when OSM has one.

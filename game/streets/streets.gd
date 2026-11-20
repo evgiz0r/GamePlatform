@@ -1514,6 +1514,8 @@ func _load_city(id: String) -> bool:
 			r["kerb_mid"] = int(rd["kerb_mid"])   # the paint along its middle, set by hand
 		if rd.has("yard"):
 			r["yard"] = bool(rd["yard"])   # front gardens along it or not, set by hand
+		if rd.has("pave"):
+			r["pave"] = rd["pave"]   # its paving [pattern, colours], set by hand
 		var ri := _roads.size()
 		_roads.append(r)
 		var hw: float = r["w"] * 0.5
@@ -2909,7 +2911,7 @@ func _build_kerbs() -> void:
 			await _pause()
 		var hw: float = float(r["w"]) * 0.5
 		var hsh := _hash_i((r["pts"] as PackedVector2Array)[0])
-		_set_pave_code(hsh)
+		_set_pave_code(hsh, r.get("pave", []))
 		# the paint along the middle of the street, and whether its ends are red-white
 		# (_kerb_paint); a kerb set by hand (details.gd) is that paint all along
 		var pat := _kerb_paint(r, hsh) if med else 0
@@ -3416,10 +3418,13 @@ func _flat_piece(buf: Buf, piece: PackedVector2Array, nrm: Vector3, col: Color, 
 var _pave_code := 0.0
 var _pave_walled := false            ## the pavement being laid has a garden wall at its back (KERB_SHADER darkens its foot)
 
-func _set_pave_code(hsh: int) -> void:
+func _set_pave_code(hsh: int, filmed: Array = []) -> void:
 	var pattern := 3
 	var colours := 1
-	if String(_place.get("look", "")) != "north":
+	if filmed.size() == 2:   # as filmed (details.gd "pave": [pattern, colours])
+		pattern = int(filmed[0])
+		colours = int(filmed[1])
+	elif String(_place.get("look", "")) != "north":
 		var p := posmod(hsh, 100)
 		pattern = 0 if p < 45 else (1 if p < 75 else 2)
 		var c := posmod(hsh >> 7, 100)
@@ -3672,7 +3677,7 @@ func _kerb_corners(kerb: Buf, pave: Buf, fill: Buf, col: Color) -> void:
 			var X = cn[4]
 			var round: bool = cn[5]
 			_laid_by = -2 - (ni * 16 + i)
-			_set_pave_code(_hash_i((_roads[int(cn[1])]["pts"] as PackedVector2Array)[0]))   # (the paving of one of its streets)
+			_set_pave_code(_hash_i((_roads[int(cn[1])]["pts"] as PackedVector2Array)[0]), (_roads[int(cn[1])] as Dictionary).get("pave", []))   # (the paving of one of its streets)
 			var curve := PackedVector2Array()
 			if round:
 				curve = _corner_curve(P, X, Q)
@@ -8548,12 +8553,13 @@ func _build_pois() -> void:
 	var k := 1.0 / float(_city_data.get("scale", 10))
 	var front := {"glass": [], "post": [], "beam": [], "shutter": []}   ## shop windows and their frames
 	var board_cols: Array = []       ## each sign board's colour: dark, white, the shop's, cream
-	var awnings := {}                ## colour role -> awning transforms
+	var awnings := {"xf": [], "col": []}   ## awning transforms and their colours
+	var crates := new_cbuf(BLD_CELL)    ## fruit and vegetables out in front of a greengrocer
 	var crosses: Array = []          ## pharmacy crosses, sticking out from the wall
 	var canopy := {"roof": [], "pillar": [], "pump": [], "band": []}   ## gas stations
 	var boards: Array = []           ## the sign boards behind the names
 	var terrace := {"top": [], "leg": [], "seat": [], "back": [], "pole": []}
-	var shades := {}                 ## role -> umbrella transforms
+	var shades := {"xf": [], "col": []}   ## umbrellas and their colours
 	var taken := _poi_taken          ## a facade spot already used -> how many there
 	var all_pois: Array = _city_data.get("pois", [])
 	for pi: int in _tile_pois.get(_tile, []):
@@ -8567,6 +8573,7 @@ func _build_pois() -> void:
 		var look: Array = _poi_look(kind)
 		if look.is_empty():
 			continue   # e.g. parking entrances that came in on an address point
+		var shop: Dictionary = _details.shop_look(p, k) if _details != null else {}
 		var role: String = look[0]
 		var spot := _facade_spot(at)
 		var pos: Vector2 = spot[0]
@@ -8603,17 +8610,22 @@ func _build_pois() -> void:
 				front["post"].append(Transform3D(b, at3.call(pos + along * 1.56 * wide * sgn, 0.08, 1.3)))
 			var hue: String = role if kind != "shop" and sub == "" else AWNINGS[posmod(_hash_i(at), AWNINGS.size())]
 			var look_k := posmod(_hash_i(at) >> 4, 100)
-			if look_k >= 28:   # most have an awning; some just the sign over the window
-				if not awnings.has(hue):
-					awnings[hue] = []
-				(awnings[hue] as Array).append(Transform3D(b * Basis(Vector3.RIGHT, 0.33) * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.72, 2.9)))
+			var awn := String(shop.get("awning", "")) if not shop.is_empty() else ""
+			if awn != "none" and (look_k >= 28 or awn != ""):   # most have an awning; some just the sign over the window
+				(awnings["xf"] as Array).append(Transform3D(b * Basis(Vector3.RIGHT, 0.33) * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.72, 2.9)))
+				(awnings["col"] as Array).append(_real_col(awn) if awn != "" else _awning_col(hue, at))
+			if shop.get("crates", sub == "greengrocer"):
+				_crates(crates, pos, n, along, gy, wide)
 			if look_k < 10 and kind.begins_with("shop"):   # shut: the roller shutter down
 				front["shutter"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.1, 1.3)))
 			if kind == "pharmacy":
 				crosses.append(Transform3D(b, at3.call(pos + along * (1.6 * wide + 0.5), 0.5, 3.2)))
-		if spot[2] and kind in ["cafe", "restaurant", "fast_food", "ice_cream", "bar", "pub"]:
-			_terrace(pos, n, along, role, terrace, shades)
+		if spot[2] and kind in ["cafe", "restaurant", "fast_food", "ice_cream", "bar", "pub"] and String(shop.get("seats", "")) != "none":
+			var umb := String(shop.get("umbrella", ""))
+			_terrace(pos, n, along, _awning_col(role, at + Vector2(3, 0)) if umb == "" else _real_col(umb), terrace, shades,
+				String(shop.get("seats", "tables")), umb != "none")
 		var name := String(p[3]) if String(p[3]) != "" else (String(p[4]) if String(p[4]) != "" else String(look[1]))
+		name = String(shop.get("sign", name))   # (a name filmed or told, where the map has none)
 		var sign := Label3D.new()
 		sign.text = name
 		sign.font = _font
@@ -8632,8 +8644,8 @@ func _build_pois() -> void:
 		boards.append(Transform3D(Basis(Vector3.UP, face) * Basis.from_scale(Vector3(maxf(tw + 0.5, 2.0), 1.0, 1.0)),
 			Vector3(pos.x + n.x * 0.1, sy, pos.y + n.y * 0.1)))
 		var bk := posmod(_hash_i(at) >> 9, 100)
-		board_cols.append(_tone["board"] if bk < 45 else (_tone["mark"] if bk < 68 else
-			(Palette.col(role).lerp(Palette.col("bg"), 0.55) if bk < 86 else _tone["wall3"])))
+		board_cols.append(_real_col(String(shop["board"])) if shop.has("board") else (_tone["board"] if bk < 45 else (_tone["mark"] if bk < 68 else
+			(Palette.col(role).lerp(Palette.col("bg"), 0.55) if bk < 86 else _tone["wall3"]))))
 		sign.double_sided = false
 		sign.visibility_range_end = SIGN_RANGE
 		sign.set_meta("role", role)
@@ -8668,8 +8680,8 @@ func _build_pois() -> void:
 		_chunked(shut, front["shutter"], r, [], _surface("shutter"), false)
 	var awning := BoxMesh.new()
 	awning.size = Vector3(3.3, 0.14, 1.5)
-	for hue: String in awnings:
-		_chunked(awning, awnings[hue], r, [], mat(hue, 0.3), true)
+	_chunked(awning, awnings["xf"], r, awnings["col"], _vc_mat(), true)
+	_add_mesh(crates, _vc_mat(), true, SIGN_RANGE * 1.5)
 	if not crosses.is_empty():
 		var cross := ArrayMesh.new()
 		var cb := Buf.new()
@@ -8823,14 +8835,28 @@ func _gas_station(at: Vector2, n: Vector2, c: Dictionary) -> void:
 		_add_post(pq, 0.45)
 
 ## tables and chairs on the pavement in front of a cafe or restaurant, umbrellas over
-## them in the place's colour -- where there is pavement (not road, not building)
-func _terrace(pos: Vector2, n: Vector2, along: Vector2, role: String, t: Dictionary, shades: Dictionary) -> void:
+## them in `umb`'s colour -- where there is pavement (not road, not building). `style`
+## "stools": a bar's row of tall stools at a narrow ledge along its front instead (as a
+## filmed bar on a shopping street has them), no umbrellas.
+func _terrace(pos: Vector2, n: Vector2, along: Vector2, umb: Color, t: Dictionary, shades: Dictionary,
+		style := "tables", umbrellas := true) -> void:
+	if style == "stools":
+		_bar_stools(pos, n, along, t)
+		return
 	for off: float in [-2.3, 0.0, 2.3]:
-		var c := pos + n * 2.6 + along * off
-		if _push_out(c, 0.9, false) != Vector2.ZERO:
-			continue
-		var on := _nearest_seg(c, 12.0, true)
-		if not on.is_empty() and float(on["edge"]) < 0.9:
+		# 2.6 m out, or where the wall stands close to the kerb (a map's outline that runs out
+		# to the road with the upper floors) up against the window: a filmed sabich stand's
+		# tables and red umbrella were on a pavement the game had all but none of
+		var c := Vector2.INF
+		for tr: Vector3 in [Vector3(2.6, 0.9, 0.9), Vector3(1.6, 0.6, 0.4), Vector3(1.1, 0.45, -0.1)]:   # out, room, edge
+			if tr.x < 1.5 and (off != 0.0 or not umbrellas):
+				continue   # (that close: one table, and only for an umbrella someone filmed)
+			var q := pos + n * tr.x + along * off
+			var on := _nearest_seg(q, 12.0, true)
+			if _push_out(q, tr.y, false) == Vector2.ZERO and (on.is_empty() or float(on["edge"]) >= tr.z):
+				c = q
+				break
+		if not c.is_finite():
 			continue
 		var gy := _h(c)
 		var face := atan2(along.x, along.y)
@@ -8842,16 +8868,91 @@ func _terrace(pos: Vector2, n: Vector2, along: Vector2, role: String, t: Diction
 			t["seat"].append(Transform3D(b, Vector3(ch.x, gy + 0.45, ch.y)))
 			var bk := ch + along * 0.2 * sgn
 			t["back"].append(Transform3D(b, Vector3(bk.x, gy + 0.68, bk.y)))
-		t["pole"].append(Transform3D(Basis(), Vector3(c.x, gy + 1.2, c.y)))
 		_table_spots.append(c)
-		if not shades.has(role):
-			shades[role] = []
-		(shades[role] as Array).append(Transform3D(Basis(), Vector3(c.x, gy + 2.35, c.y)))
+		if umbrellas:
+			t["pole"].append(Transform3D(Basis(), Vector3(c.x, gy + 1.2, c.y)))
+			(shades["xf"] as Array).append(Transform3D(Basis(), Vector3(c.x, gy + 2.35, c.y)))
+			(shades["col"] as Array).append(umb)
 		_add_post(c, 0.7)
 
-func _terrace_meshes(t: Dictionary, shades: Dictionary) -> void:
-	if (t["top"] as Array).is_empty():
+## a bar's front: a narrow ledge along it 0.9 m out and a row of tall stools at it
+func _bar_stools(pos: Vector2, n: Vector2, along: Vector2, t: Dictionary) -> void:
+	var face := atan2(n.x, n.y)
+	var ledge := pos + n * 1.0
+	if _push_out(ledge, 0.5, false) != Vector2.ZERO:
 		return
+	var gy := _h(ledge)
+	# (the terrace's own meshes, stretched: a chair's back box as the ledge, its seat and the
+	# table's leg as the stools' seat and stem)
+	t["back"].append(Transform3D(Basis(Vector3.UP, face) * Basis.from_scale(Vector3(8.0, 0.1, 6.0)), Vector3(ledge.x, gy + 1.05, ledge.y)))
+	for off: float in [-1.4, -0.7, 0.0, 0.7, 1.4]:
+		var c := pos + n * 1.45 + along * off
+		if _push_out(c, 0.25, false) != Vector2.ZERO:
+			continue
+		t["seat"].append(Transform3D(Basis(Vector3.UP, face) * Basis.from_scale(Vector3(0.85, 1.0, 0.85)), Vector3(c.x, gy + 0.78, c.y)))
+		t["leg"].append(Transform3D(Basis.from_scale(Vector3(1.0, 1.05, 1.0)), Vector3(c.x, gy + 0.39, c.y)))
+		var bk := c + n * 0.18
+		t["back"].append(Transform3D(Basis(Vector3.UP, face) * Basis.from_scale(Vector3(0.85, 0.7, 1.0)), Vector3(bk.x, gy + 0.98, bk.y)))
+	_add_post(ledge, 0.4)
+
+## crates of fruit and vegetables on low stands either side of a greengrocer's door, the
+## produce's colours on top of each (as a filmed one has them out on the pavement)
+func _crates(b: CBuf, pos: Vector2, n: Vector2, along: Vector2, gy: float, wide: float) -> void:
+	var bs := Basis(Vector3.UP, atan2(along.x, along.y))
+	var wood: Color = _tone["woodfence"].lightened(0.15)
+	var produce: Array = [_real_col("green"), _real_col("orange"), _real_col("red"), _real_col("yellow"), _real_col("green").lightened(0.2)]
+	var k := posmod(_hash_i(pos), 5)
+	for sgn: float in [-1.0, 1.0]:
+		var c := pos + n * 0.75 + along * (1.0 * wide) * sgn
+		if _push_out(c, 0.4, false) != Vector2.ZERO:
+			continue
+		_furn._box(b, Vector3(c.x, gy + 0.3, c.y), Vector3(1.3, 0.6, 0.55), _tone["tyre"].lightened(0.1), bs)   # the stand
+		for j in 3:
+			var q := c + along * (float(j) - 1.0) * 0.42
+			_furn._box(b, Vector3(q.x, gy + 0.7, q.y), Vector3(0.4, 0.2, 0.5), wood, bs)                     # a crate
+			_furn._box(b, Vector3(q.x, gy + 0.81, q.y), Vector3(0.36, 0.05, 0.46), produce[(k + j) % 5], bs)  # what is in it
+			k += 1
+		_add_post(c, 0.5)
+
+## an awning's colour when nobody filmed it: the shop's palette colour, muted to a canvas's
+## (a filmed shopping street had no neon awnings: black, white, dark green, maroon)
+func _awning_col(hue: String, at: Vector2) -> Color:
+	var k := posmod(_hash_i(at) >> 6, 10)
+	if k < 3:
+		return _real_col("black")
+	if k < 5:
+		return _real_col("white")
+	return _natural(Palette.col(hue).lerp(Palette.col("bg"), 0.45), 0.55)
+
+## a real thing's colour by name, for what was filmed (details.gd "shops"): a red is a paint's
+## red and a green a sign's green whatever the palette, their strength the palette's
+func _real_col(name: String) -> Color:
+	var hz := Palette.col("hazard")
+	var fr := Palette.col("friend")
+	match name:
+		"black":
+			return _tone["tyre"].lightened(0.06)
+		"white":
+			return _tone["mark"]
+		"cream":
+			return _tone["mark"].lerp(_tone["woodfence"], 0.3)
+		"red":
+			return Color.from_hsv(0.99, clampf(hz.s, 0.6, 0.85), clampf(hz.v * 0.75, 0.45, 0.7))
+		"maroon":
+			return Color.from_hsv(0.98, clampf(hz.s, 0.5, 0.75), clampf(hz.v * 0.4, 0.25, 0.4))
+		"green":
+			return Color.from_hsv(0.33, clampf(fr.s, 0.5, 0.8), clampf(fr.v * 0.5, 0.3, 0.5))
+		"orange":
+			return Color.from_hsv(0.08, 0.8, clampf(hz.v * 0.85, 0.6, 0.85))
+		"yellow":
+			return _tone["markyellow"]
+		"blue":
+			return _natural(_tone["signblue"], 0.7)
+	return _tone["board"]
+
+func _terrace_meshes(t: Dictionary, shades: Dictionary) -> void:
+	if (t["top"] as Array).is_empty() and (t["seat"] as Array).is_empty():
+		return   # (a bar's stools have seats and no table tops)
 	var furn := _surface("furniture")
 	var top := CylinderMesh.new()
 	top.top_radius = 0.4
@@ -8879,8 +8980,7 @@ func _terrace_meshes(t: Dictionary, shades: Dictionary) -> void:
 	shade.bottom_radius = 1.25
 	shade.height = 0.4
 	shade.radial_segments = 10
-	for role: String in shades:
-		_chunked(shade, shades[role], SIGN_RANGE * 1.5, [], mat(role, 0.15))
+	_chunked(shade, shades["xf"], SIGN_RANGE * 1.5, shades["col"], _vc_mat())
 
 ## where a place's front goes: [point, outward normal, true if on a building wall]. The
 ## wall of its building (or the nearest one) closest to the street; otherwise a free-

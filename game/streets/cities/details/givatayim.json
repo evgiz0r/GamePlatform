@@ -50,6 +50,10 @@
      539.23,
      -640.24
     ],
+    "pave": [
+     1,
+     1
+    ],
     "kerb_mid": "blue_white"
    },
    {
@@ -58,6 +62,10 @@
     "near": [
      480.82,
      -720.97
+    ],
+    "pave": [
+     1,
+     0
     ],
     "kerb_mid": "blue_white"
    }
@@ -629,7 +637,8 @@
     ""
    ],
    "panels": [],
-   "src": "filmed walk, Sheinkin and Sirkin"
+   "src": "filmed walk, Sheinkin and Sirkin",
+   "awning": "white"
   },
   {
    "kind": "shopfront",
@@ -712,7 +721,8 @@
     "רולדין"
    ],
    "panels": [],
-   "src": "filmed walk, Sheinkin and Sirkin"
+   "src": "filmed walk, Sheinkin and Sirkin",
+   "awning": "black"
   },
   {
    "kind": "shopfront",
@@ -1408,6 +1418,78 @@
     -0.7532
    ],
    "src": "make_givatayim"
+  },
+  {
+   "kind": "bollard",
+   "at": [
+    486.14,
+    -760.0
+   ],
+   "src": "filmed walk, Sheinkin and Sirkin: 3:12-3:27, black with a yellow band along the kerb to Katznelson"
+  },
+  {
+   "kind": "bollard",
+   "at": [
+    486.18,
+    -761.55
+   ],
+   "src": "filmed walk, Sheinkin and Sirkin: 3:12-3:27, black with a yellow band along the kerb to Katznelson"
+  },
+  {
+   "kind": "bollard",
+   "at": [
+    486.22,
+    -763.1
+   ],
+   "src": "filmed walk, Sheinkin and Sirkin: 3:12-3:27, black with a yellow band along the kerb to Katznelson"
+  },
+  {
+   "kind": "bollard",
+   "at": [
+    486.25,
+    -764.65
+   ],
+   "src": "filmed walk, Sheinkin and Sirkin: 3:12-3:27, black with a yellow band along the kerb to Katznelson"
+  },
+  {
+   "kind": "bollard",
+   "at": [
+    486.29,
+    -766.2
+   ],
+   "src": "filmed walk, Sheinkin and Sirkin: 3:12-3:27, black with a yellow band along the kerb to Katznelson"
+  },
+  {
+   "kind": "bollard",
+   "at": [
+    486.33,
+    -767.75
+   ],
+   "src": "filmed walk, Sheinkin and Sirkin: 3:12-3:27, black with a yellow band along the kerb to Katznelson"
+  },
+  {
+   "kind": "bollard",
+   "at": [
+    486.37,
+    -769.3
+   ],
+   "src": "filmed walk, Sheinkin and Sirkin: 3:12-3:27, black with a yellow band along the kerb to Katznelson"
+  },
+  {
+   "kind": "bollard",
+   "at": [
+    486.41,
+    -770.85
+   ],
+   "src": "filmed walk, Sheinkin and Sirkin: 3:12-3:27, black with a yellow band along the kerb to Katznelson"
+  },
+  {
+   "kind": "bin",
+   "at": [
+    485.9,
+    -731.0
+   ],
+   "src": "2:51, a bin at the kerb outside the shuttered shops"
   }
  ],
  "trees": [
@@ -2057,5 +2139,57 @@
     ]
    ]
   }
- }
+ },
+ "shops": [
+  {
+   "name": "רולדין",
+   "awning": "black",
+   "umbrella": "white",
+   "board": "black",
+   "src": "filmed walk, Sheinkin and Sirkin: its Sirkin side, 2:06"
+  },
+  {
+   "name": "הסביח של עובד",
+   "awning": "black",
+   "umbrella": "red",
+   "board": "black",
+   "src": "2:54, across Sirkin: a red umbrella over the queue"
+  },
+  {
+   "name": "ניצת הדובדבן",
+   "awning": "none",
+   "board": "green",
+   "crates": true,
+   "src": "1:57, the green corner shop (a fruit chain; OSM: supermarket)"
+  },
+  {
+   "near": [
+    491.5,
+    -724.8
+   ],
+   "at": [
+    490.6,
+    -712.0
+   ],
+   "sign": "Kira Sushi",
+   "awning": "black",
+   "seats": "stools",
+   "board": "black",
+   "src": "2:30-2:40, the bar under string lights with bar stools (OSM's unnamed restaurant, 12 m off)"
+  },
+  {
+   "add": true,
+   "at": [
+    471.0,
+    -754.0
+   ],
+   "kind": "shop:greengrocer",
+   "name": "פירות וירקות",
+   "name_en": "Fruit and vegetables",
+   "awning": "green",
+   "board": "green",
+   "crates": true,
+   "src": "2:57, across Sirkin beside the sabich: produce out front, a green sign"
+  }
+ ]
 }
