@@ -558,6 +558,18 @@ func _junction_ahead(c: Car, i: int, dt: float) -> float:
 			var o_eta := od / maxf(o.v, 2.0)
 			if o_eta > 5.0:
 				continue
+			if g._sig_set.has(n):
+				# lights: they say who goes. One held at its red is not coming (a car with its
+				# green gave way to one on the main road that was about to stop at its red, sat
+				# out its green and was caught by the next red: a queue on a side street let
+				# one car through a green); one with its green too goes first only when I turn
+				# across it
+				if g._light_at(n, theirs[0]) != "g":
+					continue
+				var turn_across: bool = (mine[0] as Vector2).dot(mine[1]) < 0.85 and (theirs[0] as Vector2).dot(theirs[1]) >= 0.85
+				if turn_across and o_eta < my_eta + 2.0:
+					return _hold(c, dt, stop)
+				continue
 			var mr: int = mine[2]
 			var orr: int = theirs[2]
 			if orr > mr:
