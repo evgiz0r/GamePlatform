@@ -24,10 +24,14 @@ extends RefCounted
 ##   areas     [{k, p: [[x, z]...]}]                 as the city file's areas (plaza, park...)
 ##   buildings [{near: [x, z], arcade: [[x, z], [x, z]], depth, h}]   the building holding
 ##                                                    `near` gets an arcade along that line
-##   surfaces  [{k, p: [[x, z]...], lift, lay: [x, z]}]   paving laid over whatever is there,
-##                                                    `lift` m up (0.14: level with the
-##                                                    pavement), in a ground tone (slabs,
-##                                                    pavers_dark...), slabs' joints along `lay`
+##   surfaces  [{k, p: [[x, z]...], lift, lay: [x, z], ramps: [[[x, z], [x, z]]...]}]   paving
+##                                                    laid over whatever is there, `lift` m up
+##                                                    (0.14: level with the pavement), in a
+##                                                    ground tone (slabs, pavers_dark...),
+##                                                    slabs' joints along `lay`; each ramp
+##                                                    rises from nothing at its first point
+##                                                    to `lift` at its second (a raised
+##                                                    crossing's slopes)
 ##   lines     [{kind, pts: [[x, z]...], h, base}]   stone_wall, wood_fence, loop_fence, hedge,
 ##                                                    shrubs (tall planting h high: leafy masses)
 ##   props     [{kind, at: [x, z], dir: [x, z]}]     bin, hoop_railing, bollard, twin_poles
@@ -36,7 +40,12 @@ extends RefCounted
 ##                                                    globe_lamp (h), manhole, motorbike and
 ##                                                    scooter (dir: the nose; box: a top box),
 ##                                                    kerb_paint (at: by the kerb of the road
-##                                                    nearest; len, pat: red_white...).
+##                                                    nearest; len, pat: red_white...),
+##                                                    zebra (dir: along the road, w: how wide
+##                                                    the crossing, len: kerb to kerb; laid on
+##                                                    the paving there), ring30 (painted on the
+##                                                    road, read along dir), zone30_sign (dir:
+##                                                    the way it faces).
 ##                                                    Anything on a lifted surface stands on it.
 ##   trees     [[x, z], ...]                         more trees for the city's own builder
 ##   walks     {id: {name, points: [[t, x, z]...],   two points at one spot: it waits there
@@ -291,6 +300,12 @@ func build() -> void:
 				_barrier(b, at, y, d, float(pr.get("len", 4.0)))
 			"globe_lamp":
 				_globe_lamp(b, at, y, float(pr.get("h", 2.7)))
+			"zebra":
+				_zebra(b, at, y, d, float(pr.get("w", 3.0)), float(pr.get("len", 8.0)))
+			"ring30":
+				_ring30(b, at, d)
+			"zone30_sign":
+				_zone30_sign(b, at, y, d)
 			"kerb_paint":
 				_kerb_paint(b, at, float(pr.get("len", 10.0)), KERB_PAINT.find(String(pr.get("pat", "red_white"))))
 			"manhole":
@@ -351,6 +366,7 @@ func _paving(sf: Dictionary) -> void:
 	var col: Color = how[0]
 	col.g = fposmod(atan2(lay.y, lay.x), PI) / PI
 	var lift := float(sf.get("lift", 0.14)) + 0.006
+	var ramps: Array = sf.get("ramps", [])
 	var buf = g.new_buf()
 	var box := Rect2(ring[0], Vector2.ZERO)
 	for p in ring:
@@ -363,7 +379,11 @@ func _paving(sf: Dictionary) -> void:
 			for piece: PackedVector2Array in Geometry2D.intersect_polygons(ring, sq):
 				var idx := Geometry2D.triangulate_polygon(piece)
 				for i in range(0, idx.size(), 3):
-					buf.tri(_up(piece[idx[i]], lift), _up(piece[idx[i + 1]], lift), _up(piece[idx[i + 2]], lift), Vector3.UP, col)
+					var v0: Vector2 = piece[idx[i]]
+					var v1: Vector2 = piece[idx[i + 1]]
+					var v2: Vector2 = piece[idx[i + 2]]
+					buf.tri(_up(v0, _ramped(v0, lift, ramps)), _up(v1, _ramped(v1, lift, ramps)),
+						_up(v2, _ramped(v2, lift, ramps)), Vector3.UP, col)
 			z += 1.0
 		x += 1.0
 	for i in range(ring.size()):
@@ -373,8 +393,10 @@ func _paving(sf: Dictionary) -> void:
 		if Geometry2D.is_point_in_polygon((a + e) * 0.5 + out * 0.05, ring):
 			out = -out
 		var n := Vector3(out.x, 0, out.y)
-		buf.tri(_up(a, lift), _up(e, lift), _up(e, -0.1), n, col)
-		buf.tri(_up(a, lift), _up(e, -0.1), _up(a, -0.1), n, col)
+		var la := _ramped(a, lift, ramps)
+		var le := _ramped(e, lift, ramps)
+		buf.tri(_up(a, la), _up(e, le), _up(e, -0.1), n, col)
+		buf.tri(_up(a, la), _up(e, -0.1), _up(a, -0.1), n, col)
 	g._retint_tone_mat()   # (a tone new to the city joins its table)
 	var arr := []
 	arr.resize(Mesh.ARRAY_MAX)
@@ -389,6 +411,16 @@ func _paving(sf: Dictionary) -> void:
 	mi.visibility_range_end = 400.0
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	g.world.add_child(mi)
+
+## the paving's height at p: `lift`, less where a ramp is still climbing to it
+func _ramped(p: Vector2, lift: float, ramps: Array) -> float:
+	var f := 1.0
+	for r: Array in ramps:
+		var a := _v2(r[0])
+		var e := _v2(r[1])
+		var L := a.distance_to(e)
+		f = minf(f, clampf((p - a).dot((e - a) / L) / L, 0.0, 1.0))
+	return lift * f
 
 ## (the game's own lift: on a hilly map everything paved stands 7 cm higher, its pavements too)
 func _up(p: Vector2, lift: float) -> Vector3:
@@ -428,6 +460,78 @@ func _kerb_paint(b, at: Vector2, L: float, pat: int) -> void:
 		var gy: float = g._h(c) + lift
 		g._furn._box(b, Vector3(c.x, gy + kh * 0.5 + 0.004, c.y), Vector3(L / steps + 0.002, kh + 0.016, kw + 0.02),
 			paint if i % 2 == 0 else white, bs)
+
+## A zebra laid on raised paving (a raised crossing: the stripes are on the table, not the
+## asphalt): stripes half a metre wide with half-metre gaps, `w` long along the road (`d`),
+## across it kerb to kerb (`len`), a little worn
+func _zebra(b, at: Vector2, y: float, d: Vector2, w: float, L: float) -> void:
+	var o := Vector2(-d.y, d.x)
+	var paint: Color = g._tone["mark"].lerp(g._tone["kerb"], 0.15)
+	var bs := Basis(Vector3.UP, atan2(-d.y, d.x))
+	var x := -L * 0.5 + 0.25
+	while x < L * 0.5 - 0.2:
+		var c := at + o * (x + 0.25)
+		g._furn._box(b, Vector3(c.x, y + 0.004, c.y), Vector3(w, 0.008, 0.5), paint, bs)
+		x += 1.0
+
+## A segment of paint or of a sign's lettering from A to B, `wide` across, `thick` through:
+## a flat box whose length runs A to B and whose thickness runs along `nrm`
+func _stroke(b, A: Vector3, B: Vector3, nrm: Vector3, wide: float, thick: float, col: Color) -> void:
+	var xa := (B - A).normalized()
+	var za := xa.cross(nrm).normalized()
+	g._furn._box(b, (A + B) * 0.5, Vector3(A.distance_to(B) + wide * 0.5, thick, wide), col, Basis(xa, nrm, za))
+
+## the digits 3 and 0 as seven-segment strokes, `h` high, `right` and `up` the two ways
+## across the surface they are on (up: the way they read)
+func _thirty(b, c: Vector3, right: Vector3, up: Vector3, h: float, nrm: Vector3, wide: float, col: Color) -> void:
+	var w := h * 0.5
+	for k in range(2):
+		var o := c + right * ((float(k) - 0.5) * w * 1.5)
+		var P := func(x: float, yy: float) -> Vector3: return o + right * ((x - 0.5) * w) + up * ((yy - 0.5) * h)
+		var segs: Array = [[Vector2(0, 1), Vector2(1, 1)], [Vector2(1, 1), Vector2(1, 0.5)], [Vector2(1, 0.5), Vector2(1, 0)],
+			[Vector2(0, 0), Vector2(1, 0)]]
+		if k == 0:
+			segs.append([Vector2(0.2, 0.5), Vector2(1, 0.5)])   # 3: the middle bar
+		else:
+			segs.append_array([[Vector2(0, 1), Vector2(0, 0.5)], [Vector2(0, 0.5), Vector2(0, 0)]])   # 0: the left side
+		for sg: Array in segs:
+			_stroke(b, P.call(sg[0].x, sg[0].y), P.call(sg[1].x, sg[1].y), nrm, wide, 0.006, col)
+
+## a ring of strokes, radius r, on the surface with normal `nrm`
+func _round(b, c: Vector3, right: Vector3, up: Vector3, r: float, nrm: Vector3, wide: float, col: Color) -> void:
+	var n := 28
+	for i in range(n):
+		var a0 := TAU * float(i) / n
+		var a1 := TAU * float(i + 1) / n
+		_stroke(b, c + (right * cos(a0) + up * sin(a0)) * r, c + (right * cos(a1) + up * sin(a1)) * r, nrm, wide, 0.006, col)
+
+## "30" in a red ring painted on the road, read by a driver going along `d` (a 30 zone's
+## entrance), a little faded
+func _ring30(b, at: Vector2, d: Vector2) -> void:
+	var kc: Dictionary = (g.get_script() as GDScript).get_script_constant_map()
+	var c: Vector3 = g._g3(at, float(kc["Y_MARK"]) + 0.004)
+	var up := Vector3(d.x, 0, d.y)
+	var right := Vector3(-d.y, 0, d.x) * -1.0   # (the driver's right, looking along d)
+	var red: Color = (g._kerb_mat.get_shader_parameter("red") if g._kerb_mat != null else g._tone["signred"])
+	_round(b, c, right, up, 1.25, Vector3.UP, 0.18, red.lerp(g._tone["asphalt"], 0.25))
+	_thirty(b, c, right, up, 1.2, Vector3.UP, 0.16, g._tone["mark"].lerp(g._tone["asphalt"], 0.2))
+
+## The sign at a 30 zone's entrance: a white board on a post, a red-ringed 30 on it (the
+## word for zone above it left out), facing `d`
+func _zone30_sign(b, at: Vector2, y: float, d: Vector2) -> void:
+	var p := Vector3(at.x, y, at.y)
+	var grey: Color = g._tone["pole"]
+	g._furn._tube(b, p, p + Vector3.UP * 2.6, 0.035, 0.035, grey, 6)
+	var bs := Basis(Vector3.UP, atan2(-d.y, d.x) + PI * 0.5)
+	var face := p + Vector3.UP * 2.15 + Vector3(d.x, 0, d.y) * 0.05
+	g._furn._box(b, face, Vector3(0.6, 0.85, 0.03), g._tone["mark"], bs)
+	var nrm := Vector3(d.x, 0, d.y)
+	var right := Vector3(-d.y, 0, d.x)
+	var c := face + nrm * 0.02 - Vector3.UP * 0.1
+	var red: Color = (g._kerb_mat.get_shader_parameter("red") if g._kerb_mat != null else g._tone["signred"])
+	_round(b, c, right, Vector3.UP, 0.22, nrm, 0.05, red)
+	_thirty(b, c, right, Vector3.UP, 0.17, nrm, 0.03, g._tone["tyre"])
+	g._add_post(at, 0.1)
 
 ## a black steel bollard with a yellow band near the top; now and then one worn grey
 func _bollard(b, at: Vector2, y: float, k: int) -> void:

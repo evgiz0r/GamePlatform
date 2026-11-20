@@ -42,12 +42,14 @@ lm = [
     (None, tuple(P(60.5, -2.0))), (None, tuple(P(63, -4.4))),  # onto the little street's pavement, the road on the left
     (80.0, tuple(P(80.5, -4.4))), (81.5, tuple(P(82.0, -4.2))),  # the corner, at the kerb (between
     (82.4, tuple(P(82.0, -4.2))),                                 # its bollards); a look each way first
-    (90.0, tuple(P(90.4, -4.2))), (90.3, tuple(P(90.4, -4.2))),   # over Sheinkin, a beat on the kerb
-                                                                  # (no swing on past it into the bollard)
-    (None, tuple(P(90.5, -6.0))), (93.0, tuple(P(94.0, -5.95))), (96.0, tuple(P(97.5, -5.95))),   # into Ha-Meri:
-                                                                    # round the corner's first bollard, then behind
-                                                                    # the row of them (a metre in from the kerb, and
-                                                                    # more along its edge), short of the garden wall
+    (87.0, tuple(P(90.4, -4.2))),                                 # over Sheinkin (the film's asphalt
+                                                                  # ends at 86.5 s: the raised crossing)
+    (87.9, tuple(P(91.7, -3.3))),                                 # onto Ha-Meri's raised crossing,
+    (91.5, tuple(P(91.6, 3.6))), (92.4, tuple(P(91.6, 5.0))),     # over it looking down the street, up
+    (93.8, tuple(P(93.6, 6.0))), (96.0, tuple(P(96.4, 6.0))),     # its far kerb between the corner's sign
+                                                                  # pole and the first bollard, then a few
+                                                                  # steps in, behind the hydrant and the
+                                                                  # trees in their pits (POSTS_NEAR)
 ]
 # fill the untimed points by distance between the timed ones
 pts = [list(p) for _, p in lm]
@@ -81,7 +83,9 @@ d = {
         # pace over them, one car stopped in one lane while the next drove on in the other),
         # not the 9 m the baker guesses for a two-lane tertiary
         "set": [{"k": "tertiary", "name": "כצנלסון", "near": P(-10.3, -17.4), "w": 7.0},
-                {"k": "tertiary", "name": "כצנלסון", "near": P(-0.4, -17.3), "w": 7.0}],
+                {"k": "tertiary", "name": "כצנלסון", "near": P(-0.4, -17.3), "w": 7.0},
+                # Ha-Meri's kerbs are painted blue and white all along (paid parking)
+                {"k": "residential", "name": "המרי", "near": P(110, 0), "kerb": "blue_white"}],
         "add": [
             {"pts": [list(S0), P(SPLIT)], "k": "footway", "w": 2.6, "name": "המרי", "name_en": "HaMeri"},
             {"pts": [P(SPLIT), list(S1)], "k": "residential", "w": 5.5, "name": "המרי", "name_en": "HaMeri"},
@@ -103,6 +107,11 @@ d = {
         # a paver on, level with the forecourt, fence to fence
         {"k": "pavers_grey", "lift": 0.14, "lay": [round(left[0], 4), round(left[1], 4)],
          "p": [P(17.1, -1.35), P(57.8, -1.35), P(57.8, 1.35), P(17.1, 1.35)]},
+        # Ha-Meri's mouth past Sheinkin (film 86.5-92.5 s): a raised crossing, the road paved in
+        # charcoal herringbone up to the pavements' height, a metre's ramp either end
+        {"k": "pavers_dark", "lift": 0.14,
+         "p": [P(89.6, -4.0), P(96.0, -4.0), P(96.0, 4.0), P(89.6, 4.0)],
+         "ramps": [[P(89.6, 0), P(90.6, 0)], [P(96.0, 0), P(95.0, 0)]]},
     ],
     "lines": [
         {"kind": "stone_wall", "pts": [P(17, -1.35), P(38, -1.35)], "h": 0.8},
@@ -150,6 +159,11 @@ d = {
         *[{"kind": "hoop_railing", "at": P(sk, -17.35 + o), "dir": SE} for sk in (3.45, -14.15) for o in (-2.4, 2.4)],
         *[{"kind": "kerb_paint", "at": P(sk, -17.35 + o), "len": 10.0, "pat": "red_white"}
           for sk in (3.3, -14.0) for o in (-6.6, 6.6)],
+        # Ha-Meri's entrance: the zebra on its raised crossing, a 30 painted in a red ring in
+        # the lane in, and the zone 30 sign on the drivers' right as they turn in
+        {"kind": "zebra", "at": P(92.4, 0), "dir": [round(u[0], 4), round(u[1], 4)], "w": 3.0, "len": 8.0},
+        {"kind": "ring30", "at": P(99.5, 0.0), "dir": [round(u[0], 4), round(u[1], 4)]},
+        {"kind": "zone30_sign", "at": P(95.6, -4.7), "dir": [round(-u[0], 4), round(-u[1], 4)]},
         {"kind": "scooter", "at": P(15.2, -5.2), "dir": [round(-u[0], 4), round(-u[1], 4)]},
     ],
     # the trees over the passage's mouth: in the planted bed, and in the yard behind the fence
@@ -163,12 +177,14 @@ d = {
             "looks": [[1.4, 3.9, -70], [3.9, 4.7, 30],          # the near half's traffic comes from the left
                       [8.9, 12.6, 70], [12.6, 13.4, 20],        # the far half's from the right
                       [79.3, 81.0, 60], [81.0, 82.3, -45],      # Sheinkin's from the right; and the other way
-                      [85.8, 87.6, 45]],
+                      [84.4, 86.0, 40],                         # half way over, along Sheinkin again
+                      [87.6, 88.6, -55], [89.0, 91.2, 55]],     # back at the corner; then down Ha-Meri
             # on a crossing, or waiting at its kerb about to go: cars stop for it
             # [from, to, kerb, kerb]
             "zebras": [[4.0, 8.9, P(-13.8, -17.4), P(-6.8, -17.4)],
                        [9.2, 17.0, P(-3.9, -17.35), P(3.1, -17.3)],
-                       [81.0, 90.0, P(82.4, -4.2), P(90.4, -4.2)]],
+                       [81.0, 87.0, P(82.4, -4.2), P(90.4, -4.2)],
+                       [87.2, 92.4, P(92.3, -4.0), P(92.3, 4.0)]],
             # cars sent down a street at a second, to meet the walk there: [second, at, heading]
             # (both halves of Katzenelson are one-way: the near one towards the north-west,
             # the far one towards the south-east; Sheinkin towards the south-east too)
