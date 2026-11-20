@@ -357,11 +357,19 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   stone walls (another session's), 6 the details' slabs, 7 pavers in rows; each tested on
   both sides of its number (see the godot-3d skill: a one-sided test once drew this
   passage as wall stones).
-- **Next passes**: the forecourt's slabs may still be too pale in the sun; the shops'
-  glass is one even glow (signs with lettering, the confectionery's yellow panels inside);
-  white bollards round Sheinkin's corner and its second transformer (the kerb pass put
-  bollards at corners: compare with the film); the little street's parked cars and the
-  motorbikes along Ha-Meri. People last.
+- **Pass 6, the little street and the shops' faces**, done: three cars parked along the
+  little street's far side (`parked_car`: the game's own cars; its parking rule turns that
+  kerb down, the corner block stands too near), a tall hedge on the back of the walk's
+  pavement there, a second twin-pole transformer at Sheinkin's corner; the confectionery's
+  sign lettered (a `Label3D` in the game's font, which falls back to Noto Sans Hebrew) and
+  its yellow boards in the window -- only the shop the film shows is named; shop windows
+  dark reflecting glass by day; the slabs warmer (sunlit, the film's are warm beige).
+- **Next passes**: the light itself (the film's afternoon is hazy and warm; the game's shade
+  is dark blue: another session is on the town's light, leave it to them); Sheinkin's
+  corner bollards are white in the film, black-and-yellow in the game (the kerb pass's,
+  city-wide); motorbikes by the blue parking booth at Ha-Meri's corner (no room beside the
+  kerb pass's bollards, hydrant and wall without moving them); the gateposts and graffiti
+  on the little street. People last.
 
 ## Off the ground: bridges, tunnels, cuttings, embankments (`decks.gd`)
 
