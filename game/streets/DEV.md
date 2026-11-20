@@ -58,6 +58,32 @@ The ones most often touched, and the functions in them:
   -- no draws of their own. Lit shops' light on the pavement: `_shop_lights`. The night's
   colours: the night branch of `_retint_city` (a little of the palette's player colour, not
   half of it). Shop glass at night 0.85 (2.0 clipped to white).
+- **what breaks** -- knockable things (bins, recycling, bollards) are placed by
+  `furniture._place_knock` into multimeshes of their own (`_knock_add`; `_knockable`: post
+  index -> [multimesh, copy, transform, mesh, "tumble"/"bend", radius]), not the batches, so
+  one copy can be hidden or bent: +1-3 draws a square near you. `_collide` hands a
+  knockable post to `_knock` (the car let through, slowed a little or, a bollard, a lot);
+  "tumble" hides the copy and throws a RigidBody3D (its mesh, a box shape, a 40 m slab to
+  land on -- the city has no physics of its own); `_knock_tick` puts it back after
+  KNOCK_BACK_S once you are 70 m off. `_light_thing`: the assist does not brake for bins.
+  `_sparks_at` (one CPUParticles3D, reused), `_glass_at` (a mesh of shards, 6 kept, 90 s),
+  `_dent` (CAR_SHADER's `dents[4]`, the player's material only). `tests/crash_things.gd`
+  (assist off, else it brakes first; a person waiting by a bollard stops the car short).
+- **load, part by part** -- `_part_time("stage: part", t0)` adds to `_stage_ms` while
+  loading; `tests/load_stages.gd` lists the parts. Measured headless (what the work costs,
+  without the frames drawn while loading): 3.9 s of stages in Givatayim; kerbs 1.7 s, of it
+  the front gardens 0.7-0.8 (board fences 0.17, walls 0.14, hedges 0.09, gates 0.15, the
+  plot loop the rest) and corners 0.28; the city file 0.55; buildings 0.16 (contact
+  shadows 0.08); trees 0.15 (their shadows on the ground 0.05); furniture 0.14; far
+  shadows' work 0.17. Under xvfb the "warm up" is 5-7 s, but that is four frames of the
+  software renderer: stripping the grass, the contact-shadow layer, the far shade and the
+  wet code out of the shaders did not shorten it (5.2, 5.5, 7.1 s: noise).
+- **graffiti** -- TONE_SHADER's `graffiti()`: on a face of a tone whose TONE_FX z is 1 with
+  kind 0 ("gardenwall", "pole") or a kit's face with vertex alpha 0.3-0.7 (the cabinet's
+  body); height above the ground from the height grid (`_set_hmap`, shared with the grass;
+  the tone material is made before the grid is read, so `_retint_tone_mat` hands it over).
+- **zone and parking signs** -- `furniture.street_signs`: meshes with 7-segment digits
+  (`_digit`), not Label3D (a draw each). **Passages** -- `_build_passages` (its own stage).
 - **front gardens' walls and gates** -- `_garden_fronts` lays each plot's wall itself
   (`_garden_wall`: rubble in the `wall` buffer, or render + coping in fronts' "plaster" /
   "coping"; its kind and height from the plot's own hash), not the kerb loop any more (that

@@ -1135,6 +1135,8 @@ func start(_config: Dictionary) -> void:
 		_set_night(true)
 	elif dev_cam.size() >= 6 and dev_cam[5] == "2":
 		await _set_evening(true)
+	for k: String in _part_us:   # (the parts of the stages, for tests/load_stages.gd)
+		_stage_ms[k] = int(_part_us[k]) / 1000
 	_build_rest()   # the rest of the city, while you drive
 
 var _loading: Label
@@ -1728,6 +1730,14 @@ var _city_data: Dictionary = {}      ## the parsed file, kept only until the mes
 
 var _stage_ms := {}
 
+## parts of the stages, timed the same way (microseconds, while loading only): "stage: part"
+## in _stage_ms once the squares round the start are built (tests/load_stages.gd lists them)
+var _part_us := {}
+
+func _part_time(name: String, t0_us: int) -> void:
+	if not _bg_build:
+		_part_us[name] = int(_part_us.get(name, 0)) + Time.get_ticks_usec() - t0_us
+
 func _stage(name: String, t0: int) -> int:
 	var t := Time.get_ticks_msec()
 	if not _bg_build:   # (in the background the clock runs on through the frames between)
@@ -1763,7 +1773,9 @@ func _build_world() -> bool:
 	_build_setup(_stage("world", t0))
 	var tf := Time.get_ticks_msec()
 	await _build_far_shadows()
+	var tgr := Time.get_ticks_usec()
 	_build_grass()
+	_part_time("far shadows: grass blades", tgr)
 	_stage("far shadows", tf)
 	# the squares round the start before the car is shown; the rest while it drives
 	# (STREETS_BUILD_ALL=1: all of it first -- the scene tests look all over the city)
@@ -2074,6 +2086,8 @@ func _build_tile(t: Vector2i) -> void:
 	tk = _stage("trees", tk)
 	await _build_kerbs()   # (after the trees: the leaves on the pavement are under them)
 	tk = _stage("kerbs", tk)
+	await _build_passages()
+	tk = _stage("passages", tk)
 	await _furn.wires()
 	tk = _stage("wires", tk)
 	await _build_lamps()
@@ -2094,7 +2108,9 @@ func _build_tile(t: Vector2i) -> void:
 	await _build_pois()
 	await _build_stops()
 	tk = _stage("places", tk)
+	var tfu := Time.get_ticks_usec()
 	await _furn.build()
+	_part_time("furniture: all (furniture.gd)", tfu)
 	tk = _stage("furniture", tk)
 	if _over():
 		await _pause()
@@ -2943,6 +2959,84 @@ func _shop_pieces(run: PackedVector2Array, hw: float, sgn: float) -> PackedByteA
 				out[i] = 1
 	return out
 
+## ---- passages between the blocks ----------------------------------------------------------
+## A footway between two blocks is, as a walk finds it, a narrow paved way between the yards'
+## walls: rendered and capped, or rough stone, 1-1.5 m high, now and then boards on top of
+## one side, now and then a row of bike hoops along one wall near an end. Its walls stop a
+## few metres short of the streets at its ends and wherever a building stands at its edge.
+## Laid like the garden walls (_garden_wall, CBuf.clip), a passage at a time.
+var passages: Array = []   # [middle, along] of each walled one (for tests; once per square it crosses)
+
+func _build_passages() -> void:
+	if String(_place.get("look", "")) != "med":
+		return
+	var fronts := {"plaster": _clip_buf(GROUND_CELL), "coping": _clip_buf(GROUND_CELL), "planks": _clip_buf(GROUND_CELL)}
+	var wall := _clip_buf(GROUND_CELL)
+	var hoops: Array = []
+	var near := _tile_rect(_tile).grow(4.0)
+	for ri: int in _tile_roads.get(_tile, []):
+		var r: Dictionary = _roads[ri]
+		if r["drive"] or r["k"] != "footway" or not _paved_walk(r):
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		var cum := PackedFloat32Array([0.0])
+		for i in range(1, pts.size()):
+			cum.append(cum[i - 1] + pts[i - 1].distance_to(pts[i]))
+		var total := cum[cum.size() - 1]
+		if total < 12.0 or total > 250.0 or not near.intersects(_bld_box_of(pts).grow(3.0)):
+			continue
+		# between buildings: one within 12 m on each side, half way along
+		var mid := _along(pts, cum, total * 0.5)
+		var md := (_along(pts, cum, minf(total * 0.5 + 1.0, total)) - mid).normalized()
+		var sides := [false, false]
+		for bi: int in _near(_bld_hash, mid, 12.0, BLD_CELL):
+			var c := (_bld_box[bi] as Rect2).get_center()
+			sides[0 if Vector2(-md.y, md.x).dot(c - mid) > 0.0 else 1] = true
+		if not (sides[0] and sides[1]):
+			continue
+		if _over():
+			await _pause()
+		var hsh := posmod(_hash_i(pts[0] + pts[pts.size() - 1]), 1000003)
+		var hw := maxf(float(r["w"]) * 0.5, 0.9)
+		passages.append([mid, md])
+		for sgn: float in [-1.0, 1.0]:
+			var lines := {"in": _offset_line(pts, (hw + 0.05) * sgn), "out": _offset_line(pts, (hw + 0.3) * sgn),
+				"c_in": _offset_line(pts, (hw + 0.02) * sgn), "c_out": _offset_line(pts, (hw + 0.33) * sgn)}
+			var walled := PackedByteArray()
+			walled.resize(pts.size())
+			for i in range(pts.size() - 1):
+				var q: Vector2 = ((lines["in"] as PackedVector2Array)[i] + (lines["in"] as PackedVector2Array)[i + 1]) * 0.5
+				var q2: Vector2 = ((lines["out"] as PackedVector2Array)[i] + (lines["out"] as PackedVector2Array)[i + 1]) * 0.5
+				walled[i] = 1 if (_off_road(q, 1.0) and _push_out(q2, 0.3, false) == Vector2.ZERO) else 0
+			var plaster := (hsh + int(sgn > 0.0)) % 10 < 6
+			var wh := (1.05 + 0.45 * float((hsh / 10) % 10) / 9.0) if plaster else 0.8
+			_garden_wall(fronts, wall, lines, cum, walled, 3.0, total - 3.0, wh, plaster, sgn)
+			if sgn > 0.0 and (hsh / 100) % 4 == 0:   # boards on top of one side
+				var on: PackedVector2Array = _offset_line(pts, (hw + 0.175) * sgn)
+				for i in range(pts.size() - 1):
+					if walled[i] and cum[i] > 3.0 and cum[i + 1] < total - 3.0:
+						_plank_fence(fronts["planks"], on[i], on[i + 1], wh + (0.06 if plaster else 0.0), 0.9)
+			if sgn < 0.0 and (hsh / 1000) % 10 < 3:   # a row of bike hoops near one end
+				var s0 := 4.0 if (hsh / 10000) % 2 == 0 else total - 9.0
+				for k in range(6):
+					var s := s0 + 0.8 * k
+					var j := _seg_at(cum, s)
+					if s < 3.0 or s > total - 3.0 or not walled[j]:
+						continue
+					var a := _along(pts, cum, s)
+					var d := (_along(pts, cum, minf(s + 0.5, total)) - a).normalized()
+					var out := Vector2(-d.y, d.x) * sgn   # toward the wall
+					var hp := a + out * (hw - 0.4)
+					if _mine(hp):
+						hoops.append(Transform3D(Basis(Vector3.UP, atan2(-out.y, out.x)), Vector3(hp.x, _h(hp), hp.y)))
+						_add_post(hp, 0.3)
+	_add_mesh(wall, _surface("stonewall"), false, DETAIL_RANGE)
+	_add_mesh(fronts["plaster"], _surface("gardenwall"), false, DETAIL_RANGE)
+	_add_mesh(fronts["coping"], _surface("coping"), false, DETAIL_RANGE)
+	_add_mesh(fronts["planks"], _vc_mat(), true, DETAIL_RANGE * 0.8)
+	if not hoops.is_empty():
+		await _furn._place(_furn._rack_kit(), hoops, _furn.NEAR_SEEN, "passage_hoops")
+
 ## the paint along the middle of a street's kerb (0 plain, 1 red-white, 2 blue-white)
 func _kerb_paint(r: Dictionary, hsh: int) -> int:
 	if r.has("kerb_mid"):
@@ -3025,7 +3119,8 @@ func _build_kerbs() -> void:
 	var garden := _clip_buf(GROUND_CELL)
 	var fronts := {"hedge": _clip_buf(GROUND_CELL), "bars": _clip_buf(GROUND_CELL), "bar_posts": _clip_buf(GROUND_CELL),
 		"chain": _clip_buf(GROUND_CELL), "chain_posts": _clip_buf(GROUND_CELL), "planks": _clip_buf(GROUND_CELL), "flowers": [],
-		"plaster": _clip_buf(GROUND_CELL), "coping": _clip_buf(GROUND_CELL), "path": _clip_buf(GROUND_CELL), "spill": []}
+		"plaster": _clip_buf(GROUND_CELL), "coping": _clip_buf(GROUND_CELL), "path": _clip_buf(GROUND_CELL), "spill": [],
+		"dropped": []}
 	var bushes: Array = []
 	var med := String(_place.get("look", "")) == "med"
 	_laid = {}
@@ -3138,7 +3233,9 @@ func _build_kerbs() -> void:
 				# northern lawns run open to the pavement)
 				var gates: Array = []
 				if med:
+					var tgf := Time.get_ticks_usec()
 					gates = await _garden_fronts(run, hw, sgn, _hash_i(run[0]) + int(sgn) * 104729, fronts, walled, wall)
+					_part_time("kerbs: front gardens (walls, gates, paths, fences, hedges)", tgf)
 				var step := 7.0
 				var s := 3.0
 				var run_at := 0.0
@@ -3160,7 +3257,9 @@ func _build_kerbs() -> void:
 	if med:
 		await _build_medians(kerb, pave)
 	var corners := _clip_buf(GROUND_CELL)
+	var tkc := Time.get_ticks_usec()
 	await _kerb_corners(kerb, pave, corners, Color((0.25 if med else 0.0) + 0.05, 0, 0))
+	_part_time("kerbs: corners", tkc)
 	if _over():
 		await _pause()
 	_add_mesh(corners, _surface("asphalt"), false, VIEW_RANGE)
@@ -3206,6 +3305,11 @@ func _build_kerbs() -> void:
 		_chunked(_tree_meshes["crown"], leaves, DETAIL_RANGE, green, null, false)
 		_chunked(_tree_meshes["crown"], blooms, DETAIL_RANGE, pink, null, false)
 		_tally("bougainvillea", leaves.size())
+	if not (fronts["dropped"] as Array).is_empty():
+		var dcols: Array = []
+		for t: Transform3D in fronts["dropped"]:
+			dcols.append([_tone["signblue"], _tone["mark"], _tone["cartrim"]][posmod(_hash_i(Vector2(t.origin.x, t.origin.z)), 3)])
+		await _furn._place(_furn._bike_kit(), fronts["dropped"], _furn.NEAR_SEEN, "bikes_dropped", false, dcols)
 	if not (fronts["spill"] as Array).is_empty():
 		# greenery over the garden walls, out over the pavement
 		var clumps: Array = []
@@ -3727,6 +3831,17 @@ func _garden_fronts(run: PackedVector2Array, hw: float, sgn: float, key: int, fr
 					* Basis.from_scale(Vector3(1.5, 1.0, 1.2) * sc), _g3(q + to_road * 0.22, cy)))
 				if cy < 1.5:
 					_add_post(q + to_road * 0.45, 0.22)   # (walked round, not through)
+		# a bike dropped on the pavement by the wall, one plot in thirty
+		if (style < 36 or style >= 78) and (hs / 10000) % 30 == 7:
+			var sm := lerpf(fs0, fe0, 0.5)
+			var q := _along(lines["in"], cum, sm)
+			var to_road := (_along(run, cum, sm) - q).normalized()
+			var c := q + to_road * 0.45
+			var d := (_along(lines["in"], cum, minf(sm + 1.0, total)) - q).normalized()
+			if _mine(c) and _clear_of_posts(c, 1.0):
+				(fronts["dropped"] as Array).append(Transform3D(Basis(Vector3.UP, atan2(-d.y, d.x))
+					* Basis(Vector3.RIGHT, PI * 0.5 - 0.12), _g3(c, KERB_H + 0.05)))
+				_add_post(c, 0.4)
 		if not gate.is_empty():
 			await _front_gate(gate, run, cum, hw, fronts)
 		s = e
@@ -4614,10 +4729,14 @@ func _build_buildings() -> void:
 		_bld_kind[bi] = 1 if pilotis else (2 if gabled else 0)
 		if raised == 0.0 and _ao != null:
 			if pilotis:   # the parking under it (round the lobby, 2.2 m in) in the shade, and a little out past its edge
+				var tao := Time.get_ticks_usec()
 				_ao_footprint(ring, sqrt(0.55), -2.4, Color(1.0, 0.55, 0.0))
 				_ao_footprint(ring, sqrt(0.55), 1.2)
+				_part_time("buildings: contact shadows", tao)
 			else:
+				var tao2 := Time.get_ticks_usec()
 				_ao_footprint(ring)
+				_part_time("buildings: contact shadows", tao2)
 		if pilotis:
 			_lift_on_columns(ring, sgn, base, g_lo + 3.0, roofs, cores, look)
 		elif raised >= 2.0:
@@ -5528,9 +5647,11 @@ func _build_trees() -> void:
 		put.call(tpart, Transform3D(b * Basis.from_scale(Vector3(tw.x, tw.y, tw.x) * sc), base + b * Vector3(0, trunk_h * 0.5 * tw.y * sc, 0)), bark)
 		put.call(spec[2], Transform3D(b * Basis.from_scale(cw * jitter * sc), base + b * Vector3(0, float(spec[4]) * sc, 0)),
 			Color(tint.r * g, tint.g * g, tint.b * g, (float(cell) + 0.5) / 4.0))
+		var tat := Time.get_ticks_usec()
 		_ao_tree(Vector2(sp.x, sp.y), cw.x * jitter.x * sc * (0.55 if tpart == "ptrunk" else 0.85), float(spec[4]) * sc)
 		if not forest.has(si) and not mtn.has(si):   # the trunk's foot (the street's trees: not the parks', open land's or mountains')
 			_ao_disc(Vector2(sp.x, sp.y), (0.45 if tpart == "ptrunk" else 0.6) * sc, 0.7)
+		_part_time("trees: shadows on the ground (far, trunk feet)", tat)
 	# a square that is mostly mountain woods: drawn from further off, as they are seen across
 	# the valley
 	var reach := TREE_RANGE * 1.7 if mtn.size() * 2 > spots.size() else TREE_RANGE
@@ -7229,6 +7350,7 @@ uniform vec4 skin : source_color;      // the people inside: skin, hair, and two
 uniform vec4 hair : source_color;
 uniform vec4 shirt_a : source_color;
 uniform vec4 shirt_b : source_color;
+uniform vec4 dents[4];                 // the player's car: dents (x, y, z in its frame, depth 0..1; w 0: none)
 varying vec4 custom;
 varying vec3 lpos;                     // the car's own frame: x across, y up from the road, z forward
 varying vec3 lnrm;
@@ -7238,6 +7360,12 @@ void vertex() {
 	custom = INSTANCE_CUSTOM;
 	lpos = VERTEX;
 	lnrm = NORMAL;
+	for (int i = 0; i < 4; i++) {   // pressed in toward the car's middle round each dent
+		if (dents[i].w > 0.0) {
+			float k = dents[i].w * (1.0 - smoothstep(0.0, 0.55, distance(VERTEX, dents[i].xyz)));
+			VERTEX -= normalize(vec3(dents[i].x, 0.0, dents[i].z * 0.35) + vec3(0.0001)) * k * 0.2;
+		}
+	}
 	lcam = transpose(mat3(MODEL_MATRIX)) * (CAMERA_POSITION_WORLD - MODEL_MATRIX[3].xyz);
 	who = fract(sin(dot(MODEL_MATRIX[3].xz, vec2(12.9898, 78.233))) * 43758.5453);
 }
@@ -8049,6 +8177,14 @@ uniform float pave_m = 2.0;            // metres one pave_tex covers, for the pa
 uniform vec3 wear_col = vec3(0.3);     // what worn road paint shows through: the asphalt
 varying vec3 wpos;
 varying float wup;                     // how much the face looks up: the photos are laid from above
+varying vec3 wnrm;                     // the face's way out, in the world (for the tags along a wall)
+uniform vec4 tag_a : source_color;     // spray paint: four colours of the palette's
+uniform vec4 tag_b : source_color;
+uniform vec4 tag_c : source_color;
+uniform vec4 tag_d : source_color;     // (and black, the commonest)
+uniform sampler2D hmap : filter_nearest, repeat_disable;   // the ground's height grid (how high up a wall a pixel is)
+uniform vec4 h_info = vec4(0.0, 0.0, 1.0, 0.0);
+uniform ivec2 h_size = ivec2(1, 1);
 // a photo's colour over its average: 1 on average, so the tone underneath keeps its colour
 vec3 detail(vec3 t, vec3 mean, float k) { return mix(vec3(1.0), clamp(t / max(mean, vec3(0.002)), vec3(0.0), vec3(2.6)), k); }
 // a normal map's (x, y), reconstructed to a unit normal: the compressed maps keep only x and y
@@ -8069,7 +8205,8 @@ float noise(vec2 p) {
 }
 void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	wup = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz).y;
+	wnrm = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
+	wup = wnrm.y;
 }
 // A tired road crazes into small plates: where a noise says this stretch is old, the edges
 // of a Voronoi pattern 45 cm across, a hairline as wide as a pixel allows. 1 where there is
@@ -8125,6 +8262,79 @@ vec3 voro(vec2 q) {
 		}
 	}
 	return vec3((d2 - d1) * 0.5, id);
+}
+float ground_y(vec2 p) {   // as the game's _h (the grid's triangles), with _g3's lift
+	if (h_info.w < 0.5) { return 0.0; }
+	float fx = clamp((p.x - h_info.x) / h_info.z, 0.0, float(h_size.x) - 1.001);
+	float fz = clamp((p.y - h_info.y) / h_info.z, 0.0, float(h_size.y) - 1.001);
+	int i = int(fx);
+	int j = int(fz);
+	float ax = fx - float(i);
+	float az = fz - float(j);
+	float h00 = texelFetch(hmap, ivec2(i, j), 0).r;
+	float h10 = texelFetch(hmap, ivec2(i + 1, j), 0).r;
+	float h01 = texelFetch(hmap, ivec2(i, j + 1), 0).r;
+	float h11 = texelFetch(hmap, ivec2(i + 1, j + 1), 0).r;
+	if (ax + az <= 1.0) { return h00 + (h10 - h00) * ax + (h01 - h00) * az + 0.07; }
+	return h11 + (h01 - h11) * (1.0 - ax) + (h10 - h11) * (1.0 - az) + 0.07;
+}
+// Tags and stickers on a face that takes them (garden walls, poles, cabinets): in 2.6 m
+// stretches along it, one in three a tag between knee and head height -- a scribble of
+// wobbling strokes, or now and then bubble letters filled and outlined -- and in 0.45 m
+// cells round shoulder height a sticker or two, pale, with a line of print on it.
+vec3 graffiti(vec3 c, float dist) {
+	vec2 along_dir = normalize(vec2(-wnrm.z, wnrm.x) + vec2(1e-5, 0.0));
+	float u = dot(wpos.xz, along_dir);
+	float face = floor(dot(wpos.xz, normalize(wnrm.xz + vec2(1e-5, 0.0))) * 1.5);
+	float hgt = wpos.y - ground_y(wpos.xz);
+	float fade = 1.0 - smoothstep(25.0, 45.0, dist);
+	float cell = floor(u / 2.6);
+	vec2 key = vec2(cell, face);
+	if (hash(key + 3.1) < 0.33) {
+		float x0 = (cell + 0.05 + 0.35 * hash(key + 1.7)) * 2.6;
+		float w = 0.6 + 1.1 * hash(key + 2.3);
+		float y0 = 0.1 + 0.45 * hash(key + 4.9);   // (low: most garden walls are knee to waist high)
+		float hh = 0.2 + 0.25 * hash(key + 5.3);
+		vec2 q = vec2((u - x0) / w, (hgt - y0) / hh);
+		if (q.x > 0.0 && q.x < 1.0 && q.y > 0.0 && q.y < 1.0) {
+			float pick = hash(key + 9.7);
+			vec3 ink = pick < 0.45 ? tag_d.rgb : (pick < 0.65 ? tag_a.rgb : (pick < 0.82 ? tag_b.rgb : tag_c.rgb));
+			float env = smoothstep(0.0, 0.12, q.y) * smoothstep(1.0, 0.82, q.y) * smoothstep(0.0, 0.04, q.x) * smoothstep(1.0, 0.96, q.x);
+			vec2 pp = vec2(u, hgt);
+			if (hash(key + 6.1) < 0.7) {   // a scribble
+				float n = noise(pp * 5.0 + key * 7.0) * 0.6 + noise(pp * 13.0 + key) * 0.4;
+				float k = 2.5 + 3.5 * hash(key + 8.1);
+				float st = abs(fract(q.x * k * w + n * 1.4 + q.y * 0.6) - 0.5);
+				float line = 1.0 - smoothstep(0.07, 0.11, st);
+				c = mix(c, ink, line * env * fade * 0.92);
+			} else {   // bubble letters: rounded, fat, side by side, a dark outline, some with a hole
+				float nl = 3.0 + floor(hash(key + 8.3) * 3.0);
+				float li = floor(q.x * nl);
+				vec2 lp = vec2(fract(q.x * nl) - 0.5, q.y - 0.5) * vec2(w / nl, hh) / hh;
+				float wob = (noise(vec2(u, hgt) * 9.0 + key) - 0.5) * 0.08;
+				lp.y += sin(li * 1.7 + key.x) * 0.06;   // (letters bounce up and down a little)
+				float sd = length(max(abs(lp) - vec2(0.12 + 0.05 * hash(vec2(li, key.x)), 0.22), 0.0)) - 0.14 + wob;
+				float hole = hash(vec2(li, key.x + 4.0)) < 0.5 ? 1.0 - smoothstep(0.04, 0.06, length(lp - vec2(0.0, 0.06))) : 0.0;
+				float fill = (1.0 - smoothstep(-0.01, 0.0, sd)) * (1.0 - hole);
+				float edge = (1.0 - smoothstep(0.03, 0.04, sd)) * (1.0 - fill);
+				c = mix(c, ink, fill * fade * 0.95);
+				c = mix(c, tag_d.rgb, edge * fade * 0.9);
+			}
+		}
+	}
+	vec2 sc = floor(vec2(u, hgt) / 0.45);
+	if (hgt > 0.9 && hgt < 1.9 && hash(sc + face + 2.2) < 0.12) {
+		vec2 f = fract(vec2(u, hgt) / 0.45);
+		vec2 lo = vec2(0.15 + 0.2 * hash(sc + 4.4), 0.2 + 0.2 * hash(sc + 5.5));
+		vec2 hi = lo + vec2(0.25 + 0.2 * hash(sc + 6.6), 0.2 + 0.15 * hash(sc + 7.7));
+		if (f.x > lo.x && f.x < hi.x && f.y > lo.y && f.y < hi.y) {
+			float pick = hash(sc + 8.8);
+			vec3 paper = pick < 0.5 ? vec3(0.92, 0.9, 0.85) : (pick < 0.75 ? tag_b.rgb * 0.5 + 0.45 : tag_a.rgb * 0.4 + 0.5);
+			float row = step(0.45, fract((f.y - lo.y) / (hi.y - lo.y) * 3.0)) * step(0.2, (f.x - lo.x) / (hi.x - lo.x)) * step((f.x - lo.x) / (hi.x - lo.x), 0.8);
+			c = mix(c, mix(paper, tag_d.rgb, row * 0.6), fade);
+		}
+	}
+	return c;
 }
 void fragment() {
 	vec3 c = COLOR.rgb;
@@ -8265,6 +8475,12 @@ void fragment() {
 		t = normalize(t - NORMAL * dot(NORMAL, t));
 		NORMAL = normalize(t * bump.x + cross(NORMAL, t) * bump.y + NORMAL * bump.z);
 	}
+	if (abs(wup) < 0.35 && ((fx.w < 0.5 && fx.z > 0.5) || (COLOR.a > 0.3 && COLOR.a < 0.7))) {
+		float dist_t = length(VERTEX);
+		if (dist_t < 45.0) {
+			c = graffiti(c, dist_t);
+		}
+	}
 	float rough = 0.9;
 	float spec = 0.25;
 	vec3 emit = vec3(0.0);
@@ -8304,7 +8520,8 @@ const TONE_FX := {
 	"pavers_dark": [0.04, 0.04, 0.6, 3.0], "slabs": [0.05, 0.04, 1.0, 6.0], "pavers_grey": [0.04, 0.03, 0.2, 7.0],
 	"markyellow": [0.0, 0.04, 0.0, 2.0], "metal": [0.0, 0.0, 0.0, 0.0], "metalrim": [0.0, 0.0, 0.0, 0.0],
 	"stonewall": [0.06, 0.04, 0.0, 4.0],
-	"gardenwall": [0.14, 0.05, 0.0, 0.0], "coping": [0.06, 0.05, 0.0, 0.0],
+	"gardenwall": [0.14, 0.05, 1.0, 0.0], "coping": [0.06, 0.05, 0.0, 0.0],
+	"pole": [0.03, 0.02, 1.0, 0.0],      # (kind 0 with z 1: tags and stickers on it, TONE_SHADER's graffiti())
 }
 var _tone_list: Array = []           ## the table's tone names, in order
 var _tone_material: ShaderMaterial
@@ -8322,6 +8539,7 @@ func _tone_mat() -> ShaderMaterial:
 		var north := String(_place.get("look", "")) == "north"
 		var pave := "concrete_pavement" if north else "herringbone_pavers"
 		_tone_material.set_shader_parameter("asph_tex", _tex("asphalt_02_diff"))
+		_set_hmap(_tone_material)
 		_tone_material.set_shader_parameter("asph_nrm", _tex("asphalt_02_nor"))
 		_tone_material.set_shader_parameter("asph_big", _tex("aerial_asphalt_01_diff"))
 		_tone_material.set_shader_parameter("pave_tex", _tex(pave + "_diff"))
@@ -8363,9 +8581,31 @@ func _set_textured(on: bool) -> void:
 		if m != null:
 			m.set_shader_parameter("textured", 1.0 if on else 0.0)
 
+## the ground's height grid as a texture, for shaders that need a height above the ground
+## (the grass blades, the tags on walls): once, shared
+var _hmap_tex: ImageTexture
+
+func _set_hmap(m: ShaderMaterial) -> void:
+	if _hnx == 0:
+		return
+	if _hmap_tex == null:
+		_hmap_tex = ImageTexture.create_from_image(Image.create_from_data(_hnx, _hnz, false, Image.FORMAT_RF, _hgrid.to_byte_array()))
+	m.set_shader_parameter("hmap", _hmap_tex)
+	m.set_shader_parameter("h_info", Vector4(_hx0, _hz0, _hstep, 1.0))
+	m.set_shader_parameter("h_size", Vector2i(_hnx, _hnz))
+	m.set_meta("hmap", true)
+
 func _retint_tone_mat() -> void:
 	if _tone_material == null:
 		return
+	# (the material is made before the height grid is read: hand it the grid here too)
+	if not _tone_material.has_meta("hmap"):
+		_set_hmap(_tone_material)
+	# spray paint: black mostly, then the palette's own loud colours, a little toned down
+	_tone_material.set_shader_parameter("tag_a", _natural(Palette.col("hazard"), 0.8))
+	_tone_material.set_shader_parameter("tag_b", _natural(Palette.col("player"), 0.75))
+	_tone_material.set_shader_parameter("tag_c", _natural(Palette.col("prize"), 0.75))
+	_tone_material.set_shader_parameter("tag_d", Palette.col("bg").lerp(Palette.col("bg_alt"), 0.2))
 	var cols := PackedColorArray()
 	cols.resize(64)
 	var fxs: Array = []
@@ -9892,10 +10132,7 @@ func _build_grass() -> void:
 	_grass_mat.shader = sh
 	am.surface_set_material(0, _grass_mat)
 	if _hnx > 0:
-		var img := Image.create_from_data(_hnx, _hnz, false, Image.FORMAT_RF, _hgrid.to_byte_array())
-		_grass_mat.set_shader_parameter("hmap", ImageTexture.create_from_image(img))
-		_grass_mat.set_shader_parameter("h_info", Vector4(_hx0, _hz0, _hstep, 1.0))
-		_grass_mat.set_shader_parameter("h_size", Vector2i(_hnx, _hnz))
+		_set_hmap(_grass_mat)
 	_grass_mat.set_shader_parameter("reach", GRASS_REACH)
 	_grass_mat.set_shader_parameter("greenness", 0.85 if String(_place.get("look", "")) == "north" else 0.35)
 	# the grid round the camera, nearest patches first (a smaller grid shows only the first)
@@ -12917,6 +13154,7 @@ func _physics_process(dt: float) -> void:
 		_engine_tick(dt)
 		_p("sound")
 		_people_tick(dt)
+		_knock_tick(dt)
 		_p("people")
 		_crossers_tick(dt)
 		if not _film.is_empty():
@@ -12950,6 +13188,7 @@ func _physics_process(dt: float) -> void:
 	_engine_tick(dt)
 	_p("sound")
 	_people_tick(dt)
+	_knock_tick(dt)
 	_p("people")
 	_crossers_tick(dt)
 	_p("crossers")
@@ -13345,7 +13584,9 @@ func _blocked_ahead() -> bool:
 	var fwd := _fwd()
 	for k: float in [0.6, 1.0]:
 		var p := _pos + fwd * (CAR_LEN * 0.5 + 0.8 + _v * 0.45 * k) + Vector2(-fwd.y, fwd.x) * _steer * 3.0 * k
-		if _push_out(p, 0.6, true, true, _y) != Vector2.ZERO or _steep_push(p, 0.6, _y) != Vector2.ZERO:
+		if _push_out(p, 0.6, true, true, _y) != Vector2.ZERO and not _light_thing(_last_hit):
+			return true
+		if _steep_push(p, 0.6, _y) != Vector2.ZERO:
 			return true
 	return false
 
@@ -14544,9 +14785,18 @@ func _collide() -> void:
 			break
 	if total == Vector2.ZERO:
 		return
+	# a bin, a recycling bin or a bollard: knocked over or bent (_knock), not a wall to stop at
+	if _last_hit.begins_with("post ") and absf(_v) > 1.2 and _knockable.has(int(_last_hit.substr(5))):
+		_pos -= total
+		_knock(int(_last_hit.substr(5)))
+		return
 	_touch_t = 0.5
 	var n := total.normalized()
 	var right := Vector2(-fwd.y, fwd.x)
+	# where it touched: the end that was pushed the more, its edge toward what it hit
+	var end := _pos + fwd * (CAR_OFF if at_front.length() >= at_back.length() else -CAR_OFF)
+	var touch := end - n * CAR_R
+	_contact = Vector3(touch.x, _y + 0.45, touch.y)
 	var vel := fwd * _v + right * _v_lat
 	var vn := vel.dot(n)
 	if vn < 0.0:
@@ -14563,6 +14813,9 @@ func _collide() -> void:
 		# glancing touch slides on and a head-on stops. (It used to lose 6% every tick in
 		# contact, which glued the car to anything it touched.)
 		var along := vel - n * vel.dot(n)
+		# scraping along it at speed: sparks off the paint and the metal
+		if along.length() > 3.0 and _last_hit != "person":
+			_sparks_at(_contact, Vector3(n.x, 0.3, n.y), 0.5)
 		vel -= along.limit_length(impact * WALL_GRIP)
 		_crash(impact)
 		# a real knock stuns the car hit (2.5 s); leaning on it does not. Every touch used
@@ -14583,6 +14836,12 @@ func _crash(speed: float) -> void:
 		return
 	if _auto and (_last_hit.begins_with("building") or _last_hit.begins_with("wall") or _last_hit.begins_with("post")):
 		_ap_bonks += 1.0
+	# what a knock leaves: sparks, a dent where it hit, glass on the road after a hard one
+	if speed > 3.0:
+		_sparks_at(_contact, Vector3.UP, clampf(speed / 10.0, 0.5, 1.0))
+		_dent(_contact, clampf(speed / 14.0, 0.25, 1.0))
+	if speed > 7.0:
+		_glass_at(Vector2(_contact.x, _contact.z), speed)
 	# a jolt of the camera, not a freeze-frame: the car stops dead and the view with it
 	if speed > 9.0:
 		shake3d(minf(4.0, speed * 0.25))
@@ -14595,6 +14854,214 @@ func _crash(speed: float) -> void:
 		Audio.play("impact_soft", 0.1, -6.0)
 	Probe.event("crash", {"kmh": int(speed * 3.6), "hit": _last_hit, "at": Vector2i(_pos),
 		"street": _on_name, "auto": _auto})
+
+## ---- what breaks --------------------------------------------------------------------------
+## The street's light things are knocked over by the car: a bin or a recycling bin goes flying
+## and tumbles (a RigidBody3D, the one place the kit lets physics in: things that fall), a
+## bollard is bent over at its foot. Each stays down while you are near and is put back
+## once you are out of sight (KNOCK_BACK_S, 70 m) -- the street's furniture is drawn in
+## multimeshes of its own for this (furniture._place_knock), so one copy can be hidden or
+## bent. A knock on anything solid throws sparks (and so does scraping along it), leaves a
+## dent in the car where it hit (CAR_SHADER's `dents`) and, a hard one, glass and bits of
+## plastic on the road.
+const KNOCK_BACK_S := 30.0
+const KNOCKED_MAX := 12
+var _knockable := {}                 ## post index -> [multimesh, copy, its transform, mesh, "tumble"/"bend", the post's radius]
+var _knocked: Array = []             ## {id, k, body, ground, t}
+var _contact := Vector3.ZERO         ## where the car last touched something (_collide)
+
+func _knock_add(mesh: Mesh, xforms: Array, posts: Array, seen: float, how: String) -> void:
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = mesh
+	mm.instance_count = xforms.size()
+	for i in range(xforms.size()):
+		mm.set_instance_transform(i, xforms[i])
+		var pid := int(posts[i])
+		_knockable[pid] = [mm, i, xforms[i], mesh, how, _post_r[pid]]
+	var mi := MultiMeshInstance3D.new()
+	mi.multimesh = mm
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.visibility_range_end = seen + 200.0   # (the range counts to the middle of its square)
+	mi.visibility_range_end_margin = 30.0
+	world.add_child(mi)
+
+func _knock(pid: int) -> void:
+	var k: Array = _knockable[pid]
+	_knockable.erase(pid)
+	var mm: MultiMesh = k[0]
+	var i: int = k[1]
+	var xf: Transform3D = k[2]
+	_post_r[pid] = 0.0   # (not solid while it is down)
+	var f := _fwd() * signf(_v)
+	var way := Vector3(f.x, 0.0, f.y)
+	var speed := absf(_v)
+	var body: RigidBody3D = null
+	var ground: StaticBody3D = null
+	if k[4] == "bend":   # bent over away from the car, at its foot
+		var axis := Vector3.UP.cross(way).normalized()
+		mm.set_instance_transform(i, Transform3D(Basis(axis, deg_to_rad(55.0 + 20.0 * randf())) * xf.basis, xf.origin))
+		Audio.play("impact_metal", 0.1, -8.0)
+		shake3d(1.4)
+		_v *= 0.55
+		_sparks_at(xf.origin + Vector3.UP * 0.5, -way + Vector3.UP * 0.4, 0.6)
+	else:   # sent flying: the standing copy hidden, a body that tumbles in its place
+		mm.set_instance_transform(i, Transform3D(Basis(), Vector3(0, -500, 0)))
+		body = RigidBody3D.new()
+		body.mass = 15.0
+		var mi := MeshInstance3D.new()
+		mi.mesh = k[3]
+		body.add_child(mi)
+		var box := BoxShape3D.new()
+		var ab: AABB = (k[3] as Mesh).get_aabb()
+		box.size = ab.size.max(Vector3.ONE * 0.1)
+		var shape := CollisionShape3D.new()
+		shape.shape = box
+		shape.position = ab.get_center()
+		body.add_child(shape)
+		world.add_child(body)
+		body.global_transform = xf
+		body.linear_velocity = way * speed * 0.9 + Vector3.UP * (1.2 + speed * 0.12)
+		body.angular_velocity = Vector3(randf_range(-4, 4), randf_range(-2, 2), randf_range(-4, 4))
+		# something to land on (the city has no physics of its own): a slab at the road's height
+		ground = StaticBody3D.new()
+		var gs := CollisionShape3D.new()
+		var gb := BoxShape3D.new()
+		gb.size = Vector3(40, 1, 40)
+		gs.shape = gb
+		ground.add_child(gs)
+		world.add_child(ground)
+		var g2 := Vector2(xf.origin.x, xf.origin.z)
+		ground.global_position = Vector3(g2.x, _h(g2) + Y_ROAD + 0.07 - 0.5, g2.y)
+		Audio.play("impact_plate", 0.15, -6.0)
+		_v *= 0.88
+	_knocked.append({"id": pid, "k": k, "body": body, "ground": ground, "t": 0.0})
+	if _knocked.size() > KNOCKED_MAX:
+		_knock_back(_knocked.pop_front())
+	Probe.event("knocked", {"what": k[4], "kmh": int(speed * 3.6), "at": Vector2i(_pos)})
+
+## a bin or a recycling bin the car knocks aside (the assist does not brake for one)
+func _light_thing(hit: String) -> bool:
+	if not hit.begins_with("post "):
+		return false
+	var pid := int(hit.substr(5))
+	return _knockable.has(pid) and (_knockable[pid] as Array)[4] == "tumble"
+
+## put a knocked thing back as it was
+func _knock_back(e: Dictionary) -> void:
+	var k: Array = e["k"]
+	(k[0] as MultiMesh).set_instance_transform(int(k[1]), k[2])
+	_post_r[int(e["id"])] = float(k[5])
+	_knockable[int(e["id"])] = k
+	for n: String in ["body", "ground"]:
+		if e[n] != null and is_instance_valid(e[n]):
+			(e[n] as Node).queue_free()
+
+func _knock_tick(dt: float) -> void:
+	if _knocked.is_empty():
+		return
+	for i in range(_knocked.size() - 1, -1, -1):
+		var e: Dictionary = _knocked[i]
+		e["t"] = float(e["t"]) + dt
+		var o: Vector3 = (e["k"][2] as Transform3D).origin
+		if float(e["t"]) > KNOCK_BACK_S and Vector2(o.x, o.z).distance_to(_pos) > 70.0:
+			_knock_back(e)
+			_knocked.remove_at(i)
+
+## sparks: a burst of hot bits off the metal at p, flying out along `out`
+var _sparks: CPUParticles3D
+var _spark_cool := 0.0
+
+func _sparks_at(p: Vector3, out: Vector3, k: float) -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	if now < _spark_cool:
+		return
+	_spark_cool = now + 0.12
+	if _sparks == null:
+		_sparks = CPUParticles3D.new()
+		_sparks.one_shot = true
+		_sparks.emitting = false
+		_sparks.amount = 32
+		_sparks.lifetime = 0.45
+		_sparks.explosiveness = 0.95
+		_sparks.spread = 65.0
+		_sparks.initial_velocity_min = 2.5
+		_sparks.initial_velocity_max = 6.5
+		_sparks.gravity = Vector3(0, -9.8, 0)
+		_sparks.scale_amount_min = 0.5
+		_sparks.scale_amount_max = 1.2
+		var curve := Curve.new()
+		curve.add_point(Vector2(0, 1))
+		curve.add_point(Vector2(1, 0))
+		_sparks.scale_amount_curve = curve
+		var q := QuadMesh.new()
+		q.size = Vector2(0.04, 0.04)
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+		m.albedo_color = Palette.col("warn").lerp(Palette.col("ink"), 0.3)
+		m.emission_enabled = true
+		m.emission = Palette.col("warn")
+		m.emission_energy_multiplier = 3.0
+		q.material = m
+		_sparks.mesh = q
+		world.add_child(_sparks)
+	_sparks.global_position = p
+	_sparks.direction = out.normalized()
+	_sparks.amount = int(14 + 24 * k)
+	_sparks.restart()
+
+## glass and bits of plastic on the road where a hard knock was, for a minute and a half
+var _glass: Array = []               ## [mesh instance, when]
+
+func _glass_at(p: Vector2, speed: float) -> void:
+	var b := Buf.new()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(p.x * 13.0 + p.y * 7.0)
+	var glass: Color = _tone["carglass"].lerp(Palette.col("ink"), 0.55)
+	var plastic: Color = _tone["cartrim"]
+	var n := int(clampf(speed * 4.0, 25.0, 70.0))
+	for i in range(n):
+		var r := 1.6 * sqrt(rng.randf())
+		var a := rng.randf() * TAU
+		var c := p + Vector2(cos(a), sin(a)) * r
+		var s := rng.randf_range(0.02, 0.07)
+		var t := rng.randf() * TAU
+		var y := _h(c) + Y_MARK + 0.01
+		var col := glass if rng.randf() < 0.7 else plastic
+		var q0 := Vector3(c.x + cos(t) * s, y, c.y + sin(t) * s)
+		var q1 := Vector3(c.x + cos(t + 2.2) * s * 0.8, y, c.y + sin(t + 2.2) * s * 0.8)
+		var q2 := Vector3(c.x + cos(t + 4.1) * s * 0.6, y, c.y + sin(t + 4.1) * s * 0.6)
+		b.tri(q0, q1, q2, Vector3.UP, col)
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, b.arrays())
+	am.surface_set_material(0, _vc_mat())
+	var mi := MeshInstance3D.new()
+	mi.mesh = am
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	world.add_child(mi)
+	_glass.append([mi, Time.get_ticks_msec()])
+	while _glass.size() > 6 or (not _glass.is_empty() and Time.get_ticks_msec() - int(_glass[0][1]) > 90000):
+		(_glass.pop_front()[0] as Node).queue_free()
+
+## a dent pressed into the player's car where it hit (its own frame), the deepest four kept
+var _dents: Array = []               ## Vector4(x, y, z in the body's frame, how deep 0..1)
+
+func _dent(at: Vector3, deep: float) -> void:
+	if _player_car_mat == null or _sedan_node == null:
+		return
+	var mi: Node3D = _sedan_node.get_child(0) if _sedan_node.get_child_count() > 0 else _sedan_node
+	var lp := mi.global_transform.affine_inverse() * at
+	_dents.append(Vector4(lp.x, clampf(lp.y, 0.35, 1.0), lp.z, deep))
+	_dents.sort_custom(func(a: Vector4, b: Vector4) -> bool: return a.w > b.w)
+	while _dents.size() > 4:
+		_dents.pop_back()
+	var arr: Array = []
+	for d: Vector4 in _dents:
+		arr.append(d)
+	while arr.size() < 4:
+		arr.append(Vector4.ZERO)
+	_player_car_mat.set_shader_parameter("dents", arr)
 
 ## Ground too steep to climb is a wall (STEEP): a circle whose uphill edge is on it is moved
 ## back downhill to where the ground is gentle enough. A road is always drivable, however
