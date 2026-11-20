@@ -266,7 +266,9 @@ What each round found, so far:
   turns round in moves forward and back on full lock, each ending when a bumper would be
   0.6 m over the kerb (the wheels stay on the asphalt) or near anything solid, the wheel
   turned over standing between them, the throttle allowing for the slope (backing up a
-  17% cul-de-sac on the flat's throttle crawled at 0.2 m/s). Three moves in a 6.5 m street
+  17% cul-de-sac on the flat's throttle crawled at 0.2 m/s), standing still while a traffic
+  car comes up the street at it (the probes at its ends missed one coming at its side, and
+  it touched them at 5 km/h). Three moves in a 6.5 m street
   (with only 0.15 m over the kerb allowed it took five); boxed in (two moves running that got
   nowhere), or past 7 moves or 30 s, it turns the rest on the spot. Then the way out is
   planned afresh from where it stands. A one-way street that just ends (cut by the map's

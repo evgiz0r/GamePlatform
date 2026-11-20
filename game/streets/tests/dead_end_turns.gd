@@ -178,6 +178,9 @@ func _run() -> void:
 						parts.append("%s: %s edge %.2f%s" % ["nose" if end_s > 0 else "tail", why if why != "" else "clear,",
 							(float(on["edge"]) + g.CAR_R) if not on.is_empty() else 99.0,
 							", past the end" if (q - g._ap_dead_end).dot(g._ap_dead_in) > -g.CAR_R else ""])
+					for c in g._traffic.cars:
+						if c.alive and c.pos.distance_to(g._pos) < 12.0:
+							parts.append("car %s %.1f m away, v %.1f" % [str(g._traffic.cars.find(c)), c.pos.distance_to(g._pos), c.v])
 					print("      " + "; ".join(parts))
 			if to_end.length() < 30.0 and fwd.dot(toward) < 0.9:
 				for off: float in [g.CAR_OFF, -g.CAR_OFF]:
@@ -196,12 +199,20 @@ func _run() -> void:
 		var crashes: Array = []
 		var trouble: Array = []
 		var turn := ""
+		var t0 := INF
+		var t1 := INF
+		for e: Dictionary in probe._events:
+			if e["kind"] == "turning_round":
+				t0 = float(e["t"])
+			elif e["kind"] == "turned_round":
+				t1 = float(e["t"])
 		for e: Dictionary in probe._events:
 			if e["kind"] == "turned_round":
 				turn = ", turned round in %d moves%s, %.1f s" % [e["data"]["moves"], " and the rest ON THE SPOT" if e["data"]["on_the_spot"] else "", e["data"]["secs"]]
 				moves = int(e["data"]["moves"])
 			elif e["kind"] == "crash":
-				crashes.append("%s at %d km/h" % [e["data"]["hit"], e["data"]["kmh"]])
+				var when := "before turning" if float(e["t"]) < t0 else ("turning" if float(e["t"]) <= t1 else "after turning")
+				crashes.append("%s at %d km/h %s" % [e["data"]["hit"], e["data"]["kmh"], when])
 			elif e["kind"] in ["autodrive_stuck", "autodrive_rescue", "autodrive_unstuck"]:
 				trouble.append(e["kind"])
 		if not crashes.is_empty() or out_t < 0.0:

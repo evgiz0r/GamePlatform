@@ -14751,8 +14751,9 @@ func _ap_ways(ri: int, ei: int, dir: int) -> Array:
 ## AP_DEAD_ROOM short of the end and the car turns round there the way a driver does in a
 ## narrow street: forward on full lock until the nose nears the far kerb (or anything solid),
 ## back on the other lock until the tail nears the near one, and so on -- three moves in a
-## 6.5 m street -- until it faces out; then the way out is planned afresh from where it
-## stands. (A one-way street that just ends still stops at its end and turns on the spot.)
+## 6.5 m street -- until it faces out, waiting for any car coming up the street; then the
+## way out is planned afresh from where it stands. (A one-way street that just ends still
+## stops at its end and turns on the spot.)
 ## tests/dead_end_turns.gd drives into every cul-de-sac of a city.
 const AP_DEAD_ROOM := 7.0           ## metres short of a dead end's end it stops to turn round
 const AP_KT_V := 1.3                ## m/s, the crawl of each move
@@ -14874,6 +14875,14 @@ func _ap_kturn(dt: float) -> Array:
 		_ap_kt["from"] = _pos
 		_gear = -g
 		return [0.0, 1.0, _steer]
+	# a car coming up the street while it is across it: stand and let it stop or go by, as a
+	# driver halfway through a turn does (the probes at the car's ends miss one coming at its
+	# side). The move's clock stands too.
+	for c in _traffic.cars:
+		if c.alive and c.v > 0.5 and c.pos.distance_to(_pos) < 9.0 \
+				and Vector2(sin(c.yaw), cos(c.yaw)).dot(_pos - c.pos) > 0.0:
+			_ap_kt["mt"] = float(_ap_kt["mt"]) - dt
+			return [0.0, 1.0, _steer]
 	if absf(_steer - wheel) > 0.02 and absf(_v) < 0.3:
 		# the wheel turned over standing still, as a driver does, not snapped from lock to lock
 		return [0.0, 1.0, move_toward(_steer, wheel, 1.8 * dt)]
