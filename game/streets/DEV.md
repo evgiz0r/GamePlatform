@@ -152,6 +152,16 @@ What each round found, so far:
   lay across the main road (checked by the garden strip's middle only). 41 walls in
   Givatayim stood on a road (garden walls at bends and across neighbours, OSM fence pieces
   checked by their middle); `tests/walls_on_roads.gd` counts them, now 0.
+- Ashdod's red lights run by traffic were mostly one junction (Sderot Herzl x HaGdud
+  HaIvri, five signalled points 5-15 m apart): its points shared groups but not an id, so
+  a car clearing the junction in the all-red was counted again at the next point; and a
+  car stopped for a zebra a little over its stop line took itself for committed and drove
+  on through the red once the people had crossed. `_sig_knot` gives a junction's points one
+  id; over the line counts as through only when rolling or in the junction.
+  `tests/knot_lights.gd` watches one junction and prints what each car that ran the red
+  saw before (5 of 40 on red, now 1 of 17).
+- Main roads get the longer green (20 s, side streets 11 s, was 14 each): group 1 at every
+  junction is its main road. Not yet judged by the exam.
 - The exam's own counts were off twice: harsh braking per frame (30x one stop) and traffic
   reds judged at every signal point of a junction by the heading mid-turn. Check what a
   counter counts before chasing its number.
