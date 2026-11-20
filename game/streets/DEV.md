@@ -18,6 +18,7 @@ merge, re-check (`tools/check_script.sh`, a playtest, the tests below), never fo
 | `furniture.gd` | street furniture built after the places: power lines, lamps and bus-stop kits, flags, ads, fences and hedges, bike racks and scooters |
 | `drivelog.gd` | the drive recorder (see below) |
 | `cities/*.json` | baked towns (`tools/osm_city.py`) and the made-up test town (`tools/fake_city.py`) |
+| `details.gd`, `cities/details/<city>.json` | what a filmed walk showed and OSM lacks, laid over the baked city as it loads (road edits, unmarked zebras, areas, walls, fences, hedges, bins, railings) and the walks themselves; the format is at the top of `details.gd` |
 | `textures/` | CC0 photo textures (Poly Haven) and the scripts that made the sky and the leaf atlas; credited in `textures/CREDITS.md` |
 | `tests/` | scene tests, see below |
 
@@ -76,6 +77,11 @@ Run the ones near what you change, before and after.
 tests look all over it (the game itself builds near the start first and the rest while you
 drive).
 
+Two that are not in the list above: `filmed_walk` (level 5: the walk loads, walks itself,
+stops at Ha-Meri; shots at the landmarks with the nearest wall, `RECORD=1` saves every
+frame) and `steep_ground` (level 4: the car flat out at the mountains eight ways round;
+good is 30-70 m past the town's edge, stopped by "steep ground").
+
 Before anything: `tools/check_script.sh res://game/streets/streets.gd
 res://game/streets/traffic.gd res://game/streets/furniture.gd` (seconds).
 
@@ -119,7 +125,52 @@ The start points are public street corners named in `LEVELS`. **The web build is
 never use an address the user has mentioned as theirs or their family's -- not as a start,
 not in a test, a commit or a doc.** Scratch tests against one stay in the scratch directory.
 
+## The filmed walk (level 5)
+
+A walk filmed on a phone in Givatayim, from Katzenelson by the Ha-Meri passage to Ha-Meri
+past Sheinkin, replayed in first person (`_film_begin` / `_film_tick` / `_film_at` in
+streets.gd, "a filmed walk, replayed"). It is how that street is being made realistic: a
+pass at a time, biggest differences first, each pass checked with a side-by-side video.
+
+- **The route** is `walks.katzenelson_hameri.points` in `cities/details/givatayim.json`:
+  [seconds, x, z], the seconds the film's. Landmarks in the film: off the north kerb 1.5 s,
+  the far kerb 16 s (so the road there is ~17 m across by walking time; the game's two
+  9 m halves are right), the forecourt 25 s, into the passage 33 s, out of it 64 s, the
+  corner of Sheinkin 80 s, over it 90 s, into Ha-Meri 93-96 s. The game's pavement from the
+  zebra to the passage is ~7 m longer than the film's, so the walk hurries there (2.2 m/s).
+- **The passage's coordinates** were worked out along its own line: S0 (667.9, -653.0) on
+  Katzenelson to S1 (611.3, -588.2) on Sheinkin (both baked nodes); a point is `s` metres
+  along it and `off` to the south-east (negative: north-west). Walking it south-west: the
+  stone wall, wooden fence, bin and hedge are on the right (north-west), the low white
+  fence on the left; the passage ends at s = 58 and a short street (parked cars, the
+  walker on its north-west pavement) runs on to Sheinkin. The corner building stands only
+  2.7-3.5 m south-east of that street's line.
+- **The side-by-side.** The film reached the session as a 100 s clip under 10 MB (VLC
+  transcode, emailed as an attachment: the connectors will not hand over anything bigger,
+  nor a video from OneDrive at all). That clip came out **mirrored** (a shop sign read
+  backwards): flip it (`hflip`). Record the game's half with
+  `GODOT_ARGS="--fixed-fps 10" STREETS_BUILD_ALL=0 RECORD=1 OUT=... game/streets/tests/run.sh
+  filmed_walk 5` (1280x720; about 1 frame a second in the container: 15 minutes), crop the middle 406x720
+  (the 70 degree vertical field of view then matches a phone held upright) and `hstack` the
+  two. The film itself is the user's: it, its frames and anything past Ha-Meri never go in
+  the repo.
+- **Next passes** (seen in the first side-by-side): the forecourt is big plain concrete
+  slabs with black-and-yellow bollards, a transformer on twin lattice poles and a parking
+  barrier; at the zebra's south end the white hoop railing and the red-white kerb, and the
+  game's building there stands too close; the passage's stone wall is rough grey stone and
+  its fence darker wood; the corner of Sheinkin is a raised crossing paved in charcoal
+  herringbone with the zebra painted on it, white bollards round the corner, another
+  transformer; Ha-Meri has blue-white kerbs, a Zone 30 sign and a painted 30 ring; the
+  confectionery's front; motorbikes in a row on the pavement.
+
 ## Open problems
+
+- **Scene tests started with `Flow.start_game` (the `tests/*.gd` way) drew no road surfaces
+  in Ashdod round its start** (Nov 2026, cloud container): asphalt, kerbs and zebras missing,
+  poles, signs, trees and cars there, from 9 m and from 32 m up (`median_nose`). The same
+  junction started through the main scene and the sim runner (`--sim=streets`, a
+  `change_scene_to_file("res://main.tscn")` script) drew them. Not yet explained; check a
+  test's shots for road before trusting what they show of it.
 
 - A kerb fragment is left on the road near a roundabout's zebra in Ashdod (pieces of a
   corner laid one by one, where the probes miss the asphalt by a little).
