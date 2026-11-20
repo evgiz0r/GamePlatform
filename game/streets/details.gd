@@ -22,7 +22,9 @@ extends RefCounted
 ##                                                    yellow_black: a whole way, junction to
 ##                                                    junction) or kerb_mid: the paint along
 ##                                                    its middle, the red-white corners and
-##                                                    bus stops kept (streets.gd _kerb_marks)
+##                                                    bus stops kept (streets.gd _kerb_marks);
+##                                                    yard: false for no front gardens (a
+##                                                    street of shops OSM calls residential)
 ##   crossings [[x, z], ...]                         zebras at the road nodes nearest these
 ##   white_bollards [{near: [x, z], r}]              the bollards by every zebra within r of
 ##                                                    near are white (the game picks a few)
@@ -118,6 +120,8 @@ func edit_city(city: Dictionary) -> void:
 					r["kerb"] = KERB_PAINT.find(String(st["kerb"]))
 				if st.has("kerb_mid"):
 					r["kerb_mid"] = KERB_PAINT.find(String(st["kerb_mid"]))
+				if st.has("yard"):
+					r["yard"] = bool(st["yard"])
 				hit += 1
 		if hit == 0:
 			Probe.note("details: no %s road '%s' at %s to set" % [st.get("k", ""), st.get("name", ""), near])

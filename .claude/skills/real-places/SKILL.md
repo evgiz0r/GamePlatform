@@ -355,6 +355,16 @@ the game walking the same route in first person beside it.
   building of its own raised 3-3.5 m (a raised building stands on columns and is not
   solid), the rest standing back behind it, both outlines starting at the same corner when
   the look comes from a hash of the first corner.
+- **A street of shops that OSM calls residential.** OSM tags a road by its traffic, not by
+  what lines it: a filmed street with shops down both sides was "residential", so the game
+  gave it front gardens with walls and hedges where the film had shopfronts on the pavement.
+  And OSM knew six of its businesses; panning the camera across the street in the film
+  showed a row. Decide gardens piece by piece (a shop behind it, or a hand-placed row of
+  shopfronts), not by the road's tag or the whole street: the same street had one real
+  garden between its shops.
+- **Panning in the film is how the shops get counted.** Ask the walker to turn the phone to
+  each side now and then: the shops across the road, which a forward-facing film never
+  shows, came only from those pans.
 - **A level that starts at a filmed spot must say so before the city builds.** A game that
   builds near its start first builds round wherever its start finder lands; a walk placed
   after that crosses bare ground until the background builder catches up.

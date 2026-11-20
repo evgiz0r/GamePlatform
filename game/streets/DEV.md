@@ -364,6 +364,16 @@ first:
   the pavement; painted bays on the shopping street. The game filled a quarter of the kerb.
 - **Street trees**: thin trunks in square earth pits at the kerb edge every ~8-10 m, the
   canopies meeting over the pavement; no palms on these streets.
+- **Shops** (second pass, done: `_shop_pieces` keeps gardens out from in front of shops;
+  Sirkin's rows are `lines` of kind shopfront in `cities/details/givatayim.json`, placed on
+  the city file's building edges parallel to the street just behind its pavement): OSM knew
+  six businesses along the walk; the film, panning, showed a row down both sides of Sirkin
+  -- a green corner shop, a bar under string lights with bar stools, shuttered shops,
+  Roladin's posters on its Sirkin side, the sabich stand's red umbrella and the
+  greengrocer's produce across the street, white scalloped awnings near Katznelson. The
+  game had gardens there and one bright awning per OSM shop. Still to do: each shop's own
+  look (awning colours, the umbrella, crates of fruit), and the bright neon awnings of the
+  OSM shops themselves.
 - **Light**: the real late afternoon is hazy and warm; the game's sky is saturated blue
   with cartoon clouds and its sunlight bleaches the ground.
 - **Small things**: black bollards with a yellow band along the kerb by the main road, a

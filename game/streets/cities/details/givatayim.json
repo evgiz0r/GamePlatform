@@ -293,6 +293,11 @@
   }
  ],
  "lines": [
+  {"kind": "shopfront", "pts": [[488.34, -675.5], [489.36, -683.4]], "h": 3.2, "face": [-0.9997, -0.0247], "signs": ["", ""], "panels": [], "src": "filmed walk, Sheinkin and Sirkin"},
+  {"kind": "shopfront", "pts": [[488.71, -705.8], [489.49, -738.9]], "h": 3.2, "face": [-0.9997, -0.0247], "signs": ["", "", "", "", "", "", "", "", "", ""], "panels": [], "src": "filmed walk, Sheinkin and Sirkin"},
+  {"kind": "shopfront", "pts": [[469.82, -686.9], [470.58, -671.9]], "h": 3.2, "face": [0.9997, 0.0247], "signs": ["", "", "", "", "רולדין"], "panels": [], "src": "filmed walk, Sheinkin and Sirkin"},
+  {"kind": "shopfront", "pts": [[470.19, -703.7], [469.91, -691.4]], "h": 3.2, "face": [0.9997, 0.0247], "signs": ["", "", "", ""], "panels": [], "src": "filmed walk, Sheinkin and Sirkin"},
+  {"kind": "shopfront", "pts": [[472.79, -739.0], [472.21, -706.6]], "h": 3.2, "face": [0.9997, 0.0247], "signs": ["", "", "", "", "", "", "", "", "", ""], "panels": [], "src": "filmed walk, Sheinkin and Sirkin"},
   {
    "kind": "stone_wall",
    "pts": [
