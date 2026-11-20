@@ -48,6 +48,15 @@ The ones most often touched, and the functions in them:
   (barred windows, the door in the middle bay), stone courses, plinth and mosaic are
   `WALL_SHADER`'s `ground` / `door` / `stone_k`; worn asphalt is `TONE_SHADER`'s
   `crazing()` and patches. `tests/eye_level.gd` puts a camera where a person stands.
+- **front gardens** -- `_garden_fronts`, called from the kerbs for each side of a yard
+  street in the south, after the low stone wall. Plots keyed to the run (so every square
+  along the street works out the same ones) and skipped when nowhere near the square. The
+  kerbs stage cost 549 ms in pass 1 before them, 1.2 s with them done the obvious way
+  (`_fence_line` / `_hedge_line` checking every piece for roads and houses), ~0.85 s now:
+  the wall loop records which pieces of the run have the wall (`walled`), and a fence on
+  the wall is laid by `furniture.wall_fence` with no checks and no walls of its own (the
+  wall is both); a hedge looks only for houses (`roads` false). Of that, the look for the
+  nearest road (`_off_road` -> `_nearest_seg`) was the dear part: half the hedges' 300 ms.
 - **the builders** -- kerbs and pavements `_build_kerbs`, `_street_runs`,
   `_kerb_run_piece`, corners `_kerb_corners` (checked along their length), the asphalt grid
   `_asph_hash` / `_asphalt_other`; parked cars `_build_parked`, car parks `_build_lots`; the

@@ -228,6 +228,14 @@ most, in order, last time one did:
     the game is left mid-build, its own signal dies with it and the coroutine just stops.
   - Turn off the frame-rate quality watcher while building: the build is not the machine
     being slow. Check the result by comparing every item count with the old build.
+- **Kilometres of small dressing cost in the checks, not the triangles.** A fence or hedge
+  along every front garden, laid by the helper that checks each 2.5 m piece for roads and
+  houses, doubled a build stage. Timed piece by piece, the look for the nearest road was
+  half of it. When a caller already knows the line is clear (it stands on a wall that was
+  checked, on a strip that was), pass that down and skip the check; lay one panel per
+  piece of the line it follows rather than many short ones; and leave out faces that are
+  inside the thing (the ends between two pieces of a hedge). Build stages on these
+  containers swing 20% between runs, so time the part itself, not the stage around it.
 - **Photo textures under a palette.** Divide the photo by its own average colour and
   multiply by the palette tone: the photo gives the grain, the tone the colour, and `/look`
   still reskins it. Fade fine detail and repeating photos out with distance (a repeat shows

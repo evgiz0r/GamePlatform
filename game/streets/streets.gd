@@ -2418,11 +2418,14 @@ func _build_kerbs() -> void:
 				var w_in := _offset_line(run, (hw + PAVE_W + 0.05) * sgn)
 				var w_out := _offset_line(run, (hw + PAVE_W + 0.3) * sgn)
 				var g_out := _offset_line(run, (hw + PAVE_W + 3.4) * sgn)
+				var walled := PackedByteArray()   # which pieces of the run have the wall (for the fronts on it)
+				walled.resize(run.size())
 				for i in range(run.size() - 1):
 					# (not where it would lie on another road: a garden strip of one street ran
 					# over the asphalt of the next where they met at an angle)
 					if _asphalt_other((w_out[i] + w_out[i + 1] + g_out[i] + g_out[i + 1]) * 0.25, ri):
 						continue
+					walled[i] = 1
 					garden.quad3(_g3(w_out[i], 0.03), _g3(w_out[i + 1], 0.03), _g3(g_out[i + 1], 0.03), _g3(g_out[i], 0.03))
 					if not med:
 						continue   # northern lawns run open to the pavement
@@ -2434,7 +2437,7 @@ func _build_kerbs() -> void:
 					wall.tri(_g3(w_in[i], 0.0), _g3(w_in[i + 1], 0.0), _g3(w_in[i + 1], wy), fn, Color.WHITE)
 					wall.tri(_g3(w_in[i], 0.0), _g3(w_in[i + 1], wy), _g3(w_in[i], wy), fn, Color.WHITE)
 				if med:
-					_garden_fronts(run, hw, sgn, _hash_i(run[0]) + int(sgn) * 104729, fronts)
+					await _garden_fronts(run, hw, sgn, _hash_i(run[0]) + int(sgn) * 104729, fronts, walled)
 				var step := 7.0
 				var s := 3.0
 				for i in range(run.size() - 1):
@@ -2694,37 +2697,61 @@ func _set_pave_code(hsh: int) -> void:
 ## hedge behind the low wall, white bars or green chain-link on top of it, or the bare wall;
 ## bougainvillea spilling over one in six. Keyed to the run, so every square along the
 ## street works out the same plots (the fronts are laid like the kerbs: CBuf.clip).
-func _garden_fronts(run: PackedVector2Array, hw: float, sgn: float, key: int, fronts: Dictionary) -> void:
+func _garden_fronts(run: PackedVector2Array, hw: float, sgn: float, key: int, fronts: Dictionary,
+		walled: PackedByteArray) -> void:
 	var on_wall := _offset_line(run, (hw + PAVE_W + 0.175) * sgn)
 	var behind := _offset_line(run, (hw + PAVE_W + 0.85) * sgn)
 	var cum := PackedFloat32Array([0.0])
 	for i in range(1, run.size()):
 		cum.append(cum[i - 1] + run[i - 1].distance_to(run[i]))
 	var total := cum[cum.size() - 1]
+	var near := _tile_rect(_tile).grow(6.0)
 	var s := 0.0
 	var plot := 0
 	while s < total - 2.0:
 		var h := posmod(key + plot * 7919, 1000003)
 		var e := minf(s + 14.0 + float(posmod(h, 9)), total)
 		var style := posmod(h >> 4, 100)
-		if style < 76:
-			var line := behind if style < 42 else on_wall
-			var pts: Array = [_along(line, cum, s + 0.7)]
-			for i in range(1, line.size() - 1):
-				if cum[i] > s + 0.7 and cum[i] < e - 0.7:
-					pts.append(line[i])
-			pts.append(_along(line, cum, e - 0.7))
+		var line := behind if style < 42 else on_wall
+		var pts: Array = [_along(line, cum, s + 0.7)]
+		var seg: Array = [_seg_at(cum, s + 0.7)]   # the piece of the run each stretch starts on
+		var box := Rect2(pts[0], Vector2.ZERO)
+		for i in range(1, line.size() - 1):
+			if cum[i] > s + 0.7 and cum[i] < e - 0.7:
+				pts.append(line[i])
+				seg.append(i)
+				box = box.expand(line[i])
+		pts.append(_along(line, cum, e - 0.7))
+		box = box.expand(pts[pts.size() - 1])
+		if _tiled and not near.intersects(box.grow(1.0)):
+			s = e   # a plot nowhere near this square: its own square lays it (same plots, same key)
+			plot += 1
+			continue
+		if _over():
+			await _pause()
+		if style < 42:
+			# a hedge behind the wall, on the garden strip: off the roads where the strip is
+			# (looked at already), but it can still run into a house, so it looks for those
+			for k in range(pts.size() - 1):
+				if walled[int(seg[k])] and (pts[k] as Vector2).distance_to(pts[k + 1]) >= 0.3:
+					_furn._hedge_line(fronts["hedge"], pts[k], pts[k + 1], false)
+		elif style < 76:
+			# bars or chain-link on the wall: only where the wall is, which was looked at
+			# already and is solid already, so no looking again and no walls of its own --
+			# and in one panel per piece of the wall, its foot along the wall's top
+			var bars := style < 62
+			var run_u := 0.0
 			for k in range(pts.size() - 1):
 				var a: Vector2 = pts[k]
 				var b: Vector2 = pts[k + 1]
-				if a.distance_to(b) < 0.3:
+				if not walled[int(seg[k])] or a.distance_to(b) < 0.3:
 					continue
-				if style < 42:
-					_furn._hedge_line(fronts["hedge"], a, b)
-				elif style < 62:
-					_furn._fence_line(fronts["bars"], fronts["bar_posts"], a, b, 0.95, _tone["railing"], 2.4, true, 2, 0.62)
+				var A := _g3(a, 0.6)
+				var B := _g3(b, 0.6)
+				if bars:
+					run_u = _furn.wall_fence(fronts["bars"], fronts["bar_posts"], A, B, 0.95, _tone["railing"], 2.4, true, run_u)
 				else:
-					_furn._fence_line(fronts["chain"], fronts["chain_posts"], a, b, 1.3, _tone["fencegreen"], 2.6, false, 2, 0.62)
+					run_u = _furn.wall_fence(fronts["chain"], fronts["chain_posts"], A, B, 1.3, _tone["fencegreen"], 2.6, false, run_u)
 		if posmod(h >> 9, 100) < 16:   # bougainvillea over the wall, a few clumps
 			for t: float in [0.25, 0.5, 0.75]:
 				var q := _along(on_wall, cum, lerpf(s, e, t)) - (on_wall[0] - run[0]).normalized() * 0.15
@@ -2741,6 +2768,13 @@ func _leafy(p: Vector2) -> float:
 		if absf(_post_r[i] - 0.3) < 0.001:   # (a tree's post)
 			sum += 1.0 - clampf(_posts[i].distance_to(p) / 7.0, 0.0, 1.0)
 	return clampf(sum * 0.7, 0.0, 1.0)
+
+## which piece of a line `s` metres along it is on (cum: the distance to each point)
+func _seg_at(cum: PackedFloat32Array, s: float) -> int:
+	for i in range(1, cum.size()):
+		if cum[i] >= s:
+			return i - 1
+	return cum.size() - 2
 
 ## the point `dist` metres along a road's points from index k going `step`, and the way on
 func _walk_pts(pts: PackedVector2Array, k: int, step: int, dist: float) -> Array:
