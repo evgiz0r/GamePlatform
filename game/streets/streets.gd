@@ -902,6 +902,8 @@ var _odo := 0.0
 var _assist := true
 var _touch_t := 0.0                  ## counts down after the car touched something
 var _pinned_t := 0.0
+var _pinned_back := 0.0              ## of it, seconds the pedal was for reversing
+var _pin_hinted := false
 var _pin_at := Vector2.ZERO          ## where the car was when it started pushing against something
 var _last_hit := ""                  ## what the car last bumped: "building 12" / "post 40", for the report
 
@@ -11289,6 +11291,7 @@ func _physics_process(dt: float) -> void:
 	_drive(dt, ctl[0], ctl[1], ctl[2])
 	_p("car")
 	_through_lights()
+	_drop_crumb()
 	_check_stop_signs()
 	_p("rules")
 	_names_tick(dt)
@@ -11636,15 +11639,27 @@ func _manual(dt: float) -> Array:
 	# stuck: a pedal down against something and the car getting nowhere -- nose in a
 	# corner, wedged on a tree, rocking between two parked cars. With or without the assist:
 	# nobody wants to sit there.
+	# Not a jump back to the road at once (it was, after 1.2 s: the car popped out of where
+	# you had driven it, which broke the drive): the way out is the way in, in reverse. Only
+	# wedged both ways -- pushed forward and backward and gone nowhere -- is it lifted out.
 	if up + down > 0.5 and _touch_t > 0.0:
 		_pinned_t += dt
+		if down > up:
+			_pinned_back += dt
 		if _pos.distance_to(_pin_at) > 1.2:   # backing out (or sliding off) is working
 			_pin_at = _pos
 			_pinned_t = 0.0
-		elif _pinned_t > RESCUE_AFTER:
+			_pinned_back = 0.0
+		elif _pinned_t > RESCUE_AFTER and _pinned_back < 1.0 and not _pin_hinted:
+			_pin_hinted = true
+			_show_banner("stuck -- back up to get out" if not _touch_seen else "stuck -- pull the stick down to back out", 2.5)
+		elif _pinned_back > 2.5 and _pinned_t > 5.0:
 			_rescue()
+			_pinned_back = 0.0
 	else:
 		_pinned_t = 0.0
+		_pinned_back = 0.0
+		_pin_hinted = false
 		_pin_at = _pos
 	return [throttle, brake, steer]
 
@@ -13643,8 +13658,13 @@ func _held(cur: float, v: float, why: String) -> float:
 func _autodrive(dt: float) -> Array:
 	# into the walls again and again (a few in quick succession): lost, back to the street
 	_ap_bonks = maxf(0.0, _ap_bonks - dt / 10.0)
-	if _ap_bonks >= 3.0 and _ap_rescue():
+	if not _ap_rev.is_empty():
+		return _ap_reverse(dt)
+	if _ap_bonks >= 3.0 and (_ap_backout(40.0) or _ap_rescue()):
+		_ap_bonks = 0.0
 		_ap_pts = PackedVector2Array()
+		if not _ap_rev.is_empty():
+			return _ap_reverse(dt)
 	if _ap_back > 0.0:     # stuck against something: back off, then plan again
 		_ap_back -= dt
 		_gear = -1
@@ -13790,7 +13810,8 @@ func _autodrive(dt: float) -> Array:
 		_ap_stuck += dt
 		if _ap_stuck > 2.0:
 			_ap_stuck = 0.0
-			_ap_back = 1.4
+			if not _ap_backout(10.0):   # (back the way it came; blind, with no way known)
+				_ap_back = 1.4
 			# a push that went nowhere counts as a bump (too slow to be one): three in a row
 			# and it is lost, back to the street. Forward into a post, back, forward into it
 			# again went on for a minute and a half, foot on the gas -- not driving.
@@ -13818,6 +13839,10 @@ func _ap_watch(dt: float, vt: float) -> void:
 	if _ap_mark_t < AP_GIVE_UP:
 		return
 	_ap_mark = Vector2.INF
+	if _ap_backout(45.0):   # the way it came, first: no jump
+		_ap_pts = PackedVector2Array()
+		_log.event("backing out")
+		return
 	var mid := _bounds.get_center()
 	var toward := (mid - _pos).normalized()
 	for reach: float in [40.0, 80.0, 140.0]:
@@ -13961,6 +13986,96 @@ func _clear_line(a: Vector2, b: Vector2) -> bool:
 		s += 1.0
 	return true
 
+## ---- backing out the way it came ----------------------------------------------------------
+## Where the car is, it drove to: the road it came along is a way back out. A crumb is dropped
+## every CRUMB_M driven forward (the last CRUMBS of them); stuck, lost or off the road with no
+## way found, autodrive reverses along them -- slowly, steering, looking behind -- until it
+## is on a street facing along it, and plans on from there. It used to be lifted onto the
+## nearest street, a jump that broke the drive; that is now only for a car with no way back
+## (put down in a yard, or the way behind it blocked).
+const CRUMB_M := 1.5
+const CRUMBS := 70
+const AP_REV_V := 2.2                ## reversing speed (m/s)
+var _crumbs := PackedVector2Array()
+var _ap_rev := PackedVector2Array()  ## the crumbs to back along, the next first
+var _ap_rev_m := 0.0                 ## metres backed so far, and at most
+var _ap_rev_max := 0.0
+var _ap_rev_t := 0.0
+
+func _drop_crumb() -> void:
+	if _walking or not _ap_rev.is_empty():
+		return
+	if not _crumbs.is_empty() and _crumbs[_crumbs.size() - 1].distance_to(_pos) > 12.0:
+		_crumbs = PackedVector2Array()   # (put down somewhere else: an old trail leads nowhere)
+	if _v > 0.3 and (_crumbs.is_empty() or _crumbs[_crumbs.size() - 1].distance_to(_pos) >= CRUMB_M):
+		_crumbs.append(_pos)
+		if _crumbs.size() > CRUMBS:
+			_crumbs.remove_at(0)
+
+## start backing out along the crumbs, at most `most` metres; false when there is no trail
+func _ap_backout(most: float) -> bool:
+	var rev := PackedVector2Array()
+	for i in range(_crumbs.size() - 1, -1, -1):
+		if _crumbs[i].distance_to(_pos) > 2.0 or not rev.is_empty():
+			rev.append(_crumbs[i])
+	if rev.size() < 2:
+		return false
+	_ap_rev = rev
+	_ap_rev_m = 0.0
+	_ap_rev_max = most
+	_ap_rev_t = 0.0
+	_ap_back = 0.0
+	_ap_turn = 0.0
+	_cross = {}
+	_show_banner("autodrive: backing out", 1.4)
+	Probe.event("autodrive_backout", {"m": int(most)})
+	return true
+
+## one tick of it: [throttle, brake, steer], the gear in reverse
+func _ap_reverse(dt: float) -> Array:
+	_ap_rev_t += dt
+	_gear = -1
+	var fwd := _fwd()
+	var rear := _pos - fwd * WHEELBASE * 0.5
+	while _ap_rev.size() > 1 and _ap_rev[0].distance_to(rear) < 1.6:
+		_ap_rev_m += _ap_rev[0].distance_to(_ap_rev[1])
+		_ap_rev.remove_at(0)
+	# done: out far enough and on a street, along it -- or the trail ran out, or too long
+	var on := _nearest_seg(_pos, 8.0, true, true, _y)
+	var on_street := not on.is_empty() and float(on["edge"]) < -0.3 and _ap_rev_m > 5.0
+	if on_street:
+		var r: Dictionary = _roads[int(on["road"])]
+		var rp: PackedVector2Array = r["pts"]
+		var sj: int = on["seg"]
+		on_street = absf(fwd.dot((rp[sj + 1] - rp[sj]).normalized())) > 0.8
+	var behind := _push_out(_pos - fwd * (CAR_OFF + 0.7 + absf(_v) * 0.4), CAR_R, true, true, _y) != Vector2.ZERO \
+			or not _people_near(_pos - fwd * (CAR_OFF + 1.0), 2.5).is_empty()
+	if on_street or _ap_rev.size() <= 1 or _ap_rev_m >= _ap_rev_max or _ap_rev_t > 25.0 or behind:
+		_ap_rev = PackedVector2Array()
+		_crumbs = PackedVector2Array()   # (that way is used: a fresh trail from here)
+		_gear = 1
+		_ap_pts = PackedVector2Array()
+		if behind and not on_street:
+			_ap_bonks += 1.0   # (blocked behind too: a few of these and it is lifted out)
+		return [0.0, 1.0, 0.0]
+	# pure pursuit backwards: the rear leads, a point a few metres back along the trail
+	var tgt := _ap_rev[_ap_rev.size() - 1]
+	var acc := 0.0
+	for i in range(_ap_rev.size()):
+		if i > 0:
+			acc += _ap_rev[i - 1].distance_to(_ap_rev[i])
+		if _ap_rev[i].distance_to(rear) >= 3.5 or acc > 5.0:
+			tgt = _ap_rev[i]
+			break
+	var to := tgt - rear
+	var alpha := (-fwd).angle_to(to)
+	var steer := clampf(-atan(2.0 * WHEELBASE * sin(alpha) / maxf(to.length(), 1.0)), -MAX_STEER, MAX_STEER)
+	var sp := absf(_v)
+	var throttle := 0.55 if sp < AP_REV_V - 0.3 else 0.0
+	var brake := 0.5 if sp > AP_REV_V + 0.6 else 0.0
+	_ap_why = "backing"
+	return [throttle, brake, steer]
+
 ## Lost: no way back found, or into the walls again and again. Back onto the nearest street,
 ## the way the 40 s unstuck does.
 func _ap_rescue() -> bool:
@@ -13993,6 +14108,8 @@ func _ap_plan() -> void:
 			if way.size() >= 2:
 				from = way[way.size() - 1]
 				heading = (way[way.size() - 1] - way[way.size() - 2]).normalized()
+			elif _ap_backout(45.0):
+				return   # (out the way it came; the trip planned once on the street)
 			elif _ap_rescue():
 				from = _pos
 				heading = _fwd()
@@ -14025,6 +14142,8 @@ func _ap_plan() -> void:
 		# off, planned the same again, and into the wall again.
 		var way := _way_to_road()
 		if way.size() < 2:
+			if _ap_backout(45.0):
+				return   # (out the way it came; planned again once on the street)
 			if not _ap_rescue():
 				return
 			hit = _nearest_seg(_pos, 20.0, true, true, _y)
