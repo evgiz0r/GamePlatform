@@ -1,0 +1,273 @@
+{
+ "about": "Givatayim as a walk filmed along it showed it, where OpenStreetMap does not: the short street at the south end of the Ha-Meri passage (the map draws it all as one footpath), the zebra across Katzenelson by the passage (unmarked), the paved forecourt at the passage's north end, the walls, fences and hedge down the passage, the bin in it and the railings at its end. Metres on the city file's ground.",
+ "roads": {
+  "drop": [
+   {
+    "k": "footway",
+    "name": "המרי",
+    "near": [
+     641.59,
+     -622.87
+    ]
+   }
+  ],
+  "add": [
+   {
+    "pts": [
+     [
+      667.9,
+      -653.0
+     ],
+     [
+      629.74,
+      -609.32
+     ]
+    ],
+    "k": "footway",
+    "w": 2.6,
+    "name": "המרי",
+    "name_en": "HaMeri"
+   },
+   {
+    "pts": [
+     [
+      629.74,
+      -609.32
+     ],
+     [
+      611.3,
+      -588.2
+     ]
+    ],
+    "k": "residential",
+    "w": 5.5,
+    "name": "המרי",
+    "name_en": "HaMeri"
+   }
+  ]
+ },
+ "crossings": [
+  [
+   661.6,
+   -672.2
+  ],
+  [
+   655.1,
+   -664.7
+  ]
+ ],
+ "areas": [
+  {
+   "k": "plaza",
+   "p": [
+    [
+     659.43,
+     -652.43
+    ],
+    [
+     667.72,
+     -645.19
+    ],
+    [
+     658.35,
+     -638.11
+    ],
+    [
+     653.38,
+     -642.45
+    ]
+   ]
+  }
+ ],
+ "lines": [
+  {
+   "kind": "stone_wall",
+   "pts": [
+    [
+     655.7,
+     -641.08
+    ],
+    [
+     641.89,
+     -625.27
+    ]
+   ],
+   "h": 0.8
+  },
+  {
+   "kind": "wood_fence",
+   "pts": [
+    [
+     655.7,
+     -641.08
+    ],
+    [
+     641.89,
+     -625.27
+    ]
+   ],
+   "base": 0.75,
+   "h": 1.15
+  },
+  {
+   "kind": "hedge",
+   "pts": [
+    [
+     641.77,
+     -625.37
+    ],
+    [
+     629.27,
+     -611.06
+    ]
+   ]
+  },
+  {
+   "kind": "loop_fence",
+   "pts": [
+    [
+     657.73,
+     -639.31
+    ],
+    [
+     632.08,
+     -609.94
+    ]
+   ],
+   "h": 0.9
+  }
+ ],
+ "props": [
+  {
+   "kind": "bin",
+   "at": [
+    640.21,
+    -622.75
+   ]
+  },
+  {
+   "kind": "hoop_railing",
+   "at": [
+    630.03,
+    -610.93
+   ],
+   "dir": [
+    -0.6578,
+    0.7532
+   ]
+  },
+  {
+   "kind": "hoop_railing",
+   "at": [
+    631.31,
+    -609.81
+   ],
+   "dir": [
+    -0.6578,
+    0.7532
+   ]
+  }
+ ],
+ "walks": {
+  "katzenelson_hameri": {
+   "name": "Katzenelson to Ha-Meri, on foot",
+   "points": [
+    [
+     0.0,
+     665.9,
+     -677.2
+    ],
+    [
+     1.5,
+     664.5,
+     -675.6
+    ],
+    [
+     15.5,
+     652.2,
+     -661.3
+    ],
+    [
+     17.0,
+     651.0,
+     -659.9
+    ],
+    [
+     19.73,
+     655.5,
+     -656.0
+    ],
+    [
+     22.42,
+     659.8,
+     -652.0
+    ],
+    [
+     25.0,
+     662.97,
+     -647.35
+    ],
+    [
+     33.0,
+     656.72,
+     -640.2
+    ],
+    [
+     42.83,
+     648.16,
+     -630.41
+    ],
+    [
+     54.17,
+     638.3,
+     -619.11
+    ],
+    [
+     64.0,
+     629.74,
+     -609.32
+    ],
+    [
+     66.12,
+     626.59,
+     -608.75
+    ],
+    [
+     68.41,
+     623.14,
+     -608.45
+    ],
+    [
+     80.0,
+     611.48,
+     -595.4
+    ],
+    [
+     81.5,
+     610.29,
+     -594.04
+    ],
+    [
+     90.0,
+     604.97,
+     -587.94
+    ],
+    [
+     91.73,
+     603.13,
+     -586.75
+    ],
+    [
+     93.0,
+     601.69,
+     -586.02
+    ],
+    [
+     96.0,
+     599.24,
+     -583.51
+    ]
+   ]
+  }
+ }
+}
