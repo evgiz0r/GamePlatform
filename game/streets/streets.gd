@@ -1509,6 +1509,8 @@ func _load_city(id: String) -> bool:
 			r["kerb_mid"] = int(rd["kerb_mid"])   # the paint along its middle, set by hand
 		if rd.has("yard"):
 			r["yard"] = bool(rd["yard"])   # front gardens along it or not, set by hand
+		if rd.has("pave"):
+			r["pave"] = rd["pave"]   # its paving [pattern, colours], set by hand
 		var ri := _roads.size()
 		_roads.append(r)
 		var hw: float = r["w"] * 0.5
@@ -2903,7 +2905,7 @@ func _build_kerbs() -> void:
 			await _pause()
 		var hw: float = float(r["w"]) * 0.5
 		var hsh := _hash_i((r["pts"] as PackedVector2Array)[0])
-		_set_pave_code(hsh)
+		_set_pave_code(hsh, r.get("pave", []))
 		# the paint along the middle of the street, and whether its ends are red-white
 		# (_kerb_paint); a kerb set by hand (details.gd) is that paint all along
 		var pat := _kerb_paint(r, hsh) if med else 0
@@ -3410,10 +3412,13 @@ func _flat_piece(buf: Buf, piece: PackedVector2Array, nrm: Vector3, col: Color, 
 var _pave_code := 0.0
 var _pave_walled := false            ## the pavement being laid has a garden wall at its back (KERB_SHADER darkens its foot)
 
-func _set_pave_code(hsh: int) -> void:
+func _set_pave_code(hsh: int, filmed: Array = []) -> void:
 	var pattern := 3
 	var colours := 1
-	if String(_place.get("look", "")) != "north":
+	if filmed.size() == 2:   # as filmed (details.gd "pave": [pattern, colours])
+		pattern = int(filmed[0])
+		colours = int(filmed[1])
+	elif String(_place.get("look", "")) != "north":
 		var p := posmod(hsh, 100)
 		pattern = 0 if p < 45 else (1 if p < 75 else 2)
 		var c := posmod(hsh >> 7, 100)
@@ -3666,7 +3671,7 @@ func _kerb_corners(kerb: Buf, pave: Buf, fill: Buf, col: Color) -> void:
 			var X = cn[4]
 			var round: bool = cn[5]
 			_laid_by = -2 - (ni * 16 + i)
-			_set_pave_code(_hash_i((_roads[int(cn[1])]["pts"] as PackedVector2Array)[0]))   # (the paving of one of its streets)
+			_set_pave_code(_hash_i((_roads[int(cn[1])]["pts"] as PackedVector2Array)[0]), (_roads[int(cn[1])] as Dictionary).get("pave", []))   # (the paving of one of its streets)
 			var curve := PackedVector2Array()
 			if round:
 				curve = _corner_curve(P, X, Q)

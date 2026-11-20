@@ -51,6 +51,7 @@
      539.23,
      -640.24
     ],
+    "pave": [1, 1],
     "kerb_mid": "blue_white"
    },
    {
@@ -60,6 +61,7 @@
      480.82,
      -720.97
     ],
+    "pave": [1, 3],
     "kerb_mid": "blue_white"
    }
   ],
@@ -594,6 +596,15 @@
   }
  ],
  "props": [
+  {"kind": "bollard", "at": [486.14, -760.0], "src": "filmed walk, Sheinkin and Sirkin: 3:12-3:27, black with a yellow band along the kerb to Katznelson"},
+  {"kind": "bollard", "at": [486.18, -761.55], "src": "filmed walk, Sheinkin and Sirkin: 3:12-3:27, black with a yellow band along the kerb to Katznelson"},
+  {"kind": "bollard", "at": [486.22, -763.1], "src": "filmed walk, Sheinkin and Sirkin: 3:12-3:27, black with a yellow band along the kerb to Katznelson"},
+  {"kind": "bollard", "at": [486.25, -764.65], "src": "filmed walk, Sheinkin and Sirkin: 3:12-3:27, black with a yellow band along the kerb to Katznelson"},
+  {"kind": "bollard", "at": [486.29, -766.2], "src": "filmed walk, Sheinkin and Sirkin: 3:12-3:27, black with a yellow band along the kerb to Katznelson"},
+  {"kind": "bollard", "at": [486.33, -767.75], "src": "filmed walk, Sheinkin and Sirkin: 3:12-3:27, black with a yellow band along the kerb to Katznelson"},
+  {"kind": "bollard", "at": [486.37, -769.3], "src": "filmed walk, Sheinkin and Sirkin: 3:12-3:27, black with a yellow band along the kerb to Katznelson"},
+  {"kind": "bollard", "at": [486.41, -770.85], "src": "filmed walk, Sheinkin and Sirkin: 3:12-3:27, black with a yellow band along the kerb to Katznelson"},
+  {"kind": "bin", "at": [485.9, -731.0], "src": "2:51, a bin at the kerb outside the shuttered shops"},
   {
    "kind": "bin",
    "at": [
