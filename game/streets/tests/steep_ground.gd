@@ -46,7 +46,7 @@ func _run() -> void:
 		var t := 0.0
 		while t < 25.0:
 			await physics_frame
-			t += 1.0 / 60.0
+			t += Engine.time_scale / Engine.physics_ticks_per_second
 			best = maxf(best, _beyond(g._pos))
 		print("way %.2f: %.0f m past the edge, %.0f m up, last hit %s" % [a, best, g._h(g._pos), g._last_hit])
 	quit()

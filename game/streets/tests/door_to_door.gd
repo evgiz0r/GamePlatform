@@ -69,7 +69,7 @@ func _run() -> void:
 	print("route planned: %d points, %.0f m" % [g._ap_pts.size(), g._ap_len()])
 	await _snap("trip_start")
 	var t := 0.0
-	var dt := 1.0 / 60.0
+	var dt := Engine.time_scale / Engine.physics_ticks_per_second
 	var odo0: float = g._odo
 	var still := 0.0
 	var held := ""

@@ -148,6 +148,8 @@ func _drive(run: Array) -> void:
 	var off := 0
 	var worst := 0.0
 	var air := 0
+	var air_was := false
+	var took_off := 0
 	var hits := {}
 	var driven := {}
 	var was_hit := ""
@@ -156,10 +158,15 @@ func _drive(run: Array) -> void:
 	var shot_at := [3.0, secs * 0.45, secs * 0.8]
 	while t < secs:
 		await physics_frame
-		t += 1.0 / 60.0
+		t += Engine.time_scale / Engine.physics_ticks_per_second
 		dist += (g._pos as Vector2).distance_to(last)
 		last = g._pos
 		if g._air:
+			if air_was == false and took_off < 4:   # (where it took off: a crest, or a seam)
+				took_off += 1
+				var on_was: int = g._decks.deck_at(g._pos, g._y, 1.5)
+				print("  %s: in the air at (%.0f, %.0f), %.0f km/h, over %s" % [name, g._pos.x, g._pos.y, absf(g._v) * 3.6,
+					("%s %s" % [g._roads[on_was]["deck"], g._roads[on_was]["en"]]) if on_was >= 0 else "the ground"])
 			air += 1
 		else:
 			var lv := _levels_at(g._pos)
@@ -170,11 +177,12 @@ func _drive(run: Array) -> void:
 				if best > 0.3:
 					off += 1
 					worst = maxf(worst, best)
+		air_was = g._air
 		var on: int = g._decks.deck_at(g._pos, g._y, 1.0)
 		if on >= 0:
 			var r: Dictionary = g._roads[on]
 			var key := "%s %s" % [r["deck"], r["en"] if r["en"] != "" else r["name"]]
-			driven[key] = float(driven.get(key, 0.0)) + 1.0 / 60.0
+			driven[key] = float(driven.get(key, 0.0)) + Engine.time_scale / Engine.physics_ticks_per_second
 		if g._touch_t > 0.45 and String(g._last_hit) != was_hit:
 			was_hit = g._last_hit
 			var kind := was_hit.split(" ")[0] + (" " + was_hit.split(" ")[1] if was_hit.begins_with("wall") else "")

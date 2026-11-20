@@ -183,16 +183,44 @@ func surf(p: Vector2, y: float) -> float:
 			past.append(c)
 		else:
 			(lanes if float(on[ri][0]) < float(r["w"]) * 0.5 + 0.3 else sides).append(c)
+	# On a street's asphalt over a cutting or a tunnel (a street across an underpass's mouth,
+	# a cutting's shallow top under a street's lanes): the street carries a body at its level.
+	var on_street := false
+	for ri: int in on:
+		if String(g._roads[ri]["deck"]) in ["cu", "tu"]:
+			on_street = _street_over(p)
+			break
+	if not open and on_street:
+		open = true
 	var low := ground if open else INF
+	# (a deck well under ground the body can reach -- a tunnel under the street it is on -- is
+	# not what it is on: ranked first, the tunnel's road won, and a car on the street dropped
+	# 7 m into it; inside the tunnel the ground overhead is out of reach, so it is still found.
+	# On a street, at its level, anything under it at all)
+	var buried := -INF
+	if open and ground <= y + STEP_UP:
+		buried = ground - (0.3 if on_street and y >= ground - 0.3 else 1.5)
 	for group: Array in [lanes, sides, past, [ground] if open else []]:
 		var best := NAN
 		for c: float in group:
 			low = minf(low, c)
-			if c <= y + STEP_UP and (is_nan(best) or absf(c - y) < absf(best - y)):
+			if c <= y + STEP_UP and c >= buried and (is_nan(best) or absf(c - y) < absf(best - y)):
 				best = c
 		if not is_nan(best):
 			return best
 	return low
+
+## p is on the asphalt of a street on the ground (a road that is no deck)
+func _street_over(p: Vector2) -> bool:
+	for code: int in g._near(g._seg_hash, p, 1.0, g.SEG_CELL):
+		var r: Dictionary = g._roads[code / 4096]
+		if r.has("ys") or not r["drive"]:
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		var j := code % 4096
+		if Geometry2D.get_closest_point_to_segment(p, pts[j], pts[j + 1]).distance_to(p) <= float(r["w"]) * 0.5:
+			return true
+	return false
 
 ## the decks whose footprint p is in: road -> [distance from its middle line, its surface's
 ## height there], each from the road's nearest segment (several segments of one road are
@@ -364,6 +392,9 @@ func _walls_of(ri: int) -> void:
 			var mid := (line[j] + line[j + 1]) * 0.5
 			if open_at(ri, mid, (ys[j] + ys[j + 1]) * 0.5):
 				continue   # (another deck's road comes in here)
+			if kind == "cu" and (_street_over(line[j]) or _street_over(line[j + 1]) or _street_over(mid)):
+				continue   # (under a street at grade, which carries a car over it: a car on Kaplan
+				           # hit the wall of the Lova Eliav tunnel's cutting where it starts at its kerb)
 			_walls.append([line[j], line[j + 1], band[0], band[1], band[2], band[3], WALL_T * 0.5, kind])
 	if kind == "br":
 		for pier: Array in piers(ri):
@@ -412,9 +443,16 @@ func piers(ri: int) -> Array:
 			continue
 		var d: Vector2 = (g._along(pts, cum, minf(at + 1.0, total)) - g._along(pts, cum, maxf(at - 1.0, 0.0))).normalized()
 		var across := Vector2(-d.y, d.x)
-		var on: Dictionary = g._nearest_seg(p, 30.0, true)
-		if not on.is_empty() and int(on["road"]) != ri and not is_deck(g._roads[int(on["road"])]) and float(on["edge"]) < 1.0:
-			continue   # (someone else's lanes)
+		# (someone else's lanes, anywhere along the pier: it spans the deck's width, and checked
+		# at its middle only, piers of a bridge crossing the Ayalon at a slant stood in its lanes)
+		var in_lanes := false
+		for f: float in [-1.0, -0.5, 0.0, 0.5, 1.0]:
+			var on: Dictionary = g._nearest_seg(p + across * (half - 0.6) * f, 30.0, true)
+			if not on.is_empty() and int(on["road"]) != ri and not is_deck(g._roads[int(on["road"])]) and float(on["edge"]) < 1.0:
+				in_lanes = true
+				break
+		if in_lanes:
+			continue
 		var clash := false
 		for o: Array in out:
 			if (o[0] as Vector2).distance_to(p) < 6.0:
@@ -1268,11 +1306,13 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 	# the ground. Depths go into `lift` as negative lifts: the rest treats them alike.
 	var is_tu := {}
 	var dig := {}
+	var branch: Array = []   # tunnel ways under nothing mapped: a passage, or a branch of a tunnel
 	for ri in range(roads.size()):
 		var r: Dictionary = roads[ri]
 		if not r.has("tu") or not drv.call(r) or r.has("y"):
 			continue
 		var ns: Array = r["n"]
+		var own := String(r.get("name", ""))
 		var over: Array = []
 		var total := 0.0
 		for j in range(ns.size() - 1):
@@ -1288,9 +1328,16 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 						var sj := code % 4096
 						if int(ms[sj]) in [int(ns[j]), int(ns[j + 1])] or int(ms[sj + 1]) in [int(ns[j]), int(ns[j + 1])]:
 							continue   # (its own next piece, a road meeting it: not over it)
+						if own != "" and String(roads[code / 4096].get("name", "")) == own:
+							continue   # (the other half of a divided road, crossing its line by a metre
+							           # where the halves close in at a mouth: not over it -- it held
+							           # Begin's southbound underpass up in Tel Aviv)
 						var xt = Geometry2D.segment_intersects_segment(a, b, pos.call(int(ms[sj])), pos.call(int(ms[sj + 1])))
 						if xt != null:
 							over.append([code / 4096, xt])
+		if over.is_empty() and int(r.get("ly", 0)) < 0 and String(r["k"]) != "service":
+			branch.append(ri)   # (decided below: on the ground, unless it joins a tunnel)
+			continue
 		if over.is_empty() or total < MIN_TUNNEL:
 			r.erase("tu")   # (on the ground, where the game drew it before it had tunnels)
 			continue
@@ -1300,6 +1347,25 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 				for m in roads[int(ov[0])]["n"]:
 					if (pos.call(int(m)) as Vector2).distance_to(ov[1]) < 80.0:
 						pinned[int(m)] = true
+	# A tunnel way under nothing mapped, below the ground, that meets a tunnel at an end is a
+	# branch of it, dug with it (Lova Eliav's two links into Begin's underpass, underground):
+	# put back on the ground, it made the junction they meet at a street's and held the
+	# tunnel up. The rest are passages: on the ground as before.
+	var grew := true
+	while grew:
+		grew = false
+		for ri: int in branch.duplicate():
+			var ns: Array = roads[ri]["n"]
+			var joins := false
+			for e in [ns[0], ns[ns.size() - 1]]:
+				for rj: int in at.get(int(e), []):
+					joins = joins or is_tu.has(rj)
+			if joins:
+				is_tu[ri] = true
+				branch.erase(ri)
+				grew = true
+	for ri: int in branch:
+		roads[ri].erase("tu")
 	var junction := func(n: int) -> bool:   # more than two ways out of n, along drivable roads
 		var ends := 0
 		for rj: int in at.get(n, []):

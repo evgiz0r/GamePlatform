@@ -55,7 +55,7 @@ func _run() -> void:
 	var inside := {}
 	var came := {}
 	var t := 0.0
-	var dt := 1.0 / 60.0
+	var dt := Engine.time_scale / Engine.physics_ticks_per_second
 	var reds := 0
 	var entries := 0
 	while t < secs:

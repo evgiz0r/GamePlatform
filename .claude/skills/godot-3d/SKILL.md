@@ -83,6 +83,19 @@ is a Z coordinate, not a height.
   An albedo multiplier is linear and the screen is sRGB: 0.55 off the albedo is what left
   the same 0.69 on screen as a real shadow did. Under a test's software renderer each frame
   the bake waits for costs most of a second; in a browser it is a few ms.
+- **Grass blades without millions of triangles.** One patch of blades in a grid that moves
+  with the camera a patch at a time, the vertex shader growing each blade only where a
+  top-down mask says grass grows (paint the mask into a spare channel of a picture you bake
+  anyway) at the ground's height (the height grid as a float texture, `texelFetch`, the same
+  triangles the game interpolates on). With `cull_disabled` the renderer turns a back face's
+  normal to the ground: flip it back (`if (!FRONT_FACING) NORMAL = -NORMAL;`) or every blade
+  seen from behind is black. Fade by the camera's 3D distance, or from above you pay for
+  blades you cannot see.
+- **People who walk through things.** Walkers on a fixed line need steering, not just a
+  push: look a step ahead for anything solid and edge off the line before it; for other
+  people, step away from whichever side they are on and hold it until past (reacting only
+  to someone "ahead" lets them drift back as they draw level and brush); then push out of
+  whatever is left, twice. Measure it: sample everyone's overlaps over a run.
 - **Night glow without a glow effect.** A bloom over the frame costs a browser a millisecond
   or two a frame; a halo per light, drawn additively in the same mesh as the light's pool on
   the ground (every vertex of its quad at the light, the corner in UV, turned to the eye in

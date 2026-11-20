@@ -51,7 +51,7 @@ func _approach(skip: int) -> Array:
 
 func _watch(tag: String) -> void:
 	var t := 0.0
-	var dt := 1.0 / 60.0
+	var dt := Engine.time_scale / Engine.physics_ticks_per_second
 	var shots := {"left": false, "right": false}
 	var line := ""
 	while t < 14.0:

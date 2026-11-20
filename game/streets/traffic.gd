@@ -974,7 +974,14 @@ func _bus_stop(c: Car, dt: float) -> float:
 				continue
 			var at := base + t
 			if at < 45.0:
-				c.shift_to -= 0.9   # in toward the kerb
+				# in toward the kerb -- as far as there is room: its side 0.3 m short of the
+				# asphalt's edge. A whole 0.9 m on a 6 m street put a bus's side 0.9 m over
+				# the kerb, into the stop's pole and the street trees (the exam's checks)
+				var room := 0.9
+				if j < c.rd.size() and c.rd[j] >= 0:
+					var r: Dictionary = _roads[c.rd[j]]
+					room = clampf(float(r["w"]) * 0.5 - g._lane_off(r) - CORNERS["bus"].x - 0.3, 0.0, 0.9)
+				c.shift_to -= room
 			if at < 1.6:
 				if c.v < 0.4:
 					c.dwell += dt
@@ -1376,7 +1383,7 @@ func _place(c: Car) -> void:
 	# corner it pivoted on its middle: a bus's back swung out across the lane, a car's nose
 	# snapped round at each kink in its line -- "they jump around".
 	var wb := clampf(c.len * 0.6, 1.3, 7.0)
-	var wander := sin(_clock * 0.31 + c.drift) * 0.14 * clampf(c.v / 8.0, 0.0, 1.0)
+	var wander := sin(_clock * 0.31 + c.drift) * 0.1 * clampf(c.v / 8.0, 0.0, 1.0)
 	var off := c.shift + wander
 	# (the front on the lane rounded over 4 m: the lane line has corners in it -- a bend in
 	# the map's road -- and a front run exactly round each flicked the heading at 2.5 rad/s)

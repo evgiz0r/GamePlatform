@@ -44,7 +44,7 @@ func _run() -> void:
 	g._set_auto(true)
 	var T = g._traffic
 	var t := 0.0
-	var dt := 1.0 / 60.0
+	var dt := Engine.time_scale / Engine.physics_ticks_per_second
 	var multi := 0.0
 	var off_sum := 0.0
 	var bonks := 0
