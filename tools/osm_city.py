@@ -71,7 +71,8 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
              crown's radius in decimetres (0 not known). Only where a town's own map of its
              trees was taken (see TREE_SURVEYS); OSM's trees are [-1, 0]
   tree_surveys [{id, all, from, to}]   the trees [from, to) each such map brought; all: 1 it
-             maps every tree (from the air: yards and parks too), 0 the street trees only
+             maps every tree (from the air: yards and parks too), 0 a list of street trees
+             (not always every one)
   addrs      [[x, z, street, number], ...]   address points not on a building outline
   stops      [[x, z, name], ...]   bus stops
   pois       [[x, z, kind, name, name_en], ...]   shops, restaurants, schools... (kind:
@@ -1690,8 +1691,8 @@ def bake(raw, name, args):
 # town's site answers): each tree's place, and its species or the size of its crown as mapped
 # from the air. They join OSM's trees -- OSM's own within 3 m of one are taken as the same tree
 # and dropped -- with `tree_info` beside them, and `tree_surveys` says which trees each survey
-# brought and whether it maps every tree ("all": from the air, so yards and parks too) or the
-# street trees alone (a game should not make up its own where one covers).
+# brought and whether it maps every tree ("all": from the air, so yards and parks too) or is a
+# list of street trees (not always every one: a game can fill its gaps).
 # "shift" (m, x east and z south) moves its trees onto OSM's map: the town's own buildings
 # from the same server were measured that far off OSM's outlines (survey_apply's log line,
 # 20-21 Nov 2026); without it a tenth of Tel Aviv's street trees stood inside a house.

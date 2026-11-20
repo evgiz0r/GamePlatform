@@ -154,11 +154,13 @@ the parked cars, which stand a third in the road).
 - **A town's map of its trees comes in two kinds, and each covers a different part.** A
   street-tree inventory (each public tree's place and species, no size) says nothing of
   yards; crowns traced from the air (every tree, yards and parks too, only a centre and a
-  radius) say nothing of species. So where a map covers, stop making up only what it
-  covers: no invented street rows within reach of an inventory's trees, and no invented
-  street, park or open-land trees within reach of an aerial one -- but keep making up the
-  yards' trees an inventory leaves out. Coverage by distance to the map's own trees (40-80
-  m) needs no town boundary and does not bleed far into the next town. An aerial "crown"
+  radius) say nothing of species. And an inventory is not every street tree: one city's
+  listed 16 trees along a stretch of a boulevard with rows of them. So with an inventory,
+  keep making up street trees but not within a few metres of a listed one (the gaps fill,
+  the listed ones keep their places and species), and keep making up the yards' trees; with
+  an aerial map, make up none within reach of its trees (40-80 m: needs no town boundary and
+  does not bleed far into the next town). Taking an inventory as complete left a famous
+  boulevard bare. An aerial "crown"
   far bigger than a tree (here up to 54 m across) is a grove's canopy: split it into
   trees of a usual size, or one giant ball stands over a park. Species to a handful of
   forms (fan palm, date palm, ficus, feathery, round, olive, pine, cypress, eucalyptus) by

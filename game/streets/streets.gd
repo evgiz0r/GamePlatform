@@ -2231,13 +2231,17 @@ func _build_setup(t0: int) -> void:
 	var tr: Array = _city_data.get("trees", [])
 	for i in range(0, tr.size() - 1, 2):
 		_bucket(_tile_trees, _tile_of(Vector2(tr[i], tr[i + 1]) * k), i)
-	# where a town's own map of its trees covers (the city file's tree_surveys): its street
-	# trees are all mapped there (1), or every tree is, from the air (2) -- none made up
+	# a town's own map of its trees (the city file's tree_surveys): where one maps every tree,
+	# from the air, none is made up (2); a list of street trees is not every street tree (Tel
+	# Aviv's has 16 along a stretch of Rothschild that has rows of them), so a made-up street
+	# tree is only kept off a real one's spot (_tree_near)
 	for ts: Dictionary in _city_data.get("tree_surveys", []):
-		var cover := 2 if int(ts.get("all", 0)) == 1 else 1
 		for t in range(int(ts["from"]), int(ts["to"])):
-			var tc := _cell(Vector2(tr[2 * t], tr[2 * t + 1]) * k, TREE_COVER)
-			_tree_cover[tc] = maxi(int(_tree_cover.get(tc, 0)), cover)
+			var tp := Vector2(tr[2 * t], tr[2 * t + 1]) * k
+			if int(ts.get("all", 0)) == 1:
+				_tree_cover[_cell(tp, TREE_COVER)] = 2
+			else:
+				_bucket(_tree_near, _cell(tp, TREE_NEAR), tp)
 	var pois: Array = _city_data.get("pois", [])
 	for i in range(pois.size()):
 		_bucket(_tile_pois, _tile_of(Vector2(pois[i][0], pois[i][1]) * k), i)
@@ -5959,7 +5963,8 @@ func _build_trees() -> void:
 					var sc := rng.randf_range(0.8, 1.25)
 					# (and not on a rounded corner's asphalt: a street's trees, spaced along it,
 					# landed on the next street's corner -- city_check)
-					if _mine(p) and _tree_covered(p) == 0 and _tree_ok(p, 5.0) and not _in_corner_fill(p, 0.15):
+					if _mine(p) and _tree_covered(p) == 0 and not _mapped_near(p) and _tree_ok(p, 5.0) \
+							and not _in_corner_fill(p, 0.15):
 						_add_post(p, 0.3)
 						spots.append(Vector3(p.x, p.y, sc))
 						_tally("trees_made_up_rows", 1)
@@ -6142,12 +6147,24 @@ func _build_trees() -> void:
 		await _chunked_paced(_tree_meshes[part], parts[part], reach, colours[part], null, true)
 
 var _tree_meshes := {}
-const TREE_COVER := 40.0             ## a town's tree map covers within 40-80 m of its trees (cells this big)
-var _tree_cover := {}                ## TREE_COVER cell -> 1 its street trees are mapped, 2 every tree is
+const TREE_COVER := 40.0             ## a town's map of every tree covers within 40-80 m of its trees (cells this big)
+var _tree_cover := {}                ## TREE_COVER cell -> 2: every tree there is mapped (from the air)
+const TREE_NEAR := 9.0               ## no made-up street tree this near a listed one (a row's gap is 11 m)
+var _tree_near := {}                 ## TREE_NEAR cell -> the listed street trees in it (a town's list)
+
+## A tree from a town's list of street trees stands within TREE_NEAR of p
+func _mapped_near(p: Vector2) -> bool:
+	var c := _cell(p, TREE_NEAR)
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			for q: Vector2 in _tree_near.get(c + Vector2i(dx, dz), []):
+				if q.distance_to(p) < TREE_NEAR:
+					return true
+	return false
 var _trees_mapped := 0               ## trees from the city file (they do not count toward the caps)
 
-## How much of p's trees a town's own map has: 0 none (make them up), 1 the street trees,
-## 2 every tree (mapped from the air: yards and parks too)
+## How much of p's trees a town's own map has: 0 not all (make up what is missing), 2 every
+## tree (mapped from the air: yards and parks too)
 func _tree_covered(p: Vector2) -> int:
 	var c := _cell(p, TREE_COVER)
 	var best := 0
