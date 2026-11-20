@@ -428,6 +428,12 @@ photo only adds the variation round its own average, so `/look` reskins it as be
 Walls are a little darker at the foot, and a faint streak of grime runs down from each
 window sill.
 
+Down at street level: a manhole cover every 55-95 m down a street, a drain grate at the
+kerb every 40-65 m on alternate sides; oil and rubber blotches on the asphalt; road paint
+worn through to the asphalt in patches; kerbs of grainy concrete (the paint wearing with
+it), dirtier at the foot; the red of a no-stopping kerb red, not the palette's pink; flat
+roofs of tar and gravel with dried-puddle stains.
+
 > What would it take to make it more realistic, closer to Unreal and Unity quality of
 > details and resolution?
 

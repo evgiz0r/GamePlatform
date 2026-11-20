@@ -1496,6 +1496,11 @@ func _build_world() -> bool:
 			_disc(asphalt, _nodes[i], _node_r[i] * 1.05, Y_ROAD)
 	for r: Dictionary in _roads:
 		_markings(marks, r, yellow)
+	var metal := CBuf.new(GROUND_CELL)
+	var metal_rim := CBuf.new(GROUND_CELL)
+	_street_metal(metal, metal_rim)
+	_add_mesh(metal_rim, _surface("metalrim"), false, DETAIL_RANGE)
+	_add_mesh(metal, _surface("metal"), false, DETAIL_RANGE)
 	for ni in _city_data.get("crossings", []):
 		_zebra(marks, int(ni))
 		_crossing_nodes.append(int(ni))
@@ -1733,6 +1738,15 @@ uniform vec4 red : source_color;
 uniform vec4 blue : source_color;
 uniform vec4 yellow : source_color;
 uniform vec4 black : source_color;
+uniform float textured = 1.0;
+uniform sampler2D conc : filter_linear_mipmap_anisotropic, repeat_enable;   // concrete grain
+uniform vec3 conc_mean = vec3(0.5);
+varying vec3 wpos;
+varying float wup;
+void vertex() {
+	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	wup = (MODEL_MATRIX * vec4(NORMAL, 0.0)).y;
+}
 void fragment() {
 	float pat = floor(COLOR.r * 3.99 + 0.01);
 	float stripe = step(0.5, fract(UV.x * 0.5));
@@ -1740,10 +1754,49 @@ void fragment() {
 	if (pat > 0.5 && pat < 1.5) { c = mix(red.rgb, white.rgb, stripe); }
 	else if (pat > 1.5 && pat < 2.5) { c = mix(blue.rgb, white.rgb, stripe); }
 	else if (pat > 2.5) { c = mix(yellow.rgb, black.rgb, stripe); }
+	if (textured > 0.5) {
+		// concrete grain through the paint (laid from above on the top, along on the face),
+		// and the face's foot darker: road dirt thrown up against it
+		vec2 uv = wup > 0.5 ? wpos.xz : vec2(UV.x, wpos.y);
+		vec3 t = texture(conc, uv * 0.8).rgb;
+		c *= mix(1.0, clamp(dot(t, vec3(0.333)) / dot(conc_mean, vec3(0.333)), 0.0, 2.0), 0.7);
+		if (wup < 0.5) {
+			c *= mix(0.7, 1.0, UV.y);
+		}
+	}
 	ALBEDO = c;
 	ROUGHNESS = 0.85;
 }
 """
+
+## Flat roofs: tar and gravel -- the asphalt's grit, finer -- with dried-puddle stains
+const ROOF_SHADER := """
+shader_type spatial;
+uniform vec4 tone : source_color;
+uniform float textured = 1.0;
+uniform sampler2D grit : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform vec3 grit_mean = vec3(0.5);
+varying vec3 wpos;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+float noise(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	vec2 u = f * f * (3.0 - 2.0 * f);
+	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+}
+void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
+void fragment() {
+	vec3 c = tone.rgb * COLOR.rgb;
+	if (textured > 0.5) {
+		vec3 t = texture(grit, wpos.xz / 1.4).rgb;
+		c *= mix(1.0, clamp(dot(t, vec3(0.333)) / dot(grit_mean, vec3(0.333)), 0.0, 2.0), 0.55);
+		c *= 1.0 - 0.18 * smoothstep(0.55, 0.85, noise(wpos.xz / 2.3));
+	}
+	ALBEDO = c;
+	ROUGHNESS = 0.92;
+}
+"""
+var _roof_mat: ShaderMaterial
 const PAVE_W := 2.4                  ## pavement width (m)
 const KERB_CUT := 4.5                ## kerbs stop this far past a junction's road edge: the corner's radius
 const KERB_H := 0.14
@@ -1828,6 +1881,9 @@ func _build_kerbs() -> void:
 	var sh := Shader.new()
 	sh.code = KERB_SHADER
 	_kerb_mat.shader = sh
+	_kerb_mat.set_shader_parameter("conc", _tex("concrete_pavement_diff"))
+	_kerb_mat.set_shader_parameter("conc_mean", TEX_MEAN["concrete_pavement"])
+	_kerb_mat.set_shader_parameter("textured", 1.0 if _quality > 0 else 0.0)
 	_add_mesh(kerb, _kerb_mat, false, DETAIL_RANGE)
 	_add_mesh(pave, _surface("pavement"), false, DETAIL_RANGE * 1.6)
 	_add_mesh(wall, _surface("stonewall"), false, DETAIL_RANGE)
@@ -2050,12 +2106,15 @@ func _kerb_corners(kerb: Buf, pave: Buf, fill: Buf, col: Color) -> void:
 				along += a.distance_to(b)
 
 func _retint_kerbs() -> void:
+	if _roof_mat != null:
+		_roof_mat.set_shader_parameter("tone", _tone["roof"])
 	if _kerb_mat == null:
 		return
 	_kerb_mat.set_shader_parameter("plain", _tone["kerb"])
 	_kerb_mat.set_shader_parameter("white", Palette.col("ink"))
-	_kerb_mat.set_shader_parameter("red", Palette.col("hazard"))
-	_kerb_mat.set_shader_parameter("blue", Palette.col("player").lerp(Palette.col("bg"), 0.35))
+	# the kerb paint is vivid, as it is on the street, but red rather than the palette's pink
+	_kerb_mat.set_shader_parameter("red", _natural(Palette.col("hazard").lerp(Palette.col("warn"), 0.22), 0.85))
+	_kerb_mat.set_shader_parameter("blue", _natural(Palette.col("player").lerp(Palette.col("bg"), 0.35), 0.85))
 	_kerb_mat.set_shader_parameter("yellow", Palette.col("warn"))
 	_kerb_mat.set_shader_parameter("black", Palette.col("bg"))
 
@@ -2164,8 +2223,7 @@ func _ribbon(buf: Buf, pts: PackedVector2Array, hw: float, y: float) -> void:
 		buf.quad3(Vector3(left[i].x, hl[i] + y, left[i].y), Vector3(left[i + 1].x, hl[i + 1] + y, left[i + 1].y),
 			Vector3(right[i + 1].x, hr[i + 1] + y, right[i + 1].y), Vector3(right[i].x, hr[i] + y, right[i].y))
 
-func _disc(buf: Buf, c: Vector2, r: float, y: float) -> void:
-	var seg := 14
+func _disc(buf: Buf, c: Vector2, r: float, y: float, seg := 14) -> void:
 	var mid := _g3(c, y)
 	var rim: Array = []
 	for i in range(seg):
@@ -2177,6 +2235,66 @@ func _disc(buf: Buf, c: Vector2, r: float, y: float) -> void:
 		if nrm.y < 0.0:
 			nrm = -nrm
 		buf.tri(mid, p0, p1, nrm.normalized() if nrm.length_squared() > 0.0 else Vector3.UP, Color.WHITE)
+
+## Cast iron in the road: a manhole cover every 55-95 m down a street, somewhere in its
+## width, and a drain grate at the kerb every 40-65 m, on alternate sides -- flat on the
+## asphalt, clear of the junctions, merged into the ground like the paint. Kept to a few
+## triangles each: a big city has thousands.
+func _street_metal(metal: Buf, rim: Buf) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(_city_name) + 77
+	var y := Y_MARK + 0.004
+	for r: Dictionary in _roads:
+		if not r["drive"] or HIGHWAYS.has(r["k"]) or r["k"] == "service":
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		var w: float = r["w"]
+		var cum := PackedFloat32Array([0.0])
+		for i in range(1, pts.size()):
+			cum.append(cum[i - 1] + pts[i - 1].distance_to(pts[i]))
+		var total := cum[cum.size() - 1]
+		var clear: Array = []   # the junctions along it: (distance along, how far to keep off)
+		var ids: PackedInt32Array = r["ids"]
+		for i in range(ids.size()):
+			if (_node_roads[ids[i]] as Array).size() >= 2:
+				clear.append(Vector2(cum[i], _node_r[ids[i]] + 1.5))
+		var s := rng.randf_range(10.0, 40.0)
+		while s < total - 4.0:
+			if _clear_of(clear, s):
+				var a := _along(pts, cum, s)
+				var d := (_along(pts, cum, minf(s + 1.0, total)) - a).normalized()
+				var at := a + Vector2(-d.y, d.x) * w * rng.randf_range(-0.25, 0.25)
+				_disc(rim, at, 0.36, y, 8)
+				_disc(metal, at, 0.31, y + 0.002, 8)
+				_dressing["manholes"] = int(_dressing.get("manholes", 0)) + 1
+			s += rng.randf_range(55.0, 95.0)
+		if not _kerbed(r):
+			continue
+		var sg := 1.0 if rng.randf() < 0.5 else -1.0
+		s = rng.randf_range(6.0, 25.0)
+		while s < total - 3.0:
+			if _clear_of(clear, s):
+				var a := _along(pts, cum, s)
+				var d := (_along(pts, cum, minf(s + 1.0, total)) - a).normalized()
+				var side := Vector2(-d.y, d.x) * sg
+				var c := a + side * (w * 0.5 - 0.32)
+				_flat_rect(rim, c, d, side, 0.9, 0.46, y)
+				_flat_rect(metal, c, d, side, 0.78, 0.34, y + 0.002)
+				_dressing["drains"] = int(_dressing.get("drains", 0)) + 1
+			s += rng.randf_range(40.0, 65.0)
+			sg = -sg
+
+func _clear_of(clear: Array, s: float) -> bool:
+	for c: Vector2 in clear:
+		if absf(s - c.x) < c.y:
+			return false
+	return true
+
+## a flat rectangle on the ground at c, `along` x `across` metres, along d
+func _flat_rect(buf: Buf, c: Vector2, d: Vector2, side: Vector2, along: float, across: float, y: float) -> void:
+	var a := d * along * 0.5
+	var b := side * across * 0.5
+	buf.quad3(_g3(c - a - b, y), _g3(c + a - b, y), _g3(c + a + b, y), _g3(c - a + b, y))
 
 ## dashed white lines: down the middle of a two-way street, between lanes of a one-way
 ## Paint along a road. Two-way: a centre line (white dashes in Givatayim; in Nova Scotia
@@ -2283,8 +2401,15 @@ func _build_buildings() -> void:
 	_wall_mat.set_shader_parameter("plaster_nrm", _tex("painted_plaster_wall_nor"))
 	_wall_mat.set_shader_parameter("plaster_mean", TEX_MEAN["painted_plaster_wall"])
 	_wall_mat.set_shader_parameter("textured", 1.0 if _quality > 0 else 0.0)
-	var roof := _surface("roof")
-	roof.vertex_color_use_as_albedo = true
+	_roof_mat = ShaderMaterial.new()
+	var rsh := Shader.new()
+	rsh.code = ROOF_SHADER
+	_roof_mat.shader = rsh
+	_roof_mat.set_shader_parameter("grit", _tex("asphalt_02_diff"))
+	_roof_mat.set_shader_parameter("grit_mean", TEX_MEAN["asphalt_02"])
+	_roof_mat.set_shader_parameter("tone", _tone["roof"])
+	_roof_mat.set_shader_parameter("textured", 1.0 if _quality > 0 else 0.0)
+	var roof := _roof_mat
 	var chunks := {}
 	var north := String(_place.get("look", "")) == "north"
 	var med := String(_place.get("look", "")) == "med"
@@ -5005,6 +5130,7 @@ uniform vec3 big_mean = vec3(0.5);
 uniform vec3 pave_mean = vec3(0.5);
 uniform vec3 grass_mean = vec3(0.5);
 uniform float pave_m = 2.0;            // metres one pave_tex covers, for the pavement's slab size
+uniform vec3 wear_col = vec3(0.3);     // what worn road paint shows through: the asphalt
 varying vec3 wpos;
 varying float wup;                     // how much the face looks up: the photos are laid from above
 // a photo's colour over its average: 1 on average, so the tone underneath keeps its colour
@@ -5048,11 +5174,12 @@ void fragment() {
 		float near = clamp(1.0 - length(VERTEX) / 90.0, 0.0, 1.0);
 		float big = noise(p / 11.0) * 0.6 + noise(p / 3.1) * 0.4;
 		float shade = 1.0 + (big - 0.5) * fx.x * 2.0;
-		if (fx.w < 1.5) {   // grass and ground: drier, yellower patches here and there
+		if (fx.w > 0.5 && fx.w < 1.5) {   // grass and ground: drier, yellower patches here and there
 			c = mix(c, c * vec3(1.12, 1.07, 0.8), smoothstep(0.56, 0.82, noise(p / 17.0 + 7.0)) * fx.x * 4.0);
 		}
-		// a wall or a kerb's face stays on the noise: laid from above, a photo runs down it in streaks
-		if (textured > 0.5 && wup > 0.6) {
+		// a wall or a kerb's face stays on the noise: laid from above, a photo runs down it in
+		// streaks; kind 0 (a pole's top, a bench, a sign) has no photo at all
+		if (textured > 0.5 && wup > 0.6 && fx.w > 0.5) {
 			if (fx.w < 1.5) {   // grass, earth, sand: a lawn photo, 2 m across (fading out further
 				// off, where its repeat would line up into a grid; see GROUND_SHADER)
 				float kd = 1.0 - smoothstep(25.0, 110.0, length(VERTEX));
@@ -5067,6 +5194,20 @@ void fragment() {
 				vec3 b = textureGrad(asph_big, p / 30.0, dpx / 30.0, dpy / 30.0).rgb;
 				c *= mix(1.0, clamp(dot(b, vec3(0.333)) / dot(big_mean, vec3(0.333)), 0.0, 2.0), 0.7 * k);
 				bump = unpack(textureGrad(asph_nrm, uv, dpx / 3.0, dpy / 3.0).rg, 1.0);
+				if (fx.x > 0.0) {
+					// oil and rubber: a dark blotch in about one 3 m square in six, oval, soft
+					vec2 cell = floor(p / 3.0);
+					if (hash(cell) > 0.83) {
+						vec2 cc = (cell + 0.5 + (vec2(hash(cell + 3.1), hash(cell + 7.7)) - 0.5) * 0.5) * 3.0;
+						float r = 0.35 + 0.55 * hash(cell + 1.3);
+						float d = length((p - cc) * vec2(1.0, 1.7));
+						c *= 1.0 - 0.5 * smoothstep(r, r * 0.35, d) * (0.6 + 0.4 * noise(p * 3.0));
+					}
+				} else {
+					// paint wears through to the asphalt, in patches and in grains
+					float wear = smoothstep(0.5, 0.85, noise(p * 1.3)) * 0.55 + smoothstep(0.62, 0.9, noise(p * 7.0)) * 0.3;
+					c = mix(c, wear_col, wear);
+				}
 			} else {   // pavement and plazas: pavers, bigger in a plaza
 				float s = pave_m * fx.z / 0.6;
 				vec2 uv = p / s;
@@ -5095,12 +5236,13 @@ void fragment() {
 	SPECULAR = 0.25;
 }
 """
-## the surface each tone gets: [patches, grain, slab size, kind (1 soft, 2 grained, 3 slabs)]
+## the surface each tone gets: [patches, grain, slab size, kind (0 none, 1 soft, 2 grained, 3 slabs)]
 const TONE_FX := {
 	"grass": [0.16, 0.08, 0.0, 1.0], "pitch": [0.06, 0.05, 0.0, 1.0], "wood": [0.16, 0.07, 0.0, 1.0],
 	"bush": [0.1, 0.05, 0.0, 1.0], "ground": [0.1, 0.06, 0.0, 1.0], "sand": [0.08, 0.08, 0.0, 1.0],
 	"asphalt": [0.11, 0.075, 0.0, 2.0], "parking": [0.1, 0.06, 0.0, 2.0], "path": [0.06, 0.07, 0.0, 2.0],
 	"pavement": [0.04, 0.04, 0.6, 3.0], "plaza": [0.05, 0.04, 1.0, 3.0], "mark": [0.0, 0.04, 0.0, 2.0],
+	"markyellow": [0.0, 0.04, 0.0, 2.0], "metal": [0.0, 0.0, 0.0, 0.0], "metalrim": [0.0, 0.0, 0.0, 0.0],
 }
 var _tone_list: Array = []           ## the table's tone names, in order
 var _tone_material: ShaderMaterial
@@ -5153,7 +5295,7 @@ func _tex(file: String) -> Texture2D:
 
 ## the photo textures on or off in every shader that has them (off at the lowest web level)
 func _set_textured(on: bool) -> void:
-	for m: ShaderMaterial in [_tone_material, _wall_mat, _ground_shader_mat]:
+	for m: ShaderMaterial in [_tone_material, _wall_mat, _ground_shader_mat, _kerb_mat, _roof_mat]:
 		if m != null:
 			m.set_shader_parameter("textured", 1.0 if on else 0.0)
 
@@ -5167,9 +5309,10 @@ func _retint_tone_mat() -> void:
 	fxs.fill(Vector4.ZERO)
 	for i in range(_tone_list.size()):
 		cols[i] = _tone.get(_tone_list[i], Palette.col("warn"))
-		var f: Array = TONE_FX.get(_tone_list[i], [0.03, 0.02, 0.0, 1.0])
+		var f: Array = TONE_FX.get(_tone_list[i], [0.03, 0.02, 0.0, 0.0])   # (kind 0: no photo)
 		fxs[i] = Vector4(f[0], f[1], f[2], f[3])
 	_tone_material.set_shader_parameter("tones", cols)
+	_tone_material.set_shader_parameter("wear_col", _tone["asphalt"])
 	_tone_material.set_shader_parameter("tone_fx", fxs)
 
 ## the tone a plain material is (one of _surface's), or "" when it is anything else
@@ -6954,6 +7097,7 @@ const NATURAL := {
 	"tank": 0.3, "furniture": 0.3, "pavement": 0.2, "kerb": 0.15, "stonewall": 0.45, "roofroom": 0.4,
 	"gable": 0.5, "carglass": 0.4, "cartrim": 0.2, "tyre": 0.15, "rim": 0.2, "concrete": 0.15,
 	"insulator": 0.3, "trafo": 0.4, "cable": 0.2, "railing": 0.3, "brick": 0.7, "rubber": 0.6,
+	"metal": 0.1, "metalrim": 0.1,
 }
 
 ## a palette colour with only `keep` of its saturation, the rest toward its own brightness
@@ -7036,6 +7180,8 @@ func _tones() -> void:
 		"lampgreen": fr.lerp(bg, 0.74),
 		"fencegreen": fr.lerp(bg, 0.55),
 		"railing": ink.lerp(alt, 0.12),
+		"metal": bg.lerp(alt, 0.6),            # cast iron: manhole covers, drain grates
+		"metalrim": alt.lerp(ink, 0.32),
 	}
 	for k: String in NATURAL:
 		if _tone.has(k):
