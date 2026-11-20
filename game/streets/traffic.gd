@@ -125,6 +125,8 @@ class Car:
 	## the street's own goings-on (_double_park, _kerb_tick):
 	var dbl_s := -1.0                 ## a van or truck making a delivery: where (s along its path) it stops in the street
 	var dbl := 0.0                    ## ... and the seconds it stands there, hazards on
+	var dbl_edge := INF               ## ... and how far left of its lane line what stands at the kerb along the way in reaches (INF: not measured yet)
+	var dbl_edge_s := -1.0            ## (the stop it was measured for)
 	var kerb := false                 ## parked at the kerb ahead of the player, to pull out as they come
 	var kerb_t := 0.0                 ## seconds parked
 	var hold_t := 0.0                 ## seconds still to wait, signalling, before pulling out
@@ -678,7 +680,7 @@ func _junction_ahead(c: Car, i: int, dt: float) -> float:
 		# (not at lights: there the lights decide, and held further back a queue's next car
 		# waited for anything in the junction -- the car ahead of it too: queue_start 1.07x
 		# -> 1.48x)
-		var lit_near: bool = not (g._near(g._sig_hash, g._nodes[n], 40.0, g.SEG_CELL) as Array).is_empty()   # (a junction's unlit points too)
+		var lit_near: bool = not (g._near(g._sig_hash, g._nodes[n], 25.0, g.SEG_CELL) as Array).is_empty()   # (a junction's unlit points too: its points lie 10-30 m apart; 40 m reached the next junction along -- being measured)
 		var back := _node_r[n] + 1.0 if lit_near else maxf(_node_r[n] + 1.0, _clear_back(c, j, n))
 		var edge := dist - (back + c.len * 0.5)
 		if edge < -1.0:
@@ -1033,7 +1035,17 @@ func _double_park(c: Car, dt: float) -> float:
 	if to < 35.0:   # in toward the kerb, as far as there is room
 		var r: Dictionary = _roads[c.rd[mini(c.k + 1, c.rd.size() - 1)]]
 		var cw: float = (CORNERS.get(c.kind, Vector2(0.95, 2.4)) as Vector2).x
-		c.shift_to -= clampf(float(r["w"]) * 0.5 - _lane(r) - cw - 0.3, 0.0, 1.0)
+		var room := clampf(float(r["w"]) * 0.5 - _lane(r) - cw - 0.3, 0.0, 1.0)
+		# and no further than keeps its side 0.3 m off what stands at the kerb, on the way in
+		# and where it stops: parked cars stand a third in the road, and a truck pulled in by
+		# the asphalt's room alone stood 0.3 m into one's side (the exam's "traffic body into a
+		# post" -- a parked car is two posts to the car)
+		if c.dbl_edge_s != c.dbl_s:
+			c.dbl_edge_s = c.dbl_s
+			c.dbl_edge = _kerb_edge(c, to + c.len * 0.5)
+		if c.dbl_edge > -INF:
+			room = clampf(minf(room, c.shift_to - cw - 0.3 - c.dbl_edge), 0.0, 1.0)
+		c.shift_to -= room
 	if to < 1.2:
 		if c.v < 0.4:
 			c.dbl -= dt
@@ -1043,6 +1055,26 @@ func _double_park(c: Car, dt: float) -> float:
 				return INF
 		return 0.0
 	return sqrt(2.0 * BRAKE * maxf(to - 0.6, 0.0))
+
+## how far left of car c's lane line (right: negative) the nearest thing standing to its
+## right reaches, over its path from its back now to `ahead` metres on: the inner edge of the
+## parked cars, posts and trees along the kerb it would pull in toward; -INF if none
+func _kerb_edge(c: Car, ahead: float) -> float:
+	var edge := -INF
+	var seen := {}
+	var step := 0.0
+	while step <= ahead + 0.1:
+		var at := _at(c, c.s - c.len * 0.5 + step)
+		for pi: int in g._near(g._post_hash, at, 5.0, g.BLD_CELL):
+			if seen.has(pi):
+				continue
+			seen[pi] = true
+			var pr := _proj(c, g._posts[pi], c.len * 0.5 + 1.0, ahead + 1.0)
+			if pr.x == INF or pr.y > c.shift_to:
+				continue   # (off its path, or left of its middle)
+			edge = maxf(edge, pr.y + float(g._post_r[pi]))
+		step += 4.0
+	return edge
 
 ## Now and then a car parked at the kerb ahead of the player, 90-150 m on along their street
 ## (where the street's parked cars are, in a gap between them), that pulls out as they come:
