@@ -17,6 +17,7 @@ var T
 var counts := {}
 var where: Array = []                ## [what, Vector2, detail, log file]
 var logs_saved := 0
+var saved_kind := {}
 
 func _initialize() -> void:
 	_run()
@@ -26,7 +27,11 @@ func _count(k: String, n := 1) -> void:
 
 func _incident(what: String, at: Vector2, detail: String, save := true) -> void:
 	var file := ""
-	if save and logs_saved < int(OS.get_environment("EXAM_LOGS") if OS.get_environment("EXAM_LOGS") != "" else "10"):
+	# a drive log of the moments before, for the first few of each kind (the recorder keeps
+	# every car near the player and what holds each: draw it with drive_log_map.py)
+	var kind_n := int(saved_kind.get(what, 0))
+	if save and kind_n < 3 and logs_saved < int(OS.get_environment("EXAM_LOGS") if OS.get_environment("EXAM_LOGS") != "" else "12"):
+		saved_kind[what] = kind_n + 1
 		logs_saved += 1
 		file = g._log.save(g).replace(".json", "")
 		var parts := file.split("/")
@@ -189,7 +194,7 @@ func _drive(secs: float) -> void:
 				car_still[i] = float(car_still.get(i, 0.0)) + dt
 				if absf(float(car_still[i]) - 20.0) < dt * 0.5:
 					_count("traffic: stalls 20 s+")
-					_incident("traffic stall", c.pos, "%s, blocker %d, wait %.0f" % [c.kind, c.blocker, c.wait], false)
+					_incident("traffic stall", c.pos, "%s, held by %s, blocker %d" % [c.kind, c.why, c.blocker])
 			else:
 				car_still.erase(i)
 			if c.wait > 25.0:
@@ -210,7 +215,7 @@ func _drive(secs: float) -> void:
 					var came: Vector2 = came_dir.get(i, Vector2(sin(c.yaw), cos(c.yaw)))
 					if g._light_at(n, came) == "r":
 						_count("traffic: red lights run")
-						_incident("traffic red", c.pos, c.kind, false)
+						_incident("traffic red", c.pos, c.kind)
 				inside[key] = t
 			if not in_any:
 				came_dir[i] = Vector2(sin(c.yaw), cos(c.yaw))
@@ -230,7 +235,7 @@ func _drive(secs: float) -> void:
 					if not overlapping.has(key):
 						overlapping[key] = true
 						_count("traffic: cars overlapping")
-						_incident("traffic overlap", c.pos, "%s & %s" % [c.kind, o.kind], false)
+						_incident("traffic overlap", c.pos, "%s (%s) & %s (%s)" % [c.kind, c.why, o.kind, o.why])
 				else:
 					overlapping.erase(key)
 		# -- people

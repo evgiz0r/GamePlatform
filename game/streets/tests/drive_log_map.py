@@ -9,7 +9,8 @@ log names; the car's track coloured by speed (red standing, yellow, green at 50 
 a tick and the second every 5 s; autodrive's lane ahead every 2 s as a thin blue line (the
 plan it was following); the other cars' tracks in grey; hits (red X), rescues (orange
 ring), junction choices (blue dot), standstills of 3 s or more (orange dot and the
-seconds, with what held it). A strip along the bottom: speed against time, coloured by what
+seconds, with what held it); traffic cars standing 5 s or more not at a light (violet ring,
+seconds and what held them, a line to the car holding them up). A strip along the bottom: speed against time, coloured by what
 held autodrive back (limit, curve, light, car, people...).
 
 Reads only the two JSON files; needs Pillow.
@@ -42,6 +43,7 @@ def _font(size):
 
 
 FONT = _font(14)
+FONT_S = _font(11)
 
 
 def main(argv):
@@ -113,6 +115,39 @@ def main(argv):
         for a, b in zip(tr, tr[1:]):
             if math.dist(a, b) < 25 * sc:   # (a car sent elsewhere jumps: no line across the map)
                 d.line([a, b], fill=(120, 120, 130), width=1)
+    # traffic standstills of 5 s or more (not at a light): a violet ring, the seconds and what
+    # held it, and a line to the car holding it up (or to the player's car)
+    dt = 1.0 / float(log.get("hz", 10))
+    runs = {}   # car id -> [seconds, first sample's car row, sample]
+    def close_run(cid):
+        r = runs.pop(cid, None)
+        if not r or r[0] < 5.0:
+            return
+        c, smp = r[1], r[2]
+        p = P(c[2], c[3])
+        d.ellipse([p[0] - 6, p[1] - 6, p[0] + 6, p[1] + 6], outline=(190, 120, 255), width=2)
+        why = c[7] if len(c) > 7 else ""
+        d.text((p[0] + 8, p[1] - 6), "%ds %s" % (r[0], why), fill=(200, 160, 255), font=FONT_S)
+        if c[6] == -1:
+            q = P(smp["x"], smp["z"])
+        else:
+            q = next((P(o[2], o[3]) for o in smp["cars"] if o[0] == c[6]), None)
+        if q and c[6] >= -1:
+            d.line([p, q], fill=(190, 120, 255), width=1)
+    for smp in samples:
+        here = set()
+        for c in smp["cars"]:
+            here.add(c[0])
+            why = c[7] if len(c) > 7 else ""
+            if c[5] < 0.3 and why != "light":
+                r = runs.setdefault(c[0], [0.0, c, smp])
+                r[0] += dt
+            else:
+                close_run(c[0])
+        for cid in [k for k in runs if k not in here]:
+            close_run(cid)
+    for cid in list(runs):
+        close_run(cid)
     # plans every 2 s
     for i, s in enumerate(samples):
         if i % 20 == 0 and len(s["plan"]) > 1:

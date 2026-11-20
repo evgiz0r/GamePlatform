@@ -11154,6 +11154,12 @@ func _autodrive(dt: float) -> Array:
 	# one-way street, or across it): turn round on the spot first. Steering full lock at
 	# it from a standstill put the nose into the kerb and the wall behind it, again and again.
 	var lane_dir := (_ap_pts[1] - _ap_pts[0]).normalized() if _ap_pts.size() > 1 else _fwd()
+	if _ap_turn <= 0.0 and absf(_v) >= 2.0 and _fwd().dot(lane_dir) < -0.2:
+		# the lane it must take is behind it and it is still rolling (it ran past a dead
+		# end's turning point at 18 km/h): brake to a stop in a straight line, then turn.
+		# Steering for a lane behind at speed swung it wide, off the end, onto the footpath.
+		_ap_why = "turning"
+		return [0.0, 1.0, 0.0]
 	if _ap_turn <= 0.0 and absf(_v) < 2.0 and _fwd().dot(lane_dir) < -0.2:
 		_ap_turn = 3.0
 		_show_banner("turning round", 1.2)
@@ -11197,7 +11203,10 @@ func _autodrive(dt: float) -> Array:
 		p = _ap_pts[i]
 		if dist > 90.0:
 			break
-		vt = _held(vt, sqrt(_ap_v[i] * _ap_v[i] + 2.0 * 2.6 * dist), "curve")
+		# (a stop -- a dead end's turning point -- a metre and a half short, so the car is
+		# standing when it gets there rather than rolling past)
+		var to_go := dist if _ap_v[i] > 0.0 else maxf(dist - 1.5, 0.0)
+		vt = _held(vt, sqrt(_ap_v[i] * _ap_v[i] + 2.0 * 2.6 * to_go), "curve")
 	vt = _held(vt, _ap_light_v(), "light")
 	vt = _held(vt, _ap_sign_v(dt), "sign")
 	vt = _held(vt, _ap_zebra_v(), "zebra")

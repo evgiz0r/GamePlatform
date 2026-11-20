@@ -6,7 +6,8 @@ extends SceneTree
 ## away from the dead end by then, hits, seconds off the asphalt. Good: every car out of its
 ## street (40 m+), no hits, ~0 s off the road. The test trip once started from one of these,
 ## planned on to the closed end and a U-turn there, swung into the fence and crept along the
-## footpath beside the road for a minute and a half.
+## footpath beside the road for a minute and a half. Then the other way: free autodrive
+## driving into each dead end, which must stop at the end, turn round and come back out.
 var g: Node
 
 func _initialize() -> void:
@@ -105,4 +106,41 @@ func _run() -> void:
 		print("  %s dead end at %s: %.0f m out in 40 s, %d hit(s) %s, %.1f s off the road" % [
 			"OK  " if ok and hits == 0 else "BAD ", Vector2i(e), far, hits, last_hit if hits > 0 else "", off])
 	print("DEAD ENDS: %d of %d out of their street, %d hits, %.1f s off the road in all" % [out_ok, picked.size(), total_hits, total_off])
+	# and driving in: autodrive (no destination) handed the car 45 m up the street, facing
+	# the closed end -- it must stop there, turn round and come back out. It once ran past the
+	# end at 18 km/h and on along the footpath beyond at 40.
+	var back_ok := 0
+	var worst_over := 0.0
+	for i in range(picked.size()):
+		var e: Vector2 = picked[i][0]
+		var into: Vector2 = picked[i][1]
+		g._clear_dest()
+		g._set_auto(false)
+		if not g._land_on_road(e - into * 45.0, 20.0, into):
+			continue
+		await physics_frame
+		g._set_auto(true)
+		var t := 0.0
+		var dt := 1.0 / 60.0
+		var over := -INF
+		var off := 0.0
+		var hits := 0
+		var last_hit: String = g._last_hit
+		while t < 35.0:
+			await physics_frame
+			t += dt
+			over = maxf(over, ((g._pos as Vector2) - e).dot(into))
+			var on: Dictionary = g._nearest_seg(g._pos, 30.0, true, true)
+			if on.is_empty() or float(on["edge"]) > 1.0:
+				off += dt
+			if g._last_hit != last_hit and g._last_hit != "" and g._crash_cool > 0.35:
+				hits += 1
+			last_hit = g._last_hit
+		var away := (g._pos as Vector2).distance_to(e)
+		var ok := over < 2.0 and away > 30.0 and hits == 0 and off < 1.0
+		back_ok += 1 if ok else 0
+		worst_over = maxf(worst_over, over)
+		print("  %s into the dead end at %s: %.1f m past its end, %.0f m away after 35 s, %d hit(s), %.1f s off the road" % [
+			"OK  " if ok else "BAD ", Vector2i(e), over, away, hits, off])
+	print("INTO DEAD ENDS: %d of %d stopped, turned and came back out; worst overrun %.1f m" % [back_ok, picked.size(), worst_over])
 	quit(0)

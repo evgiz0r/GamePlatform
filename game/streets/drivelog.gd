@@ -9,7 +9,9 @@ extends RefCounted
 ## curve, light, sign, zebra, people, car, blocked, choice -- or what it was doing instead of
 ## driving its lane: backing, turning, pushing; see _why()), plan (the
 ## next points of autodrive's lane, every 5 m for 40 m), lead (metres to the car ahead on
-## it, or -1), cars: [[id, kind, x, z, yaw, v, blocker], ...] within 50 m (at most 10).
+## it, or -1), what (the thing holding it: "car 12" for the car ahead, "wall 15285", "post
+## 3", "building 9" when blocked or pushing), cars: [[id, kind, x, z, yaw, v, blocker, why],
+## ...] within 50 m (at most 10; blocker: the car holding it up, -1 the player, -2 none).
 ## Events: [t, what, detail] -- hits, rescues, junction choices, quality steps.
 
 const HZ := 10.0
@@ -46,10 +48,10 @@ func tick(g, dt: float) -> void:
 			var c = g._traffic.cars[i]
 			if c.alive and c.pos.distance_to(g._pos) < NEAR and cars.size() < 10:
 				cars.append([i, c.kind, snappedf(c.pos.x, 0.1), snappedf(c.pos.y, 0.1), snappedf(c.yaw, 0.01),
-					snappedf(c.v, 0.1), c.blocker])
+					snappedf(c.v, 0.1), c.blocker, c.why])
 	samples.append({"t": snappedf(_t, 0.01), "x": snappedf(g._pos.x, 0.01), "z": snappedf(g._pos.y, 0.01),
 		"yaw": snappedf(g._yaw, 0.001), "v": snappedf(g._v, 0.01), "steer": snappedf(g._steer, 0.001),
-		"gear": g._gear, "auto": g._auto, "walk": g._walking, "why": _why(g),
+		"gear": g._gear, "auto": g._auto, "walk": g._walking, "why": _why(g), "what": _what(g),
 		"plan": plan, "lead": snappedf(g._ap_lead, 0.1), "cars": cars})
 	while samples.size() > int(KEEP_S * HZ):
 		samples.pop_front()
@@ -97,3 +99,15 @@ func _why(g) -> String:
 	if g._ap_stuck > 0.3:
 		return "pushing"
 	return g._ap_why
+
+## the thing holding the car: the car ahead it follows, or what its nose is against
+func _what(g) -> String:
+	if not g._auto:
+		return ""
+	var why := _why(g)
+	if why in ["blocked", "pushing", "backing"]:
+		return g._last_hit
+	if why == "car" and g._ap_lead >= 0.0:
+		var lead: Array = g._traffic.lead_on(g._ap_pts, g._pos, g._ap_lead + 1.0, g._ap_wait > 3.0)
+		return "car %d" % int(lead[3]) if int(lead[3]) >= 0 else ""
+	return ""

@@ -58,6 +58,7 @@ class Car:
 	var braking := 0.0                ## brake lights, 0..1
 	var wait := 0.0                   ## seconds held up by another car
 	var blocker := -2                 ## who holds it up: a car's index, -1 the player
+	var why := ""                     ## what holds its speed down (limit, curve, light, car...)
 	var ignore := 0.0                 ## seconds it ignores crossing cars (a standoff broken)
 	var squeeze := 0.0                ## seconds it edges past the player (a narrow street's standoff)
 	var hit := 0.0                    ## seconds it sits stunned after the player hit it
@@ -300,18 +301,19 @@ func _us(part: String, t0: int, t1: int = -1) -> void:
 func _target(c: Car, i: int, dt: float) -> float:
 	_seek(c)
 	var vt: float = c.vmax[mini(c.k + 1, c.vmax.size() - 1)]
+	c.why = "limit"
 	for j in range(c.k + 1, c.pts.size()):
 		var dist := c.cum[j] - c.s
 		if dist > 90.0:
 			break
-		vt = minf(vt, sqrt(c.vmax[j] * c.vmax[j] + 2.0 * BRAKE * maxf(dist, 0.0)))
+		vt = _held(c, vt, sqrt(c.vmax[j] * c.vmax[j] + 2.0 * BRAKE * maxf(dist, 0.0)), "curve")
 	var lv := _light_ahead(c)
-	vt = minf(vt, lv)
-	vt = minf(vt, _zebra_ahead(c))
+	vt = _held(c, vt, lv, "light")
+	vt = _held(c, vt, _zebra_ahead(c), "zebra")
 	if lv == INF:
-		vt = minf(vt, _sign_ahead(c, dt))
+		vt = _held(c, vt, _sign_ahead(c, dt), "sign")
 		if not c.holding:
-			vt = minf(vt, _junction_ahead(c, i, dt))
+			vt = _held(c, vt, _junction_ahead(c, i, dt), "junction")
 	# the car (or the player) in front, on this lane
 	# far enough to stop in, at the speed it is doing (55 m was short of that on a motorway)
 	var look := clampf(12.0 + c.v * 1.2 + c.v * c.v / (2.0 * BRAKE), 18.0, 130.0)
@@ -366,9 +368,9 @@ func _target(c: Car, i: int, dt: float) -> float:
 	c.ignore = maxf(0.0, c.ignore - dt)
 	if c.squeeze > 0.0:
 		c.squeeze -= dt
-		vt = minf(vt, 2.5)
+		vt = _held(c, vt, 2.5, "squeezing past")
 	_steer_lanes(c, i, dt, best, lead_v)
-	vt = minf(vt, _bus_stop(c, dt))
+	vt = _held(c, vt, _bus_stop(c, dt), "bus stop")
 	if best < INF:
 		var room := best - (c.len + best_len) * 0.5 - GAP - lead_v * HEADWAY
 		var follow := sqrt(maxf(0.0, lead_v * lead_v + 2.0 * BRAKE * maxf(room, 0.0)))
@@ -376,6 +378,7 @@ func _target(c: Car, i: int, dt: float) -> float:
 			follow = 0.0
 		if follow < vt:
 			vt = follow
+			c.why = "player" if who == -1 else "car"
 			if c.v < 0.3:
 				c.wait += dt
 				c.blocker = who
@@ -401,6 +404,13 @@ func _target(c: Car, i: int, dt: float) -> float:
 	c.wait = 0.0
 	c.blocker = -2
 	return vt
+
+## the lower of two speeds, noting what the lower one is for (the drive recorder logs it)
+func _held(c: Car, cur: float, v: float, why: String) -> float:
+	if v < cur:
+		c.why = why
+		return v
+	return cur
 
 ## the first traffic light ahead that counts: stop at its line on red, and on amber when
 ## there is room to; through on green
