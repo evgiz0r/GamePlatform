@@ -474,8 +474,10 @@ func _check(dt: float) -> void:
 					_count("check: bodies overlapping, traffic")
 					_incident("bodies overlap", (c.pos + o.pos) * 0.5, "%s (%s, %.0f km/h) & %s (%s, %.0f km/h), %.1f m in" % [
 						c.kind, c.why, c.v * 3.6, o.kind, o.why, o.v * 3.6, d])
-					if _watch_r > 0.0 and (c.pos + o.pos).distance_to(_at * 2.0) <= _watch_r * 2.0:
-						print("    %s\n    %s" % [_car_line(i), _car_line(j)])
+					# (both cars, and their last 3 s, every time: a scene staged again to see how
+					# they met cost more than the lines)
+					print("    %s\n    %s\n    last 3 s (t:v/want why react_t/react lead_v blocker hit): %d: %s\n      %d: %s" % [
+						_car_line(i), _car_line(j), i, " | ".join(_hist.get(i, [])), j, " | ".join(_hist.get(j, []))])
 		if c.pos.distance_squared_to(g._pos) < 196.0 and absf(c.y - g._y) < 2.5:
 			var d2 := Bodies.box_depth(pb, boxes[i])
 			if d2 > 0.25:
@@ -503,7 +505,7 @@ func _check(dt: float) -> void:
 					_count("check: traffic body into a " + kind)
 					_incident("traffic into a " + kind, c.pos, "%s (%s, %.0f km/h), %.1f m into %s" % [
 						c.kind, c.why, c.v * 3.6, float(hit[0]), hit[1]])
-					if _watch_r > 0.0 and c.pos.distance_to(_at) <= _watch_r:
+					if true:   # (every time: the car's lane and shift, the post's place against the edge)
 						var what := String(hit[1])
 						var where_s := ""
 						if what.begins_with("post "):
