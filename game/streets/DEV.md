@@ -151,6 +151,13 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
 
 ## Open problems
 
+- **Scene tests started with `Flow.start_game` (the `tests/*.gd` way) drew no road surfaces
+  in Ashdod round its start** (Nov 2026, cloud container): asphalt, kerbs and zebras missing,
+  poles, signs, trees and cars there, from 9 m and from 32 m up (`median_nose`). The same
+  junction started through the main scene and the sim runner (`--sim=streets`, a
+  `change_scene_to_file("res://main.tscn")` script) drew them. Not yet explained; check a
+  test's shots for road before trusting what they show of it.
+
 - A kerb fragment is left on the road near a roundabout's zebra in Ashdod (pieces of a
   corner laid one by one, where the probes miss the asphalt by a little).
 - Traffic cars do not steer round parked cars; parked cars are placed so the lanes miss them.
