@@ -508,6 +508,12 @@ the game walking the same route in first person beside it.
   showed a row. Decide gardens piece by piece (a shop behind it, or a hand-placed row of
   shopfronts), not by the road's tag or the whole street: the same street had one real
   garden between its shops.
+- **Real things keep real colours.** A car's red paint, a red-and-white kerb, a stop sign, a
+  hydrant: built from palette roles directly (hazard for red, player for blue) they came out
+  pink and teal in a neon palette, and only beside the film did it show. Pin the hue
+  (`Color.from_hsv` with a red's or a road-paint blue's hue) and take saturation and
+  brightness from the palette role, so a reskin still moves them; keep the roles for
+  what is the game's own (the HUD, the player's glow).
 - **Panning in the film is how the shops get counted.** Ask the walker to turn the phone to
   each side now and then: the shops across the road, which a forward-facing film never
   shows, came only from those pans.

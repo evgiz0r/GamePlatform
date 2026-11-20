@@ -68,7 +68,14 @@ A game's `tests/run.sh <test> [level]` wraps that line (see an existing one).
   ground failing to draw, and cost two runs to see it was the camera.
 - **Find the subject by searching**, not by coordinates you guessed: the nearest instance
   of a mesh to the start, a road that runs out to the map's edge with a clear run, the
-  divided-road zebra nearest the start.
+  divided-road zebra nearest the start. Search what the game *built*, not the file it built
+  it from: a game that lets go of its source data once the world is up (to save memory)
+  hands a test looking there an empty list, and the test reports "0 found" for things
+  standing in plain sight.
+- **Look at a building's front from the middle of the road**, facing it at eye height: from
+  the far pavement the cars parked along the kerb hide the shopfront, and a replayed walk's
+  camera looks along the street, past what stands at its side. To check that something was
+  placed (a hydrant by a wall, a shop's awning), aim one still straight at it.
 - **Measure a rate, broken down by cause.** "29% of walkers on asphalt: 444 on service
   lanes, 161 on the inner side of divided roads" pointed straight at both fixes. Then the
   same test after the fix: 0%.
@@ -193,6 +200,13 @@ it is made, with a one-line caption, rather than a report at the end.
   Probe"), taking the whole test with it. Use the base type (`Node3D`).
 - `var x := g.some_member` cannot infer a type through an untyped node: annotate it.
 - **Forget `OUT` and the screenshots land in `/`.** Check the folder after the first run.
+  The same with two jobs started at once: `SP=dir && (job1 > $SP/a.log) & (job2 > $SP/b.log)`
+  sets `SP` for the first only -- the second wrote its log to `/b.log`. `export` it first.
+- **A check that never fires may be running too early.** One worked out while loading
+  (walls along a raised road, leaving out pieces on a street) asked a lookup grid that is
+  only built later in the load: it answered "no street" everywhere and the fix changed
+  nothing, two runs in a row. When a fix has no effect, print what the check sees at the
+  moment it runs, not afterwards.
 - A script error mid-test prints `SCRIPT ERROR` and the test may hang to its timeout: grep
   the output for it, and always run under `timeout`. One in the background goes on taking
   a core until then, slowing every run beside it: kill it once you have seen the error.
@@ -201,7 +215,10 @@ it is made, with a one-line caption, rather than a report at the end.
 - A test that is already running keeps the code it loaded; one that starts later in a
   queued batch picks up your newer edits (and the newer bugs).
 - The software renderer's frame rates are meaningless in absolute terms. Compare levels
-  or before/after on the same box, never against a target. Anything that steps quality
+  or before/after on the same box, never against a target. Nor can it show a browser's
+  stalls: with every frame of a big city at ~0.8 s, a hitch log there measures the renderer.
+  What carries over is counts (draw calls, triangles, vertices, nodes, shader kinds) and the
+  script's own time; a GPU stall needs the user's browser (a profiler view in the game). Anything that steps quality
   down by frame rate must be off natively, or every test run steps itself to nothing.
 - **New assets from a merge are not imported** until something runs the importer: a test
   run straight from the engine draws without them ("Failed loading resource" in the log).
@@ -265,6 +282,9 @@ behaviour counted over minutes, and three things are in the way:
   per tick reads gentler, anything counted in ticks shrinks, coarse steps overlap more.
   Run the same test twice at 1x first -- one game's exam differed by half between two 1x
   runs -- and accept a speed whose counts stay within that spread (there: 2x yes, 3x no).
+  The same before calling a change a regression: run the base branch beside yours (a git
+  worktree with `.godot` copied in) -- one exam read 11 and 12 on a branch and "7-9" in the
+  notes, and the base itself read 8 and 12.
   Keep 1x for how driving feels (crashes, steering, frames) and for numbers written down.
 
 A city that builds in 5 s on a laptop can take 15 there, and a minute of game time five of

@@ -629,6 +629,20 @@ keep the old block for the record.
 - Givatayim: 140 roads narrowed to their buildings, 865 building fronts cut back, 3
   buildings left over a road on purpose (passages). Ashdod: 44 and 352.
 - Corners laid piece by piece (touching another road): Givatayim 920, Ashdod 2794.
+- **The whole frame, Tel Aviv** (`tests/perf_dive.gd` level 7, everything built, 20 Nov
+  2026; the view and the shadow pass together): at the start, quality 2, 2.41 M triangles
+  and 635 draws, of them parked cars 1.24 M -- grouped by 400 m square, every one drawn to
+  ~420 m (see "Parked cars" below). With 100 m squares and a far shape: 1.69 M and 641
+  draws; a main road 1.81 -> 1.19 M; from above 2.20 -> 1.38 M. What is left in view at the
+  start: the batched tone meshes 0.87 M, parked cars 0.31 M, tree crowns 0.14 M, palms 0.12
+  M, trunks 0.08 M. The script's own frame while driving, headless: ~3 ms a tick (traffic
+  1.3, people 0.7, traffic's following 0.4, minimap 0.3) -- the cheap part.
+- **Memory, Tel Aviv**: video memory 575 MB, of it 505 MB vertex buffers: 19.5 M static
+  vertices, 16 M of them in the batched tone meshes (every batched copy's vertices written
+  out: 9.6 M from vertex-coloured kits, then tanks 0.8 M, poles 0.8 M, furniture 0.75 M,
+  railings 0.5 M), the contact shadows 1.1 M, kerbs 0.9 M. Triangle soups, none indexed.
+  Nodes 8,134 (4,989 before the parked cars' 100 m squares); 74 shader kinds (each one
+  compiled in the warm-up).
 
 ## Cities
 
@@ -692,6 +706,14 @@ first:
   `Details.shop_look`); `tests/shop_looks.gd` stands in the street facing each one and
   prints where its front went. Awnings and umbrellas are instance-coloured (`_awning_col`,
   `_real_col`), no longer one glowing palette material per role.
+- **Reds and blues that are real things' colours** (car paint, kerb paint, sign plates,
+  hydrants, scooters, awnings by name) are hue-pinned `Color.from_hsv` with their
+  saturation and brightness taken from the palette: from the palette's hazard and player
+  roles directly they came out pink and teal beside the film. `_real_col(name)` gives the
+  named ones.
+- **Setts and string lights** (details `setts` on a street, `lights` on a shop): `_sett_fan`
+  / `_sett_band` in the street trees' builder (round the trees of that street only),
+  `_string_lights` in `_build_pois` (bulbs in `mat("warn", 1.6)`, wire in the crates' buffer).
 - **Tests after the city is built cannot read `_city_data`**: the game lets go of the city
   file once every square is up (`_city_data = {}` after building), so a scene test looking
   for places there finds none. The built places are in `_pois` ([spot, role, name sign]).
@@ -704,6 +726,49 @@ first:
 - **Small things**: black bollards with a yellow band along the kerb by the main road, a
   red fire hydrant, a push button on the walk light's pole, bar stools and awnings rather
   than umbrellas outside the cafes, green bins.
+
+## The second filmed walk and the GPS pipeline (level 6): handoff
+
+The session that set up filming with GPS (20 Nov 2026) and made "A walk in Givatayim:
+Sheinkin and Sirkin" from it, then worked that stretch over pass by pass. The walk session
+(level 5's) has since extended this walk to the Katznelson corner and owns its route.
+
+- **The pipeline, for the next walk or drive**: the user films (phone, FHD 30, 1x) with Geo
+  Tracker logging GPX at 1 s, uploads both to Drive; the GPX comes through the Drive
+  connector, the video needs the user to share it by link for a few minutes and
+  `drive.usercontent.google.com` allowed (real-places skill, "Filmed walks and drives").
+  `tools/gpx_route.py report` reads the track against the city file; `route --video
+  --from A B --to C D` makes a timed route; `tests/walk_snap.gd` puts it on the back of the
+  pavements (spans of seconds per side and street); the result goes in the details file's
+  `walks`. The film and its track are the user's and stay out of the repo; a route in the
+  game starts and ends only at public corners the user agreed.
+- **This walk's film**: the route is 1:42 to the end of a 3:30 film (walk second 0 = film
+  102.34 s). Side by side: `GODOT_ARGS="--fixed-fps 10" STREETS_BUILD_ALL=0 RECORD=1
+  RES=1280x720 OUT=<dir> tests/run.sh filmed_walk 6` (1066 frames, ~22-25 min here), then
+  `ffmpeg -ss 102.34 -t <frames/10> -i film.mp4 -framerate 10 -i <dir>/f%05d.jpg
+  -filter_complex "[0:v]fps=10,scale=406:720,setsar=1[a];[1:v]crop=406:720:437:0,setsar=1[b];[a][b]hstack=inputs=2:shortest=1"`.
+  The phone's own file seeks right with `-ss` (constant 30 fps); a VLC re-encode does not.
+- **What it put in the game** (each in "What a filmed walk showed" above): kerb paint by
+  place and parking by paint, motorbikes on pavements, board fences on garden walls, no
+  garden in front of shops and the pavement widened there, Sirkin's shopfront rows and each
+  filmed shop's look (`shops`), per-street paving and setts, string lights, bollards, a
+  hydrant and bins, real reds and blues, the start moved to Katznelson by Weizmann.
+- **Its tests and good numbers**: `filmed_spots` (stills from GPS spots: mid-walk spots
+  move 0-2 m onto their pavement), `walk_snap`, `shop_looks` (5 shops on Sirkin, all on
+  walls, Roladin 3 tables under white umbrellas, Kira Sushi's lights and stools),
+  `street_fronts` (~2900 parked motorbikes, ~5800 fence pieces in Givatayim), `filmed_walk`
+  with `SCAN=1` on level 6 (clean after the walk session's moves) and `AT=` for stills.
+  Parking by paint cost +17% triangles at the old start view (frame_cost, above).
+- **The details file is written by a tool too** (`make_givatayim.py`, `json.dump(indent=1,
+  ensure_ascii=False)`, no trailing newline): edit it by loading it and dumping it back with
+  the same settings (the round trip is byte-identical), never by text insertion, or the
+  next re-run reformats your lines into a large diff.
+- **Open**: painted parking bays on Sirkin (not done: the game parks half on the pavement,
+  and an 8 m two-way street has no room for cars wholly in the road beside its lanes); the
+  setts fan round the game's own trees, which are not where the filmed ones are; the
+  west face of Sirkin's last block (5.2 m from the centre line, OSM's upper floors) has no
+  shop row; buildings and light are the realism session's; the drive is to come (the user's
+  next film): `gpx_route.py report` by road kind against autodrive's 50 km/h everywhere.
 
 ## The filmed walk (level 5)
 
@@ -1185,6 +1250,54 @@ towns get them when re-baked. What the game does with them:
 - **Still to do**: level crossings (trains solid, barriers); the light rail where it runs
   on the surface; keeping `electrified=` in the bake; re-baking the other towns (Ashdod has
   a line).
+
+## Handoff: lights, kerbs and paving, islands, quality, menus, performance (20 Nov 2026)
+
+One session's areas, left for whoever picks them up (its context was compacted after this).
+Each line: where the code is, the test, what good reads.
+
+- **Traffic lights**: sites, groups, `flip`, walk lights (`_lights_setup`, `_site_axes`,
+  `_light_group`, `_walk_light`, `_through_lights`; traffic.gd `_light_ahead`). `light_audit`
+  levels 1, 3, 7 -- crossing pairs green together / a road changing group in a junction /
+  walk lights green with cars coming: 0 / 0-1 / 0 (README has the full row).
+- **Autodrive and the map's edge** (`_edge_bound`, `_ap_ways` scoring): `autodrive_edge` 1, 3.
+- **Paving laid once** (`_laid`, `_laid_cut`, `_laid_by`, `_flat_piece` in `_kerb_piece`):
+  `pave_overlap` 7 -- 5,355 m2 overlapping, of it two different pavings ~30 m2 (good); the
+  rest a strip's next piece at a bend, the same paving.
+- **A rounded corner's asphalt is road** (`_corners_at`, `_note_corner_fills` at the start of
+  each square, `_in_corner_fill` inside `_off_road`, signs moved out by `_out_of_corner`):
+  `road_blocks` 1, `city_check` (validate.sh). Givatayim's 2 posts left on the road are a
+  plain post on Aluf David and a tree on Katznelson by Sirkin (on main before this; the
+  filmed walk's details).
+- **Traffic islands** (`_find_islands`, `_island_cut`, `_island_faces`, `_on_island`):
+  `islands` 1, 3 -- 0 points of any island on a road. **Bare ground** is dusty sand (`_tones`).
+- **Bridges at junctions** (decks.gd `_clear_ends`, `_on_street_below`, `_street_at` -- reads
+  `_seg_hash`, because the walls are made in `setup()` before `_asph_hash` exists):
+  `deck_corner` 2 -- Bedford's Union Street turn: 0 wall hits on 4 routes (were 12).
+- **Quality ladder** keeps the sun's shadows at every level (`QUALITY`): switching them off
+  recompiled every shader in the browser, a 3 s freeze each step.
+- **The minimap's route** (`_draw_map_inner`: wide, the destination's colour, a dark edge):
+  `minimap_route` 1. **Go to** (`_open_picker`, `_show_pick_mode`: "jump to" first, "drive
+  to"): `picker` 4. **The start screen's two groups** (`"group"` in `LEVELS`; the shell's
+  `_level_groups`): `tools/menu_shot.sh levels:streets`.
+- **Performance** (`tests/perf_dive.gd` 7; numbers under "Numbers to compare against"):
+  parked cars done (`_draw_parked`, `_parked_far_mesh`, `PARKED_CELL/NEAR/SEEN`; `_chunked`
+  takes `cell_m` and `range_begin`). **In the middle of**: which vertex-coloured kits make
+  the 9.6 M batched vertices -- a debug-only tally in `_batch_add` ("batched by:
+  function:line (n verts)") that `perf_dive` prints as "batched, by who"; the plan was to
+  draw the biggest as multimeshes (one mesh, a transform each) instead of copying their
+  vertices into the batches, then measure memory and draws again. Also open: 74 shader
+  kinds for the warm-up (merging look-alike materials would shorten it); nodes up 3,000 from
+  the parked cars' squares (watch the browser's culling cost).
+- **Waiting on the user**: the test town's hillside roads lean (a finer height grid in
+  tools/fake_city.py, or levelling roads in the game; another session owns the test town's
+  terrain); stop / give-way signs at every junction (asked whether same-class junctions get
+  one -- no answer yet). The Ashdod "grass patches" spot was never pinned down: islands and
+  the ground colour went out without it.
+- **Tests and tools added**: `hitches` + `hitch_parts.py` (frames over 250 ms by phase --
+  only meaningful in a real browser), `top_at` (shots by map point, `CAR=` to put the car
+  anywhere), `street_at` (by street name at its roundabouts), `perf_dive`, `deck_corner`,
+  `islands`, `pave_overlap`, `picker`, `minimap_route`.
 
 ## Open problems
 
