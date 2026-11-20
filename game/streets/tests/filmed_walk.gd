@@ -35,6 +35,7 @@ func _run() -> void:
 		# without a sound, and from inside a building its walls are not drawn
 		var was := ""
 		var from := 0.0
+		var where := Vector2.ZERO
 		var t := 0.0
 		while t <= last + 0.25:
 			var p: Vector2 = g._film_at(t)
@@ -43,11 +44,15 @@ func _run() -> void:
 				what = String(g._last_hit)
 			elif g._push_out(p, 0.25, true, false) != Vector2.ZERO:
 				what = String(g._last_hit)
+			if what.begins_with("post "):   # where it stands, to know which way to walk round it
+				var q: Vector2 = g._posts[int(what.get_slice(" ", 1))]
+				what += " at %s" % Vector2(snappedf(q.x, 0.1), snappedf(q.y, 0.1))
 			if what != was:
 				if was != "":
-					print("INSIDE %s from %.2f to %.2f s" % [was, from, t])
+					print("INSIDE %s from %.2f to %.2f s, walking at %s" % [was, from, t, where])
 				was = what
 				from = t
+				where = Vector2(snappedf(p.x, 0.1), snappedf(p.y, 0.1))
 			t += 0.25
 		if was != "":
 			print("INSIDE %s from %.2f to the end" % [was, from])

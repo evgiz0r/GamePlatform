@@ -8572,7 +8572,7 @@ func _tones() -> void:
 		# a filmed street's details (details.gd): charcoal pavers under an arcade, a forecourt
 		# of pale poured slabs
 		"pavers_dark": _greyed(ink.lerp(alt, 0.8), 0.85),
-		"slabs": _greyed(ink.lerp(alt, 0.44).lerp(wn, 0.1), 0.6),
+		"slabs": _greyed(ink.lerp(alt, 0.52).lerp(wn, 0.16), 0.5),
 		"kerb": ink.lerp(alt, 0.45),
 		"stonewall": ink.lerp(wn, 0.3).lerp(alt, 0.2),
 		"woodfence": alt.lerp(wn, 0.35).lerp(bg, 0.4),
@@ -9102,11 +9102,21 @@ func _get_in() -> void:
 ## HUD. The route is in the city's details file (details.gd) as [seconds, x, z] points timed
 ## to the film, so it passes each place when the film did and the two can be watched side
 ## by side. At the end it stands still.
+## The head is not the body: it looks where the walk is going and turns into a bend a moment
+## before the feet do, and the walk's "looks" turn it to see the traffic before a crossing.
+## While the walk waits at a crossing or is on it ("zebras"), it counts as someone on the
+## zebra, so cars stop for it; "cars" sends a car down a street at a set second, so there is
+## traffic to stop when it gets there.
 
 var _film: Array = []                ## Vector3(x, z, seconds): the route, in time order
 var _film_t := 0.0
 var _film_step := 0.0                ## metres walked: the head bobs with the steps
 var _film_done := false
+var _film_look := 0.0                ## the head turned from the body (radians, + right)
+var _film_looks: Array = []          ## Vector3(from, to, radians): a glance to one side
+var _film_zebras: Array = []         ## [from, to, kerb, kerb]: on a crossing (or waiting at it)
+var _film_cars: Array = []           ## [second, at, heading]: a car sent down a street
+var _film_sent := 0
 
 func _film_begin(id: String) -> void:
 	var walks: Dictionary = _details.data.get("walks", {}) if _details != null else {}
@@ -9116,6 +9126,14 @@ func _film_begin(id: String) -> void:
 		return
 	for p: Array in pts:
 		_film.append(Vector3(float(p[1]), float(p[2]), float(p[0])))
+	var w: Dictionary = walks[id]
+	for l: Array in w.get("looks", []):
+		_film_looks.append(Vector3(float(l[0]), float(l[1]), deg_to_rad(float(l[2]))))
+	for z: Array in w.get("zebras", []):
+		_film_zebras.append([float(z[0]), float(z[1]), Vector2(z[2][0], z[2][1]), Vector2(z[3][0], z[3][1])])
+	for c: Array in w.get("cars", []):
+		_film_cars.append([float(c[0]), Vector2(c[1][0], c[1][1]), Vector2(c[2][0], c[2][1])])
+	_film_cars.sort_custom(func(a, b): return a[0] < b[0])
 	var p0 := _film_at(0.0)
 	_pos = p0
 	_yaw = (_film_at(1.5) - p0).angle()
@@ -9141,6 +9159,21 @@ func _film_tick(dt: float) -> void:
 	var ahead := _film_at(_film_t + 1.6)
 	if ahead.distance_to(p) > 0.3:
 		_yaw = lerp_angle(_yaw, (ahead - p).angle(), 1.0 - exp(-dt * 2.2))
+	# the head: into a bend before the feet (where the walk is 3.4 s on, against 1.6 s), and
+	# off to the side for each glance, easing in and out over half a second
+	var turn := 0.0
+	var far := _film_at(_film_t + 3.4)
+	if ahead.distance_to(p) > 0.3 and far.distance_to(p) > 0.6:
+		turn = clampf(angle_difference((ahead - p).angle(), (far - p).angle()) * 0.7, -0.6, 0.6)
+	for l: Vector3 in _film_looks:
+		if _film_t > l.x and _film_t < l.y:
+			turn += l.z * smoothstep(l.x, l.x + 0.5, _film_t) * (1.0 - smoothstep(l.y - 0.5, l.y, _film_t))
+	_film_look = lerp_angle(_film_look, turn, 1.0 - exp(-dt * 6.0))
+	while _film_sent < _film_cars.size() and _film_t >= float(_film_cars[_film_sent][0]):
+		var fc: Array = _film_cars[_film_sent]
+		_film_sent += 1
+		if _traffic != null and not _traffic.send(fc[1], fc[2]):
+			Probe.note("film: no street to send a car down at %s" % fc[1])
 	var anim := "Idle" if _v < 0.15 else "Walk"
 	if anim != _me_anim:
 		_me_anim = anim
@@ -9148,6 +9181,16 @@ func _film_tick(dt: float) -> void:
 	if _film_t >= _film[_film.size() - 1].z and not _film_done:
 		_film_done = true
 		Probe.event("film_end", {"at": Vector2i(p)})
+
+## the crossings the walk is waiting at or on, in with the people on zebras (tagged, so the
+## last tick's go: the list is only rebuilt where a town has people crossing)
+func _film_on_zebras() -> void:
+	_zebras_on = _zebras_on.filter(func(z: Array) -> bool: return z.size() < 4)
+	for z: Array in _film_zebras:
+		if _film_t >= float(z[0]) and _film_t <= float(z[1]):
+			var a: Vector2 = z[2]
+			var b: Vector2 = z[3]
+			_zebras_on.append([(a + b) * 0.5, a.distance_to(b) * 0.5 - 0.1, (b - a).normalized(), "film"])
 
 ## where the walk is at time t: a smooth curve (Catmull-Rom) through the timed points
 func _film_at(t: float) -> Vector2:
@@ -9163,6 +9206,13 @@ func _film_at(t: float) -> Vector2:
 	var b: Vector3 = _film[i]
 	var c: Vector3 = _film[i + 1]
 	var d: Vector3 = _film[mini(i + 2, n - 1)]
+	if Vector2(b.x, b.y).distance_to(Vector2(c.x, c.y)) < 0.05:
+		return Vector2(b.x, b.y)   # waiting (at a kerb): the curve would wander off and back
+	# a stop either side: no swing past it into the waiting spot or out of it
+	if Vector2(a.x, a.y).distance_to(Vector2(b.x, b.y)) < 0.05:
+		a = b - (c - b)
+	if Vector2(c.x, c.y).distance_to(Vector2(d.x, d.y)) < 0.05:
+		d = c + (c - b)
 	var u := (t - b.z) / maxf(c.z - b.z, 0.001)
 	return Vector2(b.x, b.y).cubic_interpolate(Vector2(c.x, c.y), Vector2(a.x, a.y), Vector2(d.x, d.y), u)
 
@@ -9244,7 +9294,7 @@ func _foot_camera(dt: float) -> void:
 	var p := _view_pos
 	var gy := _view_y
 	if _cockpit:
-		var fwd := Vector2(cos(_view_yaw), sin(_view_yaw))
+		var fwd := Vector2(cos(_view_yaw + _film_look), sin(_view_yaw + _film_look))
 		var eye := Vector3(p.x + fwd.x * 0.15, gy + 1.64, p.y + fwd.y * 0.15)
 		var down := -0.08
 		if not _film.is_empty():   # a phone held at the chest, looking a little down, bobbing with each step
@@ -9666,6 +9716,8 @@ func _physics_process(dt: float) -> void:
 		_people_tick(dt)
 		_p("people")
 		_crossers_tick(dt)
+		if not _film.is_empty():
+			_film_on_zebras()
 		_p("crossers")
 		_explore(dt)
 		_p("explore")

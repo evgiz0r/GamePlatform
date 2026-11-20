@@ -15,20 +15,32 @@ assert left[0] > 0 and left[1] > 0, left
 def P(s, off=0.0):
     return [round(S0[0] + u[0] * s + left[0] * off, 2), round(S0[1] + u[1] * s + left[1] * off, 2)]
 SPLIT = 58.0
+SE = [round(left[0], 4), round(left[1], 4)]        # the way the passage's south-east side lies
+NW = [-SE[0], -SE[1]]
 r2 = lambda p: [round(p[0], 2), round(p[1], 2)]
 
 # the walk: landmarks timed to the film, the points between timed by distance
+# Katzenelson by the film, half a second a frame: at the north kerb 1.6-4.5 s watching the
+# traffic from the left (a white SUV goes by), over the near half, on the median 8.7-13.3 s
+# watching the far half's from the right (cars stop at the zebra, one drives on), over it,
+# the far kerb at 17 s. Its halves are 9 m in the game: a brisk 2.3-2.5 m/s over each.
+KERB_N, MEDIAN, KERB_S = P(-15.1, -17.4), P(-5.35, -17.35), (652.2, -661.3)
 lm = [
-    (0.0, (665.9, -677.2)), (1.5, (664.5, -675.6)),            # off the north kerb of Katzenelson
-    (15.5, (652.2, -661.3)), (17.0, (651.0, -659.9)),          # over both halves, onto the south pavement
-    (None, (655.5, -656.0)), (None, (659.8, -652.0)),          # along it, past the motorbikes
+    (0.0, (665.9, -677.2)), (1.6, tuple(KERB_N)), (4.5, tuple(KERB_N)),   # to the north kerb, waiting
+    (8.7, tuple(MEDIAN)), (13.3, tuple(MEDIAN)),                            # over the near half; waiting
+    (17.0, KERB_S), (18.0, tuple(P(6.3, -17.3))),                           # over the far half, up the kerb
+    (20.3, tuple(P(6.6, -11.3))), (None, tuple(P(6.9, -5.4))),              # along it under the arcade (the
+                                                                            # middle of it: the columns are at 5.2-5.8),
+                                                                            # clear of the sign post at the corner
     (25.0, tuple(P(7.5))), (33.0, tuple(P(17))),               # the forecourt, into the passage
     (None, tuple(P(30))), (None, tuple(P(45))),
     (64.0, tuple(P(SPLIT))),                                   # out of it at the railings
     (None, tuple(P(60.5, -2.0))), (None, tuple(P(63, -4.4))),  # onto the little street's pavement, the road on the left
     (80.0, tuple(P(80.5, -4.6))), (81.5, tuple(P(82.3, -4.6))),  # the corner, at the kerb
+    (82.4, tuple(P(82.3, -4.6))),                                 # (a look each way first)
     (90.0, tuple(P(90.4, -4.6))),                                 # over Sheinkin
-    (None, tuple(P(92.5, -5.2))), (93.0, tuple(P(94.0, -5.8))), (96.0, tuple(P(97.5, -6.0))),   # into Ha-Meri
+    (None, tuple(P(92.5, -6.0))), (93.0, tuple(P(94.0, -6.3))), (96.0, tuple(P(97.5, -6.3))),   # into Ha-Meri,
+                                                                    # a metre in from the kerb's posts
 ]
 # fill the untimed points by distance between the timed ones
 pts = [list(p) for _, p in lm]
@@ -116,6 +128,22 @@ d = {
         "katzenelson_hameri": {
             "name": "Katzenelson to Ha-Meri, on foot",
             "points": walk,
+            # the head turned from the way the walk goes: [from, to, degrees, + right]
+            "looks": [[1.4, 3.9, -70], [3.9, 4.7, 30],          # the near half's traffic comes from the left
+                      [8.9, 12.6, 70], [12.6, 13.4, 20],        # the far half's from the right
+                      [79.3, 81.0, 60], [81.0, 82.3, -45],      # Sheinkin's from the right; and the other way
+                      [85.8, 87.6, 45]],
+            # on a crossing, or waiting at its kerb about to go: cars stop for it
+            # [from, to, kerb, kerb]
+            "zebras": [[4.0, 8.9, P(-14.8, -17.4), P(-5.8, -17.4)],
+                       [9.2, 17.0, P(-4.9, -17.35), P(4.1, -17.3)],
+                       [81.0, 90.0, P(82.4, -4.6), P(90.4, -4.6)]],
+            # cars sent down a street at a second, to meet the walk there: [second, at, heading]
+            # (both halves of Katzenelson are one-way: the near one towards the north-west,
+            # the far one towards the south-east; Sheinkin towards the south-east too)
+            "cars": [[0.0, P(-10.2, 22), NW], [1.5, P(-10.2, 40), NW],              # one by, one stops
+                     [5.0, P(-0.3, -45), SE], [6.5, P(-0.3, -62), SE], [7.5, P(-0.3, -70), SE],
+                     [78.0, P(91.15, -55), SE]],
         }
     },
 }

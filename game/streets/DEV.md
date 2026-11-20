@@ -167,6 +167,22 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   (the 70 degree vertical field of view then matches a phone held upright) and `hstack` the
   two. The film itself is the user's: it, its frames and anything past Ha-Meri never go in
   the repo.
+- **Crossing like a person (pass 3).** The film waits at Katzenelson's north kerb 1.6-4.5 s
+  looking left (a white SUV goes by), crosses the near half, waits on the median 8.7-13.3 s
+  looking right (cars stop at the zebra; one drives on), and is at the far kerb at 17 s;
+  at Sheinkin it looks right, then left, then crosses. The walk does the same: two points at
+  one spot are a wait (`_film_at` holds there, and keeps the curve from swinging past the
+  stop), `looks` turn the head (`_film_look`, the camera only), the head also leads into
+  every bend (where the walk is 3.4 s on against 1.6 s), `zebras` put the walker in
+  `_zebras_on` while it waits or crosses (`_film_on_zebras`, after the crossers rebuild
+  the list; tagged so last tick's go) and `cars` send a car at a second
+  (`Traffic.send`: the car furthest away, not a bus, onto the road nearest the spot, that
+  way). The game's halves of Katzenelson are 9 m: the walk crosses each at 2.3-2.5 m/s to
+  keep the film's times; the film's own speed suggests the real halves are narrower.
+- **The film's clock is decoding from its start.** `ffmpeg -ss` before `-i` lands on the
+  wrong frames in this clip's first seconds (VLC's variable-rate transcode: 2999 frames in
+  100 s, said to be 60 fps); `-vf trim=a:b,setpts=PTS-STARTPTS` agrees with the
+  side-by-side's own clock. A contact sheet cut with `-ss` showed the crossing over at 3 s.
 - **Pass 2, the forecourt (film 17-34 s)**, done: the block at the passage's north-west
   corner got its arcade along Katzenelson (OSM's outline is the upper floors': the walk ran
   1.3 m inside it, through a wall drawn only from outside), shops behind the columns (never

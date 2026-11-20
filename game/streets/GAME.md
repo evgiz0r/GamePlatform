@@ -170,6 +170,16 @@ lacks are in `cities/details/givatayim.json` (see below).
 > Can we create a video, 1st person view like my phone, side by side with video from the
 > phone, up until Ha-Meri.
 
+It crosses like a person: it waits at Katzenelson's kerb looking left at the traffic coming,
+crosses to the median, waits there looking right, then crosses; at Sheinkin it looks right,
+then left. Cars come down the street to meet it there: one goes by before it steps off, the
+next stops at the zebra for it, and drives on once it is across. The head looks where the
+walk is going and turns into a corner a moment before the feet do.
+
+> During the walk we collide into a house, the pavement there is not matching in the middle.
+> Let's also add cars, and we look left, right, and they stop for us. Usually we look where
+> we want to walk, and look before turning.
+
 > Let's try to enhance that specific walk, very realistic, in depth, slow, iteratively
 > (people a bit less interesting, but the other items, from bigger details we already have
 > to smaller details). And add in the menu an option to view that walk, just till reaching

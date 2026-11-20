@@ -31,7 +31,13 @@ extends RefCounted
 ##                                                    scooter (dir: the nose; box: a top box).
 ##                                                    Anything on a lifted surface stands on it.
 ##   trees     [[x, z], ...]                         more trees for the city's own builder
-##   walks     {id: {name, points: [[t, x, z]...]}}
+##   walks     {id: {name, points: [[t, x, z]...],   two points at one spot: it waits there
+##              looks: [[from, to, degrees]...],     the head turned off the way it walks
+##                                                    (+ right), to see the traffic coming
+##              zebras: [[from, to, [x, z], [x, z]]...],  waiting at a crossing or on it:
+##                                                    cars stop for it (kerb to kerb)
+##              cars: [[t, [x, z], [dx, dz]]...]}}   a car sent down the street nearest the
+##                                                    spot at second t, that way (traffic.gd)
 
 var g: Node                    ## the streets game
 var data := {}

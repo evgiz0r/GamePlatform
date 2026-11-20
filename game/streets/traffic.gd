@@ -924,47 +924,81 @@ func _spawn(c: Car, first: bool) -> bool:
 				crowded = true
 		if crowded:
 			continue
-		var p: PackedVector2Array = r["pts"]
 		var sj: int = hit["seg"]
 		var dir := 1 if rng.randf() < 0.5 else -1
 		if r["o"] != 0:
 			dir = int(r["o"])
-		var along := (p[sj + 1] - p[sj]).normalized() * dir
-		var lane := _lane(r)
-		var n := _lanes_dir(r)
-		c.lane_i = 0 if (c.kind == "bus" or rng.randf() < 0.5) else rng.randi_range(0, n - 1)
-		c.lane_i = clampi(c.lane_i, 0, n - 1)
-		c.shift = _lane_shift(r, c.lane_i)
-		c.shift_to = c.shift
-		c.shift_rate = 0.0
-		c.split = false
-		c.served = {}
-		c.dwell = 0.0
-		c.pts = PackedVector2Array([at + Vector2(-along.y, along.x) * lane])
-		c.cum = PackedFloat32Array([0.0])
-		c.node = PackedInt32Array([-1])
-		c.rd = PackedInt32Array([ri])
-		c.vmax = PackedFloat32Array([float(r["speed"]) * c.pace])
-		c.k = 0
-		c.s = 0.0
-		c.last_light = -1000.0
-		_leg(c, ri, sj + 1 if dir > 0 else sj, dir)
-		while c.cum[c.cum.size() - 1] < 140.0:
-			if not _next(c):
-				break
-		if c.cum[c.cum.size() - 1] < 20.0:
-			continue
-		c.v = c.vmax[0] * 0.7
-		c.want = -1.0
-		c.wait = 0.0
-		c.hit = 0.0
-		c.ignore = 0.0
-		c.squeeze = 0.0
-		_place(c)
-		c.prev_pos = c.pos
-		c.prev_yaw = c.yaw
-		return true
+		if _start_on(c, ri, sj, at, dir):
+			return true
 	return false
+
+## start car c at `at` on road ri's segment sj, driving `dir` along it, in a lane of its
+## own picking, its path planned on for 140 m; false when the road runs out too soon
+func _start_on(c: Car, ri: int, sj: int, at: Vector2, dir: int) -> bool:
+	var r: Dictionary = _roads[ri]
+	var p: PackedVector2Array = r["pts"]
+	var along := (p[sj + 1] - p[sj]).normalized() * dir
+	var lane := _lane(r)
+	var n := _lanes_dir(r)
+	c.lane_i = 0 if (c.kind == "bus" or rng.randf() < 0.5) else rng.randi_range(0, n - 1)
+	c.lane_i = clampi(c.lane_i, 0, n - 1)
+	c.shift = _lane_shift(r, c.lane_i)
+	c.shift_to = c.shift
+	c.shift_rate = 0.0
+	c.split = false
+	c.served = {}
+	c.dwell = 0.0
+	c.pts = PackedVector2Array([at + Vector2(-along.y, along.x) * lane])
+	c.cum = PackedFloat32Array([0.0])
+	c.node = PackedInt32Array([-1])
+	c.rd = PackedInt32Array([ri])
+	c.vmax = PackedFloat32Array([float(r["speed"]) * c.pace])
+	c.k = 0
+	c.s = 0.0
+	c.last_light = -1000.0
+	_leg(c, ri, sj + 1 if dir > 0 else sj, dir)
+	while c.cum[c.cum.size() - 1] < 140.0:
+		if not _next(c):
+			break
+	if c.cum[c.cum.size() - 1] < 20.0:
+		return false   # (a dead end straight ahead: somewhere else)
+	c.v = c.vmax[0] * 0.7
+	c.want = -1.0
+	c.wait = 0.0
+	c.hit = 0.0
+	c.ignore = 0.0
+	c.squeeze = 0.0
+	_place(c)
+	c.prev_pos = c.pos
+	c.prev_yaw = c.yaw
+	return true
+
+## A car put on the road nearest `at` (within 25 m), heading the way `heading` points (a
+## one-way street's own way whatever it says), at its road's pace: for a scripted moment, a
+## filmed walk's cars. It is the car furthest from the player, out of sight as a rule.
+## False when there is no road there.
+func send(at: Vector2, heading: Vector2) -> bool:
+	var far: Car = null
+	var fd := -1.0
+	for c: Car in cars:
+		if c.kind == "bus":
+			continue   # (a bus down a side street)
+		var d: float = INF if not c.alive else c.pos.distance_to(g._pos)
+		if d > fd:
+			fd = d
+			far = c
+	var hit: Dictionary = g._nearest_seg(at, 25.0, true, true)
+	if far == null or hit.is_empty():
+		return false
+	var ri: int = hit["road"]
+	var r: Dictionary = _roads[ri]
+	var p: PackedVector2Array = r["pts"]
+	var sj: int = hit["seg"]
+	var dir := 1 if (p[sj + 1] - p[sj]).dot(heading) >= 0.0 else -1
+	if r["o"] != 0:
+		dir = int(r["o"])
+	far.alive = _start_on(far, ri, sj, hit["q"], dir)
+	return far.alive
 
 ## the right-hand lane's offset from the middle of a road. Every two-way street gets two,
 ## however narrow (both ways down the middle met head on).
