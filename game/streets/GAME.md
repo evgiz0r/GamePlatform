@@ -1180,12 +1180,15 @@ contributors under the ODbL, which is why the credit sits on screen.
   the tunnels.** OSM says which ways are bridges and tunnels but not how high or deep, so
   the game works it out as the town loads: each overpass rises to clear what it crosses, on
   ramps up the roads leading to it, an interchange's junctions up on them and its slip
-  roads coming down; each tunnel goes down under what runs over it, cuttings sloping down
-  to it. Highway 102's overpasses, the Bedford Bypass, the MacKay Bridge's approach; in
-  Ashdod Highway 4's interchanges and Sderot Menachem Begin's underpass; the Ayalon's
-  bridges, the Begin underpass and the Lova Eliav tunnel in Tel Aviv. The ramps are grass
-  banks with a guardrail along the top where there is room for them, retaining walls where
-  there is not.
+  roads coming down; each road tunnel runs about 6 m under what runs over it, cuttings
+  sloping down to its mouths. Highway 102's overpasses, the Bedford Bypass, the MacKay
+  Bridge's approach (Bedford has no tunnel); in Ashdod Highway 4's interchanges and Sderot
+  Menachem Begin's underpass, down a cutting under the road it crosses. Givatayim and Tel
+  Aviv share a stretch of the Ayalon: Menachem Begin's and Arvey Nahal's bridges over it,
+  Uzi Hitman's tunnel and the City tunnel; Tel Aviv adds the Moda'i bridge, the Begin
+  underpass and the Lova Eliav tunnel. The ramps are grass banks with a guardrail along the
+  top where there is room for them, retaining walls where there is not; the cuttings are
+  walled.
 - **Footbridges and footpath tunnels, guessed the same way.** A footbridge clears the street
   under it by 5.8 m (3.4 m over another path), paved, with a steel railing; its ramps rise
   along the footpaths only, steep (25%), and as stairs where OSM maps steps or where a path

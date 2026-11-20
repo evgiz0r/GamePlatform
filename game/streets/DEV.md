@@ -1160,10 +1160,12 @@ it is dropped.
   once merged with the springs' smoothing (another session's: Begin's and Laskov Road's
   small hops went with it). `street_holes` on Ashdod: 0 holes, 2 points in a wall (both
   on Laskov Road; 51 before).
-- **Still to do**: Tel Aviv is another session's; grass slopes for cuttings too (they are walled); pavements and
-  people beside an inferred cutting; a long-span
-  bridge's height over water (the MacKay's deck is only as high as its ends); pavements at street
-  level beside a cutting (the underpass has none); people on a bridge's pavement; the
+- **Still to do**: in Tel Aviv, Givat HaTahmoshet's bridge and a slip road
+  over Ayalon South, 3 crossings short (4.8 m the lowest; new: none before footbridges and
+  the ramp tops' rounding went in); grass slopes for cuttings too (they are walled); a
+  long-span bridge's height over water (the MacKay's deck is only as high as its ends);
+  pavements at street level beside a cutting (the underpass has none); people on a bridge's
+  pavement and beside a cutting; the
   minimap draws a tunnel like any street; zooming out from inside the tunnel rises from the
   hilltop (the zoom centres on the ground's height); the heights are whole decimetres, so a
   deck's grade kinks by up to 2% every 5 m (enough for a 2 cm hop off HaNasi's bridge);
