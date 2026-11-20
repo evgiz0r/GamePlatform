@@ -2,7 +2,8 @@
 # own machines, which can reach the Overpass servers whatever network you or a cloud
 # session are on, and commits the file to the branch it was run on. Run it from the
 # Actions tab ("Run workflow"), with `gh workflow run bake_city.yml -f place=... -f out=...`,
-# or ask the AI to. Run on main, it also re-publishes the web build, because a commit
+# or ask the AI to. A big city whole is too much to drive: give `bbox` (south,west,north,east)
+# to bake a few of its neighbourhoods, `place` then being only the name it goes by. Run on main, it also re-publishes the web build, because a commit
 # made by a workflow does not set off publish.yml by itself.
 name: bake a real city
 
@@ -20,6 +21,9 @@ on:
         default: "250"
       include:
         description: "Optional: more places to take in, ';'-separated (a park, a lake, a street near the place)"
+        default: ""
+      bbox:
+        description: "Optional: south,west,north,east in degrees -- bake this box instead of the whole town (a few neighbourhoods of a big city); place is then only its name"
         default: ""
 
 concurrency:
@@ -42,6 +46,7 @@ jobs:
           OUT: ${{ inputs.out }}
           MARGIN: ${{ inputs.margin }}
           INCLUDE: ${{ inputs.include }}
+          BBOX: ${{ inputs.bbox }}
         run: |
           if ! [[ "$OUT" =~ ^game/[A-Za-z0-9_-]+/[A-Za-z0-9_/-]+\.json$ ]]; then
             echo "out must be a .json path inside a game folder, got: $OUT"; exit 1
@@ -49,10 +54,18 @@ jobs:
           if ! [[ "$MARGIN" =~ ^[0-9]+$ ]]; then
             echo "margin must be a whole number of metres, got: $MARGIN"; exit 1
           fi
-          if [ -n "$INCLUDE" ]; then
-            python3 tools/osm_city.py --place "$PLACE" --margin "$MARGIN" --include "$INCLUDE" --out "$OUT"
+          if [ -n "$BBOX" ]; then
+            if ! [[ "$BBOX" =~ ^-?[0-9.]+,-?[0-9.]+,-?[0-9.]+,-?[0-9.]+$ ]]; then
+              echo "bbox must be south,west,north,east in degrees, got: $BBOX"; exit 1
+            fi
+            WHERE=(--bbox "$BBOX" --name "$PLACE")
           else
-            python3 tools/osm_city.py --place "$PLACE" --margin "$MARGIN" --out "$OUT"
+            WHERE=(--place "$PLACE")
+          fi
+          if [ -n "$INCLUDE" ]; then
+            python3 tools/osm_city.py "${WHERE[@]}" --margin "$MARGIN" --include "$INCLUDE" --out "$OUT"
+          else
+            python3 tools/osm_city.py "${WHERE[@]}" --margin "$MARGIN" --out "$OUT"
           fi
 
       - name: commit the city file
