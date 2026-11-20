@@ -15824,6 +15824,8 @@ var _ap_js_t := 0.0
 var _ap_js_head := Vector2.INF       ## (the plan's first point then: a new plan, found afresh)
 var _ap_median_ok := true            ## waits in a divided road's middle where the car fits (tests/median_wait.gd turns it off to compare)
 var _median_gaps := {}               ## Vector2i(n1, n2) -> _median_gap's answer, worked out once
+var _median_far := {}                ## ...and the far carriageway's half width (where to stop in the middle)
+const AP_MEDIAN_SPARE := 1.2         ## m beyond the car's length a median needs to be waited in (both ends and the stop's error)
 
 ## traffic car o on my level: both on the ground (a hill between us is not a level -- 50-80 m
 ## off on Givatayim's slopes the car coming was 3-4 m below and was passed over as if on a
@@ -15835,10 +15837,11 @@ func _same_level(o) -> bool:
 
 ## Room to stand in the middle of a divided road between its junction points n1 and n2 (one
 ## on each carriageway, joined by a short road of their own across the middle, no lights at
-## either): metres from leaving the one to coming into the next, less a car; below 0, none.
-## There a driver crosses the near carriageway when it is clear and waits in the middle for
-## the far one. Taken as one junction (AP_KNOT), autodrive stood at the kerb for a gap in both
-## streams at once.
+## either): metres between the two carriageways' edges, less a car and a little either end;
+## below 0, none. There a driver crosses the near carriageway when it is clear and waits in
+## the middle for the far one. Taken as one junction (AP_KNOT), autodrive stood at the kerb
+## for a gap in both streams at once. (Most medians where a street crosses are narrower than
+## that -- Ashdod's eight first: 2-4.5 m between the edges -- and stay one junction.)
 func _median_gap(n1: int, n2: int) -> float:
 	var key := Vector2i(n1, n2)
 	if _median_gaps.has(key):
@@ -15852,27 +15855,43 @@ func _median_gap(n1: int, n2: int) -> float:
 				continue
 			if not ((ids[0] == n1 and ids[ids.size() - 1] == n2) or (ids[0] == n2 and ids[ids.size() - 1] == n1)):
 				continue
+			var wa := -1.0
+			var wb := -1.0
 			var a := -1
-			var b := -1
 			for e1: Vector2i in _node_roads[n1]:
 				if (_roads[e1.x] as Dictionary).has("median"):
 					a = e1.x
+					wa = float(_roads[e1.x]["w"])
 			for e2: Vector2i in _node_roads[n2]:
 				if (_roads[e2.x] as Dictionary).has("median") and e2.x != a:
-					b = e2.x
-			if a < 0 or b < 0:
+					wb = float(_roads[e2.x]["w"])
+			if wa < 0.0 or wb < 0.0:
 				continue
 			var L := 0.0
 			var pts: PackedVector2Array = r["pts"]
 			for i in range(pts.size() - 1):
 				L += pts[i].distance_to(pts[i + 1])
-			out = L - (_node_r[n1] + 1.5) - (_node_r[n2] + 1.5) - (CAR_LEN + 0.6)
+			if L > AP_KNOT + 6.0 or L > _nodes[n1].distance_to(_nodes[n2]) * 1.3:
+				continue   # (not straight across: a lane looping round between the two, 252 m long)
+			out = L - (wa + wb) * 0.5 - (CAR_LEN + AP_MEDIAN_SPARE)
+			_median_far[key] = wb * 0.5
 			break
 	_median_gaps[key] = out
 	return out
 
 func _ap_split(n1: int, n2: int) -> bool:
 	return _ap_median_ok and _median_gap(n1, n2) >= 0.0
+
+var _ap_mid := Vector2i(-1, -1)       ## the median on the plan it can wait in: [near point, far point]
+
+## where the car's middle stops for junction j of _ap_give_v's list ([along, node, enter,
+## leave]): the nose a metre short of where the plan comes in; in a median, 0.4 m short of the
+## far carriageway's edge (where the plan comes into its radius, its tail was still in the
+## near carriageway's lanes)
+func _ap_edge_of(j: Array) -> float:
+	if int(j[1]) == _ap_mid.y:
+		return float(j[0]) - float(_median_far.get(_ap_mid, 0.0)) - 0.4 - CAR_LEN * 0.5
+	return float(j[2]) + 0.5 - CAR_LEN * 0.5
 
 ## the point `along` metres along the plan (cum: the distance to each of its points)
 func _ap_at(cum: PackedFloat32Array, along: float) -> Vector2:
@@ -15968,11 +15987,22 @@ func _ap_give_v(dt: float) -> float:
 	# the first not yet driven into, and the rest of the same junction after it
 	# (one it was holding for counts as not yet driven into until its nose is at the middle: the
 	# car stops a metre or two past its line, and at -1 it read that as in, and went)
+	# a divided road's middle on the way, deep enough to wait in: [near point, far point], kept
+	# while the far one is ahead (the near one drops off the list behind the car)
+	for k in range(1, js.size()):
+		if _ap_split(int(js[k - 1][1]), int(js[k][1])):
+			_ap_mid = Vector2i(int(js[k - 1][1]), int(js[k][1]))
+			break
+	var mid_ahead := false
+	for j: Array in js:
+		mid_ahead = mid_ahead or int(j[1]) == _ap_mid.y
+	if not mid_ahead:
+		_ap_mid = Vector2i(-1, -1)
 	var first := -1
 	for k in range(js.size()):
 		var n: int = js[k][1]
 		var past := -(_node_r[n] + 1.0) if was.has(n) else -1.0
-		if float(js[k][2]) + 0.5 - CAR_LEN * 0.5 >= past:   # (its edge: where the plan comes in)
+		if _ap_edge_of(js[k]) >= past:
 			first = k
 			break
 	if first < 0 or float(js[first][0]) > reach + 20.0:
@@ -15985,7 +16015,7 @@ func _ap_give_v(dt: float) -> float:
 			_ap_give_t = 0.0
 			return INF   # in the junction already: through it, not stopping in the middle
 	var n0: int = js[first][1]
-	var edge: float = float(js[first][2]) + 0.5 - CAR_LEN * 0.5   # (my nose a metre short of where the plan comes in)
+	var edge := _ap_edge_of(js[first])
 	if _v * _v > 2.0 * 5.0 * maxf(edge, 0.0) + 1.0 and not was.has(n0):
 		_ap_give_t = 0.0
 		return INF   # too late to stop short of it
@@ -15994,15 +16024,9 @@ func _ap_give_v(dt: float) -> float:
 	var in0 := (_ap_at(cum, float(js[first][2])) - _ap_at(cum, float(js[first][2]) - 6.0)).normalized()
 	var on := _nearest_seg(_ap_at(cum, float(js[first][2]) - 3.0), 8.0, true, false, _y)
 	var my_rank := _rank_of(_roads[on["road"]]) if not on.is_empty() else 1
-	if not _sign_rule(n0, in0).is_empty():
+	# (in a divided road's middle, the far carriageway next: below it, whatever road it came from)
+	if not _sign_rule(n0, in0).is_empty() or n0 == _ap_mid.y:
 		my_rank = -1
-	elif not on.is_empty():
-		# in a divided road's middle (on the way across it, the far carriageway next): below
-		# the carriageway, whatever road it came from
-		var ids0: PackedInt32Array = (_roads[on["road"]] as Dictionary)["ids"]
-		var m := ids0[0] if ids0[ids0.size() - 1] == n0 else (ids0[ids0.size() - 1] if ids0[0] == n0 else -1)
-		if m >= 0 and _ap_split(m, n0):
-			my_rank = -1
 	var gap := AP_GAP if _ap_give_t < AP_GIVE_PATIENT else 0.3
 	var hold := false
 	var hold_car := -1
@@ -17435,7 +17459,10 @@ func _autodrive(dt: float) -> Array:
 	# pure pursuit on a point ahead of the rear axle
 	var fwd := _fwd()
 	var rear := _pos - fwd * WHEELBASE * 0.5
-	var look := clampf(3.5 + absf(_v) * 0.5, 5.0, 16.0)
+	# (the point it steers at: nearer at a corner's pace -- 5.4 m ahead at 14 km/h, it started
+	# round a right turn 6 m early, came out with the turn not done and crossed its new lane
+	# toward the middle line by a metre; the same as before from ~50 km/h)
+	var look := clampf(2.0 + absf(_v) * 0.6, 3.5, 16.0)
 	var tgt := _ap_point_ahead(look)
 	var to := tgt - rear
 	var alpha := fwd.angle_to(to)
@@ -17463,7 +17490,10 @@ func _autodrive(dt: float) -> Array:
 			break
 		# (a stop -- a dead end's turning point -- a metre and a half short, so the car is
 		# standing when it gets there rather than rolling past)
-		var to_go := dist if _ap_v[i] > 0.0 else maxf(dist - 1.5, 0.0)
+		# (and a corner aimed at half a second early: braking by how far over its target it is,
+		# 2 m/s^2 a m/s, it ran ~1.3 m/s over the 2.6 m/s^2 slope down to each corner, into it
+		# 5-7 km/h faster than planned and out wide -- tests/turn_width.gd)
+		var to_go := maxf(dist - absf(_v) * 0.5, 0.0) if _ap_v[i] > 0.0 else maxf(dist - 1.5, 0.0)
 		vt = _held(vt, sqrt(_ap_v[i] * _ap_v[i] + 2.0 * 2.6 * to_go), "curve")
 	vt = _held(vt, _ap_light_v(), "light")
 	vt = _held(vt, _ap_sign_v(dt), "sign")
@@ -18104,19 +18134,53 @@ func _ap_turn_into(ri: int, from: int, dir: int, lane: float) -> void:
 	var rin := Vector2(-in_dir.y, in_dir.x)
 	var rout := Vector2(-out_dir.y, out_dir.x)
 	var lane_in := (_ap_pts[n - 1] - c).dot(rin)
-	var back := minf(_node_r[node] + 1.0, before.distance_to(c) * 0.8)
-	var ahead := minf(_node_r[node] + 1.0, c.distance_to(pts[from]) * 0.8)
-	var E := c - in_dir * back + rin * lane_in
-	var X := c + out_dir * ahead + rout * lane
-	var K = Geometry2D.line_intersects_line(E, in_dir, X, -out_dir)
-	var k2: Vector2 = K if K != null and (K as Vector2).distance_to(c) < back + ahead + 4.0 else (E + X) * 0.5
+	# round from the lane it is in to the next street's (an arc no tighter than the car can
+	# drive: see _lane_corner), ending short of that street's next point
+	var arc := _lane_corner(c, in_dir, out_dir, lane_in, lane, _node_r[node] + 1.0, before, pts[from] + rout * lane)
+	if arc.is_empty():
+		return
 	var v := _ap_v[n - 1]
 	var lim := _ap_lim[n - 1]
-	_ap_pts[n - 1] = E
-	for t: float in [0.25, 0.5, 0.75, 1.0]:
-		_ap_pts.append(E * (1.0 - t) * (1.0 - t) + k2 * 2.0 * (1.0 - t) * t + X * t * t)
+	_ap_pts[n - 1] = arc[0]
+	for i in range(1, arc.size()):
+		_ap_pts.append(arc[i])
 		_ap_v.append(v)
 		_ap_lim.append(minf(lim, float(r["speed"])))
+
+## The way round a corner from one lane into the next at junction point c: an arc that runs
+## along the lane it comes in on (lane_in right of din, the way in) and leaves along the lane
+## it goes out in (lane_out right of dout), of radius at least AP_TURN_R -- starting no further
+## back than the point before it (`after`) and ending short of the point after (`before`).
+## The points from where it leaves the lane in to where it is in the lane out; [] when the two
+## ways are too near straight on (or straight back) to need one.
+## (Laid as a curve from 5 m before the junction to 5 m after through that crossing point, a
+## right turn into an 8 m street was 2-3 m round: tighter than the car turns at full lock
+## (~4.1 m), and it came out wide, over the middle line of the street it turned into.)
+const AP_TURN_R := 5.5
+
+func _lane_corner(c: Vector2, din: Vector2, dout: Vector2, lane_in: float, lane_out: float, reach: float, after: Vector2, before: Vector2) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	var th := din.angle_to(dout)   # (+ is right)
+	if absf(th) < 0.2 or absf(th) > 2.9:
+		return out
+	var rin := Vector2(-din.y, din.x)
+	var rout := Vector2(-dout.y, dout.x)
+	var K = Geometry2D.line_intersects_line(c + rin * lane_in, din, c + rout * lane_out, dout)
+	if K == null:
+		return out
+	var k: Vector2 = K
+	var tn := tan(absf(th) * 0.5)
+	# from `reach` before the junction's point along the lane (as before), or further back
+	# if the radius needs it -- the room allowing
+	var T := maxf((k - c).dot(din) + reach, AP_TURN_R * tn)
+	T = clampf(T, 0.5, maxf(minf((k - after).dot(din) - 0.5, (before - k).dot(dout) - 0.5), 0.5))
+	var E := k - din * T
+	var R := T / tn
+	var O := E + rin * R * signf(th)
+	var steps := maxi(2, ceili(R * absf(th) / 1.5))
+	for i in range(steps + 1):
+		out.append(O + (E - O).rotated(th * float(i) / steps))
+	return out
 
 func _ap_curves(from_k: int) -> void:
 	for k in range(maxi(1, from_k), _ap_pts.size() - 1):
@@ -18715,13 +18779,37 @@ func _route_to(goal: Vector2, from := Vector2.INF, heading := Vector2.ZERO) -> b
 	_ap_lim = PackedFloat32Array([float(r["speed"])])
 	for i in range(best.size()):
 		var n := int(best[i])
+		var c: Vector2 = _nodes[n]
 		var prv := _ap_pts[_ap_pts.size() - 1]
 		var nxt: Vector2 = _nodes[best[i + 1]] if i + 1 < best.size() else g["q"]
 		var e: Vector3i = _edge_of.get(Vector2i(int(best[i - 1]), n), Vector3i(s["road"], 0, 1)) if i > 0 else Vector3i(s["road"], 0, dir)
 		var road: Dictionary = _roads[e.x]
-		var d := (nxt - prv).normalized()
 		var lane := _lane_off(road)
-		_ap_pts.append(_nodes[n] + Vector2(-d.y, d.x) * lane)
+		var came: Vector2 = c - (_nodes[best[i - 1]] if i > 0 else (s["q"] as Vector2))
+		var din := came.normalized()
+		var dout := (nxt - c).normalized()
+		if i > 0 and din != Vector2.ZERO and dout != Vector2.ZERO and absf(din.angle_to(dout)) >= 0.35:
+			# A corner: in along its lane, round, and out in the next street's lane, as free
+			# autodrive turns (_ap_turn_into). One point at the corner, put into the lane square
+			# to the way to the next point (the next street's way), sat on the middle line of
+			# the street it was leaving: a right turn swung out left over the last 10 m, came
+			# round at full lock from there and out over the next street's middle line, into
+			# the oncoming lane (tests/turn_width.gd: 4 of 4 in Givatayim).
+			var e2: Vector3i = _edge_of.get(Vector2i(n, int(best[i + 1])), e) if i + 1 < best.size() else Vector3i(g["road"], 0, 1)
+			var lane2 := _lane_off(_roads[e2.x])
+			var arc := _lane_corner(c, din, dout, lane, lane2, _node_r[n] + 1.0, prv, c + (nxt - c) * 0.45)
+			if arc.is_empty():
+				var d0 := (nxt - prv).normalized()
+				_ap_pts.append(c + Vector2(-d0.y, d0.x) * lane)
+				_ap_lim.append(float(road["speed"]))
+				continue
+			var lim2 := float((_roads[e2.x] as Dictionary)["speed"])
+			for q: Vector2 in arc:
+				_ap_pts.append(q)
+				_ap_lim.append(minf(float(road["speed"]), lim2))
+			continue
+		var d := (nxt - prv).normalized()
+		_ap_pts.append(c + Vector2(-d.y, d.x) * lane)
 		_ap_lim.append(float(road["speed"]))
 	# the last stretch along the goal's segment, to the kerb in front of the address
 	var last_dir := (gr["pts"] as PackedVector2Array)[gj + 1] - (gr["pts"] as PackedVector2Array)[gj]

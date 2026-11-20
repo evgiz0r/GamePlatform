@@ -112,16 +112,36 @@ func _pick(want: int) -> Array:
 		var ad := (ap[mini(a.y + 1, ap.size() - 1)] - ap[maxi(a.y - 1, 0)]).normalized()
 		if absf(sd.dot(ad)) > 0.6:
 			continue
-		var crowded := false
-		for o: Array in out:
-			if (g._nodes[o[0]] as Vector2).distance_to(g._nodes[n1]) < 200.0:
-				crowded = true
-		if crowded:
-			continue
 		out.append([n1, n2, s, a, b, link, across, float(g._roads[a.x]["median"])])
-		if out.size() >= want:
-			break
-	return out
+	# the ones with room to wait in the middle first, then the rest; spread out
+	var roomy := out.filter(func(p: Array) -> bool: return g._median_gap(p[0], p[1]) >= 0.0)
+	print("median wait: %d crossings of a divided road from a side street with no lights in %s, %d with room to wait in the middle" % [out.size(), g._city_id, roomy.size()])
+	# and every way across a divided road's middle in the town, from wherever (a left turn off
+	# the main road through a gap in the median too): how many are deep enough to wait in
+	var ways := 0
+	var deep := 0
+	for r: Dictionary in g._roads:
+		var ids: PackedInt32Array = r["ids"]
+		if not r["drive"] or r.has("median") or ids.size() < 2:
+			continue
+		var gp: float = g._median_gap(ids[0], ids[ids.size() - 1])
+		var gq: float = g._median_gap(ids[ids.size() - 1], ids[0])
+		if g._median_far.has(Vector2i(ids[0], ids[ids.size() - 1])) or g._median_far.has(Vector2i(ids[ids.size() - 1], ids[0])):
+			ways += 1
+			if maxf(gp, gq) >= 0.0:
+				deep += 1
+	print("median wait: %d ways across a median in all, %d deep enough to wait in" % [ways, deep])
+	var picks: Array = []
+	for p: Array in roomy + out.filter(func(q: Array) -> bool: return g._median_gap(q[0], q[1]) < 0.0):
+		var crowded := false
+		for o: Array in picks:
+			if (g._nodes[o[0]] as Vector2).distance_to(g._nodes[p[0]]) < 200.0:
+				crowded = true
+		if not crowded:
+			picks.append(p)
+			if picks.size() >= want:
+				break
+	return picks
 
 func _run() -> void:
 	await create_timer(0.3).timeout
@@ -140,7 +160,18 @@ func _run() -> void:
 		(cr["actor"] as Node3D).visible = false
 	g._zebra_t = 1.0e9
 	var picks := _pick(int(OS.get_environment("MW_N")) if OS.get_environment("MW_N") != "" else 4)
-	print("median wait: %d crossings of divided roads in %s" % [picks.size(), g._city_id])
+	print("median wait: %d picked" % picks.size())
+	for p: Array in picks:
+		var link_len := 0.0
+		var lp: PackedVector2Array = g._roads[p[5]]["pts"]
+		for i in range(lp.size() - 1):
+			link_len += lp[i].distance_to(lp[i + 1])
+		print("  %d-%d: points %.1f m apart (the way across %.1f m), radii %.1f / %.1f, carriageways %.1f / %.1f m wide, median %.1f m; room past a car %.1f m" % [
+			p[0], p[1], (g._nodes[p[0]] as Vector2).distance_to(g._nodes[p[1]]), link_len, g._node_r[p[0]], g._node_r[p[1]],
+			float(g._roads[(p[3] as Vector2i).x]["w"]), float(g._roads[(p[4] as Vector2i).x]["w"]), float(p[7]), g._median_gap(p[0], p[1])])
+	if OS.get_environment("MW_GEOM") != "":
+		quit(0)
+		return
 	var bad := 0
 	var runs := 0
 	var t_on := 0.0
