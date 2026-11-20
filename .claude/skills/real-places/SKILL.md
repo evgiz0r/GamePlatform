@@ -65,9 +65,30 @@ data format is at the top of `tools/osm_city.py`; this is about living with it.
   point can be 30-100 m away; a straight line from the junction to it runs down the wrong
   side of the new street, into oncoming traffic. Curve from just short of the junction in
   the current lane to just past it in the right lane of the new street.
+- **Traffic lights at a knot.** Make the knot one signalled junction (a "site"): the lit
+  points a short road apart (~35 m; join the shortest first and cap the site at ~50 m
+  across, or a chain of them swallows the next junction), plus the unlit other half of a
+  divided road. Group its ways in by direction across the whole site -- along the main
+  road, then across it -- never per point and never by street name: a street that changes
+  its name at the junction landed in the same group as the street across it, and per point
+  a road had green at one half of a divided road and red 10 m on. A car is in the site from
+  its nose crossing the stop line and goes through all of it (a fixed "the next 45 m" rule
+  both missed big knots and swallowed separate junctions). Lights and stop lines only on the
+  ways in from outside. A light OSM maps 30 m out on one approach belongs to the junction:
+  stopping at the mapped point stopped cars 30 m short. A zebra mapped a few metres out puts
+  the stop line behind it. Two sites close together: give the road between them the same
+  group. OSM cuts one street into several ways: walk across those joins (a point with two
+  ways) when looking along an approach. Audit every junction in a scene test -- crossing ways
+  sharing a group, a road whose group changes inside a site, ways in with no pole, zebras
+  whose road has green one way -- before driving one: in one town it found 12, 48, 66 and 26.
 - **Roundabouts** are closed one-way ways (or tagged junction=roundabout). An AI that plans
   to the end of the way drives the whole circle, then picks "straight on" -- round again.
   Plan only to the next exit, and make staying on less likely with every piece driven.
+- **A junction's asphalt is more than its roads.** Laid as a disc at the junction's point (as
+  wide as its widest road) and rounded at the corners, it is covered by no single road's
+  width. Anything placed "off the road" by distance to the roads' centre lines -- railings,
+  bollards, a hydrant -- can stand in a junction's mouth. Check the disc too, and check both
+  ends of anything long (a railing panel), not its middle.
 - **Kerbs at corners**: cut kerb runs only where three or more kerbed ways meet (two OSM
   pieces of one street join at a node too), round the corners, and check a corner kerb
   against other roads' asphalt along its whole length -- checked at its middle only, a
@@ -198,6 +219,10 @@ one needed:
 The baked area ends; don't let it end in an invisible wall. A striped barrier along it
 (following the ground), a soft glow over it that shows when near, a line on the minimap,
 a banner on contact -- and keep the car's own collision circles off exactly that line.
+An AI that picks its way at junctions must see the edge coming: a street that runs off the
+map looks like any other until the barrier. Look a few hundred metres down each way on and
+score down one whose every continuation hits the edge (not ordinary dead ends -- exploring
+those is fine), and end a planned road a few metres short of the barrier as a dead end.
 
 ## Filmed walks and drives
 
@@ -218,6 +243,12 @@ a place and a heading on the baked ground.
   acceleration and braking -- for a drive, what to tune AI drivers against. `route` gives
   `{"points": [[seconds, x, z]...]}` timed to the film (`--video` reads its clock) and cut
   between two named corners (`--from A B --to C D`), for a replay beside the film.
+  A phone's GPS puts a walker in the road on a narrow street: before a route becomes a
+  replay, move each point onto the pavement it was walked on (left or right of the way
+  walked, along a named street) using the game's own road widths, not OSM's -- a game that
+  fits widths to the buildings has narrower roads than the file -- and leave the crossings
+  as they are. Mid-street the points moved 0-2.5 m; at a big junction 10-18 m and onto the
+  asphalt, so the replay ended 25 m short of it.
 - **Lining up.** Both come off the phone's clock. The video's file name is its start in
   local time; the mp4's `creation_time` is (on that phone) the *end*, in UTC: start =
   creation_time - duration. The two agreed to ~3 s. GPX times are UTC.

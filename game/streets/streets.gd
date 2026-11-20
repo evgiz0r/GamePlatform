@@ -18,7 +18,7 @@ extends GameMode3D
 ## the car on the first just past the second. Without one it starts on a main road
 ## mid-town.
 const LEVELS := [
-	{"name": "Givatayim", "city": "givatayim", "start": ["המרי", "שיינקין"], "look": "med"},
+	{"name": "Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med"},
 	{"name": "Bedford, Nova Scotia", "city": "bedford", "look": "north"},
 	{"name": "Ashdod", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med"},
 	# made up by tools/fake_city.py: one small town with one of everything, ringed by mountains,
@@ -26,6 +26,8 @@ const LEVELS := [
 	{"name": "Kiryat Dimyon (test town)", "city": "dimyon", "start": ["הנשיא", "השוק"], "look": "med"},
 	# a walk filmed in Givatayim, replayed in first person on its own (cities/details/givatayim.json)
 	{"name": "A walk in Givatayim: Katzenelson to Ha-Meri", "city": "givatayim", "look": "med", "walk": "katzenelson_hameri"},
+	# a second, timed and placed from the GPS track taken with its film (tools/gpx_route.py)
+	{"name": "A walk in Givatayim: Sheinkin and Sirkin", "city": "givatayim", "look": "med", "walk": "sheinkin_sirkin"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -113,12 +115,25 @@ const WALKERS := 18
 const CHATTERS := 8
 const PEOPLE_RANGE := 150.0
 const PEOPLE_SEEN := 90.0            ## people further than this are not drawn or animated
-const SIGNAL_CYCLE := [              ## [seconds, phase of group 1 (the junction's main road), of group 2]
-	[18.0, "g", "r"], [3.0, "y", "r"], [2.5, "r", "r"],
-	[13.0, "r", "g"], [3.0, "r", "y"], [2.5, "r", "r"],   # (all red 2.5 s: a big junction takes that to clear)
-]   # (the main road's green the longer, as the town's own lights run -- but 11 s for the side
-    # street, with drivers who take a moment to pull away, let two cars through a green; see
-    # DEV.md)
+## The lights' cycle: [seconds, what group 1 (each junction's main road) shows, group 2 (the
+## roads across it)]. "g" green, "gf" green flashing (it is about to change: still go), "y"
+## amber, "r" red, "ry" red and amber together (about to go green: still stop). The main road's
+## green the longer, 18 s against 13, as the towns' own lights run (with 14 s each way a main
+## road was stop and go behind every red; 11 s for the side street, with drivers who take a
+## moment to pull away, let two cars through -- see DEV.md). 3-3.5 s between one way's amber
+## and the other's green, red all round or red-and-amber: a junction drawn as several points,
+## its stop lines behind the zebras, takes that to clear (at 2.5 s a car in on the last of the
+## amber, turning, met the cars across starting off). Israel's: green, three flashes, amber,
+## red, red-and-amber, green. North America's has neither the flashes nor the red-and-amber.
+const SIGNAL_CYCLE_MED := [
+	[15.0, "g", "r"], [3.0, "gf", "r"], [3.0, "y", "r"], [2.0, "r", "r"], [1.5, "r", "ry"],
+	[10.0, "r", "g"], [3.0, "r", "gf"], [3.0, "r", "y"], [2.0, "r", "r"], [1.5, "ry", "r"],
+]
+const SIGNAL_CYCLE_NORTH := [
+	[18.0, "g", "r"], [3.0, "y", "r"], [3.0, "r", "r"],
+	[13.0, "r", "g"], [3.0, "r", "y"], [3.0, "r", "r"],
+]
+var SIGNAL_CYCLE: Array = SIGNAL_CYCLE_MED   ## this town's (set when the city loads)
 
 const SEG_CELL := 24.0               ## spatial hash cell for road segments (m)
 const BLD_CELL := 24.0
@@ -808,6 +823,7 @@ var _people_rng := RandomNumberGenerator.new()
 var _hgrid := PackedFloat32Array()   ## ground height (m above the lowest point) on a grid
 var _steep := false                  ## some of the ground is too steep to drive up (see STEEP)
 var _made_up := false                ## the city file is invented (tools/fake_city.py), not OSM's
+var _mtn_from := 100000.0            ## the made-up town: above this height the land is mountain (see GROUND_SHADER)
 var _hx0 := 0.0
 var _hz0 := 0.0
 var _hstep := 1.0
@@ -820,8 +836,9 @@ var _sig_phase := 0
 var _sig_t := 0.0
 var _sig_set := {}                   ## graph node -> true, for each node with traffic lights
 var _sig_hash := {}                  ## the same nodes in a spatial hash
-var _light_odo := -1000.0            ## the odometer when the car last went through a light
-const LIGHT_SKIP := 45.0             ## lights this soon after one are the far side of the same junction
+var _light_odo := -1000.0            ## the odometer when the car was last in a junction with lights...
+var _light_site := -1                ## ...and which one (its other points are not stopped at again)
+const SITE_KEEP := 120.0             ## metres after which the last junction is forgotten (a car can come back)
 
 ## ---- stop and give-way signs, where OSM has them ----
 var _signs := {}                     ## graph node -> [[kind, way in (Vector2), line before the node (m)], ...]
@@ -1030,6 +1047,7 @@ func start(_config: Dictionary) -> void:
 	_make_font()
 	_tones()
 	_place = LEVELS[clampi(int(_config.get("level", 1)), 1, LEVELS.size()) - 1]
+	SIGNAL_CYCLE = SIGNAL_CYCLE_NORTH if String(_place.get("look", "")) == "north" else SIGNAL_CYCLE_MED
 	var dev := OS.get_environment("STREETS_CAM").split(",", false)
 	if dev.size() >= 5:
 		for i in 5:
@@ -1060,6 +1078,7 @@ func start(_config: Dictionary) -> void:
 	if not await _warm_up():
 		return
 	_stage_ms["warm up (shaders compiled, 4 frames)"] = Time.get_ticks_msec() - tw
+	_load_ms = Time.get_ticks_msec() - t0
 	_loading.queue_free()
 	var tm := Time.get_ticks_msec()
 	_map_build_cells()
@@ -1096,18 +1115,91 @@ var _loading: Label
 ## still up. A browser compiles each shader the first time something uses it, and that
 ## stalls the frame: better here than as each kind of thing first comes into view.
 func _warm_up() -> bool:
-	_loading.text = "building %s…\ngetting ready" % _city_name
+	# (on screen first: the frames below are the slow ones, and the text set with them showed
+	# only when they were done -- "8 of 8" stood there seconds)
+	_loading.text = "building %s…\ngetting the graphics ready" % _city_name
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if not is_inside_tree():
+		return false
 	var mid := _bounds.get_center()
 	var spot := _pos if _pos != Vector2.ZERO else mid
 	var gy := _h(spot)
+	# The city's kinds of surface a few at a time, a frame each, so the shaders compile in
+	# steps the text can count (all at once, one frame took the lot: a long freeze)
+	look_from(Vector3(spot.x - 20.0, gy + 12.0, spot.y), Vector3(spot.x + 40.0, gy, spot.y))
+	_sky_follow()
+	var kinds := {}   # material (and whether instanced) -> its nodes
+	var shown: Array = []
+	for n: Node in world.find_children("*", "GeometryInstance3D", true, false):
+		var gi := n as GeometryInstance3D
+		if not gi.visible:
+			continue   # (hidden on purpose: night's beams, the beacon)
+		gi.visible = false
+		shown.append(gi)
+		var key := _shader_key(gi)
+		if not kinds.has(key):
+			kinds[key] = []
+		(kinds[key] as Array).append(gi)
+	world.visible = true
+	var keys: Array = kinds.keys()
+	# (in steps only on a real graphics chip: under a software renderer -- the tests' -- every
+	# frame of the town costs seconds to draw, and there is no compiling worth spreading)
+	var adapter := RenderingServer.get_video_adapter_name().to_lower()
+	var soft := adapter.contains("llvmpipe") or adapter.contains("swiftshader") or adapter.contains("software")
+	var steps := 0 if soft else mini(8, keys.size())
+	for k in range(steps):
+		for key in keys.slice(k * keys.size() / steps, (k + 1) * keys.size() / steps):
+			for gi: GeometryInstance3D in kinds[key]:
+				gi.visible = true
+		_loading.text = "building %s…\ngetting the graphics ready (%d of %d)" % [_city_name, k + 1, steps + 4]
+		var ts := Time.get_ticks_msec()
+		await get_tree().process_frame
+		_warm_ms.append(Time.get_ticks_msec() - ts)
+		if not is_inside_tree():
+			return false
+	for gi: GeometryInstance3D in shown:
+		gi.visible = true   # (the few not reached above: none, but to be sure)
 	for k in range(4):
+		_loading.text = "building %s…\ngetting the graphics ready (%d of %d)" % [_city_name, steps + k + 1, steps + 4]
 		var d := Vector2(cos(k * PI * 0.5), sin(k * PI * 0.5))
 		look_from(Vector3(spot.x - d.x * 20.0, gy + 12.0, spot.y - d.y * 20.0), Vector3(spot.x + d.x * 40.0, gy, spot.y + d.y * 40.0))
 		_sky_follow()
+		var tk := Time.get_ticks_msec()
 		await get_tree().process_frame
+		_warm_ms.append(Time.get_ticks_msec() - tk)   # (each view's frame: the perf view shows them)
 		if not is_inside_tree():
 			return false
 	return true
+
+var _warm_ms: Array = []             ## each warm-up frame, ms: the kinds of surface a few at a time, then the four views
+
+## what a mesh is drawn with, as far as compiling it goes: its material(s), and whether it is
+## instanced (a multimesh is another shader variant)
+func _shader_key(gi: GeometryInstance3D) -> String:
+	var m: Material = gi.material_override
+	var mesh: Mesh = null
+	if gi is MeshInstance3D:
+		mesh = (gi as MeshInstance3D).mesh
+	elif gi is MultiMeshInstance3D and (gi as MultiMeshInstance3D).multimesh != null:
+		mesh = (gi as MultiMeshInstance3D).multimesh.mesh
+	if m == null and mesh != null and mesh.get_surface_count() > 0:
+		m = mesh.surface_get_material(0)
+		if m == null and gi is MeshInstance3D:
+			m = (gi as MeshInstance3D).get_surface_override_material(0)
+	return "%s:%d" % [gi.get_class(), m.get_instance_id() if m != null else 0]
+var _load_ms := 0                    ## from the city file to the car shown, ms
+
+## the loading, for the perf view: how long, its biggest stages, the warm-up's four views
+func _load_text() -> String:
+	var parts: Array = []
+	for k: String in _stage_ms:
+		parts.append([k, int(_stage_ms[k])])
+	parts.sort_custom(func(a, b): return a[1] > b[1])
+	var top: Array = []
+	for p: Array in parts.slice(0, 4):
+		top.append("%s %.1f s" % [String(p[0]).get_slice(" (", 0), p[1] / 1000.0])
+	return "loaded in %.1f s: %s\nwarm-up frames (ms): %s" % [_load_ms / 1000.0, ", ".join(top), ", ".join(_warm_ms.map(func(x): return str(x)))]
 
 ## show what is being built and let a frame be drawn; false if the game was left meanwhile
 func _step(what: String) -> bool:
@@ -1454,6 +1546,8 @@ func _load_city(id: String) -> bool:
 			_hgrid[i] = float(raw[i]) * k
 		_steep = _any_steep()
 	_made_up = data.has("made_up")
+	if _made_up and _hnx > 0:
+		_mtn_from = _town_top() + 6.0
 	_decks = Decks.new(self)
 	_decks.setup()
 	for a: Dictionary in data.get("areas", []):
@@ -1548,6 +1642,8 @@ func _build_world() -> bool:
 	world.add_child(ground)
 	if _hnx > 0:
 		_build_terrain()
+	if _mtn_from < 10000.0:
+		_build_turbines()
 	_build_edge()
 	_build_setup(_stage("world", t0))
 	var tf := Time.get_ticks_msec()
@@ -1558,6 +1654,10 @@ func _build_world() -> bool:
 	var all_first := OS.get_environment("STREETS_BUILD_ALL") == "1"
 	var near: Array = _tiles_todo.filter(func(t): return all_first or _tile_dist(t, _pos) < NEAR_FIRST)
 	near.sort_custom(func(a, b): return _tile_dist(a, _pos) < _tile_dist(b, _pos))
+	# (nothing of the city drawn while it goes up: each step's frames drew what was built so far,
+	# and the browser compiled every kind of material's shader the first time -- seconds on the
+	# first square, "1 of 6", which looked stuck. The warm-up does that, in steps it can show.)
+	world.visible = false
 	for i in range(near.size()):
 		if not await _step("the streets round the start (%d of %d)" % [i + 1, near.size()]):
 			return false
@@ -2076,6 +2176,149 @@ func _g3(p: Vector2, lift: float) -> Vector3:
 	return Vector3(p.x, _hh(p) + lift + (0.07 if _hnx > 0 else 0.0), p.y)
 
 ## the ground itself: one mesh over the city's height grid, smooth-shaded
+## ---- the made-up town's wind turbines -------------------------------------------------------
+## A row along the highest stretch of the mountains' crest, facing the town, the blades turning
+## and a red light on each nacelle blinking (all together, as a wind farm's do): something
+## alive on the skyline from anywhere in the valley.
+const TURBINES := 5
+const TURBINE_H := 55.0              ## the hub's height over the ground
+const BLADE_L := 22.0
+var _blades: MultiMesh
+var _hubs: Array = []                ## [hub, facing (unit, toward the town), phase] per turbine
+var _turbine_light: StandardMaterial3D
+
+func _build_turbines() -> void:
+	var mid := _bounds.get_center()
+	var inside := _bounds.grow(-EDGE - 45.0)
+	# the crest on every bearing: the highest ground between the town and the map's edge
+	var crest: Array = []
+	for a in range(360):
+		var dir := Vector2.from_angle(deg_to_rad(a))
+		var best := Vector2.ZERO
+		var bh := -INF
+		var r := 60.0
+		while true:
+			var p := mid + dir * r
+			if not inside.has_point(p):
+				break
+			if not _in_city(p) and _h(p) > bh:
+				bh = _h(p)
+				best = p
+			r += 8.0
+		crest.append([best, bh])
+	# the highest stretch (the bearing whose 30 degrees round it stand highest), then the
+	# turbines along it, 90 m apart or more
+	var top := 0
+	var top_v := -INF
+	for a in range(360):
+		var v := 0.0
+		for k in range(-15, 16):
+			v += float(crest[(a + k + 360) % 360][1])
+		if v > top_v:
+			top_v = v
+			top = a
+	var spots: Array = [crest[top][0]]
+	for side: int in [1, -1]:
+		var a := top
+		for _k in range(60):
+			if spots.size() >= TURBINES:
+				break
+			a = (a + side + 360) % 360
+			var p: Vector2 = crest[a][0]
+			if float(crest[a][1]) > _mtn_from and spots.all(func(q): return (q as Vector2).distance_to(p) > 90.0):
+				if (spots[spots.size() - 1] as Vector2).distance_to(p) > 90.0 or side == -1:
+					spots.append(p)
+					if side == 1 and spots.size() >= 3:
+						break   # (the rest the other way)
+	var white := StandardMaterial3D.new()
+	white.albedo_color = _tone["mark"]
+	white.roughness = 0.5
+	var tower := CylinderMesh.new()
+	tower.top_radius = 1.0
+	tower.bottom_radius = 1.8
+	tower.height = TURBINE_H
+	tower.radial_segments = 10
+	tower.material = white
+	var nacelle := BoxMesh.new()
+	nacelle.size = Vector3(2.6, 2.6, 7.5)
+	nacelle.material = white
+	var hub := SphereMesh.new()
+	hub.radius = 1.3
+	hub.height = 2.6
+	hub.radial_segments = 8
+	hub.rings = 4
+	hub.material = white
+	var blade := BoxMesh.new()
+	blade.size = Vector3(1.3, BLADE_L, 0.35)
+	blade.material = white
+	_turbine_light = StandardMaterial3D.new()
+	_turbine_light.albedo_color = Palette.col("hazard").lerp(Color.RED, 0.6)
+	_turbine_light.emission = _turbine_light.albedo_color
+	_turbine_light.emission_energy_multiplier = 1.5
+	var beacon := SphereMesh.new()
+	beacon.radius = 0.45
+	beacon.height = 0.9
+	beacon.radial_segments = 6
+	beacon.rings = 3
+	beacon.material = _turbine_light
+	var parts := {"tower": [], "nacelle": [], "hub": [], "beacon": []}
+	for i in range(spots.size()):
+		var p: Vector2 = spots[i]
+		var gy := _h(p)
+		var face := (mid - p).normalized()
+		var yaw := Basis(Vector3.UP, atan2(face.x, face.y))   # +Z toward the town
+		var at := Vector3(p.x, gy, p.y)
+		var top3 := at + Vector3(0, TURBINE_H, 0)
+		var f3 := Vector3(face.x, 0, face.y)
+		(parts["tower"] as Array).append(Transform3D(Basis(), at + Vector3(0, TURBINE_H * 0.5, 0)))
+		(parts["nacelle"] as Array).append(Transform3D(yaw, top3 - f3 * 1.2))
+		(parts["hub"] as Array).append(Transform3D(Basis(), top3 + f3 * 2.8))
+		(parts["beacon"] as Array).append(Transform3D(Basis(), top3 + Vector3(0, 1.75, 0) - f3 * 3.5))
+		_hubs.append([top3 + f3 * 3.1, f3, float(i) * 1.7])
+		_add_post(p, 2.0)
+	for part: String in parts:
+		var mesh: Mesh = {"tower": tower, "nacelle": nacelle, "hub": hub, "beacon": beacon}[part]
+		var mi := _multi(mesh, parts[part])
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if part == "beacon" else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	_blades = MultiMesh.new()
+	_blades.transform_format = MultiMesh.TRANSFORM_3D
+	_blades.mesh = blade
+	_blades.instance_count = _hubs.size() * 3
+	var bi := MultiMeshInstance3D.new()
+	bi.multimesh = _blades
+	bi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	world.add_child(bi)
+	_turbines_tick()
+	_tally("turbines", _hubs.size())
+
+## the blades round (about 13 turns a minute) and the beacons on for half of every 1.5 s
+func _turbines_tick() -> void:
+	var t := Time.get_ticks_msec() * 0.001
+	for i in range(_hubs.size()):
+		var h: Array = _hubs[i]
+		var f3: Vector3 = h[1]
+		var side := Vector3.UP.cross(f3).normalized()
+		for k in range(3):
+			var a := t * 1.35 + float(h[2]) + float(k) * TAU / 3.0
+			var along := Vector3.UP * cos(a) + side * sin(a)   # the blade's length, in the rotor's plane
+			var across := Vector3.UP * -sin(a) + side * cos(a)
+			_blades.set_instance_transform(i * 3 + k, Transform3D(Basis(across, along, f3), (h[0] as Vector3) + along * (BLADE_L * 0.5 + 0.9)))
+	var lit := fmod(t, 1.5) < 0.5
+	if lit != _turbine_light.emission_enabled:
+		_turbine_light.emission_enabled = lit
+		_turbine_light.albedo_color = (Palette.col("hazard").lerp(Color.RED, 0.6)) * (1.0 if lit else 0.35)
+
+## the highest ground inside the town's boundary (its hill): the mountains are what rises
+## above it, whatever the town's own hill looks like
+func _town_top() -> float:
+	var top := 0.0
+	for j in range(0, _hnz, 2):
+		for i in range(0, _hnx, 2):
+			var p := Vector2(_hx0 + i * _hstep, _hz0 + j * _hstep)
+			if _in_city(p):
+				top = maxf(top, _hgrid[j * _hnx + i])
+	return top
+
 func _build_terrain() -> void:
 	var verts := PackedVector3Array()
 	var norms := PackedVector3Array()
@@ -2719,6 +2962,55 @@ func _mark_medians() -> void:
 		if _median_road(r):
 			r["mid"] = MEDIAN_W * 0.5
 
+## A median is a kerb's height over the road, not a wall: the car goes over it, with a jolt.
+## (It was a wall as high as the sky, which a car looked able to roll straight over, and the
+## player could not.) Each axle going up or down it kicks the car on its springs and costs it
+## some speed, the faster the harder; while the wheels are on it the car rides that much higher.
+var _medians := PackedVector2Array()   ## two points a stretch of median
+var _median_r := PackedFloat32Array()  ## half its width
+var _median_hash := {}
+var _median_on := [false, false]       ## front and back axle on a median now
+var _median_lift := 0.0                ## how high the car rides on it (m), eased
+
+func _add_median(a: Vector2, b: Vector2, half: float) -> void:
+	var i := _median_r.size()
+	_medians.append(a)
+	_medians.append(b)
+	_median_r.append(half)
+	_hash_add(_median_hash, Rect2(a, Vector2.ZERO).expand(b).grow(half), BLD_CELL, i)
+
+func _on_median(p: Vector2) -> bool:
+	for i: int in _near(_median_hash, p, 1.0, BLD_CELL):
+		var a := _medians[i * 2]
+		var b := _medians[i * 2 + 1]
+		if Geometry2D.get_closest_point_to_segment(p, a, b).distance_to(p) < _median_r[i] + 0.15:
+			return true
+	return false
+
+func _median_tick(dt: float) -> void:
+	if _medians.is_empty() or _walking or _air:
+		return
+	var fwd := _fwd()
+	var on := 0
+	for k in range(2):
+		var wheel := _pos + fwd * (WHEELBASE * 0.5 if k == 0 else -WHEELBASE * 0.5)
+		var now := _on_median(wheel)
+		if now:
+			on += 1
+		if now != _median_on[k]:
+			_median_on[k] = now
+			var j := clampf(absf(_v) / 12.0, 0.08, 1.0)   # (walking pace a nudge, 45 km/h a thump)
+			# up the kerb the near end rises, off it it drops onto its springs
+			var up_front := (k == 0) == now
+			_pitch = clampf(_pitch + (-0.035 if up_front else 0.035) * j * signf(_v if _v != 0.0 else 1.0), -0.12, 0.12)
+			_v *= 1.0 - 0.07 * j
+			shake3d(0.3 + 1.2 * j)
+			Audio.play("impact_soft", 0.1, -10.0 + 6.0 * j)
+			if j > 0.5 and k == 0 and now:
+				Probe.event("median", {"kmh": int(absf(_v) * 3.6)})
+	_median_lift = move_toward(_median_lift, KERB_H * on * 0.5, dt * 1.6)
+	_y += _median_lift
+
 func _build_medians(kerb: Buf, pave: Buf) -> void:
 	var zebra := {}
 	for ni: int in _crossing_nodes:
@@ -2758,7 +3050,7 @@ func _build_medians(kerb: Buf, pave: Buf) -> void:
 						_kerb_run_piece(kerb, pave, ri, a + rt * mw * sgn, b + rt * mw * sgn, na, na,
 								maxf(mw - KERB_W, 0.0), Color(0.05, 0, 0), cum, seg)
 					if _mine(a):   # (recorded once, by the square it starts in)
-						add_wall(a, b, mw)
+						_add_median(a, b, mw)
 						made += seg
 				cum += seg
 	_tally("median_m", int(made))
@@ -3953,6 +4245,8 @@ func _stilts(ring: PackedVector2Array, sgn: float, ground: float, under: float, 
 		var steps := maxi(1, int(L / 6.0))
 		for k in range(steps):
 			var q := a + d * (L * float(k) / steps) + inward * 0.3 + (d * 0.3 if k == 0 else Vector2.ZERO)
+			if not _off_road(q, 0.3) or _in_junction(q, 0.3):
+				continue   # (a building over a road -- a passage -- has none in the lanes)
 			cols.append(Transform3D(Basis.from_scale(Vector3(0.35, hgt, 0.35)), Vector3(q.x, ground + hgt * 0.5, q.y)))
 			_add_post(q, 0.25)
 	var idx := Geometry2D.triangulate_polygon(ring)
@@ -4153,6 +4447,38 @@ func _build_trees() -> void:
 			wild += 1
 			_wild_made += 1
 	_tally("wild_trees", wild)
+	# the made-up town's mountains: woods of pine, with cypress and olive, in clumps up the
+	# slopes (the noise the ground's scrub follows), thinning toward the crests; not on
+	# cliffs, roads or the lookout's road
+	var mtn := {}
+	if _mtn_from < 10000.0:
+		var ms := 11.0
+		var mx0 := ceili((sq.position.x - _bounds.position.x) / ms)
+		var mx1 := floori((sq.end.x - _bounds.position.x) / ms)
+		var mz0 := ceili((sq.position.y - _bounds.position.y) / ms)
+		var mz1 := floori((sq.end.y - _bounds.position.y) / ms)
+		for gz in range(mz0, mz1 + 1):
+			if _over():
+				await _pause()
+			for gx in range(mx0, mx1 + 1):
+				if _mtn_made >= MTN_TREES:
+					break
+				rng.seed = gx * 83492791 + gz * 2971215073 + 7
+				var p := _bounds.position + Vector2(gx + rng.randf(), gz + rng.randf()) * ms
+				var hy := _h(p)
+				if hy < _mtn_from - 20.0 or not _mine(p) or _in_city(p):
+					continue
+				var clump := _vnoise(p / 90.0 + Vector2(3.0, 3.0)) * 0.6 + _vnoise(p / 24.0) * 0.4
+				if clump < 0.47 + (hy - _mtn_from) / 900.0:
+					continue
+				var tilt := maxf(absf(_h(p + Vector2(3, 0)) - _h(p - Vector2(3, 0))), absf(_h(p + Vector2(0, 3)) - _h(p - Vector2(0, 3)))) / 6.0
+				if tilt > 1.25 or not _tree_ok(p, 4.0):
+					continue   # a cliff, a road, another tree
+				_add_post(p, 0.3)
+				mtn[spots.size()] = true
+				spots.append(Vector3(p.x, p.y, rng.randf_range(0.8, 1.3)))
+				_mtn_made += 1
+		_tally("mountain_trees", mtn.size())
 	_trees_made += spots.size()
 	if not grates.is_empty():
 		_chunked(_furn.grate_kit(), grates, 120.0)
@@ -4173,6 +4499,9 @@ func _build_trees() -> void:
 		var spin := Basis(Vector3.UP, rng.randf() * TAU)
 		var g := rng.randf_range(0.85, 1.1)
 		var kind := _tree_kind(look, forest.has(si), rng.randf())
+		if mtn.has(si):
+			var mr := rng.randf()
+			kind = "pine" if mr < 0.66 else ("cypress" if mr < 0.9 else "olive")
 		var spec: Array = TREE_KINDS[kind]
 		# [trunk part, trunk scale (w, h), crown part, crown scale (w, h, w), crown height,
 		#  leaf tint, lean (radians)]
@@ -4194,10 +4523,15 @@ func _build_trees() -> void:
 		put.call(spec[2], Transform3D(b * Basis.from_scale(cw * jitter * sc), base + b * Vector3(0, float(spec[4]) * sc, 0)),
 			Color(tint.r * g, tint.g * g, tint.b * g, (float(cell) + 0.5) / 4.0))
 		_ao_tree(Vector2(sp.x, sp.y), cw.x * jitter.x * sc * (0.55 if tpart == "ptrunk" else 0.85), float(spec[4]) * sc)
+	# a square that is mostly mountain woods: drawn from further off, as they are seen across
+	# the valley
+	var reach := TREE_RANGE * 1.7 if mtn.size() * 2 > spots.size() else TREE_RANGE
 	for part: String in parts:
-		await _chunked_paced(_tree_meshes[part], parts[part], TREE_RANGE, colours[part], null, true)
+		await _chunked_paced(_tree_meshes[part], parts[part], reach, colours[part], null, true)
 
 var _tree_meshes := {}
+const MTN_TREES := 3000              ## the made-up town's mountain woods, all told
+var _mtn_made := 0
 var _trees_made := 0
 var _wild_made := 0
 var _wild_keep := 1.0                ## the share of open land's green spots that get a tree
@@ -4935,6 +5269,12 @@ uniform vec4 dark : source_color;
 uniform float greenness = 0.5;
 uniform vec4 rock : source_color;
 uniform float textured = 1.0;
+// the made-up town's mountains (0: none): limestone in ledges, red soil, dark scrub and the
+// shadows of clouds going over, on every steep slope and everything above `mountain_from`
+uniform float mountains = 0.0;
+uniform float mountain_from = 100000.0;
+uniform vec4 scrub : source_color;
+uniform vec4 soil : source_color;
 uniform sampler2D grass_tex : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D grass_nrm : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform vec3 grass_mean = vec3(0.5);
@@ -4960,6 +5300,30 @@ void fragment() {
 	float bare = smoothstep(0.86, 0.74, wup + (noise(wpos.xz / 9.0) - 0.5) * 0.08);
 	vec3 stone = rock.rgb * (0.72 + 0.28 * noise(vec2(wpos.y * 0.45, (wpos.x + wpos.z) * 0.03))) * (0.85 + 0.3 * noise(wpos.xz / 6.0));
 	c = mix(c, stone, bare);
+	float mtn = 0.0;
+	if (mountains > 0.5) {
+		mtn = max(bare, smoothstep(mountain_from, mountain_from + 30.0, wpos.y + (noise(wpos.xz / 60.0) - 0.5) * 24.0));
+		// limestone laid down in beds: a ledge every 5 m or so of height, wavering, its face
+		// catching the light and a dark seam under it -- from the town they read as contours
+		// (beds 4-12 m thick by where you are, so they break up rather than ruling the slope)
+		float thick = mix(4.0, 12.0, noise(wpos.xz / 160.0 + 21.0));
+		float bed = fract(wpos.y / thick + (noise(wpos.xz / 34.0) - 0.5) * 1.3 + noise(wpos.xz / 9.0) * 0.12);
+		float face = smoothstep(0.0, 0.3, bed) * (1.0 - 0.5 * smoothstep(0.55, 1.0, bed));
+		vec3 m = rock.rgb * 0.7 * (0.75 + 0.35 * noise(wpos.xz / 13.0 + 3.0)) * mix(0.45, 1.05, face);
+		// red soil in hollows, and dark scrub and pine in the folds and low down, thinning
+		// toward the crests
+		m = mix(m, soil.rgb * (0.8 + 0.35 * noise(wpos.xz / 6.0)), smoothstep(0.56, 0.72, noise(wpos.xz / 26.0 + 40.0)) * 0.7);
+		float fold = noise(wpos.xz / 46.0 + 11.0) * 0.65 + noise(wpos.xz / 12.0 + 5.0) * 0.35;
+		float scrubby = smoothstep(0.46, 0.6, fold + (wup - 0.7) * 0.5 - max(wpos.y - mountain_from, 0.0) / 600.0);
+		m = mix(m, scrub.rgb * (0.65 + 0.6 * noise(wpos.xz / 3.5)), scrubby);
+		// a sprinkle of bushes over the bare rock too, darker dots that thin out with height
+		float dots = step(0.64 + max(wpos.y - mountain_from, 0.0) / 900.0, noise(wpos.xz / 2.2 + 9.0));
+		m = mix(m, scrub.rgb * 0.8, dots * (1.0 - scrubby) * 0.8);
+		// clouds' shadows drifting over
+		float cl = noise(wpos.xz / 190.0 + vec2(TIME * 0.011, TIME * 0.004)) * 0.7 + noise(wpos.xz / 75.0 + vec2(TIME * 0.019, 0.3)) * 0.3;
+		m *= 1.0 - 0.4 * smoothstep(0.56, 0.7, cl);
+		c = mix(c, m, mtn);
+	}
 	c *= 0.94 + 0.06 * noise(wpos.xz / 2.5);
 	if (textured > 0.5) {   // the lawn photo (see TONE_SHADER), over earth and grass alike
 		// Its 2 m repeat lines up into a grid further off, so it fades out with distance (the
@@ -4969,7 +5333,7 @@ void fragment() {
 		vec2 uv = wpos.xz * 0.5;
 		vec3 t = texture(grass_tex, uv).rgb;
 		vec3 t2 = texture(grass_tex, vec2(wpos.z, -wpos.x) * 0.137 + vec2(0.31, 0.77)).rgb;
-		float lawn = 1.0 - bare * 0.6;   // less of the lawn photo on bare rock
+		float lawn = (1.0 - bare * 0.6) * (1.0 - mtn * 0.75);   // less of the lawn photo on bare rock
 		// the lawn's colours only where it is grass: bare earth (and rock) takes just its light
 		// and dark -- its greens and yellows on grey earth came out as speckles of colour
 		vec3 lw = vec3(0.2126, 0.7152, 0.0722);
@@ -5015,6 +5379,14 @@ func _retint_ground() -> void:
 	_ground_shader_mat.set_shader_parameter("dark", green.lerp(Palette.col("bg"), 0.45))
 	_ground_shader_mat.set_shader_parameter("greenness", 0.8 if north else 0.3)
 	_ground_shader_mat.set_shader_parameter("rock", _tone["rock"])
+	# the made-up town's mountains (see GROUND_SHADER): dark olive scrub, red-brown soil
+	_ground_shader_mat.set_shader_parameter("mountains", 1.0 if _made_up and _hnx > 0 else 0.0)
+	_ground_shader_mat.set_shader_parameter("mountain_from", _mtn_from)
+	var veg := Palette.col("friend").lerp(Palette.col("warn"), 0.35)
+	_ground_shader_mat.set_shader_parameter("scrub", _natural(veg.lerp(Palette.col("bg"), 0.66), 0.5))
+	# (the palette's warn, its yellow, darkened and a touch of its hazard: an earth brown -- its
+	# hazard alone is pink in most palettes)
+	_ground_shader_mat.set_shader_parameter("soil", _natural(Palette.col("warn").lerp(Palette.col("hazard"), 0.25).lerp(Palette.col("bg"), 0.55), 0.4))
 
 ## the same noise in script, for clumping what grows on open land where the green is
 func _vnoise(p: Vector2) -> float:
@@ -6216,17 +6588,20 @@ func _car_body(kind: String, extras: bool) -> CarMesh:
 func _lamp(cm: CarMesh, low: PackedVector2Array, hw: float, cx: float, cy: float, w: float, h: float, front: bool, col: Color) -> void:
 	var s := 1.0 if front else -1.0
 	var grid: Array = []
+	# (2.5 cm proud of the body, five points across to follow its curve: at 8 mm and three
+	# points the body bulged through between them and the two fought for the pixels, the lamp
+	# a speckle of red on white -- worst on a phone's coarser depth buffer)
 	for row in range(2):
 		var y := cy + (float(row) - 0.5) * h
 		var line: Array = []
-		for k in range(3):
-			var x := cx + (float(k) - 1.0) * w * 0.5
-			var z := _end_at(low, y, front) - s * (_plan_in(x, hw) - 0.008)
+		for k in range(5):
+			var x := cx + (float(k) - 2.0) * w * 0.25
+			var z := _end_at(low, y, front) - s * (_plan_in(x, hw) - 0.025)
 			var nrm := Vector3(x / hw * 0.7, 0.1, s).normalized()
 			line.append(cm.vert(Vector3(x, y, z), nrm, col))
 		grid.append(line)
 	var out := Vector3(cx / hw * 0.7, 0.1, s)
-	for k in range(2):
+	for k in range(4):
 		cm.tri(grid[0][k], grid[0][k + 1], grid[1][k + 1], out)
 		cm.tri(grid[0][k], grid[1][k + 1], grid[1][k], out)
 
@@ -7155,6 +7530,22 @@ func _off_road(p: Vector2, margin: float) -> bool:
 	var hit := _nearest_seg(p, 14.0, true)
 	return hit.is_empty() or float(hit["edge"]) >= margin
 
+## p is on (or within `margin` of) the asphalt round a junction's point -- the disc as wide as
+## its widest road that every junction is laid with, which no one road's lanes cover. Railings
+## and bollards by a zebra near a corner, checked against the roads' edges only, stood there
+## in the junction's mouth.
+func _in_junction(p: Vector2, margin: float) -> bool:
+	for code: int in _near(_seg_hash, p, 12.0, SEG_CELL):
+		var r: Dictionary = _roads[code / 4096]
+		if not r["drive"]:
+			continue
+		var ids: PackedInt32Array = r["ids"]
+		var sj: int = code % 4096
+		for n: int in [ids[sj], ids[sj + 1]]:
+			if p.distance_to(_nodes[n]) < _node_r[n] * 1.05 + margin and _node_ways(n) >= 3:
+				return true
+	return false
+
 ## nothing round (a tree, a lamp, a sign) stands within `d` metres of p
 func _clear_of_posts(p: Vector2, d: float) -> bool:
 	for i: int in _near(_post_hash, p, d, BLD_CELL):
@@ -7203,42 +7594,50 @@ func _build_signals() -> void:
 			await _pause()
 		var c := _nodes[node]
 		var rn := _node_r[node]
-		for e: Vector2i in _node_roads[node]:
-			var r: Dictionary = _roads[e.x]
-			if not r["drive"]:
-				continue
-			var pts: PackedVector2Array = r["pts"]
-			for d2: int in [-1, 1]:
-				var from := e.y + d2
-				if from < 0 or from >= pts.size():
+		for way: Array in _sig_line.get(node, []):
+			if way[3]:
+				continue   # from the junction's own other point: through, no light (see _lights_setup)
+			var dir: Vector2 = way[0]
+			var r: Dictionary = _roads[int(way[2])]
+			var right := Vector2(-dir.y, dir.x)
+			var reach := float(r["w"]) * 0.5 + 0.8
+			_stop_lines.append([c, dir, float(way[1]), float(r["w"]), r["o"] != 0, ""])
+			# the pole on the right at the corner; where that is a wall or another road (a
+			# driveway, a slip road), further back along the kerb, then a little further from it;
+			# on a one-way road (a divided road's half: its median) the left will do. A way in
+			# with no pole had cars stopping for a light nobody could see.
+			var spots: Array = []
+			for out: float in [0.0, 0.8]:
+				for sgn: float in ([1.0, -1.0] if r["o"] != 0 else [1.0]):
+					for back: float in [rn + 1.5, float(way[1]) + 0.6, float(way[1]) + 3.0, float(way[1]) + 6.0]:
+						spots.append([back, (reach + out) * sgn])
+			var p := Vector2.INF
+			for sp: Array in spots:
+				var q := c - dir * float(sp[0]) + right * float(sp[1])
+				if _push_out(q, 0.3, false) != Vector2.ZERO:
 					continue
-				# arriving from `from` means travelling in direction -d2 along the road
-				if r["o"] != 0 and r["o"] != -d2:
-					continue
-				var dir := (c - pts[from]).normalized()
-				var right := Vector2(-dir.y, dir.x)
-				_stop_lines.append([c, dir, rn + 1.2, float(r["w"]), r["o"] != 0, ""])
-				var p := c - dir * (rn + 1.5) + right * (float(r["w"]) * 0.5 + 0.8)
-				if _push_out(p, 0.3, false) != Vector2.ZERO:
-					continue
-				var on := _nearest_seg(p, 12.0, true)
+				var on := _nearest_seg(q, 12.0, true)
 				if not on.is_empty() and float(on["edge"]) < 0.4:
-					continue   # OSM puts the light's node a few metres out; never plant it in a lane
-				var g := _light_group(node, dir) - 1
-				var face := Basis(Vector3.UP, atan2(-dir.x, -dir.y))   # +Z of the head toward the traffic
-				var gy := _h(p)
-				poles.append(Transform3D(Basis(), Vector3(p.x, gy + 1.7, p.y)))
-				heads.append(Transform3D(face, Vector3(p.x, gy + 3.3, p.y)))
-				_light_spots.append([Vector3(p.x, gy + 3.3, p.y), -dir])   # (for tests: where, facing)
-				# the blue crossing sign strapped to the pole under the light, as in Israel
-				# (Nova Scotia's lights carry walk signals instead): the zebra is just past it
-				if med:
-					_pole_plates.append(["crossing", Transform3D(face * Basis.from_scale(Vector3.ONE * SIGN_SCALE),
-							Vector3(p.x, gy + 2.25, p.y) + Vector3(-dir.x, 0.0, -dir.y) * 0.09)])
-				var front := Vector3(-dir.x, 0.0, -dir.y) * 0.17
-				for ci in range(3):
-					bulbs[g][ci].append(Vector3(p.x, gy + 3.3 + 0.3 - 0.3 * ci, p.y) + front)
-				_add_post(p, 0.15)
+					continue   # never plant it in a lane
+				p = q
+				break
+			if p == Vector2.INF:
+				continue
+			var g := _light_group(node, dir) - 1
+			var face := Basis(Vector3.UP, atan2(-dir.x, -dir.y))   # +Z of the head toward the traffic
+			var gy := _h(p)
+			poles.append(Transform3D(Basis(), Vector3(p.x, gy + 1.7, p.y)))
+			heads.append(Transform3D(face, Vector3(p.x, gy + 3.3, p.y)))
+			_light_spots.append([Vector3(p.x, gy + 3.3, p.y), -dir])   # (for tests: where, facing)
+			# the blue crossing sign strapped to the pole under the light, as in Israel
+			# (Nova Scotia's lights carry walk signals instead): the zebra is just past it
+			if med:
+				_pole_plates.append(["crossing", Transform3D(face * Basis.from_scale(Vector3.ONE * SIGN_SCALE),
+						Vector3(p.x, gy + 2.25, p.y) + Vector3(-dir.x, 0.0, -dir.y) * 0.09)])
+			var front := Vector3(-dir.x, 0.0, -dir.y) * 0.17
+			for ci in range(3):
+				bulbs[g][ci].append(Vector3(p.x, gy + 3.3 + 0.3 - 0.3 * ci, p.y) + front)
+			_add_post(p, 0.15)
 	if poles.is_empty():
 		return
 	var pole_mesh := CylinderMesh.new()
@@ -7295,11 +7694,19 @@ func _add_bulbs(g: int, ci: int, at: Array) -> void:
 	mm.buffer = buf
 
 ## Which junctions have lights, for the whole city at once (traffic and autodrive stop at
-## them wherever they are; the poles go up square by square). OSM often maps a light on one
-## approach only, a few metres out from the junction; then the other ways in had no light
-## and drove on. Each light is taken to the junction it stands at (the nearest within 40 m
-## along its road), and the junction gets lights on every way in. A light far from any
-## junction (a crossing mid-street) stays as it is.
+## them wherever they are; the poles go up square by square).
+##
+## A junction with lights is a SITE. OSM draws one junction as several points -- each half of
+## a divided road meets the cross street at its own, 10-30 m apart, two divided roads crossing
+## at four -- and maps a light on one approach only, often a few metres out. Each mapped light
+## is taken to the junction it stands at (the nearest within 40 m along its road), the other
+## half of a divided road joins its lit half, and lit points joined by a short piece of road
+## are one site. Its two groups go by direction across the whole site (_light_group); its
+## ways in from outside get the lights and the stop lines; a car that has come into it goes
+## through all of it. (Each point used to pick its own main road by name: a road that changes
+## name at a junction was in the same group as the street across it, and green at one point
+## of a divided road's junction was red at the next, 10 m on, which cars drove through.) A
+## light far from any junction (a crossing mid-street) is a site of its own.
 func _lights_setup() -> void:
 	var lit := {}
 	for ni in _city_data.get("signals", []):
@@ -7308,39 +7715,69 @@ func _lights_setup() -> void:
 			continue
 		var j := _junction_of(node, 40.0)
 		lit[j if j >= 0 else node] = true
-		_sig_owner[node] = j if j >= 0 else node
-		if not _sig_set.has(node):   # its own line still counts (see LIGHT_SKIP)
-			_sig_set[node] = true
-			_hash_add(_sig_hash, Rect2(_nodes[node], Vector2.ZERO), SEG_CELL, node)
-	_lit = lit
-	# (before any square puts up its poles: every one reads the same groups) -- the points of
-	# one junction together: a divided road's junction is two to four points 10-30 m apart,
-	# each with its lights, and judged one by one they disagreed which road was the main one:
-	# green both ways across the knot, and the cars met in it
-	var knots: Array = []
-	var in_knot := {}
-	for node: int in lit:
-		if in_knot.has(node):
+	# the other halves of divided roads (twice over: two divided roads crossing are four points)
+	for _pass in range(2):
+		var more: Array = []
+		for j: int in lit:
+			for leg: Array in _site_legs(j):
+				if not lit.has(leg[0]) and _other_half(j, int(leg[0]), int(leg[1])):
+					more.append(leg[0])
+		for o: int in more:
+			lit[o] = true
+	# lit points a short piece of road apart: one site -- the shortest pieces first, and never
+	# wider than SITE_SPAN (a chain of them made one "junction" of two, 66 m across, that a
+	# car drove all of on one green)
+	var legs: Array = []
+	var members := {}
+	var up := {}
+	for j: int in lit:
+		up[j] = j
+		members[j] = [j]
+		for leg: Array in _site_legs(j):
+			if lit.has(leg[0]) and int(leg[0]) > j:
+				legs.append([j, leg[0], leg[2]])
+	legs.sort_custom(func(x, y): return x[2] < y[2])
+	for leg: Array in legs:
+		var a := _site_root(up, leg[0])
+		var b := _site_root(up, leg[1])
+		if a == b:
 			continue
-		var knot: Array = [node]
-		in_knot[node] = true
-		var k := 0
-		while k < knot.size():
-			for other: int in lit:
-				if not in_knot.has(other) and _nodes[other].distance_to(_nodes[knot[k]]) < 40.0:
-					in_knot[other] = true
-					knot.append(other)
-			k += 1
-		knots.append(knot)
-	for knot: Array in knots:
-		_signal_groups(knot)
-		for node: int in knot:
-			_sig_knot[node] = knot[0]
+		var wide := 0.0
+		for p: int in members[a]:
+			for q: int in members[b]:
+				wide = maxf(wide, _nodes[p].distance_to(_nodes[q]))
+		if wide > SITE_SPAN:
+			continue
+		up[a] = b
+		(members[b] as Array).append_array(members[a])
+		members.erase(a)
+	_sites = []
+	for rt: int in members:
+		for n: int in members[rt]:
+			_site_of[n] = _sites.size()
+		_sites.append(_site_axes(members[rt]))
+	# two sites a short piece of road apart: that road in the same group at both (either group
+	# can go first, so one site's are swapped if need be) -- or a car let through by one's
+	# green met the other's red 30 m on and queued back across the first
+	var settled := {}
+	for leg: Array in legs:
+		var sa: int = _site_of[leg[0]]
+		var sb: int = _site_of[leg[1]]
+		if sa == sb:
+			continue
+		var dir := (_nodes[leg[1]] - _nodes[leg[0]]).normalized()
+		if _light_group(leg[0], dir) != _light_group(leg[1], dir):
+			for sx: int in [sb, sa]:
+				if not settled.has(sx):
+					_sites[sx]["flip"] = true
+					break
+		settled[sa] = true
+		settled[sb] = true
+	_lit = lit
 	for node: int in lit:
-		for e: Vector2i in _node_roads[node]:
-			if (_roads[e.x] as Dictionary)["drive"] and not _sig_set.has(node):
-				_sig_set[node] = true
-				_hash_add(_sig_hash, Rect2(_nodes[node], Vector2.ZERO), SEG_CELL, node)
+		_sig_set[node] = true
+		_hash_add(_sig_hash, Rect2(_nodes[node], Vector2.ZERO), SEG_CELL, node)
+		_sig_line[node] = _site_ways_in(node)   # (before any square puts up its poles)
 		_bucket(_tile_lit, _tile_of(_nodes[node]), node)
 	if lit.is_empty():
 		return
@@ -7372,6 +7809,17 @@ var _light_spots: Array = []         ## [head, the way it faces] of the cars' li
 var _walk_spots: Array = []          ## the same for the people's
 
 var _lit := {}                       ## junctions with lights (all of them, from _lights_setup)
+
+## the lit point a zebra's walk lights go by: the nearest within 30 m, or -1 (no walk lights).
+## The walk lights and the people waiting at them both ask this.
+func _zebra_light(ni: int) -> int:
+	var j := -1
+	var jd := 30.0
+	for n: int in _near(_sig_hash, _nodes[ni], 30.0, SEG_CELL):
+		if _nodes[n].distance_to(_nodes[ni]) < jd:
+			jd = _nodes[n].distance_to(_nodes[ni])
+			j = n
+	return j
 var _walk_mm: Array = []             ## [group][0 red, 1 green] -> one multimesh of those lamps, city-wide
 var _walk_at: Array = []
 
@@ -7385,13 +7833,7 @@ func _build_walk_lights(pole_mesh: Mesh) -> void:
 		var z := _zebra_geom(ni)
 		if z.is_empty():
 			continue
-		var j := -1
-		var jd := 30.0
-		for n: int in _near(_sig_hash, z[0], 30.0, SEG_CELL):
-			var owner: int = _sig_owner.get(n, n)
-			if _lit.has(owner) and _nodes[n].distance_to(z[0]) < jd:
-				jd = _nodes[n].distance_to(z[0])
-				j = owner
+		var j := _zebra_light(ni)
 		if j < 0:
 			continue
 		var span := _zebra_span(z)
@@ -7826,6 +8268,8 @@ func _multi(mesh: Mesh, xforms: Array) -> MultiMeshInstance3D:
 	world.add_child(mi)
 	return mi
 
+var _sig_blink := true               ## a flashing green: lit in this half second?
+
 func _signals_tick(dt: float) -> void:
 	if _sig_mats.is_empty():
 		return
@@ -7834,7 +8278,13 @@ func _signals_tick(dt: float) -> void:
 	if _sig_t >= float(step[0]):
 		_sig_t = 0.0
 		_sig_phase = (_sig_phase + 1) % SIGNAL_CYCLE.size()
+		_sig_blink = true
 		_apply_signals()
+	elif step.has("gf"):
+		var blink := fmod(_sig_t, 1.0) < 0.5   # three flashes in its three seconds
+		if blink != _sig_blink:
+			_sig_blink = blink
+			_apply_signals()
 
 ## ---- shadows past the shadows -----------------------------------------------------------------
 ## The real shadows reach 45-75 m from the camera (none at the lowest quality): past that the
@@ -9061,27 +9511,44 @@ func _ap_sign_v(dt: float) -> float:
 			base += a.distance_to(b)
 	return best
 
-## the car going through a junction with lights: note it (the far side's lights are the
-## same junction), and whether it went through on red
+## The car coming into a junction with lights: noted as its nose crosses the stop line (the
+## rest of that junction -- the far half of a divided road -- is then through, not stopped
+## at), and whether that was on red. Read by the way it came in, a few metres back: the
+## heading mid-turn read the cross street's light, and the check used to wait until the car
+## was in the middle, so a car in on the last of the amber was told it ran a red.
 var _reds := 0
+var _trail := PackedVector2Array()   ## where the car was, a point every 2 m, the last few
+var _trail_odo := 0.0
 
-var _came_at := Vector2.INF            ## where the car was a few metres back
-var _came_dir := Vector2.ZERO          ## and the way it has come since: how it arrived
 
 func _through_lights() -> void:
-	if _came_at == Vector2.INF or _pos.distance_to(_came_at) > 6.0:
-		if _came_at != Vector2.INF:
-			_came_dir = (_pos - _came_at).normalized()
-		_came_at = _pos
-	if _odo - _light_odo < LIGHT_SKIP or _v < 1.0:
+	if _trail.is_empty() or _odo - _trail_odo > 2.0 or _pos.distance_to(_trail[_trail.size() - 1]) > 8.0:
+		if not _trail.is_empty() and _pos.distance_to(_trail[_trail.size() - 1]) > 8.0:
+			_trail = PackedVector2Array()   # (moved: put back on the road, a new start)
+		_trail.append(_pos)
+		_trail_odo = _odo
+		if _trail.size() > 5:
+			_trail.remove_at(0)
+	if _v < 1.0 or _sig_set.is_empty():
 		return
-	for n: int in _near(_sig_hash, _pos, 16.0, SEG_CELL):
-		if _nodes[n].distance_to(_pos) > _node_r[n] + 2.5:
+	var came := _came_dir()
+	var nose := _pos + _fwd() * CAR_LEN * 0.5
+	for n: int in _near(_sig_hash, _pos, 30.0, SEG_CELL):
+		var s: int = _site_of.get(n, -1)
+		if s == _light_site and _odo - _light_odo < SITE_KEEP:
+			if _nodes[n].distance_to(_pos) < _node_r[n] + 3.0:
+				_light_odo = _odo   # (still in it)
 			continue
+		var way := _way_in(n, came)
+		if way.is_empty() or way[3]:
+			continue   # not a way into it from outside: going by
+		var rel := _nodes[n] - nose
+		var along := rel.dot(came)
+		if along > float(way[1]) or along < -_node_r[n] or absf(rel.dot(Vector2(-came.y, came.x))) > _node_r[n] + 2.0:
+			continue
+		_light_site = s
 		_light_odo = _odo
-		# (the light of the way it came in: by its heading mid-turn, a turn on green read
-		# the cross street's red)
-		if _light_at(n, _came_dir if _came_dir != Vector2.ZERO else _fwd()) == "r" and _v > 2.5:
+		if _light_at(n, came) == "r" and _v > 2.5:
 			_reds += 1
 			_show_banner("ran a red light", 1.8)
 			shake3d(1.5)
@@ -9089,13 +9556,26 @@ func _through_lights() -> void:
 			_log.event("red light")
 		return
 
-## autodrive: the first light on the planned lane that counts. Red: come to a stop at its
-## line. Amber: stop if there is room to, else through. The speed allowed now (INF: none).
+## the way the car came, over the last 6 m or so (its heading, when it has not gone that far)
+func _came_dir() -> Vector2:
+	for i in range(_trail.size() - 1, -1, -1):
+		if _trail[i].distance_to(_pos) > 5.0:
+			return (_pos - _trail[i]).normalized()
+	return _fwd() * signf(_v) if _v != 0.0 else _fwd()
+
+## autodrive: the first light on the planned lane that counts -- of a junction it is not in
+## already. Red: come to a stop at its line. Amber: stop if there is room to, else through.
+## The speed allowed now (INF: none). A lane turning at a junction curves past its point,
+## not over it: looked for only within 4.5 m of the point, a turn missed the light and drove
+## through the red (now: within the junction and 2 m, as the car's own red-light check sees it).
 func _ap_light_v() -> float:
 	if _sig_set.is_empty() or _ap_pts.size() < 2:
 		return INF
-	var found: Array = []   # [along the lane, node, direction]
+	var found: Array = []   # [along the lane to its stop line, node, way in]
 	for n: int in _near(_sig_hash, _pos, 90.0, SEG_CELL):
+		if _site_of.get(n, -1) == _light_site and _odo - _light_odo < SITE_KEEP \
+				and (absf(_v) > 2.0 or _nodes[n].distance_to(_pos) - CAR_LEN * 0.5 < _node_r[n]):
+			continue   # in it already: through (standing just over its line is not, see below)
 		var c := _nodes[n]
 		var base := -_ap_pts[0].distance_to(Geometry2D.get_closest_point_to_segment(_pos, _ap_pts[0], _ap_pts[1]))
 		for j in range(_ap_pts.size() - 1):
@@ -9104,30 +9584,40 @@ func _ap_light_v() -> float:
 			var a := _ap_pts[j]
 			var b := _ap_pts[j + 1]
 			var cp := Geometry2D.get_closest_point_to_segment(c, a, b)
-			if cp.distance_to(c) < 4.5:
+			if cp.distance_to(c) < _node_r[n] + 2.0:
 				# the way in, a few metres back (mid-turn the lane runs diagonally across)
 				var k := j
 				var back := a.distance_to(cp)
 				while k > 0 and back < 6.0:
 					back += _ap_pts[k - 1].distance_to(_ap_pts[k])
 					k -= 1
-				found.append([base + a.distance_to(cp), n, cp - _ap_pts[k]])
+				var din := (cp - _ap_pts[k]).normalized()
+				var way := _way_in(n, din)
+				if way.is_empty() or way[3]:
+					break   # going past it (the other half of a divided road), not into it
+				# the line is so far before the point along the way in; this piece of lane may
+				# be short of the point already (a right turn cuts the corner)
+				var short := maxf(0.0, (c - cp).dot(din))
+				found.append([base + a.distance_to(cp) - maxf(0.0, float(way[1]) - short), n, din])
 				break
 			base += a.distance_to(b)
 	if found.is_empty():
 		return INF
 	found.sort_custom(func(x, y): return x[0] < y[0])
-	var counted := -(_odo - _light_odo)   # where the last light went by, on the same scale
+	# the nearest junction's point the lane comes to first, where its line is; one whose line
+	# the nose is over already is through (all of it), and the next one counts
+	var over := {}
 	for f: Array in found:
-		var along: float = f[0]
-		if along - counted < LIGHT_SKIP:
-			continue
 		var n: int = f[1]
-		var stop := along - (_node_r[n] + 2.2 + CAR_LEN * 0.5)   # (the nose at the stop line)
-		if stop < -1.5 and (_v > 2.0 or along - CAR_LEN * 0.5 < _node_r[n]):
-			return INF   # over the line already, rolling (or in the junction): through
-		# (standing a little over the line -- stopped there for people on a crossing -- is
-		# not through: it waits for its green where it stands)
+		if over.has(_site_of.get(n, -1)):
+			continue
+		var stop := float(f[0]) - (1.0 + CAR_LEN * 0.5)   # (the nose a metre short of the line)
+		if stop < -1.5:
+			if absf(_v) > 2.0 or _nodes[n].distance_to(_pos) - CAR_LEN * 0.5 < _node_r[n]:
+				over[_site_of.get(n, -1)] = true
+				continue   # over the line already, rolling (or in the junction): through
+			stop = 0.0   # (standing a little over it -- stopped there for people on a crossing --
+			             # is not through: it waits for its green where it stands)
 		var state := _light_at(n, f[2])
 		if state == "g":
 			return INF
@@ -9136,74 +9626,253 @@ func _ap_light_v() -> float:
 		return sqrt(2.0 * 2.6 * maxf(stop - 0.5, 0.0))
 	return INF
 
-## the light facing traffic that arrives at node `n` going `dir`: "g", "y" or "r", or ""
-## where there is none. The two groups are the streets running more east-west and those
-## running more north-south, as the lights are drawn.
+## the light facing traffic that arrives at node `n` going `dir`, as a driver reads it: "g"
+## (flashing green too: still go), "y", "r" (red-and-amber too: still stop), or "" where
+## there is none
 func _light_at(n: int, dir: Vector2) -> String:
 	if not _sig_set.has(n):
 		return ""
-	var step: Array = SIGNAL_CYCLE[_sig_phase]
-	return step[_light_group(n, dir)]
+	var st: String = SIGNAL_CYCLE[_sig_phase][_light_group(n, dir)]
+	return "g" if st == "gf" else ("r" if st == "ry" else st)
 
-## Which of the two signal groups (1 or 2, the columns of SIGNAL_CYCLE) the traffic arriving at
-## node n going `dir` belongs to. Each junction's own: its main road's ways in are one group,
-## every other way in the other (by name, else by the angle to the main road). It was the
-## city's east-west against north-south, so at a skewed junction both streets could have
-## green at once, and the cars met in the middle.
+## Which of the two signal groups (1 or 2, the columns of SIGNAL_CYCLE) traffic arriving at
+## node n going `dir` belongs to: the site's axis it runs nearer, either way along it. The
+## same at every point of a site, so a car going straight through a divided road's junction
+## reads the same light at each half, and both ways along a street share it (the walk lights
+## over it with them).
 func _light_group(n: int, dir: Vector2) -> int:
-	var j: int = _sig_owner.get(n, n)
-	var ap: Array = _sig_ap.get(j, [])
-	if ap.is_empty():
-		return 1 if absf(dir.x) >= absf(dir.y) else 2
-	var d := dir.normalized()
+	var s: int = _site_of.get(n, -1)
+	if s < 0 or dir == Vector2.ZERO:
+		return 1
+	var site: Dictionary = _sites[s]
+	var g := 1
+	if float(site["hi"]) >= 0.0:
+		# in group 1's arc (lo to hi, round the half circle), or not
+		g = 1 if fposmod(fposmod(dir.angle(), PI) - float(site["lo"]), PI) <= fposmod(float(site["hi"]) - float(site["lo"]), PI) else 2
+	return 3 - g if site.has("flip") else g
+
+## the way into lit point n that traffic going `dir` takes ([way in, line, road, from inside]
+## as in _sig_line), or [] when none runs within 45 degrees of it: going past the point, not
+## into it (along the other half of a divided road, a few metres over)
+func _way_in(n: int, dir: Vector2) -> Array:
+	var best: Array = []
+	var bd := 0.7
+	for way: Array in _sig_line.get(n, []):
+		var dt := (way[0] as Vector2).dot(dir.normalized())
+		if dt > bd:
+			bd = dt
+			best = way
+	return best
+
+## the stop line before lit point n for traffic arriving going `dir` (metres from the node)
+func _light_line(n: int, dir: Vector2) -> float:
 	var best := -2.0
-	var grp := 1
-	for a: Array in ap:
-		var dt := (a[0] as Vector2).dot(d)
+	var line := _node_r[n] + 1.2
+	for way: Array in _sig_line.get(n, []):
+		var dt := (way[0] as Vector2).dot(dir.normalized())
 		if dt > best:
 			best = dt
-			grp = a[1]
-	return grp
+			line = way[1]
+	return line
 
-var _sig_ap := {}                    ## junction node -> [[way in (unit), group], ...]
-var _sig_owner := {}                 ## a node with a light of its own -> the junction it belongs to
-var _sig_knot := {}                  ## a junction's point -> the one id of all its points (a divided road's
-                                     ## junction is several points 10-30 m apart: one junction)
+var _sites: Array = []               ## per junction with lights: {nodes, c (middle), lo, hi (group 1's arc of directions, radians mod PI; hi -1: one group), flip (groups swapped)}
+var _site_of := {}                   ## each lit point -> its site
+var _sig_line := {}                  ## lit point -> [[way in (unit), stop line (m), road, from inside the site], ...]
+const SITE_LEG := 36.0               ## lit points this close along a road are one junction...
+const SITE_SPAN := 50.0              ## ...up to this far across
 
-## the ways in at the points of one junction (one point, or the few of a junction drawn as
-## several) and their signal groups: the main road -- the busiest kind, then the widest --
-## chosen once for all of them
-func _signal_groups(knot: Array) -> void:
-	var by_node := {}
-	var main: Array = []
-	for node: int in knot:
-		var c := _nodes[node]
-		var arms: Array = []   # [way in, rank, name, width]
-		for e: Vector2i in _node_roads[node]:
+func _axis_gap(a: float, b: float) -> float:
+	var d := fposmod(a - b, PI)
+	return minf(d, PI - d)
+
+func _site_root(up: Dictionary, j: int) -> int:
+	while up[j] != j:
+		up[j] = up[up[j]]
+		j = up[j]
+	return j
+
+## the next junctions along each road from node j, within SITE_LEG: [[node, road, metres], ...]
+func _site_legs(j: int) -> Array:
+	var out: Array = []
+	for e: Vector2i in _node_roads[j]:
+		if not (_roads[e.x] as Dictionary)["drive"]:
+			continue
+		for step: int in [-1, 1]:
+			var pts := _points_back(e, step, SITE_LEG)
+			if pts.is_empty():
+				continue
+			var last: Array = pts[pts.size() - 1]
+			if int(last[0]) != j and _node_ways(last[0]) >= 3:
+				out.append([last[0], e.x, last[1]])
+	return out
+
+## the way road e.x runs at its point e.y (along its points)
+func _road_dir_at(e: Vector2i) -> Vector2:
+	var pts: PackedVector2Array = (_roads[e.x] as Dictionary)["pts"]
+	return (pts[mini(e.y + 1, pts.size() - 1)] - pts[maxi(e.y - 1, 0)]).normalized()
+
+## Is junction o the other half of a divided road j is on, across the piece of road `leg`
+## between them: a one-way road through each, running opposite ways, across the piece?
+func _other_half(j: int, o: int, leg: int) -> bool:
+	var u := (_nodes[o] - _nodes[j]).normalized()
+	for e: Vector2i in _node_roads[o]:
+		var r: Dictionary = _roads[e.x]
+		if e.x == leg or not r["drive"] or int(r["o"]) == 0:
+			continue
+		var dh := _road_dir_at(e) * float(r["o"])
+		if absf(dh.dot(u)) > 0.5:
+			continue   # along the piece, not across it
+		for f: Vector2i in _node_roads[j]:
+			var r2: Dictionary = _roads[f.x]
+			if f.x == leg or f.x == e.x or not r2["drive"] or int(r2["o"]) == 0:
+				continue
+			if (_road_dir_at(f) * float(r2["o"])).dot(dh) < -0.8:
+				return true
+	return false
+
+## A site's two directions: group 1 along its main road (the highest class, then the widest;
+## a divided road's half counts double), group 2 along whichever road lies furthest from it
+## -- or none, when every road runs within 20 degrees of the main one (a crossing mid-street).
+func _site_axes(nodes: Array) -> Dictionary:
+	var c := Vector2.ZERO
+	var arms: Array = []   # [direction mod PI, rank, width]: each way into each point
+	for n: int in nodes:
+		c += _nodes[n]
+		for e: Vector2i in _node_roads[n]:
 			var r: Dictionary = _roads[e.x]
 			if not r["drive"]:
 				continue
 			var pts: PackedVector2Array = r["pts"]
+			# each way in on its own: a road bending at the junction runs two ways, and the line
+			# across the bend (once taken as its direction) ran neither; and only the ways cars
+			# come in by -- a one-way road leaving set the axes at a junction of one-way halves
+			# in Bedford, and two streets crossing had green together
 			for d2: int in [-1, 1]:
-				var from := e.y + d2
-				if from < 0 or from >= pts.size():
-					continue
-				var a := [(c - pts[from]).normalized(), int(ROAD_RANK.get(r["k"], 1)), String(r["name"]), float(r["w"])]
-				arms.append(a)
-				if main.is_empty() or int(a[1]) > int(main[1]) or (int(a[1]) == int(main[1]) and float(a[3]) > float(main[3])):
-					main = a
-		by_node[node] = arms
-	if main.is_empty():
-		return
-	var axis: Vector2 = main[0]
-	for node: int in knot:
-		var ap: Array = []
-		for a: Array in by_node[node]:
-			var same: bool = String(main[2]) != "" and String(a[2]) == String(main[2])
-			if String(main[2]) == "" or String(a[2]) == "":
-				same = absf((a[0] as Vector2).dot(axis)) >= 0.7
-			ap.append([a[0], 1 if same else 2])
-		_sig_ap[node] = ap
+				if e.y + d2 >= 0 and e.y + d2 < pts.size() and (r["o"] == 0 or r["o"] == -d2):
+					arms.append([fposmod((pts[e.y + d2] - pts[e.y]).angle(), PI), int(ROAD_RANK.get(r["k"], 1)),
+							float(r["w"]) * (2.0 if r.has("median") else 1.0)])
+	# the ways' directions, alike within 6 degrees taken as one, round the half circle
+	var dirs: Array = []
+	for a: Array in arms:
+		if not dirs.any(func(d): return _axis_gap(d, a[0]) < deg_to_rad(6.0)):
+			dirs.append(a[0])
+	dirs.sort()
+	var out := {"nodes": nodes, "c": c / maxf(nodes.size(), 1.0), "lo": 0.0, "hi": -1.0}
+	var k := dirs.size()
+	if k < 2 or dirs.all(func(d): return _axis_gap(d, dirs[0]) < deg_to_rad(20.0)):
+		return out   # all one way (a crossing mid-street): one group
+	# Two groups are two arcs of the half circle. Every split tried (a few ways in: a handful),
+	# the one with the fewest pairs of ways crossing (over 53 degrees apart) in the same group;
+	# among those, the widest gap between the groups. (It took the main road and whichever way
+	# lay furthest from it, and where three streets met at 50-60 degrees, two that crossed
+	# shared a green.)
+	var best_cost := INF
+	for i in range(k):
+		for n in range(1, k):
+			var g1: Array = []
+			var g2: Array = []
+			for q in range(k):
+				((g1 if (q - i + k) % k < n else g2) as Array).append(dirs[q])
+			var cost := 0.0
+			for grp: Array in [g1, g2]:
+				for x in range(grp.size()):
+					for y in range(x + 1, grp.size()):
+						if _axis_gap(grp[x], grp[y]) > deg_to_rad(53.0):
+							cost += 1.0
+			var sep := PI
+			for x: float in g1:
+				for y: float in g2:
+					sep = minf(sep, _axis_gap(x, y))
+			cost -= sep * 0.01
+			if cost < best_cost:
+				best_cost = cost
+				# group 1's arc: from halfway between the first of it and the way before, to
+				# halfway between the last of it and the way after
+				var first: float = dirs[i]
+				var before: float = dirs[(i - 1 + k) % k]
+				var last: float = dirs[(i + n - 1) % k]
+				var after: float = dirs[(i + n) % k]
+				out["lo"] = fposmod(first - fposmod(first - before, PI) * 0.5, PI)
+				out["hi"] = fposmod(last + fposmod(after - last, PI) * 0.5, PI)
+	# group 1 the main road's (the busiest kind, then the widest): its green is the longer
+	var main: Array = arms[0]
+	for a: Array in arms:
+		if int(a[1]) > int(main[1]) or (int(a[1]) == int(main[1]) and float(a[2]) > float(main[2])):
+			main = a
+	var lo: float = out["lo"]
+	var hi: float = out["hi"]
+	if fposmod(float(main[0]) - lo, PI) > fposmod(hi - lo, PI):
+		out["lo"] = hi
+		out["hi"] = lo
+	return out
+
+## The ways into lit point `node`: [way in (unit), stop line before the node (m), road, from
+## inside the site]. The line is 1.2 m out from the junction's edge, or behind a zebra painted
+## across the way in near the junction: cars stopped at the line stood on the zebra, where the
+## people crossing on their green man walked into them. A way in from another point of the
+## same site gets no light and no line: a car on it is already in the junction.
+func _site_ways_in(node: int) -> Array:
+	var out: Array = []
+	var c := _nodes[node]
+	var s: int = _site_of[node]
+	var rn := _node_r[node]
+	for e: Vector2i in _node_roads[node]:
+		var r: Dictionary = _roads[e.x]
+		if not r["drive"]:
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		for d2: int in [-1, 1]:
+			var from := e.y + d2
+			if from < 0 or from >= pts.size():
+				continue
+			if r["o"] != 0 and r["o"] != -d2:
+				continue   # (arriving from `from` is travelling -d2 along the road)
+			var line := rn + 1.2
+			var inside := false
+			for back: Array in _points_back(e, d2, SITE_LEG + 4.0):
+				var o: int = back[0]
+				if o != node and _site_of.get(o, -1) == s:
+					inside = true
+					break
+				if _crossing_set.has(o) and float(back[1]) > 1.0 and float(back[1]) < rn + 10.0:
+					line = maxf(line, float(back[1]) + 2.0)   # (its stripes run 1.5 m either side of the point)
+			out.append([(c - pts[from]).normalized(), line, e.x, inside])
+	return out
+
+## The points back along a road from its point e.y, stepping d2 along it, up to `reach`
+## metres and ending at the first junction: [[node, metres], ...]. Carries on across the
+## joins where OSM cuts one street into pieces (a zebra on the next piece was missed).
+func _points_back(e: Vector2i, d2: int, reach: float) -> Array:
+	var out: Array = []
+	var ri := e.x
+	var k := e.y
+	var step := d2
+	var d := 0.0
+	for _guard in range(80):
+		var ids: PackedInt32Array = (_roads[ri] as Dictionary)["ids"]
+		var pts: PackedVector2Array = (_roads[ri] as Dictionary)["pts"]
+		if k + step < 0 or k + step >= ids.size():
+			var here := ids[k]
+			if _node_ways(here) != 2:
+				break   # a junction, or the street's end
+			var next := Vector2i(-1, 0)
+			for f: Vector2i in _node_roads[here]:
+				if f.x != ri and (_roads[f.x] as Dictionary)["drive"]:
+					next = f
+			if next.x < 0:
+				break
+			ri = next.x
+			k = next.y
+			step = 1 if k == 0 else -1   # (away from the join)
+			continue
+		d += pts[k].distance_to(pts[k + step])
+		k += step
+		if d > reach:
+			break
+		out.append([ids[k], d])
+		if _node_ways(ids[k]) >= 3:
+			break
+	return out
 
 ## A signal's colours are what a driver reads, so they are red, amber and green whatever the
 ## palette: each keeps the palette's strength of colour but takes the signal's own hue (the
@@ -9225,12 +9894,14 @@ func _light_lamp(m: StandardMaterial3D, col: Color, on: bool) -> void:
 func _apply_signals() -> void:
 	var step: Array = SIGNAL_CYCLE[_sig_phase]
 	var cols := _signal_cols()
-	var keys := ["r", "y", "g"]
 	for g in range(_sig_mats.size()):
+		var st: String = step[1 + g]
+		var on := [st == "r" or st == "ry", st == "y" or st == "ry", st == "g" or (st == "gf" and _sig_blink)]
 		for ci in range(3):
-			_light_lamp(_sig_mats[g][ci], cols[ci], step[1 + g] == keys[ci])
+			_light_lamp(_sig_mats[g][ci], cols[ci], on[ci])
 	# the people's lights: the green man while the road they cross is held at red and the
-	# other way has its green; the red man the rest of the time (amber, all-red included)
+	# other way has its steady green; the red man the rest of the time (from the other way's
+	# flashing green, through the amber and the red all round, to the next green)
 	for g in range(_ped_mats.size()):
 		var walk: bool = step[1 + g] == "r" and step[2 - g] == "g"
 		_light_lamp(_ped_mats[g][0], cols[0], not walk)
@@ -9513,7 +10184,7 @@ func _retint_city() -> void:
 		env.ambient_light_energy = 0.62 if _evening else 0.55
 		env.fog_enabled = true
 		env.fog_light_color = hor
-		env.fog_density = FOG_DAY
+		env.fog_density = _fog_day()   # (half in the made-up town's valley, see _fog_day)
 		env.fog_sun_scatter = 0.3 if _evening else 0.0   # (the haze glows towards a low sun)
 		env.fog_sky_affect = 0.0
 		# a film-like curve: the bright walls roll off instead of clipping, the shade deepens
@@ -10657,6 +11328,9 @@ func _frame() -> void:
 		_build_tick.emit()
 		_p("building")
 	_watch_fps(dt)
+	_hold_tick(dt)
+	if _blades != null:
+		_turbines_tick()
 	var f := Engine.get_physics_interpolation_fraction()
 	_view_pos = _prev_pos.lerp(_pos, f)
 	_view_yaw = lerp_angle(_prev_yaw, _yaw, f)
@@ -11101,6 +11775,7 @@ func _drive(dt: float, throttle: float, brake: float, steer: float) -> void:
 	_collide()
 	_keep_inside(CAR_R, true)
 	_fly(dt)
+	_median_tick(dt)
 	_place_car(dt)
 
 ## The edge of the map: a striped barrier EDGE metres in from the baked area's rim, with a
@@ -11816,11 +12491,39 @@ func _walk_light(cr: Dictionary, need: float) -> bool:
 	var step: Array = SIGNAL_CYCLE[_sig_phase]
 	if not (step[grp] == "r" and step[3 - grp] == "g"):
 		return false   # the red man
-	# the green man, with time enough left on it to be most of the way over
-	return float(step[0]) - _sig_t >= minf(need, 8.0) + 1.0
+	# the green man, with time enough before the cars across get their green to be over
+	# (the red man comes on with the other way's flashing green; the road stays red behind it)
+	var left := float(step[0]) - _sig_t
+	var i := (_sig_phase + 1) % SIGNAL_CYCLE.size()
+	while i != _sig_phase and SIGNAL_CYCLE[i][grp] == "r":
+		left += float(SIGNAL_CYCLE[i][0])
+		i = (i + 1) % SIGNAL_CYCLE.size()
+	return left >= minf(need, 14.0) + 1.0
 
 ## nothing coming that could not stop before the crossing (middle `mid`, `hw` from it to
 ## either kerb), and nothing standing on it
+## At a crossing with walk lights: a car already in the junction (over its stop line) that
+## stands or crawls toward the crossing, waiting to get out over it. On the green man people
+## stepped out in front of it one after another, and it stood in the junction 25 s while the
+## cars across, on their green, went round it. Not a car waiting at its own red short of the
+## line: people cross in front of those.
+func _box_waiting(cr: Dictionary, mid: Vector2) -> bool:
+	var n: int = cr.get("sig", -1)
+	if n < 0 or not _site_of.has(n):
+		return false
+	var site: int = _site_of[n]
+	var movers: Array = []
+	if _light_site == site and _odo - _light_odo < SITE_KEEP:
+		movers.append([_pos, _fwd() * signf(_v) if _v != 0.0 else _fwd(), absf(_v)])
+	for c in _traffic.cars:
+		if c.alive and c.last_site == site and c.s - c.last_light < _traffic.SITE_KEEP:
+			movers.append([c.pos, Vector2(sin(c.yaw), cos(c.yaw)), c.v])
+	for m: Array in movers:
+		var to: Vector2 = mid - (m[0] as Vector2)
+		if float(m[2]) < 2.5 and to.length() < 22.0 and (m[1] as Vector2).dot(to.normalized()) > 0.4:
+			return true
+	return false
+
 func _safe_to_cross(mid: Vector2, hw: float) -> bool:
 	var movers: Array = [[_pos, _fwd() * signf(_v), absf(_v)]]
 	for c in _traffic.cars:
@@ -11873,6 +12576,7 @@ func _crossers_tick(dt: float) -> void:
 				cr["t"] = float(cr["t"]) - dt
 				if float(cr["t"]) <= 0.0 and _walk_light(cr, from.distance_to(to) / float(cr["speed"])) \
 						and _safe_to_cross((from + to) * 0.5, from.distance_to(to) * 0.5 - 1.1) \
+						and not _box_waiting(cr, (from + to) * 0.5) \
 						and not _kept_waiting((from + to) * 0.5, from.distance_to(to) * 0.5):
 					cr["state"] = "cross"
 					a.play("Walk", true, float(cr["speed"]) / 1.35)
@@ -11994,14 +12698,9 @@ func _send_crossers() -> void:
 		cr["state"] = "wait"
 		cr["t"] = _people_rng.randf_range(1.0, 5.0)
 		cr.erase("y")
-		# a crossing at a junction with lights: they go with the lights
-		cr["sig"] = -1
-		var mid := ((cr["a"] as Vector2) + (cr["b"] as Vector2)) * 0.5
-		var sd := 30.0
-		for n: int in _near(_sig_hash, mid, 30.0, SEG_CELL):
-			if _nodes[n].distance_to(mid) < sd:
-				sd = _nodes[n].distance_to(mid)
-				cr["sig"] = n
+		# a crossing at a junction with lights: they go with the lights (the same as the walk
+		# lights over it, see _zebra_light)
+		cr["sig"] = _zebra_light(pick)
 		cr["sig_dir"] = z[3]
 		var a: Actor3D = cr["actor"]
 		a.visible = true
@@ -12561,6 +13260,11 @@ const ZOOM_SMALL := 0.8              ## lamps, fences are under a pixel from the
                                      ## across the town tripled the draws (Givatayim at the top: 898
                                      ## all lifted, 337 like this, 296 driving; no visible difference)
 const FOG_DAY := 0.0018              ## the haze's density: by day, at night (see the look)
+
+## the day's haze: half in the made-up town, a valley ringed by mountains with no horizon to
+## hide (its mountains were a white wall)
+func _fog_day() -> float:
+	return FOG_DAY * (0.5 if _mtn_from < 10000.0 else 1.0)
 const FOG_NIGHT := 0.0026
 var _paused := false                 ## the city holds still: the car, traffic, people, lights, sound
 var _zoom := 0.0                     ## where the view is going: 0 the usual view .. 1 the highest
@@ -12629,6 +13333,70 @@ func _zoom_in_more() -> void:
 	_zoom_push_ms = now
 	if _zoom_push >= ZOOM_PUSH:
 		_zoom_set(0.0)
+
+## ---- going where you point, from above ------------------------------------------------------
+## Up over the city a long press (a finger or the mouse, held HOLD_S without moving more than
+## HOLD_SLOP) on the ground sends you there: the destination is the nearest point of a street
+## to it, the view comes down to the car, the city goes on, and autodrive drives there as
+## "go to" does. A quick press still drags the view; while held, a ring fills under it.
+const HOLD_S := 0.55
+const HOLD_SLOP := 10.0
+var _hold_at := Vector2.INF          ## where the press on the view came down (screen), INF: none
+var _hold_t := 0.0                   ## seconds it has been held, counted frame by frame (a slow
+                                     ## frame, or a test's slow renderer, is not a long press)
+
+func _hold_move(at: Vector2) -> void:
+	if _hold_at != Vector2.INF and at.distance_to(_hold_at) > HOLD_SLOP:
+		_hold_at = Vector2.INF   # dragging the view about, not pointing
+
+func _hold_progress() -> float:
+	if _hold_at == Vector2.INF or not _zoomed() or _fingers.size() >= 2:
+		return 0.0
+	return clampf((_hold_t - 0.12) / (HOLD_S - 0.12), 0.0, 1.0)   # (a moment before it shows: a drag)
+
+func _hold_tick(dt: float) -> void:
+	if _hold_at == Vector2.INF:
+		return
+	_hold_t += minf(dt, 0.1)
+	if not _zoomed() or _fingers.size() >= 2:
+		_hold_at = Vector2.INF
+		return
+	if _hold_progress() >= 1.0:
+		var at := _hold_at
+		_hold_at = Vector2.INF
+		_drag = false
+		_go_where(at)
+
+## the ground under a point of the screen: the flat plane at the view's height, then again at
+## the ground's height where that landed (twice: hills)
+func _screen_ground(at: Vector2) -> Vector2:
+	var y := _h(_view_pos + _zoom_off)
+	var p := Vector2.INF
+	for _k in range(3):
+		var g3 := ground_point(at, y)
+		if g3 == Vector3.INF:
+			return p
+		p = Vector2(g3.x, g3.z)
+		y = _h(p)
+	return p
+
+func _go_where(at: Vector2) -> void:
+	var p := _screen_ground(at)
+	if p == Vector2.INF:
+		return
+	var hit := _nearest_seg(p, 80.0, true, true)
+	if hit.is_empty():
+		_show_banner("no street near there", 1.5)
+		return
+	if _walking:
+		_show_banner("back in the car to drive there", 2.0)
+		return
+	var r: Dictionary = _roads[int(hit["road"])]
+	var name := String(r["name"]) if String(r["name"]) != "" else "the spot you picked"
+	Probe.event("go_where", {"to": name})
+	_zoom_resume = true   # (down at the car, the city goes on: it is a drive)
+	_zoom_set(0.0)
+	_set_dest(hit["q"], name)
 
 ## how far the push to come down has gone (0..1); 0 once it has stopped a moment
 func _zoom_pushing() -> float:
@@ -12712,7 +13480,7 @@ func _zoom_camera(dt: float) -> void:
 		_zoom_lift = 0.0
 		_zoom_far(false)
 		cam.near = 0.05 if _cockpit else 0.3
-		env.fog_density = FOG_NIGHT if _night else FOG_DAY
+		env.fog_density = FOG_NIGHT if _night else _fog_day()
 		if _zoom_seat:
 			_set_cockpit(true)
 		_zoom_seat = false
@@ -12757,7 +13525,7 @@ func _zoom_camera(dt: float) -> void:
 	# up high: nothing is near, so the near plane goes out with the view and the thin layers
 	# (paint on asphalt on ground) keep their depth; the haze thins so the town below is clear
 	cam.near = lerpf(0.05 if _cockpit else 0.3, maxf(0.3, dist * 0.15), w)
-	env.fog_density = (FOG_NIGHT if _night else FOG_DAY) * lerpf(1.0, 0.2, smoothstep(0.2, 1.0, z))
+	env.fog_density = (FOG_NIGHT if _night else _fog_day()) * lerpf(1.0, 0.2, smoothstep(0.2, 1.0, z))
 
 ## the view's centre kept over the town
 func _zoom_keep_in() -> void:
@@ -13279,6 +14047,8 @@ func _ap_plan() -> void:
 	var dir := 1 if (pts[sj + 1] - pts[sj]).dot(heading) >= 0.0 else -1
 	if r["o"] != 0:
 		dir = r["o"]
+	elif _edge_bound(Vector3i(ri, sj + 1 if dir > 0 else sj, dir)) and not _edge_bound(Vector3i(ri, sj if dir > 0 else sj + 1, -dir)):
+		dir = -dir   # that way only runs off the map: the other (it turns round first)
 	var d_first := (pts[sj + 1] - pts[sj]).normalized() * float(dir)
 	_ap_pts.append((hit["q"] as Vector2) + Vector2(-d_first.y, d_first.x) * _lane_off(r))   # (its lane, see _route_to)
 	_ap_v.append(float(r["speed"]))
@@ -13301,6 +14071,14 @@ func _ap_leg(ri: int, from: int, dir: int) -> void:
 				last = k
 				break
 			k += dir
+	# a road running off the map stops short of the barrier: a dead end there (see _ap_ways)
+	var rim := _bounds.grow(-EDGE - EDGE_ROOM)
+	var k2 := from
+	while k2 != last:
+		if not rim.has_point(pts[k2 + dir]):
+			last = k2
+			break
+		k2 += dir
 	var i := from
 	_ap_turn_lane(ri, from, dir)
 	_ap_turn_into(ri, from, dir, lane)
@@ -13558,6 +14336,7 @@ func _ap_ways(ri: int, ei: int, dir: int) -> Array:
 	var came := (pts[ei] - pts[prev]).normalized()
 	var ways: Array = []
 	var back := Vector3i(-1, 0, 0)
+	var rim := _bounds.grow(-EDGE - EDGE_ROOM)
 	for e: Vector2i in _node_roads[node]:
 		var r2: Dictionary = _roads[e.x]
 		if not r2["drive"] or r2["pv"]:
@@ -13572,6 +14351,8 @@ func _ap_ways(ri: int, ei: int, dir: int) -> Array:
 				continue
 			if r2["o"] != 0 and r2["o"] != d2:
 				continue
+			if not rim.has_point(p2[nxt]):
+				continue   # over the map's edge
 			var go := (p2[nxt] - p2[e.y]).normalized()
 			var c := came.dot(go)
 			if c < -0.7:
@@ -13583,12 +14364,80 @@ func _ap_ways(ri: int, ei: int, dir: int) -> Array:
 				score -= 6.0   # alleys and car-park lanes: only when there is nothing else
 			if not _in_city(p2[nxt]):
 				score -= 2.5   # back toward town rather than out past its edge
+			if _edge_bound(Vector3i(e.x, nxt, d2)):
+				score -= 8.0   # every way on from it runs off the map: only if nothing else
 			if r.get("ring", false):
 				# on a roundabout: off at one of the next exits, never round and round
 				score += (-0.8 - 1.2 * _ap_ring_n) if r2.get("ring", false) else 1.2
 			ways.append({"leg": Vector3i(e.x, nxt, d2), "turn": came.angle_to(go), "name": r2["name"],
 				"en": r2["en"], "service": r2["k"] == "service", "score": score})
 	return [ways, back]
+
+## Autodrive's look ahead at a junction: does this way only lead off the map? True when every
+## way on from it within EDGE_LOOK metres runs into the barrier at the map's edge. (An ordinary
+## dead end -- a cul-de-sac -- does not count: autodrive explores those and turns.) A street
+## running off the map was taken like any other, and the car turned round at the barrier.
+const EDGE_LOOK := 300.0
+const EDGE_ROOM := 4.0               ## a road's points this close to the barrier are past it, for autodrive
+var _edge_memo := {}
+
+func _edge_bound(leg: Vector3i) -> bool:
+	if not _edge_memo.has(leg):
+		_edge_memo[leg] = not _edge_walk(leg, EDGE_LOOK, 0)
+	return _edge_memo[leg]
+
+## can a car going `leg` drive on `budget` metres (or to an ordinary dead end) without
+## reaching the edge, by some way?
+func _edge_walk(leg: Vector3i, budget: float, depth: int) -> bool:
+	var pts: PackedVector2Array = (_roads[leg.x] as Dictionary)["pts"]
+	var rim := _bounds.grow(-EDGE - EDGE_ROOM)
+	var last := pts.size() - 1 if leg.z > 0 else 0
+	var k := leg.y
+	var prev := pts[clampi(leg.y - leg.z, 0, pts.size() - 1)]
+	var d := 0.0
+	while true:
+		if not rim.has_point(pts[k]):
+			return false
+		d += prev.distance_to(pts[k])
+		prev = pts[k]
+		if d >= budget:
+			return true
+		if k == last:
+			break
+		k += leg.z
+	if depth >= 10:
+		return true
+	var ons := _legs_on(leg.x, last, leg.z)
+	if ons.is_empty():
+		return true   # an ordinary dead end
+	for on: Vector3i in ons:
+		if _edge_walk(on, budget - d, depth + 1):
+			return true
+	return false
+
+## the legs autodrive could take on from point ei of road ri arrived at going `dir` (the
+## same as _ap_ways, without the scores; no service lanes)
+func _legs_on(ri: int, ei: int, dir: int) -> Array:
+	var pts: PackedVector2Array = (_roads[ri] as Dictionary)["pts"]
+	var node: int = ((_roads[ri] as Dictionary)["ids"] as PackedInt32Array)[ei]
+	var prev := clampi(ei - dir, 0, pts.size() - 1)
+	var came := (pts[ei] - pts[prev]).normalized()
+	var out: Array = []
+	for e: Vector2i in _node_roads[node]:
+		var r2: Dictionary = _roads[e.x]
+		if not r2["drive"] or r2["pv"] or r2["k"] == "service":
+			continue
+		var p2: PackedVector2Array = r2["pts"]
+		for d2: int in [1, -1]:
+			var nxt := e.y + d2
+			if nxt < 0 or nxt >= p2.size() or (e.x == ri and nxt == prev):
+				continue
+			if r2["o"] != 0 and r2["o"] != d2:
+				continue
+			if came.dot((p2[nxt] - p2[e.y]).normalized()) < -0.7:
+				continue
+			out.append(Vector3i(e.x, nxt, d2))
+	return out
 
 ## One big junction drawn as several. Where a divided road meets a street, each of its halves
 ## meets it at a point of its own, 10-30 m apart (four points where two divided roads cross),
@@ -14246,8 +15095,8 @@ func _tick_hud() -> void:
 	_speed_lbl.text = str(int(round(absf(_v) * 3.6)))
 	_fps_lbl.text = "%d fps · worst %d ms · quality %d" % [Engine.get_frames_per_second(), int(_worst_ms()), _quality]
 	if _perf_view:
-		_perf_lbl.text = "frame time, last %d frames (lines: 16 and 33 ms)\n%s\nhitches (slowest parts, ms):\n%s" % [
-			_frame_ms.size(), _prof_avg, "\n".join(_hitches) if not _hitches.is_empty() else "none yet"]
+		_perf_lbl.text = "frame time, last %d frames (lines: 16 and 33 ms)\n%s\nhitches (slowest parts, ms):\n%s\n%s" % [
+			_frame_ms.size(), _prof_avg, "\n".join(_hitches) if not _hitches.is_empty() else "none yet", _load_text()]
 	if _dest_on:
 		var left := _pos.distance_to(_dest)
 		if _auto and _ap_pts.size() > 1:
@@ -14495,12 +15344,20 @@ func _draw_hud() -> void:
 	_hud.draw_rect(PAUSE_BTN, Color(pc, 0.9), false, 1.5)
 	_hud.draw_string(_font, PAUSE_BTN.position + Vector2(0, 15), "resume" if _paused else "pause", HORIZONTAL_ALIGNMENT_CENTER, PAUSE_BTN.size.x, 11, pc)
 	_draw_zoom_marks()
+	var hold := _hold_progress()
+	if hold > 0.0:   # the press filling a ring: let go before it closes and nothing happens
+		var hc := Palette.col("friend")
+		_hud.draw_arc(_hold_at, 14.0, 0.0, TAU, 32, Color(Palette.col("bg"), 0.5), 5.0)
+		_hud.draw_arc(_hold_at, 14.0, -PI * 0.5, -PI * 0.5 + TAU * hold, 32, hc, 4.0)
+		_hud.draw_circle(_hold_at, 3.0, hc)
 	if _paused:
 		_hud_text(Vector2(170, 62), "PAUSED", 300, 13, Palette.col("warn"))
 		if _zoom > 0.0:
 			var hint := "drag to look round · pinch to zoom and turn" if _touch_seen \
 					else "drag or arrows to look round · wheel to zoom · Q E to turn · Z back"
 			_hud_text(Vector2(120, 77), hint, 400, 9, ink)
+			if _zoom > ZOOM_MIN + 0.001:
+				_hud_text(Vector2(120, 88), ("hold a finger" if _touch_seen else "hold the mouse") + " on a street to drive there", 400, 9, Palette.col("friend"))
 	if _zoom > 0.0 and _zoom <= ZOOM_MIN + 0.001:   # at the lowest: how to get back in
 		var push := _zoom_pushing()
 		var pl := Palette.col("player")
@@ -14762,6 +15619,7 @@ func _input(event: InputEvent) -> void:
 					_toggle_perf()
 					return
 	if event is InputEventMouseMotion:
+		_hold_move((event as InputEventMouseMotion).position)
 		if _drag and _fingers.size() < 2:   # (two fingers: the pinch has it)
 			_zoom_pan((event as InputEventMouseMotion).relative)
 		return
@@ -14769,6 +15627,7 @@ func _input(event: InputEvent) -> void:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_LEFT and not mb.pressed:
 			_drag = false
+			_hold_at = Vector2.INF
 		if mb.pressed and mb.button_index in [MOUSE_BUTTON_WHEEL_DOWN, MOUSE_BUTTON_WHEEL_UP] \
 				and not Flow.pointer_over_hud():
 			# down (toward you) goes up over the city, as on a map; a trackpad sends fractions
@@ -14818,6 +15677,8 @@ func _input(event: InputEvent) -> void:
 				_toggle_pause()
 			elif _zoomed() and not (_touch_seen and not _paused and mb.position.distance_to(STICK_C) <= STICK_GRAB):
 				_drag = true   # (a thumb on the stick, the city running under you, is driving)
+				_hold_at = mb.position   # (held there, not dragged: go there -- _hold_tick)
+				_hold_t = 0.0
 		return
 	if event is InputEventScreenTouch:
 		var t := event as InputEventScreenTouch

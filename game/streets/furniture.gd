@@ -173,8 +173,8 @@ func _mark(name: String, p: Vector2) -> void:
 ## on the pavement: off the asphalt by `margin`, out of buildings by `room`, `posts` metres
 ## from the nearest lamp, tree or sign
 func _free(p: Vector2, margin: float, room: float, posts: float) -> bool:
-	return g._off_road(p, margin) and g._push_out(p, room, false, false) == Vector2.ZERO \
-			and g._clear_of_posts(p, posts)
+	return g._off_road(p, margin) and not g._in_junction(p, margin) \
+			and g._push_out(p, room, false, false) == Vector2.ZERO and g._clear_of_posts(p, posts)
 
 func _h(p: Vector2) -> float:
 	return g._h(p)
@@ -988,6 +988,14 @@ func kerbside() -> void:
 						for k in range(3):
 							var m := c + d * way * (2.1 + 1.2 * k + 0.6) + side * sg * (hw + 0.42)
 							if not _free(m, 0.15, 0.4, 0.5):
+								break
+							# (its ends too: at a corner the kerb turns away and a panel's end
+							# stood out in the road)
+							var ends_ok := true
+							for q: Vector2 in [m - d * 0.6, m + d * 0.6]:
+								if not g._off_road(q, 0.1) or g._in_junction(q, 0.1):
+									ends_ok = false
+							if not ends_ok:
 								break
 							rails.append(Transform3D(Basis(Vector3.UP, atan2(-d.y, d.x)), Vector3(m.x, _h(m) + kh, m.y)))
 							g._add_post(m - d * 0.6, 0.06)
