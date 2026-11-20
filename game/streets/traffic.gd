@@ -425,16 +425,18 @@ func _target(c: Car, i: int, dt: float) -> float:
 			continue   # breaking a standoff: go, and let the crossing car wait
 		if j == cars.size() and c.squeeze > 0.0:
 			continue   # edging past them, slowly
-		# (a car counts as on my path when the bodies would touch -- its half width, or more
-		# of its length the more it is turned across me, and mine -- not by its middle within
-		# 1.5 m: cars drove through a truck's flank in the next lane, 2.2 m wide)
+		# (a bus or truck going my way counts as on my path when the bodies would touch side by
+		# side -- its half width and mine -- not by its middle within 1.5 m: cars drove through
+		# a 2.2 m truck's flank in the next lane. Only those: counting every car that way, or an
+		# oncoming one, or a car's length turned across me, a queue stopped in the junction for
+		# what it could pass -- queue_start 1.07x -> 1.62x)
 		var wide := PLAYER_W
 		if j < cars.size():
+			wide = LANE_W
 			var oc: Car = cars[j]
-			var th := absf(angle_difference(oyaw, c.yaw))
-			var ohs: Vector2 = CORNERS.get(oc.kind, Vector2(0.9, 2.3))
-			wide = maxf(LANE_W, (CORNERS.get(c.kind, Vector2(0.9, 2.3)) as Vector2).x
-					+ ohs.x * absf(cos(th)) + ohs.y * absf(sin(th)) + 0.1)
+			if oc.kind in ["bus", "truck"] and absf(angle_difference(oyaw, c.yaw)) < 0.5:   # a wide one going my way, alongside
+				wide = maxf(LANE_W, (CORNERS.get(c.kind, Vector2(0.9, 2.3)) as Vector2).x
+						+ (CORNERS.get(oc.kind, Vector2(0.9, 2.3)) as Vector2).x + 0.1)
 		if c.split:
 			wide = 0.6   # filtering: only what is right in front of the wheel
 		var gap := _path_gap(c, q, look, wide)
@@ -627,7 +629,12 @@ func _junction_ahead(c: Car, i: int, dt: float) -> float:
 		# (its front at the junction's edge -- and, at a skewed junction, as far back as keeps
 		# both front corners 0.5 m off each crossing road's asphalt: the same distance along a
 		# slanted way in left a corner in the lane, and the cars going by drove through it)
-		var edge := dist - (maxf(_node_r[n] + 1.0, _clear_back(c, j, n)) + c.len * 0.5)
+		# (not at lights: there the lights decide, and held further back a queue's next car
+		# waited for anything in the junction -- the car ahead of it too: queue_start 1.07x
+		# -> 1.48x)
+		var lit_near: bool = not (g._near(g._sig_hash, g._nodes[n], 40.0, g.SEG_CELL) as Array).is_empty()   # (a junction's unlit points too)
+		var back := _node_r[n] + 1.0 if lit_near else maxf(_node_r[n] + 1.0, _clear_back(c, j, n))
+		var edge := dist - (back + c.len * 0.5)
 		if edge < -1.0:
 			break   # in it already: carry on through
 		var mine := _arrival(c, j, n)
@@ -1020,7 +1027,7 @@ func _steer_lanes(c: Car, i: int, dt: float, best: float, lead_v: float) -> void
 		if _lane_clear(c, i, _lane_shift(r, step)):
 			c.lane_i = step
 			c.lane_t = 3.0
-	c.shift_to = _lane_shift(r, c.lane_i) + (_kerb_room(c, r) if c.lane_i == 0 else 0.0)
+	c.shift_to = _lane_shift(r, c.lane_i)   # (no kerb room on a road of several lanes: a bus kept to its lane)
 	if c.kind == "moto":
 		if best < 20.0 and lead_v < 2.0:
 			c.split = true
