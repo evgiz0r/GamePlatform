@@ -40,9 +40,9 @@ func _drive(label: String, secs: float) -> void:
 	var shot := false
 	while t < secs:
 		await physics_frame
-		t += 1.0 / 60.0
+		t += Engine.time_scale / Engine.physics_ticks_per_second
 		if absf(g._v) < 0.4:
-			still += 1.0 / 60.0
+			still += Engine.time_scale / Engine.physics_ticks_per_second
 			longest = maxf(longest, still)
 			if int(still) > reported:
 				reported = int(still)

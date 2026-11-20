@@ -44,9 +44,10 @@ func _run() -> void:
 	while t < secs:
 		await process_frame
 		# (game time since the last drawn frame: this machine draws a few frames a second, and
-		# counting each as 1/60 s made the view's turning speed look ten times what it was)
+		# counting each as 1/60 s made the view's turning speed look ten times what it was; a
+		# tick is time_scale / ticks a second of game time, the simulation sped up or not)
 		var now: int = Engine.get_physics_frames()
-		var dt := maxf(float(now - phys) / 60.0, 1.0 / 60.0)
+		var dt := maxf(float(now - phys), 1.0) * Engine.time_scale / Engine.physics_ticks_per_second
 		phys = now
 		t += dt
 		var cam: Camera3D = g.cam

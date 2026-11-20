@@ -220,6 +220,20 @@ drop the game to its lowest quality level and use a smaller window (`--resolutio
 unless asked otherwise (an env var like `FULL=1`); keep full quality for the tests whose
 point is a picture.
 
+**Running the simulation faster than real time** (more game time a tick) pays for
+behaviour counted over minutes, and three things are in the way:
+- **The shell puts `Engine.time_scale` back to 1** when a game starts and after every
+  hit-stop, so Godot's `--time-scale` flag is undone before the first tick (it measured 1x
+  three times over before anyone noticed). Have the game hold a speed from an environment
+  variable every tick (dev only: unset in play, nothing happens).
+- **Tests that count time as 1/60 a tick** misread every duration once a tick is longer:
+  count `Engine.time_scale / Engine.physics_ticks_per_second`.
+- **A longer tick changes what is measured tick by tick**: braking measured as speed lost
+  per tick reads gentler, anything counted in ticks shrinks, coarse steps overlap more.
+  Run the same test twice at 1x first -- one game's exam differed by half between two 1x
+  runs -- and accept a speed whose counts stay within that spread (there: 2x yes, 3x no).
+  Keep 1x for how driving feels (crashes, steering, frames) and for numbers written down.
+
 A city that builds in 5 s on a laptop can take 15 there, and a minute of game time five of
 wall time. Run tests with the shell's background mode and a long timeout, chain several
 in one script (two Godot runs at once on 4 cores is about the limit), and carry on working.

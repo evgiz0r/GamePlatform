@@ -49,7 +49,7 @@ func _run() -> void:
 	var stalls := 0
 	var seen := {}
 	var t := 0.0
-	var dt := 1.0 / 60.0
+	var dt := Engine.time_scale / Engine.physics_ticks_per_second
 	var near_time := 0.0
 	while t < 75.0:
 		await physics_frame
