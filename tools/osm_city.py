@@ -139,6 +139,9 @@ def overpass(query, tries=3):
                 remark = answer.get("remark", "")
                 if "error" in remark.lower() or "timed out" in remark.lower():
                     raise RuntimeError(remark.strip())
+                # (a mirror can serve older data: one answered a city centre with a fifth of
+                # its footways missing -- say which, so a re-bake can be compared)
+                log(f"  answered by {urllib.parse.urlparse(url).netloc}")
                 return answer
             except Exception as e:  # rate limits and timeouts are routine on public servers
                 log(f"  {urllib.parse.urlparse(url).netloc}: {e}")

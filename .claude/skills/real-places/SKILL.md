@@ -18,6 +18,12 @@ data format is at the top of `tools/osm_city.py`; this is about living with it.
   check the city before it goes out); fetch and merge before your next push. Overpass is
   sometimes down: a failed run is worth one retry later, and a run stuck "queued" for an
   hour can be abandoned and started again.
+- **The mirrors can be behind.** When the main Overpass server fails, the baker falls back
+  to mirrors, and one answered a city centre with older data: 261 fewer footways of 1222,
+  23 fewer areas, a few more of other roads, the same day. Re-baking only to change how the
+  file is made (`bare_ground`, a margin)? Compare the counts with the last bake (the log
+  says which server answered); if the data moved, keep the main server's bake and redo only
+  what changed -- the ground grid is the same tiles and the same code whatever answered.
 - **Allowing `overpass-api.de` in a cloud environment is not enough**: the proxy lets the
   connection through and the server resets it during the TLS handshake (it turns some
   networks away; its mirrors are other hosts). Go straight to the workflow.
