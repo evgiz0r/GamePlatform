@@ -51,6 +51,14 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
   signs      [[node index, "stop"|"give_way", dx, dz], ...]   stop and give-way signs on
              the road graph; (dx, dz) x100 is the way of travel they face (from the sign's
              direction=forward/backward along its road), (0, 0) when OSM does not say
+  rails      [{p: [x, z, ...] a track's line, k: rail|light_rail|tram|subway|narrow_gauge,
+               name, tu: 1 tunnel, br: 1 bridge, ly: layer, sv: siding|yard|spur|crossover}]
+             each track its own line (a double track is two); tracks that join share an end
+             point exactly
+  platforms  [{p: [x, z, ...], a: 1 when an outline (else a line along a track's edge), name}]
+  stations   [[x, z, name, name_en, kind], ...]   kind: OSM's station= (train, light_rail,
+             subway...), "train" when it does not say
+             (rails, platforms and stations are absent from files baked before they were kept)
   made_up    1 in a town tools/fake_city.py made up (no OSM data, no credit owed); absent here
 
 Road kinds keep OSM's highway values (primary, residential, footway ...); a game decides
@@ -95,6 +103,7 @@ ROAD_WIDTH = {
     "elevator": 0, "raceway": 8.0, "busway": 7.0, "bridleway": 2.0,
 }
 LANE = 3.2
+RAIL_KINDS = {"rail", "light_rail", "tram", "subway", "narrow_gauge"}
 LEVEL_H = 3.0          # metres per storey
 DEFAULT_LEVELS = {     # storeys when OSM has neither height nor building:levels
     "house": 2, "detached": 2, "semidetached_house": 2, "terrace": 2, "bungalow": 1,
@@ -295,6 +304,10 @@ DATA_FILTERS = (
     'node["tourism"~"^(hotel|museum|attraction)$"];way["tourism"~"^(hotel|museum)$"];'
     'node["natural"="tree"];'
     'node["highway"~"^(traffic_signals|crossing|stop|give_way)$"];'
+    # railways: the lines (not the disused and the planned), the platforms, the stations
+    'way["railway"~"^(rail|light_rail|tram|subway|narrow_gauge)$"];'
+    'way["railway"="platform"];'
+    'node["railway"~"^(station|halt)$"];'
 )
 
 
@@ -1028,6 +1041,55 @@ def bake(raw, name, args):
             if inside(x, z):
                 out["trees"] += [q(x), q(z)]
 
+    # -- railways: each track a line of its own (OSM maps every track as a way; two that
+    # meet share an end point, to the decimetre), the platforms beside them, the stations
+    rails, platforms, stations = [], [], []
+    for e in elements:
+        t = e.get("tags", {})
+        kind = t.get("railway")
+        if e["type"] == "node" and kind in ("station", "halt"):
+            x, z = P(e["lat"], e["lon"])
+            if inside(x, z):
+                stations.append([q(x), q(z), t.get("name", ""), t.get("name:en", ""),
+                                 t.get("station", "train")])
+            continue
+        if e["type"] != "way" or "geometry" not in e or kind not in RAIL_KINDS | {"platform"}:
+            continue
+        pts = [P(g["lat"], g["lon"]) if g else None for g in e["geometry"]]
+        if kind == "platform":
+            if all(p and inside(p[0], p[1], 60.0) for p in pts) and len(pts) >= 2:
+                pl = {"p": flat(pts), "name": t.get("name", "")}
+                if len(pts) >= 4 and e.get("nodes", [0])[0] == e.get("nodes", [1])[-1]:
+                    pl["a"] = 1   # an outline (else a line along the track's edge)
+                platforms.append(pl)
+            continue
+        keep = [i for i, p in enumerate(pts) if p and inside(p[0], p[1], 60.0)]
+        runs, cur = [], []
+        for i in keep:
+            if cur and i != cur[-1] + 1:
+                runs.append(cur)
+                cur = []
+            cur.append(i)
+        runs.append(cur)
+        for run in runs:
+            if len(run) < 2:
+                continue
+            rail = {"p": flat([pts[i] for i in run]), "k": kind}
+            if t.get("name"):
+                rail["name"] = t["name"]
+            if t.get("tunnel") and t["tunnel"] != "no":
+                rail["tu"] = 1
+            if t.get("bridge") and t["bridge"] != "no":
+                rail["br"] = 1
+            ly = num(t.get("layer"))
+            if ly and -5 <= ly <= 5 and int(ly) == ly:
+                rail["ly"] = int(ly)
+            if t.get("service"):
+                rail["sv"] = t["service"]   # siding, yard, spur, crossover
+            rails.append(rail)
+    if rails or stations:
+        out["rails"], out["platforms"], out["stations"] = rails, platforms, stations
+
     if not args.no_terrain:
         try:
             span = max(x1 - x0, z1 - z0)
@@ -1039,7 +1101,8 @@ def bake(raw, name, args):
     log(f"baked: {stats['roads']} road pieces, {len(out['nodes']) // 2} road nodes, "
         f"{stats['buildings']} buildings ({stats['guessed']} with guessed heights), "
         f"{stats['areas']} areas, {len(out['trees']) // 2} trees, {len(out['signals'])} "
-        f"traffic lights; {x1 - x0:.0f} x {z1 - z0:.0f} m")
+        f"traffic lights, {len(out.get('rails', []))} rail tracks, {len(out.get('stations', []))} "
+        f"stations; {x1 - x0:.0f} x {z1 - z0:.0f} m")
     return out
 
 
