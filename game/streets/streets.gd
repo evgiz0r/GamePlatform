@@ -2982,6 +2982,7 @@ func _plank_fence(b: CBuf, a: Vector2, e: Vector2, base: float, h: float) -> voi
 	var bs := Basis(Vector3.UP, atan2(-d.y, d.x))
 	var mid := (a + e) * 0.5
 	var wood: Color = _tone["woodfence"]
+	_plank_at.append(mid)
 	var y := base
 	var k := 0
 	while y + 0.12 <= base + h + 0.01:
@@ -5527,6 +5528,7 @@ func _park_moto(r: Dictionary, ri: int, run: PackedVector2Array, cum: PackedFloa
 	(xf_by["moto_parked"] as Array).append(Transform3D(bs, Vector3(p.x, _walk_y(p), p.y)))   # on the pavement, as people stand
 	(cols_by["moto_parked"] as Array).append(colour)
 	_add_post(p, 0.55)
+	_moto_at.append(p)
 	_tally("parked_moto", 1)
 
 ## no parking at p beside road ri: its red-white corner or a bus stop's yellow-black
@@ -5613,6 +5615,8 @@ func _build_parked() -> void:
 ## front across a 6 m aisle), the bays painted, and about three in four taken. Bays that
 ## would stick out of the lot, into a building, onto a road or onto a tree are left out.
 var _lot_at: Array = []              ## a car in each car park (for tests and tours)
+var _moto_at := PackedVector2Array()  ## each motorbike parked on a pavement (for tests: tests/street_fronts.gd)
+var _plank_at := PackedVector2Array() ## a point along each piece of wooden board fence on a garden wall (for tests)
 var _parked_xf := {}                 ## the street's parked cars by shape, to batch with the car parks'
 var _parked_cols := {}
 const LOT_CARS := 6000               ## car-park cars in a whole city, at most: they are a lot to draw
