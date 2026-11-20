@@ -7,7 +7,8 @@ extends SceneTree
 ## street (40 m+), no hits, ~0 s off the road. The test trip once started from one of these,
 ## planned on to the closed end and a U-turn there, swung into the fence and crept along the
 ## footpath beside the road for a minute and a half. Then the other way: free autodrive
-## driving into each dead end, which must stop at the end, turn round and come back out.
+## driving into each dead end, which must stop at the end, turn round and come back out
+## (a drive log saved for any that does not). DEAD_ONLY=n runs only the n-th, driving in.
 var g: Node
 
 func _initialize() -> void:
@@ -64,7 +65,7 @@ func _run() -> void:
 	var out_ok := 0
 	var total_hits := 0
 	var total_off := 0.0
-	for i in range(picked.size()):
+	for i in range(picked.size() if OS.get_environment("DEAD_ONLY") == "" else 0):
 		var e: Vector2 = picked[i][0]
 		var into: Vector2 = picked[i][1]
 		g._set_auto(false)
@@ -111,7 +112,10 @@ func _run() -> void:
 	# end at 18 km/h and on along the footpath beyond at 40.
 	var back_ok := 0
 	var worst_over := 0.0
+	var only := int(OS.get_environment("DEAD_ONLY")) if OS.get_environment("DEAD_ONLY") != "" else -1
 	for i in range(picked.size()):
+		if only >= 0 and i != only:
+			continue
 		var e: Vector2 = picked[i][0]
 		var into: Vector2 = picked[i][1]
 		g._clear_dest()
@@ -138,6 +142,11 @@ func _run() -> void:
 			last_hit = g._last_hit
 		var away := (g._pos as Vector2).distance_to(e)
 		var ok := over < 2.0 and away > 30.0 and hits == 0 and off < 1.0
+		if not ok:   # the drive log of it, to draw with drive_log_map.py
+			var f: String = g._log.save(g)
+			var named := f.get_base_dir() + "/dead-end-%s-%d.json" % [g._city_id, i]
+			DirAccess.rename_absolute(f, named)
+			print("  log: ", named)
 		back_ok += 1 if ok else 0
 		worst_over = maxf(worst_over, over)
 		print("  %s into the dead end at %s: %.1f m past its end, %.0f m away after 35 s, %d hit(s), %.1f s off the road" % [
