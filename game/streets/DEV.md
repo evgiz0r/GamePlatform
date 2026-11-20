@@ -270,13 +270,23 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   sides (shrubs: the trees' leaf-card crowns on the ground, 2.4-3 m) and four more trees, so
   the passage closes in as filmed. Props stand on the higher of the city's pavement
   (`_walk_y`) and the details' own paving.
-- **Next passes** (seen in the side-by-sides): the forecourt's slabs perhaps still too pale
-  in the sun; the corner of Sheinkin is a raised crossing paved in charcoal herringbone with
-  the zebra painted on it, white bollards round the corner (another session's kerb pass now
-  puts bollards there: check), another transformer; Ha-Meri has blue-white kerbs (roads.set
-  `kerb: blue_white`), a Zone 30 sign and a painted 30 ring; the confectionery's front at
-  Katzenelson's far kerb; the shop fronts under the arcade are lit glass in light frames,
-  not the game's dark panels. People last.
+- **Pass 5, Sheinkin to Ha-Meri and the shops**, done: the film crosses Sheinkin, then Ha-Meri
+  on a raised crossing (charcoal herringbone, the zebra painted on it) and steps up its far
+  kerb -- the walk had stayed on the near pavement, so its last ten seconds now go that way,
+  threading the corner's bollards, sign pole, hydrant and tree pits (POSTS_NEAR lists them).
+  The crossing is paving with ramps (`ramps`), the zebra laid on it (`zebra`); Ha-Meri's
+  kerbs blue-white (roads.set `kerb`), a 30 in a red ring painted in its lane in (`ring30`)
+  and the zone 30 sign on the drivers' right (`zone30_sign`); lit shop fronts in light
+  frames under the arcade, the confectionery's sign band dark brown (`shopfront`).
+- **Shader kinds**: the tone shader's surface kinds are 1 grass, 2 asphalt, 3 pavers, 4 rough
+  stone walls (another session's), 6 the details' slabs, 7 pavers in rows; each tested on
+  both sides of its number (see the godot-3d skill: a one-sided test once drew this
+  passage as wall stones).
+- **Next passes**: the forecourt's slabs may still be too pale in the sun; the shops'
+  glass is one even glow (signs with lettering, the confectionery's yellow panels inside);
+  white bollards round Sheinkin's corner and its second transformer (the kerb pass put
+  bollards at corners: compare with the film); the little street's parked cars and the
+  motorbikes along Ha-Meri. People last.
 
 ## Open problems
 
