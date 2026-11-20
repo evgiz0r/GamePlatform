@@ -2,6 +2,10 @@
 Ha-Meri passage that OpenStreetMap does not (see details.gd for the format, DEV.md "The filmed
 walk" for how it was measured). Run it from anywhere: python3 make_givatayim.py
 
+The file is shared: this script owns the items it writes (marked "src": "make_givatayim")
+and the walk katzenelson_hameri, and keeps everything else in it as it is (another filmed
+walk placed from its GPS track, its streets' kerb paint).
+
 Everything is placed along the passage's own line: P(s, off) is `s` metres from its end on
 Katzenelson towards Sheinkin and `off` to the south-east (negative: north-west). Walking it
 south-west, the south-east side is on the left."""
@@ -215,6 +219,47 @@ d = {
     },
 }
 out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "givatayim.json")
+# The file is shared: another filmed walk (placed from its GPS track) and its streets' kerb
+# paint were put in by hand. This script owns only what it writes, each item marked
+# "src": SRC; on a re-run its old items go and everyone else's are kept: walks it does not
+# write, unmarked items in every list (the first run after marking also drops an unmarked
+# item equal to one of its own), [x, z] pairs it does not write, keys it does not use.
+SRC = "make_givatayim"
+def _mark(sec):
+    for item in sec:
+        if isinstance(item, dict):
+            item["src"] = SRC
+for sec in ("drop", "set", "add"):
+    _mark(d["roads"].get(sec, []))
+for sec in ("buildings", "surfaces", "lines", "props", "areas"):
+    _mark(d.get(sec, []))
+def _bare(item):
+    return {k: v for k, v in item.items() if k != "src"} if isinstance(item, dict) else item
+def _keep(old_list, new_list):
+    mine = [_bare(i) for i in new_list]
+    kept = []
+    for item in old_list:
+        if isinstance(item, dict):
+            if item.get("src") == SRC or _bare(item) in mine:
+                continue
+        elif item in new_list:
+            continue
+        kept.append(item)
+    return new_list + kept
+if os.path.exists(out):
+    with open(out, encoding="utf-8") as f:
+        old = json.load(f)
+    for key, val in old.items():
+        if key == "walks":
+            for wid, w in val.items():
+                d["walks"].setdefault(wid, w)
+        elif key == "roads":
+            for sec, lst in val.items():
+                d["roads"][sec] = _keep(lst, d["roads"].get(sec, []))
+        elif key not in d:
+            d[key] = val
+        elif isinstance(val, list) and isinstance(d[key], list):
+            d[key] = _keep(val, d[key])
 with open(out, "w", encoding="utf-8") as f:
     json.dump(d, f, ensure_ascii=False, indent=1)
 print("wrote", out, len(walk), "walk points, last t", walk[-1][0])
