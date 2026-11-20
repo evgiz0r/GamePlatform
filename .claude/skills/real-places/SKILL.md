@@ -64,6 +64,15 @@ goes wrong shows up the first time it runs.
   showed (100 m against 187), the rest 1-9 m. The tiles are ~30 m and from about 2000, so
   they know neither a block's shape nor anything built since. Building heights have to
   come from OSM or a municipal or national buildings layer.
+- **Government open data may refuse the cloud.** A national portal's API answered, but
+  its files came from a CDN host that refused the container even once the environment
+  allowed both hosts (a CloudFront 403 page instead of the file: likely by country). Do not
+  dress the request up to get past it; have the user download the file and add it to the
+  repo, or use what OSM has.
+- **A landmark's name is often on its podium.** OSM names the outline a tower stands on (a
+  radio tower's 18 m base) and maps the tower as an unnamed `building:part` inside it (80 m,
+  `min_height` the podium's top). To dress a named landmark, take the tallest building
+  standing inside the named outline, not the named one.
 - `tools/fake_city.py` makes up a small town with one of every awkward thing (divided
   boulevard, big signalled junction, roundabouts, a one-way pair, a steep hill, car parks)
   in a second, no network. Use it to check a change quickly; check real towns before
@@ -179,6 +188,11 @@ goes wrong shows up the first time it runs.
   terrain lift) above the bare ground; people placed at the ground height waded knee-deep
   into the slabs.
 - People who stand on the AI's lane must stop it, not only people on zebras.
+- **A divided road is crossed kerb to kerb, but driven one half at a time.** OSM paints the
+  zebra on each carriageway; people cross both (18-22 m, ~15 s on foot). A car that waits
+  for "someone on the crossing" waits through most of its green for a person on the other
+  half. Give the crossing the person's position and pace, and let a car wait only while
+  they are on its carriageway (plus a metre) or about to step onto it.
 
 ## AI drivers in a real town
 
@@ -235,6 +249,16 @@ goes wrong shows up the first time it runs.
 - **Start a plan in the lane**, not at the nearest point of the road's centre line: the
   line from there to the next point (often far down the street) runs diagonally, and the
   car drives left of the middle for the length of the street.
+- **The player's AI must give way too, not only be given way to.** If traffic always lets the
+  player go (an easy rule that avoids deadlocks), an AI driving the player's car that stops
+  only for a car already in its lane pulls out of every side street in front of main-road
+  traffic, which stands on its brakes. Give it traffic's own priority rule from its side,
+  and a gap test: through the junction before the first car with priority arrives, plus a
+  second or two. Reckon its own time through at the plan's speed there (a corner's), not
+  full acceleration, or it judges it can go first and then slows for its turn. Look for
+  cars as far along their paths as the gap needs (5-6 s, ~70 m at 50 km/h), aim to stop
+  a little short of the line, and do not count a junction it is holding for as entered
+  just because it rolled a metre past its line. While it holds, tell traffic not to wait for it.
 - **Score the driving, don't eyeball it**: a scripted exam that drives the AI from several
   places in town and counts per minute (stuck, hits, off the road, wrong side, red lights,
   harsh braking per occasion, and traffic's own stalls, overlaps and reds) finds in one run
@@ -249,8 +273,19 @@ OSM tags which ways are bridges (`bridge=yes`, `layer=1`), tunnels (`tunnel=yes`
 anything is; a bridge way is usually only the span, its ramps ordinary ways. Until the
 heights are worked out, a baked town's bridges lie on the ground and its tunnels are best
 left out. A made-up town can give each such way its surface's height at every point (the
-city format's `y`), and that is enough for a game to do the rest. What a driving game on
-one needed:
+city format's `y`), and that is enough for a game to do the rest.
+
+**A hill is not a level.** "Is that car on my level?" as a bare height difference (2.5 m,
+to skip the bridge overhead) also skips a car 50-80 m down a 5% street, or 15 m along a 16%
+one: the AI did not see the car coming to its junction, nor the car crossing in front of it,
+and side-swiped it -- in the hilly town only; the flat test town never showed it. Both on the
+ground (each within a metre of the ground under it) is one level; otherwise allow a slope's
+rise over the distance between them (~8% of it) on top of the 2.5 m. The same trap in
+placing the car: "the nearest road at the car's height" is right on a bridge beside it and
+wrong for a jump across town -- from the valley to an address on a hill it skipped the
+street 32 m away for one 107 m off. Use the car's height only near the car.
+
+What a driving game on one needed:
 
 - **One height per point is the whole problem.** Everything that asked "how high is the
   ground here" -- the car, its pitch, the camera, traffic, people, collisions -- now asks
@@ -342,6 +377,24 @@ one needed:
   G (s - L/2)) and round humps. And in the car: a rise under it faster than any slope could
   give at its speed is a step (two decks overlapping at a junction in the air, 0.2-0.3 m
   apart), not a climb -- taken as vertical speed, it threw a car 3 m into the air.
+- **Most "crests" are kinks, and the car should not feel them one point at a time.** A
+  worked-out profile is points a few metres apart (and a file's heights rounded to 10 cm):
+  a kink at every point. A car that reads the ground's height under its middle each frame
+  feels each kink as its vertical speed jumping in one frame, and a lift-off rule on that
+  throws it up at 40 km/h over grade changes no real car would leave the road on (a real
+  crest needs v^2 x curvature > g). Smooth the ground the springs feel along the car's own
+  path over half a wheelbase of travel (an exponential follow at rate |v| / (wheelbase/2)):
+  every ramp-top hop in four towns went, while a real drop still throws it. Do not sample
+  the height under each axle instead: an axle's point by a tunnel's wall finds the ground
+  over the tunnel. A hop left after that is a real step in the data (two decks overlapping
+  at different heights): trace the frames before the take-off -- surface under the middle
+  and each axle, and which deck -- to tell a seam from a crest.
+- **Hold the road a bridge crosses along the road, not as the crow flies.** The road under
+  a bridge is held at street level for some distance either side of the crossing; measure
+  that distance along it. A cloverleaf's link bridge lands on its own loop, which turns
+  and passes back under it: by straight-line distance the loop's start (beside the
+  crossing, hundreds of metres along the loop) was held down, and the bridge's end with it
+  -- 0.5-4 m clear over the roads it crossed.
 - **Footbridges and footpath tunnels are a second network.** Work their heights out the same
   way but along the paths only (footway, path, steps, cycleway...), steep (a ramp ~25%,
   stairs ~60% where OSM maps `highway=steps`), and keep the two networks apart both ways: a
@@ -360,9 +413,8 @@ one needed:
   the ground (a stair) rather than leave a ledge. A spiral stair is often one steps way
   lying on itself: keep a way that comes within ~0.8 m of itself on the ground (not
   1.5 m: an access ramp's hairpin legs are about a path's width apart). Walk every
-  footbridge and tunnel end to end in a test, steered along the path: the counts of a
-  push-back label lie (placing people relabels "last hit" every tick), so measure the
-  displacement that was not the walker's own step.
+  footbridge and tunnel end to end in a test, steered along the path (count pushes by
+  displacement, not by the "last hit" label: see the scene-tests skill).
 - **Water held at its own level** (a river between weirs) is drawn at that level and is too
   deep to drive into; gentle banks otherwise let a car down to drive along the bed under
   the water. Leave lakes that lie at their shore's lowest point alone: a road over an
@@ -394,6 +446,18 @@ An AI that picks its way at junctions must see the edge coming: a street that ru
 map looks like any other until the barrier. Look a few hundred metres down each way on and
 score down one whose every continuation hits the edge (not ordinary dead ends -- exploring
 those is fine), and end a planned road a few metres short of the barrier as a dead end.
+
+**The edge cuts one-way streets, and leaves pockets.** A street whose only ways out are
+one-ways running off the map can be driven into and not out of; another can only be
+reached from beyond the edge. In real towns 7-16% of public streets were one or the other
+(not near the edge only: a one-way loop inside counts). A look a few hundred metres ahead
+misses a pocket you can drive round in. Find them once at load on the routing graph,
+cut at the barrier: the main network is what a busy junction near the middle can reach
+and be reached from (two flood fills); everything that cannot get back to it is a trap,
+everything it cannot reach is cut off, points past the barrier are on no way at all. Keep
+the AIs out of traps, take a destination in a cut-off pocket to the nearest street with a
+way in, and start a route set down in a trap from the nearest street with a way out -- never
+choosing a street past the barrier as "the nearest". A wider bake only moves the cut.
 
 ## Filmed walks and drives
 
@@ -496,6 +560,12 @@ the game walking the same route in first person beside it.
   showed a row. Decide gardens piece by piece (a shop behind it, or a hand-placed row of
   shopfronts), not by the road's tag or the whole street: the same street had one real
   garden between its shops.
+- **Real things keep real colours.** A car's red paint, a red-and-white kerb, a stop sign, a
+  hydrant: built from palette roles directly (hazard for red, player for blue) they came out
+  pink and teal in a neon palette, and only beside the film did it show. Pin the hue
+  (`Color.from_hsv` with a red's or a road-paint blue's hue) and take saturation and
+  brightness from the palette role, so a reskin still moves them; keep the roles for
+  what is the game's own (the HUD, the player's glow).
 - **Panning in the film is how the shops get counted.** Ask the walker to turn the phone to
   each side now and then: the shops across the road, which a forward-facing film never
   shows, came only from those pans.

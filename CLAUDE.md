@@ -245,6 +245,11 @@ Short, specific, and all of them cost a debugging session:
   park one. The front page itself never has this problem: it only ever holds the one or
   two `ACTIVE` games plus the "other" button. `tools/menu_shot.sh other` screenshots the
   shelf.
+- **A body in the list of things it keeps clear of pushes itself.** When the player is
+  added to the crowd the others avoid, its own avoidance must skip that entry: otherwise it
+  is shoved off where it stood last tick, along its heading, every tick -- a walker whose
+  speed read 6 m/s crossed 35 m a second. Check a mover's real displacement per tick, not
+  only its speed variable.
 - **Animated art exists in `assets/actors/` only** — five human characters with real
   frames, via `Blob.set_actor()` / `Blob.play()`. Everything else in `assets/` is a single
   static image, so animals and items can only be animated by hand: position, rotation and
@@ -284,6 +289,7 @@ once each take about half again as long):
 | a playtest of a small 2D game, 20-30 s of play | 1-2 min |
 | a playtest of a big 3D city game (loading the city is most of it) | under 1 min to 5 min |
 | a scene test on a big city: load, then stills or a scan | 1-7 min |
+| ten headless drives across the big cities, two at a time (`--fixed-fps 60`, lowest quality) | 10-12 min |
 | recording 100 s of play frame by frame (1280x720, `--fixed-fps 10`) | 18-20 min |
 | turning frames into a video with ffmpeg | 1-2 min |
 | the site republishing after a push to `main` | about 5 min |
@@ -313,7 +319,12 @@ normal, not an accident. What that asks of you:
   happily and the result can still be broken (a function one renamed, a constant the other
   retuned). After merging anything that touches your game, parse it
   (`tools/check_script.sh res://game/<name>/<name>.gd`, seconds) and run the playtest again
-  before pushing to `main`.
+  before pushing to `main`. And `git add` happily stages a file that still has conflict
+  markers in it: before committing a merge, `git diff --cached --check` (or grep for
+  `<<<<<<<`) -- a merge here once published two notes files with both sides and the markers.
+  A notes file breaks nothing, so they then sat on `main` for hours through a dozen more
+  merges, sessions editing inside them; `--cached --check` cannot see markers already
+  committed, so before pushing, `git grep -nE '^(<<<<<<<|=======|>>>>>>>)( |$)'` too.
 - **A merge can bring new assets** (another session's textures, models). Godot only imports
   them when asked: `tools/playtest.sh` and `tools/shots.sh` now do it when they see assets
   newer than the last import, but if you run the engine yourself, run

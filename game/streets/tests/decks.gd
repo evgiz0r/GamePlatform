@@ -8,7 +8,13 @@ extends SceneTree
 ##
 ##   OUT=/tmp/decks game/streets/tests/run.sh decks 4
 ##   RUNS=tunnel_east SHOTS=0 ...   only those runs (comma-separated), no fixed views
+##   ROUTES="ic:3815,-1520,-51;..." ...   runs from chosen points (name:x,z,heading in degrees
+##                                    [,top]), in any town
 ##   RUNS=none VIEWS=ic_,river ...    no runs, only the views whose names hold one of those
+##   TRACE=1 ...   at each take-off, the ten frames before it: the surface under the car's
+##                 middle and axles, the deck it is on (a step between decks, or a crest)
+##   DECK_KINDS=br ...   in a real town, only its bridges (it takes the tunnels first, and ten
+##                       runs are all it drives: Tel Aviv's 34 tunnels left no bridge driven)
 ##   STREETS_BUILD_ALL=0 SHOTS=0 $GODOT --headless --fixed-fps 60 --path . -s \
 ##       res://game/streets/tests/decks.gd     the numbers alone, in a minute or two
 ##
@@ -39,9 +45,10 @@ func _initialize() -> void:
 ## [name, a point on it, the way to face, seconds, "top"]
 func _auto_runs() -> Array:
 	var cand: Array = []
+	var kinds := (OS.get_environment("DECK_KINDS") if OS.get_environment("DECK_KINDS") != "" else "br,tu").split(",")
 	for ri: int in g._decks.decks:
 		var r: Dictionary = g._roads[ri]
-		if not (String(r["deck"]) in ["br", "tu"]) or not r["drive"]:
+		if not (String(r["deck"]) in kinds) or not r["drive"]:
 			continue
 		var ys: PackedFloat32Array = r["ys"]
 		var gs: PackedFloat32Array = r["gs"]
@@ -124,7 +131,16 @@ func _run() -> void:
 	print("decks: ", kinds, ", holes cut in the ground: ", g._decks.holes.size(), ", walls: ", g._decks._walls.size())
 	_grades()
 	var only := OS.get_environment("RUNS").split(",", false)
-	for run: Array in (RUNS if level == 4 else _auto_runs()):
+	# ROUTES="name:x,z,deg[,top];..." -- runs from chosen points instead (any level)
+	var chosen: Array = []
+	for one: String in OS.get_environment("ROUTES").split(";", false):
+		var nv := one.split(":")
+		var v := nv[1].split(",")
+		var run := [nv[0], Vector2(float(v[0]), float(v[1])), deg_to_rad(float(v[2])), 16.0]
+		if v.size() > 3:
+			run.append(v[3])
+		chosen.append(run)
+	for run: Array in (chosen if not chosen.is_empty() else (RUNS if level == 4 else _auto_runs())):
 		if not only.is_empty() and not only.has(run[0]):
 			continue
 		await _drive(run)
@@ -157,17 +173,28 @@ func _drive(run: Array) -> void:
 	var dist := 0.0
 	var last := g._pos as Vector2
 	var shot_at := [3.0, secs * 0.45, secs * 0.8]
+	var trace := OS.get_environment("TRACE") != ""
+	var hist: Array = []
 	while t < secs:
 		await physics_frame
 		t += Engine.time_scale / Engine.physics_ticks_per_second
 		dist += (g._pos as Vector2).distance_to(last)
 		last = g._pos
+		if trace:   # the frames before a take-off: the surface under the middle and each axle
+			var fw: Vector2 = g._fwd() * (g.WHEELBASE * 0.5)
+			var p: Vector2 = g._pos
+			hist.append("    (%.1f, %.1f) car %.2f  middle %.2f  front %.2f  rear %.2f  on %d  vy %.2f" % [p.x, p.y, g._y,
+				g._decks.surf(p, g._y), g._decks.surf(p + fw, g._y), g._decks.surf(p - fw, g._y), g._decks.deck_at(p, g._y, 1.5), g._vy])
+			if hist.size() > 10:
+				hist.pop_front()
 		if g._air:
 			if air_was == false and took_off < 4:   # (where it took off: a crest, or a seam)
 				took_off += 1
 				var on_was: int = g._decks.deck_at(g._pos, g._y, 1.5)
 				print("  %s: in the air at (%.0f, %.0f), %.0f km/h, over %s" % [name, g._pos.x, g._pos.y, absf(g._v) * 3.6,
 					("%s %s" % [g._roads[on_was]["deck"], g._roads[on_was]["en"]]) if on_was >= 0 else "the ground"])
+				if trace:
+					print("\n".join(hist))
 			air += 1
 		else:
 			var lv := _levels_at(g._pos)
