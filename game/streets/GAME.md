@@ -233,6 +233,18 @@ Parked cars and traffic are a mix of sedans, hatchbacks, SUVs and the odd van, w
 seams, handles and wheel arches, in the colours real cars come in: mostly white, silver,
 grey and black, with the odd red or blue. Parked cars tilt with the slope they stand on.
 
+> Let's move to cars.
+
+Every car -- yours, the traffic, the parked ones -- has a real car's body now, not a
+box: rounded at the shoulders, the bonnet and the boot and at its four corners, a cabin
+that narrows to the roof with its pillars and roof rail in the car's colour, the light
+rolling over it. The paint is glossy and reflects the sky (and the road below the
+horizon), more at a glancing look; the glass reflects more. The tyres sit in dark wheel
+wells, on five-spoke rims; head and tail lights follow the corners; the number plates
+carry their characters (yellow in Israel, white in Bedford); there are bumper lips, a
+grille, mirrors and door handles. A car costs about what the box did: the body is built
+once per kind of car, its points shared.
+
 **Trees.** A dozen kinds, picked by the place and where they stand: ficus, acacia, olive,
 cypress, pine, tall pale eucalyptus (the roadsides' and parks' tree) and date and fan palms
 in Givatayim; maple, oak, birch and spruce in Bedford. Each tree varies in size, lean and

@@ -4375,34 +4375,98 @@ const CAR_MIX := ["sedan", "sedan", "sedan", "hatch", "hatch", "hatch", "suv", "
 ## the shared car mesh for parked cars and traffic: the sedan's body, wheels, lights and
 ## plates as ONE surface, one draw call a batch (as six surfaces, a patch of parked cars
 ## cost six). Each part's colour is in its vertex colour, and what it is in the alpha:
-## the shader (CAR_SHADER) makes paint take the car's own colour (instance custom data),
-## glass shine, lights glow at night and tail lights flare on the brake (custom alpha).
+## the shader (CAR_SHADER) makes paint take the car's own colour (instance custom data, or
+## paint_col on the player's car), and gives every part its own finish: paint a clear coat
+## that reflects the sky (more at a glancing look) with dark wheel wells and door seams
+## (from the wheels' place in UV2), glass that reflects more, five-spoke rims, number plates
+## with their characters, headlights that light at night and tail lights that flare on the
+## brake (custom alpha).
 const CAR_SHADER := """
 shader_type spatial;
 uniform float night = 0.0;
 uniform vec4 lamp : source_color;
 uniform vec4 tail : source_color;
+uniform vec4 sky_top : source_color;   // what the paint and glass reflect: the sky as it is now,
+uniform vec4 sky_hor : source_color;
+uniform vec4 street : source_color;    // and the road below the horizon
+uniform vec4 well : source_color;      // a wheel well's dark
+uniform float fixed_paint = 0.0;       // 1: paint_col (the player's car), not the copy's own colour
+uniform vec4 paint_col : source_color;
 varying vec4 custom;
-void vertex() { custom = INSTANCE_CUSTOM; }
+varying vec3 lpos;                     // the car's own frame: x across, y up from the road, z forward
+varying vec3 lnrm;
+void vertex() {
+	custom = INSTANCE_CUSTOM;
+	lpos = VERTEX;
+	lnrm = NORMAL;
+}
+vec3 sky_at(float e) {
+	return e > 0.0 ? mix(sky_hor.rgb, sky_top.rgb, smoothstep(0.0, 0.5, e))
+		: mix(sky_hor.rgb * 0.8, street.rgb, 1.0 - smoothstep(-0.25, 0.0, e));
+}
+float line_cover(float d, float w, float aa) {
+	return clamp((w - d) / aa + 0.5, 0.0, 1.0);
+}
 void fragment() {
 	float part = COLOR.a;
 	vec3 col = COLOR.rgb;
 	float rough = 0.6;
 	float metal = 0.0;
+	float spec = 0.5;
 	vec3 emit = vec3(0.0);
+	vec3 to_eye = normalize(-VERTEX);
+	float ndv = clamp(dot(NORMAL, to_eye), 0.0, 1.0);
+	vec3 rw = (INV_VIEW_MATRIX * vec4(reflect(-to_eye, NORMAL), 0.0)).xyz;
+	vec3 refl = sky_at(rw.y) * (1.0 - 0.75 * night);
+	float aa = fwidth(lpos.z) + 0.001;
 	if (part > 0.9) {            // paint
-		col = custom.rgb;
-		rough = 0.3;
-		metal = 0.4;
-	} else if (part > 0.65) {    // glass
-		rough = 0.08;
-		metal = 0.6;
-	} else if (part > 0.4) {     // trim
-		rough = 0.5;
+		col = fixed_paint > 0.5 ? paint_col.rgb : custom.rgb;
+		col *= mix(0.72, 1.0, smoothstep(0.12, 0.55, lpos.y));   // grime, and less light, low down
+		float f = 0.05 + 0.55 * pow(1.0 - ndv, 4.0);
+		float side = abs(lnrm.x);
+		vec2 wd = vec2(abs(lpos.z) - UV2.x, lpos.y - UV2.y);
+		if (UV2.y > 0.0 && side > 0.35 && length(wd) < UV2.y + 0.075) {
+			col = well.rgb;   // the wheel well round the tyre
+			f = 0.0;
+			rough = 0.9;
+		} else {
+			if (UV2.y > 0.0 && side > 0.55 && lpos.y > 0.3) {
+				// door seams: behind the front wheel, at the pillar, ahead of the back wheel
+				float d = min(min(abs(lpos.z - (UV2.x - UV2.y - 0.14)), abs(lpos.z + 0.19 * UV2.x)),
+					abs(lpos.z + UV2.x - UV2.y - 0.1));
+				col *= 1.0 - 0.6 * line_cover(d, 0.006, aa);
+			}
+			rough = 0.3;
+			metal = 0.1;
+			spec = 0.6;
+		}
+		emit = refl * f;
+	} else if (part > 0.7) {     // glass
+		emit = refl * (0.12 + 0.88 * pow(1.0 - ndv, 3.0));
+		rough = 0.05;
+	} else if (part > 0.6) {     // number plate: a row of dark characters
+		float cell = (UV.x - 0.1) / 0.8 * 7.0;
+		float ch = step(0.1, UV.x) * step(UV.x, 0.9) * step(0.26, UV.y) * step(UV.y, 0.74)
+			* step(0.18, fract(cell)) * step(fract(cell), 0.82);
+		col = mix(col, col * 0.08, ch);
+		rough = 0.4;
+	} else if (part > 0.45) {    // trim
+		rough = 0.55;
+		emit = refl * 0.05;
+	} else if (part > 0.35) {    // a rim: five spokes round the hub, dark between them
+		float r = length(UV);
+		float sp = cos(atan(UV.y, UV.x) * 5.0);
+		bool solid = r < 0.3 || r > 0.84 || sp > 0.35;
+		col = solid ? col : well.rgb;
+		metal = solid ? 0.7 : 0.0;
+		rough = 0.35;
+		emit = solid ? refl * 0.25 : vec3(0.0);
 	} else if (part > 0.2) {     // tyres
 		rough = 0.9;
-	} else if (part > 0.05) {    // headlights
-		emit = lamp.rgb * night * 2.5;
+		spec = 0.2;
+	} else if (part > 0.05) {    // headlights (and anything lit like them: a taxi's sign)
+		emit = lamp.rgb * night * 2.5 + refl * 0.3;
+		rough = 0.1;
 	} else {                     // tail lights
 		col = tail.rgb;
 		emit = tail.rgb * (0.25 + 1.1 * night + 2.8 * custom.a);
@@ -4410,10 +4474,12 @@ void fragment() {
 	ALBEDO = col;
 	ROUGHNESS = rough;
 	METALLIC = metal;
+	SPECULAR = spec;
 	EMISSION = emit;
 }
 """
 var _car_shader_mat: ShaderMaterial
+var _player_car_mat: ShaderMaterial  ## the same shader on the player's car, its paint its own
 
 func _car_material() -> ShaderMaterial:
 	if _car_shader_mat == null:
@@ -4421,9 +4487,21 @@ func _car_material() -> ShaderMaterial:
 		var sh := Shader.new()
 		sh.code = CAR_SHADER
 		_car_shader_mat.shader = sh
-	_car_shader_mat.set_shader_parameter("lamp", _tone["lamplight"])
-	_car_shader_mat.set_shader_parameter("tail", Palette.col("hazard"))
-	_car_shader_mat.set_shader_parameter("night", 1.0 if _night else 0.0)
+	for m: ShaderMaterial in [_car_shader_mat, _player_car_mat]:
+		if m == null:
+			continue
+		m.set_shader_parameter("lamp", _tone["lamplight"])
+		m.set_shader_parameter("tail", Palette.col("hazard"))
+		m.set_shader_parameter("night", 1.0 if _night else 0.0)
+		m.set_shader_parameter("street", _tone["asphalt"])
+		m.set_shader_parameter("well", (_tone["tyre"] as Color).darkened(0.55))
+		if env != null and env.sky != null:
+			var sk := env.sky.sky_material as ProceduralSkyMaterial
+			m.set_shader_parameter("sky_top", sk.sky_top_color)
+			m.set_shader_parameter("sky_hor", sk.sky_horizon_color)
+		if m == _player_car_mat:
+			m.set_shader_parameter("fixed_paint", 1.0)
+			m.set_shader_parameter("paint_col", _tone[String(m.get_meta("paint", "paint"))])
 	return _car_shader_mat
 
 var _car_meshes := {}
@@ -4436,36 +4514,342 @@ func _parked_mesh(kind := "sedan") -> ArrayMesh:
 	if kind == "moto":
 		return _moto_mesh()
 	var taxi := kind == "taxi"
-	if taxi:
-		kind = "sedan"
-	var shape: Array = CAR_SHAPES[kind]
-	var hw: float = shape[2]
-	var hl: float = shape[3]
-	var wr: float = shape[5]
-	var lift := 0.08 if kind in ["suv", "van"] else 0.0
-	var bufs := _sedan_body(kind)
-	var tyre := Buf.new()
-	for wz: float in [float(shape[4]), -float(shape[4])]:
-		for sx: float in [-1.0, 1.0]:
-			_cyl_x(tyre, Vector3(sx * (hw - 0.1), wr, wz), wr, 0.22, 10)
-	var lights := Buf.new()
-	var tails := Buf.new()
-	for sx: float in [-1.0, 1.0]:
-		_box(lights, Vector3(sx * (hw - 0.28), 0.68 + lift, hl - 0.03), Vector3(0.36, 0.12, 0.05))
-		_box(tails, Vector3(sx * (hw - 0.24), 0.84 + lift, -hl + 0.03), Vector3(0.34, 0.14, 0.05))
-	_box(lights, Vector3(0, 0.45 + lift, hl + 0.03), Vector3(0.52, 0.12, 0.02))
-	_box(tails, Vector3(0, 0.6 + lift, -hl - 0.03), Vector3(0.52, 0.12, 0.02))
-	var parts: Array = [[bufs["paint"], Color(1, 1, 1, 1.0)], [bufs["glass"], Color(_tone["carglass"], 0.75)],
-			[bufs["trim"], Color(_tone["cartrim"], 0.5)], [tyre, Color(_tone["tyre"], 0.3)],
-			[lights, Color(_tone["tank"], 0.1)], [tails, Color(_tone["tank"], 0.0)]]
+	var cm := _car_body("sedan" if taxi else kind, true)
 	if taxi:
 		# the roof sign: lit like a headlight, so it glows at night
 		var sign := Buf.new()
 		_box(sign, Vector3(0, 1.52, -0.3), Vector3(0.62, 0.17, 0.26))
-		parts.append([sign, Color(Palette.col("warn"), 0.1)])
-	var am := _car_parts_mesh(parts)
-	_car_meshes["taxi" if taxi else kind] = am
+		cm.add_buf(sign, Color(Palette.col("warn"), 0.1))
+	var am := cm.mesh(_car_material())
+	# a box round the whole car (lights and mirrors stand a little proud of the body)
+	am.custom_aabb = am.get_aabb().grow(0.1)
+	_car_meshes[kind] = am
 	return am
+
+## ---- car bodies ----------------------------------------------------------------------------
+## A car is built from its side profile (CAR_SHAPES) as two lofts with smooth normals. The
+## lower body is a rounded cross-section at each of a run of stations from the back to the
+## front, between the outline's bottom (the sills, the bumpers' curve) and its top (boot,
+## waist, bonnet), narrowing at the corners in plan; the cabin is a second loft from the
+## waist to the roof line, the windscreen and rear window its sloped ends, the pillars and the
+## roof rail in paint. So the light rolls over the shoulders, the bonnet and the roof instead
+## of breaking at flat sides. One indexed surface per car shape: each part (paint, glass,
+## trim, tyres, rims, lights, plates) is told apart by its vertex colour's alpha, for
+## CAR_SHADER, and the lower body's UV2 carries the wheels' place and size so the shader can
+## darken the wheel wells and draw the door seams.
+const CAR_CORNER := 0.45             ## the plan's corner radius, front and back (m)
+
+class CarMesh:
+	var v := PackedVector3Array()
+	var n := PackedVector3Array()
+	var c := PackedColorArray()
+	var uv := PackedVector2Array()
+	var uv2 := PackedVector2Array()
+	var idx := PackedInt32Array()
+
+	func vert(p: Vector3, nrm: Vector3, col: Color, t := Vector2.ZERO, t2 := Vector2.ZERO) -> int:
+		v.append(p)
+		n.append(nrm)
+		c.append(col)
+		uv.append(t)
+		uv2.append(t2)
+		return v.size() - 1
+
+	## a triangle facing `out` (Godot's front faces are clockwise: the winding is fixed to match)
+	func tri(a: int, b: int, d: int, out: Vector3) -> void:
+		if (v[b] - v[a]).cross(v[d] - v[a]).dot(out) > 0.0:
+			idx.append_array([a, d, b])
+		else:
+			idx.append_array([a, b, d])
+
+	## a Buf's triangle soup as it is, in one colour (boxes: lights, trim)
+	func add_buf(b: Buf, col: Color, t2 := Vector2.ZERO) -> void:
+		for i in range(b.v.size()):
+			idx.append(vert(b.v[i], b.n[i], col, b.uv[i] if i < b.uv.size() else Vector2.ZERO, t2))
+
+	func mesh(m: Material) -> ArrayMesh:
+		var a := []
+		a.resize(Mesh.ARRAY_MAX)
+		a[Mesh.ARRAY_VERTEX] = v
+		a[Mesh.ARRAY_NORMAL] = n
+		a[Mesh.ARRAY_COLOR] = c
+		a[Mesh.ARRAY_TEX_UV] = uv
+		a[Mesh.ARRAY_TEX_UV2] = uv2
+		a[Mesh.ARRAY_INDEX] = idx
+		var am := ArrayMesh.new()
+		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, a)
+		am.surface_set_material(0, m)
+		return am
+
+## the side outline cut straight down at z: (its bottom, its top)
+func _span_at(outline: PackedVector2Array, z: float) -> Vector2:
+	var lo := INF
+	var hi := -INF
+	for i in range(outline.size()):
+		var a := outline[i]
+		var b := outline[(i + 1) % outline.size()]
+		if a.x == b.x or (a.x - z) * (b.x - z) > 0.0:
+			continue
+		var y := lerpf(a.y, b.y, (z - a.x) / (b.x - a.x))
+		lo = minf(lo, y)
+		hi = maxf(hi, y)
+	return Vector2(lo, hi) if lo <= hi else Vector2(0.5, 0.5)
+
+## the side outline cut across at height y: its front (or back) end
+func _end_at(outline: PackedVector2Array, y: float, front: bool) -> float:
+	var best := -INF if front else INF
+	for i in range(outline.size()):
+		var a := outline[i]
+		var b := outline[(i + 1) % outline.size()]
+		if a.y == b.y or (a.y - y) * (b.y - y) > 0.0:
+			continue
+		var z := lerpf(a.x, b.x, (y - a.y) / (b.y - a.y))
+		best = maxf(best, z) if front else minf(best, z)
+	return best
+
+## the body's half-width at z: full along the sides, rounding off at the four corners
+func _plan_w(z: float, hw: float, hl: float) -> float:
+	var d := absf(z) - (hl - CAR_CORNER)
+	if d <= 0.0:
+		return hw
+	return hw - CAR_CORNER + sqrt(maxf(CAR_CORNER * CAR_CORNER - d * d, 0.0))
+
+## how far the rounded corner pulls the front (or back) in at x off the middle
+func _plan_in(x: float, hw: float) -> float:
+	var d := absf(x) - (hw - CAR_CORNER)
+	if d <= 0.0:
+		return 0.0
+	return CAR_CORNER - sqrt(maxf(CAR_CORNER * CAR_CORNER - d * d, 0.0))
+
+## A loft through rings of points (one per station, the same count each), normals smoothed
+## over the grid and turned away from each station's middle; `part.call(i, j)` colours the
+## quad from station i, ring point j. A vertex is shared by the quads of one part only, so
+## glass and paint keep their own edges.
+func _loft(cm: CarMesh, rings: Array, mids: PackedVector3Array, closed: bool, part: Callable, t2: Vector2) -> void:
+	var count := rings.size()
+	var m: int = (rings[0] as PackedVector3Array).size()
+	var nrm: Array = []
+	for i in range(count):
+		var ring: PackedVector3Array = rings[i]
+		var prev: PackedVector3Array = rings[maxi(i - 1, 0)]
+		var next: PackedVector3Array = rings[mini(i + 1, count - 1)]
+		var nr := PackedVector3Array()
+		for j in range(m):
+			var jp := (j + 1) % m if closed else mini(j + 1, m - 1)
+			var jm := (j - 1 + m) % m if closed else maxi(j - 1, 0)
+			var nn := (ring[jp] - ring[jm]).cross(next[j] - prev[j])
+			if nn.length_squared() < 1e-12:
+				nn = ring[j] - mids[i]
+			nn = nn.normalized()
+			if nn.dot(ring[j] - mids[i]) < 0.0:
+				nn = -nn
+			nr.append(nn)
+		nrm.append(nr)
+	var made := {}
+	for i in range(count - 1):
+		for j in range(m if closed else m - 1):
+			var j1 := (j + 1) % m
+			var col: Color = part.call(i, j)
+			var pid := int(round(col.a * 100.0))
+			var q: Array = []
+			for ij: Vector2i in [Vector2i(i, j), Vector2i(i + 1, j), Vector2i(i + 1, j1), Vector2i(i, j1)]:
+				var key := (ij.x * 1000 + ij.y) * 1000 + pid
+				if not made.has(key):
+					made[key] = cm.vert((rings[ij.x] as PackedVector3Array)[ij.y], (nrm[ij.x] as PackedVector3Array)[ij.y], col, Vector2.ZERO, t2)
+				q.append(made[key])
+			var out: Vector3 = ((rings[i] as PackedVector3Array)[j] + (rings[i + 1] as PackedVector3Array)[j1]) * 0.5 - (mids[i] + mids[i + 1]) * 0.5
+			cm.tri(q[0], q[1], q[2], out)
+			cm.tri(q[0], q[2], q[3], out)
+
+## A car body of a CAR_SHAPES kind, facing +Z, its wheels on y = 0. `extras`: the wheels,
+## lights and number plates too (the player's car has its own, which turn and light up).
+func _car_body(kind: String, extras: bool) -> CarMesh:
+	var shape: Array = CAR_SHAPES[kind]
+	var low := PackedVector2Array(shape[0])
+	var cab: Array = shape[1]
+	var hw: float = shape[2]
+	var hl: float = shape[3]
+	var wz: float = shape[4]
+	var wr: float = shape[5]
+	var lift := 0.08 if kind in ["suv", "van"] else 0.0
+	var cm := CarMesh.new()
+	var paint := Color(1, 1, 1, 1.0)
+	var glass := Color(_tone["carglass"], 0.75)
+	var trim := Color(_tone["cartrim"], 0.5)
+	var wheels := Vector2(wz, wr)
+	var zmin := INF
+	var zmax := -INF
+	for p in low:
+		zmin = minf(zmin, p.x)
+		zmax = maxf(zmax, p.x)
+	# ---- the lower body: 16 stations, closer together toward the ends where it curves
+	var rings: Array = []
+	var mids := PackedVector3Array()
+	var stations := 16
+	for i in range(stations):
+		var z := lerpf(zmin + 0.004, zmax - 0.004, 0.5 - 0.5 * cos(PI * i / (stations - 1)))
+		var sp := _span_at(low, z)
+		var yb := sp.x
+		var yt := sp.y
+		var h := maxf(yt - yb, 0.001)
+		var w := _plan_w(z, hw, hl)
+		var half: Array = [Vector2(0.0, yb), Vector2(w - 0.12, yb), Vector2(w - 0.03, yb + minf(0.07, h * 0.25)),
+			Vector2(w, yb + h * 0.45), Vector2(w - 0.025, yt - minf(0.09, h * 0.25)),
+			Vector2(w - 0.09, yt - minf(0.012, h * 0.05)), Vector2(w * 0.55, yt + 0.025), Vector2(0.0, yt + 0.035)]
+		var ring := PackedVector3Array()
+		for p: Vector2 in half:
+			ring.append(Vector3(p.x, p.y, z))
+		for k in range(half.size() - 2, 0, -1):
+			ring.append(Vector3(-(half[k] as Vector2).x, (half[k] as Vector2).y, z))
+		rings.append(ring)
+		mids.append(Vector3(0.0, (yb + yt) * 0.5, z))
+	_loft(cm, rings, mids, true, func(_i: int, _j: int) -> Color: return paint, wheels)
+	# ---- the cabin, from the waist to the roof line
+	var c0: Vector2 = cab[0]   # windscreen foot
+	var c1: Vector2 = cab[1]   # windscreen top
+	var c2: Vector2 = cab[2]   # rear top
+	var c3: Vector2 = cab[3]   # rear foot
+	var pillars: Array = [-0.26] if kind in ["sedan", "hatch"] else [-0.2, -1.25]
+	var zs: Array = []
+	for k in range(9):
+		zs.append(lerpf(c3.x, c0.x, k / 8.0))
+	zs.append_array([c1.x, c2.x])
+	for pz: float in pillars:
+		zs.append_array([pz - 0.06, pz + 0.06])
+	var back_pillar := c2.x + 0.05 if kind in ["sedan", "hatch"] else c3.x + 0.18
+	zs.append(back_pillar)
+	zs.sort()
+	var cz: Array = []
+	for z: float in zs:
+		if cz.is_empty() or z - float(cz[-1]) > 0.01:
+			cz.append(clampf(z, c3.x, c0.x))
+	var roof := func(z: float) -> float:
+		if z >= c1.x:
+			return lerpf(c1.y, c0.y, inverse_lerp(c1.x, c0.x, z))
+		if z >= c2.x:
+			return lerpf(c2.y, c1.y, inverse_lerp(c2.x, c1.x, z))
+		return lerpf(c3.y, c2.y, inverse_lerp(c3.x, c2.x, z))
+	rings = []
+	mids = PackedVector3Array()
+	for z: float in cz:
+		var yb := _span_at(low, z).y
+		var top := maxf(float(roof.call(z)), yb + 0.004)
+		var w := _plan_w(z, hw, hl)
+		var wb := w - 0.05
+		var wt := w - 0.27
+		var gh: Array = [Vector2(wb, yb - 0.01), Vector2(wt, maxf(yb, top - 0.05)), Vector2(wt - 0.07, top), Vector2(0.0, top + 0.02)]
+		var ring := PackedVector3Array()
+		for p: Vector2 in gh:
+			ring.append(Vector3(p.x, p.y, z))
+		for k in range(gh.size() - 2, -1, -1):
+			ring.append(Vector3(-(gh[k] as Vector2).x, (gh[k] as Vector2).y, z))
+		rings.append(ring)
+		mids.append(Vector3(0.0, yb - 0.3, z))
+	var cab_part := func(i: int, j: int) -> Color:
+		var zc := (float(cz[i]) + float(cz[i + 1])) * 0.5
+		if j == 1 or j == 4:
+			return paint                      # the roof rail, the A- and C-pillars' edges
+		if j == 2 or j == 3:
+			return glass if (zc > c1.x or zc < c2.x) else paint   # windscreen, rear window / roof
+		if zc < back_pillar:
+			return paint
+		for pz: float in pillars:
+			if absf(zc - pz) < 0.06:
+				return paint                  # the B-pillar (an SUV's and a van's C too)
+		return glass
+	_loft(cm, rings, mids, false, cab_part, Vector2.ZERO)
+	# ---- trim: bumper lips, the grille, mirrors, door handles
+	var tb := Buf.new()
+	var zf := _end_at(low, 0.4 + lift, true)
+	var zr := _end_at(low, 0.4 + lift, false)
+	_box(tb, Vector3(0, 0.32 + lift, zf - 0.07), Vector3((hw - 0.2) * 2.0, 0.1, 0.16))
+	_box(tb, Vector3(0, 0.32 + lift, zr + 0.07), Vector3((hw - 0.2) * 2.0, 0.1, 0.16))
+	var gy := 0.58 + lift
+	_box(tb, Vector3(0, gy, _end_at(low, gy, true) - 0.025), Vector3(0.72, 0.13, 0.06))
+	for sx: float in [-1.0, 1.0]:
+		for hz: float in [c0.x - 0.42, float(pillars[0]) - 0.4]:
+			var hy := _span_at(low, hz).y - 0.11
+			_box(tb, Vector3(sx * (_plan_w(hz, hw, hl) + 0.004), hy, hz), Vector3(0.02, 0.035, 0.15))
+	cm.add_buf(tb, trim)
+	var mb := Buf.new()
+	for sx: float in [-1.0, 1.0]:
+		_box(mb, Vector3(sx * (hw + 0.07), c0.y + 0.08, c0.x - 0.14), Vector3(0.15, 0.1, 0.08))
+	cm.add_buf(mb, paint)
+	if not extras:
+		return cm
+	# ---- wheels: tyres, their sidewalls, five-spoke rims (just proud of the body, in the
+	# dark wells the shader paints round them)
+	var tyre := Color(_tone["tyre"], 0.3)
+	var rim := Color(_tone["rim"], 0.4)
+	for wzs: float in [wz, -wz]:
+		for sx: float in [-1.0, 1.0]:
+			_wheel(cm, Vector3(sx * (hw - 0.09), wr, wzs), wr, sx, tyre, rim)
+	# ---- lights: panels laid on the body's front and back, following its rounded corners
+	var hy := 0.68 + lift
+	var ty := _span_at(low, zmin + 0.12).y - 0.15
+	for sx: float in [-1.0, 1.0]:
+		_lamp(cm, low, hw, sx * (hw - 0.3), hy, 0.36, 0.12, true, Color(_tone["tank"], 0.1))
+		_lamp(cm, low, hw, sx * (hw - 0.27), ty, 0.32, 0.14, false, Color(_tone["tank"], 0.0))
+	var plate := Color(Palette.col("warn") if String(_place.get("look", "")) == "med" else Palette.col("ink"), 0.65)
+	for front: bool in [true, false]:
+		var py := (0.45 if front else 0.6) + lift
+		var pz := _end_at(low, py, front) + (0.012 if front else -0.012)
+		var s := 1.0 if front else -1.0
+		var a := cm.vert(Vector3(-0.26 * s, py - 0.06, pz), Vector3(0, 0, s), plate, Vector2(0, 1))
+		var b := cm.vert(Vector3(0.26 * s, py - 0.06, pz), Vector3(0, 0, s), plate, Vector2(1, 1))
+		var d := cm.vert(Vector3(0.26 * s, py + 0.06, pz), Vector3(0, 0, s), plate, Vector2(1, 0))
+		var e := cm.vert(Vector3(-0.26 * s, py + 0.06, pz), Vector3(0, 0, s), plate, Vector2(0, 0))
+		cm.tri(a, b, d, Vector3(0, 0, s))
+		cm.tri(a, d, e, Vector3(0, 0, s))
+	return cm
+
+## a light panel w x h centred at (cx, cy) on the body's front (or back), each corner set on
+## the rounded surface (a hair proud of it), so it bends round the corner as real ones do
+func _lamp(cm: CarMesh, low: PackedVector2Array, hw: float, cx: float, cy: float, w: float, h: float, front: bool, col: Color) -> void:
+	var s := 1.0 if front else -1.0
+	var grid: Array = []
+	for row in range(2):
+		var y := cy + (float(row) - 0.5) * h
+		var line: Array = []
+		for k in range(3):
+			var x := cx + (float(k) - 1.0) * w * 0.5
+			var z := _end_at(low, y, front) - s * (_plan_in(x, hw) - 0.008)
+			var nrm := Vector3(x / hw * 0.7, 0.1, s).normalized()
+			line.append(cm.vert(Vector3(x, y, z), nrm, col))
+		grid.append(line)
+	var out := Vector3(cx / hw * 0.7, 0.1, s)
+	for k in range(2):
+		cm.tri(grid[0][k], grid[0][k + 1], grid[1][k + 1], out)
+		cm.tri(grid[0][k], grid[1][k + 1], grid[1][k], out)
+
+## a tyre round the X axis at c, its outer side facing `side` (+1/-1): tread, sidewall, and the
+## rim (UV: the disc's own -1..1, for the shader's spokes)
+func _wheel(cm: CarMesh, c: Vector3, r: float, side: float, tyre: Color, rim: Color) -> void:
+	var seg := 10
+	var half := 0.11
+	var rr := r * 0.62
+	var out := Vector3(side, 0, 0)
+	var tread: Array = []
+	for k in range(seg + 1):
+		var a := TAU * k / seg
+		var dir := Vector3(0, cos(a), sin(a))
+		tread.append([cm.vert(c + dir * r - out * half, dir, tyre), cm.vert(c + dir * r + out * half, dir, tyre),
+			cm.vert(c + dir * r + out * half, out, tyre), cm.vert(c + dir * rr + out * half, out, tyre)])
+	for k in range(seg):
+		var a0: Array = tread[k]
+		var a1: Array = tread[k + 1]
+		var dir := Vector3(0, cos(TAU * (k + 0.5) / seg), sin(TAU * (k + 0.5) / seg))
+		cm.tri(a0[0], a1[0], a1[1], dir)
+		cm.tri(a0[0], a1[1], a0[1], dir)
+		cm.tri(a0[2], a1[2], a1[3], out)
+		cm.tri(a0[2], a1[3], a0[3], out)
+	var hub := cm.vert(c + out * (half - 0.004), out, rim, Vector2.ZERO)
+	var ring: Array = []
+	for k in range(seg + 1):
+		var a := TAU * k / seg
+		ring.append(cm.vert(c + Vector3(0, cos(a), sin(a)) * rr + out * (half - 0.004), out, rim, Vector2(cos(a), sin(a))))
+	for k in range(seg):
+		cm.tri(hub, ring[k], ring[k + 1], out)
 
 ## parts [Buf, colour with the part code in alpha] as one surface in the car shader
 func _car_parts_mesh(parts: Array) -> ArrayMesh:
@@ -6612,6 +6996,8 @@ func _retint_city() -> void:
 		sun.light_color = ink.lerp(pl, 0.4)
 		sun.light_energy = 0.18
 		sun.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY   # no sun disc in a night sky
+	if _car_shader_mat != null:   # the cars' reflections, lamps and wells
+		_car_material()
 	if _wall_mat != null and env != null:   # what the windows reflect: the sky as it is now
 		var sk := env.sky.sky_material as ProceduralSkyMaterial
 		_wall_mat.set_shader_parameter("sky_top", sk.sky_top_color)
@@ -7047,9 +7433,10 @@ func _foot_camera(dt: float) -> void:
 func _build_car_signals() -> void:
 	var amber := mat("warn", 2.6)
 	for side: int in [-1, 1]:
-		var x := -0.86 * float(side)
+		var x := -0.8 * float(side)
 		var lamps: Array = []
-		for at: Vector3 in [Vector3(x, 0.66, 2.27), Vector3(x, 0.84, -2.31)]:
+		# on the body's rounded corners (CAR_CORNER), front and back
+		for at: Vector3 in [Vector3(x, 0.66, 2.08), Vector3(x, 0.84, -2.05)]:
 			var l := _part(BoxMesh, at, Vector3(0.16, 0.1, 0.07), amber)
 			l.visible = false
 			l.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -7057,7 +7444,7 @@ func _build_car_signals() -> void:
 			lamps.append(l)
 		_blink_nodes[side] = lamps
 	for sx: float in [-1.0, 1.0]:
-		var r := _part(BoxMesh, Vector3(sx * 0.4, 0.84, -2.29), Vector3(0.16, 0.09, 0.04), mat("ink", 1.6))
+		var r := _part(BoxMesh, Vector3(sx * 0.4, 0.84, -2.2), Vector3(0.16, 0.09, 0.04), mat("ink", 1.6))
 		r.visible = false
 		r.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		_body.add_child(r)
@@ -7203,19 +7590,20 @@ func _set_cockpit(on: bool) -> void:
 ## profile, a narrower glass cabin on it, bumpers, lights, mirrors, plates and four
 ## wheels that turn and roll. Faces +Z (forward), like the kit's models.
 ## `paint` is a tone name; the front wheels land in _wheels, all four in _spinners.
+## the player's car: the same body as the traffic's (no wheels, lights or plates: _sedan_rest
+## adds its own, which steer, roll and light up), in its own copy of the car shader whose
+## paint is the player's colour
 func _sedan(paint: String) -> Node3D:
 	var root := Node3D.new()
-	var bufs := _sedan_body()
-	for k: String in bufs:
-		var mi := MeshInstance3D.new()
-		var am := ArrayMesh.new()
-		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, (bufs[k] as Buf).arrays())
-		am.surface_set_material(0, _car_mat(k, paint))
-		mi.mesh = am
-		root.add_child(mi)
+	_car_material()
+	_player_car_mat = _car_shader_mat.duplicate() as ShaderMaterial
+	_player_car_mat.set_meta("paint", paint)
+	_car_material()   # (sets its parameters, the paint among them)
+	var mi := MeshInstance3D.new()
+	mi.mesh = _car_body("sedan", false).mesh(_player_car_mat)
+	root.add_child(mi)
 	return _sedan_rest(root, paint)
 
-## the sedan's body as three surfaces: paint, glass, trim
 ## Car shapes: [side outline of the lower body (z forward, y up), the four cabin corners
 ## (windscreen foot, windscreen top, rear top, rear foot), half-width, half-length, wheel
 ## base half, wheel radius]. The sedan is the player's; parked cars and traffic mix all four.
@@ -7234,61 +7622,23 @@ const CAR_SHAPES := {
 		[Vector2(1.68, 1.05), Vector2(1.05, 1.98), Vector2(-2.38, 2.0), Vector2(-2.45, 1.1)], 0.98, 2.5, 1.55, 0.35],
 }
 
-func _sedan_body(kind := "sedan") -> Dictionary:
-	var bufs := {"paint": Buf.new(), "glass": Buf.new(), "trim": Buf.new()}
-	var shape: Array = CAR_SHAPES[kind]
-	var hw: float = shape[2]
-	var hl: float = shape[3]
-	# the lower body: its side outline (z forward, y up), pushed out to both sides
-	var low := PackedVector2Array(shape[0])
-	_prism(bufs["paint"], low, hw)
-	# the cabin: windshield, roof, rear window, and the side glass, narrower at the top
-	var c0: Vector2 = shape[1][0]
-	var c1: Vector2 = shape[1][1]
-	var c2: Vector2 = shape[1][2]
-	var c3: Vector2 = shape[1][3]
-	var lo := hw - 0.06
-	var up := hw - 0.24
-	var P := func(p: Vector2, x: float) -> Vector3: return Vector3(x, p.y, p.x)
-	_poly(bufs["glass"], [P.call(c0, -lo), P.call(c0, lo), P.call(c1, up), P.call(c1, -up)], Vector3(0, 0.6, 1))
-	_poly(bufs["paint"], [P.call(c1, -up), P.call(c1, up), P.call(c2, up), P.call(c2, -up)], Vector3.UP)
-	_poly(bufs["glass"], [P.call(c2, -up), P.call(c2, up), P.call(c3, lo), P.call(c3, -lo)], Vector3(0, 0.6, -1))
-	for sx: float in [-1.0, 1.0]:
-		_poly(bufs["glass"], [P.call(c0, lo * sx), P.call(c1, up * sx), P.call(c2, up * sx), P.call(c3, lo * sx)], Vector3(sx, 0.3, 0))
-		# the pillars, in paint, splitting the side glass (a van and an SUV have two)
-		var pillars: Array = [-0.26] if kind in ["sedan", "hatch"] else [-0.2, -1.25]
-		for pz: float in pillars:
-			var t0 := inverse_lerp(c0.x, c3.x, pz)
-			var foot := Vector2(pz, lerpf(c0.y, c3.y, clampf(t0, 0.0, 1.0)) + 0.02)
-			var head := Vector2(pz - 0.1, lerpf(c1.y, c2.y, 0.3))
-			var b0: Vector3 = P.call(foot, lo * sx + 0.01 * sx)
-			var b1: Vector3 = P.call(head, up * sx + 0.01 * sx)
-			_poly(bufs["paint"], [b0, b0 + Vector3(0, 0, -0.12), b1 + Vector3(0, 0, -0.12), b1], Vector3(sx, 0.3, 0))
-		# a door seam and a handle in dark trim, a thin line along the waist
-		_box(bufs["trim"], Vector3(sx * (hw + 0.005), 0.62, -0.2), Vector3(0.01, 0.5, 0.025))
-		_box(bufs["trim"], Vector3(sx * (hw + 0.01), 0.8, 0.25), Vector3(0.02, 0.04, 0.16))
-		_box(bufs["trim"], Vector3(sx * (hw + 0.005), 0.88, -0.1), Vector3(0.01, 0.025, hl * 1.4))
-	# bumpers, grille, side skirts in dark trim
-	_box(bufs["trim"], Vector3(0, 0.36 + (0.08 if kind in ["suv", "van"] else 0.0), hl - 0.05), Vector3(hw * 2.04, 0.22, 0.14))
-	_box(bufs["trim"], Vector3(0, 0.36 + (0.08 if kind in ["suv", "van"] else 0.0), -hl + 0.05), Vector3(hw * 2.04, 0.22, 0.14))
-	_box(bufs["trim"], Vector3(0, 0.66 + (0.12 if kind in ["suv", "van"] else 0.0), hl - 0.01), Vector3(0.7, 0.14, 0.04))
-	for sx: float in [-1.0, 1.0]:
-		_box(bufs["trim"], Vector3(sx * (hw + 0.01), 0.32, 0), Vector3(0.04, 0.12, hl * 1.13))
-		_box(bufs["paint"], Vector3(sx * (hw + 0.08), c0.y + 0.07, c0.x - 0.1), Vector3(0.16, 0.1, 0.08))   # mirror
-		# dark wheel arches over each wheel
-		for wz: float in [shape[4], -float(shape[4])]:
-			_box(bufs["trim"], Vector3(sx * (hw + 0.006), float(shape[5]) * 2.0 + 0.04, wz), Vector3(0.012, 0.06, float(shape[5]) * 2.3))
-	return bufs
-
 ## lights, plates and the four wheels on a sedan body
 func _sedan_rest(root: Node3D, paint: String) -> Node3D:
 	# lights and plates
+	# head and tail lights laid on the body's rounded corners, like the traffic's (_lamp)
+	var low := PackedVector2Array(CAR_SHAPES["sedan"][0])
+	var heads := CarMesh.new()
+	var tails := CarMesh.new()
 	for sx: float in [-1.0, 1.0]:
-		root.add_child(_part(BoxMesh, Vector3(sx * 0.62, 0.68, 2.27), Vector3(0.36, 0.12, 0.05), mat("ink", 1.2)))
-		root.add_child(_part(BoxMesh, Vector3(sx * 0.66, 0.84, -2.27), Vector3(0.34, 0.12, 0.05), mat("hazard", 1.0)))
+		_lamp(heads, low, 0.9, sx * 0.6, 0.68, 0.36, 0.12, true, Color.WHITE)
+		_lamp(tails, low, 0.9, sx * 0.63, 0.82, 0.32, 0.14, false, Color.WHITE)
+	for pair: Array in [[heads, mat("ink", 1.2)], [tails, mat("hazard", 1.0)]]:
+		var lm := MeshInstance3D.new()
+		lm.mesh = (pair[0] as CarMesh).mesh(pair[1])
+		root.add_child(lm)
 	var plate := "warn" if String(_place.get("look", "")) == "med" else "ink"   # Israeli plates are yellow
-	root.add_child(_part(BoxMesh, Vector3(0, 0.45, 2.33), Vector3(0.52, 0.12, 0.02), mat(plate, 0.1)))
-	root.add_child(_part(BoxMesh, Vector3(0, 0.6, -2.33), Vector3(0.52, 0.12, 0.02), mat(plate, 0.1)))
+	root.add_child(_part(BoxMesh, Vector3(0, 0.45, 2.28), Vector3(0.52, 0.12, 0.02), mat(plate, 0.1)))
+	root.add_child(_part(BoxMesh, Vector3(0, 0.6, -2.3), Vector3(0.52, 0.12, 0.02), mat(plate, 0.1)))
 	# wheels: a pivot each (front ones steer), a tyre and a rim that roll inside it
 	_wheels.clear()
 	_spinners.clear()
@@ -7299,14 +7649,13 @@ func _sedan_rest(root: Node3D, paint: String) -> Node3D:
 			root.add_child(pivot)
 			var spin := Node3D.new()
 			pivot.add_child(spin)
-			var tyre := _part(CylinderMesh, Vector3.ZERO, Vector3(0.33, 0.22, 0.0), _car_mat("tyre", paint))
-			tyre.rotation.z = PI * 0.5
-			spin.add_child(tyre)
-			var rim := _part(CylinderMesh, Vector3(sx * 0.02, 0, 0), Vector3(0.2, 0.23, 0.0), _car_mat("rim", paint))
-			rim.rotation.z = PI * 0.5
-			spin.add_child(rim)
-			var spoke := _part(BoxMesh, Vector3(sx * 0.03, 0, 0), Vector3(0.235, 0.36, 0.06), _car_mat("trim", paint))
-			spin.add_child(spoke)
+			# the same tyre and five-spoke rim as the traffic's, in the player's car shader:
+			# the spokes are in the rim's own coordinates, so they turn with it
+			var wm := CarMesh.new()
+			_wheel(wm, Vector3.ZERO, 0.33, sx, Color(_tone["tyre"], 0.3), Color(_tone["rim"], 0.4))
+			var wheel := MeshInstance3D.new()
+			wheel.mesh = wm.mesh(_player_car_mat)
+			spin.add_child(wheel)
 			_spinners.append(spin)
 			if wz > 0.0:
 				_wheels.append([pivot, 0.0])
@@ -7359,38 +7708,7 @@ func _poly(buf: Buf, pts: Array, out: Vector3) -> void:
 	for i in range(1, pts.size() - 1):
 		buf.tri(pts[0], pts[i], pts[i + 1], n, Color.WHITE)
 
-## a side outline (z, y) pushed out to x = -hw .. hw: two side faces and the band around
-func _prism(buf: Buf, outline: PackedVector2Array, hw: float) -> void:
-	var idx := Geometry2D.triangulate_polygon(outline)
-	for sx: float in [-1.0, 1.0]:
-		for i in range(0, idx.size(), 3):
-			var a := outline[idx[i]]
-			var b := outline[idx[i + 1]]
-			var d := outline[idx[i + 2]]
-			buf.tri(Vector3(hw * sx, a.y, a.x), Vector3(hw * sx, b.y, b.x), Vector3(hw * sx, d.y, d.x), Vector3(sx, 0, 0), Color.WHITE)
-	var centre := Vector2.ZERO
-	for p in outline:
-		centre += p
-	centre /= outline.size()
-	for i in range(outline.size()):
-		var a := outline[i]
-		var b := outline[(i + 1) % outline.size()]
-		var e := (b - a).normalized()
-		var nrm := Vector2(e.y, -e.x)
-		if nrm.dot((a + b) * 0.5 - centre) < 0.0:
-			nrm = -nrm
-		buf.quad3(Vector3(-hw, a.y, a.x), Vector3(hw, a.y, a.x), Vector3(hw, b.y, b.x), Vector3(-hw, b.y, b.x))
-		# quad3 orients up; fix the band's facing to point out of the outline
-		var count := 6
-		for k in range(buf.n.size() - count, buf.n.size()):
-			buf.n[k] = Vector3(0, nrm.y, nrm.x)
-		var t0 := buf.v.size() - count
-		if (buf.v[t0 + 1] - buf.v[t0]).cross(buf.v[t0 + 2] - buf.v[t0]).dot(Vector3(0, nrm.y, nrm.x)) > 0.0:
-			for k: int in [t0, t0 + 3]:
-				var tmp := buf.v[k + 1]
-				buf.v[k + 1] = buf.v[k + 2]
-				buf.v[k + 2] = tmp
-
+## an axis-aligned box centred at c
 func _box(buf: Buf, c: Vector3, size: Vector3) -> void:
 	var h := size * 0.5
 	for ax in range(3):
