@@ -690,6 +690,14 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   1 min, the recording (`RECORD=1`, 966 frames) about 18.5 min, the side-by-side under 1
   min, the three playtests (levels 5, 1, 6) about a minute together -- the whole chain about
   21 min. Tell the user so when you start it.
+- **Other sessions' city-wide things land on the walks' lines after a merge** -- bollards,
+  café tables, and the front gardens' bougainvillea clumps that hang over a pavement's back
+  (`_add_post` 0.45 m off the garden wall, r 0.22: two of them on walk 2 at 1 s and 29 s).
+  `SCAN=1` finds them; `POSTS_NEAR=x,z,r` lists the posts there and also the nearest road's
+  edge and which way the road lies, so the walk can step to the road side by the right
+  amount. Where a clump and a tree in the pavement leave less than half a metre, the walk
+  goes round the tree's road side as a person would, and Catmull-Rom cuts the corner: keep
+  0.65 m off a tree's centre at the points either side, not just at one.
 - **The film's clock is decoding from its start.** `ffmpeg -ss` before `-i` lands on the
   wrong frames in this clip's first seconds (VLC's variable-rate transcode: 2999 frames in
   100 s, said to be 60 fps); `-vf trim=a:b,setpts=PTS-STARTPTS` agrees with the
@@ -904,8 +912,43 @@ it is dropped.
   out of the collisions within a junction's corner (`_walls_of`): there they are a step a
   turning car sweeps over.
 
+## Sizes against life (`tests/scale_check.gd`, 20 Nov 2026)
+
+The user's sister said the scale felt off; the check measures what the game builds. Vehicles
+are 1:1: a parked sedan 4.62 x 1.8 (2.09 with its mirrors) x 1.46 m, the bus 11.85 x 2.5
+(2.8 with mirrors) x 3.33 m, the player's car 4.4 x 1.9 x 1.55 (its body; 4.75 x 2.39 x 1.78
+with lamps and mirrors); storeys 3.0 m, kerbs 0.14, pavements 2.4. Off:
+
+- **People were tall**: asked 1.62-1.88 m (1.75 on average) against life's ~1.70, the player
+  on foot (a woman's figure) 1.76 against ~1.63. Now `ADULT_LO`-`ADULT_HI`, 1.55-1.85, and
+  1.66 for the player. (A first reading said they were drawn 6% over what they ask: that
+  was the model's box, which is taken before `_humanize` scales the bones -- the head
+  smaller, the legs longer, then the whole 1.06 up to give the asked height back.)
+- **The fields of view were wide**: on foot 66 deg up and down (98 across a 16:9 screen),
+  from the eyes 70 (102), driving 64-74 (96-106), the seat 72-78 (up to 113): the near
+  loomed and the rest looked small and far -- the likeliest "scale feels off". Now on foot
+  56, from the eyes 58, driving 54-62, the seat 58-64 (the user agreed); the filmed walks
+  keep 70, an upright phone's frame, as they are set beside its film.
+- Lanes by OSM's widths: tertiary 3.8 m a lane, a one-way residential street 8 m kerb to
+  kerb with its cars parked mostly up on the pavement, so its asphalt reads as one wide lane
+  (life: ~3 m of lane between two rows of cars parked in the road).
+
 ## Open problems
 
+- **Tel Aviv's lights and the exam, first round** (Nov 2026). `light_audit` at level 7:
+  4 junctions where crossing streets shared a green, all skewed (55-65 degrees): the ways
+  from inside a junction (the road between two of its points, no light) were counted in
+  `_site_axes`' split into two groups, and their directions forced a bad one (Weizmann
+  shared its green with Dafna and Berkovich) -- now left out (the audit skips them too);
+  0, and the other towns unchanged. 8 ways in with no light: poles were never put up on a
+  bridge's deck (every spot beside it was tried at the ground's level: the road below or
+  the deck's wall) -- now on the parapet's line at the deck's height, and no post at the
+  ground's level under it; 5 left, the same kinds as the other towns'. The exam: 25 checks,
+  then 16 -- traffic into kerbside trees and a corner bollard (Begin x Kaplan), cars
+  overlapping where Begin's slip roads merge, "held by nothing" loops there, ~1 red run a
+  minute; autodrive clean but for 2 brushes of the parapet at the HaShalom bridge's east
+  junction, up in the air. Its "off the asphalt" measured to the road below a bridge: now
+  at the car's level.
 - **Tel Aviv's decks, what is left** (Nov 2026; `tests/decks.gd` at level 7). Short hops
   where ramps meet: Moses and Arvei Nahal's embankments (crests at the ramps' tops, the
   same kind as Bedford's Anderson Lake hop: `infer` has no vertical curve at a ramp's top

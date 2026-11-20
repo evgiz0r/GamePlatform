@@ -107,6 +107,9 @@ d = {
     "crossings": [[661.6, -672.2], [655.1, -664.7]],
     # the bollards round Sheinkin's corner with Ha-Meri are white (film 76-86 s)
     "white_bollards": [{"near": P(86.0, -2.0), "r": 12.0}],
+    # Sirkin, where the Sheinkin-Sirkin walk waits and looks left to the shops (its 70-74 s):
+    # no car parked beside it, nor across the way in the line to the shops
+    "no_parking": [{"near": [485.5, -737.5], "r": 8.0}, {"near": [478.5, -742.0], "r": 8.0}],
     # the block at the passage's north-west corner stands on columns along Katzenelson: shops
     # 3 m back under the upper floors, the walk goes between them and the columns (film 18-23 s)
     "buildings": [{"near": P(15, -15), "arcade": [list(ARC_A), list(ARC_E)], "depth": ARC_DEPTH, "h": 3.4}],
@@ -256,7 +259,7 @@ def _mark(sec):
             item["src"] = SRC
 for sec in ("drop", "set", "add"):
     _mark(d["roads"].get(sec, []))
-for sec in ("buildings", "surfaces", "lines", "props", "areas", "white_bollards"):
+for sec in ("buildings", "surfaces", "lines", "props", "areas", "white_bollards", "no_parking"):
     _mark(d.get(sec, []))
 def _bare(item):
     return {k: v for k, v in item.items() if k != "src"} if isinstance(item, dict) else item
