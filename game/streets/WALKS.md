@@ -166,4 +166,6 @@ Its film is not in this repo or this machine's scratch: a session needs a clip o
   across the walk's pavement (86 s: details' `clear`); the end 1.9 m from the corner's tree,
   not 1.0 (its trunk filled the last look); a passer-by who kept pace just ahead for 80 s
   now draws away after a few seconds (both walks). The fruit crates at 16 s are the green
-  corner shop's, from the film: kept.
+  corner shop's, from the film: kept. Then another session placed the film's red hydrant at
+  the corner (3:22) on the walk's last metre: the end moved to (487.5, -770.9), between it
+  and the light's pole, 1.1 m or more from everything.

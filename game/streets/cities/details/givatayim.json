@@ -818,8 +818,6 @@
   }
  ],
  "props": [
-  {"kind": "hydrant", "at": [488.0, -769.6], "dir": [-1, 0], "src": "filmed walk, Sheinkin and Sirkin: 3:22, a red hydrant at the back of the pavement by the corner building"},
-  {"kind": "bin", "at": [486.3, -774.1], "src": "3:26, a bin at the corner by the light's pole"},
   {
    "kind": "bin",
    "at": [
@@ -1478,6 +1476,26 @@
     -0.7532
    ],
    "src": "make_givatayim"
+  },
+  {
+   "kind": "hydrant",
+   "at": [
+    488.0,
+    -769.6
+   ],
+   "dir": [
+    -1,
+    0
+   ],
+   "src": "filmed walk, Sheinkin and Sirkin: 3:22, a red hydrant at the back of the pavement by the corner building"
+  },
+  {
+   "kind": "bin",
+   "at": [
+    486.3,
+    -774.1
+   ],
+   "src": "3:26, a bin at the corner by the light's pole"
   },
   {
    "kind": "bollard",
@@ -2165,13 +2183,13 @@
     ],
     [
      101.0,
-     488.0,
-     -770.4
+     487.5,
+     -770.9
     ],
     [
      106.0,
-     488.0,
-     -770.4
+     487.5,
+     -770.9
     ]
    ],
    "looks": [
