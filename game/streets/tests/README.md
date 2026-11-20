@@ -35,10 +35,14 @@ these numbers the wrong way has broken something.
 | `buildings_on_roads` | 1 | buildings still standing on a road's asphalt | 3 (passages, on purpose) |
 | `corners` | 1 | junction corners the old middle-only check let in whole | 261 (fixed), shots |
 | `map_edge` | 3 | the car coasting into the map's edge | stops nose to the barrier |
-| `road_blocks` | 4 | things solid to the car on a road's lanes: a median over another road, walls, posts (shots from above) | test town: 0 medians, 0 posts; 16 walls across service lanes |
+| `road_blocks` | 4, 1 | things solid to the car on a road's lanes, a junction's middle or a rounded corner's asphalt: a median over another road, walls, posts (bollards, sign poles, railing ends; shots from above) | test town: 0 medians, 0 posts; 16 walls across service lanes. Givatayim: (see below) |
 | `medians` | 4 | the raised medians from a driver's seat where they end and bend (shots) | |
 | `mountains` | 4 | the test town's mountains from the car, the hill, a mountainside, and the turbines (shots) | |
 | `go_where` | 4 | zoomed out, a long press on a street: destination set, the view down, the city on, the car there; a quick press does nothing | 9 m from the press, arrived; quick press: none |
+| `picker` | 4 | the "go to…" list: jump to chosen at start, drive to chosen, then a street picked: the car jumped there (shots) | jump first; 48 m from the street's first point after the jump (put in its lane) |
+| `pave_overlap` | 7, 1 | pavement laid twice over one spot (two streets', a street's and a corner's) -- which flickers on a phone between the two patterns -- and kerb tops on pavement; the worst places (shots) | Tel Aviv: 19,360 m2 laid twice before; now 5,355 m2, of it two different pavings 30 m2 (the rest a strip's own next piece at a bend, the same paving laid the same way) |
+| `top_at` | any | shots of places by map point (`AT`), from above and from a car's height, and the car put down anywhere (`CAR=x,z,dx,dz`, off the road too) and shot from the chase camera: for matching a user's screenshot | shots |
+| `street_at` | any | the car put down 25 m before each roundabout (`RINGS_ONLY=0`: each junction) on a street by name (`STREET`), shot from the chase camera | shots |
 | `median_cross` | 4 | the car across a median at 10, 30, 50 km/h: over it, riding up, slowed by the jolts | over at 30 and 50 |
 | `autodrive_edge` | 1, 3 | autodrive put on streets that run off the map, 120 m short, facing out: touches of the barrier, turn-rounds, time near it | Givatayim: touched the barrier 1 (a one-way motorway with no exit), turned round 5, 31 s near it (were 9, 9, 59 s); Ashdod 1, 6, 31 s (10, 12, 71 s) |
 | `feet` | 1 | a walker's feet against the pavement's top | 0.21 = 0.21 |
