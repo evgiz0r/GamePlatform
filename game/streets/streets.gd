@@ -1961,6 +1961,7 @@ func _build_tile(t: Vector2i) -> void:
 		a.clear()   # made by one builder for the next, square by square
 	var tk := Time.get_ticks_msec()
 	_ao = CBuf.new(GROUND_CELL)
+	await _note_corner_fills()   # (before anything is stood anywhere: see _off_road)
 	await _build_ground()
 	await _decks.build()
 	tk = _stage("roads", tk)
@@ -3490,80 +3491,111 @@ func _walk_pts(pts: PackedVector2Array, k: int, step: int, dist: float) -> Array
 ## the mouth of a T, a straight kerb; between the two halves of a divided road, a flat nose.
 var _corner_cut_at: Array = []        ## corners laid piece by piece: [middle, middle clear] (for tests)
 
+## A junction's corners, worked out from its kerbed arms: one per pair of arms next to each
+## other round it -- [index, A's road, P (A's right edge at the cut), Q (B's left edge), the
+## curve's corner point X (or null), whether it is rounded, A's and B's ways out]. [] when the
+## point is not a junction of three kerbed ways or more.
+func _corners_at(ni: int, count := false) -> Array:
+	var out: Array = []
+	if _kerb_arms(ni) < 3:
+		return out
+	var c := _nodes[ni]
+	var cut := _node_r[ni] + KERB_CUT
+	var arms: Array = []   # [angle, point at the cut, way out there, half width, road]
+	var through: Array = []   # the ways out of pieces too short for a corner of their own
+	for e: Vector2i in _node_roads[ni]:
+		var r: Dictionary = _roads[e.x]
+		if not _kerbed(r):
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		for step: int in [-1, 1]:
+			if e.y + step < 0 or e.y + step >= pts.size():
+				continue
+			var at: Array = _walk_pts(pts, e.y, step, cut)
+			if not at[2]:
+				var q := pts[e.y + step]
+				through.append(atan2(q.y - c.y, q.x - c.x))
+				continue   # too short to reach the corner (a piece across a median)
+			var p: Vector2 = at[0]
+			arms.append([atan2(p.y - c.y, p.x - c.x), p, at[1], float(r["w"]) * 0.5, e.x])
+	if arms.size() < 2:
+		return out
+	arms.sort_custom(func(x, y): return x[0] < y[0])
+	for i in range(arms.size()):
+		var A: Array = arms[i]
+		var B: Array = arms[(i + 1) % arms.size()]
+		var gap: float = fposmod(float(B[0]) - float(A[0]), TAU)
+		if gap > 3.6 or gap < 0.02:
+			continue
+		# no corner across a road that goes out between the two: on a divided road's median
+		# side, the piece of the cross street through the median. (Laid anyway, it ran
+		# straight across the opening; cut up where it lay on the asphalt, what was left
+		# stood out of the island's end as an arrowhead and spikes.)
+		var crossed := false
+		for ang: float in through:
+			var into := fposmod(ang - float(A[0]), TAU)
+			if into > 0.05 and into < gap - 0.05:
+				crossed = true
+				break
+		if crossed:
+			if count and _mine(c):
+				_tally("corners_across_roads", 1)
+			continue
+		var ua: Vector2 = A[2]
+		var ub: Vector2 = B[2]
+		var P: Vector2 = (A[1] as Vector2) + Vector2(-ua.y, ua.x) * float(A[3])   # A's right edge
+		var Q: Vector2 = (B[1] as Vector2) + Vector2(ub.y, -ub.x) * float(B[3])   # B's left edge
+		if P.distance_to(Q) > 45.0:
+			continue
+		var X = Geometry2D.line_intersects_line(P, ua, Q, ub)
+		var round := X != null and gap > 0.35 and gap < 2.9 and (X as Vector2).distance_to(c) < cut * 2.5 \
+			and ((X as Vector2) - P).dot(ua) < 0.0 and ((X as Vector2) - Q).dot(ub) < 0.0
+		out.append([i, int(A[4]), P, Q, X, round, ua, ub])
+	return out
+
+## the rounded corners' curve: from P to Q, bent toward the corner point X
+func _corner_curve(P: Vector2, X: Vector2, Q: Vector2) -> PackedVector2Array:
+	var curve := PackedVector2Array()
+	for k in range(7):
+		var t := k / 6.0
+		curve.append(P * (1.0 - t) * (1.0 - t) + X * 2.0 * (1.0 - t) * t + Q * t * t)
+	return curve
+
+## Before anything stands in a square (trees go in before the kerbs): every rounded corner
+## that reaches it noted in _corner_fill, so _off_road keeps all of it off their asphalt
+func _note_corner_fills() -> void:
+	for ni: int in _nodes_near(60.0):
+		if _over():
+			await _pause()
+		for cn: Array in _corners_at(ni):
+			var key: int = ni * 16 + int(cn[0])
+			if not cn[5] or _corner_fill.has(key):
+				continue
+			var poly := PackedVector2Array([cn[4]])
+			poly.append_array(_corner_curve(cn[2], cn[4], cn[3]))
+			_corner_fill[key] = poly
+			_hash_add(_fill_hash, _bld_box_of(poly), BLD_CELL, key)
+
 func _kerb_corners(kerb: Buf, pave: Buf, fill: Buf, col: Color) -> void:
 	for ni: int in _nodes_near(60.0):   # (every square a corner reaches works it out)
 		if _over():
 			await _pause()
-		if _kerb_arms(ni) < 3:
-			continue
 		var c := _nodes[ni]
-		var cut := _node_r[ni] + KERB_CUT
-		var arms: Array = []   # [angle, point at the cut, way out there, half width, road]
-		var through: Array = []   # the ways out of pieces too short for a corner of their own
-		for e: Vector2i in _node_roads[ni]:
-			var r: Dictionary = _roads[e.x]
-			if not _kerbed(r):
-				continue
-			var pts: PackedVector2Array = r["pts"]
-			for step: int in [-1, 1]:
-				if e.y + step < 0 or e.y + step >= pts.size():
-					continue
-				var at: Array = _walk_pts(pts, e.y, step, cut)
-				if not at[2]:
-					var q := pts[e.y + step]
-					through.append(atan2(q.y - c.y, q.x - c.x))
-					continue   # too short to reach the corner (a piece across a median)
-				var p: Vector2 = at[0]
-				arms.append([atan2(p.y - c.y, p.x - c.x), p, at[1], float(r["w"]) * 0.5, e.x])
-		if arms.size() < 2:
-			continue
-		arms.sort_custom(func(x, y): return x[0] < y[0])
-		for i in range(arms.size()):
-			var A: Array = arms[i]
-			var B: Array = arms[(i + 1) % arms.size()]
-			var gap: float = fposmod(float(B[0]) - float(A[0]), TAU)
-			if gap > 3.6 or gap < 0.02:
-				continue
-			# no corner across a road that goes out between the two: on a divided road's median
-			# side, the piece of the cross street through the median. (Laid anyway, it ran
-			# straight across the opening; cut up where it lay on the asphalt, what was left
-			# stood out of the island's end as an arrowhead and spikes.)
-			var crossed := false
-			for ang: float in through:
-				var into := fposmod(ang - float(A[0]), TAU)
-				if into > 0.05 and into < gap - 0.05:
-					crossed = true
-					break
-			if crossed:
-				if _mine(c):
-					_tally("corners_across_roads", 1)
-				continue
-			var ua: Vector2 = A[2]
-			var ub: Vector2 = B[2]
+		for cn: Array in _corners_at(ni, true):
+			var i: int = cn[0]
+			var P: Vector2 = cn[2]
+			var Q: Vector2 = cn[3]
+			var X = cn[4]
+			var round: bool = cn[5]
 			_laid_by = -2 - (ni * 16 + i)
-			_set_pave_code(_hash_i((_roads[int(A[4])]["pts"] as PackedVector2Array)[0]))   # (the paving of one of its streets)
-			var P: Vector2 = (A[1] as Vector2) + Vector2(-ua.y, ua.x) * float(A[3])   # A's right edge
-			var Q: Vector2 = (B[1] as Vector2) + Vector2(ub.y, -ub.x) * float(B[3])   # B's left edge
-			if P.distance_to(Q) > 45.0:
-				continue
+			_set_pave_code(_hash_i((_roads[int(cn[1])]["pts"] as PackedVector2Array)[0]))   # (the paving of one of its streets)
 			var curve := PackedVector2Array()
-			var X = Geometry2D.line_intersects_line(P, ua, Q, ub)
-			var round := X != null and gap > 0.35 and gap < 2.9 and (X as Vector2).distance_to(c) < cut * 2.5 \
-				and ((X as Vector2) - P).dot(ua) < 0.0 and ((X as Vector2) - Q).dot(ub) < 0.0
 			if round:
-				for k in range(7):
-					var t := k / 6.0
-					curve.append(P * (1.0 - t) * (1.0 - t) + (X as Vector2) * 2.0 * (1.0 - t) * t + Q * t * t)
+				curve = _corner_curve(P, X, Q)
 				# the asphalt out to the curve (the two streets' edges met in a sharp corner)
 				var xg := _g3(X, Y_ROAD)
 				for k in range(6):
 					fill.tri(xg, _g3(curve[k], Y_ROAD), _g3(curve[k + 1], Y_ROAD), Vector3.UP, Color.WHITE)
-				var key := ni * 16 + i
-				if not _corner_fill.has(key):
-					var poly := PackedVector2Array([X])
-					poly.append_array(curve)
-					_corner_fill[key] = poly
-					_hash_add(_fill_hash, _bld_box_of(poly), BLD_CELL, key)
 			else:
 				var n := maxi(1, ceili(P.distance_to(Q) / 3.0))
 				for k in range(n + 1):
@@ -3606,9 +3638,10 @@ func _kerb_corners(kerb: Buf, pave: Buf, fill: Buf, col: Color) -> void:
 				along += a.distance_to(b)
 
 ## The asphalt a rounded corner adds out to its curve (_kerb_corners), which no road's width
-## covers: a bollard by a zebra near a junction, checked against the roads alone, stood out
-## in it, in front of the kerb. Kept for the whole city (the furniture is laid after the
-## kerbs, square by square): ni * 16 + corner -> [the corner point, the curve...].
+## covers: bollards by a zebra near a junction and sign poles at the corner, checked against
+## the roads alone, stood out in it, in front of the kerb. _off_road counts it as road. Noted
+## for every corner reaching a square before anything is built in it (_note_corner_fills),
+## kept for the whole city: ni * 16 + corner -> [the corner point, the curve...].
 var _corner_fill := {}
 var _fill_hash := {}
 
@@ -7882,7 +7915,7 @@ func _tree_ok(p: Vector2, spacing: float) -> bool:
 ## stood in the lane, and autodrive drove into it again and again.
 func _off_road(p: Vector2, margin: float) -> bool:
 	var hit := _nearest_seg(p, 14.0, true)
-	return hit.is_empty() or float(hit["edge"]) >= margin
+	return (hit.is_empty() or float(hit["edge"]) >= margin) and not _in_corner_fill(p, margin)
 
 ## p is on (or within `margin` of) the asphalt round a junction's point -- the disc as wide as
 ## its widest road that every junction is laid with, which no one road's lanes cover. Railings

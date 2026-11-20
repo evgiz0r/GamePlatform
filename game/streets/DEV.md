@@ -163,10 +163,13 @@ The ones most often touched, and the functions in them:
   on every steep slope too), mountain woods in the tree builder (`MTN_TREES`, drawn from
   further off), `_build_turbines` / `_turbines_tick`; the fog halves in that town
   (`_retint_city`). Only a made-up town with hills gets any of it. `tests/mountains.gd` shoots it.
-- **solid things and the road** -- `_off_road` (a road's edges only), `_in_junction` (the
-  round asphalt at a junction's point) and `_in_corner_fill` (the asphalt a rounded corner adds
-  out to its curve, `_corner_fill`, recorded by `_kerb_corners`: bollards 2-3 m from a zebra
-  near a junction stood in it); furniture's `_free` checks all three. `tests/road_blocks.gd`
+- **solid things and the road** -- `_off_road` (a road's edges, and the asphalt a rounded
+  corner adds out to its curve: `_in_corner_fill`) and `_in_junction` (the round asphalt at a
+  junction's point); furniture's `_free` checks both. The corners' outlines (`_corner_fill`)
+  are noted for every corner reaching a square before anything is built in it
+  (`_note_corner_fills`, from `_corners_at`, the geometry `_kerb_corners` lays): bollards by a
+  zebra near a junction, sign and light poles, trees stood out in them, in front of the kerb.
+  Signs are moved across the corner's kerb instead (`_out_of_corner`). `tests/road_blocks.gd`
   finds anything solid on a road's lanes, a junction's asphalt or a corner's.
 - **loading** -- the squares round the start are built with the city hidden (`world.visible`)
   and hand a frame back every `FG_US` (`_fg_build`: `_over` / `_pause`), the text ticking;
