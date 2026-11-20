@@ -438,6 +438,7 @@ func build() -> void:
 	await flags()
 	await ads()
 	await fences()
+	await kerbside()   # (before the racks and scooters: they keep clear of these)
 	await street_life()
 	for k: String in _count:
 		g._dressing[k] = _count[k]
@@ -912,6 +913,194 @@ func _hedge_line(buf, a: Vector2, e: Vector2) -> float:
 			buf.tri(foot[i], top[j], top[i], n, col)
 		done += p0.distance_to(p1)
 	return done
+
+## ---- what stands at the kerb ----------------------------------------------------------------
+## As a walk down Givatayim's streets has them: bollards -- black with a yellow reflective
+## band, now and then white -- a pair either side of each zebra on both pavements, so no
+## car parks across the way over; on the main roads a white railing of tubes along the kerb
+## instead, 4 m either side of the crossing; a red fire hydrant at the kerb every 130 m or
+## so; a grey utility cabinet at the back of the pavement every 150-200 m; a black bin on
+## the main and shopping streets. All of it solid to the car (posts).
+func kerbside() -> void:
+	var kh: float = g.KERB_H
+	var bollards: Array = []
+	var bollard_white: Array = []
+	var rails: Array = []
+	var hydrants: Array = []
+	var cabinets: Array = []
+	var bins: Array = []
+	for ni: int in g._tile_nodes.get(g._tile, []):
+		if not g._crossing_set.has(ni):
+			continue
+		if g._over():
+			await g._pause()
+		var c: Vector2 = g._nodes[ni]
+		for e: Vector2i in g._node_roads[ni]:
+			var r: Dictionary = g._roads[e.x]
+			if not r["drive"]:
+				continue
+			if r["k"] == "service" or FAST.has(r["k"]):
+				break
+			var pts: PackedVector2Array = r["pts"]
+			var d := (pts[mini(e.y + 1, pts.size() - 1)] - pts[maxi(e.y - 1, 0)]).normalized()
+			var side := Vector2(-d.y, d.x)
+			var hw: float = float(r["w"]) * 0.5
+			var railed: bool = med and MAIN.has(r["k"])
+			var white := _rnd(ni * 7 + 3) < 0.25
+			for sg: float in [-1.0, 1.0]:          # both pavements
+				for way: float in [-1.0, 1.0]:     # both sides of the zebra
+					if railed:   # 1.2 m panels from 2.1 m out to 6 m
+						for k in range(3):
+							var m := c + d * way * (2.1 + 1.2 * k + 0.6) + side * sg * (hw + 0.42)
+							if not _free(m, 0.15, 0.4, 0.5):
+								break
+							rails.append(Transform3D(Basis(Vector3.UP, atan2(-d.y, d.x)), Vector3(m.x, _h(m) + kh, m.y)))
+							g._add_post(m - d * 0.6, 0.06)
+							g._add_post(m + d * 0.6, 0.06)
+					else:
+						for k in range(2):
+							var p := c + d * way * (2.1 + 1.3 * k) + side * sg * (hw + 0.42)
+							if _free(p, 0.15, 0.3, 0.7):
+								(bollard_white if white else bollards).append(Transform3D(Basis(), Vector3(p.x, _h(p) + kh, p.y)))
+								g._add_post(p, 0.11)
+			break   # one road is enough: the zebra's own (as the game lays it)
+	for ri: int in g._tile_roads.get(g._tile, []):
+		var r: Dictionary = g._roads[ri]
+		if not r["drive"] or r["pv"] or r["k"] == "service" or FAST.has(r["k"]):
+			continue
+		if g._over():
+			await g._pause()
+		var hw: float = float(r["w"]) * 0.5
+		var sd := 1.0 if posmod(ri, 2) == 0 else -1.0
+		for sp: Array in _walk_road(r, 130.0, 20.0 + _rnd(ri + 11) * 90.0, hw + 0.4, sd, 6.0):
+			var p: Vector2 = sp[0]
+			if g._mine(p) and _free(p, 0.15, 0.3, 1.2):
+				hydrants.append(Transform3D(Basis(Vector3.UP, _rnd(p.round()) * TAU), Vector3(p.x, _h(p) + kh, p.y)))
+				g._add_post(p, 0.16)
+		var back: float = hw + g.KERB_W + g.PAVE_W - 0.3
+		for sp: Array in _walk_road(r, 150.0 + _rnd(ri + 5) * 50.0, 30.0 + _rnd(ri + 17) * 90.0, back, -sd, 10.0):
+			var p: Vector2 = sp[0]
+			var out: Vector2 = sp[2]
+			if g._mine(p) and _free(p, 1.0, 0.45, 1.2):
+				cabinets.append(Transform3D(Basis(Vector3.UP, atan2(-out.x, -out.y)), Vector3(p.x, _h(p) + kh, p.y)))
+				g._add_post(p, 0.55)
+		if MAIN.has(r["k"]) or r["k"] == "residential" and _rnd(ri + 23) < 0.25:
+			for sp: Array in _walk_road(r, 75.0, 12.0 + _rnd(ri + 29) * 50.0, hw + 0.55, sd, 8.0):
+				var p: Vector2 = sp[0]
+				if g._mine(p) and _free(p, 0.2, 0.4, 1.0):
+					bins.append(Transform3D(Basis(Vector3.UP, _rnd(p.round() + Vector2(1, 1)) * TAU), Vector3(p.x, _h(p) + kh, p.y)))
+					g._add_post(p, 0.3)
+	await _place(_bollard_kit(false), bollards, NEAR_SEEN * 1.2, "bollards")
+	await _place(_bollard_kit(true), bollard_white, NEAR_SEEN * 1.2, "bollards_white")
+	await _place(_rail_kit(), rails, NEAR_SEEN * 1.3, "railings_at_crossings")
+	await _place(_hydrant_kit(), hydrants, NEAR_SEEN, "hydrants")
+	await _place(_cabinet_kit(), cabinets, SEEN * 0.6, "cabinets", true)
+	await _place(_bin_kit(), bins, NEAR_SEEN, "bins")
+
+## a bollard, 0.85 m: black with a yellow reflective band near the top, or plain white
+func _bollard_kit(white: bool) -> ArrayMesh:
+	var key := "bollard%s" % white
+	if _kits.has(key):
+		return _kits[key]
+	var b = g.new_buf()
+	var body: Color = _tone("mark") if white else _tone("cartrim").darkened(0.35)
+	var band: Color = _tone("mark").darkened(0.15) if white else _tone("markyellow")
+	_tube(b, Vector3.ZERO, Vector3(0, 0.6, 0), 0.095, 0.09, body, 10)
+	_tube(b, Vector3(0, 0.6, 0), Vector3(0, 0.7, 0), 0.091, 0.091, band, 10)
+	_tube(b, Vector3(0, 0.7, 0), Vector3(0, 0.82, 0), 0.09, 0.085, body, 10)
+	_tube(b, Vector3(0, 0.82, 0), Vector3(0, 0.86, 0), 0.085, 0.03, body, 10)   # its rounded top
+	var am: ArrayMesh = _mesh(b)
+	_kits[key] = am
+	return am
+
+## a 1.2 m panel of pedestrian railing along local X: white tubes, posts at each end, a top
+## rail and one lower down
+func _rail_kit() -> ArrayMesh:
+	if _kits.has("rail"):
+		return _kits["rail"]
+	var b = g.new_buf()
+	var col: Color = _tone("railing")
+	for x: float in [-0.6, 0.6]:
+		_tube(b, Vector3(x, 0, 0), Vector3(x, 0.98, 0), 0.03, 0.03, col, 6)
+	_tube(b, Vector3(-0.6, 0.95, 0), Vector3(0.6, 0.95, 0), 0.025, 0.025, col, 6)
+	_tube(b, Vector3(-0.6, 0.45, 0), Vector3(0.6, 0.45, 0), 0.02, 0.02, col, 6)
+	for x: float in [-0.3, 0.0, 0.3]:   # the hoops' uprights between
+		_tube(b, Vector3(x, 0.45, 0), Vector3(x, 0.95, 0), 0.015, 0.015, col, 5)
+	var am: ArrayMesh = _mesh(b)
+	_kits["rail"] = am
+	return am
+
+## a fire hydrant, red: its body, the dome on top, an outlet each side and one to the front
+func _hydrant_kit() -> ArrayMesh:
+	if _kits.has("hydrant"):
+		return _kits["hydrant"]
+	var b = g.new_buf()
+	var red: Color = _tone("signred")
+	_tube(b, Vector3.ZERO, Vector3(0, 0.08, 0), 0.15, 0.15, red.darkened(0.2), 10)   # the flange
+	_tube(b, Vector3(0, 0.08, 0), Vector3(0, 0.55, 0), 0.11, 0.1, red, 10)
+	_tube(b, Vector3(0, 0.55, 0), Vector3(0, 0.66, 0), 0.12, 0.05, red, 10)
+	_tube(b, Vector3(0, 0.66, 0), Vector3(0, 0.71, 0), 0.03, 0.02, red.darkened(0.3), 6)
+	for dx: float in [-1.0, 1.0]:
+		_tube(b, Vector3(0.08 * dx, 0.38, 0), Vector3(0.19 * dx, 0.38, 0), 0.045, 0.045, red, 8)
+	_tube(b, Vector3(0, 0.3, 0.08), Vector3(0, 0.3, 0.18), 0.06, 0.06, red, 8)
+	var am: ArrayMesh = _mesh(b)
+	_kits["hydrant"] = am
+	return am
+
+## a utility cabinet: grey sheet metal on a concrete plinth, its doors' seam and a vent,
+## facing +Z
+func _cabinet_kit() -> ArrayMesh:
+	if _kits.has("cabinet"):
+		return _kits["cabinet"]
+	var b = g.new_buf()
+	var grey: Color = _tone("pole").lerp(_tone("mark"), 0.25)
+	_box(b, Vector3(0, 0.06, 0), Vector3(1.1, 0.12, 0.5), _tone("concrete") if g._tone.has("concrete") else grey.darkened(0.2))
+	_box(b, Vector3(0, 0.77, 0), Vector3(1.0, 1.3, 0.4), grey)
+	_box(b, Vector3(0, 1.45, 0), Vector3(1.06, 0.06, 0.46), grey.darkened(0.12))   # its lid
+	_box(b, Vector3(0, 0.77, 0.205), Vector3(0.015, 1.2, 0.01), grey.darkened(0.45))   # the doors' seam
+	_box(b, Vector3(0.3, 1.2, 0.205), Vector3(0.25, 0.12, 0.01), grey.darkened(0.3))  # a vent
+	var am: ArrayMesh = _mesh(b)
+	_kits["cabinet"] = am
+	return am
+
+## a street bin: a dark drum on a short post, a ring round its mouth
+func _bin_kit() -> ArrayMesh:
+	if _kits.has("bin"):
+		return _kits["bin"]
+	var b = g.new_buf()
+	var dark: Color = _tone("cartrim").darkened(0.3)
+	_tube(b, Vector3.ZERO, Vector3(0, 0.25, 0), 0.04, 0.04, dark, 6)
+	_tube(b, Vector3(0, 0.25, 0), Vector3(0, 0.9, 0), 0.22, 0.25, dark, 12)
+	_tube(b, Vector3(0, 0.88, 0), Vector3(0, 0.93, 0), 0.26, 0.26, dark.lightened(0.15), 12)
+	var am: ArrayMesh = _mesh(b)
+	_kits["bin"] = am
+	return am
+
+## an iron tree grate round a street tree's trunk, flat on the pavement: a ring of slots
+## round a plain rim, the soil showing in the middle (for the game's street trees)
+func grate_kit() -> ArrayMesh:
+	if _kits.has("grate"):
+		return _kits["grate"]
+	var b = g.new_buf()
+	var iron: Color = _tone("metal")
+	var soil: Color = _tone("ground").darkened(0.35)
+	var seg := 16
+	for i in range(seg):
+		var a0 := TAU * i / seg
+		var a1 := TAU * (i + 1) / seg
+		var u0 := Vector3(cos(a0), 0, sin(a0))
+		var u1 := Vector3(cos(a1), 0, sin(a1))
+		for ring: Array in [[0.0, 0.24, soil], [0.24, 0.32, iron], [0.32, 0.52, iron.darkened(0.35)], [0.52, 0.62, iron]]:
+			var r0: float = ring[0]
+			var r1: float = ring[1]
+			var col: Color = ring[2]
+			if ring[1] == 0.52 and i % 2 == 0:
+				col = iron   # the bars between the slots
+			b.tri(u0 * r0, u1 * r0, u1 * r1, Vector3.UP, col)
+			b.tri(u0 * r0, u1 * r1, u0 * r1, Vector3.UP, col)
+	var am: ArrayMesh = _mesh(b)
+	_kits["grate"] = am
+	return am
 
 ## ---- bike racks and scooters ----------------------------------------------------------------
 ## By the kerb in front of shops, cafes, schools and the library: a rack of three hoops,
