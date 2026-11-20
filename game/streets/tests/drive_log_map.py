@@ -24,10 +24,12 @@ from PIL import Image, ImageDraw, ImageFont
 HERE = os.path.dirname(os.path.abspath(__file__))
 WHY_COL = {"limit": (90, 200, 120), "curve": (60, 160, 230), "light": (230, 60, 60), "sign": (230, 140, 40),
            "zebra": (240, 220, 60), "people": (240, 220, 60), "car": (170, 100, 230), "blocked": (240, 90, 160),
-           "choice": (120, 200, 240), "": (150, 150, 150)}
+           "choice": (120, 200, 240), "backing": (255, 255, 255), "turning": (160, 160, 170),
+           "pushing": (150, 40, 40), "": (150, 150, 150)}
 WHY_NAME = {"limit": "nothing (the speed limit)", "curve": "a bend or a turn", "light": "a traffic light",
             "sign": "a stop / give-way sign", "zebra": "people on a crossing", "car": "the car ahead",
-            "blocked": "blocked, backing out", "choice": "a junction (which way?)"}
+            "blocked": "something in front", "choice": "a junction (which way?)",
+            "backing": "backing off", "turning": "turning round", "pushing": "pushing, not moving (stuck)"}
 
 
 def _font(size):
@@ -70,7 +72,7 @@ def main(argv):
     span = max(x1 - x0, z1 - z0, 120)
     cx, cz = (x0 + x1) / 2, (z0 + z1) / 2
     x0, z0 = cx - span / 2, cz - span / 2
-    strip = 240
+    strip = 262
     W, H = size, size + strip
     sc = size / span
     img = Image.new("RGB", (W, H), (24, 26, 34))
@@ -183,13 +185,16 @@ def main(argv):
     for a, b in zip(samples, samples[1:]):
         d.line([TX(a["t"]), VY(a["v"]), TX(b["t"]), VY(b["v"])],
                fill=WHY_COL.get(b.get("why", ""), (200, 200, 200)), width=2)
-    x = 10
+    x, ly = 10, y0 + hh + 30
     for why, col in WHY_COL.items():
         if why and why != "people":
             name = WHY_NAME.get(why, why)
-            d.rectangle([x, y0 + hh + 32, x + 12, y0 + hh + 44], fill=col)
-            d.text((x + 17, y0 + hh + 30), name, fill=(220, 220, 220), font=FONT)
-            x += 30 + int(d.textlength(name, font=FONT))
+            wide = 30 + int(d.textlength(name, font=FONT))
+            if x + wide > W:
+                x, ly = 10, ly + 20
+            d.rectangle([x, ly + 2, x + 12, ly + 14], fill=col)
+            d.text((x + 17, ly), name, fill=(220, 220, 220), font=FONT)
+            x += wide
     d.text((10, 6), "%s  %s  %.0f-%.0f s  (grid: the streets as drawn; blue: autodrive's plan every 2 s)" % (
         log.get("name", log["city"]), log.get("made", ""), ta, tb), fill=(230, 230, 230))
     img.save(out)

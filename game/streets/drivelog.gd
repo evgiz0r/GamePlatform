@@ -6,7 +6,8 @@ extends RefCounted
 ## tests/drive_log_map.py draws a saved one over the city's streets.
 ##
 ## A sample: t, x, z, yaw, v, steer, gear, auto, why (what held autodrive's speed down: limit,
-## curve, light, sign, zebra, people, car, blocked, choice, backing, turning), plan (the
+## curve, light, sign, zebra, people, car, blocked, choice -- or what it was doing instead of
+## driving its lane: backing, turning, pushing; see _why()), plan (the
 ## next points of autodrive's lane, every 5 m for 40 m), lead (metres to the car ahead on
 ## it, or -1), cars: [[id, kind, x, z, yaw, v, blocker], ...] within 50 m (at most 10).
 ## Events: [t, what, detail] -- hits, rescues, junction choices, quality steps.
@@ -48,7 +49,7 @@ func tick(g, dt: float) -> void:
 					snappedf(c.v, 0.1), c.blocker])
 	samples.append({"t": snappedf(_t, 0.01), "x": snappedf(g._pos.x, 0.01), "z": snappedf(g._pos.y, 0.01),
 		"yaw": snappedf(g._yaw, 0.001), "v": snappedf(g._v, 0.01), "steer": snappedf(g._steer, 0.001),
-		"gear": g._gear, "auto": g._auto, "walk": g._walking, "why": g._ap_why if g._auto else "",
+		"gear": g._gear, "auto": g._auto, "walk": g._walking, "why": _why(g),
 		"plan": plan, "lead": snappedf(g._ap_lead, 0.1), "cars": cars})
 	while samples.size() > int(KEEP_S * HZ):
 		samples.pop_front()
@@ -80,3 +81,19 @@ func save(g) -> String:
 	f.store_string(text)
 	f.close()
 	return ProjectSettings.globalize_path("user://drive_logs/" + name)
+
+## What held the car: what autodrive slowed for (its speed target's reason), unless it was
+## busy otherwise -- backing off something, turning round on the spot, or pushing: foot on
+## the gas and not moving, held by something it did not see coming (its plan said "the
+## speed limit", and a log read "limit" at 0 km/h for a minute: the car was up against a
+## post the whole time).
+func _why(g) -> String:
+	if not g._auto:
+		return ""
+	if g._ap_back > 0.0:
+		return "backing"
+	if g._ap_turn > 0.0:
+		return "turning"
+	if g._ap_stuck > 0.3:
+		return "pushing"
+	return g._ap_why
