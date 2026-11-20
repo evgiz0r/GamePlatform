@@ -1692,10 +1692,15 @@ def bake(raw, name, args):
 # and dropped -- with `tree_info` beside them, and `tree_surveys` says which trees each survey
 # brought and whether it maps every tree ("all": from the air, so yards and parks too) or the
 # street trees alone (a game should not make up its own where one covers).
+# "shift" (m, x east and z south) moves its trees onto OSM's map: the town's own buildings
+# from the same server were measured that far off OSM's outlines (survey_apply's log line,
+# 20-21 Nov 2026); without it a tenth of Tel Aviv's street trees stood inside a house.
 TREE_SURVEYS = [
     {"id": "tel_aviv_trees", "file": "tel_aviv_trees.json", "rows": "rows", "all": False,
+     "shift": (-0.4, -1.9),
      "credit": "street trees © Tel Aviv-Yafo Municipality"},   # [lon, lat, species, latin, where]
     {"id": "givatayim_trees", "file": "givatayim_trees.json", "rows": "trees", "all": True,
+     "shift": (0.8, -0.6),
      "credit": "trees © Givatayim Municipality"},              # [lon, lat, crown radius m]
 ]
 # The form a species grows into, by a word in its Hebrew name (the first that matches; else
@@ -1737,8 +1742,10 @@ def tree_surveys_apply(out, P, data_dir):
         with open(path, encoding="utf-8") as f:
             rows = json.load(f)[s["rows"]]
         start, split = len(got), 0
+        sx, sz = s.get("shift", (0.0, 0.0))
         for row in rows:
             x, z = P(row[1], row[0])
+            x, z = x + sx, z + sz
             if not (x0 <= x <= x1 and z0 <= z <= z1):
                 continue
             if not s["all"]:
