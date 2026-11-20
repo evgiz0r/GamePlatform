@@ -41,14 +41,14 @@ func _auto_runs() -> Array:
 	var cand: Array = []
 	for ri: int in g._decks.decks:
 		var r: Dictionary = g._roads[ri]
-		if String(r["deck"]) != "br" or not r["drive"]:
+		if not (String(r["deck"]) in ["br", "tu"]) or not r["drive"]:
 			continue
 		var ys: PackedFloat32Array = r["ys"]
 		var gs: PackedFloat32Array = r["gs"]
 		var up := 0.0
 		for j in range(ys.size()):
-			up = maxf(up, ys[j] - gs[j])
-		cand.append([up, ri])
+			up = maxf(up, absf(ys[j] - gs[j]))
+		cand.append([up + (100.0 if String(r["deck"]) == "tu" else 0.0), ri])   # (the tunnels first: few)
 	cand.sort_custom(func(a, b): return a[0] > b[0])
 	var out: Array = []
 	var taken: Array = []
@@ -61,41 +61,12 @@ func _auto_runs() -> Array:
 		taken.append(mid)
 		var d := (pts[pts.size() - 1] - pts[0]).normalized()
 		var nm := "%s_%d" % [String(r["en"] if r["en"] != "" else r["name"]).replace(" ", "_"), int(c[1])]
-		print("bridge %s: %.1f m up, %s" % [nm, c[0], mid])
+		var tunnel := String(r["deck"]) == "tu"
+		print("%s %s: %.1f m %s, %s" % ["tunnel" if tunnel else "bridge", nm, fmod(c[0], 100.0), "down" if tunnel else "up", mid])
 		for way: float in ([1.0] if int(r["o"]) != 0 else [1.0, -1.0]):
 			var face := d * way * (float(r["o"]) if int(r["o"]) != 0 else 1.0)
-			out.append([nm + ("" if way > 0 else "_back"), mid, atan2(face.y, face.x), 14.0, "top"])
+			out.append([nm + ("" if way > 0 else "_back"), mid, atan2(face.y, face.x), 14.0, "low" if tunnel else "top"])
 		if out.size() >= 10:
-			break
-	# and its tunnels (decks.gd: infer_tunnels), the longest four, driven through both ways
-	# from their middle, on the tunnel's road ("low")
-	var tun: Array = []
-	for ri: int in g._decks.decks:
-		var r: Dictionary = g._roads[ri]
-		if String(r["deck"]) != "tu" or not r["drive"]:
-			continue
-		var pts: PackedVector2Array = r["pts"]
-		var L := 0.0
-		for j in range(pts.size() - 1):
-			L += pts[j].distance_to(pts[j + 1])
-		tun.append([L, ri])
-	tun.sort_custom(func(a, b): return a[0] > b[0])
-	var tunnels := 0
-	for c: Array in tun:
-		var r: Dictionary = g._roads[int(c[1])]
-		var pts: PackedVector2Array = r["pts"]
-		var mid: Vector2 = pts[pts.size() / 2].lerp(pts[(pts.size() - 1) / 2], 0.5)
-		if taken.any(func(t): return (t as Vector2).distance_to(mid) < 150.0):
-			continue
-		taken.append(mid)
-		var d := (pts[pts.size() - 1] - pts[0]).normalized()
-		var nm := "tunnel_%s_%d" % [String(r["en"] if r["en"] != "" else r["name"]).replace(" ", "_"), int(c[1])]
-		print("tunnel %s: %.0f m, %.1f m down, %s" % [nm, c[0], g._h(mid) - g._decks.deck_y(int(c[1]), mid), mid])
-		for way: float in ([1.0] if int(r["o"]) != 0 else [1.0, -1.0]):
-			var face := d * way * (float(r["o"]) if int(r["o"]) != 0 else 1.0)
-			out.append([nm + ("" if way > 0 else "_back"), mid, atan2(face.y, face.x), 20.0, "low"])
-		tunnels += 1
-		if tunnels >= 4:
 			break
 	return out
 
@@ -167,7 +138,7 @@ func _drive(run: Array) -> void:
 	var face := Vector2(cos(float(run[2])), sin(float(run[2])))
 	if g._auto:
 		g._set_auto(false)
-	g._y = (g._decks.surf(at, -1.0e6) if run[4] == "low" else g._decks.surf(at, 1.0e6)) if run.size() > 4 else g._h(at)
+	g._y = g._h(at) if run.size() < 5 else g._decks.surf(at, 1.0e6 if run[4] == "top" else -1.0e6)
 	if not g._land_on_road(at, 30.0, face):
 		print("%s: no road near %s" % [name, at])
 		return

@@ -21,7 +21,7 @@ const LEVELS := [
 	{"name": "Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med"},
 	# "decks": "infer" -- its bridges' heights worked out as it loads (decks.gd: infer)
 	{"name": "Bedford, Nova Scotia", "city": "bedford", "look": "north", "decks": "infer"},
-	{"name": "Ashdod", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med"},
+	{"name": "Ashdod", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med", "decks": "infer"},
 	# made up by tools/fake_city.py: one small town with one of everything, ringed by mountains,
 	# that loads in a moment -- for checking a change, not for exploring
 	{"name": "Kiryat Dimyon (test town)", "city": "dimyon", "start": ["הנשיא", "השוק"], "look": "med"},
@@ -908,6 +908,8 @@ var _odo := 0.0
 var _assist := true
 var _touch_t := 0.0                  ## counts down after the car touched something
 var _pinned_t := 0.0
+var _pinned_back := 0.0              ## of it, seconds the pedal was for reversing
+var _pin_hinted := false
 var _pin_at := Vector2.ZERO          ## where the car was when it started pushing against something
 var _last_hit := ""                  ## what the car last bumped: "building 12" / "post 40", for the report
 
@@ -1464,9 +1466,6 @@ func _load_city(id: String) -> bool:
 	if String(_place.get("decks", "")) == "infer":   # (OSM has no heights: worked out here)
 		var t_inf := Time.get_ticks_msec()
 		_inferred = Decks.infer(data, DRIVE)
-		var dug := Decks.infer_tunnels(data, DRIVE)   # (after the bridges: clear of their ramps)
-		if not dug.is_empty():
-			_inferred["tunnels"] = dug
 		_inferred["ms"] = Time.get_ticks_msec() - t_inf
 	_city_name = String(data.get("name", id))
 	var b: Array = data["bounds"]
@@ -1683,7 +1682,11 @@ func _build_world() -> bool:
 	for i in range(near.size()):
 		if not await _step("the streets round the start (%d of %d)" % [i + 1, near.size()]):
 			return false
+		_fg_text = _loading.text
+		_fg_build = true
+		_yield_at = Time.get_ticks_usec() + FG_US
 		await _build_tile(near[i])
+		_fg_build = false
 	_tiles_todo = _tiles_todo.filter(func(t): return not _tiles_done.has(t))
 	if _details != null:   # what a filmed walk added: built whole, once (details.gd)
 		await _details.build()
@@ -1719,8 +1722,16 @@ var _tile_signs := {}                ## square -> stop and give-way signs
 var _tile_lit := {}                  ## square -> junctions with traffic lights
 var _tile_bars := {}                 ## square -> mapped fences and hedges that reach it
 var _crossing_set := {}
+var _white_bollards := {}            ## crossing nodes whose bollards are white, as filmed (details.gd)
 var _bg_build := false               ## building in the background: stop for the frame when over budget
 var _bg_wait := false
+## The squares round the start are built behind the loading text, and each used to go up in one
+## piece: the biggest, "1 of 6", froze a browser's page for seconds (and looked hung). Now
+## they too hand a frame back every FG_US, the text ticking over meanwhile.
+var _fg_build := false
+const FG_US := 80000
+var _fg_text := ""
+var _fg_spin := 0
 var _yield_at := 0
 var _build_us := BUILD_US
 var _build_lbl: Label
@@ -1802,12 +1813,18 @@ func _tally(k: String, n: int) -> void:
 
 ## the frame's building time is used up
 func _over() -> bool:
-	return _bg_build and Time.get_ticks_usec() > _yield_at
+	return (_bg_build or _fg_build) and Time.get_ticks_usec() > _yield_at
 
 ## Building in the background: hand the frame back and go on in the next one. Meanwhile
 ## the game is not building a square, so whatever it makes in between (night's light pools)
 ## is its own, not that square's.
 func _pause() -> void:
+	if _fg_build:   # loading: no game frame to wait for -- just let one be drawn
+		_fg_spin += 1
+		_loading.text = _fg_text + "  " + ["·  ", " · ", "  ·", " · "][_fg_spin % 4]
+		await get_tree().process_frame
+		_yield_at = Time.get_ticks_usec() + FG_US
+		return
 	var was := _tiled
 	var batching := _batching
 	_set_tiling(false)
@@ -2805,7 +2822,7 @@ func _build_kerbs() -> void:
 	var wall := _clip_buf(GROUND_CELL)
 	var garden := _clip_buf(GROUND_CELL)
 	var fronts := {"hedge": _clip_buf(GROUND_CELL), "bars": _clip_buf(GROUND_CELL), "bar_posts": _clip_buf(GROUND_CELL),
-		"chain": _clip_buf(GROUND_CELL), "chain_posts": _clip_buf(GROUND_CELL), "flowers": []}
+		"chain": _clip_buf(GROUND_CELL), "chain_posts": _clip_buf(GROUND_CELL), "planks": _clip_buf(GROUND_CELL), "flowers": []}
 	var bushes: Array = []
 	var med := String(_place.get("look", "")) == "med"
 	for ri: int in _tile_roads.get(_tile, []):
@@ -2944,6 +2961,7 @@ func _build_kerbs() -> void:
 	_add_mesh(fronts["bar_posts"], _surface("railing"), false, DETAIL_RANGE * 0.8)
 	_add_mesh(fronts["chain"], _furn._fence_material("fencegreen", 0.12), false, DETAIL_RANGE * 0.8)
 	_add_mesh(fronts["chain_posts"], _surface("fencegreen"), false, DETAIL_RANGE * 0.8)
+	_add_mesh(fronts["planks"], _vc_mat(), true, DETAIL_RANGE * 0.8)
 	if not (fronts["flowers"] as Array).is_empty():
 		# bougainvillea: a leafy green shrub (the trees' leaf cards, small) with a smaller
 		# crown of magenta on top of it -- the instance colour turns the leaves into flowers
@@ -3215,8 +3233,9 @@ func _set_pave_code(hsh: int) -> void:
 
 ## A garden's front, plot by plot along one side of a street's run (each 14-22 m, a gap
 ## between them where the gates are), as a walk down Givatayim's streets has them: a clipped
-## hedge behind the low wall, white bars or green chain-link on top of it, or the bare wall;
-## bougainvillea spilling over one in six. Keyed to the run, so every square along the
+## hedge behind the low wall, a fence of wooden boards on top of it (a second filmed walk:
+## the commonest front down a whole street), white bars or green chain-link, or the bare
+## wall; bougainvillea spilling over one in six. Keyed to the run, so every square along the
 ## street works out the same plots (the fronts are laid like the kerbs: CBuf.clip).
 func _garden_fronts(run: PackedVector2Array, hw: float, sgn: float, key: int, fronts: Dictionary,
 		walled: PackedByteArray) -> void:
@@ -3233,7 +3252,7 @@ func _garden_fronts(run: PackedVector2Array, hw: float, sgn: float, key: int, fr
 		var h := posmod(key + plot * 7919, 1000003)
 		var e := minf(s + 14.0 + float(posmod(h, 9)), total)
 		var style := posmod(h >> 4, 100)
-		var line := behind if style < 42 else on_wall
+		var line := behind if style < 36 else on_wall
 		var pts: Array = [_along(line, cum, s + 0.7)]
 		var seg: Array = [_seg_at(cum, s + 0.7)]   # the piece of the run each stretch starts on
 		var box := Rect2(pts[0], Vector2.ZERO)
@@ -3250,7 +3269,7 @@ func _garden_fronts(run: PackedVector2Array, hw: float, sgn: float, key: int, fr
 			continue
 		if _over():
 			await _pause()
-		if style < 42:
+		if style < 36:
 			# a hedge behind the wall, on the garden strip: off the roads where the strip is
 			# (looked at already), but it can still run into a house, so it looks for those
 			for k in range(pts.size() - 1):
@@ -3259,11 +3278,18 @@ func _garden_fronts(run: PackedVector2Array, hw: float, sgn: float, key: int, fr
 					# (its ends clear of the asphalt by its half width: where the strip met
 					# another street at a bend, one stood 0.4 m into the road)
 					_furn._hedge_line(fronts["hedge"], pts[k], pts[k + 1], false)
-		elif style < 76:
+		elif style < 56:
+			# wooden boards on the wall, its top to about head height, where the wall is
+			for k in range(pts.size() - 1):
+				var a: Vector2 = pts[k]
+				var b: Vector2 = pts[k + 1]
+				if walled[int(seg[k])] and a.distance_to(b) >= 0.3:
+					_plank_fence(fronts["planks"], a, b, 0.62, 0.95 + 0.25 * float(posmod(h >> 11, 3)) / 2.0)
+		elif style < 78:
 			# bars or chain-link on the wall: only where the wall is, which was looked at
 			# already and is solid already, so no looking again and no walls of its own --
 			# and in one panel per piece of the wall, its foot along the wall's top
-			var bars := style < 62
+			var bars := style < 67
 			var run_u := 0.0
 			for k in range(pts.size() - 1):
 				var a: Vector2 = pts[k]
@@ -3296,6 +3322,28 @@ func _garden_fronts(run: PackedVector2Array, hw: float, sgn: float, key: int, fr
 					(fronts["flowers"] as Array).append(Transform3D(Basis.from_scale(Vector3(1.4, 1.0, 1.1) * sc), _g3(q, 0.62 + 0.3 * sc)))
 		s = e
 		plot += 1
+
+## horizontal wooden boards with thin gaps between, on posts, from `base` above the ground up
+## `h`, from a to b (as details.gd's filmed wooden fences; the boards' tones vary a little)
+func _plank_fence(b: CBuf, a: Vector2, e: Vector2, base: float, h: float) -> void:
+	var L := a.distance_to(e)
+	var d := (e - a) / L
+	var gy := minf(_h(a), _h(e))   # (level boards: on a slope the low end's foot is in the wall)
+	var bs := Basis(Vector3.UP, atan2(-d.y, d.x))
+	var mid := (a + e) * 0.5
+	var wood: Color = _tone["woodfence"]
+	_plank_at.append(mid)
+	var y := base
+	var k := 0
+	while y + 0.12 <= base + h + 0.01:
+		_furn._box(b, Vector3(mid.x, gy + y + 0.06, mid.y), Vector3(L, 0.12, 0.03), wood.darkened(0.08 * float(k % 3)), bs)
+		y += 0.145
+		k += 1
+	var s := 0.0
+	while s <= L:
+		var p := a + d * s
+		_furn._box(b, Vector3(p.x, gy + base + h * 0.5, p.y), Vector3(0.08, h, 0.08), wood.darkened(0.2), bs)
+		s += 1.8
 
 ## how many trees overhang a spot on the pavement, 0..1 (for the leaves on it)
 func _leafy(p: Vector2) -> float:
@@ -5289,6 +5337,8 @@ func _partner(c: Vector2, d: Vector2, ri: int, hw: float, o: int) -> Array:
 var _pool_at: Array = []             ## Vector3(x, z, radius)
 var _pools_made := false
 var _pools_from := 0                 ## _pool_at before this have theirs
+var _shop_lights: Array = []         ## [the window's foot, out to the street, how wide] of every lit shop window
+var _shop_lit_from := 0
 
 func _make_pools() -> void:
 	_pools_made = true
@@ -5296,8 +5346,27 @@ func _make_pools() -> void:
 	for i in range(_pools_from, _pool_at.size()):
 		var q: Vector3 = _pool_at[i]
 		_pool(pools, Vector2(q.x, q.y), q.z)
+		# the lamp's halo, at its head (a street lamp's ~7 m up, a park globe's ~3.8 m)
+		_halo(pools, _g3(Vector2(q.x, q.y), 3.75 if q.z < 5.0 else 6.9), 0.75 if q.z >= 5.0 else 0.5)
 	_pools_from = _pool_at.size()
-	for mi: MeshInstance3D in _add_mesh(pools, _glow_mat("lamplight", 0.4), false, LAMP_RANGE):
+	# a lit shop window's light on the pavement in front of it
+	for i in range(_shop_lit_from, _shop_lights.size()):
+		var s: Array = _shop_lights[i]
+		var at: Vector2 = s[0]
+		var n: Vector2 = s[1]
+		var w: float = 1.5 * float(s[2])
+		var t := Vector2(-n.y, n.x)
+		var y := KERB_H + 0.03
+		var a0 := _g3(at - t * w, y)
+		var a1 := _g3(at + t * w, y)
+		var b0 := _g3(at - t * (w + 0.8) + n * 2.6, y)
+		var b1 := _g3(at + t * (w + 0.8) + n * 2.6, y)
+		var m0 := _g3(at, y)
+		pools.tri(m0, a1, b1, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(0.35, 0), Vector2(0.6, 0.72))
+		pools.tri(m0, b1, b0, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(0.6, 0.72), Vector2(-0.6, 0.72))
+		pools.tri(m0, b0, a0, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(-0.6, 0.72), Vector2(-0.35, 0))
+	_shop_lit_from = _shop_lights.size()
+	for mi: MeshInstance3D in _add_mesh(pools, _glow_mat("lamplight", 0.75), false, LAMP_RANGE):
 		mi.visible = _night
 		_night_nodes.append(mi)
 
@@ -5742,15 +5811,42 @@ func _sports_pitch(ring: PackedVector2Array, lines: Buf, frames: Buf) -> void:
 var _night := false
 var _night_nodes: Array = []          ## shown only at night: light pools, headlight beams
 
+## UV2.y 1: a halo round a light instead -- every vertex of its quad at the light, UV its
+## corner (-1..1), COLOR.r its size: turned to face the eye here, at least a few pixels across
+## however far, in front of the lamp's own head. It stands in for a glow effect (a bloom over
+## the whole frame), which costs a laptop's browser a millisecond or two every frame: these
+## are drawn with the pools and the beams, no draws of their own. Not fogged (the night's haze
+## added to them turned far pools into cyan blobs); far pools fade out by themselves.
 const GLOW_SHADER := """
 shader_type spatial;
-render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled, skip_vertex_transform;
 uniform vec4 col : source_color;
 uniform float strength = 0.5;
+varying float halo;
+varying float fade;
+void vertex() {
+	halo = UV2.y;
+	if (UV2.y > 0.5) {
+		vec3 c = (MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
+		float d = max(-c.z, 0.1);
+		float s = max(COLOR.r * 1.2, d * 0.009);
+		c += normalize(-c) * min(0.7, d * 0.4);
+		VERTEX = c + vec3(UV, 0.0) * s;
+		fade = 1.0 - smoothstep(450.0, 700.0, d);
+	} else {
+		VERTEX = (MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
+		fade = 1.0 - smoothstep(220.0, 330.0, length(VERTEX));
+	}
+}
 void fragment() {
-	// UV: 0 at the light, 1 at the rim (pools); beams fade along their length and to the sides
-	float k = UV2.x > 0.5 ? (1.0 - UV.y) * (1.0 - UV.y) * (1.0 - UV.x * UV.x) : clamp(1.0 - length(UV), 0.0, 1.0);
-	ALBEDO = col.rgb * k * k * strength;
+	if (halo > 0.5) {   // a bright core and a soft halo round it
+		float t = clamp(1.0 - length(UV), 0.0, 1.0);
+		ALBEDO = col.rgb * (t * t * 0.3 + pow(t, 12.0) * 1.6) * fade;
+	} else {
+		// UV: 0 at the light, 1 at the rim (pools); beams fade along their length and to the sides
+		float k = UV2.x > 0.5 ? (1.0 - UV.y) * (1.0 - UV.y) * (1.0 - UV.x * UV.x) : clamp(1.0 - length(UV), 0.0, 1.0);
+		ALBEDO = col.rgb * k * k * strength * fade;
+	}
 }
 """
 var _glow_mats := {}
@@ -5773,15 +5869,16 @@ func _glow_mat(tone: String, strength: float) -> ShaderMaterial:
 ## and one at the rim, each point's height worked out once
 func _pool(buf: Buf, p: Vector2, r: float) -> void:
 	var seg := 12
-	var mid := _g3(p, 0.09)
+	var y := KERB_H + 0.03   # (over the pavement too: at 0.09 it lay under it, lit only the road)
+	var mid := _g3(p, y)
 	var inner: Array = []
 	var outer: Array = []
 	var dirs: Array = []
 	for i in range(seg):
 		var e := Vector2(cos(TAU * i / seg), sin(TAU * i / seg))
 		dirs.append(e)
-		inner.append(_g3(p + e * r * 0.55, 0.09))
-		outer.append(_g3(p + e * r, 0.09))
+		inner.append(_g3(p + e * r * 0.55, y))
+		outer.append(_g3(p + e * r, y))
 	for i in range(seg):
 		var j := (i + 1) % seg
 		var e0: Vector2 = dirs[i]
@@ -5790,10 +5887,20 @@ func _pool(buf: Buf, p: Vector2, r: float) -> void:
 		buf.tri(inner[i], outer[i], outer[j], Vector3.UP, Color.WHITE, e0 * 0.55, e0, e1)
 		buf.tri(inner[i], outer[j], inner[j], Vector3.UP, Color.WHITE, e0 * 0.55, e1, e1 * 0.55)
 
+## a halo (see GLOW_SHADER) round a light at `at`, `size` metres across near to
+func _halo(b: Buf, at: Vector3, size: float) -> void:
+	var col := Color(size, 0, 0)
+	var u2 := Vector2(0, 1)
+	b.tri(at, at, at, Vector3.BACK, col, Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), u2)
+	b.tri(at, at, at, Vector3.BACK, col, Vector2(-1, -1), Vector2(1, 1), Vector2(-1, 1), u2)
+
 ## a headlight beam on the road, local to a car facing +Z: from the bumper, 26 m out and
-## widening (UV.x across, UV.y along; UV2.x = 1 marks it as a beam for the shader)
+## widening (UV.x across, UV.y along; UV2.x = 1 marks it as a beam for the shader); and a halo
+## round each headlight (the player's car and the traffic's share this mesh)
 func _beam_mesh() -> ArrayMesh:
 	var b := Buf.new()
+	for sx: float in [-0.68, 0.68]:
+		_halo(b, Vector3(sx, 0.68, 2.2), 0.32)
 	var near := 2.3
 	var far := 28.0
 	var steps := 6
@@ -5890,6 +5997,30 @@ func _set_night(on: bool) -> void:
 ## main roads) stay all but empty.
 const PARKED_FILL := [0.55, 0.05, 0.72, 0.0]   ## share of the kerb taken: plain, red-white, blue-white, yellow-black
 const PARKED_FILL_LIVING := 0.3
+const PARKED_MOTO := 0.3             ## a gap between the parked cars that has a motorbike or scooter in it
+
+## A motorbike or scooter parked up on the pavement in a gap between the cars, as they stand
+## all along a filmed residential street in Givatayim: on the front half of the pavement (the
+## back half is where people walk), along the kerb or at a slant to it, leaning on its stand.
+func _park_moto(r: Dictionary, ri: int, run: PackedVector2Array, cum: PackedFloat32Array, s: float, total: float,
+		hw: float, sgn: float, rng: RandomNumberGenerator, palette: Array, xf_by: Dictionary, cols_by: Dictionary) -> void:
+	var slant := rng.randf_range(-0.7, 0.7) if rng.randf() < 0.4 else rng.randf_range(-0.12, 0.12)
+	var colour: Color = palette[rng.randi() % palette.size()]
+	var c := _along(run, cum, s + rng.randf_range(-1.5, 1.5))
+	var d := (_along(run, cum, minf(s + 1.0, total)) - c).normalized()
+	var side := Vector2(-d.y, d.x) * sgn
+	var p := c + side * (hw + KERB_W + 0.75)
+	var face := (d * sgn).rotated(slant)
+	if not _mine(p) or _no_parking(r, ri, p) or _push_out(p, 0.6, false) != Vector2.ZERO or not _clear_of_posts(p, 1.0):
+		return
+	if not (_off_road(p + face * 0.95, 0.05) and _off_road(p - face * 0.95, 0.05)):
+		return
+	var bs := Basis(Vector3.UP, atan2(face.x, face.y)) * Basis(Vector3.BACK, 0.13 * (1.0 if rng.randf() < 0.5 else -1.0))
+	(xf_by["moto_parked"] as Array).append(Transform3D(bs, Vector3(p.x, _walk_y(p), p.y)))   # on the pavement, as people stand
+	(cols_by["moto_parked"] as Array).append(colour)
+	_add_post(p, 0.55)
+	_moto_at.append(p)
+	_tally("parked_moto", 1)
 
 ## no parking at p beside road ri: its red-white corner or a bus stop's yellow-black
 func _no_parking(r: Dictionary, ri: int, p: Vector2) -> bool:
@@ -5909,8 +6040,8 @@ func _build_parked() -> void:
 		return   # northern suburbs park in driveways
 	var xf: Array = []
 	var cols: Array = []
-	var xf_by := {"sedan": [], "hatch": [], "suv": [], "van": []}
-	var cols_by := {"sedan": [], "hatch": [], "suv": [], "van": []}
+	var xf_by := {"sedan": [], "hatch": [], "suv": [], "van": [], "moto_parked": []}
+	var cols_by := {"sedan": [], "hatch": [], "suv": [], "van": [], "moto_parked": []}
 	var palette := _car_paints()
 	var rng := RandomNumberGenerator.new()
 	for ri: int in _tile_roads.get(_tile, []):
@@ -5972,6 +6103,8 @@ func _build_parked() -> void:
 							xf.append(0)
 							_add_post(p + face * 1.25, 0.85)
 							_add_post(p - face * 1.25, 0.85)
+					elif rng.randf() < PARKED_MOTO:
+						_park_moto(r, ri, run, cum, s, total, hw, sgn, rng, palette, xf_by, cols_by)
 					s += 5.6
 	_parked_xf = xf_by   # drawn with the car parks' cars, in one set of batches (_build_lots)
 	await _furn._place(_furn._flag_kit("car", "il"), _car_flags, _furn.NEAR_SEEN, "flags_on_cars")
@@ -5983,6 +6116,8 @@ func _build_parked() -> void:
 ## front across a 6 m aisle), the bays painted, and about three in four taken. Bays that
 ## would stick out of the lot, into a building, onto a road or onto a tree are left out.
 var _lot_at: Array = []              ## a car in each car park (for tests and tours)
+var _moto_at := PackedVector2Array()  ## each motorbike parked on a pavement (for tests: tests/street_fronts.gd)
+var _plank_at := PackedVector2Array() ## a point along each piece of wooden board fence on a garden wall (for tests)
 var _parked_xf := {}                 ## the street's parked cars by shape, to batch with the car parks'
 var _parked_cols := {}
 const LOT_CARS := 6000               ## car-park cars in a whole city, at most: they are a lot to draw
@@ -5992,8 +6127,8 @@ func _build_lots() -> void:
 	var rings: Array = _rings_near("parking").filter(_ring_mine)
 	var palette := _car_paints()
 	var rng := RandomNumberGenerator.new()
-	var xf_by := {"sedan": [], "hatch": [], "suv": [], "van": []}
-	var cols_by := {"sedan": [], "hatch": [], "suv": [], "van": []}
+	var xf_by := {"sedan": [], "hatch": [], "suv": [], "van": [], "moto_parked": []}
+	var cols_by := {"sedan": [], "hatch": [], "suv": [], "van": [], "moto_parked": []}
 	for kind: String in _parked_xf:   # the street's parked cars go in the same batches
 		(xf_by[kind] as Array).append_array(_parked_xf[kind])
 		(cols_by[kind] as Array).append_array(_parked_cols[kind])
@@ -6341,6 +6476,8 @@ func _parked_mesh(kind := "sedan") -> ArrayMesh:
 		return _bus_mesh()
 	if kind == "moto":
 		return _moto_mesh()
+	if kind == "moto_parked":
+		return _moto_mesh(false)
 	if kind == "truck":
 		return _truck_mesh()
 	var taxi := kind == "taxi"
@@ -6821,8 +6958,8 @@ func _bus_mesh() -> ArrayMesh:
 ## A scooter and its rider, 1.9 m, made of rounded pieces: two small spoked wheels, the
 ## body and the leg shield in its colour, a dark seat and floorboard, the handlebars, a lamp
 ## at each end; the rider in a dark jacket and trousers, arms out to the bars, a helmet
-## with its visor. Faces +Z.
-func _moto_mesh() -> ArrayMesh:
+## with its visor. Faces +Z. Without `rider`: one parked on the pavement.
+func _moto_mesh(rider := true) -> ArrayMesh:
 	var cm := CarMesh.new()
 	var paint := Color(1, 1, 1, 1.0)
 	var trim := Color(_tone["cartrim"], 0.5)
@@ -6843,6 +6980,14 @@ func _moto_mesh() -> ArrayMesh:
 	_blobm(cm, Vector3(0, 0.98, 0.57), Vector3(0.07, 0.06, 0.03), Color(_tone["tank"], 0.1), 8, 4)
 	_blobm(cm, Vector3(0, 0.62, -0.84), Vector3(0.07, 0.04, 0.03), Color(_tone["tank"], 0.0), 8, 4)
 	# the rider, leaning a little to the bars: a torso, arms bent at the elbow, knees up
+	if rider:
+		_moto_rider(cm, jacket, legs, helmet)
+	var am := cm.mesh(_car_material())
+	am.custom_aabb = am.get_aabb().grow(0.1)
+	_car_meshes["moto" if rider else "moto_parked"] = am
+	return am
+
+func _moto_rider(cm: CarMesh, jacket: Color, legs: Color, helmet: Color) -> void:
 	_limb(cm, Vector3(0, 0.98, -0.22), Vector3(0, 1.5, -0.06), 0.16, jacket)
 	for sx: float in [-1.0, 1.0]:
 		var shoulder := Vector3(sx * 0.18, 1.42, -0.07)
@@ -6857,10 +7002,6 @@ func _moto_mesh() -> ArrayMesh:
 		_limb(cm, knee, foot, 0.065, legs)
 	_blobm(cm, Vector3(0, 1.66, 0.0), Vector3(0.13, 0.14, 0.14), helmet)          # the helmet
 	_blobm(cm, Vector3(0, 1.64, 0.1), Vector3(0.1, 0.055, 0.06), Color(_tone["carglass"], 0.75), 8, 4)   # its visor
-	var am := cm.mesh(_car_material())
-	am.custom_aabb = am.get_aabb().grow(0.1)
-	_car_meshes["moto"] = am
-	return am
 
 ## A delivery truck, 6.8 m: a van's cab (CAR_SHAPES "truck", built like the cars) with a
 ## tall white box behind it, its back doors' seam and hinges. Faces +Z.
@@ -8006,6 +8147,8 @@ func _build_pois() -> void:
 			var b := Basis(Vector3.UP, face)
 			var at3 := func(q: Vector2, out: float, y: float) -> Vector3: return Vector3(q.x + n.x * out, gy + y, q.y + n.y * out)
 			front["glass"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.05, 1.3)))
+			if _mine(pos):
+				_shop_lights.append([pos + n * 0.1, n, wide])
 			front["beam"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.08, 2.62)))
 			for sgn: float in [-1.0, 1.0]:
 				front["post"].append(Transform3D(b, at3.call(pos + along * 1.56 * wide * sgn, 0.08, 1.3)))
@@ -10303,24 +10446,28 @@ func _retint_city() -> void:
 	lamp.emission = _tone["lamplight"]
 	lamp.emission_energy_multiplier = 2.4
 	if _smat.has("shopglass"):
-		(_smat["shopglass"] as StandardMaterial3D).emission_energy_multiplier = 2.0 if _night else 0.7
+		# (at night 2.0 clipped to a blank white pane; the light spills onto the pavement instead)
+		(_smat["shopglass"] as StandardMaterial3D).emission_energy_multiplier = 0.85 if _night else 0.7
 	if _night and env != null:
 		var bg := Palette.col("bg")
 		var pl := Palette.col("player")
 		var ink := Palette.col("ink")
-		var haze := bg.lerp(pl, 0.3).lerp(ink, 0.06)
+		var wn := Palette.col("warn")
+		# a dark night, a little blue (the palette's player colour, lightly: more of it was a
+		# teal "day for night" over everything), the city's own glow low on the horizon
+		var haze := bg.lerp(ink, 0.1).lerp(wn, 0.05)
 		var sky := env.sky.sky_material as ProceduralSkyMaterial
-		sky.sky_top_color = bg.lerp(pl, 0.05)
-		sky.sky_horizon_color = haze
+		sky.sky_top_color = bg.lerp(pl, 0.04)
+		sky.sky_horizon_color = bg.lerp(ink, 0.16).lerp(wn, 0.1)
 		sky.ground_horizon_color = haze
 		sky.ground_bottom_color = bg
 		env.background_color = haze
-		env.ambient_light_color = bg.lerp(pl, 0.5).lerp(ink, 0.25)
-		env.ambient_light_energy = 0.42
+		env.ambient_light_color = bg.lerp(ink, 0.32).lerp(pl, 0.14)
+		env.ambient_light_energy = 0.38
 		env.fog_light_color = haze
 		env.fog_density = FOG_NIGHT
-		sun.light_color = ink.lerp(pl, 0.4)
-		sun.light_energy = 0.18
+		sun.light_color = ink.lerp(pl, 0.15)   # the moon
+		sun.light_energy = 0.14
 		sun.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY   # no sun disc in a night sky
 	if _car_shader_mat != null:   # the cars' reflections, lamps and wells
 		_car_material()
@@ -10361,7 +10508,7 @@ func _build_car() -> void:
 	_body.add_child(_sedan_node)
 	var beam := MeshInstance3D.new()
 	beam.mesh = _beam_mesh()
-	beam.material_override = _glow_mat("lamplight", 0.55)
+	beam.material_override = _glow_mat("lamplight", 0.9)
 	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	beam.visible = _night
 	_car.add_child(beam)
@@ -10748,6 +10895,7 @@ var _film_looks: Array = []          ## Vector3(from, to, radians): a glance to 
 var _film_zebras: Array = []         ## [from, to, kerb, kerb]: on a crossing (or waiting at it)
 var _film_cars: Array = []           ## [second, at, heading]: a car sent down a street
 var _film_sent := 0
+var _film_people: Array = []         ## [actor, from, to, from second, to second]: who the film shows
 
 func _film_begin(id: String) -> void:
 	var walks: Dictionary = _details.data.get("walks", {}) if _details != null else {}
@@ -10765,6 +10913,27 @@ func _film_begin(id: String) -> void:
 	for c: Array in w.get("cars", []):
 		_film_cars.append([float(c[0]), Vector2(c[1][0], c[1][1]), Vector2(c[2][0], c[2][1])])
 	_film_cars.sort_custom(func(a, b): return a[0] < b[0])
+	# the people the film shows, where it shows them: standing, or walking from `at` to `to`
+	# between two of its seconds (and not there before or after)
+	for pp: Dictionary in w.get("people", []):
+		var a := Actor3D.new()
+		world.add_child(a)
+		var who := int(pp.get("who", _film_people.size()))
+		a.set_character(PEOPLE[who % PEOPLE.size()], float(pp.get("tall", 1.72)))
+		_humanize(a, 9001 + who * 31)
+		_people_lod(a)
+		var A := Vector2(float(pp["at"][0]), float(pp["at"][1]))
+		var B := Vector2(float(pp["to"][0]), float(pp["to"][1])) if pp.has("to") else A
+		var tt: Array = pp.get("t", [0.0, 0.0])
+		a.position = Vector3(A.x, _walk_y(A), A.y)
+		var fc: Array = pp.get("face", [1, 0])
+		var fd: Vector2 = (B - A).normalized() if B != A else Vector2(float(fc[0]), float(fc[1])).normalized()
+		a.face(Vector3(fd.x, 0, fd.y))
+		var moving := B != A
+		var pace: float = A.distance_to(B) / maxf(float(tt[1]) - float(tt[0]), 0.01)
+		a.play("Walk" if moving else "Idle", true, pace / 1.35 if moving else 1.0)
+		a.visible = not moving
+		_film_people.append([a, A, B, float(tt[0]), float(tt[1])])
 	var p0 := _film_at(0.0)
 	_pos = p0
 	_yaw = (_film_at(1.5) - p0).angle()
@@ -10801,6 +10970,17 @@ func _film_tick(dt: float) -> void:
 		if _film_t > l.x and _film_t < l.y:
 			turn += l.z * smoothstep(l.x, l.x + 0.5, _film_t) * (1.0 - smoothstep(l.y - 0.5, l.y, _film_t))
 	_film_look = lerp_angle(_film_look, turn, 1.0 - exp(-dt * 6.0))
+	for fp: Array in _film_people:
+		var A: Vector2 = fp[1]
+		var B: Vector2 = fp[2]
+		if A == B:
+			continue
+		var f: float = (_film_t - float(fp[3])) / maxf(float(fp[4]) - float(fp[3]), 0.01)
+		var who: Actor3D = fp[0]
+		who.visible = f >= 0.0 and f <= 1.0
+		if who.visible:
+			var q := A.lerp(B, f)
+			who.position = Vector3(q.x, _walk_y(q), q.y)
 	while _film_sent < _film_cars.size() and _film_t >= float(_film_cars[_film_sent][0]):
 		var fc: Array = _film_cars[_film_sent]
 		_film_sent += 1
@@ -11378,6 +11558,7 @@ func _physics_process(dt: float) -> void:
 	_drive(dt, ctl[0], ctl[1], ctl[2])
 	_p("car")
 	_through_lights()
+	_drop_crumb()
 	_check_stop_signs()
 	_p("rules")
 	_names_tick(dt)
@@ -11725,15 +11906,27 @@ func _manual(dt: float) -> Array:
 	# stuck: a pedal down against something and the car getting nowhere -- nose in a
 	# corner, wedged on a tree, rocking between two parked cars. With or without the assist:
 	# nobody wants to sit there.
+	# Not a jump back to the road at once (it was, after 1.2 s: the car popped out of where
+	# you had driven it, which broke the drive): the way out is the way in, in reverse. Only
+	# wedged both ways -- pushed forward and backward and gone nowhere -- is it lifted out.
 	if up + down > 0.5 and _touch_t > 0.0:
 		_pinned_t += dt
+		if down > up:
+			_pinned_back += dt
 		if _pos.distance_to(_pin_at) > 1.2:   # backing out (or sliding off) is working
 			_pin_at = _pos
 			_pinned_t = 0.0
-		elif _pinned_t > RESCUE_AFTER:
+			_pinned_back = 0.0
+		elif _pinned_t > RESCUE_AFTER and _pinned_back < 1.0 and not _pin_hinted:
+			_pin_hinted = true
+			_show_banner("stuck -- back up to get out" if not _touch_seen else "stuck -- pull the stick down to back out", 2.5)
+		elif _pinned_back > 2.5 and _pinned_t > 5.0:
 			_rescue()
+			_pinned_back = 0.0
 	else:
 		_pinned_t = 0.0
+		_pinned_back = 0.0
+		_pin_hinted = false
 		_pin_at = _pos
 	return [throttle, brake, steer]
 
@@ -13198,12 +13391,12 @@ func _camera(dt: float, p: Vector2, yaw: float) -> void:
 ## little as the car pulls away, the eyes leading into a turn
 func _seat_camera(dt: float, yaw: float) -> void:
 	_cam_yaw = yaw
-	_look_turn = lerpf(_look_turn, clampf(_steer * 0.55, -0.3, 0.3), 1.0 - exp(-dt * 3.0))
+	_look_turn = lerpf(_look_turn, clampf(_steer * 0.45, -0.25, 0.25), 1.0 - exp(-dt * 2.0))
 	var xf := _body.global_transform
 	# (the head turned: the eyes a little to that side and back, the view round with it)
-	var head := SEAT + Vector3(sin(_head_yaw) * 0.06, 0, clampf(-_a_long * 0.004, -0.04, 0.04) - (1.0 - cos(_head_yaw)) * 0.05)
+	var head := SEAT + Vector3(sin(_head_yaw * SEAT_HEAD) * 0.06, 0, clampf(-_a_long * 0.004, -0.04, 0.04) - (1.0 - cos(_head_yaw * SEAT_HEAD)) * 0.05)
 	var eye := xf * head
-	var turn := _look_turn - _head_yaw
+	var turn := _look_turn - _head_yaw * SEAT_HEAD
 	var ahead := Vector3(-sin(turn), -0.06, cos(turn)) * 12.0   # +X is the car's left
 	look_from(eye, xf * (head + ahead))
 	cam.fov = lerpf(72.0, 78.0, clampf(absf(_v) / 30.0, 0.0, 1.0))
@@ -13239,32 +13432,56 @@ func _head_tick(dt: float) -> void:
 		_head_plan = []
 	else:
 		_head_check -= dt
-		if _head_check <= 0.0 and _head_plan.is_empty() and absf(_v) < 6.5 and _gear > 0:
-			_head_check = 0.15
-			var j := _junction_ahead_me(26.0)
-			if j >= 0 and (_nodes[j].distance_to(_head_at) > 45.0 or _head_at_t > 12.0):
+		# the look left and right: standing or all but, at a junction, a light or a sign,
+		# once a junction. (Rolling below 23 km/h near any junction, it fired again and again
+		# in slow traffic and turned the seat view half round each time.)
+		if _head_check <= 0.0 and _head_plan.is_empty() and absf(_v) < 2.5 and _gear > 0:
+			_head_check = 0.2
+			var j := _junction_ahead_me(16.0)
+			if j >= 0 and (_nodes[j].distance_to(_head_at) > 45.0 or _head_at_t > 20.0):
 				_head_at = _nodes[j]
 				_head_at_t = 0.0
-				_head_plan = [[0.95, 0.45], [-0.95, 0.5], [0.55, 0.25]]
+				_head_plan = [[0.9, 0.5], [-0.9, 0.55], [0.5, 0.3]]
 		if not _head_plan.is_empty():
-			want = float(_head_plan[0][0])
-			if absf(_head_yaw - want) < 0.1:
-				_head_hold += dt
-				if _head_hold >= float(_head_plan[0][1]):
-					_head_hold = 0.0
-					_head_plan.pop_front()
+			if absf(_v) > 6.0:
+				_head_plan = []   # (off again before it was done: eyes on the road)
+			else:
+				want = float(_head_plan[0][0])
+				if absf(_head_aim - want) < 0.05:
+					_head_hold += dt
+					if _head_hold >= float(_head_plan[0][1]):
+						_head_hold = 0.0
+						_head_plan.pop_front()
 		elif _gear < 0 and absf(_v) > 0.2:
-			want = -1.3   # over the right shoulder, reversing
+			want = -1.2   # over the right shoulder, reversing
 		else:
-			want = clampf(-_steer * 1.6, -0.7, 0.7)   # into the turn (+ steer is right)
-			var at := _person_ahead_me(16.0)
-			if at != Vector2.INF and absf(_v) < 5.0:
-				want = clampf(-_fwd().angle_to(at - _pos), -1.1, 1.1)
-	# a head turns quickly through the middle and slows into where it is going
-	var gap := absf(want - _head_yaw)
-	_head_yaw = move_toward(_head_yaw, want, HEAD_RATE * dt * clampf(gap * 2.5, 0.25, 1.0))
+			# standing for people on the crossing ahead: at one of them, held a moment (the
+			# nearest, chosen afresh every frame, sent the eyes from one to the next)
+			_head_person_t -= dt
+			if absf(_v) < 2.0:
+				if _head_person_t <= 0.0:
+					_head_person = _person_ahead_me(14.0)
+					_head_person_t = 1.5
+				if _head_person != Vector2.INF:
+					want = clampf(-_fwd().angle_to(_head_person - _pos), -1.0, 1.0)
+			else:
+				_head_person = Vector2.INF
+	# eased: the aim moves at a head's pace and the head follows it smoothly. (The steering
+	# was in it too, on top of the seat view's own lead into a turn: every small correction
+	# autodrive made swung the view.)
+	_head_aim = move_toward(_head_aim, want, 2.2 * dt)
+	_head_yaw = lerpf(_head_yaw, _head_aim, 1.0 - exp(-dt * 7.0))
 	if _player_car_mat != null:
-		_player_car_mat.set_shader_parameter("head_turn", _head_yaw)
+		# the head drawn in the car leans a little into a turn as well (the seat view does
+		# that by itself)
+		_head_steer = lerpf(_head_steer, clampf(-_steer * 0.8, -0.35, 0.35), 1.0 - exp(-dt * 3.0))
+		_player_car_mat.set_shader_parameter("head_turn", _head_yaw + _head_steer)
+
+var _head_aim := 0.0                         ## where the head is heading for (eased toward)
+var _head_person := Vector2.INF              ## the person it is looking at, held a moment
+var _head_person_t := 0.0
+var _head_steer := 0.0                       ## the drawn head's lean into a turn
+const SEAT_HEAD := 0.7                       ## how much of the head's turn the seat view takes
 
 func _toggle_look() -> void:
 	_look_on = not _look_on
@@ -13723,6 +13940,8 @@ func _set_auto(on: bool) -> void:
 	_ap_stuck = 0.0
 	_ap_back = 0.0
 	_ap_turn = 0.0
+	_ap_dead = Vector2.INF
+	_ap_kt = {}
 	if on:
 		_gear = 1
 	Probe.event("autodrive", {"on": on})
@@ -13738,8 +13957,14 @@ func _held(cur: float, v: float, why: String) -> float:
 func _autodrive(dt: float) -> Array:
 	# into the walls again and again (a few in quick succession): lost, back to the street
 	_ap_bonks = maxf(0.0, _ap_bonks - dt / 10.0)
-	if _ap_bonks >= 3.0 and _ap_rescue():
+	_ap_backouts = maxf(0.0, _ap_backouts - dt / 30.0)
+	if not _ap_rev.is_empty():
+		return _ap_reverse(dt)
+	if _ap_bonks >= 3.0 and (_ap_backout(40.0) or _ap_rescue()):
+		_ap_bonks = 0.0
 		_ap_pts = PackedVector2Array()
+		if not _ap_rev.is_empty():
+			return _ap_reverse(dt)
 	if _ap_back > 0.0:     # stuck against something: back off, then plan again
 		_ap_back -= dt
 		_gear = -1
@@ -13780,8 +14005,18 @@ func _autodrive(dt: float) -> Array:
 			if _cross.is_empty() and _ap_v.size() > 0:
 				_ap_v[_ap_v.size() - 1] = 0.0
 			break
-	# at a dead end's turning point, stopped: on to the lane back, which faces the other
-	# way, so it turns round on the spot just below
+	# at a dead end: stopped short of its end, it turns round there in moves forward and back
+	if _ap_kt.is_empty() and _ap_dead != Vector2.INF and _ap_at_dead():
+		if absf(_v) > 0.3:
+			# (on the brake at the stop: crawling up to the plan's last point, it could roll on
+			# past it, and the speed allowed grew with its distance from it, behind or not)
+			_ap_why = "turning"
+			return [0.0, 1.0, 0.0]
+		_ap_kt_start()
+	if not _ap_kt.is_empty():
+		return _ap_kturn(dt)
+	# at a one-way dead end's turning point, stopped: on to the lane back, which faces the
+	# other way, so it turns round on the spot just below
 	while _ap_pts.size() > 2 and _ap_v[1] == 0.0 and absf(_v) < 1.0 and _pos.distance_to(_ap_pts[1]) < 5.0:
 		_ap_pts.remove_at(0)
 		_ap_v.remove_at(0)
@@ -13885,7 +14120,8 @@ func _autodrive(dt: float) -> Array:
 		_ap_stuck += dt
 		if _ap_stuck > 2.0:
 			_ap_stuck = 0.0
-			_ap_back = 1.4
+			if not _ap_backout(10.0):   # (back the way it came; blind, with no way known)
+				_ap_back = 1.4
 			# a push that went nowhere counts as a bump (too slow to be one): three in a row
 			# and it is lost, back to the street. Forward into a post, back, forward into it
 			# again went on for a minute and a half, foot on the gas -- not driving.
@@ -13913,6 +14149,10 @@ func _ap_watch(dt: float, vt: float) -> void:
 	if _ap_mark_t < AP_GIVE_UP:
 		return
 	_ap_mark = Vector2.INF
+	if _ap_backout(45.0):   # the way it came, first: no jump
+		_ap_pts = PackedVector2Array()
+		_log.event("backing out")
+		return
 	var mid := _bounds.get_center()
 	var toward := (mid - _pos).normalized()
 	for reach: float in [40.0, 80.0, 140.0]:
@@ -14056,6 +14296,100 @@ func _clear_line(a: Vector2, b: Vector2) -> bool:
 		s += 1.0
 	return true
 
+## ---- backing out the way it came ----------------------------------------------------------
+## Where the car is, it drove to: the road it came along is a way back out. A crumb is dropped
+## every CRUMB_M driven forward (the last CRUMBS of them); stuck, lost or off the road with no
+## way found, autodrive reverses along them -- slowly, steering, looking behind -- until it
+## is on a street facing along it, and plans on from there. It used to be lifted onto the
+## nearest street, a jump that broke the drive; that is now only for a car with no way back
+## (put down in a yard, or the way behind it blocked).
+const CRUMB_M := 1.5
+const CRUMBS := 70
+const AP_REV_V := 2.2                ## reversing speed (m/s)
+var _crumbs := PackedVector2Array()
+var _ap_rev := PackedVector2Array()  ## the crumbs to back along, the next first
+var _ap_rev_m := 0.0                 ## metres backed so far, and at most
+var _ap_rev_max := 0.0
+var _ap_rev_t := 0.0
+var _ap_backouts := 0.0              ## backing out lately (one off every 30 s): the third in a row is a lift
+
+func _drop_crumb() -> void:
+	if _walking or not _ap_rev.is_empty():
+		return
+	if not _crumbs.is_empty() and _crumbs[_crumbs.size() - 1].distance_to(_pos) > 12.0:
+		_crumbs = PackedVector2Array()   # (put down somewhere else: an old trail leads nowhere)
+	if _v > 0.3 and (_crumbs.is_empty() or _crumbs[_crumbs.size() - 1].distance_to(_pos) >= CRUMB_M):
+		_crumbs.append(_pos)
+		if _crumbs.size() > CRUMBS:
+			_crumbs.remove_at(0)
+
+## start backing out along the crumbs, at most `most` metres; false when there is no trail
+func _ap_backout(most: float) -> bool:
+	if _ap_backouts >= 2.0:
+		return false   # (backed out, drove in, stuck, backed out again: going round in a yard)
+	var rev := PackedVector2Array()
+	for i in range(_crumbs.size() - 1, -1, -1):
+		if _crumbs[i].distance_to(_pos) > 2.0 or not rev.is_empty():
+			rev.append(_crumbs[i])
+	if rev.size() < 2:
+		return false
+	_ap_rev = rev
+	_ap_backouts += 1.0
+	_ap_rev_m = 0.0
+	_ap_rev_max = most
+	_ap_rev_t = 0.0
+	_ap_back = 0.0
+	_ap_turn = 0.0
+	_cross = {}
+	_show_banner("autodrive: backing out", 1.4)
+	Probe.event("autodrive_backout", {"m": int(most)})
+	return true
+
+## one tick of it: [throttle, brake, steer], the gear in reverse
+func _ap_reverse(dt: float) -> Array:
+	_ap_rev_t += dt
+	_gear = -1
+	var fwd := _fwd()
+	var rear := _pos - fwd * WHEELBASE * 0.5
+	while _ap_rev.size() > 1 and _ap_rev[0].distance_to(rear) < 1.6:
+		_ap_rev_m += _ap_rev[0].distance_to(_ap_rev[1])
+		_ap_rev.remove_at(0)
+	# done: out far enough and on a street, along it -- or the trail ran out, or too long
+	var on := _nearest_seg(_pos, 8.0, true, true, _y)
+	var on_street := not on.is_empty() and float(on["edge"]) < -0.3 and _ap_rev_m > 5.0
+	if on_street:
+		var r: Dictionary = _roads[int(on["road"])]
+		var rp: PackedVector2Array = r["pts"]
+		var sj: int = on["seg"]
+		on_street = absf(fwd.dot((rp[sj + 1] - rp[sj]).normalized())) > 0.8
+	var behind := _push_out(_pos - fwd * (CAR_OFF + 0.7 + absf(_v) * 0.4), CAR_R, true, true, _y) != Vector2.ZERO \
+			or not _people_near(_pos - fwd * (CAR_OFF + 1.0), 2.5).is_empty()
+	if on_street or _ap_rev.size() <= 1 or _ap_rev_m >= _ap_rev_max or _ap_rev_t > 25.0 or behind:
+		_ap_rev = PackedVector2Array()
+		_crumbs = PackedVector2Array()   # (that way is used: a fresh trail from here)
+		_gear = 1
+		_ap_pts = PackedVector2Array()
+		if behind and not on_street:
+			_ap_bonks += 1.0   # (blocked behind too: a few of these and it is lifted out)
+		return [0.0, 1.0, 0.0]
+	# pure pursuit backwards: the rear leads, a point a few metres back along the trail
+	var tgt := _ap_rev[_ap_rev.size() - 1]
+	var acc := 0.0
+	for i in range(_ap_rev.size()):
+		if i > 0:
+			acc += _ap_rev[i - 1].distance_to(_ap_rev[i])
+		if _ap_rev[i].distance_to(rear) >= 3.5 or acc > 5.0:
+			tgt = _ap_rev[i]
+			break
+	var to := tgt - rear
+	var alpha := (-fwd).angle_to(to)
+	var steer := clampf(-atan(2.0 * WHEELBASE * sin(alpha) / maxf(to.length(), 1.0)), -MAX_STEER, MAX_STEER)
+	var sp := absf(_v)
+	var throttle := 0.55 if sp < AP_REV_V - 0.3 else 0.0
+	var brake := 0.5 if sp > AP_REV_V + 0.6 else 0.0
+	_ap_why = "backing"
+	return [throttle, brake, steer]
+
 ## Lost: no way back found, or into the walls again and again. Back onto the nearest street,
 ## the way the 40 s unstuck does.
 func _ap_rescue() -> bool:
@@ -14072,6 +14406,8 @@ func _ap_rescue() -> bool:
 func _ap_plan() -> void:
 	_cross = {}
 	_ap_queue = []
+	_ap_dead = Vector2.INF
+	_ap_kt = {}
 	_ap_pts = PackedVector2Array()
 	_ap_v = PackedFloat32Array()
 	_ap_lim = PackedFloat32Array()
@@ -14088,6 +14424,8 @@ func _ap_plan() -> void:
 			if way.size() >= 2:
 				from = way[way.size() - 1]
 				heading = (way[way.size() - 1] - way[way.size() - 2]).normalized()
+			elif _ap_backout(45.0):
+				return   # (out the way it came; the trip planned once on the street)
 			elif _ap_rescue():
 				from = _pos
 				heading = _fwd()
@@ -14120,6 +14458,8 @@ func _ap_plan() -> void:
 		# off, planned the same again, and into the wall again.
 		var way := _way_to_road()
 		if way.size() < 2:
+			if _ap_backout(45.0):
+				return   # (out the way it came; planned again once on the street)
 			if not _ap_rescue():
 				return
 			hit = _nearest_seg(_pos, 20.0, true, true, _y)
@@ -14378,16 +14718,22 @@ func _ap_next() -> bool:
 	if ways.is_empty():
 		if back.x < 0:
 			return false
-		# a dead end: stop at its end and turn round there (see _autodrive). Planned as a
-		# lane out and a lane back, the U-turn was a corner a few metres across taken at
-		# 2.5 m/s -- autodrive swung wide past the end, onto the footpath beyond, and drove
-		# on along it at 40 km/h while it worked its way round.
-		var apex := _ap_pts.size() - 1
-		_ap_leg(back.x, back.y, back.z)
-		for k in [apex, apex + 1]:
-			if k > 0 and k < _ap_v.size() - 1:
-				_ap_v[k] = 0.0
-		return true
+		if int(r["o"]) != 0:
+			# a one-way street that just ends (cut by the map's edge, or a mapping slip): the way
+			# back is against it, and planned afresh a turned car would be sent back in. So the
+			# leg back is planned on, with a stop at the end, turned onto on the spot (_autodrive).
+			var apex := _ap_pts.size() - 1
+			_ap_leg(back.x, back.y, back.z)
+			for k in [apex, apex + 1]:
+				if k > 0 and k < _ap_v.size() - 1:
+					_ap_v[k] = 0.0
+			return true
+		# a dead end: stop short of its end and turn round there in moves forward and back (see
+		# "turning round at a dead end"). Planned as a lane out and a lane back, the U-turn was a
+		# corner a few metres across taken at 2.5 m/s -- autodrive swung wide past the end into
+		# the trees and garden walls, or onto the footpath beyond and on along it at 40 km/h.
+		_ap_mark_dead_end()
+		return false
 	# a real crossing (two or more proper streets on): ask, and plan no further for now --
 	# but not round a roundabout, where the exits come too fast to ask at each
 	var main: Array = ways.filter(func(w): return not w["service"])
@@ -14467,6 +14813,169 @@ func _ap_ways(ri: int, ei: int, dir: int) -> Array:
 			ways.append({"leg": Vector3i(e.x, nxt, d2), "turn": came.angle_to(go), "name": r2["name"],
 				"en": r2["en"], "service": r2["k"] == "service", "score": score})
 	return [ways, back]
+
+## ---- turning round at a dead end ----
+## The way back out of a dead end used to be planned straight on from its end: a U-turn in
+## one sweep, which needs ~10 m and a cul-de-sac is 6.5 m across, taken at the 9 km/h the
+## plan's corner speed allowed (and more: the car arrived at 45 km/h and braked late). It ran
+## into the trees and garden walls at the end at 20-30 km/h. For a while it then stopped at
+## the very end and spun round on the spot there, corners over the kerb. Now the plan stops
+## AP_DEAD_ROOM short of the end and the car turns round there the way a driver does in a
+## narrow street: forward on full lock until the nose nears the far kerb (or anything solid),
+## back on the other lock until the tail nears the near one, and so on -- three moves in a
+## 6.5 m street -- until it faces out, waiting for any car coming up the street; then the
+## way out is planned afresh from where it stands. (A one-way street that just ends still
+## stops at its end and turns on the spot.)
+## tests/dead_end_turns.gd drives into every cul-de-sac of a city.
+const AP_DEAD_ROOM := 7.0           ## metres short of a dead end's end it stops to turn round
+const AP_KT_V := 1.3                ## m/s, the crawl of each move
+const AP_KT_KERB := 0.6             ## a move ends when a bumper would be this far (m) over the kerb (the wheels are ~0.9 m in from it)
+const AP_KT_MOVES := 7              ## more than this, or AP_KT_SECS, and the rest is turned on the spot
+const AP_KT_SECS := 30.0
+var _ap_dead := Vector2.INF         ## where the plan stops to turn round (INF: no dead end ahead)
+var _ap_dead_in := Vector2.ZERO     ## ...the way into the dead end there
+var _ap_dead_end := Vector2.ZERO    ## ...and its end
+var _ap_kt := {}                    ## turning round: {to, side, gear, n, t, mt, stop, from, idle}; {} when not
+
+## the plan runs into a dead end (its last leg ends there, _ap_end): cut it back to stop
+## AP_DEAD_ROOM short of the end (and inside the map's edge), and plan nothing past it
+func _ap_mark_dead_end() -> void:
+	var r: Dictionary = _roads[_ap_end.x]
+	var pts: PackedVector2Array = r["pts"]
+	var ei := _ap_end.y
+	var prev := clampi(ei - _ap_end.z, 0, pts.size() - 1)
+	var into := (pts[ei] - pts[prev]).normalized()
+	_ap_dead_end = pts[ei]
+	_ap_dead_in = into if into != Vector2.ZERO else _fwd()
+	_ap_end = Vector3i(-1, 0, 0)
+	var keep := _bounds.grow(-EDGE - CAR_LEN)
+	var n := _ap_pts.size()
+	var k := n - 1   # the last point far enough short of the end (0 if none is)
+	while k > 0 and ((_ap_dead_end - _ap_pts[k]).dot(_ap_dead_in) < AP_DEAD_ROOM or not keep.has_point(_ap_pts[k])):
+		k -= 1
+	var stop := _ap_pts[k]
+	if k < n - 1:
+		var sa := (_ap_dead_end - _ap_pts[k]).dot(_ap_dead_in)
+		var sb := (_ap_dead_end - _ap_pts[k + 1]).dot(_ap_dead_in)
+		if sa > AP_DEAD_ROOM and sa - sb > 0.01:
+			stop = _ap_pts[k].lerp(_ap_pts[k + 1], clampf((sa - AP_DEAD_ROOM) / (sa - sb), 0.0, 1.0))
+			if not keep.has_point(stop):
+				stop = _ap_pts[k]
+	var v := _ap_v[k]
+	var lim := _ap_lim[k]
+	_ap_pts.resize(k + 1)
+	_ap_v.resize(k + 1)
+	_ap_lim.resize(k + 1)
+	if _ap_pts.size() < 2 or stop.distance_to(_ap_pts[k]) > 0.5:   # (a plan is two points at least)
+		_ap_pts.append(stop)
+		_ap_v.append(v)
+		_ap_lim.append(lim)
+	_ap_dead = _ap_pts[_ap_pts.size() - 1]
+
+## at the stop where the plan turns round, or past it (handed over nearer the end than that)
+func _ap_at_dead() -> bool:
+	# (from 2.5 m short: the plan's speeds bring it to a standstill 1.5 m short of a stop)
+	return _pos.distance_to(_ap_dead) < AP_DEAD_ROOM + 5.0 and (_pos - _ap_dead).dot(_ap_dead_in) > -2.5
+
+func _ap_kt_start() -> void:
+	# to face back the way the street runs where the car stands; round to the left from the
+	# right-hand lane (the room is on that side), to the right from the left of the middle
+	var to := -_ap_dead_in
+	var side := -1
+	var hit := _nearest_seg(_pos, 20.0, true, true, _y)
+	if not hit.is_empty():
+		var pts: PackedVector2Array = (_roads[hit["road"]] as Dictionary)["pts"]
+		var d := (pts[int(hit["seg"]) + 1] - pts[int(hit["seg"])]).normalized()
+		to = -d if d.dot(_ap_dead_in) > 0.0 else d
+		if (_pos - (hit["q"] as Vector2)).dot(Vector2(-to.y, to.x)) > 0.4:
+			side = 1   # (right of the middle as it will face: that is the left now)
+	_ap_kt = {"to": to, "side": side, "gear": 1, "n": 1, "t": 0.0, "mt": 0.0, "stop": false, "from": _pos, "idle": 0}
+	_set_blink(side)
+	_show_banner("turning round", 1.2)
+	Probe.event("turning_round", {"at": Vector2i(_pos)})
+	_log.event("turning round")
+
+## a move's end: the circle at that end of the car, `ahead` metres on, would touch something,
+## leave the asphalt (past the kerb, or past the end of the street), or reach the map's edge
+func _ap_kt_blocked(p: Vector2) -> bool:
+	if _push_out(p, CAR_R, true, true, _y) != Vector2.ZERO:
+		return true
+	if not _bounds.grow(-EDGE - CAR_R - 0.3).has_point(p):
+		return true
+	if (p - _ap_dead_end).dot(_ap_dead_in) > -CAR_R:
+		return true
+	var on := _nearest_seg(p, 15.0, true, false, _y)   # (a driveway's mouth is asphalt too)
+	return on.is_empty() or float(on["edge"]) + CAR_R > AP_KT_KERB
+
+func _ap_kturn(dt: float) -> Array:
+	_ap_why = "turning"   # (the drive log's word for it)
+	_ap_kt["t"] += dt
+	_ap_kt["mt"] += dt
+	var to: Vector2 = _ap_kt["to"]
+	var g: int = _ap_kt["gear"]
+	var diff := angle_difference(_yaw, to.angle())
+	if absf(diff) < 0.45:
+		# facing out, near enough for the lane-following to take it from here: stop, then plan
+		if absf(_v) > 0.1:
+			return [0.0, 1.0, 0.0]
+		var spot := int(_ap_kt["n"]) > AP_KT_MOVES or float(_ap_kt["t"]) > AP_KT_SECS
+		Probe.event("turned_round", {"moves": mini(int(_ap_kt["n"]), AP_KT_MOVES), "secs": snappedf(float(_ap_kt["t"]), 0.1), "on_the_spot": spot})
+		_log.event("turned round", "%d moves" % int(_ap_kt["n"]))
+		_ap_kt = {}
+		_ap_dead = Vector2.INF
+		_gear = 1
+		_set_blink(0)   # (it cannot tell a half turn left from one right: off by hand)
+		_ap_pts = PackedVector2Array()   # (planned afresh next tick, facing out)
+		return [0.0, 1.0, 0.0]
+	if int(_ap_kt["n"]) > AP_KT_MOVES or float(_ap_kt["t"]) > AP_KT_SECS:
+		# no room for it (a car parked across, a wall at the kerb): the rest on the spot
+		_yaw = wrapf(_yaw + clampf(diff, -1.7 * dt, 1.7 * dt), -PI, PI)
+		_yaw_rate = 0.0
+		_v = 0.0
+		_v_lat = 0.0
+		return [0.0, 1.0, 0.0]
+	_gear = g
+	var wheel := float(_ap_kt["side"]) * MAX_STEER * g   # forward toward the turn, back the other lock
+	if _ap_kt["stop"]:
+		# between moves: stand, into the other gear, the wheel over (below), then go
+		if absf(_v) > 0.08:
+			return [0.0, 1.0, _steer]
+		_ap_kt["gear"] = -g
+		_ap_kt["n"] = int(_ap_kt["n"]) + 1
+		_ap_kt["mt"] = 0.0
+		_ap_kt["stop"] = false
+		_ap_kt["from"] = _pos
+		_gear = -g
+		return [0.0, 1.0, _steer]
+	# a car coming up the street while it is across it: stand and let it stop or go by, as a
+	# driver halfway through a turn does (the probes at the car's ends miss one coming at its
+	# side). The move's clock stands too.
+	for c in _traffic.cars:
+		if c.alive and c.v > 0.5 and c.pos.distance_to(_pos) < 9.0 \
+				and Vector2(sin(c.yaw), cos(c.yaw)).dot(_pos - c.pos) > 0.0:
+			_ap_kt["mt"] = float(_ap_kt["mt"]) - dt
+			return [0.0, 1.0, _steer]
+	if absf(_steer - wheel) > 0.02 and absf(_v) < 0.3:
+		# the wheel turned over standing still, as a driver does, not snapped from lock to lock
+		return [0.0, 1.0, move_toward(_steer, wheel, 1.8 * dt)]
+	var fwd := _fwd()
+	var end_p := _pos + fwd * float(g) * (CAR_OFF + 0.25 + absf(_v) * 0.3)
+	# the move is over: at the kerb or something solid, or crawling nowhere (a lip, a slope)
+	if _ap_kt_blocked(end_p) or float(_ap_kt["mt"]) > 6.0 or (float(_ap_kt["mt"]) > 2.0 and absf(_v) < 0.05):
+		_ap_kt["stop"] = true
+		# two moves running that got nowhere: boxed in both ways (crosswise in a street not
+		# much longer than the car), the rest on the spot
+		_ap_kt["idle"] = int(_ap_kt["idle"]) + 1 if _pos.distance_to(_ap_kt["from"]) < 0.15 else 0
+		if int(_ap_kt["idle"]) >= 2:
+			_ap_kt["n"] = AP_KT_MOVES + 1
+		return [0.0, 1.0, wheel]
+	var err := AP_KT_V - absf(_v)
+	# (plus what holds it on the slope: backing up a 17% cul-de-sac on the gentle throttle of
+	# the flat it crawled at 0.2 m/s and ran out of time)
+	var hill := MASS * 9.81 * sin(_slope) * g / (ENGINE_F if g > 0 else REVERSE_F)
+	var throttle := clampf(hill + 0.12 + err * 0.6, 0.0, 1.0) if err > 0.0 else 0.0
+	var brake := clampf(-err * 0.5, 0.0, 1.0)
+	return [throttle, brake, wheel]
 
 ## Autodrive's look ahead at a junction: does this way only lead off the map? True when every
 ## way on from it within EDGE_LOOK metres runs into the barrier at the map's edge. (An ordinary

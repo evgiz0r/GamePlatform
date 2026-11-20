@@ -9,6 +9,23 @@ A baked city looks finished on the minimap and is full of traps up close. Each s
 below was a round of the user's bug reports in a driving game built on baked towns. The
 data format is at the top of `tools/osm_city.py`; this is about living with it.
 
+## The rule under a quarter of the bugs: the whole body, not its middle
+
+Anything long -- a car, a bus, a wall, a hedge, a fence piece, a kerb corner -- judged at
+its middle point is the most repeated bug in a driving game on real streets. In one day
+five fixes out of twenty were this one mistake, each found and fixed on its own: a bus
+stopping for a red with its middle at the line (its front 4 m into the junction), the AI
+keeping its distance from a bus's middle (inside its back), a car waiting crossways seen
+by its middle (its nose in the turn, hit), garden walls and hedges checked at their middle
+(their ends on the next road). It is written down below five times, in the section where
+each was met; this is the one rule behind all of them. **Every check of where something is
+uses its outline**: a vehicle is a box its own length and width (its front at the stop
+line, its back for the gap), a wall is a box its length and thickness checked along all of
+it, a post a circle. A bus is 12 m: half its length is the error, and that is a car's width
+of road. The tests can lean on the same shapes (in a game with scene tests, a helper like
+`bodies.gd` beside them), and the scored run checks bodies every tick, so a new place this
+goes wrong shows up the first time it runs.
+
 ## Getting a city
 
 - `tools/osm_city.py` needs Overpass. From a cloud session that cannot reach it, start the
@@ -162,8 +179,20 @@ data format is at the top of `tools/osm_city.py`; this is about living with it.
   lane back is a corner a few metres across, which a car takes wide -- onto the footpath
   that continues past the end; and AI traffic that picks streets at random drives into
   them and turns round in a queue of its own. Never take "to the end of this street and
-  straight back" as a route's start; stop at the end and turn round there; keep traffic
-  out unless there is no other way.
+  straight back" as a route's start; stop short of the end and turn round there; keep
+  traffic out unless there is no other way.
+- **Turning round takes moves.** A 4.4 m car on 34 degrees of lock needs ~10 m kerb to kerb
+  to come round in one sweep; a cul-de-sac is 6-8 m. Stop ~7 m short of the end (room for
+  the first move) and turn as a driver does: forward on full lock until the nose nears the
+  far kerb or anything solid, back on the other lock, again until it faces out, then plan
+  the way out afresh. Let the bumpers go ~0.6 m over the kerb (the wheels are ~0.9 m in
+  from them): held to 0.15 m it took five moves in 6.5 m, at 0.6 three. Turn the wheel
+  over standing between moves, give the throttle what the slope takes (reversing up a 17%
+  street on the flat's throttle crawled), and turn the rest on the spot if two moves in a
+  row get nowhere. Spinning on the spot at the very end, the plain fix, swings the corners
+  over the kerb and into what stands there. And brake to a standstill at the stop: speed
+  allowed from "distance to the plan's last point" grows again once the point is behind,
+  so an AI crawling up to it rolls on past.
 - **Roads a metre or two long** sit in OSM junctions (a stub between two carriageways, a
   kink split into its own way). Anything read from "the next two points" -- the way a lane
   goes, which way to face -- can point backwards there. Read directions over a distance
@@ -243,24 +272,34 @@ one needed:
   (a ramp up meeting a ramp down at the crossing is a crest a car takes off from), and
   treat bridges shorter than ~8 m as culverts. A coarse elevation model (36 m) is smooth
   under an overpass: all the lift has to come from the ramps.
+- **Embankments are banks, not walls**, where there is room: a slope ~1.5 out for each
+  metre down with a guardrail on top, a retaining wall only where the bank's foot would land
+  on another road or in a building. Give the bank's foot a collision line too (a car on the
+  ground drove into the slope).
+- **Tunnels mirror bridges**: a drivable tunnel way under something lies a full clearance
+  down along all of it, cuttings rising back to street level along the roads either side,
+  never through a junction; one too short for its cuttings, or under nothing mapped (a
+  passage through a building), goes back on the ground. Skip roads that only share an end
+  point with it (its own next piece "crossed" it), and hold only what is near a crossing:
+  holding whole roads, or searching from every junction in town, is slow and over-holds.
 - **A divided road is two decks overlapping at the median** at slightly different heights:
   decide what is under a body by the carriageway it is on first, the nearest height next,
   or it drifts onto the other and falls off its end.
-- **Tunnels are the mirror image, with a trap of their own.** A tunnel way (layer under 0;
-  a layer-0 "tunnel" is mostly a passage under a building) wants cover all along (a tube
-  and its roof, ~7 m) and its approaches become cuttings. But a game that cuts the ground
-  open over a cutting has no ground there, so **a street that crosses over a cutting is an
-  open hole a car falls into**: wherever a road crosses over, the tunnel must be deep
-  enough for its tube, even if that makes the approach steeper. What else it took: a point
-  every few metres along each tunnel before working out depths (one straight line between
-  its two mouths let a shallow mouth lift all of it); holding only the two points either
-  side of where a road crosses over, not the whole road (that froze half the network);
-  a mouth that splits off a road carrying on stays at street level, unless that road is
-  itself another tunnel's approach (branches meet underground); a junction in the open
-  stays up too (its side streets do not dip with the approach); the other half of a
-  divided road crossing the tunnel's line by a metre where the halves close in is not "a
-  road over it"; car park ramps (service ways) are left out, and nothing is worked out
-  through them; where the tunnel is shallower than its tube, draw it as a cutting.
+- **A tunnel under a street, and a street over a cutting.** Anything that picks "what is
+  under a body" must not take a tunnel's road under a street for what a car on the street
+  stands on: ranked by carriageway first (for the divided roads above), the tunnel 7 m down
+  won and cars dropped into it. A deck well under ground the body can reach is not what it
+  is on (inside the tunnel that ground is out of reach). And where the ground is cut open
+  (a cutting), a street at grade crossing it -- across an underpass's mouth, over a
+  cutting's shallow top -- must still carry a car: its asphalt counts as ground. Test it
+  by sampling every street's asphalt for "what would a car here stand on", not by driving
+  the tunnels: the tunnels drove clean while a thousand street points were holes.
+- **More tunnel traps, from one city centre**: the other half of a divided road crossing
+  the tunnel's line by a metre where the halves close in at a mouth is not "a road over
+  it" (it held an underpass up); a short tunnel way under nothing but joining a tunnel
+  underground is a branch of it, not a passage (put on the ground, it made the junction a
+  street's and held the tunnel up); OSM's ids come out of JSON as floats (see the godot-2d
+  skill), so a membership test against your own ints silently never matches.
 - **Crests launch cars.** A ramp or cutting that meets the flat at full grade in one point,
   or a hump where a branch climbs out of a tunnel, is a crest a car takes off from at
   30-50 km/h. Ease into the slope over ~30 m (a vertical curve: depth G s^2 / 2L, then

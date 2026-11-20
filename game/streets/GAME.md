@@ -158,12 +158,11 @@ round tower 187 m, the Spiral 350 m). The map ends at the box's edge (the stripe
 The Ayalon runs through it on the ground, and every street over it is a bridge about 6.5 m
 up, on ramps from the streets either side: Arvei Nahal, Moses, Givat HaTahmoshet (the
 HaShalom bridge), Modai, Begin's and Yitzhak Sadeh. The tunnels are dug: Begin dips under
-the Kaplan junction in an underpass, the Lova Eliav tunnel runs under HaKirya and Sarona
-with its branches meeting underground, Uzi Hitman and the Carlebach tunnel go under, and
-one under Jabotinsky at the map's east edge. Each sits 7 m down with cuttings up to the
-street at either end (about 2.2 km of tunnel and 2 km of cutting); Berkowitz's, too short to
-get under the street at a car's grade, is an open cutting, and the car parks' ramps are
-still left out.
+the Kaplan junction in an underpass both ways, the Lova Eliav tunnel runs under HaKirya and
+Sarona with its links meeting Begin's underpass underground, and Uzi Hitman and the
+Carlebach tunnel go under, each about 6 m down with cuttings up to the street at either
+end. Berkowitz's short tunnel, some car park ramps and two short branch ramps out of
+Lova Eliav stay on the ground (too short to get under the street at a car's grade).
 
 > game streets -- lets add/start working on adding Tel Aviv. Somewhat the area I mentioned.
 > (with a map: Ichilov, Savidor, Azrieli, HaKirya, TLV Mall, Montefiore, Bitsaron,
@@ -466,6 +465,9 @@ white along a residential street's parking, red and white for the last few metre
 every junction and along many main roads, yellow and black in front of a bus stop. The
 parked cars keep to the paint: a nearly unbroken row down a blue-and-white street, half up
 on the pavement, fewer along a plain kerb, none on the red-and-white corners or at a stop.
+In about a third of the gaps between them a motorbike or scooter stands up on the pavement,
+along the kerb or at a slant, leaning on its stand; people walk past on the back half. Many
+of the low stone garden walls carry a fence of dark wooden boards to about head height.
 
 > ill film myself driving to work and back or whatever. and somehow give you the info back.
 > to make it more nad more realistic ( for the specific path and more general )
@@ -652,6 +654,15 @@ than the two waiting for each other for ever.
 
 > Sometimes the autodrive gets completely stuck in those narrow streets.
 
+**Autodrive at a dead end** stops a few car lengths short of the end and turns round the
+way a driver does in a narrow street: indicator on, forward on full lock to the far kerb,
+reverse lights and back on the other lock, forward again -- three moves in a cul-de-sac,
+more in a narrower one -- waiting if a car comes up the street, and drives back out. It
+used to try to swing round in one go and ran into the trees and garden walls at the end.
+
+> Autodrive misbehaves at the end of a dead-end street: the car tries to turn round there
+> and drives into a tree or post beside the road.
+
 **From above, point and go.** Zoomed out over the city, hold a finger (or the mouse) on a
 street for half a second: a ring fills under it, then the view comes down to the car and
 autodrive drives there, as "go to" does. A quick press still drags the view.
@@ -808,6 +819,18 @@ an Israeli flag on a stick from a back window. And the ground darker where more 
 it: a soft patch at the foot of every street tree, the pavement darker along the foot of the
 garden walls. All of it built with each square of the city in a few tens of milliseconds,
 and nothing to do while you drive.
+
+> Night that feels like night ... Grass blades near the camera ... lets start with these too.
+> and then go the video from today for more ideas
+
+**A night that feels like night.** The night is dark and only a little blue now (it was a
+teal "day for night" over everything), with the city's own glow low on the horizon. Every
+street lamp has a halo round its head and a warm pool of light under it on the pavement as
+well as the road (the pools used to lie under the pavement, and showed only on the road);
+headlights, yours and the traffic's, glow, and their beams light the road ahead; a lit
+shop window throws its light onto the pavement in front of it. No glow effect over the
+whole picture -- that costs a laptop's browser a millisecond or two every frame -- the
+halos are drawn with the pools, as part of what was drawn already.
 
 > I took a video on my phone, walking in Givatayim.
 
@@ -984,6 +1007,7 @@ contributors under the ODbL, which is why the credit sits on screen.
   What a shop looks like (awning, tables, the bus shelter) is generic. The parked cars
   (about a quarter of the kerb), the people walking and sitting at cafe tables, rooftop
   solar heaters and rooms (Givatayim), pitched roofs on small houses (Bedford).
+<<<<<<< HEAD
 - **Guessed, in Bedford and Tel Aviv: how high their bridges are, how deep their tunnels.**
   OSM says which ways are bridges and tunnels but not how high or deep, so the game works
   it out as the town loads: each overpass rises to clear what it crosses, on ramps up the
@@ -994,6 +1018,17 @@ contributors under the ODbL, which is why the credit sits on screen.
   Ramps are walled, not grassy banks, yet.
 - **Not there yet**: bridges in Givatayim and Ashdod (still drawn on the ground), and
   their tunnels (left out). People crossing anywhere but a zebra.
+=======
+- **Guessed, in Bedford and Ashdod: how high the bridges are, how deep the tunnels.** OSM says which ways are bridges but
+  not how high, so the game works it out as the town loads: each overpass rises to clear
+  what it crosses, on ramps up the roads leading to it, an interchange's junctions up on
+  them and its slip roads coming down. Highway 102's overpasses, the Bedford Bypass, the
+  MacKay Bridge's approach; in Ashdod Highway 4's interchanges and Sderot Menachem Begin's
+  underpass, down a cutting under the road it crosses. The ramps are grass banks with a guardrail along the top where
+  there is room for them, retaining walls where there is not.
+- **Not there yet**: bridges in Givatayim (still drawn on the ground), and tunnels under
+  footpaths (left out). People crossing anywhere but a zebra.
+>>>>>>> origin/main
 
 To make your own street more accurate, fix it on openstreetmap.org (building heights are
 the most useful thing to add) and bake again.
