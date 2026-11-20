@@ -18,6 +18,8 @@ func _run() -> void:
 			if n.get_script() != null and String(n.get_script().resource_path).ends_with("streets.gd"):
 				g = n
 	await create_timer(1.0).timeout
+	if OS.get_environment("FULL") == "":
+		g._set_quality(0)   # (what this measures doesn't depend on it, and it runs ~3x faster)
 	# onto the nearest one-way road of two lanes or more, in its right lane
 	var best := INF
 	var at := Vector2.ZERO
@@ -51,9 +53,14 @@ func _run() -> void:
 	var last_hit := ""
 	var odo0: float = g._odo
 	var shot := false
+	var passes := 0
+	var passed_was: int = g._ap_passed
 	while t < 120.0:
 		await physics_frame
 		t += dt
+		if g._ap_passed != passed_was:
+			passed_was = g._ap_passed
+			passes += 1
 		var h = g._last_hit
 		if h != "" and h != last_hit and g._crash_cool > 0.0:
 			var kind: String = h.split(" ")[0]
@@ -65,9 +72,9 @@ func _run() -> void:
 				if g._ap_pts[j].distance_to(g._pos) < 8.0:
 					lane_at = j
 					break
-			print("  hit %s at %.0f s, %.1f m/s, on %s (%s, o %s, w %.1f, lanes %d, lane %.1f), edge %.1f, plan point near: %s, cross %s, steer %.2f" % [h, t, g._v,
+			print("  hit %s at %.0f s, %.1f m/s, on %s (%s, o %s, w %.1f, lanes %d, lane %.1f), edge %.1f, plan point near: %s, cross %s, steer %.2f, backing %s" % [h, t, g._v,
 				rr.get("en", "?"), rr.get("k", "?"), rr.get("o", "?"), float(rr.get("w", 0)), g._lanes_each_way(rr) if not rr.is_empty() else 0,
-				g._lane_off(rr) if not rr.is_empty() else 0.0, float(on.get("edge", 99)), lane_at, not g._cross.is_empty(), g._steer])
+				g._lane_off(rr) if not rr.is_empty() else 0.0, float(on.get("edge", 99)), lane_at, not g._cross.is_empty(), g._steer, g._ap_back > 0.0])
 			if OS.get_environment("OUT") != "" and int(hits[kind]) <= 2:
 				await _snap("hit_%d_%s_%d" % [lvl, kind, int(hits[kind])])
 		last_hit = h
@@ -85,7 +92,7 @@ func _run() -> void:
 			var over := lat < 0.9 + half_w - 0.1 and lon < 2.3 + float(c.len) * 0.5 - 0.2
 			if over and not touching.has(i):
 				bonks += 1
-				print("  bonk at %.0f s: %s %.1f m across, %.1f along, me %.1f m/s" % [t, c.kind, lat, lon, g._v])
+				print("  bonk at %.0f s: %s %.1f m across, %.1f along, me %.1f m/s, it %.1f m/s, backing %s, its blocker %d" % [t, c.kind, lat, lon, g._v, c.v, g._ap_back > 0.0, c.blocker])
 				if not shot and OS.get_environment("OUT") != "":
 					shot = true
 					await _snap("bonk_%d" % lvl)
@@ -105,5 +112,6 @@ func _run() -> void:
 		var lat_me: float = (g._pos - (hit["q"] as Vector2)).dot(Vector2(-d.y, d.x))
 		multi += dt
 		off_sum += absf(lat_me - float(g._lane_off(r))) * dt
+	print("buses passed at their stops: %d" % passes)
 	print("120 s from %.0f m away: %.0f m driven; on multi-lane one-ways %.0f s, %.2f m from the right lane's middle on average; bonks %d; hits %s" % [best, g._odo - odo0, multi, off_sum / maxf(multi, 0.01), bonks, str(hits)])
 	quit(0)

@@ -29,13 +29,19 @@ into the turns.
 
 > First-person / bonnet camera.
 
-**On foot.** Stop, and the "walk" button (or F) lets the driver out of the door to walk the
-same city: arrows or the stick to walk and turn, space to run, over the shoulder or (the
-"seat" button) from the eyes. The car idles where it was left and traffic goes round it;
-traffic stops for you on the road; walls, trees and passing cars push you aside; the
-minimap marks the car. Back at it, "drive" gets you in.
+**On foot.** The "walk" button (or F) lets the driver out of the door to walk the same city:
+arrows or the stick to walk (a brisk 2.1 m/s) and turn, space to run (6 m/s), over the
+shoulder or (the "seat" button) from the eyes. Out of a moving car you jump: you tumble
+out of the door with the car's speed, roll and get up, and the empty car rolls on by
+itself, slowing, until it stops or hits something. Traffic goes round the car; traffic
+stops for you on the road; walls, fences, trees and passing cars push you aside; the
+minimap marks the car. Back at it, "drive" gets you in (still rolling, it rolls on with
+you).
 
 > Walk mode: get out of the car and walk the same city.
+
+> I want to walk a bit faster when I'm out of the car, now it's too slow. I want to be able
+> to start walking also when I'm driving. The car will just continue and I'll pop off.
 
 ## What do you do?
 
@@ -142,6 +148,23 @@ past the foothills they are too steep to drive up (see below), so it is a valley
 leave -- except by the one road that climbs the western mountainside to a lookout terrace
 with a car park and a cafe. The car starts on HaNasi just past HaShuk, in the middle.
 
+> Lets work on adding tunnels/bridges, and maybe more complicated roads. Work in the test
+> town. Change the town if needed (adding river or whatever needed for bridges).
+
+**Off the ground** (the test town first). A river, Nahal Dimyon, crosses the south of the
+town in a valley of its own, from a spring at the foot of the eastern hills to a lake in
+the south-west; its banks are low in the middle of town and steep where it cuts through
+the knoll, and every street that crosses it goes over on a bridge -- concrete parapets, a
+pavement each side, piers standing in the water -- the ring road's on a long skewed one,
+with a footbridge between HaNasi and Rothschild. Derekh HaMinhara goes from HaNasi past
+HaGalil down a cutting into the hill and through it in a 440 m tunnel (under HaOranim,
+HaBroshim and the water tower), lit by two rows of lamps, up a cutting on the far side to
+the ring road. Two of the old grid's streets no longer meet the boulevard: HaTamar dips
+under it (a cutting, a short cut-and-cover tunnel, a cutting back up), HaZayit climbs over
+it on embankments and a bridge. Driving, walking and the traffic all keep to their own
+level: under a bridge you are under it, in the tunnel the hill's houses are not in your
+way, cars overhead do not stop for you.
+
 > I want to make a new fake city in streets, where we would do quicker simulation and
 > validations. Yes it would not stress as the big cities on latency, but would give a quick
 > look if something got prettier as we are trying to make things more realistic slowly.
@@ -150,17 +173,87 @@ with a car park and a cafe. The car starts on HaNasi just past HaShuk, in the mi
 > shouldn't be too small, like a regular neighborhood where you have most of the features
 > and variety (cars, buses, buildings, types of cars, slopes, landmark and so on).
 
+**A filmed walk.** "A walk in Givatayim: Katzenelson to Ha-Meri" replays, in first person,
+a walk filmed on a phone: off the north kerb of Katzenelson by the Ha-Meri passage, over
+both halves on the zebra, along the south pavement and over the paved forecourt, down the
+passage between its wooden fence and its low white fence, out along the little street at
+its end, over Sheinkin at the corner and into Ha-Meri, where it stops. It walks on its own,
+from the eyes of someone holding a phone at the chest, about a minute and a half, timed so
+it passes each place when the film did: the two can be watched side by side, which is how
+the street is being made more like the real one, a pass at a time, the big things first.
+No controls, no driving HUD; exit leaves. The route and what the film showed that the map
+lacks are in `cities/details/givatayim.json` (see below).
+
+> Can we create a video, 1st person view like my phone, side by side with video from the
+> phone, up until Ha-Meri.
+
+It crosses like a person: it waits at Katzenelson's kerb looking left at the traffic coming,
+crosses to the median, waits there looking right, then crosses; at Sheinkin it looks right,
+then left. Cars come down the street to meet it there: one goes by before it steps off, the
+next stops at the zebra for it, and drives on once it is across. The head looks where the
+walk is going and turns into a corner a moment before the feet do.
+
+Over the passes since, the walk's street has been dressed, a stretch at a time, from the
+film: Katzenelson two lanes each way with railings and red-white kerbs at its zebra; the
+passage paved in grey pavers in rows, its rough stone wall, and tall planting and trees
+closing it in; past Sheinkin the walk crosses Ha-Meri on its raised crossing to the far
+kerb, as the film does, the street's kerbs blue and white, a 30 painted in its lane and the
+zone 30 sign at its mouth; lit shop fronts under the arcade.
+
+> During the walk we collide into a house, the pavement there is not matching in the middle.
+> Let's also add cars, and we look left, right, and they stop for us. Usually we look where
+> we want to walk, and look before turning.
+
+> Let's try to enhance that specific walk, very realistic, in depth, slow, iteratively
+> (people a bit less interesting, but the other items, from bigger details we already have
+> to smaller details). And add in the menu an option to view that walk, just till reaching
+> Ha-Meri street. That's all it will do, no other controls.
+
 The minimap (bottom left) shows the real streets and buildings round you, heading up, with
 the city limits in pink. The name of the street you are on is at the top, in Hebrew with
 the English name under it when OSM has one.
 
+**Zooming out.** "zoom" (on the right, under "walk"; Z, or the mouse wheel down, or two
+fingers pinching together) lifts the view off the car -- or off you, on foot -- up over the
+city, centred on where you are, the way you were facing at the top of the screen, and
+pauses the city: the car, traffic, people and lights hold still where they are, and the
+engine goes quiet. A ring marks you (an arrow on the screen's edge points back if you have
+looked away), and on foot a square marks the car. Up there you look round: drag (or the
+arrows) to move over the town, the wheel or a pinch (or - and =) to go higher or lower --
+from just over the rooftops to about a kilometre of town across the screen -- and Q / E or
+two fingers turning to turn it. The view looks down at a slant (about 50 degrees at the
+highest), not straight down, so the town reads as streets and buildings rather than a plan.
+Zooming in stops at the rooftops; keep zooming in there for about a second (a bar fills
+under "keep zooming in to get back in the car") and it flies back down to the car. "back"
+or Z go straight down. Either way the city goes on. From the driver's seat it rises via the
+chase cam and lands back in the seat. While you are up there the minimap follows the view:
+centred where you are looking, turned the way the screen is, with the part of town on the
+screen outlined, and an arrow for you (on its edge if you are off it). Trees, pavements and
+the rest are drawn all the way across the view while it is up, so nothing pops in as you
+move it.
+
+**Pause.** "pause" (K) holds the city still with the view where it is; "resume" lets it go
+on. Resumed while zoomed out, the city runs under you and the view follows the car, which
+still drives (keys or the stick). The shell's own pause (its menu) is still there too.
+
+> If I would want a zoom out feature, that zooms out from where I am. Maybe it pauses the
+> city (maybe we can add a pause feature anyway), and we can zoom back in (or check around).
+
+> It goes back into my car too quickly if I am zoomed in. Maybe if I am fully zoomed and I
+> still zoom in for a second. I do want to be able to zoom it. I want the map to represent my
+> zoomed view if possible (so it's clearer what I am looking at). Maybe the angle slightly
+> more tilted so it's less from above. When I move while zoomed some buildings just pop in
+> the view, not naturally.
+
 ## What is trying to stop you?
 
-Nothing yet, on purpose: this is a driving sim first. Buildings, trees, parked cars and
-traffic-light poles are solid. Crashes are a bit more game than real: a thud and a shake,
-the car bounces back off what it hit and spins if it was hit off-centre, and a hard one
-throws it into a little hop. Too fast over a crest or off a ramp and it leaves the ground
-for a moment and lands with a bump.
+Nothing yet, on purpose: this is a driving sim first. Buildings, trees, parked cars,
+traffic-light poles, fences, railings, hedges, the low garden walls, bus shelters and the
+columns under raised buildings and canopies are solid. Crashes are like real ones: the car
+stops at what it hit with a jolt of the camera and a bang, rebounds only a little (it
+crumples), and turns a little if it was hit off-centre -- no hop, no spinning like a top.
+(They were made bouncier and game-like once, and asked back.) Too fast over a crest or off
+a ramp and it leaves the ground for a moment and lands with a bump.
 
 **Ground too steep to climb** -- steeper than 62%, about 32 degrees -- is as solid as a
 wall, on foot too, and assist brakes for it; a road is always drivable however steep. No
@@ -169,6 +262,9 @@ town's mountains. Ground that steep is drawn as bare rock, in bands.
 
 > I want the car to be able to "jump" a bit if I drive too fast on slopes. Maybe making
 > the crashes more bouncy as well... slightly less realistic, more "game"-like.
+
+> I want the interactions back a bit more realistic (less bouncy, more like real crashes).
+> There are also a lot of things without collision, like fences and some parts of buildings.
 
 **Traffic.** About twenty cars drive the real streets round you, in their lane, mostly on
 the main roads: they slow for corners, keep their distance (brake lights on), stop at red
@@ -208,6 +304,18 @@ where they waded into the slabs.
 
 > People walk a bit inside the ground.
 
+People appear, leave and change places only where nobody would see it: beyond the distance
+people are drawn at, or behind you. (They popped up at the kerb in front of the car, and
+the ones at cafe tables jumped from table to table as you drove.) They turn over a moment
+at the end of a block and round a bend, step up and down kerbs, and step aside from a car
+on the pavement rather than leap. At a crossing by a junction with lights they go with
+the lights: only while the road's cars have red, and only with time enough left to get
+across, so cars through the junction no longer stop in the middle of it for them.
+
+> The movement of the people: they bounce, jump, teleport and so on. They also don't cross
+> the roads according to the lights, so in many crossroads we have to stop for them in the
+> middle.
+
 The people are grown-ups, not the kit's chunky cartoons: smaller heads, hands and feet,
 longer legs and a longer middle (scaled on their skeletons after every animation frame),
 at the height asked for. Faces are a deeper shade of the skin, not big white eyes. Skin
@@ -224,9 +332,24 @@ That goes for you on foot too.
 **Lights and signs mean something.** Autodrive stops at red lights and stop signs and
 keeps behind the car in front. Drive through a red light, or a stop sign without
 stopping, and it says so. The stop and give-way signs are OSM's (Givatayim has a few
-dozen mapped, Bedford more); the lights run their own cycle, east-west streets then
-north-south. OSM often maps a light on one approach of a junction only; the game gives
-that junction lights on every way in.
+dozen mapped, Bedford more); the lights run their own cycle: at each junction its main
+road's ways in, then the rest, with 2.5 s of red all round between (it was the whole
+city's east-west streets against its north-south ones, and at a skewed junction both
+streets had green at once). OSM often maps a light on one approach of a junction only;
+the game gives that junction lights on every way in. The lamps are real red, amber and
+green, red at the top, whatever the palette, and dark when out. Cars stop with their front
+at the stop line -- a bus stopped by its middle stood across the junction -- and read the
+light for the way they come in, not the way they are turning.
+
+At a zebra by a junction with lights there are walk lights on both kerbs, the red man over
+the green man, in step: green while the road being crossed is held at red. People there
+go on the green man only, with time enough left to get over.
+
+> The whole logic of lights and how cars and autodrive go, something is fishy. Let's make
+> the colours clear: red on the top (no go), yellow, green. Maybe add those for people too,
+> matching the lights -- that's how it usually works here, so they don't just cross randomly.
+
+> Buses get stuck in the middle of roads when it's red for them.
 
 **Signs and paint.** A stop line across the lane at every light and stop sign, STOP
 painted before a stop sign (עצור in Givatayim), SLOW (האט) before a crossing near a
@@ -239,8 +362,10 @@ Every street has the signs a real one has: a green name plate at the corners (ר
 Hebrew name over the English in Givatayim, the name alone in Bedford), a blue roundabout
 sign on every way into one, a blue crossing sign on both sides of each zebra (and in
 Givatayim on the traffic-light poles too), a P at car parks, no entry at the wrong end of
-a one-way street and the blue one-way arrow at its corner, "turn this way" where only one
-way out is allowed, and "keep right" where a street splits round an island. Givatayim's
+a one-way street (where its traffic comes out: it stood at the end you may drive in by,
+and autodrive drove in under it) and the blue one-way arrow at its corner, "turn this way"
+where only one way out is allowed (not at one point of a junction drawn as several), and
+"keep right" where a street splits round an island. Givatayim's
 stop sign is the Israeli one, the red octagon with the white hand; Bedford's says STOP.
 Painted arrows in the lanes before the junctions of the main roads show the ways out.
 
@@ -403,6 +528,19 @@ a little further from the centre line; parked cars stand mostly up on the paveme
 roundabout a car decides at each exit and is ever less likely to stay on, so nobody
 circles and the cars waiting to come on are let in.
 
+**Main streets have a divider.** A wide two-way main road in the Israeli towns (OSM maps
+many as one road) has a raised island down the middle, kerbed and paved, solid to the car,
+stopping short of each junction and open at each zebra -- they are not open down the
+middle there.
+
+> Usually in Israel main streets have a clear border between the sides, it's not open.
+
+**Autodrive** moves into the left lane (or toward the centre line) over the last 45 m
+before a left turn, keeps behind a bus by its back, not a car's length behind its middle,
+and passes a bus standing at its stop in the next lane when that lane is clear.
+
+> We turn left from the left lane. / Keeps bumping into stopping buses.
+
 **Autodrive** keeps to the right-hand lane of a one-way road of several (it drove down the
 middle, astride two, and in between the cars in them), counts a car going its way as in
 its lane wherever their bodies would touch, stops for anyone standing on its lane, keeps out of alleys and car-park lanes
@@ -441,7 +579,10 @@ out per pixel from where it is, nothing to load, the fine part fading out with d
 **Real textures.** Up close the surfaces are photographs (free CC0 ones from Poly Haven, in
 `textures/`): the asphalt has grit and fine cracks, with a second photo of tyre marks,
 patches and long cracks laid over it at 30 m so it doesn't visibly repeat; Givatayim's and Ashdod's
-pavements are rows of concrete pavers, Bedford's poured concrete slabs; grass and open
+footways and plazas are 20 x 10 cm concrete pavers in herringbone, a mix of greys, charcoal and
+red-browns (drawn by `textures/herringbone.py`, after a walk filmed in Givatayim: no photo
+had them; the pavements along the streets are laid square to the kerb in each street's own
+pattern, see "As it looks on foot"), Bedford's poured concrete slabs; grass and open
 ground are a real lawn; walls are painted render. Each has its bumps, so the low sun picks
 out the cracks and the joints between pavers. The palette still decides every colour: a
 photo only adds the variation round its own average, so `/look` reskins it as before.
@@ -458,6 +599,60 @@ roofs of tar and gravel with dried-puddle stains.
 > details and resolution?
 
 > Let's start with the textures.
+
+**As it looks on foot.** Set beside frames of a phone video of a walk down these streets,
+the city now has what the walk had underfoot and at eye height:
+- Pavements of concrete pavers: herringbone at 45 degrees, rows of bricks, or square slabs,
+  each street its own, in mixed reds and browns, greys, sand, or all of them mixed, with a
+  row on end along the kerb. Leaves on them under the trees (and the odd bougainvillea
+  petal), grime in wide soft stains. Bedford keeps its poured concrete slabs.
+- Blocks' ground floors as they are: flats behind white security bars, the way in a glazed
+  door in the middle bay, lit at night (they used to be dark hollows, a row of black boxes
+  along every street). A stone plinth to knee height on most blocks, Jerusalem stone in
+  courses on the stone-clad ones, small square mosaic tiles on some of the white ones.
+- The lobby under a block on columns light, its glass door lit, the ceiling over the
+  parking pale (it read as a black box from the pavement).
+- Tired roads: patches of newer, darker asphalt with their sealed seams; stretches crazed
+  into small plates; the mix's light stones showing close up; the paint, zebras too, worn
+  half away and cracked with the road. Manhole covers grey cast iron, not black.
+- At the kerb: a pair of bollards either side of every zebra on both pavements, black with a
+  yellow reflective band (now and then white); on the main roads a white railing instead,
+  4 m either side of the crossing; a red fire hydrant every 130 m or so; grey utility
+  cabinets at the back of the pavement; black bins on the main and shopping streets; an iron
+  grate round every street tree's trunk. All solid to the car.
+- Front gardens plot by plot (14-22 m each, a gap for the gate): a low wall of rough stones in
+  mortar, with a clipped hedge behind it, white bars or green chain-link on top, or bare;
+  bougainvillea spilling over one in six; the garden shrubs leafy, not smooth balls.
+- The ground darker where things stand on it, as the sky's light reaches less of it there:
+  a soft band out from the foot of every building, darker still in its inside corners; the
+  parking under a block on columns in the shade; a dark patch under every parked car,
+  softening out past its sides. Without it the houses and cars looked as if they hovered a
+  hair above the street. It is one faint layer laid out with the city, so it costs almost
+  nothing while you drive.
+- Shadows all the way out. The real shadows only reach 45-75 m from the camera (and the
+  lowest quality has none), so past them the whole city used to stand on evenly sunlit
+  ground. Now every building's shadow, and every tree's, lies on the ground as far as you
+  can see, as dark as the real ones and meeting them without a seam; at the lowest quality
+  they are the only shadows there are. The sun never moves, so they are worked out once
+  as the city loads.
+
+> ok lets start as you say
+
+> ok go next
+
+> go next
+
+**Golden hour.** The time-of-day button steps through day, evening and night. The evening is
+the hour before sunset: a sky photographed then, clouds lit gold from below and a glow
+along the horizon where the sun is going down (in the west-south-west, as it sets over
+Givatayim in the autumn); the sun low and orange, so the fronts that face it glow and the
+streets lie in long blue shade; the haze warm towards the sun. Every shadow, the painted
+far ones too, is as long as a low sun makes it. The first switch to the evening takes a
+moment (its far shadows are drawn then), after that it is instant.
+
+> continue?
+
+> I took a video on my phone, walking in Givatayim.
 
 ## Smooth on a laptop and a phone
 
@@ -477,7 +672,17 @@ doesn't count -- one half-second stall made a smooth 50 frames a second read as 
 waits longer before the next try (30 s, then 1, 2, 4 minutes), so it never flickers
 between two.
 
-> Sometimes quality drops, even on my PC. It never goes up again, and textures are gone. The frame rate, the slowest frame of the last few seconds and the level are shown
+> Sometimes quality drops, even on my PC. It never goes up again, and textures are gone.
+
+**The drive map.** A second tap on the fps text (or P twice) shows the last two minutes as a
+map: your track coloured by speed, autodrive's lane ahead and what is holding it back, the
+cars round you, a cross where something was hit and a dot where it stood still. "save log"
+downloads those two minutes as a file to send, to see exactly what the car and the cars
+round it did.
+
+> Maybe we can log the path of our car (and maybe some adjacent cars) on a 2D map to
+> reproduce why they were driving badly, and view the path the car took, to fix its
+> accuracy. The frame rate, the slowest frame of the last few seconds and the level are shown
 small under the speed. Parked cars and
 traffic are one mesh per car shape (a batch of them costs one draw, not six); every kind
 of shader is drawn once while the city loads, so none of them stalls the first time it
@@ -614,16 +819,34 @@ contributors under the ODbL, which is why the credit sits on screen.
   What a shop looks like (awning, tables, the bus shelter) is generic. The parked cars
   (about a quarter of the kerb), the people walking and sitting at cafe tables, rooftop
   solar heaters and rooms (Givatayim), pitched roofs on small houses (Bedford).
-- **Not there yet**: bridges and tunnels as such: roads at different levels are drawn
-  on the ground, and tunnels are dropped (an interchange is flat; motorways and their slip
-  roads at least have no pavements or people along them). People crossing anywhere but a
-  zebra.
+- **Not there yet**: bridges and tunnels in the real towns. OSM says which ways are
+  bridges and tunnels but not how high they are, so there the roads at different levels
+  are still drawn on the ground and tunnels are dropped (an interchange is flat; motorways
+  and their slip roads at least have no pavements or people along them). The test town has
+  them (above), because its maker knows the heights. People crossing anywhere but a zebra.
 
 To make your own street more accurate, fix it on openstreetmap.org (building heights are
 the most useful thing to add) and bake again.
 
+**What a walk showed.** `cities/details/<city>.json`, when there is one, is laid over the
+baked city as it loads (`details.gd` has the format): road edits (drop a baked road, add
+one), zebras the map leaves unmarked, extra areas, and what stands along a street that OSM
+does not map -- stone walls, wooden fences, low white fences, hedges, bins, the white hoop
+railings at a passage's end -- placed by hand from a walk filmed along it. Givatayim's has
+the Ha-Meri passage: OSM draws it as one footpath from Katzenelson to Sheinkin, where the
+film shows a paved forecourt, the passage itself between its fences, and a short street
+with parked cars down to Sheinkin. The second pass dressed the passage's north end as the
+film shows it: the corner block stands on columns along Katzenelson, shops back under the
+upper floors and a row of motorbikes nose to the kerb; charcoal pavers under the arcade,
+the forecourt's pale poured slabs with a manhole; black bollards banded yellow across it,
+the transformer on twin poles at the passage's mouth, a garden lamp, the barrier across the
+next block's drive, and the planted bed and trees where the passage begins. It also holds
+walks, routes timed to their film, that a place in `LEVELS` can replay. A footpath in town (not in a park) is paved like the
+pavements everywhere, not only here.
+
 ## Later (said, not built)
 
-- Bridges and tunnels: roads at different levels, an interchange you drive over and
+- Bridges and tunnels in the real towns: working out each deck's heights from OSM's tags
+  and the ground (the test town has them already), then an interchange you drive over and
   under.
 - Not just driving: the same baked city could be walked, or used by another game.

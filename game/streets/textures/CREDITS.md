@@ -8,7 +8,7 @@ required, given anyway. The 1k JPG downloads, renamed `<id>_diff.jpg` (colour) a
 |---|---|---|---|
 | `asphalt_02_*` | asphalt_02 | 3 m | road grit and fine cracks |
 | `aerial_asphalt_01_diff` | aerial_asphalt_01 | 30 m | patches and tyre marks over it |
-| `concrete_pavers_02_*` | concrete_pavers_02 | 2 m | Israeli pavements (pavers) |
+| `herringbone_pavers_*` | none: drawn by `herringbone.py` | 2 m | Israeli pavements (20 x 10 cm pavers in herringbone) |
 | `concrete_pavement_*` | concrete_pavement | 1.8 m | Bedford's pavements (slabs, scaled up) |
 | `leafy_grass_*` | leafy_grass | 2 m | grass, earth, the open ground |
 | `painted_plaster_wall_*` | painted_plaster_wall | 2 m | building render |
@@ -35,3 +35,8 @@ average colour in `TEX_MEAN` in `streets.gd`: the mean of the file's stored (sRG
 `python3 hdr_sky.py <the .hdr> sky_day.jpg 4096`. It prints where the sun is across the
 photo (`SKY_SUN_U`) and its average and horizon colours (`SKY_MEAN`, `SKY_HORIZON`) for
 `streets.gd`. Imported lossy (WebP), no mipmaps: it is only ever the background.
+
+`sky_evening.jpg` is the sky half of Poly Haven's CC0 HDRI
+[kloppenheim_06_puresky](https://polyhaven.com/a/kloppenheim_06_puresky) (the 4k .hdr),
+made the same way but kept darker so it stays an evening:
+`python3 hdr_sky.py <the .hdr> sky_evening.jpg 4096 0.45` (its numbers are in `SKIES`).

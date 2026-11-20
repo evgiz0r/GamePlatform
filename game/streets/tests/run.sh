@@ -4,10 +4,12 @@
 # screenshots. See README.md here for the list and what "good" looks like for each.
 #
 #   game/streets/tests/run.sh <test> [level]        level: 1 Givatayim, 2 Bedford, 3 Ashdod,
-#                                                  4 the made-up test town (default 1)
+#                                                  4 the made-up test town, 5 the filmed walk
+#                                                  (default 1)
 #   OUT=/some/dir game/streets/tests/run.sh map_edge 3
 #
-# Screenshots go to $OUT (default /tmp/streets-tests/<test>). Needs a display: on a
+# Screenshots go to $OUT (default /tmp/streets-tests/<test>). The tests that measure behaviour
+# drop the game to its lowest quality first (FULL=1 keeps it). Needs a display: on a
 # headless box it runs under xvfb-run. These are slow on a cloud container (a minute of
 # game time can take five of wall time): run them in the background with a long timeout.
 set -euo pipefail
@@ -32,4 +34,7 @@ x=()
 if [ -z "${DISPLAY:-}" ] && command -v xvfb-run >/dev/null; then
 	x=(xvfb-run -a -s "-screen 0 1280x720x24")
 fi
-exec "${x[@]}" "$godot" --path . --rendering-driver opengl3 --audio-driver Dummy -s "res://game/streets/tests/$test.gd"
+# a smaller window: the software renderer is bound by pixels (RES=1280x720 for big shots);
+# GODOT_ARGS: more engine flags, e.g. "--fixed-fps 10" to record frames at a steady clock
+exec "${x[@]}" "$godot" --path . --rendering-driver opengl3 --audio-driver Dummy --resolution "${RES:-960x540}" \
+	${GODOT_ARGS:-} -s "res://game/streets/tests/$test.gd"

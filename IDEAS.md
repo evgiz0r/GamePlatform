@@ -16,7 +16,7 @@ right now, offer to add it here rather than letting it get lost in the chat.
 - **Memory games.** Match pairs, repeat the sequence, that family.
 - **2D open world.** A big map you wander instead of one screen.
 - **3D open world.** "2D open world" above, but in 3D: `GameMode3D` exists now
-  (`shell/game_mode_3d.gd`, see `game/drop/`), so this is the open-world part. Biggest
+  (`shell/game_mode_3d.gd`, see `reference/drop/`), so this is the open-world part. Biggest
   item on this list.
 - **Card games and card assets.** Deck, hand, table; and the art to go with it.
 - **Game flow in open worlds.** State machines, a database of characters, states and

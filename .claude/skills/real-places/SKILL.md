@@ -108,7 +108,70 @@ data format is at the top of `tools/osm_city.py`; this is about living with it.
   face, the traffic car edges past if there is nearly room, else turns off (once out of
   sight, or after a while regardless).
 - **Give up gracefully**: an AI that has got nowhere for 40 s (not at a light) is lifted
-  onto a street a little way toward the middle of town.
+  onto a street a little way toward the middle of town. Count a push that goes nowhere
+  (foot down, not moving, too slow to register as a hit) toward that too, or the AI noses a
+  bollard, backs off and noses it again for minutes.
+- **Dead ends are everywhere** (cul-de-sacs, streets that end in a footpath), and houses
+  stand at them. Three traps: a route planner that charges nothing for turning round plans
+  "on to the closed end and back" from a house there; a U-turn planned as a lane out and a
+  lane back is a corner a few metres across, which a car takes wide -- onto the footpath
+  that continues past the end; and AI traffic that picks streets at random drives into
+  them and turns round in a queue of its own. Never take "to the end of this street and
+  straight back" as a route's start; stop at the end and turn round there; keep traffic
+  out unless there is no other way.
+- **Start a plan in the lane**, not at the nearest point of the road's centre line: the
+  line from there to the next point (often far down the street) runs diagonally, and the
+  car drives left of the middle for the length of the street.
+- **Score the driving, don't eyeball it**: a scripted exam that drives the AI from several
+  places in town and counts per minute (stuck, hits, off the road, wrong side, red lights,
+  harsh braking per occasion, and traffic's own stalls, overlaps and reds) finds in one run
+  what an afternoon of watching does not. Count a signalled junction as one, by the way the
+  car came in: a divided road's junction is several signalled points, and judging each by
+  the heading mid-turn reads a car that went in on green as running the cross street's red.
+
+## Bridges, tunnels: roads at different levels
+
+OSM tags which ways are bridges (`bridge=yes`, `layer=1`), tunnels (`tunnel=yes`,
+`layer=-1`) and sometimes the ramps (`embankment=yes`, `cutting=yes`), but not how high
+anything is; a bridge way is usually only the span, its ramps ordinary ways. Until the
+heights are worked out, a baked town's bridges lie on the ground and its tunnels are best
+left out. A made-up town can give each such way its surface's height at every point (the
+city format's `y`), and that is enough for a game to do the rest. What a driving game on
+one needed:
+
+- **One height per point is the whole problem.** Everything that asked "how high is the
+  ground here" -- the car, its pitch, the camera, traffic, people, collisions -- now asks
+  "how high is the surface under this, for something at this height": the highest of the
+  ground and the decks there that is no more than a step (~1.2 m) above its feet, else the
+  lowest. Each mover keeps its own height, and that alone keeps a car under a bridge under
+  it and one in a tunnel off the hill above. Start a mover at "the top" (a huge height),
+  and put one down on a road at that road's height.
+- **Each road's nearest segment, never past its ends.** Several segments of one deck are
+  near any point on it; taking the highest of them gave the next one's end height, a
+  stepped surface, and the car took off from every joint (half of a tunnel run airborne).
+  Then a road's end still counted a few metres past it, at its end height. Nearest segment
+  per road first, and drop the road when that is its end and the point lies beyond.
+- **Keep the decks away from the ground's builders.** Kerbs, parked cars, lamps, walkers,
+  fences, signs placed along a deck stand on the ground under a bridge or on the hill over
+  a tunnel. Leave decks out of whatever list those builders walk and draw them separately
+  (asphalt and paint can reuse the ground's own code with the height source swapped).
+- **Every lookup takes a level.** "Nearest road" (a level-less one skips decks far from the
+  ground's level), collisions with buildings, fences and trees (only for a body near the
+  ground's level: a car in a tunnel was shoved out of the houses above), traffic's "car
+  ahead" and the player-against-traffic push, and every look-ahead probe an AI driver makes
+  (autodrive crawled under a hill at 30 km/h, braking for the houses over its head).
+- **Cut the ground open** over a cutting (clip the terrain mesh's triangles round its
+  footprint) and drop any far-off flat ground plane below the deepest deck, or it shows
+  through. Inside a cutting's footprint the ground is never a surface, however shallow:
+  switching to it where the cut is 5 cm deep was a step a car hopped off.
+- **A bridge's end must be off the bank's slope.** A height grid's triangles bend the ground
+  a cell beyond where a dug river channel starts; a bridge ending on that slope has a crest
+  just past its end. End it a cell further out. And keep its end away from junctions (20 m
+  or so): a car turning in clipped the parapet's start.
+- **Water held at its own level** (a river between weirs) is drawn at that level and is too
+  deep to drive into; gentle banks otherwise let a car down to drive along the bed under
+  the water. Leave lakes that lie at their shore's lowest point alone: a road over an
+  inlet runs on ground below their level.
 
 ## The edge of the map
 
@@ -140,8 +203,9 @@ a place and a heading on the baked ground.
   `curl -L "https://drive.usercontent.google.com/download?id=<id>&export=download&confirm=t"`,
   then tell them to set it back to Restricted (check with the connector's permissions call).
 - **Comparing.** Project the GPX with the bake's own flat projection (`Proj` in
-  `tools/osm_city.py`, origin from the city file), cut stills with `ffmpeg -ss <t> -i v.mp4
-  -frames:v 1` every ~10 s and at the stops, label each with the nearest street, then stand
+  `tools/osm_city.py`, origin from the city file), cut stills every ~10 s and at the stops
+  (`ffmpeg -ss <t> -i v.mp4 -frames:v 1` was right on the phone's own file; on a re-encoded
+  clip decode instead, see below), label each with the nearest street, then stand
   the game's camera on the same spots and heading (a scene test with the dev camera at
   chest height, ~1.35 m; a 70 degree vertical field is about a phone's main lens held
   upright, so crop the middle 9:16 of a landscape shot) and set the pairs side by side.
@@ -154,11 +218,62 @@ a place and a heading on the baked ground.
   pairs by eye, or name the street. The film's heading can differ from the walking
   direction: a walker who turns to look at a shop is not looking where they go.
 
+Without a GPS track, or when the session cannot reach Drive:
+
+The fastest way to see what is wrong with a street is the user filming it on a phone and
+the game walking the same route in first person beside it.
+
+- **Getting footage in without opening the network.** The connectors cap downloads at
+  about 10-12 MB, OneDrive's will not hand over a video at all, and a phone's 3-minute video is ~350 MB (emailed, it turns
+  into a Drive link, which is not the file). Two ways that work: frames, with VLC's scene
+  filter writing a JPG every few seconds into a synced folder (images come through the
+  OneDrive connector one by one: a helper agent can read and describe all of them without
+  filling the main conversation), or a short clip under 10 MB (VLC
+  `--sout=#transcode{vcodec=h264,vb=600,scale=0.3}`, `--stop-time`), sent as a real email
+  attachment, which the Gmail download tool saves to disk.
+- **Orientation.** VLC's scene filter ignores the phone's rotation flag (frames come out
+  sideways), and its transcode of a portrait video can come out **mirrored**: check a shop
+  sign's text before believing which side anything is on, and flip with ffmpeg `hflip`.
+  Reading sides off a mirrored clip put a fence on the wrong side for a whole pass.
+- **Seek by decoding, not with `-ss`.** A phone clip re-encoded at a variable frame rate
+  (VLC's transcode is one) can make `ffmpeg -ss <t> -i clip` land seconds off in its first
+  stretch, while `-vf trim=<a>:<b>,setpts=PTS-STARTPTS` (decoding from the start) agrees
+  with the clip's own clock: a contact sheet cut with `-ss` once put a 14 s road crossing
+  in the first 3 s. Cut contact sheets the way the side-by-side is cut.
+- **Matching the two.** A contact sheet at one frame a second gives the landmarks' times;
+  walking time gives distances (people walk 1.2-1.3 m/s): a road that takes 15 s to cross
+  is ~17 m, whatever OSM's guessed width says. Time the game's walk to the same landmarks,
+  so the two pass each place together. A phone held upright sees about 70 degrees
+  vertically: render 16:9 at that and crop the middle 9:16.
+- **What footage showed the map gets wrong**: a passage drawn as one footpath that is
+  really a forecourt, the passage and a short street with parked cars; a footpath's end
+  joined to the nearest junction point rather than where it meets the street; a crossing
+  mapped as a footpath between the two kerbs with no crossing tag, so no zebra; widths by
+  class. Fixing it in OSM is best; until the user does, a hand-placed layer over the baked
+  file (road edits, zebras, walls, fences, railings) survives a re-bake, where editing the
+  baked file would not.
+- **A block's outline is its upper floors.** OSM traces buildings from above, so where the
+  ground floor stands back under the upper ones (an arcade of shops along a main road, a
+  block on columns) the outline runs out over the pavement, and a walk filmed under it goes
+  "through" the building: from inside, its walls are not drawn, so a first-person replay
+  looks open and nothing seems wrong until a check says the walker is inside a footprint.
+  Measure the walk's points against the footprints. What worked: cut the strip off as a
+  building of its own raised 3-3.5 m (a raised building stands on columns and is not
+  solid), the rest standing back behind it, both outlines starting at the same corner when
+  the look comes from a hash of the first corner.
+- **A level that starts at a filmed spot must say so before the city builds.** A game that
+  builds near its start first builds round wherever its start finder lands; a walk placed
+  after that crosses bare ground until the background builder catches up.
+
 ## Privacy
 
 A web build is public. Never use an address the user mentions privately -- their home,
 their family's -- as a start point, a test location, or in any committed file, commit
-message or doc. Test against it in a scratch script if asked, and leave it there.
+message or doc. Test against it in a scratch script if asked, and leave it there. A walk
+the user filmed is published only as far as the public corner they name; the film, its
+frames and the rest of the route stay out of the repo, and so does any word of where the
+walk ended (a quote saying "to my house" beside a route that stops at a named street gives
+the street away).
 
 A filmed walk or drive very often starts or ends at the user's door, and a GPS track
 recorded "just to test" at home is their address to a few metres. Keep the video, the GPX,
