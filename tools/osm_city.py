@@ -57,9 +57,11 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
                a town survey's), and from a town survey (see SURVEYS): hm: 1 the height
                is the survey's measurement, pil: 1 it stands on columns or has an open
                ground floor}]
-  areas      [{p: ring, k: park|grass|wood|water|parking|pitch|plaza|school, y: level}]
+  areas      [{p: ring, k: park|grass|wood|water|parking|pitch|plaza|school|sand, y: level}]
+             (sand: a beach, natural=beach or sand)
              (school: the grounds of a school or kindergarten; y: water that lies at its
-             own level, decimetres above `height.base` -- a river held by weirs -- else it
+             own level, decimetres above `height.base` -- a river held by weirs, the sea at
+             sea level (the ground under it held lower, the shore higher) -- else it
              lies at its shore's lowest point)
   barriers   [[[x, z, x, z, ...], "fence"|"hedge"], ...]   fences and hedges as lines
   trees      [x, z, ...]
@@ -149,7 +151,8 @@ AREA_KINDS = [
     ("landuse", {"grass": "grass", "recreation_ground": "park", "village_green": "grass",
                  "meadow": "grass", "cemetery": "grass", "forest": "wood", "orchard": "wood",
                  "flowerbed": "grass", "allotments": "grass"}),
-    ("natural", {"wood": "wood", "scrub": "wood", "grassland": "grass", "water": "water"}),
+    ("natural", {"wood": "wood", "scrub": "wood", "grassland": "grass", "water": "water",
+                 "beach": "sand", "sand": "sand"}),
     ("amenity", {"parking": "parking", "school": "school", "kindergarten": "school"}),
     ("place", {"square": "plaza"}),
     ("highway", {"pedestrian": "plaza"}),   # a closed pedestrian way tagged area=yes
@@ -318,7 +321,7 @@ DATA_FILTERS = (
     'rel["building"]["type"="multipolygon"];'
     'way["leisure"~"^(park|garden|playground|dog_park|pitch|sports_centre|track)$"];'
     'way["landuse"~"^(grass|recreation_ground|village_green|meadow|cemetery|forest|orchard|flowerbed|allotments)$"];'
-    'way["natural"~"^(wood|scrub|grassland|water)$"];'
+    'way["natural"~"^(wood|scrub|grassland|water|beach|sand)$"];'
     'way["amenity"="parking"];'
     'way["barrier"~"^(fence|hedge)$"];'
     'way["place"="square"];'
@@ -601,8 +604,74 @@ def bare_ground(grid, nx, nz, step):
     return _square(opened, nx, nz, max(1, k // 2), lambda v: sum(v) / len(v))
 
 
-def terrain_grid(P, box, bounds, step, zoom=13, bare=False):
-    """Ground height on a regular grid over the bounds, in metres above its lowest point."""
+def _in_ring(x, z, ring):
+    inside = False
+    j = len(ring) - 1
+    for i in range(len(ring)):
+        xi, zi = ring[i]
+        xj, zj = ring[j]
+        if (zi > z) != (zj > z) and x < (xj - xi) * (z - zi) / (zj - zi) + xi:
+            inside = not inside
+        j = i
+    return inside
+
+
+def _wet_cells(sea, x0, z0, step, nx, nz):
+    """Which grid points lie in the sea (in a sea polygon, not on an island in it)."""
+    rings, isles = sea
+
+    def boxed(rs):
+        return [(r, min(p[0] for p in r), min(p[1] for p in r), max(p[0] for p in r),
+                 max(p[1] for p in r)) for r in rs if len(r) >= 3]
+
+    def hit(x, z, bs):
+        return any(a <= x <= c and b <= z <= d and _in_ring(x, z, r) for r, a, b, c, d in bs)
+
+    br, bi = boxed(rings), boxed(isles)
+    wet = [False] * (nx * nz)
+    for j in range(nz):
+        for i in range(nx):
+            x, z = x0 + i * step, z0 + j * step
+            wet[j * nx + i] = hit(x, z, br) and not hit(x, z, bi)
+    return wet
+
+
+def _hold_sea(blur, wet, nx, nz, step):
+    """The sea's floor under sea level, the shore over it (heights in metres, in place)."""
+    # the floor 1.5 m under (0.3 m beside the shore, so the ground meets the water near
+    # the coastline), the land within ~110 m of it at least 0.3 m over (the tiles had a
+    # beach 2.5 m under sea level four points in from the shore)
+    coast = wet[:]
+    for _ in range(max(1, round(110.0 / step))):
+        grow = coast[:]
+        for j in range(nz):
+            for i in range(nx):
+                if not coast[j * nx + i]:
+                    grow[j * nx + i] = any(coast[jj * nx + ii] for jj in (j - 1, j, j + 1)
+                                           for ii in (i - 1, i, i + 1)
+                                           if 0 <= ii < nx and 0 <= jj < nz)
+        coast = grow
+    raised = 0
+    for j in range(nz):
+        for i in range(nx):
+            k = j * nx + i
+            if wet[k]:
+                shore = not all(wet[jj * nx + ii] for jj in (j - 1, j, j + 1)
+                                for ii in (i - 1, i, i + 1) if 0 <= ii < nx and 0 <= jj < nz)
+                blur[k] = -0.3 if shore else -1.5
+            elif coast[k] and blur[k] < 0.3:
+                blur[k] = 0.3
+                raised += 1
+    log(f"ground: {sum(wet)} grid points in the sea, held under sea level; "
+        f"{raised} of the shore raised to 0.3 m")
+
+
+def terrain_grid(P, box, bounds, step, zoom=13, bare=False, sea=None):
+    """Ground height on a regular grid over the bounds, in metres above its lowest point.
+    With `sea` (the sea polygons and the islands in them) the sea floor is held under sea
+    level and the shore over it: the tiles read the sea a metre or so either side of 0 and
+    the shore lower than that in places, and water lies flat at the lowest point of its
+    shore, so the sea came out under its own floor (the ground drawn white over it)."""
     x0, z0, x1, z1 = bounds
     nx, nz = int(math.ceil((x1 - x0) / step)) + 1, int(math.ceil((z1 - z0) / step)) + 1
     n = 2 ** zoom
@@ -638,6 +707,11 @@ def terrain_grid(P, box, bounds, step, zoom=13, bare=False):
         for i in range(nx):
             x, z = x0 + i * step, z0 + j * step
             grid.append(height(P.lat0 - z / P.my, P.lon0 + x / P.mx))
+    wet = _wet_cells(sea, x0, z0, step, nx, nz) if sea and sea[0] else None
+    if wet:
+        # (sea level before --bare-ground, whose lowest-round-each-point would carry the sea
+        # bed's depths 90 m inland)
+        grid = [0.0 if w else v for v, w in zip(grid, wet)]
     if bare:
         raw_top = max(grid)
         grid = bare_ground(grid, nx, nz, step)
@@ -654,6 +728,8 @@ def terrain_grid(P, box, bounds, step, zoom=13, bare=False):
                         acc += grid[jj * nx + ii]
                         cnt += 1
             blur[j * nx + i] = acc / cnt
+    if wet:
+        _hold_sea(blur, wet, nx, nz, step)
     base = min(blur)
     log(f"ground: {nx} x {nz} grid every {step:.0f} m from {len(tiles)} tiles, "
         f"{base:.0f} to {max(blur):.0f} m above sea level")
@@ -1124,6 +1200,10 @@ def sidewalk_sides(t):
 def bake(raw, name, args):
     box = raw["box"]
     lat0, lon0 = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+    if getattr(args, "origin", None):
+        # a grown box keeps the old file's centre, so every place keeps its metres (a
+        # game's hand-placed fixes, landmarks and tests are pinned to them)
+        lat0, lon0 = (float(v) for v in args.origin.split(","))
     P = Proj(lat0, lon0)
     x0, z1 = P(box[0], box[1])
     x1, z0 = P(box[2], box[3])
@@ -1401,12 +1481,15 @@ def bake(raw, name, args):
     coast = [[P(g["lat"], g["lon"]) for g in e["geometry"] if g] for e in elements
              if e["type"] == "way" and e.get("tags", {}).get("natural") == "coastline"
              and "geometry" in e]
+    sea, sea_areas = None, []
     if coast:
         water, islands = sea_polygons(coast, (x0, z0, x1, z1))
+        sea = (water, islands)
         for ring in water:
             r = clean_ring(ring, 0.5)
             if r:
-                out["areas"].append({"p": flat(r), "k": "water"})
+                sea_areas.append({"p": flat(r), "k": "water"})
+                out["areas"].append(sea_areas[-1])
         for ring in islands:
             r = clean_ring(ring, 0.5)
             if r:
@@ -1519,7 +1602,9 @@ def bake(raw, name, args):
         try:
             span = max(x1 - x0, z1 - z0)
             out["height"] = terrain_grid(P, box, (x0, z0, x1, z1), max(12.0, round(span / 300.0)),
-                                         bare=args.bare_ground)
+                                         bare=args.bare_ground, sea=sea)
+            for a in sea_areas:   # the sea at sea level, as a river is held at its weirs'
+                a["y"] = int(round(-out["height"]["base"] * SCALE))
         except Exception as e:   # flat is better than no city
             log(f"ground: no height data ({e}); the city stays flat")
 
@@ -1579,6 +1664,8 @@ def main():
     ap.add_argument("--default-levels", type=int, default=4,
                     help="storeys for a building OSM gives no height for")
     ap.add_argument("--out", help="where to write the city file")
+    ap.add_argument("--origin", help="lat,lon to measure the metres from instead of the box's "
+                    "centre: the old file's \"origin\", when re-baking a bigger box")
     ap.add_argument("--offline", action="store_true", help="bake from tools/.cache only")
     ap.add_argument("--from-file", help="a raw Overpass JSON answer you saved yourself")
     ap.add_argument("--no-terrain", action="store_true", help="skip the ground heights")
