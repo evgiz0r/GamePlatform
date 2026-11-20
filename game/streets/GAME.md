@@ -1274,3 +1274,7 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   scrape mark on the wall the car rubbed.
 - People who react ("not needed yet, maybe later"): jumping back, or falling, when a car
   comes at them; glancing at you; stopping at the kerb before they step out.
+- A "green wave": "any crossroads i approach switches to green for my car" -- a switch for
+  the player's car (driving or autodrive) that turns each light it comes up to green its
+  way, through the usual change for the cross street (amber, red) so the traffic there stops
+  as it would.
