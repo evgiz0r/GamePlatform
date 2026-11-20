@@ -95,6 +95,15 @@ The ones most often touched, and the functions in them:
   only) / `_judge_fps` (the rule; testable natively), the soft car shadows `_set_blobs`.
 - **where a frame's time goes** -- the profiler: `_p("part")` around each part, hitches
   kept and reported; P or a tap on the fps text shows it.
+- **zoom out and pause** -- "the view from above", after the chase cam: `_paused` stops
+  `_physics_process` (and the people's AnimationPlayers via `process_mode`, the engine
+  sound; traffic is drawn at `f = 1` so it does not rock between two ticks); `_zoom_set`
+  (rising pauses, landing resumes unless paused by hand), `_zoom_camera` (blends whatever
+  camera was placed toward the view from above over the first quarter of the zoom; near
+  plane out and haze thinned with height), `_zoom_pan` / `_pinch_move` / `_zoom_turn`, the
+  marks `_draw_zoom_marks`. The quality watcher ignores frames while zoomed out. The top of
+  the zoom (`ZOOM_FAR`) is held to about half of `VIEW_RANGE` because draw ranges are
+  distances from the camera: higher, the trees at the top of the screen go, then buildings.
 
 traffic.gd: `tick` (per car: path, lights, signs, the car or player ahead, standoffs,
 `squeeze`), `_next` / `_leg` / `_turn_into` (routes), `_steer_lanes`, `lead_on` (the query
