@@ -1100,6 +1100,8 @@ func start(_config: Dictionary) -> void:
 	var dev_cam := OS.get_environment("STREETS_CAM").split(",", false)
 	if dev_cam.size() >= 6 and dev_cam[5] == "1":
 		_set_night(true)
+	elif dev_cam.size() >= 6 and dev_cam[5] == "2":
+		await _set_evening(true)
 	_build_rest()   # the rest of the city, while you drive
 
 var _loading: Label
@@ -1543,7 +1545,7 @@ func _build_world() -> bool:
 	# shadow-casting thing in view four more times a frame, more than the view itself
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
 	_set_quality(QUALITY_WEB if OS.has_feature("web") else QUALITY.size() - 1)
-	sun.rotation_degrees = Vector3(-50, -28, 0)
+	sun.rotation_degrees = SKIES["day"]["sun"]
 	_build_sky_dome()
 	cam.near = 0.3
 	cam.far = 2200.0
@@ -1855,7 +1857,8 @@ func _build_tile(t: Vector2i) -> void:
 	tk = _stage("lamps", tk)
 	await _build_parked()
 	await _build_lots()
-	_add_mesh(_ao, _ao_material(), false, AO_SEEN)   # (after the buildings and the cars)
+	for mi: MeshInstance3D in _add_mesh(_ao, _ao_material(), false, AO_SEEN):   # (after the buildings and the cars)
+		mi.extra_cull_margin = 60.0   # (the trees' patches are moved out by the sun, in the shader)
 	_ao = null
 	tk = _stage("parked", tk)
 	await _build_signals()
@@ -5515,6 +5518,36 @@ func _beam_mesh() -> ArrayMesh:
 	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, b.arrays())
 	return am
 
+## the time-of-day button: day, then evening, then night, then day again
+func _next_time() -> void:
+	if _night:
+		_set_night(false)
+	elif _evening:
+		await _set_evening(false)
+		_set_night(true)
+	else:
+		await _set_evening(true)
+
+## Golden hour: the evening sky, the sun low in the west-south-west and warm, the long
+## shadows (the real ones; the painted far ones redrawn for that sun once, then kept).
+func _set_evening(on: bool) -> void:
+	if on == _evening:
+		return
+	_evening = on
+	sun.rotation_degrees = _sky_now()["sun"]
+	_retint_city()
+	var key := "evening" if on else "day"
+	if _fs_cache.has(key):
+		_fs_tex = _fs_cache[key][0]
+		_fs_rect = _fs_cache[key][1]
+		_far_update()
+	else:
+		_fs_tex = null   # (none rather than the other sun's, while it draws)
+		_far_update()
+		await _build_far_shadows()
+	_show_banner("evening" if on else "day", 1.2)
+	Probe.event("evening", {"on": on})
+
 func _set_night(on: bool) -> void:
 	_night = on
 	if on and not _pools_made:
@@ -7944,9 +7977,11 @@ float far_shade(vec3 wp, float dist) {
 }
 """
 const FS_PX := 2048                  ## the picture's longer side (px): ~1.6 m a pixel over Givatayim
+const FS_DARK_EVE := 0.4             ## the same in the evening: a low sun lights the ground less, so its shadows take less
 const FS_DARK := 0.55                ## the share of the light a shadow takes off the ground (the real ones: tests/far_shadows.gd)
 var _fs_tex: ImageTexture = null
 var _fs_rect := Vector4.ZERO
+var _fs_cache := {}                  ## "day" / "evening" -> [texture, rect]: each sun's drawn once
 var _far_mats: Array = []
 
 ## a ground shader's code with far_shade() in it
@@ -7964,7 +7999,12 @@ func _far_set(m: ShaderMaterial) -> void:
 	m.set_shader_parameter("fs_rect", _fs_rect)
 	m.set_shader_parameter("fs_near", sun.directional_shadow_max_distance if sun.shadow_enabled else 0.0)
 	m.set_shader_parameter("fs_fade", sun.directional_shadow_fade_start)
-	m.set_shader_parameter("fs_dark", 0.0 if _night or _fs_tex == null else FS_DARK)
+	m.set_shader_parameter("fs_dark", 0.0 if _night or _fs_tex == null else (FS_DARK_EVE if _evening else FS_DARK))
+	if m == _ao_mat:   # the trees' patches: where this sun throws them
+		var L := -sun.global_transform.basis.z if sun.is_inside_tree() else Vector3(0, -1, 0)
+		var off := Vector2(L.x, L.z) / maxf(-L.y, 0.05)
+		m.set_shader_parameter("sun_off", off)
+		m.set_shader_parameter("sun_stretch", 1.0 / clampf(-L.y, 0.2, 1.0))
 
 func _far_update() -> void:
 	for m: ShaderMaterial in _far_mats:
@@ -8039,37 +8079,27 @@ func _build_far_shadows() -> void:
 	img.generate_mipmaps()
 	_fs_tex = ImageTexture.create_from_image(img)
 	_fs_rect = Vector4(o.x, o.y, 1.0 / (w * mpp), 1.0 / (h * mpp))
+	_fs_cache["evening" if _evening else "day"] = [_fs_tex, _fs_rect]
 	_far_update()
 	# (what it costs apart from the two frames it waits for the drawing: those are a few ms
 	# in a browser, but most of a second under a test's software renderer)
 	_stage_ms["far shadows: work, not the frames"] = (t1 - t0 + Time.get_ticks_usec() - t2) / 1000
 
 ## a tree's shadow on the ground (crown r across, its middle y up), for past the real ones:
-## longer along the sun's way, as a ball's is
-var _sun_way := Vector3.ZERO   ## the way the sunlight goes (it never moves: worked out once)
-
+## laid round the foot of its trunk; AO_SHADER moves it out along the sun's way and draws it
+## out, so it follows the sun (day or evening) without being laid again
 func _ao_tree(p: Vector2, r: float, y: float) -> void:
 	if _ao == null:
 		return
-	if _sun_way == Vector3.ZERO:
-		_sun_way = -sun.global_transform.basis.z
-	var L := _sun_way
-	if L.y > -0.05:
-		return
-	var off := Vector2(L.x, L.z) / -L.y
-	var c := p + off * y
-	var along := off.normalized() if off.length() > 0.01 else Vector2(1, 0)
-	var across := along.orthogonal()
-	var stretch := 1.0 / clampf(-L.y, 0.3, 1.0)
-	var col := Color(0.8, 0.0, 1.0)
-	var mid := _g3(c, KERB_H + 0.03)
+	var col := Color(0.8, clampf(y / 40.0, 0.0, 1.0), 1.0)
+	var mid := _g3(p, KERB_H + 0.03)
 	var one := Vector2(1, 0)
 	var last := Vector3.ZERO
 	for k in range(9):
 		var a := TAU * k / 8.0
-		var q := _g3(c + along * cos(a) * r * stretch + across * sin(a) * r, KERB_H + 0.03)
+		var q := _g3(p + Vector2(cos(a), sin(a)) * r, KERB_H + 0.03)
 		if k > 0:
-			_ao.tri(mid, last, q, Vector3.UP, col, one, Vector2.ZERO, Vector2.ZERO)
+			_ao.tri(mid, last, q, Vector3.UP, col, one, Vector2.ZERO, Vector2.ZERO, p)
 		last = q
 
 ## ---- contact shadows ------------------------------------------------------------------------
@@ -8089,6 +8119,8 @@ shader_type spatial;
 render_mode unshaded, blend_mul, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
 uniform float strength = 0.62;
 uniform float far = 150.0;
+uniform vec2 sun_off = vec2(0.0);     // a shadow's reach on the ground per metre up
+uniform float sun_stretch = 1.0;      // a ball's shadow, longer along the sun's way
 varying vec3 wpos;
 float h21(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 float vn(vec2 p) {
@@ -8098,6 +8130,16 @@ float vn(vec2 p) {
 	return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), f.x), f.y);
 }
 void vertex() {
+	if (COLOR.b > 0.5) {
+		// a tree's patch is laid round the foot of its trunk (UV2), its crown's height in
+		// COLOR.g (/ 40 m): moved out along the sun's way and drawn out, whichever sun it is
+		float len = length(sun_off);
+		vec2 way = len > 0.001 ? sun_off / len : vec2(1.0, 0.0);
+		vec2 rel = VERTEX.xz - UV2;
+		float h = COLOR.g * 40.0;
+		VERTEX.xz = UV2 + sun_off * h + rel + way * dot(rel, way) * (sun_stretch - 1.0);
+		VERTEX.y += len * h * 0.04;   // (on a slope, over the ground rather than in it)
+	}
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
 void fragment() {
@@ -9514,14 +9556,28 @@ func _apply_signals() -> void:
 
 ## ---- the sky: a photograph -----------------------------------------------------------------
 ## By day the sky is a photo (textures/sky_day.jpg: the upper half of Poly Haven's CC0
-## "kloofendal_48d_partly_cloudy_puresky", tonemapped by textures/hdr_sky.py), on a dome that
+## "kloofendal_48d_partly_cloudy_puresky", tonemapped by textures/hdr_sky.py; in the evening
+## sky_evening.jpg, their "kloppenheim_06_puresky" kept darker), on a dome that
 ## follows the camera, drawn unlit and through no fog. It is turned so the sun in it stands
 ## where the sunlight comes from, and fades into the fog at the horizon. The shell keeps its
 ## own procedural sky behind it (it retints that on a palette change), which shows at night,
 ## when the dome is hidden. The palette's sky tone tints it lightly, as it does everything.
-const SKY_SUN_U := 0.595             ## where the photo's sun is, across it (0..1)
-const SKY_MEAN := Vector3(0.626, 0.686, 0.792)      ## its average colour, as stored
-const SKY_HORIZON := Vector3(0.742, 0.758, 0.801)   ## its colour along the horizon
+## Each: the photo; where its sun is across it (0..1); its average colour and its colour
+## along the horizon, as stored (hdr_sky.py prints all three); where the sunlight comes from
+## (the light's rotation, degrees: the evening sun in the west-south-west, where it sets in
+## Givatayim in the autumn, 13 degrees up -- the photo's is 5, which made every shadow 12
+## times the height of what cast it); its colour (palette roles: ink toward warn) and energy.
+const SKIES := {
+	"day": {"photo": "sky_day.jpg", "sun_u": 0.595, "mean": Vector3(0.626, 0.686, 0.792),
+		"horizon": Vector3(0.742, 0.758, 0.801), "sun": Vector3(-50, -28, 0), "warm": 0.22, "energy": 1.1},
+	"evening": {"photo": "sky_evening.jpg", "sun_u": 0.6118, "mean": Vector3(0.44, 0.523, 0.623),
+		"horizon": Vector3(0.598, 0.592, 0.584), "sun": Vector3(-13, -78, 0), "warm": 0.55, "energy": 1.3},
+}
+var _evening := false
+var _sky_tex := {}                   ## photo -> its texture, once loaded
+
+func _sky_now() -> Dictionary:
+	return SKIES["evening" if _evening else "day"]
 const SKY_SHADER := """
 shader_type spatial;
 render_mode unshaded, fog_disabled, cull_front, shadows_disabled;
@@ -9547,7 +9603,7 @@ var _sky_mat: ShaderMaterial
 func _sky_tint() -> Vector3:
 	var t: Color = _tone.get("sky", Color(0.6, 0.7, 0.8))
 	var lt := maxf(t.get_luminance(), 0.01)
-	var m := SKY_MEAN
+	var m: Vector3 = _sky_now()["mean"]
 	var lm := m.dot(Vector3(0.2126, 0.7152, 0.0722))
 	var ratio := Vector3(t.r / lt, t.g / lt, t.b / lt) / (m / lm)
 	return Vector3.ONE.lerp(ratio, 0.25)
@@ -9562,10 +9618,10 @@ func _sky_reflect() -> Array:
 	if _night or _sky_dome == null:
 		var sk := env.sky.sky_material as ProceduralSkyMaterial
 		return [sk.sky_top_color, sk.sky_horizon_color]
-	return [_sky_col(SKY_MEAN), _sky_col(SKY_HORIZON)]
+	return [_sky_col(_sky_now()["mean"]), _sky_col(_sky_now()["horizon"])]
 
 func _build_sky_dome() -> void:
-	var tex := load(TEX_DIR + "sky_day.jpg") as Texture2D
+	var tex := _sky_photo()
 	if tex == null:
 		return
 	_sky_mat = ShaderMaterial.new()
@@ -9598,10 +9654,18 @@ func _retint_sky_dome() -> void:
 	_sky_dome.visible = not _night
 	var t := _sky_tint()
 	_sky_mat.set_shader_parameter("tint", t)
-	_sky_mat.set_shader_parameter("horizon", Vector3(SKY_HORIZON.x * t.x, SKY_HORIZON.y * t.y, SKY_HORIZON.z * t.z))
+	var hz: Vector3 = _sky_now()["horizon"]
+	_sky_mat.set_shader_parameter("photo", _sky_photo())
+	_sky_mat.set_shader_parameter("horizon", Vector3(hz.x * t.x, hz.y * t.y, hz.z * t.z))
 	# turn the photo so its sun is where the light comes from (the light shines down its -Z)
 	var to_sun := sun.global_transform.basis.z if sun.is_inside_tree() else Basis.from_euler(sun.rotation).z
-	_sky_mat.set_shader_parameter("turn", SKY_SUN_U - (atan2(to_sun.x, -to_sun.z) / TAU + 0.5))
+	_sky_mat.set_shader_parameter("turn", float(_sky_now()["sun_u"]) - (atan2(to_sun.x, -to_sun.z) / TAU + 0.5))
+
+func _sky_photo() -> Texture2D:
+	var f: String = _sky_now()["photo"]
+	if not _sky_tex.has(f):
+		_sky_tex[f] = load(TEX_DIR + f) as Texture2D
+	return _sky_tex[f]
 
 ## ---- look: every colour is a palette role, mixed for daylight ---------------------------
 ## The kit's palettes are neon on dark. A street in daylight is greys, creams and greens, so
@@ -9752,29 +9816,33 @@ func _retint_city() -> void:
 	if env != null:
 		# by day the photo sky (_sky_dome) sets the haze: the fog takes its horizon, so far
 		# streets melt into the sky, and the shade its blue
-		var hor := _sky_col(SKY_HORIZON)
+		var hor := _sky_col(_sky_now()["horizon"])
 		var sky := env.sky.sky_material as ProceduralSkyMaterial
-		sky.sky_top_color = _sky_col(SKY_MEAN)
+		sky.sky_top_color = _sky_col(_sky_now()["mean"])
 		sky.sky_horizon_color = hor
 		sky.ground_horizon_color = hor
 		sky.ground_bottom_color = _tone["ground"]
 		sky.sky_curve = 0.12
 		env.background_color = hor
 		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-		env.ambient_light_color = _sky_col(SKY_MEAN).lerp(_tone["haze"], 0.4)
-		env.ambient_light_energy = 0.55
+		# (in the evening the shade is the sky's blue, not the haze: the warm light and the cool
+		# shade are what makes golden hour, and the haze in it turned the shade khaki)
+		env.ambient_light_color = _sky_col(_sky_now()["mean"]).lerp(_tone["haze"], 0.1 if _evening else 0.4)
+		env.ambient_light_energy = 0.62 if _evening else 0.55
 		env.fog_enabled = true
 		env.fog_light_color = hor
-		# (the made-up town is a valley ringed by mountains, no horizon to hide: half the haze,
-		# or its mountains were a white wall)
-		env.fog_density = _fog_day()
+		env.fog_density = _fog_day()   # (half in the made-up town's valley, see _fog_day)
+		env.fog_sun_scatter = 0.3 if _evening else 0.0   # (the haze glows towards a low sun)
 		env.fog_sky_affect = 0.0
 		# a film-like curve: the bright walls roll off instead of clipping, the shade deepens
 		env.tonemap_mode = Environment.TONE_MAPPER_ACES
 		env.tonemap_exposure = 1.0
 	if sun != null:
-		sun.light_color = Palette.col("ink").lerp(Palette.col("warn"), 0.22)
-		sun.light_energy = 1.1
+		# warm: ink toward warn, and in the evening toward hazard too (warn alone was lemon;
+		# with a little of the red it is the orange of a low sun)
+		sun.light_color = Palette.col("ink").lerp(Palette.col("warn"), float(_sky_now()["warm"])) \
+			.lerp(Palette.col("hazard"), 0.16 if _evening else 0.0)
+		sun.light_energy = float(_sky_now()["energy"])
 		sun.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_AND_SKY
 	_retint_sky_dome()
 	if _wall_mat != null:
@@ -14686,7 +14754,7 @@ func _draw_hud() -> void:
 	var nc := Palette.col("warn") if _night else Color(ink, 0.8)
 	_hud.draw_rect(NIGHT_BTN, Color(bg, 0.65))
 	_hud.draw_rect(NIGHT_BTN, Color(nc, 0.9), false, 1.5)
-	_hud.draw_string(_font, NIGHT_BTN.position + Vector2(0, 15), "day" if _night else "night", HORIZONTAL_ALIGNMENT_CENTER, NIGHT_BTN.size.x, 11, nc)
+	_hud.draw_string(_font, NIGHT_BTN.position + Vector2(0, 15), "day" if _night else ("night" if _evening else "evening"), HORIZONTAL_ALIGNMENT_CENTER, NIGHT_BTN.size.x, 11, nc)
 	var lc := Palette.col("warn") if _lights_on else Color(ink, 0.8)
 	_hud.draw_rect(LIGHTS_BTN, Color(bg, 0.65))
 	_hud.draw_rect(LIGHTS_BTN, Color(lc, 0.9), false, 1.5)
@@ -15009,7 +15077,7 @@ func _input(event: InputEvent) -> void:
 			elif GOTO_BTN.grow(4).has_point(mb.position):
 				_open_picker.call_deferred()   # after this click, so it does not hit the list
 			elif NIGHT_BTN.grow(4).has_point(mb.position):
-				_set_night(not _night)
+				_next_time()
 			elif VIEW_BTN.grow(4).has_point(mb.position):
 				if _zoomed():
 					_zoom_seat = not _cockpit
