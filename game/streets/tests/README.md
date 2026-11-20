@@ -28,8 +28,8 @@ these numbers the wrong way has broken something.
 | `roundabouts` | 3 | longest time on a ring, touches, stalls | 5 s, 0, 0 |
 | `junction_traffic` | 1 | traffic: crossing collisions, stalls, creeping through | 0, 0, 0 |
 | `zebras` | 1 | crossings, people hurried back, time traffic stood for them | 12 started, 0 hurried |
-| `lights` | 1, 3 | junctions with lights; crossing cars in one junction together over 90 s; close-ups | (rerun with sites: pending) |
-| `light_audit` | 1, 3 | every junction with lights: crossing ways with green together, one road's light changing inside a junction, ways in with no light, stop lines on zebras, walk lights green while cars come; then a drive (`DRIVE`, `AT`) counting cars in on red, crossing cars in a junction together, cars creeping in after 6 s (`DYNAMIC_ONLY=1` runs the drive on older code) | Givatayim: 0 crossing pairs green together, 0 roads changing group inside a junction, 0 walk lights wrong, 7 ways in with no pole (were 12, 48, 26, 66) |
+| `lights` | 1, 3 | junctions with lights; crossing cars in one junction together over 90 s; close-ups | 0 / 9 (Ashdod: cars squeezing round autodrive held in a five-point junction by people on its exit zebra) |
+| `light_audit` | 1, 3 | every junction with lights: crossing ways with green together, one road's light changing inside a junction, ways in with no light, stop lines on zebras, walk lights green while cars come; then a drive (`DRIVE`, `AT`) counting cars in on red, crossing cars in a junction together, cars creeping in after 6 s (`DYNAMIC_ONLY=1` runs the drive on older code) | crossing pairs green together / a road changing group inside a junction / walk lights green with cars coming / ways in with no pole: Givatayim 0/0/0/7 (were 12/48/26/66), Ashdod 0/1/0/5 (20/100/49/70), Bedford 0/0/0/3 (6/3/20/17). 2 min round Arvey Nahal: over a stop line on red, traffic 0, autodrive 0 (autodrive 1 before) |
 | `lights_at` | 1 | one junction (`AT=x,z,dx,dz`, default the Arvey Nahal knot) from a car at its line, a shot per light state; prints its points, groups, lines, walk lights | shots |
 | `no_entry` | 1, 3 | no-entry signs facing drivers who may go in | 0 / 1 |
 | `buildings_on_roads` | 1 | buildings still standing on a road's asphalt | 3 (passages, on purpose) |
@@ -38,7 +38,7 @@ these numbers the wrong way has broken something.
 | `road_blocks` | 4 | things solid to the car on a road's lanes: a median over another road, walls, posts (shots from above) | test town: 0 medians, 0 posts; 16 walls across service lanes |
 | `medians` | 4 | the raised medians from a driver's seat where they end and bend (shots) | |
 | `mountains` | 4 | the test town's mountains from the car, the hill, a mountainside, and the turbines (shots) | |
-| `autodrive_edge` | 1, 3 | autodrive put on streets that run off the map, 120 m short, facing out: touches of the barrier, turn-rounds, time near it | (pending) |
+| `autodrive_edge` | 1, 3 | autodrive put on streets that run off the map, 120 m short, facing out: touches of the barrier, turn-rounds, time near it | Givatayim: touched the barrier 1 (a one-way motorway with no exit), turned round 5, 31 s near it (were 9, 9, 59 s); Ashdod 1, 6, 31 s (10, 12, 71 s) |
 | `feet` | 1 | a walker's feet against the pavement's top | 0.21 = 0.21 |
 | `feel` | 1 | a crash at 54 km/h; jumping out at 50 km/h; into a fence | rebound 0-1.3 m/s, no hop; 3.4 m tumble, car rolls 37 m; the fence check picks a fence behind a building (stops 6.5 m short) -- to fix |
 | `on_foot` | 1 | getting out, walking, running, a car stopping for you | 2.1 / 6.2 m/s |
