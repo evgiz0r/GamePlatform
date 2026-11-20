@@ -58,6 +58,32 @@ The ones most often touched, and the functions in them:
   -- no draws of their own. Lit shops' light on the pavement: `_shop_lights`. The night's
   colours: the night branch of `_retint_city` (a little of the palette's player colour, not
   half of it). Shop glass at night 0.85 (2.0 clipped to white).
+- **front gardens split out of loading** -- while the squares round the start are built
+  (`_gardens_split`), `_garden_fronts(..., part)` lays only the plots within GARDENS_NOW
+  (120 m) of the start; each run side is remembered (`_gardens_later`: square -> [run, hw,
+  sgn, key, walled]) and `_build_gardens_later` lays the rest first thing in `_build_rest`,
+  nearest square first, with their yard cars (`_draw_parked`). Same plots, same keys.
+  tests/gardens_later.gd (and STREETS_GARDENS_SPLIT=0 for the old way): Givatayim's 6 start
+  squares 7510 wall pieces and 858 board points both ways; the gardens' part of loading
+  678 -> 128 ms (kerbs 1.47 -> 1.03 s); the rest there 1.2 s after the car appears.
+- **the street's goings-on** (traffic.gd) -- a van or truck (DBL_SHARE of them) gets a
+  delivery stop `dbl_s` ahead when it starts; `_double_park` puts it off past junctions,
+  zebras and roads not in DBL_ROADS, pulls it in toward the kerb as far as there is room,
+  stands it `dbl` s with hazards (blink 2: the blinkers multimesh has four lamps a car
+  now). A follower on a two-way street of one lane each way with it ahead (< 35 m) and
+  `_oncoming_clear` takes `pass_i`: `_steer_lanes` shifts it `_pass_shift` (over the centre
+  line) until past; on wider roads the old "out to pass" does it. Autodrive: `_ap_pass_bus`
+  takes a double-parked van too, and on a one-lane street goes over the line when the other
+  way is clear 45 m past it. `_kerb_tick`: every 35-75 s, while driving a street in
+  DBL_ROADS of one lane each way, the furthest car out of view is parked at the kerb
+  90-150 m ahead in a gap among the parked cars (`kerb`), and pulls out (`_kerb_wait`) when
+  the player is 18-45 m behind. tests/street_goings.gd.
+- **more kinds of people** -- walkers i % 9 == 2 have a dog (`dog_kit`: legs swung by its
+  shader from the instance's custom data), i % 9 == 6 a pushchair (`pram_kit`, the carrying
+  walk); a multimesh each and one for the leads, positioned by `_companion` in the walker
+  loop. SITTERS on `_bench_spots` (park benches) holding the end of SitDown, WAITERS at
+  `_stop_spots` facing the road, placed unseen like the chatters (`_place_still`).
+  tests/street_people.gd.
 - **people in one piece** -- `_one_piece` (end of `_humanize`): the Quaternius figure is one
   mesh of six surfaces (Skin, Shirt, Pants, Belt, Face, Hair), each a draw (and a shadow
   draw). Joined once per figure into one surface (shared by everyone with that figure; the

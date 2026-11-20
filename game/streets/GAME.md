@@ -978,6 +978,19 @@ them, thinning out by 18 m. Only at the two top qualities (fewer at the second).
 - Each person drawn in one go (they were six pieces each): fewer things for the browser to
   draw every frame, nothing different to see.
 
+> 5, 3, 2 (front gardens out of the wait; traffic doing street things; more kinds of people)
+
+**Sooner to the street, and more going on in it:**
+- Loading is about half a second shorter: the front gardens you see first are there when the
+  car appears, the rest of the starting area's follow within a second or two.
+- Now and then a delivery van or a truck stops in the street, half in its lane, hazards
+  flashing, for half a minute or so. Cars behind it go round over the centre line when
+  nothing is coming (on a wider road they change lanes), and so does autodrive.
+- Now and then a car parked at the kerb ahead of you signals as you come up and pulls out in
+  front of you.
+- Someone walking a dog on a lead, a parent pushing a pushchair, a few people sitting on the
+  park benches and a few waiting at the bus stops, facing the road.
+
 **People who keep clear.** The walkers step round the trees, posts, benches and cabinets on
 the pavement, keep to one side of anyone coming the other way, and step round people standing
 talking and round you on foot; you and the car can no longer go through them (the car stops

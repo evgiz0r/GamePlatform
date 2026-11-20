@@ -102,6 +102,13 @@ is a Z coordinate, not a height.
   bend that copy and throw a RigidBody3D with its mesh -- with a slab to land on, if the
   world has no physics of its own -- and put it back once the player is out of sight. Make
   sure a braking assist does not brake for what is meant to be knocked aside.
+- **Split the costliest builder by distance, not the squares by number.** When one kind of
+  dressing is most of the wait before the player can move (front gardens were 0.7 s of
+  3.9), lay only the part within the first view's reach while loading, remember what the
+  rest needs (its inputs, not its results), and lay it first thing in the background
+  build, nearest first. Deterministic keys make it the same either way -- prove that with
+  a test that counts the result both ways (an env switch for the old way), or it will
+  quietly drop or double things at the seam.
 - **Built in squares, decided the same in every square.** When one square's builder needs
   something another square builds (where a building's door is, to lead a path to it), work
   it out again from the data with the same choices, cached by id -- never read what the
