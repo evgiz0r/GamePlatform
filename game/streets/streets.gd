@@ -7737,6 +7737,11 @@ const CAR_MIX := ["sedan", "sedan", "sedan", "hatch", "hatch", "hatch", "suv", "
 const CAR_SHADER := """
 shader_type spatial;
 uniform float night = 0.0;
+uniform sampler2D plate_font : filter_linear_mipmap, repeat_disable;   // digits 0-9, '-', I, L (_plate_font)
+uniform float plate_style = 0.0;       // 1: an Israeli plate (yellow, black digits, the blue IL strip)
+uniform vec4 plate_blue : source_color;
+uniform float plate_seed = 0.0;        // the player's car: its own number
+varying float plate_id;                // a number of the car's own, steady while it drives
 uniform vec4 lamp : source_color;
 uniform vec4 tail : source_color;
 uniform vec4 sky_top : source_color;   // what the paint and glass reflect: the sky as it is now,
@@ -7773,6 +7778,8 @@ void vertex() {
 	}
 	lcam = transpose(mat3(MODEL_MATRIX)) * (CAMERA_POSITION_WORLD - MODEL_MATRIX[3].xyz);
 	who = fract(sin(dot(MODEL_MATRIX[3].xz, vec2(12.9898, 78.233))) * 43758.5453);
+	// (its copy's number and its paint: steady as it moves, unlike where it is)
+	plate_id = fixed_paint > 0.5 ? plate_seed : float(INSTANCE_ID) * 0.7548777 + dot(INSTANCE_CUSTOM.rgb, vec3(3.1, 5.7, 7.3));
 }
 // where a ray (from o along unit d) first meets an ellipsoid at c with radii r; -1 if not
 float ray_blob(vec3 o, vec3 d, vec3 c, vec3 r) {
@@ -7792,6 +7799,14 @@ vec3 sky_at(float e) {
 }
 float line_cover(float d, float w, float aa) {
 	return clamp((w - d) / aa + 0.5, 0.0, 1.0);
+}
+// how much of glyph g covers (x, y) of its cell (both 0..1, y down): the font is a few
+// pixels a glyph, smoothed, so up close its edge is taken at the half-way grey; further off,
+// where a glyph is a few pixels on screen, its smaller copies average it to grey and that
+// grey is the ink (taken at the half-way grey, a plate was blank from the chase view)
+float plate_glyph(float g, float x, float y, float far) {
+	float a = texture(plate_font, vec2((g + clamp(x, 0.0, 1.0)) / 13.0, clamp(y, 0.0, 1.0))).r;
+	return mix(smoothstep(0.3, 0.7, a), min(a * 1.8, 1.0), far);
 }
 void fragment() {
 	float part = COLOR.a;
@@ -7869,12 +7884,41 @@ void fragment() {
 		float f = 0.12 + 0.88 * pow(1.0 - ndv, 3.0);
 		emit = mix(inside, refl, f);
 		rough = 0.05;
-	} else if (part > 0.6) {     // number plate: a row of dark characters
-		float cell = (UV.x - 0.1) / 0.8 * 7.0;
-		float ch = step(0.1, UV.x) * step(UV.x, 0.9) * step(0.26, UV.y) * step(UV.y, 0.74)
-			* step(0.18, fract(cell)) * step(fract(cell), 0.82);
-		col = mix(col, col * 0.08, ch);
+	} else if (part > 0.6) {     // number plate
 		rough = 0.4;
+		if (plate_style > 0.5) {
+			// as Israel's: yellow, black digits -- 123-45-678, or the older 12-345-67 -- in a
+			// black rim, the blue strip at the left with IL; the digits made up from the car's
+			// own number, never a real one
+			float u = UV.x;
+			float v = UV.y;
+			vec3 ink_col = col * 0.06;
+			float far = smoothstep(0.004, 0.012, fwidth(u));   // (a glyph pixel under one on screen)
+			if (u < 0.115) {
+				col = plate_blue.rgb;
+				float gx = (u - 0.012) / 0.046;
+				if (gx >= 0.0 && gx < 2.0 && v > 0.42 && v < 0.88) {
+					col = mix(col, vec3(1.0), plate_glyph(gx < 1.0 ? 11.0 : 12.0, fract(gx), (v - 0.42) / 0.46, far));
+				}
+			} else {
+				bool eight = fract(plate_id * 3.7) > 0.4;
+				float n = eight ? 10.0 : 9.0;
+				float gx = (u - 0.13) / (0.84 / n);
+				float i = floor(gx);
+				if (i >= 0.0 && i < n && v > 0.18 && v < 0.82) {
+					bool dash = eight ? (i == 3.0 || i == 6.0) : (i == 2.0 || i == 6.0);
+					float g = dash ? 10.0 : floor(fract(sin(plate_id * 12.9898 + i * 78.233) * 43758.5453) * 10.0);
+					col = mix(col, ink_col, plate_glyph(g, fract(gx), (v - 0.18) / 0.64, far));
+				}
+			}
+			float inside = step(0.012, u) * step(u, 0.988) * step(0.06, v) * step(v, 0.94);
+			col = mix(ink_col, col, inside);
+		} else {   // a row of dark characters
+			float cell = (UV.x - 0.1) / 0.8 * 7.0;
+			float ch = step(0.1, UV.x) * step(UV.x, 0.9) * step(0.26, UV.y) * step(UV.y, 0.74)
+				* step(0.18, fract(cell)) * step(fract(cell), 0.82);
+			col = mix(col, col * 0.08, ch);
+		}
 	} else if (part > 0.45) {    // trim
 		rough = 0.55;
 		emit = refl * 0.05;
@@ -7912,6 +7956,35 @@ void fragment() {
 var _car_shader_mat: ShaderMaterial
 var _player_car_mat: ShaderMaterial  ## the same shader on the player's car, its paint its own
 
+## The number plates' characters, for CAR_SHADER: 0-9, a dash, I and L, five by seven pixels
+## each in a cell of seven by nine, smoothed up eightfold (the shader takes the edge at the
+## half-way grey). Made once.
+const PLATE_GLYPHS := [
+	"01110100011000110001100011000101110", "00100011000010000100001000010001110",
+	"01110100010000100010001000100011111", "11111000100010000010000011000101110",
+	"00010001100101010010111110001000010", "11111100001111000001000011000101110",
+	"00110010001000011110100011000101110", "11111000010001000100010000100001000",
+	"01110100011000101110100011000101110", "01110100011000101111000010001001100",
+	"00000000000000001110000000000000000", "01110001000010000100001000010001110",
+	"10000100001000010000100001000011111"]
+var _plate_tex: ImageTexture
+
+func _plate_font() -> ImageTexture:
+	if _plate_tex != null:
+		return _plate_tex
+	var img := Image.create(13 * 7, 9, false, Image.FORMAT_L8)
+	img.fill(Color.BLACK)
+	for gi in range(PLATE_GLYPHS.size()):
+		var bits: String = PLATE_GLYPHS[gi]
+		for r in range(7):
+			for c in range(5):
+				if bits[r * 5 + c] == "1":
+					img.set_pixel(gi * 7 + 1 + c, 1 + r, Color.WHITE)
+	img.resize(13 * 7 * 8, 9 * 8, Image.INTERPOLATE_BILINEAR)
+	img.generate_mipmaps()
+	_plate_tex = ImageTexture.create_from_image(img)
+	return _plate_tex
+
 func _car_material() -> ShaderMaterial:
 	if _car_shader_mat == null:
 		_car_shader_mat = ShaderMaterial.new()
@@ -7921,6 +7994,9 @@ func _car_material() -> ShaderMaterial:
 	for m: ShaderMaterial in [_car_shader_mat, _player_car_mat]:
 		if m == null:
 			continue
+		m.set_shader_parameter("plate_font", _plate_font())
+		m.set_shader_parameter("plate_style", 1.0 if String(_place.get("look", "")) == "med" else 0.0)
+		m.set_shader_parameter("plate_blue", _real_col("blue").lerp(Palette.col("bg"), 0.35))   # (a plate's strip is a deep blue)
 		m.set_shader_parameter("lamp", _tone["lamplight"])
 		m.set_shader_parameter("tail", Palette.col("hazard"))
 		m.set_shader_parameter("night", 1.0 if _night else 0.0)
@@ -13897,6 +13973,7 @@ func _sedan(paint: String) -> Node3D:
 	_car_material()
 	_player_car_mat = _car_shader_mat.duplicate() as ShaderMaterial
 	_player_car_mat.set_meta("paint", paint)
+	_player_car_mat.set_shader_parameter("plate_seed", randf() * 1000.0)
 	_car_material()   # (sets its parameters, the paint among them)
 	var mi := MeshInstance3D.new()
 	mi.mesh = _car_body("sedan", false).mesh(_player_car_mat)
@@ -13941,6 +14018,27 @@ func _sedan_rest(root: Node3D, paint: String) -> Node3D:
 	var plate := "warn" if String(_place.get("look", "")) == "med" else "ink"   # Israeli plates are yellow
 	root.add_child(_part(BoxMesh, Vector3(0, 0.45, 2.28), Vector3(0.52, 0.12, 0.02), mat(plate, 0.1)))
 	root.add_child(_part(BoxMesh, Vector3(0, 0.6, -2.3), Vector3(0.52, 0.12, 0.02), mat(plate, 0.1)))
+	# their faces in the car shader (vertex alpha 0.65: a plate), its digits and strip with the
+	# traffic's -- the boxes alone were blank yellow
+	var pb := Buf.new()
+	var pc := Color(Palette.col(plate), 0.65)
+	for f: Array in [[0.45, 2.28 + 0.012, 1.0], [0.6, -2.3 - 0.012, -1.0]]:
+		var py: float = f[0]
+		var pz: float = f[1]
+		var sg: float = f[2]
+		var A := Vector3(-0.26 * sg, py - 0.06, pz)
+		var B := Vector3(0.26 * sg, py - 0.06, pz)
+		var D := Vector3(0.26 * sg, py + 0.06, pz)
+		var E := Vector3(-0.26 * sg, py + 0.06, pz)
+		pb.tri(A, B, D, Vector3(0, 0, sg), pc, Vector2(0, 1), Vector2(1, 1), Vector2(1, 0))
+		pb.tri(A, D, E, Vector3(0, 0, sg), pc, Vector2(0, 1), Vector2(1, 0), Vector2(0, 0))
+	var pam := ArrayMesh.new()
+	pam.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, pb.arrays())
+	pam.surface_set_material(0, _player_car_mat)
+	var pmi := MeshInstance3D.new()
+	pmi.mesh = pam
+	pmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(pmi)
 	# wheels: a pivot each (front ones steer), a tyre and a rim that roll inside it
 	_wheels.clear()
 	_spinners.clear()
