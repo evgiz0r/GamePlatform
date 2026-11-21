@@ -307,17 +307,34 @@ The ones most often touched, and the functions in them:
   **The AC unit's fan** (`furniture.ac_kit`): a round opening with three lighter blades, a
   grille ring and a cross over it, where it was a black hexagon that read as a sticker from
   across the street (~250 vertices; instanced, not batched).
-  **Open, seen in the side-by-sides** (film frame at t s against the graded game's frame
-  t*10+1 -- the camera's heading differs a little at the same second):
-  - white plaster in full sun clips: 19% of `look_tries`' `_under` view is pure white, the
-    texture gone. Darkening `wall_a` 14% changed nothing there, so that block's white does
-    not come from `wall_a` (its lean, COLOR.r, or the lifted block's own material: find it
-    before tuning).
-  - the faces up the walk (80 s): the film's blocks are busy -- every bay a railing or a
-    closed-in balcony, AC units, shutters half down, dark window holes -- where the game's far
-    blocks read plain. More facade kit per block at distance (or as paint in the shader).
-  - paving (55 s): the game's pavers are pinker and lighter than the film's grey ones.
-  - trees (55 s): olive and brown leaves against the film's fresh green.
+  **Seen in the side-by-sides** (film frame at t s against the graded game's frame t*10+1 --
+  the camera's heading differs a little at the same second): see the next item.
+- **the four from that list (22 Nov)**:
+  - **white plaster clipping**: the Compatibility renderer lights in 0-1 and clips before any
+    tone curve -- `tonemap_white` changes nothing here (tried 3 and 6). White plaster (wall_a
+    0.95, the photo's light patches up to x2) in the day sun (1.1 x 1.12) went flat 255. Now
+    `roll_white()` in WALL_SHADER rolls the plaster, and the balconies' `band`, off from 0.55
+    toward 0.67 (`_wall_rgb` the same, for things on walls): look_tries' `_under` 18.8% pure
+    white -> 2.6%, its mean 0.396 -> 0.388. Toward 0.85 changed nothing (the sunlit face is lit
+    past 1.2); toward 0.55 dimmed every wall. How it was found: crush `base` x0.2 in the shader
+    and shoot -- what stays white is not the plaster (it was the `band`, built from raw wall_a).
+    (A probe that ray-casts a pixel and walks every MeshInstance3D hung: too many meshes.)
+  - **busier far blocks**: balcony stacks 1 / 2 / 3 by face width (n bays < 4, < 6, more; the
+    third skips a bay already taken), AC units up to 6 a block (was 4) at 17% / 9% a bay
+    (13 / 7). Givatayim: AC units 10,692 -> 19,676 (instanced, 140 m), balconies 3,744 ->
+    6,628, closed in 2,672 -> 4,636; batched coloured kits 0.99 M -> 1.69 M vertices. Watch the
+    phone's frame time; if it suffers, the stacks are the dear part.
+  - **paving**: `pavement` greyed 0.65 -> 0.85, `pavers_grey` 0.85 -> 0.97 (the palette's
+    lavender showed through as pink); FILM_WARM 1.06 -> 1.0 (the bare picture's greys are as
+    warm as the film's: red/green 1.066). Graded greys now red/green 1.049 (was 1.068; the film
+    1.021). Still open: the passage at 55 s is drawn beige-and-pink bricks though the walk's
+    details lay it as small grey pavers -- find which surface draws it there.
+  - **leaves**: `leaf` with red x0.76 and blue x0.88 -- on screen they were 72/61/52 (red over
+    green: brown), the film's foliage 55/61/46.
+  - the grade refitted again on all of it: FILM_SAT 1.224 (the bare picture lost colour),
+    graded levels within 0.05 of the film's, saturation 0.158 (0.159), 0.0% clipped, each
+    second 0.457 +- 0.080 (0.454 +- 0.055). The bare picture still clips 2.2% (sky and sunlit
+    ground; the grade takes it).
 - **dogs, feet, walking on the spot** (the user: "the dogs look pretty wierd, and their
   hitboxes and how they walk is pretty wierd"; "some people are walking in place ... and
   their legs are somewhat bit inside the ground"). The dog (furniture `dog_kit`) is
@@ -3498,19 +3515,37 @@ the yard a few metres off, and a shot at the point saw a roof.
 
 ## Open problems
 
-- **One walker in 90 s still appears in view** (`people_pops`, Givatayim, 21 Nov): put 76 m
-  off, where people fade in (75-90 m), 160 m from where it was. Placement (`_place_walker`,
-  not `anywhere`) checks `_spawn_ok` at the spot; the camera moves before the next frame.
-  Try: placing beyond PEOPLE_SEEN when the street there has room, hidden spots only as a
-  fallback. Also seen once: a 2.5 m jump at 72 m (state unknown: print it).
-- **Tel Aviv's ways into a lit junction with no light facing them: 12** (21 Nov, ef5425b and
-  after; 5 on 20 Nov). Not caused by the doubled-lights fix (12 on the code before it too);
-  crept up while light_audit was not in the validation. `LEVEL=7 STATIC_ONLY=1 VERBOSE=1`
-  light_audit names each. Guarded at 12 now (`city_check` LIGHTS_21NOV).
-- **Solid things twice on one spot, the tail** (`city_check` "posts twice", under a limit):
-  Givatayim 128 (bougainvillea clumps over a garden wall, 0.44 m, drawn twice: one plot's
-  front laid twice?), Tel Aviv 596 (0.6 m: trees mapped by OSM and the town's survey both?),
-  Ashdod 48. Invisible (the same thing drawn twice), but twice the draws and checks.
+- **Walkers appearing in view: mostly fixed, a rare one left** (`people_pops`, Givatayim,
+  22 Nov). The two runs before the fix each had one; logging each placement showed both
+  ways it happened: a walker at a stretch's end was taken away while in view, 88 m off (only
+  the line's end was checked, a metre from where they stood), and was put down 39 m off,
+  just round a building's corner (`_spawn_ok` true at the line's point, the person beside
+  it, in view a frame later). Now `_place_walker` takes a spot 95-101 m off on the same
+  pavement when it reaches that far (they walk in, fading in from 90 m), and only else a
+  hidden one with a margin (`_hidden_well`: 1.5 m along and 1 m across it hidden too); the
+  stretch's end takes someone away only where they stand and those beside them
+  (`_mates_unseen`) are unseen too. Four runs: 0, 0, 0 and one pop (74 m, jumped 139 m),
+  that one before `_mates_unseen` -- not known yet if that was it. Each walker keeps
+  `placed` (which call put it there: start / retry / end / far), printed with a pop: read it
+  on the next one. "Sliding with the car far" read 3-10 a run, before and after (a baseline).
+- **Ways into a lit junction with no light facing them** (`light_audit`, `city_check`
+  LIGHTS_21NOV): 8 / 3 / 4 / 0 / 12 (Givatayim, Bedford, Ashdod, test town, Tel Aviv) ->
+  2 / 0 / 1 / 0 / 1 on 22 Nov. Each was a way in where every spot `_build_signals` tried was
+  a wall, another road's lane or a corner's asphalt; a second round now tries further onto
+  the pavement (to 2.4 m), the left kerb of a two-way road, a spot nearer the junction, and
+  last a far-side light across it -- never further back than the first round (behind the
+  stop line the waiting driver has gone past it). Not looked at from the street yet: a
+  screenshot of a far-side one is the next check. Tel Aviv's last is a one-way service lane
+  (937, 222). `_tally` counts `lights_far_spot` and `lights_no_spot`.
+- **Solid things twice on one spot** (`city_check` "posts twice"): 128 / 1 / 48 / 1 / 596 ->
+  0 / 0 / 5 / 1 / 3 on 22 Nov, the limits now. `tests/posts_twice_where.gd` (`POSTS_FROM=1`:
+  `_add_post` keeps its callers, by get_stack) named them: a building's stilts put up by
+  each of its parts on one outline (Tel Aviv 526, Givatayim 64; drawn twice too), greenery
+  over a corner's garden wall laid from both streets, two railings' end posts at a joint,
+  shrub lines over hedge lines, a cafe's tables, a lamp mapped twice. `_add_post(p, r, true)`
+  refuses a post as big within 0.3 m (`_post_twin`), and the drawing callers check first and
+  skip drawing it. Not for callers that keep the new post's index (signs, bins, bollards).
+  Left: Tel Aviv 2 of a 2.2 m thing from some file's `build:121` and a passage's 0.6 m post.
 - **Tel Aviv's lights and the exam, first round** (Nov 2026). `light_audit` at level 7:
   4 junctions where crossing streets shared a green, all skewed (55-65 degrees): the ways
   from inside a junction (the road between two of its points, no light) were counted in

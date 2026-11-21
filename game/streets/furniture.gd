@@ -1055,8 +1055,8 @@ func kerbside() -> void:
 							# next panel's near end is this one's far end (it was put up twice, the
 							# joints of every railing: city_check's "posts twice")
 							if k == 0:
-								g._add_post(m - d * way * 0.6, 0.06)
-							g._add_post(m + d * way * 0.6, 0.06)
+								g._add_post(m - d * way * 0.6, 0.06, true)   # (unique: another railing's end can stand there)
+							g._add_post(m + d * way * 0.6, 0.06, true)
 					else:
 						for k in range(2):
 							var p := c + d * way * (2.1 + 1.3 * k) + side * sg * (hw + 0.42)
