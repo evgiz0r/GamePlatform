@@ -462,6 +462,25 @@ move it.
 on. Resumed while zoomed out, the city runs under you and the view follows the car, which
 still drives (keys or the stick). The shell's own pause (its menu) is still there too.
 
+**The city from above before it is built.** At the start only the streets round the car are
+built; the rest goes up square by square while you drive. Zoomed out, the parts not built
+yet are not empty: their roads, the outlines of their buildings, their parks and water lie
+flat on the ground straight away, each square swapping for the real one as it goes up -- so
+there is something to see, and to hold the mouse on to drive there, from the first second.
+
+> when i zoom the beginning the rest of the city is still being built. maybe i can still see
+> something (roads?!, dunno), and click in the area of the city, before it rendered
+
+**The green wave.** "wave" (bottom right, or V) turns it on: every crossroads with lights
+you come up to, driving yourself or on autodrive, turns green for you. It does it the proper
+way, as if it saw you coming: the cross street's green ends with its flashing and amber,
+red all round, then red-and-amber and green your way, so its cars and people stop as they
+would; it stays green until you are through, then goes back to the town's rhythm. It reaches
+about twelve seconds ahead at your speed (150 m at least), so even a light that has just
+gone red for you has turned by the time you get there.
+
+> any crossroads i approach switches to green for my car
+
 > If I would want a zoom out feature, that zooms out from where I am. Maybe it pauses the
 > city (maybe we can add a pause feature anyway), and we can zoom back in (or check around).
 
@@ -1537,10 +1556,6 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   the places from OSM and the towns' own data. New: each tour's script (the stops, where to
   look, the words, maybe spoken), a guide to follow, and a way to pause, ask, or skip ahead;
   a tour as a level of its own in the start screen.
-- A "green wave": "any crossroads i approach switches to green for my car" -- a switch for
-  the player's car (driving or autodrive) that turns each light it comes up to green its
-  way, through the usual change for the cross street (amber, red) so the traffic there stops
-  as it would.
 - Disasters on the real city: "like simcity hazards, but now we have the graphics so it
   can be cool on steroids, like aliens". Pick a disaster and where it strikes, then watch it
   from the zoomed-out view or live through it in the car or on foot. Aliens first, as asked:
@@ -1569,15 +1584,6 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   town, written once from those sources and kept in its folder (credited: Wikipedia and
   Wikivoyage are CC BY-SA), and the hooks for each part of the game to read it. A made-up
   town would get a made-up one.
-- See the city from above before it is built: "when i zoom the beginning the rest of the
-  city is still being built. maybe i can still see something (roads?!, dunno), and click in
-  the area of the city, before it rendered". At the start only the squares near the car are
-  built; zoomed out, the rest is empty until it goes up. Draw something cheap there straight
-  away from the city file already loaded -- the roads as flat strips, maybe the buildings'
-  outlines flat on the ground, the parks and the sea -- each square's stand-in swapped for the
-  real one as it is built. A long press there already finds the street (it reads the road
-  data, not the built meshes), so the stand-in is mostly what is missing: something to see
-  and aim at.
 - A "thief or racer" mode: "thief or racer mode, where the autodrive doesn't care about
   traffic". Autodrive with the rules switched off: through red lights, never giving way,
   round the queue on the wrong side, weaving between the lanes, onto the pavement when

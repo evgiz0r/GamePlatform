@@ -366,7 +366,10 @@ func tick(dt: float) -> void:
 		# Sideways only as it rolls, like a car steering: its back trails the front (_place),
 		# so a shift while it stood moved the front alone and swung the body round -- cars
 		# waiting at Kaplan's light stood 60 degrees across the next lane, on its cars
-		lat = minf(lat, c.v * SIDE_PER_V * 4.6 / maxf(c.len, 4.6))   # (a 12 m bus angled as much swung its ends into the next lane)
+		# (pulling out from close behind a delivery van it goes round: steeper, as people turn
+		# out at a crawl -- at 19 degrees, from 2 m behind it, it met the van's corner first)
+		var side_k := 0.8 if c.pass_i >= 0 and c.v < 3.0 else SIDE_PER_V
+		lat = minf(lat, c.v * side_k * 4.6 / maxf(c.len, 4.6))   # (a 12 m bus angled as much swung its ends into the next lane)
 		var ds := clampf(c.shift_to - c.shift, -lat * dt, lat * dt)
 		if c.realign and absf(c.shift_to - c.shift - ds) < 0.05:
 			c.realign = false
@@ -389,7 +392,9 @@ func tick(dt: float) -> void:
 				# 3.5 m/s is about 2 m of room at the braking it plans with.)
 				# (0.3 m/s: seen to be moving -- at 0.5 the follower waited ~0.45 s more for the
 				# car in front's gentle first push to show; nearer 0 the queue went like a train)
-				if not (c.why == "car" and c.lead_v < 0.3 and vt < 3.5):
+				# (unless it is going round a van: that one never moves off -- waiting for it,
+				# a car behind a van with the way clear stood till taken away)
+				if not (c.why == "car" and c.lead_v < 0.3 and vt < 3.5 and c.pass_i < 0):
 					c.react_t += dt
 				# and waiting to react it stands: it crept on at 0.26 m/s for as long as it
 				# waited, neither pulling away nor stopped
@@ -535,7 +540,7 @@ func _target(c: Car, i: int, dt: float) -> float:
 	if who >= 0 and who != c.pass_i and best < 35.0 and _parked_double(cars[who]) and c.kind != "bus":
 		var rr: Dictionary = _roads[c.rd[mini(c.k + 1, c.rd.size() - 1)]]
 		if _lanes_dir(rr) <= 1 and int(rr["o"]) == 0 and not _near_junction(c, best + 12.0) \
-				and _oncoming_clear(c, i, best + 45.0, _pass_shift(rr)):
+				and _oncoming_clear(c, i, best + 45.0, _pass_shift(rr), _pass_secs(c, best + (cars[who] as Car).len + c.len + 1.5), best + (cars[who] as Car).len + c.len + 1.5):
 			c.pass_i = who
 			Probe.event("go_round", {"kind": c.kind})
 	c.ignore = maxf(0.0, c.ignore - dt)
@@ -550,10 +555,20 @@ func _target(c: Car, i: int, dt: float) -> float:
 		# (the seconds behind at its own speed while it is the slower: a queue pulling away
 		# kept its gap for the speed the car in front had reached, so each waited till that
 		# one was well off -- the third car of a queue moved 9 s after the green)
-		var room := best - (c.len + best_len) * 0.5 - c.gap - minf(lead_v, c.v) * c.headway
+		var free := best - (c.len + best_len) * 0.5 - c.gap
+		var room := free - minf(lead_v, c.v) * c.headway
 		var follow := sqrt(maxf(0.0, lead_v * lead_v + 2.0 * BRAKE * maxf(room, 0.0)))
+		# (inside its seconds behind: a little under that car's pace to open the gap again,
+		# not a stop -- `0.0` there braked it 7.5 m/s^2 to a standstill behind a car going
+		# its own speed, and the player's car behind it, its sudden stops charted)
 		if room <= 0.0:
-			follow = 0.0
+			follow = maxf(lead_v + room * 0.5, 0.0) if free > 0.0 else 0.0
+		if who >= 0 and who == c.pass_i:
+			# going round the van it stands behind: creep on, pulling out. It moves sideways
+			# only as it rolls, and the van counts as in its way until it is out past its side:
+			# standing there, waiting to be out before it rolled, it never went (van_pass).
+			var bump := best - (c.len + best_len) * 0.5
+			follow = maxf(follow, minf(1.2, sqrt(2.0 * BRAKE * maxf(bump - 0.6, 0.0))))
 		if follow < vt:
 			vt = follow
 			c.why = "player" if who == -1 else "car"
@@ -1024,8 +1039,23 @@ func _parked_double(o: Car) -> bool:
 func _pass_shift(r: Dictionary) -> float:
 	return clampf(2.0 * _lane(r), 2.3, 3.4)
 
-## nothing coming the other way (nor anyone already over there) for `reach` metres ahead
-func _oncoming_clear(c: Car, i: int, reach: float, over: float) -> bool:
+var pass_by_time := true   ## false for a test: a pass judged by distance alone, as before (tests/van_pass.gd PASS_OLD=1)
+
+## seconds for car c to drive `d` metres from its speed now, pulling away as it does
+func _pass_secs(c: Car, d: float) -> float:
+	if not pass_by_time:
+		return 0.0
+	var a := maxf(c.accel, 1.0)
+	# (and a margin: round a van it eases out and back, slower than it could)
+	return (sqrt(c.v * c.v + 2.0 * a * maxf(d, 0.0)) - c.v) / a * 1.25 + 1.5
+
+## nothing coming the other way (nor anyone already over there) for `reach` metres ahead --
+## and, given `secs` (how long the pass of `d` metres will take), nothing that would get to
+## the pass's far end in that time at its speed now.
+## (By distance alone, 35 + 45 m, a car went round a delivery van with the player 60-80 m
+## off at 50 km/h -- there in under 6 s, the pass taking 7 or 8 -- and stood head-on in the
+## player's lane, held by them: autodrive braked 8.8 m/s^2 from 48 km/h and touched it.)
+func _oncoming_clear(c: Car, i: int, reach: float, over: float, secs := 0.0, d := 0.0) -> bool:
 	for j in range(cars.size() + 1):
 		var q: Vector2
 		if j == cars.size():
@@ -1037,9 +1067,12 @@ func _oncoming_clear(c: Car, i: int, reach: float, over: float) -> bool:
 			if j == i or not o.alive or not _level(c, o.y, o.lift) or _parked_double(o):
 				continue
 			q = o.pos
-		if q.distance_squared_to(c.pos) > (reach + 10.0) * (reach + 10.0):
+		# (it must not reach the far end of the pass, `d` on, before the pass is done)
+		var qv: float = maxf(float(g._v), 0.0) if j == cars.size() else (cars[j] as Car).v
+		var far := maxf(reach, d + qv * secs + 10.0)
+		if q.distance_squared_to(c.pos) > (far + 10.0) * (far + 10.0):
 			continue
-		var pr := _proj(c, q, 8.0, reach)
+		var pr := _proj(c, q, 8.0, far)
 		if pr.x != INF and absf(pr.y - over) < 2.0:
 			return false
 	return true
@@ -1423,6 +1456,13 @@ func _steer_lanes(c: Car, i: int, dt: float, best: float, lead_v: float) -> void
 		var pr := _proj(c, o.pos, 40.0, 60.0)
 		if not o.alive or pr.x == INF or pr.x < -(o.len + c.len) * 0.5 - 1.5:
 			c.pass_i = -1
+		elif pass_by_time and absf(c.shift) < 0.4 and c.v > 0.5 and not _oncoming_clear(c, i, pr.x + 20.0, _pass_shift(r),
+				_pass_secs(c, pr.x + (o.len + c.len) * 0.5 + 1.5), pr.x + (o.len + c.len) * 0.5 + 1.5):
+			# something coming that will be here before it is past, and it has barely begun to
+			# move over: back in behind the van, and wait. (Only then: once further out, or
+			# standing, it could not get back -- a car moves sideways only as it rolls -- and
+			# stood with its nose in the other lane, face to face with autodrive, till taken away.)
+			c.pass_i = -1
 		else:
 			c.shift_to = _pass_shift(r)
 			return
@@ -1612,7 +1652,7 @@ func _bus_stop(c: Car, dt: float) -> float:
 ## body (five along a bus), not only its middle: a bus pulled in at its stop, or slanting out
 ## of it, stuck its back corner into the lane while its middle was clear of it -- and the
 ## half length lets autodrive stop short of a bus's back, not a car's length behind its middle.
-func lead_on(path: PackedVector2Array, from: Vector2, look: float, ignore_crossing: bool, y := NAN) -> Array:
+func lead_on(path: PackedVector2Array, from: Vector2, look: float, ignore_crossing: bool, y := NAN, skip := -1) -> Array:
 	var best := INF
 	var bv := 0.0
 	var bhalf := 0.0
@@ -1620,8 +1660,9 @@ func lead_on(path: PackedVector2Array, from: Vector2, look: float, ignore_crossi
 	if path.size() < 2:
 		return [best, bv, bhalf, who]
 	var start := Geometry2D.get_closest_point_to_segment(from, path[0], path[1])
+	var skipped: Car = cars[skip] if skip >= 0 and skip < cars.size() else null   # (one crossing that will be gone: see autodrive)
 	for c: Car in cars:
-		if not c.alive or c.pos.distance_squared_to(from) > (look + c.len * 0.5 + 6.0) * (look + c.len * 0.5 + 6.0):
+		if not c.alive or c == skipped or c.pos.distance_squared_to(from) > (look + c.len * 0.5 + 6.0) * (look + c.len * 0.5 + 6.0):
 			continue
 		if not is_nan(y) and absf(c.y - y) > LEVEL + 0.08 * c.pos.distance_to(from):
 			continue   # (on a bridge overhead, in a tunnel underneath -- not just down a hill:

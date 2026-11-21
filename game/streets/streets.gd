@@ -409,6 +409,8 @@ void fragment() {
 	// the balconies' parapets and slab edges in a band of their own on some blocks: white on
 	// the sand ones
 	vec3 band = hash(vec2(seed, 8.3)) < 0.45 ? mix(base, wall_a.rgb * COLOR.r, 0.65) : base * 1.05;
+	// about half the blocks with balconies have railings of bars, not solid parapets
+	bool rail_blk = hash(vec2(seed, 6.1)) < 0.5;
 	// (how weathered: aged, the sand-plastered old blocks, darker grime under their sills)
 	if (siding > 0.5 && style < 0.5 && facade && fract(up / 0.24) < 0.13) {
 		col *= 0.88;
@@ -451,7 +453,10 @@ void fragment() {
 			}
 		} else if (style < 1.5) {
 			if (fx > 0.06 && fx < 0.94 && fy < 0.88) {
-				if (fy < 0.34) {
+				if (fy < 0.34 && rail_blk && !enclosed) {   // the hollow through a railing's bars, far off
+					col = fy > 0.32 ? vec3(0.15, 0.15, 0.16) : mix(dark.rgb, vec3(0.15, 0.15, 0.16), 0.3);
+					pl = 0.0;
+				} else if (fy < 0.34) {
 					col = band;
 				} else if (enclosed) {   // glass on the parapet, the shutter box over it
 					pl = 0.0;
@@ -624,9 +629,24 @@ void fragment() {
 				}
 			}
 		} else if (upper && style > 0.5 && style < 1.5) {
-			// a balcony: a hollow 1.4 m deep behind the parapet, a glass door at its back
-			vec2 lo = vec2(0.06 * cw, 1.02);
+			// a balcony: a hollow 1.4 m deep behind the parapet, a glass door at its back.
+			// As the kit's balconies (_balcony_mesh): dark creases where its surfaces meet (the
+			// slab over it seen from below darkest, its sides and back in shade, more so up
+			// under the slab), a coping on the parapet catching the light, the slab's lip and a
+			// drip line under it; on about half the blocks a railing of dark bars instead of a
+			// solid parapet, the hollow seen between them.
+			bool rail = rail_blk;
+			vec2 lo = vec2(0.06 * cw, rail ? 0.06 : 1.02);
 			vec2 hi = vec2(0.94 * cw, 2.64);
+			if (p.x > lo.x && p.x < hi.x && p.y > 2.64 && p.y < 2.82) {
+				// the slab's front: a lip catching the light at its top, a drip line under it
+				deep_hit = true;
+				col2 = band * (p.y > 2.785 ? 1.15 : (p.y < 2.67 ? 0.45 : 0.92));
+			} else if (!rail && p.x > lo.x - 0.03 && p.x < hi.x + 0.03 && p.y > 0.93 && p.y <= 1.02) {
+				// the coping along the parapet's top, its shadow on the parapet under it
+				deep_hit = true;
+				col2 = band * (p.y > 0.985 ? 1.15 : 0.62 + 0.3 * smoothstep(0.93, 0.985, p.y));
+			}
 			if (p.x > lo.x && p.x < hi.x && p.y > lo.y && p.y < hi.y) {
 				deep_hit = true;
 				vec2 m = -v.xy;
@@ -635,7 +655,7 @@ void fragment() {
 				float ty = m.y < 0.0 ? (0.06 - p.y) / min(m.y, -0.0001) : (hi.y - p.y) / max(m.y, 0.0001);
 				float t = min(tz, min(tx, ty));
 				vec2 h = p + m * t;
-				float shade = 1.0 - 0.35 * t * v.z / 1.4;
+				float shade = (1.0 - 0.35 * t * v.z / 1.4) * mix(1.0, 0.7, smoothstep(1.6, 2.64, h.y));
 				emit2 = vec3(0.0);
 				rough2 = 0.85;
 				if (t == tz) {
@@ -656,14 +676,22 @@ void fragment() {
 							spec2 = 0.5;
 						}
 					} else {
-						col2 = base * 0.9 * shade;
+						col2 = base * 0.66 * shade;
 					}
 				} else if (t == ty) {   // its tiled floor, or the slab over it seen from below
-					col2 = m.y < 0.0 ? floorc * 1.2 * shade : base * 0.85 * shade;
+					col2 = m.y < 0.0 ? floorc * 0.95 * shade : base * 0.42 * shade;
 					nrm2 = m.y < 0.0 ? bv : -bv;
 				} else {
-					col2 = base * 0.95 * shade;
+					col2 = base * 0.62 * shade;
 					nrm2 = m.x < 0.0 ? tv : -tv;
+				}
+				if (rail && p.y < 1.02) {
+					// the railing at the front: a top rail and flat bars, dark painted steel
+					float bar = line_cover(abs(fract((p.x - lo.x) / 0.14) - 0.5) * 0.14, 0.012, aa);
+					float cover = max(bar, line_cover(abs(p.y - 0.99), 0.025, aa));
+					col2 = mix(col2, vec3(0.15, 0.15, 0.16), cover);
+					nrm2 = normalize(mix(nrm2, nn, cover));
+					emit2 *= 1.0 - cover;
 				}
 			}
 		} else if (upper && style > 1.5 && style < 2.5) {
@@ -893,6 +921,8 @@ var _marks: Marks                    ## a town's landmarks and its towers' red l
 var _beach: Beach                    ## the beaches by the sea: umbrellas, chairs, lifeguards (beach.gd)
 var _crowd: Crowds                   ## shoppers in a market, people along the shore and in the sea (crowds.gd)
 var _works: Sites                    ## building sites from a town's own map: hoardings, cranes (sites.gd)
+var _wave: Wave                      ## the green wave: lights turning green for the car (wave.gd)
+var _standins: Standins              ## the squares not built yet, seen from above: flat roads, outlines (standins.gd)
 var _on_deck := -1                   ## while a deck road is drawn: heights come from it, not the ground
 var _inferred := {}                  ## what decks.gd's infer() made of a real town's bridges (the report)
 var _wired := {}                     ## road index -> true: Bedford's lamps hang off its power poles
@@ -976,11 +1006,15 @@ const Marks := preload("res://game/streets/landmarks.gd")
 const Beach := preload("res://game/streets/beach.gd")
 const Crowds := preload("res://game/streets/crowds.gd")
 const Sites := preload("res://game/streets/sites.gd")
+const Wave := preload("res://game/streets/wave.gd")
+const Standins := preload("res://game/streets/standins.gd")
 const DriveLog := preload("res://game/streets/drivelog.gd")
 var _log := DriveLog.new()            ## the last two minutes, for the map page and "save log"
 var _ap_why := ""                     ## what held autodrive's speed down this tick (for the log)
 var _ap_lead := -1.0                  ## metres to the car ahead on its lane, or -1
 var _ap_lead_i := -1                  ## that car's index in traffic (-1 none, or the player's own: for traces)
+var _ap_lead_a := 0.0                 ## how fast the car in front is speeding up along my way (braking: < 0)
+var _ap_lead_was := -2                ## ...and which car that was (a new one starts afresh)
 var _traffic: Traffic = null
 var _ap_wait := 0.0                  ## autodrive held up by a car this long
 
@@ -1147,6 +1181,7 @@ const GOTO_BTN := Rect2(290, 334, 80, 20)
 const ASSIST_BTN := Rect2(376, 334, 70, 20)
 const NIGHT_BTN := Rect2(452, 334, 52, 20)
 const WET_BTN := Rect2(510, 334, 40, 20)     ## after rain / dry
+const WAVE_BTN := Rect2(556, 334, 52, 20)    ## the green wave: the lights ahead turn green for the car (key V; wave.gd)
 const VIEW_BTN := Rect2(578, 98, 52, 20)    ## chase cam / driver's seat (key C too)
 const LIGHTS_BTN := Rect2(578, 122, 52, 20)  ## headlights (key L)
 ## (the indicators and the horn are keys only, Q / E and H: on screen they were clutter)
@@ -2793,6 +2828,7 @@ func _build_setup(t0: int) -> void:
 	_beach.setup(_city_data)
 	_works = Sites.new(self)
 	_works.setup(_city_data)
+	_wave = Wave.new(self)
 	_lights_setup()
 	_infer_signs()   # (after the lights: a lit junction has none)
 	_parks_setup()
@@ -2875,6 +2911,8 @@ func _build_tile(t: Vector2i) -> void:
 	_stage("batches", tk)
 	_set_tiling(false)
 	_batching = false
+	if _standins != null:
+		_standins.drop(t)
 
 ## The squares built before the car is shown. A city level: the one the start is in and any
 ## within NEAR_NOW of it, and those the street ahead crosses within AHEAD_NOW -- what the
@@ -2946,6 +2984,9 @@ func _build_rest() -> void:
 	_build_us = CATCH_UP_US if _catch_up else BUILD_US
 	_yield_at = Time.get_ticks_usec() + _build_us
 	await _build_gardens_later()   # (the start's squares' far gardens, first)
+	if not _tiles_todo.is_empty():   # (the rest, as flat stand-ins seen from above, at once)
+		_standins = Standins.new(self)
+		await _standins.build_all()
 	if not hurry:
 		await _far_now()
 	while is_inside_tree():
@@ -11597,6 +11638,7 @@ func _build_signals() -> void:
 			var front := Vector3(-dir.x, 0.0, -dir.y) * 0.17
 			for ci in range(3):
 				bulbs[g][ci].append(Vector3(p.x, gy + 3.3 + 0.3 - 0.3 * ci, p.y) + front)
+				_wave.lamp(_site_of.get(node, -1), "car", g, ci, Vector3(p.x, gy + 3.3 + 0.3 - 0.3 * ci, p.y) + front)
 			if is_nan(py) or py - _h(p) < 1.0:
 				_add_post(p, 0.15)   # (posts are solid at the ground's level: not one up on a bridge)
 	if poles.is_empty():
@@ -11854,6 +11896,8 @@ func _build_walk_lights(pole_mesh: Mesh) -> void:
 			var front := Vector3(across.x, 0.0, across.y) * 0.1
 			lamps[g][0].append(Vector3(p.x, gy + 2.67, p.y) + front)
 			lamps[g][1].append(Vector3(p.x, gy + 2.43, p.y) + front)
+			_wave.lamp(_site_of.get(j, -1), "walk", g, 0, Vector3(p.x, gy + 2.67, p.y) + front)
+			_wave.lamp(_site_of.get(j, -1), "walk", g, 1, Vector3(p.x, gy + 2.43, p.y) + front)
 			_add_post(p, 0.1)
 	_tally("walk_lights", poles.size())
 	if poles.is_empty():
@@ -13629,6 +13673,8 @@ func _build_street_signs() -> void:
 			var pts: PackedVector2Array = r["pts"]
 			if nxt < 0 or nxt >= pts.size():
 				continue
+			if _divided_half_at(ni, e.x, nxt):
+				continue   # (half of a divided road where it splits off: no arrow -- see there)
 			var along := (pts[nxt] - c).normalized()
 			var across := Vector2(-along.y, along.x)
 			var w: float = r["w"]
@@ -13788,6 +13834,40 @@ func _lane_arrows(buf: Buf, ni: int, dir: Vector2, r: Dictionary) -> void:
 ## "l" left (never back the way it came, never the wrong way down a one-way)
 ## a short piece (under 30 m) from point k of road r going `step` to another junction: a link
 ## inside a junction drawn as several points, not a street
+## One-way road ri leaving point ni (its next point `nxt`): half of a divided road, where it
+## splits off -- another of its name there, two-way (the road it splits from) or one-way the
+## other way, coming in from beside it (the other half)? Its "one way" arrow at the corner
+## would stand where the two-way road's lane runs on into the half: OSM starts both halves at
+## the two-way road's middle, so for some metres the cars drive past the half's asphalt
+## (Ashdod's Shlomo Ben Yosef, 9 m splitting into two 4 m halves: autodrive's side met the
+## arrow's pole 0.9 m from its middle, and lost 19 km/h knocking it flat, every time).
+func _divided_half_at(ni: int, ri: int, nxt: int) -> bool:
+	var r: Dictionary = _roads[ri]
+	var nm := String(r.get("name", ""))
+	if nm == "":
+		return false
+	var c: Vector2 = _nodes[ni]
+	var out := ((r["pts"] as PackedVector2Array)[nxt] - c).normalized()
+	for e: Vector2i in _node_roads[ni]:
+		if e.x == ri:
+			continue
+		var o: Dictionary = _roads[e.x]
+		if String(o.get("name", "")) != nm or not o["drive"]:
+			continue
+		if o["o"] == 0:
+			# (the road it splits from: on behind it, and wider -- not a street that is one-way
+			# from here on, the same width, where the arrow is right)
+			for k: int in [e.y - 1, e.y + 1]:
+				if k >= 0 and k < (o["pts"] as PackedVector2Array).size() and float(o["w"]) > float(r["w"]) + 2.0 \
+						and ((o["pts"] as PackedVector2Array)[k] - c).normalized().dot(out) < -0.5:
+					return true
+			continue
+		var prev: int = e.y - int(o["o"])   # (where its traffic comes from, if it comes in here)
+		var opts: PackedVector2Array = o["pts"]
+		if prev >= 0 and prev < opts.size() and (opts[prev] - c).normalized().dot(out) > 0.5:
+			return true
+	return false
+
 func _short_link(r: Dictionary, k: int, step: int) -> bool:
 	var pts: PackedVector2Array = r["pts"]
 	var ids: PackedInt32Array = r["ids"]
@@ -14380,7 +14460,7 @@ func _ap_light_v() -> float:
 			stop = 0.0   # (standing a little over it -- stopped there for people on a crossing --
 			             # is not through: it waits for its green where it stands)
 		var state := _light_at(n, f[2])
-		var raw := String(SIGNAL_CYCLE[_sig_phase][_light_group(n, f[2])])
+		var raw := String(SIGNAL_CYCLE[_ph_at(n)][_light_group(n, f[2])])
 		_ap_light_dbg = [n, raw, stop]
 		if raw == "g":
 			_ap_amber_n = -1
@@ -14433,12 +14513,15 @@ func _ap_brake_for(stop: float) -> float:
 ## red and amber, now)
 func _light_red_in(n: int, dir: Vector2) -> float:
 	var grp := _light_group(n, dir)
+	if _wave != null and _wave.held(_site_of.get(n, -1), grp):
+		return INF   # (held green for the car: wave.gd)
 	var acc := 0.0
+	var p0 := _ph_at(n)
 	for k in range(SIGNAL_CYCLE.size()):
-		var ph: Array = SIGNAL_CYCLE[(_sig_phase + k) % SIGNAL_CYCLE.size()]
+		var ph: Array = SIGNAL_CYCLE[(p0 + k) % SIGNAL_CYCLE.size()]
 		if String(ph[grp]) in ["r", "ry"]:
 			return acc
-		acc += float(ph[0]) - (_sig_t if k == 0 else 0.0)
+		acc += float(ph[0]) - (_t_at(n) if k == 0 else 0.0)
 	return INF
 
 ## autodrive: seconds to drive `dist` metres along the plan, at the pace it goes there --
@@ -14463,8 +14546,16 @@ func _ap_time_to(dist: float) -> float:
 func _light_at(n: int, dir: Vector2) -> String:
 	if not _sig_set.has(n):
 		return ""
-	var st: String = SIGNAL_CYCLE[_sig_phase][_light_group(n, dir)]
+	var st: String = SIGNAL_CYCLE[_ph_at(n)][_light_group(n, dir)]
 	return "g" if st == "gf" else ("r" if st == "ry" else st)
+
+## the step of the light cycle lit point n is at, and how far into it: the city's clock, or
+## its own while the green wave has it (wave.gd)
+func _ph_at(n: int) -> int:
+	return _wave.phase(_site_of.get(n, -1)) if _wave != null and not _wave.ovr.is_empty() else _sig_phase
+
+func _t_at(n: int) -> float:
+	return _wave.time(_site_of.get(n, -1)) if _wave != null and not _wave.ovr.is_empty() else _sig_t
 
 ## Which of the two signal groups (1 or 2, the columns of SIGNAL_CYCLE) traffic arriving at
 ## node n going `dir` belongs to: the site's axis it runs nearer, either way along it. The
@@ -15704,10 +15795,12 @@ func _film_begin(id: String) -> void:
 ## it read pink; fitted, it went to 16% and grey pavers went mauve); then saturation back up
 ## by FILM_SAT, as the flatter curve takes some out. Only the walks: the game's own look is
 ## other sessions' (the light, the haze) and drives on.
-const FILM_CURVE := [0.048, 0.083, 0.147, 0.224, 0.294, 0.356, 0.411, 0.452, 0.481, 0.508, 0.538,
-	0.572, 0.609, 0.653, 0.704, 0.786, 0.880]
+## (refitted 21 Nov on a bare recording after the deeper light -- fill x0.6, sun x1.12 -- which
+## clipped 2.2% of the bare picture and left it more saturated: 0.191 against the film's 0.159)
+const FILM_CURVE := [0.053, 0.103, 0.185, 0.271, 0.344, 0.403, 0.447, 0.481, 0.515, 0.549, 0.580,
+	0.608, 0.636, 0.670, 0.709, 0.783, 0.878]
 const FILM_WARM := 1.06
-const FILM_SAT := 1.088
+const FILM_SAT := 0.943
 ## the phone's auto-exposure: [target, strength, least, most] -- the frame's mean brightness
 ## pulled towards target by (target / mean)^strength, in light, within least..most. The film's
 ## brightness second to second holds at 0.45 +- 0.055 (its exposure follows the view); the
@@ -16456,6 +16549,8 @@ func _physics_process(dt: float) -> void:
 	_prof_ticks += 1
 	_p0()
 	_signals_tick(dt)
+	if _wave != null:
+		_wave.tick(dt)
 	if _rails != null:
 		_rails.tick(dt)
 	_crash_cool = maxf(0.0, _crash_cool - dt)
@@ -16543,6 +16638,8 @@ func _frame() -> void:
 		_p("building")
 	_watch_fps(dt)
 	_hold_tick(dt)
+	if _standins != null:
+		_standins.show(_zoomed())
 	if _blades != null:
 		_turbines_tick()
 	var f := Engine.get_physics_interpolation_fraction()
@@ -18799,14 +18896,15 @@ func _walk_light(cr: Dictionary, need: float) -> bool:
 	if n < 0 or not _sig_set.has(n):
 		return true
 	var grp := _light_group(n, cr["sig_dir"])
-	var step: Array = SIGNAL_CYCLE[_sig_phase]
+	var p0 := _ph_at(n)
+	var step: Array = SIGNAL_CYCLE[p0]
 	if not (step[grp] == "r" and step[3 - grp] == "g"):
 		return false   # the red man
 	# the green man, with time enough before the cars across get their green to be over
 	# (the red man comes on with the other way's flashing green; the road stays red behind it)
-	var left := float(step[0]) - _sig_t
-	var i := (_sig_phase + 1) % SIGNAL_CYCLE.size()
-	while i != _sig_phase and SIGNAL_CYCLE[i][grp] == "r":
+	var left := float(step[0]) - _t_at(n)
+	var i := (p0 + 1) % SIGNAL_CYCLE.size()
+	while i != p0 and SIGNAL_CYCLE[i][grp] == "r":
 		left += float(SIGNAL_CYCLE[i][0])
 		i = (i + 1) % SIGNAL_CYCLE.size()
 	return left >= minf(need, 14.0) + 1.0
@@ -19712,6 +19810,8 @@ var _knocked: Array = []             ## {id, k, body, ground, t}
 var _contact := Vector3.ZERO         ## where the car last touched something (_collide)
 var _contact_n := Vector2.ZERO       ## ... and the way it was pushed off it (out of what it hit)
 var _knock_hit := -1                 ## a knockable post touched in this tick's pushes (_collide), or -1
+var _knocked_n := 0                  ## things the car has knocked over or bent so far (no crash: the tests count these)
+var _knocked_what := ""              ## ...and the last: "sign oneway", "knocked bin"
 
 func _knock_add(mesh: Mesh, xforms: Array, posts: Array, seen: float, how: String) -> void:
 	var mm := MultiMesh.new()
@@ -19732,6 +19832,8 @@ func _knock_add(mesh: Mesh, xforms: Array, posts: Array, seen: float, how: Strin
 func _knock(pid: int) -> void:
 	var k: Array = _knockable[pid]
 	_knockable.erase(pid)
+	_knocked_n += 1
+	_knocked_what = "post bent" if k[4] == "bend" else "knocked over"
 	var mm: MultiMesh = k[0]
 	var i: int = k[1]
 	var xf: Transform3D = k[2]
@@ -19798,6 +19900,8 @@ var _bent: Array = []                ## {id, sign, nodes, t}
 func _bend_sign(pid: int) -> void:
 	var sg: Array = _signs_at[pid]
 	_signs_at.erase(pid)
+	_knocked_n += 1
+	_knocked_what = "sign %s" % str(sg[0])
 	var r0: float = _post_r[pid]
 	_post_r[pid] = 0.0   # (not solid while it is down)
 	var plate_xf: Transform3D = sg[1]
@@ -20917,6 +21021,14 @@ func _draw_zoom_marks() -> void:
 
 ## ---- autodrive: follow the road graph in the right-hand lane, preferring new streets ----
 
+## the green wave on or off (wave.gd): the lights the car comes up to turn green its way
+func _set_wave(on: bool) -> void:
+	if _wave == null:
+		return
+	_wave.set_on(on)
+	_show_banner("green wave: the lights ahead turn green for you" if on else "green wave off", 1.6)
+	Probe.event("wave", {"on": on})
+
 func _set_auto(on: bool) -> void:
 	_auto = on
 	_cross = {}
@@ -20940,6 +21052,63 @@ func _held(cur: float, v: float, why: String) -> float:
 		_ap_why = why
 		return v
 	return cur
+
+## autodrive behind the car in front: the speed to hold, with `free` m of road to its back
+## (beyond the gap kept standing), `room` that less the second or so kept behind at its pace,
+## it going `lv` along my way and speeding up `la` (braking: below 0).
+## (Each a user's "sudden stops due to other cars", charted -- tests/drive_trace.py: 8 hard
+## brakes a drive, 4.6-6.3 m/s^2 into the last metres, none of them needed:
+##  - a metre inside the second kept behind a car going its own pace, the speed asked for
+##    fell from that car's to nothing at once (`0.0 if room <= 0.0`), so it stood on the
+##    brakes behind a car doing 21 km/h, and stopped dead behind a queue pulling away;
+##  - behind a car that stopped (traffic brakes up to 7.5 m/s^2), it slowed only as the
+##    speed asked for came down, 2 m/s^2 for each m/s over it (see the brake below): it ran
+##    1-1.5 m/s over the slope all the way down and braked the last few metres hard.
+## Now: inside the second, a little under its pace to open the gap; and once a steady 2 m/s^2
+## will not do -- to its standing spot if it keeps braking as now, or to its pace by its back
+## -- the speed that brakes as hard as is needed, as `_ap_brake_for` does for a stop line.)
+## autodrive: car ci, `along` m ahead on my way, crossing it -- and off it, its back past my
+## sides, before my nose can get there? Then it is no car to stop behind.
+## (Each car crossing in front was a wall standing in the lane: autodrive slowing to go on
+## after giving way to a car at 49 km/h, that car 7 m ahead and gone in a third of a second,
+## stood on the brakes 6 m/s^2 for it -- a user: "in some crosses others just drive while
+## the autodrive is hesitant".)
+func _ap_crossing_clears(ci: int, along: float) -> bool:
+	var c = _traffic.cars[ci]
+	if c.v < 3.0 or c.acc < -2.0:
+		return false   # (crawling, or braking: it may stop there)
+	var p := _ap_point_ahead(along)
+	var pd := (_ap_point_ahead(along + 2.0) - p).normalized()
+	var cdir := Vector2(sin(c.yaw), cos(c.yaw))
+	if pd == Vector2.ZERO or absf(cdir.dot(pd)) > 0.5:
+		return false   # (going my way, or at me: not across)
+	var side := Vector2(-pd.y, pd.x)
+	var vs: float = c.v * cdir.dot(side)   # its speed across my way
+	if absf(vs) < 2.0:
+		return false
+	var off: float = (c.pos - p).dot(side) * signf(vs)   # its middle past my line, the way it goes
+	var reach: float = c.len * 0.5 * absf(cdir.dot(side)) + 0.9 * absf(cdir.dot(pd))
+	var t_clear: float = maxf(reach + 1.4 - off, 0.0) / absf(vs)   # (its back 1.4 m past my line: my side and half a metre)
+	var d := maxf(along - CAR_LEN * 0.5 - 1.0, 0.0)
+	var v := maxf(_v, 0.0)
+	var t_me := (sqrt(v * v + 4.0 * d) - v) / 2.0   # (my nose there speeding up at 2 m/s^2 from now)
+	return t_clear + 0.3 < t_me
+
+func _ap_follow_v(free: float, room: float, lv: float, la: float) -> float:
+	if free <= 0.0:
+		return 0.0
+	var v := maxf(_v, 0.0)
+	var follow := sqrt(lv * lv + 2.0 * 2.6 * room) if room > 0.0 else maxf(lv + room * 0.5, 0.0)
+	var need := 0.0
+	if la < -0.5 and lv > 0.3:
+		var stop := free + lv * lv / (2.0 * -la)   # where it will stand, braking as now
+		follow = minf(follow, sqrt(2.0 * 2.6 * stop))
+		need = v * v / (2.0 * maxf(stop, 0.3))
+	elif v > lv:
+		need = (v - lv) * (v - lv) / (2.0 * maxf(free, 0.3))
+	if need > 2.0:
+		follow = minf(follow, maxf(v - minf(need * 1.2, 6.0) * 0.5, 0.0))
+	return follow
 
 func _autodrive(dt: float) -> Array:
 	# into the walls again and again (a few in quick succession): lost, back to the street
@@ -21090,19 +21259,29 @@ func _autodrive(dt: float) -> Array:
 		vt = _held(vt, 2.5, "blocked")
 	# the car in front, kept a couple of metres and a second or so behind; after waiting
 	# a while, ignore cars crossing the lane (a standoff in a junction) -- never one ahead
-	var lead: Array = _traffic.lead_on(_ap_pts, _pos, clampf(12.0 + _v * 1.2 + _v * _v / 5.2, 18.0, 130.0), _ap_wait > 3.0, _y)
+	var reach := clampf(12.0 + _v * 1.2 + _v * _v / 5.2, 18.0, 130.0)
+	var lead: Array = _traffic.lead_on(_ap_pts, _pos, reach, _ap_wait > 3.0, _y)
 	if float(lead[0]) < 30.0 and _ap_pass_bus(lead):
-		lead = _traffic.lead_on(_ap_pts, _pos, clampf(12.0 + _v * 1.2 + _v * _v / 5.2, 18.0, 130.0), _ap_wait > 3.0, _y)
+		lead = _traffic.lead_on(_ap_pts, _pos, reach, _ap_wait > 3.0, _y)
+	if float(lead[0]) < INF and int(lead[3]) >= 0 and _ap_crossing_clears(int(lead[3]), float(lead[0])):
+		lead = _traffic.lead_on(_ap_pts, _pos, reach, _ap_wait > 3.0, _y, int(lead[3]))
 	_ap_lead = float(lead[0]) if float(lead[0]) < INF else -1.0
 	_ap_lead_i = int(lead[3]) if float(lead[0]) < INF else -1
 	if float(lead[0]) < INF:
 		var lv: float = lead[1]
+		var li := int(lead[3])
 		# from my nose to its back (a bus is two and a half cars long: kept a car's length
-		# from its middle, autodrive drove into its back)
-		var room := float(lead[0]) - CAR_LEN * 0.5 - float(lead[2]) - 2.2 - lv * 1.2
-		if int(lead[3]) >= 0 and _traffic._parked_double(_traffic.cars[int(lead[3])]):
-			room -= 4.5   # (a delivery van standing: wait well back, room to pull out round it)
-		var follow := 0.0 if room <= 0.0 else sqrt(lv * lv + 2.0 * 2.6 * room)
+		# from its middle, autodrive drove into its back), less the gap kept standing
+		var free := float(lead[0]) - CAR_LEN * 0.5 - float(lead[2]) - 2.2
+		if li >= 0 and _traffic._parked_double(_traffic.cars[li]):
+			free -= 4.5   # (a delivery van standing: wait well back, room to pull out round it)
+		# how hard it is braking, along my way (over a few ticks; a new car in front, afresh)
+		var la := 0.0
+		if li >= 0 and _traffic.cars[li].v > 0.1:
+			la = _traffic.cars[li].acc * lv / _traffic.cars[li].v
+		_ap_lead_a = lerpf(_ap_lead_a, la, minf(dt * 10.0, 1.0)) if li == _ap_lead_was else la
+		_ap_lead_was = li
+		var follow := _ap_follow_v(free, free - lv * 1.2, lv, _ap_lead_a)
 		if follow < vt:
 			vt = follow
 			_ap_why = "car"
@@ -21115,7 +21294,10 @@ func _autodrive(dt: float) -> Array:
 	var throttle := clampf(err * 0.35, 0.0, 1.0)
 	var brake := clampf(-err * 0.25, 0.0, 1.0) if err < -0.3 else 0.0
 	if vt < 0.5 and _v < 1.5:
-		brake = maxf(brake, 0.8)   # waiting at a light or behind a car: foot on the brake
+		# waiting at a light or behind a car: foot on the brake -- firmly once all but
+		# standing; the last 5 km/h of a stop at ~3.6 m/s^2, as people ease off (0.8 from
+		# 1.5 m/s ended every stop with a 6.5 m/s^2 jolt)
+		brake = maxf(brake, 0.8 if _v < 0.4 else 0.45)
 	if throttle > 0.3 and absf(_v) < 0.4:
 		_ap_stuck += dt
 		if _ap_stuck > 2.0:
@@ -23496,6 +23678,11 @@ func _draw_hud() -> void:
 	_hud.draw_rect(WET_BTN, Color(bg, 0.65))
 	_hud.draw_rect(WET_BTN, Color(wetc, 0.9), false, 1.5)
 	_hud.draw_string(_font, WET_BTN.position + Vector2(0, 15), "dry" if _wet else "wet", HORIZONTAL_ALIGNMENT_CENTER, WET_BTN.size.x, 11, wetc)
+	var wv := _wave != null and _wave.on
+	var wvc := Palette.col("friend") if wv else Color(ink, 0.8)
+	_hud.draw_rect(WAVE_BTN, Color(bg, 0.65))
+	_hud.draw_rect(WAVE_BTN, Color(wvc, 0.9), false, 1.5)
+	_hud.draw_string(_font, WAVE_BTN.position + Vector2(0, 15), "WAVE ON" if wv else "wave", HORIZONTAL_ALIGNMENT_CENTER, WAVE_BTN.size.x, 11, wvc)
 	var lc := Palette.col("warn") if _lights_on else Color(ink, 0.8)
 	_hud.draw_rect(LIGHTS_BTN, Color(bg, 0.65))
 	_hud.draw_rect(LIGHTS_BTN, Color(lc, 0.9), false, 1.5)
@@ -23818,6 +24005,9 @@ func _input(event: InputEvent) -> void:
 				KEY_L:
 					_set_lights(not _lights_on)
 					return
+				KEY_V:
+					_set_wave(not _wave.on)
+					return
 				KEY_F:
 					_toggle_walk()
 					return
@@ -23861,6 +24051,8 @@ func _input(event: InputEvent) -> void:
 				_next_time()
 			elif WET_BTN.grow(3).has_point(mb.position):
 				_set_wet(not _wet)
+			elif WAVE_BTN.grow(3).has_point(mb.position):
+				_set_wave(not _wave.on)
 			elif VIEW_BTN.grow(4).has_point(mb.position):
 				if _zoomed():
 					_zoom_seat = not _cockpit
@@ -23895,7 +24087,7 @@ func _input(event: InputEvent) -> void:
 		if t.pressed:
 			if AUTO_BTN.grow(4).has_point(t.position) or GOTO_BTN.grow(4).has_point(t.position) \
 					or ASSIST_BTN.grow(4).has_point(t.position) or NIGHT_BTN.grow(4).has_point(t.position) \
-					or WET_BTN.grow(3).has_point(t.position) \
+					or WET_BTN.grow(3).has_point(t.position) or WAVE_BTN.grow(3).has_point(t.position) \
 					or VIEW_BTN.grow(4).has_point(t.position) or LIGHTS_BTN.grow(2).has_point(t.position) \
 					or WALK_BTN.grow(2).has_point(t.position) or LOOK_BTN.grow(2).has_point(t.position) \
 					or ZOOM_BTN.grow(2).has_point(t.position) or PAUSE_BTN.grow(2).has_point(t.position) \

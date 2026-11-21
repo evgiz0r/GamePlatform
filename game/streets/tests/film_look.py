@@ -23,6 +23,7 @@ saturation scaled to the film's mean. Content differs (the game's materials are 
 street's), so read the numbers with the side-by-side open. Needs numpy and ffmpeg. Keep the
 film out of the repo.
 """
+import re
 import subprocess
 import sys
 
@@ -45,15 +46,24 @@ def film(clip, secs):
     return grab(["-i", clip, "-vf", f"hflip,scale=406:720,fps=30,trim=0:{secs},setpts=PTS-STARTPTS,fps=1,scale={W}:{H}"])
 
 
+def seq(frames):
+    """ffmpeg's input args for a folder of recorded frames, in name order. (A glob pattern is not
+    in Windows' ffmpeg builds: the recording's own numbered names, f00001.jpg on, work everywhere.)"""
+    import glob
+    import os
+    first = os.path.basename(sorted(glob.glob(f"{frames}/*.jpg"))[0])
+    m = re.match(r"(\D*)(\d+)\.jpg$", first)
+    return ["-start_number", str(int(m.group(2))), "-i", f"{frames}/{m.group(1)}%0{len(m.group(2))}d.jpg"]
+
+
 def replay(frames, secs):
-    return grab(["-framerate", "10", "-pattern_type", "glob", "-i", f"{frames}/*.jpg", "-vf",
+    return grab(["-framerate", "10"] + seq(frames) + ["-vf",
                  f"crop=406:720:437:0,fps=30,trim=0:{secs},setpts=PTS-STARTPTS,fps=1,scale={W}:{H}"])
 
 
 def meter(frames, secs):
     """each second's whole-screen mean brightness, as the shader's meter reads it"""
-    raw = subprocess.run(["ffmpeg", "-loglevel", "error", "-framerate", "10", "-pattern_type", "glob", "-i",
-                          f"{frames}/*.jpg", "-vf", f"fps=30,trim=0:{secs},setpts=PTS-STARTPTS,fps=1,scale=160:90",
+    raw = subprocess.run(["ffmpeg", "-loglevel", "error", "-framerate", "10"] + seq(frames) + ["-vf", f"fps=30,trim=0:{secs},setpts=PTS-STARTPTS,fps=1,scale=160:90",
                           "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], capture_output=True, check=True).stdout
     full = np.frombuffer(raw, np.uint8).reshape(-1, 90, 160, 3).astype(np.float32) / 255.0
     return lum(full).mean((1, 2))

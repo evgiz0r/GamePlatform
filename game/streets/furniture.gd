@@ -1470,14 +1470,36 @@ func ac_kit(v: int) -> ArrayMesh:
 	var z0 := 0.1   # (off the wall: the arms' length)
 	var zf := z0 + D + 0.004
 	_box(b, Vector3(0, H * 0.5, z0 + D * 0.5), Vector3(W, H, D), body)
-	# the fan: a hexagon of dark grille
+	# the fan: a round dark opening, the blades' shadow in it, and the grille over it -- a ring
+	# and a cross of thin wire in the casing's colour, as the real ones have (it was a flat
+	# black hexagon: read from across the street as a sticker)
 	var fc := Vector2(-W * 0.17, H * 0.5)
 	var r := H * 0.4
-	for i in range(6):
-		var a0 := TAU * (i + 0.5) / 6.0
-		var a1 := TAU * (i + 1.5) / 6.0
-		b.tri(Vector3(fc.x, fc.y, zf), Vector3(fc.x + cos(a0) * r, fc.y + sin(a0) * r, zf),
-			Vector3(fc.x + cos(a1) * r, fc.y + sin(a1) * r, zf), Vector3.BACK, dark)
+	var seg := 12
+	var hub: Color = dark.lerp(body, 0.35)
+	for i in range(seg):
+		var a0 := TAU * float(i) / seg
+		var a1 := TAU * float(i + 1) / seg
+		var c0 := Vector2(cos(a0), sin(a0))
+		var c1 := Vector2(cos(a1), sin(a1))
+		var blade: Color = dark if i % 3 != 0 else dark.lerp(hub, 0.5)   # (three blades, a touch lighter)
+		b.tri(Vector3(fc.x, fc.y, zf), Vector3(fc.x + c0.x * r, fc.y + c0.y * r, zf),
+			Vector3(fc.x + c1.x * r, fc.y + c1.y * r, zf), Vector3.BACK, blade)
+		# the grille's ring, two-thirds out, standing a hair proud of the opening
+		var ri := r * 0.62
+		var ro := r * 0.68
+		var q0 := Vector3(fc.x + c0.x * ri, fc.y + c0.y * ri, zf + 0.006)
+		var q1 := Vector3(fc.x + c1.x * ri, fc.y + c1.y * ri, zf + 0.006)
+		var q2 := Vector3(fc.x + c1.x * ro, fc.y + c1.y * ro, zf + 0.006)
+		var q3 := Vector3(fc.x + c0.x * ro, fc.y + c0.y * ro, zf + 0.006)
+		b.tri(q0, q1, q2, Vector3.BACK, hub)
+		b.tri(q0, q2, q3, Vector3.BACK, hub)
+	for k in range(2):   # the grille's cross
+		var hw := 0.008
+		var a := Vector3(fc.x - r, fc.y - hw, zf + 0.008) if k == 0 else Vector3(fc.x - hw, fc.y - r, zf + 0.008)
+		var e := Vector3(fc.x + r, fc.y + hw, zf + 0.008) if k == 0 else Vector3(fc.x + hw, fc.y + r, zf + 0.008)
+		b.tri(Vector3(a.x, a.y, a.z), Vector3(e.x, a.y, a.z), Vector3(e.x, e.y, a.z), Vector3.BACK, hub)
+		b.tri(Vector3(a.x, a.y, a.z), Vector3(e.x, e.y, a.z), Vector3(a.x, e.y, a.z), Vector3.BACK, hub)
 	# slots on the right: flat dark strips on its face
 	for k in range(3):
 		var y0 := H * (0.28 + 0.2 * k)
