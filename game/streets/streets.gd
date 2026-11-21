@@ -17868,7 +17868,9 @@ func _ap_people_v() -> float:
 			base += a.distance_to(b)
 	return best
 
-const ZEBRA_PAST := 2.8              ## m from a car's lane line along the crossing: past it (half a bus and 1.5 m)
+const ZEBRA_PAST := 2.8              ## m from a car's lane line along the crossing: past it (half a bus and 1.5 m)...
+const ZEBRA_PAST_ME := 6.0           ## ...the player's: past the 5.5 m at which people run back from it to their kerb
+                                     ## (going by at 2.8 m, autodrive sent them back across its way: zebra_halves)
 var _zebra_past := true              ## (tests turn it off to compare: tests/knot_stops.gd ZEBRA_OLD=1)
 
 ## A crossing with someone on it, met by a car's lane at cp: is the person clear of that car's
@@ -17878,7 +17880,7 @@ var _zebra_past := true              ## (tests turn it off to compare: tests/kno
 ## through most of its green for someone on the other half, then through a whole red -- 41 s
 ## on the route set's first drive. A road that is not divided is one half: they wait for all
 ## of it. A filmed walk's crossing (no one person on it): never clear.
-func _zebra_clear(z: Array, cp: Vector2) -> bool:
+func _zebra_clear(z: Array, cp: Vector2, past := ZEBRA_PAST) -> bool:
 	if z.size() < 5:
 		return false
 	var on := _nearest_seg(cp, 6.0, true)
@@ -17892,7 +17894,7 @@ func _zebra_clear(z: Array, cp: Vector2) -> bool:
 	# turning in stood in the middle of the junction with the cars behind it ("stops in the
 	# middle that cause chaos": tests/knot_stops.gd, 7 cars in 7 minutes at one junction)
 	var off := ((z[3] as Vector2) - cp).dot(z[2])
-	if _zebra_past and absf(off) > ZEBRA_PAST and off * pace > 0.0:
+	if _zebra_past and absf(off) > past and off * pace > 0.0:
 		return true
 	if absf(lat) < hw + 1.0:
 		return false   # on my half, or at its edge
@@ -17917,7 +17919,7 @@ func _ap_zebra_v() -> float:
 			var b := _ap_pts[j + 1]
 			var cp := Geometry2D.get_closest_point_to_segment(mid, a, b)
 			if cp.distance_to(mid) < float(z[1]):
-				if _zebra_clear(z, cp):
+				if _zebra_clear(z, cp, ZEBRA_PAST_ME):
 					break   # (on the other half, or not there yet)
 				var stop := base + a.distance_to(cp) - 4.5 - CAR_OFF
 				if stop > -1.5:

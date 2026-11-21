@@ -488,7 +488,9 @@ the parked cars, which stand a third in the road).
 - **A person past the car's lane and walking on has crossed in front of it.** Waiting at a
   zebra until they reach the far kerb stood turning cars in the middle of a junction, the
   cars behind with them; go once they are a lane's width past the car's line (2.8 m) and
-  walking away.
+  walking away -- and past whatever makes people flinch from the player's car (here they
+  run back to their kerb from it within 5.5 m: going by at 2.8 m sent them back across its
+  way; 6 m for the player).
 - **A controller that brakes by how far over its target it is runs behind a braking
   slope**: at 2 m/s^2 of braking per m/s over, following a 2.6 m/s^2 slope it is ~1.3 m/s
   fast all the way down, into each corner 5 km/h over. Aim at each corner half a second

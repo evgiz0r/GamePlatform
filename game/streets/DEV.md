@@ -1023,7 +1023,10 @@ slow" (Givatayim, a small ring on a main road, 13 km/h on it).
   junction, the person up to 7 m off its middle -- over on its far side. `_zebra_clear` (both
   traffic's and autodrive's) waited for anyone on the crossing till the far kerb but on a
   divided road's other half. Now a person 2.8 m (`ZEBRA_PAST`) past the car's lane line and
-  walking away is clear (`_zebra_past` false for a test: `ZEBRA_OLD=1`). It did not cut the
+  walking away is clear for traffic, 6 m (`ZEBRA_PAST_ME`) for the player's car: people run
+  back to their kerb from the player within 5.5 m, and autodrive going by at 2.8 m sent them
+  back across its way (`zebra_halves` caught it: 2 of 6 bad, the person "done" in 8 s of a
+  28 m crossing) -- `_zebra_past` false for a test: `ZEBRA_OLD=1` (knot_stops, zebra_halves). It did not cut the
   stands there (DRIVE=1 at that junction, both in one sitting: 4 zebra stands inside before,
   6 after -- noise): in those the person was 0.8-3.4 m off the crossing's middle, in or near
   the car's way, and turning cars wait inside a junction for them in life too. It does let
