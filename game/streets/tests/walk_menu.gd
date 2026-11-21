@@ -1,5 +1,6 @@
 extends SceneTree
-## The "Walks" level: the list shows (a shot, $OUT/walk_list.png) with every place in LEVELS
+## The "Cities" level: its list (city_list.png), one button per city, and "back" goes to the
+## start screen (start_screen.png). Then the "Walks" level: the list shows (a shot, $OUT/walk_list.png) with every place in LEVELS
 ## that has a "walk", the filmed ones first; a tap on one (WALK_PICK, default the last: the
 ## test town's, quick to load) starts its city with that walk replaying (walk_started.png, a
 ## few seconds in). Prints the buttons, the level the tap started, and where the walker is
@@ -32,6 +33,41 @@ func _run() -> void:
 		if (probe.LEVELS[i] as Dictionary).has("walk"):
 			walks += 1
 	print("the Walks level is level %d; %d walks in LEVELS" % [lv, walks])
+	# the Cities list first: one button per city, and "back" to the start screen
+	var clv := 0
+	var cities := 0
+	for i in range(probe.LEVELS.size()):
+		var l: Dictionary = probe.LEVELS[i]
+		if l.get("cities", false):
+			clv = i + 1
+		elif l.has("city") and not l.has("walk") and not probe._is_list(l):
+			cities += 1
+	root.get_node("Flow").start_game("streets", {"level": clv})
+	await create_timer(2.0).timeout
+	g = _game()
+	if g == null or g._route_ui == null:
+		print("CITY MENU: FAIL, no list")
+		quit(1)
+		return
+	var all: Array = g._route_ui.find_children("*", "Button", true, false)
+	var cb: Array = all.filter(func(x): return x.text != "back")
+	print("the Cities list (level %d): %d buttons for %d cities (%s): %s" % [clv, cb.size(), cities,
+		"ok" if cb.size() == cities else "FAIL", ", ".join(cb.map(func(x): return x.text))])
+	await _snap("city_list")
+	var back: Array = all.filter(func(x): return x.text == "back")
+	if back.size() != 1:
+		print("CITY MENU: FAIL, %d back buttons" % back.size())
+		quit(1)
+		return
+	var bev := InputEventMouseButton.new()
+	bev.button_index = MOUSE_BUTTON_LEFT
+	bev.pressed = true
+	bev.position = (back[0] as Button).get_global_rect().get_center()
+	bev.global_position = bev.position
+	g._input(bev)
+	await create_timer(1.0).timeout
+	print("back: %s" % ("the start screen (no game running)" if _game() == null else "FAIL, still in the game"))
+	await _snap("start_screen")
 	root.get_node("Flow").start_game("streets", {"level": lv})
 	await create_timer(2.0).timeout
 	g = _game()
@@ -39,7 +75,7 @@ func _run() -> void:
 		print("WALK MENU: FAIL, no list")
 		quit(1)
 		return
-	var buttons: Array = g._route_ui.find_children("*", "Button", true, false)
+	var buttons: Array = g._route_ui.find_children("*", "Button", true, false).filter(func(x): return x.text != "back")
 	print("the list: %d buttons (%s)" % [buttons.size(), "ok" if buttons.size() == walks else "FAIL: one per walk"])
 	for b: Button in buttons:
 		print("  ", b.text)

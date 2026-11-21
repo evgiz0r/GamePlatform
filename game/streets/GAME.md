@@ -190,15 +190,20 @@ way that has the address on the kerb side; driving hands the way there to autodr
 
 > Besides go to, I want also jump to. It teleports there, instead of driving.
 
-**Places.** Entering the game asks where, in two lists side by side: **Cities** (Givatayim,
-Bedford, Ashdod, Tel Aviv, and the made-up test town last) and **Auto Experiments** (the
-test routes' drives and the walks, each a list of its own). Each level's `"group"` puts it
-in one; a walk has none, so it is reached through the "Walks" list.
+**Places.** Entering the game asks where, under two headings: **Cities** ("Cities: pick
+one") and **Auto Experiments** ("Test routes: watch a drive", "Walks: watch one"). Each opens
+a page of its own -- the cities (Givatayim, Bedford, Ashdod, Tel Aviv, Delft, and the
+made-up test town last), the ten drives, the walks -- with a "back" to this screen. Only the
+three lists have a `"group"`; a city or a walk has none, and its list finds it.
 
 > lets rearrange the menu items instead street. 2 categories: Cities, Auto Experiments (walks
 > + test-drives). no extra button for walks, just split in the menu.
 
-(Then, 22 Nov: the walks behind one button after all, as the test drives are -- below.)
+(Then, 22 Nov: the walks behind one button after all, as the test drives are -- below; and
+the cities too, with a way back from each list:)
+
+> remove the filmed from the notations please. also please add a back to each of the internal
+> menus. and add a cities extra menu. with the cities as we gonna start having more
 
 Givatayim starts on Katznelson just past Weizmann, the town's central junction; Ashdod at
 Sderot Herzl and HeHalutzim, its busiest corner for shops. Each place is one

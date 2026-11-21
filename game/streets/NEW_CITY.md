@@ -42,7 +42,9 @@ whole country.
 5. **Country pack.** This step only applies to a country the game has not had before.
    See "What is Israeli in the code today" below.
 6. **Add the level line** to `LEVELS` in `streets.gd`:
-   - `city`, `look` and `decks: "infer"`;
+   - `city`, `look` and `decks: "infer"`, and no `group`: the start screen's "Cities: pick
+     one" lists every city by itself (a `group` would put it on the start screen as well);
+     add the line at the end of `LEVELS`, so no other level's number changes;
    - `start`: a *public* corner, by street names as OSM spells them, never an address
      the user has mentioned as theirs.
 7. **Check it:**
