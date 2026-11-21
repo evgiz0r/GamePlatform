@@ -2443,12 +2443,27 @@ Each line: where the code is, the test, what good reads.
   (`_kerb_cap`), no corner on its side (`_corners_at`: `corners_on_a_median`), no kerb run
   facing it (`_faces_median`: `kerb_runs_facing_a_median`). Wider ones keep their rounded
   noses (the corners' curves). `tests/median_ends.gd` (Tel Aviv: 1,652 ends at junctions,
-  939 by a zebra) shoots 8 from the driver's seat and above. **Still messy, not done**: the
-  triangles between a slip road (`*_link`) and the main roads -- each road's kerb laid apart,
-  strips standing loose in the junction (Moshe Dayan / HaShalom (844, 457), Yigal Alon / Arvey
-  Nahal (752, -501)); they want the island as one area: the small faces the drivable roads
-  enclose, cut off the asphalt (`_island_cut`) and kerbed all round (`_island_faces`), and
-  the roads' kerb runs facing into one left out. And a footpath mapped across a junction's
+  939 by a zebra) shoots 8 from the driver's seat and above.
+- **Slip roads' triangles** (the same report, 21 Nov): the triangle between a slip road
+  (`*_link`) and the roads it joins is rarely mapped as an area, so each road laid its own
+  kerb and paving into it -- strips standing loose and askew in the junction (Moshe Dayan /
+  HaShalom (844, 457), Yigal Alon / Arvey Nahal (752, -501)). `_find_link_islands` (after
+  `_find_islands`) closes each slip road with the shortest way back between its ends along
+  the other drivable roads (`_short_way`, at most 2.5x its length + 40 m); a ring of
+  12-4000 m2 with no building and no mapped island in it becomes a made-up lawn area
+  (`"made": "link"`), cut off the roads' strips and the junctions' discs (`_island_cut`, as a mapped island: left
+  over the discs, `city_check`'s "islands on the road" read 1 / 13 / 7 / 0 / 2 and a turning
+  car would meet the kerb) and kerbed all round. Every kerb piece, end cap and corner whose paving would lie inside the
+  triangle is left out (`_in_link_island`, on the whole ring, not the cut pieces: the cut
+  ones are too thin to catch the pavement's middle). The trap that cost a round: `_fit_widths`
+  pairs a slip road with the road it leaves as a divided road's two halves, so the slip
+  road's triangle side is its "median side" (`inner_side`) -- the test must apply there too.
+  Tel Aviv: 111 pieces, 5,789 m2, 827 kerb pieces and 132 corners left out, 0 over asphalt;
+  `city_check` the same as before in every town (Ashdod's two pavings 271 -> 235 m2).
+  `tests/link_islands.gd` (`AT=x,z` also prints every kerb run near the point and how much
+  of it faces into a triangle, and shoots the spot as it is, so it works on `main` too for a
+  before). Left at (844, 457): Moshe Dayan's own median ends (loose pink blocks) are the
+  median work above, not the triangles. Still open: a footpath mapped across a junction's
   corner drawn through a median's nose (Shaul HaMelekh / Ibn Gabirol, path 2197, (-847, -70)).
 - **A flickering line across the screen** (user, the first filmed walk's passage: "flickering
   line in the middle of the screen sometimes. dunno if its my screen or godot or bug"): the
