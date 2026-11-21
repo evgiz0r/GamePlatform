@@ -158,6 +158,22 @@ func _run() -> void:
 						seen[i] = true
 						print("POST %d %.2f %.2f %.2f %.2f" % [i, g._posts[i].x, g._posts[i].y, g._post_r[i], g._h(g._posts[i])])
 				t2 += 1.0
+			# and the buildings' corners within 40 m: film_marks.py's anchors (a wall's corner
+			# at the ground is where OSM is surest)
+			var bseen := {}
+			t2 = 0.0
+			while t2 <= last:
+				var c: Vector2 = g._film_at(t2)
+				for b in range(g._blds.size()):
+					if bseen.has(b) or not (g._bld_box[b] as Rect2).grow(40.0).has_point(c):
+						continue
+					bseen[b] = true
+					var ring: PackedVector2Array = g._blds[b]
+					var line := "BLD %d %d" % [b, g._bld_kind[b]]
+					for q: Vector2 in ring:
+						line += " %.2f,%.2f,%.2f" % [q.x, q.y, g._h(q)]
+					print(line)
+				t2 += 1.0
 		while g._film_t <= last + 0.5:
 			await RenderingServer.frame_post_draw
 			var t: float = g._film_t

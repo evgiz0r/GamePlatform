@@ -15,6 +15,11 @@ own error shows as every thing in one frame off the same way: printed per frame)
       columns, trunks, bins) projected and numbered, beside the film's frame at t with a grid
       of tenths -- to name what to mark and read off where. r: only posts of that radius or
       under (default 0.6)
+  film_marks.py map <rec log> <t,t,...> <out.png> [places.csv]
+      from above: the buildings with their corners numbered (to mark as `bld B.k`), the posts
+      (bollards red), the replay's camera at each t with its view -- to tell which corner and
+      which pole in the film's frame is which in the game; with solve's places.csv, the film's
+      things and its phone drawn over it in green
   film_marks.py solve <marks.csv> <rec log> [places.csv]
       the answer: every mark at once (a small bundle adjustment). Each thing gets one place;
       each marked frame's phone may turn, tip and stand a little off the replay's camera
@@ -67,7 +72,12 @@ def read_log(path):
                 poses[round(v[0], 1)] = (np.array(v[1:4]), np.array(v[4:7]), np.array(v[7:10]))
             elif p[0] == "POST":
                 posts[int(p[1])] = (float(p[2]), float(p[3]), float(p[4]), float(p[5]))
+            elif p[0] == "BLD":
+                BLDS[int(p[1])] = [tuple(float(v) for v in q.split(",")) for q in p[3:]]
     return poses, posts
+
+
+BLDS = {}   # building -> its outline's corners (x, z, ground y), from the log's BLD lines
 
 
 def pose_at(poses, t):
@@ -110,6 +120,10 @@ def thing_pos(thing, posts):
     if p[0] == "post" and len(p) == 2 and p[1].isdigit():
         x, z, r, h = posts[int(p[1])]
         return np.array([x, h, z]), r
+    if p[0] == "bld":   # bld B.k: building B's corner k at the ground
+        b, k = p[1].split(".")
+        x, z, h = BLDS[int(b)][int(k)]
+        return np.array([x, h, z]), 0.0
     if p[0] == "at":
         # at x z [ground y]: no ground given, the camera's height less 1.25 is used later
         return np.array([float(p[1]), float(p[3]) if len(p) > 3 else float("nan"), float(p[2])]), 0.0
@@ -194,7 +208,7 @@ def rot(axis, a):
     return np.eye(3) + math.sin(a) * K + (1 - math.cos(a)) * K @ K
 
 
-def solve(marks_path, log_path, sigma_px=6.0, turn_deg=3.0, tip_deg=3.0, step_m=1.0, out=None):
+def solve(marks_path, log_path, sigma_px=6.0, turn_deg=6.0, tip_deg=4.0, step_m=4.0, smooth_m=0.8, out=None):
     """every mark at once: each thing's one place, and each marked frame's phone -- its facing,
     tip and place on the ground -- a little off the replay's camera, pulled back toward it
     (sigma: turn_deg, tip_deg, step_m) so the marks decide only what they can. Marks are
@@ -207,7 +221,8 @@ def solve(marks_path, log_path, sigma_px=6.0, turn_deg=3.0, tip_deg=3.0, step_m=
     with open(marks_path, encoding="utf-8") as fh:
         for r in csv.reader(fh):
             if r and not r[0].strip().startswith("#"):
-                obs.append((r[0].strip(), float(r[1]), float(r[2]), float(r[3])))
+                y = r[3].strip() if len(r) > 3 else ""
+                obs.append((r[0].strip(), float(r[1]), float(r[2]), float(y) if y not in ("", "-") else -1.0))
     frames = sorted({o[1] for o in obs})
     names = []
     for o in obs:
@@ -237,7 +252,7 @@ def solve(marks_path, log_path, sigma_px=6.0, turn_deg=3.0, tip_deg=3.0, step_m=
         for o in obs:
             if o[0] != n:
                 continue
-            h = ray_ground(base[o[1]], o[2], o[3], ground[n])
+            h = ray_ground(base[o[1]], o[2], o[3], ground[n]) if o[3] >= 0 else None
             if h is not None:
                 rng = float(np.hypot(h[0] - base[o[1]][0][0], h[2] - base[o[1]][0][2]))
                 if rng < 40 and (best is None or rng < best[0]):
@@ -272,10 +287,17 @@ def solve(marks_path, log_path, sigma_px=6.0, turn_deg=3.0, tip_deg=3.0, step_m=
             if pr is None:
                 res += [50.0, 50.0]
             else:
-                res += [(pr[0] - fx) * CW / sigma_px, (pr[1] - fy) * FH / sigma_px]
+                # (a bearing-only mark -- a wall's edge, its foot hidden -- has no row: its across only)
+                res += [(pr[0] - fx) * CW / sigma_px, (pr[1] - fy) * FH / sigma_px if fy >= 0 else 0.0]
         for t in frames:
             k = 4 * fi[t]
             res += [math.degrees(p[k]) / turn_deg, math.degrees(p[k + 1]) / tip_deg, p[k + 2] / step_m, p[k + 3] / step_m]
+        # the film's phone moves smoothly against the replay's: neighbouring marked frames (within
+        # 2 s) stand off it alike, give or take smooth_m a second
+        for a, b in zip(frames, frames[1:]):
+            if b - a <= 2.01:
+                ka, kb = 4 * fi[a], 4 * fi[b]
+                res += [(p[kb + 2] - p[ka + 2]) / (smooth_m * (b - a)), (p[kb + 3] - p[ka + 3]) / (smooth_m * (b - a))]
         return np.array(res)
 
     sol = least_squares(resid, x0, loss="soft_l1", f_scale=2.0)
@@ -322,6 +344,9 @@ def solve(marks_path, log_path, sigma_px=6.0, turn_deg=3.0, tip_deg=3.0, step_m=
             for n in names:
                 q = where(p, n)
                 w_.writerow([n, "%.2f" % q[0], "%.2f" % q[2]])
+            for t in frames:   # and the film's phone at each marked frame
+                q = pose_of(p, t)[0]
+                w_.writerow(["phone %.1f" % t, "%.2f" % q[0], "%.2f" % q[2]])
 
 
 def film_frame(film_dir, t):
@@ -354,6 +379,63 @@ def picture(film_dir, t, fx, fy, proj, thing, out):
     im.save(name, quality=90)
 
 
+def topmap(log_path, t_list, out, box=None, places=None):
+    """the place from above: buildings with their corners numbered (B.k), posts (bollards and
+    poles as dots, r <= 0.15 red), the walk's camera at each of t_list with its 43 degree view"""
+    from PIL import Image, ImageDraw
+    poses, posts = read_log(log_path)
+    cams = [(t, pose_at(poses, t)) for t in t_list]
+    if box is None:
+        xs = [c[1][0][0] for c in cams]
+        zs = [c[1][0][2] for c in cams]
+        box = (min(xs) - 25, min(zs) - 25, max(xs) + 25, max(zs) + 25)
+    x0, z0, x1, z1 = box
+    S = 1000 / max(x1 - x0, z1 - z0)
+    im = Image.new("RGB", (int((x1 - x0) * S), int((z1 - z0) * S)), (20, 20, 26))
+    d = ImageDraw.Draw(im)
+    P = lambda x, z: ((x - x0) * S, (z - z0) * S)
+    for gx in range(int(x0) // 5 * 5, int(x1) + 1, 5):
+        d.line([P(gx, z0), P(gx, z1)], fill=(38, 38, 46) if gx % 10 else (60, 60, 72))
+        if gx % 10 == 0:
+            d.text(P(gx + 0.3, z0 + 0.5), str(gx), fill=(110, 110, 120))
+    for gz in range(int(z0) // 5 * 5, int(z1) + 1, 5):
+        d.line([P(x0, gz), P(x1, gz)], fill=(38, 38, 46) if gz % 10 else (60, 60, 72))
+        if gz % 10 == 0:
+            d.text(P(x0 + 0.3, gz + 0.3), str(gz), fill=(110, 110, 120))
+    for b, ring in BLDS.items():
+        pts = [P(x, z) for x, z, h in ring]
+        d.polygon(pts, outline=(120, 170, 255))
+        for k, q in enumerate(pts):
+            d.text((q[0] + 2, q[1] + 1), "%d.%d" % (b, k), fill=(120, 200, 255))
+    for i, (x, z, r, h) in posts.items():
+        if x0 <= x <= x1 and z0 <= z <= z1:
+            q = P(x, z)
+            rr = max(1.5, r * S)
+            d.ellipse([q[0] - rr, q[1] - rr, q[0] + rr, q[1] + rr], outline=(255, 80, 80) if r <= 0.15 else (110, 110, 110))
+            if r <= 0.15 or r >= 0.5:
+                d.text((q[0] + 3, q[1] - 10), str(i), fill=(255, 150, 150) if r <= 0.15 else (150, 150, 150))
+    for t, (o, f, u) in cams:
+        q = P(o[0], o[2])
+        a = math.atan2(f[2], f[0])
+        for s_ in (-1, 1):
+            e = P(o[0] + 12 * math.cos(a + s_ * math.radians(21.5)), o[2] + 12 * math.sin(a + s_ * math.radians(21.5)))
+            d.line([q, e], fill=(255, 220, 0))
+        d.ellipse([q[0] - 4, q[1] - 4, q[0] + 4, q[1] + 4], fill=(255, 220, 0))
+        d.text((q[0] - 30, q[1] + 4), "%.0fs" % t, fill=(255, 220, 0))
+    if places:   # solve's answer: the film's things and its phone, green
+        with open(places) as fh:
+            for r in list(csv.reader(fh))[1:]:
+                q = P(float(r[1]), float(r[2]))
+                if r[0].startswith("phone"):
+                    d.ellipse([q[0] - 3, q[1] - 3, q[0] + 3, q[1] + 3], fill=(60, 255, 120))
+                    if float(r[0].split()[1]) % 1 == 0:
+                        d.text((q[0] + 5, q[1] - 4), r[0].split()[1] + "s", fill=(60, 255, 120))
+                else:
+                    d.rectangle([q[0] - 4, q[1] - 4, q[0] + 4, q[1] + 4], outline=(60, 255, 120), width=2)
+                    d.text((q[0] + 6, q[1] - 6), r[0], fill=(60, 255, 120))
+    im.save(out)
+
+
 def label(log_path, game_dir, film_dir, t, out, rmax=0.6):
     from PIL import Image, ImageDraw
     poses, posts = read_log(log_path)
@@ -371,6 +453,14 @@ def label(log_path, game_dir, film_dir, t, out, rmax=0.6):
         X, Y = p[0] * 540, min(p[1], 1.0) * 960
         d.line([X, Y - 8, X, Y + 8], fill=(255, 60, 60), width=2)
         d.text((X + 3, Y - 12), "%d %.0fm" % (i, p[2]), fill=(255, 255, 0))
+    for b, ring in BLDS.items():
+        for k, (x, z, h) in enumerate(ring):
+            p = project(pose, (x, h, z))
+            if not p or not (0 <= p[0] <= 1 and 0 <= p[1] <= 1.2) or p[2] > 60:
+                continue
+            X, Y = p[0] * 540, min(p[1], 1.0) * 960
+            d.ellipse([X - 4, Y - 4, X + 4, Y + 4], outline=(0, 255, 255), width=2)
+            d.text((X + 5, Y + 2), "%d.%d" % (b, k), fill=(0, 255, 255))
     path = film_frame(film_dir, t)
     f = Image.open(path).convert("RGB").resize((540, 960))
     df = ImageDraw.Draw(f)
@@ -392,6 +482,8 @@ if __name__ == "__main__":
     a = sys.argv
     if len(a) >= 7 and a[1] == "label":
         label(a[2], a[3], a[4], float(a[5]), a[6], float(a[7]) if len(a) > 7 else 0.6)
+    elif len(a) >= 5 and a[1] == "map":
+        topmap(a[2], [float(v) for v in a[3].split(",")], a[4], places=a[5] if len(a) > 5 else None)
     elif len(a) >= 4 and a[1] == "solve":
         solve(a[2], a[3], out=a[4] if len(a) > 4 else None)
     elif len(a) >= 4 and a[1] == "check":

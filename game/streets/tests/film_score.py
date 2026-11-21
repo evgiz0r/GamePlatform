@@ -30,12 +30,14 @@ Each frame pair, both at 102x180 and grey unless said:
              hedge drawn grey.
   * score -- 100 * mean(shape, light, 1 - colour/40), each clipped to 0..1. What it means,
              measured on walk 1's film against itself: the film half a second on scores 67, a
-             second on 55, two seconds on 45, thirty seconds on (a different place) 25. So a
+             second on 55, two 45, three 40, five 33, ten 31, thirty (a different place) 25. So a
              replay second at 45 is as alike as the film two seconds later; at 25, no more than
              any other street. (Walk 1's replay, 22 Nov 2026, before pass 15: 33.)
   * lag   -- per second (lag.csv): which film moment within 4 s the replay's frame looks most
              like, where that beats the same moment by 4+; runs of two seconds or more are
-             printed -- the replay walking ahead of or behind its film there.
+             printed. A hint only: on walk 1 it flipped sign every few seconds (a render and
+             a real street are too unlike to place a moment by the whole picture) -- where
+             the replay stands against the film, read off landmarks (film_marks.py solve).
 Seconds are the mean of their ten frames. The chart draws all four over the walk with the
 score beneath; `worst.jpg` puts the eight worst seconds' film and game frames side by side.
 Needs numpy and PIL (uv run --with numpy --with pillow python ...). Keep the film's frames
