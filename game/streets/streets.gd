@@ -201,6 +201,7 @@ uniform vec4 wall_c : source_color;
 uniform vec4 wall_d : source_color;   // yellow plaster
 uniform vec4 wall_e : source_color;   // peach plaster
 uniform vec4 wall_f : source_color;   // grey render
+uniform vec4 wall_g : source_color;   // the old blocks' sand render
 uniform vec4 glass : source_color;
 uniform vec4 glass_b : source_color;  // a tower's tinted glass: blue, green, silver
 uniform vec4 glass_c : source_color;
@@ -314,7 +315,11 @@ void fragment() {
 	// far toward beige stone; a tinted plaster takes less of the stone
 	float tk = floor(COLOR.g * 4.0 + 0.5);
 	vec3 plaster = tk < 0.5 ? wall_a.rgb : (tk < 1.5 ? wall_b.rgb : (tk < 2.5 ? wall_d.rgb : (tk < 3.5 ? wall_e.rgb : wall_f.rgb)));
-	vec3 base = mix(plaster, wall_c.rgb, COLOR.a * (tk < 0.5 ? 1.0 : 0.3)) * COLOR.r;
+	// (a lean of 0.4-0.79 is a render in the old blocks' sand, wall_g: deeper and warmer than
+	// the cut stone's; _wall_rgb the same)
+	float aged = smoothstep(0.38, 0.5, COLOR.a) * (1.0 - step(0.79, COLOR.a));
+	vec3 stone_t = mix(wall_c.rgb, wall_g.rgb, aged);
+	vec3 base = mix(plaster, stone_t, mix(COLOR.a, 1.0, aged * 0.6) * (tk < 0.5 ? 1.0 : 0.3)) * COLOR.r;
 	// the render's own texture: a photo over its average, so the palette keeps the colour.
 	// Clapboard (siding) takes it faintly: painted wood is not rough render.
 	vec3 pb = vec3(0.0, 0.0, 1.0);
@@ -359,20 +364,21 @@ void fragment() {
 	float seed = floor(COLOR.r * 50.0 + 0.5) * 7.0 + floor(COLOR.a * 10.0 + 0.5) * 13.0 + floor(COLOR.b * 4.0 + 0.5) * 5.0;
 	float r1 = hash(vec2(ci, lv) + seed);
 	float r2 = hash(vec2(ci + 13.0, lv * 3.0) + seed);
-	// Stone and tile, as Givatayim's walls are: COLOR.a high is Jerusalem stone, laid in
-	// courses of blocks; most blocks have a stone plinth to knee height whatever the walls
+	// Stone and tile, as Givatayim's walls are: COLOR.a 0.8 and over is Jerusalem stone, laid
+	// in courses of blocks (under it, a render leaning to the stone's sand colour: most of the
+	// town's older blocks); most blocks have a stone plinth to knee height whatever the walls
 	// above; one white block in five is clad in small square mosaic tiles. Drawn only while a
 	// pixel is smaller than the joints are wide apart, an average further off.
 	float stone_k = COLOR.a;
 	bool plinth = up < 0.9 && siding < 0.5 && hash(vec2(seed, 3.7)) < 0.6;
-	if (siding < 0.5 && (stone_k > 0.45 || plinth)) {
+	if (siding < 0.5 && (stone_k > 0.79 || plinth)) {
 		float course = 0.33;
 		float row = floor(up / course);
 		float bl = 0.55 + 0.35 * hash(vec2(row, seed + 1.0));
 		float xs = along / bl + hash(vec2(row, seed));
 		vec2 f = vec2(fract(xs) * bl, fract(up / course) * course);
 		float jd = min(min(f.x, bl - f.x), min(f.y, course - f.y));
-		vec3 sc = (plinth && stone_k <= 0.45) ? wall_c.rgb * COLOR.r * 0.9 : base;
+		vec3 sc = (plinth && stone_k <= 0.79) ? wall_c.rgb * COLOR.r * 0.9 : base;
 		sc *= 0.94 + 0.12 * hash(vec2(floor(xs), row) + seed);
 		base = mix(sc, sc * 0.72, line_cover(jd, 0.005, aa) * (1.0 - smoothstep(0.02, 0.06, aa)));
 	} else if (siding < 0.5 && tk < 0.5 && stone_k < 0.2 && hash(vec2(seed, 9.1)) < 0.2) {
@@ -395,6 +401,13 @@ void fragment() {
 	bool ground = !upper && style < 2.5;
 	float wstyle = ground ? 0.0 : style;
 	bool door = ground && n >= 2.0 && ci == floor(n * 0.5);
+	// a balcony closed in by its flat's owner: aluminium sliding windows along the parapet, a
+	// shutter box over them -- one flat's here, the next one's open (a share of each block's)
+	bool enclosed = hash(vec2(ci * 1.3 + 5.0, lv * 2.9) + seed) < 0.2 + 0.5 * hash(vec2(seed, 5.3));
+	// the balconies' parapets and slab edges in a band of their own on some blocks: white on
+	// the sand ones
+	vec3 band = hash(vec2(seed, 8.3)) < 0.45 ? mix(base, wall_a.rgb * COLOR.r, 0.65) : base * 1.05;
+	// (how weathered: aged, the sand-plastered old blocks, darker grime under their sills)
 	if (siding > 0.5 && style < 0.5 && facade && fract(up / 0.24) < 0.13) {
 		col *= 0.88;
 	}
@@ -428,8 +441,8 @@ void fragment() {
 				col = shutter.rgb * 0.97;
 				pl = 0.0;
 			} else if (fx > 0.24 && fx < 0.76 && fy < 0.3 && siding < 0.5) {
-				// a faint streak of grime down from the sill above
-				col *= 1.0 - (fy / 0.3) * (0.04 + 0.06 * r2) * (1.0 - abs(fx - 0.5) * 3.0);
+				// a streak of grime down from the sill above (darker on the old blocks)
+				col *= 1.0 - (fy / 0.3) * (0.04 + 0.06 * r2) * (1.0 + 1.6 * aged) * (1.0 - abs(fx - 0.5) * 3.0);
 			}
 			if (fy < 0.06) {
 				col *= 0.88;
@@ -437,7 +450,14 @@ void fragment() {
 		} else if (style < 1.5) {
 			if (fx > 0.06 && fx < 0.94 && fy < 0.88) {
 				if (fy < 0.34) {
-					col = base * 1.05;
+					col = band;
+				} else if (enclosed) {   // glass on the parapet, the shutter box over it
+					pl = 0.0;
+					rough = 0.25;
+					float shut = r1 > 0.5 ? (r1 - 0.5) * 1.4 : 0.0;
+					bool closed = fy > 0.81 - 0.45 * shut;
+					col = fy > 0.81 ? shutter.rgb * 0.95 : (closed ? shutter.rgb : glass.rgb * 0.85);
+					emit = closed ? room * 0.12 : room;
 				} else {
 					col = dark.rgb;
 					pl = 0.0;
@@ -449,7 +469,7 @@ void fragment() {
 				}
 			}
 			if (fy > 0.88 && fy < 0.95) {
-				col = base * 1.12;
+				col = band * 1.07;
 			}
 		} else if (style < 2.5) {
 			if (fy > 0.38 && fy < 0.78 && fx > 0.04 && fx < 0.96) {
@@ -570,6 +590,36 @@ void fragment() {
 				// the sill: its lit top edge, the shadow under it
 				deep_hit = true;
 				col2 = p.y > lo.y - 0.05 ? base * 1.1 : base * 0.74;
+			}
+		} else if (upper && style > 0.5 && style < 1.5 && enclosed) {
+			// a balcony closed in: sliding panes in aluminium frames on the parapet, three to a
+			// bay, a shutter part-way down from the box over them, the room behind
+			vec2 lo = vec2(0.06 * cw, 1.02);
+			vec2 hi = vec2(0.94 * cw, 2.64);
+			if (p.x > lo.x && p.x < hi.x && p.y > lo.y && p.y < hi.y) {
+				deep_hit = true;
+				float box = hi.y - 0.2;
+				float shut = r1 > 0.5 ? (r1 - 0.5) * 1.4 : 0.0;
+				float sy = box - (box - lo.y) * shut;
+				if (p.y > box) {
+					col2 = shutter.rgb * 0.95;
+					rough2 = 0.7;
+					emit2 = vec3(0.0);
+				} else if (p.y > sy) {
+					float sl = fract(p.y / 0.045);
+					col2 = shutter.rgb * mix(0.93, sl < 0.18 ? 0.72 : 0.96 + 0.08 * sl, clamp(1.0 - aa / 0.03, 0.0, 1.0));
+					emit2 = room * night * 0.06;
+					rough2 = 0.75;
+				} else {
+					vec3 rc = room_at(p, v, cw, 5.4, r5, wallc, floorc, wall_a.rgb, sofac, lamp, lit_on, blur);
+					float pw = (hi.x - lo.x) / 3.0;
+					float dfr = min(min(p.x - lo.x, hi.x - p.x), min(p.y - lo.y, sy - p.y));
+					float cover = max(line_cover(dfr, 0.04, aa), line_cover(abs(fract((p.x - lo.x) / pw + 0.5) - 0.5) * pw, 0.03, aa));
+					col2 = mix(vec3(0.02), trim.rgb * 0.85, cover);
+					emit2 = pane(rc, v, elev + wob, tint, street, 0.11) * (1.0 - cover);
+					rough2 = mix(0.06, 0.5, cover);
+					spec2 = 0.5;
+				}
 			}
 		} else if (upper && style > 0.5 && style < 1.5) {
 			// a balcony: a hollow 1.4 m deep behind the parapet, a glass door at its back
@@ -1066,6 +1116,7 @@ var _count_lbl: Label
 var _banner: Label
 var _banner_tw: Tween
 var _osm_lbl: Label
+var _ver_lbl: Label                  ## which build this is, over the minimap (_build_line)
 var _loaded := false
 var _touch_seen := false
 var _woke := false
@@ -5199,6 +5250,7 @@ func _street_metal(metal: Buf, rim: Buf, ri: int) -> void:
 			var at := a + Vector2(-d.y, d.x) * w * off
 			_disc(rim, at, 0.36, y, 8)
 			_disc(metal, at, 0.31, y + 0.002, 8)
+			_note_cover(at, 0.33)
 			if _mine(at):
 				_tally("manholes", 1)
 		s += rng.randf_range(55.0, 95.0)
@@ -5214,10 +5266,95 @@ func _street_metal(metal: Buf, rim: Buf, ri: int) -> void:
 			var c := a + side * (w * 0.5 - 0.32)
 			_flat_rect(rim, c, d, side, 0.9, 0.46, y)
 			_flat_rect(metal, c, d, side, 0.78, 0.34, y + 0.002)
+			_note_cover(c, 0.38)
 			if _mine(c):
 				_tally("drains", 1)
 		s += rng.randf_range(40.0, 65.0)
 		sg = -sg
+
+## The road's cast iron as a wheel feels it: a manhole cover or a drain grate sits a little
+## proud of (or sunk in) the asphalt, and a wheel going over it knocks the body -- yours (a
+## nudge of the nose and the side it is on, a soft clunk) and the traffic's near you (a dip).
+var _covers := {}                     ## COVER_CELL cell -> [Vector3(x, z, radius)]
+var _cover_keys := {}                 ## (each once: a square built again would add it again)
+var _cover_on := [false, false, false, false]   ## each of your wheels on one now
+const COVER_CELL := 4.0
+
+func _note_cover(at: Vector2, r: float) -> void:
+	var key := Vector2i(roundi(at.x * 10.0), roundi(at.y * 10.0))
+	if _cover_keys.has(key):
+		return
+	_cover_keys[key] = true
+	var c := Vector2i(floori(at.x / COVER_CELL), floori(at.y / COVER_CELL))
+	if not _covers.has(c):
+		_covers[c] = []
+	(_covers[c] as Array).append(Vector3(at.x, at.y, r))
+
+## the cover under p: 1 a manhole (it knocks), 0.6 a grate, 0 none
+func cover_under(p: Vector2) -> float:
+	var c := Vector2i(floori(p.x / COVER_CELL), floori(p.y / COVER_CELL))
+	for dx in range(-1, 2):
+		for dy in range(-1, 2):
+			for cv: Vector3 in _covers.get(c + Vector2i(dx, dy), []):
+				if p.distance_squared_to(Vector2(cv.x, cv.y)) < cv.z * cv.z:
+					return 1.0 if cv.z < 0.35 else 0.6
+	return 0.0
+
+func _cover_tick() -> void:
+	if _covers.is_empty() or _walking or _air or absf(_v) < 1.0:
+		return
+	var fwd := _fwd()
+	var side := Vector2(-fwd.y, fwd.x)
+	for k in range(4):
+		var wheel := _pos + fwd * (WHEELBASE * 0.5 if k < 2 else -WHEELBASE * 0.5) + side * (0.78 if k % 2 == 0 else -0.78)
+		var on := cover_under(wheel)
+		if (on > 0.0) != bool(_cover_on[k]):
+			_cover_on[k] = on > 0.0
+			if on > 0.0:
+				var j := clampf(absf(_v) / 14.0, 0.15, 1.0) * on
+				_pitch = clampf(_pitch + (-0.014 if k < 2 else 0.011) * j, -0.12, 0.12)
+				_roll = clampf(_roll + (0.012 if k % 2 == 0 else -0.012) * j, -0.1, 0.1)
+				shake3d(0.15 + 0.35 * j)
+				Audio.play("impact_soft", 0.15, -24.0 + 6.0 * j)
+				Probe.event("cover", {"kmh": int(absf(_v) * 3.6)})
+
+## An Israeli town's walls, as a walk through Givatayim films them: the blocks of the 1950s to
+## the 70s (most of it) in sand and beige plaster gone dull, the older ones cream, the new
+## ones white or clad in stone; OSM's own colour wherever a building has one. Returns (tk,
+## stone): WALL_SHADER's plaster pick and its lean toward the stone tone -- under 0.8 a
+## render the colour of it, 0.8 and over cut stone in courses.
+func _med_plaster(bd: Dictionary, hsh: int, tk: int) -> Vector2:
+	var u := float(posmod(hsh >> 5, 97)) / 96.0
+	var pick := posmod(hsh >> 13, 100)
+	var oc := String(bd.get("col", ""))
+	if oc.begins_with("#") and (oc.length() == 7 or oc.length() == 4):
+		var c := Color.html(oc)   # (the data's colour, mapped onto the palette's wall tones)
+		if c.s < 0.12:
+			return Vector2(0, 0.05) if c.v > 0.8 else Vector2(4, 0.0)
+		if c.h > 0.05 and c.h < 0.17 and c.s < 0.6:
+			return Vector2(0, 0.55 + 0.2 * c.s)   # wheat, tan, beige
+		if c.h > 0.1 and c.h < 0.19:
+			return Vector2(2, 0.1)                # yellow
+		if c.h < 0.1 or c.h > 0.88:
+			return Vector2(3, 0.1)                # pink, peach, terracotta
+		return Vector2(1, 0.0)                    # blue, green: a pastel
+	var yr := int(bd.get("yr", 0))
+	if yr >= 2000:
+		return Vector2(0, 0.08 * u) if pick < 55 else (Vector2(0, 0.86 + 0.06 * u) if pick < 80 else Vector2(4, 0.0))
+	if yr >= 1980:
+		return Vector2(0, 0.3 + 0.3 * u) if pick < 50 else (Vector2(0, 0.86 + 0.06 * u) if pick < 70 else Vector2(0, 0.1))
+	if yr > 0 and yr < 1950:
+		return Vector2(0, 0.12 + 0.2 * u) if pick < 80 else Vector2(2, 0.05)
+	if yr > 0:
+		return Vector2(0, 0.46 + 0.28 * u) if pick < 75 else (Vector2(2, 0.15) if pick < 85 else Vector2(0, 0.18 + 0.12 * u))
+	# (no year: much the same, with the odd colour the old mix had)
+	if pick < 55:
+		return Vector2(0, 0.42 + 0.32 * u)
+	if pick < 75:
+		return Vector2(0, 0.1 + 0.2 * u)
+	if pick < 83:
+		return Vector2(0, 0.88)
+	return Vector2(tk, 0.1) if tk > 0 else Vector2(0, 0.04)
 
 func _clear_of(clear: Array, s: float) -> bool:
 	for c: Vector2 in clear:
@@ -5428,8 +5565,12 @@ func _build_buildings() -> void:
 			tk = 0 if pick < 54 else (1 if pick < 62 else (2 if pick < 74 else (3 if pick < 84 else 4)))
 		if bd.has("_glass"):   # a landmark's own glass (landmarks.gd)
 			tk = int(bd["_glass"])
+		var stone := float(posmod(hsh >> 5, 5)) * 0.18   # 0 white .. 0.72 beige
+		if med and not bd.has("_glass"):
+			var ts := _med_plaster(bd, hsh, tk)
+			tk = int(ts.x)
+			stone = ts.y
 		var tint := float(tk) / 4.0
-		var stone := float(posmod(hsh >> 5, 5)) * 0.18   # 0 white .. 0.72 beige stone
 		if bd.has("_glass"):
 			stone = 1.0   # (the shader's sign for a landmark's curtain wall)
 		var rel := float(bd["_h"])
@@ -6057,7 +6198,11 @@ func _street_edge(ring: PackedVector2Array, sgn: float) -> Array:
 func _wall_rgb(bright: float, tint: float, stone: float) -> Color:
 	var tk := int(round(tint * 4.0))
 	var plaster: Color = _tone[["wall", "wall2", "wall4", "wall5", "wall6"][clampi(tk, 0, 4)]]
-	var c := plaster.lerp(_tone["wall3"], stone * (1.0 if tk == 0 else 0.3))
+	# (as WALL_SHADER: a lean of 0.4-0.79 is the old blocks' sand render)
+	var aged := smoothstep(0.38, 0.5, stone) * (0.0 if stone >= 0.79 else 1.0)
+	var w3: Color = _tone["wall3"]
+	var st := w3.lerp(_tone["wall7"], aged)
+	var c := plaster.lerp(st, lerpf(stone, 1.0, aged * 0.6) * (1.0 if tk == 0 else 0.3))
 	return Color(c.r * bright, c.g * bright, c.b * bright)
 
 ## a block on columns: the floors above start at `lift`; under them, a walled-in core set
@@ -6529,11 +6674,13 @@ func _tree_covered(p: Vector2) -> int:
 ## Room for a real tree's trunk (a town's map of its trees): clear of the asphalt by 0.4 m and
 ## of a wall by 0.6, 1.2 m from the next post. The made-up trees' room (_tree_ok: 0.7 m and
 ## 1.1 m, 2 m apart) needs a 1.8 m gap between kerb and wall, which narrow pavements lack.
+## The asphalt is the road's strip, a rounded corner's and a junction's disc: on the strip
+## alone, 40 of Givatayim's and 42 of Tel Aviv's mapped trees stood up to 1.3 m into a
+## corner's curve (tests/city_check.gd, "posts on the road").
 func _mapped_tree_ok(p: Vector2) -> bool:
 	if not _bounds.has_point(p):
 		return false
-	var hit := _nearest_seg(p, 12.0, true)
-	if not hit.is_empty() and float(hit["edge"]) < 0.4:
+	if not _off_road(p, 0.4) or _in_junction(p, 0.4):
 		return false
 	if _push_out(p, 0.6, false) != Vector2.ZERO:
 		return false
@@ -6565,7 +6712,7 @@ func _tree_nudge(p: Vector2, deep: float) -> Vector2:
 		n = n.normalized()
 		offs = [1.0 - float(hit["edge"]), 0.6 - float(hit["edge"])]
 	for off: float in offs:
-		var c: Vector2 = p + n * off
+		var c: Vector2 = _out_of_corner(p + n * off, 0.6)   # round a corner: out past its curve
 		var push := _push_out(c, 0.6, false)
 		if push.length() > deep + 0.6:
 			continue
@@ -7974,6 +8121,11 @@ func _set_night(on: bool) -> void:
 const PARKED_FILL := [0.55, 0.05, 0.72, 0.0]   ## share of the kerb taken: plain, red-white, blue-white, yellow-black
 const PARKED_FILL_LIVING := 0.3
 const PARKED_MOTO := 0.3             ## a gap between the parked cars that has a motorbike or scooter in it
+## A divided road's halves park on their outer side only: the left of each half is the median
+## (its other half runs beside it, closer than this from edge to edge), and parked both sides
+## a row of cars stood down the middle of the road -- Tel Aviv's Katznelson, "a lot of parked
+## cars in the middle of somewhat main roads" (tests/parked_median.gd).
+const PARKED_MEDIAN_GAP := 12.0
 
 ## A motorbike or scooter parked up on the pavement in a gap between the cars, as they stand
 ## all along a filmed residential street in Givatayim: on the front half of the pavement (the
@@ -8041,7 +8193,15 @@ func _build_parked() -> void:
 			var total := cum[cum.size() - 1]
 			for sgn: float in [-1.0, 1.0]:
 				var s := 4.0 + rng.randf() * 3.0
+				var inner := int(r["o"]) != 0 and int(sgn) == -int(r["o"])   # the left of its traffic
 				while s < total - 4.0:
+					if inner:   # beside the other half of a divided road: the median, nobody parks there
+						var c0 := _along(run, cum, s)
+						var pair := _partner(c0, (_along(run, cum, minf(s + 1.0, total)) - c0).normalized(), ri, hw, int(r["o"]))
+						if not pair.is_empty() and float(pair[2]) < PARKED_MEDIAN_GAP:
+							s += 5.6
+							_tally("parked_median_kept_clear", 1)
+							continue
 					if rng.randf() < fill:
 						var kind: String = CAR_MIX[rng.randi() % CAR_MIX.size()]
 						var colour: Color = palette[rng.randi() % palette.size()]
@@ -8060,6 +8220,9 @@ func _build_parked() -> void:
 						# not poking into the asphalt: near a corner the next street can be
 						# right there, and the car stood in its lane
 						ok = ok and _off_road(p + face * 1.25, -0.1) and _off_road(p - face * 1.25, -0.1)
+						# nor on a strip with another road just past it (a service lane alongside, a
+						# boulevard's other half): road both sides of it, it stood in the middle
+						ok = ok and _off_road(p + side * 2.6, 0.0)
 						if ok:
 							var yaw := atan2(face.x, face.y)
 							# with the ground: nose up a hill, leaning across a camber (level, on a
@@ -8082,6 +8245,8 @@ func _build_parked() -> void:
 								cat_at(cq, _g3(cq, KERB_H).y, -side.rotated(float(roll2 % 5 - 2) * 0.3), "sit")
 							(cols_by[kind] as Array).append(colour)
 							xf.append(0)
+							_parked_at.append(p)
+							_parked_face.append(face)
 							_add_car_posts(p, face)
 					elif rng.randf() < PARKED_MOTO:
 						_park_moto(r, ri, run, cum, s, total, hw, sgn, rng, palette, xf_by, cols_by)
@@ -8101,6 +8266,8 @@ func _build_parked() -> void:
 ## would stick out of the lot, into a building, onto a road or onto a tree are left out.
 var _lot_at: Array = []              ## a car in each car park (for tests and tours)
 var _moto_at := PackedVector2Array()  ## each motorbike parked on a pavement (for tests: tests/street_fronts.gd)
+var _parked_at := PackedVector2Array()  ## each car parked by a street, and the way it faces (tests/parked_median.gd)
+var _parked_face := PackedVector2Array()
 var _plank_at := PackedVector2Array() ## a point along each piece of wooden board fence on a garden wall (for tests)
 var _parked_xf := {}                 ## the street's parked cars by shape, to batch with the car parks'
 var _parked_cols := {}
@@ -8280,7 +8447,13 @@ uniform vec4 plate_blue : source_color;
 uniform float plate_seed = 0.0;        // the player's car: its own number
 uniform vec4 dust : source_color;      // the street's dust on a car that has stood a while
 uniform vec4 sign_red : source_color;  // a learner's roof sign
-varying float plate_id;                // a number of the car's own, steady while it drives
+uniform vec4 amber : source_color;     // indicators: the lens
+uniform vec4 amber_lit : source_color; // ... and lit (saturated: a bright colour went to white in the sun)
+uniform vec4 red_lit : source_color;   // a tail light, lit
+uniform vec4 taxi_col : source_color;  // a taxi's roof sign
+// a number of the car's own, steady while it drives (flat: interpolated, its last digits
+// wandered across a plate and the hashes made of it drew a different digit in each pixel)
+varying flat float plate_id;
 uniform vec4 lamp : source_color;
 uniform vec4 tail : source_color;
 uniform vec4 sky_top : source_color;   // what the paint and glass reflect: the sky as it is now,
@@ -8296,14 +8469,45 @@ uniform vec4 hair : source_color;
 uniform vec4 shirt_a : source_color;
 uniform vec4 shirt_b : source_color;
 uniform vec4 dents[4];                 // the player's car: dents (x, y, z in its frame, depth 0..1; w 0: none)
-varying vec4 custom;
+// A copy's instance data (traffic.gd's _custom; parked cars have only the paint): the paint
+// in rgb, each channel carrying a small whole number as twice it added (the paint stays
+// 0..1 under it): r the indicators lit (1 its left, 2 its right, 3 both), g and b the front
+// wheels' steer (g * 8 + b, 32 straight ahead, 0 no word: a parked car's own). Alpha: the
+// brake light 0..1, plus 2 for each person aboard, plus 8 reversing, 16 the front passenger's
+// door open, 32 stood at the kerb a while (a parked car's dust and permit, driven off).
+varying vec3 paint;
+varying flat float blink_k;
+varying flat float occ;
+varying flat float brake;
+varying flat float flags;
 varying vec3 lpos;                     // the car's own frame: x across, y up from the road, z forward
 varying vec3 lnrm;
 varying vec3 lcam;                     // the eye, in that frame
 varying float who;                     // a number of the car's own, for its people's looks
 varying float dented;                  // how near a dent: the paint scuffed and dull there
 void vertex() {
-	custom = INSTANCE_CUSTOM;
+	vec3 kk = floor(INSTANCE_CUSTOM.rgb * 0.5);
+	paint = INSTANCE_CUSTOM.rgb - kk * 2.0;
+	flags = floor(INSTANCE_CUSTOM.a / 8.0 + 0.001);
+	float rest = INSTANCE_CUSTOM.a - flags * 8.0;
+	occ = floor(rest * 0.5 + 0.001);
+	brake = clamp(rest - occ * 2.0, 0.0, 1.0);
+	blink_k = kk.r;
+	// (its copy's number and its paint: steady as it moves, unlike where it is)
+	plate_id = fixed_paint > 0.5 ? plate_seed : float(INSTANCE_ID) * 0.7548777 + dot(paint, vec3(3.1, 5.7, 7.3));
+	bool parked_v = fixed_paint < 0.5 && occ < 0.5;
+	// the front wheels turned as it steers (UV2 on a wheel: its middle's x and z); a parked
+	// car now and then left with its wheels turned
+	if (COLOR.a > 0.2 && COLOR.a < 0.45 && UV2.y > 0.1) {
+		float sq = kk.g * 8.0 + kk.b;
+		float st = sq > 0.5 ? (sq - 32.0) * 0.016
+			: ((parked_v && fract(plate_id * 23.17) < 0.3) ? (fract(plate_id * 5.3) < 0.5 ? -0.3 : 0.3) : 0.0);
+		float cs = cos(st);
+		float sn = sin(st);
+		vec2 d = VERTEX.xz - UV2;
+		VERTEX.xz = UV2 + vec2(cs * d.x + sn * d.y, -sn * d.x + cs * d.y);
+		NORMAL.xz = vec2(cs * NORMAL.x + sn * NORMAL.z, -sn * NORMAL.x + cs * NORMAL.z);
+	}
 	lpos = VERTEX;
 	lnrm = NORMAL;
 	dented = 0.0;
@@ -8317,16 +8521,14 @@ void vertex() {
 	}
 	lcam = transpose(mat3(MODEL_MATRIX)) * (CAMERA_POSITION_WORLD - MODEL_MATRIX[3].xyz);
 	who = fract(sin(dot(MODEL_MATRIX[3].xz, vec2(12.9898, 78.233))) * 43758.5453);
-	// (its copy's number and its paint: steady as it moves, unlike where it is)
-	plate_id = fixed_paint > 0.5 ? plate_seed : float(INSTANCE_ID) * 0.7548777 + dot(INSTANCE_CUSTOM.rgb, vec3(3.1, 5.7, 7.3));
 	// a few cars' own things, in every car's mesh and folded away on the rest (vertex alpha
 	// 0.52 a learner's roof sign, 0.54 a new driver's sign in the back window, 0.56 a
 	// parking permit on a parked car's windscreen): no draws of their own
 	float code = COLOR.a;
-	bool parked_v = fixed_paint < 0.5 && INSTANCE_CUSTOM.a < 1.5;
+	bool local = parked_v || flags > 3.5;   // (a car parked here, or one that stood here: its permit)
 	if ((abs(code - 0.52) < 0.006 && (fixed_paint > 0.5 || fract(plate_id * 13.17) > 0.025))
 			|| (abs(code - 0.54) < 0.006 && (fixed_paint > 0.5 || fract(plate_id * 17.31) > 0.07))
-			|| (abs(code - 0.56) < 0.006 && !(parked_v && fract(plate_id * 19.7) < 0.55))) {
+			|| (abs(code - 0.56) < 0.006 && !(local && fract(plate_id * 19.7) < 0.55))) {
 		VERTEX = vec3(0.0);
 	}
 }
@@ -8355,8 +8557,12 @@ float line_cover(float d, float w, float aa) {
 // grey is the ink (taken at the half-way grey, a plate was blank from the chase view)
 float plate_glyph(float g, float x, float y, float far) {
 	// (kept inside its own cell's margin: the font's smaller copies bled the next glyph in)
-	float a = texture(plate_font, vec2((g + clamp(x, 0.1, 0.9)) / 13.0, clamp(y, 0.06, 0.94))).r;
+	float a = texture(plate_font, vec2((g + clamp(x, 0.1, 0.9)) / 18.0, clamp(y, 0.06, 0.94))).r;
 	return mix(smoothstep(0.3, 0.7, a), min(a * 1.8, 1.0), far);
+}
+// an indicator lamp at x (the car's left is +X) lit now
+bool blink_on(float k, float x) {
+	return k > 2.5 || (k > 0.5 && k < 1.5 && x > 0.0) || (k > 1.5 && k < 2.5 && x < 0.0);
 }
 void fragment() {
 	float part = COLOR.a;
@@ -8372,11 +8578,26 @@ void fragment() {
 	float aa = fwidth(lpos.z) + 0.001;
 	// how long it has stood and how old it is, each car its own: a parked car gathers the
 	// street's dust (on top and low down), an older one's paint is faded by the sun
-	bool parked = fixed_paint < 0.5 && custom.a < 1.5;
-	float dirt = fixed_paint > 0.5 ? 0.12 : (0.12 + 0.6 * fract(plate_id * 5.17)) * (parked ? 1.0 : 0.45);
+	bool parked = fixed_paint < 0.5 && occ < 0.5;
+	float dirt = fixed_paint > 0.5 ? 0.12 : (0.12 + 0.6 * fract(plate_id * 5.17)) * ((parked || flags > 3.5) ? 1.0 : 0.45);
 	float old = fixed_paint > 0.5 ? 0.0 : smoothstep(0.7, 1.0, fract(plate_id * 7.31));
+	bool driving = fixed_paint < 0.5 && occ > 0.5;
+	// the front passenger's door open (its right, -X, on the kerb side): where it was, the way
+	// in -- the seat, the sill (the door itself is traffic.gd's _door)
+	bool door_open = fixed_paint < 0.5 && mod(floor(flags * 0.5), 2.0) > 0.5 && lpos.x < 0.0 && lnrm.x < -0.3;
+	if (part > 0.9 && door_open && UV2.y > 0.0 && lpos.z > -0.19 * UV2.x && lpos.z < UV2.x - UV2.y - 0.14 && lpos.y > 0.3) {
+		ALBEDO = lpos.y < 0.4 ? paint * 0.55 : vec3(0.07, 0.07, 0.075) * (lpos.y > 0.55 ? 1.6 : 1.0);
+		ROUGHNESS = 0.9;
+		SPECULAR = 0.2;
+		EMISSION = vec3(0.0);
+	} else if (part > 0.7 && part <= 0.9 && door_open && UV2.y > 0.0 && lpos.z > UV2.x - 0.05) {
+		ALBEDO = vec3(0.05);   // (the door's window went with it: the cabin, dim)
+		ROUGHNESS = 0.9;
+		SPECULAR = 0.2;
+		EMISSION = vec3(0.0);
+	} else {
 	if (part > 0.9) {            // paint
-		col = fixed_paint > 0.5 ? paint_col.rgb : custom.rgb;
+		col = fixed_paint > 0.5 ? paint_col.rgb : paint;
 		col = mix(col, vec3(dot(col, vec3(0.3, 0.5, 0.2))) * 1.08 + 0.05, old * 0.4);   // sun-faded
 		float dust_amt = clamp(dirt * (0.6 * max(lnrm.y, 0.0) + 0.4 * (1.0 - smoothstep(0.15, 0.75, lpos.y))), 0.0, 0.6);
 		col = mix(col, dust.rgb, dust_amt);
@@ -8412,14 +8633,14 @@ void fragment() {
 		vec3 inside = vec3(0.0);
 		// UV2 on a car's glass: (front seats' z, their cushion's height); traffic's custom
 		// alpha 2+ has a driver, 4+ a passenger too (the rest of it is the brake light)
-		float occ = fixed_paint > 0.5 ? occupied : floor(custom.a * 0.5);
-		if (UV2.y > 0.0 && occ > 0.5) {
+		float aboard = fixed_paint > 0.5 ? occupied : occ;
+		if (UV2.y > 0.0 && aboard > 0.5) {
 			vec3 rd = normalize(lpos - lcam);
 			float best = 1e9;
 			vec3 col_hit = vec3(0.0);
 			vec3 n_hit = vec3(0.0, 1.0, 0.0);
 			for (int s = 0; s < 2; s++) {
-				if (s == 1 && occ < 1.5) {
+				if (s == 1 && aboard < 1.5) {
 					break;
 				}
 				float x = s == 0 ? 0.36 : -0.36;   // the driver on the car's left (+X)
@@ -8494,7 +8715,20 @@ void fragment() {
 	} else if (part > 0.51) {    // a sign or a sticker (only on the cars that keep it: vertex())
 		rough = 0.5;
 		vec2 g = vec2(lpos.x - UV2.x, lpos.y - UV2.y);   // from its middle (UV2)
-		if (part < 0.53) {       // a learner's roof sign: a white lamed on red, front and back
+		if (part > 0.57) {       // a taxi's roof sign: yellow, מונית in black front and back, lit at night
+			col = taxi_col.rgb;
+			if (abs(lnrm.z) > 0.5) {
+				float tx = g.x * sign(lnrm.z);   // (rightward as seen: from the front or from behind)
+				float i = floor((0.26 - tx) / 0.104);   // the letters right to left
+				if (i >= 0.0 && i < 5.0 && abs(g.y) < 0.055) {
+					float gx = (tx - 0.26 + (i + 1.0) * 0.104) / 0.104;
+					float far = smoothstep(0.004, 0.012, fwidth(tx) / 0.52);
+					col = mix(col, vec3(0.04), plate_glyph(13.0 + i, gx, (0.055 - g.y) / 0.11, far));
+				}
+			}
+			emit = col * night * 2.0 + refl * 0.08;
+			rough = 0.3;
+		} else if (part < 0.53) {       // a learner's roof sign: a white lamed on red, front and back
 			col = sign_red.rgb;
 			if (abs(lnrm.z) > 0.5) {
 				vec2 q = vec2(g.x * sign(lnrm.z) / 0.19, g.y / 0.1);
@@ -8536,15 +8770,67 @@ void fragment() {
 		emit = solid ? refl * 0.25 : vec3(0.0);
 	} else if (part > 0.2) {     // tyres: the sidewall a shade lighter than the tread
 		col = abs(lnrm.x) > 0.7 ? col * 1.35 : col;
-		col = mix(col, dust.rgb * 0.5, dirt * 0.4);
+		col = mix(col, dust.rgb * 0.35, dirt * 0.22);
 		rough = 0.9;
 		spec = 0.2;
-	} else if (part > 0.05) {    // headlights (and anything lit like them: a taxi's sign)
-		emit = lamp.rgb * night * 2.5 + refl * 0.3;
+	} else if (part > 0.05) {    // headlights (and anything lit like them: a bus's route sign)
 		rough = 0.1;
+		if (UV2.x > 1.5) {       // an indicator's repeater on a door mirror
+			col = amber.rgb * 0.45;
+			emit = blink_on(blink_k, lpos.x) ? amber_lit.rgb * 1.5 : refl * 0.2;
+		} else if (UV2.x > 0.5) {
+			// a car's headlight behind its clear cover (UV: x 0 inner to 1 outer, y 0 low to
+			// 1 high): an older car's chrome reflector, or a newer one's black housing with two
+			// lenses and its running light, a strip along the top (now and then turned down
+			// at the inner end), lit while it drives; the indicator's amber at the outer end
+			vec2 m = vec2((UV.x - 0.5) * 0.36, (UV.y - 0.5) * 0.12);
+			float style = fract(plate_id * 6.13);
+			bool modern = style > 0.35;
+			float lens = 1.0 - smoothstep(0.034, 0.04, length(m - vec2(-0.05, -0.006)));
+			float lens2 = modern ? 1.0 - smoothstep(0.021, 0.026, length(m - vec2(0.055, -0.01))) : 0.0;
+			float glow = max(lens, lens2);
+			col = mix(modern ? vec3(0.05) : vec3(0.42), vec3(0.85), glow * 0.6);
+			float drl = 0.0;
+			if (modern) {
+				float strip = step(0.03, m.y) * step(m.y, 0.048) * step(-0.16, m.x) * step(m.x, 0.12);
+				float hook = step(style, 0.7) * step(-0.165, m.x) * step(m.x, -0.145) * step(-0.035, m.y) * step(m.y, 0.048);
+				drl = max(strip, hook);
+				col = mix(col, vec3(0.9), drl);
+			}
+			float ind = step(0.13, m.x);
+			col = mix(col, amber.rgb * 0.7, ind);
+			emit = refl * 0.3 + lamp.rgb * night * 2.5 * (0.35 + 0.65 * glow) * (1.0 - ind)
+				+ (driving ? vec3(1.7) * drl : vec3(0.0))
+				+ (blink_on(blink_k, lpos.x) ? amber_lit.rgb * 1.5 * ind : vec3(0.0));
+		} else {
+			emit = lamp.rgb * night * 2.5 + refl * 0.3;
+		}
 	} else {                     // tail lights
-		col = tail.rgb;
-		emit = tail.rgb * (0.25 + 1.1 * night + 2.8 * (custom.a - floor(custom.a * 0.5) * 2.0));
+		if (UV2.x > 1.5) {       // the third brake light, at the top of the rear window
+			col = tail.rgb * 0.3;
+			emit = red_lit.rgb * 1.6 * brake;
+		} else if (UV2.x > 0.5) {
+			// a car's tail light (UV as the headlight's): the red, with its position light's
+			// shape (a ring round the edge, or two bars) brighter; at the inner end the white
+			// reversing light over the amber indicator
+			vec2 m = vec2((UV.x - 0.5) * 0.32, (UV.y - 0.5) * 0.14);
+			float style = fract(plate_id * 3.71);
+			float inner = step(m.x, -0.09);
+			float rev_l = inner * step(-0.005, m.y);
+			float ind_l = inner - rev_l;
+			vec2 q = vec2((m.x - 0.035) / 0.125, m.y / 0.07);
+			float d = max(abs(q.x), abs(q.y));
+			float led = style < 0.5 ? step(0.74, d) * step(d, 0.92)
+				: step(abs(abs(m.y) - 0.03), 0.009) * step(-0.08, m.x) * step(m.x, 0.15);
+			col = mix(tail.rgb * mix(0.45, 0.8, led), rev_l > 0.5 ? vec3(0.72) : amber.rgb * 0.6, inner);
+			// (lit in a saturated red, under 2: brighter, the sun's tone curve took it to white)
+			emit = (1.0 - inner) * red_lit.rgb * ((0.12 + 0.75 * night) * (1.0 + 1.4 * led) + (driving ? 0.35 : 0.0) * led + 1.3 * brake * (1.0 + 0.3 * led))
+				+ rev_l * (mod(flags, 2.0) > 0.5 ? vec3(1.8) : refl * 0.15)
+				+ ind_l * (blink_on(blink_k, lpos.x) ? amber_lit.rgb * 1.5 : vec3(0.0));
+		} else {
+			col = tail.rgb * 0.6;
+			emit = red_lit.rgb * (0.12 + 0.75 * night + 1.3 * brake);
+		}
 	}
 	if (dented > 0.0) {   // scraped paint and the primer under it round a dent
 		float sc = clamp(dented * 1.6, 0.0, 0.75) * (0.6 + 0.4 * fract(sin(dot(floor(lpos.xz * 22.0), vec2(12.9898, 78.233))) * 43758.5453));
@@ -8557,12 +8843,14 @@ void fragment() {
 	METALLIC = metal;
 	SPECULAR = spec;
 	EMISSION = emit;
+	}
 }
 """
 var _car_shader_mat: ShaderMaterial
 var _player_car_mat: ShaderMaterial  ## the same shader on the player's car, its paint its own
 
-## The number plates' characters, for CAR_SHADER: 0-9, a dash, I and L, five by seven pixels
+## The number plates' characters, for CAR_SHADER: 0-9, a dash, I and L (and a taxi sign's five
+## Hebrew letters), five by seven pixels
 ## each in a cell of seven by nine, smoothed up eightfold (the shader takes the edge at the
 ## half-way grey). Made once.
 const PLATE_GLYPHS := [
@@ -8572,13 +8860,17 @@ const PLATE_GLYPHS := [
 	"00110010001000011110100011000101110", "11111000010001000100010000100001000",
 	"01110100011000101110100011000101110", "01110100011000101111000010001001100",
 	"00000000000000001110000000000000000", "01110001000010000100001000010001110",
-	"10000100001000010000100001000011111"]
+	"10000100001000010000100001000011111",
+	# and for a taxi's sign, מונית: mem, vav, nun, yod, tav
+	"11110010011000110001100011000110111", "01100001000010000100001000010000100",
+	"01100000100001000010000100001011110", "01110000100010000000000000000000000",
+	"11111010010100101001010010100111001"]
 var _plate_tex: ImageTexture
 
 func _plate_font() -> ImageTexture:
 	if _plate_tex != null:
 		return _plate_tex
-	var img := Image.create(13 * 7, 9, false, Image.FORMAT_L8)
+	var img := Image.create(PLATE_GLYPHS.size() * 7, 9, false, Image.FORMAT_L8)
 	img.fill(Color.BLACK)
 	for gi in range(PLATE_GLYPHS.size()):
 		var bits: String = PLATE_GLYPHS[gi]
@@ -8586,7 +8878,7 @@ func _plate_font() -> ImageTexture:
 			for c in range(5):
 				if bits[r * 5 + c] == "1":
 					img.set_pixel(gi * 7 + 1 + c, 1 + r, Color.WHITE)
-	img.resize(13 * 7 * 8, 9 * 8, Image.INTERPOLATE_BILINEAR)
+	img.resize(PLATE_GLYPHS.size() * 7 * 8, 9 * 8, Image.INTERPOLATE_BILINEAR)
 	img.generate_mipmaps()
 	_plate_tex = ImageTexture.create_from_image(img)
 	return _plate_tex
@@ -8605,6 +8897,12 @@ func _car_material() -> ShaderMaterial:
 		m.set_shader_parameter("plate_blue", _real_col("blue").lerp(Palette.col("bg"), 0.35))   # (a plate's strip is a deep blue)
 		m.set_shader_parameter("dust", (_tone.get("sand", _tone["pavement"]) as Color).lerp(_tone["pavement"], 0.4))
 		m.set_shader_parameter("sign_red", _real_col("red"))
+		var orange := _real_col("orange")
+		m.set_shader_parameter("amber", orange)
+		m.set_shader_parameter("amber_lit", Color.from_hsv(orange.h, 0.95, 1.0))
+		var red := _real_col("red")
+		m.set_shader_parameter("red_lit", Color.from_hsv(red.h, 0.97, 1.0))
+		m.set_shader_parameter("taxi_col", _real_col("yellow"))
 		m.set_shader_parameter("lamp", _tone["lamplight"])
 		m.set_shader_parameter("tail", Palette.col("hazard"))
 		m.set_shader_parameter("night", 1.0 if _night else 0.0)
@@ -8746,14 +9044,72 @@ func _parked_mesh(kind := "sedan") -> ArrayMesh:
 	var taxi := kind == "taxi"
 	var cm := _car_body("sedan" if taxi else kind, true)
 	if taxi:
-		# the roof sign: lit like a headlight, so it glows at night
+		# the roof sign: yellow, מונית on it front and back, lit at night (CAR_SHADER's
+		# signs; UV2 its middle)
 		var sign := Buf.new()
 		_box(sign, Vector3(0, 1.52, -0.3), Vector3(0.62, 0.17, 0.26))
-		cm.add_buf(sign, Color(Palette.col("warn"), 0.1))
+		cm.add_buf(sign, Color(1, 1, 1, 0.58), Vector2(0.0, 1.52))
 	var am := cm.mesh(_car_material())
 	# a box round the whole car (lights and mirrors stand a little proud of the body)
 	am.custom_aabb = am.get_aabb().grow(0.1)
 	_car_meshes[kind] = am
+	return am
+
+## where a car's front passenger door hangs: (the body's half-width there, the hinge's z: the
+## seam behind the front wheel, as CAR_SHADER draws it -- the doorway runs back to the pillar,
+## at -0.19 of the wheels' z)
+func _door_at(kind: String) -> Vector2:
+	var shape: Array = CAR_SHAPES["sedan" if kind == "taxi" else kind]
+	var zf: float = float(shape[4]) - float(shape[5]) - 0.14
+	return Vector2(_plan_w(zf, shape[2], shape[3]), zf)
+
+## a car's front passenger door, open (traffic.gd's kerb car): its hinge at the origin, the
+## door running back along -Z, its outside facing -X -- the painted skin to the waist, the trim
+## of its inside, the window leaning in as the cabin's glass does. In the car shader.
+var _door_meshes := {}
+
+func _door_mesh(kind: String) -> ArrayMesh:
+	var k := "sedan" if kind == "taxi" else kind
+	if _door_meshes.has(k):
+		return _door_meshes[k]
+	var shape: Array = CAR_SHAPES[k]
+	var low := PackedVector2Array(shape[0])
+	var cab: Array = shape[1]
+	var wz: float = shape[4]
+	var dz := _door_at(k)
+	var long := dz.y + 0.19 * wz
+	var lift := 0.08 if k in ["suv", "van"] else (0.05 if k == "mpv" else 0.0)
+	var sill := 0.3 + lift
+	var waist := _span_at(low, dz.y - long * 0.5).y
+	var top := minf((cab[1] as Vector2).y, (cab[2] as Vector2).y) - 0.06
+	var cm := CarMesh.new()
+	var paint := Color(1, 1, 1, 1.0)
+	var b := Buf.new()
+	_box(b, Vector3(-0.015, (sill + waist) * 0.5, -long * 0.5), Vector3(0.05, waist - sill, long))
+	cm.add_buf(b, paint)
+	var t := Buf.new()   # its inside: the door card, an armrest
+	_box(t, Vector3(0.02, (sill + waist) * 0.5 + 0.02, -long * 0.5), Vector3(0.03, waist - sill - 0.08, long - 0.08))
+	_box(t, Vector3(0.05, waist - 0.2, -long * 0.55), Vector3(0.05, 0.04, long * 0.5))
+	cm.add_buf(t, Color(_tone["cartrim"], 0.5))
+	# the window: leaning in 0.22 m over its height, glass both sides, a thin frame along its top
+	var lean := 0.22 * (top - waist) / maxf((cab[1] as Vector2).y - waist, 0.3)
+	var glass := Color(_tone["carglass"], 0.75)
+	var z0 := -0.03
+	var z1 := -long + 0.03
+	for side: float in [-1.0, 1.0]:
+		var n := Vector3(side, (top - waist) * 0.0 + 0.2 * -side, 0).normalized()
+		var off := side * 0.006
+		var p0 := cm.vert(Vector3(off, waist, z0), n, glass)
+		var p1 := cm.vert(Vector3(off, waist, z1), n, glass)
+		var p2 := cm.vert(Vector3(lean + off, top, z1 + 0.08), n, glass)
+		var p3 := cm.vert(Vector3(lean + off, top, z0 - 0.12), n, glass)
+		cm.tri(p0, p1, p2, Vector3(side, 0, 0))
+		cm.tri(p0, p2, p3, Vector3(side, 0, 0))
+	var f := Buf.new()
+	_box(f, Vector3(lean, top + 0.015, (z0 - 0.12 + z1 + 0.08) * 0.5), Vector3(0.03, 0.03, long - 0.2))
+	cm.add_buf(f, paint)
+	var am := cm.mesh(_car_material())
+	_door_meshes[k] = am
 	return am
 
 ## ---- car bodies ----------------------------------------------------------------------------
@@ -9052,13 +9408,27 @@ func _car_body(kind: String, extras: bool) -> CarMesh:
 	var rim := Color(_tone["rim"], 0.4)
 	for wzs: float in [wz, -wz]:
 		for sx: float in [-1.0, 1.0]:
-			_wheel(cm, Vector3(sx * (hw - 0.09), wr, wzs), wr, sx, tyre, rim)
+			# (UV2: the wheel's middle, which the shader turns the front ones about as it steers)
+			_wheel(cm, Vector3(sx * (hw - 0.09), wr, wzs), wr, sx, tyre, rim, 0.11, false, Vector2(sx * (hw - 0.09), wzs))
 	# ---- lights: panels laid on the body's front and back, following its rounded corners
+	# (UV2 x 1: drawn as a car's lamps, the indicators in them -- CAR_SHADER)
 	var hy := 0.68 + lift
 	var ty := _span_at(low, zmin + 0.12).y - 0.15
 	for sx: float in [-1.0, 1.0]:
-		_lamp(cm, low, hw, sx * (hw - 0.3), hy, 0.36, 0.12, true, Color(_tone["tank"], 0.1))
-		_lamp(cm, low, hw, sx * (hw - 0.27), ty, 0.32, 0.14, false, Color(_tone["tank"], 0.0))
+		_lamp(cm, low, hw, sx * (hw - 0.3), hy, 0.36, 0.12, true, Color(_tone["tank"], 0.1), Vector2(1, 0))
+		_lamp(cm, low, hw, sx * (hw - 0.27), ty, 0.32, 0.14, false, Color(_tone["tank"], 0.0), Vector2(1, 0))
+	# the indicators' repeaters on the door mirrors, and the third brake light at the top of
+	# the rear window (UV2 x 2)
+	var rb := Buf.new()
+	for sx: float in [-1.0, 1.0]:
+		_box(rb, Vector3(sx * (hw + 0.115), c0.y + 0.055, c0.x - 0.098), Vector3(0.05, 0.016, 0.006))
+	cm.add_buf(rb, Color(_tone["tank"], 0.1), Vector2(2, 0))
+	if kind != "truck":
+		var by := c2.y - 0.05
+		var bz := lerpf(c3.x, c2.x, clampf((by - 0.02 - c3.y) / maxf(c2.y - c3.y, 0.01), 0.0, 1.0)) - 0.015
+		var bb := Buf.new()
+		_box(bb, Vector3(0, by, bz), Vector3(0.34, 0.03, 0.012))
+		cm.add_buf(bb, Color(_tone["tank"], 0.0), Vector2(2, 0))
 	var plate := Color(Palette.col("warn") if String(_place.get("look", "")) == "med" else Palette.col("ink"), 0.65)
 	for front: bool in [true, false]:
 		var py := (0.45 if front else 0.6) + lift
@@ -9074,7 +9444,8 @@ func _car_body(kind: String, extras: bool) -> CarMesh:
 
 ## a light panel w x h centred at (cx, cy) on the body's front (or back), each corner set on
 ## the rounded surface (a hair proud of it), so it bends round the corner as real ones do
-func _lamp(cm: CarMesh, low: PackedVector2Array, hw: float, cx: float, cy: float, w: float, h: float, front: bool, col: Color) -> void:
+func _lamp(cm: CarMesh, low: PackedVector2Array, hw: float, cx: float, cy: float, w: float, h: float, front: bool, col: Color,
+		t2 := Vector2.ZERO) -> void:
 	var s := 1.0 if front else -1.0
 	var grid: Array = []
 	# (2.5 cm proud of the body, five points across to follow its curve: at 8 mm and three
@@ -9087,7 +9458,9 @@ func _lamp(cm: CarMesh, low: PackedVector2Array, hw: float, cx: float, cy: float
 			var x := cx + (float(k) - 2.0) * w * 0.25
 			var z := _end_at(low, y, front) - s * (_plan_in(x, hw) - 0.025)
 			var nrm := Vector3(x / hw * 0.7, 0.1, s).normalized()
-			line.append(cm.vert(Vector3(x, y, z), nrm, col))
+			# (UV for CAR_SHADER's lamps: x 0 at the inner end to 1 at the outer, y 0 low to 1 high)
+			var u := float(k) / 4.0 if cx > 0.0 else 1.0 - float(k) / 4.0
+			line.append(cm.vert(Vector3(x, y, z), nrm, col, Vector2(u, float(row)), t2))
 		grid.append(line)
 	var out := Vector3(cx / hw * 0.7, 0.1, s)
 	for k in range(4):
@@ -9097,7 +9470,7 @@ func _lamp(cm: CarMesh, low: PackedVector2Array, hw: float, cx: float, cy: float
 ## a tyre round the X axis at c, its outer side facing `side` (+1/-1): tread, sidewall, and the
 ## rim (UV: the disc's own -1..1, for the shader's spokes)
 func _wheel(cm: CarMesh, c: Vector3, r: float, side: float, tyre: Color, rim: Color, half := 0.11,
-		both := false) -> void:
+		both := false, t2 := Vector2.ZERO) -> void:
 	var seg := 10
 	var rr := r * 0.62
 	var out := Vector3(side, 0, 0)
@@ -9105,8 +9478,8 @@ func _wheel(cm: CarMesh, c: Vector3, r: float, side: float, tyre: Color, rim: Co
 	for k in range(seg + 1):
 		var a := TAU * k / seg
 		var dir := Vector3(0, cos(a), sin(a))
-		tread.append([cm.vert(c + dir * r - out * half, dir, tyre), cm.vert(c + dir * r + out * half, dir, tyre),
-			cm.vert(c + dir * r + out * half, out, tyre), cm.vert(c + dir * rr + out * half, out, tyre)])
+		tread.append([cm.vert(c + dir * r - out * half, dir, tyre, Vector2.ZERO, t2), cm.vert(c + dir * r + out * half, dir, tyre, Vector2.ZERO, t2),
+			cm.vert(c + dir * r + out * half, out, tyre, Vector2.ZERO, t2), cm.vert(c + dir * rr + out * half, out, tyre, Vector2.ZERO, t2)])
 	for k in range(seg):
 		var a0: Array = tread[k]
 		var a1: Array = tread[k + 1]
@@ -9116,11 +9489,11 @@ func _wheel(cm: CarMesh, c: Vector3, r: float, side: float, tyre: Color, rim: Co
 		cm.tri(a0[2], a1[2], a1[3], out)
 		cm.tri(a0[2], a1[3], a0[3], out)
 	for o: Vector3 in ([out, -out] if both else [out]):
-		var hub := cm.vert(c + o * (half - 0.004), o, rim, Vector2.ZERO)
+		var hub := cm.vert(c + o * (half - 0.004), o, rim, Vector2.ZERO, t2)
 		var ring: Array = []
 		for k in range(seg + 1):
 			var a := TAU * k / seg
-			ring.append(cm.vert(c + Vector3(0, cos(a), sin(a)) * rr + o * (half - 0.004), o, rim, Vector2(cos(a), sin(a))))
+			ring.append(cm.vert(c + Vector3(0, cos(a), sin(a)) * rr + o * (half - 0.004), o, rim, Vector2(cos(a), sin(a)), t2))
 		for k in range(seg):
 			cm.tri(hub, ring[k], ring[k + 1], o)
 		if both and o == -out:   # the far side's sidewall too (a scooter is seen from both)
@@ -13202,14 +13575,23 @@ func _ap_light_v() -> float:
 ## needs, and a fifth more. (Aimed at "the speed that just stops in time from here", the
 ## target sat a hair under the speed and the controller -- braking by how far over it is --
 ## hardly braked: the need grew and grew, and it gave up and drove on into the red.)
+## Far off, or slow, the need is small: up to the line on the usual slope, as for a red.
+## (Braking at 1.5 m/s^2 at least, wherever the line was, a green ending 80 m off stopped the
+## car 23 m on, in the middle of the street -- and standing, the need is nothing, the speed
+## to aim at nothing: it stood there all through the red. A user, twice: "the car weirdly
+## stops in the middle of the run.")
 var _ap_amber_n := -1                ## the lit point it decided to stop at as its green ended (kept to until green again)
 
 func _ap_brake_for(stop: float) -> float:
 	var room := stop - 0.5
 	if room <= 0.2:
 		return 0.0
-	var need := maxf(_v, 0.0) * maxf(_v, 0.0) / (2.0 * room)
-	return maxf(_v - clampf(need * 1.2, 1.5, 6.0) * 0.5, 0.0)   # (autodrive brakes 2 m/s^2 for each m/s over: see _autodrive)
+	var v := maxf(_v, 0.0)
+	var need := v * v / (2.0 * room)
+	var slope := sqrt(2.0 * 2.6 * room)
+	if need < 2.0:
+		return slope
+	return minf(maxf(v - minf(need * 1.2, 6.0) * 0.5, 0.0), slope)   # (autodrive brakes 2 m/s^2 for each m/s over: see _autodrive)
 
 ## seconds until the light at lit point n facing traffic going `dir` turns red (0: red, or
 ## red and amber, now)
@@ -13611,12 +13993,16 @@ func _build_sky_dome() -> void:
 	sh.code = SKY_SHADER
 	_sky_mat.shader = sh
 	_sky_mat.set_shader_parameter("photo", tex)
+	# a whole sphere, not Godot's hemisphere: that one closes with a flat disc at its middle's
+	# height, and the dome stands on the eye -- a plane through the eye, edge-on, that a phone's
+	# GPU drew now and then as a flickering line straight across the screen at the horizon,
+	# over near hedges too (tests/horizon_line.gd). The lower half is the horizon's haze.
 	var mesh := SphereMesh.new()
 	mesh.radius = 1900.0
-	mesh.height = 1900.0
-	mesh.is_hemisphere = true
+	mesh.height = 3800.0
+	mesh.is_hemisphere = false
 	mesh.radial_segments = 32
-	mesh.rings = 10
+	mesh.rings = 20
 	mesh.material = _sky_mat
 	_sky_dome = MeshInstance3D.new()
 	_sky_dome.mesh = mesh
@@ -13626,9 +14012,10 @@ func _build_sky_dome() -> void:
 	_retint_sky_dome()
 
 ## the dome round the camera, wherever it went this frame
+var sky_drop := 0.0                  ## tests: the dome this far below the eye (tests/horizon_line.gd)
 func _sky_follow() -> void:
 	if _sky_dome != null:
-		_sky_dome.global_position = cam.global_position
+		_sky_dome.global_position = cam.global_position - Vector3(0.0, sky_drop, 0.0)
 	_grass_follow()
 
 func _retint_sky_dome() -> void:
@@ -13661,7 +14048,7 @@ func _sky_photo() -> Texture2D:
 const NATURAL := {
 	"ground": 0.45, "rock": 0.3, "path": 0.15, "asphalt": 0.08, "parking": 0.08, "plaza": 0.2,
 	"grass": 0.6, "pitch": 0.6, "wood": 0.6, "leaf": 0.62, "bush": 0.6, "water": 0.5, "sand": 0.6, "beach": 0.75,
-	"mark": 0.3, "wall": 0.5, "wall2": 0.45, "wall3": 0.6, "wall4": 0.6, "wall5": 0.5, "wall6": 0.3,
+	"mark": 0.3, "wall": 0.5, "wall2": 0.45, "wall3": 0.6, "wall4": 0.6, "wall5": 0.5, "wall6": 0.3, "wall7": 0.62,
 	"glass": 0.5, "glass2": 0.5, "glass3": 0.5, "glass4": 0.5, "shutter": 0.3, "recess": 0.3, "lobby": 0.35, "flowers": 0.8,
 	"roof": 0.2, "trunk": 0.45, "pole": 0.2, "haze": 0.45, "sky": 0.6, "board": 0.4, "solar": 0.5,
 	"tank": 0.3, "furniture": 0.3, "pavement": 0.2, "pavers_dark": 0.15, "slabs": 0.15, "pavers_grey": 0.1, "tactile": 0.3, "pavers_red": 0.45, "kerb": 0.15, "stonewall": 0.45, "roofroom": 0.4,
@@ -13714,6 +14101,9 @@ func _tones() -> void:
 		"wall4": ink.lerp(wn, 0.5).lerp(pz, 0.05),
 		"wall5": ink.lerp(Palette.col("hazard"), 0.2).lerp(wn, 0.18),
 		"wall6": ink.lerp(alt, 0.34),
+		# the old blocks' sand render: the stone's beige, deeper toward the yellow, a touch of
+		# red, dulled (from the stone and the peach plaster it read grey-beige; the film's is tan)
+		"wall7": ink.lerp(wn, 0.38).lerp(alt, 0.06).lerp(wn, 0.26).lerp(Palette.col("hazard"), 0.1) * 0.85,
 		"glass2": alt.lerp(pl, 0.55),
 		"glass3": alt.lerp(fr, 0.45),
 		"glass4": ink.lerp(alt, 0.45).lerp(pl, 0.1),
@@ -13814,6 +14204,7 @@ func _retint_city() -> void:
 		_wall_mat.set_shader_parameter("wall_d", _tone["wall4"])
 		_wall_mat.set_shader_parameter("wall_e", _tone["wall5"])
 		_wall_mat.set_shader_parameter("wall_f", _tone["wall6"])
+		_wall_mat.set_shader_parameter("wall_g", _tone["wall7"])
 		_wall_mat.set_shader_parameter("glass_b", _tone["glass2"])
 		_wall_mat.set_shader_parameter("glass_c", _tone["glass3"])
 		_wall_mat.set_shader_parameter("glass_d", _tone["glass4"])
@@ -15737,6 +16128,7 @@ func _drive(dt: float, throttle: float, brake: float, steer: float) -> void:
 	_keep_inside(CAR_R, true)
 	_fly(dt)
 	_median_tick(dt)
+	_cover_tick()
 	_place_car(dt)
 
 ## The edge of the map: a striped barrier EDGE metres in from the baked area's rim, with a
@@ -16608,6 +17000,45 @@ func _place_bathers() -> void:
 			_bathers.append({"actor": a, "spot": Vector2.INF})
 	_place_still(_bathers, _beach_spots, "sit")
 
+## someone getting into a car at the kerb beside its driver (traffic.gd's kerb car): one
+## person, standing at the open door, then (walking) stepping in. False when that person is
+## still in view somewhere else (they would jump).
+var _boarders: Array = []            ## [{actor, spot, walking}]
+var _boarder_t := 0.0                ## seconds since traffic last had them there
+
+func boarder_at(at: Vector2, face: Vector2, walking: bool) -> bool:
+	if _boarders.is_empty():
+		var na := Actor3D.new()
+		world.add_child(na)
+		na.set_character(PEOPLE[3 % PEOPLE.size()], _people_rng.randf_range(ADULT_LO, ADULT_HI))
+		_humanize(na, hash(na.get_instance_id()))
+		_people_lod(na)
+		na.visible = false
+		_boarders.append({"actor": na, "spot": Vector2.INF, "walking": false})
+	var w: Dictionary = _boarders[0]
+	var a: Actor3D = w["actor"]
+	var was: Vector2 = w["spot"]
+	if a.visible and was.distance_to(at) > 1.5 and not _unseen(was):
+		return false
+	if not a.visible or bool(w["walking"]) != walking:
+		a.play("Walk" if walking else "Idle", true, 0.75 if walking else 0.9)
+		w["walking"] = walking
+	a.position = Vector3(at.x, _walk_y(at), at.y)
+	a.face(Vector3(face.x, 0, face.y))
+	a.visible = true
+	w["spot"] = at
+	_boarder_t = 0.0
+	_people_awake(a, at)
+	return true
+
+## (still waiting there: kept)
+func boarder_keep() -> void:
+	_boarder_t = 0.0
+
+func boarder_gone() -> void:
+	for w: Dictionary in _boarders:
+		(w["actor"] as Actor3D).visible = false
+
 ## people waiting at the bus stops near you, one or two a stop, facing the road
 func _place_waiters() -> void:
 	var spots: Array = []
@@ -16678,7 +17109,8 @@ func _people_tick(dt: float) -> void:
 	# (everyone placed, wherever they are: a walker 60 m off still has to see the next one)
 	_people_at.clear()
 	_people_who.clear()
-	for list: Array in [_walkers, _chatters, _crossers, _sitters, _waiters, _keepers, _bathers]:
+	_boarder_t += dt
+	for list: Array in [_walkers, _chatters, _crossers, _sitters, _waiters, _keepers, _bathers, _boarders]:
 		for w: Dictionary in list:
 			var a: Actor3D = w["actor"]
 			if a.visible:
@@ -16695,6 +17127,9 @@ func _people_tick(dt: float) -> void:
 		_place_waiters()
 		_place_keepers()
 		_place_bathers()
+		for w: Dictionary in _boarders:   # (their car gone elsewhere: they go too, unseen)
+			if (w["actor"] as Actor3D).visible and _boarder_t > 4.0 and _unseen(w["spot"]):
+				(w["actor"] as Actor3D).visible = false
 		for list: Array in [_chatters, _sitters, _waiters, _keepers, _bathers]:
 			for c: Dictionary in list:
 				var ca: Actor3D = c["actor"]
@@ -21279,20 +21714,53 @@ func _build_hud() -> void:
 	_banner.position = Vector2(120, 98)
 	_banner.size = Vector2(400, 30)
 	_banner.modulate.a = 0.0
-	_osm_lbl = _label(8, "ink")
+	# the credits, small, in the corner under the map and clear of the buttons along the bottom
+	# (AUTO_BTN starts at x 184): one line run past them, the towns' surveys under the buttons
+	_osm_lbl = _label(7, "ink")
 	_osm_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_osm_lbl.position = Vector2(8, 347)
+	_osm_lbl.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	_osm_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_osm_lbl.add_theme_constant_override("line_spacing", -3)
+	_osm_lbl.position = Vector2(6, 329)
+	_osm_lbl.size = Vector2(AUTO_BTN.position.x - 12.0, 30)
 	_osm_lbl.text = "a made-up town: not a real place" if _made_up else "map data © OpenStreetMap contributors"
 	if not _credits.is_empty():   # a town's own surveys of its buildings and trees (tools/osm_city.py)
 		_osm_lbl.text += " · " + _credit_line(_credits)
 	_osm_lbl.modulate.a = 0.7
+	# which build: a screenshot then says whether it holds a fix (the menu shows it too, but
+	# a screenshot of the street does not have the menu in it)
+	_ver_lbl = _label(8, "ink")
+	_ver_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_ver_lbl.position = Vector2(8, 197)
+	_ver_lbl.size = Vector2(200, 12)
+	_ver_lbl.text = _build_line()
+	_ver_lbl.modulate.a = 0.6
 	_map = Control.new()
-	_map.position = Vector2(8, 224)
+	_map.position = Vector2(8, 210)
 	_map.size = Vector2(118, 118)
 	_map.clip_contents = true
 	_map.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_map.draw.connect(_draw_map)
 	_hud.add_child(_map)
+
+## res://build.txt, as tools/publish_web.sh writes it ("2026-11-21 10:05 UTC 79f2bc6": when it
+## was built and the commit it was built from), said short: "build 21 Nov 10:05 UTC · 79f2bc6".
+## With no file (run from the project, not a published build): "dev build".
+func _build_line() -> String:
+	var t := _build_id
+	if t == "" and FileAccess.file_exists("res://build.txt"):
+		t = FileAccess.get_file_as_string("res://build.txt").strip_edges()
+	if t == "":
+		return "dev build"
+	var p := t.split(" ", false)
+	var day := p[0].split("-")
+	if p.size() < 3 or day.size() != 3:
+		return "build " + t
+	var months := ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+	var s := "build %d %s %s %s" % [int(day[2]), months[clampi(int(day[1]) - 1, 0, 11)], p[1], p[2]]
+	if p.size() >= 4:
+		s += " · " + p[3]
+	return s
 
 func _retint_hud() -> void:
 	if _hud == null:

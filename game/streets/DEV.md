@@ -183,6 +183,56 @@ The ones most often touched, and the functions in them:
   12). tests/plates.gd shoots them (ends and a side). Cost: the three kinds are ~10 more
   multimeshes in view at the start (`draws`: 216; about 3 a kind, parked squares and
   traffic); the playtest 10 hitches alone (17 with a second Godot rendering beside it).
+- **cars' lights and moving parts** -- all in CAR_SHADER and traffic.gd, no new shader.
+  A copy's instance data (`Traffic._custom`; the shader's notes at its top): the paint in
+  rgb with a small whole number in each channel as twice it added (the paint stays 0..1 under
+  it; decoded `kk = floor(rgb / 2)`, half floats keep 1/128 of colour at up to 15): r the
+  indicators lit (1 its left, 2 its right, 3 both), g and b the front wheels' steer (g * 8 +
+  b, 32 straight, 0 no word: a parked car's own). Alpha: the brake 0..0.95, 2 per person
+  aboard, 8 reversing, 16 the passenger's door open, 32 stood at the kerb (dust, permit).
+  "Parked" is now no one aboard (occupancy 0), not alpha under 1.5. `plate_id` and the
+  decoded values are `flat` varyings: interpolated, `plate_id`'s last digits wandered across
+  a plate and its hashes drew a different digit in each pixel (garbled plates). **Lamps**:
+  `_lamp` gives its panel UV (x inner 0 to outer 1, y low to high) and UV2 x 1 marks a car's;
+  the headlight is an older car's chrome reflector or a newer one's black housing with two
+  lenses and a running-light strip lit while it drives, the indicator's amber at the outer
+  end; the tail light a red with its position light's shape brighter (a ring or two bars), a
+  white reversing light over an amber indicator at the inner end; UV2 x 2 marks the mirror
+  repeaters (amber) and the third brake light at the top of the rear window. Lit colours
+  are saturated uniforms (`amber_lit`, `red_lit`, from `_real_col`) at under 2: brighter,
+  the sun's tone curve took a brake light to white. A bus's, a truck's and a scooter's
+  indicators are still traffic's `_blinkers` boxes. **Steering**: the wheels' UV2 is their
+  middle; vertex() turns the front ones (UV2.y > 0) about it. Traffic's `steer_to` is the
+  lane its front runs on against its heading (`_place`), turned toward at 1.4 rad/s; a
+  parked car has its wheels turned now and then (its own `plate_id`). **The kerb car**
+  (`_kerb_tick`, `_kerb_wait`): KERB_BOARD of them have someone getting in beside the driver
+  first -- the passenger's door open over the pavement (`_door` multimesh, the car's own
+  slot so its dust matches; `g._door_mesh`, `g._door_at`: the hinge at the seam behind the
+  front wheel, as the shader draws the doorway), them standing at it (`g.boarder_at`, one
+  Actor3D in `_boarders`, counted among the people); they step in as the player comes within
+  95 m (BOARD_IN 1.1 s), the door shuts (0.7 s), then it waits for the player at 18-62 m
+  behind (was 45), backs up 0.27 m with its reversing lights if there is room (`rev_t`),
+  signals and pulls out. The kerb side, not the driver's: a door open into the lane was in
+  the traffic's way. **Bumps**: `_street_metal` notes each manhole cover and drain grate
+  (`_note_cover`, `cover_under`); your wheels crossing one nudge the nose and the side, a
+  soft clunk (`_cover_tick`); traffic's front wheels dip its nose, within 50 m of you.
+  **The taxi's sign**: yellow, מונית front and back (five Hebrew glyphs added to
+  `PLATE_GLYPHS`: the font is 18 glyphs now, read right to left as seen), lit at night;
+  vertex alpha 0.58. tests/car_lights.gd (front, back, door, steer, taxi; day and night);
+  street_goings prints the boarding.
+- **blocks' plaster by age** (`_med_plaster`, med towns): the city file's year (`yr`, 920
+  of Givatayim's 6,243) and OSM colour (`col`, 63) pick a block's plaster: 1950-79 sand
+  (most), before 1950 cream, 1980-99 beige, white or stone, 2000 on white, stone-clad or
+  grey; no year, mostly sand. WALL_SHADER: a stone lean of 0.4-0.79 is now a render in the
+  old blocks' sand (`wall_g`, the tone "wall7": the stone's beige deeper toward the yellow
+  with a touch of red -- the stone mixed with the peach plaster read grey-beige, with the
+  yellow khaki; `_wall_rgb` the same), only
+  0.8 and over is cut stone in courses (it was 0.45: two blocks in five were stone-clad;
+  the film's are rendered). Balconies: per bay and floor some closed in (`enclosed`: a share
+  of each block's, 20-70%) -- sliding panes in aluminium on the parapet, a shutter part-way
+  down from its box, the room behind (near), glass and the box (far); the parapets and slab
+  edges a white band on some blocks (`band`); the grime under sills darker on the old blocks
+  (`aged`). tests/building_looks.gd (the town's count, six blocks near the start).
 - **shop interiors** -- SHOP_SHADER on the shop windows (`_shop_interior`, instead of the
   flat lit `_shop_glass`): a room 3.5 m deep traced from the eye through the glass (back
   wall, sides, floor, ceiling -- no geometry), shelves of goods, racks of clothes or a
@@ -438,7 +488,9 @@ The ones most often touched, and the functions in them:
   warm (`_load_into`, `_load_sub` at each square and warm-up frame), estimated from this
   device's last load of the city in `user://streets_load.json` (`_load_save`: ms per phase,
   per square, the warm-up as on the same build `warm` and on a new build's first load
-  `warm_new`, keyed by res://build.txt); no history for the city: another city's, the file
+  `warm_new`, keyed by res://build.txt -- "<UTC time> <commit>", tools/publish_web.sh; shown
+  over the minimap by `_build_line`, so a user's screenshot names its build: check a fix
+  is in it with `git merge-base --is-ancestor <fix> <commit>`); no history for the city: another city's, the file
   scaled by its size; none: the bar by phase, "timing it, for next time". The city file is
   one blocking call (`_load_city`): the bar stands still through it.
 - **people** -- walkers `_place_walker` / `_pavement_piece` / `_people_tick`, zebra crossers
@@ -1012,6 +1064,24 @@ The open items of the handoff below, done:
   5 of 40 bad. Now 0 of 40: on through from 30 m and nearer, stopped from 40 and 55 m at
   3.6-3.9 m/s^2, 2.7-11 m short of the line; on a flashing green it goes (6 s to the red).
   The route set's red (route 5, Ashdod) was this. The traffic's own amber rule is not touched.
+- **A green ending far ahead stopped the car mid-street** (21 Nov; `_ap_brake_for`). The user,
+  twice: "the car weirdly stops in the middle of the run" -- by a side street on Hafetz Haim,
+  Givatayim, the road empty, and again 20 m short of a crossing. Both were the amber stop
+  above: it braked at the stop's need and a fifth, but at 1.5 m/s^2 at least, wherever the line
+  was. A green ending when the light was 80 m off (it cannot get there in the 6 s to the red,
+  so it stops: right) brought it to a stand 23 m on; standing, the need is nothing and the speed
+  to aim at nothing, and `_ap_amber_n` keeps the decision until green -- it stood 57 m short
+  all through the red. The "3-11 m short" the amber test printed was the near end of the same
+  thing, put on the open list instead of chased. Now while the need is under 2 m/s^2 the
+  speed aimed at is the usual slope up to the line (2.6 m/s^2), as for a red; above, the
+  commanded braking as before. Found by `tests/side_street.gd` (Hafetz Haim on the user's
+  route, four passes: the third met the end of a green and stood 19 s 2 m from the side
+  street, why 'light'); `tests/amber.gd` now has an 80 m case and fails a car left standing
+  more than 4 m short (6 s after it stands): before 12 of 12 bad at 80 m (27-45 m short), now
+  0 of 72 -- every stop 1.6-1.7 m short of the line (where it aims), braking 3.3-4.3 m/s^2.
+  Route set after: 10 of 10, 0 reds, 0 rescues, 0 off road; one hit, a person on Bedford's
+  Hammonds Plains Road at 23 km/h (following a car at 36 km/h, why 'car', then 'people' under
+  a second before: someone into the lane close ahead -- no light near; open, below).
 - **Waiting in a divided road's middle** (`_median_gap`, `_ap_split`, `_ap_mid`,
   `_ap_edge_of`; `_ap_median_ok` turns it off for tests). A junction of points within 18 m is
   one junction for autodrive (`AP_KNOT`): it waits at the kerb for a gap in every stream it
@@ -1054,7 +1124,9 @@ Nothing is half done: all of the above is on main.
     within a few metres of the junction (it may not start behind it): 3.6-4.3 m at two of
     Givatayim's four in turn_width. Dropping a plain lane point that the arc would start
     behind would let it;
-  - autodrive's amber stop ends 3-11 m short of the line (it brakes at the need and a fifth);
+  - route 9 (Bedford) hit a person at 23 km/h on Hammonds Plains Road (21 Nov, t 284 s of the
+    drive): autodrive held for 'people' only ~0.6 s before, at 10 m/s -- someone came into the
+    lane from close by, or the people check saw them late (its 32 m look and 1.7 m reach);
   - `_push_out` sets `_last_hit` even when it only probes (the plan's `_clear_lane`, the nose's
     safety net): a test reading `_last_hit` must gate on `_crash_cool`, as route_set and
     give_way do;
@@ -2231,6 +2303,33 @@ Each line: where the code is, the test, what good reads.
   in the "city" event; `over_road_at` lists their middles), 1 left out; Givatayim's one, a
   4 m box across an Ayalon slip road at (890, -511), left out. Shots:
   `AT="-1441,-23;-1486,-85" CAR="-1414,-6,-0.78,-0.62" tests/run.sh top_at 7`.
+- **Parked cars down the middle of main roads** (user, Tel Aviv, Katznelson by Manara: "a
+  lot of parked cars in the middle of somewhat main roads"): each half of a divided road is a
+  one-way road of its own, and `_build_parked` parked both its sides -- its left side is the
+  median, so a row of cars stood down the middle. Now the left of a one-way road is skipped
+  wherever `_partner` finds its other half within `PARKED_MEDIAN_GAP` (12 m, edge to edge),
+  and no car parks where another road's asphalt is 2.6 m past its middle on the kerb side (a
+  service lane alongside). `tests/parked_median.gd` counts parked cars with asphalt both sides
+  (`_parked_at`, `_parked_face` keep where each stands): Tel Aviv 695 of 16,624 before, 0 now (82 with the median rule alone: service lanes alongside); Givatayim and Ashdod 0. Shots:
+  `AT="1110,-52" CAR="1070,-49,1,0.05" tests/run.sh top_at 7`. Not done: the user added that on
+  their wider streets the outer lane is parked in, on the road, not up on the pavement -- here
+  every street parks half up the kerb, and the lanes share the whole asphalt
+  (`_lane_off`/`_lanes_each_way`), so a parking strip on the road needs traffic, autodrive and
+  the lane paint to give that width up first.
+- **A flickering line across the screen** (user, the first filmed walk's passage: "flickering
+  line in the middle of the screen sometimes. dunno if its my screen or godot or bug"): the
+  sky dome (`_build_sky_dome`) was Godot's hemisphere, which closes with a flat disc at its
+  middle's height, and `_sky_follow` stands the dome on the eye -- a plane through the eye.
+  A phone's GPU drew it now and then as a one-pixel line in the horizon's grey at the horizon
+  (row ~270 of 896 in the walk's view, pitched 15 deg down), over near hedges too; the
+  software renderer here never draws it. Now a whole sphere (the lower half the horizon's
+  haze). `tests/horizon_line.gd` + `horizon_line.py`: `DROP=0.002` stands the dome 2 mm below
+  the eye, `HEMI=1` puts the hemisphere back -- the line in every frame before, none after.
+- **Which build** (user: "add the version somewhere, maybe near the map"): `_build_line` over
+  the minimap reads res://build.txt, now "<UTC time> <commit>" (tools/publish_web.sh); the
+  credits under the map are size 7 and wrap clear of the bottom buttons (Tel Aviv's ran
+  under "autodrive"). To tell whether a screenshot's build holds a fix:
+  `git merge-base --is-ancestor <fix> <commit>`.
 - **Tel Aviv grew** (another session, the bake workflow's bbox): 4,011 -> 9,597 buildings,
   3,745 -> 5,963 roads, west to the sea -- Ashdod's size now, and its load with it (see
   "Numbers to compare against").
@@ -2242,7 +2341,8 @@ Each line: where the code is, the test, what good reads.
   only meaningful in a real browser), `top_at` (shots by map point, `CAR=` to put the car
   anywhere), `street_at` (by street name at its roundabouts), `perf_dive`, `deck_corner`,
   `islands`, `pave_overlap`, `picker`, `minimap_route`, `warm_census`, `index_gain`,
-  `signs_inferred`, `start_drive`, `rails_near`, `cut_under`, `signs_double`;
+  `signs_inferred`, `start_drive`, `rails_near`, `cut_under`, `signs_double`, `auto_stands`,
+  `parked_median`, `horizon_line`;
   `tools/level_roads.py`.
 
 ## OSM's extra fields and speed limits: handoff (20 Nov 2026)
@@ -2363,8 +2463,15 @@ the user's `tools/.cache/` only.
   and greys; 80% petrol, ~10% electric or hybrid); mark the bus lanes by matching
   `bus_lanes.json`'s street names and end points to the roads (the baker's OSM `bf`/`bb`
   have some already); run buses on `transit_*.json`'s lines and times.
-- **Open**: Ashdod's heights (not in this task's sources: Ashdod's own GIS not looked at);
-  GovMap and the Survey of Israel were not needed and not checked. The GTFS terms page on
+- **Open** (updated after the second round below):
+  - **Ashdod's heights:** its map has no layer of all its buildings, only the public
+    ones (316 heights). GovMap and the Survey of Israel are long shots, by hand in a
+    browser, unchecked.
+  - **Ramat Gan's trees:** not fetched. Its ArcGIS Online host (services8.arcgis.com)
+    answers from anywhere, but the cloud environment does not allow it yet; whether a
+    trees layer exists is unknown.
+  - The fetch status and what else could be had are in the root ideas file's "Official
+    data" bullet. The GTFS terms page on
   gov.il cannot be read by tools; the user read it and found nothing against reuse.
   Ramat Gan's layer has no licence text either; the user approved committing it too.
 
@@ -2423,9 +2530,13 @@ from the air (11,893, each with its radius), both fetched on the user's computer
 - **The game** (`_build_trees`): a mapped tree takes its form's kind (`fixed`), a crown its
   size (`cr / crown width`) and a kind by size when the map has no species (`_crown_kind`:
   over 5.5 m ficus or eucalyptus, under 1.3 m olive or round, else the street mix). It gets
-  a trunk's room (`_mapped_tree_ok`: 0.4 m off the asphalt, 0.6 m off a wall, 1.2 m apart),
+  a trunk's room (`_mapped_tree_ok`: 0.4 m off the asphalt -- the road's strip, a rounded
+  corner's curve and a junction's disc, `_off_road` and `_in_junction`: on the strip alone
+  40 of Givatayim's and 42 of Tel Aviv's stood up to 1.3 m into a corner, `city_check` --
+  0.6 m off a wall, 1.2 m apart),
   and where it has none it is moved (`_tree_nudge`): onto the pavement 1 m or 0.6 m from
-  the kerb (Tel Aviv plants in the parking lane, and OSM's widths are guesses), out to the
+  the kerb (Tel Aviv plants in the parking lane, and OSM's widths are guesses) and out past
+  a corner's curve (`_out_of_corner`), out to the
   nearest wall's foot from up to 2.5 m inside a house (4 m for a crown from the air, centred
   over the roof it overhangs); a grate or earth square under it on a pavement. Where an
   aerial map covers (`_tree_cover`, within 40-80 m of its trees) nothing is made up; a list
@@ -2435,7 +2546,7 @@ from the air (11,893, each with its radius), both fetched on the user's computer
   (`_trees_mapped`). The credits are one line by owner (`_credit_line`).
 - **Test**: `tests/real_trees.gd` (README row: the numbers; before/after with
   `STREETS_CITY_FILE`, which keeps the level's own town id). Load times unchanged.
-- **Lost** (Tel Aviv 3,042, Givatayim 4,825): trees deeper in a house than the moves
+- **Lost** (Tel Aviv 3,096, Givatayim 4,863): trees deeper in a house than the moves
   allow (Givatayim: ~2,700 crowns centred over a roof by more than 1.4 m; Tel Aviv: ~950
   more than 2.5 m inside an OSM outline -- courtyards drawn as roof, or a private plot),
   over 4.5 m into a road (a boulevard's middle where OSM maps one road), or with no
@@ -2485,6 +2596,18 @@ LEVEL=1 $GODOT --headless --path . -s res://game/streets/tests/<test>.gd`.
   wall) and people who react are on GAME.md's later list; falling rain is on hold (user);
   the browser's 5-7 s warm-up is shader compiling (see the other handoff's 74 shader kinds).
   `draws` hung once for 15 minutes and never again (cause unknown: kill it and rerun).
+- **Lights, wheels, doors, plaster (21 Nov)**: good numbers -- `car_lights` (shots): lamps
+  read red / amber / white, not white blocks; plates clean (garbled before `plate_id` was
+  flat); the front wheel turned; מונית legible. `street_goings KERB_ONLY=1`: in at 86 m,
+  shut 0.7 s later, backed up at 61 m, never nearer than 20 m, the door open only while you
+  were 84 m+ off. `building_looks`: Givatayim's plaster from its file -- sand 3,310, cream
+  1,334, white 1,002, stone 494, tinted 103 (it was half white, two in five of the rest
+  stone-clad). Open: speed humps (the baker keeps no traffic_calming; needs it and a
+  re-bake); closed-in balconies not yet seen up close in a shot (the blocks near the start
+  are mostly punched windows: aim `building_looks` at a balcony block); the bus's, truck's
+  and scooter's indicators are still boxes; in the KERB_ONLY run the kerb car came without
+  its passenger (the dice, or no room by the pavement: not told apart) and the test put one
+  there; the film's sand in shade is browner than the game's.
 - **Watch**: hitches in the first seconds of driving now include the start's far gardens
   (`_build_gardens_later`, before the rest of the city), and since the city builds only what
   the first view sees before the car, the catch-up of the rest of NEAR_FIRST (16 ms a frame,
