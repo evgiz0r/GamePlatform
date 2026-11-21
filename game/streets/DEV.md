@@ -546,11 +546,22 @@ res://game/streets/traffic.gd res://game/streets/furniture.gd` (seconds).
 
 `game/streets/tests/validate.sh` runs the checks below headless, one after another, and
 prints a summary to set beside tests/README.md's last results. It reads the game and
-changes nothing. Quick (default): `city_check` in all four towns and the exam in the test
-town at 2x -- about 4 minutes. `FULL=1`: also the exam in Givatayim and Ashdod at 1x and the
-queue check -- about 10 minutes in all (November 2026, measured: city checks 10-96 s each,
-the exams 46 / 89 / 140 s, the queue watch ~3 min). Run it in the background (a foreground command is cut off
-at 10 minutes).
+changes nothing. Quick (default): `city_check` in all five towns (Tel Aviv since 21 Nov) and
+the exam in the test town at 2x -- about 6 minutes. `FULL=1`: also the exam in Givatayim and
+Ashdod at 1x and the queue check -- about 6 minutes more (November 2026, measured: city
+checks 10-104 s each, the exams 46 / 89 / 140 s, the queue watch ~3 min). `REGRESS=1` (with
+or without FULL): also the eleven tests written for the bugs the user reported on 20 Nov that
+need the game run (a drive, a walk, a load), each printing one `REGRESS <name>: PASS|FAIL`
+line -- about 10 minutes more. Run it in the background (a foreground command is cut off at
+10 minutes).
+
+**When you fix a bug the user reported, its test joins this.** End the test with one line,
+`REGRESS <name>: PASS|FAIL -- <measure> <value> (good <band>; the bug: <what it read>)`, the
+band from your fix's result and the bug's, and add a `run re_<name> ...` line to
+validate.sh's REGRESS list (its level, speed, `EXTRA` settings, `FPS`). If what it measures
+is the city as built, put it in `world_checks.gd` and a row in `city_check` instead, so it
+runs on every town. On 20 Nov the user reported thirty bugs; nineteen got a test, none was
+run again, and the validation of the day before would have caught three.
 
 What it catches: anything solid standing on a road (walls, hedges, posts by kind, buildings),
 a junction's lights split in two, and in driving -- bodies overlapping or into a wall or

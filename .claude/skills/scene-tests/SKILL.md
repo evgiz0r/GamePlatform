@@ -225,6 +225,20 @@ per-minute total that random traffic moves about anyway. And about half of those
 bugs had been made the same day -- by the change before, or another session's -- so after
 merging, run the quick checks (the world check, the route scans) before pushing.
 
+**And that test ends in a verdict, and the game's validation runs it.** A test that prints
+numbers for a reader is run once, by the session that wrote it. Of thirty bugs a user
+reported in one day, nineteen got a test of their own and nothing ever ran one again; the
+validation built the day before caught three of the thirty. End each with one line --
+`REGRESS <name>: PASS|FAIL -- <measure> <value> (good <band>; the bug: <what it read>)` --
+with the band from the fix's measured result and the bug's, not tighter than the run-to-run
+spread, and add it to the validation script's list. A check of the world as built goes into
+the world check instead, run on every level, not only the one the bug was found in: ported
+there, the paving-laid-twice check found 578 m2 flickering in a town nobody had looked at,
+and a road-tilt check a town never levelled -- the same bugs, unfixed where no report came
+from. Where such a measure never reads 0, give each level a limit at what a fixed level
+reads, and let an unfixed level fail until it is fixed: a limit set at whatever it reads
+today hides the bug the check was written for.
+
 ## Showing the user
 
 The user reads pictures, not tables -- a per-minute scorecard of a dozen rows was "hard to
