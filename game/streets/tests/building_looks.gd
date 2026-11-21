@@ -6,7 +6,8 @@ extends SceneTree
 ## over the whole town (how many blocks of each, from the city file's years and colours) and
 ## each shot block's height and distance; shots bld_*.png in $OUT.
 ##   FULL=1 STREETS_BUILD_ALL=0 RES=1280x720 OUT=<dir> game/streets/tests/run.sh building_looks 1
-## (N=6 blocks by default; CITY=<file name> for the count when not Givatayim.)
+## (N=6 blocks by default; KIND=3 balcony blocks only, up to 600 m off; CITY=<file name> for
+## the count when not Givatayim.)
 var g: Node
 
 func _initialize() -> void:
@@ -29,6 +30,8 @@ func _run() -> void:
 	g.set_physics_process(false)
 	process_frame.disconnect(g._frame)   # (frozen: its own camera would move ours back)
 	var want := int(OS.get_environment("N")) if OS.get_environment("N") != "" else 6
+	# KIND=3: only blocks with balconies (g._bld_kind: 1 on columns, 2 a pitched roof, 3 balconies)
+	var kind_want := int(OS.get_environment("KIND")) if OS.get_environment("KIND") != "" else -1
 	var start: Vector2 = g._pos
 	# the town's plaster mix, from the city file as the game reads it
 	var counts := {}
@@ -49,7 +52,9 @@ func _run() -> void:
 		var box: Rect2 = g._bld_box[i]
 		var c := box.get_center()
 		var d := c.distance_to(start)
-		if d > 25.0 and d < 220.0 and float(g._bld_top[i]) >= 9.0 and box.size.x > 8.0 and box.size.y > 8.0:
+		if kind_want >= 0 and int(g._bld_kind[i]) != kind_want:
+			continue
+		if d > 25.0 and d < (600.0 if kind_want >= 0 else 220.0) and float(g._bld_top[i]) >= 9.0 and box.size.x > 8.0 and box.size.y > 8.0:
 			near.append([d, i])
 	near.sort_custom(func(a, b): return a[0] < b[0])
 	var shot := 0

@@ -152,7 +152,6 @@ const TAKE_AHEAD := 22.0              ## who goes first at a junction is settled
 var _mm: MultiMesh
 var _mms := {}                        ## car shape -> its multimesh
 var _beams: MultiMeshInstance3D       ## their beams on the road, at night
-var _blinkers: MultiMesh              ## a bus's, a truck's and a scooter's indicators that are lit (a car's are in its lamps)
 var _door: MultiMeshInstance3D        ## the kerb car's open door (one at a time)
 var _door_i := -1                     ## ... whose
 ## each kind's half width and half length, for where its indicators are
@@ -203,20 +202,8 @@ func setup(game: Node) -> void:
 	_beams.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_beams.visible = false
 	g.world.add_child(_beams)
-	_blinkers = MultiMesh.new()
-	_blinkers.transform_format = MultiMesh.TRANSFORM_3D
-	var lamp := BoxMesh.new()
-	lamp.size = Vector3(0.13, 0.1, 0.1)
-	lamp.material = g.mat("warn", 2.6)
-	_blinkers.mesh = lamp
-	_blinkers.instance_count = COUNT * 4   # (front and back, each side: hazards light all four)
-	_blinkers.custom_aabb = box
-	for k in range(COUNT * 4):
-		_blinkers.set_instance_transform(k, Transform3D(Basis(), Vector3(0, -500, 0)))
-	var bmi := MultiMeshInstance3D.new()
-	bmi.multimesh = _blinkers
-	bmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	g.world.add_child(bmi)
+	# (the indicators are in every vehicle's own lamps, in the car shader: the boxes they were
+	# -- one more draw -- went)
 	# a soft patch under each car, for when the real shadows are off (g._set_blobs)
 	var sm := MultiMesh.new()
 	sm.transform_format = MultiMesh.TRANSFORM_3D
@@ -2133,19 +2120,6 @@ func draw(f: float) -> void:
 		if _blobs.visible:
 			var cs: Vector2 = CORNERS.get(c.kind, Vector2(0.9, 2.25))
 			_blobs.multimesh.set_instance_transform(i, xf * Transform3D(Basis.from_scale(Vector3(cs.x * 2.0 + 0.8, 1.0, cs.y * 2.0 + 1.0)), Vector3(0, 0.02, 0)))
-		# the indicators of a bus, a truck, a scooter: lamps of their own (a car's are its lamps'
-		# amber, in the car shader); the car's right is its -X
-		var cn: Vector2 = CORNERS.get(c.kind, Vector2(0.9, 2.25))
-		var boxed := c.kind == "bus" or c.kind == "truck" or c.kind == "moto"
-		for sd in range(2):   # (the blink's side; hazards (2): both)
-			var on := lit and boxed and (c.blink == 2 or sd == 0)
-			if on:
-				var x := (cn.x - 0.04) * (-float(c.blink) if c.blink != 2 else (1.0 if sd == 0 else -1.0))
-				_blinkers.set_instance_transform(i * 4 + sd * 2, xf * Transform3D(Basis(), Vector3(x, 0.72, cn.y)))
-				_blinkers.set_instance_transform(i * 4 + sd * 2 + 1, xf * Transform3D(Basis(), Vector3(x, 0.86, -cn.y)))
-			else:
-				_blinkers.set_instance_transform(i * 4 + sd * 2, Transform3D(Basis(), Vector3(0, -500, 0)))
-				_blinkers.set_instance_transform(i * 4 + sd * 2 + 1, Transform3D(Basis(), Vector3(0, -500, 0)))
 	_door.visible = door_on
 
 ## a car's instance data for the car shader (CAR_SHADER's notes): its paint, each channel
@@ -2165,9 +2139,6 @@ func _hide_or_show(i: int) -> void:
 	var c: Car = cars[i]
 	if not c.alive:
 		(_mms[c.kind] as MultiMesh).set_instance_transform(i, Transform3D(Basis(), Vector3(0, -500, 0)))
-		if _blinkers != null:
-			for k in range(4):
-				_blinkers.set_instance_transform(i * 4 + k, Transform3D(Basis(), Vector3(0, -500, 0)))
 		if _beams != null:
 			_beams.multimesh.set_instance_transform(i, Transform3D(Basis(), Vector3(0, -500, 0)))
 		if _blobs != null:

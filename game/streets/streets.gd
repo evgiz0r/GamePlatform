@@ -125,7 +125,7 @@ const PEOPLE := ["Casual_Male", "Casual_Female", "Casual2_Male", "Casual2_Female
 ## tall people, one reason the scale felt off (tests/scale_check.gd)
 const ADULT_LO := 1.55
 const ADULT_HI := 1.85
-const WALKERS := 18
+const WALKERS := 24
 const CHATTERS := 8
 const PEOPLE_RANGE := 150.0
 const PEOPLE_SEEN := 90.0            ## people further than this are not drawn or animated
@@ -9331,6 +9331,19 @@ func _lamp(cm: CarMesh, low: PackedVector2Array, hw: float, cx: float, cy: float
 		cm.tri(grid[0][k], grid[0][k + 1], grid[1][k + 1], out)
 		cm.tri(grid[0][k], grid[1][k + 1], grid[1][k], out)
 
+## a flat lamp w x h at c facing +Z (front) or -Z, with a car lamp's UV (x 0 inner to 1
+## outer, y 0 low to 1 high) and UV2 x 1: drawn as a car's lamps, indicators and all (a bus's,
+## a truck's box's)
+func _lamp_quad(cm: CarMesh, c: Vector3, w: float, h: float, front: bool, col: Color) -> void:
+	var s := 1.0 if front else -1.0
+	var out := Vector3(0, 0, s)
+	var q: Array = []
+	for corner: Vector2 in [Vector2(-0.5, -0.5), Vector2(0.5, -0.5), Vector2(0.5, 0.5), Vector2(-0.5, 0.5)]:
+		var u := 0.5 + corner.x * signf(c.x if c.x != 0.0 else 1.0)
+		q.append(cm.vert(c + Vector3(corner.x * w, corner.y * h, 0.0), out, col, Vector2(u, corner.y + 0.5), Vector2(1, 0)))
+	cm.tri(q[0], q[1], q[2], out)
+	cm.tri(q[0], q[2], q[3], out)
+
 ## a tyre round the X axis at c, its outer side facing `side` (+1/-1): tread, sidewall, and the
 ## rim (UV: the disc's own -1..1, for the shader's spokes)
 func _wheel(cm: CarMesh, c: Vector3, r: float, side: float, tyre: Color, rim: Color, half := 0.11,
@@ -9473,14 +9486,20 @@ func _bus_mesh() -> ArrayMesh:
 	for sx: float in [-1.0, 1.0]:
 		_box(tb, Vector3(sx * (hw + 0.12), 2.15, hl - 0.25), Vector3(0.06, 0.4, 0.1))
 	cm.add_buf(tb, trim)
-	# lights low on the front, tall ones at the back; a plate
+	# lights low on the front, tall ones at the back (a car's lamps: the indicators in them),
+	# a repeater on each side behind the front door
 	var lamps := Buf.new()
 	var tails := Buf.new()
+	var reps := Buf.new()
 	for sx: float in [-1.0, 1.0]:
-		_box(lamps, Vector3(sx * (hw - 0.45), 0.62, hl + 0.01), Vector3(0.36, 0.14, 0.03))
-		_box(tails, Vector3(sx * (hw - 0.22), 1.0, -hl - 0.01), Vector3(0.2, 0.42, 0.03))
-	cm.add_buf(lamps, Color(_tone["tank"], 0.1))
-	cm.add_buf(tails, Color(_tone["tank"], 0.0))
+		_box(lamps, Vector3(sx * (hw - 0.45), 0.62, hl + 0.004), Vector3(0.36, 0.14, 0.01))
+		_box(tails, Vector3(sx * (hw - 0.22), 1.0, -hl - 0.004), Vector3(0.2, 0.42, 0.01))
+		_lamp_quad(cm, Vector3(sx * (hw - 0.45), 0.62, hl + 0.012), 0.36, 0.14, true, Color(_tone["tank"], 0.1))
+		_lamp_quad(cm, Vector3(sx * (hw - 0.22), 1.0, -hl - 0.012), 0.2, 0.42, false, Color(_tone["tank"], 0.0))
+		_box(reps, Vector3(sx * (hw + 0.012), 1.0, hl - 2.2), Vector3(0.02, 0.07, 0.16))
+	cm.add_buf(lamps, Color(_tone["cartrim"], 0.5))
+	cm.add_buf(tails, Color(_tone["cartrim"], 0.5))
+	cm.add_buf(reps, Color(_tone["tank"], 0.1), Vector2(2, 0))
 	for wz: float in [wheels.x, -wheels.x]:
 		for sx: float in [-1.0, 1.0]:
 			_wheel(cm, Vector3(sx * (hw - 0.2), wheels.y, wz), wheels.y, sx, Color(_tone["tyre"], 0.3), Color(_tone["rim"], 0.4), 0.16)
@@ -9513,6 +9532,12 @@ func _moto_mesh(rider := true) -> ArrayMesh:
 	cm.add_buf(tb, trim)
 	_blobm(cm, Vector3(0, 0.98, 0.57), Vector3(0.07, 0.06, 0.03), Color(_tone["tank"], 0.1), 8, 4)
 	_blobm(cm, Vector3(0, 0.62, -0.84), Vector3(0.07, 0.04, 0.03), Color(_tone["tank"], 0.0), 8, 4)
+	# indicators either side, front and back (CAR_SHADER's repeaters: amber, lit as it blinks)
+	var ib := Buf.new()
+	for sx: float in [-1.0, 1.0]:
+		_box(ib, Vector3(sx * 0.17, 0.95, 0.56), Vector3(0.05, 0.035, 0.035))
+		_box(ib, Vector3(sx * 0.13, 0.64, -0.82), Vector3(0.05, 0.035, 0.035))
+	cm.add_buf(ib, Color(_tone["tank"], 0.1), Vector2(2, 0))
 	# the rider, leaning a little to the bars: a torso, arms bent at the elbow, knees up
 	if rider:
 		_moto_rider(cm, jacket, legs, helmet)
@@ -9550,6 +9575,9 @@ func _truck_mesh() -> ArrayMesh:
 		for hy: float in [1.3, 2.9]:
 			_box(seam, Vector3(sx * 1.05, hy, -3.385), Vector3(0.1, 0.06, 0.02))
 	cm.add_buf(seam, Color(_tone["cartrim"], 0.5))
+	# its tail lights on the box's back (the cab's own are behind the box), a car's lamps
+	for sx: float in [-1.0, 1.0]:
+		_lamp_quad(cm, Vector3(sx * 0.9, 0.82, -3.4), 0.34, 0.16, false, Color(_tone["tank"], 0.0))
 	var am := cm.mesh(_car_material())
 	am.custom_aabb = am.get_aabb().grow(0.1)
 	_car_meshes["truck"] = am
@@ -9636,6 +9664,9 @@ const BATCH_KIT_VERTS := 200
 const TONE_SHADER := """
 shader_type spatial;
 render_mode cull_back;
+uniform int gone_n = 0;   // road signs bent by the car (_bend_sign): hidden here, a bent copy drawn
+uniform vec4 gone[12];    // ... x, z of the pole, from what height, to what height
+uniform float gone_r[12]; // ... and how far out its plate reaches
 uniform vec4 tones[64] : source_color;
 uniform vec4 tone_fx[64];
 uniform float textured = 1.0;
@@ -9682,6 +9713,14 @@ float noise(vec2 p) {
 }
 void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	for (int i = 0; i < gone_n; i++) {
+		// what stands round a bent sign's pole, from knee height to its top: squashed onto
+		// its stub (the pole's foot is left; a merged batch cannot leave one sign out)
+		if (distance(wpos.xz, gone[i].xy) < gone_r[i] && wpos.y > gone[i].z && wpos.y < gone[i].w) {
+			wpos = vec3(gone[i].x + (wpos.x - gone[i].x) * 0.05, gone[i].z, gone[i].y + (wpos.z - gone[i].y) * 0.05);
+			VERTEX = (inverse(MODEL_MATRIX) * vec4(wpos, 1.0)).xyz;
+		}
+	}
 	wnrm = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 	wup = wnrm.y;
 }
@@ -12542,9 +12581,12 @@ func _build_street_signs() -> void:
 			plates[kind] = []
 		var gy := _h(p)
 		# a third bigger than life: on a screen, at driving distance, life-size is a speck
-		(plates[kind] as Array).append(Transform3D(facing * Basis.from_scale(Vector3.ONE * SIGN_SCALE), Vector3(p.x, gy + h, p.y)))
-		poles.append(Transform3D(Basis.from_scale(Vector3(1, h / 2.2, 1)), Vector3(p.x, gy + h * 0.5, p.y)))
+		var plate_xf := Transform3D(facing * Basis.from_scale(Vector3.ONE * SIGN_SCALE), Vector3(p.x, gy + h, p.y))
+		var pole_xf := Transform3D(Basis.from_scale(Vector3(1, h / 2.2, 1)), Vector3(p.x, gy + h * 0.5, p.y))
+		(plates[kind] as Array).append(plate_xf)
+		poles.append(pole_xf)
 		_add_post(p, 0.06)
+		_signs_at[_posts.size() - 1] = [kind, plate_xf, pole_xf]   # (one the car can bend: _bend_sign)
 		if kind in ["noentry", "turn_l", "turn_r"]:   # (for tests: which way each one faces)
 			_planted.append([kind, p, Vector2((facing * Vector3.BACK).x, (facing * Vector3.BACK).z)])
 	var toward := func(dir: Vector2) -> Basis: return Basis(Vector3.UP, atan2(-dir.x, -dir.y))
@@ -13951,7 +13993,7 @@ func _tones() -> void:
 		"wall6": ink.lerp(alt, 0.34),
 		# the old blocks' sand render: the stone's beige, deeper toward the yellow, a touch of
 		# red, dulled (from the stone and the peach plaster it read grey-beige; the film's is tan)
-		"wall7": ink.lerp(wn, 0.38).lerp(alt, 0.06).lerp(wn, 0.26).lerp(Palette.col("hazard"), 0.1) * 0.85,
+		"wall7": ink.lerp(wn, 0.38).lerp(alt, 0.06).lerp(wn, 0.22).lerp(Palette.col("hazard"), 0.14) * 0.83,
 		"glass2": alt.lerp(pl, 0.55),
 		"glass3": alt.lerp(fr, 0.45),
 		"glass4": ink.lerp(alt, 0.45).lerp(pl, 0.1),
@@ -16425,6 +16467,19 @@ func _spawn_people() -> void:
 			w["pram"] = true
 			w["carry"] = true
 			w["speed"] = _people_rng.randf_range(1.0, 1.3)
+		# two walking together, side by side (about four in ten people on a street are with
+		# someone): the second keeps to the first's line, pace and turns (_walk_beside)
+		var lead_i := i - 1
+		if i % 4 == 1 and not w.has("dog") and not w.has("pram") and not (_walkers[lead_i] as Dictionary).has("dog") \
+				and not (_walkers[lead_i] as Dictionary).has("pram"):
+			var lw: Dictionary = _walkers[lead_i]
+			w["with"] = lead_i
+			w["side"] = 1.0 if _people_rng.randf() < 0.5 else -1.0
+			w["speed"] = lw["speed"]
+			lw["mate"] = a.get_instance_id()
+			_walkers.append(w)
+			a.visible = false
+			continue
 		_walkers.append(w)
 		_place_walker(w, true)
 	for i in range(CHATTERS):
@@ -16512,7 +16567,9 @@ func _place_walker(w: Dictionary, anywhere: bool) -> void:
 		var ang := _people_rng.randf() * TAU
 		if not anywhere and absf(_v) > 2.0:
 			ang = _yaw + _people_rng.randf_range(-0.9, 0.9)
-		var d := _people_rng.randf_range(25.0 if anywhere else PEOPLE_SEEN + 8.0, PEOPLE_RANGE * 0.9)
+		# (anywhere out of view: past where people are drawn, behind you, or behind a block --
+		# from 98 m only, the street round you stayed empty until people walked the whole way in)
+		var d := _people_rng.randf_range(25.0 if anywhere else 22.0, PEOPLE_SEEN + 6.0)
 		var hit := _nearest_seg(_pos + Vector2(cos(ang), sin(ang)) * d, 40.0, true, true)
 		if hit.is_empty():
 			continue
@@ -16541,8 +16598,15 @@ func _place_walker(w: Dictionary, anywhere: bool) -> void:
 		if cum[cum.size() - 1] < 8.0:
 			continue
 		var s0 := _people_rng.randf() * cum[cum.size() - 1]
-		if not anywhere and not _unseen(_along(line, cum, s0)):
-			continue   # never appear in view: only where nobody is drawn (or behind you)
+		if not anywhere:   # never appear in view: a few spots along the piece, the first out of sight
+			var found := false
+			for _k in range(4):
+				if _spawn_ok(_along(line, cum, s0)):
+					found = true
+					break
+				s0 = _people_rng.randf() * cum[cum.size() - 1]
+			if not found:
+				continue
 		w["line"] = line
 		w["cum"] = cum
 		w["s"] = s0
@@ -16674,6 +16738,97 @@ func _walk_on(w: Dictionary, end: Vector2, fw: Vector2) -> bool:
 	w["dir"] = 1.0
 	w["cross"] = cum[1]   # (the step over: on the asphalt's level, not the pavement's)
 	return true
+
+## the sideways place on the pavement a walker keeps (see the walker tick): `cur` if it is
+## clear 1, 2 and 3 m ahead, else the clear one nearest it (0.2 m steps, 0.8 m either way)
+func _walk_lane(line: PackedVector2Array, cum: PackedFloat32Array, s: float, dir: float, cur: float) -> float:
+	var total := cum[cum.size() - 1]
+	var probes: Array = []
+	for k: float in [1.0, 2.0, 3.0]:
+		var at := _along(line, cum, clampf(s + dir * k, 0.0, total))
+		var nx := _along(line, cum, clampf(s + dir * (k + 0.5), 0.0, total)) - at
+		if nx.length_squared() < 0.0001:
+			continue
+		var fw := nx.normalized()
+		probes.append([at, Vector2(-fw.y, fw.x)])
+	var clear := func(off: float) -> bool:
+		for pr: Array in probes:
+			var q: Vector2 = (pr[0] as Vector2) + (pr[1] as Vector2) * off
+			if _push_out(q, 0.32, true, false) != Vector2.ZERO or _car_box_push(q, 0.32) != Vector2.ZERO:
+				return false
+		return true
+	if clear.call(cur):
+		return cur
+	var best := cur
+	var bd := INF
+	for i in range(-4, 5):
+		var off := float(i) * 0.2
+		if absf(off - cur) < bd and clear.call(off):
+			bd = absf(off - cur)
+			best = off
+	return best
+
+## out of anyone else's 0.55 m: half the overlap, as two people brushing past each other do
+## (they stepped aside for each other but nothing kept them apart: some walked through)
+func _people_apart(p: Vector2, me: int, mate: int) -> Vector2:
+	var push := Vector2.ZERO
+	for k in range(_people_at.size()):
+		var who := _people_who[k]
+		if who == me or who == mate or who == 0:
+			continue
+		var d := p - _people_at[k]
+		var l := d.length()
+		if l < 0.55 and l > 0.001:
+			push += d / l * (0.55 - l) * 0.5
+	return push
+
+## The second of two walking together: beside the first (`side`: its left or right), at its
+## pace on its line, a step behind where there is no room beside them; seen when the first is.
+func _walk_beside(w: Dictionary, dt: float) -> void:
+	var a: Actor3D = w["actor"]
+	var lw: Dictionary = _walkers[int(w["with"])]
+	var la: Actor3D = lw["actor"]
+	var line: PackedVector2Array = lw["line"]
+	if not la.visible or line.size() < 2:
+		a.visible = false
+		return
+	var cum: PackedFloat32Array = lw["cum"]
+	var total := cum[cum.size() - 1]
+	var dir := float(lw["dir"])
+	var s := clampf(float(lw["s"]) - dir * 0.2, 0.0, total)
+	var lp := Vector2(la.position.x, la.position.z)
+	var p := _along(line, cum, s)
+	var ahead := _along(line, cum, clampf(s + dir * 0.5, 0.0, total)) - p
+	if ahead.length_squared() < 0.0001:
+		ahead = Vector2(cos(float(lw.get("yaw", 0.0))), sin(float(lw.get("yaw", 0.0))))
+	var fw := ahead.normalized()
+	var right := Vector2(-fw.y, fw.x)
+	# beside the first, wherever it stepped to (its lat), or a step behind it
+	var q := lp - fw * 0.15 + right * float(w["side"]) * dir * 0.62   # (the same side as they turn back)
+	# single file where there is no room beside them, or to pass you on foot (the first makes
+	# room for you; the second, beside it, walked into you)
+	var you_near := _walking and (_pos - lp).dot(fw) > -1.0 and (_pos - lp).length() < 4.5
+	if you_near or _push_out(q, 0.28, true, false) != Vector2.ZERO or _car_box_push(q, 0.28) != Vector2.ZERO:
+		q = lp - fw * 0.95
+	var was_seen := a.visible
+	var at: Vector2 = w.get("at", q) if was_seen else q
+	if at.distance_to(q) > 2.5:
+		at = q   # (the first put down somewhere new, unseen: with them at once, not sliding there)
+	at = at.lerp(q, 1.0 - exp(-dt * 5.0))
+	at += _people_apart(at, a.get_instance_id(), la.get_instance_id())
+	if _walking and at.distance_to(_pos) < 0.65:   # (never into you: as the first, _people_tick)
+		at = _pos + (at - _pos).normalized() * 0.65 if at.distance_to(_pos) > 0.01 else at - fw * 0.65
+	for _pass in range(2):
+		at += _car_box_push(at, 0.25)
+		at += _push_out(at, 0.25, true, false)
+	w["at"] = at
+	a.position = Vector3(at.x, _walk_y(at) if s < float(lw.get("cross", 0.0)) else _h(at) + _pave_top(), at.y)
+	var yaw: float = lw.get("yaw", atan2(fw.y, fw.x))
+	a.face(Vector3(cos(yaw), 0, sin(yaw)))
+	if not was_seen:
+		a.play("Walk_Carry" if w["carry"] else "Walk", true, float(w["speed"]) / 1.35)
+		a.visible = true
+	_people_awake(a, at)
 
 ## People by the cafe tables near the car, standing about. Re-seated at the nearest tables
 ## every second and a half, they jumped from table to table in plain view as the car moved;
@@ -16932,6 +17087,28 @@ func _place_still(list: Array, spots: Array, how: String) -> void:
 			a.face(Vector3(face.x, 0, face.y))
 		a.visible = true
 
+## somewhere a walker can be put down or taken away unseen: _unseen's, or 20 m or more off
+## and behind a building from the eye (round a corner, the far side of a block)
+func _spawn_ok(p: Vector2) -> bool:
+	if _unseen(p):
+		return true
+	if cam == null or p.distance_to(_pos) < 20.0:
+		return false
+	var eye := Vector2(cam.global_position.x, cam.global_position.z)
+	return _behind_building(eye, p)
+
+## a building stands across the sight line from eye to p (sampled every 1.5 m)
+func _behind_building(eye: Vector2, p: Vector2) -> bool:
+	var d := eye.distance_to(p)
+	var k := 2.0
+	while k < d - 1.5:
+		var q := eye.lerp(p, k / d)
+		for i: int in _near(_bld_hash, q, 0.1, BLD_CELL):
+			if _bld_solid[i] != 0 and (_bld_box[i] as Rect2).has_point(q) and Geometry2D.is_point_in_polygon(q, _blds[i]):
+				return true
+		k += 1.5
+	return false
+
 ## somewhere nobody would see a person appear or go: beyond the distance people are drawn
 ## at, or well behind the car (and its camera)
 ## -- behind by the camera's own look as well as the body's: on foot the head turns from the
@@ -16987,6 +17164,9 @@ func _people_tick(dt: float) -> void:
 	var placed := false
 	for w: Dictionary in _walkers:
 		var a: Actor3D = w["actor"]
+		if w.has("with"):
+			_walk_beside(w, dt)
+			continue
 		var line: PackedVector2Array = w["line"]
 		if line.size() < 2:   # found no place last time: look again now and then
 			w["retry"] = float(w.get("retry", 0.0)) - dt
@@ -16998,6 +17178,12 @@ func _people_tick(dt: float) -> void:
 		var cum: PackedFloat32Array = w["cum"]
 		var total := cum[cum.size() - 1]
 		var s: float = w["s"] + (0.0 if w.get("hold_me", false) else float(w["dir"]) * float(w["speed"]) * dt)
+		# waiting for you to pass and you do not: after a few seconds, back the way they came
+		w["held"] = float(w.get("held", 0.0)) + dt if w.get("hold_me", false) else 0.0
+		if float(w["held"]) > 4.0:
+			w["dir"] = -float(w["dir"])
+			w["held"] = 0.0
+			w.erase("me_side")
 		w["hold_me"] = false   # (set again below while you are still in the way)
 		if s < 0.0 or s > total:   # the end of the stretch: on over the side street, or round the corner
 			var at_end := line[0] if s < 0.0 else line[line.size() - 1]
@@ -17010,7 +17196,7 @@ func _people_tick(dt: float) -> void:
 				cum = w["cum"]
 				total = cum[cum.size() - 1]
 				s = 0.0
-			elif _unseen(at_end):   # nowhere on from here, out of sight: in at a door, someone else out of one
+			elif _spawn_ok(at_end):   # nowhere on from here, out of sight: in at a door, someone else out of one
 				placed = true
 				_place_walker(w, false)
 				continue
@@ -17027,16 +17213,22 @@ func _people_tick(dt: float) -> void:
 		if ahead != Vector2.ZERO:
 			var fw := ahead.normalized()
 			var right := Vector2(-fw.y, fw.x)
-			var want := 0.0
-			var block := _push_out(p + fw * 1.3, 0.35, true, false)   # (0.45 felt the house fronts at the pavement's back and drifted them kerbwards)
-			if block != Vector2.ZERO:
-				want += clampf(block.dot(right) * 2.5, -0.8, 0.8)
+			# their place across the pavement, planned a few steps on: the sideways offset from
+			# their line that is clear 1, 2 and 3 m ahead, the nearest to where they walk now,
+			# kept while it stays clear (looked at again every 0.4 s). A step round each post as
+			# it came 1.3 m ahead and back after it had them weaving round every tree in a row.
+			w["plan_t"] = float(w.get("plan_t", 0.0)) - dt
+			if float(w["plan_t"]) <= 0.0:
+				w["plan_t"] = 0.4
+				w["lane"] = _walk_lane(line, cum, s, float(w["dir"]), float(w.get("lane", 0.0)))
+			var want: float = w.get("lane", 0.0)
 			# someone ahead or alongside within a shoulder's width: a step away from their side
 			# until past them (only "ahead" let them drift back as they drew level), the right
 			# if they are dead ahead
 			var me := a.get_instance_id()
+			var mate: int = w.get("mate", -1)
 			for k in range(_people_at.size()):
-				if _people_who[k] == me:
+				if _people_who[k] == me or _people_who[k] == mate:
 					continue
 				var rel := _people_at[k] - p
 				var fore := rel.dot(fw)
@@ -17049,7 +17241,7 @@ func _people_tick(dt: float) -> void:
 					# the other (a walk along the parked cars: stepping away from you was
 					# stepping into a car, pushed back out onto you -- 0.32 m), keeping the
 					# side once picked while it stays clear.
-					if fore > -0.8 and fore < 7.0 and absf(sr) < 1.15:
+					if fore > -2.0 and fore < 7.0 and absf(sr) < 1.15:   # (kept till 2 m past you: back into their place at once, one cut in just in front of you)
 						var near_side := sr - 1.15 if sr >= 0.05 else sr + 1.15
 						var far_side := sr + 1.15 if sr >= 0.05 else sr - 1.15
 						var sides: Array = [near_side, far_side]
@@ -17069,10 +17261,13 @@ func _people_tick(dt: float) -> void:
 										pick = step
 									break
 						w["me_side"] = signf(pick)
-						want += pick
+						# (the step out of your way instead of their planned place, not on top of it:
+						# a place planned 0.6 m one way took most of a 0.9 m step the other back, and
+						# one walked along beside you half a metre off for two seconds)
+						want += pick - float(w.get("lane", 0.0))
 						# no room to pass at all: they stop and let you by, as people do
 						w["hold_me"] = room < 0.6 and fore > 0.3 and fore < 3.5
-					elif fore < -0.8 or fore > 9.0:
+					elif fore < -2.0 or fore > 9.0:
 						w.erase("me_side")
 					continue
 				if fore > -0.6 and fore < 2.6:
@@ -17080,6 +17275,15 @@ func _people_tick(dt: float) -> void:
 						want += 0.8 if absf(sr) < 0.05 else -signf(sr) * (0.85 - absf(sr))
 			var lat: float = w.get("lat", 0.0)
 			lat = lerpf(lat, clampf(want, -0.9, 0.9), 1.0 - exp(-dt * 3.0))
+			# no further aside than there is room -- but for making room for you on foot: then
+			# up against the hedge, as people do (held back, they stood in your way)
+			var room_at := p + right * lat
+			if absf(lat) > 0.05 and not w.has("me_side") and (_push_out(room_at, 0.27, true, false) != Vector2.ZERO or _car_box_push(room_at, 0.27) != Vector2.ZERO):
+				for f: float in [0.75, 0.5, 0.25, 0.0]:
+					var q := p + right * lat * f
+					if f == 0.0 or (_push_out(q, 0.27, true, false) == Vector2.ZERO and _car_box_push(q, 0.27) == Vector2.ZERO):
+						lat *= f
+						break
 			w["lat"] = lat
 			p += right * lat
 		# a car coming at them on the pavement: step aside, towards the buildings
@@ -17097,6 +17301,9 @@ func _people_tick(dt: float) -> void:
 			if side.dot(to_car) > 0.0:
 				side = -side
 			p += side * dodge
+		p += _people_apart(p, a.get_instance_id(), int(w.get("mate", -1)))
+		if _walking and p.distance_to(_pos) < 0.6:   # (never into you: a filmed walk does not step aside)
+			p = _pos + (p - _pos).normalized() * 0.6 if p.distance_to(_pos) > 0.01 else p + Vector2(0.6, 0.0)
 		for _pass in range(2):   # (out of one parked car's post can be into its other)
 			p += _car_box_push(p, 0.25)
 			p += _push_out(p, 0.25, true, false)
@@ -17113,7 +17320,9 @@ func _people_tick(dt: float) -> void:
 		if w.has("dog") or w.has("pram"):
 			_companion(w, p)
 		_people_awake(a, p)
-		if p.distance_to(_pos) > PEOPLE_RANGE and not placed:
+		# past where people are drawn: brought back round you, out of sight (out at 150 m only,
+		# most of the street's people walked where nobody saw them)
+		if p.distance_to(_pos) > PEOPLE_SEEN + 12.0 and not placed:
 			placed = true
 			_place_walker(w, false)
 
@@ -18116,6 +18325,10 @@ func _collide() -> void:
 		_pos -= total
 		_knock(_knock_hit)
 		return
+	if _knock_hit >= 0 and absf(_v) > SIGN_BEND_V and _signs_at.has(_knock_hit):
+		_pos -= total
+		_bend_sign(_knock_hit)
+		return
 	_touch_t = 0.5
 	var n := total.normalized()
 	var right := Vector2(-fwd.y, fwd.x)
@@ -18278,6 +18491,98 @@ func _knock(pid: int) -> void:
 		_knock_back(_knocked.pop_front())
 	Probe.event("knocked", {"what": k[4], "kmh": int(speed * 3.6), "at": Vector2i(_pos)})
 
+## A road sign the car hits faster than SIGN_BEND_V is bent over at its foot, away from the
+## car, its plate with it. Signs are merged into the street's batches (TONE_SHADER: no draw
+## of their own), so the one hit is hidden there -- the shader squashes what stands within
+## its plate's reach of its pole between knee height and its top (`gone`, `gone_r`, up to
+## 12) -- and a bent copy,
+## its pole and its plate, is put in its place: two draws while it is down. Put back as the
+## knocked bins are (KNOCK_BACK_S, out of sight 70 m off).
+const SIGN_BEND_V := 4.0
+const SIGNS_BENT_MAX := 12
+var _signs_at := {}                  ## post index -> [kind, the plate's transform, the pole's]
+var _bent: Array = []                ## {id, sign, nodes, t}
+
+func _bend_sign(pid: int) -> void:
+	var sg: Array = _signs_at[pid]
+	_signs_at.erase(pid)
+	var r0: float = _post_r[pid]
+	_post_r[pid] = 0.0   # (not solid while it is down)
+	var plate_xf: Transform3D = sg[1]
+	var pole_xf: Transform3D = sg[2]
+	var foot := Vector3(pole_xf.origin.x, pole_xf.origin.y - pole_xf.basis.y.length() * 1.1, pole_xf.origin.z)
+	var f := _fwd() * signf(_v)
+	var way := Vector3(f.x, 0.0, f.y)
+	var axis := Vector3.UP.cross(way).normalized()
+	var bend := Basis(axis, deg_to_rad(50.0 + 25.0 * randf())) * Basis(Vector3.UP, randf_range(-0.3, 0.3))
+	var round_foot := func(xf: Transform3D) -> Transform3D:
+		return Transform3D(bend * xf.basis, foot + bend * (xf.origin - foot))
+	var nodes: Array = []
+	var pole := CylinderMesh.new()
+	pole.top_radius = 0.035
+	pole.bottom_radius = 0.035
+	pole.height = 2.2
+	pole.radial_segments = 6
+	pole.rings = 1
+	pole.material = _surface("pole")
+	for pair: Array in [[pole, pole_xf], [_street_sign_mesh(String(sg[0])), plate_xf]]:
+		var mi := MeshInstance3D.new()
+		mi.mesh = pair[0]
+		world.add_child(mi)
+		mi.global_transform = round_foot.call(pair[1])
+		nodes.append(mi)
+	# (how far the plate reaches from the pole, all of it: a street name's plate is 1.5 m wide,
+	# and hidden only to 0.8 m its ends stayed, stretched to the stub in a huge green triangle)
+	var ab: AABB = _street_sign_mesh(String(sg[0])).get_aabb()
+	var reach := maxf(maxf(absf(ab.position.x), absf(ab.end.x)), maxf(absf(ab.position.z), absf(ab.end.z))) * plate_xf.basis.x.length() + 0.15
+	_bent.append({"id": pid, "sign": sg, "nodes": nodes, "t": 0.0, "r": r0, "reach": maxf(reach, 0.3),
+		"gone": Vector4(foot.x, foot.z, foot.y + 0.35, plate_xf.origin.y + ab.end.y * plate_xf.basis.y.length() + 0.15)})
+	if _bent.size() > SIGNS_BENT_MAX:
+		_unbend(_bent.pop_front())
+	_gone_signs()
+	Audio.play("impact_metal", 0.1, -6.0)
+	shake3d(1.6)
+	_v *= 0.6
+	_sparks_at(foot + Vector3.UP * 0.6, -way + Vector3.UP * 0.4, 0.7)
+	Probe.event("knocked", {"what": "sign", "kmh": int(absf(_v) / 0.6 * 3.6), "at": Vector2i(_pos)})
+
+## put a bent sign back as it stood
+func _unbend(e: Dictionary) -> void:
+	for n: Node in e["nodes"]:
+		if is_instance_valid(n):
+			n.queue_free()
+	_post_r[int(e["id"])] = float(e["r"])
+	_signs_at[int(e["id"])] = e["sign"]
+
+## TONE_SHADER's list of the bent signs' places, to hide them in the batches
+func _gone_signs() -> void:
+	var g4: Array = []
+	var gr := PackedFloat32Array()
+	for e: Dictionary in _bent:
+		g4.append(e["gone"])
+		gr.append(float(e["reach"]))
+	while g4.size() < SIGNS_BENT_MAX:
+		g4.append(Vector4.ZERO)
+		gr.append(0.0)
+	_tone_mat().set_shader_parameter("gone", g4)
+	_tone_mat().set_shader_parameter("gone_r", gr)
+	_tone_mat().set_shader_parameter("gone_n", _bent.size())
+
+func _bent_tick(dt: float) -> void:
+	if _bent.is_empty():
+		return
+	var changed := false
+	for i in range(_bent.size() - 1, -1, -1):
+		var e: Dictionary = _bent[i]
+		e["t"] = float(e["t"]) + dt
+		var gp: Vector4 = e["gone"]
+		if float(e["t"]) > KNOCK_BACK_S and Vector2(gp.x, gp.y).distance_to(_pos) > 70.0:
+			_unbend(e)
+			_bent.remove_at(i)
+			changed = true
+	if changed:
+		_gone_signs()
+
 ## a bin or a recycling bin the car knocks aside (the assist does not brake for one)
 func _light_thing(hit: String) -> bool:
 	if not hit.begins_with("post "):
@@ -18296,6 +18601,7 @@ func _knock_back(e: Dictionary) -> void:
 			(e[n] as Node).queue_free()
 
 func _knock_tick(dt: float) -> void:
+	_bent_tick(dt)
 	if _knocked.is_empty():
 		return
 	for i in range(_knocked.size() - 1, -1, -1):
@@ -18602,7 +18908,7 @@ func _push_out(c: Vector2, r: float, posts: bool, cars := true, y := NAN) -> Vec
 			if d.length() < need:
 				push += d.normalized() * (need - d.length()) if d.length() > 0.001 else Vector2(need, 0)
 				_last_hit = "post %d" % i
-				if _knockable.has(i):
+				if _knockable.has(i) or _signs_at.has(i):
 					_knock_hit = i
 	if posts and _traffic != null and cars:
 		var tp := _traffic.push(c + push, r, y)

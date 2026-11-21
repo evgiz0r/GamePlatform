@@ -200,6 +200,40 @@ The ones most often touched, and the functions in them:
   `PLATE_GLYPHS`: the font is 18 glyphs now, read right to left as seen), lit at night;
   vertex alpha 0.58. tests/car_lights.gd (front, back, door, steer, taxi; day and night);
   street_goings prints the boarding.
+- **people walking with purpose** (the user: "they are so aimless, maybe make them walk
+  coherently first, i think still no collision and they walk through stuff"). Measured
+  first (`tests/people_watch.gd`: you on foot on Sirkin, 40 s): nobody inside anything solid
+  (posts are nearly everything on a pavement), but 2 walkers in 24 s -- a walker was only
+  ever put down 98 m+ away (`_place_walker`), so the street round you stayed empty until
+  people walked the whole way in. Now: put down 22-135 m off wherever unseen -- `_unseen`'s,
+  or behind a building from the eye (`_spawn_ok`, `_behind_building`: the sight line sampled
+  every 1.5 m against the footprints), at a few spots along the piece -- and taken away
+  the same way at a dead end; WALKERS 24 (was 18, +6 draws). Their place across the
+  pavement is planned 1-3 m ahead (`_walk_lane`, every 0.4 s: the offset clear at all three,
+  the nearest to now, kept while clear) instead of a step round each post 1.3 m ahead and
+  back (they wove round every tree). Kept apart (`_people_apart`: half the overlap of
+  anyone within 0.55 m, each tick). Two walking together (`with`/`mate`, `_walk_beside`:
+  i % 4 == 1 with the one before, not a dog's or a pushchair's -- 5 pairs of 24): beside
+  the first on its line, the same side as they turn back, a step behind where there is no
+  room, or to pass you on foot; seen with it, put down with it at once (sliding there,
+  they were 22 pops in walk_people). Walkers past PEOPLE_SEEN + 12 m are brought back round
+  you (were left out to 150 m: half the street's people walked where nobody was drawn).
+  With you on foot: the step out of your way replaces their planned place (added to it, a
+  place 0.6 m one way took most of a 0.9 m step back, and one walked half a metre beside
+  you for 2 s), kept till 2 m past you (one cut in just in front), up against a hedge if
+  need be (elsewhere a step aside is cut to the room there: `room_at`), never nearer than
+  0.6 m; waiting for you more than 4 s, back the way they came. tests/walk_people.gd counts
+  someone behind a building as unseen (`_behind_building`).
+- **signs bent by the car** (`_bend_sign`, SIGN_BEND_V 4 m/s): street signs are merged into
+  the batches, so the one hit is hidden in TONE_SHADER (`gone`/`gone_n`, up to 12: what
+  stands within 0.8 m of its pole from 0.35 m to its top is squashed onto a stub) and a bent
+  copy -- its pole and plate, 2 draws -- stands in its place, put back as the knocked bins
+  are. `_signs_at` (post -> kind, plate, pole) from `_build_street_signs`' plant. Slower than
+  4 m/s a sign still stops the car. tests/crash_things.gd drives at the nearest one.
+- **indicators in every vehicle's lamps**: the bus's front and tail lamps are car lamps now
+  (`_lamp_quad`: UV and UV2 x 1), with repeaters on its sides; the truck's tail lights on
+  its box's back (its cab's were hidden behind it); a scooter's four small amber repeaters.
+  Traffic's `_blinkers` boxes went (one draw).
 - **blocks' plaster by age** (`_med_plaster`, med towns): the city file's year (`yr`, 920
   of Givatayim's 6,243) and OSM colour (`col`, 63) pick a block's plaster: 1950-79 sand
   (most), before 1950 cream, 1980-99 beige, white or stone, 2000 on white, stone-clad or

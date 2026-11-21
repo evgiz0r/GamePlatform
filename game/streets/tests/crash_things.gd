@@ -1,6 +1,7 @@
 extends SceneTree
-## What breaks: the car driven at 30 km/h into the nearest bin and the nearest bollard
-## (are they knocked over / bent, is the car let through?), then at 50 km/h into a building
+## What breaks: the car driven at 30 km/h into the nearest bin, the nearest bollard and the
+## nearest road sign (are they knocked over / bent, is the car let through? the sign: hidden
+## in the batches, a bent copy in its place -- crash_sign_bent), then at 50 km/h into a building
 ## (sparks, glass on the road, a dent in the car), and after 35 s away from them, are they
 ## back? Prints what happened; shots crash_<what>.png in $OUT (a chase view at the moment).
 var g: Node
@@ -71,6 +72,7 @@ func _run() -> void:
 				g = n
 	await create_timer(1.0).timeout
 	var start: Vector2 = g._pos
+	var sign_at := Vector3.ZERO
 	g._assist = false   # (it brakes for what is ahead: here the point is to hit it)
 	print("knockable things: %d" % g._knockable.size())
 	for kind: String in ["tumble", "bend"]:
@@ -111,6 +113,39 @@ func _run() -> void:
 		var p: Vector2 = g._posts[pick]
 		var r := await _run_at(kind, p, pd, 8.5, 1.6)
 		print("%s at %s: knocked %d, slowest %.1f m/s, after %.1f m/s (8.5 in)" % [kind, p, r["knocked"], r["min_v"], r["end_v"]])
+	# the nearest road sign with a clear run at it (g._signs_at: bent over, _bend_sign)
+	var spick := -1
+	var sdir := Vector2.ZERO
+	var sbest := INF
+	for pid: int in g._signs_at:
+		var p: Vector2 = g._posts[pid]
+		if p.distance_to(start) >= sbest:
+			continue
+		var r0: float = g._post_r[pid]
+		g._post_r[pid] = 0.0
+		for ang in range(0, 360, 20):
+			var d := Vector2.from_angle(deg_to_rad(ang))
+			var clear := true
+			var s := 10.5
+			while s > 0.9:
+				if g._push_out(p - d * s, 0.95, true, false) != Vector2.ZERO:
+					clear = false
+					break
+				s -= 0.5
+			if clear:
+				spick = pid
+				sdir = d
+				sbest = p.distance_to(start)
+				break
+		g._post_r[pid] = r0
+	if spick < 0:
+		print("sign: none with a clear run")
+	else:
+		var sp: Vector2 = g._posts[spick]
+		var was: int = g._bent.size()
+		var r := await _run_at("sign", sp, sdir, 8.5, 1.6)
+		print("sign (%s) at %s: bent %d, slowest %.1f m/s, after %.1f m/s (8.5 in)" % [g._bent[g._bent.size() - 1]["sign"][0] if g._bent.size() > was else "-", sp, g._bent.size() - was, r["min_v"], r["end_v"]])
+		sign_at = Vector3(sp.x, g._h(sp), sp.y)
 	# a building, from 14 m at 14 m/s (as feel.gd finds one)
 	var found := false
 	for bi in range(g._blds.size()):
@@ -155,6 +190,11 @@ func _run() -> void:
 		g._sky_follow()
 		await create_timer(0.5).timeout
 		await _snap("crash_bent")
+	if sign_at != Vector3.ZERO:   # the bent sign, the batches' copy hidden
+		g.look_from(sign_at + Vector3(3.0, 2.0, 3.0), sign_at + Vector3(0, 0.9, 0))
+		g._sky_follow()
+		await create_timer(0.5).timeout
+		await _snap("crash_sign_bent")
 	if not g._glass.is_empty():   # the glass from the driver's height
 		var gp: Vector3 = (g._glass[0][0] as Node3D).get_aabb().get_center() if false else g._contact
 		g.look_from(gp + Vector3(2.5, 1.6, 2.5), gp - Vector3(0, 0.4, 0))
