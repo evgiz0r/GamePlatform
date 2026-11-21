@@ -1465,9 +1465,30 @@ func _load_text() -> String:
 ## the view and the shadow pass together. In a browser each draw call costs the main thread a
 ## trip through WebGL's checks, so many draws hold a frame back whatever the quality level.
 func _gpu_line() -> String:
-	return "graphics: %s · %d draws · %d k triangles" % [RenderingServer.get_video_adapter_name(),
+	return "graphics: %s · %d draws · %d k triangles" % [_gpu_name(),
 		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
 		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME) / 1000]
+
+## The graphics chip's own name. A browser tells WebGL only "WebKit WebGL"; the real one
+## (and on Windows "Direct3D11") comes from the debug-renderer extension, asked of a context
+## made for it and dropped again.
+static var _gpu_name_got := ""
+static func _gpu_name() -> String:
+	if _gpu_name_got != "":
+		return _gpu_name_got
+	_gpu_name_got = RenderingServer.get_video_adapter_name()
+	if OS.has_feature("web"):
+		var v = JavaScriptBridge.eval("""(() => { try {
+			const gl = document.createElement('canvas').getContext('webgl2');
+			const e = gl && gl.getExtension('WEBGL_debug_renderer_info');
+			const r = e ? String(gl.getParameter(e.UNMASKED_RENDERER_WEBGL)) : '';
+			const l = gl && gl.getExtension('WEBGL_lose_context');
+			if (l) l.loseContext();
+			return r;
+		} catch (x) { return ''; } })()""", true)
+		if v != null and str(v) != "":
+			_gpu_name_got = str(v)
+	return _gpu_name_got
 
 ## ---- the browser's shader compiling, counted (web only) ----------------------------------
 ## A browser compiles a shader program the first time something is drawn with it (the
