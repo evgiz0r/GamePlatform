@@ -262,6 +262,12 @@ not scheduled. Read it before pitching features, so you do not re-pitch what is 
 there. When someone mentions an idea and says it is for later, offer to add it to that
 file rather than letting it disappear into the chat.
 
+Ideas for one game go in that game's own `GAME.md`, under a "Later (said, not built)"
+heading, in the person's words -- not in `IDEAS.md`, so they live and die with the game's
+folder. Add one there as soon as it is said, without waiting to be asked: the person
+should never have to mention an idea twice. Read that list before pitching features for
+the game, and when one gets built, take its line out.
+
 ## Running in a remote session
 
 Claude Code on the web starts from a bare container. `.claude/hooks/session-start.sh`

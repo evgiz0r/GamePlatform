@@ -1449,9 +1449,6 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
 
 ## Later (said, not built)
 
-- Bridges and tunnels in the real towns: working out each deck's heights from OSM's tags
-  and the ground (the test town has them already), then an interchange you drive over and
-  under.
 - Not just driving: the same baked city could be walked, or used by another game.
 - Crashes, what is still to come: a sign post bent, a fence panel or a hedge pushed in, a
   scrape mark on the wall the car rubbed.
@@ -1472,3 +1469,19 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   the player's car (driving or autodrive) that turns each light it comes up to green its
   way, through the usual change for the cross street (amber, red) so the traffic there stops
   as it would.
+- Disasters on the real city: "like simcity hazards, but now we have the graphics so it
+  can be cool on steroids, like aliens". Pick a disaster and where it strikes, then watch it
+  from the zoomed-out view or live through it in the car or on foot. Aliens first, as asked:
+  ships over the towers, beams lifting cars off the road, walkers striding down a boulevard.
+  Then ones these towns know: an earthquake (the view shakes, facades crack, rubble in the
+  road, cars stop dead), a fire in a block (smoke, fire engines working through traffic),
+  the Ayalon flooding as it does in a wet winter (water rising in the low streets, read from
+  the baked ground's heights), a sandstorm's yellow haze, a monster walking between the real
+  towers. The city reacts: drivers swerve, brake or leave their cars, people run, sirens,
+  emergency vehicles on their way. Already here to build on: things that break in a crash
+  (bins, bollards, glass, dents, sparks), night and after-rain, the sounds, traffic that
+  plans routes, people who keep clear, the zoom-out view, real building heights and ground.
+  New: each disaster's look and sound, a building that breaks (buildings are merged into
+  big meshes, so one has to be taken out of its batch first), panic for people and drivers,
+  emergency services, and staying smooth on a phone. Our own disasters, not a copy of any
+  one game's.
