@@ -23,6 +23,8 @@ extends SceneTree
 ##   held by nothing -- standing 10 s+ with no named reason: what holds it (and whatever
 ##     holds that, down a queue) is the speed limit, a curve, a car that is gone, or a loop
 ##     of cars each waiting for the next
+##   gave way to a car far off -- a named reason that is wrong: 3 s into giving way, the car
+##     waited for is 30 m+ from the junction and 6 s+ from it at its speed
 ## Per minute driven, so runs of different lengths compare; and the worst places, each with
 ## the drive log of the moments before (user://drive_logs/exam-*.json: draw them with
 ## tests/drive_log_map.py). The loop: run it, look at the top of the list, fix, run it again.
@@ -38,7 +40,8 @@ const CHECKS := ["check: bodies overlapping, traffic", "check: bodies overlappin
 	"check: traffic body into a building", "check: traffic body into a wall", "check: traffic body into a post",
 	"check: autodrive body into a building", "check: autodrive body into a wall", "check: autodrive body into a post",
 	"check: over the line at a red, traffic", "check: over the line at a red, autodrive",
-	"check: autodrive pushing 3 s+", "check: held by nothing 10 s+, traffic", "check: held by nothing 10 s+, autodrive"]
+	"check: autodrive pushing 3 s+", "check: held by nothing 10 s+, traffic", "check: held by nothing 10 s+, autodrive",
+	"check: gave way to a car 6 s+ off, autodrive"]
 ## what may hold a car standing still (anything else -- the limit, a curve -- is nothing)
 const NAMED := ["light", "zebra", "people", "sign", "junction", "player", "bus stop", "squeezing past",
 	"blocked", "choice", "turning", "backing", "pushing", "delivery"]   # (delivery: a van double-parked to unload)
@@ -61,6 +64,25 @@ func _count(k: String, n := 1) -> void:
 	counts[k] = int(counts.get(k, 0)) + n
 
 var _pending: Array = []
+
+## Giving way for a reason that is named but wrong: 3 s into a wait at a junction, the car it
+## waits for is 30 m+ from the junction and more than 6 s from it at its speed -- nothing a
+## driver would wait for. (Autodrive gave a roundabout's right of way to cars still coming up
+## other arms: 11 s for a motorbike 78 m off at Givatayim's Geisler square. "held by nothing"
+## missed it: the wait had a name, "junction".)
+func _give_far() -> void:
+	var i: int = g._ap_give_car
+	if i < 0 or i >= g._traffic.cars.size():
+		return
+	var c = g._traffic.cars[i]
+	if not c.alive:
+		return
+	var d := INF
+	for n: int in g._ap_giving:
+		d = minf(d, c.pos.distance_to(g._nodes[n]))
+	if d > 30.0 and d / maxf(c.v, 1.0) > 6.0:
+		_count("check: gave way to a car 6 s+ off, autodrive")
+		_incident("gave way to a car far off", g._pos, "a %s %.0f m from the junction at %.1f m/s" % [c.kind, d, c.v])
 
 func _incident(what: String, at: Vector2, detail: String, save := true) -> void:
 	if _watch_r > 0.0:
@@ -223,6 +245,8 @@ func _drive(secs: float) -> void:
 		# it takes a smaller gap after 12 s (AP_GIVE_PATIENT), so 30 s is a stall after all
 		if absf(g._v) < 0.3 and held == "junction" and not g._ap_giving.is_empty():
 			giving += dt
+			if absf(giving - 3.0) < dt * 0.5:
+				_give_far()
 			if absf(giving - 8.0) < dt * 0.5:
 				_count("autodrive: gave way 8 s+")
 			if absf(giving - 30.0) < dt * 0.5:

@@ -22,6 +22,8 @@ merge, re-check (`tools/check_script.sh`, a playtest, the tests below), never fo
 | `crowds.gd` | people where the street walkers never go: shoppers down a market's walkway stopping at its stalls (lines from `landmarks.gd`'s `_market_line`), walkers and joggers along a beach's wet sand and people standing in the sea (lines and spots from `beach.gd`'s `_people_lines`); pools made the first time a line is near, ticked from `_people_tick` (see "Crowds") |
 | `sites.gd` | building sites from a town's own map (the city file's `sites`): printed hoardings round each plot (solid walls), a tower crane over each new building's plot that is tall or 700 m2+ (see "The town's own layers") |
 | `landmarks.gd` | a town's landmarks, found by their building's name in the bake (`BY_CITY`: Tel Aviv's Azrieli towers, the Matcal and Marganit towers, Sarona's houses): a glass of their own, a lit crown, a mast or shaft on the roof, red tile roofs; and in every town the red lights on roofs over 90 m at night. Hooks in streets.gd: `_glass` / `_tile` on a building for `_build_buildings`, `build()` per square, `set_night` |
+| `wave.gd` | the green wave (the "wave" button, V): lit junctions ahead of the car run their own clock to green its way and hold it; streets.gd reads every light through `_ph_at` / `_t_at`, which ask it first. See "The green wave" below |
+| `standins.gd` | the squares not built yet seen from above: one flat mesh a square (roads, building outlines, parks, water) made as the background build starts, shown only while zoomed out, dropped when its square is built. See "The green wave" below |
 | `rails.gd` | railways: the tracks the city file has (`rails`, `platforms`, `stations`), their beds, rails and sleepers, the platforms with canopies and the station's name, and trains running along them (`tick`). See "Railways" below |
 | `cities/*.json` | baked towns (`tools/osm_city.py`) and the made-up test town (`tools/fake_city.py`) |
 | `details.gd`, `cities/details/<city>.json` | what a filmed walk showed and OSM lacks, laid over the baked city as it loads (road edits, unmarked zebras, areas, an arcade cut under a block, paving level with the pavement, walls, fences, hedges, bins, railings, bollards, a pole transformer, a barrier, parked motorbikes, trees) and the walks themselves; the format is at the top of `details.gd` |
@@ -266,6 +268,64 @@ The ones most often touched, and the functions in them:
   (seeds 1-14). The test's "close" counts under 0.58 m now (0.6 is the floor walkers are held
   at; a push off a post after it left one at 0.599 and failed a run). tests/walk_people.gd counts
   someone behind a building as unseen (`_behind_building`).
+- **the look bench** (the user: "some small enviorement ... where we can quickly load and
+  look around ... for testing and checking the taste of the look ... just for the agent").
+  `cities/look_bench.json`, made by `tests/make_look_bench.py`: one street with a side street
+  across it, 16 blocks of 3-5 storeys from 1950 to 2015 (sand, cream, white, stone; 60
+  balconies, 22 closed in), a cafe, a grocery, a bus stop, a zebra, trees given as a map of
+  every tree (so none are made up in front of the facades). `tests/look_bench.gd` points the
+  game at it (STREETS_CITY_FILE, level 4's look) and shoots street, facade (a block with
+  balconies, from the middle of the street it faces), balcony (from its kerb, looking up),
+  people, car; OVERVIEW=1 from above, NIGHT=1. Loads in 4-8 s; a whole run ~35 s rendered,
+  against 3-4 min for a real town. Not a level: nothing in the game reaches it. Needs
+  rendering (FULL=1): headless, its shots wait for a frame that never comes.
+  **Looks being tried** (`_try`, STREETS_TRY, off unless set): "a" dark creases on the
+  balconies (undersides 0.42, insides 0.6-0.72, a shade band on the wall under each slab), "e"
+  edges (a lip, a drip line, a coping), "c" contrast (fill light x0.6, sun x1.12), "r"
+  railings of bars on half the blocks instead of solid parapets. On the bench, 21 Nov: now,
+  the balconies melt into the wall (one colour, flat light); creases + edges make them read
+  as slabs; railings alone float; all four together look most real. Vertices a balcony: 96
+  now, 172 with creases + edges, ~196 with a railing (under BATCH_KIT_VERTS 200: still no
+  draws of their own). tests/look_tries.gd shoots the real start the same way (there the
+  nearest block's balconies are the wall shader's recesses, which these do not touch).
+  **All four kept** (the user: "push all"): always on now, `_try` left for the next tries.
+  The fill light's drop (x0.6, sun x1.12) moves the filmed walks' grade too (FILM_LOOK's
+  fit was made on the old light): re-record a walk bare and refit before trusting the
+  side-by-side's levels again.
+- **the wall shader's balconies to match, the grade refitted, the AC fan, the walk's faces
+  (21 Nov, later)**. The blocks at the real start draw their balconies in WALL_SHADER (style 1:
+  a hollow traced per pixel), not with `_balcony_mesh`, so the kept looks did not reach them.
+  Now the same there: the slab over the hollow seen from below at 0.42 of the wall, its sides
+  0.62, its back 0.66 and darker up under the slab (x0.7 at the top), the floor 0.95 of its
+  tile; a coping on the parapet (its top 1.15, the shade under it), the slab's lip (1.15) and
+  drip line (0.45); on half the blocks (`rail_blk`, a hash of the block) a railing of dark
+  bars every 14 cm with the hollow seen through it down to the floor, and far off the same
+  as paint. `tests/look_tries.gd` has a third shot, `_under`: nearer, up at the right-hand
+  block's balconies (before, they were flat tan boxes; now they read as hollows).
+  **The grade refitted** on a bare recording of walk 1 (`STREETS_FILM_LOOK=0`): the bare
+  picture had gone to 2.2% clipped and saturation 0.191 (the film 0.1%, 0.159); new
+  FILM_CURVE, FILM_SAT 0.943. Graded check: lum p1-p99 0.11/0.16/0.20/0.31/0.45/0.59/0.74/
+  0.82/0.88 against the film's 0.09/0.15/0.20/0.31/0.45/0.59/0.71/0.77/0.87, saturation
+  0.158 (0.159), 0.0% clipped, each second 0.458 +- 0.080 (0.454 +- 0.055). On this PC the
+  966-frame recording takes about a minute, not 18.
+  **On Windows** ffmpeg has no `-pattern_type glob`: `film_look.py` / `film_motion.py` read
+  the frames as a numbered sequence now (`seq()`, from the recording's own f00001.jpg names);
+  numpy via `uv run --with numpy python ...` when the system Python lacks it. The film clip
+  is the user's `OneDrive/walk/clip.mp4` on their PC (never in the repo).
+  **The AC unit's fan** (`furniture.ac_kit`): a round opening with three lighter blades, a
+  grille ring and a cross over it, where it was a black hexagon that read as a sticker from
+  across the street (~250 vertices; instanced, not batched).
+  **Open, seen in the side-by-sides** (film frame at t s against the graded game's frame
+  t*10+1 -- the camera's heading differs a little at the same second):
+  - white plaster in full sun clips: 19% of `look_tries`' `_under` view is pure white, the
+    texture gone. Darkening `wall_a` 14% changed nothing there, so that block's white does
+    not come from `wall_a` (its lean, COLOR.r, or the lifted block's own material: find it
+    before tuning).
+  - the faces up the walk (80 s): the film's blocks are busy -- every bay a railing or a
+    closed-in balcony, AC units, shutters half down, dark window holes -- where the game's far
+    blocks read plain. More facade kit per block at distance (or as paint in the shader).
+  - paving (55 s): the game's pavers are pinker and lighter than the film's grey ones.
+  - trees (55 s): olive and brown leaves against the film's fresh green.
 - **dogs, feet, walking on the spot** (the user: "the dogs look pretty wierd, and their
   hitboxes and how they walk is pretty wierd"; "some people are walking in place ... and
   their legs are somewhat bit inside the ground"). The dog (furniture `dog_kit`) is
@@ -787,11 +847,12 @@ answer "should the checks have caught it, and what would a check for its whole f
 | The rule broken | Reports in it | Checked by | Gap, and what closing it costs |
 |---|---|---|---|
 | a solid thing stands on the asphalt | bollards by zebras, a railing at a roundabout's zebra, canopy columns, hedges, islands, a median's wall over a road | `city_check`: walls, posts, buildings on the road; islands; median walls | none known |
-| a thing that stands alone is put up twice | stop / give-way signs twice; people's lights twice (94 of Ashdod's 408: a divided road's zebra is a crossing point on each half); cars' lights twice (Tel Aviv 3, found by the widened check, not reported); a junction offering one street twice | `city_check`'s "... doubled" rows: signs, walk lights, cars' lights, bus stops (`world_checks.doubled_all`); junction offers twice | the things with no list of where they stand (lamps, benches, bins, hydrants, shelters, kiosks, crossing signs): a log of everything placed, [kind, where, facing], kept only in tests, each kind's spacing -- about 2-3 hours, seconds a city |
-| a car parked where nobody parks | on a divided road's median, in a bus stop | `tests/parked_median.gd`, not in the validation | a row in `world_checks` (medians, bus stops, zebras, a junction's mouth): about half an hour, seconds a city |
+| a thing that stands alone is put up twice | stop / give-way signs twice; people's lights twice (94 of Ashdod's 408: a divided road's zebra is a crossing point on each half); cars' lights twice (Tel Aviv 3, found by the widened check, not reported); a junction offering one street twice; every railing's joint posts (found by "posts twice", fixed) | `city_check`: "... doubled" rows for signs, walk lights, cars' lights, bus stops (0); "posts twice": any solid thing of any kind twice on one spot (a limit per town: the tail left, 128 / 1 / 48 / 1 / 596) | near-doubles of things with no list of their own (two benches a metre apart): a log of everything placed, [kind, where, facing], about 2-3 hours |
+| a car parked where nobody parks | on a divided road's median, in a bus stop; on zebras (19 in three towns) and in a junction's disc (3), both found by the new rows, not reported | `city_check`: parked on a median / in a bus stop / on a zebra / in a junction (`world_checks.parked_wrong`), all 0 | none known |
 | two surfaces at one spot (they flicker) | a pavement flickering at a corner, grass through the road | `city_check`'s two pavings (a limit per city) | the sky's horizon line is a render, not a mesh overlap: a scene test only (`horizon_line`) |
-| traffic breaks a rule of the road | greens both ways, a car in on red | `light_audit`, not in the validation; the exam (over the line at a red) | `light_audit`'s counts as a REGRESS line: about an hour, ~3 min a night. Unwatched, Tel Aviv's ways in with no light facing them drifted from 5 to 12 (read on ef5425b, 21 Nov) |
-| standing or waiting with nothing real to wait for | autodrive standing with the road clear, 3-11 s at a roundabout for a car 78 m off, stopping for a slip road's light | the exam: 10 s+ held by nothing named | a wait whose reason is named but wrong (giving way to a car far off, a light that is not its own): the exam logging each give-way's distance and each light's distance past the stop line, flagged past a limit -- about an hour, no extra run time |
+| traffic breaks a rule of the road | greens both ways, a car in on red | `city_check`: light_audit's static counts (`world_checks.light_counts`): crossing greens and the green man with cars going (0), the rest under each town's 21 Nov reading (`LIGHTS_21NOV`); the exam (over the line at a red) | Tel Aviv's ways in with no light facing them drifted from 5 to 12 before they were watched: an open problem |
+| standing or waiting with nothing real to wait for | autodrive standing with the road clear, 3-11 s at a roundabout for a car 78 m off, stopping for a slip road's light | the exam: 10 s+ held by nothing named; "gave way to a car 6 s+ off" (a named reason that is wrong) | a light that is not its own (the slip road's): no general check yet |
+| something in view does what nothing real does (object permanence) | walkers sliding a metre aside as autodrive passed on the road; walkers stepping over side streets' mouths; people appearing or jumping | `people_pops` (REGRESS, nightly): people popping, sliding sideways over 1 m/s by your car, on a street away from a zebra, traffic cars popping or jumping, crossing against the light | things other than people and traffic (parked cars, doors, anything that moves): not watched |
 
 **A fix comes with what would catch it again** -- a scene test that stages it, or a check
 here; and the check is for the family when that costs little (the row above). **After merging** (another session's work, or `main`), before pushing: `city_check`
@@ -1236,18 +1297,100 @@ slow" (Givatayim, a small ring on a main road, 13 km/h on it).
   was made from them. What they show: held back by the car in front 56% / 52% of the drive,
   free at the limit 23% / 32%, bends 18% / 11%; standing on its own green 7 / 8 s in all
   (queues starting, 1.5-4 s a time: no missed greens); 8 hard brakes a drive, most of them
-  5-5.6 m/s^2 coming up behind a car already standing 10 m ahead (the follow speed allows
-  2.6 m/s^2: the car is seen late, or stops abruptly -- open), some behind a car moving as
-  fast as itself (one crossing its way, read as the car in front? -- open); route 6 at 3:10:
+  5-5.6 m/s^2 coming up behind a car already standing 10 m ahead (the cause and the fix:
+  "Sudden stops behind cars" below), some behind a car moving as
+  fast as itself (a cliff in the follow speed, and cars crossing read as standing: below); route 6 at 3:10:
   a traffic car pulled in 12 m ahead at 24 km/h and stopped dead for the player (its why
   "player"), autodrive braked 8.8 m/s^2 from 48 km/h and touched it (counted as 3 hits on a
-  wall and a building beside it) -- open; at 3:46 it lost 19 km/h in a tenth of a second at
-  50 km/h with nothing ahead (a knock the route set does not count: it counts a hit only
-  when the thing hit changes) -- open.
+  wall and a building beside it) -- open, see below; at 3:46 it lost 19 km/h in a tenth of
+  a second at 50 km/h with nothing ahead -- a sign in the lane, found and gone: below.
 - **Not found**: the user's own junction (the T of two divided roads) showed no stands in
   150 s of traffic nor with autodrive through it from 5 ways in; the car in their screenshot
   may have been one of these zebra waits or a turn waiting for oncoming traffic. Ramps and
   bridges: not looked at -- a place or a screenshot is needed.
+
+### Sudden stops behind cars, cars crossing, a sign in the lane (21 Nov 2026, evening)
+
+The user picked all five things the drive charts showed (above). Each found in the traces
+(`route_set.gd` `TRACE=`, `tests/drive_trace.py`; the hard brakes with what was ahead in the
+3 s before them -- a few lines of Python over the trace's rows).
+
+- **The drives repeat -- sometimes.** Route 2 driven twice by the same code, each beside
+  route 6, matched to the tenth of a second (226 s, the same stops); beside Tel Aviv's route
+  8 it went otherwise (246 s); and the old code put back and route 6 driven again beside route
+  2, as when the car pulled in at 3:10, parted from the first drive within 50 s. Something
+  timed by the clock (the building's time budgets, most likely) feeds the traffic's chances.
+  So a one-off seen in a drive will not come back to be looked at: log enough the first time
+  (LEADLOG, below) or stage it in a scene test. A before/after on one drive is one sample.
+- **Hard brakes behind cars: two causes, neither a car seen late.**
+  - *The cliff.* `follow := 0.0 if room <= 0.0`: a metre inside the second kept behind a car
+    going its own pace, the speed asked for fell from that car's to nothing, and autodrive
+    stood on its brakes behind a car doing 21 km/h (route 2 at 1:29, 22 -> 8 km/h in 0.6 s),
+    or stopped dead behind a queue pulling away. Traffic had the same line (and traffic
+    brakes 7.5 m/s^2 to what it wants at once: the car in front stopping dead for nothing).
+    Now both ask a little under that car's pace (`lv + room * 0.5`), and stop only with no
+    road left to its back.
+  - *The lag.* Autodrive brakes 2 m/s^2 for each m/s over the speed asked; following a slope
+    down at 2.6 m/s^2 it ran 1-1.5 m/s over it, so it ate the room and braked the last metres
+    at 5-8.7 m/s^2 (and the brake floor, 0.8 under 1.5 m/s, ended every stop with a 6.5 m/s^2
+    jolt). Now `_ap_follow_v`: once a steady 2 m/s^2 will not do -- to where the car in front
+    will stand if it keeps braking as now (its `acc`, along my way, over a few ticks), or to
+    its pace by its back -- the speed that brakes as hard as needed, as `_ap_brake_for` does
+    for a stop line; the last 5 km/h at 0.45 (3.6 m/s^2), 0.8 only under 0.4 m/s.
+  - Route 2: 4.6 -> 3.8 min, 8 -> 1 brakes over 5 m/s^2 (that one at a junction), held by a
+    car 55% -> 26% of the time. Route 6: 6.4 -> 5.4 min, 8 -> 2 (both for people stepping
+    out), 0 behind cars.
+- **A car crossing, braked for as a wall.** `lead_on` gives a car across my way speed 0 (its
+  speed along my way): one crossing 7 m ahead at 49 km/h, gone in a third of a second, had
+  autodrive braking 6 m/s^2 (route 6 at 0:37, just after giving way to it). Now
+  `_ap_crossing_clears`: crossing (within 60 degrees of square), not crawling or braking,
+  its back 1.4 m past my line (my side and half a metre) 0.3 s before my nose can get there
+  speeding up at 2 m/s^2 -- skipped (`lead_on(..., skip)`), the next car in front taken.
+- **The knock with nothing ahead was a sign.** 19 km/h off at 50 in a tenth of a second at
+  the same spot on every drive of route 6: `_v *= 0.6`, a sign bent (`_bend_sign`) -- the
+  "one way" arrow of a divided road's half, where Shlomo Ben Yosef (9 m, two-way) splits into
+  two 4 m halves. OSM starts both halves at the two-way road's middle, so for some metres the
+  two-way road's lane runs on past the half's asphalt; the arrow, planted 1 m off that
+  asphalt, stood 0.9 m from autodrive's middle. Now no arrow on a half where it splits off
+  (`_divided_half_at`: another of its name at the point, one-way coming in from beside it, or
+  the wider two-way it goes on from). The route set never counted it: a sign bent or a bin
+  knocked over is no crash (no `_crash_cool`); now `_knocked_n` / `_knocked_what` and the
+  route set lists them under hits ("sign oneway", "knocked over", "post bent").
+  `tests/split_posts.gd` checks every split for posts near the line the cars drive past it
+  (the two-way road's lane over to the half's in 25 m, as autodrive drove Shlomo Ben
+  Yosef). Ashdod: 74 splits, 58 posts within the car's half width + 0.25 m of that line,
+  about 15 of them touching by the model (a crossing sign and railing posts at Rishon
+  LeZion's split, a no-entry sign at Dakar's, bins, lamp posts); the model's line is a guess
+  past the first metres, so `DRIVE=1` drives autodrive through each and measures the real
+  gap -- not run yet: open. What stood in the lane on every drive is gone.
+- **The car that pulled in and stopped for the player** (route 6 at 3:10 before): not seen
+  again in five drives since, and a replay of that drive with the old code parted from it
+  before then (above). What fits it: a car going round a delivery van, over the centre line,
+  in autodrive's lane (the trace's car speed is its own, not along the lane: a car coming
+  head-on reads the same). Traffic judged the other lane by distance alone (35 + 45 m) and
+  never again once out; at 50 km/h the player is there in under 6 s, and the pass takes
+  7-8. Staged (`tests/van_pass.gd`, a straight street in Ashdod, autodrive at 50 km/h from
+  70/110/150/190 m, `PASS_OLD=1` as before): from 70 m the car went round, stood head-on 9 s
+  held by the player, autodrive braked 6.5 m/s^2; from 110 m it got by with 1.2 m to spare.
+  Now `_oncoming_clear(..., secs, d)`: nothing in the other lane that would reach the pass's
+  far end in the time it takes (`_pass_secs`: pulling away from its speed, x1.25 + 1.5 s),
+  and it turns back only while barely out and rolling (once further out, or standing, it
+  could not get back: a car moves sideways only as it rolls, and stood nose out, face to
+  face with autodrive). That showed an older trap: a car standing close behind the van, the
+  way clear, never went -- sideways only as it rolls, and the van "in its way" until it is
+  out past its side, and it waited for the car in front to move off before it reacted (the
+  queue rule: the van never moves) -- it stood till taken away (25 s). Now, going round, it
+  reacts, creeps (1.2 m/s at most) and turns out at up to 0.8 of its speed sideways.
+  van_pass after: from 70 and 110 m it waits, autodrive goes by (2.5 m/s^2 at most, 2 m
+  apart), then it goes round; from 150 and 190 m it is round in time -- PASS, 0 head-on.
+  queue_start PASS (start gaps 1.0 s, over the line 0.84x Greenshields', Ashdod's Herzl
+  junction, 24 queues), traffic_stuck 0 in 150 s, amber 72 of 72. `LEADLOG=1` in the route set
+  prints how a car stands when it turns up under 15 m in front, or holds itself for the
+  player while in front of it, and what holds a car autodrive gives way to while both stand.
+- **Kikar Barak, route 2**: autodrive stood 10-17 s giving way to a car that stood too, its
+  why "limit" (nothing holding it, it said), held by no one -- found in the GIVE log, not
+  fixed (the log now prints that car's wants, its moment to react, a hit, its junction
+  wait); open.
 
 ### Hills, pockets, the end of a green, a divided road's middle (20 Nov 2026, later)
 
@@ -2813,6 +2956,45 @@ Each line: where the code is, the test, what good reads.
   (`_light_poles`, same group and facing within 18 deg only, so `light_audit` still finds a
   light facing every way in; `lights_twins` in the tally). After: every "doubled" row 0 in
   all five towns.
+- **The checks' gaps closed** (user: "go for it", after the families table): `city_check`
+  gained parked cars where nobody parks (`world_checks.parked_wrong`: a median, a bus stop, a
+  zebra, a junction -- the new rows found 19 cars on zebras in three towns and 3 in a
+  junction's disc; `_no_parking` now keeps every car's body a metre off a zebra's stripes
+  (`_zebras_near`) and both its ends out of any nearby junction's disc, on a road passing
+  close by too: all 0), light_audit's static counts (`world_checks.light_counts`, which
+  light_audit now calls: crossing greens and the green man with cars going 0, the rest
+  under `LIGHTS_21NOV`), and "posts twice" (any solid thing twice on one spot: every
+  crossing railing's joint was two posts -- furniture.gd's panels now add the near end on
+  the first only -- 848 / 1 / 1,259 / 177 / 2,593 -> 128 / 1 / 48 / 1 / 596, the tail
+  under a limit). The exam gained "gave way to a car 6 s+ off" (`_give_far`: 3 s into a
+  wait, the car waited for 30 m+ from the junction and 6 s+ from it at its speed): 0 in
+  the test town and Givatayim.
+- **Build times in Israel time** (user: "can we print build times in israel time"):
+  build.txt stays UTC (prepublish stamps compare it); `_build_line` shows it through
+  `israel_time` -- two hours ahead, three from the Friday before March's last Sunday to
+  October's last Sunday. `tests/israel_time.py` checks it against zoneinfo either side of
+  every change 2025-2030: all 72 match.
+- **People crossing the road away from the zebras** (user, Givatayim, Keren Kayemet by a
+  roundabout: "people crossing the road in random location, bothers the traffic and
+  shouldnt happen"): at the end of a stretch of pavement a walker walked on over the side
+  street's mouth (`_walk_on`, up to 18 m of asphalt), and `_pavement_pieces` forgave up to
+  6 m of asphalt as a driveway's mouth -- a narrow side street's too. `_on_street` (a
+  kerbed road's lanes or a junction's disc, not a driveway's or a service lane's): the step
+  never crosses one, and only a driveway's asphalt is forgiven. People cross at the zebras
+  (`_crossers`), by the lights there.
+- **People jumping aside as autodrive passes** (user: "they jump to the side. i dont want
+  any popping of any objects, it looks fake ... need some more object permanence"): the
+  "a car coming at them on the pavement" step aside (1.1 m in under a second) fired
+  whenever the car's middle was within 6 m and moving -- a car driving past on the road,
+  3-4 m from people on the pavement's back half. Now only when the car's body
+  (`_body_gap`) is within a metre of them now or in half a second.
+  `tests/people_pops.gd` widened to object permanence (REGRESS, in validate.sh): Givatayim
+  90 s, sliding aside by your car 8 -> 0, on a street away from a zebra 2 -> 0, popping
+  2 -> 1, cars 0. Also: a step round a tree eased across at up to 3 m/s (people gliding) --
+  now at most `SIDESTEP` 0.8 m/s (slides with the car far 21 -> 7); and `_spawn_ok`'s
+  "behind a building" must hold from the eye and from where it will be in 1.5 s, a metre
+  either side of the sight line (people put just round a corner came into view 50-70 m
+  ahead).
 - **Cars stopping for a slip road's light** (user, Ashdod, Sderot Menachem Begin past Herzl:
   "why are the cars stopping there"): OSM has a traffic signal on Herzl's slip road 18 m
   before it joins Begin eastbound; `_lights_setup` moves a signal to the nearest junction
@@ -3184,8 +3366,75 @@ LEVEL=1 $GODOT --headless --path . -s res://game/streets/tests/<test>.gd`.
   hitches, "building 24", where 4-11 was usual before); kits with thousands of copies go
   through `_instanced`, not the batches (the AC units: 19 hitches of 50 ms when merged).
 
+## The green wave; the city from above before it is built (21 Nov 2026)
+
+**The green wave** (`wave.gd`, the "wave" button at the bottom right, key V). Every light in a
+town runs on one clock (`_sig_phase`, `_sig_t`, `SIGNAL_CYCLE`), its two groups per site, and
+the lamps are one multimesh per group and colour across the whole town. So a junction
+cannot simply be turned green: with the wave on, each lit site within reach ahead of the car
+(a cone of about 40 degrees, `max(150 m, 12 s at its speed)`, at most 220 m: the change for
+the cross street takes 9.5 s in Israel, 6 s in Nova Scotia) gets its own clock in
+`_wave.ovr`, copied from the city's so nothing changes on the spot, and that clock goes the
+quickest proper way to green for the car's group: the cross street's green ends once it has
+had 4 s (flashing, amber, red all round, red-and-amber for you), a red all round goes
+straight on to your red-and-amber (the cross street not given a green it would lose at once),
+a flashing green of yours goes back to steady; then it holds while the car is ahead or in
+it. Let go, it runs its own cycle with its greens cut to 6 s until both groups show what the
+city's clock shows, and drops back to it (forced after 150 s). Everything that reads a light
+goes through `_ph_at(n)` / `_t_at(n)` (`_light_at`, `_light_red_in` -- INF while held --,
+autodrive's raw light, `_walk_light`), so traffic, autodrive, the people at crossings and the
+red-run count all see the junction's own clock; with the wave off `ovr` is empty and every
+read is the city's clock, as before. Its lamps: every bulb and walk lamp records its site as
+it is built (`_wave.lamp`), and a site on its own clock gets a set of its own drawn over the
+shared ones, a little bigger (0.125 m over 0.11, 0.095 over 0.08), which hides them; freed
+when it rejoins the city's clock.
+`tests/green_wave.gd`: autodrive straight through GW_N junctions from 170 m back, the light
+at its worst (red, the cross street's green just begun), with the wave off and on.
+21 Nov, Givatayim, 3 junctions (a fourth, on an unnamed lane, autodrive never reached
+either way: skipped): without the wave the car stood at 2 of 3 (the third came green as it
+got there); with it none stood, slowest 18-29 km/h (from a standing start 250 m back:
+autodrive's own slowing into a junction), green its way 16-20 s after the start, 0 red runs,
+every cross street through flashing and amber to red, every junction back on the city's
+clock within the 60 s watched. Two lessons it cost: asked at 120 m from a car pulling away,
+the worst start (the cross street's green just begun: 4 s + 9.5 s of change) was still red
+when it got there -- hence 14 s of reach at speed, 150 m at least; and letting go by cutting
+greens to drift into step took minutes (one junction was still off the city's clock 60 s on)
+-- now it waits at red all round for the city's next red-and-amber (`tick`'s let-go branch).
+
+**Stand-ins seen from above** (`standins.gd`). At the start only the squares round the car
+are built; zoomed out, the rest of the town was empty. As the background build starts
+(`_build_rest`), every square still to build gets one flat mesh from the city file already
+loaded: its roads as strips as wide as the road (each segment cut to the square,
+Liang-Barsky, following the ground every 12 m), its buildings' outlines flat at the highest
+ground under them, its parks, grass, woods, pitches, water, car parks and plazas cut to the
+square (`Geometry2D.intersect_polygons`). Unshaded vertex colours from the palette, one draw
+a square, shown only while `_zoomed()` (from the street those squares are in the haze), each
+dropped at the end of `_build_tile`. Decks (bridges, tunnels) are left out: drawn flat they
+would lie across what is under them. A long press up there already found the street before
+(it reads the road data): this gives it something to aim at.
+`tests/standins.gd` (STREETS_BUILD_ALL=0): zooms to the top as the car is shown, 8 shots while
+the town builds; none on a built square, none missing on an unbuilt one.
+21 Nov, Ashdod (947 squares, 6 built before the car): 862 stand-ins, 805 ms all told (a few
+ms a frame, before the background build's first square), 0 on a built square and 0
+missing at all 8 shots; the shots show the strips and outlines meeting the built squares
+without a gap. (The square being built keeps its stand-in to the end of `_build_tile`:
+`_tiles_done` is set at its start, which the test first counted as wrong.)
+
 ## Open problems
 
+- **One walker in 90 s still appears in view** (`people_pops`, Givatayim, 21 Nov): put 76 m
+  off, where people fade in (75-90 m), 160 m from where it was. Placement (`_place_walker`,
+  not `anywhere`) checks `_spawn_ok` at the spot; the camera moves before the next frame.
+  Try: placing beyond PEOPLE_SEEN when the street there has room, hidden spots only as a
+  fallback. Also seen once: a 2.5 m jump at 72 m (state unknown: print it).
+- **Tel Aviv's ways into a lit junction with no light facing them: 12** (21 Nov, ef5425b and
+  after; 5 on 20 Nov). Not caused by the doubled-lights fix (12 on the code before it too);
+  crept up while light_audit was not in the validation. `LEVEL=7 STATIC_ONLY=1 VERBOSE=1`
+  light_audit names each. Guarded at 12 now (`city_check` LIGHTS_21NOV).
+- **Solid things twice on one spot, the tail** (`city_check` "posts twice", under a limit):
+  Givatayim 128 (bougainvillea clumps over a garden wall, 0.44 m, drawn twice: one plot's
+  front laid twice?), Tel Aviv 596 (0.6 m: trees mapped by OSM and the town's survey both?),
+  Ashdod 48. Invisible (the same thing drawn twice), but twice the draws and checks.
 - **Tel Aviv's lights and the exam, first round** (Nov 2026). `light_audit` at level 7:
   4 junctions where crossing streets shared a green, all skewed (55-65 degrees): the ways
   from inside a junction (the road between two of its points, no light) were counted in

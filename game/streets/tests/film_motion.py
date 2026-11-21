@@ -43,6 +43,14 @@ import sys
 
 import numpy as np
 
+
+def film_look_seq(frames):
+    """ffmpeg's input args for a folder of recorded frames (film_look.py's seq: no glob on Windows)"""
+    import os
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from film_look import seq
+    return seq(frames)
+
 W, H = 203, 360
 F = (H / 2) / math.tan(math.radians(35.0))   # focal length, pixels
 TILT = 15.6                                    # degrees the phone looks down (FILM_TILT)
@@ -197,7 +205,7 @@ def main():
         write(measure(fr, 30.0), sys.argv[4])
     elif mode == "frames":
         secs = float(sys.argv[3])
-        fr = grab(["-framerate", "10", "-pattern_type", "glob", "-i", f"{sys.argv[2]}/*.jpg", "-vf",
+        fr = grab(["-framerate", "10"] + film_look_seq(sys.argv[2]) + ["-vf",
                    f"crop=406:720:437:0,trim=0:{secs},setpts=PTS-STARTPTS,scale={W}:{H}"])
         write(measure(fr, 10.0), sys.argv[4])
     elif mode == "log":

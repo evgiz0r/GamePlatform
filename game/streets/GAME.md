@@ -432,9 +432,11 @@ The minimap (bottom left) shows the real streets and buildings round you, headin
 the city limits in pink. The name of the street you are on is at the top, in Hebrew with
 the English name under it when OSM has one.
 
-Over the minimap, small, is which build this is: "build 21 Nov 10:05 UTC · 79f2bc6", when
-it was published and the commit it came from, so a screenshot says whether a fix is in it
-("dev build" when run from the project). Under the map, small and wrapped so it stays
+Over the minimap, small, is which build this is: "build 21 Nov 12:05 Israel · 79f2bc6", when
+it was published, on Israel's clock (summer time too), and the commit it came from, so a
+screenshot says whether a fix is in it ("dev build" when run from the project).
+
+> can we print build times in israel time Under the map, small and wrapped so it stays
 clear of the buttons, the credits: OpenStreetMap's, and the towns' own surveys.
 
 **Zooming out.** "zoom" (on the right, under "walk"; Z, or the mouse wheel down, or two
@@ -459,6 +461,25 @@ move it.
 **Pause.** "pause" (K) holds the city still with the view where it is; "resume" lets it go
 on. Resumed while zoomed out, the city runs under you and the view follows the car, which
 still drives (keys or the stick). The shell's own pause (its menu) is still there too.
+
+**The city from above before it is built.** At the start only the streets round the car are
+built; the rest goes up square by square while you drive. Zoomed out, the parts not built
+yet are not empty: their roads, the outlines of their buildings, their parks and water lie
+flat on the ground straight away, each square swapping for the real one as it goes up -- so
+there is something to see, and to hold the mouse on to drive there, from the first second.
+
+> when i zoom the beginning the rest of the city is still being built. maybe i can still see
+> something (roads?!, dunno), and click in the area of the city, before it rendered
+
+**The green wave.** "wave" (bottom right, or V) turns it on: every crossroads with lights
+you come up to, driving yourself or on autodrive, turns green for you. It does it the proper
+way, as if it saw you coming: the cross street's green ends with its flashing and amber,
+red all round, then red-and-amber and green your way, so its cars and people stop as they
+would; it stays green until you are through, then goes back to the town's rhythm. It reaches
+about twelve seconds ahead at your speed (150 m at least), so even a light that has just
+gone red for you has turned by the time you get there.
+
+> any crossroads i approach switches to green for my car
 
 > If I would want a zoom out feature, that zooms out from where I am. Maybe it pauses the
 > city (maybe we can add a pause feature anyway), and we can zoom back in (or check around).
@@ -539,6 +560,19 @@ across, so cars through the junction no longer stop in the middle of it for them
 > The movement of the people: they bounce, jump, teleport and so on. They also don't cross
 > the roads according to the lights, so in many crossroads we have to stop for them in the
 > middle.
+
+People cross the road only at the zebras. At the end of a block they go round the corner
+or turn back; they no longer step over a side street's mouth into the traffic. They step
+aside only from a car that is actually coming onto the pavement at them, never because one
+drives past on the road, and when they step round something it is at a person's pace, not
+a glide. Someone put somewhere new is put where they stay out of sight: well behind a
+building from where the camera is and from where it is about to be.
+
+> people crossing the road in random location, bothers the traffic and shouldnt happen imo
+
+> sometimes when i just autodrive, and its near a pavement with people walking, they jump to
+> the side. i dont want any popping of any objects, it looks fake, even more than collision
+> stuff. need some more object permanence
 
 The people are grown-ups, not the kit's chunky cartoons: smaller heads, hands and feet,
 longer legs and a longer middle (scaled on their skeletons after every animation frame),
@@ -1205,6 +1239,18 @@ car and you bump them. People walk only while they really go somewhere, at the p
 go, and stand when they stop (they walked on the spot). Walkers stepping over a side
 street's mouth no longer stand a kerb's height down in the pavement.
 
+> I am looking at the balconies compared to real ones. i am thinking why the real looks so real
+> compared to the fake ... the buildings and balconies feel somewhat cartoony or blurred
+> compared to reality. Maybe we can create some small enviorement ... quick for testing and
+> checking the taste of the look. push all
+
+**Balconies that stand out, and deeper light.** The balconies were boxes the wall's colour,
+lit like the wall, so they melted into it; now their undersides are dark, the wall under
+each is in its shade, a lip catches the light with a dark drip line under it, a coping runs
+along the parapet, and half the blocks have railings of dark bars instead of a solid
+parapet. The fill light is lower and the sun a touch stronger, so shade reads as shade. All
+tried first on a small made-up street that loads in seconds (only the tests see it).
+
 > I took a video on my phone, walking in Givatayim.
 
 ## Smooth on a laptop and a phone
@@ -1510,10 +1556,6 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   the places from OSM and the towns' own data. New: each tour's script (the stops, where to
   look, the words, maybe spoken), a guide to follow, and a way to pause, ask, or skip ahead;
   a tour as a level of its own in the start screen.
-- A "green wave": "any crossroads i approach switches to green for my car" -- a switch for
-  the player's car (driving or autodrive) that turns each light it comes up to green its
-  way, through the usual change for the cross street (amber, red) so the traffic there stops
-  as it would.
 - Disasters on the real city: "like simcity hazards, but now we have the graphics so it
   can be cool on steroids, like aliens". Pick a disaster and where it strikes, then watch it
   from the zoomed-out view or live through it in the car or on foot. Aliens first, as asked:
@@ -1542,12 +1584,11 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   town, written once from those sources and kept in its folder (credited: Wikipedia and
   Wikivoyage are CC BY-SA), and the hooks for each part of the game to read it. A made-up
   town would get a made-up one.
-- See the city from above before it is built: "when i zoom the beginning the rest of the
-  city is still being built. maybe i can still see something (roads?!, dunno), and click in
-  the area of the city, before it rendered". At the start only the squares near the car are
-  built; zoomed out, the rest is empty until it goes up. Draw something cheap there straight
-  away from the city file already loaded -- the roads as flat strips, maybe the buildings'
-  outlines flat on the ground, the parks and the sea -- each square's stand-in swapped for the
-  real one as it is built. A long press there already finds the street (it reads the road
-  data, not the built meshes), so the stand-in is mostly what is missing: something to see
-  and aim at.
+- A "thief or racer" mode: "thief or racer mode, where the autodrive doesn't care about
+  traffic". Autodrive with the rules switched off: through red lights, never giving way,
+  round the queue on the wrong side, weaving between the lanes, onto the pavement when
+  the road is blocked, at the speed the car can take the bends rather than the limit --
+  while the traffic and the people go on as before, braking, swerving and hooting at it.
+  Already here to build on: autodrive's planning and steering, the crashes and what breaks,
+  the horns. New: the reckless style (its own lines through junctions, gaps it squeezes
+  through), how the town reacts to it, and a way to switch it on beside autodrive.

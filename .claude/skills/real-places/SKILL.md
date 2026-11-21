@@ -236,6 +236,15 @@ the parked cars, which stand a third in the road).
   else laying kerbs onto it -- no corner curving into a narrow one, no kerb from the cross
   street's stretch between the halves (laid apart, those pieces stood about its end at odd
   angles, in three colours).
+- **Where a two-way road splits into its halves, the cars drive past the halves' asphalt.**
+  OSM starts both halves at the two-way road's middle line, so the half's narrower asphalt
+  begins in the middle of the wide road: a car in the two-way road's lane comes into the half
+  2.4 m off its middle and takes ~25 m to reach its lane, its side past the half's edge for
+  the first ~13 m. Anything planted "1 m off the half's asphalt" there stands in that lane --
+  a one-way arrow at the half's corner was knocked flat by the AI on every drive. Keep signs
+  and posts out of that sweep (no one-way arrow on a half where it splits off: the split's
+  own sign is the keep-right on the median's nose), and test it along the line the cars
+  really drive, not the road's centre line.
 - **Lanes**: `lanes` counts both directions on a two-way road. Cap any count by what the
   width holds (a "two-lane" road narrowed to 4 m has one). On a one-way road of several,
   drive the middle of the right-hand lane -- the middle of the road is astride two.
@@ -555,6 +564,23 @@ the parked cars, which stand a third in the road).
   all with such a controller: that target is always a hair under the speed, the error stays
   tiny, the need grows -- command the deceleration instead (aim at the speed now less the
   braking wanted over the controller's gain).
+- **The speed behind a car must not fall off a cliff.** "Room left over the gap kept behind
+  it, or stop" (`0 if room <= 0`) has the follower stand on its brakes a metre inside its
+  gap behind a car doing its own pace, and stop dead behind a queue pulling away -- the
+  user's "sudden stops due to other cars". Inside the gap, ask a little under that car's
+  speed (its speed + 0.5 x the metres short) and stop only with no road left to its back.
+  And the same controller lag as above: once the braking needed (to where the car in front
+  will stand if it keeps braking as now, from its own acceleration, or to its speed by its
+  back) passes ~2 m/s^2, command that deceleration; following the slope alone it ran 1-1.5
+  m/s over all the way down and braked the last metres at 5-8 m/s^2.
+- **A car crossing your path is not a wall.** Taking a car's speed along your way (zero for
+  one crossing) treats a car crossing 7 m ahead at 50 km/h, gone in a third of a second, as
+  standing in the lane: a 6 m/s^2 stop for nothing, just after giving way to it. Skip one
+  that is crossing (near square to the lane), not braking, whose back will be past your
+  sides before your nose can get there at a brisk pull-away.
+- **Knocking a sign over is not a crash, so count it.** Things the car bends or knocks flat
+  (signs, bins, bollards) cost speed but set no crash timer; a test that counts hits by
+  crashes never sees them. Keep a counter of things knocked and list them with the hits.
 - **A pure-pursuit point far ahead starts a corner early and finishes it late**: at 5.4 m
   ahead at 14 km/h the car began a right turn 6 m early and came out with the turn not done,
   across its new lane. Keep the point near at a corner's pace (2 + 0.6 v, at least 3.5 m).
