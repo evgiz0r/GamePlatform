@@ -890,6 +890,8 @@ var _decks: Decks                    ## bridges, embankments, cuttings, tunnels 
 var _rails: Rails                    ## railway tracks, platforms, trains (rails.gd)
 var _marks: Marks                    ## a town's landmarks and its towers' red lights (landmarks.gd)
 var _beach: Beach                    ## the beaches by the sea: umbrellas, chairs, lifeguards (beach.gd)
+var _crowd: Crowds                   ## shoppers in a market, people along the shore and in the sea (crowds.gd)
+var _works: Sites                    ## building sites from a town's own map: hoardings, cranes (sites.gd)
 var _on_deck := -1                   ## while a deck road is drawn: heights come from it, not the ground
 var _inferred := {}                  ## what decks.gd's infer() made of a real town's bridges (the report)
 var _wired := {}                     ## road index -> true: Bedford's lamps hang off its power poles
@@ -912,8 +914,13 @@ var _credits: Array = []              ## other sources the city file took data f
 func _credit_line(credits: Array) -> String:
 	var what: Array = []
 	var who: Array = []
+	var others: Array = []   # (not a town's: each on its own, "car mix © Israel Ministry of Transport")
 	for c in credits:
 		var parts := String(c).split(" © ", true, 1)
+		if parts.size() > 1 and not parts[1].ends_with(" Municipality"):
+			if not others.has(String(c)):
+				others.append(String(c))
+			continue
 		var w := "trees" if parts[0].contains("tree") else ("building heights" if parts[0].begins_with("building") else parts[0])
 		if not what.has(w):
 			what.append(w)
@@ -926,7 +933,9 @@ func _credit_line(credits: Array) -> String:
 	var owners := ", ".join(who)
 	if who.size() > 1 and towns.size() == who.size():
 		owners = "the %s and %s municipalities" % [", ".join(towns.slice(0, -1)), towns[-1]]
-	return ", ".join(what) + " © " + owners
+	if what.is_empty():
+		return " · ".join(others)
+	return " · ".join([", ".join(what) + " © " + owners] + others)
 var _mtn_from := 100000.0            ## the made-up town: above this height the land is mountain (see GROUND_SHADER)
 var _hx0 := 0.0
 var _hz0 := 0.0
@@ -964,6 +973,8 @@ const Decks := preload("res://game/streets/decks.gd")
 const Rails := preload("res://game/streets/rails.gd")
 const Marks := preload("res://game/streets/landmarks.gd")
 const Beach := preload("res://game/streets/beach.gd")
+const Crowds := preload("res://game/streets/crowds.gd")
+const Sites := preload("res://game/streets/sites.gd")
 const DriveLog := preload("res://game/streets/drivelog.gd")
 var _log := DriveLog.new()            ## the last two minutes, for the map page and "save log"
 var _ap_why := ""                     ## what held autodrive's speed down this tick (for the log)
@@ -2002,7 +2013,10 @@ func _load_city(id: String) -> bool:
 			_hgrid[i] = float(raw[i]) * k
 		_steep = _any_steep()
 	_made_up = data.has("made_up")
-	_credits = data.get("credits", [])
+	_credits = (data.get("credits", []) as Array).duplicate()
+	# the cars' shapes and paints are the shares on Israel's vehicle register (CAR_MIX,
+	# _car_paints): credited wherever they drive
+	_credits.append("car mix © Israel Ministry of Transport")
 	if _made_up and _hnx > 0:
 		_mtn_from = _town_top() + 6.0
 	tp = _part_next("%sheights", tp)
@@ -2378,6 +2392,8 @@ var _tile_pois := {}                 ## square -> places (shops, schools...)
 var _tile_stops := {}                ## square -> bus stops
 var _tile_signs := {}                ## square -> stop and give-way signs
 var _tile_lit := {}                  ## square -> junctions with traffic lights
+var _tile_lamps := {}                ## square -> a town's own lamp posts: [where, look, lamps]
+var _lamp_cover := {}                ## LAMP_COVER cell -> true: the town's map has its lamp posts there
 var _tile_bars := {}                 ## square -> mapped fences and hedges that reach it
 var _crossing_set := {}
 var _white_bollards := {}            ## crossing nodes whose bollards are white, as filmed (details.gd)
@@ -2589,6 +2605,13 @@ func _build_setup(t0: int) -> void:
 				_tree_cover[_cell(tp, TREE_COVER)] = 2
 			else:
 				_bucket(_tree_near, _cell(tp, TREE_NEAR), tp)
+	var lamps_xz: Array = _city_data.get("lamps", [])   # (a town's own lamp posts: _build_lamps)
+	var lamp_info: Array = _city_data.get("lamp_info", [])
+	var lamp_looks: Array = _city_data.get("lamp_looks", [])
+	for i in range(lamps_xz.size() / 2):
+		var lp := Vector2(lamps_xz[i * 2], lamps_xz[i * 2 + 1]) * k
+		_bucket(_tile_lamps, _tile_of(lp), [lp, String(lamp_looks[int(lamp_info[i * 2])]), clampi(int(lamp_info[i * 2 + 1]), 1, 2)])
+		_lamp_cover[_cell(lp, LAMP_COVER)] = true
 	var pois: Array = _city_data.get("pois", [])
 	for i in range(pois.size()):
 		_bucket(_tile_pois, _tile_of(Vector2(pois[i][0], pois[i][1]) * k), i)
@@ -2614,10 +2637,13 @@ func _build_setup(t0: int) -> void:
 					_bucket(_tile_bars, t, i)
 	_rails = Rails.new(self)
 	_rails.setup(_city_data, k)   # (before the trees: nothing grows on a track's bed)
+	_crowd = Crowds.new(self)   # (before the market and the beach: they hand it their lines)
 	_marks = Marks.new(self)
 	_marks.setup(_city_data, _city_id)
 	_beach = Beach.new(self)
 	_beach.setup(_city_data)
+	_works = Sites.new(self)
+	_works.setup(_city_data)
 	_lights_setup()
 	_infer_signs()   # (after the lights: a lit junction has none)
 	_parks_setup()
@@ -2655,6 +2681,7 @@ func _build_tile(t: Vector2i) -> void:
 	await _rails.build()
 	_marks.build()
 	_beach.build()
+	_works.build()
 	tk = _stage("roads", tk)
 	await _build_buildings()
 	tk = _stage("buildings", tk)
@@ -2797,7 +2824,7 @@ func _build_rest() -> void:
 		await _release(_city_data[key])
 	_city_data = {}
 	for table: Dictionary in [_area_rings, _asph_hash, _tile_roads, _tile_decks, _tile_nodes, _tile_blds, _tile_areas, _tile_rings,
-			_tile_trees, _tile_pois, _tile_stops, _tile_signs, _tile_lit, _tile_bars]:
+			_tile_trees, _tile_pois, _tile_stops, _tile_signs, _tile_lit, _tile_bars, _tile_lamps]:
 		await _release(table)
 	_bg_build = false
 	Probe.event("city_built", {"squares": n, "ms": Time.get_ticks_msec() - t0, "posts": _posts.size(), "trees": _trees_made, "dressing": _dressing})
@@ -7411,7 +7438,7 @@ func _build_lamps() -> void:
 			var keep_a := _node_r[ids[j]] + 6.0 if (_node_roads[ids[j]] as Array).size() >= 2 else 0.0
 			var keep_b := _node_r[ids[j + 1]] + 6.0 if (_node_roads[ids[j + 1]] as Array).size() >= 2 else 0.0
 			while s < L:
-				if s > keep_a and s < L - keep_b:
+				if s > keep_a and s < L - keep_b and not _lamps_mapped_at(a + d * s):
 					flip = not flip
 					var c := a + d * s
 					var pair: Array = _partner(c, d, ri, hw, o) if dual else []
@@ -7475,6 +7502,12 @@ func _build_lamps() -> void:
 						_add_post(p, 0.15)
 				s += 34.0
 			s -= L
+	var woods: Array = []
+	var walls: Array = []
+	for lm: Array in _tile_lamps.get(_tile, []):
+		if _over():
+			await _pause()
+		_mapped_lamp(lm, poles, woods, arms, heads, ornate, lanterns, walls)
 	var pole := CylinderMesh.new()
 	pole.top_radius = 0.06
 	pole.bottom_radius = 0.09
@@ -7482,6 +7515,20 @@ func _build_lamps() -> void:
 	pole.radial_segments = 6
 	pole.rings = 1
 	pole.material = _surface("pole")
+	if not woods.is_empty():
+		var wood := CylinderMesh.new()
+		wood.top_radius = 0.09
+		wood.bottom_radius = 0.12
+		wood.height = 7.0
+		wood.radial_segments = 6
+		wood.rings = 1
+		wood.material = _surface("trunk")
+		_chunked(wood, woods, LAMP_RANGE)
+	if not walls.is_empty():   # a lamp on a wall: a short bracket and the head out from it
+		var bracket := BoxMesh.new()
+		bracket.size = Vector3(0.6, 0.06, 0.06)
+		bracket.material = _surface("pole")
+		_chunked(bracket, walls, LAMP_RANGE)
 	var arm_m := BoxMesh.new()
 	arm_m.size = Vector3(1.8, 0.07, 0.07)
 	arm_m.material = _surface("pole")
@@ -7502,7 +7549,7 @@ func _build_lamps() -> void:
 		lantern.rings = 1
 		lantern.material = _surface("lamp")
 		_chunked(lantern, lanterns, LAMP_RANGE)
-	_tally("lamps", poles.size() + ornate.size() + doubles.size())
+	_tally("lamps", poles.size() + woods.size() + ornate.size() + doubles.size() + walls.size())
 	_tally("lamps_ornate", ornate.size())
 	_tally("lamps_median", doubles.size())
 
@@ -7541,6 +7588,74 @@ var _pool_at: Array = []             ## Vector3(x, z, radius)
 ## A street lamp's pool, and how bright the pools are. Lamps stand every 34 m, the sides
 ## taking turns, so on a wide main road one side has one every 68 m: at 7.5 m and 0.75 the
 ## user found the main roads at night too dark between them ("slightly stronger").
+## A lamp post from the town's own map (Tel Aviv's 15,000), where it stands: off the asphalt
+## onto the pavement if the map's point is on the road (its points and OSM's widths are a
+## metre or two apart), out of a wall, its arm out over the nearest road. A plain grey pole,
+## a wooden one, the ornate kind, or a lamp on a building's wall; two lamps: an arm each way.
+## Where the map has lamps (_lamps_mapped_at) the made-up rows are left out.
+const LAMP_COVER := 45.0
+func _lamps_mapped_at(p: Vector2) -> bool:
+	if _lamp_cover.is_empty():
+		return false
+	var c := _cell(p, LAMP_COVER)
+	for dx in range(-1, 2):
+		for dz in range(-1, 2):
+			if _lamp_cover.has(c + Vector2i(dx, dz)):
+				return true
+	return false
+
+func _mapped_lamp(lm: Array, poles: Array, woods: Array, arms: Array, heads: Array, ornate: Array, lanterns: Array, walls: Array) -> void:
+	var p: Vector2 = lm[0]
+	var look: String = lm[1]
+	var n: int = lm[2]
+	var hit := _nearest_seg(p, 25.0, true, true)
+	var toward := Vector2.RIGHT
+	if not hit.is_empty():
+		var q: Vector2 = hit["q"]
+		var away := p - q
+		if away.length() < 0.05:   # (on the road's middle line: to the right of it)
+			var pts: PackedVector2Array = _roads[hit["road"]]["pts"]
+			var sj: int = hit["seg"]
+			var t := (pts[sj + 1] - pts[sj]).normalized()
+			away = Vector2(-t.y, t.x)
+		var dist := away.length()
+		away /= maxf(dist, 0.001)
+		var edge: float = hit["edge"]
+		if edge < 0.45 and look != "wall":   # on the asphalt or its kerb: onto the pavement
+			p = q + away * (dist - edge + 0.55)
+		toward = -away
+	if look == "wall":
+		p += _push_out(p, 0.35, false, false)
+		var gy := _h(p)
+		var face := Basis(Vector3.UP, atan2(-toward.y, toward.x))
+		var b := p + toward * 0.3
+		walls.append(Transform3D(face, Vector3(b.x, gy + 4.6, b.y)))
+		var hd := p + toward * 0.65
+		heads.append(Transform3D(face, Vector3(hd.x, gy + 4.5, hd.y)))
+		_pool_at.append(Vector3(hd.x + toward.x, hd.y + toward.y, LAMP_POOL - 2.5))
+		return
+	p += _push_out(p, 0.3, false, false)
+	if not _off_road(p, 0.2):
+		return   # (nowhere off the asphalt near the point: a lamp in the road is worse than none)
+	var gy := _h(p)
+	if look == "ornate":
+		var bs := Basis(Vector3.UP, atan2(-toward.y, toward.x))
+		ornate.append(Transform3D(bs, Vector3(p.x, gy, p.y)))
+		var lp := p + toward * 1.6
+		lanterns.append(Transform3D(Basis(), Vector3(lp.x, gy + 6.85, lp.y)))
+		_pool_at.append(Vector3(lp.x + toward.x * 0.5, lp.y + toward.y * 0.5, LAMP_POOL - 0.5))
+	else:
+		(woods if look == "wood" else poles).append(Transform3D(Basis(), Vector3(p.x, gy + 3.5, p.y)))
+		for k in range(n):
+			var out := toward if k == 0 else -toward
+			var face := Basis(Vector3.UP, atan2(-out.y, out.x))
+			var arm := p + out * 0.9
+			arms.append(Transform3D(face, Vector3(arm.x, gy + 6.95, arm.y)))
+			var head := p + out * 1.75
+			heads.append(Transform3D(face, Vector3(head.x, gy + 6.85, head.y)))
+			_pool_at.append(Vector3(head.x + out.x * 0.6, head.y + out.y * 0.6, LAMP_POOL))
+	_add_post(p, 0.15)
+
 const LAMP_POOL := 8.5
 const POOL_STRENGTH := 0.95
 var _pools_made := false
@@ -8506,18 +8621,29 @@ func _car_paints() -> Array:
 	var pl := Palette.col("player")
 	var red := Color.from_hsv(0.99, clampf(hz.s, 0.55, 0.8), clampf(hz.v * 0.62, 0.35, 0.6))
 	var blue := Color.from_hsv(0.61, clampf(pl.s, 0.5, 0.75), clampf(pl.v * 0.42, 0.25, 0.48))
-	var fr := Palette.col("friend")
-	var green := Color.from_hsv(0.38, clampf(fr.s, 0.3, 0.5), clampf(fr.v * 0.32, 0.18, 0.3))
 	# (more white and silver at the end: about a third white, a third silver and grey, a tenth
-	# black, a twentieth each blue and red, the odd beige and dark green -- the film's cars
+	# black, a twentieth each blue and red, the odd beige -- the film's cars
 	# pick a paint by its place in the list, so the first fourteen stay where they are)
+	# The fourteen after them bring the whole list to the vehicle register's shares (data_tools/
+	# car_mix.py on cities/data/vehicle_mix.json, Israel's licensed cars, 2026): white 44%,
+	# silver 17, grey 17, black 13, blue 5, beige 2, red 2 -- in 50: 22, 9, 8, 7, 2, 1, 1.
+	# (Green, the odd one here before, is not among the register's 25 commonest colours.)
+	var beige := Palette.col("warn").lerp(ink, 0.5).lerp(alt, 0.2)
 	var out: Array = [white, white, white, white, silver, silver, silver, grey, grey, black, black,
-		blue, red, Palette.col("warn").lerp(ink, 0.5).lerp(alt, 0.2), white, white, silver, grey, green]
+		blue, red, beige]
+	for spec: Array in [[white, 18], [silver, 6], [grey, 6], [black, 5], [blue, 1]]:
+		for i in range(int(spec[1])):
+			out.append(spec[0])
 	return out.map(func(c: Color) -> Color: return _natural(c, 0.6))
 
-## parked cars and traffic as an Israeli street has them: small city cars and hatchbacks,
-## family sedans, compact SUVs, now and then an estate, a tall boxy small van, a work van
-const CAR_MIX := ["sedan", "sedan", "sedan", "hatch", "hatch", "mini", "mini", "suv", "suv", "suv", "wagon", "mpv", "van"]
+## parked cars and traffic as Israel's vehicle register has them (data_tools/car_mix.py:
+## each make's commonest models by shape, 2026): crossovers and SUVs 42%, saloons 22,
+## hatchbacks 21, city cars 11, work vans and pick-ups 3, a people carrier 1 -- in 40: 17, 9,
+## 8, 4, 1, 1. Estates are under half a percent (it was one car in thirteen, and SUVs one in four).
+const CAR_MIX := ["suv", "suv", "suv", "suv", "suv", "suv", "suv", "suv", "suv", "suv", "suv", "suv", "suv", "suv", "suv", "suv", "suv",
+	"sedan", "sedan", "sedan", "sedan", "sedan", "sedan", "sedan", "sedan", "sedan",
+	"hatch", "hatch", "hatch", "hatch", "hatch", "hatch", "hatch", "hatch",
+	"mini", "mini", "mini", "mini", "van", "mpv"]
 
 ## the shared car mesh for parked cars and traffic: the sedan's body, wheels, lights and
 ## plates as ONE surface, one draw call a batch (as six surfaces, a patch of parked cars
@@ -17317,7 +17443,10 @@ func _place_still(list: Array, spots: Array, how: String) -> void:
 		var q: Vector2 = s[0]
 		var face: Vector2 = s[1]
 		c["spot"] = q
-		if how == "sit":   # on the seat: the sitting pose's hips over it, a little forward
+		if how == "wade":   # standing in the sea, its surface at s[2]: knee to waist deep
+			a.position = Vector3(q.x, float(s[2]), q.y)
+			a.face(Vector3(face.x, 0, face.y))
+		elif how == "sit":   # on the seat: the sitting pose's hips over it, a little forward
 			var sq := q + face * 0.42   # (the origin is at the feet: the hips sit ~0.4 m behind them)
 			a.position = Vector3(sq.x, _h(sq), sq.y)
 			a.face(Vector3(face.x, 0, face.y))
@@ -17377,7 +17506,8 @@ func _people_tick(dt: float) -> void:
 	_people_at.clear()
 	_people_who.clear()
 	_boarder_t += dt
-	for list: Array in [_walkers, _chatters, _crossers, _sitters, _waiters, _keepers, _bathers, _boarders]:
+	for list: Array in [_walkers, _chatters, _crossers, _sitters, _waiters, _keepers, _bathers, _boarders,
+			_crowd.everyone() if _crowd != null else []]:
 		for w: Dictionary in list:
 			var a: Actor3D = w["actor"]
 			if a.visible:
@@ -17567,6 +17697,8 @@ func _people_tick(dt: float) -> void:
 		if p.distance_to(_pos) > PEOPLE_SEEN + 12.0 and not placed:
 			placed = true
 			_place_walker(w, false)
+	if _crowd != null:
+		_crowd.tick(dt)
 
 ## ---- what people look like ---------------------------------------------------------------------
 ## The kit's people (Quaternius, CC0) are cartoons: big heads and hands, one skin of dark

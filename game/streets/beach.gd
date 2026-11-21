@@ -24,9 +24,11 @@ func _init(game: Node) -> void:
 
 func setup(data: Dictionary) -> void:
 	var seas: Array = []
+	var sea_y: Array = []   # (each sea's surface, for the people standing in it)
 	for a: Dictionary in data.get("areas", []):
 		if String(a["k"]) == "water" and a.has("y") and a.has("_ring") and _on_edge(a["_ring"]):
 			seas.append(a["_ring"])
+			sea_y.append(float(a["y"]) / float(data.get("scale", 10)))
 	if seas.is_empty():
 		return
 	var towers: Array = []
@@ -42,15 +44,17 @@ func setup(data: Dictionary) -> void:
 		# the sea's shore near this sand, as segments
 		var shore: Array = []
 		var near := box.grow(BAND.y + 20.0)
-		for sea: PackedVector2Array in seas:
+		for si in range(seas.size()):
+			var sea: PackedVector2Array = seas[si]
 			for i in range(sea.size()):
 				var p0 := sea[i]
 				var p1 := sea[(i + 1) % sea.size()]
 				if near.intersects(Rect2(p0, Vector2.ZERO).expand(p1)) and not _along_edge(p0, p1):
-					shore.append([p0, p1])
+					shore.append([p0, p1, si])
 		if shore.is_empty():
 			continue   # sand inland (a playground's pit, a dune): no beach
 		count["beaches"] = int(count.get("beaches", 0)) + 1
+		_people_lines(ring, shore, seas, sea_y)
 		var x := box.position.x + STEP * 0.5
 		while x < box.end.x:
 			var z := box.position.y + STEP * 0.5
@@ -72,6 +76,61 @@ func setup(data: Dictionary) -> void:
 					towers.append(p)
 					_put(p, ["tower", p, dir, h])
 			x += STEP
+
+## The people on this beach (crowds.gd): a line to walk along the wet sand, SHORE_OFF up from
+## the water, where it lies on this sand; and spots out in the sea for people standing in
+## it, facing the beach or out to sea. The shore's segments chained where they meet (they
+## come in the sea outline's order), stepped every 3 m.
+const WALK_STEP := 3.0
+func _people_lines(ring: PackedVector2Array, shore: Array, seas: Array, sea_y: Array) -> void:
+	var chains: Array = []   # [points, sea index]
+	for sg: Array in shore:
+		var last: Array = chains[chains.size() - 1] if not chains.is_empty() else []
+		if not last.is_empty() and int(last[1]) == int(sg[2]) and (last[0] as PackedVector2Array)[(last[0] as PackedVector2Array).size() - 1].distance_to(sg[0]) < 0.05:
+			(last[0] as PackedVector2Array).append(sg[1])
+		else:
+			chains.append([PackedVector2Array([sg[0], sg[1]]), sg[2]])
+	var off_lo: float = g._crowd.SHORE_OFF.x
+	var off_hi: float = g._crowd.SHORE_OFF.y
+	var mid := (off_lo + off_hi) * 0.5
+	for ch: Array in chains:
+		var pts: PackedVector2Array = ch[0]
+		var sea: PackedVector2Array = seas[int(ch[1])]
+		var y: float = sea_y[int(ch[1])]
+		var run := PackedVector2Array()
+		var k := 0
+		for i in range(pts.size() - 1):
+			var a := pts[i]
+			var b := pts[i + 1]
+			var seg := a.distance_to(b)
+			if seg < 0.01:
+				continue
+			var t := (b - a) / seg
+			var n := Vector2(-t.y, t.x)   # inland: away from the sea
+			if Geometry2D.is_point_in_polygon(a.lerp(b, 0.5) + n * 4.0, sea):
+				n = -n
+			var u := 0.0
+			while u < seg:
+				var q := a + t * u
+				u += WALK_STEP
+				k += 1
+				var w := q + n * mid
+				if Geometry2D.is_point_in_polygon(w, ring):
+					run.append(w)
+					var h := _hash(q)
+					if k % 3 == 0 and h % 100 < 40:
+						var d: float = g._crowd.WADE_OFF.x + float((h / 100) % 100) / 100.0 * (g._crowd.WADE_OFF.y - g._crowd.WADE_OFF.x)
+						var wp: Vector2 = q - n * d
+						if Geometry2D.is_point_in_polygon(wp, sea):
+							var face := n if (h / 10000) % 3 != 0 else -n
+							g._crowd.add_wade_spot(wp, face, y - clampf(0.25 + d * 0.045, 0.25, 0.85))
+				elif run.size() > 1:
+					g._crowd.add_line("shore", run, (off_hi - off_lo) * 0.5)
+					run = PackedVector2Array()
+				else:
+					run = PackedVector2Array()
+		if run.size() > 1:
+			g._crowd.add_line("shore", run, (off_hi - off_lo) * 0.5)
 
 ## an outline that runs along the map's edge for a stretch (the sea's, closed along the box)
 func _on_edge(ring: PackedVector2Array) -> bool:
