@@ -22485,6 +22485,30 @@ func _ap_plan() -> void:
 	var dir := 1 if (pts[sj + 1] - pts[sj]).dot(heading) >= 0.0 else -1
 	if r["o"] != 0:
 		dir = r["o"]
+		# a divided road's one-way half that only runs off the map: onto its other half, the
+		# way back into town, across the median (where a driver would take the last opening in
+		# it; the map's edge cut the rest). Not against the one-way, never on this half.
+		var mate := int(r.get("mate", -1))
+		if mate >= 0 and not _dest_on and _edge_bound(Vector3i(ri, sj + 1 if dir > 0 else sj, dir)):
+			var mr: Dictionary = _roads[mate]
+			var mp: PackedVector2Array = mr["pts"]
+			var best := -1
+			var best_d := INF
+			for k in range(mp.size() - 1):
+				var q := Geometry2D.get_closest_point_to_segment(_pos, mp[k], mp[k + 1])
+				if q.distance_to(_pos) < best_d:
+					best_d = q.distance_to(_pos)
+					best = k
+			var mdir := int(mr["o"]) if int(mr["o"]) != 0 else 1
+			if best >= 0 and best_d < 40.0 and not _edge_bound(Vector3i(mate, best + 1 if mdir > 0 else best, mdir)):
+				_tally("ap_edge_mate", 1)
+				Probe.event("edge_mate", {"from": ri, "to": mate})
+				hit = {"road": mate, "seg": best, "q": Geometry2D.get_closest_point_to_segment(_pos, mp[best], mp[best + 1]), "edge": 0.0}
+				ri = mate
+				sj = best
+				r = mr
+				pts = mp
+				dir = mdir
 	elif _edge_bound(Vector3i(ri, sj + 1 if dir > 0 else sj, dir)) and not _edge_bound(Vector3i(ri, sj if dir > 0 else sj + 1, -dir)):
 		dir = -dir   # that way only runs off the map: the other (it turns round first)
 	var d_first := (pts[sj + 1] - pts[sj]).normalized() * float(dir)
@@ -23033,6 +23057,24 @@ func _ap_next() -> bool:
 		# the trees and garden walls, or onto the footpath beyond and on along it at 40 km/h.
 		_ap_mark_dead_end()
 		return false
+	# every way on from here only runs off the map (a street the map's edge cut): turn round
+	# here, short of this junction, rather than drive on to the barrier -- on a two-way street
+	# back along it; on a divided road's one-way half onto its other half (_ap_plan).
+	# (A user, 22 Nov: "when the ai chooses to drive around the edges, it has trouble getting
+	# back ... it doesn't want to drive against the wrong lane, so it just turns back into
+	# nowhere"; tests/autodrive_edge.gd TRACE=1: off Derech Namir it drove along the edge into
+	# a dead end 5 m from the barrier and turned round in it for 12 s.)
+	if not _dest_on and (int(r["o"]) == 0 or int(r.get("mate", -1)) >= 0):
+		var all_edge := true
+		for w: Dictionary in ways:
+			if not _edge_bound(w["leg"]):
+				all_edge = false
+				break
+		if all_edge:
+			_tally("ap_edge_turn", 1)
+			Probe.event("edge_turn", {"at": _ap_pts[_ap_pts.size() - 1].round() if _ap_pts.size() > 0 else Vector2.ZERO})
+			_ap_mark_dead_end()
+			return false
 	# a real crossing (two or more proper streets on): ask, and plan no further for now --
 	# but not round a roundabout, where the exits come too fast to ask at each
 	var main: Array = ways.filter(func(w): return not w["service"])

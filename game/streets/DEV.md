@@ -3814,6 +3814,18 @@ the yard a few metres off, and a shot at the point saw a roof.
     from it (off Derech Namir, Tuval) and turned round in them for 12 s at 1.3 m/s, twice
     at Tuval. `_edge_walk` now counts a dead end within EDGE_DEAD (30 m) of the barrier as
     the map's cut, not a cul-de-sac. The three-point turn itself is slow (open).
+    That alone changed nothing for a car already on a divided road's outbound half (Derech
+    Namir): `_ap_plan` never turns round on a one-way. Now (a) at a junction whose every way
+    on is edge-bound, autodrive turns round short of it (`_ap_mark_dead_end`; two-way streets,
+    and one-way halves with a `mate`), and (b) planning on a one-way half whose way ahead is
+    edge-bound, it plans onto its `mate` going the other way, across the median (1.3 s off
+    the asphalt). `ap_edge_turn`, `ap_edge_mate` tallies; Probe `edge_turn`, `edge_mate`.
+    autodrive_edge, 15 starts x 40 s, before -> after: Tel Aviv within 25 m of the barrier
+    77 -> 38 s, nearest 5 -> 12 m, turn-rounds 7 -> 4, Derech Namir from 5 m off the barrier
+    to never near it; Ashdod 43 -> 24 s, turn-rounds 6 -> 2 (EDGE_OLD runs, a switch since
+    removed). Open: Tuval, Bernfeld, Nahalat Binyamin still linger 10-40 m from it; Ashdod's
+    trunk at (4530, -1066) has autodrive cutting its curves off the asphalt (~7 s; reached
+    now that the car gets back that way); HaMaginim's start 9 s off the road on both.
 - **Delft (level 14): 39 m² of island on the asphalt** (`city_check`'s "islands on the road",
   0 in every other town; the first spot is at (-478, 1000), Westlandseweg's west end, a
   secondary road 10-16 m wide). Not found yet. One way it can happen, seen in the city file:
