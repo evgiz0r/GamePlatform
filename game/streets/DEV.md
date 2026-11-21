@@ -2288,6 +2288,23 @@ Each line: where the code is, the test, what good reads.
   every street parks half up the kerb, and the lanes share the whole asphalt
   (`_lane_off`/`_lanes_each_way`), so a parking strip on the road needs traffic, autodrive and
   the lane paint to give that width up first.
+- **Medians' ends messy** (user, Tel Aviv, a median with railings by a zebra: "the pavement
+  on those middle areas seems messy a lot of times. the geometry doesn't align"): a median
+  was pieces laid apart -- each half's strip of it (`inner_side` in the kerb runs), in that
+  half's own street paving (two colours side by side), ending square with no kerb across the
+  end; corner kerbs curving into it; and the cross street's stretch between the two halves
+  with a kerb and pavement of its own standing in front of its end. Now, for a median under
+  `MEDIAN_ROUND` (10 m): one paving (the road's name's), a kerb face across each end
+  (`_kerb_cap`), no corner on its side (`_corners_at`: `corners_on_a_median`), no kerb run
+  facing it (`_faces_median`: `kerb_runs_facing_a_median`). Wider ones keep their rounded
+  noses (the corners' curves). `tests/median_ends.gd` (Tel Aviv: 1,652 ends at junctions,
+  939 by a zebra) shoots 8 from the driver's seat and above. **Still messy, not done**: the
+  triangles between a slip road (`*_link`) and the main roads -- each road's kerb laid apart,
+  strips standing loose in the junction (Moshe Dayan / HaShalom (844, 457), Yigal Alon / Arvey
+  Nahal (752, -501)); they want the island as one area: the small faces the drivable roads
+  enclose, cut off the asphalt (`_island_cut`) and kerbed all round (`_island_faces`), and
+  the roads' kerb runs facing into one left out. And a footpath mapped across a junction's
+  corner drawn through a median's nose (Shaul HaMelekh / Ibn Gabirol, path 2197, (-847, -70)).
 - **A flickering line across the screen** (user, the first filmed walk's passage: "flickering
   line in the middle of the screen sometimes. dunno if its my screen or godot or bug"): the
   sky dome (`_build_sky_dome`) was Godot's hemisphere, which closes with a flat disc at its
@@ -2314,7 +2331,7 @@ Each line: where the code is, the test, what good reads.
   anywhere), `street_at` (by street name at its roundabouts), `perf_dive`, `deck_corner`,
   `islands`, `pave_overlap`, `picker`, `minimap_route`, `warm_census`, `index_gain`,
   `signs_inferred`, `start_drive`, `rails_near`, `cut_under`, `signs_double`, `auto_stands`,
-  `parked_median`, `horizon_line`;
+  `parked_median`, `horizon_line`, `median_ends`;
   `tools/level_roads.py`.
 
 ## OSM's extra fields and speed limits: handoff (20 Nov 2026)

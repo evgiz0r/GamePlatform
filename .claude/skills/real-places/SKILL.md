@@ -224,7 +224,11 @@ the parked cars, which stand a third in the road).
   outer sides; a zebra on one half is crossed kerb to kerb across both. Anything laid "along
   both sides of a street" -- parked cars above all -- goes on the outer side only: parked
   both sides, a row of cars stood down the middle of the boulevard. Check the spot itself,
-  not the road's flag: halves pair up along only part of their length.
+  not the road's flag: halves pair up along only part of their length. And a median is one
+  surface: one paving for both halves' strips, a kerb face across each end, and nothing
+  else laying kerbs onto it -- no corner curving into a narrow one, no kerb from the cross
+  street's stretch between the halves (laid apart, those pieces stood about its end at odd
+  angles, in three colours).
 - **Lanes**: `lanes` counts both directions on a two-way road. Cap any count by what the
   width holds (a "two-lane" road narrowed to 4 m has one). On a one-way road of several,
   drive the middle of the right-hand lane -- the middle of the road is astride two.

@@ -3666,6 +3666,11 @@ func _build_kerbs() -> void:
 					if m < 0.25:
 						continue   # the halves touch: a painted line, no kerb
 					pw = clampf(m * 0.5 - KERB_W, 0.0, PAVE_W)   # each half paves its half of the median
+					# both halves in one paving (each its own street's, a median came out in two)
+					_set_pave_code(hash(String(r["name"])) if String(r["name"]) != "" else hsh, r.get("pave", []))
+				elif _faces_median(run, hw, sgn, ri):
+					_tally("kerb_runs_facing_a_median", 1)
+					continue   # a street's stretch across a divided road: that side is the median's end
 				var inner := _offset_line(run, hw * sgn)
 				# the pieces with shops behind them: the pavement runs on to their windows (a
 				# filmed shopping street's was ~4 m, to the shop fronts, not 2.4 m and then grass)
@@ -3707,6 +3712,12 @@ func _build_kerbs() -> void:
 					along += seg
 				_pave_walled = false
 				if inner_side:
+					_set_pave_code(hsh, r.get("pave", []))
+					if float(r["median"]) < MEDIAN_ROUND:   # (a wide one's noses are the corners' curves)
+						for k: int in [0, run.size() - 1]:
+							if _cut_at_junction(r, run[k]):
+								var into := (run[k] - run[1 if k == 0 else run.size() - 2]).normalized()
+								_kerb_cap(kerb, inner[k], (inner[k] - run[k]).normalized(), KERB_W + pw, into)
 					continue
 				if not yard:
 					continue
@@ -3965,6 +3976,73 @@ func _median_tick(dt: float) -> void:
 				Probe.event("median", {"kmh": int(absf(_v) * 3.6)})
 	_median_lift = move_toward(_median_lift, KERB_H * on * 0.5, dt * 1.6)
 	_y += _median_lift
+
+## A divided road's median narrower than this ends square, closed by a kerb face across it
+## (_kerb_cap), with no corner kerbs on its side and no kerb from the street across it facing
+## it. Each was laid apart -- the halves' strips, the corners' curves, the cross street's
+## stretch between the halves with its own kerb and pavement -- and a user saw the pieces
+## "messy, the geometry doesn't align" (tests/median_ends.gd). Wider, the corners' curves make
+## a rounded nose of their own and it is left as it was.
+const MEDIAN_ROUND := 10.0
+
+## p is on a divided road's median: beside one of its halves (within the segment's length), on
+## that half's inner side, no further out than the median is wide
+func _in_median(p: Vector2, skip: int) -> bool:
+	for code: int in _near(_seg_hash, p, 16.0, SEG_CELL):
+		var rq := code / 4096
+		if rq == skip:
+			continue
+		var q: Dictionary = _roads[rq]
+		if not q.has("median") or float(q["median"]) < 0.25 or float(q["median"]) >= MEDIAN_ROUND:
+			continue
+		var pts: PackedVector2Array = q["pts"]
+		var sj := code % 4096
+		var t := pts[sj + 1] - pts[sj]
+		var u := (p - pts[sj]).dot(t) / maxf(t.length_squared(), 0.0001)
+		if u < 0.0 or u > 1.0:
+			continue
+		var travel := t.normalized() * float(q["o"])
+		var off := (p - pts[sj].lerp(pts[sj + 1], u)).dot(Vector2(travel.y, -travel.x))
+		var hw := float(q["w"]) * 0.5
+		if off > hw - 0.2 and off < hw + float(q["median"]) + 0.3:
+			return true
+	return false
+
+## a stretch of a street whose side `sgn` looks onto a divided road's median (it crosses the
+## road: its side faces the median's end): along its middle, just past where its pavement would be
+func _faces_median(run: PackedVector2Array, hw: float, sgn: float, ri: int) -> bool:
+	var total := 0.0
+	for i in range(run.size() - 1):
+		total += run[i].distance_to(run[i + 1])
+	if total > 40.0:
+		return false   # (a long stretch is a street, not the way across a junction)
+	var mid := run[run.size() / 2] if run.size() > 2 else (run[0] + run[1]) * 0.5
+	var j := mini(run.size() / 2, run.size() - 2)
+	var d := (run[j + 1] - run[j]).normalized()
+	return _in_median(mid + Vector2(-d.y, d.x) * sgn * (hw + KERB_W + 1.0), ri)
+
+## the run's end at p was cut short of a junction (not the road's own open end)
+func _cut_at_junction(r: Dictionary, p: Vector2) -> bool:
+	var pts: PackedVector2Array = r["pts"]
+	var ids: PackedInt32Array = r["ids"]
+	for i in range(ids.size()):
+		if _kerb_arms(ids[i]) >= 3 and pts[i].distance_to(p) < _node_r[ids[i]] + KERB_CUT + 0.6:
+			return true
+	return false
+
+## a kerb face across the end of a strip of kerb and paving: from `a` (on the road's edge) `w`
+## out along `out`, facing `into` (the way out of the strip)
+func _kerb_cap(kerb: Buf, a: Vector2, out: Vector2, w: float, into: Vector2) -> void:
+	var b := a + out * w
+	var face := Vector3(into.x, 0, into.y)
+	var col := Color(0.05, 0, 0)
+	var a0 := _g3(a, 0.0)
+	var b0 := _g3(b, 0.0)
+	var a1 := a0 + Vector3(0, KERB_H, 0)
+	var b1 := _g3(b, 0.0) + Vector3(0, KERB_H, 0)
+	kerb.tri(a0, b0, b1, face, col, Vector2(0, 0), Vector2(w, 0), Vector2(w, 1))
+	kerb.tri(a0, b1, a1, face, col, Vector2(0, 0), Vector2(w, 1), Vector2(0, 1))
+	_tally("median_caps", 1)
 
 func _build_medians(kerb: Buf, pave: Buf) -> void:
 	var zebra := {}
@@ -4779,7 +4857,7 @@ func _corners_at(ni: int, count := false) -> Array:
 				through.append(atan2(q.y - c.y, q.x - c.x))
 				continue   # too short to reach the corner (a piece across a median)
 			var p: Vector2 = at[0]
-			arms.append([atan2(p.y - c.y, p.x - c.x), p, at[1], float(r["w"]) * 0.5, e.x])
+			arms.append([atan2(p.y - c.y, p.x - c.x), p, at[1], float(r["w"]) * 0.5, e.x, step])
 	if arms.size() < 2:
 		return out
 	arms.sort_custom(func(x, y): return x[0] < y[0])
@@ -4803,6 +4881,14 @@ func _corners_at(ni: int, count := false) -> Array:
 			if count and _mine(c):
 				_tally("corners_across_roads", 1)
 			continue
+		# none on a narrow median's side: it ends square, closed by its own kerb (_kerb_cap).
+		# P is A's inner side when its traffic comes in to the junction, Q B's when it goes out
+		var ra: Dictionary = _roads[int(A[4])]
+		var rb: Dictionary = _roads[int(B[4])]
+		if (_narrow_median(ra) and int(A[5]) * int(ra["o"]) < 0) or (_narrow_median(rb) and int(B[5]) * int(rb["o"]) > 0):
+			if count and _mine(c):
+				_tally("corners_on_a_median", 1)
+			continue
 		var ua: Vector2 = A[2]
 		var ub: Vector2 = B[2]
 		var P: Vector2 = (A[1] as Vector2) + Vector2(-ua.y, ua.x) * float(A[3])   # A's right edge
@@ -4814,6 +4900,9 @@ func _corners_at(ni: int, count := false) -> Array:
 			and ((X as Vector2) - P).dot(ua) < 0.0 and ((X as Vector2) - Q).dot(ub) < 0.0
 		out.append([i, int(A[4]), P, Q, X, round, ua, ub])
 	return out
+
+func _narrow_median(r: Dictionary) -> bool:
+	return r.has("median") and float(r["median"]) >= 0.25 and float(r["median"]) < MEDIAN_ROUND
 
 ## the rounded corners' curve: from P to Q, bent toward the corner point X
 func _corner_curve(P: Vector2, X: Vector2, Q: Vector2) -> PackedVector2Array:
