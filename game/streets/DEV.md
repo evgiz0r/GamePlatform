@@ -1744,6 +1744,9 @@ Givatayim 0 late. Traffic cars do not look at walkers at all (they rely on the k
 
 ## Cities
 
+Adding a new city: follow `NEW_CITY.md` (the steps, the data per layer, the country pack,
+a card per candidate and the candidates scored).
+
 Re-bake with `main_server_only` on, and diff the counts against the file it replaces
 (`git show HEAD:<file>` and compare roads, buildings, crossings, areas): a mirror twice
 answered with ~12% fewer road pieces. Last re-bakes: Givatayim and Tel Aviv, 20 Nov 2026
@@ -1756,6 +1759,7 @@ Bedford have not been re-baked since.
 | 2 | Bedford, Nova Scotia ("north") | place "Bedford, Nova Scotia", include "Hemlock Ravine Park; Kearney Lake; Sandy Lake; Fleetview Drive" |
 | 3 | Ashdod ("med") | place "Ashdod" |
 | 4 | Kiryat Dimyon, made up | `tools/fake_city.py` |
+| 14 | Delft, a box of the old centre ("north") | baked on the user's computer, not the workflow: first `data_tools/nl_3dbag.py` and `data_tools/nl_bgt.py` with 51.99965,4.34181,52.02035,4.37219, then place "Delft", bbox "52.0010,4.3440,52.0190,4.3700", margin 150 (NEW_CITY.md, "The Netherlands") |
 | 7 | Tel Aviv, a box of the centre ("med") | place "Tel Aviv", bbox "32.0639,34.7795,32.0858,34.8021" (read off the user's map screenshot), margin 150, bare_ground on (without it Azrieli stood on a 146 m hill of its own roofs) |
 
 The start points are public street corners named in `LEVELS`. **The web build is public:
@@ -1833,6 +1837,16 @@ first:
 
 ## The walks list and walks nobody filmed (levels 9-13, 22 Nov 2026)
 
+- **The lists** (22 Nov, later): the start screen holds only the three lists -- "Cities: pick
+  one" (level 15, `"cities": true`), "Test routes" (8), "Walks" (9); a city has no `"group"`,
+  and `_walk_list_open("cities")` lists every LEVELS entry with a `"city"` that is not a list
+  (`_is_list`) or a walk, by `"sort"` (two columns past seven). Each list has "back"
+  (`_back_button`, the shell's `Flow.pick_level()`: the start screen), at the foot, or top left
+  on the routes' page where ten rows reach the foot. The headings come in the order their first
+  level appears in LEVELS (the shell's rule), so Cities, at 15, is the right-hand column:
+  moving it left would renumber every level. `tests/walk_menu.gd` checks the cities list, its
+  back, and the walks list (~1 min); `tests/route_menu.gd` counts the route rows only (it had
+  counted the page tabs since they came, said FAIL and tapped route 8, Tel Aviv, for the 10th).
 - **The list.** Level 9, "Walks: watch one" (group Auto Experiments, `"walks": true`), opens
   `_walk_list_open()` in place of a city, built like the test routes' list (in `_route_ui`, so
   `_input`'s taps reach its buttons): one button per place in LEVELS with a `"walk"`, the
@@ -2239,6 +2253,42 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   the walk passes a metre from the arcade block's side wall, which fills the right of the frame
   where the film sees open forecourt (the slant should start ~1.5 m further left: P(7.9, -7.0)).
 
+### Pass 15 of walk 1 (22 Nov 2026): the forecourt, the passage, Ha-Meri as measured
+
+- **Ha-Meri's looks** were the biggest single miss (seconds 91 and 95 among the worst). Ha-Meri
+  runs along the passage's line (131 degrees round the map); the walk crosses it at s ~91.7 and
+  steps up onto its south-east pavement. The fitted head turned to 90-107 crossing (onto the
+  corner building) and to 40-50, with a look 22 degrees down, at 93-95.5 (into its front
+  garden). Which way the film faces was found by **sweeping the replay's camera** at the
+  film's seconds (`AT=91,94.5 SWEEP="40,75,105,125,145,165"`, then the same back round)
+  and setting the shots beside the film's frame: 125 shows its view down the street, the cars
+  parked along the left; ~200 its view back across at the far pavement over the paved
+  crossing, at the phone's usual tilt. A walk can now hold the camera on a way round the map
+  (`face: [[from, to, degrees]]`, eased over half a second, on top of `head`): [90.2, 92.0,
+  125], [92.8, 95.8, 200]; the down look at the end is gone. Seconds 93-94: +14, +15.
+- **The sweep's gotcha**: this game moves its camera from the tree's `process_frame` signal
+  (`_frame`, connected in `_ready` so the shell's shake goes on top), not from `_process` --
+  `set_process(false)` and a camera move left every shot the walk's own view. The sweep
+  disconnects `_frame` while it shoots and uses `look_from` (the kit's: it keeps the base the
+  shake resets the camera to each frame).
+- **The forecourt** (make_givatayim.py): the bollards as solved (A P(11.7, -3.2), B
+  P(13.5, -1.7), C P(13.2, -2.0), D P(14.8, -2.5), E P(21.1, 3.1)) -- C 0.9 m north-west of its
+  solved place, within its +-1.1, because the walk went through it and the film passes it
+  close on its left at 30 s; the twin poles centred P(17.8, -1.4) (their left pole 0.5 m off
+  the solve, for the same reason: the film passes the plinth close on its right at 33-34 s),
+  the passage's north-west wall and fence starting at s 18.5 behind the plinth; the barrier
+  at P(23.1, 8.3); the planted bed's front fence, hedges, low shrubs and lamp back to s
+  19.5-20. Not done: the 26 s slant ~1.5 m further left, the film's head in the forecourt (20
+  left at 26.5-27 s, 13 down at 27-28.5), the block on columns with cars under it.
+- **The passage**: a new prop `lamp_pole` (details.gd: tall white pole, stickers to head
+  height, a round red-ringed sign facing `dir`, the lamp's arm; `bin`: a small bin with a
+  purple liner hung on it) at P(33, -0.6); the big bin to P(45.8, -0.75) (0.35 m nearer the
+  hedge than solved: the walk's line passes there at off ~0). The second pole behind the big
+  bin is left out (bearing only).
+- **Numbers**: score 34.5 -> 35.3 (the same evening's main, recorded before and after on this
+  PC); nothing worse by 5; 29 +6, 49 +7, 93 +14, 94 +15; 90-99 s 23.7 -> 28.8. Both filmed
+  walks scan clean; playtests of levels 5, 6 and 1 survive 25 s.
+
 ### Handoff: the filmed walks (22 Nov 2026): measured against the full film, before pass 15
 
 - **The full film is on the user's PC**: `OneDrive/walk/20261120_100527.mp4`, 1080x1920
@@ -2607,6 +2657,47 @@ it is dropped.
   the road's deck beside it, rather than the road's; `ROUTES ... ,top` in tests/decks.gd can
   still land on a road under the deck where they cross (use `deck_air`, which starts on the
   highest surface, to drive a particular deck).
+
+## What people carry, and builds (22 Nov 2026)
+
+`_carry(actor, what, seed)` in streets.gd ("what people carry") gives someone a shopping bag,
+a handbag, a backpack or a box; `_what_carried(seed, carrying)` picks one, about 17% bag, 10%
+handbag, 13% backpack, 60% nothing. Who gets one:
+- **Street walkers.** Before this, 22% were drawn with the carrying walk (`Walk_Carry`) and
+  nothing in their arms, which looked like arms out for a hug. Now one in three of those
+  carry a box and the rest a bag with the plain walk. Walkers with a dog or a pushchair get
+  nothing.
+- **Chatters and people waiting at stops** get bags and backpacks.
+- **Market shoppers** (`crowds.gd`): 45% had the same empty carrying walk. Now 40% carry a
+  bag, 12% a handbag, 8% a backpack.
+
+How things are held:
+- **Held, not BoneAttachment3D.** The thing goes on a holder, a child of the skeleton, and
+  the `Held` modifier (a SkeletonModifier3D added after `PartSizes`, so it runs after it)
+  moves the holder to its bone every frame. A hand's holder stays upright, so the bag hangs
+  straight down whatever the arm does. On a BoneAttachment3D the bag tilted with the swing
+  and read as a sheet of paper. The back's holder turns with the torso. The holder is scaled
+  by 1 / the skeleton's scale, so the sizes are in metres.
+- **One draw each.** Each thing is joined into one mesh coloured per vertex, shared between
+  everyone with the same set of boxes (`_carry_mesh`). Vertex colours go in as they are: run
+  through `srgb_to_linear()` they drew much darker in this renderer (the box went dark brown).
+- **Fits on the Quaternius figures:** backpack centre 0.165 m behind the Torso bone; box
+  centre 0.36 m in front and 0.02 m below it, which puts it on the carrying walk's forearms;
+  bag top 0.07 m under the fist.
+
+**Builds.** `_humanize` also scales the whole figure 0.9-1.12 across and front to back (its
+own random numbers, seed + 77). Scaling a bone such as the Torso does not work for this: its
+scale passes on to the arms and head, and a rotated child of a squashed bone shears.
+
+**Test.** `tests/people_carry.gd`, level 4: seven people on the road ahead of the car, each
+shot from the side, from the front at an angle and from behind (`pc_<i>_*`). Good: the
+bags hang beside the leg and not through it, the backpack sits on the back, and the box
+rests on the forearms.
+
+**Still open from the people list (GAME.md "Better people"):**
+- a more detailed CC0 set of bodies and moves, tried on the look bench first
+- phones in hand, which needs a pose, not only a thing
+- hands moving while people talk
 
 ## Sizes against life (`tests/scale_check.gd`, 20 Nov 2026)
 
@@ -3761,6 +3852,30 @@ in level 1). The glTF import keeps the Blender material's name as the surface ma
     from it (off Derech Namir, Tuval) and turned round in them for 12 s at 1.3 m/s, twice
     at Tuval. `_edge_walk` now counts a dead end within EDGE_DEAD (30 m) of the barrier as
     the map's cut, not a cul-de-sac. The three-point turn itself is slow (open).
+    That alone changed nothing for a car already on a divided road's outbound half (Derech
+    Namir): `_ap_plan` never turns round on a one-way. Now (a) at a junction whose every way
+    on is edge-bound, autodrive turns round short of it (`_ap_mark_dead_end`; two-way streets,
+    and one-way halves with a `mate`), and (b) planning on a one-way half whose way ahead is
+    edge-bound, it plans onto its `mate` going the other way, across the median (1.3 s off
+    the asphalt). `ap_edge_turn`, `ap_edge_mate` tallies; Probe `edge_turn`, `edge_mate`.
+    autodrive_edge, 15 starts x 40 s, before -> after: Tel Aviv within 25 m of the barrier
+    77 -> 38 s, nearest 5 -> 12 m, turn-rounds 7 -> 4, Derech Namir from 5 m off the barrier
+    to never near it; Ashdod 43 -> 24 s, turn-rounds 6 -> 2 (EDGE_OLD runs, a switch since
+    removed). Open: Tuval, Bernfeld, Nahalat Binyamin still linger 10-40 m from it; Ashdod's
+    trunk at (4530, -1066) has autodrive cutting its curves off the asphalt (~7 s; reached
+    now that the car gets back that way); HaMaginim's start 9 s off the road on both.
+- **Delft (level 14): 39 m² of island on the asphalt** (`city_check`'s "islands on the road",
+  0 in every other town; the first spot is at (-478, 1000), Westlandseweg's west end, a
+  secondary road 10-16 m wide). Not found yet. One way it can happen, seen in the city file:
+  `_island_cut` skips a cutter lying wholly inside the area (`holed`), so an area that wholly
+  holds a drivable segment keeps that asphalt under it. Five Delft areas do this, all with
+  4.5 m service roads in them, but not the area at the first spot. Next step: a scene test
+  listing every island sample point on asphalt, with its island and road. Delft's other
+  first-run numbers, so a later run has something to compare with:
+  - 0 for walls, posts and buildings on the road, and for every "doubled" row;
+  - road lean 0.2% (Stationsplein's ramp, 33%);
+  - posts twice 2, lights' way in with no pole 5, knot split 1, stop short 93.
+
 - **Walkers appearing in view: mostly fixed, a rare one left** (`people_pops`, Givatayim,
   22 Nov). The two runs before the fix each had one; logging each placement showed both
   ways it happened: a walker at a stretch's end was taken away while in view, 88 m off (only

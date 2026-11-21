@@ -515,3 +515,14 @@ thing a view is aimed at, so give the bench enough of its own to stop that, and 
 from where a person would stand (the middle of the street, the kerb), not from inside the
 next garden. A shot that waits for a drawn frame never returns headless: run such a bench
 with rendering on.
+
+## Which way does the film face? Sweep, don't guess
+
+When a replay's camera should face what a film's frame shows, render the replay from the same
+spot at several headings (every 20-30 degrees) and set the shots beside the frame: the right
+heading is plain at a glance, where reading it off the frame's lines is a guess. To hold the
+camera still for the shots, unhook *whatever* moves it each frame -- a game may move it from a
+tree signal (`process_frame`) rather than `_process`, so `set_process(false)` alone leaves every
+shot the game's own view -- and aim it with the kit's `look_from` (it keeps the base the shake
+resets the camera to).
+

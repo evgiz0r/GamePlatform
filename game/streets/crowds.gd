@@ -120,7 +120,10 @@ func _make(_dt: float) -> void:
 				"stop_t": 0.0, "retry": 0.0}
 			if kind == "market":
 				w["speed"] = rng.randf_range(0.55, 1.05)   # (a market is walked slowly, looking)
-				w["carry"] = rng.randf() < 0.45            # (bags of shopping)
+				w["carry"] = false
+				var k := rng.randi()
+				# bags of shopping in hand (the carrying walk round nothing was arms out for a hug)
+				g._carry(a, "bag" if k % 100 < 40 else ("handbag" if k % 100 < 52 else ("backpack" if k % 100 < 60 else "")), k)
 			else:
 				w["run"] = rng.randf() < 0.25              # (joggers along the water's edge)
 				w["speed"] = rng.randf_range(2.4, 3.1) if w["run"] else rng.randf_range(0.9, 1.35)

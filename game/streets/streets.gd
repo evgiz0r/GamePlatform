@@ -18,24 +18,27 @@ extends GameMode3D
 ## the car on the first just past the second. Without one it starts on a main road
 ## mid-town.
 const LEVELS := [
-	# (the start screen lists them in two groups, "group"; a level's number stays its place here,
-	# which the tests and notes go by)
-	{"name": "Givatayim", "group": "Cities", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer"},
+	# The start screen shows only the levels with a "group": three lists, each opening its own
+	# page -- "Cities: pick one", "Test routes: watch a drive", "Walks: watch one" (the last
+	# three entries below). A city has no "group": the Cities list shows every place here with a
+	# "city" that is not a list or a walk, by "sort", so a new city needs only its line. A
+	# level's number stays its place here, which the tests and notes go by: add at the end.
+	{"name": "Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer"},
 	# "decks": "infer" -- its bridges' heights worked out as it loads (decks.gd: infer)
-	{"name": "Bedford, Nova Scotia", "group": "Cities", "city": "bedford", "look": "north", "decks": "infer"},
-	{"name": "Ashdod", "group": "Cities", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med", "decks": "infer"},
+	{"name": "Bedford, Nova Scotia", "city": "bedford", "look": "north", "decks": "infer"},
+	{"name": "Ashdod", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med", "decks": "infer"},
 	# made up by tools/fake_city.py: one small town with one of everything, ringed by mountains,
 	# that loads in a moment -- for checking a change, not for exploring
-	{"name": "Kiryat Dimyon (test town)", "group": "Cities", "sort": 99, "city": "dimyon", "start": ["הנשיא", "השוק"], "look": "med"},
+	{"name": "Kiryat Dimyon (test town)", "sort": 99, "city": "dimyon", "start": ["הנשיא", "השוק"], "look": "med"},
 	# a walk filmed in Givatayim, replayed in first person on its own (cities/details/givatayim.json).
 	# The walks have no "group": the start screen leaves them off, and the "Walks" list below
 	# opens them (their numbers stay, for the tests and notes: LEVEL=5, LEVEL=6)
-	{"name": "A walk in Givatayim: Katzenelson to Ha-Meri", "city": "givatayim", "look": "med", "walk": "katzenelson_hameri", "filmed": true},
+	{"name": "Givatayim: Katzenelson to Ha-Meri", "city": "givatayim", "look": "med", "walk": "katzenelson_hameri", "filmed": true},
 	# a second, timed and placed from the GPS track taken with its film (tools/gpx_route.py)
-	{"name": "A walk in Givatayim: Sheinkin and Sirkin", "city": "givatayim", "look": "med", "walk": "sheinkin_sirkin", "filmed": true},
+	{"name": "Givatayim: Sheinkin and Sirkin", "city": "givatayim", "look": "med", "walk": "sheinkin_sirkin", "filmed": true},
 	# a box of central Tel Aviv, not the whole city (the workflow's bbox): HaKirya, Azrieli,
 	# Sarona, Montefiore, Bitsaron, the Ayalon. Starts on Kaplan heading east, the towers ahead.
-	{"name": "Tel Aviv: Azrieli to the sea", "group": "Cities", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer"},
+	{"name": "Tel Aviv: Azrieli to the sea", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer"},
 	# the route set (routes.json, tests/pick_routes.py): pick one of the drives and watch
 	# autodrive take it, from one address to the other, in its own city
 	{"name": "Test routes: watch a drive", "group": "Auto Experiments", "routes": true, "city": "dimyon", "look": "med"},
@@ -47,6 +50,11 @@ const LEVELS := [
 	{"name": "Ashdod: HeHalutzim to Herzl", "city": "ashdod", "look": "med", "decks": "infer", "walk": "ashdod_halutzim"},
 	{"name": "Bedford: Shore Drive by the water", "city": "bedford", "look": "north", "decks": "infer", "walk": "bedford_shore"},
 	{"name": "Test town: the market street", "city": "dimyon", "look": "med", "walk": "dimyon_market"},
+	# the first Dutch town (NEW_CITY.md): a box of the old centre, the station and the canals,
+	# with 3DBAG's measured heights and the BGT's trees and lamp posts. Starts on the Oude Delft canal.
+	{"name": "Delft", "city": "delft", "start": ["Oude Delft", "Binnenwatersloot"], "look": "north", "decks": "infer"},
+	# the cities: a list, as the walks and the test routes are (no city behind it)
+	{"name": "Cities: pick one", "group": "Cities", "cities": true, "city": "dimyon", "look": "med"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -1251,6 +1259,9 @@ func start(_config: Dictionary) -> void:
 		return
 	if _place.get("walks", false):
 		_walk_list_open()   # no city: the list of walks, each starting its own city
+		return
+	if _place.get("cities", false):
+		_walk_list_open("cities")   # no city: the list of cities
 		return
 	if _config.has("route"):
 		_route = _route_by_id(int(_config["route"]))
@@ -16150,6 +16161,7 @@ var _film_head: Array = []           ## Vector2(seconds, radians right of the bo
                                      ## as measured off the film (the walk's "head"); where it runs,
                                      ## it is the head, in place of the turn into bends and the looks'
                                      ## turns across (their tips up and down still apply)
+var _film_faces: Array = []          ## Vector3(from, to, radians round the map): the camera held facing that way
 var _film_tilt := 0.0                ## the phone tipped from its usual tilt by the looks (radians, + up)
 var _film_zebras: Array = []         ## [from, to, kerb, kerb]: on a crossing (or waiting at it)
 var _film_cars: Array = []           ## [second, at, heading]: a car sent down a street
@@ -16169,6 +16181,8 @@ func _film_begin(id: String) -> void:
 		# [from, to, degrees right] and, if there, degrees up (down at a zebra's stripes: -25)
 		_film_looks.append(Vector4(float(l[0]), float(l[1]), deg_to_rad(float(l[2])),
 			deg_to_rad(float(l[3])) if l.size() > 3 else 0.0))
+	for f: Array in w.get("face", []):
+		_film_faces.append(Vector3(float(f[0]), float(f[1]), deg_to_rad(float(f[2]))))
 	for h: Array in w.get("head", []):
 		_film_head.append(Vector2(float(h[0]), deg_to_rad(float(h[1]))))
 	for z: Array in w.get("zebras", []):
@@ -16344,6 +16358,12 @@ func _film_tick(dt: float) -> void:
 			if not head:
 				turn += l.z * k
 			tip += l.w * k
+	# `face`: the camera held on a way round the map between two seconds, whatever the body does
+	# (where a film's head is known by what its frames show, not by how its head turned)
+	for fc: Vector3 in _film_faces:
+		if _film_t > fc.x and _film_t < fc.y:
+			var k := smoothstep(fc.x, fc.x + 0.5, _film_t) * (1.0 - smoothstep(fc.y - 0.5, fc.y, _film_t))
+			turn += angle_difference(turn, angle_difference(_yaw, fc.z)) * k
 	_film_look = lerp_angle(_film_look, turn, 1.0 - exp(-dt * 6.0))
 	_film_tilt = lerpf(_film_tilt, tip, 1.0 - exp(-dt * 6.0))
 	for fp: Array in _film_people:
@@ -18223,6 +18243,8 @@ func _spawn_people() -> void:
 		var w := {"actor": a, "line": PackedVector2Array(), "cum": PackedFloat32Array(), "s": 0.0,
 			"dir": 1.0, "speed": _people_rng.randf_range(1.1, 1.6), "dodge": 0.0,
 			"carry": _people_rng.randf() < 0.22}
+		# (a box for one carrier in three; the others walk with a bag instead: the carrying
+		# walk round nothing looked like arms out for a hug)
 		if i % 9 == 2:   # someone walking a dog (slower: it stops to sniff)
 			w["dog"] = true
 			w["speed"] = _people_rng.randf_range(0.9, 1.2)
@@ -18231,6 +18253,12 @@ func _spawn_people() -> void:
 			w["pram"] = true
 			w["carry"] = true
 			w["speed"] = _people_rng.randf_range(1.0, 1.3)
+		var cs := hash(_city_name) * 31 + i
+		if w["carry"] and not w.has("pram") and posmod(cs, 3) != 0:
+			w["carry"] = false
+			_carry(a, "bag", cs)
+		elif not w.has("pram") and not w.has("dog"):
+			_carry(a, _what_carried(cs, w["carry"]), cs)
 		# two walking together, side by side (about four in ten people on a street are with
 		# someone): the second keeps to the first's line, pace and turns (_walk_beside)
 		var lead_i := i - 1
@@ -18253,6 +18281,7 @@ func _spawn_people() -> void:
 		_humanize(a, hash(a.get_instance_id()))
 		_people_lod(a)
 		a.play("Idle", true, _people_rng.randf_range(0.8, 1.1))
+		_carry(a, _what_carried(hash(_city_name) * 13 + i, false), hash(_city_name) * 13 + i)
 		a.visible = false
 		_chatters.append({"actor": a, "spot": Vector2.INF})
 	_seat_chatters()
@@ -18267,6 +18296,7 @@ func _spawn_people() -> void:
 			_sitters.append({"actor": a, "spot": Vector2.INF})
 		elif i < SITTERS + WAITERS:
 			a.play("Idle", true, _people_rng.randf_range(0.7, 1.0))
+			_carry(a, _what_carried(hash(_city_name) * 17 + i, false), hash(_city_name) * 17 + i)
 			_waiters.append({"actor": a, "spot": Vector2.INF})
 		else:
 			a.play("Idle", true, _people_rng.randf_range(0.6, 0.9))
@@ -19359,6 +19389,12 @@ func _humanize(a: Actor3D, seed: int) -> void:
 				sizes.bones[i] = PART_SIZES[bone]
 		sk.add_child(sizes)
 		a.model.scale *= 1.06   # back to the height asked for: the smaller head took some off
+		# builds: slighter or broader, across and front to back (the whole figure: a bone's
+		# own scale is passed on to the arms and head, and a rotated child of a squashed bone shears)
+		var bd := RandomNumberGenerator.new()
+		bd.seed = seed + 77
+		var wd := bd.randf_range(0.9, 1.12)
+		a.model.scale *= Vector3(wd, 1.0, lerpf(1.0, wd, 0.8))
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
 	var looks := _people_looks()
@@ -19378,6 +19414,133 @@ func _humanize(a: Actor3D, seed: int) -> void:
 			nm.roughness = 0.85
 			mi.set_surface_override_material(si, nm)
 		_one_piece(mi)
+
+## ---- what people carry -------------------------------------------------------------------------
+## Things in people's hands and on their backs: a shopping bag or a handbag hanging from one
+## hand, a backpack, a box held in front (the carrying walk had arms out round nothing). Each
+## is a few boxes kept at a bone of the figure's skeleton (Held), so it goes with the hand or
+## rides on the back; one mesh (one draw) each, shared, for the few who have one. (tests/people_carry.gd)
+## what someone has: "" (nothing), "bag", "handbag", "backpack", or "box" for the carrying walk
+func _what_carried(seed: int, carrying: bool) -> String:
+	if carrying:
+		return "box"
+	var r := posmod(seed * 2654435761, 1000) / 1000.0
+	return "bag" if r < 0.17 else ("handbag" if r < 0.27 else ("backpack" if r < 0.4 else ""))
+
+var _carry_meshes := {}               ## the boxes' sizes, places and colours -> one mesh, shared
+var _carry_mat: StandardMaterial3D = null
+
+## one thing in one mesh (one draw, not one a box), its colours in the vertices: [size,
+## position, colour] boxes, made once for each different set and shared
+func _carry_mesh(h: Node3D, boxes: Array) -> void:
+	var key := str(boxes)
+	var mesh: ArrayMesh = _carry_meshes.get(key)
+	if mesh == null:
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		for bx: Array in boxes:
+			var bm := BoxMesh.new()
+			bm.size = bx[0]
+			var arr := bm.get_mesh_arrays()
+			var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+			var n: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
+			var c: Color = bx[2]   # (as is: converted to linear, as the batched kit's are, they drew darker)
+			for i: int in arr[Mesh.ARRAY_INDEX]:
+				st.set_color(c)
+				st.set_normal(n[i])
+				st.add_vertex(v[i] + (bx[1] as Vector3))
+		mesh = st.commit()
+		_carry_meshes[key] = mesh
+	if _carry_mat == null:
+		_carry_mat = StandardMaterial3D.new()
+		_carry_mat.vertex_color_use_as_albedo = true
+		_carry_mat.roughness = 0.8
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.material_override = _carry_mat
+	h.add_child(mi)
+
+## Things held, moved to their bones every frame after the animation (and PartSizes) has
+## posed them. A hand's bag hangs straight down from the hand, whatever the arm's swing (on a
+## BoneAttachment3D it tilted with the arm, flat as a sheet of paper); the back's turns with it.
+class Held extends SkeletonModifier3D:
+	var items := []   ## [bone index, holder (a child of the skeleton, in metres), upright]
+
+	func _process_modification_with_delta(_delta: float) -> void:
+		var sk := get_skeleton()
+		if sk == null:
+			return
+		for it: Array in items:
+			var pose := sk.get_bone_global_pose(it[0])
+			var h: Node3D = it[1]
+			var keep := h.scale
+			h.transform = Transform3D(Basis() if it[2] else pose.basis.orthonormalized(), pose.origin)
+			h.scale = keep
+
+## A holder at a bone, in metres (the figure is fitted, i.e. scaled, and a child of the
+## skeleton would take that on); moved there every frame by the skeleton's Held
+func _bone_holder(a: Actor3D, bone: String, upright: bool) -> Node3D:
+	var sks := a.model.find_children("*", "Skeleton3D", true, false)
+	if sks.is_empty():
+		return null
+	var sk: Skeleton3D = sks[0]
+	var bi := sk.find_bone(bone)
+	if bi < 0:
+		return null
+	var held: Held = null
+	for m in sk.get_children():
+		if m is Held:
+			held = m
+	if held == null:
+		held = Held.new()
+		sk.add_child(held)   # (after PartSizes: run after it, so the bones are where they are drawn)
+	var s: Vector3 = sk.global_transform.basis.get_scale()
+	var h := Node3D.new()
+	sk.add_child(h)
+	h.scale = Vector3(1.0 / s.x, 1.0 / s.y, 1.0 / s.z)
+	held.items.append([bi, h, upright])
+	return h
+
+func _carry(a: Actor3D, what: String, seed: int) -> void:
+	if what == "" or a == null or a.model == null:
+		return
+	var ink := Palette.col("ink")
+	var bg := Palette.col("bg")
+	var alt := Palette.col("bg_alt")
+	var wn := Palette.col("warn")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed + 991
+	var dark := [bg.lerp(alt, 0.3), _natural(wn.lerp(bg, 0.7), 0.5), _natural(Palette.col("player").lerp(bg, 0.6), 0.5),
+		_natural(Palette.col("hazard").lerp(bg, 0.55), 0.5), ink.lerp(alt, 0.6)]
+	match what:
+		"bag", "handbag":
+			# hanging from the hand (the figure faces +z): flat side to the leg
+			var h := _bone_holder(a, "Fist.L" if rng.randf() < 0.5 else "Fist.R", true)
+			if h == null:
+				return
+			if what == "bag":   # a supermarket's thin white plastic, or a shop's paper or cloth bag
+				var c: Color = [ink.lerp(alt, 0.12), ink.lerp(alt, 0.12), _natural(wn.lerp(ink, 0.45), 0.4),
+					_natural(Palette.col("friend").lerp(bg, 0.4), 0.5)][rng.randi() % 4]
+				var tall: float = [0.3, 0.34, 0.38][rng.randi() % 3]
+				_carry_mesh(h, [[Vector3(0.11, tall, 0.27), Vector3(0, -0.07 - tall * 0.5, 0), c],
+					[Vector3(0.02, 0.07, 0.1), Vector3(0, -0.04, 0), c.darkened(0.1)]])   # (and the handles)
+			else:   # a handbag, its strap in the hand
+				var c: Color = dark[rng.randi() % dark.size()]
+				_carry_mesh(h, [[Vector3(0.1, 0.2, 0.27), Vector3(0, -0.15, 0), c],
+					[Vector3(0.015, 0.06, 0.12), Vector3(0, -0.03, 0), c.darkened(0.3)]])
+		"backpack":
+			var h := _bone_holder(a, "Torso", false)
+			if h == null:
+				return
+			var c: Color = dark[rng.randi() % dark.size()]
+			_carry_mesh(h, [[Vector3(0.3, 0.4, 0.15), Vector3(0, 0.06, -0.165), c],
+				[Vector3(0.24, 0.16, 0.06), Vector3(0, -0.04, -0.26), c.darkened(0.2)]])   # (and its front pocket)
+		"box":   # a cardboard box on the forearms, the hands under its front
+			var h := _bone_holder(a, "Torso", false)
+			if h == null:
+				return
+			_carry_mesh(h, [[Vector3(0.42, 0.28, 0.32), Vector3(0, -0.02, 0.36), _natural(wn.lerp(bg, 0.45), 0.55)]])
+	_people_lod(a)
 
 ## A person in one piece. The figures are one mesh of six parts (skin, shirt, trousers, belt,
 ## face, hair), and each part is a surface of its own: a draw call, and another in the
@@ -22331,6 +22494,30 @@ func _ap_plan() -> void:
 	var dir := 1 if (pts[sj + 1] - pts[sj]).dot(heading) >= 0.0 else -1
 	if r["o"] != 0:
 		dir = r["o"]
+		# a divided road's one-way half that only runs off the map: onto its other half, the
+		# way back into town, across the median (where a driver would take the last opening in
+		# it; the map's edge cut the rest). Not against the one-way, never on this half.
+		var mate := int(r.get("mate", -1))
+		if mate >= 0 and not _dest_on and _edge_bound(Vector3i(ri, sj + 1 if dir > 0 else sj, dir)):
+			var mr: Dictionary = _roads[mate]
+			var mp: PackedVector2Array = mr["pts"]
+			var best := -1
+			var best_d := INF
+			for k in range(mp.size() - 1):
+				var q := Geometry2D.get_closest_point_to_segment(_pos, mp[k], mp[k + 1])
+				if q.distance_to(_pos) < best_d:
+					best_d = q.distance_to(_pos)
+					best = k
+			var mdir := int(mr["o"]) if int(mr["o"]) != 0 else 1
+			if best >= 0 and best_d < 40.0 and not _edge_bound(Vector3i(mate, best + 1 if mdir > 0 else best, mdir)):
+				_tally("ap_edge_mate", 1)
+				Probe.event("edge_mate", {"from": ri, "to": mate})
+				hit = {"road": mate, "seg": best, "q": Geometry2D.get_closest_point_to_segment(_pos, mp[best], mp[best + 1]), "edge": 0.0}
+				ri = mate
+				sj = best
+				r = mr
+				pts = mp
+				dir = mdir
 	elif _edge_bound(Vector3i(ri, sj + 1 if dir > 0 else sj, dir)) and not _edge_bound(Vector3i(ri, sj if dir > 0 else sj + 1, -dir)):
 		dir = -dir   # that way only runs off the map: the other (it turns round first)
 	var d_first := (pts[sj + 1] - pts[sj]).normalized() * float(dir)
@@ -22980,6 +23167,24 @@ func _ap_next() -> bool:
 		# the trees and garden walls, or onto the footpath beyond and on along it at 40 km/h.
 		_ap_mark_dead_end()
 		return false
+	# every way on from here only runs off the map (a street the map's edge cut): turn round
+	# here, short of this junction, rather than drive on to the barrier -- on a two-way street
+	# back along it; on a divided road's one-way half onto its other half (_ap_plan).
+	# (A user, 22 Nov: "when the ai chooses to drive around the edges, it has trouble getting
+	# back ... it doesn't want to drive against the wrong lane, so it just turns back into
+	# nowhere"; tests/autodrive_edge.gd TRACE=1: off Derech Namir it drove along the edge into
+	# a dead end 5 m from the barrier and turned round in it for 12 s.)
+	if not _dest_on and (int(r["o"]) == 0 or int(r.get("mate", -1)) >= 0):
+		var all_edge := true
+		for w: Dictionary in ways:
+			if not _edge_bound(w["leg"]):
+				all_edge = false
+				break
+		if all_edge:
+			_tally("ap_edge_turn", 1)
+			Probe.event("edge_turn", {"at": _ap_pts[_ap_pts.size() - 1].round() if _ap_pts.size() > 0 else Vector2.ZERO})
+			_ap_mark_dead_end()
+			return false
 	# a real crossing (two or more proper streets on): ask, and plan no further for now --
 	# but not round a roundabout, where the exits come too fast to ask at each
 	var main: Array = ways.filter(func(w): return not w["service"])
@@ -23845,7 +24050,7 @@ func _routes_level() -> int:
 func _city_level(cid: String) -> int:
 	for i in range(LEVELS.size()):
 		var lv: Dictionary = LEVELS[i]
-		if lv.get("city", "") == cid and not lv.has("walk") and not lv.get("routes", false) and not lv.get("walks", false):
+		if lv.get("city", "") == cid and not lv.has("walk") and not _is_list(lv):
 			return i + 1
 	return 1
 
@@ -23937,6 +24142,7 @@ func _route_list_open() -> void:
 			x.add_theme_font_size_override("font_size", 11)
 			_route_ui.add_child(x)
 			_put(x, Vector2(590, y), Vector2(36, 25))
+	_back_button(Vector2(14, 52))   # (top left, beside the tabs: ten routes reach the foot)
 
 ## "+ a new one": the cities to make it in, one button each (the city loads, then the picker
 ## asks from where and to where)
@@ -23955,9 +24161,14 @@ func _route_new_row(have: int) -> void:
 		_route_ui.add_child(b)
 		_put(b, Vector2(190 + k * 87, 80), Vector2(83, 25))
 
-## the walks to watch: every place in LEVELS with a "walk", filmed ones first, one button each
-## (in the list's frame, _route_ui, so _input's taps reach them as the routes' do)
-func _walk_list_open() -> void:
+## a place in LEVELS that is one of the start screen's lists, not a city to drive
+static func _is_list(lv: Dictionary) -> bool:
+	return lv.get("routes", false) or lv.get("walks", false) or lv.get("cities", false)
+
+## The start screen's lists of places, one button each, a "back" at the foot (in the list's
+## frame, _route_ui, so _input's taps reach them as the routes' do). "walks": every place in
+## LEVELS with a "walk", the filmed ones first; "cities": every city to drive, by "sort".
+func _walk_list_open(kind := "walks") -> void:
 	if _route_ui != null:
 		_route_ui.queue_free()
 	_route_ui = Control.new()
@@ -23969,18 +24180,30 @@ func _walk_list_open() -> void:
 	dim.size = Vector2(640, 360)
 	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_route_ui.add_child(dim)
-	var title := UIKit.label("walks: pick one and watch it, in first person", 13, "player")
+	var title := UIKit.label("walks: pick one and watch it, in first person" if kind == "walks" else "cities: pick one to drive", 13, "player")
 	title.add_theme_font_override("font", _font)
 	title.position = Vector2(20, 30)
 	title.size = Vector2(600, 20)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_route_ui.add_child(title)
 	var rows: Array = []
-	for filmed: bool in [true, false]:
+	if kind == "walks":
+		for filmed: bool in [true, false]:
+			for i in range(LEVELS.size()):
+				var lv: Dictionary = LEVELS[i]
+				if lv.has("walk") and bool(lv.get("filmed", false)) == filmed:
+					rows.append([i + 1, String(lv["name"])])
+	else:
+		var keyed: Array = []
 		for i in range(LEVELS.size()):
 			var lv: Dictionary = LEVELS[i]
-			if lv.has("walk") and bool(lv.get("filmed", false)) == filmed:
-				rows.append([i + 1, ("filmed:  " if filmed else "") + String(lv["name"])])
+			if lv.has("city") and not lv.has("walk") and not _is_list(lv):
+				keyed.append([float(lv.get("sort", i)), i + 1, String(lv["name"])])
+		keyed.sort_custom(func(a, b): return a[0] < b[0])
+		for kk: Array in keyed:
+			rows.append([kk[1], kk[2]])
+	# two columns past seven, so a dozen fit
+	var two := rows.size() > 7
 	for k in range(rows.size()):
 		var lvl: int = rows[k][0]
 		var b := _tap_button(String(rows[k][1]), func(): Flow.start_game("streets", {"level": lvl}))
@@ -23988,7 +24211,19 @@ func _walk_list_open() -> void:
 		b.add_theme_font_size_override("font_size", 11)
 		b.clip_text = true
 		_route_ui.add_child(b)
-		_put(b, Vector2(120, 64 + k * 31.0), Vector2(400, 27))
+		if two:
+			_put(b, Vector2(30 + (k % 2) * 295, 64 + (k / 2) * 31.0), Vector2(285, 27))
+		else:
+			_put(b, Vector2(120, 64 + k * 31.0), Vector2(400, 27))
+	_back_button()
+
+## "back" at the foot of a list: the start screen again (the shell's own, as "levels" does)
+func _back_button(at := Vector2(270, 322)) -> void:
+	var b := _tap_button("back", func(): Flow.pick_level())
+	b.add_theme_font_override("font", _font)
+	b.add_theme_font_size_override("font_size", 12)
+	_route_ui.add_child(b)
+	_put(b, at, Vector2(100, 26))
 
 ## a drive of the route set: down at its start address, "go to" its end, autodrive on
 func _route_begin() -> void:
