@@ -2605,6 +2605,47 @@ it is dropped.
   still land on a road under the deck where they cross (use `deck_air`, which starts on the
   highest surface, to drive a particular deck).
 
+## What people carry, and builds (22 Nov 2026)
+
+`_carry(actor, what, seed)` in streets.gd ("what people carry") gives someone a shopping bag,
+a handbag, a backpack or a box; `_what_carried(seed, carrying)` picks one, about 17% bag, 10%
+handbag, 13% backpack, 60% nothing. Who gets one:
+- **Street walkers.** Before this, 22% were drawn with the carrying walk (`Walk_Carry`) and
+  nothing in their arms, which looked like arms out for a hug. Now one in three of those
+  carry a box and the rest a bag with the plain walk. Walkers with a dog or a pushchair get
+  nothing.
+- **Chatters and people waiting at stops** get bags and backpacks.
+- **Market shoppers** (`crowds.gd`): 45% had the same empty carrying walk. Now 40% carry a
+  bag, 12% a handbag, 8% a backpack.
+
+How things are held:
+- **Held, not BoneAttachment3D.** The thing goes on a holder, a child of the skeleton, and
+  the `Held` modifier (a SkeletonModifier3D added after `PartSizes`, so it runs after it)
+  moves the holder to its bone every frame. A hand's holder stays upright, so the bag hangs
+  straight down whatever the arm does. On a BoneAttachment3D the bag tilted with the swing
+  and read as a sheet of paper. The back's holder turns with the torso. The holder is scaled
+  by 1 / the skeleton's scale, so the sizes are in metres.
+- **One draw each.** Each thing is joined into one mesh coloured per vertex, shared between
+  everyone with the same set of boxes (`_carry_mesh`). Vertex colours go in as they are: run
+  through `srgb_to_linear()` they drew much darker in this renderer (the box went dark brown).
+- **Fits on the Quaternius figures:** backpack centre 0.165 m behind the Torso bone; box
+  centre 0.36 m in front and 0.02 m below it, which puts it on the carrying walk's forearms;
+  bag top 0.07 m under the fist.
+
+**Builds.** `_humanize` also scales the whole figure 0.9-1.12 across and front to back (its
+own random numbers, seed + 77). Scaling a bone such as the Torso does not work for this: its
+scale passes on to the arms and head, and a rotated child of a squashed bone shears.
+
+**Test.** `tests/people_carry.gd`, level 4: seven people on the road ahead of the car, each
+shot from the side, from the front at an angle and from behind (`pc_<i>_*`). Good: the
+bags hang beside the leg and not through it, the backpack sits on the back, and the box
+rests on the forearms.
+
+**Still open from the people list (GAME.md "Better people"):**
+- a more detailed CC0 set of bodies and moves, tried on the look bench first
+- phones in hand, which needs a pose, not only a thing
+- hands moving while people talk
+
 ## Sizes against life (`tests/scale_check.gd`, 20 Nov 2026)
 
 The user's sister said the scale felt off; the check measures what the game builds. Vehicles
