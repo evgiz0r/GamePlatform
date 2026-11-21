@@ -4497,7 +4497,26 @@ func _laid_cut(poly: PackedVector2Array) -> Array:
 				if absf(_area_signed(q)) > 0.01 and Geometry2D.is_polygon_clockwise(q) != Geometry2D.is_polygon_clockwise(res[big]):
 					holed = true
 			if holed:
-				next.append(p)
+				# cut in two across the cutter's middle first, then each half round it: no half
+				# holds it wholly, so neither comes back holed. Kept whole, the piece lay over
+				# the cutter -- a street's pavement over the corner of another's laid just before
+				# inside it (Ashdod (-1258, 3632): 2 m2 of two pavings in one square)
+				var halves := _halves_across(p, entry[0])
+				var split_ok := not halves.is_empty()
+				var got: Array = []
+				for h: PackedVector2Array in halves:
+					var r2 := Geometry2D.clip_polygons(h, entry[0])
+					for q: PackedVector2Array in r2:
+						if absf(_area_signed(q)) > 0.01 and Geometry2D.is_polygon_clockwise(q) != Geometry2D.is_polygon_clockwise(h):
+							split_ok = false
+					for q: PackedVector2Array in r2:
+						if absf(_area_signed(q)) > 0.01:
+							got.append(q)
+				if not split_ok:
+					next.append(p)   # (a little overlap, not a hole in the ground)
+					continue
+				touched = true
+				next.append_array(got)
 				continue
 			touched = true
 			for q: PackedVector2Array in res:
@@ -4505,6 +4524,28 @@ func _laid_cut(poly: PackedVector2Array) -> Array:
 					next.append(q)
 		pieces = next
 	return [pieces] if touched else []
+
+## p cut in two by a line through the middle of `inner` (a shape inside it), across p's
+## longer side: [] if that does not give two
+func _halves_across(p: PackedVector2Array, inner: PackedVector2Array) -> Array:
+	var box := _bld_box_of(p).grow(1.0)
+	var c := _bld_box_of(inner).get_center()
+	var sides: Array = []
+	if box.size.x >= box.size.y:
+		sides = [Rect2(box.position, Vector2(c.x - box.position.x, box.size.y)),
+			Rect2(Vector2(c.x, box.position.y), Vector2(box.end.x - c.x, box.size.y))]
+	else:
+		sides = [Rect2(box.position, Vector2(box.size.x, c.y - box.position.y)),
+			Rect2(Vector2(box.position.x, c.y), Vector2(box.size.x, box.end.y - c.y))]
+	var out: Array = []
+	for r: Rect2 in sides:
+		var rp := PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)])
+		for q: PackedVector2Array in Geometry2D.intersect_polygons(p, rp):
+			if absf(_area_signed(q)) > 0.01:
+				if Geometry2D.is_polygon_clockwise(q) != Geometry2D.is_polygon_clockwise(p):
+					q.reverse()
+				out.append(q)
+	return out if out.size() >= 2 else []
 
 ## a flat piece of kerb top or pavement cut to shape: its texture laid as the whole piece's
 ## would have been (along the street from `origin` in `dir`, across it in metres * vscale)
