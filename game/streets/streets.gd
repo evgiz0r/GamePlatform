@@ -17005,6 +17005,12 @@ func _place_walker(w: Dictionary, anywhere: bool) -> void:
 		w["pave"] = pave
 		w["cross"] = 0.0
 		w.erase("yaw")
+		# a new life: nothing of where they stood across the old pavement (its `lat`, up to
+		# 0.9 m, put them beside the spot found out of sight, round the building's corner
+		# into view), nor of what they were stepping round there
+		for k: String in ["lat", "lane", "plan_t", "me_side", "held", "hold_me", "at"]:
+			w.erase(k)
+		w["dodge"] = 0.0
 		w["dir"] = 1.0 if _people_rng.randf() < 0.5 else -1.0
 		a.play("Walk_Carry" if w["carry"] else "Walk", true, float(w["speed"]) / 1.35)
 		a.visible = true
@@ -17572,9 +17578,11 @@ func _people_tick(dt: float) -> void:
 		var s: float = w["s"] + (0.0 if w.get("hold_me", false) else float(w["dir"]) * float(w["speed"]) * dt)
 		# waiting for you to pass and you do not: after a few seconds, back the way they came
 		w["held"] = float(w.get("held", 0.0)) + dt if w.get("hold_me", false) else 0.0
+		var turned := false   # (its line or its way along it changed this tick: see `lat` below)
 		if float(w["held"]) > 4.0:
 			w["dir"] = -float(w["dir"])
 			w["held"] = 0.0
+			turned = true
 			w.erase("me_side")
 		w["hold_me"] = false   # (set again below while you are still in the way)
 		if s < 0.0 or s > total:   # the end of the stretch: on over the side street, or round the corner
@@ -17584,6 +17592,7 @@ func _people_tick(dt: float) -> void:
 				s = clampf(s, 0.0, total)   # (one search a tick: a tick's wait at the end)
 			elif _walk_on(w, at_end, came.normalized()):
 				placed = true
+				turned = true
 				line = w["line"]
 				cum = w["cum"]
 				total = cum[cum.size() - 1]
@@ -17595,6 +17604,7 @@ func _people_tick(dt: float) -> void:
 			else:   # in view and nowhere on: back the way they came
 				placed = true
 				w["dir"] = -float(w["dir"])
+				turned = true
 				s = clampf(s, 0.0, total)
 		w["s"] = s
 		var p := _along(line, cum, s)
@@ -17666,6 +17676,12 @@ func _people_tick(dt: float) -> void:
 					if absf(sr) < 0.85:
 						want += 0.8 if absf(sr) < 0.05 else -signf(sr) * (0.85 - absf(sr))
 			var lat: float = w.get("lat", 0.0)
+			# turned back, or on to a new stretch: their place across the pavement is measured
+			# from the line the other way now (`right` flipped or turned), so the same `lat` put
+			# them up to 1.8 m across in one tick, in view (walk_people's 1.6-2.5 m jumps 45-57 m
+			# off): carried over as where they stand, then eased to the plan as ever
+			if turned and a.visible:
+				lat = clampf((Vector2(a.position.x, a.position.z) - p).dot(right), -1.5, 1.5)
 			lat = lerpf(lat, clampf(want, -0.9, 0.9), 1.0 - exp(-dt * 3.0))
 			# no further aside than there is room -- but for making room for you on foot: then
 			# up against the hedge, as people do (held back, they stood in your way)

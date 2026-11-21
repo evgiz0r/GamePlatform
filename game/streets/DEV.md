@@ -242,7 +242,17 @@ The ones most often touched, and the functions in them:
   place 0.6 m one way took most of a 0.9 m step back, and one walked half a metre beside
   you for 2 s), kept till 2 m past you (one cut in just in front), up against a hedge if
   need be (elsewhere a step aside is cut to the room there: `room_at`), never nearer than
-  0.6 m; waiting for you more than 4 s, back the way they came. tests/walk_people.gd counts
+  0.6 m; waiting for you more than 4 s, back the way they came. **Jumps in view** (21 Nov,
+  validation on main: walk_people FAIL, 2 walkers jumping 1.6-2.5 m 45-57 m off; here 1 in 7
+  runs of walk 2 from 45 s): a walker's place across the pavement (`lat`, up to 0.9 m) is
+  measured from its line the way it walks, so turning back (at a stretch's end in view, or
+  after waiting 4 s for you) or stepping on to a new stretch (`_walk_on`) flipped or turned
+  `right` and the same `lat` put it up to 1.8 m across in one tick -- now `lat` is carried
+  over as where it stands (`turned`) and eased to the plan; and `_place_walker` kept the old
+  life's `lat`, `lane`, `dodge`, `at`, so a walker put down out of sight round a corner was
+  drawn up to 0.9 m beside the spot checked, in view -- now reset. After: 0 pops in 12 runs
+  (seeds 1-14). The test's "close" counts under 0.58 m now (0.6 is the floor walkers are held
+  at; a push off a post after it left one at 0.599 and failed a run). tests/walk_people.gd counts
   someone behind a building as unseen (`_behind_building`).
 - **signs bent by the car** (`_bend_sign`, SIGN_BEND_V 4 m/s): street signs are merged into
   the batches, so the one hit is hidden in TONE_SHADER (`gone`/`gone_n`, up to 12: what
