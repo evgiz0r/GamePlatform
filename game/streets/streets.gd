@@ -3764,10 +3764,11 @@ void fragment() {
 		float h2 = h21(pv.yz + 13.7);
 		vec3 base = pave.rgb;
 		vec3 col;
-		if (mixk < 0.5) {          // reds and browns, mixed
-			vec3 a = base * vec3(1.32, 0.9, 0.78);
-			vec3 b = base * vec3(1.12, 0.86, 0.76);
-			vec3 cc = base * vec3(0.98, 0.84, 0.82);
+		if (mixk < 0.5) {          // reds and browns, mixed: muted, as filmed (they were red over green
+			// 1.2-1.35 on screen and bright against the film's 1.10 on Sirkin; DEV.md "walk 2's paving")
+			vec3 a = base * vec3(0.93, 0.77, 0.69);
+			vec3 b = base * vec3(0.85, 0.75, 0.68);
+			vec3 cc = base * vec3(0.78, 0.74, 0.72);
 			col = h < 0.4 ? a : (h < 0.75 ? b : cc);
 		} else if (mixk < 1.5) {   // greys, a darker one here and there
 			col = base * (h < 0.15 ? 0.84 : (h < 0.55 ? 0.95 : 1.03));
@@ -3783,7 +3784,7 @@ void fragment() {
 		// further off than a few pixels a paver, the pattern is its average colour
 		float fw = length(fwidth(g));
 		float far = smoothstep(0.012, 0.05, fw);
-		vec3 avg = mixk < 0.5 ? base * vec3(1.16, 0.88, 0.79) : (mixk < 1.5 ? base * 0.93 : (mixk < 2.5 ? base * vec3(1.16, 1.1, 0.96) : base * vec3(1.12, 0.92, 0.84)));
+		vec3 avg = mixk < 0.5 ? base * vec3(0.86, 0.75, 0.69) : (mixk < 1.5 ? base * 0.93 : (mixk < 2.5 ? base * vec3(1.16, 1.1, 0.96) : base * vec3(1.12, 0.92, 0.84)));
 		col = mix(col, avg, far);
 		// the joints, sand-filled and dark, and each paver's bevelled edge
 		float jw = 0.004;
