@@ -2436,7 +2436,9 @@ func _build_world() -> bool:
 	# one shadow map over the near streets, not the default four cascades: those drew every
 	# shadow-casting thing in view four more times a frame, more than the view itself
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
-	_set_quality(QUALITY_WEB if OS.has_feature("web") else QUALITY.size() - 1)
+	# (a filmed walk starts at the best look in a browser too: it is there to be set beside its
+	# film, and on foot a lower frame rate is no hardship -- see FPS_LOW_WALK)
+	_set_quality(QUALITY_WEB if OS.has_feature("web") and not _place.has("walk") else QUALITY.size() - 1)
 	sun.rotation_degrees = SKIES["day"]["sun"]
 	_build_sky_dome()
 	cam.near = 0.3
@@ -16599,6 +16601,11 @@ const STEP_GAIN := 1.12
 const FLOOR_S := 300.0
 const FPS_LOW := 45.0
 const FPS_FULL := 56.0
+## On a filmed walk the look matters more than the rate (the user: "the highest possible
+## quality in the view of the walk"), and a walk's camera moves slowly: a step down only
+## under 28 fps (a frame "long" past 50 ms), and back up at 40.
+const FPS_LOW_WALK := 28.0
+const FPS_FULL_WALK := 40.0
 const STUTTER := 0.1
 const HITCH_S := 0.25
 const STEP_UP_S := 8.0
@@ -16660,7 +16667,8 @@ func _judge_fps(dt: float) -> void:
 		return   # a hitch: not the frame rate
 	_fps_t += dt
 	_fps_frames += 1
-	if dt > 0.033:
+	var walk := _place.has("walk")
+	if dt > (0.05 if walk else 0.033):
 		_fps_long += 1
 	if _fps_t < 2.0:
 		return
@@ -16669,7 +16677,7 @@ func _judge_fps(dt: float) -> void:
 	_fps_t = 0.0
 	_fps_frames = 0
 	_fps_long = 0
-	var low := fps < FPS_LOW or stutter > STUTTER
+	var low := fps < (FPS_LOW_WALK if walk else FPS_LOW) or stutter > STUTTER
 	var floor := _q_floor if _q_clock < _q_floor_until else 0
 	if _q_on_trial:   # the last step down, measured
 		_q_trial.append(fps)
@@ -16696,7 +16704,7 @@ func _judge_fps(dt: float) -> void:
 		_log.event("quality", _quality)
 		return
 	_fps_low = 0
-	if fps < FPS_FULL or stutter > 0.03:
+	if fps < (FPS_FULL_WALK if walk else FPS_FULL) or stutter > 0.03:
 		_fps_good = 0.0
 		return
 	_fps_good += 2.0
@@ -18521,8 +18529,11 @@ func _people_tick(dt: float) -> void:
 				side = -side
 			p += side * dodge
 		p += _people_apart(p, a.get_instance_id(), int(w.get("mate", -1)), -100 - int(w["dog_i"]) if w.has("dog_i") else 1)
-		if _walking and p.distance_to(_pos) < 0.6:   # (never into you: a filmed walk does not step aside)
-			p = _pos + (p - _pos).normalized() * 0.6 if p.distance_to(_pos) > 0.01 else p + Vector2(0.6, 0.0)
+		# (never into you: a filmed walk does not step aside -- and a metre off its camera, not
+		# 0.6: a woman coming the other way on a narrow pavement filled the frame with her hair)
+		var keep := 1.0 if _place.has("walk") else 0.6
+		if _walking and p.distance_to(_pos) < keep:
+			p = _pos + (p - _pos).normalized() * keep if p.distance_to(_pos) > 0.01 else p + Vector2(keep, 0.0)
 		for _pass in range(2):   # (out of one parked car's post can be into its other)
 			p += _car_box_push(p, 0.25)
 			p += _push_out(p, 0.25, true, false)

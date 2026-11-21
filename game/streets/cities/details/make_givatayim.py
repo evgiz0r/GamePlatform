@@ -160,6 +160,8 @@ d = {
     # Sirkin, where the Sheinkin-Sirkin walk waits and looks left to the shops (its 70-74 s):
     # no car parked beside it, nor across the way in the line to the shops
     "no_parking": [{"near": [485.5, -737.5], "r": 8.0}, {"near": [478.5, -742.0], "r": 8.0},
+                   # (walk 2, 28-32 s: the city parked a car half up on its pavement there)
+                   {"near": [484.6, -686.6], "r": 4.0},
                    # the little street (pass 14): the city parked one half up on the pavement the
                    # walk goes along; the film's cars there are the details' own, by the far side
                    *[{"near": P(s0, 0.0), "r": 4.0} for s0 in (59.0, 64.0, 69.0, 74.0, 78.5)],
