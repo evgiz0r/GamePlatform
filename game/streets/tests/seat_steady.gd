@@ -75,13 +75,15 @@ func _run() -> void:
 	print("SEAT VIEW over %.0f s: looks off ahead at most %.0f deg, %.1f deg on average; turns %.2f rad/s on average, faster than 1 rad/s %.1f%% of the time; swings back %.0f times a minute" % [
 		secs, rad_to_deg(most), rad_to_deg(sum_abs / maxf(n - 1, 1)), sum_rate / maxf(n - 1, 1), 100.0 * fast / secs, flips / mins])
 	# The bug ("so chaotic, it jumps around, he looks at random locations"): the steering went
-	# into the view twice and the head scanned at every slow junction -- 9.4 deg off ahead on
-	# average, 171 swings back a minute. The fix read 3.3 deg and 67. The limits sit about
-	# halfway, room for another drive's streets but well short of the bug. (The 67 and 171
-	# were counted drawing a few frames a second; headless, a frame a tick, the same code read
-	# 5 swings a minute -- loose there -- and 3.4 deg: the average carries the verdict.)
+	# into the view twice and the head scanned at every slow junction. Run on the code before
+	# the fix (5b92fbd, this test copied in), headless: the view turning 0.29 rad/s on average,
+	# 8.1 deg off ahead. Today's code, five drives: 0.05-0.13 rad/s -- but 1.4 to 8.6 deg off
+	# ahead, as the drive takes more corners or fewer, so the angle cannot tell the bug from a
+	# twisty drive and the turning speed carries the verdict, its limit halfway. (Swings back
+	# depend on the frame rate: 4-12 a minute headless, 67 and 171 counted at a few frames a
+	# second.)
 	var avg := rad_to_deg(sum_abs / maxf(n - 1, 1))
-	var swings := flips / mins
-	print("REGRESS seat_steady: %s -- seat view %.1f deg off ahead on average, %.0f swings back a minute (good under 6 deg and 120; the bug: 9.4, 171)" % [
-		"PASS" if avg < 6.0 and swings < 120.0 else "FAIL", avg, swings])
+	var turning := sum_rate / maxf(n - 1, 1)
+	print("REGRESS seat_steady: %s -- the seat view turning %.2f rad/s on average, %.1f deg off ahead (good under 0.20 rad/s; the bug: 0.29, 8.1 deg)" % [
+		"PASS" if turning < 0.20 else "FAIL", turning, avg])
 	quit(0)

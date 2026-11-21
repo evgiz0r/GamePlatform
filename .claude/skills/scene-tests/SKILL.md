@@ -231,7 +231,11 @@ reported in one day, nineteen got a test of their own and nothing ever ran one a
 validation built the day before caught three of the thirty. End each with one line --
 `REGRESS <name>: PASS|FAIL -- <measure> <value> (good <band>; the bug: <what it read>)` --
 with the band from the fix's measured result and the bug's, not tighter than the run-to-run
-spread, and add it to the validation script's list. A check of the world as built goes into
+spread, and add it to the validation script's list. Check the verdict on the bug's own code
+(the commit before the fix, the new test copied in) and on several healthy runs: a seat
+view's angle off ahead read 8.1 for the bug and 1.4-8.6 for healthy drives, as a drive
+took more corners or fewer -- useless -- while its turning speed read 0.29 against
+0.05-0.13. A check of the world as built goes into
 the world check instead, run on every level, not only the one the bug was found in: ported
 there, the paving-laid-twice check found 578 m2 flickering in a town nobody had looked at,
 and a road-tilt check a town never levelled -- the same bugs, unfixed where no report came

@@ -751,8 +751,26 @@ minutes, this 1.29 on 40 -- the same; main read 1.11-1.23 at 2x all day and 1.07
 - Standing over the line at a red, about once a run (a taxi 4.5 m past it in the test town):
   not the amber case now; its drive log next.
 
+**21 Nov: the user's thirty reports of the day before, in the validation.** `city_check`
+gained their world checks and Tel Aviv; eleven tests that drive, walk or load end in a
+`REGRESS` line (`validate.sh REGRESS=1`, ~10 min). First run, on `main` of 21 Nov 01:00:
+- city: the towns' own mapped trees, merged hours before, stood up to 1.3 m into streets
+  (Givatayim 40 posts on the road, Tel Aviv 42) -- fixed by that session within the hour
+  (1377a70) when sent the list; still over: Tel Aviv 14 buildings 3 m into small streets,
+  Ashdod 578 m2 and Tel Aviv 89 m2 of two pavings at once (Tel Aviv read 30 after its fix,
+  before it grew to the sea), Bedford's roads 9% over 6% across (never levelled; the limit
+  3). These fail until fixed, on purpose.
+- the eleven: all PASS, after `seat_steady`'s verdict moved from the angle off ahead to the
+  view's turning speed -- five healthy drives read 1.4-8.6 deg off ahead (the bug 8.1-9.4)
+  but 0.05-0.13 rad/s turning against the bug's 0.29 (the test run on the code before the
+  fix, 5b92fbd). Run a verdict on the bug's own code before trusting it. One stall each in
+  `seat_steady` (no output after the warm-up for 13 min) and `deck_corner` (route 1 never
+  ended), neither seen again in four runs: timeouts now ~3x a test's time.
+- the test town's exam on `main` read 29 checks at 2x (23 traffic overlaps; 4-12 on 20 Nov
+  morning, 19-20 that evening): still rising, still to bisect.
+
 **Commands** (all headless, in the background):
-- `game/streets/tests/validate.sh` (~4 min) and `FULL=1` (~12 min). Good: city 0 (Givatayim
+- `game/streets/tests/validate.sh` (~6 min), `FULL=1` (~12 min), `REGRESS=1` (+~10 min). Good: city 0 (Givatayim
   1-2 posts and the passage), exams about 7-15 a town and noisy, queue PASS at 1x.
 - One check by itself: `LEVEL=1 STREETS_BUILD_ALL=1 $GODOT --headless --fixed-fps 60 --path .
   -s res://game/streets/tests/exam.gd` (`EXAM_STARTS=2` halves it; `STREETS_SIM_SPEED=2`).
