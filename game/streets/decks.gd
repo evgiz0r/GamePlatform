@@ -322,10 +322,13 @@ func bank_at(ri: int, p: Vector2, out: Vector2, y: float) -> float:
 	if drop < 0.4:
 		return 0.0
 	var width := drop * BANK
-	for f: float in [0.5, 1.0]:
+	# (its foot 1 m clear of any other road's asphalt, sampled every quarter of the way out:
+	# at half and the foot alone, with 0.5 m, a bank's foot stood in a street's kerb lane at a
+	# slant -- Yitzhak Sadeh's, Ayalon South's, (76, -34) in Tel Aviv: street_holes' walls)
+	for f: float in [0.25, 0.5, 0.75, 1.0]:
 		var q := top + out * width * f
 		var on: Dictionary = g._nearest_seg(q, 12.0, true)
-		if not on.is_empty() and int(on["road"]) != ri and float(on["edge"]) < 0.5:
+		if not on.is_empty() and int(on["road"]) != ri and float(on["edge"]) < 1.0:
 			return -1.0
 		if _in_building(q, 0.6):
 			return -1.0

@@ -1,0 +1,98 @@
+# The nightly checks: every game that has a tests/nightly.sh runs it on the latest main,
+# headless, and its verdicts are set beside the night before's. The run's page shows what
+# changed (the job summary) and keeps every output for two weeks (the artifact); the run
+# fails, and GitHub emails the repository's owner, only when something got worse -- a new
+# FAIL, OVER or NO VERDICT, or a count that rose. A game's nightly.sh writes
+# $OUT/summary.txt and $OUT/verdicts.txt (see tools/nightly_compare.py for the format).
+# It commits nothing, so it never triggers the web build. Start one by hand from the
+# Actions tab ("Run workflow"), or `gh workflow run nightly_checks.yml`.
+name: nightly checks
+
+on:
+  schedule:
+    - cron: "15 0 * * *"   # 00:15 UTC: 02:15 in Israel in winter, 03:15 in summer, after the evening's pushes
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-checks
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: cache Godot
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/godot
+          key: godot-${{ hashFiles('project.godot') }}
+
+      - name: fetch Godot
+        run: echo "GODOT=$(tools/setup_godot.sh | tail -1)" >> "$GITHUB_ENV"
+
+      - name: import assets
+        run: |
+          "$GODOT" --headless --path . --import > /dev/null 2>&1 || true
+          mkdir -p .godot && touch .godot/.import_stamp
+
+      - name: last night's verdicts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p prev
+          id=$(gh run list --workflow nightly_checks.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty' || true)
+          if [ -z "$id" ]; then
+            id=$(gh run list --workflow nightly_checks.yml --status failure --limit 1 --json databaseId --jq '.[0].databaseId // empty' || true)
+          fi
+          [ -n "$id" ] && gh run download "$id" --name nightly --dir prev || echo "no earlier night"
+
+      - name: run every game's nightly checks
+        run: |
+          mkdir -p out
+          for s in game/*/tests/nightly.sh; do
+            [ -f "$s" ] || continue
+            g=$(basename "$(dirname "$(dirname "$s")")")
+            echo "::group::$g"
+            OUT="$PWD/out/$g" bash "$s" || echo "!! SCRIPT ERROR: $s exited $?" >> "out/$g/verdicts.txt"
+            echo "::endgroup::"
+          done
+
+      - name: compare with last night
+        run: |
+          worse=0
+          for d in out/*/; do
+            g=$(basename "$d")
+            {
+              echo "## $g ($(git rev-parse --short HEAD))"
+              python3 tools/nightly_compare.py "prev/$g/verdicts.txt" "$d/verdicts.txt" > "$d/changes.md" || worse=1
+              cat "$d/changes.md"
+              echo "<details><summary>the whole summary</summary>"
+              echo
+              echo '```'
+              cat "$d/summary.txt"
+              echo '```'
+              echo "</details>"
+            } >> "$GITHUB_STEP_SUMMARY"
+          done
+          echo "worse=$worse" >> "$GITHUB_ENV"
+
+      - name: keep tonight's outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly
+          path: out
+          retention-days: 14
+
+      - name: fail if something got worse
+        if: env.worse == '1'
+        run: |
+          echo "Something got worse since last night: see the job summary."
+          exit 1

@@ -1643,12 +1643,14 @@ func _fit_dual_carriageways() -> void:
 		var pts: PackedVector2Array = r["pts"]
 		var hw: float = float(r["w"]) * 0.5
 		var acr: Array = []
+		var mates := {}   # the other half's road -> pieces beside it
 		for j in range(pts.size() - 1):
 			var c := (pts[j] + pts[j + 1]) * 0.5
 			var d := (pts[j + 1] - pts[j]).normalized()
 			var pair := _partner(c, d, ri, hw, o)
 			if not pair.is_empty():
 				acr.append((pair[1] as Vector2).distance_to(c))
+				mates[pair[0]] = int(mates.get(pair[0], 0)) + 1
 		if acr.is_empty() or acr.size() * 2 < pts.size() - 1:
 			continue   # beside another carriageway along less than half of it
 		acr.sort()
@@ -1660,6 +1662,11 @@ func _fit_dual_carriageways() -> void:
 		w = minf(w, maxf(3.0, across - 0.5))
 		r["w"] = w
 		r["median"] = maxf(0.0, across - w)
+		var mate := -1
+		for rj: int in mates:
+			if mate < 0 or int(mates[rj]) > int(mates[mate]):
+				mate = rj
+		r["mate"] = mate   # (the median's paving: _median_pave_key)
 		fitted += 1
 	if fitted == 0:
 		return
@@ -2445,6 +2452,8 @@ var _tile_signs := {}                ## square -> stop and give-way signs
 var _tile_lit := {}                  ## square -> junctions with traffic lights
 var _tile_lamps := {}                ## square -> a town's own lamp posts: [where, look, lamps]
 var _lamp_cover := {}                ## LAMP_COVER cell -> true: the town's map has its lamp posts there
+var _tile_things := {}               ## square -> a town's own street things: [where, kind, places] (furniture.gd's town_things)
+var _hydrant_cover := {}             ## LAMP_COVER cell -> true: the town's map has its hydrants there
 var _tile_bars := {}                 ## square -> mapped fences and hedges that reach it
 var _crossing_set := {}
 var _white_bollards := {}            ## crossing nodes whose bollards are white, as filmed (details.gd)
@@ -2663,6 +2672,14 @@ func _build_setup(t0: int) -> void:
 		var lp := Vector2(lamps_xz[i * 2], lamps_xz[i * 2 + 1]) * k
 		_bucket(_tile_lamps, _tile_of(lp), [lp, String(lamp_looks[int(lamp_info[i * 2])]), clampi(int(lamp_info[i * 2 + 1]), 1, 2)])
 		_lamp_cover[_cell(lp, LAMP_COVER)] = true
+	var things: Array = _city_data.get("things", [])   # (a town's own street things: furniture.gd's town_things)
+	var thing_kinds: Array = _city_data.get("thing_kinds", [])
+	for i in range(things.size() / 4):
+		var tp := Vector2(things[i * 4], things[i * 4 + 1]) * k
+		var kind := String(thing_kinds[int(things[i * 4 + 2])])
+		_bucket(_tile_things, _tile_of(tp), [tp, kind, int(things[i * 4 + 3])])
+		if kind == "hydrant":
+			_hydrant_cover[_cell(tp, LAMP_COVER)] = true
 	var pois: Array = _city_data.get("pois", [])
 	for i in range(pois.size()):
 		_bucket(_tile_pois, _tile_of(Vector2(pois[i][0], pois[i][1]) * k), i)
@@ -2875,7 +2892,7 @@ func _build_rest() -> void:
 		await _release(_city_data[key])
 	_city_data = {}
 	for table: Dictionary in [_area_rings, _asph_hash, _tile_roads, _tile_decks, _tile_nodes, _tile_blds, _tile_areas, _tile_rings,
-			_tile_trees, _tile_pois, _tile_stops, _tile_signs, _tile_lit, _tile_bars, _tile_lamps]:
+			_tile_trees, _tile_pois, _tile_stops, _tile_signs, _tile_lit, _tile_bars, _tile_lamps, _tile_things]:
 		await _release(table)
 	_bg_build = false
 	Probe.event("city_built", {"squares": n, "ms": Time.get_ticks_msec() - t0, "posts": _posts.size(), "trees": _trees_made, "dressing": _dressing})
@@ -3882,7 +3899,7 @@ func _build_kerbs() -> void:
 						continue   # the halves touch: a painted line, no kerb
 					pw = clampf(m * 0.5 - KERB_W, 0.0, PAVE_W)   # each half paves its half of the median
 					# both halves in one paving (each its own street's, a median came out in two)
-					_set_pave_code(hash(String(r["name"])) if String(r["name"]) != "" else hsh, r.get("pave", []))
+					_set_pave_code(_median_pave_key(r, hsh), r.get("pave", []))
 				elif _faces_median(run, hw, sgn, ri):
 					_tally("kerb_runs_facing_a_median", 1)
 					continue   # a street's stretch across a divided road: that side is the median's end
@@ -3923,7 +3940,7 @@ func _build_kerbs() -> void:
 						var t1 := u1 / seg
 						# (a slip road's side too where the fitting took it and the road it leaves for a
 						# divided road's halves: its "median" is the triangle)
-						if not _link_islands.is_empty():
+						if not _link_rings.is_empty():
 							var pm := inner[i].lerp(inner[i + 1], (t0 + t1) * 0.5)
 							if _in_link_island(pm + na.lerp(nb, (t0 + t1) * 0.5).normalized() * (KERB_W + pw * 0.5)):
 								_tally("kerb_on_a_link_island", 1)
@@ -3966,7 +3983,7 @@ func _build_kerbs() -> void:
 							or _asphalt_other((w_out[i] + w_out[i + 1] + g_out[i] + g_out[i + 1]) * 0.25, ri) \
 							or _asphalt_other(w_in[i], -1) or _asphalt_other(w_in[i + 1], -1) \
 							or _asphalt_other((w_in[i] + w_in[i + 1]) * 0.5, -1) \
-							or (not _link_islands.is_empty() and _in_link_island((w_in[i] + w_in[i + 1]) * 0.5)):
+							or (not _link_rings.is_empty() and _in_link_island((w_in[i] + w_in[i + 1]) * 0.5)):
 						continue   # (nor where the wall itself would, on any road, its own too at
 						           # a sharp bend: by the garden's middle alone, a wall stood
 						           # across the next street, and autodrive hit it)
@@ -4312,6 +4329,22 @@ func _build_medians(kerb: Buf, pave: Buf) -> void:
 				cum += seg
 	_tally("median_m", int(made))
 
+## The key both halves of a divided road pave their median with: one name for both -- by its
+## own name alone, Ashdod's Sderot Bnei Brit, one half named "בני ברית" and the other
+## "שדרות בני ברית", paved its median twice in two pavings, overlapping (flicker; 25 m2 of
+## the town's 235 in one stretch, pavings_where.gd)
+func _median_pave_key(r: Dictionary, hsh: int) -> int:
+	var nm := String(r["name"])
+	var mate := int(r.get("mate", -1))
+	if mate >= 0:
+		var r2: Dictionary = _roads[mate]
+		var other := String(r2["name"])
+		if nm == "" or (other != "" and other < nm):
+			nm = other
+		if nm == "":   # (both unnamed: the lower of their own keys, the same from either half)
+			hsh = mini(hsh, _hash_i((r2["pts"] as PackedVector2Array)[0]))
+	return hash(nm) if nm != "" else hsh
+
 func _kerbed(r: Dictionary) -> bool:
 	return r["drive"] and not r["pv"] and r["k"] != "service" and not HIGHWAYS.has(r["k"])
 
@@ -4507,7 +4540,11 @@ func _laid_cut(poly: PackedVector2Array) -> Array:
 					big = i
 			var holed := false
 			for q: PackedVector2Array in res:
-				if Geometry2D.is_polygon_clockwise(q) != Geometry2D.is_polygon_clockwise(res[big]):
+				# (not a sliver: cut by a strip whose edge lies on this piece's own, the clip
+				# hands back hair-thin leftovers along it wound either way, and one read as a
+				# hole kept the piece whole, over the strip -- Ashdod's Hoshea HaNavi, 7 m2
+				# of two pavings where one street's pavement crossed the other's at a fork)
+				if absf(_area_signed(q)) > 0.01 and Geometry2D.is_polygon_clockwise(q) != Geometry2D.is_polygon_clockwise(res[big]):
 					holed = true
 			if holed:
 				next.append(p)
@@ -5119,7 +5156,7 @@ func _corners_at(ni: int, count := false) -> Array:
 		if P.distance_to(Q) > 45.0:
 			continue
 		# none into a slip road's island: it has its own kerb all round (_find_link_islands)
-		if not _link_islands.is_empty():
+		if not _link_rings.is_empty():
 			var mid := (P + Q) * 0.5
 			if _in_link_island(mid + (mid - c).normalized() * 1.5):
 				if count and _mine(c):
@@ -5969,6 +6006,13 @@ func _find_link_islands(areas: Array) -> void:
 		for p: PackedVector2Array in pieces:
 			left += absf(_area_signed(p))
 		if left < LINK_ISLAND_MIN:
+			# all but a sliver of it is the roads' own asphalt (Moshe Dayan's northbound slip road
+			# to HaShalom, Tel Aviv: 101 m2, 2.6 left): no island, but still no kerb or paving
+			# facing into it -- the slip road's left kerb, cut by its neighbours' asphalt down
+			# to one loose 4 m piece, stood alone in the junction
+			_hash_add(_link_island_hash, box, BLD_CELL, _link_rings.size())
+			_link_rings.append(ring)
+			_tally("link_triangles_all_road", 1)
 			continue
 		var flat: Array = []
 		var k := float(_city_data.get("scale", 10))
@@ -7802,6 +7846,17 @@ func _lamps_mapped_at(p: Vector2) -> bool:
 	for dx in range(-1, 2):
 		for dz in range(-1, 2):
 			if _lamp_cover.has(c + Vector2i(dx, dz)):
+				return true
+	return false
+
+## the town's map has its hydrants round p (the made-up ones are left out there)
+func hydrants_mapped_at(p: Vector2) -> bool:
+	if _hydrant_cover.is_empty():
+		return false
+	var c := _cell(p, LAMP_COVER)
+	for dx in range(-1, 2):
+		for dz in range(-1, 2):
+			if _hydrant_cover.has(c + Vector2i(dx, dz)):
 				return true
 	return false
 

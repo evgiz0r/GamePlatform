@@ -245,6 +245,7 @@ static func pavings_overlap(g) -> Array:
 				cells[k].append(t)
 	var area := 0.0
 	var worst := [0.0, Vector2.ZERO]
+	var places := {}   # 25 m square -> [m2, a point, {code pair: m2}]  (pavings_where.gd)
 	for k: Vector2i in cells:
 		var list: Array = cells[k]
 		for x in range(list.size()):
@@ -267,6 +268,18 @@ static func pavings_overlap(g) -> Array:
 					for i in range(piece.size()):
 						s += piece[i].cross(piece[(i + 1) % piece.size()])
 					area += absf(s) * 0.5
+					var pk := Vector2i(floori(piece[0].x / 25.0), floori(piece[0].y / 25.0))
+					if not places.has(pk):
+						places[pk] = [0.0, piece[0], {}, [A, B]]   # (and the first two triangles that overlap there)
+					places[pk][0] = float(places[pk][0]) + absf(s) * 0.5
+					var pair := "%.2f/%.2f" % [minf(tris[ta][2], tris[tb][2]), maxf(tris[ta][2], tris[tb][2])]
+					places[pk][2][pair] = float(places[pk][2].get(pair, 0.0)) + absf(s) * 0.5
 					if absf(s) * 0.5 > float(worst[0]):
 						worst = [absf(s) * 0.5, piece[0]]
+	last_places = places.values()
+	last_places.sort_custom(func(x, y): return float(x[0]) > float(y[0]))
 	return [area, "worst piece %.1f m2 at %s" % [worst[0], (worst[1] as Vector2).round()] if area > 0.0 else ""]
+
+## pavings_overlap's overlap by 25 m square, most first: [m2, a point, {"code/code": m2}, [the
+## first two triangles that overlap there]]
+static var last_places: Array = []
