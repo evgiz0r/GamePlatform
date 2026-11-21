@@ -660,7 +660,8 @@ before's with `tools/nightly_compare.py`. The run's page (Actions, "nightly chec
 what changed in its summary and keeps every output for two weeks; the run fails, and GitHub
 emails the owner, only when something got worse -- a new FAIL, OVER or NO VERDICT, or a count
 that rose. The exam and the queue check are in the summary, not the verdicts (too noisy to
-fail a night on). It commits nothing. A test added to validate.sh's REGRESS list joins it
+fail a night on). It commits nothing. The whole run takes ~16 minutes on GitHub's
+machine (41 in a cloud session); the first, 21 Nov on b538644, read every REGRESS PASS. A test added to validate.sh's REGRESS list joins it
 the next night with nothing more to do.
 
 **The exam's dice** (`EXAM_SEED=n`, exam.gd): seeds the engine's random numbers and the
