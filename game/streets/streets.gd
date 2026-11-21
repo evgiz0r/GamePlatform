@@ -409,6 +409,8 @@ void fragment() {
 	// the balconies' parapets and slab edges in a band of their own on some blocks: white on
 	// the sand ones
 	vec3 band = hash(vec2(seed, 8.3)) < 0.45 ? mix(base, wall_a.rgb * COLOR.r, 0.65) : base * 1.05;
+	// about half the blocks with balconies have railings of bars, not solid parapets
+	bool rail_blk = hash(vec2(seed, 6.1)) < 0.5;
 	// (how weathered: aged, the sand-plastered old blocks, darker grime under their sills)
 	if (siding > 0.5 && style < 0.5 && facade && fract(up / 0.24) < 0.13) {
 		col *= 0.88;
@@ -451,7 +453,10 @@ void fragment() {
 			}
 		} else if (style < 1.5) {
 			if (fx > 0.06 && fx < 0.94 && fy < 0.88) {
-				if (fy < 0.34) {
+				if (fy < 0.34 && rail_blk && !enclosed) {   // the hollow through a railing's bars, far off
+					col = fy > 0.32 ? vec3(0.15, 0.15, 0.16) : mix(dark.rgb, vec3(0.15, 0.15, 0.16), 0.3);
+					pl = 0.0;
+				} else if (fy < 0.34) {
 					col = band;
 				} else if (enclosed) {   // glass on the parapet, the shutter box over it
 					pl = 0.0;
@@ -624,9 +629,24 @@ void fragment() {
 				}
 			}
 		} else if (upper && style > 0.5 && style < 1.5) {
-			// a balcony: a hollow 1.4 m deep behind the parapet, a glass door at its back
-			vec2 lo = vec2(0.06 * cw, 1.02);
+			// a balcony: a hollow 1.4 m deep behind the parapet, a glass door at its back.
+			// As the kit's balconies (_balcony_mesh): dark creases where its surfaces meet (the
+			// slab over it seen from below darkest, its sides and back in shade, more so up
+			// under the slab), a coping on the parapet catching the light, the slab's lip and a
+			// drip line under it; on about half the blocks a railing of dark bars instead of a
+			// solid parapet, the hollow seen between them.
+			bool rail = rail_blk;
+			vec2 lo = vec2(0.06 * cw, rail ? 0.06 : 1.02);
 			vec2 hi = vec2(0.94 * cw, 2.64);
+			if (p.x > lo.x && p.x < hi.x && p.y > 2.64 && p.y < 2.82) {
+				// the slab's front: a lip catching the light at its top, a drip line under it
+				deep_hit = true;
+				col2 = band * (p.y > 2.785 ? 1.15 : (p.y < 2.67 ? 0.45 : 0.92));
+			} else if (!rail && p.x > lo.x - 0.03 && p.x < hi.x + 0.03 && p.y > 0.93 && p.y <= 1.02) {
+				// the coping along the parapet's top, its shadow on the parapet under it
+				deep_hit = true;
+				col2 = band * (p.y > 0.985 ? 1.15 : 0.62 + 0.3 * smoothstep(0.93, 0.985, p.y));
+			}
 			if (p.x > lo.x && p.x < hi.x && p.y > lo.y && p.y < hi.y) {
 				deep_hit = true;
 				vec2 m = -v.xy;
@@ -635,7 +655,7 @@ void fragment() {
 				float ty = m.y < 0.0 ? (0.06 - p.y) / min(m.y, -0.0001) : (hi.y - p.y) / max(m.y, 0.0001);
 				float t = min(tz, min(tx, ty));
 				vec2 h = p + m * t;
-				float shade = 1.0 - 0.35 * t * v.z / 1.4;
+				float shade = (1.0 - 0.35 * t * v.z / 1.4) * mix(1.0, 0.7, smoothstep(1.6, 2.64, h.y));
 				emit2 = vec3(0.0);
 				rough2 = 0.85;
 				if (t == tz) {
@@ -656,14 +676,22 @@ void fragment() {
 							spec2 = 0.5;
 						}
 					} else {
-						col2 = base * 0.9 * shade;
+						col2 = base * 0.66 * shade;
 					}
 				} else if (t == ty) {   // its tiled floor, or the slab over it seen from below
-					col2 = m.y < 0.0 ? floorc * 1.2 * shade : base * 0.85 * shade;
+					col2 = m.y < 0.0 ? floorc * 0.95 * shade : base * 0.42 * shade;
 					nrm2 = m.y < 0.0 ? bv : -bv;
 				} else {
-					col2 = base * 0.95 * shade;
+					col2 = base * 0.62 * shade;
 					nrm2 = m.x < 0.0 ? tv : -tv;
+				}
+				if (rail && p.y < 1.02) {
+					// the railing at the front: a top rail and flat bars, dark painted steel
+					float bar = line_cover(abs(fract((p.x - lo.x) / 0.14) - 0.5) * 0.14, 0.012, aa);
+					float cover = max(bar, line_cover(abs(p.y - 0.99), 0.025, aa));
+					col2 = mix(col2, vec3(0.15, 0.15, 0.16), cover);
+					nrm2 = normalize(mix(nrm2, nn, cover));
+					emit2 *= 1.0 - cover;
 				}
 			}
 		} else if (upper && style > 1.5 && style < 2.5) {
@@ -15702,10 +15730,12 @@ func _film_begin(id: String) -> void:
 ## it read pink; fitted, it went to 16% and grey pavers went mauve); then saturation back up
 ## by FILM_SAT, as the flatter curve takes some out. Only the walks: the game's own look is
 ## other sessions' (the light, the haze) and drives on.
-const FILM_CURVE := [0.048, 0.083, 0.147, 0.224, 0.294, 0.356, 0.411, 0.452, 0.481, 0.508, 0.538,
-	0.572, 0.609, 0.653, 0.704, 0.786, 0.880]
+## (refitted 21 Nov on a bare recording after the deeper light -- fill x0.6, sun x1.12 -- which
+## clipped 2.2% of the bare picture and left it more saturated: 0.191 against the film's 0.159)
+const FILM_CURVE := [0.053, 0.103, 0.185, 0.271, 0.344, 0.403, 0.447, 0.481, 0.515, 0.549, 0.580,
+	0.608, 0.636, 0.670, 0.709, 0.783, 0.878]
 const FILM_WARM := 1.06
-const FILM_SAT := 1.088
+const FILM_SAT := 0.943
 ## the phone's auto-exposure: [target, strength, least, most] -- the frame's mean brightness
 ## pulled towards target by (target / mean)^strength, in light, within least..most. The film's
 ## brightness second to second holds at 0.45 +- 0.055 (its exposure follows the view); the
