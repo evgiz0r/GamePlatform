@@ -987,10 +987,10 @@ var _ap_wait := 0.0                  ## autodrive held up by a car this long
 var _tone := {}
 var _smat := {}                      ## tone name -> StandardMaterial3D
 var _wall_mat: ShaderMaterial
-## Looks being tried side by side (tests/look_tries.gd), off unless STREETS_TRY says: "a" dark
-## creases on the balconies (their undersides, insides, the wall's shade under them), "e" their
-## edges (a lip and a drip line, a coping), "c" more contrast in the light (less fill, a little
-## more sun), "r" railings of bars on half the blocks' balconies instead of solid parapets.
+## Looks being tried side by side (tests/look_bench.gd, look_tries.gd), off unless
+## STREETS_TRY names them. Tried and kept, 21 Nov (the user: "push all"): the balconies' dark
+## creases and edges, more contrast in the light, railings on half the blocks -- now always on;
+## a new try goes behind a letter of its own here.
 var _try := OS.get_environment("STREETS_TRY")
 var _font: Font
 
@@ -6329,7 +6329,7 @@ func _build_facade_kit() -> void:
 						balc_bays[ci] = true
 						for lv in range(1, floors):
 							var p := at + out * 0.62
-							var bk := "balcony_rail" if _try.contains("r") and posmod(hsh >> 9, 2) == 0 else "balcony"
+							var bk := "balcony_rail" if posmod(hsh >> 9, 2) == 0 else "balcony"   # (half the blocks: bars, not a solid parapet)
 							kit[bk].append(Transform3D(face, Vector3(p.x, g_lo + lv * 3.0, p.y)))
 							kit_col[bk].append(wc)
 							var hb := posmod(hsh >> (sk * 3 + lv * 5), 997)
@@ -6586,8 +6586,10 @@ func _enclosure_mesh(v: int) -> ArrayMesh:
 ## a balcony, local +Z out of the wall: a slab and a solid parapet round its three sides
 func _balcony_mesh(railing := false) -> ArrayMesh:
 	var b := Buf.new()
-	var creases := _try.contains("a")
-	var edges := _try.contains("e")
+	# (the balconies were three boxes the wall's colour, lit like it: they melted into it --
+	# the creases and edges make them read as slabs; tried on the look bench)
+	var creases := true
+	var edges := true
 	_box(b, Vector3(0, -0.09, 0), Vector3(2.7, 0.18, 1.24))   # the slab (its back at the wall, z -0.62)
 	var slab_end := b.v.size()
 	if not railing:
@@ -14921,7 +14923,9 @@ func _retint_city() -> void:
 		# (in the evening the shade is the sky's blue, not the haze: the warm light and the cool
 		# shade are what makes golden hour, and the haze in it turned the shade khaki)
 		env.ambient_light_color = _sky_col(_sky_now()["mean"]).lerp(_tone["haze"], 0.1 if _evening else 0.4)
-		env.ambient_light_energy = (0.62 if _evening else 0.55) * (0.6 if _try.contains("c") else 1.0)
+		# (the fill light 0.6 of what it was: with more, every shade was lifted and the shapes
+		# went flat and pastel -- tried on the look bench beside the user's photos)
+		env.ambient_light_energy = (0.62 if _evening else 0.55) * 0.6
 		env.fog_enabled = true
 		env.fog_light_color = hor
 		env.fog_density = _fog_day()   # (half in the made-up town's valley, see _fog_day)
@@ -14935,7 +14939,7 @@ func _retint_city() -> void:
 		# with a little of the red it is the orange of a low sun)
 		sun.light_color = Palette.col("ink").lerp(Palette.col("warn"), float(_sky_now()["warm"])) \
 			.lerp(Palette.col("hazard"), 0.16 if _evening else 0.0)
-		sun.light_energy = float(_sky_now()["energy"]) * (1.12 if _try.contains("c") else 1.0)
+		sun.light_energy = float(_sky_now()["energy"]) * 1.12
 		sun.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_AND_SKY
 	_retint_sky_dome()
 	if _wall_mat != null:
