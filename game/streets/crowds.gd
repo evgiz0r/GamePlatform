@@ -240,6 +240,7 @@ func _walk(w: Dictionary, dt: float) -> bool:
 		var at: Vector2 = w["stop_at"]
 		var p := cur.lerp(at, 1.0 - exp(-dt * 3.0))
 		p += g._people_apart(p, me, -1)
+		p += g._push_out(p, 0.25, true, false)   # (a stall's post or its neighbour's: drawn, 5 frames in one)
 		a.position = Vector3(p.x, _y(w, p), p.y)
 		var face: Vector2 = w["stop_face"]
 		var yaw: float = w.get("yaw", face.angle())
