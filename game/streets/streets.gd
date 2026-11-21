@@ -13964,10 +13964,17 @@ func _site_ways_in(node: int) -> Array:
 	var c := _nodes[node]
 	var s: int = _site_of[node]
 	var rn := _node_r[node]
+	var slip := _slip_join(node)
+	if slip:
+		_tally("lights_slip_joins", 1)
 	for e: Vector2i in _node_roads[node]:
 		var r: Dictionary = _roads[e.x]
 		if not r["drive"]:
 			continue
+		# the main road drives on: the light is the slip road's. Its ways in are kept, as from
+		# inside (no line, no pole): left out, a car on it took the slip road's, joining at a
+		# shallow angle, for its own and stopped all the same
+		var free := slip and not String(r["k"]).ends_with("_link")
 		var pts: PackedVector2Array = r["pts"]
 		for d2: int in [-1, 1]:
 			var from := e.y + d2
@@ -13984,8 +13991,52 @@ func _site_ways_in(node: int) -> Array:
 					break
 				if _crossing_set.has(o) and float(back[1]) > 1.0 and float(back[1]) < rn + 10.0:
 					line = maxf(line, float(back[1]) + 2.0)   # (its stripes run 1.5 m either side of the point)
-			out.append([(c - pts[from]).normalized(), line, e.x, inside])
+			out.append([(c - pts[from]).normalized(), line, e.x, inside or free])
 	return out
+
+## A lit point where only a slip road joins a one-way main road, from its right-hand side --
+## merging in or peeling off, across no one's way: OSM's light there is the slip road's (and
+## its crossing's), and the main road's lanes drive on. As a light for everyone it stopped
+## autodrive and the traffic on Ashdod's Menachem Begin 35 m past the Herzl junction, by a
+## bus stop, for a light that was the slip road's from Herzl (a user: "why are the cars
+## stopping there"; tests/light_line.gd). A slip road joining from the left -- across the
+## traffic -- keeps its light for all.
+func _slip_join(node: int) -> bool:
+	var c := _nodes[node]
+	var mains: Array = []   # [the way out along it, the road, the step]
+	var links: Array = []   # the way out along each slip road, a few metres on
+	for e: Vector2i in _node_roads[node]:
+		var r: Dictionary = _roads[e.x]
+		if not r["drive"]:
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		for step: int in [-1, 1]:
+			var k := e.y + step
+			if k < 0 or k >= pts.size():
+				continue
+			if String(r["k"]).ends_with("_link"):
+				while k + step >= 0 and k + step < pts.size() and pts[k].distance_to(c) < 8.0:
+					k += step
+				links.append((pts[k] - c).normalized())
+			else:
+				mains.append([(pts[k] - c).normalized(), r, step])
+	if links.is_empty() or mains.size() != 2:
+		return false
+	var a: Array = mains[0]
+	var b: Array = mains[1]
+	if (a[0] as Vector2).dot(b[0]) > -0.8 or int(a[1]["o"]) == 0 or int(b[1]["o"]) == 0:
+		return false   # not one one-way road running straight through
+	# the way it runs: in along the arm whose traffic arrives (its "o" against the step out)
+	var arrive: Array = a if int(a[1]["o"]) == -int(a[2]) else b
+	var leave: Array = b if arrive == a else a
+	if int(leave[1]["o"]) != int(leave[2]):
+		return false   # (the two pieces flowing at each other: not one road)
+	var t := -(arrive[0] as Vector2)
+	var right := Vector2(-t.y, t.x)   # (left of the traffic is (t.y, -t.x), as in _partner)
+	for l: Vector2 in links:
+		if l.dot(right) <= 0.05:
+			return false
+	return true
 
 ## The points back along a road from its point e.y, stepping d2 along it, up to `reach`
 ## metres and ending at the first junction: [[node, metres], ...]. Carries on across the
