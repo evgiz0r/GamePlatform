@@ -801,6 +801,29 @@ the AIs out of traps, take a destination in a cut-off pocket to the nearest stre
 way in, and start a route set down in a trap from the nearest street with a way out -- never
 choosing a street past the barrier as "the nearest". A wider bake only moves the cut.
 
+## Walks nobody filmed
+
+A walk laid from the map alone -- a street's centre line set off to its pavement -- costs
+three surprises, each seen once:
+
+- **A divided road is two one-way carriageways, and the pavement is on each one's own
+  outer side.** A route found along the street's ways ignores their direction, so "the
+  right-hand pavement" taken against a carriageway's traffic lands on the median side, or
+  in the other carriageway. Take the side from the carriageway's direction, not the walk's;
+  walking a boulevard's middle promenade is that inner side on purpose.
+- **The line a walk takes is the line a game plants its street trees on.** A pavement's
+  middle is where a generated tree row stands; set the walk behind the row (between it and
+  the building fronts), not in the pavement's middle.
+- **The map does not know what stands on a pavement**, and other work keeps adding to it
+  (mapped trees and poles at every distance from the kerb, bins, cabinets, stalls). Rather
+  than nudging the route by hand after each scan, let the game step a generated walk round
+  every post as it loads: resample it finely (keeping its own points, so its waits keep
+  their times), push each sample sideways by the least amount clear of all posts near it at
+  once and of walls (pushing off one post at a time pushes into the next where a tree and a
+  railing stand 1.7 m apart), and spread each push over a couple of metres so it bends.
+  Redo it for the stretch ahead every few seconds, as the city's squares build. Where a
+  pavement is a market's stalls and a shop front 1.5 m apart, walk the other pavement.
+
 ## Filmed walks and drives
 
 The map says where things are; a film of the street says what they look like. The useful

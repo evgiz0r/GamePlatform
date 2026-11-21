@@ -13,7 +13,7 @@ extends RefCounted
 ## Format (every key optional):
 ##   roads     {drop: [{k, name, near: [x, z]}],   the baked roads of that kind and name
 ##                                                    that pass within 3 m of `near`
-##              add: [{pts: [[x, z]...], k, w, name, name_en, o, l, sv}],   ends within 1 m of
+##              add: [{pts: [[x, z]...], k, w, name, name_en, o, l, sv, pave, yard, setts}],   ends within 1 m of
 ##                                                    a baked node join it
 ##              set: [{k, name, near: [x, z], w, l, kerb, kerb_mid}]}   the baked roads of
 ##                                                    that kind and name passing within 3 m of
@@ -171,7 +171,7 @@ func edit_city(city: Dictionary) -> void:
 		for p: Array in ad["pts"]:
 			ids.append(_node_at(nodes, _v2(p), sc))
 		var r := {"n": ids, "k": ad["k"], "w": float(ad.get("w", 6.0))}
-		for key: String in ["name", "name_en", "o", "l", "sv"]:
+		for key: String in ["name", "name_en", "o", "l", "sv", "pave", "yard", "setts"]:   # (as "set" has them)
 			if ad.has(key):
 				r[key] = ad[key]
 		city["roads"].append(r)
@@ -435,6 +435,8 @@ func build() -> void:
 				_gatepost(b, at, y, d, bool(pr.get("heart", false)))
 			"booth":
 				_booth(b, at, y, d)
+			"cabinet":
+				_cabinet(b, at, y, d)
 			"sign_board":
 				_sign_board(b, at, y, d)
 			"parked_car":
@@ -752,6 +754,20 @@ func _gatepost(b, at: Vector2, y: float, d: Vector2, heart: bool) -> void:
 
 ## a parking pay booth: a blue cabinet a little taller than a man, a dark panel and a slot on
 ## its face (`d` the way it faces), a grey cap
+## a utility cabinet (the electric company's grey box at a yard's wall): its doors face `d`
+func _cabinet(b, at: Vector2, y: float, d: Vector2) -> void:
+	var bs := Basis(Vector3.UP, atan2(-d.y, d.x) + PI * 0.5)
+	var grey: Color = g._tone["concrete"].lerp(g._tone["pole"], 0.5)
+	g._furn._box(b, Vector3(at.x, y + 0.08, at.y), Vector3(1.3, 0.16, 0.6), g._tone["concrete"].darkened(0.15), bs)
+	g._furn._box(b, Vector3(at.x, y + 0.86, at.y), Vector3(1.2, 1.4, 0.5), grey, bs)
+	g._furn._box(b, Vector3(at.x, y + 1.6, at.y), Vector3(1.26, 0.08, 0.56), grey.darkened(0.1), bs)   # its lid
+	for sg: float in [-0.3, 0.3]:   # two doors, a seam down the middle and a handle each
+		var f := at + d * 0.255 + Vector2(-d.y, d.x) * sg
+		g._furn._box(b, Vector3(f.x, y + 0.86, f.y), Vector3(0.56, 1.3, 0.01), grey.darkened(0.06), bs)
+		var hd := at + d * 0.265 + Vector2(-d.y, d.x) * sg * 0.25
+		g._furn._box(b, Vector3(hd.x, y + 0.95, hd.y), Vector3(0.03, 0.14, 0.02), g._tone["tyre"], bs)
+	g._add_post(at, 0.6)
+
 func _booth(b, at: Vector2, y: float, d: Vector2) -> void:
 	var bs := Basis(Vector3.UP, atan2(-d.y, d.x) + PI * 0.5)
 	var blue: Color = g._natural(g._tone["signblue"], 0.7)
@@ -881,7 +897,7 @@ func _solid(a: Vector2, e: Vector2, r: float) -> void:
 	var L := a.distance_to(e)
 	var n := maxi(1, int(L / (r * 1.6)))
 	for i in range(n + 1):
-		g._add_post(a.lerp(e, float(i) / n), r)
+		g._add_post(a.lerp(e, float(i) / n), r, true)   # (unique: a line's ends are the next line's starts)
 
 ## a box standing on the ground from a to e, `t` thick, from `y0` up to `y0 + h`
 func _wall(b, a: Vector2, e: Vector2, h: float, t: float, col: Color, y0 := 0.0, solid := false) -> void:

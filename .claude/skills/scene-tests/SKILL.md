@@ -186,7 +186,47 @@ film's drifted by a degree or two -- and the differences are the head's turns to
 head = the film's facing less the body's) and the pace's shape to copy (the share of each
 stretch's distance, between landmark times kept, since a replayed place's lengths are not
 the real one's). The up-and-down summed this way is not usable: while the camera looks down,
-its far band is ground, and walking forward reads as tipping down.
+its far band is ground, and walking forward reads as tipping down. And the summed facing reads
+a turn short wherever the "far" band is near: under an arcade it held the ceiling, the columns
+and motorbikes a metre or two off, the walker's own steps slid them as much as a turn did, and
+a 90-degree turn along the arcade read 50 -- the head fitted to it pointed the replay at the
+shop windows from half a metre for six seconds. Check a fitted facing against the frames
+wherever the scene closes in (arcades, columns, a car filling the frame), and there take the
+facing from the frames (what is level, what the stripes and kerbs point at) instead.
+
+**Score a replay against its film, and calibrate the score on the film itself.** A number per
+second of "how alike" is what lets a pass show where it helped and a merge where it hurt, but
+render against real footage never scores high, so the raw number means nothing alone. Score
+the film against itself shifted in time: half a second on, one, two, thirty (a different
+place). Then a replay's second reads as "as alike as the film N seconds later". Per frame:
+the turn that lines up the far band's edges (phase correlation), then edge *directions* per
+cell (a few directions in a coarse grid, each cell scaled to itself), brightness over a grid,
+and colour over a grid in Lab. Plain edge maps correlated read near nothing: the real film's
+texture swamps them. "Which film moment does this replay frame look most like" (a lag)
+flipped sign every few seconds -- a render and a street are too unlike to place a moment by
+the whole picture. Use landmarks for that.
+
+**Landmarks against a film: solve them all at once, not frame by frame.** A thing's foot in a
+film frame, cast through the replay camera's logged pose onto the ground, gives the film's
+place for it -- if the phone was tipped as the replay's. It never quite is: a hand's tip of a
+few degrees moved bollards 10-20 m in single-frame reads. Fit everything together instead (a
+small bundle adjustment, scipy's least_squares with a soft-L1 loss): one place per thing; per
+marked frame the phone's turn, tip and place on the ground off the replay's camera, each held
+near zero by a prior and the place kept smooth between neighbouring frames. What comes out
+reliably is the *layout* (things' places relative to each other) and the head's real turns
+and tips. Where everything is along a corridor, the places along it rest on the replay's pace
+being right: a fit with few things and very low error (a fraction of a pixel) is
+under-determined, not exact. Mark each thing in 3+ frames from different places. Mark a wall's
+edge by its bearing only when its foot is hidden. Read marks off the full-resolution film: a
+pixel of a 400-wide copy is a tenth of a degree. Draw the place from above with the solved
+places over the game's to see the result.
+
+**Pull a film's frames by decoding, not by a fast seek.** `ffmpeg -ss T -i clip.mp4` (the
+seek before the input) jumps by keyframes, and on one phone clip it returned the same frozen
+frame for every time in its first 8 s -- a whole pass's "it faces straight across at 1-2.5 s"
+was read off that frame, and the replay looked the wrong way for its first five seconds.
+`ffmpeg -i clip.mp4 -ss T` decodes up to the time (slower: fine for a few frames), or check that
+two nearby times give different pictures before measuring anything on them.
 
 **A test that jumps a scene's clock cannot show what is timed by it.** Stills taken by
 setting a replay's time and running a third of a second skip every scripted event in

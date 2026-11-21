@@ -334,6 +334,32 @@ func bank_at(ri: int, p: Vector2, out: Vector2, y: float) -> float:
 			return -1.0
 	return width
 
+## bank_at's widths along a road's side, with the bank taken out (-1: the wall instead) at
+## both ends of a piece whose foot -- straight from one point's foot to the next -- comes
+## within 1 m of another road's asphalt. bank_at looks only straight out from each point,
+## and the foot between two of them cut the edge of a street alongside (street_holes' last
+## two walls in Tel Aviv, 22 Nov). Both what is drawn and what is solid go by this.
+func feet_clear(ri: int, pts: PackedVector2Array, outs: PackedVector2Array, widths: PackedFloat32Array) -> PackedFloat32Array:
+	var r: Dictionary = g._roads[ri]
+	var e0 := float(r["w"]) * 0.5 + float(r["side"])
+	var out := widths.duplicate()
+	for j in range(pts.size() - 1):
+		if widths[j] < 0.0 or widths[j + 1] < 0.0 or maxf(widths[j], widths[j + 1]) <= 0.0:
+			continue
+		if not _foot_clear(ri, pts[j] + outs[j] * (e0 + widths[j]), pts[j + 1] + outs[j + 1] * (e0 + widths[j + 1])):
+			out[j] = -1.0
+			out[j + 1] = -1.0
+	return out
+
+## a bank's foot from f0 to f1 keeps 1 m off other roads' asphalt, every 2 m along it
+func _foot_clear(ri: int, f0: Vector2, f1: Vector2) -> bool:
+	var n := maxi(1, int(ceil(f0.distance_to(f1) / 2.0)))
+	for k in range(n + 1):
+		var on: Dictionary = g._nearest_seg(f0.lerp(f1, float(k) / n), 12.0, true)
+		if not on.is_empty() and int(on["road"]) != ri and float(on["edge"]) < 1.0:
+			return false
+	return true
+
 func _in_building(c: Vector2, rad: float) -> bool:
 	for i: int in g._near(g._bld_hash, c, rad, g.BLD_CELL):
 		if g._bld_solid[i] == 0 or not (g._bld_box[i] as Rect2).grow(rad).has_point(c):
@@ -456,6 +482,7 @@ func _walls_of(ri: int) -> void:
 		var banks := PackedFloat32Array()
 		for j in range(pts.size()):
 			banks.append(bank_at(ri, pts[j], outs[j], ys[j]) if kind == "em" else -1.0)
+		banks = feet_clear(ri, pts, outs, banks)
 		for j in range(pts.size() - 1):
 			if (cum[j] < clear_a or cum[j + 1] > total - clear_b) \
 					and (kind != "br" or maxf(absf(ys[j] - gs[j]), absf(ys[j + 1] - gs[j + 1])) < CLEAR_LOW):
@@ -945,6 +972,7 @@ func _raised(ri: int, pts: PackedVector2Array, walk: RefCounted, kerb: RefCounte
 		var widths := PackedFloat32Array()
 		for i in range(pts.size()):
 			widths.append(-1.0 if bridge else bank_at(ri, pts[i], outs[i], deck_y(ri, pts[i])))
+		widths = feet_clear(ri, pts, outs, widths)
 		var gap_bank := PackedByteArray()
 		var gap_w := PackedByteArray()
 		for i in range(pts.size()):

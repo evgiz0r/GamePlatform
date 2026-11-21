@@ -315,17 +315,50 @@ The ones most often touched, and the functions in them:
   **The AC unit's fan** (`furniture.ac_kit`): a round opening with three lighter blades, a
   grille ring and a cross over it, where it was a black hexagon that read as a sticker from
   across the street (~250 vertices; instanced, not batched).
-  **Open, seen in the side-by-sides** (film frame at t s against the graded game's frame
-  t*10+1 -- the camera's heading differs a little at the same second):
-  - white plaster in full sun clips: 19% of `look_tries`' `_under` view is pure white, the
-    texture gone. Darkening `wall_a` 14% changed nothing there, so that block's white does
-    not come from `wall_a` (its lean, COLOR.r, or the lifted block's own material: find it
-    before tuning).
-  - the faces up the walk (80 s): the film's blocks are busy -- every bay a railing or a
-    closed-in balcony, AC units, shutters half down, dark window holes -- where the game's far
-    blocks read plain. More facade kit per block at distance (or as paint in the shader).
-  - paving (55 s): the game's pavers are pinker and lighter than the film's grey ones.
-  - trees (55 s): olive and brown leaves against the film's fresh green.
+  **Seen in the side-by-sides** (film frame at t s against the graded game's frame t*10+1 --
+  the camera's heading differs a little at the same second): see the next item.
+- **the four from that list (22 Nov)**:
+  - **white plaster clipping**: the Compatibility renderer lights in 0-1 and clips before any
+    tone curve -- `tonemap_white` changes nothing here (tried 3 and 6). White plaster (wall_a
+    0.95, the photo's light patches up to x2) in the day sun (1.1 x 1.12) went flat 255. Now
+    `roll_white()` in WALL_SHADER rolls the plaster, and the balconies' `band`, off from 0.55
+    toward 0.67 (`_wall_rgb` the same, for things on walls): look_tries' `_under` 18.8% pure
+    white -> 2.6%, its mean 0.396 -> 0.388. Toward 0.85 changed nothing (the sunlit face is lit
+    past 1.2); toward 0.55 dimmed every wall. How it was found: crush `base` x0.2 in the shader
+    and shoot -- what stays white is not the plaster (it was the `band`, built from raw wall_a).
+    (A probe that ray-casts a pixel and walks every MeshInstance3D hung: too many meshes.)
+  - **busier far blocks**: balcony stacks 1 / 2 / 3 by face width (n bays < 4, < 6, more; the
+    third skips a bay already taken), AC units up to 6 a block (was 4) at 17% / 9% a bay
+    (13 / 7). Givatayim: AC units 10,692 -> 19,676 (instanced, 140 m), balconies 3,744 ->
+    6,628, closed in 2,672 -> 4,636; batched coloured kits 0.99 M -> 1.69 M vertices. Watch the
+    phone's frame time; if it suffers, the stacks are the dear part.
+  - **paving**: `pavement` greyed 0.65 -> 0.85, `pavers_grey` 0.85 -> 0.97 (the palette's
+    lavender showed through as pink); FILM_WARM 1.06 -> 1.0 (the bare picture's greys are as
+    warm as the film's: red/green 1.066). Graded greys now red/green 1.049 (was 1.068; the film
+    1.021). Still open: the passage at 55 s is drawn beige-and-pink bricks though the walk's
+    details lay it as small grey pavers -- find which surface draws it there.
+  - **the passage at 55 s (22 Nov, later) -- still open.** Ruled out: a neighbour's pavement
+    (`tests/what_paves.gd` AT="641.59,-622.87": only the details' own footway, unkerbed, is
+    there); the footways' "walks" layer (dropped in a diagnostic run: the bricks stayed);
+    `_build_passages` (walls only). Seen: pavers in half-offset rows, each its own colour, pink,
+    cream and near white -- more than kind 7's x0.9-1.1 brightness would give. Next: shoot it
+    from above with the details' surfaces hidden, then with the tone table's pavers_grey set to
+    a loud colour, to see which layer it is. Done meanwhile: details "add" roads now carry
+    `pave`, `yard`, `setts` as "set" ones do (they were dropped), the passage's footway has
+    `"pave": [0, 1]` (make_givatayim.py); and the walk's grade has a white balance, FILM_WB
+    (red x0.973, blue x1.037: the graded greys' red/green 1.049 -> 1.035, blue/green 0.970 ->
+    0.979; the film 1.021 / 1.006), the curve refitted, FILM_SAT held at 1.2 -- the fit asks
+    1.47, which put the pavers' tint straight back: the film's colour is its content. Graded
+    now: saturation 0.134 (the film 0.159), median 0.47 (0.45), 0.0% clipped.
+  - **look tests check for burn-out**: look_tries and look_bench print each shot's pure-white
+    share and FAIL over 5% (`_white_check`). Now: start 1.2%, close 1.3%, under 2.2%; bench
+    street 3.8%, car 3.4%, the rest under 1%.
+  - **leaves**: `leaf` with red x0.76 and blue x0.88 -- on screen they were 72/61/52 (red over
+    green: brown), the film's foliage 55/61/46.
+  - the grade refitted again on all of it: FILM_SAT 1.224 (the bare picture lost colour),
+    graded levels within 0.05 of the film's, saturation 0.158 (0.159), 0.0% clipped, each
+    second 0.457 +- 0.080 (0.454 +- 0.055). The bare picture still clips 2.2% (sky and sunlit
+    ground; the grade takes it).
 - **dogs, feet, walking on the spot** (the user: "the dogs look pretty wierd, and their
   hitboxes and how they walk is pretty wierd"; "some people are walking in place ... and
   their legs are somewhat bit inside the ground"). The dog (furniture `dog_kit`) is
@@ -1795,6 +1828,46 @@ first:
   red fire hydrant, a push button on the walk light's pole, bar stools and awnings rather
   than umbrellas outside the cafes, green bins.
 
+## The walks list and walks nobody filmed (levels 9-13, 22 Nov 2026)
+
+- **The list.** Level 9, "Walks: watch one" (group Auto Experiments, `"walks": true`), opens
+  `_walk_list_open()` in place of a city, built like the test routes' list (in `_route_ui`, so
+  `_input`'s taps reach its buttons): one button per place in LEVELS with a `"walk"`, the
+  `"filmed": true` ones first. The walks themselves have no `"group"`, so the start screen
+  leaves them off; levels 5 and 6 keep their numbers (the tests and notes use them). The new
+  walks are levels 10-13, appended so nothing renumbered. `_city_level()` and
+  prepublish.gd skip the list's level as they skip the routes'. `tests/walk_menu.gd` checks
+  the list and that a tap starts a walk (~1 min here).
+- **The walks** are written by `data_tools/make_walks.py` (its `WALKS` table: city, the list's
+  name, legs `[street, from the junction with, to the junction with]`, side, `promenade`)
+  into `cities/details/<city>.json` -- the first details files Tel Aviv, Ashdod, Bedford and
+  the test town have; they hold only `walks`, marked `"src": "make_walks"` (rewritten on the
+  next run, anything else kept). `--list CITY STREET` prints a street's junctions with the
+  metres between, to pick a leg. Pace 1.35 m/s; at each street it crosses, a wait at the kerb
+  of 1.8-3.2 s with a look left then right, the crossing at 1.45 m/s, in `zebras` so cars stop.
+  Lengths: Rothschild 271 m / 203 s, HeHalutzim 195 m / 143 s, Shore Drive 450 m / 334 s, the
+  market street 215 m / 164 s. All four start well away from the filmed ones' corner of
+  Givatayim, on the user's ask.
+- **Stepping round posts** (`"dodge": true`, streets.gd `_film_dodge_begin` / `_film_dodge`):
+  the walk resampled every 0.5 s plus its own points, each sample moved sideways by the least
+  step (10 cm steps to 1.6 m either way) that leaves `DODGE_CLEAR` (0.55 m) from every post's
+  edge within reach and is clear of walls, spread over `DODGE_SPREAD` (2.5 m) with a cosine.
+  Redone for the next 4-40 s every 2 s as squares build; `filmed_walk.gd` runs it over the
+  whole walk before `SCAN`. The filmed walks do not dodge: their line is the film's.
+- **What each fix was for** (scans, `SCAN=1 STREETS_BUILD_ALL=0 tests/run.sh filmed_walk
+  <level>`, ~30 s to 2 min each on this PC): at a pavement's middle the walks went through 15
+  posts (the tree rows); `PAVE` 2.05 (behind the game's row at half width + 1.3) moved them
+  little, as most were mapped trees and poles; the one-post-at-a-time push left 6 where a
+  tree and a railing stood 1.7 m apart; the all-at-once step left 3, on the test town's market
+  pavement (stalls r 0.85 and a shop front) -- that walk takes the other pavement. HeHalutzim
+  and Rothschild are divided: walked against a carriageway, "right" was its median side (the
+  Ashdod walk went down the other carriageway); one-way ways now take their own outer side,
+  and Rothschild walks the middle promenade on purpose (its outer pavement went through a
+  shop front). Now all four print only "scan done".
+- **Open**: the walks are not checked against a film (there is none); a walk's end is just
+  a junction (no turn to look round, nothing to stop for); a crossing at lights does not wait
+  for the green man; the list has no "yours" page as the routes' has.
+
 ## The second filmed walk and the GPS pipeline (level 6): handoff
 
 The session that set up filming with GPS (20 Nov 2026) and made "A walk in Givatayim:
@@ -2104,16 +2177,111 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   pass 12 too. After: the black hatch past the zebra at ~1.8 s (the film's ~2), the white SUV
   at 3.2, the white hatch at 9. The walk test's TRAFFIC_LOG prints each car's `why` now.
 
-### Handoff: the filmed walks (20 Nov 2026, after pass 13)
+- **Pass 14, the forecourt's line, the passage's end, the arcade's pace, the crossing's looks**,
+  done. Read off the film's frames with bearings (a landmark at x across the frame is
+  atan((x - 0.5) * 2 tan 21.55) off the middle) and, where the scene is open, the fitted facing.
+  *The forecourt*: at 26 s the film has the two women 6.4 m ahead (their height in frame),
+  their scooter just left, the transformer's poles 16 degrees left of them, and the slabs'
+  joints square in its frame -- which puts the phone 4-5 m right of the passage's line, still
+  by the arcade block's corner, not on the line as the walk had it since pass 3. So the film
+  walks the arcade only to the block's corner (-9.4: OSM's outline), at 1.3 m/s, and crosses
+  the forecourt on a slant at ~2 m/s (the film's own pace there) between the bollards
+  (-3.4 / -1.0) and past the plinth close on its right. That alone was the arcade's 2.4 m/s:
+  the zebra was not misplaced (the confectionery faces it, as filmed at 18.5 s). The women,
+  the man in white and their scooter set for that view; a wall of dark boards on stone across
+  the yard behind them (s 17.1, the passage's fence to -6.2) and a grey cabinet at its end
+  (`cabinet`, details.gd); the manhole where the film has it; the slabs out to the block's face
+  (a strip of grass showed); the bed's front planting low (the film sees the barrier and the
+  block on columns over it, 29-32 s); the lamp at P(19.3, 1.7) (it sits between the barrier's
+  post and the poles in the film's frames, and in the game it was left of the post).
+  *The passage's end*: the film walks straight on along the hedge onto a pavement, one hoop
+  railing across the passage's left part with the man in blue past it, the road beyond on the
+  left; the game had the little street's asphalt on the passage's line and stepped across it.
+  The little street is now left of the line (centre +2.4, 4 m: the blocks either side stand 11 m
+  apart, so the city cuts the south-east fronts back a little), its pavement on the passage's
+  line (grey pavers lifted 0.2: at 0.14 the city's red pavement drew over them), the hedge and
+  the gate on along its back at -2.0, the transformer at -3.0, the parked cars at +3.45, and
+  `no_parking` along it (the city had parked one half up on the pavement: the camera inside it).
+  *The head*: under the arcade the fitted facing read only half the film's 90 degree turn (the
+  "far" band there is columns, ceiling and motorbikes a metre or two off, slid by the walker's
+  own steps), so the camera stared at the shop windows from 18 to 24 s; there the head is set,
+  not fitted -- straight on to 18.9 s (facing the confectionery), then 20 degrees left of the
+  body along the arcade (the motorbikes mid-frame) -- and across the forecourt (28-32 s) 20
+  degrees left is added to the fit (the barrier's post left of the middle, the poles at the
+  right edge): `make_givatayim.py` after it loads the fit. A 31 s anchor (P(13.6, -2.4)) keeps
+  the slant's timing; the fitted path is held 0.45 m off the passage's hedge to its end (the
+  hedge's body reaches a metre out). *The crossing (0-17 s)*: an ffmpeg seek before the input
+  (`-ss T -i clip`) returns one frozen frame for every time in the clip's first 8 s -- pass 12's
+  "faces straight across, 1-2.5 s" came from it. Decoded (`-i clip -ss T`), the film faces a
+  little left of across at 1 s (the bollard at its right edge), looks left at the near half's
+  cars coming at 3-5 s (the zebra in the right of its frame), faces across a touch left on the
+  median (11-13.5 s) and tips up at the confectionery at 15.5 s: the looks now (-28, -25, -12,
+  -16, and 20 up).
+  *Quality on a walk* (the user: "the highest possible quality in the view of the walk"):
+  a desktop run -- every recording -- is at the top level (QUALITY 3: MSAA 4x, shadows to
+  75 m, full scale; the frame-rate ladder runs only in a browser), and a filmed walk builds
+  everything within NEAR_FIRST (320 m) of its start, far shadows too, before it starts
+  (`_whole_first`): the whole of walk 1's view. In a browser a filmed walk now starts at the
+  top level too (others at QUALITY_WEB) and steps down only under FPS_LOW_WALK (28 fps,
+  frames "long" past 50 ms), back up at FPS_FULL_WALK (40): `_judge_fps`. City passers-by
+  keep a metre off a filmed walk's camera, not 0.6 (one coming the other way on the little
+  street's pavement filled the frame with her hair, 68.5 s, in this pass's recording).
+  Measured on its recording (before those two): levels as the film's within 0.05 at 1-99%,
+  0.0% clipped, saturation 0.166 (0.159); each second's brightness 0.433 +- 0.077 (the
+  film's 0.454 +- 0.055) under main's brighter light, before any refit.
+  Still off (WALKS.md): the barrier, the lamp and the poles fit the film's bearings only
+  roughly at 28-33 s (their spacing in frame is tighter than any place on the walk's line gives);
+  the bollards the film passes one on each side, 1.5 s apart, the game's two at once; the
+  confectionery and its neighbours are flat brown glass, not the film's lit fronts; at 26 s
+  the walk passes a metre from the arcade block's side wall, which fills the right of the frame
+  where the film sees open forecourt (the slant should start ~1.5 m further left: P(7.9, -7.0)).
 
-- **In progress**: nothing. Pass 13 is on main; the list of what is still different is
+### Handoff: the filmed walks (22 Nov 2026): measured against the full film, before pass 15
+
+- **The full film is on the user's PC**: `OneDrive/walk/20261120_100527.mp4`, 1080x1920
+  upright (stored 1920x1080 with a -90 rotation, which ffmpeg applies), 30 fps, 185 s, **not
+  mirrored**; walk second t = film second t (one frame apart, no drift over 96 s: correlated
+  against the old clip). The old `clip.mp4` was 576x324 and mirrored. A session on that PC
+  reads it directly; a cloud session still has to ask for a clip. Frames:
+  `ffmpeg -i <film> -vf "trim=0:96.6,setpts=PTS-STARTPTS,fps=10,scale=406:720" -start_number 0
+  f%05d.jpg` (for film_score), and `fps=2` at full size (`h%04d.jpg`) for marking.
+- **On the user's PC a recording takes 1 min 23 s** (`RECORD=1 RES=1280x720 GODOT_ARGS=
+  "--fixed-fps 10"`, 966 frames; 18.5 min on a cloud container): record after every change.
+  Godot there: `GODOT=` the standard 4.7.2 console build in `Documents/Godot/` (not the mono one);
+  Python's numpy/scipy/pillow via `uv run -q --with numpy --with scipy --with pillow python`.
+- **New tools** (tests/README.md): `film_score.py` (a calibrated score per second, the worst
+  seconds side by side; 40 s) and `film_marks.py` (landmarks: label, map, solve). `RECORD=1`
+  now logs `POSE`/`POST`/`BLD` lines for them. The loop for a pass: record, `film_score.py
+  score`, `compare` against the last run's seconds.csv; for a place's layout, mark feet in the
+  1080p frames (`grid` them in twentieths, 540x960 is readable), `solve`, `map ... places.csv`.
+- **Good numbers (22 Nov, before pass 15)**: score 33 over the walk (the film against itself
+  5 s on: 33); worst seconds 42, 43, 52, 53, 67, 68, 91, 95; forecourt solve 3.7 px rms.
+  After merging main the same evening (facades, greener leaves, the grade refitted, walkers no
+  longer appearing in view): 34.1, none worse by 5, 66 and 68 up 10 (the passer-by at the
+  passage's end gone from the frame) -- `compare` caught it without looking.
+- **What it found** is at the top of walk 1 in WALKS.md: the forecourt's bollards a cluster by
+  the line, not a row; the barrier, poles and the bed's front off by 2-3 m; the film's head 20
+  degrees left and 13 down at 26.5-28.5 s; the passage's stickered lamp pole missing and its
+  bin ~5 m early; Ha-Meri's last 6 s looking right and down into a garden instead of along and
+  across the street. The 1080p marks were read by eye off a grid (+-5 px of 540): good to a
+  few tenths of a degree.
+- **Where the solve is weak**: a corridor (the passage) with few things fits to a fraction of a
+  pixel and is free along it -- its places rest on pass 13's pace. Anchors would fix that:
+  `fixed bld B.k` holds a building's corner where the map has it, but the forecourt's corners'
+  feet are hidden behind hedges and parked cars; a wall's edge can be marked by bearing only
+  (leave y empty).
+
+### Handoff: the filmed walks (21 Nov 2026, after pass 14)
+
+- **In progress**: nothing. Pass 14 is on main; the list of what is still different is
   `WALKS.md` (walk 1's details, behaviour and quality, walk 2's, both walks'), with a Done
   section that points back here.
 - **The biggest open items**, by what the side-by-side shows most: the buildings' faces along
   the route (cream and sand plaster, balconies, shutters: city-wide, another session's); the
-  light (hazy, warm, soft shadows: another session's); people that move as the film's do
-  (done for walk 1's: pass 13, but the forecourt's talkers and the man in blue are off the
-  frame when the film shows them: WALKS.md, Behaviour, with the bearings); the north kerb's paint and the
+  light (hazy, warm, soft shadows: another session's -- its last change, the sun x1.12 and the
+  fill at 0.6, wants the grade refitted: record bare, `film_look.py`, pass 10); the shop fronts
+  under the arcade (flat brown glass against the film's lit fronts, 15-21 s); the forecourt's
+  far side at 28-33 s (pass 14, above); the north kerb's paint and the
   city's guard railing north-west of the zebra (pass 12, above); the cars parked along
   Katzenelson's far kerb the film shows across the road at 1-2.5 s; the arcade's columns (white with a dark wooden foot) and the second shop; Ha-Meri's
   far pavement (a low white wall, an e-scooter); the camera's last differences (a touch of
@@ -2122,7 +2290,7 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
 - **Commands** (all `tests/run.sh filmed_walk <level>`, `STREETS_BUILD_ALL=0`, `OUT=` a scratch
   folder): `SCAN=1` (posts and buildings on the line, a minute); `POSTS_NEAR="x,z,r;..."`
   (posts, the kerb's distance, everything drawn by instance, whether a `clear` spot covers
-  it); `AT=s,s,...` (stills; jumps the clock); `TRAFFIC_LOG=from,to` (cars at the walk's own
+  it); `AT=s,s,...` (stills; jumps the clock, and lands a little short of each second: on the forecourt's slant the walk stood 0.5-1 s back, so read them beside film frames a moment earlier; the printed facing is the body's, not the camera's -- the head turns on top); `TRAFFIC_LOG=from,to` (cars at the walk's own
   pace); `RECORD=1` with `RES=1280x720 GODOT_ARGS="--fixed-fps 10"` (18.5 min). The grade:
   `STREETS_FILM_LOOK=0` records the bare picture (to refit with `film_look.py`),
   `STREETS_FILM_LOOK=meter` paints the exposure meter's reading top left. Then the
@@ -2131,7 +2299,7 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   The movement: `CAMERA_LOG=1` (with `RES=320x180 GODOT_ARGS="--fixed-fps 10"`, ~10 min),
   then `tests/film_motion.py film <clip> 96 film.csv` (30 s), `film_motion.py log <log>
   game.csv`, `film_motion.py chart film.csv game.csv out.png`; to re-fit the pace and the
-  head, `tests/film_fit.py film.csv <log> 17,25.6,33,64,80,87,91.5,96 17
+  head, `tests/film_fit.py film.csv <log> 17,25,31,33,64,80,87,91.5,96 17
   cities/details/katzenelson_fit.json` and run `make_givatayim.py`.
 - **Good numbers** (walk 1, after pass 12): both walks' scans print only "scan done";
   sway 0.25 / 0.21 degrees rms across / up (the film's 0.25 / 0.19); levels at 1-99% within
@@ -3427,19 +3595,37 @@ without a gap. (The square being built keeps its stand-in to the end of `_build_
 
 ## Open problems
 
-- **One walker in 90 s still appears in view** (`people_pops`, Givatayim, 21 Nov): put 76 m
-  off, where people fade in (75-90 m), 160 m from where it was. Placement (`_place_walker`,
-  not `anywhere`) checks `_spawn_ok` at the spot; the camera moves before the next frame.
-  Try: placing beyond PEOPLE_SEEN when the street there has room, hidden spots only as a
-  fallback. Also seen once: a 2.5 m jump at 72 m (state unknown: print it).
-- **Tel Aviv's ways into a lit junction with no light facing them: 12** (21 Nov, ef5425b and
-  after; 5 on 20 Nov). Not caused by the doubled-lights fix (12 on the code before it too);
-  crept up while light_audit was not in the validation. `LEVEL=7 STATIC_ONLY=1 VERBOSE=1`
-  light_audit names each. Guarded at 12 now (`city_check` LIGHTS_21NOV).
-- **Solid things twice on one spot, the tail** (`city_check` "posts twice", under a limit):
-  Givatayim 128 (bougainvillea clumps over a garden wall, 0.44 m, drawn twice: one plot's
-  front laid twice?), Tel Aviv 596 (0.6 m: trees mapped by OSM and the town's survey both?),
-  Ashdod 48. Invisible (the same thing drawn twice), but twice the draws and checks.
+- **Walkers appearing in view: mostly fixed, a rare one left** (`people_pops`, Givatayim,
+  22 Nov). The two runs before the fix each had one; logging each placement showed both
+  ways it happened: a walker at a stretch's end was taken away while in view, 88 m off (only
+  the line's end was checked, a metre from where they stood), and was put down 39 m off,
+  just round a building's corner (`_spawn_ok` true at the line's point, the person beside
+  it, in view a frame later). Now `_place_walker` takes a spot 95-101 m off on the same
+  pavement when it reaches that far (they walk in, fading in from 90 m), and only else a
+  hidden one with a margin (`_hidden_well`: 1.5 m along and 1 m across it hidden too); the
+  stretch's end takes someone away only where they stand and those beside them
+  (`_mates_unseen`) are unseen too. Four runs: 0, 0, 0 and one pop (74 m, jumped 139 m),
+  that one before `_mates_unseen` -- not known yet if that was it. Each walker keeps
+  `placed` (which call put it there: start / retry / end / far), printed with a pop: read it
+  on the next one. "Sliding with the car far" read 3-10 a run, before and after (a baseline).
+- **Ways into a lit junction with no light facing them** (`light_audit`, `city_check`
+  LIGHTS_21NOV): 8 / 3 / 4 / 0 / 12 (Givatayim, Bedford, Ashdod, test town, Tel Aviv) ->
+  2 / 0 / 1 / 0 / 1 on 22 Nov. Each was a way in where every spot `_build_signals` tried was
+  a wall, another road's lane or a corner's asphalt; a second round now tries further onto
+  the pavement (to 2.4 m), the left kerb of a two-way road, a spot nearer the junction, and
+  last a far-side light across it -- never further back than the first round (behind the
+  stop line the waiting driver has gone past it). Not looked at from the street yet: a
+  screenshot of a far-side one is the next check. Tel Aviv's last is a one-way service lane
+  (937, 222). `_tally` counts `lights_far_spot` and `lights_no_spot`.
+- **Solid things twice on one spot** (`city_check` "posts twice"): 128 / 1 / 48 / 1 / 596 ->
+  0 / 0 / 5 / 1 / 3 on 22 Nov, the limits now. `tests/posts_twice_where.gd` (`POSTS_FROM=1`:
+  `_add_post` keeps its callers, by get_stack) named them: a building's stilts put up by
+  each of its parts on one outline (Tel Aviv 526, Givatayim 64; drawn twice too), greenery
+  over a corner's garden wall laid from both streets, two railings' end posts at a joint,
+  shrub lines over hedge lines, a cafe's tables, a lamp mapped twice. `_add_post(p, r, true)`
+  refuses a post as big within 0.3 m (`_post_twin`), and the drawing callers check first and
+  skip drawing it. Not for callers that keep the new post's index (signs, bins, bollards).
+  Left: Tel Aviv 2 of a 2.2 m thing from some file's `build:121` and a passage's 0.6 m post.
 - **Tel Aviv's lights and the exam, first round** (Nov 2026). `light_audit` at level 7:
   4 junctions where crossing streets shared a green, all skewed (55-65 degrees): the ways
   from inside a junction (the road between two of its points, no light) were counted in
