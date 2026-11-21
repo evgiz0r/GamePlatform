@@ -20,6 +20,7 @@ config/icon="res://icon.svg"
 
 [autoload]
 
+Packs="*res://shell/autoload/packs.gd"
 Bus="*res://shell/autoload/bus.gd"
 Controls="*res://shell/autoload/controls.gd"
 Palette="*res://shell/autoload/palette.gd"

@@ -74,6 +74,14 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
              maps every tree (from the air: yards and parks too), 0 a list of street trees
              (not always every one)
   addrs      [[x, z, street, number], ...]   address points not on a building outline
+  lamps      [x, z, ...]   lamp posts from a town's own map (TOWN_LAYERS), where it has one;
+             lamp_info [look, lamps, ...] beside them: an index into lamp_looks ("pole",
+             "ornate", "wood" (a wooden pole), "wall" (fixed to a wall)) and
+             how many lamps the post carries
+  sites      [{r: [x, z, ...] ring, st: "dig" | "frame", new: 1 a new building, hi: 1 a tall
+             one}]   building sites at work, from a town's own map
+  pois rows with a 6th field (the town layer's id) are licensed businesses from the town's
+             map with no OSM place within 8 m: the kind as OSM's, the name the word for it
   stops      [[x, z, name], ...]   bus stops
   pois       [[x, z, kind, name, name_en], ...]   shops, restaurants, schools... (kind:
              the amenity/tourism value, or "shop:<type>" e.g. "shop:supermarket")
@@ -1659,6 +1667,9 @@ def bake(raw, name, args):
         if args.out:
             for c in tree_surveys_apply(out, P, os.path.join(os.path.dirname(os.path.abspath(args.out)), "data")):
                 out.setdefault("credits", []).append(c)
+            for c in town_layers_apply(out, P, os.path.join(os.path.dirname(os.path.abspath(args.out)), "data")):
+                if c not in out.setdefault("credits", []):
+                    out["credits"].append(c)
 
     if not args.no_terrain:
         try:
@@ -1795,6 +1806,159 @@ def tree_surveys_apply(out, P, data_dir):
     return credits
 
 
+# ---- the towns' own street furniture, building sites and businesses ----------------------
+# Layers fetched from a town's own GIS (cities/data/, see the game's notes) laid over the
+# city: its lamp posts where they stand, its building sites, and its licensed businesses as
+# places (shops, cafes...) where OSM has none. Shifted onto OSM's map by the offset measured
+# on the same town's buildings, like its trees.
+TOWN_LAYERS = [
+    {"id": "tel_aviv", "shift": (-0.4, -1.9), "credit": "city data © Tel Aviv-Yafo Municipality",
+     "lamps": "tel_aviv_lamp_poles.json", "places": "places_tel_aviv.geojson",
+     "businesses": "tel_aviv_businesses.json"},
+]
+# a lamp post's look, by the town's type: a plain grey pole with an arm (square, conical,
+# octagonal, the electric company's iron and concrete ones), the ornate (period) kind, a
+# wooden pole (the electric company's or the town's), and a lamp fixed to a wall (no post)
+LAMP_LOOKS = [("דקורטיבי", "ornate"), ("עץ", "wood"), ("בתוך קיר", "wall"), ("לוח", None)]
+# a construction site's stage: "dig" (works begun, earthworks, foundations), "frame" (the
+# shell up); a file only opened, or the building finished, is left out
+SITE_STAGES = {"תחילת עבודות": "dig", "עבודות עפר וביסוס": "dig", "גמר יסודות": "dig",
+               "גמר שלד": "frame", "פיצול תיק לבניה בשלבים": "dig"}
+# a licensed business's kind (by a word of the licence's description, the first that matches)
+# as an OSM place kind, and the word its sign shows (it has no name in the data: a sole
+# trader's would be their own)
+BUSINESS_KINDS = [
+    ("מסעדה", "restaurant", "מסעדה"), ("משקאות משכרים", "bar", "בר"), ("פאב", "pub", "פאב"),
+    ("בית קפה", "cafe", "בית קפה"), ("תה וקפה", "cafe", "קפה"), ("גלידה", "ice_cream", "גלידה"),
+    ("כריכ", "fast_food", "כריכים"), ("פלאפל", "fast_food", "פלאפל"), ("שווארמה", "fast_food", "שווארמה"),
+    ("פיצ", "fast_food", "פיצה"), ("מזנון", "fast_food", "מזנון"), ("בית אוכל", "fast_food", "אוכל"),
+    ("מאפ", "shop:bakery", "מאפייה"), ("קונדיטור", "shop:pastry", "קונדיטוריה"),
+    ("סופרמרקט", "shop:supermarket", "סופרמרקט"), ("מרכול", "shop:supermarket", "מרכול"),
+    ("מינימרקט", "shop:convenience", "מינימרקט"), ("מכלת", "shop:convenience", "מכולת"),
+    ("מכולת", "shop:convenience", "מכולת"), ("קיוסק", "shop:kiosk", "קיוסק"),
+    ("פירות וירקות", "shop:greengrocer", "פירות וירקות"), ("ממתקים", "shop:confectionery", "ממתקים"),
+    ("בשר", "shop:butcher", "אטליז"), ("דגים", "shop:seafood", "דגים"),
+    ("מצרכי מזון", "shop:convenience", "מכולת"),
+    ("מספרה", "shop:hairdresser", "מספרה"), ("יופי", "shop:beauty", "קוסמטיקה"),
+    ("קוסמטיקה", "shop:beauty", "קוסמטיקה"), ("כביסה", "shop:laundry", "מכבסה"), ("ניקוי", "shop:dry_cleaning", "ניקוי יבש"),
+    ("מכירת רהיטים", "shop:furniture", "רהיטים"), ("מכירת אריגים", "shop:fabric", "בדים"),
+    ("מכירת תכשיטים", "shop:jewelry", "תכשיטים"), ("מכירת נעל", "shop:shoes", "נעליים"),
+    ("הנעלה", "shop:shoes", "נעליים"), ("מכירת מכשירי חשמל", "shop:electronics", "מוצרי חשמל"),
+    ("תיקון מכשירי חשמל", "shop:electronics", "תיקון מכשירי חשמל"), ("תקון מכשירי חשמל", "shop:electronics", "תיקון מכשירי חשמל"),
+    ("שעונים", "shop:watches", "שעונים"), ("תמרוקים", "shop:cosmetics", "פארם"),
+    ("מכירת דברי הלבשה", "shop:clothes", "בגדים"), ("בגדים", "shop:clothes", "בגדים"),
+    ("פרחים", "shop:florist", "פרחים"), ("ספרים", "shop:books", "ספרים"), ("טבק", "shop:tobacco", "טבק"),
+    ("מרקחת", "pharmacy", "בית מרקחת"), ("אופני", "shop:bicycle", "אופניים"),
+    ("משקפ", "shop:optician", "אופטיקה"), ("צעצוע", "shop:toys", "צעצועים"),
+    ("כלי בית", "shop:houseware", "כלי בית"), ("טלפונ", "shop:mobile_phone", "סלולר"),
+    ("מוסך", "shop:car_repair", "מוסך"),
+]
+BUSINESS_NEAR_OSM = 8.0   # m: a business this close to one of OSM's places is that place
+BUSINESS_MERGE = 5.0      # m: several licences at one door are one shop
+
+
+def _town_rows(path, key="rows"):
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)[key]
+
+
+def town_layers_apply(out, P, data_dir):
+    """Lays the towns' own lamp posts, building sites and businesses (TOWN_LAYERS) whose files
+    are in data_dir over the city; returns the credits of those that brought anything.
+    Applied again, it first takes its earlier ones out."""
+    if not data_dir:
+        return []
+    x0, z0, x1, z1 = out["bounds"]
+    inside = lambda x, z: x0 <= x <= x1 and z0 <= z <= z1
+    pois = [p for p in out.get("pois", []) if len(p) < 6]   # (the businesses added before carry a 6th field)
+    lamps, lamp_info, looks = [], [], ["pole"]
+    sites = []
+    added, credits = 0, []
+    for t in TOWN_LAYERS:
+        sx, sz = t.get("shift", (0.0, 0.0))
+        got = 0
+        path = os.path.join(data_dir, t.get("lamps", "-"))
+        if os.path.exists(path):
+            for lon, lat, kind, n in _town_rows(path):
+                x, z = P(lat, lon)
+                x, z = x + sx, z + sz
+                if not inside(x, z):
+                    continue
+                look = next((l for w, l in LAMP_LOOKS if w in (kind or "")), "pole")
+                if look is None:
+                    continue   # (a switchboard, not a lamp)
+                if look not in looks:
+                    looks.append(look)
+                lamps += [q(x), q(z)]
+                lamp_info += [looks.index(look), int(n if n is not None else 1)]
+                got += 1
+            log(f"lamp posts {t['id']}: {got} in the box")
+        path = os.path.join(data_dir, t.get("places", "-"))
+        if os.path.exists(path):
+            n0 = len(sites)
+            for f in _town_rows(path, "features"):
+                pr = f["properties"]
+                if pr.get("kind") != "construction_site" or f["geometry"]["type"] != "Polygon":
+                    continue
+                stage = SITE_STAGES.get(pr.get("stage") or "")
+                if not stage:
+                    continue
+                ring = [P(lat, lon) for lon, lat in f["geometry"]["coordinates"][0]]
+                ring = [(x + sx, z + sz) for x, z in ring]
+                if not any(inside(x, z) for x, z in ring):
+                    continue
+                work = pr.get("work") or ""
+                sites.append({"r": flat(clean_ring(ring)), "st": stage,
+                              "new": 1 if work.startswith("בניה חדשה") else 0,
+                              "hi": 1 if ("גבוה" in work or "מעל" in work) else 0})
+            got += len(sites) - n0
+            log(f"building sites {t['id']}: {len(sites) - n0} at work in the box")
+        path = os.path.join(data_dir, t.get("businesses", "-"))
+        if os.path.exists(path):
+            cell = {}
+            for p in pois:
+                cell.setdefault((int(p[0] / SCALE // BUSINESS_NEAR_OSM), int(p[1] / SCALE // BUSINESS_NEAR_OSM)), []).append((p[0] / SCALE, p[1] / SCALE))
+            mine = {}
+            n_in, n_osm, n_merged = 0, 0, 0
+            for lon, lat, what, floor, street in _town_rows(path):
+                if floor not in (0, None):
+                    continue   # (up the stairs, or down them: no shop window on the street)
+                kind = next(((k, word) for w, k, word in BUSINESS_KINDS if w in (what or "")), None)
+                if kind is None:
+                    continue   # (a workshop, an office, a warehouse: no shop front)
+                x, z = P(lat, lon)
+                x, z = x + sx, z + sz
+                if not inside(x, z):
+                    continue
+                n_in += 1
+                cx, cz = int(x // BUSINESS_NEAR_OSM), int(z // BUSINESS_NEAR_OSM)
+                if any((x - a) ** 2 + (z - b) ** 2 < BUSINESS_NEAR_OSM ** 2 for gx in (cx - 1, cx, cx + 1)
+                       for gz in (cz - 1, cz, cz + 1) for a, b in cell.get((gx, gz), ())):
+                    n_osm += 1
+                    continue
+                mx, mz = int(x // BUSINESS_MERGE), int(z // BUSINESS_MERGE)
+                if any((x - a) ** 2 + (z - b) ** 2 < BUSINESS_MERGE ** 2 for gx in (mx - 1, mx, mx + 1)
+                       for gz in (mz - 1, mz, mz + 1) for a, b in mine.get((gx, gz), ())):
+                    n_merged += 1
+                    continue
+                mine.setdefault((mx, mz), []).append((x, z))
+                pois.append([q(x), q(z), kind[0], kind[1], "", t["id"]])
+                added += 1
+                got += 1
+            log(f"businesses {t['id']}: {n_in} shops, cafes and the like on the street in the box; "
+                f"{n_osm} already OSM's places, {n_merged} at one door with another; {added} added")
+        if got:
+            credits.append(t["credit"])
+    out["pois"] = pois
+    for k in ("lamps", "lamp_info", "lamp_looks", "sites"):
+        out.pop(k, None)
+    if lamps:
+        out["lamps"], out["lamp_info"], out["lamp_looks"] = lamps, lamp_info, looks
+    if sites:
+        out["sites"] = sites
+    return credits
+
+
 def add_surveys(path, offline):
     """The survey step alone, on a city file baked already (its OSM data is left as it is)."""
     with open(path, encoding="utf-8") as f:
@@ -1813,6 +1977,7 @@ def add_surveys(path, offline):
                 if s["credit"] not in city.setdefault("credits", []):
                     city["credits"].append(s["credit"])
     tree_credits = tree_surveys_apply(city, P, os.path.join(os.path.dirname(os.path.abspath(path)), "data"))
+    tree_credits += town_layers_apply(city, P, os.path.join(os.path.dirname(os.path.abspath(path)), "data"))
     for c in tree_credits:
         if c not in city.setdefault("credits", []):
             city["credits"].append(c)
