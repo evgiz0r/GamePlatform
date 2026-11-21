@@ -111,7 +111,8 @@ func _run() -> void:
 				my_still += dt
 			gap_end = gap
 			if trace and f % 60 == 0:
-				print("    t %2d s  %s  off the barrier %.0f m  %.1f m/s  turn %.1f back %.1f  plan to %s  %s" % [f / 60, p.round(), gap, g._v, g._ap_turn, g._ap_back,
+				var rn := "-" if on_road.is_empty() else "%s %s edge %.1f" % [String(g._roads[int(on_road["road"])]["k"]), String(g._roads[int(on_road["road"])]["en"]), float(on_road["edge"])]
+				print("    t %2d s  %s  off the barrier %.0f m  %.1f m/s  turn %.1f back %.1f  [%s]  plan to %s  %s" % [f / 60, p.round(), gap, g._v, g._ap_turn, g._ap_back, rn,
 					(g._ap_pts[g._ap_pts.size() - 1] as Vector2).round() if g._ap_pts.size() > 0 else "-", String(g.get("_ap_why")) if "_ap_why" in g else ""])
 			var turning: bool = g._ap_turn > 0.0 or g._ap_back > 0.0
 			if turning and not was_turning and f > 60 * 4:

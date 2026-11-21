@@ -752,6 +752,30 @@ traffic.gd: `tick` (per car: path, lights, signs, the car or player ahead, stand
 autodrive uses), `push` (the player against the cars). `_junction_ahead` (giving way) skips a
 car `_held_at_red`: one that will stand at its red need not hold up a car with the green.
 
+## The HUD's buttons (22 Nov 2026)
+
+All drawn by hand in `_draw_hud` (no Control nodes): the rects are the `*_BTN` constants by
+`AUTO_BTN` (the layout is described there), each drawn with `_hud_btn(rect, text, colour,
+lit, size)`. One place takes a tap -- `_hud_tap(p)`, called from `_input`'s mouse branch -- and
+one says whether a touch is a button's rather than the stick's or the view's,
+`_on_hud_button(p)`: a new button goes in `_draw_hud`, `_hud_tap`, `_on_hud_button` and the
+test's `_shown()`. The "more" drawer is `_more_rows()` (label, y, choices, the choice now,
+what) drawn by `_draw_more` and tapped by `_more_tap`; a row is one line there.
+- Labels say the state now, lit when on (`lit`), never what a tap switches to.
+- **Autodrive's style** (`_ap_style`, "racer" by default) applies only through the player's
+  own switches -- `_auto_by_hand` (the button), `_go_to` (drive to), `_go_where` (held from
+  above). `_set_auto` itself leaves the racer and the wave as they are, so the bots (space),
+  the test routes and every scene test keep the rules, as they measure. A test that wants the
+  racer calls `_set_racer(true)` as `tests/racer.gd` does.
+- Time of day by choice: `_set_time_of_day` steps `_next_time` round (it only goes day,
+  evening, night); `_tod_busy` keeps two taps from interleaving its awaits.
+- The camera button labels where the view is going (`_zoom > 0`), not `_zoomed()`: that is
+  still true for the second the view sinks back to the car, and the label lagged.
+- `tests/hud_layout.gd` (level 4, about a minute) taps every button through `_hud_tap`,
+  checks what it did, and checks in every state that no shown button leaves the screen or
+  overlaps another, the minimap, the speed, the credit, the stick's ring or the load line.
+  Good: 0 failed, 24 checks. Its shots (`hud_*.png`) are the quickest look at the HUD.
+
 ## Tests
 
 `tests/run.sh <test> [level]` (level 1 Givatayim, 2 Bedford, 3 Ashdod, 4 the test town);
@@ -1836,6 +1860,16 @@ first:
 
 ## The walks list and walks nobody filmed (levels 9-13, 22 Nov 2026)
 
+- **The lists** (22 Nov, later): the start screen holds only the three lists -- "Cities: pick
+  one" (level 15, `"cities": true`), "Test routes" (8), "Walks" (9); a city has no `"group"`,
+  and `_walk_list_open("cities")` lists every LEVELS entry with a `"city"` that is not a list
+  (`_is_list`) or a walk, by `"sort"` (two columns past seven). Each list has "back"
+  (`_back_button`, the shell's `Flow.pick_level()`: the start screen), at the foot, or top left
+  on the routes' page where ten rows reach the foot. The headings come in the order their first
+  level appears in LEVELS (the shell's rule), so Cities, at 15, is the right-hand column:
+  moving it left would renumber every level. `tests/walk_menu.gd` checks the cities list, its
+  back, and the walks list (~1 min); `tests/route_menu.gd` counts the route rows only (it had
+  counted the page tabs since they came, said FAIL and tapped route 8, Tel Aviv, for the 10th).
 - **The list.** Level 9, "Walks: watch one" (group Auto Experiments, `"walks": true`), opens
   `_walk_list_open()` in place of a city, built like the test routes' list (in `_route_ui`, so
   `_input`'s taps reach its buttons): one button per place in LEVELS with a `"walk"`, the
@@ -3843,6 +3877,18 @@ the yard a few metres off, and a shot at the point saw a roof.
     from it (off Derech Namir, Tuval) and turned round in them for 12 s at 1.3 m/s, twice
     at Tuval. `_edge_walk` now counts a dead end within EDGE_DEAD (30 m) of the barrier as
     the map's cut, not a cul-de-sac. The three-point turn itself is slow (open).
+    That alone changed nothing for a car already on a divided road's outbound half (Derech
+    Namir): `_ap_plan` never turns round on a one-way. Now (a) at a junction whose every way
+    on is edge-bound, autodrive turns round short of it (`_ap_mark_dead_end`; two-way streets,
+    and one-way halves with a `mate`), and (b) planning on a one-way half whose way ahead is
+    edge-bound, it plans onto its `mate` going the other way, across the median (1.3 s off
+    the asphalt). `ap_edge_turn`, `ap_edge_mate` tallies; Probe `edge_turn`, `edge_mate`.
+    autodrive_edge, 15 starts x 40 s, before -> after: Tel Aviv within 25 m of the barrier
+    77 -> 38 s, nearest 5 -> 12 m, turn-rounds 7 -> 4, Derech Namir from 5 m off the barrier
+    to never near it; Ashdod 43 -> 24 s, turn-rounds 6 -> 2 (EDGE_OLD runs, a switch since
+    removed). Open: Tuval, Bernfeld, Nahalat Binyamin still linger 10-40 m from it; Ashdod's
+    trunk at (4530, -1066) has autodrive cutting its curves off the asphalt (~7 s; reached
+    now that the car gets back that way); HaMaginim's start 9 s off the road on both.
 - **Delft (level 14): 39 m² of island on the asphalt** (`city_check`'s "islands on the road",
   0 in every other town; the first spot is at (-478, 1000), Westlandseweg's west end, a
   secondary road 10-16 m wide). Not found yet. One way it can happen, seen in the city file:
