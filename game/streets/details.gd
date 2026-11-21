@@ -419,6 +419,8 @@ func build() -> void:
 	var k := 0
 	for pr: Dictionary in data.get("props", []):
 		var at := _v2(pr["at"])
+		if SOLID_PROPS.has(String(pr["kind"])):
+			at = g._off_asphalt(at, SOLID_PROPS[String(pr["kind"])])   # (never in the road as the game draws it)
 		var d := _v2(pr.get("dir", [1, 0])).normalized()
 		var y: float = maxf(g._walk_y(at), g._h(at) + _lift_at(at))   # (on a pavement, or on paving of ours)
 		k += 1
@@ -1122,6 +1124,11 @@ func _pickets(b, a: Vector2, e: Vector2, h: float, col: Color) -> void:
 		g._furn._box(b, Vector3(p.x + d.x * 0.045, gy + h + 0.035, p.y + d.y * 0.045), Vector3(0.09, 0.025, 0.025), col, bs)
 		s += 0.11
 	_solid(a, e, 0.2)
+
+## the props that stand on the pavement and are solid, by their half-width: moved off the
+## asphalt if the film's spot lands on it (_off_asphalt)
+const SOLID_PROPS := {"bin": 0.3, "hydrant": 0.2, "bollard": 0.1, "twin_poles": 0.1, "globe_lamp": 0.15,
+	"gatepost": 0.25, "booth": 0.6, "cabinet": 0.4, "sign_board": 0.1, "no_uturn_sign": 0.08, "zone30_sign": 0.08}
 
 ## a litter bin: a black slotted cylinder on a short post
 func _bin(b, at: Vector2, gy: float, col: Color) -> void:

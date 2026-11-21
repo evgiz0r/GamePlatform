@@ -1312,6 +1312,7 @@ func start(_config: Dictionary) -> void:
 	_place_start()
 	_build_hud()
 	_show_load_line()
+	_far_ahead()
 	_retint_city()
 	_spawn_people()
 	_spawn_crossers()
@@ -1365,6 +1366,31 @@ func _warm_up() -> bool:
 	# steps the text can count (all at once, one frame took the lot: a long freeze)
 	look_from(Vector3(spot.x - 20.0, gy + 12.0, spot.y), Vector3(spot.x + 40.0, gy, spot.y))
 	_sky_follow()
+	# the night's glow -- the lamps' pools, the headlight beams -- is drawn by day by nothing:
+	# a pool and one beam here for the warm-up, as the real ones are made (a plain mesh; a
+	# multimesh like the traffic's beams), so the night button finds the shader compiled
+	var stand_ins: Array = []
+	var gb := Buf.new()
+	_pool(gb, spot + Vector2(30.0, 0.0), 2.0)
+	var pm := ArrayMesh.new()
+	pm.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, gb.arrays())
+	var pool_in := MeshInstance3D.new()
+	pool_in.mesh = pm
+	pool_in.material_override = _glow_mat("lamplight", POOL_STRENGTH)
+	pool_in.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	world.add_child(pool_in)
+	stand_ins.append(pool_in)
+	var bm := MultiMesh.new()
+	bm.transform_format = MultiMesh.TRANSFORM_3D
+	bm.mesh = _beam_mesh()
+	bm.instance_count = 1
+	bm.set_instance_transform(0, Transform3D(Basis(), Vector3(spot.x + 30.0, gy, spot.y)))
+	var beam_in := MultiMeshInstance3D.new()
+	beam_in.multimesh = bm
+	beam_in.material_override = _glow_mat("lamplight", 0.4)
+	beam_in.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	world.add_child(beam_in)
+	stand_ins.append(beam_in)
 	var kinds := {}   # material (and whether instanced) -> its nodes
 	var shown: Array = []
 	for n: Node in world.find_children("*", "GeometryInstance3D", true, false):
@@ -1409,6 +1435,8 @@ func _warm_up() -> bool:
 		_warm_ms.append(Time.get_ticks_msec() - tk)   # (each view's frame: the perf view shows them)
 		if not is_inside_tree():
 			return false
+	for n: Node in stand_ins:
+		n.queue_free()
 	return true
 
 var _warm_ms: Array = []             ## each warm-up frame, ms: the kinds of surface a few at a time, then the four views
@@ -1524,6 +1552,8 @@ func _load_text() -> String:
 	if _gl_at_car.x >= 0.0:
 		var d := _gl_count() - _gl_at_car
 		since = "\nshaders compiled since the car: %d, %.1f s" % [int(d.x), d.y / 1000.0]
+	if _tod_line != "":
+		since += "\nlast time-of-day switch " + _tod_line
 	return "%s\nslowest parts: %s\nwarm-up frames (ms): %s%s" % [_load_line(), ", ".join(top), ", ".join(_warm_ms.map(func(x): return str(x))), since]
 
 ## which graphics chip and driver path (a browser on Windows names Direct3D: every shader
@@ -1531,9 +1561,30 @@ func _load_text() -> String:
 ## the view and the shadow pass together. In a browser each draw call costs the main thread a
 ## trip through WebGL's checks, so many draws hold a frame back whatever the quality level.
 func _gpu_line() -> String:
-	return "graphics: %s · %d draws · %d k triangles" % [RenderingServer.get_video_adapter_name(),
+	return "graphics: %s · %d draws · %d k triangles" % [_gpu_name(),
 		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
 		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME) / 1000]
+
+## The graphics chip's own name. A browser tells WebGL only "WebKit WebGL"; the real one
+## (and on Windows "Direct3D11") comes from the debug-renderer extension, asked of a context
+## made for it and dropped again.
+static var _gpu_name_got := ""
+static func _gpu_name() -> String:
+	if _gpu_name_got != "":
+		return _gpu_name_got
+	_gpu_name_got = RenderingServer.get_video_adapter_name()
+	if OS.has_feature("web"):
+		var v = JavaScriptBridge.eval("""(() => { try {
+			const gl = document.createElement('canvas').getContext('webgl2');
+			const e = gl && gl.getExtension('WEBGL_debug_renderer_info');
+			const r = e ? String(gl.getParameter(e.UNMASKED_RENDERER_WEBGL)) : '';
+			const l = gl && gl.getExtension('WEBGL_lose_context');
+			if (l) l.loseContext();
+			return r;
+		} catch (x) { return ''; } })()""", true)
+		if v != null and str(v) != "":
+			_gpu_name_got = str(v)
+	return _gpu_name_got
 
 ## ---- the browser's shader compiling, counted (web only) ----------------------------------
 ## A browser compiles a shader program the first time something is drawn with it (the
@@ -1905,12 +1956,12 @@ func _clip_buildings(bdata: Array) -> void:
 				if not (String(r["deck"]) in ["em", "br", "cu"]) or not r["drive"] \
 						or maxf(absf(r["ys"][sj] - r["gs"][sj]), absf(r["ys"][sj + 1] - r["gs"][sj + 1])) > 4.0:
 					continue   # (a cutting too, where it is shallow: a car came up one into a block)
-			elif not _kerbed(r):
-				continue
+			elif not _kerbed(r) and not (HIGHWAYS.has(r["k"]) and r["drive"]):
+				continue   # (a motorway on the ground too: a block stood 0.8 m into Ayalon South)
 			var pts: PackedVector2Array = r["pts"]
 			var a := pts[sj]
 			var b := pts[sj + 1]
-			var c := float(r["w"]) * 0.5 + BLD_CLEAR
+			var c := float(r["w"]) * 0.5 + (BLD_CLEAR if _kerbed(r) or r.has("ys") else 0.5)   # (no pavement beside a motorway)
 			if not box.grow(c).intersects(Rect2(a, Vector2.ZERO).expand(b)):
 				continue
 			for k in range(n):
@@ -2574,6 +2625,14 @@ const NEAR_NOW := 60.0               ## a city level: squares this close to the 
 const AHEAD_NOW := 160.0             ## ...and those the street ahead of the car crosses within this far (what the first view looks at)
 const BUILD_US := 6000               ## background building: microseconds a frame (half that when frames run slow)
 const CATCH_UP_US := 16000           ## the same while a square within NEAR_FIRST of the car is still bare (the first seconds of a drive)
+## Once every square within SEE_M of the car is built, the rest -- out past the haze -- goes on
+## at BUILD_FAR_US a frame while you drive (full speed again from above, or paused): nothing
+## you can see waits for it, and the frames keep their milliseconds. Tel Aviv's whole city took
+## 4-6 ms of every frame for ~11 minutes on a user's PC (21 Nov), most of it squares out of sight.
+const SEE_M := 900.0
+const BUILD_FAR_US := 1500
+var _seen_built := false             ## every square within SEE_M of the car is built (looked at twice a second)
+var _seen_at := 0
 var _catch_up := false               ## a square within NEAR_FIRST of the car is still bare: building at CATCH_UP_US
 var _catch_up_ms := 0                ## when the squares round the car were all built, ms after it was shown (the perf view)
 var _tile := Vector2i.ZERO           ## the square being built
@@ -2640,6 +2699,19 @@ func _tile_rect(t: Vector2i) -> Rect2:
 	return Rect2(Vector2(t) * TILE, Vector2(TILE, TILE))
 
 ## how far p is from square t (0 inside it)
+## no square within SEE_M of the car still to be built (looked at twice a second)
+func _all_seen_built() -> bool:
+	var now := Time.get_ticks_msec()
+	if now - _seen_at < 500:
+		return _seen_built
+	_seen_at = now
+	_seen_built = true
+	for t: Vector2i in _tiles_todo:
+		if _tile_dist(t, _pos) < SEE_M:
+			_seen_built = false
+			break
+	return _seen_built
+
 func _tile_dist(t: Vector2i, p: Vector2) -> float:
 	var r := _tile_rect(t)
 	return p.clamp(r.position, r.end).distance_to(p)
@@ -2976,6 +3048,47 @@ func _far_now() -> void:
 	print("[streets] far shadows drawn after the car, %d ms" % (Time.get_ticks_msec() - t))
 	Probe.event("far_shadows", {"ms": Time.get_ticks_msec() - t})
 
+## the other sun's picture too, a while after the car's own -- so the time-of-day button finds
+## it drawn: drawn at the click it held the game a second and more (a user, 21 Nov)
+func _far_ahead() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	await get_tree().create_timer(FAR_AHEAD_S).timeout
+	var waited := 0
+	while is_inside_tree() and not _fs_cache.has("evening" if _evening else "day") and waited < 120:
+		await get_tree().create_timer(1.0).timeout   # (the car's own sun first)
+		waited += 1
+	var other := "day" if _evening else "evening"
+	if not is_inside_tree():
+		return
+	var t := Time.get_ticks_msec()
+	if not _fs_cache.has(other) and not _fs_drawing.has(other):
+		await _far_draw(other)
+		print("[streets] the %s's far shadows drawn ahead, %d ms" % [other, Time.get_ticks_msec() - t])
+	if is_inside_tree() and not _pools_made:   # and the night's light pools, for its button
+		t = Time.get_ticks_msec()
+		await _make_pools(true)
+		print("[streets] the night's light pools made ahead, %d ms" % (Time.get_ticks_msec() - t))
+const FAR_AHEAD_S := 8.0
+
+## both suns' pictures drawn (or being drawn: waited for) -- before the city file they are
+## drawn from is let go. The evening's, drawn at its button once the city was built, met an
+## empty file: no far shadows at all in the evening.
+func _far_both() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	for key: String in ["day", "evening"]:
+		if not _fs_cache.has(key) and not _fs_drawing.has(key):
+			await _far_draw(key)
+	while is_inside_tree() and not _fs_drawing.is_empty():
+		await get_tree().process_frame
+
+## one sun's picture, a few ms a frame, marked as being drawn meanwhile
+func _far_draw(key: String) -> void:
+	_fs_drawing[key] = true
+	await _build_far_shadows(true, key)
+	_fs_drawing.erase(key)
+
 ## a square within NEAR_FIRST of the car is still to be built
 func _bare_near() -> bool:
 	for t: Vector2i in _tiles_todo:
@@ -3031,6 +3144,7 @@ func _build_rest() -> void:
 		if _build_lbl != null:
 			_build_lbl.text = "building the city %d%%" % int(100.0 * _tiles_done.size() / maxf(_build_total, 1.0))
 	await _far_now()   # (if it has not come yet: before the city file below is let go)
+	await _far_both()   # (and the other sun's: drawn later, from what is let go, it failed)
 	if _build_lbl != null:
 		_build_lbl.text = ""
 	# what was only for building -- the file, the outlines, the squares' lists -- let go of a
@@ -5485,6 +5599,22 @@ func _in_corner_fill(p: Vector2, margin: float) -> bool:
 ## p moved out of any rounded corner's asphalt it is on (or within `margin` of the kerb of):
 ## from the corner's point through p, across the curve and `margin` past its kerb -- onto the
 ## corner's pavement. p itself when it is on none.
+## p moved off every street's asphalt -- the straight strips and the rounded corners -- far
+## enough that a body of half-width r there stays clear of it (as city_check's "on the road"
+## measures). For things placed by hand from a film or a survey: the spot is right to a few
+## metres, the game's road a guess at its width, and a bin at a corner stood 1.2 m into Sirkin.
+func _off_asphalt(p: Vector2, r: float) -> Vector2:
+	for _k in range(3):
+		p = _out_of_corner(p, r)
+		var hit := _nearest_seg(p, 20.0, true, false)
+		if hit.is_empty() or float(hit["edge"]) >= r:
+			break
+		var away := p - (hit["q"] as Vector2)
+		if away.length() < 0.01:
+			break
+		p += away.normalized() * (r - float(hit["edge"]) + 0.05)
+	return p
+
 func _out_of_corner(p: Vector2, margin: float) -> Vector2:
 	for key: int in _near(_fill_hash, p, margin + 0.5, BLD_CELL):
 		var poly: PackedVector2Array = _corner_fill[key]
@@ -5725,7 +5855,14 @@ func cover_under(p: Vector2) -> float:
 		for dy in range(-1, 2):
 			for cv: Vector3 in _covers.get(c + Vector2i(dx, dy), []):
 				if p.distance_squared_to(Vector2(cv.x, cv.y)) < cv.z * cv.z:
-					return 1.0 if cv.z < 0.35 else 0.6
+					# most sit flush and are not felt: one manhole in three stands proud or sunk,
+					# one grate in four (by its place: the same ones every drive). Every one
+					# knocked made Tel Aviv's wide streets "pretty bumpy" -- a knock every 75 m
+					# in the kerb lane, 13 a km (tests/drive_bumps.gd, 22 Nov)
+					var felt := posmod(hash(Vector2i(roundi(cv.x * 10.0), roundi(cv.y * 10.0))), 12)
+					if cv.z < 0.35:
+						return 1.0 if felt < 4 else 0.0
+					return 0.6 if felt < 3 else 0.0
 	return 0.0
 
 func _cover_tick() -> void:
@@ -8209,17 +8346,35 @@ var _pools_from := 0                 ## _pool_at before this have theirs
 var _shop_lights: Array = []         ## [the window's foot, out to the street, how wide] of every lit shop window
 var _shop_lit_from := 0
 
-func _make_pools() -> void:
+## The light pools (and halos, and lit shop windows' light on the pavement) for every lamp so
+## far. Made a while after the car, a few ms a frame (`chunked`, `_pools_ahead`): made at the
+## night button, for every lamp in the city at once, they held the click ~0.4 s here and more
+## in a browser. Each square built after that makes its own (`_build_tile`).
+var _pools_busy := false
+var _pools_abort := false
+func _make_pools(chunked := false) -> void:
+	if _pools_busy:
+		return   # (being made: a square's lamps after those are made next time)
+	_pools_busy = true
 	_pools_made = true
+	if chunked:
+		_yield_at = Time.get_ticks_usec() + _build_us
 	var pools := CBuf.new(GROUND_CELL)
-	for i in range(_pools_from, _pool_at.size()):
+	var upto := _pool_at.size()
+	for i in range(_pools_from, upto):
+		if chunked and Time.get_ticks_usec() > _yield_at:
+			await _pause()
+			if not is_inside_tree() or _pools_abort:
+				_pools_abort = false
+				return   # (the night button came first and made them all at once)
 		var q: Vector3 = _pool_at[i]
 		_pool(pools, Vector2(q.x, q.y), q.z)
 		# the lamp's halo, at its head (a street lamp's ~7 m up, a park globe's ~3.8 m)
 		_halo(pools, _g3(Vector2(q.x, q.y), 3.75 if q.z < 5.0 else 6.9), 0.75 if q.z >= 5.0 else 0.5)
-	_pools_from = _pool_at.size()
+	_pools_from = upto
 	# a lit shop window's light on the pavement in front of it
-	for i in range(_shop_lit_from, _shop_lights.size()):
+	var shops_upto := _shop_lights.size()
+	for i in range(_shop_lit_from, shops_upto):
 		var s: Array = _shop_lights[i]
 		var at: Vector2 = s[0]
 		var n: Vector2 = s[1]
@@ -8234,10 +8389,13 @@ func _make_pools() -> void:
 		pools.tri(m0, a1, b1, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(0.35, 0), Vector2(0.6, 0.72))
 		pools.tri(m0, b1, b0, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(0.6, 0.72), Vector2(-0.6, 0.72))
 		pools.tri(m0, b0, a0, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(-0.6, 0.72), Vector2(-0.35, 0))
-	_shop_lit_from = _shop_lights.size()
+	_shop_lit_from = shops_upto
 	for mi: MeshInstance3D in _add_mesh(pools, _glow_mat("lamplight", POOL_STRENGTH), false, LAMP_RANGE):
 		mi.visible = _night
 		_night_nodes.append(mi)
+	_pools_busy = false
+	if chunked and (_pool_at.size() > _pools_from or _shop_lights.size() > _shop_lit_from):
+		_make_pools()   # (the lamps of squares built meanwhile)
 
 ## ---- the bare ground: patches, not one flat colour ------------------------------------------
 ## Open land drawn in one colour read as empty, a grey plain. A shader breaks it into
@@ -8721,14 +8879,16 @@ void fragment() {
 """
 var _glow_mats := {}
 
+var _glow_sh: Shader
 func _glow_mat(tone: String, strength: float) -> ShaderMaterial:
 	var key := "%s|%.2f" % [tone, strength]
 	if _glow_mats.has(key):
 		return _glow_mats[key]
 	var m := ShaderMaterial.new()
-	var sh := Shader.new()
-	sh.code = GLOW_SHADER
-	m.shader = sh
+	if _glow_sh == null:   # (one Shader for them all: each its own compiled its own programs, the same code)
+		_glow_sh = Shader.new()
+		_glow_sh.code = GLOW_SHADER
+	m.shader = _glow_sh
 	m.set_shader_parameter("col", _tone[tone])
 	m.set_shader_parameter("strength", strength)
 	m.set_meta("tone", tone)
@@ -8808,6 +8968,9 @@ func _set_wet(on: bool) -> void:
 
 ## the time-of-day button: day, then evening, then night, then day again
 func _next_time() -> void:
+	var t0 := Time.get_ticks_usec()
+	var gl0 := _gl_count()
+	var to := "day" if _night else ("night" if _evening else "evening")
 	if _night:
 		_set_night(false)
 	elif _evening:
@@ -8815,6 +8978,25 @@ func _next_time() -> void:
 		_set_night(true)
 	else:
 		await _set_evening(true)
+	_tod_watch(to, gl0, (Time.get_ticks_usec() - t0) / 1000.0)
+
+## what a time-of-day click cost: its own work, then the slowest of the next frames (where the
+## browser compiles what the new light needs) and the shaders compiled -- printed, and in the
+## perf view, so a player's screenshot says it
+var _tod_line := ""
+func _tod_watch(to: String, gl0: Vector2, ms: float) -> void:
+	var worst := 0.0
+	for i in range(10):
+		var tf := Time.get_ticks_usec()
+		await get_tree().process_frame
+		if not is_inside_tree():
+			return
+		worst = maxf(worst, (Time.get_ticks_usec() - tf) / 1000.0)
+	_tod_line = "to %s: %.0f ms at the click, then the slowest frame %d ms" % [to, ms, int(worst)]
+	if gl0.x >= 0.0:
+		var d := _gl_count() - gl0
+		_tod_line += ", %d shaders compiled (%.1f s)" % [int(d.x), d.y / 1000.0]
+	print("[streets] time of day " + _tod_line)
 
 ## Golden hour: the evening sky, the sun low in the west-south-west and warm, the long
 ## shadows (the real ones; the painted far ones redrawn for that sun once, then kept).
@@ -8830,15 +9012,22 @@ func _set_evening(on: bool) -> void:
 		_fs_rect = _fs_cache[key][1]
 		_far_update()
 	else:
-		_fs_tex = null   # (none rather than the other sun's, while it draws)
+		# (none rather than the other sun's while it draws -- a few ms a frame, a moment after
+		# the click, not all at once: drawn whole it held the click a second and more)
+		_fs_tex = null
 		_far_update()
-		await _build_far_shadows()
+		if not _fs_drawing.has(key):
+			_far_draw(key)
 	_show_banner("evening" if on else "day", 1.2)
 	Probe.event("evening", {"on": on})
 
 func _set_night(on: bool) -> void:
 	_night = on
-	if on and not _pools_made:
+	if on and (not _pools_made or _pools_busy):
+		# not made ahead yet (the first ~40 s), or being made: all at once now, as before
+		if _pools_busy:
+			_pools_abort = true
+			_pools_busy = false
 		_make_pools()
 	for n: Node3D in _night_nodes:
 		n.visible = on
@@ -8846,10 +9035,14 @@ func _set_night(on: bool) -> void:
 	if _beam_node != null:
 		_beam_node.visible = _lights_on
 	_retint_city()
-	if on:
-		sun.shadow_enabled = false
-	else:
-		_set_quality(_quality)
+	# The moon is the day's sun as it is -- there, with its shadows, lighting everything --
+	# only dim and blue (_retint_city), its shadows reaching a metre (_set_quality: the shadow
+	# pass draws next to nothing). In a browser every material's shader comes in one version
+	# for a sun with shadows, another for one without and another for no light (or a light that
+	# lights nothing, `light_cull_mask` 0: tried): switching the shadows off at the button made
+	# the browser compile 40-odd programs there and then, a hang of seconds on a user's PC
+	# (21 Nov; tests/web_shaders.js TIMES=, BOT=idle).
+	_set_quality(_quality)
 	if _traffic != null:
 		_traffic.set_night(on)
 	if _furn != null:
@@ -11466,7 +11659,68 @@ func _tree_ok(p: Vector2, spacing: float) -> bool:
 ## stood in the lane, and autodrive drove into it again and again.
 func _off_road(p: Vector2, margin: float) -> bool:
 	var hit := _nearest_seg(p, 14.0, true)
-	return (hit.is_empty() or float(hit["edge"]) >= margin) and not _in_corner_fill(p, margin)
+	return (hit.is_empty() or float(hit["edge"]) >= margin) and not _in_corner_fill(p, margin) 		and _split_push(p, margin) == Vector2.ZERO
+
+## The line cars drive past the split of a divided road. OSM starts both halves at the two-way
+## road's middle, so for some metres past the split a car in the two-way road's lane drives
+## on beside the narrower half's asphalt -- and what was put up 1 m off that asphalt stood in
+## its way (tests/split_posts.gd DRIVE=1, Ashdod: a no-entry sign at Dakar's split and a post
+## at Tamuz's touched; before it, a one-way arrow knocked flat on every drive). The line runs
+## from the two-way road's lane at the split over to the half's own lane 25 m on, as autodrive
+## drives it; nothing is put up within a car's half width of it. Worked out the first time.
+var _split_lines := []    ## [a, b] pieces of those lines
+var _split_hash := {}     ## SEG_CELL -> indices into _split_lines
+var _split_done := false
+const SPLIT_HALF := 0.9 + 0.25   ## a car's half width and a little
+
+func _find_split_lines() -> void:
+	_split_done = true
+	for ni in range(mini(_nodes.size(), _node_roads.size())):
+		var c := _nodes[ni]
+		for e: Vector2i in _node_roads[ni]:
+			var r: Dictionary = _roads[e.x]
+			var pts: PackedVector2Array = r["pts"]
+			if int(r["o"]) != 0 or not r["drive"] or String(r.get("name", "")) == "" or (e.y != 0 and e.y != pts.size() - 1):
+				continue
+			var prev: int = 1 if e.y == 0 else e.y - 1
+			if prev < 0 or prev >= pts.size():
+				continue
+			var t := (c - pts[prev]).normalized()
+			for h: Vector2i in _node_roads[ni]:
+				var hr: Dictionary = _roads[h.x]
+				var hp: PackedVector2Array = hr["pts"]
+				if h.x == e.x or int(hr["o"]) == 0 or String(hr.get("name", "")) != String(r["name"]) or float(hr["w"]) > float(r["w"]) - 2.0:
+					continue
+				for k: int in [h.y - 1, h.y + 1]:
+					if k < 0 or k >= hp.size() or (hp[k] - c).normalized().dot(t) <= 0.8:
+						continue
+					var way := 1 if k == h.y + int(hr["o"]) else -1
+					var u := (hp[k] - c).normalized()
+					var trav := u * float(way)
+					var right := Vector2(-trav.y, trav.x)
+					var tw := t * float(way)
+					var at0 := (Vector2(-tw.y, tw.x) * _lane_off(r)).dot(right)
+					var off_h := _lane_off(hr)
+					var last := c + right * at0
+					for i in range(5, 26, 5):
+						var q := c + u * float(i) + right * lerpf(at0, off_h, float(i) / 25.0)
+						_hash_add(_split_hash, Rect2(last, Vector2.ZERO).expand(q).grow(SPLIT_HALF + 1.0), SEG_CELL, _split_lines.size())
+						_split_lines.append([last, q])
+						last = q
+
+## how far p must move to keep a body of radius r out of a split's line (ZERO: it is clear)
+func _split_push(p: Vector2, r: float) -> Vector2:
+	if not _split_done:
+		_find_split_lines()
+	if _split_lines.is_empty():
+		return Vector2.ZERO
+	for i: int in _near(_split_hash, p, 0.1, SEG_CELL):
+		var ln: Array = _split_lines[i]
+		var q := Geometry2D.get_closest_point_to_segment(p, ln[0], ln[1])
+		var d := p.distance_to(q)
+		if d < SPLIT_HALF + r:
+			return (p - q).normalized() * (SPLIT_HALF + r - d + 0.05) if d > 0.01 else Vector2.ZERO
+	return Vector2.ZERO
 
 ## p is on (or within `margin` of) the asphalt round a junction's point -- the disc as wide as
 ## its widest road that every junction is laid with, which no one road's lanes cover. Railings
@@ -12500,10 +12754,10 @@ func _terrace(pos: Vector2, n: Vector2, along: Vector2, umb: Color, t: Dictionar
 				continue   # (that close: one table, and only for an umbrella someone filmed)
 			var q := pos + n * tr.x + along * off
 			var on := _nearest_seg(q, 12.0, true)
-			if _push_out(q, tr.y, false) == Vector2.ZERO and (on.is_empty() or float(on["edge"]) >= tr.z):
+			if _push_out(q, tr.y, false) == Vector2.ZERO and (on.is_empty() or float(on["edge"]) >= tr.z) 					and not _in_corner_fill(q, maxf(tr.z, 0.0) + 0.25):   # (nor on a corner's asphalt: Aluf David, Dizengoff)
 				c = q
 				if not on.is_empty():
-					room = clampf(float(on["edge"]), 0.25, 0.7)
+					room = clampf(float(on["edge"]), 0.1, 0.7)   # (0.25 at least had a table at the lane's edge 0.35 m into Dizengoff)
 				break
 		if not c.is_finite():
 			continue
@@ -12776,6 +13030,7 @@ const FS_DARK := 0.55                ## the share of the light a shadow takes of
 var _fs_tex: ImageTexture = null
 var _fs_rect := Vector4.ZERO
 var _fs_cache := {}                  ## "day" / "evening" -> [texture, rect]: each sun's drawn once
+var _fs_drawing := {}                ## the suns whose picture is being drawn just now
 var _far_mats: Array = []
 
 ## a ground shader's code with far_shade() in it
@@ -12810,11 +13065,17 @@ func _far_update() -> void:
 		_far_set(m)
 	_grass_retint()   # (the grass reads the same picture's green)
 
-func _build_far_shadows(chunked := false) -> void:
+func _build_far_shadows(chunked := false, for_sun := "") -> void:
 	if DisplayServer.get_name() == "headless":
 		return   # (nothing is drawn: a headless playtest)
-	var ev := _evening   # (the sun drawn for: it may change before the picture is done)
-	var L := -sun.global_transform.basis.z   # the way the sunlight goes
+	# the sun drawn for: this one, or the other ahead of its button ("day" / "evening") -- and
+	# kept as it was asked, the button may change the sun before the picture is done
+	var ev := _evening if for_sun == "" else for_sun == "evening"
+	var L := -Basis.from_euler(Vector3(SKIES["evening" if ev else "day"]["sun"]) * (PI / 180.0)).z   # the way the sunlight goes
+	if _city_data.is_empty() or not _city_data.has("buildings"):
+		return   # (the city file let go: both suns were drawn before that, _far_both)
+	if chunked:
+		_yield_at = Time.get_ticks_usec() + _build_us
 	if L.y > -0.05:
 		return
 	var off := Vector2(L.x, L.z) / -L.y      # a shadow's reach on the ground per metre of height
@@ -12828,7 +13089,7 @@ func _build_far_shadows(chunked := false) -> void:
 	var idx := PackedInt32Array()
 	var lit: Array = []   # the outlines, cleared after all the shadows are in
 	for bd: Dictionary in _city_data["buildings"]:
-		if chunked and _over():   # (after the car: a few ms a frame, as the city's building)
+		if chunked and Time.get_ticks_usec() > _yield_at:   # (after the car: a few ms a frame, building or not)
 			await _pause()
 		var ring: PackedVector2Array = bd["_ring"]
 		if ring.size() < 3:
@@ -12854,7 +13115,7 @@ func _build_far_shadows(chunked := false) -> void:
 	var fcols := PackedColorArray()
 	var fidx := PackedInt32Array()
 	for ring: PackedVector2Array in lit:
-		if chunked and _over():
+		if chunked and Time.get_ticks_usec() > _yield_at:
 			await _pause()
 		var tri := Geometry2D.triangulate_polygon(ring)
 		var b := fpts.size()
@@ -12931,6 +13192,7 @@ func _build_far_shadows(chunked := false) -> void:
 	var tex := ImageTexture.create_from_image(img)
 	var rect := Vector4(o.x, o.y, 1.0 / (w * mpp), 1.0 / (h * mpp))
 	_fs_cache["evening" if ev else "day"] = [tex, rect]
+	_fs_drawing.erase("evening" if ev else "day")
 	if _evening == ev:
 		_fs_tex = tex
 		_fs_rect = rect
@@ -13663,6 +13925,12 @@ func _build_street_signs() -> void:
 			if _push_out(q, 0.4, true, false) != Vector2.ZERO:
 				return
 			p = q
+		# nor in the line the cars drive past a divided road's split: aside out of it
+		var sp := _split_push(p, 0.06)
+		if sp != Vector2.ZERO:
+			if _push_out(p + sp, 0.4, true, false) != Vector2.ZERO:
+				return
+			p += sp
 		if not plates.has(kind):
 			plates[kind] = []
 		var gy := _h(p)
@@ -14881,8 +15149,41 @@ func _site_ways_in(node: int) -> Array:
 					break
 				if _crossing_set.has(o) and float(back[1]) > 1.0 and float(back[1]) < rn + 10.0:
 					line = maxf(line, float(back[1]) + 2.0)   # (its stripes run 1.5 m either side of the point)
-			out.append([(c - pts[from]).normalized(), line, e.x, inside or free])
+			var din := (c - pts[from]).normalized()
+			if not inside and not free:
+				line = _line_off_zebras(c, din, line, rn)
+			out.append([din, line, e.x, inside or free])
 	return out
+
+## A stop line moved back so the car waiting at it stands on no zebra: the zebras on the
+## road's own points are seen above, but one mapped on the lane beside it, or the other half
+## of a divided road, was under the waiting car (light_audit's "front on the zebra": Givatayim
+## 2, Tel Aviv 3). Any zebra point within 3 m of the way's line, under where the car would
+## stand, puts the line 2 m behind it (its stripes run 1.5 m either side of the point).
+var _zebra_pts := {}
+func _line_off_zebras(c: Vector2, din: Vector2, line: float, rn: float) -> float:
+	if _zebra_pts.is_empty():
+		for ni: int in _crossing_nodes:
+			var k := _cell(_nodes[ni], 20.0)
+			if not _zebra_pts.has(k):
+				_zebra_pts[k] = []
+			(_zebra_pts[k] as Array).append(ni)
+	var across := Vector2(-din.y, din.x)
+	for _pass in range(3):
+		var moved := false
+		var q := c - din * (line + 4.0)
+		var k0 := _cell(q, 20.0)
+		for dx in range(-1, 2):
+			for dz in range(-1, 2):
+				for ni: int in _zebra_pts.get(k0 + Vector2i(dx, dz), []):
+					var rel: Vector2 = c - _nodes[ni]
+					var t := rel.dot(din)   # how far back along the way in
+					if absf(rel.dot(across)) < 3.0 and t > 1.0 and t < rn + 12.0 							and t > line - 0.5 and t < line + 2.5 + CAR_LEN:
+						line = t + 2.0
+						moved = true
+		if not moved:
+			break
+	return line
 
 ## A lit point where only a slip road joins a one-way main road, from its right-hand side --
 ## merging in or peeling off, across no one's way: OSM's light there is the slip road's (and
@@ -15311,7 +15612,11 @@ func _retint_city() -> void:
 		env.fog_enabled = true
 		env.fog_light_color = hor
 		env.fog_density = _fog_day()   # (half in the made-up town's valley, see _fog_day)
-		env.fog_sun_scatter = 0.3 if _evening else 0.0   # (the haze glows towards a low sun)
+		# (the haze glows towards a low sun. Never 0: any glow at all is another version of every
+		# shader in the browser, and 0 by day made the evening button compile 30 programs there and
+		# then -- a hang; a trace by day, too faint to see, keeps one version for both, compiled
+		# while loading)
+		env.fog_sun_scatter = 0.3 if _evening else FOG_SCATTER_DAY
 		env.fog_sky_affect = 0.0
 		# a film-like curve: the bright walls roll off instead of clipping, the shade deepens
 		env.tonemap_mode = Environment.TONE_MAPPER_ACES
@@ -16788,8 +17093,18 @@ func _physics_process(dt: float) -> void:
 	_crash_cool = maxf(0.0, _crash_cool - dt)
 	_touch_t = maxf(0.0, _touch_t - dt)
 	_p("lights")
+	var split := dt <= WORLD_SPLIT_DT and _world_split_on
+	_world_n += 1
+	var traffic_now := not split or _world_n % 2 == 0
+	var people_now := not split or _world_n % 2 == 1
+	var wdt := dt * 2.0 if split else dt
+	_traffic_age = 0.0 if traffic_now else _traffic_age + dt
+	_traffic_dt = wdt if traffic_now else _traffic_dt
+	if _traffic != null:
+		_traffic.ticks_per = 2 if split else 1
 	if _walking:
-		_traffic.tick(dt)
+		if traffic_now:
+			_traffic.tick(wdt)
 		_p("traffic")
 		if not _film.is_empty():
 			_film_tick(dt)
@@ -16801,10 +17116,12 @@ func _physics_process(dt: float) -> void:
 		_p("names")
 		_engine_tick(dt)
 		_p("sound")
-		_people_tick(dt)
+		if people_now:
+			_people_tick(wdt)
 		_knock_tick(dt)
 		_p("people")
-		_crossers_tick(dt)
+		if people_now:
+			_crossers_tick(wdt)
 		if not _film.is_empty():
 			_film_on_zebras()
 		_p("crossers")
@@ -16816,7 +17133,8 @@ func _physics_process(dt: float) -> void:
 		_set_auto(true)
 	elif PInput.just_pressed("action_b") and _auto:
 		_set_auto(false)
-	_traffic.tick(dt)
+	if traffic_now:
+		_traffic.tick(wdt)
 	_p("traffic")
 	var ctl: Array = _autodrive(dt) if _auto else _manual(dt)
 	if _auto:
@@ -16835,16 +17153,39 @@ func _physics_process(dt: float) -> void:
 	_p("names")
 	_engine_tick(dt)
 	_p("sound")
-	_people_tick(dt)
+	if people_now:
+		_people_tick(wdt)
 	_knock_tick(dt)
 	_p("people")
-	_crossers_tick(dt)
+	if people_now:
+		_crossers_tick(wdt)
 	_p("crossers")
 	_check_arrival(dt)
 	_explore(dt)
 	_p("explore")
 	_log.tick(self, dt)
 	_p("log")
+
+## ---- traffic and people, taking turns ---------------------------------------------------
+## The car is ticked 60 times a second; the traffic and the people each every other tick, with
+## twice the time, on alternate ticks -- so no tick pays for both. Their thinking was most of
+## the script's frame on a PC in a browser (Tel Aviv: traffic 3.6 + 1.0 following, people 3.4
+## of a 34 ms frame, two ticks a frame). Only at the real rate: a test run faster
+## (STREETS_SIM_SPEED, its ticks already longer than WORLD_SPLIT_DT) ticks them every tick as
+## before. The traffic is drawn between its own last two ticks (`_traffic_f`), a tick behind
+## the car rather than guessed ahead; the people are placed as they tick.
+const WORLD_SPLIT_DT := 1.0 / 40.0
+## STREETS_WORLD_SPLIT=0 (tests): every tick for both, as before, to set the two side by side
+var _world_split_on := OS.get_environment("STREETS_WORLD_SPLIT") != "0"
+var _world_n := 0
+var _traffic_age := 0.0              ## s since the traffic last ticked (0 or one tick)
+var _traffic_dt := 1.0 / 60.0        ## the time its last tick covered
+
+## where between its last two ticks to draw the traffic, for this frame's blend f between the
+## car's last two ticks
+func _traffic_f(f: float) -> float:
+	var dt := 1.0 / float(Engine.physics_ticks_per_second)
+	return clampf((f * dt + _traffic_age) / maxf(_traffic_dt, 0.001), 0.0, 1.0)
 
 ## ---- every drawn frame -------------------------------------------------------------------
 ## The car moves in fixed physics ticks (60 a second). Drawn as it was at the last tick,
@@ -16866,6 +17207,8 @@ func _frame() -> void:
 	if _bg_wait:   # the city still building round you: its few milliseconds (_pause)
 		_bg_wait = false
 		_build_us = CATCH_UP_US if _catch_up else (BUILD_US if dt < 0.022 else BUILD_US / 2)
+		if not _catch_up and not _paused and _zoom_v <= 0.0 and _all_seen_built():
+			_build_us = BUILD_FAR_US
 		_build_tick.emit()
 		_p("building")
 	_watch_fps(dt)
@@ -16882,7 +17225,7 @@ func _frame() -> void:
 		_pose_car(_car_at, _car_yaw_at, _car_y_at)
 		_me.position = Vector3(_view_pos.x, _view_y, _view_pos.y)
 		_me.face(Vector3(cos(_view_yaw), 0, sin(_view_yaw)))
-		_traffic.draw(1.0 if _paused else f)
+		_traffic.draw(1.0 if _paused else _traffic_f(f))
 		_p("traffic draw")
 		_foot_camera(dt)
 		_zoom_camera(dt)
@@ -16891,7 +17234,7 @@ func _frame() -> void:
 		_p("camera, hud")
 		return
 	_pose_car(_view_pos, _view_yaw, _view_y)
-	_traffic.draw(1.0 if _paused else f)   # (held: where the cars stand, not between two ticks)
+	_traffic.draw(1.0 if _paused else _traffic_f(f))   # (held: where the cars stand, not between two ticks)
 	_p("traffic draw")
 	_head_tick(dt)
 	_camera(dt, _view_pos, _view_yaw)
@@ -16968,7 +17311,7 @@ func _set_quality(q: int) -> void:
 	_set_textured(_quality > 0)
 	_tree_quality()
 	sun.shadow_enabled = float(row[1]) > 0.0
-	sun.directional_shadow_max_distance = maxf(float(row[1]), 1.0)
+	sun.directional_shadow_max_distance = maxf(float(row[1]), 1.0) if not _night else 1.0   # (the moon's: none to speak of, _set_night)
 	view.scaling_3d_scale = row[2]
 	_set_blobs(not sun.shadow_enabled)
 	_far_update()
@@ -20936,6 +21279,7 @@ const ZOOM_FAR_HIGH := 650.0         ## ... and above ZOOM_SMALL, only these: ke
 const ZOOM_SMALL := 0.8              ## lamps, fences are under a pixel from there, and drawing them
                                      ## across the town tripled the draws (Givatayim at the top: 898
                                      ## all lifted, 337 like this, 296 driving; no visible difference)
+const FOG_SCATTER_DAY := 0.01        ## the haze's glow towards the sun by day: a trace, never 0 (_retint_city)
 const FOG_DAY := 0.0018              ## the haze's density: by day, at night (see the look)
 
 ## the day's haze: half in the made-up town, a valley ringed by mountains with no horizon to
@@ -22409,6 +22753,28 @@ func _ap_next() -> bool:
 ## The ways on from point ei of road ri, arrived at going `dir`: [ways, back], ways each
 ## {leg: Vector3i(road, first index, direction), turn, name, en, service, score}, back the
 ## leg back the way it came (only from a dead end; Vector3i(-1, ...) when there is none).
+## a service lane that ends -- a dead end -- at a solid building, or under one: the way into
+## an underground car park or a garage, which the map draws as a lane into the wall. Roaming
+## out of the City tunnel, autodrive took one (its only other way on) and hit the wall at
+## 9-19 km/h on both of decks.gd's runs (Givatayim (-722, -1078), 21 Nov). Worked out once a road.
+var _into_bld := {}
+func _into_building(ri: int) -> bool:
+	if _into_bld.has(ri):
+		return _into_bld[ri]
+	var r: Dictionary = _roads[ri]
+	var ids: PackedInt32Array = r["ids"]
+	var pts: PackedVector2Array = r["pts"]
+	var into := false
+	for e: int in [0, ids.size() - 1]:
+		if (_node_roads[ids[e]] as Array).size() != 1:
+			continue   # (not a dead end there)
+		var p := pts[e]
+		for i: int in _near(_bld_hash, p, 1.5, BLD_CELL):
+			if _bld_solid[i] != 0 and (_bld_box[i] as Rect2).grow(1.5).has_point(p) 					and (Geometry2D.is_point_in_polygon(p, _blds[i]) or _poly_push(_blds[i], p, 1.5) != Vector2.ZERO):
+				into = true
+	_into_bld[ri] = into
+	return into
+
 func _ap_ways(ri: int, ei: int, dir: int) -> Array:
 	var r: Dictionary = _roads[ri]
 	var pts: PackedVector2Array = r["pts"]
@@ -22444,6 +22810,8 @@ func _ap_ways(ri: int, ei: int, dir: int) -> Array:
 			if r2["name"] != "" and not _visited.has(r2["name"]):
 				score += 1.4
 			if r2["k"] == "service":
+				if _into_building(e.x):
+					continue   # a lane that ends at a building's wall: an underground car park's way in
 				score -= 6.0   # alleys and car-park lanes: only when there is nothing else
 			if not _in_city(p2[nxt]):
 				score -= 2.5   # back toward town rather than out past its edge
@@ -22626,6 +22994,7 @@ func _ap_kturn(dt: float) -> Array:
 ## dead end -- a cul-de-sac -- does not count: autodrive explores those and turns.) A street
 ## running off the map was taken like any other, and the car turned round at the barrier.
 const EDGE_LOOK := 300.0
+const EDGE_DEAD := 30.0               ## a dead end this close to the barrier (past EDGE_ROOM) is the map's cut, for autodrive
 const EDGE_ROOM := 4.0               ## a road's points this close to the barrier are past it, for autodrive
 var _edge_memo := {}
 
@@ -22657,7 +23026,14 @@ func _edge_walk(leg: Vector3i, budget: float, depth: int) -> bool:
 		return true
 	var ons := _legs_on(leg.x, last, leg.z)
 	if ons.is_empty():
-		return true   # an ordinary dead end
+		# an ordinary dead end -- unless it ends near the barrier: then it is a street the
+		# map's edge cut off, not a cul-de-sac. Taken as ordinary, autodrive drove 100 m along
+		# Tel Aviv's edge into one (off Derech Namir, Tuval: 5-13 m from the barrier) and spent
+		# 12 s turning round in it, twice (tests/autodrive_edge.gd TRACE=1, 22 Nov)
+		var end_p := pts[last]
+		var gap := minf(minf(end_p.x - rim.position.x, rim.end.x - end_p.x), minf(end_p.y - rim.position.y, rim.end.y - end_p.y))
+		return gap > EDGE_DEAD
+	
 	for on: Vector3i in ons:
 		if _edge_walk(on, budget - d, depth + 1):
 			return true
