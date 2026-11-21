@@ -530,6 +530,12 @@ The ones most often touched, and the functions in them:
   `_warm_up` then shows the kinds of surface a few at a time (`_shader_key`; four views only
   under a software renderer), each frame timed in `_warm_ms`; `_load_ms`, `_stage_ms`;
   `_load_text` puts them at the bottom of the perf view, so a player's own load can be read.
+  After each load `_show_load_line` puts this device's own split over the build line for 20 s
+  ("loaded in X s (+ page Y s): city file · start area · graphics"; `_load_split`, `_load_line`,
+  also printed as "[streets] loaded in ..."), so a phone screenshot gives real numbers: the
+  container's graphics warm-up (27-40 s under SwiftShader) says nothing about a phone's. "page"
+  (`_page_ms`: the browser's clock minus the engine's) is the download and engine start, shown
+  on the first city of a visit only.
   The bar under the text (`_load_bar_begin`, `_load_tick`): phases file / setup / squares /
   warm (`_load_into`, `_load_sub` at each square and warm-up frame), estimated from this
   device's last load of the city in `user://streets_load.json` (`_load_save`: ms per phase,
@@ -1355,6 +1361,11 @@ Givatayim 0 late. Traffic cars do not look at walkers at all (they rely on the k
   Givatayim 1.4 -> 0.7, 2.8 -> 2.2. The records: Tel Aviv 674 KB, Ashdod 702, Bedford 613,
   Givatayim 276, the test town 22; prepublish ~25 s for all. What is left of the file is the
   next thing to bake (widths, buildings cut, divided roads: 1 s of Tel Aviv's 1.5).
+- **Every city in the browser, after the download split** (`tests/web_load.js`, 21 Nov 2026,
+  one run each; city file read / start area / warm-up / drivable, s): Givatayim 0.8 / 3.5 / 38 /
+  47, Bedford 1.3 / 3.3 / 27 / 37, Ashdod 2.0 / 4.4 / 28 / 39, Kiryat Dimyon 0.3 / 4.6 / 40 /
+  49, Tel Aviv 1.7 / 4.0 / 35 / 46. City packs: 1.7, 2.9, 2.8, 0.5, 3.5 MB; shared: main 4.3
+  MB, art 13.5, sound 13.2.
 - **Starting a level in a browser, phase by phase** (`tests/web_load.js`: the container's
   Chromium, the engine's wasm on one thread, SwiftShader drawing; 20 Nov 2026). Givatayim:
   engine up 1.5 s after the page, the level begun ~4 s; city file 1.8-2.1 s; the squares round the start 17 s (kerbs

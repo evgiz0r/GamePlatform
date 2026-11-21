@@ -1219,6 +1219,7 @@ func start(_config: Dictionary) -> void:
 	_stage_ms["warm up (shaders compiled, 4 frames)"] = Time.get_ticks_msec() - tw
 	print("[streets] warm-up done in %d ms, frames %s" % [Time.get_ticks_msec() - tw, _warm_ms])
 	_load_ms = Time.get_ticks_msec() - t0
+	_load_split = [t1 - t0, tw - t1, Time.get_ticks_msec() - tw]
 	_load_save()
 	_loading.queue_free()
 	var tm := Time.get_ticks_msec()
@@ -1227,6 +1228,7 @@ func start(_config: Dictionary) -> void:
 	_build_car()
 	_place_start()
 	_build_hud()
+	_show_load_line()
 	_retint_city()
 	_spawn_people()
 	_spawn_crossers()
@@ -1374,6 +1376,54 @@ func _code_key(m: Material) -> String:
 	_code_keys[m.get_instance_id()] = key
 	return key
 var _load_ms := 0                    ## from the city file to the car shown, ms
+var _load_split: Array = []          ## that load's parts, ms: city file, start area, graphics warm-up
+var _load_lbl: Label                 ## the load's parts, over the build line for a while after it
+
+## How long the page took before the engine ran (downloading the build, starting the wasm), ms,
+## or -1 where there is no page: a browser's clock counts from the page opening, the engine's
+## from its own start. Only the first city of a visit pays it.
+func _page_ms() -> int:
+	if not OS.has_feature("web"):
+		return -1
+	var now = JavaScriptBridge.eval("performance.now()", true)
+	if now == null:
+		return -1
+	return maxi(0, int(float(now)) - Time.get_ticks_msec())
+
+## "loaded in 9.4 s: page 2.1 · city file 1.0 · start area 2.4 · graphics 3.9" -- this
+## device's own load, split, so a player's screenshot from a phone gives the real numbers (a
+## test machine's software renderer says nothing about a phone's graphics warm-up).
+func _load_line() -> String:
+	if _load_split.size() < 3:
+		return ""
+	var s := "loaded in %.1f s:" % (_load_ms / 1000.0)
+	var page := _page_ms() if _first_load else -1
+	if page >= 0:
+		s = "loaded in %.1f s (+ page %.1f s):" % [_load_ms / 1000.0, page / 1000.0]
+	return s + " city file %.1f · start area %.1f · graphics %.1f" % [
+		_load_split[0] / 1000.0, _load_split[1] / 1000.0, _load_split[2] / 1000.0]
+static var _loads_this_visit := 0
+var _first_load := false
+
+## the line above, over the build line for 20 s after the car is shown, then gone (still in
+## the perf view's load lines)
+func _show_load_line() -> void:
+	_loads_this_visit += 1
+	_first_load = _loads_this_visit == 1
+	var t := _load_line()
+	if t == "" or _hud == null:
+		return
+	print("[streets] " + t)
+	_load_lbl = _label(8, "ink")
+	_load_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_load_lbl.position = Vector2(8, 185)
+	_load_lbl.size = Vector2(320, 12)
+	_load_lbl.text = t
+	_load_lbl.modulate.a = 0.8
+	var tw := create_tween()
+	tw.tween_interval(20.0)
+	tw.tween_property(_load_lbl, "modulate:a", 0.0, 1.0)
+	tw.tween_callback(_load_lbl.queue_free)
 
 ## the loading, for the perf view: how long, its biggest stages, the warm-up's four views
 func _load_text() -> String:
@@ -1384,7 +1434,7 @@ func _load_text() -> String:
 	var top: Array = []
 	for p: Array in parts.slice(0, 4):
 		top.append("%s %.1f s" % [String(p[0]).get_slice(" (", 0), p[1] / 1000.0])
-	return "loaded in %.1f s: %s\nwarm-up frames (ms): %s" % [_load_ms / 1000.0, ", ".join(top), ", ".join(_warm_ms.map(func(x): return str(x)))]
+	return "%s\nslowest parts: %s\nwarm-up frames (ms): %s" % [_load_line(), ", ".join(top), ", ".join(_warm_ms.map(func(x): return str(x)))]
 
 ## show what is being built and let a frame be drawn; false if the game was left meanwhile
 func _step(what: String) -> bool:
