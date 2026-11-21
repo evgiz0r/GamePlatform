@@ -312,6 +312,18 @@ written by hand, and **it publishes itself**: every push to `main` runs
 workflow's own commit moves `main`. `/publish` remains for checking a build locally.
 Exporting needs the **standard** Godot build; the .NET/mono one refuses web export outright.
 
+**The download is split so a publish costs only what changed.** `tools/publish_web.sh` cuts
+the exported `index.pck` (`tools/split_pck.py`, written back by `tools/pack_write.gd`) into a
+small main pack -- code, scenes, small files, anything under `baked/` -- and packs named by
+their content hash: `index.art.<hash>.pck` (imported textures and models),
+`index.sound.<hash>.pck`, and one `index.data_<name>.<hash>.pck` per data file of 256 KB or
+more (a baked city). The service worker keeps a pack across builds while its name is the same,
+so a code-only publish costs a phone the main pack (~4 MB) instead of ~40. `index.html`
+downloads them all with the main pack before the engine starts, and `shell/autoload/packs.gd`,
+the first autoload, mounts them, so nothing in a game changes. `node tools/web_cache.js <dir A>
+<dir B>` serves two builds one after the other through the worker and prints what the second
+cost. A native or editor run has no packs and is untouched.
+
 **A game can do slow work once per build instead of on every load.** If its folder holds a
 `prepublish.gd` (a SceneTree script), `tools/publish_web.sh` runs it headless before the
 export; whatever it writes under `game/<name>/baked/` ships in that build and nothing else
