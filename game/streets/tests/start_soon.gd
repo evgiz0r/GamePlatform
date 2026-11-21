@@ -56,4 +56,13 @@ func _run() -> void:
 		took / 1000.0, g._catch_up_ms, frames, frames / maxf(took / 1000.0, 0.001), int(worst * 1000.0), slow])
 	await create_timer(0.5).timeout
 	await _snap("soon_built_%d" % lvl)
+	# What made the wait: every square within NEAR_FIRST was built before the car was shown --
+	# 6 to 8 of them (Givatayim 4.4 s, Ashdod 8.3, Tel Aviv 10.1 here). The fix builds only what
+	# the first view sees (1 / 2 / 1 squares; 3.0 / 5.9 / 6.3 s) and the rest after, while you
+	# can drive. The seconds hang on what else this machine runs; the squares do not: more than
+	# 3 before the car is the old way back. And the rest must come (the test waits 180 s).
+	var rest_ok: bool = not hurry or g._catch_up_ms > 0
+	print("REGRESS start_soon: %s -- squares built before the car %d, the rest round it %s (good 3 or fewer, then built; the old way: 6-8 first)" % [
+		"PASS" if first <= 3 and rest_ok else "FAIL", first,
+		"built %.1f s later" % (took / 1000.0) if rest_ok else "not built in 180 s"])
 	quit(0)

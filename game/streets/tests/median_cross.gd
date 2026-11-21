@@ -22,6 +22,7 @@ func _run() -> void:
 	await create_timer(1.0).timeout
 	if g._medians.is_empty():
 		print("no medians")
+		print("REGRESS median_cross: FAIL -- medians found 0 (good 1 or more: nothing to drive across)")
 		quit(0)
 		return
 	# a long straight stretch of median, away from junctions
@@ -34,6 +35,7 @@ func _run() -> void:
 	var b: Vector2 = g._medians[best * 2 + 1]
 	var mid := (a + b) * 0.5
 	var across := Vector2(-(b - a).y, (b - a).x).normalized()
+	var over := 0   # (of the 30 and 50 km/h runs, how many got over)
 	for kmh: float in [10.0, 30.0, 50.0]:
 		g._set_auto(false)
 		g._pos = mid - across * 7.0
@@ -53,4 +55,12 @@ func _run() -> void:
 				shot = true
 				g.look_from(Vector3(g._pos.x - across.x * 6.0 + 2.0, g._y + 2.5, g._pos.y - across.y * 6.0), Vector3(g._pos.x, g._y + 0.5, g._pos.y))
 		print("%d km/h: got over %s, rode %.2f m up, %.1f km/h after" % [int(kmh), crossed, top, g._v * 3.6])
+		if kmh >= 30.0 and crossed:
+			over += 1
+	# The bug: a median was a wall as high as the sky, and the car stopped dead against a kerb
+	# it looked able to roll over ("the border is too low for my car not to pass"). Now it goes
+	# over at 30 and 50 km/h, so both must get over (10 km/h is not judged: it covers 8 m at
+	# most in the 3 s, short of the far side 9.5 m on).
+	print("REGRESS median_cross: %s -- got over the median at 30 and 50 km/h %d of 2 (good 2 of 2)" % [
+		"PASS" if over == 2 else "FAIL", over])
 	quit(0)

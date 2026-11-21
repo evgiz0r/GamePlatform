@@ -9,6 +9,7 @@ extends SceneTree
 ## (another city's numbers), better once its own file is read (`pace`).
 const LOG := "user://streets_load.json"
 var g: Node
+var loads: Array = []   # per load, for the verdict: {first text, worst off, first guess, left then}
 
 func _initialize() -> void:
 	_run()
@@ -36,9 +37,12 @@ func _load(lvl: int) -> void:
 	var end := Time.get_ticks_msec()
 	print("%s: %.1f s from start to the car" % [g._city_name, (end - t0) / 1000.0])
 	var errs: Array = []
+	var seen := {"first": "", "worst": -1.0, "guess": -1.0, "left": 0.0}
 	for s: Array in said:
 		var left := (end - int(s[0])) / 1000.0
 		var txt := String(s[1])
+		if seen["first"] == "":
+			seen["first"] = txt
 		var guess := -1.0
 		if txt.begins_with("about "):
 			guess = float(txt.split(" ")[1])
@@ -46,6 +50,10 @@ func _load(lvl: int) -> void:
 			guess = 0.75
 		if guess >= 0.0:
 			errs.append(absf(guess - left))
+			seen["worst"] = maxf(float(seen["worst"]), absf(guess - left))
+			if float(seen["guess"]) < 0.0:
+				seen["guess"] = guess
+				seen["left"] = left
 		print("  %5.1f s in, bar %3d%%: %-26s really %.1f s left" % [(int(s[0]) - t0) / 1000.0, int(float(s[2]) * 100.0), txt, left])
 	if not errs.is_empty():
 		var worst := 0.0
@@ -54,6 +62,7 @@ func _load(lvl: int) -> void:
 			worst = maxf(worst, e)
 			sum += e
 		print("  off by %.1f s on average, %.1f s at worst (%d readings)" % [sum / errs.size(), worst, errs.size()])
+	loads.append(seen)
 
 func _run() -> void:
 	var kept := FileAccess.get_file_as_string(LOG) if FileAccess.file_exists(LOG) else ""
@@ -68,4 +77,15 @@ func _run() -> void:
 		f.store_string(kept)
 	else:
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(LOG))
+	# What the bar promises: the first load on a device says "timing it", every later one how
+	# long is left. The fix's second Givatayim load said "about 3 s" with 2.9 left, and the
+	# header's good is "within ~1 s all the way"; the text rounds up to the second, so a
+	# reading can be most of a second off by that alone: worst under 1.5 s. Tel Aviv, guessed
+	# from Givatayim's numbers, said "about 5 s" with 6.6 left: its first guess within 2x.
+	var timing: bool = loads.size() == 3 and String(loads[0]["first"]).begins_with("timing")
+	var giv: float = float(loads[1]["worst"]) if loads.size() == 3 else -1.0
+	var ta: float = float(loads[2]["guess"]) / maxf(float(loads[2]["left"]), 0.01) if loads.size() == 3 and float(loads[2]["guess"]) >= 0.0 else -1.0
+	var ok := timing and giv >= 0.0 and giv < 1.5 and ta >= 0.5 and ta <= 2.0
+	print("REGRESS load_bar: %s -- the first load %s, Givatayim's second off by %.1f s at worst, Tel Aviv's first guess %.2fx what was left (good 'timing it', under 1.5 s, 0.5-2x)" % [
+		"PASS" if ok else "FAIL", "said 'timing it'" if timing else "said '%s'" % (loads[0]["first"] if not loads.is_empty() else "nothing"), giv, ta])
 	quit(0)

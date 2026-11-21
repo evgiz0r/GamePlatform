@@ -35,6 +35,7 @@ func _run() -> void:
 	var sliding := {}       # kind -> seconds with the rear sliding > 0.5 m/s
 	var worst := {}         # kind -> worst rear slip (m/s)
 	var snaps := {}         # kind -> count of heading snaps
+	var snap_v := 0.0       # the fastest any vehicle was going at a heading snap (for the verdict)
 	var buses := {}         # car -> [[t, x, z, yaw, len], ...] every 0.25 s
 	while t < secs:
 		await physics_frame
@@ -68,6 +69,7 @@ func _run() -> void:
 					worst[k] = maxf(float(worst.get(k, 0.0)), slip)
 					if absf(rate) > 1.5:
 						snaps[k] = int(snaps.get(k, 0)) + 1
+						snap_v = maxf(snap_v, c.v)
 						if int(snaps[k]) <= 3:
 							print("  snap: %s at %.1f m/s turning %.1f rad/s, lane shift %.1f -> %.1f, held by %s, %.0f m from a junction" % [
 								k, c.v, rate, c.shift, c.shift_to, c.why, _to_junction(c)])
@@ -106,6 +108,28 @@ func _run() -> void:
 	if OS.get_environment("OUT") != "" and not best.is_empty():
 		var f := FileAccess.open(OS.get_environment("OUT") + "/bus_turn.json", FileAccess.WRITE)
 		f.store_string(JSON.stringify({"city": g._city_id, "samples": best}))
+	# The bug ("the other cars just jump around, buses even worse"): each body was pointed along
+	# its lane from its middle and pivoted there at corners -- the rear slid sideways 3-7% of
+	# the moving time, a bus's back swung across the lane, a car's nose snapped round at each
+	# kink in its line at speed. A real car's rear wheels roll, they never slide: the fix read
+	# 0, so over 1% for any kind is the pivot back. Heading snaps are shown, not judged: the
+	# fix's own code (7ec2e9e) snapped at 5.5 m/s too, 52 ticks in 90 s, and there is no count
+	# from before it to set a limit by. (On 21 Nov 2026 the ones over 3 m/s were cars turning
+	# round where a street ends -- a 165 degree bend in the lane, taken at 4-4.6 m/s --
+	# motorbikes cutting back in from a lane shift at a junction, and roundabouts' rings.)
+	var worst_kind := ""
+	var worst_share := 0.0
+	for k in kinds:
+		var share := 100.0 * float(sliding.get(k, 0.0)) / maxf(float(moving[k]), 0.01)
+		if worst_kind == "" or share > worst_share:
+			worst_kind = k
+			worst_share = share
+	var all_snaps := 0
+	for k in snaps:
+		all_snaps += int(snaps[k])
+	var ok := not kinds.is_empty() and worst_share <= 1.0
+	print("REGRESS traffic_motion: %s -- rear sliding at worst %.1f%% of the moving time (%s; heading snaps %d ticks, at most at %.1f m/s, not judged) (good under 1%%; the bug: 3-7%%)" % [
+		"PASS" if ok else "FAIL", worst_share, worst_kind if worst_kind != "" else "no traffic moved", all_snaps, snap_v])
 	quit(0)
 
 ## metres from the car to the nearest junction point on its way

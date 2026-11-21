@@ -32,6 +32,7 @@ func _run() -> void:
 				g = n
 	if g._film.is_empty():
 		print("FAIL no walk on level %d" % lv)
+		print("REGRESS walk_people: FAIL -- filmed walk on level %d none (good: one to replay)" % lv)
 		quit(1)
 		return
 	var end: float = g._film[g._film.size() - 1].z
@@ -154,6 +155,15 @@ func _run() -> void:
 			in_car_now[b[0]] = inside
 	print("over the walk: %s; nearest anyone came %s; deepest into a car %.2f m; people met within 40 m: %d" % [counts,
 		"%.2f m" % closest if closest < INF else "-", deepest, met.size()])
+	# The bug ("people are popping randomly and moving aimlessly on my path, and no collision
+	# between them and the parked cars"): a cafe table's person jumped 2.3 m in view, walkers
+	# stood 0.55 m into a parked car (then 0.17-0.27 m into its corners). The fix read 0 pops,
+	# nobody within 0.6 m of you, nobody past a hand's width (0.15 m) into a car: each must
+	# stay 0. Turning back and stepping aside read 0-1 and hang on who is out that day: shown,
+	# not judged.
+	var bad: int = int(counts["pop"]) + int(counts["close"]) + int(counts["in car"])
+	print("REGRESS walk_people: %s -- pops %d, within 0.6 m of you %d, into a parked car %d (deepest %.2f m); turned %d, swerves %d (good 0, 0, 0; the bug: a jump of 2.3 m in view, 0.55 m into a car)" % [
+		"PASS" if bad == 0 else "FAIL", counts["pop"], counts["close"], counts["in car"], deepest, counts["turned"], counts["swerve"]])
 	quit()
 
 func _say(shown: Dictionary, what: String, line: String) -> void:

@@ -110,6 +110,7 @@ func _run() -> void:
 	print("turn width: %d junctions in %s" % [picks.size(), g._city_id])
 	var over := 0
 	var runs := 0
+	var stray := 0.0   # (the car's worst straying from its plan, over all the turns)
 	for p: Array in picks:
 		for turn: String in ["right", "left"]:
 			var res := await _case(p, turn)
@@ -118,8 +119,17 @@ func _run() -> void:
 			runs += 1
 			if res["car_over_middle"] or res["plan_over_middle"]:
 				over += 1
+			stray = maxf(stray, float(res["car_off_plan"]))
 			print("TURN WIDTH %s" % JSON.stringify(res))
 	print("TURN WIDTH: %d of %d turns with the car's left side over the middle line after the turn" % [over, runs])
+	# The bug ("its radius of turning is like double of what it should be, it hits the opposing
+	# or the next lane a lot"): 4 of 8 of Givatayim's turns came out with the car's middle on
+	# the middle line, 1.5-2.2 m off a plan whose corner sat on it. The fix read 0 of 8 over
+	# the line (0 of 10 in Ashdod, 0 of 2 in the test town) and the car 0.5-0.8 m off its plan:
+	# none over, and the straying under the bug's least, 1.5 m.
+	var ok := runs > 0 and over == 0 and stray < 1.5
+	print("REGRESS turn_width: %s -- turns with the car or its plan over the middle line after the turn %d of %d, the car at most %.1f m off its plan (good 0, and under 1.5 m; the bug: 4 of 8, 1.5-2.2 m)" % [
+		"PASS" if ok else "FAIL", over, runs, stray])
 	quit(0)
 
 func _radius(path: PackedVector2Array) -> float:

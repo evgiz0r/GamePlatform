@@ -80,6 +80,8 @@ func _drive(label: String, secs: float, wait: float) -> Array:
 	var stops := 0
 	var stood := 0.0
 	var longest := 0.0
+	var free_held := 0          # stops held by a car with the lane free 30 m+ ahead (the bug)
+	var this_free := false
 	var step := Engine.time_scale / Engine.physics_ticks_per_second
 	while t < secs:
 		await physics_frame
@@ -91,17 +93,21 @@ func _drive(label: String, secs: float, wait: float) -> Array:
 					stops += 1
 				told = int(still)
 				print("  %s t %.0f s: stood %d s at %s on '%s': %s" % [label, t, told, g._pos.round(), g._on_name, _what()])
+				if not this_free and g._ap_why == "car" and _free_ahead(60.0) >= 30.0:
+					this_free = true
+					free_held += 1
 		else:
 			if still >= wait:
 				stood += still
 				longest = maxf(longest, still)
 			still = 0.0
 			told = 0
+			this_free = false
 	if still >= wait:
 		stood += still
 		longest = maxf(longest, still)
 	print("%s: %d stops of %.0f s or more (not at lights), %.0f s in all, the longest %.0f s; drove %.0f m" % [label, stops, wait, stood, longest, g._odo])
-	return [stops, stood]
+	return [stops, stood, free_held]
 
 func _run() -> void:
 	await create_timer(0.3).timeout
@@ -127,6 +133,7 @@ func _run() -> void:
 			break
 	if starts.is_empty():
 		print("no street '%s'" % street)
+		print("REGRESS auto_stands: FAIL -- streets named '%s' 0 (good: one to start on)" % street)
 		quit(1)
 		return
 	var here: Vector2 = (g._roads[starts[0]]["pts"] as PackedVector2Array)[0]
@@ -142,6 +149,7 @@ func _run() -> void:
 	starts.append_array(near.slice(0, runs - 1))
 	var all_stops := 0
 	var all_s := 0.0
+	var all_free := 0
 	for i in range(starts.size()):
 		var r: Dictionary = g._roads[starts[i]]
 		var pts: PackedVector2Array = r["pts"]
@@ -158,5 +166,14 @@ func _run() -> void:
 		var res: Array = await _drive("%s_%d" % [String(r["en"]).replace(" ", ""), i], secs, wait)
 		all_stops += int(res[0])
 		all_s += float(res[1])
+		all_free += int(res[2])
 	print("in all: %d stops of %.0f s or more (not at lights), %.0f s standing" % [all_stops, wait, all_s])
+	# The bug ("the autodrive just stops and waits for a while while there is a big distance
+	# ahead it can drive"): 38 s behind a delivery van at the kerb on one-way Geula, held as
+	# 'car' though the van's middle was 2.5 m off its lane and the lane free for 60 m. Stops
+	# behind a real queue have the car in front within a few metres; one held by a car with
+	# the lane free 30 m+ (half that stretch) is the bug again. The fix read 0. How many stops
+	# there are at all hangs on the traffic: not judged.
+	print("REGRESS auto_stands: %s -- stops of %.0f s+ held by a car with the lane free 30 m+ ahead %d of %d (good 0; the bug: 38 s behind a van with 60 m free)" % [
+		"PASS" if all_free == 0 else "FAIL", wait, all_free, all_stops])
 	quit(0)

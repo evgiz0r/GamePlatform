@@ -67,6 +67,7 @@ func _run() -> void:
 	var routes := (OS.get_environment("ROUTES") if OS.get_environment("ROUTES") != "" else
 		"476,-1185>498,-1158;476,-1185>416,-1094;416,-1094>476,-1185;495,-1156>476,-1185").split(";", false)
 	var total := 0
+	var wall_hits := 0   # (crashes into a wall -- the deck's parapet and side walls, or any other)
 	for i in range(routes.size()):
 		var ends := routes[i].split(">")
 		var from := _v2(ends[0])
@@ -85,6 +86,8 @@ func _run() -> void:
 			t += 1.0 / 60.0
 			if g._crash_cool > was + 0.01:
 				hits.append("%s at %s" % [g._last_hit, g._pos.round()])
+				if String(g._last_hit).begins_with("wall"):
+					wall_hits += 1
 			was = g._crash_cool
 		total += hits.size()
 		print("route %d %s > %s: %s in %.0f s, crashes %d %s" % [i, from, to, "arrived" if g._pos.distance_to(to) <= 12.0 else "not there (%.0f m off)" % g._pos.distance_to(to),
@@ -92,4 +95,10 @@ func _run() -> void:
 		if OS.get_environment("OUT") != "" and i == 0:
 			await _snap("route_0_end")
 	print("crashes on all routes: %d" % total)
+	# The bug: autodrive turning out of Union Street ran into the highway bridge's parapet, which
+	# stood across the junction's mouth where the bridge starts at street level -- 12 wall hits
+	# on the 4 routes; the fix read 0. Knocks with traffic are the traffic's (2 that run, and
+	# random): not judged here.
+	print("REGRESS deck_corner: %s -- wall hits turning through the junction %d on %d routes (good 0; the bug: 12 on 4)" % [
+		"PASS" if wall_hits == 0 else "FAIL", wall_hits, routes.size()])
 	quit(0)
