@@ -1560,56 +1560,85 @@ func towel_kit() -> ArrayMesh:
 
 ## ---- the people's company (streets.gd _companions) ---------------------------------------------
 
-## A dog, facing +Z, feet at y = 0, about knee high: its coat white (the copy's coat is in its
-## custom data), a dark nose and eyes; the legs' vertices carry their number in the colour's
-## alpha (0.2, 0.4, 0.6, 0.8; the rest 1) for the dog shader to swing them.
+## A dog, facing +Z, feet at y = 0, about knee high (the copy's scale makes it smaller or
+## bigger): a deep chest and a slimmer waist, a neck, a rounded head and muzzle, floppy ears,
+## a tail up, legs with paws -- ellipsoids and tubes, as the street cats are (it was a stack
+## of boxes). Its coat is white here (the copy's coat, in its custom data, takes the place of
+## white, a lighter chest and muzzle and a darker back kept as shades of it); the nose and
+## eyes dark. The legs' vertices carry their number in the colour's alpha (0.2, 0.4, 0.6,
+## 0.8), the tail's 0.9, the rest 1: the dog shader swings the legs at the hip by the gait
+## the game gives it and wags the tail.
+const DOG_HIP := 0.36
 func dog_kit() -> ArrayMesh:
 	if _kits.has("dog"):
 		return _kits["dog"]
 	var b = g.new_buf()
-	var coat := Color.WHITE
-	var dark := Color(0.12, 0.1, 0.09)
-	_box(b, Vector3(0, 0.36, 0), Vector3(0.2, 0.2, 0.52), coat)                 # the body
-	_box(b, Vector3(0, 0.5, 0.31), Vector3(0.16, 0.16, 0.17), coat)            # the head
-	_box(b, Vector3(0, 0.46, 0.43), Vector3(0.09, 0.08, 0.1), coat)            # the snout
-	_box(b, Vector3(0, 0.48, 0.485), Vector3(0.05, 0.04, 0.02), dark)           # the nose
+	var coat := Color(0.88, 0.88, 0.88)     # (the coat: below white, so the chest can be paler)
+	var pale := Color(1.0, 1.0, 1.0)
+	var dark := Color(0.1, 0.08, 0.07)
+	_ellipsoid(b, Vector3(0, 0.40, -0.04), Vector3(0.11, 0.115, 0.25), coat)                    # the body
+	_ellipsoid(b, Vector3(0, 0.42, 0.15), Vector3(0.115, 0.135, 0.13), coat)                    # the chest
+	_ellipsoid(b, Vector3(0, 0.37, 0.2), Vector3(0.07, 0.09, 0.06), pale)                       # its pale front
 	for sx: float in [-1.0, 1.0]:
-		_box(b, Vector3(sx * 0.045, 0.535, 0.395), Vector3(0.025, 0.025, 0.01), dark)   # an eye
-		_box(b, Vector3(sx * 0.065, 0.6, 0.27), Vector3(0.04, 0.09, 0.06), coat, Basis(Vector3.BACK, sx * 0.3))   # an ear
-	_box(b, Vector3(0, 0.46, -0.31), Vector3(0.04, 0.04, 0.2), coat, Basis(Vector3.RIGHT, -0.7))   # the tail
+		_ellipsoid(b, Vector3(sx * 0.06, 0.36, -0.2), Vector3(0.055, 0.09, 0.085), coat)          # a haunch
+	_tube(b, Vector3(0, 0.46, 0.2), Vector3(0, 0.56, 0.3), 0.07, 0.058, coat, 7)                 # the neck
+	_ellipsoid(b, Vector3(0, 0.6, 0.34), Vector3(0.072, 0.07, 0.085), coat)                     # the head
+	_tube(b, Vector3(0, 0.58, 0.39), Vector3(0, 0.555, 0.49), 0.045, 0.03, pale, 7)              # the muzzle
+	_ellipsoid(b, Vector3(0, 0.557, 0.493), Vector3(0.02, 0.016, 0.014), dark)                  # the nose
+	for sx: float in [-1.0, 1.0]:
+		_ellipsoid(b, Vector3(sx * 0.034, 0.618, 0.41), Vector3(0.012, 0.012, 0.008), dark)    # an eye
+		_ellipsoid(b, Vector3(sx * 0.072, 0.585, 0.32), Vector3(0.016, 0.055, 0.035), coat, Basis(Vector3.BACK, sx * 0.25))   # a floppy ear
+	_dog_tail(b, coat)
 	var k := 0
-	for z: float in [0.19, -0.19]:
+	for z: float in [0.15, -0.19]:
 		for sx: float in [-1.0, 1.0]:
 			k += 1
-			_box(b, Vector3(sx * 0.07, 0.14, z), Vector3(0.06, 0.3, 0.06), Color(1, 1, 1, 0.2 * k))
+			var leg := Color(coat.r, coat.g, coat.b, 0.2 * k)
+			var paw := Color(pale.r, pale.g, pale.b, 0.2 * k)
+			_tube(b, Vector3(sx * 0.065, DOG_HIP, z), Vector3(sx * 0.065, 0.06, z + 0.01), 0.034, 0.024, leg, 6)
+			_ellipsoid(b, Vector3(sx * 0.065, 0.03, z + 0.025), Vector3(0.028, 0.026, 0.04), paw, Basis(), false, 6, 3)
 	var am: ArrayMesh = _mesh(b, _dog_material())
 	_kits["dog"] = am
 	return am
+
+## the dog's tail: up and back from the rump, its vertices marked to wag (alpha 0.9)
+func _dog_tail(b, coat: Color) -> void:
+	var c := Color(coat.r, coat.g, coat.b, 0.9)
+	_tube(b, Vector3(0, 0.45, -0.27), Vector3(0, 0.56, -0.4), 0.028, 0.012, c, 6)
 
 var _dog_mat: ShaderMaterial
 func _dog_material() -> ShaderMaterial:
 	if _dog_mat == null:
 		_dog_mat = ShaderMaterial.new()
 		var sh := Shader.new()
+		# custom: r the gait -- the phase of its stride (0..2 pi, from the ground it covers) plus
+		# 8 times how hard it trots (0..7: 0 standing) -- gba the coat
 		sh.code = """
 shader_type spatial;
 varying vec3 coat;
 void vertex() {
 	coat = INSTANCE_CUSTOM.gba;
-	if (COLOR.a < 0.95) {   // a leg: swung at the hip (0.29 m), the pairs in turn
+	float amp = floor(INSTANCE_CUSTOM.r / 8.0) / 7.0;
+	float ph = INSTANCE_CUSTOM.r - floor(INSTANCE_CUSTOM.r / 8.0) * 8.0;
+	if (COLOR.a < 0.85) {   // a leg: swung at the hip, the diagonal pairs together (a trot)
 		float leg = floor(COLOR.a * 5.0 + 0.5);
 		float side = mod(leg, 2.0) * 2.0 - 1.0;
 		float pair = leg > 2.5 ? 1.0 : -1.0;
-		float a = sin(TIME * 9.0 + float(INSTANCE_ID) * 1.7) * 0.55 * INSTANCE_CUSTOM.r * side * pair;
-		float dy = VERTEX.y - 0.29;
+		float a = sin(ph) * 0.5 * amp * side * pair;
+		float dy = VERTEX.y - 0.36;
 		VERTEX.z += sin(a) * dy * -1.0;
-		VERTEX.y = 0.29 + cos(a) * dy;
+		VERTEX.y = 0.36 + cos(a) * dy;
+	} else if (COLOR.a < 0.95) {   // the tail: wagging side to side about its root
+		float w = sin(TIME * 11.0 + float(INSTANCE_ID) * 2.3) * (0.35 + 0.25 * amp);
+		vec3 d = VERTEX - vec3(0.0, 0.45, -0.27);
+		VERTEX = vec3(0.0, 0.45, -0.27) + vec3(d.x * cos(w) + d.z * sin(w), d.y, -d.x * sin(w) + d.z * cos(w));
 	} else {   // the body bobs with the trot
-		VERTEX.y += abs(sin(TIME * 9.0 + float(INSTANCE_ID) * 1.7)) * 0.025 * INSTANCE_CUSTOM.r;
+		VERTEX.y += abs(sin(ph)) * 0.018 * amp;
 	}
 }
 void fragment() {
-	ALBEDO = COLOR.r > 0.5 ? coat : COLOR.rgb;
+	// white parts take the coat, their shade kept (a paler chest and muzzle, a darker back)
+	ALBEDO = COLOR.r > 0.5 ? coat * min(COLOR.r * 1.12, 1.15) : COLOR.rgb;
 	ROUGHNESS = 0.9;
 }
 """

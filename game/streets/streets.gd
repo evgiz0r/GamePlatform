@@ -3060,7 +3060,25 @@ func _walk_y(p: Vector2, y := NAN) -> float:
 			on = Y_ROAD
 		elif edge < KERB_W + PAVE_W + 0.1 and _kerbed(_roads[hit["road"]]):
 			on = KERB_H
+		elif _on_some_pavement(p):
+			# (the nearest road has no pavement -- a service lane, a lane without kerbs -- but
+			# the next street's is laid here: people stepping over a side street's mouth stood
+			# a kerb's height down in it, to the ankle)
+			on = KERB_H
 	return base + on + (0.07 if _hnx > 0 else 0.0)
+
+## p is on a kerbed street's pavement (its band beside the asphalt), whichever street is nearest
+func _on_some_pavement(p: Vector2) -> bool:
+	for code: int in _near(_seg_hash, p, KERB_W + PAVE_W + 0.6, SEG_CELL):
+		var r: Dictionary = _roads[code / 4096]
+		if not r["drive"] or r.has("ys") or not _kerbed(r):
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		var sj := code % 4096
+		var edge := p.distance_to(Geometry2D.get_closest_point_to_segment(p, pts[sj], pts[sj + 1])) - float(r["w"]) * 0.5
+		if edge >= 0.0 and edge < KERB_W + PAVE_W + 0.1:
+			return true
+	return false
 
 ## a pavement's top over the bare ground
 func _pave_top() -> float:
@@ -17496,17 +17514,40 @@ func _walk_lane(line: PackedVector2Array, cum: PackedFloat32Array, s: float, dir
 
 ## out of anyone else's 0.55 m: half the overlap, as two people brushing past each other do
 ## (they stepped aside for each other but nothing kept them apart: some walked through)
-func _people_apart(p: Vector2, me: int, mate: int) -> Vector2:
+func _people_apart(p: Vector2, me: int, mate: int, dog := 1) -> Vector2:
 	var push := Vector2.ZERO
 	for k in range(_people_at.size()):
 		var who := _people_who[k]
-		if who == me or who == mate or who == 0:
+		if who == me or who == mate or who == 0 or who == dog:
 			continue
 		var d := p - _people_at[k]
 		var l := d.length()
 		if l < 0.55 and l > 0.001:
 			push += d / l * (0.55 - l) * 0.5
 	return push
+
+## A walker's legs as it really goes: walking at the pace it covers the ground, standing when
+## it does not (held up letting you by, waiting behind someone, the second of two whose first
+## has stopped) -- it walked on the spot, its legs going and its feet still. A short delay
+## each way, so a stutter does not flick it between the two.
+func _walker_anim(w: Dictionary, a: Actor3D, p: Vector2, dt: float) -> void:
+	var was: Vector2 = w.get("anim_p", p)
+	w["anim_p"] = p
+	var pace := was.distance_to(p) / maxf(dt, 0.001)
+	if pace > 3.0:
+		pace = float(w["speed"])   # (put down somewhere new: not a pace)
+	var v: float = lerpf(float(w.get("anim_v", pace)), pace, 1.0 - exp(-dt * 6.0))
+	w["anim_v"] = v
+	var walking: bool = w.get("anim_walk", true)
+	if walking and v < 0.22:
+		walking = false
+	elif not walking and v > 0.4:
+		walking = true
+	var clip := ("Walk_Carry" if w["carry"] else "Walk") if walking else "Idle"
+	if clip != String(w.get("anim_clip", "")) or walking:
+		a.play(clip, true, clampf(v, 0.6, 1.8) / 1.35 if walking else 1.0)
+		w["anim_clip"] = clip
+	w["anim_walk"] = walking
 
 ## The second of two walking together: beside the first (`side`: its left or right), at its
 ## pace on its line, a step behind where there is no room beside them; seen when the first is.
@@ -17552,8 +17593,9 @@ func _walk_beside(w: Dictionary, dt: float) -> void:
 	var yaw: float = lw.get("yaw", atan2(fw.y, fw.x))
 	a.face(Vector3(cos(yaw), 0, sin(yaw)))
 	if not was_seen:
-		a.play("Walk_Carry" if w["carry"] else "Walk", true, float(w["speed"]) / 1.35)
+		w.erase("anim_p")
 		a.visible = true
+	_walker_anim(w, a, at, dt)
 	_people_awake(a, at)
 
 ## People by the cafe tables near the car, standing about. Re-seated at the nearest tables
@@ -17617,14 +17659,17 @@ func _build_companions() -> void:
 	for w: Dictionary in _walkers:
 		if w.has("dog"):
 			w["dog_i"] = nd
+			w["dog_size"] = [0.95, 0.72, 1.12, 0.82, 1.05][nd % 5]   # (a small dog and a big one, and between)
 			nd += 1
 		elif w.has("pram"):
 			w["pram_i"] = np
 			np += 1
 	var hide := Transform3D(Basis(), Vector3(0, -500, 0))
 	var box := AABB(Vector3(_bounds.position.x - 500.0, -600.0, _bounds.position.y - 500.0), Vector3(_bounds.size.x + 1000.0, 1200.0, _bounds.size.y + 1000.0))
-	var coats: Array = [Palette.col("ink").lerp(Palette.col("bg_alt"), 0.1), _natural(Palette.col("warn").lerp(Palette.col("bg"), 0.45), 0.4),
-		Palette.col("bg").lerp(Palette.col("bg_alt"), 0.25), _natural(Palette.col("warn").lerp(Palette.col("ink"), 0.35), 0.35)]
+	# black, brown, golden, white, grey, tan: the street's mix of dogs
+	var coats: Array = [Palette.col("bg").lerp(Palette.col("bg_alt"), 0.25), _natural(Palette.col("warn").lerp(Palette.col("bg"), 0.55), 0.45),
+		_natural(Palette.col("warn").lerp(Palette.col("ink"), 0.35), 0.45), Palette.col("ink").lerp(Palette.col("bg_alt"), 0.1),
+		_natural(Palette.col("ink").lerp(Palette.col("bg"), 0.55), 0.1), _natural(Palette.col("warn").lerp(Palette.col("hazard"), 0.2).lerp(Palette.col("bg"), 0.4), 0.45)]
 	var made: Array = []
 	for spec: Array in [["dog", nd], ["pram", np], ["leash", nd]]:
 		var mm := MultiMesh.new()
@@ -17666,25 +17711,7 @@ func _companion(w: Dictionary, p: Vector2) -> void:
 			_dogs.set_instance_transform(k, Transform3D(Basis(), Vector3(0, -500, 0)))
 			_leads.set_instance_transform(k, Transform3D(Basis(), Vector3(0, -500, 0)))
 			return
-		# trotting ahead on the right -- or the left, or at heel, whichever has no fence or
-		# railing between them (pushed out of one, it went to the nearer side: the far one)
-		var dp := p + fw * 0.25   # (nowhere else clear: tight at heel)
-		for cand: Vector2 in [p + fw * 0.95 + right * 0.4, p + fw * 0.95 - right * 0.4, p + fw * 0.55, p - fw * 0.35 + right * 0.3]:
-			var q := cand + _car_box_push(cand, 0.25)
-			q += _push_out(q, 0.25, true, false)
-			if not _wall_between(p, q):   # (checked where it ends up: pushed out of a post, it could cross)
-				dp = q
-				break
-		w["dog_at"] = dp   # (for the tests: a headless run reads a multimesh's copies back as nothing)
-		var y := _h(dp) + _pave_top()
-		_dogs.set_instance_transform(k, Transform3D(turn, Vector3(dp.x, y, dp.y)))
-		var cd := _dogs.get_instance_custom_data(k)
-		_dogs.set_instance_custom_data(k, Color(1.0, cd.g, cd.b, cd.a))
-		var hand := Vector3(p.x, a.position.y + 0.82, p.y) + Vector3(right.x, 0, right.y) * 0.22
-		var collar := Vector3(dp.x, y + 0.45, dp.y) + Vector3(fw.x, 0, fw.y) * 0.24
-		var span := collar - hand
-		var lb := Basis.looking_at(-span.normalized(), Vector3.UP) if span.length() > 0.05 else Basis()
-		_leads.set_instance_transform(k, Transform3D(lb.scaled_local(Vector3(1, 1, span.length())), hand))
+		_dog_step(w, p, fw, right, a)
 	elif w.has("pram_i"):
 		var k: int = w["pram_i"]
 		if not show:
@@ -17694,6 +17721,78 @@ func _companion(w: Dictionary, p: Vector2) -> void:
 		pp += _car_box_push(pp, 0.3)
 		w["pram_at"] = pp
 		_prams.set_instance_transform(k, Transform3D(turn, Vector3(pp.x, _h(pp) + _pave_top(), pp.y)))
+
+## A walker's dog, a tick on: it keeps to a spot by its walker -- ahead on the right, ahead on
+## the left, or at heel -- the one it has while that stays clear and on its walker's side of
+## any fence (switching only when blocked), and goes there at a dog's pace, turning to face
+## where it goes; its legs trot by the ground it covers (custom r: the stride's phase and how
+## hard). It was put each tick at the first clear one of those spots: a post or a railing
+## coming by flicked it a metre across in a frame, it faced its walker's way whatever it did,
+## and its legs ran at one pace standing or walking. Kept off people but its own walker
+## (`_people_apart`), and itself among the bodies everyone else keeps off (_people_tick).
+const DOG_SPOTS := [Vector2(0.4, 0.95), Vector2(-0.4, 0.95), Vector2(0.3, -0.35)]   ## (right, ahead) by its walker
+
+func _dog_step(w: Dictionary, p: Vector2, fw: Vector2, right: Vector2, a: Actor3D) -> void:
+	var k: int = w["dog_i"]
+	var dt := get_physics_process_delta_time()
+	var sc: float = w.get("dog_size", 1.0)
+	var was: Vector2 = w.get("dog_at", Vector2.INF)
+	var spot := func(i: int) -> Vector2:
+		var o: Vector2 = DOG_SPOTS[i]
+		return p + right * o.x * sc + fw * o.y * sc
+	var ok := func(q: Vector2) -> bool:
+		return _push_out(q, 0.2, true, false) == Vector2.ZERO and _car_box_push(q, 0.2) == Vector2.ZERO and not _wall_between(p, q)
+	var slot: int = w.get("dog_slot", 0)
+	w["dog_hold"] = float(w.get("dog_hold", 0.0)) - dt
+	if not ok.call(spot.call(slot)) and float(w["dog_hold"]) <= 0.0:
+		for i in range(DOG_SPOTS.size()):
+			if ok.call(spot.call(i)):
+				slot = i
+				w["dog_slot"] = i
+				w["dog_hold"] = 1.0   # (a second before it thinks of moving over again)
+				break
+	var target: Vector2 = spot.call(slot)
+	var dp: Vector2
+	if was == Vector2.INF or was.distance_to(p) > 3.0:
+		dp = target   # (put down with its walker, unseen)
+	else:
+		# at a dog's pace (faster than its walker's, to catch up), never through a fence
+		var step := target - was
+		var most := maxf(float(w["speed"]) * 1.8, 1.6) * dt
+		if step.length() > most:
+			step = step.normalized() * most
+		dp = was + step
+		if _wall_between(p, dp):
+			dp = spot.call(2)   # (at heel: never the far side of a railing)
+	dp += _people_apart(dp, -100 - k, a.get_instance_id()) * 0.8
+	dp += _car_box_push(dp, 0.2)
+	dp += _push_out(dp, 0.2, true, false)
+	var moved := 0.0 if was == Vector2.INF else was.distance_to(dp)
+	w["dog_at"] = dp   # (for the tests: a headless run reads a multimesh's copies back as nothing)
+	# facing where it goes when it moves, its walker's way when it stands
+	var dyaw: float = w.get("dog_yaw", atan2(fw.x, fw.y))
+	var go := (dp - was) if moved > 0.002 else Vector2.ZERO
+	var want := atan2(go.x, go.y) if go != Vector2.ZERO else atan2(fw.x, fw.y)
+	dyaw = lerp_angle(dyaw, want, 1.0 - exp(-dt * 6.0))
+	w["dog_yaw"] = dyaw
+	# the trot: a stride about 0.55 m (smaller dogs, shorter), its phase from the ground covered
+	var ph: float = w.get("dog_phase", 0.0)
+	ph = fmod(ph + moved / (0.55 * sc) * TAU, TAU)
+	w["dog_phase"] = ph
+	var pace := moved / maxf(dt, 0.001)
+	var amp: float = w.get("dog_amp", 0.0)
+	amp = lerpf(amp, clampf(pace / 1.2, 0.0, 1.0), 1.0 - exp(-dt * 8.0))
+	w["dog_amp"] = amp
+	var y := _h(dp) + _pave_top()
+	_dogs.set_instance_transform(k, Transform3D(Basis(Vector3.UP, dyaw).scaled(Vector3.ONE * sc), Vector3(dp.x, y, dp.y)))
+	var cd := _dogs.get_instance_custom_data(k)
+	_dogs.set_instance_custom_data(k, Color(floorf(amp * 7.0 + 0.5) * 8.0 + minf(ph, 6.28), cd.g, cd.b, cd.a))
+	var dfw := Vector3(sin(dyaw), 0, cos(dyaw))
+	var hand := Vector3(p.x, a.position.y + 0.82, p.y) + Vector3(right.x, 0, right.y) * 0.22
+	var collar := Vector3(dp.x, y + 0.5 * sc, dp.y) + dfw * 0.26 * sc
+	var span := collar - hand
+	var lb := Basis.looking_at(-span.normalized(), Vector3.UP) if span.length() > 0.05 else Basis()
+	_leads.set_instance_transform(k, Transform3D(lb.scaled_local(Vector3(1, 1, span.length())), hand))
 
 ## a fence, railing, hedge or wall between a and b (as the walls are kept: their middle lines)
 func _wall_between(a: Vector2, b: Vector2) -> bool:
@@ -17871,6 +17970,12 @@ func _people_tick(dt: float) -> void:
 			if a.visible:
 				_people_at.append(Vector2(a.position.x, a.position.z))
 				_people_who.append(a.get_instance_id())
+	# the dogs too, so people step round them and the car and you bump them (a dog's "who" is
+	# -100 less its number: its own walker leaves it out)
+	for w: Dictionary in _walkers:
+		if w.has("dog_i") and (w["actor"] as Actor3D).visible and w.has("dog_at"):
+			_people_at.append(w["dog_at"])
+			_people_who.append(-100 - int(w["dog_i"]))
 	if _walking:
 		_people_at.append(_pos)
 		_people_who.append(0)
@@ -17983,8 +18088,9 @@ func _people_tick(dt: float) -> void:
 			# if they are dead ahead
 			var me := a.get_instance_id()
 			var mate: int = w.get("mate", -1)
+			var my_dog: int = -100 - int(w["dog_i"]) if w.has("dog_i") else 1
 			for k in range(_people_at.size()):
-				if _people_who[k] == me or _people_who[k] == mate:
+				if _people_who[k] == me or _people_who[k] == mate or _people_who[k] == my_dog:
 					continue
 				var rel := _people_at[k] - p
 				var fore := rel.dot(fw)
@@ -18063,7 +18169,7 @@ func _people_tick(dt: float) -> void:
 			if side.dot(to_car) > 0.0:
 				side = -side
 			p += side * dodge
-		p += _people_apart(p, a.get_instance_id(), int(w.get("mate", -1)))
+		p += _people_apart(p, a.get_instance_id(), int(w.get("mate", -1)), -100 - int(w["dog_i"]) if w.has("dog_i") else 1)
 		if _walking and p.distance_to(_pos) < 0.6:   # (never into you: a filmed walk does not step aside)
 			p = _pos + (p - _pos).normalized() * 0.6 if p.distance_to(_pos) > 0.01 else p + Vector2(0.6, 0.0)
 		for _pass in range(2):   # (out of one parked car's post can be into its other)
@@ -18071,6 +18177,7 @@ func _people_tick(dt: float) -> void:
 			p += _push_out(p, 0.25, true, false)
 		# (their line is on the pavement, but for a step over a side street's mouth)
 		a.position = Vector3(p.x, _walk_y(p) if s < float(w.get("cross", 0.0)) else _h(p) + _pave_top(), p.y)
+		_walker_anim(w, a, p, dt)
 		if ahead != Vector2.ZERO:
 			# turning as people do, over a moment: at the end of a block they turned back on
 			# the spot in one frame, and at every bend of the pavement line they snapped

@@ -1192,6 +1192,19 @@ few seconds. A road sign hit at more than about 15 km/h bends over at its foot w
 Buses, trucks and scooters blink in their own lamps like the cars. The old blocks' sand
 plaster is browner in shade.
 
+> the dogs look pretty wierd, and their hitboxes and how they walk is pretty wierd
+>
+> some people are walking in place ( like that girl on the right ) and their legs are somewhat
+> bit inside the ground
+
+**Dogs like dogs; people's feet on the pavement.** A dog is a rounded dog now -- a deep
+chest, a head and muzzle, floppy ears, legs with paws, a wagging tail -- in black, brown,
+golden, white, grey or tan, small to medium; it keeps its place by its walker and trots
+there facing where it goes, its legs going only as it moves; people step round dogs and the
+car and you bump them. People walk only while they really go somewhere, at the pace they
+go, and stand when they stop (they walked on the spot). Walkers stepping over a side
+street's mouth no longer stand a kerb's height down in the pavement.
+
 > I took a video on my phone, walking in Givatayim.
 
 ## Smooth on a laptop and a phone
