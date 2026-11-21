@@ -2288,6 +2288,15 @@ Each line: where the code is, the test, what good reads.
   every street parks half up the kerb, and the lanes share the whole asphalt
   (`_lane_off`/`_lanes_each_way`), so a parking strip on the road needs traffic, autodrive and
   the lane paint to give that width up first.
+- **A flickering line across the screen** (user, the first filmed walk's passage: "flickering
+  line in the middle of the screen sometimes. dunno if its my screen or godot or bug"): the
+  sky dome (`_build_sky_dome`) was Godot's hemisphere, which closes with a flat disc at its
+  middle's height, and `_sky_follow` stands the dome on the eye -- a plane through the eye.
+  A phone's GPU drew it now and then as a one-pixel line in the horizon's grey at the horizon
+  (row ~270 of 896 in the walk's view, pitched 15 deg down), over near hedges too; the
+  software renderer here never draws it. Now a whole sphere (the lower half the horizon's
+  haze). `tests/horizon_line.gd` + `horizon_line.py`: `DROP=0.002` stands the dome 2 mm below
+  the eye, `HEMI=1` puts the hemisphere back -- the line in every frame before, none after.
 - **Which build** (user: "add the version somewhere, maybe near the map"): `_build_line` over
   the minimap reads res://build.txt, now "<UTC time> <commit>" (tools/publish_web.sh); the
   credits under the map are size 7 and wrap clear of the bottom buttons (Tel Aviv's ran
@@ -2305,7 +2314,7 @@ Each line: where the code is, the test, what good reads.
   anywhere), `street_at` (by street name at its roundabouts), `perf_dive`, `deck_corner`,
   `islands`, `pave_overlap`, `picker`, `minimap_route`, `warm_census`, `index_gain`,
   `signs_inferred`, `start_drive`, `rails_near`, `cut_under`, `signs_double`, `auto_stands`,
-  `parked_median`;
+  `parked_median`, `horizon_line`;
   `tools/level_roads.py`.
 
 ## OSM's extra fields and speed limits: handoff (20 Nov 2026)

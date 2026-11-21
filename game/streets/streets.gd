@@ -13841,12 +13841,16 @@ func _build_sky_dome() -> void:
 	sh.code = SKY_SHADER
 	_sky_mat.shader = sh
 	_sky_mat.set_shader_parameter("photo", tex)
+	# a whole sphere, not Godot's hemisphere: that one closes with a flat disc at its middle's
+	# height, and the dome stands on the eye -- a plane through the eye, edge-on, that a phone's
+	# GPU drew now and then as a flickering line straight across the screen at the horizon,
+	# over near hedges too (tests/horizon_line.gd). The lower half is the horizon's haze.
 	var mesh := SphereMesh.new()
 	mesh.radius = 1900.0
-	mesh.height = 1900.0
-	mesh.is_hemisphere = true
+	mesh.height = 3800.0
+	mesh.is_hemisphere = false
 	mesh.radial_segments = 32
-	mesh.rings = 10
+	mesh.rings = 20
 	mesh.material = _sky_mat
 	_sky_dome = MeshInstance3D.new()
 	_sky_dome.mesh = mesh
@@ -13856,9 +13860,10 @@ func _build_sky_dome() -> void:
 	_retint_sky_dome()
 
 ## the dome round the camera, wherever it went this frame
+var sky_drop := 0.0                  ## tests: the dome this far below the eye (tests/horizon_line.gd)
 func _sky_follow() -> void:
 	if _sky_dome != null:
-		_sky_dome.global_position = cam.global_position
+		_sky_dome.global_position = cam.global_position - Vector3(0.0, sky_drop, 0.0)
 	_grass_follow()
 
 func _retint_sky_dome() -> void:
