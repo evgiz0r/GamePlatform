@@ -157,10 +157,13 @@ func _run() -> void:
 		for i in range(20):
 			await physics_frame
 		await RenderingServer.frame_post_draw
-		root.get_viewport().get_texture().get_image().save_png(out + "/t%03d.png" % int(t))
+		# (whole seconds as t005.png; a fraction keeps its tenth, t092.3.png -- it once saved
+		# 92 and 92.3 to one file)
+		var name := ("t%03d" % int(t)) if is_equal_approx(t, roundf(t)) else ("t%05.1f" % t)
+		root.get_viewport().get_texture().get_image().save_png(out + "/" + name + ".png")
 		# what is nearest: anything solid within a step means the walk goes through it
 		var hit: Vector2 = g._push_out(g._pos, 0.3, true, false)
-		print("t=%3d s at %s  facing %3d deg  %s" % [int(t), Vector2i(g._pos), int(rad_to_deg(g._yaw)),
+		print("t=%5.1f s at %s  facing %3d deg  %s" % [t, Vector2i(g._pos), int(rad_to_deg(g._yaw)),
 			"clear" if hit == Vector2.ZERO else "INSIDE %s (%.2f m)" % [g._last_hit, hit.length()]])
 	g._film_t = last + 1.0
 	for i in range(30):
