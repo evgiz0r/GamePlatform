@@ -2643,8 +2643,15 @@ Each line: where the code is, the test, what good reads.
   `city_check` the same as before in every town (Ashdod's two pavings 271 -> 235 m2).
   `tests/link_islands.gd` (`AT=x,z` also prints every kerb run near the point and how much
   of it faces into a triangle, and shoots the spot as it is, so it works on `main` too for a
-  before). Left at (844, 457): Moshe Dayan's own median ends (loose pink blocks) are the
-  median work above, not the triangles. A footpath mapped across a junction's corner
+  before). The loose pink block left at (844, 457) was not a median end: Moshe Dayan's
+  northbound slip road to HaShalom (road 868) has a 101 m2 triangle that is all asphalt but
+  2.6 m2 once the roads and the junction's disc are cut out, so no island was made and the
+  slip road's left kerb, cut by its neighbours' asphalt, left one 4 m piece standing in the
+  junction. A triangle under `LINK_ISLAND_MIN` after the cut now still goes into
+  `_link_rings` (no island, `link_triangles_all_road`), so no kerb, corner or garden faces
+  into it: Tel Aviv kerb pieces left out 827 -> 980, corners 132 -> 192; city_check the same
+  in every town (21 Nov). `WATCH`-style finding: print `_laid_add`'s `_laid_by` for boxes
+  round the point (road*4 + side) -- it named the road in one run. A footpath mapped across a junction's corner
   drawn through a median's nose (Shaul HaMelekh / Ibn Gabirol, path 2197, (-847, -70)) was
   noted with the median fix; looked at again 21 Nov (`top_at` AT="-847,-80;-845,-66" UP=16):
   nothing of the path shows (a path's ribbon lies under the asphalt and the median), the pale
