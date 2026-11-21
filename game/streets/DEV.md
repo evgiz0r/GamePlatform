@@ -2376,8 +2376,15 @@ the user's `tools/.cache/` only.
   and greys; 80% petrol, ~10% electric or hybrid); mark the bus lanes by matching
   `bus_lanes.json`'s street names and end points to the roads (the baker's OSM `bf`/`bb`
   have some already); run buses on `transit_*.json`'s lines and times.
-- **Open**: Ashdod's heights (not in this task's sources: Ashdod's own GIS not looked at);
-  GovMap and the Survey of Israel were not needed and not checked. The GTFS terms page on
+- **Open** (updated after the second round below):
+  - **Ashdod's heights:** its map has no layer of all its buildings, only the public
+    ones (316 heights). GovMap and the Survey of Israel are long shots, by hand in a
+    browser, unchecked.
+  - **Ramat Gan's trees:** not fetched. Its ArcGIS Online host (services8.arcgis.com)
+    answers from anywhere, but the cloud environment does not allow it yet; whether a
+    trees layer exists is unknown.
+  - The fetch status and what else could be had are in the root ideas file's "Official
+    data" bullet. The GTFS terms page on
   gov.il cannot be read by tools; the user read it and found nothing against reuse.
   Ramat Gan's layer has no licence text either; the user approved committing it too.
 

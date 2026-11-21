@@ -39,7 +39,8 @@ right now, offer to add it here rather than letting it get lost in the chat.
   or down the centre behind a median -- its hours, and how many other lanes there are. A
   driving game on the town could then run buses and taxis in their own lane, paint it
   (אוטובוס / "BUS"), and keep traffic and its autopilot out of it. In late 2026 the layer had
-  46 stretches in Ashdod and 4 in Givatayim. The stretches are given by street name and
+  46 stretches in Ashdod and 4 in Givatayim (fetched since, for three towns: matching and
+  drawing them are what is left). The stretches are given by street name and
   from/to, so matching them to OSM's ways is the fiddly part. Needs data.gov.il on the
   network allowlist. (OVER, over.org.il, mirrors the same layer but publishes no licence of
   its own: take it from data.gov.il. Its signalled-junction and roundabout layers matched
@@ -109,6 +110,55 @@ right now, offer to add it here rather than letting it get lost in the chat.
   yet, and the address its page reads from (a browser's Network tab) is needed first.
   National, each needing its host allowed: the vehicle registry on data.gov.il (the real
   mix of makes, models and colours, for traffic and parked cars); GTFS above.
+
+  **Where the fetching stands (21 Nov 2026).** Nearly all of the above is fetched, by a
+  session on the user's computer for the sites that refuse the cloud, and saved beside the
+  city files it is for (that game's developer notes list each file, its counts and its
+  credit line). What is left is mostly *using* it. Still to fetch:
+  - *Ramat Gan's street trees*: automatic once its host is allowed. Its layers are on
+    ArcGIS Online (services8.arcgis.com), which answers from anywhere, but this cloud
+    environment does not allow that host yet. It is not known whether Ramat Gan publishes
+    trees at all: none were among the ten or so layers taken from it.
+  - *Ashdod's building heights and street trees*: by hand, and maybe not to be had.
+    - Ashdod publishes no layer of all its buildings: only 1,300 public ones, which gave
+      316 heights of 9,499 guesses.
+    - For trees it has only special ones: sycamores, old trees and vegetation patches,
+      all fetched.
+    - Its map opens only in a browser, so there is no script for it.
+    - The long shots are GovMap's real-estate deals (a sale's floor) and the Survey of
+      Israel, both by hand in a browser and both unchecked. Leave them unless Ashdod
+      becomes a main level.
+  - *Not published anywhere known*: how busy each street is, each junction's light timing.
+
+  More that would add to a town, not yet looked at:
+  - *speed limits per street*: OSM's `maxspeed`, where tagged;
+  - *the weather and the sun right now*: Open-Meteo, free, no key;
+  - *where each bus is right now*: the Ministry of Transport's SIRI feed, which needs
+    registering;
+  - *the light rail's tracks and stations*: Tel Aviv's GIS (layers 760-766) and OSM.
+
+- **Baked towns in other countries.** The baker works anywhere OSM does, and one baked town
+  is already Canadian. Elsewhere the official data is usually *easier* to get than
+  Israel's: open licences, and servers that answer the cloud, so no session on the user's
+  computer is needed.
+  - Every building's real roof shape: the Netherlands (3D BAG, from laser scans, CC BY)
+    and most German states (LoD2).
+  - Every building's height: France (IGN's BD TOPO) and New York's footprints.
+  - Every street tree, with species and size: New York's tree census (~680,000) and
+    Paris's list.
+  - The rest of the US: the USGS's free laser scans, and open GTFS from nearly every
+    transit agency.
+  - OSM itself: fuller in Germany, the Netherlands and France, where storeys are often
+    tagged.
+
+  The harder part is the country, not the data:
+  - *Driving on the left* (UK, Ireland, Japan, Australia): today's driving code assumes the
+    right everywhere -- lanes, roundabouts, overtaking, AI drivers. The one big job.
+  - *A look per country*: US yellow centre lines and lights hung over the far side of the
+    junction; the car mix (pickups or small hatchbacks); tiled pitched roofs and old
+    towns' narrow cobbled streets.
+  - *Local rules*: right turn on red, 4-way stops, trams sharing the road.
+  - *Size*: a spread-out US city is best baked as a few neighbourhoods (the baker's bbox).
 
 - **Tracking verified music.** Which tracks are confirmed CC0 vs CC-BY, where they came
   from, what has been checked. Today this lives loosely in `assets/CREDITS.md` and a

@@ -3,7 +3,8 @@
 **Done, 21 Nov 2026** (see DEV.md, "Data fetched on the user's computer"): job 1 from
 Givatayim's map (a) and Ramat Gan's own layer (b), GovMap and the Survey of Israel not
 needed; job 2 from Givatayim's map (no playgrounds layer there); job 3 both parts; job 4
-for Givatayim and Ashdod. Left: Ashdod's building heights (its own GIS not looked at).
+for Givatayim and Ashdod. Left: Ashdod's building heights. Its map was looked at in the
+second round: it has only its public buildings (316 heights), no layer of all of them.
 
 You are a Claude Code session running on the user's own computer in Israel. The cloud
 sessions that build this game cannot reach GovMap, givatayim.muni.il, data.gov.il's files
