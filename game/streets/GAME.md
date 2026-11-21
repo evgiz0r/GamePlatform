@@ -1442,6 +1442,15 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   them yet -- it needs that and a re-bake (Overpass, or the bake workflow).
 - People who react ("not needed yet, maybe later"): jumping back, or falling, when a car
   comes at them; glancing at you; stopping at the kerb before they step out.
+- A guided tour of the city: "a virtual tour in a city. like a guide, where we stop and
+  look and explain. the more real it gets the more the tour looks nicer". A guide leads you
+  along a route on foot (or driving), stops at the sights, turns your view to each and
+  explains it -- what it is, its history, what to notice -- then goes on. It rides on every
+  realism pass the towns get. Already here to build on: the filmed walks (a route at a
+  person's pace, the head turning to look), the landmarks (Tel Aviv's towers, Sarona) and
+  the places from OSM and the towns' own data. New: each tour's script (the stops, where to
+  look, the words, maybe spoken), a guide to follow, and a way to pause, ask, or skip ahead;
+  a tour as a level of its own in the start screen.
 - A "green wave": "any crossroads i approach switches to green for my car" -- a switch for
   the player's car (driving or autodrive) that turns each light it comes up to green its
   way, through the usual change for the cross street (amber, red) so the traffic there stops
