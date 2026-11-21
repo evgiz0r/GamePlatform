@@ -2242,6 +2242,42 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   the walk passes a metre from the arcade block's side wall, which fills the right of the frame
   where the film sees open forecourt (the slant should start ~1.5 m further left: P(7.9, -7.0)).
 
+### Pass 15 of walk 1 (22 Nov 2026): the forecourt, the passage, Ha-Meri as measured
+
+- **Ha-Meri's looks** were the biggest single miss (seconds 91 and 95 among the worst). Ha-Meri
+  runs along the passage's line (131 degrees round the map); the walk crosses it at s ~91.7 and
+  steps up onto its south-east pavement. The fitted head turned to 90-107 crossing (onto the
+  corner building) and to 40-50, with a look 22 degrees down, at 93-95.5 (into its front
+  garden). Which way the film faces was found by **sweeping the replay's camera** at the
+  film's seconds (`AT=91,94.5 SWEEP="40,75,105,125,145,165"`, then the same back round)
+  and setting the shots beside the film's frame: 125 shows its view down the street, the cars
+  parked along the left; ~200 its view back across at the far pavement over the paved
+  crossing, at the phone's usual tilt. A walk can now hold the camera on a way round the map
+  (`face: [[from, to, degrees]]`, eased over half a second, on top of `head`): [90.2, 92.0,
+  125], [92.8, 95.8, 200]; the down look at the end is gone. Seconds 93-94: +14, +15.
+- **The sweep's gotcha**: this game moves its camera from the tree's `process_frame` signal
+  (`_frame`, connected in `_ready` so the shell's shake goes on top), not from `_process` --
+  `set_process(false)` and a camera move left every shot the walk's own view. The sweep
+  disconnects `_frame` while it shoots and uses `look_from` (the kit's: it keeps the base the
+  shake resets the camera to each frame).
+- **The forecourt** (make_givatayim.py): the bollards as solved (A P(11.7, -3.2), B
+  P(13.5, -1.7), C P(13.2, -2.0), D P(14.8, -2.5), E P(21.1, 3.1)) -- C 0.9 m north-west of its
+  solved place, within its +-1.1, because the walk went through it and the film passes it
+  close on its left at 30 s; the twin poles centred P(17.8, -1.4) (their left pole 0.5 m off
+  the solve, for the same reason: the film passes the plinth close on its right at 33-34 s),
+  the passage's north-west wall and fence starting at s 18.5 behind the plinth; the barrier
+  at P(23.1, 8.3); the planted bed's front fence, hedges, low shrubs and lamp back to s
+  19.5-20. Not done: the 26 s slant ~1.5 m further left, the film's head in the forecourt (20
+  left at 26.5-27 s, 13 down at 27-28.5), the block on columns with cars under it.
+- **The passage**: a new prop `lamp_pole` (details.gd: tall white pole, stickers to head
+  height, a round red-ringed sign facing `dir`, the lamp's arm; `bin`: a small bin with a
+  purple liner hung on it) at P(33, -0.6); the big bin to P(45.8, -0.75) (0.35 m nearer the
+  hedge than solved: the walk's line passes there at off ~0). The second pole behind the big
+  bin is left out (bearing only).
+- **Numbers**: score 34.5 -> 35.3 (the same evening's main, recorded before and after on this
+  PC); nothing worse by 5; 29 +6, 49 +7, 93 +14, 94 +15; 90-99 s 23.7 -> 28.8. Both filmed
+  walks scan clean; playtests of levels 5, 6 and 1 survive 25 s.
+
 ### Handoff: the filmed walks (22 Nov 2026): measured against the full film, before pass 15
 
 - **The full film is on the user's PC**: `OneDrive/walk/20261120_100527.mp4`, 1080x1920
@@ -2610,6 +2646,47 @@ it is dropped.
   the road's deck beside it, rather than the road's; `ROUTES ... ,top` in tests/decks.gd can
   still land on a road under the deck where they cross (use `deck_air`, which starts on the
   highest surface, to drive a particular deck).
+
+## What people carry, and builds (22 Nov 2026)
+
+`_carry(actor, what, seed)` in streets.gd ("what people carry") gives someone a shopping bag,
+a handbag, a backpack or a box; `_what_carried(seed, carrying)` picks one, about 17% bag, 10%
+handbag, 13% backpack, 60% nothing. Who gets one:
+- **Street walkers.** Before this, 22% were drawn with the carrying walk (`Walk_Carry`) and
+  nothing in their arms, which looked like arms out for a hug. Now one in three of those
+  carry a box and the rest a bag with the plain walk. Walkers with a dog or a pushchair get
+  nothing.
+- **Chatters and people waiting at stops** get bags and backpacks.
+- **Market shoppers** (`crowds.gd`): 45% had the same empty carrying walk. Now 40% carry a
+  bag, 12% a handbag, 8% a backpack.
+
+How things are held:
+- **Held, not BoneAttachment3D.** The thing goes on a holder, a child of the skeleton, and
+  the `Held` modifier (a SkeletonModifier3D added after `PartSizes`, so it runs after it)
+  moves the holder to its bone every frame. A hand's holder stays upright, so the bag hangs
+  straight down whatever the arm does. On a BoneAttachment3D the bag tilted with the swing
+  and read as a sheet of paper. The back's holder turns with the torso. The holder is scaled
+  by 1 / the skeleton's scale, so the sizes are in metres.
+- **One draw each.** Each thing is joined into one mesh coloured per vertex, shared between
+  everyone with the same set of boxes (`_carry_mesh`). Vertex colours go in as they are: run
+  through `srgb_to_linear()` they drew much darker in this renderer (the box went dark brown).
+- **Fits on the Quaternius figures:** backpack centre 0.165 m behind the Torso bone; box
+  centre 0.36 m in front and 0.02 m below it, which puts it on the carrying walk's forearms;
+  bag top 0.07 m under the fist.
+
+**Builds.** `_humanize` also scales the whole figure 0.9-1.12 across and front to back (its
+own random numbers, seed + 77). Scaling a bone such as the Torso does not work for this: its
+scale passes on to the arms and head, and a rotated child of a squashed bone shears.
+
+**Test.** `tests/people_carry.gd`, level 4: seven people on the road ahead of the car, each
+shot from the side, from the front at an angle and from behind (`pc_<i>_*`). Good: the
+bags hang beside the leg and not through it, the backpack sits on the back, and the box
+rests on the forearms.
+
+**Still open from the people list (GAME.md "Better people"):**
+- a more detailed CC0 set of bodies and moves, tried on the look bench first
+- phones in hand, which needs a pose, not only a thing
+- hands moving while people talk
 
 ## Sizes against life (`tests/scale_check.gd`, 20 Nov 2026)
 

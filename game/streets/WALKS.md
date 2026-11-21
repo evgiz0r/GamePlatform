@@ -49,6 +49,8 @@ Each item below is also in its section.
 - **The passage's end (61-68 s):** the man in blue at the hoop railing is about right; at
   67-68 s a passer-by fills the replay's frame a metre off the camera (the film's is clear);
   the film has motorbikes and scooters parked on the left at 67.5 s, the game none.
+- *(Pass 15 made the three below: the forecourt's layout and its far side, the passage's pole
+  and bins, Ha-Meri's looks. Score 34.5 -> 35.3; seconds 93-94 +14 and +15, 29 and 49 +6-7.)*
 - **Ha-Meri (89-96 s): the replay looks the wrong way.** The film looks along Ha-Meri at 90.5-
   91.5 s (cars parked down its left side) and across at its far pavement at 93-95.5 s (the
   white low wall and hedge, the kick scooter, a tree in a pit); the replay turns to yaw 41-50
@@ -79,10 +81,8 @@ Each item below is also in its section.
       boxes, yellow number plates; a bicycle among them (film 19-24 s).
 - [ ] The forecourt: the red-ringed round sign on its own pole by the twin poles (film
       29-31 s); the transformer's box and cables up the poles.
-- [ ] The passage: yellow leaves scattered on the pavers (film 36-52 s); the tall white
-      lamp pole with stickers at P(33, -0.6), a red-ringed sign on top and a small bin with a
-      purple liner hung on it (film 40-44 s); the big bin to P(45.8, -0.4) with a second
-      pole right behind it (film 49-53 s); the rough concrete low
+- [ ] The passage: yellow leaves scattered on the pavers (film 36-52 s); a second pole right
+      behind the big bin (film 49-53 s, bearing only); the rough concrete low
       wall under the tall hedge (film 44-52 s); the bin's black slotted body is right,
       its lid and liner not.
 - [ ] The passage's pavers a shade lighter and warmer than the game's (film 36-56 s).
@@ -112,20 +112,11 @@ Each item below is also in its section.
       the forecourt only turn to each other; a clip would need adding to the kit's art.
 - [ ] Passers-by on Katzenelson and Ha-Meri walking past both ways (the city's walkers are
       there, not the film's).
-- [ ] The forecourt's far side, 28-33 s: measured (above) -- the barrier's post to about
-      P(23.1, 8.3), the left transformer pole to P(17.8, -0.5), the bed's front back out of
-      the open paving; pass 14's "no single spot fits all three" was the film's head (20
-      degrees left, 13 down at 27-28.5 s), not the phone's place.
 - [ ] 26 s: the walk out of the arcade passes a metre from the block's side wall, which fills
       the right of the frame where the film sees open forecourt and the stair building far
       off -- start the slant ~1.5 m further left (P(7.9, -7.0)), then re-log and re-fit.
-- [ ] The bollards: a cluster of four by the walk's line, not a row (measured above:
-      A-D at s 11.7-14.8, off -1.7 to -3.2; E far at P(21.1, 3.1)); the game's row of
-      seven at s 13.6 goes.
 - [ ] The head in the forecourt: 20 degrees left at 26.5-27 s, 12-13 down at 27-28.5 s,
       6-9 up at 30.5-31.5 s (measured above).
-- [ ] Ha-Meri 89-96 s: look along the street at 90.5-91.5 s and across at the far pavement
-      at 93-95.5 s, not right and down into the corner building's garden (measured above).
 - [ ] Under the arcade (18-24 s) the head is set, not measured (the fitted facing read half
       the turn there, pass 14): the film's frame by frame, read off the columns' and the
       motorbikes' row, would give its glances.
@@ -201,6 +192,15 @@ Its film is not in this repo or this machine's scratch: a session needs a clip o
       (bollards, cabinets, motorbikes, tables) keep landing on the walks' lines.
 
 ## Done
+- Pass 15 of walk 1 (DEV.md): what the full film's measures said, three of them. The forecourt
+  as solved -- the bollards a cluster of four by the walk's line and one far off (not a row of
+  seven), the barrier further on and out, the transformer's twin poles on their plinth across
+  the passage's mouth, the planted bed's front back to s 19.5 so the film's open paving is
+  open; the passage's white lamp pole with stickers, a red-ringed sign and a small bin with a
+  purple liner hung on it (P(33, -0.6), a new prop), the big bin on to P(45.8, -0.75);
+  Ha-Meri's looks as the film's frames show them (a walk's new `face`: down the street at
+  125 degrees while crossing, back across at its far pavement at 200 from the far kerb, at the
+  phone's usual tilt), found by sweeping the replay's camera round (`filmed_walk` `SWEEP`).
 - Pass 14 of walk 1 (DEV.md): the forecourt as filmed -- out from under the arcade at the
   block's corner and across on a slant, the two women and the man in white 6 m ahead at 26 s
   with their scooter, a dark board wall behind them and a cabinet, the slabs to the block, the
