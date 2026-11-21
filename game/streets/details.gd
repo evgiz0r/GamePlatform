@@ -897,7 +897,7 @@ func _solid(a: Vector2, e: Vector2, r: float) -> void:
 	var L := a.distance_to(e)
 	var n := maxi(1, int(L / (r * 1.6)))
 	for i in range(n + 1):
-		g._add_post(a.lerp(e, float(i) / n), r)
+		g._add_post(a.lerp(e, float(i) / n), r, true)   # (unique: a line's ends are the next line's starts)
 
 ## a box standing on the ground from a to e, `t` thick, from `y0` up to `y0 + h`
 func _wall(b, a: Vector2, e: Vector2, h: float, t: float, col: Color, y0 := 0.0, solid := false) -> void:

@@ -2169,6 +2169,41 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   the walk passes a metre from the arcade block's side wall, which fills the right of the frame
   where the film sees open forecourt (the slant should start ~1.5 m further left: P(7.9, -7.0)).
 
+### Handoff: the filmed walks (22 Nov 2026): measured against the full film, before pass 15
+
+- **The full film is on the user's PC**: `OneDrive/walk/20261120_100527.mp4`, 1080x1920
+  upright (stored 1920x1080 with a -90 rotation, which ffmpeg applies), 30 fps, 185 s, **not
+  mirrored**; walk second t = film second t (one frame apart, no drift over 96 s: correlated
+  against the old clip). The old `clip.mp4` was 576x324 and mirrored. A session on that PC
+  reads it directly; a cloud session still has to ask for a clip. Frames:
+  `ffmpeg -i <film> -vf "trim=0:96.6,setpts=PTS-STARTPTS,fps=10,scale=406:720" -start_number 0
+  f%05d.jpg` (for film_score), and `fps=2` at full size (`h%04d.jpg`) for marking.
+- **On the user's PC a recording takes 1 min 23 s** (`RECORD=1 RES=1280x720 GODOT_ARGS=
+  "--fixed-fps 10"`, 966 frames; 18.5 min on a cloud container): record after every change.
+  Godot there: `GODOT=` the standard 4.7.2 console build in `Documents/Godot/` (not the mono one);
+  Python's numpy/scipy/pillow via `uv run -q --with numpy --with scipy --with pillow python`.
+- **New tools** (tests/README.md): `film_score.py` (a calibrated score per second, the worst
+  seconds side by side; 40 s) and `film_marks.py` (landmarks: label, map, solve). `RECORD=1`
+  now logs `POSE`/`POST`/`BLD` lines for them. The loop for a pass: record, `film_score.py
+  score`, `compare` against the last run's seconds.csv; for a place's layout, mark feet in the
+  1080p frames (`grid` them in twentieths, 540x960 is readable), `solve`, `map ... places.csv`.
+- **Good numbers (22 Nov, before pass 15)**: score 33 over the walk (the film against itself
+  5 s on: 33); worst seconds 42, 43, 52, 53, 67, 68, 91, 95; forecourt solve 3.7 px rms.
+  After merging main the same evening (facades, greener leaves, the grade refitted, walkers no
+  longer appearing in view): 34.1, none worse by 5, 66 and 68 up 10 (the passer-by at the
+  passage's end gone from the frame) -- `compare` caught it without looking.
+- **What it found** is at the top of walk 1 in WALKS.md: the forecourt's bollards a cluster by
+  the line, not a row; the barrier, poles and the bed's front off by 2-3 m; the film's head 20
+  degrees left and 13 down at 26.5-28.5 s; the passage's stickered lamp pole missing and its
+  bin ~5 m early; Ha-Meri's last 6 s looking right and down into a garden instead of along and
+  across the street. The 1080p marks were read by eye off a grid (+-5 px of 540): good to a
+  few tenths of a degree.
+- **Where the solve is weak**: a corridor (the passage) with few things fits to a fraction of a
+  pixel and is free along it -- its places rest on pass 13's pace. Anchors would fix that:
+  `fixed bld B.k` holds a building's corner where the map has it, but the forecourt's corners'
+  feet are hidden behind hedges and parked cars; a wall's edge can be marked by bearing only
+  (leave y empty).
+
 ### Handoff: the filmed walks (21 Nov 2026, after pass 14)
 
 - **In progress**: nothing. Pass 14 is on main; the list of what is still different is
@@ -3493,19 +3528,37 @@ without a gap. (The square being built keeps its stand-in to the end of `_build_
 
 ## Open problems
 
-- **One walker in 90 s still appears in view** (`people_pops`, Givatayim, 21 Nov): put 76 m
-  off, where people fade in (75-90 m), 160 m from where it was. Placement (`_place_walker`,
-  not `anywhere`) checks `_spawn_ok` at the spot; the camera moves before the next frame.
-  Try: placing beyond PEOPLE_SEEN when the street there has room, hidden spots only as a
-  fallback. Also seen once: a 2.5 m jump at 72 m (state unknown: print it).
-- **Tel Aviv's ways into a lit junction with no light facing them: 12** (21 Nov, ef5425b and
-  after; 5 on 20 Nov). Not caused by the doubled-lights fix (12 on the code before it too);
-  crept up while light_audit was not in the validation. `LEVEL=7 STATIC_ONLY=1 VERBOSE=1`
-  light_audit names each. Guarded at 12 now (`city_check` LIGHTS_21NOV).
-- **Solid things twice on one spot, the tail** (`city_check` "posts twice", under a limit):
-  Givatayim 128 (bougainvillea clumps over a garden wall, 0.44 m, drawn twice: one plot's
-  front laid twice?), Tel Aviv 596 (0.6 m: trees mapped by OSM and the town's survey both?),
-  Ashdod 48. Invisible (the same thing drawn twice), but twice the draws and checks.
+- **Walkers appearing in view: mostly fixed, a rare one left** (`people_pops`, Givatayim,
+  22 Nov). The two runs before the fix each had one; logging each placement showed both
+  ways it happened: a walker at a stretch's end was taken away while in view, 88 m off (only
+  the line's end was checked, a metre from where they stood), and was put down 39 m off,
+  just round a building's corner (`_spawn_ok` true at the line's point, the person beside
+  it, in view a frame later). Now `_place_walker` takes a spot 95-101 m off on the same
+  pavement when it reaches that far (they walk in, fading in from 90 m), and only else a
+  hidden one with a margin (`_hidden_well`: 1.5 m along and 1 m across it hidden too); the
+  stretch's end takes someone away only where they stand and those beside them
+  (`_mates_unseen`) are unseen too. Four runs: 0, 0, 0 and one pop (74 m, jumped 139 m),
+  that one before `_mates_unseen` -- not known yet if that was it. Each walker keeps
+  `placed` (which call put it there: start / retry / end / far), printed with a pop: read it
+  on the next one. "Sliding with the car far" read 3-10 a run, before and after (a baseline).
+- **Ways into a lit junction with no light facing them** (`light_audit`, `city_check`
+  LIGHTS_21NOV): 8 / 3 / 4 / 0 / 12 (Givatayim, Bedford, Ashdod, test town, Tel Aviv) ->
+  2 / 0 / 1 / 0 / 1 on 22 Nov. Each was a way in where every spot `_build_signals` tried was
+  a wall, another road's lane or a corner's asphalt; a second round now tries further onto
+  the pavement (to 2.4 m), the left kerb of a two-way road, a spot nearer the junction, and
+  last a far-side light across it -- never further back than the first round (behind the
+  stop line the waiting driver has gone past it). Not looked at from the street yet: a
+  screenshot of a far-side one is the next check. Tel Aviv's last is a one-way service lane
+  (937, 222). `_tally` counts `lights_far_spot` and `lights_no_spot`.
+- **Solid things twice on one spot** (`city_check` "posts twice"): 128 / 1 / 48 / 1 / 596 ->
+  0 / 0 / 5 / 1 / 3 on 22 Nov, the limits now. `tests/posts_twice_where.gd` (`POSTS_FROM=1`:
+  `_add_post` keeps its callers, by get_stack) named them: a building's stilts put up by
+  each of its parts on one outline (Tel Aviv 526, Givatayim 64; drawn twice too), greenery
+  over a corner's garden wall laid from both streets, two railings' end posts at a joint,
+  shrub lines over hedge lines, a cafe's tables, a lamp mapped twice. `_add_post(p, r, true)`
+  refuses a post as big within 0.3 m (`_post_twin`), and the drawing callers check first and
+  skip drawing it. Not for callers that keep the new post's index (signs, bins, bollards).
+  Left: Tel Aviv 2 of a 2.2 m thing from some file's `build:121` and a passage's 0.6 m post.
 - **Tel Aviv's lights and the exam, first round** (Nov 2026). `light_audit` at level 7:
   4 junctions where crossing streets shared a green, all skewed (55-65 degrees): the ways
   from inside a junction (the road between two of its points, no light) were counted in
