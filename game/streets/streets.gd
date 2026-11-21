@@ -4490,7 +4490,11 @@ func _laid_cut(poly: PackedVector2Array) -> Array:
 					big = i
 			var holed := false
 			for q: PackedVector2Array in res:
-				if Geometry2D.is_polygon_clockwise(q) != Geometry2D.is_polygon_clockwise(res[big]):
+				# (not a sliver: cut by a strip whose edge lies on this piece's own, the clip
+				# hands back hair-thin leftovers along it wound either way, and one read as a
+				# hole kept the piece whole, over the strip -- Ashdod's Hoshea HaNavi, 7 m2
+				# of two pavings where one street's pavement crossed the other's at a fork)
+				if absf(_area_signed(q)) > 0.01 and Geometry2D.is_polygon_clockwise(q) != Geometry2D.is_polygon_clockwise(res[big]):
 					holed = true
 			if holed:
 				next.append(p)

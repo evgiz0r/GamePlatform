@@ -3054,6 +3054,15 @@ LEVEL=1 $GODOT --headless --path . -s res://game/streets/tests/<test>.gd`.
   are unnamed). 235 -> 184 m2; the rest is a tail of 3-7 m2 spots of several kinds: next,
   (-875, 3636) by Sderot Herzl -- a pink and a white pavement strip crossing on the asphalt
   (a short street's ends?), then corners overlapping (-2388, 3152).
+  That crossing was `_laid_cut`'s hole test: one street's pavement cut by another's strip
+  whose edge lay on its own came back with hair-thin slivers wound the other way, read as a
+  hole, and the piece was laid whole over the strip. Slivers under 0.01 m2 no longer count:
+  Ashdod 184 -> 126 m2, Givatayim 8.3 -> 2.1, Tel Aviv 28.6 -> 24.1. What is left in Ashdod is
+  spread thin (worst square 3 m2), of more than one kind: a quad of one street's pavement
+  drawn a second time in another street's paving code at (-1258, 3632) (both shapes the same
+  to the millimetre; found with a `_laid_add` print of `_tile`/`_laid_by` for boxes round the
+  point, and `TRIS=1` on pavings_where), and pieces next to a square's edge where a corner is
+  laid whole in one square that has not got the street it overlaps.
   The same day `decks.gd` at level 1 (twice): every deck run clean but the City tunnel's
   (`מנהרת_הסיטי_1372`), whose autodrive roamed out of the tunnel onto a car park's aisle
   (Givatayim (-722, -1078) to (-735, -1078)) that ends in a building -- an underground car

@@ -1,7 +1,8 @@
 extends SceneTree
 ## Where two pavings lie over one spot (they flicker): world_checks' pavings_overlap, by 25 m
 ## square, the worst N (default 12) with the paving codes that meet there (the colour's red
-## channel of each: a road's own paving, a corner's...). SHOTS=1 also shoots the worst
+## channel of each: a road's own paving, a corner's...; TRIS=1 the first two triangles that
+## overlap there, to match to what laid them). SHOTS=1 also shoots the worst
 ## three from 25 m up (pave_<i>.png). city_check gives the total against the town's limit.
 ##   N=12 SHOTS=1 OUT=dir game/streets/tests/run.sh pavings_where 3
 var g: Node
@@ -26,6 +27,8 @@ func _run() -> void:
 	var top: Array = W.last_places.slice(0, n)
 	for row: Array in top:
 		print("  %6.1f m2 near %s  %s" % [float(row[0]), (row[1] as Vector2).round(), row[2]])
+		if OS.get_environment("TRIS") != "":
+			print("      %s\n      %s" % [row[3][0], row[3][1]])
 	if OS.get_environment("SHOTS") != "":
 		g.set_physics_process(false)
 		process_frame.disconnect(g._frame)
