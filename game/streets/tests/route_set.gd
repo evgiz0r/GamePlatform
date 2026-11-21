@@ -17,6 +17,8 @@ func _save_log(n: int, tag: String) -> String:
 	DirAccess.rename_absolute(f, named)
 	return named
 
+## TRACE=path (see the loop): a row every tenth of a second for drawing the drive
+## (tests/drive_trace.py makes the data for a chart of it).
 func _run() -> void:
 	var n := int(OS.get_environment("ROUTE")) if OS.get_environment("ROUTE") != "" else 1
 	var f := FileAccess.open("res://game/streets/routes.json", FileAccess.READ)
@@ -61,10 +63,38 @@ func _run() -> void:
 	var arrived := false
 	var next_log := 120.0
 	var limit := float(OS.get_environment("TRIP_SECS")) if OS.get_environment("TRIP_SECS") != "" else 600.0
+	# TRACE=path: a row every tenth of a second -- [t, x, z, km/h, limit km/h, why, street,
+	# acceleration (m/s^2), the light it reads (its colour for my way, metres to its stop; "" -1),
+	# the car it follows (metres, km/h, what holds that car; -1 0 ""), the car it gives way to
+	# (metres, km/h; -1 0)] -- and the plan at the start; written as JSON at the end
+	var trace := OS.get_environment("TRACE")
+	var rows: Array = []
+	var plan0: Array = []
+	for q: Vector2 in g._ap_pts:
+		plan0.append([snappedf(q.x, 0.1), snappedf(q.y, 0.1)])
+	var tick := 0
+	var v_prev: float = g._v
 	while t < limit:
 		await physics_frame
 		dt = Engine.time_scale / Engine.physics_ticks_per_second
 		t += dt
+		tick += 1
+		if trace != "" and tick % 6 == 0:
+			var lim: float = g._ap_lim[mini(1, g._ap_lim.size() - 1)] if g._ap_lim.size() > 0 else 0.0
+			var li: Array = g._ap_light_dbg
+			var lead := [-1.0, 0.0, ""]
+			if g._ap_lead >= 0.0 and g._ap_lead_i >= 0 and g._ap_lead_i < g._traffic.cars.size():
+				var lc = g._traffic.cars[g._ap_lead_i]
+				lead = [snappedf(g._ap_lead, 0.1), snappedf(lc.v * 3.6, 0.1), String(lc.why)]
+			var give := [-1.0, 0.0]
+			if g._ap_give_car >= 0 and g._ap_give_car < g._traffic.cars.size():
+				var gc = g._traffic.cars[g._ap_give_car]
+				give = [snappedf(gc.pos.distance_to(g._pos), 0.1), snappedf(gc.v * 3.6, 0.1)]
+			rows.append([snappedf(t, 0.1), snappedf(g._pos.x, 0.1), snappedf(g._pos.y, 0.1), snappedf(g._v * 3.6, 0.1),
+				snappedf(lim * 3.6, 1), String(g._ap_why), String(g._on_name), snappedf((g._v - v_prev) / (6.0 * dt), 0.01),
+				String(li[1]) if li.size() > 2 else "", snappedf(float(li[2]), 0.1) if li.size() > 2 else -1.0,
+				lead[0], lead[1], lead[2], give[0], give[1]])
+			v_prev = g._v
 		if not g._dest_on:
 			# arrived -- or gave up at once: "can't find a way there from here" clears the
 			# destination too (a route read as arrived in 0 s with 1.3 km to go)
@@ -105,5 +135,12 @@ func _run() -> void:
 		"longest_wait": snappedf(longest, 0.1), "reds": g._reds - reds0, "rescues": rescues,
 		"off_road_s": snappedf(off, 0.1)}
 	_save_log(n, "end")
+	if trace != "":
+		var tf := FileAccess.open(trace, FileAccess.WRITE)
+		tf.store_string(JSON.stringify({"route": res, "level": route["level"], "plan": plan0, "dest": [to.x, to.y],
+			"columns": ["t", "x", "z", "kmh", "limit_kmh", "why", "street", "accel", "light", "light_m", "lead_m", "lead_kmh", "lead_why", "give_m", "give_kmh"],
+			"rows": rows}))
+		tf.close()
+		print("trace: %d rows to %s" % [rows.size(), trace])
 	print("ROUTE RESULT " + JSON.stringify(res))
 	quit(0)

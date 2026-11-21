@@ -968,6 +968,7 @@ const DriveLog := preload("res://game/streets/drivelog.gd")
 var _log := DriveLog.new()            ## the last two minutes, for the map page and "save log"
 var _ap_why := ""                     ## what held autodrive's speed down this tick (for the log)
 var _ap_lead := -1.0                  ## metres to the car ahead on its lane, or -1
+var _ap_lead_i := -1                  ## that car's index in traffic (-1 none, or the player's own: for traces)
 var _traffic: Traffic = null
 var _ap_wait := 0.0                  ## autodrive held up by a car this long
 
@@ -13626,7 +13627,10 @@ func _came_dir() -> Vector2:
 ## The speed allowed now (INF: none). A lane turning at a junction curves past its point,
 ## not over it: looked for only within 4.5 m of the point, a turn missed the light and drove
 ## through the red (now: within the junction and 2 m, as the car's own red-light check sees it).
+var _ap_light_dbg: Array = []         ## the light autodrive read last: [point, its colour for my way, metres to where it stops] (for traces)
+
 func _ap_light_v() -> float:
+	_ap_light_dbg = []
 	if _sig_set.is_empty() or _ap_pts.size() < 2:
 		return INF
 	var found: Array = []   # [along the lane to its stop line, node, way in]
@@ -13678,6 +13682,7 @@ func _ap_light_v() -> float:
 			             # is not through: it waits for its green where it stands)
 		var state := _light_at(n, f[2])
 		var raw := String(SIGNAL_CYCLE[_sig_phase][_light_group(n, f[2])])
+		_ap_light_dbg = [n, raw, stop]
 		if raw == "g":
 			_ap_amber_n = -1
 			return INF
@@ -13959,10 +13964,17 @@ func _site_ways_in(node: int) -> Array:
 	var c := _nodes[node]
 	var s: int = _site_of[node]
 	var rn := _node_r[node]
+	var slip := _slip_join(node)
+	if slip:
+		_tally("lights_slip_joins", 1)
 	for e: Vector2i in _node_roads[node]:
 		var r: Dictionary = _roads[e.x]
 		if not r["drive"]:
 			continue
+		# the main road drives on: the light is the slip road's. Its ways in are kept, as from
+		# inside (no line, no pole): left out, a car on it took the slip road's, joining at a
+		# shallow angle, for its own and stopped all the same
+		var free := slip and not String(r["k"]).ends_with("_link")
 		var pts: PackedVector2Array = r["pts"]
 		for d2: int in [-1, 1]:
 			var from := e.y + d2
@@ -13979,8 +13991,52 @@ func _site_ways_in(node: int) -> Array:
 					break
 				if _crossing_set.has(o) and float(back[1]) > 1.0 and float(back[1]) < rn + 10.0:
 					line = maxf(line, float(back[1]) + 2.0)   # (its stripes run 1.5 m either side of the point)
-			out.append([(c - pts[from]).normalized(), line, e.x, inside])
+			out.append([(c - pts[from]).normalized(), line, e.x, inside or free])
 	return out
+
+## A lit point where only a slip road joins a one-way main road, from its right-hand side --
+## merging in or peeling off, across no one's way: OSM's light there is the slip road's (and
+## its crossing's), and the main road's lanes drive on. As a light for everyone it stopped
+## autodrive and the traffic on Ashdod's Menachem Begin 35 m past the Herzl junction, by a
+## bus stop, for a light that was the slip road's from Herzl (a user: "why are the cars
+## stopping there"; tests/light_line.gd). A slip road joining from the left -- across the
+## traffic -- keeps its light for all.
+func _slip_join(node: int) -> bool:
+	var c := _nodes[node]
+	var mains: Array = []   # [the way out along it, the road, the step]
+	var links: Array = []   # the way out along each slip road, a few metres on
+	for e: Vector2i in _node_roads[node]:
+		var r: Dictionary = _roads[e.x]
+		if not r["drive"]:
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		for step: int in [-1, 1]:
+			var k := e.y + step
+			if k < 0 or k >= pts.size():
+				continue
+			if String(r["k"]).ends_with("_link"):
+				while k + step >= 0 and k + step < pts.size() and pts[k].distance_to(c) < 8.0:
+					k += step
+				links.append((pts[k] - c).normalized())
+			else:
+				mains.append([(pts[k] - c).normalized(), r, step])
+	if links.is_empty() or mains.size() != 2:
+		return false
+	var a: Array = mains[0]
+	var b: Array = mains[1]
+	if (a[0] as Vector2).dot(b[0]) > -0.8 or int(a[1]["o"]) == 0 or int(b[1]["o"]) == 0:
+		return false   # not one one-way road running straight through
+	# the way it runs: in along the arm whose traffic arrives (its "o" against the step out)
+	var arrive: Array = a if int(a[1]["o"]) == -int(a[2]) else b
+	var leave: Array = b if arrive == a else a
+	if int(leave[1]["o"]) != int(leave[2]):
+		return false   # (the two pieces flowing at each other: not one road)
+	var t := -(arrive[0] as Vector2)
+	var right := Vector2(-t.y, t.x)   # (left of the traffic is (t.y, -t.x), as in _partner)
+	for l: Vector2 in links:
+		if l.dot(right) <= 0.05:
+			return false
+	return true
 
 ## The points back along a road from its point e.y, stepping d2 along it, up to `reach`
 ## metres and ending at the first junction: [[node, metres], ...]. Carries on across the
@@ -20056,6 +20112,7 @@ func _autodrive(dt: float) -> Array:
 	if float(lead[0]) < 30.0 and _ap_pass_bus(lead):
 		lead = _traffic.lead_on(_ap_pts, _pos, clampf(12.0 + _v * 1.2 + _v * _v / 5.2, 18.0, 130.0), _ap_wait > 3.0, _y)
 	_ap_lead = float(lead[0]) if float(lead[0]) < INF else -1.0
+	_ap_lead_i = int(lead[3]) if float(lead[0]) < INF else -1
 	if float(lead[0]) < INF:
 		var lv: float = lead[1]
 		# from my nose to its back (a bus is two and a half cars long: kept a car's length
