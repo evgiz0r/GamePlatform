@@ -163,6 +163,56 @@ The ones most often touched, and the functions in them:
   12). tests/plates.gd shoots them (ends and a side). Cost: the three kinds are ~10 more
   multimeshes in view at the start (`draws`: 216; about 3 a kind, parked squares and
   traffic); the playtest 10 hitches alone (17 with a second Godot rendering beside it).
+- **cars' lights and moving parts** -- all in CAR_SHADER and traffic.gd, no new shader.
+  A copy's instance data (`Traffic._custom`; the shader's notes at its top): the paint in
+  rgb with a small whole number in each channel as twice it added (the paint stays 0..1 under
+  it; decoded `kk = floor(rgb / 2)`, half floats keep 1/128 of colour at up to 15): r the
+  indicators lit (1 its left, 2 its right, 3 both), g and b the front wheels' steer (g * 8 +
+  b, 32 straight, 0 no word: a parked car's own). Alpha: the brake 0..0.95, 2 per person
+  aboard, 8 reversing, 16 the passenger's door open, 32 stood at the kerb (dust, permit).
+  "Parked" is now no one aboard (occupancy 0), not alpha under 1.5. `plate_id` and the
+  decoded values are `flat` varyings: interpolated, `plate_id`'s last digits wandered across
+  a plate and its hashes drew a different digit in each pixel (garbled plates). **Lamps**:
+  `_lamp` gives its panel UV (x inner 0 to outer 1, y low to high) and UV2 x 1 marks a car's;
+  the headlight is an older car's chrome reflector or a newer one's black housing with two
+  lenses and a running-light strip lit while it drives, the indicator's amber at the outer
+  end; the tail light a red with its position light's shape brighter (a ring or two bars), a
+  white reversing light over an amber indicator at the inner end; UV2 x 2 marks the mirror
+  repeaters (amber) and the third brake light at the top of the rear window. Lit colours
+  are saturated uniforms (`amber_lit`, `red_lit`, from `_real_col`) at under 2: brighter,
+  the sun's tone curve took a brake light to white. A bus's, a truck's and a scooter's
+  indicators are still traffic's `_blinkers` boxes. **Steering**: the wheels' UV2 is their
+  middle; vertex() turns the front ones (UV2.y > 0) about it. Traffic's `steer_to` is the
+  lane its front runs on against its heading (`_place`), turned toward at 1.4 rad/s; a
+  parked car has its wheels turned now and then (its own `plate_id`). **The kerb car**
+  (`_kerb_tick`, `_kerb_wait`): KERB_BOARD of them have someone getting in beside the driver
+  first -- the passenger's door open over the pavement (`_door` multimesh, the car's own
+  slot so its dust matches; `g._door_mesh`, `g._door_at`: the hinge at the seam behind the
+  front wheel, as the shader draws the doorway), them standing at it (`g.boarder_at`, one
+  Actor3D in `_boarders`, counted among the people); they step in as the player comes within
+  95 m (BOARD_IN 1.1 s), the door shuts (0.7 s), then it waits for the player at 18-62 m
+  behind (was 45), backs up 0.27 m with its reversing lights if there is room (`rev_t`),
+  signals and pulls out. The kerb side, not the driver's: a door open into the lane was in
+  the traffic's way. **Bumps**: `_street_metal` notes each manhole cover and drain grate
+  (`_note_cover`, `cover_under`); your wheels crossing one nudge the nose and the side, a
+  soft clunk (`_cover_tick`); traffic's front wheels dip its nose, within 50 m of you.
+  **The taxi's sign**: yellow, מונית front and back (five Hebrew glyphs added to
+  `PLATE_GLYPHS`: the font is 18 glyphs now, read right to left as seen), lit at night;
+  vertex alpha 0.58. tests/car_lights.gd (front, back, door, steer, taxi; day and night);
+  street_goings prints the boarding.
+- **blocks' plaster by age** (`_med_plaster`, med towns): the city file's year (`yr`, 920
+  of Givatayim's 6,243) and OSM colour (`col`, 63) pick a block's plaster: 1950-79 sand
+  (most), before 1950 cream, 1980-99 beige, white or stone, 2000 on white, stone-clad or
+  grey; no year, mostly sand. WALL_SHADER: a stone lean of 0.4-0.79 is now a render in the
+  old blocks' sand (`wall_g`, the tone "wall7": the stone's beige deeper toward the yellow
+  with a touch of red -- the stone mixed with the peach plaster read grey-beige, with the
+  yellow khaki; `_wall_rgb` the same), only
+  0.8 and over is cut stone in courses (it was 0.45: two blocks in five were stone-clad;
+  the film's are rendered). Balconies: per bay and floor some closed in (`enclosed`: a share
+  of each block's, 20-70%) -- sliding panes in aluminium on the parapet, a shutter part-way
+  down from its box, the room behind (near), glass and the box (far); the parapets and slab
+  edges a white band on some blocks (`band`); the grime under sills darker on the old blocks
+  (`aged`). tests/building_looks.gd (the town's count, six blocks near the start).
 - **shop interiors** -- SHOP_SHADER on the shop windows (`_shop_interior`, instead of the
   flat lit `_shop_glass`): a room 3.5 m deep traced from the eye through the glass (back
   wall, sides, floor, ceiling -- no geometry), shelves of goods, racks of clothes or a
@@ -2385,8 +2435,15 @@ the user's `tools/.cache/` only.
   and greys; 80% petrol, ~10% electric or hybrid); mark the bus lanes by matching
   `bus_lanes.json`'s street names and end points to the roads (the baker's OSM `bf`/`bb`
   have some already); run buses on `transit_*.json`'s lines and times.
-- **Open**: Ashdod's heights (not in this task's sources: Ashdod's own GIS not looked at);
-  GovMap and the Survey of Israel were not needed and not checked. The GTFS terms page on
+- **Open** (updated after the second round below):
+  - **Ashdod's heights:** its map has no layer of all its buildings, only the public
+    ones (316 heights). GovMap and the Survey of Israel are long shots, by hand in a
+    browser, unchecked.
+  - **Ramat Gan's trees:** not fetched. Its ArcGIS Online host (services8.arcgis.com)
+    answers from anywhere, but the cloud environment does not allow it yet; whether a
+    trees layer exists is unknown.
+  - The fetch status and what else could be had are in the root ideas file's "Official
+    data" bullet. The GTFS terms page on
   gov.il cannot be read by tools; the user read it and found nothing against reuse.
   Ramat Gan's layer has no licence text either; the user approved committing it too.
 
@@ -2507,6 +2564,18 @@ LEVEL=1 $GODOT --headless --path . -s res://game/streets/tests/<test>.gd`.
   wall) and people who react are on GAME.md's later list; falling rain is on hold (user);
   the browser's 5-7 s warm-up is shader compiling (see the other handoff's 74 shader kinds).
   `draws` hung once for 15 minutes and never again (cause unknown: kill it and rerun).
+- **Lights, wheels, doors, plaster (21 Nov)**: good numbers -- `car_lights` (shots): lamps
+  read red / amber / white, not white blocks; plates clean (garbled before `plate_id` was
+  flat); the front wheel turned; מונית legible. `street_goings KERB_ONLY=1`: in at 86 m,
+  shut 0.7 s later, backed up at 61 m, never nearer than 20 m, the door open only while you
+  were 84 m+ off. `building_looks`: Givatayim's plaster from its file -- sand 3,310, cream
+  1,334, white 1,002, stone 494, tinted 103 (it was half white, two in five of the rest
+  stone-clad). Open: speed humps (the baker keeps no traffic_calming; needs it and a
+  re-bake); closed-in balconies not yet seen up close in a shot (the blocks near the start
+  are mostly punched windows: aim `building_looks` at a balcony block); the bus's, truck's
+  and scooter's indicators are still boxes; in the KERB_ONLY run the kerb car came without
+  its passenger (the dice, or no room by the pavement: not told apart) and the test put one
+  there; the film's sand in shade is browner than the game's.
 - **Watch**: hitches in the first seconds of driving now include the start's far gardens
   (`_build_gardens_later`, before the rest of the city), and since the city builds only what
   the first view sees before the car, the catch-up of the rest of NEAR_FIRST (16 ms a frame,

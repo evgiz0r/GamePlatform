@@ -484,6 +484,20 @@ opens a window briefly.
   prepass, other objects show through it oddly), even in a branch that never runs. For an
   opaque and a see-through variant of one shader, prefix the code with `#define CURTAIN\n`
   for one of them and wrap the alpha in `#ifdef` -- two `Shader`s, one source.
+- **A varying that seeds a hash must be `flat`** (`varying flat float id;`). Interpolated,
+  its value differs in the last bits from pixel to pixel even when every vertex wrote the
+  same number, and `fract(sin(x) * 43758.5)` turns those bits into a different result in
+  each pixel: per-copy digits drawn from such an id came out as garbled blocks.
+- **More per-instance data than `INSTANCE_CUSTOM`'s four channels**: the Compatibility
+  renderer stores instance colour and custom data as half floats, so whole numbers are
+  safe only while small. Pack a few states into a channel holding a 0..1 value by adding
+  twice a small integer (`c + 2.0 * k`, decoded `k = floor(c * 0.5)`, `c - 2k`): up to 15
+  the value keeps 1/128 of precision. State in alpha as steps of 2, 8, ... above a 0..1
+  fraction works the same way.
+- **An emissive light at 3x and more goes white in daylight.** The tone curve clips every
+  channel, so a brake light or an indicator lit at 3 reads white, not red or amber. Light it
+  with a fully saturated colour (from a palette role with its saturation pushed to ~1) at
+  1.3-1.8.
 - Distance from the camera in a spatial shader: `length((MODELVIEW_MATRIX * vec4(VERTEX,
   1.0)).xyz)` in `vertex()` into a varying (or `length(VERTEX)` in `fragment()`, already
   in view space).
