@@ -4,7 +4,11 @@ extends SceneTree
 ##    (hazards), who goes round it (traffic cars over the centre line, autodrive: pass_van),
 ##    how long autodrive stood behind it, and the nearest anything came to its body;
 ## 2. a car set to pull out ahead (its timer run down): where it was parked, when it pulled
-##    out, how near the player's car came to it after, and whether they touched.
+##    out, how near the player's car came to it after, and whether they touched -- and the
+##    one getting in beside its driver first (put there by hand if the dice said no): their
+##    door open, when they got in (the player how far behind), the door shut, the car backing
+##    up with its reversing lights, then out; the nearest the player came while the door was
+##    open (it should be shut well before).
 ## Good: the van stands 25-50 s with hazards; autodrive goes round it within a few seconds
 ## when nothing comes (or waits, then goes); nothing drives through it; the parked car pulls
 ## out with the player 18-45 m behind and they never touch. Run it headless.
@@ -122,6 +126,10 @@ func _delivery(label: String, ri: int) -> void:
 	print("   hazards seen: %s; cars that went round over the line: %d; nearest a car's middle came to the van's: %.1f m; autodrive stood behind it %.1f s" % [hazards_seen, rounders.size(), nearest, ap_wait])
 
 func _run_rest() -> void:
+	if OS.get_environment("KERB_ONLY") != "":
+		await _kerb_street()
+		await _kerb_part()
+		return
 	# 1. a delivery van ahead, on the start's street
 	await _delivery("the start's street", -1)
 	# ... and on a street of one lane each way, a car sent in between: over the centre line
@@ -141,12 +149,57 @@ func _run_rest() -> void:
 		print("no residential street of one lane each way, 190 m long, near the start")
 	else:
 		await _delivery("a one-lane street", best)
+	await _kerb_part()
+
+## KERB_ONLY: the player put at the start of a long residential street of one lane each way
+## with cars parked along it, on autodrive, for the kerb car alone
+func _kerb_street() -> void:
+	var best := -1
+	var best_d := INF
+	for ri in range(g._roads.size()):
+		var rr: Dictionary = g._roads[ri]
+		var pp: PackedVector2Array = rr["pts"]
+		if String(rr["k"]) != "residential" or int(rr["o"]) != 0 or g._lanes_each_way(rr) != 1 or not rr["drive"]:
+			continue
+		var L := 0.0
+		for k in range(pp.size() - 1):
+			L += pp[k].distance_to(pp[k + 1])
+		var parked := 0
+		for pi: int in g._near(g._post_hash, pp[0].lerp(pp[pp.size() - 1], 0.5), 30.0, g.BLD_CELL):
+			if is_equal_approx(float(g._post_r[pi]), 0.85):
+				parked += 1
+		var d: float = pp[0].distance_to(g._pos)
+		if L > 280.0 and parked >= 10 and d < best_d:
+			best = ri
+			best_d = d
+	if best < 0:
+		print("no long residential street with parked cars")
+		return
+	var r: Dictionary = g._roads[best]
+	var p: PackedVector2Array = r["pts"]
+	var st := p[0].lerp(p[1], 0.1) if p[0].distance_to(p[1]) > 10.0 else p[0]
+	g._set_auto(false)
+	g._pos = st
+	g._yaw = (p[1] - p[0]).angle()
+	g._snap_pose()
+	g._v = 0.0
+	await physics_frame
+	g._set_auto(true)
+	print("the player put at the start of %s (%d m from the start), on autodrive" % [r.get("name", "?"), int(best_d)])
+	for k in range(120):   # (up to speed first: the kerb car waits for a car moving 4 m/s)
+		await physics_frame
+
+func _kerb_part() -> void:
 	# 2. a car pulling out ahead
 	var seen := false
 	var out_at := -1.0
 	var ki := -1
 	var closest := INF
 	var touched := false
+	var boarded := false
+	var shut := false
+	var backed := false
+	var door_near := INF
 	var t2 := 0.0
 	while t2 < 90.0:
 		if ki < 0 and int(t2 * 60.0) % 120 == 0:
@@ -159,8 +212,27 @@ func _run_rest() -> void:
 					ki = j
 					var c = tr.cars[j]
 					print("%5.1f s  a %s parked at the kerb %d m ahead (%.1f m off the lane line)" % [t2, c.kind, int(c.pos.distance_to(g._pos)), -c.shift])
+					if c.door <= 0.0:   # (the dice said nobody: someone put there, for the test)
+						var stand: Vector2 = tr._board_spot(c, 0.0)
+						if g.boarder_at(stand, Vector2(cos(c.yaw), -sin(c.yaw)), false):
+							c.door = 1.0
+							c.passenger = false
+							print("        (someone put at its door for the test)")
+					print("        its door open: %s, someone at it: %s" % [c.door > 0.0, (g._boarders[0]["actor"] as Node3D).visible if not g._boarders.is_empty() else false])
 		else:
 			var c = tr.cars[ki]
+			var behind: float = -(g._pos - c.pos).dot(Vector2(sin(c.yaw), cos(c.yaw)))
+			if c.door > 0.0:
+				door_near = minf(door_near, c.pos.distance_to(g._pos))
+			if not boarded and c.passenger and c.board_t > 0.0:
+				boarded = true
+				print("%5.1f s  they get in (the player %d m behind)" % [t2, int(behind)])
+			if boarded and not shut and c.door <= 0.0:
+				shut = true
+				print("%5.1f s  the door shut" % t2)
+			if not backed and c.rev_t > 0.0:
+				backed = true
+				print("%5.1f s  it backs up, reversing lights on (the player %d m behind)" % [t2, int(behind)])
 			if out_at < 0.0 and not c.kerb:
 				out_at = t2
 				var rel: Vector2 = g._pos - c.pos
@@ -175,4 +247,5 @@ func _run_rest() -> void:
 		print("no car could be parked ahead in 90 s (the streets driven: not a residential one with parking, or no gap)")
 	else:
 		print("after it pulled out: the player's car came within %.1f m of its middle; touched: %s" % [closest, touched])
+		print("while its door was open the player came within %.1f m of it" % door_near)
 	quit(0)

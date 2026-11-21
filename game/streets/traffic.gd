@@ -37,6 +37,7 @@ const DWELL := 7.0           ## seconds a bus stands at a stop
 const DBL_SHARE := 0.45      ## of the vans and trucks, the share that stop somewhere on the way
 const DBL_ROADS := {"residential": true, "tertiary": true, "unclassified": true, "secondary": true, "living_street": true}
 const KERB_EVERY := Vector2(35.0, 75.0)   ## seconds between cars set to pull out ahead of the player
+const KERB_BOARD := 0.6      ## of those, the share with someone getting in beside the driver first
 const LANE_W := 1.5          ## a car on my path: its middle within this of my lane line
 const PLAYER_W := 2.0        ## the player's car counts as in my way from further over: it
                              ## need not be on a lane line, and half in the lane is in it
@@ -132,6 +133,13 @@ class Car:
 	var kerb_t := 0.0                 ## seconds parked
 	var hold_t := 0.0                 ## seconds still to wait, signalling, before pulling out
 	var pass_i := -1                  ## the double-parked car it is going round, over the centre line
+	var door := 0.0                   ## a kerb car: its front passenger's door, 0 shut .. 1 open
+	var board_t := -1.0               ## ... seconds its passenger has been getting in (-1: not yet)
+	var stood := false                ## ... stood at the kerb: a parked car's dust and permit, driven off
+	var rev_t := 0.0                  ## ... seconds it still backs up, its reversing lights on, before pulling out
+	var steer := 0.0                  ## the front wheels' angle, radians (+ left: visual)
+	var cover_on := 0                 ## its front wheels on a manhole cover now (bits)
+	var steer_to := 0.0               ## ... the lane its front runs on, against its heading
 
 var g: Node                           ## the game: its road graph, lights, ground, player
 var cars: Array = []
@@ -144,7 +152,9 @@ const TAKE_AHEAD := 22.0              ## who goes first at a junction is settled
 var _mm: MultiMesh
 var _mms := {}                        ## car shape -> its multimesh
 var _beams: MultiMeshInstance3D       ## their beams on the road, at night
-var _blinkers: MultiMesh              ## the indicators that are lit, front and back: one draw
+var _blinkers: MultiMesh              ## a bus's, a truck's and a scooter's indicators that are lit (a car's are in its lamps)
+var _door: MultiMeshInstance3D        ## the kerb car's open door (one at a time)
+var _door_i := -1                     ## ... whose
 ## each kind's half width and half length, for where its indicators are
 const CORNERS := {"sedan": Vector2(0.9, 2.25), "hatch": Vector2(0.86, 1.95), "mini": Vector2(0.8, 1.8),
 	"wagon": Vector2(0.9, 2.3), "mpv": Vector2(0.92, 2.18), "suv": Vector2(0.96, 2.32),
@@ -220,6 +230,21 @@ func setup(game: Node) -> void:
 	_blobs.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_blobs.visible = g._blobs_on
 	g.world.add_child(_blobs)
+	# a kerb car's open door: the car shader's, painted the car's colour (custom data)
+	var dm := MultiMesh.new()
+	dm.transform_format = MultiMesh.TRANSFORM_3D
+	dm.use_colors = true
+	dm.use_custom_data = true
+	dm.mesh = g._door_mesh("sedan")
+	dm.instance_count = COUNT   # (the door at its car's own slot: the shader's dust and fading are the car's)
+	dm.custom_aabb = box
+	for k in range(COUNT):
+		dm.set_instance_transform(k, Transform3D(Basis(), Vector3(0, -500, 0)))
+		dm.set_instance_color(k, Color.WHITE)
+	_door = MultiMeshInstance3D.new()
+	_door.multimesh = dm
+	_door.visible = false
+	g.world.add_child(_door)
 	var palette: Array = g._car_paints()
 	var med := String(g._place.get("look", "")) == "med"
 	# the city's buses: Givatayim's in the blue and the green of its two companies, Bedford's white
@@ -400,6 +425,18 @@ func tick(dt: float) -> void:
 			c.alive = false   # the end of a road with nowhere on: gone, back elsewhere next tick
 			continue
 		_place(c)
+		c.steer = move_toward(c.steer, c.steer_to, 1.4 * dt)   # (a driver turns the wheel, not snaps it)
+		# a front wheel over a manhole cover, near you: the nose bobs
+		if c.v > 2.0 and c.pos.distance_squared_to(g._pos) < 2500.0:
+			var fw := Vector2(sin(c.yaw), cos(c.yaw))
+			var sd := Vector2(-fw.y, fw.x) * 0.78
+			var on := 0
+			for k in range(2):
+				if float(g.cover_under(c.pos + fw * c.len * 0.3 + (sd if k == 0 else -sd))) > 0.0:
+					on |= 1 << k
+			if on & ~c.cover_on:
+				c.dip -= 0.012
+			c.cover_on = on
 
 ## time spent in one part of the tick, for the game's frame profiler (sub-parts of "traffic":
 ## a name with a colon is not added to the frame's script total again)
@@ -963,7 +1000,7 @@ func _signal(c: Car, dt: float) -> void:
 	if _parked_double(c):
 		c.blink = 2   # hazards
 		return
-	if c.kerb:
+	if c.kerb or c.rev_t > 0.0:
 		c.blink = 0
 		return
 	if c.kind == "bus" and c.dwell > DWELL - 1.5:
@@ -1162,12 +1199,24 @@ func _kerb_tick(dt: float) -> void:
 		pick.shift = kshift
 		pick.shift_to = kshift
 		pick.rear = Vector2.INF
+		pick.stood = true
+		pick.passenger = false
 		_place(pick)
 		pick.prev_pos = pick.pos
 		pick.prev_yaw = pick.yaw
 		pick.prev_y = pick.y
+		pick.steer = 0.0
+		# now and then someone about to get in beside the driver: the door open over the
+		# pavement, them standing at it (where the door and they have room)
+		if rng.randf() < KERB_BOARD:
+			var stand := _board_spot(pick, 0.0)
+			var tip := _board_tip(pick)
+			if g._push_out(stand, 0.3, true, false) == Vector2.ZERO and g._push_out(tip, 0.12, true, false) == Vector2.ZERO \
+					and not g._wall_between(pick.pos, stand) and g.boarder_at(stand, Vector2(cos(pick.yaw), -sin(pick.yaw)), false):
+				pick.door = 1.0
+				pick.board_t = -1.0
 		_hide_or_show(cars.find(pick))
-		Probe.event("kerb_car", {"ahead": int(d)})
+		Probe.event("kerb_car", {"ahead": int(d), "boarding": pick.door > 0.0})
 		return
 
 ## the point `d` metres on along road points p from q (on segment sj) going `dir`: [point,
@@ -1191,6 +1240,13 @@ func _along_road(p: PackedVector2Array, sj: int, q: Vector2, dir: int, d: float)
 func _kerb_wait(c: Car, dt: float) -> float:
 	c.why = "parked"
 	if c.hold_t > 0.0:
+		if c.rev_t > 0.0:   # backing up a little first, its reversing lights on
+			c.rev_t -= dt
+			c.s = maxf(c.s - 0.3 * dt, 0.0)
+			c.why = "backing out"
+			if c.rev_t <= 0.0:
+				c.pull_out = 3.0
+			return 0.0
 		c.hold_t -= dt
 		if c.hold_t <= 0.0:
 			Probe.event("pull_out", {"kind": c.kind})
@@ -1199,11 +1255,53 @@ func _kerb_wait(c: Car, dt: float) -> float:
 	c.kerb_t += dt
 	var rel: Vector2 = g._pos - c.pos
 	var behind := -rel.dot(Vector2(sin(c.yaw), cos(c.yaw)))
-	if (behind > 18.0 and behind < 45.0 and absf(float(g._v)) > 2.0) or c.kerb_t > 50.0:
+	if c.door > 0.0:
+		# someone at the open door: they get in as the player comes (or after a while), the
+		# door shuts, and only then does it think of going
+		if c.board_t < 0.0 and ((behind > 0.0 and behind < 95.0 and absf(float(g._v)) > 2.0) or c.kerb_t > 40.0):
+			c.board_t = 0.0
+		if c.board_t < 0.0:
+			g.boarder_keep()
+		if c.board_t >= 0.0:
+			c.board_t += dt
+			if c.board_t < BOARD_IN:
+				g.boarder_at(_board_spot(c, c.board_t / BOARD_IN), Vector2(cos(c.yaw), -sin(c.yaw)), true)
+			else:
+				if not c.passenger:
+					c.passenger = true   # (in: the shader seats them)
+					g.boarder_gone()
+					Probe.event("boarded", {})
+				c.door = maxf(0.0, c.door - dt / 0.7)
+		return 0.0
+	if (behind > 18.0 and behind < 62.0 and absf(float(g._v)) > 2.0) or c.kerb_t > 50.0:
 		c.kerb = false
 		c.hold_t = 1.3
-		c.pull_out = 3.0   # (signalling out: _signal)
+		# a parked car backs up a little to get out (if there is room behind it), then signals
+		var back := Vector2(sin(c.yaw), cos(c.yaw)) * -2.75
+		var cw: float = (CORNERS.get(c.kind, Vector2(0.9, 2.25)) as Vector2).x
+		if g._push_out(c.pos + back, cw - 0.1, true, false) == Vector2.ZERO:
+			c.rev_t = 0.9
+		else:
+			c.pull_out = 3.0   # (signalling out: _signal)
 	return 0.0
+
+## getting in: the time it takes them from the pavement into the seat
+const BOARD_IN := 1.1
+
+## where someone getting into the kerb car's passenger seat stands: by its right side, at the
+## doorway's middle -- t 0 on the pavement, 1 at the seat (half inside the body: then gone)
+func _board_spot(c: Car, t: float) -> Vector2:
+	var dc: Vector2 = g._door_at(c.kind)
+	var fwd := Vector2(sin(c.yaw), cos(c.yaw))
+	var right := Vector2(-cos(c.yaw), sin(c.yaw))   # (its -X)
+	return c.pos + fwd * (dc.y - 0.55) + right * lerpf(dc.x + 0.5, dc.x - 0.15, smoothstep(0.0, 1.0, t))
+
+## the open door's back edge, for room
+func _board_tip(c: Car) -> Vector2:
+	var dc: Vector2 = g._door_at(c.kind)
+	var fwd := Vector2(sin(c.yaw), cos(c.yaw))
+	var right := Vector2(-cos(c.yaw), sin(c.yaw))
+	return c.pos + fwd * (dc.y - 1.0 * cos(1.0)) + right * (dc.x + 1.0 * sin(1.0))
 
 ## ---- lanes --------------------------------------------------------------------------------
 
@@ -1615,6 +1713,11 @@ func _start_on(c: Car, ri: int, sj: int, at: Vector2, dir: int) -> bool:
 	c.kerb = false
 	c.hold_t = 0.0
 	c.pass_i = -1
+	c.door = 0.0
+	c.board_t = -1.0
+	c.stood = false
+	c.rev_t = 0.0
+	c.steer = 0.0
 	if (c.kind == "van" or c.kind == "truck") and String(g._place.get("look", "")) == "med" and rng.randf() < DBL_SHARE:
 		c.dbl_s = rng.randf_range(60.0, 170.0)   # (a delivery somewhere ahead)
 		c.dbl = rng.randf_range(25.0, 50.0)
@@ -1976,6 +2079,8 @@ func _place(c: Car) -> void:
 	c.lift = c.y - float(g._h(c.pos))
 	if d.length_squared() > 0.01:
 		c.yaw = atan2(d.x, d.y)
+		# the front wheels point along the lane the front runs on; the body trails them
+		c.steer_to = clampf(angle_difference(c.yaw, ty), -0.5, 0.5)
 		if g._hnx > 0:
 			c.pitch = atan2(float(g._decks.surf(front, c.y)) - float(g._decks.surf(c.rear, c.y)), d.length())
 
@@ -1987,6 +2092,7 @@ func _in_view(p: Vector2) -> bool:
 ## ---- every drawn frame --------------------------------------------------------------------
 
 func draw(f: float) -> void:
+	var door_on := false
 	for i in range(cars.size()):
 		var c: Car = cars[i]
 		if not c.alive:
@@ -1998,19 +2104,30 @@ func draw(f: float) -> void:
 		var xf := Transform3D(basis, Vector3(p.x, lerpf(c.prev_y, c.y, f) + float(g.road_top()), p.y))
 		var mm: MultiMesh = _mms[c.kind]
 		mm.set_instance_transform(i, xf)
-		# alpha: the brake light, plus 2 for a driver, 4 for a driver and a passenger (the car
-		# shader draws them through the glass)
-		mm.set_instance_custom_data(i, Color(c.paint, c.braking + (4.0 if c.passenger else 2.0)))
+		var lit := c.blink != 0 and fmod(_clock + float(i) * 0.13, 0.7) < 0.36
+		mm.set_instance_custom_data(i, _custom(c, lit))
+		if c.door > 0.0:   # the kerb car's open door, on its hinge at the front of the doorway
+			door_on = true
+			if _door.multimesh.mesh != g._door_mesh(c.kind):
+				_door.multimesh.mesh = g._door_mesh(c.kind)
+			_door.multimesh.set_instance_custom_data(i, Color(c.paint, 32.0))
+			var dc: Vector2 = g._door_at(c.kind)
+			_door.multimesh.set_instance_transform(i, xf * Transform3D(Basis(Vector3.UP, c.door * 1.0), Vector3(-dc.x, 0.0, dc.y)))
+			_door_i = i
+		elif i == _door_i:
+			_door.multimesh.set_instance_transform(i, Transform3D(Basis(), Vector3(0, -500, 0)))
+			_door_i = -1
 		if _night:
 			_beams.multimesh.set_instance_transform(i, xf)
 		if _blobs.visible:
 			var cs: Vector2 = CORNERS.get(c.kind, Vector2(0.9, 2.25))
 			_blobs.multimesh.set_instance_transform(i, xf * Transform3D(Basis.from_scale(Vector3(cs.x * 2.0 + 0.8, 1.0, cs.y * 2.0 + 1.0)), Vector3(0, 0.02, 0)))
-		# the indicators: the car's right is its -X
-		var lit := c.blink != 0 and fmod(_clock + float(i) * 0.13, 0.7) < 0.36
+		# the indicators of a bus, a truck, a scooter: lamps of their own (a car's are its lamps'
+		# amber, in the car shader); the car's right is its -X
 		var cn: Vector2 = CORNERS.get(c.kind, Vector2(0.9, 2.25))
+		var boxed := c.kind == "bus" or c.kind == "truck" or c.kind == "moto"
 		for sd in range(2):   # (the blink's side; hazards (2): both)
-			var on := lit and (c.blink == 2 or sd == 0)
+			var on := lit and boxed and (c.blink == 2 or sd == 0)
 			if on:
 				var x := (cn.x - 0.04) * (-float(c.blink) if c.blink != 2 else (1.0 if sd == 0 else -1.0))
 				_blinkers.set_instance_transform(i * 4 + sd * 2, xf * Transform3D(Basis(), Vector3(x, 0.72, cn.y)))
@@ -2018,6 +2135,20 @@ func draw(f: float) -> void:
 			else:
 				_blinkers.set_instance_transform(i * 4 + sd * 2, Transform3D(Basis(), Vector3(0, -500, 0)))
 				_blinkers.set_instance_transform(i * 4 + sd * 2 + 1, Transform3D(Basis(), Vector3(0, -500, 0)))
+	_door.visible = door_on
+
+## a car's instance data for the car shader (CAR_SHADER's notes): its paint, each channel
+## carrying a small whole number -- r the indicators lit (1 its left, 2 its right, 3 both), g
+## and b the front wheels' steer in 64 steps -- and in alpha the brake light, 2 for each person
+## aboard, 8 reversing, 16 the passenger's door open, 32 stood at the kerb
+func _custom(c: Car, lit: bool) -> Color:
+	var bl := 0
+	if lit:
+		bl = 3 if c.blink == 2 else (1 if c.blink < 0 else 2)
+	var sq := clampi(int(round(c.steer / 0.016)) + 32, 1, 63)
+	var flags := (1 if c.rev_t > 0.0 else 0) + (2 if c.door > 0.0 else 0) + (4 if c.stood else 0)
+	return Color(c.paint.r + 2.0 * bl, c.paint.g + 2.0 * float(sq / 8), c.paint.b + 2.0 * float(sq % 8),
+		minf(c.braking, 0.95) + (4.0 if c.passenger else 2.0) + 8.0 * flags)
 
 func _hide_or_show(i: int) -> void:
 	var c: Car = cars[i]

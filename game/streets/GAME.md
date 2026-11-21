@@ -1135,6 +1135,23 @@ silver sunshades in parked cars' windscreens and parking permits on many; now an
 learner's roof sign or a new driver's sign; wiper arms, shark-fin aerials, roof rails on the
 SUVs and estates; mostly white, silver and grey, as the streets are.
 
+> 1,2,5,9 (car lights, car movement, the taxi's sign, the blocks' fronts as filmed)
+
+**Lights, wheels, doors, and the blocks' plaster.** Cars' headlights have a black housing
+with lenses and a running-light strip lit while they drive (older cars a chrome
+reflector); tail lights glow red with their own shape, brighter on the brake, with a white
+reversing light and an amber indicator; the indicators blink in the lamps themselves and on
+the mirrors, and a third brake light shows at the top of the rear window. Front wheels
+turn as cars steer, and a parked car is sometimes left with its wheels turned. Now and then
+the car parked ahead that pulls out first has someone getting in beside the driver: the
+door open over the pavement, them stepping in, the door shutting, a little back with its
+reversing lights, then out. Your car knocks over manhole covers and drain grates; cars
+near you dip their noses over them. Taxis carry a yellow מונית sign, lit at night. The
+blocks take their colour from their age (from the city's records): the 1950s-70s ones in
+sand plaster, older ones cream, new ones white or clad in stone; many balconies closed in
+with aluminium windows and shutters, white balcony bands on some blocks, grime under the
+old ones' windows. (Speed humps: the map data the game is built from has none yet.)
+
 > I took a video on my phone, walking in Givatayim.
 
 ## Smooth on a laptop and a phone
@@ -1404,6 +1421,8 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
 - Not just driving: the same baked city could be walked, or used by another game.
 - Crashes, what is still to come: a sign post bent, a fence panel or a hedge pushed in, a
   scrape mark on the wall the car rubbed.
+- Speed humps to bump over: OSM marks them (traffic_calming), but the baker does not keep
+  them yet -- it needs that and a re-bake (Overpass, or the bake workflow).
 - People who react ("not needed yet, maybe later"): jumping back, or falling, when a car
   comes at them; glancing at you; stopping at the kerb before they step out.
 - A "green wave": "any crossroads i approach switches to green for my car" -- a switch for
