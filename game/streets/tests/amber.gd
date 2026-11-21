@@ -7,11 +7,14 @@ extends SceneTree
 ## braking (over half a second), and where it stopped. The rest of the traffic and the people at crossings off.
 ##   LEVEL=3 STREETS_BUILD_ALL=0 $GODOT --headless --fixed-fps 60 --path . -s res://game/streets/tests/amber.gd
 ## AM_N junctions (default 3). Keeps away from the places tests/pick_routes.py keeps away from.
-## PASS: no red run, no braking over 5 m/s^2, none stopped more than 2 m over its line.
+## PASS: no red run, no braking over 5 m/s^2, none stopped more than 2 m over its line, and
+## none left standing more than 4 m short of it (where it stands 6 s on: rolled up to it).
 ## (Before: "too late to stop at 3 m/s^2" went on at 50 km/h into a left turn, slowed for the
 ## corner, and the amber ran out short of the line -- the route set's one red.)
+## (And: the stop braked at 1.5 m/s^2 at least, wherever the line was -- a green ending 80 m off
+## stopped the car 23 m on, and it stood there, 57 m short, all through the red. A user, twice.)
 var g: Node
-const DS := [10.0, 20.0, 30.0, 40.0, 55.0]
+const DS := [10.0, 20.0, 30.0, 40.0, 55.0, 80.0]
 
 func _initialize() -> void:
 	_run()
@@ -119,7 +122,8 @@ func _case(p: Array, go: String, st: String, d: float) -> Dictionary:
 	var vs: Array = []   # (the speed the last half second: braking read over that -- one tick
 	                     # read 15 m/s^2 where the last creep is zeroed as the car stands)
 	var stood := 0.0
-	var stop_at := INF
+	var stop_at := INF   # (where it stands at the end: its nose short of the line)
+	var first_stop := INF   # (where it first came to a stand)
 	var passed := false
 	while t < 40.0:
 		await physics_frame
@@ -148,16 +152,20 @@ func _case(p: Array, go: String, st: String, d: float) -> Dictionary:
 					g._light_at(n, w0), g._light_red_in(n, w0) if g.has_method("_light_red_in") else -1.0, nose, g._v, g._ap_light_v(), g._ap_why])
 			if absf(g._v) < 0.2:
 				stood += dt
-				stop_at = minf(stop_at, nose)
-				if stood > 2.0:
-					break
+				stop_at = nose
+				if first_stop == INF:
+					first_stop = nose
+				if stood > 6.0:
+					break   # (6 s standing: where it waits)
+			else:
+				stood = 0.0
 			if nose < -(g._node_r[n] * 2.0 + 10.0):
 				passed = true
 				break
 	if switched < 0.0:
 		return {}
 	var reds: int = g._reds - reds0
-	var ok: bool = reds == 0 and brake <= 5.0 and (stop_at == INF or stop_at > -2.0)
+	var ok: bool = reds == 0 and brake <= 5.0 and (stop_at == INF or (stop_at > -2.0 and stop_at < 4.0))
 	return {"node": n, "street": p[3], "going": go,
-		"from": st, "at_m": d, "kmh": snappedf(v_then * 3.6, 1), "did": "on through" if passed else ("stopped" if stop_at < INF else "neither"),
-		"stopped_m_short": snappedf(stop_at, 0.1) if stop_at < INF else null, "hardest_brake": snappedf(brake, 0.1), "reds": reds, "ok": ok}
+		"from": st, "at_m": d, "kmh": snappedf(v_then * 3.6, 1), "did": "stopped" if first_stop < INF else ("on through" if passed else "neither"),
+		"stopped_m_short": snappedf(stop_at, 0.1) if stop_at < INF else null, "first_stood_m_short": snappedf(first_stop, 0.1) if first_stop < INF else null, "hardest_brake": snappedf(brake, 0.1), "reds": reds, "ok": ok}

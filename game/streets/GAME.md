@@ -570,6 +570,9 @@ stops; one too close goes (traffic used to cruise on until it could not stop, of
 the amber, and cross on red). Autodrive, at the end of a green (the flashing green or the
 amber), goes on only if it will be over the line before the red at the pace it is going --
 slowing for a turn just past the line counts -- and otherwise stops, firmly if it has to.
+Stopping, it stops at the line, however far off it was when the green began to end ("the car
+weirdly stops in the middle of the run": a green ending 80 m ahead stopped it 60 m short, by
+a side street, and it stood there all through the red).
 
 A junction is one junction however OSM draws it. Where a divided road meets a street it is
 two points 10-30 m apart, where two divided roads cross it is four; the whole knot is one

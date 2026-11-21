@@ -481,7 +481,11 @@ the parked cars, which stand a third in the road).
   across its new lane. Keep the point near at a corner's pace (2 + 0.6 v, at least 3.5 m).
 - **The end of a green**: on amber (and a flashing green) go only if the nose is over the
   line before the red at the pace the plan goes there (a turn just past the line slows it);
-  "too late to stop gently" alone sent a car turning left into the red.
+  "too late to stop gently" alone sent a car turning left into the red. And once it decides
+  to stop, it stops at the line: a floor on the braking (so a stop that needs little still
+  brakes) halted it 60 m short when the green ended far off, and standing, with nothing left
+  to brake for, it waited there all red -- mid-street, the road empty. Far off, aim at the
+  usual slope to the line, as for a red.
 - **Score the driving, don't eyeball it**: a scripted exam that drives the AI from several
   places in town and counts per minute (stuck, hits, off the road, wrong side, red lights,
   harsh braking per occasion, and traffic's own stalls, overlaps and reds) finds in one run

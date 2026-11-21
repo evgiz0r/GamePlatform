@@ -373,6 +373,14 @@ it is made, with a one-line caption, rather than a report at the end.
   anything that probes for room (placing people tries spots every tick), so counting label
   changes counts noise. Count the ticks where the body moved other than its own step
   (displacement minus heading x speed x dt) and read the label only then.
+- **Test where a stop ends up, not only that it stopped.** A stop test that broke off the
+  moment the car stood read "stopped, 3-11 m short of the line" as a pass -- and a little
+  short was the visible end of a bug: the braking had a floor, so from farther off the car
+  stopped far short, and standing (nothing left to brake for) it stayed there all through
+  the red, 60 m from the light, in the middle of the street. Keep watching a few seconds
+  after it stands and check where it waits; and stage the far case (a light 80 m off), not
+  only the near ones the rule was written for. A number a test prints as "a little off" is
+  worth one more case before it goes on the open list.
 - Parse-check first: `tools/check_script.sh res://game/<game>/<game>.gd` takes seconds and
   says which line; a broken script makes a scene test fail in a confusing way minutes in.
 
