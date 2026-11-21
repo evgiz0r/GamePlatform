@@ -1192,6 +1192,19 @@ func start(_config: Dictionary) -> void:
 	_loading.add_theme_font_override("font", _font)
 	_loading.position = Vector2(120, 160)
 	_loading.size = Vector2(400, 40)
+	# readable over whatever the city shows behind it while it builds (pale ground, sky, a
+	# white block): a dark rounded panel under the text and the bar, the letters outlined.
+	# (Light letters straight on the scene: "make a better font that we can see during load")
+	var panel := StyleBoxFlat.new()
+	panel.bg_color = Color(Palette.col("bg"), 0.82)
+	panel.set_corner_radius_all(10)
+	panel.expand_margin_left = 16.0
+	panel.expand_margin_right = 16.0
+	panel.expand_margin_top = 10.0
+	panel.expand_margin_bottom = 46.0   # (down over the bar and the time left, the label's children)
+	_loading.add_theme_stylebox_override("normal", panel)
+	_loading.add_theme_color_override("font_outline_color", Palette.col("bg"))
+	_loading.add_theme_constant_override("outline_size", 5)
 	_loading.z_index = 100
 	add_child(_loading)
 	_load_bar_begin()
@@ -1481,6 +1494,8 @@ func _load_bar_begin() -> void:
 	_loading.add_child(_load_fill)
 	_load_eta = UIKit.label("", 13, "ink")
 	_load_eta.add_theme_font_override("font", _font)
+	_load_eta.add_theme_color_override("font_outline_color", Palette.col("bg"))
+	_load_eta.add_theme_constant_override("outline_size", 4)
 	_load_eta.position = Vector2(0, 60)
 	_load_eta.size = Vector2(LOAD_W, 20)
 	_load_eta.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -8656,17 +8671,30 @@ func _park_moto(r: Dictionary, ri: int, run: PackedVector2Array, cum: PackedFloa
 
 ## no parking at p beside road ri: its red-white corner or a bus stop's yellow-black
 func _no_parking(r: Dictionary, ri: int, p: Vector2) -> bool:
+	var pts: PackedVector2Array = r["pts"]
+	# a bus stop: none within BUS_CLEAR of it along its own kerb, on any street (the law's 12 m
+	# either side of the sign; held to, as a user says -- 11 m round its spot, on some kinds of
+	# street only, left cars "inside bus stations", in the bus's way). The far side parks on.
+	var stops := _kerb_stops(ri)
+	if not stops.is_empty():
+		var best := INF
+		var dir := Vector2.ZERO
+		for j in range(pts.size() - 1):
+			var q := Geometry2D.get_closest_point_to_segment(p, pts[j], pts[j + 1])
+			if q.distance_squared_to(p) < best:
+				best = q.distance_squared_to(p)
+				dir = (pts[j + 1] - pts[j]).normalized()
+		for c: Vector2 in stops:
+			if absf((p - c).dot(dir)) < BUS_CLEAR + CAR_LEN * 0.5 and absf((p - c).dot(Vector2(-dir.y, dir.x))) < 4.0:
+				return true
 	if r.has("kerb") or not (String(r["k"]) in KERB_RED_KINDS):
 		return false
-	var pts: PackedVector2Array = r["pts"]
 	var ids: PackedInt32Array = r["ids"]
 	for i in range(ids.size()):
 		if pts[i].distance_to(p) < _node_r[ids[i]] + KERB_CUT + KERB_RED + 1.0 and _kerb_arms(ids[i]) >= 3:
 			return true
-	for c: Vector2 in _kerb_stops(ri):
-		if c.distance_to(p) < KERB_BUS + 2.0:
-			return true
 	return false
+const BUS_CLEAR := 12.0              ## m along the kerb either side of a bus stop with no car parked
 func _build_parked() -> void:
 	if String(_place.get("look", "")) != "med":
 		return   # northern suburbs park in driveways
@@ -8954,7 +8982,7 @@ const CAR_MIX := ["suv", "suv", "suv", "suv", "suv", "suv", "suv", "suv", "suv",
 const CAR_SHADER := """
 shader_type spatial;
 uniform float night = 0.0;
-uniform sampler2D plate_font : filter_linear_mipmap, repeat_disable;   // digits 0-9, '-', I, L (_plate_font)
+uniform sampler2D plate_font : filter_linear_mipmap, repeat_disable;   // digits 0-9, '-', I, L, מונית, T A X (_plate_font)
 uniform float plate_style = 0.0;       // 1: an Israeli plate (yellow, black digits, the blue IL strip)
 uniform vec4 plate_blue : source_color;
 uniform float plate_seed = 0.0;        // the player's car: its own number
@@ -8964,6 +8992,7 @@ uniform vec4 amber : source_color;     // indicators: the lens
 uniform vec4 amber_lit : source_color; // ... and lit (saturated: a bright colour went to white in the sun)
 uniform vec4 red_lit : source_color;   // a tail light, lit
 uniform vec4 taxi_col : source_color;  // a taxi's roof sign
+uniform float taxi_latin = 0.0;         // 1: its sign reads TAXI (Bedford's), not מונית
 // a number of the car's own, steady while it drives (flat: interpolated, its last digits
 // wandered across a plate and the hashes made of it drew a different digit in each pixel)
 varying flat float plate_id;
@@ -9070,7 +9099,7 @@ float line_cover(float d, float w, float aa) {
 // grey is the ink (taken at the half-way grey, a plate was blank from the chase view)
 float plate_glyph(float g, float x, float y, float far) {
 	// (kept inside its own cell's margin: the font's smaller copies bled the next glyph in)
-	float a = texture(plate_font, vec2((g + clamp(x, 0.1, 0.9)) / 18.0, clamp(y, 0.06, 0.94))).r;
+	float a = texture(plate_font, vec2((g + clamp(x, 0.1, 0.9)) / 21.0, clamp(y, 0.06, 0.94))).r;   // (PLATE_GLYPHS' count)
 	return mix(smoothstep(0.3, 0.7, a), min(a * 1.8, 1.0), far);
 }
 // an indicator lamp at x (the car's left is +X) lit now
@@ -9232,11 +9261,20 @@ void fragment() {
 			col = taxi_col.rgb;
 			if (abs(lnrm.z) > 0.5) {
 				float tx = g.x * sign(lnrm.z);   // (rightward as seen: from the front or from behind)
-				float i = floor((0.26 - tx) / 0.104);   // the letters right to left
-				if (i >= 0.0 && i < 5.0 && abs(g.y) < 0.055) {
-					float gx = (tx - 0.26 + (i + 1.0) * 0.104) / 0.104;
-					float far = smoothstep(0.004, 0.012, fwidth(tx) / 0.52);
-					col = mix(col, vec3(0.04), plate_glyph(13.0 + i, gx, (0.055 - g.y) / 0.11, far));
+				float far = smoothstep(0.004, 0.012, fwidth(tx) / 0.52);
+				if (taxi_latin > 0.5) {   // TAXI, left to right
+					float i = floor((tx + 0.208) / 0.104);
+					if (i >= 0.0 && i < 4.0 && abs(g.y) < 0.055) {
+						float gx = (tx + 0.208 - i * 0.104) / 0.104;
+						float gi = i < 0.5 ? 18.0 : (i < 1.5 ? 19.0 : (i < 2.5 ? 20.0 : 11.0));
+						col = mix(col, vec3(0.04), plate_glyph(gi, gx, (0.055 - g.y) / 0.11, far));
+					}
+				} else {
+					float i = floor((0.26 - tx) / 0.104);   // the letters right to left
+					if (i >= 0.0 && i < 5.0 && abs(g.y) < 0.055) {
+						float gx = (tx - 0.26 + (i + 1.0) * 0.104) / 0.104;
+						col = mix(col, vec3(0.04), plate_glyph(13.0 + i, gx, (0.055 - g.y) / 0.11, far));
+					}
 				}
 			}
 			emit = col * night * 2.0 + refl * 0.08;
@@ -9377,7 +9415,9 @@ const PLATE_GLYPHS := [
 	# and for a taxi's sign, מונית: mem, vav, nun, yod, tav
 	"11110010011000110001100011000110111", "01100001000010000100001000010000100",
 	"01100000100001000010000100001011110", "01110000100010000000000000000000000",
-	"11111010010100101001010010100111001"]
+	"11111010010100101001010010100111001",
+	# and for one in Latin letters, TAXI (with the I above): T, A, X
+	"11111001000010000100001000010000100", "01110100011000111111100011000110001", "10001100010101000100010101000110001"]
 var _plate_tex: ImageTexture
 
 func _plate_font() -> ImageTexture:
@@ -9416,6 +9456,7 @@ func _car_material() -> ShaderMaterial:
 		var red := _real_col("red")
 		m.set_shader_parameter("red_lit", Color.from_hsv(red.h, 0.97, 1.0))
 		m.set_shader_parameter("taxi_col", _real_col("yellow"))
+		m.set_shader_parameter("taxi_latin", 0.0 if String(_place.get("look", "")) == "med" else 1.0)
 		m.set_shader_parameter("lamp", _tone["lamplight"])
 		m.set_shader_parameter("tail", Palette.col("hazard"))
 		m.set_shader_parameter("night", 1.0 if _night else 0.0)
@@ -19045,6 +19086,16 @@ func _ap_give_v(dt: float) -> float:
 					var o_rank: int = theirs[2]
 					if not _sign_rule(n, theirs[0]).is_empty():
 						o_rank = -1
+					# a car coming to a roundabout along another way in is not on the ring yet: it
+					# gives way where it comes in itself, so it is my equal (first come, first
+					# served), not the ring. (Ranked by the ring it would be on by the time it got
+					# here, autodrive stood 11 s at the ring's edge for a motorbike 78 m off up
+					# another arm -- "pretty bad in roundabouts, waiting for a long time",
+					# Givatayim's Geisler square; tests/light_line.gd)
+					if o_rank == 10 and my_rank < 10:
+						var o_on := _nearest_seg(o.pos, 6.0, true, false, _y)
+						if not o_on.is_empty() and not bool((_roads[int(o_on["road"])] as Dictionary).get("ring", false)):
+							o_rank = my_rank
 					if o_rank != my_rank:
 						theirs_first = o_rank > my_rank
 					elif my_turn != o_turn:
@@ -22976,10 +23027,14 @@ func _draw_hud() -> void:
 	_hud.draw_rect(GOTO_BTN, Color(bg, 0.65))
 	_hud.draw_rect(GOTO_BTN, Color(go, 0.9), false, 1.5)
 	_hud.draw_string(_font, GOTO_BTN.position + Vector2(0, 15), "go to…", HORIZONTAL_ALIGNMENT_CENTER, GOTO_BTN.size.x, 11, go)
-	var asc := Palette.col("friend") if _assist else Color(ink, 0.6)
+	# (off while autodrive drives: the assist helps your hands only -- _manual, never _autodrive
+	# -- and "assist on" beside "AUTODRIVE ON" read as if it were steering too; yours again
+	# when you take over)
+	var assist_now := _assist and not _auto
+	var asc := Palette.col("friend") if assist_now else Color(ink, 0.6 if not _auto else 0.35)
 	_hud.draw_rect(ASSIST_BTN, Color(bg, 0.65))
 	_hud.draw_rect(ASSIST_BTN, Color(asc, 0.9), false, 1.5)
-	_hud.draw_string(_font, ASSIST_BTN.position + Vector2(0, 15), "assist on" if _assist else "assist off", HORIZONTAL_ALIGNMENT_CENTER, ASSIST_BTN.size.x, 11, asc)
+	_hud.draw_string(_font, ASSIST_BTN.position + Vector2(0, 15), "assist on" if assist_now else "assist off", HORIZONTAL_ALIGNMENT_CENTER, ASSIST_BTN.size.x, 11, asc)
 	var nc := Palette.col("warn") if _night else Color(ink, 0.8)
 	_hud.draw_rect(NIGHT_BTN, Color(bg, 0.65))
 	_hud.draw_rect(NIGHT_BTN, Color(nc, 0.9), false, 1.5)
@@ -23367,7 +23422,7 @@ func _input(event: InputEvent) -> void:
 				_toggle_walk()
 			elif ASSIST_BTN.grow(4).has_point(mb.position):
 				_assist = not _assist
-				_show_banner("driving assist " + ("on" if _assist else "off"), 1.2)
+				_show_banner("driving assist " + ("on" if _assist else "off") + (" when you drive" if _auto else ""), 1.2)
 				Probe.event("assist", {"on": _assist})
 			elif ZOOM_BTN.grow(2).has_point(mb.position):
 				_zoom_set(0.0 if _zoom > 0.0 else ZOOM_UP)

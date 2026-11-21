@@ -333,6 +333,12 @@ the parked cars, which stand a third in the road).
   straight kerb across a road's mouth went in whole and laid a strip of pavement across the
   junction. A fine grid (8 m) of road segments makes those checks cheap while building.
 
+## Roundabouts' give way
+
+- **Only a car on the ring has the ring's right of way.** Ranked by the road it will be on
+  where the paths meet, a car still coming up another way in counted as on the ring, and an
+  AI at the ring's edge waited 11 s for a motorbike 78 m off. Coming in, it gives way itself.
+
 ## Traffic lights
 
 - **A light on a slip road's end is the slip road's.** OSM often puts the signals on the node

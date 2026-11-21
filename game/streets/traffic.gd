@@ -34,7 +34,8 @@ const DWELL := 7.0           ## seconds a bus stands at a stop
 ## lane (there is no room at the kerb: the parked cars); cars behind go round it over the
 ## centre line when nothing is coming, autodrive too (_ap_pass_bus). And now and then a car
 ## parked ahead of the player pulls out as they come.
-const DBL_SHARE := 0.45      ## of the vans and trucks, the share that stop somewhere on the way
+const DBL_SHARE := 0.1       ## of the vans and trucks, the share that stop somewhere on the way
+                             ## (0.45 was too many standing in the street: "very rare in Israel", a user)
 const DBL_ROADS := {"residential": true, "tertiary": true, "unclassified": true, "secondary": true, "living_street": true}
 const KERB_EVERY := Vector2(35.0, 75.0)   ## seconds between cars set to pull out ahead of the player
 const KERB_BOARD := 0.6      ## of those, the share with someone getting in beside the driver first
