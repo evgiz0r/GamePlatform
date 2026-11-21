@@ -41,7 +41,7 @@ const CHECKS := ["check: bodies overlapping, traffic", "check: bodies overlappin
 	"check: autodrive body into a building", "check: autodrive body into a wall", "check: autodrive body into a post",
 	"check: over the line at a red, traffic", "check: over the line at a red, autodrive",
 	"check: autodrive pushing 3 s+", "check: held by nothing 10 s+, traffic", "check: held by nothing 10 s+, autodrive",
-	"check: gave way to a car 6 s+ off, autodrive"]
+	"check: gave way to a car 6 s+ off, autodrive", "check: traffic rolling backwards", "check: traffic body off the asphalt"]
 ## what may hold a car standing still (anything else -- the limit, a curve -- is nothing)
 const NAMED := ["light", "zebra", "people", "sign", "junction", "player", "bus stop", "squeezing past",
 	"blocked", "choice", "turning", "backing", "pushing", "delivery"]   # (delivery: a van double-parked to unload)
@@ -493,6 +493,8 @@ var _ap_stand := 0.0
 var _push_at := Vector2.INF
 var _push_s := 0.0
 var _push_counted := false
+var _backing := {}
+var _off_n := {}   ## car -> samples running with a corner off the asphalt
 
 func _check(dt: float) -> void:
 	_tick += 1
@@ -502,6 +504,45 @@ func _check(dt: float) -> void:
 		if cars[i].alive:
 			boxes[i] = Bodies.car_box(cars[i])
 	var pb: Array = Bodies.player_box(g)
+	# -- rolling backwards: no traffic car's speed is ever below 0 (backing out of a kerb
+	# spot moves it without a speed). A car pulling away from a hard brake once carried the
+	# brake on through 0 and backed 3 m/s into the queue behind it. Once a car, a spell.
+	for i: int in boxes:
+		var rc = cars[i]
+		if rc.v < -0.1:
+			if not _backing.has(i):
+				_count("check: traffic rolling backwards")
+				_incident("traffic rolling backwards", rc.pos, "%s (%s, %.1f m/s)" % [rc.kind, rc.why, rc.v])
+			_backing[i] = true
+		elif rc.v > 0.5:
+			_backing.erase(i)
+	# -- off the asphalt: a moving car's corner 0.35 m+ past every road's edge (a bus's corner
+	# swings ~0.3 m out on a bend) and not in a junction's disc, three samples running (0.3 s).
+	# Traffic is on rails, so nothing else stops it riding the kerb: the exam saw it only where
+	# a post happened to stand (a car on Sderot Herzl's two-lane piece with the three-lane
+	# piece's kerb shift, 1 m over the kerb into the hydrants; buses pulled in at stops too far).
+	if _tick % 6 == 0:
+		for i: int in boxes:
+			var oc = cars[i]
+			if oc.v < 2.0 or oc.kerb or oc.hold_t > 0.0 or oc.rev_t > 0.0:
+				_off_n.erase(i)
+				continue
+			var worst := -INF
+			var at := Vector2.ZERO
+			for q: Vector2 in Bodies.corners(boxes[i]):
+				var on: Dictionary = g._nearest_seg(q, 14.0, true, true, float(oc.y))
+				var e := INF if on.is_empty() else float(on["edge"])
+				if e > 0.35 and not g._in_junction(q, 0.2) and not g._in_corner_fill(q, 0.2) and e > worst:
+					worst = e
+					at = q
+			if worst > -INF:
+				_off_n[i] = int(_off_n.get(i, 0)) + 1
+				if _off_n[i] == 3:
+					_count("check: traffic body off the asphalt")
+					_incident("traffic off the asphalt", at, "%s (%s, %.0f km/h), a corner %.2f m past the edge" % [oc.kind, oc.why, oc.v * 3.6, worst])
+					print("    %s" % _car_line(i))
+			else:
+				_off_n.erase(i)
 	# -- bodies overlapping: traffic with traffic (both standing too: put down on each other
 	# is as wrong as driving into each other), autodrive with traffic
 	var now := {}

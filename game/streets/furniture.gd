@@ -251,14 +251,17 @@ func wires() -> void:
 		var last_p := Vector2.INF
 		var last_at: Array = []
 		var n := 0
-		for sp: Array in _walk_road(r, spacing, 6.0 + _rnd(ri) * 12.0, hw + 0.55, side, 3.0):
+		for sp: Array in _walk_road(r, spacing, 6.0 + _rnd(ri) * 12.0, hw + 0.7, side, 3.0):
 			var p: Vector2 = sp[0]
 			var d: Vector2 = sp[1]
 			var out: Vector2 = sp[2]
 			# a pole in this square keeps clear of its lamps and trees; one in the next square is
 			# taken as clear (its trees are not up yet) so the wire still runs to it
 			var mine: bool = g._mine(p)
-			if not (_free(p, 0.25, 0.45, 2.2) if mine else (g._off_road(p, 0.25) and g._push_out(p, 0.45, false, false) == Vector2.ZERO)):
+			# (its middle 0.55 m off every asphalt edge, the pole's side 0.4: at 0.25 one stood
+			# 0.12 m off Sapir's on a bend, Ashdod, and the buses' corners swinging out there
+			# touched it every run -- the exam's "traffic into a post")
+			if not (_free(p, 0.55, 0.45, 2.2) if mine else (g._off_road(p, 0.55) and g._push_out(p, 0.45, false, false) == Vector2.ZERO)):
 				continue
 			var gy := _h(p)
 			# the crossarm goes across the street: local X along `out`

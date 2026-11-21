@@ -3486,6 +3486,56 @@ missing at all 8 shots; the shots show the strips and outlines meeting the built
 without a gap. (The square being built keeps its stand-in to the end of `_build_tile`:
 `_tiles_done` is set at its start, which the test first counted as wrong.)
 
+## Traffic: backwards, dead ends, kerb pull-ins, road hand-overs (22 Nov 2026)
+
+A baseline on `main` df1b539 (the user's PC, Windows, exams 4 x 75 s at 1x, three at once):
+checks Givatayim / Ashdod / test town 12 / 12 / 11, all traffic's; route set 10 of 10, 0 hits,
+0 reds, 0 rescues, waits 10-37 s (`tests/routes_results.md`). Four bugs under the exam's lines:
+- **Rolling backwards.** The test town's "bus (player, -11 km/h)" on Derekh HaHarim wanted
+  4.5-6.6 m/s while its speed went to -2.9: pulling away right after a hard brake, `acc` still
+  held the brake (-7.5) and was eased up at 4 m/s^3 while being added, so the car slowed on
+  through 0 and backed into the queue. Now from `maxf(acc, 0)`. Nothing else in traffic sets a
+  speed below 0 (backing out of a kerb spot moves `s`, not `v`). New exam check "traffic
+  rolling backwards" (0 since; the baseline's bus would have read it).
+- **Turning round at a dead end** (`_turn_round`). The way back (`_next`'s `back`) starts at
+  the point before the end, so the end, in the lane coming in, was joined straight to that
+  point in the lane going out -- on HaDganim (two points, 135 m) one diagonal down the wrong
+  side into the cars still coming in, nose to nose; the ring rule then let one drive through
+  the other (5 of Givatayim's 12 checks). Now a half circle a lane wide, short of the end.
+  `tests/traffic_dead_end.gd`: before, every car out 1.6-2 m on the wrong side, 3-16
+  overlaps a minute; after, 7 sent, 0 wrong side, 0 overlaps.
+- **Pulling in at the kerb measured from the wrong lane.** A bus at a stop and a delivery van
+  take "the room to the kerb" from `_lane(r)` -- the lane traffic drives by default, the
+  middle one of three -- not the lane they are in: a bus in Sderot Herzl's kerb lane got the
+  whole 0.9 m, 4.23 m right of the middle, its side 0.48 m over the kerb, into a hydrant at
+  42 km/h. Now from `_lane(r) - shift_to`.
+- **A road handing over to the next.** The points either end of that stretch are each in
+  their own road's lane, so the line slides between them; the shift jumped to the new
+  road's at once. Sderot Herzl's three-lane piece's kerb shift (-3.33) on its two-lane
+  piece's line (2.22 right) put cars 5.55 m right of an 8.9 m road's middle, a metre over the
+  kerb into hydrants and trees at 40 km/h (Herzl and Begin, every Ashdod run). Now blended
+  along the stretch (`_steer_lanes`, before `if rid != c.shift_rd`). Ashdod's exam, the same
+  run beside the old code: 26 checks -> 15, off the asphalt 17 -> 11, into posts 3 -> 1.
+- Wires poles (`furniture.wires`) now 0.7 m out from the edge, their middle 0.55 m off every
+  asphalt edge (was 0.55 and 0.25: one stood 0.12 m off Sapir's on a bend, touched by the
+  buses every run). Every wire pole moved 15 cm back.
+- New exam check **"traffic body off the asphalt"**: a moving car's corner 0.35 m+ past every
+  road's edge, outside junction discs, 0.3 s running. It reads 2-11 a town now, nearly all
+  **buses on bends and at stops** (Givatayim (547, -906) 0.6 m, (709, 1290) 1.2 m at a stop;
+  the test town (633, -242) 1.4 m on a curve; Sapir's bend 0.4 m) -- open, next: a bus's
+  corners swinging past the kerb, and whether 0.35 m is the right slack for a 12 m bus.
+After all of it (exams, one run each, noisy): Givatayim 16 (8 without the new check),
+Ashdod 15 (4), test town 14 (12). Still open: traffic driving into autodrive standing at a
+junction (test town (-546, 405), 3 a run: "traffic shoves your standing car"); traffic
+overlapping in the test town's junction at (-638, 224) (8-10 a run); Givatayim's 7-9 traffic
+into posts (look with the off-asphalt lines first); a "traffic left of the middle" check for
+two-way streets (the dead-end family everywhere). `tests/posts_at.gd` says what stands at a
+spot and where traffic's lanes lie (see the tests README).
+**On Windows**: Python's `open()` reads the system code page unless told `encoding="utf-8"`
+-- `run_routes.sh` found no routes in `routes.json` (Hebrew) and ran none; fixed there and in
+`route_report.py`. A worktree beside this checkout needs `.godot` copied in (or ~40 s of
+`--import`) before the first headless run.
+
 ## Open problems
 
 - **Walkers appearing in view: mostly fixed, a rare one left** (`people_pops`, Givatayim,

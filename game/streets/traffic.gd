@@ -402,7 +402,11 @@ func tick(dt: float) -> void:
 				c.acc = 0.0
 			else:
 				var want_a := c.accel * clampf(1.0 - pow(c.v / maxf(vt, 1.0), 4.0), 0.2, 1.0)
-				c.acc = move_toward(c.acc, want_a, 4.0 * dt)
+				# (from the braking it was doing, not through it: `acc` still held the last hard
+				# brake (-7.5), and easing that up at 4 m/s^3 while adding it, a car that wanted
+				# 6 m/s slowed on through 0 and backed 3 m/s into the queue behind it -- the
+				# test town's bus on Derekh HaHarim, the exam's "bus (player, -11 km/h)")
+				c.acc = move_toward(maxf(c.acc, 0.0), want_a, 4.0 * dt)
 				c.v = minf(c.v + c.acc * dt, vt)
 		else:
 			# slowing: as before, down to what it wants at once if it must (its plans brake at
@@ -1108,7 +1112,10 @@ func _double_park(c: Car, dt: float) -> float:
 	if to < 35.0:   # in toward the kerb, as far as there is room
 		var r: Dictionary = _roads[c.rd[mini(c.k + 1, c.rd.size() - 1)]]
 		var cw: float = (CORNERS.get(c.kind, Vector2(0.95, 2.4)) as Vector2).x
-		var room := clampf(float(r["w"]) * 0.5 - _lane(r) - cw - 0.3, 0.0, 1.0)
+		# (from the lane it is in, right of the middle: `_lane(r) - shift_to`. From `_lane(r)`
+		# alone -- the lane traffic drives in by default, the middle one of three -- a van in
+		# the kerb lane of a three-lane road was given the whole metre and more, over the kerb)
+		var room := clampf(float(r["w"]) * 0.5 - (_lane(r) - c.shift_to) - cw - 0.3, 0.0, 1.0)
 		# and no further than keeps its side 0.3 m off what stands at the kerb, on the way in
 		# and where it stops: parked cars stand a third in the road, and a truck pulled in by
 		# the asphalt's room alone stood 0.3 m into one's side (the exam's "traffic body into a
@@ -1560,6 +1567,19 @@ func _steer_lanes(c: Car, i: int, dt: float, best: float, lead_v: float) -> void
 	# into the poles there for 25 m.
 	var to := _lane_shift(r, c.lane_i)
 	var rid: int = c.rd[mini(c.k + 1, c.rd.size() - 1)]
+	# Across the stretch where one road hands over to the next, the line the car follows slides
+	# from the old road's lane to the new one's (the points either end are each in their own
+	# road's lane); its shift goes with it, the same lane of each, blended by how far along.
+	# Taken at once, the new road's shift on the old road's line put a car in the kerb lane of
+	# Sderot Herzl's three-lane piece 5.55 m right of its two-lane piece's middle (8.9 m wide),
+	# a metre over the kerb into the hydrants and trees there at 40 km/h -- the exam's
+	# "traffic into a post", Herzl and Begin, every Ashdod run.
+	var rk: int = c.rd[clampi(c.k, 0, c.rd.size() - 1)]
+	if rk != rid and rk >= 0 and c.k + 1 < c.cum.size():
+		var r_k: Dictionary = _roads[rk]
+		var seg := c.cum[c.k + 1] - c.cum[c.k]
+		var tk := clampf((c.s - c.cum[c.k]) / maxf(seg, 0.01), 0.0, 1.0)
+		to = lerpf(_lane_shift(r_k, clampi(c.lane_i, 0, maxi(_lanes_dir(r_k) - 1, 0))), to, tk)
 	if rid != c.shift_rd:
 		if c.shift_rd >= 0 and absf(to - c.shift_to) > 0.3:
 			c.realign = true
@@ -1634,7 +1654,10 @@ func _bus_stop(c: Car, dt: float) -> float:
 				var room := 0.9
 				if j < c.rd.size() and c.rd[j] >= 0:
 					var r: Dictionary = _roads[c.rd[j]]
-					room = clampf(float(r["w"]) * 0.5 - g._lane_off(r) - CORNERS["bus"].x - 0.3, 0.0, 0.9)
+					# (from the lane it is in: on a road of three lanes `_lane_off` is the middle
+					# one, so a bus in the kerb lane of Sderot Herzl got the whole 0.9 m -- 4.23 m
+					# right of the middle, its side 0.48 m over the kerb, into a hydrant at 42 km/h)
+					room = clampf(float(r["w"]) * 0.5 - (g._lane_off(r) - c.shift_to) - CORNERS["bus"].x - 0.3, 0.0, 0.9)
 				c.shift_to -= room
 			if at < 1.6:
 				if c.v < 0.4:
@@ -1904,6 +1927,7 @@ func _leg(c: Car, ri: int, from: int, dir: int) -> void:
 		last = _ring_stop(r, from, dir, last)
 	_turn_into(c, ri, from, dir, lane, lim)
 	var start := c.pts.size()
+	_turn_round(c, ri, from, dir, lane, lim)
 	var i := from
 	while true:
 		var prv := p[i - dir] if (i - dir >= 0 and i - dir < p.size()) else p[i]
@@ -1921,6 +1945,37 @@ func _leg(c: Car, ri: int, from: int, dir: int) -> void:
 		i += dir
 	c.end = Vector3i(ri, last, dir)
 	_curves(c, start - 8)
+
+## Turning round at a dead end (`_next`'s way back): the leg back starts at the point
+## before the end, so the line from the end, in the lane coming in, ran straight to the
+## next point in the lane going out -- on a street of two points (HaDganim, Givatayim) one
+## 135 m diagonal down the wrong side, into the cars still coming in, nose to nose and through
+## them (tests/traffic_dead_end.gd: every car out 1.6-2 m on the wrong side, 3-16 overlaps a minute).
+## Now a half circle at the end, a lane wide, short of it: out in the lane going back at once.
+func _turn_round(c: Car, ri: int, from: int, dir: int, lane: float, lim: float) -> void:
+	var r: Dictionary = _roads[ri]
+	var p: PackedVector2Array = r["pts"]
+	var ids: PackedInt32Array = r["ids"]
+	var at := from - dir
+	var n := c.pts.size()
+	if at < 0 or at >= p.size() or n < 2 or c.node[n - 1] != ids[at]:
+		return
+	var came := (c.pts[n - 1] - c.pts[n - 2]).normalized()
+	var go := (p[from] - p[at]).normalized()
+	if came == Vector2.ZERO or go == Vector2.ZERO or came.dot(go) > -0.8:
+		return   # (not doubling back)
+	var right := Vector2(-came.y, came.x)
+	var rad := maxf(absf(lane), 1.2)
+	var mid: Vector2 = p[at] - came * rad   # (the half circle's middle, a lane short of the end)
+	var slow := minf(lim, 2.5)
+	for k in range(1, 5):
+		var th := PI * float(k) / 4.0
+		var q := mid + (right * cos(th) + came * sin(th)) * rad
+		c.cum.append(c.cum[c.cum.size() - 1] + c.pts[c.pts.size() - 1].distance_to(q))
+		c.pts.append(q)
+		c.node.append(-1)
+		c.rd.append(ri)
+		c.vmax.append(slow)
 
 ## Into the next road at a junction (the player's autodrive does the same, see the game's
 ## _ap_turn_into): the last road ended on the junction's point and the next one's first
