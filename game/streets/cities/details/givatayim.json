@@ -87,6 +87,10 @@
     "w": 2.6,
     "name": "המרי",
     "name_en": "HaMeri",
+    "pave": [
+     0,
+     1
+    ],
     "src": "make_givatayim"
    },
    {
