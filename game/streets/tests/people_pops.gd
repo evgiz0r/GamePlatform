@@ -77,7 +77,8 @@ func _run() -> void:
 					pops[e[0]] = int(pops.get(e[0], 0)) + 1
 					if firsts.size() < 8:
 						firsts.append("%s popped at %s, %.0f m from your car (%s)" % [e[0], p.round(), p.distance_to(g._pos),
-							"was hidden" if not prev[0] else "jumped %.1f m from %s" % [(prev[1] as Vector2).distance_to(p), (prev[1] as Vector2).round()]])
+							("was hidden" if not prev[0] else "jumped %.1f m from %s" % [(prev[1] as Vector2).distance_to(p), (prev[1] as Vector2).round()])
+							+ ("" if e[2] == null else "; placed by '%s'%s" % [(e[2] as Dictionary).get("placed", ""), ", beside another" if (e[2] as Dictionary).has("with") else ""])])
 				elif e[2] != null and (e[2] as Dictionary).has("yaw"):
 					# sideways, against the way they face, smoothed over ~0.2 s
 					var yaw: float = (e[2] as Dictionary)["yaw"]

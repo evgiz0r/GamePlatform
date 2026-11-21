@@ -158,26 +158,29 @@ func _name(ri: int) -> String:
 ## ways in with no pole facing them, stop lines that leave a waiting car's front on a zebra, a
 ## road through two lit points of one knot in two groups, a divided road lit on one half only,
 ## stop points short of their junction. Tel Aviv's 12 ways in with no pole were 5 earlier on
-## 20 Nov (tests/README.md): they crept up unwatched, an open problem in DEV.md.
+## 20 Nov (tests/README.md): they crept up unwatched. 22 Nov: a second round of spots for a
+## pole (further onto the pavement, the left kerb, a far-side light) -- 8/3/4/0/12 -> 2/0/1/0/1.
 const LIGHTS_21NOV := {
-	1: {"no_pole": 8.0, "on_zebra": 2.0, "split_groups": 0.0, "unlit_twins": 0.0, "short": 2.0},
-	2: {"no_pole": 3.0, "on_zebra": 0.0, "split_groups": 0.0, "unlit_twins": 0.0, "short": 1.0},
-	3: {"no_pole": 4.0, "on_zebra": 0.0, "split_groups": 1.0, "unlit_twins": 0.0, "short": 3.0},
+	1: {"no_pole": 2.0, "on_zebra": 2.0, "split_groups": 0.0, "unlit_twins": 0.0, "short": 2.0},
+	2: {"no_pole": 0.0, "on_zebra": 0.0, "split_groups": 0.0, "unlit_twins": 0.0, "short": 1.0},
+	3: {"no_pole": 1.0, "on_zebra": 0.0, "split_groups": 1.0, "unlit_twins": 0.0, "short": 3.0},
 	4: {"no_pole": 0.0, "on_zebra": 0.0, "split_groups": 0.0, "unlit_twins": 0.0, "short": 0.0},
-	7: {"no_pole": 12.0, "on_zebra": 3.0, "split_groups": 0.0, "unlit_twins": 0.0, "short": 11.0},
+	7: {"no_pole": 1.0, "on_zebra": 3.0, "split_groups": 0.0, "unlit_twins": 0.0, "short": 11.0},
 }
 const LIMITS := {
-	1: {"tilt": 8.0, "pavings": 60.0, "posts_twice": 128.0},
-	2: {"tilt": 3.0, "pavings": 60.0, "posts_twice": 1.0},
-	3: {"tilt": 3.0, "pavings": 140.0, "posts_twice": 48.0},   # (124 m2 after the fixes of 21 Nov, a tail of 1-3 m2 spots in a
+	1: {"tilt": 8.0, "pavings": 60.0, "posts_twice": 0.0},
+	2: {"tilt": 3.0, "pavings": 60.0, "posts_twice": 0.0},
+	3: {"tilt": 3.0, "pavings": 140.0, "posts_twice": 5.0},   # (124 m2 after the fixes of 21 Nov, a tail of 1-3 m2 spots in a
 	                                       # town 1.5x Tel Aviv's roads: the user chose to guard it here)
 	4: {"tilt": 3.0, "pavings": 60.0, "posts_twice": 1.0},
-	7: {"tilt": 3.0, "pavings": 60.0, "posts_twice": 596.0},
+	7: {"tilt": 3.0, "pavings": 60.0, "posts_twice": 3.0},
 }
 ## (posts twice: any solid thing put up twice on one spot, world_checks.posts_twice. When it
 ## joined, 21 Nov, the railings' joints were most of it -- 848 / 1 / 1,259 / 177 / 2,593 --
-## fixed; what is left is a tail, guarded here: Givatayim's bougainvillea clumps over a wall
-## drawn twice, Tel Aviv's 0.6 m posts (trees mapped twice?), an open problem in DEV.md)
+## fixed. 22 Nov, the tail (tests/posts_twice_where.gd names who put each pair up): a
+## building's stilts put up by each of its parts on one outline (Tel Aviv 526, Givatayim 64),
+## greenery over a corner's wall laid from both streets, two railings' end posts, a cafe's
+## tables and mapped lamps twice -- 128/1/48/1/596 -> 0/0/5/1/3, the limits now)
 
 func _check(lvl: int) -> int:
 	var out := {}            ## kind -> [[how far, where, what], ...]

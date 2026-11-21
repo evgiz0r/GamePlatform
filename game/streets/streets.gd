@@ -300,6 +300,12 @@ vec3 pane(vec3 room_c, vec3 v, float elev, vec3 tint, vec3 street, float floor_f
 	return mix(room_c * tint, sk * mix(vec3(1.0), tint, 0.35), f);
 }
 
+// the brightest plaster rolled off toward 0.67 (see where fragment() calls it)
+vec3 roll_white(vec3 c) {
+	float bm = max(c.r, max(c.g, c.b));
+	return bm > 0.55 ? c * (0.55 + 0.12 * (1.0 - exp(-(bm - 0.55) / 0.12))) / bm : c;
+}
+
 // how much of a line `w` wide (half-width) at distance d covers a pixel `aa` metres wide
 float line_cover(float d, float w, float aa) {
 	return clamp((w - d) / aa + 0.5, 0.0, 1.0);
@@ -332,6 +338,12 @@ void fragment() {
 		vec2 xy = (textureGrad(plaster_nrm, puv, pdx, pdy).rg * 2.0 - 1.0) * (siding > 0.5 ? 0.4 : 1.0);
 		pb = vec3(xy, sqrt(max(0.0, 1.0 - dot(xy, xy))));
 	}
+	// White plaster rolled off toward 0.67 (and the balconies' band with it, below). The
+	// Compatibility renderer lights in 0-1 and clips before any tone curve (tonemap_white does
+	// nothing here), so a white wall in the day sun (1.23) and the fill went flat white: 19% of
+	// look_tries' view up at the start's blocks was pure 255; 2.6% now, the mean 0.396 -> 0.388.
+	// (Toward 0.85 changed nothing: the sunlit face is lit past 1.2. Toward 0.55 dims it all.)
+	base = roll_white(base);
 	float pl = 1.0;   // 0 where the pixel is glass, a shutter or a frame: no plaster bumps there
 	// the wall's own frame in view space: along it (the way UV.x grows), up, out of it
 	vec3 nn = NORMAL;
@@ -408,7 +420,7 @@ void fragment() {
 	bool enclosed = hash(vec2(ci * 1.3 + 5.0, lv * 2.9) + seed) < 0.2 + 0.5 * hash(vec2(seed, 5.3));
 	// the balconies' parapets and slab edges in a band of their own on some blocks: white on
 	// the sand ones
-	vec3 band = hash(vec2(seed, 8.3)) < 0.45 ? mix(base, wall_a.rgb * COLOR.r, 0.65) : base * 1.05;
+	vec3 band = roll_white(hash(vec2(seed, 8.3)) < 0.45 ? mix(base, wall_a.rgb * COLOR.r, 0.65) : base * 1.05);
 	// about half the blocks with balconies have railings of bars, not solid parapets
 	bool rail_blk = hash(vec2(seed, 6.1)) < 0.5;
 	// (how weathered: aged, the sand-plastered old blocks, darker grime under their sills)
@@ -4913,6 +4925,8 @@ func _garden_fronts(run: PackedVector2Array, hw: float, sgn: float, key: int, fr
 				var sc := 0.85 + 0.45 * float(posmod(_hash_i(q * 2.0), 7)) / 6.0
 				var over := style >= 36 and style < 56   # (over the boards: above them, head high)
 				var cy := top + (1.15 if over else 0.35 * sc)
+				if cy < 1.5 and _post_twin(q + to_road * 0.45, 0.22):
+					continue   # (laid already: the same wall's front from the street round the corner)
 				(fronts["spill"] as Array).append(Transform3D(Basis(Vector3.UP, atan2(to_road.x, to_road.y))
 					* Basis.from_scale(Vector3(1.5, 1.0, 1.2) * sc), _g3(q + to_road * 0.22, cy)))
 				if cy < 1.5:
@@ -6434,7 +6448,9 @@ func _build_facade_kit() -> void:
 				var n := maxi(1, int(L / 3.3))
 				var cw := L / n
 				if L >= 7.0:
-					var stacks := 1 if n < 4 else 2
+					# (one, two, or on a wide face three: the film's blocks up the walk show a
+					# balcony in most bays, the game's read plain beside them)
+					var stacks := 1 if n < 4 else (2 if n < 6 else 3)
 					var face := Basis(Vector3.UP, atan2(out.x, out.y))
 					for sk in range(stacks):
 						var ci := posmod(hsh >> (3 + sk * 4), n)
@@ -6442,6 +6458,10 @@ func _build_facade_kit() -> void:
 							ci = 1 + posmod(hsh >> (3 + sk * 4), n - 2)
 						if sk == 1 and ci == posmod(hsh >> 3, n):
 							ci = (ci + 2) % n
+						if sk == 2 and balc_bays.has(ci):
+							ci = (ci + 3) % n
+							if balc_bays.has(ci):
+								continue
 						var at := a + (b - a) / L * ((ci + 0.5) * cw)
 						balc_bays[ci] = true
 						for lv in range(1, floors):
@@ -6471,7 +6491,7 @@ func _build_facade_kit() -> void:
 			# washing under a window
 			var placed := 0
 			var racks := 0
-			var cap := mini(4, 1 + floors)
+			var cap := mini(6, 1 + floors)   # (4 until 22 Nov: the far blocks read plain beside the film's)
 			for i in range(ring.size()):
 				if placed >= cap or floors < 1:
 					break
@@ -6494,7 +6514,7 @@ func _build_facade_kit() -> void:
 						if lv == 0 and (floors < 2 or look["pilotis"]):
 							continue
 						var hh := posmod(hsh + i * 131 + ci * 17 + lv * 7919, 1000)
-						if hh % 100 < (13 if on_st else 7) and placed < cap:
+						if hh % 100 < (17 if on_st else 9) and placed < cap:
 							var p := a + e * ((ci + (0.86 if hh % 2 == 0 else 0.14)) * L / n) + out * 0.02
 							var y := g_lo + lv * 3.0 + (0.32 if lv > 0 else 2.3)   # (under the sill; on the ground floor, over heads)
 							(acs[0] as Array).append(Transform3D(face, Vector3(p.x, y, p.y)))
@@ -6811,7 +6831,13 @@ func _wall_rgb(bright: float, tint: float, stone: float) -> Color:
 	var w3: Color = _tone["wall3"]
 	var st := w3.lerp(_tone["wall7"], aged)
 	var c := plaster.lerp(st, lerpf(stone, 1.0, aged * 0.6) * (1.0 if tk == 0 else 0.3))
-	return Color(c.r * bright, c.g * bright, c.b * bright)
+	c = Color(c.r * bright, c.g * bright, c.b * bright)
+	# (as WALL_SHADER's roll_white: the brightest plaster rolled off toward 0.67)
+	var bm := maxf(c.r, maxf(c.g, c.b))
+	if bm > 0.55:
+		var k := (0.55 + 0.12 * (1.0 - exp(-(bm - 0.55) / 0.12))) / bm
+		c = Color(c.r * k, c.g * k, c.b * k)
+	return c
 
 ## a block on columns: the floors above start at `lift`; under them, a walled-in core set
 ## back from the edge (stairs, lobby, storage), the ceiling of the open floor, and a column
@@ -6897,6 +6923,9 @@ func _stilts(ring: PackedVector2Array, sgn: float, ground: float, under: float, 
 			var q := a + d * (L * float(k) / steps) + inward * 0.3 + (d * 0.3 if k == 0 else Vector2.ZERO)
 			if not _off_road(q, 0.3) or _in_junction(q, 0.3):
 				continue   # (a building over a road -- a passage -- has none in the lanes)
+			if _post_twin(q, 0.25):
+				continue   # (a column there already: a building's parts over one outline each
+				           # put theirs up, on the same spots -- Tel Aviv 526, Givatayim 64)
 			cols.append(Transform3D(Basis.from_scale(Vector3(0.35, hgt, 0.35)), Vector3(q.x, ground + hgt * 0.5, q.y)))
 			_add_post(q, 0.25)
 	var idx := Geometry2D.triangulate_polygon(ring)
@@ -8139,6 +8168,8 @@ func _mapped_lamp(lm: Array, poles: Array, woods: Array, arms: Array, heads: Arr
 	p += _push_out(p, 0.3, false, false)
 	if not _off_road(p, 0.2):
 		return   # (nowhere off the asphalt near the point: a lamp in the road is worse than none)
+	if _post_twin(p, 0.15):
+		return   # (one mapped twice, or two moved onto one spot off the asphalt)
 	var gy := _h(p)
 	if look == "ornate":
 		var bs := Basis(Vector3.UP, atan2(-toward.y, toward.x))
@@ -11480,11 +11511,36 @@ func add_wall(a: Vector2, b: Vector2, half: float, soft := false) -> void:
 	_wall_soft.append(1 if soft else 0)
 	_hash_add(_wall_hash, Rect2(a, Vector2.ZERO).expand(b).grow(half), BLD_CELL, i)
 
-func _add_post(p: Vector2, r: float) -> void:
+## a post as big as r already stands within 0.3 m of p (see _add_post's `unique`)
+func _post_twin(p: Vector2, r: float) -> bool:
+	for j: int in _near(_post_hash, p, 0.3, BLD_CELL):
+		if is_equal_approx(_post_r[j], r) and _posts[j].distance_to(p) < 0.3:
+			return true
+	return false
+
+var _post_from: Array = []   ## (POSTS_FROM=1 only: who put each post up, for tests/posts_twice_where.gd)
+static var _posts_from_on := OS.get_environment("POSTS_FROM") != ""
+
+## `unique`: not when a post as big already stands within 0.3 m (false back, nothing added) --
+## the same thing put up twice on one spot, twice the checks (city_check's "posts twice":
+## a building's stilts laid by two of its parts, two railings' end posts, a garden's greenery
+## laid by both streets at a corner). Callers that draw the thing skip drawing it then too.
+## Not for callers that keep the new post's index (_posts.size() before the call: signs, bins,
+## bollards to knock over): a post left out would hand them the next one's.
+func _add_post(p: Vector2, r: float, unique := false) -> bool:
+	if unique and _post_twin(p, r):
+		return false
 	var i := _posts.size()
+	if _posts_from_on:
+		var st := get_stack()
+		var who := ""
+		for k in range(1, mini(st.size(), 4)):
+			who += "%s:%d " % [String(st[k]["function"]), int(st[k]["line"])]
+		_post_from.append(who)
 	_posts.append(p)
 	_post_r.append(r)
 	_hash_add(_post_hash, Rect2(p, Vector2.ZERO).grow(r), BLD_CELL, i)
+	return true
 
 ## A parked car as solid ground: five posts along it. It was two, 0.85 m round at 1.25 m
 ## either side of its middle -- 2.5 m apart, a 0.8 m gap between them, and a person (0.25 m)
@@ -11542,6 +11598,8 @@ func _car_box_push(c: Vector2, r: float) -> Vector2:
 		var n := (u * sa * out.x + v * sb * out.y).normalized() if out != Vector2.ZERO else (u * sa if ex > ey else v * sb)
 		push += n * (r - dist)
 	return push
+
+var _light_far: Array = []   ## [pole, junction, way in] put up by _build_signals' second round of spots
 
 ## a traffic light on the right of every way into a signalled junction, in two groups by
 ## direction so crossing streets take turns
@@ -11609,7 +11667,34 @@ func _build_signals() -> void:
 				var on0 := _nearest_seg(q0, 12.0, true)
 				if _push_out(q0, 0.3, false) == Vector2.ZERO and (on0.is_empty() or float(on0["edge"]) >= 0.4):
 					p = q0
+			if p == Vector2.INF and not deck:
+				# still none: further out onto the pavement, on a two-way road the left kerb too
+				# (a pole facing in from there reads as the same light), and last across the
+				# junction, a far-side light facing the way in (never further back than the
+				# spots above: behind the stop line a waiting driver has gone past it). Tel Aviv
+				# had 12 ways in with no pole, a wall, a slip road or a driveway's lane at every
+				# spot above (light_audit, 21 Nov).
+				var backs: Array = [rn + 1.5, float(way[1]) + 0.6, float(way[1]) + 3.0, maxf(rn * 0.5, 1.0),
+					-(rn + 1.5), -(rn + 4.0)]
+				for out: float in [0.0, 0.8, 1.6, 2.4]:
+					for back: float in backs:
+						for sgn: float in [1.0, -1.0]:
+							if p != Vector2.INF:
+								break
+							if out <= 0.8 and back > 0.0 and back != maxf(rn * 0.5, 1.0) and (sgn > 0.0 or r["o"] != 0):
+								continue   # (tried above)
+							var q := c - dir * back + right * (reach + out) * sgn
+							if _push_out(q, 0.3, false) != Vector2.ZERO or _in_corner_fill(q, 0.15):
+								continue
+							var on := _nearest_seg(q, 12.0, true)
+							if not on.is_empty() and float(on["edge"]) < 0.4:
+								continue
+							p = q
+				if p != Vector2.INF:
+					_tally("lights_far_spot", 1)
+					_light_far.append([p, c, dir])   # (tests/far_lights.gd looks at them)
 			if p == Vector2.INF:
+				_tally("lights_no_spot", 1)
 				continue
 			var g := _light_group(node, dir) - 1
 			# one pole where two would stand: two ways in arriving side by side (a road and the
@@ -12162,8 +12247,8 @@ func _build_stops() -> void:
 		if _off_road(ad, 0.3) and _push_out(ad, 0.5, false) == Vector2.ZERO and _clear_of_posts(ad, 1.0):
 			_stop_ads.append(Transform3D(Basis(Vector3.UP, atan2(along.x, along.y)), P.call(ad, 0.0)))
 			_add_post(ad, 0.6)
-		_add_post(c - n * 0.6 + along * 1.5, 0.2)
-		_add_post(c - n * 0.6 - along * 1.5, 0.2)
+		_add_post(c - n * 0.6 + along * 1.5, 0.2, true)
+		_add_post(c - n * 0.6 - along * 1.5, 0.2, true)
 		add_wall(c - n * 0.7 + along * 1.5, c - n * 0.7 - along * 1.5, 0.08)   # its back
 		_add_post(pole, 0.1)
 		_add_post(pole, 0.12)
@@ -12409,6 +12494,8 @@ func _terrace(pos: Vector2, n: Vector2, along: Vector2, umb: Color, t: Dictionar
 				break
 		if not c.is_finite():
 			continue
+		if _post_twin(c, room):
+			continue   # (a table there already: one cafe mapped twice, Tel Aviv 18)
 		var gy := _h(c)
 		var face := atan2(along.x, along.y)
 		t["top"].append(Transform3D(Basis(), Vector3(c.x, gy + 0.74, c.y)))
@@ -15091,7 +15178,9 @@ func _tones() -> void:
 		"lobby": ink.lerp(wn, 0.22).lerp(alt, 0.12),   # the tiled walls of a lobby under a block on columns
 		"flowers": Palette.col("hazard").lerp(Palette.col("accent"), 0.35),   # bougainvillea
 		"roof": ink.lerp(alt, 0.42),
-		"leaf": veg.lerp(bg, 0.52),
+		# (less red, a touch less blue than the palette's green mixed toward its dark: on screen the
+		# leaves came out 72/61/52, red over green -- brown -- against the film's 55/61/46)
+		"leaf": Color(veg.lerp(bg, 0.52).r * 0.76, veg.lerp(bg, 0.52).g, veg.lerp(bg, 0.52).b * 0.88),
 		"trunk": alt.lerp(wn, 0.3),
 		"pole": alt.lerp(ink, 0.3),
 		"sky": pl.lerp(pz, 0.35).lerp(bg, 0.32),
@@ -15104,12 +15193,12 @@ func _tones() -> void:
 		"furniture": alt.lerp(ink, 0.35),
 		"paint": pl.lerp(alt, 0.5).lerp(ink, 0.12),
 		"shoplight": ink.lerp(wn, 0.45),
-		"pavement": _greyed(ink.lerp(alt, 0.48).lerp(wn, 0.04), 0.65),
+		"pavement": _greyed(ink.lerp(alt, 0.48).lerp(wn, 0.04), 0.85),   # (0.65 kept the palette's lavender: pink pavers)
 		# a filmed street's details (details.gd): charcoal pavers under an arcade, a forecourt
 		# of pale poured slabs
 		"pavers_dark": _greyed(ink.lerp(alt, 0.62), 0.85),   # (0.8 read near black under the arcade: the film's are mid-grey in its shade)
 		"slabs": _greyed(ink.lerp(alt, 0.55).lerp(wn, 0.28), 0.38),   # (the film's: warm beige in the sun)
-		"pavers_grey": _greyed(ink.lerp(alt, 0.5), 0.85),
+		"pavers_grey": _greyed(ink.lerp(alt, 0.5), 0.97),   # (the film's are a neutral grey)
 		# a crossing's kerbs: buff domed slabs; a median's raised ends, red pavers (the film's)
 		"tactile": ink.lerp(alt, 0.5).lerp(wn, 0.4),
 		"pavers_red": Palette.col("hazard").lerp(bg, 0.45).lerp(alt, 0.2),
@@ -15796,11 +15885,13 @@ func _film_begin(id: String) -> void:
 ## by FILM_SAT, as the flatter curve takes some out. Only the walks: the game's own look is
 ## other sessions' (the light, the haze) and drives on.
 ## (refitted 21 Nov on a bare recording after the deeper light -- fill x0.6, sun x1.12 -- which
-## clipped 2.2% of the bare picture and left it more saturated: 0.191 against the film's 0.159)
-const FILM_CURVE := [0.053, 0.103, 0.185, 0.271, 0.344, 0.403, 0.447, 0.481, 0.515, 0.549, 0.580,
-	0.608, 0.636, 0.670, 0.709, 0.783, 0.878]
-const FILM_WARM := 1.06
-const FILM_SAT := 0.943
+## clipped 2.2% of the bare picture and left it more saturated: 0.191 against the film's 0.159;
+## again 22 Nov after white plaster's roll-off, neutral paving greys and greener leaves, with
+## FILM_WARM 1.0: the graded greys' red/green 1.068 -> 1.048, the film's 1.021)
+const FILM_CURVE := [0.054, 0.107, 0.193, 0.277, 0.349, 0.412, 0.463, 0.503, 0.535, 0.561, 0.586,
+	0.610, 0.636, 0.668, 0.705, 0.779, 0.877]
+const FILM_WARM := 1.0   ## (1.06 on the old light; the bare picture's greys are as warm as the film's now)
+const FILM_SAT := 1.224
 ## the phone's auto-exposure: [target, strength, least, most] -- the frame's mean brightness
 ## pulled towards target by (target / mean)^strength, in light, within least..most. The film's
 ## brightness second to second holds at 0.45 +- 0.055 (its exposure follows the view); the
@@ -17650,7 +17741,7 @@ func _spawn_people() -> void:
 			a.visible = false
 			continue
 		_walkers.append(w)
-		_place_walker(w, true)
+		_place_walker(w, true, "start")
 	for i in range(CHATTERS):
 		var a := Actor3D.new()
 		world.add_child(a)
@@ -17728,7 +17819,7 @@ func _liveliness(p: Vector2) -> float:
 	return clampf(sum / 40.0, 0.04, 1.0)
 
 ## a walker onto a pavement near the car (ahead of it rather than behind when it moves)
-func _place_walker(w: Dictionary, anywhere: bool) -> void:
+func _place_walker(w: Dictionary, anywhere: bool, why := "") -> void:
 	var a: Actor3D = w["actor"]
 	# a few tries a call, not a dozen: each walks a whole street's pavement, and a walker that
 	# found nothing is simply tried again on a later tick (one walker a tick, _people_tick)
@@ -17767,19 +17858,35 @@ func _place_walker(w: Dictionary, anywhere: bool) -> void:
 		if cum[cum.size() - 1] < 8.0:
 			continue
 		var s0 := _people_rng.randf() * cum[cum.size() - 1]
-		if not anywhere:   # never appear in view: a few spots along the piece, the first out of sight
-			var found := false
-			for _k in range(4):
-				if _spawn_ok(_along(line, cum, s0)):
-					found = true
-					break
-				s0 = _people_rng.randf() * cum[cum.size() - 1]
-			if not found:
-				continue
+		if not anywhere:
+			# never appear in view: first a spot just past where people are drawn, when this
+			# pavement reaches that far (they walk in, fading in from 90 m); only then one hidden
+			# behind a building, with a margin. Hidden spots alone let one in 90 s show (people_pops,
+			# 21 Nov: put down 39 m off, just round a building's corner, and in view a frame later,
+			# where the person stood beside the line's point and the eye had moved on).
+			var far: Array = []
+			var sk := 0.0
+			while sk <= cum[cum.size() - 1]:
+				var dq := _along(line, cum, sk).distance_to(_pos)
+				if dq > PEOPLE_SEEN + 5.0 and dq < PEOPLE_SEEN + 11.0:
+					far.append(sk)
+				sk += 2.0
+			if not far.is_empty():
+				s0 = far[_people_rng.randi() % far.size()]
+			else:
+				var found := false
+				for _k in range(4):
+					if _hidden_well(line, cum, s0):
+						found = true
+						break
+					s0 = _people_rng.randf() * cum[cum.size() - 1]
+				if not found:
+					continue
 		w["line"] = line
 		w["cum"] = cum
 		w["s"] = s0
 		w["pave"] = pave
+		w["placed"] = why   # (for tests: which call put them here -- people_pops prints it)
 		w["cross"] = 0.0
 		w.erase("yaw")
 		# a new life: nothing of where they stood across the old pavement (its `lat`, up to
@@ -18373,6 +18480,29 @@ func _spawn_ok(p: Vector2) -> bool:
 				return false
 	return true
 
+## everyone walking beside walker w (`with` it) is where they can go unseen: they go with it
+func _mates_unseen(w: Dictionary) -> bool:
+	var me := _walkers.find(w)
+	for o: Dictionary in _walkers:
+		if int(o.get("with", -1)) == me:
+			var oa: Actor3D = o["actor"]
+			if oa.visible and not _spawn_ok(Vector2(oa.position.x, oa.position.z)):
+				return false
+	return true
+
+## a spot on a pavement line out of sight with a margin: _spawn_ok there, a step and a half
+## along the line either way, and a metre either side of it (where the person really stands:
+## a lane across the pavement, stepping round others)
+func _hidden_well(line: PackedVector2Array, cum: PackedFloat32Array, s: float) -> bool:
+	var total := cum[cum.size() - 1]
+	var q := _along(line, cum, s)
+	var t := _along(line, cum, minf(s + 0.5, total)) - _along(line, cum, maxf(s - 0.5, 0.0))
+	var across := Vector2(-t.y, t.x).normalized() if t != Vector2.ZERO else Vector2.ZERO
+	for p: Vector2 in [q, _along(line, cum, maxf(s - 1.5, 0.0)), _along(line, cum, minf(s + 1.5, total)), q + across, q - across]:
+		if not _spawn_ok(p):
+			return false
+	return true
+
 ## a building stands across the sight line from eye to p (sampled every 1.5 m)
 func _behind_building(eye: Vector2, p: Vector2) -> bool:
 	var d := eye.distance_to(p)
@@ -18456,7 +18586,7 @@ func _people_tick(dt: float) -> void:
 			if float(w["retry"]) <= 0.0 and not placed:
 				w["retry"] = 2.0
 				placed = true
-				_place_walker(w, false)
+				_place_walker(w, false, "retry")
 			continue
 		var cum: PackedFloat32Array = w["cum"]
 		var total := cum[cum.size() - 1]
@@ -18482,9 +18612,12 @@ func _people_tick(dt: float) -> void:
 				cum = w["cum"]
 				total = cum[cum.size() - 1]
 				s = 0.0
-			elif _spawn_ok(at_end):   # nowhere on from here, out of sight: in at a door, someone else out of one
+			elif _spawn_ok(at_end) and _spawn_ok(Vector2(a.position.x, a.position.z)) and _mates_unseen(w):
+				# nowhere on from here, out of sight: in at a door, someone else out of one (out of
+				# sight where they stand too: the line's end alone, a metre from them, let one go
+				# from in view 88 m off -- people_pops)
 				placed = true
-				_place_walker(w, false)
+				_place_walker(w, false, "end")
 				continue
 			else:   # in view and nowhere on: back the way they came
 				placed = true
@@ -18652,7 +18785,7 @@ func _people_tick(dt: float) -> void:
 		# most of the street's people walked where nobody saw them)
 		if p.distance_to(_pos) > PEOPLE_SEEN + 12.0 and not placed:
 			placed = true
-			_place_walker(w, false)
+			_place_walker(w, false, "far")
 	if _crowd != null:
 		_crowd.tick(dt)
 
