@@ -52,7 +52,8 @@ const LEVELS := [
 	{"name": "Test town: the market street", "city": "dimyon", "look": "med", "walk": "dimyon_market"},
 	# the first Dutch town (NEW_CITY.md): a box of the old centre, the station and the canals,
 	# with 3DBAG's measured heights and the BGT's trees and lamp posts. Starts on the Oude Delft canal.
-	{"name": "Delft", "city": "delft", "start": ["Oude Delft", "Binnenwatersloot"], "look": "north", "decks": "infer"},
+	# "build": "nl": its houses Dutch -- brick, pitched roofs where 3DBAG measured a ridge (_dutch())
+	{"name": "Delft", "city": "delft", "start": ["Oude Delft", "Binnenwatersloot"], "look": "north", "build": "nl", "decks": "infer"},
 	# the cities: a list, as the walks and the test routes are (no city behind it)
 	{"name": "Cities: pick one", "group": "Cities", "cities": true, "city": "dimyon", "look": "med"},
 ]
@@ -232,6 +233,11 @@ uniform vec4 lit : source_color;      // a lit room, at night
 uniform vec4 lit_cool : source_color; // an office
 uniform float night = 0.0;
 uniform float siding = 0.0;           // northern houses: clapboard, white-framed windows
+uniform float brick = 0.0;            // Dutch houses (a level's "build": "nl"): brick, white-framed windows
+uniform vec4 brick_a : source_color;  // red-brown brick
+uniform vec4 brick_b : source_color;  // dark purple-brown brick
+uniform vec4 brick_c : source_color;  // yellow brick (Delft's old "geel")
+uniform vec4 brick_m : source_color;  // the mortar
 uniform vec4 trim : source_color;
 uniform float textured = 1.0;         // photo plaster and the windows' depth (off at the lowest quality)
 uniform sampler2D plaster_tex : filter_linear_mipmap_anisotropic, repeat_enable;
@@ -419,6 +425,22 @@ void fragment() {
 		float tj = smoothstep(0.38, 0.46, max(tf.x, tf.y));
 		base *= mix(1.0, (0.97 + 0.05 * hash(floor(tg) + seed)) * mix(1.0, 0.86, tj), 1.0 - smoothstep(0.006, 0.02, aa));
 	}
+	// Brick (a Dutch town): COLOR.g picks red, dark or yellow brick, or a mix (4 stays painted
+	// plaster); laid in stretcher bond, 22 x 5 cm with 1.25 cm joints, each brick a shade of
+	// its own. Drawn while a pixel is smaller than a joint is apart, the average further off.
+	if (brick > 0.5 && tk < 3.5 && COLOR.a < 0.95) {
+		vec3 bc = (tk < 0.5 ? brick_a.rgb : (tk < 1.5 ? brick_b.rgb : (tk < 2.5 ? brick_c.rgb
+			: mix(brick_a.rgb, brick_c.rgb, 0.45)))) * COLOR.r;
+		float course = 0.0625;
+		float row = floor(up / course);
+		float xs = along / 0.22 + 0.5 * mod(row, 2.0);
+		vec2 bf = vec2(fract(xs) * 0.22, fract(up / course) * course);
+		float jd = min(min(bf.x, 0.22 - bf.x), min(bf.y, course - bf.y));
+		vec3 mortar = mix(bc, brick_m.rgb * COLOR.r, 0.55);
+		vec3 one = bc * (0.86 + 0.26 * hash(vec2(floor(xs), row) + seed));
+		vec3 near_b = mix(one, mortar, line_cover(jd, 0.006, aa));
+		base = mix(mix(bc, mortar, 0.18), near_b, 1.0 - smoothstep(0.004, 0.014, aa));
+	}
 	vec3 col = base;
 	float rough = 0.92;
 	// at night some rooms have the light on: warm in homes, cooler in offices
@@ -442,7 +464,7 @@ void fragment() {
 	// about half the blocks with balconies have railings of bars, not solid parapets
 	bool rail_blk = hash(vec2(seed, 6.1)) < 0.5;
 	// (how weathered: aged, the sand-plastered old blocks, darker grime under their sills)
-	if (siding > 0.5 && style < 0.5 && facade && fract(up / 0.24) < 0.13) {
+	if (siding > 0.5 && brick < 0.5 && style < 0.5 && facade && fract(up / 0.24) < 0.13) {
 		col *= 0.88;
 	}
 	// ---- the flat facade: paint only (far away, and the whole look at the lowest quality)
@@ -613,7 +635,7 @@ void fragment() {
 						if (house) {   // a cross of muntins
 							cover = max(cover, line_cover(abs(g.y - (lo.y + hi.y) * 0.5), 0.012, aa));
 						}
-						if (ground && !door) {   // security bars, white, every 13 cm, and a rail across
+						if (ground && !door && brick < 0.5) {   // security bars, white, every 13 cm, and a rail across (none in a Dutch town)
 							cover = max(cover, line_cover(abs(fract((g.x - lo.x) / 0.13) - 0.5) * 0.13, 0.008, aa));
 							cover = max(cover, line_cover(abs(g.y - (lo.y + sy) * 0.5), 0.01, aa));
 						}
@@ -6116,6 +6138,7 @@ func _build_buildings() -> void:
 	var chunks := {}
 	var north := String(_place.get("look", "")) == "north"
 	var med := String(_place.get("look", "")) == "med"
+	var dutch := _dutch()
 	var gables := {"roof": CBuf.new(CHUNK), "end": CBuf.new(CHUNK)}
 	var cores := CBuf.new(CHUNK)   # the walled-in middle of a block lifted on columns
 	var all: Array = _city_data["buildings"]
@@ -6159,11 +6182,25 @@ func _build_buildings() -> void:
 			var ts := _med_plaster(bd, hsh, tk)
 			tk = int(ts.x)
 			stone = ts.y
+		# a Dutch town (_dutch): brick -- red-brown most, then dark, yellow, a mix; a few painted
+		# (WALL_SHADER's brick); and where 3DBAG measured a pitched roof, the walls stop at the
+		# eaves and the roof rises to the measured ridge (_dutch_pitch)
+		var pitch := 0.0
+		if dutch and not bd.has("_glass"):
+			tk = 0 if pick < 45 else (1 if pick < 70 else (2 if pick < 85 else (3 if pick < 93 else 4)))
+			stone = 0.0
+			if bd.has("rr") and raised == 0.0:
+				pitch = _dutch_pitch(ring, float(bd["rr"]))
 		var tint := float(tk) / 4.0
 		if bd.has("_glass"):
 			stone = 1.0   # (the shader's sign for a landmark's curtain wall)
 		var rel := float(bd["_h"])
+		if pitch > 0.0:
+			rel = float(bd["rr"]) - pitch
+			h = g_avg + rel
 		var style: int = 3 if rel > 32.0 else (0 if rel < 10.0 or bd.has("_tile") else [0, 0, 0, 0, 1, 1, 1, 2, 0, 1][posmod(hsh >> 7, 10)])
+		if dutch and rel < 16.0 and style < 3:
+			style = 0   # (a Dutch house or low block: punched windows in the brick, no balconies)
 		var col := Color(bright, tint, float(style) / 4.0 + 0.05, stone)
 		var n := ring.size()
 		var area := 0.0
@@ -6172,7 +6209,7 @@ func _build_buildings() -> void:
 		var sgn := 1.0 if area > 0.0 else -1.0
 		# a pitched roof only on a house that stands on the ground: a raised "building" is a
 		# canopy or a carport (OSM: a roof on stilts), and a house roof on it flew
-		var gabled := (north and rel < 10.0 and absf(area) * 0.5 < 450.0 and raised == 0.0) or bd.has("_tile")
+		var gabled := (north and not dutch and rel < 10.0 and absf(area) * 0.5 < 450.0 and raised == 0.0) or bd.has("_tile") or pitch > 0.0
 		# "komat amudim": many Givatayim blocks stand on columns, the ground floor open for
 		# parking round a walled-in stairwell and lobby
 		var pilotis := med and style <= 1 and rel >= 7.0 and rel <= 22.0 and raised == 0.0 \
@@ -6223,7 +6260,11 @@ func _build_buildings() -> void:
 				walls.tri(ar, a1, b1, -nrm, col, Vector2(0, h - g_lo), Vector2(0, y1), Vector2(len, y1), u2)
 				walls.tri(ar, b1, br, -nrm, col, Vector2(0, h - g_lo), Vector2(len, y1), Vector2(len, h - g_lo), u2)
 		if gabled:
-			_gable(gables, ring, h, hsh, bd.has("_tile"))
+			if pitch > 0.0:
+				_gable(gables, ring, h, hsh, false, pitch, walls, col, g_lo)
+				_tally("roofs_measured", 1)
+			else:
+				_gable(gables, ring, h, hsh, bd.has("_tile"))
 		var idx := Geometry2D.triangulate_polygon(ring)
 		var rc := Color(bright * 0.95, bright * 0.95, bright * 0.95)
 		for i in range(0, idx.size(), 3):
@@ -7111,9 +7152,27 @@ func _stilts(ring: PackedVector2Array, sgn: float, ground: float, under: float, 
 		roofs.tri(Vector3(p0.x, under, p0.y), Vector3(p1.x, under, p1.y), Vector3(p2.x, under, p2.y), Vector3.DOWN, c)
 	look["cols"] = cols
 
-## a pitched roof over a house: the footprint's tightest rectangle, the ridge along its
-## long side, eaves a little past the walls, shingles grey or red-brown
-func _gable(g: Dictionary, ring: PackedVector2Array, top: float, hsh: int, tiled := false) -> void:
+## A Dutch town: the level's "build" is "nl" (brick walls, measured pitched roofs)
+func _dutch() -> bool:
+	return String(_place.get("build", "")) == "nl"
+
+## A Dutch house's roof rise (m) for its measured ridge, or 0 for a flat roof: only on a
+## footprint that is mostly its tightest rectangle (an L or a block round a yard would have its
+## roof float past its walls) and not a hall. The pitch is near 50 degrees, as Dutch roofs are:
+## the rise 0.6 of the span, at most half the ridge's height, so the eaves stay over a storey up.
+func _dutch_pitch(ring: PackedVector2Array, ridge: float) -> float:
+	var r := _min_rect(ring)
+	var size: Vector2 = (r[2] as Vector2) - (r[1] as Vector2)
+	var span := minf(size.x, size.y)
+	var fp := _area(ring)
+	if span < 3.0 or fp > 2500.0 or fp < 0.72 * size.x * size.y:
+		return 0.0
+	var rise := clampf(minf(span * 0.6, ridge * 0.5), 1.2, 10.0)
+	return rise if ridge - rise >= 2.6 else 0.0
+
+## the footprint's tightest rectangle: [its long-or-short axis u, its low corner, its high
+## corner], the corners in (along u, across u)
+func _min_rect(ring: PackedVector2Array) -> Array:
 	var best := INF
 	var u := Vector2.RIGHT
 	var lo := Vector2.ZERO
@@ -7135,6 +7194,18 @@ func _gable(g: Dictionary, ring: PackedVector2Array, top: float, hsh: int, tiled
 			u = e
 			lo = mn
 			hi = mx
+	return [u, lo, hi]
+
+## a pitched roof over a house: the footprint's tightest rectangle, the ridge along its
+## long side, eaves a little past the walls, shingles grey or red-brown. A Dutch house
+## (`rise` given, its measured roof) has orange tiles or dark glazed ones, and its gable ends
+## are brick in the walls' own buffer (`wall_buf`, `wcol`, its ground `g_lo`), no windows
+func _gable(g: Dictionary, ring: PackedVector2Array, top: float, hsh: int, tiled := false,
+		rise_m := 0.0, wall_buf: Buf = null, wcol := Color(), g_lo := 0.0) -> void:
+	var rect := _min_rect(ring)
+	var u: Vector2 = rect[0]
+	var lo: Vector2 = rect[1]
+	var hi: Vector2 = rect[2]
 	var v := Vector2(-u.y, u.x)
 	if hi.y - lo.y > hi.x - lo.x:   # the ridge runs along the long side
 		var t := u
@@ -7146,7 +7217,7 @@ func _gable(g: Dictionary, ring: PackedVector2Array, top: float, hsh: int, tiled
 		hi = h2
 	lo -= Vector2(0.35, 0.35)
 	hi += Vector2(0.35, 0.35)
-	var rise := (hi.y - lo.y) * 0.32
+	var rise := rise_m if rise_m > 0.0 else (hi.y - lo.y) * 0.32
 	var cy := (lo.y + hi.y) * 0.5
 	var P := func(a: float, b: float, y: float) -> Vector3:
 		var q := u * a + v * b
@@ -7156,6 +7227,10 @@ func _gable(g: Dictionary, ring: PackedVector2Array, top: float, hsh: int, tiled
 	var col: Color = shades[posmod(hsh >> 9, shades.size())]
 	if tiled:   # red clay tiles (Sarona's Templer houses), a little weathered one from the next
 		col = Palette.col("hazard").lerp(Palette.col("warn"), 0.4).lerp(Palette.col("bg"), 0.3 + 0.12 * float(posmod(hsh >> 9, 3)))
+	if wall_buf != null:   # Dutch: orange-red clay tiles, or dark glazed ones, about half each
+		var tiles := Palette.col("hazard").lerp(Palette.col("warn"), 0.55).lerp(Palette.col("bg"), 0.45 + 0.08 * float(posmod(hsh >> 9, 3)))
+		var glazed := Palette.col("bg").lerp(Palette.col("bg_alt"), 0.45 + 0.1 * float(posmod(hsh >> 9, 3)))
+		col = tiles if posmod(hsh >> 15, 100) < 55 else glazed
 	var r0: Vector3 = P.call(lo.x, cy, top + rise)
 	var r1: Vector3 = P.call(hi.x, cy, top + rise)
 	for side: Array in [[lo.y, 1.0], [hi.y, -1.0]]:
@@ -7171,7 +7246,13 @@ func _gable(g: Dictionary, ring: PackedVector2Array, top: float, hsh: int, tiled
 		var b: Vector3 = P.call(end[0], hi.y - 0.35, top)
 		var c: Vector3 = P.call(end[0], cy, top + rise - 0.1)
 		var out := Vector3(u.x, 0, u.y) * float(end[1])
-		(g["end"] as Buf).tri(a, b, c, out, Color.WHITE)
+		if wall_buf != null:   # brick, as the walls (the window grid's top at the eaves: none up here)
+			var w := (hi.y - lo.y) - 0.7
+			var u2 := Vector2(w, top - g_lo)
+			wall_buf.tri(a, b, c, out, wcol, Vector2(0, top - g_lo), Vector2(w, top - g_lo),
+					Vector2(w * 0.5, top + rise - 0.1 - g_lo), u2)
+		else:
+			(g["end"] as Buf).tri(a, b, c, out, Color.WHITE)
 	if posmod(hsh >> 13, 10) < 6:   # a chimney up one end, through the slope
 		var at: Vector3 = P.call(lo.x + 1.3, cy + (hi.y - lo.y) * 0.18, top + rise * 0.72)
 		_chimneys.append(Transform3D(Basis(Vector3.UP, atan2(u.x, u.y)), at))
@@ -15457,7 +15538,7 @@ const NATURAL := {
 	"tank": 0.3, "furniture": 0.3, "pavement": 0.2, "pavers_dark": 0.15, "slabs": 0.15, "pavers_grey": 0.1, "tactile": 0.3, "pavers_red": 0.45, "kerb": 0.15, "stonewall": 0.45, "roofroom": 0.4,
 	"gardenwall": 0.3, "coping": 0.4,
 	"cat_ginger": 0.6, "cat_grey": 0.1, "cat_black": 0.1, "cat_cream": 0.35, "cat_brown": 0.45,
-	"gable": 0.5, "carglass": 0.4, "cartrim": 0.2, "tyre": 0.15, "rim": 0.2, "concrete": 0.15,
+	"gable": 0.5, "brick_red": 0.6, "brick_dark": 0.5, "brick_yellow": 0.55, "mortar": 0.15, "carglass": 0.4, "cartrim": 0.2, "tyre": 0.15, "rim": 0.2, "concrete": 0.15,
 	"insulator": 0.3, "trafo": 0.4, "cable": 0.2, "railing": 0.3, "brick": 0.7, "rubber": 0.6,
 	"metal": 0.1, "metalrim": 0.1, "skin": 0.75, "hair": 0.5, "shirt_a": 0.6, "shirt_b": 0.4,
 }
@@ -15554,6 +15635,13 @@ func _tones() -> void:
 		"bush": veg.lerp(bg, 0.58),
 		"roofroom": ink.lerp(wn, 0.12).lerp(alt, 0.1),
 		"gable": ink.lerp(wn, 0.15),
+		# Dutch brick: red-brown, a dark purple-brown, the old yellow; light grey mortar
+		# (the palette's red is a pink: half toward its yellow it is a brick's brown-orange; on
+		# screen at 0.14 the sunlit brick read 193/129/127, salmon)
+		"brick_red": Palette.col("hazard").lerp(wn, 0.42).lerp(bg, 0.56),
+		"brick_dark": Palette.col("hazard").lerp(wn, 0.25).lerp(bg, 0.74),
+		"brick_yellow": ink.lerp(wn, 0.5).lerp(Palette.col("hazard"), 0.1) * 0.8,
+		"mortar": ink.lerp(alt, 0.38),
 		"carglass": bg.lerp(pl, 0.12),
 		"cartrim": bg.lerp(alt, 0.4),
 		"tyre": bg.lerp(alt, 0.2),
@@ -15615,6 +15703,10 @@ func _retint_city() -> void:
 		_wall_mat.set_shader_parameter("glass_d", _tone["glass4"])
 		_wall_mat.set_shader_parameter("shutter", _tone["shutter"])
 		_wall_mat.set_shader_parameter("dark", _tone["recess"])
+		_wall_mat.set_shader_parameter("brick_a", _tone["brick_red"])
+		_wall_mat.set_shader_parameter("brick_b", _tone["brick_dark"])
+		_wall_mat.set_shader_parameter("brick_c", _tone["brick_yellow"])
+		_wall_mat.set_shader_parameter("brick_m", _tone["mortar"])
 	if env != null:
 		# by day the photo sky (_sky_dome) sets the haze: the fog takes its horizon, so far
 		# streets melt into the sky, and the shade its blue
@@ -15659,6 +15751,7 @@ func _retint_city() -> void:
 		_wall_mat.set_shader_parameter("night", 1.0 if _night else 0.0)
 		_wall_mat.set_shader_parameter("trim", _tone["mark"])
 		_wall_mat.set_shader_parameter("siding", 1.0 if String(_place.get("look", "")) == "north" else 0.0)
+		_wall_mat.set_shader_parameter("brick", 1.0 if _dutch() else 0.0)
 	for m: ShaderMaterial in _glow_mats.values():
 		m.set_shader_parameter("col", _tone[m.get_meta("tone")])
 	if _furn != null:

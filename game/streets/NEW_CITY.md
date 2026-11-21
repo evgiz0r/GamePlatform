@@ -139,13 +139,38 @@ python tools/osm_city.py --place "<Town>" --bbox ... --out game/streets/cities/<
 
   The first screenshot (Oude Delft) shows real shop names and measured heights. The
   buildings still wear the Israeli facades (plaster, white window bars, flat roofs), not
-  brick and gables. 3DBAG gives every roof's type and ridge height, so pitched roofs are
-  the first job of a Dutch look.
+  brick and gables.
+- **The Dutch look (22 Nov, later): the level's `"build": "nl"`.** It is a key of its
+  own, not a third `look`, because `look` is compared in ~30 places (trees, signals, kerbs,
+  plates) that should stay `"north"`. Only the buildings read it (`_dutch()` in streets.gd).
+  - **The bake** carries 3DBAG's ridge (`rr`, m above the ground) onto every building
+    whose roof type is "slanted": 6,978 of Delft's 15,288. The survey entry gets
+    `"ridge"` and `"pitched"` (SURVEYS).
+  - **Do not use 3DBAG's lowest roof point as the eaves.** It is the back extension's:
+    3-4 m under a 13 m ridge on a three-storey canal house. The game works out the eaves
+    instead. Rise = 0.6 of the footprint's span (about 50 degrees), at most half the
+    ridge; eaves = ridge - rise; the walls stop there and the roof rises to the measured
+    ridge (`_dutch_pitch`).
+  - **Only mostly rectangular footprints are roofed** (72% of their tightest rectangle or
+    more, under 2,500 m²). An L or a block round a yard would have a roof floating past
+    its walls. 5,892 houses got a measured roof (`roofs_measured` in the city event); the
+    rest keep a flat roof at 3DBAG's height.
+  - **Brick** is a `brick` switch in WALL_SHADER: red-brown 45%, dark 25%, yellow 15%,
+    mixed 8%, painted 7%. Stretcher bond, 22 x 5 cm, fading to its average past a few
+    metres. White-framed windows (the `siding` house windows, without the clapboard
+    grooves), no security bars. Gable ends are brick in the walls' own mesh, with no
+    windows. Tiles are orange clay or dark glazed, about half each.
+  - **Colour:** the palette's red is a pink. On screen the first brick read 193/129/127
+    (salmon) and the tiles 240/132/134. Mixing them about half toward the palette's
+    yellow gives brick and terracotta.
 - **Choices made.**
-  - The look is `"north"`.
+  - The look is `"north"`; the buildings `"build": "nl"`.
   - Street plates are still the Israeli style.
   - The car mix is still Israel's.
-  - Not done yet: Dutch blue street plates, bikes, trams, the RDW register for the car mix.
+  - Not done yet:
+    - Dutch blue street plates, bikes, trams, the RDW register for the car mix;
+    - the canal houses' stepped and bell gables;
+    - roofs on L-shaped footprints (each wing its own rectangle).
 - **What the BGT has that the game does not use yet:**
   - road parts as polygons (`wegdeel`: carriageway, footway, cycle path, with their
     paving), the real kerbs;
