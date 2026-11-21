@@ -3079,7 +3079,8 @@ LEVEL=1 $GODOT --headless --path . -s res://game/streets/tests/<test>.gd`.
   cutter held the next one wholly inside it, the clip handed back a hole, and the piece was
   laid whole over it. Now it is cut in two across the cutter's middle first (`_halves_across`)
   and each half clipped; whole only if a half still comes back holed. 126 -> 124 m2. The rest
-  is a tail of 1-3 m2 squares, each its own case: no one fix left that brings Ashdod under 60.
+  is a tail of 1-3 m2 squares, each its own case: no one fix left that brings Ashdod under 60. Evgeni
+  chose (21 Nov) to set Ashdod's limit by its size, 140 m2 (`city_check` LIMITS), and move on.
   The same day `decks.gd` at level 1 (twice): every deck run clean but the City tunnel's
   (`מנהרת_הסיטי_1372`), whose autodrive roamed out of the tunnel onto a car park's aisle
   (Givatayim (-722, -1078) to (-735, -1078)) that ends in a building -- an underground car

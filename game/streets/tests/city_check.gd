@@ -152,7 +152,8 @@ func _name(ri: int) -> String:
 const LIMITS := {
 	1: {"tilt": 8.0, "pavings": 60.0},
 	2: {"tilt": 3.0, "pavings": 60.0},
-	3: {"tilt": 3.0, "pavings": 60.0},
+	3: {"tilt": 3.0, "pavings": 140.0},   # (124 m2 after the fixes of 21 Nov, a tail of 1-3 m2 spots in a
+	                                       # town 1.5x Tel Aviv's roads: the user chose to guard it here)
 	4: {"tilt": 3.0, "pavings": 60.0},
 	7: {"tilt": 3.0, "pavings": 60.0},
 }
