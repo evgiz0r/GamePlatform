@@ -282,6 +282,40 @@ The ones most often touched, and the functions in them:
   The fill light's drop (x0.6, sun x1.12) moves the filmed walks' grade too (FILM_LOOK's
   fit was made on the old light): re-record a walk bare and refit before trusting the
   side-by-side's levels again.
+- **the wall shader's balconies to match, the grade refitted, the AC fan, the walk's faces
+  (21 Nov, later)**. The blocks at the real start draw their balconies in WALL_SHADER (style 1:
+  a hollow traced per pixel), not with `_balcony_mesh`, so the kept looks did not reach them.
+  Now the same there: the slab over the hollow seen from below at 0.42 of the wall, its sides
+  0.62, its back 0.66 and darker up under the slab (x0.7 at the top), the floor 0.95 of its
+  tile; a coping on the parapet (its top 1.15, the shade under it), the slab's lip (1.15) and
+  drip line (0.45); on half the blocks (`rail_blk`, a hash of the block) a railing of dark
+  bars every 14 cm with the hollow seen through it down to the floor, and far off the same
+  as paint. `tests/look_tries.gd` has a third shot, `_under`: nearer, up at the right-hand
+  block's balconies (before, they were flat tan boxes; now they read as hollows).
+  **The grade refitted** on a bare recording of walk 1 (`STREETS_FILM_LOOK=0`): the bare
+  picture had gone to 2.2% clipped and saturation 0.191 (the film 0.1%, 0.159); new
+  FILM_CURVE, FILM_SAT 0.943. Graded check: lum p1-p99 0.11/0.16/0.20/0.31/0.45/0.59/0.74/
+  0.82/0.88 against the film's 0.09/0.15/0.20/0.31/0.45/0.59/0.71/0.77/0.87, saturation
+  0.158 (0.159), 0.0% clipped, each second 0.458 +- 0.080 (0.454 +- 0.055). On this PC the
+  966-frame recording takes about a minute, not 18.
+  **On Windows** ffmpeg has no `-pattern_type glob`: `film_look.py` / `film_motion.py` read
+  the frames as a numbered sequence now (`seq()`, from the recording's own f00001.jpg names);
+  numpy via `uv run --with numpy python ...` when the system Python lacks it. The film clip
+  is the user's `OneDrive/walk/clip.mp4` on their PC (never in the repo).
+  **The AC unit's fan** (`furniture.ac_kit`): a round opening with three lighter blades, a
+  grille ring and a cross over it, where it was a black hexagon that read as a sticker from
+  across the street (~250 vertices; instanced, not batched).
+  **Open, seen in the side-by-sides** (film frame at t s against the graded game's frame
+  t*10+1 -- the camera's heading differs a little at the same second):
+  - white plaster in full sun clips: 19% of `look_tries`' `_under` view is pure white, the
+    texture gone. Darkening `wall_a` 14% changed nothing there, so that block's white does
+    not come from `wall_a` (its lean, COLOR.r, or the lifted block's own material: find it
+    before tuning).
+  - the faces up the walk (80 s): the film's blocks are busy -- every bay a railing or a
+    closed-in balcony, AC units, shutters half down, dark window holes -- where the game's far
+    blocks read plain. More facade kit per block at distance (or as paint in the shader).
+  - paving (55 s): the game's pavers are pinker and lighter than the film's grey ones.
+  - trees (55 s): olive and brown leaves against the film's fresh green.
 - **dogs, feet, walking on the spot** (the user: "the dogs look pretty wierd, and their
   hitboxes and how they walk is pretty wierd"; "some people are walking in place ... and
   their legs are somewhat bit inside the ground"). The dog (furniture `dog_kit`) is
