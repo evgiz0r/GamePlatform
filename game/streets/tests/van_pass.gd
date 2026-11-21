@@ -15,6 +15,27 @@ extends SceneTree
 ## clear (no deadlock). PASS_OLD=1: the pass judged as before (by distance, once).
 ##   LEVEL=3 STREETS_BUILD_ALL=1 $GODOT --headless --fixed-fps 60 --path . -s res://game/streets/tests/van_pass.gd
 var g: Node
+var verbose := false
+
+## VERBOSE=1: after autodrive has gone by, every 2 s, what the car waits for -- and what its
+## look at the other lane sees there (the same test the game makes)
+func _tell(car, ci: int, van, t: float) -> void:
+	var tr = g._traffic
+	var rr: Dictionary = tr._roads[car.rd[mini(car.k + 1, car.rd.size() - 1)]]
+	var gap: float = tr._path_gap(car, van.pos, 60.0, tr.LANE_W)
+	var d: float = gap + van.len + car.len + 1.5
+	var secs: float = tr._pass_secs(car, d)
+	var seen := []
+	for j in range(tr.cars.size() + 1):
+		var q: Vector2 = g._pos if j == tr.cars.size() else tr.cars[j].pos
+		if j < tr.cars.size() and (j == ci or not tr.cars[j].alive or tr._parked_double(tr.cars[j])):
+			continue
+		var pr: Vector2 = tr._proj(car, q, 8.0, 400.0)
+		if pr.x != INF:
+			seen.append("%s at %.0f m ahead, %.1f m left" % ["me" if j == tr.cars.size() else "car %d" % j, pr.x, pr.y])
+	print("    t %.0f: car v %.1f why %s pass_i %d shift %.2f wait %.0f; van %.1f m ahead; near a junction %s; other lane clear %s (pass %.1f s, %.0f m); in its look: %s" % [
+		t, car.v, car.why, car.pass_i, car.shift, car.wait, gap, str(tr._near_junction(car, gap + 12.0)),
+		str(tr._oncoming_clear(car, ci, gap + 45.0, tr._pass_shift(rr), secs, d)), secs, d, ", ".join(seen)])
 
 func _initialize() -> void:
 	_run()
@@ -101,6 +122,7 @@ func _run() -> void:
 		return
 	var bad := 0
 	var stuck := 0
+	verbose = OS.get_environment("VERBOSE") != ""
 	var dt := Engine.time_scale / Engine.physics_ticks_per_second
 	for from: float in froms:
 		var dirn := 1 if (b0 - a0).dot(u) > 0.0 else -1
@@ -171,6 +193,8 @@ func _run() -> void:
 				acc_t = 0.0
 			if met and (car.pos - van.pos).dot(u * dirn) > van.len:
 				break   # (round the van, the way clear)
+			if verbose and met and int(t * 10.0) % 20 == 0 and int((t - dt) * 10.0) % 20 != 0:
+				_tell(car, ci, van, t)
 		var past: bool = (car.pos - van.pos).dot(u * dirn) > van.len
 		if head_on > 0.3 or face > 3.0:
 			bad += 1
