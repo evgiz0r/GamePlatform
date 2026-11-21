@@ -63,6 +63,8 @@ func _run() -> void:
 	var worst: Array = [] # [gap, who, road name, width, kind, where]
 	var spins: Array = []
 	var off_line: Array = []
+	var past: Array = []       # autodrive and traffic cars on two-way streets 6 m+ wide: metres right of their lane's middle
+	var ad_lane: Array = []    # autodrive on one-way roads of 3 lanes or more: which lane from the kerb (0 the kerb's)
 	var was_turning := false
 	var shot := false
 	var t := 0.0
@@ -94,6 +96,15 @@ func _run() -> void:
 			if gp.is_empty():
 				continue
 			var who: String = "autodrive" if e[0] == "autodrive" else "traffic " + String(e[0])
+			# (where its lane is, from the road's own width: a lane's middle leaves w/4 - hw from
+			# the right side to the edge on a two-way street; a one-way road's n lanes are w/n
+			# each. Under 6 m the kerb's 0.3 m room for a car's side pulls it in either way.)
+			var rw: float = gp[2]
+			var nl: int = g._lanes_each_way(gp[1])
+			if e[0] in ["autodrive", "car"] and int((gp[1] as Dictionary)["o"]) == 0 and nl == 1 and rw >= 6.0:
+				past.append(rw * 0.25 - float(e[3]) - float(gp[0]))
+			elif who == "autodrive" and int((gp[1] as Dictionary)["o"]) != 0 and nl >= 3:
+				ad_lane.append((float(gp[0]) + float(e[3])) / (rw / nl) - 0.5)
 			var key := "%s: %s" % [who, _key(gp[1])]
 			var arr: Array = gaps.get(key, [])
 			arr.append(gp[0])
@@ -134,4 +145,22 @@ func _run() -> void:
 				right += 1
 		print("autodrive off its own planned line (+ right): median %+.2f m, 10%% %+.2f, 90%% %+.2f, more than 0.4 m right %.0f%% of the time" % [
 			float(off_line[off_line.size() / 2]), float(off_line[off_line.size() / 10]), float(off_line[off_line.size() * 9 / 10]), 100.0 * right / off_line.size()])
+	# The bug ("they drive straight but stand very much on the right of the street"): autodrive
+	# keeps to its line and traffic to the same one (`_lane_off`), and it sat 0.25 m right of a
+	# two-way lane's middle (0.6 m from the kerb on a 7 m street; the others, drifting, within
+	# 0.3 m of it 17% of the time), and autodrive in the kerb's lane of three on Sderot Herzl
+	# (0.09 m from it). The fix: 0.12 m right of the middle, the second lane of three. So the
+	# cars' median place across a two-way lane under 0.19 m right of its middle, halfway to the
+	# bug (on streets 6 m+ wide, where nothing else moves it); and where autodrive drove a road
+	# of three lanes or more for 2 s+, not the kerb's lane: the kerb's reads ~0, the second 1,
+	# and it moves over to the kerb's before a right turn, so its median a third of a lane out
+	# or more (one drive from Givatayim's start read 0.7 on 40 samples).
+	past.sort()
+	ad_lane.sort()
+	var mid := float(past[past.size() / 2]) if past.size() >= 30 else INF
+	var lane3 := float(ad_lane[ad_lane.size() / 2]) if ad_lane.size() >= 20 else -1.0
+	var ok := mid < 0.19 and (lane3 < 0.0 or lane3 >= 0.35)
+	print("REGRESS lane_position: %s -- cars %+.2f m right of their lane's middle on two-way streets 6 m+ wide (median of %d), %s (good under 0.19 m, and not the kerb's lane of three; the bug: 0.25 m, the kerb's lane)" % [
+		"PASS" if ok else "FAIL", mid, past.size(),
+		"autodrive in lane %.1f on roads of 3+ lanes (0 the kerb's)" % lane3 if lane3 >= 0.0 else "no road of 3+ lanes driven by autodrive"])
 	quit(0)

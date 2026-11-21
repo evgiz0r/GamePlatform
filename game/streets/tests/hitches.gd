@@ -64,6 +64,22 @@ func _report() -> void:
 			s["frames"], float(s["time"]) / 1000.0, float(s["time"]) / maxf(1.0, float(s["frames"])), s["over250"], s["over1000"],
 			s["worst"]])
 	print("squares built %d, still to build %d" % [g._tiles_done.size(), g._tiles_todo.size()])
+	# The bug class: a frame that hangs while you drive or look from above (a square built in
+	# one go, a batch merged at once). Headless, a frame here is the game's own work alone --
+	# no drawing -- and Tel Aviv's worst read 206 ms (21 Nov 2026; the game's own [hitch] lines
+	# 54 ms at most, the rest of a square's building spread 16 ms a frame). Half a second is a
+	# freeze anyone sees, a phone's longer: the worst frame under 500 ms. (With a display the
+	# software renderer spends ~0.8 s on every Tel Aviv frame and this reads the renderer, not
+	# the game: judge it headless.)
+	var worst := 0.0
+	var where := ""
+	for ph: String in ["drive", "up", "down"]:
+		if stats.has(ph) and float(stats[ph]["worst"]) > worst:
+			worst = float(stats[ph]["worst"])
+			where = ph
+	var ok := stats.has("drive") and stats.has("up") and stats.has("down") and worst < 500.0
+	print("REGRESS hitches: %s -- the worst frame while driving, from above and back down %.0f ms (%s) (good under 500 ms)" % [
+		"PASS" if ok else "FAIL", worst, where])
 
 func _run() -> void:
 	await create_timer(0.3).timeout
