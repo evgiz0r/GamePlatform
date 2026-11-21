@@ -212,7 +212,10 @@ the parked cars, which stand a third in the road).
   (`Geometry2D.clip_polygons` against a capsule round each road segment -- a rectangle
   leaves the outside of every bend and every junction's middle uncut). Skip one that would
   lose more than half (a road passing under it: OSM maps the passage, not a gap) and one
-  raised on columns (`min_height`), and keep the outline's winding.
+  raised on columns (`min_height`), and keep the outline's winding. But a building the road
+  runs right under, past both its edges, with no `min_height` (a mall's bridge over its
+  street) must then be lifted -- a storey and a half, columns out of the lanes -- or it
+  stands on the street as a wall: kept whole and left on the ground, it blocked one.
 - **A divided road is two one-way roads**, each guessed at the full class width, so the
   halves overlap and each one's kerb and pavement run down the other's lanes. Find each
   half's partner (one-way the other way, on its left, within ~40 m along most of its

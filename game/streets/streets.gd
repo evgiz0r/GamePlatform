@@ -1620,9 +1620,13 @@ func _fit_widths_to_buildings() -> void:
 ## guess far too wide), nor one up on columns over it.
 const BLD_CLEAR := 1.5                ## kerb and pavement kept in front of a building (m)
 
+const OVER_ROAD_BASE := 5.5          ## a building over a street with no height to stand on: up this far
+var over_road_at: Array = []          ## the middles of those put up over the street (tests)
+
 func _clip_buildings(bdata: Array) -> void:
 	var clipped := 0
 	var kept := 0
+	var raised := 0
 	var drop: Array = []
 	for bi in range(_blds.size()):
 		if _bld_solid[bi] == 0:
@@ -1686,9 +1690,23 @@ func _clip_buildings(bdata: Array) -> void:
 			# A building a road runs under spans it, past both its edges (a passage). One that
 			# only sits in it, small, is a footprint OSM put on the road -- a little house in the
 			# middle of a Bedford street, another across one (city_check): left out
-			if absf(area0) < 400.0 and not _spans_a_cut(ring, cuts):
+			var spans := _spans_a_cut(ring, cuts)
+			if absf(area0) < 400.0 and not spans:
 				drop.append(bi)
 				continue
+			if spans and not (bdata[bi] as Dictionary).has("b"):
+				# over the street with nothing to say it is up off it (Dizengoff Center's
+				# bridges over Dizengoff: OSM maps no min_height) -- it stood on the street from
+				# the ground, a wall across it. Up on its columns over the street (_stilts keeps
+				# them out of the lanes), or, too low for that, left out
+				var bd: Dictionary = bdata[bi]
+				if float(bd["_h"]) < OVER_ROAD_BASE + 3.0:
+					drop.append(bi)
+					continue
+				bd["_base"] = OVER_ROAD_BASE
+				_bld_solid[bi] = 0
+				raised += 1
+				over_road_at.append(box.get_center())
 			kept += 1
 			continue
 		if signf(_area_signed(cur)) != signf(area0):
@@ -1699,6 +1717,7 @@ func _clip_buildings(bdata: Array) -> void:
 		clipped += 1
 	_dressing["bld_clipped"] = clipped
 	_dressing["bld_over_road"] = kept
+	_dressing["bld_raised_over_road"] = raised
 	_dressing["bld_dropped"] = drop.size()
 	if not drop.is_empty():
 		_drop_buildings(bdata, drop)

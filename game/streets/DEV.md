@@ -2193,6 +2193,16 @@ Each line: where the code is, the test, what good reads.
   bus queue, a motorbike pulling away; one 4 s 'blocked' by the nose's safety net with 60 m
   free, not chased). Other stops the first run logged were real too: behind a bus pulling
   away, a van at a red, giving way to a car 8-12 m off at a junction.
+- **A building across Dizengoff** (user, overhead view: "building in middle of the street"):
+  Dizengoff Center's two bridges over Dizengoff Street are OSM outlines with no
+  `min_height`, so they stood on the street from the ground, solid. `_clip_buildings` kept
+  them whole (a street runs under them: cutting the road out would take more than half) but
+  nothing raised them. Now one the street runs right under (`_spans_a_cut`), with no base of
+  its own, is put up `OVER_ROAD_BASE` (5.5 m) on its columns (`_stilts`: none in the lanes,
+  not solid), or left out when under 8.5 m tall. Tel Aviv 3 raised (`bld_raised_over_road`
+  in the "city" event; `over_road_at` lists their middles), 1 left out; Givatayim's one, a
+  4 m box across an Ayalon slip road at (890, -511), left out. Shots:
+  `AT="-1441,-23;-1486,-85" CAR="-1414,-6,-0.78,-0.62" tests/run.sh top_at 7`.
 - **Tel Aviv grew** (another session, the bake workflow's bbox): 4,011 -> 9,597 buildings,
   3,745 -> 5,963 roads, west to the sea -- Ashdod's size now, and its load with it (see
   "Numbers to compare against").
