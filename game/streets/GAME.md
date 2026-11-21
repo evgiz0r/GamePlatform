@@ -1264,6 +1264,23 @@ them again: the slow case), so the estimate knows which one this is. A city neve
 this phone yet is estimated from another one's; the very first load says "timing it, for
 next time". Slower or quicker than last time so far, the rest is taken to be so too.
 
+> now do 3, move the slow work out of the wait
+
+**The bridges and tunnels are worked out when the build is made.** Reading a town's file
+was mostly working out where its roads go over and under each other -- which ways are
+bridges, tunnels and ramps, how high each point is, where their walls stand: Tel Aviv 2.5
+of its 4 s. That follows from the town's file and the game's code alone, so it is now done
+once, when a push is published, and the build carries the result (0.7 MB for Tel Aviv, 2.3
+MB for all five towns). Before keeping it the publish loads each town both ways -- working
+it out and from the result -- and keeps the result only if the game ends up exactly the
+same. Tel Aviv's file now reads in 1.5 s instead of 3.9 here, Givatayim's in 0.7 instead of
+1.4; the car is on the road in 3.5 s instead of 5.8, and 2.2 instead of 2.8.
+
+**The far shadows come after the car.** The painted shadows of the buildings in the distance
+(and the picture of where grass grows) took a browser seconds before the car appeared.
+Now they are drawn once the streets round the car are up, a few milliseconds a frame; until
+then the distance has no painted shadows and the lawns no blades, for a few seconds.
+
 > We need to think how to improve latency a bit. It does choke every few seconds. Do you
 > have some fps counter or something?
 

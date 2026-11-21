@@ -306,6 +306,14 @@ written by hand, and **it publishes itself**: every push to `main` runs
 workflow's own commit moves `main`. `/publish` remains for checking a build locally.
 Exporting needs the **standard** Godot build; the .NET/mono one refuses web export outright.
 
+**A game can do slow work once per build instead of on every load.** If its folder holds a
+`prepublish.gd` (a SceneTree script), `tools/publish_web.sh` runs it headless before the
+export; whatever it writes under `game/<name>/baked/` ships in that build and nothing else
+(not committed, removed after). Stamp what you bake with `res://build.txt` (written just
+before) and check the stamp when loading, so a local run or a test never uses a stale one;
+and have the script prove the shortcut -- load both ways, compare -- before keeping it. A
+prepublish that fails costs the build its shortcut, never the build.
+
 ## Several sessions at once
 
 More than one session (on the web, the desktop app, a phone) can be working on the same game
