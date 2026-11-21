@@ -2395,6 +2395,8 @@ var _tile_signs := {}                ## square -> stop and give-way signs
 var _tile_lit := {}                  ## square -> junctions with traffic lights
 var _tile_lamps := {}                ## square -> a town's own lamp posts: [where, look, lamps]
 var _lamp_cover := {}                ## LAMP_COVER cell -> true: the town's map has its lamp posts there
+var _tile_things := {}               ## square -> a town's own street things: [where, kind, places] (furniture.gd's town_things)
+var _hydrant_cover := {}             ## LAMP_COVER cell -> true: the town's map has its hydrants there
 var _tile_bars := {}                 ## square -> mapped fences and hedges that reach it
 var _crossing_set := {}
 var _white_bollards := {}            ## crossing nodes whose bollards are white, as filmed (details.gd)
@@ -2613,6 +2615,14 @@ func _build_setup(t0: int) -> void:
 		var lp := Vector2(lamps_xz[i * 2], lamps_xz[i * 2 + 1]) * k
 		_bucket(_tile_lamps, _tile_of(lp), [lp, String(lamp_looks[int(lamp_info[i * 2])]), clampi(int(lamp_info[i * 2 + 1]), 1, 2)])
 		_lamp_cover[_cell(lp, LAMP_COVER)] = true
+	var things: Array = _city_data.get("things", [])   # (a town's own street things: furniture.gd's town_things)
+	var thing_kinds: Array = _city_data.get("thing_kinds", [])
+	for i in range(things.size() / 4):
+		var tp := Vector2(things[i * 4], things[i * 4 + 1]) * k
+		var kind := String(thing_kinds[int(things[i * 4 + 2])])
+		_bucket(_tile_things, _tile_of(tp), [tp, kind, int(things[i * 4 + 3])])
+		if kind == "hydrant":
+			_hydrant_cover[_cell(tp, LAMP_COVER)] = true
 	var pois: Array = _city_data.get("pois", [])
 	for i in range(pois.size()):
 		_bucket(_tile_pois, _tile_of(Vector2(pois[i][0], pois[i][1]) * k), i)
@@ -2825,7 +2835,7 @@ func _build_rest() -> void:
 		await _release(_city_data[key])
 	_city_data = {}
 	for table: Dictionary in [_area_rings, _asph_hash, _tile_roads, _tile_decks, _tile_nodes, _tile_blds, _tile_areas, _tile_rings,
-			_tile_trees, _tile_pois, _tile_stops, _tile_signs, _tile_lit, _tile_bars, _tile_lamps]:
+			_tile_trees, _tile_pois, _tile_stops, _tile_signs, _tile_lit, _tile_bars, _tile_lamps, _tile_things]:
 		await _release(table)
 	_bg_build = false
 	Probe.event("city_built", {"squares": n, "ms": Time.get_ticks_msec() - t0, "posts": _posts.size(), "trees": _trees_made, "dressing": _dressing})
@@ -7752,6 +7762,17 @@ func _lamps_mapped_at(p: Vector2) -> bool:
 	for dx in range(-1, 2):
 		for dz in range(-1, 2):
 			if _lamp_cover.has(c + Vector2i(dx, dz)):
+				return true
+	return false
+
+## the town's map has its hydrants round p (the made-up ones are left out there)
+func hydrants_mapped_at(p: Vector2) -> bool:
+	if _hydrant_cover.is_empty():
+		return false
+	var c := _cell(p, LAMP_COVER)
+	for dx in range(-1, 2):
+		for dz in range(-1, 2):
+			if _hydrant_cover.has(c + Vector2i(dx, dz)):
 				return true
 	return false
 

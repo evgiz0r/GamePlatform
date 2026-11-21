@@ -1414,7 +1414,8 @@ contributors under the ODbL, which is why the credit sits on screen.
   stand (plain, wooden, ornate, or on a wall), its building sites at work with hoardings
   round them and a tower crane over each big new building, and its licensed shops, cafes,
   barbers and grocers where OSM has none (their signs say what they are: the city's list has
-  no names). Everywhere, the cars' shapes and colours are the shares on Israel's vehicle
+  no names), and its own street things: Tel-O-Fun's green bike stations, taxi stands,
+  motorbike bays, sculptures, notice boards and fire hydrants. Everywhere, the cars' shapes and colours are the shares on Israel's vehicle
   register: four in ten an SUV or crossover, more than four in ten white.
 - **Guessed**: a building with no height gets 4 storeys (by type: houses 2, garages 1,
   offices 5...), varied a storey up or down so a street is not one flat wall. A road with

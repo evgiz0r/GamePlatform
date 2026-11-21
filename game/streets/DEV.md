@@ -2305,7 +2305,7 @@ there every stop counts as a stall.
   is placed round you); a shopper does not pick anything up (the kit's PickUp clip is a
   crouch to the floor).
 
-## The town's own layers: lamp posts, building sites, businesses (21 Nov 2026)
+## The town's own layers: lamp posts, building sites, businesses, street things (21 Nov 2026)
 
 `tools/osm_city.py`'s `town_layers_apply` (run by a bake with surveys and by `--add-surveys`;
 `TOWN_LAYERS`, `LAMP_LOOKS`, `SITE_STAGES`, `BUSINESS_KINDS` there) lays three of Tel Aviv's
@@ -2341,16 +2341,30 @@ the box; 1,440 within 8 m of an OSM place, 2,156 at one door with another); the 
   black 13, blue 5, beige and red 2 each (the first 14 paints kept in their places for the
   filmed walk's cars). Credited on screen ("car mix © Israel Ministry of Transport", `_credit_line`
   groups the towns' credits and lists others after).
+- **Street things** (`things` + `thing_kinds` in the file, from `places_tel_aviv.geojson`'s
+  layers by `THING_KINDS` and `tel_aviv_hydrants.json`: [x, z, kind, places] rows; bucketed
+  into `_tile_things`, built by furniture.gd's `town_things` after `street_life`). Each goes to
+  the nearest street (not a fast road) within 6 m of its edge, else stays where mapped (a
+  square, a park): bike-share docks every 0.75 m at the back of the pavement, 7 at most, a
+  green bike in about two in three; a taxi stand's yellow sign at the kerb; a motorbike bay's
+  places (its count, 2-16, 6 if none) nose to the kerb, a quarter empty; a sculpture (ring,
+  stacked blocks or twisted column, bronze/steel/stone/red/black, on a plinth) where mapped, or
+  at the back of the pavement when mapped by the kerb; a notice board at the back of the
+  pavement; a hydrant at the kerb. Made-up hydrants are left out within the 3x3 `LAMP_COVER`
+  cells of a mapped one (`hydrants_mapped_at`). Level 7 built: 472 of 696 bike stations (the
+  rest on fast roads' sides or with no free pavement), 38 of 43 taxi stands, 262 of 349
+  motorbike bays (756 bikes), 80 of 96 sculptures, 170 notice boards (one layer row can be a
+  pair), 1,374 of 1,892 hydrants, 61 made-up hydrants left (outside the cover).
 - **Test**: `tests/town_layers.gd` (headless counts, REGRESS line; drawn: Rothschild's lamps,
-  a crane, a hoarding, the street with most added shops). Good: level 7 lamps 15,264 mapped,
+  a crane, a hoarding, the street with most added shops, a bike-share station, two
+  sculptures, a motorbike bay). Good: level 7 lamps 15,264 mapped,
   ~14,950 standing, 0 on the asphalt; 511 sites, ~9,200 panels, ~120 cranes; 2,299 businesses,
   ~4,160 places built.
 - **Open**: lamps at night are the same pools as before (the town's lamp count per post is
   not used for light); the 1,089 wall lamps hang at the point the map gives, which can be a
   metre off the wall; a "frame" stage site does not show a building's bare shell; Ashdod's and
-  Givatayim's own lamps are not fetched; the hydrants (2,102) and the other layers in
-  `places_tel_aviv.geojson` (bike-share stations, taxi stands, motorbike parking, sculptures,
-  notice boards) are not used yet; the businesses' signs are all the kind's word, so a street
+  Givatayim's own lamps are not fetched; a bike-share station or sculpture with no free
+  pavement near is dropped, not moved further; the businesses' signs are all the kind's word, so a street
   of them reads as a list of trades.
 
 ## Tel Aviv (level 7): handoff, 20 November 2026
