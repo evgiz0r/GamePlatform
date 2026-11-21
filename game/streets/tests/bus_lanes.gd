@@ -91,6 +91,9 @@ func _run() -> void:
 		g._set_quality(0)
 	g._set_auto(false)
 	var spot := Vector2(-400, 140)
+	if OS.get_environment("AT") != "":   # (another town's bus lane: AT=x,z beside it)
+		var at := OS.get_environment("AT").split(",")
+		spot = Vector2(float(at[0]), float(at[1]))
 	for k in range(30):   # a spot off the asphalt by it
 		var p := spot + Vector2(0, -2.0 * k)
 		var on: Dictionary = g._nearest_seg(p, 30.0, true)

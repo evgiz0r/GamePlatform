@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The film's picture against a filmed walk's replay: brightness and colour, one frame a second
 over the walk, and the grade that takes the replay's frames to the film's numbers -- the
-numbers streets.gd's FILM_CURVE, FILM_WARM and FILM_SAT hold (`_film_look_layer`).
+numbers streets.gd's FILM_CURVE, FILM_WB, FILM_WARM and FILM_SAT hold (`_film_look_layer`).
 
   film_look.py <film clip> <replay frames dir> [seconds]          # measure both, fit, print
   film_look.py <film clip> <replay frames dir> 96 --check         # measure only (a graded replay)
@@ -32,6 +32,7 @@ import numpy as np
 W, H = 203, 360
 X = np.linspace(0, 1, 17)
 WARM = 1.0   # (1.06 until 22 Nov: the bare picture is as warm as the film now)
+WB = (0.973, 1.0, 1.037)   # the phone's white balance on every tone: streets.gd's FILM_WB
 EXPO = (0.45, 0.75, 0.6, 2.0)   # target, strength, least, most: streets.gd's FILM_EXPO
 Q = [1, 5, 10, 25, 50, 75, 90, 95, 99]
 
@@ -108,7 +109,7 @@ def grade(x, curve, s):
     """what the shader does, on the same 8-bit sRGB values it reads"""
     L0 = lum(x)[..., None]
     t = np.clip((L0 - 0.6) / 0.3, 0, 1)
-    y = x * (1.0 + (np.array([WARM, 1.0, 1.0]) - 1.0) * (1.0 - t * t * (3 - 2 * t)))
+    y = x * np.array(WB) * (1.0 + (np.array([WARM, 1.0, 1.0]) - 1.0) * (1.0 - t * t * (3 - 2 * t)))
     y = np.interp(np.clip(y, 0, 1), X, curve)
     L = lum(y)[..., None]
     return np.clip(L + (y - L) * s, 0, 1)

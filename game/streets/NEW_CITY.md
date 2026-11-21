@@ -104,7 +104,7 @@ it as given.
 
 ### Countries done
 
-**The Netherlands (Delft, level 9, 22 Nov 2026).** For the next Dutch town, run two
+**The Netherlands (Delft, level 14, 22 Nov 2026).** For the next Dutch town, run two
 commands with its box (the bake's box plus the margin, as the bake prints it:
 "fetching S,W .. N,E"), then bake. Nothing else changes:
 
@@ -178,7 +178,7 @@ from general knowledge, not yet opened). None has been fetched yet.
 
 | City | Box | Heights | Roofs | Kerbs | Trees | GTFS | Country cost | Data |
 |---|---|---|---|---|---|---|---|---|
-| **Delft, NL: BAKED, level 9** (old town, canals, trams) | 52.0010,4.3440,52.0190,4.3700 | 3DBAG lod12 (checked, used) | 3DBAG LoD2 (checked: roof type on every building; shapes not used) | BGT `wegdeel` (checked; not used yet) | BGT, 11,178 in the box (checked, used) | OVapi (checked: answers) | small: Dutch signs, trams, bikes | 9 |
+| **Delft, NL: BAKED, level 14** (old town, canals, trams) | 52.0010,4.3440,52.0190,4.3700 | 3DBAG lod12 (checked, used) | 3DBAG LoD2 (checked: roof type on every building; shapes not used) | BGT `wegdeel` (checked; not used yet) | BGT, 11,178 in the box (checked, used) | OVapi (checked: answers) | small: Dutch signs, trams, bikes | 9 |
 | **Annecy, FR** (old town, canals, lake, mountains) | town | BD TOPO, national, Licence Ouverte (believed) | no | no | none found (checked: nothing for Annecy on data.gouv.fr) | national portal transport.data.gouv.fr (believed) | small: French signs | 6 |
 | **Heidelberg, DE** (old town, river bridges, castle hill) | Altstadt bbox | from LoD2 | BW LoD2, freed in 2024 per the state, but its record still says copyright (checked: licence unclear) | no | none found | national (believed) | small: German signs, trams | 6 |
 | **Burlington, VT, US** (hill down to the lake) | downtown | Vermont statewide lidar (believed) | no | no | only sample plots (UVM i-Tree, CC BY-SA), not every tree (checked) | GMT (believed) | medium: the US look | 5 |

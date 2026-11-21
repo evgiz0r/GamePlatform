@@ -121,7 +121,7 @@ func _run() -> void:
 				if not pr[0] or (pr[1] as Vector2).distance_to(cp) > absf(c.v) * dt * 1.5 + 0.3:
 					car_pops += 1
 					if firsts.size() < 8:
-						firsts.append("a %s popped at %s (%s)" % [c.kind, cp.round(), "showed up" if not pr[0] else "jumped %.1f m" % (pr[1] as Vector2).distance_to(cp)])
+						firsts.append("a %s popped at %s (%s, going %.1f m/s)" % [c.kind, cp.round(), "showed up" if not pr[0] else "jumped %.1f m" % (pr[1] as Vector2).distance_to(cp), c.v])
 			car_was[i] = [c.alive, cp]
 		for i in range(g._crossers.size()):
 			var cr: Dictionary = g._crossers[i]

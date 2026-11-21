@@ -73,6 +73,8 @@ func _run() -> void:
 						box.position.y - g._h(Vector2(p.x, p.z)), box.end.y - g._h(Vector2(p.x, p.z)), Vector2(p.x, p.z).distance_to(c)])
 		quit()
 		return
+	if not g._film_base.is_empty():   # a walk that steps round posts: over the whole walk, all built
+		g._film_dodge(0.0, last + 1.0)
 	if OS.get_environment("SCAN") == "1":
 		# the whole route, every quarter second: each stretch inside a building or a post
 		# (anything solid: a bollard, a parked bike) -- a replayed walk goes through walls
@@ -143,9 +145,44 @@ func _run() -> void:
 		quit()
 		return
 	if OS.get_environment("RECORD") == "1":
+		# with each frame the camera's exact pose (POSE t  x y z  forward xyz  up xyz, and the
+		# vertical field of view): tests/film_marks.py projects world points through it, to
+		# set a landmark's place in the replay's frame beside its place in the film's
+		if OS.get_environment("POSTS_ALONG") != "0":
+			# every post within 30 m of the walk's line, once: the bollards, poles, columns and
+			# trunks film_marks.py can name as landmarks (POSTS_ALONG=0 leaves them out)
+			var seen := {}
+			var t2 := 0.0
+			while t2 <= last:
+				var c: Vector2 = g._film_at(t2)
+				for i in range(g._posts.size()):
+					if not seen.has(i) and g._posts[i].distance_to(c) <= 30.0:
+						seen[i] = true
+						print("POST %d %.2f %.2f %.2f %.2f" % [i, g._posts[i].x, g._posts[i].y, g._post_r[i], g._h(g._posts[i])])
+				t2 += 1.0
+			# and the buildings' corners within 40 m: film_marks.py's anchors (a wall's corner
+			# at the ground is where OSM is surest)
+			var bseen := {}
+			t2 = 0.0
+			while t2 <= last:
+				var c: Vector2 = g._film_at(t2)
+				for b in range(g._blds.size()):
+					if bseen.has(b) or not (g._bld_box[b] as Rect2).grow(40.0).has_point(c):
+						continue
+					bseen[b] = true
+					var ring: PackedVector2Array = g._blds[b]
+					var line := "BLD %d %d" % [b, g._bld_kind[b]]
+					for q: Vector2 in ring:
+						line += " %.2f,%.2f,%.2f" % [q.x, q.y, g._h(q)]
+					print(line)
+				t2 += 1.0
 		while g._film_t <= last + 0.5:
 			await RenderingServer.frame_post_draw
 			var t: float = g._film_t
+			var b: Basis = g.cam.global_transform.basis
+			var o: Vector3 = g.cam.global_position
+			print("POSE %.2f  %.3f %.3f %.3f  %.4f %.4f %.4f  %.4f %.4f %.4f  %.1f" % [t, o.x, o.y, o.z,
+				-b.z.x, -b.z.y, -b.z.z, b.y.x, b.y.y, b.y.z, g.cam.fov])
 			root.get_viewport().get_texture().get_image().save_jpg(out + "/f%05d.jpg" % int(round(t * 10.0)), 0.88)
 		print("recorded to ", out)
 		quit()

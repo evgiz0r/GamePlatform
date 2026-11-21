@@ -146,7 +146,10 @@ d = {
                 # Ha-Meri's kerbs are painted blue and white all along (paid parking)
                 {"k": "residential", "name": "המרי", "near": P(110, 0), "kerb": "blue_white"}],
         "add": [
-            {"pts": [list(S0), P(SPLIT)], "k": "footway", "w": 2.6, "name": "המרי", "name_en": "HaMeri"},
+            # (its own paving grey pavers in rows, as the passage's area under it: the city's
+            # paving drawn along it stood over the area, beige and pink bricks where the film
+            # walks on grey, 33-64 s)
+            {"pts": [list(S0), P(SPLIT)], "k": "footway", "w": 2.6, "name": "המרי", "name_en": "HaMeri", "pave": [0, 1]},
             # (left of the passage's line, not on it: the film walks straight on out of the
             # passage onto the pavement along the hedge, the road beyond the railings, 64-80 s;
             # the blocks either side stand 11 m apart, so a narrow street with cars parked by
