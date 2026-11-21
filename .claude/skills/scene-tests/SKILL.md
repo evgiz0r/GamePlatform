@@ -399,6 +399,15 @@ it is made, with a one-line caption, rather than a report at the end.
   after it stands and check where it waits; and stage the far case (a light 80 m off), not
   only the near ones the rule was written for. A number a test prints as "a little off" is
   worth one more case before it goes on the open list.
+- **A seeded drive repeats to the tenth of a second -- use it, and know its limit.** With the
+  game's randomness seeded, the same code drives the same route the same way, the traffic
+  too: a before/after on one drive is exact, not noise. But change anything and every car
+  differs from the first moment the change matters, so a one-off seen in a drive (a car
+  cutting in) will not come back for a second look. Log enough the first time (what was in
+  front, its heading and lane, what held it), or stage it in a scene test.
+- **A speed lost with nothing hit: divide it.** A drop to an exact fraction of the speed in
+  one tick (13.74 -> 8.24 m/s, x0.6) is the game's own multiplier for some event; grep the
+  game for `*= 0.6` and the culprit is named (here a sign knocked flat, not a crash).
 - Parse-check first: `tools/check_script.sh res://game/<game>/<game>.gd` takes seconds and
   says which line; a broken script makes a scene test fail in a confusing way minutes in.
 

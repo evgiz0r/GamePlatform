@@ -125,8 +125,8 @@ func _run() -> void:
 				var gc2 = g._traffic.cars[gi]
 				if gc2.v < 0.3:
 					told["g%d" % gi] = true
-					print("GIVE t %.1f standing %.1f s giving way to car %d %s, standing too %.1f m off: why %s, held by %d, its wait %.1f s" % [
-						t, still, gi, gc2.kind, gc2.pos.distance_to(g._pos), gc2.why, gc2.blocker, gc2.wait])
+					print("GIVE t %.1f standing %.1f s giving way to car %d %s, standing too %.1f m off: why %s, held by %d, its wait %.1f s; wants %.1f, react %.1f/%.1f, hit %.1f, jwait %.1f, holding %s, still %.1f, at (%.1f,%.1f)" % [
+						t, still, gi, gc2.kind, gc2.pos.distance_to(g._pos), gc2.why, gc2.blocker, gc2.wait, gc2.want, gc2.react_t, gc2.react, gc2.hit, gc2.jwait, str(gc2.holding), gc2.still, gc2.pos.x, gc2.pos.y])
 		if not g._dest_on:
 			# arrived -- or gave up at once: "can't find a way there from here" clears the
 			# destination too (a route read as arrived in 0 s with 1.3 km to go)

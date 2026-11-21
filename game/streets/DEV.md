@@ -1194,18 +1194,69 @@ slow" (Givatayim, a small ring on a main road, 13 km/h on it).
   was made from them. What they show: held back by the car in front 56% / 52% of the drive,
   free at the limit 23% / 32%, bends 18% / 11%; standing on its own green 7 / 8 s in all
   (queues starting, 1.5-4 s a time: no missed greens); 8 hard brakes a drive, most of them
-  5-5.6 m/s^2 coming up behind a car already standing 10 m ahead (the follow speed allows
-  2.6 m/s^2: the car is seen late, or stops abruptly -- open), some behind a car moving as
-  fast as itself (one crossing its way, read as the car in front? -- open); route 6 at 3:10:
+  5-5.6 m/s^2 coming up behind a car already standing 10 m ahead (the cause and the fix:
+  "Sudden stops behind cars" below), some behind a car moving as
+  fast as itself (a cliff in the follow speed, and cars crossing read as standing: below); route 6 at 3:10:
   a traffic car pulled in 12 m ahead at 24 km/h and stopped dead for the player (its why
   "player"), autodrive braked 8.8 m/s^2 from 48 km/h and touched it (counted as 3 hits on a
-  wall and a building beside it) -- open; at 3:46 it lost 19 km/h in a tenth of a second at
-  50 km/h with nothing ahead (a knock the route set does not count: it counts a hit only
-  when the thing hit changes) -- open.
+  wall and a building beside it) -- open, see below; at 3:46 it lost 19 km/h in a tenth of
+  a second at 50 km/h with nothing ahead -- a sign in the lane, found and gone: below.
 - **Not found**: the user's own junction (the T of two divided roads) showed no stands in
   150 s of traffic nor with autodrive through it from 5 ways in; the car in their screenshot
   may have been one of these zebra waits or a turn waiting for oncoming traffic. Ramps and
   bridges: not looked at -- a place or a screenshot is needed.
+
+### Sudden stops behind cars, cars crossing, a sign in the lane (21 Nov 2026, evening)
+
+The user picked all five things the drive charts showed (above). Each found in the traces
+(`route_set.gd` `TRACE=`, `tests/drive_trace.py`; the hard brakes with what was ahead in the
+3 s before them -- a few lines of Python over the trace's rows).
+
+- **The drives repeat exactly.** The same code drives the same route the same way, traffic
+  and all, to the tenth of a second (route 2 twice: 226 s, the same stops). So before and
+  after are exact -- and any change anywhere changes every car after the first moment it
+  matters, so a one-off (a car pulling in) does not come back to be looked at again.
+- **Hard brakes behind cars: two causes, neither a car seen late.**
+  - *The cliff.* `follow := 0.0 if room <= 0.0`: a metre inside the second kept behind a car
+    going its own pace, the speed asked for fell from that car's to nothing, and autodrive
+    stood on its brakes behind a car doing 21 km/h (route 2 at 1:29, 22 -> 8 km/h in 0.6 s),
+    or stopped dead behind a queue pulling away. Traffic had the same line (and traffic
+    brakes 7.5 m/s^2 to what it wants at once: the car in front stopping dead for nothing).
+    Now both ask a little under that car's pace (`lv + room * 0.5`), and stop only with no
+    road left to its back.
+  - *The lag.* Autodrive brakes 2 m/s^2 for each m/s over the speed asked; following a slope
+    down at 2.6 m/s^2 it ran 1-1.5 m/s over it, so it ate the room and braked the last metres
+    at 5-8.7 m/s^2 (and the brake floor, 0.8 under 1.5 m/s, ended every stop with a 6.5 m/s^2
+    jolt). Now `_ap_follow_v`: once a steady 2 m/s^2 will not do -- to where the car in front
+    will stand if it keeps braking as now (its `acc`, along my way, over a few ticks), or to
+    its pace by its back -- the speed that brakes as hard as needed, as `_ap_brake_for` does
+    for a stop line; the last 5 km/h at 0.45 (3.6 m/s^2), 0.8 only under 0.4 m/s.
+  - Route 2: 4.6 -> 3.8 min, 8 -> 1 brakes over 5 m/s^2 (that one at a junction), held by a
+    car 55% -> 26% of the time. Route 6: 6.4 -> 5.4 min, 8 -> 2 (both for people stepping
+    out), 0 behind cars.
+- **A car crossing, braked for as a wall.** `lead_on` gives a car across my way speed 0 (its
+  speed along my way): one crossing 7 m ahead at 49 km/h, gone in a third of a second, had
+  autodrive braking 6 m/s^2 (route 6 at 0:37, just after giving way to it). Now
+  `_ap_crossing_clears`: crossing (within 60 degrees of square), not crawling or braking,
+  its back 1.4 m past my line (my side and half a metre) 0.3 s before my nose can get there
+  speeding up at 2 m/s^2 -- skipped (`lead_on(..., skip)`), the next car in front taken.
+- **The knock with nothing ahead was a sign.** 19 km/h off at 50 in a tenth of a second at
+  the same spot on every drive of route 6: `_v *= 0.6`, a sign bent (`_bend_sign`) -- the
+  "one way" arrow of a divided road's half, where Shlomo Ben Yosef (9 m, two-way) splits into
+  two 4 m halves. OSM starts both halves at the two-way road's middle, so for some metres the
+  two-way road's lane runs on past the half's asphalt; the arrow, planted 1 m off that
+  asphalt, stood 0.9 m from autodrive's middle. Now no arrow on a half where it splits off
+  (`_divided_half_at`: another of its name at the point, one-way coming in from beside it, or
+  the wider two-way it goes on from). The route set never counted it: a sign bent or a bin
+  knocked over is no crash (no `_crash_cool`); now `_knocked_n` / `_knocked_what` and the
+  route set lists them under hits ("sign oneway", "knocked over", "post bent").
+  `tests/split_posts.gd` checks every split for posts in the two-way road's lane lines run
+  on 14 m past it.
+- **The car that pulled in and stopped for the player** (route 6 at 3:10 before): not seen
+  again (the drives changed). `route_set.gd LEADLOG=1` now prints how a car stands when it
+  turns up under 15 m in front, or holds itself for the player while in front of it (its
+  heading, where the player is from it, its road, lane shift, its path's gap to the player),
+  and when autodrive stands 5 s giving way to a car that stands too, what holds that one.
 
 ### Hills, pockets, the end of a green, a divided road's middle (20 Nov 2026, later)
 
