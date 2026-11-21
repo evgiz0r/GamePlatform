@@ -11,6 +11,8 @@ extends SceneTree
 ## nearest road's edge, and everything drawn by instance there (what the scan cannot see);
 ## TRAFFIC_LOG=from,to the cars round the walk every quarter second (AT jumps the walk's clock,
 ## so a scripted car's timing shows only here or in a recording).
+## CAMERA_LOG=1 prints the camera every 0.1 s of the walk at its own pace (tests/film_motion.py
+## charts it against the film).
 var g: Node
 const LANDMARKS := "8,28,40,55,70,84,94"   # the zebra, the forecourt, the passage, its end, the little street, Sheinkin, Ha-Meri
 
@@ -104,7 +106,8 @@ func _run() -> void:
 	if OS.get_environment("TRAFFIC_LOG") != "":
 		# TRAFFIC_LOG=from,to: the walk at its own pace from the start (scripted cars are sent
 		# by its clock, which AT jumps), and every quarter second from `from` to `to` each car
-		# within 40 m: where it is from the walker, its speed, lane, kind, whether it drives on
+		# within 40 m: where it is from the walker, its speed and what holds it down (traffic.gd's
+		# `why`), lane, kind, whether it drives on
 		# past the walk's zebras ("through")
 		var span := OS.get_environment("TRAFFIC_LOG").split_floats(",")
 		var next := span[0]
@@ -118,9 +121,25 @@ func _run() -> void:
 				if not c.alive or c.pos.distance_to(g._pos) > 40.0:
 					continue
 				var rel: Vector2 = c.pos - g._pos
-				line += "  [%s %s %.1f m/s lane %d%s at %.0f m]" % [c.kind, Vector2i(rel), c.v, c.lane_i,
+				line += "  [%s %s %.1f m/s (%s) lane %d%s at %.0f m]" % [c.kind, Vector2i(rel), c.v, c.why, c.lane_i,
 					" through" if c.film_through else "", rel.length()]
 			print(line)
+		quit()
+		return
+	if OS.get_environment("CAMERA_LOG") == "1":
+		# the replay's camera at the walk's own pace, every 0.1 s of it: which way the camera
+		# faces (degrees round the map's x/z, + turning right), how far up it looks, where the
+		# walker stands, the body's facing and the head's turn -- the game's half of
+		# tests/film_motion.py's chart (run with --fixed-fps 10 and a small RES: minutes)
+		var next := 0.0
+		while g._film_t <= last + 0.2:
+			await physics_frame
+			if g._film_t < next:
+				continue
+			next += 0.1
+			var fwd: Vector3 = -g.cam.global_transform.basis.z
+			print("CAM %.2f %.2f %.2f %.3f %.3f %.1f %.1f" % [g._film_t, rad_to_deg(atan2(fwd.z, fwd.x)),
+				rad_to_deg(asin(clampf(fwd.y, -1.0, 1.0))), g._pos.x, g._pos.y, rad_to_deg(g._yaw), rad_to_deg(g._film_look)])
 		quit()
 		return
 	if OS.get_environment("RECORD") == "1":

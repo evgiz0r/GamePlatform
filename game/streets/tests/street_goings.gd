@@ -10,7 +10,8 @@ extends SceneTree
 ##    up with its reversing lights, then out; the nearest the player came while the door was
 ##    open (it should be shut well before).
 ## Good: the van stands 25-50 s with hazards; autodrive goes round it within a few seconds
-## when nothing comes (or waits, then goes); nothing drives through it; the parked car pulls
+## when nothing comes (or waits, then goes) -- in a one-way street of one lane, past it beside
+## it when it stands half on the kerb; nothing drives through it; the parked car pulls
 ## out with the player 18-45 m behind and they never touch. Run it headless.
 var g: Node
 var tr
@@ -43,6 +44,7 @@ func _delivery(label: String, ri: int) -> void:
 		print("no van or truck among the traffic")
 		return
 	var van = tr.cars[vi]
+	g._ap_passed = -1   # (the same van may be sent again: not "passed already")
 	var hit: Dictionary
 	var r: Dictionary
 	var p: PackedVector2Array
@@ -149,6 +151,24 @@ func _run_rest() -> void:
 		print("no residential street of one lane each way, 190 m long, near the start")
 	else:
 		await _delivery("a one-lane street", best)
+	# ... and on a one-way street of one lane: no lane to go round in, so past it beside it
+	# where it stands half on the kerb (autodrive squeezes by: _ap_squeeze_by), else wait
+	var one := -1
+	for ri in range(g._roads.size()):
+		var rr: Dictionary = g._roads[ri]
+		var pp: PackedVector2Array = rr["pts"]
+		if String(rr["k"]) != "residential" or int(rr["o"]) != 1 or g._lanes_each_way(rr) != 1 or not rr["drive"]:
+			continue
+		var L := 0.0
+		for k in range(pp.size() - 1):
+			L += pp[k].distance_to(pp[k + 1])
+		if L > 190.0 and pp[0].distance_to(g._pos) < 700.0:
+			one = ri
+			break
+	if one < 0:
+		print("no one-way residential street of one lane, 190 m long, near the start")
+	else:
+		await _delivery("a one-way street", one)
 	await _kerb_part()
 
 ## KERB_ONLY: the player put at the start of a long residential street of one lane each way

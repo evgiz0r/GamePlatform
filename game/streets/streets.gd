@@ -904,6 +904,28 @@ var _hgrid := PackedFloat32Array()   ## ground height (m above the lowest point)
 var _steep := false                  ## some of the ground is too steep to drive up (see STEEP)
 var _made_up := false                ## the city file is invented (tools/fake_city.py), not OSM's
 var _credits: Array = []              ## other sources the city file took data from, to credit on screen beside OSM
+
+## The towns' own data in one credit, what and then whose: "building heights, trees © the
+## Tel Aviv-Yafo, Givatayim and Ramat Gan municipalities" (a line for each of five ran off
+## the screen)
+func _credit_line(credits: Array) -> String:
+	var what: Array = []
+	var who: Array = []
+	for c in credits:
+		var parts := String(c).split(" © ", true, 1)
+		var w := "trees" if parts[0].contains("tree") else ("building heights" if parts[0].begins_with("building") else parts[0])
+		if not what.has(w):
+			what.append(w)
+		if parts.size() > 1 and not who.has(parts[1]):
+			who.append(parts[1])
+	var towns: Array = []
+	for o: String in who:
+		if o.ends_with(" Municipality"):
+			towns.append(o.trim_suffix(" Municipality"))
+	var owners := ", ".join(who)
+	if who.size() > 1 and towns.size() == who.size():
+		owners = "the %s and %s municipalities" % [", ".join(towns.slice(0, -1)), towns[-1]]
+	return ", ".join(what) + " © " + owners
 var _mtn_from := 100000.0            ## the made-up town: above this height the land is mountain (see GROUND_SHADER)
 var _hx0 := 0.0
 var _hz0 := 0.0
@@ -1094,6 +1116,7 @@ var _count_lbl: Label
 var _banner: Label
 var _banner_tw: Tween
 var _osm_lbl: Label
+var _ver_lbl: Label                  ## which build this is, over the minimap (_build_line)
 var _loaded := false
 var _touch_seen := false
 var _woke := false
@@ -1648,9 +1671,13 @@ func _fit_widths_to_buildings() -> void:
 ## guess far too wide), nor one up on columns over it.
 const BLD_CLEAR := 1.5                ## kerb and pavement kept in front of a building (m)
 
+const OVER_ROAD_BASE := 5.5          ## a building over a street with no height to stand on: up this far
+var over_road_at: Array = []          ## the middles of those put up over the street (tests)
+
 func _clip_buildings(bdata: Array) -> void:
 	var clipped := 0
 	var kept := 0
+	var raised := 0
 	var drop: Array = []
 	for bi in range(_blds.size()):
 		if _bld_solid[bi] == 0:
@@ -1714,9 +1741,23 @@ func _clip_buildings(bdata: Array) -> void:
 			# A building a road runs under spans it, past both its edges (a passage). One that
 			# only sits in it, small, is a footprint OSM put on the road -- a little house in the
 			# middle of a Bedford street, another across one (city_check): left out
-			if absf(area0) < 400.0 and not _spans_a_cut(ring, cuts):
+			var spans := _spans_a_cut(ring, cuts)
+			if absf(area0) < 400.0 and not spans:
 				drop.append(bi)
 				continue
+			if spans and not (bdata[bi] as Dictionary).has("b"):
+				# over the street with nothing to say it is up off it (Dizengoff Center's
+				# bridges over Dizengoff: OSM maps no min_height) -- it stood on the street from
+				# the ground, a wall across it. Up on its columns over the street (_stilts keeps
+				# them out of the lanes), or, too low for that, left out
+				var bd: Dictionary = bdata[bi]
+				if float(bd["_h"]) < OVER_ROAD_BASE + 3.0:
+					drop.append(bi)
+					continue
+				bd["_base"] = OVER_ROAD_BASE
+				_bld_solid[bi] = 0
+				raised += 1
+				over_road_at.append(box.get_center())
 			kept += 1
 			continue
 		if signf(_area_signed(cur)) != signf(area0):
@@ -1727,6 +1768,7 @@ func _clip_buildings(bdata: Array) -> void:
 		clipped += 1
 	_dressing["bld_clipped"] = clipped
 	_dressing["bld_over_road"] = kept
+	_dressing["bld_raised_over_road"] = raised
 	_dressing["bld_dropped"] = drop.size()
 	if not drop.is_empty():
 		_drop_buildings(bdata, drop)
@@ -1790,6 +1832,8 @@ func _drop_buildings(bdata: Array, drop: Array) -> void:
 func _load_city(id: String) -> bool:
 	var dir: String = get_script().resource_path.get_base_dir() + "/cities/"
 	var path := dir + id + ".json"
+	if OS.get_environment("STREETS_CITY_FILE") != "":   # a test's other copy (before and after a re-bake)
+		path = OS.get_environment("STREETS_CITY_FILE")
 	if not FileAccess.file_exists(path):
 		# not baked yet: drive whichever city is there rather than nothing
 		var any := ""
@@ -1807,7 +1851,9 @@ func _load_city(id: String) -> bool:
 		Probe.note("city file %s did not parse" % path)
 		return false
 	var k := 1.0 / float(data.get("scale", 10))
-	_city_id = path.get_file().get_basename()
+	# (another copy of the file, STREETS_CITY_FILE, is still the level's own town: its details,
+	# its landmarks)
+	_city_id = id if OS.get_environment("STREETS_CITY_FILE") != "" else path.get_file().get_basename()
 	var extra := Details.load_for(dir, _city_id)
 	if not extra.is_empty():
 		_details = Details.new(self, extra)
@@ -2418,6 +2464,17 @@ func _build_setup(t0: int) -> void:
 	var tr: Array = _city_data.get("trees", [])
 	for i in range(0, tr.size() - 1, 2):
 		_bucket(_tile_trees, _tile_of(Vector2(tr[i], tr[i + 1]) * k), i)
+	# a town's own map of its trees (the city file's tree_surveys): where one maps every tree,
+	# from the air, none is made up (2); a list of street trees is not every street tree (Tel
+	# Aviv's has 16 along a stretch of Rothschild that has rows of them), so a made-up street
+	# tree is only kept off a real one's spot (_tree_near)
+	for ts: Dictionary in _city_data.get("tree_surveys", []):
+		for t in range(int(ts["from"]), int(ts["to"])):
+			var tp := Vector2(tr[2 * t], tr[2 * t + 1]) * k
+			if int(ts.get("all", 0)) == 1:
+				_tree_cover[_cell(tp, TREE_COVER)] = 2
+			else:
+				_bucket(_tree_near, _cell(tp, TREE_NEAR), tp)
 	var pois: Array = _city_data.get("pois", [])
 	for i in range(pois.size()):
 		_bucket(_tile_pois, _tile_of(Vector2(pois[i][0], pois[i][1]) * k), i)
@@ -6188,17 +6245,57 @@ func _build_trees() -> void:
 	var pits: Array = []    # or a square of bare earth
 	var k := 1.0 / float(_city_data.get("scale", 10))
 	var tr: Array = _city_data.get("trees", [])
+	var info: Array = _city_data.get("tree_info", [])   # [form, crown dm] a tree, from a town's own map
+	var forms: Array = _city_data.get("tree_forms", [])
+	var fixed := {}     # index into spots -> the kind its species gives it
+	var mapped := 0
+	var look := String(_place.get("look", ""))
 	for i: int in _tile_trees.get(_tile, []):
 		var p := Vector2(tr[i], tr[i + 1]) * k
-		if _tree_ok(p, 2.0):
-			_add_post(p, 0.3)
-			rng.seed = _hash_i(p)
-			spots.append(Vector3(p.x, p.y, rng.randf_range(0.85, 1.3)))
+		var fi := int(info[i]) if i + 1 < info.size() else -1
+		var cr := float(info[i + 1]) * 0.1 if i + 1 < info.size() else 0.0
+		if fi >= 0 or cr > 0.0:   # (a town's map: moved onto the pavement or off a wall, not lost)
+			if not _mapped_tree_ok(p):
+				p = _tree_nudge(p, 4.0 if cr > 0.0 else 2.5)
+				if p == Vector2.INF:
+					_tally("trees_mapped_lost", 1)
+					continue
+				_tally("trees_mapped_moved", 1)
+		elif not _tree_ok(p, 2.0):
+			continue
+		_add_post(p, 0.3)
+		rng.seed = _hash_i(p)
+		var sc := rng.randf_range(0.85, 1.3)
+		var kind := String(forms[fi]) if fi >= 0 and fi < forms.size() and TREE_KINDS.has(forms[fi]) else ""
+		if cr > 0.0:   # a crown mapped from the air: as big as it, and a kind that fits its size
+			if kind == "":
+				kind = _crown_kind(cr, rng.randf(), look)
+			var spec: Array = TREE_KINDS[kind]
+			if String(spec[0]) != "ptrunk":
+				sc = clampf(cr / (spec[3] as Vector3).x, 0.45, 2.4)
+		if kind != "":
+			fixed[spots.size()] = kind
+		# on the pavement: an iron grate round the trunk, or a square of bare earth, as the
+		# made-up street rows have (they are not made where a town's map covers)
+		if fi >= 0 or cr > 0.0:
+			var hit := _nearest_seg(p, 6.0, true)
+			if not hit.is_empty() and float(hit["edge"]) < 3.0 and TREE_ROADS.has(_roads[int(hit["road"])]["k"]):
+				var rp: PackedVector2Array = _roads[int(hit["road"])]["pts"]
+				var dd := rp[int(hit["seg"]) + 1] - rp[int(hit["seg"])]
+				var gxf := Transform3D(Basis(Vector3.UP, atan2(dd.x, dd.y)), Vector3(p.x, _h(p) + KERB_H + 0.006, p.y))
+				if look == "med" and posmod(_hash_i(p * 5.0), 10) < 4:
+					pits.append(gxf)
+				else:
+					grates.append(Transform3D(Basis(Vector3.UP, sc * 9.0), gxf.origin))
+		spots.append(Vector3(p.x, p.y, sc))
+		mapped += 1
+	_tally("trees_mapped", mapped)
+	_trees_mapped += mapped
 	# a row along each pavement of a residential street (the road's own random numbers, so
 	# every square it crosses plants it alike, each its own stretch)
 	for ri: int in _tile_roads.get(_tile, []):
 		var r: Dictionary = _roads[ri]
-		if not TREE_ROADS.has(r["k"]) or _trees_made + spots.size() >= MAX_TREES:
+		if not TREE_ROADS.has(r["k"]) or _trees_made - _trees_mapped + spots.size() - mapped >= MAX_TREES:
 			continue
 		if _over():
 			await _pause()
@@ -6228,9 +6325,11 @@ func _build_trees() -> void:
 					var sc := rng.randf_range(0.8, 1.25)
 					# (and not on a rounded corner's asphalt: a street's trees, spaced along it,
 					# landed on the next street's corner -- city_check)
-					if _mine(p) and _tree_ok(p, 5.0) and not _in_corner_fill(p, 0.15):
+					if _mine(p) and _tree_covered(p) == 0 and not _mapped_near(p) and _tree_ok(p, 5.0) \
+							and not _in_corner_fill(p, 0.15):
 						_add_post(p, 0.3)
 						spots.append(Vector3(p.x, p.y, sc))
+						_tally("trees_made_up_rows", 1)
 						if r.get("setts", false):
 							_sett_fan(setts, p, side * sgn)
 							if last.has(sgn) and (last[sgn] as Vector2).distance_to(p) < TREE_GAP * 1.8:
@@ -6251,7 +6350,7 @@ func _build_trees() -> void:
 	for kind: String in ["park", "grass", "wood"]:
 		for ring: PackedVector2Array in _rings_near(kind):
 			var area := _area(ring)
-			if area < 500.0 or _trees_made + spots.size() >= MAX_TREES + MAX_FOREST:
+			if area < 500.0 or _trees_made - _trees_mapped + spots.size() - mapped >= MAX_TREES + MAX_FOREST:
 				continue
 			var box := _bld_box_of(ring)
 			var part := box.intersection(sq)
@@ -6261,14 +6360,14 @@ func _build_trees() -> void:
 			var want := roundi(mini(int(area / per), 2500) * part.get_area() / maxf(box.get_area(), 1.0))
 			rng.seed = _hash_i(ring[0]) + _tile.x * 92821 + _tile.y * 68917
 			for _i in range(want * 2):
-				if want <= 0 or _trees_made + spots.size() >= MAX_TREES + MAX_FOREST:
+				if want <= 0 or _trees_made - _trees_mapped + spots.size() - mapped >= MAX_TREES + MAX_FOREST:
 					break
 				if _over():
 					await _pause()
 				var p := Vector2(rng.randf_range(part.position.x, part.end.x), rng.randf_range(part.position.y, part.end.y))
 				var sc := rng.randf_range(0.8, 1.35)
-				if not _mine(p) or not Geometry2D.is_point_in_polygon(p, ring) or not _tree_ok(p, 4.5 if kind == "wood" else 7.0) \
-						or _in_corner_fill(p, 0.15):
+				if not _mine(p) or not Geometry2D.is_point_in_polygon(p, ring) or _tree_covered(p) >= 2 \
+						or not _tree_ok(p, 4.5 if kind == "wood" else 7.0) or _in_corner_fill(p, 0.15):
 					continue
 				_add_post(p, 0.3)
 				if kind == "wood":
@@ -6307,7 +6406,7 @@ func _build_trees() -> void:
 				if Geometry2D.is_point_in_polygon(p, _no_rings[ri]):
 					blocked = true
 					break
-			if blocked or not _off_road(p, 5.0) or not _tree_ok(p, 6.0):
+			if blocked or _tree_covered(p) >= 2 or not _off_road(p, 5.0) or not _tree_ok(p, 6.0):
 				continue
 			_add_post(p, 0.3)
 			forest[spots.size()] = true
@@ -6360,7 +6459,6 @@ func _build_trees() -> void:
 	_add_mesh(setts, _vc_mat(), false, DETAIL_RANGE)
 	if spots.is_empty():
 		return
-	var look := String(_place.get("look", ""))
 	var parts := {"trunk": [], "crown": [], "ptrunk": [], "fronds": [], "ftrunk": [], "cone": []}
 	var colours := {"trunk": [], "crown": [], "ptrunk": [], "fronds": [], "ftrunk": [], "cone": []}
 	var put := func(part: String, xf: Transform3D, col: Color) -> void:
@@ -6374,6 +6472,8 @@ func _build_trees() -> void:
 		var spin := Basis(Vector3.UP, rng.randf() * TAU)
 		var g := rng.randf_range(0.85, 1.1)
 		var kind := _tree_kind(look, forest.has(si), rng.randf())
+		if fixed.has(si):
+			kind = fixed[si]
 		if mtn.has(si):
 			var mr := rng.randf()
 			kind = "pine" if mr < 0.66 else ("cypress" if mr < 0.9 else "olive")
@@ -6409,6 +6509,92 @@ func _build_trees() -> void:
 		await _chunked_paced(_tree_meshes[part], parts[part], reach, colours[part], null, true)
 
 var _tree_meshes := {}
+const TREE_COVER := 40.0             ## a town's map of every tree covers within 40-80 m of its trees (cells this big)
+var _tree_cover := {}                ## TREE_COVER cell -> 2: every tree there is mapped (from the air)
+const TREE_NEAR := 9.0               ## no made-up street tree this near a listed one (a row's gap is 11 m)
+var _tree_near := {}                 ## TREE_NEAR cell -> the listed street trees in it (a town's list)
+
+## A tree from a town's list of street trees stands within TREE_NEAR of p
+func _mapped_near(p: Vector2) -> bool:
+	var c := _cell(p, TREE_NEAR)
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			for q: Vector2 in _tree_near.get(c + Vector2i(dx, dz), []):
+				if q.distance_to(p) < TREE_NEAR:
+					return true
+	return false
+var _trees_mapped := 0               ## trees from the city file (they do not count toward the caps)
+
+## How much of p's trees a town's own map has: 0 not all (make up what is missing), 2 every
+## tree (mapped from the air: yards and parks too)
+func _tree_covered(p: Vector2) -> int:
+	var c := _cell(p, TREE_COVER)
+	var best := 0
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			best = maxi(best, int(_tree_cover.get(c + Vector2i(dx, dz), 0)))
+	return best
+
+## Room for a real tree's trunk (a town's map of its trees): clear of the asphalt by 0.4 m and
+## of a wall by 0.6, 1.2 m from the next post. The made-up trees' room (_tree_ok: 0.7 m and
+## 1.1 m, 2 m apart) needs a 1.8 m gap between kerb and wall, which narrow pavements lack.
+func _mapped_tree_ok(p: Vector2) -> bool:
+	if not _bounds.has_point(p):
+		return false
+	var hit := _nearest_seg(p, 12.0, true)
+	if not hit.is_empty() and float(hit["edge"]) < 0.4:
+		return false
+	if _push_out(p, 0.6, false) != Vector2.ZERO:
+		return false
+	for i: int in _near(_post_hash, p, 1.2, BLD_CELL):
+		if _posts[i].distance_to(p) < 1.2:
+			return false
+	return true
+
+## A tree a town's map puts in the game's road or in a house -- the maps do not quite agree (a
+## road's width is a guess; Tel Aviv plants trees in the parking lane, between the cars; a
+## crown traced from the air is centred over the roof it overhangs) -- moved onto the pavement
+## beside the road (a metre from the kerb, else 0.6 m) and out to the nearest wall's foot,
+## if it is no more than `deep` metres into the house; INF when no such place is clear (a
+## boulevard's middle, a courtyard OSM draws as roof). Half of Tel Aviv's surveyed street
+## trees and two in five of Givatayim's crowns failed where they stood.
+func _tree_nudge(p: Vector2, deep: float) -> Vector2:
+	var hit := _nearest_seg(p, 12.0, true)
+	var offs: Array = [0.0]
+	var n := Vector2.ZERO
+	if not hit.is_empty() and float(hit["edge"]) < 0.4:
+		if float(hit["edge"]) < -4.5:
+			return Vector2.INF
+		var q: Vector2 = hit["q"]
+		n = p - q
+		if n.length() < 0.05:   # on the middle line: off to one side, the same side every time
+			var rp: PackedVector2Array = _roads[int(hit["road"])]["pts"]
+			var dd := (rp[int(hit["seg"]) + 1] - rp[int(hit["seg"])]).normalized()
+			n = Vector2(-dd.y, dd.x) * (1.0 if _hash_i(p) % 2 == 0 else -1.0)
+		n = n.normalized()
+		offs = [1.0 - float(hit["edge"]), 0.6 - float(hit["edge"])]
+	for off: float in offs:
+		var c: Vector2 = p + n * off
+		var push := _push_out(c, 0.6, false)
+		if push.length() > deep + 0.6:
+			continue
+		c += push
+		if _mapped_tree_ok(c):
+			return c
+	return Vector2.INF
+
+## The kind of a tree mapped from the air by its crown's radius alone (m): the big ones the
+## old ficus and eucalyptus, the small ones young trees and olives, between them the
+## street's usual mix
+func _crown_kind(r: float, x: float, look: String) -> String:
+	if look == "north":
+		return _tree_kind(look, false, x)
+	if r >= 5.5:
+		return "ficus" if x < 0.7 else "eucalyptus"
+	if r < 1.3:
+		return "olive" if x < 0.4 else "round"
+	return _tree_kind(look, false, x)
+
 const MTN_TREES := 3000              ## the made-up town's mountain woods, all told
 var _mtn_made := 0
 var _trees_made := 0
@@ -7797,6 +7983,11 @@ func _set_night(on: bool) -> void:
 const PARKED_FILL := [0.55, 0.05, 0.72, 0.0]   ## share of the kerb taken: plain, red-white, blue-white, yellow-black
 const PARKED_FILL_LIVING := 0.3
 const PARKED_MOTO := 0.3             ## a gap between the parked cars that has a motorbike or scooter in it
+## A divided road's halves park on their outer side only: the left of each half is the median
+## (its other half runs beside it, closer than this from edge to edge), and parked both sides
+## a row of cars stood down the middle of the road -- Tel Aviv's Katznelson, "a lot of parked
+## cars in the middle of somewhat main roads" (tests/parked_median.gd).
+const PARKED_MEDIAN_GAP := 12.0
 
 ## A motorbike or scooter parked up on the pavement in a gap between the cars, as they stand
 ## all along a filmed residential street in Givatayim: on the front half of the pavement (the
@@ -7864,7 +8055,15 @@ func _build_parked() -> void:
 			var total := cum[cum.size() - 1]
 			for sgn: float in [-1.0, 1.0]:
 				var s := 4.0 + rng.randf() * 3.0
+				var inner := int(r["o"]) != 0 and int(sgn) == -int(r["o"])   # the left of its traffic
 				while s < total - 4.0:
+					if inner:   # beside the other half of a divided road: the median, nobody parks there
+						var c0 := _along(run, cum, s)
+						var pair := _partner(c0, (_along(run, cum, minf(s + 1.0, total)) - c0).normalized(), ri, hw, int(r["o"]))
+						if not pair.is_empty() and float(pair[2]) < PARKED_MEDIAN_GAP:
+							s += 5.6
+							_tally("parked_median_kept_clear", 1)
+							continue
 					if rng.randf() < fill:
 						var kind: String = CAR_MIX[rng.randi() % CAR_MIX.size()]
 						var colour: Color = palette[rng.randi() % palette.size()]
@@ -7883,6 +8082,9 @@ func _build_parked() -> void:
 						# not poking into the asphalt: near a corner the next street can be
 						# right there, and the car stood in its lane
 						ok = ok and _off_road(p + face * 1.25, -0.1) and _off_road(p - face * 1.25, -0.1)
+						# nor on a strip with another road just past it (a service lane alongside, a
+						# boulevard's other half): road both sides of it, it stood in the middle
+						ok = ok and _off_road(p + side * 2.6, 0.0)
 						if ok:
 							var yaw := atan2(face.x, face.y)
 							# with the ground: nose up a hill, leaning across a camber (level, on a
@@ -7905,6 +8107,8 @@ func _build_parked() -> void:
 								cat_at(cq, _g3(cq, KERB_H).y, -side.rotated(float(roll2 % 5 - 2) * 0.3), "sit")
 							(cols_by[kind] as Array).append(colour)
 							xf.append(0)
+							_parked_at.append(p)
+							_parked_face.append(face)
 							_add_car_posts(p, face)
 					elif rng.randf() < PARKED_MOTO:
 						_park_moto(r, ri, run, cum, s, total, hw, sgn, rng, palette, xf_by, cols_by)
@@ -7924,6 +8128,8 @@ func _build_parked() -> void:
 ## would stick out of the lot, into a building, onto a road or onto a tree are left out.
 var _lot_at: Array = []              ## a car in each car park (for tests and tours)
 var _moto_at := PackedVector2Array()  ## each motorbike parked on a pavement (for tests: tests/street_fronts.gd)
+var _parked_at := PackedVector2Array()  ## each car parked by a street, and the way it faces (tests/parked_median.gd)
+var _parked_face := PackedVector2Array()
 var _plank_at := PackedVector2Array() ## a point along each piece of wooden board fence on a garden wall (for tests)
 var _parked_xf := {}                 ## the street's parked cars by shape, to batch with the car parks'
 var _parked_cols := {}
@@ -13215,14 +13421,23 @@ func _ap_light_v() -> float:
 ## needs, and a fifth more. (Aimed at "the speed that just stops in time from here", the
 ## target sat a hair under the speed and the controller -- braking by how far over it is --
 ## hardly braked: the need grew and grew, and it gave up and drove on into the red.)
+## Far off, or slow, the need is small: up to the line on the usual slope, as for a red.
+## (Braking at 1.5 m/s^2 at least, wherever the line was, a green ending 80 m off stopped the
+## car 23 m on, in the middle of the street -- and standing, the need is nothing, the speed
+## to aim at nothing: it stood there all through the red. A user, twice: "the car weirdly
+## stops in the middle of the run.")
 var _ap_amber_n := -1                ## the lit point it decided to stop at as its green ended (kept to until green again)
 
 func _ap_brake_for(stop: float) -> float:
 	var room := stop - 0.5
 	if room <= 0.2:
 		return 0.0
-	var need := maxf(_v, 0.0) * maxf(_v, 0.0) / (2.0 * room)
-	return maxf(_v - clampf(need * 1.2, 1.5, 6.0) * 0.5, 0.0)   # (autodrive brakes 2 m/s^2 for each m/s over: see _autodrive)
+	var v := maxf(_v, 0.0)
+	var need := v * v / (2.0 * room)
+	var slope := sqrt(2.0 * 2.6 * room)
+	if need < 2.0:
+		return slope
+	return minf(maxf(v - minf(need * 1.2, 6.0) * 0.5, 0.0), slope)   # (autodrive brakes 2 m/s^2 for each m/s over: see _autodrive)
 
 ## seconds until the light at lit point n facing traffic going `dir` turns red (0: red, or
 ## red and amber, now)
@@ -13729,7 +13944,7 @@ func _tones() -> void:
 		"wall6": ink.lerp(alt, 0.34),
 		# the old blocks' sand render: the stone's beige, deeper toward the yellow, a touch of
 		# red, dulled (from the stone and the peach plaster it read grey-beige; the film's is tan)
-		"wall7": ink.lerp(wn, 0.38).lerp(alt, 0.06).lerp(wn, 0.3).lerp(Palette.col("hazard"), 0.06) * 0.85,
+		"wall7": ink.lerp(wn, 0.38).lerp(alt, 0.06).lerp(wn, 0.26).lerp(Palette.col("hazard"), 0.1) * 0.85,
 		"glass2": alt.lerp(pl, 0.55),
 		"glass3": alt.lerp(fr, 0.45),
 		"glass4": ink.lerp(alt, 0.45).lerp(pl, 0.1),
@@ -14360,11 +14575,15 @@ var _film_step := 0.0                ## metres walked: the head bobs with the st
 var _film_done := false
 var _film_look := 0.0                ## the head turned from the body (radians, + right)
 var _film_looks: Array = []          ## Vector4(from, to, radians across, radians up): a glance
+var _film_head: Array = []           ## Vector2(seconds, radians right of the body): the head's turns
+                                     ## as measured off the film (the walk's "head"); where it runs,
+                                     ## it is the head, in place of the turn into bends and the looks'
+                                     ## turns across (their tips up and down still apply)
 var _film_tilt := 0.0                ## the phone tipped from its usual tilt by the looks (radians, + up)
 var _film_zebras: Array = []         ## [from, to, kerb, kerb]: on a crossing (or waiting at it)
 var _film_cars: Array = []           ## [second, at, heading]: a car sent down a street
 var _film_sent := 0
-var _film_people: Array = []         ## [actor, from, to, from second, to second, stays, arrived]: who the film shows
+var _film_people: Array = []         ## [actor, from, to, from second, to second, stays, arrived, talking's facing or INF]: who the film shows
 
 func _film_begin(id: String) -> void:
 	var walks: Dictionary = _details.data.get("walks", {}) if _details != null else {}
@@ -14379,6 +14598,8 @@ func _film_begin(id: String) -> void:
 		# [from, to, degrees right] and, if there, degrees up (down at a zebra's stripes: -25)
 		_film_looks.append(Vector4(float(l[0]), float(l[1]), deg_to_rad(float(l[2])),
 			deg_to_rad(float(l[3])) if l.size() > 3 else 0.0))
+	for h: Array in w.get("head", []):
+		_film_head.append(Vector2(float(h[0]), deg_to_rad(float(h[1]))))
 	for z: Array in w.get("zebras", []):
 		_film_zebras.append([float(z[0]), float(z[1]), Vector2(z[2][0], z[2][1]), Vector2(z[3][0], z[3][1])])
 	for c: Array in w.get("cars", []):
@@ -14404,7 +14625,10 @@ func _film_begin(id: String) -> void:
 		var pace: float = A.distance_to(B) / maxf(float(tt[1]) - float(tt[0]), 0.01)
 		a.play("Walk" if moving else "Idle", true, pace / 1.35 if moving else 1.0)
 		a.visible = not moving
-		_film_people.append([a, A, B, float(tt[0]), float(tt[1]), bool(pp.get("stay", false)), false])
+		# `talk`: one of a group standing talking -- no clip for it, so the body does it: turning a
+		# little to the one spoken to and back, now and then a wider turn (as the film's do)
+		_film_people.append([a, A, B, float(tt[0]), float(tt[1]), bool(pp.get("stay", false)), false,
+			fd.angle() if bool(pp.get("talk", false)) else INF])
 	var p0 := _film_at(0.0)
 	_pos = p0
 	_yaw = (_film_at(1.5) - p0).angle()
@@ -14519,10 +14743,19 @@ func _film_tick(dt: float) -> void:
 	if ahead.distance_to(p) > 0.3 and far.distance_to(p) > 0.6:
 		turn = clampf(angle_difference((ahead - p).angle(), (far - p).angle()) * 0.7, -0.6, 0.6)
 	var tip := 0.0
+	var head: bool = _film_head.size() > 1 and _film_t >= _film_head[0].x and _film_t <= _film_head[_film_head.size() - 1].x
+	if head:
+		var j := 0
+		while j < _film_head.size() - 2 and _film_head[j + 1].x <= _film_t:
+			j += 1
+		var h0: Vector2 = _film_head[j]
+		var h1: Vector2 = _film_head[j + 1]
+		turn = lerpf(h0.y, h1.y, clampf((_film_t - h0.x) / maxf(h1.x - h0.x, 0.001), 0.0, 1.0))
 	for l: Vector4 in _film_looks:
 		if _film_t > l.x and _film_t < l.y:
 			var k := smoothstep(l.x, l.x + 0.5, _film_t) * (1.0 - smoothstep(l.y - 0.5, l.y, _film_t))
-			turn += l.z * k
+			if not head:
+				turn += l.z * k
 			tip += l.w * k
 	_film_look = lerp_angle(_film_look, turn, 1.0 - exp(-dt * 6.0))
 	_film_tilt = lerpf(_film_tilt, tip, 1.0 - exp(-dt * 6.0))
@@ -14530,6 +14763,10 @@ func _film_tick(dt: float) -> void:
 		var A: Vector2 = fp[1]
 		var B: Vector2 = fp[2]
 		if A == B:
+			var base: float = fp[7]
+			if base < INF:
+				var turn_to := base + 0.26 * sin(_film_t * 1.3 + base * 3.0) + 0.14 * sin(_film_t * 2.9 + base)
+				(fp[0] as Actor3D).face(Vector3(cos(turn_to), 0, sin(turn_to)))
 			continue
 		var f: float = (_film_t - float(fp[3])) / maxf(float(fp[4]) - float(fp[3]), 0.01)
 		var who: Actor3D = fp[0]
@@ -19706,10 +19943,15 @@ var _ap_passed := -1                 ## the bus last passed (not again)
 
 func _ap_pass_bus(lead: Array) -> bool:
 	var bi: int = lead[3]
-	if bi < 0 or bi == _ap_passed:
+	if bi < 0:
 		return false
 	var bus = _traffic.cars[bi]
 	var dbl: bool = _traffic._parked_double(bus)
+	if bi == _ap_passed:
+		# bent round it, and still held by it a couple of seconds on: it stood further out than
+		# when the plan was bent (a van pulls in after it stops) -- over a little more, beside
+		# it (Katznelson: 32 s behind a van "gone round", its middle 2 m off the bent plan)
+		return dbl and _ap_wait > 2.0 and _ap_squeeze_by(bi, float(lead[0]))
 	if (not dbl and (bus.kind != "bus" or bus.v > 0.6 or bus.dwell <= 0.0)) or _ap_pts.size() < 2:
 		return false
 	var hit := _nearest_seg(_pos, 12.0, true, true, _y)
@@ -19718,7 +19960,7 @@ func _ap_pass_bus(lead: Array) -> bool:
 	var r: Dictionary = _roads[hit["road"]]
 	var n := _lanes_each_way(r)
 	if n < 2 and not (dbl and int(r["o"]) == 0):
-		return false
+		return _ap_squeeze_by(bi, float(lead[0])) if dbl and int(r["o"]) != 0 else false
 	var w := float(r["w"])
 	var lane_w := w / n if int(r["o"]) != 0 else (w * 0.5) / n
 	if n < 2:   # (a delivery van in a street of one lane each way: over the centre line)
@@ -19768,6 +20010,101 @@ func _ap_pass_bus(lead: Array) -> bool:
 	_ap_passed = bi
 	Probe.event("pass_van" if dbl else "pass_bus", {"lane_w": snappedf(lane_w, 0.1)})
 	_log.event("pass van" if dbl else "pass bus")
+	return true
+
+## Past a delivery van in a one-way street of one lane: no lane to go round it in, but most
+## stand half on the kerb with room beside them, and traffic -- which counts a car in its way
+## by its middle -- drove on past while autodrive, counting its body, stood behind it for the
+## whole delivery (half a minute, the street empty ahead: tests/auto_stands.gd). Over just
+## far enough to clear its body by a hand's breadth (by the points lead_on reads), when the
+## car still fits on the asphalt there, nothing solid (a parked car, a post) stands in the
+## way and no other car is on the bent stretch. True when it moved over.
+const SQUEEZE_MAX := 2.6   ## at most this far over (m)
+func _ap_squeeze_by(bi: int, gap: float) -> bool:
+	if _ap_turn_ahead() != 0:
+		return false   # (a junction just after it: stay in lane)
+	var van = _traffic.cars[bi]
+	var cdir := Vector2(sin(van.yaw), cos(van.yaw))
+	var body: Dictionary = _traffic.BODY
+	var offs: Array = (body[van.kind][0] as Array).duplicate() if body.has(van.kind) else [-van.len * 0.33, 0.0, van.len * 0.33]
+	offs.append(van.len * 0.5 - 0.3)
+	offs.append(-van.len * 0.5 + 0.3)
+	var rad: float = float(body[van.kind][1]) if body.has(van.kind) else 0.95
+	# which side of the plan it stands, and how near its body comes (left of the way: +)
+	var side := 0.0
+	var nearest := INF
+	for off: float in offs:
+		var q: Vector2 = van.pos + cdir * off
+		var best := INF
+		var lat := 0.0
+		for j in range(_ap_pts.size() - 1):
+			var cp := Geometry2D.get_closest_point_to_segment(q, _ap_pts[j], _ap_pts[j + 1])
+			if cp.distance_to(q) < best:
+				best = cp.distance_to(q)
+				var d := (_ap_pts[j + 1] - _ap_pts[j]).normalized()
+				lat = (q - cp).dot(Vector2(d.y, -d.x))
+			if _ap_pts[j].distance_to(_pos) > gap + 20.0:
+				break
+		if side == 0.0:
+			side = signf(lat)
+		if signf(lat) != side or absf(lat) < 0.2:
+			return false   # (across the plan: no room beside it)
+		nearest = minf(nearest, absf(lat))
+	var shift := 0.9 + rad + 0.35 - nearest   # (lead_on's reach for a car going my way: 0.9 + its half + 0.25)
+	if shift <= 0.0 or shift > SQUEEZE_MAX:
+		return false
+	# (over a two-way street's centre line after a first bend round it: nothing coming)
+	var fwd := _fwd()
+	for c in _traffic.cars:
+		if c.alive and c != van and Vector2(sin(c.yaw), cos(c.yaw)).dot(fwd) < -0.5:
+			var rel: Vector2 = c.pos - _pos
+			if rel.dot(fwd) > -5.0 and rel.dot(fwd) < gap + 45.0 and absf(rel.dot(Vector2(fwd.y, -fwd.x))) < 7.0:
+				return false
+	# the bent stretch: out by the van's tail (over 2-8 m, from where the car stands), back in
+	# 6 m past its nose -- tried on a copy, then kept if it is clear
+	var tail := gap - float(van.len) * 0.5
+	var ramp := clampf(tail - 1.3, 2.0, 8.0)
+	var start_s := maxf(tail - 1.0 - ramp, 0.3)
+	var end_s := gap + float(van.len) * 0.5 + 4.0
+	var keep_pts := _ap_pts.duplicate()
+	var keep_v := _ap_v.duplicate()
+	var keep_lim := _ap_lim.duplicate()
+	var s0 := _ap_pts[0].distance_to(Geometry2D.get_closest_point_to_segment(_pos, _ap_pts[0], _ap_pts[1]))
+	_ap_densify(s0 + end_s + 10.0, 1.0)
+	var s := -s0
+	var bent: Array = []
+	for k in range(1, _ap_pts.size()):
+		s += _ap_pts[k - 1].distance_to(_ap_pts[k])
+		if s > end_s + 6.0:
+			break
+		var t := clampf((s - start_s) / ramp, 0.0, 1.0) * clampf((end_s + 6.0 - s) / 6.0, 0.0, 1.0)
+		if t <= 0.0:
+			continue
+		var kd := (_ap_pts[mini(k + 1, _ap_pts.size() - 1)] - _ap_pts[k - 1]).normalized()
+		var away := Vector2(kd.y, -kd.x) * -side
+		_ap_pts[k] += away * shift * t
+		bent.append([_ap_pts[k], away])
+	var ok := not bent.is_empty()
+	for b: Array in bent:
+		var q: Vector2 = b[0]
+		# the car's outer side on the asphalt, nothing solid where it goes
+		if _off_road(q + (b[1] as Vector2) * (CAR_WIDTH * 0.5 + 0.1), 0.0) or _push_out(q, 1.0, true, false, _y) != Vector2.ZERO:
+			ok = false
+			break
+		for c in _traffic.cars:
+			if c.alive and c != van and c.pos.distance_squared_to(q) < 2.4 * 2.4:
+				ok = false
+				break
+		if not ok:
+			break
+	if not ok:
+		_ap_pts = keep_pts
+		_ap_v = keep_v
+		_ap_lim = keep_lim
+		return false
+	_ap_passed = bi
+	Probe.event("squeeze_van", {"over": snappedf(shift, 0.1)})
+	_log.event("squeeze past van")
 	return true
 
 ## A point every `step` metres along the plan for its first `upto` metres. Only points move
@@ -21218,20 +21555,53 @@ func _build_hud() -> void:
 	_banner.position = Vector2(120, 98)
 	_banner.size = Vector2(400, 30)
 	_banner.modulate.a = 0.0
-	_osm_lbl = _label(8, "ink")
+	# the credits, small, in the corner under the map and clear of the buttons along the bottom
+	# (AUTO_BTN starts at x 184): one line run past them, the towns' surveys under the buttons
+	_osm_lbl = _label(7, "ink")
 	_osm_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_osm_lbl.position = Vector2(8, 347)
+	_osm_lbl.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	_osm_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_osm_lbl.add_theme_constant_override("line_spacing", -3)
+	_osm_lbl.position = Vector2(6, 329)
+	_osm_lbl.size = Vector2(AUTO_BTN.position.x - 12.0, 30)
 	_osm_lbl.text = "a made-up town: not a real place" if _made_up else "map data © OpenStreetMap contributors"
-	for c in _credits:   # e.g. a town's own survey of its buildings' heights (tools/osm_city.py)
-		_osm_lbl.text += " · " + String(c)
+	if not _credits.is_empty():   # a town's own surveys of its buildings and trees (tools/osm_city.py)
+		_osm_lbl.text += " · " + _credit_line(_credits)
 	_osm_lbl.modulate.a = 0.7
+	# which build: a screenshot then says whether it holds a fix (the menu shows it too, but
+	# a screenshot of the street does not have the menu in it)
+	_ver_lbl = _label(8, "ink")
+	_ver_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_ver_lbl.position = Vector2(8, 197)
+	_ver_lbl.size = Vector2(200, 12)
+	_ver_lbl.text = _build_line()
+	_ver_lbl.modulate.a = 0.6
 	_map = Control.new()
-	_map.position = Vector2(8, 224)
+	_map.position = Vector2(8, 210)
 	_map.size = Vector2(118, 118)
 	_map.clip_contents = true
 	_map.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_map.draw.connect(_draw_map)
 	_hud.add_child(_map)
+
+## res://build.txt, as tools/publish_web.sh writes it ("2026-11-21 10:05 UTC 79f2bc6": when it
+## was built and the commit it was built from), said short: "build 21 Nov 10:05 UTC · 79f2bc6".
+## With no file (run from the project, not a published build): "dev build".
+func _build_line() -> String:
+	var t := _build_id
+	if t == "" and FileAccess.file_exists("res://build.txt"):
+		t = FileAccess.get_file_as_string("res://build.txt").strip_edges()
+	if t == "":
+		return "dev build"
+	var p := t.split(" ", false)
+	var day := p[0].split("-")
+	if p.size() < 3 or day.size() != 3:
+		return "build " + t
+	var months := ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+	var s := "build %d %s %s %s" % [int(day[2]), months[clampi(int(day[1]) - 1, 0, 11)], p[1], p[2]]
+	if p.size() >= 4:
+		s += " · " + p[3]
+	return s
 
 func _retint_hud() -> void:
 	if _hud == null:

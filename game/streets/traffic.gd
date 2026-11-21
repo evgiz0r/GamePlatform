@@ -1741,6 +1741,17 @@ func _start_on(c: Car, ri: int, sj: int, at: Vector2, dir: int) -> bool:
 		return false   # (a dead end straight ahead: somewhere else)
 	c.v = c.vmax[0] * 0.7
 	c.want = -1.0
+	# (a car is a pooled object: what it was doing in its last life goes too -- its
+	# acceleration above all, eased towards the new want: a filmed walk's car sent in the
+	# middle of its last life's hard stop braked from 9 to 3 m/s over its first 2 s)
+	c.acc = 0.0
+	c.braking = 0.0
+	c.react_t = 0.0
+	c.still = 0.0
+	c.blocker = -2
+	c.holding = false
+	c.sign_done = -1
+	c.sign_wait = 0.0
 	c.wait = 0.0
 	c.hit = 0.0
 	c.ignore = 0.0

@@ -17,8 +17,10 @@ fi
 cd "$(dirname "$0")/.."
 
 # stamped into the build and shown on the menu, so you can tell from the device itself
-# whether a push has landed -- an installed web app swaps versions silently
-date -u +"%Y-%m-%d %H:%M UTC" > build.txt
+# whether a push has landed -- an installed web app swaps versions silently. The time it was
+# built, then the commit it was built from: a screenshot with the stamp in it then says which
+# fixes it holds (`git merge-base --is-ancestor <fix> <commit>`). Games may show it too.
+echo "$(date -u +"%Y-%m-%d %H:%M UTC") $(git rev-parse --short=7 HEAD 2>/dev/null)" > build.txt
 echo "build.txt: $(cat build.txt)"
 
 mkdir -p docs

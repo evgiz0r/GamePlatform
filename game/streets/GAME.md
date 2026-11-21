@@ -341,6 +341,15 @@ then left. Cars come down the street to meet it there: one goes by before it ste
 next stops at the zebra for it, and drives on once it is across. The head looks where the
 walk is going and turns into a corner a moment before the feet do.
 
+From the far kerb on, it walks at the film's own pace and turns its head as the film's did --
+both measured off every frame of the film, not set by eye: it slows where the film slows (the
+corner of the forecourt, the end of the passage), does not stop at Sheinkin's corner but looks
+right along it and turns left into Ha-Meri bit by bit, and ends facing Ha-Meri's far pavement,
+its white wall and the e-scooter, as the film does. The people the film shows move as they
+did: a man walks along the confectionery to the far kerb's railing and stands there, three
+people talk by the scooter in the forecourt (turning to each other and back), and a woman
+crosses the passage's end in front of the man in blue standing there.
+
 The phone is held as a hand holds one: tipped down at the pavement ahead as the film is
 (about 16 degrees, read off where the film's horizon sits), never quite still -- a slow sway
 and a little roll, as small and as slow as the film's own, measured from it -- and it looks
@@ -422,6 +431,11 @@ hydrants and red-and-white kerbs are a real red, not the palette's pink.
 The minimap (bottom left) shows the real streets and buildings round you, heading up, with
 the city limits in pink. The name of the street you are on is at the top, in Hebrew with
 the English name under it when OSM has one.
+
+Over the minimap, small, is which build this is: "build 21 Nov 10:05 UTC · 79f2bc6", when
+it was published and the commit it came from, so a screenshot says whether a fix is in it
+("dev build" when run from the project). Under the map, small and wrapped so it stays
+clear of the buttons, the credits: OpenStreetMap's, and the towns' own surveys.
 
 **Zooming out.** "zoom" (on the right, under "walk"; Z, or the mouse wheel down, or two
 fingers pinching together) lifts the view off the car -- or off you, on foot -- up over the
@@ -556,6 +570,9 @@ stops; one too close goes (traffic used to cruise on until it could not stop, of
 the amber, and cross on red). Autodrive, at the end of a green (the flashing green or the
 amber), goes on only if it will be over the line before the red at the pace it is going --
 slowing for a turn just past the line counts -- and otherwise stops, firmly if it has to.
+Stopping, it stops at the line, however far off it was when the green began to end ("the car
+weirdly stops in the middle of the run": a green ending 80 m ahead stopped it 60 m short, by
+a side street, and it stood there all through the red).
 
 A junction is one junction however OSM draws it. Where a divided road meets a street it is
 two points 10-30 m apart, where two divided roads cross it is four; the whole knot is one

@@ -49,6 +49,8 @@ The ones most often touched, and the functions in them:
   to the square its spot is in (`_mine`, `_ring_mine`). A builder that is a coroutine must
   be awaited everywhere, or what it builds after a pause lands in the wrong square.
   `STREETS_BUILD_ALL=1` builds every square before the car is shown (the tests do).
+  `STREETS_CITY_FILE=/path/x.json` drives that file instead of the level's own (the same
+  test on a file from before a re-bake: `tests/real_trees.gd`).
 - **looks at street level** -- the pavement is drawn by `KERB_SHADER` in the kerb's own
   mesh (vertex COLOR.b 1: a pavement; COLOR.r the street's paving, `_set_pave_code`;
   COLOR.g its leaves, `_leafy`; UV metres along and out from the kerb), so it costs no draw
@@ -466,7 +468,9 @@ The ones most often touched, and the functions in them:
   warm (`_load_into`, `_load_sub` at each square and warm-up frame), estimated from this
   device's last load of the city in `user://streets_load.json` (`_load_save`: ms per phase,
   per square, the warm-up as on the same build `warm` and on a new build's first load
-  `warm_new`, keyed by res://build.txt); no history for the city: another city's, the file
+  `warm_new`, keyed by res://build.txt -- "<UTC time> <commit>", tools/publish_web.sh; shown
+  over the minimap by `_build_line`, so a user's screenshot names its build: check a fix
+  is in it with `git merge-base --is-ancestor <fix> <commit>`); no history for the city: another city's, the file
   scaled by its size; none: the bar by phase, "timing it, for next time". The city file is
   one blocking call (`_load_city`): the bar stands still through it.
 - **people** -- walkers `_place_walker` / `_pavement_piece` / `_people_tick`, zebra crossers
@@ -1040,6 +1044,24 @@ The open items of the handoff below, done:
   5 of 40 bad. Now 0 of 40: on through from 30 m and nearer, stopped from 40 and 55 m at
   3.6-3.9 m/s^2, 2.7-11 m short of the line; on a flashing green it goes (6 s to the red).
   The route set's red (route 5, Ashdod) was this. The traffic's own amber rule is not touched.
+- **A green ending far ahead stopped the car mid-street** (21 Nov; `_ap_brake_for`). The user,
+  twice: "the car weirdly stops in the middle of the run" -- by a side street on Hafetz Haim,
+  Givatayim, the road empty, and again 20 m short of a crossing. Both were the amber stop
+  above: it braked at the stop's need and a fifth, but at 1.5 m/s^2 at least, wherever the line
+  was. A green ending when the light was 80 m off (it cannot get there in the 6 s to the red,
+  so it stops: right) brought it to a stand 23 m on; standing, the need is nothing and the speed
+  to aim at nothing, and `_ap_amber_n` keeps the decision until green -- it stood 57 m short
+  all through the red. The "3-11 m short" the amber test printed was the near end of the same
+  thing, put on the open list instead of chased. Now while the need is under 2 m/s^2 the
+  speed aimed at is the usual slope up to the line (2.6 m/s^2), as for a red; above, the
+  commanded braking as before. Found by `tests/side_street.gd` (Hafetz Haim on the user's
+  route, four passes: the third met the end of a green and stood 19 s 2 m from the side
+  street, why 'light'); `tests/amber.gd` now has an 80 m case and fails a car left standing
+  more than 4 m short (6 s after it stands): before 12 of 12 bad at 80 m (27-45 m short), now
+  0 of 72 -- every stop 1.6-1.7 m short of the line (where it aims), braking 3.3-4.3 m/s^2.
+  Route set after: 10 of 10, 0 reds, 0 rescues, 0 off road; one hit, a person on Bedford's
+  Hammonds Plains Road at 23 km/h (following a car at 36 km/h, why 'car', then 'people' under
+  a second before: someone into the lane close ahead -- no light near; open, below).
 - **Waiting in a divided road's middle** (`_median_gap`, `_ap_split`, `_ap_mid`,
   `_ap_edge_of`; `_ap_median_ok` turns it off for tests). A junction of points within 18 m is
   one junction for autodrive (`AP_KNOT`): it waits at the kerb for a gap in every stream it
@@ -1082,7 +1104,9 @@ Nothing is half done: all of the above is on main.
     within a few metres of the junction (it may not start behind it): 3.6-4.3 m at two of
     Givatayim's four in turn_width. Dropping a plain lane point that the arc would start
     behind would let it;
-  - autodrive's amber stop ends 3-11 m short of the line (it brakes at the need and a fifth);
+  - route 9 (Bedford) hit a person at 23 km/h on Hammonds Plains Road (21 Nov, t 284 s of the
+    drive): autodrive held for 'people' only ~0.6 s before, at 10 m/s -- someone came into the
+    lane from close by, or the people check saw them late (its 32 m look and 1.7 m reach);
   - `_push_out` sets `_last_hit` even when it only probes (the plan's `_clear_lane`, the nose's
     safety net): a test reading `_last_hit` must gate on `_crash_cool`, as route_set and
     give_way do;
@@ -1510,15 +1534,61 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   call 6 m south-east shows; the city's own guard railing stands beside the bollard where the
   film has none.
 
-### Handoff: the filmed walks (20 Nov 2026, after pass 12)
+- **Pass 13, the pace and the head as filmed, the people moving**, done. Measured on every
+  frame of the film (30 a second), not landmarks or one frame a second: `tests/film_motion.py`
+  reads the camera's facing from the far band's slide across each pair of frames (the median of
+  six tiles: a car passing fills one or two and alone dragged the reading 60 degrees), and the
+  pace from the ground's slide down the frame less the far band's (a pinhole's sums: f
+  sin^2(theta) / (h cos^2(alpha)) pixels a metre). The replay is measured by its
+  `CAMERA_LOG` (the test's new mode: the camera every 0.1 s at the walk's pace, ~10 min at
+  320x180, --fixed-fps 10), not from its recording: at 10 frames a second its pavers'
+  pattern repeats within one frame's slide and its ground read 0.2 m/s for 1.4. Lined up on
+  the passage (36-52 s), the two facings agreed there and on the little street to a degree or
+  two -- the film's summed facing barely drifts over a minute -- and differed at the passage's
+  end (the replay's body turned 50 degrees right onto the little street's pavement, the
+  film's did not), at Sheinkin's corner (the film looks right at 79-81 s and then turns left
+  smoothly to 90 s; the hand-set looks went left at 81 and 88 s) and on Ha-Meri (91-96 s: the
+  film faces the far pavement's white wall and e-scooter, the replay looked down the pavement).
+  `tests/film_fit.py` then fits from the far kerb on (17 s): between kept anchor seconds (17,
+  25.6, 33, 64, 80, 87, 91.5, 96) the replay's own path at the film's share of the distance
+  (the streets' lengths are not the street's), capped at 2.6 m/s, points every 0.5 s; and the
+  head's turn = the film's facing less the body's (the body worked out as `_film_tick` does)
+  every 0.25 s. It writes `cities/details/katzenelson_fit.json`, which `make_givatayim.py`
+  takes in: the walk's points from 17 s and its new `"head"` -- [second, degrees right of the
+  body], played by `_film_tick` where it runs in place of the turn into bends and the looks'
+  turns (their tips up and down still apply). After it: the facing within a few degrees of the
+  film's from 19 s to the end (`motion_after` chart); the pace the film's shape, 0.3-0.4 m/s
+  quicker from 64 s (the replay's streets are longer there) and 2.4 m/s under the arcade (the
+  replay's route from its zebra is ~7 m longer than the street's). Not fitted: 0-17 s -- the
+  film's facing there is cars and stripes (the phone looks down), so the crossing keeps pass
+  12's frame-read looks. Re-fit after moving any walk point past 17 s (`CAMERA_LOG`, then
+  `film_motion.py log`, then `film_fit.py`): the fit follows the path the replay walked.
+  *People*: the man by the far kerb's railing walks there along the confectionery's front
+  (12.6-16.6 s), a third person stands with the two women in the forecourt, and the three
+  "talk" (people's new `talk`: no clip for it in the kit, so each turns a little to the others
+  and back, two slow sines), a woman crosses the passage's end in front of the man in blue
+  (59.4-63.2 s).
 
-- **In progress**: nothing. Pass 12 is on main; the list of what is still different is
+  *Merging main after it*: the black hatch at the crossing passed at 4.4 s, not 2. Not the
+  merged traffic: `send` takes the car furthest off from the pool, and `_start_on` reset its
+  want, wait and hit but not its smoothed `acc` -- this one came with -7 m/s^2 from a hard stop
+  in its last life and braked to 3 m/s with "limit" as its reason and 14 m/s as its want (seen
+  only in a tick-by-tick line of v, want, acc). `_start_on` now resets acc, braking, react_t,
+  still, blocker, holding and the stop sign it last stopped at (all three of its callers put a
+  car down afresh: spawns, kerb pull-outs, film cars). Likely the grey SUV's 0-1.5 s spread of
+  pass 12 too. After: the black hatch past the zebra at ~1.8 s (the film's ~2), the white SUV
+  at 3.2, the white hatch at 9. The walk test's TRAFFIC_LOG prints each car's `why` now.
+
+### Handoff: the filmed walks (20 Nov 2026, after pass 13)
+
+- **In progress**: nothing. Pass 13 is on main; the list of what is still different is
   `WALKS.md` (walk 1's details, behaviour and quality, walk 2's, both walks'), with a Done
   section that points back here.
 - **The biggest open items**, by what the side-by-side shows most: the buildings' faces along
   the route (cream and sand plaster, balconies, shutters: city-wide, another session's); the
   light (hazy, warm, soft shadows: another session's); people that move as the film's do
-  (`people` take `to` and `t`; none of walk 1's four walk yet); the north kerb's paint and the
+  (done for walk 1's: pass 13, but the forecourt's talkers and the man in blue are off the
+  frame when the film shows them: WALKS.md, Behaviour, with the bearings); the north kerb's paint and the
   city's guard railing north-west of the zebra (pass 12, above); the cars parked along
   Katzenelson's far kerb the film shows across the road at 1-2.5 s; the arcade's columns (white with a dark wooden foot) and the second shop; Ha-Meri's
   far pavement (a low white wall, an e-scooter); the camera's last differences (a touch of
@@ -1533,6 +1603,11 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   `STREETS_FILM_LOOK=meter` paints the exposure meter's reading top left. Then the
   side-by-side recipe above, `tests/film_look.py <clip> <frames> 96 --check` (a graded
   recording against the film) and `tests/film_shake.py` (sway, straight stretches only).
+  The movement: `CAMERA_LOG=1` (with `RES=320x180 GODOT_ARGS="--fixed-fps 10"`, ~10 min),
+  then `tests/film_motion.py film <clip> 96 film.csv` (30 s), `film_motion.py log <log>
+  game.csv`, `film_motion.py chart film.csv game.csv out.png`; to re-fit the pace and the
+  head, `tests/film_fit.py film.csv <log> 17,25.6,33,64,80,87,91.5,96 17
+  cities/details/katzenelson_fit.json` and run `make_givatayim.py`.
 - **Good numbers** (walk 1, after pass 12): both walks' scans print only "scan done";
   sway 0.25 / 0.21 degrees rms across / up (the film's 0.25 / 0.19); levels at 1-99% within
   0.05 of the film's, 0.0% clipped, saturation 0.146 (0.159); each second's brightness
@@ -2166,6 +2241,58 @@ Each line: where the code is, the test, what good reads.
   ground (`AT="55,175" UP=40 tests/run.sh top_at 7`, low_0.png). The same before this
   round's tunnel change -- not caused by it. `cut_under` also lists 4 service cuttings under
   a street there and elsewhere (garage mouths).
+- **Autodrive waiting with the street clear ahead** (user, Tel Aviv's Shenkin: "after some
+  standing behind cars, the autodrive just stops and waits for a while while there is a big
+  distance ahead it can drive"). `tests/auto_stands.gd` (each stop of 4 s or more: what
+  holds it and what is really ahead) caught it on Geula, one-way, one lane: 38 s behind a
+  delivery van standing at the kerb, its middle 2.5 m off autodrive's lane, the lane free
+  for 60 m. Traffic counts a car in its way by its middle (`LANE_W` 1.5 m) and drove on past
+  it; autodrive's `lead_on` counts a car going its way by its body (0.9 + its half + 0.25)
+  and stood -- and `_ap_pass_bus` goes round a van only on roads of two lanes each way or
+  over a two-way street's centre line, never in a one-way street of one lane. Now
+  `_ap_squeeze_by`: there, over just far enough to clear the van's body (by lead_on's own
+  points and reach, at most `SQUEEZE_MAX` 2.6 m), when the car's outer side stays on the
+  asphalt, nothing solid stands on the bent stretch (`_push_out`: parked cars, posts) and
+  no other car is on it; else it waits as before. Traffic still does not go round a van in
+  a one-way street (traffic.gd's go_round is two-way only) -- the other session's corner.
+  The same squeeze when the plan was already bent round a van and it still holds autodrive
+  2 s on (it pulls in further after it stops): `street_goings` 1, Katznelson's van, autodrive
+  stood 32.5 s behind it "gone round" (its middle 2 m off the bent plan) -> 2.9 s. Over a
+  two-way street's line only when nothing comes for 45 m past it. `street_goings` has a
+  one-way case now (Tel Aviv's Karmia: the van stood in the lane, a car queued behind it,
+  autodrive waited behind that car 22 s -- right: no room). `auto_stands` from Allenby, the
+  same three streets: 4 stops / 66 s -> 0; from Dizengoff 4 stops, 26 s, all real (behind a
+  bus queue, a motorbike pulling away; one 4 s 'blocked' by the nose's safety net with 60 m
+  free, not chased). Other stops the first run logged were real too: behind a bus pulling
+  away, a van at a red, giving way to a car 8-12 m off at a junction.
+- **A building across Dizengoff** (user, overhead view: "building in middle of the street"):
+  Dizengoff Center's two bridges over Dizengoff Street are OSM outlines with no
+  `min_height`, so they stood on the street from the ground, solid. `_clip_buildings` kept
+  them whole (a street runs under them: cutting the road out would take more than half) but
+  nothing raised them. Now one the street runs right under (`_spans_a_cut`), with no base of
+  its own, is put up `OVER_ROAD_BASE` (5.5 m) on its columns (`_stilts`: none in the lanes,
+  not solid), or left out when under 8.5 m tall. Tel Aviv 3 raised (`bld_raised_over_road`
+  in the "city" event; `over_road_at` lists their middles), 1 left out; Givatayim's one, a
+  4 m box across an Ayalon slip road at (890, -511), left out. Shots:
+  `AT="-1441,-23;-1486,-85" CAR="-1414,-6,-0.78,-0.62" tests/run.sh top_at 7`.
+- **Parked cars down the middle of main roads** (user, Tel Aviv, Katznelson by Manara: "a
+  lot of parked cars in the middle of somewhat main roads"): each half of a divided road is a
+  one-way road of its own, and `_build_parked` parked both its sides -- its left side is the
+  median, so a row of cars stood down the middle. Now the left of a one-way road is skipped
+  wherever `_partner` finds its other half within `PARKED_MEDIAN_GAP` (12 m, edge to edge),
+  and no car parks where another road's asphalt is 2.6 m past its middle on the kerb side (a
+  service lane alongside). `tests/parked_median.gd` counts parked cars with asphalt both sides
+  (`_parked_at`, `_parked_face` keep where each stands): Tel Aviv 695 of 16,624 before, 0 now (82 with the median rule alone: service lanes alongside); Givatayim and Ashdod 0. Shots:
+  `AT="1110,-52" CAR="1070,-49,1,0.05" tests/run.sh top_at 7`. Not done: the user added that on
+  their wider streets the outer lane is parked in, on the road, not up on the pavement -- here
+  every street parks half up the kerb, and the lanes share the whole asphalt
+  (`_lane_off`/`_lanes_each_way`), so a parking strip on the road needs traffic, autodrive and
+  the lane paint to give that width up first.
+- **Which build** (user: "add the version somewhere, maybe near the map"): `_build_line` over
+  the minimap reads res://build.txt, now "<UTC time> <commit>" (tools/publish_web.sh); the
+  credits under the map are size 7 and wrap clear of the bottom buttons (Tel Aviv's ran
+  under "autodrive"). To tell whether a screenshot's build holds a fix:
+  `git merge-base --is-ancestor <fix> <commit>`.
 - **Tel Aviv grew** (another session, the bake workflow's bbox): 4,011 -> 9,597 buildings,
   3,745 -> 5,963 roads, west to the sea -- Ashdod's size now, and its load with it (see
   "Numbers to compare against").
@@ -2177,7 +2304,8 @@ Each line: where the code is, the test, what good reads.
   only meaningful in a real browser), `top_at` (shots by map point, `CAR=` to put the car
   anywhere), `street_at` (by street name at its roundabouts), `perf_dive`, `deck_corner`,
   `islands`, `pave_overlap`, `picker`, `minimap_route`, `warm_census`, `index_gain`,
-  `signs_inferred`, `start_drive`, `rails_near`, `cut_under`, `signs_double`;
+  `signs_inferred`, `start_drive`, `rails_near`, `cut_under`, `signs_double`, `auto_stands`,
+  `parked_median`;
   `tools/level_roads.py`.
 
 ## OSM's extra fields and speed limits: handoff (20 Nov 2026)
@@ -2338,6 +2466,48 @@ server. Ideas it opens: real tree species and sizes along the streets, lit lamp 
 they stand, shopfronts by kind and floor, building sites with hoardings and cranes, paid-
 parking kerbs, bus stops with their real lines and shade, sculptures and defibrillators as
 landmarks, a quiz or errand on real addresses.
+
+## The towns' own trees (21 Nov 2026)
+
+Tel Aviv's list of street trees (8,515, each with its species) and Givatayim's crowns traced
+from the air (11,893, each with its radius), both fetched on the user's computer
+(`cities/data/`), are in levels 1 and 7.
+
+- **Baking** (`tools/osm_city.py`): `TREE_SURVEYS` (each file, its "shift" onto OSM's
+  map -- the offset measured on the same town's buildings: Tel Aviv -0.4, -1.9 m;
+  Givatayim +0.8, -0.6 -- and "all": whether it maps every tree), `TREE_FORMS` (a word of
+  the Hebrew species name to one of nine forms; the 247 names' long tail falls to "round"),
+  `tree_surveys_apply` (run by the bake and by `--add-surveys`; a crown over 7 m in radius
+  is a grove's canopy, sown as trees of 4.5 m; OSM's trees within 3 m of one dropped). The
+  city file gains `tree_info` beside `trees` ([form, crown dm] a tree), `tree_forms`,
+  `tree_surveys` (format at the top of the tool). Re-apply after a change:
+  `python3 tools/osm_city.py --add-surveys game/streets/cities/tel_aviv.json` (and
+  givatayim.json), about a minute each (it re-applies the building surveys too).
+- **The game** (`_build_trees`): a mapped tree takes its form's kind (`fixed`), a crown its
+  size (`cr / crown width`) and a kind by size when the map has no species (`_crown_kind`:
+  over 5.5 m ficus or eucalyptus, under 1.3 m olive or round, else the street mix). It gets
+  a trunk's room (`_mapped_tree_ok`: 0.4 m off the asphalt, 0.6 m off a wall, 1.2 m apart),
+  and where it has none it is moved (`_tree_nudge`): onto the pavement 1 m or 0.6 m from
+  the kerb (Tel Aviv plants in the parking lane, and OSM's widths are guesses), out to the
+  nearest wall's foot from up to 2.5 m inside a house (4 m for a crown from the air, centred
+  over the roof it overhangs); a grate or earth square under it on a pavement. Where an
+  aerial map covers (`_tree_cover`, within 40-80 m of its trees) nothing is made up; a list
+  of street trees is not every street tree (16 listed along a stretch of Rothschild that has
+  rows), so there the made-up street rows go on but not within 9 m of a listed tree
+  (`_mapped_near`). The caps (`MAX_TREES`, `MAX_FOREST`) count made-up trees only
+  (`_trees_mapped`). The credits are one line by owner (`_credit_line`).
+- **Test**: `tests/real_trees.gd` (README row: the numbers; before/after with
+  `STREETS_CITY_FILE`, which keeps the level's own town id). Load times unchanged.
+- **Lost** (Tel Aviv 3,042, Givatayim 4,825): trees deeper in a house than the moves
+  allow (Givatayim: ~2,700 crowns centred over a roof by more than 1.4 m; Tel Aviv: ~950
+  more than 2.5 m inside an OSM outline -- courtyards drawn as roof, or a private plot),
+  over 4.5 m into a road (a boulevard's middle where OSM maps one road), or with no
+  trunk's room left between kerb and wall.
+- **Open**: what each species looks like beyond its form (a jacaranda's purple in May and
+  June, a bottle tree's trunk, a ficus' hanging roots); Tel Aviv's sizes (none given: a
+  species' usual size would do); fewer lost (a crown over a roof could stand in the yard
+  behind, not only at the nearest wall); Ramat Gan's trees (no layer fetched yet); Ashdod's
+  sycamores, old trees and vegetation polygons (`places_ashdod.geojson`).
 
 ## Handoff: the street's realism and life, loading split, crashes, sounds (20 Nov 2026)
 

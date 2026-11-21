@@ -151,6 +151,22 @@ the parked cars, which stand a third in the road).
     so read through it -- an evenly spread sample when only shares are needed. gov.il's
     pages are rendered in the browser and refuse automated readers. gtfs.mot.gov.il serves
     its files to a plain download.
+- **A town's map of its trees comes in two kinds, and each covers a different part.** A
+  street-tree inventory (each public tree's place and species, no size) says nothing of
+  yards; crowns traced from the air (every tree, yards and parks too, only a centre and a
+  radius) say nothing of species. And an inventory is not every street tree: one city's
+  listed 16 trees along a stretch of a boulevard with rows of them. So with an inventory,
+  keep making up street trees but not within a few metres of a listed one (the gaps fill,
+  the listed ones keep their places and species), and keep making up the yards' trees; with
+  an aerial map, make up none within reach of its trees (40-80 m: needs no town boundary and
+  does not bleed far into the next town). Taking an inventory as complete left a famous
+  boulevard bare. An aerial "crown"
+  far bigger than a tree (here up to 54 m across) is a grove's canopy: split it into
+  trees of a usual size, or one giant ball stands over a park. Species to a handful of
+  forms (fan palm, date palm, ficus, feathery, round, olive, pine, cypress, eucalyptus) by
+  a word in the local name is enough; the long tail (hundreds of names, most a few trees)
+  falls to "round". Count the real trees apart from the made-up ones in any cap on how many
+  are drawn, or the real ones use it up and the next town's streets go bare.
 - **Government open data may refuse the cloud.** A national portal's API answered, but
   its files came from a CDN host that refused the container even once the environment
   allowed both hosts (a CloudFront 403 page instead of the file: likely by country). Do not
@@ -196,13 +212,19 @@ the parked cars, which stand a third in the road).
   (`Geometry2D.clip_polygons` against a capsule round each road segment -- a rectangle
   leaves the outside of every bend and every junction's middle uncut). Skip one that would
   lose more than half (a road passing under it: OSM maps the passage, not a gap) and one
-  raised on columns (`min_height`), and keep the outline's winding.
+  raised on columns (`min_height`), and keep the outline's winding. But a building the road
+  runs right under, past both its edges, with no `min_height` (a mall's bridge over its
+  street) must then be lifted -- a storey and a half, columns out of the lanes -- or it
+  stands on the street as a wall: kept whole and left on the ground, it blocked one.
 - **A divided road is two one-way roads**, each guessed at the full class width, so the
   halves overlap and each one's kerb and pavement run down the other's lanes. Find each
   half's partner (one-way the other way, on its left, within ~40 m along most of its
   length), size each half to its lanes (3.3 m a lane), remember the median between them.
   Its inner side gets a kerb and half the median, not a pavement; people walk only on the
-  outer sides; a zebra on one half is crossed kerb to kerb across both.
+  outer sides; a zebra on one half is crossed kerb to kerb across both. Anything laid "along
+  both sides of a street" -- parked cars above all -- goes on the outer side only: parked
+  both sides, a row of cars stood down the middle of the boulevard. Check the spot itself,
+  not the road's flag: halves pair up along only part of their length.
 - **Lanes**: `lanes` counts both directions on a two-way road. Cap any count by what the
   width holds (a "two-lane" road narrowed to 4 m has one). On a one-way road of several,
   drive the middle of the right-hand lane -- the middle of the road is astride two.
@@ -353,6 +375,16 @@ the parked cars, which stand a third in the road).
   measure "metres ahead" from the car's projection onto the plan, not from the plan's first
   point -- which is the start of the current stretch and can be 40 m behind. Both together
   had autodrive "pass" a van with a bend that landed behind it, then stand there.
+- **One rule for "in my way", or the strict one stands while the others drive past.**
+  Traffic counted a car in its way by its middle, the player's AI by its body plus a
+  margin: a delivery van standing at the kerb, its middle 2.5 m off the lane, was passed by
+  every traffic car while the AI stood behind it for the whole delivery, the street empty
+  ahead -- which reads as broken. Wherever the strict test says "blocked", give it a way
+  past that clears exactly what that test reads (here: over by the van's body points plus
+  the test's own margin, if the car still fits on the asphalt and nothing solid is there),
+  and in a one-way street of one lane, where there is no lane to go round in, that is the
+  only way past. Log every long stop with what holds it and how far the lane is free: one
+  drive found what a user could only describe.
 
 - **Off the road** (handed over in a yard, knocked onto a lawn), heading straight for the
   nearest road goes through the wall in between, backs off and does it again. Search
@@ -452,7 +484,11 @@ the parked cars, which stand a third in the road).
   across its new lane. Keep the point near at a corner's pace (2 + 0.6 v, at least 3.5 m).
 - **The end of a green**: on amber (and a flashing green) go only if the nose is over the
   line before the red at the pace the plan goes there (a turn just past the line slows it);
-  "too late to stop gently" alone sent a car turning left into the red.
+  "too late to stop gently" alone sent a car turning left into the red. And once it decides
+  to stop, it stops at the line: a floor on the braking (so a stop that needs little still
+  brakes) halted it 60 m short when the green ended far off, and standing, with nothing left
+  to brake for, it waited there all red -- mid-street, the road empty. Far off, aim at the
+  usual slope to the line, as for a red.
 - **Score the driving, don't eyeball it**: a scripted exam that drives the AI from several
   places in town and counts per minute (stuck, hits, off the road, wrong side, red lights,
   harsh braking per occasion, and traffic's own stalls, overlaps and reds) finds in one run

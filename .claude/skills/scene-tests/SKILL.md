@@ -175,6 +175,18 @@ below level, so eye height / tan of that is how far off it stands. A wait that r
 "looking left for the traffic" faced straight across, two metres back from where the replay
 stood. Read the film four frames a second for this, not one: at one a second a car that
 passed in a second and a half, and the turn of the head, fell between the frames.
+*The whole walk's movement*: on every frame (30 a second, where a turn is a few pixels a frame),
+sum the far band's slide across for the facing and take the ground band's slide down less the
+far band's for the pace (a pinhole's numbers turn pixels into degrees and metres). Read each
+band as several tiles and take the median: a car passing fills a tile, and a whole-band
+reading followed it for 60 degrees. Measure the replay by logging its camera, not from its
+recording: its repeating paving slid more than one repeat between frames and read a fifth of
+its pace. Line the two facings up on a straight stretch -- summed over a minute and a half the
+film's drifted by a degree or two -- and the differences are the head's turns to copy (the
+head = the film's facing less the body's) and the pace's shape to copy (the share of each
+stretch's distance, between landmark times kept, since a replayed place's lengths are not
+the real one's). The up-and-down summed this way is not usable: while the camera looks down,
+its far band is ground, and walking forward reads as tipping down.
 
 **A test that jumps a scene's clock cannot show what is timed by it.** Stills taken by
 setting a replay's time and running a third of a second skip every scripted event in
@@ -235,6 +247,15 @@ it is made, with a one-line caption, rather than a report at the end.
   same place again: the car ignored the red there and the red went uncounted, every case
   reading "on through, no red". If every case reads the same however you vary it, suspect the
   staging before the code under test, and reset such state wherever the car is put down.
+- **A scripted actor whose timing drifts run to run: log its every field from its first
+  tick.** Pooled objects (cars, people taken from a pool and put down again) carry their
+  last life's state unless the put-down resets it. One scripted car, sent "at the road's
+  pace", kept its last life's smoothed acceleration of -7 m/s^2 and braked from 9 to 3 m/s
+  over its first 2 s with nothing ahead, its reason reading "limit" and its wanted speed 14:
+  only the per-tick line of speed, wanted speed and acceleration showed it. It had passed in
+  time on most runs (the object it got had been cruising), so the earlier timing spread of
+  0-1.5 s had been put down to traffic noise. When the reason and the target say "go" and
+  the speed falls, look at the smoothed state between them.
 - **A "last thing hit" that probes also write is not a hit.** A game whose collision helper
   records what it touched every time it is called -- by the planner checking a lane spot, by
   the AI's look-ahead at its nose -- shows "wall 6156" (130 m away) as the last hit. Count a
@@ -352,6 +373,14 @@ it is made, with a one-line caption, rather than a report at the end.
   anything that probes for room (placing people tries spots every tick), so counting label
   changes counts noise. Count the ticks where the body moved other than its own step
   (displacement minus heading x speed x dt) and read the label only then.
+- **Test where a stop ends up, not only that it stopped.** A stop test that broke off the
+  moment the car stood read "stopped, 3-11 m short of the line" as a pass -- and a little
+  short was the visible end of a bug: the braking had a floor, so from farther off the car
+  stopped far short, and standing (nothing left to brake for) it stayed there all through
+  the red, 60 m from the light, in the middle of the street. Keep watching a few seconds
+  after it stands and check where it waits; and stage the far case (a light 80 m off), not
+  only the near ones the rule was written for. A number a test prints as "a little off" is
+  worth one more case before it goes on the open list.
 - Parse-check first: `tools/check_script.sh res://game/<game>/<game>.gd` takes seconds and
   says which line; a broken script makes a scene test fail in a confusing way minutes in.
 
