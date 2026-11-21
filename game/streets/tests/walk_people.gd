@@ -3,8 +3,8 @@ extends SceneTree
 ## "people are popping randomly and moving aimlessly on my path, and no collision between
 ## them and the parked cars"). Plays the walk of LEVEL (default 6, Sheinkin and Sirkin) from
 ## its start to its end and, every tick, looks at everyone in the street:
-##   pop       someone in the camera's view within 75 m who was not there the tick before
-##             (just made visible, or moved more than 1.5 m in a tick)
+##   pop       someone in the camera's view within 75 m (not behind a building) who was not
+##             there the tick before (just made visible, or moved more than 1.5 m in a tick)
 ##   turned    a walker turning back on the spot in view within 40 m (the end of its stretch)
 ##   swerve    a walker within 8 m stepping more than 0.5 m off its line, and how far
 ##   close     someone within 0.6 m of the walker (two bodies in one place: walked through)
@@ -78,7 +78,10 @@ func _run() -> void:
 				var id := a.get_instance_id()
 				var p := Vector2(a.position.x, a.position.z)
 				var d := p.distance_to(me)
-				var seen := a.visible and d < 75.0 and cam.is_position_in_frustum(a.position + Vector3.UP)
+				# (behind a building from the eye is not seen: people are put down and taken away
+				# round corners and behind blocks -- g._spawn_ok -- where the frustum still holds them)
+				var eye := Vector2(cam.global_position.x, cam.global_position.z)
+				var seen: bool = a.visible and d < 75.0 and cam.is_position_in_frustum(a.position + Vector3.UP) and not g._behind_building(eye, p)
 				var was: Array = last.get(id, [a.visible, p])   # (the first look: what is there already counts as there)
 				if seen and (not was[0] or (was[1] as Vector2).distance_to(p) > 1.5):
 					counts["pop"] += 1
@@ -93,7 +96,9 @@ func _run() -> void:
 				if d < 0.6:
 					counts["close"] += 1
 					closest = minf(closest, d)
-					_say(shown, "close", "%5.1f s  close: a %s %.2f m from the walker at %s" % [t, kind, d, Vector2i(me)])
+					_say(shown, "close", "%5.1f s  close: a %s %.2f m from the walker at %s%s" % [t, kind, d, Vector2i(me),
+						(" (walker %d%s, hold %s, lat %.2f, lane %.2f, dir %d)" % [g._walkers.find(w), " beside %d" % int(w["with"]) if w.has("with") else "",
+						w.get("hold_me", false), float(w.get("lat", 0.0)), float(w.get("lane", 0.0)), int(w.get("dir", 0))]) if kind == "walker" else ""])
 				if w.has("dog_at") and d < float(g.PEOPLE_SEEN):   # its dog on its own side of any fence or railing
 					var dg := Vector3(w["dog_at"].x, 0.0, w["dog_at"].y)
 					var across: bool = g._wall_between(p, Vector2(dg.x, dg.z))

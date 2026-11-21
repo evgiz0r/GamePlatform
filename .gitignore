@@ -4,3 +4,4 @@ shots/
 *.log
 tools/.cache/
 __pycache__/
+game/*/baked/

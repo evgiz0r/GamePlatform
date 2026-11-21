@@ -262,6 +262,12 @@ not scheduled. Read it before pitching features, so you do not re-pitch what is 
 there. When someone mentions an idea and says it is for later, offer to add it to that
 file rather than letting it disappear into the chat.
 
+Ideas for one game go in that game's own `GAME.md`, under a "Later (said, not built)"
+heading, in the person's words -- not in `IDEAS.md`, so they live and die with the game's
+folder. Add one there as soon as it is said, without waiting to be asked: the person
+should never have to mention an idea twice. Read that list before pitching features for
+the game, and when one gets built, take its line out.
+
 ## Running in a remote session
 
 Claude Code on the web starts from a bare container. `.claude/hooks/session-start.sh`
@@ -305,6 +311,14 @@ written by hand, and **it publishes itself**: every push to `main` runs
 `/publish` just to get a change online; push it. `git pull` before pushing, because the
 workflow's own commit moves `main`. `/publish` remains for checking a build locally.
 Exporting needs the **standard** Godot build; the .NET/mono one refuses web export outright.
+
+**A game can do slow work once per build instead of on every load.** If its folder holds a
+`prepublish.gd` (a SceneTree script), `tools/publish_web.sh` runs it headless before the
+export; whatever it writes under `game/<name>/baked/` ships in that build and nothing else
+(not committed, removed after). Stamp what you bake with `res://build.txt` (written just
+before) and check the stamp when loading, so a local run or a test never uses a stale one;
+and have the script prove the shortcut -- load both ways, compare -- before keeping it. A
+prepublish that fails costs the build its shortcut, never the build.
 
 ## Several sessions at once
 

@@ -6,7 +6,8 @@ extends SceneTree
 ##   STREETS_BUILD_ALL=0 LEVEL=1 $GODOT --headless --path . -s res://game/streets/tests/start_soon.gd
 ## STREETS_NEAR_FIRST=1 for the old way (all of NEAR_FIRST before the car). With a display
 ## (tests/run.sh, OUT=dir) it saves the view when the car is shown and once the rest is up
-## (soon_shown_<level>, soon_built_<level>).
+## (soon_shown_<level>, soon_built_<level>); FAR=1 then waits for the far shadows, drawn after
+## the car on a city level, and saves soon_far_<level>.
 var g: Node
 func _initialize() -> void:
 	_run()
@@ -56,6 +57,15 @@ func _run() -> void:
 		took / 1000.0, g._catch_up_ms, frames, frames / maxf(took / 1000.0, 0.001), int(worst * 1000.0), slow])
 	await create_timer(0.5).timeout
 	await _snap("soon_built_%d" % lvl)
+	if OS.get_environment("FAR") == "1":   # (a display only: the far shadows, after the car)
+		var tf := Time.get_ticks_msec()
+		while (g._far_later or g._fs_tex == null) and Time.get_ticks_msec() - tf < 600000:
+			await process_frame
+		print("far shadows %s %.1f s after the squares round the car (grass mask %s)" % [
+			"drawn" if g._fs_tex != null else "NOT drawn", (Time.get_ticks_msec() - tf) / 1000.0,
+			"the picture" if g._grass_mat != null and g._grass_mat.get_shader_parameter("mask") == g._fs_tex else "blank"])
+		await create_timer(0.5).timeout
+		await _snap("soon_far_%d" % lvl)
 	# What made the wait: every square within NEAR_FIRST was built before the car was shown --
 	# 6 to 8 of them (Givatayim 4.4 s, Ashdod 8.3, Tel Aviv 10.1 here). The fix builds only what
 	# the first view sees (1 / 2 / 1 squares; 3.0 / 5.9 / 6.3 s) and the rest after, while you

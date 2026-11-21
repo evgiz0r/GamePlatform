@@ -818,7 +818,15 @@ is in and comes out just past it in the right lane of the new street (the plan u
 straight from the junction to the new street's next point, down its wrong side). Cars keep
 a little further from the centre line; parked cars stand mostly up on the pavement. On a
 roundabout a car decides at each exit and is ever less likely to stay on, so nobody
-circles and the cars waiting to come on are let in.
+circles and the cars waiting to come on are let in. Autodrive goes round a ring in one
+sweep and takes the way on and off it as people do, 18-25 km/h rather than easing to 15 for
+each bend ("driver pauses before roundabout exits... very defensive, somewhat slow"): in a
+tight bend it takes the sideways pull people take there, more than in a wide one.
+
+At a zebra a car waits while the person is in its way or about to be, and goes once they
+are past its side and walking on -- not until they reach the far kerb. A car turning in
+used to stand in the middle of the junction for someone already over on the far side, and
+the cars behind it with it ("some stops in the middle that cause chaos").
 
 **Main streets have a divider.** A wide two-way main road in the Israeli towns (OSM maps
 many as one road) has a raised island down the middle, kerbed and paved, solid to the car,
@@ -1169,6 +1177,21 @@ sand plaster, older ones cream, new ones white or clad in stone; many balconies 
 with aluminium windows and shutters, white balcony bands on some blocks, grime under the
 old ones' windows. (Speed humps: the map data the game is built from has none yet.)
 
+> 1,2,3,4,8 (But they are so aimless, maybe make them walk coherently first, i think still no
+> collision and they walk through stuff, maybe im wrong)
+
+**People who walk somewhere, and more of them; signs that bend.** People were never inside
+anything solid, but the street round you was thin: they were only ever put down far away and
+had to walk all the way in. Now they come round corners and from behind blocks near you, out
+of sight, and stay within the distance people are drawn at -- about three times as many pass a
+spot on Sirkin. They keep a steady place on the pavement a few steps ahead instead of
+weaving round every tree, keep apart from each other, and some walk in pairs side by side
+(single file to pass you). With you on foot they step out of your way and stay out until
+past you, never nearer than 0.6 m; if you just stand in a narrow spot, they turn back after a
+few seconds. A road sign hit at more than about 15 km/h bends over at its foot with its plate.
+Buses, trucks and scooters blink in their own lamps like the cars. The old blocks' sand
+plaster is browner in shade.
+
 > I took a video on my phone, walking in Givatayim.
 
 ## Smooth on a laptop and a phone
@@ -1288,6 +1311,23 @@ browser kept the compiled shaders: quick) and on the first load of a new build (
 them again: the slow case), so the estimate knows which one this is. A city never loaded on
 this phone yet is estimated from another one's; the very first load says "timing it, for
 next time". Slower or quicker than last time so far, the rest is taken to be so too.
+
+> now do 3, move the slow work out of the wait
+
+**The bridges and tunnels are worked out when the build is made.** Reading a town's file
+was mostly working out where its roads go over and under each other -- which ways are
+bridges, tunnels and ramps, how high each point is, where their walls stand: Tel Aviv 2.5
+of its 4 s. That follows from the town's file and the game's code alone, so it is now done
+once, when a push is published, and the build carries the result (0.7 MB for Tel Aviv, 2.3
+MB for all five towns). Before keeping it the publish loads each town both ways -- working
+it out and from the result -- and keeps the result only if the game ends up exactly the
+same. Tel Aviv's file now reads in 1.5 s instead of 3.9 here, Givatayim's in 0.7 instead of
+1.4; the car is on the road in 3.5 s instead of 5.8, and 2.2 instead of 2.8.
+
+**The far shadows come after the car.** The painted shadows of the buildings in the distance
+(and the picture of where grass grows) took a browser seconds before the car appeared.
+Now they are drawn once the streets round the car are up, a few milliseconds a frame; until
+then the distance has no painted shadows and the lawns no blades, for a few seconds.
 
 > We need to think how to improve latency a bit. It does choke every few seconds. Do you
 > have some fps counter or something?
@@ -1432,9 +1472,6 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
 
 ## Later (said, not built)
 
-- Bridges and tunnels in the real towns: working out each deck's heights from OSM's tags
-  and the ground (the test town has them already), then an interchange you drive over and
-  under.
 - Not just driving: the same baked city could be walked, or used by another game.
 - Crashes, what is still to come: a sign post bent, a fence panel or a hedge pushed in, a
   scrape mark on the wall the car rubbed.
@@ -1455,3 +1492,19 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   the player's car (driving or autodrive) that turns each light it comes up to green its
   way, through the usual change for the cross street (amber, red) so the traffic there stops
   as it would.
+- Disasters on the real city: "like simcity hazards, but now we have the graphics so it
+  can be cool on steroids, like aliens". Pick a disaster and where it strikes, then watch it
+  from the zoomed-out view or live through it in the car or on foot. Aliens first, as asked:
+  ships over the towers, beams lifting cars off the road, walkers striding down a boulevard.
+  Then ones these towns know: an earthquake (the view shakes, facades crack, rubble in the
+  road, cars stop dead), a fire in a block (smoke, fire engines working through traffic),
+  the Ayalon flooding as it does in a wet winter (water rising in the low streets, read from
+  the baked ground's heights), a sandstorm's yellow haze, a monster walking between the real
+  towers. The city reacts: drivers swerve, brake or leave their cars, people run, sirens,
+  emergency vehicles on their way. Already here to build on: things that break in a crash
+  (bins, bollards, glass, dents, sparks), night and after-rain, the sounds, traffic that
+  plans routes, people who keep clear, the zoom-out view, real building heights and ground.
+  New: each disaster's look and sound, a building that breaks (buildings are merged into
+  big meshes, so one has to be taken out of its batch first), panic for people and drivers,
+  emergency services, and staying smooth on a phone. Our own disasters, not a copy of any
+  one game's.
