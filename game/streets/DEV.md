@@ -969,6 +969,52 @@ route that starts in a trap starts at the nearest street with a way out.
 `tests/pockets_map.py` (the picture: red trapped, orange cut off). Widening the bake would
 only move the cut: a way out beyond the barrier cannot be driven.
 
+### Stops in a junction's middle, roundabouts, pace (21 Nov 2026)
+
+The user, three reports: "the car weirdly stops in the middle of the run" (twice: the amber
+stop, see "A green ending far ahead" below); "cars sometimes stop in intersections as if
+there are 2 turns... some stops in the middle that cause chaos... maybe also near ramps or
+bridges" (Ashdod, a T of two divided roads with lights, behind a car standing in the middle);
+"driver pauses before roundabout exits, shouldn't. In general he is very defensive, somewhat
+slow" (Givatayim, a small ring on a main road, 13 km/h on it).
+
+- **Where the time goes** (the route set's drive logs, 10 drives, 2,553 s of autodrive, by
+  `why`): behind a car 36% (mean 20 km/h, 272 s standing), at its limit 35% (37 km/h),
+  slowing for a bend 17% (28 km/h), lights 7%, junctions 3%, zebras 1%, signs 1%, people
+  0.6%. Not the car: full throttle is ~4 m/s^2 and it holds its limit within 0.2 m/s.
+- **Roundabouts** (`tests/rb_pace.gd`): no pauses on a ring or at an exit with or without
+  traffic or a destination, but slow: the slowest on the ring 14-18 km/h, at the exit
+  15-25. `PLAN=1` showed why: every point of a ring turns enough to count as a corner, and
+  `_route_to` laid an arc at each, squeezed by the next point 1.3-7 m on -- a 17 m ring
+  driven as straights and 4-5 m bends; the ways on and off were squeezed the same way. Now a
+  point with ring points either side is a plain lane point (`_ring_node`), and a corner
+  before one runs out to it; and the sideways limit in `_ap_curves` rises from `AP_LAT` 3.6
+  (15 m radius up) to `AP_LAT_TIGHT` 4.8 at 5 m, as people take a tight bend (the tyres
+  hold ~9). Givatayim's 9 rings: the slowest on the ring 18-21 km/h, at the exit 18-25, 0
+  off the asphalt; `turn_width` 0 of 10 over the middle line, the car 0.5-0.8 m off its
+  plan as before, right turns out at 14-22 km/h 1.4 m+ right of the middle line (was
+  1.0-1.4 at 13-17). The pause itself was not caught standing: what the user saw at 13 km/h
+  was the easing-off for each bend, slowest at the way off.
+- **Cars standing inside junctions** (`tests/knot_stops.gd`): with the player parked away,
+  traffic alone stood inside none of 5 junctions of 5-8 lit points but for a bus; autodrive
+  driven through from every way in stood inside none. Traffic did stand inside the biggest,
+  29 m across (8 points), when autodrive drove through (the people on the crossings come out
+  only near the player): 7 cars waiting for someone on a crossing 8-10 m outside the
+  junction, the person up to 7 m off its middle -- over on its far side. `_zebra_clear` (both
+  traffic's and autodrive's) waited for anyone on the crossing till the far kerb but on a
+  divided road's other half. Now a person 2.8 m (`ZEBRA_PAST`) past the car's lane line and
+  walking away is clear (`_zebra_past` false for a test: `ZEBRA_OLD=1`). It did not cut the
+  stands there (DRIVE=1 at that junction, both in one sitting: 4 zebra stands inside before,
+  6 after -- noise): in those the person was 0.8-3.4 m off the crossing's middle, in or near
+  the car's way, and turning cars wait inside a junction for them in life too. It does let
+  a car go sooner at any crossing once the person is past it. Open: whether those cars were
+  turning (right) or going straight (then the walk light let people out while that way was
+  still clearing) -- the drive-through print does not say yet.
+- **Not found**: the user's own junction (the T of two divided roads) showed no stands in
+  150 s of traffic nor with autodrive through it from 5 ways in; the car in their screenshot
+  may have been one of these zebra waits or a turn waiting for oncoming traffic. Ramps and
+  bridges: not looked at -- a place or a screenshot is needed.
+
 ### Hills, pockets, the end of a green, a divided road's middle (20 Nov 2026, later)
 
 **Autodrive's turns were wide** (the user: "its radius of turning is like double of what it

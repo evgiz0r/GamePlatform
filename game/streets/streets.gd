@@ -165,7 +165,8 @@ const Y_ROAD := 0.065
 const Y_MARK := 0.085
 const NEW_STREET_M := 30.0           ## drive this far along a street for it to count
 const MAP_R := 210.0                 ## the minimap shows this far around the car (m)
-const AP_LAT := 3.6                  ## autodrive keeps the sideways pull in turns under this (m/s^2)
+const AP_LAT := 3.6                  ## autodrive keeps the sideways pull in turns under this (m/s^2)...
+const AP_LAT_TIGHT := 4.8            ## ...rising to this in a bend of 5 m radius (from 15 m down)
 ## Ground steeper than this (rise per metre, about 32 degrees) cannot be driven or walked up:
 ## it is as solid as a wall. No real town so far has any (Givatayim's steepest is 52%); the
 ## made-up town's mountains do, and they are what keeps it a valley.
@@ -17626,6 +17627,9 @@ func _ap_people_v() -> float:
 			base += a.distance_to(b)
 	return best
 
+const ZEBRA_PAST := 2.8              ## m from a car's lane line along the crossing: past it (half a bus and 1.5 m)
+var _zebra_past := true              ## (tests turn it off to compare: tests/knot_stops.gd ZEBRA_OLD=1)
+
 ## A crossing with someone on it, met by a car's lane at cp: is the person clear of that car's
 ## half of the road -- over on the far carriageway of a divided road, or not on it yet nor
 ## about to be? On a divided road people cross the lot, kerb to kerb (18 to 22 m on
@@ -17642,6 +17646,13 @@ func _zebra_clear(z: Array, cp: Vector2) -> bool:
 	var hw := float((_roads[on["road"]] as Dictionary)["w"]) * 0.5
 	var lat := ((z[3] as Vector2) - (on["q"] as Vector2)).dot(z[2])
 	var pace: float = z[4]
+	# past this car's lane and walking away from it: clear, as a driver goes once the person
+	# is by the car's side. Waiting till they reached the far kerb of a two-way street, a car
+	# turning in stood in the middle of the junction with the cars behind it ("stops in the
+	# middle that cause chaos": tests/knot_stops.gd, 7 cars in 7 minutes at one junction)
+	var off := ((z[3] as Vector2) - cp).dot(z[2])
+	if _zebra_past and absf(off) > ZEBRA_PAST and off * pace > 0.0:
+		return true
 	if absf(lat) < hw + 1.0:
 		return false   # on my half, or at its edge
 	if lat * pace < 0.0 and absf(lat) < hw + 1.0 + absf(pace) * 2.5:
@@ -20274,7 +20285,11 @@ func _ap_curves(from_k: int) -> void:
 		var c := _ap_walk(k, 5.0)
 		var cross := absf((b - a).cross(c - a))
 		var radius := INF if cross < 0.001 else a.distance_to(b) * b.distance_to(c) * c.distance_to(a) / (2.0 * cross)
-		_ap_v[k] = minf(_ap_lim[k], maxf(sqrt(AP_LAT * radius), 2.5))
+		# (more sideways pull in a tight bend, as people take one: 3.6 m/s^2 from a 15 m radius up,
+		# rising to 4.8 at 5 m -- at 3.6 throughout, a roundabout's way on and off, 4-8 m, was
+		# 14-18 km/h, and the car eased off for each: "very defensive, somewhat slow")
+		var lat := AP_LAT + clampf((15.0 - radius) / 10.0, 0.0, 1.0) * (AP_LAT_TIGHT - AP_LAT)
+		_ap_v[k] = minf(_ap_lim[k], maxf(sqrt(lat * radius), 2.5))
 
 ## at the end of the planned road pick the next one: ahead rather than a turn, a street
 ## not driven yet rather than an old one, never against a one-way, U-turn only at a dead end
@@ -20888,10 +20903,16 @@ func _route_to(goal: Vector2, from := Vector2.INF, heading := Vector2.ZERO) -> b
 		var nxt: Vector2 = (cl[i + 1][0] as Vector2) if i + 1 < cl.size() else (g["q"] as Vector2)
 		var din := (c - before_c).normalized()
 		var dout := (nxt - c).normalized()
+		# Along a roundabout's ring (in on it and out on it): no corner. Its points are a circle
+		# drawn as a polygon, and an arc laid at each -- squeezed by the next point a metre or a
+		# few on -- drove it as short straights and 4-5 m bends: 15 km/h round a 17 m ring, and
+		# the bends on and off it were squeezed the same way (a user: "pauses before roundabout
+		# exits... very defensive, somewhat slow"). Its lane points make a smooth enough circle.
+		var on_ring := i > 0 and i + 1 < cl.size() and _ring_node(int(cl[i - 1][3])) and _ring_node(int(cl[i][3])) and _ring_node(int(cl[i + 1][3]))
 		# (the first point too, when the car is not on it already: a side street that is one
 		# stretch up to the junction has the junction as its first point, and it was a corner
 		# of one point, taken wide)
-		if (i > 0 or c.distance_to(before_c) > 3.0) and din != Vector2.ZERO and dout != Vector2.ZERO and absf(din.angle_to(dout)) >= 0.35:
+		if not on_ring and (i > 0 or c.distance_to(before_c) > 3.0) and din != Vector2.ZERO and dout != Vector2.ZERO and absf(din.angle_to(dout)) >= 0.35:
 			# A corner: in along its lane, round, and out in the next street's lane, as free
 			# autodrive turns (see _lane_corner). One point at the corner, put into the lane
 			# square to the way to the next point (the next street's way), sat on the middle
@@ -20905,8 +20926,9 @@ func _route_to(goal: Vector2, from := Vector2.INF, heading := Vector2.ZERO) -> b
 				from_pt = _ap_pts[_ap_pts.size() - 2]   # (the last lane point lies on the way in: the curve may start behind it)
 			# (out as far as the next point if that is no corner itself, else under half way to it)
 			var upto := c + (nxt - c) * 0.45
-			if i + 2 < cl.size() and absf(dout.angle_to(((cl[i + 2][0] as Vector2) - nxt).normalized())) < 0.35:
-				upto = nxt
+			if i + 2 < cl.size() and (absf(dout.angle_to(((cl[i + 2][0] as Vector2) - nxt).normalized())) < 0.35 \
+					or (_ring_node(int(cl[i][3])) and _ring_node(int(cl[i + 1][3])) and _ring_node(int(cl[i + 2][3])))):
+				upto = nxt   # (or the ring's next point: no corner of its own, see on_ring)
 			var arc := _lane_corner(c, din, dout, lane, lane2, _node_r[int(cl[i][3])] + 1.0, from_pt, upto)
 			if not arc.is_empty():
 				if plain and _ap_pts.size() > 1 and (arc[0] - prv).dot(din) < 0.3:
@@ -20939,6 +20961,13 @@ func _route_to(goal: Vector2, from := Vector2.INF, heading := Vector2.ZERO) -> b
 	_ap_end = Vector3i(-1, 0, 0)    # nothing after the destination
 	Probe.event("route", {"to": _dest_name, "m": int(best_len), "points": _ap_pts.size()})
 	return true
+
+## is point n on a roundabout's ring?
+func _ring_node(n: int) -> bool:
+	for e: Vector2i in _node_roads[n]:
+		if (_roads[e.x] as Dictionary).get("ring", false):
+			return true
+	return false
 
 func _set_dest(at: Vector2, label: String) -> void:
 	_dest_on = true

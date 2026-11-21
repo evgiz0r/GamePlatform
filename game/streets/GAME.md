@@ -818,7 +818,15 @@ is in and comes out just past it in the right lane of the new street (the plan u
 straight from the junction to the new street's next point, down its wrong side). Cars keep
 a little further from the centre line; parked cars stand mostly up on the pavement. On a
 roundabout a car decides at each exit and is ever less likely to stay on, so nobody
-circles and the cars waiting to come on are let in.
+circles and the cars waiting to come on are let in. Autodrive goes round a ring in one
+sweep and takes the way on and off it as people do, 18-25 km/h rather than easing to 15 for
+each bend ("driver pauses before roundabout exits... very defensive, somewhat slow"): in a
+tight bend it takes the sideways pull people take there, more than in a wide one.
+
+At a zebra a car waits while the person is in its way or about to be, and goes once they
+are past its side and walking on -- not until they reach the far kerb. A car turning in
+used to stand in the middle of the junction for someone already over on the far side, and
+the cars behind it with it ("some stops in the middle that cause chaos").
 
 **Main streets have a divider.** A wide two-way main road in the Israeli towns (OSM maps
 many as one road) has a raised island down the middle, kerbed and paved, solid to the car,
