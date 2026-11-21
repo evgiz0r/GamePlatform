@@ -2708,6 +2708,17 @@ LEVEL=1 $GODOT --headless --path . -s res://game/streets/tests/<test>.gd`.
   and scooter's indicators are still boxes; in the KERB_ONLY run the kerb car came without
   its passenger (the dice, or no room by the pavement: not told apart) and the test put one
   there; the film's sand in shade is browner than the game's.
+- **Walk 1's side-by-side, 21 Nov (after the plaster, lights, people rounds)**: recorded
+  (`RECORD=1`, 966 frames, 19 min) and put beside the film (the recipe under "The filmed
+  walk", `-crf 30`: 15 MB; the film from the mail connector, kept in the scratch folder only).
+  Matching well: the crossing, the arcade's shops, the bollards and gate at 27 s, the
+  passage's stone wall and plank fence, the hedges, the graffiti pole, the kerb paint, the
+  parked rows; the old blocks now sand. Biggest differences left, most first: the light on
+  the ground -- the film's pavements lie in dappled shade under dense canopies, the game's
+  are bright and even; the pavers -- grey, worn, low contrast in the film, the game's
+  herringbone bright and crisp; at 19 s the game's camera stands at a tan wall where the
+  film sees motorbikes on an open forecourt; the film's people at 59 s (the man in blue at the
+  railing) are off the game's frame (known, WALKS.md).
 - **Watch**: hitches in the first seconds of driving now include the start's far gardens
   (`_build_gardens_later`, before the rest of the city), and since the city builds only what
   the first view sees before the car, the catch-up of the rest of NEAR_FIRST (16 ms a frame,
