@@ -47,6 +47,9 @@ const LEVELS := [
 	{"name": "Ashdod: HeHalutzim to Herzl", "city": "ashdod", "look": "med", "decks": "infer", "walk": "ashdod_halutzim"},
 	{"name": "Bedford: Shore Drive by the water", "city": "bedford", "look": "north", "decks": "infer", "walk": "bedford_shore"},
 	{"name": "Test town: the market street", "city": "dimyon", "look": "med", "walk": "dimyon_market"},
+	# the first Dutch town (NEW_CITY.md): a box of the old centre, the station and the canals,
+	# with 3DBAG's measured heights and the BGT's trees and lamp posts. Starts on the Oude Delft canal.
+	{"name": "Delft", "group": "Cities", "city": "delft", "start": ["Oude Delft", "Binnenwatersloot"], "look": "north", "decks": "infer"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -944,6 +947,8 @@ var _beach: Beach                    ## the beaches by the sea: umbrellas, chair
 var _crowd: Crowds                   ## shoppers in a market, people along the shore and in the sea (crowds.gd)
 var _works: Sites                    ## building sites from a town's own map: hoardings, cranes (sites.gd)
 var _wave: Wave                      ## the green wave: lights turning green for the car (wave.gd)
+var _racer: Racer                    ## racer mode: autodrive with the rules off, the town hooting (racer.gd)
+var _places: Places                  ## a town's own kindergartens and shelters (places.gd)
 var _standins: Standins              ## the squares not built yet, seen from above: flat roads, outlines (standins.gd)
 var _on_deck := -1                   ## while a deck road is drawn: heights come from it, not the ground
 var _inferred := {}                  ## what decks.gd's infer() made of a real town's bridges (the report)
@@ -1030,6 +1035,8 @@ const Crowds := preload("res://game/streets/crowds.gd")
 const Sites := preload("res://game/streets/sites.gd")
 const Wave := preload("res://game/streets/wave.gd")
 const Standins := preload("res://game/streets/standins.gd")
+const Racer := preload("res://game/streets/racer.gd")
+const Places := preload("res://game/streets/places.gd")
 const DriveLog := preload("res://game/streets/drivelog.gd")
 var _log := DriveLog.new()            ## the last two minutes, for the map page and "save log"
 var _ap_why := ""                     ## what held autodrive's speed down this tick (for the log)
@@ -1203,7 +1210,9 @@ const GOTO_BTN := Rect2(290, 334, 80, 20)
 const ASSIST_BTN := Rect2(376, 334, 70, 20)
 const NIGHT_BTN := Rect2(452, 334, 52, 20)
 const WET_BTN := Rect2(510, 334, 40, 20)     ## after rain / dry
-const WAVE_BTN := Rect2(556, 334, 52, 20)    ## the green wave: the lights ahead turn green for the car (key V; wave.gd)
+const WAVE_BTN := Rect2(8, 140, 52, 20)      ## the green wave: the lights ahead turn green for the car (key V; wave.gd)
+const RACER_BTN := Rect2(8, 164, 52, 20)     ## autodrive with the rules off (key R; racer.gd). Both on the left: the bottom
+                                             ## row is full, and on a phone the stick's ring and hint fill the bottom right
 const VIEW_BTN := Rect2(578, 98, 52, 20)    ## chase cam / driver's seat (key C too)
 const LIGHTS_BTN := Rect2(578, 122, 52, 20)  ## headlights (key L)
 ## (the indicators and the horn are keys only, Q / E and H: on screen they were clutter)
@@ -2925,7 +2934,10 @@ func _build_setup(t0: int) -> void:
 	_beach.setup(_city_data)
 	_works = Sites.new(self)
 	_works.setup(_city_data)
+	_places = Places.new(self)
+	_places.setup(_city_data)
 	_wave = Wave.new(self)
+	_racer = Racer.new(self)
 	_lights_setup()
 	_infer_signs()   # (after the lights: a lit junction has none)
 	_parks_setup()
@@ -2964,6 +2976,7 @@ func _build_tile(t: Vector2i) -> void:
 	_marks.build()
 	_beach.build()
 	_works.build()
+	_places.build()
 	tk = _stage("roads", tk)
 	await _build_buildings()
 	tk = _stage("buildings", tk)
@@ -15809,10 +15822,20 @@ func _lanes_each_way(r: Dictionary) -> int:
 ## lane needs a lane beside it for the rest).
 func _bus_lane(r: Dictionary, idx: int, dir: int) -> bool:
 	var pat := String(r.get("bf" if dir >= 0 else "bb", ""))
-	if pat == "" or _lanes_each_way(r) <= 1:
+	var n := _lanes_each_way(r)
+	if pat == "" or n <= 1:
 		return false
 	var j := pat.length() - 1 - idx
-	return j >= 0 and pat[j] == "b"
+	if j < 0 or pat[j] != "b":
+		return false
+	# never every lane: the letters are lined up with the lanes the bake counted, and the
+	# width fitted at load can leave fewer (HaMasger: "-bb" on 2 lanes, both bus, and
+	# autodrive's line in one) -- then the leftmost is the cars'
+	var all_bus := true
+	for i in range(n):
+		var k := pat.length() - 1 - i
+		all_bus = all_bus and k >= 0 and pat[k] == "b"
+	return not (all_bus and idx == n - 1)
 
 ## does road r have a bus lane either way
 func _has_bus_lane(r: Dictionary) -> bool:
@@ -17088,6 +17111,8 @@ func _physics_process(dt: float) -> void:
 	_signals_tick(dt)
 	if _wave != null:
 		_wave.tick(dt)
+	if _racer != null:
+		_racer.tick(dt)
 	if _rails != null:
 		_rails.tick(dt)
 	_crash_cool = maxf(0.0, _crash_cool - dt)
@@ -21647,6 +21672,20 @@ func _set_wave(on: bool) -> void:
 	_show_banner("green wave: the lights ahead turn green for you" if on else "green wave off", 1.6)
 	Probe.event("wave", {"on": on})
 
+## racer mode (racer.gd): autodrive with the rules off. On puts autodrive on; autodrive off
+## (taking the wheel, the stick, walking) ends it too
+func _racing() -> bool:
+	return _racer != null and _racer.on and _auto
+
+func _set_racer(on: bool) -> void:
+	if _racer == null:
+		return
+	_racer.set_on(on)
+	if on and not _auto:
+		_set_auto(true)
+	_show_banner("racer: no lights, no signs, no giving way" if on else "racer off: autodrive keeps the rules again", 1.8)
+	Probe.event("racer", {"on": on})
+
 func _set_auto(on: bool) -> void:
 	_auto = on
 	_cross = {}
@@ -21847,7 +21886,8 @@ func _autodrive(dt: float) -> Array:
 		ahead_blocked = shove.normalized().dot(fwd) < -0.6
 	# keep the limit, and slow for the corners ahead: at most the speed from which each
 	# one can still be braked down to in time
-	var vt: float = _ap_lim[1]
+	var racing := _racing()
+	var vt: float = _racer.limit(_ap_lim[1]) if racing else _ap_lim[1]
 	_ap_why = "limit"
 	var dist := 0.0
 	var p := _pos
@@ -21862,13 +21902,21 @@ func _autodrive(dt: float) -> Array:
 		# 2 m/s^2 a m/s, it ran ~1.3 m/s over the 2.6 m/s^2 slope down to each corner, into it
 		# 5-7 km/h faster than planned and out wide -- tests/turn_width.gd)
 		var to_go := maxf(dist - absf(_v) * 0.5, 0.0) if _ap_v[i] > 0.0 else maxf(dist - 1.5, 0.0)
-		vt = _held(vt, sqrt(_ap_v[i] * _ap_v[i] + 2.0 * 2.6 * to_go), "curve")
-	vt = _held(vt, _ap_light_v(), "light")
-	vt = _held(vt, _ap_sign_v(dt), "sign")
+		# (racer: the gentle bends faster; a tight turn at its usual pace -- taken faster it swung
+		# wide into the corner's posts, 33 km/h into one in Tel Aviv)
+		var corner: float = _ap_v[i] * (_racer.CORNER_K if racing and _ap_v[i] >= _racer.CORNER_FROM else 1.0)
+		vt = _held(vt, sqrt(corner * corner + 2.0 * (4.0 if racing else 2.6) * to_go), "curve")
+	if not racing:   # (racer.gd: no lights, signs, nor giving way)
+		vt = _held(vt, _ap_light_v(), "light")
+		vt = _held(vt, _ap_sign_v(dt), "sign")
+	# (people on a zebra and in the lane: always -- racer once left the zebra out with the
+	# rest and hit someone crossing in Tel Aviv at 11 km/h: on the crossing already, they were
+	# only in its lane when it was too close to stop)
 	vt = _held(vt, _ap_zebra_v(), "zebra")
 	vt = _held(vt, _ap_people_v(), "people")
 	var tg := Time.get_ticks_usec()
-	vt = _held(vt, _ap_give_v(dt), "junction")
+	if not racing:
+		vt = _held(vt, _ap_give_v(dt), "junction")
 	_prof["autodrive: give way"] = int(_prof.get("autodrive: give way", 0)) + Time.get_ticks_usec() - tg
 	_ap_give_us += Time.get_ticks_usec() - tg
 	if not _cross.is_empty() and not _cross["chosen"]:
@@ -21879,7 +21927,9 @@ func _autodrive(dt: float) -> Array:
 	# a while, ignore cars crossing the lane (a standoff in a junction) -- never one ahead
 	var reach := clampf(12.0 + _v * 1.2 + _v * _v / 5.2, 18.0, 130.0)
 	var lead: Array = _traffic.lead_on(_ap_pts, _pos, reach, _ap_wait > 3.0, _y)
-	if float(lead[0]) < 30.0 and _ap_pass_bus(lead):
+	if racing and float(lead[0]) < 22.0 and _ap_wait > 1.0 and _ap_mount_by(lead):
+		lead = _traffic.lead_on(_ap_pts, _pos, reach, _ap_wait > 3.0, _y)
+	if float(lead[0]) < (60.0 if racing else 30.0) and _ap_pass_bus(lead):
 		lead = _traffic.lead_on(_ap_pts, _pos, reach, _ap_wait > 3.0, _y)
 	if float(lead[0]) < INF and int(lead[3]) >= 0 and _ap_crossing_clears(int(lead[3]), float(lead[0])):
 		lead = _traffic.lead_on(_ap_pts, _pos, reach, _ap_wait > 3.0, _y, int(lead[3]))
@@ -22358,14 +22408,17 @@ func _ap_pass_bus(lead: Array) -> bool:
 		# when the plan was bent (a van pulls in after it stops) -- over a little more, beside
 		# it (Katznelson: 32 s behind a van "gone round", its middle 2 m off the bent plan)
 		return dbl and _ap_wait > 2.0 and _ap_squeeze_by(bi, float(lead[0]))
-	if (not dbl and (bus.kind != "bus" or bus.v > 0.6 or bus.dwell <= 0.0)) or _ap_pts.size() < 2:
+	# racer.gd: any car slower than it wants to go, moving or not
+	var want: float = _racer.limit(_ap_lim[1]) if _racing() and _ap_lim.size() > 1 else 0.0
+	var racing_by: bool = _racing() and _racer.can_pass(float(bus.v), want)
+	if (not dbl and not racing_by and (bus.kind != "bus" or bus.v > 0.6 or bus.dwell <= 0.0)) or _ap_pts.size() < 2:
 		return false
 	var hit := _nearest_seg(_pos, 12.0, true, true, _y)
 	if hit.is_empty():
 		return false
 	var r: Dictionary = _roads[hit["road"]]
 	var n := _lanes_each_way(r)
-	if n < 2 and not (dbl and int(r["o"]) == 0):
+	if n < 2 and not ((dbl or racing_by) and int(r["o"]) == 0):
 		return _ap_squeeze_by(bi, float(lead[0])) if dbl and int(r["o"]) != 0 else false
 	var w := float(r["w"])
 	var lane_w := w / n if int(r["o"]) != 0 else (w * 0.5) / n
@@ -22385,16 +22438,40 @@ func _ap_pass_bus(lead: Array) -> bool:
 	var gap: float = lead[0]
 	if _ap_turn_ahead() != 0:
 		return false   # (a junction just after it: stay in lane)
-	# the next lane over clear, by every car's middle (the other way's: further, they come at you)
-	var reach := gap + (45.0 if n < 2 else 25.0)
-	for c in _traffic.cars:
-		if not c.alive or c == bus:
-			continue
-		var rel: Vector2 = c.pos - _pos
-		var ahead := rel.dot(fwd)
-		var side := rel.dot(left)
-		if ahead > -15.0 and ahead < reach and side > lane_w * 0.4 and side < lane_w * 1.6:
-			return false
+	# a moving car (racer.gd): it goes on meanwhile, so the way out runs as far on as it gets
+	# in the time it takes to go by, and the lane over must be clear for that and for what
+	# comes along it at a town's pace meanwhile
+	var extra := 0.0
+	var t_pass := 0.0
+	if racing_by and bus.v > 0.6:
+		t_pass = (gap + float(bus.len) + 22.0) / maxf(want - float(bus.v), 3.0)
+		extra = float(bus.v) * t_pass
+		if extra > 140.0:
+			return false   # (too long a way out: follow it)
+	# the next lane over clear, by every car's middle (the other way's: further, they come at you).
+	# Racer (racer.gd) tries the lane on the right too where there are two or more its way,
+	# and goes the side that is clear
+	var reach := gap + extra + (45.0 + 14.0 * t_pass if n < 2 else 25.0)
+	var sides: Array = [1.0, -1.0] if racing_by and n >= 2 else [1.0]
+	var sgn := 0.0
+	for sd: float in sides:
+		var clear := true
+		for c in _traffic.cars:
+			if not c.alive or c == bus:
+				continue
+			var rel: Vector2 = c.pos - _pos
+			var ahead := rel.dot(fwd)
+			var side := rel.dot(left) * sd
+			if ahead > -15.0 and ahead < reach and side > lane_w * 0.4 and side < lane_w * 1.6:
+				clear = false
+				break
+		if clear and sd < 0.0 and _off_road(_pos - left * (lane_w + CAR_WIDTH * 0.5), 0.0):
+			clear = false   # (no lane there: the kerb)
+		if clear:
+			sgn = sd
+			break
+	if sgn == 0.0:
+		return false
 	# out, past, back in: the points of the plan from just ahead to past the bus -- measured
 	# from the car, as the gap is: the plan's first point is the start of the stretch it is
 	# on, which on a straight street can be 40 m back (the bend landed behind the car)
@@ -22402,7 +22479,10 @@ func _ap_pass_bus(lead: Array) -> bool:
 	var s := -s0
 	var half: float = bus.len * 0.5
 	var start_s := maxf(gap - half - 10.0, 2.0)
-	var end_s := gap + half + 12.0
+	var end_s := gap + half + 12.0 + extra
+	var keep_pts := _ap_pts.duplicate()
+	var keep_v := _ap_v.duplicate()
+	var keep_lim := _ap_lim.duplicate()
 	_ap_densify(s0 + end_s + 10.0, 2.0)
 	for k in range(1, _ap_pts.size()):
 		s += _ap_pts[k - 1].distance_to(_ap_pts[k])
@@ -22412,10 +22492,92 @@ func _ap_pass_bus(lead: Array) -> bool:
 		if t <= 0.0:
 			continue
 		var kd := (_ap_pts[mini(k + 1, _ap_pts.size() - 1)] - _ap_pts[k - 1]).normalized()
-		_ap_pts[k] += Vector2(kd.y, -kd.x) * lane_w * t
+		_ap_pts[k] += Vector2(kd.y, -kd.x) * lane_w * t * sgn
+	if racing_by:
+		# (racer's way out checked for what stands there, not cars alone: a post, a tree, a
+		# median's end -- undone if anything is)
+		for k in range(1, _ap_pts.size()):
+			if _ap_pts[k].distance_to(_pos) > end_s + 10.0:
+				break
+			if _push_out(_ap_pts[k], 1.1, true, false, _y) != Vector2.ZERO:
+				_ap_pts = keep_pts
+				_ap_v = keep_v
+				_ap_lim = keep_lim
+				return false
 	_ap_passed = bi
-	Probe.event("pass_van" if dbl else "pass_bus", {"lane_w": snappedf(lane_w, 0.1)})
+	if racing_by:
+		_racer.passes += 1
+	Probe.event("pass_van" if dbl else "pass_bus", {"lane_w": snappedf(lane_w, 0.1), "side": "left" if sgn > 0.0 else "right"})
 	_log.event("pass van" if dbl else "pass bus")
+	return true
+
+## Racer (racer.gd), stood behind a queue that does not move: up onto the pavement on the
+## right and along it past the queue, back down at its head -- only where nobody is on that
+## stretch of pavement (3 m either side of the line), nothing solid stands on it (posts,
+## trees, bins, a parked car, a wall) and it is not a junction just ahead. True when it did.
+const MOUNT_PAST := 26.0      ## metres of pavement it takes at most past the car in front
+func _ap_mount_by(lead: Array) -> bool:
+	var bi: int = lead[3]
+	if bi < 0 or bi == _ap_passed or _ap_pts.size() < 2:
+		return false
+	var hit := _nearest_seg(_pos, 12.0, true, true, _y)
+	if hit.is_empty():
+		return false
+	var r: Dictionary = _roads[hit["road"]]
+	if HIGHWAYS.has(r["k"]):
+		return false
+	# from the plan's line out to beyond the kerb: the car's middle 1.6 m onto the pavement
+	var edge := (float(r["w"]) * 0.5 if int(r["o"]) != 0 else float(r["w"]) * 0.5) - _lane_off(r)
+	var shift := clampf(edge + 1.6, 2.5, 6.5)
+	var gap: float = lead[0]
+	var keep_pts := _ap_pts.duplicate()
+	var keep_v := _ap_v.duplicate()
+	var keep_lim := _ap_lim.duplicate()
+	var s0 := _ap_pts[0].distance_to(Geometry2D.get_closest_point_to_segment(_pos, _ap_pts[0], _ap_pts[1]))
+	var start_s := maxf(gap - 8.0, 1.0)
+	var end_s := gap + MOUNT_PAST
+	_ap_densify(s0 + end_s + 10.0, 1.0)
+	var s := -s0
+	var bent: Array = []
+	for k in range(1, _ap_pts.size()):
+		s += _ap_pts[k - 1].distance_to(_ap_pts[k])
+		if s > end_s + 6.0:
+			break
+		var t := clampf((s - start_s) / 5.0, 0.0, 1.0) * clampf((end_s + 6.0 - s) / 6.0, 0.0, 1.0)
+		if t <= 0.0:
+			continue
+		var kd := (_ap_pts[mini(k + 1, _ap_pts.size() - 1)] - _ap_pts[k - 1]).normalized()
+		_ap_pts[k] -= Vector2(kd.y, -kd.x) * shift * t   # (to the right)
+		_ap_v[k] = minf(_ap_v[k], 6.0)   # (up and along at a crawl: 20 km/h)
+		bent.append(_ap_pts[k])
+	var ok := not bent.is_empty()
+	var people: Array = []
+	for cr: Dictionary in _crossers:
+		people.append(Vector2((cr["actor"] as Node3D).position.x, (cr["actor"] as Node3D).position.z))
+	for w: Dictionary in _walkers:
+		if (w["actor"] as Node3D).visible:
+			people.append(Vector2((w["actor"] as Node3D).position.x, (w["actor"] as Node3D).position.z))
+	for q: Vector2 in bent:
+		if _push_out(q, 1.1, true, true, _y) != Vector2.ZERO:
+			ok = false
+			break
+		for pp: Vector2 in people:
+			if pp.distance_squared_to(q) < 9.0:
+				ok = false
+				break
+		if not ok:
+			break
+	if ok and _ap_turn_ahead() != 0:
+		ok = false
+	if not ok:
+		_ap_pts = keep_pts
+		_ap_v = keep_v
+		_ap_lim = keep_lim
+		return false
+	_ap_passed = bi
+	_racer.mounts += 1
+	Probe.event("racer_pavement", {"over": snappedf(shift, 0.1)})
+	_log.event("racer onto the pavement")
 	return true
 
 ## Past a delivery van in a one-way street of one lane: no lane to go round it in, but most
@@ -24368,6 +24530,13 @@ func _draw_hud() -> void:
 	_hud.draw_rect(WAVE_BTN, Color(bg, 0.65))
 	_hud.draw_rect(WAVE_BTN, Color(wvc, 0.9), false, 1.5)
 	_hud.draw_string(_font, WAVE_BTN.position + Vector2(0, 15), "WAVE ON" if wv else "wave", HORIZONTAL_ALIGNMENT_CENTER, WAVE_BTN.size.x, 11, wvc)
+	var rc_on := _racing()
+	var rcc := Palette.col("hazard") if rc_on else Color(ink, 0.8)
+	_hud.draw_rect(RACER_BTN, Color(bg, 0.65))
+	_hud.draw_rect(RACER_BTN, Color(rcc, 0.9), false, 1.5)
+	_hud.draw_string(_font, RACER_BTN.position + Vector2(0, 15), "RACER" if rc_on else "racer", HORIZONTAL_ALIGNMENT_CENTER, RACER_BTN.size.x, 11, rcc)
+	if rc_on and _racer.reds > 0:
+		_hud.draw_string(_font, RACER_BTN.position + Vector2(58, 15), "%d red%s run" % [_racer.reds, "" if _racer.reds == 1 else "s"], HORIZONTAL_ALIGNMENT_LEFT, 90, 10, Palette.col("hazard"))
 	var lc := Palette.col("warn") if _lights_on else Color(ink, 0.8)
 	_hud.draw_rect(LIGHTS_BTN, Color(bg, 0.65))
 	_hud.draw_rect(LIGHTS_BTN, Color(lc, 0.9), false, 1.5)
@@ -24693,6 +24862,10 @@ func _input(event: InputEvent) -> void:
 				KEY_V:
 					_set_wave(not _wave.on)
 					return
+				KEY_R:
+					if not _walking:
+						_set_racer(not _racing())
+					return
 				KEY_F:
 					_toggle_walk()
 					return
@@ -24738,6 +24911,9 @@ func _input(event: InputEvent) -> void:
 				_set_wet(not _wet)
 			elif WAVE_BTN.grow(3).has_point(mb.position):
 				_set_wave(not _wave.on)
+			elif RACER_BTN.grow(3).has_point(mb.position):
+				if not _walking:
+					_set_racer(not _racing())
 			elif VIEW_BTN.grow(4).has_point(mb.position):
 				if _zoomed():
 					_zoom_seat = not _cockpit
@@ -24772,7 +24948,7 @@ func _input(event: InputEvent) -> void:
 		if t.pressed:
 			if AUTO_BTN.grow(4).has_point(t.position) or GOTO_BTN.grow(4).has_point(t.position) \
 					or ASSIST_BTN.grow(4).has_point(t.position) or NIGHT_BTN.grow(4).has_point(t.position) \
-					or WET_BTN.grow(3).has_point(t.position) or WAVE_BTN.grow(3).has_point(t.position) \
+					or WET_BTN.grow(3).has_point(t.position) or WAVE_BTN.grow(3).has_point(t.position) or RACER_BTN.grow(3).has_point(t.position) \
 					or VIEW_BTN.grow(4).has_point(t.position) or LIGHTS_BTN.grow(2).has_point(t.position) \
 					or WALK_BTN.grow(2).has_point(t.position) or LOOK_BTN.grow(2).has_point(t.position) \
 					or ZOOM_BTN.grow(2).has_point(t.position) or PAUSE_BTN.grow(2).has_point(t.position) \

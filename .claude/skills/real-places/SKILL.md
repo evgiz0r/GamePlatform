@@ -288,6 +288,22 @@ the parked cars, which stand a third in the road).
   it. What is left is two roads at different levels within a cell (an interchange's slip
   roads, a lane below a street): only a finer grid fixes those.
 
+### Laying an official list of streets onto OSM's roads
+
+An official layer that names streets and gives two end points (a ministry's bus lanes, a
+town's one-way list) is matched to the baked roads by name and by lying along the line
+between the points. Two traps cost a round each:
+
+- **Names are spelt differently.** Hebrew is written with or without the vowel letters (עלית /
+  עליית), with or without the article (חשמונאים / החשמונאים), with or without "road",
+  "boulevard", "street" in front. Compare a key with those dropped, not the names: in one
+  game it took the matches from 11 to 14, 12 to 22 and 59 to 71 stretches in three towns.
+- **Per-lane letters must line up with the game's lanes, not OSM's.** OSM leaves the lane
+  count out on many streets and the game reckons it from the width (and can fit the width
+  again at load). A pattern written for a count the game does not use puts a left lane in
+  the middle, or every lane: the game must check the pattern against its own count (never
+  every lane a bus lane), and the bake should reckon the count with the game's own rule.
+
 ## Junctions and roundabouts
 
 - **One junction is often several points.** A divided road meets a street at one node per
