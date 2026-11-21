@@ -1343,6 +1343,11 @@ Givatayim 0 late. Traffic cars do not look at walkers at all (they rely on the k
   every Ashdod run (0.1-0.2 m outside the asphalt's edge: a kerb-side post the bus's side
   reaches on the bend), and an SUV or taxi into post 12794 at (-2035, 2465) at 26 km/h in
   two runs -- worth a look at where those posts stand.
+- Route set after these and the day's merges: 10 of 10, 0 reds; route 7 once touched posts at
+  4 km/h with a rescue at Rabbi Meir Baal HaNes (73, 2549): autodrive stood behind an SUV in
+  a tangle of a junction and a traffic SUV moving at 2 m/s pushed it sideways 8 m into the
+  posts and walls there (its log: v 0, "pushing", z rising). Two re-runs clean. Open: a
+  traffic car's contact with the standing player's car should stop it, not shove.
 
 ## Numbers to compare against (November 2026, cloud container, software renderer)
 
