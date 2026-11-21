@@ -1530,3 +1530,24 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   big meshes, so one has to be taken out of its batch first), panic for people and drivers,
   emergency services, and staying smooth on a phone. Our own disasters, not a copy of any
   one game's.
+- The city's own story: "getting some real 'story' or 'script' for a city. for real cities
+  it will be somewhere online where we will feel the type of the city in many aspects". For
+  each real town, gather what makes it itself from what is written about it online (its
+  Wikipedia and Wikivoyage pages, the town's own site, local guides): what it is known for,
+  its history, its neighbourhoods and their moods, its people and what they do, its food,
+  its landmarks and the stories behind street names. Then let that show all through the
+  game -- the guided tour's words (above), what people and shops are like in each
+  neighbourhood, the sounds, the busy hours -- so Ashdod, Givatayim, Tel Aviv and Bedford
+  each feel like the town they are, not the same town on different maps. New: a script per
+  town, written once from those sources and kept in its folder (credited: Wikipedia and
+  Wikivoyage are CC BY-SA), and the hooks for each part of the game to read it. A made-up
+  town would get a made-up one.
+- See the city from above before it is built: "when i zoom the beginning the rest of the
+  city is still being built. maybe i can still see something (roads?!, dunno), and click in
+  the area of the city, before it rendered". At the start only the squares near the car are
+  built; zoomed out, the rest is empty until it goes up. Draw something cheap there straight
+  away from the city file already loaded -- the roads as flat strips, maybe the buildings'
+  outlines flat on the ground, the parks and the sea -- each square's stand-in swapped for the
+  real one as it is built. A long press there already finds the street (it reads the road
+  data, not the built meshes), so the stand-in is mostly what is missing: something to see
+  and aim at.

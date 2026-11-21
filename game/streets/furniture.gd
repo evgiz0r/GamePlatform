@@ -1029,7 +1029,10 @@ func kerbside() -> void:
 			var d := (pts[mini(e.y + 1, pts.size() - 1)] - pts[maxi(e.y - 1, 0)]).normalized()
 			var side := Vector2(-d.y, d.x)
 			var hw: float = float(r["w"]) * 0.5
-			var railed: bool = med and MAIN.has(r["k"])
+			# (not on a roundabout's way in: its zebra is right by the ring, the corner beside it
+			# an island or a lawn, and the panel stood at the zebra's end out on the asphalt --
+			# a user's "that border there", Givatayim's Geisler square)
+			var railed: bool = med and MAIN.has(r["k"]) and not _by_ring(c, 22.0)
 			var white: bool = _rnd(ni * 7 + 3) < 0.25 or g._white_bollards.has(ni)   # (or as filmed: details.gd)
 			for sg: float in [-1.0, 1.0]:          # both pavements
 				for way: float in [-1.0, 1.0]:     # both sides of the zebra
@@ -1378,6 +1381,18 @@ func _bollard_kit(white: bool) -> ArrayMesh:
 	var am: ArrayMesh = _mesh(b)
 	_kits[key] = am
 	return am
+
+## a roundabout's ring passes within `reach` of p
+func _by_ring(p: Vector2, reach: float) -> bool:
+	for code: int in g._near(g._seg_hash, p, reach, g.SEG_CELL):
+		var r: Dictionary = g._roads[code / 4096]
+		if not r.get("ring", false):
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		var sj := code % 4096
+		if Geometry2D.get_closest_point_to_segment(p, pts[sj], pts[sj + 1]).distance_to(p) < reach:
+			return true
+	return false
 
 ## a 1.2 m panel of pedestrian railing along local X: white tubes, posts at each end, a top
 ## rail and one lower down

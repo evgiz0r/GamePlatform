@@ -2705,6 +2705,37 @@ Each line: where the code is, the test, what good reads.
   every street parks half up the kerb, and the lanes share the whole asphalt
   (`_lane_off`/`_lanes_each_way`), so a parking strip on the road needs traffic, autodrive and
   the lane paint to give that width up first.
+- **Autodrive waiting long at roundabouts** (user, Givatayim, Borochov into Geisler square
+  (14, -987): "pretty bad in roundabouts waiting for a long time"): `_ap_give_v` ranked a
+  car by the road it would be on at the meeting point -- a car coming up another way in got
+  the ring's rank (10) and autodrive stood at the ring's edge for it: 11.3 s for a motorbike
+  78 m up another arm at 13 m/s. Now a car not on a ring yet (its nearest road is not one)
+  is my equal there: first come, first served. `tests/light_line.gd` at Geisler square,
+  `DEST="40,-860" CAR="-70,-968,0.977,-0.212"` (x4) level 1: before, stands at the entry of
+  3.2, 11.3 and 8+ s; after, one of 3.4 s (a sedan 12 m off, coming in). rb_pace's nine
+  rings never stood, before or after (it does not pick Geisler's).
+- **A railing standing in the road by a roundabout's zebra** (same screenshot, "that border
+  there"): the crossing railings (furniture.gd `kerbside`, main roads, 1.2 m panels 2-6 m
+  from the zebra along the kerb) went on a roundabout's way in too, where the corner by the
+  zebra is an island or a lawn; now none within 22 m of a ring (`_by_ring`).
+- **Assist with autodrive** (user: "i switch to autodrive, the assist is turned off,
+  autodrive has whatever it needs"): the assist only ever helped your hands (`_manual`), never
+  `_autodrive`; the button now reads "assist off", dimmed, while autodrive drives, and your
+  choice is back when you take over.
+- **Bedford's taxis read TAXI** (user: "the taxis in bedford are in hebrew too"): the car
+  shader's roof sign read מונית everywhere; `taxi_latin` (off in a "med" town) reads TAXI left
+  to right from three more glyphs in PLATE_GLYPHS (T, A, X; the I was there) -- the font's
+  count, 21, is in `plate_glyph`.
+- **Loading text readable** (user: "make a better font that we can see during load"): pale
+  letters straight on the scene; now a dark rounded panel under the text and bar
+  (`_loading`'s "normal" stylebox, expanded down over its children) and outlined letters.
+  `tests/load_screen.gd` takes stills while a city loads.
+- **Cars parked in bus stops; fewer double-parked vans** (user: "a lot of parked cars inside
+  bus stations, usually there is like 10m distance from a bus... pretty held. also less cars
+  in the middle of the streets... very rare in israel"): `_no_parking` kept clear only 11 m
+  round a stop's spot and only on KERB_RED_KINDS streets; now `BUS_CLEAR` (12 m, the law's)
+  along the stop's own kerb on any street (`parked_median` counts them); traffic's
+  `DBL_SHARE` (vans and trucks that stop for a delivery in the lane) 0.45 -> 0.1.
 - **Cars stopping for a slip road's light** (user, Ashdod, Sderot Menachem Begin past Herzl:
   "why are the cars stopping there"): OSM has a traffic signal on Herzl's slip road 18 m
   before it joins Begin eastbound; `_lights_setup` moves a signal to the nearest junction
@@ -2792,7 +2823,7 @@ Each line: where the code is, the test, what good reads.
   anywhere), `street_at` (by street name at its roundabouts), `perf_dive`, `deck_corner`,
   `islands`, `pave_overlap`, `picker`, `minimap_route`, `warm_census`, `index_gain`,
   `signs_inferred`, `start_drive`, `rails_near`, `cut_under`, `signs_double`, `auto_stands`,
-  `parked_median`, `horizon_line`, `median_ends`, `light_line`;
+  `parked_median`, `horizon_line`, `median_ends`, `light_line`, `load_screen`;
   `tools/level_roads.py`.
 
 ## OSM's extra fields and speed limits: handoff (20 Nov 2026)
