@@ -169,9 +169,18 @@ const SW_READY = (!('serviceWorker' in navigator) || navigator.serviceWorker.con
 
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":41862284,"index.wasm":39509339},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":SW_URL};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":4275628,"index.wasm":39509339,"index.art.af0be1980edd.pck":13526104,"index.data_ashdod.4cc773a64562.pck":2795692,"index.data_bedford.895347747316.pck":2906124,"index.data_dimyon.2040101ccaa2.pck":495372,"index.data_givatayim.71297cfa1929.pck":1687728,"index.data_tel_aviv.ba3d37ec88eb.pck":3522416,"index.sound.88f5290bcfdd.pck":13232832},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":SW_URL};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
+const GODOT_PACKS = ["index.art.af0be1980edd.pck", "index.data_ashdod.4cc773a64562.pck", "index.data_bedford.895347747316.pck", "index.data_dimyon.2040101ccaa2.pck", "index.data_givatayim.71297cfa1929.pck", "index.data_tel_aviv.ba3d37ec88eb.pck", "index.sound.88f5290bcfdd.pck"];
+// PATCHED by tools/publish_web.sh -- engine.startGame(), but the split packs downloaded with
+// the main pack (each the service worker may already hold) and all in before the engine starts.
+function startWithPacks(override) {
+	engine.config.update(override);
+	engine.config.args = ['--main-pack', 'index.pck'].concat(engine.config.args);
+	return Promise.all([engine.init(GODOT_CONFIG['executable'])].concat(
+		['index.pck'].concat(GODOT_PACKS).map((f) => engine.preloadFile(f, f)))).then(() => engine.start());
+}
 
 (function () {
 	const statusOverlay = document.getElementById('status');
@@ -257,7 +266,7 @@ const engine = new Engine(GODOT_CONFIG);
 		}
 	} else {
 		setStatusMode('progress');
-		SW_READY.then(() => engine.startGame({
+		SW_READY.then(() => startWithPacks({
 			'onProgress': function (current, total) {
 				if (current > 0 && total > 0) {
 					statusProgress.value = current;
