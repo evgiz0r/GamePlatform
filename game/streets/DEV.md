@@ -3024,6 +3024,14 @@ LEVEL=1 $GODOT --headless --path . -s res://game/streets/tests/<test>.gd`.
   HaRakevet station, joined to no road on the ground: no car can get onto it, the test puts
   one there and it noses the building it stands beside. Left as it is (dropping a deck network
   joined to nothing would be the fix, if one is seen from the street and looks wrong).
+  **21 Nov, later**: `bank_at` now keeps a bank's foot 1 m clear of other roads' asphalt (was
+  0.5) and samples a quarter, half, three quarters and the foot (was half and foot): walls
+  4 -> 2 points (Ayalon South's at (753, -1300) and the bank at (76, -34) left, 1 each).
+  Tel Aviv's 14 "buildings on the road" were 12 private lanes in HaKirya (a lane under a
+  building, into a garage: `city_check` lists them now as a trap, "buildings on private
+  lanes" -- buildings are never cut back from a private lane, `_kerbed`) and 2 real: building
+  6343 1.7 m into Hana & Mordechai Veisser at (-1988, 1212), building 297 0.8 m into Ayalon
+  South at (214, 114) (a motorway: `_clip_buildings` skips them). City check 7: 25 -> 3.
   The same day `decks.gd` at level 1 (twice): every deck run clean but the City tunnel's
   (`מנהרת_הסיטי_1372`), whose autodrive roamed out of the tunnel onto a car park's aisle
   (Givatayim (-722, -1078) to (-735, -1078)) that ends in a building -- an underground car

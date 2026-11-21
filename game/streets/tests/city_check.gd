@@ -30,6 +30,10 @@ extends SceneTree
 ##                            junction's points each deciding alone gave green both ways)
 ##   on service roads      -- walls and posts on car-park lanes and driveways (barriers and
 ##                            pumps belong there; a bollard row may not)
+##   buildings on private lanes -- a private road (pv) through or into a building: a passage
+##                            or a garage's mouth (HaKirya's lanes in Tel Aviv). The game does
+##                            not cut buildings back from private lanes (_kerbed); no traffic
+##                            or route uses them, but the player can drive in
 var g: Node
 var _found := {}
 const PARKED_R := 0.85   ## a parked car is two posts of this radius (streets.gd)
@@ -203,7 +207,11 @@ func _check(lvl: int) -> int:
 				if float(r[0]) > float(worst[0]) and not _service(r[1]):
 					worst = [r[0], r[1], q]
 		if float(worst[0]) > 0.3:
-			add.call("buildings on the road", worst[0], worst[2], "building %d, %.1f m into %s" % [bi, float(worst[0]), _name(worst[1])])
+			# (a private lane -- Tel Aviv's 14 were all HaKirya's, running under a building or into
+			# its garage, 21 Nov: a trap, not a street anyone is sent down)
+			var pv := int(worst[1]) >= 0 and bool((g._roads[int(worst[1])] as Dictionary)["pv"])
+			add.call("buildings on private lanes" if pv else "buildings on the road", worst[0], worst[2],
+				"building %d, %.1f m into %s" % [bi, float(worst[0]), _name(worst[1])])
 	# -- lights
 	for n: int in g._sig_set.keys():
 		if not g._site_of.has(n):
@@ -227,7 +235,7 @@ func _check(lvl: int) -> int:
 			add.call("stub roads", l, pts[0], "%s, %.1f m (road %d)" % [_name(ri), l, ri])
 	_found = out
 	var failing := ["walls on the road", "posts on the road", "buildings on the road", "lit points alone"]
-	var traps := ["stub roads", "split junctions", "walls on service roads", "posts on service roads"]
+	var traps := ["stub roads", "split junctions", "walls on service roads", "posts on service roads", "buildings on private lanes"]
 	var found := 0
 	print("CITY CHECK %s (%d roads, %d buildings, %d walls, %d posts, %d lit points):" % [g._city_name,
 		g._roads.size(), g._blds.size(), g._wall_r.size(), g._posts.size(), g._sig_set.size()])
