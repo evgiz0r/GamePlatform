@@ -300,6 +300,12 @@ vec3 pane(vec3 room_c, vec3 v, float elev, vec3 tint, vec3 street, float floor_f
 	return mix(room_c * tint, sk * mix(vec3(1.0), tint, 0.35), f);
 }
 
+// the brightest plaster rolled off toward 0.67 (see where fragment() calls it)
+vec3 roll_white(vec3 c) {
+	float bm = max(c.r, max(c.g, c.b));
+	return bm > 0.55 ? c * (0.55 + 0.12 * (1.0 - exp(-(bm - 0.55) / 0.12))) / bm : c;
+}
+
 // how much of a line `w` wide (half-width) at distance d covers a pixel `aa` metres wide
 float line_cover(float d, float w, float aa) {
 	return clamp((w - d) / aa + 0.5, 0.0, 1.0);
@@ -332,6 +338,12 @@ void fragment() {
 		vec2 xy = (textureGrad(plaster_nrm, puv, pdx, pdy).rg * 2.0 - 1.0) * (siding > 0.5 ? 0.4 : 1.0);
 		pb = vec3(xy, sqrt(max(0.0, 1.0 - dot(xy, xy))));
 	}
+	// White plaster rolled off toward 0.67 (and the balconies' band with it, below). The
+	// Compatibility renderer lights in 0-1 and clips before any tone curve (tonemap_white does
+	// nothing here), so a white wall in the day sun (1.23) and the fill went flat white: 19% of
+	// look_tries' view up at the start's blocks was pure 255; 2.6% now, the mean 0.396 -> 0.388.
+	// (Toward 0.85 changed nothing: the sunlit face is lit past 1.2. Toward 0.55 dims it all.)
+	base = roll_white(base);
 	float pl = 1.0;   // 0 where the pixel is glass, a shutter or a frame: no plaster bumps there
 	// the wall's own frame in view space: along it (the way UV.x grows), up, out of it
 	vec3 nn = NORMAL;
@@ -408,7 +420,7 @@ void fragment() {
 	bool enclosed = hash(vec2(ci * 1.3 + 5.0, lv * 2.9) + seed) < 0.2 + 0.5 * hash(vec2(seed, 5.3));
 	// the balconies' parapets and slab edges in a band of their own on some blocks: white on
 	// the sand ones
-	vec3 band = hash(vec2(seed, 8.3)) < 0.45 ? mix(base, wall_a.rgb * COLOR.r, 0.65) : base * 1.05;
+	vec3 band = roll_white(hash(vec2(seed, 8.3)) < 0.45 ? mix(base, wall_a.rgb * COLOR.r, 0.65) : base * 1.05);
 	// about half the blocks with balconies have railings of bars, not solid parapets
 	bool rail_blk = hash(vec2(seed, 6.1)) < 0.5;
 	// (how weathered: aged, the sand-plastered old blocks, darker grime under their sills)
@@ -6432,7 +6444,9 @@ func _build_facade_kit() -> void:
 				var n := maxi(1, int(L / 3.3))
 				var cw := L / n
 				if L >= 7.0:
-					var stacks := 1 if n < 4 else 2
+					# (one, two, or on a wide face three: the film's blocks up the walk show a
+					# balcony in most bays, the game's read plain beside them)
+					var stacks := 1 if n < 4 else (2 if n < 6 else 3)
 					var face := Basis(Vector3.UP, atan2(out.x, out.y))
 					for sk in range(stacks):
 						var ci := posmod(hsh >> (3 + sk * 4), n)
@@ -6440,6 +6454,10 @@ func _build_facade_kit() -> void:
 							ci = 1 + posmod(hsh >> (3 + sk * 4), n - 2)
 						if sk == 1 and ci == posmod(hsh >> 3, n):
 							ci = (ci + 2) % n
+						if sk == 2 and balc_bays.has(ci):
+							ci = (ci + 3) % n
+							if balc_bays.has(ci):
+								continue
 						var at := a + (b - a) / L * ((ci + 0.5) * cw)
 						balc_bays[ci] = true
 						for lv in range(1, floors):
@@ -6469,7 +6487,7 @@ func _build_facade_kit() -> void:
 			# washing under a window
 			var placed := 0
 			var racks := 0
-			var cap := mini(4, 1 + floors)
+			var cap := mini(6, 1 + floors)   # (4 until 22 Nov: the far blocks read plain beside the film's)
 			for i in range(ring.size()):
 				if placed >= cap or floors < 1:
 					break
@@ -6492,7 +6510,7 @@ func _build_facade_kit() -> void:
 						if lv == 0 and (floors < 2 or look["pilotis"]):
 							continue
 						var hh := posmod(hsh + i * 131 + ci * 17 + lv * 7919, 1000)
-						if hh % 100 < (13 if on_st else 7) and placed < cap:
+						if hh % 100 < (17 if on_st else 9) and placed < cap:
 							var p := a + e * ((ci + (0.86 if hh % 2 == 0 else 0.14)) * L / n) + out * 0.02
 							var y := g_lo + lv * 3.0 + (0.32 if lv > 0 else 2.3)   # (under the sill; on the ground floor, over heads)
 							(acs[0] as Array).append(Transform3D(face, Vector3(p.x, y, p.y)))
@@ -6809,7 +6827,13 @@ func _wall_rgb(bright: float, tint: float, stone: float) -> Color:
 	var w3: Color = _tone["wall3"]
 	var st := w3.lerp(_tone["wall7"], aged)
 	var c := plaster.lerp(st, lerpf(stone, 1.0, aged * 0.6) * (1.0 if tk == 0 else 0.3))
-	return Color(c.r * bright, c.g * bright, c.b * bright)
+	c = Color(c.r * bright, c.g * bright, c.b * bright)
+	# (as WALL_SHADER's roll_white: the brightest plaster rolled off toward 0.67)
+	var bm := maxf(c.r, maxf(c.g, c.b))
+	if bm > 0.55:
+		var k := (0.55 + 0.12 * (1.0 - exp(-(bm - 0.55) / 0.12))) / bm
+		c = Color(c.r * k, c.g * k, c.b * k)
+	return c
 
 ## a block on columns: the floors above start at `lift`; under them, a walled-in core set
 ## back from the edge (stairs, lobby, storage), the ceiling of the open floor, and a column
@@ -15089,7 +15113,9 @@ func _tones() -> void:
 		"lobby": ink.lerp(wn, 0.22).lerp(alt, 0.12),   # the tiled walls of a lobby under a block on columns
 		"flowers": Palette.col("hazard").lerp(Palette.col("accent"), 0.35),   # bougainvillea
 		"roof": ink.lerp(alt, 0.42),
-		"leaf": veg.lerp(bg, 0.52),
+		# (less red, a touch less blue than the palette's green mixed toward its dark: on screen the
+		# leaves came out 72/61/52, red over green -- brown -- against the film's 55/61/46)
+		"leaf": Color(veg.lerp(bg, 0.52).r * 0.76, veg.lerp(bg, 0.52).g, veg.lerp(bg, 0.52).b * 0.88),
 		"trunk": alt.lerp(wn, 0.3),
 		"pole": alt.lerp(ink, 0.3),
 		"sky": pl.lerp(pz, 0.35).lerp(bg, 0.32),
@@ -15102,12 +15128,12 @@ func _tones() -> void:
 		"furniture": alt.lerp(ink, 0.35),
 		"paint": pl.lerp(alt, 0.5).lerp(ink, 0.12),
 		"shoplight": ink.lerp(wn, 0.45),
-		"pavement": _greyed(ink.lerp(alt, 0.48).lerp(wn, 0.04), 0.65),
+		"pavement": _greyed(ink.lerp(alt, 0.48).lerp(wn, 0.04), 0.85),   # (0.65 kept the palette's lavender: pink pavers)
 		# a filmed street's details (details.gd): charcoal pavers under an arcade, a forecourt
 		# of pale poured slabs
 		"pavers_dark": _greyed(ink.lerp(alt, 0.62), 0.85),   # (0.8 read near black under the arcade: the film's are mid-grey in its shade)
 		"slabs": _greyed(ink.lerp(alt, 0.55).lerp(wn, 0.28), 0.38),   # (the film's: warm beige in the sun)
-		"pavers_grey": _greyed(ink.lerp(alt, 0.5), 0.85),
+		"pavers_grey": _greyed(ink.lerp(alt, 0.5), 0.97),   # (the film's are a neutral grey)
 		# a crossing's kerbs: buff domed slabs; a median's raised ends, red pavers (the film's)
 		"tactile": ink.lerp(alt, 0.5).lerp(wn, 0.4),
 		"pavers_red": Palette.col("hazard").lerp(bg, 0.45).lerp(alt, 0.2),
@@ -15794,11 +15820,13 @@ func _film_begin(id: String) -> void:
 ## by FILM_SAT, as the flatter curve takes some out. Only the walks: the game's own look is
 ## other sessions' (the light, the haze) and drives on.
 ## (refitted 21 Nov on a bare recording after the deeper light -- fill x0.6, sun x1.12 -- which
-## clipped 2.2% of the bare picture and left it more saturated: 0.191 against the film's 0.159)
-const FILM_CURVE := [0.053, 0.103, 0.185, 0.271, 0.344, 0.403, 0.447, 0.481, 0.515, 0.549, 0.580,
-	0.608, 0.636, 0.670, 0.709, 0.783, 0.878]
-const FILM_WARM := 1.06
-const FILM_SAT := 0.943
+## clipped 2.2% of the bare picture and left it more saturated: 0.191 against the film's 0.159;
+## again 22 Nov after white plaster's roll-off, neutral paving greys and greener leaves, with
+## FILM_WARM 1.0: the graded greys' red/green 1.068 -> 1.048, the film's 1.021)
+const FILM_CURVE := [0.054, 0.107, 0.193, 0.277, 0.349, 0.412, 0.463, 0.503, 0.535, 0.561, 0.586,
+	0.610, 0.636, 0.668, 0.705, 0.779, 0.877]
+const FILM_WARM := 1.0   ## (1.06 on the old light; the bare picture's greys are as warm as the film's now)
+const FILM_SAT := 1.224
 ## the phone's auto-exposure: [target, strength, least, most] -- the frame's mean brightness
 ## pulled towards target by (target / mean)^strength, in light, within least..most. The film's
 ## brightness second to second holds at 0.45 +- 0.055 (its exposure follows the view); the

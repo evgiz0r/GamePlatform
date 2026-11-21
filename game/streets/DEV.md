@@ -305,17 +305,34 @@ The ones most often touched, and the functions in them:
   **The AC unit's fan** (`furniture.ac_kit`): a round opening with three lighter blades, a
   grille ring and a cross over it, where it was a black hexagon that read as a sticker from
   across the street (~250 vertices; instanced, not batched).
-  **Open, seen in the side-by-sides** (film frame at t s against the graded game's frame
-  t*10+1 -- the camera's heading differs a little at the same second):
-  - white plaster in full sun clips: 19% of `look_tries`' `_under` view is pure white, the
-    texture gone. Darkening `wall_a` 14% changed nothing there, so that block's white does
-    not come from `wall_a` (its lean, COLOR.r, or the lifted block's own material: find it
-    before tuning).
-  - the faces up the walk (80 s): the film's blocks are busy -- every bay a railing or a
-    closed-in balcony, AC units, shutters half down, dark window holes -- where the game's far
-    blocks read plain. More facade kit per block at distance (or as paint in the shader).
-  - paving (55 s): the game's pavers are pinker and lighter than the film's grey ones.
-  - trees (55 s): olive and brown leaves against the film's fresh green.
+  **Seen in the side-by-sides** (film frame at t s against the graded game's frame t*10+1 --
+  the camera's heading differs a little at the same second): see the next item.
+- **the four from that list (22 Nov)**:
+  - **white plaster clipping**: the Compatibility renderer lights in 0-1 and clips before any
+    tone curve -- `tonemap_white` changes nothing here (tried 3 and 6). White plaster (wall_a
+    0.95, the photo's light patches up to x2) in the day sun (1.1 x 1.12) went flat 255. Now
+    `roll_white()` in WALL_SHADER rolls the plaster, and the balconies' `band`, off from 0.55
+    toward 0.67 (`_wall_rgb` the same, for things on walls): look_tries' `_under` 18.8% pure
+    white -> 2.6%, its mean 0.396 -> 0.388. Toward 0.85 changed nothing (the sunlit face is lit
+    past 1.2); toward 0.55 dimmed every wall. How it was found: crush `base` x0.2 in the shader
+    and shoot -- what stays white is not the plaster (it was the `band`, built from raw wall_a).
+    (A probe that ray-casts a pixel and walks every MeshInstance3D hung: too many meshes.)
+  - **busier far blocks**: balcony stacks 1 / 2 / 3 by face width (n bays < 4, < 6, more; the
+    third skips a bay already taken), AC units up to 6 a block (was 4) at 17% / 9% a bay
+    (13 / 7). Givatayim: AC units 10,692 -> 19,676 (instanced, 140 m), balconies 3,744 ->
+    6,628, closed in 2,672 -> 4,636; batched coloured kits 0.99 M -> 1.69 M vertices. Watch the
+    phone's frame time; if it suffers, the stacks are the dear part.
+  - **paving**: `pavement` greyed 0.65 -> 0.85, `pavers_grey` 0.85 -> 0.97 (the palette's
+    lavender showed through as pink); FILM_WARM 1.06 -> 1.0 (the bare picture's greys are as
+    warm as the film's: red/green 1.066). Graded greys now red/green 1.049 (was 1.068; the film
+    1.021). Still open: the passage at 55 s is drawn beige-and-pink bricks though the walk's
+    details lay it as small grey pavers -- find which surface draws it there.
+  - **leaves**: `leaf` with red x0.76 and blue x0.88 -- on screen they were 72/61/52 (red over
+    green: brown), the film's foliage 55/61/46.
+  - the grade refitted again on all of it: FILM_SAT 1.224 (the bare picture lost colour),
+    graded levels within 0.05 of the film's, saturation 0.158 (0.159), 0.0% clipped, each
+    second 0.457 +- 0.080 (0.454 +- 0.055). The bare picture still clips 2.2% (sky and sunlit
+    ground; the grade takes it).
 - **dogs, feet, walking on the spot** (the user: "the dogs look pretty wierd, and their
   hitboxes and how they walk is pretty wierd"; "some people are walking in place ... and
   their legs are somewhat bit inside the ground"). The dog (furniture `dog_kit`) is

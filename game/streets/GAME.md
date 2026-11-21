@@ -1556,6 +1556,13 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   the places from OSM and the towns' own data. New: each tour's script (the stops, where to
   look, the words, maybe spoken), a guide to follow, and a way to pause, ask, or skip ahead;
   a tour as a level of its own in the start screen.
+- Scenarios: "Alien invasion, maybe special scenario, maybe in any city. if i activate. some
+  aliens come down around the city i am in"; "just the concept of scenarios, where aliens
+  are one of those. more stuff - titans, dragons, (dont want army stuff though, gives wrong
+  ideas)". A scenario is switched on in whatever town you are in and plays out around you:
+  aliens landing round the city first, then titans, dragons. No soldiers, tanks or army of
+  any kind. (Builds on the disasters idea below.)
+- A city on the moon: "A city on the moon".
 - Disasters on the real city: "like simcity hazards, but now we have the graphics so it
   can be cool on steroids, like aliens". Pick a disaster and where it strikes, then watch it
   from the zoomed-out view or live through it in the car or on foot. Aliens first, as asked:
