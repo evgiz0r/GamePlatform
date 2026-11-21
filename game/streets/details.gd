@@ -13,7 +13,7 @@ extends RefCounted
 ## Format (every key optional):
 ##   roads     {drop: [{k, name, near: [x, z]}],   the baked roads of that kind and name
 ##                                                    that pass within 3 m of `near`
-##              add: [{pts: [[x, z]...], k, w, name, name_en, o, l, sv}],   ends within 1 m of
+##              add: [{pts: [[x, z]...], k, w, name, name_en, o, l, sv, pave, yard, setts}],   ends within 1 m of
 ##                                                    a baked node join it
 ##              set: [{k, name, near: [x, z], w, l, kerb, kerb_mid}]}   the baked roads of
 ##                                                    that kind and name passing within 3 m of
@@ -171,7 +171,7 @@ func edit_city(city: Dictionary) -> void:
 		for p: Array in ad["pts"]:
 			ids.append(_node_at(nodes, _v2(p), sc))
 		var r := {"n": ids, "k": ad["k"], "w": float(ad.get("w", 6.0))}
-		for key: String in ["name", "name_en", "o", "l", "sv"]:
+		for key: String in ["name", "name_en", "o", "l", "sv", "pave", "yard", "setts"]:   # (as "set" has them)
 			if ad.has(key):
 				r[key] = ad[key]
 		city["roads"].append(r)

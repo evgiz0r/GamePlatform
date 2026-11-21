@@ -15887,11 +15887,18 @@ func _film_begin(id: String) -> void:
 ## (refitted 21 Nov on a bare recording after the deeper light -- fill x0.6, sun x1.12 -- which
 ## clipped 2.2% of the bare picture and left it more saturated: 0.191 against the film's 0.159;
 ## again 22 Nov after white plaster's roll-off, neutral paving greys and greener leaves, with
-## FILM_WARM 1.0: the graded greys' red/green 1.068 -> 1.048, the film's 1.021)
-const FILM_CURVE := [0.054, 0.107, 0.193, 0.277, 0.349, 0.412, 0.463, 0.503, 0.535, 0.561, 0.586,
-	0.610, 0.636, 0.668, 0.705, 0.779, 0.877]
+## FILM_WARM 1.0: the graded greys' red/green 1.068 -> 1.048, the film's 1.021; then with
+## FILM_WB, the curve refitted and the saturation held at 1.2)
+const FILM_CURVE := [0.054, 0.107, 0.194, 0.278, 0.350, 0.414, 0.464, 0.504, 0.535, 0.562, 0.586,
+	0.611, 0.638, 0.670, 0.707, 0.781, 0.877]
 const FILM_WARM := 1.0   ## (1.06 on the old light; the bare picture's greys are as warm as the film's now)
-const FILM_SAT := 1.224
+const FILM_SAT := 1.2   ## (the fit asks 1.47 with FILM_WB on: the film's colour is its content -- fresh
+## green, blue sky -- more than its grade, and 1.47 put the pavers' tint straight back)
+## the phone's white balance, on every tone: red and blue gains that put the graded greys where
+## the film's are (red/green 1.021, blue/green 1.006). Without it a grey paver lit by the warm
+## sun read cream, one a shade darker -- more of the violet fill light -- read pink, and the
+## grade's saturation doubled both (the passage at 55 s: grey pavers drawn beige and pink)
+const FILM_WB := [0.973, 1.037]
 ## the phone's auto-exposure: [target, strength, least, most] -- the frame's mean brightness
 ## pulled towards target by (target / mean)^strength, in light, within least..most. The film's
 ## brightness second to second holds at 0.45 +- 0.055 (its exposure follows the view); the
@@ -15934,13 +15941,13 @@ void fragment() {
 		float gain = clamp(pow(expo_target / max(m, 0.02), expo_k), expo_min, expo_max);
 		c = pow(pow(c, vec3(2.2)) * gain, vec3(1.0 / 2.2));
 		float l0 = dot(c, LUM);
-		c *= mix(vec3(1.0), vec3(%f, 1.0, 1.0), 1.0 - smoothstep(0.6, 0.9, l0));
+		c *= vec3(%f, 1.0, %f) * mix(vec3(1.0), vec3(%f, 1.0, 1.0), 1.0 - smoothstep(0.6, 0.9, l0));
 		c = vec3(tone(c.r), tone(c.g), tone(c.b));
 		float l = dot(c, LUM);
 		COLOR = vec4(clamp(vec3(l) + (c - vec3(l)) * %f, 0.0, 1.0), 1.0);
 	}
 }
-""" % [", ".join(FILM_CURVE.map(func(v: float) -> String: return "%.3f" % v)), FILM_WARM, FILM_SAT]
+""" % [", ".join(FILM_CURVE.map(func(v: float) -> String: return "%.3f" % v)), FILM_WB[0], FILM_WB[1], FILM_WARM, FILM_SAT]
 	var mat := ShaderMaterial.new()
 	mat.shader = sh
 	mat.set_shader_parameter("expo_target", FILM_EXPO[0])

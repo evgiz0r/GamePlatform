@@ -327,6 +327,22 @@ The ones most often touched, and the functions in them:
     warm as the film's: red/green 1.066). Graded greys now red/green 1.049 (was 1.068; the film
     1.021). Still open: the passage at 55 s is drawn beige-and-pink bricks though the walk's
     details lay it as small grey pavers -- find which surface draws it there.
+  - **the passage at 55 s (22 Nov, later) -- still open.** Ruled out: a neighbour's pavement
+    (`tests/what_paves.gd` AT="641.59,-622.87": only the details' own footway, unkerbed, is
+    there); the footways' "walks" layer (dropped in a diagnostic run: the bricks stayed);
+    `_build_passages` (walls only). Seen: pavers in half-offset rows, each its own colour, pink,
+    cream and near white -- more than kind 7's x0.9-1.1 brightness would give. Next: shoot it
+    from above with the details' surfaces hidden, then with the tone table's pavers_grey set to
+    a loud colour, to see which layer it is. Done meanwhile: details "add" roads now carry
+    `pave`, `yard`, `setts` as "set" ones do (they were dropped), the passage's footway has
+    `"pave": [0, 1]` (make_givatayim.py); and the walk's grade has a white balance, FILM_WB
+    (red x0.973, blue x1.037: the graded greys' red/green 1.049 -> 1.035, blue/green 0.970 ->
+    0.979; the film 1.021 / 1.006), the curve refitted, FILM_SAT held at 1.2 -- the fit asks
+    1.47, which put the pavers' tint straight back: the film's colour is its content. Graded
+    now: saturation 0.134 (the film 0.159), median 0.47 (0.45), 0.0% clipped.
+  - **look tests check for burn-out**: look_tries and look_bench print each shot's pure-white
+    share and FAIL over 5% (`_white_check`). Now: start 1.2%, close 1.3%, under 2.2%; bench
+    street 3.8%, car 3.4%, the rest under 1%.
   - **leaves**: `leaf` with red x0.76 and blue x0.88 -- on screen they were 72/61/52 (red over
     green: brown), the film's foliage 55/61/46.
   - the grade refitted again on all of it: FILM_SAT 1.224 (the bare picture lost colour),
