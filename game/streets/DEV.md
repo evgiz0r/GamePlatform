@@ -244,7 +244,17 @@ The ones most often touched, and the functions in them:
   place 0.6 m one way took most of a 0.9 m step back, and one walked half a metre beside
   you for 2 s), kept till 2 m past you (one cut in just in front), up against a hedge if
   need be (elsewhere a step aside is cut to the room there: `room_at`), never nearer than
-  0.6 m; waiting for you more than 4 s, back the way they came. tests/walk_people.gd counts
+  0.6 m; waiting for you more than 4 s, back the way they came. **Jumps in view** (21 Nov,
+  validation on main: walk_people FAIL, 2 walkers jumping 1.6-2.5 m 45-57 m off; here 1 in 7
+  runs of walk 2 from 45 s): a walker's place across the pavement (`lat`, up to 0.9 m) is
+  measured from its line the way it walks, so turning back (at a stretch's end in view, or
+  after waiting 4 s for you) or stepping on to a new stretch (`_walk_on`) flipped or turned
+  `right` and the same `lat` put it up to 1.8 m across in one tick -- now `lat` is carried
+  over as where it stands (`turned`) and eased to the plan; and `_place_walker` kept the old
+  life's `lat`, `lane`, `dodge`, `at`, so a walker put down out of sight round a corner was
+  drawn up to 0.9 m beside the spot checked, in view -- now reset. After: 0 pops in 12 runs
+  (seeds 1-14). The test's "close" counts under 0.58 m now (0.6 is the floor walkers are held
+  at; a push off a post after it left one at 0.599 and failed a run). tests/walk_people.gd counts
   someone behind a building as unseen (`_behind_building`).
 - **signs bent by the car** (`_bend_sign`, SIGN_BEND_V 4 m/s): street signs are merged into
   the batches, so the one hit is hidden in TONE_SHADER (`gone`/`gone_n`, up to 12: what
@@ -795,9 +805,11 @@ minutes, this 1.29 on 40 -- the same; main read 1.11-1.23 at 2x all day and 1.07
   shift 2-4 m overlapped the cars arriving.
 - *Cars put down at the start of a path already in a junction* ("k 0", "held by junction",
   hit by the main road's traffic) -- check where `_spawn` puts a car against junctions.
-- *Things in the road traffic cannot see*: details.gd's hand-placed parked cars on HaMeri
-  stand 1 m into the asphalt (the film shows them so; traffic drives through), a tree 0.7 m
-  into Katznelson's (city_check's Givatayim post), and a truck on Sderot Herzl's kerb lane
+- *Things in the road traffic cannot see*: details.gd's hand-placed parked car on HaMeri
+  (21 Nov: `tests/hand_parked.gd` drives traffic past it on its kerb side, least gap 1.03 m --
+  the lane misses it, not reproduced; the other three stand on the little street, a footway);
+  the "tree" 0.7 m into Katznelson's was the Sheinkin-Sirkin walk's bin at the corner by the
+  light's pole, 1.0 m in (city_check) -- moved 1.8 m onto the pavement in givatayim.json; and a truck on Sderot Herzl's kerb lane
   4.3 m right of the lane line on a pole past the kerb (where the road narrows).
 - *The test town reads 19-20 checks at 2x on `main` since the evening's merges* (4-12 that
   morning; this branch beside it 19 and 13), mostly traffic overlapping. One seen whole: the
@@ -847,7 +859,9 @@ twice) draws it as a map; "save log" there downloads it (a browser) or writes it
 `user://drive_logs/`. Ask the user for that file when they report bad driving, and draw it:
 `python3 game/streets/tests/drive_log_map.py file.json` -- the streets, the track coloured
 by speed, the plan every 2 s, the other cars, the events, and a strip of speed against time
-coloured by what held it. Then stage that spot in a scene test.
+coloured by what held it. Then stage that spot in a scene test. Each sample also holds the people within 30 m
+(`people`: [x, z, who], who the list and state -- "walker", "crosser:cross"...), and
+`route_set.gd` saves a log of its own a second after any hit (`route-<n>-hit<t>.json`).
 
 ## The driving exam and the test trip: the loop for driving behaviour
 
@@ -1259,15 +1273,60 @@ Nothing is half done: all of the above is on main.
     within a few metres of the junction (it may not start behind it): 3.6-4.3 m at two of
     Givatayim's four in turn_width. Dropping a plain lane point that the arc would start
     behind would let it;
-  - route 9 (Bedford) hit a person at 23 km/h on Hammonds Plains Road (21 Nov, t 284 s of the
-    drive): autodrive held for 'people' only ~0.6 s before, at 10 m/s -- someone came into the
-    lane from close by, or the people check saw them late (its 32 m look and 1.7 m reach);
+  - (done 21 Nov: route 9's person hits -- see "People stepping into the lane" below);
   - `_push_out` sets `_last_hit` even when it only probes (the plan's `_clear_lane`, the nose's
     safety net): a test reading `_last_hit` must gate on `_crash_cool`, as route_set and
     give_way do;
   - few medians are deep enough to wait in where side streets cross (the carriageways' guessed
     widths): if real ones look wider than the game draws them, it is the widths
     (`_fit_widths`, the `median` key), not the waiting.
+
+### People stepping into the lane (21 Nov 2026)
+
+Route 9 (Bedford) hit a person in two of four runs (23 km/h on Hammonds Plains Road, 32 on
+Hollyhock Way), autodrive holding for "people" only 0.3-0.6 s before. A hit is rare, so the
+measure is `tests/people_near.gd`: everyone who comes into the lane ahead (1.7 m of the
+plan) nearer the nose than the car can stop. Route 9 twice: 4 over 9.1 km, all walkers
+moving 1.4-1.6 m/s square to the lane -- stepping over a side street's mouth (`_walk_on`'s
+step, up to 18 m of asphalt) with no look at the traffic, onto the street the car was on or
+turning into. Givatayim's route 4 three times: 0 (its mouths are narrow and slower).
+Two changes:
+- the walker at the kerb of a step over waits while `_safe_to_cross` says a car could not
+  stop, or one's middle is within 4 m of the step (the crossers' 2.5 m let them out into
+  a car's side once its nose was past); after 15 s, back the way they came (`kerb_t`);
+- `_ap_people_v` keeps each person's pace (once a physics frame, `_ap_ppl_at`) and looks
+  for them where they will be when the car is level (up to 2 s on) as well as where they
+  are, and looks as far as the car needs to stop (32 m, or v^2/7 + 12).
+After: route 9 twice 0 late, 3 within 1.6 m of the body (none under 1 m; was 7, 1);
+Givatayim 0 late. Traffic cars do not look at walkers at all (they rely on the kerb wait).
+
+### Traffic at slip roads; the City tunnel's test run (21 Nov 2026)
+
+- *Off onto a slip road from the wrong lane.* `_turn_ahead` counted a fork under 34 degrees
+  as straight on, so a car leaving Sderot Herzl's three lanes for its slip stayed in the
+  middle lane and crossed the kerb lane at the fork, into the bus there (Ashdod's exam: 9 of
+  its 16 checks at (-1780, 2275)). Leaving a road for a `_link` (`_onto_link`) is now a turn
+  to the fork's side from 0.08 rad (5 degrees), so the car is in that lane 110 m before.
+- *Moving over because the road changed* (`realign`: onto a narrower road, a slip's lane)
+  never looked; a car with someone level with it or a little ahead in the lane it moves
+  to (`_side_clear`) now eases off (0.8 of its speed each decision) and lets them go first.
+  Only those level or ahead: braking for one further ahead it slowed to a stop, and its
+  move over (paced by its speed) stopped with it.
+- Ashdod's exam, before / after: 16 / 5 checks (traffic overlapping 9 / 4, into posts 6 / 1);
+  autodrive's harsh braking 4 / 15 a run, 10 of them "for car" -- one run each, noisy, but
+  watch it. Givatayim 13 and the test town 15 checks after (no before from the same day).
+  Route set after: 10 of 10, route 2 brushed a wall and a post at 11 km/h on Moshe Dayan
+  passing a bus pulled in at a stop (its log `route-2-hit306.json`, not kept: autodrive "blocked by
+  post 71247" 0.6 s before) -- open, not yet known whether new.
+- *The City tunnel "hitting a building"* was the test, not autodrive: `decks.gd` put the
+  car down by `_land_on_road`, which goes by the car's height only within 40 m of the car,
+  so a tunnel's run was put down on the ground 24 m off -- on a car park aisle whose last
+  13 m is a 3.6 m slot between two blocks (Givatayim (-735, -1078), OSM's aisle into an
+  underground car park) -- and drove out through it. The test sets the car there first;
+  the run drives the tunnel, 0 hits. The slot itself is still drivable (open).
+- `auto_stands` prints the lead car's nose and tail off the lane and its heading too: the
+  validation's Nahliel stop (4 s behind a sedan at 26 km/h, 2.9 m off, 60 m free) did not
+  come back in two runs (13 min, every stop a queue).
 
 ## Numbers to compare against (November 2026, cloud container, software renderer)
 
@@ -2040,8 +2099,9 @@ it is dropped.
   minimap draws a tunnel like any street; zooming out from inside the tunnel rises from the
   hilltop (the zoom centres on the ground's height); the heights are whole decimetres, so a
   deck's grade kinks by up to 2% every 5 m (enough for a 2 cm hop off HaNasi's bridge);
-  autodrive turning right off the flyover's foot onto HaRakefet clips a crossing railing's
-  post on the corner about one run in two (the railing reaches 6 m from the zebra, into the
+  autodrive turning right off the flyover's foot onto HaRakefet clipped a crossing railing's
+  post on the corner about one run in two (21 Nov: `decks.gd` at level 1 twice, no such hit;
+  its runs no longer take that turn, so not seen either way) (the railing reaches 6 m from the zebra, into the
   corner: a corner-furniture question, not a deck one). Ramps' and cuttings' walls are left
   out of the collisions within a junction's corner (`_walls_of`): there they are a step a
   turning car sweeps over.
@@ -2561,13 +2621,32 @@ Each line: where the code is, the test, what good reads.
   (`_kerb_cap`), no corner on its side (`_corners_at`: `corners_on_a_median`), no kerb run
   facing it (`_faces_median`: `kerb_runs_facing_a_median`). Wider ones keep their rounded
   noses (the corners' curves). `tests/median_ends.gd` (Tel Aviv: 1,652 ends at junctions,
-  939 by a zebra) shoots 8 from the driver's seat and above. **Still messy, not done**: the
-  triangles between a slip road (`*_link`) and the main roads -- each road's kerb laid apart,
-  strips standing loose in the junction (Moshe Dayan / HaShalom (844, 457), Yigal Alon / Arvey
-  Nahal (752, -501)); they want the island as one area: the small faces the drivable roads
-  enclose, cut off the asphalt (`_island_cut`) and kerbed all round (`_island_faces`), and
-  the roads' kerb runs facing into one left out. And a footpath mapped across a junction's
-  corner drawn through a median's nose (Shaul HaMelekh / Ibn Gabirol, path 2197, (-847, -70)).
+  939 by a zebra) shoots 8 from the driver's seat and above.
+- **Slip roads' triangles** (the same report, 21 Nov): the triangle between a slip road
+  (`*_link`) and the roads it joins is rarely mapped as an area, so each road laid its own
+  kerb and paving into it -- strips standing loose and askew in the junction (Moshe Dayan /
+  HaShalom (844, 457), Yigal Alon / Arvey Nahal (752, -501)). `_find_link_islands` (after
+  `_find_islands`) closes each slip road with the shortest way back between its ends along
+  the other drivable roads (`_short_way`, at most 2.5x its length + 40 m); a ring of
+  12-4000 m2 with no building and no mapped island in it becomes a made-up lawn area
+  (`"made": "link"`), cut off the roads' strips and the junctions' discs (`_island_cut`, as a mapped island: left
+  over the discs, `city_check`'s "islands on the road" read 1 / 13 / 7 / 0 / 2 and a turning
+  car would meet the kerb) and kerbed all round. Every kerb piece, end cap and corner whose paving would lie inside the
+  triangle is left out (`_in_link_island`, on the whole ring, not the cut pieces: the cut
+  ones are too thin to catch the pavement's middle). The trap that cost a round: `_fit_widths`
+  pairs a slip road with the road it leaves as a divided road's two halves, so the slip
+  road's triangle side is its "median side" (`inner_side`) -- the test must apply there too.
+  Tel Aviv: 111 pieces, 5,789 m2, 827 kerb pieces and 132 corners left out, 0 over asphalt;
+  `city_check` the same as before in every town (Ashdod's two pavings 271 -> 235 m2).
+  `tests/link_islands.gd` (`AT=x,z` also prints every kerb run near the point and how much
+  of it faces into a triangle, and shoots the spot as it is, so it works on `main` too for a
+  before). Left at (844, 457): Moshe Dayan's own median ends (loose pink blocks) are the
+  median work above, not the triangles. A footpath mapped across a junction's corner
+  drawn through a median's nose (Shaul HaMelekh / Ibn Gabirol, path 2197, (-847, -70)) was
+  noted with the median fix; looked at again 21 Nov (`top_at` AT="-847,-80;-845,-66" UP=16):
+  nothing of the path shows (a path's ribbon lies under the asphalt and the median), the pale
+  patch at the nose's end is the crossing's tactile paving, and the triangle beside it is now a
+  slip road's island. Not reproduced; reopen with a picture if it is seen again.
 - **A flickering line across the screen** (user, the first filmed walk's passage: "flickering
   line in the middle of the screen sometimes. dunno if its my screen or godot or bug"): the
   sky dome (`_build_sky_dome`) was Godot's hemisphere, which closes with a flat disc at its
@@ -2906,6 +2985,20 @@ LEVEL=1 $GODOT --headless --path . -s res://game/streets/tests/<test>.gd`.
   building (autodrive noses it). Two branch ramps out of Lova Eliav's west end are too short
   to climb out at 10% and lie on the ground. A tunnel's tube is drawn whatever is over it,
   buildings included (Lova Eliav runs under HaKirya's blocks).
+  **Measured again 21 Nov** (`decks.gd` `DECK_KINDS=br`, `street_holes.gd`, level 7): every
+  bridge driven 0 frames in the air and 0 off the level (Arvei Nahal's seam gone); holes 1
+  point (134, 179), 0.5 m (was 8, 0.7-0.9 m); walls 4 points (Yitzhak Sadeh's bank 2, Ayalon
+  South's embankment at (753, -1300), the bank at (76, -34)). The car-park "bridge" (`_3447`
+  in the test, (-1202, 1203)) is a rooftop car park's ring of parking aisles on layer 1 by
+  HaRakevet station, joined to no road on the ground: no car can get onto it, the test puts
+  one there and it noses the building it stands beside. Left as it is (dropping a deck network
+  joined to nothing would be the fix, if one is seen from the street and looks wrong).
+  The same day `decks.gd` at level 1 (twice): every deck run clean but the City tunnel's
+  (`מנהרת_הסיטי_1372`), whose autodrive roamed out of the tunnel onto a car park's aisle
+  (Givatayim (-722, -1078) to (-735, -1078)) that ends in a building -- an underground car
+  park's way in -- and hit the wall and building there at 9-19 km/h, both runs; and
+  Menachem Begin 1609, 40 frames off the level by up to 0.31 m. The first is autodrive's
+  roaming picking a parking aisle that leads nowhere (driving's, not the decks').
 - **Givatayim's ground is the terrain tiles' surface model too**: its "steepest 52%" is
   likely part roofs. Measured on its grid, `--bare-ground` would take the hill's crest
   86 -> 72 m and the steepest slope 48 -> 16%. Not re-baked: it moves the ground under the

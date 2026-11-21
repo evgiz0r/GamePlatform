@@ -1486,7 +1486,7 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
 - Speed humps to bump over: OSM marks them (traffic_calming), but the baker does not keep
   them yet -- it needs that and a re-bake (Overpass, or the bake workflow).
 - People who react ("not needed yet, maybe later"): jumping back, or falling, when a car
-  comes at them; glancing at you; stopping at the kerb before they step out.
+  comes at them; glancing at you.
 - A guided tour of the city: "a virtual tour in a city. like a guide, where we stop and
   look and explain. the more real it gets the more the tour looks nicer". A guide leads you
   along a route on foot (or driving), stops at the sights, turns your view to each and

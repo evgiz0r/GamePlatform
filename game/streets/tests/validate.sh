@@ -29,7 +29,10 @@ run() {   # name, level, speed, script, timeout; optional EXTRA="VAR=value ..." 
 	local t0=$(date +%s)
 	local fps="--fixed-fps ${FPS:-60}"
 	[ "${FPS:-}" = "free" ] && fps=""
-	env LEVEL="$2" STREETS_SIM_SPEED="$3" ${EXTRA:-} timeout "$5" "$godot" --headless $fps --path . \
+	# (-u OUT: this script's own OUT is the tests' "save screenshots here" too, and a test
+	# taking a screenshot headless hangs -- seat_steady, lane_position and deck_corner ran to
+	# their timeouts with no verdict whenever validate.sh was given an OUT)
+	env -u OUT LEVEL="$2" STREETS_SIM_SPEED="$3" ${EXTRA:-} timeout "$5" "$godot" --headless $fps --path . \
 		-s "res://game/streets/tests/$4.gd" > "$out/$1.txt" 2>&1
 	echo "  $1: $(( $(date +%s) - t0 )) s" >&2
 }

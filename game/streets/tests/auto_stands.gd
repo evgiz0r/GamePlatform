@@ -52,6 +52,12 @@ func _what() -> String:
 		var c = g._traffic.cars[int(lead[3])]
 		parts.append("lead %s %.1f m on, v %.1f, still %.0f s, its why '%s', blocker %d, delivery %s, its middle %.1f m off my lane" % [
 			c.kind, float(lead[0]), c.v, c.still, c.why, c.blocker, g._traffic._parked_double(c), _lat(c.pos)])
+		# (its nose and tail off my lane too, and its heading against mine: one 2.9 m off by its
+		# middle held autodrive 4 s at 26 km/h, validation 21 Nov -- which end was "in my lane"?)
+		var cdir := Vector2(sin(c.yaw), cos(c.yaw))
+		parts.append("its nose %.1f m off, tail %.1f m off, heading %.0f deg from mine" % [
+			_lat(c.pos + cdir * (float(c.len) * 0.5 - 0.3)), _lat(c.pos - cdir * (float(c.len) * 0.5 - 0.3)),
+			rad_to_deg(absf(cdir.angle_to(g._fwd())))])
 	if g._ap_give_car >= 0 and g._ap_give_car < g._traffic.cars.size():
 		var c = g._traffic.cars[g._ap_give_car]
 		parts.append("giving way to %s %.0f m off at %.1f m/s" % [c.kind, c.pos.distance_to(g._pos), c.v])

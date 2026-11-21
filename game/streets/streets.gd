@@ -3871,6 +3871,13 @@ func _build_kerbs() -> void:
 								p = int(m.z)
 						var t0 := u0 / seg
 						var t1 := u1 / seg
+						# (a slip road's side too where the fitting took it and the road it leaves for a
+						# divided road's halves: its "median" is the triangle)
+						if not _link_islands.is_empty():
+							var pm := inner[i].lerp(inner[i + 1], (t0 + t1) * 0.5)
+							if _in_link_island(pm + na.lerp(nb, (t0 + t1) * 0.5).normalized() * (KERB_W + pw * 0.5)):
+								_tally("kerb_on_a_link_island", 1)
+								continue   # a slip road's island: kerbed all round on its own
 						_kerb_run_piece(kerb, pave, ri, inner[i].lerp(inner[i + 1], t0), inner[i].lerp(inner[i + 1], t1),
 							na.lerp(nb, t0).normalized(), na.lerp(nb, t1).normalized(), pw + (SHOP_PAVE if shops[i] else 0.0),
 							Color(float(p) / 4.0 + 0.05, 0, 0), along + u0, u1 - u0)
@@ -3880,7 +3887,7 @@ func _build_kerbs() -> void:
 					_set_pave_code(hsh, r.get("pave", []))
 					if float(r["median"]) < MEDIAN_ROUND:   # (a wide one's noses are the corners' curves)
 						for k: int in [0, run.size() - 1]:
-							if _cut_at_junction(r, run[k]):
+							if _cut_at_junction(r, run[k]) and not _in_link_island(inner[k] + (inner[k] - run[k]).normalized() * (KERB_W + pw * 0.5)):
 								var into := (run[k] - run[1 if k == 0 else run.size() - 2]).normalized()
 								_kerb_cap(kerb, inner[k], (inner[k] - run[k]).normalized(), KERB_W + pw, into)
 					continue
@@ -3908,7 +3915,8 @@ func _build_kerbs() -> void:
 					if not w_clear[i] or not w_clear[i + 1] \
 							or _asphalt_other((w_out[i] + w_out[i + 1] + g_out[i] + g_out[i + 1]) * 0.25, ri) \
 							or _asphalt_other(w_in[i], -1) or _asphalt_other(w_in[i + 1], -1) \
-							or _asphalt_other((w_in[i] + w_in[i + 1]) * 0.5, -1):
+							or _asphalt_other((w_in[i] + w_in[i + 1]) * 0.5, -1) \
+							or (not _link_islands.is_empty() and _in_link_island((w_in[i] + w_in[i + 1]) * 0.5)):
 						continue   # (nor where the wall itself would, on any road, its own too at
 						           # a sharp bend: by the garden's middle alone, a wall stood
 						           # across the next street, and autodrive hit it)
@@ -3939,7 +3947,7 @@ func _build_kerbs() -> void:
 						for gt: Array in gates:
 							if absf(run_at + s - float(gt[0])) < float(gt[1]) + 1.2:
 								by_gate = true
-						if not by_gate and not shops[i] and _mine(q) and posmod(_hash_i(q), 3 if med else 6) == 1 and not _asphalt_other(q, ri) and _push_out(q, 0.8, false) == Vector2.ZERO:
+						if not by_gate and not shops[i] and _mine(q) and not _in_link_island(q) and posmod(_hash_i(q), 3 if med else 6) == 1 and not _asphalt_other(q, ri) and _push_out(q, 0.8, false) == Vector2.ZERO:
 							var sc := 0.7 + 0.5 * float(posmod(_hash_i(q), 5)) / 4.0
 							bushes.append(Transform3D(Basis.from_scale(Vector3(1.3, 0.9, 1.3) * sc), _g3(q, 0.45 * sc)))
 						s += step
@@ -5060,6 +5068,13 @@ func _corners_at(ni: int, count := false) -> Array:
 		var Q: Vector2 = (B[1] as Vector2) + Vector2(ub.y, -ub.x) * float(B[3])   # B's left edge
 		if P.distance_to(Q) > 45.0:
 			continue
+		# none into a slip road's island: it has its own kerb all round (_find_link_islands)
+		if not _link_islands.is_empty():
+			var mid := (P + Q) * 0.5
+			if _in_link_island(mid + (mid - c).normalized() * 1.5):
+				if count and _mine(c):
+					_tally("corners_on_a_link_island", 1)
+				continue
 		var X = Geometry2D.line_intersects_line(P, ua, Q, ub)
 		var round := X != null and gap > 0.35 and gap < 2.9 and (X as Vector2).distance_to(c) < cut * 2.5 \
 			and ((X as Vector2) - P).dot(ua) < 0.0 and ((X as Vector2) - Q).dot(ub) < 0.0
@@ -5839,7 +5854,142 @@ func _find_islands(areas: Array) -> void:
 		for piece: PackedVector2Array in pieces:
 			_hash_add(_island_hash, _bld_box_of(piece), BLD_CELL, _islands.size())
 			_islands.append(piece)
+	_find_link_islands(areas)
 	_tally("islands", _islands.size())
+
+## The triangle between a slip road (`*_link`) and the roads it joins is an island in life,
+## kerbed all round; OSM rarely maps it as an area, so each road laid its own kerb and paving
+## into it and the strips stood loose in the junction, apart and askew ("messy": Moshe Dayan /
+## HaShalom, Yigal Alon / Arvey Nahal in Tel Aviv). Found here from the roads themselves: the
+## ring a slip road closes with the shortest way back between its ends along the other
+## drivable roads, when it is small, holds no building and no island already -- added as a
+## made-up lawn area (`"made": "link"`) and cut and kerbed like a mapped one. The roads' own
+## kerb runs and corners facing into one are left out (_in_link_island).
+const LINK_ISLAND_MAX := 4000.0      ## m2 of ring: bigger is a block between roads, not an island
+const LINK_ISLAND_MIN := 12.0        ## m2 left once the asphalt is cut off
+var _link_islands: Array = []        ## the made-up islands' pieces (also in _islands)
+var _link_rings: Array = []          ## their whole triangles, the roads' asphalt in them too
+var _link_island_hash := {}
+
+func _find_link_islands(areas: Array) -> void:
+	var seen := {}
+	for ri in range(_roads.size()):
+		var r: Dictionary = _roads[ri]
+		if not String(r["k"]).ends_with("_link") or not r["drive"] or r["pv"] or r.has("ys"):
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		var ids: PackedInt32Array = r["ids"]
+		if pts.size() < 2:
+			continue
+		var link_len := 0.0
+		for i in range(pts.size() - 1):
+			link_len += pts[i].distance_to(pts[i + 1])
+		var back := _short_way(ids[ids.size() - 1], ids[0], ri, link_len * 2.5 + 40.0)
+		if back.size() < 2:
+			continue
+		var ring := PackedVector2Array(pts)
+		for i in range(1, back.size() - 1):
+			ring.append(back[i])
+		if ring.size() < 3:
+			continue
+		var area := absf(_area_signed(ring))
+		if area < LINK_ISLAND_MIN or area > LINK_ISLAND_MAX:
+			continue
+		if not Geometry2D.triangulate_polygon(ring).size():
+			continue   # (crosses itself)
+		var box := _bld_box_of(ring)
+		var key := Vector2i(roundi(box.get_center().x), roundi(box.get_center().y))
+		if seen.has(key):
+			continue   # (the same triangle from its other slip road)
+		seen[key] = true
+		var inside := false
+		for bi: int in _near(_bld_hash, box.get_center(), maxf(box.size.x, box.size.y) * 0.5, BLD_CELL):
+			if Geometry2D.intersect_polygons(ring, _blds[bi]).size() > 0:
+				inside = true
+				break
+		if not inside:
+			for isl: PackedVector2Array in _islands:
+				if box.intersects(_bld_box_of(isl)) and Geometry2D.intersect_polygons(ring, isl).size() > 0:
+					inside = true
+					break
+		if inside:
+			continue
+		var pieces := _island_cut(ring)
+		var left := 0.0
+		for p: PackedVector2Array in pieces:
+			left += absf(_area_signed(p))
+		if left < LINK_ISLAND_MIN:
+			continue
+		var flat: Array = []
+		var k := float(_city_data.get("scale", 10))
+		for p in ring:
+			flat.append(p.x / k)
+			flat.append(p.y / k)
+		var ai := areas.size()
+		areas.append({"k": "grass", "p": flat, "made": "link", "_ring": ring, "_isl": pieces})
+		for t: Vector2i in _tiles_over(box):
+			_bucket(_tile_areas, t, ai)
+		_hash_add(_link_island_hash, box, BLD_CELL, _link_rings.size())
+		_link_rings.append(ring)
+		for piece: PackedVector2Array in pieces:
+			_hash_add(_island_hash, _bld_box_of(piece), BLD_CELL, _islands.size())
+			_islands.append(piece)
+			_link_islands.append(piece)
+	_tally("link_islands", _link_islands.size())
+
+## the shortest way from node a to node b along drivable public roads on the ground, road
+## `skip` left out, no longer than `limit`: its points from a to b (empty if none)
+func _short_way(a: int, b: int, skip: int, limit: float) -> PackedVector2Array:
+	var dist := {a: 0.0}
+	var prev := {}   # node -> [the node before it, its point]
+	var open: Array = [a]
+	while not open.is_empty():
+		var bi := 0
+		for i in range(open.size()):
+			if float(dist[open[i]]) < float(dist[open[bi]]):
+				bi = i
+		var n: int = open[bi]
+		open.remove_at(bi)
+		if n == b:
+			break
+		for e: Vector2i in _node_roads[n]:
+			if e.x == skip:
+				continue
+			var r: Dictionary = _roads[e.x]
+			if not r["drive"] or r["pv"] or r.has("ys"):
+				continue
+			var ids: PackedInt32Array = r["ids"]
+			var pts: PackedVector2Array = r["pts"]
+			for step: int in [-1, 1]:
+				var j := e.y + step
+				if j < 0 or j >= ids.size():
+					continue
+				var m := ids[j]
+				var nd := float(dist[n]) + pts[e.y].distance_to(pts[j])
+				if nd > limit or (dist.has(m) and float(dist[m]) <= nd):
+					continue
+				dist[m] = nd
+				prev[m] = [n, pts[j]]
+				if not open.has(m):
+					open.append(m)
+	if a == b or not dist.has(b):
+		return PackedVector2Array()
+	var out := PackedVector2Array()
+	var n := b
+	while n != a:
+		out.append(prev[n][1])
+		n = prev[n][0]
+	out.append(_nodes[a])
+	out.reverse()
+	return out
+
+## p is inside a slip road's triangle (a made-up island's: _find_link_islands) -- the island
+## itself or the roads' edges round it, where their kerbs and corners would have stood
+func _in_link_island(p: Vector2) -> bool:
+	for i: int in _near(_link_island_hash, p, 0.5, BLD_CELL):
+		if Geometry2D.is_point_in_polygon(p, _link_rings[i]):
+			return true
+	return false
 
 ## how far past the asphalt's edge of the nearest street (a public road with kerbs, or a
 ## service lane: not a motorway's grass) p is, up to `reach` (INF past that)
@@ -17037,6 +17187,12 @@ func _place_walker(w: Dictionary, anywhere: bool) -> void:
 		w["pave"] = pave
 		w["cross"] = 0.0
 		w.erase("yaw")
+		# a new life: nothing of where they stood across the old pavement (its `lat`, up to
+		# 0.9 m, put them beside the spot found out of sight, round the building's corner
+		# into view), nor of what they were stepping round there
+		for k: String in ["lat", "lane", "plan_t", "me_side", "held", "hold_me", "at"]:
+			w.erase(k)
+		w["dodge"] = 0.0
 		w["dir"] = 1.0 if _people_rng.randf() < 0.5 else -1.0
 		a.play("Walk_Carry" if w["carry"] else "Walk", true, float(w["speed"]) / 1.35)
 		a.visible = true
@@ -17608,9 +17764,11 @@ func _people_tick(dt: float) -> void:
 		var s: float = w["s"] + (0.0 if w.get("hold_me", false) else float(w["dir"]) * float(w["speed"]) * dt)
 		# waiting for you to pass and you do not: after a few seconds, back the way they came
 		w["held"] = float(w.get("held", 0.0)) + dt if w.get("hold_me", false) else 0.0
+		var turned := false   # (its line or its way along it changed this tick: see `lat` below)
 		if float(w["held"]) > 4.0:
 			w["dir"] = -float(w["dir"])
 			w["held"] = 0.0
+			turned = true
 			w.erase("me_side")
 		w["hold_me"] = false   # (set again below while you are still in the way)
 		if s < 0.0 or s > total:   # the end of the stretch: on over the side street, or round the corner
@@ -17620,6 +17778,7 @@ func _people_tick(dt: float) -> void:
 				s = clampf(s, 0.0, total)   # (one search a tick: a tick's wait at the end)
 			elif _walk_on(w, at_end, came.normalized()):
 				placed = true
+				turned = true
 				line = w["line"]
 				cum = w["cum"]
 				total = cum[cum.size() - 1]
@@ -17631,7 +17790,30 @@ func _people_tick(dt: float) -> void:
 			else:   # in view and nowhere on: back the way they came
 				placed = true
 				w["dir"] = -float(w["dir"])
+				turned = true
 				s = clampf(s, 0.0, total)
+		# the step over a side street's mouth (or a street): at the kerb, a look first, and a
+		# wait while a car comes that could not stop for them -- they walked straight out
+		# in front of cars at 50 km/h (route 9 hit two, tests/people_near.gd). Waited long,
+		# they go back the way they came.
+		var over: float = w.get("cross", 0.0)
+		var at_kerb := false
+		if over > 2.5 and s != float(w["s"]):
+			var old: float = w["s"]
+			if (old <= 0.001 and s > old and s < over) or (old >= over and s < over):
+				# (and not out into a car's side as it goes by: its middle 4 m off, not 2.5)
+				if not _safe_to_cross((line[0] + line[1]) * 0.5, over * 0.5, 4.0):
+					s = old
+					at_kerb = true
+					if not w.has("kerb_t"):
+						w["kerb_t"] = 0.0
+						a.play("Idle", true, _people_rng.randf_range(0.8, 1.1))
+					w["kerb_t"] = float(w["kerb_t"]) + dt
+					if float(w["kerb_t"]) > 15.0:
+						w["dir"] = -float(w["dir"])
+		if not at_kerb and w.has("kerb_t"):
+			w.erase("kerb_t")
+			a.play("Walk_Carry" if w["carry"] else "Walk", true, float(w["speed"]) / 1.35)
 		w["s"] = s
 		var p := _along(line, cum, s)
 		var ahead := _along(line, cum, clampf(s + float(w["dir"]) * 0.5, 0.0, total)) - p
@@ -17702,6 +17884,12 @@ func _people_tick(dt: float) -> void:
 					if absf(sr) < 0.85:
 						want += 0.8 if absf(sr) < 0.05 else -signf(sr) * (0.85 - absf(sr))
 			var lat: float = w.get("lat", 0.0)
+			# turned back, or on to a new stretch: their place across the pavement is measured
+			# from the line the other way now (`right` flipped or turned), so the same `lat` put
+			# them up to 1.8 m across in one tick, in view (walk_people's 1.6-2.5 m jumps 45-57 m
+			# off): carried over as where they stand, then eased to the plan as ever
+			if turned and a.visible:
+				lat = clampf((Vector2(a.position.x, a.position.z) - p).dot(right), -1.5, 1.5)
 			lat = lerpf(lat, clampf(want, -0.9, 0.9), 1.0 - exp(-dt * 3.0))
 			# no further aside than there is room -- but for making room for you on foot: then
 			# up against the hedge, as people do (held back, they stood in your way)
@@ -18032,7 +18220,7 @@ func _box_waiting(cr: Dictionary, mid: Vector2) -> bool:
 			return true
 	return false
 
-func _safe_to_cross(mid: Vector2, hw: float) -> bool:
+func _safe_to_cross(mid: Vector2, hw: float, near := 2.5) -> bool:
 	var movers: Array = [[_pos, _fwd() * signf(_v), absf(_v)]]
 	for c in _traffic.cars:
 		if c.alive:
@@ -18041,7 +18229,7 @@ func _safe_to_cross(mid: Vector2, hw: float) -> bool:
 		var p: Vector2 = m[0]
 		var to: Vector2 = mid - p
 		var d := to.length()
-		if d < hw + 2.5:
+		if d < hw + near:
 			return false   # on it, or right at it
 		var v: float = m[2]
 		if d < 45.0 and v > 0.8 and (m[1] as Vector2).dot(to / d) > 0.5 and v * v / (2.0 * 3.0) + 7.0 > d:
@@ -18232,38 +18420,75 @@ func _people_near(p: Vector2, r: float) -> Array:
 			out.append(a.position)
 	return out
 
-## autodrive: anyone standing on the lane ahead -- crossing, hurrying back, stepping aside
-## off a pavement -- stopped for, whatever the crossing rules say (the speed allowed, or INF)
+## autodrive: anyone on the lane ahead -- crossing, hurrying back, stepping aside off a
+## pavement, walking over a side street's mouth -- or about to be: stopped for, whatever the
+## crossing rules say (the speed allowed, or INF). Each person is looked for where they are
+## and where they will be by the time the car gets to them (their pace over the last ticks,
+## up to 2 s on). Looking only at where they stood, a walker stepping over a side street's
+## mouth at 1.5 m/s was seen once already in the lane 3-5 m off the nose: route 9 hit people
+## at 23 and 32 km/h (tests/people_near.gd: 4 "into the lane too late" over 9 km of Bedford).
+var _ap_ppl_at := {}                  ## a person's id -> [where last physics frame, their pace]
+var _ap_ppl_frame := -1
+
 func _ap_people_v() -> float:
 	if _ap_pts.size() < 2:
 		return INF
-	var people: Array = []
+	var people: Array = []   # [id, where]
 	for cr: Dictionary in _crossers:
 		if cr["state"] in ["cross", "back"]:
-			people.append((cr["actor"] as Actor3D).position)
+			var a: Actor3D = cr["actor"]
+			people.append([a.get_instance_id(), Vector2(a.position.x, a.position.z)])
 	for w: Dictionary in _walkers:
 		var a: Actor3D = w["actor"]
 		if a.visible:
-			people.append(a.position)
+			people.append([a.get_instance_id(), Vector2(a.position.x, a.position.z)])
+	# their pace, once a physics frame (tests call this between frames too)
+	var frame := Engine.get_physics_frames()
+	if frame != _ap_ppl_frame:
+		var dt := get_physics_process_delta_time() * (frame - _ap_ppl_frame if _ap_ppl_frame >= 0 else 1)
+		_ap_ppl_frame = frame
+		var now := {}
+		for e: Array in people:
+			var was: Array = _ap_ppl_at.get(e[0], [])
+			var pace := Vector2.ZERO
+			if not was.is_empty() and dt > 0.0:
+				var step: Vector2 = ((e[1] as Vector2) - (was[0] as Vector2)) / dt
+				# (a walker put down somewhere else jumps: no pace from that)
+				pace = (was[1] as Vector2).lerp(step, 0.3) if step.length() < 4.0 else Vector2.ZERO
+			now[e[0]] = [e[1], pace]
+		_ap_ppl_at = now
 	var fwd := _fwd()
+	var sp := maxf(absf(_v), 2.0)
 	var best := INF
-	for p3: Vector3 in people:
-		var p := Vector2(p3.x, p3.z)
-		if p.distance_squared_to(_pos) > 1100.0 or (p - _pos).dot(fwd) < 0.0:
+	for e: Array in people:
+		var p: Vector2 = e[1]
+		if p.distance_squared_to(_pos) > 1600.0 or (p - _pos).dot(fwd) < 0.0:
 			continue
-		var base := -_ap_pts[0].distance_to(Geometry2D.get_closest_point_to_segment(_pos, _ap_pts[0], _ap_pts[1]))
-		for j in range(_ap_pts.size() - 1):
-			if base > 32.0:
-				break
-			var a := _ap_pts[j]
-			var b := _ap_pts[j + 1]
-			var cp := Geometry2D.get_closest_point_to_segment(p, a, b)
-			if cp.distance_to(p) < 1.7:
-				var stop := base + a.distance_to(cp) - CAR_OFF - 2.8
-				best = minf(best, sqrt(2.0 * 3.5 * maxf(stop - 0.3, 0.0)))
-				break
-			base += a.distance_to(b)
+		var pace: Vector2 = (_ap_ppl_at.get(e[0], [p, Vector2.ZERO]) as Array)[1]
+		var stop := _ap_person_stop(p)
+		if pace.length() > 0.3:
+			# where they will be when the car is level with them (the car at its own pace;
+			# a walker going along the pavement beside the lane stays out of it)
+			var t := clampf((p - _pos).dot(fwd) / sp, 0.0, 2.0)
+			stop = minf(stop, _ap_person_stop(p + pace * t))
+		if stop < INF:
+			best = minf(best, sqrt(2.0 * 3.5 * maxf(stop - 0.3, 0.0)))
 	return best
+
+## how far the car can go before stopping short of someone at p on its lane (INF: not on it)
+func _ap_person_stop(p: Vector2) -> float:
+	var base := -_ap_pts[0].distance_to(Geometry2D.get_closest_point_to_segment(_pos, _ap_pts[0], _ap_pts[1]))
+	var look := maxf(32.0, absf(_v) * absf(_v) / 7.0 + 12.0)
+	for j in range(_ap_pts.size() - 1):
+		if base > look:
+			break
+		var a := _ap_pts[j]
+		var b := _ap_pts[j + 1]
+		var cp := Geometry2D.get_closest_point_to_segment(p, a, b)
+		if cp.distance_to(p) < 1.7:
+			return base + a.distance_to(cp) - CAR_OFF - 2.8
+		base += a.distance_to(b)
+	return INF
 
 const ZEBRA_PAST := 2.8              ## m from a car's lane line along the crossing: past it (half a bus and 1.5 m)...
 const ZEBRA_PAST_ME := 6.0           ## ...the player's: past the 5.5 m at which people run back from it to their kerb

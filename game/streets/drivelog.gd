@@ -58,7 +58,7 @@ func tick(g, dt: float) -> void:
 	samples.append({"t": snappedf(_t, 0.01), "x": snappedf(g._pos.x, 0.01), "z": snappedf(g._pos.y, 0.01),
 		"yaw": snappedf(g._yaw, 0.001), "v": snappedf(g._v, 0.01), "steer": snappedf(g._steer, 0.001),
 		"gear": g._gear, "auto": g._auto, "walk": g._walking, "why": _why(g), "what": _what(g),
-		"plan": plan, "lead": snappedf(g._ap_lead, 0.1), "cars": cars})
+		"plan": plan, "lead": snappedf(g._ap_lead, 0.1), "cars": cars, "people": _people(g)})
 	while samples.size() > int(KEEP_S * HZ):
 		samples.pop_front()
 	while not events.is_empty() and float(events[0][0]) < _t - KEEP_S:
@@ -67,6 +67,27 @@ func tick(g, dt: float) -> void:
 		_last_hit = g._last_hit
 		if _last_hit != "" and g._crash_cool > 0.0:
 			event("hit", _last_hit)
+
+## the people near the car: [x, z, who] within PEOPLE_NEAR m, at most PEOPLE_MOST -- who is
+## the list they are in ("walker", "crosser:<state>", "waiter", ...). A person hit at 32 km/h
+## left no trace in the log (only "held by people" 0.3 s before): where they came from is
+## what the fix needs.
+const PEOPLE_NEAR := 30.0
+const PEOPLE_MOST := 12
+
+func _people(g) -> Array:
+	var out: Array = []
+	var lists := {"walker": g._walkers, "crosser": g._crossers, "chatter": g._chatters, "sitter": g._sitters,
+		"waiter": g._waiters, "keeper": g._keepers, "bather": g._bathers, "boarder": g._boarders}
+	for who: String in lists:
+		for w: Dictionary in lists[who]:
+			var a = w["actor"]
+			if not a.visible:
+				continue
+			var p := Vector2(a.position.x, a.position.z)
+			if p.distance_to(g._pos) < PEOPLE_NEAR and out.size() < PEOPLE_MOST:
+				out.append([snappedf(p.x, 0.1), snappedf(p.y, 0.1), who + (":" + str(w["state"]) if w.has("state") else "")])
+	return out
 
 func event(what: String, detail = "") -> void:
 	events.append([snappedf(_t, 0.01), what, detail])
