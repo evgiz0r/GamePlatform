@@ -579,8 +579,26 @@ The ones most often touched, and the functions in them:
   frames over 250 ms / 1 s driving and from above -- but under the test machine's software
   renderer every Tel Aviv frame takes ~0.8 s, so it shows the script's parts, not a GPU's
   stalls; a browser on the user's machine is the real measure (the perf view's hitch lines).
+  Each step down is measured over its first two spells (`_q_descent`, `_q_on_trial`), and
+  where the stepping ends (the rate good again, or level 0) `_settle` goes back up to the
+  best-looking level it passed whose rate was within `STEP_GAIN` (12%) of the best, with no
+  step below it for `FLOOR_S` (5 min): a user's PC in Tel Aviv (21 Nov, a browser) sat at quality 0 --
+  plain walls, the picture at 0.7 -- at 25-27 fps, standing in traffic as much as driving, and
+  never came back up (up needs 56 fps). What the levels change is the graphics chip's work;
+  a frame held back by the script on the browser's one thread is not helped by any of them.
+  `tests/quality_ladder.gd` (made-up frame times, six cases).
 - **where a frame's time goes** -- the profiler: `_p("part")` around each part, hitches
-  kept and reported; P or a tap on the fps text shows it.
+  kept and reported; P or a tap on the fps text shows it. Its average line counts the
+  physics ticks a drawn frame ran ("script 31.0 in 2.4 ticks"): at 60 ticks a second a slow
+  frame runs several, so a game whose ticks are dear on a phone's wasm sinks into it.
+  "--perf-log" among the user args prints every spell (`tests/web_load.js` PLAY=n).
+- **a browser's shader compiling, counted** -- `GL_COUNT_JS` wraps WebGL2's compile, link and
+  status calls on the prototype at `start()` (`_gl_count_on`, `_gl_count`); the load line adds
+  "(N shaders, X s compiling)" and the perf view "shaders compiled since the car". The
+  container's Chromium: Givatayim 137 programs, 4.5 s in the calls of a 35 s warm-up (the rest
+  SwiftShader drawing), 3.2 s on a second load in the same browser. On a phone the calls are
+  where a driver that compiles at link time waits; one that compiles at the first draw (ANGLE
+  on Vulkan) shows it in the warm-up's frames instead (the perf view's "warm-up frames").
 - **zoom out and pause** -- "the view from above", after the chase cam: `_paused` stops
   `_physics_process` (and the people's AnimationPlayers via `process_mode`, the engine
   sound; traffic is drawn at `f = 1` so it does not rock between two ticks); `_zoom_set`
