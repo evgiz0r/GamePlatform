@@ -105,6 +105,9 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
   stations   [[x, z, name, name_en, kind], ...]   kind: OSM's station= (train, light_rail,
              subway...), "train" when it does not say
              (rails, platforms and stations are absent from files baked before they were kept)
+  places     [x, z, kind, sub, ...]   a town's own kindergartens and public shelters (places_apply),
+             kind an index into place_kinds ("kindergarten", "shelter"), sub for a shelter
+             1 above the ground, 2 under it, 0 not known
   made_up    1 in a town tools/fake_city.py made up (no OSM data, no credit owed); absent here
   credits    ["building heights © ...", ...]   sources besides OSM the file took data from
              (a town survey); a game shows each beside OSM's credit. Absent when none
@@ -1671,7 +1674,9 @@ def bake(raw, name, args):
         if args.out:
             for c in tree_surveys_apply(out, P, os.path.join(os.path.dirname(os.path.abspath(args.out)), "data")):
                 out.setdefault("credits", []).append(c)
-            for c in town_layers_apply(out, P, os.path.join(os.path.dirname(os.path.abspath(args.out)), "data")):
+            for c in town_layers_apply(out, P, os.path.join(os.path.dirname(os.path.abspath(args.out)), "data")) \
+                    + bus_lanes_apply(out, P, os.path.join(os.path.dirname(os.path.abspath(args.out)), "data")) \
+                    + places_apply(out, P, os.path.join(os.path.dirname(os.path.abspath(args.out)), "data")):
                 if c not in out.setdefault("credits", []):
                     out["credits"].append(c)
 
@@ -2004,6 +2009,181 @@ def town_layers_apply(out, P, data_dir):
     return credits
 
 
+PLACE_FILES = ("places_givatayim.geojson", "places_ramat_gan.geojson", "places_ashdod.geojson")
+PLACE_KINDS = ["kindergarten", "shelter"]
+
+
+def places_apply(out, P, data_dir):
+    """The towns' own kindergartens (day-cares too) and public shelters (data_dir's
+    places_*.geojson, from each municipality's map) as `places` [x, z, kind, sub, ...] with
+    `place_kinds`: kind an index into it, sub for a shelter 1 above the ground, 2 under it,
+    0 not known. One where two maps put the same within 6 m (the box can take in two
+    towns' maps). Replaces the key on each run. Returns the credits of the maps used."""
+    if not data_dir:
+        return []
+    x0, z0, x1, z1 = out["bounds"]
+    places, credits = [], []
+    seen = []
+    for name in PLACE_FILES:
+        path = os.path.join(data_dir, name)
+        if not os.path.exists(path):
+            continue
+        with open(path, encoding="utf-8") as f:
+            src = json.load(f)
+        got = 0
+        for ft in src.get("features", []):
+            pr = ft.get("properties", {})
+            kind = {"kindergarten": 0, "daycare": 0, "shelter": 1}.get(pr.get("kind"))
+            if kind is None or ft.get("geometry", {}).get("type") != "Point":
+                continue
+            lon, lat = ft["geometry"]["coordinates"][:2]
+            x, z = P(lat, lon)
+            if not (x0 <= x <= x1 and z0 <= z <= z1):
+                continue
+            if any(k == kind and math.hypot(x - sx, z - sz) < 6.0 for sx, sz, k in seen):
+                continue
+            seen.append((x, z, kind))
+            sub = 0
+            if kind == 1:
+                lv = pr.get("level", "")
+                sub = 1 if lv == "above_ground" else (2 if lv in ("underground", "below_ground") else 0)
+            places += [round(x * 10), round(z * 10), kind, sub]
+            got += 1
+        if got:
+            credits.append(src.get("credit", ""))
+            log(f"places: {got} kindergartens and shelters from {name}")
+    out.pop("places", None)
+    out.pop("place_kinds", None)
+    if places:
+        out["places"], out["place_kinds"] = places, PLACE_KINDS
+    return [c for c in credits if c]
+
+
+BUS_LANES_FILE = "bus_lanes.json"
+BUS_LANE_KINDS = {"נת\"\"צ ימני": "right", "נת\"\"צ שמאלי": "left"}
+BUS_LANE_ROADS = {"motorway", "trunk", "primary", "secondary", "tertiary", "unclassified",
+                  "residential", "motorway_link", "trunk_link", "primary_link",
+                  "secondary_link", "tertiary_link"}
+BUS_LANE_NEAR = 22.0       # m: a road piece's middle this close to a stretch's line...
+BUS_LANE_SHARE = 0.5       # ...for at least this share of its length, the same street and way
+
+
+def bus_street_key(name):
+    """a street's name as the Ministry and OSM can both write it: no "road"/"boulevard"/
+    "street" before it, no punctuation or spaces"""
+    n = (name or "").strip()
+    for pre in ("דרך ", "שדרות ", "שד' ", "רחוב ", "רח' ", "כביש "):
+        if n.startswith(pre):
+            n = n[len(pre):]
+    n = "".join(ch for ch in n if ch.isalnum())
+    # spelt with or without the vowel letters (עלית / עליית), with or without the article
+    n = n.replace("י", "").replace("ו", "")
+    return n[1:] if n.startswith("ה") and len(n) > 3 else n
+
+
+def lanes_each_way(r):
+    """how many lanes a road has each way, as the game reckons it (streets.gd
+    _lanes_each_way: OSM's count where it has one, else the width's, never more than the
+    width holds)"""
+    l, w = int(r.get("l") or 0), float(r.get("w") or 0.0)
+    if int(r.get("o", 0)) != 0:
+        n = min(l if l > 0 else int(w / 3.3), int(w / 2.8))
+    else:
+        n = min(l // 2 if l > 1 else int(w / 6.6), int(w / 5.6))
+    return max(1, min(n, 4))
+
+
+def bus_lanes_apply(out, P, data_dir):
+    """The Ministry of Transport's bus lanes (data_dir/bus_lanes.json: each stretch a street,
+    two end points in the way of travel, how many lanes, on the right or the left) laid on
+    the city's roads as bf / bb where OSM marks none: every drivable road piece of the same
+    street that runs along a stretch (its middle within BUS_LANE_NEAR m of the stretch's
+    line for BUS_LANE_SHARE of its length) the stretch's way gets its lanes, the rightmost
+    or the leftmost; a road with one lane that way gets none (a bus lane takes a lane from
+    the cars, never the only one). Contraflow lanes, whole bus roads, BRT and priority at
+    junctions are left out: the game has nothing that draws or drives them yet. Marks the
+    roads it set with bm ("f", "b", "fb") and takes those out first when applied again.
+    Returns the credit when it brought anything."""
+    if not data_dir:
+        return []
+    path = os.path.join(data_dir, BUS_LANES_FILE)
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding="utf-8") as f:
+        src = json.load(f)
+    roads, nodes = out["roads"], out["nodes"]
+    k = 1.0 / float(out.get("scale", 10))
+    for r in roads:   # (again: the last run's first)
+        m = r.pop("bm", "")
+        if "f" in m:
+            r.pop("bf", None)
+        if "b" in m:
+            r.pop("bb", None)
+    x0, z0, x1, z1 = out["bounds"]
+    by_name = {}
+    for ri, r in enumerate(roads):
+        if r.get("k") in BUS_LANE_ROADS and r.get("name"):
+            by_name.setdefault(bus_street_key(r["name"]), []).append(ri)
+    stretches = used = 0
+    marked = 0
+    for town, rows in src.get("towns", {}).items():
+        for st in rows:
+            side = BUS_LANE_KINDS.get(st.get("type", ""))
+            if not side:
+                continue
+            ax, az = P(st["a"][1], st["a"][0])
+            bx, bz = P(st["b"][1], st["b"][0])
+            if not (x0 - 50 <= ax <= x1 + 50 and z0 - 50 <= az <= z1 + 50) and \
+                    not (x0 - 50 <= bx <= x1 + 50 and z0 - 50 <= bz <= z1 + 50):
+                continue
+            stretches += 1
+            dx, dz = bx - ax, bz - az
+            L = math.hypot(dx, dz)
+            if L < 5.0:
+                continue
+            ux, uz = dx / L, dz / L
+            got = False
+            for ri in by_name.get(bus_street_key(st.get("street")), []):
+                r = roads[ri]
+                ids = r["n"]
+                total = along = 0.0
+                fwd = 0.0
+                for i in range(len(ids) - 1):
+                    px, pz = nodes[2 * ids[i]] * k, nodes[2 * ids[i] + 1] * k
+                    qx, qz = nodes[2 * ids[i + 1]] * k, nodes[2 * ids[i + 1] + 1] * k
+                    sl = math.hypot(qx - px, qz - pz)
+                    if sl < 0.01:
+                        continue
+                    total += sl
+                    mx, mz = (px + qx) * 0.5 - ax, (pz + qz) * 0.5 - az
+                    t = (mx * ux + mz * uz) / L
+                    off = abs(mx * uz - mz * ux)
+                    dot = ((qx - px) * ux + (qz - pz) * uz) / sl
+                    if -0.03 <= t <= 1.03 and off <= BUS_LANE_NEAR and abs(dot) > 0.7:
+                        along += sl
+                        fwd += sl * (1.0 if dot > 0 else -1.0)
+                if total <= 0.0 or along < total * BUS_LANE_SHARE:
+                    continue
+                o = int(r.get("o", 0))
+                key = "bf" if fwd > 0 else "bb"
+                if (o == 1 and key == "bb") or (o == -1 and key == "bf"):
+                    continue   # (against a one-way street's travel: the other carriageway's)
+                # (a one-way drawn against its travel, o -1: its lanes are bb -- see bus_lanes --
+                # and only a stretch running against its node order, bb, gets here)
+                each = lanes_each_way(r)   # (the game's count: the letters must line up with its lanes)
+                n = min(int(st.get("lanes") or 1), each - 1)
+                if n < 1 or key in r:
+                    continue   # (one lane that way; or OSM has its own)
+                r[key] = ("-" * (each - n) + "b" * n) if side == "right" else ("b" * n + "-" * (each - n))
+                r["bm"] = r.get("bm", "") + key[1]
+                marked += 1
+                got = True
+            used += 1 if got else 0
+    log(f"bus lanes (Ministry of Transport): {used} of {stretches} stretches in the box laid on "
+        f"{marked} road pieces")
+    return [src.get("credit", "bus lanes: Israel Ministry of Transport (CC BY)")] if marked else []
+
+
 def add_surveys(path, offline):
     """The survey step alone, on a city file baked already (its OSM data is left as it is)."""
     with open(path, encoding="utf-8") as f:
@@ -2023,6 +2203,8 @@ def add_surveys(path, offline):
                     city["credits"].append(s["credit"])
     tree_credits = tree_surveys_apply(city, P, os.path.join(os.path.dirname(os.path.abspath(path)), "data"))
     tree_credits += town_layers_apply(city, P, os.path.join(os.path.dirname(os.path.abspath(path)), "data"))
+    tree_credits += bus_lanes_apply(city, P, os.path.join(os.path.dirname(os.path.abspath(path)), "data"))
+    tree_credits += places_apply(city, P, os.path.join(os.path.dirname(os.path.abspath(path)), "data"))
     for c in tree_credits:
         if c not in city.setdefault("credits", []):
             city["credits"].append(c)

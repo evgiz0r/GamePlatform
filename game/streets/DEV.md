@@ -24,6 +24,8 @@ merge, re-check (`tools/check_script.sh`, a playtest, the tests below), never fo
 | `landmarks.gd` | a town's landmarks, found by their building's name in the bake (`BY_CITY`: Tel Aviv's Azrieli towers, the Matcal and Marganit towers, Sarona's houses): a glass of their own, a lit crown, a mast or shaft on the roof, red tile roofs; and in every town the red lights on roofs over 90 m at night. Hooks in streets.gd: `_glass` / `_tile` on a building for `_build_buildings`, `build()` per square, `set_night` |
 | `wave.gd` | the green wave (the "wave" button, V): lit junctions ahead of the car run their own clock to green its way and hold it; streets.gd reads every light through `_ph_at` / `_t_at`, which ask it first. See "The green wave" below |
 | `standins.gd` | the squares not built yet seen from above: one flat mesh a square (roads, building outlines, parks, water) made as the background build starts, shown only while zoomed out, dropped when its square is built. See "The green wave" below |
+| `racer.gd` | racer mode ("racer" button, R): `_autodrive` leaves out lights, signs, zebras and giving way when `_racing()`, raises the limit (`limit`) and the corners (`CORNER_K`); `_ap_pass_bus` goes round any slower car (`can_pass`); the traffic's horns (`tick`: a car braking hard with the player its blocker, or met head-on in its lane). See "Racer, the Ministry's bus lanes, kindergartens and shelters" below |
+| `places.gd` | a town's own kindergartens (a fenced yard, shade sail, slide) and public shelters (the concrete entrance and its sign) from the city file's `places`, each on the nearest clear ground to its point; built per square |
 | `rails.gd` | railways: the tracks the city file has (`rails`, `platforms`, `stations`), their beds, rails and sleepers, the platforms with canopies and the station's name, and trains running along them (`tick`). See "Railways" below |
 | `cities/*.json` | baked towns (`tools/osm_city.py`) and the made-up test town (`tools/fake_city.py`) |
 | `details.gd`, `cities/details/<city>.json` | what a filmed walk showed and OSM lacks, laid over the baked city as it loads (road edits, unmarked zebras, areas, an arcade cut under a block, paving level with the pavement, walls, fences, hedges, bins, railings, bollards, a pole transformer, a barrier, parked motorbikes, trees) and the walks themselves; the format is at the top of `details.gd` |
@@ -3373,6 +3375,66 @@ ms a frame, before the background build's first square), 0 on a built square and
 missing at all 8 shots; the shots show the strips and outlines meeting the built squares
 without a gap. (The square being built keeps its stand-in to the end of `_build_tile`:
 `_tiles_done` is set at its start, which the test first counted as wrong.)
+
+## Racer, the Ministry's bus lanes, kindergartens and shelters (22 Nov 2026)
+
+**Racer** (`racer.gd`). Autodrive with the rules off: `_autodrive` skips `_ap_light_v`,
+`_ap_sign_v`, `_ap_zebra_v` and `_ap_give_v` while `_racing()`, keeps `_ap_people_v` (a
+person in its lane: always), drives to `limit()` (the road's x1.6, at most 100 km/h) and
+takes each corner `CORNER_K` (1.3) faster, braking into it at 4 m/s^2 (2.6). `_ap_pass_bus`
+already took the car round a bus at its stop or a delivery van; with racer it goes round
+any car `PASS_SLOWER` m/s slower than it wants, moving too: the bend runs on by as far as
+the car goes in the time it takes to get by (`extra`, at most 140 m), and the lane over must
+be clear for that plus 14 m a second of passing for what comes the other way; looked for at
+60 m (30). The horns: traffic already brakes for the player (it always lets the player go,
+`blocker` -1), so a car braking harder than 3 m/s^2 for you, or one you come at head-on in
+its lane, hoots -- an AudioStreamPlayer3D at the car, the player's own synthesised horn at
+the car's pitch, 3 at once at most, each car once in 6 s; a red run makes the nearest car
+hoot. Buttons: "wave" and "racer" sit on the left over the minimap (8,140 and 8,164): the
+bottom row is full, and on a phone the stick's ring and its "hold & drag to drive" fill the
+bottom right (the wave button first went there and covered the hint).
+`tests/racer.gd`: route 2 by "go to" (Givatayim, 1.2 km as the crow flies),
+autodrive then racer, traffic as usual; then a junction held at red, racer from 150 m back.
+22 Nov: autodrive 237 s (0 reds, 50 km/h top), racer 214 s (7 cars passed, 1 red, 78 km/h
+top, 2 hoots, 0 people hit, but 2 crashes -- bumps at its pace: racer is not careful, open);
+held red: through at 29 km/h slowest, counted as a red run, PASS. (A first run met only
+greens: hence the staged red.)
+
+**The Ministry's bus lanes** (`tools/osm_city.py` `bus_lanes_apply`, from
+`cities/data/bus_lanes.json`; run by a bake and by `--add-surveys`; it can be run alone on a
+city file, as was done here, with `bus_lanes_apply(city, Proj(*city["origin"]), data_dir)`).
+Each stretch is a street and two points in its way of travel; every drivable road piece of
+that street running along it (its middle within 22 m of the stretch's line for half its
+length, within 45 degrees) gets bf/bb where OSM had none, marked `bm` so a re-run takes its
+own out first. Right lanes (109) and left lanes (25) only: contraflow, whole bus roads, BRT
+and priority at junctions need the game to draw and drive them first. Two things the
+matching taught (in the `real-places` skill too): the names -- the Ministry writes עלית
+where OSM has עליית, חשמונאים for החשמונאים: `bus_street_key` drops the vowel letters י and
+ו and a leading ה (stretches matched 11 -> 14 of 34 in level 1's box, 12 -> 22 of 27 in
+Ashdod, 59 -> 71 of 105 in Tel Aviv); and the lane count -- OSM gives none on many streets,
+so the bake reckons it as the game does (`lanes_each_way`, a copy of `_lanes_each_way`):
+the letters are read from the right against the game's lanes, and a left lane's letters
+lined up with a different count land in the middle. Road pieces with a bus lane: Givatayim
+0 -> 32, Ashdod 0 -> 34, Tel Aviv 21 -> 198. The rest unmatched: one-lane ways, streets
+just outside the box, names that differ more. The game: `_bus_lane` now never makes every
+lane of a way a bus lane (the leftmost is the cars'): the widths fitted at load can leave
+fewer lanes than the bake counted -- `tests/bus_lanes.gd` at level 7 found HaMasger's
+"-bb" on 2 lanes with autodrive's line in a bus lane. That run (before the guard): 206 road
+pieces, 276 words painted, buses 84 of 96 s in the lane, other cars 0 s.
+Not yet: each stretch's hours (the file has them; a lane is a bus lane all day here).
+
+**Kindergartens and shelters** (`places_apply` in the baker -> the city file's `places`;
+`places.gd` in the game). From `places_givatayim`, `places_ramat_gan` and `places_ashdod`
+(day-cares count as kindergartens; one of each within 6 m when two maps overlap). Level 1:
+152 kindergartens, 37 shelters (Givatayim marks which are above ground); Ashdod 234 and 76;
+Tel Aviv's box 13 and 2 (its own kindergartens are not fetched). Each is put on the nearest
+ground within 28 m of its point that is clear of buildings, posts and roads and
+`PAVE_CLEAR` (3 m) back from any road's edge -- the first shelters stood on the pavement at
+the kerb. Kindergartens are added to `_schools` (SLOW near them).
+`tests/places.gd`: level 1, the whole city built: 152 kindergartens, 37 shelters on the
+map; 144 yards and 37 shelters put, 8 kindergartens left out (no clear ground within 28 m).
+Shots taken where each was put (`spots`), not at the map's point: the point is its building,
+the yard a few metres off, and a shot at the point saw a roof.
 
 ## Open problems
 
