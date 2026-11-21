@@ -793,9 +793,11 @@ minutes, this 1.29 on 40 -- the same; main read 1.11-1.23 at 2x all day and 1.07
   shift 2-4 m overlapped the cars arriving.
 - *Cars put down at the start of a path already in a junction* ("k 0", "held by junction",
   hit by the main road's traffic) -- check where `_spawn` puts a car against junctions.
-- *Things in the road traffic cannot see*: details.gd's hand-placed parked cars on HaMeri
-  stand 1 m into the asphalt (the film shows them so; traffic drives through), a tree 0.7 m
-  into Katznelson's (city_check's Givatayim post), and a truck on Sderot Herzl's kerb lane
+- *Things in the road traffic cannot see*: details.gd's hand-placed parked car on HaMeri
+  (21 Nov: `tests/hand_parked.gd` drives traffic past it on its kerb side, least gap 1.03 m --
+  the lane misses it, not reproduced; the other three stand on the little street, a footway);
+  the "tree" 0.7 m into Katznelson's was the Sheinkin-Sirkin walk's bin at the corner by the
+  light's pole, 1.0 m in (city_check) -- moved 1.8 m onto the pavement in givatayim.json; and a truck on Sderot Herzl's kerb lane
   4.3 m right of the lane line on a pole past the kerb (where the road narrows).
 - *The test town reads 19-20 checks at 2x on `main` since the evening's merges* (4-12 that
   morning; this branch beside it 19 and 13), mostly traffic overlapping. One seen whole: the
@@ -2463,8 +2465,12 @@ Each line: where the code is, the test, what good reads.
   `tests/link_islands.gd` (`AT=x,z` also prints every kerb run near the point and how much
   of it faces into a triangle, and shoots the spot as it is, so it works on `main` too for a
   before). Left at (844, 457): Moshe Dayan's own median ends (loose pink blocks) are the
-  median work above, not the triangles. Still open: a footpath mapped across a junction's
-  corner drawn through a median's nose (Shaul HaMelekh / Ibn Gabirol, path 2197, (-847, -70)).
+  median work above, not the triangles. A footpath mapped across a junction's corner
+  drawn through a median's nose (Shaul HaMelekh / Ibn Gabirol, path 2197, (-847, -70)) was
+  noted with the median fix; looked at again 21 Nov (`top_at` AT="-847,-80;-845,-66" UP=16):
+  nothing of the path shows (a path's ribbon lies under the asphalt and the median), the pale
+  patch at the nose's end is the crossing's tactile paving, and the triangle beside it is now a
+  slip road's island. Not reproduced; reopen with a picture if it is seen again.
 - **A flickering line across the screen** (user, the first filmed walk's passage: "flickering
   line in the middle of the screen sometimes. dunno if its my screen or godot or bug"): the
   sky dome (`_build_sky_dome`) was Godot's hemisphere, which closes with a flat disc at its
