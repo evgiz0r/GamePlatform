@@ -199,7 +199,10 @@ func surf(p: Vector2, y: float) -> float:
 	# a cutting's shallow top under a street's lanes): the street carries a body at its level.
 	var on_street := false
 	for ri: int in on:
-		if String(g._roads[ri]["deck"]) in ["cu", "tu"]:
+		# (or any deck whose surface is under the ground here: an embankment's ramp where it
+		# starts below a street at grade, its pavement over the street's outer lane -- a car
+		# there was put 0.6 m down, Givat HaTahmoshet in Tel Aviv, street_holes)
+		if String(g._roads[ri]["deck"]) in ["cu", "tu"] or float(on[ri][1]) < ground - 0.3:
 			on_street = _street_over(p)
 			break
 	if not open and on_street:

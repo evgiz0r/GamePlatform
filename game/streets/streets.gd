@@ -1892,12 +1892,12 @@ func _clip_buildings(bdata: Array) -> void:
 				if not (String(r["deck"]) in ["em", "br", "cu"]) or not r["drive"] \
 						or maxf(absf(r["ys"][sj] - r["gs"][sj]), absf(r["ys"][sj + 1] - r["gs"][sj + 1])) > 4.0:
 					continue   # (a cutting too, where it is shallow: a car came up one into a block)
-			elif not _kerbed(r):
-				continue
+			elif not _kerbed(r) and not (HIGHWAYS.has(r["k"]) and r["drive"]):
+				continue   # (a motorway on the ground too: a block stood 0.8 m into Ayalon South)
 			var pts: PackedVector2Array = r["pts"]
 			var a := pts[sj]
 			var b := pts[sj + 1]
-			var c := float(r["w"]) * 0.5 + BLD_CLEAR
+			var c := float(r["w"]) * 0.5 + (BLD_CLEAR if _kerbed(r) or r.has("ys") else 0.5)   # (no pavement beside a motorway)
 			if not box.grow(c).intersects(Rect2(a, Vector2.ZERO).expand(b)):
 				continue
 			for k in range(n):
@@ -5472,6 +5472,22 @@ func _in_corner_fill(p: Vector2, margin: float) -> bool:
 ## p moved out of any rounded corner's asphalt it is on (or within `margin` of the kerb of):
 ## from the corner's point through p, across the curve and `margin` past its kerb -- onto the
 ## corner's pavement. p itself when it is on none.
+## p moved off every street's asphalt -- the straight strips and the rounded corners -- far
+## enough that a body of half-width r there stays clear of it (as city_check's "on the road"
+## measures). For things placed by hand from a film or a survey: the spot is right to a few
+## metres, the game's road a guess at its width, and a bin at a corner stood 1.2 m into Sirkin.
+func _off_asphalt(p: Vector2, r: float) -> Vector2:
+	for _k in range(3):
+		p = _out_of_corner(p, r)
+		var hit := _nearest_seg(p, 20.0, true, false)
+		if hit.is_empty() or float(hit["edge"]) >= r:
+			break
+		var away := p - (hit["q"] as Vector2)
+		if away.length() < 0.01:
+			break
+		p += away.normalized() * (r - float(hit["edge"]) + 0.05)
+	return p
+
 func _out_of_corner(p: Vector2, margin: float) -> Vector2:
 	for key: int in _near(_fill_hash, p, margin + 0.5, BLD_CELL):
 		var poly: PackedVector2Array = _corner_fill[key]
@@ -5712,7 +5728,14 @@ func cover_under(p: Vector2) -> float:
 		for dy in range(-1, 2):
 			for cv: Vector3 in _covers.get(c + Vector2i(dx, dy), []):
 				if p.distance_squared_to(Vector2(cv.x, cv.y)) < cv.z * cv.z:
-					return 1.0 if cv.z < 0.35 else 0.6
+					# most sit flush and are not felt: one manhole in three stands proud or sunk,
+					# one grate in four (by its place: the same ones every drive). Every one
+					# knocked made Tel Aviv's wide streets "pretty bumpy" -- a knock every 75 m
+					# in the kerb lane, 13 a km (tests/drive_bumps.gd, 22 Nov)
+					var felt := posmod(hash(Vector2i(roundi(cv.x * 10.0), roundi(cv.y * 10.0))), 12)
+					if cv.z < 0.35:
+						return 1.0 if felt < 4 else 0.0
+					return 0.6 if felt < 3 else 0.0
 	return 0.0
 
 func _cover_tick() -> void:
@@ -11453,7 +11476,68 @@ func _tree_ok(p: Vector2, spacing: float) -> bool:
 ## stood in the lane, and autodrive drove into it again and again.
 func _off_road(p: Vector2, margin: float) -> bool:
 	var hit := _nearest_seg(p, 14.0, true)
-	return (hit.is_empty() or float(hit["edge"]) >= margin) and not _in_corner_fill(p, margin)
+	return (hit.is_empty() or float(hit["edge"]) >= margin) and not _in_corner_fill(p, margin) 		and _split_push(p, margin) == Vector2.ZERO
+
+## The line cars drive past the split of a divided road. OSM starts both halves at the two-way
+## road's middle, so for some metres past the split a car in the two-way road's lane drives
+## on beside the narrower half's asphalt -- and what was put up 1 m off that asphalt stood in
+## its way (tests/split_posts.gd DRIVE=1, Ashdod: a no-entry sign at Dakar's split and a post
+## at Tamuz's touched; before it, a one-way arrow knocked flat on every drive). The line runs
+## from the two-way road's lane at the split over to the half's own lane 25 m on, as autodrive
+## drives it; nothing is put up within a car's half width of it. Worked out the first time.
+var _split_lines := []    ## [a, b] pieces of those lines
+var _split_hash := {}     ## SEG_CELL -> indices into _split_lines
+var _split_done := false
+const SPLIT_HALF := 0.9 + 0.25   ## a car's half width and a little
+
+func _find_split_lines() -> void:
+	_split_done = true
+	for ni in range(mini(_nodes.size(), _node_roads.size())):
+		var c := _nodes[ni]
+		for e: Vector2i in _node_roads[ni]:
+			var r: Dictionary = _roads[e.x]
+			var pts: PackedVector2Array = r["pts"]
+			if int(r["o"]) != 0 or not r["drive"] or String(r.get("name", "")) == "" or (e.y != 0 and e.y != pts.size() - 1):
+				continue
+			var prev: int = 1 if e.y == 0 else e.y - 1
+			if prev < 0 or prev >= pts.size():
+				continue
+			var t := (c - pts[prev]).normalized()
+			for h: Vector2i in _node_roads[ni]:
+				var hr: Dictionary = _roads[h.x]
+				var hp: PackedVector2Array = hr["pts"]
+				if h.x == e.x or int(hr["o"]) == 0 or String(hr.get("name", "")) != String(r["name"]) or float(hr["w"]) > float(r["w"]) - 2.0:
+					continue
+				for k: int in [h.y - 1, h.y + 1]:
+					if k < 0 or k >= hp.size() or (hp[k] - c).normalized().dot(t) <= 0.8:
+						continue
+					var way := 1 if k == h.y + int(hr["o"]) else -1
+					var u := (hp[k] - c).normalized()
+					var trav := u * float(way)
+					var right := Vector2(-trav.y, trav.x)
+					var tw := t * float(way)
+					var at0 := (Vector2(-tw.y, tw.x) * _lane_off(r)).dot(right)
+					var off_h := _lane_off(hr)
+					var last := c + right * at0
+					for i in range(5, 26, 5):
+						var q := c + u * float(i) + right * lerpf(at0, off_h, float(i) / 25.0)
+						_hash_add(_split_hash, Rect2(last, Vector2.ZERO).expand(q).grow(SPLIT_HALF + 1.0), SEG_CELL, _split_lines.size())
+						_split_lines.append([last, q])
+						last = q
+
+## how far p must move to keep a body of radius r out of a split's line (ZERO: it is clear)
+func _split_push(p: Vector2, r: float) -> Vector2:
+	if not _split_done:
+		_find_split_lines()
+	if _split_lines.is_empty():
+		return Vector2.ZERO
+	for i: int in _near(_split_hash, p, 0.1, SEG_CELL):
+		var ln: Array = _split_lines[i]
+		var q := Geometry2D.get_closest_point_to_segment(p, ln[0], ln[1])
+		var d := p.distance_to(q)
+		if d < SPLIT_HALF + r:
+			return (p - q).normalized() * (SPLIT_HALF + r - d + 0.05) if d > 0.01 else Vector2.ZERO
+	return Vector2.ZERO
 
 ## p is on (or within `margin` of) the asphalt round a junction's point -- the disc as wide as
 ## its widest road that every junction is laid with, which no one road's lanes cover. Railings
@@ -12487,7 +12571,7 @@ func _terrace(pos: Vector2, n: Vector2, along: Vector2, umb: Color, t: Dictionar
 				continue   # (that close: one table, and only for an umbrella someone filmed)
 			var q := pos + n * tr.x + along * off
 			var on := _nearest_seg(q, 12.0, true)
-			if _push_out(q, tr.y, false) == Vector2.ZERO and (on.is_empty() or float(on["edge"]) >= tr.z):
+			if _push_out(q, tr.y, false) == Vector2.ZERO and (on.is_empty() or float(on["edge"]) >= tr.z) 					and not _in_corner_fill(q, maxf(tr.z, 0.0) + 0.25):   # (nor on a corner's asphalt: Aluf David, Dizengoff)
 				c = q
 				if not on.is_empty():
 					room = clampf(float(on["edge"]), 0.25, 0.7)
@@ -13650,6 +13734,12 @@ func _build_street_signs() -> void:
 			if _push_out(q, 0.4, true, false) != Vector2.ZERO:
 				return
 			p = q
+		# nor in the line the cars drive past a divided road's split: aside out of it
+		var sp := _split_push(p, 0.06)
+		if sp != Vector2.ZERO:
+			if _push_out(p + sp, 0.4, true, false) != Vector2.ZERO:
+				return
+			p += sp
 		if not plates.has(kind):
 			plates[kind] = []
 		var gy := _h(p)
@@ -14868,8 +14958,41 @@ func _site_ways_in(node: int) -> Array:
 					break
 				if _crossing_set.has(o) and float(back[1]) > 1.0 and float(back[1]) < rn + 10.0:
 					line = maxf(line, float(back[1]) + 2.0)   # (its stripes run 1.5 m either side of the point)
-			out.append([(c - pts[from]).normalized(), line, e.x, inside or free])
+			var din := (c - pts[from]).normalized()
+			if not inside and not free:
+				line = _line_off_zebras(c, din, line, rn)
+			out.append([din, line, e.x, inside or free])
 	return out
+
+## A stop line moved back so the car waiting at it stands on no zebra: the zebras on the
+## road's own points are seen above, but one mapped on the lane beside it, or the other half
+## of a divided road, was under the waiting car (light_audit's "front on the zebra": Givatayim
+## 2, Tel Aviv 3). Any zebra point within 3 m of the way's line, under where the car would
+## stand, puts the line 2 m behind it (its stripes run 1.5 m either side of the point).
+var _zebra_pts := {}
+func _line_off_zebras(c: Vector2, din: Vector2, line: float, rn: float) -> float:
+	if _zebra_pts.is_empty():
+		for ni: int in _crossing_nodes:
+			var k := _cell(_nodes[ni], 20.0)
+			if not _zebra_pts.has(k):
+				_zebra_pts[k] = []
+			(_zebra_pts[k] as Array).append(ni)
+	var across := Vector2(-din.y, din.x)
+	for _pass in range(3):
+		var moved := false
+		var q := c - din * (line + 4.0)
+		var k0 := _cell(q, 20.0)
+		for dx in range(-1, 2):
+			for dz in range(-1, 2):
+				for ni: int in _zebra_pts.get(k0 + Vector2i(dx, dz), []):
+					var rel: Vector2 = c - _nodes[ni]
+					var t := rel.dot(din)   # how far back along the way in
+					if absf(rel.dot(across)) < 3.0 and t > 1.0 and t < rn + 12.0 							and t > line - 0.5 and t < line + 2.5 + CAR_LEN:
+						line = t + 2.0
+						moved = true
+		if not moved:
+			break
+	return line
 
 ## A lit point where only a slip road joins a one-way main road, from its right-hand side --
 ## merging in or peeling off, across no one's way: OSM's light there is the slip road's (and
@@ -22268,6 +22391,28 @@ func _ap_next() -> bool:
 ## The ways on from point ei of road ri, arrived at going `dir`: [ways, back], ways each
 ## {leg: Vector3i(road, first index, direction), turn, name, en, service, score}, back the
 ## leg back the way it came (only from a dead end; Vector3i(-1, ...) when there is none).
+## a service lane that ends -- a dead end -- at a solid building, or under one: the way into
+## an underground car park or a garage, which the map draws as a lane into the wall. Roaming
+## out of the City tunnel, autodrive took one (its only other way on) and hit the wall at
+## 9-19 km/h on both of decks.gd's runs (Givatayim (-722, -1078), 21 Nov). Worked out once a road.
+var _into_bld := {}
+func _into_building(ri: int) -> bool:
+	if _into_bld.has(ri):
+		return _into_bld[ri]
+	var r: Dictionary = _roads[ri]
+	var ids: PackedInt32Array = r["ids"]
+	var pts: PackedVector2Array = r["pts"]
+	var into := false
+	for e: int in [0, ids.size() - 1]:
+		if (_node_roads[ids[e]] as Array).size() != 1:
+			continue   # (not a dead end there)
+		var p := pts[e]
+		for i: int in _near(_bld_hash, p, 1.5, BLD_CELL):
+			if _bld_solid[i] != 0 and (_bld_box[i] as Rect2).grow(1.5).has_point(p) 					and (Geometry2D.is_point_in_polygon(p, _blds[i]) or _poly_push(_blds[i], p, 1.5) != Vector2.ZERO):
+				into = true
+	_into_bld[ri] = into
+	return into
+
 func _ap_ways(ri: int, ei: int, dir: int) -> Array:
 	var r: Dictionary = _roads[ri]
 	var pts: PackedVector2Array = r["pts"]
@@ -22303,6 +22448,8 @@ func _ap_ways(ri: int, ei: int, dir: int) -> Array:
 			if r2["name"] != "" and not _visited.has(r2["name"]):
 				score += 1.4
 			if r2["k"] == "service":
+				if _into_building(e.x):
+					continue   # a lane that ends at a building's wall: an underground car park's way in
 				score -= 6.0   # alleys and car-park lanes: only when there is nothing else
 			if not _in_city(p2[nxt]):
 				score -= 2.5   # back toward town rather than out past its edge
@@ -22485,6 +22632,7 @@ func _ap_kturn(dt: float) -> Array:
 ## dead end -- a cul-de-sac -- does not count: autodrive explores those and turns.) A street
 ## running off the map was taken like any other, and the car turned round at the barrier.
 const EDGE_LOOK := 300.0
+const EDGE_DEAD := 30.0               ## a dead end this close to the barrier (past EDGE_ROOM) is the map's cut, for autodrive
 const EDGE_ROOM := 4.0               ## a road's points this close to the barrier are past it, for autodrive
 var _edge_memo := {}
 
@@ -22516,7 +22664,14 @@ func _edge_walk(leg: Vector3i, budget: float, depth: int) -> bool:
 		return true
 	var ons := _legs_on(leg.x, last, leg.z)
 	if ons.is_empty():
-		return true   # an ordinary dead end
+		# an ordinary dead end -- unless it ends near the barrier: then it is a street the
+		# map's edge cut off, not a cul-de-sac. Taken as ordinary, autodrive drove 100 m along
+		# Tel Aviv's edge into one (off Derech Namir, Tuval: 5-13 m from the barrier) and spent
+		# 12 s turning round in it, twice (tests/autodrive_edge.gd TRACE=1, 22 Nov)
+		var end_p := pts[last]
+		var gap := minf(minf(end_p.x - rim.position.x, rim.end.x - end_p.x), minf(end_p.y - rim.position.y, rim.end.y - end_p.y))
+		return gap > EDGE_DEAD
+	
 	for on: Vector3i in ons:
 		if _edge_walk(on, budget - d, depth + 1):
 			return true
