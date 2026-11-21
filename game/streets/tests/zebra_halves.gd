@@ -27,6 +27,8 @@ func _run() -> void:
 	await create_timer(1.0).timeout
 	if OS.get_environment("FULL") == "":
 		g._set_quality(0)
+	if OS.get_environment("ZEBRA_OLD") != "":
+		g._zebra_past = false   # (as before 21 Nov: anyone on the crossing holds a car till the far kerb)
 	var want := int(OS.get_environment("ZH_N")) if OS.get_environment("ZH_N") != "" else 3
 	# divided roads' crossings, a car's run-up on the one-way half before each
 	var picks: Array = []

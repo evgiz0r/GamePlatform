@@ -224,7 +224,11 @@ the parked cars, which stand a third in the road).
   outer sides; a zebra on one half is crossed kerb to kerb across both. Anything laid "along
   both sides of a street" -- parked cars above all -- goes on the outer side only: parked
   both sides, a row of cars stood down the middle of the boulevard. Check the spot itself,
-  not the road's flag: halves pair up along only part of their length.
+  not the road's flag: halves pair up along only part of their length. And a median is one
+  surface: one paving for both halves' strips, a kerb face across each end, and nothing
+  else laying kerbs onto it -- no corner curving into a narrow one, no kerb from the cross
+  street's stretch between the halves (laid apart, those pieces stood about its end at odd
+  angles, in three colours).
 - **Lanes**: `lanes` counts both directions on a two-way road. Cap any count by what the
   width holds (a "two-lane" road narrowed to 4 m has one). On a one-way road of several,
   drive the middle of the right-hand lane -- the middle of the road is astride two.
@@ -472,6 +476,21 @@ the parked cars, which stand a third in the road).
   it joins put the corner off that street's line and the car over the kerb. A curve
   through the point where the two lanes cross, from 5 m before the junction to 5 m after, is
   2-3 m round for a right turn on an 8 m street: too tight to follow.
+  But not at every point of a roundabout's ring: the ring is a circle drawn as a polygon,
+  every point of it turns enough to count as a corner, and arcs squeezed by the next point
+  a metre or few on drove a 17 m ring as straights and 4-5 m bends at 15 km/h; the ways on
+  and off were squeezed by the ring's points the same way. Along a ring, lane points only.
+- **Take a tight bend the way people do.** One sideways limit for every corner (3.6 m/s^2)
+  is right for a wide bend and timid in a tight one: people take a 5 m turn or a
+  roundabout's way off at ~4.5-5 m/s^2 and 18-20 km/h, not 15. Let the limit rise as the
+  radius falls (here 3.6 from 15 m up to 4.8 at 5 m); the tyres hold ~9, and the car stayed
+  as close to its plan as before.
+- **A person past the car's lane and walking on has crossed in front of it.** Waiting at a
+  zebra until they reach the far kerb stood turning cars in the middle of a junction, the
+  cars behind with them; go once they are a lane's width past the car's line (2.8 m) and
+  walking away -- and past whatever makes people flinch from the player's car (here they
+  run back to their kerb from it within 5.5 m: going by at 2.8 m sent them back across its
+  way; 6 m for the player).
 - **A controller that brakes by how far over its target it is runs behind a braking
   slope**: at 2 m/s^2 of braking per m/s over, following a 2.6 m/s^2 slope it is ~1.3 m/s
   fast all the way down, into each corner 5 km/h over. Aim at each corner half a second
