@@ -752,6 +752,30 @@ traffic.gd: `tick` (per car: path, lights, signs, the car or player ahead, stand
 autodrive uses), `push` (the player against the cars). `_junction_ahead` (giving way) skips a
 car `_held_at_red`: one that will stand at its red need not hold up a car with the green.
 
+## The HUD's buttons (22 Nov 2026)
+
+All drawn by hand in `_draw_hud` (no Control nodes): the rects are the `*_BTN` constants by
+`AUTO_BTN` (the layout is described there), each drawn with `_hud_btn(rect, text, colour,
+lit, size)`. One place takes a tap -- `_hud_tap(p)`, called from `_input`'s mouse branch -- and
+one says whether a touch is a button's rather than the stick's or the view's,
+`_on_hud_button(p)`: a new button goes in `_draw_hud`, `_hud_tap`, `_on_hud_button` and the
+test's `_shown()`. The "more" drawer is `_more_rows()` (label, y, choices, the choice now,
+what) drawn by `_draw_more` and tapped by `_more_tap`; a row is one line there.
+- Labels say the state now, lit when on (`lit`), never what a tap switches to.
+- **Autodrive's style** (`_ap_style`, "racer" by default) applies only through the player's
+  own switches -- `_auto_by_hand` (the button), `_go_to` (drive to), `_go_where` (held from
+  above). `_set_auto` itself leaves the racer and the wave as they are, so the bots (space),
+  the test routes and every scene test keep the rules, as they measure. A test that wants the
+  racer calls `_set_racer(true)` as `tests/racer.gd` does.
+- Time of day by choice: `_set_time_of_day` steps `_next_time` round (it only goes day,
+  evening, night); `_tod_busy` keeps two taps from interleaving its awaits.
+- The camera button labels where the view is going (`_zoom > 0`), not `_zoomed()`: that is
+  still true for the second the view sinks back to the car, and the label lagged.
+- `tests/hud_layout.gd` (level 4, about a minute) taps every button through `_hud_tap`,
+  checks what it did, and checks in every state that no shown button leaves the screen or
+  overlaps another, the minimap, the speed, the credit, the stick's ring or the load line.
+  Good: 0 failed, 24 checks. Its shots (`hud_*.png`) are the quickest look at the HUD.
+
 ## Tests
 
 `tests/run.sh <test> [level]` (level 1 Givatayim, 2 Bedford, 3 Ashdod, 4 the test town);

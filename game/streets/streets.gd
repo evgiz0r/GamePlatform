@@ -1205,20 +1205,23 @@ var _woke := false
 var _stick_id := -1                  ## the touch that owns the stick; -1 when no thumb is down
 var _stick := Vector2.ZERO           ## its deflection, inside the unit circle
 var _sfx_was := 0.8
-const AUTO_BTN := Rect2(184, 334, 100, 20)
-const GOTO_BTN := Rect2(290, 334, 80, 20)
-const ASSIST_BTN := Rect2(376, 334, 70, 20)
-const NIGHT_BTN := Rect2(452, 334, 52, 20)
-const WET_BTN := Rect2(510, 334, 40, 20)     ## after rain / dry
-const WAVE_BTN := Rect2(8, 140, 52, 20)      ## the green wave: the lights ahead turn green for the car (key V; wave.gd)
-const RACER_BTN := Rect2(8, 164, 52, 20)     ## autodrive with the rules off (key R; racer.gd). Both on the left: the bottom
-                                             ## row is full, and on a phone the stick's ring and hint fill the bottom right
-const VIEW_BTN := Rect2(578, 98, 52, 20)    ## chase cam / driver's seat (key C too)
-const LIGHTS_BTN := Rect2(578, 122, 52, 20)  ## headlights (key L)
+## The HUD's buttons, by what they are for (the user, 22 Nov: "more organized, with better
+## logic; some buttons are rarely used"). On screen only what is used while driving: along
+## the bottom, bigger, where you are going (autodrive and its style, go to, walk); on the
+## right, the view (camera, look) and "more"; lights by the map, after dark. Everything set
+## once and left -- time of day, wet, the driving style, assist, pause, the fps and build
+## lines, the keys -- in the "more" drawer (_draw_more, MORE_*). Every toggle says what is
+## ON now, lit when on: never the state a tap would switch to ("day" had meant "it is night").
+const AUTO_BTN := Rect2(140, 332, 104, 24)   ## autodrive on / off (space; shift off)
+const STYLE_BTN := Rect2(248, 332, 62, 24)   ## while autodrive drives: its style, tap for the next (rules, wave, racer)
+const GOTO_BTN := Rect2(314, 332, 84, 24)
+const WALK_BTN := Rect2(402, 332, 66, 24)    ## out of the car and back in (key F). (Ends short of the stick's hint)
+const MORE_BTN := Rect2(566, 98, 44, 22)     ## the drawer of set-once switches
+const FOLD_BTN := Rect2(612, 98, 20, 22)     ## "–": every button folded away but one "show" (_hud_folded); the user: "not take too much of the screen, or collapsible easily"
+const SHOW_BTN := Rect2(566, 98, 66, 22)     ## folded: the one button left, unfolds them
+const VIEW_BTN := Rect2(566, 124, 66, 22)    ## the camera, round: chase, seat, above the city (keys C, Z)
+const LIGHTS_BTN := Rect2(8, 180, 62, 24)    ## headlights (key L): shown after dark, or while they are on
 ## (the indicators and the horn are keys only, Q / E and H: on screen they were clutter)
-const WALK_BTN := Rect2(578, 146, 52, 20)    ## out of the car and back in (key F)
-const ZOOM_BTN := Rect2(578, 170, 52, 20)    ## up over the city and back down (key Z, the wheel, a pinch)
-const PAUSE_BTN := Rect2(578, 194, 52, 20)   ## the city holds still, and goes on (key K)
 const STICK_C := Vector2(556, 268)   ## the touch stick sits still, here, on the right
 const STICK_R := 52.0                ## thumb travel (design px) for full lock / full gas
 const STICK_GRAB := 84.0             ## a thumb this close to its centre takes hold of it
@@ -1528,8 +1531,8 @@ func _load_line() -> String:
 static var _loads_this_visit := 0
 var _first_load := false
 
-## the line above, over the build line for 20 s after the car is shown, then gone (still in
-## the perf view's load lines)
+## the line above, by the map for 8 s after the car is shown, then gone (still in the "more"
+## drawer and the perf view's load lines). (20 s once; the user, 22 Nov: the notes took room)
 func _show_load_line() -> void:
 	_loads_this_visit += 1
 	_first_load = _loads_this_visit == 1
@@ -1539,12 +1542,12 @@ func _show_load_line() -> void:
 	print("[streets] " + t)
 	_load_lbl = _label(8, "ink")
 	_load_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_load_lbl.position = Vector2(8, 185)
+	_load_lbl.position = Vector2(8, 164)   # (above the lights button, LIGHTS_BTN)
 	_load_lbl.size = Vector2(320, 12)
 	_load_lbl.text = t
 	_load_lbl.modulate.a = 0.8
 	var tw := create_tween()
-	tw.tween_interval(20.0)
+	tw.tween_interval(8.0)
 	tw.tween_property(_load_lbl, "modulate:a", 0.0, 1.0)
 	tw.tween_callback(_load_lbl.queue_free)
 
@@ -21275,7 +21278,7 @@ func _seat_camera(dt: float, yaw: float) -> void:
 ## wheel goes over; at people on the crossing ahead; over the right shoulder reversing.
 ## Autodrive's driver always does; yours while "look" is on. The seat view turns with the
 ## head, the chase camera swings a little toward it, and the head in the car turns.
-const LOOK_BTN := Rect2(578, 218, 52, 20)    ## looking round while you drive yourself (key G: glance)
+const LOOK_BTN := Rect2(566, 150, 66, 22)    ## looking round while you drive yourself (key G: glance); hidden while autodrive drives or you walk
 const HEAD_RATE := 3.4                       ## rad/s a head turns at, at most
 var _head_yaw := 0.0                         ## where the driver looks: radians left (+) of ahead
 var _head_plan: Array = []                   ## a scan still to do: [[yaw, seconds held], ...]
@@ -21585,6 +21588,7 @@ func _go_where(at: Vector2) -> void:
 	Probe.event("go_where", {"to": name})
 	_zoom_resume = true   # (down at the car, the city goes on: it is a drive)
 	_zoom_set(0.0)
+	_apply_ap_style()   # (a drive of the player's choosing: in their style, _auto_by_hand)
 	_set_dest(hit["q"], name)
 
 ## how far the push to come down has gone (0..1); 0 once it has stopped a moment
@@ -21814,6 +21818,9 @@ func _set_wave(on: bool) -> void:
 	_wave.set_on(on)
 	_show_banner("green wave: the lights ahead turn green for you" if on else "green wave off", 1.6)
 	Probe.event("wave", {"on": on})
+	if on and _racer != null and _racer.on:   # (one style at a time: the racer runs the reds anyway)
+		_racer.set_on(false)
+	_ap_style = "wave" if on else ("racer" if _racer != null and _racer.on else "rules")
 
 ## racer mode (racer.gd): autodrive with the rules off. On puts autodrive on; autodrive off
 ## (taking the wheel, the stick, walking) ends it too
@@ -21824,10 +21831,42 @@ func _set_racer(on: bool) -> void:
 	if _racer == null:
 		return
 	_racer.set_on(on)
+	if on and _wave != null and _wave.on:
+		_wave.set_on(false)
 	if on and not _auto:
 		_set_auto(true)
 	_show_banner("racer: no lights, no signs, no giving way" if on else "racer off: autodrive keeps the rules again", 1.8)
 	Probe.event("racer", {"on": on})
+	_ap_style = "racer" if on else ("wave" if _wave != null and _wave.on else "rules")
+
+## How autodrive drives when YOU switch it on (its button, "drive to", the style chip, the
+## drawer): keeping the rules, with the green wave, or as a racer. Racer is the default (the
+## user, 22 Nov: "change the default of the autodrive to racer, without green wave"). Only
+## the player's own switches apply it: the bots (space), the test routes and every scene
+## test turn autodrive on with _set_auto and so still keep the rules -- what they measure.
+## (The wave works while you drive yourself too: it stays on when you take the wheel.)
+const AP_STYLES := ["rules", "wave", "racer"]
+const AP_STYLE_SAY := {"rules": "keeps rules", "wave": "green wave", "racer": "racer"}
+var _ap_style := "racer"
+
+func _apply_ap_style() -> void:
+	if _racer != null and _racer.on != (_ap_style == "racer"):
+		_racer.set_on(_ap_style == "racer")
+	if _wave != null and _wave.on != (_ap_style == "wave"):
+		_wave.set_on(_ap_style == "wave")
+
+func _set_ap_style(s: String) -> void:
+	_ap_style = s
+	_apply_ap_style()
+	_show_banner({"rules": "autodrive keeps the rules", "wave": "green wave: the lights ahead turn green for you",
+		"racer": "racer: no lights, no signs, no giving way"}[s], 1.8)
+	Probe.event("ap_style", {"style": s})
+
+## autodrive on or off from the player's own hand: on, in the style chosen
+func _auto_by_hand(on: bool) -> void:
+	if on:
+		_apply_ap_style()
+	_set_auto(on)
 
 func _set_auto(on: bool) -> void:
 	_auto = on
@@ -24268,6 +24307,7 @@ func _go_to(label: String, at: Vector2) -> void:
 	if _pick_jump:
 		_jump_to(at, label)
 	else:
+		_apply_ap_style()   # (driven there in the style chosen: _auto_by_hand)
 		_set_dest(at, label)
 
 ## "jump there": the car is put down on the street at `at`, in its lane, stopped, facing
@@ -24393,8 +24433,9 @@ func _build_hud() -> void:
 	_banner.position = Vector2(120, 98)
 	_banner.size = Vector2(400, 30)
 	_banner.modulate.a = 0.0
-	# the credits, small, in the corner under the map and clear of the buttons along the bottom
-	# (AUTO_BTN starts at x 184): one line run past them, the towns' surveys under the buttons
+	# the credit, small, in the corner under the map and clear of the buttons along the bottom:
+	# the short form ODbL asks for, on one line; the towns' own surveys are credited in the
+	# "more" drawer (_draw_more) -- the user: the small notes on screen took too much
 	_osm_lbl = _label(7, "ink")
 	_osm_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_osm_lbl.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
@@ -24402,9 +24443,7 @@ func _build_hud() -> void:
 	_osm_lbl.add_theme_constant_override("line_spacing", -3)
 	_osm_lbl.position = Vector2(6, 329)
 	_osm_lbl.size = Vector2(AUTO_BTN.position.x - 12.0, 30)
-	_osm_lbl.text = "a made-up town: not a real place" if _made_up else "map data © OpenStreetMap contributors"
-	if not _credits.is_empty():   # a town's own surveys of its buildings and trees (tools/osm_city.py)
-		_osm_lbl.text += " · " + _credit_line(_credits)
+	_osm_lbl.text = "a made-up town" if _made_up else "© OpenStreetMap contributors"
 	_osm_lbl.modulate.a = 0.7
 	# which build: a screenshot then says whether it holds a fix (the menu shows it too, but
 	# a screenshot of the street does not have the menu in it)
@@ -24487,7 +24526,11 @@ func _show_banner(msg: String, secs: float) -> void:
 
 func _tick_hud() -> void:
 	_speed_lbl.text = str(int(round(absf(_v) * 3.6)))
-	_fps_lbl.text = "%d fps · worst %d ms · quality %d" % [Engine.get_frames_per_second(), int(_worst_ms()), _quality]
+	# the fps and build lines: in the drawer now, and here only with the perf view up
+	_fps_lbl.visible = _perf_view or _trace_view
+	_ver_lbl.visible = _fps_lbl.visible
+	if _fps_lbl.visible:
+		_fps_lbl.text = "%d fps · worst %d ms · quality %d" % [Engine.get_frames_per_second(), int(_worst_ms()), _quality]
 	if _perf_view:
 		_perf_lbl.text = "frame time, last %d frames (lines: 16 and 33 ms)\n%s\n%s\nhitches (slowest parts, ms):\n%s\n%s" % [
 			_frame_ms.size(), _prof_avg, _gpu_line(), "\n".join(_hitches) if not _hitches.is_empty() else "none yet", _load_text()]
@@ -24499,6 +24542,7 @@ func _tick_hud() -> void:
 	else:
 		_dest_lbl.text = ""
 	_gear_lbl.text = "" if _walking else ("D" if _gear > 0 else "R")
+	_banner.visible = not (_more_open or _keys_open)   # (over the drawer it hid the choices)
 	_hud.queue_redraw()
 	_map.queue_redraw()
 
@@ -24664,11 +24708,16 @@ func _draw_hud() -> void:
 		for ms: float in [16.7, 33.3]:
 			var y := box.end.y - ms / 50.0 * box.size.y
 			_hud.draw_line(Vector2(box.position.x, y), Vector2(box.end.x, y), Color(ink, 0.35), 1.0)
-	var on := Palette.col("friend") if _auto else ink
-	_hud.draw_rect(AUTO_BTN, Color(bg, 0.65))
-	_hud.draw_rect(AUTO_BTN, Color(on, 0.9), false, 1.5)
-	var txt := "AUTODRIVE ON" if _auto else "autodrive"
-	_hud.draw_string(_font, AUTO_BTN.position + Vector2(0, 15), txt, HORIZONTAL_ALIGNMENT_CENTER, AUTO_BTN.size.x, 11, on)
+	# along the bottom, bigger: where you are going. Folded (FOLD_BTN): none of them, one "show"
+	if _hud_folded:
+		_hud_btn(SHOW_BTN, "show ▾", Palette.col("accent"), false, 11)
+	if not _walking and not _hud_folded:
+		_hud_btn(AUTO_BTN, "AUTODRIVE ON" if _auto else "autodrive", Palette.col("friend"), _auto, 12)
+		if _auto:   # its style, beside it: tap for the next
+			var sc := {"rules": Palette.col("ink"), "wave": Palette.col("friend"), "racer": Palette.col("hazard")}[_ap_style] as Color
+			_hud_btn(STYLE_BTN, AP_STYLE_SAY[_ap_style] if _ap_style != "rules" else "rules", sc, _ap_style != "rules", 11)
+			if _racing() and _racer.reds > 0:
+				_hud_text(STYLE_BTN.position + Vector2(-20, -5), "%d red%s run" % [_racer.reds, "" if _racer.reds == 1 else "s"], 102, 10, Palette.col("hazard"))
 	if _auto and _cross_showing():
 		var ways: Array = _cross["ways"]
 		var commit := maxf(10.0, _v * 1.3)
@@ -24690,69 +24739,24 @@ func _draw_hud() -> void:
 		if not _cross["chosen"]:
 			var bar := Rect2(_cross_rect(0, ways.size()).position + Vector2(0, 50), Vector2(ways.size() * 84.0 - 6.0, 3))
 			_hud.draw_rect(Rect2(bar.position, Vector2(bar.size.x * left, 3)), Color(Palette.col("accent"), 0.8))
-	var go := Palette.col("accent")
-	_hud.draw_rect(GOTO_BTN, Color(bg, 0.65))
-	_hud.draw_rect(GOTO_BTN, Color(go, 0.9), false, 1.5)
-	_hud.draw_string(_font, GOTO_BTN.position + Vector2(0, 15), "go to…", HORIZONTAL_ALIGNMENT_CENTER, GOTO_BTN.size.x, 11, go)
-	# (off while autodrive drives: the assist helps your hands only -- _manual, never _autodrive
-	# -- and "assist on" beside "AUTODRIVE ON" read as if it were steering too; yours again
-	# when you take over)
-	var assist_now := _assist and not _auto
-	var asc := Palette.col("friend") if assist_now else Color(ink, 0.6 if not _auto else 0.35)
-	_hud.draw_rect(ASSIST_BTN, Color(bg, 0.65))
-	_hud.draw_rect(ASSIST_BTN, Color(asc, 0.9), false, 1.5)
-	_hud.draw_string(_font, ASSIST_BTN.position + Vector2(0, 15), "assist on" if assist_now else "assist off", HORIZONTAL_ALIGNMENT_CENTER, ASSIST_BTN.size.x, 11, asc)
-	var nc := Palette.col("warn") if _night else Color(ink, 0.8)
-	_hud.draw_rect(NIGHT_BTN, Color(bg, 0.65))
-	_hud.draw_rect(NIGHT_BTN, Color(nc, 0.9), false, 1.5)
-	_hud.draw_string(_font, NIGHT_BTN.position + Vector2(0, 15), "day" if _night else ("night" if _evening else "evening"), HORIZONTAL_ALIGNMENT_CENTER, NIGHT_BTN.size.x, 11, nc)
-	var wetc := Palette.col("player") if _wet else Color(ink, 0.8)
-	_hud.draw_rect(WET_BTN, Color(bg, 0.65))
-	_hud.draw_rect(WET_BTN, Color(wetc, 0.9), false, 1.5)
-	_hud.draw_string(_font, WET_BTN.position + Vector2(0, 15), "dry" if _wet else "wet", HORIZONTAL_ALIGNMENT_CENTER, WET_BTN.size.x, 11, wetc)
-	var wv := _wave != null and _wave.on
-	var wvc := Palette.col("friend") if wv else Color(ink, 0.8)
-	_hud.draw_rect(WAVE_BTN, Color(bg, 0.65))
-	_hud.draw_rect(WAVE_BTN, Color(wvc, 0.9), false, 1.5)
-	_hud.draw_string(_font, WAVE_BTN.position + Vector2(0, 15), "WAVE ON" if wv else "wave", HORIZONTAL_ALIGNMENT_CENTER, WAVE_BTN.size.x, 11, wvc)
-	var rc_on := _racing()
-	var rcc := Palette.col("hazard") if rc_on else Color(ink, 0.8)
-	_hud.draw_rect(RACER_BTN, Color(bg, 0.65))
-	_hud.draw_rect(RACER_BTN, Color(rcc, 0.9), false, 1.5)
-	_hud.draw_string(_font, RACER_BTN.position + Vector2(0, 15), "RACER" if rc_on else "racer", HORIZONTAL_ALIGNMENT_CENTER, RACER_BTN.size.x, 11, rcc)
-	if rc_on and _racer.reds > 0:
-		_hud.draw_string(_font, RACER_BTN.position + Vector2(58, 15), "%d red%s run" % [_racer.reds, "" if _racer.reds == 1 else "s"], HORIZONTAL_ALIGNMENT_LEFT, 90, 10, Palette.col("hazard"))
-	var lc := Palette.col("warn") if _lights_on else Color(ink, 0.8)
-	_hud.draw_rect(LIGHTS_BTN, Color(bg, 0.65))
-	_hud.draw_rect(LIGHTS_BTN, Color(lc, 0.9), false, 1.5)
-	_hud.draw_string(_font, LIGHTS_BTN.position + Vector2(0, 15), "lights", HORIZONTAL_ALIGNMENT_CENTER, LIGHTS_BTN.size.x, 11, lc)
+	if not _hud_folded:
+		_hud_btn(GOTO_BTN, "go to…", Palette.col("accent"), false, 12, true)
+		var near_car := _walking and _pos.distance_to(_car_at) < 3.6
+		_hud_btn(WALK_BTN, "get in" if _walking else "walk", Palette.col("accent"), false, 12, near_car)
+		# on the right: the drawer and folding, the camera, looking round
+		_hud_btn(MORE_BTN, "more" if not _more_open else "close", Palette.col("accent"), _more_open, 11)
+		_hud_btn(FOLD_BTN, "–", Palette.col("ink"), false, 13)
+		_hud_btn(VIEW_BTN, _view_name(), Palette.col("player"), _zoom > 0.0 or _cockpit, 11)
+		if not _walking and not _auto:
+			_hud_btn(LOOK_BTN, "look", Palette.col("accent"), _look_on, 11)
+		# by the map, after dark (or while on): the headlights
+		if _lights_shown():
+			_hud_btn(LIGHTS_BTN, "lights", Palette.col("warn"), _lights_on, 11)
 	# the indicator blinking by the speed, as on a dashboard
 	if _blink != 0 and _blink_lit:
 		var s := float(_blink)
 		var at := Vector2(500.0 if _blink < 0 else 633.0, 50.0)
 		_hud.draw_colored_polygon(PackedVector2Array([at + Vector2(s * 7, 0), at + Vector2(-s * 5, -7), at + Vector2(-s * 5, 7)]), Palette.col("friend"))
-	var near_car := _walking and _pos.distance_to(_car_at) < 3.6
-	var wc := Palette.col("accent") if near_car or not _walking else Color(ink, 0.7)
-	_hud.draw_rect(WALK_BTN, Color(bg, 0.65))
-	_hud.draw_rect(WALK_BTN, Color(wc, 0.9), false, 1.5)
-	_hud.draw_string(_font, WALK_BTN.position + Vector2(0, 15), "drive" if _walking else "walk", HORIZONTAL_ALIGNMENT_CENTER, WALK_BTN.size.x, 11, wc)
-	if not _walking:
-		var kc := Palette.col("accent") if _look_on else Color(ink, 0.6)
-		_hud.draw_rect(LOOK_BTN, Color(bg, 0.65))
-		_hud.draw_rect(LOOK_BTN, Color(kc, 0.9), false, 1.5)
-		_hud.draw_string(_font, LOOK_BTN.position + Vector2(0, 15), "look", HORIZONTAL_ALIGNMENT_CENTER, LOOK_BTN.size.x, 11, kc)
-	var vc := Palette.col("player") if _cockpit else Color(ink, 0.8)
-	_hud.draw_rect(VIEW_BTN, Color(bg, 0.65))
-	_hud.draw_rect(VIEW_BTN, Color(vc, 0.9), false, 1.5)
-	_hud.draw_string(_font, VIEW_BTN.position + Vector2(0, 15), "chase" if _cockpit else "seat", HORIZONTAL_ALIGNMENT_CENTER, VIEW_BTN.size.x, 11, vc)
-	var zc := Palette.col("accent") if _zoom > 0.0 else Color(ink, 0.8)
-	_hud.draw_rect(ZOOM_BTN, Color(bg, 0.65))
-	_hud.draw_rect(ZOOM_BTN, Color(zc, 0.9), false, 1.5)
-	_hud.draw_string(_font, ZOOM_BTN.position + Vector2(0, 15), "back" if _zoom > 0.0 else "zoom", HORIZONTAL_ALIGNMENT_CENTER, ZOOM_BTN.size.x, 11, zc)
-	var pc := Palette.col("warn") if _paused else Color(ink, 0.8)
-	_hud.draw_rect(PAUSE_BTN, Color(bg, 0.65))
-	_hud.draw_rect(PAUSE_BTN, Color(pc, 0.9), false, 1.5)
-	_hud.draw_string(_font, PAUSE_BTN.position + Vector2(0, 15), "resume" if _paused else "pause", HORIZONTAL_ALIGNMENT_CENTER, PAUSE_BTN.size.x, 11, pc)
 	_draw_zoom_marks()
 	var hold := _hold_progress()
 	if hold > 0.0:   # the press filling a ring: let go before it closes and nothing happens
@@ -24785,8 +24789,228 @@ func _draw_hud() -> void:
 		_hud.draw_arc(c, STICK_R + 4.0, PI * 1.2, PI * 1.8, 16, Color(Palette.col("friend"), a), 3.0)
 		_hud.draw_arc(c, STICK_R + 4.0, PI * 0.2, PI * 0.8, 16, Color(Palette.col("hazard"), a), 3.0)
 		_hud.draw_circle(c + _stick * STICK_R, 17.0, Color(Palette.col("player"), 0.75 if held else 0.35))
-		if not held:
+		if not held and not _stick_used:   # (the hint until the stick has been driven with once)
 			_hud.draw_string(_font, c + Vector2(-60, STICK_R + 18), "hold & drag to drive", HORIZONTAL_ALIGNMENT_CENTER, 120, 9, Color(ink, 0.6))
+	if _paused and not _zoomed() and not _more_open:   # (pause lives in the drawer: the way back out, here)
+		_hud_btn(RESUME_BTN, "resume", Palette.col("warn"), true, 12)
+	_draw_more()
+
+## ---- the HUD's buttons, the "more" drawer, folding (see AUTO_BTN for the layout) ----------
+
+const RESUME_BTN := Rect2(280, 74, 80, 24)  ## paused by hand: the way back out (pause is in the drawer)
+const MORE_RECT := Rect2(246, 40, 314, 282) ## the drawer, left of the right-hand buttons and above the bottom row
+const KEYS_RECT := Rect2(110, 46, 420, 262)
+var _more_open := false
+var _keys_open := false
+var _hud_folded := false   ## every button folded away to one "show" (FOLD_BTN)
+var _stick_used := false   ## the stick driven with once: its hint has done its job
+var _tod_busy := false     ## a time of day on its way (_set_time_of_day steps through _next_time)
+
+## one button: a dark box, its outline and text in `col` when lit (the thing is ON) or `strong`
+## (always worth seeing, as "go to…"), ink when off; lit ones filled with a wash of it too
+func _hud_btn(r: Rect2, text: String, col: Color, lit: bool, size: int, strong := false) -> void:
+	var c := col if lit or strong else Color(Palette.col("ink"), 0.8)
+	_hud.draw_rect(r, Color(Palette.col("bg"), 0.7))
+	if lit:
+		_hud.draw_rect(r, Color(col, 0.22))
+	_hud.draw_rect(r, Color(c, 0.95), false, 2.0 if lit else 1.5)
+	_hud.draw_string(_font, Vector2(r.position.x, r.position.y + r.size.y * 0.5 + size * 0.36), text,
+		HORIZONTAL_ALIGNMENT_CENTER, r.size.x, size, c)
+
+## the camera now, as the button says it: chase, seat, above (on foot: behind, eyes, above)
+func _view_name() -> String:
+	if _zoom > 0.0:   # (where it is going: still sinking back to the car is "chase" already)
+		return "above"
+	if _walking:
+		return "eyes" if _cockpit else "behind"
+	return "seat" if _cockpit else "chase"
+
+## the camera round: chase -> seat -> above the city -> chase
+func _next_view() -> void:
+	if _zoomed():
+		_zoom_set(0.0)
+		_zoom_seat = false   # (after _zoom_set: landing reads it -- back in the chase view)
+		if _cockpit:
+			_set_cockpit(false)
+	elif _cockpit:
+		_zoom_set(ZOOM_UP)
+	else:
+		_set_cockpit(true)
+
+func _lights_shown() -> bool:
+	return _evening or _night or _lights_on
+
+func _time_now() -> String:
+	return "night" if _night else ("evening" if _evening else "day")
+
+## straight to a time of day: _next_time round until there (it goes day, evening, night)
+func _set_time_of_day(to: String) -> void:
+	if _tod_busy:
+		return
+	_tod_busy = true
+	for i in range(3):
+		if _time_now() == to or not is_inside_tree():
+			break
+		await _next_time()
+	_tod_busy = false
+
+## the drawer's rows: [label, y, [[text, key]...], key now, what]
+func _more_rows() -> Array:
+	return [
+		["time of day", 58, [["day", "day"], ["evening", "evening"], ["night", "night"]], _time_now(), "time"],
+		["road", 100, [["dry", "dry"], ["wet", "wet"]], "wet" if _wet else "dry", "road"],
+		["autodrive", 142, [["keeps rules", "rules"], ["green wave", "wave"], ["racer", "racer"]], _ap_style, "style"],
+		["steering assist, when you drive", 184, [["off", "off"], ["on", "on"]], "on" if _assist else "off", "assist"],
+		["", 220, [["resume" if _paused else "pause", "pause"], ["keys", "keys"], ["perf view", "perf"]],
+			"pause" if _paused else ("perf" if _perf_view or _trace_view else ""), "act"],
+	]
+
+func _seg_rect(row: Array, i: int) -> Rect2:
+	var n: int = (row[2] as Array).size()
+	var w := (MORE_RECT.size.x - 24.0 - 4.0 * (n - 1)) / n
+	return Rect2(MORE_RECT.position.x + 12.0 + i * (w + 4.0), float(row[1]) + 6.0, w, 24.0)
+
+func _draw_more() -> void:
+	var ink := Palette.col("ink")
+	var bg := Palette.col("bg")
+	if _more_open:
+		_hud.draw_rect(MORE_RECT, Color(bg, 0.92))
+		_hud.draw_rect(MORE_RECT, Color(Palette.col("accent"), 0.6), false, 1.5)
+		for row: Array in _more_rows():
+			if String(row[0]) != "":
+				_hud.draw_string(_font, Vector2(MORE_RECT.position.x + 12.0, float(row[1]) + 2.0), String(row[0]),
+					HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(ink, 0.7))
+			var opts: Array = row[2]
+			for i in range(opts.size()):
+				var col := Palette.col("hazard") if String(opts[i][1]) == "racer" else Palette.col("accent")
+				_hud_btn(_seg_rect(row, i), String(opts[i][0]), col, String(opts[i][1]) == String(row[3]), 11)
+		# what a screenshot needs to say (it sat over the map; the user: the small notes took room)
+		var x := MORE_RECT.position.x + 12.0
+		var w := MORE_RECT.size.x - 24.0
+		_hud.draw_string(_font, Vector2(x, 262), "%d fps · worst %d ms · quality %d" % [Engine.get_frames_per_second(), int(_worst_ms()), _quality],
+			HORIZONTAL_ALIGNMENT_LEFT, w, 9, Color(ink, 0.75))
+		_hud.draw_string(_font, Vector2(x, 274), _build_line(), HORIZONTAL_ALIGNMENT_LEFT, w, 9, Color(ink, 0.75))
+		var ll := _load_line()
+		if ll != "":
+			_hud.draw_multiline_string(_font, Vector2(x, 285), ll, HORIZONTAL_ALIGNMENT_LEFT, w, 8, 2, Color(ink, 0.6))
+		if not _credits.is_empty():
+			_hud.draw_multiline_string(_font, Vector2(x, 306), _credit_line(_credits), HORIZONTAL_ALIGNMENT_LEFT, w, 8, 2, Color(ink, 0.6))
+	if _keys_open:
+		_hud.draw_rect(KEYS_RECT, Color(bg, 0.95))
+		_hud.draw_rect(KEYS_RECT, Color(Palette.col("accent"), 0.6), false, 1.5)
+		_hud_text(KEYS_RECT.position + Vector2(0, 20), "keys", KEYS_RECT.size.x, 13, Palette.col("player"))
+		var keys := [
+			["arrows / WASD", "drive"], ["space · shift", "autodrive on · off"],
+			["Q · E", "indicators"], ["H", "horn"],
+			["L", "lights"], ["C", "seat / chase"],
+			["Z", "up over the city"], ["wheel · - =", "zoom"],
+			["G", "look round"], ["F", "walk / get in"],
+			["K", "pause"], ["V · R", "green wave · racer"],
+			["P", "perf view"], ["", ""],
+		]
+		for i in range(keys.size()):
+			var at := KEYS_RECT.position + Vector2(16.0 + (i % 2) * 204.0, 46.0 + (i / 2) * 26.0)
+			_hud.draw_string(_font, at, String(keys[i][0]), HORIZONTAL_ALIGNMENT_LEFT, 84, 11, Palette.col("accent"))
+			_hud.draw_string(_font, at + Vector2(88, 0), String(keys[i][1]), HORIZONTAL_ALIGNMENT_LEFT, 110, 11, ink)
+		_hud_text(Vector2(KEYS_RECT.position.x, KEYS_RECT.end.y - 10), "tap anywhere to close", KEYS_RECT.size.x, 9, Color(ink, 0.6))
+
+## a tap in the drawer (or the keys card, or anywhere while either is open): true if it took it
+func _more_tap(p: Vector2) -> bool:
+	if _keys_open:
+		_keys_open = false
+		return true
+	if not _more_open:
+		return false
+	if MORE_BTN.grow(3).has_point(p) or not MORE_RECT.has_point(p):
+		_more_open = false   # (a tap outside closes it, and does nothing else)
+		return true
+	for row: Array in _more_rows():
+		var opts: Array = row[2]
+		for i in range(opts.size()):
+			if not _seg_rect(row, i).grow(2).has_point(p):
+				continue
+			var k := String(opts[i][1])
+			match String(row[4]):
+				"time":
+					if k != _time_now():
+						_set_time_of_day(k)
+				"road":
+					if (k == "wet") != _wet:
+						_set_wet(k == "wet")
+				"style":
+					if k != _ap_style:
+						_set_ap_style(k)
+				"assist":
+					if (k == "on") != _assist:
+						_assist = k == "on"
+						_show_banner("steering assist " + k + (" when you drive" if _auto else ""), 1.2)
+						Probe.event("assist", {"on": _assist})
+				"act":
+					if k == "pause":
+						_toggle_pause()
+					elif k == "keys":
+						_more_open = false
+						_keys_open = true
+					elif k == "perf":
+						_toggle_perf()
+			return true
+	return true
+
+## a tap on one of the HUD's own buttons: done, and true; false if there is no button there
+func _hud_tap(p: Vector2) -> bool:
+	if _more_tap(p):
+		return true
+	if _paused and not _zoomed() and RESUME_BTN.grow(3).has_point(p):
+		_toggle_pause()
+		return true
+	if _hud_folded:
+		if SHOW_BTN.grow(3).has_point(p):
+			_hud_folded = false
+			return true
+		return false
+	if AUTO_BTN.grow(3).has_point(p):
+		if not _walking:
+			_auto_by_hand(not _auto)
+	elif _auto and not _walking and STYLE_BTN.grow(3).has_point(p):
+		_set_ap_style(AP_STYLES[(AP_STYLES.find(_ap_style) + 1) % AP_STYLES.size()])
+	elif GOTO_BTN.grow(3).has_point(p):
+		_open_picker.call_deferred()   # after this click, so it does not hit the list
+	elif WALK_BTN.grow(3).has_point(p):
+		_toggle_walk()
+	elif MORE_BTN.grow(2).has_point(p):
+		_more_open = true
+	elif FOLD_BTN.grow(2).has_point(p):
+		_hud_folded = true
+		_show_banner("buttons folded away: \"show\" brings them back", 1.6)
+	elif VIEW_BTN.grow(2).has_point(p):
+		_next_view()
+	elif LOOK_BTN.grow(2).has_point(p) and not _walking and not _auto:
+		_toggle_look()
+	elif _lights_shown() and LIGHTS_BTN.grow(2).has_point(p):
+		_set_lights(not _lights_on)
+	else:
+		return false
+	return true
+
+## is there a button (or the open drawer) under p? -- a touch there is the button's, not the
+## stick's or the view's (the button itself acts on the click the touch emulates)
+func _on_hud_button(p: Vector2) -> bool:
+	if _more_open or _keys_open:
+		return true
+	var rs: Array = [SHOW_BTN] if _hud_folded else [AUTO_BTN, GOTO_BTN, WALK_BTN, MORE_BTN, FOLD_BTN, VIEW_BTN]
+	if not _hud_folded:
+		if _auto:
+			rs.append(STYLE_BTN)
+		if not _walking and not _auto:
+			rs.append(LOOK_BTN)
+		if _lights_shown():
+			rs.append(LIGHTS_BTN)
+	if _paused and not _zoomed():
+		rs.append(RESUME_BTN)
+	for r: Rect2 in rs:
+		if r.grow(3).has_point(p):
+			return true
+	return false
 
 ## The minimap's lines round a point, in metres from it: outlines, paths, minor and major
 ## streets, the city limits, places. Gathered again only once the car is MAP_MOVE away,
@@ -25079,46 +25303,14 @@ func _input(event: InputEvent) -> void:
 					if _cross_rect(i, (_cross["ways"] as Array).size()).grow(3).has_point(mb.position):
 						_cross_pick(i)
 						return
-			if PERF_RECT.has_point(mb.position):
+			if _hud_tap(mb.position):
+				pass
+			elif _perf_view and PERF_RECT.has_point(mb.position):
 				_toggle_perf()
 			elif _trace_view and TRACE_SAVE.grow(3).has_point(mb.position):
 				_save_log()
 			elif _trace_view and TRACE_RECT.has_point(mb.position):
 				pass   # (a tap on the map is not a tap on the road under it)
-			elif AUTO_BTN.grow(4).has_point(mb.position):
-				if not _walking:
-					_set_auto(not _auto)
-			elif GOTO_BTN.grow(4).has_point(mb.position):
-				_open_picker.call_deferred()   # after this click, so it does not hit the list
-			elif NIGHT_BTN.grow(4).has_point(mb.position):
-				_next_time()
-			elif WET_BTN.grow(3).has_point(mb.position):
-				_set_wet(not _wet)
-			elif WAVE_BTN.grow(3).has_point(mb.position):
-				_set_wave(not _wave.on)
-			elif RACER_BTN.grow(3).has_point(mb.position):
-				if not _walking:
-					_set_racer(not _racing())
-			elif VIEW_BTN.grow(4).has_point(mb.position):
-				if _zoomed():
-					_zoom_seat = not _cockpit
-					_zoom_set(0.0)
-				else:
-					_set_cockpit(not _cockpit)
-			elif LOOK_BTN.grow(2).has_point(mb.position) and not _walking:
-				_toggle_look()
-			elif LIGHTS_BTN.grow(2).has_point(mb.position):
-				_set_lights(not _lights_on)
-			elif WALK_BTN.grow(2).has_point(mb.position):
-				_toggle_walk()
-			elif ASSIST_BTN.grow(4).has_point(mb.position):
-				_assist = not _assist
-				_show_banner("driving assist " + ("on" if _assist else "off") + (" when you drive" if _auto else ""), 1.2)
-				Probe.event("assist", {"on": _assist})
-			elif ZOOM_BTN.grow(2).has_point(mb.position):
-				_zoom_set(0.0 if _zoom > 0.0 else ZOOM_UP)
-			elif PAUSE_BTN.grow(2).has_point(mb.position):
-				_toggle_pause()
 			elif _zoomed() and not (_touch_seen and not _paused and mb.position.distance_to(STICK_C) <= STICK_GRAB):
 				_drag = true   # (a thumb on the stick, the city running under you, is driving)
 				_hold_at = mb.position   # (held there, not dragged: go there -- _hold_tick)
@@ -25131,17 +25323,13 @@ func _input(event: InputEvent) -> void:
 			_keep_screen_on(true)
 		_touch_seen = true
 		if t.pressed:
-			if AUTO_BTN.grow(4).has_point(t.position) or GOTO_BTN.grow(4).has_point(t.position) \
-					or ASSIST_BTN.grow(4).has_point(t.position) or NIGHT_BTN.grow(4).has_point(t.position) \
-					or WET_BTN.grow(3).has_point(t.position) or WAVE_BTN.grow(3).has_point(t.position) or RACER_BTN.grow(3).has_point(t.position) \
-					or VIEW_BTN.grow(4).has_point(t.position) or LIGHTS_BTN.grow(2).has_point(t.position) \
-					or WALK_BTN.grow(2).has_point(t.position) or LOOK_BTN.grow(2).has_point(t.position) \
-					or ZOOM_BTN.grow(2).has_point(t.position) or PAUSE_BTN.grow(2).has_point(t.position) \
+			if _on_hud_button(t.position) \
 					or (_trace_view and TRACE_RECT.has_point(t.position)) \
 					or t.position.y < 36.0:
 				return   # the button (via its emulated click) and the shell's menu/sound row
 			if _stick_id < 0 and t.position.distance_to(STICK_C) <= STICK_GRAB and not _paused:
 				_stick_id = t.index
+				_stick_used = true
 				_stick = ((t.position - STICK_C) / STICK_R).limit_length(1.0)
 				if _auto:
 					_set_auto(false)
