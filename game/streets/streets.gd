@@ -9421,9 +9421,11 @@ func _car_paints() -> Array:
 	var bg := Palette.col("bg")
 	var alt := Palette.col("bg_alt")
 	var white := ink
-	var silver := ink.lerp(alt, 0.32)
-	var grey := alt.lerp(ink, 0.22)
-	var black := bg.lerp(alt, 0.35)
+	# the greys neutral: mixed from the palette's bg_alt (lavender here) silver and grey cars
+	# came out mauve beside the shops (the paving's greys had the same fault)
+	var silver := _greyed(ink.lerp(alt, 0.32), 0.92)
+	var grey := _greyed(alt.lerp(ink, 0.22), 0.92)
+	var black := _greyed(bg.lerp(alt, 0.35), 0.85)
 	# a car's red is a car paint's red and its blue a dark blue, whatever the palette: the
 	# palette's hazard (pink here) and player (cyan) made pink and teal cars, and a filmed
 	# street has none. Their hue pinned, their strength the palette's.
@@ -12311,7 +12313,7 @@ func _build_walk_lights(pole_mesh: Mesh) -> void:
 ## a lit shopfront on the street side of each shop's building, and its name above it
 func _build_pois() -> void:
 	var k := 1.0 / float(_city_data.get("scale", 10))
-	var front := {"glass": [], "glass_k": [], "post": [], "beam": [], "shutter": []}   ## shop windows and their frames (glass_k: what is inside, SHOP_SHADER)
+	var front := {"glass": [], "glass_k": [], "post": [], "beam": [], "shutter": [], "housing": []}   ## shop windows and their frames (glass_k: what is inside, SHOP_SHADER)
 	var board_cols: Array = []       ## each sign board's colour: dark, white, the shop's, cream
 	var awnings := {"xf": [], "col": []}   ## awning transforms and their colours
 	var crates := new_cbuf(BLD_CELL)    ## fruit and vegetables out in front of a greengrocer
@@ -12391,6 +12393,10 @@ func _build_pois() -> void:
 				_string_lights(crates, bulbs, pos, n, along, gy)
 			if look_k < 10 and kind.begins_with("shop"):   # shut: the roller shutter down
 				front["shutter"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.1, 1.3)))
+			# the roller shutter's box over the window, as most of the towns' shops have it
+			# rolled up into (a grey metal box the window's width); every shut one has one
+			if look_k < 10 or posmod(_hash_i(at) >> 13, 100) < 75:
+				front["housing"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.2, 2.86)))
 			if kind == "pharmacy":
 				crosses.append(Transform3D(b, at3.call(pos + along * (1.6 * wide + 0.5), 0.5, 3.2)))
 		if spot[2] and kind in ["cafe", "restaurant", "fast_food", "ice_cream", "bar", "pub"] and String(shop.get("seats", "")) != "none":
@@ -12451,6 +12457,11 @@ func _build_pois() -> void:
 		var shut := BoxMesh.new()
 		shut.size = Vector3(3.0, 2.4, 0.05)
 		_chunked(shut, front["shutter"], r, [], _surface("shutter"), false)
+	if not (front["housing"] as Array).is_empty():
+		var hb := BoxMesh.new()
+		hb.size = Vector3(3.2, 0.3, 0.3)
+		_chunked(hb, front["housing"], r, [], _surface("shutter"), false)
+	_tally("shutter_boxes", (front["housing"] as Array).size())
 	var awning := BoxMesh.new()
 	awning.size = Vector3(3.3, 0.14, 1.5)
 	_chunked(awning, awnings["xf"], r, awnings["col"], _vc_mat(), true)
