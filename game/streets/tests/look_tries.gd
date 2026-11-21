@@ -12,7 +12,9 @@ func _initialize() -> void:
 func _snap(name: String) -> void:
 	await create_timer(0.4).timeout
 	await RenderingServer.frame_post_draw
-	root.get_viewport().get_texture().get_image().save_png(OS.get_environment("OUT") + "/" + name + ".png")
+	var img := root.get_viewport().get_texture().get_image()
+	img.save_png(OS.get_environment("OUT") + "/" + name + ".png")
+	_white_check(img, name)
 
 func _run() -> void:
 	await create_timer(0.3).timeout
@@ -43,3 +45,19 @@ func _run() -> void:
 	await _snap("try_%s_under" % tag)
 	print("shots in ", OS.get_environment("OUT"))
 	quit()
+
+## Nothing sunlit burns out: the share of the shot that is pure white (every channel 252+),
+## every 4th pixel. The renderer clips at 1 before any tone curve, so a white wall too bright
+## for the light goes flat 255 (a view up at the start's blocks was 19% before roll_white).
+## Over 5% is a fail: a few % is the sky's sun-side and the odd glint.
+func _white_check(img: Image, name: String) -> void:
+	var n := 0
+	var hot := 0
+	for y in range(0, img.get_height(), 4):
+		for x in range(0, img.get_width(), 4):
+			var c := img.get_pixel(x, y)
+			n += 1
+			if c.r >= 0.988 and c.g >= 0.988 and c.b >= 0.988:
+				hot += 1
+	var share := float(hot) / maxf(1.0, float(n))
+	print("%s %s: pure white %.1f%%" % ["FAIL" if share > 0.05 else "ok  ", name, share * 100.0])

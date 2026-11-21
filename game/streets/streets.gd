@@ -27,16 +27,26 @@ const LEVELS := [
 	# made up by tools/fake_city.py: one small town with one of everything, ringed by mountains,
 	# that loads in a moment -- for checking a change, not for exploring
 	{"name": "Kiryat Dimyon (test town)", "group": "Cities", "sort": 99, "city": "dimyon", "start": ["הנשיא", "השוק"], "look": "med"},
-	# a walk filmed in Givatayim, replayed in first person on its own (cities/details/givatayim.json)
-	{"name": "A walk in Givatayim: Katzenelson to Ha-Meri", "group": "Auto Experiments", "city": "givatayim", "look": "med", "walk": "katzenelson_hameri"},
+	# a walk filmed in Givatayim, replayed in first person on its own (cities/details/givatayim.json).
+	# The walks have no "group": the start screen leaves them off, and the "Walks" list below
+	# opens them (their numbers stay, for the tests and notes: LEVEL=5, LEVEL=6)
+	{"name": "A walk in Givatayim: Katzenelson to Ha-Meri", "city": "givatayim", "look": "med", "walk": "katzenelson_hameri", "filmed": true},
 	# a second, timed and placed from the GPS track taken with its film (tools/gpx_route.py)
-	{"name": "A walk in Givatayim: Sheinkin and Sirkin", "group": "Auto Experiments", "city": "givatayim", "look": "med", "walk": "sheinkin_sirkin"},
+	{"name": "A walk in Givatayim: Sheinkin and Sirkin", "city": "givatayim", "look": "med", "walk": "sheinkin_sirkin", "filmed": true},
 	# a box of central Tel Aviv, not the whole city (the workflow's bbox): HaKirya, Azrieli,
 	# Sarona, Montefiore, Bitsaron, the Ayalon. Starts on Kaplan heading east, the towers ahead.
 	{"name": "Tel Aviv: Azrieli to the sea", "group": "Cities", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer"},
 	# the route set (routes.json, tests/pick_routes.py): pick one of the drives and watch
 	# autodrive take it, from one address to the other, in its own city
 	{"name": "Test routes: watch a drive", "group": "Auto Experiments", "routes": true, "city": "dimyon", "look": "med"},
+	# the walks, as the route set's drives: a list (no city behind it), each walk starting its own
+	# city -- the two filmed ones and walks never filmed, along real streets elsewhere
+	# (data_tools/make_walks.py writes those into each city's details file)
+	{"name": "Walks: watch one", "group": "Auto Experiments", "walks": true, "city": "dimyon", "look": "med"},
+	{"name": "Tel Aviv: along Rothschild", "city": "tel_aviv", "look": "med", "decks": "infer", "walk": "tel_aviv_rothschild"},
+	{"name": "Ashdod: HeHalutzim to Herzl", "city": "ashdod", "look": "med", "decks": "infer", "walk": "ashdod_halutzim"},
+	{"name": "Bedford: Shore Drive by the water", "city": "bedford", "look": "north", "decks": "infer", "walk": "bedford_shore"},
+	{"name": "Test town: the market street", "city": "dimyon", "look": "med", "walk": "dimyon_market"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -1236,6 +1246,9 @@ func start(_config: Dictionary) -> void:
 	if _place.get("routes", false):
 		_route_page = String(_config.get("page", "set"))
 		_route_list_open()   # no city: the list of drives, each starting its own city
+		return
+	if _place.get("walks", false):
+		_walk_list_open()   # no city: the list of walks, each starting its own city
 		return
 	if _config.has("route"):
 		_route = _route_by_id(int(_config["route"]))
@@ -15877,6 +15890,8 @@ func _film_begin(id: String) -> void:
 		# little to the one spoken to and back, now and then a wider turn (as the film's do)
 		_film_people.append([a, A, B, float(tt[0]), float(tt[1]), bool(pp.get("stay", false)), false,
 			fd.angle() if bool(pp.get("talk", false)) else INF])
+	if bool(w.get("dodge", false)):
+		_film_dodge_begin()
 	var p0 := _film_at(0.0)
 	_pos = p0
 	_yaw = (_film_at(1.5) - p0).angle()
@@ -15907,11 +15922,18 @@ func _film_begin(id: String) -> void:
 ## (refitted 21 Nov on a bare recording after the deeper light -- fill x0.6, sun x1.12 -- which
 ## clipped 2.2% of the bare picture and left it more saturated: 0.191 against the film's 0.159;
 ## again 22 Nov after white plaster's roll-off, neutral paving greys and greener leaves, with
-## FILM_WARM 1.0: the graded greys' red/green 1.068 -> 1.048, the film's 1.021)
-const FILM_CURVE := [0.054, 0.107, 0.193, 0.277, 0.349, 0.412, 0.463, 0.503, 0.535, 0.561, 0.586,
-	0.610, 0.636, 0.668, 0.705, 0.779, 0.877]
+## FILM_WARM 1.0: the graded greys' red/green 1.068 -> 1.048, the film's 1.021; then with
+## FILM_WB, the curve refitted and the saturation held at 1.2)
+const FILM_CURVE := [0.054, 0.107, 0.194, 0.278, 0.350, 0.414, 0.464, 0.504, 0.535, 0.562, 0.586,
+	0.611, 0.638, 0.670, 0.707, 0.781, 0.877]
 const FILM_WARM := 1.0   ## (1.06 on the old light; the bare picture's greys are as warm as the film's now)
-const FILM_SAT := 1.224
+const FILM_SAT := 1.2   ## (the fit asks 1.47 with FILM_WB on: the film's colour is its content -- fresh
+## green, blue sky -- more than its grade, and 1.47 put the pavers' tint straight back)
+## the phone's white balance, on every tone: red and blue gains that put the graded greys where
+## the film's are (red/green 1.021, blue/green 1.006). Without it a grey paver lit by the warm
+## sun read cream, one a shade darker -- more of the violet fill light -- read pink, and the
+## grade's saturation doubled both (the passage at 55 s: grey pavers drawn beige and pink)
+const FILM_WB := [0.973, 1.037]
 ## the phone's auto-exposure: [target, strength, least, most] -- the frame's mean brightness
 ## pulled towards target by (target / mean)^strength, in light, within least..most. The film's
 ## brightness second to second holds at 0.45 +- 0.055 (its exposure follows the view); the
@@ -15954,13 +15976,13 @@ void fragment() {
 		float gain = clamp(pow(expo_target / max(m, 0.02), expo_k), expo_min, expo_max);
 		c = pow(pow(c, vec3(2.2)) * gain, vec3(1.0 / 2.2));
 		float l0 = dot(c, LUM);
-		c *= mix(vec3(1.0), vec3(%f, 1.0, 1.0), 1.0 - smoothstep(0.6, 0.9, l0));
+		c *= vec3(%f, 1.0, %f) * mix(vec3(1.0), vec3(%f, 1.0, 1.0), 1.0 - smoothstep(0.6, 0.9, l0));
 		c = vec3(tone(c.r), tone(c.g), tone(c.b));
 		float l = dot(c, LUM);
 		COLOR = vec4(clamp(vec3(l) + (c - vec3(l)) * %f, 0.0, 1.0), 1.0);
 	}
 }
-""" % [", ".join(FILM_CURVE.map(func(v: float) -> String: return "%.3f" % v)), FILM_WARM, FILM_SAT]
+""" % [", ".join(FILM_CURVE.map(func(v: float) -> String: return "%.3f" % v)), FILM_WB[0], FILM_WB[1], FILM_WARM, FILM_SAT]
 	var mat := ShaderMaterial.new()
 	mat.shader = sh
 	mat.set_shader_parameter("expo_target", FILM_EXPO[0])
@@ -15979,6 +16001,9 @@ void fragment() {
 
 func _film_tick(dt: float) -> void:
 	_film_t += dt
+	if not _film_base.is_empty() and _film_t >= _film_dodged:
+		_film_dodged = _film_t + 2.0
+		_film_dodge(_film_t + 4.0, _film_t + 40.0)   # (the squares ahead have built since)
 	var p := _film_at(_film_t)
 	var moved := p.distance_to(_pos)
 	_film_step += moved
@@ -16071,6 +16096,113 @@ func _film_on_zebras() -> void:
 			var a: Vector2 = z[2]
 			var b: Vector2 = z[3]
 			_zebras_on.append([(a + b) * 0.5, a.distance_to(b) * 0.5 - 0.1, (b - a).normalized(), "film"])
+
+## A walk nobody filmed (data_tools/make_walks.py, `dodge`) is laid along a street's pavement
+## by its map alone and knows nothing of what stands on it -- the city's trees, poles, bins,
+## and whatever other sessions put on pavements later. So the game steps it round them: the
+## walk resampled every half second (and at each of its own points, so its waits keep their
+## times), and each sample pushed sideways off any post within reach, toward the side that
+## is clear of walls, the push spread over DODGE_SPREAD m either way so it bends round, not
+## jumps. Squares build as the walk goes, so it is done again for the stretch ahead every 2 s.
+const DODGE_CLEAR := 0.55        ## from a post's edge to the walker's middle
+const DODGE_SPREAD := 2.5        ## metres along the walk a push fades over
+var _film_base: Array = []       ## the samples as laid: Vector3(x, z, t)
+var _film_side: Array = []       ## each sample's right (Vector2), across the way it walks
+var _film_arc: PackedFloat32Array = PackedFloat32Array()   ## metres along the walk at each sample
+var _film_dodged := 0.0          ## the walk's second the stretch ahead is next looked over
+
+func _film_dodge_begin() -> void:
+	var end: float = _film[_film.size() - 1].z
+	var ts := {}
+	for q: Vector3 in _film:
+		ts[snappedf(q.z, 0.01)] = true
+	var t := 0.0
+	while t < end:
+		ts[snappedf(t, 0.01)] = true
+		t += 0.5
+	var keys := ts.keys()
+	keys.sort()
+	var base: Array = []
+	for k: float in keys:
+		var p := _film_at(k)
+		base.append(Vector3(p.x, p.y, k))
+	_film_base = base
+	_film_side = []
+	_film_arc = PackedFloat32Array()
+	var arc := 0.0
+	var last := Vector2.RIGHT
+	for i in range(base.size()):
+		if i > 0:
+			arc += Vector2(base[i].x, base[i].y).distance_to(Vector2(base[i - 1].x, base[i - 1].y))
+		_film_arc.append(arc)
+		var a := _film_at(base[i].z - 0.4)
+		var b := _film_at(base[i].z + 0.4)
+		if b.distance_to(a) > 0.05:
+			last = (b - a).normalized()
+		_film_side.append(Vector2(-last.y, last.x))
+	_film = base.duplicate()
+	_film_dodge(0.0, end + 1.0)
+
+func _film_dodge(t0: float, t1: float) -> void:
+	var n := _film_base.size()
+	var need := PackedFloat32Array()
+	need.resize(n)
+	var lo := n
+	var hi := -1
+	for i in range(n):
+		var b: Vector3 = _film_base[i]
+		if b.z < t0 - 3.0 or b.z > t1 + 3.0:
+			continue
+		lo = mini(lo, i)
+		hi = maxi(hi, i)
+		var p := Vector2(b.x, b.y)
+		var sd: Vector2 = _film_side[i]
+		var near: Array = []
+		for j: int in _near(_post_hash, p, 2.5, BLD_CELL):
+			if p.distance_to(_posts[j]) < _post_r[j] + DODGE_CLEAR + 1.6:
+				near.append(j)
+		if near.is_empty():
+			need[i] = 0.0
+			continue
+		# the least step sideways (up to 1.6 m either way, in 10 cm) clear of all of them at
+		# once and of the walls; if none is, the one with the most room
+		var best := 0.0
+		var room := -INF
+		for k in range(0, 33):
+			var off := 0.1 * float((k + 1) / 2) * (1.0 if k % 2 == 1 else -1.0)
+			var q := p + sd * off
+			var m := INF
+			for j: int in near:
+				m = minf(m, q.distance_to(_posts[j]) - _post_r[j])
+			if m >= DODGE_CLEAR and _push_out(q, 0.25, false, false) == Vector2.ZERO:
+				best = off
+				room = m
+				break
+			if m > room and _push_out(q, 0.25, false, false) == Vector2.ZERO:
+				room = m
+				best = off
+		need[i] = best
+	if hi < 0:
+		return
+	for i in range(lo, hi + 1):
+		var b: Vector3 = _film_base[i]
+		if b.z < t0 or b.z > t1:
+			continue
+		var off := 0.0
+		var j := i
+		while j >= 0 and _film_arc[i] - _film_arc[j] < DODGE_SPREAD:
+			var w := 0.5 + 0.5 * cos(PI * (_film_arc[i] - _film_arc[j]) / DODGE_SPREAD)
+			if absf(need[j]) * w > absf(off):
+				off = need[j] * w
+			j -= 1
+		j = i + 1
+		while j < n and _film_arc[j] - _film_arc[i] < DODGE_SPREAD:
+			var w := 0.5 + 0.5 * cos(PI * (_film_arc[j] - _film_arc[i]) / DODGE_SPREAD)
+			if absf(need[j]) * w > absf(off):
+				off = need[j] * w
+			j += 1
+		var q := Vector2(b.x, b.y) + (_film_side[i] as Vector2) * off
+		_film[i] = Vector3(q.x, q.y, b.z)
 
 ## where the walk is at time t: a smooth curve (Catmull-Rom) through the timed points
 func _film_at(t: float) -> Vector2:
@@ -23227,7 +23359,7 @@ func _routes_level() -> int:
 func _city_level(cid: String) -> int:
 	for i in range(LEVELS.size()):
 		var lv: Dictionary = LEVELS[i]
-		if lv.get("city", "") == cid and not lv.has("walk") and not lv.get("routes", false):
+		if lv.get("city", "") == cid and not lv.has("walk") and not lv.get("routes", false) and not lv.get("walks", false):
 			return i + 1
 	return 1
 
@@ -23336,6 +23468,41 @@ func _route_new_row(have: int) -> void:
 		b.add_theme_font_size_override("font_size", 10)
 		_route_ui.add_child(b)
 		_put(b, Vector2(190 + k * 87, 80), Vector2(83, 25))
+
+## the walks to watch: every place in LEVELS with a "walk", filmed ones first, one button each
+## (in the list's frame, _route_ui, so _input's taps reach them as the routes' do)
+func _walk_list_open() -> void:
+	if _route_ui != null:
+		_route_ui.queue_free()
+	_route_ui = Control.new()
+	_route_ui.size = Vector2(640, 360)
+	_route_ui.z_index = 90
+	add_child(_route_ui)
+	var dim := ColorRect.new()
+	dim.color = Color(Palette.col("bg"), 0.96)
+	dim.size = Vector2(640, 360)
+	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_route_ui.add_child(dim)
+	var title := UIKit.label("walks: pick one and watch it, in first person", 13, "player")
+	title.add_theme_font_override("font", _font)
+	title.position = Vector2(20, 30)
+	title.size = Vector2(600, 20)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_route_ui.add_child(title)
+	var rows: Array = []
+	for filmed: bool in [true, false]:
+		for i in range(LEVELS.size()):
+			var lv: Dictionary = LEVELS[i]
+			if lv.has("walk") and bool(lv.get("filmed", false)) == filmed:
+				rows.append([i + 1, ("filmed:  " if filmed else "") + String(lv["name"])])
+	for k in range(rows.size()):
+		var lvl: int = rows[k][0]
+		var b := _tap_button(String(rows[k][1]), func(): Flow.start_game("streets", {"level": lvl}))
+		b.add_theme_font_override("font", _font)
+		b.add_theme_font_size_override("font_size", 11)
+		b.clip_text = true
+		_route_ui.add_child(b)
+		_put(b, Vector2(120, 64 + k * 31.0), Vector2(400, 27))
 
 ## a drive of the route set: down at its start address, "go to" its end, autodrive on
 func _route_begin() -> void:
