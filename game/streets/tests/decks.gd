@@ -156,6 +156,10 @@ func _drive(run: Array) -> void:
 	if g._auto:
 		g._set_auto(false)
 	g._y = g._h(at) if run.size() < 5 else g._decks.surf(at, 1.0e6 if run[4] == "top" else -1.0e6)
+	# (and the car there: _land_on_road goes by the car's height only within 40 m of the car,
+	# else the ground's -- a real town's tunnel run was put down on a car park's aisle at the
+	# ground 24 m off, its end a slot between two blocks, and drove that instead)
+	g._pos = at
 	if not g._land_on_road(at, 30.0, face):
 		print("%s: no road near %s" % [name, at])
 		return
@@ -175,6 +179,7 @@ func _drive(run: Array) -> void:
 	var last := g._pos as Vector2
 	var shot_at := [3.0, secs * 0.45, secs * 0.8]
 	var trace := OS.get_environment("TRACE") != ""
+	var aptrace := OS.get_environment("APTRACE") != ""   # (autodrive every 0.25 s: where, why, its dead end, the plan)
 	var hist: Array = []
 	while t < secs:
 		await physics_frame
@@ -210,6 +215,9 @@ func _drive(run: Array) -> void:
 						print("    off the level at (%.1f, %.1f): car %.2f, levels %s, ground here %.2f" % [g._pos.x, g._pos.y, g._y,
 							lv.map(func(y): return snappedf(y, 0.01)), g._h(g._pos)])
 		air_was = g._air
+		if aptrace and fmod(t, 0.25) < Engine.time_scale / Engine.physics_ticks_per_second:
+			print("    t %.2f (%.1f, %.1f) yaw %.2f v %.1f why %s dead %s kt %s plan %s" % [t, g._pos.x, g._pos.y, g._yaw, g._v,
+				g._log._why(g), g._ap_dead, not g._ap_kt.is_empty(), (g._ap_pts.slice(0, 4) as Array).map(func(q): return Vector2i(q))])
 		var on: int = g._decks.deck_at(g._pos, g._y, 1.0)
 		if on >= 0:
 			var r: Dictionary = g._roads[on]

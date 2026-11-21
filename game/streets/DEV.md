@@ -1270,6 +1270,34 @@ Two changes:
 After: route 9 twice 0 late, 3 within 1.6 m of the body (none under 1 m; was 7, 1);
 Givatayim 0 late. Traffic cars do not look at walkers at all (they rely on the kerb wait).
 
+### Traffic at slip roads; the City tunnel's test run (21 Nov 2026)
+
+- *Off onto a slip road from the wrong lane.* `_turn_ahead` counted a fork under 34 degrees
+  as straight on, so a car leaving Sderot Herzl's three lanes for its slip stayed in the
+  middle lane and crossed the kerb lane at the fork, into the bus there (Ashdod's exam: 9 of
+  its 16 checks at (-1780, 2275)). Leaving a road for a `_link` (`_onto_link`) is now a turn
+  to the fork's side from 0.08 rad (5 degrees), so the car is in that lane 110 m before.
+- *Moving over because the road changed* (`realign`: onto a narrower road, a slip's lane)
+  never looked; a car with someone level with it or a little ahead in the lane it moves
+  to (`_side_clear`) now eases off (0.8 of its speed each decision) and lets them go first.
+  Only those level or ahead: braking for one further ahead it slowed to a stop, and its
+  move over (paced by its speed) stopped with it.
+- Ashdod's exam, before / after: 16 / 5 checks (traffic overlapping 9 / 4, into posts 6 / 1);
+  autodrive's harsh braking 4 / 15 a run, 10 of them "for car" -- one run each, noisy, but
+  watch it. Givatayim 13 and the test town 15 checks after (no before from the same day).
+  Route set after: 10 of 10, route 2 brushed a wall and a post at 11 km/h on Moshe Dayan
+  passing a bus pulled in at a stop (its log `route-2-hit306.json`, not kept: autodrive "blocked by
+  post 71247" 0.6 s before) -- open, not yet known whether new.
+- *The City tunnel "hitting a building"* was the test, not autodrive: `decks.gd` put the
+  car down by `_land_on_road`, which goes by the car's height only within 40 m of the car,
+  so a tunnel's run was put down on the ground 24 m off -- on a car park aisle whose last
+  13 m is a 3.6 m slot between two blocks (Givatayim (-735, -1078), OSM's aisle into an
+  underground car park) -- and drove out through it. The test sets the car there first;
+  the run drives the tunnel, 0 hits. The slot itself is still drivable (open).
+- `auto_stands` prints the lead car's nose and tail off the lane and its heading too: the
+  validation's Nahliel stop (4 s behind a sedan at 26 km/h, 2.9 m off, 60 m free) did not
+  come back in two runs (13 min, every stop a queue).
+
 ## Numbers to compare against (November 2026, cloud container, software renderer)
 
 - Build time in full: Givatayim ~6 s, Bedford ~9 s, Ashdod ~15 s, the test town ~1.2 s

@@ -355,6 +355,12 @@ func tick(dt: float) -> void:
 			c.want = _target(c, i, dt * (1.0 if c.want < 0.0 else float(every)))
 		var vt := c.want
 		_us("traffic: follow", t2)
+		# moving over because the road changed (onto a narrower one, a slip road's lane) and
+		# someone is where it is moving to: it eases off and lets them by rather than sliding
+		# into their side -- realign never looked (two cars on HaGdud HaIvri moved over into
+		# each other, the exam's overlaps)
+		if c.realign and absf(c.shift_to - c.shift) > 0.5 and c.v > 1.0 and not _side_clear(c, i, c.shift_to):
+			vt = minf(vt, c.v * 0.8)
 		var lat := maxf(LANE_MOVE, c.v * REALIGN) if c.realign else LANE_MOVE
 		# Sideways only as it rolls, like a car steering: its back trails the front (_place),
 		# so a shift while it stood moved the front alone and swung the body round -- cars
@@ -1323,8 +1329,24 @@ func _turn_ahead(c: Car) -> Array:
 		var din := (c.pts[j] - c.pts[maxi(j - 2, 0)]).normalized()
 		var dout := (c.pts[mini(j + 2, n - 1)] - c.pts[j]).normalized()
 		var a := din.angle_to(dout)
+		# off onto a slip road: a turn to its side, however shallow the fork (counted straight
+		# at under 34 degrees, a car left Sderot Herzl's three lanes for its slip from the
+		# middle one, across the bus in the kerb lane -- the exam's overlaps there)
+		if absf(a) < 0.6 and absf(a) > 0.08 and _onto_link(c, j):
+			return [1 if a > 0.0 else -1, dist]
 		return [0 if absf(a) < 0.6 else (1 if a > 0.0 else -1), dist]
 	return [0, INF]
+
+## at point j of its path, does the car leave its road for a slip road (a "_link")?
+func _onto_link(c: Car, j: int) -> bool:
+	var into := -1
+	for q in range(j + 1, mini(j + 4, c.rd.size())):
+		if c.rd[q] >= 0 and c.rd[q] != c.rd[j]:
+			into = c.rd[q]
+			break
+	if into < 0 or c.rd[j] < 0:
+		return false
+	return String((_roads[into] as Dictionary)["k"]).ends_with("_link") and not String((_roads[c.rd[j]] as Dictionary)["k"]).ends_with("_link")
 
 func _near_junction(c: Car, ahead: float) -> bool:
 	for j in range(maxi(c.k - 2, 0), c.pts.size()):
@@ -1334,6 +1356,21 @@ func _near_junction(c: Car, ahead: float) -> bool:
 		if dist > -8.0 and c.node[j] >= 0 and _ways_out(c.node[j]) >= 3:
 			return true
 	return false
+
+## nobody beside it in the lane `shift` left of its line: from level with it to half a
+## length ahead (those further ahead are followed as usual; braking for them while moving
+## over, it slowed to a standstill and the move over stopped with it)
+func _side_clear(c: Car, i: int, shift: float) -> bool:
+	for j in range(cars.size()):
+		if j == i or not (cars[j] as Car).alive:
+			continue
+		var o: Car = cars[j]
+		if o.pos.distance_squared_to(c.pos) > 400.0 or not _level(c, o.y, o.lift):
+			continue
+		var pr := _proj(c, o.pos, 16.0, 24.0)
+		if pr.x != INF and pr.x > -1.0 and pr.x < (o.len + c.len) * 0.5 and absf(pr.y - shift) < 2.0:   # (one level or ahead: it lets them go; one behind lets it)
+			return false
+	return true
 
 ## nobody (nor the player) beside or close behind or ahead in the lane `shift` left of my line
 func _lane_clear(c: Car, i: int, shift: float) -> bool:
