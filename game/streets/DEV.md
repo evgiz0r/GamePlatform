@@ -1761,6 +1761,46 @@ first:
   red fire hydrant, a push button on the walk light's pole, bar stools and awnings rather
   than umbrellas outside the cafes, green bins.
 
+## The walks list and walks nobody filmed (levels 9-13, 22 Nov 2026)
+
+- **The list.** Level 9, "Walks: watch one" (group Auto Experiments, `"walks": true`), opens
+  `_walk_list_open()` in place of a city, built like the test routes' list (in `_route_ui`, so
+  `_input`'s taps reach its buttons): one button per place in LEVELS with a `"walk"`, the
+  `"filmed": true` ones first. The walks themselves have no `"group"`, so the start screen
+  leaves them off; levels 5 and 6 keep their numbers (the tests and notes use them). The new
+  walks are levels 10-13, appended so nothing renumbered. `_city_level()` and
+  prepublish.gd skip the list's level as they skip the routes'. `tests/walk_menu.gd` checks
+  the list and that a tap starts a walk (~1 min here).
+- **The walks** are written by `data_tools/make_walks.py` (its `WALKS` table: city, the list's
+  name, legs `[street, from the junction with, to the junction with]`, side, `promenade`)
+  into `cities/details/<city>.json` -- the first details files Tel Aviv, Ashdod, Bedford and
+  the test town have; they hold only `walks`, marked `"src": "make_walks"` (rewritten on the
+  next run, anything else kept). `--list CITY STREET` prints a street's junctions with the
+  metres between, to pick a leg. Pace 1.35 m/s; at each street it crosses, a wait at the kerb
+  of 1.8-3.2 s with a look left then right, the crossing at 1.45 m/s, in `zebras` so cars stop.
+  Lengths: Rothschild 271 m / 203 s, HeHalutzim 195 m / 143 s, Shore Drive 450 m / 334 s, the
+  market street 215 m / 164 s. All four start well away from the filmed ones' corner of
+  Givatayim, on the user's ask.
+- **Stepping round posts** (`"dodge": true`, streets.gd `_film_dodge_begin` / `_film_dodge`):
+  the walk resampled every 0.5 s plus its own points, each sample moved sideways by the least
+  step (10 cm steps to 1.6 m either way) that leaves `DODGE_CLEAR` (0.55 m) from every post's
+  edge within reach and is clear of walls, spread over `DODGE_SPREAD` (2.5 m) with a cosine.
+  Redone for the next 4-40 s every 2 s as squares build; `filmed_walk.gd` runs it over the
+  whole walk before `SCAN`. The filmed walks do not dodge: their line is the film's.
+- **What each fix was for** (scans, `SCAN=1 STREETS_BUILD_ALL=0 tests/run.sh filmed_walk
+  <level>`, ~30 s to 2 min each on this PC): at a pavement's middle the walks went through 15
+  posts (the tree rows); `PAVE` 2.05 (behind the game's row at half width + 1.3) moved them
+  little, as most were mapped trees and poles; the one-post-at-a-time push left 6 where a
+  tree and a railing stood 1.7 m apart; the all-at-once step left 3, on the test town's market
+  pavement (stalls r 0.85 and a shop front) -- that walk takes the other pavement. HeHalutzim
+  and Rothschild are divided: walked against a carriageway, "right" was its median side (the
+  Ashdod walk went down the other carriageway); one-way ways now take their own outer side,
+  and Rothschild walks the middle promenade on purpose (its outer pavement went through a
+  shop front). Now all four print only "scan done".
+- **Open**: the walks are not checked against a film (there is none); a walk's end is just
+  a junction (no turn to look round, nothing to stop for); a crossing at lights does not wait
+  for the green man; the list has no "yours" page as the routes' has.
+
 ## The second filmed walk and the GPS pipeline (level 6): handoff
 
 The session that set up filming with GPS (20 Nov 2026) and made "A walk in Givatayim:

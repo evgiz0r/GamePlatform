@@ -73,6 +73,8 @@ func _run() -> void:
 						box.position.y - g._h(Vector2(p.x, p.z)), box.end.y - g._h(Vector2(p.x, p.z)), Vector2(p.x, p.z).distance_to(c)])
 		quit()
 		return
+	if not g._film_base.is_empty():   # a walk that steps round posts: over the whole walk, all built
+		g._film_dodge(0.0, last + 1.0)
 	if OS.get_environment("SCAN") == "1":
 		# the whole route, every quarter second: each stretch inside a building or a post
 		# (anything solid: a bollard, a parked bike) -- a replayed walk goes through walls
