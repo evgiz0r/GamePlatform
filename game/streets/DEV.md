@@ -2288,6 +2288,15 @@ Each line: where the code is, the test, what good reads.
   every street parks half up the kerb, and the lanes share the whole asphalt
   (`_lane_off`/`_lanes_each_way`), so a parking strip on the road needs traffic, autodrive and
   the lane paint to give that width up first.
+- **A flickering line across the screen** (user, the first filmed walk's passage: "flickering
+  line in the middle of the screen sometimes. dunno if its my screen or godot or bug"): the
+  sky dome (`_build_sky_dome`) was Godot's hemisphere, which closes with a flat disc at its
+  middle's height, and `_sky_follow` stands the dome on the eye -- a plane through the eye.
+  A phone's GPU drew it now and then as a one-pixel line in the horizon's grey at the horizon
+  (row ~270 of 896 in the walk's view, pitched 15 deg down), over near hedges too; the
+  software renderer here never draws it. Now a whole sphere (the lower half the horizon's
+  haze). `tests/horizon_line.gd` + `horizon_line.py`: `DROP=0.002` stands the dome 2 mm below
+  the eye, `HEMI=1` puts the hemisphere back -- the line in every frame before, none after.
 - **Which build** (user: "add the version somewhere, maybe near the map"): `_build_line` over
   the minimap reads res://build.txt, now "<UTC time> <commit>" (tools/publish_web.sh); the
   credits under the map are size 7 and wrap clear of the bottom buttons (Tel Aviv's ran
@@ -2305,7 +2314,7 @@ Each line: where the code is, the test, what good reads.
   anywhere), `street_at` (by street name at its roundabouts), `perf_dive`, `deck_corner`,
   `islands`, `pave_overlap`, `picker`, `minimap_route`, `warm_census`, `index_gain`,
   `signs_inferred`, `start_drive`, `rails_near`, `cut_under`, `signs_double`, `auto_stands`,
-  `parked_median`;
+  `parked_median`, `horizon_line`;
   `tools/level_roads.py`.
 
 ## OSM's extra fields and speed limits: handoff (20 Nov 2026)
@@ -2426,8 +2435,15 @@ the user's `tools/.cache/` only.
   and greys; 80% petrol, ~10% electric or hybrid); mark the bus lanes by matching
   `bus_lanes.json`'s street names and end points to the roads (the baker's OSM `bf`/`bb`
   have some already); run buses on `transit_*.json`'s lines and times.
-- **Open**: Ashdod's heights (not in this task's sources: Ashdod's own GIS not looked at);
-  GovMap and the Survey of Israel were not needed and not checked. The GTFS terms page on
+- **Open** (updated after the second round below):
+  - **Ashdod's heights:** its map has no layer of all its buildings, only the public
+    ones (316 heights). GovMap and the Survey of Israel are long shots, by hand in a
+    browser, unchecked.
+  - **Ramat Gan's trees:** not fetched. Its ArcGIS Online host (services8.arcgis.com)
+    answers from anywhere, but the cloud environment does not allow it yet; whether a
+    trees layer exists is unknown.
+  - The fetch status and what else could be had are in the root ideas file's "Official
+    data" bullet. The GTFS terms page on
   gov.il cannot be read by tools; the user read it and found nothing against reuse.
   Ramat Gan's layer has no licence text either; the user approved committing it too.
 
@@ -2486,9 +2502,13 @@ from the air (11,893, each with its radius), both fetched on the user's computer
 - **The game** (`_build_trees`): a mapped tree takes its form's kind (`fixed`), a crown its
   size (`cr / crown width`) and a kind by size when the map has no species (`_crown_kind`:
   over 5.5 m ficus or eucalyptus, under 1.3 m olive or round, else the street mix). It gets
-  a trunk's room (`_mapped_tree_ok`: 0.4 m off the asphalt, 0.6 m off a wall, 1.2 m apart),
+  a trunk's room (`_mapped_tree_ok`: 0.4 m off the asphalt -- the road's strip, a rounded
+  corner's curve and a junction's disc, `_off_road` and `_in_junction`: on the strip alone
+  40 of Givatayim's and 42 of Tel Aviv's stood up to 1.3 m into a corner, `city_check` --
+  0.6 m off a wall, 1.2 m apart),
   and where it has none it is moved (`_tree_nudge`): onto the pavement 1 m or 0.6 m from
-  the kerb (Tel Aviv plants in the parking lane, and OSM's widths are guesses), out to the
+  the kerb (Tel Aviv plants in the parking lane, and OSM's widths are guesses) and out past
+  a corner's curve (`_out_of_corner`), out to the
   nearest wall's foot from up to 2.5 m inside a house (4 m for a crown from the air, centred
   over the roof it overhangs); a grate or earth square under it on a pavement. Where an
   aerial map covers (`_tree_cover`, within 40-80 m of its trees) nothing is made up; a list
@@ -2498,7 +2518,7 @@ from the air (11,893, each with its radius), both fetched on the user's computer
   (`_trees_mapped`). The credits are one line by owner (`_credit_line`).
 - **Test**: `tests/real_trees.gd` (README row: the numbers; before/after with
   `STREETS_CITY_FILE`, which keeps the level's own town id). Load times unchanged.
-- **Lost** (Tel Aviv 3,042, Givatayim 4,825): trees deeper in a house than the moves
+- **Lost** (Tel Aviv 3,096, Givatayim 4,863): trees deeper in a house than the moves
   allow (Givatayim: ~2,700 crowns centred over a roof by more than 1.4 m; Tel Aviv: ~950
   more than 2.5 m inside an OSM outline -- courtyards drawn as roof, or a private plot),
   over 4.5 m into a road (a boulevard's middle where OSM maps one road), or with no
