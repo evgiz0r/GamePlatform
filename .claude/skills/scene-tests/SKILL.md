@@ -186,7 +186,20 @@ film's drifted by a degree or two -- and the differences are the head's turns to
 head = the film's facing less the body's) and the pace's shape to copy (the share of each
 stretch's distance, between landmark times kept, since a replayed place's lengths are not
 the real one's). The up-and-down summed this way is not usable: while the camera looks down,
-its far band is ground, and walking forward reads as tipping down.
+its far band is ground, and walking forward reads as tipping down. And the summed facing reads
+a turn short wherever the "far" band is near: under an arcade it held the ceiling, the columns
+and motorbikes a metre or two off, the walker's own steps slid them as much as a turn did, and
+a 90-degree turn along the arcade read 50 -- the head fitted to it pointed the replay at the
+shop windows from half a metre for six seconds. Check a fitted facing against the frames
+wherever the scene closes in (arcades, columns, a car filling the frame), and there take the
+facing from the frames (what is level, what the stripes and kerbs point at) instead.
+
+**Pull a film's frames by decoding, not by a fast seek.** `ffmpeg -ss T -i clip.mp4` (the
+seek before the input) jumps by keyframes, and on one phone clip it returned the same frozen
+frame for every time in its first 8 s -- a whole pass's "it faces straight across at 1-2.5 s"
+was read off that frame, and the replay looked the wrong way for its first five seconds.
+`ffmpeg -i clip.mp4 -ss T` decodes up to the time (slower: fine for a few frames), or check that
+two nearby times give different pictures before measuring anything on them.
 
 **A test that jumps a scene's clock cannot show what is timed by it.** Stills taken by
 setting a replay's time and running a third of a second skip every scripted event in
