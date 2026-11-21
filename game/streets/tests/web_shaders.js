@@ -11,6 +11,10 @@
 //   $GODOT --headless --path . --export-release "Web" /some/dir/index.html
 //   node game/streets/tests/web_shaders.js /some/dir [level] [seconds of play]
 //
+// DUMP=file.json also writes every program's source (vertex + fragment, in link order) to compare
+// two builds with tests/shader_diff.py: a browser keeps the programs it compiled (its program
+// cache, keyed by the source), so a publish that leaves the GLSL as it was costs a phone no
+// compiling, and one that changes it costs the whole warm-up again.
 // Needs the build's own files only (served here with the cross-origin headers the threaded
 // build needs). Prints the counts and the slowest programs' moments; exits when the game
 // prints its report or after the seconds run out.
@@ -51,6 +55,7 @@ const server = http.createServer((req, res) => {
   const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader',
     '--ignore-gpu-blocklist', '--enable-webgl'] });
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  if (process.env.DUMP) await page.addInitScript(() => { window.__dump = true; });
   await page.addInitScript(() => {
     // every compile and link, and the status checks after them (where a driver that compiles
     // in the background makes the caller wait), timed
@@ -91,7 +96,7 @@ const server = http.createServer((req, res) => {
       let h = 0;
       for (let i = 0; i < all.length; i++) h = (h * 31 + all.charCodeAt(i)) | 0;
       const ms = (att.get(pr) || []).reduce((a, sh) => a + (cms.get(sh) || 0), 0);
-      return { defs: defs.join(' '), names, len: all.length, h, ms };
+      return { defs: defs.join(' '), names, len: all.length, h, ms, text: window.__dump ? all : undefined };
     };
     log.what = [];
     wrap('linkProgram', (t, dt) => { log.links.push([t, dt]); });
@@ -122,6 +127,10 @@ const server = http.createServer((req, res) => {
     if (marks.waited && Date.now() - marks.waited > seconds * 1000 + 15000) break;
   }
   const gl = await page.evaluate(() => window.__gl);
+  if (process.env.DUMP) {
+    fs.writeFileSync(process.env.DUMP, JSON.stringify(gl.links.map(([t], i) => ({ phase: (marks.begin === undefined || t < marks.begin) ? 'before' : (marks.end === undefined || t < marks.end ? 'warm-up' : 'after'), ...gl.what[i] }))));
+    console.log('sources written to ' + process.env.DUMP);
+  }
   const links = gl.links;
   const phase = (t) => (marks.begin === undefined || t < marks.begin) ? 'before' : (marks.end === undefined || t < marks.end ? 'warm-up' : 'after');
   const sum = { before: [0, 0], 'warm-up': [0, 0], after: [0, 0] };

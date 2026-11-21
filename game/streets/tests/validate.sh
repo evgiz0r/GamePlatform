@@ -61,11 +61,14 @@ if [ -n "${REGRESS:-}" ]; then
 	EXTRA="STREETS_BUILD_ALL=0 FROM=45" FPS=10 run re_walk_people 6 1 walk_people 300
 	EXTRA="STREETS_BUILD_ALL=0" FPS=free run re_start_soon 1 1 start_soon 180
 	EXTRA="STREETS_BUILD_ALL=0" run re_load_bar 1 1 load_bar 240
+	# (object permanence: people and cars popping, sliding or on a street in view; 90 s of
+	# autodrive in Givatayim, ~5 min headless)
+	EXTRA="STREETS_BUILD_ALL=1" run re_people_pops 1 1 people_pops 900
 fi
 echo
 echo "=== STREETS VALIDATION ($(git rev-parse --short HEAD)) ==="
 for l in 1 2 3 4 7; do
-	grep -h -E "^CITY CHECK [^:]|^  (walls|posts|buildings) on the road|^  lit points alone|^  (signs doubled|junction offers twice|islands on the road|median over a road|road leaning|two pavings)" "$out/city$l.txt" 2>/dev/null
+	grep -h -E "^CITY CHECK [^:]|^  (walls|posts|buildings) on the road|^  lit points alone|^  ((signs|walk lights|lights|bus stops) doubled|posts twice|parked |lights: |junction offers twice|islands on the road|median over a road|road leaning|two pavings)" "$out/city$l.txt" 2>/dev/null
 	grep -q "SCRIPT ERROR" "$out/city$l.txt" && echo "  !! SCRIPT ERROR in city$l"
 done
 for e in exam4 exam1 exam3; do
