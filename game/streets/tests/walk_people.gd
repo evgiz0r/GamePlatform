@@ -7,7 +7,8 @@ extends SceneTree
 ##             there the tick before (just made visible, or moved more than 1.5 m in a tick)
 ##   turned    a walker turning back on the spot in view within 40 m (the end of its stretch)
 ##   swerve    a walker within 8 m stepping more than 0.5 m off its line, and how far
-##   close     someone within 0.6 m of the walker (two bodies in one place: walked through)
+##   close     someone within 0.58 m of the walker (two bodies in one place: walked through;
+##             0.6 is the floor they are held at)
 ##   in car    someone (or a dog, a pushchair) more than 0.15 m into a parked car's body (4.4 x
 ##             1.8 m, its corners rounded; the car found as its end posts, 2.8 m apart)
 ## UNTIL=s stops there. SEED=n another day's people (who goes where hangs on frame times as well as the seed).
@@ -17,6 +18,13 @@ extends SceneTree
 ##   STREETS_BUILD_ALL=0 LEVEL=6 FROM=45 $GODOT --headless --fixed-fps 10 --path . -s res://game/streets/tests/walk_people.gd
 var g: Node
 var last := {}        ## actor id -> [visible, position]
+
+## a walker's place on its line, for the pops: which line, how far along, which way, where across
+func _walker_state(w: Dictionary) -> String:
+	var line: PackedVector2Array = w.get("line", PackedVector2Array())
+	return "with %s, line %d pts from %s, s %.2f, dir %s, lat %.2f, lane %.2f, dodge %.2f, at %s" % [w.get("with", "-"),
+		line.size(), Vector2i(line[0]) if line.size() > 0 else "-", float(w.get("s", 0.0)), w.get("dir", "-"),
+		float(w.get("lat", 0.0)), float(w.get("lane", 0.0)), float(w.get("dodge", 0.0)), w.get("at", "-")]
 
 func _initialize() -> void:
 	_run()
@@ -87,13 +95,15 @@ func _run() -> void:
 					counts["pop"] += 1
 					_say(shown, "pop", "%5.1f s  pop: a %s %s %.0f m away (%s)" % [t, kind,
 						"appears" if not was[0] else "jumps %.1f m" % (was[1] as Vector2).distance_to(p), d, Vector2i(p)])
-				last[id] = [a.visible, p]
+					if kind == "walker":   # (what it was doing the tick before and now)
+						print("    before %s\n    now    %s" % [was[2] if was.size() > 2 else "-", _walker_state(w)])
+				last[id] = [a.visible, p, _walker_state(w) if kind == "walker" else ""]
 				if not a.visible:
 					continue
 				if seen and d < 40.0:
 					met[id] = true
 				bodies.append([id, kind, p, 0.25])
-				if d < 0.6:
+				if d < 0.58:   # (0.6 is the floor walkers are held at: a push off a post after it left 0.599)
 					counts["close"] += 1
 					closest = minf(closest, d)
 					_say(shown, "close", "%5.1f s  close: a %s %.2f m from the walker at %s%s" % [t, kind, d, Vector2i(me),

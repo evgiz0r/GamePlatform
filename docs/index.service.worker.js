@@ -4,7 +4,7 @@
 // Incrementing CACHE_VERSION will kick off the install event and force
 // previously cached resources to be updated from the network.
 /** @type {string} */
-const CACHE_VERSION = '1795256780|3486907';
+const CACHE_VERSION = '1795276540|3310131';
 /** @type {string} */
 const CACHE_PREFIX = 'GamePlatform-sw-cache-';
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
@@ -17,7 +17,7 @@ const ENSURE_CROSSORIGIN_ISOLATION_HEADERS = true;
 const CACHED_FILES = ["index.html","index.js","index.offline.html","index.icon.png","index.apple-touch-icon.png","index.audio.worklet.js","index.audio.position.worklet.js"];
 // Files that we might not want the user to preload, and will only be cached on first load.
 /** @type {string[]} */
-const CACHEABLE_FILES = ["index.wasm","index.pck"];
+const CACHEABLE_FILES = ["index.wasm","index.pck","index.art.b21e008c1fb1.pck","index.data_ashdod.4cc773a64562.pck","index.data_bedford.895347747316.pck","index.data_dimyon.2040101ccaa2.pck","index.data_givatayim.71297cfa1929.pck","index.data_tel_aviv.ba3d37ec88eb.pck","index.sound.1e5ae9778cac.pck"];
 const FULL_CACHE = CACHED_FILES.concat(CACHEABLE_FILES);
 
 // PATCHED by tools/publish_web.sh -- fetch straight from the origin, under a URL stamped
@@ -54,6 +54,7 @@ self.addEventListener('install', (event) => {
 			if (!(await have('index.wasm'))) {
 				await reuseEngine(cache);
 			}
+			await reusePacks(cache);
 			for (const f of CACHEABLE_FILES) {
 				if (await have(f)) {
 					continue;
@@ -74,6 +75,26 @@ self.addEventListener('install', (event) => {
 // older build's cache holds the very same file (by its SHA-256, WASM_SHA256 below), copy it
 // across before the old caches are dropped: only index.pck is downloaded after a publish.
 const WASM_SHA256 = '7eda98958eb09135a1acb54a4323a00b1a55af1997f15fa1cdc2b93e3df46656';
+// PATCHED by tools/publish_web.sh -- a split pack's name is its content hash, so an older
+// build's copy under the same name is this build's file: take it instead of downloading it.
+async function reusePacks(cache) {
+	for (const f of CACHEABLE_FILES) {
+		if (!/^index\..+\.pck$/.test(f) || (await cache.match(f)) !== undefined) {
+			continue;
+		}
+		for (const key of await caches.keys()) {
+			if (!key.startsWith(CACHE_PREFIX) || key === CACHE_NAME) {
+				continue;
+			}
+			const old = await (await caches.open(key)).match(f);
+			if (old) {
+				await cache.put(f, old);
+				break;
+			}
+		}
+	}
+}
+
 async function reuseEngine(cache) {
 	try {
 		for (const key of await caches.keys()) {

@@ -246,6 +246,15 @@ the parked cars, which stand a third in the road).
   lay level with the asphalt -- "grass patches on the road". An area with road nearly all
   round it is an island: raise it to about kerb height with a kerb face, cut back off every
   road's asphalt, the junctions' asphalt and the paths through it.
+- **The triangle a slip road cuts off is an island OSM rarely maps.** With no area there,
+  each road lays its own kerb and pavement into it and the strips stand loose and askew in
+  the junction. Find it from the roads: the slip road plus the shortest way back between
+  its ends along the other roads, small and holding no building, is the island -- cut off
+  the roads' strips and the junctions' round patches like any island, kerb it all round, and leave out every road's kerb, pavement and corner that faces into it
+  (test against the whole triangle: the cut island is too thin to catch a pavement's
+  middle). A road-width fit that pairs parallel ways as a divided road's halves will pair a
+  slip road with the road it leaves, so its triangle side reads as a "median side": the
+  leaving-out must apply there too.
 - **Bare ground must not look like asphalt.** A grey a shade off the road's, with a photo's
   light and dark over it, read as more road: a boulevard's wide middle strip looked like
   lanes and its lawns like grass painted on them ("grass patches on the road"). Give open

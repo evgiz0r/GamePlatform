@@ -322,7 +322,10 @@ so a code-only publish costs a phone the main pack (~4 MB) instead of ~40. `inde
 downloads them all with the main pack before the engine starts, and `shell/autoload/packs.gd`,
 the first autoload, mounts them, so nothing in a game changes. `node tools/web_cache.js <dir A>
 <dir B>` serves two builds one after the other through the worker and prints what the second
-cost. A native or editor run has no packs and is untouched.
+cost. A native or editor run has no packs and is untouched. The art and sound packs are named by
+their *sources* (and the engine version), not by the imported bytes: Godot's import of a
+glTF is not repeatable byte for byte, and the publishing machine imports afresh, so naming
+them by output renamed the 13 MB art pack on every publish.
 
 **A game can do slow work once per build instead of on every load.** If its folder holds a
 `prepublish.gd` (a SceneTree script), `tools/publish_web.sh` runs it headless before the
