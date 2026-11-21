@@ -3727,9 +3727,9 @@ be clear for that plus 14 m a second of passing for what comes the other way; lo
 `blocker` -1), so a car braking harder than 3 m/s^2 for you, or one you come at head-on in
 its lane, hoots -- an AudioStreamPlayer3D at the car, the player's own synthesised horn at
 the car's pitch, 3 at once at most, each car once in 6 s; a red run makes the nearest car
-hoot. Buttons: "wave" and "racer" sit on the left over the minimap (8,140 and 8,164): the
-bottom row is full, and on a phone the stick's ring and its "hold & drag to drive" fill the
-bottom right (the wave button first went there and covered the hint).
+hoot. (Its button and the green wave's were first their own, on the left over the minimap;
+the HUD rework the same night made them autodrive's style -- rules, green wave, racer, racer
+the default -- on the chip beside autodrive and in the "more" drawer; V and R still switch.)
 Later the same night: racer goes round on the right too where there are two lanes or more
 its way and the left is busy (`sgn`); stood behind a queue that does not move (1 s), it
 goes up onto the pavement on the right (`_ap_mount_by`: the car's middle 1.6 m past the kerb,
