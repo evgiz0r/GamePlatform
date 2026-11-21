@@ -114,13 +114,21 @@ func _run() -> void:
 		for k in ["pass_bus", "pass_van", "squeeze_van", "hoot", "crash", "racer_red", "person_hit", "hit_person"]:
 			d[k] = int(probe._counts.get(k, 0)) - int(c0.get(k, 0))
 		var people := 0
+		var what: Array = []
+		var right := 0
 		for i in range(e0, probe._events.size()):
 			var ev: Dictionary = probe._events[i]
-			if String(ev["kind"]) == "crash" and String((ev["data"] as Dictionary).get("hit", "")) == "person":
-				people += 1
+			var data: Dictionary = ev["data"]
+			if String(ev["kind"]) == "crash":
+				what.append("%s at %d km/h" % [String(data.get("hit", "?")), int(data.get("kmh", 0))])
+				if String(data.get("hit", "")) == "person":
+					people += 1
+			if String(ev["kind"]) in ["pass_bus", "pass_van"] and String(data.get("side", "")) == "right":
+				right += 1
 		var r := {"racer": racing, "arrived": arrived, "secs": snappedf(t, 0.1), "reds": g._reds - reds0,
 			"passed": d["pass_bus"] + d["pass_van"], "hoots": d["hoot"], "crashes": d["crash"],
-			"people_hit": people, "top_kmh": snappedf(top * 3.6, 1)}
+			"people_hit": people, "top_kmh": snappedf(top * 3.6, 1), "passed_right": right,
+			"pavement": int(probe._counts.get("racer_pavement", 0)) - int(c0.get("racer_pavement", 0)), "hit": what}
 		res[racing] = r
 		print("RACER %s" % JSON.stringify(r))
 	var a: Dictionary = res[false]

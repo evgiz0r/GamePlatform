@@ -1,20 +1,21 @@
 extends RefCounted
 ## Racer mode: "thief or racer mode, where the autodrive doesn't care about traffic". The
 ## "racer" button (or key R) puts autodrive on with the rules off: through red lights and
-## stop signs, never giving way, past the zebras' waiting people, at the speed the car can
+## stop signs, never giving way, at the speed the car can
 ## take the bends rather than the limit, round any slower car (over the centre line when
-## nothing is coming). It still brakes for a person in its lane -- a driver who does not care
-## about traffic, not one who runs people down. The town goes on as before: traffic always
+## nothing is coming). It still stops for people on a zebra and brakes for a person in its
+## lane -- a driver who does not care about traffic, not one who runs people down. The town goes on as before: traffic always
 ## lets the player go (it stands on its brakes), and now a car that has to brake hard for
 ## you, or finds you coming at it in its lane, sounds its horn where it is.
 ##
-## streets.gd's _autodrive asks `on` to leave out the lights, signs, zebras and giving way,
+## streets.gd's _autodrive asks `on` to leave out the lights, signs and giving way,
 ## and to raise the limit and the corners; _ap_pass_bus asks `can_pass` to go round moving
 ## cars too. Here: the horns, and the count of what it got away with.
 
 const LIMIT_K := 1.6          ## the road's limit times this...
 const TOP := 100.0 / 3.6      ## ...up to this (m/s)
-const CORNER_K := 1.3         ## corners taken this much faster (sideways pull x1.7: tyres near their grip)
+const CORNER_K := 1.3         ## bends taken this much faster (sideways pull x1.7: tyres near their grip)...
+const CORNER_FROM := 7.0      ## ...those the plan takes at this or more (m/s); tight turns as usual
 const PASS_SLOWER := 2.0      ## a car this much slower than it wants to go (m/s) is gone round
 const HOOT_BRAKE := -3.0      ## a car braking harder than this (m/s^2) with the player its blocker hoots
 const HOOT_NEAR := 45.0       ## only cars this close hoot (m)
@@ -25,6 +26,8 @@ var g: Node
 var on := false
 var reds := 0                 ## red lights run since it was switched on (the HUD shows it)
 var hoots := 0
+var passes := 0               ## cars gone round (either side), and queues gone round on the pavement
+var mounts := 0
 var _cool := {}               ## car instance id -> seconds until it may hoot again
 var _horns: Array = []        ## AudioStreamPlayer3D pool
 var _horn_left: Array = []    ## seconds left of each one's hoot

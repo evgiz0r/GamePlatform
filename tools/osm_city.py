@@ -2060,7 +2060,12 @@ def places_apply(out, P, data_dir):
 
 
 BUS_LANES_FILE = "bus_lanes.json"
-BUS_LANE_KINDS = {"נת\"\"צ ימני": "right", "נת\"\"צ שמאלי": "left"}
+# right and left bus lanes; a public-transport road (מת"צ: Ashdod's Herzl busway down the
+# median) and BRT (רת"צ: King George's) run where a divided street's left lanes are; priority
+# at junctions (העדפה בצמתים) is a short right lane before one. Contraflow lanes (נת"צ נגדי)
+# are left out: buses would drive against a one-way street beside its cars
+BUS_LANE_KINDS = {"נת\"\"צ ימני": "right", "נת\"\"צ שמאלי": "left", "מת\"\"צ": "left",
+                  "רת\"\"צ": "left", "העדפה בצמתים": "right"}
 BUS_LANE_ROADS = {"motorway", "trunk", "primary", "secondary", "tertiary", "unclassified",
                   "residential", "motorway_link", "trunk_link", "primary_link",
                   "secondary_link", "tertiary_link"}
@@ -2100,8 +2105,8 @@ def bus_lanes_apply(out, P, data_dir):
     street that runs along a stretch (its middle within BUS_LANE_NEAR m of the stretch's
     line for BUS_LANE_SHARE of its length) the stretch's way gets its lanes, the rightmost
     or the leftmost; a road with one lane that way gets none (a bus lane takes a lane from
-    the cars, never the only one). Contraflow lanes, whole bus roads, BRT and priority at
-    junctions are left out: the game has nothing that draws or drives them yet. Marks the
+    the cars, never the only one). Whole bus roads and BRT go in as left lanes, priority at
+    junctions as right ones (BUS_LANE_KINDS); contraflow lanes are left out. Marks the
     roads it set with bm ("f", "b", "fb") and takes those out first when applied again.
     Returns the credit when it brought anything."""
     if not data_dir:

@@ -21414,13 +21414,18 @@ func _autodrive(dt: float) -> Array:
 		# 2 m/s^2 a m/s, it ran ~1.3 m/s over the 2.6 m/s^2 slope down to each corner, into it
 		# 5-7 km/h faster than planned and out wide -- tests/turn_width.gd)
 		var to_go := maxf(dist - absf(_v) * 0.5, 0.0) if _ap_v[i] > 0.0 else maxf(dist - 1.5, 0.0)
-		var corner: float = _ap_v[i] * (_racer.CORNER_K if racing and _ap_v[i] > 0.0 else 1.0)
+		# (racer: the gentle bends faster; a tight turn at its usual pace -- taken faster it swung
+		# wide into the corner's posts, 33 km/h into one in Tel Aviv)
+		var corner: float = _ap_v[i] * (_racer.CORNER_K if racing and _ap_v[i] >= _racer.CORNER_FROM else 1.0)
 		vt = _held(vt, sqrt(corner * corner + 2.0 * (4.0 if racing else 2.6) * to_go), "curve")
-	if not racing:   # (racer.gd: no lights, signs, zebras' waiting people, nor giving way)
+	if not racing:   # (racer.gd: no lights, signs, nor giving way)
 		vt = _held(vt, _ap_light_v(), "light")
 		vt = _held(vt, _ap_sign_v(dt), "sign")
-		vt = _held(vt, _ap_zebra_v(), "zebra")
-	vt = _held(vt, _ap_people_v(), "people")   # (someone in the lane: always)
+	# (people on a zebra and in the lane: always -- racer once left the zebra out with the
+	# rest and hit someone crossing in Tel Aviv at 11 km/h: on the crossing already, they were
+	# only in its lane when it was too close to stop)
+	vt = _held(vt, _ap_zebra_v(), "zebra")
+	vt = _held(vt, _ap_people_v(), "people")
 	var tg := Time.get_ticks_usec()
 	if not racing:
 		vt = _held(vt, _ap_give_v(dt), "junction")
@@ -21434,6 +21439,8 @@ func _autodrive(dt: float) -> Array:
 	# a while, ignore cars crossing the lane (a standoff in a junction) -- never one ahead
 	var reach := clampf(12.0 + _v * 1.2 + _v * _v / 5.2, 18.0, 130.0)
 	var lead: Array = _traffic.lead_on(_ap_pts, _pos, reach, _ap_wait > 3.0, _y)
+	if racing and float(lead[0]) < 22.0 and _ap_wait > 1.0 and _ap_mount_by(lead):
+		lead = _traffic.lead_on(_ap_pts, _pos, reach, _ap_wait > 3.0, _y)
 	if float(lead[0]) < (60.0 if racing else 30.0) and _ap_pass_bus(lead):
 		lead = _traffic.lead_on(_ap_pts, _pos, reach, _ap_wait > 3.0, _y)
 	if float(lead[0]) < INF and int(lead[3]) >= 0 and _ap_crossing_clears(int(lead[3]), float(lead[0])):
@@ -21953,16 +21960,30 @@ func _ap_pass_bus(lead: Array) -> bool:
 		extra = float(bus.v) * t_pass
 		if extra > 140.0:
 			return false   # (too long a way out: follow it)
-	# the next lane over clear, by every car's middle (the other way's: further, they come at you)
+	# the next lane over clear, by every car's middle (the other way's: further, they come at you).
+	# Racer (racer.gd) tries the lane on the right too where there are two or more its way,
+	# and goes the side that is clear
 	var reach := gap + extra + (45.0 + 14.0 * t_pass if n < 2 else 25.0)
-	for c in _traffic.cars:
-		if not c.alive or c == bus:
-			continue
-		var rel: Vector2 = c.pos - _pos
-		var ahead := rel.dot(fwd)
-		var side := rel.dot(left)
-		if ahead > -15.0 and ahead < reach and side > lane_w * 0.4 and side < lane_w * 1.6:
-			return false
+	var sides: Array = [1.0, -1.0] if racing_by and n >= 2 else [1.0]
+	var sgn := 0.0
+	for sd: float in sides:
+		var clear := true
+		for c in _traffic.cars:
+			if not c.alive or c == bus:
+				continue
+			var rel: Vector2 = c.pos - _pos
+			var ahead := rel.dot(fwd)
+			var side := rel.dot(left) * sd
+			if ahead > -15.0 and ahead < reach and side > lane_w * 0.4 and side < lane_w * 1.6:
+				clear = false
+				break
+		if clear and sd < 0.0 and _off_road(_pos - left * (lane_w + CAR_WIDTH * 0.5), 0.0):
+			clear = false   # (no lane there: the kerb)
+		if clear:
+			sgn = sd
+			break
+	if sgn == 0.0:
+		return false
 	# out, past, back in: the points of the plan from just ahead to past the bus -- measured
 	# from the car, as the gap is: the plan's first point is the start of the stretch it is
 	# on, which on a straight street can be 40 m back (the bend landed behind the car)
@@ -21971,6 +21992,9 @@ func _ap_pass_bus(lead: Array) -> bool:
 	var half: float = bus.len * 0.5
 	var start_s := maxf(gap - half - 10.0, 2.0)
 	var end_s := gap + half + 12.0 + extra
+	var keep_pts := _ap_pts.duplicate()
+	var keep_v := _ap_v.duplicate()
+	var keep_lim := _ap_lim.duplicate()
 	_ap_densify(s0 + end_s + 10.0, 2.0)
 	for k in range(1, _ap_pts.size()):
 		s += _ap_pts[k - 1].distance_to(_ap_pts[k])
@@ -21980,10 +22004,92 @@ func _ap_pass_bus(lead: Array) -> bool:
 		if t <= 0.0:
 			continue
 		var kd := (_ap_pts[mini(k + 1, _ap_pts.size() - 1)] - _ap_pts[k - 1]).normalized()
-		_ap_pts[k] += Vector2(kd.y, -kd.x) * lane_w * t
+		_ap_pts[k] += Vector2(kd.y, -kd.x) * lane_w * t * sgn
+	if racing_by:
+		# (racer's way out checked for what stands there, not cars alone: a post, a tree, a
+		# median's end -- undone if anything is)
+		for k in range(1, _ap_pts.size()):
+			if _ap_pts[k].distance_to(_pos) > end_s + 10.0:
+				break
+			if _push_out(_ap_pts[k], 1.1, true, false, _y) != Vector2.ZERO:
+				_ap_pts = keep_pts
+				_ap_v = keep_v
+				_ap_lim = keep_lim
+				return false
 	_ap_passed = bi
-	Probe.event("pass_van" if dbl else "pass_bus", {"lane_w": snappedf(lane_w, 0.1)})
+	if racing_by:
+		_racer.passes += 1
+	Probe.event("pass_van" if dbl else "pass_bus", {"lane_w": snappedf(lane_w, 0.1), "side": "left" if sgn > 0.0 else "right"})
 	_log.event("pass van" if dbl else "pass bus")
+	return true
+
+## Racer (racer.gd), stood behind a queue that does not move: up onto the pavement on the
+## right and along it past the queue, back down at its head -- only where nobody is on that
+## stretch of pavement (3 m either side of the line), nothing solid stands on it (posts,
+## trees, bins, a parked car, a wall) and it is not a junction just ahead. True when it did.
+const MOUNT_PAST := 26.0      ## metres of pavement it takes at most past the car in front
+func _ap_mount_by(lead: Array) -> bool:
+	var bi: int = lead[3]
+	if bi < 0 or bi == _ap_passed or _ap_pts.size() < 2:
+		return false
+	var hit := _nearest_seg(_pos, 12.0, true, true, _y)
+	if hit.is_empty():
+		return false
+	var r: Dictionary = _roads[hit["road"]]
+	if HIGHWAYS.has(r["k"]):
+		return false
+	# from the plan's line out to beyond the kerb: the car's middle 1.6 m onto the pavement
+	var edge := (float(r["w"]) * 0.5 if int(r["o"]) != 0 else float(r["w"]) * 0.5) - _lane_off(r)
+	var shift := clampf(edge + 1.6, 2.5, 6.5)
+	var gap: float = lead[0]
+	var keep_pts := _ap_pts.duplicate()
+	var keep_v := _ap_v.duplicate()
+	var keep_lim := _ap_lim.duplicate()
+	var s0 := _ap_pts[0].distance_to(Geometry2D.get_closest_point_to_segment(_pos, _ap_pts[0], _ap_pts[1]))
+	var start_s := maxf(gap - 8.0, 1.0)
+	var end_s := gap + MOUNT_PAST
+	_ap_densify(s0 + end_s + 10.0, 1.0)
+	var s := -s0
+	var bent: Array = []
+	for k in range(1, _ap_pts.size()):
+		s += _ap_pts[k - 1].distance_to(_ap_pts[k])
+		if s > end_s + 6.0:
+			break
+		var t := clampf((s - start_s) / 5.0, 0.0, 1.0) * clampf((end_s + 6.0 - s) / 6.0, 0.0, 1.0)
+		if t <= 0.0:
+			continue
+		var kd := (_ap_pts[mini(k + 1, _ap_pts.size() - 1)] - _ap_pts[k - 1]).normalized()
+		_ap_pts[k] -= Vector2(kd.y, -kd.x) * shift * t   # (to the right)
+		_ap_v[k] = minf(_ap_v[k], 6.0)   # (up and along at a crawl: 20 km/h)
+		bent.append(_ap_pts[k])
+	var ok := not bent.is_empty()
+	var people: Array = []
+	for cr: Dictionary in _crossers:
+		people.append(Vector2((cr["actor"] as Node3D).position.x, (cr["actor"] as Node3D).position.z))
+	for w: Dictionary in _walkers:
+		if (w["actor"] as Node3D).visible:
+			people.append(Vector2((w["actor"] as Node3D).position.x, (w["actor"] as Node3D).position.z))
+	for q: Vector2 in bent:
+		if _push_out(q, 1.1, true, true, _y) != Vector2.ZERO:
+			ok = false
+			break
+		for pp: Vector2 in people:
+			if pp.distance_squared_to(q) < 9.0:
+				ok = false
+				break
+		if not ok:
+			break
+	if ok and _ap_turn_ahead() != 0:
+		ok = false
+	if not ok:
+		_ap_pts = keep_pts
+		_ap_v = keep_v
+		_ap_lim = keep_lim
+		return false
+	_ap_passed = bi
+	_racer.mounts += 1
+	Probe.event("racer_pavement", {"over": snappedf(shift, 0.1)})
+	_log.event("racer onto the pavement")
 	return true
 
 ## Past a delivery van in a one-way street of one lane: no lane to go round it in, but most

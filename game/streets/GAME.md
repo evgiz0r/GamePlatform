@@ -482,10 +482,11 @@ gone red for you has turned by the time you get there.
 > any crossroads i approach switches to green for my car
 
 **Racer.** "racer" (on the left, under "wave", or R) puts autodrive on with the rules
-off: it goes through red lights and stop signs, never gives way, does not wait for the
-people at a zebra, takes the bends as fast as the tyres hold rather than the limit (about
-one and a half times it, up to 100 km/h) and goes round any slower car, over the centre
-line when nothing is coming. It still brakes for a person actually in its way. The town
+off: it goes through red lights and stop signs, never gives way, takes the bends as fast as the tyres hold rather than the limit (about
+one and a half times it, up to 100 km/h) and goes round any slower car -- on the left, or
+the right where the road has the lanes, over the centre line when nothing is coming -- and
+when a queue will not move it goes up onto the pavement and along it, if nobody is on it.
+It still stops for people on a zebra and brakes for anyone in its way. The town
 carries on as before: the traffic stands on its brakes for you, and a car that has to, or
 that finds you coming at it in its lane, sounds its horn. Each red it runs is counted
 beside the button. Autodrive off (the stick, the keys, walking) ends it.
@@ -502,7 +503,9 @@ shelter is its squat concrete entrance with a steel door facing the street and t
 
 **Bus lanes from the Ministry of Transport.** Beside the ones OSM marks, the Ministry's own
 list of bus lanes is laid on the streets it names: Menachem Begin, Derekh HaShalom, Arlozorov
-and the rest -- painted and kept for buses (and taxis) as the others are.
+and the rest -- painted and kept for buses (and taxis) as the others are; Ashdod's Herzl
+busway down the middle of the boulevard and King George's rapid-bus lanes too. Not yet: the
+lanes where buses go against a one-way street.
 
 > If I would want a zoom out feature, that zooms out from where I am. Maybe it pauses the
 > city (maybe we can add a pause feature anyway), and we can zoom back in (or check around).

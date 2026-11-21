@@ -3456,8 +3456,10 @@ without a gap. (The square being built keeps its stand-in to the end of `_build_
 ## Racer, the Ministry's bus lanes, kindergartens and shelters (22 Nov 2026)
 
 **Racer** (`racer.gd`). Autodrive with the rules off: `_autodrive` skips `_ap_light_v`,
-`_ap_sign_v`, `_ap_zebra_v` and `_ap_give_v` while `_racing()`, keeps `_ap_people_v` (a
-person in its lane: always), drives to `limit()` (the road's x1.6, at most 100 km/h) and
+`_ap_sign_v` and `_ap_give_v` while `_racing()`, keeps `_ap_zebra_v` and `_ap_people_v`
+(people on a crossing or in its lane: always -- it left the zebra out at first and hit
+someone on one in Tel Aviv at 11 km/h; normal autodrive's zebra rule stops only for people
+on the crossing, never those waiting, so racer loses nothing by it), drives to `limit()` (the road's x1.6, at most 100 km/h) and
 takes each corner `CORNER_K` (1.3) faster, braking into it at 4 m/s^2 (2.6). `_ap_pass_bus`
 already took the car round a bus at its stop or a delivery van; with racer it goes round
 any car `PASS_SLOWER` m/s slower than it wants, moving too: the bend runs on by as far as
@@ -3470,12 +3472,24 @@ the car's pitch, 3 at once at most, each car once in 6 s; a red run makes the ne
 hoot. Buttons: "wave" and "racer" sit on the left over the minimap (8,140 and 8,164): the
 bottom row is full, and on a phone the stick's ring and its "hold & drag to drive" fill the
 bottom right (the wave button first went there and covered the hint).
+Later the same night: racer goes round on the right too where there are two lanes or more
+its way and the left is busy (`sgn`); stood behind a queue that does not move (1 s), it
+goes up onto the pavement on the right (`_ap_mount_by`: the car's middle 1.6 m past the kerb,
+at most 26 m past the car in front, at 20 km/h; only where nobody is within 3 m of the line
+and nothing solid -- posts, trees, bins, parked cars, walls -- stands on it). Its first Tel
+Aviv drive hit two posts, at 33 and 16 km/h: tight turns are taken at the usual pace now
+(`CORNER_FROM`: x1.3 only on bends the plan takes at 7 m/s or more), and a way out round a
+car is undone if a post, tree or median end stands on it.
 `tests/racer.gd`: route 2 by "go to" (Givatayim, 1.2 km as the crow flies),
 autodrive then racer, traffic as usual; then a junction held at red, racer from 150 m back.
 22 Nov: autodrive 237 s (0 reds, 50 km/h top), racer 214 s (7 cars passed, 1 red, 78 km/h
 top, 2 hoots, 0 people hit, but 2 crashes -- bumps at its pace: racer is not careful, open);
 held red: through at 29 km/h slowest, counted as a red run, PASS. (A first run met only
-greens: hence the staged red.)
+greens: hence the staged red.) After the zebra and corner fixes, 22 Nov: Givatayim autodrive
+229 s / racer 174 s (3 passed, 0 crashes); Tel Aviv route 8 (`FROM=-779.4,-54.3
+TO=-885.7,989.1`, level 7) twice: autodrive 203 / 248 s, racer 160 / 147 s, 3 and 5 reds,
+0 people hit, one bump into a car at 19 km/h (running a red). Passing on the right and the
+pavement were not called on in these drives: built, not yet seen working in a test (open).
 
 **The Ministry's bus lanes** (`tools/osm_city.py` `bus_lanes_apply`, from
 `cities/data/bus_lanes.json`; run by a bake and by `--add-surveys`; it can be run alone on a
@@ -3483,8 +3497,16 @@ city file, as was done here, with `bus_lanes_apply(city, Proj(*city["origin"]), 
 Each stretch is a street and two points in its way of travel; every drivable road piece of
 that street running along it (its middle within 22 m of the stretch's line for half its
 length, within 45 degrees) gets bf/bb where OSM had none, marked `bm` so a re-run takes its
-own out first. Right lanes (109) and left lanes (25) only: contraflow, whole bus roads, BRT
-and priority at junctions need the game to draw and drive them first. Two things the
+own out first. Right lanes (109) and left lanes (25); then (same night, asked for) the whole
+bus roads (מת"צ, 26 -- in the boxes they are Ashdod's Herzl busway down the median, 17) and
+BRT (רת"צ, 7: King George's) as left lanes, which is where they run on a divided street, and
+priority at junctions (העדפה בצמתים, 12) as right ones. Ashdod 34 -> 80 road pieces, Tel Aviv
+198 -> 214. Left out: contraflow lanes (נת"צ נגדי, 12: King George, Dizengoff, Eilat) --
+buses driving against a one-way street beside its cars, which traffic.gd cannot do safely
+(it routes by the one-way and keeps lanes per way). `tests/bus_lanes.gd` takes `AT=x,z` for
+another town's spot: Ashdod at Herzl lists 80 pieces, 120 words, autodrive never in a bus
+lane (Herzl "b--": the left lane the busway); its 90 s traffic count did not print there
+(the run ended after the list -- not looked into). Two things the
 matching taught (in the `real-places` skill too): the names -- the Ministry writes עלית
 where OSM has עליית, חשמונאים for החשמונאים: `bus_street_key` drops the vowel letters י and
 ו and a leading ה (stretches matched 11 -> 14 of 34 in level 1's box, 12 -> 22 of 27 in
