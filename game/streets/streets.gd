@@ -1593,12 +1593,14 @@ func _fit_dual_carriageways() -> void:
 		var pts: PackedVector2Array = r["pts"]
 		var hw: float = float(r["w"]) * 0.5
 		var acr: Array = []
+		var mates := {}   # the other half's road -> pieces beside it
 		for j in range(pts.size() - 1):
 			var c := (pts[j] + pts[j + 1]) * 0.5
 			var d := (pts[j + 1] - pts[j]).normalized()
 			var pair := _partner(c, d, ri, hw, o)
 			if not pair.is_empty():
 				acr.append((pair[1] as Vector2).distance_to(c))
+				mates[pair[0]] = int(mates.get(pair[0], 0)) + 1
 		if acr.is_empty() or acr.size() * 2 < pts.size() - 1:
 			continue   # beside another carriageway along less than half of it
 		acr.sort()
@@ -1610,6 +1612,11 @@ func _fit_dual_carriageways() -> void:
 		w = minf(w, maxf(3.0, across - 0.5))
 		r["w"] = w
 		r["median"] = maxf(0.0, across - w)
+		var mate := -1
+		for rj: int in mates:
+			if mate < 0 or int(mates[rj]) > int(mates[mate]):
+				mate = rj
+		r["mate"] = mate   # (the median's paving: _median_pave_key)
 		fitted += 1
 	if fitted == 0:
 		return
@@ -3832,7 +3839,7 @@ func _build_kerbs() -> void:
 						continue   # the halves touch: a painted line, no kerb
 					pw = clampf(m * 0.5 - KERB_W, 0.0, PAVE_W)   # each half paves its half of the median
 					# both halves in one paving (each its own street's, a median came out in two)
-					_set_pave_code(hash(String(r["name"])) if String(r["name"]) != "" else hsh, r.get("pave", []))
+					_set_pave_code(_median_pave_key(r, hsh), r.get("pave", []))
 				elif _faces_median(run, hw, sgn, ri):
 					_tally("kerb_runs_facing_a_median", 1)
 					continue   # a street's stretch across a divided road: that side is the median's end
@@ -4261,6 +4268,22 @@ func _build_medians(kerb: Buf, pave: Buf) -> void:
 						made += seg
 				cum += seg
 	_tally("median_m", int(made))
+
+## The key both halves of a divided road pave their median with: one name for both -- by its
+## own name alone, Ashdod's Sderot Bnei Brit, one half named "בני ברית" and the other
+## "שדרות בני ברית", paved its median twice in two pavings, overlapping (flicker; 25 m2 of
+## the town's 235 in one stretch, pavings_where.gd)
+func _median_pave_key(r: Dictionary, hsh: int) -> int:
+	var nm := String(r["name"])
+	var mate := int(r.get("mate", -1))
+	if mate >= 0:
+		var r2: Dictionary = _roads[mate]
+		var other := String(r2["name"])
+		if nm == "" or (other != "" and other < nm):
+			nm = other
+		if nm == "":   # (both unnamed: the lower of their own keys, the same from either half)
+			hsh = mini(hsh, _hash_i((r2["pts"] as PackedVector2Array)[0]))
+	return hash(nm) if nm != "" else hsh
 
 func _kerbed(r: Dictionary) -> bool:
 	return r["drive"] and not r["pv"] and r["k"] != "service" and not HIGHWAYS.has(r["k"])

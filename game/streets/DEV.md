@@ -3032,6 +3032,14 @@ LEVEL=1 $GODOT --headless --path . -s res://game/streets/tests/<test>.gd`.
   lanes" -- buildings are never cut back from a private lane, `_kerbed`) and 2 real: building
   6343 1.7 m into Hana & Mordechai Veisser at (-1988, 1212), building 297 0.8 m into Ayalon
   South at (214, 114) (a motorway: `_clip_buildings` skips them). City check 7: 25 -> 3.
+  **Ashdod's two pavings** (235 m2, limit 60): `tests/pavings_where.gd` lists them by 25 m
+  square with the codes that meet. The worst (25 m2, Sderot Bnei Brit at (297, 703)) was a
+  median paved by each half in its own name's paving -- one half "בני ברית", the other
+  "שדרות בני ברית": `_fit_dual_carriageways` keeps each half's `mate` now and
+  `_median_pave_key` gives both the same key (the lower name, or the lower point key when both
+  are unnamed). 235 -> 184 m2; the rest is a tail of 3-7 m2 spots of several kinds: next,
+  (-875, 3636) by Sderot Herzl -- a pink and a white pavement strip crossing on the asphalt
+  (a short street's ends?), then corners overlapping (-2388, 3152).
   The same day `decks.gd` at level 1 (twice): every deck run clean but the City tunnel's
   (`מנהרת_הסיטי_1372`), whose autodrive roamed out of the tunnel onto a car park's aisle
   (Givatayim (-722, -1078) to (-735, -1078)) that ends in a building -- an underground car
