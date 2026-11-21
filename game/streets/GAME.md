@@ -432,9 +432,11 @@ The minimap (bottom left) shows the real streets and buildings round you, headin
 the city limits in pink. The name of the street you are on is at the top, in Hebrew with
 the English name under it when OSM has one.
 
-Over the minimap, small, is which build this is: "build 21 Nov 10:05 UTC · 79f2bc6", when
-it was published and the commit it came from, so a screenshot says whether a fix is in it
-("dev build" when run from the project). Under the map, small and wrapped so it stays
+Over the minimap, small, is which build this is: "build 21 Nov 12:05 Israel · 79f2bc6", when
+it was published, on Israel's clock (summer time too), and the commit it came from, so a
+screenshot says whether a fix is in it ("dev build" when run from the project).
+
+> can we print build times in israel time Under the map, small and wrapped so it stays
 clear of the buttons, the credits: OpenStreetMap's, and the towns' own surveys.
 
 **Zooming out.** "zoom" (on the right, under "walk"; Z, or the mouse wheel down, or two
@@ -539,6 +541,19 @@ across, so cars through the junction no longer stop in the middle of it for them
 > The movement of the people: they bounce, jump, teleport and so on. They also don't cross
 > the roads according to the lights, so in many crossroads we have to stop for them in the
 > middle.
+
+People cross the road only at the zebras. At the end of a block they go round the corner
+or turn back; they no longer step over a side street's mouth into the traffic. They step
+aside only from a car that is actually coming onto the pavement at them, never because one
+drives past on the road, and when they step round something it is at a person's pace, not
+a glide. Someone put somewhere new is put where they stay out of sight: well behind a
+building from where the camera is and from where it is about to be.
+
+> people crossing the road in random location, bothers the traffic and shouldnt happen imo
+
+> sometimes when i just autodrive, and its near a pavement with people walking, they jump to
+> the side. i dont want any popping of any objects, it looks fake, even more than collision
+> stuff. need some more object permanence
 
 The people are grown-ups, not the kit's chunky cartoons: smaller heads, hands and feet,
 longer legs and a longer middle (scaled on their skeletons after every animation frame),
@@ -1205,6 +1220,18 @@ car and you bump them. People walk only while they really go somewhere, at the p
 go, and stand when they stop (they walked on the spot). Walkers stepping over a side
 street's mouth no longer stand a kerb's height down in the pavement.
 
+> I am looking at the balconies compared to real ones. i am thinking why the real looks so real
+> compared to the fake ... the buildings and balconies feel somewhat cartoony or blurred
+> compared to reality. Maybe we can create some small enviorement ... quick for testing and
+> checking the taste of the look. push all
+
+**Balconies that stand out, and deeper light.** The balconies were boxes the wall's colour,
+lit like the wall, so they melted into it; now their undersides are dark, the wall under
+each is in its shade, a lip catches the light with a dark drip line under it, a coping runs
+along the parapet, and half the blocks have railings of dark bars instead of a solid
+parapet. The fill light is lower and the sun a touch stronger, so shade reads as shade. All
+tried first on a small made-up street that loads in seconds (only the tests see it).
+
 > I took a video on my phone, walking in Givatayim.
 
 ## Smooth on a laptop and a phone
@@ -1551,3 +1578,11 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   real one as it is built. A long press there already finds the street (it reads the road
   data, not the built meshes), so the stand-in is mostly what is missing: something to see
   and aim at.
+- A "thief or racer" mode: "thief or racer mode, where the autodrive doesn't care about
+  traffic". Autodrive with the rules switched off: through red lights, never giving way,
+  round the queue on the wrong side, weaving between the lanes, onto the pavement when
+  the road is blocked, at the speed the car can take the bends rather than the limit --
+  while the traffic and the people go on as before, braking, swerving and hooting at it.
+  Already here to build on: autodrive's planning and steering, the crashes and what breaks,
+  the horns. New: the reckless style (its own lines through junctions, gaps it squeezes
+  through), how the town reacts to it, and a way to switch it on beside autodrive.
