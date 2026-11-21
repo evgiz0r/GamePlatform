@@ -968,6 +968,7 @@ const DriveLog := preload("res://game/streets/drivelog.gd")
 var _log := DriveLog.new()            ## the last two minutes, for the map page and "save log"
 var _ap_why := ""                     ## what held autodrive's speed down this tick (for the log)
 var _ap_lead := -1.0                  ## metres to the car ahead on its lane, or -1
+var _ap_lead_i := -1                  ## that car's index in traffic (-1 none, or the player's own: for traces)
 var _traffic: Traffic = null
 var _ap_wait := 0.0                  ## autodrive held up by a car this long
 
@@ -13626,7 +13627,10 @@ func _came_dir() -> Vector2:
 ## The speed allowed now (INF: none). A lane turning at a junction curves past its point,
 ## not over it: looked for only within 4.5 m of the point, a turn missed the light and drove
 ## through the red (now: within the junction and 2 m, as the car's own red-light check sees it).
+var _ap_light_dbg: Array = []         ## the light autodrive read last: [point, its colour for my way, metres to where it stops] (for traces)
+
 func _ap_light_v() -> float:
+	_ap_light_dbg = []
 	if _sig_set.is_empty() or _ap_pts.size() < 2:
 		return INF
 	var found: Array = []   # [along the lane to its stop line, node, way in]
@@ -13678,6 +13682,7 @@ func _ap_light_v() -> float:
 			             # is not through: it waits for its green where it stands)
 		var state := _light_at(n, f[2])
 		var raw := String(SIGNAL_CYCLE[_sig_phase][_light_group(n, f[2])])
+		_ap_light_dbg = [n, raw, stop]
 		if raw == "g":
 			_ap_amber_n = -1
 			return INF
@@ -20056,6 +20061,7 @@ func _autodrive(dt: float) -> Array:
 	if float(lead[0]) < 30.0 and _ap_pass_bus(lead):
 		lead = _traffic.lead_on(_ap_pts, _pos, clampf(12.0 + _v * 1.2 + _v * _v / 5.2, 18.0, 130.0), _ap_wait > 3.0, _y)
 	_ap_lead = float(lead[0]) if float(lead[0]) < INF else -1.0
+	_ap_lead_i = int(lead[3]) if float(lead[0]) < INF else -1
 	if float(lead[0]) < INF:
 		var lv: float = lead[1]
 		# from my nose to its back (a bus is two and a half cars long: kept a car's length
