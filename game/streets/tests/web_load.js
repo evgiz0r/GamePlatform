@@ -12,7 +12,7 @@
 // engine was up, when the city file was read, when the squares round the start were built
 // (with every stage's ms so far, `_stage_ms`, slowest first), and when the warm-up was
 // done: the moment the car can be driven. The files are served from localhost, so downloading costs nothing here --
-// on a phone after a publish that is index.pck's 39 MB on top (see tools/publish_web.sh).
+// on a phone after a publish that is the main index.pck (~4 MB) on top, plus any split pack whose content changed (see tools/split_pck.py).
 //
 // SwiftShader draws in software: the warm-up (shader compiling plus twelve frames of the
 // town) and any stage that draws frames ("far shadows") are many times a real GPU's. The
@@ -22,7 +22,7 @@ const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright');
 
-const dir = process.argv[2];
+const dir = process.argv[2] && path.resolve(process.argv[2]);   // (a relative one served nothing: every file failed the check below)
 const level = process.argv[3] || '1';
 const runs = Number(process.env.RUNS || '1');
 const shots = process.env.SHOT || '';

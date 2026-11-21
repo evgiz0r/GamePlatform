@@ -19,6 +19,8 @@ merge, re-check (`tools/check_script.sh`, a playtest, the tests below), never fo
 | `drivelog.gd` | the drive recorder (see below) |
 | `decks.gd` | roads off the ground -- bridges, embankments, cuttings, tunnels: their heights, what is under a point at a level (`surf`), their walls for collisions (`push`), the ground cut away over cuttings (`cut_tri`), and drawing them a square at a time (`build`). See "Off the ground" below |
 | `beach.gd` | the beaches by the sea, any town: umbrellas with white chairs facing the water, lifeguard towers, the chairs as seats for `_bathers`; set up from the sand areas and the sea, built per square (see "The beach") |
+| `crowds.gd` | people where the street walkers never go: shoppers down a market's walkway stopping at its stalls (lines from `landmarks.gd`'s `_market_line`), walkers and joggers along a beach's wet sand and people standing in the sea (lines and spots from `beach.gd`'s `_people_lines`); pools made the first time a line is near, ticked from `_people_tick` (see "Crowds") |
+| `sites.gd` | building sites from a town's own map (the city file's `sites`): printed hoardings round each plot (solid walls), a tower crane over each new building's plot that is tall or 700 m2+ (see "The town's own layers") |
 | `landmarks.gd` | a town's landmarks, found by their building's name in the bake (`BY_CITY`: Tel Aviv's Azrieli towers, the Matcal and Marganit towers, Sarona's houses): a glass of their own, a lit crown, a mast or shaft on the roof, red tile roofs; and in every town the red lights on roofs over 90 m at night. Hooks in streets.gd: `_glass` / `_tile` on a building for `_build_buildings`, `build()` per square, `set_night` |
 | `rails.gd` | railways: the tracks the city file has (`rails`, `platforms`, `stations`), their beds, rails and sleepers, the platforms with canopies and the station's name, and trains running along them (`tick`). See "Railways" below |
 | `cities/*.json` | baked towns (`tools/osm_city.py`) and the made-up test town (`tools/fake_city.py`) |
@@ -2256,6 +2258,88 @@ placed by `_place_still(..., "sit")` like the bench sitters (only where you cann
 appear: a scene test turns the eye away a moment first, `tests/seaside.gd`'s `settle`).
 Tel Aviv: 9 beaches, ~1085 umbrellas, ~1713 chairs, 10 towers. Test: `tests/seaside.gd`.
 
+## Crowds: the market's shoppers, the beach's walkers and waders (`crowds.gd`, 21 Nov 2026)
+
+The street walkers (`_walkers`) keep to kerbed roads' pavements, so the Carmel market (a
+pedestrian street) and the sand stood empty. `crowds.gd` walks people along lines handed in
+at setup: `landmarks.gd`'s `_market_line` adds each market piece (`hw` = the stalls' `off` -
+1.0: the walkway between the counters and their posts) with a stop per stall place ([s, side,
+where to stand 1 m in front of its middle, facing, the stall's middle]); `beach.gd`'s
+`_people_lines` chains each beach's shore segments, steps them every 3 m and keeps the line
+`SHORE_OFF` (3.5-9 m) up from the water where it lies on that sand (the line's middle, `hw`
+2.75), and every third step now and then a spot 3-16 m out in the sea for a wader, facing the
+beach or out, its feet at the sea's surface minus 0.25-0.85 m (`_place_still(..., "wade")`).
+Pools: `MARKET_PEOPLE` 28, `SHORE_PEOPLE` 12 (a quarter jog at 2.4-3.1 m/s), `WADERS` 9,
+made 2 a frame the first time a line is within `PEOPLE_RANGE` (a town with none makes nobody),
+hidden with their animation off when not placed. Placing: a few tries a frame for one
+person, a point within `PEOPLE_SEEN` + 8 that `_spawn_ok` allows (behind you, past the drawn
+range, behind a block); market shoppers within 50 m of your place along the line. Walking:
+slower behind someone close ahead, the place across the way drifting every 3-9 s, `_people_apart`,
+`_push_out` (the stalls' posts), never into you on foot; at a line's end out of sight they go,
+in sight they turn back. A shopper passing a stall on their side stops at it one time in three
+for 2-7 s, facing it (Idle). Headless no stalls are built (`landmarks.gd`'s `build` returns), so
+there every stop counts as a stall.
+
+- **Good numbers** (`tests/seaside_people.gd`, level 7, headless `--fixed-fps 10`, ~40 s of
+  wall time after loading): market 10-15 shoppers within 40 m and 26-28 within 90 m, 1-8 at a
+  stall at any moment, ~60 stops in 70 s; beach 12-15 within 90 m (walkers, 1-3 joggers, 3
+  waders); 0 in a post, 0 shore walkers in the sea, 0 appearing in view. 1 market line (435 m),
+  20 shore lines (897 m), 38 wade spots.
+- **Gotcha** (cost a run here though the scene-tests skill has it): a test that types
+  `var a: Actor3D` breaks every `Actor3D.new()` in the game, and nobody walks. Use `Node3D`.
+- **Open**: beachgoers are dressed like the street's people (no swimwear in the kit's
+  characters); nobody swims (they stand); the market's crowd thins 50 m+ from you (the pool
+  is placed round you); a shopper does not pick anything up (the kit's PickUp clip is a
+  crouch to the floor).
+
+## The town's own layers: lamp posts, building sites, businesses (21 Nov 2026)
+
+`tools/osm_city.py`'s `town_layers_apply` (run by a bake with surveys and by `--add-surveys`;
+`TOWN_LAYERS`, `LAMP_LOOKS`, `SITE_STAGES`, `BUSINESS_KINDS` there) lays three of Tel Aviv's
+layers from `cities/data/` over a city file, shifted by the trees' offset (-0.4, -1.9 m):
+`lamps` + `lamp_info` + `lamp_looks`, `sites`, and extra `pois` rows with a 6th field (the
+layer's id). Re-run after a change: `python3 tools/osm_city.py --add-surveys
+game/streets/cities/tel_aviv.json --offline` (and givatayim.json: its box has Tel Aviv's west
+strip), seconds each; only those keys change (checked: buildings and trees byte-identical).
+Tel Aviv: 15,264 lamp posts, 511 sites at work (of 790: a file only opened or a building
+finished left out), 2,299 businesses added (5,895 street-level shops, cafes and the like in
+the box; 1,440 within 8 m of an OSM place, 2,156 at one door with another); the file 2.8 ->
+3.5 MB. Givatayim: 2,641 lamps, 97 sites, 136 businesses.
+
+- **Lamp posts** (`_mapped_lamp`, from `_build_lamps`): onto the pavement 0.55 m past the
+  kerb when the map's point is on the asphalt, out of a wall, the arm over the nearest road;
+  looks "pole" (the usual grey pole), "wood" (trunk-toned), "ornate" (the ornate kit, no flag),
+  "wall" (a bracket and head at 4.5 m, no post); 2+ lamps: a second arm the other way. The
+  made-up rows are left out within a 3x3 of `LAMP_COVER` 45 m cells of any mapped lamp
+  (`_lamps_mapped_at`). 14,947 of 15,264 stand; dropped where nothing off the asphalt is near.
+- **Building sites** (`sites.gd`): a hoarding panel every 3 m of the plot's outline (white,
+  blue, green mesh or dark grey, a darker band along the top, a post at each end), left out
+  where it would cross a road or a standing building's wall; a crane over each new building
+  that is tall ("גבוה" / "מעל" in its work) or 700 m2+: a lattice mast 34-72 m, the cab, a
+  38-50 m jib with trolley and hook, the counter-jib's weights, the A-frame and ties, yellow
+  or white; about 100 boxes, seen to `CRANE_RANGE` 1500 m. Tel Aviv: 9,216 panels, 120 cranes.
+- **Businesses**: places like OSM's, so `_build_pois` makes their fronts (window, awning,
+  crates or A-board, a shopkeeper, a terrace for food) and their sign shows the Hebrew word
+  for the kind (מכולת, מספרה, פירות וירקות...): the data has no names (a sole trader's would be
+  their own). Workshops, offices and anything not on the street floor are left out.
+- **The car mix** (`CAR_MIX`, `_car_paints`): from the vehicle register's sample
+  (`data_tools/car_mix.py`: each make's top models by shape): SUVs 42%, saloons 22,
+  hatchbacks 21, city cars 11, vans 3, a people carrier 1; paints white 44, silver 17, grey 17,
+  black 13, blue 5, beige and red 2 each (the first 14 paints kept in their places for the
+  filmed walk's cars). Credited on screen ("car mix © Israel Ministry of Transport", `_credit_line`
+  groups the towns' credits and lists others after).
+- **Test**: `tests/town_layers.gd` (headless counts, REGRESS line; drawn: Rothschild's lamps,
+  a crane, a hoarding, the street with most added shops). Good: level 7 lamps 15,264 mapped,
+  ~14,950 standing, 0 on the asphalt; 511 sites, ~9,200 panels, ~120 cranes; 2,299 businesses,
+  ~4,160 places built.
+- **Open**: lamps at night are the same pools as before (the town's lamp count per post is
+  not used for light); the 1,089 wall lamps hang at the point the map gives, which can be a
+  metre off the wall; a "frame" stage site does not show a building's bare shell; Ashdod's and
+  Givatayim's own lamps are not fetched; the hydrants (2,102) and the other layers in
+  `places_tel_aviv.geojson` (bike-share stations, taxi stands, motorbike parking, sculptures,
+  notice boards) are not used yet; the businesses' signs are all the kind's word, so a street
+  of them reads as a list of trades.
+
 ## Tel Aviv (level 7): handoff, 20 November 2026
 
 The session that added Tel Aviv, its bridges and tunnels' fixes, the railway, the landmarks
@@ -2318,8 +2402,8 @@ and the ramp-top fix. Where things stand:
   umbrellas, chairs, lifeguard towers, bathers) and the Shalom Meir and Opera towers -- see
   "The beach" and "Landmarks" above. Still open: Ashdod's sea is likely under its floor too
   (its water at the shore's 0.8, its sea grid 1.1: re-bake it with this baker, and it gets
-  beaches); people walking the shore or in the water; the market's shoppers (the walkers
-  keep to pavements).
+  beaches). People on the shore and in the water, and the market's shoppers: done since
+  (see "Crowds").
 - **Open, smaller**: Arvei Nahal's 0.44 m seam (under "Off the ground"); the HaShalom west
   ramp's 8 hole points; 5 bank feet at a kerb; Marganit and Matcal's tops are modelled from
   heights alone.

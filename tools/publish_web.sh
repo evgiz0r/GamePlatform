@@ -36,8 +36,26 @@ for pp in game/*/prepublish.gd; do
 done
 
 mkdir -p docs
+rm -f docs/index.*.pck   # the last build's split packs (below); this build writes its own
 "$BIN" --headless --path . --export-release "Web" docs/index.html
 rm -rf game/*/baked
+
+# Split index.pck into a small main pack (code, scenes, small files) and packs named by their
+# content hash (art, sound, each big data file such as a baked city): see tools/split_pck.py.
+# The service worker keeps a pack across builds while its name is unchanged, so a publish that
+# only changed code costs a phone the main pack (a few MB) instead of all ~40 MB. The packs are
+# put in the page's file system before the engine starts (index.html, below) and loaded by the
+# first autoload (shell/autoload/packs.gd). If splitting fails the build ships whole, as before.
+PACK_WORK="$(mktemp -d)"
+if python tools/split_pck.py docs "$PACK_WORK" \
+    && "$BIN" --headless --path . -s res://tools/pack_write.gd -- "$PACK_WORK/manifest.json"; then
+  cp "$PACK_WORK/packs.txt" docs/.packs.txt
+else
+  echo "splitting index.pck failed: the build ships as one pack"
+  rm -f docs/index.*.pck
+  : > docs/.packs.txt
+fi
+rm -rf "$PACK_WORK"
 
 # these two keep the build from fighting the project it came out of
 touch docs/.nojekyll   # stop GitHub Pages running Jekyll over it
@@ -71,7 +89,7 @@ rm -f docs/*.import
 # is the new build either way. A first visit (no build on the device yet) still waits for
 # its download, as it must.
 python - <<'SW'
-import io
+import io, json
 p = 'docs/index.service.worker.js'
 s = io.open(p, encoding='utf-8').read()
 
@@ -117,6 +135,7 @@ self.addEventListener('install', (event) => {
 			if (!(await have('index.wasm'))) {
 				await reuseEngine(cache);
 			}
+			await reusePacks(cache);
 			for (const f of CACHEABLE_FILES) {
 				if (await have(f)) {
 					continue;
@@ -197,6 +216,35 @@ swap("""	// Use the preloaded response, if it's there
 """	// PATCHED by tools/publish_web.sh -- always the stamped, uncached fetch (freshFetch above).
 	let response = await freshFetch(event.request.url);
 """, 'fetchAndCache')
+
+# the split packs (index.<group>.<hash>.pck, named by their content): cached like index.pck,
+# and copied out of an older build's cache when that holds one of the same name -- the same
+# name is the same content -- so a publish downloads only the packs that really changed.
+packs = [l.strip() for l in io.open('docs/.packs.txt', encoding='utf-8') if l.strip()]
+old_list = 'const CACHEABLE_FILES = ["index.wasm","index.pck"];'
+assert old_list in s, 'CACHEABLE_FILES not as expected -- Godot changed its template'
+s = s.replace(old_list, 'const CACHEABLE_FILES = ' + json.dumps(['index.wasm', 'index.pck'] + packs, separators=(',', ':')) + ';', 1)
+s = s.replace("""async function reuseEngine(cache) {""", """// PATCHED by tools/publish_web.sh -- a split pack's name is its content hash, so an older
+// build's copy under the same name is this build's file: take it instead of downloading it.
+async function reusePacks(cache) {
+	for (const f of CACHEABLE_FILES) {
+		if (!/^index\\..+\\.pck$/.test(f) || (await cache.match(f)) !== undefined) {
+			continue;
+		}
+		for (const key of await caches.keys()) {
+			if (!key.startsWith(CACHE_PREFIX) || key === CACHE_NAME) {
+				continue;
+			}
+			const old = await (await caches.open(key)).match(f);
+			if (old) {
+				await cache.put(f, old);
+				break;
+			}
+		}
+	}
+}
+
+async function reuseEngine(cache) {""", 1)
 
 io.open(p, 'w', encoding='utf-8', newline='').write(s)
 print('service worker: patched for background updates, a kept engine and cache-proof fetches')
@@ -283,6 +331,42 @@ for old, new in [('\t\tengine.startGame({', '\t\tSW_READY.then(() => engine.star
 io.open(p, 'w', encoding='utf-8', newline='').write(s)
 print('index.html: minute-stamped worker URL, restart offered on a new build, first visit cached')
 HTML
+
+# The split packs go into the page's file system alongside index.pck, all downloading at once
+# while the engine itself loads, and the engine starts once every one is in: the first
+# autoload (shell/autoload/packs.gd) then mounts them from there. Their sizes go into
+# GODOT_CONFIG's fileSizes so the splash's progress bar counts them.
+python - <<'PACKS'
+import io, json, os, re
+p = 'docs/index.html'
+s = io.open(p, encoding='utf-8').read()
+packs = [l.strip() for l in io.open('docs/.packs.txt', encoding='utf-8') if l.strip()]
+m = re.search(r'"fileSizes":(\{[^}]*\})', s)
+assert m, 'GODOT_CONFIG fileSizes not as expected -- Godot changed its template'
+sizes = json.loads(m.group(1))
+for f in ['index.pck'] + packs:
+    sizes[f] = os.path.getsize('docs/' + f)
+s = s[:m.start(1)] + json.dumps(sizes, separators=(',', ':')) + s[m.end(1):]
+old = '\t\tSW_READY.then(() => engine.startGame({'
+assert s.count(old) == 1, 'engine start not as expected -- the earlier patch changed'
+s = s.replace(old, '\t\tSW_READY.then(() => startWithPacks({', 1)
+fn = """const GODOT_PACKS = %s;
+// PATCHED by tools/publish_web.sh -- engine.startGame(), but the split packs downloaded with
+// the main pack (each the service worker may already hold) and all in before the engine starts.
+function startWithPacks(override) {
+	engine.config.update(override);
+	engine.config.args = ['--main-pack', 'index.pck'].concat(engine.config.args);
+	return Promise.all([engine.init(GODOT_CONFIG['executable'])].concat(
+		['index.pck'].concat(GODOT_PACKS).map((f) => engine.preloadFile(f, f)))).then(() => engine.start());
+}
+""" % json.dumps(packs)
+anchor = 'const engine = new Engine(GODOT_CONFIG);\n'
+assert s.count(anchor) == 1, 'engine creation not as expected -- Godot changed its template'
+s = s.replace(anchor, anchor + fn, 1)
+io.open(p, 'w', encoding='utf-8', newline='').write(s)
+print('index.html: %d split packs preloaded with index.pck' % len(packs))
+PACKS
+rm -f docs/.packs.txt
 
 cp tools/pwa/icon_192x192.png docs/index.192x192.png
 python - <<'PY'
