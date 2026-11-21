@@ -395,6 +395,17 @@ writing it down is small next to the next session rediscovering it.
   session.
 - Update what is there when it turns out wrong; a stale note is worse than none.
 
+**After every fix, ask whether the checks should have caught it.** The user asked for this:
+each time a bug is fixed, say in the reply whether the automatic checks (a game's nightly or
+validation run, its scene tests, the playtest) should have caught it, and if they did not,
+what a check for its whole *family* would cost. A family is the rule the bug broke, said so
+it holds for every kind of thing and everywhere at once -- not "two lights at this crossing"
+but "nothing that stands alone is put up twice"; not "a bollard on this road" but "no solid
+thing stands on asphalt". Often a check for the family already exists for one kind and only
+needs widening to the rest: say which, roughly what it costs (the work, and the time it adds
+to a run), do the cheap widening as part of the fix, and offer the dear one rather than
+starting it. A check that only finds the one reported spot is not worth adding on its own.
+
 **Suggest compacting past ~60%.** The user wants a session compacted once its context is
 more than about 60% full, not left to fill up. Only the user can do it (`/compact` is
 theirs to type; you cannot run it), and only they see the percentage, so judge by the

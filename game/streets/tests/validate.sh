@@ -65,7 +65,7 @@ fi
 echo
 echo "=== STREETS VALIDATION ($(git rev-parse --short HEAD)) ==="
 for l in 1 2 3 4 7; do
-	grep -h -E "^CITY CHECK [^:]|^  (walls|posts|buildings) on the road|^  lit points alone|^  (signs doubled|junction offers twice|islands on the road|median over a road|road leaning|two pavings)" "$out/city$l.txt" 2>/dev/null
+	grep -h -E "^CITY CHECK [^:]|^  (walls|posts|buildings) on the road|^  lit points alone|^  ((signs|walk lights|lights|bus stops) doubled|junction offers twice|islands on the road|median over a road|road leaning|two pavings)" "$out/city$l.txt" 2>/dev/null
 	grep -q "SCRIPT ERROR" "$out/city$l.txt" && echo "  !! SCRIPT ERROR in city$l"
 done
 for e in exam4 exam1 exam3; do

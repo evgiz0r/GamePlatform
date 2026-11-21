@@ -599,8 +599,26 @@ The ones most often touched, and the functions in them:
   frames over 250 ms / 1 s driving and from above -- but under the test machine's software
   renderer every Tel Aviv frame takes ~0.8 s, so it shows the script's parts, not a GPU's
   stalls; a browser on the user's machine is the real measure (the perf view's hitch lines).
+  Each step down is measured over its first two spells (`_q_descent`, `_q_on_trial`), and
+  where the stepping ends (the rate good again, or level 0) `_settle` goes back up to the
+  best-looking level it passed whose rate was within `STEP_GAIN` (12%) of the best, with no
+  step below it for `FLOOR_S` (5 min): a user's PC in Tel Aviv (21 Nov, a browser) sat at quality 0 --
+  plain walls, the picture at 0.7 -- at 25-27 fps, standing in traffic as much as driving, and
+  never came back up (up needs 56 fps). What the levels change is the graphics chip's work;
+  a frame held back by the script on the browser's one thread is not helped by any of them.
+  `tests/quality_ladder.gd` (made-up frame times, six cases).
 - **where a frame's time goes** -- the profiler: `_p("part")` around each part, hitches
-  kept and reported; P or a tap on the fps text shows it.
+  kept and reported; P or a tap on the fps text shows it. Its average line counts the
+  physics ticks a drawn frame ran ("script 31.0 in 2.4 ticks"): at 60 ticks a second a slow
+  frame runs several, so a game whose ticks are dear on a phone's wasm sinks into it.
+  "--perf-log" among the user args prints every spell (`tests/web_load.js` PLAY=n).
+- **a browser's shader compiling, counted** -- `GL_COUNT_JS` wraps WebGL2's compile, link and
+  status calls on the prototype at `start()` (`_gl_count_on`, `_gl_count`); the load line adds
+  "(N shaders, X s compiling)" and the perf view "shaders compiled since the car". The
+  container's Chromium: Givatayim 137 programs, 4.5 s in the calls of a 35 s warm-up (the rest
+  SwiftShader drawing), 3.2 s on a second load in the same browser. On a phone the calls are
+  where a driver that compiles at link time waits; one that compiles at the first draw (ANGLE
+  on Vulkan) shows it in the warm-up's frames instead (the perf view's "warm-up frames").
 - **zoom out and pause** -- "the view from above", after the chase cam: `_paused` stops
   `_physics_process` (and the people's AnimationPlayers via `process_mode`, the engine
   sound; traffic is drawn at `f = 1` so it does not rock between two ticks); `_zoom_set`
@@ -743,7 +761,8 @@ were a long thing judged at its middle):
   points that belong to no junction; and the traps to stage a test at -- stub roads under 5 m
   at a junction, lit points under 25 m apart counted as two junctions, walls and posts on
   service roads. Since 21 Nov also the user's reports of the day before that a built city
-  shows (`world_checks.gd`, each ported from the test written for its fix): signs doubled, a
+  shows (`world_checks.gd`, each ported from the test written for its fix): a thing that
+  stands alone put up twice (signs, walk lights, cars' lights, bus stops), a
   junction offering one street twice, islands on the road, a median's wall over another
   road (0); roads leaning over 6% side to side and two pavings laid over one spot (they
   flicker), under a limit per city (`LIMITS`, the level a fixed city reads: over it, the
@@ -753,8 +772,21 @@ were a long thing judged at its middle):
   not from the last run -- tuned by eye, the queue went from all at once to the third car 9
   s after the green within the hour.
 
+**Families of bugs, and the check for each** (21 Nov 2026). The user asked that every fix
+answer "should the checks have caught it, and what would a check for its whole family cost"
+(CLAUDE.md). A family is the rule broken, for every kind of thing at once. The ones so far:
+
+| The rule broken | Reports in it | Checked by | Gap, and what closing it costs |
+|---|---|---|---|
+| a solid thing stands on the asphalt | bollards by zebras, a railing at a roundabout's zebra, canopy columns, hedges, islands, a median's wall over a road | `city_check`: walls, posts, buildings on the road; islands; median walls | none known |
+| a thing that stands alone is put up twice | stop / give-way signs twice; people's lights twice (94 of Ashdod's 408: a divided road's zebra is a crossing point on each half); cars' lights twice (Tel Aviv 3, found by the widened check, not reported); a junction offering one street twice | `city_check`'s "... doubled" rows: signs, walk lights, cars' lights, bus stops (`world_checks.doubled_all`); junction offers twice | the things with no list of where they stand (lamps, benches, bins, hydrants, shelters, kiosks, crossing signs): a log of everything placed, [kind, where, facing], kept only in tests, each kind's spacing -- about 2-3 hours, seconds a city |
+| a car parked where nobody parks | on a divided road's median, in a bus stop | `tests/parked_median.gd`, not in the validation | a row in `world_checks` (medians, bus stops, zebras, a junction's mouth): about half an hour, seconds a city |
+| two surfaces at one spot (they flicker) | a pavement flickering at a corner, grass through the road | `city_check`'s two pavings (a limit per city) | the sky's horizon line is a render, not a mesh overlap: a scene test only (`horizon_line`) |
+| traffic breaks a rule of the road | greens both ways, a car in on red | `light_audit`, not in the validation; the exam (over the line at a red) | `light_audit`'s counts as a REGRESS line: about an hour, ~3 min a night. Unwatched, Tel Aviv's ways in with no light facing them drifted from 5 to 12 (read on ef5425b, 21 Nov) |
+| standing or waiting with nothing real to wait for | autodrive standing with the road clear, 3-11 s at a roundabout for a car 78 m off, stopping for a slip road's light | the exam: 10 s+ held by nothing named | a wait whose reason is named but wrong (giving way to a car far off, a light that is not its own): the exam logging each give-way's distance and each light's distance past the stop line, flagged past a limit -- about an hour, no extra run time |
+
 **A fix comes with what would catch it again** -- a scene test that stages it, or a check
-here. **After merging** (another session's work, or `main`), before pushing: `city_check`
+here; and the check is for the family when that costs little (the row above). **After merging** (another session's work, or `main`), before pushing: `city_check`
 on the cities the merge touched, the filmed walk's `SCAN=1`, and the exam on the test town
 (`LEVEL=4 EXAM_STARTS=2`, headless: under a minute); the exam on a real town when traffic
 or autodrive changed. Headless runs take the same numbers several times faster:
@@ -2707,6 +2739,54 @@ Each line: where the code is, the test, what good reads.
   every street parks half up the kerb, and the lanes share the whole asphalt
   (`_lane_off`/`_lanes_each_way`), so a parking strip on the road needs traffic, autodrive and
   the lane paint to give that width up first.
+- **Autodrive waiting long at roundabouts** (user, Givatayim, Borochov into Geisler square
+  (14, -987): "pretty bad in roundabouts waiting for a long time"): `_ap_give_v` ranked a
+  car by the road it would be on at the meeting point -- a car coming up another way in got
+  the ring's rank (10) and autodrive stood at the ring's edge for it: 11.3 s for a motorbike
+  78 m up another arm at 13 m/s. Now a car not on a ring yet (its nearest road is not one)
+  is my equal there: first come, first served. `tests/light_line.gd` at Geisler square,
+  `DEST="40,-860" CAR="-70,-968,0.977,-0.212"` (x4) level 1: before, stands at the entry of
+  3.2, 11.3 and 8+ s; after, one of 3.4 s (a sedan 12 m off, coming in). rb_pace's nine
+  rings never stood, before or after (it does not pick Geisler's).
+- **A railing standing in the road by a roundabout's zebra** (same screenshot, "that border
+  there"): the crossing railings (furniture.gd `kerbside`, main roads, 1.2 m panels 2-6 m
+  from the zebra along the kerb) went on a roundabout's way in too, where the corner by the
+  zebra is an island or a lawn; now none within 22 m of a ring (`_by_ring`).
+- **Assist with autodrive** (user: "i switch to autodrive, the assist is turned off,
+  autodrive has whatever it needs"): the assist only ever helped your hands (`_manual`), never
+  `_autodrive`; the button now reads "assist off", dimmed, while autodrive drives, and your
+  choice is back when you take over.
+- **Bedford's taxis read TAXI** (user: "the taxis in bedford are in hebrew too"): the car
+  shader's roof sign read מונית everywhere; `taxi_latin` (off in a "med" town) reads TAXI left
+  to right from three more glyphs in PLATE_GLYPHS (T, A, X; the I was there) -- the font's
+  count, 21, is in `plate_glyph`.
+- **Loading text readable** (user: "make a better font that we can see during load"): pale
+  letters straight on the scene; now a dark rounded panel under the text and bar
+  (`_loading`'s "normal" stylebox, expanded down over its children) and outlined letters.
+  `tests/load_screen.gd` takes stills while a city loads.
+- **Cars parked in bus stops; fewer double-parked vans** (user: "a lot of parked cars inside
+  bus stations, usually there is like 10m distance from a bus... pretty held. also less cars
+  in the middle of the streets... very rare in israel"): `_no_parking` kept clear only 11 m
+  round a stop's spot and only on KERB_RED_KINDS streets; now `BUS_CLEAR` (12 m, the law's)
+  along the stop's own kerb on any street (`parked_median` counts them); traffic's
+  `DBL_SHARE` (vans and trucks that stop for a delivery in the lane) 0.45 -> 0.1.
+- **People's lights twice** (user, Ashdod: "two red lights to the same direction for the
+  people"): a divided road's zebra is a crossing point on each half, and each one's span
+  (`_zebra_span`) runs outer kerb to outer kerb over both, so `_build_walk_lights` put every
+  pole up twice, 0.5-1 m apart, facing the same way: 94 pairs of Ashdod's 408. Now one pole
+  where two would stand (`_walk_poles`, as the signs' `_sign_poles`: within 3 m, facing within
+  45 deg); `walk_lights_twins` in the `city_built` tally counts those left out. Pairing the
+  halves' crossings through `_partner` was tried first and left 33 (halves that bend or part
+  at a junction), and two crossings in line (Begin's and its slip road's) can start from one
+  kerb. Ashdod 315 walk lights, 0 doubled (`tests/walk_twins.gd`). The validation would not
+  have caught it -- "signs doubled" was the family's check, for one kind only -- so it is now
+  `doubled_all` in `world_checks.gd`: signs, walk lights, cars' lights, bus stops, each a
+  `city_check` row (see "Families of bugs" above). Its first run found the family in a kind
+  nobody had reported: cars' lights twice in Tel Aviv (3: two ways in arriving side by side
+  each putting a pole up, a metre apart) -- now one pole where two would stand there too
+  (`_light_poles`, same group and facing within 18 deg only, so `light_audit` still finds a
+  light facing every way in; `lights_twins` in the tally). After: every "doubled" row 0 in
+  all five towns.
 - **Cars stopping for a slip road's light** (user, Ashdod, Sderot Menachem Begin past Herzl:
   "why are the cars stopping there"): OSM has a traffic signal on Herzl's slip road 18 m
   before it joins Begin eastbound; `_lights_setup` moves a signal to the nearest junction
@@ -2794,7 +2874,7 @@ Each line: where the code is, the test, what good reads.
   anywhere), `street_at` (by street name at its roundabouts), `perf_dive`, `deck_corner`,
   `islands`, `pave_overlap`, `picker`, `minimap_route`, `warm_census`, `index_gain`,
   `signs_inferred`, `start_drive`, `rails_near`, `cut_under`, `signs_double`, `auto_stands`,
-  `parked_median`, `horizon_line`, `median_ends`, `light_line`;
+  `parked_median`, `horizon_line`, `median_ends`, `light_line`, `load_screen`;
   `tools/level_roads.py`.
 
 ## OSM's extra fields and speed limits: handoff (20 Nov 2026)

@@ -18,7 +18,8 @@ extends SceneTree
 ##                            (Givatayim keeps 3 over a road on purpose: passages)
 ##   lit points alone      -- a point with traffic lights that belongs to no junction
 ## and the user's reports since these checks began, each fixed with a test that staged it
-## (world_checks.gd says which), so none comes back unseen. Should be 0: signs doubled, a
+## (world_checks.gd says which), so none comes back unseen. Should be 0: a thing that stands
+## alone put up twice (signs, walk lights, lights, bus stops), a
 ## junction offering one street twice, a traffic island on the road, a median's wall over
 ## another road. Under the city's limit (LIMITS): roads leaning over 6% side to side, two
 ## pavings laid over one spot (they flicker).
@@ -260,7 +261,7 @@ func _check(lvl: int) -> int:
 	while g._bg_build:
 		await create_timer(0.5).timeout
 	var W := preload("res://game/streets/tests/world_checks.gd")
-	for row: Array in [["signs doubled", W.signs_doubled(g)], ["junction offers twice", W.junction_twins(g)],
+	for row: Array in W.doubled_all(g) + [["junction offers twice", W.junction_twins(g)],
 			["islands on the road", W.islands_on_road(g)], ["median over a road (m)", W.medians_over_roads(g)]]:
 		var res: Array = row[1]
 		var v := float(res[0])
