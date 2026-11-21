@@ -31,7 +31,7 @@ import numpy as np
 
 W, H = 203, 360
 X = np.linspace(0, 1, 17)
-WARM = 1.06
+WARM = 1.0   # (1.06 until 22 Nov: the bare picture is as warm as the film now)
 EXPO = (0.45, 0.75, 0.6, 2.0)   # target, strength, least, most: streets.gd's FILM_EXPO
 Q = [1, 5, 10, 25, 50, 75, 90, 95, 99]
 

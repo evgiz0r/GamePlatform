@@ -48,16 +48,23 @@ lm = [
     (8.7, tuple(MEDIAN)), (13.3, tuple(MEDIAN)),                            # over the near half; waiting
     (17.0, KERB_S), (18.4, tuple(P(6.4, -17.6))),                           # over the far half, up the kerb,
                                                                             # in past the arcade's middle column
-    (21.0, tuple(P(6.6, -11.3))), (None, tuple(P(6.9, -5.4))),              # along it under the arcade (the
-                                                                            # middle of it: the columns are at 5.2-5.8),
-                                                                            # clear of the sign post at the corner
-    (25.6, tuple(P(7.5))), (33.0, tuple(P(17))),               # the forecourt, into the passage
-                                                               # (the game's zebra is a few metres further
-                                                               # up the street than the film's: brisk to here)
+    (21.0, tuple(P(6.6, -14.2))), (25.0, tuple(P(6.9, -9.0))),              # along it under the arcade (the
+                                                                            # middle of it: the columns are at 5.2-5.8)
+                                                                            # to its end, the block's corner (-9.4):
+                                                                            # 1.3 m/s, the film's pace (pass 14)
+    # (pass 14, measured on the film's frames: it comes out from under the arcade at the block's
+    # corner, not by the passage's line -- the two women 6.4 m ahead at 26 s, the transformer's
+    # poles 16 degrees left of them -- and crosses the forecourt on a slant at 2 m/s, between
+    # the bollards, past the transformer's plinth close on its right into the passage)
+    (26.0, tuple(P(7.6, -8.3))), (None, tuple(P(10.2, -6.6))), (None, tuple(P(12.4, -4.2))),
+    (None, tuple(P(13.6, -2.4))), (None, tuple(P(15.0, -1.4))),
+    (33.0, tuple(P(16.6, -0.6))), (None, tuple(P(19.0, -0.1))),
     (None, tuple(P(30))), (None, tuple(P(45))),
-    (64.0, tuple(P(SPLIT))),                                   # out of it at the railings
-    (None, tuple(P(60.5, -2.0))), (None, tuple(P(63, -4.4))),  # onto the little street's pavement, the road on the left
-    (80.0, tuple(P(80.5, -4.4))), (81.5, tuple(P(82.0, -4.2))),  # the corner, at the kerb (between
+    (64.0, tuple(P(57.6, -0.95))),                             # out of it right of the railings
+    # (pass 14: the film walks straight on out of the passage along the hedge, the railings and
+    # the man in blue on its left -- the little street's pavement is the passage's line, 65-80 s)
+    (None, tuple(P(61.0, -0.9))), (None, tuple(P(77.0, -0.9))),
+    (80.0, tuple(P(80.0, -2.4))), (81.5, tuple(P(82.0, -4.2))),  # the corner, at the kerb (between
     (82.4, tuple(P(82.0, -4.2))),                                 # its bollards); a look each way first
     (87.0, tuple(P(90.4, -4.2))),                                 # over Sheinkin (the film's asphalt
                                                                   # ends at 86.5 s: the raised crossing)
@@ -100,6 +107,28 @@ if os.path.exists(FIT):
     t0 = fit["points"][0][0]
     walk = [w for w in walk if w[0] < t0] + fit["points"]
     head = fit["head"]
+    # under the arcade the film's facing reads only half its turn (the columns, the ceiling
+    # and the motorbikes a metre or two off drag the far band's slide): its frames look along
+    # the arcade from 19.5 s, the motorbikes on the left, the shops on the right -- so the head
+    # stays with the body there, eased in and out over half a second (pass 14: the fitted head
+    # had the camera half a metre from the shop windows, 18-24 s)
+    # -- and that way is a little left of straight along it, towards the motorbikes (19.5-23 s:
+    # the motorbikes in the middle of its frame, the shops at its right edge)
+    # Likewise across the forecourt (28-32 s) its facing reads 20 degrees right of what the
+    # frames show: the barrier's post left of the middle, the lamp right of it, the
+    # transformer's poles at the right edge -- added there ("add"), the rest replaced.
+    for a, e, deg, how in ((17.6, 18.9, 0.0, "set"), (18.9, 24.2, -20.0, "set"), (27.6, 32.2, -20.0, "add")):
+        for h in head:
+            w = min(1.0, max(0.0, (h[0] - (a - 0.5)) / 0.5), max(0.0, ((e + 0.5) - h[0]) / 0.5))
+            h[1] = round(h[1] + deg * w if how == "add" else h[1] * (1.0 - w) + deg * w, 1)
+    # the walk leaves the passage's line only past its hedge's end (its body reaches a metre
+    # out from its line: the fitted path stepped right two seconds early and brushed it)
+    for w in walk:
+        if w[0] > 50.0:
+            ds, do = w[1] - S0[0], w[2] - S0[1]
+            s_, o_ = ds * u[0] + do * u[1], ds * left[0] + do * left[1]
+            if 40.0 < s_ < 58.6 and o_ < -0.45:
+                w[1], w[2] = round(S0[0] + u[0] * s_ - left[0] * 0.45, 2), round(S0[1] + u[1] * s_ - left[1] * 0.45, 2)
 
 d = {
     "about": "Givatayim as a walk filmed along it showed it, where OpenStreetMap does not: the "
@@ -118,7 +147,11 @@ d = {
                 {"k": "residential", "name": "המרי", "near": P(110, 0), "kerb": "blue_white"}],
         "add": [
             {"pts": [list(S0), P(SPLIT)], "k": "footway", "w": 2.6, "name": "המרי", "name_en": "HaMeri"},
-            {"pts": [P(SPLIT), list(S1)], "k": "residential", "w": 5.5, "name": "המרי", "name_en": "HaMeri"},
+            # (left of the passage's line, not on it: the film walks straight on out of the
+            # passage onto the pavement along the hedge, the road beyond the railings, 64-80 s;
+            # the blocks either side stand 11 m apart, so a narrow street with cars parked by
+            # the south-east blocks)
+            {"pts": [P(SPLIT, 2.4), P(79.5, 2.4), list(S1)], "k": "residential", "w": 4.0, "name": "המרי", "name_en": "HaMeri"},
         ],
     },
     "crossings": [[661.6, -672.2], [655.1, -664.7]],
@@ -127,12 +160,18 @@ d = {
     # Sirkin, where the Sheinkin-Sirkin walk waits and looks left to the shops (its 70-74 s):
     # no car parked beside it, nor across the way in the line to the shops
     "no_parking": [{"near": [485.5, -737.5], "r": 8.0}, {"near": [478.5, -742.0], "r": 8.0},
+                   # (walk 2, 28-32 s: the city parked a car half up on its pavement there)
+                   {"near": [484.6, -686.6], "r": 4.0},
+                   # the little street (pass 14): the city parked one half up on the pavement the
+                   # walk goes along; the film's cars there are the details' own, by the far side
+                   *[{"near": P(s0, 0.0), "r": 4.0} for s0 in (59.0, 64.0, 69.0, 74.0, 78.5)],
                    # Ha-Meri's far kerb past the crossing: the film's silver hatchback is there
                    # (a prop), in the road; the game parked one half up on the pavement
                    {"near": P(96.0, 4.6), "r": 2.5}],
     # bare where the film is bare: the little street's pavement by the graffiti gatepost (film
     # 71-76 s) had a front garden's bougainvillea hung across it at eye height
-    "clear": [{"near": [616.0, -601.3], "r": 3.0},
+    # (and the kerbside furniture off the pavement the walk now goes along, 64-80 s: pass 14)
+    "clear": [{"near": [616.0, -601.3], "r": 3.0}, *[{"near": P(s0, -0.6), "r": 2.6} for s0 in (60.0, 64.5, 69.0, 73.5, 78.0)],
               {"near": P(95.0, 5.4), "r": 3.0}],   # and Ha-Meri's far pavement where it steps up
     # the block at the passage's north-west corner stands on columns along Katzenelson: shops
     # 3 m back under the upper floors, the walk goes between them and the columns (film 18-23 s)
@@ -153,15 +192,17 @@ d = {
           for (a, e, far) in ((-24.0 + 0.0, -18.9, -24.0), (-15.85, -10.0, -10.0))
           for (k, lift, i) in (("kerb", 0.3, 0.0), ("pavers_red", 0.31, 0.15))],
         {"k": "slabs", "lift": 0.14, "lay": [round(u[0], 4), round(u[1], 4)],
-         "p": [P(3.35, -6.0), P(8.4, -6.0), P(8.4, -7.9), P(17.1, -7.9), P(17.1, 1.35), P(17.1, 5.0),
+         "p": [P(3.35, -6.0), P(8.4, -6.0), P(8.4, -9.0), P(17.1, -8.6), P(17.1, 1.35), P(17.1, 5.0),
                P(22.0, 5.0), P(22.0, 10.5), P(16.3, 10.5), P(16.3, 5.4), P(3.35, 5.4)]},
         # the passage itself (film 33-64 s): small grey pavers in rows across it, each row half
         # a paver on, level with the forecourt, fence to fence
         {"k": "pavers_grey", "lift": 0.14, "lay": [round(left[0], 4), round(left[1], 4)],
          "p": [P(17.1, -1.35), P(57.8, -1.35), P(57.8, 1.35), P(17.1, 1.35)]},
-        # the little street's pavement the walk is on (film 64-80 s): the same grey pavers in rows
-        {"k": "pavers_grey", "lift": 0.14, "lay": [round(left[0], 4), round(left[1], 4)],
-         "p": [P(58.3, -2.98), P(79.5, -2.98), P(79.5, -5.35), P(58.3, -5.35)]},
+        # the little street's pavement the walk is on (film 64-80 s): the same grey pavers in rows,
+        # on from the passage's end along the hedge
+        # (6 cm over the usual: the city's pavement there stood over it, its red pavers showing)
+        {"k": "pavers_grey", "lift": 0.2, "lay": [round(left[0], 4), round(left[1], 4)],
+         "p": [P(57.8, 0.3), P(79.5, 0.3), P(79.5, -1.85), P(57.8, -1.85)]},
         # Ha-Meri's mouth past Sheinkin (film 86.5-92.5 s): a raised crossing, the road paved in
         # charcoal herringbone up to the pavements' height, a metre's ramp either end
         {"k": "pavers_dark", "lift": 0.14,
@@ -171,7 +212,10 @@ d = {
     "lines": [
         {"kind": "stone_wall", "pts": [P(17, -1.35), P(38, -1.35)], "h": 0.8},
         {"kind": "wood_fence", "pts": [P(17, -1.35), P(38, -1.35)], "base": 0.75, "h": 1.15},
-        {"kind": "hedge", "pts": [P(38, -1.5), P(57, -1.5)]},
+        {"kind": "hedge", "pts": [P(38, -1.5), P(57.6, -1.5)]},
+        # (on past the passage's end along the pavement, half a metre back: pass 14)
+        {"kind": "hedge", "pts": [P(57.9, -2.0), P(65.6, -2.0)]},
+        {"kind": "hedge", "pts": [P(69.4, -2.0), P(76.6, -2.0)]},        # (past the gate)
         {"kind": "loop_fence", "pts": [P(17, 1.35), P(56, 1.35)], "h": 0.9},
         {"kind": "loop_fence", "pts": [P(17.2, 5.0), P(17.2, 1.35)], "h": 0.9},   # round the planted bed's front
         # the planted bed behind the white fence, and its strip on along the next block
@@ -180,34 +224,44 @@ d = {
         {"kind": "hedge", "pts": [P(26.2, 2.1), P(38.5, 2.1)]},
         # and above them what the film shows walking down it: tall planting 2.5-3 m on both
         # sides (shrubs, bamboo, palms) that closes it in, the blocks behind barely seen
-        {"kind": "shrubs", "pts": [P(17.8, 2.7), P(25.4, 2.7)], "h": 2.6},
+        {"kind": "shrubs", "pts": [P(17.8, 2.7), P(21.0, 2.7)], "h": 1.0},   # (low at the front: the film sees
+        {"kind": "shrubs", "pts": [P(21.4, 2.7), P(25.4, 2.7)], "h": 2.6},   # the barrier over it, 29-32 s)
         {"kind": "shrubs", "pts": [P(26.0, 2.2), P(39.0, 2.2)], "h": 2.4},
         {"kind": "shrubs", "pts": [P(39.5, 2.4), P(44.5, 2.4)], "h": 2.8},
         {"kind": "shrubs", "pts": [P(45.0, 2.0), P(56.0, 2.0)], "h": 2.4},
         {"kind": "shrubs", "pts": [P(18.0, -2.7), P(37.8, -2.7)], "h": 2.4},   # over the wooden fence
-        {"kind": "shrubs", "pts": [P(38.2, -2.0), P(56.8, -2.0)], "h": 3.0},   # the tall hedge on the low wall
+        {"kind": "shrubs", "pts": [P(38.2, -2.0), P(57.6, -2.0)], "h": 3.0},   # the tall hedge on the low wall
+        {"kind": "shrubs", "pts": [P(57.9, -2.5), P(65.6, -2.5)], "h": 3.0},
         # the shops under the arcade (film 15-23 s): lit glass in light frames, each its own
         # sign; the confectionery's, dark brown, faces the zebra
         {"kind": "shopfront", "pts": SHOPS, "h": 2.75, "face": [round(-ARC_IN[0], 4), round(-ARC_IN[1], 4)],
          "signs": ["", "קונדיטוריה", "", ""], "panels": [1]},   # (only the film's shop is named)
-        # the little street to Sheinkin (film 64-72 s): a tall hedge on the back of the
-        # pavement the walk is on
-        {"kind": "shrubs", "pts": [P(59.0, -6.3), P(65.5, -6.3)], "h": 2.3},
-        {"kind": "shrubs", "pts": [P(69.5, -6.3), P(71.5, -6.3)], "h": 2.3},   # (a gate between)
+        # the little street to Sheinkin (film 64-78 s): the passage's tall hedge on along the
+        # back of the pavement the walk is on, a gate in it (66-69)
+        {"kind": "shrubs", "pts": [P(69.4, -2.5), P(76.6, -2.5)], "h": 2.4},
+        # the forecourt's yard (film 25-27 s): a low wall of dark boards on stone behind the two
+        # women, from the passage's fence across to the block on the right
+        {"kind": "stone_wall", "pts": [P(17.1, -1.35), P(17.1, -6.2)], "h": 0.5},
+        {"kind": "wood_fence", "pts": [P(17.1, -1.35), P(17.1, -6.2)], "base": 0.45, "h": 0.85},
     ],
     "props": [
         {"kind": "bin", "at": P(41, -0.95)},
-        {"kind": "hoop_railing", "at": P(56.6, -0.85), "dir": [round(u[0], 4), round(u[1], 4)]},
-        {"kind": "hoop_railing", "at": P(56.6, 0.85), "dir": [round(u[0], 4), round(u[1], 4)]},
+        # the railings across the passage's end, its left two thirds (film 61-66 s: the walk goes
+        # by the right one's post, the hedge on its right)
+        {"kind": "hoop_railing", "at": P(57.75, 0.55), "dir": SE},
         # the forecourt (film 24-33 s): a loose row of bollards across it with a gap to walk
         # through, one more at the passage's mouth; the transformer's twin poles on their plinth
         # just right of the mouth; a garden lamp at the bed's corner; a manhole in the slabs;
         # the barrier across the drive to the next block's car park
         *[{"kind": "bollard", "at": P(13.6, o)} for o in (-6.6, -5.0, -3.4, -1.0, 1.0, 2.6, 4.2)],
-        {"kind": "bollard", "at": P(15.7, -0.8)},
+        {"kind": "bollard", "at": P(15.3, 0.2)},
         {"kind": "twin_poles", "at": P(16.6, -2.25), "dir": [round(left[0], 4), round(left[1], 4)]},
-        {"kind": "globe_lamp", "at": P(18.0, 2.3), "h": 2.7},
-        {"kind": "manhole", "at": P(10.6, -0.6)},
+        # (pass 14: the lamp between the barrier's post and the poles as the film sees them, 29-32 s;
+        # the manhole 4 m ahead of the walk out of the arcade, a little right, 26 s; a grey cabinet
+        # at the yard wall's end by the block, behind the man in white)
+        {"kind": "globe_lamp", "at": P(19.3, 1.7), "h": 2.7},
+        {"kind": "manhole", "at": P(12.0, -7.3)},
+        {"kind": "cabinet", "at": P(16.9, -6.9), "dir": NW_U},
         {"kind": "barrier", "at": P(21.6, 5.3), "dir": [round(left[0], 4), round(left[1], 4)], "len": 4.0},
         # motorbikes and scooters nose to the kerb all along the arcade (film 17-24 s), a gap
         # where the walk comes up off the road; two more parked out in the forecourt
@@ -245,19 +299,19 @@ d = {
         # the little street (film 64-76 s): cars parked along its far side, in the road (the
         # corner block stands too near for the game to park them up on that kerb), and a
         # second transformer on twin poles at Sheinkin's corner
-        *[{"kind": "parked_car", "at": P(s0, 1.75), "dir": [round(u[0], 4), round(u[1], 4)], "body": kd}
+        *[{"kind": "parked_car", "at": P(s0, 3.45), "dir": [round(u[0], 4), round(u[1], 4)], "body": kd}
           for s0, kd in ((64.5, "suv"), (69.6, "hatch"), (74.6, "sedan"))],
-        {"kind": "twin_poles", "at": P(78.4, -6.5), "dir": SE},
+        {"kind": "twin_poles", "at": P(78.4, -3.0), "dir": SE},   # (close on the walk's right, film 78 s)
         # the little street's gate (film 66-70 s): two concrete posts, a heart sprayed on one
-        {"kind": "gatepost", "at": P(66.0, -6.4), "dir": SE, "heart": True},
-        {"kind": "gatepost", "at": P(69.0, -6.4), "dir": SE},
+        {"kind": "gatepost", "at": P(65.9, -2.2), "dir": SE, "heart": True},
+        {"kind": "gatepost", "at": P(69.1, -2.2), "dir": SE},
         # over Sheinkin, on its far corner by Ha-Meri (film 82-86 s): the blue pay booth, a
         # yellow parking board, scooters by it (between the zebra's bollards and a sign pole)
         {"kind": "booth", "at": P(92.1, -7.4), "dir": [round(-u[0], 4), round(-u[1], 4)]},
         {"kind": "sign_board", "at": P(91.4, -8.0), "dir": [round(-u[0], 4), round(-u[1], 4)]},
         {"kind": "scooter", "at": P(91.6, -6.4), "dir": [round(-u[0], 4), round(-u[1], 4)]},
         {"kind": "scooter", "box": True, "at": P(92.3, -8.4), "dir": [round(-u[0], 4), round(-u[1], 4)]},
-        {"kind": "scooter", "at": P(15.2, -5.2), "dir": [round(-u[0], 4), round(-u[1], 4)]},
+        {"kind": "scooter", "at": P(13.7, -5.3), "dir": SE},   # (side on, left of the women: film 25-26 s)
     ],
     # the trees over the passage's mouth: in the planted bed, and in the yard behind the fence
     "trees": [P(19.6, 3.3), P(23.6, 3.8), P(21.5, -4.2), P(28.5, -4.8), P(35.5, -4.2),
@@ -272,12 +326,18 @@ d = {
             "head": head,
             # the head turned from the way the walk goes: [from, to, degrees, + right] and, if
             # given, degrees up (the phone already tilts 15.6 down: streets.gd's FILM_TILT)
-            "looks": [[4.0, 5.1, 25],                           # (it faces across while it waits: the
-                                                                # far side's fronts level in the frame,
-                                                                # 1-2.5 s); a glance right, then
-                      [5.4, 8.8, 0, -30],                       # then down at the stripes, a foot in shot (6 s)
-                      [8.9, 12.6, 15], [12.6, 13.4, 20],        # the far half's from the right (a glance:
-                                                                # the film faces across, 9.5-12 s)
+            # (pass 14, read off the zebra's stripes and the bollard in the film's own frames --
+            # an ffmpeg seek before the input lands on a frozen frame for the clip's first 8 s,
+            # which pass 12's "faces straight across, 1-2.5 s" was read from: it faces a little
+            # left of across, the bollard at its frame's right edge (1 s), then left at the near
+            # half's cars coming, the zebra in the right of its frame (3-5 s); on the median it
+            # faces across a touch left, the zebra right of the middle (11-13.5 s); and it looks
+            # up at the confectionery's front as it reaches the far kerb (15.5 s))
+            "looks": [[0.0, 1.6, -28],
+                      [3.0, 5.1, -25],
+                      [5.4, 8.8, 0, -30],                       # then down at the stripes, a foot in shot (6.5 s)
+                      [8.9, 12.6, -12], [12.6, 13.4, -16],
+                      [15.1, 15.9, 0, 20],
                       [79.3, 81.0, 60], [81.0, 82.3, -45],      # Sheinkin's from the right; and the other way
                       [84.4, 86.0, 40],                         # half way over, along Sheinkin again
                       [87.6, 88.6, -55], [89.0, 92.5, 55],      # back at the corner; then down Ha-Meri,
@@ -302,13 +362,18 @@ d = {
             # characters have no clip for it; a woman in black crosses the passage's end in front
             # of the man in blue, 59.5-62 s)
             "people": [{"at": P(6.5, -12.5), "to": P(4.6, -20.6), "t": [12.6, 16.6], "stay": True, "who": 0},
-                       {"at": P(14.4, -5.8), "face": [round(left[0], 4), round(left[1], 4)], "who": 1, "talk": True},
-                       {"at": P(14.6, -6.7), "face": [round(-left[0], 4), round(-left[1], 4)], "who": 3, "talk": True},
-                       {"at": P(15.5, -4.9), "face": [round(-u[0] - left[0], 4), round(-u[1] - left[1], 4)], "who": 2,
+                       # (pass 14: 6.4 m ahead of the walk as it comes out of the arcade at 26 s, the
+                       # scooter just left of them, the man in white further right by the cabinet)
+                       # (both women's fronts to the camera, the man in white turned to them)
+                       {"at": P(14.0, -6.1), "face": [round(-u[0] - 0.1 * left[0], 4), round(-u[1] - 0.1 * left[1], 4)], "who": 1, "talk": True},
+                       {"at": P(14.2, -6.8), "face": [round(-u[0] + 0.15 * left[0], 4), round(-u[1] + 0.15 * left[1], 4)], "who": 3, "talk": True},
+                       {"at": P(15.9, -7.4), "face": [round(-u[0] + 0.5 * left[0], 4), round(-u[1] + 0.5 * left[1], 4)], "who": 2,
                         "talk": True, "tall": 1.78},
                        # (walking up to the passage's end as the walk comes out of it, then standing)
-                       {"at": P(61.6, 2.1), "to": P(58.4, 2.1), "t": [59.0, 61.4], "stay": True, "who": 2},
-                       {"at": P(60.2, -3.2), "to": P(59.8, 3.4), "t": [59.4, 63.2], "who": 4}],
+                       # (pass 14: just past the railings, by the pavement's kerb -- the walk goes by
+                       # him close on its left at 66 s)
+                       {"at": P(61.4, 0.5), "to": P(59.8, -0.1), "t": [59.0, 61.0], "stay": True, "who": 2},
+                       {"at": P(61.0, -0.7), "to": P(60.0, 3.6), "t": [59.4, 62.6], "who": 4}],
             # [second, at, heading] and what the film shows of it: "lane" kerb or median,
             # "through" (it drives on past the walk at the zebra), "kind"
             # the near half's (film 1-4.5 s): a black hatchback by in the lane by the median
