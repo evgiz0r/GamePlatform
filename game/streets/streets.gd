@@ -13071,14 +13071,23 @@ func _ap_light_v() -> float:
 ## needs, and a fifth more. (Aimed at "the speed that just stops in time from here", the
 ## target sat a hair under the speed and the controller -- braking by how far over it is --
 ## hardly braked: the need grew and grew, and it gave up and drove on into the red.)
+## Far off, or slow, the need is small: up to the line on the usual slope, as for a red.
+## (Braking at 1.5 m/s^2 at least, wherever the line was, a green ending 80 m off stopped the
+## car 23 m on, in the middle of the street -- and standing, the need is nothing, the speed
+## to aim at nothing: it stood there all through the red. A user, twice: "the car weirdly
+## stops in the middle of the run.")
 var _ap_amber_n := -1                ## the lit point it decided to stop at as its green ended (kept to until green again)
 
 func _ap_brake_for(stop: float) -> float:
 	var room := stop - 0.5
 	if room <= 0.2:
 		return 0.0
-	var need := maxf(_v, 0.0) * maxf(_v, 0.0) / (2.0 * room)
-	return maxf(_v - clampf(need * 1.2, 1.5, 6.0) * 0.5, 0.0)   # (autodrive brakes 2 m/s^2 for each m/s over: see _autodrive)
+	var v := maxf(_v, 0.0)
+	var need := v * v / (2.0 * room)
+	var slope := sqrt(2.0 * 2.6 * room)
+	if need < 2.0:
+		return slope
+	return minf(maxf(v - minf(need * 1.2, 6.0) * 0.5, 0.0), slope)   # (autodrive brakes 2 m/s^2 for each m/s over: see _autodrive)
 
 ## seconds until the light at lit point n facing traffic going `dir` turns red (0: red, or
 ## red and amber, now)

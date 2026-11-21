@@ -994,6 +994,24 @@ The open items of the handoff below, done:
   5 of 40 bad. Now 0 of 40: on through from 30 m and nearer, stopped from 40 and 55 m at
   3.6-3.9 m/s^2, 2.7-11 m short of the line; on a flashing green it goes (6 s to the red).
   The route set's red (route 5, Ashdod) was this. The traffic's own amber rule is not touched.
+- **A green ending far ahead stopped the car mid-street** (21 Nov; `_ap_brake_for`). The user,
+  twice: "the car weirdly stops in the middle of the run" -- by a side street on Hafetz Haim,
+  Givatayim, the road empty, and again 20 m short of a crossing. Both were the amber stop
+  above: it braked at the stop's need and a fifth, but at 1.5 m/s^2 at least, wherever the line
+  was. A green ending when the light was 80 m off (it cannot get there in the 6 s to the red,
+  so it stops: right) brought it to a stand 23 m on; standing, the need is nothing and the speed
+  to aim at nothing, and `_ap_amber_n` keeps the decision until green -- it stood 57 m short
+  all through the red. The "3-11 m short" the amber test printed was the near end of the same
+  thing, put on the open list instead of chased. Now while the need is under 2 m/s^2 the
+  speed aimed at is the usual slope up to the line (2.6 m/s^2), as for a red; above, the
+  commanded braking as before. Found by `tests/side_street.gd` (Hafetz Haim on the user's
+  route, four passes: the third met the end of a green and stood 19 s 2 m from the side
+  street, why 'light'); `tests/amber.gd` now has an 80 m case and fails a car left standing
+  more than 4 m short (6 s after it stands): before 12 of 12 bad at 80 m (27-45 m short), now
+  0 of 72 -- every stop 1.6-1.7 m short of the line (where it aims), braking 3.3-4.3 m/s^2.
+  Route set after: 10 of 10, 0 reds, 0 rescues, 0 off road; one hit, a person on Bedford's
+  Hammonds Plains Road at 23 km/h (following a car at 36 km/h, why 'car', then 'people' under
+  a second before: someone into the lane close ahead -- no light near; open, below).
 - **Waiting in a divided road's middle** (`_median_gap`, `_ap_split`, `_ap_mid`,
   `_ap_edge_of`; `_ap_median_ok` turns it off for tests). A junction of points within 18 m is
   one junction for autodrive (`AP_KNOT`): it waits at the kerb for a gap in every stream it
@@ -1036,7 +1054,9 @@ Nothing is half done: all of the above is on main.
     within a few metres of the junction (it may not start behind it): 3.6-4.3 m at two of
     Givatayim's four in turn_width. Dropping a plain lane point that the arc would start
     behind would let it;
-  - autodrive's amber stop ends 3-11 m short of the line (it brakes at the need and a fifth);
+  - route 9 (Bedford) hit a person at 23 km/h on Hammonds Plains Road (21 Nov, t 284 s of the
+    drive): autodrive held for 'people' only ~0.6 s before, at 10 m/s -- someone came into the
+    lane from close by, or the people check saw them late (its 32 m look and 1.7 m reach);
   - `_push_out` sets `_last_hit` even when it only probes (the plan's `_clear_lane`, the nose's
     safety net): a test reading `_last_hit` must gate on `_crash_cool`, as route_set and
     give_way do;
