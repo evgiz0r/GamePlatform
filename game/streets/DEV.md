@@ -3878,7 +3878,13 @@ batch (`_stamp`: each surface's triangles into the CBuf, coloured by its materia
 "paint" from the yard's colours, "metal" etc. from the street's tones), so a model adds no
 draw. In each kindergarten's yard: `slide` and `spring_rider` (336 and 684 faces; 288 placed
 in level 1). The glTF import keeps the Blender material's name as the surface material's
-`resource_name`: that is what `_role_col` reads.
+`resource_name`: that is what `_role_col` reads. Then (asked for: "9") `models.gd`, shared:
+`tris` (a model's triangles by role, loaded once), `stamp` (into one buffer, a colour per
+role) and `stamp_into` (each role into a palette-role buffer, white: the buffer's material
+colours it, so a new look recolours the model). The parks' playgrounds (`_playground`) are
+now the made `slide`, `swings`, `climber` and `seesaw` round the sandpit on the soft floor
+(`PLAY_ROLES`: paint -> warn, paint2 -> player, paint3 -> accent, metal/rubber -> pole):
+level 1, 45 playgrounds; `tests/places.gd` shoots one from above and at eye height.
 
 ## Open problems
 

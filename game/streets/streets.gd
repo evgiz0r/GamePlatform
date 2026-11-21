@@ -955,6 +955,7 @@ var _wave: Wave                      ## the green wave: lights turning green for
 var _racer: Racer                    ## racer mode: autodrive with the rules off, the town hooting (racer.gd)
 var _places: Places                  ## a town's own kindergartens and shelters (places.gd)
 var _opening: Opening                ## the view over the town while the squares round the car go up (opening.gd)
+var _models: Models = null           ## models made with Blender, stamped into batches (models.gd)
 var _standins: Standins              ## the squares not built yet, seen from above: flat roads, outlines (standins.gd)
 var _on_deck := -1                   ## while a deck road is drawn: heights come from it, not the ground
 var _inferred := {}                  ## what decks.gd's infer() made of a real town's bridges (the report)
@@ -1044,6 +1045,7 @@ const Standins := preload("res://game/streets/standins.gd")
 const Racer := preload("res://game/streets/racer.gd")
 const Places := preload("res://game/streets/places.gd")
 const Opening := preload("res://game/streets/opening.gd")
+const Models := preload("res://game/streets/models.gd")
 const DriveLog := preload("res://game/streets/drivelog.gd")
 var _log := DriveLog.new()            ## the last two minutes, for the map page and "save log"
 var _ap_why := ""                     ## what held autodrive's speed down this tick (for the log)
@@ -2950,6 +2952,7 @@ func _build_setup(t0: int) -> void:
 	_beach.setup(_city_data)
 	_works = Sites.new(self)
 	_works.setup(_city_data)
+	_models = Models.new(self)
 	_places = Places.new(self)
 	_places.setup(_city_data)
 	_wave = Wave.new(self)
@@ -8748,7 +8751,11 @@ func _obox(buf: Buf, c: Vector3, size: Vector3, yaw: float, tilt := 0.0) -> void
 				pts.append(c + basis * q)
 			_poly(buf, pts, basis * n)
 
-## a slide tower with a roof, a swing frame and a sandpit, on a round soft floor
+## a park's playground on a round soft floor: the slide, the swing set, a climbing dome and a
+## see-saw (made with Blender: tools/blender/recipes/, stamped by models.gd into the palette's
+## buffers, so a new look recolours them) and a sandpit. Laid out round `at`, `yaw` turning it.
+const PLAY_ROLES := {"paint": "warn", "paint2": "player", "paint3": "accent", "plastic": "friend",
+	"wood": "friend", "metal": "pole", "rubber": "pole", "dark": "pole", "*": "pole"}
 func _playground(b: Dictionary, at: Vector2, yaw: float) -> void:
 	var gy := _h(at)
 	var fwd := Vector2(sin(yaw), cos(yaw))
@@ -8761,25 +8768,18 @@ func _playground(b: Dictionary, at: Vector2, yaw: float) -> void:
 		var a1 := TAU * (i + 1) / seg
 		floor_buf.tri(P.call(at, 0.04), P.call(at + Vector2(cos(a0), sin(a0)) * 7.0, 0.04),
 			P.call(at + Vector2(cos(a1), sin(a1)) * 7.0, 0.04), Vector3.UP, Color.WHITE)
-	# the tower and its slide
-	var t := at - side * 2.5
-	for c: Vector2 in [Vector2(-0.6, -0.6), Vector2(0.6, -0.6), Vector2(0.6, 0.6), Vector2(-0.6, 0.6)]:
-		var q := t + side * c.x + fwd * c.y
-		_obox(b["pole"], P.call(q, 1.45), Vector3(0.1, 2.9, 0.1), yaw)
-	_obox(b["friend"], P.call(t, 1.5), Vector3(1.4, 0.1, 1.4), yaw)
-	_obox(b["accent"], P.call(t, 2.95), Vector3(1.6, 0.1, 1.6), yaw)
-	var run := t + fwd * 2.05
-	_obox(b["warn"], P.call(run, 0.8), Vector3(0.62, 0.06, 2.9), yaw, 0.5)
-	# swings
-	var sw := at + side * 2.6
-	for e: float in [-1.6, 1.6]:
-		for l: float in [-0.5, 0.5]:
-			_obox(b["player"], P.call(sw + side * e + fwd * l * 0.6, 1.2), Vector3(0.08, 2.5, 0.08), yaw, l * 0.45)
-	_obox(b["player"], P.call(sw, 2.4), Vector3(0.1, 0.1, 3.4), yaw + PI * 0.5)
-	for e: float in [-0.7, 0.7]:
-		var q := sw + side * e
-		_obox(b["pole"], P.call(q, 1.5), Vector3(0.03, 1.8, 0.03), yaw)
-		_obox(b["warn"], P.call(q, 0.55), Vector3(0.5, 0.05, 0.22), yaw)
+	# each model's +X along `along`, its middle at q (the models' own frame: +X ahead, up)
+	var put := func(name: String, q: Vector2, along: Vector2) -> void:
+		var bs := Basis(Vector3(along.x, 0, along.y), Vector3.UP, Vector3(-along.y, 0, along.x))
+		_models.stamp_into(b, PLAY_ROLES, name, Transform3D(bs, P.call(q, 0.04)))
+	put.call("slide", at - side * 3.0 - fwd * 0.4, fwd)        # (down the chute along fwd)
+	_add_post(at - side * 3.0 - fwd * 1.6, 0.7)
+	put.call("swings", at + side * 3.2, side)                   # (the bar along fwd, swinging across)
+	_add_post(at + side * 3.2 + fwd * 1.7, 0.2)
+	_add_post(at + side * 3.2 - fwd * 1.7, 0.2)
+	put.call("climber", at + fwd * 4.2 - side * 1.2, fwd)
+	_add_post(at + fwd * 4.2 - side * 1.2, 1.9)
+	put.call("seesaw", at + fwd * 4.6 + side * 3.0, side)
 	# the sandpit
 	var sp := at + fwd * -3.4
 	for e: float in [-1.5, 1.5]:
