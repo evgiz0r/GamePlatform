@@ -256,6 +256,29 @@ The ones most often touched, and the functions in them:
   (seeds 1-14). The test's "close" counts under 0.58 m now (0.6 is the floor walkers are held
   at; a push off a post after it left one at 0.599 and failed a run). tests/walk_people.gd counts
   someone behind a building as unseen (`_behind_building`).
+- **dogs, feet, walking on the spot** (the user: "the dogs look pretty wierd, and their
+  hitboxes and how they walk is pretty wierd"; "some people are walking in place ... and
+  their legs are somewhat bit inside the ground"). The dog (furniture `dog_kit`) is
+  ellipsoids and tubes now, as the cats -- a deep chest, a neck, a rounded head and
+  muzzle, floppy ears, legs with paws, a wagging tail (vertex alpha 0.9) -- in six coats and
+  five sizes (`dog_size`, the copy's scale); it was a stack of boxes. `_dog_step`: it keeps
+  a spot by its walker (DOG_SPOTS: ahead right, ahead left, at heel) while that is clear and
+  on the walker's side of any fence, moving over only when blocked (a second's hold), and
+  goes there at a dog's pace facing where it goes; its legs trot by the ground it covers
+  (custom r: the stride's phase + 8 x how hard, 0 standing). Before, it was put each tick at
+  the first clear spot -- a post or railing coming by flicked it a metre across in a frame
+  -- facing its walker's way, legs going at one pace whatever it did. Dogs are among the
+  bodies everyone keeps off now (`_people_at`, who -100 - its number; its own walker leaves
+  it out), so people step round them and the car and you bump them. **Walking on the spot**:
+  `_walker_anim` plays the walk at the pace a walker really covers the ground and Idle when
+  it stands (waiting for you, behind someone, the second of a pair whose first stopped):
+  the walk played on. **Feet in the ground**: tests/feet_ground.gd casts down from each
+  walker against the drawn meshes -- most stand on the paving (the +0.025 readings are the
+  contact-shadow strips laid over it by walls and parked cars), but walkers stepping over a
+  side street's mouth stood 0.128 m (a kerb) down where the next street's pavement is laid:
+  `_walk_y` took the nearest road's kerbs, and that road had none (a service lane); now
+  `_on_some_pavement` looks at every street near. tests/foot_sink.gd: the street's
+  grown-up proportions (`_humanize`) leave the feet bones where the kit's are (+0.001 m).
 - **signs bent by the car** (`_bend_sign`, SIGN_BEND_V 4 m/s): street signs are merged into
   the batches, so the one hit is hidden in TONE_SHADER (`gone`/`gone_n`, up to 12: what
   stands within 0.8 m of its pole from 0.35 m to its top is squashed onto a stub) and a bent
