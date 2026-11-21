@@ -6538,11 +6538,13 @@ func _tree_covered(p: Vector2) -> int:
 ## Room for a real tree's trunk (a town's map of its trees): clear of the asphalt by 0.4 m and
 ## of a wall by 0.6, 1.2 m from the next post. The made-up trees' room (_tree_ok: 0.7 m and
 ## 1.1 m, 2 m apart) needs a 1.8 m gap between kerb and wall, which narrow pavements lack.
+## The asphalt is the road's strip, a rounded corner's and a junction's disc: on the strip
+## alone, 40 of Givatayim's and 42 of Tel Aviv's mapped trees stood up to 1.3 m into a
+## corner's curve (tests/city_check.gd, "posts on the road").
 func _mapped_tree_ok(p: Vector2) -> bool:
 	if not _bounds.has_point(p):
 		return false
-	var hit := _nearest_seg(p, 12.0, true)
-	if not hit.is_empty() and float(hit["edge"]) < 0.4:
+	if not _off_road(p, 0.4) or _in_junction(p, 0.4):
 		return false
 	if _push_out(p, 0.6, false) != Vector2.ZERO:
 		return false
@@ -6574,7 +6576,7 @@ func _tree_nudge(p: Vector2, deep: float) -> Vector2:
 		n = n.normalized()
 		offs = [1.0 - float(hit["edge"]), 0.6 - float(hit["edge"])]
 	for off: float in offs:
-		var c: Vector2 = p + n * off
+		var c: Vector2 = _out_of_corner(p + n * off, 0.6)   # round a corner: out past its curve
 		var push := _push_out(c, 0.6, false)
 		if push.length() > deep + 0.6:
 			continue
