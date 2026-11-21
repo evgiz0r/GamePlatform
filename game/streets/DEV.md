@@ -2493,9 +2493,13 @@ from the air (11,893, each with its radius), both fetched on the user's computer
 - **The game** (`_build_trees`): a mapped tree takes its form's kind (`fixed`), a crown its
   size (`cr / crown width`) and a kind by size when the map has no species (`_crown_kind`:
   over 5.5 m ficus or eucalyptus, under 1.3 m olive or round, else the street mix). It gets
-  a trunk's room (`_mapped_tree_ok`: 0.4 m off the asphalt, 0.6 m off a wall, 1.2 m apart),
+  a trunk's room (`_mapped_tree_ok`: 0.4 m off the asphalt -- the road's strip, a rounded
+  corner's curve and a junction's disc, `_off_road` and `_in_junction`: on the strip alone
+  40 of Givatayim's and 42 of Tel Aviv's stood up to 1.3 m into a corner, `city_check` --
+  0.6 m off a wall, 1.2 m apart),
   and where it has none it is moved (`_tree_nudge`): onto the pavement 1 m or 0.6 m from
-  the kerb (Tel Aviv plants in the parking lane, and OSM's widths are guesses), out to the
+  the kerb (Tel Aviv plants in the parking lane, and OSM's widths are guesses) and out past
+  a corner's curve (`_out_of_corner`), out to the
   nearest wall's foot from up to 2.5 m inside a house (4 m for a crown from the air, centred
   over the roof it overhangs); a grate or earth square under it on a pavement. Where an
   aerial map covers (`_tree_cover`, within 40-80 m of its trees) nothing is made up; a list
@@ -2505,7 +2509,7 @@ from the air (11,893, each with its radius), both fetched on the user's computer
   (`_trees_mapped`). The credits are one line by owner (`_credit_line`).
 - **Test**: `tests/real_trees.gd` (README row: the numbers; before/after with
   `STREETS_CITY_FILE`, which keeps the level's own town id). Load times unchanged.
-- **Lost** (Tel Aviv 3,042, Givatayim 4,825): trees deeper in a house than the moves
+- **Lost** (Tel Aviv 3,096, Givatayim 4,863): trees deeper in a house than the moves
   allow (Givatayim: ~2,700 crowns centred over a roof by more than 1.4 m; Tel Aviv: ~950
   more than 2.5 m inside an OSM outline -- courtyards drawn as roof, or a private plot),
   over 4.5 m into a road (a boulevard's middle where OSM maps one road), or with no
