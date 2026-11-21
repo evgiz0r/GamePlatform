@@ -22,7 +22,7 @@ streets
 
 Someone driving an ordinary car through their own town, on a sunny day, seen from just
 behind and above the car (a chase cam that swings out a little on the turns and pulls in
-rather than sit inside a wall) -- or from the driver's seat (the "seat" button, or C):
+rather than sit inside a wall) -- or from the driver's seat (the camera button, or C):
 the dashboard, a steering wheel that turns with the front wheels, a speedometer and rev
 counter seen through the top of it, the pillars and the mirror, the eyes leading a little
 into the turns.
@@ -105,6 +105,39 @@ you).
 > I want to walk a bit faster when I'm out of the car, now it's too slow. I want to be able
 > to start walking also when I'm driving. The car will just continue and I'll pop off.
 
+## The buttons on the screen
+
+> lets make the other buttons better, more organized, with better logic. some buttons are
+> rarely used and so on
+> i want something not to take too much of the screen or maybe collapsable easily. all
+> those [little] notations also take a bit
+
+(22 Nov 2026.) On the screen only what you use while driving, grouped by what it is for:
+
+- **Along the bottom, where you are going:** "autodrive" and, while it drives, its style
+  beside it ("racer", "rules" or "green wave": tap for the next), "go to…", and "walk"
+  ("get in" on foot).
+- **On the right, the view:** "more", "–", the camera ("chase", "seat" or "above": tap
+  for the next, round), and "look" while you drive yourself.
+- **By the map, after dark:** "lights".
+- **"more"** opens a drawer of what you set once and leave: time of day (day, evening,
+  night), the road (dry, wet), how autodrive drives (keeps rules, green wave, racer), the
+  steering assist, pause, the keys, the perf view -- and, small at its foot, the fps, which
+  build this is, how long the city took to load, and the towns' own credits. A tap outside
+  closes it.
+- **"–"** folds every button away but one small "show" (the stick stays).
+
+Every button says what is on now, and is lit when it is on: "seat" means you are in the
+seat. (Before, some said what a tap would switch to -- "day" at night.) Paused by hand, a
+"resume" sits in the middle of the screen. Keys do everything too; "keys" in the drawer
+lists them.
+
+**Autodrive is a racer by default.** Switched on by you -- its button, "go to… drive to",
+a street held from above -- autodrive drives as the racer, no green wave. The style is
+yours to change, in the chip beside the button or the drawer.
+
+> change the default of the autodrive to racer, without green wave.
+
 ## What do you do?
 
 Drive, freely. The car behaves like a car rather than a toy: about 4 m/s² off the line,
@@ -137,7 +170,7 @@ takes the wheel back from autodrive; tap "autodrive" to hand it over.
 > The circle keeps moving. Can't drive like that. Make it a static circle, somewhere on
 > the right side.
 
-**Driving assist** (on by default, the "assist" button): while you roughly follow a street
+**Driving assist** (on by default; "steering assist" in the "more" drawer): while you roughly follow a street
 it eases the car toward the street's direction and the middle of your lane, letting go
 the moment you steer harder than a nudge, and it brakes for something solid right in
 front at speed.
@@ -451,14 +484,14 @@ The minimap (bottom left) shows the real streets and buildings round you, headin
 the city limits in pink. The name of the street you are on is at the top, in Hebrew with
 the English name under it when OSM has one.
 
-Over the minimap, small, is which build this is: "build 21 Nov 12:05 Israel · 79f2bc6", when
+In the "more" drawer, small, is which build this is (it sat over the minimap until 22 Nov): "build 21 Nov 12:05 Israel · 79f2bc6", when
 it was published, on Israel's clock (summer time too), and the commit it came from, so a
 screenshot says whether a fix is in it ("dev build" when run from the project).
 
-> can we print build times in israel time Under the map, small and wrapped so it stays
-clear of the buttons, the credits: OpenStreetMap's, and the towns' own surveys.
+> can we print build times in israel time Under the map, small, OpenStreetMap's credit; the
+towns' own surveys are credited at the foot of the "more" drawer.
 
-**Zooming out.** "zoom" (on the right, under "walk"; Z, or the mouse wheel down, or two
+**Zooming out.** "above" (the camera button's third view; Z, or the mouse wheel down, or two
 fingers pinching together) lifts the view off the car -- or off you, on foot -- up over the
 city, centred on where you are, the way you were facing at the top of the screen, and
 pauses the city: the car, traffic, people and lights hold still where they are, and the
@@ -500,7 +533,7 @@ there is something to see, and to hold the mouse on to drive there, from the fir
 > when i zoom the beginning the rest of the city is still being built. maybe i can still see
 > something (roads?!, dunno), and click in the area of the city, before it rendered
 
-**The green wave.** "wave" (on the left, above the map, or V) turns it on: every crossroads with lights
+**The green wave.** "green wave" (autodrive's style: the chip beside it or the "more" drawer; or V) turns it on: every crossroads with lights
 you come up to, driving yourself or on autodrive, turns green for you. It does it the proper
 way, as if it saw you coming: the cross street's green ends with its flashing and amber,
 red all round, then red-and-amber and green your way, so its cars and people stop as they
@@ -510,7 +543,7 @@ gone red for you has turned by the time you get there.
 
 > any crossroads i approach switches to green for my car
 
-**Racer.** "racer" (on the left, under "wave", or R) puts autodrive on with the rules
+**Racer.** "racer" (autodrive's style, and its default; or R) has autodrive drive with the rules
 off: it goes through red lights and stop signs, never gives way, takes the bends as fast as the tyres hold rather than the limit (about
 one and a half times it, up to 100 km/h) and goes round any slower car -- on the left, or
 the right where the road has the lanes, over the centre line when nothing is coming -- and
@@ -518,7 +551,8 @@ when a queue will not move it goes up onto the pavement and along it, if nobody 
 It still stops for people on a zebra and brakes for anyone in its way. The town
 carries on as before: the traffic stands on its brakes for you, and a car that has to, or
 that finds you coming at it in its lane, sounds its horn. Each red it runs is counted
-beside the button. Autodrive off (the stick, the keys, walking) ends it.
+over the style chip. Autodrive off (the stick, the keys, walking) ends it; on again, it is
+the racer again unless you chose otherwise.
 
 > thief or racer mode, where the autodrive doesn't care about traffic
 
@@ -786,7 +820,7 @@ the wind once you are moving quickly; the nearest car going by as the whoosh of 
 its pitch falling as it passes; and the city far off, always, soft. (See "Sound you do not
 switch off" below for why it changed.)
 
-**Night.** The "night" button: a dark sky and a dim moon, a share of the windows lit (warm
+**Night.** "night" (time of day, in the "more" drawer): a dark sky and a dim moon, a share of the windows lit (warm
 in homes, cooler in offices), street lamps on with a pool of light under each, shop
 windows bright, headlights with their beams on the road, tail lights glowing.
 
@@ -1074,7 +1108,7 @@ the city now has what the walk had underfoot and at eye height:
 
 > go next
 
-**Golden hour.** The time-of-day button steps through day, evening and night. The evening is
+**Golden hour.** Time of day, in the "more" drawer: day, evening and night. The evening is
 the hour before sunset: a sky photographed then, clouds lit gold from below and a glow
 along the horizon where the sun is going down (in the west-south-west, as it sets over
 Givatayim in the autumn); the sun low and orange, so the fronts that face it glow and the
@@ -1095,7 +1129,7 @@ whoosh; the coin for a new street is a quiet tick, the indicator a relay's soft 
 
 > go next
 
-**After rain.** The "wet" button (beside the time of day; "dry" turns it back) soaks the
+**After rain.** "wet" (the road, in the "more" drawer; "dry" turns it back) soaks the
 streets over a second and a half: asphalt, paint and pavers go dark, puddles lie in the
 dips holding the sky (and, low down, the buildings across the street), the sun's glare
 runs along the wet road when you drive towards it, grass and earth go a little darker. The
