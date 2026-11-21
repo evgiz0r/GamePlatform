@@ -212,7 +212,10 @@ the parked cars, which stand a third in the road).
   (`Geometry2D.clip_polygons` against a capsule round each road segment -- a rectangle
   leaves the outside of every bend and every junction's middle uncut). Skip one that would
   lose more than half (a road passing under it: OSM maps the passage, not a gap) and one
-  raised on columns (`min_height`), and keep the outline's winding.
+  raised on columns (`min_height`), and keep the outline's winding. But a building the road
+  runs right under, past both its edges, with no `min_height` (a mall's bridge over its
+  street) must then be lifted -- a storey and a half, columns out of the lanes -- or it
+  stands on the street as a wall: kept whole and left on the ground, it blocked one.
 - **A divided road is two one-way roads**, each guessed at the full class width, so the
   halves overlap and each one's kerb and pavement run down the other's lanes. Find each
   half's partner (one-way the other way, on its left, within ~40 m along most of its
@@ -369,6 +372,16 @@ the parked cars, which stand a third in the road).
   measure "metres ahead" from the car's projection onto the plan, not from the plan's first
   point -- which is the start of the current stretch and can be 40 m behind. Both together
   had autodrive "pass" a van with a bend that landed behind it, then stand there.
+- **One rule for "in my way", or the strict one stands while the others drive past.**
+  Traffic counted a car in its way by its middle, the player's AI by its body plus a
+  margin: a delivery van standing at the kerb, its middle 2.5 m off the lane, was passed by
+  every traffic car while the AI stood behind it for the whole delivery, the street empty
+  ahead -- which reads as broken. Wherever the strict test says "blocked", give it a way
+  past that clears exactly what that test reads (here: over by the van's body points plus
+  the test's own margin, if the car still fits on the asphalt and nothing solid is there),
+  and in a one-way street of one lane, where there is no lane to go round in, that is the
+  only way past. Log every long stop with what holds it and how far the lane is free: one
+  drive found what a user could only describe.
 
 - **Off the road** (handed over in a yard, knocked onto a lawn), heading straight for the
   nearest road goes through the wall in between, backs off and does it again. Search
