@@ -53,7 +53,14 @@ The ones most often touched, and the functions in them:
   round the car are up (`_far_now`), its building loops paced like a square's (`_over` /
   `_pause`); the grass is made at load all the same (its shader in the warm-up) with
   `_fs_blank`, a 1x1 picture where nothing grows. `_build_far_shadows` keeps the sun it was
-  started for (`ev`): the evening switched on meanwhile keeps its own.
+  started for (`ev`, or `for_sun`): the evening switched on meanwhile keeps its own. The other
+  sun's picture is drawn ahead (`_far_ahead`, `FAR_AHEAD_S` 8 s after the car, once the car's
+  own is done; `_far_draw`, `_fs_drawing`), so the time-of-day button finds it; a click before
+  that draws it a few ms a frame, never whole (whole, it held the click a second and more on a
+  user's PC). Its chunks keep their own budget (`_yield_at`), not `_over()`, which is false once
+  the city is built. Both are drawn before the city file is let go (`_far_both`, end of
+  `_build_rest`): the evening's, drawn at its button after that, met an empty file -- a SCRIPT
+  ERROR and no far shadows at all in the evening, live until 21 Nov.
 - **loading the city** -- `_load_city`, then `_fit_dual_carriageways` (halves of a divided
   road sized to their lanes, `r["median"]`), `_fit_widths_to_buildings` (widths are guesses),
   `_clip_buildings` (fronts still on a road cut back to road + 1.5 m), `_build_graph`.
@@ -66,7 +73,10 @@ The ones most often touched, and the functions in them:
   rest in `_build_rest` while you drive, nearest the car first -- the rest of NEAR_FIRST in
   a hurry (`_catch_up`: `CATCH_UP_US` 16 ms a frame, the first seconds only, `_catch_up_ms`
   when done), then `BUILD_US` -- every builder stopping when the frame's budget is used up
-  (`if _over(): await _pause()`). Two rules keep squares from doubling or
+  (`if _over(): await _pause()`) -- and once no square within `SEE_M` (900 m) of the car is
+  left (`_all_seen_built`), `BUILD_FAR_US` 1.5 ms while driving (full speed from above or
+  paused): Tel Aviv's build took 4-6 ms of every frame for ~11 minutes on a user's PC, most
+  of it squares past the haze. Two rules keep squares from doubling or
   missing things: what lies along a road or fence is worked out by every square it crosses
   and kept only where its triangles start (`CBuf.clip`, `_near_part`, `_near_span`);
   everything else, and whatever it records (posts, parked cars, lights, tables), belongs
@@ -327,6 +337,22 @@ The ones most often touched, and the functions in them:
     warm as the film's: red/green 1.066). Graded greys now red/green 1.049 (was 1.068; the film
     1.021). Still open: the passage at 55 s is drawn beige-and-pink bricks though the walk's
     details lay it as small grey pavers -- find which surface draws it there.
+  - **the passage at 55 s (22 Nov, later) -- still open.** Ruled out: a neighbour's pavement
+    (`tests/what_paves.gd` AT="641.59,-622.87": only the details' own footway, unkerbed, is
+    there); the footways' "walks" layer (dropped in a diagnostic run: the bricks stayed);
+    `_build_passages` (walls only). Seen: pavers in half-offset rows, each its own colour, pink,
+    cream and near white -- more than kind 7's x0.9-1.1 brightness would give. Next: shoot it
+    from above with the details' surfaces hidden, then with the tone table's pavers_grey set to
+    a loud colour, to see which layer it is. Done meanwhile: details "add" roads now carry
+    `pave`, `yard`, `setts` as "set" ones do (they were dropped), the passage's footway has
+    `"pave": [0, 1]` (make_givatayim.py); and the walk's grade has a white balance, FILM_WB
+    (red x0.973, blue x1.037: the graded greys' red/green 1.049 -> 1.035, blue/green 0.970 ->
+    0.979; the film 1.021 / 1.006), the curve refitted, FILM_SAT held at 1.2 -- the fit asks
+    1.47, which put the pavers' tint straight back: the film's colour is its content. Graded
+    now: saturation 0.134 (the film 0.159), median 0.47 (0.45), 0.0% clipped.
+  - **look tests check for burn-out**: look_tries and look_bench print each shot's pure-white
+    share and FAIL over 5% (`_white_check`). Now: start 1.2%, close 1.3%, under 2.2%; bench
+    street 3.8%, car 3.4%, the rest under 1%.
   - **leaves**: `leaf` with red x0.76 and blue x0.88 -- on screen they were 72/61/52 (red over
     green: brown), the film's foliage 55/61/46.
   - the grade refitted again on all of it: FILM_SAT 1.224 (the bare picture lost colour),
@@ -473,6 +499,18 @@ The ones most often touched, and the functions in them:
   height (the height grid as an RF texture, the same triangles as `_h`), by the camera's 3D
   distance (none from up high). Cull off, so it flips NORMAL back on back faces (they went
   black). `_grass_quality`: none below 2, 55% of the patches at 2.
+- **traffic and people take turns** -- at the real rate each ticks every other physics tick
+  with twice the time, on alternate ticks (`WORLD_SPLIT_DT`, `_world_n`): no tick pays for
+  both. The traffic is drawn between its own last two ticks (`_traffic_f`: a tick behind the
+  car, not guessed ahead), its decisions stay ~20 a second near (traffic.gd `ticks_per`). A
+  test run faster (STREETS_SIM_SPEED, ticks longer than 1/40 s) ticks them every tick as
+  before. On a user's PC in Tel Aviv they were traffic 3.6 + following 1.0 + people 3.4 ms of
+  a 34 ms frame, two ticks a frame. `STREETS_WORLD_SPLIT=0` turns it off (tests). Checked 21
+  Nov against main's game code, same seeds: exams Givatayim 12 (main 15), Ashdod 15 (18),
+  the test town at 2x 15 (15, unchanged: no split there); every REGRESS PASS but people_pops,
+  which main fails too over 240 s (walkers re-placed at the edge of view, 1-6 a run either
+  way). `traffic_motion` measures per traffic tick now (per physics tick it read twice the
+  speed, then none); `tests/traffic_jumps.gd`.
 - **people keeping clear** -- `_people_tick` lists everyone (`_people_at`, `_people_who`);
   a walker steers off its line (`lat`, up to 0.7 m) round anything solid 1.3 m ahead and
   away from anyone ahead or alongside (to their other side, the right if dead ahead), then
@@ -652,7 +690,18 @@ The ones most often touched, and the functions in them:
   only) / `_judge_fps` (the rule; testable natively), the soft car shadows `_set_blobs`.
   Every level keeps the sun's shadows (level 0: 25 m): switching them off recompiled every
   material's shader in the browser, seconds of freeze each time the ladder crossed into or out
-  of level 0. Night still switches them off (once, on the button). `tests/hitches.gd` counts
+  of level 0. Night keeps them too: the moon is the day's sun, dim and blue, its shadows
+  reaching 1 m (`_set_night`, `_set_quality`). Switching them off at the button was the same
+  recompile -- 40-odd programs, a hang of seconds on a user's PC. Hiding the sun, or a sun that
+  lights nothing (`light_cull_mask` 0), is no better: with no light the engine compiles every
+  material again without its lighting code (DISABLE_LIGHT_DIRECTIONAL, and the haze's sun glow
+  off -- seen by diffing the programs' sources, web_shaders.js DUMP=). The evening's haze
+  glowing towards the sun (`fog_sun_scatter`) is another version of every shader
+  (USE_SUN_SCATTER): 0 by day made the evening button compile 30 programs, so by day it is a
+  trace, `FOG_SCATTER_DAY` 0.01. Each click's cost: `_tod_watch` ("[streets] time of day to
+  night: ... ms at the click, then the slowest frame ..., N shaders compiled", and in the perf
+  view); `tests/web_load.js` TIMES=3 clicks it in a browser and counts, `tests/web_shaders.js`
+  TIMES=3 BOT=idle lists each click's programs. `tests/hitches.gd` counts
   frames over 250 ms / 1 s driving and from above -- but under the test machine's software
   renderer every Tel Aviv frame takes ~0.8 s, so it shows the script's parts, not a GPU's
   stalls; a browser on the user's machine is the real measure (the perf view's hitch lines).
@@ -1624,6 +1673,24 @@ Givatayim 0 late. Traffic cars do not look at walkers at all (they rely on the k
   47, Bedford 1.3 / 3.3 / 27 / 37, Ashdod 2.0 / 4.4 / 28 / 39, Kiryat Dimyon 0.3 / 4.6 / 40 /
   49, Tel Aviv 1.7 / 4.0 / 35 / 46. City packs: 1.7, 2.9, 2.8, 0.5, 3.5 MB; shared: main 4.3
   MB, art 13.5, sound 13.2.
+- **The user's PC in a browser** (their screenshots of the load line and the perf view, build
+  d9b49f2, 21 Nov 2026 -- the real numbers the container's SwiftShader cannot give): Givatayim
+  loaded in 2.8 s (+ page 0.3): city file 0.4 · start area 0.8 · graphics 1.6 (137 shaders,
+  1.2 s compiling); straight again 2.6 s (121 shaders, 1.1 s) -- the browser keeps what it
+  compiled, ~9 ms a program then. Tel Aviv 3.6 s: 0.9 · 1.3 · 1.4 (129, 1.1 s). An earlier
+  first load after many publishes showed "about 66 s" at the warm-up's 3 of 12 (uncompiled
+  programs there cost ~0.4 s each). The frame, quality 2: Givatayim 29.0 ms = drawing and
+  engine 16.1 + script 12.9 in 1.7 ticks (building 5.8, people 2.7, traffic 2.5, minimap 0.9,
+  follow 0.8), 746 draws, 1.83 M triangles; Tel Aviv by day 33.9 ms = 19.7 + 14.2 in 2.0 ticks
+  (building 4.0, traffic 3.6, people 3.4, minimap 1.2, follow 1.0), 769 draws, 1.87 M; by
+  night 27.1 ms = 16.5 + 10.6 in 1.6 ticks, 800 draws. Quality 0 bought it nothing (25-27
+  fps there too): the levels change pixels and shadow reach, not draws or the script. Shaders
+  compiled after the car: Givatayim 5 (0.5 s); Tel Aviv 102 (6.6 s) by 2 min, 159 (11.9 s)
+  after switching to night -- stalls while driving, once per build. "building the city" in
+  Tel Aviv: 18% at 2 min, 26% at 3 min (all of it ~11 min, 4-6 ms of every frame meanwhile).
+  The container for comparison (`perf_dive` 7): the start view 770 draws (with the shadow
+  pass), a main road 609, from above 1416; `web_shaders.js` 7: 223 programs, 178 in the
+  warm-up.
 - **Starting a level in a browser, phase by phase** (`tests/web_load.js`: the container's
   Chromium, the engine's wasm on one thread, SwiftShader drawing; 20 Nov 2026). Givatayim:
   engine up 1.5 s after the page, the level begun ~4 s; city file 1.8-2.1 s; the squares round the start 17 s (kerbs
@@ -1760,6 +1827,46 @@ first:
 - **Small things**: black bollards with a yellow band along the kerb by the main road, a
   red fire hydrant, a push button on the walk light's pole, bar stools and awnings rather
   than umbrellas outside the cafes, green bins.
+
+## The walks list and walks nobody filmed (levels 9-13, 22 Nov 2026)
+
+- **The list.** Level 9, "Walks: watch one" (group Auto Experiments, `"walks": true`), opens
+  `_walk_list_open()` in place of a city, built like the test routes' list (in `_route_ui`, so
+  `_input`'s taps reach its buttons): one button per place in LEVELS with a `"walk"`, the
+  `"filmed": true` ones first. The walks themselves have no `"group"`, so the start screen
+  leaves them off; levels 5 and 6 keep their numbers (the tests and notes use them). The new
+  walks are levels 10-13, appended so nothing renumbered. `_city_level()` and
+  prepublish.gd skip the list's level as they skip the routes'. `tests/walk_menu.gd` checks
+  the list and that a tap starts a walk (~1 min here).
+- **The walks** are written by `data_tools/make_walks.py` (its `WALKS` table: city, the list's
+  name, legs `[street, from the junction with, to the junction with]`, side, `promenade`)
+  into `cities/details/<city>.json` -- the first details files Tel Aviv, Ashdod, Bedford and
+  the test town have; they hold only `walks`, marked `"src": "make_walks"` (rewritten on the
+  next run, anything else kept). `--list CITY STREET` prints a street's junctions with the
+  metres between, to pick a leg. Pace 1.35 m/s; at each street it crosses, a wait at the kerb
+  of 1.8-3.2 s with a look left then right, the crossing at 1.45 m/s, in `zebras` so cars stop.
+  Lengths: Rothschild 271 m / 203 s, HeHalutzim 195 m / 143 s, Shore Drive 450 m / 334 s, the
+  market street 215 m / 164 s. All four start well away from the filmed ones' corner of
+  Givatayim, on the user's ask.
+- **Stepping round posts** (`"dodge": true`, streets.gd `_film_dodge_begin` / `_film_dodge`):
+  the walk resampled every 0.5 s plus its own points, each sample moved sideways by the least
+  step (10 cm steps to 1.6 m either way) that leaves `DODGE_CLEAR` (0.55 m) from every post's
+  edge within reach and is clear of walls, spread over `DODGE_SPREAD` (2.5 m) with a cosine.
+  Redone for the next 4-40 s every 2 s as squares build; `filmed_walk.gd` runs it over the
+  whole walk before `SCAN`. The filmed walks do not dodge: their line is the film's.
+- **What each fix was for** (scans, `SCAN=1 STREETS_BUILD_ALL=0 tests/run.sh filmed_walk
+  <level>`, ~30 s to 2 min each on this PC): at a pavement's middle the walks went through 15
+  posts (the tree rows); `PAVE` 2.05 (behind the game's row at half width + 1.3) moved them
+  little, as most were mapped trees and poles; the one-post-at-a-time push left 6 where a
+  tree and a railing stood 1.7 m apart; the all-at-once step left 3, on the test town's market
+  pavement (stalls r 0.85 and a shop front) -- that walk takes the other pavement. HeHalutzim
+  and Rothschild are divided: walked against a carriageway, "right" was its median side (the
+  Ashdod walk went down the other carriageway); one-way ways now take their own outer side,
+  and Rothschild walks the middle promenade on purpose (its outer pavement went through a
+  shop front). Now all four print only "scan done".
+- **Open**: the walks are not checked against a film (there is none); a walk's end is just
+  a junction (no turn to look round, nothing to stop for); a crossing at lights does not wait
+  for the green man; the list has no "yours" page as the routes' has.
 
 ## The second filmed walk and the GPS pipeline (level 6): handoff
 
@@ -2128,6 +2235,41 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   confectionery and its neighbours are flat brown glass, not the film's lit fronts; at 26 s
   the walk passes a metre from the arcade block's side wall, which fills the right of the frame
   where the film sees open forecourt (the slant should start ~1.5 m further left: P(7.9, -7.0)).
+
+### Handoff: the filmed walks (22 Nov 2026): measured against the full film, before pass 15
+
+- **The full film is on the user's PC**: `OneDrive/walk/20261120_100527.mp4`, 1080x1920
+  upright (stored 1920x1080 with a -90 rotation, which ffmpeg applies), 30 fps, 185 s, **not
+  mirrored**; walk second t = film second t (one frame apart, no drift over 96 s: correlated
+  against the old clip). The old `clip.mp4` was 576x324 and mirrored. A session on that PC
+  reads it directly; a cloud session still has to ask for a clip. Frames:
+  `ffmpeg -i <film> -vf "trim=0:96.6,setpts=PTS-STARTPTS,fps=10,scale=406:720" -start_number 0
+  f%05d.jpg` (for film_score), and `fps=2` at full size (`h%04d.jpg`) for marking.
+- **On the user's PC a recording takes 1 min 23 s** (`RECORD=1 RES=1280x720 GODOT_ARGS=
+  "--fixed-fps 10"`, 966 frames; 18.5 min on a cloud container): record after every change.
+  Godot there: `GODOT=` the standard 4.7.2 console build in `Documents/Godot/` (not the mono one);
+  Python's numpy/scipy/pillow via `uv run -q --with numpy --with scipy --with pillow python`.
+- **New tools** (tests/README.md): `film_score.py` (a calibrated score per second, the worst
+  seconds side by side; 40 s) and `film_marks.py` (landmarks: label, map, solve). `RECORD=1`
+  now logs `POSE`/`POST`/`BLD` lines for them. The loop for a pass: record, `film_score.py
+  score`, `compare` against the last run's seconds.csv; for a place's layout, mark feet in the
+  1080p frames (`grid` them in twentieths, 540x960 is readable), `solve`, `map ... places.csv`.
+- **Good numbers (22 Nov, before pass 15)**: score 33 over the walk (the film against itself
+  5 s on: 33); worst seconds 42, 43, 52, 53, 67, 68, 91, 95; forecourt solve 3.7 px rms.
+  After merging main the same evening (facades, greener leaves, the grade refitted, walkers no
+  longer appearing in view): 34.1, none worse by 5, 66 and 68 up 10 (the passer-by at the
+  passage's end gone from the frame) -- `compare` caught it without looking.
+- **What it found** is at the top of walk 1 in WALKS.md: the forecourt's bollards a cluster by
+  the line, not a row; the barrier, poles and the bed's front off by 2-3 m; the film's head 20
+  degrees left and 13 down at 26.5-28.5 s; the passage's stickered lamp pole missing and its
+  bin ~5 m early; Ha-Meri's last 6 s looking right and down into a garden instead of along and
+  across the street. The 1080p marks were read by eye off a grid (+-5 px of 540): good to a
+  few tenths of a degree.
+- **Where the solve is weak**: a corridor (the passage) with few things fits to a fraction of a
+  pixel and is free along it -- its places rest on pass 13's pace. Anchors would fix that:
+  `fixed bld B.k` holds a building's corner where the map has it, but the forecourt's corners'
+  feet are hidden behind hedges and parked cars; a wall's edge can be marked by bearing only
+  (leave y empty).
 
 ### Handoff: the filmed walks (21 Nov 2026, after pass 14)
 

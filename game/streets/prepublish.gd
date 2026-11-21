@@ -28,7 +28,7 @@ func _run() -> void:
 	var done := {}
 	var kept := 0
 	for lv: Dictionary in G.LEVELS:
-		if not lv.has("city") or lv.get("routes", false):
+		if not lv.has("city") or lv.get("routes", false) or lv.get("walks", false):
 			continue
 		var file: String = G.baked_file(lv)
 		if done.has(file):

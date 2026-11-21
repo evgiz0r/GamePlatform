@@ -63,6 +63,17 @@ the game's files: the web build is public.
 
 > Maybe later in the same menu I would be able to enter my own.
 
+**Walks.** "Walks: watch one", beside the test routes, is a list of walks to watch in first
+person, each loading its own city: the two filmed in Givatayim first, then walks nobody
+filmed, along real streets elsewhere -- down the middle of Rothschild Boulevard in Tel Aviv,
+HeHalutzim to Herzl in Ashdod, Shore Drive by the water in Bedford, and the test town's
+market street. Those walk at an unhurried pace on the pavement, stop at each kerb and look
+left and right before crossing (the cars stop for them), and step round whatever stands on
+the pavement -- a tree, a pole, a bin.
+
+> Lets put in the main menu both walks inside an extra menu, like the test drives. and add
+> some more walks. even not the filmed ones. just to distribute a bit away from my location
+
 **Giving way.** Autodrive comes out of a side street onto a bigger road the way a driver does:
 up to the corner slowly enough to stop, and if a car is coming that it could not get in
 front of with room to spare, it waits at the edge -- looking at that car as it goes by --
@@ -181,10 +192,13 @@ way that has the address on the kerb side; driving hands the way there to autodr
 
 **Places.** Entering the game asks where, in two lists side by side: **Cities** (Givatayim,
 Bedford, Ashdod, Tel Aviv, and the made-up test town last) and **Auto Experiments** (the
-filmed walks and the test routes' drives). Each level's `"group"` puts it in one.
+test routes' drives and the walks, each a list of its own). Each level's `"group"` puts it
+in one; a walk has none, so it is reached through the "Walks" list.
 
 > lets rearrange the menu items instead street. 2 categories: Cities, Auto Experiments (walks
 > + test-drives). no extra button for walks, just split in the menu.
+
+(Then, 22 Nov: the walks behind one button after all, as the test drives are -- below.)
 
 Givatayim starts on Katznelson just past Weizmann, the town's central junction; Ashdod at
 Sderot Herzl and HeHalutzim, its busiest corner for shops. Each place is one
