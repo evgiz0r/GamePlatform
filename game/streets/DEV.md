@@ -2145,6 +2145,41 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   the walk passes a metre from the arcade block's side wall, which fills the right of the frame
   where the film sees open forecourt (the slant should start ~1.5 m further left: P(7.9, -7.0)).
 
+### Handoff: the filmed walks (22 Nov 2026): measured against the full film, before pass 15
+
+- **The full film is on the user's PC**: `OneDrive/walk/20261120_100527.mp4`, 1080x1920
+  upright (stored 1920x1080 with a -90 rotation, which ffmpeg applies), 30 fps, 185 s, **not
+  mirrored**; walk second t = film second t (one frame apart, no drift over 96 s: correlated
+  against the old clip). The old `clip.mp4` was 576x324 and mirrored. A session on that PC
+  reads it directly; a cloud session still has to ask for a clip. Frames:
+  `ffmpeg -i <film> -vf "trim=0:96.6,setpts=PTS-STARTPTS,fps=10,scale=406:720" -start_number 0
+  f%05d.jpg` (for film_score), and `fps=2` at full size (`h%04d.jpg`) for marking.
+- **On the user's PC a recording takes 1 min 23 s** (`RECORD=1 RES=1280x720 GODOT_ARGS=
+  "--fixed-fps 10"`, 966 frames; 18.5 min on a cloud container): record after every change.
+  Godot there: `GODOT=` the standard 4.7.2 console build in `Documents/Godot/` (not the mono one);
+  Python's numpy/scipy/pillow via `uv run -q --with numpy --with scipy --with pillow python`.
+- **New tools** (tests/README.md): `film_score.py` (a calibrated score per second, the worst
+  seconds side by side; 40 s) and `film_marks.py` (landmarks: label, map, solve). `RECORD=1`
+  now logs `POSE`/`POST`/`BLD` lines for them. The loop for a pass: record, `film_score.py
+  score`, `compare` against the last run's seconds.csv; for a place's layout, mark feet in the
+  1080p frames (`grid` them in twentieths, 540x960 is readable), `solve`, `map ... places.csv`.
+- **Good numbers (22 Nov, before pass 15)**: score 33 over the walk (the film against itself
+  5 s on: 33); worst seconds 42, 43, 52, 53, 67, 68, 91, 95; forecourt solve 3.7 px rms.
+  After merging main the same evening (facades, greener leaves, the grade refitted, walkers no
+  longer appearing in view): 34.1, none worse by 5, 66 and 68 up 10 (the passer-by at the
+  passage's end gone from the frame) -- `compare` caught it without looking.
+- **What it found** is at the top of walk 1 in WALKS.md: the forecourt's bollards a cluster by
+  the line, not a row; the barrier, poles and the bed's front off by 2-3 m; the film's head 20
+  degrees left and 13 down at 26.5-28.5 s; the passage's stickered lamp pole missing and its
+  bin ~5 m early; Ha-Meri's last 6 s looking right and down into a garden instead of along and
+  across the street. The 1080p marks were read by eye off a grid (+-5 px of 540): good to a
+  few tenths of a degree.
+- **Where the solve is weak**: a corridor (the passage) with few things fits to a fraction of a
+  pixel and is free along it -- its places rest on pass 13's pace. Anchors would fix that:
+  `fixed bld B.k` holds a building's corner where the map has it, but the forecourt's corners'
+  feet are hidden behind hedges and parked cars; a wall's edge can be marked by bearing only
+  (leave y empty).
+
 ### Handoff: the filmed walks (21 Nov 2026, after pass 14)
 
 - **In progress**: nothing. Pass 14 is on main; the list of what is still different is
