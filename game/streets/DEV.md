@@ -3679,6 +3679,50 @@ the yard a few metres off, and a shot at the point saw a roof.
 
 ## Open problems
 
+- **22 Nov, the second round of general bugs** (each with the test that measured it):
+  - *Things in the road* (`city_check`, `POSTS_FROM=1` names who put each post up):
+    Givatayim 2 -> 0, Tel Aviv 1 -> 0. A bin placed from a film stood 1.2 m into Sirkin
+    (details' props: the solid ones now go through `_off_asphalt`, straight strips and
+    corners); cafe tables on a corner's asphalt (`_terrace` checks `_in_corner_fill`).
+  - *Buildings in the road*: motorways on the ground now cut buildings back too (0.5 m
+    clearance, no pavement): Ayalon South's block, the only building that changed in any
+    town (cut back 2040 -> 2041 in Tel Aviv; none raised or dropped). Left: Tel Aviv's
+    building 6343, a 7,900 m2 block the Hana & Mordechai Veisser lanes (3.4-4.5 m, ten
+    pieces) run along and into: cutting it leaves under half, so it is kept whole on purpose.
+  - *Stop lines on zebras* (`light_audit`): a zebra mapped on the lane beside the way in or
+    the other half of a divided road was under the waiting car; `_line_off_zebras` moves
+    the line 2 m behind any zebra point within 3 m of the way's line. "Stop short" (11 in
+    Tel Aviv) is OSM's lights mapped a few metres out, counted as a trap: not touched.
+  - *Splits* (`split_posts DRIVE=1`, Ashdod): posts in the line cars drive past a split
+    55 -> 29, touched on the drives 2 -> 0. `_find_split_lines` (the test's own model);
+    `_off_road` counts that line as road, and signs (`plant`) are pushed aside out of it.
+    Knocked over on two drives (HaRishonim, Kinneret), away from the split: open.
+  - *Autodrive into a building* (an underground car park's way in, the City tunnel):
+    `_into_building` -- a dead-end service lane ending at a solid building is never taken.
+  - *Bedford's road tilt* 9.0 -> 3.2% (over 6% across): its height grid resampled from 36
+    to 18 m (the same surface) and `tools/level_roads.py` run twice; the limit, set at 3
+    unmeasured, now 3.5. City file 2.9 -> 3.8 MB; 4x the ground's vertices (313k). Load
+    timed 30.5 -> 34.8 s with other runs going: time it alone before reading much into it.
+  - *A hole in a street* (`street_holes`, Tel Aviv 1 -> 0): an embankment ramp starting
+    0.6 m below a street at grade had its pavement over the street's lane; `surf` now asks
+    `_street_over` when any deck under the point lies below the ground. Left: 1 wall point,
+    Ayalon South's own embankment beside its lanes on the ground (the motorway's two levels).
+  - *The stray kerb by a roundabout's zebra* (`tests/kerbs_on_road.gd`, default by zebras):
+    found, Ashdod's worst on HaNeviim at (-857, 3775): a corner's pavement laid as a long
+    thin wedge into the junction where two streets meet at a shallow angle, its tip over
+    the zebra (seen from 18 m up). Not fixed: it is how corners are laid, every town.
+  - *Bumpy Tel Aviv* (`tests/drive_bumps.gd`, a user: "pretty bumpy with many objects on
+    the road"): every manhole and kerb-lane drain grate knocked the car -- 13 a km in Tel
+    Aviv (wide roads, the kerb lane, a grate every 40-65 m), 4 in Givatayim. Now one manhole
+    in three and one grate in four are felt (by place, the same every drive). Also seen,
+    open: autodrive onto an island and into a post at (-684, 1754) Tel Aviv; a hedge hit at
+    (-270, 413) and a post knocked at (129, 1249) Givatayim.
+  - *Autodrive at the map's edge* (`autodrive_edge`, now with off-road, stood and "got back"
+    for the runs that came within 40 m; ONLY=n TRACE=1 per second): Tel Aviv never left
+    the road and never touched the barrier, but drove along the edge into dead ends 5-13 m
+    from it (off Derech Namir, Tuval) and turned round in them for 12 s at 1.3 m/s, twice
+    at Tuval. `_edge_walk` now counts a dead end within EDGE_DEAD (30 m) of the barrier as
+    the map's cut, not a cul-de-sac. The three-point turn itself is slow (open).
 - **Walkers appearing in view: mostly fixed, a rare one left** (`people_pops`, Givatayim,
   22 Nov). The two runs before the fix each had one; logging each placement showed both
   ways it happened: a walker at a stretch's end was taken away while in view, 88 m off (only

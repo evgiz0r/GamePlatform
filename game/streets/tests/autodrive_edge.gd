@@ -3,8 +3,15 @@ extends SceneTree
 ## barrier and heading for it, then left to drive (SECS each, default 30). Counted: how often
 ## it touched the barrier ("the edge of the map"), how often it turned round on the spot after
 ## the first seconds, the time it spent within 25 m of the barrier, and the nearest it came.
+## Also (22 Nov, a user: "it has trouble getting back ... it just turns back into nowhere. the
+## whole behaviour around the edges is meh"): seconds off any road (the car's middle more than
+## 1 m past every road's asphalt), seconds stood still (under 0.5 m/s, after the first 3 s),
+## and, for a run that came within 40 m of the barrier, whether it got back: 100 m or more
+## off it at the end. ONLY=n runs only the n-th start (from 0), TRACE=1 prints each second
+## of a run (where, how far off the barrier, speed, what autodrive is doing).
 ## Good: it never reaches the barrier -- it takes a way back into town at the junctions, or,
-## on a street with none, turns round at the start rather than at the barrier.
+## on a street with none, turns round at the start rather than at the barrier -- never leaves
+## the road, hardly stands, and gets back every time.
 var g: Node
 func _initialize() -> void:
 	_run()
@@ -62,7 +69,17 @@ func _run() -> void:
 	var turned := 0
 	var near_s := 0.0
 	var nearest := INF
-	for s: Array in pick:
+	var off_all := 0.0
+	var still_all := 0.0
+	var back_n := 0
+	var came_n := 0
+	var dt := 1.0 / Engine.physics_ticks_per_second
+	var only := int(OS.get_environment("ONLY")) if OS.get_environment("ONLY") != "" else -1
+	var trace := OS.get_environment("TRACE") != ""
+	for si in range(pick.size()):
+		var s: Array = pick[si]
+		if only >= 0 and si != only:
+			continue
 		g._set_auto(false)
 		g._land_on_road(s[0], 15.0, s[1])
 		g._ap_pts = PackedVector2Array()
@@ -74,6 +91,9 @@ func _run() -> void:
 		var my_near := INF
 		var my_touch := 0
 		var my_turn := 0
+		var my_off := 0.0
+		var my_still := 0.0
+		var gap_end := 0.0
 		for f in range(60 * secs):
 			await physics_frame
 			var p: Vector2 = g._pos
@@ -84,13 +104,28 @@ func _run() -> void:
 			if g._edge_warned != warned:
 				warned = g._edge_warned
 				my_touch += 1
+			var on_road: Dictionary = g._nearest_seg(p, 20.0, true)
+			if (on_road.is_empty() or float(on_road["edge"]) > 1.0) and not g._in_junction(p, 1.0):
+				my_off += dt
+			if f > 60 * 3 and absf(g._v) < 0.5:
+				my_still += dt
+			gap_end = gap
+			if trace and f % 60 == 0:
+				print("    t %2d s  %s  off the barrier %.0f m  %.1f m/s  turn %.1f back %.1f  plan to %s  %s" % [f / 60, p.round(), gap, g._v, g._ap_turn, g._ap_back,
+					(g._ap_pts[g._ap_pts.size() - 1] as Vector2).round() if g._ap_pts.size() > 0 else "-", String(g.get("_ap_why")) if "_ap_why" in g else ""])
 			var turning: bool = g._ap_turn > 0.0 or g._ap_back > 0.0
 			if turning and not was_turning and f > 60 * 4:
 				my_turn += 1
 			was_turning = turning
-		print("  from '%s' %s facing %s: nearest the barrier %.0f m, touched it %d, turned round %d, %.0f m driven" % [s[2], (s[0] as Vector2).round(), (s[1] as Vector2).snapped(Vector2(0.01, 0.01)), my_near, my_touch, my_turn, g._odo])
+		var came := my_near < 40.0
+		var back := came and gap_end >= 100.0
+		print("  from '%s' %s facing %s: nearest the barrier %.0f m, touched it %d, turned round %d, off the road %.1f s, stood %.1f s, %s (%.0f m off it at the end), %.0f m driven" % [s[2], (s[0] as Vector2).round(), (s[1] as Vector2).snapped(Vector2(0.01, 0.01)), my_near, my_touch, my_turn, my_off, my_still, "got back" if back else ("NOT BACK" if came else "never near"), gap_end, g._odo])
 		touched += my_touch
 		turned += my_turn
+		off_all += my_off
+		still_all += my_still
+		back_n += 1 if back else 0
+		came_n += 1 if came else 0
 		nearest = minf(nearest, my_near)
-	print("%d starts x %d s: touched the barrier %d, turned round on the spot %d, %.0f s within 25 m of it, nearest %.0f m" % [pick.size(), secs, touched, turned, near_s, nearest])
+	print("%d starts x %d s: touched the barrier %d, turned round on the spot %d, %.0f s within 25 m of it, nearest %.0f m; off the road %.1f s, stood %.0f s, got back %d of the %d that came within 40 m" % [pick.size(), secs, touched, turned, near_s, nearest, off_all, still_all, back_n, came_n])
 	quit(0)
