@@ -107,6 +107,7 @@ func _market_line(name: String, kind: String) -> void:
 			total += pts[j].distance_to(pts[j + 1])
 		var s := 6.0
 		var n := 0
+		var stops: Array = []   # (for the shoppers, crowds.gd: where to stand at each stall)
 		while s < total - 6.0:
 			var at := _along(pts, s)
 			var p: Vector2 = at[0]
@@ -122,8 +123,12 @@ func _market_line(name: String, kind: String) -> void:
 					_tile_items[t] = []
 				(_tile_items[t] as Array).append(["stall", -1, [c, a, o, seed]])
 				count["stall_places"] = int(count.get("stall_places", 0)) + 1
+				stops.append([s, side, c - o * 1.0, o, c])
 			s += STALL_STEP
 			n += 1
+		# the shoppers walk the walkway between the stalls' counters (0.55 m in front of each
+		# stall's middle line, its posts 0.65 m round): their line the street's middle
+		g._crowd.add_line("market", pts, maxf(off - 1.0, 0.5), stops)
 
 ## the point s metres along a line, and the way along it there
 func _along(pts: PackedVector2Array, s: float) -> Array:
@@ -230,6 +235,7 @@ func build() -> void:
 			var a: Vector2 = st[1]
 			g._add_post(c + a * 0.7, 0.65)
 			g._add_post(c - a * 0.7, 0.65)
+			g._crowd.stalls_up[Vector2i((c * 10.0).round())] = true
 			count["stalls"] = int(count.get("stalls", 0)) + 1
 			continue
 		var bi: int = it[1]
