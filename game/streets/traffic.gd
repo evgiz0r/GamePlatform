@@ -392,7 +392,9 @@ func tick(dt: float) -> void:
 				# 3.5 m/s is about 2 m of room at the braking it plans with.)
 				# (0.3 m/s: seen to be moving -- at 0.5 the follower waited ~0.45 s more for the
 				# car in front's gentle first push to show; nearer 0 the queue went like a train)
-				if not (c.why == "car" and c.lead_v < 0.3 and vt < 3.5):
+				# (unless it is going round a van: that one never moves off -- waiting for it,
+				# a car behind a van with the way clear stood till taken away)
+				if not (c.why == "car" and c.lead_v < 0.3 and vt < 3.5 and c.pass_i < 0):
 					c.react_t += dt
 				# and waiting to react it stands: it crept on at 0.26 m/s for as long as it
 				# waited, neither pulling away nor stopped
