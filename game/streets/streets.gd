@@ -3883,7 +3883,7 @@ func _build_kerbs() -> void:
 						var t1 := u1 / seg
 						# (a slip road's side too where the fitting took it and the road it leaves for a
 						# divided road's halves: its "median" is the triangle)
-						if not _link_islands.is_empty():
+						if not _link_rings.is_empty():
 							var pm := inner[i].lerp(inner[i + 1], (t0 + t1) * 0.5)
 							if _in_link_island(pm + na.lerp(nb, (t0 + t1) * 0.5).normalized() * (KERB_W + pw * 0.5)):
 								_tally("kerb_on_a_link_island", 1)
@@ -3926,7 +3926,7 @@ func _build_kerbs() -> void:
 							or _asphalt_other((w_out[i] + w_out[i + 1] + g_out[i] + g_out[i + 1]) * 0.25, ri) \
 							or _asphalt_other(w_in[i], -1) or _asphalt_other(w_in[i + 1], -1) \
 							or _asphalt_other((w_in[i] + w_in[i + 1]) * 0.5, -1) \
-							or (not _link_islands.is_empty() and _in_link_island((w_in[i] + w_in[i + 1]) * 0.5)):
+							or (not _link_rings.is_empty() and _in_link_island((w_in[i] + w_in[i + 1]) * 0.5)):
 						continue   # (nor where the wall itself would, on any road, its own too at
 						           # a sharp bend: by the garden's middle alone, a wall stood
 						           # across the next street, and autodrive hit it)
@@ -5079,7 +5079,7 @@ func _corners_at(ni: int, count := false) -> Array:
 		if P.distance_to(Q) > 45.0:
 			continue
 		# none into a slip road's island: it has its own kerb all round (_find_link_islands)
-		if not _link_islands.is_empty():
+		if not _link_rings.is_empty():
 			var mid := (P + Q) * 0.5
 			if _in_link_island(mid + (mid - c).normalized() * 1.5):
 				if count and _mine(c):
@@ -5929,6 +5929,13 @@ func _find_link_islands(areas: Array) -> void:
 		for p: PackedVector2Array in pieces:
 			left += absf(_area_signed(p))
 		if left < LINK_ISLAND_MIN:
+			# all but a sliver of it is the roads' own asphalt (Moshe Dayan's northbound slip road
+			# to HaShalom, Tel Aviv: 101 m2, 2.6 left): no island, but still no kerb or paving
+			# facing into it -- the slip road's left kerb, cut by its neighbours' asphalt down
+			# to one loose 4 m piece, stood alone in the junction
+			_hash_add(_link_island_hash, box, BLD_CELL, _link_rings.size())
+			_link_rings.append(ring)
+			_tally("link_triangles_all_road", 1)
 			continue
 		var flat: Array = []
 		var k := float(_city_data.get("scale", 10))
