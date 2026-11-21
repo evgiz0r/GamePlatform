@@ -1561,6 +1561,12 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   them yet -- it needs that and a re-bake (Overpass, or the bake workflow).
 - People who react ("not needed yet, maybe later"): jumping back, or falling, when a car
   comes at them; glancing at you.
+- Better people themselves: "what about people themselves? how can we improve". Five
+  low-poly characters are the limit now. In order: try a more detailed free (CC0) set of
+  bodies and moves on the look bench first (about 2 MB a person, so phones need checking);
+  clothes and hair recoloured per person and builds varied, so no two look like twins;
+  things people do -- carrying bags, looking at a phone, sitting on benches, waiting at bus
+  stops and crossings; hands moving while they talk; reacting to the car (the line above).
 - A guided tour of the city: "a virtual tour in a city. like a guide, where we stop and
   look and explain. the more real it gets the more the tour looks nicer". A guide leads you
   along a route on foot (or driving), stops at the sights, turns your view to each and
