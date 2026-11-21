@@ -7839,6 +7839,11 @@ func _set_night(on: bool) -> void:
 const PARKED_FILL := [0.55, 0.05, 0.72, 0.0]   ## share of the kerb taken: plain, red-white, blue-white, yellow-black
 const PARKED_FILL_LIVING := 0.3
 const PARKED_MOTO := 0.3             ## a gap between the parked cars that has a motorbike or scooter in it
+## A divided road's halves park on their outer side only: the left of each half is the median
+## (its other half runs beside it, closer than this from edge to edge), and parked both sides
+## a row of cars stood down the middle of the road -- Tel Aviv's Katznelson, "a lot of parked
+## cars in the middle of somewhat main roads" (tests/parked_median.gd).
+const PARKED_MEDIAN_GAP := 12.0
 
 ## A motorbike or scooter parked up on the pavement in a gap between the cars, as they stand
 ## all along a filmed residential street in Givatayim: on the front half of the pavement (the
@@ -7906,7 +7911,15 @@ func _build_parked() -> void:
 			var total := cum[cum.size() - 1]
 			for sgn: float in [-1.0, 1.0]:
 				var s := 4.0 + rng.randf() * 3.0
+				var inner := int(r["o"]) != 0 and int(sgn) == -int(r["o"])   # the left of its traffic
 				while s < total - 4.0:
+					if inner:   # beside the other half of a divided road: the median, nobody parks there
+						var c0 := _along(run, cum, s)
+						var pair := _partner(c0, (_along(run, cum, minf(s + 1.0, total)) - c0).normalized(), ri, hw, int(r["o"]))
+						if not pair.is_empty() and float(pair[2]) < PARKED_MEDIAN_GAP:
+							s += 5.6
+							_tally("parked_median_kept_clear", 1)
+							continue
 					if rng.randf() < fill:
 						var kind: String = CAR_MIX[rng.randi() % CAR_MIX.size()]
 						var colour: Color = palette[rng.randi() % palette.size()]
@@ -7925,6 +7938,9 @@ func _build_parked() -> void:
 						# not poking into the asphalt: near a corner the next street can be
 						# right there, and the car stood in its lane
 						ok = ok and _off_road(p + face * 1.25, -0.1) and _off_road(p - face * 1.25, -0.1)
+						# nor on a strip with another road just past it (a service lane alongside, a
+						# boulevard's other half): road both sides of it, it stood in the middle
+						ok = ok and _off_road(p + side * 2.6, 0.0)
 						if ok:
 							var yaw := atan2(face.x, face.y)
 							# with the ground: nose up a hill, leaning across a camber (level, on a
@@ -7947,6 +7963,8 @@ func _build_parked() -> void:
 								cat_at(cq, _g3(cq, KERB_H).y, -side.rotated(float(roll2 % 5 - 2) * 0.3), "sit")
 							(cols_by[kind] as Array).append(colour)
 							xf.append(0)
+							_parked_at.append(p)
+							_parked_face.append(face)
 							_add_car_posts(p, face)
 					elif rng.randf() < PARKED_MOTO:
 						_park_moto(r, ri, run, cum, s, total, hw, sgn, rng, palette, xf_by, cols_by)
@@ -7966,6 +7984,8 @@ func _build_parked() -> void:
 ## would stick out of the lot, into a building, onto a road or onto a tree are left out.
 var _lot_at: Array = []              ## a car in each car park (for tests and tours)
 var _moto_at := PackedVector2Array()  ## each motorbike parked on a pavement (for tests: tests/street_fronts.gd)
+var _parked_at := PackedVector2Array()  ## each car parked by a street, and the way it faces (tests/parked_median.gd)
+var _parked_face := PackedVector2Array()
 var _plank_at := PackedVector2Array() ## a point along each piece of wooden board fence on a garden wall (for tests)
 var _parked_xf := {}                 ## the street's parked cars by shape, to batch with the car parks'
 var _parked_cols := {}

@@ -2205,6 +2205,24 @@ Each line: where the code is, the test, what good reads.
   in the "city" event; `over_road_at` lists their middles), 1 left out; Givatayim's one, a
   4 m box across an Ayalon slip road at (890, -511), left out. Shots:
   `AT="-1441,-23;-1486,-85" CAR="-1414,-6,-0.78,-0.62" tests/run.sh top_at 7`.
+- **Parked cars down the middle of main roads** (user, Tel Aviv, Katznelson by Manara: "a
+  lot of parked cars in the middle of somewhat main roads"): each half of a divided road is a
+  one-way road of its own, and `_build_parked` parked both its sides -- its left side is the
+  median, so a row of cars stood down the middle. Now the left of a one-way road is skipped
+  wherever `_partner` finds its other half within `PARKED_MEDIAN_GAP` (12 m, edge to edge),
+  and no car parks where another road's asphalt is 2.6 m past its middle on the kerb side (a
+  service lane alongside). `tests/parked_median.gd` counts parked cars with asphalt both sides
+  (`_parked_at`, `_parked_face` keep where each stands): Tel Aviv 695 of 16,624 before, 0 now (82 with the median rule alone: service lanes alongside); Givatayim and Ashdod 0. Shots:
+  `AT="1110,-52" CAR="1070,-49,1,0.05" tests/run.sh top_at 7`. Not done: the user added that on
+  their wider streets the outer lane is parked in, on the road, not up on the pavement -- here
+  every street parks half up the kerb, and the lanes share the whole asphalt
+  (`_lane_off`/`_lanes_each_way`), so a parking strip on the road needs traffic, autodrive and
+  the lane paint to give that width up first.
+- **Which build** (user: "add the version somewhere, maybe near the map"): `_build_line` over
+  the minimap reads res://build.txt, now "<UTC time> <commit>" (tools/publish_web.sh); the
+  credits under the map are size 7 and wrap clear of the bottom buttons (Tel Aviv's ran
+  under "autodrive"). To tell whether a screenshot's build holds a fix:
+  `git merge-base --is-ancestor <fix> <commit>`.
 - **Tel Aviv grew** (another session, the bake workflow's bbox): 4,011 -> 9,597 buildings,
   3,745 -> 5,963 roads, west to the sea -- Ashdod's size now, and its load with it (see
   "Numbers to compare against").
@@ -2216,7 +2234,8 @@ Each line: where the code is, the test, what good reads.
   only meaningful in a real browser), `top_at` (shots by map point, `CAR=` to put the car
   anywhere), `street_at` (by street name at its roundabouts), `perf_dive`, `deck_corner`,
   `islands`, `pave_overlap`, `picker`, `minimap_route`, `warm_census`, `index_gain`,
-  `signs_inferred`, `start_drive`, `rails_near`, `cut_under`, `signs_double`;
+  `signs_inferred`, `start_drive`, `rails_near`, `cut_under`, `signs_double`, `auto_stands`,
+  `parked_median`;
   `tools/level_roads.py`.
 
 ## OSM's extra fields and speed limits: handoff (20 Nov 2026)

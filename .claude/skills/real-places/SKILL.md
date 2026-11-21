@@ -221,7 +221,10 @@ the parked cars, which stand a third in the road).
   half's partner (one-way the other way, on its left, within ~40 m along most of its
   length), size each half to its lanes (3.3 m a lane), remember the median between them.
   Its inner side gets a kerb and half the median, not a pavement; people walk only on the
-  outer sides; a zebra on one half is crossed kerb to kerb across both.
+  outer sides; a zebra on one half is crossed kerb to kerb across both. Anything laid "along
+  both sides of a street" -- parked cars above all -- goes on the outer side only: parked
+  both sides, a row of cars stood down the middle of the boulevard. Check the spot itself,
+  not the road's flag: halves pair up along only part of their length.
 - **Lanes**: `lanes` counts both directions on a two-way road. Cap any count by what the
   width holds (a "two-lane" road narrowed to 4 m has one). On a one-way road of several,
   drive the middle of the right-hand lane -- the middle of the road is astride two.
