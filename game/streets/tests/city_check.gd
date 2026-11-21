@@ -118,7 +118,7 @@ func _post_kind(q: Vector2, r: float) -> String:
 			if m.distance_to(q) < 0.1:
 				return "parked motorbike"
 	if is_equal_approx(r, 0.3):
-		return "tree"
+		return "tree, bin, gatepost or A-board"   # (all 0.3 m: a bin on Katznelson read as a tree)
 	if is_equal_approx(r, 0.15):
 		return "lamp, cat or pole"
 	return "post"
