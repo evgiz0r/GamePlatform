@@ -43,18 +43,21 @@ if [ -n "${FULL:-}" ]; then
 fi
 if [ -n "${REGRESS:-}" ]; then
 	# the tests written for the bugs the user reported, each ending in one "REGRESS <name>:
-	# PASS|FAIL -- ..." line (what it measures, the value, the good band and what the bug read)
-	EXTRA="STREETS_BUILD_ALL=1" run re_median_cross 4 1 median_cross 900
-	EXTRA="STREETS_BUILD_ALL=1" run re_traffic_motion 1 1 traffic_motion 900
-	EXTRA="STREETS_BUILD_ALL=1" run re_seat_steady 1 1 seat_steady 900
-	EXTRA="STREETS_BUILD_ALL=1" run re_lane_position 1 1 lane_position 900
-	EXTRA="STREETS_BUILD_ALL=1" run re_deck_corner 2 1 deck_corner 900
-	EXTRA="STREETS_BUILD_ALL=0" run re_turn_width 1 1 turn_width 900
-	EXTRA="STREETS_BUILD_ALL=0" run re_hitches 7 1 hitches 900
-	EXTRA="STREETS_BUILD_ALL=0" run re_auto_stands 7 2 auto_stands 900
-	EXTRA="STREETS_BUILD_ALL=0 FROM=45" FPS=10 run re_walk_people 6 1 walk_people 1500
-	EXTRA="STREETS_BUILD_ALL=0" FPS=free run re_start_soon 1 1 start_soon 600
-	EXTRA="STREETS_BUILD_ALL=0" run re_load_bar 1 1 load_bar 900
+	# PASS|FAIL -- ..." line (what it measures, the value, the good band and what the bug read).
+	# Timeouts about 3x each one's time here (8-125 s): the first run had one stall each in
+	# seat_steady and deck_corner, not seen again in 4 runs of each -- "NO VERDICT" and its log
+	# say so in minutes, not a quarter of an hour
+	EXTRA="STREETS_BUILD_ALL=1" run re_median_cross 4 1 median_cross 180
+	EXTRA="STREETS_BUILD_ALL=1" run re_traffic_motion 1 1 traffic_motion 300
+	EXTRA="STREETS_BUILD_ALL=1" run re_seat_steady 1 1 seat_steady 300
+	EXTRA="STREETS_BUILD_ALL=1" run re_lane_position 1 1 lane_position 300
+	EXTRA="STREETS_BUILD_ALL=1" run re_deck_corner 2 1 deck_corner 360
+	EXTRA="STREETS_BUILD_ALL=0" run re_turn_width 1 1 turn_width 300
+	EXTRA="STREETS_BUILD_ALL=0" run re_hitches 7 1 hitches 360
+	EXTRA="STREETS_BUILD_ALL=0" run re_auto_stands 7 2 auto_stands 600
+	EXTRA="STREETS_BUILD_ALL=0 FROM=45" FPS=10 run re_walk_people 6 1 walk_people 300
+	EXTRA="STREETS_BUILD_ALL=0" FPS=free run re_start_soon 1 1 start_soon 180
+	EXTRA="STREETS_BUILD_ALL=0" run re_load_bar 1 1 load_bar 240
 fi
 echo
 echo "=== STREETS VALIDATION ($(git rev-parse --short HEAD)) ==="
