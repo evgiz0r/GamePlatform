@@ -143,9 +143,28 @@ func _run() -> void:
 		quit()
 		return
 	if OS.get_environment("RECORD") == "1":
+		# with each frame the camera's exact pose (POSE t  x y z  forward xyz  up xyz, and the
+		# vertical field of view): tests/film_marks.py projects world points through it, to
+		# set a landmark's place in the replay's frame beside its place in the film's
+		if OS.get_environment("POSTS_ALONG") != "0":
+			# every post within 30 m of the walk's line, once: the bollards, poles, columns and
+			# trunks film_marks.py can name as landmarks (POSTS_ALONG=0 leaves them out)
+			var seen := {}
+			var t2 := 0.0
+			while t2 <= last:
+				var c: Vector2 = g._film_at(t2)
+				for i in range(g._posts.size()):
+					if not seen.has(i) and g._posts[i].distance_to(c) <= 30.0:
+						seen[i] = true
+						print("POST %d %.2f %.2f %.2f %.2f" % [i, g._posts[i].x, g._posts[i].y, g._post_r[i], g._h(g._posts[i])])
+				t2 += 1.0
 		while g._film_t <= last + 0.5:
 			await RenderingServer.frame_post_draw
 			var t: float = g._film_t
+			var b: Basis = g.cam.global_transform.basis
+			var o: Vector3 = g.cam.global_position
+			print("POSE %.2f  %.3f %.3f %.3f  %.4f %.4f %.4f  %.4f %.4f %.4f  %.1f" % [t, o.x, o.y, o.z,
+				-b.z.x, -b.z.y, -b.z.z, b.y.x, b.y.y, b.y.z, g.cam.fov])
 			root.get_viewport().get_texture().get_image().save_jpg(out + "/f%05d.jpg" % int(round(t * 10.0)), 0.88)
 		print("recorded to ", out)
 		quit()
