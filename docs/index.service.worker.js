@@ -4,7 +4,7 @@
 // Incrementing CACHE_VERSION will kick off the install event and force
 // previously cached resources to be updated from the network.
 /** @type {string} */
-const CACHE_VERSION = '1795300803|4590413';
+const CACHE_VERSION = '1795302225|3643841';
 /** @type {string} */
 const CACHE_PREFIX = 'GamePlatform-sw-cache-';
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
@@ -17,7 +17,7 @@ const ENSURE_CROSSORIGIN_ISOLATION_HEADERS = true;
 const CACHED_FILES = ["index.html","index.js","index.offline.html","index.icon.png","index.apple-touch-icon.png","index.audio.worklet.js","index.audio.position.worklet.js"];
 // Files that we might not want the user to preload, and will only be cached on first load.
 /** @type {string[]} */
-const CACHEABLE_FILES = ["index.wasm","index.pck","index.art.5c3e31f5eb38.pck","index.data_ashdod.4cc773a64562.pck","index.data_bedford.895347747316.pck","index.data_dimyon.2040101ccaa2.pck","index.data_givatayim.32ec8096dfcb.pck","index.data_tel_aviv.acd0d04438f5.pck","index.sound.1e5ae9778cac.pck"];
+const CACHEABLE_FILES = ["index.wasm","index.pck","index.art.5c3e31f5eb38.pck","index.data_ashdod.4cc773a64562.pck","index.data_bedford.00e1e1f51859.pck","index.data_dimyon.2040101ccaa2.pck","index.data_givatayim.32ec8096dfcb.pck","index.data_tel_aviv.acd0d04438f5.pck","index.sound.1e5ae9778cac.pck"];
 const FULL_CACHE = CACHED_FILES.concat(CACHEABLE_FILES);
 
 // PATCHED by tools/publish_web.sh -- fetch straight from the origin, under a URL stamped

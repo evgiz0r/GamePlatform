@@ -333,7 +333,23 @@ is rarely the one you would guess. What cost the most, in order, last time one d
   seconds on every step between that level and the next, over and over as the ladder went
   down and back up (a user saw 3.2 s). Keep shadows on at the bottom with a short reach
   (25 m round the car) instead; anything else a level changes should be a shader parameter
-  or a buffer size, not a material's feature.
+  or a buffer size, not a material's feature. Then a step down is worth measuring: if the
+  frame rate did not rise, what holds the frame is not what the levels change (draw calls,
+  the script on the browser's one thread), so go back up to the best-looking level that ran
+  about as fast, and stay there a while -- a PC sat at the bottom, plain and blurred, at the
+  same 25 fps it had at the top.
+- **A time of day, a weather, any look switched at a button: change uniforms, never the
+  light setup or the environment's switches.** Every material's shader is compiled per
+  scene-wide case, and the browser compiles a material's version the first time it draws
+  with it -- at the click, all of them at once. Cases that each cost a full set (Godot 4.7,
+  Compatibility, measured by diffing the programs' sources): the sun's shadows on or off; no
+  light at all (the sun hidden, or a light whose `light_cull_mask` is 0 -- that counts as
+  none: the materials are compiled again without their lighting code); the environment's
+  fog sun scatter 0 or not (its own define). A night as a hidden or shadowless sun cost a
+  user's PC a 2 s hang at the button: make the moon the same sun, dim and blue, its shadows
+  reaching a metre; give the haze a trace of sun scatter by day (0.01) if the evening uses
+  it. Count a click's programs in the browser (wrap WebGL2's `linkProgram` on the
+  prototype) -- a native run keeps a shader cache and shows nothing.
 - **What a browser compiles is shader CODE, not materials.** A ShaderMaterial compiles its
   Shader once per variant (drawn plain or instanced, and again for the shadow pass when it
   casts shadows); a StandardMaterial3D's shader is generated from its switches (flags, modes,
