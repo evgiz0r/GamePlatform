@@ -2352,6 +2352,9 @@ the box; 1,440 within 8 m of an OSM place, 2,156 at one door with another); the 
   that is tall ("גבוה" / "מעל" in its work) or 700 m2+: a lattice mast 34-72 m, the cab, a
   38-50 m jib with trolley and hook, the counter-jib's weights, the A-frame and ties, yellow
   or white; about 100 boxes, seen to `CRANE_RANGE` 1500 m. Tel Aviv: 9,216 panels, 120 cranes.
+  A panel is kept only when every 0.5 m of it is off the road (0.3 m margin): checked at its
+  middle alone, ten panels stood 0.6-1 m into Stein, Shmerling and Yavneel (city_check 7,
+  "walls on the road" 10 -> 0, 21 Nov 2026).
 - **Businesses**: places like OSM's, so `_build_pois` makes their fronts (window, awning,
   crates or A-board, a shopkeeper, a terrace for food) and their sign shows the Hebrew word
   for the kind (מכולת, מספרה, פירות וירקות...): the data has no names (a sole trader's would be

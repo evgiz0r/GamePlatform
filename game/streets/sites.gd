@@ -90,7 +90,17 @@ func build() -> void:
 			var m := (a + b) * 0.5
 			# (not across a road -- the plot's outline and OSM's road a metre or two apart --
 			# nor through a standing building's wall: the hoarding goes round the plot's open side)
-			if not g._off_road(m, 0.3) or g._push_out(m, 0.2, false, false) != Vector2.ZERO:
+			if g._push_out(m, 0.2, false, false) != Vector2.ZERO:
+				continue
+			# (the whole panel off the road, its ends too: checked at its middle alone, a
+			# panel at an angle to the kerb stood up to 1 m into Stein's asphalt -- city_check)
+			var on_road := false
+			var steps := maxi(2, ceili(a.distance_to(b) / 0.5))
+			for k in range(steps + 1):
+				if not g._off_road(a.lerp(b, float(k) / steps), 0.3):
+					on_road = true
+					break
+			if on_road:
 				continue
 			var L := a.distance_to(b)
 			var t := (b - a) / L

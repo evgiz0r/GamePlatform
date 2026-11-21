@@ -77,8 +77,9 @@ func _run() -> void:
 						var na: Vector2 = (inner[i] - run[i]).normalized()
 						if g._in_link_island((inner[i] + inner[i + 1]) * 0.5 + na * 1.5):
 							hits += 1
-					print("  road %d '%s' %s median %s side %d%s: %d of %d pieces in a triangle, run %s..%s" % [ri, r["name"], r["k"],
-						r.get("median", "-"), sgn, " (median side)" if inner_side else "", hits, run.size() - 1, run[0].round(), run[run.size() - 1].round()])
+					print("  road %d '%s' %s median %s side %d%s: %d of %d pieces in a triangle%s, run %s..%s" % [ri, r["name"], r["k"],
+						r.get("median", "-"), sgn, " (median side)" if inner_side else "", hits, run.size() - 1,
+						", faces a median" if not inner_side and g._faces_median(run, hw, sgn, ri) else "", run[0].round(), run[run.size() - 1].round()])
 	g.set_physics_process(false)
 	process_frame.disconnect(g._frame)
 	var pick: Array = []
