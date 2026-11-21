@@ -18,7 +18,8 @@ func _save_log(n: int, tag: String) -> String:
 	return named
 
 ## TRACE=path (see the loop): a row every tenth of a second for drawing the drive
-## (tests/drive_trace.py makes the data for a chart of it).
+## (tests/drive_trace.py makes the data for a chart of it). LEADLOG=1: a line for each car
+## that turns up close in front, or holds itself for the player in front of it.
 func _run() -> void:
 	var n := int(OS.get_environment("ROUTE")) if OS.get_environment("ROUTE") != "" else 1
 	var f := FileAccess.open("res://game/streets/routes.json", FileAccess.READ)
@@ -75,6 +76,10 @@ func _run() -> void:
 		plan0.append([snappedf(q.x, 0.1), snappedf(q.y, 0.1)])
 	var tick := 0
 	var v_prev: float = g._v
+	var knocked0: int = g._knocked_n
+	var leadlog := OS.get_environment("LEADLOG") != ""
+	var lead_was := -1
+	var told := {}
 	while t < limit:
 		await physics_frame
 		dt = Engine.time_scale / Engine.physics_ticks_per_second
@@ -96,6 +101,32 @@ func _run() -> void:
 				String(li[1]) if li.size() > 2 else "", snappedf(float(li[2]), 0.1) if li.size() > 2 else -1.0,
 				lead[0], lead[1], lead[2], give[0], give[1]])
 			v_prev = g._v
+		if leadlog:
+			# LEADLOG=1: a car that turns up close in front (under 15 m, not followed the tick
+			# before), or holds itself for the player while in front of it: how it stands
+			var li2: int = g._ap_lead_i if g._ap_lead >= 0.0 else -1
+			if li2 >= 0 and li2 < g._traffic.cars.size():
+				var lc2 = g._traffic.cars[li2]
+				var key := "%d" % li2
+				if (li2 != lead_was and g._ap_lead < 15.0) or (String(lc2.why) == "player" and not told.has(key)):
+					told[key] = true
+					var cf := Vector2(sin(lc2.yaw), cos(lc2.yaw))
+					var rel: Vector2 = g._pos - lc2.pos
+					var rn: Dictionary = g._traffic._roads[lc2.rd[mini(lc2.k, lc2.rd.size() - 1)]] if lc2.rd.size() > 0 else {}
+					print("LEAD t %.1f at %.1f m: car %d %s v %.1f why %s pos (%.1f,%.1f) heading off mine %.0f deg; me from it: %.1f ahead %.1f left; its road %s k %d/%d shift %.2f->%.2f realign %s; gap to me on its path %.1f" % [
+						t, g._ap_lead, li2, lc2.kind, lc2.v * 3.6, lc2.why, lc2.pos.x, lc2.pos.y,
+						rad_to_deg(absf(angle_difference(atan2(cf.y, cf.x), g._yaw))), rel.dot(cf), rel.dot(Vector2(-cf.y, cf.x)),
+						String(rn.get("name", "?")), lc2.k, lc2.pts.size(), lc2.shift, lc2.shift_to, str(lc2.realign),
+						g._traffic._path_gap(lc2, g._pos, 60.0, g._traffic.PLAYER_W)])
+			lead_was = li2
+			# and standing 5 s giving way to a car that stands too: what holds that one
+			var gi: int = g._ap_give_car
+			if absf(g._v) < 0.3 and gi >= 0 and gi < g._traffic.cars.size() and still >= 5.0 and not told.has("g%d" % gi):
+				var gc2 = g._traffic.cars[gi]
+				if gc2.v < 0.3:
+					told["g%d" % gi] = true
+					print("GIVE t %.1f standing %.1f s giving way to car %d %s, standing too %.1f m off: why %s, held by %d, its wait %.1f s" % [
+						t, still, gi, gc2.kind, gc2.pos.distance_to(g._pos), gc2.why, gc2.blocker, gc2.wait])
 		if not g._dest_on:
 			# arrived -- or gave up at once: "can't find a way there from here" clears the
 			# destination too (a route read as arrived in 0 s with 1.3 km to go)
@@ -115,6 +146,11 @@ func _run() -> void:
 			hits.append([h, int(absf(last_v) * 3.6), [int(g._pos.x), int(g._pos.y)], g._on_name])
 			hit_log = t + 1.0   # (a log of its own a second after: the two minutes up to it, people and all)
 		last_hit = h
+		# (knocking a sign or a bin over is no crash -- no `_crash_cool` -- and went uncounted: a
+		# one-way sign at the split of a divided road took 19 km/h off autodrive in a tenth of a second)
+		if g._knocked_n != knocked0:
+			knocked0 = g._knocked_n
+			hits.append([String(g._knocked_what), int(absf(last_v) * 3.6), [int(g._pos.x), int(g._pos.y)], g._on_name])
 		if hit_log > 0.0 and t >= hit_log:
 			hit_log = 0.0
 			_save_log(n, "hit%03d" % int(t))

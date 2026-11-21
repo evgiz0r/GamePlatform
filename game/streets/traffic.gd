@@ -550,10 +550,14 @@ func _target(c: Car, i: int, dt: float) -> float:
 		# (the seconds behind at its own speed while it is the slower: a queue pulling away
 		# kept its gap for the speed the car in front had reached, so each waited till that
 		# one was well off -- the third car of a queue moved 9 s after the green)
-		var room := best - (c.len + best_len) * 0.5 - c.gap - minf(lead_v, c.v) * c.headway
+		var free := best - (c.len + best_len) * 0.5 - c.gap
+		var room := free - minf(lead_v, c.v) * c.headway
 		var follow := sqrt(maxf(0.0, lead_v * lead_v + 2.0 * BRAKE * maxf(room, 0.0)))
+		# (inside its seconds behind: a little under that car's pace to open the gap again,
+		# not a stop -- `0.0` there braked it 7.5 m/s^2 to a standstill behind a car going
+		# its own speed, and the player's car behind it, its sudden stops charted)
 		if room <= 0.0:
-			follow = 0.0
+			follow = maxf(lead_v + room * 0.5, 0.0) if free > 0.0 else 0.0
 		if follow < vt:
 			vt = follow
 			c.why = "player" if who == -1 else "car"
@@ -1612,7 +1616,7 @@ func _bus_stop(c: Car, dt: float) -> float:
 ## body (five along a bus), not only its middle: a bus pulled in at its stop, or slanting out
 ## of it, stuck its back corner into the lane while its middle was clear of it -- and the
 ## half length lets autodrive stop short of a bus's back, not a car's length behind its middle.
-func lead_on(path: PackedVector2Array, from: Vector2, look: float, ignore_crossing: bool, y := NAN) -> Array:
+func lead_on(path: PackedVector2Array, from: Vector2, look: float, ignore_crossing: bool, y := NAN, skip := -1) -> Array:
 	var best := INF
 	var bv := 0.0
 	var bhalf := 0.0
@@ -1620,8 +1624,9 @@ func lead_on(path: PackedVector2Array, from: Vector2, look: float, ignore_crossi
 	if path.size() < 2:
 		return [best, bv, bhalf, who]
 	var start := Geometry2D.get_closest_point_to_segment(from, path[0], path[1])
+	var skipped: Car = cars[skip] if skip >= 0 and skip < cars.size() else null   # (one crossing that will be gone: see autodrive)
 	for c: Car in cars:
-		if not c.alive or c.pos.distance_squared_to(from) > (look + c.len * 0.5 + 6.0) * (look + c.len * 0.5 + 6.0):
+		if not c.alive or c == skipped or c.pos.distance_squared_to(from) > (look + c.len * 0.5 + 6.0) * (look + c.len * 0.5 + 6.0):
 			continue
 		if not is_nan(y) and absf(c.y - y) > LEVEL + 0.08 * c.pos.distance_to(from):
 			continue   # (on a bridge overhead, in a tunnel underneath -- not just down a hill:

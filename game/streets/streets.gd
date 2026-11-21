@@ -980,6 +980,8 @@ var _log := DriveLog.new()            ## the last two minutes, for the map page 
 var _ap_why := ""                     ## what held autodrive's speed down this tick (for the log)
 var _ap_lead := -1.0                  ## metres to the car ahead on its lane, or -1
 var _ap_lead_i := -1                  ## that car's index in traffic (-1 none, or the player's own: for traces)
+var _ap_lead_a := 0.0                 ## how fast the car in front is speeding up along my way (braking: < 0)
+var _ap_lead_was := -2                ## ...and which car that was (a new one starts afresh)
 var _traffic: Traffic = null
 var _ap_wait := 0.0                  ## autodrive held up by a car this long
 
@@ -13469,6 +13471,8 @@ func _build_street_signs() -> void:
 			var pts: PackedVector2Array = r["pts"]
 			if nxt < 0 or nxt >= pts.size():
 				continue
+			if _divided_half_at(ni, e.x, nxt):
+				continue   # (half of a divided road where it splits off: no arrow -- see there)
 			var along := (pts[nxt] - c).normalized()
 			var across := Vector2(-along.y, along.x)
 			var w: float = r["w"]
@@ -13628,6 +13632,40 @@ func _lane_arrows(buf: Buf, ni: int, dir: Vector2, r: Dictionary) -> void:
 ## "l" left (never back the way it came, never the wrong way down a one-way)
 ## a short piece (under 30 m) from point k of road r going `step` to another junction: a link
 ## inside a junction drawn as several points, not a street
+## One-way road ri leaving point ni (its next point `nxt`): half of a divided road, where it
+## splits off -- another of its name there, two-way (the road it splits from) or one-way the
+## other way, coming in from beside it (the other half)? Its "one way" arrow at the corner
+## would stand where the two-way road's lane runs on into the half: OSM starts both halves at
+## the two-way road's middle, so for some metres the cars drive past the half's asphalt
+## (Ashdod's Shlomo Ben Yosef, 9 m splitting into two 4 m halves: autodrive's side met the
+## arrow's pole 0.9 m from its middle, and lost 19 km/h knocking it flat, every time).
+func _divided_half_at(ni: int, ri: int, nxt: int) -> bool:
+	var r: Dictionary = _roads[ri]
+	var nm := String(r.get("name", ""))
+	if nm == "":
+		return false
+	var c: Vector2 = _nodes[ni]
+	var out := ((r["pts"] as PackedVector2Array)[nxt] - c).normalized()
+	for e: Vector2i in _node_roads[ni]:
+		if e.x == ri:
+			continue
+		var o: Dictionary = _roads[e.x]
+		if String(o.get("name", "")) != nm or not o["drive"]:
+			continue
+		if o["o"] == 0:
+			# (the road it splits from: on behind it, and wider -- not a street that is one-way
+			# from here on, the same width, where the arrow is right)
+			for k: int in [e.y - 1, e.y + 1]:
+				if k >= 0 and k < (o["pts"] as PackedVector2Array).size() and float(o["w"]) > float(r["w"]) + 2.0 \
+						and ((o["pts"] as PackedVector2Array)[k] - c).normalized().dot(out) < -0.5:
+					return true
+			continue
+		var prev: int = e.y - int(o["o"])   # (where its traffic comes from, if it comes in here)
+		var opts: PackedVector2Array = o["pts"]
+		if prev >= 0 and prev < opts.size() and (opts[prev] - c).normalized().dot(out) > 0.5:
+			return true
+	return false
+
 func _short_link(r: Dictionary, k: int, step: int) -> bool:
 	var pts: PackedVector2Array = r["pts"]
 	var ids: PackedInt32Array = r["ids"]
@@ -19516,6 +19554,8 @@ var _knocked: Array = []             ## {id, k, body, ground, t}
 var _contact := Vector3.ZERO         ## where the car last touched something (_collide)
 var _contact_n := Vector2.ZERO       ## ... and the way it was pushed off it (out of what it hit)
 var _knock_hit := -1                 ## a knockable post touched in this tick's pushes (_collide), or -1
+var _knocked_n := 0                  ## things the car has knocked over or bent so far (no crash: the tests count these)
+var _knocked_what := ""              ## ...and the last: "sign oneway", "knocked bin"
 
 func _knock_add(mesh: Mesh, xforms: Array, posts: Array, seen: float, how: String) -> void:
 	var mm := MultiMesh.new()
@@ -19536,6 +19576,8 @@ func _knock_add(mesh: Mesh, xforms: Array, posts: Array, seen: float, how: Strin
 func _knock(pid: int) -> void:
 	var k: Array = _knockable[pid]
 	_knockable.erase(pid)
+	_knocked_n += 1
+	_knocked_what = "post bent" if k[4] == "bend" else "knocked over"
 	var mm: MultiMesh = k[0]
 	var i: int = k[1]
 	var xf: Transform3D = k[2]
@@ -19602,6 +19644,8 @@ var _bent: Array = []                ## {id, sign, nodes, t}
 func _bend_sign(pid: int) -> void:
 	var sg: Array = _signs_at[pid]
 	_signs_at.erase(pid)
+	_knocked_n += 1
+	_knocked_what = "sign %s" % str(sg[0])
 	var r0: float = _post_r[pid]
 	_post_r[pid] = 0.0   # (not solid while it is down)
 	var plate_xf: Transform3D = sg[1]
@@ -20745,6 +20789,63 @@ func _held(cur: float, v: float, why: String) -> float:
 		return v
 	return cur
 
+## autodrive behind the car in front: the speed to hold, with `free` m of road to its back
+## (beyond the gap kept standing), `room` that less the second or so kept behind at its pace,
+## it going `lv` along my way and speeding up `la` (braking: below 0).
+## (Each a user's "sudden stops due to other cars", charted -- tests/drive_trace.py: 8 hard
+## brakes a drive, 4.6-6.3 m/s^2 into the last metres, none of them needed:
+##  - a metre inside the second kept behind a car going its own pace, the speed asked for
+##    fell from that car's to nothing at once (`0.0 if room <= 0.0`), so it stood on the
+##    brakes behind a car doing 21 km/h, and stopped dead behind a queue pulling away;
+##  - behind a car that stopped (traffic brakes up to 7.5 m/s^2), it slowed only as the
+##    speed asked for came down, 2 m/s^2 for each m/s over it (see the brake below): it ran
+##    1-1.5 m/s over the slope all the way down and braked the last few metres hard.
+## Now: inside the second, a little under its pace to open the gap; and once a steady 2 m/s^2
+## will not do -- to its standing spot if it keeps braking as now, or to its pace by its back
+## -- the speed that brakes as hard as is needed, as `_ap_brake_for` does for a stop line.)
+## autodrive: car ci, `along` m ahead on my way, crossing it -- and off it, its back past my
+## sides, before my nose can get there? Then it is no car to stop behind.
+## (Each car crossing in front was a wall standing in the lane: autodrive slowing to go on
+## after giving way to a car at 49 km/h, that car 7 m ahead and gone in a third of a second,
+## stood on the brakes 6 m/s^2 for it -- a user: "in some crosses others just drive while
+## the autodrive is hesitant".)
+func _ap_crossing_clears(ci: int, along: float) -> bool:
+	var c = _traffic.cars[ci]
+	if c.v < 3.0 or c.acc < -2.0:
+		return false   # (crawling, or braking: it may stop there)
+	var p := _ap_point_ahead(along)
+	var pd := (_ap_point_ahead(along + 2.0) - p).normalized()
+	var cdir := Vector2(sin(c.yaw), cos(c.yaw))
+	if pd == Vector2.ZERO or absf(cdir.dot(pd)) > 0.5:
+		return false   # (going my way, or at me: not across)
+	var side := Vector2(-pd.y, pd.x)
+	var vs: float = c.v * cdir.dot(side)   # its speed across my way
+	if absf(vs) < 2.0:
+		return false
+	var off: float = (c.pos - p).dot(side) * signf(vs)   # its middle past my line, the way it goes
+	var reach: float = c.len * 0.5 * absf(cdir.dot(side)) + 0.9 * absf(cdir.dot(pd))
+	var t_clear: float = maxf(reach + 1.4 - off, 0.0) / absf(vs)   # (its back 1.4 m past my line: my side and half a metre)
+	var d := maxf(along - CAR_LEN * 0.5 - 1.0, 0.0)
+	var v := maxf(_v, 0.0)
+	var t_me := (sqrt(v * v + 4.0 * d) - v) / 2.0   # (my nose there speeding up at 2 m/s^2 from now)
+	return t_clear + 0.3 < t_me
+
+func _ap_follow_v(free: float, room: float, lv: float, la: float) -> float:
+	if free <= 0.0:
+		return 0.0
+	var v := maxf(_v, 0.0)
+	var follow := sqrt(lv * lv + 2.0 * 2.6 * room) if room > 0.0 else maxf(lv + room * 0.5, 0.0)
+	var need := 0.0
+	if la < -0.5 and lv > 0.3:
+		var stop := free + lv * lv / (2.0 * -la)   # where it will stand, braking as now
+		follow = minf(follow, sqrt(2.0 * 2.6 * stop))
+		need = v * v / (2.0 * maxf(stop, 0.3))
+	elif v > lv:
+		need = (v - lv) * (v - lv) / (2.0 * maxf(free, 0.3))
+	if need > 2.0:
+		follow = minf(follow, maxf(v - minf(need * 1.2, 6.0) * 0.5, 0.0))
+	return follow
+
 func _autodrive(dt: float) -> Array:
 	# into the walls again and again (a few in quick succession): lost, back to the street
 	_ap_bonks = maxf(0.0, _ap_bonks - dt / 10.0)
@@ -20894,19 +20995,29 @@ func _autodrive(dt: float) -> Array:
 		vt = _held(vt, 2.5, "blocked")
 	# the car in front, kept a couple of metres and a second or so behind; after waiting
 	# a while, ignore cars crossing the lane (a standoff in a junction) -- never one ahead
-	var lead: Array = _traffic.lead_on(_ap_pts, _pos, clampf(12.0 + _v * 1.2 + _v * _v / 5.2, 18.0, 130.0), _ap_wait > 3.0, _y)
+	var reach := clampf(12.0 + _v * 1.2 + _v * _v / 5.2, 18.0, 130.0)
+	var lead: Array = _traffic.lead_on(_ap_pts, _pos, reach, _ap_wait > 3.0, _y)
 	if float(lead[0]) < 30.0 and _ap_pass_bus(lead):
-		lead = _traffic.lead_on(_ap_pts, _pos, clampf(12.0 + _v * 1.2 + _v * _v / 5.2, 18.0, 130.0), _ap_wait > 3.0, _y)
+		lead = _traffic.lead_on(_ap_pts, _pos, reach, _ap_wait > 3.0, _y)
+	if float(lead[0]) < INF and int(lead[3]) >= 0 and _ap_crossing_clears(int(lead[3]), float(lead[0])):
+		lead = _traffic.lead_on(_ap_pts, _pos, reach, _ap_wait > 3.0, _y, int(lead[3]))
 	_ap_lead = float(lead[0]) if float(lead[0]) < INF else -1.0
 	_ap_lead_i = int(lead[3]) if float(lead[0]) < INF else -1
 	if float(lead[0]) < INF:
 		var lv: float = lead[1]
+		var li := int(lead[3])
 		# from my nose to its back (a bus is two and a half cars long: kept a car's length
-		# from its middle, autodrive drove into its back)
-		var room := float(lead[0]) - CAR_LEN * 0.5 - float(lead[2]) - 2.2 - lv * 1.2
-		if int(lead[3]) >= 0 and _traffic._parked_double(_traffic.cars[int(lead[3])]):
-			room -= 4.5   # (a delivery van standing: wait well back, room to pull out round it)
-		var follow := 0.0 if room <= 0.0 else sqrt(lv * lv + 2.0 * 2.6 * room)
+		# from its middle, autodrive drove into its back), less the gap kept standing
+		var free := float(lead[0]) - CAR_LEN * 0.5 - float(lead[2]) - 2.2
+		if li >= 0 and _traffic._parked_double(_traffic.cars[li]):
+			free -= 4.5   # (a delivery van standing: wait well back, room to pull out round it)
+		# how hard it is braking, along my way (over a few ticks; a new car in front, afresh)
+		var la := 0.0
+		if li >= 0 and _traffic.cars[li].v > 0.1:
+			la = _traffic.cars[li].acc * lv / _traffic.cars[li].v
+		_ap_lead_a = lerpf(_ap_lead_a, la, minf(dt * 10.0, 1.0)) if li == _ap_lead_was else la
+		_ap_lead_was = li
+		var follow := _ap_follow_v(free, free - lv * 1.2, lv, _ap_lead_a)
 		if follow < vt:
 			vt = follow
 			_ap_why = "car"
@@ -20919,7 +21030,10 @@ func _autodrive(dt: float) -> Array:
 	var throttle := clampf(err * 0.35, 0.0, 1.0)
 	var brake := clampf(-err * 0.25, 0.0, 1.0) if err < -0.3 else 0.0
 	if vt < 0.5 and _v < 1.5:
-		brake = maxf(brake, 0.8)   # waiting at a light or behind a car: foot on the brake
+		# waiting at a light or behind a car: foot on the brake -- firmly once all but
+		# standing; the last 5 km/h of a stop at ~3.6 m/s^2, as people ease off (0.8 from
+		# 1.5 m/s ended every stop with a 6.5 m/s^2 jolt)
+		brake = maxf(brake, 0.8 if _v < 0.4 else 0.45)
 	if throttle > 0.3 and absf(_v) < 0.4:
 		_ap_stuck += dt
 		if _ap_stuck > 2.0:
