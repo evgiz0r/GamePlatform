@@ -22,7 +22,7 @@ const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright');
 
-const dir = process.argv[2];
+const dir = process.argv[2] && path.resolve(process.argv[2]);   // (a relative one served nothing: every file failed the check below)
 const level = process.argv[3] || '1';
 const runs = Number(process.env.RUNS || '1');
 const shots = process.env.SHOT || '';
