@@ -17851,6 +17851,8 @@ func _spawn_people() -> void:
 		var w := {"actor": a, "line": PackedVector2Array(), "cum": PackedFloat32Array(), "s": 0.0,
 			"dir": 1.0, "speed": _people_rng.randf_range(1.1, 1.6), "dodge": 0.0,
 			"carry": _people_rng.randf() < 0.22}
+		# (a box for one carrier in three; the others walk with a bag instead: the carrying
+		# walk round nothing looked like arms out for a hug)
 		if i % 9 == 2:   # someone walking a dog (slower: it stops to sniff)
 			w["dog"] = true
 			w["speed"] = _people_rng.randf_range(0.9, 1.2)
@@ -17859,6 +17861,12 @@ func _spawn_people() -> void:
 			w["pram"] = true
 			w["carry"] = true
 			w["speed"] = _people_rng.randf_range(1.0, 1.3)
+		var cs := hash(_city_name) * 31 + i
+		if w["carry"] and not w.has("pram") and posmod(cs, 3) != 0:
+			w["carry"] = false
+			_carry(a, "bag", cs)
+		elif not w.has("pram") and not w.has("dog"):
+			_carry(a, _what_carried(cs, w["carry"]), cs)
 		# two walking together, side by side (about four in ten people on a street are with
 		# someone): the second keeps to the first's line, pace and turns (_walk_beside)
 		var lead_i := i - 1
@@ -17881,6 +17889,7 @@ func _spawn_people() -> void:
 		_humanize(a, hash(a.get_instance_id()))
 		_people_lod(a)
 		a.play("Idle", true, _people_rng.randf_range(0.8, 1.1))
+		_carry(a, _what_carried(hash(_city_name) * 13 + i, false), hash(_city_name) * 13 + i)
 		a.visible = false
 		_chatters.append({"actor": a, "spot": Vector2.INF})
 	_seat_chatters()
@@ -17895,6 +17904,7 @@ func _spawn_people() -> void:
 			_sitters.append({"actor": a, "spot": Vector2.INF})
 		elif i < SITTERS + WAITERS:
 			a.play("Idle", true, _people_rng.randf_range(0.7, 1.0))
+			_carry(a, _what_carried(hash(_city_name) * 17 + i, false), hash(_city_name) * 17 + i)
 			_waiters.append({"actor": a, "spot": Vector2.INF})
 		else:
 			a.play("Idle", true, _people_rng.randf_range(0.6, 0.9))
@@ -18987,6 +18997,12 @@ func _humanize(a: Actor3D, seed: int) -> void:
 				sizes.bones[i] = PART_SIZES[bone]
 		sk.add_child(sizes)
 		a.model.scale *= 1.06   # back to the height asked for: the smaller head took some off
+		# builds: slighter or broader, across and front to back (the whole figure: a bone's
+		# own scale is passed on to the arms and head, and a rotated child of a squashed bone shears)
+		var bd := RandomNumberGenerator.new()
+		bd.seed = seed + 77
+		var wd := bd.randf_range(0.9, 1.12)
+		a.model.scale *= Vector3(wd, 1.0, lerpf(1.0, wd, 0.8))
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
 	var looks := _people_looks()
@@ -19006,6 +19022,133 @@ func _humanize(a: Actor3D, seed: int) -> void:
 			nm.roughness = 0.85
 			mi.set_surface_override_material(si, nm)
 		_one_piece(mi)
+
+## ---- what people carry -------------------------------------------------------------------------
+## Things in people's hands and on their backs: a shopping bag or a handbag hanging from one
+## hand, a backpack, a box held in front (the carrying walk had arms out round nothing). Each
+## is a few boxes kept at a bone of the figure's skeleton (Held), so it goes with the hand or
+## rides on the back; one mesh (one draw) each, shared, for the few who have one. (tests/people_carry.gd)
+## what someone has: "" (nothing), "bag", "handbag", "backpack", or "box" for the carrying walk
+func _what_carried(seed: int, carrying: bool) -> String:
+	if carrying:
+		return "box"
+	var r := posmod(seed * 2654435761, 1000) / 1000.0
+	return "bag" if r < 0.17 else ("handbag" if r < 0.27 else ("backpack" if r < 0.4 else ""))
+
+var _carry_meshes := {}               ## the boxes' sizes, places and colours -> one mesh, shared
+var _carry_mat: StandardMaterial3D = null
+
+## one thing in one mesh (one draw, not one a box), its colours in the vertices: [size,
+## position, colour] boxes, made once for each different set and shared
+func _carry_mesh(h: Node3D, boxes: Array) -> void:
+	var key := str(boxes)
+	var mesh: ArrayMesh = _carry_meshes.get(key)
+	if mesh == null:
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		for bx: Array in boxes:
+			var bm := BoxMesh.new()
+			bm.size = bx[0]
+			var arr := bm.get_mesh_arrays()
+			var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+			var n: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
+			var c: Color = bx[2]   # (as is: converted to linear, as the batched kit's are, they drew darker)
+			for i: int in arr[Mesh.ARRAY_INDEX]:
+				st.set_color(c)
+				st.set_normal(n[i])
+				st.add_vertex(v[i] + (bx[1] as Vector3))
+		mesh = st.commit()
+		_carry_meshes[key] = mesh
+	if _carry_mat == null:
+		_carry_mat = StandardMaterial3D.new()
+		_carry_mat.vertex_color_use_as_albedo = true
+		_carry_mat.roughness = 0.8
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.material_override = _carry_mat
+	h.add_child(mi)
+
+## Things held, moved to their bones every frame after the animation (and PartSizes) has
+## posed them. A hand's bag hangs straight down from the hand, whatever the arm's swing (on a
+## BoneAttachment3D it tilted with the arm, flat as a sheet of paper); the back's turns with it.
+class Held extends SkeletonModifier3D:
+	var items := []   ## [bone index, holder (a child of the skeleton, in metres), upright]
+
+	func _process_modification_with_delta(_delta: float) -> void:
+		var sk := get_skeleton()
+		if sk == null:
+			return
+		for it: Array in items:
+			var pose := sk.get_bone_global_pose(it[0])
+			var h: Node3D = it[1]
+			var keep := h.scale
+			h.transform = Transform3D(Basis() if it[2] else pose.basis.orthonormalized(), pose.origin)
+			h.scale = keep
+
+## A holder at a bone, in metres (the figure is fitted, i.e. scaled, and a child of the
+## skeleton would take that on); moved there every frame by the skeleton's Held
+func _bone_holder(a: Actor3D, bone: String, upright: bool) -> Node3D:
+	var sks := a.model.find_children("*", "Skeleton3D", true, false)
+	if sks.is_empty():
+		return null
+	var sk: Skeleton3D = sks[0]
+	var bi := sk.find_bone(bone)
+	if bi < 0:
+		return null
+	var held: Held = null
+	for m in sk.get_children():
+		if m is Held:
+			held = m
+	if held == null:
+		held = Held.new()
+		sk.add_child(held)   # (after PartSizes: run after it, so the bones are where they are drawn)
+	var s: Vector3 = sk.global_transform.basis.get_scale()
+	var h := Node3D.new()
+	sk.add_child(h)
+	h.scale = Vector3(1.0 / s.x, 1.0 / s.y, 1.0 / s.z)
+	held.items.append([bi, h, upright])
+	return h
+
+func _carry(a: Actor3D, what: String, seed: int) -> void:
+	if what == "" or a == null or a.model == null:
+		return
+	var ink := Palette.col("ink")
+	var bg := Palette.col("bg")
+	var alt := Palette.col("bg_alt")
+	var wn := Palette.col("warn")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed + 991
+	var dark := [bg.lerp(alt, 0.3), _natural(wn.lerp(bg, 0.7), 0.5), _natural(Palette.col("player").lerp(bg, 0.6), 0.5),
+		_natural(Palette.col("hazard").lerp(bg, 0.55), 0.5), ink.lerp(alt, 0.6)]
+	match what:
+		"bag", "handbag":
+			# hanging from the hand (the figure faces +z): flat side to the leg
+			var h := _bone_holder(a, "Fist.L" if rng.randf() < 0.5 else "Fist.R", true)
+			if h == null:
+				return
+			if what == "bag":   # a supermarket's thin white plastic, or a shop's paper or cloth bag
+				var c: Color = [ink.lerp(alt, 0.12), ink.lerp(alt, 0.12), _natural(wn.lerp(ink, 0.45), 0.4),
+					_natural(Palette.col("friend").lerp(bg, 0.4), 0.5)][rng.randi() % 4]
+				var tall: float = [0.3, 0.34, 0.38][rng.randi() % 3]
+				_carry_mesh(h, [[Vector3(0.11, tall, 0.27), Vector3(0, -0.07 - tall * 0.5, 0), c],
+					[Vector3(0.02, 0.07, 0.1), Vector3(0, -0.04, 0), c.darkened(0.1)]])   # (and the handles)
+			else:   # a handbag, its strap in the hand
+				var c: Color = dark[rng.randi() % dark.size()]
+				_carry_mesh(h, [[Vector3(0.1, 0.2, 0.27), Vector3(0, -0.15, 0), c],
+					[Vector3(0.015, 0.06, 0.12), Vector3(0, -0.03, 0), c.darkened(0.3)]])
+		"backpack":
+			var h := _bone_holder(a, "Torso", false)
+			if h == null:
+				return
+			var c: Color = dark[rng.randi() % dark.size()]
+			_carry_mesh(h, [[Vector3(0.3, 0.4, 0.15), Vector3(0, 0.06, -0.165), c],
+				[Vector3(0.24, 0.16, 0.06), Vector3(0, -0.04, -0.26), c.darkened(0.2)]])   # (and its front pocket)
+		"box":   # a cardboard box on the forearms, the hands under its front
+			var h := _bone_holder(a, "Torso", false)
+			if h == null:
+				return
+			_carry_mesh(h, [[Vector3(0.42, 0.28, 0.32), Vector3(0, -0.02, 0.36), _natural(wn.lerp(bg, 0.45), 0.55)]])
+	_people_lod(a)
 
 ## A person in one piece. The figures are one mesh of six parts (skin, shirt, trousers, belt,
 ## face, hair), and each part is a surface of its own: a draw call, and another in the
