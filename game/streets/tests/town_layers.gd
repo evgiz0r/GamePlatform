@@ -88,14 +88,25 @@ func _run() -> void:
 	var built := {}
 	for key in ["bike_share", "bike_share_docks", "bike_share_bikes", "taxi_stands", "motorbike_bays_mapped", "motorbike_bays", "sculptures", "notice_boards", "hydrants_mapped", "hydrants"]:
 		built[key] = int(fc.get(key, 0))
+	# a bay's motorbikes stand side by side: the next one along is beside it, not ahead
+	var mb: Array = g._furn.where.get("motorbike_bays", [])
+	var lengthways := 0
+	for i in range(mb.size()):
+		var a: Transform3D = mb[i]
+		for j in range(maxi(i - 20, 0), mini(i + 20, mb.size())):
+			var o: Vector3 = (mb[j] as Transform3D).origin - a.origin
+			if j != i and o.length() < 1.3 and absf(o.normalized().dot(a.basis.z)) > 0.7:
+				lengthways += 1
+				break
+	built["lengthways"] = lengthways
 	print("town things: %d in the file; built %s" % [things, built])
 	var ok: bool = mapped > 0 and on_road == 0 and int(g._works.count.get("panels", 0)) > 0 and biz > 0
 	if g._city_id == "tel_aviv":
 		ok = ok and int(g._works.count.get("cranes", 0)) >= 10 and mapped > 12000 \
-			and int(built["bike_share"]) > 100 and int(built["hydrants_mapped"]) > 500 and int(built["sculptures"]) > 20
-	print("REGRESS town_layers: %s (lamps mapped %d, on the asphalt %d want 0; hoarding panels %d want 1+; cranes %d; businesses %d; bike-share %d, hydrants %d, sculptures %d)" % [
+			and int(built["bike_share"]) > 100 and int(built["hydrants_mapped"]) > 500 and int(built["sculptures"]) > 20 and lengthways == 0
+	print("REGRESS town_layers: %s (lamps mapped %d, on the asphalt %d want 0; hoarding panels %d want 1+; cranes %d; businesses %d; bike-share %d, hydrants %d, sculptures %d; motorbikes parked nose to tail %d want 0)" % [
 		"PASS" if ok else "FAIL", mapped, on_road, int(g._works.count.get("panels", 0)), int(g._works.count.get("cranes", 0)), biz,
-		int(built["bike_share"]), int(built["hydrants_mapped"]), int(built["sculptures"])])
+		int(built["bike_share"]), int(built["hydrants_mapped"]), int(built["sculptures"]), lengthways])
 	if DisplayServer.get_name() == "headless":
 		quit()
 		return
