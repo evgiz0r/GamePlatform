@@ -1410,6 +1410,12 @@ contributors under the ODbL, which is why the credit sits on screen.
   it (every driver keeps to it, and the signs show it); the city boundary. The hills:
   the ground follows an open elevation model (AWS terrain tiles), baked in with the city.
   Shops, cafes and bus stops stand where OSM puts them, under their real names.
+  In Tel Aviv, from the city's own maps (credited on screen): its lamp posts where they
+  stand (plain, wooden, ornate, or on a wall), its building sites at work with hoardings
+  round them and a tower crane over each big new building, and its licensed shops, cafes,
+  barbers and grocers where OSM has none (their signs say what they are: the city's list has
+  no names). Everywhere, the cars' shapes and colours are the shares on Israel's vehicle
+  register: four in ten an SUV or crossover, more than four in ten white.
 - **Guessed**: a building with no height gets 4 storeys (by type: houses 2, garages 1,
   offices 5...), varied a storey up or down so a street is not one flat wall. A road with
   no width tag gets one by kind (residential 8 m, room for a parked row each side).
@@ -1420,7 +1426,9 @@ contributors under the ODbL, which is why the credit sits on screen.
   The rows of street trees along residential streets are added, not mapped. The window
   grid is a pattern, not the real facade. The traffic lights run their own simple cycle.
   What a shop looks like (awning, tables, the bus shelter) is generic. The parked cars
-  (about a quarter of the kerb), the people walking and sitting at cafe tables, rooftop
+  (about a quarter of the kerb), the people walking and sitting at cafe tables, the
+  shoppers in the Carmel market stopping at its stalls, people walking and jogging along the
+  beach and standing in the sea, rooftop
   solar heaters and rooms (Givatayim), pitched roofs on small houses (Bedford).
 - **Guessed, in Givatayim, Bedford, Ashdod and Tel Aviv: how high the bridges are, how deep
   the tunnels.** OSM says which ways are bridges and tunnels but not how high or deep, so
@@ -1478,7 +1486,7 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
 - Speed humps to bump over: OSM marks them (traffic_calming), but the baker does not keep
   them yet -- it needs that and a re-bake (Overpass, or the bake workflow).
 - People who react ("not needed yet, maybe later"): jumping back, or falling, when a car
-  comes at them; glancing at you; stopping at the kerb before they step out.
+  comes at them; glancing at you.
 - A guided tour of the city: "a virtual tour in a city. like a guide, where we stop and
   look and explain. the more real it gets the more the tour looks nicer". A guide leads you
   along a route on foot (or driving), stops at the sights, turns your view to each and

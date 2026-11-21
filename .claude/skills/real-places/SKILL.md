@@ -382,6 +382,15 @@ the parked cars, which stand a third in the road).
   one block forever, and in view it reads as aimless. Go on over the side street's mouth
   to the same pavement's next block, or round the corner; turn back only where nothing
   goes on, and swap someone out only where nobody sees.
+- **The step over a side street is a crossing: look first.** Walking on over a mouth (up to
+  ~18 m of asphalt) without a look at the traffic put walkers in front of cars at 50 km/h.
+  Hold them at the kerb while anything comes that could not stop, or is within a few
+  metres of the step (out into a car's side as its nose passes is a hit too); after a long
+  wait, back the way they came. And an AI driver must look for people where they will be
+  when it gets level with them (their pace over the last ticks, a second or two on), not
+  only where they stand: one walking into the lane at 1.5 m/s is first seen 3-5 m off the
+  nose. Count "came into the lane closer than the car can stop" -- a hit is rare (one a
+  10-minute drive at most), that is ten times commoner and moves with every change.
 - **You on foot are not a car to them.** A rule that steps people aside from a car coming
   at them on the pavement (within some metres, moving faster than a walk) fires for the
   player walking too, at walking pace: everyone jumped a metre aside as you passed. Give
