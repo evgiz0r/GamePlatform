@@ -954,6 +954,7 @@ var _works: Sites                    ## building sites from a town's own map: ho
 var _wave: Wave                      ## the green wave: lights turning green for the car (wave.gd)
 var _racer: Racer                    ## racer mode: autodrive with the rules off, the town hooting (racer.gd)
 var _places: Places                  ## a town's own kindergartens and shelters (places.gd)
+var _opening: Opening                ## the view over the town while the squares round the car go up (opening.gd)
 var _standins: Standins              ## the squares not built yet, seen from above: flat roads, outlines (standins.gd)
 var _on_deck := -1                   ## while a deck road is drawn: heights come from it, not the ground
 var _inferred := {}                  ## what decks.gd's infer() made of a real town's bridges (the report)
@@ -1042,6 +1043,7 @@ const Wave := preload("res://game/streets/wave.gd")
 const Standins := preload("res://game/streets/standins.gd")
 const Racer := preload("res://game/streets/racer.gd")
 const Places := preload("res://game/streets/places.gd")
+const Opening := preload("res://game/streets/opening.gd")
 const DriveLog := preload("res://game/streets/drivelog.gd")
 var _log := DriveLog.new()            ## the last two minutes, for the map page and "save log"
 var _ap_why := ""                     ## what held autodrive's speed down this tick (for the log)
@@ -1363,6 +1365,9 @@ func start(_config: Dictionary) -> void:
 		await _set_evening(true)
 	for k: String in _part_us:   # (the parts of the stages, for tests/load_stages.gd)
 		_stage_ms[k] = int(_part_us[k]) / 1000
+	if Opening.wanted(self):   # (over the town while the squares round the car go up: opening.gd)
+		_opening = Opening.new(self)
+		_opening.start()
 	_build_rest()   # the rest of the city, while you drive
 
 var _loading: Label
@@ -17265,6 +17270,8 @@ func _frame() -> void:
 	_hold_tick(dt)
 	if _standins != null:
 		_standins.show(_zoomed())
+	if _opening != null and _opening.on:
+		_opening.tick(dt)
 	if _blades != null:
 		_turbines_tick()
 	var f := Engine.get_physics_interpolation_fraction()
@@ -22196,6 +22203,8 @@ func _autodrive(dt: float) -> Array:
 	# a while, ignore cars crossing the lane (a standoff in a junction) -- never one ahead
 	var reach := clampf(12.0 + _v * 1.2 + _v * _v / 5.2, 18.0, 130.0)
 	var lead: Array = _traffic.lead_on(_ap_pts, _pos, reach, _ap_wait > 3.0, _y)
+	if racing and float(lead[0]) < 70.0 and _ap_race_by(lead):
+		lead = _traffic.lead_on(_ap_pts, _pos, reach, _ap_wait > 3.0, _y)
 	if racing and float(lead[0]) < 22.0 and _ap_wait > 1.0 and _ap_mount_by(lead):
 		lead = _traffic.lead_on(_ap_pts, _pos, reach, _ap_wait > 3.0, _y)
 	if float(lead[0]) < (60.0 if racing else 30.0) and _ap_pass_bus(lead):
@@ -22804,6 +22813,107 @@ func _ap_pass_bus(lead: Array) -> bool:
 	_log.event("pass van" if dbl else "pass bus")
 	return true
 
+## Racer (racer.gd): round the car in front by whatever way is open -- the next lane, two
+## over, the other side of the road -- not a lane's width from autodrive's line but as far as
+## clears that car's body where it actually stands (a car held half across the line took a
+## one-lane bend 2.08 m from its middle, inside lead_on's 2.1, and racer stood behind it).
+## Each way out is tried on a copy of the plan, nearest first, left before right: kept when
+## every point of it is on asphalt (any road's, either way), clear of anything solid, of every
+## car now and of anything coming the other way for as long as the pass takes. Tried again on
+## the same car once stuck behind it (the first try did not clear it). True when it went.
+const RACE_CLEAR := 2.9      ## m from the car's middle to racer's line, going by it
+const RACE_OUT := [3.2, 6.4, 9.6, -3.2]   ## ways out tried: left one lane, two, three; right one
+var _race_tries := 0                      ## ways out already taken round the same car (a retry starts past them)
+func _ap_race_by(lead: Array) -> bool:
+	var bi: int = lead[3]
+	if bi < 0 or _ap_pts.size() < 2:
+		return false
+	if bi == _ap_passed and _ap_wait < 1.5:
+		return false   # (bent round it already: give it a moment)
+	_race_tries = _race_tries + 1 if bi == _ap_passed else 0   # (stuck behind it still: the next way out)
+	var car = _traffic.cars[bi]
+	var want: float = _racer.limit(_ap_lim[1]) if _ap_lim.size() > 1 else 13.9
+	if not _racer.can_pass(float(car.v), want):
+		return false
+	if _ap_turn_ahead() != 0 and float(lead[0]) > 25.0:
+		return false   # (a turn just after it: stay behind until close, then it may still go)
+	var gap: float = lead[0]
+	var fwd := _fwd()
+	var left := Vector2(fwd.y, -fwd.x)
+	# where its middle stands across racer's line (left of it: +)
+	var lat := 0.0
+	var bd := INF
+	for j in range(_ap_pts.size() - 1):
+		var cp := Geometry2D.get_closest_point_to_segment(car.pos, _ap_pts[j], _ap_pts[j + 1])
+		if cp.distance_to(car.pos) < bd:
+			bd = cp.distance_to(car.pos)
+			var d := (_ap_pts[j + 1] - _ap_pts[j]).normalized()
+			lat = (car.pos - cp).dot(Vector2(d.y, -d.x))
+		if _ap_pts[j].distance_to(_pos) > gap + 20.0:
+			break
+	# a moving car goes on meanwhile: the way out as long as it takes to get by
+	var t_pass := (gap + float(car.len) + 20.0) / maxf(want - float(car.v), 3.0)
+	var extra := float(car.v) * t_pass
+	if extra > 160.0:
+		return false
+	var half := float(car.len) * 0.5
+	var start_s := maxf(gap - half - 12.0, 1.0)
+	var end_s := gap + half + 10.0 + extra
+	var keep_pts := _ap_pts.duplicate()
+	var keep_v := _ap_v.duplicate()
+	var keep_lim := _ap_lim.duplicate()
+	var s0 := _ap_pts[0].distance_to(Geometry2D.get_closest_point_to_segment(_pos, _ap_pts[0], _ap_pts[1]))
+	for oi in range(RACE_OUT.size()):
+		var out: float = RACE_OUT[(oi + _race_tries) % RACE_OUT.size()]
+		# as far over as clears its body: out at least so far past its middle
+		var shift := out
+		if out > 0.0:
+			shift = maxf(out, lat + RACE_CLEAR)
+		else:
+			shift = minf(out, lat - RACE_CLEAR)
+		_ap_densify(s0 + end_s + 10.0, 1.5)
+		var s := -s0
+		var bent: Array = []
+		for k in range(1, _ap_pts.size()):
+			s += _ap_pts[k - 1].distance_to(_ap_pts[k])
+			if s > end_s + 8.0:
+				break
+			var t := clampf((s - start_s) / 7.0, 0.0, 1.0) * clampf((end_s + 8.0 - s) / 8.0, 0.0, 1.0)
+			if t <= 0.0:
+				continue
+			var kd := (_ap_pts[mini(k + 1, _ap_pts.size() - 1)] - _ap_pts[k - 1]).normalized()
+			_ap_pts[k] += Vector2(kd.y, -kd.x) * shift * t
+			bent.append([_ap_pts[k], maxf(s, 0.0)])
+		var ok := not bent.is_empty()
+		for bq: Array in bent:
+			var q: Vector2 = bq[0]
+			# on asphalt (any road: the other way's lanes too), nothing solid there
+			if _off_road(q, -0.3) or _push_out(q, 1.15, true, false, _y) != Vector2.ZERO:
+				ok = false
+				break
+			var at_t := float(bq[1]) / maxf(want, 5.0)   # (when racer is there)
+			for c in _traffic.cars:
+				if not c.alive or c == car:
+					continue
+				# where it will be then, at its pace along its heading
+				var cdir := Vector2(sin(c.yaw), cos(c.yaw))
+				var then: Vector2 = c.pos + cdir * float(c.v) * at_t
+				if then.distance_squared_to(q) < 3.2 * 3.2 or c.pos.distance_squared_to(q) < 2.6 * 2.6:
+					ok = false
+					break
+			if not ok:
+				break
+		if ok:
+			_ap_passed = bi
+			_racer.passes += 1
+			Probe.event("racer_pass", {"over": snappedf(shift, 0.1), "moving": float(car.v) > 0.6})
+			_log.event("racer round a car")
+			return true
+		_ap_pts = keep_pts.duplicate()
+		_ap_v = keep_v.duplicate()
+		_ap_lim = keep_lim.duplicate()
+	return false
+
 ## Racer (racer.gd), stood behind a queue that does not move: up onto the pavement on the
 ## right and along it past the queue, back down at its head -- only where nobody is on that
 ## stretch of pavement (3 m either side of the line), nothing solid stands on it (posts,
@@ -22811,7 +22921,7 @@ func _ap_pass_bus(lead: Array) -> bool:
 const MOUNT_PAST := 26.0      ## metres of pavement it takes at most past the car in front
 func _ap_mount_by(lead: Array) -> bool:
 	var bi: int = lead[3]
-	if bi < 0 or bi == _ap_passed or _ap_pts.size() < 2:
+	if bi < 0 or (bi == _ap_passed and _ap_wait < 2.0) or _ap_pts.size() < 2:
 		return false
 	var hit := _nearest_seg(_pos, 12.0, true, true, _y)
 	if hit.is_empty():
@@ -24881,7 +24991,7 @@ func _draw_hud() -> void:
 		_hud.draw_arc(_hold_at, 14.0, 0.0, TAU, 32, Color(Palette.col("bg"), 0.5), 5.0)
 		_hud.draw_arc(_hold_at, 14.0, -PI * 0.5, -PI * 0.5 + TAU * hold, 32, hc, 4.0)
 		_hud.draw_circle(_hold_at, 3.0, hc)
-	if _paused:
+	if _paused and not (_opening != null and _opening.on):
 		_hud_text(Vector2(170, 62), "PAUSED", 300, 13, Palette.col("warn"))
 		if _zoom > 0.0:
 			var hint := "drag to look round · pinch to zoom and turn" if _touch_seen \
@@ -25318,6 +25428,15 @@ func _view_footprint() -> PackedVector2Array:
 ## it takes the wheel back from autodrive. ----------------------------------------------------
 
 func _input(event: InputEvent) -> void:
+	if _opening != null and _opening.on and not Flow.pointer_over_hud():
+		# the opening: any key, click or tap goes straight down to the car
+		var k := event as InputEventKey
+		var m := event as InputEventMouseButton
+		var tch := event as InputEventScreenTouch
+		if (k != null and k.pressed and not k.echo) or (m != null and m.pressed) or (tch != null and tch.pressed):
+			_opening.end(true)
+			get_viewport().set_input_as_handled()
+			return
 	if _route_ui != null:   # the list of test routes: no city behind it
 		var mt := event as InputEventMouseButton
 		if mt != null and mt.pressed and mt.button_index == MOUSE_BUTTON_LEFT and not Flow.pointer_over_hud():

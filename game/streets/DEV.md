@@ -26,6 +26,7 @@ merge, re-check (`tools/check_script.sh`, a playtest, the tests below), never fo
 | `standins.gd` | the squares not built yet seen from above: one flat mesh a square (roads, building outlines, parks, water) made as the background build starts, shown only while zoomed out, dropped when its square is built. See "The green wave" below |
 | `racer.gd` | racer mode ("racer" button, R): `_autodrive` leaves out lights, signs, zebras and giving way when `_racing()`, raises the limit (`limit`) and the corners (`CORNER_K`); `_ap_pass_bus` goes round any slower car (`can_pass`); the traffic's horns (`tick`: a car braking hard with the player its blocker, or met head-on in its lane). See "Racer, the Ministry's bus lanes, kindergartens and shelters" below |
 | `places.gd` | a town's own kindergartens (a fenced yard, shade sail, slide) and public shelters (the concrete entrance and its sign) from the city file's `places`, each on the nearest clear ground to its point; built per square |
+| `opening.gd` | the opening: the view high over the town, turning, while the squares round the car go up (paused city, hurried build), then down to the car; skipped by a tap; off for tests, bots, walks and routes (`wanted`, `STREETS_OPENING`) |
 | `rails.gd` | railways: the tracks the city file has (`rails`, `platforms`, `stations`), their beds, rails and sleepers, the platforms with canopies and the station's name, and trains running along them (`tick`). See "Railways" below |
 | `cities/*.json` | baked towns (`tools/osm_city.py`) and the made-up test town (`tools/fake_city.py`) |
 | `details.gd`, `cities/details/<city>.json` | what a filmed walk showed and OSM lacks, laid over the baked city as it loads (road edits, unmarked zebras, areas, an arcade cut under a block, paving level with the pavement, walls, fences, hedges, bins, railings, bollards, a pole transformer, a barrier, parked motorbikes, trees) and the walks themselves; the format is at the top of `details.gd` |
@@ -3749,6 +3750,56 @@ missing at all 8 shots; the shots show the strips and outlines meeting the built
 without a gap. (The square being built keeps its stand-in to the end of `_build_tile`:
 `_tiles_done` is set at its start, which the test first counted as wrong.)
 
+## Traffic: backwards, dead ends, kerb pull-ins, road hand-overs (22 Nov 2026)
+
+A baseline on `main` df1b539 (the user's PC, Windows, exams 4 x 75 s at 1x, three at once):
+checks Givatayim / Ashdod / test town 12 / 12 / 11, all traffic's; route set 10 of 10, 0 hits,
+0 reds, 0 rescues, waits 10-37 s (`tests/routes_results.md`). Four bugs under the exam's lines:
+- **Rolling backwards.** The test town's "bus (player, -11 km/h)" on Derekh HaHarim wanted
+  4.5-6.6 m/s while its speed went to -2.9: pulling away right after a hard brake, `acc` still
+  held the brake (-7.5) and was eased up at 4 m/s^3 while being added, so the car slowed on
+  through 0 and backed into the queue. Now from `maxf(acc, 0)`. Nothing else in traffic sets a
+  speed below 0 (backing out of a kerb spot moves `s`, not `v`). New exam check "traffic
+  rolling backwards" (0 since; the baseline's bus would have read it).
+- **Turning round at a dead end** (`_turn_round`). The way back (`_next`'s `back`) starts at
+  the point before the end, so the end, in the lane coming in, was joined straight to that
+  point in the lane going out -- on HaDganim (two points, 135 m) one diagonal down the wrong
+  side into the cars still coming in, nose to nose; the ring rule then let one drive through
+  the other (5 of Givatayim's 12 checks). Now a half circle a lane wide, short of the end.
+  `tests/traffic_dead_end.gd`: before, every car out 1.6-2 m on the wrong side, 3-16
+  overlaps a minute; after, 7 sent, 0 wrong side, 0 overlaps.
+- **Pulling in at the kerb measured from the wrong lane.** A bus at a stop and a delivery van
+  take "the room to the kerb" from `_lane(r)` -- the lane traffic drives by default, the
+  middle one of three -- not the lane they are in: a bus in Sderot Herzl's kerb lane got the
+  whole 0.9 m, 4.23 m right of the middle, its side 0.48 m over the kerb, into a hydrant at
+  42 km/h. Now from `_lane(r) - shift_to`.
+- **A road handing over to the next.** The points either end of that stretch are each in
+  their own road's lane, so the line slides between them; the shift jumped to the new
+  road's at once. Sderot Herzl's three-lane piece's kerb shift (-3.33) on its two-lane
+  piece's line (2.22 right) put cars 5.55 m right of an 8.9 m road's middle, a metre over the
+  kerb into hydrants and trees at 40 km/h (Herzl and Begin, every Ashdod run). Now blended
+  along the stretch (`_steer_lanes`, before `if rid != c.shift_rd`). Ashdod's exam, the same
+  run beside the old code: 26 checks -> 15, off the asphalt 17 -> 11, into posts 3 -> 1.
+- Wires poles (`furniture.wires`) now 0.7 m out from the edge, their middle 0.55 m off every
+  asphalt edge (was 0.55 and 0.25: one stood 0.12 m off Sapir's on a bend, touched by the
+  buses every run). Every wire pole moved 15 cm back.
+- New exam check **"traffic body off the asphalt"**: a moving car's corner 0.35 m+ past every
+  road's edge, outside junction discs, 0.3 s running. It reads 2-11 a town now, nearly all
+  **buses on bends and at stops** (Givatayim (547, -906) 0.6 m, (709, 1290) 1.2 m at a stop;
+  the test town (633, -242) 1.4 m on a curve; Sapir's bend 0.4 m) -- open, next: a bus's
+  corners swinging past the kerb, and whether 0.35 m is the right slack for a 12 m bus.
+After all of it (exams, one run each, noisy): Givatayim 16 (8 without the new check),
+Ashdod 15 (4), test town 14 (12). Still open: traffic driving into autodrive standing at a
+junction (test town (-546, 405), 3 a run: "traffic shoves your standing car"); traffic
+overlapping in the test town's junction at (-638, 224) (8-10 a run); Givatayim's 7-9 traffic
+into posts (look with the off-asphalt lines first); a "traffic left of the middle" check for
+two-way streets (the dead-end family everywhere). `tests/posts_at.gd` says what stands at a
+spot and where traffic's lanes lie (see the tests README).
+**On Windows**: Python's `open()` reads the system code page unless told `encoding="utf-8"`
+-- `run_routes.sh` found no routes in `routes.json` (Hebrew) and ran none; fixed there and in
+`route_report.py`. A worktree beside this checkout needs `.godot` copied in (or ~40 s of
+`--import`) before the first headless run.
+
 ## Racer, the Ministry's bus lanes, kindergartens and shelters (22 Nov 2026)
 
 **Racer** (`racer.gd`). Autodrive with the rules off: `_autodrive` skips `_ap_light_v`,
@@ -3765,9 +3816,9 @@ be clear for that plus 14 m a second of passing for what comes the other way; lo
 `blocker` -1), so a car braking harder than 3 m/s^2 for you, or one you come at head-on in
 its lane, hoots -- an AudioStreamPlayer3D at the car, the player's own synthesised horn at
 the car's pitch, 3 at once at most, each car once in 6 s; a red run makes the nearest car
-hoot. Buttons: "wave" and "racer" sit on the left over the minimap (8,140 and 8,164): the
-bottom row is full, and on a phone the stick's ring and its "hold & drag to drive" fill the
-bottom right (the wave button first went there and covered the hint).
+hoot. (Its button and the green wave's were first their own, on the left over the minimap;
+the HUD rework the same night made them autodrive's style -- rules, green wave, racer, racer
+the default -- on the chip beside autodrive and in the "more" drawer; V and R still switch.)
 Later the same night: racer goes round on the right too where there are two lanes or more
 its way and the left is busy (`sgn`); stood behind a queue that does not move (1 s), it
 goes up onto the pavement on the right (`_ap_mount_by`: the car's middle 1.6 m past the kerb,
@@ -3776,6 +3827,20 @@ and nothing solid -- posts, trees, bins, parked cars, walls -- stands on it). It
 Aviv drive hit two posts, at 33 and 16 km/h: tight turns are taken at the usual pace now
 (`CORNER_FROM`: x1.3 only on bends the plan takes at 7 m/s or more), and a way out round a
 car is undone if a post, tree or median end stands on it.
+Then, the user: "should in general try to get there asap -- going to the other side of the
+road, speeding around cars, of course not crashing into obstacles". `_ap_race_by` (tried
+before the bus pass and the pavement): any car slower than racer wants, moving or not, is
+gone round by the first way out that is open -- `RACE_OUT` one lane left, two, three (the
+other side of the road), one right -- each as far over as clears that car's body where it
+stands (`RACE_CLEAR` 2.9 m from its middle: the old one-lane bend left a car held half across
+the line 2.08 m off, inside `lead_on`'s 2.1, and racer stood behind it for good), tried on a
+copy of the plan and kept only if every point is on asphalt, clear of anything solid, of
+every car now and of where each will be when racer gets there. Stuck behind the same car,
+it tries again, starting at the next way out (`_race_tries`). The limit x1.8, up to 110 km/h.
+`tests/racer_moves.gd` (a car held still 60 m ahead): two-lane one-way streets 2 of 3 round
+it and on in 13-14 s; Afek bends once and never clears it (open: its other ways out are
+refused -- not looked into); one-lane streets wait (their pavements were not clear); 0
+crashes, 0 people hit.
 `tests/racer.gd`: route 2 by "go to" (Givatayim, 1.2 km as the crow flies),
 autodrive then racer, traffic as usual; then a junction held at red, racer from 150 m back.
 22 Nov: autodrive 237 s (0 reds, 50 km/h top), racer 214 s (7 cars passed, 1 red, 78 km/h
@@ -3830,6 +3895,29 @@ the kerb. Kindergartens are added to `_schools` (SLOW near them).
 map; 144 yards and 37 shelters put, 8 kindergartens left out (no clear ground within 28 m).
 Shots taken where each was put (`spots`), not at the map's point: the point is its building,
 the yard a few metres off, and a shot at the point saw a roof.
+
+## The opening; models made with Blender (22 Nov 2026)
+
+**The opening** (`opening.gd`). Before, only the squares within `NEAR_NOW` of the start and
+those ahead were built behind the loading text, and the rest of `NEAR_FIRST` (5 squares in
+Givatayim) went up in view in the first seconds of the drive. Now, where the car would be
+shown, `Opening.wanted` (not headless, not a scene test -- `-s` on the command line --, not
+the bots' Probe, not `_whole_first()`; `STREETS_OPENING` 1/0 forces it) starts the zoomed-out
+view at `HIGH` (0.82), turning `TURN` rad/s, the city paused (the zoom's own pause: the
+build goes on, at `CATCH_UP_US` while `_bare_near()`), and comes down (`_zoom_set(0)`, which
+resumes the city) once nothing within `NEAR_FIRST` is bare, `MIN_S` 4 s at least, `MAX_S`
+20 s at most. `_input` ends it on any key, click or touch not over the shell's HUD.
+`tests/opening.gd` (`STREETS_OPENING=1 STREETS_BUILD_ALL=0`): Givatayim, 5 bare squares as the
+car was shown; the opening ran 8.8 s and came down with 0; the city running after (PASS).
+Shots: up there at 1 and 3 s, at the car 3 s after landing.
+
+**Models made with Blender** (`tools/blender_model.sh`, recipes in `tools/blender/recipes/`,
+the kit-wide notes in CLAUDE.md "Making 3D models"). `places.gd` stamps them into a square's
+batch (`_stamp`: each surface's triangles into the CBuf, coloured by its material's role --
+"paint" from the yard's colours, "metal" etc. from the street's tones), so a model adds no
+draw. In each kindergarten's yard: `slide` and `spring_rider` (336 and 684 faces; 288 placed
+in level 1). The glTF import keeps the Blender material's name as the surface material's
+`resource_name`: that is what `_role_col` reads.
 
 ## Open problems
 

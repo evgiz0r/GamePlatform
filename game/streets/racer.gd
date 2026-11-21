@@ -12,8 +12,8 @@ extends RefCounted
 ## and to raise the limit and the corners; _ap_pass_bus asks `can_pass` to go round moving
 ## cars too. Here: the horns, and the count of what it got away with.
 
-const LIMIT_K := 1.6          ## the road's limit times this...
-const TOP := 100.0 / 3.6      ## ...up to this (m/s)
+const LIMIT_K := 1.8          ## the road's limit times this...
+const TOP := 110.0 / 3.6      ## ...up to this (m/s)
 const CORNER_K := 1.3         ## bends taken this much faster (sideways pull x1.7: tyres near their grip)...
 const CORNER_FROM := 7.0      ## ...those the plan takes at this or more (m/s); tight turns as usual
 const PASS_SLOWER := 2.0      ## a car this much slower than it wants to go (m/s) is gone round

@@ -10,6 +10,7 @@ kit carries that requirement; check before adding anything else that isn't CC0.
 
 | What | Pack | Source |
 |---|---|---|
+| `models/made/` | our own, made with Blender from `tools/blender/recipes/` | CC0 |
 | `characters/` | Tiny Dungeon | https://kenney.nl/assets/tiny-dungeon |
 | `items/` | Tiny Dungeon, Tiny Town | https://kenney.nl/assets/tiny-dungeon · https://kenney.nl/assets/tiny-town |
 | `animals/` | Animal Pack | https://kenney.nl/assets/animal-pack |

@@ -514,6 +514,16 @@ move it.
 on. Resumed while zoomed out, the city runs under you and the view follows the car, which
 still drives (keys or the stick). The shell's own pause (its menu) is still there too.
 
+**The opening.** When a town comes up, the view starts high over it, turning slowly round
+where you will start, the town's name across the screen, while the streets round the car
+finish going up (a few seconds; the parts further off lie flat as their stand-ins). Then it
+comes down to the car and the drive begins on finished streets -- no buildings and trees
+popping up in front of you. A tap, a click or any key goes straight down.
+
+> on bringup when the graphics load in the background we will play something, from
+> animation to a story or whatever. instead of these wierd hickups where we see things pop on
+> the screen, its not great
+
 **The city from above before it is built.** At the start only the streets round the car are
 built; the rest goes up square by square while you drive. Zoomed out, the parts not built
 yet are not empty: their roads, the outlines of their buildings, their parks and water lie
@@ -550,7 +560,8 @@ the racer again unless you chose otherwise.
 maps put a kindergarten in every few streets (OSM knew of 7 in Givatayim; its map has 87,
 the day-cares besides) and a public shelter in most gardens (OSM had none). A kindergarten
 is its yard beside the building: a low green fence, soft ground, a shade sail in red, blue,
-yellow or green over it and a slide; the street gets the school's SLOW painted near it. A
+yellow or green over it, a slide with its little roofed tower and a spring horse (made in
+Blender); the street gets the school's SLOW painted near it. A
 shelter is its squat concrete entrance with a steel door facing the street and the blue
 "מקלט" sign over it.
 
@@ -1685,13 +1696,14 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   lobby and stairwell fitted to the outline, the right number of landings, and that many
   flats each split into rooms the way a block of its age is. Only the building you walk into
   is built inside, while you are in it.
-- Something to watch while the city loads: "on bringup when the graphics load in the
-  background we will play something, from animation to a story or whatever. instead of these
-  wierd hickups where we see things pop on the screen, its not great". Today the car is shown
-  after a couple of seconds and the rest of the town goes up square by square around it --
-  buildings, trees and cars appearing in view, and a stutter or two while the browser
-  compiles its shaders. Instead: a short opening of its own over those first seconds -- a
-  flight in over the town from above (the stand-ins of the squares not built yet already
-  give it something to show), a few lines of the town's own story, a title card for the
-  level -- that hands over to the car once the squares around it and in view are up and the
-  shaders have compiled, skippable with a tap.
+- Scenarios: little movies playing out in the town. "its similar to a guide. but some
+  scenario ( aka movie i guess ) happening in a city. doesnt have to be related to the city
+  itself". Like the guided tour, a script that moves the camera and stages things -- but a
+  story of its own: a chase, a wedding procession, a delivery that goes wrong, a stray dog
+  followed across town, a first day in a new city. Its actors are the town's own people and
+  cars, sent where the script says (the scene tests already stage people, cars and lights
+  this way); the camera cuts and follows; it can be watched, or played from inside (you are
+  the one being chased). Each scenario is a level of its own in the start screen, and runs in
+  any town, its places picked from the town's map (a long street, a square, a junction with
+  lights). The same machinery as the guided tour and the opening: a script of shots.
+
