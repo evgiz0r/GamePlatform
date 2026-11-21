@@ -29,7 +29,7 @@ run() {   # name, level, speed, script, timeout
 	echo "  $1: $(( $(date +%s) - t0 )) s" >&2
 }
 echo "validating into $out ..." >&2
-for l in 1 2 3 4; do run "city$l" "$l" 1 city_check 1200; done
+for l in 1 2 3 4 7; do run "city$l" "$l" 1 city_check 1200; done
 run exam4 4 2 exam 1800
 if [ -n "${FULL:-}" ]; then
 	run exam1 1 1 exam 3600
@@ -38,8 +38,8 @@ if [ -n "${FULL:-}" ]; then
 fi
 echo
 echo "=== STREETS VALIDATION ($(git rev-parse --short HEAD)) ==="
-for l in 1 2 3 4; do
-	grep -h -E "^CITY CHECK [^:]|^  (walls|posts|buildings) on the road|^  lit points alone" "$out/city$l.txt" 2>/dev/null
+for l in 1 2 3 4 7; do
+	grep -h -E "^CITY CHECK [^:]|^  (walls|posts|buildings) on the road|^  lit points alone|^  (signs doubled|junction offers twice|islands on the road|median over a road|road leaning|two pavings)" "$out/city$l.txt" 2>/dev/null
 	grep -q "SCRIPT ERROR" "$out/city$l.txt" && echo "  !! SCRIPT ERROR in city$l"
 done
 for e in exam4 exam1 exam3; do

@@ -17,6 +17,12 @@ extends SceneTree
 ##   buildings on the road -- a solid building's outline 0.3 m into a street's asphalt
 ##                            (Givatayim keeps 3 over a road on purpose: passages)
 ##   lit points alone      -- a point with traffic lights that belongs to no junction
+## and the user's reports since these checks began, each fixed with a test that staged it
+## (world_checks.gd says which), so none comes back unseen. Should be 0: signs doubled, a
+## junction offering one street twice, a traffic island on the road, a median's wall over
+## another road. Under the city's limit (LIMITS): roads leaning over 6% side to side, two
+## pavings laid over one spot (they flicker).
+##   LEVEL=0 runs Givatayim, Bedford, Ashdod, the test town and Tel Aviv, one after another.
 ## Traps, not bugs -- where to stage a scene test, since each has bitten before:
 ##   stub roads            -- a drivable road under 5 m long at a junction (one 1.5 m long
 ##                            turned autodrive's lane round, into the oncoming lane)
@@ -46,9 +52,9 @@ func _run() -> void:
 	var lvl := int(OS.get_environment("LEVEL")) if OS.get_environment("LEVEL") != "" else 1
 	await create_timer(0.3).timeout
 	var bad := 0
-	for l: int in ([1, 2, 3, 4] if lvl == 0 else [lvl]):
+	for l: int in ([1, 2, 3, 4, 7] if lvl == 0 else [lvl]):
 		await _load(l)
-		bad += _check()
+		bad += await _check(l)
 		if OS.get_environment("SHOTS") != "" and OS.get_environment("OUT") != "":
 			await _shots()
 	print("CITY CHECK: %d found (0 is good)" % bad)
@@ -134,7 +140,20 @@ func _name(ri: int) -> String:
 	var en := String((g._roads[ri] as Dictionary).get("en", ""))
 	return en if en != "" else String((g._roads[ri] as Dictionary)["k"])
 
-func _check() -> int:
+## The limits for the checks of the user's reports that never read 0 (world_checks.gd), per
+## level, from the measures after each fix with room for small changes: over one, the fixed
+## bug is coming back. Tilt: the share of road leaning over 6% side to side (Givatayim's
+## ground model holds roofs, its open problem). Pavings: m2 of two different pavings at one
+## height over one spot (Tel Aviv read 30 after the fix).
+const LIMITS := {
+	1: {"tilt": 8.0, "pavings": 60.0},
+	2: {"tilt": 3.0, "pavings": 60.0},
+	3: {"tilt": 3.0, "pavings": 60.0},
+	4: {"tilt": 3.0, "pavings": 60.0},
+	7: {"tilt": 3.0, "pavings": 60.0},
+}
+
+func _check(lvl: int) -> int:
 	var out := {}            ## kind -> [[how far, where, what], ...]
 	var add := func(kind: String, d: float, at: Vector2, what: String) -> void:
 		if not out.has(kind):
@@ -227,6 +246,27 @@ func _check() -> int:
 			print("      by kind: %s" % str(by))
 		for e: Array in list.slice(0, 6):
 			print("      at %-14s %s" % [str(Vector2i(e[1])), e[2]])
+	# -- the user's reports since these checks began, each fixed and staged by a test of its own
+	# (world_checks.gd names them): should read 0, or stay under the city's limit
+	while g._bg_build:
+		await create_timer(0.5).timeout
+	var W := preload("res://game/streets/tests/world_checks.gd")
+	for row: Array in [["signs doubled", W.signs_doubled(g)], ["junction offers twice", W.junction_twins(g)],
+			["islands on the road", W.islands_on_road(g)], ["median over a road (m)", W.medians_over_roads(g)]]:
+		var res: Array = row[1]
+		var v := float(res[0])
+		found += ceili(v)
+		print("  %-24s %5d%s" % [row[0], ceili(v), ("      at " + String(res[1])) if v > 0.0 else ""])
+	var lim: Dictionary = LIMITS.get(lvl, {})
+	for row: Array in [["road leaning over 6% (%)", "tilt", W.tilt(g)], ["two pavings at once (m2)", "pavings", W.pavings_overlap(g)]]:
+		var res: Array = row[2]
+		var v := float(res[0])
+		var cap := float(lim.get(row[1], INF))
+		var over := v > cap
+		if over:
+			found += 1
+		print("  %-24s %5.1f   (limit %s)%s  %s" % [row[0], v, "%.1f" % cap if cap < INF else "not set",
+			"  OVER" if over else "", res[1]])
 	return found
 
 func _snap(name: String) -> void:
