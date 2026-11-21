@@ -80,6 +80,10 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
              how many lamps the post carries
   sites      [{r: [x, z, ...] ring, st: "dig" | "frame", new: 1 a new building, hi: 1 a tall
              one}]   building sites at work, from a town's own map
+  things     [x, z, kind, n, ...]   what stands in the street where a town's own map has it,
+             kind an index into thing_kinds ("bike_share" a docking station, "taxi_stand",
+             "motorbikes" a motorbike parking bay of n places, "sculpture", "notice_board",
+             "hydrant"); n the places a bay has, else 0
   pois rows with a 6th field (the town layer's id) are licensed businesses from the town's
              map with no OSM place within 8 m: the kind as OSM's, the name the word for it
   stops      [[x, z, name], ...]   bus stops
@@ -1814,8 +1818,12 @@ def tree_surveys_apply(out, P, data_dir):
 TOWN_LAYERS = [
     {"id": "tel_aviv", "shift": (-0.4, -1.9), "credit": "city data © Tel Aviv-Yafo Municipality",
      "lamps": "tel_aviv_lamp_poles.json", "places": "places_tel_aviv.geojson",
-     "businesses": "tel_aviv_businesses.json"},
+     "businesses": "tel_aviv_businesses.json", "hydrants": "tel_aviv_hydrants.json"},
 ]
+# the things in the places layer stood in the street where the town maps them ("things"):
+# its kind's name in the city file, and the number it carries (docks, places) if any
+THING_KINDS = {"bike_share": "bike_share", "taxi_stand": "taxi_stand", "motorbike_parking": "motorbikes",
+               "sculpture": "sculpture", "notice_board": "notice_board"}
 # a lamp post's look, by the town's type: a plain grey pole with an arm (square, conical,
 # octagonal, the electric company's iron and concrete ones), the ornate (period) kind, a
 # wooden pole (the electric company's or the town's), and a lamp fixed to a wall (no post)
@@ -1873,6 +1881,7 @@ def town_layers_apply(out, P, data_dir):
     pois = [p for p in out.get("pois", []) if len(p) < 6]   # (the businesses added before carry a 6th field)
     lamps, lamp_info, looks = [], [], ["pole"]
     sites = []
+    things, thing_kinds = [], []
     added, credits = 0, []
     for t in TOWN_LAYERS:
         sx, sz = t.get("shift", (0.0, 0.0))
@@ -1913,6 +1922,40 @@ def town_layers_apply(out, P, data_dir):
                               "hi": 1 if ("גבוה" in work or "מעל" in work) else 0})
             got += len(sites) - n0
             log(f"building sites {t['id']}: {len(sites) - n0} at work in the box")
+        path = os.path.join(data_dir, t.get("places", "-"))
+        if os.path.exists(path):
+            n0 = len(things)
+            for f in _town_rows(path, "features"):
+                pr = f["properties"]
+                kind = THING_KINDS.get(pr.get("kind"))
+                if not kind or f["geometry"]["type"] != "Point":
+                    continue
+                lon, lat = f["geometry"]["coordinates"][:2]
+                x, z = P(lat, lon)
+                x, z = x + sx, z + sz
+                if not inside(x, z):
+                    continue
+                try:
+                    n = int(float(pr.get("places") or 0))
+                except ValueError:
+                    n = 0
+                if kind not in thing_kinds:
+                    thing_kinds.append(kind)
+                things += [q(x), q(z), thing_kinds.index(kind), n]
+            got += (len(things) - n0) // 4
+            log(f"street things {t['id']}: {(len(things) - n0) // 4} in the box")
+        path = os.path.join(data_dir, t.get("hydrants", "-"))
+        if os.path.exists(path):
+            n0 = len(things)
+            if "hydrant" not in thing_kinds:
+                thing_kinds.append("hydrant")
+            for row in _town_rows(path):
+                x, z = P(row[1], row[0])
+                x, z = x + sx, z + sz
+                if inside(x, z):
+                    things += [q(x), q(z), thing_kinds.index("hydrant"), 0]
+            got += (len(things) - n0) // 4
+            log(f"hydrants {t['id']}: {(len(things) - n0) // 4} in the box")
         path = os.path.join(data_dir, t.get("businesses", "-"))
         if os.path.exists(path):
             cell = {}
@@ -1950,8 +1993,10 @@ def town_layers_apply(out, P, data_dir):
         if got:
             credits.append(t["credit"])
     out["pois"] = pois
-    for k in ("lamps", "lamp_info", "lamp_looks", "sites"):
+    for k in ("lamps", "lamp_info", "lamp_looks", "sites", "things", "thing_kinds"):
         out.pop(k, None)
+    if things:
+        out["things"], out["thing_kinds"] = things, thing_kinds
     if lamps:
         out["lamps"], out["lamp_info"], out["lamp_looks"] = lamps, lamp_info, looks
     if sites:
