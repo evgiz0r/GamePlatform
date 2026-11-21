@@ -723,7 +723,8 @@ were a long thing judged at its middle):
   points that belong to no junction; and the traps to stage a test at -- stub roads under 5 m
   at a junction, lit points under 25 m apart counted as two junctions, walls and posts on
   service roads. Since 21 Nov also the user's reports of the day before that a built city
-  shows (`world_checks.gd`, each ported from the test written for its fix): signs doubled, a
+  shows (`world_checks.gd`, each ported from the test written for its fix): a thing that
+  stands alone put up twice (signs, walk lights, cars' lights, bus stops), a
   junction offering one street twice, islands on the road, a median's wall over another
   road (0); roads leaning over 6% side to side and two pavings laid over one spot (they
   flicker), under a limit per city (`LIMITS`, the level a fixed city reads: over it, the
@@ -733,8 +734,21 @@ were a long thing judged at its middle):
   not from the last run -- tuned by eye, the queue went from all at once to the third car 9
   s after the green within the hour.
 
+**Families of bugs, and the check for each** (21 Nov 2026). The user asked that every fix
+answer "should the checks have caught it, and what would a check for its whole family cost"
+(CLAUDE.md). A family is the rule broken, for every kind of thing at once. The ones so far:
+
+| The rule broken | Reports in it | Checked by | Gap, and what closing it costs |
+|---|---|---|---|
+| a solid thing stands on the asphalt | bollards by zebras, a railing at a roundabout's zebra, canopy columns, hedges, islands, a median's wall over a road | `city_check`: walls, posts, buildings on the road; islands; median walls | none known |
+| a thing that stands alone is put up twice | stop / give-way signs twice; people's lights twice (94 of Ashdod's 408: a divided road's zebra is a crossing point on each half); cars' lights twice (Tel Aviv 3, found by the widened check, not reported); a junction offering one street twice | `city_check`'s "... doubled" rows: signs, walk lights, cars' lights, bus stops (`world_checks.doubled_all`); junction offers twice | the things with no list of where they stand (lamps, benches, bins, hydrants, shelters, kiosks, crossing signs): a log of everything placed, [kind, where, facing], kept only in tests, each kind's spacing -- about 2-3 hours, seconds a city |
+| a car parked where nobody parks | on a divided road's median, in a bus stop | `tests/parked_median.gd`, not in the validation | a row in `world_checks` (medians, bus stops, zebras, a junction's mouth): about half an hour, seconds a city |
+| two surfaces at one spot (they flicker) | a pavement flickering at a corner, grass through the road | `city_check`'s two pavings (a limit per city) | the sky's horizon line is a render, not a mesh overlap: a scene test only (`horizon_line`) |
+| traffic breaks a rule of the road | greens both ways, a car in on red | `light_audit`, not in the validation; the exam (over the line at a red) | `light_audit`'s counts as a REGRESS line: about an hour, ~3 min a night. Unwatched, Tel Aviv's ways in with no light facing them drifted from 5 to 12 (read on ef5425b, 21 Nov) |
+| standing or waiting with nothing real to wait for | autodrive standing with the road clear, 3-11 s at a roundabout for a car 78 m off, stopping for a slip road's light | the exam: 10 s+ held by nothing named | a wait whose reason is named but wrong (giving way to a car far off, a light that is not its own): the exam logging each give-way's distance and each light's distance past the stop line, flagged past a limit -- about an hour, no extra run time |
+
 **A fix comes with what would catch it again** -- a scene test that stages it, or a check
-here. **After merging** (another session's work, or `main`), before pushing: `city_check`
+here; and the check is for the family when that costs little (the row above). **After merging** (another session's work, or `main`), before pushing: `city_check`
 on the cities the merge touched, the filmed walk's `SCAN=1`, and the exam on the test town
 (`LEVEL=4 EXAM_STARTS=2`, headless: under a minute); the exam on a real town when traffic
 or autodrive changed. Headless runs take the same numbers several times faster:
@@ -2718,6 +2732,23 @@ Each line: where the code is, the test, what good reads.
   round a stop's spot and only on KERB_RED_KINDS streets; now `BUS_CLEAR` (12 m, the law's)
   along the stop's own kerb on any street (`parked_median` counts them); traffic's
   `DBL_SHARE` (vans and trucks that stop for a delivery in the lane) 0.45 -> 0.1.
+- **People's lights twice** (user, Ashdod: "two red lights to the same direction for the
+  people"): a divided road's zebra is a crossing point on each half, and each one's span
+  (`_zebra_span`) runs outer kerb to outer kerb over both, so `_build_walk_lights` put every
+  pole up twice, 0.5-1 m apart, facing the same way: 94 pairs of Ashdod's 408. Now one pole
+  where two would stand (`_walk_poles`, as the signs' `_sign_poles`: within 3 m, facing within
+  45 deg); `walk_lights_twins` in the `city_built` tally counts those left out. Pairing the
+  halves' crossings through `_partner` was tried first and left 33 (halves that bend or part
+  at a junction), and two crossings in line (Begin's and its slip road's) can start from one
+  kerb. Ashdod 315 walk lights, 0 doubled (`tests/walk_twins.gd`). The validation would not
+  have caught it -- "signs doubled" was the family's check, for one kind only -- so it is now
+  `doubled_all` in `world_checks.gd`: signs, walk lights, cars' lights, bus stops, each a
+  `city_check` row (see "Families of bugs" above). Its first run found the family in a kind
+  nobody had reported: cars' lights twice in Tel Aviv (3: two ways in arriving side by side
+  each putting a pole up, a metre apart) -- now one pole where two would stand there too
+  (`_light_poles`, same group and facing within 18 deg only, so `light_audit` still finds a
+  light facing every way in; `lights_twins` in the tally). After: every "doubled" row 0 in
+  all five towns.
 - **Cars stopping for a slip road's light** (user, Ashdod, Sderot Menachem Begin past Herzl:
   "why are the cars stopping there"): OSM has a traffic signal on Herzl's slip road 18 m
   before it joins Begin eastbound; `_lights_setup` moves a signal to the nearest junction

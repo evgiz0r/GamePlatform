@@ -11380,11 +11380,24 @@ func _build_signals() -> void:
 			if p == Vector2.INF:
 				continue
 			var g := _light_group(node, dir) - 1
+			# one pole where two would stand: two ways in arriving side by side (a road and the
+			# lane beside it mapped apart) each put one up, a metre apart, facing the same way
+			# (Tel Aviv 3; city_check's "lights doubled"). Only for the same group: the ways in
+			# still stop at their own lines, the light the first one's.
+			var twin := false
+			for o: int in _near(_light_poles, p, 3.0, SEG_CELL):
+				var tw: Array = _light_spots[o]
+				twin = twin or (Vector2((tw[0] as Vector3).x, (tw[0] as Vector3).z).distance_to(p) < 3.0
+					and (tw[1] as Vector2).dot(-dir) > 0.95 and int(tw[2]) == g)
+			if twin:
+				_tally("lights_twins", 1)
+				continue
+			_hash_add(_light_poles, Rect2(p, Vector2.ZERO), SEG_CELL, _light_spots.size())
 			var face := Basis(Vector3.UP, atan2(-dir.x, -dir.y))   # +Z of the head toward the traffic
 			var gy := _h(p) if is_nan(py) else py
 			poles.append(Transform3D(Basis(), Vector3(p.x, gy + 1.7, p.y)))
 			heads.append(Transform3D(face, Vector3(p.x, gy + 3.3, p.y)))
-			_light_spots.append([Vector3(p.x, gy + 3.3, p.y), -dir])   # (for tests: where, facing)
+			_light_spots.append([Vector3(p.x, gy + 3.3, p.y), -dir, g])   # (for tests: where, facing, group)
 			# the blue crossing sign strapped to the pole under the light, as in Israel
 			# (Nova Scotia's lights carry walk signals instead): the zebra is just past it
 			if med:
@@ -11586,8 +11599,10 @@ func _lights_setup() -> void:
 ## the green man -- in step with the cars' lights (see _apply_signals). People at those
 ## crossings go by them (_walk_light).
 var _ped_mats: Array = []            ## [group][0 red man, 1 green man]
-var _light_spots: Array = []         ## [head, the way it faces] of the cars' lights (for tests)
-var _walk_spots: Array = []          ## the same for the people's
+var _light_spots: Array = []         ## [head, the way it faces, group] of the cars' lights (for tests)
+var _light_poles := {}               ## cell -> index into _light_spots (one pole where two would stand)
+var _walk_spots: Array = []          ## [head, the way it faces] of the people's lights
+var _walk_poles := {}                ## cell -> index into _walk_spots (one pole where two would stand)
 
 var _lit := {}                       ## junctions with lights (all of them, from _lights_setup)
 
@@ -11628,6 +11643,18 @@ func _build_walk_lights(pole_mesh: Mesh) -> void:
 			var p := here - across * 0.35
 			if _push_out(p, 0.3, true, false) != Vector2.ZERO:
 				continue
+			# one pole where two would stand: a divided road's zebra is a crossing point on each
+			# half, each spanning both, so every pole came twice half a metre apart, facing the
+			# same way (94 of Ashdod's 408 -- "two red lights to the same direction for the
+			# people"); and two crossings in line can start from one kerb
+			var twin := false
+			for o: int in _near(_walk_poles, p, 3.0, SEG_CELL):
+				var tw: Array = _walk_spots[o]
+				twin = twin or (Vector2((tw[0] as Vector3).x, (tw[0] as Vector3).z).distance_to(p) < 3.0 and (tw[1] as Vector2).dot(across) > 0.7)
+			if twin:
+				_tally("walk_lights_twins", 1)
+				continue
+			_hash_add(_walk_poles, Rect2(p, Vector2.ZERO), SEG_CELL, _walk_spots.size())
 			var gy := _h(p)
 			var face := Basis(Vector3.UP, atan2(across.x, across.y))   # +Z toward the far kerb
 			poles.append(Transform3D(Basis.from_scale(Vector3(0.8, 2.7 / 3.4, 0.8)), Vector3(p.x, gy + 1.35, p.y)))

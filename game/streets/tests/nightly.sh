@@ -21,7 +21,7 @@ sed -n '/^=== STREETS VALIDATION/,$p' "$out/full.txt" > "$out/summary.txt"
 	while IFS= read -r line; do
 		case "$line" in
 			"CITY CHECK "*) city="${line#CITY CHECK }"; city="${city%% (*}" ;;
-			"  "*" on the road"*|"  lit points alone"*|"  signs doubled"*|"  junction offers twice"*|"  islands on the road"*|"  median over a road"*|"  road leaning"*|"  two pavings"*)
+			"  "*" on the road"*|"  lit points alone"*|"  "*" doubled"*|"  junction offers twice"*|"  islands on the road"*|"  median over a road"*|"  road leaning"*|"  two pavings"*)
 				# "<town> / <check>: <value> [(limit n)] [OVER]" -- not the worst spot's text
 				t="$(echo "$line" | sed -E 's/^ +//')"
 				name="$(echo "$t" | awk '{for(i=1;i<=NF;i++){if($i~/^-?[0-9.]+$/)break; printf "%s%s",(i>1?" ":""),$i}}')"

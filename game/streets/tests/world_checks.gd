@@ -7,9 +7,14 @@ extends RefCounted
 ## [count or measure, the first or worst place as text].
 ##
 ## Should read 0:
-##   signs_doubled      two stop / give-way poles facing the same way within 3 m (a slip
-##                      road's sign also given to the street it merges into -- the user's
-##                      "a lot of places have double signs"; tests/signs_double.gd)
+##   doubled            a thing that stands alone put up twice: two of one kind within reach of
+##                      each other, facing the same way. One rule, every kind the city keeps a
+##                      list of (doubled_all): stop / give-way signs (a slip road's sign also
+##                      given to the street it merges into -- "a lot of places have double
+##                      signs"; tests/signs_double.gd), people's lights (a divided road's zebra
+##                      on each half, each putting poles at both outer kerbs -- "two red lights
+##                      to the same direction for the people"; tests/walk_twins.gd), cars'
+##                      lights, bus stops. A new kind of thing that stands alone joins the list.
 ##   junction_twins     a junction offering the same street twice within 40 degrees (an unnamed
 ##                      slip road offered beside the turn it shortcuts -- "it gave 4 options, 1
 ##                      of them is weird"; tests/junction_offers.gd)
@@ -26,19 +31,48 @@ extends RefCounted
 ##                      phone's depth buffer flickers between them ("a pavement ... is flickering
 ##                      a bit"; tests/pave_overlap.gd)
 
-static func signs_doubled(g) -> Array:
-	var at: Array = g.sign_at
+## [[kind, [count, the first pair]], ...] for every kind of thing that stands alone
+static func doubled_all(g) -> Array:
+	var signs: Array = []
+	for a: Array in g.sign_at:
+		signs.append([a[0], a[1], String(a[2])])
+	var walk: Array = []
+	for a: Array in g._walk_spots:
+		walk.append([Vector2((a[0] as Vector3).x, (a[0] as Vector3).z), a[1], "a walk light"])
+	var lights: Array = []
+	for a: Array in g._light_spots:
+		lights.append([Vector2((a[0] as Vector3).x, (a[0] as Vector3).z), a[1], "a light"])
+	var stops: Array = []
+	for ri: int in g._stops_by_road:
+		for c: Vector2 in g._stops_by_road[ri]:
+			stops.append([c, Vector2.ZERO, "a stop on '%s'" % (g._roads[ri] as Dictionary)["name"]])
+	return [["signs doubled", doubled(signs, 3.0)], ["walk lights doubled", doubled(walk, 3.0)],
+		["lights doubled", doubled(lights, 3.0)], ["bus stops doubled", doubled(stops, 5.0)]]
+
+## two of `spots` ([where, the way it faces (ZERO: any), what]) within `reach` of each other
+## and facing the same way: [count, the first pair]
+static func doubled(spots: Array, reach: float) -> Array:
+	var cells := {}
 	var n := 0
 	var first := ""
-	for i in range(at.size()):
-		for j in range(i + 1, at.size()):
-			var a: Array = at[i]
-			var b: Array = at[j]
-			if (a[0] as Vector2).distance_to(b[0]) > 3.0 or (a[1] as Vector2).dot(b[1]) < 0.7:
-				continue
-			n += 1
-			if first == "":
-				first = "%s at %s and %s at %s" % [a[2], (a[0] as Vector2).round(), b[2], (b[0] as Vector2).round()]
+	for i in range(spots.size()):
+		var a: Array = spots[i]
+		var p: Vector2 = a[0]
+		var cell := Vector2i((p / reach).floor())
+		for dx in [-1, 0, 1]:
+			for dz in [-1, 0, 1]:
+				for j: int in cells.get(cell + Vector2i(dx, dz), []):
+					var b: Array = spots[j]
+					if p.distance_to(b[0]) > reach:
+						continue
+					if (a[1] as Vector2) != Vector2.ZERO and (a[1] as Vector2).dot(b[1]) < 0.7:
+						continue
+					n += 1
+					if first == "":
+						first = "%s at %s and %s at %s" % [b[2], (b[0] as Vector2).round(), a[2], p.round()]
+		if not cells.has(cell):
+			cells[cell] = []
+		(cells[cell] as Array).append(i)
 	return [n, first]
 
 static func junction_twins(g) -> Array:

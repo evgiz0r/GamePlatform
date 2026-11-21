@@ -221,7 +221,14 @@ the parked cars, which stand a third in the road).
   half's partner (one-way the other way, on its left, within ~40 m along most of its
   length), size each half to its lanes (3.3 m a lane), remember the median between them.
   Its inner side gets a kerb and half the median, not a pavement; people walk only on the
-  outer sides; a zebra on one half is crossed kerb to kerb across both. Anything laid "along
+  outer sides; a zebra on one half is crossed kerb to kerb across both. OSM maps that zebra
+  as a crossing point on *each* half, so whatever stands at a crossing's ends (walk lights,
+  a sign) comes out twice, side by side. Put up one where two would stand: before placing a
+  thing that stands alone, look for one of its kind already within a few metres facing the
+  same way (a grid of the placed ones). Pairing the two crossings through the halves'
+  partner missed a third of them, where the halves bend or part at a junction, and two
+  crossings in line (a main road's and its slip road's) can start from one kerb too.
+  Anything laid "along
   both sides of a street" -- parked cars above all -- goes on the outer side only: parked
   both sides, a row of cars stood down the middle of the boulevard. Check the spot itself,
   not the road's flag: halves pair up along only part of their length. And a median is one
