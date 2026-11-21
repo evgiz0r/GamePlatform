@@ -3376,19 +3376,37 @@ without a gap. (The square being built keeps its stand-in to the end of `_build_
 
 ## Open problems
 
-- **One walker in 90 s still appears in view** (`people_pops`, Givatayim, 21 Nov): put 76 m
-  off, where people fade in (75-90 m), 160 m from where it was. Placement (`_place_walker`,
-  not `anywhere`) checks `_spawn_ok` at the spot; the camera moves before the next frame.
-  Try: placing beyond PEOPLE_SEEN when the street there has room, hidden spots only as a
-  fallback. Also seen once: a 2.5 m jump at 72 m (state unknown: print it).
-- **Tel Aviv's ways into a lit junction with no light facing them: 12** (21 Nov, ef5425b and
-  after; 5 on 20 Nov). Not caused by the doubled-lights fix (12 on the code before it too);
-  crept up while light_audit was not in the validation. `LEVEL=7 STATIC_ONLY=1 VERBOSE=1`
-  light_audit names each. Guarded at 12 now (`city_check` LIGHTS_21NOV).
-- **Solid things twice on one spot, the tail** (`city_check` "posts twice", under a limit):
-  Givatayim 128 (bougainvillea clumps over a garden wall, 0.44 m, drawn twice: one plot's
-  front laid twice?), Tel Aviv 596 (0.6 m: trees mapped by OSM and the town's survey both?),
-  Ashdod 48. Invisible (the same thing drawn twice), but twice the draws and checks.
+- **Walkers appearing in view: mostly fixed, a rare one left** (`people_pops`, Givatayim,
+  22 Nov). The two runs before the fix each had one; logging each placement showed both
+  ways it happened: a walker at a stretch's end was taken away while in view, 88 m off (only
+  the line's end was checked, a metre from where they stood), and was put down 39 m off,
+  just round a building's corner (`_spawn_ok` true at the line's point, the person beside
+  it, in view a frame later). Now `_place_walker` takes a spot 95-101 m off on the same
+  pavement when it reaches that far (they walk in, fading in from 90 m), and only else a
+  hidden one with a margin (`_hidden_well`: 1.5 m along and 1 m across it hidden too); the
+  stretch's end takes someone away only where they stand and those beside them
+  (`_mates_unseen`) are unseen too. Four runs: 0, 0, 0 and one pop (74 m, jumped 139 m),
+  that one before `_mates_unseen` -- not known yet if that was it. Each walker keeps
+  `placed` (which call put it there: start / retry / end / far), printed with a pop: read it
+  on the next one. "Sliding with the car far" read 3-10 a run, before and after (a baseline).
+- **Ways into a lit junction with no light facing them** (`light_audit`, `city_check`
+  LIGHTS_21NOV): 8 / 3 / 4 / 0 / 12 (Givatayim, Bedford, Ashdod, test town, Tel Aviv) ->
+  2 / 0 / 1 / 0 / 1 on 22 Nov. Each was a way in where every spot `_build_signals` tried was
+  a wall, another road's lane or a corner's asphalt; a second round now tries further onto
+  the pavement (to 2.4 m), the left kerb of a two-way road, a spot nearer the junction, and
+  last a far-side light across it -- never further back than the first round (behind the
+  stop line the waiting driver has gone past it). Not looked at from the street yet: a
+  screenshot of a far-side one is the next check. Tel Aviv's last is a one-way service lane
+  (937, 222). `_tally` counts `lights_far_spot` and `lights_no_spot`.
+- **Solid things twice on one spot** (`city_check` "posts twice"): 128 / 1 / 48 / 1 / 596 ->
+  0 / 0 / 5 / 1 / 3 on 22 Nov, the limits now. `tests/posts_twice_where.gd` (`POSTS_FROM=1`:
+  `_add_post` keeps its callers, by get_stack) named them: a building's stilts put up by
+  each of its parts on one outline (Tel Aviv 526, Givatayim 64; drawn twice too), greenery
+  over a corner's garden wall laid from both streets, two railings' end posts at a joint,
+  shrub lines over hedge lines, a cafe's tables, a lamp mapped twice. `_add_post(p, r, true)`
+  refuses a post as big within 0.3 m (`_post_twin`), and the drawing callers check first and
+  skip drawing it. Not for callers that keep the new post's index (signs, bins, bollards).
+  Left: Tel Aviv 2 of a 2.2 m thing from some file's `build:121` and a passage's 0.6 m post.
 - **Tel Aviv's lights and the exam, first round** (Nov 2026). `light_audit` at level 7:
   4 junctions where crossing streets shared a green, all skewed (55-65 degrees): the ways
   from inside a junction (the road between two of its points, no light) were counted in

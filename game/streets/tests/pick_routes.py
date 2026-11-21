@@ -11,9 +11,11 @@ flies; less in the small test town), and joined by the road graph one-ways and a
 street by the map's edge can be a pocket with no way out). Run it again only to start a new set -- results are
 tracked against the routes' numbers.
 
-PRIVACY (see DEV.md): the web build is public. Nothing within 800 m of the corner of Ha-Meri
-and Sheinkin in Givatayim, and nothing on HaAtzmaut in Ashdod -- places the user has named
-as theirs or their family's.
+PRIVACY (see DEV.md): the web build and this repo are public. Places to keep routes away from
+are read from game/streets/tests/.private_places.json, which is git-ignored and never
+committed: {"streets": {"<city>": ["<street>", ...]}, "corners": {"<city>": [["<street A>",
+"<street B>"], ...]}} -- no route within 800 m of a corner, none on a street. Without the file
+it picks from everywhere: ask the user before running it.
 """
 import json
 import math
@@ -31,8 +33,10 @@ CITIES = [  # level (1-based, as in LEVELS), city file, how many, crow-fly range
 ]
 DRIVE = {"motorway", "trunk", "primary", "secondary", "tertiary", "unclassified", "residential",
          "living_street", "road", "motorway_link", "trunk_link", "primary_link", "secondary_link", "tertiary_link"}
-AVOID_STREETS = {"ashdod": ["העצמאות"]}
-AVOID_CORNERS = {"givatayim": [("HaMeri", "Sheinkin")]}   # (by the English names: the Hebrew is spelled more than one way)
+_PRIVATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".private_places.json")
+_priv = json.load(open(_PRIVATE, encoding="utf-8")) if os.path.exists(_PRIVATE) else {}
+AVOID_STREETS = _priv.get("streets", {})
+AVOID_CORNERS = {c: [tuple(x) for x in v] for c, v in _priv.get("corners", {}).items()}   # (corners by the English names: the Hebrew is spelled more than one way)
 
 
 def seg_dist(p, a, b):
