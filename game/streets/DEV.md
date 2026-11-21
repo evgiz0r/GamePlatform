@@ -653,6 +653,27 @@ corner clash; "report only", or "fix X only", keeps it to one owner. A session t
 the README's new numbers publishes `main` (the site rebuilds itself, ~5 minutes); that is
 harmless, but it is a push.
 
+**Every night, on its own** (since 21 Nov): `.github/workflows/nightly_checks.yml` runs
+`tests/nightly.sh` (validate.sh with `FULL=1 REGRESS=1 EXAM_SEED=1`) on GitHub's machines at
+00:15 UTC, and sets its verdicts (the city checks' counts, each REGRESS line) beside the night
+before's with `tools/nightly_compare.py`. The run's page (Actions, "nightly checks") shows
+what changed in its summary and keeps every output for two weeks; the run fails, and GitHub
+emails the owner, only when something got worse -- a new FAIL, OVER or NO VERDICT, or a count
+that rose. The exam and the queue check are in the summary, not the verdicts (too noisy to
+fail a night on). It commits nothing. A test added to validate.sh's REGRESS list joins it
+the next night with nothing more to do.
+
+**The exam's dice** (`EXAM_SEED=n`, exam.gd): seeds the engine's random numbers and the
+traffic's before the game loads and again before the drive. Three runs of one build on the
+test town at 2x (21 Nov): two read alike to the count (CHECKS 13, every line the same), one
+went its own way (11) -- something still not seeded or timing-dependent (threaded loading?),
+so a seeded exam agrees most of the time, not always. Unseeded the same build read 4-12.
+Compare seeded runs; when two disagree, run a third.
+
+**validate.sh's own `OUT` must not reach the tests** (fixed 21 Nov, `env -u OUT`): for a
+test, `OUT` means "save screenshots here", and a screenshot taken headless hangs -- the
+first full run had seat_steady, lane_position and deck_corner time out with no verdict.
+
 ### The checks that should read 0
 
 A look back over twenty bug fixes (November 2026) found the same few mistakes again and
@@ -2664,8 +2685,15 @@ Each line: where the code is, the test, what good reads.
   `city_check` the same as before in every town (Ashdod's two pavings 271 -> 235 m2).
   `tests/link_islands.gd` (`AT=x,z` also prints every kerb run near the point and how much
   of it faces into a triangle, and shoots the spot as it is, so it works on `main` too for a
-  before). Left at (844, 457): Moshe Dayan's own median ends (loose pink blocks) are the
-  median work above, not the triangles. A footpath mapped across a junction's corner
+  before). The loose pink block left at (844, 457) was not a median end: Moshe Dayan's
+  northbound slip road to HaShalom (road 868) has a 101 m2 triangle that is all asphalt but
+  2.6 m2 once the roads and the junction's disc are cut out, so no island was made and the
+  slip road's left kerb, cut by its neighbours' asphalt, left one 4 m piece standing in the
+  junction. A triangle under `LINK_ISLAND_MIN` after the cut now still goes into
+  `_link_rings` (no island, `link_triangles_all_road`), so no kerb, corner or garden faces
+  into it: Tel Aviv kerb pieces left out 827 -> 980, corners 132 -> 192; city_check the same
+  in every town (21 Nov). `WATCH`-style finding: print `_laid_add`'s `_laid_by` for boxes
+  round the point (road*4 + side) -- it named the road in one run. A footpath mapped across a junction's corner
   drawn through a median's nose (Shaul HaMelekh / Ibn Gabirol, path 2197, (-847, -70)) was
   noted with the median fix; looked at again 21 Nov (`top_at` AT="-847,-80;-845,-66" UP=16):
   nothing of the path shows (a path's ribbon lies under the asphalt and the median), the pale
