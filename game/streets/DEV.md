@@ -1743,6 +1743,9 @@ Givatayim 0 late. Traffic cars do not look at walkers at all (they rely on the k
 
 ## Cities
 
+Adding a new city: follow `NEW_CITY.md` (the steps, the data per layer, the country pack,
+a card per candidate and the candidates scored).
+
 Re-bake with `main_server_only` on, and diff the counts against the file it replaces
 (`git show HEAD:<file>` and compare roads, buildings, crossings, areas): a mirror twice
 answered with ~12% fewer road pieces. Last re-bakes: Givatayim and Tel Aviv, 20 Nov 2026
@@ -1755,6 +1758,7 @@ Bedford have not been re-baked since.
 | 2 | Bedford, Nova Scotia ("north") | place "Bedford, Nova Scotia", include "Hemlock Ravine Park; Kearney Lake; Sandy Lake; Fleetview Drive" |
 | 3 | Ashdod ("med") | place "Ashdod" |
 | 4 | Kiryat Dimyon, made up | `tools/fake_city.py` |
+| 14 | Delft, a box of the old centre ("north") | baked on the user's computer, not the workflow: first `data_tools/nl_3dbag.py` and `data_tools/nl_bgt.py` with 51.99965,4.34181,52.02035,4.37219, then place "Delft", bbox "52.0010,4.3440,52.0190,4.3700", margin 150 (NEW_CITY.md, "The Netherlands") |
 | 7 | Tel Aviv, a box of the centre ("med") | place "Tel Aviv", bbox "32.0639,34.7795,32.0858,34.8021" (read off the user's map screenshot), margin 150, bare_ground on (without it Azrieli stood on a 146 m hill of its own roofs) |
 
 The start points are public street corners named in `LEVELS`. **The web build is public:
@@ -2237,6 +2241,42 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   confectionery and its neighbours are flat brown glass, not the film's lit fronts; at 26 s
   the walk passes a metre from the arcade block's side wall, which fills the right of the frame
   where the film sees open forecourt (the slant should start ~1.5 m further left: P(7.9, -7.0)).
+
+### Pass 15 of walk 1 (22 Nov 2026): the forecourt, the passage, Ha-Meri as measured
+
+- **Ha-Meri's looks** were the biggest single miss (seconds 91 and 95 among the worst). Ha-Meri
+  runs along the passage's line (131 degrees round the map); the walk crosses it at s ~91.7 and
+  steps up onto its south-east pavement. The fitted head turned to 90-107 crossing (onto the
+  corner building) and to 40-50, with a look 22 degrees down, at 93-95.5 (into its front
+  garden). Which way the film faces was found by **sweeping the replay's camera** at the
+  film's seconds (`AT=91,94.5 SWEEP="40,75,105,125,145,165"`, then the same back round)
+  and setting the shots beside the film's frame: 125 shows its view down the street, the cars
+  parked along the left; ~200 its view back across at the far pavement over the paved
+  crossing, at the phone's usual tilt. A walk can now hold the camera on a way round the map
+  (`face: [[from, to, degrees]]`, eased over half a second, on top of `head`): [90.2, 92.0,
+  125], [92.8, 95.8, 200]; the down look at the end is gone. Seconds 93-94: +14, +15.
+- **The sweep's gotcha**: this game moves its camera from the tree's `process_frame` signal
+  (`_frame`, connected in `_ready` so the shell's shake goes on top), not from `_process` --
+  `set_process(false)` and a camera move left every shot the walk's own view. The sweep
+  disconnects `_frame` while it shoots and uses `look_from` (the kit's: it keeps the base the
+  shake resets the camera to each frame).
+- **The forecourt** (make_givatayim.py): the bollards as solved (A P(11.7, -3.2), B
+  P(13.5, -1.7), C P(13.2, -2.0), D P(14.8, -2.5), E P(21.1, 3.1)) -- C 0.9 m north-west of its
+  solved place, within its +-1.1, because the walk went through it and the film passes it
+  close on its left at 30 s; the twin poles centred P(17.8, -1.4) (their left pole 0.5 m off
+  the solve, for the same reason: the film passes the plinth close on its right at 33-34 s),
+  the passage's north-west wall and fence starting at s 18.5 behind the plinth; the barrier
+  at P(23.1, 8.3); the planted bed's front fence, hedges, low shrubs and lamp back to s
+  19.5-20. Not done: the 26 s slant ~1.5 m further left, the film's head in the forecourt (20
+  left at 26.5-27 s, 13 down at 27-28.5), the block on columns with cars under it.
+- **The passage**: a new prop `lamp_pole` (details.gd: tall white pole, stickers to head
+  height, a round red-ringed sign facing `dir`, the lamp's arm; `bin`: a small bin with a
+  purple liner hung on it) at P(33, -0.6); the big bin to P(45.8, -0.75) (0.35 m nearer the
+  hedge than solved: the walk's line passes there at off ~0). The second pole behind the big
+  bin is left out (bearing only).
+- **Numbers**: score 34.5 -> 35.3 (the same evening's main, recorded before and after on this
+  PC); nothing worse by 5; 29 +6, 49 +7, 93 +14, 94 +15; 90-99 s 23.7 -> 28.8. Both filmed
+  walks scan clean; playtests of levels 5, 6 and 1 survive 25 s.
 
 ### Handoff: the filmed walks (22 Nov 2026): measured against the full film, before pass 15
 
@@ -3764,6 +3804,18 @@ the yard a few metres off, and a shot at the point saw a roof.
     from it (off Derech Namir, Tuval) and turned round in them for 12 s at 1.3 m/s, twice
     at Tuval. `_edge_walk` now counts a dead end within EDGE_DEAD (30 m) of the barrier as
     the map's cut, not a cul-de-sac. The three-point turn itself is slow (open).
+- **Delft (level 14): 39 m² of island on the asphalt** (`city_check`'s "islands on the road",
+  0 in every other town; the first spot is at (-478, 1000), Westlandseweg's west end, a
+  secondary road 10-16 m wide). Not found yet. One way it can happen, seen in the city file:
+  `_island_cut` skips a cutter lying wholly inside the area (`holed`), so an area that wholly
+  holds a drivable segment keeps that asphalt under it. Five Delft areas do this, all with
+  4.5 m service roads in them, but not the area at the first spot. Next step: a scene test
+  listing every island sample point on asphalt, with its island and road. Delft's other
+  first-run numbers, so a later run has something to compare with:
+  - 0 for walls, posts and buildings on the road, and for every "doubled" row;
+  - road lean 0.2% (Stationsplein's ramp, 33%);
+  - posts twice 2, lights' way in with no pole 5, knot split 1, stop short 93.
+
 - **Walkers appearing in view: mostly fixed, a rare one left** (`people_pops`, Givatayim,
   22 Nov). The two runs before the fix each had one; logging each placement showed both
   ways it happened: a walker at a stretch's end was taken away while in view, 88 m off (only

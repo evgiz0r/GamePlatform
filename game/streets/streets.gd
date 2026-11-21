@@ -47,6 +47,9 @@ const LEVELS := [
 	{"name": "Ashdod: HeHalutzim to Herzl", "city": "ashdod", "look": "med", "decks": "infer", "walk": "ashdod_halutzim"},
 	{"name": "Bedford: Shore Drive by the water", "city": "bedford", "look": "north", "decks": "infer", "walk": "bedford_shore"},
 	{"name": "Test town: the market street", "city": "dimyon", "look": "med", "walk": "dimyon_market"},
+	# the first Dutch town (NEW_CITY.md): a box of the old centre, the station and the canals,
+	# with 3DBAG's measured heights and the BGT's trees and lamp posts. Starts on the Oude Delft canal.
+	{"name": "Delft", "group": "Cities", "city": "delft", "start": ["Oude Delft", "Binnenwatersloot"], "look": "north", "decks": "infer"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -16145,6 +16148,7 @@ var _film_head: Array = []           ## Vector2(seconds, radians right of the bo
                                      ## as measured off the film (the walk's "head"); where it runs,
                                      ## it is the head, in place of the turn into bends and the looks'
                                      ## turns across (their tips up and down still apply)
+var _film_faces: Array = []          ## Vector3(from, to, radians round the map): the camera held facing that way
 var _film_tilt := 0.0                ## the phone tipped from its usual tilt by the looks (radians, + up)
 var _film_zebras: Array = []         ## [from, to, kerb, kerb]: on a crossing (or waiting at it)
 var _film_cars: Array = []           ## [second, at, heading]: a car sent down a street
@@ -16164,6 +16168,8 @@ func _film_begin(id: String) -> void:
 		# [from, to, degrees right] and, if there, degrees up (down at a zebra's stripes: -25)
 		_film_looks.append(Vector4(float(l[0]), float(l[1]), deg_to_rad(float(l[2])),
 			deg_to_rad(float(l[3])) if l.size() > 3 else 0.0))
+	for f: Array in w.get("face", []):
+		_film_faces.append(Vector3(float(f[0]), float(f[1]), deg_to_rad(float(f[2]))))
 	for h: Array in w.get("head", []):
 		_film_head.append(Vector2(float(h[0]), deg_to_rad(float(h[1]))))
 	for z: Array in w.get("zebras", []):
@@ -16339,6 +16345,12 @@ func _film_tick(dt: float) -> void:
 			if not head:
 				turn += l.z * k
 			tip += l.w * k
+	# `face`: the camera held on a way round the map between two seconds, whatever the body does
+	# (where a film's head is known by what its frames show, not by how its head turned)
+	for fc: Vector3 in _film_faces:
+		if _film_t > fc.x and _film_t < fc.y:
+			var k := smoothstep(fc.x, fc.x + 0.5, _film_t) * (1.0 - smoothstep(fc.y - 0.5, fc.y, _film_t))
+			turn += angle_difference(turn, angle_difference(_yaw, fc.z)) * k
 	_film_look = lerp_angle(_film_look, turn, 1.0 - exp(-dt * 6.0))
 	_film_tilt = lerpf(_film_tilt, tip, 1.0 - exp(-dt * 6.0))
 	for fp: Array in _film_people:
