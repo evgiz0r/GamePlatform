@@ -433,6 +433,16 @@ opens a window briefly.
 
 ## GDScript and shader gotchas
 
+- **A sky dome that follows the camera must be a whole sphere, not `SphereMesh`'s
+  hemisphere.** `is_hemisphere = true` closes the dome with a flat disc at its middle's
+  height -- standing on the eye, a plane through the eye. Edge-on it should draw nothing,
+  and the software renderer here never does; a phone's GPU drew it now and then, a pixel
+  high, straight across the screen at the horizon in the dome's horizon colour, even over
+  near hedges (its depth runs from the eye outwards). A test can't see it unless it stands
+  the dome a couple of millimetres below the eye (the GPU's rounding, made bigger): then the
+  hemisphere draws a band across every frame and a whole sphere nothing. A cylinder or any
+  mesh with a cap at the eye's height does the same.
+
 - **A shader that branches on a number (a surface kind, a tone's code) tests each value's
   range on both sides: `fx.w > 3.5 && fx.w < 4.5`, never `fx.w > 3.5`.** Two sessions each
   added a "kind 4" within the hour; git merged the two shaders without a conflict, and the
