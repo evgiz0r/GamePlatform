@@ -1103,6 +1103,22 @@ slow" (Givatayim, a small ring on a main road, 13 km/h on it).
   a car go sooner at any crossing once the person is past it. Open: whether those cars were
   turning (right) or going straight (then the walk light let people out while that way was
   still clearing) -- the drive-through print does not say yet.
+- **The drive, charted** (the user: "the car slows down and stops in weird places... sudden
+  stops due to other cars... others just drive while the autodrive is hesitant and even
+  misses green"): `route_set.gd` `TRACE=path` records a row every 0.1 s (the game keeps
+  `_ap_light_dbg`, the light `_ap_light_v` read, and `_ap_lead_i`, the car followed, for
+  it); `tests/drive_trace.py` turns it into rows or a report; a chart page of routes 2 and 6
+  was made from them. What they show: held back by the car in front 56% / 52% of the drive,
+  free at the limit 23% / 32%, bends 18% / 11%; standing on its own green 7 / 8 s in all
+  (queues starting, 1.5-4 s a time: no missed greens); 8 hard brakes a drive, most of them
+  5-5.6 m/s^2 coming up behind a car already standing 10 m ahead (the follow speed allows
+  2.6 m/s^2: the car is seen late, or stops abruptly -- open), some behind a car moving as
+  fast as itself (one crossing its way, read as the car in front? -- open); route 6 at 3:10:
+  a traffic car pulled in 12 m ahead at 24 km/h and stopped dead for the player (its why
+  "player"), autodrive braked 8.8 m/s^2 from 48 km/h and touched it (counted as 3 hits on a
+  wall and a building beside it) -- open; at 3:46 it lost 19 km/h in a tenth of a second at
+  50 km/h with nothing ahead (a knock the route set does not count: it counts a hit only
+  when the thing hit changes) -- open.
 - **Not found**: the user's own junction (the T of two divided roads) showed no stands in
   150 s of traffic nor with autodrive through it from 5 ways in; the car in their screenshot
   may have been one of these zebra waits or a turn waiting for oncoming traffic. Ramps and
