@@ -2149,6 +2149,9 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   1080p frames (`grid` them in twentieths, 540x960 is readable), `solve`, `map ... places.csv`.
 - **Good numbers (22 Nov, before pass 15)**: score 33 over the walk (the film against itself
   5 s on: 33); worst seconds 42, 43, 52, 53, 67, 68, 91, 95; forecourt solve 3.7 px rms.
+  After merging main the same evening (facades, greener leaves, the grade refitted, walkers no
+  longer appearing in view): 34.1, none worse by 5, 66 and 68 up 10 (the passer-by at the
+  passage's end gone from the frame) -- `compare` caught it without looking.
 - **What it found** is at the top of walk 1 in WALKS.md: the forecourt's bollards a cluster by
   the line, not a row; the barrier, poles and the bed's front off by 2-3 m; the film's head 20
   degrees left and 13 down at 26.5-28.5 s; the passage's stickered lamp pole missing and its
