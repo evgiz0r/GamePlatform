@@ -542,6 +542,19 @@ across, so cars through the junction no longer stop in the middle of it for them
 > the roads according to the lights, so in many crossroads we have to stop for them in the
 > middle.
 
+People cross the road only at the zebras. At the end of a block they go round the corner
+or turn back; they no longer step over a side street's mouth into the traffic. They step
+aside only from a car that is actually coming onto the pavement at them, never because one
+drives past on the road, and when they step round something it is at a person's pace, not
+a glide. Someone put somewhere new is put where they stay out of sight: well behind a
+building from where the camera is and from where it is about to be.
+
+> people crossing the road in random location, bothers the traffic and shouldnt happen imo
+
+> sometimes when i just autodrive, and its near a pavement with people walking, they jump to
+> the side. i dont want any popping of any objects, it looks fake, even more than collision
+> stuff. need some more object permanence
+
 The people are grown-ups, not the kit's chunky cartoons: smaller heads, hands and feet,
 longer legs and a longer middle (scaled on their skeletons after every animation frame),
 at the height asked for. Faces are a deeper shade of the skin, not big white eyes. Skin

@@ -2800,7 +2800,13 @@ Each line: where the code is, the test, what good reads.
   whenever the car's middle was within 6 m and moving -- a car driving past on the road,
   3-4 m from people on the pavement's back half. Now only when the car's body
   (`_body_gap`) is within a metre of them now or in half a second.
-  `tests/people_pops.gd` widened to object permanence (REGRESS, in validate.sh): POPS_RESULTS
+  `tests/people_pops.gd` widened to object permanence (REGRESS, in validate.sh): Givatayim
+  90 s, sliding aside by your car 8 -> 0, on a street away from a zebra 2 -> 0, popping
+  2 -> 1, cars 0. Also: a step round a tree eased across at up to 3 m/s (people gliding) --
+  now at most `SIDESTEP` 0.8 m/s (slides with the car far 21 -> 7); and `_spawn_ok`'s
+  "behind a building" must hold from the eye and from where it will be in 1.5 s, a metre
+  either side of the sight line (people put just round a corner came into view 50-70 m
+  ahead).
 - **Cars stopping for a slip road's light** (user, Ashdod, Sderot Menachem Begin past Herzl:
   "why are the cars stopping there"): OSM has a traffic signal on Herzl's slip road 18 m
   before it joins Begin eastbound; `_lights_setup` moves a signal to the nearest junction
@@ -3174,6 +3180,11 @@ LEVEL=1 $GODOT --headless --path . -s res://game/streets/tests/<test>.gd`.
 
 ## Open problems
 
+- **One walker in 90 s still appears in view** (`people_pops`, Givatayim, 21 Nov): put 76 m
+  off, where people fade in (75-90 m), 160 m from where it was. Placement (`_place_walker`,
+  not `anywhere`) checks `_spawn_ok` at the spot; the camera moves before the next frame.
+  Try: placing beyond PEOPLE_SEEN when the street there has room, hidden spots only as a
+  fallback. Also seen once: a 2.5 m jump at 72 m (state unknown: print it).
 - **Tel Aviv's ways into a lit junction with no light facing them: 12** (21 Nov, ef5425b and
   after; 5 on 20 Nov). Not caused by the doubled-lights fix (12 on the code before it too);
   crept up while light_audit was not in the validation. `LEVEL=7 STATIC_ONLY=1 VERBOSE=1`

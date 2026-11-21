@@ -18184,8 +18184,17 @@ func _spawn_ok(p: Vector2) -> bool:
 		return true
 	if cam == null or p.distance_to(_pos) < 20.0:
 		return false
+	# behind a building -- and staying behind it: from where the eye is and where it will be in
+	# a second and a half, a metre either side of the sight line. Hidden only from the eye of
+	# that moment, people put just round a building's corner came into view a moment later,
+	# 50-70 m ahead (people_pops: 3 in 90 s)
 	var eye := Vector2(cam.global_position.x, cam.global_position.z)
-	return _behind_building(eye, p)
+	var side := (p - eye).normalized().orthogonal()
+	for e: Vector2 in [eye, eye + _fwd() * maxf(_v, 0.0) * 1.5]:
+		for off: float in [0.0, 1.0, -1.0]:
+			if not _behind_building(e, p + side * off):
+				return false
+	return true
 
 ## a building stands across the sight line from eye to p (sampled every 1.5 m)
 func _behind_building(eye: Vector2, p: Vector2) -> bool:

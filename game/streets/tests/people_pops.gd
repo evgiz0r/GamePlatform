@@ -68,7 +68,9 @@ func _run() -> void:
 			var a: Node3D = e[1]
 			var key := a.get_instance_id()
 			var p := Vector2(a.position.x, a.position.z)
-			var seen: bool = a.visible and not g._spawn_ok(p)   # (out of range, behind you, or behind a building from the eye: not seen)
+			# (past where people are drawn -- they fade out from 75 to 90 m -- behind you, or behind
+			# a building from the eye: not seen)
+			var seen: bool = a.visible and p.distance_to(g._pos) < g.PEOPLE_SEEN and not g._spawn_ok(p)
 			if seen and was.has(key):
 				var prev: Array = was[key]
 				if not prev[0] or (prev[1] as Vector2).distance_to(p) > 2.0:
