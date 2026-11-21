@@ -2548,6 +2548,18 @@ LEVEL=1 $GODOT --headless --path . -s res://game/streets/tests/<test>.gd`.
   wall) and people who react are on GAME.md's later list; falling rain is on hold (user);
   the browser's 5-7 s warm-up is shader compiling (see the other handoff's 74 shader kinds).
   `draws` hung once for 15 minutes and never again (cause unknown: kill it and rerun).
+- **Lights, wheels, doors, plaster (21 Nov)**: good numbers -- `car_lights` (shots): lamps
+  read red / amber / white, not white blocks; plates clean (garbled before `plate_id` was
+  flat); the front wheel turned; מונית legible. `street_goings KERB_ONLY=1`: in at 86 m,
+  shut 0.7 s later, backed up at 61 m, never nearer than 20 m, the door open only while you
+  were 84 m+ off. `building_looks`: Givatayim's plaster from its file -- sand 3,310, cream
+  1,334, white 1,002, stone 494, tinted 103 (it was half white, two in five of the rest
+  stone-clad). Open: speed humps (the baker keeps no traffic_calming; needs it and a
+  re-bake); closed-in balconies not yet seen up close in a shot (the blocks near the start
+  are mostly punched windows: aim `building_looks` at a balcony block); the bus's, truck's
+  and scooter's indicators are still boxes; in the KERB_ONLY run the kerb car came without
+  its passenger (the dice, or no room by the pavement: not told apart) and the test put one
+  there; the film's sand in shade is browner than the game's.
 - **Watch**: hitches in the first seconds of driving now include the start's far gardens
   (`_build_gardens_later`, before the rest of the city), and since the city builds only what
   the first view sees before the car, the catch-up of the rest of NEAR_FIRST (16 ms a frame,
