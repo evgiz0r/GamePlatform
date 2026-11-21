@@ -23,8 +23,21 @@ cd "$(dirname "$0")/.."
 echo "$(date -u +"%Y-%m-%d %H:%M UTC") $(git rev-parse --short=7 HEAD 2>/dev/null)" > build.txt
 echo "build.txt: $(cat build.txt)"
 
+# A game can work things out once per build instead of on every player's load: its
+# game/<name>/prepublish.gd (a SceneTree script) runs here, headless, and what it writes under
+# game/<name>/baked/ ships in this build (export_presets.cfg includes game/*/baked/*). Made
+# again for every build, from that build's code (it can stamp it with build.txt, written just
+# above), never committed (.gitignore), and removed after the export. A prepublish that fails
+# or runs out of time only costs the build its shortcut: the game works it out as before.
+rm -rf game/*/baked
+for pp in game/*/prepublish.gd; do
+  [ -f "$pp" ] || continue
+  timeout 900 "$BIN" --headless --path . -s "res://$pp" 2>&1 | grep -v '^$' || echo "prepublish $pp failed: the build goes without what it bakes"
+done
+
 mkdir -p docs
 "$BIN" --headless --path . --export-release "Web" docs/index.html
+rm -rf game/*/baked
 
 # these two keep the build from fighting the project it came out of
 touch docs/.nojekyll   # stop GitHub Pages running Jekyll over it

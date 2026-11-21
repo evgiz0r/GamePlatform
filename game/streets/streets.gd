@@ -1847,7 +1847,10 @@ func _load_city(id: String) -> bool:
 			return false
 		Probe.note("no %s yet, driving %s instead" % [path, any.get_file()])
 		path = any
-	var data = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var tp := Time.get_ticks_usec()
+	var text := FileAccess.get_file_as_string(path)
+	var data = JSON.parse_string(text)
+	tp = _part_next("%sparse", tp)
 	if not data is Dictionary:
 		Probe.note("city file %s did not parse" % path)
 		return false
@@ -1859,10 +1862,30 @@ func _load_city(id: String) -> bool:
 	if not extra.is_empty():
 		_details = Details.new(self, extra)
 		_details.edit_city(data)
-	if String(_place.get("decks", "")) == "infer":   # (OSM has no heights: worked out here)
+	tp = _part_next("%sdetails", tp)
+	# the bridges, tunnels and ramps as worked out when this build was made, if they were
+	# (prepublish.gd); else here, as always
+	var baked := _bake_use if not _bake_use.is_empty() else (_baked_for(text) if _bake_rec == null else {})
+	if _bake_rec != null:
+		_bake_rec["key"] = _bake_key(text)
+	if not baked.is_empty():
+		for key: String in baked["data"]:
+			data[key] = (baked["data"][key] as Variant)
+		_inferred = (baked["inferred"] as Dictionary).duplicate(true)
+		_dressing["decks_baked"] = 1
+	elif String(_place.get("decks", "")) == "infer":   # (OSM has no heights: worked out here)
+		var before: Dictionary = data.duplicate(true) if _bake_rec != null else {}
 		var t_inf := Time.get_ticks_msec()
 		_inferred = Decks.infer(data, DRIVE)
 		_inferred["ms"] = Time.get_ticks_msec() - t_inf
+		if _bake_rec != null:   # what infer changed, whole key by key (it re-cuts the roads)
+			var changed := {}
+			for key: String in data:
+				if not before.has(key) or before[key] != data[key]:
+					changed[key] = (data[key] as Variant)
+			_bake_rec["data"] = changed.duplicate(true)
+			_bake_rec["inferred"] = _inferred.duplicate(true)
+	tp = _part_next("%sdecks inferred", tp)
 	_city_name = String(data.get("name", id))
 	var b: Array = data["bounds"]
 	_bounds = Rect2(b[0], b[1], float(b[2]) - float(b[0]), float(b[3]) - float(b[1]))
@@ -1925,7 +1948,9 @@ func _load_city(id: String) -> bool:
 		for j in range(pts.size() - 1):
 			_hash_add(_seg_hash, Rect2(pts[j], Vector2.ZERO).expand(pts[j + 1]).grow(hw), SEG_CELL, ri * 4096 + j)
 
+	tp = _part_next("%sroads", tp)
 	_fit_dual_carriageways()
+	tp = _part_next("%sdivided roads fitted", tp)
 
 	for ring: Array in data.get("boundary", []):
 		var poly := PackedVector2Array()
@@ -1963,6 +1988,7 @@ func _load_city(id: String) -> bool:
 		bd["_base"] = base
 		if bd.has("addr"):
 			_add_address(String(bd["addr"]), box.get_center())
+	tp = _part_next("%sbuildings", tp)
 	var hg: Dictionary = data.get("height", {})
 	if not hg.is_empty():
 		_hx0 = float(hg["x0"])
@@ -1979,8 +2005,36 @@ func _load_city(id: String) -> bool:
 	_credits = data.get("credits", [])
 	if _made_up and _hnx > 0:
 		_mtn_from = _town_top() + 6.0
+	tp = _part_next("%sheights", tp)
 	_decks = Decks.new(self)
-	_decks.setup()
+	if not baked.is_empty():
+		for key: String in baked["decks"]:
+			_decks.set(key, (baked["decks"][key] as Variant))
+		for ri: int in baked["roads"]:
+			var r: Dictionary = _roads[ri]
+			for key: String in baked["roads"][ri]:
+				r[key] = (baked["roads"][ri][key] as Variant)
+	else:
+		var was: Array = []
+		if _bake_rec != null:
+			for r: Dictionary in _roads:
+				was.append(r.duplicate(true))
+		_decks.setup()
+		if _bake_rec != null:   # what setup holds, and what it wrote on the roads
+			_bake_rec["decks"] = _vars_of(_decks).duplicate(true)
+			var roads := {}
+			for ri in range(_roads.size()):
+				var r: Dictionary = _roads[ri]
+				for key: String in r:
+					if not (was[ri] as Dictionary).has(key) or was[ri][key] != r[key]:
+						if not roads.has(ri):
+							roads[ri] = {}
+						roads[ri][key] = (r[key] as Variant)
+			_bake_rec["roads"] = roads.duplicate(true)
+			if not _bake_rec.has("data"):
+				_bake_rec["data"] = {}
+				_bake_rec["inferred"] = _inferred.duplicate(true)
+	tp = _part_next("%sdecks set up", tp)
 	for a: Dictionary in data.get("areas", []):
 		if a.get("k") == "water" and a.has("y"):   # a river held at its level: too deep to drive into
 			var ring := PackedVector2Array()
@@ -1995,11 +2049,65 @@ func _load_city(id: String) -> bool:
 	for a: Array in data.get("addrs", []):   # address points that are not on a building
 		_add_address("%s %s" % [a[2], a[3]], Vector2(a[0], a[1]) * k)
 	_fit_widths_to_buildings()
+	tp = _part_next("%swidths fitted", tp)
 	_clip_buildings(data["buildings"])
+	tp = _part_next("%sbuildings cut", tp)
 	_mark_medians()
 	_build_graph()
+	_part_next("%sgraph", tp)
 	_city_data = data
 	return true
+
+## _part_time for one part of the city file's loading ("%s" its prefix); the clock for the next
+func _part_next(name: String, t0_us: int) -> int:
+	_part_time(name % "city file: ", t0_us)
+	return Time.get_ticks_usec()
+
+## ---- bridges and tunnels worked out when the build is made ----------------------------------
+## Working out a town's bridges, tunnels and ramps (Decks.infer, then Decks.setup) was most of
+## reading its file: Tel Aviv 2.5 of 3.95 s headless, more in a browser (user: "move the slow
+## work out of the wait"). Both follow from the file and the code alone, so the web build ships
+## them done: tools/publish_web.sh runs prepublish.gd before exporting, which loads each town
+## twice -- working it out (recording what infer changed in the file and what setup made: _bake_rec)
+## and from that record (_bake_use) -- and keeps the record in baked/ only when the two loads
+## leave the game in the same state. A record is stamped with the build (res://build.txt) and a
+## hash of the city file, its details and the level's settings: anything else -- a local run, a
+## test, a town re-baked since -- works it out as before. (`decks_baked` in the city event.)
+const BAKED := "baked/"
+var _bake_rec = null                 ## prepublish.gd: a Dictionary this load records into
+var _bake_use := {}                  ## prepublish.gd: a record to load from, checking it
+
+## the record's file for a level, and the stamp it must carry
+static func baked_file(place: Dictionary) -> String:
+	return "%s_%s.bin" % [String(place["city"]), str([place.get("decks", ""), place.get("look", "")]).md5_text().left(8)]
+
+func _bake_key(text: String) -> String:
+	var build := FileAccess.get_file_as_string("res://build.txt").strip_edges() if FileAccess.file_exists("res://build.txt") else ""
+	var extra := str(_details.data) if _details != null else ""
+	return "%s|%d|%d|%s" % [build, text.hash(), extra.hash(), str([_place.get("decks", ""), _place.get("look", "")])]
+
+## this level's record, if one was made for this very build and file; {} if not
+func _baked_for(text: String) -> Dictionary:
+	if OS.get_environment("STREETS_CITY_FILE") != "" or OS.get_environment("STREETS_NO_BAKED") == "1":
+		return {}
+	var path: String = get_script().resource_path.get_base_dir() + "/" + BAKED + baked_file(_place)
+	if not FileAccess.file_exists(path):
+		return {}
+	var f := FileAccess.open_compressed(path, FileAccess.READ, FileAccess.COMPRESSION_ZSTD)
+	if f == null:
+		return {}
+	var rec = f.get_var()
+	if not rec is Dictionary or String(rec.get("key", "")) != _bake_key(text):
+		return {}
+	return rec
+
+## an object's own script variables that are not other objects: what it holds
+static func _vars_of(o: Object) -> Dictionary:
+	var out := {}
+	for p: Dictionary in o.get_property_list():
+		if int(p["usage"]) & PROPERTY_USAGE_SCRIPT_VARIABLE and typeof(o.get(p["name"])) != TYPE_OBJECT:
+			out[p["name"]] = o.get(p["name"])
+	return out
 
 ## "Sheinkin 47" -> filed under "Sheinkin" as number "47"
 func _add_address(full: String, at: Vector2) -> void:
@@ -2199,15 +2307,20 @@ func _build_world() -> bool:
 		_build_turbines()
 	_build_edge()
 	_build_setup(_stage("world", t0))
+	# (STREETS_BUILD_ALL=1: all of the city first -- the scene tests look all over it)
+	var all_first := OS.get_environment("STREETS_BUILD_ALL") == "1"
+	# a city level: the far shadows after the car (_far_now) -- they are the distance, and a
+	# browser spent seconds of the wait on them; the grass is made now, growing nowhere until
+	# their picture says where (its shader compiled in the warm-up, not while driving)
+	_far_later = not all_first and not _whole_first()
 	var tf := Time.get_ticks_msec()
-	await _build_far_shadows()
+	if not _far_later:
+		await _build_far_shadows()
 	var tgr := Time.get_ticks_usec()
 	_build_grass()
 	_part_time("far shadows: grass blades", tgr)
 	_stage("far shadows", tf)
 	# the squares round the start before the car is shown; the rest while it drives
-	# (STREETS_BUILD_ALL=1: all of it first -- the scene tests look all over the city)
-	var all_first := OS.get_environment("STREETS_BUILD_ALL") == "1"
 	var near: Array = _first_squares(all_first)
 	near.sort_custom(func(a, b): return _tile_dist(a, _pos) < _tile_dist(b, _pos))
 	# (nothing of the city drawn while it goes up: each step's frames drew what was built so far,
@@ -2594,7 +2707,7 @@ func _build_tile(t: Vector2i) -> void:
 ## (_catch_up). A filmed walk or a test route keeps all of NEAR_FIRST first: their pictures
 ## and drives are compared run to run. STREETS_NEAR_FIRST=1: that for every level, as before.
 func _first_squares(all_first: bool) -> Array:
-	var whole := _place.has("walk") or not _route.is_empty() or OS.get_environment("STREETS_NEAR_FIRST") == "1"
+	var whole := _whole_first()
 	var ahead := {}
 	for i in range(int(AHEAD_NOW / 10.0) + 1):
 		ahead[_tile_of(_pos + _fwd() * (i * 10.0))] = true
@@ -2604,6 +2717,25 @@ func _first_squares(all_first: bool) -> Array:
 		if all_first or (whole and d < NEAR_FIRST) or (not whole and (d < NEAR_NOW or ahead.has(t))):
 			out.append(t)
 	return out
+
+## a filmed walk or a test route (or STREETS_NEAR_FIRST=1): everything round the start, far
+## shadows too, before the car, as before -- their pictures and drives are compared run to run
+func _whole_first() -> bool:
+	return _place.has("walk") or not _route.is_empty() or OS.get_environment("STREETS_NEAR_FIRST") == "1"
+
+var _far_later := false              ## the far shadows are still to come (_far_now)
+
+## the far shadows and the grass's picture, once the squares round the car are up
+func _far_now() -> void:
+	if not _far_later:
+		return
+	_far_later = false
+	if _fs_cache.has("evening" if _evening else "day") or DisplayServer.get_name() == "headless":
+		return   # (the evening drew its own meanwhile; nothing is drawn headless)
+	var t := Time.get_ticks_msec()
+	await _build_far_shadows(true)
+	print("[streets] far shadows drawn after the car, %d ms" % (Time.get_ticks_msec() - t))
+	Probe.event("far_shadows", {"ms": Time.get_ticks_msec() - t})
 
 ## a square within NEAR_FIRST of the car is still to be built
 func _bare_near() -> bool:
@@ -2638,6 +2770,8 @@ func _build_rest() -> void:
 	_build_us = CATCH_UP_US if _catch_up else BUILD_US
 	_yield_at = Time.get_ticks_usec() + _build_us
 	await _build_gardens_later()   # (the start's squares' far gardens, first)
+	if not hurry:
+		await _far_now()
 	while is_inside_tree():
 		var t = _next_tile()
 		if t == null:
@@ -2651,8 +2785,10 @@ func _build_rest() -> void:
 			_catch_up_ms = Time.get_ticks_msec() - t0
 			print("[streets] the squares round the car built %d ms after it was shown" % _catch_up_ms)
 			Probe.event("near_built", {"ms": _catch_up_ms, "squares": n})
+			await _far_now()
 		if _build_lbl != null:
 			_build_lbl.text = "building the city %d%%" % int(100.0 * _tiles_done.size() / maxf(_build_total, 1.0))
+	await _far_now()   # (if it has not come yet: before the city file below is let go)
 	if _build_lbl != null:
 		_build_lbl.text = ""
 	# what was only for building -- the file, the outlines, the squares' lists -- let go of a
@@ -3667,6 +3803,11 @@ func _build_kerbs() -> void:
 					if m < 0.25:
 						continue   # the halves touch: a painted line, no kerb
 					pw = clampf(m * 0.5 - KERB_W, 0.0, PAVE_W)   # each half paves its half of the median
+					# both halves in one paving (each its own street's, a median came out in two)
+					_set_pave_code(hash(String(r["name"])) if String(r["name"]) != "" else hsh, r.get("pave", []))
+				elif _faces_median(run, hw, sgn, ri):
+					_tally("kerb_runs_facing_a_median", 1)
+					continue   # a street's stretch across a divided road: that side is the median's end
 				var inner := _offset_line(run, hw * sgn)
 				# the pieces with shops behind them: the pavement runs on to their windows (a
 				# filmed shopping street's was ~4 m, to the shop fronts, not 2.4 m and then grass)
@@ -3708,6 +3849,12 @@ func _build_kerbs() -> void:
 					along += seg
 				_pave_walled = false
 				if inner_side:
+					_set_pave_code(hsh, r.get("pave", []))
+					if float(r["median"]) < MEDIAN_ROUND:   # (a wide one's noses are the corners' curves)
+						for k: int in [0, run.size() - 1]:
+							if _cut_at_junction(r, run[k]):
+								var into := (run[k] - run[1 if k == 0 else run.size() - 2]).normalized()
+								_kerb_cap(kerb, inner[k], (inner[k] - run[k]).normalized(), KERB_W + pw, into)
 					continue
 				if not yard:
 					continue
@@ -3966,6 +4113,73 @@ func _median_tick(dt: float) -> void:
 				Probe.event("median", {"kmh": int(absf(_v) * 3.6)})
 	_median_lift = move_toward(_median_lift, KERB_H * on * 0.5, dt * 1.6)
 	_y += _median_lift
+
+## A divided road's median narrower than this ends square, closed by a kerb face across it
+## (_kerb_cap), with no corner kerbs on its side and no kerb from the street across it facing
+## it. Each was laid apart -- the halves' strips, the corners' curves, the cross street's
+## stretch between the halves with its own kerb and pavement -- and a user saw the pieces
+## "messy, the geometry doesn't align" (tests/median_ends.gd). Wider, the corners' curves make
+## a rounded nose of their own and it is left as it was.
+const MEDIAN_ROUND := 10.0
+
+## p is on a divided road's median: beside one of its halves (within the segment's length), on
+## that half's inner side, no further out than the median is wide
+func _in_median(p: Vector2, skip: int) -> bool:
+	for code: int in _near(_seg_hash, p, 16.0, SEG_CELL):
+		var rq := code / 4096
+		if rq == skip:
+			continue
+		var q: Dictionary = _roads[rq]
+		if not q.has("median") or float(q["median"]) < 0.25 or float(q["median"]) >= MEDIAN_ROUND:
+			continue
+		var pts: PackedVector2Array = q["pts"]
+		var sj := code % 4096
+		var t := pts[sj + 1] - pts[sj]
+		var u := (p - pts[sj]).dot(t) / maxf(t.length_squared(), 0.0001)
+		if u < 0.0 or u > 1.0:
+			continue
+		var travel := t.normalized() * float(q["o"])
+		var off := (p - pts[sj].lerp(pts[sj + 1], u)).dot(Vector2(travel.y, -travel.x))
+		var hw := float(q["w"]) * 0.5
+		if off > hw - 0.2 and off < hw + float(q["median"]) + 0.3:
+			return true
+	return false
+
+## a stretch of a street whose side `sgn` looks onto a divided road's median (it crosses the
+## road: its side faces the median's end): along its middle, just past where its pavement would be
+func _faces_median(run: PackedVector2Array, hw: float, sgn: float, ri: int) -> bool:
+	var total := 0.0
+	for i in range(run.size() - 1):
+		total += run[i].distance_to(run[i + 1])
+	if total > 40.0:
+		return false   # (a long stretch is a street, not the way across a junction)
+	var mid := run[run.size() / 2] if run.size() > 2 else (run[0] + run[1]) * 0.5
+	var j := mini(run.size() / 2, run.size() - 2)
+	var d := (run[j + 1] - run[j]).normalized()
+	return _in_median(mid + Vector2(-d.y, d.x) * sgn * (hw + KERB_W + 1.0), ri)
+
+## the run's end at p was cut short of a junction (not the road's own open end)
+func _cut_at_junction(r: Dictionary, p: Vector2) -> bool:
+	var pts: PackedVector2Array = r["pts"]
+	var ids: PackedInt32Array = r["ids"]
+	for i in range(ids.size()):
+		if _kerb_arms(ids[i]) >= 3 and pts[i].distance_to(p) < _node_r[ids[i]] + KERB_CUT + 0.6:
+			return true
+	return false
+
+## a kerb face across the end of a strip of kerb and paving: from `a` (on the road's edge) `w`
+## out along `out`, facing `into` (the way out of the strip)
+func _kerb_cap(kerb: Buf, a: Vector2, out: Vector2, w: float, into: Vector2) -> void:
+	var b := a + out * w
+	var face := Vector3(into.x, 0, into.y)
+	var col := Color(0.05, 0, 0)
+	var a0 := _g3(a, 0.0)
+	var b0 := _g3(b, 0.0)
+	var a1 := a0 + Vector3(0, KERB_H, 0)
+	var b1 := _g3(b, 0.0) + Vector3(0, KERB_H, 0)
+	kerb.tri(a0, b0, b1, face, col, Vector2(0, 0), Vector2(w, 0), Vector2(w, 1))
+	kerb.tri(a0, b1, a1, face, col, Vector2(0, 0), Vector2(w, 1), Vector2(0, 1))
+	_tally("median_caps", 1)
 
 func _build_medians(kerb: Buf, pave: Buf) -> void:
 	var zebra := {}
@@ -4780,7 +4994,7 @@ func _corners_at(ni: int, count := false) -> Array:
 				through.append(atan2(q.y - c.y, q.x - c.x))
 				continue   # too short to reach the corner (a piece across a median)
 			var p: Vector2 = at[0]
-			arms.append([atan2(p.y - c.y, p.x - c.x), p, at[1], float(r["w"]) * 0.5, e.x])
+			arms.append([atan2(p.y - c.y, p.x - c.x), p, at[1], float(r["w"]) * 0.5, e.x, step])
 	if arms.size() < 2:
 		return out
 	arms.sort_custom(func(x, y): return x[0] < y[0])
@@ -4804,6 +5018,14 @@ func _corners_at(ni: int, count := false) -> Array:
 			if count and _mine(c):
 				_tally("corners_across_roads", 1)
 			continue
+		# none on a narrow median's side: it ends square, closed by its own kerb (_kerb_cap).
+		# P is A's inner side when its traffic comes in to the junction, Q B's when it goes out
+		var ra: Dictionary = _roads[int(A[4])]
+		var rb: Dictionary = _roads[int(B[4])]
+		if (_narrow_median(ra) and int(A[5]) * int(ra["o"]) < 0) or (_narrow_median(rb) and int(B[5]) * int(rb["o"]) > 0):
+			if count and _mine(c):
+				_tally("corners_on_a_median", 1)
+			continue
 		var ua: Vector2 = A[2]
 		var ub: Vector2 = B[2]
 		var P: Vector2 = (A[1] as Vector2) + Vector2(-ua.y, ua.x) * float(A[3])   # A's right edge
@@ -4815,6 +5037,9 @@ func _corners_at(ni: int, count := false) -> Array:
 			and ((X as Vector2) - P).dot(ua) < 0.0 and ((X as Vector2) - Q).dot(ub) < 0.0
 		out.append([i, int(A[4]), P, Q, X, round, ua, ub])
 	return out
+
+func _narrow_median(r: Dictionary) -> bool:
+	return r.has("median") and float(r["median"]) >= 0.25 and float(r["median"]) < MEDIAN_ROUND
 
 ## the rounded corners' curve: from P to Q, bent toward the corner point X
 func _corner_curve(P: Vector2, X: Vector2, Q: Vector2) -> PackedVector2Array:
@@ -11702,9 +11927,10 @@ func _far_update() -> void:
 		_far_set(m)
 	_grass_retint()   # (the grass reads the same picture's green)
 
-func _build_far_shadows() -> void:
+func _build_far_shadows(chunked := false) -> void:
 	if DisplayServer.get_name() == "headless":
 		return   # (nothing is drawn: a headless playtest)
+	var ev := _evening   # (the sun drawn for: it may change before the picture is done)
 	var L := -sun.global_transform.basis.z   # the way the sunlight goes
 	if L.y > -0.05:
 		return
@@ -11719,6 +11945,8 @@ func _build_far_shadows() -> void:
 	var idx := PackedInt32Array()
 	var lit: Array = []   # the outlines, cleared after all the shadows are in
 	for bd: Dictionary in _city_data["buildings"]:
+		if chunked and _over():   # (after the car: a few ms a frame, as the city's building)
+			await _pause()
 		var ring: PackedVector2Array = bd["_ring"]
 		if ring.size() < 3:
 			continue
@@ -11743,6 +11971,8 @@ func _build_far_shadows() -> void:
 	var fcols := PackedColorArray()
 	var fidx := PackedInt32Array()
 	for ring: PackedVector2Array in lit:
+		if chunked and _over():
+			await _pause()
 		var tri := Geometry2D.triangulate_polygon(ring)
 		var b := fpts.size()
 		for p in ring:
@@ -11815,10 +12045,13 @@ func _build_far_shadows() -> void:
 		return
 	img.convert(Image.FORMAT_RG8)   # (red: the shadows, green: the grass)
 	img.generate_mipmaps()
-	_fs_tex = ImageTexture.create_from_image(img)
-	_fs_rect = Vector4(o.x, o.y, 1.0 / (w * mpp), 1.0 / (h * mpp))
-	_fs_cache["evening" if _evening else "day"] = [_fs_tex, _fs_rect]
-	_far_update()
+	var tex := ImageTexture.create_from_image(img)
+	var rect := Vector4(o.x, o.y, 1.0 / (w * mpp), 1.0 / (h * mpp))
+	_fs_cache["evening" if ev else "day"] = [tex, rect]
+	if _evening == ev:
+		_fs_tex = tex
+		_fs_rect = rect
+		_far_update()
 	# (what it costs apart from the two frames it waits for the drawing: those are a few ms
 	# in a browser, but most of a second under a test's software renderer)
 	_stage_ms["far shadows: work, not the frames"] = (t1 - t0 + Time.get_ticks_usec() - t2) / 1000
@@ -11918,7 +12151,7 @@ var _grass: MultiMeshInstance3D
 var _grass_mat: ShaderMaterial
 
 func _build_grass() -> void:
-	if _fs_tex == null:
+	if _fs_tex == null and (not _far_later or DisplayServer.get_name() == "headless"):
 		return   # (no picture of where grass grows: a headless run)
 	var b := Buf.new()
 	var rng := RandomNumberGenerator.new()
@@ -11961,10 +12194,18 @@ func _build_grass() -> void:
 	_grass_retint()
 	_grass_quality()
 
+## where grass grows, before the far shadows' picture says (or while another sun's is drawn):
+## nowhere -- an unset mask reads white, grass everywhere
+var _fs_none: ImageTexture
+func _fs_blank() -> ImageTexture:
+	if _fs_none == null:
+		_fs_none = ImageTexture.create_from_image(Image.create(1, 1, false, Image.FORMAT_RG8))
+	return _fs_none
+
 func _grass_retint() -> void:
 	if _grass_mat == null:
 		return
-	_grass_mat.set_shader_parameter("mask", _fs_tex)
+	_grass_mat.set_shader_parameter("mask", _fs_tex if _fs_tex != null else _fs_blank())
 	_grass_mat.set_shader_parameter("mask_rect", _fs_rect)
 	var gr: Color = _tone["grass"]
 	_grass_mat.set_shader_parameter("col_a", gr)

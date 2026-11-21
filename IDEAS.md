@@ -18,15 +18,6 @@ right now, offer to add it here rather than letting it get lost in the chat.
 - **3D open world.** "2D open world" above, but in 3D: `GameMode3D` exists now
   (`shell/game_mode_3d.gd`, see `reference/drop/`), so this is the open-world part. Biggest
   item on this list.
-- **A guided tour of a real town.** A virtual tour on a baked real city
-  (`tools/osm_city.py`): a guide leads you along a route, stops at the sights, turns your
-  view to each and explains it -- what it is, its history, what to notice -- then walks on.
-  The more real the town looks, the nicer the tour, so it rides on every realism pass a
-  game on that town gets. Pieces that exist already: walking a recorded route at a
-  person's pace with the head turning to look (one game replays filmed walks that way),
-  a town's landmarks and places from OSM and official data. New: the tour's script (stops,
-  where to look, the words, maybe spoken), a guide to follow, and a way to pause, ask,
-  skip ahead. Leans on "Dialog as a shared system" above for the guide's lines.
 - **Card games and card assets.** Deck, hand, table; and the art to go with it.
 - **Game flow in open worlds.** State machines, a database of characters, states and
   dialogs. How do people actually structure this? Research first, then decide.

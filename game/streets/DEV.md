@@ -30,6 +30,26 @@ merge, re-check (`tools/check_script.sh`, a playtest, the tests below), never fo
 `streets.gd` is in sections (`## ---- name`); `grep -n "^## ---- " streets.gd` lists them.
 The ones most often touched, and the functions in them:
 
+- **bridges and tunnels baked per build** -- `prepublish.gd` (run by tools/publish_web.sh
+  before every web export, headless; also by hand: `$GODOT --headless --path . -s
+  res://game/streets/prepublish.gd`) loads each town and level setting twice: once working
+  out Decks.infer and Decks.setup and recording what they did (`_bake_rec`: the city file's
+  keys infer changed -- it re-cuts the roads and adds nodes, so roads and nodes whole -- the
+  decks' own variables, `_vars_of`, and what setup wrote on each road), once from that record
+  (`_bake_use`); it keeps `baked/<town>_<setting hash>.bin` (zstd) only if `_differs` finds
+  every variable of the game (but timings and `_dressing`'s `decks_baked`), the decks' and the
+  details' the same. Stamped with res://build.txt and hashes of the file, its details and the
+  level's settings (`_bake_key`), so only the build it was made for uses it; not committed
+  (.gitignore), removed after the export. `STREETS_NO_BAKED=1` ignores it; the city event's
+  `decks_baked` says it was used. A change to decks.gd or the loading that the record does
+  not carry shows as "NOT baked -- ... differs" in the publish log, and the build works it
+  out as before: a lost shortcut, never a wrong town.
+- **far shadows after the car** -- a city level (`_far_later`, not a walk or a route, not
+  STREETS_BUILD_ALL) draws `_build_far_shadows(true)` from `_build_rest` once the squares
+  round the car are up (`_far_now`), its building loops paced like a square's (`_over` /
+  `_pause`); the grass is made at load all the same (its shader in the warm-up) with
+  `_fs_blank`, a 1x1 picture where nothing grows. `_build_far_shadows` keeps the sun it was
+  started for (`ev`): the evening switched on meanwhile keeps its own.
 - **loading the city** -- `_load_city`, then `_fit_dual_carriageways` (halves of a divided
   road sized to their lanes, `r["median"]`), `_fit_widths_to_buildings` (widths are guesses),
   `_clip_buildings` (fronts still on a road cut back to road + 1.5 m), `_build_graph`.
@@ -1179,6 +1199,14 @@ Nothing is half done: all of the above is on main.
   `tests/load_bar.gd`: the bar's second Givatayim load said "about 3 s" with 2.9 left; Tel
   Aviv from Givatayim's numbers "about 5 s" with 6.6 left (its file takes more than its size
   says).
+- **The city file, part by part** (`load_stages`, the "city file: ..." parts, headless, 21 Nov
+  2026): Tel Aviv 3.95 s -- decks inferred 1.29, decks set up 1.17, widths fitted 0.40,
+  buildings cut 0.37, divided roads 0.27, roads 0.13, parse 0.12 (the JSON itself is cheap),
+  graph 0.12; Givatayim 1.39 -- decks 0.70 of it. With the decks baked (`start_soon`,
+  STREETS_NO_BAKED=1 for without): Tel Aviv's file 3.9 -> 1.5 s, the car 5.8 -> 3.5 s;
+  Givatayim 1.4 -> 0.7, 2.8 -> 2.2. The records: Tel Aviv 674 KB, Ashdod 702, Bedford 613,
+  Givatayim 276, the test town 22; prepublish ~25 s for all. What is left of the file is the
+  next thing to bake (widths, buildings cut, divided roads: 1 s of Tel Aviv's 1.5).
 - **Starting a level in a browser, phase by phase** (`tests/web_load.js`: the container's
   Chromium, the engine's wasm on one thread, SwiftShader drawing; 20 Nov 2026). Givatayim:
   engine up 1.5 s after the page, the level begun ~4 s; city file 1.8-2.1 s; the squares round the start 17 s (kerbs
@@ -2334,6 +2362,23 @@ Each line: where the code is, the test, what good reads.
   every street parks half up the kerb, and the lanes share the whole asphalt
   (`_lane_off`/`_lanes_each_way`), so a parking strip on the road needs traffic, autodrive and
   the lane paint to give that width up first.
+- **Medians' ends messy** (user, Tel Aviv, a median with railings by a zebra: "the pavement
+  on those middle areas seems messy a lot of times. the geometry doesn't align"): a median
+  was pieces laid apart -- each half's strip of it (`inner_side` in the kerb runs), in that
+  half's own street paving (two colours side by side), ending square with no kerb across the
+  end; corner kerbs curving into it; and the cross street's stretch between the two halves
+  with a kerb and pavement of its own standing in front of its end. Now, for a median under
+  `MEDIAN_ROUND` (10 m): one paving (the road's name's), a kerb face across each end
+  (`_kerb_cap`), no corner on its side (`_corners_at`: `corners_on_a_median`), no kerb run
+  facing it (`_faces_median`: `kerb_runs_facing_a_median`). Wider ones keep their rounded
+  noses (the corners' curves). `tests/median_ends.gd` (Tel Aviv: 1,652 ends at junctions,
+  939 by a zebra) shoots 8 from the driver's seat and above. **Still messy, not done**: the
+  triangles between a slip road (`*_link`) and the main roads -- each road's kerb laid apart,
+  strips standing loose in the junction (Moshe Dayan / HaShalom (844, 457), Yigal Alon / Arvey
+  Nahal (752, -501)); they want the island as one area: the small faces the drivable roads
+  enclose, cut off the asphalt (`_island_cut`) and kerbed all round (`_island_faces`), and
+  the roads' kerb runs facing into one left out. And a footpath mapped across a junction's
+  corner drawn through a median's nose (Shaul HaMelekh / Ibn Gabirol, path 2197, (-847, -70)).
 - **A flickering line across the screen** (user, the first filmed walk's passage: "flickering
   line in the middle of the screen sometimes. dunno if its my screen or godot or bug"): the
   sky dome (`_build_sky_dome`) was Godot's hemisphere, which closes with a flat disc at its
@@ -2360,7 +2405,7 @@ Each line: where the code is, the test, what good reads.
   anywhere), `street_at` (by street name at its roundabouts), `perf_dive`, `deck_corner`,
   `islands`, `pave_overlap`, `picker`, `minimap_route`, `warm_census`, `index_gain`,
   `signs_inferred`, `start_drive`, `rails_near`, `cut_under`, `signs_double`, `auto_stands`,
-  `parked_median`, `horizon_line`;
+  `parked_median`, `horizon_line`, `median_ends`;
   `tools/level_roads.py`.
 
 ## OSM's extra fields and speed limits: handoff (20 Nov 2026)
@@ -2629,7 +2674,7 @@ LEVEL=1 $GODOT --headless --path . -s res://game/streets/tests/<test>.gd`.
 - **Watch**: hitches in the first seconds of driving now include the start's far gardens
   (`_build_gardens_later`, before the rest of the city), and since the city builds only what
   the first view sees before the car, the catch-up of the rest of NEAR_FIRST (16 ms a frame,
-  `CATCH_UP_US`: frames ~34 ms against ~10 for its 3-6 s; the playtest's smart 25 s showed 12
+  `CATCH_UP_US`: frames ~34 ms against ~10 for its 3-6 s; the playtest's smart 25 s showed 12-14
   hitches, "building 24", where 4-11 was usual before); kits with thousands of copies go
   through `_instanced`, not the batches (the AC units: 19 hitches of 50 ms when merged).
 
