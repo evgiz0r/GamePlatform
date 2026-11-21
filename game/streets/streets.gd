@@ -987,6 +987,11 @@ var _ap_wait := 0.0                  ## autodrive held up by a car this long
 var _tone := {}
 var _smat := {}                      ## tone name -> StandardMaterial3D
 var _wall_mat: ShaderMaterial
+## Looks being tried side by side (tests/look_tries.gd), off unless STREETS_TRY says: "a" dark
+## creases on the balconies (their undersides, insides, the wall's shade under them), "e" their
+## edges (a lip and a drip line, a coping), "c" more contrast in the light (less fill, a little
+## more sun), "r" railings of bars on half the blocks' balconies instead of solid parapets.
+var _try := OS.get_environment("STREETS_TRY")
 var _font: Font
 
 ## ---- the car ----
@@ -6263,8 +6268,8 @@ func _instanced(mesh: Mesh, xforms: Array, range_end: float, colours: Array = []
 func _build_facade_kit() -> void:
 	var med := String(_place.get("look", "")) == "med"
 	var north := String(_place.get("look", "")) == "north"
-	var kit := {"balcony": [], "column": [], "canopy": [], "porch": [], "post": []}
-	var kit_col := {"balcony": [], "column": [], "canopy": [], "porch": [], "post": []}
+	var kit := {"balcony": [], "balcony_rail": [], "column": [], "canopy": [], "porch": [], "post": []}
+	var kit_col := {"balcony": [], "balcony_rail": [], "column": [], "canopy": [], "porch": [], "post": []}
 	var encl: Array = [[], []]   # balconies closed in, shutters a little or a lot down
 	var acs: Array = [[], []]    # AC units: on the wall on arms, up on a balcony's back wall
 	var washing: Array = [[], [], []]   # racks of washing under windows, three arrangements
@@ -6324,8 +6329,9 @@ func _build_facade_kit() -> void:
 						balc_bays[ci] = true
 						for lv in range(1, floors):
 							var p := at + out * 0.62
-							kit["balcony"].append(Transform3D(face, Vector3(p.x, g_lo + lv * 3.0, p.y)))
-							kit_col["balcony"].append(wc)
+							var bk := "balcony_rail" if _try.contains("r") and posmod(hsh >> 9, 2) == 0 else "balcony"
+							kit[bk].append(Transform3D(face, Vector3(p.x, g_lo + lv * 3.0, p.y)))
+							kit_col[bk].append(wc)
 							var hb := posmod(hsh >> (sk * 3 + lv * 5), 997)
 							if hb % 10 < 3:   # an AC up on the balcony's back wall, over the parapet
 								var q := at + (b - a) / L * (0.75 if hb % 2 == 0 else -0.75)
@@ -6410,9 +6416,9 @@ func _build_facade_kit() -> void:
 					kit["post"].append(Transform3D(Basis(), Vector3(q.x, g_lo + 1.3, q.y)))
 					kit_col["post"].append(wc)
 	var tinted := _vc_mat()
-	var meshes := {"balcony": _cached("balcony", _balcony_mesh), "column": _boxm(Vector3.ONE), "canopy": _boxm(Vector3(2.4, 0.14, 1.1)),
+	var meshes := {"balcony": _cached("balcony", _balcony_mesh), "balcony_rail": _cached("balcony_rail", _balcony_mesh.bind(true)), "column": _boxm(Vector3.ONE), "canopy": _boxm(Vector3(2.4, 0.14, 1.1)),
 		"porch": _boxm(Vector3(3.4, 0.14, 1.9)), "post": _boxm(Vector3(0.14, 2.6, 0.14))}
-	var ranges := {"balcony": 230.0, "column": 260.0, "canopy": 150.0, "porch": 220.0, "post": 160.0}
+	var ranges := {"balcony": 230.0, "balcony_rail": 230.0, "column": 260.0, "canopy": 150.0, "porch": 220.0, "post": 160.0}
 	for k: String in kit:
 		if not (kit[k] as Array).is_empty():
 			await _chunked_paced(meshes[k], kit[k], ranges[k], kit_col[k], tinted, k != "post")
@@ -6578,12 +6584,74 @@ func _enclosure_mesh(v: int) -> ArrayMesh:
 	return am
 
 ## a balcony, local +Z out of the wall: a slab and a solid parapet round its three sides
-func _balcony_mesh() -> ArrayMesh:
+func _balcony_mesh(railing := false) -> ArrayMesh:
 	var b := Buf.new()
-	_box(b, Vector3(0, -0.09, 0), Vector3(2.7, 0.18, 1.24))
-	_box(b, Vector3(0, 0.5, 0.58), Vector3(2.7, 1.0, 0.08))
+	var creases := _try.contains("a")
+	var edges := _try.contains("e")
+	_box(b, Vector3(0, -0.09, 0), Vector3(2.7, 0.18, 1.24))   # the slab (its back at the wall, z -0.62)
+	var slab_end := b.v.size()
+	if not railing:
+		_box(b, Vector3(0, 0.5, 0.58), Vector3(2.7, 1.0, 0.08))   # a solid parapet
 	for sx: float in [-1.0, 1.0]:
 		_box(b, Vector3(sx * 1.31, 0.5, 0), Vector3(0.08, 1.0, 1.24))
+	if creases:
+		# the shade where surfaces meet: the slab's underside, the parapet's and the sides'
+		# insides, the floor under the parapet (the vertex colour, times the wall's)
+		for i in range(b.v.size()):
+			var nn := b.n[i]
+			var k := 1.0
+			if nn.y < -0.5:
+				k = 0.42
+			elif i < slab_end and nn.y > 0.5:
+				k = 0.72
+			elif i >= slab_end and nn.z < -0.5:
+				k = 0.6
+			elif i >= slab_end and absf(nn.x) > 0.5 and signf(nn.x) != signf(b.v[i].x):
+				k = 0.62
+			b.c[i] = Color(k, k, k)
+		# the wall's own shade under the slab: a band on it, dark at the slab, fading down
+		var z := -0.612
+		var t0 := Vector3(-1.38, -0.18, z)
+		var t1 := Vector3(1.38, -0.18, z)
+		var d0 := Vector3(-1.38, -0.62, z)
+		var d1 := Vector3(1.38, -0.62, z)
+		var band0 := b.v.size()
+		b.tri(t0, t1, d1, Vector3.BACK, Color.WHITE)
+		b.tri(t0, d1, d0, Vector3.BACK, Color.WHITE)
+		for i in range(band0, b.v.size()):   # (by height: tri() may turn the corners round)
+			var k := lerpf(0.5, 0.97, clampf((-0.18 - b.v[i].y) / 0.44, 0.0, 1.0))
+			b.c[i] = Color(k, k, k)
+	if edges:
+		# a lip along the slab's front, its top edge catching the light, a drip line under it;
+		# a coping along the parapet's top (or the railing's rail), a little wider than it
+		var e0 := b.v.size()
+		_box(b, Vector3(0, -0.015, 0.632), Vector3(2.74, 0.035, 0.026))
+		var e1 := b.v.size()
+		_box(b, Vector3(0, -0.168, 0.634), Vector3(2.74, 0.026, 0.03))
+		var e2 := b.v.size()
+		if not railing:
+			_box(b, Vector3(0, 1.015, 0.58), Vector3(2.76, 0.035, 0.13))
+		var e3 := b.v.size()
+		for i in range(e0, e3):
+			var nn := b.n[i]
+			var k := 0.45 if i >= e1 and i < e2 else (1.15 if nn.y > 0.5 else (0.55 if nn.y < -0.5 else 0.92))
+			b.c[i] = Color(k, k, k)
+	if railing:
+		# a top rail and bars, dark painted steel: flat bars facing the street (two triangles each)
+		var r0 := b.v.size()
+		_box(b, Vector3(0, 1.0, 0.6), Vector3(2.7, 0.04, 0.05))
+		for i in range(r0, b.v.size()):
+			b.c[i] = Color(0.16, 0.16, 0.17)
+		var bars := 18
+		for i in range(bars):
+			var x := -1.25 + 2.5 * float(i) / float(bars - 1)
+			var bc := Color(0.15, 0.15, 0.16)
+			var q0 := Vector3(x - 0.012, 0.0, 0.6)
+			var q1 := Vector3(x + 0.012, 0.0, 0.6)
+			var q2 := Vector3(x + 0.012, 0.98, 0.6)
+			var q3 := Vector3(x - 0.012, 0.98, 0.6)
+			b.tri(q0, q1, q2, Vector3.BACK, bc)
+			b.tri(q0, q2, q3, Vector3.BACK, bc)
 	var am := ArrayMesh.new()
 	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, b.arrays())
 	return am
@@ -14853,7 +14921,7 @@ func _retint_city() -> void:
 		# (in the evening the shade is the sky's blue, not the haze: the warm light and the cool
 		# shade are what makes golden hour, and the haze in it turned the shade khaki)
 		env.ambient_light_color = _sky_col(_sky_now()["mean"]).lerp(_tone["haze"], 0.1 if _evening else 0.4)
-		env.ambient_light_energy = 0.62 if _evening else 0.55
+		env.ambient_light_energy = (0.62 if _evening else 0.55) * (0.6 if _try.contains("c") else 1.0)
 		env.fog_enabled = true
 		env.fog_light_color = hor
 		env.fog_density = _fog_day()   # (half in the made-up town's valley, see _fog_day)
@@ -14867,7 +14935,7 @@ func _retint_city() -> void:
 		# with a little of the red it is the orange of a low sun)
 		sun.light_color = Palette.col("ink").lerp(Palette.col("warn"), float(_sky_now()["warm"])) \
 			.lerp(Palette.col("hazard"), 0.16 if _evening else 0.0)
-		sun.light_energy = float(_sky_now()["energy"])
+		sun.light_energy = float(_sky_now()["energy"]) * (1.12 if _try.contains("c") else 1.0)
 		sun.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_AND_SKY
 	_retint_sky_dome()
 	if _wall_mat != null:

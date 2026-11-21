@@ -256,6 +256,26 @@ The ones most often touched, and the functions in them:
   (seeds 1-14). The test's "close" counts under 0.58 m now (0.6 is the floor walkers are held
   at; a push off a post after it left one at 0.599 and failed a run). tests/walk_people.gd counts
   someone behind a building as unseen (`_behind_building`).
+- **the look bench** (the user: "some small enviorement ... where we can quickly load and
+  look around ... for testing and checking the taste of the look ... just for the agent").
+  `cities/look_bench.json`, made by `tests/make_look_bench.py`: one street with a side street
+  across it, 16 blocks of 3-5 storeys from 1950 to 2015 (sand, cream, white, stone; 60
+  balconies, 22 closed in), a cafe, a grocery, a bus stop, a zebra, trees given as a map of
+  every tree (so none are made up in front of the facades). `tests/look_bench.gd` points the
+  game at it (STREETS_CITY_FILE, level 4's look) and shoots street, facade (a block with
+  balconies, from the middle of the street it faces), balcony (from its kerb, looking up),
+  people, car; OVERVIEW=1 from above, NIGHT=1. Loads in 4-8 s; a whole run ~35 s rendered,
+  against 3-4 min for a real town. Not a level: nothing in the game reaches it. Needs
+  rendering (FULL=1): headless, its shots wait for a frame that never comes.
+  **Looks being tried** (`_try`, STREETS_TRY, off unless set): "a" dark creases on the
+  balconies (undersides 0.42, insides 0.6-0.72, a shade band on the wall under each slab), "e"
+  edges (a lip, a drip line, a coping), "c" contrast (fill light x0.6, sun x1.12), "r"
+  railings of bars on half the blocks instead of solid parapets. On the bench, 21 Nov: now,
+  the balconies melt into the wall (one colour, flat light); creases + edges make them read
+  as slabs; railings alone float; all four together look most real. Vertices a balcony: 96
+  now, 172 with creases + edges, ~196 with a railing (under BATCH_KIT_VERTS 200: still no
+  draws of their own). tests/look_tries.gd shoots the real start the same way (there the
+  nearest block's balconies are the wall shader's recesses, which these do not touch).
 - **dogs, feet, walking on the spot** (the user: "the dogs look pretty wierd, and their
   hitboxes and how they walk is pretty wierd"; "some people are walking in place ... and
   their legs are somewhat bit inside the ground"). The dog (furniture `dog_kit`) is
