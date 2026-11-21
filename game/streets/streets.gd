@@ -1173,6 +1173,7 @@ func start(_config: Dictionary) -> void:
 	_make_font()
 	_tones()
 	_place = LEVELS[clampi(int(_config.get("level", 1)), 1, LEVELS.size()) - 1]
+	_gl_count_on()
 	if _place.get("routes", false):
 		_route_page = String(_config.get("page", "set"))
 		_route_list_open()   # no city: the list of drives, each starting its own city
@@ -1198,6 +1199,7 @@ func start(_config: Dictionary) -> void:
 	if not await _step("loading " + String(_place["name"])):
 		return
 	var t0 := Time.get_ticks_msec()
+	var gl0 := _gl_count()
 	if not _load_city(String(_place["city"])):
 		_loading.queue_free()
 		_build_hud()
@@ -1220,6 +1222,8 @@ func start(_config: Dictionary) -> void:
 	print("[streets] warm-up done in %d ms, frames %s" % [Time.get_ticks_msec() - tw, _warm_ms])
 	_load_ms = Time.get_ticks_msec() - t0
 	_load_split = [t1 - t0, tw - t1, Time.get_ticks_msec() - tw]
+	_load_gl = _gl_count() - gl0 if gl0.x >= 0.0 else Vector2(-1, 0)
+	_gl_at_car = _gl_count()
 	_load_save()
 	_loading.queue_free()
 	var tm := Time.get_ticks_msec()
@@ -1400,8 +1404,11 @@ func _load_line() -> String:
 	var page := _page_ms() if _first_load else -1
 	if page >= 0:
 		s = "loaded in %.1f s (+ page %.1f s):" % [_load_ms / 1000.0, page / 1000.0]
-	return s + " city file %.1f · start area %.1f · graphics %.1f" % [
+	s += " city file %.1f · start area %.1f · graphics %.1f" % [
 		_load_split[0] / 1000.0, _load_split[1] / 1000.0, _load_split[2] / 1000.0]
+	if _load_gl.x >= 0.0:
+		s += " (%d shaders, %.1f s compiling)" % [int(_load_gl.x), _load_gl.y / 1000.0]
+	return s
 static var _loads_this_visit := 0
 var _first_load := false
 
@@ -1434,7 +1441,58 @@ func _load_text() -> String:
 	var top: Array = []
 	for p: Array in parts.slice(0, 4):
 		top.append("%s %.1f s" % [String(p[0]).get_slice(" (", 0), p[1] / 1000.0])
-	return "%s\nslowest parts: %s\nwarm-up frames (ms): %s" % [_load_line(), ", ".join(top), ", ".join(_warm_ms.map(func(x): return str(x)))]
+	var since := ""
+	if _gl_at_car.x >= 0.0:
+		var d := _gl_count() - _gl_at_car
+		since = "\nshaders compiled since the car: %d, %.1f s" % [int(d.x), d.y / 1000.0]
+	return "%s\nslowest parts: %s\nwarm-up frames (ms): %s%s" % [_load_line(), ", ".join(top), ", ".join(_warm_ms.map(func(x): return str(x))), since]
+
+## which graphics chip and driver path (a browser on Windows names Direct3D: every shader
+## translated and compiled again there) and what a frame asks of it: draw calls and triangles,
+## the view and the shadow pass together. In a browser each draw call costs the main thread a
+## trip through WebGL's checks, so many draws hold a frame back whatever the quality level.
+func _gpu_line() -> String:
+	return "graphics: %s · %d draws · %d k triangles" % [RenderingServer.get_video_adapter_name(),
+		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
+		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME) / 1000]
+
+## ---- the browser's shader compiling, counted (web only) ----------------------------------
+## A browser compiles a shader program the first time something is drawn with it (the
+## warm-up's steps) and may keep what it compiled for the next visit (its program cache), when
+## the same calls come back at once. Timed from the page itself, a phone's load line tells which
+## it was: 200 programs in 50 s is compiling, 200 in 0.3 s the cache. The calls are wrapped on
+## WebGL2's prototype, so the engine's context (made long before) goes through them too.
+const GL_COUNT_JS := """(() => {
+	if (window.__glc || typeof WebGL2RenderingContext === 'undefined') return;
+	const c = window.__glc = { n: 0, ms: 0 };
+	const P = WebGL2RenderingContext.prototype;
+	for (const name of ['compileShader', 'linkProgram', 'getShaderParameter', 'getProgramParameter']) {
+		const f = P[name];
+		P[name] = function (...a) {
+			const t = performance.now();
+			const r = f.apply(this, a);
+			c.ms += performance.now() - t;
+			if (name === 'linkProgram') c.n += 1;
+			return r;
+		};
+	}
+})()"""
+var _load_gl := Vector2(-1, 0)       ## the load's programs linked and ms in the compile calls (-1: not a browser)
+var _gl_at_car := Vector2(-1, 0)     ## the count when the car was shown
+
+static func _gl_count_on() -> void:
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval(GL_COUNT_JS, true)
+
+## (programs linked, ms spent in the compile and link calls) so far; x -1 where not counted
+static func _gl_count() -> Vector2:
+	if not OS.has_feature("web"):
+		return Vector2(-1, 0)
+	var v = JavaScriptBridge.eval("window.__glc ? window.__glc.n + ',' + Math.round(window.__glc.ms) : ''", true)
+	var t := str(v) if v != null else ""
+	if t == "":
+		return Vector2(-1, 0)
+	return Vector2(float(t.get_slice(",", 0)), float(t.get_slice(",", 1)))
 
 ## show what is being built and let a frame be drawn; false if the game was left meanwhile
 func _step(what: String) -> bool:
@@ -16192,6 +16250,7 @@ func _physics_process(dt: float) -> void:
 	if _paused:   # paused (or looking from above): everything holds; the engine falls quiet
 		_engine_tick(dt)
 		return
+	_prof_ticks += 1
 	_p0()
 	_signals_tick(dt)
 	if _rails != null:
@@ -16328,6 +16387,15 @@ const QUALITY_WEB := 2               ## where a browser starts
 ## that doubles each time it fails again. Hitches (frames over HITCH_S: loading, a shader
 ## compiling) are left out of the reckoning: one half-second stall in a spell made a
 ## smooth 50 fps read as 38, and a PC stepped itself down to nothing and stayed there.
+## Each step down is measured over its first two spells, and where the stepping ends (the
+## rate good again, or the bottom) the ladder settles on the best-looking level it passed whose
+## rate was within STEP_GAIN of the best: when the steps bought nothing, what holds the frame
+## back is not what the levels change (the script on a phone's one thread, the triangles), so
+## back up -- the better look at the same rate -- and no step below that level for FLOOR_S.
+## A user's phone in Tel Aviv sat at quality 0 (plain walls, a blurred picture) at 25-27 fps,
+## waiting in traffic as much as driving, and never came back up.
+const STEP_GAIN := 1.12
+const FLOOR_S := 300.0
 const FPS_LOW := 45.0
 const FPS_FULL := 56.0
 const STUTTER := 0.1
@@ -16344,6 +16412,11 @@ var _fps_wait := 6.0                 ## the first seconds compile shaders and st
 var _q_retry_at := {}                ## level -> when it may be tried again (s), after it failed
 var _q_fails := {}                   ## level -> how often it has failed
 var _q_clock := 0.0
+var _q_descent := {}                 ## level -> its frame rate, while stepping down (and the level it began at)
+var _q_trial: Array = []             ## the frame rates since the last step down, while it is measured
+var _q_on_trial := false
+var _q_floor := 0                    ## no step below this level ...
+var _q_floor_until := 0.0            ## ... until then (s, _q_clock): lower bought nothing
 
 func _set_quality(q: int) -> void:
 	if OS.has_feature("web") and not _shadow_web:
@@ -16395,14 +16468,27 @@ func _judge_fps(dt: float) -> void:
 	_fps_t = 0.0
 	_fps_frames = 0
 	_fps_long = 0
-	if fps < FPS_LOW or stutter > STUTTER:
+	var low := fps < FPS_LOW or stutter > STUTTER
+	var floor := _q_floor if _q_clock < _q_floor_until else 0
+	if _q_on_trial:   # the last step down, measured
+		_q_trial.append(fps)
+		if _q_trial.size() >= 2:
+			_q_on_trial = false
+			_q_descent[_quality] = (float(_q_trial[0]) + float(_q_trial[1])) / 2.0
+			if not (low and _fps_low + 1 >= 2 and _quality > floor) and _settle():
+				return   # (the stepping ends here, and a higher level does as well)
+	if low:
 		_fps_good = 0.0
 		_fps_low += 1
-		if _fps_low >= 2 and _quality > 0:
+		if _fps_low >= 2 and _quality > floor:
 			_fps_low = 0
 			var failed := _quality
 			_q_fails[failed] = int(_q_fails.get(failed, 0)) + 1
 			_q_retry_at[failed] = _q_clock + minf(30.0 * pow(2.0, float(_q_fails[failed]) - 1.0), 300.0)
+			if not _q_descent.has(failed):
+				_q_descent[failed] = fps
+			_q_trial = []
+			_q_on_trial = true
 			_set_quality(_quality - 1)
 			_fps_wait = 3.0   # (new shaders compile)
 			Probe.event("quality", {"level": _quality, "fps": int(fps), "down": true})
@@ -16416,9 +16502,40 @@ func _judge_fps(dt: float) -> void:
 	var up := _quality + 1
 	if up < QUALITY.size() and _fps_good >= STEP_UP_S and _q_clock >= float(_q_retry_at.get(up, 0.0)):
 		_fps_good = 0.0
+		_q_descent = {}
 		_set_quality(up)
 		_fps_wait = 3.0
 		Probe.event("quality", {"level": _quality, "fps": int(fps), "down": false})
+
+## The stepping down has ended (the rate good again, or the bottom): of the levels it passed,
+## the best-looking one whose rate was within STEP_GAIN of the best. Back up to it, and no step
+## below it for FLOOR_S, when that is not where the stepping ended. True if it moved.
+func _settle() -> bool:
+	var best := 0.0
+	for l: int in _q_descent:
+		best = maxf(best, float(_q_descent[l]))
+	var pick := _quality
+	for l: int in _q_descent:
+		if l > pick and float(_q_descent[l]) * STEP_GAIN >= best:
+			pick = l
+	var seen := _q_descent
+	_q_descent = {}
+	if pick == _quality:
+		return false
+	_q_floor = pick
+	_q_floor_until = _q_clock + FLOOR_S
+	_q_fails.erase(pick)
+	_q_retry_at.erase(pick)
+	var was := _quality
+	_set_quality(pick)
+	_fps_low = 0
+	_fps_good = 0.0
+	_fps_wait = 3.0
+	print("[streets] quality: lower levels bought nothing (%s fps by level), back from %d to %d" % [
+		str(seen), was, pick])
+	Probe.event("quality", {"level": _quality, "fps": int(seen[pick]), "down": false, "back": true})
+	_log.event("quality", _quality)
+	return true
 
 ## ---- where a frame's time goes ------------------------------------------------------------
 ## Every part of a physics tick and of a drawn frame is timed (the script's own work, in
@@ -16441,7 +16558,11 @@ var _prof_n := 0                     ## frames in it
 var _prof_wall := 0.0                ## their total time, ms
 var _prof_spell := 0
 var _prof_avg := ""                  ## the last spell's average frame, part by part
+var _prof_ticks := 0                 ## physics ticks in the current spell (a slow frame runs several)
 var _perf_view := false
+## "--perf-log" among the command line's user args (a test in a browser): each 2 s spell's frame
+## rate and its average frame, part by part, printed
+var _perf_log := OS.get_cmdline_user_args().has("--perf-log")
 var _perf_lbl: Label
 
 func _p0() -> void:
@@ -16491,8 +16612,12 @@ func _prof_frame() -> void:
 		var words: Array = []
 		for i in range(mini(5, parts.size())):
 			words.append("%s %.1f" % [parts[i][1], float(parts[i][0])])
-		_prof_avg = "average %.1f ms: drawing and engine %.1f · script %.1f (%s)" % [_prof_wall / _prof_n,
-			_prof_wall / _prof_n - script_ms, script_ms, ", ".join(words)]
+		_prof_avg = "average %.1f ms: drawing and engine %.1f · script %.1f in %.1f ticks (%s)" % [_prof_wall / _prof_n,
+			_prof_wall / _prof_n - script_ms, script_ms, float(_prof_ticks) / _prof_n, ", ".join(words)]
+		_prof_ticks = 0
+		if _perf_log:
+			print("[perf] quality %d, %.1f fps%s; %s; %s" % [_quality, 1000.0 * _prof_n / maxf(_prof_wall, 1.0),
+				" (the city still building)" if _bg_build else "", _prof_avg, _gpu_line()])
 		_prof_sum = {}
 		_prof_n = 0
 		_prof_wall = 0.0
@@ -22878,8 +23003,8 @@ func _tick_hud() -> void:
 	_speed_lbl.text = str(int(round(absf(_v) * 3.6)))
 	_fps_lbl.text = "%d fps · worst %d ms · quality %d" % [Engine.get_frames_per_second(), int(_worst_ms()), _quality]
 	if _perf_view:
-		_perf_lbl.text = "frame time, last %d frames (lines: 16 and 33 ms)\n%s\nhitches (slowest parts, ms):\n%s\n%s" % [
-			_frame_ms.size(), _prof_avg, "\n".join(_hitches) if not _hitches.is_empty() else "none yet", _load_text()]
+		_perf_lbl.text = "frame time, last %d frames (lines: 16 and 33 ms)\n%s\n%s\nhitches (slowest parts, ms):\n%s\n%s" % [
+			_frame_ms.size(), _prof_avg, _gpu_line(), "\n".join(_hitches) if not _hitches.is_empty() else "none yet", _load_text()]
 	if _dest_on:
 		var left := _pos.distance_to(_dest)
 		if _auto and _ap_pts.size() > 1:

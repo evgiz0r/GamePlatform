@@ -14,6 +14,11 @@
 // done: the moment the car can be driven. The files are served from localhost, so downloading costs nothing here --
 // on a phone after a publish that is the main index.pck (~4 MB) on top, plus any split pack whose content changed (see tools/split_pck.py).
 //
+// PLAY=n keeps each load going n seconds after the car can be driven, with the smart bot (it
+// switches autodrive on) and the game's "--perf-log": every 2 s the frame rate, the quality
+// level and the average frame part by part -- the script's own milliseconds are the wasm's real
+// cost on this CPU, "drawing and engine" is SwiftShader's.
+//
 // SwiftShader draws in software: the warm-up (shader compiling plus twelve frames of the
 // town) and any stage that draws frames ("far shadows") are many times a real GPU's. The
 // CPU stages (city file, kerbs, roads...) are the wasm's own cost, and in proportion.
@@ -26,6 +31,7 @@ const dir = process.argv[2] && path.resolve(process.argv[2]);   // (a relative o
 const level = process.argv[3] || '1';
 const runs = Number(process.env.RUNS || '1');
 const shots = process.env.SHOT || '';
+const play = Number(process.env.PLAY || '0');
 if (!dir || !fs.existsSync(path.join(dir, 'index.html'))) {
   console.error('usage: node web_load.js <exported web dir> [level]');
   process.exit(1);
@@ -40,7 +46,7 @@ const server = http.createServer((req, res) => {
   if (!f.startsWith(path.resolve(dir)) || !fs.existsSync(f)) { res.writeHead(404); res.end(); return; }
   let body = fs.readFileSync(f);
   if (p === '/index.html') {   // straight into the level, no worker (it would cache across runs)
-    body = body.toString().replace('"args":[]', `"args":["--","--sim=streets","--bot=idle","--seconds=600","--level=${level}"]`)
+    body = body.toString().replace('"args":[]', `"args":["--","--sim=streets","--bot=${play ? 'smart' : 'idle'}","--seconds=${600 + play}","--level=${level}"${play ? ',"--perf-log"' : ''}]`)
       .replace('"serviceWorker":SW_URL', '"serviceWorker":""')
       .replace('"serviceWorker":"index.service.worker.js"', '"serviceWorker":""');
   }
@@ -61,6 +67,7 @@ const server = http.createServer((req, res) => {
   page.on('console', (m) => {
     const t = m.text();
     if (/SCRIPT ERROR|USER ERROR/.test(t)) mark('game: ' + t.split('\n')[0]);
+    if (t.startsWith('[perf]')) { mark(t); return; }
     if (!t.startsWith('[streets]')) return;
     if (t.startsWith('[streets] warm-up done')) done = true;
     if (shots && t.startsWith('[streets] city file read')) {
@@ -87,6 +94,7 @@ const server = http.createServer((req, res) => {
     const limit = Date.now() + 900000;
     while (!done && Date.now() < limit) await page.waitForTimeout(500);
     mark(done ? 'the car can be driven' : 'gave up waiting');
+    if (done && play) await page.waitForTimeout(play * 1000);
     if (shots && done) {
       await page.waitForTimeout(1500);
       await page.screenshot({ path: path.join(shots, `driving_${run}.png`) }).catch(() => {});
