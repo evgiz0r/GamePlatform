@@ -1289,6 +1289,23 @@ them again: the slow case), so the estimate knows which one this is. A city neve
 this phone yet is estimated from another one's; the very first load says "timing it, for
 next time". Slower or quicker than last time so far, the rest is taken to be so too.
 
+> now do 3, move the slow work out of the wait
+
+**The bridges and tunnels are worked out when the build is made.** Reading a town's file
+was mostly working out where its roads go over and under each other -- which ways are
+bridges, tunnels and ramps, how high each point is, where their walls stand: Tel Aviv 2.5
+of its 4 s. That follows from the town's file and the game's code alone, so it is now done
+once, when a push is published, and the build carries the result (0.7 MB for Tel Aviv, 2.3
+MB for all five towns). Before keeping it the publish loads each town both ways -- working
+it out and from the result -- and keeps the result only if the game ends up exactly the
+same. Tel Aviv's file now reads in 1.5 s instead of 3.9 here, Givatayim's in 0.7 instead of
+1.4; the car is on the road in 3.5 s instead of 5.8, and 2.2 instead of 2.8.
+
+**The far shadows come after the car.** The painted shadows of the buildings in the distance
+(and the picture of where grass grows) took a browser seconds before the car appeared.
+Now they are drawn once the streets round the car are up, a few milliseconds a frame; until
+then the distance has no painted shadows and the lawns no blades, for a few seconds.
+
 > We need to think how to improve latency a bit. It does choke every few seconds. Do you
 > have some fps counter or something?
 
@@ -1432,9 +1449,6 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
 
 ## Later (said, not built)
 
-- Bridges and tunnels in the real towns: working out each deck's heights from OSM's tags
-  and the ground (the test town has them already), then an interchange you drive over and
-  under.
 - Not just driving: the same baked city could be walked, or used by another game.
 - Crashes, what is still to come: a sign post bent, a fence panel or a hedge pushed in, a
   scrape mark on the wall the car rubbed.
@@ -1455,3 +1469,19 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   the player's car (driving or autodrive) that turns each light it comes up to green its
   way, through the usual change for the cross street (amber, red) so the traffic there stops
   as it would.
+- Disasters on the real city: "like simcity hazards, but now we have the graphics so it
+  can be cool on steroids, like aliens". Pick a disaster and where it strikes, then watch it
+  from the zoomed-out view or live through it in the car or on foot. Aliens first, as asked:
+  ships over the towers, beams lifting cars off the road, walkers striding down a boulevard.
+  Then ones these towns know: an earthquake (the view shakes, facades crack, rubble in the
+  road, cars stop dead), a fire in a block (smoke, fire engines working through traffic),
+  the Ayalon flooding as it does in a wet winter (water rising in the low streets, read from
+  the baked ground's heights), a sandstorm's yellow haze, a monster walking between the real
+  towers. The city reacts: drivers swerve, brake or leave their cars, people run, sirens,
+  emergency vehicles on their way. Already here to build on: things that break in a crash
+  (bins, bollards, glass, dents, sparks), night and after-rain, the sounds, traffic that
+  plans routes, people who keep clear, the zoom-out view, real building heights and ground.
+  New: each disaster's look and sound, a building that breaks (buildings are merged into
+  big meshes, so one has to be taken out of its batch first), panic for people and drivers,
+  emergency services, and staying smooth on a phone. Our own disasters, not a copy of any
+  one game's.
