@@ -89,6 +89,11 @@ func _run() -> void:
 	var lvl := int(OS.get_environment("LEVEL"))
 	var starts := int(OS.get_environment("EXAM_STARTS")) if OS.get_environment("EXAM_STARTS") != "" else 4
 	var secs := float(OS.get_environment("EXAM_SECS")) if OS.get_environment("EXAM_SECS") != "" else 75.0
+	# EXAM_SEED=n: the same dice every run (the whole engine's and the traffic's), so two runs
+	# of one build read alike and a change in the counts is the code's, not chance's
+	var exam_seed := int(OS.get_environment("EXAM_SEED")) if OS.get_environment("EXAM_SEED") != "" else -1
+	if exam_seed >= 0:
+		seed(exam_seed)
 	await create_timer(0.3).timeout
 	root.get_node("Flow").start_game("streets", {"level": lvl})
 	while g == null or not g._loaded:
@@ -100,6 +105,9 @@ func _run() -> void:
 	if OS.get_environment("FULL") == "":
 		g._set_quality(0)
 	T = g._traffic
+	if exam_seed >= 0:
+		seed(exam_seed)
+		T.rng.seed = exam_seed
 	for k: String in CHECKS:
 		counts[k] = 0   # (printed even when nothing was found: a 0 says the check ran)
 	var rng := RandomNumberGenerator.new()
