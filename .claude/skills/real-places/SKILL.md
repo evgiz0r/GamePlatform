@@ -371,6 +371,24 @@ the parked cars, which stand a third in the road).
   way to you on foot as to anyone, from a few steps off -- a replayed walk cannot step
   round them.
 
+- **Put people down near you, not only far away.** Placing walkers only past the drawn
+  distance keeps them from appearing in view, but the street round you then fills only as
+  fast as people walk in: on a shopping street 2 came within 35 m in 24 s. A spot behind a
+  building from the camera (sample the sight line against the footprints) is as unseen and
+  can be 20 m off: round the next corner, behind the block. Bring back anyone who wanders
+  past the drawn distance too; 24 walkers kept inside it gave three times the people. A
+  test that counts "appearing in view" must use the same sight line, or it flags these.
+- **Plan a walker's place across the pavement a few steps ahead, and keep it.** A step
+  round each post as it comes (and back after it) weaves round every tree in a row. Pick
+  the sideways offset clear at 1, 2 and 3 m ahead, nearest the current one, and hold it
+  while it stays clear. A step out of someone's way then replaces that place rather than
+  adding to it (added, a planned 0.6 m one way ate most of a 0.9 m step the other), and is
+  held until a couple of metres past them.
+- **People walking together**: the second keeps to the first's line and pace at a side
+  that turns with them; single file where there is no room or to pass someone; when the
+  first is put down somewhere new, the second goes with it at once -- eased there, it slid
+  across the street in view.
+
 ## AI drivers in a real town
 
 - **A straight street is two points.** A driving plan built from OSM nodes can have one point

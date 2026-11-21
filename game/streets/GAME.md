@@ -1177,6 +1177,21 @@ sand plaster, older ones cream, new ones white or clad in stone; many balconies 
 with aluminium windows and shutters, white balcony bands on some blocks, grime under the
 old ones' windows. (Speed humps: the map data the game is built from has none yet.)
 
+> 1,2,3,4,8 (But they are so aimless, maybe make them walk coherently first, i think still no
+> collision and they walk through stuff, maybe im wrong)
+
+**People who walk somewhere, and more of them; signs that bend.** People were never inside
+anything solid, but the street round you was thin: they were only ever put down far away and
+had to walk all the way in. Now they come round corners and from behind blocks near you, out
+of sight, and stay within the distance people are drawn at -- about three times as many pass a
+spot on Sirkin. They keep a steady place on the pavement a few steps ahead instead of
+weaving round every tree, keep apart from each other, and some walk in pairs side by side
+(single file to pass you). With you on foot they step out of your way and stay out until
+past you, never nearer than 0.6 m; if you just stand in a narrow spot, they turn back after a
+few seconds. A road sign hit at more than about 15 km/h bends over at its foot with its plate.
+Buses, trucks and scooters blink in their own lamps like the cars. The old blocks' sand
+plaster is browner in shade.
+
 > I took a video on my phone, walking in Givatayim.
 
 ## Smooth on a laptop and a phone
