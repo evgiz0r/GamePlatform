@@ -1314,8 +1314,13 @@ The user picked all five things the drive charts showed (above). Each found in t
   could not get back: a car moves sideways only as it rolls, and stood nose out, face to
   face with autodrive). That showed an older trap: a car standing close behind the van, the
   way clear, never went -- sideways only as it rolls, and the van "in its way" until it is
-  out past its side; it stood till taken away (25 s). Now, going round, it creeps (1.2 m/s
-  at most) and turns out at up to 0.8 of its speed sideways. `LEADLOG=1` in the route set
+  out past its side, and it waited for the car in front to move off before it reacted (the
+  queue rule: the van never moves) -- it stood till taken away (25 s). Now, going round, it
+  reacts, creeps (1.2 m/s at most) and turns out at up to 0.8 of its speed sideways.
+  van_pass after: from 70 and 110 m it waits, autodrive goes by (2.5 m/s^2 at most, 2 m
+  apart), then it goes round; from 150 and 190 m it is round in time -- PASS, 0 head-on.
+  queue_start PASS (start gaps 1.0 s, over the line 0.84x Greenshields', Ashdod's Herzl
+  junction, 24 queues), traffic_stuck 0 in 150 s, amber 72 of 72. `LEADLOG=1` in the route set
   prints how a car stands when it turns up under 15 m in front, or holds itself for the
   player while in front of it, and what holds a car autodrive gives way to while both stand.
 - **Kikar Barak, route 2**: autodrive stood 10-17 s giving way to a car that stood too, its
