@@ -12757,7 +12757,7 @@ func _terrace(pos: Vector2, n: Vector2, along: Vector2, umb: Color, t: Dictionar
 			if _push_out(q, tr.y, false) == Vector2.ZERO and (on.is_empty() or float(on["edge"]) >= tr.z) 					and not _in_corner_fill(q, maxf(tr.z, 0.0) + 0.25):   # (nor on a corner's asphalt: Aluf David, Dizengoff)
 				c = q
 				if not on.is_empty():
-					room = clampf(float(on["edge"]), 0.25, 0.7)
+					room = clampf(float(on["edge"]), 0.1, 0.7)   # (0.25 at least had a table at the lane's edge 0.35 m into Dizengoff)
 				break
 		if not c.is_finite():
 			continue
