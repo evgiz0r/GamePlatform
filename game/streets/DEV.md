@@ -2024,8 +2024,9 @@ it is dropped.
   minimap draws a tunnel like any street; zooming out from inside the tunnel rises from the
   hilltop (the zoom centres on the ground's height); the heights are whole decimetres, so a
   deck's grade kinks by up to 2% every 5 m (enough for a 2 cm hop off HaNasi's bridge);
-  autodrive turning right off the flyover's foot onto HaRakefet clips a crossing railing's
-  post on the corner about one run in two (the railing reaches 6 m from the zebra, into the
+  autodrive turning right off the flyover's foot onto HaRakefet clipped a crossing railing's
+  post on the corner about one run in two (21 Nov: `decks.gd` at level 1 twice, no such hit;
+  its runs no longer take that turn, so not seen either way) (the railing reaches 6 m from the zebra, into the
   corner: a corner-furniture question, not a deck one). Ramps' and cuttings' walls are left
   out of the collisions within a junction's corner (`_walls_of`): there they are a step a
   turning car sweeps over.
@@ -2809,6 +2810,20 @@ LEVEL=1 $GODOT --headless --path . -s res://game/streets/tests/<test>.gd`.
   building (autodrive noses it). Two branch ramps out of Lova Eliav's west end are too short
   to climb out at 10% and lie on the ground. A tunnel's tube is drawn whatever is over it,
   buildings included (Lova Eliav runs under HaKirya's blocks).
+  **Measured again 21 Nov** (`decks.gd` `DECK_KINDS=br`, `street_holes.gd`, level 7): every
+  bridge driven 0 frames in the air and 0 off the level (Arvei Nahal's seam gone); holes 1
+  point (134, 179), 0.5 m (was 8, 0.7-0.9 m); walls 4 points (Yitzhak Sadeh's bank 2, Ayalon
+  South's embankment at (753, -1300), the bank at (76, -34)). The car-park "bridge" (`_3447`
+  in the test, (-1202, 1203)) is a rooftop car park's ring of parking aisles on layer 1 by
+  HaRakevet station, joined to no road on the ground: no car can get onto it, the test puts
+  one there and it noses the building it stands beside. Left as it is (dropping a deck network
+  joined to nothing would be the fix, if one is seen from the street and looks wrong).
+  The same day `decks.gd` at level 1 (twice): every deck run clean but the City tunnel's
+  (`מנהרת_הסיטי_1372`), whose autodrive roamed out of the tunnel onto a car park's aisle
+  (Givatayim (-722, -1078) to (-735, -1078)) that ends in a building -- an underground car
+  park's way in -- and hit the wall and building there at 9-19 km/h, both runs; and
+  Menachem Begin 1609, 40 frames off the level by up to 0.31 m. The first is autodrive's
+  roaming picking a parking aisle that leads nowhere (driving's, not the decks').
 - **Givatayim's ground is the terrain tiles' surface model too**: its "steepest 52%" is
   likely part roofs. Measured on its grid, `--bare-ground` would take the hill's crest
   86 -> 72 m and the steepest slope 48 -> 16%. Not re-baked: it moves the ground under the

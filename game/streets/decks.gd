@@ -1235,7 +1235,8 @@ func _tunnel(ri: int, pts: PackedVector2Array, walk: RefCounted, kerb: RefCounte
 ## onto the road crossed. Each road is cut where its lift runs out: the lifted part becomes a
 ## deck (a bridge stays a bridge, the rest embankments), the rest stays on the ground. A
 ## bridge that crosses nothing (a creek's) spans straight from one end to the other. Bridges
-## shorter than MIN_BRIDGE are culverts and stay as they were; tunnels are left out still.
+## shorter than MIN_BRIDGE are culverts and stay as they were. Tunnels are the mirror of it,
+## further down (a tunnel way under something lies CLEAR_UNDER down).
 const CLEAR_ROAD := 6.4       ## a bridge's road over a road: 5.2 m clear, and the deck
 const CLEAR_PATH := 4.4       ## ... over a footpath, a cycleway
 const RAMP_FAST := 0.05       ## a ramp's grade on a motorway, a trunk road, a slip road
