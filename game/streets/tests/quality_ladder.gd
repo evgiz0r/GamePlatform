@@ -1,7 +1,7 @@
 extends SceneTree
 ## The quality ladder fed made-up frame times: a smooth 50 fps PC with a hitch every few
 ## seconds; a slow phone that each step down helps; a PC that recovers; a level that keeps
-## failing; a phone the levels do not help at all (a user's, in Tel Aviv: quality 0 at 25-27
+## failing; a machine the levels do not help at all (a user's PC in Tel Aviv: quality 0 at 25-27
 ## fps, it never came back up) and one that only the first step helps.
 ##   STREETS_BUILD_ALL=0 $GODOT --headless --path . -s res://game/streets/tests/quality_ladder.gd
 ## Good: [2]; [2, 1, 0]; [0, 1, 2, 3]; down to 1 and kept there (the top fails, 2 is no better);
@@ -62,7 +62,7 @@ func _run() -> void:
 			trail.append([g._quality, int(t)])
 	print("  levels [level, at s]: %s" % str(trail))
 	fresh()
-	feed("a phone the levels do not help: 26 fps at every level, 10 min", 600.0, [26.0, 26.0, 26.0, 26.0])
+	feed("a machine the levels do not help: 26 fps at every level, 10 min", 600.0, [26.0, 26.0, 26.0, 26.0])
 	fresh()
 	feed("only the first step helps: 26 fps at 2, 33 at 1 and 0, 2 min", 120.0, [33.0, 33.0, 26.0, 26.0])
 	quit(0)

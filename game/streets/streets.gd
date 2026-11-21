@@ -16433,7 +16433,7 @@ const QUALITY_WEB := 2               ## where a browser starts
 ## rate was within STEP_GAIN of the best: when the steps bought nothing, what holds the frame
 ## back is not what the levels change (the script on a phone's one thread, the triangles), so
 ## back up -- the better look at the same rate -- and no step below that level for FLOOR_S.
-## A user's phone in Tel Aviv sat at quality 0 (plain walls, a blurred picture) at 25-27 fps,
+## A user's PC in Tel Aviv (a browser) sat at quality 0 (plain walls, a blurred picture) at 25-27 fps,
 ## waiting in traffic as much as driving, and never came back up.
 const STEP_GAIN := 1.12
 const FLOOR_S := 300.0

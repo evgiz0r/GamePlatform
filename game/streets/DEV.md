@@ -582,7 +582,7 @@ The ones most often touched, and the functions in them:
   Each step down is measured over its first two spells (`_q_descent`, `_q_on_trial`), and
   where the stepping ends (the rate good again, or level 0) `_settle` goes back up to the
   best-looking level it passed whose rate was within `STEP_GAIN` (12%) of the best, with no
-  step below it for `FLOOR_S` (5 min): a user's phone in Tel Aviv (21 Nov) sat at quality 0 --
+  step below it for `FLOOR_S` (5 min): a user's PC in Tel Aviv (21 Nov, a browser) sat at quality 0 --
   plain walls, the picture at 0.7 -- at 25-27 fps, standing in traffic as much as driving, and
   never came back up (up needs 56 fps). What the levels change is the graphics chip's work;
   a frame held back by the script on the browser's one thread is not helped by any of them.

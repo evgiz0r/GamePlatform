@@ -62,7 +62,7 @@ these numbers the wrong way has broken something.
 | `feet` | 1 | a walker's feet against the pavement's top | 0.21 = 0.21 |
 | `feel` | 1 | a crash at 54 km/h; jumping out at 50 km/h; into a fence | rebound 0-1.3 m/s, no hop; 3.4 m tumble, car rolls 37 m; the fence check picks a fence behind a building (stops 6.5 m short) -- to fix |
 | `on_foot` | 1 | getting out, walking, running, a car stopping for you | 2.1 / 6.2 m/s |
-| `quality_ladder` | 1 | the frame-rate watcher fed made-up frame times, six cases (`_judge_fps`, `_settle`) | stays at 2 through stalls; [2, 1, 0] when each step helps; back up at 60; a phone the levels do not help: [2, 1, 0, 2], kept at 2 for 5 min; only the first step helps: [2, 1, 0, 1] |
+| `quality_ladder` | 1 | the frame-rate watcher fed made-up frame times, six cases (`_judge_fps`, `_settle`) | stays at 2 through stalls; [2, 1, 0] when each step helps; back up at 60; a machine the levels do not help (a user's PC, Tel Aviv): [2, 1, 0, 2], kept at 2 for 5 min; only the first step helps: [2, 1, 0, 1] |
 | `quality_look` | 1 | the street at quality 3 and 0 (shots) | |
 | `eye_level` | 1 | the streets at a walker's eye height round a point (`AT="x,z"`, default the start), along, back, across and down, the nearest zebra and the nearest block on columns: for comparing with photos of the real street (shots) | ground floors barred windows, not black; bollards at the zebra |
 | `contact_shadows` | 1 | the contact-shadow layer on and off, same view: the nearest building's foot, block on columns, parked car round a point (`AT="x,z"`); how much of each picture got darker (shots `ao_*_on/off`) | wall ~4% darker, by up to 0.5; car ~6% |
