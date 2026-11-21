@@ -1698,10 +1698,22 @@ func _spawn(c: Car, first: bool) -> bool:
 		if crowded:
 			continue
 		var sj: int = hit["seg"]
+		if _by_junction(r, sj, at, 12.0):
+			continue   # (put down in a junction's mouth at k 0, "held by junction", it stood there
+			           # and the main road's traffic drove into it -- the exam, Ashdod's Inbar and Odem)
 		var dir := 1 if rng.randf() < 0.5 else -1
 		if r["o"] != 0:
 			dir = int(r["o"])
 		if _start_on(c, ri, sj, at, dir):
+			return true
+	return false
+
+## within `d` m of a junction (a point of three ways or more) at either end of segment sj
+func _by_junction(r: Dictionary, sj: int, at: Vector2, d: float) -> bool:
+	var p: PackedVector2Array = r["pts"]
+	var ids: PackedInt32Array = r["ids"]
+	for k: int in [sj, sj + 1]:
+		if k < ids.size() and ids[k] >= 0 and _ways_out(ids[k]) >= 3 and p[k].distance_to(at) < d:
 			return true
 	return false
 

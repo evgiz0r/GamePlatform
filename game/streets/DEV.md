@@ -1316,6 +1316,22 @@ Givatayim 0 late. Traffic cars do not look at walkers at all (they rely on the k
   validation's Nahliel stop (4 s behind a sedan at 26 km/h, 2.9 m off, 60 m free) did not
   come back in two runs (13 min, every stop a queue).
 
+### Cars put down in a junction's mouth; what is left of the handed-over list (21 Nov 2026, later)
+
+- The Ashdod "dead end" overlaps were cars put down at the very start of their path in a
+  junction's mouth (the exam's "k 0 of N, held by junction": Inbar into Avnei HaHoshen,
+  Odem), standing there while the main road's cars drove into them. `_spawn` now skips
+  spots within 12 m of a point of three ways or more (`_by_junction`). In three Ashdod exams
+  before, 2 such lines each; after, 0 held by junction at k 0.
+- "Over the line at a red, traffic" read 0 in all five of the day's Ashdod exams and in
+  Givatayim's and the test town's: not seen, left.
+- Route 2's brush with a post behind a bus at its stop on Moshe Dayan did not come back in
+  a re-run (3.8 min, 0 hits).
+- Still open from the exams: a bus touching posts 166666/166667 at (-2965, 5117) on Sapir in
+  every Ashdod run (0.1-0.2 m outside the asphalt's edge: a kerb-side post the bus's side
+  reaches on the bend), and an SUV or taxi into post 12794 at (-2035, 2465) at 26 km/h in
+  two runs -- worth a look at where those posts stand.
+
 ## Numbers to compare against (November 2026, cloud container, software renderer)
 
 - Build time in full: Givatayim ~6 s, Bedford ~9 s, Ashdod ~15 s, the test town ~1.2 s
