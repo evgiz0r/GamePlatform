@@ -540,11 +540,16 @@ were a long thing judged at its middle):
   post, standing over the stop line at a red, autodrive pushing against something 3 s, and
   standing 10 s+ held by nothing named (followed down the queue to its front). Every tick,
   every car. They print 0 when clean, so a reader sees they ran.
-- **The city as built** (`city_check.gd`, seconds a city; `LEVEL=0` all four): walls,
-  posts and buildings on a street's asphalt (sampled every metre of them), lit points that
-  belong to no junction; and the traps to stage a test at -- stub roads under 5 m at a
-  junction, lit points under 25 m apart counted as two junctions, walls and posts on
-  service roads.
+- **The city as built** (`city_check.gd`, seconds a city; `LEVEL=0` all five, Tel Aviv
+  too): walls, posts and buildings on a street's asphalt (sampled every metre of them), lit
+  points that belong to no junction; and the traps to stage a test at -- stub roads under 5 m
+  at a junction, lit points under 25 m apart counted as two junctions, walls and posts on
+  service roads. Since 21 Nov also the user's reports of the day before that a built city
+  shows (`world_checks.gd`, each ported from the test written for its fix): signs doubled, a
+  junction offering one street twice, islands on the road, a median's wall over another
+  road (0); roads leaning over 6% side to side and two pavings laid over one spot (they
+  flicker), under a limit per city (`LIMITS`, the level a fixed city reads: over it, the
+  bug is back or was never fixed there).
 - **Queues against real ones** (`queue_start.gd`, QUEUE CHECK: PASS / FAIL): start gaps and
   stop-line gaps in bands from real counts (Greenshields 1947, the Highway Capacity Manual),
   not from the last run -- tuned by eye, the queue went from all at once to the third car 9
