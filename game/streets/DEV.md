@@ -653,6 +653,27 @@ corner clash; "report only", or "fix X only", keeps it to one owner. A session t
 the README's new numbers publishes `main` (the site rebuilds itself, ~5 minutes); that is
 harmless, but it is a push.
 
+**Every night, on its own** (since 21 Nov): `.github/workflows/nightly_checks.yml` runs
+`tests/nightly.sh` (validate.sh with `FULL=1 REGRESS=1 EXAM_SEED=1`) on GitHub's machines at
+00:15 UTC, and sets its verdicts (the city checks' counts, each REGRESS line) beside the night
+before's with `tools/nightly_compare.py`. The run's page (Actions, "nightly checks") shows
+what changed in its summary and keeps every output for two weeks; the run fails, and GitHub
+emails the owner, only when something got worse -- a new FAIL, OVER or NO VERDICT, or a count
+that rose. The exam and the queue check are in the summary, not the verdicts (too noisy to
+fail a night on). It commits nothing. A test added to validate.sh's REGRESS list joins it
+the next night with nothing more to do.
+
+**The exam's dice** (`EXAM_SEED=n`, exam.gd): seeds the engine's random numbers and the
+traffic's before the game loads and again before the drive. Three runs of one build on the
+test town at 2x (21 Nov): two read alike to the count (CHECKS 13, every line the same), one
+went its own way (11) -- something still not seeded or timing-dependent (threaded loading?),
+so a seeded exam agrees most of the time, not always. Unseeded the same build read 4-12.
+Compare seeded runs; when two disagree, run a third.
+
+**validate.sh's own `OUT` must not reach the tests** (fixed 21 Nov, `env -u OUT`): for a
+test, `OUT` means "save screenshots here", and a screenshot taken headless hangs -- the
+first full run had seat_steady, lane_position and deck_corner time out with no verdict.
+
 ### The checks that should read 0
 
 A look back over twenty bug fixes (November 2026) found the same few mistakes again and
