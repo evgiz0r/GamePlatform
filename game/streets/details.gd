@@ -84,7 +84,10 @@ extends RefCounted
 ##                                                    pay booth, its face along dir),
 ##                                                    sign_board (a yellow board on a pole),
 ##                                                    gatepost (concrete, face along dir; heart:
-##                                                    a red graffiti heart on that face).
+##                                                    a red graffiti heart on that face),
+##                                                    lamp_pole (tall, white, stickered, a round
+##                                                    red-ringed sign facing dir; bin: a small
+##                                                    one hung on it, a purple liner).
 ##                                                    Anything on a lifted surface stands on it.
 ##   trees     [[x, z], ...]                         more trees for the city's own builder
 ##   shops     [{name | near: [x, z], at: [x, z], add, kind, name_en, sign, awning, umbrella,
@@ -102,6 +105,10 @@ extends RefCounted
 ##   walks     {id: {name, points: [[t, x, z]...],   two points at one spot: it waits there
 ##              looks: [[from, to, degrees]...],     the head turned off the way it walks
 ##                                                    (+ right), to see the traffic coming
+##              face: [[from, to, degrees]...],      the camera held facing that way round
+##                                                    the map (atan2 of z, x: 0 east, 90 south),
+##                                                    whatever the head and body do, eased in
+##                                                    and out over half a second
 ##              zebras: [[from, to, [x, z], [x, z]]...],  waiting at a crossing or on it:
 ##                                                    cars stop for it (kerb to kerb)
 ##              cars: [[t, [x, z], [dx, dz]]...],    a car sent down the street nearest the
@@ -431,6 +438,8 @@ func build() -> void:
 				_barrier(b, at, y, d, float(pr.get("len", 4.0)))
 			"globe_lamp":
 				_globe_lamp(b, at, y, float(pr.get("h", 2.7)))
+			"lamp_pole":
+				_lamp_pole(b, at, y, d, k, bool(pr.get("bin", false)))
 			"gatepost":
 				_gatepost(b, at, y, d, bool(pr.get("heart", false)))
 			"booth":
@@ -864,6 +873,46 @@ func _globe_lamp(b, at: Vector2, y: float, h: float) -> void:
 	g._furn._tube(b, p + Vector3.UP * (h - 0.02), p + Vector3.UP * (h + 0.16), 0.13, 0.19, g._tone["lamp"], 8)
 	g._furn._tube(b, p + Vector3.UP * (h + 0.16), p + Vector3.UP * (h + 0.34), 0.19, 0.08, g._tone["lamp"], 8)
 	g._add_post(at, 0.1)
+
+## a street lamp's tall white pole, scuffed and stickered to head height, a round sign up on
+## it (a white disc in a red ring: no entry for vehicles) facing `d`, the lamp's arm out over
+## the way; `bin`: a small bin hung on it at hip height on the `d` side, its purple liner
+## folded over the rim (a passage's, film 42-44 s)
+func _lamp_pole(b, at: Vector2, y: float, d: Vector2, k: int, bin: bool) -> void:
+	var p := Vector3(at.x, y, at.y)
+	var white: Color = g._tone["mark"].darkened(0.06)
+	g._furn._tube(b, p, p + Vector3.UP * 5.2, 0.085, 0.06, white, 8)
+	var nrm := Vector3(d.x, 0, d.y)
+	var right := Vector3(-d.y, 0, d.x)
+	# the stickers and the scuffs: small patches round the pole, 0.6-2.0 m up
+	var cols: Array = [g._tone["signred"], g._tone["tyre"], g._tone["signblue"], g._tone["markyellow"], g._tone["tyre"], white.darkened(0.25)]
+	for i in range(9):
+		var a := TAU * _rnd(k + i, 11) + float(i)
+		var h := 0.6 + 1.4 * _rnd(k + i, 12)
+		var o := Vector3(cos(a), 0, sin(a)) * 0.088
+		g._furn._box(b, p + o + Vector3.UP * h, Vector3(0.07, 0.05 + 0.08 * _rnd(k + i, 13), 0.008), cols[i % cols.size()],
+			Basis(Vector3.UP, -a + PI * 0.5))
+	# the sign
+	var c := p + Vector3.UP * 3.1 + nrm * 0.1
+	var n := 24
+	for i in range(n):
+		var a0 := TAU * float(i) / n
+		var a1 := TAU * float(i + 1) / n
+		var e0 := (right * cos(a0) + Vector3.UP * sin(a0)) * 0.3
+		var e1 := (right * cos(a1) + Vector3.UP * sin(a1)) * 0.3
+		b.tri(c, c + e1, c + e0, nrm, g._tone["mark"])
+		b.tri(c - nrm * 0.01, c - nrm * 0.01 + e0, c - nrm * 0.01 + e1, -nrm, g._tone["pole"])
+	var red: Color = (g._kerb_mat.get_shader_parameter("red") if g._kerb_mat != null else g._tone["signred"])
+	_round(b, c + nrm * 0.004, right, Vector3.UP, 0.27, nrm, 0.06, red)
+	# the lamp: an arm out over the way and its head
+	var top := p + Vector3.UP * 5.2
+	g._furn._tube(b, top, top + right * 0.9 + Vector3.UP * 0.25, 0.04, 0.035, white, 6)
+	g._furn._box(b, top + right * 1.0 + Vector3.UP * 0.22, Vector3(0.45, 0.1, 0.2), white, Basis(Vector3.UP, atan2(-d.y, d.x)))
+	if bin:
+		var q := p + nrm * 0.27
+		g._furn._tube(b, q + Vector3.UP * 0.55, q + Vector3.UP * 1.0, 0.17, 0.19, g._tone["tyre"].lightened(0.15), 10)
+		g._furn._tube(b, q + Vector3.UP * 0.99, q + Vector3.UP * 1.06, 0.2, 0.21, g._tone["signblue"].lerp(g._tone["signred"], 0.5), 10)   # (the liner: purple, between the signs' blue and red)
+	g._add_post(at, 0.12)
 
 ## a motorbike, nose along local +Z (white where it takes its paint): spoked wheels a good
 ## deal bigger than a scooter's, the engine low between them, a tank, a seat, an exhaust
