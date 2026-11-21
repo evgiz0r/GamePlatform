@@ -1296,10 +1296,27 @@ The user picked all five things the drive charts showed (above). Each found in t
   on 14 m past it.
 - **The car that pulled in and stopped for the player** (route 6 at 3:10 before): not seen
   again in five drives since, and a replay of that drive with the old code parted from it
-  before then (above). `route_set.gd LEADLOG=1` now prints how a car stands when it
-  turns up under 15 m in front, or holds itself for the player while in front of it (its
-  heading, where the player is from it, its road, lane shift, its path's gap to the player),
-  and when autodrive stands 5 s giving way to a car that stands too, what holds that one.
+  before then (above). What fits it: a car going round a delivery van, over the centre line,
+  in autodrive's lane (the trace's car speed is its own, not along the lane: a car coming
+  head-on reads the same). Traffic judged the other lane by distance alone (35 + 45 m) and
+  never again once out; at 50 km/h the player is there in under 6 s, and the pass takes
+  7-8. Staged (`tests/van_pass.gd`, a straight street in Ashdod, autodrive at 50 km/h from
+  70/110/150/190 m, `PASS_OLD=1` as before): from 70 m the car went round, stood head-on 9 s
+  held by the player, autodrive braked 6.5 m/s^2; from 110 m it got by with 1.2 m to spare.
+  Now `_oncoming_clear(..., secs, d)`: nothing in the other lane that would reach the pass's
+  far end in the time it takes (`_pass_secs`: pulling away from its speed, x1.25 + 1.5 s),
+  and it turns back only while barely out and rolling (once further out, or standing, it
+  could not get back: a car moves sideways only as it rolls, and stood nose out, face to
+  face with autodrive). That showed an older trap: a car standing close behind the van, the
+  way clear, never went -- sideways only as it rolls, and the van "in its way" until it is
+  out past its side; it stood till taken away (25 s). Now, going round, it creeps (1.2 m/s
+  at most) and turns out at up to 0.8 of its speed sideways. `LEADLOG=1` in the route set
+  prints how a car stands when it turns up under 15 m in front, or holds itself for the
+  player while in front of it, and what holds a car autodrive gives way to while both stand.
+- **Kikar Barak, route 2**: autodrive stood 10-17 s giving way to a car that stood too, its
+  why "limit" (nothing holding it, it said), held by no one -- found in the GIVE log, not
+  fixed (the log now prints that car's wants, its moment to react, a hit, its junction
+  wait); open.
 
 ### Hills, pockets, the end of a green, a divided road's middle (20 Nov 2026, later)
 

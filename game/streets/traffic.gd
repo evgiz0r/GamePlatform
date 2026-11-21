@@ -366,7 +366,10 @@ func tick(dt: float) -> void:
 		# Sideways only as it rolls, like a car steering: its back trails the front (_place),
 		# so a shift while it stood moved the front alone and swung the body round -- cars
 		# waiting at Kaplan's light stood 60 degrees across the next lane, on its cars
-		lat = minf(lat, c.v * SIDE_PER_V * 4.6 / maxf(c.len, 4.6))   # (a 12 m bus angled as much swung its ends into the next lane)
+		# (pulling out from close behind a delivery van it goes round: steeper, as people turn
+		# out at a crawl -- at 19 degrees, from 2 m behind it, it met the van's corner first)
+		var side_k := 0.8 if c.pass_i >= 0 and c.v < 3.0 else SIDE_PER_V
+		lat = minf(lat, c.v * side_k * 4.6 / maxf(c.len, 4.6))   # (a 12 m bus angled as much swung its ends into the next lane)
 		var ds := clampf(c.shift_to - c.shift, -lat * dt, lat * dt)
 		if c.realign and absf(c.shift_to - c.shift - ds) < 0.05:
 			c.realign = false
@@ -558,6 +561,12 @@ func _target(c: Car, i: int, dt: float) -> float:
 		# its own speed, and the player's car behind it, its sudden stops charted)
 		if room <= 0.0:
 			follow = maxf(lead_v + room * 0.5, 0.0) if free > 0.0 else 0.0
+		if who >= 0 and who == c.pass_i:
+			# going round the van it stands behind: creep on, pulling out. It moves sideways
+			# only as it rolls, and the van counts as in its way until it is out past its side:
+			# standing there, waiting to be out before it rolled, it never went (van_pass).
+			var bump := best - (c.len + best_len) * 0.5
+			follow = maxf(follow, minf(1.2, sqrt(2.0 * BRAKE * maxf(bump - 0.6, 0.0))))
 		if follow < vt:
 			vt = follow
 			c.why = "player" if who == -1 else "car"
