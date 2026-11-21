@@ -1113,6 +1113,22 @@ slow" (Givatayim, a small ring on a main road, 13 km/h on it).
   a car go sooner at any crossing once the person is past it. Open: whether those cars were
   turning (right) or going straight (then the walk light let people out while that way was
   still clearing) -- the drive-through print does not say yet.
+- **The drive, charted** (the user: "the car slows down and stops in weird places... sudden
+  stops due to other cars... others just drive while the autodrive is hesitant and even
+  misses green"): `route_set.gd` `TRACE=path` records a row every 0.1 s (the game keeps
+  `_ap_light_dbg`, the light `_ap_light_v` read, and `_ap_lead_i`, the car followed, for
+  it); `tests/drive_trace.py` turns it into rows or a report; a chart page of routes 2 and 6
+  was made from them. What they show: held back by the car in front 56% / 52% of the drive,
+  free at the limit 23% / 32%, bends 18% / 11%; standing on its own green 7 / 8 s in all
+  (queues starting, 1.5-4 s a time: no missed greens); 8 hard brakes a drive, most of them
+  5-5.6 m/s^2 coming up behind a car already standing 10 m ahead (the follow speed allows
+  2.6 m/s^2: the car is seen late, or stops abruptly -- open), some behind a car moving as
+  fast as itself (one crossing its way, read as the car in front? -- open); route 6 at 3:10:
+  a traffic car pulled in 12 m ahead at 24 km/h and stopped dead for the player (its why
+  "player"), autodrive braked 8.8 m/s^2 from 48 km/h and touched it (counted as 3 hits on a
+  wall and a building beside it) -- open; at 3:46 it lost 19 km/h in a tenth of a second at
+  50 km/h with nothing ahead (a knock the route set does not count: it counts a hit only
+  when the thing hit changes) -- open.
 - **Not found**: the user's own junction (the T of two divided roads) showed no stands in
   150 s of traffic nor with autodrive through it from 5 ways in; the car in their screenshot
   may have been one of these zebra waits or a turn waiting for oncoming traffic. Ramps and
@@ -2446,6 +2462,24 @@ Each line: where the code is, the test, what good reads.
   every street parks half up the kerb, and the lanes share the whole asphalt
   (`_lane_off`/`_lanes_each_way`), so a parking strip on the road needs traffic, autodrive and
   the lane paint to give that width up first.
+- **Cars stopping for a slip road's light** (user, Ashdod, Sderot Menachem Begin past Herzl:
+  "why are the cars stopping there"): OSM has a traffic signal on Herzl's slip road 18 m
+  before it joins Begin eastbound; `_lights_setup` moves a signal to the nearest junction
+  within 40 m -- the join, ~35 m past the Herzl junction, by the bus stop -- and every way
+  into it stopped, so autodrive and the traffic stood there on red with nothing to wait
+  for. `_slip_join` (in `_site_ways_in`): a lit point where only slip roads (`*_link`) join
+  a one-way main road running straight through, all from its right-hand side, keeps the
+  main road's ways in as from inside the junction (no stop line, no pole; every reader of
+  `_sig_line` skips those) -- only the slip road stops; joining from the left, across the
+  traffic, it stays a light for all. (Left out instead of marked, the main road's car took
+  the slip road's way in -- 24 deg off, inside `_way_in`'s 45 -- for its own and stopped
+  anyway.) `lights_slip_joins` in the `city_built` event: Ashdod 10, Tel Aviv 22,
+  Givatayim 11. After: the three drives across the knot never stood there.
+  `tests/light_line.gd` (autodrive from `CAR`, to `DEST`, every stop of 2 s: what holds it,
+  the lit point, nose to stop line, the light's colour): from the start up Herzl to
+  HaAtzmaut, `DEST="-1430,2700" CAR="-1799,2526,-0.2,0.98"` level 3 (`WAYS=1` prints each
+  light's ways in) -- before, one run in three stood there (the light red), the nose 1.6 m
+  short of its line.
 - **Medians' ends messy** (user, Tel Aviv, a median with railings by a zebra: "the pavement
   on those middle areas seems messy a lot of times. the geometry doesn't align"): a median
   was pieces laid apart -- each half's strip of it (`inner_side` in the kerb runs), in that
@@ -2508,7 +2542,7 @@ Each line: where the code is, the test, what good reads.
   anywhere), `street_at` (by street name at its roundabouts), `perf_dive`, `deck_corner`,
   `islands`, `pave_overlap`, `picker`, `minimap_route`, `warm_census`, `index_gain`,
   `signs_inferred`, `start_drive`, `rails_near`, `cut_under`, `signs_double`, `auto_stands`,
-  `parked_median`, `horizon_line`, `median_ends`;
+  `parked_median`, `horizon_line`, `median_ends`, `light_line`;
   `tools/level_roads.py`.
 
 ## OSM's extra fields and speed limits: handoff (20 Nov 2026)

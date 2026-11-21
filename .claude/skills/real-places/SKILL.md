@@ -333,6 +333,14 @@ the parked cars, which stand a third in the road).
   straight kerb across a road's mouth went in whole and laid a strip of pavement across the
   junction. A fine grid (8 m) of road segments makes those checks cheap while building.
 
+## Traffic lights
+
+- **A light on a slip road's end is the slip road's.** OSM often puts the signals on the node
+  where a slip road (`*_link`) joins or leaves the main road; taken as a light for every way
+  into that node, it stopped the main road's traffic mid-block for nobody. Where only slip
+  roads meet a one-way main road there, from its right-hand side, give the main road no stop
+  line; from the left (across its traffic) it is a real junction.
+
 ## Car parks
 
 - Many car parks are mapped only by their lanes (`service=parking_aisle`), no area: the
