@@ -1051,8 +1051,12 @@ func kerbside() -> void:
 								break
 							rails.append(Transform3D(Basis(Vector3.UP, atan2(-d.y, d.x)), Vector3(m.x, _h(m) + kh, m.y)))
 							rail_at.append([m, d])   # (tests/rails_near.gd, start_drive.gd)
-							g._add_post(m - d * 0.6, 0.06)
-							g._add_post(m + d * 0.6, 0.06)
+							# its posts: the far end, and the near one on the first panel only -- the
+							# next panel's near end is this one's far end (it was put up twice, the
+							# joints of every railing: city_check's "posts twice")
+							if k == 0:
+								g._add_post(m - d * way * 0.6, 0.06)
+							g._add_post(m + d * way * 0.6, 0.06)
 					else:
 						for k in range(2):
 							var p := c + d * way * (2.1 + 1.3 * k) + side * sg * (hw + 0.42)

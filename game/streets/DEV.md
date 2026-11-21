@@ -258,6 +258,30 @@ The ones most often touched, and the functions in them:
   (seeds 1-14). The test's "close" counts under 0.58 m now (0.6 is the floor walkers are held
   at; a push off a post after it left one at 0.599 and failed a run). tests/walk_people.gd counts
   someone behind a building as unseen (`_behind_building`).
+- **the look bench** (the user: "some small enviorement ... where we can quickly load and
+  look around ... for testing and checking the taste of the look ... just for the agent").
+  `cities/look_bench.json`, made by `tests/make_look_bench.py`: one street with a side street
+  across it, 16 blocks of 3-5 storeys from 1950 to 2015 (sand, cream, white, stone; 60
+  balconies, 22 closed in), a cafe, a grocery, a bus stop, a zebra, trees given as a map of
+  every tree (so none are made up in front of the facades). `tests/look_bench.gd` points the
+  game at it (STREETS_CITY_FILE, level 4's look) and shoots street, facade (a block with
+  balconies, from the middle of the street it faces), balcony (from its kerb, looking up),
+  people, car; OVERVIEW=1 from above, NIGHT=1. Loads in 4-8 s; a whole run ~35 s rendered,
+  against 3-4 min for a real town. Not a level: nothing in the game reaches it. Needs
+  rendering (FULL=1): headless, its shots wait for a frame that never comes.
+  **Looks being tried** (`_try`, STREETS_TRY, off unless set): "a" dark creases on the
+  balconies (undersides 0.42, insides 0.6-0.72, a shade band on the wall under each slab), "e"
+  edges (a lip, a drip line, a coping), "c" contrast (fill light x0.6, sun x1.12), "r"
+  railings of bars on half the blocks instead of solid parapets. On the bench, 21 Nov: now,
+  the balconies melt into the wall (one colour, flat light); creases + edges make them read
+  as slabs; railings alone float; all four together look most real. Vertices a balcony: 96
+  now, 172 with creases + edges, ~196 with a railing (under BATCH_KIT_VERTS 200: still no
+  draws of their own). tests/look_tries.gd shoots the real start the same way (there the
+  nearest block's balconies are the wall shader's recesses, which these do not touch).
+  **All four kept** (the user: "push all"): always on now, `_try` left for the next tries.
+  The fill light's drop (x0.6, sun x1.12) moves the filmed walks' grade too (FILM_LOOK's
+  fit was made on the old light): re-record a walk bare and refit before trusting the
+  side-by-side's levels again.
 - **dogs, feet, walking on the spot** (the user: "the dogs look pretty wierd, and their
   hitboxes and how they walk is pretty wierd"; "some people are walking in place ... and
   their legs are somewhat bit inside the ground"). The dog (furniture `dog_kit`) is
@@ -761,11 +785,12 @@ answer "should the checks have caught it, and what would a check for its whole f
 | The rule broken | Reports in it | Checked by | Gap, and what closing it costs |
 |---|---|---|---|
 | a solid thing stands on the asphalt | bollards by zebras, a railing at a roundabout's zebra, canopy columns, hedges, islands, a median's wall over a road | `city_check`: walls, posts, buildings on the road; islands; median walls | none known |
-| a thing that stands alone is put up twice | stop / give-way signs twice; people's lights twice (94 of Ashdod's 408: a divided road's zebra is a crossing point on each half); cars' lights twice (Tel Aviv 3, found by the widened check, not reported); a junction offering one street twice | `city_check`'s "... doubled" rows: signs, walk lights, cars' lights, bus stops (`world_checks.doubled_all`); junction offers twice | the things with no list of where they stand (lamps, benches, bins, hydrants, shelters, kiosks, crossing signs): a log of everything placed, [kind, where, facing], kept only in tests, each kind's spacing -- about 2-3 hours, seconds a city |
-| a car parked where nobody parks | on a divided road's median, in a bus stop | `tests/parked_median.gd`, not in the validation | a row in `world_checks` (medians, bus stops, zebras, a junction's mouth): about half an hour, seconds a city |
+| a thing that stands alone is put up twice | stop / give-way signs twice; people's lights twice (94 of Ashdod's 408: a divided road's zebra is a crossing point on each half); cars' lights twice (Tel Aviv 3, found by the widened check, not reported); a junction offering one street twice; every railing's joint posts (found by "posts twice", fixed) | `city_check`: "... doubled" rows for signs, walk lights, cars' lights, bus stops (0); "posts twice": any solid thing of any kind twice on one spot (a limit per town: the tail left, 128 / 1 / 48 / 1 / 596) | near-doubles of things with no list of their own (two benches a metre apart): a log of everything placed, [kind, where, facing], about 2-3 hours |
+| a car parked where nobody parks | on a divided road's median, in a bus stop; on zebras (19 in three towns) and in a junction's disc (3), both found by the new rows, not reported | `city_check`: parked on a median / in a bus stop / on a zebra / in a junction (`world_checks.parked_wrong`), all 0 | none known |
 | two surfaces at one spot (they flicker) | a pavement flickering at a corner, grass through the road | `city_check`'s two pavings (a limit per city) | the sky's horizon line is a render, not a mesh overlap: a scene test only (`horizon_line`) |
-| traffic breaks a rule of the road | greens both ways, a car in on red | `light_audit`, not in the validation; the exam (over the line at a red) | `light_audit`'s counts as a REGRESS line: about an hour, ~3 min a night. Unwatched, Tel Aviv's ways in with no light facing them drifted from 5 to 12 (read on ef5425b, 21 Nov) |
-| standing or waiting with nothing real to wait for | autodrive standing with the road clear, 3-11 s at a roundabout for a car 78 m off, stopping for a slip road's light | the exam: 10 s+ held by nothing named | a wait whose reason is named but wrong (giving way to a car far off, a light that is not its own): the exam logging each give-way's distance and each light's distance past the stop line, flagged past a limit -- about an hour, no extra run time |
+| traffic breaks a rule of the road | greens both ways, a car in on red | `city_check`: light_audit's static counts (`world_checks.light_counts`): crossing greens and the green man with cars going (0), the rest under each town's 21 Nov reading (`LIGHTS_21NOV`); the exam (over the line at a red) | Tel Aviv's ways in with no light facing them drifted from 5 to 12 before they were watched: an open problem |
+| standing or waiting with nothing real to wait for | autodrive standing with the road clear, 3-11 s at a roundabout for a car 78 m off, stopping for a slip road's light | the exam: 10 s+ held by nothing named; "gave way to a car 6 s+ off" (a named reason that is wrong) | a light that is not its own (the slip road's): no general check yet |
+| something in view does what nothing real does (object permanence) | walkers sliding a metre aside as autodrive passed on the road; walkers stepping over side streets' mouths; people appearing or jumping | `people_pops` (REGRESS, nightly): people popping, sliding sideways over 1 m/s by your car, on a street away from a zebra, traffic cars popping or jumping, crossing against the light | things other than people and traffic (parked cars, doors, anything that moves): not watched |
 
 **A fix comes with what would catch it again** -- a scene test that stages it, or a check
 here; and the check is for the family when that costs little (the row above). **After merging** (another session's work, or `main`), before pushing: `city_check`
@@ -2769,6 +2794,45 @@ Each line: where the code is, the test, what good reads.
   (`_light_poles`, same group and facing within 18 deg only, so `light_audit` still finds a
   light facing every way in; `lights_twins` in the tally). After: every "doubled" row 0 in
   all five towns.
+- **The checks' gaps closed** (user: "go for it", after the families table): `city_check`
+  gained parked cars where nobody parks (`world_checks.parked_wrong`: a median, a bus stop, a
+  zebra, a junction -- the new rows found 19 cars on zebras in three towns and 3 in a
+  junction's disc; `_no_parking` now keeps every car's body a metre off a zebra's stripes
+  (`_zebras_near`) and both its ends out of any nearby junction's disc, on a road passing
+  close by too: all 0), light_audit's static counts (`world_checks.light_counts`, which
+  light_audit now calls: crossing greens and the green man with cars going 0, the rest
+  under `LIGHTS_21NOV`), and "posts twice" (any solid thing twice on one spot: every
+  crossing railing's joint was two posts -- furniture.gd's panels now add the near end on
+  the first only -- 848 / 1 / 1,259 / 177 / 2,593 -> 128 / 1 / 48 / 1 / 596, the tail
+  under a limit). The exam gained "gave way to a car 6 s+ off" (`_give_far`: 3 s into a
+  wait, the car waited for 30 m+ from the junction and 6 s+ from it at its speed): 0 in
+  the test town and Givatayim.
+- **Build times in Israel time** (user: "can we print build times in israel time"):
+  build.txt stays UTC (prepublish stamps compare it); `_build_line` shows it through
+  `israel_time` -- two hours ahead, three from the Friday before March's last Sunday to
+  October's last Sunday. `tests/israel_time.py` checks it against zoneinfo either side of
+  every change 2025-2030: all 72 match.
+- **People crossing the road away from the zebras** (user, Givatayim, Keren Kayemet by a
+  roundabout: "people crossing the road in random location, bothers the traffic and
+  shouldnt happen"): at the end of a stretch of pavement a walker walked on over the side
+  street's mouth (`_walk_on`, up to 18 m of asphalt), and `_pavement_pieces` forgave up to
+  6 m of asphalt as a driveway's mouth -- a narrow side street's too. `_on_street` (a
+  kerbed road's lanes or a junction's disc, not a driveway's or a service lane's): the step
+  never crosses one, and only a driveway's asphalt is forgiven. People cross at the zebras
+  (`_crossers`), by the lights there.
+- **People jumping aside as autodrive passes** (user: "they jump to the side. i dont want
+  any popping of any objects, it looks fake ... need some more object permanence"): the
+  "a car coming at them on the pavement" step aside (1.1 m in under a second) fired
+  whenever the car's middle was within 6 m and moving -- a car driving past on the road,
+  3-4 m from people on the pavement's back half. Now only when the car's body
+  (`_body_gap`) is within a metre of them now or in half a second.
+  `tests/people_pops.gd` widened to object permanence (REGRESS, in validate.sh): Givatayim
+  90 s, sliding aside by your car 8 -> 0, on a street away from a zebra 2 -> 0, popping
+  2 -> 1, cars 0. Also: a step round a tree eased across at up to 3 m/s (people gliding) --
+  now at most `SIDESTEP` 0.8 m/s (slides with the car far 21 -> 7); and `_spawn_ok`'s
+  "behind a building" must hold from the eye and from where it will be in 1.5 s, a metre
+  either side of the sight line (people put just round a corner came into view 50-70 m
+  ahead).
 - **Cars stopping for a slip road's light** (user, Ashdod, Sderot Menachem Begin past Herzl:
   "why are the cars stopping there"): OSM has a traffic signal on Herzl's slip road 18 m
   before it joins Begin eastbound; `_lights_setup` moves a signal to the nearest junction
@@ -3196,6 +3260,19 @@ without a gap. (The square being built keeps its stand-in to the end of `_build_
 
 ## Open problems
 
+- **One walker in 90 s still appears in view** (`people_pops`, Givatayim, 21 Nov): put 76 m
+  off, where people fade in (75-90 m), 160 m from where it was. Placement (`_place_walker`,
+  not `anywhere`) checks `_spawn_ok` at the spot; the camera moves before the next frame.
+  Try: placing beyond PEOPLE_SEEN when the street there has room, hidden spots only as a
+  fallback. Also seen once: a 2.5 m jump at 72 m (state unknown: print it).
+- **Tel Aviv's ways into a lit junction with no light facing them: 12** (21 Nov, ef5425b and
+  after; 5 on 20 Nov). Not caused by the doubled-lights fix (12 on the code before it too);
+  crept up while light_audit was not in the validation. `LEVEL=7 STATIC_ONLY=1 VERBOSE=1`
+  light_audit names each. Guarded at 12 now (`city_check` LIGHTS_21NOV).
+- **Solid things twice on one spot, the tail** (`city_check` "posts twice", under a limit):
+  Givatayim 128 (bougainvillea clumps over a garden wall, 0.44 m, drawn twice: one plot's
+  front laid twice?), Tel Aviv 596 (0.6 m: trees mapped by OSM and the town's survey both?),
+  Ashdod 48. Invisible (the same thing drawn twice), but twice the draws and checks.
 - **Tel Aviv's lights and the exam, first round** (Nov 2026). `light_audit` at level 7:
   4 junctions where crossing streets shared a green, all skewed (55-65 degrees): the ways
   from inside a junction (the road between two of its points, no light) were counted in

@@ -451,3 +451,17 @@ A city that builds in 5 s on a laptop can take 15 there, and a minute of game ti
 wall time. Run tests with the shell's background mode and a long timeout, chain several
 in one script (two Godot runs at once on 4 cores is about the limit), and carry on working.
 A foreground command is cut off at 10 minutes, and a `&` job inside it does not outlive it.
+
+## A bench for judging looks
+
+Trying a look on a real town costs minutes a picture: loading it is most of a run. A tiny
+made-up place in the same data format (a street or two, a dozen buildings of the kinds that
+matter, a few shops and trees), loaded by a test only, takes seconds and shows the same
+materials, kits and lights. Put the looks being tried behind a test-only switch (an
+environment variable read once, off by default), shoot the same fixed views with each, and
+lay them side by side; then keep what reads best. Mind what the generator leaves to the game:
+anything it adds by itself (made-up street trees, parked cars) can stand in front of the very
+thing a view is aimed at, so give the bench enough of its own to stop that, and aim cameras
+from where a person would stand (the middle of the street, the kerb), not from inside the
+next garden. A shot that waits for a drawn frame never returns headless: run such a bench
+with rendering on.

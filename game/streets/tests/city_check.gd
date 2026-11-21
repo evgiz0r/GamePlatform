@@ -19,9 +19,12 @@ extends SceneTree
 ##   lit points alone      -- a point with traffic lights that belongs to no junction
 ## and the user's reports since these checks began, each fixed with a test that staged it
 ## (world_checks.gd says which), so none comes back unseen. Should be 0: a thing that stands
-## alone put up twice (signs, walk lights, lights, bus stops), a
+## alone put up twice (signs, walk lights, lights, bus stops), a car parked where nobody
+## parks (a median, a bus stop, a zebra, a junction),
+## crossing ways green together or the green man with cars going (light_audit's), a
 ## junction offering one street twice, a traffic island on the road, a median's wall over
-## another road. Under the city's limit (LIMITS): roads leaning over 6% side to side, two
+## another road. Under the city's limit (LIMITS, LIGHTS_21NOV): the rest of light_audit's
+## counts, any solid thing twice on one spot, roads leaning over 6% side to side, two
 ## pavings laid over one spot (they flicker).
 ##   LEVEL=0 runs Givatayim, Bedford, Ashdod, the test town and Tel Aviv, one after another.
 ## Traps, not bugs -- where to stage a scene test, since each has bitten before:
@@ -150,14 +153,31 @@ func _name(ri: int) -> String:
 ## bug is coming back. Tilt: the share of road leaning over 6% side to side (Givatayim's
 ## ground model holds roofs, its open problem). Pavings: m2 of two different pavings at one
 ## height over one spot (Tel Aviv read 30 after the fix).
-const LIMITS := {
-	1: {"tilt": 8.0, "pavings": 60.0},
-	2: {"tilt": 3.0, "pavings": 60.0},
-	3: {"tilt": 3.0, "pavings": 140.0},   # (124 m2 after the fixes of 21 Nov, a tail of 1-3 m2 spots in a
-	                                       # town 1.5x Tel Aviv's roads: the user chose to guard it here)
-	4: {"tilt": 3.0, "pavings": 60.0},
-	7: {"tilt": 3.0, "pavings": 60.0},
+## The lights' counts (world_checks.light_counts, as tests/light_audit.gd prints them): what
+## each town read on 21 Nov, when they joined (they are the same every run, so over is worse):
+## ways in with no pole facing them, stop lines that leave a waiting car's front on a zebra, a
+## road through two lit points of one knot in two groups, a divided road lit on one half only,
+## stop points short of their junction. Tel Aviv's 12 ways in with no pole were 5 earlier on
+## 20 Nov (tests/README.md): they crept up unwatched, an open problem in DEV.md.
+const LIGHTS_21NOV := {
+	1: {"no_pole": 8.0, "on_zebra": 2.0, "split_groups": 0.0, "unlit_twins": 0.0, "short": 2.0},
+	2: {"no_pole": 3.0, "on_zebra": 0.0, "split_groups": 0.0, "unlit_twins": 0.0, "short": 1.0},
+	3: {"no_pole": 4.0, "on_zebra": 0.0, "split_groups": 1.0, "unlit_twins": 0.0, "short": 3.0},
+	4: {"no_pole": 0.0, "on_zebra": 0.0, "split_groups": 0.0, "unlit_twins": 0.0, "short": 0.0},
+	7: {"no_pole": 12.0, "on_zebra": 3.0, "split_groups": 0.0, "unlit_twins": 0.0, "short": 11.0},
 }
+const LIMITS := {
+	1: {"tilt": 8.0, "pavings": 60.0, "posts_twice": 128.0},
+	2: {"tilt": 3.0, "pavings": 60.0, "posts_twice": 1.0},
+	3: {"tilt": 3.0, "pavings": 140.0, "posts_twice": 48.0},   # (124 m2 after the fixes of 21 Nov, a tail of 1-3 m2 spots in a
+	                                       # town 1.5x Tel Aviv's roads: the user chose to guard it here)
+	4: {"tilt": 3.0, "pavings": 60.0, "posts_twice": 1.0},
+	7: {"tilt": 3.0, "pavings": 60.0, "posts_twice": 596.0},
+}
+## (posts twice: any solid thing put up twice on one spot, world_checks.posts_twice. When it
+## joined, 21 Nov, the railings' joints were most of it -- 848 / 1 / 1,259 / 177 / 2,593 --
+## fixed; what is left is a tail, guarded here: Givatayim's bougainvillea clumps over a wall
+## drawn twice, Tel Aviv's 0.6 m posts (trees mapped twice?), an open problem in DEV.md)
 
 func _check(lvl: int) -> int:
 	var out := {}            ## kind -> [[how far, where, what], ...]
@@ -261,14 +281,21 @@ func _check(lvl: int) -> int:
 	while g._bg_build:
 		await create_timer(0.5).timeout
 	var W := preload("res://game/streets/tests/world_checks.gd")
+	var L: Dictionary = W.light_counts(g)
 	for row: Array in W.doubled_all(g) + [["junction offers twice", W.junction_twins(g)],
-			["islands on the road", W.islands_on_road(g)], ["median over a road (m)", W.medians_over_roads(g)]]:
+			["islands on the road", W.islands_on_road(g)], ["median over a road (m)", W.medians_over_roads(g)]] \
+			+ W.parked_wrong(g) + [["lights: crossing greens", [L["conflicts"], "(light_audit VERBOSE=1 names them)"]],
+			["lights: green man vs cars", [L["walk_bad"], "(light_audit VERBOSE=1 names them)"]]]:
 		var res: Array = row[1]
 		var v := float(res[0])
 		found += ceili(v)
 		print("  %-24s %5d%s" % [row[0], ceili(v), ("      at " + String(res[1])) if v > 0.0 else ""])
-	var lim: Dictionary = LIMITS.get(lvl, {})
-	for row: Array in [["road leaning over 6% (%)", "tilt", W.tilt(g)], ["two pavings at once (m2)", "pavings", W.pavings_overlap(g)]]:
+	var lim: Dictionary = (LIMITS.get(lvl, {}) as Dictionary).merged(LIGHTS_21NOV.get(lvl, {}))
+	for row: Array in [["road leaning over 6% (%)", "tilt", W.tilt(g)], ["two pavings at once (m2)", "pavings", W.pavings_overlap(g)],
+			["posts twice", "posts_twice", W.posts_twice(g, PARKED_R)],
+			["lights: way in, no pole", "no_pole", [L["no_pole"], ""]], ["lights: stop on a zebra", "on_zebra", [L["on_zebra"], ""]],
+			["lights: knot split", "split_groups", [L["split_groups"], ""]], ["lights: half unlit", "unlit_twins", [L["unlit_twins"], ""]],
+			["lights: stop short", "short", [L["short"], ""]]]:
 		var res: Array = row[2]
 		var v := float(res[0])
 		var cap := float(lim.get(row[1], INF))
