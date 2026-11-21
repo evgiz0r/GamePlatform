@@ -1641,3 +1641,13 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   lobby and stairwell fitted to the outline, the right number of landings, and that many
   flats each split into rooms the way a block of its age is. Only the building you walk into
   is built inside, while you are in it.
+- Something to watch while the city loads: "on bringup when the graphics load in the
+  background we will play something, from animation to a story or whatever. instead of these
+  wierd hickups where we see things pop on the screen, its not great". Today the car is shown
+  after a couple of seconds and the rest of the town goes up square by square around it --
+  buildings, trees and cars appearing in view, and a stutter or two while the browser
+  compiles its shaders. Instead: a short opening of its own over those first seconds -- a
+  flight in over the town from above (the stand-ins of the squares not built yet already
+  give it something to show), a few lines of the town's own story, a title card for the
+  level -- that hands over to the car once the squares around it and in view are up and the
+  shaders have compiled, skippable with a tap.
