@@ -845,7 +845,9 @@ twice) draws it as a map; "save log" there downloads it (a browser) or writes it
 `user://drive_logs/`. Ask the user for that file when they report bad driving, and draw it:
 `python3 game/streets/tests/drive_log_map.py file.json` -- the streets, the track coloured
 by speed, the plan every 2 s, the other cars, the events, and a strip of speed against time
-coloured by what held it. Then stage that spot in a scene test.
+coloured by what held it. Then stage that spot in a scene test. Each sample also holds the people within 30 m
+(`people`: [x, z, who], who the list and state -- "walker", "crosser:cross"...), and
+`route_set.gd` saves a log of its own a second after any hit (`route-<n>-hit<t>.json`).
 
 ## The driving exam and the test trip: the loop for driving behaviour
 
@@ -1241,15 +1243,32 @@ Nothing is half done: all of the above is on main.
     within a few metres of the junction (it may not start behind it): 3.6-4.3 m at two of
     Givatayim's four in turn_width. Dropping a plain lane point that the arc would start
     behind would let it;
-  - route 9 (Bedford) hit a person at 23 km/h on Hammonds Plains Road (21 Nov, t 284 s of the
-    drive): autodrive held for 'people' only ~0.6 s before, at 10 m/s -- someone came into the
-    lane from close by, or the people check saw them late (its 32 m look and 1.7 m reach);
+  - (done 21 Nov: route 9's person hits -- see "People stepping into the lane" below);
   - `_push_out` sets `_last_hit` even when it only probes (the plan's `_clear_lane`, the nose's
     safety net): a test reading `_last_hit` must gate on `_crash_cool`, as route_set and
     give_way do;
   - few medians are deep enough to wait in where side streets cross (the carriageways' guessed
     widths): if real ones look wider than the game draws them, it is the widths
     (`_fit_widths`, the `median` key), not the waiting.
+
+### People stepping into the lane (21 Nov 2026)
+
+Route 9 (Bedford) hit a person in two of four runs (23 km/h on Hammonds Plains Road, 32 on
+Hollyhock Way), autodrive holding for "people" only 0.3-0.6 s before. A hit is rare, so the
+measure is `tests/people_near.gd`: everyone who comes into the lane ahead (1.7 m of the
+plan) nearer the nose than the car can stop. Route 9 twice: 4 over 9.1 km, all walkers
+moving 1.4-1.6 m/s square to the lane -- stepping over a side street's mouth (`_walk_on`'s
+step, up to 18 m of asphalt) with no look at the traffic, onto the street the car was on or
+turning into. Givatayim's route 4 three times: 0 (its mouths are narrow and slower).
+Two changes:
+- the walker at the kerb of a step over waits while `_safe_to_cross` says a car could not
+  stop, or one's middle is within 4 m of the step (the crossers' 2.5 m let them out into
+  a car's side once its nose was past); after 15 s, back the way they came (`kerb_t`);
+- `_ap_people_v` keeps each person's pace (once a physics frame, `_ap_ppl_at`) and looks
+  for them where they will be when the car is level (up to 2 s on) as well as where they
+  are, and looks as far as the car needs to stop (32 m, or v^2/7 + 12).
+After: route 9 twice 0 late, 3 within 1.6 m of the body (none under 1 m; was 7, 1);
+Givatayim 0 late. Traffic cars do not look at walkers at all (they rely on the kerb wait).
 
 ## Numbers to compare against (November 2026, cloud container, software renderer)
 

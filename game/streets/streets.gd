@@ -17446,6 +17446,28 @@ func _people_tick(dt: float) -> void:
 				placed = true
 				w["dir"] = -float(w["dir"])
 				s = clampf(s, 0.0, total)
+		# the step over a side street's mouth (or a street): at the kerb, a look first, and a
+		# wait while a car comes that could not stop for them -- they walked straight out
+		# in front of cars at 50 km/h (route 9 hit two, tests/people_near.gd). Waited long,
+		# they go back the way they came.
+		var over: float = w.get("cross", 0.0)
+		var at_kerb := false
+		if over > 2.5 and s != float(w["s"]):
+			var old: float = w["s"]
+			if (old <= 0.001 and s > old and s < over) or (old >= over and s < over):
+				# (and not out into a car's side as it goes by: its middle 4 m off, not 2.5)
+				if not _safe_to_cross((line[0] + line[1]) * 0.5, over * 0.5, 4.0):
+					s = old
+					at_kerb = true
+					if not w.has("kerb_t"):
+						w["kerb_t"] = 0.0
+						a.play("Idle", true, _people_rng.randf_range(0.8, 1.1))
+					w["kerb_t"] = float(w["kerb_t"]) + dt
+					if float(w["kerb_t"]) > 15.0:
+						w["dir"] = -float(w["dir"])
+		if not at_kerb and w.has("kerb_t"):
+			w.erase("kerb_t")
+			a.play("Walk_Carry" if w["carry"] else "Walk", true, float(w["speed"]) / 1.35)
 		w["s"] = s
 		var p := _along(line, cum, s)
 		var ahead := _along(line, cum, clampf(s + float(w["dir"]) * 0.5, 0.0, total)) - p
@@ -17844,7 +17866,7 @@ func _box_waiting(cr: Dictionary, mid: Vector2) -> bool:
 			return true
 	return false
 
-func _safe_to_cross(mid: Vector2, hw: float) -> bool:
+func _safe_to_cross(mid: Vector2, hw: float, near := 2.5) -> bool:
 	var movers: Array = [[_pos, _fwd() * signf(_v), absf(_v)]]
 	for c in _traffic.cars:
 		if c.alive:
@@ -17853,7 +17875,7 @@ func _safe_to_cross(mid: Vector2, hw: float) -> bool:
 		var p: Vector2 = m[0]
 		var to: Vector2 = mid - p
 		var d := to.length()
-		if d < hw + 2.5:
+		if d < hw + near:
 			return false   # on it, or right at it
 		var v: float = m[2]
 		if d < 45.0 and v > 0.8 and (m[1] as Vector2).dot(to / d) > 0.5 and v * v / (2.0 * 3.0) + 7.0 > d:
@@ -18044,38 +18066,75 @@ func _people_near(p: Vector2, r: float) -> Array:
 			out.append(a.position)
 	return out
 
-## autodrive: anyone standing on the lane ahead -- crossing, hurrying back, stepping aside
-## off a pavement -- stopped for, whatever the crossing rules say (the speed allowed, or INF)
+## autodrive: anyone on the lane ahead -- crossing, hurrying back, stepping aside off a
+## pavement, walking over a side street's mouth -- or about to be: stopped for, whatever the
+## crossing rules say (the speed allowed, or INF). Each person is looked for where they are
+## and where they will be by the time the car gets to them (their pace over the last ticks,
+## up to 2 s on). Looking only at where they stood, a walker stepping over a side street's
+## mouth at 1.5 m/s was seen once already in the lane 3-5 m off the nose: route 9 hit people
+## at 23 and 32 km/h (tests/people_near.gd: 4 "into the lane too late" over 9 km of Bedford).
+var _ap_ppl_at := {}                  ## a person's id -> [where last physics frame, their pace]
+var _ap_ppl_frame := -1
+
 func _ap_people_v() -> float:
 	if _ap_pts.size() < 2:
 		return INF
-	var people: Array = []
+	var people: Array = []   # [id, where]
 	for cr: Dictionary in _crossers:
 		if cr["state"] in ["cross", "back"]:
-			people.append((cr["actor"] as Actor3D).position)
+			var a: Actor3D = cr["actor"]
+			people.append([a.get_instance_id(), Vector2(a.position.x, a.position.z)])
 	for w: Dictionary in _walkers:
 		var a: Actor3D = w["actor"]
 		if a.visible:
-			people.append(a.position)
+			people.append([a.get_instance_id(), Vector2(a.position.x, a.position.z)])
+	# their pace, once a physics frame (tests call this between frames too)
+	var frame := Engine.get_physics_frames()
+	if frame != _ap_ppl_frame:
+		var dt := get_physics_process_delta_time() * (frame - _ap_ppl_frame if _ap_ppl_frame >= 0 else 1)
+		_ap_ppl_frame = frame
+		var now := {}
+		for e: Array in people:
+			var was: Array = _ap_ppl_at.get(e[0], [])
+			var pace := Vector2.ZERO
+			if not was.is_empty() and dt > 0.0:
+				var step: Vector2 = ((e[1] as Vector2) - (was[0] as Vector2)) / dt
+				# (a walker put down somewhere else jumps: no pace from that)
+				pace = (was[1] as Vector2).lerp(step, 0.3) if step.length() < 4.0 else Vector2.ZERO
+			now[e[0]] = [e[1], pace]
+		_ap_ppl_at = now
 	var fwd := _fwd()
+	var sp := maxf(absf(_v), 2.0)
 	var best := INF
-	for p3: Vector3 in people:
-		var p := Vector2(p3.x, p3.z)
-		if p.distance_squared_to(_pos) > 1100.0 or (p - _pos).dot(fwd) < 0.0:
+	for e: Array in people:
+		var p: Vector2 = e[1]
+		if p.distance_squared_to(_pos) > 1600.0 or (p - _pos).dot(fwd) < 0.0:
 			continue
-		var base := -_ap_pts[0].distance_to(Geometry2D.get_closest_point_to_segment(_pos, _ap_pts[0], _ap_pts[1]))
-		for j in range(_ap_pts.size() - 1):
-			if base > 32.0:
-				break
-			var a := _ap_pts[j]
-			var b := _ap_pts[j + 1]
-			var cp := Geometry2D.get_closest_point_to_segment(p, a, b)
-			if cp.distance_to(p) < 1.7:
-				var stop := base + a.distance_to(cp) - CAR_OFF - 2.8
-				best = minf(best, sqrt(2.0 * 3.5 * maxf(stop - 0.3, 0.0)))
-				break
-			base += a.distance_to(b)
+		var pace: Vector2 = (_ap_ppl_at.get(e[0], [p, Vector2.ZERO]) as Array)[1]
+		var stop := _ap_person_stop(p)
+		if pace.length() > 0.3:
+			# where they will be when the car is level with them (the car at its own pace;
+			# a walker going along the pavement beside the lane stays out of it)
+			var t := clampf((p - _pos).dot(fwd) / sp, 0.0, 2.0)
+			stop = minf(stop, _ap_person_stop(p + pace * t))
+		if stop < INF:
+			best = minf(best, sqrt(2.0 * 3.5 * maxf(stop - 0.3, 0.0)))
 	return best
+
+## how far the car can go before stopping short of someone at p on its lane (INF: not on it)
+func _ap_person_stop(p: Vector2) -> float:
+	var base := -_ap_pts[0].distance_to(Geometry2D.get_closest_point_to_segment(_pos, _ap_pts[0], _ap_pts[1]))
+	var look := maxf(32.0, absf(_v) * absf(_v) / 7.0 + 12.0)
+	for j in range(_ap_pts.size() - 1):
+		if base > look:
+			break
+		var a := _ap_pts[j]
+		var b := _ap_pts[j + 1]
+		var cp := Geometry2D.get_closest_point_to_segment(p, a, b)
+		if cp.distance_to(p) < 1.7:
+			return base + a.distance_to(cp) - CAR_OFF - 2.8
+		base += a.distance_to(b)
+	return INF
 
 const ZEBRA_PAST := 2.8              ## m from a car's lane line along the crossing: past it (half a bus and 1.5 m)...
 const ZEBRA_PAST_ME := 6.0           ## ...the player's: past the 5.5 m at which people run back from it to their kerb

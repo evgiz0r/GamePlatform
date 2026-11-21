@@ -17,6 +17,7 @@ these numbers the wrong way has broken something.
 | Test | Level | What it measures | Last result |
 |---|---|---|---|
 | `people_on_road` | 1, 3 | walkers / people at crossings standing on asphalt | 0 of ~2150 (was 29%) |
+| `people_near` | 2, 1 | autodrive by "go to" `FROM` -> `TO` (x,z; default route 9's last stretch, Hollyhock Way), `TRIPS` times, `TRIP_SECS` each: every person within `REACH` (1.6) m of the car's body while it moves, and everyone who came into the lane ahead (1.7 m of the plan) nearer the nose than the car could stop -- who (list, state, "stepping over" a side street's mouth), the car's speed, what held it, their last 2 s; hits. Headless, `--fixed-fps 60`; route 9 whole (`FROM=-965.4,1041.2 TO=-2702.1,448.2 TRIPS=2 TRIP_SECS=650`, ~20 min) | 0 hits, 0 into the lane too late (before, 21 Nov: 4 over 9.1 km of Bedford, walkers stepping over side streets' mouths at 1.5 m/s, 7 within 1.6 m; after 3, none under 1 m). Givatayim route 4 x3: 0 late |
 | `people_pops` | 1 | people appearing or jumping in view; crossings started against the light | none; 0 of 16 |
 | `junction_choices` | 3 | junction prompts during autodrive; a big junction asking twice | 0 twice; 3 knots asked once |
 | `autodrive_lanes` | 3 | autodrive on multi-lane roads: lane accuracy, bumps into cars, hits, buses passed | 0.4 m off the lane's middle, 0 bumps |

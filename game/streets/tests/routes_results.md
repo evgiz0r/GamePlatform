@@ -76,3 +76,34 @@ Each run of `run_routes.sh`, newest last. The routes are in routes.json (picked 
 | 8 | tel_aviv | שאול המלך 4 -> לויד ג'ורג' 4ב | yes | 4.1 min | 1.5 km | 0 | 30 s (light, דובנוב) | 0 | 0 | 0 s |
 | 9 | bedford | Amin Street 50 -> Lowther Lane 12 | yes | 8.6 min | 4.6 km | 0 | 25 s (car, a road) | 0 | 0 | 0 s |
 | 10 | dimyon | הנרקיס 12א -> התאנה 17 | yes | 1.1 min | 0.7 km | 0 | - | 0 | 0 | 0 s |
+
+## 2026-11-21 (commit 504c495, route 9 alone, before the people fix: the hit again, a different street)
+
+| # | city | from -> to | arrived | time | driven | hits | longest wait | reds | rescues | off road |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 9 | bedford | Amin Street 50 -> Lowther Lane 12 | yes | 9.5 min | 4.6 km | person at 32 km/h on Hollyhock Way | 30 s (car, Moirs Mill Road) | 0 | 0 | 0 s |
+
+## 2026-11-21 (commit 504c495, route 9 alone twice at once, before the fix, logging people: no hits; out of time at 600 s both)
+
+| # | city | from -> to | arrived | time | driven | hits | longest wait | reds | rescues | off road |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 9 | bedford | Amin Street 50 -> Lowther Lane 12 | **no** (108 m left) | 10.0 min | 4.4 km | 0 | 35 s (junction, Moirs Mill Road) | 0 | 0 | 0 s |
+
+| # | city | from -> to | arrived | time | driven | hits | longest wait | reds | rescues | off road |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 9 | bedford | Amin Street 50 -> Lowther Lane 12 | **no** (255 m left) | 10.0 min | 4.3 km | 0 | 30 s (car, Moirs Mill Road) | 0 | 0 | 0 s |
+
+## 2026-11-21 (commit 504c495 + people stepping into the lane: walkers wait at the kerb, autodrive looks where they are going)
+
+| # | city | from -> to | arrived | time | driven | hits | longest wait | reds | rescues | off road |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | givatayim | בנימיני אהרון 3 -> הניצנים 3 | yes | 5.1 min | 1.6 km | 0 | 35 s (car, נחלת יצחק) | 0 | 0 | 0 s |
+| 2 | givatayim | ההסתדרות 13 -> משה דיין 124א | yes | 4.8 min | 1.7 km | 0 | 28 s (car, כ"ג) | 0 | 0 | 0 s |
+| 3 | givatayim | ריינס 70 -> רובין שלמה 1 | yes | 6.8 min | 2.2 km | 0 | 35 s (car, שמעון בן צבי) | 0 | 0 | 0 s |
+| 4 | givatayim | רחל 1 -> מסלול 2א | yes | 7.7 min | 2.5 km | 0 | 34 s (car, לה גווארדיה) | 0 | 0 | 0 s |
+| 5 | ashdod | המתנדבים 11 -> שגב 10 | yes | 5.5 min | 2.5 km | 0 | 25 s (light, בני ברית) | 0 | 0 | 0 s |
+| 6 | ashdod | הסחלב 32 -> האדמו"ר מבעלזא 41 | yes | 6.0 min | 2.9 km | 0 | 28 s (car, a road) | 0 | 0 | 0 s |
+| 7 | ashdod | הרותם 29 -> הורקנוס 7-11 | yes | 3.3 min | 1.3 km | 0 | 24 s (light, שדרות הפרחים) | 0 | 0 | 0 s |
+| 8 | tel_aviv | שאול המלך 4 -> לויד ג'ורג' 4ב | yes | 3.3 min | 1.5 km | 0 | 8 s (zebra, שאול המלך) | 0 | 0 | 0 s |
+| 9 | bedford | Amin Street 50 -> Lowther Lane 12 | yes | 8.7 min | 4.6 km | 0 | 20 s (light, Hammonds Plains Road) | 0 | 0 | 0 s |
+| 10 | dimyon | הנרקיס 12א -> התאנה 17 | yes | 1.2 min | 0.7 km | 0 | - | 0 | 0 | 0 s |

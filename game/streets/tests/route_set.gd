@@ -54,6 +54,7 @@ func _run() -> void:
 	var stills: Array = []
 	var hits: Array = []
 	var last_hit: String = g._last_hit
+	var hit_log := 0.0
 	var last_v := 0.0
 	var reds0: int = g._reds
 	var events0: int = g._log.events.size()
@@ -82,7 +83,11 @@ func _run() -> void:
 		var h: String = g._last_hit
 		if h != last_hit and h != "" and g._crash_cool > 0.35 and absf(last_v) > 1.0:
 			hits.append([h, int(absf(last_v) * 3.6), [int(g._pos.x), int(g._pos.y)], g._on_name])
+			hit_log = t + 1.0   # (a log of its own a second after: the two minutes up to it, people and all)
 		last_hit = h
+		if hit_log > 0.0 and t >= hit_log:
+			hit_log = 0.0
+			_save_log(n, "hit%03d" % int(t))
 		last_v = g._v
 		var on: Dictionary = g._nearest_seg(g._pos, 30.0, true, false)
 		if on.is_empty() or float(on["edge"]) > 1.0:
