@@ -1212,10 +1212,13 @@ The user picked all five things the drive charts showed (above). Each found in t
 (`route_set.gd` `TRACE=`, `tests/drive_trace.py`; the hard brakes with what was ahead in the
 3 s before them -- a few lines of Python over the trace's rows).
 
-- **The drives repeat exactly.** The same code drives the same route the same way, traffic
-  and all, to the tenth of a second (route 2 twice: 226 s, the same stops). So before and
-  after are exact -- and any change anywhere changes every car after the first moment it
-  matters, so a one-off (a car pulling in) does not come back to be looked at again.
+- **The drives repeat -- sometimes.** Route 2 driven twice by the same code, each beside
+  route 6, matched to the tenth of a second (226 s, the same stops); beside Tel Aviv's route
+  8 it went otherwise (246 s); and the old code put back and route 6 driven again beside route
+  2, as when the car pulled in at 3:10, parted from the first drive within 50 s. Something
+  timed by the clock (the building's time budgets, most likely) feeds the traffic's chances.
+  So a one-off seen in a drive will not come back to be looked at: log enough the first time
+  (LEADLOG, below) or stage it in a scene test. A before/after on one drive is one sample.
 - **Hard brakes behind cars: two causes, neither a car seen late.**
   - *The cliff.* `follow := 0.0 if room <= 0.0`: a metre inside the second kept behind a car
     going its own pace, the speed asked for fell from that car's to nothing, and autodrive
@@ -1253,7 +1256,8 @@ The user picked all five things the drive charts showed (above). Each found in t
   `tests/split_posts.gd` checks every split for posts in the two-way road's lane lines run
   on 14 m past it.
 - **The car that pulled in and stopped for the player** (route 6 at 3:10 before): not seen
-  again (the drives changed). `route_set.gd LEADLOG=1` now prints how a car stands when it
+  again in five drives since, and a replay of that drive with the old code parted from it
+  before then (above). `route_set.gd LEADLOG=1` now prints how a car stands when it
   turns up under 15 m in front, or holds itself for the player while in front of it (its
   heading, where the player is from it, its road, lane shift, its path's gap to the player),
   and when autodrive stands 5 s giving way to a car that stands too, what holds that one.

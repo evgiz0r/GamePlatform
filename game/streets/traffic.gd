@@ -535,7 +535,7 @@ func _target(c: Car, i: int, dt: float) -> float:
 	if who >= 0 and who != c.pass_i and best < 35.0 and _parked_double(cars[who]) and c.kind != "bus":
 		var rr: Dictionary = _roads[c.rd[mini(c.k + 1, c.rd.size() - 1)]]
 		if _lanes_dir(rr) <= 1 and int(rr["o"]) == 0 and not _near_junction(c, best + 12.0) \
-				and _oncoming_clear(c, i, best + 45.0, _pass_shift(rr)):
+				and _oncoming_clear(c, i, best + 45.0, _pass_shift(rr), _pass_secs(c, best + (cars[who] as Car).len + c.len + 1.5), best + (cars[who] as Car).len + c.len + 1.5):
 			c.pass_i = who
 			Probe.event("go_round", {"kind": c.kind})
 	c.ignore = maxf(0.0, c.ignore - dt)
@@ -1028,8 +1028,23 @@ func _parked_double(o: Car) -> bool:
 func _pass_shift(r: Dictionary) -> float:
 	return clampf(2.0 * _lane(r), 2.3, 3.4)
 
-## nothing coming the other way (nor anyone already over there) for `reach` metres ahead
-func _oncoming_clear(c: Car, i: int, reach: float, over: float) -> bool:
+var pass_by_time := true   ## false for a test: a pass judged by distance alone, as before (tests/van_pass.gd PASS_OLD=1)
+
+## seconds for car c to drive `d` metres from its speed now, pulling away as it does
+func _pass_secs(c: Car, d: float) -> float:
+	if not pass_by_time:
+		return 0.0
+	var a := maxf(c.accel, 1.0)
+	# (and a margin: round a van it eases out and back, slower than it could)
+	return (sqrt(c.v * c.v + 2.0 * a * maxf(d, 0.0)) - c.v) / a * 1.25 + 1.5
+
+## nothing coming the other way (nor anyone already over there) for `reach` metres ahead --
+## and, given `secs` (how long the pass of `d` metres will take), nothing that would get to
+## the pass's far end in that time at its speed now.
+## (By distance alone, 35 + 45 m, a car went round a delivery van with the player 60-80 m
+## off at 50 km/h -- there in under 6 s, the pass taking 7 or 8 -- and stood head-on in the
+## player's lane, held by them: autodrive braked 8.8 m/s^2 from 48 km/h and touched it.)
+func _oncoming_clear(c: Car, i: int, reach: float, over: float, secs := 0.0, d := 0.0) -> bool:
 	for j in range(cars.size() + 1):
 		var q: Vector2
 		if j == cars.size():
@@ -1041,9 +1056,12 @@ func _oncoming_clear(c: Car, i: int, reach: float, over: float) -> bool:
 			if j == i or not o.alive or not _level(c, o.y, o.lift) or _parked_double(o):
 				continue
 			q = o.pos
-		if q.distance_squared_to(c.pos) > (reach + 10.0) * (reach + 10.0):
+		# (it must not reach the far end of the pass, `d` on, before the pass is done)
+		var qv: float = maxf(float(g._v), 0.0) if j == cars.size() else (cars[j] as Car).v
+		var far := maxf(reach, d + qv * secs + 10.0)
+		if q.distance_squared_to(c.pos) > (far + 10.0) * (far + 10.0):
 			continue
-		var pr := _proj(c, q, 8.0, reach)
+		var pr := _proj(c, q, 8.0, far)
 		if pr.x != INF and absf(pr.y - over) < 2.0:
 			return false
 	return true
@@ -1426,6 +1444,13 @@ func _steer_lanes(c: Car, i: int, dt: float, best: float, lead_v: float) -> void
 		var o: Car = cars[c.pass_i]
 		var pr := _proj(c, o.pos, 40.0, 60.0)
 		if not o.alive or pr.x == INF or pr.x < -(o.len + c.len) * 0.5 - 1.5:
+			c.pass_i = -1
+		elif pass_by_time and absf(c.shift) < 0.4 and c.v > 0.5 and not _oncoming_clear(c, i, pr.x + 20.0, _pass_shift(r),
+				_pass_secs(c, pr.x + (o.len + c.len) * 0.5 + 1.5), pr.x + (o.len + c.len) * 0.5 + 1.5):
+			# something coming that will be here before it is past, and it has barely begun to
+			# move over: back in behind the van, and wait. (Only then: once further out, or
+			# standing, it could not get back -- a car moves sideways only as it rolls -- and
+			# stood with its nose in the other lane, face to face with autodrive, till taken away.)
 			c.pass_i = -1
 		else:
 			c.shift_to = _pass_shift(r)
