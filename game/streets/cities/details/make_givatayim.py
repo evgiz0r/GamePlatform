@@ -146,7 +146,10 @@ d = {
                 # Ha-Meri's kerbs are painted blue and white all along (paid parking)
                 {"k": "residential", "name": "המרי", "near": P(110, 0), "kerb": "blue_white"}],
         "add": [
-            {"pts": [list(S0), P(SPLIT)], "k": "footway", "w": 2.6, "name": "המרי", "name_en": "HaMeri"},
+            # (its own paving grey pavers in rows, as the passage's area under it: the city's
+            # paving drawn along it stood over the area, beige and pink bricks where the film
+            # walks on grey, 33-64 s)
+            {"pts": [list(S0), P(SPLIT)], "k": "footway", "w": 2.6, "name": "המרי", "name_en": "HaMeri", "pave": [0, 1]},
             # (left of the passage's line, not on it: the film walks straight on out of the
             # passage onto the pavement along the hedge, the road beyond the railings, 64-80 s;
             # the blocks either side stand 11 m apart, so a narrow street with cars parked by
@@ -210,26 +213,29 @@ d = {
          "ramps": [[P(89.6, 0), P(90.6, 0)], [P(96.0, 0), P(95.0, 0)]]},
     ],
     "lines": [
-        {"kind": "stone_wall", "pts": [P(17, -1.35), P(38, -1.35)], "h": 0.8},
-        {"kind": "wood_fence", "pts": [P(17, -1.35), P(38, -1.35)], "base": 0.75, "h": 1.15},
+        # (from s 18.5: the transformer's plinth stands across the passage's mouth before it, pass 15)
+        {"kind": "stone_wall", "pts": [P(18.5, -1.35), P(38, -1.35)], "h": 0.8},
+        {"kind": "wood_fence", "pts": [P(18.5, -1.35), P(38, -1.35)], "base": 0.75, "h": 1.15},
         {"kind": "hedge", "pts": [P(38, -1.5), P(57.6, -1.5)]},
         # (on past the passage's end along the pavement, half a metre back: pass 14)
         {"kind": "hedge", "pts": [P(57.9, -2.0), P(65.6, -2.0)]},
         {"kind": "hedge", "pts": [P(69.4, -2.0), P(76.6, -2.0)]},        # (past the gate)
-        {"kind": "loop_fence", "pts": [P(17, 1.35), P(56, 1.35)], "h": 0.9},
-        {"kind": "loop_fence", "pts": [P(17.2, 5.0), P(17.2, 1.35)], "h": 0.9},   # round the planted bed's front
+        # (pass 15: the planted bed's front at s 19.5, not 17.2 -- at 31-32 s the film looks over
+        # open paving to the barrier ~8 m off, where the game's frame was the bed's white fence)
+        {"kind": "loop_fence", "pts": [P(19.5, 1.35), P(56, 1.35)], "h": 0.9},
+        {"kind": "loop_fence", "pts": [P(19.5, 5.0), P(19.5, 1.35)], "h": 0.9},   # round the planted bed's front
         # the planted bed behind the white fence, and its strip on along the next block
-        {"kind": "hedge", "pts": [P(17.8, 2.4), P(25.8, 2.4)]},
-        {"kind": "hedge", "pts": [P(18.2, 4.1), P(21.5, 4.1)]},
+        {"kind": "hedge", "pts": [P(20.0, 2.4), P(25.8, 2.4)]},
+        {"kind": "hedge", "pts": [P(20.2, 4.1), P(21.5, 4.1)]},
         {"kind": "hedge", "pts": [P(26.2, 2.1), P(38.5, 2.1)]},
         # and above them what the film shows walking down it: tall planting 2.5-3 m on both
         # sides (shrubs, bamboo, palms) that closes it in, the blocks behind barely seen
-        {"kind": "shrubs", "pts": [P(17.8, 2.7), P(21.0, 2.7)], "h": 1.0},   # (low at the front: the film sees
+        {"kind": "shrubs", "pts": [P(20.0, 2.7), P(21.0, 2.7)], "h": 1.0},   # (low at the front: the film sees
         {"kind": "shrubs", "pts": [P(21.4, 2.7), P(25.4, 2.7)], "h": 2.6},   # the barrier over it, 29-32 s)
         {"kind": "shrubs", "pts": [P(26.0, 2.2), P(39.0, 2.2)], "h": 2.4},
         {"kind": "shrubs", "pts": [P(39.5, 2.4), P(44.5, 2.4)], "h": 2.8},
         {"kind": "shrubs", "pts": [P(45.0, 2.0), P(56.0, 2.0)], "h": 2.4},
-        {"kind": "shrubs", "pts": [P(18.0, -2.7), P(37.8, -2.7)], "h": 2.4},   # over the wooden fence
+        {"kind": "shrubs", "pts": [P(18.7, -2.7), P(37.8, -2.7)], "h": 2.4},   # over the wooden fence
         {"kind": "shrubs", "pts": [P(38.2, -2.0), P(57.6, -2.0)], "h": 3.0},   # the tall hedge on the low wall
         {"kind": "shrubs", "pts": [P(57.9, -2.5), P(65.6, -2.5)], "h": 3.0},
         # the shops under the arcade (film 15-23 s): lit glass in light frames, each its own
@@ -245,7 +251,12 @@ d = {
         {"kind": "wood_fence", "pts": [P(17.1, -1.35), P(17.1, -6.2)], "base": 0.45, "h": 0.85},
     ],
     "props": [
-        {"kind": "bin", "at": P(41, -0.95)},
+        # (pass 15, the film's landmarks solved, tests/film_marks.py: the big black bin is passed at
+        # 52.5-53 s, at P(45.8, -0.4), not P(41, -0.95); and a white lamp pole with stickers and a
+        # red-ringed sign stands at P(33, -0.6), passed close on the right at 43.5-44 s, a small
+        # bin with a purple liner hung on it)
+        {"kind": "bin", "at": P(45.8, -0.75)},
+        {"kind": "lamp_pole", "at": P(33.0, -0.6), "dir": NW_U, "bin": True},
         # the railings across the passage's end, its left two thirds (film 61-66 s: the walk goes
         # by the right one's post, the hedge on its right)
         {"kind": "hoop_railing", "at": P(57.75, 0.55), "dir": SE},
@@ -253,16 +264,21 @@ d = {
         # through, one more at the passage's mouth; the transformer's twin poles on their plinth
         # just right of the mouth; a garden lamp at the bed's corner; a manhole in the slabs;
         # the barrier across the drive to the next block's car park
-        *[{"kind": "bollard", "at": P(13.6, o)} for o in (-6.6, -5.0, -3.4, -1.0, 1.0, 2.6, 4.2)],
-        {"kind": "bollard", "at": P(15.3, 0.2)},
-        {"kind": "twin_poles", "at": P(16.6, -2.25), "dir": [round(left[0], 4), round(left[1], 4)]},
+        # (pass 15: the bollards where the film's marks put them, 58 marks over 26-32 s solved
+        # together, each +-1.1 m -- a loose cluster of four by the walk's line, not a row of seven
+        # across the forecourt; one more far off by the hoop railing. The transformer's left pole
+        # P(17.8, -0.5) +-1.2: its twin centred 0.4 m on, its plinth across the passage's mouth.
+        # C (0.9 m) and the poles (0.5 m) nudged north-west, within those, to the walk's line: the
+        # film passes C close on its left at 30 s and the plinth close on its right at 33-34 s)
+        *[{"kind": "bollard", "at": P(s_, o)} for s_, o in ((11.7, -3.2), (13.5, -1.7), (13.2, -2.0), (14.8, -2.5), (21.1, 3.1))],
+        {"kind": "twin_poles", "at": P(17.8, -1.4), "dir": [round(left[0], 4), round(left[1], 4)]},
         # (pass 14: the lamp between the barrier's post and the poles as the film sees them, 29-32 s;
         # the manhole 4 m ahead of the walk out of the arcade, a little right, 26 s; a grey cabinet
         # at the yard wall's end by the block, behind the man in white)
-        {"kind": "globe_lamp", "at": P(19.3, 1.7), "h": 2.7},
+        {"kind": "globe_lamp", "at": P(19.8, 1.7), "h": 2.7},
         {"kind": "manhole", "at": P(12.0, -7.3)},
         {"kind": "cabinet", "at": P(16.9, -6.9), "dir": NW_U},
-        {"kind": "barrier", "at": P(21.6, 5.3), "dir": [round(left[0], 4), round(left[1], 4)], "len": 4.0},
+        {"kind": "barrier", "at": P(23.1, 8.3), "dir": [round(left[0], 4), round(left[1], 4)], "len": 4.0},   # (pass 15: was P(21.6, 5.3))
         # motorbikes and scooters nose to the kerb all along the arcade (film 17-24 s), a gap
         # where the walk comes up off the road; two more parked out in the forecourt
         *[{"kind": "scooter" if i % 3 == 1 else "motorbike", "box": i % 4 == 2,
@@ -342,9 +358,16 @@ d = {
                       [84.4, 86.0, 40],                         # half way over, along Sheinkin again
                       [87.6, 88.6, -55], [89.0, 92.5, 55],      # back at the corner; then down Ha-Meri,
                                                                 # the hatchback ahead by the kerb (to 92.3)
-                      [92.5, 95.6, -10, -22]],                  # down at the far kerb's blue and white
-                                                                # as it steps up beside a parked car (not
-                                                                # right: a tree pit stands there, 0.6 m off)
+                      ],
+            # the camera held facing a way round the map: [from, to, degrees] (atan2 z, x).
+            # Pass 15, by sweeping the replay's camera round at the film's seconds (filmed_walk
+            # SWEEP) beside the 1080p film's frames: crossing Ha-Meri it looks down the street,
+            # the cars parked along its left (125; the head had it at 90-107, on the corner
+            # building), then from its south-east pavement back across at the far one -- the
+            # paved crossing, the blue-and-white kerb, a pole and a tree in a pit, the low white
+            # wall -- at the phone's usual tilt (200; it had turned to 40-50 and tipped 22 more
+            # down, into the corner building's front garden)
+            "face": [[90.2, 92.0, 125], [92.8, 95.8, 200]],
             # on a crossing, or waiting at its kerb about to go: cars stop for it
             # [from, to, kerb, kerb]
             "zebras": [[4.4, 8.9, P(-13.8, -17.4), P(-6.8, -17.4)],

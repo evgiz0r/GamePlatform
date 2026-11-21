@@ -37,9 +37,19 @@ func _run() -> void:
 	var snaps := {}         # kind -> count of heading snaps
 	var snap_v := 0.0       # the fastest any vehicle was going at a heading snap (for the verdict)
 	var buses := {}         # car -> [[t, x, z, yaw, len], ...] every 0.25 s
+	var tick_was: int = T._tick_n
+	var since := 0.0        # game time since the traffic last ticked
 	while t < secs:
 		await physics_frame
 		t += dt
+		since += dt
+		# (per the traffic's own ticks: the game ticks it every other physics tick, with twice
+		# the time -- measured per physics tick, one moved twice as fast and the next stood)
+		if T._tick_n == tick_was:
+			continue
+		tick_was = T._tick_n
+		var tdt := since
+		since = 0.0
 		for i in range(T.cars.size()):
 			var c = T.cars[i]
 			if not c.alive:
@@ -54,18 +64,18 @@ func _run() -> void:
 				var fwd := Vector2(sin(c.yaw), cos(c.yaw))
 				var right := Vector2(fwd.y, -fwd.x)
 				var wb := clampf(c.len * 0.6, 1.3, 7.0)
-				var rate := angle_difference(y0, c.yaw) / dt
+				var rate := angle_difference(y0, c.yaw) / tdt
 				# the rear axle's velocity: the middle's, plus the turn swinging the back round
 				# it (a point a metres along the body moves a * rate sideways; d fwd/d yaw is
 				# `right` in this file's way of turning)
-				var vel: Vector2 = (c.pos - p0) / dt
+				var vel: Vector2 = (c.pos - p0) / tdt
 				var rear_v := vel + right * (-wb * 0.5) * rate
 				var slip := absf(rear_v.dot(right))
 				var k: String = c.kind
 				if c.v > 1.0:
-					moving[k] = float(moving.get(k, 0.0)) + dt
+					moving[k] = float(moving.get(k, 0.0)) + tdt
 					if slip > 0.5:
-						sliding[k] = float(sliding.get(k, 0.0)) + dt
+						sliding[k] = float(sliding.get(k, 0.0)) + tdt
 					worst[k] = maxf(float(worst.get(k, 0.0)), slip)
 					if absf(rate) > 1.5:
 						snaps[k] = int(snaps.get(k, 0)) + 1
@@ -73,7 +83,7 @@ func _run() -> void:
 						if int(snaps[k]) <= 3:
 							print("  snap: %s at %.1f m/s turning %.1f rad/s, lane shift %.1f -> %.1f, held by %s, %.0f m from a junction" % [
 								k, c.v, rate, c.shift, c.shift_to, c.why, _to_junction(c)])
-				if c.kind == "bus" and int(t * 60.0) % 15 == 0:
+				if c.kind == "bus" and int(t * 60.0) % 16 < 2:   # (every ~0.25 s, whichever of two ticks it moved on)
 					var arr: Array = buses.get(i, [])
 					if not arr.is_empty() and Vector2(float(arr[arr.size() - 1][1]), float(arr[arr.size() - 1][2])).distance_to(c.pos) > 8.0:
 						# (taken away and put back elsewhere: a new track, not a turn)

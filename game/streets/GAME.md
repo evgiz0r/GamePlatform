@@ -63,6 +63,17 @@ the game's files: the web build is public.
 
 > Maybe later in the same menu I would be able to enter my own.
 
+**Walks.** "Walks: watch one", beside the test routes, is a list of walks to watch in first
+person, each loading its own city: the two filmed in Givatayim first, then walks nobody
+filmed, along real streets elsewhere -- down the middle of Rothschild Boulevard in Tel Aviv,
+HeHalutzim to Herzl in Ashdod, Shore Drive by the water in Bedford, and the test town's
+market street. Those walk at an unhurried pace on the pavement, stop at each kerb and look
+left and right before crossing (the cars stop for them), and step round whatever stands on
+the pavement -- a tree, a pole, a bin.
+
+> Lets put in the main menu both walks inside an extra menu, like the test drives. and add
+> some more walks. even not the filmed ones. just to distribute a bit away from my location
+
 **Giving way.** Autodrive comes out of a side street onto a bigger road the way a driver does:
 up to the corner slowly enough to stop, and if a car is coming that it could not get in
 front of with room to spare, it waits at the edge -- looking at that car as it goes by --
@@ -179,12 +190,20 @@ way that has the address on the kerb side; driving hands the way there to autodr
 
 > Besides go to, I want also jump to. It teleports there, instead of driving.
 
-**Places.** Entering the game asks where, in two lists side by side: **Cities** (Givatayim,
-Bedford, Ashdod, Tel Aviv, and the made-up test town last) and **Auto Experiments** (the
-filmed walks and the test routes' drives). Each level's `"group"` puts it in one.
+**Places.** Entering the game asks where, under two headings: **Cities** ("Cities: pick
+one") and **Auto Experiments** ("Test routes: watch a drive", "Walks: watch one"). Each opens
+a page of its own -- the cities (Givatayim, Bedford, Ashdod, Tel Aviv, Delft, and the
+made-up test town last), the ten drives, the walks -- with a "back" to this screen. Only the
+three lists have a `"group"`; a city or a walk has none, and its list finds it.
 
 > lets rearrange the menu items instead street. 2 categories: Cities, Auto Experiments (walks
 > + test-drives). no extra button for walks, just split in the menu.
+
+(Then, 22 Nov: the walks behind one button after all, as the test drives are -- below; and
+the cities too, with a way back from each list:)
+
+> remove the filmed from the notations please. also please add a back to each of the internal
+> menus. and add a cities extra menu. with the cities as we gonna start having more
 
 Givatayim starts on Katznelson just past Weizmann, the town's central junction; Ashdod at
 Sderot Herzl and HeHalutzim, its busiest corner for shops. Each place is one
@@ -471,7 +490,7 @@ there is something to see, and to hold the mouse on to drive there, from the fir
 > when i zoom the beginning the rest of the city is still being built. maybe i can still see
 > something (roads?!, dunno), and click in the area of the city, before it rendered
 
-**The green wave.** "wave" (bottom right, or V) turns it on: every crossroads with lights
+**The green wave.** "wave" (on the left, above the map, or V) turns it on: every crossroads with lights
 you come up to, driving yourself or on autodrive, turns green for you. It does it the proper
 way, as if it saw you coming: the cross street's green ends with its flashing and amber,
 red all round, then red-and-amber and green your way, so its cars and people stop as they
@@ -480,6 +499,32 @@ about twelve seconds ahead at your speed (150 m at least), so even a light that 
 gone red for you has turned by the time you get there.
 
 > any crossroads i approach switches to green for my car
+
+**Racer.** "racer" (on the left, under "wave", or R) puts autodrive on with the rules
+off: it goes through red lights and stop signs, never gives way, takes the bends as fast as the tyres hold rather than the limit (about
+one and a half times it, up to 100 km/h) and goes round any slower car -- on the left, or
+the right where the road has the lanes, over the centre line when nothing is coming -- and
+when a queue will not move it goes up onto the pavement and along it, if nobody is on it.
+It still stops for people on a zebra and brakes for anyone in its way. The town
+carries on as before: the traffic stands on its brakes for you, and a car that has to, or
+that finds you coming at it in its lane, sounds its horn. Each red it runs is counted
+beside the button. Autodrive off (the stick, the keys, walking) ends it.
+
+> thief or racer mode, where the autodrive doesn't care about traffic
+
+**The towns' own kindergartens and shelters.** Givatayim's, Ramat Gan's and Ashdod's own
+maps put a kindergarten in every few streets (OSM knew of 7 in Givatayim; its map has 87,
+the day-cares besides) and a public shelter in most gardens (OSM had none). A kindergarten
+is its yard beside the building: a low green fence, soft ground, a shade sail in red, blue,
+yellow or green over it and a slide; the street gets the school's SLOW painted near it. A
+shelter is its squat concrete entrance with a steel door facing the street and the blue
+"מקלט" sign over it.
+
+**Bus lanes from the Ministry of Transport.** Beside the ones OSM marks, the Ministry's own
+list of bus lanes is laid on the streets it names: Menachem Begin, Derekh HaShalom, Arlozorov
+and the rest -- painted and kept for buses (and taxis) as the others are; Ashdod's Herzl
+busway down the middle of the boulevard and King George's rapid-bus lanes too. Not yet: the
+lanes where buses go against a one-way street.
 
 > If I would want a zoom out feature, that zooms out from where I am. Maybe it pauses the
 > city (maybe we can add a pause feature anyway), and we can zoom back in (or check around).
@@ -1547,6 +1592,11 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   them yet -- it needs that and a re-bake (Overpass, or the bake workflow).
 - People who react ("not needed yet, maybe later"): jumping back, or falling, when a car
   comes at them; glancing at you.
+- Better people themselves: "what about people themselves? how can we improve". Five
+  low-poly characters are the limit now. Done: builds varied, and things carried (shopping
+  bags, handbags, backpacks, a box). Still to do: try a more detailed free (CC0) set of
+  bodies and moves on the look bench (about 2 MB a person, so phones need checking); looking
+  at a phone; hands moving while they talk; reacting to the car (the line above).
 - A guided tour of the city: "a virtual tour in a city. like a guide, where we stop and
   look and explain. the more real it gets the more the tour looks nicer". A guide leads you
   along a route on foot (or driving), stops at the sights, turns your view to each and
@@ -1591,11 +1641,23 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   town, written once from those sources and kept in its folder (credited: Wikipedia and
   Wikivoyage are CC BY-SA), and the hooks for each part of the game to read it. A made-up
   town would get a made-up one.
-- A "thief or racer" mode: "thief or racer mode, where the autodrive doesn't care about
-  traffic". Autodrive with the rules switched off: through red lights, never giving way,
-  round the queue on the wrong side, weaving between the lanes, onto the pavement when
-  the road is blocked, at the speed the car can take the bends rather than the limit --
-  while the traffic and the people go on as before, braking, swerving and hooting at it.
-  Already here to build on: autodrive's planning and steering, the crashes and what breaks,
-  the horns. New: the reckless style (its own lines through junctions, gaps it squeezes
-  through), how the town reacts to it, and a way to switch it on beside autodrive.
+- Going into the buildings: "do we have aparatement/building layouts? i am thinking in the
+  future maybe also entering the buildings, and then going into real aparatements maybe".
+  Walk in through a building's door, up its stairs, into the flats. No town publishes floor
+  plans (they are in building-permit files, and real flats' plans would be a privacy
+  matter), so the insides would be made up, believable for that building: what is known is
+  its outline, its storeys, its year, its address and, in Givatayim, how many flats it has
+  on how many floors (the town's map; `cities/data/givatayim_units.json`) -- enough for a
+  lobby and stairwell fitted to the outline, the right number of landings, and that many
+  flats each split into rooms the way a block of its age is. Only the building you walk into
+  is built inside, while you are in it.
+- Something to watch while the city loads: "on bringup when the graphics load in the
+  background we will play something, from animation to a story or whatever. instead of these
+  wierd hickups where we see things pop on the screen, its not great". Today the car is shown
+  after a couple of seconds and the rest of the town goes up square by square around it --
+  buildings, trees and cars appearing in view, and a stutter or two while the browser
+  compiles its shaders. Instead: a short opening of its own over those first seconds -- a
+  flight in over the town from above (the stand-ins of the squares not built yet already
+  give it something to show), a few lines of the town's own story, a title card for the
+  level -- that hands over to the car once the squares around it and in view are up and the
+  shaders have compiled, skippable with a tap.

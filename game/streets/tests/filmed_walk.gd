@@ -73,6 +73,8 @@ func _run() -> void:
 						box.position.y - g._h(Vector2(p.x, p.z)), box.end.y - g._h(Vector2(p.x, p.z)), Vector2(p.x, p.z).distance_to(c)])
 		quit()
 		return
+	if not g._film_base.is_empty():   # a walk that steps round posts: over the whole walk, all built
+		g._film_dodge(0.0, last + 1.0)
 	if OS.get_environment("SCAN") == "1":
 		# the whole route, every quarter second: each stretch inside a building or a post
 		# (anything solid: a bollard, a parked bike) -- a replayed walk goes through walls
@@ -200,6 +202,27 @@ func _run() -> void:
 		var hit: Vector2 = g._push_out(g._pos, 0.3, true, false)
 		print("t=%5.1f s at %s  facing %3d deg  %s" % [t, Vector2i(g._pos), int(rad_to_deg(g._yaw)),
 			"clear" if hit == Vector2.ZERO else "INSIDE %s (%.2f m)" % [g._last_hit, hit.length()]])
+		if OS.get_environment("SWEEP") != "":
+			# SWEEP="yaw,yaw,...[/pitch]": from the camera's place at t, a shot facing each yaw
+			# (degrees round the map's x/z, as CAMERA_LOG prints) and the pitch (default the
+			# phone's -15.6), t091_y125.png -- to find which way the film faces: set the shots
+			# beside its frame. The game stands still meanwhile.
+			var sw := OS.get_environment("SWEEP").split("/")
+			var pitch := float(sw[1]) if sw.size() > 1 else -15.6
+			# (the game moves its camera from the tree's process_frame, not _process: unhooked
+			# meanwhile, or every shot is the walk's own view)
+			g.get_tree().process_frame.disconnect(g._frame)
+			g.set_physics_process(false)
+			var eye: Vector3 = g.cam.global_position
+			for y: float in sw[0].split_floats(","):
+				var d := Vector3(cos(deg_to_rad(y)) * cos(deg_to_rad(pitch)), sin(deg_to_rad(pitch)), sin(deg_to_rad(y)) * cos(deg_to_rad(pitch)))
+				g.look_from(eye, eye + d)   # (the kit's: it keeps the shot's base, which a bare
+				                            # camera move lost to the shake's reset each frame)
+				await RenderingServer.frame_post_draw
+				await RenderingServer.frame_post_draw
+				root.get_viewport().get_texture().get_image().save_png(out + "/%s_y%03d.png" % [name, int(y)])
+			g.get_tree().process_frame.connect(g._frame)
+			g.set_physics_process(true)
 	g._film_t = last + 1.0
 	for i in range(30):
 		await physics_frame
