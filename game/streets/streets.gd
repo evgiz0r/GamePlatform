@@ -16736,7 +16736,7 @@ func _physics_process(dt: float) -> void:
 	_crash_cool = maxf(0.0, _crash_cool - dt)
 	_touch_t = maxf(0.0, _touch_t - dt)
 	_p("lights")
-	var split := dt <= WORLD_SPLIT_DT
+	var split := dt <= WORLD_SPLIT_DT and _world_split_on
 	_world_n += 1
 	var traffic_now := not split or _world_n % 2 == 0
 	var people_now := not split or _world_n % 2 == 1
@@ -16818,6 +16818,8 @@ func _physics_process(dt: float) -> void:
 ## before. The traffic is drawn between its own last two ticks (`_traffic_f`), a tick behind
 ## the car rather than guessed ahead; the people are placed as they tick.
 const WORLD_SPLIT_DT := 1.0 / 40.0
+## STREETS_WORLD_SPLIT=0 (tests): every tick for both, as before, to set the two side by side
+var _world_split_on := OS.get_environment("STREETS_WORLD_SPLIT") != "0"
 var _world_n := 0
 var _traffic_age := 0.0              ## s since the traffic last ticked (0 or one tick)
 var _traffic_dt := 1.0 / 60.0        ## the time its last tick covered

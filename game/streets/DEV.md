@@ -472,7 +472,12 @@ The ones most often touched, and the functions in them:
   car, not guessed ahead), its decisions stay ~20 a second near (traffic.gd `ticks_per`). A
   test run faster (STREETS_SIM_SPEED, ticks longer than 1/40 s) ticks them every tick as
   before. On a user's PC in Tel Aviv they were traffic 3.6 + following 1.0 + people 3.4 ms of
-  a 34 ms frame, two ticks a frame.
+  a 34 ms frame, two ticks a frame. `STREETS_WORLD_SPLIT=0` turns it off (tests). Checked 21
+  Nov against main's game code, same seeds: exams Givatayim 12 (main 15), Ashdod 15 (18),
+  the test town at 2x 15 (15, unchanged: no split there); every REGRESS PASS but people_pops,
+  which main fails too over 240 s (walkers re-placed at the edge of view, 1-6 a run either
+  way). `traffic_motion` measures per traffic tick now (per physics tick it read twice the
+  speed, then none); `tests/traffic_jumps.gd`.
 - **people keeping clear** -- `_people_tick` lists everyone (`_people_at`, `_people_who`);
   a walker steers off its line (`lat`, up to 0.7 m) round anything solid 1.3 m ahead and
   away from anyone ahead or alongside (to their other side, the right if dead ahead), then
