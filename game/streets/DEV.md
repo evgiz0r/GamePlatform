@@ -2688,6 +2688,39 @@ rests on the forearms.
 - phones in hand, which needs a pose, not only a thing
 - hands moving while people talk
 
+## Hands while talking, walk 2's paving, car greys, shutter boxes (22 Nov 2026)
+
+- **Hands while talking** (`Talk`, a SkeletonModifier3D, in "hands while talking"). It
+  bends the upper arm and forearm on top of the animation's pose: now one forearm, now the
+  other, now and then both. Gestures run about every 3 s, and a small beat moves the hand.
+  It goes on the cafe chatters and on the film's talkers (`talk` in a walk's people). The
+  axis that brings the hand **forward and up** is `(1, 0, -1)` in the left arm bones' own
+  frame and `(1, 0, 1)` in the right's, for both upper arm and forearm. That was measured by
+  turning each bone 1 rad about each axis and reading where the fist went. About x alone the
+  hand also swung out sideways, and about -x it went behind the back. Test:
+  `tests/people_talk.gd` (level 4), 24 frames of one talker, close.
+- **Walk 2 side by side** (recorded 22 Nov, 1066 frames in ~8 min here, not 22-25). The
+  ground under the walk was measured every 3 s (the bottom fifth of each half). On the grey
+  stretches film and game agreed. On Sirkin's brown "antique" pavers (details `pave: [1, 0]`)
+  the game was red over green **1.22-1.30** and bright (green 0.57-0.62) against the film's
+  **1.10** (green ~0.5). The tone shader's "reds and browns" mix (pave colours code 0) is
+  now muted, `a/b/cc` = (0.93, 0.77, 0.69) / (0.85, 0.75, 0.68) / (0.78, 0.74, 0.72), and
+  measures 1.11-1.15 at the same spots. That mix is used city-wide, on ~30% of streets.
+  - Left for the walk session, which owns the walk's route and head: the game's eye looks
+    down at the pavement much more than the phone does (the film sees the blocks and trees
+    above), and the film is greener (hedges, bougainvillea, trees over the pavement) along
+    Sirkin's residential half.
+- **Car greys.** `_car_paints`' silver, grey and black were mixed from bg_alt, which is
+  lavender in the default palette. `_natural(…, 0.6)` kept 60% of that, so silver cars read
+  mauve next to the shops. They are now `_greyed` (0.92, 0.92, 0.85).
+- **Shutter boxes.** A grey metal housing 0.3 m deep sits over most shop windows (75%, and
+  every shut shop), as most of the towns' shops have one. `_tally` "shutter_boxes".
+- **Should a check have caught the mauve cars and the red pavers?** Yes, by the family
+  "what is grey in life reads grey on screen". `look_tries`/`look_bench` already measure
+  pure white per shot. Widening them to report the mean red/green and blue/green of a few
+  known-grey things (a parked silver car's body, a grey paving band, the asphalt) would cost
+  ~20 lines and no extra run time. Not done yet.
+
 ## Sizes against life (`tests/scale_check.gd`, 20 Nov 2026)
 
 The user's sister said the scale felt off; the check measures what the game builds. Vehicles
