@@ -18,24 +18,27 @@ extends GameMode3D
 ## the car on the first just past the second. Without one it starts on a main road
 ## mid-town.
 const LEVELS := [
-	# (the start screen lists them in two groups, "group"; a level's number stays its place here,
-	# which the tests and notes go by)
-	{"name": "Givatayim", "group": "Cities", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer"},
+	# The start screen shows only the levels with a "group": three lists, each opening its own
+	# page -- "Cities: pick one", "Test routes: watch a drive", "Walks: watch one" (the last
+	# three entries below). A city has no "group": the Cities list shows every place here with a
+	# "city" that is not a list or a walk, by "sort", so a new city needs only its line. A
+	# level's number stays its place here, which the tests and notes go by: add at the end.
+	{"name": "Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer"},
 	# "decks": "infer" -- its bridges' heights worked out as it loads (decks.gd: infer)
-	{"name": "Bedford, Nova Scotia", "group": "Cities", "city": "bedford", "look": "north", "decks": "infer"},
-	{"name": "Ashdod", "group": "Cities", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med", "decks": "infer"},
+	{"name": "Bedford, Nova Scotia", "city": "bedford", "look": "north", "decks": "infer"},
+	{"name": "Ashdod", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med", "decks": "infer"},
 	# made up by tools/fake_city.py: one small town with one of everything, ringed by mountains,
 	# that loads in a moment -- for checking a change, not for exploring
-	{"name": "Kiryat Dimyon (test town)", "group": "Cities", "sort": 99, "city": "dimyon", "start": ["הנשיא", "השוק"], "look": "med"},
+	{"name": "Kiryat Dimyon (test town)", "sort": 99, "city": "dimyon", "start": ["הנשיא", "השוק"], "look": "med"},
 	# a walk filmed in Givatayim, replayed in first person on its own (cities/details/givatayim.json).
 	# The walks have no "group": the start screen leaves them off, and the "Walks" list below
 	# opens them (their numbers stay, for the tests and notes: LEVEL=5, LEVEL=6)
-	{"name": "A walk in Givatayim: Katzenelson to Ha-Meri", "city": "givatayim", "look": "med", "walk": "katzenelson_hameri", "filmed": true},
+	{"name": "Givatayim: Katzenelson to Ha-Meri", "city": "givatayim", "look": "med", "walk": "katzenelson_hameri", "filmed": true},
 	# a second, timed and placed from the GPS track taken with its film (tools/gpx_route.py)
-	{"name": "A walk in Givatayim: Sheinkin and Sirkin", "city": "givatayim", "look": "med", "walk": "sheinkin_sirkin", "filmed": true},
+	{"name": "Givatayim: Sheinkin and Sirkin", "city": "givatayim", "look": "med", "walk": "sheinkin_sirkin", "filmed": true},
 	# a box of central Tel Aviv, not the whole city (the workflow's bbox): HaKirya, Azrieli,
 	# Sarona, Montefiore, Bitsaron, the Ayalon. Starts on Kaplan heading east, the towers ahead.
-	{"name": "Tel Aviv: Azrieli to the sea", "group": "Cities", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer"},
+	{"name": "Tel Aviv: Azrieli to the sea", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer"},
 	# the route set (routes.json, tests/pick_routes.py): pick one of the drives and watch
 	# autodrive take it, from one address to the other, in its own city
 	{"name": "Test routes: watch a drive", "group": "Auto Experiments", "routes": true, "city": "dimyon", "look": "med"},
@@ -49,7 +52,9 @@ const LEVELS := [
 	{"name": "Test town: the market street", "city": "dimyon", "look": "med", "walk": "dimyon_market"},
 	# the first Dutch town (NEW_CITY.md): a box of the old centre, the station and the canals,
 	# with 3DBAG's measured heights and the BGT's trees and lamp posts. Starts on the Oude Delft canal.
-	{"name": "Delft", "group": "Cities", "city": "delft", "start": ["Oude Delft", "Binnenwatersloot"], "look": "north", "decks": "infer"},
+	{"name": "Delft", "city": "delft", "start": ["Oude Delft", "Binnenwatersloot"], "look": "north", "decks": "infer"},
+	# the cities: a list, as the walks and the test routes are (no city behind it)
+	{"name": "Cities: pick one", "group": "Cities", "cities": true, "city": "dimyon", "look": "med"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -1255,6 +1260,9 @@ func start(_config: Dictionary) -> void:
 		return
 	if _place.get("walks", false):
 		_walk_list_open()   # no city: the list of walks, each starting its own city
+		return
+	if _place.get("cities", false):
+		_walk_list_open("cities")   # no city: the list of cities
 		return
 	if _config.has("route"):
 		_route = _route_by_id(int(_config["route"]))
@@ -23971,7 +23979,7 @@ func _routes_level() -> int:
 func _city_level(cid: String) -> int:
 	for i in range(LEVELS.size()):
 		var lv: Dictionary = LEVELS[i]
-		if lv.get("city", "") == cid and not lv.has("walk") and not lv.get("routes", false) and not lv.get("walks", false):
+		if lv.get("city", "") == cid and not lv.has("walk") and not _is_list(lv):
 			return i + 1
 	return 1
 
@@ -24063,6 +24071,7 @@ func _route_list_open() -> void:
 			x.add_theme_font_size_override("font_size", 11)
 			_route_ui.add_child(x)
 			_put(x, Vector2(590, y), Vector2(36, 25))
+	_back_button(Vector2(14, 52))   # (top left, beside the tabs: ten routes reach the foot)
 
 ## "+ a new one": the cities to make it in, one button each (the city loads, then the picker
 ## asks from where and to where)
@@ -24081,9 +24090,14 @@ func _route_new_row(have: int) -> void:
 		_route_ui.add_child(b)
 		_put(b, Vector2(190 + k * 87, 80), Vector2(83, 25))
 
-## the walks to watch: every place in LEVELS with a "walk", filmed ones first, one button each
-## (in the list's frame, _route_ui, so _input's taps reach them as the routes' do)
-func _walk_list_open() -> void:
+## a place in LEVELS that is one of the start screen's lists, not a city to drive
+static func _is_list(lv: Dictionary) -> bool:
+	return lv.get("routes", false) or lv.get("walks", false) or lv.get("cities", false)
+
+## The start screen's lists of places, one button each, a "back" at the foot (in the list's
+## frame, _route_ui, so _input's taps reach them as the routes' do). "walks": every place in
+## LEVELS with a "walk", the filmed ones first; "cities": every city to drive, by "sort".
+func _walk_list_open(kind := "walks") -> void:
 	if _route_ui != null:
 		_route_ui.queue_free()
 	_route_ui = Control.new()
@@ -24095,18 +24109,30 @@ func _walk_list_open() -> void:
 	dim.size = Vector2(640, 360)
 	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_route_ui.add_child(dim)
-	var title := UIKit.label("walks: pick one and watch it, in first person", 13, "player")
+	var title := UIKit.label("walks: pick one and watch it, in first person" if kind == "walks" else "cities: pick one to drive", 13, "player")
 	title.add_theme_font_override("font", _font)
 	title.position = Vector2(20, 30)
 	title.size = Vector2(600, 20)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_route_ui.add_child(title)
 	var rows: Array = []
-	for filmed: bool in [true, false]:
+	if kind == "walks":
+		for filmed: bool in [true, false]:
+			for i in range(LEVELS.size()):
+				var lv: Dictionary = LEVELS[i]
+				if lv.has("walk") and bool(lv.get("filmed", false)) == filmed:
+					rows.append([i + 1, String(lv["name"])])
+	else:
+		var keyed: Array = []
 		for i in range(LEVELS.size()):
 			var lv: Dictionary = LEVELS[i]
-			if lv.has("walk") and bool(lv.get("filmed", false)) == filmed:
-				rows.append([i + 1, ("filmed:  " if filmed else "") + String(lv["name"])])
+			if lv.has("city") and not lv.has("walk") and not _is_list(lv):
+				keyed.append([float(lv.get("sort", i)), i + 1, String(lv["name"])])
+		keyed.sort_custom(func(a, b): return a[0] < b[0])
+		for kk: Array in keyed:
+			rows.append([kk[1], kk[2]])
+	# two columns past seven, so a dozen fit
+	var two := rows.size() > 7
 	for k in range(rows.size()):
 		var lvl: int = rows[k][0]
 		var b := _tap_button(String(rows[k][1]), func(): Flow.start_game("streets", {"level": lvl}))
@@ -24114,7 +24140,19 @@ func _walk_list_open() -> void:
 		b.add_theme_font_size_override("font_size", 11)
 		b.clip_text = true
 		_route_ui.add_child(b)
-		_put(b, Vector2(120, 64 + k * 31.0), Vector2(400, 27))
+		if two:
+			_put(b, Vector2(30 + (k % 2) * 295, 64 + (k / 2) * 31.0), Vector2(285, 27))
+		else:
+			_put(b, Vector2(120, 64 + k * 31.0), Vector2(400, 27))
+	_back_button()
+
+## "back" at the foot of a list: the start screen again (the shell's own, as "levels" does)
+func _back_button(at := Vector2(270, 322)) -> void:
+	var b := _tap_button("back", func(): Flow.pick_level())
+	b.add_theme_font_override("font", _font)
+	b.add_theme_font_size_override("font_size", 12)
+	_route_ui.add_child(b)
+	_put(b, at, Vector2(100, 26))
 
 ## a drive of the route set: down at its start address, "go to" its end, autodrive on
 func _route_begin() -> void:

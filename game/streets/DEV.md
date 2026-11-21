@@ -1860,6 +1860,16 @@ first:
 
 ## The walks list and walks nobody filmed (levels 9-13, 22 Nov 2026)
 
+- **The lists** (22 Nov, later): the start screen holds only the three lists -- "Cities: pick
+  one" (level 15, `"cities": true`), "Test routes" (8), "Walks" (9); a city has no `"group"`,
+  and `_walk_list_open("cities")` lists every LEVELS entry with a `"city"` that is not a list
+  (`_is_list`) or a walk, by `"sort"` (two columns past seven). Each list has "back"
+  (`_back_button`, the shell's `Flow.pick_level()`: the start screen), at the foot, or top left
+  on the routes' page where ten rows reach the foot. The headings come in the order their first
+  level appears in LEVELS (the shell's rule), so Cities, at 15, is the right-hand column:
+  moving it left would renumber every level. `tests/walk_menu.gd` checks the cities list, its
+  back, and the walks list (~1 min); `tests/route_menu.gd` counts the route rows only (it had
+  counted the page tabs since they came, said FAIL and tapped route 8, Tel Aviv, for the 10th).
 - **The list.** Level 9, "Walks: watch one" (group Auto Experiments, `"walks": true`), opens
   `_walk_list_open()` in place of a city, built like the test routes' list (in `_route_ui`, so
   `_input`'s taps reach its buttons): one button per place in LEVELS with a `"walk"`, the

@@ -35,7 +35,10 @@ func _run() -> void:
 		print("ROUTE MENU: FAIL, no list")
 		quit(1)
 		return
-	var buttons: Array = g._route_ui.find_children("*", "Button", true, false)
+	# the routes' rows only: not the page tabs ("the ten", "yours") or "back" (counted with them,
+	# the test said FAIL and tapped route 8, Tel Aviv, for the 10th)
+	var buttons: Array = g._route_ui.find_children("*", "Button", true, false).filter(
+		func(x): return not (x.text in ["back", "the ten"] or x.text.begins_with("yours")))
 	print("the list: %d buttons" % buttons.size())
 	await _snap("route_list")
 	var pick := int(OS.get_environment("ROUTE_PICK")) if OS.get_environment("ROUTE_PICK") != "" else 10
