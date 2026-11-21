@@ -1292,8 +1292,13 @@ The user picked all five things the drive charts showed (above). Each found in t
   the wider two-way it goes on from). The route set never counted it: a sign bent or a bin
   knocked over is no crash (no `_crash_cool`); now `_knocked_n` / `_knocked_what` and the
   route set lists them under hits ("sign oneway", "knocked over", "post bent").
-  `tests/split_posts.gd` checks every split for posts in the two-way road's lane lines run
-  on 14 m past it.
+  `tests/split_posts.gd` checks every split for posts near the line the cars drive past it
+  (the two-way road's lane over to the half's in 25 m, as autodrive drove Shlomo Ben
+  Yosef). Ashdod: 74 splits, 58 posts within the car's half width + 0.25 m of that line,
+  about 15 of them touching by the model (a crossing sign and railing posts at Rishon
+  LeZion's split, a no-entry sign at Dakar's, bins, lamp posts); the model's line is a guess
+  past the first metres, so `DRIVE=1` drives autodrive through each and measures the real
+  gap -- not run yet: open. What stood in the lane on every drive is gone.
 - **The car that pulled in and stopped for the player** (route 6 at 3:10 before): not seen
   again in five drives since, and a replay of that drive with the old code parted from it
   before then (above). What fits it: a car going round a delivery van, over the centre line,
