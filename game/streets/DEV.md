@@ -51,7 +51,14 @@ The ones most often touched, and the functions in them:
   round the car are up (`_far_now`), its building loops paced like a square's (`_over` /
   `_pause`); the grass is made at load all the same (its shader in the warm-up) with
   `_fs_blank`, a 1x1 picture where nothing grows. `_build_far_shadows` keeps the sun it was
-  started for (`ev`): the evening switched on meanwhile keeps its own.
+  started for (`ev`, or `for_sun`): the evening switched on meanwhile keeps its own. The other
+  sun's picture is drawn ahead (`_far_ahead`, `FAR_AHEAD_S` 8 s after the car, once the car's
+  own is done; `_far_draw`, `_fs_drawing`), so the time-of-day button finds it; a click before
+  that draws it a few ms a frame, never whole (whole, it held the click a second and more on a
+  user's PC). Its chunks keep their own budget (`_yield_at`), not `_over()`, which is false once
+  the city is built. Both are drawn before the city file is let go (`_far_both`, end of
+  `_build_rest`): the evening's, drawn at its button after that, met an empty file -- a SCRIPT
+  ERROR and no far shadows at all in the evening, live until 21 Nov.
 - **loading the city** -- `_load_city`, then `_fit_dual_carriageways` (halves of a divided
   road sized to their lanes, `r["median"]`), `_fit_widths_to_buildings` (widths are guesses),
   `_clip_buildings` (fronts still on a road cut back to road + 1.5 m), `_build_graph`.
@@ -64,7 +71,10 @@ The ones most often touched, and the functions in them:
   rest in `_build_rest` while you drive, nearest the car first -- the rest of NEAR_FIRST in
   a hurry (`_catch_up`: `CATCH_UP_US` 16 ms a frame, the first seconds only, `_catch_up_ms`
   when done), then `BUILD_US` -- every builder stopping when the frame's budget is used up
-  (`if _over(): await _pause()`). Two rules keep squares from doubling or
+  (`if _over(): await _pause()`) -- and once no square within `SEE_M` (900 m) of the car is
+  left (`_all_seen_built`), `BUILD_FAR_US` 1.5 ms while driving (full speed from above or
+  paused): Tel Aviv's build took 4-6 ms of every frame for ~11 minutes on a user's PC, most
+  of it squares past the haze. Two rules keep squares from doubling or
   missing things: what lies along a road or fence is worked out by every square it crosses
   and kept only where its triangles start (`CBuf.clip`, `_near_part`, `_near_span`);
   everything else, and whatever it records (posts, parked cars, lights, tables), belongs
@@ -396,6 +406,13 @@ The ones most often touched, and the functions in them:
   height (the height grid as an RF texture, the same triangles as `_h`), by the camera's 3D
   distance (none from up high). Cull off, so it flips NORMAL back on back faces (they went
   black). `_grass_quality`: none below 2, 55% of the patches at 2.
+- **traffic and people take turns** -- at the real rate each ticks every other physics tick
+  with twice the time, on alternate ticks (`WORLD_SPLIT_DT`, `_world_n`): no tick pays for
+  both. The traffic is drawn between its own last two ticks (`_traffic_f`: a tick behind the
+  car, not guessed ahead), its decisions stay ~20 a second near (traffic.gd `ticks_per`). A
+  test run faster (STREETS_SIM_SPEED, ticks longer than 1/40 s) ticks them every tick as
+  before. On a user's PC in Tel Aviv they were traffic 3.6 + following 1.0 + people 3.4 ms of
+  a 34 ms frame, two ticks a frame.
 - **people keeping clear** -- `_people_tick` lists everyone (`_people_at`, `_people_who`);
   a walker steers off its line (`lat`, up to 0.7 m) round anything solid 1.3 m ahead and
   away from anyone ahead or alongside (to their other side, the right if dead ahead), then
@@ -575,7 +592,18 @@ The ones most often touched, and the functions in them:
   only) / `_judge_fps` (the rule; testable natively), the soft car shadows `_set_blobs`.
   Every level keeps the sun's shadows (level 0: 25 m): switching them off recompiled every
   material's shader in the browser, seconds of freeze each time the ladder crossed into or out
-  of level 0. Night still switches them off (once, on the button). `tests/hitches.gd` counts
+  of level 0. Night keeps them too: the moon is the day's sun, dim and blue, its shadows
+  reaching 1 m (`_set_night`, `_set_quality`). Switching them off at the button was the same
+  recompile -- 40-odd programs, a hang of seconds on a user's PC. Hiding the sun, or a sun that
+  lights nothing (`light_cull_mask` 0), is no better: with no light the engine compiles every
+  material again without its lighting code (DISABLE_LIGHT_DIRECTIONAL, and the haze's sun glow
+  off -- seen by diffing the programs' sources, web_shaders.js DUMP=). The evening's haze
+  glowing towards the sun (`fog_sun_scatter`) is another version of every shader
+  (USE_SUN_SCATTER): 0 by day made the evening button compile 30 programs, so by day it is a
+  trace, `FOG_SCATTER_DAY` 0.01. Each click's cost: `_tod_watch` ("[streets] time of day to
+  night: ... ms at the click, then the slowest frame ..., N shaders compiled", and in the perf
+  view); `tests/web_load.js` TIMES=3 clicks it in a browser and counts, `tests/web_shaders.js`
+  TIMES=3 BOT=idle lists each click's programs. `tests/hitches.gd` counts
   frames over 250 ms / 1 s driving and from above -- but under the test machine's software
   renderer every Tel Aviv frame takes ~0.8 s, so it shows the script's parts, not a GPU's
   stalls; a browser on the user's machine is the real measure (the perf view's hitch lines).

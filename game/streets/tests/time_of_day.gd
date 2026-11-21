@@ -2,7 +2,11 @@ extends SceneTree
 ## The time-of-day button's three looks -- day, evening (golden hour), night -- over the same
 ## views: down a long main road towards the evening sun and away from it (the lit fronts),
 ## a side street from a car, and the city from the zoom-out's height. Shots tod_<view>_<time>.png
-## in $OUT; prints how long switching to the evening took (its far shadows are drawn then).
+## in $OUT, and each view's draws and triangles (night should cost no more than day: its sun
+## lights nothing); prints how long switching to the evening took. Both suns' far shadows are drawn
+## ahead now, a few ms a frame after the car (_far_ahead), so it waits for them first: drawn at
+## the click they held it a second and more, and once the city was built they failed -- and
+## the night's light pools, made ahead too (_make_pools(true)).
 var g: Node
 
 func _initialize() -> void:
@@ -22,6 +26,10 @@ func _run() -> void:
 			if n.get_script() != null and String(n.get_script().resource_path).ends_with("streets.gd"):
 				g = n
 	await create_timer(1.0).timeout
+	var tw := Time.get_ticks_msec()
+	while not (g._fs_cache.has("day") and g._fs_cache.has("evening") and g._pools_made and not g._pools_busy) and Time.get_ticks_msec() - tw < 400000:
+		await create_timer(0.5).timeout
+	print("both suns' far shadows drawn and the night's pools made %.0f s after the car: %s" % [(Time.get_ticks_msec() - tw) / 1000.0, str(g._fs_cache.keys())])
 	g.set_physics_process(false)
 	process_frame.disconnect(g._frame)   # (frozen: its own camera would move ours back)
 	var p: Vector2 = g._pos
@@ -60,4 +68,7 @@ func _run() -> void:
 			g.look_from(views[v][0], views[v][1])
 			g._sky_follow()
 			await _snap("tod_%s_%s" % [v, time])
+			print("%s %s: %d draws, %d k triangles" % [v, time,
+				RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
+				RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME) / 1000])
 	quit(0)

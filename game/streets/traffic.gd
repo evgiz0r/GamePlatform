@@ -311,6 +311,10 @@ func alive_count() -> int:
 
 var _tick_n := 0
 
+## how many of the game's 60-a-second ticks each tick here stands for: 2 at the real rate (the
+## traffic ticks every other one, streets.gd's WORLD_SPLIT_DT), 1 in a test run faster
+var ticks_per := 1
+
 func tick(dt: float) -> void:
 	_clock += dt
 	_tick_n += 1
@@ -351,7 +355,8 @@ func tick(dt: float) -> void:
 		# follows every tick. A driver reacts slower than that anyway, and deciding it every
 		# tick for every car was most of traffic's time.
 		# (and one far off, out of sight, every sixth tick: nobody sees it think)
-		var every := 3 if c.pos.distance_squared_to(me) < 120.0 * 120.0 or _in_view(c.pos) else 6
+		# (fewer ticks apart when each tick stands for two of the game's: `ticks_per`)
+		var every := ceili(float(3 if c.pos.distance_squared_to(me) < 120.0 * 120.0 or _in_view(c.pos) else 6) / ticks_per)
 		if c.want < 0.0 or (i + _tick_n) % every == 0:
 			c.want = _target(c, i, dt * (1.0 if c.want < 0.0 else float(every)))
 		var vt := c.want

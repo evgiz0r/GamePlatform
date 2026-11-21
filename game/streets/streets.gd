@@ -1246,6 +1246,7 @@ func start(_config: Dictionary) -> void:
 	_place_start()
 	_build_hud()
 	_show_load_line()
+	_far_ahead()
 	_retint_city()
 	_spawn_people()
 	_spawn_crossers()
@@ -1299,6 +1300,31 @@ func _warm_up() -> bool:
 	# steps the text can count (all at once, one frame took the lot: a long freeze)
 	look_from(Vector3(spot.x - 20.0, gy + 12.0, spot.y), Vector3(spot.x + 40.0, gy, spot.y))
 	_sky_follow()
+	# the night's glow -- the lamps' pools, the headlight beams -- is drawn by day by nothing:
+	# a pool and one beam here for the warm-up, as the real ones are made (a plain mesh; a
+	# multimesh like the traffic's beams), so the night button finds the shader compiled
+	var stand_ins: Array = []
+	var gb := Buf.new()
+	_pool(gb, spot + Vector2(30.0, 0.0), 2.0)
+	var pm := ArrayMesh.new()
+	pm.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, gb.arrays())
+	var pool_in := MeshInstance3D.new()
+	pool_in.mesh = pm
+	pool_in.material_override = _glow_mat("lamplight", POOL_STRENGTH)
+	pool_in.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	world.add_child(pool_in)
+	stand_ins.append(pool_in)
+	var bm := MultiMesh.new()
+	bm.transform_format = MultiMesh.TRANSFORM_3D
+	bm.mesh = _beam_mesh()
+	bm.instance_count = 1
+	bm.set_instance_transform(0, Transform3D(Basis(), Vector3(spot.x + 30.0, gy, spot.y)))
+	var beam_in := MultiMeshInstance3D.new()
+	beam_in.multimesh = bm
+	beam_in.material_override = _glow_mat("lamplight", 0.4)
+	beam_in.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	world.add_child(beam_in)
+	stand_ins.append(beam_in)
 	var kinds := {}   # material (and whether instanced) -> its nodes
 	var shown: Array = []
 	for n: Node in world.find_children("*", "GeometryInstance3D", true, false):
@@ -1343,6 +1369,8 @@ func _warm_up() -> bool:
 		_warm_ms.append(Time.get_ticks_msec() - tk)   # (each view's frame: the perf view shows them)
 		if not is_inside_tree():
 			return false
+	for n: Node in stand_ins:
+		n.queue_free()
 	return true
 
 var _warm_ms: Array = []             ## each warm-up frame, ms: the kinds of surface a few at a time, then the four views
@@ -1458,6 +1486,8 @@ func _load_text() -> String:
 	if _gl_at_car.x >= 0.0:
 		var d := _gl_count() - _gl_at_car
 		since = "\nshaders compiled since the car: %d, %.1f s" % [int(d.x), d.y / 1000.0]
+	if _tod_line != "":
+		since += "\nlast time-of-day switch " + _tod_line
 	return "%s\nslowest parts: %s\nwarm-up frames (ms): %s%s" % [_load_line(), ", ".join(top), ", ".join(_warm_ms.map(func(x): return str(x))), since]
 
 ## which graphics chip and driver path (a browser on Windows names Direct3D: every shader
@@ -2527,6 +2557,14 @@ const NEAR_NOW := 60.0               ## a city level: squares this close to the 
 const AHEAD_NOW := 160.0             ## ...and those the street ahead of the car crosses within this far (what the first view looks at)
 const BUILD_US := 6000               ## background building: microseconds a frame (half that when frames run slow)
 const CATCH_UP_US := 16000           ## the same while a square within NEAR_FIRST of the car is still bare (the first seconds of a drive)
+## Once every square within SEE_M of the car is built, the rest -- out past the haze -- goes on
+## at BUILD_FAR_US a frame while you drive (full speed again from above, or paused): nothing
+## you can see waits for it, and the frames keep their milliseconds. Tel Aviv's whole city took
+## 4-6 ms of every frame for ~11 minutes on a user's PC (21 Nov), most of it squares out of sight.
+const SEE_M := 900.0
+const BUILD_FAR_US := 1500
+var _seen_built := false             ## every square within SEE_M of the car is built (looked at twice a second)
+var _seen_at := 0
 var _catch_up := false               ## a square within NEAR_FIRST of the car is still bare: building at CATCH_UP_US
 var _catch_up_ms := 0                ## when the squares round the car were all built, ms after it was shown (the perf view)
 var _tile := Vector2i.ZERO           ## the square being built
@@ -2593,6 +2631,19 @@ func _tile_rect(t: Vector2i) -> Rect2:
 	return Rect2(Vector2(t) * TILE, Vector2(TILE, TILE))
 
 ## how far p is from square t (0 inside it)
+## no square within SEE_M of the car still to be built (looked at twice a second)
+func _all_seen_built() -> bool:
+	var now := Time.get_ticks_msec()
+	if now - _seen_at < 500:
+		return _seen_built
+	_seen_at = now
+	_seen_built = true
+	for t: Vector2i in _tiles_todo:
+		if _tile_dist(t, _pos) < SEE_M:
+			_seen_built = false
+			break
+	return _seen_built
+
 func _tile_dist(t: Vector2i, p: Vector2) -> float:
 	var r := _tile_rect(t)
 	return p.clamp(r.position, r.end).distance_to(p)
@@ -2926,6 +2977,47 @@ func _far_now() -> void:
 	print("[streets] far shadows drawn after the car, %d ms" % (Time.get_ticks_msec() - t))
 	Probe.event("far_shadows", {"ms": Time.get_ticks_msec() - t})
 
+## the other sun's picture too, a while after the car's own -- so the time-of-day button finds
+## it drawn: drawn at the click it held the game a second and more (a user, 21 Nov)
+func _far_ahead() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	await get_tree().create_timer(FAR_AHEAD_S).timeout
+	var waited := 0
+	while is_inside_tree() and not _fs_cache.has("evening" if _evening else "day") and waited < 120:
+		await get_tree().create_timer(1.0).timeout   # (the car's own sun first)
+		waited += 1
+	var other := "day" if _evening else "evening"
+	if not is_inside_tree():
+		return
+	var t := Time.get_ticks_msec()
+	if not _fs_cache.has(other) and not _fs_drawing.has(other):
+		await _far_draw(other)
+		print("[streets] the %s's far shadows drawn ahead, %d ms" % [other, Time.get_ticks_msec() - t])
+	if is_inside_tree() and not _pools_made:   # and the night's light pools, for its button
+		t = Time.get_ticks_msec()
+		await _make_pools(true)
+		print("[streets] the night's light pools made ahead, %d ms" % (Time.get_ticks_msec() - t))
+const FAR_AHEAD_S := 8.0
+
+## both suns' pictures drawn (or being drawn: waited for) -- before the city file they are
+## drawn from is let go. The evening's, drawn at its button once the city was built, met an
+## empty file: no far shadows at all in the evening.
+func _far_both() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	for key: String in ["day", "evening"]:
+		if not _fs_cache.has(key) and not _fs_drawing.has(key):
+			await _far_draw(key)
+	while is_inside_tree() and not _fs_drawing.is_empty():
+		await get_tree().process_frame
+
+## one sun's picture, a few ms a frame, marked as being drawn meanwhile
+func _far_draw(key: String) -> void:
+	_fs_drawing[key] = true
+	await _build_far_shadows(true, key)
+	_fs_drawing.erase(key)
+
 ## a square within NEAR_FIRST of the car is still to be built
 func _bare_near() -> bool:
 	for t: Vector2i in _tiles_todo:
@@ -2978,6 +3070,7 @@ func _build_rest() -> void:
 		if _build_lbl != null:
 			_build_lbl.text = "building the city %d%%" % int(100.0 * _tiles_done.size() / maxf(_build_total, 1.0))
 	await _far_now()   # (if it has not come yet: before the city file below is let go)
+	await _far_both()   # (and the other sun's: drawn later, from what is let go, it failed)
 	if _build_lbl != null:
 		_build_lbl.text = ""
 	# what was only for building -- the file, the outlines, the squares' lists -- let go of a
@@ -8072,17 +8165,35 @@ var _pools_from := 0                 ## _pool_at before this have theirs
 var _shop_lights: Array = []         ## [the window's foot, out to the street, how wide] of every lit shop window
 var _shop_lit_from := 0
 
-func _make_pools() -> void:
+## The light pools (and halos, and lit shop windows' light on the pavement) for every lamp so
+## far. Made a while after the car, a few ms a frame (`chunked`, `_pools_ahead`): made at the
+## night button, for every lamp in the city at once, they held the click ~0.4 s here and more
+## in a browser. Each square built after that makes its own (`_build_tile`).
+var _pools_busy := false
+var _pools_abort := false
+func _make_pools(chunked := false) -> void:
+	if _pools_busy:
+		return   # (being made: a square's lamps after those are made next time)
+	_pools_busy = true
 	_pools_made = true
+	if chunked:
+		_yield_at = Time.get_ticks_usec() + _build_us
 	var pools := CBuf.new(GROUND_CELL)
-	for i in range(_pools_from, _pool_at.size()):
+	var upto := _pool_at.size()
+	for i in range(_pools_from, upto):
+		if chunked and Time.get_ticks_usec() > _yield_at:
+			await _pause()
+			if not is_inside_tree() or _pools_abort:
+				_pools_abort = false
+				return   # (the night button came first and made them all at once)
 		var q: Vector3 = _pool_at[i]
 		_pool(pools, Vector2(q.x, q.y), q.z)
 		# the lamp's halo, at its head (a street lamp's ~7 m up, a park globe's ~3.8 m)
 		_halo(pools, _g3(Vector2(q.x, q.y), 3.75 if q.z < 5.0 else 6.9), 0.75 if q.z >= 5.0 else 0.5)
-	_pools_from = _pool_at.size()
+	_pools_from = upto
 	# a lit shop window's light on the pavement in front of it
-	for i in range(_shop_lit_from, _shop_lights.size()):
+	var shops_upto := _shop_lights.size()
+	for i in range(_shop_lit_from, shops_upto):
 		var s: Array = _shop_lights[i]
 		var at: Vector2 = s[0]
 		var n: Vector2 = s[1]
@@ -8097,10 +8208,13 @@ func _make_pools() -> void:
 		pools.tri(m0, a1, b1, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(0.35, 0), Vector2(0.6, 0.72))
 		pools.tri(m0, b1, b0, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(0.6, 0.72), Vector2(-0.6, 0.72))
 		pools.tri(m0, b0, a0, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(-0.6, 0.72), Vector2(-0.35, 0))
-	_shop_lit_from = _shop_lights.size()
+	_shop_lit_from = shops_upto
 	for mi: MeshInstance3D in _add_mesh(pools, _glow_mat("lamplight", POOL_STRENGTH), false, LAMP_RANGE):
 		mi.visible = _night
 		_night_nodes.append(mi)
+	_pools_busy = false
+	if chunked and (_pool_at.size() > _pools_from or _shop_lights.size() > _shop_lit_from):
+		_make_pools()   # (the lamps of squares built meanwhile)
 
 ## ---- the bare ground: patches, not one flat colour ------------------------------------------
 ## Open land drawn in one colour read as empty, a grey plain. A shader breaks it into
@@ -8584,14 +8698,16 @@ void fragment() {
 """
 var _glow_mats := {}
 
+var _glow_sh: Shader
 func _glow_mat(tone: String, strength: float) -> ShaderMaterial:
 	var key := "%s|%.2f" % [tone, strength]
 	if _glow_mats.has(key):
 		return _glow_mats[key]
 	var m := ShaderMaterial.new()
-	var sh := Shader.new()
-	sh.code = GLOW_SHADER
-	m.shader = sh
+	if _glow_sh == null:   # (one Shader for them all: each its own compiled its own programs, the same code)
+		_glow_sh = Shader.new()
+		_glow_sh.code = GLOW_SHADER
+	m.shader = _glow_sh
 	m.set_shader_parameter("col", _tone[tone])
 	m.set_shader_parameter("strength", strength)
 	m.set_meta("tone", tone)
@@ -8671,6 +8787,9 @@ func _set_wet(on: bool) -> void:
 
 ## the time-of-day button: day, then evening, then night, then day again
 func _next_time() -> void:
+	var t0 := Time.get_ticks_usec()
+	var gl0 := _gl_count()
+	var to := "day" if _night else ("night" if _evening else "evening")
 	if _night:
 		_set_night(false)
 	elif _evening:
@@ -8678,6 +8797,25 @@ func _next_time() -> void:
 		_set_night(true)
 	else:
 		await _set_evening(true)
+	_tod_watch(to, gl0, (Time.get_ticks_usec() - t0) / 1000.0)
+
+## what a time-of-day click cost: its own work, then the slowest of the next frames (where the
+## browser compiles what the new light needs) and the shaders compiled -- printed, and in the
+## perf view, so a player's screenshot says it
+var _tod_line := ""
+func _tod_watch(to: String, gl0: Vector2, ms: float) -> void:
+	var worst := 0.0
+	for i in range(10):
+		var tf := Time.get_ticks_usec()
+		await get_tree().process_frame
+		if not is_inside_tree():
+			return
+		worst = maxf(worst, (Time.get_ticks_usec() - tf) / 1000.0)
+	_tod_line = "to %s: %.0f ms at the click, then the slowest frame %d ms" % [to, ms, int(worst)]
+	if gl0.x >= 0.0:
+		var d := _gl_count() - gl0
+		_tod_line += ", %d shaders compiled (%.1f s)" % [int(d.x), d.y / 1000.0]
+	print("[streets] time of day " + _tod_line)
 
 ## Golden hour: the evening sky, the sun low in the west-south-west and warm, the long
 ## shadows (the real ones; the painted far ones redrawn for that sun once, then kept).
@@ -8693,15 +8831,22 @@ func _set_evening(on: bool) -> void:
 		_fs_rect = _fs_cache[key][1]
 		_far_update()
 	else:
-		_fs_tex = null   # (none rather than the other sun's, while it draws)
+		# (none rather than the other sun's while it draws -- a few ms a frame, a moment after
+		# the click, not all at once: drawn whole it held the click a second and more)
+		_fs_tex = null
 		_far_update()
-		await _build_far_shadows()
+		if not _fs_drawing.has(key):
+			_far_draw(key)
 	_show_banner("evening" if on else "day", 1.2)
 	Probe.event("evening", {"on": on})
 
 func _set_night(on: bool) -> void:
 	_night = on
-	if on and not _pools_made:
+	if on and (not _pools_made or _pools_busy):
+		# not made ahead yet (the first ~40 s), or being made: all at once now, as before
+		if _pools_busy:
+			_pools_abort = true
+			_pools_busy = false
 		_make_pools()
 	for n: Node3D in _night_nodes:
 		n.visible = on
@@ -8709,10 +8854,14 @@ func _set_night(on: bool) -> void:
 	if _beam_node != null:
 		_beam_node.visible = _lights_on
 	_retint_city()
-	if on:
-		sun.shadow_enabled = false
-	else:
-		_set_quality(_quality)
+	# The moon is the day's sun as it is -- there, with its shadows, lighting everything --
+	# only dim and blue (_retint_city), its shadows reaching a metre (_set_quality: the shadow
+	# pass draws next to nothing). In a browser every material's shader comes in one version
+	# for a sun with shadows, another for one without and another for no light (or a light that
+	# lights nothing, `light_cull_mask` 0: tried): switching the shadows off at the button made
+	# the browser compile 40-odd programs there and then, a hang of seconds on a user's PC
+	# (21 Nov; tests/web_shaders.js TIMES=, BOT=idle).
+	_set_quality(_quality)
 	if _traffic != null:
 		_traffic.set_night(on)
 	if _furn != null:
@@ -12520,6 +12669,7 @@ const FS_DARK := 0.55                ## the share of the light a shadow takes of
 var _fs_tex: ImageTexture = null
 var _fs_rect := Vector4.ZERO
 var _fs_cache := {}                  ## "day" / "evening" -> [texture, rect]: each sun's drawn once
+var _fs_drawing := {}                ## the suns whose picture is being drawn just now
 var _far_mats: Array = []
 
 ## a ground shader's code with far_shade() in it
@@ -12554,11 +12704,17 @@ func _far_update() -> void:
 		_far_set(m)
 	_grass_retint()   # (the grass reads the same picture's green)
 
-func _build_far_shadows(chunked := false) -> void:
+func _build_far_shadows(chunked := false, for_sun := "") -> void:
 	if DisplayServer.get_name() == "headless":
 		return   # (nothing is drawn: a headless playtest)
-	var ev := _evening   # (the sun drawn for: it may change before the picture is done)
-	var L := -sun.global_transform.basis.z   # the way the sunlight goes
+	# the sun drawn for: this one, or the other ahead of its button ("day" / "evening") -- and
+	# kept as it was asked, the button may change the sun before the picture is done
+	var ev := _evening if for_sun == "" else for_sun == "evening"
+	var L := -Basis.from_euler(Vector3(SKIES["evening" if ev else "day"]["sun"]) * (PI / 180.0)).z   # the way the sunlight goes
+	if _city_data.is_empty() or not _city_data.has("buildings"):
+		return   # (the city file let go: both suns were drawn before that, _far_both)
+	if chunked:
+		_yield_at = Time.get_ticks_usec() + _build_us
 	if L.y > -0.05:
 		return
 	var off := Vector2(L.x, L.z) / -L.y      # a shadow's reach on the ground per metre of height
@@ -12572,7 +12728,7 @@ func _build_far_shadows(chunked := false) -> void:
 	var idx := PackedInt32Array()
 	var lit: Array = []   # the outlines, cleared after all the shadows are in
 	for bd: Dictionary in _city_data["buildings"]:
-		if chunked and _over():   # (after the car: a few ms a frame, as the city's building)
+		if chunked and Time.get_ticks_usec() > _yield_at:   # (after the car: a few ms a frame, building or not)
 			await _pause()
 		var ring: PackedVector2Array = bd["_ring"]
 		if ring.size() < 3:
@@ -12598,7 +12754,7 @@ func _build_far_shadows(chunked := false) -> void:
 	var fcols := PackedColorArray()
 	var fidx := PackedInt32Array()
 	for ring: PackedVector2Array in lit:
-		if chunked and _over():
+		if chunked and Time.get_ticks_usec() > _yield_at:
 			await _pause()
 		var tri := Geometry2D.triangulate_polygon(ring)
 		var b := fpts.size()
@@ -12675,6 +12831,7 @@ func _build_far_shadows(chunked := false) -> void:
 	var tex := ImageTexture.create_from_image(img)
 	var rect := Vector4(o.x, o.y, 1.0 / (w * mpp), 1.0 / (h * mpp))
 	_fs_cache["evening" if ev else "day"] = [tex, rect]
+	_fs_drawing.erase("evening" if ev else "day")
 	if _evening == ev:
 		_fs_tex = tex
 		_fs_rect = rect
@@ -15004,7 +15161,11 @@ func _retint_city() -> void:
 		env.fog_enabled = true
 		env.fog_light_color = hor
 		env.fog_density = _fog_day()   # (half in the made-up town's valley, see _fog_day)
-		env.fog_sun_scatter = 0.3 if _evening else 0.0   # (the haze glows towards a low sun)
+		# (the haze glows towards a low sun. Never 0: any glow at all is another version of every
+		# shader in the browser, and 0 by day made the evening button compile 30 programs there and
+		# then -- a hang; a trace by day, too faint to see, keeps one version for both, compiled
+		# while loading)
+		env.fog_sun_scatter = 0.3 if _evening else FOG_SCATTER_DAY
 		env.fog_sky_affect = 0.0
 		# a film-like curve: the bright walls roll off instead of clipping, the shade deepens
 		env.tonemap_mode = Environment.TONE_MAPPER_ACES
@@ -16347,8 +16508,18 @@ func _physics_process(dt: float) -> void:
 	_crash_cool = maxf(0.0, _crash_cool - dt)
 	_touch_t = maxf(0.0, _touch_t - dt)
 	_p("lights")
+	var split := dt <= WORLD_SPLIT_DT
+	_world_n += 1
+	var traffic_now := not split or _world_n % 2 == 0
+	var people_now := not split or _world_n % 2 == 1
+	var wdt := dt * 2.0 if split else dt
+	_traffic_age = 0.0 if traffic_now else _traffic_age + dt
+	_traffic_dt = wdt if traffic_now else _traffic_dt
+	if _traffic != null:
+		_traffic.ticks_per = 2 if split else 1
 	if _walking:
-		_traffic.tick(dt)
+		if traffic_now:
+			_traffic.tick(wdt)
 		_p("traffic")
 		if not _film.is_empty():
 			_film_tick(dt)
@@ -16360,10 +16531,12 @@ func _physics_process(dt: float) -> void:
 		_p("names")
 		_engine_tick(dt)
 		_p("sound")
-		_people_tick(dt)
+		if people_now:
+			_people_tick(wdt)
 		_knock_tick(dt)
 		_p("people")
-		_crossers_tick(dt)
+		if people_now:
+			_crossers_tick(wdt)
 		if not _film.is_empty():
 			_film_on_zebras()
 		_p("crossers")
@@ -16375,7 +16548,8 @@ func _physics_process(dt: float) -> void:
 		_set_auto(true)
 	elif PInput.just_pressed("action_b") and _auto:
 		_set_auto(false)
-	_traffic.tick(dt)
+	if traffic_now:
+		_traffic.tick(wdt)
 	_p("traffic")
 	var ctl: Array = _autodrive(dt) if _auto else _manual(dt)
 	if _auto:
@@ -16394,16 +16568,37 @@ func _physics_process(dt: float) -> void:
 	_p("names")
 	_engine_tick(dt)
 	_p("sound")
-	_people_tick(dt)
+	if people_now:
+		_people_tick(wdt)
 	_knock_tick(dt)
 	_p("people")
-	_crossers_tick(dt)
+	if people_now:
+		_crossers_tick(wdt)
 	_p("crossers")
 	_check_arrival(dt)
 	_explore(dt)
 	_p("explore")
 	_log.tick(self, dt)
 	_p("log")
+
+## ---- traffic and people, taking turns ---------------------------------------------------
+## The car is ticked 60 times a second; the traffic and the people each every other tick, with
+## twice the time, on alternate ticks -- so no tick pays for both. Their thinking was most of
+## the script's frame on a PC in a browser (Tel Aviv: traffic 3.6 + 1.0 following, people 3.4
+## of a 34 ms frame, two ticks a frame). Only at the real rate: a test run faster
+## (STREETS_SIM_SPEED, its ticks already longer than WORLD_SPLIT_DT) ticks them every tick as
+## before. The traffic is drawn between its own last two ticks (`_traffic_f`), a tick behind
+## the car rather than guessed ahead; the people are placed as they tick.
+const WORLD_SPLIT_DT := 1.0 / 40.0
+var _world_n := 0
+var _traffic_age := 0.0              ## s since the traffic last ticked (0 or one tick)
+var _traffic_dt := 1.0 / 60.0        ## the time its last tick covered
+
+## where between its last two ticks to draw the traffic, for this frame's blend f between the
+## car's last two ticks
+func _traffic_f(f: float) -> float:
+	var dt := 1.0 / float(Engine.physics_ticks_per_second)
+	return clampf((f * dt + _traffic_age) / maxf(_traffic_dt, 0.001), 0.0, 1.0)
 
 ## ---- every drawn frame -------------------------------------------------------------------
 ## The car moves in fixed physics ticks (60 a second). Drawn as it was at the last tick,
@@ -16425,6 +16620,8 @@ func _frame() -> void:
 	if _bg_wait:   # the city still building round you: its few milliseconds (_pause)
 		_bg_wait = false
 		_build_us = CATCH_UP_US if _catch_up else (BUILD_US if dt < 0.022 else BUILD_US / 2)
+		if not _catch_up and not _paused and _zoom_v <= 0.0 and _all_seen_built():
+			_build_us = BUILD_FAR_US
 		_build_tick.emit()
 		_p("building")
 	_watch_fps(dt)
@@ -16439,7 +16636,7 @@ func _frame() -> void:
 		_pose_car(_car_at, _car_yaw_at, _car_y_at)
 		_me.position = Vector3(_view_pos.x, _view_y, _view_pos.y)
 		_me.face(Vector3(cos(_view_yaw), 0, sin(_view_yaw)))
-		_traffic.draw(1.0 if _paused else f)
+		_traffic.draw(1.0 if _paused else _traffic_f(f))
 		_p("traffic draw")
 		_foot_camera(dt)
 		_zoom_camera(dt)
@@ -16448,7 +16645,7 @@ func _frame() -> void:
 		_p("camera, hud")
 		return
 	_pose_car(_view_pos, _view_yaw, _view_y)
-	_traffic.draw(1.0 if _paused else f)   # (held: where the cars stand, not between two ticks)
+	_traffic.draw(1.0 if _paused else _traffic_f(f))   # (held: where the cars stand, not between two ticks)
 	_p("traffic draw")
 	_head_tick(dt)
 	_camera(dt, _view_pos, _view_yaw)
@@ -16520,7 +16717,7 @@ func _set_quality(q: int) -> void:
 	_set_textured(_quality > 0)
 	_tree_quality()
 	sun.shadow_enabled = float(row[1]) > 0.0
-	sun.directional_shadow_max_distance = maxf(float(row[1]), 1.0)
+	sun.directional_shadow_max_distance = maxf(float(row[1]), 1.0) if not _night else 1.0   # (the moon's: none to speak of, _set_night)
 	view.scaling_3d_scale = row[2]
 	_set_blobs(not sun.shadow_enabled)
 	_far_update()
@@ -20410,6 +20607,7 @@ const ZOOM_FAR_HIGH := 650.0         ## ... and above ZOOM_SMALL, only these: ke
 const ZOOM_SMALL := 0.8              ## lamps, fences are under a pixel from there, and drawing them
                                      ## across the town tripled the draws (Givatayim at the top: 898
                                      ## all lifted, 337 like this, 296 driving; no visible difference)
+const FOG_SCATTER_DAY := 0.01        ## the haze's glow towards the sun by day: a trace, never 0 (_retint_city)
 const FOG_DAY := 0.0018              ## the haze's density: by day, at night (see the look)
 
 ## the day's haze: half in the made-up town, a valley ringed by mountains with no horizon to
