@@ -921,6 +921,8 @@ var _marks: Marks                    ## a town's landmarks and its towers' red l
 var _beach: Beach                    ## the beaches by the sea: umbrellas, chairs, lifeguards (beach.gd)
 var _crowd: Crowds                   ## shoppers in a market, people along the shore and in the sea (crowds.gd)
 var _works: Sites                    ## building sites from a town's own map: hoardings, cranes (sites.gd)
+var _wave: Wave                      ## the green wave: lights turning green for the car (wave.gd)
+var _standins: Standins              ## the squares not built yet, seen from above: flat roads, outlines (standins.gd)
 var _on_deck := -1                   ## while a deck road is drawn: heights come from it, not the ground
 var _inferred := {}                  ## what decks.gd's infer() made of a real town's bridges (the report)
 var _wired := {}                     ## road index -> true: Bedford's lamps hang off its power poles
@@ -1004,6 +1006,8 @@ const Marks := preload("res://game/streets/landmarks.gd")
 const Beach := preload("res://game/streets/beach.gd")
 const Crowds := preload("res://game/streets/crowds.gd")
 const Sites := preload("res://game/streets/sites.gd")
+const Wave := preload("res://game/streets/wave.gd")
+const Standins := preload("res://game/streets/standins.gd")
 const DriveLog := preload("res://game/streets/drivelog.gd")
 var _log := DriveLog.new()            ## the last two minutes, for the map page and "save log"
 var _ap_why := ""                     ## what held autodrive's speed down this tick (for the log)
@@ -1175,6 +1179,7 @@ const GOTO_BTN := Rect2(290, 334, 80, 20)
 const ASSIST_BTN := Rect2(376, 334, 70, 20)
 const NIGHT_BTN := Rect2(452, 334, 52, 20)
 const WET_BTN := Rect2(510, 334, 40, 20)     ## after rain / dry
+const WAVE_BTN := Rect2(556, 334, 52, 20)    ## the green wave: the lights ahead turn green for the car (key V; wave.gd)
 const VIEW_BTN := Rect2(578, 98, 52, 20)    ## chase cam / driver's seat (key C too)
 const LIGHTS_BTN := Rect2(578, 122, 52, 20)  ## headlights (key L)
 ## (the indicators and the horn are keys only, Q / E and H: on screen they were clutter)
@@ -2819,6 +2824,7 @@ func _build_setup(t0: int) -> void:
 	_beach.setup(_city_data)
 	_works = Sites.new(self)
 	_works.setup(_city_data)
+	_wave = Wave.new(self)
 	_lights_setup()
 	_infer_signs()   # (after the lights: a lit junction has none)
 	_parks_setup()
@@ -2901,6 +2907,8 @@ func _build_tile(t: Vector2i) -> void:
 	_stage("batches", tk)
 	_set_tiling(false)
 	_batching = false
+	if _standins != null:
+		_standins.drop(t)
 
 ## The squares built before the car is shown. A city level: the one the start is in and any
 ## within NEAR_NOW of it, and those the street ahead crosses within AHEAD_NOW -- what the
@@ -2972,6 +2980,9 @@ func _build_rest() -> void:
 	_build_us = CATCH_UP_US if _catch_up else BUILD_US
 	_yield_at = Time.get_ticks_usec() + _build_us
 	await _build_gardens_later()   # (the start's squares' far gardens, first)
+	if not _tiles_todo.is_empty():   # (the rest, as flat stand-ins seen from above, at once)
+		_standins = Standins.new(self)
+		await _standins.build_all()
 	if not hurry:
 		await _far_now()
 	while is_inside_tree():
@@ -11623,6 +11634,7 @@ func _build_signals() -> void:
 			var front := Vector3(-dir.x, 0.0, -dir.y) * 0.17
 			for ci in range(3):
 				bulbs[g][ci].append(Vector3(p.x, gy + 3.3 + 0.3 - 0.3 * ci, p.y) + front)
+				_wave.lamp(_site_of.get(node, -1), "car", g, ci, Vector3(p.x, gy + 3.3 + 0.3 - 0.3 * ci, p.y) + front)
 			if is_nan(py) or py - _h(p) < 1.0:
 				_add_post(p, 0.15)   # (posts are solid at the ground's level: not one up on a bridge)
 	if poles.is_empty():
@@ -11880,6 +11892,8 @@ func _build_walk_lights(pole_mesh: Mesh) -> void:
 			var front := Vector3(across.x, 0.0, across.y) * 0.1
 			lamps[g][0].append(Vector3(p.x, gy + 2.67, p.y) + front)
 			lamps[g][1].append(Vector3(p.x, gy + 2.43, p.y) + front)
+			_wave.lamp(_site_of.get(j, -1), "walk", g, 0, Vector3(p.x, gy + 2.67, p.y) + front)
+			_wave.lamp(_site_of.get(j, -1), "walk", g, 1, Vector3(p.x, gy + 2.43, p.y) + front)
 			_add_post(p, 0.1)
 	_tally("walk_lights", poles.size())
 	if poles.is_empty():
@@ -14406,7 +14420,7 @@ func _ap_light_v() -> float:
 			stop = 0.0   # (standing a little over it -- stopped there for people on a crossing --
 			             # is not through: it waits for its green where it stands)
 		var state := _light_at(n, f[2])
-		var raw := String(SIGNAL_CYCLE[_sig_phase][_light_group(n, f[2])])
+		var raw := String(SIGNAL_CYCLE[_ph_at(n)][_light_group(n, f[2])])
 		_ap_light_dbg = [n, raw, stop]
 		if raw == "g":
 			_ap_amber_n = -1
@@ -14459,12 +14473,15 @@ func _ap_brake_for(stop: float) -> float:
 ## red and amber, now)
 func _light_red_in(n: int, dir: Vector2) -> float:
 	var grp := _light_group(n, dir)
+	if _wave != null and _wave.held(_site_of.get(n, -1), grp):
+		return INF   # (held green for the car: wave.gd)
 	var acc := 0.0
+	var p0 := _ph_at(n)
 	for k in range(SIGNAL_CYCLE.size()):
-		var ph: Array = SIGNAL_CYCLE[(_sig_phase + k) % SIGNAL_CYCLE.size()]
+		var ph: Array = SIGNAL_CYCLE[(p0 + k) % SIGNAL_CYCLE.size()]
 		if String(ph[grp]) in ["r", "ry"]:
 			return acc
-		acc += float(ph[0]) - (_sig_t if k == 0 else 0.0)
+		acc += float(ph[0]) - (_t_at(n) if k == 0 else 0.0)
 	return INF
 
 ## autodrive: seconds to drive `dist` metres along the plan, at the pace it goes there --
@@ -14489,8 +14506,16 @@ func _ap_time_to(dist: float) -> float:
 func _light_at(n: int, dir: Vector2) -> String:
 	if not _sig_set.has(n):
 		return ""
-	var st: String = SIGNAL_CYCLE[_sig_phase][_light_group(n, dir)]
+	var st: String = SIGNAL_CYCLE[_ph_at(n)][_light_group(n, dir)]
 	return "g" if st == "gf" else ("r" if st == "ry" else st)
+
+## the step of the light cycle lit point n is at, and how far into it: the city's clock, or
+## its own while the green wave has it (wave.gd)
+func _ph_at(n: int) -> int:
+	return _wave.phase(_site_of.get(n, -1)) if _wave != null and not _wave.ovr.is_empty() else _sig_phase
+
+func _t_at(n: int) -> float:
+	return _wave.time(_site_of.get(n, -1)) if _wave != null and not _wave.ovr.is_empty() else _sig_t
 
 ## Which of the two signal groups (1 or 2, the columns of SIGNAL_CYCLE) traffic arriving at
 ## node n going `dir` belongs to: the site's axis it runs nearer, either way along it. The
@@ -16484,6 +16509,8 @@ func _physics_process(dt: float) -> void:
 	_prof_ticks += 1
 	_p0()
 	_signals_tick(dt)
+	if _wave != null:
+		_wave.tick(dt)
 	if _rails != null:
 		_rails.tick(dt)
 	_crash_cool = maxf(0.0, _crash_cool - dt)
@@ -16571,6 +16598,8 @@ func _frame() -> void:
 		_p("building")
 	_watch_fps(dt)
 	_hold_tick(dt)
+	if _standins != null:
+		_standins.show(_zoomed())
 	if _blades != null:
 		_turbines_tick()
 	var f := Engine.get_physics_interpolation_fraction()
@@ -18818,14 +18847,15 @@ func _walk_light(cr: Dictionary, need: float) -> bool:
 	if n < 0 or not _sig_set.has(n):
 		return true
 	var grp := _light_group(n, cr["sig_dir"])
-	var step: Array = SIGNAL_CYCLE[_sig_phase]
+	var p0 := _ph_at(n)
+	var step: Array = SIGNAL_CYCLE[p0]
 	if not (step[grp] == "r" and step[3 - grp] == "g"):
 		return false   # the red man
 	# the green man, with time enough before the cars across get their green to be over
 	# (the red man comes on with the other way's flashing green; the road stays red behind it)
-	var left := float(step[0]) - _sig_t
-	var i := (_sig_phase + 1) % SIGNAL_CYCLE.size()
-	while i != _sig_phase and SIGNAL_CYCLE[i][grp] == "r":
+	var left := float(step[0]) - _t_at(n)
+	var i := (p0 + 1) % SIGNAL_CYCLE.size()
+	while i != p0 and SIGNAL_CYCLE[i][grp] == "r":
 		left += float(SIGNAL_CYCLE[i][0])
 		i = (i + 1) % SIGNAL_CYCLE.size()
 	return left >= minf(need, 14.0) + 1.0
@@ -20935,6 +20965,14 @@ func _draw_zoom_marks() -> void:
 	_hud_text(at - v * 26.0 + Vector2(-20, 4), "you", 40, 9, Color(col, a))
 
 ## ---- autodrive: follow the road graph in the right-hand lane, preferring new streets ----
+
+## the green wave on or off (wave.gd): the lights the car comes up to turn green its way
+func _set_wave(on: bool) -> void:
+	if _wave == null:
+		return
+	_wave.set_on(on)
+	_show_banner("green wave: the lights ahead turn green for you" if on else "green wave off", 1.6)
+	Probe.event("wave", {"on": on})
 
 func _set_auto(on: bool) -> void:
 	_auto = on
@@ -23515,6 +23553,11 @@ func _draw_hud() -> void:
 	_hud.draw_rect(WET_BTN, Color(bg, 0.65))
 	_hud.draw_rect(WET_BTN, Color(wetc, 0.9), false, 1.5)
 	_hud.draw_string(_font, WET_BTN.position + Vector2(0, 15), "dry" if _wet else "wet", HORIZONTAL_ALIGNMENT_CENTER, WET_BTN.size.x, 11, wetc)
+	var wv := _wave != null and _wave.on
+	var wvc := Palette.col("friend") if wv else Color(ink, 0.8)
+	_hud.draw_rect(WAVE_BTN, Color(bg, 0.65))
+	_hud.draw_rect(WAVE_BTN, Color(wvc, 0.9), false, 1.5)
+	_hud.draw_string(_font, WAVE_BTN.position + Vector2(0, 15), "WAVE ON" if wv else "wave", HORIZONTAL_ALIGNMENT_CENTER, WAVE_BTN.size.x, 11, wvc)
 	var lc := Palette.col("warn") if _lights_on else Color(ink, 0.8)
 	_hud.draw_rect(LIGHTS_BTN, Color(bg, 0.65))
 	_hud.draw_rect(LIGHTS_BTN, Color(lc, 0.9), false, 1.5)
@@ -23837,6 +23880,9 @@ func _input(event: InputEvent) -> void:
 				KEY_L:
 					_set_lights(not _lights_on)
 					return
+				KEY_V:
+					_set_wave(not _wave.on)
+					return
 				KEY_F:
 					_toggle_walk()
 					return
@@ -23880,6 +23926,8 @@ func _input(event: InputEvent) -> void:
 				_next_time()
 			elif WET_BTN.grow(3).has_point(mb.position):
 				_set_wet(not _wet)
+			elif WAVE_BTN.grow(3).has_point(mb.position):
+				_set_wave(not _wave.on)
 			elif VIEW_BTN.grow(4).has_point(mb.position):
 				if _zoomed():
 					_zoom_seat = not _cockpit
@@ -23914,7 +23962,7 @@ func _input(event: InputEvent) -> void:
 		if t.pressed:
 			if AUTO_BTN.grow(4).has_point(t.position) or GOTO_BTN.grow(4).has_point(t.position) \
 					or ASSIST_BTN.grow(4).has_point(t.position) or NIGHT_BTN.grow(4).has_point(t.position) \
-					or WET_BTN.grow(3).has_point(t.position) \
+					or WET_BTN.grow(3).has_point(t.position) or WAVE_BTN.grow(3).has_point(t.position) \
 					or VIEW_BTN.grow(4).has_point(t.position) or LIGHTS_BTN.grow(2).has_point(t.position) \
 					or WALK_BTN.grow(2).has_point(t.position) or LOOK_BTN.grow(2).has_point(t.position) \
 					or ZOOM_BTN.grow(2).has_point(t.position) or PAUSE_BTN.grow(2).has_point(t.position) \

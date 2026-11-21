@@ -22,6 +22,8 @@ merge, re-check (`tools/check_script.sh`, a playtest, the tests below), never fo
 | `crowds.gd` | people where the street walkers never go: shoppers down a market's walkway stopping at its stalls (lines from `landmarks.gd`'s `_market_line`), walkers and joggers along a beach's wet sand and people standing in the sea (lines and spots from `beach.gd`'s `_people_lines`); pools made the first time a line is near, ticked from `_people_tick` (see "Crowds") |
 | `sites.gd` | building sites from a town's own map (the city file's `sites`): printed hoardings round each plot (solid walls), a tower crane over each new building's plot that is tall or 700 m2+ (see "The town's own layers") |
 | `landmarks.gd` | a town's landmarks, found by their building's name in the bake (`BY_CITY`: Tel Aviv's Azrieli towers, the Matcal and Marganit towers, Sarona's houses): a glass of their own, a lit crown, a mast or shaft on the roof, red tile roofs; and in every town the red lights on roofs over 90 m at night. Hooks in streets.gd: `_glass` / `_tile` on a building for `_build_buildings`, `build()` per square, `set_night` |
+| `wave.gd` | the green wave (the "wave" button, V): lit junctions ahead of the car run their own clock to green its way and hold it; streets.gd reads every light through `_ph_at` / `_t_at`, which ask it first. See "The green wave" below |
+| `standins.gd` | the squares not built yet seen from above: one flat mesh a square (roads, building outlines, parks, water) made as the background build starts, shown only while zoomed out, dropped when its square is built. See "The green wave" below |
 | `rails.gd` | railways: the tracks the city file has (`rails`, `platforms`, `stations`), their beds, rails and sleepers, the platforms with canopies and the station's name, and trains running along them (`tick`). See "Railways" below |
 | `cities/*.json` | baked towns (`tools/osm_city.py`) and the made-up test town (`tools/fake_city.py`) |
 | `details.gd`, `cities/details/<city>.json` | what a filmed walk showed and OSM lacks, laid over the baked city as it loads (road edits, unmarked zebras, areas, an arcade cut under a block, paving level with the pavement, walls, fences, hedges, bins, railings, bollards, a pole transformer, a barrier, parked motorbikes, trees) and the walks themselves; the format is at the top of `details.gd` |
@@ -3235,6 +3237,60 @@ LEVEL=1 $GODOT --headless --path . -s res://game/streets/tests/<test>.gd`.
   `CATCH_UP_US`: frames ~34 ms against ~10 for its 3-6 s; the playtest's smart 25 s showed 12-14
   hitches, "building 24", where 4-11 was usual before); kits with thousands of copies go
   through `_instanced`, not the batches (the AC units: 19 hitches of 50 ms when merged).
+
+## The green wave; the city from above before it is built (21 Nov 2026)
+
+**The green wave** (`wave.gd`, the "wave" button at the bottom right, key V). Every light in a
+town runs on one clock (`_sig_phase`, `_sig_t`, `SIGNAL_CYCLE`), its two groups per site, and
+the lamps are one multimesh per group and colour across the whole town. So a junction
+cannot simply be turned green: with the wave on, each lit site within reach ahead of the car
+(a cone of about 40 degrees, `max(150 m, 12 s at its speed)`, at most 220 m: the change for
+the cross street takes 9.5 s in Israel, 6 s in Nova Scotia) gets its own clock in
+`_wave.ovr`, copied from the city's so nothing changes on the spot, and that clock goes the
+quickest proper way to green for the car's group: the cross street's green ends once it has
+had 4 s (flashing, amber, red all round, red-and-amber for you), a red all round goes
+straight on to your red-and-amber (the cross street not given a green it would lose at once),
+a flashing green of yours goes back to steady; then it holds while the car is ahead or in
+it. Let go, it runs its own cycle with its greens cut to 6 s until both groups show what the
+city's clock shows, and drops back to it (forced after 150 s). Everything that reads a light
+goes through `_ph_at(n)` / `_t_at(n)` (`_light_at`, `_light_red_in` -- INF while held --,
+autodrive's raw light, `_walk_light`), so traffic, autodrive, the people at crossings and the
+red-run count all see the junction's own clock; with the wave off `ovr` is empty and every
+read is the city's clock, as before. Its lamps: every bulb and walk lamp records its site as
+it is built (`_wave.lamp`), and a site on its own clock gets a set of its own drawn over the
+shared ones, a little bigger (0.125 m over 0.11, 0.095 over 0.08), which hides them; freed
+when it rejoins the city's clock.
+`tests/green_wave.gd`: autodrive straight through GW_N junctions from 170 m back, the light
+at its worst (red, the cross street's green just begun), with the wave off and on.
+21 Nov, Givatayim, 3 junctions (a fourth, on an unnamed lane, autodrive never reached
+either way: skipped): without the wave the car stood at 2 of 3 (the third came green as it
+got there); with it none stood, slowest 18-29 km/h (from a standing start 250 m back:
+autodrive's own slowing into a junction), green its way 16-20 s after the start, 0 red runs,
+every cross street through flashing and amber to red, every junction back on the city's
+clock within the 60 s watched. Two lessons it cost: asked at 120 m from a car pulling away,
+the worst start (the cross street's green just begun: 4 s + 9.5 s of change) was still red
+when it got there -- hence 14 s of reach at speed, 150 m at least; and letting go by cutting
+greens to drift into step took minutes (one junction was still off the city's clock 60 s on)
+-- now it waits at red all round for the city's next red-and-amber (`tick`'s let-go branch).
+
+**Stand-ins seen from above** (`standins.gd`). At the start only the squares round the car
+are built; zoomed out, the rest of the town was empty. As the background build starts
+(`_build_rest`), every square still to build gets one flat mesh from the city file already
+loaded: its roads as strips as wide as the road (each segment cut to the square,
+Liang-Barsky, following the ground every 12 m), its buildings' outlines flat at the highest
+ground under them, its parks, grass, woods, pitches, water, car parks and plazas cut to the
+square (`Geometry2D.intersect_polygons`). Unshaded vertex colours from the palette, one draw
+a square, shown only while `_zoomed()` (from the street those squares are in the haze), each
+dropped at the end of `_build_tile`. Decks (bridges, tunnels) are left out: drawn flat they
+would lie across what is under them. A long press up there already found the street before
+(it reads the road data): this gives it something to aim at.
+`tests/standins.gd` (STREETS_BUILD_ALL=0): zooms to the top as the car is shown, 8 shots while
+the town builds; none on a built square, none missing on an unbuilt one.
+21 Nov, Ashdod (947 squares, 6 built before the car): 862 stand-ins, 805 ms all told (a few
+ms a frame, before the background build's first square), 0 on a built square and 0
+missing at all 8 shots; the shots show the strips and outlines meeting the built squares
+without a gap. (The square being built keeps its stand-in to the end of `_build_tile`:
+`_tiles_done` is set at its start, which the test first counted as wrong.)
 
 ## Open problems
 
