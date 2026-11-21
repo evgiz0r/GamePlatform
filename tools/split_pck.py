@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Split an exported web build's index.pck into a small main pack plus packs that rarely change.
 
-Usage: tools/split_pck.py <export dir> <work dir>   (tools/publish_web.sh runs it)
+Usage: tools/split_pck.py <export dir> <work dir>   (from the project root; tools/publish_web.sh runs it)
 
 Why: a phone keeps the last build in its service worker's cache, but every publish used to
 change index.pck -- the one ~40 MB file holding the code, every texture, model, sound and
@@ -67,7 +67,7 @@ def read_pck(path):
         assert not (fflags & 1), p + ' is encrypted: cannot split'
         files.append((p, d[file_base + ofs:file_base + ofs + size]))
     total = sum(len(b) for _, b in files)
-    return files, total
+    return files, total, (major, minor, patch)
 
 
 def group_of(p, size):
@@ -86,7 +86,8 @@ def group_of(p, size):
 
 def main():
     out, work = sys.argv[1], sys.argv[2]
-    files, total = read_pck(os.path.join(out, 'index.pck'))
+    project = os.getcwd()   # (publish_web.sh runs it from the project's root)
+    files, total, engine = read_pck(os.path.join(out, 'index.pck'))
     groups = {}
     for p, b in files:
         groups.setdefault(group_of(p, len(b)), []).append((p, b))
@@ -96,9 +97,24 @@ def main():
     for g in sorted(groups, key=lambda k: (k == 'main', k)):
         items = sorted(groups[g])
         h = hashlib.sha256()
-        for p, b in items:
-            h.update(p.encode('utf-8') + b'\0' + struct.pack('<Q', len(b)))
-            h.update(b)
+        if g in ('art', 'sound'):
+            # Named by what was imported, not by the import's output: Godot's import of a
+            # model is not byte-for-byte repeatable (a fresh import on the publishing machine
+            # wrote 47 of 700 files differently, the .scn of every glTF), so hashing the output
+            # renamed the art pack on every publish and a phone fetched its 13 MB each time.
+            # The engine version, every imported path, each .import remap as exported, and
+            # the bytes of the source file it was imported from.
+            h.update(('godot %d.%d.%d' % engine).encode('utf-8'))
+            for p, b in items:
+                h.update(p.encode('utf-8') + b'\0')
+                if p.endswith('.import'):
+                    h.update(b)
+                    src = os.path.join(project, p[len('res://'):-len('.import')])
+                    h.update(open(src, 'rb').read() if os.path.isfile(src) else b'(no source)')
+        else:
+            for p, b in items:
+                h.update(p.encode('utf-8') + b'\0' + struct.pack('<Q', len(b)))
+                h.update(b)
         name = 'index.pck' if g == 'main' else 'index.%s.%s.pck' % (g, h.hexdigest()[:12])
         entries = []
         for i, (p, b) in enumerate(items):
