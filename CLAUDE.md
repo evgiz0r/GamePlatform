@@ -268,6 +268,13 @@ Short, specific, and all of them cost a debugging session:
 
 ## Ideas that are not being built yet
 
+**When you list next steps or ideas for the user, use a table with these columns** (the user
+asked for this in every session): the number, the idea, **effort** (small / medium / large /
+very large), **how much a player would notice it** (stars), **your grade** (A-F: how much it is
+worth doing now, all things considered -- risk, overlap with other sessions' work, what it
+unlocks) and **a comment** (a line on why: the catch, the dependency, what you would do first).
+Then say which you would do next and why. Number them so the user can answer "4, 9, 10".
+
 `IDEAS.md` at the root is the parking lot for concepts about the kit that are noted but
 not scheduled. Read it before pitching features, so you do not re-pitch what is already
 there. When someone mentions an idea and says it is for later, offer to add it to that

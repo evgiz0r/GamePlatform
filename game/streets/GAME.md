@@ -1662,3 +1662,14 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   lobby and stairwell fitted to the outline, the right number of landings, and that many
   flats each split into rooms the way a block of its age is. Only the building you walk into
   is built inside, while you are in it.
+- Scenarios: little movies playing out in the town. "its similar to a guide. but some
+  scenario ( aka movie i guess ) happening in a city. doesnt have to be related to the city
+  itself". Like the guided tour, a script that moves the camera and stages things -- but a
+  story of its own: a chase, a wedding procession, a delivery that goes wrong, a stray dog
+  followed across town, a first day in a new city. Its actors are the town's own people and
+  cars, sent where the script says (the scene tests already stage people, cars and lights
+  this way); the camera cuts and follows; it can be watched, or played from inside (you are
+  the one being chased). Each scenario is a level of its own in the start screen, and runs in
+  any town, its places picked from the town's map (a long street, a square, a junction with
+  lights). The same machinery as the guided tour and the opening: a script of shots.
+
