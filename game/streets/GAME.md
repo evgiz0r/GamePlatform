@@ -432,6 +432,11 @@ The minimap (bottom left) shows the real streets and buildings round you, headin
 the city limits in pink. The name of the street you are on is at the top, in Hebrew with
 the English name under it when OSM has one.
 
+Over the minimap, small, is which build this is: "build 21 Nov 10:05 UTC · 79f2bc6", when
+it was published and the commit it came from, so a screenshot says whether a fix is in it
+("dev build" when run from the project). Under the map, small and wrapped so it stays
+clear of the buttons, the credits: OpenStreetMap's, and the towns' own surveys.
+
 **Zooming out.** "zoom" (on the right, under "walk"; Z, or the mouse wheel down, or two
 fingers pinching together) lifts the view off the car -- or off you, on foot -- up over the
 city, centred on where you are, the way you were facing at the top of the screen, and

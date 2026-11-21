@@ -418,7 +418,9 @@ The ones most often touched, and the functions in them:
   warm (`_load_into`, `_load_sub` at each square and warm-up frame), estimated from this
   device's last load of the city in `user://streets_load.json` (`_load_save`: ms per phase,
   per square, the warm-up as on the same build `warm` and on a new build's first load
-  `warm_new`, keyed by res://build.txt); no history for the city: another city's, the file
+  `warm_new`, keyed by res://build.txt -- "<UTC time> <commit>", tools/publish_web.sh; shown
+  over the minimap by `_build_line`, so a user's screenshot names its build: check a fix
+  is in it with `git merge-base --is-ancestor <fix> <commit>`); no history for the city: another city's, the file
   scaled by its size; none: the bar by phase, "timing it, for next time". The city file is
   one blocking call (`_load_city`): the bar stands still through it.
 - **people** -- walkers `_place_walker` / `_pavement_piece` / `_people_tick`, zebra crossers

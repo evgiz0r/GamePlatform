@@ -1066,6 +1066,7 @@ var _count_lbl: Label
 var _banner: Label
 var _banner_tw: Tween
 var _osm_lbl: Label
+var _ver_lbl: Label                  ## which build this is, over the minimap (_build_line)
 var _loaded := false
 var _touch_seen := false
 var _woke := false
@@ -21127,20 +21128,53 @@ func _build_hud() -> void:
 	_banner.position = Vector2(120, 98)
 	_banner.size = Vector2(400, 30)
 	_banner.modulate.a = 0.0
-	_osm_lbl = _label(8, "ink")
+	# the credits, small, in the corner under the map and clear of the buttons along the bottom
+	# (AUTO_BTN starts at x 184): one line run past them, the towns' surveys under the buttons
+	_osm_lbl = _label(7, "ink")
 	_osm_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_osm_lbl.position = Vector2(8, 347)
+	_osm_lbl.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	_osm_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_osm_lbl.add_theme_constant_override("line_spacing", -3)
+	_osm_lbl.position = Vector2(6, 329)
+	_osm_lbl.size = Vector2(AUTO_BTN.position.x - 12.0, 30)
 	_osm_lbl.text = "a made-up town: not a real place" if _made_up else "map data © OpenStreetMap contributors"
 	if not _credits.is_empty():   # a town's own surveys of its buildings and trees (tools/osm_city.py)
 		_osm_lbl.text += " · " + _credit_line(_credits)
 	_osm_lbl.modulate.a = 0.7
+	# which build: a screenshot then says whether it holds a fix (the menu shows it too, but
+	# a screenshot of the street does not have the menu in it)
+	_ver_lbl = _label(8, "ink")
+	_ver_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_ver_lbl.position = Vector2(8, 197)
+	_ver_lbl.size = Vector2(200, 12)
+	_ver_lbl.text = _build_line()
+	_ver_lbl.modulate.a = 0.6
 	_map = Control.new()
-	_map.position = Vector2(8, 224)
+	_map.position = Vector2(8, 210)
 	_map.size = Vector2(118, 118)
 	_map.clip_contents = true
 	_map.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_map.draw.connect(_draw_map)
 	_hud.add_child(_map)
+
+## res://build.txt, as tools/publish_web.sh writes it ("2026-11-21 10:05 UTC 79f2bc6": when it
+## was built and the commit it was built from), said short: "build 21 Nov 10:05 UTC · 79f2bc6".
+## With no file (run from the project, not a published build): "dev build".
+func _build_line() -> String:
+	var t := _build_id
+	if t == "" and FileAccess.file_exists("res://build.txt"):
+		t = FileAccess.get_file_as_string("res://build.txt").strip_edges()
+	if t == "":
+		return "dev build"
+	var p := t.split(" ", false)
+	var day := p[0].split("-")
+	if p.size() < 3 or day.size() != 3:
+		return "build " + t
+	var months := ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+	var s := "build %d %s %s %s" % [int(day[2]), months[clampi(int(day[1]) - 1, 0, 11)], p[1], p[2]]
+	if p.size() >= 4:
+		s += " · " + p[3]
+	return s
 
 func _retint_hud() -> void:
 	if _hud == null:
