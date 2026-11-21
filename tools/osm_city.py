@@ -791,6 +791,12 @@ SURVEYS = [
      "oid": "oid_mivne", "h": "gova_simplex_2019", "floors": "ms_komot", "year": "year",
      "pilotis": ("t_amudim", ("כן", "קיימת קומה מפולשת")),
      "skip": ("t_sug_mivne", ("מבנה ארעי", "תחנת אוטובוס", "מבנה בבנייה"))},
+    # The whole Netherlands: 3DBAG's laser-measured heights (roof at its 70th percentile above
+    # the ground, storeys counting the ground floor), saved per town by
+    # game/streets/data_tools/nl_3dbag.py into one national extract that only grows.
+    {"id": "nl_3dbag", "credit": "building heights © 3DBAG by tudelft3d and 3DGI, CC BY 4.0",
+     "extent": (50.75, 3.20, 53.70, 7.25),
+     "h": "h", "floors": "fl", "year": "yr", "ground_counted": True},
     # A survey with no server the bake can reach (no "url") is read only from a saved extract,
     # data/<id>.geojson beside the city file -- fetched once by hand where the site answers,
     # and committed, so a re-bake anywhere keeps it. Floors only, no measured height; its
@@ -1718,6 +1724,9 @@ TREE_SURVEYS = [
     {"id": "givatayim_trees", "file": "givatayim_trees.json", "rows": "trees", "all": True,
      "shift": (0.8, -0.6),
      "credit": "trees © Givatayim Municipality"},              # [lon, lat, crown radius m]
+    # the whole Netherlands: the BGT's trees (game/streets/data_tools/nl_bgt.py), no species
+    {"id": "nl_bgt_trees", "file": "nl_bgt_trees.json", "rows": "rows", "all": False,
+     "credit": "trees, lamp posts © BGT via PDOK"},                # [lon, lat, ""]
 ]
 # The form a species grows into, by a word in its Hebrew name (the first that matches; else
 # "round": a bottle tree, a hackberry, a lagerstroemia...). Feathery crowns (jacaranda,
@@ -1819,6 +1828,8 @@ TOWN_LAYERS = [
     {"id": "tel_aviv", "shift": (-0.4, -1.9), "credit": "city data © Tel Aviv-Yafo Municipality",
      "lamps": "tel_aviv_lamp_poles.json", "places": "places_tel_aviv.geojson",
      "businesses": "tel_aviv_businesses.json", "hydrants": "tel_aviv_hydrants.json"},
+    # the whole Netherlands: the BGT's lamp posts (game/streets/data_tools/nl_bgt.py)
+    {"id": "nl_bgt", "credit": "trees, lamp posts © BGT via PDOK", "lamps": "nl_bgt_lamps.json"},
 ]
 # the things in the places layer stood in the street where the town maps them ("things"):
 # its kind's name in the city file, and the number it carries (docks, places) if any
@@ -2004,6 +2015,15 @@ def town_layers_apply(out, P, data_dir):
     return credits
 
 
+def credits_check(city):
+    """Every credit must read "what © who": the game's credit line (streets.gd, _credit_line)
+    drops the owner of one without " © " (Delft's first build showed "building heights,
+    trees ©" and nothing after it). Stops the bake rather than ship a credit nobody can read."""
+    bad = [c for c in city.get("credits", []) if " © " not in c]
+    if bad:
+        sys.exit("credits must read 'what © who' (SURVEYS, TREE_SURVEYS, TOWN_LAYERS): %s" % bad)
+
+
 def add_surveys(path, offline):
     """The survey step alone, on a city file baked already (its OSM data is left as it is)."""
     with open(path, encoding="utf-8") as f:
@@ -2029,6 +2049,7 @@ def add_surveys(path, offline):
     if not stats and not tree_credits:
         log("no survey covers this town (or none could be reached): file left as it was")
         return
+    credits_check(city)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(city, f, ensure_ascii=False, separators=(",", ":"))
     log(f"wrote {path} ({os.path.getsize(path) / 1e6:.1f} MB)")
@@ -2086,6 +2107,7 @@ def main():
     raw = fetch(args, slug)
     city = bake(raw, name, args)
     level_roads.level(city)   # the roads level side to side on the height grid (tools/level_roads.py)
+    credits_check(city)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(city, f, ensure_ascii=False, separators=(",", ":"))

@@ -1674,6 +1674,9 @@ Givatayim 0 late. Traffic cars do not look at walkers at all (they rely on the k
 
 ## Cities
 
+Adding a new city: follow `NEW_CITY.md` (the steps, the data per layer, the country pack,
+a card per candidate and the candidates scored).
+
 Re-bake with `main_server_only` on, and diff the counts against the file it replaces
 (`git show HEAD:<file>` and compare roads, buildings, crossings, areas): a mirror twice
 answered with ~12% fewer road pieces. Last re-bakes: Givatayim and Tel Aviv, 20 Nov 2026
@@ -1686,6 +1689,7 @@ Bedford have not been re-baked since.
 | 2 | Bedford, Nova Scotia ("north") | place "Bedford, Nova Scotia", include "Hemlock Ravine Park; Kearney Lake; Sandy Lake; Fleetview Drive" |
 | 3 | Ashdod ("med") | place "Ashdod" |
 | 4 | Kiryat Dimyon, made up | `tools/fake_city.py` |
+| 9 | Delft, a box of the old centre ("north") | baked on the user's computer, not the workflow: first `data_tools/nl_3dbag.py` and `data_tools/nl_bgt.py` with 51.99965,4.34181,52.02035,4.37219, then place "Delft", bbox "52.0010,4.3440,52.0190,4.3700", margin 150 (NEW_CITY.md, "The Netherlands") |
 | 7 | Tel Aviv, a box of the centre ("med") | place "Tel Aviv", bbox "32.0639,34.7795,32.0858,34.8021" (read off the user's map screenshot), margin 150, bare_ground on (without it Azrieli stood on a 146 m hill of its own roofs) |
 
 The start points are public street corners named in `LEVELS`. **The web build is public:
@@ -3497,6 +3501,18 @@ without a gap. (The square being built keeps its stand-in to the end of `_build_
     from it (off Derech Namir, Tuval) and turned round in them for 12 s at 1.3 m/s, twice
     at Tuval. `_edge_walk` now counts a dead end within EDGE_DEAD (30 m) of the barrier as
     the map's cut, not a cul-de-sac. The three-point turn itself is slow (open).
+- **Delft (level 9): 39 m² of island on the asphalt** (`city_check`'s "islands on the road",
+  0 in every other town; the first spot is at (-478, 1000), Westlandseweg's west end, a
+  secondary road 10-16 m wide). Not found yet. One way it can happen, seen in the city file:
+  `_island_cut` skips a cutter lying wholly inside the area (`holed`), so an area that wholly
+  holds a drivable segment keeps that asphalt under it. Five Delft areas do this, all with
+  4.5 m service roads in them, but not the area at the first spot. Next step: a scene test
+  listing every island sample point on asphalt, with its island and road. Delft's other
+  first-run numbers, so a later run has something to compare with:
+  - 0 for walls, posts and buildings on the road, and for every "doubled" row;
+  - road lean 0.2% (Stationsplein's ramp, 33%);
+  - posts twice 2, lights' way in with no pole 5, knot split 1, stop short 93.
+
 - **Walkers appearing in view: mostly fixed, a rare one left** (`people_pops`, Givatayim,
   22 Nov). The two runs before the fix each had one; logging each placement showed both
   ways it happened: a walker at a stretch's end was taken away while in view, 88 m off (only

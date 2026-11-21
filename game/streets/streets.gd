@@ -37,6 +37,9 @@ const LEVELS := [
 	# the route set (routes.json, tests/pick_routes.py): pick one of the drives and watch
 	# autodrive take it, from one address to the other, in its own city
 	{"name": "Test routes: watch a drive", "group": "Auto Experiments", "routes": true, "city": "dimyon", "look": "med"},
+	# the first Dutch town (NEW_CITY.md): a box of the old centre, the station and the canals,
+	# with 3DBAG's measured heights and the BGT's trees and lamp posts. Starts on the Oude Delft canal.
+	{"name": "Delft", "group": "Cities", "city": "delft", "start": ["Oude Delft", "Binnenwatersloot"], "look": "north", "decks": "infer"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
