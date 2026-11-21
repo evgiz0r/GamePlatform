@@ -2715,11 +2715,17 @@ rests on the forearms.
   mauve next to the shops. They are now `_greyed` (0.92, 0.92, 0.85).
 - **Shutter boxes.** A grey metal housing 0.3 m deep sits over most shop windows (75%, and
   every shut shop), as most of the towns' shops have one. `_tally` "shutter_boxes".
-- **Should a check have caught the mauve cars and the red pavers?** Yes, by the family
-  "what is grey in life reads grey on screen". `look_tries`/`look_bench` already measure
-  pure white per shot. Widening them to report the mean red/green and blue/green of a few
-  known-grey things (a parked silver car's body, a grey paving band, the asphalt) would cost
-  ~20 lines and no extra run time. Not done yet.
+- **Should a check have caught the mauve cars and the red pavers?** The family is "what is
+  grey in life reads grey on screen". `look_tries` and `look_bench` now print each shot's
+  greys (`_grey_check`): the truly grey pixels' red/green and blue/green, FAIL past 0.07 off.
+  - It catches a tint over the whole scene. It cannot catch one object's: the Kira Sushi
+    shot read 1.083 with the mauve cars and 1.082 without them.
+  - Catching one object's tint would mean measuring known things by their pixels (a
+    parked car's body, a paving band): a per-object render pass, a larger job. Offered,
+    not started.
+  - The bench now reads red/green 1.04-1.07 and blue/green ~1.015, against the film's greys
+    at ~1.03 and 0.98. That is a slight magenta (green ~3-5% low) across the scene, still
+    to look at.
 
 ## Sizes against life (`tests/scale_check.gd`, 20 Nov 2026)
 
