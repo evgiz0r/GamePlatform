@@ -530,6 +530,12 @@ The ones most often touched, and the functions in them:
   `_warm_up` then shows the kinds of surface a few at a time (`_shader_key`; four views only
   under a software renderer), each frame timed in `_warm_ms`; `_load_ms`, `_stage_ms`;
   `_load_text` puts them at the bottom of the perf view, so a player's own load can be read.
+  After each load `_show_load_line` puts this device's own split over the build line for 20 s
+  ("loaded in X s (+ page Y s): city file · start area · graphics"; `_load_split`, `_load_line`,
+  also printed as "[streets] loaded in ..."), so a phone screenshot gives real numbers: the
+  container's graphics warm-up (27-40 s under SwiftShader) says nothing about a phone's. "page"
+  (`_page_ms`: the browser's clock minus the engine's) is the download and engine start, shown
+  on the first city of a visit only.
   The bar under the text (`_load_bar_begin`, `_load_tick`): phases file / setup / squares /
   warm (`_load_into`, `_load_sub` at each square and warm-up frame), estimated from this
   device's last load of the city in `user://streets_load.json` (`_load_save`: ms per phase,
@@ -660,7 +666,8 @@ before's with `tools/nightly_compare.py`. The run's page (Actions, "nightly chec
 what changed in its summary and keeps every output for two weeks; the run fails, and GitHub
 emails the owner, only when something got worse -- a new FAIL, OVER or NO VERDICT, or a count
 that rose. The exam and the queue check are in the summary, not the verdicts (too noisy to
-fail a night on). It commits nothing. A test added to validate.sh's REGRESS list joins it
+fail a night on). It commits nothing. The whole run takes ~16 minutes on GitHub's
+machine (41 in a cloud session); the first, 21 Nov on b538644, read every REGRESS PASS. A test added to validate.sh's REGRESS list joins it
 the next night with nothing more to do.
 
 **The exam's dice** (`EXAM_SEED=n`, exam.gd): seeds the engine's random numbers and the
@@ -1397,6 +1404,11 @@ Givatayim 0 late. Traffic cars do not look at walkers at all (they rely on the k
   Givatayim 1.4 -> 0.7, 2.8 -> 2.2. The records: Tel Aviv 674 KB, Ashdod 702, Bedford 613,
   Givatayim 276, the test town 22; prepublish ~25 s for all. What is left of the file is the
   next thing to bake (widths, buildings cut, divided roads: 1 s of Tel Aviv's 1.5).
+- **Every city in the browser, after the download split** (`tests/web_load.js`, 21 Nov 2026,
+  one run each; city file read / start area / warm-up / drivable, s): Givatayim 0.8 / 3.5 / 38 /
+  47, Bedford 1.3 / 3.3 / 27 / 37, Ashdod 2.0 / 4.4 / 28 / 39, Kiryat Dimyon 0.3 / 4.6 / 40 /
+  49, Tel Aviv 1.7 / 4.0 / 35 / 46. City packs: 1.7, 2.9, 2.8, 0.5, 3.5 MB; shared: main 4.3
+  MB, art 13.5, sound 13.2.
 - **Starting a level in a browser, phase by phase** (`tests/web_load.js`: the container's
   Chromium, the engine's wasm on one thread, SwiftShader drawing; 20 Nov 2026). Givatayim:
   engine up 1.5 s after the page, the level begun ~4 s; city file 1.8-2.1 s; the squares round the start 17 s (kerbs
@@ -2347,7 +2359,7 @@ there every stop counts as a stall.
   is placed round you); a shopper does not pick anything up (the kit's PickUp clip is a
   crouch to the floor).
 
-## The town's own layers: lamp posts, building sites, businesses (21 Nov 2026)
+## The town's own layers: lamp posts, building sites, businesses, street things (21 Nov 2026)
 
 `tools/osm_city.py`'s `town_layers_apply` (run by a bake with surveys and by `--add-surveys`;
 `TOWN_LAYERS`, `LAMP_LOOKS`, `SITE_STAGES`, `BUSINESS_KINDS` there) lays three of Tel Aviv's
@@ -2386,16 +2398,30 @@ the box; 1,440 within 8 m of an OSM place, 2,156 at one door with another); the 
   black 13, blue 5, beige and red 2 each (the first 14 paints kept in their places for the
   filmed walk's cars). Credited on screen ("car mix © Israel Ministry of Transport", `_credit_line`
   groups the towns' credits and lists others after).
+- **Street things** (`things` + `thing_kinds` in the file, from `places_tel_aviv.geojson`'s
+  layers by `THING_KINDS` and `tel_aviv_hydrants.json`: [x, z, kind, places] rows; bucketed
+  into `_tile_things`, built by furniture.gd's `town_things` after `street_life`). Each goes to
+  the nearest street (not a fast road) within 6 m of its edge, else stays where mapped (a
+  square, a park): bike-share docks every 0.75 m at the back of the pavement, 7 at most, a
+  green bike in about two in three; a taxi stand's yellow sign at the kerb; a motorbike bay's
+  places (its count, 2-16, 6 if none) nose to the kerb, a quarter empty; a sculpture (ring,
+  stacked blocks or twisted column, bronze/steel/stone/red/black, on a plinth) where mapped, or
+  at the back of the pavement when mapped by the kerb; a notice board at the back of the
+  pavement; a hydrant at the kerb. Made-up hydrants are left out within the 3x3 `LAMP_COVER`
+  cells of a mapped one (`hydrants_mapped_at`). Level 7 built: 472 of 696 bike stations (the
+  rest on fast roads' sides or with no free pavement), 38 of 43 taxi stands, 262 of 349
+  motorbike bays (756 bikes), 80 of 96 sculptures, 170 notice boards (one layer row can be a
+  pair), 1,374 of 1,892 hydrants, 61 made-up hydrants left (outside the cover).
 - **Test**: `tests/town_layers.gd` (headless counts, REGRESS line; drawn: Rothschild's lamps,
-  a crane, a hoarding, the street with most added shops). Good: level 7 lamps 15,264 mapped,
+  a crane, a hoarding, the street with most added shops, a bike-share station, two
+  sculptures, a motorbike bay). Good: level 7 lamps 15,264 mapped,
   ~14,950 standing, 0 on the asphalt; 511 sites, ~9,200 panels, ~120 cranes; 2,299 businesses,
   ~4,160 places built.
 - **Open**: lamps at night are the same pools as before (the town's lamp count per post is
   not used for light); the 1,089 wall lamps hang at the point the map gives, which can be a
   metre off the wall; a "frame" stage site does not show a building's bare shell; Ashdod's and
-  Givatayim's own lamps are not fetched; the hydrants (2,102) and the other layers in
-  `places_tel_aviv.geojson` (bike-share stations, taxi stands, motorbike parking, sculptures,
-  notice boards) are not used yet; the businesses' signs are all the kind's word, so a street
+  Givatayim's own lamps are not fetched; a bike-share station or sculpture with no free
+  pavement near is dropped, not moved further; the businesses' signs are all the kind's word, so a street
   of them reads as a list of trades.
 
 ## Tel Aviv (level 7): handoff, 20 November 2026
@@ -3045,6 +3071,37 @@ LEVEL=1 $GODOT --headless --path . -s res://game/streets/tests/<test>.gd`.
   HaRakevet station, joined to no road on the ground: no car can get onto it, the test puts
   one there and it noses the building it stands beside. Left as it is (dropping a deck network
   joined to nothing would be the fix, if one is seen from the street and looks wrong).
+  **21 Nov, later**: `bank_at` now keeps a bank's foot 1 m clear of other roads' asphalt (was
+  0.5) and samples a quarter, half, three quarters and the foot (was half and foot): walls
+  4 -> 2 points (Ayalon South's at (753, -1300) and the bank at (76, -34) left, 1 each).
+  Tel Aviv's 14 "buildings on the road" were 12 private lanes in HaKirya (a lane under a
+  building, into a garage: `city_check` lists them now as a trap, "buildings on private
+  lanes" -- buildings are never cut back from a private lane, `_kerbed`) and 2 real: building
+  6343 1.7 m into Hana & Mordechai Veisser at (-1988, 1212), building 297 0.8 m into Ayalon
+  South at (214, 114) (a motorway: `_clip_buildings` skips them). City check 7: 25 -> 3.
+  **Ashdod's two pavings** (235 m2, limit 60): `tests/pavings_where.gd` lists them by 25 m
+  square with the codes that meet. The worst (25 m2, Sderot Bnei Brit at (297, 703)) was a
+  median paved by each half in its own name's paving -- one half "בני ברית", the other
+  "שדרות בני ברית": `_fit_dual_carriageways` keeps each half's `mate` now and
+  `_median_pave_key` gives both the same key (the lower name, or the lower point key when both
+  are unnamed). 235 -> 184 m2; the rest is a tail of 3-7 m2 spots of several kinds: next,
+  (-875, 3636) by Sderot Herzl -- a pink and a white pavement strip crossing on the asphalt
+  (a short street's ends?), then corners overlapping (-2388, 3152).
+  That crossing was `_laid_cut`'s hole test: one street's pavement cut by another's strip
+  whose edge lay on its own came back with hair-thin slivers wound the other way, read as a
+  hole, and the piece was laid whole over the strip. Slivers under 0.01 m2 no longer count:
+  Ashdod 184 -> 126 m2, Givatayim 8.3 -> 2.1, Tel Aviv 28.6 -> 24.1. What is left in Ashdod is
+  spread thin (worst square 3 m2), of more than one kind: a quad of one street's pavement
+  drawn a second time in another street's paving code at (-1258, 3632) (both shapes the same
+  to the millimetre; found with a `_laid_add` print of `_tile`/`_laid_by` for boxes round the
+  point, and `TRIS=1` on pavings_where), and pieces next to a square's edge where a corner is
+  laid whole in one square that has not got the street it overlaps.
+  The duplicate was `_laid_cut`'s other fallback: a street's piece already notched by one
+  cutter held the next one wholly inside it, the clip handed back a hole, and the piece was
+  laid whole over it. Now it is cut in two across the cutter's middle first (`_halves_across`)
+  and each half clipped; whole only if a half still comes back holed. 126 -> 124 m2. The rest
+  is a tail of 1-3 m2 squares, each its own case: no one fix left that brings Ashdod under 60. Evgeni
+  chose (21 Nov) to set Ashdod's limit by its size, 140 m2 (`city_check` LIMITS), and move on.
   The same day `decks.gd` at level 1 (twice): every deck run clean but the City tunnel's
   (`מנהרת_הסיטי_1372`), whose autodrive roamed out of the tunnel onto a car park's aisle
   (Givatayim (-722, -1078) to (-735, -1078)) that ends in a building -- an underground car

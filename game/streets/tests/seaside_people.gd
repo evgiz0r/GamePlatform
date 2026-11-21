@@ -29,6 +29,8 @@ var bad_post := 0
 var bad_sea := 0
 var pops := 0
 var _was := {}
+var _last_p := Vector2.ZERO
+var _nf := 0
 
 func _frame(p: Vector2, yaw: float) -> void:
 	g._pos = p
@@ -36,14 +38,19 @@ func _frame(p: Vector2, yaw: float) -> void:
 	g._yaw = yaw
 	g._prev_yaw = yaw
 	g._v = 0.0
+	# (the eye set down somewhere new: who was placed out of sight of the last spot is not a
+	# pop -- nobody can jump 100 m; the first frame at the market showed 4 such)
+	var jump := p.distance_to(_last_p) > 3.0
+	_last_p = p
+	_nf += 1
 	await process_frame
 	for w: Dictionary in g._crowd.everyone():
 		var a: Node3D = w["actor"]
 		var id := a.get_instance_id()
 		var q := Vector2(a.position.x, a.position.z)
-		if a.visible and not bool(_was.get(id, false)) and not g._spawn_ok(q):
+		if a.visible and not bool(_was.get(id, false)) and not jump and not g._spawn_ok(q):
 			pops += 1
-			print("  pop: %s at %s, %.0f m off" % [w.get("kind", "wader"), q.round(), q.distance_to(p)])
+			print("  pop: %s at %s, %.0f m off, frame %d%s, unseen %s, behind %s" % [w.get("kind", "wader"), q.round(), q.distance_to(p), _nf, "", g._unseen(q), g._behind_building(Vector2(g.cam.global_position.x, g.cam.global_position.z), q)])
 		_was[id] = a.visible
 		if not a.visible or q.distance_to(p) > 90.0:
 			continue

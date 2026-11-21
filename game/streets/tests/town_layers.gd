@@ -2,7 +2,8 @@ extends SceneTree
 ## Tel Aviv's own map laid over the city (tools/osm_city.py's TOWN_LAYERS): its lamp posts
 ## where they stand, its building sites (hoardings, cranes: sites.gd) and its licensed
 ## businesses as shop fronts where OSM has no place. Counts headless; shots when drawn: a
-## street of the town's lamp posts, a building site and its crane, a street of shops.
+## street of the town's lamp posts, a building site and its crane, a street of shops, and its
+## own street things (a bike-share station, sculptures, a motorbike bay).
 ##
 ##   LEVEL=7 STREETS_BUILD_ALL=1 $GODOT --headless --path . -s res://game/streets/tests/town_layers.gd
 ##   FULL=1 RES=1280x720 OUT=/tmp/tl game/streets/tests/run.sh town_layers 7
@@ -11,7 +12,8 @@ extends SceneTree
 ## hundred dropped where nothing off the asphalt is near), none on the asphalt; made-up
 ## lamps only outside the map's cover (Givatayim's and Ramat Gan's corners of the box);
 ## ~500 sites with hoardings, a few dozen cranes; ~2,300 more shop fronts. Level 1 the same
-## in its Tel Aviv strip. Ends in one REGRESS line.
+## in its Tel Aviv strip. Town things: ~1,300 in the file plus ~1,900 hydrants; most bike-share
+## stations (696) and mapped hydrants built, sculptures where there is room. Ends in one REGRESS line.
 var g: Node
 
 func _initialize() -> void:
@@ -80,11 +82,31 @@ func _run() -> void:
 	print("businesses added as places: %d" % biz)
 	var pois_built: int = g._pois.size()
 	print("places built (signs): %d" % pois_built)
+	# the town's own street things (furniture.gd's town_things)
+	var things: int = (g._city_data.get("things", []) as Array).size() / 4
+	var fc: Dictionary = g._furn._count
+	var built := {}
+	for key in ["bike_share", "bike_share_docks", "bike_share_bikes", "taxi_stands", "motorbike_bays_mapped", "motorbike_bays", "sculptures", "notice_boards", "hydrants_mapped", "hydrants"]:
+		built[key] = int(fc.get(key, 0))
+	# a bay's motorbikes stand side by side: the next one along is beside it, not ahead
+	var mb: Array = g._furn.where.get("motorbike_bays", [])
+	var lengthways := 0
+	for i in range(mb.size()):
+		var a: Transform3D = mb[i]
+		for j in range(maxi(i - 20, 0), mini(i + 20, mb.size())):
+			var o: Vector3 = (mb[j] as Transform3D).origin - a.origin
+			if j != i and o.length() < 1.3 and absf(o.normalized().dot(a.basis.z)) > 0.7:
+				lengthways += 1
+				break
+	built["lengthways"] = lengthways
+	print("town things: %d in the file; built %s" % [things, built])
 	var ok: bool = mapped > 0 and on_road == 0 and int(g._works.count.get("panels", 0)) > 0 and biz > 0
 	if g._city_id == "tel_aviv":
-		ok = ok and int(g._works.count.get("cranes", 0)) >= 10 and mapped > 12000
-	print("REGRESS town_layers: %s (lamps mapped %d, on the asphalt %d want 0; hoarding panels %d want 1+; cranes %d; businesses %d)" % [
-		"PASS" if ok else "FAIL", mapped, on_road, int(g._works.count.get("panels", 0)), int(g._works.count.get("cranes", 0)), biz])
+		ok = ok and int(g._works.count.get("cranes", 0)) >= 10 and mapped > 12000 \
+			and int(built["bike_share"]) > 100 and int(built["hydrants_mapped"]) > 500 and int(built["sculptures"]) > 20 and lengthways == 0
+	print("REGRESS town_layers: %s (lamps mapped %d, on the asphalt %d want 0; hoarding panels %d want 1+; cranes %d; businesses %d; bike-share %d, hydrants %d, sculptures %d; motorbikes parked nose to tail %d want 0)" % [
+		"PASS" if ok else "FAIL", mapped, on_road, int(g._works.count.get("panels", 0)), int(g._works.count.get("cranes", 0)), biz,
+		int(built["bike_share"]), int(built["hydrants_mapped"]), int(built["sculptures"]), lengthways])
 	if DisplayServer.get_name() == "headless":
 		quit()
 		return
@@ -118,6 +140,21 @@ func _run() -> void:
 			var q: Vector2 = near["q"]
 			await _view("hoarding", q + (q - c).normalized() * 3.0, c, 1.7, 4.0)
 			break
+	# a bike-share station and a sculpture, from the street
+	for name: String in ["bike_share_docks", "sculptures_0", "sculptures_1", "motorbike_bays"]:
+		var xs: Array = g._furn.where.get(name, [])
+		if xs.is_empty():
+			continue
+		var at3: Vector3 = (xs[xs.size() / 3] as Transform3D).origin
+		var at := Vector2(at3.x, at3.z)
+		var near: Dictionary = g._nearest_seg(at, 30.0, true, true)
+		var from := at + Vector2(9, 0)
+		if not near.is_empty():
+			var q: Vector2 = near["q"]
+			var pts: PackedVector2Array = g._roads[near["road"]]["pts"]
+			var t: Vector2 = (pts[int(near["seg"]) + 1] - pts[int(near["seg"])]).normalized()
+			from = q - t * 9.0
+		await _view(name, from, at, 1.7, 3.0)
 	# a street of shops: where the businesses added are thickest
 	var cells := {}
 	for p: Vector2 in biz_at:

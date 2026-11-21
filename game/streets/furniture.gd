@@ -463,6 +463,8 @@ func build() -> void:
 		t = _timed("zone and parking signs", t)
 	await street_life()
 	t = _timed("bike racks, scooters", t)
+	await town_things()
+	t = _timed("the town's own: bike-share, taxi stands, motorbike bays, sculptures, hydrants", t)
 	await cats()
 	_timed("cats", t)
 	for k: String in _count:
@@ -1066,7 +1068,7 @@ func kerbside() -> void:
 		var sd := 1.0 if posmod(ri, 2) == 0 else -1.0
 		for sp: Array in _walk_road(r, 130.0, 20.0 + _rnd(ri + 11) * 90.0, hw + 0.4, sd, 6.0):
 			var p: Vector2 = sp[0]
-			if g._mine(p) and _free(p, 0.15, 0.3, 1.2):
+			if g._mine(p) and _free(p, 0.15, 0.3, 1.2) and not g.hydrants_mapped_at(p):
 				hydrants.append(Transform3D(Basis(Vector3.UP, _rnd(p.round()) * TAU), Vector3(p.x, _h(p) + kh, p.y)))
 				g._add_post(p, 0.16)
 		var back: float = hw + g.KERB_W + g.PAVE_W - 0.3
@@ -1825,6 +1827,210 @@ func street_life() -> void:
 	await _place(_bike_kit(), bikes, NEAR_SEEN, "bikes", false, bike_cols)
 	await _place(_delivery_kit(), delivery, NEAR_SEEN, "delivery_bikes", false, delivery_cols)
 	await _place(_scooter_kit(), scooters, NEAR_SEEN * 1.2, "scooters", false, scooter_cols)
+
+## ---- what a town's own map stands in its streets -------------------------------------------
+## The city file's "things" (tools/osm_city.py's TOWN_LAYERS: Tel Aviv's bike-share stations,
+## taxi stands, motorbike bays, sculptures, notice boards and fire hydrants), each where the
+## map puts it: onto the pavement of the nearest street (at the kerb or the back of it, as
+## the thing stands), or left where it is when it is in a square or a park off the roads.
+## A docking station: its terminal and a row of docks with the city's green bikes in some;
+## a taxi stand: a pole with its yellow sign; a motorbike bay: its places along the kerb,
+## most of them taken; a sculpture: on a plinth, one of a few abstract forms in bronze, steel
+## or stone; a notice board on its two legs; a hydrant: as the made-up ones (left out round
+## the mapped ones, g.hydrants_mapped_at).
+func town_things() -> void:
+	var items: Array = g._tile_things.get(g._tile, [])
+	if items.is_empty():
+		return
+	var kh: float = g.KERB_H
+	var hydrants: Array = []
+	var docks: Array = []
+	var bikes: Array = []
+	var bike_cols: Array = []
+	var scooters: Array = []
+	var scooter_cols: Array = []
+	var signs: Array = []
+	var boards: Array = []
+	var arts: Array = [[], [], []]
+	var art_cols: Array = [[], [], []]
+	var hz := Palette.col("hazard")
+	var red := Color.from_hsv(0.99, clampf(hz.s, 0.55, 0.8), clampf(hz.v * 0.62, 0.35, 0.6))
+	var scooter_paint := [_tone("mark"), _tone("cartrim"), red, _tone("rim"), _tone("tyre")]
+	# Tel-O-Fun's bikes are green (the hue pinned, its strength the palette's)
+	var fr := Palette.col("friend")
+	var tof := Color.from_hsv(0.36, clampf(fr.s, 0.55, 0.8), clampf(fr.v * 0.55, 0.35, 0.55))
+	var art_paint := [g._real_col("orange").lerp(_tone("tyre"), 0.55), _tone("rim"), _tone("metal").lerp(g._real_col("white"), 0.45),
+		g._real_col("red"), _tone("tyre")]   # (bronze, steel, stone, red-painted, black)
+	for it: Array in items:
+		if g._over():
+			await g._pause()
+		var at: Vector2 = it[0]
+		var kind: String = it[1]
+		var n: int = it[2]
+		var hit: Dictionary = g._nearest_seg(at, 18.0, true, true)
+		var on_street := not hit.is_empty() and not FAST.has((g._roads[hit["road"]] as Dictionary)["k"]) and float(hit["edge"]) < 6.0
+		var d := Vector2.RIGHT
+		var out := Vector2.DOWN
+		var hw := 0.0
+		var q := at
+		if on_street:
+			var r: Dictionary = g._roads[hit["road"]]
+			var pts: PackedVector2Array = r["pts"]
+			d = (pts[int(hit["seg"]) + 1] - pts[int(hit["seg"])]).normalized()
+			q = hit["q"] as Vector2
+			# (square to the street, on the point's side: from q itself a point past a
+			# segment's end gave a slant along the road, a motorbike bay parked lengthways)
+			out = Vector2(-d.y, d.x)
+			if out.dot(at - q) < 0.0:
+				out = -out
+			hw = float(r["w"]) * 0.5
+		var key := Vector2i((at * 10.0).round())
+		match kind:
+			"hydrant":
+				var p: Vector2 = q + out * (hw + 0.4) if on_street else at
+				if _free(p, 0.15, 0.3, 0.6):
+					hydrants.append(Transform3D(Basis(Vector3.UP, _rnd(key) * TAU), Vector3(p.x, _h(p) + kh, p.y)))
+					g._add_post(p, 0.16)
+					_count["hydrants_mapped"] = int(_count.get("hydrants_mapped", 0)) + 1
+			"taxi_stand":
+				var p: Vector2 = q + out * (hw + 0.45) if on_street else at
+				if _free(p, 0.15, 0.3, 0.5):
+					signs.append(Transform3D(Basis(Vector3.UP, atan2(-d.y, d.x)), Vector3(p.x, _h(p) + kh, p.y)))
+					g._add_post(p, 0.08)
+					_count["taxi_stands"] = int(_count.get("taxi_stands", 0)) + 1
+			"notice_board":
+				var p: Vector2 = q + out * (hw + g.KERB_W + g.PAVE_W - 0.4) if on_street else at
+				if _free(p, 0.3, 0.4, 0.8):
+					boards.append(Transform3D(Basis(Vector3.UP, atan2(-out.x, -out.y)), Vector3(p.x, _h(p) + (kh if on_street else 0.0), p.y)))
+					g._add_post(p, 0.5)
+					_count["notice_boards"] = int(_count.get("notice_boards", 0)) + 1
+			"sculpture":
+				var p := at
+				if on_street and float(hit["edge"]) < 2.5:   # (mapped by the kerb: onto the back of the pavement)
+					p = q + out * (hw + g.KERB_W + g.PAVE_W - 0.6)
+				if _free(p, 0.6, 0.8, 1.0):
+					var v := int(_rnd(key) * 3.0) % 3
+					arts[v].append(Transform3D(Basis(Vector3.UP, _rnd(key + Vector2i(3, 1)) * TAU) * Basis.from_scale(Vector3.ONE * (0.8 + _rnd(key + Vector2i(1, 2)) * 0.7)),
+						Vector3(p.x, _h(p) + (kh if on_street else 0.0), p.y)))
+					art_cols[v].append(art_paint[int(_rnd(key + Vector2i(7, 7)) * 5.0) % 5])
+					g._add_post(p, 0.7)
+					_count["sculptures"] = int(_count.get("sculptures", 0)) + 1
+			"bike_share":
+				if not on_street:
+					continue
+				# the docks along the back of the pavement, a bike in about two in three
+				var back: Vector2 = q + out * (hw + g.KERB_W + g.PAVE_W - 0.55)
+				var bs := Basis(Vector3.UP, atan2(-out.y, out.x))   # local X across the pavement
+				var placed := 0
+				for i in range(-3, 4):
+					var s: Vector2 = back + d * float(i) * 0.75
+					if not g._mine(s) or not _free(s, 0.5, 0.6, 0.5):
+						continue
+					docks.append(Transform3D(bs, Vector3(s.x, _h(s) + kh, s.y)))
+					g._add_post(s, 0.32)
+					placed += 1
+					if _rnd(key + Vector2i(i, 5)) < 0.65:
+						bikes.append(Transform3D(bs, Vector3(s.x, _h(s) + kh, s.y) + Vector3(d.x, 0, d.y) * 0.05))
+						bike_cols.append(tof)
+				if placed > 0:
+					_count["bike_share"] = int(_count.get("bike_share", 0)) + 1
+			"motorbikes":
+				if not on_street:
+					continue
+				# the bay's places nose to the kerb, 0.9 m apart, centred on the mapped point
+				var many := clampi(n if n > 0 else 6, 2, 16)
+				var kerb: Vector2 = q + out * (hw + 1.05)
+				for i in range(many):
+					if _rnd(key + Vector2i(i, 2)) > 0.75:
+						continue   # (an empty place)
+					var s: Vector2 = kerb + d * (float(i) - (many - 1) * 0.5) * 0.9
+					if not g._mine(s) or not _free(s, 0.45, 0.6, 0.6):
+						continue
+					var look := (-out).rotated(0.15 * (1.0 if i % 2 == 0 else -1.0))
+					scooters.append(Transform3D(Basis(Vector3.UP, atan2(look.x, look.y)), Vector3(s.x, _h(s) + kh, s.y)))
+					scooter_cols.append(scooter_paint[int(_rnd(key + Vector2i(i, 9)) * 5.0) % 5])
+					g._add_post(s, 0.45)
+				_count["motorbike_bays_mapped"] = int(_count.get("motorbike_bays_mapped", 0)) + 1
+	await _place(_hydrant_kit(), hydrants, NEAR_SEEN, "hydrants_town")
+	await _place(_dock_kit(), docks, NEAR_SEEN, "bike_share_docks")
+	await _place(_bike_kit(), bikes, NEAR_SEEN, "bike_share_bikes", false, bike_cols)
+	await _place(_scooter_kit(), scooters, NEAR_SEEN * 1.2, "motorbike_bays", false, scooter_cols)
+	await _place(_taxi_sign_kit(), signs, NEAR_SEEN * 1.3, "taxi_signs")
+	await _place(_notice_kit(), boards, NEAR_SEEN, "notice_boards")
+	for v in range(3):
+		await _place(_art_kit(v), arts[v], SEEN * 0.6, "sculptures_%d" % v, true, art_cols[v])
+
+## a bike-share dock: a short grey post, the lock's head on it, along local X
+func _dock_kit() -> ArrayMesh:
+	if _kits.has("dock"):
+		return _kits["dock"]
+	var b = g.new_buf()
+	_box(b, Vector3(-0.45, 0.4, 0), Vector3(0.12, 0.8, 0.16), _tone("rim"))
+	_box(b, Vector3(-0.38, 0.62, 0), Vector3(0.1, 0.18, 0.12), _tone("tyre"))
+	var am: ArrayMesh = _mesh(b)
+	_kits["dock"] = am
+	return am
+
+## a taxi stand's sign: a pole, a yellow sign with a dark band (its word is not readable
+## from a car: the yellow is what says taxi)
+func _taxi_sign_kit() -> ArrayMesh:
+	if _kits.has("taxisign"):
+		return _kits["taxisign"]
+	var b = g.new_buf()
+	_tube(b, Vector3(0, 0, 0), Vector3(0, 2.6, 0), 0.035, 0.035, _tone("rim"), 6)
+	var yel: Color = g._real_col("yellow")
+	_box(b, Vector3(0, 2.35, 0.04), Vector3(0.6, 0.4, 0.03), yel)
+	_box(b, Vector3(0, 2.35, 0.057), Vector3(0.5, 0.1, 0.005), _tone("tyre"))
+	_box(b, Vector3(0, 2.35, -0.04), Vector3(0.6, 0.4, 0.03), yel)
+	var am: ArrayMesh = _mesh(b)
+	_kits["taxisign"] = am
+	return am
+
+## a notice board on two legs: a frame and a pale board of posters, facing local -Z
+func _notice_kit() -> ArrayMesh:
+	if _kits.has("notice"):
+		return _kits["notice"]
+	var b = g.new_buf()
+	var frame := _tone("fencegreen")
+	for x: float in [-0.65, 0.65]:
+		_box(b, Vector3(x, 1.0, 0), Vector3(0.07, 2.0, 0.07), frame)
+	_box(b, Vector3(0, 1.45, 0), Vector3(1.4, 1.0, 0.06), frame)
+	_box(b, Vector3(0, 1.45, -0.035), Vector3(1.28, 0.88, 0.01), g._real_col("cream"))
+	var paper := [g._real_col("white"), g._real_col("yellow"), g._real_col("orange").lerp(g._real_col("white"), 0.5), g._real_col("blue").lerp(g._real_col("white"), 0.6)]
+	for i in range(5):
+		_box(b, Vector3(-0.42 + 0.21 * i, 1.55 - 0.18 * (i % 2), -0.042), Vector3(0.18, 0.26, 0.005), paper[i % 4])
+	_box(b, Vector3(0, 2.0, 0), Vector3(1.55, 0.06, 0.24), frame)
+	var am: ArrayMesh = _mesh(b)
+	_kits["notice"] = am
+	return am
+
+## a sculpture on its plinth, one of three forms (white: each copy's colour is its material):
+## 0 a ring stood on edge, 1 a stack of tilted blocks, 2 a tall twisted column of slabs
+func _art_kit(v: int) -> ArrayMesh:
+	var key := "art%d" % v
+	if _kits.has(key):
+		return _kits[key]
+	var b = g.new_buf()
+	var stone: Color = _tone("metal").lerp(g._real_col("white"), 0.6)
+	_box(b, Vector3(0, 0.3, 0), Vector3(0.9, 0.6, 0.9), stone)   # the plinth (its own colour, darkened by the copy's: kept pale)
+	var w := Color.WHITE
+	match v:
+		0:
+			var prev := Vector3(0.75, 1.35, 0)
+			for i in range(1, 17):
+				var t := TAU * i / 16.0
+				var p := Vector3(cos(t) * 0.75, 1.35 + sin(t) * 0.75, 0)
+				_tube(b, prev, p, 0.1, 0.1, w, 6)
+				prev = p
+		1:
+			for i in range(4):
+				_box(b, Vector3(0.08 * (i % 2), 0.82 + 0.45 * i, 0), Vector3(0.7 - 0.1 * i, 0.4, 0.45), w, Basis(Vector3.UP, 0.5 * i) * Basis(Vector3.RIGHT, 0.12 * (i % 2)))
+		_:
+			for i in range(9):
+				_box(b, Vector3(0, 0.75 + 0.27 * i, 0), Vector3(0.5, 0.22, 0.18), w, Basis(Vector3.UP, 0.22 * i))
+	var am: ArrayMesh = _mesh(b)
+	_kits[key] = am
+	return am
 
 ## ---- street cats ---------------------------------------------------------------------------
 ## Givatayim's strays, as a walk down its streets has them: sitting on a garden wall or curled

@@ -1219,6 +1219,7 @@ func start(_config: Dictionary) -> void:
 	_stage_ms["warm up (shaders compiled, 4 frames)"] = Time.get_ticks_msec() - tw
 	print("[streets] warm-up done in %d ms, frames %s" % [Time.get_ticks_msec() - tw, _warm_ms])
 	_load_ms = Time.get_ticks_msec() - t0
+	_load_split = [t1 - t0, tw - t1, Time.get_ticks_msec() - tw]
 	_load_save()
 	_loading.queue_free()
 	var tm := Time.get_ticks_msec()
@@ -1227,6 +1228,7 @@ func start(_config: Dictionary) -> void:
 	_build_car()
 	_place_start()
 	_build_hud()
+	_show_load_line()
 	_retint_city()
 	_spawn_people()
 	_spawn_crossers()
@@ -1374,6 +1376,54 @@ func _code_key(m: Material) -> String:
 	_code_keys[m.get_instance_id()] = key
 	return key
 var _load_ms := 0                    ## from the city file to the car shown, ms
+var _load_split: Array = []          ## that load's parts, ms: city file, start area, graphics warm-up
+var _load_lbl: Label                 ## the load's parts, over the build line for a while after it
+
+## How long the page took before the engine ran (downloading the build, starting the wasm), ms,
+## or -1 where there is no page: a browser's clock counts from the page opening, the engine's
+## from its own start. Only the first city of a visit pays it.
+func _page_ms() -> int:
+	if not OS.has_feature("web"):
+		return -1
+	var now = JavaScriptBridge.eval("performance.now()", true)
+	if now == null:
+		return -1
+	return maxi(0, int(float(now)) - Time.get_ticks_msec())
+
+## "loaded in 9.4 s: page 2.1 · city file 1.0 · start area 2.4 · graphics 3.9" -- this
+## device's own load, split, so a player's screenshot from a phone gives the real numbers (a
+## test machine's software renderer says nothing about a phone's graphics warm-up).
+func _load_line() -> String:
+	if _load_split.size() < 3:
+		return ""
+	var s := "loaded in %.1f s:" % (_load_ms / 1000.0)
+	var page := _page_ms() if _first_load else -1
+	if page >= 0:
+		s = "loaded in %.1f s (+ page %.1f s):" % [_load_ms / 1000.0, page / 1000.0]
+	return s + " city file %.1f · start area %.1f · graphics %.1f" % [
+		_load_split[0] / 1000.0, _load_split[1] / 1000.0, _load_split[2] / 1000.0]
+static var _loads_this_visit := 0
+var _first_load := false
+
+## the line above, over the build line for 20 s after the car is shown, then gone (still in
+## the perf view's load lines)
+func _show_load_line() -> void:
+	_loads_this_visit += 1
+	_first_load = _loads_this_visit == 1
+	var t := _load_line()
+	if t == "" or _hud == null:
+		return
+	print("[streets] " + t)
+	_load_lbl = _label(8, "ink")
+	_load_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_load_lbl.position = Vector2(8, 185)
+	_load_lbl.size = Vector2(320, 12)
+	_load_lbl.text = t
+	_load_lbl.modulate.a = 0.8
+	var tw := create_tween()
+	tw.tween_interval(20.0)
+	tw.tween_property(_load_lbl, "modulate:a", 0.0, 1.0)
+	tw.tween_callback(_load_lbl.queue_free)
 
 ## the loading, for the perf view: how long, its biggest stages, the warm-up's four views
 func _load_text() -> String:
@@ -1384,7 +1434,7 @@ func _load_text() -> String:
 	var top: Array = []
 	for p: Array in parts.slice(0, 4):
 		top.append("%s %.1f s" % [String(p[0]).get_slice(" (", 0), p[1] / 1000.0])
-	return "loaded in %.1f s: %s\nwarm-up frames (ms): %s" % [_load_ms / 1000.0, ", ".join(top), ", ".join(_warm_ms.map(func(x): return str(x)))]
+	return "%s\nslowest parts: %s\nwarm-up frames (ms): %s" % [_load_line(), ", ".join(top), ", ".join(_warm_ms.map(func(x): return str(x)))]
 
 ## show what is being built and let a frame be drawn; false if the game was left meanwhile
 func _step(what: String) -> bool:
@@ -1593,12 +1643,14 @@ func _fit_dual_carriageways() -> void:
 		var pts: PackedVector2Array = r["pts"]
 		var hw: float = float(r["w"]) * 0.5
 		var acr: Array = []
+		var mates := {}   # the other half's road -> pieces beside it
 		for j in range(pts.size() - 1):
 			var c := (pts[j] + pts[j + 1]) * 0.5
 			var d := (pts[j + 1] - pts[j]).normalized()
 			var pair := _partner(c, d, ri, hw, o)
 			if not pair.is_empty():
 				acr.append((pair[1] as Vector2).distance_to(c))
+				mates[pair[0]] = int(mates.get(pair[0], 0)) + 1
 		if acr.is_empty() or acr.size() * 2 < pts.size() - 1:
 			continue   # beside another carriageway along less than half of it
 		acr.sort()
@@ -1610,6 +1662,11 @@ func _fit_dual_carriageways() -> void:
 		w = minf(w, maxf(3.0, across - 0.5))
 		r["w"] = w
 		r["median"] = maxf(0.0, across - w)
+		var mate := -1
+		for rj: int in mates:
+			if mate < 0 or int(mates[rj]) > int(mates[mate]):
+				mate = rj
+		r["mate"] = mate   # (the median's paving: _median_pave_key)
 		fitted += 1
 	if fitted == 0:
 		return
@@ -2395,6 +2452,8 @@ var _tile_signs := {}                ## square -> stop and give-way signs
 var _tile_lit := {}                  ## square -> junctions with traffic lights
 var _tile_lamps := {}                ## square -> a town's own lamp posts: [where, look, lamps]
 var _lamp_cover := {}                ## LAMP_COVER cell -> true: the town's map has its lamp posts there
+var _tile_things := {}               ## square -> a town's own street things: [where, kind, places] (furniture.gd's town_things)
+var _hydrant_cover := {}             ## LAMP_COVER cell -> true: the town's map has its hydrants there
 var _tile_bars := {}                 ## square -> mapped fences and hedges that reach it
 var _crossing_set := {}
 var _white_bollards := {}            ## crossing nodes whose bollards are white, as filmed (details.gd)
@@ -2613,6 +2672,14 @@ func _build_setup(t0: int) -> void:
 		var lp := Vector2(lamps_xz[i * 2], lamps_xz[i * 2 + 1]) * k
 		_bucket(_tile_lamps, _tile_of(lp), [lp, String(lamp_looks[int(lamp_info[i * 2])]), clampi(int(lamp_info[i * 2 + 1]), 1, 2)])
 		_lamp_cover[_cell(lp, LAMP_COVER)] = true
+	var things: Array = _city_data.get("things", [])   # (a town's own street things: furniture.gd's town_things)
+	var thing_kinds: Array = _city_data.get("thing_kinds", [])
+	for i in range(things.size() / 4):
+		var tp := Vector2(things[i * 4], things[i * 4 + 1]) * k
+		var kind := String(thing_kinds[int(things[i * 4 + 2])])
+		_bucket(_tile_things, _tile_of(tp), [tp, kind, int(things[i * 4 + 3])])
+		if kind == "hydrant":
+			_hydrant_cover[_cell(tp, LAMP_COVER)] = true
 	var pois: Array = _city_data.get("pois", [])
 	for i in range(pois.size()):
 		_bucket(_tile_pois, _tile_of(Vector2(pois[i][0], pois[i][1]) * k), i)
@@ -2825,7 +2892,7 @@ func _build_rest() -> void:
 		await _release(_city_data[key])
 	_city_data = {}
 	for table: Dictionary in [_area_rings, _asph_hash, _tile_roads, _tile_decks, _tile_nodes, _tile_blds, _tile_areas, _tile_rings,
-			_tile_trees, _tile_pois, _tile_stops, _tile_signs, _tile_lit, _tile_bars, _tile_lamps]:
+			_tile_trees, _tile_pois, _tile_stops, _tile_signs, _tile_lit, _tile_bars, _tile_lamps, _tile_things]:
 		await _release(table)
 	_bg_build = false
 	Probe.event("city_built", {"squares": n, "ms": Time.get_ticks_msec() - t0, "posts": _posts.size(), "trees": _trees_made, "dressing": _dressing})
@@ -3832,7 +3899,7 @@ func _build_kerbs() -> void:
 						continue   # the halves touch: a painted line, no kerb
 					pw = clampf(m * 0.5 - KERB_W, 0.0, PAVE_W)   # each half paves its half of the median
 					# both halves in one paving (each its own street's, a median came out in two)
-					_set_pave_code(hash(String(r["name"])) if String(r["name"]) != "" else hsh, r.get("pave", []))
+					_set_pave_code(_median_pave_key(r, hsh), r.get("pave", []))
 				elif _faces_median(run, hw, sgn, ri):
 					_tally("kerb_runs_facing_a_median", 1)
 					continue   # a street's stretch across a divided road: that side is the median's end
@@ -4262,6 +4329,22 @@ func _build_medians(kerb: Buf, pave: Buf) -> void:
 				cum += seg
 	_tally("median_m", int(made))
 
+## The key both halves of a divided road pave their median with: one name for both -- by its
+## own name alone, Ashdod's Sderot Bnei Brit, one half named "בני ברית" and the other
+## "שדרות בני ברית", paved its median twice in two pavings, overlapping (flicker; 25 m2 of
+## the town's 235 in one stretch, pavings_where.gd)
+func _median_pave_key(r: Dictionary, hsh: int) -> int:
+	var nm := String(r["name"])
+	var mate := int(r.get("mate", -1))
+	if mate >= 0:
+		var r2: Dictionary = _roads[mate]
+		var other := String(r2["name"])
+		if nm == "" or (other != "" and other < nm):
+			nm = other
+		if nm == "":   # (both unnamed: the lower of their own keys, the same from either half)
+			hsh = mini(hsh, _hash_i((r2["pts"] as PackedVector2Array)[0]))
+	return hash(nm) if nm != "" else hsh
+
 func _kerbed(r: Dictionary) -> bool:
 	return r["drive"] and not r["pv"] and r["k"] != "service" and not HIGHWAYS.has(r["k"])
 
@@ -4457,10 +4540,33 @@ func _laid_cut(poly: PackedVector2Array) -> Array:
 					big = i
 			var holed := false
 			for q: PackedVector2Array in res:
-				if Geometry2D.is_polygon_clockwise(q) != Geometry2D.is_polygon_clockwise(res[big]):
+				# (not a sliver: cut by a strip whose edge lies on this piece's own, the clip
+				# hands back hair-thin leftovers along it wound either way, and one read as a
+				# hole kept the piece whole, over the strip -- Ashdod's Hoshea HaNavi, 7 m2
+				# of two pavings where one street's pavement crossed the other's at a fork)
+				if absf(_area_signed(q)) > 0.01 and Geometry2D.is_polygon_clockwise(q) != Geometry2D.is_polygon_clockwise(res[big]):
 					holed = true
 			if holed:
-				next.append(p)
+				# cut in two across the cutter's middle first, then each half round it: no half
+				# holds it wholly, so neither comes back holed. Kept whole, the piece lay over
+				# the cutter -- a street's pavement over the corner of another's laid just before
+				# inside it (Ashdod (-1258, 3632): 2 m2 of two pavings in one square)
+				var halves := _halves_across(p, entry[0])
+				var split_ok := not halves.is_empty()
+				var got: Array = []
+				for h: PackedVector2Array in halves:
+					var r2 := Geometry2D.clip_polygons(h, entry[0])
+					for q: PackedVector2Array in r2:
+						if absf(_area_signed(q)) > 0.01 and Geometry2D.is_polygon_clockwise(q) != Geometry2D.is_polygon_clockwise(h):
+							split_ok = false
+					for q: PackedVector2Array in r2:
+						if absf(_area_signed(q)) > 0.01:
+							got.append(q)
+				if not split_ok:
+					next.append(p)   # (a little overlap, not a hole in the ground)
+					continue
+				touched = true
+				next.append_array(got)
 				continue
 			touched = true
 			for q: PackedVector2Array in res:
@@ -4468,6 +4574,28 @@ func _laid_cut(poly: PackedVector2Array) -> Array:
 					next.append(q)
 		pieces = next
 	return [pieces] if touched else []
+
+## p cut in two by a line through the middle of `inner` (a shape inside it), across p's
+## longer side: [] if that does not give two
+func _halves_across(p: PackedVector2Array, inner: PackedVector2Array) -> Array:
+	var box := _bld_box_of(p).grow(1.0)
+	var c := _bld_box_of(inner).get_center()
+	var sides: Array = []
+	if box.size.x >= box.size.y:
+		sides = [Rect2(box.position, Vector2(c.x - box.position.x, box.size.y)),
+			Rect2(Vector2(c.x, box.position.y), Vector2(box.end.x - c.x, box.size.y))]
+	else:
+		sides = [Rect2(box.position, Vector2(box.size.x, c.y - box.position.y)),
+			Rect2(Vector2(box.position.x, c.y), Vector2(box.size.x, box.end.y - c.y))]
+	var out: Array = []
+	for r: Rect2 in sides:
+		var rp := PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)])
+		for q: PackedVector2Array in Geometry2D.intersect_polygons(p, rp):
+			if absf(_area_signed(q)) > 0.01:
+				if Geometry2D.is_polygon_clockwise(q) != Geometry2D.is_polygon_clockwise(p):
+					q.reverse()
+				out.append(q)
+	return out if out.size() >= 2 else []
 
 ## a flat piece of kerb top or pavement cut to shape: its texture laid as the whole piece's
 ## would have been (along the street from `origin` in `dir`, across it in metres * vscale)
@@ -7759,6 +7887,17 @@ func _lamps_mapped_at(p: Vector2) -> bool:
 	for dx in range(-1, 2):
 		for dz in range(-1, 2):
 			if _lamp_cover.has(c + Vector2i(dx, dz)):
+				return true
+	return false
+
+## the town's map has its hydrants round p (the made-up ones are left out there)
+func hydrants_mapped_at(p: Vector2) -> bool:
+	if _hydrant_cover.is_empty():
+		return false
+	var c := _cell(p, LAMP_COVER)
+	for dx in range(-1, 2):
+		for dz in range(-1, 2):
+			if _hydrant_cover.has(c + Vector2i(dx, dz)):
 				return true
 	return false
 
