@@ -1205,6 +1205,18 @@ car and you bump them. People walk only while they really go somewhere, at the p
 go, and stand when they stop (they walked on the spot). Walkers stepping over a side
 street's mouth no longer stand a kerb's height down in the pavement.
 
+> I am looking at the balconies compared to real ones. i am thinking why the real looks so real
+> compared to the fake ... the buildings and balconies feel somewhat cartoony or blurred
+> compared to reality. Maybe we can create some small enviorement ... quick for testing and
+> checking the taste of the look. push all
+
+**Balconies that stand out, and deeper light.** The balconies were boxes the wall's colour,
+lit like the wall, so they melted into it; now their undersides are dark, the wall under
+each is in its shade, a lip catches the light with a dark drip line under it, a coping runs
+along the parapet, and half the blocks have railings of dark bars instead of a solid
+parapet. The fill light is lower and the sun a touch stronger, so shade reads as shade. All
+tried first on a small made-up street that loads in seconds (only the tests see it).
+
 > I took a video on my phone, walking in Givatayim.
 
 ## Smooth on a laptop and a phone

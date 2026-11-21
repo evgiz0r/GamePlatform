@@ -276,6 +276,10 @@ The ones most often touched, and the functions in them:
   now, 172 with creases + edges, ~196 with a railing (under BATCH_KIT_VERTS 200: still no
   draws of their own). tests/look_tries.gd shoots the real start the same way (there the
   nearest block's balconies are the wall shader's recesses, which these do not touch).
+  **All four kept** (the user: "push all"): always on now, `_try` left for the next tries.
+  The fill light's drop (x0.6, sun x1.12) moves the filmed walks' grade too (FILM_LOOK's
+  fit was made on the old light): re-record a walk bare and refit before trusting the
+  side-by-side's levels again.
 - **dogs, feet, walking on the spot** (the user: "the dogs look pretty wierd, and their
   hitboxes and how they walk is pretty wierd"; "some people are walking in place ... and
   their legs are somewhat bit inside the ground"). The dog (furniture `dog_kit`) is
