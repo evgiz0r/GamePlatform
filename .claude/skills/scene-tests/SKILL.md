@@ -51,6 +51,14 @@ LEVEL=3 OUT=/tmp/shots xvfb-run -a -s "-screen 0 1280x720x24" $GODOT --path . \
 
 A game's `tests/run.sh <test> [level]` wraps that line (see an existing one).
 
+**On someone's own Windows PC, never let that window show.** A windowed run pops up over
+whatever they are doing and takes the keyboard (mid-game, once). Start it through
+`tools/godot_bg.sh` -- the same arguments, `$GODOT` as the engine -- which starts Godot's plain
+`.exe` with its window hidden: it still renders (screenshots, `--write-movie`), its output
+comes when it ends. `tools/shots.sh`, `menu_shot.sh` and `record_video.sh` already go through
+it; `GODOT_SHOW=1` shows the window. Moving the window off the screen does not work (Godot
+pulls it back), nor does starting it minimized (it stops running).
+
 ## Ways in
 
 - **Simulate, don't sleep.** `for f in range(60 * 30): await physics_frame` runs 30 s of game

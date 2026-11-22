@@ -50,10 +50,10 @@ if [ -n "${SIM_SPEED:-}" ] && [ "${SIM_SPEED}" != "1" ]; then
 fi
 # a smaller window: the software renderer is bound by pixels (RES=1280x720 for big shots);
 # GODOT_ARGS: more engine flags, e.g. "--fixed-fps 10" to record frames at a steady clock
-# HEADLESS=1: no window at all (the checks of a test that also shoots, without its shots) --
-# a window takes the focus from whatever the person is doing on this machine
+# HEADLESS=1: no window at all (the checks of a test that also shoots, without its shots)
 if [ "${HEADLESS:-0}" = "1" ]; then
 	exec "$godot" --headless --path . --audio-driver Dummy ${GODOT_ARGS:-} -s "res://game/streets/tests/$test.gd"
 fi
-exec "${x[@]}" "$godot" --path . --rendering-driver opengl3 --audio-driver Dummy --resolution "${RES:-960x540}" \
-	${GODOT_ARGS:-} -s "res://game/streets/tests/$test.gd"
+# (through tools/godot_bg.sh: on Windows the window stays hidden, GODOT_SHOW=1 to watch)
+export GODOT="$godot"
+exec "${x[@]}" tools/godot_bg.sh --path . --rendering-driver opengl3 --audio-driver Dummy --resolution "${RES:-960x540}" 	${GODOT_ARGS:-} -s "res://game/streets/tests/$test.gd"
