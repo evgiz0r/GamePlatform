@@ -124,11 +124,10 @@ you).
 (22 Nov 2026.) On the screen only what you use while driving, grouped by what it is for:
 
 - **Along the bottom, where you are going:** "autodrive" and, while it drives, its style
-  beside it ("racer", "rules" or "green wave": tap for the next), "go to…", and "walk"
-  ("get in" on foot).
-- **On the right, the view:** "more", "–", the camera ("chase", "seat" or "above": tap
-  for the next, round), and "look" while you drive yourself.
-- **By the map, after dark:** "lights".
+  beside it ("racer", "rules" or "green wave": tap for the next), and "go to…".
+- **On the right:** "more", "–", the camera ("chase", "seat" or "above": tap for the next,
+  round), "walk" under it ("get in" on foot), and "look" while you drive yourself.
+- No headlights button ("remove lights ui its not a thing"): the key L still switches them.
 - **"more"** opens a drawer of what you set once and leave: time of day (day, evening,
   night), the road (dry, wet), how autodrive drives (keeps rules, green wave, racer), the
   steering assist, pause, the keys, the perf view -- and, small at its foot, the fps, which
