@@ -88,6 +88,8 @@ class Car:
 	var aside_t := 0.0                ## seconds it stays edged over, then back
 	var track := 0.0                  ## a bus or truck: its front out from the lane by this on a bend (m, left +)
 	var aside_was := 0.0              ## `aside` when last placed: the back slides with the front
+	var kerb_clear := 0.0             ## left of its lane this much, clear of what stands at the kerb (parked cars, poles)
+	var kerb_look := 0.0              ## seconds to the next look at the kerb
 	var dip := 0.0                    ## the body: nose down braking, up pulling away (visual)
 	var roll := 0.0                   ## the body: leaning out of a turn (visual)
 	var paint := Color.WHITE
@@ -1507,6 +1509,35 @@ func _kerb_room(c: Car, r: Dictionary) -> float:
 	var hw: float = (CORNERS.get(c.kind, Vector2(0.9, 2.3)) as Vector2).x
 	return maxf(0.0, g._lane_off(r) + hw + 0.3 - float(r["w"]) * 0.5)
 
+## Clear of what stands at the kerb: parked cars stand 0.25-0.9 m into the asphalt (their
+## bodies are posts, `_add_car_posts`), and a car or bus kept its lane line exactly, its side
+## into them -- the exam's "traffic body into a post" in Givatayim, 7-9 a run, nearly all
+## parked cars (Katznelson, Gordon, HaHagana, HaMeri: tests/posts_at.gd). Like a driver, a
+## little left: its side KERB_GAP clear of the nearest thing on its right from its back to
+## KERB_AHEAD past its nose, at most KERB_MAX. Looked at every 0.4 s; not while pulling in
+## (a bus to its stop, a van for a delivery: they measure their own room).
+const KERB_GAP := 0.25
+const KERB_AHEAD := 12.0
+const KERB_MAX := 0.8
+func _clear_kerb(c: Car, dt: float, r: Dictionary) -> float:
+	if c.why == "bus stop" or c.why == "delivery" or c.dwell > 0.0 or c.split:
+		c.kerb_clear = 0.0
+		return 0.0
+	c.kerb_look -= dt
+	if c.kerb_look <= 0.0:
+		c.kerb_look = 0.4
+		var hw: float = (CORNERS.get(c.kind, Vector2(0.9, 2.3)) as Vector2).x
+		var edge := _kerb_edge(c, c.len + KERB_AHEAD)   # (left of the lane line, its inner reach)
+		var base := c.shift_to - c.kerb_clear            # (the lane's own shift, before this)
+		# (and no further than its own side of the road: on a two-way street its middle 0.3 m
+		# right of the road's, on a one-way street its left side 0.3 m on the asphalt -- uncapped,
+		# cars on Ashdod's narrow residential streets and a living street ran over the middle)
+		var cap := _lane(r) - base - 0.3
+		if int(r["o"]) != 0:
+			cap = _lane(r) - base - hw + float(r["w"]) * 0.5 - 0.3
+		c.kerb_clear = clampf(edge + KERB_GAP + hw - base, 0.0, clampf(cap, 0.0, KERB_MAX)) if edge > -INF else 0.0
+	return c.kerb_clear
+
 ## Which lane: on a road with more than one each way, into the right one for the turn
 ## ahead (right lane for a right turn, left for a left), out to overtake a slow car in
 ## front when the lane beside is free, back to the right now and then. A bus keeps to the
@@ -1539,7 +1570,7 @@ func _steer_lanes(c: Car, i: int, dt: float, best: float, lead_v: float) -> void
 			if c.shift_rd >= 0 and absf(to1 - c.shift_to) > 0.3:
 				c.realign = true
 			c.shift_rd = rid1
-		c.shift_to = to1
+		c.shift_to = to1 + _clear_kerb(c, dt, r)
 		return
 	# Onto the next road: the lane of it the car is in, where it is, not the same number. Two
 	# roads drawn on the node they share lie on one middle line, so the second lane of a
@@ -1641,7 +1672,7 @@ func _steer_lanes(c: Car, i: int, dt: float, best: float, lead_v: float) -> void
 		if c.shift_rd >= 0 and absf(to - c.shift_to) > 0.3:
 			c.realign = true
 		c.shift_rd = rid
-	c.shift_to = to
+	c.shift_to = to + (_clear_kerb(c, dt, r) if c.lane_i == 0 else 0.0)
 	if c.kind == "moto":
 		if best < 20.0 and lead_v < 2.0:
 			c.split = true

@@ -4490,6 +4490,34 @@ stood 19-26 s; on two-way streets with 3 cars in the lane, 4 of 6 stood.
   same post at 10 km/h by racer; with the bus fix off, a car on Kaf-Gimel -- a different
   stray touch each time, none that repeats. Judge it by several drives, not one.
 
+## Traffic clear of parked cars; traffic on the wrong side checked (22 Nov 2026, afternoon)
+
+- **Givatayim's "traffic body into a post" was parked cars.** Each parked car's body is posts
+  (`_add_car_posts`, r 0.85), standing 0.25-0.9 m into the asphalt (Katznelson, Gordon,
+  HaHagana, HaMeri -- `tests/posts_at.gd NEAR=4` at the exam's spots; the incident's place is
+  the car's, not the post's, so NEAR=1.5 found nothing). Traffic measured what stands at the
+  kerb only for a delivery (`_kerb_edge`) and otherwise kept its lane line, its side (a bus's
+  1.25 m) into them. Now `_clear_kerb`: every 0.4 s a car in the kerb-side lane takes the
+  nearest thing on its right from its back to `KERB_AHEAD` (12 m) past its nose and moves left
+  until its side is `KERB_GAP` (0.25 m) clear, at most `KERB_MAX` (0.8 m) -- and no further than
+  its own side of the road (two-way: its middle 0.3 m right of the road's; one-way: its left
+  side 0.3 m on the asphalt). Not while pulling in (a bus to its stop, a van to deliver).
+  Exams (three at once, main beside it the same afternoon): into a post Givatayim 3 (main 5),
+  Ashdod 1 (4), test town 0 (1); Givatayim alone 7 checks in all, 1 into a post.
+- **New exam check "traffic left of the middle"**: a moving traffic car's middle 0.5 m+ left
+  of a two-way street's middle, out of junctions, heading along the street, 3 samples running
+  -- autodrive's "ticks left of the middle" widened to traffic (the dead end's family). Not
+  counted: round a delivery van, edged aside for racer, a bus on a street under 7 m, a scooter
+  filtering. Main reads 5 / 2 / 4 (Givatayim / Ashdod / test town): narrow residential and
+  living streets, scooters, vans -- open, not looked at one by one. The first version of the
+  kerb clearance had no cap and read 2 / 4 / 2: the cap is from those.
+- Ashdod's "off the asphalt" reads 18 on main as on this branch: not from these changes.
+- `validate.sh FULL=1 REGRESS=1` after (merged with main d7f46d0, ~60 min): city checks 0
+  but Tel Aviv 1 building and the usual limits; exams test town 7, Givatayim 17, Ashdod 20;
+  queue PASS. REGRESS FAIL: `turn_width` 1 of 10 (main the same), `deck_corner` 1 (it swings
+  0-5 on main too: main 0, 1, 4, 5 and this branch 0, 1, 4 -- noisy, not a verdict on one
+  run), `load_bar` and `people_pops` (loading and walkers: other sessions' corners).
+
 ## Open problems
 
 - **22 Nov, the second round of general bugs** (each with the test that measured it):
