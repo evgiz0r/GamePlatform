@@ -242,3 +242,13 @@ the real renderer -- headless hides mesh uploads -- on Ashdod, build in the back
   (`FAR_AHEAD_S`: the evening's far shadows drawn ahead -- GPU work in one frame), and
   "building 82-86 ms" twice (far-shadow chunks). The phone's perf view: "far shadows: work
   4.7-5.2 s". Next: the far shadows in smaller pieces, or not drawn ahead on slow devices.
+
+**Is 14-18 fps expected? (22 Nov 2026, the same phone, build 7b520f6 -- before 072cced's
+step checks)** No: it is what the current settings cost, not what the phone can do. A frame
+of 58-81 ms is two halves of about the same size, and both need halving for ~30 fps:
+- drawing 30-45 ms: 530-780 draws and 1.6-2.2 M triangles -- for a phone's WebGL ~250 draws
+  and ~1 M triangles is a comfortable budget, and no quality level lowers either today;
+- script 28-36 ms in 3.5-4.4 ticks (people 7-11, traffic 6-9, building 4-10, minimap 3).
+Target: 30 fps on a 2023 flagship in a browser; 60 is not realistic for a whole city in WebGL
+on one thread. Freezes still in that build: building 692 + rest 634, building 1304 + rest
+941 (before the step checks; the next screenshots name the step).
