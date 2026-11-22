@@ -130,7 +130,7 @@ a pram, cats, sculptures, an ad column, a billboard), a playground and benches a
 spaceship, and a row of vehicles from a police car to a fire engine -- with people standing
 about. The walk goes up and down the aisles between the rows, stopping twice along each to
 look at the row on one side and then the other, glancing about as it goes (about 5 min).
-*The trick road* (in the test drives, number 12): a one-way figure of eight on open grass,
+*The trick road* (in the test drives, number 14): a one-way figure of eight on open grass,
 driven once round by autodrive, alone (no other traffic): up a ramp onto a bridge over its
 own other leg, off the bridge's end (a ledge: the car flies about 9 m and lands on the ramp
 down), over a jump (a kicker and a ditch across the road: the car flies about 30 m at 50-60
@@ -635,6 +635,15 @@ out as a little film, the car driving itself, captions across the bottom.
 - *Ambulance run* -- Tel Aviv, Ashdod. Siren on and lights flashing, to the hospital (Tel
   Aviv's, on Weizmann): the cars beside you pull aside and stop, every light turns green,
   and the car goes round whatever is in its way.
+- *Dragons* -- over Tel Aviv, over Givatayim. Evening. From the street you look up: two
+  dragons, a red and a green, circle the towers, close in and burn each other, part and come
+  round again; the camera rises among the roofs to watch. Then the red one turns and comes
+  straight at you -- you run behind the nearest building, it sweeps over the roof roaring,
+  and you step out to watch it go. The traffic stops dead.
+
+  > Dragons fighting above the city and we watch the fight. The one dragon starts flying
+  > towads us amd we hide bwhind a building
+
 - *A day in the town* -- Tel Aviv, Givatayim. Morning to night in three minutes: a drive at
   each time of day, the town's own rhythm in the captions, the camera cutting between shots,
   rain before dawn.
@@ -1787,21 +1796,21 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
 - Speed humps to bump over: OSM marks them (traffic_calming), but the baker does not keep
   them yet -- it needs that and a re-bake (Overpass, or the bake workflow).
 - People who react ("not needed yet, maybe later"): jumping back, or falling, when a car
-  comes at them; glancing at you.
+  comes at them; glancing at you. Done: glancing at you, and a start back when the car is
+  about to hit them. Still to do: falling.
 - Better people themselves: "what about people themselves? how can we improve". Five
   low-poly characters are the limit now. Done: builds varied, and things carried (shopping
   bags, handbags, backpacks, a box). Hands while talking: done. Done: every person is now one of Quaternius'
   free Universal Base Characters with the Universal Animation Library's moves, dressed in
   code (DEV.md "The people"). Also done: skirts and dresses, older people,
   children walking with a grown-up, cafe groups seated at their tables talking, people on
-  their phones, a box carried in both arms, people glancing at you as you pass. Still to do:
-  reacting to the car (the line above).
+  their phones, a box carried in both arms, people glancing at you as you pass. People step round each other in time. Still to do: falling when hit (the line above).
 - Scenarios: "Alien invasion, maybe special scenario, maybe in any city. if i activate. some
   aliens come down around the city i am in"; "just the concept of scenarios, where aliens
   are one of those. more stuff - titans, dragons, (dont want army stuff though, gives wrong
   ideas)". A scenario is switched on in whatever town you are in and plays out around you:
-  aliens landing round the city first, then titans, dragons. No soldiers, tanks or army of
-  any kind. (Builds on the disasters idea below.)
+  aliens landing round the city first, then titans, dragons (the dragons are built: see
+  "Scenarios" above). No soldiers, tanks or army of any kind. (Builds on the disasters idea below.)
 - A city on the moon: "A city on the moon".
 - Disasters on the real city: "like simcity hazards, but now we have the graphics so it
   can be cool on steroids, like aliens". Pick a disaster and where it strikes, then watch it

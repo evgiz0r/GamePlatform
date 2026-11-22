@@ -50,7 +50,7 @@ func _run() -> void:
 			await create_timer(2.5).timeout
 			root.get_viewport().get_texture().get_image().save_png(out + "/scen_%d.png" % shot)
 			shot += 1
-		if out != "" and (String(b[0]) in ["chase", "drive_for"]) and t - shot_t > 6.0:   # (a shot every 6 s while it drives)
+		if out != "" and (String(b[0]) in ["chase", "drive_for", "dragons"]) and t - shot_t > (3.0 if String(b[0]) == "dragons" else 6.0):   # (a shot every 6 s while it drives)
 			shot_t = t
 			root.get_viewport().get_texture().get_image().save_png(out + "/scen_%d.png" % shot)
 			shot += 1
@@ -79,9 +79,15 @@ func _run() -> void:
 			ok = ok and sc.reached >= 1 and sc.yielded > 0 and not sc.on
 		"day":
 			ok = ok and not sc.on and sc.shots_seen.size() >= 3
+		"dragons":
+			ok = ok and not sc.on and sc._dragons != null and int(sc._dragons.events.get("fire", 0)) >= 2 				and int(sc._dragons.events.get("cam_in_building", 0)) == 0
 	print("SCENARIO shots: %s; cars that pulled over: %d; time now: %s" % [JSON.stringify(sc.shots_seen), sc.yielded,
 		"night" if g._night else ("evening" if g._evening else "day")])
 	print("SCENARIO %s ended: %s, %d of %d stops reached, %d people hit, %.0f s" % [sc.kind, sc.result, sc.reached, stops, people, t])
+	print("SCENARIO camera frames inside a building: %d" % sc.cam_in_building)
+	ok = ok and sc.cam_in_building == 0
+	if sc._dragons != null:
+		print("SCENARIO dragons: %s" % JSON.stringify(sc._dragons.events))
 	print("SCENARIO: %s" % ("PASS" if ok else "FAIL"))
 	quit(0)
 

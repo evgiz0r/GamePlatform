@@ -87,6 +87,9 @@ func setup(id: String) -> void:
 		beats = _ambulance_beats()
 	elif id == "day":
 		beats = _day_beats()
+	elif id == "dragons":
+		beats = [["time", "evening"], ["dragons"],
+			["end", "Dragons over %s. The streets will talk about nothing else." % String(story.get("town", g._city_name))]]
 	Probe.event("scenario", {"kind": id, "beats": beats.size()})
 
 func start() -> void:
@@ -210,6 +213,20 @@ func _day_beats() -> Array:
 
 ## ---- running it ------------------------------------------------------------------------------
 
+## for the test: any shot's camera (the director's, the chase's cut, the dragons') near the
+## ground and inside a building -- a camera is a person or a mounted lens, never in a wall
+var cam_in_building := 0
+func _cam_check() -> void:
+	var c: Camera3D = g.get_viewport().get_camera_3d() if g.view == null else g.view.get_camera_3d()
+	if c == null or c == g.cam:
+		return
+	var p: Vector3 = c.global_position
+	var p2 := Vector2(p.x, p.z)
+	if p.y < g._h(p2) + 4.0 and g._push_out(p2, 0.15, false, false) != Vector2.ZERO:
+		cam_in_building += 1
+		if cam_in_building == 1:
+			print("[scenario] camera inside a building at %s, beat %s, %.1f s" % [p2, beats[i][0] if i >= 0 and i < beats.size() else "-", t])
+
 func tick(dt: float) -> void:
 	_caption_tick(dt)
 	if not on:
@@ -221,6 +238,7 @@ func tick(dt: float) -> void:
 	t += dt
 	_shots_tick(dt)
 	_slowmo_tick()
+	_cam_check()
 	if _siren_on:
 		_yield_tick()
 	var b: Array = beats[i]
@@ -235,6 +253,11 @@ func tick(dt: float) -> void:
 				_next()
 		"time", "wet", "shots", "siren":
 			_next()
+		"dragons":
+			if _dragons.tick(dt, func(text: String, secs: float) -> void: _say(text, secs)):
+				_next()
+			else:
+				_dragons.camera(dt)
 		"drive":
 			_street_words()
 			var at: Vector2 = b[1]
@@ -287,6 +310,11 @@ func _next() -> void:
 				_cam_usual()
 		"siren":
 			_set_siren(bool(b[1]))
+		"dragons":
+			g._set_auto(false)
+			g._v = 0.0
+			_dragons = Dragons.new(g)
+			_dragons.start(g._pos, g._fwd())
 		"drive_for":
 			if g._zoomed():
 				g._zoom_set(0.0)
@@ -328,8 +356,13 @@ var _end_tick := -1
 func done_for(secs: float) -> bool:
 	return _end_tick >= 0 and Engine.get_physics_frames() - _end_tick >= int(secs * Engine.physics_ticks_per_second)
 
+const Dragons := preload("res://game/streets/dragons.gd")
+var _dragons = null           ## the dragons' scene (dragons.gd), while it plays
+
 func _finish(how: String) -> void:
 	on = false
+	if _dragons != null and _dragons.on:
+		_dragons.stop()
 	if _end_tick < 0:
 		_end_tick = Engine.get_physics_frames()
 	_cam_usual()

@@ -1,12 +1,12 @@
 extends SceneTree
-## The trick road (level 36, data_tools/make_showcase.py): its test drive started as the level
+## The trick road (level 40, data_tools/make_showcase.py): its test drive started as the level
 ## starts it -- watch only, autodrive on, once round -- and traced. Every half second, and every
 ## frame the car is in the air, where it is, its height and the surface under it, its speed and
 ## the piece of road it is on; each take-off and landing (how fast it met the ground, a hard one
 ## over 5 m/s); per piece the slowest and fastest it went. With a display, a still each time the
 ## car enters a piece and a few in the air (`OUT`), from the chase camera.
 ##
-##   OUT=<dir> game/streets/tests/run.sh trick_road 36      (stills; ~2 min on this PC)
+##   OUT=<dir> game/streets/tests/run.sh trick_road 40      (stills; ~2 min on this PC)
 ##   SECS=120 ... headless for the numbers alone
 ## Good: "arrived" once round in about 1:40; take-offs off the jump's kicker and the bridge's
 ## drop, each landing under 5 m/s; 0 crashes; the tunnel driven at the road's speed.
@@ -29,7 +29,7 @@ func _snap(name: String) -> void:
 
 func _run() -> void:
 	await create_timer(0.3).timeout
-	var lv := int(OS.get_environment("LEVEL")) if OS.get_environment("LEVEL") != "" else 36
+	var lv := int(OS.get_environment("LEVEL")) if OS.get_environment("LEVEL") != "" else 40
 	root.get_node("Flow").start_game("streets", {"level": lv})
 	while g == null or not g._loaded:
 		await create_timer(0.25).timeout

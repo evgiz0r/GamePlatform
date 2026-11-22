@@ -318,7 +318,7 @@ WALL = 3.0                      # its walls this long (more than a grid step: sh
 LAND_H, LAND_G = 1.4, 0.16      # the landing slope's top over GROUND, and its grade down
 FLOOR = -2.0                    # it runs down to this under GROUND, then back up
 BACK_G = 0.05                   # climbing back to the ground
-ROUTE_ID, TRICK_LEVEL = 12, 36  # its drive's number in routes.json, and its level in LEVELS
+ROUTE_ID, TRICK_LEVEL = 14, 40  # its drive's number in routes.json, and its level in LEVELS
 JUMP_SPEED = 65                 # km/h: autodrive's limit along the jump's stretch
 DROP_SPEED = 50                 # and over the bridge to the drop
 

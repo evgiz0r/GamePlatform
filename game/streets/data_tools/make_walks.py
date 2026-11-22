@@ -64,6 +64,23 @@ WALKS = {
         # carriageway's inner side, as a boulevard's middle is
         "legs": [["Oude Delft", "Peperstraat", "Breestraat"]], "promenade": True, "pave": 1.4,
     },
+    # Leiden's: down Haarlemmerstraat, its pedestrian shopping street, shoppers about. (Rapenburg's
+    # quay was tried first: one name for both banks, so neither "promenade" nor a side kept the walk
+    # on the canal's side all the way -- houses, the quay's trees and lamps in the line)
+    "leiden_haarlemmerstraat": {
+        "city": "leiden", "name": "Leiden: down Haarlemmerstraat",
+        "ways": {"kinds": ["pedestrian"], "name": "Haarlemmerstraat", "via": [[60.0, -238.0], [500.0, -205.0]]},
+        # (from past the tree standing in the street at (35, -243): the eye went through its crown)
+        "scene": {"groups": [14, 2.0, 3.2], "passers": 24},
+    },
+    # Annecy's: the old town along the Thiou's quays (Quai de l'Eveche, de l'Ile, de Vicenza),
+    # to the lake's end of Quai de Vicenza -- pedestrian ways, busy with people (on along Quai
+    # Napoleon III it met a fence where the two quays join)
+    "annecy_thiou": {
+        "city": "annecy", "name": "Annecy: along the Thiou to the lake",
+        "ways": {"kinds": ["pedestrian", "footway"], "via": [[-351.0, 202.0], [-142.0, 247.0], [-59.0, 261.0], [12.0, 277.0]]},
+        "scene": {"groups": [12, 2.0, 4.0], "passers": 20},
+    },
     # down Nahalat Binyamin's pedestrian street at night: its bars and cafes lit, tables out,
     # people standing about and passing (the scene)
     "tel_aviv_night_out": {
@@ -407,7 +424,7 @@ DRESS = {
     "dutch": [("bollards", 40), ("bin", 25), ("scooter", 20), ("cabinet", 15)],
 }
 GAP = {"med": (9.0, 16.0), "north": (22.0, 38.0), "dutch": (10.0, 18.0)}   # (a suburb's pavement is emptier)
-LOOK = {"tel_aviv": "med", "ashdod": "med", "dimyon": "med", "givatayim": "med", "bedford": "north", "delft": "dutch"}
+LOOK = {"tel_aviv": "med", "ashdod": "med", "dimyon": "med", "givatayim": "med", "bedford": "north", "delft": "dutch", "leiden": "dutch", "annecy": "north"}
 
 
 def dress(wid, spec, walk, cum, total, hits, kerb):
@@ -590,7 +607,7 @@ def write(city, walks, props):
     if shops:
         d["shops"] = shops
     d["props"] = [p for p in d.get("props", []) if p.get("src") != "make_walks"] + props
-    with open(path_, "w", encoding="utf-8") as fh:
+    with open(path_, "w", encoding="utf-8", newline="\n") as fh:   # (with Windows' line ends it rewrote every town's file)
         json.dump(d, fh, ensure_ascii=False, indent=1)
         fh.write("\n")
 
