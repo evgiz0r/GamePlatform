@@ -577,8 +577,23 @@ out as a little film, the car driving itself, captions across the bottom.
   a corner or a queue and it closes in. Lose it by 160 m or reach the safe house and you got
   away; let it within 7 m and you are caught. Take the wheel and the drive is yours.
 
+  The camera cuts between shots as it goes -- the usual view, from high above, low at the
+  kerb as you come by, from behind the police car, looking back -- and drops into slow
+  motion through each red light.
+
+- *Night tours* -- Tel Aviv, Givatayim. The tour after dark, the towers and street lights
+  lit, ending as the rain comes and the streets shine.
+- *Ambulance run* -- Tel Aviv, Ashdod. Siren on and lights flashing, to the hospital (Tel
+  Aviv's, on Weizmann): the cars beside you pull aside and stop, every light turns green,
+  and the car goes round whatever is in its way.
+- *A day in the town* -- Tel Aviv, Givatayim. Morning to night in three minutes: a drive at
+  each time of day, the town's own rhythm in the captions, the camera cutting between shots,
+  rain before dawn.
+
   > some scenario ( aka movie i guess ) happening in a city. doesnt have to be related to
   > the city itself ... tours will be part of all scenarios
+
+  > I want to think more of automatic scearios for now without my inputs
 
 **The opening.** When a town comes up, the view starts high over it, turning slowly round
 where you will start, the town's name across the screen, while the streets round the car
@@ -1699,6 +1714,13 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
 > My sister tells me the scales of the game feel off.
 
 ## Later (said, not built)
+
+- Racer boxed in at a red, every lane queued (22 Nov 2026): "1 2" -- squeeze between the
+  lanes, and on two-way streets past the queue in the oncoming lanes. "But those low height
+  splitters between lanes and pavements. If they are low enough lets make it possible for our
+  car to go to the other side. And things bit more breakable that dont completely stop us.
+  Some i think just break and still stuck in place. Not everything but many small items we
+  could just not be blocked by". (Being built: see DEV.md, racer.)
 
 - Not just driving: the same baked city could be walked, or used by another game.
 - Crashes, what is still to come: a sign post bent, a fence panel or a hedge pushed in, a

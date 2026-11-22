@@ -2367,7 +2367,7 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   the list's settings row (`_list_settings`, another session's, the same evening: it took the
   place of a pair of buttons on each walk's row) starts a walk with `{"time": ...}`;
   `WALK_TIME=` in the test.
-- **Delft**: level 23 (after the scenarios' 16-22), its walk along Oude Delft's quay (`promenade`: the canal between two
+- **Delft**: level 29 (after the scenarios' 16-28: add at the end, never between), its walk along Oude Delft's quay (`promenade`: the canal between two
   one-way streets), 310 m; route 11 (`pick_routes.py --add delft`). The canal draws as brown
   ground, not water -- Delft's own build.
 - **Walk 1 against its film**: 34.8 -> 34.6; only 82-83 worse by 5+ (the corner tree's shade
@@ -4193,6 +4193,29 @@ own ran off a phone's start screen; `_walk_list_open("scenarios")`),
   runs on autodrive (a person driving does better); tours for Delft and the test town need
   their stories.
 
+**The director, more** (the user: "automatic scenarios ... without my inputs", then picked the
+day, the night tour, the getaway as a film and the ambulance). New beats -- `time`, `wet`,
+`shots`, `siren`, `drive_for` (a drive that ends after its seconds) -- and the scripts
+`night_tour` (the tour after `["time", "night"]`, rain before its end), `ambulance` (the
+hospital: a story street whose note says "hospital" -- Weizmann in Tel Aviv, Ichilov -- else
+a main street 1-1.8 km off; racer with the green wave on too) and `day` (three drives between
+the tour's stops at day, evening and night, the story's `rhythm` sentences as captions, rain
+at the end). LEVELS 23-28. **Shots** (`_shots_tick`, the director's own `Camera3D`, the game's
+put back with `_cam_usual`): "above" (26 m up, behind), "kerb" (a spot at the roadside
+ahead, picked as the shot starts, 0.9 m up: the car drives past it), "orbit", "chaser"
+(behind the police car), "back" (ahead, looking back); a shot list runs the camera in place
+of the chase's own cut. **Slow motion**: `Engine.time_scale` 0.35 for 1.6 s of real time
+when the getaway runs a red (`_reds_seen`). **The siren** (`_set_siren`, `_yield_tick`):
+the car's own light bar and siren; traffic ahead going its way in the lanes beside its line
+stops (`hit`) and is let go when the car is past, stuck behind it or the siren goes off. The
+first try stopped the car in its own lane too and the ambulance stood behind it for two
+minutes (`VERBOSE=1` on tests/scenario.gd prints autodrive's why every 10 s: "car", lead
+5.4 m). 22 Nov, `tests/scenario.gd`: a day in Givatayim
+(28) 179 s, shots above 7 / kerb 11 / orbit 6 / usual 6, ending at night after rain; the
+ambulance in Tel Aviv (25) at the hospital in 115 s, 98 cars pulled over; the getaway as a
+film (21) caught at 26 s, every shot used once; the night tour of Givatayim (24) 4 of 5
+stops, 528 s; 0 people hit in all.
+
 **Scenario ideas** (the user asked for them as the work goes, with grades):
 
 | # | Scenario | Effort | Notice | AI grade | Comment |
@@ -4219,6 +4242,49 @@ body's side; not a bus or a motorbike) when nearer than your own: your car is pu
 stood, it leaves the traffic (`alive` false). Parked cars are merged into a square's batches
 (`_build_lots`), so one cannot be lifted out yet: taking one would leave its copy standing.
 `tests/walk_take.gd`: jog 4.5, sprint 9.5, a sedan held beside you taken (PASS).
+
+## Racer at a red, and what gives under the car (22 Nov 2026, night)
+
+The user: "racer waits on red light after a car? we were 2 cars standing in a red light on a
+3 lane street". `tests/racer_queue.gd` stages it: a lit junction whose way in has 2+ lanes,
+held at red, CARS standing at the line (LANE, or ALL_LANES=1 for every lane), racer from 150 m
+back, straight or TURN=left/right. Found:
+- **A car in front, other lanes free**: racer gets by (it changes lane early) -- straight, left
+  and right, 1 and 2 cars: PASS. The older pass (`_ap_pass_bus`) refused whenever the plan
+  turned at the next junction: now not for a car standing, racer's (racer's own passing is
+  `_ap_race_by` now -- the racer session's, merged 22 Nov 01:00; with CARS=1 LANE=1 its checks
+  still refuse and racer stands 23 s: handed to that session, not changed here).
+- **Every lane full** (ALL_LANES=1): only the pavement is left (`_ap_mount_by`), and it never
+  went. Three bugs: tried only once stood 6 m behind the car (the way up ran through that
+  car's back) -- now also while coming up, 40 m back, the way up 14 m short of it; the way
+  up's offset measured from `_lane_off` (the default lane), not where the car is; and the
+  points bent in place, each one's direction read from the one before (already bent) and
+  after (not yet): 1 m apart and 6.6 m over, the push leant ~70 degrees forward. Now from the
+  plan as it was, each point to the pavement's middle by where it lies across the road.
+  After that, Givatayim's pavements are lined with the town's own trees (1 m in on 2.4 m):
+  no car gets by them, so a full red still holds racer there (six junctions tried). Next, as
+  the user asked: squeeze between the lanes, and the oncoming lanes on two-way streets.
+- `_ap_pass_bus` bends the same way, in place: its passes lean forward and fall short of a
+  lane. Bent properly (from the plan as it was) racer's test touched kerb posts on Marathon's
+  bend 3-4 times a drive (0 before), so it is left as it was -- its shortfall is what its
+  tuning was done with. Open: bend it properly and retune where it goes back in.
+- **What gives** (the user: "things bit more breakable that dont completely stop us", and
+  which: kerb railings, bollards and posts on medians, low garden walls, hedges). `add_wall`'s
+  `gives` (`_wall_give`): railings (furniture `_fence_line` rail, 1.05 m), garden walls under
+  0.6 m (`SMASH_WALL_H`), hedges; posts 0.07 m and thinner (railings' posts). Moving faster
+  than 2.5 m/s (`SMASH_V`), your car -- and racer, also when it plans a way round -- goes
+  through them (`_smash`, `_smashed`, `_smash_through`: x0.97 a tick in contact, x0.985 in a
+  hedge, sparks or leaves, a knock). Autodrive keeping the rules does not (it leans on a
+  railing as before). What broke stays drawn (only its hold goes). Bins, bollards and signs
+  were already knocked over or bent (`_knock`, `_bend_sign`). `tests/smash.gd` at 30 km/h:
+  railings 3 of 3 through (6-21 km/h after), low walls 3 of 3 (24-27), hedges 3 of 3 (to a
+  crawl), tall fences 0 of 3 -- PASS. (Its traps: the car must be held at speed, or it coasts
+  to a stop at the line; a garden wall is laid by each plot, so a low one can share its line
+  with a taller one; railings and hedges are laid in pieces under 2.5 m.)
+- **A drive is a fair before/after only when it runs alone.** racer.gd's test beside three
+  other Godot runs touched posts and cars 1-3 times a drive, in plain autodrive too; alone, on
+  the same code, 0 and 0, to the tenth of a second the same as main. The clock-timed budgets
+  (see "The drives repeat -- sometimes") make a busy machine a different drive.
 
 ## Open problems
 

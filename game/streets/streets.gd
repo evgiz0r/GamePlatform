@@ -68,6 +68,12 @@ const LEVELS := [
 	{"name": "Tour: Bedford by the Basin", "city": "bedford", "look": "north", "decks": "infer", "scenario": "tour"},
 	{"name": "The getaway: Ashdod", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med", "decks": "infer", "scenario": "getaway"},
 	{"name": "The getaway: Tel Aviv", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "getaway"},
+	{"name": "Night tour: Tel Aviv", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "night_tour"},
+	{"name": "Night tour: Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "night_tour"},
+	{"name": "Ambulance run: Tel Aviv", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "ambulance"},
+	{"name": "Ambulance run: Ashdod", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med", "decks": "infer", "scenario": "ambulance"},
+	{"name": "A day in Tel Aviv", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "day"},
+	{"name": "A day in Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "day"},
 	# Delft's walk: every city has one (NEW_CITY.md), laid by data_tools/make_walks.py
 	{"name": "Delft: along the Oude Delft canal", "city": "delft", "look": "north", "build": "nl", "decks": "infer", "walk": "delft_oude_delft"},
 ]
@@ -1610,8 +1616,20 @@ func _load_line() -> String:
 	s += " city file %.1f · start area %.1f · graphics %.1f" % [
 		_load_split[0] / 1000.0, _load_split[1] / 1000.0, _load_split[2] / 1000.0]
 	if _load_gl.x >= 0.0:
-		s += " (%d shaders, %.1f s compiling)" % [int(_load_gl.x), _load_gl.y / 1000.0]
+		s += " (%d shaders, %.1f s compiling%s)" % [int(_load_gl.x), _load_gl.y / 1000.0, _lstrip_note()]
 	return s
+
+## ", N skipped" -- the never-drawn programs LIGHT_STRIP_JS swapped for a placeholder -- and
+## loudly if one was ever drawn with (it should not be: see LIGHT_STRIP_JS)
+static func _lstrip_note() -> String:
+	if not OS.has_feature("web"):
+		return ""
+	var v = JavaScriptBridge.eval("window.__lstrip ? window.__lstrip.n + ',' + window.__lstrip.used : ''", true)
+	var t := str(v) if v != null else ""
+	if t == "":
+		return ""
+	var used := int(t.get_slice(",", 1))
+	return ", %s skipped%s" % [t.get_slice(",", 0), ", PLACEHOLDER DRAWN %d" % used if used > 0 else ""]
 static var _loads_this_visit := 0
 var _first_load := false
 
@@ -1737,7 +1755,7 @@ const LIGHT_STRIP_JS := """(() => {
 				? v + '\\nvoid main() { gl_Position = vec4(0.0); }\\n'
 				: v + '\\nprecision mediump float;\\nout vec4 frag_color;\\nvoid main() { frag_color = vec4(1.0, 0.0, 1.0, 1.0); }\\n';
 			fake.add(s);
-			c.n += 1;
+			if (types.get(s) !== this.VERTEX_SHADER) c.n += 1;   // programs, not halves
 		}
 		return ss.call(this, s, src);
 	};
@@ -2970,8 +2988,42 @@ func _clip_buf(cell: float) -> CBuf:
 func _tally(k: String, n: int) -> void:
 	_dressing[k] = int(_dressing.get(k, 0)) + n
 
+## Where the background build runs long without handing the frame back (STREETS_SPANS=1,
+## a debug run: tests/build_spans.gd). Each pause notes how far past its budget the work
+## before it ran, and the call sites that paused: a phone ran single stretches of 1-1.5 s.
+var _span_rec := OS.get_environment("STREETS_SPANS") == "1"
+var _spans: Array = []               ## [ms past the budget, "func:line < func:line < ..."]
+
+var _bstep := ""                     ## the square-building step under way (named in the hitch line)
+var _bstep_slow := ""                ## the step that last ran 30+ ms past the frame's budget, for the next hitch line
+var _bstep_slow_us := 0
+
+## one step of building a square: its name kept for a hitch, the frame handed back first if
+## its budget is used up
+func _build_step(what: String) -> void:
+	if _over():
+		await _pause()   # (before the name changes: a long stretch is the step that ran it)
+	_bstep = what
+
+var _span_last := 0                  ## (STREETS_SPANS) the last budget check: when, and where
+var _span_last_at := ""
+
+func _span_gap() -> void:
+	var now := Time.get_ticks_usec()
+	var st := get_stack()
+	var at: Array = []
+	for i in range(2, mini(5, st.size())):
+		at.append("%s:%d" % [st[i]["function"], st[i]["line"]])
+	var here := " < ".join(at)
+	if _bg_build and _span_last > 0 and now - _span_last > 20000:
+		_spans.append([(now - _span_last) / 1000.0, "from " + _span_last_at + "  TO  " + here])
+	_span_last = now
+	_span_last_at = here
+
 ## the frame's building time is used up
 func _over() -> bool:
+	if _span_rec:
+		_span_gap()
 	return (_bg_build or _fg_build) and Time.get_ticks_usec() > _yield_at
 
 ## Building in the background: hand the frame back and go on in the next one. Meanwhile
@@ -2985,6 +3037,10 @@ func _pause() -> void:
 		await get_tree().process_frame
 		_yield_at = Time.get_ticks_usec() + FG_US
 		return
+	var over_us := Time.get_ticks_usec() - _yield_at
+	if over_us > 30000 and over_us > _bstep_slow_us:   # ran 30+ ms past the budget: which step (the hitch line)
+		_bstep_slow = _bstep if _bstep != "" else "between squares"
+		_bstep_slow_us = over_us
 	var was := _tiled
 	var batching := _batching
 	_set_tiling(false)
@@ -2994,6 +3050,7 @@ func _pause() -> void:
 	_batching = batching
 	_set_tiling(was)
 	_yield_at = Time.get_ticks_usec() + _build_us
+	_span_last = 0   # (the frame in between is not the build's)
 
 ## empty a big table or list a few hundred entries at a time, within the frame's budget
 func _release(table) -> void:
@@ -3164,56 +3221,88 @@ func _build_tile(t: Vector2i) -> void:
 		a.clear()   # made by one builder for the next, square by square
 	var tk := Time.get_ticks_msec()
 	_ao = CBuf.new(GROUND_CELL)
+	# every step behind `_step`: the frame handed back between any two of them if it is used up
+	# (decks, rails, marks, beach, works and places ran back to back unchecked: 50 ms on a
+	# desktop, tests/build_spans.gd), and the step's name kept for the hitch line
+	await _build_step("corner fills")
 	await _note_corner_fills()   # (before anything is stood anywhere: see _off_road)
+	await _build_step("ground")
 	await _build_ground()
+	await _build_step("decks")
 	await _decks.build()
+	await _build_step("rails")
 	await _rails.build()
+	await _build_step("marks")
 	_marks.build()
+	await _build_step("beach")
 	_beach.build()
+	await _build_step("works")
 	_works.build()
-	_places.build()
+	await _build_step("places")
+	await _places.build()
 	tk = _stage("roads", tk)
+	await _build_step("buildings")
 	await _build_buildings()
 	tk = _stage("buildings", tk)
+	await _build_step("roof kit")
 	await _build_roof_kit()
+	await _build_step("facade kit")
 	await _build_facade_kit()
 	tk = _stage("facades", tk)
+	await _build_step("trees")
 	await _build_trees()
 	tk = _stage("trees", tk)
+	await _build_step("kerbs")
 	await _build_kerbs()   # (after the trees: the leaves on the pavement are under them)
 	tk = _stage("kerbs", tk)
+	await _build_step("passages")
 	await _build_passages()
 	tk = _stage("passages", tk)
+	await _build_step("wires")
 	await _furn.wires()
 	tk = _stage("wires", tk)
+	await _build_step("lamps")
 	await _build_lamps()
+	await _build_step("parks")
 	await _build_parks()
 	tk = _stage("lamps", tk)
+	await _build_step("parked")
 	await _build_parked()
+	await _build_step("lots")
 	await _build_lots()
+	await _build_step("contact shadows")
 	for mi: MeshInstance3D in _add_mesh(_ao, _ao_material(), false, AO_SEEN):   # (after the buildings and the cars)
 		mi.extra_cull_margin = 60.0   # (the trees' patches are moved out by the sun, in the shader)
 	_ao = null
 	tk = _stage("parked", tk)
+	await _build_step("signals")
 	await _build_signals()
+	await _build_step("signs")
 	await _build_signs()
+	await _build_step("road paint")
 	await _build_road_paint()
+	await _build_step("speed signs")
 	await _build_speed_signs()
+	await _build_step("street signs")
 	await _build_street_signs()
 	tk = _stage("signs", tk)
+	await _build_step("pois")
 	await _build_pois()
+	await _build_step("stops")
 	await _build_stops()
 	tk = _stage("places", tk)
 	var tfu := Time.get_ticks_usec()
+	await _build_step("furniture")
 	await _furn.build()
 	_part_time("furniture: all (furniture.gd)", tfu)
 	tk = _stage("furniture", tk)
-	if _over():
-		await _pause()
+	await _build_step("batches")
 	await _flush_batches()
 	if _pools_made:
+		await _build_step("light pools")
 		_make_pools()   # it is night: this square's light pools too
 	_stage("batches", tk)
+	_bstep = ""
 	_set_tiling(false)
 	_batching = false
 	if _standins != null:
@@ -3329,11 +3418,14 @@ func _build_rest() -> void:
 	_catch_up = hurry
 	_build_us = CATCH_UP_US if _catch_up else BUILD_US
 	_yield_at = Time.get_ticks_usec() + _build_us
+	_bstep = "gardens"
 	await _build_gardens_later()   # (the start's squares' far gardens, first)
 	if not _tiles_todo.is_empty():   # (the rest, as flat stand-ins seen from above, at once)
+		_bstep = "stand-ins"
 		_standins = Standins.new(self)
 		await _standins.build_all()
 	if not hurry:
+		_bstep = "far shadows"
 		await _far_now()
 	while is_inside_tree():
 		var t = _next_tile()
@@ -3348,11 +3440,14 @@ func _build_rest() -> void:
 			_catch_up_ms = Time.get_ticks_msec() - t0
 			print("[streets] the squares round the car built %d ms after it was shown" % _catch_up_ms)
 			Probe.event("near_built", {"ms": _catch_up_ms, "squares": n})
+			_bstep = "far shadows"
 			await _far_now()
 		if _build_lbl != null:
 			_build_lbl.text = "building the city %d%%" % int(100.0 * _tiles_done.size() / maxf(_build_total, 1.0))
+	_bstep = "far shadows"
 	await _far_now()   # (if it has not come yet: before the city file below is let go)
 	await _far_both()   # (and the other sun's: drawn later, from what is let go, it failed)
+	_bstep = "letting go of the city file"
 	if _build_lbl != null:
 		_build_lbl.text = ""
 	# what was only for building -- the file, the outlines, the squares' lists -- let go of a
@@ -5343,7 +5438,7 @@ func _garden_wall(fronts: Dictionary, wall: CBuf, lines: Dictionary, cum: Packed
 				cap.tri(_g3(ci1, wh), _g3(co1, wh), _g3(co1, y1), along, Color.WHITE)
 				cap.tri(_g3(ci1, wh), _g3(co1, y1), _g3(ci1, y1), along, Color.WHITE)
 		if _mine(i0):   # (every square along the street works it out: one records it)
-			add_wall((i0 + o0) * 0.5, (i1 + o1) * 0.5, 0.13)
+			add_wall((i0 + o0) * 0.5, (i1 + o1) * 0.5, 0.13, false, wh < SMASH_WALL_H)
 
 ## A run side's gates: where a building's door faces this street across its garden, as the
 ## wall shader draws the doors -- a glazed door in the middle bay of every long ground-floor
@@ -12064,9 +12159,13 @@ func new_cbuf(cell: float) -> CBuf:
 var _walls := PackedVector2Array()   ## two points a wall
 var _wall_r := PackedFloat32Array()  ## half its thickness
 var _wall_soft := PackedByteArray()  ## 1: a hedge, that gives (no dent, no glass, leaves fly)
+var _wall_give := PackedByteArray()  ## 1: the car breaks through at speed (a railing, a low wall, a hedge: _smash)
 var _wall_hash := {}
 
-func add_wall(a: Vector2, b: Vector2, half: float, soft := false) -> void:
+## `gives`: light enough that the car goes through it at speed rather than stopping -- a kerb
+## railing, a garden wall under knee height, a hedge (the user, 22 Nov 2026: "things bit more
+## breakable that dont completely stop us"). Tall fences and building walls do not.
+func add_wall(a: Vector2, b: Vector2, half: float, soft := false, gives := false) -> void:
 	if a.distance_squared_to(b) < 0.0001:
 		return
 	var i := _wall_r.size()
@@ -12074,6 +12173,7 @@ func add_wall(a: Vector2, b: Vector2, half: float, soft := false) -> void:
 	_walls.append(b)
 	_wall_r.append(half)
 	_wall_soft.append(1 if soft else 0)
+	_wall_give.append(1 if (gives or soft) else 0)
 	_hash_add(_wall_hash, Rect2(a, Vector2.ZERO).expand(b).grow(half), BLD_CELL, i)
 
 ## a post as big as r already stands within 0.3 m of p (see _add_post's `unique`)
@@ -17629,6 +17729,7 @@ func _physics_process(dt: float) -> void:
 	if _rails != null:
 		_rails.tick(dt)
 	_crash_cool = maxf(0.0, _crash_cool - dt)
+	_smash_cool = maxf(0.0, _smash_cool - dt)
 	_touch_t = maxf(0.0, _touch_t - dt)
 	_p("lights")
 	var split := dt <= WORLD_SPLIT_DT and _world_split_on
@@ -18061,8 +18162,13 @@ func _hitch(ms: float, typical: float) -> void:
 	var words: Array = []
 	for i in range(mini(5, parts.size())):
 		if float(parts[i][0]) >= 1.0:
-			words.append("%s %d" % [parts[i][1], int(round(float(parts[i][0])))])
+			var part: String = parts[i][1]
+			if part == "building" and _bstep_slow != "":   # which step of a square ran long (_pause)
+				part = "building (%s)" % _bstep_slow
+			words.append("%s %d" % [part, int(round(float(parts[i][0])))])
 	words.append("rest %d" % int(round(ms - script_ms)))
+	_bstep_slow = ""
+	_bstep_slow_us = 0
 	var line := "%.1f s  %d ms (usual %d)  %s" % [Time.get_ticks_msec() / 1000.0, int(ms), int(typical), " · ".join(words)]
 	_hitches.push_front(line)
 	if _hitches.size() > 4:
@@ -21114,6 +21220,10 @@ func _collide() -> void:
 	var at_back := Vector2.ZERO
 	# a few passes: out of a wall can be into a tree, and one push each left the car
 	# jittering between the two, stuck
+	# (you driving, or racer: autodrive keeping the rules leans on a kerb railing as before --
+	# breaking through one on Moshe Dayan's bend it touched the post behind it, racer.gd's test)
+	_smash = absf(_v) > SMASH_V and not _walking and (not _auto or _racing())
+	_smashed = ""
 	for _pass in range(3):
 		var moved := false
 		for off: float in [CAR_OFF, -CAR_OFF]:
@@ -21132,6 +21242,9 @@ func _collide() -> void:
 					at_back += p
 		if not moved:
 			break
+	_smash = false
+	if _smashed != "":
+		_smash_through()
 	if total == Vector2.ZERO:
 		return
 	# a bin, a recycling bin or a bollard: knocked over or bent (_knock), not a wall to stop at --
@@ -21181,6 +21294,29 @@ func _collide() -> void:
 			_traffic.bumped(int(_last_hit.substr(4)))
 	_v = vel.dot(fwd)
 	_v_lat = clampf(vel.dot(right), -7.0, 7.0)
+
+## through something that gives (see _smash): a little of the speed, and what it was made of
+## flying -- leaves from a hedge, sparks and a knock from a railing or a wall. Once a second
+## at most for the sound and the shake: a hedge is a long run of wall segments.
+var _smash_cool := 0.0
+func _smash_through() -> void:
+	var i := int(_smashed.substr(5)) if _smashed.begins_with("wall ") else -1
+	var hedge := i >= 0 and i < _wall_soft.size() and _wall_soft[i] == 1
+	_v *= 0.985 if hedge else 0.97   # (each tick in it: a hedge drags, a railing knocks)
+	var at := Vector3(_pos.x, _y + 0.5, _pos.y) + Vector3(_fwd().x, 0.0, _fwd().y) * (CAR_OFF + CAR_R)
+	if _smash_cool > 0.0:
+		return
+	_smash_cool = 0.6
+	_knocked_n += 1
+	_knocked_what = "through a hedge" if hedge else "through " + _smashed.get_slice(" ", 0)
+	if hedge:
+		_leaves_at(at, Vector3(_fwd().x, 0.6, _fwd().y), 0.8)
+		Audio.play("impact_soft", 0.1, -6.0)
+	else:
+		_sparks_at(at, Vector3.UP, 0.6)
+		shake3d(0.8)
+		Audio.play("impact_punch", 0.1, -6.0)
+	Probe.event("smash", {"what": _knocked_what, "kmh": int(absf(_v) * 3.6)})
 
 func _crash(speed: float) -> void:
 	if speed < 1.2 or _crash_cool > 0.0:
@@ -21688,6 +21824,18 @@ func _any_steep() -> bool:
 				return true
 	return false
 
+## What gives under the car at speed (`_smash`, set by _collide while moving faster than
+## SMASH_V, and by racer's way-finding): kerb railings and their thin posts, garden walls
+## under SMASH_WALL_H, hedges. _push_out passes through them then and names the last in
+## `_smashed`; _collide slows the car a little and throws sparks or leaves. What breaks
+## stays drawn where it was (only its hold on the car goes: "some just break and still stuck
+## in place").
+const SMASH_V := 2.5          ## m/s: slower than this, a railing still stops the car
+const SMASH_WALL_H := 0.6     ## m: a garden wall lower than this the car goes over
+const SMASH_POST_R := 0.07    ## m: posts this thin (railings' posts) give
+var _smash := false
+var _smashed := ""
+
 ## how far to move a circle so it overlaps nothing solid (its feet at y: a deck's walls are
 ## solid only at their own heights; without a y, the ground's level)
 func _push_out(c: Vector2, r: float, posts: bool, cars := true, y := NAN) -> Vector2:
@@ -21716,6 +21864,12 @@ func _push_out(c: Vector2, r: float, posts: bool, cars := true, y := NAN) -> Vec
 	if posts and ground and low:
 		# fences, railings, hedges, garden walls, a shelter's back: thin walls, as segments
 		for i: int in _near(_wall_hash, c, r + 0.5, BLD_CELL):
+			if _smash and _wall_give[i] == 1:
+				var qs := c + push
+				var cps := Geometry2D.get_closest_point_to_segment(qs, _walls[i * 2], _walls[i * 2 + 1])
+				if qs.distance_to(cps) < r + _wall_r[i]:
+					_smashed = "wall %d" % i
+				continue
 			var q := c + push
 			var cp := Geometry2D.get_closest_point_to_segment(q, _walls[i * 2], _walls[i * 2 + 1])
 			var d := q - cp
@@ -21727,6 +21881,10 @@ func _push_out(c: Vector2, r: float, posts: bool, cars := true, y := NAN) -> Vec
 		for i: int in _near(_post_hash, c, r, BLD_CELL):
 			var d := (c + push) - _posts[i]
 			var need := r + _post_r[i]
+			if _smash and _post_r[i] <= SMASH_POST_R and not _knockable.has(i) and not _signs_at.has(i):
+				if d.length() < need:
+					_smashed = "post %d" % i   # (a railing's post, a thin stake: through it)
+				continue
 			if d.length() < need:
 				push += d.normalized() * (need - d.length()) if d.length() > 0.001 else Vector2(need, 0)
 				_last_hit = "post %d" % i
@@ -22759,6 +22917,12 @@ func _autodrive(dt: float) -> Array:
 		lead = _traffic.lead_on(_ap_pts, _pos, reach, _ap_wait > 3.0, _y)
 	if float(lead[0]) < (60.0 if racing else 30.0) and _ap_pass_bus(lead):
 		lead = _traffic.lead_on(_ap_pts, _pos, reach, _ap_wait > 3.0, _y)
+	elif racing and float(lead[0]) < 40.0 and float(lead[1]) < 1.0 and _ap_mount_by(lead):
+		# (coming up to a queue standing in every lane -- a red, every lane full -- onto the
+		# pavement while there is still room to swing up: tried only once stood behind it, 6 m
+		# from the car in front, the way up ran through that car's back and it stood there for
+		# the whole red, the user's "racer waits on red light after a car", tests/racer_queue.gd)
+		lead = _traffic.lead_on(_ap_pts, _pos, reach, _ap_wait > 3.0, _y)
 	if float(lead[0]) < INF and int(lead[3]) >= 0 and _ap_crossing_clears(int(lead[3]), float(lead[0])):
 		lead = _traffic.lead_on(_ap_pts, _pos, reach, _ap_wait > 3.0, _y, int(lead[3]))
 	_ap_lead = float(lead[0]) if float(lead[0]) < INF else -1.0
@@ -23300,8 +23464,11 @@ func _ap_pass_bus(lead: Array) -> bool:
 	var fwd := _fwd()
 	var left := Vector2(fwd.y, -fwd.x)
 	var gap: float = lead[0]
-	if _ap_turn_ahead() != 0:
-		return false   # (a junction just after it: stay in lane)
+	if _ap_turn_ahead() != 0 and not (racing_by and float(bus.v) < 1.0):
+		return false   # (a junction just after it: stay in lane -- but racer goes round a car
+		               # standing at a red and turns from where it is: refused whenever its plan
+		               # turned at that junction, it waited behind the car for the whole red, the
+		               # user's "racer waits on red light after a car", tests/racer_queue.gd)
 	# a moving car (racer.gd): it goes on meanwhile, so the way out runs as far on as it gets
 	# in the time it takes to go by, and the lane over must be clear for that and for what
 	# comes along it at a town's pace meanwhile
@@ -23357,17 +23524,25 @@ func _ap_pass_bus(lead: Array) -> bool:
 			continue
 		var kd := (_ap_pts[mini(k + 1, _ap_pts.size() - 1)] - _ap_pts[k - 1]).normalized()
 		_ap_pts[k] += Vector2(kd.y, -kd.x) * lane_w * t * sgn
-	if racing_by:
-		# (racer's way out checked for what stands there, not cars alone: a post, a tree, a
-		# median's end -- undone if anything is)
+	if true:
+		# (the way out checked for what stands there, not cars alone: a post, a tree, a
+		# median's end -- undone if anything is. Racer's only, once: autodrive's own pass round
+		# a van fell short of its lane width while the bend leant forward (see _ap_mount_by), and
+		# once it went the whole way over it touched what stood there, posts at 5 km/h)
+		_smash = racing_by   # (racer plans through what gives: see _smash)
+		var blocked := false
 		for k in range(1, _ap_pts.size()):
 			if _ap_pts[k].distance_to(_pos) > end_s + 10.0:
 				break
 			if _push_out(_ap_pts[k], 1.1, true, false, _y) != Vector2.ZERO:
-				_ap_pts = keep_pts
-				_ap_v = keep_v
-				_ap_lim = keep_lim
-				return false
+				blocked = true
+				break
+		_smash = false
+		if blocked:
+			_ap_pts = keep_pts
+			_ap_v = keep_v
+			_ap_lim = keep_lim
+			return false
 	_ap_passed = bi
 	if racing_by:
 		_racer.passes += 1
@@ -23492,27 +23667,50 @@ func _ap_mount_by(lead: Array) -> bool:
 	if HIGHWAYS.has(r["k"]):
 		return false
 	# from the plan's line out to beyond the kerb: the car's middle 1.6 m onto the pavement
-	var edge := (float(r["w"]) * 0.5 if int(r["o"]) != 0 else float(r["w"]) * 0.5) - _lane_off(r)
-	var shift := clampf(edge + 1.6, 2.5, 6.5)
+	# (from where the car is across the road, not `_lane_off` -- the default lane: in the left
+	# lane of three the way up ran 4.7 m right of it, through the car standing in the kerb
+	# lane, and it stood behind the queue for the whole red, tests/racer_queue.gd)
+	var rp: PackedVector2Array = r["pts"]
+	var rsj: int = hit["seg"]
+	var rd := (rp[rsj + 1] - rp[rsj]).normalized()
+	var my_right: float = (_pos - (hit["q"] as Vector2)).dot(Vector2(-rd.y, rd.x)) * (1.0 if rd.dot(_fwd()) >= 0.0 else -1.0)
+	var edge := float(r["w"]) * 0.5 - my_right
+	var shift := clampf(edge + 1.6, 2.5, 10.0)
 	var gap: float = lead[0]
 	var keep_pts := _ap_pts.duplicate()
 	var keep_v := _ap_v.duplicate()
 	var keep_lim := _ap_lim.duplicate()
 	var s0 := _ap_pts[0].distance_to(Geometry2D.get_closest_point_to_segment(_pos, _ap_pts[0], _ap_pts[1]))
-	var start_s := maxf(gap - 8.0, 1.0)
+	var start_s := maxf(gap - 14.0, 1.0)   # (up 14 m short of the car in front: 8 left no room to clear its corner)
 	var end_s := gap + MOUNT_PAST
 	_ap_densify(s0 + end_s + 10.0, 1.0)
+	# (directions from the plan as it was: bent in place, each point's way read from the one
+	# before, already bent, and the one after, not yet -- with points 1 m apart and 6.6 m over,
+	# the push leant ~70 degrees forward and the way up stayed 1.9 m short of the kerb)
+	var orig := _ap_pts.duplicate()
 	var s := -s0
 	var bent: Array = []
 	for k in range(1, _ap_pts.size()):
-		s += _ap_pts[k - 1].distance_to(_ap_pts[k])
+		s += (orig[k - 1] as Vector2).distance_to(orig[k])
 		if s > end_s + 6.0:
 			break
 		var t := clampf((s - start_s) / 5.0, 0.0, 1.0) * clampf((end_s + 6.0 - s) / 6.0, 0.0, 1.0)
 		if t <= 0.0:
 			continue
-		var kd := (_ap_pts[mini(k + 1, _ap_pts.size() - 1)] - _ap_pts[k - 1]).normalized()
-		_ap_pts[k] -= Vector2(kd.y, -kd.x) * shift * t   # (to the right)
+		var kd := ((orig[mini(k + 1, orig.size() - 1)] as Vector2) - (orig[k - 1] as Vector2)).normalized()
+		# (each point to the pavement's middle by where it lies across the road there: the plan
+		# moves between lanes on its own, and one shift for all put the way up 1.9 m short of
+		# the kerb 37 m on, through the car standing in the kerb lane)
+		var kq := Vector2.ZERO
+		var kbest := INF
+		for j in range(rp.size() - 1):
+			var cp := Geometry2D.get_closest_point_to_segment(orig[k], rp[j], rp[j + 1])
+			if cp.distance_squared_to(orig[k]) < kbest:
+				kbest = cp.distance_squared_to(orig[k])
+				kq = cp
+		var k_right: float = ((orig[k] as Vector2) - kq).dot(Vector2(-kd.y, kd.x))
+		var k_shift := clampf(float(r["w"]) * 0.5 - k_right + 1.6, 2.5, 10.0) if kbest < 400.0 else shift
+		_ap_pts[k] -= Vector2(kd.y, -kd.x) * k_shift * t   # (to the right)
 		_ap_v[k] = minf(_ap_v[k], 6.0)   # (up and along at a crawl: 20 km/h)
 		bent.append(_ap_pts[k])
 	var ok := not bent.is_empty()
@@ -23522,6 +23720,7 @@ func _ap_mount_by(lead: Array) -> bool:
 	for w: Dictionary in _walkers:
 		if (w["actor"] as Node3D).visible:
 			people.append(Vector2((w["actor"] as Node3D).position.x, (w["actor"] as Node3D).position.z))
+	_smash = true   # (through what gives: a railing, a low wall, a hedge -- see _smash)
 	for q: Vector2 in bent:
 		if _push_out(q, 1.1, true, true, _y) != Vector2.ZERO:
 			ok = false
@@ -23532,8 +23731,9 @@ func _ap_mount_by(lead: Array) -> bool:
 				break
 		if not ok:
 			break
-	if ok and _ap_turn_ahead() != 0:
-		ok = false
+	_smash = false
+	if ok and _ap_turn_ahead() != 0 and float(lead[1]) >= 1.0:
+		ok = false   # (turning just after: stay in lane -- unless the queue stands: see _ap_pass_bus)
 	if not ok:
 		_ap_pts = keep_pts
 		_ap_v = keep_v

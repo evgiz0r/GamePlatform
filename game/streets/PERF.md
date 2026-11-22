@@ -178,3 +178,89 @@ can't break the game, 5 = can break it on some devices. Ordered by the pick.
 | 6 | Draws: quality levels that drop shadow casters and far detail | 4 | 4 | 3 | 500-800 draws and no level lowers them; the quality ladder can't help a weak device |
 | 7 | Bake more of the city file at publish (widths, buildings cut, divided roads) | 3 | 2 | 2 | ~1 s of Tel Aviv's load; already a pattern (`prepublish.gd`) |
 | 8 | Parallel compiling (source list made at publish + redirecting Godot's programs) | 5 | 3 | 4 | measured 3.3x on the remaining compile, but deep in the page's GL layer |
+
+**Step 1 done (22 Nov 2026):** `tests/web_shaders.js` ends with two CHECK lines -- no default
+lit program reached the driver, nothing drawn with a placeholder -- and exits 1 on a FAIL.
+The load line says it too: "(143 shaders, 10.0 s compiling, 96 skipped)", and "PLACEHOLDER
+DRAWN n" if the assumption ever breaks (96: the 42 lit defaults and their depth-pass
+defaults, also never drawn). Not run here (no Playwright on the user's PC); the cloud
+containers have it.
+
+**Step 2, how to measure on a phone:** after a publish, open the site on the phone (if it
+says "new version ready", tap it -- that is the cold case for anything whose shaders
+changed); pick a city; screenshot the line under the map within 8 s of the car appearing
+("loaded in ... (N shaders, X s compiling, M skipped)"); open "more" > "perf view" and
+screenshot it after a minute of driving. Note the phone's model and browser. Put the numbers
+under "Where things stand".
+
+## A phone (22 Nov 2026): Adreno 740 (a 2023 flagship), Chrome, build 22 Nov 03:27 Israel
+
+Six perf-view screenshots from the user, Tel Aviv (Kaplan) and another city (Sderot Herzl),
+autodrive on, quality 2.
+
+- **Loading is fine**: 8.5-9.5 s; city file 2.4 · start area 3.1-3.4 · graphics 3.0-3.7
+  (129-135 shaders, 2.0-2.5 s compiling). Shaders compiled after the car: 54-80, 1.9-3.3 s.
+- **Driving is not: 5-18 fps.** The frames, average ms = drawing + script in N ticks:
+  113 = 42 + 71 in 6.2 (people 33, traffic 16) · 90 = 45 + 45 in 5.0 · 144 = 70 + 74 in 3.7
+  (building 48) · 76 = 42 + 34 in 4.1 · 55 = 25 + 29 in 3.2 · 78 = 33 + 46 in 4.7 (building
+  18). 500-680 draws, 1.4-1.8 M triangles.
+- **The spiral**: the script costs ~8-11 ms a physics tick on this phone (native PC ~3.5-4),
+  and at 60 ticks a second a 100 ms frame has to run ~6 of them -- 60-70 ms of script -- which
+  keeps the next frame slow. The script, not the GPU, holds the phone under 20 fps.
+- **The worst stutters are the background build**: 2044 ms = building 1032 + rest 969, and
+  2250 ms = building 1275 + rest 934. A builder runs ~1 s between `_over()` checks on the
+  phone (the budget is 6 ms a frame, `BUILD_US`), and the "rest" that follows is likely the
+  new square's meshes going to the GPU (and their shaders). "building the city" stood at 0-5%
+  after minutes: the build is eating frames for a long time to come.
+- Other hitches of 120-360 ms: people 69-93 ms in one frame (Kaplan), traffic 28, and "rest"
+  of 200-300 ms (a shader compiled on first sight, or uploads).
+
+What to do, by expected gain on this phone:
+1. **Background build in small pieces on slow devices** -- find the steps that run ~1 s
+   between `_over()` checks (natively ~0.3-0.4 s) and split them; and let `_build_us` follow
+   the frame (none while a frame is over ~50 ms, except to catch up the squares in view).
+   Removes the 1-2 s freezes.
+2. **Fewer ticks when frames are slow** -- the physics rate (60) halved on a device whose
+   frames stay over ~40 ms (`Engine.physics_ticks_per_second` 30; the car and camera are
+   already drawn between ticks, `_frame`), or people/traffic further from the car ticked
+   less often. Breaks the spiral: ~half the script time.
+3. **People near Kaplan** (33 ms a frame, 69-93 in one) -- how many are ticked, and whether
+   the far ones can tick every few frames.
+4. **Shaders after the car** (54-80 on the phone) into the warm-up.
+5. **Draws** (500-680): the quality ladder cannot help a script-bound frame.
+
+**Fix A, first part (22 Nov 2026).** `tests/build_spans.gd` (STREETS_SPANS=1, a debug run with
+the real renderer -- headless hides mesh uploads -- on Ashdod, build in the background):
+- before: a stretch of up to 50 ms with no budget check, 15 times in 90 s, from `_build_ground`
+  to `_build_buildings` -- decks, rails, marks, beach, works and places back to back, and in
+  it `places.gd`'s room search for each shelter/kindergarten (Ashdod has many);
+- after (every step of `_build_tile` behind `_build_step`, `places.gd` paced per item): no
+  stretch over 20 ms while driving.
+- The hitch line now names the step: "building (places) 48" -- and "between squares" -- so a
+  phone screenshot says which step froze it (`_bstep_slow`, set in `_pause`).
+- Left, and the likely phone freezes: at 8 s after the car "rest 842 ms" on the desktop
+  (`FAR_AHEAD_S`: the evening's far shadows drawn ahead -- GPU work in one frame), and
+  "building 82-86 ms" twice (far-shadow chunks). The phone's perf view: "far shadows: work
+  4.7-5.2 s". Next: the far shadows in smaller pieces, or not drawn ahead on slow devices.
+
+**Is 14-18 fps expected? (22 Nov 2026, the same phone, build 7b520f6 -- before 072cced's
+step checks)** No: it is what the current settings cost, not what the phone can do. A frame
+of 58-81 ms is two halves of about the same size, and both need halving for ~30 fps:
+- drawing 30-45 ms: 530-780 draws and 1.6-2.2 M triangles -- for a phone's WebGL ~250 draws
+  and ~1 M triangles is a comfortable budget, and no quality level lowers either today;
+- script 28-36 ms in 3.5-4.4 ticks (people 7-11, traffic 6-9, building 4-10, minimap 3).
+Target: 30 fps on a 2023 flagship in a browser; 60 is not realistic for a whole city in WebGL
+on one thread. Freezes still in that build: building 692 + rest 634, building 1304 + rest
+941 (before the step checks; the next screenshots name the step).
+
+**Handoff (22 Nov 2026, end of a long session).** Work branch `streets-perf` (worktree
+`C:\Users\evgbo\GP-perf`, merged into main as it goes). Chosen next, for the phone:
+1. Script half: tick far people and far traffic less often (every 2nd-4th tick by distance
+   from the car; the car and near ones every tick -- no change to how driving feels), then,
+   if not enough, the physics rate 60 -> 30 on slow devices (the car is drawn between ticks
+   already; check the exam's numbers before and after: `tests/exam.gd`).
+2. Drawing half: quality levels that cut draws (shadow casters, far parked cars, furniture,
+   trees) so the ladder can help a phone; target ~250 draws, ~1 M triangles.
+3. Far shadows drawn ahead (`FAR_AHEAD_S`): one frame of GPU work, 0.85 s on a desktop.
+Measure natively with `tests/sim_cost.gd` (script per tick) and `tests/build_spans.gd`;
+the phone's own perf view (hitch lines now name the build step) is the real measure.
