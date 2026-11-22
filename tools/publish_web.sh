@@ -332,6 +332,65 @@ io.open(p, 'w', encoding='utf-8', newline='').write(s)
 print('index.html: minute-stamped worker URL, restart offered on a new build, first visit cached')
 HTML
 
+# Shader programs Godot compiles and never draws with. When a 3D material's shader is set up,
+# the Compatibility renderer compiles its "default" specialization of every variant at once
+# (shader_gles3.cpp _initialize_version): for the lit base pass, plain and instanced, with the
+# omni, spot and area light code all on. No draw uses it -- a draw's base pass always sets
+# DISABLE_LIGHTMAP (or USE_LIGHTMAP / USE_LIGHTMAP_CAPTURE), so its specialization never
+# equals the default mask (rasterizer_scene_gles3.cpp). Chrome/Edge on Windows hand every
+# program to Direct3D's compiler, where each of those costs 1.4-7.7 s: they were ~85% of a
+# cold load of a 3D city, and the engine's own default material alone 2.8 s at start, before
+# any game. Installed here, before the engine, the page swaps exactly those sources (the base
+# pass, not additive, no DISABLE_LIGHT_OMNI of their own) for an empty shader with the same
+# #version line, and counts any draw made with one (window.__lstrip.used, a console warning:
+# that draw would come out empty). A game reads the counts the same way; the check is
+# game/<name>/tests' web_shaders.js "never-drawn" lines where a game has it.
+python - <<'STRIP'
+import io
+p = 'docs/index.html'
+s = io.open(p, encoding='utf-8').read()
+head = """<script>
+// PATCHED by tools/publish_web.sh -- Godot's never-drawn default lit programs compiled as an
+// empty placeholder (see the comment there). Before the engine starts, so its own default
+// material is covered too.
+(() => {
+	if (window.__lstrip || typeof WebGL2RenderingContext === 'undefined') return;
+	const c = window.__lstrip = { n: 0, used: 0 };
+	const P = WebGL2RenderingContext.prototype;
+	const types = new WeakMap(), fake = new WeakSet(), fakeProg = new WeakSet();
+	const cs = P.createShader, ss = P.shaderSource, as = P.attachShader, up = P.useProgram;
+	P.createShader = function (t) { const sh = cs.call(this, t); if (sh) types.set(sh, t); return sh; };
+	P.shaderSource = function (sh, src) {
+		if (typeof src === 'string' && src.indexOf('#define BASE_PASS') >= 0
+				&& src.indexOf('#define USE_ADDITIVE_LIGHTING') < 0 && src.indexOf('#define DISABLE_LIGHT_OMNI') < 0) {
+			const v = src.slice(0, src.indexOf('\\n'));
+			src = types.get(sh) === this.VERTEX_SHADER
+				? v + '\\nvoid main() { gl_Position = vec4(0.0); }\\n'
+				: v + '\\nprecision mediump float;\\nout vec4 frag_color;\\nvoid main() { frag_color = vec4(1.0, 0.0, 1.0, 1.0); }\\n';
+			fake.add(sh);
+			if (types.get(sh) !== this.VERTEX_SHADER) c.n += 1;
+		}
+		return ss.call(this, sh, src);
+	};
+	P.attachShader = function (p, sh) { if (fake.has(sh)) fakeProg.add(p); return as.call(this, p, sh); };
+	let cur = null;
+	P.useProgram = function (p) { cur = p; return up.call(this, p); };
+	for (const name of ['drawArrays', 'drawElements', 'drawArraysInstanced', 'drawElementsInstanced', 'drawRangeElements']) {
+		const d = P[name];
+		P[name] = function (...a) {
+			if (cur && fakeProg.has(cur) && c.used++ === 0) console.warn('never-drawn placeholder program was drawn with');
+			return d.apply(this, a);
+		};
+	}
+})();
+</script>
+"""
+assert '</head>' in s
+s = s.replace('</head>', head + '</head>', 1)
+io.open(p, 'w', encoding='utf-8', newline='').write(s)
+print('index.html: never-drawn default lit programs compiled as a placeholder')
+STRIP
+
 # The split packs go into the page's file system alongside index.pck, all downloading at once
 # while the engine itself loads, and the engine starts once every one is in: the first
 # autoload (shell/autoload/packs.gd) then mounts them from there. Their sizes go into

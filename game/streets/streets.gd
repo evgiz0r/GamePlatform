@@ -1783,8 +1783,12 @@ const GL_COUNT_JS := """(() => {
 ## no uniforms in them (locations -1, which it skips) and never draws with them. If one ever
 ## IS drawn, `used` counts it and the console says so -- that draw would come out empty;
 ## `tests/web_shaders.js` / the load line show it (`window.__lstrip.used`).
-## **Only right while the game has no OmniLight3D, SpotLight3D or AreaLight3D** --
-## `_no_local_lights` warns at load if one appears; drop LIGHT_STRIP_JS before adding one.
+## Since 22 Nov 2026 the page itself installs the same thing before the engine starts
+## (tools/publish_web.sh, for every game: the engine's own default material at start was 2.8 s
+## more), and this one finds `window.__lstrip` and does nothing -- it stays for a web export
+## without that patch. And it is safe with any lights: a draw's base pass always sets
+## DISABLE_LIGHTMAP (or a lightmap's own switch), so no draw uses the default specialization.
+## `_no_local_lights` still warns if an omni, spot or area light appears (`used` says more).
 const LIGHT_STRIP_JS := """(() => {
 	if (window.__lstrip || typeof WebGL2RenderingContext === 'undefined') return;
 	const c = window.__lstrip = { n: 0, used: 0 };
