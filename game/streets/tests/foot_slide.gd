@@ -34,9 +34,10 @@ func _run() -> void:
 		if sks.is_empty():
 			continue
 		var sk: Skeleton3D = sks[0]
-		var hip := sk.find_bone("UpperLeg.L")
-		var fl := sk.find_bone("Foot.L")
-		var fr := sk.find_bone("Foot.R")
+		# (the kit's figures name them Foot.L; the Universal Base Characters foot_l)
+		var hip := maxi(sk.find_bone("UpperLeg.L"), sk.find_bone("thigh_l"))
+		var fl := maxi(sk.find_bone("Foot.L"), sk.find_bone("foot_l"))
+		var fr := maxi(sk.find_bone("Foot.R"), sk.find_bone("foot_r"))
 		if fl < 0 or fr < 0:
 			continue
 		track.append({"w": w, "a": a, "sk": sk, "feet": [fl, fr], "last": [Vector3.INF, Vector3.INF],
@@ -67,36 +68,37 @@ func _run() -> void:
 		if dist < 2.0:
 			continue   # (stood at a crossing, or idling: nothing to see)
 		var along := Vector2(travel.x, travel.z).normalized()
-		var sl: Array = []   # slide speeds along, while planted
-		var ul: Array = []   # the planted foot's speed back past the body: the clip's ground speed
-		var stance := 0
-		var steps := 0
-		for k in [0, 1]:
-			var ys: Array = t["ys"][k]
-			var low: float = ys.min()
-			var pts: Array = t["pts"][k]
-			var was := false
-			for i in range(1, ys.size()):
-				var on: bool = float(ys[i]) < low + 0.03
-				if on and not was:
-					steps += 1
-				was = on
-				if on and float(ys[i - 1]) < low + 0.03:
-					var v: Vector3 = (pts[i] - pts[i - 1]) / dt
-					sl.append(Vector2(v.x, v.z).dot(along))
-					var lv: Vector3 = (t["loc"][k][i] - t["loc"][k][i - 1]) / dt
-					ul.append(-Vector2(lv.x, lv.z).dot(along))
-					stance += 1
-		if sl.is_empty() or steps == 0:
-			continue
-		sl.sort()
-		var med: float = sl[sl.size() / 2]
-		var per_step := absf(med) * (stance * dt) / steps
 		var w: Dictionary = t["w"]
 		var a = t["a"]
 		var speed := dist / secs
+		if absf(speed - float(w.get("speed", speed))) > 0.15:
+			continue   # (stopped a while, or moved on elsewhere: not one steady walk)
+		# on the ground = while the foot moves back past the body (a planted foot does, at the
+		# clip's own ground speed; a swinging one comes forward, faster). By height ("within
+		# 3 cm of its lowest") took in much of the swing for the Universal Base Characters,
+		# whose ankle bone hardly lifts, and read their whole pace as slide.
+		var ul: Array = []   # the foot's speed back past the body, while on the ground
+		var stance := 0
+		var steps := 0
+		for k in [0, 1]:
+			var loc: Array = t["loc"][k]
+			var was := false
+			for i in range(1, loc.size()):
+				var lv: Vector3 = (loc[i] - loc[i - 1]) / dt
+				var back := -Vector2(lv.x, lv.z).dot(along)
+				var on := back > 0.0
+				if on and not was:
+					steps += 1
+				was = on
+				if on:
+					ul.append(back)
+					stance += 1
+		if ul.is_empty() or steps == 0:
+			continue
 		ul.sort()
 		var u: float = ul[ul.size() / 2]
+		var med := speed - u   # the planted foot over the ground: + forward (the clip too slow)
+		var per_step := absf(med) * (stance * dt) / steps
 		var hips: Array = t["hips"]
 		var hip_h := 0.0
 		for h in hips:

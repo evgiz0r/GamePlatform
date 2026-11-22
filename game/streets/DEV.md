@@ -4120,16 +4120,20 @@ level 1, 45 playgrounds; `tests/places.gd` shoots one from above and at eye heig
     roads of 30 m and more. Givatayim and Tel Aviv: 0 knocks, 0 hits (covers 3.5 and 1.9 a km).
   - Autodrive switched on at a junction planned along whichever road was nearest, the one
     across it too (`_ap_plan`): now the road 5 m ahead when that one runs the car's way.
-  - **Feet** (`tests/foot_slide.gd`: the real walkers of a town, each foot bone in the world,
-    how fast it moves while planted -- within 3 cm of its lowest). Every walk clip's speed was
-    pace / 1.35, but the clip's feet cover ~0.97 m/s at x1 (0.87-1.17; ~1.95 hip heights a
-    second, the planted foot's speed back past the body): played ~30% slow, the planted foot
-    slid forward 16.5 cm a step on average, 10 of 24 walkers 10 cm or more (good: under ~3,
-    10 and up reads as skating). WALK_CLIP_V = 0.97 everywhere: 4.6 cm, 2 of 24. Left: the
-    spread between figures (by hip height: ~5% more could go); YOU on foot walk at WALK
-    2.1 m/s with the clip at x1 (~1.1 m/s of slide) -- matched, the steps would be twice as
-    quick (a shuffle); a longer stride needs the run clip sooner or a blend: a look question
-    for the user. The run clip (/ 3.4) is not measured.
+  - **Feet** (`tests/foot_slide.gd`: the real walkers of a town, 8 s of a steady walk each;
+    a foot is on the ground while it moves back past the body, and its speed back then is the
+    clip's own ground speed; the slide is the walker's pace less that). Every walk clip's
+    speed was pace / 1.35, but the clips' feet cover far less at x1: the kit's figures ~0.97
+    m/s, the Universal Base Characters (people.gd, since 22 Nov) ~0.85 (~1 hip height a
+    second). Played ~35% slow, the planted foot slid forward: new figures 26.2 cm a step on
+    average, 19 of 19 walkers 10 cm or more; the kit's 19.7, 17 of 19 (good: under ~3; 10 and
+    up reads as skating). Now `_walk_clip_v()` by the figures in use (STREETS_WALK_CLIP_V=x
+    for a test's other value): 4.2 cm, 1 of 19 (either figures). (A first try took "on the
+    ground" as within 3 cm of the foot's lowest: the new figures' ankle bone hardly lifts, and
+    it read their whole pace as slide.) Left: the spread between figures (by hip height);
+    YOU on foot walk at WALK 2.1 m/s with the clip at v/WALK (x1 at 2.1: ~1.2 m/s of slide)
+    -- matched, the steps would be ~2.5x as quick (a shuffle); a longer stride wants the
+    jog sooner or a blend: a look question for the user. The run clip (/ 3.4) not measured.
   - `dead_end_turns`: Yoqneam (-1297, -702) was "not out": it is a dead end 24 m from the
     map's edge, which autodrive keeps out of (EDGE_DEAD) -- it drove away, rightly; counted
     as that now. Mandelkern (-1177, 437): the turn is clean; the car hits a tree on the corner
