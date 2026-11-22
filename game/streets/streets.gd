@@ -1371,6 +1371,9 @@ func start(_config: Dictionary) -> void:
 	SaveData.data["volume_sfx"] = SFX_SCALE
 	set_lives(0)
 	_touch_seen = DisplayServer.is_touchscreen_available()   # phones get the stick hint at once
+	_prefs_load()
+	_hud_folded = bool(_prefs.get("folded", false))
+	_assist = bool(_prefs.get("assist", true))
 	_keep_screen_on(true)
 	_make_font()
 	_tones()
@@ -23805,6 +23808,95 @@ func _ap_rescue() -> bool:
 	_log.event("rescue")
 	return true
 
+## Racer (racer.gd), its trip planned on one half of a divided road that sets off away from
+## the goal: straight over the median to the other half, the way back, when that makes the
+## trip ACROSS_GAIN m shorter -- the user, on Katznelson bound for Rambam: "wanting to do all
+## that long path ... it probably could just cut through the border" (it drove 250 m away
+## from the goal to turn at a junction, tests/racer_drive.gd). The other half: the first road
+## 6-16 m to the left whose way runs back the way the car faces. The U across: a half circle
+## from just ahead of the car to that half's lane, kept only when nothing solid stands on it
+## (through what gives: _smash -- a median's low kerb and paint, not its trees and posts),
+## taken at a crawl.
+const ACROSS_GAIN := 80.0
+const ACROSS_V := 4.5         ## m/s round the U
+const ACROSS_MIN := 7.0       ## m across at least: a car turns round in no less
+var _route_len := INF         ## the last trip _route_to planned (m)
+func _racer_across() -> void:
+	if _ap_pts.size() < 2:
+		return
+	var here := _nearest_seg(_pos, 12.0, true, true, _y)
+	if here.is_empty():
+		return
+	var fwd := _fwd()
+	var left := Vector2(fwd.y, -fwd.x)
+	var twin := Vector2.INF
+	var tr_i := -1
+	for off: float in [6.0, 8.0, 10.0, 12.0, 14.0, 16.0]:
+		var h := _nearest_seg(_pos + left * off, 2.5, true, true, _y)
+		if h.is_empty() or int(h["road"]) == int(here["road"]):
+			continue
+		var r2: Dictionary = _roads[int(h["road"])]
+		if HIGHWAYS.has(r2["k"]):
+			continue
+		var rp: PackedVector2Array = r2["pts"]
+		var sj: int = h["seg"]
+		var d := (rp[sj + 1] - rp[sj]).normalized()
+		if int(r2["o"]) < 0:
+			d = -d
+		if int(r2["o"]) == 0:
+			d = d if d.dot(fwd) < 0.0 else -d
+		if d.dot(fwd) > -0.7:
+			continue
+		twin = (h["q"] as Vector2) + Vector2(-d.y, d.x) * _lane_off(r2)
+		tr_i = int(h["road"])
+		break
+	if twin == Vector2.INF:
+		return
+	var across := (twin - _pos).dot(left)
+	if across < ACROSS_MIN:
+		return
+	var keep := [_ap_pts.duplicate(), _ap_v.duplicate(), _ap_lim.duplicate(), _dest_stop, _ap_end, _route_len]
+	var l1 := _route_len
+	var start := twin + fwd * ((_pos - twin).dot(fwd) + 3.0)   # (level with the U's end)
+	var ok := _route_to(_dest, start, -fwd)
+	var l2 := _route_len + PI * across * 0.5 + 15.0
+	if ok and l2 + ACROSS_GAIN < l1:
+		var c := _pos + fwd * 3.0 + left * (across * 0.5)
+		var arc := PackedVector2Array([_pos + fwd * 1.5])
+		for k in range(1, 9):
+			var a := PI * float(k) / 8.0
+			arc.append(c + (-left * cos(a) + fwd * sin(a)) * (across * 0.5))
+		_smash = true
+		for q: Vector2 in arc:
+			if _push_out(q, 1.0, true, false, _y) != Vector2.ZERO:
+				ok = false
+				break
+		_smash = false
+		if ok:
+			var nv := PackedFloat32Array()
+			nv.resize(arc.size())
+			nv.fill(ACROSS_V)
+			arc.append_array(_ap_pts)
+			_ap_pts = arc
+			nv.append_array(_ap_v)
+			_ap_v = nv
+			var nl := PackedFloat32Array()
+			nl.resize(_ap_pts.size() - _ap_lim.size())
+			nl.fill(ACROSS_V)
+			nl.append_array(_ap_lim)
+			_ap_lim = nl
+			Probe.event("racer_across", {"across": snappedf(across, 0.1), "saved_m": int(l1 - l2), "road": String(_roads[tr_i]["name"])})
+			_log.event("racer over the median")
+			return
+	_ap_pts = keep[0]
+	_ap_v = keep[1]
+	_ap_lim = keep[2]
+	_dest_stop = keep[3]
+	_ap_end = keep[4]
+	_route_len = keep[5]
+	_across_why = "no gain (%d vs %d m)" % [int(l2), int(l1)] if ok else "blocked: %s" % _last_hit
+var _across_why := ""
+
 func _ap_plan() -> void:
 	_cross = {}
 	_ap_queue = []
@@ -23851,6 +23943,8 @@ func _ap_plan() -> void:
 			off_l.fill(AP_OFFROAD_V)
 			off_l.append_array(_ap_lim)
 			_ap_lim = off_l
+		elif _racing():
+			_racer_across()
 		return
 	var hit := _nearest_seg(_pos, 60.0, true, true, _y)
 	if hit.is_empty():
@@ -24123,14 +24217,17 @@ func _ap_pass_bus(lead: Array) -> bool:
 const RACE_CLEAR := 2.9      ## m from the car's middle to racer's line, going by it
 const RACE_OUT := [3.2, 6.4, 9.6, -3.2]   ## ways out tried: left one lane, two, three; right one
 var _race_tries := 0                      ## ways out already taken round the same car (a retry starts past them)
+const RACE_RETRY := 3.0      ## s after going round a car, still behind it: try again
+var _race_at := -100.0       ## when it last went round one (traffic's clock)
 var _race_by_why := ""        ## why the last way round the car in front was not taken (tests/racer_drive.gd)
 func _ap_race_by(lead: Array) -> bool:
 	var bi: int = lead[3]
 	if bi < 0 or _ap_pts.size() < 2:
 		return false
-	if bi == _ap_passed and _ap_wait < 1.5:
+	if bi == _ap_passed and _ap_wait < 1.5 and float(_traffic._clock) - _race_at < RACE_RETRY:
 		_race_by_why = "just passed"
-		return false   # (bent round it already: give it a moment)
+		return false   # (bent round it already: give it a moment -- but only a moment: moving,
+		               # _ap_wait stays 0, and it followed a car it had "passed" at 32 km/h for good)
 	_race_tries = _race_tries + 1 if bi == _ap_passed else 0   # (stuck behind it still: the next way out)
 	var car = _traffic.cars[bi]
 	var want: float = _racer.limit(_ap_lim[1]) if _ap_lim.size() > 1 else 13.9
@@ -24215,9 +24312,16 @@ func _ap_race_by(lead: Array) -> bool:
 		if ok:
 			_ap_passed = bi
 			_racer.passes += 1
-			Probe.event("racer_pass", {"over": snappedf(shift, 0.1), "moving": float(car.v) > 0.6})
+			var dbg_near := INF
+			for bq: Array in bent:
+				dbg_near = minf(dbg_near, (bq[0] as Vector2).distance_to(car.pos))
+			Probe.event("racer_pass", {"over": snappedf(shift, 0.1), "moving": float(car.v) > 0.6,
+				"bent": bent.size(), "from": snappedf((bent[0][0] as Vector2).distance_to(_pos), 0.1),
+				"to": snappedf((bent[-1][0] as Vector2).distance_to(_pos), 0.1), "bus_near": snappedf(dbg_near, 0.1),
+				"s0": snappedf(s0, 0.1), "gap": snappedf(gap, 0.1), "lat": snappedf(lat, 0.1)})
 			_log.event("racer round a car")
 			_race_by_why = "went %.1f" % shift
+			_race_at = float(_traffic._clock)
 			return true
 		_ap_pts = keep_pts.duplicate()
 		_ap_v = keep_v.duplicate()
@@ -24485,15 +24589,18 @@ func _ap_race_queue(lead: Array) -> bool:
 ## stretch of pavement (3 m either side of the line), nothing solid stands on it (posts,
 ## trees, bins, a parked car, a wall) and it is not a junction just ahead. True when it did.
 const MOUNT_PAST := 26.0      ## metres of pavement it takes at most past the car in front
+var _mount_why := ""   ## why the last way up onto the pavement was not taken (tests/racer_drive.gd)
 func _ap_mount_by(lead: Array) -> bool:
 	var bi: int = lead[3]
 	if bi < 0 or (bi == _ap_passed and _ap_wait < 2.0) or _ap_pts.size() < 2:
+		_mount_why = "just passed" if bi >= 0 else ""
 		return false
 	var hit := _nearest_seg(_pos, 12.0, true, true, _y)
 	if hit.is_empty():
 		return false
 	var r: Dictionary = _roads[hit["road"]]
 	if HIGHWAYS.has(r["k"]):
+		_mount_why = "highway"
 		return false
 	# from the plan's line out to beyond the kerb: the car's middle 1.6 m onto the pavement
 	# (from where the car is across the road, not `_lane_off` -- the default lane: in the left
@@ -24553,22 +24660,26 @@ func _ap_mount_by(lead: Array) -> bool:
 	for q: Vector2 in bent:
 		if _push_out(q, 1.1, true, true, _y) != Vector2.ZERO:
 			ok = false
+			_mount_why = "%s at %.0f m" % [_last_hit, q.distance_to(_pos)]
 			break
 		for pp: Vector2 in people:
 			if pp.distance_squared_to(q) < 9.0:
 				ok = false
+				_mount_why = "a person at %.0f m" % q.distance_to(_pos)
 				break
 		if not ok:
 			break
 	_smash = false
 	if ok and _ap_turn_ahead() != 0 and float(lead[1]) >= 1.0:
-		ok = false   # (turning just after: stay in lane -- unless the queue stands: see _ap_pass_bus)
+		ok = false
+		_mount_why = "turn ahead"   # (turning just after: stay in lane -- unless the queue stands: see _ap_pass_bus)
 	if not ok:
 		_ap_pts = keep_pts
 		_ap_v = keep_v
 		_ap_lim = keep_lim
 		return false
 	_ap_passed = bi
+	_mount_why = "went"
 	_racer.mounts += 1
 	Probe.event("racer_pavement", {"over": snappedf(shift, 0.1)})
 	_log.event("racer onto the pavement")
@@ -24674,6 +24785,13 @@ func _ap_squeeze_by(bi: int, gap: float) -> bool:
 ## when the plan is bent (round a bus, a delivery van): on a straight street the plan can be
 ## two points a block apart, and bending "the points from 2 m to 40 m ahead" moved nothing --
 ## autodrive marked the van passed and stood behind it for half a minute (street_goings).
+## Only from where the car is on: the first stretch can start far behind it (80 m on
+## Katznelson), and points every 1.5 m over the part already driven left the next stretches
+## all behind the car -- _ap_nearest_seg looks at the first three and any within 60 m, so the
+## car read as 80 m off its route, the plan was made afresh next tick and the bend round the
+## bus was gone: racer "passed" a bus 70 m out and stood behind it for a minute
+## (tests/racer_drive.gd, the user's "there was only a bus and it didnt want to pass").
+## The first stretch keeps its start; a point is put where the car is, and on from there.
 func _ap_densify(upto: float, step: float) -> void:
 	var np := PackedVector2Array([_ap_pts[0]])
 	var nv := PackedFloat32Array([_ap_v[0]])
@@ -24682,6 +24800,14 @@ func _ap_densify(upto: float, step: float) -> void:
 	for k in range(1, _ap_pts.size()):
 		var a := _ap_pts[k - 1]
 		var b := _ap_pts[k]
+		if k == 1:
+			var at := Geometry2D.get_closest_point_to_segment(_pos, a, b)
+			if at.distance_to(a) > step and at.distance_to(b) > step:
+				np.append(at)
+				nv.append(maxf(_ap_v[0], _ap_v[1]))
+				nl.append(_ap_lim[1])
+				acc += a.distance_to(at)
+				a = at
 		var L := a.distance_to(b)
 		if acc < upto and L > step * 1.25:
 			var m := int(L / step)
@@ -25573,6 +25699,7 @@ func _route_to(goal: Vector2, from := Vector2.INF, heading := Vector2.ZERO) -> b
 	_ap_v[_ap_v.size() - 1] = 0.0   # and stop there
 	_ap_end = Vector3i(-1, 0, 0)    # nothing after the destination
 	Probe.event("route", {"to": _dest_name, "m": int(best_len), "points": _ap_pts.size()})
+	_route_len = best_len
 	return true
 
 ## is point n on a roundabout's ring?
@@ -25981,6 +26108,52 @@ func _walk_list_open(kind := "walks") -> void:
 static var _list_time := "day"
 static var _routes_style := "rules"
 static var _cities_style := "racer"
+
+## ---- the player's choices, kept between launches ----------------------------------------
+## The lists' settings above, the buttons folded away, the steering assist: kept in the game's
+## own file (not SaveData's: that is the shell's, and a game holds its volume lowered in
+## SaveData.data while it runs -- saving that dictionary would keep the lowered volume). Until
+## 22 Nov they lasted only while the app ran (static vars). Not read or written by self-play or the
+## scene tests (STREETS_PREFS=0, which tests/run.sh sets): a test must start from the defaults,
+## and must not change what the player chose on this machine.
+const PREFS_PATH := "user://streets_prefs.json"   ## (STREETS_PREFS_PATH for a test's own file)
+static var _prefs: Dictionary = {}   ## what was read; {} until the first start
+static var _prefs_read := false
+
+func _prefs_path() -> String:
+	var p := OS.get_environment("STREETS_PREFS_PATH")
+	return p if p != "" else PREFS_PATH
+
+func _prefs_on() -> bool:
+	return OS.get_environment("STREETS_PREFS") != "0" and not Flow.skip_level_pick
+
+## read once a launch: the lists' settings straight in, the rest kept for start() to apply
+func _prefs_load() -> void:
+	if _prefs_read or not _prefs_on():
+		return
+	_prefs_read = true
+	if not FileAccess.file_exists(_prefs_path()):
+		return
+	var f := FileAccess.open(_prefs_path(), FileAccess.READ)
+	var d = JSON.parse_string(f.get_as_text()) if f != null else null
+	if not d is Dictionary:
+		return
+	_prefs = d
+	if String(d.get("time", "")) in ["day", "evening", "night"]:
+		_list_time = String(d["time"])
+	if String(d.get("routes_style", "")) in ["rules", "racer"]:
+		_routes_style = String(d["routes_style"])
+	if String(d.get("cities_style", "")) in ["rules", "racer"]:
+		_cities_style = String(d["cities_style"])
+
+func _prefs_save() -> void:
+	if not _prefs_on():
+		return
+	_prefs = {"time": _list_time, "routes_style": _routes_style, "cities_style": _cities_style,
+		"folded": _hud_folded, "assist": _assist}
+	var f := FileAccess.open(_prefs_path(), FileAccess.WRITE)
+	if f != null:
+		f.store_string(JSON.stringify(_prefs))
 var _start_time := "day"             ## the time of day to switch to once the city is up (config "time")
 
 ## the row: [normal][racer]  [day][evening][night] from `at` (walks: the times only) -- or,
@@ -25997,11 +26170,13 @@ func _list_settings(at: Vector2, kind: String, again: Callable, k := 1.0, style_
 					_routes_style = st[1]
 				else:
 					_cities_style = st[1]
+				_prefs_save()
 				again.call()])
 	var times: Array = []
 	for tm: String in ["day", "evening", "night"]:
 		times.append([tm, {"day": 34.0, "evening": 52.0, "night": 42.0}[tm] * k, _list_time == tm, func():
 			_list_time = tm
+			_prefs_save()
 			again.call()])
 	var x := at.x
 	if style_at != Vector2.INF:
@@ -26944,6 +27119,7 @@ func _more_tap(p: Vector2) -> bool:
 				"assist":
 					if (k == "on") != _assist:
 						_assist = k == "on"
+						_prefs_save()
 						_show_banner("steering assist " + k + (" when you drive" if _auto else ""), 1.2)
 						Probe.event("assist", {"on": _assist})
 				"act":
@@ -26961,64 +27137,89 @@ func _more_tap(p: Vector2) -> bool:
 func _hud_tap(p: Vector2) -> bool:
 	if _more_tap(p):
 		return true
-	if _paused and not _zoomed() and RESUME_BTN.grow(3).has_point(p):
-		_toggle_pause()
-		return true
-	if _hud_folded:
-		if SHOW_BTN.grow(3).has_point(p):
+	match _hud_hit(p):
+		"resume":
+			_toggle_pause()
+		"show":
 			_hud_folded = false
-			return true
-		return false
-	if AUTO_BTN.grow(3).has_point(p):
-		if not _walking:
+			_prefs_save()
+		"auto":
 			_auto_by_hand(not _auto)
-	elif _auto and not _walking and STYLE_BTN.grow(3).has_point(p):
-		_set_ap_style(AP_STYLES[(AP_STYLES.find(_ap_style_now()) + 1) % AP_STYLES.size()])
-	elif GOTO_BTN.grow(3).has_point(p):
-		_open_picker.call_deferred()   # after this click, so it does not hit the list
-	elif WALK_BTN.grow(3).has_point(p):
-		_toggle_walk()
-	elif MORE_BTN.grow(2).has_point(p):
-		_more_open = true
-	elif FOLD_BTN.grow(2).has_point(p):
-		_hud_folded = true
-		_show_banner("buttons folded away: \"show\" brings them back", 1.6)
-	elif VIEW_BTN.grow(2).has_point(p):
-		_next_view()
-	elif MAP_BTN.grow(2).has_point(p) and _map_btn_shown():
-		_toggle_map()
-	elif PERF_BTN.grow(2).has_point(p):
-		if _perf_view or _trace_view:   # (the drive map too: P and the drawer go round to it)
-			_trace_view = false
-			_perf_view = false
-			_perf_lbl.visible = false
-		else:
-			_toggle_perf()
-	elif LOOK_BTN.grow(2).has_point(p) and not _walking and not _auto:
-		_toggle_look()
-	else:
-		return false
+		"style":
+			_set_ap_style(AP_STYLES[(AP_STYLES.find(_ap_style_now()) + 1) % AP_STYLES.size()])
+		"goto":
+			_open_picker.call_deferred()   # after this click, so it does not hit the list
+		"walk":
+			_toggle_walk()
+		"more":
+			_more_open = true
+		"fold":
+			_hud_folded = true
+			_prefs_save()
+			_show_banner("buttons folded away: \"show\" brings them back", 1.6)
+		"view":
+			_next_view()
+		"map":
+			_toggle_map()
+		"perf":
+			if _perf_view or _trace_view:   # (the drive map too: P and the drawer go round to it)
+				_trace_view = false
+				_perf_view = false
+				_perf_lbl.visible = false
+			else:
+				_toggle_perf()
+		"look":
+			_toggle_look()
+		_:
+			return false
 	return true
+
+## the HUD's buttons showing now, by name -> their box (as _draw_hud draws them)
+func _hud_buttons() -> Dictionary:
+	var out := {}
+	if _paused and not _zoomed() and not _more_open:
+		out["resume"] = RESUME_BTN
+	if _hud_folded:
+		out["show"] = SHOW_BTN
+		return out
+	if not _walking:
+		out["auto"] = AUTO_BTN
+		if _auto:
+			out["style"] = STYLE_BTN
+	out["goto"] = GOTO_BTN
+	out["walk"] = WALK_BTN
+	out["more"] = MORE_BTN
+	out["fold"] = FOLD_BTN
+	out["view"] = VIEW_BTN
+	out["perf"] = PERF_BTN
+	if _map_btn_shown():
+		out["map"] = MAP_BTN
+	if not _walking and not _auto:
+		out["look"] = LOOK_BTN
+	return out
+
+## Which button a tap at p is for, "" for none. A mouse must land on it (3 px to spare); a
+## finger has HIT_TOUCH px round each, and the nearest box wins where two reach -- the boxes
+## are drawn small (the user wanted the screen kept clear) but 22 px is about 4 mm on a phone
+## held sideways, under half a fingertip.
+const HIT_TOUCH := 10.0
+func _hud_hit(p: Vector2) -> String:
+	var slop := HIT_TOUCH if _touch_seen else 3.0
+	var best := ""
+	var best_d := INF
+	var btns := _hud_buttons()
+	for k: String in btns:
+		var r: Rect2 = btns[k]
+		var d := Vector2(maxf(0.0, maxf(r.position.x - p.x, p.x - r.end.x)), maxf(0.0, maxf(r.position.y - p.y, p.y - r.end.y))).length()
+		if d <= slop and d < best_d:
+			best = k
+			best_d = d
+	return best
 
 ## is there a button (or the open drawer) under p? -- a touch there is the button's, not the
 ## stick's or the view's (the button itself acts on the click the touch emulates)
 func _on_hud_button(p: Vector2) -> bool:
-	if _more_open or _keys_open:
-		return true
-	var rs: Array = [SHOW_BTN] if _hud_folded else [AUTO_BTN, GOTO_BTN, WALK_BTN, MORE_BTN, FOLD_BTN, VIEW_BTN, PERF_BTN]
-	if not _hud_folded:
-		if _auto:
-			rs.append(STYLE_BTN)
-		if not _walking and not _auto:
-			rs.append(LOOK_BTN)
-		if _map_btn_shown():
-			rs.append(MAP_BTN)
-	if _paused and not _zoomed():
-		rs.append(RESUME_BTN)
-	for r: Rect2 in rs:
-		if r.grow(3).has_point(p):
-			return true
-	return false
+	return _more_open or _keys_open or _hud_hit(p) != ""
 
 ## The minimap's lines round a point, in metres from it: outlines, paths, minor and major
 ## streets, the city limits, places. Gathered again only once the car is MAP_MOVE away,

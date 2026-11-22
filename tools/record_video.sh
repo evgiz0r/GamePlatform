@@ -35,7 +35,7 @@ if [ ! -f .godot/.import_stamp ] || [ -n "$(find game assets -name '*.import' -n
   mkdir -p .godot && touch .godot/.import_stamp
 fi
 echo "recording $GAME level $LEVEL, up to $SECS s at $FPS fps, $RES ..."
-GAME="$GAME" LEVEL="$LEVEL" SECS="$SECS" FPS="$FPS" "$BIN" --path . --rendering-driver opengl3 --audio-driver Dummy \
+GAME="$GAME" LEVEL="$LEVEL" SECS="$SECS" FPS="$FPS" GODOT="$BIN" tools/godot_bg.sh --path . --rendering-driver opengl3 --audio-driver Dummy \
   --resolution "$RES" --write-movie "$AVI_NATIVE" --fixed-fps "$FPS" -s res://tools/record.gd > "$WORK/log.txt" 2>&1
 START=$(grep -o "RECORD_START [0-9]*" "$WORK/log.txt" | awk '{print $2}')
 grep -E "RECORD|frames at" "$WORK/log.txt"
