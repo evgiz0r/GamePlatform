@@ -4425,6 +4425,27 @@ back, straight or TURN=left/right. Found:
     wedges by zebras (`kerbs_on_road` LEVEL=3: 8 single pieces 0.6-0.9 m onto the asphalt,
     one on Keren Kayemet LeIsrael by HaNeviim): found, not fixed. Edge test after: Ashdod off
     the road 19.3 -> 10.6 s; Tel Aviv within 25 m of the barrier 39 s (30-47 between runs).
+- **22 Nov, the fifth round (loading, new people, knots, clips, wedges):**
+  - Loading: "laying out the world" and "sorting the town into squares" (the set-up) are
+    steps now. Bedford loads in 3.8 s on the laptop (city file 2.5, start area 1.1; the
+    slowest part "bridges and tunnels set up", 1.2 s): not slow any more.
+  - The new people (people.gd) pass people_pops, people_on_road (0 of 2880 on asphalt),
+    people_clear, people_near and walk_people (level 5, the filmed walk).
+  - HaRishonim and Kinneret's knocks (split_posts DRIVE=1 prints each now): street signs
+    standing in a junction's knot -- where two divided roads cross (HaRishonim by Shavey
+    Zion), a small one-way triangle (Kinneret) -- ground no road's strip covers, that the cars
+    cut across. Leaving signs out inside the knot's shape (its junction points within 30 m,
+    grown 1 m) left out 1425 of 7939 in Ashdod and still knocked one: taken back out. Open:
+    it wants where the cars actually cross (the plans' lines), not the junction's shape.
+  - Clips (`foot_slide.gd CLIP=Run` / `CLIP=Walk`: those figures out of _walkers, playing
+    that clip, its own pace from a foot's speed back past the body while on the ground --
+    the slower way it moves): the new people's walk 0.90 m/s at x1, their jog (Jog_Fwd as
+    "Run") 1.05. Joggers play it at pace / 3.4 (a jogger at 3 m/s: feet ~0.9, sliding
+    ~2 m/s); you at RUN * 0.8. Matched, a jog's steps would be ~3x as quick: a look
+    question for the user, as their walk is.
+  - Kerb wedges by zebras: sliding a shallow corner's ends out along both streets until
+    clear of the other's asphalt made HaNeviim's worse (3 pieces 1.3 m in): taken back out.
+    Open as before.
 - **Loading steps** (user, 22 Nov: "an inner progress, like 2/12"): the city file names its
   11 parts ("reading the map: the roads (4 of 11)", `_load_part`, a frame each -- so
   `_load_city` is a coroutine now: `await` it; prepublish does) and each square round the

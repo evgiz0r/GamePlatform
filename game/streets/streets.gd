@@ -2762,6 +2762,8 @@ func _stage(name: String, t0: int) -> int:
 	return t
 
 func _build_world() -> bool:
+	if not await _step("laying out the world"):
+		return false
 	var t0 := Time.get_ticks_msec()
 	# one shadow map over the near streets, not the default four cascades: those drew every
 	# shadow-casting thing in view four more times a frame, more than the view itself
@@ -2789,7 +2791,12 @@ func _build_world() -> bool:
 	if _mtn_from < 10000.0:
 		_build_turbines()
 	_build_edge()
-	_build_setup(_stage("world", t0))
+	var tw0 := _stage("world", t0)
+	# (the loading text through the second or three of the set-up, which said nothing --
+	# the street network's step stood on screen the while)
+	if not await _step("sorting the town into squares"):
+		return false
+	_build_setup(tw0)
 	# (STREETS_BUILD_ALL=1: all of the city first -- the scene tests look all over it)
 	var all_first := OS.get_environment("STREETS_BUILD_ALL") == "1"
 	# a city level: the far shadows after the car (_far_now) -- they are the distance, and a
