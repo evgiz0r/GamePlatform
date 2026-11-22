@@ -22,6 +22,7 @@ func _snap(name: String) -> void:
 	var img := root.get_viewport().get_texture().get_image()
 	img.save_png(OS.get_environment("OUT") + "/bench_%s_%s.png" % [tag, name])
 	_white_check(img, name)
+	_grey_check(img, name)
 
 func _look(eye: Vector3, at: Vector3) -> void:
 	g.look_from(eye, at)
@@ -119,3 +120,32 @@ func _white_check(img: Image, name: String) -> void:
 				hot += 1
 	var share := float(hot) / maxf(1.0, float(n))
 	print("%s %s: pure white %.1f%%" % ["FAIL" if share > 0.05 else "ok  ", name, share * 100.0])
+
+## The family "what is grey in life reads grey on screen", for a tint over the whole scene
+## (the palette's lavender in the light or the greys): the truly grey pixels of the shot --
+## channels within 0.04 of each other (at 0.12 it measured the sand plaster), neither dark nor
+## burnt out -- averaged, red and blue each over green. FAIL past 0.07 off. One thing's tint
+## (a mauve car) is too small a share of the frame to move it: that needs a look at the thing.
+## Bench, 22 Nov: red/green 1.04-1.07, blue/green ~1.015 (the film's greys ~1.03 and 0.98).
+func _grey_check(img: Image, name: String) -> void:
+	var sr := 0.0
+	var sg := 0.0
+	var sb := 0.0
+	var n := 0
+	for y in range(0, img.get_height(), 4):
+		for x in range(0, img.get_width(), 4):
+			var c := img.get_pixel(x, y)
+			var hi := maxf(c.r, maxf(c.g, c.b))
+			var lo := minf(c.r, minf(c.g, c.b))
+			if hi - lo < 0.04 and hi > 0.15 and hi < 0.95:
+				sr += c.r
+				sg += c.g
+				sb += c.b
+				n += 1
+	if n < 50 or sg <= 0.0:
+		print("ok   %s: greys -- too few to judge" % name)
+		return
+	var rg := sr / sg
+	var bg := sb / sg
+	var off := absf(rg - 1.0) > 0.07 or absf(bg - 1.0) > 0.07
+	print("%s %s: greys red/green %.3f blue/green %.3f (%d px)" % ["FAIL" if off else "ok  ", name, rg, bg, n])

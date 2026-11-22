@@ -976,6 +976,7 @@ var _works: Sites                    ## building sites from a town's own map: ho
 var _wave: Wave                      ## the green wave: lights turning green for the car (wave.gd)
 var _racer: Racer                    ## racer mode: autodrive with the rules off, the town hooting (racer.gd)
 var _places: Places                  ## a town's own kindergartens and shelters (places.gd)
+var _opening: Opening                ## the view over the town while the squares round the car go up (opening.gd)
 var _standins: Standins              ## the squares not built yet, seen from above: flat roads, outlines (standins.gd)
 var _on_deck := -1                   ## while a deck road is drawn: heights come from it, not the ground
 var _inferred := {}                  ## what decks.gd's infer() made of a real town's bridges (the report)
@@ -1064,6 +1065,7 @@ const Wave := preload("res://game/streets/wave.gd")
 const Standins := preload("res://game/streets/standins.gd")
 const Racer := preload("res://game/streets/racer.gd")
 const Places := preload("res://game/streets/places.gd")
+const Opening := preload("res://game/streets/opening.gd")
 const DriveLog := preload("res://game/streets/drivelog.gd")
 var _log := DriveLog.new()            ## the last two minutes, for the map page and "save log"
 var _ap_why := ""                     ## what held autodrive's speed down this tick (for the log)
@@ -1385,6 +1387,9 @@ func start(_config: Dictionary) -> void:
 		await _set_evening(true)
 	for k: String in _part_us:   # (the parts of the stages, for tests/load_stages.gd)
 		_stage_ms[k] = int(_part_us[k]) / 1000
+	if Opening.wanted(self):   # (over the town while the squares round the car go up: opening.gd)
+		_opening = Opening.new(self)
+		_opening.start()
 	_build_rest()   # the rest of the city, while you drive
 
 var _loading: Label
@@ -3797,10 +3802,11 @@ void fragment() {
 		float h2 = h21(pv.yz + 13.7);
 		vec3 base = pave.rgb;
 		vec3 col;
-		if (mixk < 0.5) {          // reds and browns, mixed
-			vec3 a = base * vec3(1.32, 0.9, 0.78);
-			vec3 b = base * vec3(1.12, 0.86, 0.76);
-			vec3 cc = base * vec3(0.98, 0.84, 0.82);
+		if (mixk < 0.5) {          // reds and browns, mixed: muted, as filmed (they were red over green
+			// 1.2-1.35 on screen and bright against the film's 1.10 on Sirkin; DEV.md "walk 2's paving")
+			vec3 a = base * vec3(0.93, 0.77, 0.69);
+			vec3 b = base * vec3(0.85, 0.75, 0.68);
+			vec3 cc = base * vec3(0.78, 0.74, 0.72);
 			col = h < 0.4 ? a : (h < 0.75 ? b : cc);
 		} else if (mixk < 1.5) {   // greys, a darker one here and there
 			col = base * (h < 0.15 ? 0.84 : (h < 0.55 ? 0.95 : 1.03));
@@ -3816,7 +3822,7 @@ void fragment() {
 		// further off than a few pixels a paver, the pattern is its average colour
 		float fw = length(fwidth(g));
 		float far = smoothstep(0.012, 0.05, fw);
-		vec3 avg = mixk < 0.5 ? base * vec3(1.16, 0.88, 0.79) : (mixk < 1.5 ? base * 0.93 : (mixk < 2.5 ? base * vec3(1.16, 1.1, 0.96) : base * vec3(1.12, 0.92, 0.84)));
+		vec3 avg = mixk < 0.5 ? base * vec3(0.86, 0.75, 0.69) : (mixk < 1.5 ? base * 0.93 : (mixk < 2.5 ? base * vec3(1.16, 1.1, 0.96) : base * vec3(1.12, 0.92, 0.84)));
 		col = mix(col, avg, far);
 		// the joints, sand-filled and dark, and each paver's bevelled edge
 		float jw = 0.004;
@@ -9512,9 +9518,11 @@ func _car_paints() -> Array:
 	var bg := Palette.col("bg")
 	var alt := Palette.col("bg_alt")
 	var white := ink
-	var silver := ink.lerp(alt, 0.32)
-	var grey := alt.lerp(ink, 0.22)
-	var black := bg.lerp(alt, 0.35)
+	# the greys neutral: mixed from the palette's bg_alt (lavender here) silver and grey cars
+	# came out mauve beside the shops (the paving's greys had the same fault)
+	var silver := _greyed(ink.lerp(alt, 0.32), 0.92)
+	var grey := _greyed(alt.lerp(ink, 0.22), 0.92)
+	var black := _greyed(bg.lerp(alt, 0.35), 0.85)
 	# a car's red is a car paint's red and its blue a dark blue, whatever the palette: the
 	# palette's hazard (pink here) and player (cyan) made pink and teal cars, and a filmed
 	# street has none. Their hue pinned, their strength the palette's.
@@ -12402,7 +12410,7 @@ func _build_walk_lights(pole_mesh: Mesh) -> void:
 ## a lit shopfront on the street side of each shop's building, and its name above it
 func _build_pois() -> void:
 	var k := 1.0 / float(_city_data.get("scale", 10))
-	var front := {"glass": [], "glass_k": [], "post": [], "beam": [], "shutter": []}   ## shop windows and their frames (glass_k: what is inside, SHOP_SHADER)
+	var front := {"glass": [], "glass_k": [], "post": [], "beam": [], "shutter": [], "housing": []}   ## shop windows and their frames (glass_k: what is inside, SHOP_SHADER)
 	var board_cols: Array = []       ## each sign board's colour: dark, white, the shop's, cream
 	var awnings := {"xf": [], "col": []}   ## awning transforms and their colours
 	var crates := new_cbuf(BLD_CELL)    ## fruit and vegetables out in front of a greengrocer
@@ -12482,6 +12490,10 @@ func _build_pois() -> void:
 				_string_lights(crates, bulbs, pos, n, along, gy)
 			if look_k < 10 and kind.begins_with("shop"):   # shut: the roller shutter down
 				front["shutter"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.1, 1.3)))
+			# the roller shutter's box over the window, as most of the towns' shops have it
+			# rolled up into (a grey metal box the window's width); every shut one has one
+			if look_k < 10 or posmod(_hash_i(at) >> 13, 100) < 75:
+				front["housing"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.2, 2.86)))
 			if kind == "pharmacy":
 				crosses.append(Transform3D(b, at3.call(pos + along * (1.6 * wide + 0.5), 0.5, 3.2)))
 		if spot[2] and kind in ["cafe", "restaurant", "fast_food", "ice_cream", "bar", "pub"] and String(shop.get("seats", "")) != "none":
@@ -12542,6 +12554,11 @@ func _build_pois() -> void:
 		var shut := BoxMesh.new()
 		shut.size = Vector3(3.0, 2.4, 0.05)
 		_chunked(shut, front["shutter"], r, [], _surface("shutter"), false)
+	if not (front["housing"] as Array).is_empty():
+		var hb := BoxMesh.new()
+		hb.size = Vector3(3.2, 0.3, 0.3)
+		_chunked(hb, front["housing"], r, [], _surface("shutter"), false)
+	_tally("shutter_boxes", (front["housing"] as Array).size())
 	var awning := BoxMesh.new()
 	awning.size = Vector3(3.3, 0.14, 1.5)
 	_chunked(awning, awnings["xf"], r, awnings["col"], _vc_mat(), true)
@@ -16289,6 +16306,8 @@ func _film_begin(id: String) -> void:
 		var who := int(pp.get("who", _film_people.size()))
 		a.set_character(PEOPLE[who % PEOPLE.size()], float(pp.get("tall", 1.70)))
 		_humanize(a, 9001 + who * 31)
+		if bool(pp.get("talk", false)):
+			_talker(a, 9001 + who * 31)
 		_people_lod(a)
 		var A := Vector2(float(pp["at"][0]), float(pp["at"][1]))
 		var B := Vector2(float(pp["to"][0]), float(pp["to"][1])) if pp.has("to") else A
@@ -17344,6 +17363,8 @@ func _frame() -> void:
 	_hold_tick(dt)
 	if _standins != null:
 		_standins.show(_zoomed())
+	if _opening != null and _opening.on:
+		_opening.tick(dt)
 	if _blades != null:
 		_turbines_tick()
 	var f := Engine.get_physics_interpolation_fraction()
@@ -18371,6 +18392,7 @@ func _spawn_people() -> void:
 		_people_lod(a)
 		a.play("Idle", true, _people_rng.randf_range(0.8, 1.1))
 		_carry(a, _what_carried(hash(_city_name) * 13 + i, false), hash(_city_name) * 13 + i)
+		_talker(a, hash(_city_name) * 13 + i)
 		a.visible = false
 		_chatters.append({"actor": a, "spot": Vector2.INF})
 	_seat_chatters()
@@ -19503,6 +19525,70 @@ func _humanize(a: Actor3D, seed: int) -> void:
 			nm.roughness = 0.85
 			mi.set_surface_override_material(si, nm)
 		_one_piece(mi)
+
+## ---- hands while talking --------------------------------------------------------------------
+## People standing and talking move their hands: now and then one forearm comes up from the
+## elbow and the hand moves as they make a point, then goes down again; sometimes both. The
+## figures have no clip for it (Idle stands with arms hanging), so this bends the arm bones
+## on top of the pose the animation gave, every frame. (tests/people_talk.gd)
+class Talk extends SkeletonModifier3D:
+	var arms := []      ## [upper arm, forearm] bone indices, left then right
+	var t := 0.0
+	var rate := 1.0     ## how lively: 0.7 slow, 1.3 quick
+	## the axis, in each arm bone's own frame, that brings the hand forward and up, left then
+	## right (measured: about the bone's x alone the hand also swung out to the side, and about
+	## -x behind the back; the same for the upper arm and the forearm)
+	var axes := [Vector3(1, 0, -1).normalized(), Vector3(1, 0, 1).normalized()]
+
+	## how far each arm is up, 0..1, at time t: a gesture of a second or two every few
+	## seconds, one arm (now this one, now the other), sometimes both
+	func _up(side: int) -> float:
+		var cyc := t * 0.3 * rate + float(side) * 0.37
+		var k := floori(cyc)
+		var f := cyc - float(k)
+		var h := posmod(k * 7919 + side * 31 + int(rate * 1000.0), 10)
+		var on := h < (6 if side == 0 else 4)   # (now and then neither: listening)
+		if not on:
+			return 0.0
+		return smoothstep(0.0, 0.18, f) * (1.0 - smoothstep(0.55, 0.75, f))
+
+	func _process_modification_with_delta(delta: float) -> void:
+		var sk := get_skeleton()
+		if sk == null:
+			return
+		t += delta
+		for side in range(arms.size()):
+			var e := _up(side)
+			if e <= 0.001:
+				continue
+			var ua: int = arms[side][0]
+			var fa: int = arms[side][1]
+			# the hand moving as the point is made: a small beat on top
+			var beat := sin(t * (5.0 + float(side)) * rate) * 0.18 + sin(t * 2.3 * rate + float(side)) * 0.1
+			var r1 := Quaternion(axes[side], e * 0.35)
+			var r2 := Quaternion(axes[side], e * (1.15 + beat))
+			sk.set_bone_pose_rotation(ua, sk.get_bone_pose_rotation(ua) * r1)
+			sk.set_bone_pose_rotation(fa, sk.get_bone_pose_rotation(fa) * r2)
+
+## talking hands for someone standing in a group (Talk)
+func _talker(a: Actor3D, seed: int) -> void:
+	if a == null or a.model == null:
+		return
+	var sks := a.model.find_children("*", "Skeleton3D", true, false)
+	if sks.is_empty():
+		return
+	var sk: Skeleton3D = sks[0]
+	var tk := Talk.new()
+	for sd: String in ["L", "R"]:
+		var u := sk.find_bone("UpperArm." + sd)
+		var f := sk.find_bone("LowerArm." + sd)
+		if u >= 0 and f >= 0:
+			tk.arms.append([u, f])
+	if tk.arms.is_empty():
+		return
+	tk.rate = 0.75 + float(posmod(seed, 50)) / 100.0
+	tk.t = float(posmod(seed * 13, 1000)) / 37.0
+	sk.add_child(tk)
 
 ## ---- what people carry -------------------------------------------------------------------------
 ## Things in people's hands and on their backs: a shopping bag or a handbag hanging from one
@@ -22210,6 +22296,8 @@ func _autodrive(dt: float) -> Array:
 	# a while, ignore cars crossing the lane (a standoff in a junction) -- never one ahead
 	var reach := clampf(12.0 + _v * 1.2 + _v * _v / 5.2, 18.0, 130.0)
 	var lead: Array = _traffic.lead_on(_ap_pts, _pos, reach, _ap_wait > 3.0, _y)
+	if racing and float(lead[0]) < 70.0 and _ap_race_by(lead):
+		lead = _traffic.lead_on(_ap_pts, _pos, reach, _ap_wait > 3.0, _y)
 	if racing and float(lead[0]) < 22.0 and _ap_wait > 1.0 and _ap_mount_by(lead):
 		lead = _traffic.lead_on(_ap_pts, _pos, reach, _ap_wait > 3.0, _y)
 	if float(lead[0]) < (60.0 if racing else 30.0) and _ap_pass_bus(lead):
@@ -22818,6 +22906,107 @@ func _ap_pass_bus(lead: Array) -> bool:
 	_log.event("pass van" if dbl else "pass bus")
 	return true
 
+## Racer (racer.gd): round the car in front by whatever way is open -- the next lane, two
+## over, the other side of the road -- not a lane's width from autodrive's line but as far as
+## clears that car's body where it actually stands (a car held half across the line took a
+## one-lane bend 2.08 m from its middle, inside lead_on's 2.1, and racer stood behind it).
+## Each way out is tried on a copy of the plan, nearest first, left before right: kept when
+## every point of it is on asphalt (any road's, either way), clear of anything solid, of every
+## car now and of anything coming the other way for as long as the pass takes. Tried again on
+## the same car once stuck behind it (the first try did not clear it). True when it went.
+const RACE_CLEAR := 2.9      ## m from the car's middle to racer's line, going by it
+const RACE_OUT := [3.2, 6.4, 9.6, -3.2]   ## ways out tried: left one lane, two, three; right one
+var _race_tries := 0                      ## ways out already taken round the same car (a retry starts past them)
+func _ap_race_by(lead: Array) -> bool:
+	var bi: int = lead[3]
+	if bi < 0 or _ap_pts.size() < 2:
+		return false
+	if bi == _ap_passed and _ap_wait < 1.5:
+		return false   # (bent round it already: give it a moment)
+	_race_tries = _race_tries + 1 if bi == _ap_passed else 0   # (stuck behind it still: the next way out)
+	var car = _traffic.cars[bi]
+	var want: float = _racer.limit(_ap_lim[1]) if _ap_lim.size() > 1 else 13.9
+	if not _racer.can_pass(float(car.v), want):
+		return false
+	if _ap_turn_ahead() != 0 and float(lead[0]) > 25.0:
+		return false   # (a turn just after it: stay behind until close, then it may still go)
+	var gap: float = lead[0]
+	var fwd := _fwd()
+	var left := Vector2(fwd.y, -fwd.x)
+	# where its middle stands across racer's line (left of it: +)
+	var lat := 0.0
+	var bd := INF
+	for j in range(_ap_pts.size() - 1):
+		var cp := Geometry2D.get_closest_point_to_segment(car.pos, _ap_pts[j], _ap_pts[j + 1])
+		if cp.distance_to(car.pos) < bd:
+			bd = cp.distance_to(car.pos)
+			var d := (_ap_pts[j + 1] - _ap_pts[j]).normalized()
+			lat = (car.pos - cp).dot(Vector2(d.y, -d.x))
+		if _ap_pts[j].distance_to(_pos) > gap + 20.0:
+			break
+	# a moving car goes on meanwhile: the way out as long as it takes to get by
+	var t_pass := (gap + float(car.len) + 20.0) / maxf(want - float(car.v), 3.0)
+	var extra := float(car.v) * t_pass
+	if extra > 160.0:
+		return false
+	var half := float(car.len) * 0.5
+	var start_s := maxf(gap - half - 12.0, 1.0)
+	var end_s := gap + half + 10.0 + extra
+	var keep_pts := _ap_pts.duplicate()
+	var keep_v := _ap_v.duplicate()
+	var keep_lim := _ap_lim.duplicate()
+	var s0 := _ap_pts[0].distance_to(Geometry2D.get_closest_point_to_segment(_pos, _ap_pts[0], _ap_pts[1]))
+	for oi in range(RACE_OUT.size()):
+		var out: float = RACE_OUT[(oi + _race_tries) % RACE_OUT.size()]
+		# as far over as clears its body: out at least so far past its middle
+		var shift := out
+		if out > 0.0:
+			shift = maxf(out, lat + RACE_CLEAR)
+		else:
+			shift = minf(out, lat - RACE_CLEAR)
+		_ap_densify(s0 + end_s + 10.0, 1.5)
+		var s := -s0
+		var bent: Array = []
+		for k in range(1, _ap_pts.size()):
+			s += _ap_pts[k - 1].distance_to(_ap_pts[k])
+			if s > end_s + 8.0:
+				break
+			var t := clampf((s - start_s) / 7.0, 0.0, 1.0) * clampf((end_s + 8.0 - s) / 8.0, 0.0, 1.0)
+			if t <= 0.0:
+				continue
+			var kd := (_ap_pts[mini(k + 1, _ap_pts.size() - 1)] - _ap_pts[k - 1]).normalized()
+			_ap_pts[k] += Vector2(kd.y, -kd.x) * shift * t
+			bent.append([_ap_pts[k], maxf(s, 0.0)])
+		var ok := not bent.is_empty()
+		for bq: Array in bent:
+			var q: Vector2 = bq[0]
+			# on asphalt (any road: the other way's lanes too), nothing solid there
+			if _off_road(q, -0.3) or _push_out(q, 1.15, true, false, _y) != Vector2.ZERO:
+				ok = false
+				break
+			var at_t := float(bq[1]) / maxf(want, 5.0)   # (when racer is there)
+			for c in _traffic.cars:
+				if not c.alive or c == car:
+					continue
+				# where it will be then, at its pace along its heading
+				var cdir := Vector2(sin(c.yaw), cos(c.yaw))
+				var then: Vector2 = c.pos + cdir * float(c.v) * at_t
+				if then.distance_squared_to(q) < 3.2 * 3.2 or c.pos.distance_squared_to(q) < 2.6 * 2.6:
+					ok = false
+					break
+			if not ok:
+				break
+		if ok:
+			_ap_passed = bi
+			_racer.passes += 1
+			Probe.event("racer_pass", {"over": snappedf(shift, 0.1), "moving": float(car.v) > 0.6})
+			_log.event("racer round a car")
+			return true
+		_ap_pts = keep_pts.duplicate()
+		_ap_v = keep_v.duplicate()
+		_ap_lim = keep_lim.duplicate()
+	return false
+
 ## Racer (racer.gd), stood behind a queue that does not move: up onto the pavement on the
 ## right and along it past the queue, back down at its head -- only where nobody is on that
 ## stretch of pavement (3 m either side of the line), nothing solid stands on it (posts,
@@ -22825,7 +23014,7 @@ func _ap_pass_bus(lead: Array) -> bool:
 const MOUNT_PAST := 26.0      ## metres of pavement it takes at most past the car in front
 func _ap_mount_by(lead: Array) -> bool:
 	var bi: int = lead[3]
-	if bi < 0 or bi == _ap_passed or _ap_pts.size() < 2:
+	if bi < 0 or (bi == _ap_passed and _ap_wait < 2.0) or _ap_pts.size() < 2:
 		return false
 	var hit := _nearest_seg(_pos, 12.0, true, true, _y)
 	if hit.is_empty():
@@ -24895,7 +25084,7 @@ func _draw_hud() -> void:
 		_hud.draw_arc(_hold_at, 14.0, 0.0, TAU, 32, Color(Palette.col("bg"), 0.5), 5.0)
 		_hud.draw_arc(_hold_at, 14.0, -PI * 0.5, -PI * 0.5 + TAU * hold, 32, hc, 4.0)
 		_hud.draw_circle(_hold_at, 3.0, hc)
-	if _paused:
+	if _paused and not (_opening != null and _opening.on):
 		_hud_text(Vector2(170, 62), "PAUSED", 300, 13, Palette.col("warn"))
 		if _zoom > 0.0:
 			var hint := "drag to look round · pinch to zoom and turn" if _touch_seen \
@@ -25332,6 +25521,15 @@ func _view_footprint() -> PackedVector2Array:
 ## it takes the wheel back from autodrive. ----------------------------------------------------
 
 func _input(event: InputEvent) -> void:
+	if _opening != null and _opening.on and not Flow.pointer_over_hud():
+		# the opening: any key, click or tap goes straight down to the car
+		var k := event as InputEventKey
+		var m := event as InputEventMouseButton
+		var tch := event as InputEventScreenTouch
+		if (k != null and k.pressed and not k.echo) or (m != null and m.pressed) or (tch != null and tch.pressed):
+			_opening.end(true)
+			get_viewport().set_input_as_handled()
+			return
 	if _route_ui != null:   # the list of test routes: no city behind it
 		var mt := event as InputEventMouseButton
 		if mt != null and mt.pressed and mt.button_index == MOUSE_BUTTON_LEFT and not Flow.pointer_over_hud():
