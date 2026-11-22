@@ -4030,6 +4030,15 @@ level 1, 45 playgrounds; `tests/places.gd` shoots one from above and at eye heig
     distance (v*0.2 + v^2/16; a plain share of the speed stopped each move ~0.6 m short and
     took 5-7 moves). Three moves 11.3 -> 7.3 s, out again 21.5-35 -> 17-20.5 s, Derekh
     HaMitzpe from 24.6 s on the spot to 8.6 s in three moves; no hits, bumpers <= 0.2 m over.
+    Givatayim (LEVEL=1) before -> after: out again 19-36.5 -> 15-29 s. Open, the same before
+    the change: Mandelkern (-1177, 437) hits post 90747 at 6-7 km/h after turning, 1.7 m past
+    the asphalt; Yoqneam (-1297, -702) never moves (set down 53 m short, plan never made).
+- **Loading steps** (user, 22 Nov: "an inner progress, like 2/12"): the city file names its
+  11 parts ("reading the map: the roads (4 of 11)", `_load_part`, a frame each -- so
+  `_load_city` is a coroutine now: `await` it; prepublish does) and each square round the
+  start its 13 stages ("kerbs and pavements (5 of 13)", TILE_STAGES, shown at each `_stage`
+  and by the spinner in `_pause`). `tests/load_text.gd` prints every text the loading
+  screen shows, with the time. Not shown yet: world + setup (~1-3 s after the street network).
 - **Delft (level 14): 39 m² of island on the asphalt** (`city_check`'s "islands on the road",
   0 in every other town; the first spot is at (-478, 1000), Westlandseweg's west end, a
   secondary road 10-16 m wide). Not found yet. One way it can happen, seen in the city file:
