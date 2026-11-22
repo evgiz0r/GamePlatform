@@ -123,7 +123,7 @@ func _run() -> void:
 	_line("no sun shadows (not a level: recompiles)", await _count(), base)
 	g.sun.shadow_enabled = true
 	g._set_quality(0)
-	_line("quality 0 (no draw cut: pixels, shadow reach)", await _count(), base)
+	_line("quality 0 (as the ladder sets it)", await _count(), base)
 	g._set_quality(2)
 	_line("quality 2 again", await _count(), base)
 	# by kind: each hidden in turn
