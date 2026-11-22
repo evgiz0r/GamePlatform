@@ -266,7 +266,7 @@ Then add a line at the end of `LEVELS` with `"look": "north", "build": "fr"`.
 - **Not done yet:** French street plates, RGE ALTI ground, the doubled light.
 
 **Leiden's and Annecy's walks and drives (22 Nov 2026).**
-- **Walks:** levels 35 and 36, both scan clean (`SCAN=1 tests/run.sh filmed_walk 35 / 36`:
+- **Walks:** levels 37 and 38, both scan clean (`SCAN=1 tests/run.sh filmed_walk 37 / 38`:
   no INSIDE, EYE IN or ON ROAD).
   - Leiden: down Haarlemmerstraat, the pedestrian shopping street, 455 m.
   - Annecy: along the Thiou's quays in the old town, 386 m.

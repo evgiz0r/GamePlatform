@@ -12,7 +12,8 @@ extends RefCounted
 ## streets.gd still makes every person as before (Actor3D.set_character, then _humanize);
 ## _humanize hands the Actor3D here, which swaps its model and AnimationPlayer for these. The
 ## game's clip names are kept: Walk, Idle, Run (the library's jog), Walk_Carry (the plain walk:
-## its Push leans into a heavy load), SitDown (sitting), Roll.
+## its Push leans into a heavy load), SitDown (sitting), Roll; and Startled (Hit_Chest: a car
+## about to hit them).
 
 const DIR := "res://game/streets/people/"
 const HAIR_M := ["hair_simpleparted", "hair_buzzed", "hair_simpleparted", "hair_buzzed", "", "hair_beard"]
@@ -35,7 +36,8 @@ void fragment() {
 	float rough = 0.9;
 	if (i == 0) {
 		c = texture(skin_tex, UV).rgb * cols[0].rgb;
-		rough = 0.6;
+		rough = 0.72;   // (0.6, and 1.3 x the texture for the palest, burnt to pale yellow in the sun)
+		SPECULAR = 0.35;   // (skin's own, F0 ~0.028; the default 0.5 is for plastics)
 	} else if (i == 4) {
 		c = texture(eye_tex, UV).rgb;
 		rough = 0.3;
@@ -177,7 +179,7 @@ func _lib(kind: String) -> AnimationLibrary:
 		out.add_animation(k, src.get_animation(k))
 	# (copies, not the same Animation: Actor3D.play sets a clip's loop flag on the way in)
 	# (Walk_Carry: the library's Push leans into a heavy load -- a pushchair or a box looked shoved)
-	var alias := {"Run": "Jog_Fwd", "Walk_Carry": "Walk", "SitDown": "Sitting_Idle", "Death": "Roll"}
+	var alias := {"Run": "Jog_Fwd", "Walk_Carry": "Walk", "SitDown": "Sitting_Idle", "Death": "Roll", "Startled": "Hit_Chest"}
 	if kind == "talk":
 		alias["Idle"] = "Idle_Talking"
 		alias["SitDown"] = "Sitting_Talking"   # (a cafe's people seated at their table, talking)
@@ -288,7 +290,7 @@ func make(a: Actor3D, seed: int) -> void:
 	var skin_c: Color = pick["skin"]
 	# by brightness only, the texture's own skin hue kept (_skin_seen): channel by channel, a
 	# greyish tone over the texture's tiny blue (0.095 linear) tripled the blue -- grey-blue women
-	var k := clampf(skin_c.srgb_to_linear().get_luminance() / SKIN_AVG.srgb_to_linear().get_luminance(), 0.42, 1.3)
+	var k := clampf(skin_c.srgb_to_linear().get_luminance() / SKIN_AVG.srgb_to_linear().get_luminance(), 0.42, SKIN_K_MAX)
 	var f := Vector4(k, k, k, 1.0)
 	var hair_c: Color = pick["hair"]
 	if old:   # grey to white, from the palette's light and dark (greyed: no tint in it)
@@ -311,11 +313,15 @@ const SKIN_APART := 0.2
 ## the skin as drawn: the texture's light skin times the tone's brightness factor (as make() does)
 static func _skin_seen(tone: Color) -> Color:
 	var avg := SKIN_AVG.srgb_to_linear()
-	var k := clampf(tone.srgb_to_linear().get_luminance() / avg.get_luminance(), 0.42, 1.3)
+	var k := clampf(tone.srgb_to_linear().get_luminance() / avg.get_luminance(), 0.42, SKIN_K_MAX)
 	return Color(avg.r * k, avg.g * k, avg.b * k).linear_to_srgb()
 
 static func _apart(a: Color, b: Color) -> float:
 	return Vector3(a.r - b.r, a.g - b.g, a.b - b.b).length()
+
+## the palest skin's factor on the texture: the texture is itself a light skin, and 1.3 x it
+## burnt to a pale yellow in full sun (Givatayim at noon: lit foreheads at 1.0, 1.0, 0.8)
+const SKIN_K_MAX := 1.0
 
 ## the skin textures' average colour (both bodies' light skin, measured: sRGB 0.66, 0.47, 0.34),
 ## to turn a person's tone into a factor on the texture (from the texture at run time it came

@@ -86,6 +86,8 @@ const LEVELS := [
 	# the first French town (NEW_CITY.md, "France"): the centre between the station, the old town
 	# and the lake, with IGN BD TOPO's heights and measured roofs ("build": "fr": render, not brick)
 	{"name": "Annecy", "city": "annecy", "start": ["Rue Royale", "Rue de la Poste"], "look": "north", "build": "fr", "decks": "infer"},
+	{"name": "Dragons over Tel Aviv", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "dragons"},
+	{"name": "Dragons over Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "dragons"},
 	# their walks (NEW_CITY.md: every city has one), laid by data_tools/make_walks.py
 	{"name": "Leiden: down Haarlemmerstraat", "city": "leiden", "look": "north", "build": "nl", "decks": "infer", "walk": "leiden_haarlemmerstraat"},
 	{"name": "Annecy: along the Thiou to the lake", "city": "annecy", "look": "north", "build": "fr", "decks": "infer", "walk": "annecy_thiou"},
@@ -1431,6 +1433,12 @@ func start(_config: Dictionary) -> void:
 	var tw := Time.get_ticks_msec()
 	print("[streets] the squares round the start built in %d ms; stages %s" % [tw - t1, _stage_ms])
 	print("[streets] warm-up begins")   # (marks for a browser's log: tests/web_shaders.js counts the shaders compiled between)
+	# The world's look as it will be driven -- the haze with its sun glow (USE_SUN_SCATTER), the
+	# tone curve, the materials' tones -- BEFORE the warm-up: set only after it (as it was until
+	# 22 Nov 2026) the warm-up compiled every shader for a scene with no haze, and the first
+	# minute of driving compiled the sun's pass of everything again: Tel Aviv, a cold browser on
+	# the home PC, 23 programs, 10.5 s, all with USE_SUN_SCATTER. (Called again after the car.)
+	_retint_city()
 	if not await _warm_up():
 		return
 	_stage_ms["warm up (shaders compiled, 4 frames)"] = Time.get_ticks_msec() - tw
@@ -19687,8 +19695,8 @@ func _people_apart(p: Vector2, me: int, mate: int, dog := 1) -> Vector2:
 			continue
 		var d := p - _people_at[k]
 		var l := d.length()
-		if l < 0.55 and l > 0.001:
-			push += d / l * (0.55 - l) * 0.5
+		if l < 0.6 and l > 0.001:
+			push += d / l * (0.6 - l) * 0.5
 	return push
 
 ## A walker's legs as it really goes: walking at the pace it covers the ground, standing when
@@ -19760,7 +19768,15 @@ func _walk_beside(w: Dictionary, dt: float) -> void:
 	if not was_seen:
 		w.erase("anim_p")
 		a.visible = true
-	_walker_anim(w, a, at, dt)
+	# the first startled by the car: this one too, at once (it goes where the first steps back)
+	if float(lw.get("startle", 0.0)) > 0.0:
+		if not bool(w.get("startled", false)) and a.anim != null and a.anim.has_animation("Startled"):
+			w["startled"] = true
+			a.play("Startled", false, 1.1)
+		w["anim_p"] = at
+	else:
+		w["startled"] = false
+		_walker_anim(w, a, at, dt)
 	_people_awake(a, at)
 
 ## People by the cafe tables near the car, standing about. Re-seated at the nearest tables
@@ -20225,7 +20241,8 @@ func _people_tick(dt: float) -> void:
 			continue
 		var cum: PackedFloat32Array = w["cum"]
 		var total := cum[cum.size() - 1]
-		var s: float = w["s"] + (0.0 if w.get("hold_me", false) else float(w["dir"]) * float(w["speed"]) * dt)
+		var startle: float = w.get("startle", 0.0)   # (startled by the car: stopped, see below)
+		var s: float = w["s"] + (0.0 if w.get("hold_me", false) or startle > 0.0 else float(w["dir"]) * float(w["speed"]) * dt)
 		# waiting for you to pass and you do not: after a few seconds, back the way they came
 		w["held"] = float(w.get("held", 0.0)) + dt if w.get("hold_me", false) else 0.0
 		var turned := false   # (its line or its way along it changed this tick: see `lat` below)
@@ -20348,7 +20365,9 @@ func _people_tick(dt: float) -> void:
 					elif fore < -2.0 or fore > 9.0:
 						w.erase("me_side")
 					continue
-				if fore > -0.6 and fore < 2.6:
+				# (from 4 m: from 2.6 two coming at each other stepped aside at the last moment,
+				# and passed 0.29 m apart, shoulders through each other -- tests/people_pass.gd)
+				if fore > -0.6 and fore < 4.0:
 					if absf(sr) < 0.85:
 						want += 0.8 if absf(sr) < 0.05 else -signf(sr) * (0.85 - absf(sr))
 			var lat: float = w.get("lat", 0.0)
@@ -20393,6 +20412,27 @@ func _people_tick(dt: float) -> void:
 			if side.dot(to_car) > 0.0:
 				side = -side
 			p += side * dodge
+		# a car about to hit them -- its body within a metre of them in the next 0.7 s, and
+		# closing, not one going by in its lane (the step aside above alone read as a calm
+		# glide): a start back, the hands up (Startled), a half step back from it and a stop
+		# for a second, then on. Once in five seconds at most. tests/people_startle.gd
+		w["startle_cd"] = maxf(float(w.get("startle_cd", 0.0)) - dt, 0.0)
+		if startle <= 0.0 and float(w["startle_cd"]) <= 0.0 and absf(_v) > 2.5 and not _walking 				and to_car.length() < 16.0 and a.anim != null and a.anim.has_animation("Startled"):
+			var now_gap := _body_gap(p, _pos)
+			var soon := minf(_body_gap(p, _pos + _fwd() * _v * 0.35), _body_gap(p, _pos + _fwd() * _v * 0.7))
+			if soon < 1.0 and soon < now_gap - 0.4:
+				startle = 1.1
+				w["startle_cd"] = 5.0
+				w["startle_from"] = to_car.normalized()
+				a.play("Startled", false, 1.15)
+		if startle > 0.0:
+			startle = maxf(startle - dt, 0.0)
+			w["startle_back"] = minf(float(w.get("startle_back", 0.0)) + dt * 1.6, 0.4)   # (a quick half step)
+		else:
+			w["startle_back"] = maxf(float(w.get("startle_back", 0.0)) - dt * 0.3, 0.0)
+		w["startle"] = startle
+		if float(w["startle_back"]) > 0.0 and w.has("startle_from"):
+			p -= (w["startle_from"] as Vector2) * float(w["startle_back"])
 		p += _people_apart(p, a.get_instance_id(), int(w.get("mate", -1)), -100 - int(w["dog_i"]) if w.has("dog_i") else 1)
 		# (never into you: a filmed walk does not step aside -- and a metre off its camera, not
 		# 0.6: a woman coming the other way on a narrow pavement filled the frame with her hair)
@@ -20404,8 +20444,11 @@ func _people_tick(dt: float) -> void:
 			p += _push_out(p, 0.25, true, false)
 		# (their line is on the pavement, but for a step over a side street's mouth)
 		a.position = Vector3(p.x, _walk_y(p) if s < float(w.get("cross", 0.0)) else _h(p) + _pave_top(), p.y)
-		_walker_anim(w, a, p, dt)
-		if ahead != Vector2.ZERO:
+		if startle <= 0.0:   # (the start plays out first)
+			_walker_anim(w, a, p, dt)
+		else:
+			w["anim_p"] = p
+		if ahead != Vector2.ZERO and startle <= 0.0:
 			# turning as people do, over a moment: at the end of a block they turned back on
 			# the spot in one frame, and at every bend of the pavement line they snapped
 			var want := atan2(ahead.y, ahead.x)

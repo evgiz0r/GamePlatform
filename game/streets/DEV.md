@@ -3040,8 +3040,36 @@ cartoon figures to compare.
   - Clothes are also kept 0.2 (sRGB distance) from the skin as drawn (`_skin_seen`: the
     texture times the tone's factor), taking the next colour in the list, without a draw.
   - `tests/people_glance.gd`'s `_collar` shots show both.
-- **Light skin still glares** in full sun, the face going pale yellow. That comes from the
-  scene's exposure, not the people, and is part of the open whole-scene colour item.
+- **Light skin glared** in full sun, the face going pale yellow. The cause was the people,
+  not the scene's exposure:
+  - The palest tones were drawn at 1.3x the skin texture, which is itself a light skin.
+  - Skin had roughness 0.6 and specular 0.5.
+  - Now `SKIN_K_MAX` 1.0, roughness 0.72, specular 0.35. A lit forehead in `people_glance`
+    went from (1, 1, 0.77) to (1, 0.85, 0.49); red still tops out in full sun, but the hue
+    holds.
+  - The whole-scene pink lean is still open.
+- **Startled by the car** (streets.gd's walkers, after the step aside; the `Startled` clip is
+  the library's `Hit_Chest`, added to `make_moves.gd`'s KEEP with `Sprint`):
+  - It fires when the car's body would be within 1 m of them 0.35 or 0.7 s on, closing by
+    0.4 m or more, at over 2.5 m/s.
+  - They stop for 1.1 s with the clip, take a half step (0.4 m) back from the car, and then
+    walk on. Once in 5 s at most.
+  - A car going by in its lane doesn't do it. That was the old complaint ("they jump to the
+    side ... it looks fake").
+  - The second of a pair (`_walk_beside`) starts with the first; it never reaches the
+    walkers' own code.
+  - `tests/people_startle.gd`: started with the car's body 5.6-6.1 m off, and none of those
+    driven past 1.9-14 m off started.
+  - To remake `moves.res`: unzip `UAL1_Standard.glb` from the Standard zip into a folder in
+    the project, `--import`, then run `make_moves.gd` with `UAL=res://<that folder>/...`.
+    Delete the folder after; it's 7.6 MB and not for the repo.
+- **Passing each other** (the walkers' "someone ahead" and `_people_apart`):
+  - Two coming at each other used to see each other only from 2.6 m, step aside at the last
+    moment, and pass 0.29 m apart, shoulders through each other.
+  - Now from 4 m, with the push apart below 0.6 m (was 0.55).
+  - `tests/people_pass.gd`, Givatayim (level 1), 40 s: 13 meetings under 0.5 m before, 6
+    after; the closest 0.29 m before, 0.40 after. None longer than 0.5 s. The test town
+    (level 4): none.
 - **Gotchas found in the trial** still hold:
   - The meshes are `SuperHero_Male` and `Superhero_Female`: match names without case.
   - The female's custom arrays break a rebuild with `add_surface_from_arrays`; `_join`
@@ -4309,6 +4337,21 @@ script ended). Marked for film: the scenario's caption and the opening's story l
 films (22 Nov, the user's PC): the Ashdod getaway 21 s (caught at 17), 1,272 frames at 60
 fps in about 4 min with Ashdod's whole build, 5.5 MB; "A day in Givatayim" (28) 183 s, 10,994
 frames in 4 min 35 s, 27.3 MB at the size cap (~1.2 Mbit/s for 3 minutes: fine on a phone).
+
+**Dragons** (`dragons.gd`, the "dragons" beat; levels 35-36, at the end of LEVELS -- they were
+first put after level 28 and would have renumbered six levels other sessions had added).
+One timeline in game time: watch from the street (`WATCH` 16 s), up among the roofs (to
+`CLOSE` 26), the dive (to `DIVE` 30), the run behind the nearest building (`HIDE` 32), over the
+roof (`OVER` 36.5), away (`END` 42). Its own `Camera3D`, the game's put back at the end. The
+two fly `_orbit` round a middle `AHEAD` 150 m ahead, `HIGH` 58 m up, `RING` 46 m out, closing
+in every 8 s; the red one's dive is two quadratic curves through a point `PASS_UP` 15 m over
+our heads and `PASS_SIDE` 6 m aside (at 6 m up, straight at us, the camera ended up inside
+it). Bodies face their velocity (+X forward), banked into turns; the wings beat about X,
+faster climbing or diving. Fire: `CPUParticles3D` at the jaw, mixed not added (added over a
+bright sky it went white). The viewer stands on the pavement, moved on until nothing solid
+is within 3 m (the first stood behind a road sign that filled the view). Traffic stops
+(`hit`). `tests/scenario.gd LEVEL=35`: PASS -- captions at 0.5/15.5/26/30.8/38 s, fire
+in every clash and the dive; shots every 3 s. Film (`STREETS_BUILD_ALL=1 tools/record_video.sh streets 35 70`): 2,760 frames, 46 s at 60 fps, about 3 minutes of compute, 16.7 MB.
 
 **Scenario ideas** (the user asked for them as the work goes, with grades):
 

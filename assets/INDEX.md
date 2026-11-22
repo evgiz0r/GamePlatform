@@ -204,7 +204,10 @@ aircraft; Kenney has no 3D airplane.
 down the chute) `spring_rider` (a spring horse; 1.6 m long, 1.1 m high, +X its face) `swings` (an A-frame
 swing set, two seats; 4.7 x 1.8 m, 2.5 m high, the bar along Y) `seesaw` (3.4 m along X)
 `climber` (a climbing dome of bars, 3.8 m across, 1.9 m high). `bench` (a park bench: slats, iron ends,
-arms; 1.7 m, sits facing Godot's +Z) `picnic` (a picnic table with its benches, 1.8 m along X). Real
+arms; 1.7 m, sits facing Godot's +Z) `picnic` (a picnic table with its benches, 1.8 m along X) `dragon_body` (a dragon without
+wings, ~22 m nose to tail, facing +X, origin mid-torso; shoulders at Godot (1.2, 1.0, +-1.1))
+`dragon_wing` (its left wing, ~12 m, root at the origin, reaching along Godot -Z: mirror it
+for the right; flap it about X). Real
 size in metres, origin at the ground's middle. Their surfaces are named by role -- `paint`
 `paint2` `paint3` `metal` `wood` `dark` -- so a game can colour them its own way (see
 `tools/blender/kit.py`). Make more, or change one: `tools/blender_model.sh <recipe.py>`

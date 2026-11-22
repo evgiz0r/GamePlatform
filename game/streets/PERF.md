@@ -414,3 +414,15 @@ placeholder in `index.html` before the engine starts; streets' own LIGHT_STRIP_J
 (the main menu) 21 programs in 5 ms of linking (was ~2.85 s: the default material's two lit
 programs, 1.4 s each); the test town loads and draws as before, `__lstrip` 116 skipped, 0
 drawn with. `web_shaders.js`'s never-drawn check should now read 0 from the page's start.
+
+**Shaders after the car (22 Nov 2026).** A cold browser on the home PC, Tel Aviv, ~90 s of
+autodrive after the warm-up, every program linked recorded by material and switches: 59
+programs, 11.5 s, and 23 of them -- 10.5 s, the walls 2.2 s, the ground tone 1.65, the cars
+1.0 each -- the sun's pass with `USE_SUN_SCATTER`. None of the warm-up's had it: the haze
+(fog on, its sun glow, the tone curve) was set by `_retint_city()`, which first ran AFTER the
+warm-up, so the warm-up compiled every shader for a scene without haze and the drive
+compiled them again. Now `_retint_city()` runs once before `_warm_up()` too. Same browser,
+same city: after the car 59 programs / 11.5 s -> 35 / 1.5 s; the warm-up 156 -> 180
+programs and the load no longer (graphics 13.0 s, 6.3 s compiling; the PC was busy). What is
+left after the car: the traffic cars' shader (`m_night, m_plate_*`: 0.53 s + its depth passes
+0.1 s -- the cars spawn after the warm-up), then programs of 100-200 ms.
