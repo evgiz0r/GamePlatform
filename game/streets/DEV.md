@@ -2787,6 +2787,74 @@ rests on the forearms.
     at ~1.03 and 0.98. That is a slight magenta (green ~3-5% low) across the scene, still
     to look at.
 
+## The people (`people.gd`, `people/`, 22 Nov 2026)
+
+Every person in the game is now one of Quaternius' Universal Base Characters (CC0), moving
+with the Universal Animation Library's clips (CC0). `STREETS_OLD_PEOPLE=1` brings back the kit's
+cartoon figures to compare.
+- **How it hooks in.** streets.gd still makes everyone as before, `Actor3D.set_character`
+  then `_humanize`. `_humanize` hands the Actor3D to `people.gd`'s `make()`, which replaces
+  its `model` and `anim` (Actor3D is in shell/, so it is not changed; its `play`/`face` work
+  on what they are given). Every kind of person follows: walkers, chatters, crossers,
+  sitters, waiters, keepers, bathers, crowds.gd's shoppers and joggers, the film's people,
+  and you on foot. The kit's figure is loaded first and thrown away, a small waste to remove
+  later.
+- **What is in `people/`** (3.8 MB, plus a 268 KB `moves.res`):
+  - `body_male`/`body_female` glTF. Their materials have no normal or roughness maps, and
+    their images point at `skin_*.png`, the light skin cut to 1024.
+  - Six hairstyles, `eye.png` and `hair_1/2.png` (512).
+  - `moves.res`: 14 clips, made by `people/make_moves.gd` from the 7.6 MB
+    `UAL1_Standard.glb`, which is not in the repo; it is in the user's Downloads, in the
+    Standard zip.
+- **The game's clip names over the library's** (`_lib`): Run = Jog_Fwd; Walk_Carry = Walk
+  (the library's Push leans into a heavy load, and a pushchair looked shoved); SitDown =
+  Sitting_Idle; Death = Roll. Talkers get a library whose Idle is Idle_Talking: `_talker`
+  swaps it before the clip starts, so the chatters' `_talker` call now comes before their
+  `play`.
+- **Dressed by bone weights** (`_cloth`): spine, clavicle and upper arm (plus the forearm
+  for long sleeves, 30%) make the shirt; pelvis, thigh and calf (calf bare for shorts, a
+  quarter of the men) make the trousers; foot and ball make the shoes; the neck below 1.47
+  body units makes the collar.
+- **Colours** come from `_people_looks` (palette roles), shoes from its belt colours. Skin
+  is the light texture times **a brightness factor only**: the tone's luminance over the
+  texture's, the texture measured at sRGB (0.66, 0.47, 0.34), clamped 0.42-1.3.
+  - Two ways that went wrong: channel by channel, a greyish tone over the texture's tiny
+    linear blue (0.095) tripled the blue, and the women came out grey-blue. Read back from
+    the imported texture at run time, the average came out wrong too.
+- **One mesh, one draw** (`_join`): body, eyes, eyebrows and hair in one surface on the
+  body's Skin. Each extra mesh's bind indices are remapped to the body's by bone name, the 8
+  weights are cut to the 4 strongest, and each vertex's part goes in its colour's red (0
+  skin, 1 shirt, 2 trousers, 3 shoes, 4 eyes, 5 eyebrows, 6 hair). Each body, hair and cut
+  is joined once and shared; each person gets one ShaderMaterial (meta "piece", so
+  `_people_lod` sets its fade).
+- **Build.** `PartSizes` narrows spine_03 to 0.86 for men and 0.93 for women, times
+  0.95-1.06, with the neck given back. The whole figure is then 0.94-1.08 wide.
+- **Things carried** (`_carry`): bones are looked up through `people.gd`'s `bone_for`
+  (Fist.L becomes hand_l, Torso becomes spine_03). The backpack is held upright (spine_03's
+  own axes are not the body's), 0.13 m behind and 0.08 m below it. There is no box: these
+  figures have no carrying walk, so a box carrier gets a bag.
+- **Talking.** The `Talk` bend (the old figures' arms) is skipped: `_talker` swaps in the
+  talking clip.
+- **Cost** (`frame_cost`, Givatayim, against `STREETS_OLD_PEOPLE=1`): draws 418 = 418;
+  triangles +7% (2.05M against 1.92M at quality 3, with shadows 0.90M against 0.77M);
+  frame time the same here (only ratios mean anything on this renderer). Phones not yet
+  measured.
+- **Checked:** people_carry, people_talk, street_people (dog, pram, sitter on the seat,
+  waiter), the playtest.
+- **Still to do:**
+  - The box needs a carrying pose of its own.
+  - The jagged collar edge.
+  - The kit's figure is still loaded first and then dropped.
+  - The film's people keep their places, but have not been looked at against the film.
+- **Gotchas found in the trial** still hold:
+  - The meshes are `SuperHero_Male` and `Superhero_Female`: match names without case.
+  - The female's custom arrays break a rebuild with `add_surface_from_arrays`; `_join`
+    builds new arrays, so this does not bite.
+  - A hairstyle's glTF brings its own copy of the skeleton.
+- **An import gotcha:** Godot imports any `.csv` as a translation table. `tests/marks/*.csv`
+  came out as `*.translation` files and `.csv.import`s. Delete them, or give each csv an
+  `.import` with `importer="keep"`.
+
 ## Sizes against life (`tests/scale_check.gd`, 20 Nov 2026)
 
 The user's sister said the scale felt off; the check measures what the game builds. Vehicles

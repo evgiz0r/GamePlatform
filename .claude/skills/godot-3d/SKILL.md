@@ -449,9 +449,15 @@ else costs programs.)
   without them; 0.16 s without omni, spot and area). A game with no omni, spot or area
   lights can wrap `WebGL2RenderingContext.prototype.shaderSource` to add `#define
   DISABLE_LIGHT_OMNI/SPOT/AREA` to sources that have `#define BASE_PASS` but neither
-  `USE_ADDITIVE_LIGHTING` nor a `DISABLE_LIGHT_OMNI` of their own: the picture cannot change
-  (the code left out loops over no lights) and the load drops ~4x. Install it before the
-  first material is made. The desktop app's built-in browser pane keeps no compiled shaders
+  `USE_ADDITIVE_LIGHTING` nor a `DISABLE_LIGHT_OMNI` of their own (the load drops ~4x) --
+  or, better, swap those sources for an empty placeholder with the same `#version` line
+  (the load drops ~10x: even stripped they cost ~190 ms each). Godot links them, finds no
+  uniforms (locations -1, skipped) and never draws with them; wrap the draw calls to count
+  any draw made with a placeholder program, so the assumption is checked, not trusted.
+  Install it before the first material is made. Parallel compiling
+  (`KHR_parallel_shader_compile`) measured 3.3x on 16 threads, but Godot asks each
+  program's status right after linking it, which serialises them, and Chromium did not
+  reuse a program linked in another context. The desktop app's built-in browser pane keeps no compiled shaders
   between loads, which makes it a cold-load bench on the real GPU -- but keep it on screen:
   hidden or covered, it gets one frame a second, and every staged load step reads as a round
   1000 ms.

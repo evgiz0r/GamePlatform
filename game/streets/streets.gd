@@ -1673,27 +1673,47 @@ const GL_COUNT_JS := """(() => {
 ## game has only the sun. But Chrome/Edge on Windows hand every program to Direct3D's compiler,
 ## and those two cost ~2.4-7.7 s each: 44 of them were ~85% of a cold load (user's PC, 22 Nov
 ## 2026: Givatayim's graphics 63 s; area lights alone 2.45 -> 0.47 s a program, omni + spot +
-## area 0.16 s). Defining the three off in exactly those sources -- the base pass, not
-## additive, no DISABLE_LIGHT_OMNI of its own -- compiles them in a fraction, and the picture
-## cannot change: with no such light the code left out loops over nothing. Cold Givatayim,
-## the same build in the same browser: graphics 63 -> 22 s, the compile calls 63 -> 15.5 s.
+## area 0.16 s). First the three were defined off in those sources (graphics 63 -> 22 s); even
+## so the 42 never-drawn programs were 7.9 s of the 21 s left. Now they are swapped for a
+## placeholder -- the source's own `#version` line and an empty main -- which costs nothing to
+## compile. Picked out exactly: the base pass, not additive, no DISABLE_LIGHT_OMNI of their
+## own (every draw of the base pass has it here: no omni light). Godot still links them, finds
+## no uniforms in them (locations -1, which it skips) and never draws with them. If one ever
+## IS drawn, `used` counts it and the console says so -- that draw would come out empty;
+## `tests/web_shaders.js` / the load line show it (`window.__lstrip.used`).
 ## **Only right while the game has no OmniLight3D, SpotLight3D or AreaLight3D** --
 ## `_no_local_lights` warns at load if one appears; drop LIGHT_STRIP_JS before adding one.
 const LIGHT_STRIP_JS := """(() => {
 	if (window.__lstrip || typeof WebGL2RenderingContext === 'undefined') return;
-	const c = window.__lstrip = { n: 0 };
+	const c = window.__lstrip = { n: 0, used: 0 };
 	const P = WebGL2RenderingContext.prototype;
-	const f = P.shaderSource;
-	const add = '\\n#define DISABLE_LIGHT_OMNI\\n#define DISABLE_LIGHT_SPOT\\n#define DISABLE_LIGHT_AREA\\n';
+	const types = new WeakMap(), fake = new WeakSet(), fakeProg = new WeakSet();
+	const cs = P.createShader, ss = P.shaderSource, as = P.attachShader, up = P.useProgram;
+	P.createShader = function (t) { const s = cs.call(this, t); if (s) types.set(s, t); return s; };
 	P.shaderSource = function (s, src) {
 		if (typeof src === 'string' && src.indexOf('#define BASE_PASS') >= 0
 				&& src.indexOf('#define USE_ADDITIVE_LIGHTING') < 0 && src.indexOf('#define DISABLE_LIGHT_OMNI') < 0) {
-			const i = src.indexOf('\\n');
-			src = src.slice(0, i) + add + src.slice(i + 1);
+			const v = src.slice(0, src.indexOf('\\n'));
+			src = types.get(s) === this.VERTEX_SHADER
+				? v + '\\nvoid main() { gl_Position = vec4(0.0); }\\n'
+				: v + '\\nprecision mediump float;\\nout vec4 frag_color;\\nvoid main() { frag_color = vec4(1.0, 0.0, 1.0, 1.0); }\\n';
+			fake.add(s);
 			c.n += 1;
 		}
-		return f.call(this, s, src);
+		return ss.call(this, s, src);
 	};
+	P.attachShader = function (p, s) { if (fake.has(s)) fakeProg.add(p); return as.call(this, p, s); };
+	let cur = null;
+	P.useProgram = function (p) { cur = p; return up.call(this, p); };
+	for (const name of ['drawArrays', 'drawElements', 'drawArraysInstanced', 'drawElementsInstanced', 'drawRangeElements']) {
+		const d = P[name];
+		P[name] = function (...a) {
+			if (cur && fakeProg.has(cur)) {
+				if (c.used++ === 0) console.warn('[streets] LIGHT_STRIP_JS: a placeholder program was drawn with');
+			}
+			return d.apply(this, a);
+		};
+	}
 })()"""
 
 ## warn if a light the strip above assumes away is in the scene
@@ -18556,9 +18576,9 @@ func _spawn_people() -> void:
 		a.set_character(PEOPLE[(i + 2) % PEOPLE.size()], _people_rng.randf_range(ADULT_LO, ADULT_HI))
 		_humanize(a, hash(a.get_instance_id()))
 		_people_lod(a)
+		_talker(a, hash(_city_name) * 13 + i)   # (before the clip starts: it may change the clips)
 		a.play("Idle", true, _people_rng.randf_range(0.8, 1.1))
 		_carry(a, _what_carried(hash(_city_name) * 13 + i, false), hash(_city_name) * 13 + i)
-		_talker(a, hash(_city_name) * 13 + i)
 		a.visible = false
 		_chatters.append({"actor": a, "spot": Vector2.INF})
 	_seat_chatters()
@@ -19653,8 +19673,18 @@ const PART_SIZES := {
 	"Abdomen": Vector3(1.0, 1.06, 1.0),
 }
 
+var _ppl: RefCounted = null          ## people.gd: the people as they are now (Quaternius' base characters, dressed)
+
+func _people_maker() -> RefCounted:
+	if _ppl == null:
+		_ppl = load("res://game/streets/people.gd").new(self)
+	return _ppl
+
 func _humanize(a: Actor3D, seed: int) -> void:
 	if a == null or a.model == null:
+		return
+	if _people_maker().on():   # (STREETS_OLD_PEOPLE=1: the kit's figures, as before, to compare)
+		_ppl.make(a, seed)
 		return
 	var sks := a.model.find_children("*", "Skeleton3D", true, false)
 	if not sks.is_empty():
@@ -19744,6 +19774,11 @@ func _talker(a: Actor3D, seed: int) -> void:
 	if sks.is_empty():
 		return
 	var sk: Skeleton3D = sks[0]
+	if sk.find_bone("UpperArm.L") < 0 and a.anim != null:
+		# people.gd's figures have the library's own talking idle: no bending needed
+		a.anim.remove_animation_library("")
+		a.anim.add_animation_library("", _people_maker()._lib("talk"))
+		return
 	var tk := Talk.new()
 	for sd: String in ["L", "R"]:
 		var u := sk.find_bone("UpperArm." + sd)
@@ -19827,6 +19862,8 @@ func _bone_holder(a: Actor3D, bone: String, upright: bool) -> Node3D:
 	var sk: Skeleton3D = sks[0]
 	var bi := sk.find_bone(bone)
 	if bi < 0:
+		bi = sk.find_bone(_people_maker().bone_for(bone))   # (the same place on people.gd's figures)
+	if bi < 0:
 		return null
 	var held: Held = null
 	for m in sk.get_children():
@@ -19845,6 +19882,11 @@ func _bone_holder(a: Actor3D, bone: String, upright: bool) -> Node3D:
 func _carry(a: Actor3D, what: String, seed: int) -> void:
 	if what == "" or a == null or a.model == null:
 		return
+	# people.gd's figures: no carrying walk (a box in arms swinging by the sides): a bag
+	# instead; the backpack upright (their chest bone's own axes are not the body's)
+	var newer := not a.model.find_children("*", "Skeleton3D", true, false).is_empty() 		and (a.model.find_children("*", "Skeleton3D", true, false)[0] as Skeleton3D).find_bone("spine_03") >= 0
+	if newer and what == "box":
+		what = "bag"
 	var ink := Palette.col("ink")
 	var bg := Palette.col("bg")
 	var alt := Palette.col("bg_alt")
@@ -19870,12 +19912,14 @@ func _carry(a: Actor3D, what: String, seed: int) -> void:
 				_carry_mesh(h, [[Vector3(0.1, 0.2, 0.27), Vector3(0, -0.15, 0), c],
 					[Vector3(0.015, 0.06, 0.12), Vector3(0, -0.03, 0), c.darkened(0.3)]])
 		"backpack":
-			var h := _bone_holder(a, "Torso", false)
+			var h := _bone_holder(a, "Torso", newer)
 			if h == null:
 				return
 			var c: Color = dark[rng.randi() % dark.size()]
-			_carry_mesh(h, [[Vector3(0.3, 0.4, 0.15), Vector3(0, 0.06, -0.165), c],
-				[Vector3(0.24, 0.16, 0.06), Vector3(0, -0.04, -0.26), c.darkened(0.2)]])   # (and its front pocket)
+			var z := -0.13 if newer else -0.165
+			var y := -0.08 if newer else 0.06
+			_carry_mesh(h, [[Vector3(0.3, 0.4, 0.15), Vector3(0, y, z), c],
+				[Vector3(0.24, 0.16, 0.06), Vector3(0, y - 0.1, z - 0.095), c.darkened(0.2)]])   # (and its front pocket)
 		"box":   # a cardboard box on the forearms, the hands under its front
 			var h := _bone_holder(a, "Torso", false)
 			if h == null:
