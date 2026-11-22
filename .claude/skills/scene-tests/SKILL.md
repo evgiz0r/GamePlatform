@@ -54,8 +54,12 @@ A game's `tests/run.sh <test> [level]` wraps that line (see an existing one).
 ## Ways in
 
 - **Simulate, don't sleep.** `for f in range(60 * 30): await physics_frame` runs 30 s of game
-  time however slow the machine is; `create_timer` waits wall time and the game may do far
-  less in it on a slow box.
+  time however slow the machine is. `create_timer` is neither game time nor wall time you can
+  count on: it adds each frame's step, and Godot caps a frame's step at 8 physics ticks (0.13
+  s). Past 7.5 fps it falls behind the clock -- under the software renderer in a browser
+  (~2.5 s a frame) a 25 s timer took eight minutes, and a test waiting on it saw nothing
+  happen. To wait by the clock, loop `await process_frame` until `Time.get_ticks_msec()`
+  passes the mark.
 - **Freeze for stills.** `g.set_physics_process(false)` and disconnect the game's per-frame
   function (`process_frame.disconnect(g._frame)`), then place the camera with
   `g.look_from(eye, target)` and snap. Unfrozen, the game's own camera moves it back.

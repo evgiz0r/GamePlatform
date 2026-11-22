@@ -18045,10 +18045,14 @@ static func _user_arg(prefix: String) -> String:
 	return ""
 
 func _quality_walk() -> void:
+	# (by the clock, not a game timer: a frame advances game time at most 8 ticks, 0.13 s, and
+	# the container's software renderer takes ~2.5 s a frame -- 25 s of timer was 8 minutes)
 	for q: int in QWALK_LEVELS:
-		await get_tree().create_timer(_qwalk).timeout
-		if not is_inside_tree():
-			return
+		var at := Time.get_ticks_msec() + int(_qwalk * 1000.0)
+		while Time.get_ticks_msec() < at:
+			await get_tree().process_frame
+			if not is_inside_tree():
+				return
 		print("[streets] quality walk: to %d" % q)
 		_set_quality(q)
 
