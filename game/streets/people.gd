@@ -52,6 +52,28 @@ void fragment() {
 }
 """
 
+## Looking at a phone: the right hand up in front of the chest, the head bowed over it, on
+## top of whatever the clip does (walking, standing). The axes were measured on these bones
+## (tests: turning each 0.8 rad and reading where the hand and the head's up went): the upper
+## arm and the forearm about their x bring the hand forward and up, +z on the forearm brings it
+## in; the head about its x drops the chin.
+class Phone extends SkeletonModifier3D:
+	var upper := -1
+	var fore := -1
+	var head := -1
+	var t := 0.0
+
+	func _process_modification_with_delta(delta: float) -> void:
+		var sk := get_skeleton()
+		if sk == null or upper < 0:
+			return
+		t += delta
+		var glance := 0.06 * sin(t * 0.7)   # (now and then a little up from it)
+		# (0.45 and 1.55 brought the hand to the mouth: eating, or a call, not reading)
+		sk.set_bone_pose_rotation(upper, sk.get_bone_pose_rotation(upper) * Quaternion(Vector3(1, 0, 0), 0.22))
+		sk.set_bone_pose_rotation(fore, sk.get_bone_pose_rotation(fore) * Quaternion(Vector3(1, 0, 0.45).normalized(), 1.15))
+		sk.set_bone_pose_rotation(head, sk.get_bone_pose_rotation(head) * Quaternion(Vector3(1, 0, 0), 0.38 + glance))
+
 var g: Node
 var _scenes := {}        ## path -> PackedScene
 var _joined := {}        ## "body|hair|sleeves|shorts" -> [ArrayMesh, Skin, hair texture]
@@ -82,6 +104,7 @@ func _lib(kind: String) -> AnimationLibrary:
 	var alias := {"Run": "Jog_Fwd", "Walk_Carry": "Walk", "SitDown": "Sitting_Idle", "Death": "Roll"}
 	if kind == "talk":
 		alias["Idle"] = "Idle_Talking"
+		alias["SitDown"] = "Sitting_Talking"   # (a cafe's people seated at their table, talking)
 	for k: String in alias:
 		if out.has_animation(k):
 			out.remove_animation(k)
@@ -108,13 +131,22 @@ func make(a: Actor3D, seed: int) -> void:
 	ap.root_node = NodePath("..")
 	ap.add_animation_library("", _lib(""))
 	a.anim = ap
+	a._clip = ""   # (a person made again, as a child, would keep the old clip's name: play() skips a clip it thinks is on)
 	# a street's build, not a superhero's: narrower shoulders and chest (the neck given back,
 	# so the head keeps its shape), broader or slighter from person to person
+	# who: a child (asked for by the caller, set_meta("child")), an older person (one in seven
+	# grown-ups: grey hair, and streets.gd slows their walk), or anyone
+	var child := a.has_meta("child")
+	var old := not child and rng.randf() < 0.14
+	if old:
+		a.set_meta("old", true)
 	var sizes = g.PartSizes.new()
-	var nar := (0.86 if not female else 0.93) * rng.randf_range(0.95, 1.06)
+	var nar := (0.86 if not female else 0.93) * rng.randf_range(0.95, 1.06) * (0.92 if child else 1.0)
 	sizes.bones[sk.find_bone("spine_03")] = Vector3(nar, 1.0, 0.9)
 	sizes.bones[sk.find_bone("neck_01")] = Vector3(1.0 / nar, 1.0, 1.0 / 0.9)
 	sizes.bones[sk.find_bone("spine_02")] = Vector3(lerpf(nar, 1.0, 0.5), 1.0, 0.95)
+	if child:   # a child's head is big for its body: the same body, smaller, the head kept larger
+		sizes.bones[sk.find_bone("Head")] = Vector3.ONE * 1.22
 	sk.add_child(sizes)
 	var wd := rng.randf_range(0.94, 1.08)
 	inst.scale *= Vector3(wd, 1.0, wd)
@@ -124,9 +156,16 @@ func make(a: Actor3D, seed: int) -> void:
 	for k: String in looks:
 		pick[k] = looks[k][rng.randi() % (looks[k] as Array).size()]
 	var hairs: Array = HAIR_F if female else HAIR_M
+	if child:
+		hairs = ["hair_buns", "hair_long", "hair_buzzedfemale"] if female else ["hair_simpleparted", "hair_buzzed"]
+	elif old and not female:
+		hairs = ["hair_buzzed", "", "hair_simpleparted"]
 	var hair: String = hairs[rng.randi() % hairs.size()]
-	var long_sleeves := rng.randf() < 0.3
-	var shorts := not female and rng.randf() < 0.25
+	var long_sleeves := rng.randf() < (0.45 if old else 0.3)
+	# shorts for a quarter of the men and most boys; for women the same cut is a skirt (hips and
+	# thighs in its colour, the calves bare), a third of them, some of those a dress
+	var shorts := rng.randf() < (0.6 if child else (0.25 if not female else 0.34))
+	var dress := female and shorts and rng.randf() < 0.35
 	var j := _join(inst, sk, body, hair, long_sleeves, shorts)
 	if j.is_empty():
 		return
@@ -156,6 +195,10 @@ func make(a: Actor3D, seed: int) -> void:
 	var k := clampf(tone.get_luminance() / avg.get_luminance(), 0.42, 1.3)
 	var f := Vector4(k, k, k, 1.0)
 	var hair_c: Color = pick["hair"]
+	if old:   # grey to white, from the palette's light and dark (greyed: no tint in it)
+		hair_c = g._greyed(Palette.col("ink").lerp(Palette.col("bg"), rng.randf_range(0.1, 0.45)), 1.0)
+	if dress:
+		pick["pants"] = pick["shirt"]
 	var shoes: Color = (pick["belt"] as Color).darkened(0.2)
 	var cols: Array[Vector4] = [f]
 	for c: Color in [pick["shirt"], pick["pants"], shoes, Color.WHITE, hair_c.darkened(0.15), hair_c.lightened(0.25)]:
@@ -295,3 +338,26 @@ func _cloth(bone: String, y: float, long_sleeves: bool, shorts: bool) -> int:
 ## the bones things are held at, on these figures: a hand, the chest
 static func bone_for(where: String) -> String:
 	return {"Fist.L": "hand_l", "Fist.R": "hand_r", "Torso": "spine_03"}.get(where, where)
+
+## someone looking at their phone (Phone): the pose, and a phone in the right hand
+func phone(a: Actor3D) -> void:
+	if a == null or a.model == null:
+		return
+	var sks := a.model.find_children("*", "Skeleton3D", true, false)
+	if sks.is_empty():
+		return
+	var sk: Skeleton3D = sks[0]
+	var ph := Phone.new()
+	ph.upper = sk.find_bone("upperarm_r")
+	ph.fore = sk.find_bone("lowerarm_r")
+	ph.head = sk.find_bone("Head")
+	if ph.upper < 0 or ph.fore < 0 or ph.head < 0:
+		return
+	sk.add_child(ph)   # (after PartSizes and before Held: the phone goes where the hand ends up)
+	var h: Node3D = g._bone_holder(a, "hand_r", true)
+	if h == null:
+		return
+	# a dark slab across the palm, its face tipped up toward the eyes
+	g._carry_mesh(h, [[Vector3(0.075, 0.012, 0.15), Vector3(0.02, 0.0, 0.06), g._greyed(Palette.col("bg"), 0.9)],
+		[Vector3(0.065, 0.002, 0.13), Vector3(0.02, 0.007, 0.06), g._greyed(Palette.col("ink").lerp(Palette.col("player"), 0.3), 0.5)]])   # (its lit screen)
+	a.set_meta("phone", true)

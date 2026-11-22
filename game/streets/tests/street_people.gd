@@ -4,7 +4,7 @@ extends SceneTree
 ## benches, people waiting at the bus stops -- and a look at the nearest of each from a few
 ## metres (shots sp_*.png in $OUT), frozen. Good: a dog on a lead a step ahead of its walker,
 ## a pushchair in front of the hands, a sitter on the seat (not in the air, not in the bench),
-## a waiter at the stop facing the road.
+## a waiter at the stop facing the road, a cafe's chatter on its chair at the table (sp_chat).
 var g: Node
 
 func _initialize() -> void:
@@ -59,7 +59,7 @@ func _run() -> void:
 		counts["dog"], counts["pram"], sat, waiting, g._bench_spots.size()])
 	# each kind shot once one is within 80 m of the car (the dogs and pushchairs, like the
 	# people, are not drawn past PEOPLE_SEEN), driving on up to a minute for it
-	for k: String in ["dog", "pram", "sit", "wait"]:
+	for k: String in ["dog", "pram", "sit", "wait", "chat"]:
 		var a: Node3D = null
 		var waited := 0.0
 		while waited < 60.0:
@@ -80,7 +80,7 @@ func _run() -> void:
 	quit(0)
 
 func _near_one(k: String) -> Node3D:
-	var lists := {"dog": g._walkers, "pram": g._walkers, "sit": g._sitters, "wait": g._waiters}
+	var lists := {"dog": g._walkers, "pram": g._walkers, "sit": g._sitters, "wait": g._waiters, "chat": g._chatters}
 	for w: Dictionary in lists[k]:
 		var a: Node3D = w["actor"]
 		if (k != "dog" and k != "pram") or w.has(k):

@@ -1654,8 +1654,9 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   low-poly characters are the limit now. Done: builds varied, and things carried (shopping
   bags, handbags, backpacks, a box). Hands while talking: done. Done: every person is now one of Quaternius'
   free Universal Base Characters with the Universal Animation Library's moves, dressed in
-  code (DEV.md "The people"). Still to do: a pose for carrying a box. Also: looking at a phone; reacting
-  to the car (the line above).
+  code (DEV.md "The people"). Also done: skirts and dresses, older people,
+  children walking with a grown-up, cafe groups seated at their tables talking, people on
+  their phones. Still to do: a pose for carrying a box. Also: reacting to the car (the line above).
 - A guided tour of the city: "a virtual tour in a city. like a guide, where we stop and
   look and explain. the more real it gets the more the tour looks nicer". A guide leads you
   along a route on foot (or driving), stops at the sights, turns your view to each and

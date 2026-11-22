@@ -13003,6 +13003,7 @@ func _terrace(pos: Vector2, n: Vector2, along: Vector2, umb: Color, t: Dictionar
 			var bk := ch + along * 0.2 * sgn
 			t["back"].append(Transform3D(b, Vector3(bk.x, gy + 0.68, bk.y)))
 		_table_spots.append(c)
+		_table_along[c] = along   # (its two chairs: 0.62 m either way along this, facing it)
 		if umbrellas:
 			t["pole"].append(Transform3D(Basis(), Vector3(c.x, gy + 1.2, c.y)))
 			(shades["xf"] as Array).append(Transform3D(Basis(), Vector3(c.x, gy + 2.35, c.y)))
@@ -18543,18 +18544,29 @@ func _spawn_people() -> void:
 			w["pram"] = true
 			w["carry"] = true
 			w["speed"] = _people_rng.randf_range(1.0, 1.3)
+		if a.has_meta("old"):   # (people.gd: an older person walks slower)
+			w["speed"] = float(w["speed"]) * 0.72
 		var cs := hash(_city_name) * 31 + i
 		if w["carry"] and not w.has("pram") and posmod(cs, 3) != 0:
 			w["carry"] = false
 			_carry(a, "bag", cs)
 		elif not w.has("pram") and not w.has("dog"):
-			_carry(a, _what_carried(cs, w["carry"]), cs)
+			var wc := _what_carried(cs, w["carry"])
+			_carry(a, wc, cs)
+			if wc == "" and posmod(cs * 7, 100) < 14 and _people_maker().on():
+				_ppl.phone(a)   # (one walker in seven with nothing in their hands: on their phone)
 		# two walking together, side by side (about four in ten people on a street are with
 		# someone): the second keeps to the first's line, pace and turns (_walk_beside)
 		var lead_i := i - 1
 		if i % 4 == 1 and not w.has("dog") and not w.has("pram") and not (_walkers[lead_i] as Dictionary).has("dog") \
 				and not (_walkers[lead_i] as Dictionary).has("pram"):
 			var lw: Dictionary = _walkers[lead_i]
+			if _people_maker().on() and posmod(hash(_city_name) + i, 3) == 0:
+				# one pair in three a grown-up and a child (made again, smaller: people.gd)
+				a.height = 1.05 + 0.3 * float(posmod(hash(_city_name) + i * 7, 100)) / 100.0
+				a.set_meta("child", true)
+				_humanize(a, hash(a.get_instance_id()) + 5)
+				_people_lod(a)
 			w["with"] = lead_i
 			w["side"] = 1.0 if _people_rng.randf() < 0.5 else -1.0
 			w["speed"] = lw["speed"]
@@ -18587,7 +18599,10 @@ func _spawn_people() -> void:
 			_sitters.append({"actor": a, "spot": Vector2.INF})
 		elif i < SITTERS + WAITERS:
 			a.play("Idle", true, _people_rng.randf_range(0.7, 1.0))
-			_carry(a, _what_carried(hash(_city_name) * 17 + i, false), hash(_city_name) * 17 + i)
+			var wk := _what_carried(hash(_city_name) * 17 + i, false)
+			_carry(a, wk, hash(_city_name) * 17 + i)
+			if wk == "" and posmod(hash(_city_name) * 17 + i * 3, 100) < 40 and _people_maker().on():
+				_ppl.phone(a)   # (waiting for the bus: many on their phones)
 			_waiters.append({"actor": a, "spot": Vector2.INF})
 		else:
 			a.play("Idle", true, _people_rng.randf_range(0.6, 0.9))
@@ -18997,13 +19012,26 @@ func _seat_chatters() -> void:
 			continue
 		var t: Vector2 = free_spots.pop_front()
 		c["spot"] = t
+		var al: Vector2 = _table_along.get(t, Vector2.ZERO)
+		if _people_maker().on() and al != Vector2.ZERO and i % 4 != 3:
+			# on one of the table's chairs, facing it, talking (three in four; the rest stand by it)
+			var sgn := 1.0 if i % 2 == 0 else -1.0
+			var face := -al * sgn
+			var sq := t + al * 0.62 * sgn + face * 0.42   # (the sitting pose's hips over the seat: as on a bench)
+			a.position = Vector3(sq.x, _h(sq), sq.y)
+			a.face(Vector3(face.x, 0, face.y))
+			a.play("SitDown", true)
+			a.visible = true
+			continue
 		var off := Vector2(cos(i * 2.4), sin(i * 2.4)) * 0.95
 		var q := t + off
 		a.position = Vector3(q.x, _walk_y(q), q.y)
 		a.face(Vector3(-off.x, 0, -off.y))
+		a.play("Idle", true)
 		a.visible = true
 
 var _chatters_sat := false
+var _table_along := {}               ## a cafe table's spot -> the way its two chairs stand from it
 
 ## ---- more kinds of people -----------------------------------------------------------------
 ## Not only walkers and people at the cafe tables: two in eighteen walkers have a dog on a
@@ -19278,9 +19306,12 @@ func _place_still(list: Array, spots: Array, how: String) -> void:
 			var sq := q + face * 0.42   # (the origin is at the feet: the hips sit ~0.4 m behind them)
 			a.position = Vector3(sq.x, _h(sq), sq.y)
 			a.face(Vector3(face.x, 0, face.y))
-			a.play("SitDown", false)
-			if a.anim != null:
-				a.anim.seek(a.anim.current_animation_length, true)   # (sat already)
+			if _people_maker().on():
+				a.play("SitDown", true)   # (people.gd's sitting is a loop, not a clip that ends sat)
+			else:
+				a.play("SitDown", false)
+				if a.anim != null:
+					a.anim.seek(a.anim.current_animation_length, true)   # (sat already)
 		else:
 			a.position = Vector3(q.x, _walk_y(q), q.y)
 			a.face(Vector3(face.x, 0, face.y))

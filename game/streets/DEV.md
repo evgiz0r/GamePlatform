@@ -2832,10 +2832,39 @@ cartoon figures to compare.
 - **Checked:** people_carry, people_talk, street_people (dog, pram, sitter on the seat,
   waiter), the playtest.
 - **Still to do:**
-  - The box needs a carrying pose of its own.
+  - The box needs a carrying pose of its own (the Phone modifier's way of bending the arms
+    would do it).
   - The jagged collar edge.
   - The kit's figure is still loaded first and then dropped.
   - The film's people keep their places, but have not been looked at against the film.
+- **More kinds of people** (22 Nov, later):
+  - **Skirts and dresses.** For women the "shorts" cut is a skirt: hips and thighs in its
+    colour, the calves bare. A third of the women wear one, and 35% of those a dress (top
+    and skirt one colour).
+  - **Older people.** One grown-up in seven: grey to white hair, greyed from the palette's
+    ink and bg; buzzed, bald or parted for men; more long sleeves. `a.set_meta("old")`, and
+    the walkers' code slows them to 0.72.
+  - **Children.** One walking pair in three becomes a grown-up with a child. The second
+    walker is made again by `_humanize` at 1.05-1.35 m with `set_meta("child")`: Head 1.22
+    in PartSizes, a slimmer chest, children's hair, shorts for 60%.
+    - `make()` clears `a._clip`: a person made again kept the old clip's name, and
+      `Actor3D.play` skips a clip it thinks is already on.
+- **Cafe groups seated.** `_seat_chatters` puts three chatters in four on one of their
+  table's chairs: `_table_along` holds each table's chair line, the chairs 0.62 m out,
+  facing the table. Hips sit over the seat as on a bench, at +0.42 along the facing, and
+  they play SitDown, which the talkers' library maps to Sitting_Talking. The fourth stands
+  by the table. Bench sitters now loop SitDown (Sitting_Idle) rather than seeking to the end
+  of a clip that sits down. street_people shoots one (`sp_chat`).
+- **On the phone** (`people.gd` `phone()`, the `Phone` modifier): the right hand up in front
+  of the chest, the head bowed 0.38 with a slow glance, a dark phone with a lit screen in
+  the hand (`_bone_holder` hand_r, upright).
+  - Measured axes on these bones: upper arm and forearm about +x bring the hand forward and
+    up, +z on the forearm brings it in, the Head about +x drops the chin.
+  - Settled amounts: upper arm 0.22, forearm 1.15 about (1, 0, 0.45). 0.45 and 1.55 put
+    the hand at the mouth.
+  - Who: one walker in seven with nothing in their hands, and 40% of the people waiting at
+    stops.
+  - `people_carry`'s last person is on the phone, and its sixth is a child.
 - **Gotchas found in the trial** still hold:
   - The meshes are `SuperHero_Male` and `Superhero_Female`: match names without case.
   - The female's custom arrays break a rebuild with `add_surface_from_arrays`; `_join`
