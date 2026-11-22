@@ -341,7 +341,14 @@ is rarely the one you would guess. What cost the most, in order, last time one d
   that lasts.** Pausing it "while the world still builds in the background" sounds fair, but
   a slow machine is exactly where that build takes longest: a laptop at 7 fps stood at 8% of
   the build after five minutes -- most of an hour to go -- and the ladder never ran once.
-  Leave out the short catch-up round the player, not the long tail.
+  Leave out the short catch-up round the player, not the long tail. **And give the lowest
+  levels something that lowers the draw count.** MSAA, 3D resolution and shadow reach are
+  pixels: a browser held back by its CPU (each draw call ~0.1 ms on a slow laptop: WebGL's
+  checks, ANGLE, the engine in wasm) gains nothing from them -- the bottom level drew 3% fewer
+  calls than the top. Scaling every long draw range (`visibility_range_end`, and `_begin` of
+  a far version by as much, so the two still meet) and thickening the fog by the same factor
+  cut a quarter of the draws with no shader changed. Keep each node's own ranges in its meta,
+  and catch what is built later by the world's child count.
 - **Reading a frame that runs several physics ticks.** At 60 ticks a second the script's
   work per real second is fixed whatever the frame rate, so a slow frame does not dilute it:
   frame time = drawing / (1 - the script's share of each second). A script that eats half of

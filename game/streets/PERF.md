@@ -157,9 +157,12 @@ All in `DEV.md`; search for the bold lead-in.
 2. **The script on the browser's one thread** -- 7.9 ms on 5928bd1 (12.9 on d9b49f2), 2.5
    ticks a frame; ~3.5-4 ms a tick natively in both Givatayim and Tel Aviv. Building is
    the biggest part while the rest of the city goes up; the minimap is Tel Aviv's 0.7-0.9.
-3. **Draws** -- 500-800, and no quality level lowers them. A work laptop (Intel graphics,
-   22 Nov, below) spent 68.5 ms a frame drawing them -- under 15 fps with no script at all;
-   the drawing half there scales with the CPU, so fewer draws, not fewer pixels.
+3. **Draws** -- 500-800. A work laptop (Intel graphics, 22 Nov, below) spent 68.5 ms a frame
+   drawing them -- under 15 fps with no script at all; the drawing half there scales with
+   the CPU, so fewer draws, not fewer pixels. Since 22 Nov levels 1 and 0 lower them (draw
+   ranges x0.75 / x0.5, the haze thickened to match): quality 0 is 24-29% fewer draws than 2
+   (test town 616 -> 467, Givatayim 575 -> 410); before, it was 3%. What is left is mostly
+   near the car: kits (135 of the test town's 614), trees (84), batches (56).
 4. **The city file** -- Tel Aviv 1.5 s of it still unbaked (widths, buildings cut, divided
    roads: ~1 s).
 5. **Video memory** -- Tel Aviv 365 MB; phones.
@@ -367,3 +370,16 @@ One perf-view screenshot, mailed: Givatayim at Katznelson, autodrive on, 317 s i
 - The same run: `CHECK never-drawn lit programs compiled: 4 (want 0) FAIL` on the test town --
   likely the check's first run in a browser (written on the home PC, which has no
   Playwright). Not looked into yet; 4 programs, ~0.5-1.5 s on a cold Windows browser.
+
+**Levels that cut draws (22 Nov 2026).** The user: 10-20 fps after loading in the test town on
+that laptop, "fps is the big blocker". `tests/draw_budget.gd` at the test town's start, quality
+2, 614 draws: every range of 150 m+ x0.7 -58, x0.5 -130, x0.35 -187; old quality 0 -21; the
+depth pre-pass setting switched at runtime -2 (no effect); the sun's shadows off -72 (and a
+recompile of everything: not a level); by kind, hidden: kits -135 (1144 multimeshes), trees
+-84, batches -56, people -35, other meshes -38, cars -31, shadows only from walls/roofs/
+batches -59. So levels 1 and 0 now scale ranges (x0.75, x0.5) and thicken the haze by as
+much: quality 0 616 -> 467 (test town), 575 -> 410 (Givatayim), and `tests/web_shaders.js`
+QWALK confirms a step compiles nothing. The ladder keeps the level that runs best, so a
+machine whose draws hold it back (the laptop) should now settle at 0; one held back by
+pixels or the script loses nothing. Expected on that laptop, if a draw is ~0.1 ms: 15-20 ms
+off its 70-86 ms of drawing. **Not yet confirmed on the laptop.**
