@@ -2466,7 +2466,8 @@ Both made by `data_tools/make_showcase.py` (`showroom` | `trick_road`, both with
 needs numpy: `uv run -q --with numpy python ...`), city files marked `"made_up": 1` (no OSM
 credit), loaded like any city. The user: "a small scene with many of the objects, and i am just
 walking around looking at the models; a small trick road where the car has ramps tunnels jumps
-falls".
+falls". `city_check` LEVEL=40 is 0 (with the turbine guard taken out it finds the tower,
+6.3 m into the road: the check for that family, widened from the posts).
 
 - **The showroom** (level 39, `cities/showroom.json` + `cities/details/showroom.json`): a paved
   square (`plaza` area) ringed by a 30 km/h street and eleven blocks; five rows along x --
@@ -2513,13 +2514,14 @@ falls".
   grid step) and across the grid at 28 degrees the ground came out in jagged shards.
 - **`tests/trick_road.gd`** (`LEVEL=40`; headless ~1.5 min for the numbers, `run.sh` for stills
   on the way into each piece and in the air): good is two take-offs -- the drop ~9 m (0.7-0.85
-  s), the jump 20-31 m (1.25-2.3 s) at 50-62 km/h -- landings soft, "arrived" in 1:26-1:35. The
+  s), the jump 20-31 m (1.25-2.3 s) at 50-62 km/h -- landings soft (the drop's at 4.1 m/s, the crash line 5), "arrived" in 1:19-1:35. The
   car goes ~45-55 km/h most of the way: the loop's curves (~140 m radius), not the limit.
 - **What the game had to learn for them**: a level can be its own test drive (`"test_drive":
   <route id>`: `start()` takes that route when the config names none, in the "rules" style, and
   the Cities list leaves it off); a place can have no traffic (`"traffic": false`, traffic.gd
-  `_spawn`: a bus and cars had shared the jump and the ramps); the test drives list takes
-  twelve rows (23 apart, 22 high, past eleven). And a bug any map with heights but no boundary
+  `_spawn`: a bus and cars had shared the jump and the ramps); the test drives list goes
+  in two columns past eleven rows (main's thirteen -- Leiden's and Annecy's added -- had run
+  off the screen; fourteen with this one). And a bug any map with heights but no boundary
   would hit: `_build_turbines` found no ground outside the town on any bearing and put the wind
   turbine at the map's middle -- on the trick road, in the bridge's lanes. It builds none now
   when no crest is found.
