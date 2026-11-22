@@ -180,15 +180,82 @@ whole new copy each time a file changes, so it is now one file per town. Leiden'
   - Street plates are still the Israeli style.
   - The car mix is still Israel's.
   - Not done yet:
-    - Dutch blue street plates, bikes, trams, the RDW register for the car mix;
-    - the canal houses' stepped and bell gables;
+    - trams, the RDW register for the car mix;
+    - bikes at BGT's real racks (the made-up racks and bikes are there already);
     - roofs on L-shaped footprints (each wing its own rectangle).
+- **Canal-house gables (22 Nov, later).** Where a Dutch house's roof runs back from a
+  public street or quay within 5 m, and the house is 9 m wide or less, its street end is a
+  shaped gable: a brick wall standing above the roof's outline, with the roof tucked
+  behind it (`_dutch_gable`). The shape goes by the year built (OSM has it for 99% here):
+  - before 1650: mostly stepped;
+  - 1650-1800: bell, neck or stepped;
+  - the 19th century: sometimes a neck gable;
+  - later: the plain triangle.
+
+  Leiden has 1,846 (`gables_shaped` in the city event). Many Delft roofs run along the
+  street rather than back from it, so it has fewer.
+- **Canals (22 Nov, later): they were all missing.** Three causes, each fixed in the
+  baker or the game for every town:
+  1. The canals are water multipolygons with islands, which the baker did not read (now
+     keyholes: `keyhole_ring`).
+  2. The ground was the worldwide surface model, with roofs as hills (now AHN, `ahn_grid`,
+     automatic inside the Netherlands).
+  3. A 10-20 m canal cannot be dug into a 12 m grid. Now the ground is cut away over it
+     (`cn` areas, decks holes, 100 m pieces with a spatial index in `cut_tri`), the water
+     is held a metre under the quays, and there are stone quay walls (`_quays`).
+
+  Water's colour is now the photo sky's, darkened. The palette's "player" had made it
+  khaki under "sunset", in every town.
+- **Street details:**
+  - street plates white on blue (`_street_sign_mesh`);
+  - sign blue's hue pinned for every town (it was brown under "sunset");
+  - cycle paths in red asphalt (the `cyclepath` tone, Dutch towns only).
+- **Checks after all of it:**
+  - `city_check`: Delft and Leiden all 0 but the 1 m² island point;
+  - road lean: Delft 0.3%, Leiden 0.1%;
+  - the "world" stage of loading: Delft 0.41 s, Leiden 0.40 s.
 - **What the BGT has that the game does not use yet:**
   - road parts as polygons (`wegdeel`: carriageway, footway, cycle path, with their
     paving), the real kerbs;
   - bike racks, benches, bollards (`straatmeubilair`);
   - sign and signal poles (`paal`);
   - bridges (`overbruggingsdeel`), water (`waterdeel`).
+
+**France (Annecy, level 24, 22 Nov 2026).** For the next French town:
+
+```
+python game/streets/data_tools/fr_bdtopo.py S,W,N,E <town>   # BD TOPO heights, ridge, storeys, year: ~11 s for 3.8k
+python tools/osm_city.py --place "<Town>" --name "<Town>" --bbox S,W,N,E --margin 150 --bare-ground --out game/streets/cities/<town>.json
+```
+
+Then add a line at the end of `LEVELS` with `"look": "north", "build": "fr"`.
+- **BD TOPO** (IGN, Licence Ouverte): the Géoplateforme's WFS (`data.geopf.fr/wfs/ows`,
+  `BDTOPO_V3:batiment`) answers from this computer with no key. Its bbox is lon,lat
+  first: lat,lon order returns nothing, with no error. Its fields:
+  - `hauteur`: about the eaves;
+  - `altitude_maximale_toit` less the ground: the ridge, kept when it is a metre or more
+    above the eaves;
+  - `nombre_d_etages`: storeys, without the ground floor;
+  - `date_d_apparition`: the year.
+
+  Its outlines sat 1.2 m off OSM's (the survey's shift found +1.0, -0.7). The baker reads
+  it as the survey `fr_bdtopo` (files `fr_bdtopo_<town>.geojson`).
+- **`"build": "fr"`** shares the measured pitched roofs with the Dutch towns
+  (`_pitched_build`). Its walls are render, not brick: white and cream, ochre-yellow,
+  peach, a pastel, grey. There are no clapboard grooves, although the look is `"north"`
+  (for the trees), and no canal gables.
+- **Annecy's first run:**
+  - loaded in 2.0 s headless; 3,822 buildings, 597 with guessed heights; 1.4 MB;
+  - the lake and canals came in as water multipolygons with islands;
+  - `city_check`: 0 everywhere except one traffic light put up twice, 1.4 m apart, at
+    (-1097, 378);
+  - roads lean on 3.5% of their length, worst 48% on Boulevard de la Rocade. That is the
+    worldwide elevation tiles on a hillside; France's RGE ALTI (IGN's 1 m bare-ground
+    model) would be the AHN of France;
+  - the playtest passes, but with `STREETS_BUILD_ALL=1` the whole city did not finish
+    building within the run (the wooded hillsides, most likely), so the playtest saw no
+    city. Run it without that.
+- **Not done yet:** French street plates, RGE ALTI ground, the doubled light.
 
 ## The city card (fill in one per candidate)
 
@@ -218,7 +285,7 @@ from general knowledge, not yet opened). None has been fetched yet.
 | City | Box | Heights | Roofs | Kerbs | Trees | GTFS | Country cost | Data |
 |---|---|---|---|---|---|---|---|---|
 | **Delft, NL: BAKED, level 14** (old town, canals, trams) | 52.0010,4.3440,52.0190,4.3700 | 3DBAG lod12 (checked, used) | 3DBAG LoD2 (checked: roof type on every building; shapes not used) | BGT `wegdeel` (checked; not used yet) | BGT, 11,178 in the box (checked, used) | OVapi (checked: answers) | small: Dutch signs, trams, bikes | 9 |
-| **Annecy, FR** (old town, canals, lake, mountains) | town | BD TOPO, national, Licence Ouverte (believed) | no | no | none found (checked: nothing for Annecy on data.gouv.fr) | national portal transport.data.gouv.fr (believed) | small: French signs | 6 |
+| **Annecy, FR: BAKED, level 24** (old town, canals, lake, mountains) | 45.8920,6.1150,45.9100,6.1420 | BD TOPO (checked, used: 3,201 of 3,822) | BD TOPO's roof top gives the ridge (checked, used) | no | none found (checked: nothing for Annecy on data.gouv.fr) | national portal transport.data.gouv.fr (believed) | small: French signs | 6 |
 | **Heidelberg, DE** (old town, river bridges, castle hill) | Altstadt bbox | from LoD2 | BW LoD2, freed in 2024 per the state, but its record still says copyright (checked: licence unclear) | no | none found | national (believed) | small: German signs, trams | 6 |
 | **Burlington, VT, US** (hill down to the lake) | downtown | Vermont statewide lidar (believed) | no | no | only sample plots (UVM i-Tree, CC BY-SA), not every tree (checked) | GMT (believed) | medium: the US look | 5 |
 | **Savannah, GA, US** (grid of 22 squares) | historic district | SAGIS portal, not confirmed (checked: no footprint layer found) | no | no | an inventory under way, not published (checked) | CAT (believed) | medium: the US look | 4 |

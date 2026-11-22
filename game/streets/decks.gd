@@ -697,12 +697,35 @@ func _holes_of(ri: int) -> void:
 
 ## The ground mesh's triangles with the holes cut out: given one triangle's corners (with
 ## their normals), the triangles to draw instead -- itself when it misses every hole.
+var _hole_hash := {}      ## 100 m cell -> the holes reaching it (cut_tri), rebuilt as holes change
+var _hole_n := -1
+
 func cut_tri(v: Array, nrm: Array) -> Array:
 	var tri := PackedVector2Array([Vector2(v[0].x, v[0].z), Vector2(v[1].x, v[1].z), Vector2(v[2].x, v[2].z)])
 	var box := Rect2(tri[0], Vector2.ZERO).expand(tri[1]).expand(tri[2])
 	var polys: Array = [tri]
 	var hit := false
-	for i in range(holes.size()):
+	# only the holes near it: a town's canals are hundreds of holes (streets.gd cuts them in
+	# 100 m pieces), and testing every one for every ground triangle took seconds
+	if _hole_n != holes.size():
+		_hole_hash = {}
+		for i in range(holes.size()):
+			var hb: Rect2 = hole_boxes[i]
+			for cx in range(floori(hb.position.x / 100.0), floori(hb.end.x / 100.0) + 1):
+				for cz in range(floori(hb.position.y / 100.0), floori(hb.end.y / 100.0) + 1):
+					var k := Vector2i(cx, cz)
+					if not _hole_hash.has(k):
+						_hole_hash[k] = []
+					(_hole_hash[k] as Array).append(i)
+		_hole_n = holes.size()
+	var near := {}
+	for cx in range(floori(box.position.x / 100.0), floori(box.end.x / 100.0) + 1):
+		for cz in range(floori(box.position.y / 100.0), floori(box.end.y / 100.0) + 1):
+			for i: int in _hole_hash.get(Vector2i(cx, cz), []):
+				near[i] = true
+	var order: Array = near.keys()
+	order.sort()
+	for i: int in order:
 		if not (hole_boxes[i] as Rect2).intersects(box):
 			continue
 		var next: Array = []

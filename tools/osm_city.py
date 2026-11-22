@@ -346,6 +346,9 @@ DATA_FILTERS = (
     'way["leisure"~"^(park|garden|playground|dog_park|pitch|sports_centre|track)$"];'
     'way["landuse"~"^(grass|recreation_ground|village_green|meadow|cemetery|forest|orchard|flowerbed|allotments)$"];'
     'way["natural"~"^(wood|scrub|grassland|water|beach|sand)$"];'
+    # water mapped as a multipolygon: most of a Dutch town's canals (Delft's and Leiden's were
+    # all missing, the canal streets' middles bare ground)
+    'rel["natural"="water"]["type"="multipolygon"];'
     'way["amenity"="parking"];'
     'way["barrier"~"^(fence|hedge)$"];'
     'way["place"="square"];'
@@ -509,6 +512,38 @@ def clean_ring(pts, min_step=0.3):
     if signed_area(out) < 0:  # counter-clockwise in (x, z): positive shoelace
         out.reverse()
     return out
+
+
+def keyhole_ring(outer, holes):
+    """One ring for a polygon with holes: each hole joined to the outside by a cut of no width
+    (from its point furthest east, straight east to the nearest edge, along it to that edge's
+    end), the hole run the other way round. Triangulates as the polygon with its holes, and a
+    point is inside it (even-odd) exactly when it is in the polygon and not in a hole."""
+    def area2(r):
+        return sum(r[i - 1][0] * r[i][1] - r[i][0] * r[i - 1][1] for i in range(len(r)))
+    ring = list(outer)
+    if area2(ring) < 0:
+        ring.reverse()
+    for h in sorted(holes, key=lambda h: -max(p[0] for p in h)):
+        h = list(h)
+        if area2(h) > 0:
+            h.reverse()
+        mi = max(range(len(h)), key=lambda i: h[i][0])
+        mx, mz = h[mi]
+        best, bi = None, None
+        for i in range(len(ring)):
+            (ax, az), (bx, bz) = ring[i], ring[(i + 1) % len(ring)]
+            if (az > mz) == (bz > mz) or az == bz:
+                continue
+            x = ax + (mz - az) * (bx - ax) / (bz - az)
+            if x >= mx and (best is None or x < best):
+                best = x
+                bi = i if ax >= bx else (i + 1) % len(ring)
+        if bi is None:
+            continue   # (a hole not inside after all)
+        hole = h[mi:] + h[:mi] + [h[mi]]
+        ring = ring[:bi + 1] + hole + ring[bi:]
+    return ring
 
 
 def join_rings(segments):
@@ -690,7 +725,110 @@ def _hold_sea(blur, wet, nx, nz, step):
         f"{raised} of the shore raised to 0.3 m")
 
 
-def terrain_grid(P, box, bounds, step, zoom=13, bare=False, sea=None):
+def wgs84_to_rd(lat, lon):
+    """The Dutch national grid (Rijksdriehoek, EPSG:28992) from WGS84 lat/lon: the published
+    polynomial (Schreutelkamp and Strang van Hees), good to about a metre."""
+    dp, dl = 0.36 * (lat - 52.15517440), 0.36 * (lon - 5.38720621)
+    x = 155000 + (190094.945 * dl - 11832.228 * dp * dl - 114.221 * dp ** 2 * dl - 32.391 * dl ** 3
+                  - 0.705 * dp - 2.340 * dp ** 3 * dl - 0.608 * dp * dl ** 3 - 0.008 * dl ** 2
+                  + 0.148 * dp ** 2 * dl ** 3)
+    y = 463000 + (309056.544 * dp + 3638.893 * dl ** 2 + 73.077 * dp ** 2 - 157.984 * dp * dl ** 2
+                  + 59.788 * dp ** 3 + 0.433 * dl - 6.439 * dp ** 2 * dl ** 2 - 0.032 * dp * dl
+                  + 0.092 * dl ** 4 - 0.054 * dp * dl ** 4)
+    return x, y
+
+
+AHN = "https://service.pdok.nl/rws/ahn/wcs/v1_0"
+water_levels = []   # ahn_grid: a level (m above sea) for each water ring it was given, or None
+NL_EXTENT = (50.75, 3.20, 53.70, 7.25)
+
+
+def ahn_grid(P, x0, z0, nx, nz, step, water=None):
+    """The ground in the Netherlands from AHN (the national laser scan's bare ground, 0.5 m,
+    via PDOK's WCS; CC0), sampled on the city's grid: a 4 m raster over the box, fetched once
+    (cached in tools/.cache). No value under buildings and water: filled from around. Under
+    the water areas (`water`: rings in metres) the ground is sunk 1.5 m below that, so a
+    canal lies below its quays. None when the server cannot be reached."""
+    from PIL import Image   # (only here: the rest of the baker needs nothing installed)
+    pts = [wgs84_to_rd(P.lat0 - (z0 + j * step) / P.my, P.lon0 + (x0 + i * step) / P.mx)
+           for j in range(nz) for i in range(nx)]
+    rx0, rx1 = math.floor(min(p[0] for p in pts)) - 8, math.ceil(max(p[0] for p in pts)) + 8
+    ry0, ry1 = math.floor(min(p[1] for p in pts)) - 8, math.ceil(max(p[1] for p in pts)) + 8
+    res = 4.0
+    w, h = int((rx1 - rx0) / res), int((ry1 - ry0) / res)
+    path = os.path.join(CACHE, "ahn_%d_%d_%d_%d.tif" % (rx0, ry0, rx1, ry1))
+    if not os.path.exists(path):
+        q = {"SERVICE": "WCS", "VERSION": "2.0.1", "REQUEST": "GetCoverage", "COVERAGEID": "dtm_05m",
+             "FORMAT": "image/tiff"}
+        url = AHN + "?" + urllib.parse.urlencode(q) + "&SUBSET=x(%d,%d)&SUBSET=y(%d,%d)&SCALESIZE=x(%d),y(%d)" % (
+            rx0, rx1, ry0, ry1, w, h)
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "osm-city-bake/1 (a game kit's map baker)"})
+            with urllib.request.urlopen(req, timeout=180) as r:
+                raw = r.read()
+        except Exception as e:
+            log(f"ground: AHN not reachable ({e})")
+            return None
+        os.makedirs(CACHE, exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(raw)
+    im = Image.open(path)
+    W, H = im.size
+    pix = im.load()
+    grid, gaps = [], 0
+    for (x, y) in pts:
+        u = min(W - 1, max(0, int((x - rx0) / (rx1 - rx0) * W)))
+        v = min(H - 1, max(0, int((ry1 - y) / (ry1 - ry0) * H)))
+        val = pix[u, v]
+        ok = val is not None and -60.0 < val < 400.0
+        grid.append(val if ok else None)
+        gaps += 0 if ok else 1
+    # fill the gaps (buildings, water) from their neighbours, ring by ring inward
+    known = [g is not None for g in grid]
+    vals = [g if g is not None else 0.0 for g in grid]
+    todo = [k for k in range(len(grid)) if not known[k]]
+    while todo:
+        nxt, got = [], []
+        for k in todo:
+            i, j = k % nx, k // nx
+            acc = cnt = 0
+            for di, dj in ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, -1), (1, -1), (-1, 1)):
+                ii, jj = i + di, j + dj
+                if 0 <= ii < nx and 0 <= jj < nz and known[jj * nx + ii]:
+                    acc += vals[jj * nx + ii]
+                    cnt += 1
+            if cnt:
+                got.append((k, acc / cnt))
+            else:
+                nxt.append(k)
+        if not got:
+            break
+        for k, v in got:
+            vals[k] = v
+            known[k] = True
+        todo = nxt
+    # each water area's level: its banks' middle height (the filled ground along its edge,
+    # before sinking) less a metre -- a canal lies a metre below its quays (water_levels)
+    global water_levels
+    water_levels = []
+    for ring in water or []:
+        bank = sorted(vals[min(nz - 1, max(0, int(round((z - z0) / step)))) * nx + min(nx - 1, max(0, int(round((x - x0) / step))))]
+                      for x, z in ring)
+        water_levels.append(bank[len(bank) // 2] - 1.0 if bank else None)
+    sunk = 0
+    for ring in water or []:
+        xs, zs = [p[0] for p in ring], [p[1] for p in ring]
+        for j in range(max(0, int((min(zs) - z0) / step)), min(nz, int((max(zs) - z0) / step) + 2)):
+            for i in range(max(0, int((min(xs) - x0) / step)), min(nx, int((max(xs) - x0) / step) + 2)):
+                if point_in_ring(x0 + i * step, z0 + j * step, ring):
+                    vals[j * nx + i] -= 1.5
+                    sunk += 1
+    log(f"ground: AHN (the Dutch laser scan, bare ground), {gaps} of {len(grid)} points filled "
+        f"(buildings, water), {sunk} sunk under water")
+    return vals
+
+
+def terrain_grid(P, box, bounds, step, zoom=13, bare=False, sea=None, water=None):
     """Ground height on a regular grid over the bounds, in metres above its lowest point.
     With `sea` (the sea polygons and the islands in them) the sea floor is held under sea
     level and the shore over it: the tiles read the sea a metre or so either side of 0 and
@@ -726,11 +864,17 @@ def terrain_grid(P, box, bounds, step, zoom=13, bare=False, sea=None):
         h01, h11 = px_height(ix, iy + 1), px_height(ix + 1, iy + 1)
         return (h00 * (1 - ax) + h10 * ax) * (1 - ay) + (h01 * (1 - ax) + h11 * ax) * ay
 
-    grid = []
-    for j in range(nz):
-        for i in range(nx):
-            x, z = x0 + i * step, z0 + j * step
-            grid.append(height(P.lat0 - z / P.my, P.lon0 + x / P.mx))
+    grid = None
+    if NL_EXTENT[0] < P.lat0 < NL_EXTENT[2] and NL_EXTENT[1] < P.lon0 < NL_EXTENT[3]:
+        grid = ahn_grid(P, x0, z0, nx, nz, step, water)
+        if grid is not None:
+            bare = False   # (bare ground already: no roofs to take out)
+    if grid is None:
+        grid = []
+        for j in range(nz):
+            for i in range(nx):
+                x, z = x0 + i * step, z0 + j * step
+                grid.append(height(P.lat0 - z / P.my, P.lon0 + x / P.mx))
     wet = _wet_cells(sea, x0, z0, step, nx, nz) if sea and sea[0] else None
     if wet:
         # (sea level before --bare-ground, whose lowest-round-each-point would carry the sea
@@ -802,6 +946,13 @@ SURVEYS = [
      "extent": (50.75, 3.20, 53.70, 7.25),
      "h": "h", "floors": "fl", "year": "yr", "ground_counted": True,
      "ridge": "ridge", "pitched": ("roof", ("slanted",))},
+    # The whole of France: IGN's BD TOPO (height to the eaves, the roof's top, storeys, the
+    # year it appeared), saved per town by game/streets/data_tools/fr_bdtopo.py
+    # (fr_bdtopo_<town>.geojson). Its storeys leave out the ground floor.
+    {"id": "fr_bdtopo", "credit": "building heights © IGN BD TOPO, Licence Ouverte",
+     "extent": (41.30, -5.20, 51.10, 9.60),
+     "h": "h", "floors": "fl", "year": "yr", "ground_counted": False,
+     "ridge": "ridge", "pitched": ("roof", ("pitched",))},
     # A survey with no server the bake can reach (no "url") is read only from a saved extract,
     # data/<id>.geojson beside the city file -- fetched once by hand where the site answers,
     # and committed, so a re-bake anywhere keeps it. Floors only, no measured height; its
@@ -1557,6 +1708,34 @@ def bake(raw, name, args):
             out["areas"].append({"p": flat(r), "k": kind})
             stats["areas"] += 1
 
+    # water mapped as a multipolygon (a town's canals): its outer rings joined, and its inner
+    # rings -- the islands, which in a Dutch town are the blocks between the canals -- cut in
+    # as keyholes (keyhole_ring), since an area here is one ring with no holes
+    holed = 0
+    for e in elements:
+        t = e.get("tags", {})
+        if e["type"] != "relation" or t.get("natural") != "water" or t.get("type") != "multipolygon":
+            continue
+        rings_of = lambda role: [r for r in join_rings([[P(g["lat"], g["lon"]) for g in m.get("geometry", []) if g]
+                                 for m in e.get("members", []) if m.get("role") == role]) if len(r) >= 3]
+        inners = rings_of("inner")
+        holed += len(inners)
+        for ring in rings_of("outer"):
+            ring = clean_ring(ring, 0.5)
+            if not ring:
+                continue
+            mine = [h for h in inners if point_in_ring(sum(p[0] for p in h) / len(h), sum(p[1] for p in h) / len(h), ring)]
+            r = keyhole_ring(ring, [clean_ring(h, 0.5) or h for h in mine])
+            if not r:
+                continue
+            xs = [p[0] for p in r]
+            zs = [p[1] for p in r]
+            if max(xs) > x0 - 100 and min(xs) < x1 + 100 and max(zs) > z0 - 100 and min(zs) < z1 + 100:
+                out["areas"].append({"p": flat(r), "k": "water"})
+                stats["areas"] += 1
+                stats["water_rels"] = stats.get("water_rels", 0) + 1
+    log(f"water multipolygons: {stats.get('water_rels', 0)} rings, {holed} islands cut out of them")
+
     # fences and hedges, as lines (a closed one is a ring with its first point again last)
     for e in elements:
         t = e.get("tags", {})
@@ -1704,8 +1883,18 @@ def bake(raw, name, args):
     if not args.no_terrain:
         try:
             span = max(x1 - x0, z1 - z0)
+            water = [[(a["p"][i] / SCALE, a["p"][i + 1] / SCALE) for i in range(0, len(a["p"]), 2)]
+                     for a in out["areas"] if a["k"] == "water"]
+            water_levels.clear()
             out["height"] = terrain_grid(P, box, (x0, z0, x1, z1), max(12.0, round(span / 300.0)),
-                                         bare=args.bare_ground, sea=sea)
+                                         bare=args.bare_ground, sea=sea, water=water)
+            # (AHN's ground: each canal held a metre under its quays, as the sea is at 0)
+            if water_levels:
+                wa = [a for a in out["areas"] if a["k"] == "water"]
+                for a, lv in zip(wa, water_levels):
+                    if lv is not None and "y" not in a:
+                        a["y"] = int(round((lv - out["height"]["base"]) * SCALE))
+                        a["cn"] = 1   # a canal: the game cuts the ground away over it, quay walls round it
             for a in sea_areas:   # the sea at sea level, as a river is held at its weirs'
                 a["y"] = int(round(-out["height"]["base"] * SCALE))
         except Exception as e:   # flat is better than no city

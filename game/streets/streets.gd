@@ -68,6 +68,9 @@ const LEVELS := [
 	# the second Dutch town (NEW_CITY.md, "The Netherlands"): the old centre inside its canal ring,
 	# the station, the Burcht. Starts on the Rapenburg canal by the university's Academy building.
 	{"name": "Leiden", "city": "leiden", "start": ["Rapenburg", "Kloksteeg"], "look": "north", "build": "nl", "decks": "infer"},
+	# the first French town (NEW_CITY.md, "France"): the centre between the station, the old town
+	# and the lake, with IGN BD TOPO's heights and measured roofs ("build": "fr": render, not brick)
+	{"name": "Annecy", "city": "annecy", "start": ["Rue Royale", "Rue de la Poste"], "look": "north", "build": "fr", "decks": "infer"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -2470,6 +2473,19 @@ func _load_city(id: String) -> bool:
 				box = box.expand(q)
 			_hash_add(_deep_hash, box, BLD_CELL, _deep.size())
 			_deep.append([ring, float(a["y"]) * k, box])
+			if a.has("cn"):   # a canal under its quays: the ground cut away over it (as over a
+				# cutting, decks.gd), quay walls down to it (_quays). In 100 m pieces: one ring
+				# round a whole town's canals has a box the size of the town, and every ground
+				# triangle was clipped against all of it (Leiden's "world" stage 0.1 -> 2.6 s)
+				var cell := 100.0
+				for cx in range(floori(box.position.x / cell), floori(box.end.x / cell) + 1):
+					for cz in range(floori(box.position.y / cell), floori(box.end.y / cell) + 1):
+						var c0 := Vector2(cx, cz) * cell
+						var sqp := PackedVector2Array([c0, c0 + Vector2(cell, 0), c0 + Vector2(cell, cell), c0 + Vector2(0, cell)])
+						for pc: PackedVector2Array in _pieces_in(ring, Rect2(c0, Vector2(cell, cell)), sqp):
+							if pc.size() >= 3:
+								_decks.holes.append(pc)
+								_decks.hole_boxes.append(_bld_box_of(pc))
 	for a: Array in data.get("addrs", []):   # address points that are not on a building
 		_add_address("%s %s" % [a[2], a[3]], Vector2(a[0], a[1]) * k)
 	_fit_widths_to_buildings()
@@ -3431,14 +3447,20 @@ func _build_ground() -> void:
 				flat = minf(flat, _h(p))
 		for piece: PackedVector2Array in _pieces_in(ring, sq, sq_poly):
 			await _fill(areas[tone], piece, y, tone == "water", flat)
+			if a.has("cn"):
+				if not areas.has("quay"):
+					areas["quay"] = CBuf.new(CHUNK)
+				_quays(areas["quay"], piece, sq, flat)
 	for tone: String in areas:
 		if _over():
 			await _pause()
-		_add_mesh(areas[tone], _surface(tone), false, VIEW_RANGE)
+		_add_mesh(areas[tone], _surface("stonewall" if tone == "quay" else tone), false, VIEW_RANGE)
 	# roads: asphalt ribbons, with a round patch where roads meet so corners are filled
 	var asphalt := _clip_buf(CHUNK)
 	var paths := _clip_buf(CHUNK)
 	var walks := _clip_buf(CHUNK)   # footpaths in town: paved like the pavements
+	var cycles := _clip_buf(CHUNK)  # a Dutch town's cycle paths: red asphalt
+	var dutch := _dutch()
 	var marks := _clip_buf(GROUND_CELL)
 	var yellow := _clip_buf(GROUND_CELL)
 	var metal := _clip_buf(GROUND_CELL)
@@ -3449,7 +3471,7 @@ func _build_ground() -> void:
 		var r: Dictionary = _roads[ri]
 		var part := _near_part(r["pts"], r["w"] * 0.5 + 2.0)
 		if part.size() >= 2:
-			var under: Buf = asphalt if r["drive"] else (walks if _paved_walk(r) else paths)
+			var under: Buf = asphalt if r["drive"] else (cycles if dutch and r["k"] == "cycleway" else (walks if _paved_walk(r) else paths))
 			_ribbon(under, part, r["w"] * 0.5, Y_ROAD if r["drive"] else Y_PATH)
 		_markings(marks, r, yellow)
 		_street_metal(metal, metal_rim, ri)
@@ -3459,13 +3481,39 @@ func _build_ground() -> void:
 	for ni: int in _nodes_near(30.0):
 		if _crossing_set.has(ni):
 			_zebra(marks, ni)
-	for job: Array in [[metal_rim, "metalrim", DETAIL_RANGE], [metal, "metal", DETAIL_RANGE], [paths, "path", VIEW_RANGE * 0.6], [walks, "pavement", VIEW_RANGE * 0.6],
+	for job: Array in [[metal_rim, "metalrim", DETAIL_RANGE], [metal, "metal", DETAIL_RANGE], [paths, "path", VIEW_RANGE * 0.6], [walks, "pavement", VIEW_RANGE * 0.6], [cycles, "cyclepath", VIEW_RANGE * 0.6],
 			[asphalt, "asphalt", VIEW_RANGE], [marks, "mark", DETAIL_RANGE], [yellow, "markyellow", DETAIL_RANGE]]:
 		if _over():
 			await _pause()
 		_add_mesh(job[0], _surface(job[1]), false, job[2])
 
 ## the parts of an outline inside square `sq` (the whole outline when it lies inside)
+## A canal's quay walls (a water area with "cn": the ground is cut away over it): along this
+## square's piece of it, every edge that is the canal's own (not the square's border), a
+## wall from the ground down to below the water, facing the water
+func _quays(buf: Buf, piece: PackedVector2Array, sq: Rect2, level: float) -> void:
+	var n := piece.size()
+	var sgn := 1.0 if _area_signed(piece) > 0.0 else -1.0
+	for i in range(n):
+		var a := piece[i]
+		var b := piece[(i + 1) % n]
+		var e := b - a
+		if e.length() < 0.05:
+			continue
+		var on_x := absf(a.x - b.x) < 0.01 and (absf(a.x - sq.position.x) < 0.01 or absf(a.x - sq.end.x) < 0.01)
+		var on_z := absf(a.y - b.y) < 0.01 and (absf(a.y - sq.position.y) < 0.01 or absf(a.y - sq.end.y) < 0.01)
+		if on_x or on_z:
+			continue   # (the square's border, not the quay)
+		var into := Vector2(-e.y, e.x).normalized() * sgn   # toward the water
+		var nrm := Vector3(into.x, 0.0, into.y)
+		var bot := level - 0.4
+		var ta := Vector3(a.x, _h(a) + 0.02, a.y)
+		var tb := Vector3(b.x, _h(b) + 0.02, b.y)
+		var bb := Vector3(b.x, bot, b.y)
+		var ba := Vector3(a.x, bot, a.y)
+		buf.tri(ta, tb, bb, nrm, Color.WHITE)
+		buf.tri(ta, bb, ba, nrm, Color.WHITE)
+
 func _pieces_in(ring: PackedVector2Array, sq: Rect2, sq_poly: PackedVector2Array) -> Array:
 	if sq.encloses(_bld_box_of(ring)):
 		return [ring]
@@ -3724,7 +3772,7 @@ func _build_terrain() -> void:
 					bv.append(verts[j * _hnx + i])
 					bn.append(norms[j * _hnx + i])
 			idx = PackedInt32Array()
-			var holes := _decks.any() and not _decks.holes.is_empty()
+			var holes := not _decks.holes.is_empty()   # (cuttings' and canals')
 			var bbox := Rect2(_hx0 + bi * _hstep, _hz0 + bj * _hstep, (i1 - bi) * _hstep, (j1 - bj) * _hstep)
 			if holes:
 				holes = false
@@ -6298,6 +6346,7 @@ func _build_buildings() -> void:
 	var north := String(_place.get("look", "")) == "north"
 	var med := String(_place.get("look", "")) == "med"
 	var dutch := _dutch()
+	var pitched := _pitched_build()   # (Dutch or French: measured roofs)
 	var gables := {"roof": CBuf.new(CHUNK), "end": CBuf.new(CHUNK)}
 	var cores := CBuf.new(CHUNK)   # the walled-in middle of a block lifted on columns
 	var all: Array = _city_data["buildings"]
@@ -6345,8 +6394,11 @@ func _build_buildings() -> void:
 		# (WALL_SHADER's brick); and where 3DBAG measured a pitched roof, the walls stop at the
 		# eaves and the roof rises to the measured ridge (_dutch_pitch)
 		var pitch := 0.0
-		if dutch and not bd.has("_glass"):
-			tk = 0 if pick < 45 else (1 if pick < 70 else (2 if pick < 85 else (3 if pick < 93 else 4)))
+		if pitched and not bd.has("_glass"):
+			if dutch:
+				tk = 0 if pick < 45 else (1 if pick < 70 else (2 if pick < 85 else (3 if pick < 93 else 4)))
+			else:   # a French town's render: white and cream, ochre-yellow, peach, a pastel, grey
+				tk = 0 if pick < 30 else (2 if pick < 55 else (3 if pick < 80 else (1 if pick < 92 else 4)))
 			stone = 0.0
 			if bd.has("rr") and raised == 0.0:
 				pitch = _dutch_pitch(ring, float(bd["rr"]))
@@ -6358,7 +6410,7 @@ func _build_buildings() -> void:
 			rel = float(bd["rr"]) - pitch
 			h = g_avg + rel
 		var style: int = 3 if rel > 32.0 else (0 if rel < 10.0 or bd.has("_tile") else [0, 0, 0, 0, 1, 1, 1, 2, 0, 1][posmod(hsh >> 7, 10)])
-		if dutch and rel < 16.0 and style < 3:
+		if pitched and rel < 16.0 and style < 3:
 			style = 0   # (a Dutch house or low block: punched windows in the brick, no balconies)
 		var col := Color(bright, tint, float(style) / 4.0 + 0.05, stone)
 		var n := ring.size()
@@ -6368,7 +6420,7 @@ func _build_buildings() -> void:
 		var sgn := 1.0 if area > 0.0 else -1.0
 		# a pitched roof only on a house that stands on the ground: a raised "building" is a
 		# canopy or a carport (OSM: a roof on stilts), and a house roof on it flew
-		var gabled := (north and not dutch and rel < 10.0 and absf(area) * 0.5 < 450.0 and raised == 0.0) or bd.has("_tile") or pitch > 0.0
+		var gabled := (north and not pitched and rel < 10.0 and absf(area) * 0.5 < 450.0 and raised == 0.0) or bd.has("_tile") or pitch > 0.0
 		# "komat amudim": many Givatayim blocks stand on columns, the ground floor open for
 		# parking round a walled-in stairwell and lobby
 		var pilotis := med and style <= 1 and rel >= 7.0 and rel <= 22.0 and raised == 0.0 \
@@ -6420,7 +6472,7 @@ func _build_buildings() -> void:
 				walls.tri(ar, b1, br, -nrm, col, Vector2(0, h - g_lo), Vector2(len, y1), Vector2(len, h - g_lo), u2)
 		if gabled:
 			if pitch > 0.0:
-				_gable(gables, ring, h, hsh, false, pitch, walls, col, g_lo)
+				_gable(gables, ring, h, hsh, false, pitch, walls, col, g_lo, int(bd.get("yr", 0)) if dutch else 0)
 				_tally("roofs_measured", 1)
 			else:
 				_gable(gables, ring, h, hsh, bd.has("_tile"))
@@ -7319,6 +7371,11 @@ func _stilts(ring: PackedVector2Array, sgn: float, ground: float, under: float, 
 func _dutch() -> bool:
 	return String(_place.get("build", "")) == "nl"
 
+## A town whose roofs were measured (a survey's ridge, `rr`): Dutch ("nl", 3DBAG) or French
+## ("fr", BD TOPO) -- walls to the eaves, the roof to the ridge (_dutch_pitch)
+func _pitched_build() -> bool:
+	return String(_place.get("build", "")) in ["nl", "fr"]
+
 ## A Dutch house's roof rise (m) for its measured ridge, or 0 for a flat roof: only on a
 ## footprint that is mostly its tightest rectangle (an L or a block round a yard would have its
 ## roof float past its walls) and not a hall. The pitch is near 50 degrees, as Dutch roofs are:
@@ -7364,7 +7421,7 @@ func _min_rect(ring: PackedVector2Array) -> Array:
 ## (`rise` given, its measured roof) has orange tiles or dark glazed ones, and its gable ends
 ## are brick in the walls' own buffer (`wall_buf`, `wcol`, its ground `g_lo`), no windows
 func _gable(g: Dictionary, ring: PackedVector2Array, top: float, hsh: int, tiled := false,
-		rise_m := 0.0, wall_buf: Buf = null, wcol := Color(), g_lo := 0.0) -> void:
+		rise_m := 0.0, wall_buf: Buf = null, wcol := Color(), g_lo := 0.0, yr := 0) -> void:
 	var rect := _min_rect(ring)
 	var u: Vector2 = rect[0]
 	var lo: Vector2 = rect[1]
@@ -7394,17 +7451,36 @@ func _gable(g: Dictionary, ring: PackedVector2Array, top: float, hsh: int, tiled
 		var tiles := Palette.col("hazard").lerp(Palette.col("warn"), 0.55).lerp(Palette.col("bg"), 0.45 + 0.08 * float(posmod(hsh >> 9, 3)))
 		var glazed := Palette.col("bg").lerp(Palette.col("bg_alt"), 0.45 + 0.1 * float(posmod(hsh >> 9, 3)))
 		col = tiles if posmod(hsh >> 15, 100) < 55 else glazed
-	var r0: Vector3 = P.call(lo.x, cy, top + rise)
-	var r1: Vector3 = P.call(hi.x, cy, top + rise)
+	# A Dutch canal house (narrow, its roof running back from the street): its street end a
+	# shaped gable -- a brick wall standing up past the roof's outline, the roof tucked in
+	# behind it (_dutch_gable)
+	var shape := [0, 0]   # the lo end's and the hi end's: 0 a plain triangle, else _dutch_gable's kind
+	if wall_buf != null and hi.y - lo.y - 0.7 <= 9.0:
+		var kind := _dutch_gable_kind(yr, hsh)
+		if kind > 0:
+			for k in 2:
+				var ex: float = lo.x + 0.35 if k == 0 else hi.x - 0.35
+				var mid := u * ex + v * cy
+				var hit := _nearest_seg(mid, 9.0, false, true)
+				if not hit.is_empty() and float(hit["edge"]) < 5.0:
+					shape[k] = kind
+	var rlo: float = lo.x + 0.4 if shape[0] > 0 else lo.x
+	var rhi: float = hi.x - 0.4 if shape[1] > 0 else hi.x
+	var r0: Vector3 = P.call(rlo, cy, top + rise)
+	var r1: Vector3 = P.call(rhi, cy, top + rise)
 	for side: Array in [[lo.y, 1.0], [hi.y, -1.0]]:
-		var e0: Vector3 = P.call(lo.x, side[0], top - 0.15)
-		var e1: Vector3 = P.call(hi.x, side[0], top - 0.15)
+		var e0: Vector3 = P.call(rlo, side[0], top - 0.15)
+		var e1: Vector3 = P.call(rhi, side[0], top - 0.15)
 		var nrm := (e1 - e0).cross(r0 - e0).normalized()
 		if nrm.y < 0.0:
 			nrm = -nrm
 		(g["roof"] as Buf).tri(e0, e1, r1, nrm, col)
 		(g["roof"] as Buf).tri(e0, r1, r0, nrm, col)
-	for end: Array in [[lo.x + 0.35, -1.0], [hi.x - 0.35, 1.0]]:
+	for end: Array in [[lo.x + 0.35, -1.0, shape[0]], [hi.x - 0.35, 1.0, shape[1]]]:
+		if int(end[2]) > 0:
+			_dutch_gable(wall_buf, int(end[2]), P, float(end[0]), float(end[1]), u, cy,
+					(hi.y - lo.y) - 0.7, top, rise, wcol, g_lo, hsh)
+			continue
 		var a: Vector3 = P.call(end[0], lo.y + 0.35, top)
 		var b: Vector3 = P.call(end[0], hi.y - 0.35, top)
 		var c: Vector3 = P.call(end[0], cy, top + rise - 0.1)
@@ -7419,6 +7495,81 @@ func _gable(g: Dictionary, ring: PackedVector2Array, top: float, hsh: int, tiled
 	if posmod(hsh >> 13, 10) < 6:   # a chimney up one end, through the slope
 		var at: Vector3 = P.call(lo.x + 1.3, cy + (hi.y - lo.y) * 0.18, top + rise * 0.72)
 		_chimneys.append(Transform3D(Basis(Vector3.UP, atan2(u.x, u.y)), at))
+
+## Which shaped gable a Dutch house of year `yr` has, by when each was built: 1 stepped (to
+## the mid 17th century), 2 bell (late 17th and 18th), 3 neck (17th-19th); 0 the plain
+## triangle (most of the 19th century on, and some of every age)
+func _dutch_gable_kind(yr: int, hsh: int) -> int:
+	var d := posmod(hsh >> 17, 100)
+	if yr <= 0 or yr >= 1900:
+		return 0
+	if yr < 1650:
+		return 1 if d < 55 else (2 if d < 70 else (3 if d < 80 else 0))
+	if yr < 1800:
+		return 2 if d < 40 else (3 if d < 65 else (1 if d < 75 else 0))
+	return 3 if d < 25 else 0
+
+## A shaped gable on a house's end at `ex` along its axis `u` (`dir` its outward side): a brick
+## wall `w` wide from the eaves (`top`) up past the roof's ridge (`rise` above), its outline
+## stepped (1), a bell (2) or a neck (3); front face and back face, in the walls' own buffer,
+## no windows (the window grid's top is the eaves)
+func _dutch_gable(buf: Buf, kind: int, P: Callable, ex: float, dir: float, u: Vector2, cy: float,
+		w: float, top: float, rise: float, wcol: Color, g_lo: float, hsh: int) -> void:
+	var hw := w * 0.5
+	var H := rise + 0.7 + 0.2 * float(posmod(hsh >> 21, 4))   # its top over the eaves
+	var nw := clampf(w * 0.17, 0.45, 0.9)                       # the half-width at the top
+	var half: Array = []   # the right half's outline, bottom to top: (across, up)
+	if kind == 1:   # stepped: 3-5 steps up to a narrow top
+		var n := 3 + posmod(hsh >> 23, 3)
+		var dx := (hw - nw) / float(n)
+		var dy := H / float(n + 1)
+		half.append(Vector2(hw, 0.0))
+		for i in n:
+			half.append(Vector2(hw - dx * i, dy * (i + 1)))
+			half.append(Vector2(hw - dx * (i + 1), dy * (i + 1)))
+		half.append(Vector2(nw, H))
+	elif kind == 2:   # bell: straight up a little, curving in to a neck, a rounded top
+		for i in 9:
+			var t := float(i) / 8.0
+			var y := t * H * 0.82
+			var k := smoothstep(0.12, 0.8, t)
+			half.append(Vector2(lerpf(hw, nw, k) + sin(k * PI) * 0.12 * hw, y))
+		for i in range(1, 5):
+			var a := PI * 0.5 * float(i) / 4.0
+			half.append(Vector2(nw * cos(a), H * 0.82 + (H * 0.18 + nw * 0.4) * sin(a)))
+	else:   # neck: shoulders at half its height, a straight neck, a small pediment
+		var sh := H * 0.45
+		half.append(Vector2(hw, 0.0))
+		half.append(Vector2(hw, minf(rise * 0.25, sh * 0.5)))
+		half.append(Vector2(nw + 0.35, sh))
+		half.append(Vector2(nw, sh))
+		half.append(Vector2(nw, H - 0.45))
+		half.append(Vector2(nw + 0.12, H - 0.45))
+		half.append(Vector2(0.0, H))
+	# the whole outline: the right half up, the left half (mirrored) down
+	var outline := PackedVector2Array()
+	for q: Vector2 in half:
+		outline.append(q)
+	for i in range(half.size() - 1, -1, -1):
+		var q: Vector2 = half[i]
+		if q.x > 0.001:
+			outline.append(Vector2(-q.x, q.y))
+	var idx := Geometry2D.triangulate_polygon(outline)
+	if idx.is_empty():
+		return
+	var out := Vector3(u.x, 0, u.y) * dir
+	var u2 := Vector2(w, top - g_lo)
+	for face in 2:   # its face to the street, and its back (seen over the roof)
+		var at := ex + (0.0 if face == 0 else -0.3 * dir)
+		var nrm := out if face == 0 else -out
+		for i in range(0, idx.size(), 3):
+			var pa: Vector2 = outline[idx[i]]
+			var pb: Vector2 = outline[idx[i + 1]]
+			var pc: Vector2 = outline[idx[i + 2]]
+			buf.tri(P.call(at, cy + pa.x, top + pa.y), P.call(at, cy + pb.x, top + pb.y), P.call(at, cy + pc.x, top + pc.y),
+					nrm, wcol, Vector2(pa.x + hw, top - g_lo + pa.y), Vector2(pb.x + hw, top - g_lo + pb.y),
+					Vector2(pc.x + hw, top - g_lo + pc.y), u2)
+	_tally("gables_shaped", 1)
 
 func _bld_box_of(ring: PackedVector2Array) -> Rect2:
 	var box := Rect2(ring[0], Vector2.ZERO)
@@ -14651,7 +14802,9 @@ func _street_sign_mesh(kind: String) -> ArrayMesh:
 			flat.call(box.call(0.03, 0.08, 0.09, 0.07), 0.012, blue)
 		"street":
 			flat.call([Vector2(-0.66, -0.17), Vector2(0.58, -0.17), Vector2(0.7, 0.0), Vector2(0.58, 0.17), Vector2(-0.66, 0.17)], 0.0, white)
-			flat.call([Vector2(-0.63, -0.14), Vector2(0.56, -0.14), Vector2(0.66, 0.0), Vector2(0.56, 0.14), Vector2(-0.63, 0.14)], 0.006, green)
+			# (a Dutch town's: white on blue, as its plates are; an Israeli town's green)
+			flat.call([Vector2(-0.63, -0.14), Vector2(0.56, -0.14), Vector2(0.66, 0.0), Vector2(0.56, 0.14), Vector2(-0.63, 0.14)], 0.006,
+					blue if _dutch() else green)
 	var am := ArrayMesh.new()
 	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, b.arrays())
 	am.surface_set_material(0, _vc_mat())
@@ -15717,7 +15870,7 @@ const NATURAL := {
 	"tank": 0.3, "furniture": 0.3, "pavement": 0.2, "pavers_dark": 0.15, "slabs": 0.15, "pavers_grey": 0.1, "tactile": 0.3, "pavers_red": 0.45, "kerb": 0.15, "stonewall": 0.45, "roofroom": 0.4,
 	"gardenwall": 0.3, "coping": 0.4,
 	"cat_ginger": 0.6, "cat_grey": 0.1, "cat_black": 0.1, "cat_cream": 0.35, "cat_brown": 0.45,
-	"gable": 0.5, "brick_red": 0.6, "brick_dark": 0.5, "brick_yellow": 0.55, "mortar": 0.15, "carglass": 0.4, "cartrim": 0.2, "tyre": 0.15, "rim": 0.2, "concrete": 0.15,
+	"gable": 0.5, "brick_red": 0.6, "brick_dark": 0.5, "brick_yellow": 0.55, "mortar": 0.15, "cyclepath": 0.5, "carglass": 0.4, "cartrim": 0.2, "tyre": 0.15, "rim": 0.2, "concrete": 0.15,
 	"insulator": 0.3, "trafo": 0.4, "cable": 0.2, "railing": 0.3, "brick": 0.7, "rubber": 0.6,
 	"metal": 0.1, "metalrim": 0.1, "skin": 0.75, "hair": 0.5, "shirt_a": 0.6, "shirt_b": 0.4,
 }
@@ -15821,6 +15974,8 @@ func _tones() -> void:
 		"brick_dark": Palette.col("hazard").lerp(wn, 0.25).lerp(bg, 0.74),
 		"brick_yellow": ink.lerp(wn, 0.5).lerp(Palette.col("hazard"), 0.1) * 0.8,
 		"mortar": ink.lerp(alt, 0.38),
+		# a Dutch cycle path: red asphalt, darker and duller than the brick
+		"cyclepath": Palette.col("hazard").lerp(wn, 0.3).lerp(bg, 0.55),
 		"carglass": bg.lerp(pl, 0.12),
 		"cartrim": bg.lerp(alt, 0.4),
 		"tyre": bg.lerp(alt, 0.2),
@@ -15830,7 +15985,9 @@ func _tones() -> void:
 		"lamplight": ink.lerp(wn, 0.45),
 		"brick": Palette.col("hazard").lerp(bg, 0.45).lerp(alt, 0.15),
 		"markyellow": wn.lerp(ink, 0.2),
-		"signblue": pl.lerp(bg, 0.4),
+		# (the hue pinned to a road sign's blue, its strength the palette's: from the palette's
+		# "player" it was brown under "sunset" -- Delft's street plates, every town's blue signs)
+		"signblue": Color.from_hsv(0.6, clampf(pl.s, 0.6, 0.85), clampf(pl.v * 0.6, 0.35, 0.55)),
 		"signgreen": fr.lerp(bg, 0.45),
 		# a sign's red is a traffic sign's red, its strength the palette's: as the palette's hazard
 		# (pink here) stop and no-entry signs, crossing barriers and railings' bands were pink
@@ -15857,6 +16014,10 @@ func _tones() -> void:
 	for k: String in NATURAL:
 		if _tone.has(k):
 			_tone[k] = _natural(_tone[k], float(NATURAL[k]))
+	# water: the sky it reflects (the photo's colour, a quarter the palette's as the dome is),
+	# darkened as still water is. From the palette's "player" it was khaki under "sunset"
+	# (#907f64: Delft's and Leiden's canals read as sand, every town's water with them).
+	_tone["water"] = _sky_col(_sky_now()["mean"]).darkened(0.45)
 
 func _retint_city() -> void:
 	_tones()
@@ -15929,7 +16090,8 @@ func _retint_city() -> void:
 		_wall_mat.set_shader_parameter("lit_cool", _tone["litcool"])
 		_wall_mat.set_shader_parameter("night", 1.0 if _night else 0.0)
 		_wall_mat.set_shader_parameter("trim", _tone["mark"])
-		_wall_mat.set_shader_parameter("siding", 1.0 if String(_place.get("look", "")) == "north" else 0.0)
+		# (clapboard and white house windows up north; a French town in the north look is render)
+		_wall_mat.set_shader_parameter("siding", 1.0 if String(_place.get("look", "")) == "north" and String(_place.get("build", "")) != "fr" else 0.0)
 		_wall_mat.set_shader_parameter("brick", 1.0 if _dutch() else 0.0)
 	for m: ShaderMaterial in _glow_mats.values():
 		m.set_shader_parameter("col", _tone[m.get_meta("tone")])
