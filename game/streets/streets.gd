@@ -16146,7 +16146,7 @@ func _retint_city() -> void:
 		env.ambient_light_color = bg.lerp(ink, 0.32).lerp(pl, 0.14)
 		env.ambient_light_energy = 0.38
 		env.fog_light_color = haze
-		env.fog_density = FOG_NIGHT
+		env.fog_density = _fog_night()
 		sun.light_color = ink.lerp(pl, 0.15)   # the moon
 		sun.light_energy = 0.14
 		sun.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY   # no sun disc in a night sky
@@ -17939,6 +17939,7 @@ func _frame() -> void:
 		_p("building")
 	_slow_watch(dt)
 	_watch_fps(dt)
+	_reach_update()
 	_hold_tick(dt)
 	if _standins != null:
 		_standins.show(_zoomed())
@@ -17982,11 +17983,14 @@ func _frame() -> void:
 ## the browser compile every material's shader again (with the sun's shadows on or off they are
 ## different shaders), a freeze of seconds on each step between levels 1 and 0 -- and the
 ## ladder steps back up when the frame rate recovers, and down again. A user saw 3.2 s.
+## The last two: how far things are drawn (every draw range of REACH_FROM m or more, scaled) and
+## how thick the haze is (so the town ends in it, not at an edge) -- see "a weak machine's
+## levels" below. Levels 2 and 3 draw everything as built.
 const QUALITY := [
-	[Viewport.MSAA_DISABLED, 25.0, 0.7],
-	[Viewport.MSAA_DISABLED, 45.0, 0.85],
-	[Viewport.MSAA_2X, 60.0, 1.0],
-	[Viewport.MSAA_4X, 75.0, 1.0],
+	[Viewport.MSAA_DISABLED, 25.0, 0.7, REACH_0, 1.0 / REACH_0],
+	[Viewport.MSAA_DISABLED, 45.0, 0.85, REACH_1, 1.0 / REACH_1],
+	[Viewport.MSAA_2X, 60.0, 1.0, 1.0, 1.0],
+	[Viewport.MSAA_4X, 75.0, 1.0, 1.0, 1.0],
 ]
 const QUALITY_WEB := 2               ## where a browser starts
 ## A step down: two 2-second spells in a row under FPS_LOW, or with more than STUTTER of their
@@ -18071,9 +18075,82 @@ func _set_quality(q: int) -> void:
 	sun.shadow_enabled = float(row[1]) > 0.0
 	sun.directional_shadow_max_distance = maxf(float(row[1]), 1.0) if not _night else 1.0   # (the moon's: none to speak of, _set_night)
 	view.scaling_3d_scale = row[2]
+	_reach_set(float(row[3]))
+	_fog_k = float(row[4])
+	if env != null and _zoom_v <= 0.0:
+		env.fog_density = _fog_night() if _night else _fog_day()
 	_set_blobs(not sun.shadow_enabled)
 	_far_update()
 	_grass_quality()
+
+## ---- a weak machine's levels: less of the town drawn ----------------------------------------
+## A browser pays CPU for every draw call and every object in view -- WebGL's checks, ANGLE's
+## Direct3D on Windows, Godot's own work in wasm: a work laptop paid ~0.1 ms a draw, 70-120 ms
+## of 600-820 draws a frame (22 Nov 2026), and the levels then changed only pixels and shadow
+## reach, which bought it nothing. Levels 1 and 0 also scale every draw range of REACH_FROM m or
+## more (where a thing stops being drawn, and where a far version takes over, alike), with the
+## haze thickened by as much so the town fades out where it ends. Ranges and a haze number
+## only -- never a material's feature, so a step compiles no shader (tests/web_shaders.js
+## QWALK). People, signs and posts (ranges under REACH_FROM) are left as they are.
+## Nothing is gathered until a level below 2 is first asked for; from then on what the
+## background build adds is caught by world's child count, as _zoom_far does.
+const REACH_FROM := 150.0
+const REACH_1 := 0.75
+const REACH_0 := 0.5
+var _reach := 1.0
+var _reach_on := false               ## the ranges gathered (a level below 2 was asked for)
+var _reach_list: Array = []          ## GeometryInstance3D with a range of REACH_FROM or more (own ranges in meta)
+var _reach_n := 0                    ## world's children looked at
+
+func _reach_set(k: float) -> void:
+	if k == _reach and (_reach_on or k == 1.0):
+		return
+	_reach = k
+	if not _reach_on:
+		_reach_on = true
+		_reach_n = 0
+	_reach_update()
+	_reach_apply()
+
+## everything gathered, at this level's reach (a full pass: a step, or landing from above)
+func _reach_apply() -> void:
+	if not _reach_on or _zoom_ranges_n >= 0:
+		return
+	for gi: GeometryInstance3D in _reach_list:
+		if is_instance_valid(gi):
+			_reach_one(gi)
+
+func _reach_one(gi: GeometryInstance3D) -> void:
+	var e0: float = gi.get_meta("r_end")
+	gi.visibility_range_end = e0 * _reach if e0 >= REACH_FROM else e0
+	var b0: float = gi.get_meta("r_begin")
+	gi.visibility_range_begin = b0 * _reach if b0 >= REACH_FROM else b0
+
+## what world gained since the last look: each thing's own ranges kept, and this level's given
+func _reach_update() -> void:
+	if not _reach_on or _zoom_ranges_n >= 0 or world == null:
+		return   # (from above, _zoom_far has the ranges; landing calls _reach_apply)
+	var n := world.get_child_count()
+	if n == _reach_n:
+		return
+	if n < _reach_n:   # something taken out: look through it all again (ranges kept in meta)
+		_reach_n = 0
+		_reach_list = _reach_list.filter(func(x): return is_instance_valid(x))
+	for i in range(_reach_n, n):
+		var c := world.get_child(i)
+		var list: Array = c.find_children("*", "GeometryInstance3D", true, false)
+		list.append(c)
+		for gi in list:
+			if not (gi is GeometryInstance3D) or (gi as Node).has_meta("r_end"):
+				continue
+			var g3 := gi as GeometryInstance3D
+			g3.set_meta("r_end", g3.visibility_range_end)
+			g3.set_meta("r_begin", g3.visibility_range_begin)
+			if g3.visibility_range_end >= REACH_FROM or g3.visibility_range_begin >= REACH_FROM:
+				_reach_list.append(g3)
+				if _reach != 1.0:
+					_reach_one(g3)
+	_reach_n = n
 
 ## Only on the web: a desktop build has a real GPU, and test runs on a software renderer
 ## would step themselves down to nothing.
@@ -22388,7 +22465,12 @@ const FOG_DAY := 0.0018              ## the haze's density: by day, at night (se
 ## the day's haze: half in the made-up town, a valley ringed by mountains with no horizon to
 ## hide (its mountains were a white wall)
 func _fog_day() -> float:
-	return FOG_DAY * (0.5 if _mtn_from < 10000.0 else 1.0)
+	return FOG_DAY * (0.5 if _mtn_from < 10000.0 else 1.0) * _fog_k
+
+## the night's haze, thickened as the day's on a weak machine's levels
+func _fog_night() -> float:
+	return FOG_NIGHT * _fog_k
+var _fog_k := 1.0                    ## the haze's thickness for the quality level (QUALITY's last column)
 const FOG_NIGHT := 0.0026
 var _paused := false                 ## the city holds still: the car, traffic, people, lights, sound
 var _zoom := 0.0                     ## where the view is going: 0 the usual view .. 1 the highest
@@ -22605,7 +22687,8 @@ func _zoom_camera(dt: float) -> void:
 		_zoom_lift = 0.0
 		_zoom_far(false)
 		cam.near = 0.05 if _cockpit else 0.3
-		env.fog_density = FOG_NIGHT if _night else _fog_day()
+		env.fog_density = _fog_night() if _night else _fog_day()
+		_reach_apply()   # (the ranges the view from above lifted are back: this level's again)
 		if _zoom_seat:
 			_set_cockpit(true)
 		_zoom_seat = false
@@ -22650,7 +22733,7 @@ func _zoom_camera(dt: float) -> void:
 	# up high: nothing is near, so the near plane goes out with the view and the thin layers
 	# (paint on asphalt on ground) keep their depth; the haze thins so the town below is clear
 	cam.near = lerpf(0.05 if _cockpit else 0.3, maxf(0.3, dist * 0.15), w)
-	env.fog_density = (FOG_NIGHT if _night else _fog_day()) * lerpf(1.0, 0.2, smoothstep(0.2, 1.0, z))
+	env.fog_density = (_fog_night() if _night else _fog_day()) * lerpf(1.0, 0.2, smoothstep(0.2, 1.0, z))
 
 ## the view's centre kept over the town
 func _zoom_keep_in() -> void:

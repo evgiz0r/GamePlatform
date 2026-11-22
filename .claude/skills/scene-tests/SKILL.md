@@ -370,7 +370,8 @@ the first one carried the buttons).
 - **Don't annotate with a `class_name` type that uses autoloads** (`var a: Actor3D`) in a
   `-s` script: it is compiled before the autoloads exist and fails ("Identifier not found:
   Probe"), taking the whole test with it. Use the base type (`Node3D`). A cast counts too
-  (`x as Actor3D`), and the damage reaches past the test: the class stays broken for the
+  (`x as Actor3D`), and so does a type test (`n is Actor3D`): match by the node's script path
+  instead. The damage reaches past the test: the class stays broken for the
   run, so the game's own `Actor3D.new()` fails and the city has no people -- a crossing test
   ran "PASS" with every case quietly erroring out on an empty list of crossers.
 - **Do the work in `_initialize()`, never `_init()`.** In `_init()` the autoloads are not up
