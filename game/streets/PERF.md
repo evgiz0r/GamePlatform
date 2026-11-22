@@ -283,3 +283,15 @@ camera and autodrive tick every tick. `STREETS_SLOW=1/0` forces it. Natively, Te
 the phone: ~24 -> ~14 ms of people and traffic a frame and ~8 ms less building: ~80 -> ~62 ms,
 12-13 -> ~16 fps. The rest is the drawing half (next). The minimap (3-3.5 ms on the phone)
 left alone: drawn every other frame at ~15 fps its heading-up turn would step visibly.
+
+**After slow frames, the phone (build 04:23 Israel, 27f19a7, Tel Aviv at Kaplan):** 12-19 fps,
+51-101 ms a frame; people 4-6 ms (was ~10), building 6-15 (was 16-21); traffic about the same
+(3.5-11: each of its ticks costs what it did, there are fewer). Named build hitches small
+(decks 58-84, pois 47, signals 42 ms). The two freezes left were unnamed: building 641 + rest
+677, building 1044 + rest 1026 -- the far shadows (their own pacing, no `_build_step`), then
+the picture's readback. Fixed (`_build_far_shadows`): the canvas commands for every road and
+area paced like the rest (they ran at once), and the picture at 1024 px instead of 2048 on a
+phone's browser or in slow-frames mode (`_fs_px`: a quarter of the drawing, readback,
+conversion and mipmaps). Desktop, Ashdod, forced slow: the far shadows' worst frame 82-86 +
+37-70 ms -> 48 and 56 ms. (The "rest ~1 s" at ~8 s on a desktop run is the first frame after
+loading, before the far shadows start: part of the load, not a stutter while driving.)

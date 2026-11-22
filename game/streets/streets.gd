@@ -13432,6 +13432,14 @@ vec3 wet_mirror(vec3 vd) {   // vd: from the eye to the point, in the world
 }
 """
 const FS_PX := 2048                  ## the picture's longer side (px): ~1.6 m a pixel over Givatayim
+## A phone's browser, or any device in slow-frames mode, draws it at half that: the picture is
+## drawn, read back, converted and mipmapped in one frame (a phone: building ~0.6-1 s + "rest"
+## ~0.7-1 s, a 2-second freeze), and a quarter of the pixels is a quarter of that work. The far
+## ground's shadows are coarser (~3 m a pixel), little to see on a phone's screen.
+func _fs_px() -> int:
+	if _slow_frames or OS.has_feature("web_android") or OS.has_feature("web_ios"):
+		return FS_PX / 2
+	return FS_PX
 const FS_DARK_EVE := 0.4             ## the same in the evening: a low sun lights the ground less, so its shadows take less
 const FS_DARK := 0.55                ## the share of the light a shadow takes off the ground (the real ones: tests/far_shadows.gd)
 var _fs_tex: ImageTexture = null
@@ -13487,7 +13495,7 @@ func _build_far_shadows(chunked := false, for_sun := "") -> void:
 		return
 	var off := Vector2(L.x, L.z) / -L.y      # a shadow's reach on the ground per metre of height
 	var t0 := Time.get_ticks_usec()
-	var mpp := maxf(1.0, maxf(_bounds.size.x, _bounds.size.y) / FS_PX)
+	var mpp := maxf(1.0, maxf(_bounds.size.x, _bounds.size.y) / _fs_px())
 	var w := int(ceil(_bounds.size.x / mpp))
 	var h := int(ceil(_bounds.size.y / mpp))
 	var o := _bounds.position
@@ -13565,9 +13573,13 @@ func _build_far_shadows(chunked := false, for_sun := "") -> void:
 	var g1 := PackedColorArray([Color(0, 1, 0)])
 	for kind: String in ["park", "grass", "wood", "pitch"]:
 		for ring: PackedVector2Array in _area_rings.get(kind, []):
+			if chunked and Time.get_ticks_usec() > _yield_at:   # (all of these at once: most of a second on a phone)
+				await _pause()
 			_canvas_ring(green, ring, Color(0, 1, 0))
 	var med := String(_place.get("look", "")) == "med"
 	for r: Dictionary in _roads:
+		if chunked and Time.get_ticks_usec() > _yield_at:
+			await _pause()
 		if med and r["drive"] and r["k"] in ["residential", "living_street"]:
 			var hw: float = float(r["w"]) * 0.5
 			for sgn: float in [-1.0, 1.0]:   # the front gardens, behind the pavements
@@ -13577,10 +13589,14 @@ func _build_far_shadows(chunked := false, for_sun := "") -> void:
 	var bare: RID = layer.call(CanvasItemMaterial.BLEND_MODE_MUL, true)
 	var keep_red := PackedColorArray([Color(1, 0, 1)])
 	for r: Dictionary in _roads:
+		if chunked and Time.get_ticks_usec() > _yield_at:
+			await _pause()
 		var wide: float = float(r["w"]) + (2.0 * (KERB_W + PAVE_W) if r["drive"] and _kerbed(r) else 0.6)
 		RenderingServer.canvas_item_add_polyline(bare, r["pts"], keep_red, wide)
 	for kind: String in ["water", "parking", "plaza", "school"]:
 		for ring: PackedVector2Array in _area_rings.get(kind, []):
+			if chunked and Time.get_ticks_usec() > _yield_at:
+				await _pause()
 			_canvas_ring(bare, ring, Color(1, 0, 1))
 	var feet: RID = layer.call(-1, false)
 	RenderingServer.canvas_item_add_triangle_array(feet, fidx, fpts, fcols)
