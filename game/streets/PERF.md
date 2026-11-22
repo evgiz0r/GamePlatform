@@ -101,6 +101,10 @@ All in `DEV.md`; search for the bold lead-in.
   browser: Givatayim's graphics 63 -> 22 s (the compile calls 63 -> 15.5 s), every program
   by the car 80 -> 23 s. What a cold load compiles now is mostly what is drawn: the sun's
   additive pass, ~0.38 s a program on this GPU (39 of them, ~15 s), and the depth passes.
+  **Live, build 2026-11-22 00:12 (74671c6), cold, the user's PC: Givatayim loaded in 27.6 s
+  (+ page 2.3): city file 0.5 · start area 6.0 · graphics 21.0 (143 shaders, 15.0 s
+  compiling)**; 204 programs by the car in 19 s. Steps reading a round ~1000 ms there were
+  the pane throttled, so a player in front of the screen waits less.
   How it was found: capture each program's sources and link time from the page (wrap
   `shaderSource`, `attachShader`, `linkProgram`), group by `#define`s, then recompile one
   captured program with a define changed in a throwaway WebGL2 context, a unique `#define`
