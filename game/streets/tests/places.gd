@@ -23,11 +23,15 @@ func _run() -> void:
 	await create_timer(1.0).timeout
 	while not g._tiles_todo.is_empty() or g._tiled:
 		await create_timer(0.5).timeout
-	print("PLACES %s" % JSON.stringify(g._places.count))
+	print("PLACES %s; models stamped %s" % [JSON.stringify(g._places.count), JSON.stringify(g._models.stamped)])
 	var shots := int(OS.get_environment("SHOTS")) if OS.get_environment("SHOTS") != "" else 3
 	var out := OS.get_environment("OUT")
 	var done := {}
-	for sp: Array in g._places.spots:
+	var spots: Array = g._places.spots.duplicate()
+	for lm: Array in g._landmarks:   # (and the parks' playgrounds: the made models there too)
+		if String(lm[1]) == "playground":
+			spots.append(["park_playground", lm[0]])
+	for sp: Array in spots:
 		var kind := String(sp[0])
 		if int(done.get(kind, 0)) >= shots or out == "":
 			continue
