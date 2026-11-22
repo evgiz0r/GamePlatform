@@ -24,7 +24,7 @@ def merged_log(n, logs_dir):
     files = sorted(f for f in os.listdir(logs_dir) if f.startswith("route-%d-" % n) and f.endswith(".json"))
     if not files:
         return None
-    logs = [json.load(open(os.path.join(logs_dir, f))) for f in files]
+    logs = [json.load(open(os.path.join(logs_dir, f), encoding="utf-8")) for f in files]
     out = dict(logs[-1])
     seen, samples, events = set(), [], []
     for L in logs:
@@ -59,7 +59,7 @@ def main(argv):
         log = merged_log(n, logs_dir)
         if log:
             merged = os.path.join(out_dir, "route-%d.json" % n)
-            json.dump(log, open(merged, "w"))
+            json.dump(log, open(merged, "w", encoding="utf-8"))
             t0 = min(s["t"] for s in log["samples"])
             subprocess.run([sys.executable, os.path.join(HERE, "drive_log_map.py"), merged,
                             os.path.join(out_dir, "route-%d.png" % n), "--from", str(t0 + 2.5)], check=False,
@@ -78,9 +78,9 @@ def main(argv):
              "|---|---|---|---|---|---|---|---|---|---|---|"] + rows
     path = os.path.join(HERE, "routes_results.md")
     if not os.path.exists(path):
-        open(path, "w").write("# The route set: results\n\nEach run of `run_routes.sh`, newest last. "
+        open(path, "w", encoding="utf-8").write("# The route set: results\n\nEach run of `run_routes.sh`, newest last. "
                               "The routes are in routes.json (picked by pick_routes.py).\n")
-    open(path, "a").write("\n".join(block) + "\n")
+    open(path, "a", encoding="utf-8").write("\n".join(block) + "\n")
     print("\n".join(block))
     return 0
 
