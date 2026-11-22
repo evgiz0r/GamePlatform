@@ -3847,9 +3847,29 @@ the yard a few metres off, and a shot at the point saw a roof.
     autodrive_edge, 15 starts x 40 s, before -> after: Tel Aviv within 25 m of the barrier
     77 -> 38 s, nearest 5 -> 12 m, turn-rounds 7 -> 4, Derech Namir from 5 m off the barrier
     to never near it; Ashdod 43 -> 24 s, turn-rounds 6 -> 2 (EDGE_OLD runs, a switch since
-    removed). Open: Tuval, Bernfeld, Nahalat Binyamin still linger 10-40 m from it; Ashdod's
+    removed). Open (see below for the first three): Tuval, Bernfeld, Nahalat Binyamin still linger 10-40 m from it; Ashdod's
     trunk at (4530, -1066) has autodrive cutting its curves off the asphalt (~7 s; reached
     now that the car gets back that way); HaMaginim's start 9 s off the road on both.
+  - *Later the same day (bumps, the edge's pocket, the three-point turn):*
+    `drive_bumps` LEVEL=7 STARTS=8 after the covers change: jolts 13.0 -> 3.0 a km, no
+    median or island jolts, no hits (the island post at (-684, 1754) not met again).
+    Tel Aviv's Tuval/HaHilazon is a pocket the map's cut made: Tuval one-way south to the
+    cut, HaYetzira (its pair, north) starting at the cut, HaHilazon a two-way dead end, every
+    service lane round it a dead end by the barrier (`tests/edge_pocket.gd AT=x,z R=m` lists
+    a spot's roads and _edge_bound's verdict on each way). The junction turn-round shuttled
+    the car between HaHilazon's two ends for good; now it turns there only when the way
+    back leads somewhere. Then it took the barrier's service lanes one after another and
+    turned round in each; now _ap_ways never offers a service lane that only runs off the
+    map, so at Tuval's cut it turns on the spot and goes back up (98 m off the barrier at the
+    end). Tel Aviv within 25 m of it 38 -> 30 s; Ashdod 24 s as was. Bernfeld is a one-way
+    toward the edge with no other half: turned at its end on the spot, by design. Nahalat
+    Binyamin's "not back" is a 17 s red light 56 m off the barrier. `ONLY=` takes a list now.
+    The three-point turn (`dead_end_turns` LEVEL=4): AP_KT_V 1.3 -> 2.2 m/s, the wheel goes
+    over while braking (2.5 rad/s, was 1.8 and only standing), a last move forward drives on
+    instead of stopping, and a move's look-ahead is a tick's reaction plus the stopping
+    distance (v*0.2 + v^2/16; a plain share of the speed stopped each move ~0.6 m short and
+    took 5-7 moves). Three moves 11.3 -> 7.3 s, out again 21.5-35 -> 17-20.5 s, Derekh
+    HaMitzpe from 24.6 s on the spot to 8.6 s in three moves; no hits, bumpers <= 0.2 m over.
 - **Delft (level 14): 39 m² of island on the asphalt** (`city_check`'s "islands on the road",
   0 in every other town; the first spot is at (-478, 1000), Westlandseweg's west end, a
   secondary road 10-16 m wide). Not found yet. One way it can happen, seen in the city file:

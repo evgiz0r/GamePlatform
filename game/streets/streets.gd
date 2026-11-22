@@ -23109,7 +23109,10 @@ func _ap_next() -> bool:
 			if not _edge_bound(w["leg"]):
 				all_edge = false
 				break
-		if all_edge:
+		# (only when the way back does lead somewhere: in a pocket where it runs off the map too
+		# -- Tel Aviv's HaHilazon, a dead end by the barrier at one end and a junction of ways
+		# off the map at the other -- it turned round at each end in turn for good)
+		if all_edge and (int(r["o"]) != 0 or (back.x >= 0 and not _edge_bound(back))):
 			_tally("ap_edge_turn", 1)
 			Probe.event("edge_turn", {"at": _ap_pts[_ap_pts.size() - 1].round() if _ap_pts.size() > 0 else Vector2.ZERO})
 			_ap_mark_dead_end()
@@ -23210,6 +23213,13 @@ func _ap_ways(ri: int, ei: int, dir: int) -> Array:
 			if not _in_city(p2[nxt]):
 				score -= 2.5   # back toward town rather than out past its edge
 			if _edge_bound(Vector3i(e.x, nxt, d2)):
+				if r2["k"] == "service":
+					# a lane that only runs off the map is never the way out: at the cut end of
+					# Tel Aviv's one-way Tuval autodrive took one lane after another there, each
+					# a dead end by the barrier, and turned round in them for good -- instead of
+					# turning on the spot at the cut end and back the way it came (tests/
+					# edge_pocket.gd lists such a spot's roads)
+					continue
 				score -= 8.0   # every way on from it runs off the map: only if nothing else
 			elif _trap.has((r2["ids"] as PackedInt32Array)[nxt]) and not _trap.has(node):
 				score -= 8.0   # into a pocket, with no way back out (see _find_pockets)
@@ -23234,7 +23244,7 @@ func _ap_ways(ri: int, ei: int, dir: int) -> Array:
 ## stops at its end and turns on the spot.)
 ## tests/dead_end_turns.gd drives into every cul-de-sac of a city.
 const AP_DEAD_ROOM := 7.0           ## metres short of a dead end's end it stops to turn round
-const AP_KT_V := 1.3                ## m/s, the crawl of each move
+const AP_KT_V := 2.2                ## m/s, the crawl of each move (1.3 took 11 s for three moves: walking pace, 22 Nov)
 const AP_KT_KERB := 0.6             ## a move ends when a bumper would be this far (m) over the kerb (the wheels are ~0.9 m in from it)
 const AP_KT_MOVES := 7              ## more than this, or AP_KT_SECS, and the rest is turned on the spot
 const AP_KT_SECS := 30.0
@@ -23322,7 +23332,9 @@ func _ap_kturn(dt: float) -> Array:
 	var diff := angle_difference(_yaw, to.angle())
 	if absf(diff) < 0.45:
 		# facing out, near enough for the lane-following to take it from here: stop, then plan
-		if absf(_v) > 0.1:
+		# (going forward it drives straight on, as a driver does: stopping and setting off
+		# again added a second or two to every turn)
+		if absf(_v) > 0.1 and g < 0:
 			return [0.0, 1.0, 0.0]
 		var spot := int(_ap_kt["n"]) > AP_KT_MOVES or float(_ap_kt["t"]) > AP_KT_SECS
 		Probe.event("turned_round", {"moves": mini(int(_ap_kt["n"]), AP_KT_MOVES), "secs": snappedf(float(_ap_kt["t"]), 0.1), "on_the_spot": spot})
@@ -23344,8 +23356,9 @@ func _ap_kturn(dt: float) -> Array:
 	var wheel := float(_ap_kt["side"]) * MAX_STEER * g   # forward toward the turn, back the other lock
 	if _ap_kt["stop"]:
 		# between moves: stand, into the other gear, the wheel over (below), then go
-		if absf(_v) > 0.08:
-			return [0.0, 1.0, _steer]
+		# (the wheel goes over to the other lock while it brakes, not only once it stands)
+		if absf(_v) > 0.15:
+			return [0.0, 1.0, move_toward(_steer, -wheel, 2.5 * dt)]
 		_ap_kt["gear"] = -g
 		_ap_kt["n"] = int(_ap_kt["n"]) + 1
 		_ap_kt["mt"] = 0.0
@@ -23363,9 +23376,11 @@ func _ap_kturn(dt: float) -> Array:
 			return [0.0, 1.0, _steer]
 	if absf(_steer - wheel) > 0.02 and absf(_v) < 0.3:
 		# the wheel turned over standing still, as a driver does, not snapped from lock to lock
-		return [0.0, 1.0, move_toward(_steer, wheel, 1.8 * dt)]
+		return [0.0, 1.0, move_toward(_steer, wheel, 2.5 * dt)]
 	var fwd := _fwd()
-	var end_p := _pos + fwd * float(g) * (CAR_OFF + 0.25 + absf(_v) * 0.3)
+	# (ahead by a tick's reaction and the stopping distance on the brake, ~8 m/s^2: a fixed
+	# share of the speed stopped the faster crawl ~0.6 m short and took two more moves)
+	var end_p := _pos + fwd * float(g) * (CAR_OFF + 0.25 + absf(_v) * 0.2 + _v * _v / 16.0)
 	# the move is over: at the kerb or something solid, or crawling nowhere (a lip, a slope)
 	if _ap_kt_blocked(end_p) or float(_ap_kt["mt"]) > 6.0 or (float(_ap_kt["mt"]) > 2.0 and absf(_v) < 0.05):
 		_ap_kt["stop"] = true
