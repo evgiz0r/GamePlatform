@@ -293,6 +293,22 @@ speed against time coloured by what held the car; the same drive before and afte
 side under a one-line title each; and a few bullets of what changed. Send each picture as
 it is made, with a one-line caption, rather than a report at the end.
 
+### A video of it (smooth, for a phone)
+
+Any test or scenario records itself with Godot's movie maker: add
+`GODOT_ARGS="--write-movie <file>.avi --fixed-fps 60"` (and `RES=1280x720 FULL=1`) to the run.
+Every frame is rendered at exactly 1/60 s of game time however long it takes to compute, so
+the video never stutters, even on a slow machine. Build everything first (a game that builds
+its world while it runs pops things in on camera: in a city game, the whole city up front),
+and the recording starts at the engine's first frame -- the loading screen included: cut it
+off with ffmpeg (`-ss <seconds>`: the movie's length from Godot's last line, less the scene's
+own length). Encode H.264 with a bitrate cap -- detailed foliage at CRF 24 came out at 15 Mbps,
+180 MB for 98 s; `-crf 28 -maxrate 2M -bufsize 4M -pix_fmt yuv420p -movflags +faststart`
+gave 23 MB -- the phone chat takes files under 30 MB (`SendUserFile` refuses more). Measured on
+the user's PC (22 Nov 2026): 6,500 frames of 720p at 60 fps in 3 min 46 s (about half real
+time), the cutting and encoding under a minute. Hide the game's HUD for a film (not done yet:
+the first one carried the buttons).
+
 ## Gotchas (each cost a run)
 
 - **Read braking over half a second, not a tick.** A follower that steps its speed to its
