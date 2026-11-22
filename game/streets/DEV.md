@@ -4085,6 +4085,18 @@ the opening; LEVELS 16 is the list page ("Scenarios" group, `_walk_list_open("sc
 | 9 | Alien arrival: ships over the towers, cars stop, people look up | Large | 5 | B | The disasters idea's first slice, as a scenario |
 | 10 | Follow that dog: a dog runs off across parks and lanes | Medium | 3 | B- | Dogs exist; the camera follows one |
 
+## On foot: faster, and any car in traffic (22 Nov 2026)
+
+`WALK` 2.1 -> 4.5 m/s (a jog, the "Run" clip from 2.6 m/s up), `RUN` 6.2 -> 9.5 (the run
+button or the stick right out), backwards 0.4 of the walk (1.8 m/s: at 0.6 it would have
+played the run clip backwards). The Walk clip on you is scaled by `_walk_clip_v()` like the
+walkers' (the people session's foot-slide measure); the filmed walks' replay keeps its old
+2.1 scale. `_get_in` takes the traffic car nearest you within `TAKE_REACH` (4 m to its
+body's side; not a bus or a motorbike) when nearer than your own: your car is put where it
+stood, it leaves the traffic (`alive` false). Parked cars are merged into a square's batches
+(`_build_lots`), so one cannot be lifted out yet: taking one would leave its copy standing.
+`tests/walk_take.gd`: jog 4.5, sprint 9.5, a sedan held beside you taken (PASS).
+
 ## Open problems
 
 - **22 Nov, the second round of general bugs** (each with the test that measured it):

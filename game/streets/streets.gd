@@ -1170,7 +1170,7 @@ var _me_anim := ""
 var _car_at := Vector2.ZERO          ## where the car was left, and how
 var _car_yaw_at := 0.0
 var _car_y_at := 0.0
-const WALK := 2.1                    ## m/s: a brisk walk (1.45, a stroll, was too slow to get anywhere)
+const WALK := 4.5                    ## m/s on foot: a jog (2.1 was "very slow" -- the user; 1.45, a stroll, before that)
 ## m/s the walk clip's feet cover at x1, on the figures as built (tests/foot_slide.gd: a
 ## foot's speed back past the body while it is on the ground). The kit's figures ~0.97
 ## (0.83-1.17); the Universal Base Characters' walk (people.gd) ~0.85 (0.79-1.03, about one
@@ -1186,7 +1186,8 @@ func _walk_clip_v() -> float:
 		if OS.get_environment("STREETS_WALK_CLIP_V") != "":   # (a test's other value: foot_slide.gd)
 			_walk_clip = float(OS.get_environment("STREETS_WALK_CLIP_V"))
 	return _walk_clip
-const RUN := 6.2
+const RUN := 9.5                     ## the run button or the stick pushed right out: a sprint ("i'm pretty fast")
+const TAKE_REACH := 4.0              ## a car this near (to its body) you can get into, yours or any in traffic
 const TURN_ON_FOOT := 2.6            ## rad/s
 var _look_turn := 0.0                ## the driver's glance into a turn
 var _ap_ring_n := 0                  ## autodrive: pieces of roundabout driven since it came onto one
@@ -16383,8 +16384,22 @@ func _get_out() -> void:
 
 func _get_in() -> void:
 	var d := _pos.distance_to(_car_at)
-	if d > 3.6:
-		_show_banner("walk back to the car (%d m)" % int(d), 1.4)
+	# any car in traffic within reach, nearer than yours: you take it (it leaves the traffic,
+	# and your car is where that one stood). Parked cars are drawn in batches a square at a
+	# time, and are not taken yet.
+	var take = _car_to_take(minf(d, TAKE_REACH))
+	if take != null:
+		var cdir := Vector2(sin(float(take.yaw)), cos(float(take.yaw)))
+		_car_at = take.pos
+		_car_yaw_at = cdir.angle()
+		_car_y_at = float(take.y)
+		_car_v = 0.0
+		take.alive = false
+		take.retry = 8.0
+		_show_banner("you took the %s" % String(take.kind), 1.6)
+		Probe.event("take_car", {"kind": String(take.kind)})
+	elif d > 3.6:
+		_show_banner("walk to a car -- yours is %d m off, or any car in the traffic" % int(d), 1.8)
 		return
 	_walking = false
 	_car_material()   # (you, seen through the windows, get in or out)
@@ -16400,6 +16415,24 @@ func _get_in() -> void:
 	_gear = 1
 	Probe.event("walk", {"on": false})
 	_show_banner("driving", 1.0)
+
+## the traffic car nearest you on foot, its body within `reach` (not a bus or a motorbike), or null
+func _car_to_take(reach: float):
+	if _traffic == null:
+		return null
+	var best = null
+	var bd := reach
+	for c in _traffic.cars:
+		if not c.alive or c.kind == "bus" or c.kind == "moto":
+			continue
+		var cdir := Vector2(sin(float(c.yaw)), cos(float(c.yaw)))
+		var half := float(c.len) * 0.5
+		var q := Geometry2D.get_closest_point_to_segment(_pos, c.pos - cdir * half, c.pos + cdir * half)
+		var dd := q.distance_to(_pos) - 0.9   # (from its side, not its middle line)
+		if dd < bd:
+			bd = dd
+			best = c
+	return best
 
 ## ---- a filmed walk, replayed ------------------------------------------------------------------
 ## A place in LEVELS with a "walk" replays a walk someone filmed: in first person, from the
@@ -16685,7 +16718,7 @@ func _film_tick(dt: float) -> void:
 	var anim := "Idle" if _v < 0.15 else "Walk"
 	if anim != _me_anim:
 		_me_anim = anim
-		_me.play(anim, true, 1.0 if anim == "Idle" else maxf(_v / WALK, 0.5))
+		_me.play(anim, true, 1.0 if anim == "Idle" else maxf(_v / 2.1, 0.5))   # (as before WALK went up to a jog)
 	if _film_t >= _film[_film.size() - 1].z and not _film_done:
 		_film_done = true
 		Probe.event("film_end", {"at": Vector2i(p)})
@@ -16939,7 +16972,7 @@ func _walk(dt: float) -> void:
 		go = -signf(_stick.y) * _dead(absf(_stick.y))
 	var run := PInput.pressed("action_a") or (_stick_id >= 0 and _stick.length() > 0.92)
 	_yaw = wrapf(_yaw + turn * TURN_ON_FOOT * dt, -PI, PI)
-	var want := go * (RUN if run and go > 0.0 else WALK) * (0.6 if go < 0.0 else 1.0)
+	var want := go * (RUN if run and go > 0.0 else WALK) * (0.4 if go < 0.0 else 1.0)   # (backwards: a walk, 1.8 m/s)
 	_v = move_toward(_v, want, 9.0 * dt)
 	_pos += _fwd() * _v * dt
 	# walls, trees and posts; the people; the cars going by; the car you left
@@ -16956,12 +16989,12 @@ func _walk(dt: float) -> void:
 			_pos += d.normalized() * (CAR_R + 0.3 - d.length())
 	_keep_inside(0.3, false)
 	_y = lerpf(_y, _walk_y(_pos, _y), 1.0 - exp(-dt * 12.0))   # up and down kerbs in a step, not a jump
-	var anim := "Idle" if absf(_v) < 0.15 else ("Run" if absf(_v) > WALK + 0.5 else "Walk")
+	var anim := "Idle" if absf(_v) < 0.15 else ("Run" if absf(_v) > 2.6 else "Walk")   # (the jog runs)
 	if anim != _me_anim:
 		_me_anim = anim
-		_me.play(anim, true, 1.0 if anim == "Idle" else maxf(absf(_v) / (WALK if anim == "Walk" else RUN * 0.8), 0.5))
+		_me.play(anim, true, 1.0 if anim == "Idle" else maxf(absf(_v) / (_walk_clip_v() if anim == "Walk" else RUN * 0.8), 0.5))
 	elif anim != "Idle":
-		_me.anim.speed_scale = maxf(absf(_v) / (WALK if anim == "Walk" else RUN * 0.8), 0.5)
+		_me.anim.speed_scale = maxf(absf(_v) / (_walk_clip_v() if anim == "Walk" else RUN * 0.8), 0.5)
 
 ## the camera on foot: over the shoulder, a few metres back (kept out of walls), or from the
 ## eyes when the seat view is chosen

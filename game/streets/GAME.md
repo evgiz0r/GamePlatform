@@ -101,18 +101,23 @@ the street it turns into, no tighter than the car can steer and slowly enough to
 > Real give-way and left-turn decisions (picked from the list of next steps: "1 2 6 7").
 
 **On foot.** The "walk" button (or F) lets the driver out of the door to walk the same city:
-arrows or the stick to walk (a brisk 2.1 m/s) and turn, space to run (6 m/s), over the
+arrows or the stick to jog (4.5 m/s) and turn, space (or the stick pushed all the way) to
+sprint (9.5 m/s), backwards at a walk, over the
 shoulder or (the "seat" button) from the eyes. Out of a moving car you jump: you tumble
 out of the door with the car's speed, roll and get up, and the empty car rolls on by
 itself, slowing, until it stops or hits something. Traffic goes round the car; traffic
 stops for you on the road; walls, fences, trees and passing cars push you aside; the
 minimap marks the car. Back at it, "drive" gets you in (still rolling, it rolls on with
-you).
+you) -- or get into any car in the traffic you are beside: "drive" next to it and it is
+yours, from where it stood (it leaves the traffic). Parked cars cannot be taken yet.
 
 > Walk mode: get out of the car and walk the same city.
 
 > I want to walk a bit faster when I'm out of the car, now it's too slow. I want to be able
 > to start walking also when I'm driving. The car will just continue and I'll pop off.
+
+> the current walk mode is very weak ... Its very slow and i can back only to my car. Lets
+> do i can go inti any car and im pretty fast
 
 ## The buttons on the screen
 
