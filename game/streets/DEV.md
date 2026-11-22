@@ -3018,8 +3018,36 @@ cartoon figures to compare.
   - Clothes are also kept 0.2 (sRGB distance) from the skin as drawn (`_skin_seen`: the
     texture times the tone's factor), taking the next colour in the list, without a draw.
   - `tests/people_glance.gd`'s `_collar` shots show both.
-- **Light skin still glares** in full sun, the face going pale yellow. That comes from the
-  scene's exposure, not the people, and is part of the open whole-scene colour item.
+- **Light skin glared** in full sun, the face going pale yellow. The cause was the people,
+  not the scene's exposure:
+  - The palest tones were drawn at 1.3x the skin texture, which is itself a light skin.
+  - Skin had roughness 0.6 and specular 0.5.
+  - Now `SKIN_K_MAX` 1.0, roughness 0.72, specular 0.35. A lit forehead in `people_glance`
+    went from (1, 1, 0.77) to (1, 0.85, 0.49); red still tops out in full sun, but the hue
+    holds.
+  - The whole-scene pink lean is still open.
+- **Startled by the car** (streets.gd's walkers, after the step aside; the `Startled` clip is
+  the library's `Hit_Chest`, added to `make_moves.gd`'s KEEP with `Sprint`):
+  - It fires when the car's body would be within 1 m of them 0.35 or 0.7 s on, closing by
+    0.4 m or more, at over 2.5 m/s.
+  - They stop for 1.1 s with the clip, take a half step (0.4 m) back from the car, and then
+    walk on. Once in 5 s at most.
+  - A car going by in its lane doesn't do it. That was the old complaint ("they jump to the
+    side ... it looks fake").
+  - The second of a pair (`_walk_beside`) starts with the first; it never reaches the
+    walkers' own code.
+  - `tests/people_startle.gd`: started with the car's body 5.6-6.1 m off, and none of those
+    driven past 1.9-14 m off started.
+  - To remake `moves.res`: unzip `UAL1_Standard.glb` from the Standard zip into a folder in
+    the project, `--import`, then run `make_moves.gd` with `UAL=res://<that folder>/...`.
+    Delete the folder after; it's 7.6 MB and not for the repo.
+- **Passing each other** (the walkers' "someone ahead" and `_people_apart`):
+  - Two coming at each other used to see each other only from 2.6 m, step aside at the last
+    moment, and pass 0.29 m apart, shoulders through each other.
+  - Now from 4 m, with the push apart below 0.6 m (was 0.55).
+  - `tests/people_pass.gd`, Givatayim (level 1), 40 s: 13 meetings under 0.5 m before, 6
+    after; the closest 0.29 m before, 0.40 after. None longer than 0.5 s. The test town
+    (level 4): none.
 - **Gotchas found in the trial** still hold:
   - The meshes are `SuperHero_Male` and `Superhero_Female`: match names without case.
   - The female's custom arrays break a rebuild with `add_surface_from_arrays`; `_join`
