@@ -183,18 +183,26 @@ func _show_levels(g: Dictionary) -> void:
 	# A level's number is still its place in LEVELS: grouping only changes where it is shown.
 	var groups := _level_groups(String(g["id"]))
 	if named and not groups.is_empty():
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 16)
-		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		# Up to three groups side by side, narrower as they get more (250 px each was 780 px for
+		# three, on a 640 px screen: the third ran off a phone's edge); past three they wrap to
+		# a second row. A name too long for its column is cut, not spilled over its neighbour.
+		var cols := mini(groups.size(), 3)
+		var sep := 16 if cols < 3 else 10
+		var w := minf(250.0, (608.0 - sep * (cols - 1)) / cols)
+		var row := GridContainer.new()
+		row.columns = cols
+		row.add_theme_constant_override("h_separation", sep)
+		row.add_theme_constant_override("v_separation", 10)
 		for grp: Array in groups:
 			var col := VBoxContainer.new()
 			col.add_theme_constant_override("separation", 6)
-			col.add_child(UIKit.label(String(grp[0]), 15, "accent"))
+			col.add_child(UIKit.label(String(grp[0]), 15 if cols < 3 else 14, "accent"))
 			for level: int in grp[1]:
 				var lv := level
 				var b := UIKit.button(names[level - 1], func(): start_game(g["id"], {"level": lv}))
-				b.custom_minimum_size = Vector2(250, 30)
-				b.add_theme_font_size_override("font_size", 13)
+				b.custom_minimum_size = Vector2(w, 30)
+				b.add_theme_font_size_override("font_size", 13 if cols < 3 else 12)
+				b.clip_text = true
 				col.add_child(b)
 			row.add_child(col)
 		nodes.append(row)

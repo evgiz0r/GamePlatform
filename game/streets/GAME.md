@@ -1754,7 +1754,9 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   splitters between lanes and pavements. If they are low enough lets make it possible for our
   car to go to the other side. And things bit more breakable that dont completely stop us.
   Some i think just break and still stuck in place. Not everything but many small items we
-  could just not be blocked by". (Being built: see DEV.md, racer.)
+  could just not be blocked by". (Built 22 Nov: past the queue in the oncoming lanes, what
+  gives under the car, squeezing between the lanes -- the squeeze still refuses on 4 of 6
+  staged reds with every lane full, see DEV.md "Racer past a whole queue".)
 
 - Not just driving: the same baked city could be walked, or used by another game.
 - Crashes, what is still to come: a sign post bent, a fence panel or a hedge pushed in, a
