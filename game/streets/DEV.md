@@ -26,6 +26,7 @@ merge, re-check (`tools/check_script.sh`, a playtest, the tests below), never fo
 | `standins.gd` | the squares not built yet seen from above: one flat mesh a square (roads, building outlines, parks, water) made as the background build starts, shown only while zoomed out, dropped when its square is built. See "The green wave" below |
 | `racer.gd` | racer mode ("racer" button, R): `_autodrive` leaves out lights, signs, zebras and giving way when `_racing()`, raises the limit (`limit`) and the corners (`CORNER_K`); `_ap_pass_bus` goes round any slower car (`can_pass`); the traffic's horns (`tick`: a car braking hard with the player its blocker, or met head-on in its lane). See "Racer, the Ministry's bus lanes, kindergartens and shelters" below |
 | `places.gd` | a town's own kindergartens (a fenced yard, shade sail, slide) and public shelters (the concrete entrance and its sign) from the city file's `places`, each on the nearest clear ground to its point; built per square |
+| `opening.gd` | the opening: the view high over the town, turning, while the squares round the car go up (paused city, hurried build), then down to the car; skipped by a tap; off for tests, bots, walks and routes (`wanted`, `STREETS_OPENING`) |
 | `rails.gd` | railways: the tracks the city file has (`rails`, `platforms`, `stations`), their beds, rails and sleepers, the platforms with canopies and the station's name, and trains running along them (`tick`). See "Railways" below |
 | `cities/*.json` | baked towns (`tools/osm_city.py`) and the made-up test town (`tools/fake_city.py`) |
 | `details.gd`, `cities/details/<city>.json` | what a filmed walk showed and OSM lacks, laid over the baked city as it loads (road edits, unmarked zebras, areas, an arcade cut under a block, paving level with the pavement, walls, fences, hedges, bins, railings, bollards, a pole transformer, a barrier, parked motorbikes, trees) and the walks themselves; the format is at the top of `details.gd` |
@@ -2737,6 +2738,45 @@ rests on the forearms.
 - phones in hand, which needs a pose, not only a thing
 - hands moving while people talk
 
+## Hands while talking, walk 2's paving, car greys, shutter boxes (22 Nov 2026)
+
+- **Hands while talking** (`Talk`, a SkeletonModifier3D, in "hands while talking"). It
+  bends the upper arm and forearm on top of the animation's pose: now one forearm, now the
+  other, now and then both. Gestures run about every 3 s, and a small beat moves the hand.
+  It goes on the cafe chatters and on the film's talkers (`talk` in a walk's people). The
+  axis that brings the hand **forward and up** is `(1, 0, -1)` in the left arm bones' own
+  frame and `(1, 0, 1)` in the right's, for both upper arm and forearm. That was measured by
+  turning each bone 1 rad about each axis and reading where the fist went. About x alone the
+  hand also swung out sideways, and about -x it went behind the back. Test:
+  `tests/people_talk.gd` (level 4), 24 frames of one talker, close.
+- **Walk 2 side by side** (recorded 22 Nov, 1066 frames in ~8 min here, not 22-25). The
+  ground under the walk was measured every 3 s (the bottom fifth of each half). On the grey
+  stretches film and game agreed. On Sirkin's brown "antique" pavers (details `pave: [1, 0]`)
+  the game was red over green **1.22-1.30** and bright (green 0.57-0.62) against the film's
+  **1.10** (green ~0.5). The tone shader's "reds and browns" mix (pave colours code 0) is
+  now muted, `a/b/cc` = (0.93, 0.77, 0.69) / (0.85, 0.75, 0.68) / (0.78, 0.74, 0.72), and
+  measures 1.11-1.15 at the same spots. That mix is used city-wide, on ~30% of streets.
+  - Left for the walk session, which owns the walk's route and head: the game's eye looks
+    down at the pavement much more than the phone does (the film sees the blocks and trees
+    above), and the film is greener (hedges, bougainvillea, trees over the pavement) along
+    Sirkin's residential half.
+- **Car greys.** `_car_paints`' silver, grey and black were mixed from bg_alt, which is
+  lavender in the default palette. `_natural(…, 0.6)` kept 60% of that, so silver cars read
+  mauve next to the shops. They are now `_greyed` (0.92, 0.92, 0.85).
+- **Shutter boxes.** A grey metal housing 0.3 m deep sits over most shop windows (75%, and
+  every shut shop), as most of the towns' shops have one. `_tally` "shutter_boxes".
+- **Should a check have caught the mauve cars and the red pavers?** The family is "what is
+  grey in life reads grey on screen". `look_tries` and `look_bench` now print each shot's
+  greys (`_grey_check`): the truly grey pixels' red/green and blue/green, FAIL past 0.07 off.
+  - It catches a tint over the whole scene. It cannot catch one object's: the Kira Sushi
+    shot read 1.083 with the mauve cars and 1.082 without them.
+  - Catching one object's tint would mean measuring known things by their pixels (a
+    parked car's body, a paving band): a per-object render pass, a larger job. Offered,
+    not started.
+  - The bench now reads red/green 1.04-1.07 and blue/green ~1.015, against the film's greys
+    at ~1.03 and 0.98. That is a slight magenta (green ~3-5% low) across the scene, still
+    to look at.
+
 ## Sizes against life (`tests/scale_check.gd`, 20 Nov 2026)
 
 The user's sister said the scale felt off; the check measures what the game builds. Vehicles
@@ -3791,9 +3831,9 @@ be clear for that plus 14 m a second of passing for what comes the other way; lo
 `blocker` -1), so a car braking harder than 3 m/s^2 for you, or one you come at head-on in
 its lane, hoots -- an AudioStreamPlayer3D at the car, the player's own synthesised horn at
 the car's pitch, 3 at once at most, each car once in 6 s; a red run makes the nearest car
-hoot. Buttons: "wave" and "racer" sit on the left over the minimap (8,140 and 8,164): the
-bottom row is full, and on a phone the stick's ring and its "hold & drag to drive" fill the
-bottom right (the wave button first went there and covered the hint).
+hoot. (Its button and the green wave's were first their own, on the left over the minimap;
+the HUD rework the same night made them autodrive's style -- rules, green wave, racer, racer
+the default -- on the chip beside autodrive and in the "more" drawer; V and R still switch.)
 Later the same night: racer goes round on the right too where there are two lanes or more
 its way and the left is busy (`sgn`); stood behind a queue that does not move (1 s), it
 goes up onto the pavement on the right (`_ap_mount_by`: the car's middle 1.6 m past the kerb,
@@ -3802,6 +3842,20 @@ and nothing solid -- posts, trees, bins, parked cars, walls -- stands on it). It
 Aviv drive hit two posts, at 33 and 16 km/h: tight turns are taken at the usual pace now
 (`CORNER_FROM`: x1.3 only on bends the plan takes at 7 m/s or more), and a way out round a
 car is undone if a post, tree or median end stands on it.
+Then, the user: "should in general try to get there asap -- going to the other side of the
+road, speeding around cars, of course not crashing into obstacles". `_ap_race_by` (tried
+before the bus pass and the pavement): any car slower than racer wants, moving or not, is
+gone round by the first way out that is open -- `RACE_OUT` one lane left, two, three (the
+other side of the road), one right -- each as far over as clears that car's body where it
+stands (`RACE_CLEAR` 2.9 m from its middle: the old one-lane bend left a car held half across
+the line 2.08 m off, inside `lead_on`'s 2.1, and racer stood behind it for good), tried on a
+copy of the plan and kept only if every point is on asphalt, clear of anything solid, of
+every car now and of where each will be when racer gets there. Stuck behind the same car,
+it tries again, starting at the next way out (`_race_tries`). The limit x1.8, up to 110 km/h.
+`tests/racer_moves.gd` (a car held still 60 m ahead): two-lane one-way streets 2 of 3 round
+it and on in 13-14 s; Afek bends once and never clears it (open: its other ways out are
+refused -- not looked into); one-lane streets wait (their pavements were not clear); 0
+crashes, 0 people hit.
 `tests/racer.gd`: route 2 by "go to" (Givatayim, 1.2 km as the crow flies),
 autodrive then racer, traffic as usual; then a junction held at red, racer from 150 m back.
 22 Nov: autodrive 237 s (0 reds, 50 km/h top), racer 214 s (7 cars passed, 1 red, 78 km/h
@@ -3856,6 +3910,29 @@ the kerb. Kindergartens are added to `_schools` (SLOW near them).
 map; 144 yards and 37 shelters put, 8 kindergartens left out (no clear ground within 28 m).
 Shots taken where each was put (`spots`), not at the map's point: the point is its building,
 the yard a few metres off, and a shot at the point saw a roof.
+
+## The opening; models made with Blender (22 Nov 2026)
+
+**The opening** (`opening.gd`). Before, only the squares within `NEAR_NOW` of the start and
+those ahead were built behind the loading text, and the rest of `NEAR_FIRST` (5 squares in
+Givatayim) went up in view in the first seconds of the drive. Now, where the car would be
+shown, `Opening.wanted` (not headless, not a scene test -- `-s` on the command line --, not
+the bots' Probe, not `_whole_first()`; `STREETS_OPENING` 1/0 forces it) starts the zoomed-out
+view at `HIGH` (0.82), turning `TURN` rad/s, the city paused (the zoom's own pause: the
+build goes on, at `CATCH_UP_US` while `_bare_near()`), and comes down (`_zoom_set(0)`, which
+resumes the city) once nothing within `NEAR_FIRST` is bare, `MIN_S` 4 s at least, `MAX_S`
+20 s at most. `_input` ends it on any key, click or touch not over the shell's HUD.
+`tests/opening.gd` (`STREETS_OPENING=1 STREETS_BUILD_ALL=0`): Givatayim, 5 bare squares as the
+car was shown; the opening ran 8.8 s and came down with 0; the city running after (PASS).
+Shots: up there at 1 and 3 s, at the car 3 s after landing.
+
+**Models made with Blender** (`tools/blender_model.sh`, recipes in `tools/blender/recipes/`,
+the kit-wide notes in CLAUDE.md "Making 3D models"). `places.gd` stamps them into a square's
+batch (`_stamp`: each surface's triangles into the CBuf, coloured by its material's role --
+"paint" from the yard's colours, "metal" etc. from the street's tones), so a model adds no
+draw. In each kindergarten's yard: `slide` and `spring_rider` (336 and 684 faces; 288 placed
+in level 1). The glTF import keeps the Blender material's name as the surface material's
+`resource_name`: that is what `_role_col` reads.
 
 ## Open problems
 
