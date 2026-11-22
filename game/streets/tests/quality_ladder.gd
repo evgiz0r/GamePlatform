@@ -109,5 +109,7 @@ func _run() -> void:
 	g._bg_build = was[0]
 	g._catch_up = was[1]
 	g._zoom_v = was[2]
+	print("the perf view's ladder line: %s" % " · ".join(g._q_log))
+	check("the perf view says what the ladder did", g._q_log.size() > 0)
 	print("QUALITY LADDER: %s" % ("PASS" if fails == 0 else "%d FAILED" % fails))
 	quit(1 if fails > 0 else 0)

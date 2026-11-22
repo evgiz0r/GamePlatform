@@ -6,7 +6,7 @@ extends SceneTree
 ## it keeps), checks it is drawn above every HUD part it overlaps and that the build line is
 ## its first line rather than a label of its own under it, and saves a shot.
 ##   game/streets/tests/run.sh perf_view 4        (about a minute; the shot: $OUT/perf_view.png)
-## Good: CHECK ... PASS twice, and in the shot every line of the view on its dark backing.
+## Good: CHECK ... PASS three times, and in the shot every line of the view on its dark backing.
 var g: Node
 var fails := 0
 
@@ -32,6 +32,12 @@ func _run() -> void:
 		g._hitches.push_front("%.1f s  %d ms (usual 140)  traffic 18 · people 16 · traffic: follow 11 · car 5 · building (trees) 4 · rest 271" % [
 			10.0 + i, 240 + 20 * i])
 	g._hitches.resize(mini(g._hitches.size(), 4))   # (the game keeps four)
+	# and the lines only a browser or a click adds, so the panel is as tall as it gets: the
+	# shaders since the car (web only) and the last time-of-day switch
+	if g._gl_at_car.x < 0.0:
+		g._gl_at_car = Vector2(0, 0)
+	g._tod_line = "to night: 127 ms at the click, then the slowest frame 7100 ms, 13 shaders compiled"
+	g._q_note("2 to 1 at 9.8 fps")
 	g._toggle_perf()
 	await create_timer(1.0).timeout
 	var pl: Label = g._perf_lbl
@@ -50,6 +56,13 @@ func _run() -> void:
 			over.append(str(c.name) + (" '" + (c as Label).text.left(20) + "'" if c is Label else ""))
 	print("perf view: %d lines, %s; over it or showing through: %s" % [pl.text.count("\n") + 1, str(r), str(over)])
 	check("nothing else in the HUD is drawn over the perf view or shows through it", over.is_empty())
+	# and above the buttons along the bottom (drawn by the HUD itself, not nodes): the panel grew a
+	# line for the quality ladder, and a laptop's screenshot had it ending 4 px above them
+	var bottom := r.end.y
+	for b: Rect2 in [g.AUTO_BTN, g.STYLE_BTN, g.GOTO_BTN]:
+		if r.intersects(b):
+			over.append("a bottom button at y %d (the panel ends at %d)" % [int(b.position.y), int(bottom)])
+	check("the perf view clears the buttons along the bottom", r.end.y <= g.AUTO_BTN.position.y)
 	check("the build line is the perf view's first line, not a label under it",
 		not g._ver_lbl.visible and pl.text.begins_with(g._ver_lbl.text))
 	var out := OS.get_environment("OUT") if OS.get_environment("OUT") != "" else "/tmp/streets-tests/perf_view"

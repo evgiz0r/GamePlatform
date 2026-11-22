@@ -339,3 +339,21 @@ One perf-view screenshot, mailed: Givatayim at Katznelson, autodrive on, 317 s i
 - Expected from the fixes on that laptop: modest -- ~6 ms of deciding off each frame, and
   whatever the ladder's levels buy its drawing (on the home PC they bought nothing; this
   chip may differ). Playable there needs the drawing half cut: fewer draws on a weak machine.
+
+**The same laptop on the fixed build (a733fcd, 22 Nov 11:56-11:58), two screenshots:**
+- *Tel Aviv*, Givat HaTahmoshet, racer, the "more" drawer open: **quality 0** -- the ladder
+  ran. 7 fps, 167.6 ms = drawing 118.2 + script 49.4 in 8.0 ticks (traffic 14.0, people 11.7,
+  building 8.8, deciding 4.1 -- was 12.5 in Givatayim, autodrive 3.8); 717 draws, 1.25 M
+  triangles. The hitch lines a minute in said "usual 66" (15 fps). **Worst frame 13687 ms**,
+  and **107 shaders compiled since the car, 13.9 s** (Givatayim's first screenshot: 54, 1.3 s):
+  ~130 ms a program, the uncached rate -- the first time this laptop's browser had seen the
+  levels below 2.
+- *Delft*, Binnenwatersloot, 193 s in, building 9%: **quality 2**, 10 fps, 112.3 ms = drawing
+  86.0 + script 26.3 in 6.4 ticks (building 6.5, people 5.2, traffic 4.5, minimap 4.4,
+  autodrive 2.2); 818 draws, 1.57 M triangles. Shaders since the car 76, 1.0 s (cached).
+- Script per tick: 4.1 (Delft) and 6.2 ms (Tel Aviv), against 8.5 before -- deciding halved
+  and slow frames. **The drawing is now most of the frame (77% in Delft)**, 0.1-0.17 ms a
+  draw: CPU work per draw (wasm and ANGLE), not pixels.
+- Whether the levels help this laptop the two can't say (one at 0, one back at 2, likely after
+  "lower bought nothing"). The perf view now has a "quality ladder:" line -- each step with
+  the fps it measured -- so the next screenshot says.

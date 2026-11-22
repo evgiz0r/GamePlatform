@@ -697,6 +697,10 @@ The ones most often touched, and the functions in them:
   (`_bg_build and _catch_up`) and the view from above: it left out the whole background build
   until 22 Nov, and on a slow machine that is most of an hour -- a work laptop drove at 7 fps
   and quality 2 for its whole drive, the ladder never asked (PERF.md, "A work laptop").
+  The perf view's "quality ladder:" line is `_q_log` (`_q_note`: each step and the fps it
+  measured, the last four). `--quality-walk=S` (user arg; `tests/web_shaders.js` QWALK=S) holds
+  the ladder off and steps QWALK_LEVELS S seconds apart, each printed, to count what a step
+  costs a browser in programs compiled.
   Every level keeps the sun's shadows (level 0: 25 m): switching them off recompiled every
   material's shader in the browser, seconds of freeze each time the ladder crossed into or out
   of level 0. Night keeps them too: the moon is the day's sun, dim and blue, its shadows

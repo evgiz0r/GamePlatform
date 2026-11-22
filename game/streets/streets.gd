@@ -1409,6 +1409,8 @@ func start(_config: Dictionary) -> void:
 		return
 	_stage_ms["warm up (shaders compiled, 4 frames)"] = Time.get_ticks_msec() - tw
 	print("[streets] warm-up done in %d ms, frames %s" % [Time.get_ticks_msec() - tw, _warm_ms])
+	if _qwalk > 0.0:
+		_quality_walk()
 	_load_ms = Time.get_ticks_msec() - t0
 	_load_split = [t1 - t0, tw - t1, Time.get_ticks_msec() - tw]
 	_load_gl = _gl_count() - gl0 if gl0.x >= 0.0 else Vector2(-1, 0)
@@ -18028,6 +18030,28 @@ var _q_on_trial := false
 var _q_floor := 0                    ## no step below this level ...
 var _q_floor_until := 0.0            ## ... until then (s, _q_clock): lower bought nothing
 
+## "--quality-walk=S" among the user args (tests/web_shaders.js QWALK=S): the ladder held off,
+## and every S seconds after the warm-up the quality set to the next of QWALK_LEVELS, each
+## step printed -- to count what a step costs a browser (the programs it compiles). A work
+## laptop's first drive with the ladder working froze 13.7 s once, 107 programs compiled after
+## the car (22 Nov): a step that changes every material's shader would do that.
+const QWALK_LEVELS := [1, 0, 1, 2, 3, 2]
+var _qwalk := float(_user_arg("--quality-walk=")) if _user_arg("--quality-walk=") != "" else 0.0
+
+static func _user_arg(prefix: String) -> String:
+	for a: String in OS.get_cmdline_user_args():
+		if a.begins_with(prefix):
+			return a.substr(prefix.length())
+	return ""
+
+func _quality_walk() -> void:
+	for q: int in QWALK_LEVELS:
+		await get_tree().create_timer(_qwalk).timeout
+		if not is_inside_tree():
+			return
+		print("[streets] quality walk: to %d" % q)
+		_set_quality(q)
+
 func _set_quality(q: int) -> void:
 	if OS.has_feature("web") and not _shadow_web:
 		# a 2048 map is plenty over 60 m, and a cheap filter: the 4096 default and its soft
@@ -18066,6 +18090,8 @@ func _watch_fps(dt: float) -> void:
 	_judge_fps(dt)
 
 func _judge_fps(dt: float) -> void:
+	if _qwalk > 0.0:
+		return   # (a quality walk sets the levels itself)
 	_q_clock += dt
 	if _fps_wait > 0.0:
 		_fps_wait -= dt
@@ -18106,6 +18132,7 @@ func _judge_fps(dt: float) -> void:
 			_q_trial = []
 			_q_on_trial = true
 			_set_quality(_quality - 1)
+			_q_note("%d to %d at %.1f fps" % [failed, _quality, fps])
 			_fps_wait = 3.0   # (new shaders compile)
 			Probe.event("quality", {"level": _quality, "fps": int(fps), "down": true})
 		_log.event("quality", _quality)
@@ -18120,8 +18147,18 @@ func _judge_fps(dt: float) -> void:
 		_fps_good = 0.0
 		_q_descent = {}
 		_set_quality(up)
+		_q_note("up to %d at %.1f fps" % [_quality, fps])
 		_fps_wait = 3.0
 		Probe.event("quality", {"level": _quality, "fps": int(fps), "down": false})
+
+## what the ladder did lately, for the perf view: one screenshot tells whether the levels help
+## this machine (a work laptop's two, 22 Nov: one at 0, one back at 2 -- and no saying why)
+var _q_log: Array = []
+
+func _q_note(what: String) -> void:
+	_q_log.push_back("%d s %s" % [Time.get_ticks_msec() / 1000, what])
+	if _q_log.size() > 4:
+		_q_log.pop_front()
 
 ## The stepping down has ended (the rate good again, or the bottom): of the levels it passed,
 ## the best-looking one whose rate was within STEP_GAIN of the best. Back up to it, and no step
@@ -18144,6 +18181,11 @@ func _settle() -> bool:
 	_q_retry_at.erase(pick)
 	var was := _quality
 	_set_quality(pick)
+	var rates: Array = []
+	for l: int in [3, 2, 1, 0]:
+		if seen.has(l):
+			rates.append("%d: %.1f" % [l, float(seen[l])])
+	_q_note("back to %d, lower bought nothing (fps %s)" % [pick, ", ".join(rates)])
 	_fps_low = 0
 	_fps_good = 0.0
 	_fps_wait = 3.0
@@ -25730,8 +25772,9 @@ func _tick_hud() -> void:
 	if _fps_lbl.visible:
 		_fps_lbl.text = "%d fps · worst %d ms · quality %d" % [Engine.get_frames_per_second(), int(_worst_ms()), _quality]
 	if _perf_view:
-		_perf_lbl.text = "%s\nframe time, last %d frames (lines: 16 and 33 ms)\n%s\n%s\nhitches (slowest parts, ms):\n%s\n%s" % [
-			_ver_lbl.text, _frame_ms.size(), _prof_avg, _gpu_line(), "\n".join(_hitches) if not _hitches.is_empty() else "none yet", _load_text()]
+		_perf_lbl.text = "%s · frame time, last %d frames (lines: 16 and 33 ms)\n%s\n%s\nquality ladder: %s\nhitches (slowest parts, ms):\n%s\n%s" % [
+			_ver_lbl.text, _frame_ms.size(), _prof_avg, _gpu_line(), " · ".join(_q_log) if not _q_log.is_empty() else "no step yet",
+			"\n".join(_hitches) if not _hitches.is_empty() else "none yet", _load_text()]
 	if _dest_on:
 		var left := _pos.distance_to(_dest)
 		if _auto and _ap_pts.size() > 1:
