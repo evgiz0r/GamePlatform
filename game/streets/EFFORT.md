@@ -4,6 +4,9 @@ How long each change took, in minutes, from the Claude Code sessions that made i
 
 | date (UTC) | commit | change | agent | runs | you | active | away | lines | files | steps | tools | engine runs | tokens out |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2026-11-22 14:38 | 3c18f9e | streets: dragons over the city -- two dragons duel over the towers, one dives at us, we hide behind a build... | 6.4 | 6.2 | 0.4 | **13** | 0.0 | +516 -5 | 13 | 26 | 34 | 7 | 32.6k |
+| 2026-11-22 14:28 | d6224c9 | web build: Godot's never-drawn default lit programs compiled as a placeholder, for every game | 1.5 | 1.8 | 9.5 | **13** | 0.0 | +79 -3 | 4 | 17 | 25 | 4 | 9.4k |
+| 2026-11-22 14:26 | 525dcdf | streets people: a start back when the car is about to hit them (Startled, the library's Hit_Chest; a stop a... | 4.8 | 8.9 | 0.9 | **15** | 765 | +263 -18 | 9 | 43 | 41 | 10 | 28.9k |
 | 2026-11-22 14:25 | d226f5f | tools/record_video.sh: a game playing a level, filmed smooth and cut to the action, sized for the phone cha... | 18 | 40 | 0.1 | **58** | 631 | +170 -1 | 8 | 31 | 33 | 6 | 18.4k |
 | 2026-11-22 14:16 | 7f056b0 | notes: the never-drawn check's 4 -- the engine's own default material, at start, before any game | 17 | 32 | 0.0 | **50** | 647 | +12 -0 | 1 | 17 | 23 | 3 | 11.9k |
 | 2026-11-22 14:15 | dee9130 | shell: a levelled game's start screen fits any number of groups -- up to three side by side in narrower col... | 1.1 | 1.0 | 0.0 | **2.2** | 770 | +35 -19 | 6 | 11 | 12 | 6 | 7.3k |
