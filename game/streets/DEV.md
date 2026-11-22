@@ -27,6 +27,8 @@ merge, re-check (`tools/check_script.sh`, a playtest, the tests below), never fo
 | `racer.gd` | racer mode ("racer" button, R): `_autodrive` leaves out lights, signs, zebras and giving way when `_racing()`, raises the limit (`limit`) and the corners (`CORNER_K`); `_ap_pass_bus` goes round any slower car (`can_pass`); the traffic's horns (`tick`: a car braking hard with the player its blocker, or met head-on in its lane). See "Racer, the Ministry's bus lanes, kindergartens and shelters" below |
 | `places.gd` | a town's own kindergartens (a fenced yard, shade sail, slide) and public shelters (the concrete entrance and its sign) from the city file's `places`, each on the nearest clear ground to its point; built per square |
 | `opening.gd` | the opening: the view high over the town, turning, while the squares round the car go up (paused city, hurried build), then down to the car; skipped by a tap; off for tests, bots, walks and routes (`wanted`, `STREETS_OPENING`) |
+| `scenario.gd` | scenarios (LEVELS with "scenario"; the "Scenarios: pick one" page): a script of beats -- say, drive, look, chase, end -- played over the town; "tour" built from the town's story file, "getaway" a chase. See "Scenarios" below |
+| `models.gd` | models made with Blender stamped into batches (`stamp`, `stamp_into` by palette role) or as one mesh for a multimesh (`mesh`: the parks' benches) |
 | `rails.gd` | railways: the tracks the city file has (`rails`, `platforms`, `stations`), their beds, rails and sleepers, the platforms with canopies and the station's name, and trains running along them (`tick`). See "Railways" below |
 | `cities/*.json` | baked towns (`tools/osm_city.py`) and the made-up test town (`tools/fake_city.py`) |
 | `details.gd`, `cities/details/<city>.json` | what a filmed walk showed and OSM lacks, laid over the baked city as it loads (road edits, unmarked zebras, areas, an arcade cut under a block, paving level with the pavement, walls, fences, hedges, bins, railings, bollards, a pole transformer, a barrier, parked motorbikes, trees) and the walks themselves; the format is at the top of `details.gd` |
@@ -3936,6 +3938,55 @@ colours it, so a new look recolours the model). The parks' playgrounds (`_playgr
 now the made `slide`, `swings`, `climber` and `seesaw` round the sandpit on the soft floor
 (`PLAY_ROLES`: paint -> warn, paint2 -> player, paint3 -> accent, metal/rubber -> pole):
 level 1, 45 playgrounds; `tests/places.gd` shoots one from above and at eye height.
+
+## Scenarios (22 Nov 2026)
+
+The user: "a virtual tour in a city ... where we stop and look and explain", then "some
+scenario ( aka movie i guess ) happening in a city", then "tours will be part of all
+scenarios [new section]". `scenario.gd` plays a script of beats (its header lists them) after
+the opening; LEVELS 16 is the list page ("Scenarios" group, `_walk_list_open("scenarios")`),
+17-20 the towns' tours, 21-22 the getaways (the Cities list leaves out anything with a
+"scenario"). A level's number is its place: add at the end.
+
+- **Tour** (`_tour_beats`): the story file's `streets` whose English name matches a road
+  (`_same_street`: lower-case, "sderot"/"derekh"/"street"... dropped, one containing the
+  other) -- the middle of that street's longest piece inside the town -- chained nearest
+  first from the start, `HOP` 900 m at most between stops, `STOPS` 6. Each stop: autodrive
+  there in **green wave** style (keeping the rules it took over two minutes to the first stop
+  in Tel Aviv; with the wave the six take ~8 min), then the zoom view over it (`LOOK_Z`,
+  turning) for `LOOK_S` 9 s with who the street is named for; between stops a neighbourhood's
+  mood or a line of history. While driving, a street with a story is explained as the car
+  turns into it -- not the stop's own street (said at the stop).
+- **The getaway**: the police car (`model("police")`, Kenney's) with a red and blue light bar
+  and a made siren follows the player's own trail (`_trail`: a point every 0.5 m), `_gap`
+  metres back: it waits `CHASE_SPOT_S`, picks up speed at `CHASE_ACC` to `CHASE_TOP` 17 m/s
+  (61 km/h); the gap grows when you go faster than it and shrinks when you do not. Caught at
+  7 m, lost at 160 m or at the safe house (autodrive, racer, 1.2-2 km off). At 21 m/s from a
+  standing start it caught the car in 5.5 s; at 21 m/s with a start it caught it every time
+  (racer's town pace is 55-65 km/h). A cut every 7 s: 3 s from 9 m ahead of the car looking
+  back at the chaser (`_back_cam`; the first try flipped to the seat view, where the chaser
+  is never seen).
+- `tests/scenario.gd` (`LEVEL=18` Tel Aviv's tour, `21` Ashdod's getaway): 22 Nov -- the
+  tour 6 of 6 stops in 467 s, 0 people hit; the getaway caught at 43 s (chaser 17 m/s, the car
+  stuck behind traffic at the end); shots at each stop and in each cut.
+- Open: the cut's camera can sit inside a vehicle ahead; the getaway's end is caught most
+  runs on autodrive (a person driving does better); tours for Delft and the test town need
+  their stories.
+
+**Scenario ideas** (the user asked for them as the work goes, with grades):
+
+| # | Scenario | Effort | Notice | AI grade | Comment |
+|---|---|---|---|---|---|
+| 1 | Taxi shift: people wave from the kerb, you take them to real addresses | Medium-large | 5 | A- | The town's own addresses and places; "go to" does the routing. The best game loop of these |
+| 2 | Delivery against the clock (pizza at dinner time) | Medium | 4 | A | A timer, a route, real addresses; racer style when late |
+| 3 | Ambulance run: siren on, traffic pulls over, the lights go green | Medium | 4 | A- | Reuses the siren, the green wave and traffic giving way to the player |
+| 4 | Night tour: the towers lit, the promenade, the bars on Katznelson | Small | 3 | A | A tour with night switched on, and night captions |
+| 5 | Wedding convoy: decorated cars follow you, hooting, to a hall | Medium | 4 | B+ | The chaser's trail-follow, three cars and horns |
+| 6 | Shabbat eve: shops close, streets empty, a quiet slow drive | Medium | 3 | B | Needs traffic and people thinned by time of week |
+| 7 | Kindergarten pick-up at four: double-parking, crowds by the yards | Medium | 3 | B | The town's kindergartens are there now |
+| 8 | Then and now: 1909 on Rothschild, the dunes, the seashell lottery | Small-medium | 3 | B | Captions over today's street; old photos would need licences |
+| 9 | Alien arrival: ships over the towers, cars stop, people look up | Large | 5 | B | The disasters idea's first slice, as a scenario |
+| 10 | Follow that dog: a dog runs off across parks and lanes | Medium | 3 | B- | Dogs exist; the camera follows one |
 
 ## Open problems
 

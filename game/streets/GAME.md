@@ -514,6 +514,26 @@ move it.
 on. Resumed while zoomed out, the city runs under you and the view follows the car, which
 still drives (keys or the stick). The shell's own pause (its menu) is still there too.
 
+**Scenarios.** A page of its own on the start screen ("Scenarios: pick one"): a town played
+out as a little film, the car driving itself, captions across the bottom.
+
+- *Tours* -- Givatayim, Tel Aviv, Ashdod, Bedford. The car drives from one of the town's
+  named streets to the next (the lights turning green for it), and at each it stops: the view
+  rises over the street and circles it while the caption says who or what it is named for;
+  between stops, a line about a neighbourhood or the town's past. A street with a story is
+  explained as you turn into it. Built from each town's own story, so every town with one
+  has its tour.
+
+  > a virtual tour in a city. like a guide, where we stop and look and explain
+
+- *The getaway* -- Ashdod, Tel Aviv. A car with flashing lights and a siren is on your tail;
+  the car runs as a racer to the safe house across town. On a straight you pull away; slow for
+  a corner or a queue and it closes in. Lose it by 160 m or reach the safe house and you got
+  away; let it within 7 m and you are caught. Take the wheel and the drive is yours.
+
+  > some scenario ( aka movie i guess ) happening in a city. doesnt have to be related to
+  > the city itself ... tours will be part of all scenarios
+
 **The opening.** When a town comes up, the view starts high over it, turning slowly round
 where you will start, the town's name across the screen, while the streets round the car
 finish going up (a few seconds; the parts further off lie flat as their stand-ins). Under
@@ -1646,15 +1666,6 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   bags, handbags, backpacks, a box). Still to do: try a more detailed free (CC0) set of
   bodies and moves on the look bench (about 2 MB a person, so phones need checking); looking
   at a phone; hands moving while they talk; reacting to the car (the line above).
-- A guided tour of the city: "a virtual tour in a city. like a guide, where we stop and
-  look and explain. the more real it gets the more the tour looks nicer". A guide leads you
-  along a route on foot (or driving), stops at the sights, turns your view to each and
-  explains it -- what it is, its history, what to notice -- then goes on. It rides on every
-  realism pass the towns get. Already here to build on: the filmed walks (a route at a
-  person's pace, the head turning to look), the landmarks (Tel Aviv's towers, Sarona) and
-  the places from OSM and the towns' own data. New: each tour's script (the stops, where to
-  look, the words, maybe spoken), a guide to follow, and a way to pause, ask, or skip ahead;
-  a tour as a level of its own in the start screen.
 - Scenarios: "Alien invasion, maybe special scenario, maybe in any city. if i activate. some
   aliens come down around the city i am in"; "just the concept of scenarios, where aliens
   are one of those. more stuff - titans, dragons, (dont want army stuff though, gives wrong
@@ -1694,14 +1705,7 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   lobby and stairwell fitted to the outline, the right number of landings, and that many
   flats each split into rooms the way a block of its age is. Only the building you walk into
   is built inside, while you are in it.
-- Scenarios: little movies playing out in the town. "its similar to a guide. but some
-  scenario ( aka movie i guess ) happening in a city. doesnt have to be related to the city
-  itself". Like the guided tour, a script that moves the camera and stages things -- but a
-  story of its own: a chase, a wedding procession, a delivery that goes wrong, a stray dog
-  followed across town, a first day in a new city. Its actors are the town's own people and
-  cars, sent where the script says (the scene tests already stage people, cars and lights
-  this way); the camera cuts and follows; it can be watched, or played from inside (you are
-  the one being chased). Each scenario is a level of its own in the start screen, and runs in
-  any town, its places picked from the town's map (a long street, a square, a junction with
-  lights). The same machinery as the guided tour and the opening: a script of shots.
-
+- Scenarios, more of them (the first two are built: tours and the getaway -- see
+  "Scenarios" above): a taxi shift, a delivery against the clock, an ambulance run, a wedding
+  convoy, the night tour, Shabbat eve, a kindergarten pick-up rush, an alien arrival -- the
+  list with grades is in DEV.md under "Scenarios".
