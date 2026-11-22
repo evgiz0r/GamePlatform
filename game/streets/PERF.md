@@ -162,3 +162,19 @@ All in `DEV.md`; search for the bold lead-in.
 5. **Video memory** -- Tel Aviv 365 MB; phones.
 6. **No automatic check catches a performance regression** -- the numbers are only read when
    someone runs a test by hand.
+
+## Next steps, scored (22 Nov 2026)
+
+Effort: 1 = an hour, 5 = days. Gain: 1 = barely felt, 5 = every player feels it. Risk: 1 =
+can't break the game, 5 = can break it on some devices. Ordered by the pick.
+
+| # | Step | Effort | Gain | Risk | Why |
+|---|---|---|---|---|---|
+| 1 | Check for programs compiled and never drawn: `web_shaders.js` fails on a lit program with every light type on, or `__lstrip.used` > 0 | 1 | 3 | 1 | guards today's 10x; a Godot upgrade or a new lamp would bring the minute back silently |
+| 2 | Phones: the load line and perf view from a phone, cold, after a publish | 1 | 4 | 1 | everything so far is a Windows PC; phones compile differently and may be the real slow case |
+| 3 | Fewer shader codes: merge the ones only one or two things use (each costs ~2 sun-pass programs, ~0.25 s cold) | 3 | 3 | 2 | the sun pass is the biggest cold cost left (9.5 s by the car) |
+| 4 | Minimap drawn less often in Tel Aviv (0.7-0.9 ms a tick) | 1 | 1 | 1 | cheap, small |
+| 5 | Tel Aviv's frame measured properly (panel visible, or `perf_dive` natively) | 2 | 2 | 1 | the 1 fps reading was a throttled window; we don't know the real number |
+| 6 | Draws: quality levels that drop shadow casters and far detail | 4 | 4 | 3 | 500-800 draws and no level lowers them; the quality ladder can't help a weak device |
+| 7 | Bake more of the city file at publish (widths, buildings cut, divided roads) | 3 | 2 | 2 | ~1 s of Tel Aviv's load; already a pattern (`prepublish.gd`) |
+| 8 | Parallel compiling (source list made at publish + redirecting Godot's programs) | 5 | 3 | 4 | measured 3.3x on the remaining compile, but deep in the page's GL layer |

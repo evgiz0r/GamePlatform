@@ -147,6 +147,19 @@ yours to change, in the chip beside the button or the drawer.
 
 > change the default of the autodrive to racer, without green wave.
 
+The chip beside autodrive says how it is driving now, not the setting. (A test drive keeps
+the rules, but the chip said "racer" -- the user asked whether the test drives were racing.)
+
+**Settings on the lists.** The test drives and Cities lists have a row of "normal" or "racer"
+and "day", "evening" or "night"; the Walks list has the time of day only (a walk has no
+autodrive). The one chosen is full, the rest dimmed; the drive or walk starts that way, and
+"play again" keeps it. They are kept while the game is open: test drives start "normal" (they
+are there to test autodrive), cities "racer".
+
+> the test drives are actually driving in racer mode, or its a bug? maybe lets add settings
+> like racer/normal day/evenining/night to both test drives and the walk (it wont have the
+> racer option)
+
 ## What do you do?
 
 Drive, freely. The car behaves like a car rather than a toy: about 4 m/s² off the line,
