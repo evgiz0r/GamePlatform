@@ -780,6 +780,20 @@ car `_held_at_red`: one that will stand at its red need not hold up a car with t
 
 ## The HUD's buttons (22 Nov 2026)
 
+- Which buttons show is `_hud_buttons()` (name -> rect), and which one a tap is for is
+  `_hud_hit(p)`: 3 px to spare for a mouse, `HIT_TOUCH` (10) for a finger, the nearest box
+  winning. `_hud_tap` dispatches by name; `_on_hud_button` is `_hud_hit != ""`. A new button
+  goes in `_hud_buttons`, `_draw_hud` and `_hud_tap`'s match; `tests/hud_layout.gd` reads
+  `_hud_buttons`, so it checks the new one with no change.
+- The player's choices are kept in `user://streets_prefs.json` (`_prefs_load` once a launch
+  in `start()`, `_prefs_save` on each change): the lists' time and styles, folded, assist.
+  Not SaveData's file: the game lowers `volume_sfx` in `SaveData.data` while it runs, and
+  `SaveData.save_file()` writes that whole dictionary -- anything that saved it mid-game
+  would keep the lowered volume. Self-play and `tests/run.sh` (`STREETS_PREFS=0`) neither
+  read nor write it; `tests/prefs.gd` uses its own file (`STREETS_PREFS_PATH`), headless.
+- `HEADLESS=1 tests/run.sh hud_layout 4`: the checks with no window (no shots) -- a window
+  takes the focus from whatever the user is doing on this PC.
+
 All drawn by hand in `_draw_hud` (no Control nodes): the rects are the `*_BTN` constants by
 `AUTO_BTN` (the layout is described there), each drawn with `_hud_btn(rect, text, colour,
 lit, size)`. One place takes a tap -- `_hud_tap(p)`, called from `_input`'s mouse branch -- and
