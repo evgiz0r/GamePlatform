@@ -4,6 +4,8 @@ How long each change took, in minutes, from the Claude Code sessions that made i
 
 | date (UTC) | commit | change | agent | runs | you | active | away | lines | files | steps | tools | engine runs | tokens out |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2026-11-22 01:25 | c2224bc | streets people: a box carried in both arms (Carry: the arms held from the walk's mid-stride, the box betwee... | 25 | 8.5 | 7.2 | **41** | 1.0 | +321 -16 | 7 | 59 | 61 | 21 | 52.9k |
+| 2026-11-22 01:23 | 7b159e6 | streets start screen: two groups, not three -- Cities and Scenarios under "Drive" (a third column ran off a... | 16 | 0.4 | 0.0 | **16** | 8.2 | +11 -5 | 3 | 11 | 11 | 3 | 4.0k |
 | 2026-11-22 01:20 | 447d3d4 | streets walks: under the street trees, not through them (trees by a road pruned up; no spruce in a pavement... | 15 | 50 | 10 | **75** | 0.0 | +507 -45 | 13 | 76 | 97 | 42 | 90.5k |
 | 2026-11-22 01:16 | 1779d9a | streets racer: onto the pavement while coming up to a queue at a red (not once stood 6 m behind it), the wa... | 16 | 70 | 16 | **102** | 0.0 | +401 -20 | 7 | 102 | 100 | 18 | 78.8k |
 | 2026-11-22 01:08 | a481902 | streets on foot: a jog (4.5 m/s) and a sprint (9.5), and into any car in the traffic you stand beside | 2.0 | 0.8 | 0.0 | **2.8** | 0.0 | +136 -11 | 5 | 13 | 14 | 6 | 11.1k |
