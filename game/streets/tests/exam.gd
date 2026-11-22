@@ -573,6 +573,13 @@ func _check(dt: float) -> void:
 					for n2: int in [(r["ids"] as PackedInt32Array)[sj], (r["ids"] as PackedInt32Array)[sj + 1]]:
 						if g._node_ways(n2) >= 3 and g._nodes[n2].distance_to(lc.pos) < g._node_r[n2] + 10.0:
 							near_j = true
+						# (nor turning round at a dead end: a 4.5 m car round a circle a lane wide is
+						# across the street while it turns -- every case of the first version was one,
+						# Yavnieli, Ein Gedi, HaMeri, Kibbutz Galuyot: tests/lane_points.gd)
+						# (25 m: out of the turn, its back trails inside the circle a few metres more --
+						# a car 16.7 m from HaDganim's end at 29 km/h, its middle still left)
+						if g._node_ways(n2) == 1 and g._nodes[n2].distance_to(lc.pos) < 25.0:
+							near_j = true
 					bad = not near_j and absf(d.dot(hd)) > 0.8 and (lc.pos - (on["q"] as Vector2)).dot(Vector2(-d.y, d.x)) < -0.5
 			if bad:
 				_left_n[i] = int(_left_n.get(i, 0)) + 1

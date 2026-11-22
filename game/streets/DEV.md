@@ -4625,9 +4625,21 @@ stood 19-26 s; on two-way streets with 3 cars in the lane, 4 of 6 stood.
   of a two-way street's middle, out of junctions, heading along the street, 3 samples running
   -- autodrive's "ticks left of the middle" widened to traffic (the dead end's family). Not
   counted: round a delivery van, edged aside for racer, a bus on a street under 7 m, a scooter
-  filtering. Main reads 5 / 2 / 4 (Givatayim / Ashdod / test town): narrow residential and
-  living streets, scooters, vans -- open, not looked at one by one. The first version of the
-  kerb clearance had no cap and read 2 / 4 / 2: the cap is from those.
+  filtering, and the last 25 m before a dead end (15 m left a car 16.7 m from HaDganim's end,
+  out of the turn at 29 km/h, its back still trailing inside the circle). Main read 5 / 2 / 4 (Givatayim / Ashdod /
+  test town) before that last exclusion. **Every one of them was a car turning round at a
+  dead end** (`_turn_round`'s half circle a lane wide: a 4.5 m car round a 4 m circle is
+  across the street while it turns -- Yavnieli, Ein Gedi, HaMeri, Kibbutz Galuyot, Ahlama,
+  Pnina, Yoel Moshe Solomon; `tests/lane_points.gd` prints the line across a street point by
+  point, both ways). A first guess, `_clear_lane` putting the line 0.7 m left where parked
+  cars "block" the lane, changed nothing (4 / 6 / 0) and was undone. Open, if it shows on
+  screen: a turn round that tight is a spin on the spot -- a three-point turn, or the circle
+  as wide as the street, would look right.
+- **Traffic stood on each other's corners** (from the corner rule above): a van and an SUV at
+  the test town's HaKalanit, each at an angle, each seeing the other's corner in its way; the
+  ring breaker (`ignore`) skips only cars 0.8 rad+ across, the corner rule starts at 0.5. A
+  queue of four behind, "held by nothing 10 s+, traffic" 14 in one exam. Now the corner rule
+  steps aside while a car is breaking a standoff and after 6 s of waiting.
 - Ashdod's "off the asphalt" reads 18 on main as on this branch: not from these changes.
 - `validate.sh FULL=1 REGRESS=1` after (merged with main d7f46d0, ~60 min): city checks 0
   but Tel Aviv 1 building and the usual limits; exams test town 7, Givatayim 17, Ashdod 20;

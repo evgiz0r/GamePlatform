@@ -556,7 +556,10 @@ func _target(c: Car, i: int, dt: float) -> float:
 		# its corners too, not only its middle -- a car turning into the test town's HaKalanit
 		# off Derekh HaHarim cut across the nose of the one waiting to come out, its middle
 		# 1.5 m+ off the turn and its body in it (8-10 overlaps a run at (-639, 224))
-		if j < cars.size() and ov < 1.0 and d2 < 400.0 and absf(angle_difference(oyaw, c.yaw)) > 0.5 and not c.split:
+		# (not while breaking a standoff: two standing at an angle each saw the other's corner in
+		# its way, and the ring breaker skips only cars 0.8 rad+ across -- a van and an SUV at the
+		# test town's HaKalanit stood on each other's corners, a queue of four behind, 14 a run)
+		if j < cars.size() and ov < 1.0 and d2 < 400.0 and absf(angle_difference(oyaw, c.yaw)) > 0.5 and not c.split 				and c.ignore <= 0.0 and c.wait < 6.0:
 			var so: Car = cars[j]
 			var sf := Vector2(sin(so.yaw), cos(so.yaw))
 			var ss := Vector2(-sf.y, sf.x)

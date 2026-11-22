@@ -4,6 +4,9 @@ How long each change took, in minutes, from the Claude Code sessions that made i
 
 | date (UTC) | commit | change | agent | runs | you | active | away | lines | files | steps | tools | engine runs | tokens out |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2026-11-22 16:44 | f3d36c2 | streets: your choices kept between launches (lists' time and style, folded, assist); a finger gets 10 px ro... | 2.8 | 2.7 | 0.0 | **5.5** | 31 | +236 -74 | 7 | 21 | 24 | 6 | 17.8k |
+| 2026-11-22 16:41 | 3f6f472 | tools: windowed Godot runs (screenshots, recordings, scene tests) start hidden on Windows -- tools/godot_bg.sh | 26 | 7.4 | 0.3 | **34** | 69 | +60 -4 | 7 | 38 | 39 | 16 | 23.4k |
+| 2026-11-22 16:34 | 4af4799 | streets racer: no longer passive -- bends round a car kept (densified from the car on: the plan was remade ... | 7.4 | 30 | 0.0 | **37** | 55 | +178 -26 | 3 | 50 | 53 | 5 | 39.7k |
 | 2026-11-22 16:06 | c9aafb8 | streets: Monaco (level 41) baked but not ready; a level's "trees" key; ground held under held water | 4.4 | 4.5 | 0.0 | **8.9** | 33 | +73 -1 | 5 | 27 | 27 | 4 | 24.3k |
 | 2026-11-22 16:04 | e56c780 | streets: a map button over the minimap -- the city from above, paused, to look round; the camera button is ... | 18 | 1.9 | 0.0 | **20** | 89 | +76 -24 | 4 | 25 | 28 | 4 | 14.3k |
 | 2026-11-22 15:58 | 40b9f0a | streets notes: parallel compiling parked at the trial (the user) | 0.8 | 0.2 | 0.0 | **1.0** | 57 | +4 -0 | 1 | 5 | 4 | 1 | 2.6k |
