@@ -4325,6 +4325,25 @@ is within 3 m (the first stood behind a road sign that filled the view). Traffic
 (`hit`). `tests/scenario.gd LEVEL=35`: PASS -- captions at 0.5/15.5/26/30.8/38 s, fire
 in every clash and the dive; shots every 3 s. Film (`STREETS_BUILD_ALL=1 tools/record_video.sh streets 35 70`): 2,760 frames, 46 s at 60 fps, about 3 minutes of compute, 16.7 MB.
 
+*The run for cover* (the user, on the first film: "we run through buildings, the player
+movement seems unreal"). The first took "the far side of the nearest building" and slid the
+camera there in a straight line in 2 s, looking backwards: through the building, at car
+speed. Now `_hide_spot` tries a spot every 3 m along each wall of every building within
+`RUN_MAX` 30 m, 0.9 m out from it (outward found by testing which side is inside: the outline's
+winding is not to be trusted). A spot must be clear itself, and the whole straight line to it
+must be clear (`_clear_line`, every 0.5 m). A spot whose building lies across its line to the
+fight wins; failing any, the nearest reachable wall. The run is a sprinter's: `RUN_ACCEL` 9,
+`RUN_SPEED` 6 m/s after a 0.25 s beat to react, the head bobbing each 1.7 m stride and swaying,
+looking where it runs with a glance back halfway, then crouching 0.35 m at the wall and
+looking up. The test counts frames with the camera below 4 m inside a building
+(`cam_in_building`, must be 0) and prints `run_m` and `cover`. Tel Aviv (35): no wall within
+16 m (towers set back off the boulevard) and none across the line to the fight within 30 --
+24.8 m to the nearest wall. Givatayim (36): 10.2 m, 8 spots really behind a building.
+
+*The film's look* (`film_mode` -> `_film_best`, native only): past QUALITY's top level, MSAA 8x,
+`scaling_3d_scale` 1.5, shadows to `FILM_SHADOW_M` 160 m on an 8192 map, soft filter high,
+`mesh_lod_threshold` 0. `RES=1920x1080` gets a 5 Mbit/s ceiling in the recorder. Tel Aviv at 1080p with all of it: 46 s in 7 min 4 s of compute (720p at the top level: 3 min), 15.0 MB.
+
 **Scenario ideas** (the user asked for them as the work goes, with grades):
 
 | # | Scenario | Effort | Notice | AI grade | Comment |

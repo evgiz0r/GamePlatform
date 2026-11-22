@@ -9,8 +9,10 @@
 # and stops at `seconds` or a moment after film_done(); everything before filming started
 # (the loading screen) is cut off, then ffmpeg encodes H.264 under ~28 MB (the phone chat's
 # limit is 30). Needs ffmpeg on PATH, or FFMPEG=/path/to/ffmpeg.
-# Env: FPS (60), RES (1280x720), QUALITY (the game's own, if it reads one), and anything the
-#   game reads -- e.g. a city game's "build everything first" switch, so nothing pops in.
+# Env: FPS (60), RES (1280x720; 1920x1080 for the best look), MAXK (the bitrate's ceiling,
+#   kbit/s: 3000, or 5000 at 1080p -- under the 28 MB either way), QUALITY (the game's own, if
+#   it reads one), and anything the game reads -- e.g. a city game's "build everything first"
+#   switch, so nothing pops in. A game may also look its best while filmed (film_mode).
 set -u
 GAME="${1:?which game?}"; LEVEL="${2:-1}"; SECS="${3:-60}"
 cd "$(dirname "$0")/.."
@@ -42,8 +44,9 @@ grep -E "RECORD|frames at" "$WORK/log.txt"
 CUT=$(awk -v f="$START" -v r="$FPS" 'BEGIN { printf "%.3f", f / r }')
 LEN=$("${FF%ffmpeg*}ffprobe${FF##*ffmpeg}" -v error -show_entries format=duration -of csv=p=0 "$AVI" 2>/dev/null || echo "$SECS")
 KEEP=$(awk -v l="$LEN" -v c="$CUT" 'BEGIN { k = l - c; if (k < 1) k = 1; printf "%.2f", k }')
-# a bitrate that keeps it under ~28 MB, at most 3 Mbit/s
-RATE=$(awk -v k="$KEEP" 'BEGIN { r = 28 * 8 * 1000 / k; if (r > 3000) r = 3000; printf "%d", r }')
+# a bitrate that keeps it under ~28 MB, at most MAXK
+case "$RES" in 1920x*|2560x*) MAXK="${MAXK:-5000}" ;; *) MAXK="${MAXK:-3000}" ;; esac
+RATE=$(awk -v k="$KEEP" -v m="$MAXK" 'BEGIN { r = 28 * 8 * 1000 / k; if (r > m) r = m; printf "%d", r }')
 "$FF" -y -loglevel error -ss "$CUT" -i "$AVI" -c:v libx264 -preset slow -crf 26 -maxrate "${RATE}k" \
   -bufsize "$((RATE * 2))k" -pix_fmt yuv420p -movflags +faststart -an "$OUT"
 rm -rf "$WORK"
