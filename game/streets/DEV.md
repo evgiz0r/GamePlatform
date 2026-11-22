@@ -4037,7 +4037,8 @@ level 1, 45 playgrounds; `tests/places.gd` shoots one from above and at eye heig
 The user: "a virtual tour in a city ... where we stop and look and explain", then "some
 scenario ( aka movie i guess ) happening in a city", then "tours will be part of all
 scenarios [new section]". `scenario.gd` plays a script of beats (its header lists them) after
-the opening; LEVELS 16 is the list page ("Scenarios" group, `_walk_list_open("scenarios")`),
+the opening; LEVELS 16 is the list page (in the "Drive" group with the Cities list -- a third group of its
+own ran off a phone's start screen; `_walk_list_open("scenarios")`),
 17-20 the towns' tours, 21-22 the getaways (the Cities list leaves out anything with a
 "scenario"). A level's number is its place: add at the end.
 

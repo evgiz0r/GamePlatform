@@ -18,7 +18,10 @@ extends GameMode3D
 ## the car on the first just past the second. Without one it starts on a main road
 ## mid-town.
 const LEVELS := [
-	# The start screen shows only the levels with a "group": three lists, each opening its own
+	# The start screen shows only the levels with a "group", the groups side by side -- TWO at
+	# most: the shell gives each a column at least 250 px wide, and a third ("Scenarios" on its
+	# own) ran off a phone's screen (the user's screenshot, 22 Nov). So Cities and Scenarios
+	# share "Drive", the test routes and walks "Auto Experiments". Lists, each opening its own
 	# page -- "Cities: pick one", "Test routes: watch a drive", "Walks: watch one" (the last
 	# three entries below). A city has no "group": the Cities list shows every place here with a
 	# "city" that is not a list or a walk, by "sort", so a new city needs only its line. A
@@ -55,10 +58,10 @@ const LEVELS := [
 	# "build": "nl": its houses Dutch -- brick, pitched roofs where 3DBAG measured a ridge (_dutch())
 	{"name": "Delft", "city": "delft", "start": ["Oude Delft", "Binnenwatersloot"], "look": "north", "build": "nl", "decks": "infer"},
 	# the cities: a list, as the walks and the test routes are (no city behind it)
-	{"name": "Cities: pick one", "group": "Cities", "cities": true, "city": "dimyon", "look": "med"},
+	{"name": "Cities: pick one", "group": "Drive", "cities": true, "city": "dimyon", "look": "med"},
 	# scenarios (scenario.gd): a list, as the walks are, and each scenario its own level -- a
 	# town's tour from its own story (cities/stories/<town>.json) or a story played out in it
-	{"name": "Scenarios: pick one", "group": "Scenarios", "scenarios": true, "city": "dimyon", "look": "med"},
+	{"name": "Scenarios: pick one", "group": "Drive", "scenarios": true, "city": "dimyon", "look": "med"},
 	{"name": "Tour: Givatayim's streets", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "tour"},
 	{"name": "Tour: Tel Aviv, Azrieli to the sea", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "tour"},
 	{"name": "Tour: Ashdod", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med", "decks": "infer", "scenario": "tour"},
