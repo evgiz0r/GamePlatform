@@ -252,3 +252,15 @@ of 58-81 ms is two halves of about the same size, and both need halving for ~30 
 Target: 30 fps on a 2023 flagship in a browser; 60 is not realistic for a whole city in WebGL
 on one thread. Freezes still in that build: building 692 + rest 634, building 1304 + rest
 941 (before the step checks; the next screenshots name the step).
+
+**Handoff (22 Nov 2026, end of a long session).** Work branch `streets-perf` (worktree
+`C:\Users\evgbo\GP-perf`, merged into main as it goes). Chosen next, for the phone:
+1. Script half: tick far people and far traffic less often (every 2nd-4th tick by distance
+   from the car; the car and near ones every tick -- no change to how driving feels), then,
+   if not enough, the physics rate 60 -> 30 on slow devices (the car is drawn between ticks
+   already; check the exam's numbers before and after: `tests/exam.gd`).
+2. Drawing half: quality levels that cut draws (shadow casters, far parked cars, furniture,
+   trees) so the ladder can help a phone; target ~250 draws, ~1 M triangles.
+3. Far shadows drawn ahead (`FAR_AHEAD_S`): one frame of GPU work, 0.85 s on a desktop.
+Measure natively with `tests/sim_cost.gd` (script per tick) and `tests/build_spans.gd`;
+the phone's own perf view (hitch lines now name the build step) is the real measure.
