@@ -4224,6 +4224,31 @@ map; 144 yards and 37 shelters put, 8 kindergartens left out (no clear ground wi
 Shots taken where each was put (`spots`), not at the map's point: the point is its building,
 the yard a few metres off, and a shot at the point saw a roof.
 
+### Handoff: racer "really passive" (22 Nov 2026, open)
+
+The user, with a screenshot on Katznelson (Givatayim's start) bound for Rambam, 1.3 km: "there
+was only a bus and it didnt want to pass ... pretty passive, wanting to do all that long path,
+waiting in traffic. it probably could just cut through". Reproduced by
+`tests/racer_drive.gd` (LEVEL=1, racer on, to the street TO=Rambam, a line a second: speed,
+`_ap_why`, the car in front, and -- `VERBOSE=1` -- `_race_by_why` / `_race_q_why`, the reason
+each way round was refused; PASS: there within SECS 150, standing under a quarter of it, no
+crash). The traffic differs run to run. What it showed:
+
+1. **The bend round the bus lost.** One run: at 6.5 s, 70 m out, a pass was taken (the bus
+   became `_ap_passed`), yet the car braked to a stop 10 m behind it -- the bend gone or
+   falling short. The run after, the same pass went through at 60 km/h. To find: which move
+   took it (the test prints racer_/pass_ Probe events -- none came out; check the Probe
+   kinds), and whether a re-plan (`_ap_extend`, the route moving on) drops a bent plan.
+2. **Boxed in behind it.** Then stood behind it from stop to stop for 60 of 150 s:
+   `_race_by_why` every time "3.2: hatch v=0 at 2 m, 6.4: off road, -3.2: off road" -- the
+   left lane has cars standing beside us, one more lane over is not road, the right is the
+   kerb; the queue pass the same; `_ap_mount_by` (the pavement) refused every time, reason
+   not logged yet (give it a why like `_race_by_why`). A real racer would go up on the
+   pavement here, or out the moment a gap opens beside it.
+3. **The long way.** It set off away from Rambam: "to go" 1139 -> 1385 m before it turned
+   round at 93 s. Racer should turn on the spot (a U-turn across the road) when the way it
+   faces starts the route away from the goal and turning is far shorter.
+
 ## The opening; models made with Blender (22 Nov 2026)
 
 **The opening** (`opening.gd`). Before, only the squares within `NEAR_NOW` of the start and

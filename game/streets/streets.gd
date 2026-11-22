@@ -24079,18 +24079,22 @@ func _ap_pass_bus(lead: Array) -> bool:
 const RACE_CLEAR := 2.9      ## m from the car's middle to racer's line, going by it
 const RACE_OUT := [3.2, 6.4, 9.6, -3.2]   ## ways out tried: left one lane, two, three; right one
 var _race_tries := 0                      ## ways out already taken round the same car (a retry starts past them)
+var _race_by_why := ""        ## why the last way round the car in front was not taken (tests/racer_drive.gd)
 func _ap_race_by(lead: Array) -> bool:
 	var bi: int = lead[3]
 	if bi < 0 or _ap_pts.size() < 2:
 		return false
 	if bi == _ap_passed and _ap_wait < 1.5:
+		_race_by_why = "just passed"
 		return false   # (bent round it already: give it a moment)
 	_race_tries = _race_tries + 1 if bi == _ap_passed else 0   # (stuck behind it still: the next way out)
 	var car = _traffic.cars[bi]
 	var want: float = _racer.limit(_ap_lim[1]) if _ap_lim.size() > 1 else 13.9
 	if not _racer.can_pass(float(car.v), want):
+		_race_by_why = "no need"
 		return false
 	if _ap_turn_ahead() != 0 and float(lead[0]) > 25.0:
+		_race_by_why = "turn ahead"
 		return false   # (a turn just after it: stay behind until close, then it may still go)
 	var gap: float = lead[0]
 	var fwd := _fwd()
@@ -24110,7 +24114,9 @@ func _ap_race_by(lead: Array) -> bool:
 	var t_pass := (gap + float(car.len) + 20.0) / maxf(want - float(car.v), 3.0)
 	var extra := float(car.v) * t_pass
 	if extra > 160.0:
+		_race_by_why = "too long"
 		return false
+	var whys: Array = []
 	var half := float(car.len) * 0.5
 	var start_s := maxf(gap - half - 12.0, 1.0)
 	var end_s := gap + half + 10.0 + extra
@@ -24147,6 +24153,7 @@ func _ap_race_by(lead: Array) -> bool:
 			# on asphalt (any road: the other way's lanes too), nothing solid there
 			if _off_road(q, -0.3) or _push_out(q, 1.15, true, false, _y) != Vector2.ZERO:
 				ok = false
+				whys.append("%.1f: %s at %.0f m" % [shift, "off road" if _off_road(q, -0.3) else _last_hit, float(bq[1])])
 				break
 			var at_t := float(bq[1]) / maxf(want, 5.0)   # (when racer is there)
 			for c in _traffic.cars:
@@ -24157,6 +24164,7 @@ func _ap_race_by(lead: Array) -> bool:
 				var then: Vector2 = c.pos + cdir * float(c.v) * at_t
 				if then.distance_squared_to(q) < 3.2 * 3.2 or c.pos.distance_squared_to(q) < 2.6 * 2.6:
 					ok = false
+					whys.append("%.1f: %s v=%.0f at %.0f m" % [shift, c.kind, float(c.v), float(bq[1])])
 					break
 			if not ok:
 				break
@@ -24165,10 +24173,12 @@ func _ap_race_by(lead: Array) -> bool:
 			_racer.passes += 1
 			Probe.event("racer_pass", {"over": snappedf(shift, 0.1), "moving": float(car.v) > 0.6})
 			_log.event("racer round a car")
+			_race_by_why = "went %.1f" % shift
 			return true
 		_ap_pts = keep_pts.duplicate()
 		_ap_v = keep_v.duplicate()
 		_ap_lim = keep_lim.duplicate()
+	_race_by_why = ", ".join(whys)
 	return false
 
 ## Racer (racer.gd), coming up to a queue -- cars standing one behind the other, in its lane
