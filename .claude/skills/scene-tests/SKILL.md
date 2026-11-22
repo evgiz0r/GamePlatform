@@ -299,7 +299,13 @@ it is made, with a one-line caption, rather than a report at the end.
 
 ### A video of it (smooth, for a phone)
 
-Any test or scenario records itself with Godot's movie maker: add
+`tools/record_video.sh <game> <level> [seconds] [out.mp4]` does all of the below in one go: it
+starts the level under the movie maker, waits for the game's `film_ready()`, calls its
+`film_mode(true)` (the game hides its HUD and buttons, keeping what it marks for film -- the
+captions) and hides the shell's buttons, prints the frame filming starts at, stops at
+`seconds` or a moment after the game's `film_done()`, cuts the loading off and encodes to fit
+the phone chat. A game that has none of the three is filmed as it looks, for `seconds`. By
+hand, the same steps: add
 `GODOT_ARGS="--write-movie <file>.avi --fixed-fps 60"` (and `RES=1280x720 FULL=1`) to the run.
 Every frame is rendered at exactly 1/60 s of game time however long it takes to compute, so
 the video never stutters, even on a slow machine. Build everything first (a game that builds

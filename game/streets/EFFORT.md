@@ -4,6 +4,10 @@ How long each change took, in minutes, from the Claude Code sessions that made i
 
 | date (UTC) | commit | change | agent | runs | you | active | away | lines | files | steps | tools | engine runs | tokens out |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2026-11-22 14:25 | d226f5f | tools/record_video.sh: a game playing a level, filmed smooth and cut to the action, sized for the phone cha... | 18 | 40 | 0.1 | **58** | 631 | +170 -1 | 8 | 31 | 33 | 6 | 18.4k |
+| 2026-11-22 14:16 | 7f056b0 | notes: the never-drawn check's 4 -- the engine's own default material, at start, before any game | 17 | 32 | 0.0 | **50** | 647 | +12 -0 | 1 | 17 | 23 | 3 | 11.9k |
+| 2026-11-22 14:15 | dee9130 | shell: a levelled game's start screen fits any number of groups -- up to three side by side in narrower col... | 1.1 | 1.0 | 0.0 | **2.2** | 770 | +35 -19 | 6 | 11 | 12 | 6 | 7.3k |
+| 2026-11-22 14:15 | 6a924b4 | streets on foot: the library's sprint clip past 6 m/s (2.14 m/s at x1, a longer stride than the jog), the c... | 1.9 | 1.8 | 0.0 | **3.7** | 685 | +61 -4 | 5 | 14 | 15 | 5 | 9.3k |
 | 2026-11-22 12:47 | 6f5e9d2 | streets: the fps button above the perf view's graph (it sat on its left end); hud_layout checks the graph too | 0.9 | 0.4 | 0.0 | **1.3** | 0.0 | +5 -3 | 2 | 11 | 9 | 1 | 3.7k |
 | 2026-11-22 12:45 | fcc473e | streets: a one-tap fps button opens the perf view; on slow frames the far squares wait (Tel Aviv at 12 fps:... | 12 | 4.5 | 0.4 | **17** | 0.0 | +205 -20 | 8 | 64 | 63 | 13 | 49.6k |
 | 2026-11-22 12:28 | 171ec59 | streets notes: the draw budget and the levels that cut draws (quality 0: test town 616 -> 467, Givatayim 57... | 1.3 | 1.0 | 0.0 | **2.4** | 0.0 | +29 -4 | 3 | 7 | 8 | 4 | 4.9k |
@@ -15,6 +19,8 @@ How long each change took, in minutes, from the Claude Code sessions that made i
 | 2026-11-22 10:06 | 91af9f6 | streets: the perf view says what the quality ladder did (each step and the fps it measured, the last four: ... | 5.4 | 1.8 | 0.3 | **7.5** | 24 | +102 -5 | 6 | 32 | 31 | 6 | 33.5k |
 | 2026-11-22 09:35 | daa5d75 | streets tests: the .uid files Godot made for six tests committed without them | 0.6 | 0.1 | 0.0 | **0.6** | 0.0 | +0 -0 | 0 | 3 | 2 | 0 | 3.0k |
 | 2026-11-22 09:35 | d089347 | streets: the quality ladder runs while the city builds in the background (it sat at 2 for the whole build -... | 13 | 2.3 | 0.0 | **16** | 0.0 | +198 -14 | 8 | 70 | 76 | 15 | 81.8k |
+| 2026-11-22 03:27 | a1b8489 | streets: racer past a whole queue (the oncoming lanes on two-way streets, squeezing between lanes with the ... | 26 | 44 | 0.0 | **70** | 43 | +566 -17 | 7 | 147 | 144 | 34 | 122.8k |
+| 2026-11-22 02:53 | e1c3bec | streets walks with a scene: a night out on Nahalat Binyamin, a Tel Aviv park, the beach (make_walks.py ways... | 6.2 | 16 | 0.0 | **22** | 0.0 | +214 -4 | 4 | 31 | 41 | 14 | 36.2k |
 | 2026-11-22 02:46 | 712da82 | streets: the run clip at the pace it covers (the jog 1.05 m/s at x1), up to 2.5x fast -- your jog's feet sl... | 1.4 | 0.4 | 0.8 | **2.6** | 0.0 | +20 -3 | 2 | 8 | 9 | 3 | 6.8k |
 | 2026-11-22 02:44 | c1ffe87 | streets racer: bends read the plan as it was (orig), not points already moved -- racer no longer stands beh... | 19 | 22 | 0.0 | **41** | 15 | +19 -4 | 2 | 28 | 28 | 15 | 26.6k |
 | 2026-11-22 02:41 | bfdad49 | streets: the loading screen names the set-up too; split_posts tells where it knocks something; foot_slide.g... | 6.2 | 13 | 0.0 | **19** | 0.0 | +86 -2 | 4 | 40 | 46 | 19 | 32.1k |
