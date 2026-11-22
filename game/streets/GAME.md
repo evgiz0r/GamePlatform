@@ -1781,6 +1781,17 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
 
 ## Later (said, not built)
 
+- Rawabi (22 Nov 2026): "do we have enough details for rawabi to build something?" -- not
+  yet. A trial bake found OSM thin there:
+  - no town boundary;
+  - 94 buildings within 700 m of the centre, none with storeys, where the town is hundreds
+    of 6-10 storey blocks;
+  - two named streets, no traffic lights.
+
+  The hills come through well (387-857 m). Next step when it comes back: check the
+  machine-mapped footprint datasets (Microsoft's, Overture, Google Open Buildings) for its
+  blocks and heights.
+
 - Racer boxed in at a red, every lane queued (22 Nov 2026): "1 2" -- squeeze between the
   lanes, and on two-way streets past the queue in the oncoming lanes. "But those low height
   splitters between lanes and pavements. If they are low enough lets make it possible for our
