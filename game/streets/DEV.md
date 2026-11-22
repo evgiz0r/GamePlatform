@@ -701,6 +701,15 @@ The ones most often touched, and the functions in them:
   measured, the last four). `--quality-walk=S` (user arg; `tests/web_shaders.js` QWALK=S) holds
   the ladder off and steps QWALK_LEVELS S seconds apart, each printed, to count what a step
   costs a browser in programs compiled.
+  **Levels 1 and 0 draw less of the town** (22 Nov): `_reach_set` scales every draw range of
+  `REACH_FROM` (150) m or more by `REACH_1` / `REACH_0` (0.75 / 0.5) -- its end and, for a far
+  version, its begin, so near and far versions still meet -- and `_fog_k` thickens the haze by
+  as much (`_fog_day` / `_fog_night`), so the town fades out where it now ends. Ranges and a
+  haze number only: no shader changes with a step. Each thing's own ranges are kept in its
+  meta (`r_end`, `r_begin`), gathered lazily (`_reach_update`, by world's child count, from the
+  first step below 2); `_zoom_far` lifts ranges as before and landing calls `_reach_apply`.
+  The test town's start: quality 2 614 draws, old quality 0 593, new 463 (`tests/draw_budget.gd`,
+  `tests/reach_look.gd`). The depth pre-pass setting changed nothing at runtime (612).
   Every level keeps the sun's shadows (level 0: 25 m): switching them off recompiled every
   material's shader in the browser, seconds of freeze each time the ladder crossed into or out
   of level 0. Night keeps them too: the moon is the day's sun, dim and blue, its shadows
