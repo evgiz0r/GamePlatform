@@ -198,6 +198,27 @@ the parked cars, which stand a third in the road).
   publishing, because real data is messier than anything made up.
 - Re-bake when the baker learns a new field (it keeps nothing it was not told to): the
   game should treat a missing field as "not known" so old files still load.
+- **Water mapped as a multipolygon with islands.** A town's canals are often one relation
+  whose inner rings are the blocks between them. The baker took only single ways, so two
+  Dutch towns baked with no canals at all, and their canal streets showed a bare strip.
+  Skipping relations with inner rings lost every canal there too, since all of them had
+  islands. The city format's areas have no holes, so each hole is joined to the outer ring
+  by a cut of no width (`keyhole_ring`). The result still triangulates, and still tests
+  inside and outside correctly. Draw the water from the file on a plan before trusting it.
+- **The worldwide elevation tiles are a surface model.** A flat old town comes out as hills
+  of its own roofs: Leiden read -1 to 15 m. `--bare-ground` only halves that. Water lies
+  flat at its shore's lowest point, so it ends up under those hills. Use the country's
+  bare-ground laser model where there is one; the baker reads the Netherlands' AHN by
+  itself (`ahn_grid`).
+- **A canal narrower than the height grid cannot be dug into it.** On a 12 m grid a 15 m
+  canal holds one sunk point at most. So the ground is cut away over it, the same way the
+  ground over a cutting is (decks holes). The water is held a metre under its quays (its
+  own level, `y`), with quay walls down to it. Index the holes by place: a ring round a
+  whole town's canals has a town-sized box, and testing it against every ground triangle
+  cost 2.6 s of loading.
+- **Natural colours from a neon palette.** Water from the palette's "player" and sign blue
+  likewise came out khaki and brown under a palette with no blue in it. Pin the hue, as
+  the reds and greens are, or take the photo sky's colour for anything that reflects it.
 
 ## Roads
 

@@ -4,6 +4,7 @@ How long each change took, in minutes, from the Claude Code sessions that made i
 
 | date (UTC) | commit | change | agent | runs | you | active | away | lines | files | steps | tools | engine runs | tokens out |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2026-11-22 14:25 | d226f5f | tools/record_video.sh: a game playing a level, filmed smooth and cut to the action, sized for the phone cha... | 18 | 40 | 0.1 | **58** | 631 | +170 -1 | 8 | 31 | 33 | 6 | 18.4k |
 | 2026-11-22 14:16 | 7f056b0 | notes: the never-drawn check's 4 -- the engine's own default material, at start, before any game | 17 | 32 | 0.0 | **50** | 647 | +12 -0 | 1 | 17 | 23 | 3 | 11.9k |
 | 2026-11-22 14:15 | dee9130 | shell: a levelled game's start screen fits any number of groups -- up to three side by side in narrower col... | 1.1 | 1.0 | 0.0 | **2.2** | 770 | +35 -19 | 6 | 11 | 12 | 6 | 7.3k |
 | 2026-11-22 14:15 | 6a924b4 | streets on foot: the library's sprint clip past 6 m/s (2.14 m/s at x1, a longer stride than the jog), the c... | 1.9 | 1.8 | 0.0 | **3.7** | 685 | +61 -4 | 5 | 14 | 15 | 5 | 9.3k |
