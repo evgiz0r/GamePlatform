@@ -192,3 +192,39 @@ changed); pick a city; screenshot the line under the map within 8 s of the car a
 ("loaded in ... (N shaders, X s compiling, M skipped)"); open "more" > "perf view" and
 screenshot it after a minute of driving. Note the phone's model and browser. Put the numbers
 under "Where things stand".
+
+## A phone (22 Nov 2026): Adreno 740 (a 2023 flagship), Chrome, build 22 Nov 03:27 Israel
+
+Six perf-view screenshots from the user, Tel Aviv (Kaplan) and another city (Sderot Herzl),
+autodrive on, quality 2.
+
+- **Loading is fine**: 8.5-9.5 s; city file 2.4 · start area 3.1-3.4 · graphics 3.0-3.7
+  (129-135 shaders, 2.0-2.5 s compiling). Shaders compiled after the car: 54-80, 1.9-3.3 s.
+- **Driving is not: 5-18 fps.** The frames, average ms = drawing + script in N ticks:
+  113 = 42 + 71 in 6.2 (people 33, traffic 16) · 90 = 45 + 45 in 5.0 · 144 = 70 + 74 in 3.7
+  (building 48) · 76 = 42 + 34 in 4.1 · 55 = 25 + 29 in 3.2 · 78 = 33 + 46 in 4.7 (building
+  18). 500-680 draws, 1.4-1.8 M triangles.
+- **The spiral**: the script costs ~8-11 ms a physics tick on this phone (native PC ~3.5-4),
+  and at 60 ticks a second a 100 ms frame has to run ~6 of them -- 60-70 ms of script -- which
+  keeps the next frame slow. The script, not the GPU, holds the phone under 20 fps.
+- **The worst stutters are the background build**: 2044 ms = building 1032 + rest 969, and
+  2250 ms = building 1275 + rest 934. A builder runs ~1 s between `_over()` checks on the
+  phone (the budget is 6 ms a frame, `BUILD_US`), and the "rest" that follows is likely the
+  new square's meshes going to the GPU (and their shaders). "building the city" stood at 0-5%
+  after minutes: the build is eating frames for a long time to come.
+- Other hitches of 120-360 ms: people 69-93 ms in one frame (Kaplan), traffic 28, and "rest"
+  of 200-300 ms (a shader compiled on first sight, or uploads).
+
+What to do, by expected gain on this phone:
+1. **Background build in small pieces on slow devices** -- find the steps that run ~1 s
+   between `_over()` checks (natively ~0.3-0.4 s) and split them; and let `_build_us` follow
+   the frame (none while a frame is over ~50 ms, except to catch up the squares in view).
+   Removes the 1-2 s freezes.
+2. **Fewer ticks when frames are slow** -- the physics rate (60) halved on a device whose
+   frames stay over ~40 ms (`Engine.physics_ticks_per_second` 30; the car and camera are
+   already drawn between ticks, `_frame`), or people/traffic further from the car ticked
+   less often. Breaks the spiral: ~half the script time.
+3. **People near Kaplan** (33 ms a frame, 69-93 in one) -- how many are ticked, and whether
+   the far ones can tick every few frames.
+4. **Shaders after the car** (54-80 on the phone) into the warm-up.
+5. **Draws** (500-680): the quality ladder cannot help a script-bound frame.
