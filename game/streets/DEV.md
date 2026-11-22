@@ -2349,6 +2349,26 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   PC); nothing worse by 5; 29 +6, 49 +7, 93 +14, 94 +15; 90-99 s 23.7 -> 28.8. Both filmed
   walks scan clean; playtests of levels 5, 6 and 1 survive 25 s.
 
+### Walks with a scene: the night out, the park, the beach (22 Nov 2026)
+
+- **make_walks.py** grew: `ways` (a route along roads of chosen kinds through `via` points,
+  down their middle: a park's footpaths, a pedestrian street), `scene` (`groups` [n, near, far]
+  of 2-4 standing talking off the line; `passers` n walking the other way, timed by the walk's
+  own clock to meet the walker; `lights` metres: the bars, pubs, cafes and restaurants within
+  it get string lights and tables, as details' `shops`; `look` [deg, every, for]: the head
+  turned now and then), `dress` per walk ([] for none: scooters had stood on the sand).
+  A level's `"time"` is its own (the night out: night) unless the list's settings say other.
+- **Levels** 30 night out (358 m, 266 s; 18 groups, 26 passing, 16 lit places), 31 the park
+  by Sarona (337 m), 32 the beach (601 m, 446 s, 8 m inland of the water's edge read off the
+  sand and sea areas). All scan clean.
+- **The phone's grade only on a filmed walk** (`"filmed": true`): over the beach it made the
+  sun a flat grey (its exposure pulls a bright frame down, its curve lifts the dark). And the
+  `beach` tone darkened 0.38, not 0.2: bare, the sand came out white in the sun.
+- **Open, not the walks'**: Tel Aviv's sea is not drawn -- sand to the horizon from the walk
+  and in `tests/seaside.gd`'s own shots (beach_above, beach_to_sea), the ground out there at
+  0 m and the sea's area at y 1.5 m. `_hold_sea` (DEV.md, Tel Aviv) fixed it once; something
+  since undid it.
+
 ### Watched levels and what a frame draws (22 Nov 2026)
 
 - **Watch only** (`_watching()`: a walk, a test drive, a scenario but the getaway): `_input`
