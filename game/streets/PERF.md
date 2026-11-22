@@ -357,3 +357,13 @@ One perf-view screenshot, mailed: Givatayim at Katznelson, autodrive on, 317 s i
 - Whether the levels help this laptop the two can't say (one at 0, one back at 2, likely after
   "lower bought nothing"). The perf view now has a "quality ladder:" line -- each step with
   the fps it measured -- so the next screenshot says.
+- **A quality step compiles nothing** (`tests/web_shaders.js` QWALK=30, the test town, idle,
+  the container's Chromium): 2 -> 1 -> 0 -> 1 -> 2 -> 3 -> 2, 0 programs at each step but the
+  last (2). The ladder is safe to run anywhere. The 13.7 s frame was Tel Aviv's programs that
+  come only after the car (~100 there, as on the home PC: 102), uncached in that browser for
+  this build, ~130 ms each -- open problem "shaders after the car". Even the test town, the
+  car standing, compiled 26 programs 21-23 s after the warm-up: what they are is the next
+  thing to find (list the after-the-warm-up programs by material in web_shaders.js).
+- The same run: `CHECK never-drawn lit programs compiled: 4 (want 0) FAIL` on the test town --
+  likely the check's first run in a browser (written on the home PC, which has no
+  Playwright). Not looked into yet; 4 programs, ~0.5-1.5 s on a cold Windows browser.
