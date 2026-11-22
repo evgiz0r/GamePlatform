@@ -23295,14 +23295,16 @@ func _ap_pass_bus(lead: Array) -> bool:
 	var keep_v := _ap_v.duplicate()
 	var keep_lim := _ap_lim.duplicate()
 	_ap_densify(s0 + end_s + 10.0, 2.0)
+	var orig := _ap_pts.duplicate()   # (lengths and ways read from the plan as it was: bent in place, each
+	                                   # point leaned on the one before, already moved, and the way out hugged the plan)
 	for k in range(1, _ap_pts.size()):
-		s += _ap_pts[k - 1].distance_to(_ap_pts[k])
+		s += orig[k - 1].distance_to(orig[k])
 		if s > end_s + 8.0:
 			break
 		var t := clampf((s - start_s) / 8.0, 0.0, 1.0) * clampf((end_s + 8.0 - s) / 8.0, 0.0, 1.0)
 		if t <= 0.0:
 			continue
-		var kd := (_ap_pts[mini(k + 1, _ap_pts.size() - 1)] - _ap_pts[k - 1]).normalized()
+		var kd := (orig[mini(k + 1, orig.size() - 1)] - orig[k - 1]).normalized()
 		_ap_pts[k] += Vector2(kd.y, -kd.x) * lane_w * t * sgn
 	if true:
 		# (the way out checked for what stands there, not cars alone: a post, a tree, a
@@ -23389,16 +23391,18 @@ func _ap_race_by(lead: Array) -> bool:
 		else:
 			shift = minf(out, lat - RACE_CLEAR)
 		_ap_densify(s0 + end_s + 10.0, 1.5)
+		var orig := _ap_pts.duplicate()   # (lengths and ways read from the plan as it was: bent in place, each
+		                                   # point leaned on the one before, already moved, and the way out hugged the plan)
 		var s := -s0
 		var bent: Array = []
 		for k in range(1, _ap_pts.size()):
-			s += _ap_pts[k - 1].distance_to(_ap_pts[k])
+			s += orig[k - 1].distance_to(orig[k])
 			if s > end_s + 8.0:
 				break
 			var t := clampf((s - start_s) / 7.0, 0.0, 1.0) * clampf((end_s + 8.0 - s) / 8.0, 0.0, 1.0)
 			if t <= 0.0:
 				continue
-			var kd := (_ap_pts[mini(k + 1, _ap_pts.size() - 1)] - _ap_pts[k - 1]).normalized()
+			var kd := (orig[mini(k + 1, orig.size() - 1)] - orig[k - 1]).normalized()
 			_ap_pts[k] += Vector2(kd.y, -kd.x) * shift * t
 			bent.append([_ap_pts[k], maxf(s, 0.0)])
 		var ok := not bent.is_empty()

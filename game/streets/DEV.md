@@ -4010,6 +4010,17 @@ it tries again, starting at the next way out (`_race_tries`). The limit x1.8, up
 it and on in 13-14 s; Afek bends once and never clears it (open: its other ways out are
 refused -- not looked into); one-lane streets wait (their pavements were not clear); 0
 crashes, 0 people hit.
+The bends (`_ap_race_by`, `_ap_pass_bus`) moved the plan's points in place and read each
+point's way from its neighbours, one of them already moved: the push leaned along the road
+and the way out stayed close to the plan, into the car it went round (the traffic session
+found it -- tests/racer_queue.gd CARS=1 LANE=1: racer stood 23 s behind one car at a red).
+They read lengths and ways from `orig`, a copy taken after `_ap_densify`, as `_ap_mount_by`
+already did; `_ap_squeeze_by` still bends in place. 22 Nov after it: racer_queue LANE=0/1/2
+through in 11.3 s, standing 0; racer_moves two-lane 2 of 3 (Afek and Gnessin past in 8 s,
+Poalei HaRakevet stuck -- open), one-lane Israel Teiber past; the racer drive 144 s against
+autodrive's 226. Tried and dropped: the smallest way out first, and bending again every tick
+-- near a junction the plan curves into its turn lane under the measure, and both steered
+racer in beside the car.
 `tests/racer.gd`: route 2 by "go to" (Givatayim, 1.2 km as the crow flies),
 autodrive then racer, traffic as usual; then a junction held at red, racer from 150 m back.
 22 Nov: autodrive 237 s (0 reds, 50 km/h top), racer 214 s (7 cars passed, 1 red, 78 km/h
