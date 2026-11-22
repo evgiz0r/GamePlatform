@@ -57,7 +57,8 @@ func _run() -> void:
 				md = (pts[j + 1] - pts[j]).normalized()
 				break
 			run += l
-		if mid == Vector2.INF or not g._in_city(mid) or priv.near(avoid, mid):
+		var rim: Rect2 = (g._bounds as Rect2).grow(-float(g.EDGE) - 40.0)
+		if mid == Vector2.INF or not g._in_city(mid) or priv.near(avoid, mid) or not rim.has_point(mid):
 			continue
 		var k := Vector2i(floori(mid.x / 400.0), floori(mid.y / 400.0))
 		if not cells.has(k):
@@ -71,6 +72,11 @@ func _run() -> void:
 	var places := {}  # "cause @ 20 m square" -> [count, point]
 	var knocks := 0
 	var hits := 0
+	# over the kerb: the car's middle within 0.3 m of the asphalt's edge (its wheels over it,
+	# half the car ~0.9 m) -- off: the middle 0.8 m past it. Seconds, and where (20 m squares)
+	var kerb_s := 0.0
+	var off_s := 0.0
+	var kerb_at := {}
 	var driven := 0.0
 	var add := func(cause: String, p: Vector2) -> void:
 		by[cause] = int(by.get(cause, 0)) + 1
@@ -107,10 +113,26 @@ func _run() -> void:
 		for f in range(60 * secs):
 			await physics_frame
 			var p: Vector2 = g._pos
+			if f % 6 == 0 and absf(g._v) > 1.0:
+				var kb: Dictionary = g._nearest_seg(p, 30.0, true, true, g._y)
+				var e := 99.0 if kb.is_empty() else float(kb["edge"])
+				if e > -0.3:
+					kerb_s += 0.1
+					if e > 0.8:
+						off_s += 0.1
+					if not priv.near(avoid, p):
+						var kk := Vector2i(floori(p.x / 20.0), floori(p.y / 20.0))
+						if not kerb_at.has(kk):
+							kerb_at[kk] = [0.0, p.round(), "" if kb.is_empty() else String(g._roads[kb["road"]]["en"]), 0.0, si]
+						kerb_at[kk][0] += 0.1
+						kerb_at[kk][3] = maxf(kerb_at[kk][3], e)
 			if f % 30 == 0:
 				var on: Dictionary = g._nearest_seg(p, 30.0, true, true, g._y)
 				var rd := "off any road" if on.is_empty() else "%s '%s' edge %.1f" % [g._roads[on["road"]]["k"], g._roads[on["road"]]["en"], float(on["edge"])]
-				hist.append("t %.1f  %s  %.1f m/s  steer %.2f  why %s  [%s]" % [f / 60.0, str(p.round()), g._v, g._steer, g._ap_why, rd])
+				var ahead: Array = []
+				for q in Array(g._ap_pts).slice(0, 4):
+					ahead.append(Vector2i((q as Vector2).round()))
+				hist.append("t %.1f  %s  %.1f m/s  steer %.2f  why %s  [%s]  plan %s" % [f / 60.0, str(p.round()), g._v, g._steer, g._ap_why, rd, str(ahead)])
 				if hist.size() > 6:
 					hist.pop_front()
 			if int(g._knocked_n) > kn0:
@@ -138,6 +160,11 @@ func _run() -> void:
 			air0 = g._air
 		driven += float(g._odo) - odo0
 	print("DRIVE BUMPS: %d starts x %d s, %.1f km: %s; knocked over %d; hits %d" % [pick.size(), secs, driven / 1000.0, by, knocks, hits])
+	print("OVER THE KERB: %.1f s (%.1f s a km), off the asphalt %.1f s" % [kerb_s, kerb_s / maxf(driven / 1000.0, 0.01), off_s])
+	var kks := kerb_at.keys()
+	kks.sort_custom(func(x, y): return kerb_at[x][0] > kerb_at[y][0])
+	for kk in kks.slice(0, 8):
+		print("  %4.1f s over the kerb at %s, %s, up to %.1f m past the edge (start %d)" % [kerb_at[kk][0], kerb_at[kk][1], kerb_at[kk][2], kerb_at[kk][3], kerb_at[kk][4]])
 	for cause: String in by:
 		print("  per km: %s %.1f" % [cause, float(by[cause]) / maxf(driven / 1000.0, 0.01)])
 	var keys := places.keys()

@@ -39,12 +39,31 @@ func _run() -> void:
 				continue
 			var leg := Vector3i(ri, 1 if d > 0 else pts.size() - 2, d)
 			legs.append("%s: %s" % ["fwd" if d > 0 else "back", "OFF THE MAP" if g._edge_bound(leg) else "leads on"])
+		if r["k"] == "service":
+			legs.append("into a building: %s" % str(g._into_building(ri)))
 		print("road %d %s '%s' o=%d pv=%s mate=%d %d m away, %s -> %s; %s" % [ri, r["k"], r["name"], int(r["o"]), str(r["pv"]), int(r.get("mate", -1)), near, ends[0], ends[1], ", ".join(legs)])
+	if OS.get_environment("WAYS") != "":
+		# (WAYS=road,dir: what _ap_ways offers at that road's end going dir, with the scores)
+		var wv := OS.get_environment("WAYS").split(",")
+		var wr := int(wv[0])
+		var wd := int(wv[1])
+		var wp: PackedVector2Array = g._roads[wr]["pts"]
+		var found: Array = g._ap_ways(wr, wp.size() - 1 if wd > 0 else 0, wd)
+		for w: Dictionary in found[0]:
+			print("way %s '%s' service %s score %.2f edge-bound %s" % [str(w["leg"]), w["en"], str(w["service"]), float(w["score"]), str(g._edge_bound(w["leg"]))])
+		print("back %s" % str(found[1]))
 	if OS.get_environment("POSTS") != "":
 		# (POSTS=1, with POSTS_FROM=1: the posts and walls within 6 m, and who put each post up)
 		for i in range(g._posts.size()):
 			if g._posts[i].distance_to(at) < 6.0:
 				print("post %d at %s r %.2f %s" % [i, str(g._posts[i].snapped(Vector2(0.1, 0.1))), g._post_r[i], g._post_from[i] if i < g._post_from.size() else ""])
+		for i in range(g._blds.size()):
+			var poly: PackedVector2Array = g._blds[i]
+			var best := INF
+			for k in range(poly.size()):
+				best = minf(best, Geometry2D.get_closest_point_to_segment(at, poly[k], poly[(k + 1) % poly.size()]).distance_to(at))
+			if best < 8.0:
+				print("building %d %.1f m off, solid %s" % [i, best, str(g._bld_solid[i])])
 		for i in range(0, g._walls.size(), 2):
 			var q := Geometry2D.get_closest_point_to_segment(at, g._walls[i], g._walls[i + 1])
 			if q.distance_to(at) < 6.0:

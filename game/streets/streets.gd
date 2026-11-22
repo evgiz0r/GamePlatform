@@ -4356,9 +4356,8 @@ func _build_passages() -> void:
 					var d := (_along(pts, cum, minf(s + 0.5, total)) - a).normalized()
 					var out := Vector2(-d.y, d.x) * sgn   # toward the wall
 					var hp := a + out * (hw - 0.4)
-					if _mine(hp):
+					if _mine(hp) and _add_post(hp, 0.3, true):   # (two passages side by side: one hoop)
 						hoops.append(Transform3D(Basis(Vector3.UP, atan2(-out.y, out.x)), Vector3(hp.x, _h(hp), hp.y)))
-						_add_post(hp, 0.3)
 	_add_mesh(wall, _surface("stonewall"), false, DETAIL_RANGE)
 	_add_mesh(fronts["plaster"], _surface("gardenwall"), false, DETAIL_RANGE)
 	_add_mesh(fronts["coping"], _surface("coping"), false, DETAIL_RANGE)
@@ -13863,6 +13862,8 @@ func cat_at(p: Vector2, y: float, face: Vector2, kind: String) -> void:
 		return
 	if y - _h(p) < 0.4 and not _off_road(p, 0.2):
 		return   # no cat sitting on the road (by a parked car's nose: city_check)
+	if y - _h(p) < 0.4 and _push_out(p, 0.15, true, false) != Vector2.ZERO:
+		return   # nor inside a lamp post or a tree at the kerb (Ashdod: city_check's "posts twice")
 	var yaw := atan2(face.x, face.y) if face.length_squared() > 0.0001 else 0.0
 	_cat_spots.append([Transform3D(Basis(Vector3.UP, yaw), Vector3(p.x, y, p.y)), kind, posmod(_hash_i(p * 3.0), 97)])
 	if y - _h(p) < 0.4:   # on the ground (not up on a wall): a small post, not walked through
@@ -14348,6 +14349,14 @@ func _build_street_signs() -> void:
 			if _push_out(p + sp, 0.4, true, false) != Vector2.ZERO:
 				return
 			p += sp
+		# nor on any road's asphalt: between a divided road's halves where a street crosses
+		# them (Tel Aviv's Yehezkel Kaufman by Nahum Goldman: autodrive ran over one, its
+		# plan went through it -- tests/drive_bumps.gd, 22 Nov)
+		var oa := _off_asphalt(p, 0.06)
+		if oa != p:
+			if _push_out(oa, 0.4, true, false) != Vector2.ZERO:
+				return
+			p = oa
 		if not plates.has(kind):
 			plates[kind] = []
 		var gy := _h(p)
@@ -17743,13 +17752,14 @@ func _physics_process(dt: float) -> void:
 	_p("lights")
 	var split := dt <= WORLD_SPLIT_DT and _world_split_on
 	_world_n += 1
-	var traffic_now := not split or _world_n % 2 == 0
-	var people_now := not split or _world_n % 2 == 1
-	var wdt := dt * 2.0 if split else dt
+	var every := (4 if _slow_frames else 2) if split else 1   # (a slow device: each a quarter of the ticks, _slow_watch)
+	var traffic_now := _world_n % every == 0
+	var people_now := _world_n % every == every / 2
+	var wdt := dt * every
 	_traffic_age = 0.0 if traffic_now else _traffic_age + dt
 	_traffic_dt = wdt if traffic_now else _traffic_dt
 	if _traffic != null:
-		_traffic.ticks_per = 2 if split else 1
+		_traffic.ticks_per = every
 	if _walking:
 		if traffic_now:
 			_traffic.tick(wdt)
@@ -17827,6 +17837,30 @@ func _physics_process(dt: float) -> void:
 const WORLD_SPLIT_DT := 1.0 / 40.0
 ## STREETS_WORLD_SPLIT=0 (tests): every tick for both, as before, to set the two side by side
 var _world_split_on := OS.get_environment("STREETS_WORLD_SPLIT") != "0"
+
+## A device whose frames stay slow (a phone in a browser: 60-90 ms, 4-5 physics ticks a frame,
+## each paying for traffic and people -- PERF.md "A phone") ticks traffic and people every
+## 4th tick with four times the time instead of every 2nd, and builds the squares round the
+## car at half the hurry (CATCH_UP_US / 2: the catch-up was 16-21 ms of every phone frame).
+## On when the frame time, smoothed, passes SLOW_ON; off again under SLOW_OFF. The car, the
+## camera and autodrive still tick every tick. STREETS_SLOW=1/0 forces it (tests).
+const SLOW_ON := 0.040
+const SLOW_OFF := 0.028
+var _slow_frames := OS.get_environment("STREETS_SLOW") == "1"
+var _slow_ema := 1.0 / 60.0
+
+func _slow_watch(dt: float) -> void:
+	var forced := OS.get_environment("STREETS_SLOW")
+	if forced != "":
+		return
+	_slow_ema = lerpf(_slow_ema, minf(dt, 0.25), 0.03)   # (~half a second to follow; one freeze barely moves it)
+	if not _slow_frames and _slow_ema > SLOW_ON:
+		_slow_frames = true
+		print("[streets] slow frames (%.0f ms): traffic and people every 4th tick" % (_slow_ema * 1000.0))
+		Probe.event("slow_frames", {"on": true, "ms": int(_slow_ema * 1000.0)})
+	elif _slow_frames and _slow_ema < SLOW_OFF:
+		_slow_frames = false
+		Probe.event("slow_frames", {"on": false, "ms": int(_slow_ema * 1000.0)})
 var _world_n := 0
 var _traffic_age := 0.0              ## s since the traffic last ticked (0 or one tick)
 var _traffic_dt := 1.0 / 60.0        ## the time its last tick covered
@@ -17856,11 +17890,12 @@ func _frame() -> void:
 	var dt := get_process_delta_time()
 	if _bg_wait:   # the city still building round you: its few milliseconds (_pause)
 		_bg_wait = false
-		_build_us = CATCH_UP_US if _catch_up else (BUILD_US if dt < 0.022 else BUILD_US / 2)
+		_build_us = (CATCH_UP_US / 2 if _slow_frames else CATCH_UP_US) if _catch_up else (BUILD_US if dt < 0.022 else BUILD_US / 2)
 		if not _catch_up and not _paused and _zoom_v <= 0.0 and _all_seen_built():
 			_build_us = BUILD_FAR_US
 		_build_tick.emit()
 		_p("building")
+	_slow_watch(dt)
 	_watch_fps(dt)
 	_hold_tick(dt)
 	if _standins != null:
@@ -23063,9 +23098,16 @@ func _ap_off_route() -> float:
 	var i := _ap_nearest_seg()
 	return Geometry2D.get_closest_point_to_segment(_pos, _ap_pts[i], _ap_pts[i + 1]).distance_to(_pos)
 
+## how much of the plan is still ahead: from the car's place on its first stretch. Measured
+## from the stretch's start, a plan of one long straight -- set down on Ashdod's HaMada, 173 m
+## to a junction -- read 173 m however far along the car was, never reached the 160 it is
+## topped up below, and the car ran on past the junction at 49 km/h into the lane beyond and
+## a building (tests/drive_bumps.gd LEVEL=3 STARTS=12 ONLY=11, 22 Nov).
 func _ap_len() -> float:
-	var L := 0.0
-	for i in range(1, _ap_pts.size()):
+	if _ap_pts.size() < 2:
+		return 0.0
+	var L := Geometry2D.get_closest_point_to_segment(_pos, _ap_pts[0], _ap_pts[1]).distance_to(_ap_pts[1])
+	for i in range(2, _ap_pts.size()):
 		L += _ap_pts[i - 1].distance_to(_ap_pts[i])
 	return L
 
@@ -24124,11 +24166,14 @@ func _into_building(ri: int) -> bool:
 	var pts: PackedVector2Array = r["pts"]
 	var into := false
 	for e: int in [0, ids.size() - 1]:
-		if (_node_roads[ids[e]] as Array).size() != 1:
-			continue   # (not a dead end there)
+		if _node_ways(ids[e]) != 1:
+			continue   # (not a dead end there -- for cars: a footpath on from it does not count)
 		var p := pts[e]
-		for i: int in _near(_bld_hash, p, 1.5, BLD_CELL):
-			if _bld_solid[i] != 0 and (_bld_box[i] as Rect2).grow(1.5).has_point(p) 					and (Geometry2D.is_point_in_polygon(p, _blds[i]) or _poly_push(_blds[i], p, 1.5) != Vector2.ZERO):
+		# (8 m: the map often ends a garage's lane short of its door -- Ashdod's off HaMada
+		# stops 5 m from the wall, and autodrive went down it at 49 km/h into the building:
+		# tests/drive_bumps.gd LEVEL=3 STARTS=12, 22 Nov)
+		for i: int in _near(_bld_hash, p, 8.0, BLD_CELL):
+			if _bld_solid[i] != 0 and (_bld_box[i] as Rect2).grow(8.0).has_point(p) 					and (Geometry2D.is_point_in_polygon(p, _blds[i]) or _poly_push(_blds[i], p, 8.0) != Vector2.ZERO):
 				into = true
 	_into_bld[ri] = into
 	return into
@@ -25631,7 +25676,7 @@ func _tick_hud() -> void:
 	if _dest_on:
 		var left := _pos.distance_to(_dest)
 		if _auto and _ap_pts.size() > 1:
-			left = _pos.distance_to(_ap_pts[0]) + _ap_len()
+			left = _ap_len()   # (from where the car is: _ap_len)
 		_dest_lbl.text = "→ %s · %s" % [_dest_name, ("%.1f km" % (left / 1000.0)) if left >= 1000.0 else ("%d m" % int(left))]
 	else:
 		_dest_lbl.text = ""
