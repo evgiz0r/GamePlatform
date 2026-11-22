@@ -1,7 +1,7 @@
 extends SceneTree
 ## The HUD's buttons (AUTO_BTN and on, the "more" drawer, folding): taps each through
 ## _hud_tap as a player would, checks what it did, and shoots each state --
-## hud_drive / hud_auto / hud_perf / hud_more / hud_night / hud_keys / hud_folded / hud_walk.png.
+## hud_drive / hud_auto / hud_perf / hud_more / hud_night / hud_keys / hud_map / hud_folded / hud_walk.png.
 ## Checks, every state: the buttons on screen inside the screen and none overlapping another,
 ## the minimap, the stick's ring or the credit. And the autodrive styles: the player's
 ## autodrive is the racer by default, a script's _set_auto (the bots, routes, scene tests)
@@ -43,6 +43,8 @@ func _shown() -> Dictionary:
 		out["fold"] = g.FOLD_BTN
 		out["view"] = g.VIEW_BTN
 		out["perf"] = g.PERF_BTN
+		if g._map_btn_shown():
+			out["map"] = g.MAP_BTN
 		if not g._walking and not g._auto:
 			out["look"] = g.LOOK_BTN
 	if g._paused and not g._zoomed():
@@ -158,14 +160,31 @@ func _run() -> void:
 	_check_layout("paused")
 	await _tap(g.RESUME_BTN)
 	_ok("resume on screen", not g._paused)
-	# the camera round
+	# the camera: chase, seat, chase
 	var views: Array = [g._view_name()]
-	for i in range(3):
+	for i in range(2):
 		await _tap(g.VIEW_BTN)
 		await create_timer(0.6).timeout
 		views.append(g._view_name())
-	_ok("the camera goes round %s" % [views], views == ["chase", "seat", "above", "chase"])
+	_ok("the camera goes round %s" % [views], views == ["chase", "seat", "chase"])
 	await create_timer(1.0).timeout
+	# the map button: up over the city, paused; dragged about; back down, the city going on
+	await _tap(g.MAP_BTN)
+	await create_timer(2.5).timeout
+	_ok("map: up (%.2f), paused" % g._zoom_v, g._zoom > 0.8 and g._zoom_v > 0.6 and g._paused)
+	g._zoom_pan(Vector2(-120, 40))
+	_ok("map: dragged about (%.0f m)" % g._zoom_off.length(), g._zoom_off.length() > 50.0)
+	await _snap("hud_map")
+	_check_layout("map")
+	await _tap(g.VIEW_BTN)
+	_ok("map: the camera button picks the landing (%s)" % g._view_name(), g._view_name() == "seat")
+	await _tap(g.VIEW_BTN)
+	await _tap(g.MAP_BTN)
+	t = 0.0
+	while g._zoomed() and t < 10.0:
+		await create_timer(0.25).timeout
+		t += 0.25
+	_ok("map: back down in the chase view, going on (%.1f s)" % t, not g._zoomed() and not g._paused and not g._cockpit)
 	# folded
 	await _tap(g.FOLD_BTN)
 	_ok("folded", g._hud_folded)

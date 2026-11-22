@@ -55,7 +55,9 @@ func _run() -> void:
 		var l: Dictionary = probe.LEVELS[i]
 		if l.get("cities", false):
 			clv = i + 1
-		elif l.has("city") and not l.has("walk") and not probe._is_list(l):
+		# (the list's own rule, _walk_list_open: not a walk, a scenario, a place that is its own
+		# test drive or a list -- counting the scenarios, this said FAIL from the day they came)
+		elif l.has("city") and not l.has("walk") and not l.has("scenario") and not l.has("test_drive") and not probe._is_list(l):
 			cities += 1
 	root.get_node("Flow").start_game("streets", {"level": clv})
 	await create_timer(2.0).timeout

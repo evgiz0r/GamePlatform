@@ -805,12 +805,16 @@ what) drawn by `_draw_more` and tapped by `_more_tap`; a row is one line there.
   drive races at night with the chip saying so.
 - Time of day by choice: `_set_time_of_day` steps `_next_time` round (it only goes day,
   evening, night); `_tod_busy` keeps two taps from interleaving its awaits.
-- The camera button labels where the view is going (`_zoom > 0`), not `_zoomed()`: that is
-  still true for the second the view sinks back to the car, and the label lagged.
+- The map button (`MAP_BTN`, key M, `_toggle_map`) is the zoom up to `MAP_ZOOM` (0.86) and
+  back: everything from above (paused, `_zoom_pan`, pinch, the long press) is the zoom's.
+  Its label reads `_zoom > 0`, not `_zoomed()`: that stays true for the second the view
+  sinks back, and the label lagged. The camera button is chase <-> seat only; from above it
+  flips `_zoom_seat` (where the view lands). Hidden under the perf view's panel
+  (`_map_btn_shown`), which covers the minimap. The load line moved up to y 168 for it.
 - `tests/hud_layout.gd` (level 4, about a minute) taps every button through `_hud_tap`,
   checks what it did, and checks in every state that no shown button leaves the screen or
   overlaps another, the minimap, the speed, the credit, the stick's ring or the load line.
-  Good: 0 failed, 24 checks. Its shots (`hud_*.png`) are the quickest look at the HUD.
+  Good: 0 failed, 32 checks (the map: up, paused, dragged, the landing swapped, back down). Its shots (`hud_*.png`) are the quickest look at the HUD.
 
 ## Tests
 
@@ -2459,6 +2463,75 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
 - **Score** (walk 1 against its film): 35.3 -> 34.8, only second 2 worse by 5+ (the head on the
   car crossing ahead). The likeness cost is the user's choice: a person's eyes and head over the
   phone's.
+
+### Places that are not towns: the showroom and the trick road (levels 39, 40; 22 Nov 2026)
+
+Both made by `data_tools/make_showcase.py` (`showroom` | `trick_road`, both with no argument;
+needs numpy: `uv run -q --with numpy python ...`), city files marked `"made_up": 1` (no OSM
+credit), loaded like any city. The user: "a small scene with many of the objects, and i am just
+walking around looking at the models; a small trick road where the car has ramps tunnels jumps
+falls". `city_check` LEVEL=40 is 0 (with the turbine guard taken out it finds the tower,
+6.3 m into the road: the check for that family, widened from the posts).
+
+- **The showroom** (level 39, `cities/showroom.json` + `cities/details/showroom.json`): a paved
+  square (`plaza` area) ringed by a 30 km/h street and eleven blocks; five rows along x --
+  trees of all nine `tree_forms` (z -24; `tree_surveys` all: 1, so no street trees are made
+  up), the details file's `props` kinds (-11), furniture.gd's kits (-1), the CC0 models (9: the
+  made playground and benches, Kenney's planter, fence, lamps, trees, spaceships, a fork, a
+  plate, a banana), the car kit (21) -- with four aisles between (z -16, -6, 4, 14; x -40..40,
+  even so the 2 m steps land on the stops). The rows started 11 m from the aisles: a hydrant
+  was a speck across an empty square; 5 m now (7 for the vehicles: scaled to their length the
+  car kit's are wide, the fire truck 3.5 m). Walk `showroom_walk`: 362 m at 1.3 m/s, 319 s,
+  `dodge` on; at x +-18 on each aisle a 5 s stop held facing the row to the left, then the
+  right (`face`, map bearings); between them a 48-degree glance every 5.5 s (`looks`); 10
+  people standing (in pairs and threes talking, one at the police car, one at the trees), one
+  strolling the third aisle the other way.
+- **`show` in a details file** (details.gd `_show`, `_show_kit`): an exhibit is a node of its
+  own (a few dozen: no batching) -- `kind: "kit"` one of furniture.gd's kits by name, or
+  `"model"` a model from assets/models/ via the shell's `model(name, size)` (size = its longest
+  side); `paint` a `_tone` for a kit drawn white (the bike, the delivery bike); a post of `r`
+  (0.4, 0 none) so walks step round it, or `car` for a car's posts. The car kit's models are
+  long along their own z (police 1.5 x 3.1: `tools/model_info.sh`), so `dir` is their length.
+- **Stops are held with `face`, not a head's turn**: a walker standing still keeps whatever
+  facing it had, and `filmed_walk.gd`'s `AT` jumps the clock -- after a jump, a still taken at
+  a stop faced wherever the last still had (back along the aisle, at the street). A `face` goes
+  by the clock and holds in a still and a run alike. (`AT` backs up 1.5 s and waits 20 frames:
+  a still is of the walk ~1.2 s before the second asked; for a stop's look ask its end + 0.6.)
+- **The trick road** (level 40, `cities/trick_road.json`; route 14 in routes.json, which the
+  generator keeps in step): a lemniscate of Gerono (x = 230 sin t, z = 180 sin t cos t), 1258 m,
+  one way (`o`: 1), kind `trunk` (no pavement, kerbs or walkers), 70 km/h; turned so the jump
+  runs due east (along the height grid's rows), on a 2 m height grid at ground 10 m (room for
+  the ditch below it). The loop is cut into pieces where what it is built as changes: ground,
+  `em` ramp up at 7% onto a 50 m `br` bridge 7.4 m over its own other leg, `em` down off it, the
+  jump (ground, 1 m nodes), `cu` / `tu` / `cu` through a hill (18 m over the ground, a 22 m
+  flat top, 55 m slopes; tunnel where it is 6.5 m over the road). No `"decks": "infer"`: the
+  file's `y` is used as written.
+- **What flies, and why it is shaped so** (streets.gd `_fly`: AIR_G 7.5, a take-off's lift
+  x1.1 + 0.6, a landing over 5 m/s is a crash; the springs feel the ground smoothed over half a
+  wheelbase): a ramp alone, even 32% at 50 km/h, is ridden down without leaving it (22% was,
+  in the game: no take-off at 48 km/h); a ledge throws it. So the bridge ends in a 0.9 m ledge
+  over 1.5 m, then 15% down (a model of `_fly` in Python: 45-60 km/h fly 8-16 m and land at 3-4
+  m/s), taken at 50 km/h (`DROP_SPEED`, the bridge's `ms`). The jump: a 24 m kicker rising 1.8
+  m (steepening to its lip), an 8 m ditch 2.5 m deep, a landing slope from 1.4 m at 16% down to
+  2 m under the ground, back up at 5% (modelled: lands soft from 47 to 68 km/h; 21 m/s and over
+  lands hard); autodrive's limit there 65. The ditch's walls are 3 m long: at 1.2 m (under a
+  grid step) and across the grid at 28 degrees the ground came out in jagged shards.
+- **`tests/trick_road.gd`** (`LEVEL=40`; headless ~1.5 min for the numbers, `run.sh` for stills
+  on the way into each piece and in the air): good is two take-offs -- the drop ~9 m (0.7-0.85
+  s), the jump 20-31 m (1.25-2.3 s) at 50-62 km/h -- landings soft (the drop's at 4.1 m/s, the crash line 5), "arrived" in 1:19-1:35. The
+  car goes ~45-55 km/h most of the way: the loop's curves (~140 m radius), not the limit.
+- **What the game had to learn for them**: a level can be its own test drive (`"test_drive":
+  <route id>`: `start()` takes that route when the config names none, in the "rules" style, and
+  the Cities list leaves it off); a place can have no traffic (`"traffic": false`, traffic.gd
+  `_spawn`: a bus and cars had shared the jump and the ramps); the test drives list goes
+  in two columns past eleven rows (main's thirteen -- Leiden's and Annecy's added -- had run
+  off the screen; fourteen with this one). And a bug any map with heights but no boundary
+  would hit: `_build_turbines` found no ground outside the town on any bearing and put the wind
+  turbine at the map's middle -- on the trick road, in the bridge's lanes. It builds none now
+  when no crest is found.
+- **Open**: a real gap (nothing under it) needs a road the car may leave and land back on --
+  autodrive only follows roads, so the jump is over a ditch the road dips into; the trick road's
+  grass came out dry and orange in the stills (not looked into).
 
 ### Handoff: the filmed walks (22 Nov 2026): measured against the full film, before pass 15
 
@@ -4543,6 +4616,34 @@ stood 19-26 s; on two-way streets with 3 cars in the lane, 4 of 6 stood.
   Moshe Dayan's curve with these changes (main: 0); with the player-corner check off, the
   same post at 10 km/h by racer; with the bus fix off, a car on Kaf-Gimel -- a different
   stray touch each time, none that repeats. Judge it by several drives, not one.
+
+## Traffic clear of parked cars; traffic on the wrong side checked (22 Nov 2026, afternoon)
+
+- **Givatayim's "traffic body into a post" was parked cars.** Each parked car's body is posts
+  (`_add_car_posts`, r 0.85), standing 0.25-0.9 m into the asphalt (Katznelson, Gordon,
+  HaHagana, HaMeri -- `tests/posts_at.gd NEAR=4` at the exam's spots; the incident's place is
+  the car's, not the post's, so NEAR=1.5 found nothing). Traffic measured what stands at the
+  kerb only for a delivery (`_kerb_edge`) and otherwise kept its lane line, its side (a bus's
+  1.25 m) into them. Now `_clear_kerb`: every 0.4 s a car in the kerb-side lane takes the
+  nearest thing on its right from its back to `KERB_AHEAD` (12 m) past its nose and moves left
+  until its side is `KERB_GAP` (0.25 m) clear, at most `KERB_MAX` (0.8 m) -- and no further than
+  its own side of the road (two-way: its middle 0.3 m right of the road's; one-way: its left
+  side 0.3 m on the asphalt). Not while pulling in (a bus to its stop, a van to deliver).
+  Exams (three at once, main beside it the same afternoon): into a post Givatayim 3 (main 5),
+  Ashdod 1 (4), test town 0 (1); Givatayim alone 7 checks in all, 1 into a post.
+- **New exam check "traffic left of the middle"**: a moving traffic car's middle 0.5 m+ left
+  of a two-way street's middle, out of junctions, heading along the street, 3 samples running
+  -- autodrive's "ticks left of the middle" widened to traffic (the dead end's family). Not
+  counted: round a delivery van, edged aside for racer, a bus on a street under 7 m, a scooter
+  filtering. Main reads 5 / 2 / 4 (Givatayim / Ashdod / test town): narrow residential and
+  living streets, scooters, vans -- open, not looked at one by one. The first version of the
+  kerb clearance had no cap and read 2 / 4 / 2: the cap is from those.
+- Ashdod's "off the asphalt" reads 18 on main as on this branch: not from these changes.
+- `validate.sh FULL=1 REGRESS=1` after (merged with main d7f46d0, ~60 min): city checks 0
+  but Tel Aviv 1 building and the usual limits; exams test town 7, Givatayim 17, Ashdod 20;
+  queue PASS. REGRESS FAIL: `turn_width` 1 of 10 (main the same), `deck_corner` 1 (it swings
+  0-5 on main too: main 0, 1, 4, 5 and this branch 0, 1, 4 -- noisy, not a verdict on one
+  run), `load_bar` and `people_pops` (loading and walkers: other sessions' corners).
 
 ## Open problems
 

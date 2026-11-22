@@ -91,6 +91,14 @@ const LEVELS := [
 	# their walks (NEW_CITY.md: every city has one), laid by data_tools/make_walks.py
 	{"name": "Leiden: down Haarlemmerstraat", "city": "leiden", "look": "north", "build": "nl", "decks": "infer", "walk": "leiden_haarlemmerstraat"},
 	{"name": "Annecy: along the Thiou to the lake", "city": "annecy", "look": "north", "build": "fr", "decks": "infer", "walk": "annecy_thiou"},
+	# two made-up places that are not towns (data_tools/make_showcase.py; the user: "a small scene
+	# with many of the objects, and i am just walking around looking at the models; a small trick
+	# road where the car has ramps tunnels jumps falls"): a walk round a square laid out with the
+	# game's things in rows, and a figure-of-eight circuit autodrive takes once round -- the route
+	# set's drive 14, which this level starts itself ("test_drive"; left off the Cities list)
+	{"name": "The showroom: a walk among the models", "city": "showroom", "look": "med", "walk": "showroom_walk"},
+	# ("traffic": false -- no cars but the one watched: a bus and cars had shared its jump and ramps)
+	{"name": "The trick road", "city": "trick_road", "look": "north", "test_drive": 14, "traffic": false},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -1331,7 +1339,12 @@ const WALK_BTN := Rect2(566, 150, 66, 22)    ## out of the car and back in (key 
 const MORE_BTN := Rect2(566, 98, 44, 22)     ## the drawer of set-once switches
 const FOLD_BTN := Rect2(612, 98, 20, 22)     ## "–": every button folded away but one "show" (_hud_folded); the user: "not take too much of the screen, or collapsible easily"
 const SHOW_BTN := Rect2(566, 98, 66, 22)     ## folded: the one button left, unfolds them
-const VIEW_BTN := Rect2(566, 124, 66, 22)    ## the camera, round: chase, seat, above the city (keys C, Z)
+const VIEW_BTN := Rect2(566, 124, 66, 22)    ## the camera: chase, seat (key C); the view from above is MAP_BTN's
+const MAP_BTN := Rect2(8, 184, 52, 22)       ## over the minimap: the city from above, paused, to look round
+## (the user, 22 Nov: "the tap on the minimap ... would open it where i can move around. like a
+## zoomout. also pausing the game. maybe a tap on minimap is too easy to click, something near
+## it" -- so a button beside it, not the map itself; it is the zoom, Z, gone up to MAP_ZOOM)
+const MAP_ZOOM := 0.86                       ## where the map button takes the view: ~330 m up, steep, a map
 const PERF_BTN := Rect2(8, 70, 66, 22)       ## the frames a second, live; a tap opens the perf view under it and closes it (above its graph, PERF_GRAPH) (the user, 22 Nov: "a quick performance button", not "more" then "perf view")
 ## (no lights button: the user, 22 Nov, "remove lights ui, its not a thing" -- key L only)
 ## (the indicators and the horn are keys only, Q / E and H: on screen they were clutter)
@@ -1378,12 +1391,14 @@ func start(_config: Dictionary) -> void:
 		return
 	# how autodrive drives and the time of day, as chosen on the list it came from (_list_settings);
 	# with none, a test drive keeps the rules (it is there to test autodrive) and a city is the racer
-	_ap_style = String(_config.get("style", "rules" if _config.has("route") or _config.get("make_route", false) else "racer"))
+	_ap_style = String(_config.get("style", "rules" if _config.has("route") or _place.has("test_drive") or _config.get("make_route", false) else "racer"))
 	_start_time = String(_config.get("time", "day"))
 	if _start_time == "day" and _place.has("time"):
 		_start_time = String(_place["time"])   # (a place that is its time: the night out)
 	if _config.has("route"):
 		_route = _route_by_id(int(_config["route"]))
+	elif _place.has("test_drive"):   # (a place that is its own test drive: the trick road)
+		_route = _route_by_id(int(_place["test_drive"]))
 	if _config.get("make_route", false):
 		_making = "from"   # (the picker opens once the city is up)
 	SIGNAL_CYCLE = SIGNAL_CYCLE_NORTH if String(_place.get("look", "")) == "north" else SIGNAL_CYCLE_MED
@@ -1698,7 +1713,7 @@ func _show_load_line() -> void:
 	print("[streets] " + t)
 	_load_lbl = _label(8, "ink")
 	_load_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_load_lbl.position = Vector2(8, 190)   # (over the map)
+	_load_lbl.position = Vector2(8, 168)   # (over the map and its button, MAP_BTN)
 	_load_lbl.size = Vector2(320, 12)
 	_load_lbl.text = t
 	_load_lbl.modulate.a = 0.8
@@ -3845,6 +3860,9 @@ func _build_turbines() -> void:
 		if v > top_v:
 			top_v = v
 			top = a
+	if float(crest[top][1]) == -INF:
+		return   # no ground outside the town on any bearing (a made-up place with no boundary: the
+		# turbine went up at the map's middle, on the trick road's bridge)
 	var spots: Array = [crest[top][0]]
 	for side: int in [1, -1]:
 		var a := top
@@ -25958,7 +25976,7 @@ func _route_list_open() -> void:
 		var r: Dictionary = routes[i]
 		# ("from" and "to" between the two addresses, not an arrow: a Hebrew address, an arrow
 		# and another came out as one right-to-left run, the arrow pointing from end to start)
-		var text := "%s:   from  %s   to  %s" % [CITY_NAMES.get(r["city"], r["city"]), r["from"], r["to"]]
+		var text := "%s:   from  %s   to  %s" % [r.get("place", CITY_NAMES.get(r["city"], r["city"])), r["from"], r["to"]]
 		if not r.get("mine", false):
 			text = "%d   %s" % [int(r["id"]), text]
 		var w := 612.0 if not r.get("mine", false) else 572.0
@@ -25968,12 +25986,22 @@ func _route_list_open() -> void:
 		b.add_theme_font_size_override("font_size", 10)
 		b.clip_text = true
 		# (eleven fit: 25 apart from 78; tighter, a row's button kept the kit's least height over
-		# the next and a tap on route 10 started route 9)
-		var many := routes.size() + (1 if _route_page == "mine" else 0) > 10
+		# the next and a tap on route 10 started route 9. Past eleven -- thirteen once Leiden's and
+		# Annecy's came, the last two off the screen; fourteen with the trick road -- the set goes
+		# in two columns, its rows' text clipped: tests/route_menu.gd checks none overlaps or runs off)
+		var nrows := routes.size() + (1 if _route_page == "mine" else 0)
+		var many := nrows > 10
+		var two := nrows > 11 and _route_page == "set"
+		var per := ceili(nrows / 2.0) if two else nrows
 		var pitch := 25.0 if many else 27.0
-		var y := (78.0 if many else 80.0) + (i + (1 if _route_page == "mine" else 0)) * pitch
+		var row := i + (1 if _route_page == "mine" else 0)
+		var y := (78.0 if many else 80.0) + (row % per) * pitch
+		var x0 := 14.0 + (row / per) * 309.0 if two else 14.0
+		if two:
+			w = 303.0
+			b.text = text.replace(":   from  ", ": ").replace("   to  ", " to ")
 		_route_ui.add_child(b)
-		_put(b, Vector2(14, y), Vector2(w, 24.0 if many else 25.0))
+		_put(b, Vector2(x0, y), Vector2(w, 24.0 if many else 25.0))
 		if r.get("mine", false):
 			var id := int(r["id"])
 			var x := _tap_button("✕", func(): _save_my_routes(_my_routes().filter(func(q): return int(q["id"]) != id)); _route_list_open())
@@ -26044,7 +26072,7 @@ func _walk_list_open(kind := "walks") -> void:
 		var keyed: Array = []
 		for i in range(LEVELS.size()):
 			var lv: Dictionary = LEVELS[i]
-			if lv.has("city") and not lv.has("walk") and not lv.has("scenario") and not _is_list(lv):
+			if lv.has("city") and not lv.has("walk") and not lv.has("scenario") and not lv.has("test_drive") and not _is_list(lv):
 				keyed.append([float(lv.get("sort", i)), i + 1, String(lv["name"])])
 		keyed.sort_custom(func(a, b): return a[0] < b[0])
 		for kk: Array in keyed:
@@ -26831,7 +26859,9 @@ func _draw_hud() -> void:
 		# on the right: the drawer and folding, the camera, looking round
 		_hud_btn(MORE_BTN, "more" if not _more_open else "close", Palette.col("accent"), _more_open, 11)
 		_hud_btn(FOLD_BTN, "–", Palette.col("ink"), false, 13)
-		_hud_btn(VIEW_BTN, _view_name(), Palette.col("player"), _zoom > 0.0 or _cockpit, 11)
+		_hud_btn(VIEW_BTN, _view_name(), Palette.col("player"), _cockpit, 11)
+		if _map_btn_shown():
+			_hud_btn(MAP_BTN, "back" if _zoom > 0.0 else "map", Palette.col("friend"), _zoom > 0.0, 11)
 		_hud_btn(PERF_BTN, "%d fps" % Engine.get_frames_per_second(), Palette.col("accent"), _perf_view or _trace_view, 11)
 		if not _walking and not _auto:
 			_hud_btn(LOOK_BTN, "look", Palette.col("accent"), _look_on, 11)
@@ -26905,25 +26935,35 @@ func _hud_btn(r: Rect2, text: String, col: Color, lit: bool, size: int, strong :
 	_hud.draw_string(_font, Vector2(r.position.x, r.position.y + r.size.y * 0.5 + size * 0.36), text,
 		HORIZONTAL_ALIGNMENT_CENTER, r.size.x, size, Palette.col("player") if hover and not lit else c)
 
-## the camera now, as the button says it: chase, seat, above (on foot: behind, eyes, above)
+## the camera now, as the button says it: chase, seat (on foot: behind, eyes); from above,
+## the one it lands in
 func _view_name() -> String:
-	if _zoom > 0.0:   # (where it is going: still sinking back to the car is "chase" already)
-		return "above"
+	if _zoomed():
+		return ("eyes" if _walking else "seat") if _zoom_seat else ("behind" if _walking else "chase")
 	if _walking:
 		return "eyes" if _cockpit else "behind"
 	return "seat" if _cockpit else "chase"
 
-## the camera round: chase -> seat -> above the city -> chase
+## the camera: chase <-> seat. From above, it says which it lands in and a tap swaps that
+## (the view from above is the map button's now, MAP_BTN)
 func _next_view() -> void:
 	if _zoomed():
-		_zoom_set(0.0)
-		_zoom_seat = false   # (after _zoom_set: landing reads it -- back in the chase view)
-		if _cockpit:
-			_set_cockpit(false)
-	elif _cockpit:
-		_zoom_set(ZOOM_UP)
+		_zoom_seat = not _zoom_seat
 	else:
-		_set_cockpit(true)
+		_set_cockpit(not _cockpit)
+
+## the map button: up over the city (paused; drag, pinch, hold a street to drive there), or
+## back down to the car, the city going on again if it was going before
+## (not under the perf view's panel, which covers the minimap too)
+func _map_btn_shown() -> bool:
+	return not _hud_folded and not _perf_view and not _trace_view
+
+func _toggle_map() -> void:
+	if _zoom > 0.0:
+		_zoom_set(0.0)
+	else:
+		_zoom_set(MAP_ZOOM)
+		_more_open = false
 
 func _time_now() -> String:
 	return "night" if _night else ("evening" if _evening else "day")
@@ -26988,7 +27028,7 @@ func _draw_more() -> void:
 			["arrows / WASD", "drive"], ["space · shift", "autodrive on · off"],
 			["Q · E", "indicators"], ["H", "horn"],
 			["L", "lights"], ["C", "seat / chase"],
-			["Z", "up over the city"], ["wheel · - =", "zoom"],
+			["M · Z", "map · up over the city"], ["wheel · - =", "zoom"],
 			["G", "look round"], ["F", "walk / get in"],
 			["K", "pause"], ["V · R", "green wave · racer"],
 			["P", "perf view"], ["", ""],
@@ -27069,6 +27109,8 @@ func _hud_tap(p: Vector2) -> bool:
 		_show_banner("buttons folded away: \"show\" brings them back", 1.6)
 	elif VIEW_BTN.grow(2).has_point(p):
 		_next_view()
+	elif MAP_BTN.grow(2).has_point(p) and _map_btn_shown():
+		_toggle_map()
 	elif PERF_BTN.grow(2).has_point(p):
 		if _perf_view or _trace_view:   # (the drive map too: P and the drawer go round to it)
 			_trace_view = false
@@ -27093,6 +27135,8 @@ func _on_hud_button(p: Vector2) -> bool:
 			rs.append(STYLE_BTN)
 		if not _walking and not _auto:
 			rs.append(LOOK_BTN)
+		if _map_btn_shown():
+			rs.append(MAP_BTN)
 	if _paused and not _zoomed():
 		rs.append(RESUME_BTN)
 	for r: Rect2 in rs:
@@ -27351,6 +27395,9 @@ func _input(event: InputEvent) -> void:
 			match key.keycode:
 				KEY_Z:
 					_zoom_set(0.0 if _zoom > 0.0 else ZOOM_UP)
+					return
+				KEY_M:   # the map button's (MAP_BTN)
+					_toggle_map()
 					return
 				KEY_MINUS, KEY_KP_SUBTRACT:
 					_zoom_by(ZOOM_STEP)
