@@ -120,7 +120,7 @@ func _run() -> void:
 			var ev: Dictionary = probe._events[i]
 			var data: Dictionary = ev["data"]
 			if String(ev["kind"]) == "crash":
-				what.append("%s at %d km/h" % [String(data.get("hit", "?")), int(data.get("kmh", 0))])
+				what.append("%s at %d km/h at %s on %s%s" % [String(data.get("hit", "?")), int(data.get("kmh", 0)), str(data.get("at", "")), String(data.get("street", "")), " (" + String(g._ap_why) + ")"])
 				if String(data.get("hit", "")) == "person":
 					people += 1
 			if String(ev["kind"]) in ["pass_bus", "pass_van"] and String(data.get("side", "")) == "right":

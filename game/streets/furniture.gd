@@ -915,7 +915,7 @@ func _fence_line(panel, posts, a: Vector2, e: Vector2, H: float, col: Color, ste
 		var n := (B - A).cross(Vector3.UP).normalized()
 		var u2 := Vector2(H, 0)
 		if g._mine(p0):   # (each square along the fence works it out: one records it)
-			g.add_wall(p0, p1, 0.06)
+			g.add_wall(p0, p1, 0.06, false, rail and H <= 1.2)   # (a kerb railing gives at speed: g._smash)
 		panel.tri(A, B, B + up, n, col, Vector2(run, 0), Vector2(run + L, 0), Vector2(run + L, H), u2)
 		panel.tri(A, B + up, A + up, n, col, Vector2(run, 0), Vector2(run + L, H), Vector2(run, H), u2)
 		if i % post_every == 0:   # a post: four sides, no ends (nobody sees its top)

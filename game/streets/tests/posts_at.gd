@@ -17,7 +17,14 @@ func _run() -> void:
 			if n.get_script() != null and String(n.get_script().resource_path).ends_with("streets.gd"):
 				g = n
 	await create_timer(1.0).timeout
-	for s in OS.get_environment("AT").split(";"):
+	var at_s := OS.get_environment("AT")
+	if OS.get_environment("IDS") != "":   # IDS="52944,...": the posts by number (the exam's / racer's "post N")
+		var parts := []
+		for sid in OS.get_environment("IDS").split(","):
+			var pp: Vector2 = g._posts[int(sid)]
+			parts.append("%f,%f" % [pp.x, pp.y])
+		at_s = ";".join(parts)
+	for s in at_s.split(";"):
 		var xz := s.split(",")
 		var at := Vector2(float(xz[0]), float(xz[1]))
 		print("AT (%.1f, %.1f):" % [at.x, at.y])

@@ -54,8 +54,12 @@ A game's `tests/run.sh <test> [level]` wraps that line (see an existing one).
 ## Ways in
 
 - **Simulate, don't sleep.** `for f in range(60 * 30): await physics_frame` runs 30 s of game
-  time however slow the machine is; `create_timer` waits wall time and the game may do far
-  less in it on a slow box.
+  time however slow the machine is. `create_timer` is neither game time nor wall time you can
+  count on: it adds each frame's step, and Godot caps a frame's step at 8 physics ticks (0.13
+  s). Past 7.5 fps it falls behind the clock -- under the software renderer in a browser
+  (~2.5 s a frame) a 25 s timer took eight minutes, and a test waiting on it saw nothing
+  happen. To wait by the clock, loop `await process_frame` until `Time.get_ticks_msec()`
+  passes the mark.
 - **Freeze for stills.** `g.set_physics_process(false)` and disconnect the game's per-frame
   function (`process_frame.disconnect(g._frame)`), then place the camera with
   `g.look_from(eye, target)` and snap. Unfrozen, the game's own camera moves it back.
@@ -293,6 +297,22 @@ speed against time coloured by what held the car; the same drive before and afte
 side under a one-line title each; and a few bullets of what changed. Send each picture as
 it is made, with a one-line caption, rather than a report at the end.
 
+### A video of it (smooth, for a phone)
+
+Any test or scenario records itself with Godot's movie maker: add
+`GODOT_ARGS="--write-movie <file>.avi --fixed-fps 60"` (and `RES=1280x720 FULL=1`) to the run.
+Every frame is rendered at exactly 1/60 s of game time however long it takes to compute, so
+the video never stutters, even on a slow machine. Build everything first (a game that builds
+its world while it runs pops things in on camera: in a city game, the whole city up front),
+and the recording starts at the engine's first frame -- the loading screen included: cut it
+off with ffmpeg (`-ss <seconds>`: the movie's length from Godot's last line, less the scene's
+own length). Encode H.264 with a bitrate cap -- detailed foliage at CRF 24 came out at 15 Mbps,
+180 MB for 98 s; `-crf 28 -maxrate 2M -bufsize 4M -pix_fmt yuv420p -movflags +faststart`
+gave 23 MB -- the phone chat takes files under 30 MB (`SendUserFile` refuses more). Measured on
+the user's PC (22 Nov 2026): 6,500 frames of 720p at 60 fps in 3 min 46 s (about half real
+time), the cutting and encoding under a minute. Hide the game's HUD for a film (not done yet:
+the first one carried the buttons).
+
 ## Gotchas (each cost a run)
 
 - **Read braking over half a second, not a tick.** A follower that steps its speed to its
@@ -350,7 +370,8 @@ it is made, with a one-line caption, rather than a report at the end.
 - **Don't annotate with a `class_name` type that uses autoloads** (`var a: Actor3D`) in a
   `-s` script: it is compiled before the autoloads exist and fails ("Identifier not found:
   Probe"), taking the whole test with it. Use the base type (`Node3D`). A cast counts too
-  (`x as Actor3D`), and the damage reaches past the test: the class stays broken for the
+  (`x as Actor3D`), and so does a type test (`n is Actor3D`): match by the node's script path
+  instead. The damage reaches past the test: the class stays broken for the
   run, so the game's own `Actor3D.new()` fails and the city has no people -- a crossing test
   ran "PASS" with every case quietly erroring out on an empty list of crossers.
 - **Do the work in `_initialize()`, never `_init()`.** In `_init()` the autoloads are not up

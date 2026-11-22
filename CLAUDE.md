@@ -58,7 +58,9 @@ that screen. The menu itself has no level picking. Self-play skips the start scr
 Dictionaries with a `"name"` are picked by name; give them a `"group"` too and the start
 screen lists each group under its heading, side by side (a level's `"sort"` orders it within
 its group; its number is still its place in `LEVELS`, so reordering the screen never
-renumbers the levels).
+renumbers the levels). **Two groups at most:** each column is at least 250 px of the 640, so a
+third runs off a phone's screen -- put the new list under an existing heading instead, and
+check with `tools/menu_shot.sh levels:<game>`.
 
 Nothing outside a game's own folder should ever name that game. If you find yourself
 writing its name in a doc, a tool or another game, that is the thing that will rot when it
@@ -268,12 +270,13 @@ Short, specific, and all of them cost a debugging session:
 
 ## Ideas that are not being built yet
 
-**When you list next steps or ideas for the user, use a table with these columns** (the user
-asked for this in every session): the number, the idea, **effort** (small / medium / large /
-very large), **how much a player would notice it** (stars), **your grade** (A-F: how much it is
-worth doing now, all things considered -- risk, overlap with other sessions' work, what it
-unlocks) and **a comment** (a line on why: the catch, the dependency, what you would do first).
-Then say which you would do next and why. Number them so the user can answer "4, 9, 10".
+**When you list next steps or ideas for the user, use a narrow table** (the user reads on a
+phone): the number, the idea in a few words, **effort** to build, **compute time** (the real
+time the machine spends on it -- rendering, recording, test runs; it matters to the user) and
+**your grade** (A-F: worth doing now, all things considered). Put the comments -- the catch,
+the dependency, what you would do first -- as numbered notes under the table, not as a
+column. Then say which you would do next and why. Number them so the user can answer
+"4, 9, 10".
 
 `IDEAS.md` at the root is the parking lot for concepts about the kit that are noted but
 not scheduled. Read it before pitching features, so you do not re-pitch what is already

@@ -1,7 +1,7 @@
 extends SceneTree
 ## The HUD's buttons (AUTO_BTN and on, the "more" drawer, folding): taps each through
 ## _hud_tap as a player would, checks what it did, and shoots each state --
-## hud_drive / hud_auto / hud_more / hud_night / hud_keys / hud_folded / hud_walk.png.
+## hud_drive / hud_auto / hud_perf / hud_more / hud_night / hud_keys / hud_folded / hud_walk.png.
 ## Checks, every state: the buttons on screen inside the screen and none overlapping another,
 ## the minimap, the stick's ring or the credit. And the autodrive styles: the player's
 ## autodrive is the racer by default, a script's _set_auto (the bots, routes, scene tests)
@@ -42,6 +42,7 @@ func _shown() -> Dictionary:
 		out["more"] = g.MORE_BTN
 		out["fold"] = g.FOLD_BTN
 		out["view"] = g.VIEW_BTN
+		out["perf"] = g.PERF_BTN
 		if not g._walking and not g._auto:
 			out["look"] = g.LOOK_BTN
 	if g._paused and not g._zoomed():
@@ -55,6 +56,9 @@ func _check_layout(state: String) -> void:
 		"credit": Rect2(g._osm_lbl.position, g._osm_lbl.size), "speed": Rect2(g._speed_lbl.position, Vector2(130, 50))}
 	if g._load_lbl != null and is_instance_valid(g._load_lbl) and g._load_lbl.text != "":   # (the load line, its first seconds)
 		others["load line"] = Rect2(g._load_lbl.position, Vector2(g._load_lbl.get_minimum_size().x, 12))
+	if g._perf_view:   # (the panel the perf button opens under itself, and its graph: the button first sat on it)
+		others["perf view"] = Rect2(g._perf_lbl.position, g._perf_lbl.get_combined_minimum_size().max(g._perf_lbl.size))
+		others["frame graph"] = g.PERF_GRAPH
 	if g._touch_seen:
 		others["stick"] = Rect2(g.STICK_C - Vector2.ONE * (g.STICK_R + 5.0), Vector2.ONE * (g.STICK_R + 5.0) * 2.0)
 	var bad: Array = []
@@ -99,6 +103,19 @@ func _run() -> void:
 		await _tap(g.STYLE_BTN)
 		seen.append(g._ap_style)
 	_ok("the style chip goes round %s" % [seen], seen == ["racer", "rules", "wave", "racer"])
+	# the perf button: one tap opens the frame times, one closes them; from the drive map
+	# (P's next step) it closes that too
+	await _tap(g.PERF_BTN)
+	_ok("the perf button opens the perf view", g._perf_view and g._perf_lbl.visible)
+	await create_timer(1.0).timeout
+	await _snap("hud_perf")
+	_check_layout("perf view")
+	await _tap(g.PERF_BTN)
+	_ok("and closes it", not g._perf_view and not g._perf_lbl.visible and not g._trace_view)
+	g._toggle_perf()
+	g._toggle_perf()
+	await _tap(g.PERF_BTN)
+	_ok("the perf button closes the drive map too", not g._perf_view and not g._trace_view)
 	# the drawer
 	await _tap(g.MORE_BTN)
 	_ok("more opens the drawer", g._more_open)

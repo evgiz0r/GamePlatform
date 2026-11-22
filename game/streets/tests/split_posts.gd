@@ -126,11 +126,18 @@ func _drive(drives: Array) -> void:
 		g._set_dest(dv[2], "split test")
 		g._set_auto(true)
 		var k0: int = g._knocked_n
+		var kn_was: int = k0
 		var best := {}
 		var t := 0.0
 		while t < 30.0 and g._dest_on and g._pos.distance_to(dv[2]) > 12.0:
 			await physics_frame
 			t += dt
+			if int(g._knocked_n) > kn_was:
+				# (where, and what: a knock away from the split's posts, HaRishonim and Kinneret's)
+				var on: Dictionary = g._nearest_seg(g._pos, 30.0, true, true, g._y)
+				print("    knocked %s at %s, %.1f m/s, why %s, %s edge %.1f" % [g._last_hit, str(g._pos.round()), g._v, g._ap_why,
+					"" if on.is_empty() else String(g._roads[on["road"]]["en"]), 99.0 if on.is_empty() else float(on["edge"])])
+				kn_was = g._knocked_n
 			for pi: int in dv[3]:
 				var r0: float = g._post_r[pi]
 				for off: float in [g.CAR_OFF, -g.CAR_OFF]:

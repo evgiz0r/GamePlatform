@@ -861,6 +861,15 @@ three surprises, each seen once:
   Redo it for the stretch ahead every few seconds, as the city's squares build. Where a
   pavement is a market's stalls and a shop front 1.5 m apart, walk the other pavement.
 
+- **A walk through a tree is its leaves, not its trunk.** A scan for solid things sees the
+  trunk; the camera at eye height passes through low crowns and branches, which a street's
+  trees beside a pavement do not have (pruned to ~2.2 m clear). Check the eye against what is
+  drawn above the ground, and lift trees by a road's edge -- not a park's or a footpath's,
+  whose low planting can be what a place looks like. And no wide-skirted conifer in a
+  pavement's tree strip.
+- **A footway OSM maps beside a carriageway can lie on the game's asphalt** once road widths
+  are fitted: check a walk's feet against the drawn roads, not the map's lines.
+
 ## Filmed walks and drives
 
 The map says where things are; a film of the street says what they look like. The useful

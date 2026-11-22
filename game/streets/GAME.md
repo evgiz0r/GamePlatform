@@ -74,9 +74,40 @@ the pavement -- a tree, a pole, a bin.
 > Lets put in the main menu both walks inside an extra menu, like the test drives. and add
 > some more walks. even not the filmed ones. just to distribute a bit away from my location
 
-Every walk is seen from a person's eyes (1.58 m), not from where the film's phone was held at
+Every walk is seen from a little over a person's eyes (1.75 m, as a camera held up; first 1.58), not from where the film's phone was held at
 the chest (1.44 m); and now and then the head turns to a car going by, follows it a couple of
 seconds and comes back -- except where the film's own look is known (at a zebra, a corner).
+
+**Watching a walk.** A thin bar along the foot of the screen shows how far the walk has gone
+("1:23 / 3:20"), and a button beside it speeds the whole world up, 1x, 2x, 4x. In the walks
+list each walk can also be started in the evening (a low sun, long shadows) or at night (the
+street lights on). Every city has a walk -- Delft's along the Oude Delft canal -- and the
+walks nobody filmed have the street's things along them: bins, scooters, cabinets, hydrants,
+bollards, yellow parking boards (a Dutch street's rows of short bollards; a Canadian
+suburb's few hydrants and bins). Street trees beside a road are pruned up, branches from 2.2
+m and leaves from 2.5, so a walk goes under them, not through them.
+
+**Watched, not driven.** Walks, test drives and the tours and stories that play themselves are
+to watch: no wheel, pedals or buttons of the game's own, only pause, exit and a walk's speed.
+(The getaway is still yours to drive.) Every place starts at the same quality and steps down
+by the same rule; little things on the buildings (AC units, balconies, washing) are drawn
+to about 280 m, not 420, and the buildings themselves as far as before, so a tower far off
+still shows.
+
+> About walks and test drives lets not give the user control. Just simulation. And lets try to
+> optimize a bit to render less or whatever takes performance and not rly needed. And same
+> rule for all. But if there is far high building we do want to see it.
+
+> lets add a progress bar to the walks so we know how much we passed, and maybe a speedup
+
+> do we have evening/night walks? if no lets add/change existing to those. if yes lets
+> mention in the menu
+
+> i want to add more items near the walks ( maybe change paths if needed i didnt look at all
+> of them). fix walking through trees ( if still happens not sure ).
+
+> Lets balance the walks to be from more cities. And in any case we do a new city we put a
+> new walk and drive from those cities
 
 > i think the walk height is bit too low, i am holding the phone probably too low. and
 > sometimes not turning with my head on traffic passes( lets add that , even if it doesnt
@@ -132,6 +163,9 @@ yours, from where it stood (it leaves the traffic). Parked cars cannot be taken 
   beside it ("racer", "rules" or "green wave": tap for the next), and "go to…".
 - **On the right:** "more", "–", the camera ("chase", "seat" or "above": tap for the next,
   round), "walk" under it ("get in" on foot), and "look" while you drive yourself.
+- **On the left, above the map:** the frames a second ("14 fps"), live; a tap opens the perf
+  view right under it, another closes it ("lets add a quick performance button in main
+  screen. dont like that double click" -- it was "more", then "perf view").
 - No headlights button ("remove lights ui its not a thing"): the key L still switches them.
 - **"more"** opens a drawer of what you set once and leave: time of day (day, evening,
   night), the road (dry, wet), how autodrive drives (keeps rules, green wave, racer), the
@@ -557,8 +591,23 @@ out as a little film, the car driving itself, captions across the bottom.
   a corner or a queue and it closes in. Lose it by 160 m or reach the safe house and you got
   away; let it within 7 m and you are caught. Take the wheel and the drive is yours.
 
+  The camera cuts between shots as it goes -- the usual view, from high above, low at the
+  kerb as you come by, from behind the police car, looking back -- and drops into slow
+  motion through each red light.
+
+- *Night tours* -- Tel Aviv, Givatayim. The tour after dark, the towers and street lights
+  lit, ending as the rain comes and the streets shine.
+- *Ambulance run* -- Tel Aviv, Ashdod. Siren on and lights flashing, to the hospital (Tel
+  Aviv's, on Weizmann): the cars beside you pull aside and stop, every light turns green,
+  and the car goes round whatever is in its way.
+- *A day in the town* -- Tel Aviv, Givatayim. Morning to night in three minutes: a drive at
+  each time of day, the town's own rhythm in the captions, the camera cutting between shots,
+  rain before dawn.
+
   > some scenario ( aka movie i guess ) happening in a city. doesnt have to be related to
   > the city itself ... tours will be part of all scenarios
+
+  > I want to think more of automatic scearios for now without my inputs
 
 **The opening.** When a town comes up, the view starts high over it, turning slowly round
 where you will start, the town's name across the screen, while the streets round the car
@@ -1444,8 +1493,16 @@ squares within about 300 m of the start go up behind the loading text (Givatayim
 71), so the car is on the road in about 2 s here (it was 7), Bedford in 1.2 (was 11.7) and
 Ashdod in 2.8 (was 18); a phone takes two or three times as long. The rest goes up while
 you drive, the square nearest where the car is heading first, a few milliseconds a frame
-(6, or 3 when frames already run slow), so the driving does not stutter; "building the city
-40%" under the street count says how far it has got. Givatayim is all up within about 20 s
+(6, or 3 when frames already run slow), so the driving does not stutter; "building the town
+round you · 3 squares to go" under the street count says what is left within sight, and goes
+once that is up (the perf view says how much of the whole city is built). When the frames
+are already slow (a work laptop's browser at 10-20 fps), the squares out of sight wait until
+the car comes near them -- or go up at full speed from above or paused -- instead of taking
+milliseconds from every frame for half an hour.
+
+> the loading of tel aviv on my laptop in chrome in autodrive really takes forever ( i am on
+> 30% after few minutes of driving i think )
+ Givatayim is all up within about 20 s
 of driving here, Ashdod within a couple of minutes. Nothing is left out: when it is done the
 city is the one the old all-at-once build made, lamp for lamp. Anything laid along a road or
 a fence (asphalt, paint, kerbs, garden walls, wires, fences) is worked out by every square
@@ -1466,7 +1523,7 @@ grain are strong enough to read at the lowest step's lower resolution.
 
 > I start with textures on the street but after I drive a bit they just vanish.
 
-**Seeing what chokes.** Tap the fps text under the speed (or press P) for the perf view: a
+**Seeing what chokes.** Tap the fps button on the left (or press P) for the perf view: a
 graph of the last frames' times (green under 20 ms, red over 40), the average frame split
 into the engine's drawing and the game's own parts (traffic, people, autodrive, the
 minimap...), and the last few hitches -- frames much slower than the ones round them --
@@ -1680,6 +1737,13 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
 
 ## Later (said, not built)
 
+- Racer boxed in at a red, every lane queued (22 Nov 2026): "1 2" -- squeeze between the
+  lanes, and on two-way streets past the queue in the oncoming lanes. "But those low height
+  splitters between lanes and pavements. If they are low enough lets make it possible for our
+  car to go to the other side. And things bit more breakable that dont completely stop us.
+  Some i think just break and still stuck in place. Not everything but many small items we
+  could just not be blocked by". (Being built: see DEV.md, racer.)
+
 - Not just driving: the same baked city could be walked, or used by another game.
 - Crashes, what is still to come: a sign post bent, a fence panel or a hedge pushed in, a
   scrape mark on the wall the car rubbed.
@@ -1691,8 +1755,10 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   low-poly characters are the limit now. Done: builds varied, and things carried (shopping
   bags, handbags, backpacks, a box). Hands while talking: done. Done: every person is now one of Quaternius'
   free Universal Base Characters with the Universal Animation Library's moves, dressed in
-  code (DEV.md "The people"). Still to do: a pose for carrying a box. Also: looking at a phone; reacting
-  to the car (the line above).
+  code (DEV.md "The people"). Also done: skirts and dresses, older people,
+  children walking with a grown-up, cafe groups seated at their tables talking, people on
+  their phones, a box carried in both arms, people glancing at you as you pass. Still to do:
+  reacting to the car (the line above).
 - Scenarios: "Alien invasion, maybe special scenario, maybe in any city. if i activate. some
   aliens come down around the city i am in"; "just the concept of scenarios, where aliens
   are one of those. more stuff - titans, dragons, (dont want army stuff though, gives wrong
