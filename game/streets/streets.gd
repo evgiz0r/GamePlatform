@@ -56,6 +56,15 @@ const LEVELS := [
 	{"name": "Delft", "city": "delft", "start": ["Oude Delft", "Binnenwatersloot"], "look": "north", "build": "nl", "decks": "infer"},
 	# the cities: a list, as the walks and the test routes are (no city behind it)
 	{"name": "Cities: pick one", "group": "Cities", "cities": true, "city": "dimyon", "look": "med"},
+	# scenarios (scenario.gd): a list, as the walks are, and each scenario its own level -- a
+	# town's tour from its own story (cities/stories/<town>.json) or a story played out in it
+	{"name": "Scenarios: pick one", "group": "Scenarios", "scenarios": true, "city": "dimyon", "look": "med"},
+	{"name": "Tour: Givatayim's streets", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "tour"},
+	{"name": "Tour: Tel Aviv, Azrieli to the sea", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "tour"},
+	{"name": "Tour: Ashdod", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med", "decks": "infer", "scenario": "tour"},
+	{"name": "Tour: Bedford by the Basin", "city": "bedford", "look": "north", "decks": "infer", "scenario": "tour"},
+	{"name": "The getaway: Ashdod", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med", "decks": "infer", "scenario": "getaway"},
+	{"name": "The getaway: Tel Aviv", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "getaway"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -978,6 +987,7 @@ var _racer: Racer                    ## racer mode: autodrive with the rules off
 var _places: Places                  ## a town's own kindergartens and shelters (places.gd)
 var _opening: Opening                ## the view over the town while the squares round the car go up (opening.gd)
 var _models: Models = null           ## models made with Blender, stamped into batches (models.gd)
+var _scenario: Scenario = null       ## a tour or a story played out in the town (scenario.gd)
 var _standins: Standins              ## the squares not built yet, seen from above: flat roads, outlines (standins.gd)
 var _on_deck := -1                   ## while a deck road is drawn: heights come from it, not the ground
 var _inferred := {}                  ## what decks.gd's infer() made of a real town's bridges (the report)
@@ -1068,6 +1078,7 @@ const Racer := preload("res://game/streets/racer.gd")
 const Places := preload("res://game/streets/places.gd")
 const Opening := preload("res://game/streets/opening.gd")
 const Models := preload("res://game/streets/models.gd")
+const Scenario := preload("res://game/streets/scenario.gd")
 const DriveLog := preload("res://game/streets/drivelog.gd")
 var _log := DriveLog.new()            ## the last two minutes, for the map page and "save log"
 var _ap_why := ""                     ## what held autodrive's speed down this tick (for the log)
@@ -1306,6 +1317,9 @@ func start(_config: Dictionary) -> void:
 	if _place.get("cities", false):
 		_walk_list_open("cities")   # no city: the list of cities
 		return
+	if _place.get("scenarios", false):
+		_walk_list_open("scenarios")   # no city: the list of scenarios
+		return
 	# how autodrive drives and the time of day, as chosen on the list it came from (_list_settings);
 	# with none, a test drive keeps the rules (it is there to test autodrive) and a city is the racer
 	_ap_style = String(_config.get("style", "rules" if _config.has("route") or _config.get("make_route", false) else "racer"))
@@ -1415,6 +1429,10 @@ func start(_config: Dictionary) -> void:
 	if Opening.wanted(self):   # (over the town while the squares round the car go up: opening.gd)
 		_opening = Opening.new(self)
 		_opening.start()
+	if _place.has("scenario"):   # (a tour or a story: scenario.gd, after the opening)
+		_scenario = Scenario.new(self)
+		_scenario.setup(String(_place["scenario"]))
+		_scenario.start()
 	_build_rest()   # the rest of the city, while you drive
 
 var _loading: Label
@@ -8857,6 +8875,12 @@ func _build_parks() -> void:
 				s_lamp += 27.0
 			s_lamp -= L
 	var bench := _cached("bench", func() -> Mesh:
+		# the bench made with Blender (tools/blender/recipes/bench.py: slats, iron ends, arms);
+		# the boxes below if its file is missing
+		var made: ArrayMesh = _models.mesh("bench") if _models != null else null
+		if made != null:
+			made.surface_set_material(0, _surface("furniture"))
+			return made
 		var bench_buf := Buf.new()
 		_box(bench_buf, Vector3(0, 0.44, 0), Vector3(1.7, 0.07, 0.46))
 		_box(bench_buf, Vector3(0, 0.74, -0.22), Vector3(1.7, 0.36, 0.06))
@@ -8961,8 +8985,8 @@ func _obox(buf: Buf, c: Vector3, size: Vector3, yaw: float, tilt := 0.0) -> void
 				pts.append(c + basis * q)
 			_poly(buf, pts, basis * n)
 
-## a park's playground on a round soft floor: the slide, the swing set, a climbing dome and a
-## see-saw (made with Blender: tools/blender/recipes/, stamped by models.gd into the palette's
+## a park's playground on a round soft floor: the slide, the swing set, a climbing dome, a
+## see-saw and a picnic table (made with Blender: tools/blender/recipes/, stamped by models.gd into the palette's
 ## buffers, so a new look recolours them) and a sandpit. Laid out round `at`, `yaw` turning it.
 const PLAY_ROLES := {"paint": "warn", "paint2": "player", "paint3": "accent", "plastic": "friend",
 	"wood": "friend", "metal": "pole", "rubber": "pole", "dark": "pole", "*": "pole"}
@@ -8990,6 +9014,8 @@ func _playground(b: Dictionary, at: Vector2, yaw: float) -> void:
 	put.call("climber", at + fwd * 4.2 - side * 1.2, fwd)
 	_add_post(at + fwd * 4.2 - side * 1.2, 1.9)
 	put.call("seesaw", at + fwd * 4.6 + side * 3.0, side)
+	put.call("picnic", at - fwd * 3.6 + side * 3.7, fwd)   # (a picnic table by the sandpit, for the grown-ups)
+	_add_post(at - fwd * 3.6 + side * 3.7, 0.9)
 	# the sandpit
 	var sp := at + fwd * -3.4
 	for e: float in [-1.5, 1.5]:
@@ -17566,6 +17592,8 @@ func _frame() -> void:
 		_standins.show(_zoomed())
 	if _opening != null and _opening.on:
 		_opening.tick(dt)
+	if _scenario != null:
+		_scenario.tick(dt)
 	if _blades != null:
 		_turbines_tick()
 	var f := Engine.get_physics_interpolation_fraction()
@@ -24635,7 +24663,7 @@ func _route_new_row(have: int) -> void:
 
 ## a place in LEVELS that is one of the start screen's lists, not a city to drive
 static func _is_list(lv: Dictionary) -> bool:
-	return lv.get("routes", false) or lv.get("walks", false) or lv.get("cities", false)
+	return lv.get("routes", false) or lv.get("walks", false) or lv.get("cities", false) or lv.get("scenarios", false)
 
 ## The start screen's lists of places, one button each, a "back" at the foot (in the list's
 ## frame, _route_ui, so _input's taps reach them as the routes' do). "walks": every place in
@@ -24652,14 +24680,19 @@ func _walk_list_open(kind := "walks") -> void:
 	dim.size = Vector2(640, 360)
 	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_route_ui.add_child(dim)
-	var title := UIKit.label("walks: pick one and watch it, in first person" if kind == "walks" else "cities: pick one to drive", 13, "player")
+	var title := UIKit.label({"walks": "walks: pick one and watch it, in first person", "cities": "cities: pick one to drive",
+		"scenarios": "scenarios: a tour of a town, or a story played out in it"}.get(kind, ""), 13, "player")
 	title.add_theme_font_override("font", _font)
 	title.position = Vector2(20, 30)
 	title.size = Vector2(600, 20)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_route_ui.add_child(title)
 	var rows: Array = []
-	if kind == "walks":
+	if kind == "scenarios":
+		for i in range(LEVELS.size()):
+			if (LEVELS[i] as Dictionary).has("scenario"):
+				rows.append([i + 1, String(LEVELS[i]["name"])])
+	elif kind == "walks":
 		for filmed: bool in [true, false]:
 			for i in range(LEVELS.size()):
 				var lv: Dictionary = LEVELS[i]
@@ -24669,7 +24702,7 @@ func _walk_list_open(kind := "walks") -> void:
 		var keyed: Array = []
 		for i in range(LEVELS.size()):
 			var lv: Dictionary = LEVELS[i]
-			if lv.has("city") and not lv.has("walk") and not _is_list(lv):
+			if lv.has("city") and not lv.has("walk") and not lv.has("scenario") and not _is_list(lv):
 				keyed.append([float(lv.get("sort", i)), i + 1, String(lv["name"])])
 		keyed.sort_custom(func(a, b): return a[0] < b[0])
 		for kk: Array in keyed:
@@ -25401,7 +25434,7 @@ func _draw_hud() -> void:
 		_hud.draw_arc(_hold_at, 14.0, 0.0, TAU, 32, Color(Palette.col("bg"), 0.5), 5.0)
 		_hud.draw_arc(_hold_at, 14.0, -PI * 0.5, -PI * 0.5 + TAU * hold, 32, hc, 4.0)
 		_hud.draw_circle(_hold_at, 3.0, hc)
-	if _paused and not (_opening != null and _opening.on):
+	if _paused and not (_opening != null and _opening.on) and not (_scenario != null and _scenario.on):
 		_hud_text(Vector2(170, 62), "PAUSED", 300, 13, Palette.col("warn"))
 		if _zoom > 0.0:
 			var hint := "drag to look round · pinch to zoom and turn" if _touch_seen \
