@@ -1,0 +1,150 @@
+# streets -- performance: load time, frame time, stalls, memory, download
+
+The place to start for anything about speed. It sums up and points into `DEV.md`, where the
+details live. Keep this page short: put each new measurement in `DEV.md` (usually "Numbers to
+compare against") and update the summary here in the same commit.
+
+## The one rule about numbers
+
+**The container's numbers are for ratios, not for players.** Headless runs and the
+container's Chromium (SwiftShader, a software renderer) are about 3x slower on the CPU and
+very much slower at drawing: their "warm-up" of 27-60 s says nothing about a phone's. The
+real measure is **the user's own device**: the load line shown for 20 s after each load
+("loaded in X s (+ page Y s): city file · start area · graphics (N shaders, X s
+compiling)") and the perf view (P, or tap the fps text; twice for the map page and "save
+log"). Ask for a screenshot of both. Check which build it is from (the build line over the
+minimap) with `git merge-base --is-ancestor <fix> <commit>`.
+
+## Where things stand (user's PC in a browser, build d9b49f2, 21 Nov 2026)
+
+| | Givatayim | Tel Aviv |
+|---|---|---|
+| load (file · start area · graphics) | 2.8 s (0.4 · 0.8 · 1.6) | 3.6 s (0.9 · 1.3 · 1.4) |
+| shaders at load | 137, 1.2 s compiling | 129, 1.1 s |
+| frame, quality 2 | 29.0 ms = draw 16.1 + script 12.9 | 33.9 ms = 19.7 + 14.2 (night 27.1) |
+| script, by part | building 5.8, people 2.7, traffic 2.5, minimap 0.9, follow 0.8 | building 4.0, traffic 3.6, people 3.4, minimap 1.2, follow 1.0 |
+| physics ticks a frame | 1.7 | 2.0 |
+| draws / triangles | 746 / 1.83 M | 769 / 1.87 M (night 800) |
+| shaders compiled after the car | 5 (0.5 s) | 102 (6.6 s) by 2 min, 159 after night |
+| background build of the rest | -- | ~11 min at 4-6 ms a frame |
+
+Since that build: traffic and people tick on alternate ticks (people 16-17 -> 8-11 ms,
+traffic 13-14 -> 8-10 ms per 8 ticks, measured in the container's browser); the far city
+past `SEE_M` 900 m builds at 1.5 ms a frame; the time-of-day clicks compile 4-6 programs
+instead of 30-44. **Not yet confirmed on the user's PC.**
+
+**The cold load (22 Nov 2026, build 5928bd1, the desktop app's own browser pane on the
+user's PC: RTX 3060, ANGLE on Direct3D 11, 1024x768).** That pane keeps no compiled shaders
+between loads, so every load there is what a first visit -- or the first visit after a
+publish that changed shader code -- costs. Givatayim, twice, the same both times:
+
+| | load 1 | load 2 |
+|---|---|---|
+| loaded in | 64.9 s (+ page 0.5) | 73.1 s (+ page 1.2) |
+| city file · start area · graphics | 0.5 · 1.1 · 63.3 | 0.5 · 5.8 · 66.8 |
+| shaders at load, time in the compile calls | 143, 62.8 s | 143, 63.5 s |
+| warm-up frames, ms | 3698, 15277, 7998, 9109, 5067, 8115, 10984, 364, 17, 2588, 11, 16 | about the same |
+| shaders by ~2 min after the car | 212, 80 s in all | 212, 77 s |
+
+**~0.44 s a shader, one after another**: Direct3D's shader compiler, which ANGLE feeds every
+WebGL program to, is what the minute is (9 ms a shader once Chrome has it cached). About
+70 more come after the car -- ~17 s of stalls in the first minutes. The start area's 5.8 s
+on load 2 was the user working on the PC meanwhile (kerbs 2.1 s, parked 1.0, places 1.0).
+The perf view a minute in: 13 fps, script 7.9 ms in 2.5 ticks (building 2.2, people 2.1,
+traffic 1.6, follow 0.9) -- the script down from 12.9 on d9b49f2, the ticks taking turns
+working -- drawing 57.6 ms, still shaders compiling (worst frame 1061 ms), 512 draws,
+2.30 M triangles. This pane is a bench for the cold case, not for frame times.
+
+Tel Aviv, the same pane, cold: **loaded in 92.4 s** (+ page 2.3): city file 1.1 · start
+area 8.3 · graphics 83.0 (151 shaders, 75.5 s compiling). Then 77 more shaders in the next
+~2 min of autodrive (228 in all, 98 s of compiling). Evening: 0 shaders, 127 ms at the
+click. **Night: 13 shaders, 6.4 s, the slowest frame 7.1 s** -- the night click still
+freezes a cold browser (the 4-6 programs measured in the container's browser were not
+the whole story). The frame read 1 fps with the GPU idle: the app's window was behind
+others and Chromium throttled it while the page still said "visible" -- the script's
+split from that view, per physics tick: traffic 3.9, people 2.6, autodrive 1.8, following
+1.65 ms, ~11 ms a tick (8 ticks a frame, the cap), against Givatayim's ~3.2 -- to be
+checked natively before it is believed. **Checked, not real**: `tests/sim_cost.gd`
+natively on the user's PC (Godot 4.7.2 headless, `--fixed-fps 60`, 40 s of autodrive, the
+city all built, 22 Nov): Givatayim script 3.3-3.8 ms a tick (people 1.0-1.4, traffic 0.8,
+autodrive 0.3-0.6, following 0.4, minimap 0.3-0.4), 4.7 ms a tick in all; Tel Aviv 3.9 ms
+(people 1.0-1.2, traffic 0.9-1.0, minimap 0.7-0.9, following 0.4-0.5, autodrive 0.3-0.5),
+5.2 in all. The two cities cost the same a tick; the browser's Givatayim (3.2 ms a tick in
+wasm) is close to native. Tel Aviv's only extra is the minimap (twice Givatayim's). The 11
+ms a tick was the throttled window's frames, each running eight ticks. **Hidden or covered, the pane's frames come one a
+second**, and every `_pause` in the loading waits for a frame: a stage reading a round
+1000 or 2000 ms is that, not work (Tel Aviv's start area 8.3 s here).
+
+Quality 0 bought the user's PC nothing (25-27 fps at every level): the levels change pixels
+and shadow reach, not draws or the script, and a frame held back by the script on the
+browser's one thread is helped by none of them.
+
+## What has been done (and where it is written)
+
+All in `DEV.md`; search for the bold lead-in.
+
+- **Load**: near-first (only the 1-2 squares the first view needs before the car; the rest
+  while driving, `_catch_up` then `BUILD_US`, `BUILD_FAR_US` past `SEE_M`) -- "building the
+  world, near-first". The decks baked per build by `prepublish.gd` (Tel Aviv's file 3.9 ->
+  1.5 s) -- "prepublish". Far shadows after the car, the other sun's drawn ahead -- "far
+  shadows after the car". The load bar estimated from this device's last load -- "loading".
+- **Download**: the pack split, so a code-only publish costs ~4 MB not ~40; the service
+  worker keeps `index.wasm` -- root `CLAUDE.md`, "The web build".
+- **Shaders**: counted per code, not per material; 205 -> fewer programs (flags/ads one
+  shader, one fence shader...); sun shadows kept at every quality level and at night
+  (switching them off recompiled everything); the evening haze a trace by day --
+  "shaders a browser compiles", "render quality", "The warm-up's steps by shader code".
+- **The cold load's minute, 22 Nov 2026** (`LIGHT_STRIP_JS` in streets.gd, its comment says
+  why): ~85% of it was two lit programs per material that Godot compiles when the material
+  is set up and never draws with, with omni, spot and area light code on. The game has only
+  the sun, so those three are defined off in exactly those sources. Same build, same cold
+  browser: Givatayim's graphics 63 -> 22 s (the compile calls 63 -> 15.5 s), every program
+  by the car 80 -> 23 s. What a cold load compiles now is mostly what is drawn: the sun's
+  additive pass, ~0.38 s a program on this GPU (39 of them, ~15 s), and the depth passes.
+  **Live, build 2026-11-22 00:12 (74671c6), cold, the user's PC: Givatayim loaded in 27.6 s
+  (+ page 2.3): city file 0.5 · start area 6.0 · graphics 21.0 (143 shaders, 15.0 s
+  compiling)**; 204 programs by the car in 19 s. Steps reading a round ~1000 ms there were
+  the pane throttled, so a player in front of the screen waits less.
+  How it was found: capture each program's sources and link time from the page (wrap
+  `shaderSource`, `attachShader`, `linkProgram`), group by `#define`s, then recompile one
+  captured program with a define changed in a throwaway WebGL2 context, a unique `#define`
+  first so no cache answers.
+- **Frame**: parked cars in 100 m squares with a far shape; heavy kits kept as multimeshes
+  (-131 MB); merged meshes indexed while driving (445 -> 365 MB video memory); traffic and
+  people on alternate ticks -- "Performance" in the 20 Nov handoff, "traffic and people
+  take turns".
+- **Seeing it**: the profiler (`_p("part")`), hitch lines, `GL_COUNT_JS` shader counting,
+  the load line -- "where a frame's time goes", "a browser's shader compiling, counted".
+
+## The tools
+
+| Test | What it measures | Notes |
+|---|---|---|
+| `tests/web_load.js` | a level in the container's Chromium, phase by phase | `TIMES=` clicks time of day, `PLAY=n` prints the profiler |
+| `tests/web_shaders.js` | every WebGL program, before/during/after the warm-up | `TIMES=`, `BOT=`, `DUMP=` writes sources to diff |
+| `tests/start_soon.gd` | time to the car, headless | `STREETS_NO_BAKED=1` for without the bake |
+| `tests/load_stages.gd` | the city file part by part | |
+| `tests/perf_dive.gd` | the whole frame: triangles, draws, memory, by who | `STREETS_BUILD_ALL=0` to see the indexed meshes |
+| `tests/frame_cost.gd`, `tests/draws.gd` | the start view's triangles and draws | |
+| `tests/warm_census.gd`, `tests/shader_kinds.gd` | shader codes and who uses them | |
+| `tests/hitches.gd` | frames over 250 ms / 1 s | software renderer: shows the script only |
+| `tests/sim_cost.gd`, `tests/traffic_motion.gd` | the simulation's cost per tick | `STREETS_WORLD_SPLIT=0` to compare |
+| `tests/index_gain.gd` | what indexing the merged meshes saves | |
+| `tests/quality_ladder.gd` | the quality ladder's rule, made-up frame times | |
+
+## Open problems, biggest first
+
+1. **The cold load is still ~15-20 s of shader compiling** on a Windows browser (was a
+   minute before `LIGHT_STRIP_JS`), on a first visit and after every publish that touches
+   shader code -- now mostly the sun's additive pass, ~0.38 s a program. Next: fewer shader
+   codes (each is ~2 additive programs), compiling in parallel
+   (`KHR_parallel_shader_compile`), the night click's 13 programs (7 s freeze, cold).
+2. **The script on the browser's one thread** -- 7.9 ms on 5928bd1 (12.9 on d9b49f2), 2.5
+   ticks a frame; ~3.5-4 ms a tick natively in both Givatayim and Tel Aviv. Building is
+   the biggest part while the rest of the city goes up; the minimap is Tel Aviv's 0.7-0.9.
+3. **Draws** -- 500-800, and no quality level lowers them.
+4. **The city file** -- Tel Aviv 1.5 s of it still unbaked (widths, buildings cut, divided
+   roads: ~1 s).
+5. **Video memory** -- Tel Aviv 365 MB; phones.
+6. **No automatic check catches a performance regression** -- the numbers are only read when
+   someone runs a test by hand.
