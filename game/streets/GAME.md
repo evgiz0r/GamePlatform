@@ -74,6 +74,15 @@ the pavement -- a tree, a pole, a bin.
 > Lets put in the main menu both walks inside an extra menu, like the test drives. and add
 > some more walks. even not the filmed ones. just to distribute a bit away from my location
 
+Every walk is seen from a person's eyes (1.58 m), not from where the film's phone was held at
+the chest (1.44 m); and now and then the head turns to a car going by, follows it a couple of
+seconds and comes back -- except where the film's own look is known (at a zebra, a corner).
+
+> i think the walk height is bit too low, i am holding the phone probably too low. and
+> sometimes not turning with my head on traffic passes( lets add that , even if it doesnt
+> match the video 1:1 ). i thought about gopro that solves it but im not going with more than
+> phone for now to simulate my movements
+
 **Giving way.** Autodrive comes out of a side street onto a bigger road the way a driver does:
 up to the corner slowly enough to stop, and if a car is coming that it could not get in
 front of with room to spare, it waits at the edge -- looking at that car as it goes by --

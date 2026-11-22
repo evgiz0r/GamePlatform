@@ -16356,6 +16356,15 @@ func _film_tick(dt: float) -> void:
 			if not head:
 				turn += l.z * k
 			tip += l.w * k
+	# a car going by: the head goes with it for a moment (_film_glance), over the walk's own turns
+	var told := false   # (a look or a facing the walk sets: the film's own head, known -- no glance starts)
+	for l: Vector4 in _film_looks:
+		told = told or (_film_t > l.x - 0.5 and _film_t < l.y + 0.5)
+	for fc: Vector3 in _film_faces:
+		told = told or (_film_t > fc.x - 0.5 and _film_t < fc.y + 0.5)
+	var gl := _film_glance(dt, not told)
+	if gl.x > 0.001:
+		turn += angle_difference(turn, gl.y) * gl.x
 	# `face`: the camera held on a way round the map between two seconds, whatever the body does
 	# (where a film's head is known by what its frames show, not by how its head turned)
 	for fc: Vector3 in _film_faces:
@@ -16532,6 +16541,64 @@ func _film_dodge(t0: float, t1: float) -> void:
 		var q := Vector2(b.x, b.y) + (_film_side[i] as Vector2) * off
 		_film[i] = Vector3(q.x, q.y, b.z)
 
+## A person on foot turns their head to a car going by -- the film's walker did now and then and
+## its head turns rarely show it (the user, 22 Nov: "sometimes not turning with my head on traffic
+## passes, lets add that, even if it doesnt match the video 1:1"). So on every walk: a moving car
+## within GLANCE_M, off to the side or coming, is followed by the head for up to GLANCE_S
+## seconds (as far as GLANCE_MAX round from the body, with GLANCE_K of the turn), then let go;
+## GLANCE_REST seconds before the next, so a busy street is not watched car by car. None starts
+## inside a walk's own `looks` or `face` (where the film's head is known: walk 1 at its zebra
+## turned to a car while its film looked across the median, 9-11 s scoring 6-12 worse).
+const GLANCE_M := 14.0
+const GLANCE_S := 2.2
+const GLANCE_REST := 3.5
+const GLANCE_MAX := 1.2          ## radians (~70 degrees) from the way the body faces
+const GLANCE_K := 0.8
+var _glance_car = null           ## the car being looked at (traffic.gd's), or null
+var _glance_for := 0.0           ## seconds it has been looked at
+var _glance_rest := 0.0          ## seconds before the next may be picked
+var _glance_w := 0.0             ## how much the head is with it, eased
+var _glances := 0                ## how many so far (tests)
+var _glance_a := 0.0             ## the head's last turn toward it (the head eases back from there)
+
+## Vector2(weight 0..1, the head's turn from the body toward the car)
+func _film_glance(dt: float, may := true) -> Vector2:
+	_glance_rest = maxf(0.0, _glance_rest - dt)
+	if _traffic == null:
+		return Vector2.ZERO
+	var c = _glance_car
+	if c != null:
+		_glance_for += dt
+		if not c.alive or c.pos.distance_to(_pos) > GLANCE_M + 6.0 or _glance_for > GLANCE_S 				or absf(angle_difference(_yaw, (c.pos - _pos).angle())) > GLANCE_MAX + 0.5:
+			_glance_car = null
+			_glance_rest = GLANCE_REST
+			c = null
+	if c == null and _glance_rest <= 0.0 and may:
+		var best := GLANCE_M
+		for car in _traffic.cars:
+			if not car.alive or car.v < 2.5:
+				continue
+			var rel: Vector2 = car.pos - _pos
+			var d := rel.length()
+			if d >= best or d < 2.0:
+				continue
+			# coming toward the walker, or about to cross its view: not one already going away
+			if Vector2(sin(car.yaw), cos(car.yaw)).dot(rel) > 0.3 and d > 6.0:
+				continue   # (going away)
+			if absf(angle_difference(_yaw, rel.angle())) > GLANCE_MAX:
+				continue
+			best = d
+			c = car
+		if c != null:
+			_glance_car = c
+			_glance_for = 0.0
+			_glances += 1
+	var on := c != null
+	_glance_w = lerpf(_glance_w, GLANCE_K if on else 0.0, 1.0 - exp(-dt * 4.0))
+	if on:
+		_glance_a = clampf(angle_difference(_yaw, (c.pos - _pos).angle()), -GLANCE_MAX, GLANCE_MAX)
+	return Vector2(_glance_w, _glance_a) if _glance_w > 0.01 else Vector2.ZERO
+
 ## where the walk is at time t: a smooth curve (Catmull-Rom) through the timed points
 func _film_at(t: float) -> Vector2:
 	var n := _film.size()
@@ -16640,8 +16707,8 @@ func _foot_camera(dt: float) -> void:
 		var eye := Vector3(p.x + fwd.x * 0.15, gy + 1.64, p.y + fwd.y * 0.15)
 		var down := -0.08
 		var hand := Vector3.ZERO
-		if not _film.is_empty():   # a phone held at the chest, looking down, bobbing with each step
-			eye.y += -0.2 + sin(_film_step * PI / 0.72) * 0.022 * clampf(_v / 1.2, 0.0, 1.0)
+		if not _film.is_empty():   # a phone held up before the face, looking down, bobbing with each step
+			eye.y += -FILM_EYE_DROP + sin(_film_step * PI / 0.72) * 0.022 * clampf(_v / 1.2, 0.0, 1.0)
 			hand = _film_hand()
 			fwd = Vector2(cos(_view_yaw + _film_look + hand.x), sin(_view_yaw + _film_look + hand.x))
 			down = tan(clampf(FILM_TILT + _film_tilt + hand.y, -1.4, 0.6))
@@ -16663,6 +16730,12 @@ func _foot_camera(dt: float) -> void:
 	eye = _decks.keep_eye(eye, p, gy)
 	look_from(eye, Vector3(p.x + back.x * 2.0, gy + 1.35, p.y + back.y * 2.0))
 	cam.fov = 56.0   # (was 66: see the eyes' view above)
+
+## how far under the eyes (1.64 m) a walk's camera is. The film's phone was held at the chest,
+## 0.2 down (1.44 m); the user, 22 Nov: "the walk height is bit too low, i am holding the phone
+## probably too low" -- so the replay is as a person's eyes see it, 1.58 m, not as the phone did
+## (the film's own measures, film_marks.py's EYE and film_motion.py's, keep 1.44: they read the film)
+const FILM_EYE_DROP := 0.06
 
 ## the phone's tilt below level on a filmed walk: the film's horizon sits 0.30 of the way
 ## down its frame (one frame a second over walk 1, under the arcade, in the passage, on the
