@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://xxc0smmtf5o6"
+
+[deps]
+
+files=["res://game/streets/tests/marks/walk1_forecourt. the forecourt (film 26.translation", "res://game/streets/tests/marks/walk1_forecourt. film second.translation", "res://game/streets/tests/marks/walk1_forecourt. foot x.translation"]
+
+source_file="res://game/streets/tests/marks/walk1_forecourt.csv"
+dest_files=["res://game/streets/tests/marks/walk1_forecourt. the forecourt (film 26.translation", "res://game/streets/tests/marks/walk1_forecourt. film second.translation", "res://game/streets/tests/marks/walk1_forecourt. foot x.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

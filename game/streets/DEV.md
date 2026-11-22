@@ -768,6 +768,16 @@ what) drawn by `_draw_more` and tapped by `_more_tap`; a row is one line there.
   above). `_set_auto` itself leaves the racer and the wave as they are, so the bots (space),
   the test routes and every scene test keep the rules, as they measure. A test that wants the
   racer calls `_set_racer(true)` as `tests/racer.gd` does.
+- The style chip shows `_ap_style_now()` (what the racer and the wave are doing), never the
+  setting `_ap_style`: a test drive keeps the rules, and the chip had said "racer".
+- **The lists' settings** (`_list_settings`): static `_routes_style` / `_cities_style` /
+  `_list_time`, kept while the app runs, passed in the drive's config as `"style"` and
+  `"time"`; `start()` reads them (no `"style"`: a route keeps the rules, a city is the racer),
+  `_route_begin` applies the style, and `_start_time` is switched to once the city is up. The
+  settings buttons carry `meta "setting"`: `tests/route_menu.gd` and `walk_menu.gd` skip them
+  when counting a list's rows (count by meta, never by the buttons' words).
+  `route_menu.gd` taps "racer" and "night" first (`SETTINGS=` for neither) and checks the
+  drive races at night with the chip saying so.
 - Time of day by choice: `_set_time_of_day` steps `_next_time` round (it only goes day,
   evening, night); `_tod_busy` keeps two taps from interleaving its awaits.
 - The camera button labels where the view is going (`_zoom > 0`), not `_zoomed()`: that is

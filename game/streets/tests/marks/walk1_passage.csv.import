@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://cj73xe1pullfk"
+
+[deps]
+
+files=["res://game/streets/tests/marks/walk1_passage. the passage (film 40.translation"]
+
+source_file="res://game/streets/tests/marks/walk1_passage.csv"
+dest_files=["res://game/streets/tests/marks/walk1_passage. the passage (film 40.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true
