@@ -86,6 +86,14 @@ const LEVELS := [
 	# the first French town (NEW_CITY.md, "France"): the centre between the station, the old town
 	# and the lake, with IGN BD TOPO's heights and measured roofs ("build": "fr": render, not brick)
 	{"name": "Annecy", "city": "annecy", "start": ["Rue Royale", "Rue de la Poste"], "look": "north", "build": "fr", "decks": "infer"},
+	# two made-up places that are not towns (data_tools/make_showcase.py; the user: "a small scene
+	# with many of the objects, and i am just walking around looking at the models; a small trick
+	# road where the car has ramps tunnels jumps falls"): a walk round a square laid out with the
+	# game's things in rows, and a figure-of-eight circuit autodrive takes once round -- the route
+	# set's drive 12, which this level starts itself ("test_drive"; left off the Cities list)
+	{"name": "The showroom: a walk among the models", "city": "showroom", "look": "med", "walk": "showroom_walk"},
+	# ("traffic": false -- no cars but the one watched: a bus and cars had shared its jump and ramps)
+	{"name": "The trick road", "city": "trick_road", "look": "north", "test_drive": 12, "traffic": false},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -1373,12 +1381,14 @@ func start(_config: Dictionary) -> void:
 		return
 	# how autodrive drives and the time of day, as chosen on the list it came from (_list_settings);
 	# with none, a test drive keeps the rules (it is there to test autodrive) and a city is the racer
-	_ap_style = String(_config.get("style", "rules" if _config.has("route") or _config.get("make_route", false) else "racer"))
+	_ap_style = String(_config.get("style", "rules" if _config.has("route") or _place.has("test_drive") or _config.get("make_route", false) else "racer"))
 	_start_time = String(_config.get("time", "day"))
 	if _start_time == "day" and _place.has("time"):
 		_start_time = String(_place["time"])   # (a place that is its time: the night out)
 	if _config.has("route"):
 		_route = _route_by_id(int(_config["route"]))
+	elif _place.has("test_drive"):   # (a place that is its own test drive: the trick road)
+		_route = _route_by_id(int(_place["test_drive"]))
 	if _config.get("make_route", false):
 		_making = "from"   # (the picker opens once the city is up)
 	SIGNAL_CYCLE = SIGNAL_CYCLE_NORTH if String(_place.get("look", "")) == "north" else SIGNAL_CYCLE_MED
@@ -3834,6 +3844,9 @@ func _build_turbines() -> void:
 		if v > top_v:
 			top_v = v
 			top = a
+	if float(crest[top][1]) == -INF:
+		return   # no ground outside the town on any bearing (a made-up place with no boundary: the
+		# turbine went up at the map's middle, on the trick road's bridge)
 	var spots: Array = [crest[top][0]]
 	for side: int in [1, -1]:
 		var a := top
@@ -25752,7 +25765,7 @@ func _route_list_open() -> void:
 		var r: Dictionary = routes[i]
 		# ("from" and "to" between the two addresses, not an arrow: a Hebrew address, an arrow
 		# and another came out as one right-to-left run, the arrow pointing from end to start)
-		var text := "%s:   from  %s   to  %s" % [CITY_NAMES.get(r["city"], r["city"]), r["from"], r["to"]]
+		var text := "%s:   from  %s   to  %s" % [r.get("place", CITY_NAMES.get(r["city"], r["city"])), r["from"], r["to"]]
 		if not r.get("mine", false):
 			text = "%d   %s" % [int(r["id"]), text]
 		var w := 612.0 if not r.get("mine", false) else 572.0
@@ -25762,12 +25775,14 @@ func _route_list_open() -> void:
 		b.add_theme_font_size_override("font_size", 10)
 		b.clip_text = true
 		# (eleven fit: 25 apart from 78; tighter, a row's button kept the kit's least height over
-		# the next and a tap on route 10 started route 9)
-		var many := routes.size() + (1 if _route_page == "mine" else 0) > 10
-		var pitch := 25.0 if many else 27.0
+		# the next and a tap on route 10 started route 9 -- since _put sets the least height too,
+		# twelve fit 23 apart, 22 high: tests/route_menu.gd checks none overlaps or runs off)
+		var nrows := routes.size() + (1 if _route_page == "mine" else 0)
+		var many := nrows > 10
+		var pitch := 23.0 if nrows > 11 else (25.0 if many else 27.0)
 		var y := (78.0 if many else 80.0) + (i + (1 if _route_page == "mine" else 0)) * pitch
 		_route_ui.add_child(b)
-		_put(b, Vector2(14, y), Vector2(w, 24.0 if many else 25.0))
+		_put(b, Vector2(14, y), Vector2(w, 22.0 if nrows > 11 else (24.0 if many else 25.0)))
 		if r.get("mine", false):
 			var id := int(r["id"])
 			var x := _tap_button("✕", func(): _save_my_routes(_my_routes().filter(func(q): return int(q["id"]) != id)); _route_list_open())
@@ -25838,7 +25853,7 @@ func _walk_list_open(kind := "walks") -> void:
 		var keyed: Array = []
 		for i in range(LEVELS.size()):
 			var lv: Dictionary = LEVELS[i]
-			if lv.has("city") and not lv.has("walk") and not lv.has("scenario") and not _is_list(lv):
+			if lv.has("city") and not lv.has("walk") and not lv.has("scenario") and not lv.has("test_drive") and not _is_list(lv):
 				keyed.append([float(lv.get("sort", i)), i + 1, String(lv["name"])])
 		keyed.sort_custom(func(a, b): return a[0] < b[0])
 		for kk: Array in keyed:

@@ -2460,6 +2460,73 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   car crossing ahead). The likeness cost is the user's choice: a person's eyes and head over the
   phone's.
 
+### Places that are not towns: the showroom and the trick road (levels 35, 36; 22 Nov 2026)
+
+Both made by `data_tools/make_showcase.py` (`showroom` | `trick_road`, both with no argument;
+needs numpy: `uv run -q --with numpy python ...`), city files marked `"made_up": 1` (no OSM
+credit), loaded like any city. The user: "a small scene with many of the objects, and i am just
+walking around looking at the models; a small trick road where the car has ramps tunnels jumps
+falls".
+
+- **The showroom** (level 35, `cities/showroom.json` + `cities/details/showroom.json`): a paved
+  square (`plaza` area) ringed by a 30 km/h street and eleven blocks; five rows along x --
+  trees of all nine `tree_forms` (z -24; `tree_surveys` all: 1, so no street trees are made
+  up), the details file's `props` kinds (-11), furniture.gd's kits (-1), the CC0 models (9: the
+  made playground and benches, Kenney's planter, fence, lamps, trees, spaceships, a fork, a
+  plate, a banana), the car kit (21) -- with four aisles between (z -16, -6, 4, 14; x -40..40,
+  even so the 2 m steps land on the stops). The rows started 11 m from the aisles: a hydrant
+  was a speck across an empty square; 5 m now (7 for the vehicles: scaled to their length the
+  car kit's are wide, the fire truck 3.5 m). Walk `showroom_walk`: 362 m at 1.3 m/s, 319 s,
+  `dodge` on; at x +-18 on each aisle a 5 s stop held facing the row to the left, then the
+  right (`face`, map bearings); between them a 48-degree glance every 5.5 s (`looks`); 10
+  people standing (in pairs and threes talking, one at the police car, one at the trees), one
+  strolling the third aisle the other way.
+- **`show` in a details file** (details.gd `_show`, `_show_kit`): an exhibit is a node of its
+  own (a few dozen: no batching) -- `kind: "kit"` one of furniture.gd's kits by name, or
+  `"model"` a model from assets/models/ via the shell's `model(name, size)` (size = its longest
+  side); `paint` a `_tone` for a kit drawn white (the bike, the delivery bike); a post of `r`
+  (0.4, 0 none) so walks step round it, or `car` for a car's posts. The car kit's models are
+  long along their own z (police 1.5 x 3.1: `tools/model_info.sh`), so `dir` is their length.
+- **Stops are held with `face`, not a head's turn**: a walker standing still keeps whatever
+  facing it had, and `filmed_walk.gd`'s `AT` jumps the clock -- after a jump, a still taken at
+  a stop faced wherever the last still had (back along the aisle, at the street). A `face` goes
+  by the clock and holds in a still and a run alike. (`AT` backs up 1.5 s and waits 20 frames:
+  a still is of the walk ~1.2 s before the second asked; for a stop's look ask its end + 0.6.)
+- **The trick road** (level 36, `cities/trick_road.json`; route 12 in routes.json, which the
+  generator keeps in step): a lemniscate of Gerono (x = 230 sin t, z = 180 sin t cos t), 1258 m,
+  one way (`o`: 1), kind `trunk` (no pavement, kerbs or walkers), 70 km/h; turned so the jump
+  runs due east (along the height grid's rows), on a 2 m height grid at ground 10 m (room for
+  the ditch below it). The loop is cut into pieces where what it is built as changes: ground,
+  `em` ramp up at 7% onto a 50 m `br` bridge 7.4 m over its own other leg, `em` down off it, the
+  jump (ground, 1 m nodes), `cu` / `tu` / `cu` through a hill (18 m over the ground, a 22 m
+  flat top, 55 m slopes; tunnel where it is 6.5 m over the road). No `"decks": "infer"`: the
+  file's `y` is used as written.
+- **What flies, and why it is shaped so** (streets.gd `_fly`: AIR_G 7.5, a take-off's lift
+  x1.1 + 0.6, a landing over 5 m/s is a crash; the springs feel the ground smoothed over half a
+  wheelbase): a ramp alone, even 32% at 50 km/h, is ridden down without leaving it (22% was,
+  in the game: no take-off at 48 km/h); a ledge throws it. So the bridge ends in a 0.9 m ledge
+  over 1.5 m, then 15% down (a model of `_fly` in Python: 45-60 km/h fly 8-16 m and land at 3-4
+  m/s), taken at 50 km/h (`DROP_SPEED`, the bridge's `ms`). The jump: a 24 m kicker rising 1.8
+  m (steepening to its lip), an 8 m ditch 2.5 m deep, a landing slope from 1.4 m at 16% down to
+  2 m under the ground, back up at 5% (modelled: lands soft from 47 to 68 km/h; 21 m/s and over
+  lands hard); autodrive's limit there 65. The ditch's walls are 3 m long: at 1.2 m (under a
+  grid step) and across the grid at 28 degrees the ground came out in jagged shards.
+- **`tests/trick_road.gd`** (`LEVEL=36`; headless ~1.5 min for the numbers, `run.sh` for stills
+  on the way into each piece and in the air): good is two take-offs -- the drop ~9 m (0.7-0.85
+  s), the jump 20-31 m (1.25-2.3 s) at 50-62 km/h -- landings soft, "arrived" in 1:26-1:35. The
+  car goes ~45-55 km/h most of the way: the loop's curves (~140 m radius), not the limit.
+- **What the game had to learn for them**: a level can be its own test drive (`"test_drive":
+  <route id>`: `start()` takes that route when the config names none, in the "rules" style, and
+  the Cities list leaves it off); a place can have no traffic (`"traffic": false`, traffic.gd
+  `_spawn`: a bus and cars had shared the jump and the ramps); the test drives list takes
+  twelve rows (23 apart, 22 high, past eleven). And a bug any map with heights but no boundary
+  would hit: `_build_turbines` found no ground outside the town on any bearing and put the wind
+  turbine at the map's middle -- on the trick road, in the bridge's lanes. It builds none now
+  when no crest is found.
+- **Open**: a real gap (nothing under it) needs a road the car may leave and land back on --
+  autodrive only follows roads, so the jump is over a ditch the road dips into; the trick road's
+  grass came out dry and orange in the stills (not looked into).
+
 ### Handoff: the filmed walks (22 Nov 2026): measured against the full film, before pass 15
 
 - **The full film is on the user's PC**: `OneDrive/walk/20261120_100527.mp4`, 1080x1920

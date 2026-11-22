@@ -218,6 +218,14 @@ func _check(lvl: int) -> int:
 			add.call("posts on service roads" if _service(hit[1]) else "posts on the road", hit[0], q,
 				"post %d (%.2f m across, %s), %.1f m into %s%s" % [i, r * 2.0, _post_kind(q, r), float(hit[0]), _name(hit[1]),
 				("  -- put up by " + String(g._post_from[i])) if i < (g._post_from as Array).size() else ""])   # (POSTS_FROM=1)
+	# -- the wind turbines' towers (1.8 m across the foot), not among the posts: with no crest
+	# found outside a made-up place with no boundary, one went up in the trick road's bridge
+	for h: Array in g._hubs:
+		var foot: Vector3 = (h[0] as Vector3) - (h[1] as Vector3) * 3.1
+		var qt := Vector2(foot.x, foot.z)
+		var ht: Array = _into(qt, 1.8)
+		if float(ht[0]) > 0.3:
+			add.call("posts on the road", ht[0], qt, "a wind turbine's tower, %.1f m into %s" % [float(ht[0]), _name(ht[1])])
 	# -- buildings: their outline's corners and every metre of their sides
 	for bi in range(g._blds.size()):
 		if g._bld_solid[bi] == 0:

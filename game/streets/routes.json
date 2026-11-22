@@ -176,6 +176,23 @@
     384.2
    ],
    "crow_m": 935
+  },
+  {
+   "id": 12,
+   "level": 36,
+   "city": "trick_road",
+   "place": "trick road",
+   "from": "the start, before the ramp",
+   "from_at": [
+    103.27,
+    -157.03
+   ],
+   "to": "once round",
+   "to_at": [
+    146.98,
+    -160.55
+   ],
+   "crow_m": 45
   }
  ]
 }

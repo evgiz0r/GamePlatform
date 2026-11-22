@@ -1792,6 +1792,8 @@ func lead_on(path: PackedVector2Array, from: Vector2, look: float, ignore_crossi
 ## ---- the path -----------------------------------------------------------------------------
 
 func _spawn(c: Car, first: bool) -> bool:
+	if not bool(g._place.get("traffic", true)):
+		return false   # (a place with no traffic: the trick road, the car alone on its loop)
 	var me: Vector2 = g._pos
 	var look := Vector2(cos(float(g._yaw)), sin(float(g._yaw)))
 	# a few tries a tick once driving (the rest on later ticks: see tick()), more at the start
