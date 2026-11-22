@@ -4,6 +4,10 @@ How long each change took, in minutes, from the Claude Code sessions that made i
 
 | date (UTC) | commit | change | agent | runs | you | active | away | lines | files | steps | tools | engine runs | tokens out |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2026-11-22 02:41 | bfdad49 | streets: the loading screen names the set-up too; split_posts tells where it knocks something; foot_slide.g... | 6.2 | 13 | 0.0 | **19** | 0.0 | +86 -2 | 4 | 40 | 46 | 19 | 32.1k |
+| 2026-11-22 02:39 | 1497e69 | streets: far shadows paced through their road and area layers, half size on phones | 7.1 | 1.9 | 8.0 | **17** | 0.0 | +29 -1 | 2 | 14 | 14 | 4 | 9.9k |
+| 2026-11-22 02:31 | 08e3ae6 | streets: walks, test drives and self-playing scenarios are watched, not driven; little building details in ... | 5.1 | 12 | 0.0 | **17** | 0.0 | +230 -12 | 6 | 34 | 37 | 13 | 26.9k |
+| 2026-11-22 02:22 | 6a84563 | streets: slow frames tick traffic and people every 4th tick and halve the catch-up build | 7.7 | 1.9 | 0.0 | **9.7** | 0.0 | +56 -11 | 2 | 20 | 22 | 2 | 12.0k |
 | 2026-11-22 02:19 | b60cc54 | streets: autodrive's plan measured from the car (a long straight was never topped up: on past a junction at... | 10 | 28 | 0.5 | **38** | 19 | +109 -14 | 6 | 50 | 52 | 19 | 39.1k |
 | 2026-11-22 02:14 | 45f9a36 | streets walks: the camera at 1.75 m; generated walks keep clear of low crowns of trees away from roads wher... | 3.3 | 11 | 0.0 | **15** | 39 | +43 -17 | 3 | 22 | 22 | 11 | 19.3k |
 | 2026-11-22 02:12 | 8f4862b | notes: performance handoff -- what is next for the phone | 0.4 | 0.0 | 0.0 | **0.4** | 0.0 | +12 -0 | 1 | 3 | 2 | 0 | 2.3k |
