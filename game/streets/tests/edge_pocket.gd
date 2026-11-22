@@ -40,4 +40,13 @@ func _run() -> void:
 			var leg := Vector3i(ri, 1 if d > 0 else pts.size() - 2, d)
 			legs.append("%s: %s" % ["fwd" if d > 0 else "back", "OFF THE MAP" if g._edge_bound(leg) else "leads on"])
 		print("road %d %s '%s' o=%d pv=%s mate=%d %d m away, %s -> %s; %s" % [ri, r["k"], r["name"], int(r["o"]), str(r["pv"]), int(r.get("mate", -1)), near, ends[0], ends[1], ", ".join(legs)])
+	if OS.get_environment("POSTS") != "":
+		# (POSTS=1, with POSTS_FROM=1: the posts and walls within 6 m, and who put each post up)
+		for i in range(g._posts.size()):
+			if g._posts[i].distance_to(at) < 6.0:
+				print("post %d at %s r %.2f %s" % [i, str(g._posts[i].snapped(Vector2(0.1, 0.1))), g._post_r[i], g._post_from[i] if i < g._post_from.size() else ""])
+		for i in range(0, g._walls.size(), 2):
+			var q := Geometry2D.get_closest_point_to_segment(at, g._walls[i], g._walls[i + 1])
+			if q.distance_to(at) < 6.0:
+				print("wall %d %s -> %s, %.1f m off" % [i / 2, str(g._walls[i].round()), str(g._walls[i + 1].round()), q.distance_to(at)])
 	quit()

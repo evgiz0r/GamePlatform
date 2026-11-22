@@ -27,6 +27,8 @@ merge, re-check (`tools/check_script.sh`, a playtest, the tests below), never fo
 | `racer.gd` | racer mode ("racer" button, R): `_autodrive` leaves out lights, signs, zebras and giving way when `_racing()`, raises the limit (`limit`) and the corners (`CORNER_K`); `_ap_pass_bus` goes round any slower car (`can_pass`); the traffic's horns (`tick`: a car braking hard with the player its blocker, or met head-on in its lane). See "Racer, the Ministry's bus lanes, kindergartens and shelters" below |
 | `places.gd` | a town's own kindergartens (a fenced yard, shade sail, slide) and public shelters (the concrete entrance and its sign) from the city file's `places`, each on the nearest clear ground to its point; built per square |
 | `opening.gd` | the opening: the view high over the town, turning, while the squares round the car go up (paused city, hurried build), then down to the car; skipped by a tap; off for tests, bots, walks and routes (`wanted`, `STREETS_OPENING`) |
+| `scenario.gd` | scenarios (LEVELS with "scenario"; the "Scenarios: pick one" page): a script of beats -- say, drive, look, chase, end -- played over the town; "tour" built from the town's story file, "getaway" a chase. See "Scenarios" below |
+| `models.gd` | models made with Blender stamped into batches (`stamp`, `stamp_into` by palette role) or as one mesh for a multimesh (`mesh`: the parks' benches) |
 | `rails.gd` | railways: the tracks the city file has (`rails`, `platforms`, `stations`), their beds, rails and sleepers, the platforms with canopies and the station's name, and trains running along them (`tick`). See "Railways" below |
 | `cities/*.json` | baked towns (`tools/osm_city.py`) and the made-up test town (`tools/fake_city.py`) |
 | `details.gd`, `cities/details/<city>.json` | what a filmed walk showed and OSM lacks, laid over the baked city as it loads (road edits, unmarked zebras, areas, an arcade cut under a block, paving level with the pavement, walls, fences, hedges, bins, railings, bollards, a pole transformer, a barrier, parked motorbikes, trees) and the walks themselves; the format is at the top of `details.gd` |
@@ -2842,10 +2844,84 @@ cartoon figures to compare.
 - **Checked:** people_carry, people_talk, street_people (dog, pram, sitter on the seat,
   waiter), the playtest.
 - **Still to do:**
-  - The box needs a carrying pose of its own.
+  - The box needs a carrying pose of its own (the Phone modifier's way of bending the arms
+    would do it).
   - The jagged collar edge.
   - The kit's figure is still loaded first and then dropped.
   - The film's people keep their places, but have not been looked at against the film.
+- **More kinds of people** (22 Nov, later):
+  - **Skirts and dresses.** For women the "shorts" cut is a skirt: hips and thighs in its
+    colour, the calves bare. A third of the women wear one, and 35% of those a dress (top
+    and skirt one colour).
+  - **Older people.** One grown-up in seven: grey to white hair, greyed from the palette's
+    ink and bg; buzzed, bald or parted for men; more long sleeves. `a.set_meta("old")`, and
+    the walkers' code slows them to 0.72.
+  - **Children.** One walking pair in three becomes a grown-up with a child. The second
+    walker is made again by `_humanize` at 1.05-1.35 m with `set_meta("child")`: Head 1.22
+    in PartSizes, a slimmer chest, children's hair, shorts for 60%.
+    - `make()` clears `a._clip`: a person made again kept the old clip's name, and
+      `Actor3D.play` skips a clip it thinks is already on.
+- **Cafe groups seated.** `_seat_chatters` puts three chatters in four on one of their
+  table's chairs: `_table_along` holds each table's chair line, the chairs 0.62 m out,
+  facing the table. Hips sit over the seat as on a bench, at +0.42 along the facing, and
+  they play SitDown, which the talkers' library maps to Sitting_Talking. The fourth stands
+  by the table. Bench sitters now loop SitDown (Sitting_Idle) rather than seeking to the end
+  of a clip that sits down. street_people shoots one (`sp_chat`).
+- **On the phone** (`people.gd` `phone()`, the `Phone` modifier): the right hand up in front
+  of the chest, the head bowed 0.38 with a slow glance, a dark phone with a lit screen in
+  the hand (`_bone_holder` hand_r, upright).
+  - Measured axes on these bones: upper arm and forearm about +x bring the hand forward and
+    up, +z on the forearm brings it in, the Head about +x drops the chin.
+  - Settled amounts: upper arm 0.22, forearm 1.15 about (1, 0, 0.45). 0.45 and 1.55 put
+    the hand at the mouth.
+  - Who: one walker in seven with nothing in their hands, and 40% of the people waiting at
+    stops.
+  - `people_carry`'s last person is on the phone, and its sixth is a child.
+- **Carrying a box** (`people.gd` `box()`, the `Carry` modifier; `_carry` hands "box" to it on
+  these figures): both arms held still, not swinging, the hands at the box's sides low in
+  front, and the box kept between the hands every frame (upright, in metres).
+  - The base pose is the walk's own at 1.05 s, mid-stride, where the hands are level. At 0 s
+    the standing clip has the right hand 0.2 behind the left: turned from there, the arms
+    came out lopsided.
+  - The turns (`CARRY_TURNS`) came from a grid search for hands at (+-0.15, 1.07, 0.3) body
+    units with the forearms near level. Left arm: upper 0.6 about (1, 0, -0.3), forearm 0.2
+    about x. Right: 0.7 about (1, 0, 0.6), 0.2 about (1, 0, 0.2).
+  - The axes on both arms: +x brings a hand forward and up; +z on the right arm and -z on the
+    left bring it in.
+  - The elbows sit at about 1.15-1.2 body units, so a hand can't get much lower than that
+    with the forearm level.
+- **Glancing at you** (the `Glance` modifier, on everyone from `make()`):
+  - When you come within 7 m, and not behind them, half the people turn their head toward
+    you: the neck 35%, the head 65%, about the skeleton's up, at most 1.1 rad.
+  - They hold it 2.4 s, turn back, and don't look again until you've gone past 9 m.
+  - People on the phone don't look up.
+  - Where you are is set each frame from `_frame` (`me_at`: your head walking, about the
+    car's windows driving), as one static for everyone.
+  - Cost: a squared distance a person per frame; the rest only within 7 m.
+  - Who looks is `posmod(seed * 7919, 100) < 50`, not a draw from `rng`: one more draw in
+    `make()` would reshuffle everyone's clothes.
+- **The collar** (`COLLAR_BELOW`, the shader's green field):
+  - The line between skin and shirt was a zigzag. Two reasons:
+    - The parts are per vertex, so the line followed the triangles.
+    - Round the neck, vertices moved by the chest and by the neck alternate, so a line by
+      bone zigzags whatever the height.
+  - Now each body vertex carries a "dressed" field in its colour's green: 1 clothed, 0 skin.
+    Within 0.13 of the neck's middle, it goes from 1 to 0 by height across the collar line.
+    The shader picks skin or shirt by green > 0.5, so the line is an even height across
+    the triangles.
+  - The line is 0.015 below the neck bone's root on each body. The man's neck is 3.5 higher
+    than the woman's, and one height for both bared his chest.
+  - Unchanged: other hems still follow the triangles. A band of the shirt's colour can show
+    between skin and trousers at a shorts hem, half as wide as before. The same field would
+    fix those if they show.
+- **Clothes are not skin** (`CLOTH_V`, `SKIN_APART`):
+  - A cream shirt in the sun drew (1, 1, 0.81), a pale yellow that read as bare to the waist.
+  - Shirts and trousers are now capped at HSV value 0.72.
+  - Clothes are also kept 0.2 (sRGB distance) from the skin as drawn (`_skin_seen`: the
+    texture times the tone's factor), taking the next colour in the list, without a draw.
+  - `tests/people_glance.gd`'s `_collar` shots show both.
+- **Light skin still glares** in full sun, the face going pale yellow. That comes from the
+  scene's exposure, not the people, and is part of the open whole-scene colour item.
 - **Gotchas found in the trial** still hold:
   - The meshes are `SuperHero_Male` and `Superhero_Female`: match names without case.
   - The female's custom arrays break a rebuild with `add_surface_from_arrays`; `_join`
@@ -4030,6 +4106,138 @@ now the made `slide`, `swings`, `climber` and `seesaw` round the sandpit on the 
 (`PLAY_ROLES`: paint -> warn, paint2 -> player, paint3 -> accent, metal/rubber -> pole):
 level 1, 45 playgrounds; `tests/places.gd` shoots one from above and at eye height.
 
+## Scenarios (22 Nov 2026)
+
+The user: "a virtual tour in a city ... where we stop and look and explain", then "some
+scenario ( aka movie i guess ) happening in a city", then "tours will be part of all
+scenarios [new section]". `scenario.gd` plays a script of beats (its header lists them) after
+the opening; LEVELS 16 is the list page (in the "Drive" group with the Cities list -- a third group of its
+own ran off a phone's start screen; `_walk_list_open("scenarios")`),
+17-20 the towns' tours, 21-22 the getaways (the Cities list leaves out anything with a
+"scenario"). A level's number is its place: add at the end.
+
+- **Tour** (`_tour_beats`): the story file's `streets` whose English name matches a road
+  (`_same_street`: lower-case, "sderot"/"derekh"/"street"... dropped, one containing the
+  other) -- the middle of that street's longest piece inside the town -- chained nearest
+  first from the start, `HOP` 900 m at most between stops, `STOPS` 6. Each stop: autodrive
+  there in **green wave** style (keeping the rules it took over two minutes to the first stop
+  in Tel Aviv; with the wave the six take ~8 min), then the zoom view over it (`LOOK_Z`,
+  turning) for `LOOK_S` 9 s with who the street is named for; between stops a neighbourhood's
+  mood or a line of history. While driving, a street with a story is explained as the car
+  turns into it -- not the stop's own street (said at the stop).
+- **The getaway**: the police car (`model("police")`, Kenney's) with a red and blue light bar
+  and a made siren follows the player's own trail (`_trail`: a point every 0.5 m), `_gap`
+  metres back: it waits `CHASE_SPOT_S`, picks up speed at `CHASE_ACC` to `CHASE_TOP` 17 m/s
+  (61 km/h); the gap grows when you go faster than it and shrinks when you do not. Caught at
+  7 m, lost at 160 m or at the safe house (autodrive, racer, 1.2-2 km off). At 21 m/s from a
+  standing start it caught the car in 5.5 s; at 21 m/s with a start it caught it every time
+  (racer's town pace is 55-65 km/h). A cut every 7 s: 3 s from 9 m ahead of the car looking
+  back at the chaser (`_back_cam`; the first try flipped to the seat view, where the chaser
+  is never seen).
+- `tests/scenario.gd` (`LEVEL=18` Tel Aviv's tour, `21` Ashdod's getaway): 22 Nov -- the
+  tour 6 of 6 stops in 467 s, 0 people hit; the getaway caught at 43 s (chaser 17 m/s, the car
+  stuck behind traffic at the end); shots at each stop and in each cut.
+- Stops are snapped onto a public drivable street, and a drive counts as there at the stop or
+  at the kerb "go to" chose (`_dest_stop`): Givatayim's tour first gave up on two of five
+  after 150 s each, parked beside them; then 4 of 5 (Yitzhak Rabin still not reached in
+  time -- open).
+- Open: the cut's camera can sit inside a vehicle ahead; the getaway's end is caught most
+  runs on autodrive (a person driving does better); tours for Delft and the test town need
+  their stories.
+
+**The director, more** (the user: "automatic scenarios ... without my inputs", then picked the
+day, the night tour, the getaway as a film and the ambulance). New beats -- `time`, `wet`,
+`shots`, `siren`, `drive_for` (a drive that ends after its seconds) -- and the scripts
+`night_tour` (the tour after `["time", "night"]`, rain before its end), `ambulance` (the
+hospital: a story street whose note says "hospital" -- Weizmann in Tel Aviv, Ichilov -- else
+a main street 1-1.8 km off; racer with the green wave on too) and `day` (three drives between
+the tour's stops at day, evening and night, the story's `rhythm` sentences as captions, rain
+at the end). LEVELS 23-28. **Shots** (`_shots_tick`, the director's own `Camera3D`, the game's
+put back with `_cam_usual`): "above" (26 m up, behind), "kerb" (a spot at the roadside
+ahead, picked as the shot starts, 0.9 m up: the car drives past it), "orbit", "chaser"
+(behind the police car), "back" (ahead, looking back); a shot list runs the camera in place
+of the chase's own cut. **Slow motion**: `Engine.time_scale` 0.35 for 1.6 s of real time
+when the getaway runs a red (`_reds_seen`). **The siren** (`_set_siren`, `_yield_tick`):
+the car's own light bar and siren; traffic ahead going its way in the lanes beside its line
+stops (`hit`) and is let go when the car is past, stuck behind it or the siren goes off. The
+first try stopped the car in its own lane too and the ambulance stood behind it for two
+minutes (`VERBOSE=1` on tests/scenario.gd prints autodrive's why every 10 s: "car", lead
+5.4 m). 22 Nov, `tests/scenario.gd`: a day in Givatayim
+(28) 179 s, shots above 7 / kerb 11 / orbit 6 / usual 6, ending at night after rain; the
+ambulance in Tel Aviv (25) at the hospital in 115 s, 98 cars pulled over; the getaway as a
+film (21) caught at 26 s, every shot used once; the night tour of Givatayim (24) 4 of 5
+stops, 528 s; 0 people hit in all.
+
+**Scenario ideas** (the user asked for them as the work goes, with grades):
+
+| # | Scenario | Effort | Notice | AI grade | Comment |
+|---|---|---|---|---|---|
+| 1 | Taxi shift: people wave from the kerb, you take them to real addresses | Medium-large | 5 | A- | The town's own addresses and places; "go to" does the routing. The best game loop of these |
+| 2 | Delivery against the clock (pizza at dinner time) | Medium | 4 | A | A timer, a route, real addresses; racer style when late |
+| 3 | Ambulance run: siren on, traffic pulls over, the lights go green | Medium | 4 | A- | Reuses the siren, the green wave and traffic giving way to the player |
+| 4 | Night tour: the towers lit, the promenade, the bars on Katznelson | Small | 3 | A | A tour with night switched on, and night captions |
+| 5 | Wedding convoy: decorated cars follow you, hooting, to a hall | Medium | 4 | B+ | The chaser's trail-follow, three cars and horns |
+| 6 | Shabbat eve: shops close, streets empty, a quiet slow drive | Medium | 3 | B | Needs traffic and people thinned by time of week |
+| 7 | Kindergarten pick-up at four: double-parking, crowds by the yards | Medium | 3 | B | The town's kindergartens are there now |
+| 8 | Then and now: 1909 on Rothschild, the dunes, the seashell lottery | Small-medium | 3 | B | Captions over today's street; old photos would need licences |
+| 9 | Alien arrival: ships over the towers, cars stop, people look up | Large | 5 | B | The disasters idea's first slice, as a scenario |
+| 10 | Follow that dog: a dog runs off across parks and lanes | Medium | 3 | B- | Dogs exist; the camera follows one |
+
+## On foot: faster, and any car in traffic (22 Nov 2026)
+
+`WALK` 2.1 -> 4.5 m/s (a jog, the "Run" clip from 2.6 m/s up), `RUN` 6.2 -> 9.5 (the run
+button or the stick right out), backwards 0.4 of the walk (1.8 m/s: at 0.6 it would have
+played the run clip backwards). The Walk clip on you is scaled by `_walk_clip_v()` like the
+walkers' (the people session's foot-slide measure); the filmed walks' replay keeps its old
+2.1 scale. `_get_in` takes the traffic car nearest you within `TAKE_REACH` (4 m to its
+body's side; not a bus or a motorbike) when nearer than your own: your car is put where it
+stood, it leaves the traffic (`alive` false). Parked cars are merged into a square's batches
+(`_build_lots`), so one cannot be lifted out yet: taking one would leave its copy standing.
+`tests/walk_take.gd`: jog 4.5, sprint 9.5, a sedan held beside you taken (PASS).
+
+## Racer at a red, and what gives under the car (22 Nov 2026, night)
+
+The user: "racer waits on red light after a car? we were 2 cars standing in a red light on a
+3 lane street". `tests/racer_queue.gd` stages it: a lit junction whose way in has 2+ lanes,
+held at red, CARS standing at the line (LANE, or ALL_LANES=1 for every lane), racer from 150 m
+back, straight or TURN=left/right. Found:
+- **A car in front, other lanes free**: racer gets by (it changes lane early) -- straight, left
+  and right, 1 and 2 cars: PASS. The older pass (`_ap_pass_bus`) refused whenever the plan
+  turned at the next junction: now not for a car standing, racer's (racer's own passing is
+  `_ap_race_by` now -- the racer session's, merged 22 Nov 01:00; with CARS=1 LANE=1 its checks
+  still refuse and racer stands 23 s: handed to that session, not changed here).
+- **Every lane full** (ALL_LANES=1): only the pavement is left (`_ap_mount_by`), and it never
+  went. Three bugs: tried only once stood 6 m behind the car (the way up ran through that
+  car's back) -- now also while coming up, 40 m back, the way up 14 m short of it; the way
+  up's offset measured from `_lane_off` (the default lane), not where the car is; and the
+  points bent in place, each one's direction read from the one before (already bent) and
+  after (not yet): 1 m apart and 6.6 m over, the push leant ~70 degrees forward. Now from the
+  plan as it was, each point to the pavement's middle by where it lies across the road.
+  After that, Givatayim's pavements are lined with the town's own trees (1 m in on 2.4 m):
+  no car gets by them, so a full red still holds racer there (six junctions tried). Next, as
+  the user asked: squeeze between the lanes, and the oncoming lanes on two-way streets.
+- `_ap_pass_bus` bends the same way, in place: its passes lean forward and fall short of a
+  lane. Bent properly (from the plan as it was) racer's test touched kerb posts on Marathon's
+  bend 3-4 times a drive (0 before), so it is left as it was -- its shortfall is what its
+  tuning was done with. Open: bend it properly and retune where it goes back in.
+- **What gives** (the user: "things bit more breakable that dont completely stop us", and
+  which: kerb railings, bollards and posts on medians, low garden walls, hedges). `add_wall`'s
+  `gives` (`_wall_give`): railings (furniture `_fence_line` rail, 1.05 m), garden walls under
+  0.6 m (`SMASH_WALL_H`), hedges; posts 0.07 m and thinner (railings' posts). Moving faster
+  than 2.5 m/s (`SMASH_V`), your car -- and racer, also when it plans a way round -- goes
+  through them (`_smash`, `_smashed`, `_smash_through`: x0.97 a tick in contact, x0.985 in a
+  hedge, sparks or leaves, a knock). Autodrive keeping the rules does not (it leans on a
+  railing as before). What broke stays drawn (only its hold goes). Bins, bollards and signs
+  were already knocked over or bent (`_knock`, `_bend_sign`). `tests/smash.gd` at 30 km/h:
+  railings 3 of 3 through (6-21 km/h after), low walls 3 of 3 (24-27), hedges 3 of 3 (to a
+  crawl), tall fences 0 of 3 -- PASS. (Its traps: the car must be held at speed, or it coasts
+  to a stop at the line; a garden wall is laid by each plot, so a low one can share its line
+  with a taller one; railings and hedges are laid in pieces under 2.5 m.)
+- **A drive is a fair before/after only when it runs alone.** racer.gd's test beside three
+  other Godot runs touched posts and cars 1-3 times a drive, in plain autodrive too; alone, on
+  the same code, 0 and 0, to the tenth of a second the same as main. The clock-timed budgets
+  (see "The drives repeat -- sometimes") make a busy machine a different drive.
+
 ## Open problems
 
 - **22 Nov, the second round of general bugs** (each with the test that measured it):
@@ -4111,6 +4319,37 @@ level 1, 45 playgrounds; `tests/places.gd` shoots one from above and at eye heig
     Givatayim (LEVEL=1) before -> after: out again 19-36.5 -> 15-29 s. Open, the same before
     the change: Mandelkern (-1177, 437) hits post 90747 at 6-7 km/h after turning, 1.7 m past
     the asphalt; Yoqneam (-1297, -702) never moves (set down 53 m short, plan never made).
+- **22 Nov, the third round (Givatayim knocks, feet, dead ends):**
+  - `drive_bumps` prints each knock or hit with the car's last 3 s (where, speed, steer, the
+    plan's why, the road and its edge) and takes `ONLY=`. Its starts were the middle point of
+    a road's points -- for a two-point road its end, a junction's middle: both Givatayim
+    knocks (Eilat by Yitzhak Rabin, HaShalom's crossing) were the car set down there, turning
+    full lock from a standstill into a corner post. Starts are halfway along by length now,
+    roads of 30 m and more. Givatayim and Tel Aviv: 0 knocks, 0 hits (covers 3.5 and 1.9 a km).
+  - Autodrive switched on at a junction planned along whichever road was nearest, the one
+    across it too (`_ap_plan`): now the road 5 m ahead when that one runs the car's way.
+  - **Feet** (`tests/foot_slide.gd`: the real walkers of a town, 8 s of a steady walk each;
+    a foot is on the ground while it moves back past the body, and its speed back then is the
+    clip's own ground speed; the slide is the walker's pace less that). Every walk clip's
+    speed was pace / 1.35, but the clips' feet cover far less at x1: the kit's figures ~0.97
+    m/s, the Universal Base Characters (people.gd, since 22 Nov) ~0.85 (~1 hip height a
+    second). Played ~35% slow, the planted foot slid forward: new figures 26.2 cm a step on
+    average, 19 of 19 walkers 10 cm or more; the kit's 19.7, 17 of 19 (good: under ~3; 10 and
+    up reads as skating). Now `_walk_clip_v()` by the figures in use (STREETS_WALK_CLIP_V=x
+    for a test's other value): 4.2 cm, 1 of 19 (either figures). (A first try took "on the
+    ground" as within 3 cm of the foot's lowest: the new figures' ankle bone hardly lifts, and
+    it read their whole pace as slide.) Left: the spread between figures (by hip height);
+    YOU on foot walk at WALK 2.1 m/s with the clip at v/WALK (x1 at 2.1: ~1.2 m/s of slide)
+    -- matched, the steps would be ~2.5x as quick (a shuffle); a longer stride wants the
+    jog sooner or a blend: a look question for the user. The run clip (/ 3.4) not measured.
+  - `dead_end_turns`: Yoqneam (-1297, -702) was "not out": it is a dead end 24 m from the
+    map's edge, which autodrive keeps out of (EDGE_DEAD) -- it drove away, rightly; counted
+    as that now. Mandelkern (-1177, 437): the turn is clean; the car hits a tree on the corner
+    pavement (-1204.7, 433.5) turning right out of it into one-way HaHaskala -- pure pursuit
+    (look-ahead >= 3.5 m) cuts a tight right turn, and the lane's corner itself passes ~1.2 m
+    from the tree (1.25 needed). The corner family, with Ashdod's trunk curves: not fixed.
+    `edge_pocket.gd POSTS=1 POSTS_FROM=1` lists the posts and walls at a spot and who put
+    each post up.
 - **Loading steps** (user, 22 Nov: "an inner progress, like 2/12"): the city file names its
   11 parts ("reading the map: the roads (4 of 11)", `_load_part`, a frame each -- so
   `_load_city` is a coroutine now: `await` it; prepublish does) and each square round the
