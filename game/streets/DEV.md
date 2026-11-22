@@ -2762,57 +2762,73 @@ rests on the forearms.
     at ~1.03 and 0.98. That is a slight magenta (green ~3-5% low) across the scene, still
     to look at.
 
-## Trial: Quaternius' Universal Base Characters and Animation Library (22 Nov 2026)
+## The people (`people.gd`, `people/`, 22 Nov 2026)
 
-The user downloaded both Standard packs (CC0) to their own Downloads folder. Nothing from them
-is in the repo yet: the trial ran from an uncommitted `assets/_trial_ubc/`, and its bench
-script is in the session's scratch folder.
-- **What the free packs hold.**
-  - Characters: two bodies, `Superhero_Male_FullBody` and `Superhero_Female_FullBody` (glTF
-    + bin, 0.7 and 1.0 MB). They are bare, muscular and in underwear, made to be dressed by
-    other packs; the Regular and Teen bodies are only in the paid Source pack.
-  - Textures: 2048 skin textures, Dark and Light, with normal and roughness maps.
-  - Hair, eyebrows and a beard rigged to the same skeleton.
-  - Animations: `UAL1_Standard.glb` (7.6 MB), 43 clips on the **same 65-bone skeleton**
-    (UE names: pelvis, spine_01-03, upperarm_l, hand_l, fingers...). Its tracks are
-    `Armature/Skeleton3D:<bone>`, the body's own path, so an AnimationPlayer under the body
-    with the library's AnimationLibrary plays them directly.
-  - Clips for streets: Walk, Walk_Formal, Idle, Idle_Talking, Sitting_Enter/Idle/Talking/
-    Exit, Driving, Push, Jog_Fwd, PickUp_Table, Interact.
-- **Dressed by bone weights.** Each vertex's part comes from the bone that moves it most:
-  - spine, clavicle and upper arm (plus the forearm for long sleeves): the shirt
-  - pelvis, thigh and calf (calf bare for shorts): the trousers
-  - foot and ball: the shoes
-  - the neck below 1.47 m: the collar
-  - the rest: skin, from the **Light** texture times a per-person tone (the Dark texture
-    under a tint went near black)
-  At street distance it reads as an ordinary person in a T-shirt and jeans. Up close the
-  collar's edge is jagged.
-- **A slimmer build.** `PartSizes` on spine_03 (0.88, 1, 0.9) with neck_01 given back, and
-  spine_02 (0.94, 1, 0.95).
-- **Gotchas.**
-  - The female's mesh is `Superhero_Female` and the male's `SuperHero_Male`: match names
-    without case.
-  - The female's surface carries custom arrays. Rebuilding it with
-    `add_surface_from_arrays` failed ("PACKED_BYTE_ARRAY") until `ARRAY_CUSTOM0-3` were set
-    to null and only the 8-weights flag kept.
-  - Hair: take the hair glTF's MeshInstance3D out of its own scene, put it under the
-    body's Skeleton3D and set `skeleton = ".."`. Tint the eyebrows with the hair, or they
-    stay white.
-- **Cost against today's figures.**
-  - Vertices: about the same (body 8.5-8.8k against Casual_Male's 8.8k; hair 0.5-3k).
-  - Draws: 4 per person (body, eyes, eyebrows, hair) against today's 1. They need joining
-    as `_one_piece` does.
-  - Download: today's five Casual files are 10.2 MB. Two bodies, hair, skin textures cut to
-    1024 and an animation library trimmed to the clips used should come to ~4-6 MB.
-- **Moving to them** means replacing the people everywhere:
-  - `Actor3D`'s clip names (Walk, Idle, Walk_Carry, SitDown)
-  - `PartSizes`, `Held` (Fist.L becomes hand_l), `Talk` (Idle_Talking makes it unneeded)
-  - crowds.gd and the film's people
-  - the people tests
-- **An import gotcha** (run `--import` and see): Godot imports any `.csv` as a translation
-  table. The walk session's `tests/marks/*.csv` came out as `*.translation` files and
-  `.csv.import`s. Delete them, or give each csv an `.import` with `importer="keep"`.
+Every person in the game is now one of Quaternius' Universal Base Characters (CC0), moving
+with the Universal Animation Library's clips (CC0). `STREETS_OLD_PEOPLE=1` brings back the kit's
+cartoon figures to compare.
+- **How it hooks in.** streets.gd still makes everyone as before, `Actor3D.set_character`
+  then `_humanize`. `_humanize` hands the Actor3D to `people.gd`'s `make()`, which replaces
+  its `model` and `anim` (Actor3D is in shell/, so it is not changed; its `play`/`face` work
+  on what they are given). Every kind of person follows: walkers, chatters, crossers,
+  sitters, waiters, keepers, bathers, crowds.gd's shoppers and joggers, the film's people,
+  and you on foot. The kit's figure is loaded first and thrown away, a small waste to remove
+  later.
+- **What is in `people/`** (3.8 MB, plus a 268 KB `moves.res`):
+  - `body_male`/`body_female` glTF. Their materials have no normal or roughness maps, and
+    their images point at `skin_*.png`, the light skin cut to 1024.
+  - Six hairstyles, `eye.png` and `hair_1/2.png` (512).
+  - `moves.res`: 14 clips, made by `people/make_moves.gd` from the 7.6 MB
+    `UAL1_Standard.glb`, which is not in the repo; it is in the user's Downloads, in the
+    Standard zip.
+- **The game's clip names over the library's** (`_lib`): Run = Jog_Fwd; Walk_Carry = Walk
+  (the library's Push leans into a heavy load, and a pushchair looked shoved); SitDown =
+  Sitting_Idle; Death = Roll. Talkers get a library whose Idle is Idle_Talking: `_talker`
+  swaps it before the clip starts, so the chatters' `_talker` call now comes before their
+  `play`.
+- **Dressed by bone weights** (`_cloth`): spine, clavicle and upper arm (plus the forearm
+  for long sleeves, 30%) make the shirt; pelvis, thigh and calf (calf bare for shorts, a
+  quarter of the men) make the trousers; foot and ball make the shoes; the neck below 1.47
+  body units makes the collar.
+- **Colours** come from `_people_looks` (palette roles), shoes from its belt colours. Skin
+  is the light texture times **a brightness factor only**: the tone's luminance over the
+  texture's, the texture measured at sRGB (0.66, 0.47, 0.34), clamped 0.42-1.3.
+  - Two ways that went wrong: channel by channel, a greyish tone over the texture's tiny
+    linear blue (0.095) tripled the blue, and the women came out grey-blue. Read back from
+    the imported texture at run time, the average came out wrong too.
+- **One mesh, one draw** (`_join`): body, eyes, eyebrows and hair in one surface on the
+  body's Skin. Each extra mesh's bind indices are remapped to the body's by bone name, the 8
+  weights are cut to the 4 strongest, and each vertex's part goes in its colour's red (0
+  skin, 1 shirt, 2 trousers, 3 shoes, 4 eyes, 5 eyebrows, 6 hair). Each body, hair and cut
+  is joined once and shared; each person gets one ShaderMaterial (meta "piece", so
+  `_people_lod` sets its fade).
+- **Build.** `PartSizes` narrows spine_03 to 0.86 for men and 0.93 for women, times
+  0.95-1.06, with the neck given back. The whole figure is then 0.94-1.08 wide.
+- **Things carried** (`_carry`): bones are looked up through `people.gd`'s `bone_for`
+  (Fist.L becomes hand_l, Torso becomes spine_03). The backpack is held upright (spine_03's
+  own axes are not the body's), 0.13 m behind and 0.08 m below it. There is no box: these
+  figures have no carrying walk, so a box carrier gets a bag.
+- **Talking.** The `Talk` bend (the old figures' arms) is skipped: `_talker` swaps in the
+  talking clip.
+- **Cost** (`frame_cost`, Givatayim, against `STREETS_OLD_PEOPLE=1`): draws 418 = 418;
+  triangles +7% (2.05M against 1.92M at quality 3, with shadows 0.90M against 0.77M);
+  frame time the same here (only ratios mean anything on this renderer). Phones not yet
+  measured.
+- **Checked:** people_carry, people_talk, street_people (dog, pram, sitter on the seat,
+  waiter), the playtest.
+- **Still to do:**
+  - The box needs a carrying pose of its own.
+  - The jagged collar edge.
+  - The kit's figure is still loaded first and then dropped.
+  - The film's people keep their places, but have not been looked at against the film.
+- **Gotchas found in the trial** still hold:
+  - The meshes are `SuperHero_Male` and `Superhero_Female`: match names without case.
+  - The female's custom arrays break a rebuild with `add_surface_from_arrays`; `_join`
+    builds new arrays, so this does not bite.
+  - A hairstyle's glTF brings its own copy of the skeleton.
+- **An import gotcha:** Godot imports any `.csv` as a translation table. `tests/marks/*.csv`
+  came out as `*.translation` files and `.csv.import`s. Delete them, or give each csv an
+  `.import` with `importer="keep"`.
 
 ## Sizes against life (`tests/scale_check.gd`, 20 Nov 2026)
 

@@ -1643,10 +1643,9 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   comes at them; glancing at you.
 - Better people themselves: "what about people themselves? how can we improve". Five
   low-poly characters are the limit now. Done: builds varied, and things carried (shopping
-  bags, handbags, backpacks, a box). Hands while talking: done. Tried: Quaternius' free
-  Universal Base Characters and Animation Library, dressed in code (DEV.md "Trial") -- real
-  proportions, faces, hands, hair, 43 moves on one skeleton, about the same cost as today's
-  figures; moving the whole game to them is still to do. Also: looking at a phone; reacting
+  bags, handbags, backpacks, a box). Hands while talking: done. Done: every person is now one of Quaternius'
+  free Universal Base Characters with the Universal Animation Library's moves, dressed in
+  code (DEV.md "The people"). Still to do: a pose for carrying a box. Also: looking at a phone; reacting
   to the car (the line above).
 - A guided tour of the city: "a virtual tour in a city. like a guide, where we stop and
   look and explain. the more real it gets the more the tour looks nicer". A guide leads you
