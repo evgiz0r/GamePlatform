@@ -1197,6 +1197,23 @@ const WALK := 4.5                    ## m/s on foot: a jog (2.1 was "very slow" 
 ## in our realism?")
 const WALK_CLIP_V_KIT := 0.97
 const WALK_CLIP_V_UBC := 0.85
+## The run clip (the new people's jog, Jog_Fwd; the kit's Run) the same way: 1.05 and 0.53
+## m/s at x1 (tests/foot_slide.gd CLIP=Run). A short stride: matched at a 4.5 m/s jog it
+## played x4.3, at a sprint x9 -- so its speed is matched up to RUN_CLIP_MAX and slides past
+## that. (The user, 22 Nov: "keep speed" -- faster steps rather than a slower walk or run.
+## Played at speed / (RUN * 0.8) before: a jog's feet slid ~3.9 m/s.) A sprint clip with a
+## longer stride would take the rest: the library has one, not in moves.res (make_moves.gd).
+const RUN_CLIP_V_KIT := 0.53
+const RUN_CLIP_V_UBC := 1.05
+const RUN_CLIP_MAX := 2.5
+var _run_clip := 0.0
+func _run_clip_rate(v: float) -> float:
+	if _run_clip == 0.0:
+		_run_clip = RUN_CLIP_V_UBC if _people_maker().on() else RUN_CLIP_V_KIT
+		if OS.get_environment("STREETS_RUN_CLIP_V") != "":
+			_run_clip = float(OS.get_environment("STREETS_RUN_CLIP_V"))
+	return clampf(absf(v) / _run_clip, 0.5, RUN_CLIP_MAX)
+
 var _walk_clip := 0.0
 func _walk_clip_v() -> float:
 	if _walk_clip == 0.0:
@@ -2771,6 +2788,8 @@ func _stage(name: String, t0: int) -> int:
 	return t
 
 func _build_world() -> bool:
+	if not await _step("laying out the world"):
+		return false
 	var t0 := Time.get_ticks_msec()
 	# one shadow map over the near streets, not the default four cascades: those drew every
 	# shadow-casting thing in view four more times a frame, more than the view itself
@@ -2799,7 +2818,12 @@ func _build_world() -> bool:
 	if _mtn_from < 10000.0:
 		_build_turbines()
 	_build_edge()
-	_build_setup(_stage("world", t0))
+	var tw0 := _stage("world", t0)
+	# (the loading text through the second or three of the set-up, which said nothing --
+	# the street network's step stood on screen the while)
+	if not await _step("sorting the town into squares"):
+		return false
+	_build_setup(tw0)
 	# (STREETS_BUILD_ALL=1: all of the city first -- the scene tests look all over it)
 	var all_first := OS.get_environment("STREETS_BUILD_ALL") == "1"
 	# a city level: the far shadows after the car (_far_now) -- they are the distance, and a
@@ -13449,6 +13473,14 @@ vec3 wet_mirror(vec3 vd) {   // vd: from the eye to the point, in the world
 }
 """
 const FS_PX := 2048                  ## the picture's longer side (px): ~1.6 m a pixel over Givatayim
+## A phone's browser, or any device in slow-frames mode, draws it at half that: the picture is
+## drawn, read back, converted and mipmapped in one frame (a phone: building ~0.6-1 s + "rest"
+## ~0.7-1 s, a 2-second freeze), and a quarter of the pixels is a quarter of that work. The far
+## ground's shadows are coarser (~3 m a pixel), little to see on a phone's screen.
+func _fs_px() -> int:
+	if _slow_frames or OS.has_feature("web_android") or OS.has_feature("web_ios"):
+		return FS_PX / 2
+	return FS_PX
 const FS_DARK_EVE := 0.4             ## the same in the evening: a low sun lights the ground less, so its shadows take less
 const FS_DARK := 0.55                ## the share of the light a shadow takes off the ground (the real ones: tests/far_shadows.gd)
 var _fs_tex: ImageTexture = null
@@ -13504,7 +13536,7 @@ func _build_far_shadows(chunked := false, for_sun := "") -> void:
 		return
 	var off := Vector2(L.x, L.z) / -L.y      # a shadow's reach on the ground per metre of height
 	var t0 := Time.get_ticks_usec()
-	var mpp := maxf(1.0, maxf(_bounds.size.x, _bounds.size.y) / FS_PX)
+	var mpp := maxf(1.0, maxf(_bounds.size.x, _bounds.size.y) / _fs_px())
 	var w := int(ceil(_bounds.size.x / mpp))
 	var h := int(ceil(_bounds.size.y / mpp))
 	var o := _bounds.position
@@ -13582,9 +13614,13 @@ func _build_far_shadows(chunked := false, for_sun := "") -> void:
 	var g1 := PackedColorArray([Color(0, 1, 0)])
 	for kind: String in ["park", "grass", "wood", "pitch"]:
 		for ring: PackedVector2Array in _area_rings.get(kind, []):
+			if chunked and Time.get_ticks_usec() > _yield_at:   # (all of these at once: most of a second on a phone)
+				await _pause()
 			_canvas_ring(green, ring, Color(0, 1, 0))
 	var med := String(_place.get("look", "")) == "med"
 	for r: Dictionary in _roads:
+		if chunked and Time.get_ticks_usec() > _yield_at:
+			await _pause()
 		if med and r["drive"] and r["k"] in ["residential", "living_street"]:
 			var hw: float = float(r["w"]) * 0.5
 			for sgn: float in [-1.0, 1.0]:   # the front gardens, behind the pavements
@@ -13594,10 +13630,14 @@ func _build_far_shadows(chunked := false, for_sun := "") -> void:
 	var bare: RID = layer.call(CanvasItemMaterial.BLEND_MODE_MUL, true)
 	var keep_red := PackedColorArray([Color(1, 0, 1)])
 	for r: Dictionary in _roads:
+		if chunked and Time.get_ticks_usec() > _yield_at:
+			await _pause()
 		var wide: float = float(r["w"]) + (2.0 * (KERB_W + PAVE_W) if r["drive"] and _kerbed(r) else 0.6)
 		RenderingServer.canvas_item_add_polyline(bare, r["pts"], keep_red, wide)
 	for kind: String in ["water", "parking", "plaza", "school"]:
 		for ring: PackedVector2Array in _area_rings.get(kind, []):
+			if chunked and Time.get_ticks_usec() > _yield_at:
+				await _pause()
 			_canvas_ring(bare, ring, Color(1, 0, 1))
 	var feet: RID = layer.call(-1, false)
 	RenderingServer.canvas_item_add_triangle_array(feet, fidx, fpts, fcols)
@@ -17248,9 +17288,9 @@ func _walk(dt: float) -> void:
 	var anim := "Idle" if absf(_v) < 0.15 else ("Run" if absf(_v) > 2.6 else "Walk")   # (the jog runs)
 	if anim != _me_anim:
 		_me_anim = anim
-		_me.play(anim, true, 1.0 if anim == "Idle" else maxf(absf(_v) / (_walk_clip_v() if anim == "Walk" else RUN * 0.8), 0.5))
+		_me.play(anim, true, 1.0 if anim == "Idle" else (maxf(absf(_v) / _walk_clip_v(), 0.5) if anim == "Walk" else _run_clip_rate(_v)))
 	elif anim != "Idle":
-		_me.anim.speed_scale = maxf(absf(_v) / (_walk_clip_v() if anim == "Walk" else RUN * 0.8), 0.5)
+		_me.anim.speed_scale = maxf(absf(_v) / _walk_clip_v(), 0.5) if anim == "Walk" else _run_clip_rate(_v)
 
 ## the camera on foot: over the shoulder, a few metres back (kept out of walls), or from the
 ## eyes when the seat view is chosen
@@ -23578,14 +23618,16 @@ func _ap_pass_bus(lead: Array) -> bool:
 	var keep_v := _ap_v.duplicate()
 	var keep_lim := _ap_lim.duplicate()
 	_ap_densify(s0 + end_s + 10.0, 2.0)
+	var orig := _ap_pts.duplicate()   # (lengths and ways read from the plan as it was: bent in place, each
+	                                   # point leaned on the one before, already moved, and the way out hugged the plan)
 	for k in range(1, _ap_pts.size()):
-		s += _ap_pts[k - 1].distance_to(_ap_pts[k])
+		s += orig[k - 1].distance_to(orig[k])
 		if s > end_s + 8.0:
 			break
 		var t := clampf((s - start_s) / 8.0, 0.0, 1.0) * clampf((end_s + 8.0 - s) / 8.0, 0.0, 1.0)
 		if t <= 0.0:
 			continue
-		var kd := (_ap_pts[mini(k + 1, _ap_pts.size() - 1)] - _ap_pts[k - 1]).normalized()
+		var kd := (orig[mini(k + 1, orig.size() - 1)] - orig[k - 1]).normalized()
 		_ap_pts[k] += Vector2(kd.y, -kd.x) * lane_w * t * sgn
 	if true:
 		# (the way out checked for what stands there, not cars alone: a post, a tree, a
@@ -23672,16 +23714,18 @@ func _ap_race_by(lead: Array) -> bool:
 		else:
 			shift = minf(out, lat - RACE_CLEAR)
 		_ap_densify(s0 + end_s + 10.0, 1.5)
+		var orig := _ap_pts.duplicate()   # (lengths and ways read from the plan as it was: bent in place, each
+		                                   # point leaned on the one before, already moved, and the way out hugged the plan)
 		var s := -s0
 		var bent: Array = []
 		for k in range(1, _ap_pts.size()):
-			s += _ap_pts[k - 1].distance_to(_ap_pts[k])
+			s += orig[k - 1].distance_to(orig[k])
 			if s > end_s + 8.0:
 				break
 			var t := clampf((s - start_s) / 7.0, 0.0, 1.0) * clampf((end_s + 8.0 - s) / 8.0, 0.0, 1.0)
 			if t <= 0.0:
 				continue
-			var kd := (_ap_pts[mini(k + 1, _ap_pts.size() - 1)] - _ap_pts[k - 1]).normalized()
+			var kd := (orig[mini(k + 1, orig.size() - 1)] - orig[k - 1]).normalized()
 			_ap_pts[k] += Vector2(kd.y, -kd.x) * shift * t
 			bent.append([_ap_pts[k], maxf(s, 0.0)])
 		var ok := not bent.is_empty()

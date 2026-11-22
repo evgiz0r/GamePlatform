@@ -204,7 +204,7 @@ func _s_near(ln: Dictionary, p: Vector2) -> float:
 func _go(w: Dictionary) -> void:
 	var a: Actor3D = w["actor"]
 	if w.get("run", false):
-		a.play("Run", true, float(w["speed"]) / 3.4)
+		a.play("Run", true, g._run_clip_rate(float(w["speed"])))
 	else:
 		a.play("Walk_Carry" if w["carry"] else "Walk", true, float(w["speed"]) / g._walk_clip_v())
 
