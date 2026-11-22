@@ -224,6 +224,22 @@ def split(ev, t0, t1, away_s, bg=None):
                 add("agent: writing replies", used)
         add("agent: waiting on the model (each step: the request out, the first word)", max(0.0, used - spent))
     tot["parts"] = part
+    # what it did in that time: model calls (steps), tool calls, engine runs, tokens it wrote
+    reqs = {}
+    tools = engine = 0
+    for d in ev:
+        t = ts(d["timestamp"])
+        if d["type"] != "assistant" or t < t0 or t > t1:
+            continue
+        rid = d.get("requestId") or d.get("uuid")
+        u = (d.get("message") or {}).get("usage") or {}
+        reqs[rid] = max(reqs.get(rid, 0), int(u.get("output_tokens") or 0))
+        for x in (d.get("message") or {}).get("content") or []:
+            if isinstance(x, dict) and x.get("type") == "tool_use":
+                tools += 1
+                if tool_kind({"message": {"content": [x]}}) == "engine":
+                    engine += 1
+    tot["n"] = {"steps": len(reqs), "tools": tools, "engine": engine, "tokens": sum(reqs.values())}
     return tot
 
 
@@ -252,12 +268,31 @@ def game_of(h):
     return sorted(names)
 
 
+GENERATED = re.compile(r"(\.json|\.import|\.uid|\.translation|EFFORT\.md)$|^docs/")
+
+
+def lines_of(h):
+    """lines added, removed, files touched -- code and notes, not generated files (baked city
+    data, the web build, imports, these tables)"""
+    add = rem = files = 0
+    for line in git("show", "--numstat", "--format=", h).splitlines():
+        p = line.split("\t")
+        if len(p) != 3 or GENERATED.search(p[2]):
+            continue
+        files += 1
+        if p[0].isdigit():
+            add += int(p[0])
+            rem += int(p[1])
+    return add, rem, files
+
+
 def fmt(s):
     m = s / 60.0
     return "%.0f" % m if m >= 10 else "%.1f" % m
 
 
-HEAD = "| date (UTC) | commit | change | agent | runs | you | active | away |\n|---|---|---|---|---|---|---|---|\n"
+HEAD = ("| date (UTC) | commit | change | agent | runs | you | active | away | lines | files | steps | tools | engine runs | tokens out |\n"
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
 
 
 def row(r):
@@ -266,9 +301,12 @@ def row(r):
         subj = subj[:107] + "..."
     t = r["t"]
     act = t["agent"] + t["runs"] + t["you"]
-    return "| %s | %s | %s | %s | %s | %s | **%s** | %s |" % (
+    n = t.get("n", {})
+    la, lr, lf = r.get("lines", (0, 0, 0))
+    return "| %s | %s | %s | %s | %s | %s | **%s** | %s | +%d -%d | %d | %d | %d | %d | %.1fk |" % (
         dt.datetime.fromtimestamp(r["time"], dt.timezone.utc).strftime("%Y-%m-%d %H:%M"), r["hash"][:7], subj,
-        fmt(t["agent"]), fmt(t["runs"]), fmt(t["you"]), fmt(act), fmt(t["away"]))
+        fmt(t["agent"]), fmt(t["runs"]), fmt(t["you"]), fmt(act), fmt(t["away"]),
+        la, lr, lf, n.get("steps", 0), n.get("tools", 0), n.get("engine", 0), n.get("tokens", 0) / 1000.0)
 
 
 def write_table(path, title, rows):
@@ -287,8 +325,11 @@ def write_table(path, title, rows):
                 "(`tools/effort.py`, which says how it is counted): **agent** thinking and writing, "
                 "**runs** the tests, engine and git it waited on, **you** between its reply and "
                 "your next message, **active** the three together. **away** is left out: gaps over "
-                "10 minutes, and the rest of any step past its cap. Newest first; rows are kept "
-                "once written.\n\n")
+                "10 minutes, and the rest of any step past its cap. **lines** added and removed and "
+                "**files** touched, leaving out generated files (baked data, the web build, imports); "
+                "**steps** the times the model was called, **tools** its tool calls, **engine runs** "
+                "those that ran the engine (a test, a playtest, a check), **tokens out** what it "
+                "wrote (thinking included). Newest first; rows are kept once written.\n\n")
         f.write(HEAD)
         for l in lines:
             f.write(l + "\n")
@@ -327,7 +368,7 @@ def main():
         for h in sorted(made, key=lambda h: allc[h][0]):
             ct, subj = allc[h]
             t = split(ev, prev, ct + 1, away_s, bg)
-            rows[h] = {"hash": h, "time": ct, "subject": subj, "t": t, "session": os.path.basename(path)[:8]}
+            rows[h] = {"hash": h, "time": ct, "subject": subj, "t": t, "session": os.path.basename(path)[:8], "lines": lines_of(h)}
             prev = ct + 1
     out = sorted(rows.values(), key=lambda r: r["time"])
     if a.since:
