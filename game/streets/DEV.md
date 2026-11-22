@@ -4224,30 +4224,40 @@ map; 144 yards and 37 shelters put, 8 kindergartens left out (no clear ground wi
 Shots taken where each was put (`spots`), not at the map's point: the point is its building,
 the yard a few metres off, and a shot at the point saw a roof.
 
-### Handoff: racer "really passive" (22 Nov 2026, open)
+### Racer "really passive" (22 Nov 2026)
 
 The user, with a screenshot on Katznelson (Givatayim's start) bound for Rambam, 1.3 km: "there
 was only a bus and it didnt want to pass ... pretty passive, wanting to do all that long path,
-waiting in traffic. it probably could just cut through". Reproduced by
-`tests/racer_drive.gd` (LEVEL=1, racer on, to the street TO=Rambam, a line a second: speed,
-`_ap_why`, the car in front, and -- `VERBOSE=1` -- `_race_by_why` / `_race_q_why`, the reason
-each way round was refused; PASS: there within SECS 150, standing under a quarter of it, no
-crash). The traffic differs run to run. What it showed:
+waiting in traffic. it probably could just cut through the border". `tests/racer_drive.gd`
+(LEVEL=1, racer on, to the street TO=Rambam; a line a second: speed, `_ap_why`, the car in
+front and how far the plan passes from it; every racer_/pass_ move as it happens; `VERBOSE=1`
+adds `_race_by_why` / `_race_q_why` / `_mount_why`, why each way round was refused; PASS:
+there within SECS 150, standing under a quarter of it, no crash). Run it `--headless`. The
+traffic differs run to run. Found and fixed:
 
-1. **The bend round the bus lost.** One run: at 6.5 s, 70 m out, a pass was taken (the bus
-   became `_ap_passed`), yet the car braked to a stop 10 m behind it -- the bend gone or
-   falling short. The run after, the same pass went through at 60 km/h. To find: which move
-   took it (the test prints racer_/pass_ Probe events -- none came out; check the Probe
-   kinds), and whether a re-plan (`_ap_extend`, the route moving on) drops a bent plan.
-2. **Boxed in behind it.** Then stood behind it from stop to stop for 60 of 150 s:
-   `_race_by_why` every time "3.2: hatch v=0 at 2 m, 6.4: off road, -3.2: off road" -- the
-   left lane has cars standing beside us, one more lane over is not road, the right is the
-   kerb; the queue pass the same; `_ap_mount_by` (the pavement) refused every time, reason
-   not logged yet (give it a why like `_race_by_why`). A real racer would go up on the
-   pavement here, or out the moment a gap opens beside it.
-3. **The long way.** It set off away from Rambam: "to go" 1139 -> 1385 m before it turned
-   round at 93 s. Racer should turn on the spot (a U-turn across the road) when the way it
-   faces starts the route away from the goal and turning is far shorter.
+1. **Every bend round a car was undone the next tick.** `_ap_densify` put a point every 1.5 m
+   along the whole first stretch -- which can start 80 m behind the car -- and
+   `_ap_nearest_seg` looks at the first three stretches and any within 60 m: all behind, so
+   the car read 80 m off its route and the plan was made afresh, without the bend. Racer
+   "passed" a bus 70 m out (`racer_pass`, bent 28 points 3.5 m clear of it) and stood behind
+   it from stop to stop. Now the first stretch gets a point where the car is and is densified
+   only from there. This was under every pass (bus, van, racer, queue, pavement) taken far
+   along a long straight.
+2. **A car "passed" was never tried again while moving** (`_ap_wait` stays 0 moving): it
+   followed an SUV at 32 km/h for good. Now again after `RACE_RETRY` 3 s.
+3. **The long way: over the median.** `_racer_across` (from `_ap_plan`, racer only): on one
+   half of a divided road, the other half 6-16 m to the left running back; when the trip
+   from there is `ACROSS_GAIN` 80 m shorter, a half circle across at `ACROSS_V` 4.5 m/s,
+   kept only if nothing solid stands on it (`_smash`: through what gives). Katznelson: 13.7 m
+   across, 687 m saved.
+
+Standing in that drive: 40% -> 11% (fix 1) -> 2% (fix 2); with 3, 1151 -> 533 m to go in
+65 s. Open: (a) one run then stood 80 s on Bialik behind a hatchback that never moved (every
+way out off the road or a post; give `_ap_mount_by` and the queue pass another look there);
+(b) low bumps into posts at 4-9 km/h turning from Bialik into Kirinitsi, and one into a car at
+18 km/h just after a queue pass on Katznelson -- racer is not careful (as before: `racer.gd`
+counted 0-2 bumps a drive); (c) the test's `probe.enabled` was missing before 22 Nov evening,
+so crash counts from it before then were 0 by construction.
 
 ## The opening; models made with Blender (22 Nov 2026)
 
