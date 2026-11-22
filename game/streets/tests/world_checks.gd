@@ -104,6 +104,15 @@ static func junction_twins(g) -> Array:
 							first = "'%s' twice at %s" % [exits[a]["name"], Vector2i(pts[ei])]
 	return [n, first]
 
+## a hit (_nearest_seg) on a deck more than a metre off the ground at both ends of its piece:
+## a lawn under a bridge's span is not on its road (streets.gd _island_cut keeps it)
+static func high_deck(g, hit: Dictionary) -> bool:
+	var r: Dictionary = g._roads[int(hit["road"])]
+	if not r.has("ys"):
+		return false
+	var sj := int(hit["seg"])
+	return minf(absf(r["ys"][sj] - r["gs"][sj]), absf(r["ys"][sj + 1] - r["gs"][sj + 1])) > 1.0
+
 static func islands_on_road(g) -> Array:
 	var n := 0
 	var first := ""
@@ -116,7 +125,7 @@ static func islands_on_road(g) -> Array:
 				var p := Vector2(x, z)
 				if Geometry2D.is_point_in_polygon(p, piece):
 					var hit: Dictionary = g._nearest_seg(p, 14.0, true)
-					if (not hit.is_empty() and float(hit["edge"]) < -0.05) or g._in_junction(p, -0.05):
+					if (not hit.is_empty() and float(hit["edge"]) < -0.05 and not high_deck(g, hit)) or g._in_junction(p, -0.05):
 						n += 1
 						if first == "":
 							first = "at %s" % p.round()

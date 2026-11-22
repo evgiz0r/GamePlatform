@@ -797,7 +797,7 @@ SURVEYS = [
      "skip": ("t_sug_mivne", ("מבנה ארעי", "תחנת אוטובוס", "מבנה בבנייה"))},
     # The whole Netherlands: 3DBAG's laser-measured heights (roof at its 70th percentile above
     # the ground, storeys counting the ground floor), saved per town by
-    # game/streets/data_tools/nl_3dbag.py into one national extract that only grows.
+    # game/streets/data_tools/nl_3dbag.py into one extract a town (nl_3dbag_<town>.geojson).
     {"id": "nl_3dbag", "credit": "building heights © 3DBAG by tudelft3d and 3DGI, CC BY 4.0",
      "extent": (50.75, 3.20, 53.70, 7.25),
      "h": "h", "floors": "fl", "year": "yr", "ground_counted": True,
@@ -823,12 +823,20 @@ SURVEYS = [
 
 
 def survey_extract(s, box, data_dir):
-    """The survey's buildings in the box from a saved extract (data_dir/<id>.geojson), or None."""
-    path = os.path.join(data_dir, s["id"] + ".geojson") if data_dir else None
-    if not path or not os.path.exists(path):
+    """The survey's buildings in the box from its saved extracts, or None: data_dir/<id>.geojson,
+    and data_dir/<id>_<town>.geojson -- a national survey keeps one file a town (3DBAG: one
+    file for every Dutch town was 11 MB at the second, rewritten whole in git each time)."""
+    if not data_dir:
         return None
-    with open(path, encoding="utf-8") as f:
-        feats = json.load(f).get("features", [])
+    paths = [os.path.join(data_dir, f) for f in sorted(os.listdir(data_dir)) if os.path.isdir(data_dir)
+             and (f == s["id"] + ".geojson" or (f.startswith(s["id"] + "_") and f.endswith(".geojson")))]
+    if not paths:
+        return None
+    feats = []
+    for path in paths:
+        with open(path, encoding="utf-8") as f:
+            feats += json.load(f).get("features", [])
+    path = ", ".join(os.path.basename(q) for q in paths)
     out = []
     for ft in feats:
         g = ft.get("geometry") or {}
@@ -837,7 +845,7 @@ def survey_extract(s, box, data_dir):
         ys = [c[1] for p in polys for c in p[0]]
         if xs and min(ys) < box[2] and box[0] < max(ys) and min(xs) < box[3] and box[1] < max(xs):
             out.append(ft)
-    log(f"survey {s['id']}: {len(out)} buildings from {os.path.relpath(path)}")
+    log(f"survey {s['id']}: {len(out)} buildings from {path}")
     return out
 
 

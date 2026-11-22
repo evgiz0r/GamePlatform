@@ -106,15 +106,26 @@ it as given.
 
 ### Countries done
 
-**The Netherlands (Delft, level 14, 22 Nov 2026).** For the next Dutch town, run two
-commands with its box (the bake's box plus the margin, as the bake prints it:
-"fetching S,W .. N,E"), then bake. Nothing else changes:
+**The Netherlands (Delft, level 14; Leiden, level 16; 22 Nov 2026).** For the next Dutch
+town, run two commands with its box: the bake's box plus the margin, 150 m = 0.00135° of
+latitude and about 0.0022° of longitude. Then bake, and add one line at the end of
+`LEVELS` with `"look": "north", "build": "nl"`. Nothing else changes:
 
 ```
-python game/streets/data_tools/nl_3dbag.py S,W,N,E   # heights, storeys, roof type, year: ~30 s for 15k buildings
-python game/streets/data_tools/nl_bgt.py S,W,N,E     # trees and lamp posts: ~90 s
-python tools/osm_city.py --place "<Town>" --bbox ... --out game/streets/cities/<town>.json
+python game/streets/data_tools/nl_3dbag.py S,W,N,E <town>   # heights, storeys, roof, ridge, year: ~35 s
+python game/streets/data_tools/nl_bgt.py S,W,N,E            # trees and lamp posts: ~2 min
+python tools/osm_city.py --place "<Town>" --name "<Town>" --bbox S,W,N,E --margin 150 --out game/streets/cities/<town>.json   # ~1.5 min
 ```
+
+**Leiden was the test of the recipe.** It took about 6 minutes from nothing to a
+compiling level, with no code change for Leiden itself: fetching 37 s + 137 s, the bake
+93 s, then picking a start corner. The one fix it needed was for every town after it.
+The single national 3DBAG file reached 11 MB at the second town, and git stores a
+whole new copy each time a file changes, so it is now one file per town. Leiden's bake:
+- 18,222 buildings, 365 of them with guessed heights;
+- 12,061 BGT trees and 6,385 lamp posts;
+- 142 traffic lights, 184 rail tracks;
+- a 4.3 MB city file.
 
 - **What was found.** All three national sources answer from this computer, with no key
   and no login:
@@ -128,10 +139,11 @@ python tools/osm_city.py --place "<Town>" --bbox ... --out game/streets/cities/<
   Guessed heights fell from 8,614 to 454. OSM also has the year built on 99% of them.
 - **The BGT keeps every old version of an object.** About 1 in 6 rows has
   `eind_registratie` set: skip those, or every tree comes twice.
-- **Extracts.** They are national files that only grow, merged by id:
-  - `nl_3dbag.geojson`: 5.0 MB for Delft's 15k buildings. Its size grows with every
-    Dutch town, so past a few towns, split it per town.
-  - `nl_bgt_trees.json` and `nl_bgt_lamps.json`.
+- **Extracts:**
+  - `nl_3dbag_<town>.geojson`, one per town: Delft 5.0 MB, Leiden 6.0 MB. The baker reads
+    every `nl_3dbag_*.geojson`, and `survey_extract` takes `<id>_*.geojson` for any survey.
+  - `nl_bgt_trees.json` and `nl_bgt_lamps.json`: national files merged by id, 1.5 and
+    0.9 MB at two towns. Split them the same way past four or five towns.
 - **First run (22 Nov):**
   - loaded in 4.9 s headless, 13.4 s drawn beside other sessions' Godot runs;
   - `city_check`: all 0 except 39 m² of islands on asphalt (DEV.md, "Open problems");

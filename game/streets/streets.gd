@@ -56,6 +56,9 @@ const LEVELS := [
 	{"name": "Delft", "city": "delft", "start": ["Oude Delft", "Binnenwatersloot"], "look": "north", "build": "nl", "decks": "infer"},
 	# the cities: a list, as the walks and the test routes are (no city behind it)
 	{"name": "Cities: pick one", "group": "Cities", "cities": true, "city": "dimyon", "look": "med"},
+	# the second Dutch town (NEW_CITY.md, "The Netherlands"): the old centre inside its canal ring,
+	# the station, the Burcht. Starts on the Rapenburg canal by the university's Academy building.
+	{"name": "Leiden", "city": "leiden", "start": ["Rapenburg", "Kloksteeg"], "look": "north", "build": "nl", "decks": "infer"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -6523,10 +6526,14 @@ func _island_cut(ring: PackedVector2Array) -> Array:
 	for code: int in _near(_seg_hash, box.get_center(), maxf(box.size.x, box.size.y) * 0.5, SEG_CELL):
 		var ri := code / 4096
 		var r: Dictionary = _roads[ri]
-		if r["pv"] or r.has("ys"):
-			continue
 		var pts: PackedVector2Array = r["pts"]
 		var sj := code % 4096
+		# a deck: cut back only where it runs within a metre of the ground (a bridge's feet; the
+		# lawn under its span stays). A private road is drawn too: cut back from it. (Both were
+		# left out, and lawns lay over the asphalt: Delft's Prinses Beatrixlaan bridge 38 m2,
+		# a private lane through a Leiden lawn 53 -- tests/islands_where.gd)
+		if r.has("ys") and minf(absf(r["ys"][sj] - r["gs"][sj]), absf(r["ys"][sj + 1] - r["gs"][sj + 1])) > 1.0:
+			continue
 		if not box.intersects(Rect2(pts[sj], Vector2.ZERO).expand(pts[sj + 1])):
 			continue
 		var hw := float(r["w"]) * 0.5 + (0.1 if r["drive"] else 0.0)

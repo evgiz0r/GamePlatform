@@ -1783,7 +1783,8 @@ Bedford have not been re-baked since.
 | 2 | Bedford, Nova Scotia ("north") | place "Bedford, Nova Scotia", include "Hemlock Ravine Park; Kearney Lake; Sandy Lake; Fleetview Drive" |
 | 3 | Ashdod ("med") | place "Ashdod" |
 | 4 | Kiryat Dimyon, made up | `tools/fake_city.py` |
-| 14 | Delft, a box of the old centre ("north") | baked on the user's computer, not the workflow: first `data_tools/nl_3dbag.py` and `data_tools/nl_bgt.py` with 51.99965,4.34181,52.02035,4.37219, then place "Delft", bbox "52.0010,4.3440,52.0190,4.3700", margin 150 (NEW_CITY.md, "The Netherlands") |
+| 14 | Delft, a box of the old centre ("north") | baked on the user's computer, not the workflow: first `data_tools/nl_3dbag.py 51.99965,4.34181,52.02035,4.37219 delft` and `data_tools/nl_bgt.py` with that box, then place "Delft", bbox "52.0010,4.3440,52.0190,4.3700", margin 150 (NEW_CITY.md, "The Netherlands") |
+| 16 | Leiden, a box of the old centre ("north", build "nl") | as Delft (NEW_CITY.md): `data_tools/nl_3dbag.py 52.14865,4.47180,52.16935,4.50220 leiden`, `data_tools/nl_bgt.py` with the same box, then place "Leiden", bbox "52.1500,4.4740,52.1680,4.5000", margin 150 |
 | 7 | Tel Aviv, a box of the centre ("med") | place "Tel Aviv", bbox "32.0639,34.7795,32.0858,34.8021" (read off the user's map screenshot), margin 150, bare_ground on (without it Azrieli stood on a 146 m hill of its own roofs) |
 
 The start points are public street corners named in `LEVELS`. **The web build is public:
@@ -3977,14 +3978,24 @@ in level 1). The glTF import keeps the Blender material's name as the surface ma
     removed). Open: Tuval, Bernfeld, Nahalat Binyamin still linger 10-40 m from it; Ashdod's
     trunk at (4530, -1066) has autodrive cutting its curves off the asphalt (~7 s; reached
     now that the car gets back that way); HaMaginim's start 9 s off the road on both.
-- **Delft (level 14): 39 m² of island on the asphalt** (`city_check`'s "islands on the road",
-  0 in every other town; the first spot is at (-478, 1000), Westlandseweg's west end, a
-  secondary road 10-16 m wide). Not found yet. One way it can happen, seen in the city file:
-  `_island_cut` skips a cutter lying wholly inside the area (`holed`), so an area that wholly
-  holds a drivable segment keeps that asphalt under it. Five Delft areas do this, all with
-  4.5 m service roads in them, but not the area at the first spot. Next step: a scene test
-  listing every island sample point on asphalt, with its island and road. Delft's other
-  first-run numbers, so a later run has something to compare with:
+- **Islands on the asphalt in the Dutch towns: fixed, 1 m² left in each** (`city_check`'s
+  "islands on the road": Delft 39 -> 1, Leiden 87 -> 1; 0 in every other town before and
+  after). `tests/islands_where.gd` lists every island on asphalt, worst first, with the road
+  under it. That showed the cause: `_island_cut` skipped every deck and every private road,
+  so a lawn ran on under a bridge, and came up through the asphalt where the deck comes down
+  (Delft's Prinses Beatrixlaan 38 m², Leiden's Willem de Zwijgerlaan, two "...brug"), and
+  over a private lane through it (Leiden's Anna Grollstraat 53).
+  - Now it cuts back from private roads, and from a deck where it runs within a metre of
+    the ground.
+  - The check calls a lawn under a span more than a metre up fine (`world_checks.high_deck`).
+  - Dutch towns are where it showed: canals with grassy banks under low bridges.
+  - The 1 m² left is a single sample point at a cut's edge: Leiden's Lammermarkt (a one-way
+    service lane), a junction's disc in Delft.
+
+  The `holed` case (an area holding a whole road piece inside it keeps that asphalt) is
+  still there: five Delft areas with service lanes. It does not show in the check.
+
+  Delft's other first-run numbers, so a later run has something to compare with:
   - 0 for walls, posts and buildings on the road, and for every "doubled" row;
   - road lean 0.2% (Stationsplein's ramp, 33%);
   - posts twice 2, lights' way in with no pole 5, knot split 1, stop short 93.
