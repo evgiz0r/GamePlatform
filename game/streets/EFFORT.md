@@ -4,6 +4,7 @@ How long each change took, in minutes, from the Claude Code sessions that made i
 
 | date (UTC) | commit | change | agent | runs | you | active | away | lines | files | steps | tools | engine runs | tokens out |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2026-11-22 02:53 | e1c3bec | streets walks with a scene: a night out on Nahalat Binyamin, a Tel Aviv park, the beach (make_walks.py ways... | 6.2 | 16 | 0.0 | **22** | 0.0 | +214 -4 | 4 | 31 | 41 | 14 | 36.2k |
 | 2026-11-22 02:46 | 712da82 | streets: the run clip at the pace it covers (the jog 1.05 m/s at x1), up to 2.5x fast -- your jog's feet sl... | 1.4 | 0.4 | 0.8 | **2.6** | 0.0 | +20 -3 | 2 | 8 | 9 | 3 | 6.8k |
 | 2026-11-22 02:44 | c1ffe87 | streets racer: bends read the plan as it was (orig), not points already moved -- racer no longer stands beh... | 19 | 22 | 0.0 | **41** | 15 | +19 -4 | 2 | 28 | 28 | 15 | 26.6k |
 | 2026-11-22 02:41 | bfdad49 | streets: the loading screen names the set-up too; split_posts tells where it knocks something; foot_slide.g... | 6.2 | 13 | 0.0 | **19** | 0.0 | +86 -2 | 4 | 40 | 46 | 19 | 32.1k |

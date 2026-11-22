@@ -4323,6 +4323,73 @@ back, straight or TURN=left/right. Found:
   the same code, 0 and 0, to the tenth of a second the same as main. The clock-timed budgets
   (see "The drives repeat -- sometimes") make a busy machine a different drive.
 
+## Racer past a whole queue; traffic sees bodies, not middles (22 Nov 2026, late night)
+
+The user, "Go all 3" (racer squeezing and the oncoming lanes; the racer session's repro; the
+traffic list). `tests/racer_queue.gd` before: two cars deep in every lane, 8 of 8 staged reds
+stood 19-26 s; on two-way streets with 3 cars in the lane, 4 of 6 stood.
+- **`_ap_race_queue`** (after `_ap_race_by` fails: `_ap_race_by(lead) or _ap_race_queue(lead)`).
+  `_ap_race_by` goes round one car and back in 10 m past it -- into the next car of a queue,
+  so every way out was refused. The queue: every car under 1.5 m/s along the plan from the
+  car in front on, each within `QUEUE_GAP` (14 m) of the last, any lane. Out past its widest
+  car on the left (the next lane; on a two-way street the other way's lanes), one lane
+  further, or on the right, back in past its head; kept when every point is on asphalt,
+  clear of what is solid (through what gives), 2.6 m from every car, and nothing coming the
+  other way in that lane meets it before it is back in (`t_out`). `_race_q_why` says why
+  each way out was refused (the test prints it with `VERBOSE=1`).
+- **Squeezing between two lanes**: the line between two lanes of the queue, measured across
+  the road (`_road_lat`; the plan itself moves between lanes ahead, and read against it the
+  two rows of one lane came out 1.2 m apart and merged), the cars either side **edging
+  over** to make room -- `Car.aside` in traffic.gd, at most `SQUEEZE_ASIDE` (0.9 m), at 0.9
+  m/s, back once racer is by; the whole car slides (`aside_was`: standing, the back follows
+  the front only as it rolls, so the car turned on the spot and its back stayed in the gap).
+  An edged car holds still (no wander) and `lead_on` reads it by its body + 0.05 m, not +
+  0.25: bodies brush. `SQUEEZE_CLEAR` 2.05 m middle to line; a squeeze only from
+  `SQUEEZE_FROM` (14 m) back (from 7 m the swing in was too sharp and racer's corner went
+  0.4-0.8 m into the car beside the gap); a retry keeps the gap it chose (`_race_sq_shift`:
+  it took the other gap and asked other cars to move). Through at `SQUEEZE_V` (8 m/s).
+- **The bend's directions from the plan as it was** (`orig`), in the queue pass, and fixed
+  the same in `_ap_squeeze_by` (the van squeeze). Bent in place, each point's way read from
+  the one before, already moved, leant the push along the road: 3.2 m over, the way out sat
+  0.1 m off the plan. Told the racer session, which fixed `_ap_race_by` and `_ap_pass_bus` the
+  same way (its `CARS=1 LANE=1` repro now PASS).
+- After: `TWO_WAY=1 CARS=3` 6 of 6 through, 0 s standing; `CARS=3` 4 of 4; `ALL_LANES=1
+  CARS=2` 2 of 6 (0.06 m into a car at most) -- Ashdod's 10 m three-lane boulevards and
+  Katznelson still refuse: open (the squeeze is taken there and racer stays held; look at
+  what `lead_on` reads after it). racer.gd alone: racer 0 crashes, 140 s across (main 181 s).
+- **The test's staging**: a car's lane set after `_start_on` jumped its nose a lane over and
+  left its back -- the car stood 58 degrees across the road (now `rear = INF`, `_place`); and
+  the cars were put on the nearest middle, near the line the crossing street's.
+- **Traffic sees the player's corners** (traffic.gd, after the lead loop): by its middle
+  only, autodrive held at a give-way line with its nose over it was outside `PLAYER_W`, and
+  "squeezing past" skipped the player altogether -- the test town's (-546, 405), 3-6 a run,
+  "autodrive in a car ... 0.3 m in, held by junction". Each corner in the lane with a hand's
+  breadth (squeezing too). And **a car standing across my way near by, by its corners**
+  (waiting at a give-way line as another turns in past it): the test town's HaKalanit off
+  Derekh HaHarim (-639, 224), 8-10 overlaps a run.
+- **Buses' backs cut inside bends** by wheelbase^2/2R -- 0.72 m at 34 m, Givatayim (544,
+  -910), `tests/bus_bends.gd`. `Car.track`: the front steered out by half the back's cut in,
+  as a driver does, faded out under 20 m of radius (on tight turns the front overhang
+  already swings out: pushed further, HaAtzmaut's 8 m turn went 0.70 -> 0.93 m). bus_bends at
+  the exams' spots, Givatayim: 11 -> 5, no back inside a bend left; the rest fronts on 8 m
+  turns just past a junction disc (real buses swing wide there too: the check's slack) and
+  small cars' backs on straights (not looked at). A second set of spots ((441, -786),
+  (-347, -915), (551, -907), 200 s each): mine 12, main 14 -- buses 4 to 1 there, fronts
+  swinging out toward the kerb on 15-29 m left bends. Pushing only left (into the road) was
+  tried and dropped: on a one-way street both sides are kerbs (a back still cut 1.28 m in on
+  a left bend, 15 vs 14). Open: push out only where there is asphalt to swing into, by the
+  road's edges, not by left or right. Most of what remains at (551, -907) is cars in the
+  left lane of a curving one-way street (shift 2.0-2.7), main and mine alike.
+- Exams after (1x, three at once, two rounds): test town 8, 4 (before 6-13; neither of the
+  two spots above shows up); Givatayim 17, 24 (14-17; mostly traffic into posts 7-9 and off
+  the asphalt 8-11); Ashdod 27, 18 (15-26 on the same code before). Noisy -- the same code
+  read 15 and 26 one night -- so no change claimed for Givatayim and Ashdod.
+  `van_pass`, `auto_stands`, `traffic_dead_end` (alone) PASS.
+- racer.gd is chaotic to any change in traffic: plain autodrive touched a post at 5 km/h on
+  Moshe Dayan's curve with these changes (main: 0); with the player-corner check off, the
+  same post at 10 km/h by racer; with the bus fix off, a car on Kaf-Gimel -- a different
+  stray touch each time, none that repeats. Judge it by several drives, not one.
+
 ## Open problems
 
 - **22 Nov, the second round of general bugs** (each with the test that measured it):
