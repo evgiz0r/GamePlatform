@@ -240,49 +240,6 @@ func _shelter(b, p: Vector2, sub: int, seed: int) -> void:
 	lb.visibility_range_end = 60.0
 	g.world.add_child(lb)
 
-## ---- models made with Blender (tools/blender_model.sh), stamped into a square's batch ----
-## A model's triangles go into the same buffer as the boxes around it -- no node, no draw of
-## its own. Each surface is coloured by its material's ROLE (kit.py's names): "paint",
-## "paint2", "paint3" from `cols` (this yard's colours), the rest from the street's tones.
-const MODELS := "res://assets/models/made/"
-var _model_tris := {}         ## model -> [[role, PackedVector3Array verts, PackedVector3Array normals], ...]
-
-func _model(name: String) -> Array:
-	if _model_tris.has(name):
-		return _model_tris[name]
-	var out: Array = []
-	var ps := load(MODELS + name + ".glb") as PackedScene
-	if ps == null:
-		push_warning("places: no model %s%s.glb (tools/blender_model.sh makes it)" % [MODELS, name])
-		_model_tris[name] = out
-		return out
-	var root := ps.instantiate()
-	for mi: MeshInstance3D in root.find_children("*", "MeshInstance3D", true, false):
-		var xf := mi.transform
-		var p := mi.get_parent()
-		while p != null and p != root and p is Node3D:
-			xf = (p as Node3D).transform * xf
-			p = p.get_parent()
-		var mesh: Mesh = mi.mesh
-		for si in range(mesh.get_surface_count()):
-			var arr := mesh.surface_get_arrays(si)
-			var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
-			var nn: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
-			var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX] if arr[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
-			var m := mesh.surface_get_material(si)
-			var role := String(m.resource_name) if m != null else ""
-			var tv := PackedVector3Array()
-			var tn := PackedVector3Array()
-			var count := idx.size() if not idx.is_empty() else v.size()
-			for k in range(count):
-				var i := idx[k] if not idx.is_empty() else k
-				tv.append(xf * v[i])
-				tn.append((xf.basis * nn[i]).normalized() if i < nn.size() else Vector3.UP)
-			out.append([role, tv, tn])
-	root.free()
-	_model_tris[name] = out
-	return out
-
 func _role_col(role: String, cols: Dictionary) -> Color:
 	if cols.has(role):
 		return cols[role]
@@ -301,12 +258,7 @@ func _role_col(role: String, cols: Dictionary) -> Color:
 			return g._real_col("green")
 	return g._real_col("white")
 
+## a model made with Blender (models.gd) into the yard's batch: "paint" roles from `cols`
 func _stamp(b, name: String, at: Transform3D, cols: Dictionary) -> void:
-	for surf: Array in _model(name):
-		var col := _role_col(String(surf[0]), cols)
-		var tv: PackedVector3Array = surf[1]
-		var tn: PackedVector3Array = surf[2]
-		for k in range(0, tv.size() - 2, 3):
-			var nrm := (at.basis * (tn[k] + tn[k + 1] + tn[k + 2])).normalized()
-			b.tri(at * tv[k], at * tv[k + 1], at * tv[k + 2], nrm, col)
+	g._models.stamp(b, name, at, func(role: String) -> Color: return _role_col(role, cols))
 	count["models"] = int(count.get("models", 0)) + 1
