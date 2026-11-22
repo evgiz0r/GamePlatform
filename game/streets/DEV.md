@@ -3911,13 +3911,31 @@ resumes the city) once nothing within `NEAR_FIRST` is bare, `MIN_S` 4 s at least
 car was shown; the opening ran 8.8 s and came down with 0; the city running after (PASS).
 Shots: up there at 1 and 3 s, at the car 3 s after landing.
 
+**The towns' stories** (`cities/stories/<town>.json`, one per baked Israeli town and Bedford;
+none yet for the made-up town or Delft). Written from Wikipedia (English and Hebrew),
+Wikivoyage, the towns' pages and a few news pieces, in our own words (CC BY-SA sources:
+paraphrased and credited; the others for facts only), each with its `sources`: `tagline`,
+14 `lines` of at most ~90 characters (captions), `known_for`, `history`, `neighbourhoods`
+(name, mood), `streets` (who each main street is named for -- the names as the city file's
+`name_en`), `food`, `rhythm`. The opening shows the tagline, then the lines shuffled, one each
+`STORY_S` (3.4 s), and stays up for two at least; the credit line under it is built from the
+sources (Wikipedia / Wikivoyage, CC BY-SA, "news and guides"). Loaded as a JSON resource when
+imported, else read as a file (as the city files are, which the web build carries).
+`tests/opening.gd` checks two lines or more were shown where the town has a story.
+
 **Models made with Blender** (`tools/blender_model.sh`, recipes in `tools/blender/recipes/`,
 the kit-wide notes in CLAUDE.md "Making 3D models"). `places.gd` stamps them into a square's
 batch (`_stamp`: each surface's triangles into the CBuf, coloured by its material's role --
 "paint" from the yard's colours, "metal" etc. from the street's tones), so a model adds no
 draw. In each kindergarten's yard: `slide` and `spring_rider` (336 and 684 faces; 288 placed
 in level 1). The glTF import keeps the Blender material's name as the surface material's
-`resource_name`: that is what `_role_col` reads.
+`resource_name`: that is what `_role_col` reads. Then (asked for: "9") `models.gd`, shared:
+`tris` (a model's triangles by role, loaded once), `stamp` (into one buffer, a colour per
+role) and `stamp_into` (each role into a palette-role buffer, white: the buffer's material
+colours it, so a new look recolours the model). The parks' playgrounds (`_playground`) are
+now the made `slide`, `swings`, `climber` and `seesaw` round the sandpit on the soft floor
+(`PLAY_ROLES`: paint -> warn, paint2 -> player, paint3 -> accent, metal/rubber -> pole):
+level 1, 45 playgrounds; `tests/places.gd` shoots one from above and at eye height.
 
 ## Open problems
 
