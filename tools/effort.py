@@ -149,6 +149,8 @@ def commits():
 def game_of(h):
     names = set()
     for f in git("show", "--name-only", "--format=", h).splitlines():
+        if f.endswith("EFFORT.md"):
+            continue   # (this tool's own tables: a commit of them is no game's work)
         m = re.match(r"game/([^/]+)/", f)
         if m:
             names.add(m.group(1))
@@ -247,6 +249,9 @@ def main():
         return
     groups = {}
     for r in out:
+        files = [f for f in git("show", "--name-only", "--format=", r["hash"]).splitlines() if f]
+        if files and all(f.endswith("EFFORT.md") for f in files):
+            continue   # (a commit of the tables alone)
         gs = game_of(r["hash"])
         for gname in (gs or [""]):
             groups.setdefault(gname, []).append(r)
