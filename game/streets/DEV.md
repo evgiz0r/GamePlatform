@@ -4033,6 +4033,33 @@ level 1, 45 playgrounds; `tests/places.gd` shoots one from above and at eye heig
     Givatayim (LEVEL=1) before -> after: out again 19-36.5 -> 15-29 s. Open, the same before
     the change: Mandelkern (-1177, 437) hits post 90747 at 6-7 km/h after turning, 1.7 m past
     the asphalt; Yoqneam (-1297, -702) never moves (set down 53 m short, plan never made).
+- **22 Nov, the third round (Givatayim knocks, feet, dead ends):**
+  - `drive_bumps` prints each knock or hit with the car's last 3 s (where, speed, steer, the
+    plan's why, the road and its edge) and takes `ONLY=`. Its starts were the middle point of
+    a road's points -- for a two-point road its end, a junction's middle: both Givatayim
+    knocks (Eilat by Yitzhak Rabin, HaShalom's crossing) were the car set down there, turning
+    full lock from a standstill into a corner post. Starts are halfway along by length now,
+    roads of 30 m and more. Givatayim and Tel Aviv: 0 knocks, 0 hits (covers 3.5 and 1.9 a km).
+  - Autodrive switched on at a junction planned along whichever road was nearest, the one
+    across it too (`_ap_plan`): now the road 5 m ahead when that one runs the car's way.
+  - **Feet** (`tests/foot_slide.gd`: the real walkers of a town, each foot bone in the world,
+    how fast it moves while planted -- within 3 cm of its lowest). Every walk clip's speed was
+    pace / 1.35, but the clip's feet cover ~0.97 m/s at x1 (0.87-1.17; ~1.95 hip heights a
+    second, the planted foot's speed back past the body): played ~30% slow, the planted foot
+    slid forward 16.5 cm a step on average, 10 of 24 walkers 10 cm or more (good: under ~3,
+    10 and up reads as skating). WALK_CLIP_V = 0.97 everywhere: 4.6 cm, 2 of 24. Left: the
+    spread between figures (by hip height: ~5% more could go); YOU on foot walk at WALK
+    2.1 m/s with the clip at x1 (~1.1 m/s of slide) -- matched, the steps would be twice as
+    quick (a shuffle); a longer stride needs the run clip sooner or a blend: a look question
+    for the user. The run clip (/ 3.4) is not measured.
+  - `dead_end_turns`: Yoqneam (-1297, -702) was "not out": it is a dead end 24 m from the
+    map's edge, which autodrive keeps out of (EDGE_DEAD) -- it drove away, rightly; counted
+    as that now. Mandelkern (-1177, 437): the turn is clean; the car hits a tree on the corner
+    pavement (-1204.7, 433.5) turning right out of it into one-way HaHaskala -- pure pursuit
+    (look-ahead >= 3.5 m) cuts a tight right turn, and the lane's corner itself passes ~1.2 m
+    from the tree (1.25 needed). The corner family, with Ashdod's trunk curves: not fixed.
+    `edge_pocket.gd POSTS=1 POSTS_FROM=1` lists the posts and walls at a spot and who put
+    each post up.
 - **Loading steps** (user, 22 Nov: "an inner progress, like 2/12"): the city file names its
   11 parts ("reading the map: the roads (4 of 11)", `_load_part`, a frame each -- so
   `_load_city` is a coroutine now: `await` it; prepublish does) and each square round the

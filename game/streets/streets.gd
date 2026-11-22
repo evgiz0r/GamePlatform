@@ -1160,6 +1160,11 @@ var _car_at := Vector2.ZERO          ## where the car was left, and how
 var _car_yaw_at := 0.0
 var _car_y_at := 0.0
 const WALK := 2.1                    ## m/s: a brisk walk (1.45, a stroll, was too slow to get anywhere)
+## m/s the walk clip's feet cover at x1, on the figures as built (tests/foot_slide.gd: the
+## planted foot's speed back past the body, 0.87-1.17, ~1.95 hip heights a second). Taken
+## to be 1.35, every walker's clip played ~30% slow and the planted foot slid forward
+## 16 cm a step on average, up to 50 (user, 22 Nov: "is movement in our realism?")
+const WALK_CLIP_V := 0.97
 const RUN := 6.2
 const TURN_ON_FOOT := 2.6            ## rad/s
 var _look_turn := 0.0                ## the driver's glance into a turn
@@ -16405,7 +16410,7 @@ func _film_begin(id: String) -> void:
 		a.face(Vector3(fd.x, 0, fd.y))
 		var moving := B != A
 		var pace: float = A.distance_to(B) / maxf(float(tt[1]) - float(tt[0]), 0.01)
-		a.play("Walk" if moving else "Idle", true, pace / 1.35 if moving else 1.0)
+		a.play("Walk" if moving else "Idle", true, pace / WALK_CLIP_V if moving else 1.0)
 		a.visible = not moving
 		# `talk`: one of a group standing talking -- no clip for it, so the body does it: turning a
 		# little to the one spoken to and back, now and then a wider turn (as the film's do)
@@ -16607,7 +16612,7 @@ func _film_tick(dt: float) -> void:
 			w["film_ahead"] = float(w.get("film_ahead", 0.0)) + dt
 			if float(w["film_ahead"]) > 4.0 and float(w["speed"]) < 1.9:
 				w["speed"] = 1.9
-				wa.anim.speed_scale = 1.9 / 1.35
+				wa.anim.speed_scale = 1.9 / WALK_CLIP_V
 		else:
 			w["film_ahead"] = 0.0
 	while _film_sent < _film_cars.size() and _film_t >= float(_film_cars[_film_sent][0]):
@@ -18701,7 +18706,7 @@ func _place_walker(w: Dictionary, anywhere: bool, why := "") -> void:
 			w.erase(k)
 		w["dodge"] = 0.0
 		w["dir"] = 1.0 if _people_rng.randf() < 0.5 else -1.0
-		a.play("Walk_Carry" if w["carry"] else "Walk", true, float(w["speed"]) / 1.35)
+		a.play("Walk_Carry" if w["carry"] else "Walk", true, float(w["speed"]) / WALK_CLIP_V)
 		a.visible = true
 		return
 	a.visible = false
@@ -18896,7 +18901,7 @@ func _walker_anim(w: Dictionary, a: Actor3D, p: Vector2, dt: float) -> void:
 		walking = true
 	var clip := ("Walk_Carry" if w["carry"] else "Walk") if walking else "Idle"
 	if clip != String(w.get("anim_clip", "")) or walking:
-		a.play(clip, true, clampf(v, 0.6, 1.8) / 1.35 if walking else 1.0)
+		a.play(clip, true, clampf(v, 0.6, 1.8) / WALK_CLIP_V if walking else 1.0)
 		w["anim_clip"] = clip
 	w["anim_walk"] = walking
 
@@ -19450,7 +19455,7 @@ func _people_tick(dt: float) -> void:
 						w["dir"] = -float(w["dir"])
 		if not at_kerb and w.has("kerb_t"):
 			w.erase("kerb_t")
-			a.play("Walk_Carry" if w["carry"] else "Walk", true, float(w["speed"]) / 1.35)
+			a.play("Walk_Carry" if w["carry"] else "Walk", true, float(w["speed"]) / WALK_CLIP_V)
 		w["s"] = s
 		var p := _along(line, cum, s)
 		var ahead := _along(line, cum, clampf(s + float(w["dir"]) * 0.5, 0.0, total)) - p
@@ -20123,7 +20128,7 @@ func _crossers_tick(dt: float) -> void:
 						and not _box_waiting(cr, (from + to) * 0.5) \
 						and not _kept_waiting((from + to) * 0.5, from.distance_to(to) * 0.5):
 					cr["state"] = "cross"
-					a.play("Walk", true, float(cr["speed"]) / 1.35)
+					a.play("Walk", true, float(cr["speed"]) / WALK_CLIP_V)
 			"cross", "back":
 				var w := from.distance_to(to)
 				var sp: float = cr["speed"] * (2.4 if state == "back" else 1.0)
@@ -20145,7 +20150,7 @@ func _crossers_tick(dt: float) -> void:
 					# over (or back): off along the pavement, gone once out of the way
 					cr["state"] = "away"
 					cr["t"] = 12.0
-					a.play("Walk", true, float(cr["speed"]) / 1.35)
+					a.play("Walk", true, float(cr["speed"]) / WALK_CLIP_V)
 					_away_from(cr, z)
 			"away":
 				cr["t"] = float(cr["t"]) - dt
@@ -22858,6 +22863,18 @@ func _ap_plan() -> void:
 			hit = _nearest_seg(way[way.size() - 1], 12.0, true, true)
 			if hit.is_empty():
 				return
+	# at a junction the nearest road can be the one across it: planned along that, the car
+	# turned full lock from a standstill and cut the corner into its post (Givatayim's Eilat
+	# by Yitzhak Rabin, HaShalom's crossing: tests/drive_bumps.gd). The road just ahead of the
+	# car, if that one runs its way, instead.
+	var hp: PackedVector2Array = (_roads[hit["road"]] as Dictionary)["pts"]
+	var al := absf((hp[int(hit["seg"]) + 1] - hp[int(hit["seg"])]).normalized().dot(heading))
+	if al < 0.7:
+		var ahead := _nearest_seg(_pos + heading * 5.0, 8.0, true, true, _y)
+		if not ahead.is_empty():
+			var ap: PackedVector2Array = (_roads[ahead["road"]] as Dictionary)["pts"]
+			if absf((ap[int(ahead["seg"]) + 1] - ap[int(ahead["seg"])]).normalized().dot(heading)) > maxf(al, 0.7):
+				hit = ahead
 	var ri: int = hit["road"]
 	var sj: int = hit["seg"]
 	var r: Dictionary = _roads[ri]
