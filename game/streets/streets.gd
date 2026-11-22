@@ -1565,8 +1565,20 @@ func _load_line() -> String:
 	s += " city file %.1f · start area %.1f · graphics %.1f" % [
 		_load_split[0] / 1000.0, _load_split[1] / 1000.0, _load_split[2] / 1000.0]
 	if _load_gl.x >= 0.0:
-		s += " (%d shaders, %.1f s compiling)" % [int(_load_gl.x), _load_gl.y / 1000.0]
+		s += " (%d shaders, %.1f s compiling%s)" % [int(_load_gl.x), _load_gl.y / 1000.0, _lstrip_note()]
 	return s
+
+## ", N skipped" -- the never-drawn programs LIGHT_STRIP_JS swapped for a placeholder -- and
+## loudly if one was ever drawn with (it should not be: see LIGHT_STRIP_JS)
+static func _lstrip_note() -> String:
+	if not OS.has_feature("web"):
+		return ""
+	var v = JavaScriptBridge.eval("window.__lstrip ? window.__lstrip.n + ',' + window.__lstrip.used : ''", true)
+	var t := str(v) if v != null else ""
+	if t == "":
+		return ""
+	var used := int(t.get_slice(",", 1))
+	return ", %s skipped%s" % [t.get_slice(",", 0), ", PLACEHOLDER DRAWN %d" % used if used > 0 else ""]
 static var _loads_this_visit := 0
 var _first_load := false
 
@@ -1692,7 +1704,7 @@ const LIGHT_STRIP_JS := """(() => {
 				? v + '\\nvoid main() { gl_Position = vec4(0.0); }\\n'
 				: v + '\\nprecision mediump float;\\nout vec4 frag_color;\\nvoid main() { frag_color = vec4(1.0, 0.0, 1.0, 1.0); }\\n';
 			fake.add(s);
-			c.n += 1;
+			if (types.get(s) !== this.VERTEX_SHADER) c.n += 1;   // programs, not halves
 		}
 		return ss.call(this, s, src);
 	};

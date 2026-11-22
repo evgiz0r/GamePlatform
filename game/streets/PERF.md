@@ -178,3 +178,17 @@ can't break the game, 5 = can break it on some devices. Ordered by the pick.
 | 6 | Draws: quality levels that drop shadow casters and far detail | 4 | 4 | 3 | 500-800 draws and no level lowers them; the quality ladder can't help a weak device |
 | 7 | Bake more of the city file at publish (widths, buildings cut, divided roads) | 3 | 2 | 2 | ~1 s of Tel Aviv's load; already a pattern (`prepublish.gd`) |
 | 8 | Parallel compiling (source list made at publish + redirecting Godot's programs) | 5 | 3 | 4 | measured 3.3x on the remaining compile, but deep in the page's GL layer |
+
+**Step 1 done (22 Nov 2026):** `tests/web_shaders.js` ends with two CHECK lines -- no default
+lit program reached the driver, nothing drawn with a placeholder -- and exits 1 on a FAIL.
+The load line says it too: "(143 shaders, 10.0 s compiling, 96 skipped)", and "PLACEHOLDER
+DRAWN n" if the assumption ever breaks (96: the 42 lit defaults and their depth-pass
+defaults, also never drawn). Not run here (no Playwright on the user's PC); the cloud
+containers have it.
+
+**Step 2, how to measure on a phone:** after a publish, open the site on the phone (if it
+says "new version ready", tap it -- that is the cold case for anything whose shaders
+changed); pick a city; screenshot the line under the map within 8 s of the car appearing
+("loaded in ... (N shaders, X s compiling, M skipped)"); open "more" > "perf view" and
+screenshot it after a minute of driving. Note the phone's model and browser. Put the numbers
+under "Where things stand".
