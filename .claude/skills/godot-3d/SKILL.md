@@ -337,7 +337,25 @@ is rarely the one you would guess. What cost the most, in order, last time one d
   frame rate did not rise, what holds the frame is not what the levels change (draw calls,
   the script on the browser's one thread), so go back up to the best-looking level that ran
   about as fast, and stay there a while -- a PC sat at the bottom, plain and blurred, at the
-  same 25 fps it had at the top.
+  same 25 fps it had at the top. **Pause the watching only for a burst, never for a phase
+  that lasts.** Pausing it "while the world still builds in the background" sounds fair, but
+  a slow machine is exactly where that build takes longest: a laptop at 7 fps stood at 8% of
+  the build after five minutes -- most of an hour to go -- and the ladder never ran once.
+  Leave out the short catch-up round the player, not the long tail. **And give the lowest
+  levels something that lowers the draw count.** MSAA, 3D resolution and shadow reach are
+  pixels: a browser held back by its CPU (each draw call ~0.1 ms on a slow laptop: WebGL's
+  checks, ANGLE, the engine in wasm) gains nothing from them -- the bottom level drew 3% fewer
+  calls than the top. Scaling every long draw range (`visibility_range_end`, and `_begin` of
+  a far version by as much, so the two still meet) and thickening the fog by the same factor
+  cut a quarter of the draws with no shader changed. Keep each node's own ranges in its meta,
+  and catch what is built later by the world's child count.
+- **Reading a frame that runs several physics ticks.** At 60 ticks a second the script's
+  work per real second is fixed whatever the frame rate, so a slow frame does not dilute it:
+  frame time = drawing / (1 - the script's share of each second). A script that eats half of
+  every second doubles the drawing's frame (68 ms of drawing became 135 ms frames, 7.9
+  ticks each, against the engine's cap of 8). Both halves have to shrink, and the drawing
+  alone sets the floor (68 ms: under 15 fps with no script at all). Measure the script per
+  tick, not per frame, to compare two machines.
 - **A time of day, a weather, any look switched at a button: change uniforms, never the
   light setup or the environment's switches.** Every material's shader is compiled per
   scene-wide case, and the browser compiles a material's version the first time it draws
@@ -399,8 +417,19 @@ is rarely the one you would guess. What cost the most, in order, last time one d
     its pause runs later, in another square's context. List the coroutines and grep their
     calls. Pause on a signal the game itself emits once a frame, not `process_frame`: when
     the game is left mid-build, its own signal dies with it and the coroutine just stops.
-  - Turn off the frame-rate quality watcher while building: the build is not the machine
-    being slow. Check the result by comparing every item count with the old build.
+  - Turn off the frame-rate quality watcher for the build's first burst only (the squares
+    round the player, seconds): a slow machine is slow building too, and a watcher off for
+    the whole build never steps down there (the ladder bullet above). Check the result by
+    comparing every item count with the old build.
+  - **A budget of milliseconds a frame starves a slow machine.** At 12 fps a frame's 1.5 ms
+    is a fifth of the building a second that 60 fps gets, and every one of them comes off a
+    frame with nothing to spare: a big city's far squares, out of sight, would have taken
+    ~25 minutes, its "building 30%" read by the player as a load that never ends. Build in
+    a hurry what is in sight (scaled with the draw range the quality level keeps), and on
+    slow frames let the rest wait until the player nears it -- or build it at full speed
+    when nobody is watching the frames (paused, a map view). Say on screen only what is
+    left within sight. Test the pace headless with `--fixed-fps 12`: each frame then gets
+    that frame's budget and 1/12 s of game time, as the slow machine's does.
 - **Kilometres of small dressing cost in the checks, not the triangles.** A fence or hedge
   along every front garden, laid by the helper that checks each 2.5 m piece for roads and
   houses, doubled a build stage. Timed piece by piece, the look for the nearest road was

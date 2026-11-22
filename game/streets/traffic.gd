@@ -361,7 +361,11 @@ func tick(dt: float) -> void:
 		# tick for every car was most of traffic's time.
 		# (and one far off, out of sight, every sixth tick: nobody sees it think)
 		# (fewer ticks apart when each tick stands for two of the game's: `ticks_per`)
-		var every := ceili(float(3 if c.pos.distance_squared_to(me) < 120.0 * 120.0 or _in_view(c.pos) else 6) / ticks_per)
+		# (a slow device, streets.gd's `_slow_frames`: half as often again, ~7.5 a second near.
+		# Its traffic ticks every 4th game tick, so 3 / 4 made it every tick -- deciding as often
+		# as at full speed, while all else slowed: "traffic: follow" was 12.5 ms of a work
+		# laptop's 135 ms frame. A test run at 3x already decides every 150 ms of game time.)
+		var every := ceili(float((3 if c.pos.distance_squared_to(me) < 120.0 * 120.0 or _in_view(c.pos) else 6) * (2 if g._slow_frames else 1)) / ticks_per)
 		if c.want < 0.0 or (i + _tick_n) % every == 0:
 			c.want = _target(c, i, dt * (1.0 if c.want < 0.0 else float(every)))
 		var vt := c.want

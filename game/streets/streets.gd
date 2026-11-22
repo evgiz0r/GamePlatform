@@ -1307,6 +1307,7 @@ const MORE_BTN := Rect2(566, 98, 44, 22)     ## the drawer of set-once switches
 const FOLD_BTN := Rect2(612, 98, 20, 22)     ## "–": every button folded away but one "show" (_hud_folded); the user: "not take too much of the screen, or collapsible easily"
 const SHOW_BTN := Rect2(566, 98, 66, 22)     ## folded: the one button left, unfolds them
 const VIEW_BTN := Rect2(566, 124, 66, 22)    ## the camera, round: chase, seat, above the city (keys C, Z)
+const PERF_BTN := Rect2(8, 70, 66, 22)       ## the frames a second, live; a tap opens the perf view under it and closes it (above its graph, PERF_GRAPH) (the user, 22 Nov: "a quick performance button", not "more" then "perf view")
 ## (no lights button: the user, 22 Nov, "remove lights ui, its not a thing" -- key L only)
 ## (the indicators and the horn are keys only, Q / E and H: on screen they were clutter)
 const STICK_C := Vector2(556, 268)   ## the touch stick sits still, here, on the right
@@ -1409,6 +1410,8 @@ func start(_config: Dictionary) -> void:
 		return
 	_stage_ms["warm up (shaders compiled, 4 frames)"] = Time.get_ticks_msec() - tw
 	print("[streets] warm-up done in %d ms, frames %s" % [Time.get_ticks_msec() - tw, _warm_ms])
+	if _qwalk > 0.0:
+		_quality_walk()
 	_load_ms = Time.get_ticks_msec() - t0
 	_load_split = [t1 - t0, tw - t1, Time.get_ticks_msec() - tw]
 	_load_gl = _gl_count() - gl0 if gl0.x >= 0.0 else Vector2(-1, 0)
@@ -2875,8 +2878,18 @@ const CATCH_UP_US := 16000           ## the same while a square within NEAR_FIRS
 ## at BUILD_FAR_US a frame while you drive (full speed again from above, or paused): nothing
 ## you can see waits for it, and the frames keep their milliseconds. Tel Aviv's whole city took
 ## 4-6 ms of every frame for ~11 minutes on a user's PC (21 Nov), most of it squares out of sight.
+## SEE_M is at full reach: the weak machine's levels draw less far (QUALITY's reach), and as
+## much less of the town needs building first (_see_m).
+## On slow frames (_slow_frames: a work laptop's browser at 10-20 fps) the far squares wait
+## altogether while you drive (_far_hold): there 1.5 ms a frame built Tel Aviv's 150 squares in
+## ~25 minutes ("building the city 30%" after minutes, 22 Nov), every one of those milliseconds
+## and the build's overruns taken from a frame that had none to spare, for squares nobody saw.
+## They are built when the car comes near them, or from above and paused at full speed.
+## tests/build_pace.gd: at 12 fps everything within 900 m was up in 3 minutes, the car never in
+## a bare square.
 const SEE_M := 900.0
 const BUILD_FAR_US := 1500
+var _far_held := false               ## the far squares waiting (_far_hold): the perf view says so
 var _seen_built := false             ## every square within SEE_M of the car is built (looked at twice a second)
 var _seen_at := 0
 var _catch_up := false               ## a square within NEAR_FIRST of the car is still bare: building at CATCH_UP_US
@@ -2953,10 +2966,34 @@ func _all_seen_built() -> bool:
 	_seen_at = now
 	_seen_built = true
 	for t: Vector2i in _tiles_todo:
-		if _tile_dist(t, _pos) < SEE_M:
+		if _tile_dist(t, _pos) < _see_m():
 			_seen_built = false
 			break
 	return _seen_built
+
+func _see_m() -> float:
+	return SEE_M * _reach
+
+## a slow machine, driving: the squares out of sight wait (SEE_M)
+func _far_hold() -> bool:
+	return _slow_frames and not _paused and _zoom_v <= 0.0 and not _catch_up and _all_seen_built()
+
+## the line under the street count: only while squares within sight are still to build (the
+## far ones are nobody's wait: the whole city's percentage read as a load that never ended).
+## With the perf view up, the whole city instead (_tick_hud).
+var _build_near_txt := ""
+func _build_label(now = null) -> void:
+	var n := 1 if now != null and _tile_dist(now, _pos) < _see_m() else 0
+	for t: Vector2i in _tiles_todo:
+		if _tile_dist(t, _pos) < _see_m():
+			n += 1
+	_build_near_txt = ("building the town round you · %d square%s to go" % [n, "" if n == 1 else "s"]) if n > 0 else ""
+
+func _build_far_txt() -> String:
+	if not _bg_build or _build_total <= 0:
+		return ""
+	return "city %d of %d squares built%s" % [_tiles_done.size(), _build_total,
+		" · the far ones wait while frames are slow" if _far_held else ""]
 
 func _tile_dist(t: Vector2i, p: Vector2) -> float:
 	var r := _tile_rect(t)
@@ -3454,10 +3491,19 @@ func _build_rest() -> void:
 		_bstep = "far shadows"
 		await _far_now()
 	while is_inside_tree():
+		var held := 0
+		while _far_hold() and not _tiles_todo.is_empty() and is_inside_tree():
+			_far_held = true
+			if held % 30 == 0:
+				_build_label()
+			held += 1
+			await get_tree().process_frame
+		_far_held = false
 		var t = _next_tile()
 		if t == null:
 			break
 		_catch_up = hurry and (_tile_dist(t, _pos) < NEAR_FIRST or _bare_near())
+		_build_label(t)
 		await _build_tile(t)
 		n += 1
 		if hurry and not _bare_near():
@@ -3468,14 +3514,12 @@ func _build_rest() -> void:
 			Probe.event("near_built", {"ms": _catch_up_ms, "squares": n})
 			_bstep = "far shadows"
 			await _far_now()
-		if _build_lbl != null:
-			_build_lbl.text = "building the city %d%%" % int(100.0 * _tiles_done.size() / maxf(_build_total, 1.0))
+		_build_label()
 	_bstep = "far shadows"
 	await _far_now()   # (if it has not come yet: before the city file below is let go)
 	await _far_both()   # (and the other sun's: drawn later, from what is let go, it failed)
 	_bstep = "letting go of the city file"
-	if _build_lbl != null:
-		_build_lbl.text = ""
+	_build_near_txt = ""
 	# what was only for building -- the file, the outlines, the squares' lists -- let go of a
 	# little a frame (all at once, it took a frame and a half)
 	for key: String in _city_data.keys():
@@ -16144,7 +16188,7 @@ func _retint_city() -> void:
 		env.ambient_light_color = bg.lerp(ink, 0.32).lerp(pl, 0.14)
 		env.ambient_light_energy = 0.38
 		env.fog_light_color = haze
-		env.fog_density = FOG_NIGHT
+		env.fog_density = _fog_night()
 		sun.light_color = ink.lerp(pl, 0.15)   # the moon
 		sun.light_energy = 0.14
 		sun.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY   # no sun disc in a night sky
@@ -17937,6 +17981,7 @@ func _frame() -> void:
 		_p("building")
 	_slow_watch(dt)
 	_watch_fps(dt)
+	_reach_update()
 	_hold_tick(dt)
 	if _standins != null:
 		_standins.show(_zoomed())
@@ -17980,11 +18025,14 @@ func _frame() -> void:
 ## the browser compile every material's shader again (with the sun's shadows on or off they are
 ## different shaders), a freeze of seconds on each step between levels 1 and 0 -- and the
 ## ladder steps back up when the frame rate recovers, and down again. A user saw 3.2 s.
+## The last two: how far things are drawn (every draw range of REACH_FROM m or more, scaled) and
+## how thick the haze is (so the town ends in it, not at an edge) -- see "a weak machine's
+## levels" below. Levels 2 and 3 draw everything as built.
 const QUALITY := [
-	[Viewport.MSAA_DISABLED, 25.0, 0.7],
-	[Viewport.MSAA_DISABLED, 45.0, 0.85],
-	[Viewport.MSAA_2X, 60.0, 1.0],
-	[Viewport.MSAA_4X, 75.0, 1.0],
+	[Viewport.MSAA_DISABLED, 25.0, 0.7, REACH_0, 1.0 / REACH_0],
+	[Viewport.MSAA_DISABLED, 45.0, 0.85, REACH_1, 1.0 / REACH_1],
+	[Viewport.MSAA_2X, 60.0, 1.0, 1.0, 1.0],
+	[Viewport.MSAA_4X, 75.0, 1.0, 1.0, 1.0],
 ]
 const QUALITY_WEB := 2               ## where a browser starts
 ## A step down: two 2-second spells in a row under FPS_LOW, or with more than STUTTER of their
@@ -18028,6 +18076,32 @@ var _q_on_trial := false
 var _q_floor := 0                    ## no step below this level ...
 var _q_floor_until := 0.0            ## ... until then (s, _q_clock): lower bought nothing
 
+## "--quality-walk=S" among the user args (tests/web_shaders.js QWALK=S): the ladder held off,
+## and every S seconds after the warm-up the quality set to the next of QWALK_LEVELS, each
+## step printed -- to count what a step costs a browser (the programs it compiles). A work
+## laptop's first drive with the ladder working froze 13.7 s once, 107 programs compiled after
+## the car (22 Nov): a step that changes every material's shader would do that.
+const QWALK_LEVELS := [1, 0, 1, 2, 3, 2]
+var _qwalk := float(_user_arg("--quality-walk=")) if _user_arg("--quality-walk=") != "" else 0.0
+
+static func _user_arg(prefix: String) -> String:
+	for a: String in OS.get_cmdline_user_args():
+		if a.begins_with(prefix):
+			return a.substr(prefix.length())
+	return ""
+
+func _quality_walk() -> void:
+	# (by the clock, not a game timer: a frame advances game time at most 8 ticks, 0.13 s, and
+	# the container's software renderer takes ~2.5 s a frame -- 25 s of timer was 8 minutes)
+	for q: int in QWALK_LEVELS:
+		var at := Time.get_ticks_msec() + int(_qwalk * 1000.0)
+		while Time.get_ticks_msec() < at:
+			await get_tree().process_frame
+			if not is_inside_tree():
+				return
+		print("[streets] quality walk: to %d" % q)
+		_set_quality(q)
+
 func _set_quality(q: int) -> void:
 	if OS.has_feature("web") and not _shadow_web:
 		# a 2048 map is plenty over 60 m, and a cheap filter: the 4096 default and its soft
@@ -18043,17 +18117,95 @@ func _set_quality(q: int) -> void:
 	sun.shadow_enabled = float(row[1]) > 0.0
 	sun.directional_shadow_max_distance = maxf(float(row[1]), 1.0) if not _night else 1.0   # (the moon's: none to speak of, _set_night)
 	view.scaling_3d_scale = row[2]
+	_reach_set(float(row[3]))
+	_fog_k = float(row[4])
+	if env != null and _zoom_v <= 0.0:
+		env.fog_density = _fog_night() if _night else _fog_day()
 	_set_blobs(not sun.shadow_enabled)
 	_far_update()
 	_grass_quality()
 
+## ---- a weak machine's levels: less of the town drawn ----------------------------------------
+## A browser pays CPU for every draw call and every object in view -- WebGL's checks, ANGLE's
+## Direct3D on Windows, Godot's own work in wasm: a work laptop paid ~0.1 ms a draw, 70-120 ms
+## of 600-820 draws a frame (22 Nov 2026), and the levels then changed only pixels and shadow
+## reach, which bought it nothing. Levels 1 and 0 also scale every draw range of REACH_FROM m or
+## more (where a thing stops being drawn, and where a far version takes over, alike), with the
+## haze thickened by as much so the town fades out where it ends. Ranges and a haze number
+## only -- never a material's feature, so a step compiles no shader (tests/web_shaders.js
+## QWALK). People, signs and posts (ranges under REACH_FROM) are left as they are.
+## Nothing is gathered until a level below 2 is first asked for; from then on what the
+## background build adds is caught by world's child count, as _zoom_far does.
+const REACH_FROM := 150.0
+const REACH_1 := 0.75
+const REACH_0 := 0.5
+var _reach := 1.0
+var _reach_on := false               ## the ranges gathered (a level below 2 was asked for)
+var _reach_list: Array = []          ## GeometryInstance3D with a range of REACH_FROM or more (own ranges in meta)
+var _reach_n := 0                    ## world's children looked at
+
+func _reach_set(k: float) -> void:
+	if k == _reach and (_reach_on or k == 1.0):
+		return
+	_reach = k
+	if not _reach_on:
+		_reach_on = true
+		_reach_n = 0
+	_reach_update()
+	_reach_apply()
+
+## everything gathered, at this level's reach (a full pass: a step, or landing from above)
+func _reach_apply() -> void:
+	if not _reach_on or _zoom_ranges_n >= 0:
+		return
+	for gi: GeometryInstance3D in _reach_list:
+		if is_instance_valid(gi):
+			_reach_one(gi)
+
+func _reach_one(gi: GeometryInstance3D) -> void:
+	var e0: float = gi.get_meta("r_end")
+	gi.visibility_range_end = e0 * _reach if e0 >= REACH_FROM else e0
+	var b0: float = gi.get_meta("r_begin")
+	gi.visibility_range_begin = b0 * _reach if b0 >= REACH_FROM else b0
+
+## what world gained since the last look: each thing's own ranges kept, and this level's given
+func _reach_update() -> void:
+	if not _reach_on or _zoom_ranges_n >= 0 or world == null:
+		return   # (from above, _zoom_far has the ranges; landing calls _reach_apply)
+	var n := world.get_child_count()
+	if n == _reach_n:
+		return
+	if n < _reach_n:   # something taken out: look through it all again (ranges kept in meta)
+		_reach_n = 0
+		_reach_list = _reach_list.filter(func(x): return is_instance_valid(x))
+	for i in range(_reach_n, n):
+		var c := world.get_child(i)
+		var list: Array = c.find_children("*", "GeometryInstance3D", true, false)
+		list.append(c)
+		for gi in list:
+			if not (gi is GeometryInstance3D) or (gi as Node).has_meta("r_end"):
+				continue
+			var g3 := gi as GeometryInstance3D
+			g3.set_meta("r_end", g3.visibility_range_end)
+			g3.set_meta("r_begin", g3.visibility_range_begin)
+			if g3.visibility_range_end >= REACH_FROM or g3.visibility_range_begin >= REACH_FROM:
+				_reach_list.append(g3)
+				if _reach != 1.0:
+					_reach_one(g3)
+	_reach_n = n
+
 ## Only on the web: a desktop build has a real GPU, and test runs on a software renderer
 ## would step themselves down to nothing.
+var _ladder_native := false           ## tests: the ladder on a native build too (tests/quality_ladder.gd)
 func _watch_fps(dt: float) -> void:
-	if not OS.has_feature("web"):
+	if not OS.has_feature("web") and not _ladder_native:
 		return
-	if _bg_build or _zoom_v > 0.0:   # the city still building round you, or the whole of it in
-		# view from above, is not this machine being slow
+	if (_bg_build and _catch_up) or _zoom_v > 0.0:   # the squares round you still going up (their
+		# CATCH_UP_US a frame), or the whole city in view from above, is not this machine being
+		# slow. The rest of the background build is a few ms a frame (BUILD_US) and was left out
+		# too -- but it goes on for minutes, and on a slow machine for most of an hour: a work
+		# laptop (Intel graphics, a browser, 22 Nov) stood at "building the city 8%" five minutes
+		# in, at 7 fps, still at quality 2 -- the ladder had never been asked.
 		_fps_t = 0.0
 		_fps_frames = 0
 		_fps_long = 0
@@ -18061,6 +18213,8 @@ func _watch_fps(dt: float) -> void:
 	_judge_fps(dt)
 
 func _judge_fps(dt: float) -> void:
+	if _qwalk > 0.0:
+		return   # (a quality walk sets the levels itself)
 	_q_clock += dt
 	if _fps_wait > 0.0:
 		_fps_wait -= dt
@@ -18101,6 +18255,7 @@ func _judge_fps(dt: float) -> void:
 			_q_trial = []
 			_q_on_trial = true
 			_set_quality(_quality - 1)
+			_q_note("%d to %d at %.1f fps" % [failed, _quality, fps])
 			_fps_wait = 3.0   # (new shaders compile)
 			Probe.event("quality", {"level": _quality, "fps": int(fps), "down": true})
 		_log.event("quality", _quality)
@@ -18115,8 +18270,18 @@ func _judge_fps(dt: float) -> void:
 		_fps_good = 0.0
 		_q_descent = {}
 		_set_quality(up)
+		_q_note("up to %d at %.1f fps" % [_quality, fps])
 		_fps_wait = 3.0
 		Probe.event("quality", {"level": _quality, "fps": int(fps), "down": false})
+
+## what the ladder did lately, for the perf view: one screenshot tells whether the levels help
+## this machine (a work laptop's two, 22 Nov: one at 0, one back at 2 -- and no saying why)
+var _q_log: Array = []
+
+func _q_note(what: String) -> void:
+	_q_log.push_back("%d s %s" % [Time.get_ticks_msec() / 1000, what])
+	if _q_log.size() > 4:
+		_q_log.pop_front()
 
 ## The stepping down has ended (the rate good again, or the bottom): of the levels it passed,
 ## the best-looking one whose rate was within STEP_GAIN of the best. Back up to it, and no step
@@ -18139,6 +18304,11 @@ func _settle() -> bool:
 	_q_retry_at.erase(pick)
 	var was := _quality
 	_set_quality(pick)
+	var rates: Array = []
+	for l: int in [3, 2, 1, 0]:
+		if seen.has(l):
+			rates.append("%d: %.1f" % [l, float(seen[l])])
+	_q_note("back to %d, lower bought nothing (fps %s)" % [pick, ", ".join(rates)])
 	_fps_low = 0
 	_fps_good = 0.0
 	_fps_wait = 3.0
@@ -18157,6 +18327,7 @@ func _settle() -> bool:
 ## and a [hitch] line, so a playtest names what chokes.
 const PERF_FRAMES := 150
 const PERF_RECT := Rect2(486, 74, 146, 20)   ## the fps text: tap it for the perf view
+const PERF_GRAPH := Rect2(8, 96, 150, 30)    ## the perf view's frame times, as bars
 var _prof := {}                      ## part -> microseconds since the last drawn frame began
 var _prof_t := 0
 var _frame_at := 0
@@ -22337,7 +22508,12 @@ const FOG_DAY := 0.0018              ## the haze's density: by day, at night (se
 ## the day's haze: half in the made-up town, a valley ringed by mountains with no horizon to
 ## hide (its mountains were a white wall)
 func _fog_day() -> float:
-	return FOG_DAY * (0.5 if _mtn_from < 10000.0 else 1.0)
+	return FOG_DAY * (0.5 if _mtn_from < 10000.0 else 1.0) * _fog_k
+
+## the night's haze, thickened as the day's on a weak machine's levels
+func _fog_night() -> float:
+	return FOG_NIGHT * _fog_k
+var _fog_k := 1.0                    ## the haze's thickness for the quality level (QUALITY's last column)
 const FOG_NIGHT := 0.0026
 var _paused := false                 ## the city holds still: the car, traffic, people, lights, sound
 var _zoom := 0.0                     ## where the view is going: 0 the usual view .. 1 the highest
@@ -22554,7 +22730,8 @@ func _zoom_camera(dt: float) -> void:
 		_zoom_lift = 0.0
 		_zoom_far(false)
 		cam.near = 0.05 if _cockpit else 0.3
-		env.fog_density = FOG_NIGHT if _night else _fog_day()
+		env.fog_density = _fog_night() if _night else _fog_day()
+		_reach_apply()   # (the ranges the view from above lifted are back: this level's again)
 		if _zoom_seat:
 			_set_cockpit(true)
 		_zoom_seat = false
@@ -22599,7 +22776,7 @@ func _zoom_camera(dt: float) -> void:
 	# up high: nothing is near, so the near plane goes out with the view and the thin layers
 	# (paint on asphalt on ground) keep their depth; the haze thins so the town below is clear
 	cam.near = lerpf(0.05 if _cockpit else 0.3, maxf(0.3, dist * 0.15), w)
-	env.fog_density = (FOG_NIGHT if _night else _fog_day()) * lerpf(1.0, 0.2, smoothstep(0.2, 1.0, z))
+	env.fog_density = (_fog_night() if _night else _fog_day()) * lerpf(1.0, 0.2, smoothstep(0.2, 1.0, z))
 
 ## the view's centre kept over the town
 func _zoom_keep_in() -> void:
@@ -25864,6 +26041,14 @@ func _build_hud() -> void:
 	_perf_lbl.size = Vector2(330, 60)
 	_perf_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_perf_lbl.visible = false
+	# its lines ran down over the build line and under the minimap (made after it, drawn over
+	# it): half the hitch and load lines of a user's screenshot were unreadable (22 Nov). A dark
+	# backing, drawn above the map; the build line is its first line instead (_tick_hud)
+	var pb := StyleBoxFlat.new()
+	pb.bg_color = Color(Palette.col("bg"), 0.8)
+	pb.set_content_margin_all(3.0)
+	_perf_lbl.add_theme_stylebox_override("normal", pb)
+	_perf_lbl.z_index = 1
 	_dest_lbl = _label(12, "accent")
 	_dest_lbl.text_direction = Control.TEXT_DIRECTION_LTR   # "→ <Hebrew street> 47 · 930 m" reads left to right
 	_dest_lbl.position = Vector2(150, 314)
@@ -25967,12 +26152,16 @@ func _tick_hud() -> void:
 	_speed_lbl.text = str(int(round(absf(_v) * 3.6)))
 	# the fps and build lines: in the drawer now, and here only with the perf view up
 	_fps_lbl.visible = _perf_view or _trace_view
-	_ver_lbl.visible = _fps_lbl.visible
+	_ver_lbl.visible = _fps_lbl.visible and not _perf_view   # (the perf view says it on its first line)
+	if is_instance_valid(_load_lbl):   # (and the load line, for its 20 s: it showed through the view's backing)
+		_load_lbl.visible = not _perf_view
+	_build_lbl.text = _build_far_txt() if _perf_view else _build_near_txt
 	if _fps_lbl.visible:
 		_fps_lbl.text = "%d fps · worst %d ms · quality %d" % [Engine.get_frames_per_second(), int(_worst_ms()), _quality]
 	if _perf_view:
-		_perf_lbl.text = "frame time, last %d frames (lines: 16 and 33 ms)\n%s\n%s\nhitches (slowest parts, ms):\n%s\n%s" % [
-			_frame_ms.size(), _prof_avg, _gpu_line(), "\n".join(_hitches) if not _hitches.is_empty() else "none yet", _load_text()]
+		_perf_lbl.text = "%s · frame time, last %d frames (lines: 16 and 33 ms)\n%s\n%s\nquality ladder: %s\nhitches (slowest parts, ms):\n%s\n%s" % [
+			_ver_lbl.text, _frame_ms.size(), _prof_avg, _gpu_line(), " · ".join(_q_log) if not _q_log.is_empty() else "no step yet",
+			"\n".join(_hitches) if not _hitches.is_empty() else "none yet", _load_text()]
 	if _dest_on:
 		var left := _pos.distance_to(_dest)
 		if _auto and _ap_pts.size() > 1:
@@ -25985,7 +26174,8 @@ func _tick_hud() -> void:
 	_hud.queue_redraw()
 	_map.queue_redraw()
 
-## P (or a tap on the fps text): the frame times, then the drive map, then off
+## P (or the drawer's "perf view", or a tap on the fps text): the frame times, then the drive
+## map, then off. PERF_BTN opens the frame times in one tap and closes either.
 func _toggle_perf() -> void:
 	if not _perf_view and not _trace_view:
 		_perf_view = true
@@ -26135,7 +26325,7 @@ func _draw_hud() -> void:
 		_draw_trace()
 	if _perf_view and not _frame_ms.is_empty():
 		# the last frames' times as bars, oldest on the left; 16 and 33 ms marked
-		var box := Rect2(8, 96, 150, 30)
+		var box := PERF_GRAPH
 		_hud.draw_rect(box, Color(bg, 0.7))
 		var n := _frame_ms.size()
 		var w := box.size.x / PERF_FRAMES
@@ -26187,6 +26377,7 @@ func _draw_hud() -> void:
 		_hud_btn(MORE_BTN, "more" if not _more_open else "close", Palette.col("accent"), _more_open, 11)
 		_hud_btn(FOLD_BTN, "–", Palette.col("ink"), false, 13)
 		_hud_btn(VIEW_BTN, _view_name(), Palette.col("player"), _zoom > 0.0 or _cockpit, 11)
+		_hud_btn(PERF_BTN, "%d fps" % Engine.get_frames_per_second(), Palette.col("accent"), _perf_view or _trace_view, 11)
 		if not _walking and not _auto:
 			_hud_btn(LOOK_BTN, "look", Palette.col("accent"), _look_on, 11)
 	# the indicator blinking by the speed, as on a dashboard
@@ -26423,6 +26614,13 @@ func _hud_tap(p: Vector2) -> bool:
 		_show_banner("buttons folded away: \"show\" brings them back", 1.6)
 	elif VIEW_BTN.grow(2).has_point(p):
 		_next_view()
+	elif PERF_BTN.grow(2).has_point(p):
+		if _perf_view or _trace_view:   # (the drive map too: P and the drawer go round to it)
+			_trace_view = false
+			_perf_view = false
+			_perf_lbl.visible = false
+		else:
+			_toggle_perf()
 	elif LOOK_BTN.grow(2).has_point(p) and not _walking and not _auto:
 		_toggle_look()
 	else:
@@ -26434,7 +26632,7 @@ func _hud_tap(p: Vector2) -> bool:
 func _on_hud_button(p: Vector2) -> bool:
 	if _more_open or _keys_open:
 		return true
-	var rs: Array = [SHOW_BTN] if _hud_folded else [AUTO_BTN, GOTO_BTN, WALK_BTN, MORE_BTN, FOLD_BTN, VIEW_BTN]
+	var rs: Array = [SHOW_BTN] if _hud_folded else [AUTO_BTN, GOTO_BTN, WALK_BTN, MORE_BTN, FOLD_BTN, VIEW_BTN, PERF_BTN]
 	if not _hud_folded:
 		if _auto:
 			rs.append(STYLE_BTN)
