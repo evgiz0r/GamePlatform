@@ -65,6 +65,7 @@ func start(view_pos: Vector2, view_dir: Vector2) -> void:
 	cam.fov = 62.0
 	cam.far = 4000.0
 	g.world.add_child(cam)
+	cam.position = viewer   # (before its first frame: made at the town's origin, it stood in a building for a frame)
 	cam.make_current()
 	# the street goes still: every car where it is
 	if g._traffic != null:

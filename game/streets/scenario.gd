@@ -224,6 +224,8 @@ func _cam_check() -> void:
 	var p2 := Vector2(p.x, p.z)
 	if p.y < g._h(p2) + 4.0 and g._push_out(p2, 0.15, false, false) != Vector2.ZERO:
 		cam_in_building += 1
+		if cam_in_building == 1:
+			print("[scenario] camera inside a building at %s, beat %s, %.1f s" % [p2, beats[i][0] if i >= 0 and i < beats.size() else "-", t])
 
 func tick(dt: float) -> void:
 	_caption_tick(dt)
