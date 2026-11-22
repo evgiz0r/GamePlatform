@@ -15,6 +15,8 @@ How long each change took, in minutes, from the Claude Code sessions that made i
 | 2026-11-22 10:06 | 91af9f6 | streets: the perf view says what the quality ladder did (each step and the fps it measured, the last four: ... | 5.4 | 1.8 | 0.3 | **7.5** | 24 | +102 -5 | 6 | 32 | 31 | 6 | 33.5k |
 | 2026-11-22 09:35 | daa5d75 | streets tests: the .uid files Godot made for six tests committed without them | 0.6 | 0.1 | 0.0 | **0.6** | 0.0 | +0 -0 | 0 | 3 | 2 | 0 | 3.0k |
 | 2026-11-22 09:35 | d089347 | streets: the quality ladder runs while the city builds in the background (it sat at 2 for the whole build -... | 13 | 2.3 | 0.0 | **16** | 0.0 | +198 -14 | 8 | 70 | 76 | 15 | 81.8k |
+| 2026-11-22 03:27 | a1b8489 | streets: racer past a whole queue (the oncoming lanes on two-way streets, squeezing between lanes with the ... | 26 | 44 | 0.0 | **70** | 43 | +566 -17 | 7 | 147 | 144 | 34 | 122.8k |
+| 2026-11-22 02:53 | e1c3bec | streets walks with a scene: a night out on Nahalat Binyamin, a Tel Aviv park, the beach (make_walks.py ways... | 6.2 | 16 | 0.0 | **22** | 0.0 | +214 -4 | 4 | 31 | 41 | 14 | 36.2k |
 | 2026-11-22 02:46 | 712da82 | streets: the run clip at the pace it covers (the jog 1.05 m/s at x1), up to 2.5x fast -- your jog's feet sl... | 1.4 | 0.4 | 0.8 | **2.6** | 0.0 | +20 -3 | 2 | 8 | 9 | 3 | 6.8k |
 | 2026-11-22 02:44 | c1ffe87 | streets racer: bends read the plan as it was (orig), not points already moved -- racer no longer stands beh... | 19 | 22 | 0.0 | **41** | 15 | +19 -4 | 2 | 28 | 28 | 15 | 26.6k |
 | 2026-11-22 02:41 | bfdad49 | streets: the loading screen names the set-up too; split_posts tells where it knocks something; foot_slide.g... | 6.2 | 13 | 0.0 | **19** | 0.0 | +86 -2 | 4 | 40 | 46 | 19 | 32.1k |
