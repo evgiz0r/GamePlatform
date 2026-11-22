@@ -83,6 +83,11 @@ class Car:
 	var lead_v := 0.0                 ## the speed of the car in front, along my way
 	var still := 0.0                  ## seconds standing
 	var drift := 0.0                  ## phase of its wander in the lane
+	var aside := 0.0                  ## edged over in its lane to let racer squeeze by (m, left +, as shift)
+	var aside_to := 0.0
+	var aside_t := 0.0                ## seconds it stays edged over, then back
+	var track := 0.0                  ## a bus or truck: its front out from the lane by this on a bend (m, left +)
+	var aside_was := 0.0              ## `aside` when last placed: the back slides with the front
 	var dip := 0.0                    ## the body: nose down braking, up pulling away (visual)
 	var roll := 0.0                   ## the body: leaning out of a turn (visual)
 	var paint := Color.WHITE
@@ -436,6 +441,10 @@ func tick(dt: float) -> void:
 		if c.s >= c.cum[c.cum.size() - 1] - 0.01:
 			c.alive = false   # the end of a road with nowhere on: gone, back elsewhere next tick
 			continue
+		if c.aside_t > 0.0 or c.aside != 0.0:
+			# (edged over for racer squeezing between the lanes, at a walk, then back once gone)
+			c.aside_t -= dt
+			c.aside = move_toward(c.aside, c.aside_to if c.aside_t > 0.0 else 0.0, 0.9 * dt)
 		_place(c)
 		c.steer = move_toward(c.steer, c.steer_to, 1.4 * dt)   # (a driver turns the wheel, not snaps it)
 		# a front wheel over a manhole cover, near you: the nose bobs
@@ -541,6 +550,23 @@ func _target(c: Car, i: int, dt: float) -> float:
 			best_len = 4.6 if j == cars.size() else (cars[j] as Car).len
 			# moving with me: its speed along my way, else treat it as standing
 			lead_v = ov * maxf(0.0, cos(angle_difference(oyaw, c.yaw)))
+		# one standing across my way near by (waiting at a give-way line as I turn in past it):
+		# its corners too, not only its middle -- a car turning into the test town's HaKalanit
+		# off Derekh HaHarim cut across the nose of the one waiting to come out, its middle
+		# 1.5 m+ off the turn and its body in it (8-10 overlaps a run at (-639, 224))
+		if j < cars.size() and ov < 1.0 and d2 < 400.0 and absf(angle_difference(oyaw, c.yaw)) > 0.5 and not c.split:
+			var so: Car = cars[j]
+			var sf := Vector2(sin(so.yaw), cos(so.yaw))
+			var ss := Vector2(-sf.y, sf.x)
+			var sz: Vector2 = CORNERS.get(so.kind, CORNERS["sedan"])
+			var mz: Vector2 = CORNERS.get(c.kind, CORNERS["sedan"])
+			for sq: Vector2 in [q + sf * sz.y + ss * sz.x, q + sf * sz.y - ss * sz.x, q - sf * sz.y + ss * sz.x, q - sf * sz.y - ss * sz.x]:
+				var cg := _path_gap(c, sq, look, mz.x + 0.2)
+				if cg < best - best_len * 0.5:   # (nearer, body to body: free = gap - lengths / 2)
+					best = cg
+					who = j
+					best_len = 0.0
+					lead_v = 0.0
 	# the player's car, left standing while they walk: in the way like any other
 	if g._walking and g._car_at.distance_squared_to(c.pos) < (look + 6.0) * (look + 6.0):
 		var pg := _path_gap(c, g._car_at, look, PLAYER_W)
@@ -549,6 +575,28 @@ func _target(c: Car, i: int, dt: float) -> float:
 			who = -1
 			best_len = 4.6
 			lead_v = 0.0
+	# the player's corners, not only its middle: autodrive held at a give-way line stands with
+	# its nose over it, its middle 2.2 m back, and traffic on the road it waits to join drove
+	# into the nose -- by its middle the player was outside PLAYER_W of the lane, and squeezing
+	# past it skipped the player altogether (the test town's (-546, 405), 3-6 a run: "autodrive
+	# in a car ... 0.3 m in, autodrive 0 km/h, held by junction"). Each corner in my way where
+	# the bodies would touch -- with a hand's breadth, squeezing past too (brushing, not into it)
+	if not g._walking and _level(c, float(g._y), _me_lift) and g._pos.distance_squared_to(c.pos) < (look + 8.0) * (look + 8.0):
+		var pf: Vector2 = g._fwd()
+		var ps := Vector2(-pf.y, pf.x)
+		var hl: float = float(g.CAR_LEN) * 0.5
+		var hw: float = float(g.CAR_WIDTH) * 0.5
+		var mine: Vector2 = CORNERS.get(c.kind, CORNERS["sedan"])
+		var cw: float = mine.x + (0.1 if c.squeeze > 0.0 or c.split else 0.25)
+		for pq: Vector2 in [g._pos + pf * hl + ps * hw, g._pos + pf * hl - ps * hw, g._pos - pf * hl + ps * hw, g._pos - pf * hl - ps * hw]:
+			if (pq - c.pos).dot(fwd) < 0.0:
+				continue
+			var cg := _path_gap(c, pq, look, cw)   # (from my middle, as `best` is; a corner has no length of its own)
+			if cg < best - best_len * 0.5:
+				best = cg
+				who = -1
+				best_len = 0.0
+				lead_v = maxf(float(g._v), 0.0) * maxf(0.0, pf.dot(fwd))
 	# a delivery van stood in the street ahead: round it, over the centre line, when nothing comes
 	if who >= 0 and who != c.pass_i and best < 35.0 and _parked_double(cars[who]) and c.kind != "bus":
 		var rr: Dictionary = _roads[c.rd[mini(c.k + 1, c.rd.size() - 1)]]
@@ -1725,6 +1773,8 @@ func lead_on(path: PackedVector2Array, from: Vector2, look: float, ignore_crossi
 				var wide := LANE_W
 				if same > 0.6:
 					wide = maxf(LANE_W, 0.9 + rad + 0.25)
+					if c.aside_t > 0.0:
+						wide = 0.9 + rad + 0.05   # (edged over to let racer squeeze by: bodies brushing, not touching)
 				if cp.distance_to(q) < wide:
 					var along := base + a.distance_to(cp) - off * same   # (as if from its middle)
 					if along > 0.5 and along < found and not (ignore_crossing and same < 0.6):
@@ -2208,8 +2258,8 @@ func _place(c: Car) -> void:
 	# corner it pivoted on its middle: a bus's back swung out across the lane, a car's nose
 	# snapped round at each kink in its line -- "they jump around".
 	var wb := clampf(c.len * 0.6, 1.3, 7.0)
-	var wander := sin(_clock * 0.31 + c.drift) * 0.1 * clampf(c.v / 8.0, 0.0, 1.0)
-	var off := c.shift + wander
+	var wander := sin(_clock * 0.31 + c.drift) * 0.1 * clampf(c.v / 8.0, 0.0, 1.0) * (0.0 if c.aside_t > 0.0 else 1.0)
+	var off := c.shift + wander + c.aside + c.track
 	# (the front on the lane rounded over 4 m: the lane line has corners in it -- a bend in
 	# the map's road -- and a front run exactly round each flicked the heading at 2.5 rad/s)
 	var fa := _at(c, c.s + wb * 0.5 - 2.0)
@@ -2218,6 +2268,11 @@ func _place(c: Car) -> void:
 	var td := fb - fa
 	var ty := atan2(td.x, td.y) if td.length_squared() > 0.0001 else c.yaw
 	var front := f0 + Vector2(cos(ty), -sin(ty)) * off   # (its lane: left of the line)
+	if c.aside != c.aside_was and c.rear != Vector2.INF:
+		# (edging over is the whole car sliding, back and all: standing, the back follows the
+		# front only as it rolls, so the car turned on the spot and its back stayed in the gap)
+		c.rear += Vector2(cos(ty), -sin(ty)) * (c.aside - c.aside_was)
+	c.aside_was = c.aside
 	if c.rear == Vector2.INF or c.rear.distance_to(front) > wb * 1.6:
 		# placed afresh (a new start, sent elsewhere): its back on the lane behind
 		var r0 := _at(c, c.s - wb * 0.5)
@@ -2226,6 +2281,24 @@ func _place(c: Car) -> void:
 		c.rear = r0 + Vector2(cos(ry), -sin(ry)) * off
 	else:
 		c.rear = front + (c.rear - front).normalized() * wb
+	if c.len > 6.0:
+		# (a bus's back cuts inside a bend by wheelbase^2 / 2R -- 0.72 m at 34 m, over the kerb on
+		# Givatayim's bends: tests/bus_bends.gd. As a driver does, the front out by the back's cut
+		# in, so each is out by half: steered by where the back is against its lane now)
+		var r0 := _at(c, c.s - wb * 0.5 - 1.0)
+		var r1 := _at(c, c.s - wb * 0.5 + 1.0)
+		var rdd := r1 - r0
+		if rdd.length_squared() > 0.01:
+			var ryy := atan2(rdd.x, rdd.y)
+			var lft := Vector2(cos(ryy), -sin(ryy))
+			var dev := (c.rear - ((r0 + r1) * 0.5 + lft * (c.shift + c.aside))).dot(lft)
+			# (not on a tight turn: there its front overhang swings out past the kerb already --
+			# pushed out more, a bus's corner went 0.70 -> 0.93 m over at Ashdod's HaAtzmaut, an
+			# 8 m turn; off by 10 m of radius, whole from 20)
+			var bend := absf(angle_difference(ryy, ty))
+			var radius := wb / maxf(bend, 0.001)
+			var k := clampf((radius - 10.0) / 10.0, 0.0, 1.0)
+			c.track = lerpf(c.track, clampf((c.track - dev) * 0.5, -0.6, 0.6) * k, 0.05)   # (the cut-in is track - dev: half of it)
 	var d := front - c.rear
 	c.pos = (front + c.rear) * 0.5
 	c.y = g._decks.surf(c.pos, c.y)
