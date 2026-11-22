@@ -1820,8 +1820,8 @@ Bedford have not been re-baked since.
 | 3 | Ashdod ("med") | place "Ashdod" |
 | 4 | Kiryat Dimyon, made up | `tools/fake_city.py` |
 | 14 | Delft, a box of the old centre ("north") | baked on the user's computer, not the workflow: first `data_tools/nl_3dbag.py 51.99965,4.34181,52.02035,4.37219 delft` and `data_tools/nl_bgt.py` with that box, then place "Delft", bbox "52.0010,4.3440,52.0190,4.3700", margin 150 (NEW_CITY.md, "The Netherlands") |
-| 30 | Leiden, a box of the old centre ("north", build "nl") | as Delft (NEW_CITY.md): `data_tools/nl_3dbag.py 52.14865,4.47180,52.16935,4.50220 leiden`, `data_tools/nl_bgt.py` with the same box, then place "Leiden", bbox "52.1500,4.4740,52.1680,4.5000", margin 150 |
-| 31 | Annecy, the centre and the lake shore ("north", build "fr") | `data_tools/fr_bdtopo.py 45.89065,6.11306,45.91135,6.14394 annecy`, then place "Annecy", bbox "45.8920,6.1150,45.9100,6.1420", margin 150, bare_ground on (NEW_CITY.md, "France") |
+| 33 | Leiden, a box of the old centre ("north", build "nl") | as Delft (NEW_CITY.md): `data_tools/nl_3dbag.py 52.14865,4.47180,52.16935,4.50220 leiden`, `data_tools/nl_bgt.py` with the same box, then place "Leiden", bbox "52.1500,4.4740,52.1680,4.5000", margin 150 |
+| 34 | Annecy, the centre and the lake shore ("north", build "fr") | `data_tools/fr_bdtopo.py 45.89065,6.11306,45.91135,6.14394 annecy`, then place "Annecy", bbox "45.8920,6.1150,45.9100,6.1420", margin 150, bare_ground on (NEW_CITY.md, "France") |
 | 7 | Tel Aviv, a box of the centre ("med") | place "Tel Aviv", bbox "32.0639,34.7795,32.0858,34.8021" (read off the user's map screenshot), margin 150, bare_ground on (without it Azrieli stood on a 146 m hill of its own roofs) |
 
 The start points are public street corners named in `LEVELS`. **The web build is public:
@@ -2350,6 +2350,26 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
 - **Numbers**: score 34.5 -> 35.3 (the same evening's main, recorded before and after on this
   PC); nothing worse by 5; 29 +6, 49 +7, 93 +14, 94 +15; 90-99 s 23.7 -> 28.8. Both filmed
   walks scan clean; playtests of levels 5, 6 and 1 survive 25 s.
+
+### Walks with a scene: the night out, the park, the beach (22 Nov 2026)
+
+- **make_walks.py** grew: `ways` (a route along roads of chosen kinds through `via` points,
+  down their middle: a park's footpaths, a pedestrian street), `scene` (`groups` [n, near, far]
+  of 2-4 standing talking off the line; `passers` n walking the other way, timed by the walk's
+  own clock to meet the walker; `lights` metres: the bars, pubs, cafes and restaurants within
+  it get string lights and tables, as details' `shops`; `look` [deg, every, for]: the head
+  turned now and then), `dress` per walk ([] for none: scooters had stood on the sand).
+  A level's `"time"` is its own (the night out: night) unless the list's settings say other.
+- **Levels** 30 night out (358 m, 266 s; 18 groups, 26 passing, 16 lit places), 31 the park
+  by Sarona (337 m), 32 the beach (601 m, 446 s, 8 m inland of the water's edge read off the
+  sand and sea areas). All scan clean.
+- **The phone's grade only on a filmed walk** (`"filmed": true`): over the beach it made the
+  sun a flat grey (its exposure pulls a bright frame down, its curve lifts the dark). And the
+  `beach` tone darkened 0.38, not 0.2: bare, the sand came out white in the sun.
+- **Open, not the walks'**: Tel Aviv's sea is not drawn -- sand to the horizon from the walk
+  and in `tests/seaside.gd`'s own shots (beach_above, beach_to_sea), the ground out there at
+  0 m and the sea's area at y 1.5 m. `_hold_sea` (DEV.md, Tel Aviv) fixed it once; something
+  since undid it.
 
 ### Watched levels and what a frame draws (22 Nov 2026)
 
@@ -4222,8 +4242,8 @@ level 1, 45 playgrounds; `tests/places.gd` shoots one from above and at eye heig
 The user: "a virtual tour in a city ... where we stop and look and explain", then "some
 scenario ( aka movie i guess ) happening in a city", then "tours will be part of all
 scenarios [new section]". `scenario.gd` plays a script of beats (its header lists them) after
-the opening; LEVELS 16 is the list page (in the "Drive" group with the Cities list -- a third group of its
-own ran off a phone's start screen; `_walk_list_open("scenarios")`),
+the opening; LEVELS 16 is the list page ("Scenarios" group: the third column, which ran off a phone's start
+screen until the shell narrowed the columns; `_walk_list_open("scenarios")`),
 17-20 the towns' tours, 21-22 the getaways (the Cities list leaves out anything with a
 "scenario"). A level's number is its place: add at the end.
 

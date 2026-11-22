@@ -18,10 +18,8 @@ extends GameMode3D
 ## the car on the first just past the second. Without one it starts on a main road
 ## mid-town.
 const LEVELS := [
-	# The start screen shows only the levels with a "group", the groups side by side -- TWO at
-	# most: the shell gives each a column at least 250 px wide, and a third ("Scenarios" on its
-	# own) ran off a phone's screen (the user's screenshot, 22 Nov). So Cities and Scenarios
-	# share "Drive", the test routes and walks "Auto Experiments". Lists, each opening its own
+	# The start screen shows only the levels with a "group", the groups side by side (the shell
+	# narrows the columns for three and wraps past that). Lists, each opening its own
 	# page -- "Cities: pick one", "Test routes: watch a drive", "Walks: watch one" (the last
 	# three entries below). A city has no "group": the Cities list shows every place here with a
 	# "city" that is not a list or a walk, by "sort", so a new city needs only its line. A
@@ -58,10 +56,10 @@ const LEVELS := [
 	# "build": "nl": its houses Dutch -- brick, pitched roofs where 3DBAG measured a ridge (_dutch())
 	{"name": "Delft", "city": "delft", "start": ["Oude Delft", "Binnenwatersloot"], "look": "north", "build": "nl", "decks": "infer"},
 	# the cities: a list, as the walks and the test routes are (no city behind it)
-	{"name": "Cities: pick one", "group": "Drive", "cities": true, "city": "dimyon", "look": "med"},
+	{"name": "Cities: pick one", "group": "Cities", "cities": true, "city": "dimyon", "look": "med"},
 	# scenarios (scenario.gd): a list, as the walks are, and each scenario its own level -- a
 	# town's tour from its own story (cities/stories/<town>.json) or a story played out in it
-	{"name": "Scenarios: pick one", "group": "Drive", "scenarios": true, "city": "dimyon", "look": "med"},
+	{"name": "Scenarios: pick one", "group": "Scenarios", "scenarios": true, "city": "dimyon", "look": "med"},
 	{"name": "Tour: Givatayim's streets", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "tour"},
 	{"name": "Tour: Tel Aviv, Azrieli to the sea", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "tour"},
 	{"name": "Tour: Ashdod", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med", "decks": "infer", "scenario": "tour"},
@@ -76,6 +74,12 @@ const LEVELS := [
 	{"name": "A day in Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "day"},
 	# Delft's walk: every city has one (NEW_CITY.md), laid by data_tools/make_walks.py
 	{"name": "Delft: along the Oude Delft canal", "city": "delft", "look": "north", "build": "nl", "decks": "infer", "walk": "delft_oude_delft"},
+	# walks with something going on (the user: "very uninteresting, nothing happening ... More
+	# interesting walks. On the beach. In the park. Near night life"): each with its own scene
+	# of people (make_walks.py's "scene"); the night out starts at night
+	{"name": "Tel Aviv: a night out on Nahalat Binyamin", "city": "tel_aviv", "look": "med", "decks": "infer", "walk": "tel_aviv_night_out", "time": "night"},
+	{"name": "Tel Aviv: through the park", "city": "tel_aviv", "look": "med", "decks": "infer", "walk": "tel_aviv_park"},
+	{"name": "Tel Aviv: along the beach", "city": "tel_aviv", "look": "med", "decks": "infer", "walk": "tel_aviv_beach"},
 	# the second Dutch town (NEW_CITY.md, "The Netherlands"): the old centre inside its canal ring,
 	# the station, the Burcht. Starts on the Rapenburg canal by the university's Academy building.
 	{"name": "Leiden", "city": "leiden", "start": ["Rapenburg", "Kloksteeg"], "look": "north", "build": "nl", "decks": "infer"},
@@ -1361,6 +1365,8 @@ func start(_config: Dictionary) -> void:
 	# with none, a test drive keeps the rules (it is there to test autodrive) and a city is the racer
 	_ap_style = String(_config.get("style", "rules" if _config.has("route") or _config.get("make_route", false) else "racer"))
 	_start_time = String(_config.get("time", "day"))
+	if _start_time == "day" and _place.has("time"):
+		_start_time = String(_place["time"])   # (a place that is its time: the night out)
 	if _config.has("route"):
 		_route = _route_by_id(int(_config["route"]))
 	if _config.get("make_route", false):
@@ -16229,7 +16235,7 @@ func _tones() -> void:
 		"sand": wn.lerp(ink, 0.45).lerp(alt, 0.1),
 		# a beach's: warmer and darker than a sandpit's (the sandpit's tone over a beach's
 		# acres read as snow beside the sea)
-		"beach": wn.lerp(ink, 0.3).lerp(Palette.col("hazard"), 0.06).darkened(0.2),
+		"beach": wn.lerp(ink, 0.3).lerp(Palette.col("hazard"), 0.06).darkened(0.38),   # (0.2 came out white in the sun: a beach walk's frame blown, its grade then flat grey)
 		"concrete": ink.lerp(alt, 0.32).lerp(wn, 0.04),
 		"insulator": ink.lerp(alt, 0.15),
 		"trafo": alt.lerp(ink, 0.4).lerp(fr, 0.08),
@@ -16928,7 +16934,10 @@ func _film_begin(id: String) -> void:
 	_prev_pos = p0
 	_cam_yaw = _yaw
 	_hud.visible = false
-	if OS.get_environment("STREETS_FILM_LOOK") != "0":   # (=0: the game's own picture, to measure it bare)
+	# (=0: the game's own picture, to measure it bare). Only a filmed walk: the grade is its
+	# phone's picture, fitted to set it beside its film -- over the walks nobody filmed it made
+	# a beach's sun a flat grey
+	if OS.get_environment("STREETS_FILM_LOOK") != "0" and bool(_place.get("filmed", false)):
 		_film_look_layer()
 	_walk_bar_build()
 	Probe.event("film", {"walk": id, "seconds": _film[_film.size() - 1].z})

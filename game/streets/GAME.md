@@ -87,6 +87,18 @@ bollards, yellow parking boards (a Dutch street's rows of short bollards; a Cana
 suburb's few hydrants and bins). Street trees beside a road are pruned up, branches from 2.2
 m and leaves from 2.5, so a walk goes under them, not through them.
 
+**Walks with something going on.** A night out down Nahalat Binyamin in Tel Aviv (at night,
+its bars and cafes lit with string lights and their tables out, people standing about in
+groups and passing by), a walk through a Tel Aviv park on its footpaths, and one along the
+beach on the wet sand, the head turning to the sea now and then. A walk brings its own
+people and things, not only what the city has: groups talking, people passing, lit bars.
+The walks nobody filmed show the game's own picture, not the filmed walks' phone look.
+
+> Some of the walks are very uninteresting nothing happening just walking in a blocked area.
+> More interesting walks. On the beach. In the park. Near night life.
+> In those scenarios, you should be able to change things we want (people some other object
+> maybe). Not only getting stuck in the actual city
+
 **Watched, not driven.** Walks, test drives and the tours and stories that play themselves are
 to watch: no wheel, pedals or buttons of the game's own, only pause, exit and a walk's speed.
 (The getaway is still yours to drive.) Every place starts at the same quality and steps down

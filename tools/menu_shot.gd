@@ -24,4 +24,13 @@ func _init() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("res://shots"))
 	img.save_png(path)
 	print("[shot] ", ProjectSettings.globalize_path(path))
+	# does everything fit? every button and label on the screen inside it (a start screen's
+	# third group once ran off a phone's edge, and only a screenshot showed it)
+	var screen_rect := root.get_viewport().get_visible_rect()
+	var over: Array = []
+	for c in flow.find_children("*", "Control", true, false):
+		var ctl := c as Control
+		if ctl.is_visible_in_tree() and (ctl is Button or ctl is Label) and not screen_rect.encloses(ctl.get_global_rect().grow(-1.0)):
+			over.append("%s '%s'" % [ctl.get_class(), ctl.get("text")])
+	print("[fits] " + ("ok" if over.is_empty() else "OFF THE SCREEN: " + ", ".join(over)))
 	quit()

@@ -114,7 +114,7 @@ it as given.
 
 ### Countries done
 
-**The Netherlands (Delft, level 14; Leiden, level 30; 22 Nov 2026).** For the next Dutch
+**The Netherlands (Delft, level 14; Leiden, level 33; 22 Nov 2026).** For the next Dutch
 town, run two commands with its box: the bake's box plus the margin, 150 m = 0.00135° of
 latitude and about 0.0022° of longitude. Then bake, and add one line at the end of
 `LEVELS` with `"look": "north", "build": "nl"`. Nothing else changes:
@@ -229,7 +229,7 @@ whole new copy each time a file changes, so it is now one file per town. Leiden'
   - sign and signal poles (`paal`);
   - bridges (`overbruggingsdeel`), water (`waterdeel`).
 
-**France (Annecy, level 31, 22 Nov 2026).** For the next French town:
+**France (Annecy, level 34, 22 Nov 2026).** For the next French town:
 
 ```
 python game/streets/data_tools/fr_bdtopo.py S,W,N,E <town>   # BD TOPO heights, ridge, storeys, year: ~11 s for 3.8k
@@ -293,7 +293,7 @@ from general knowledge, not yet opened). None has been fetched yet.
 | City | Box | Heights | Roofs | Kerbs | Trees | GTFS | Country cost | Data |
 |---|---|---|---|---|---|---|---|---|
 | **Delft, NL: BAKED, level 14** (old town, canals, trams) | 52.0010,4.3440,52.0190,4.3700 | 3DBAG lod12 (checked, used) | 3DBAG LoD2 (checked: roof type on every building; shapes not used) | BGT `wegdeel` (checked; not used yet) | BGT, 11,178 in the box (checked, used) | OVapi (checked: answers) | small: Dutch signs, trams, bikes | 9 |
-| **Annecy, FR: BAKED, level 31** (old town, canals, lake, mountains) | 45.8920,6.1150,45.9100,6.1420 | BD TOPO (checked, used: 3,201 of 3,822) | BD TOPO's roof top gives the ridge (checked, used) | no | none found (checked: nothing for Annecy on data.gouv.fr) | national portal transport.data.gouv.fr (believed) | small: French signs | 6 |
+| **Annecy, FR: BAKED, level 34** (old town, canals, lake, mountains) | 45.8920,6.1150,45.9100,6.1420 | BD TOPO (checked, used: 3,201 of 3,822) | BD TOPO's roof top gives the ridge (checked, used) | no | none found (checked: nothing for Annecy on data.gouv.fr) | national portal transport.data.gouv.fr (believed) | small: French signs | 6 |
 | **Heidelberg, DE** (old town, river bridges, castle hill) | Altstadt bbox | from LoD2 | BW LoD2, freed in 2024 per the state, but its record still says copyright (checked: licence unclear) | no | none found | national (believed) | small: German signs, trams | 6 |
 | **Burlington, VT, US** (hill down to the lake) | downtown | Vermont statewide lidar (believed) | no | no | only sample plots (UVM i-Tree, CC BY-SA), not every tree (checked) | GMT (believed) | medium: the US look | 5 |
 | **Savannah, GA, US** (grid of 22 squares) | historic district | SAGIS portal, not confirmed (checked: no footprint layer found) | no | no | an inventory under way, not published (checked) | CAT (believed) | medium: the US look | 4 |
