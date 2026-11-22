@@ -4354,9 +4354,8 @@ func _build_passages() -> void:
 					var d := (_along(pts, cum, minf(s + 0.5, total)) - a).normalized()
 					var out := Vector2(-d.y, d.x) * sgn   # toward the wall
 					var hp := a + out * (hw - 0.4)
-					if _mine(hp):
+					if _mine(hp) and _add_post(hp, 0.3, true):   # (two passages side by side: one hoop)
 						hoops.append(Transform3D(Basis(Vector3.UP, atan2(-out.y, out.x)), Vector3(hp.x, _h(hp), hp.y)))
-						_add_post(hp, 0.3)
 	_add_mesh(wall, _surface("stonewall"), false, DETAIL_RANGE)
 	_add_mesh(fronts["plaster"], _surface("gardenwall"), false, DETAIL_RANGE)
 	_add_mesh(fronts["coping"], _surface("coping"), false, DETAIL_RANGE)
@@ -13854,6 +13853,8 @@ func cat_at(p: Vector2, y: float, face: Vector2, kind: String) -> void:
 		return
 	if y - _h(p) < 0.4 and not _off_road(p, 0.2):
 		return   # no cat sitting on the road (by a parked car's nose: city_check)
+	if y - _h(p) < 0.4 and _push_out(p, 0.15, true, false) != Vector2.ZERO:
+		return   # nor inside a lamp post or a tree at the kerb (Ashdod: city_check's "posts twice")
 	var yaw := atan2(face.x, face.y) if face.length_squared() > 0.0001 else 0.0
 	_cat_spots.append([Transform3D(Basis(Vector3.UP, yaw), Vector3(p.x, y, p.y)), kind, posmod(_hash_i(p * 3.0), 97)])
 	if y - _h(p) < 0.4:   # on the ground (not up on a wall): a small post, not walked through
@@ -14339,6 +14340,14 @@ func _build_street_signs() -> void:
 			if _push_out(p + sp, 0.4, true, false) != Vector2.ZERO:
 				return
 			p += sp
+		# nor on any road's asphalt: between a divided road's halves where a street crosses
+		# them (Tel Aviv's Yehezkel Kaufman by Nahum Goldman: autodrive ran over one, its
+		# plan went through it -- tests/drive_bumps.gd, 22 Nov)
+		var oa := _off_asphalt(p, 0.06)
+		if oa != p:
+			if _push_out(oa, 0.4, true, false) != Vector2.ZERO:
+				return
+			p = oa
 		if not plates.has(kind):
 			plates[kind] = []
 		var gy := _h(p)
@@ -23079,9 +23088,16 @@ func _ap_off_route() -> float:
 	var i := _ap_nearest_seg()
 	return Geometry2D.get_closest_point_to_segment(_pos, _ap_pts[i], _ap_pts[i + 1]).distance_to(_pos)
 
+## how much of the plan is still ahead: from the car's place on its first stretch. Measured
+## from the stretch's start, a plan of one long straight -- set down on Ashdod's HaMada, 173 m
+## to a junction -- read 173 m however far along the car was, never reached the 160 it is
+## topped up below, and the car ran on past the junction at 49 km/h into the lane beyond and
+## a building (tests/drive_bumps.gd LEVEL=3 STARTS=12 ONLY=11, 22 Nov).
 func _ap_len() -> float:
-	var L := 0.0
-	for i in range(1, _ap_pts.size()):
+	if _ap_pts.size() < 2:
+		return 0.0
+	var L := Geometry2D.get_closest_point_to_segment(_pos, _ap_pts[0], _ap_pts[1]).distance_to(_ap_pts[1])
+	for i in range(2, _ap_pts.size()):
 		L += _ap_pts[i - 1].distance_to(_ap_pts[i])
 	return L
 
@@ -24140,11 +24156,14 @@ func _into_building(ri: int) -> bool:
 	var pts: PackedVector2Array = r["pts"]
 	var into := false
 	for e: int in [0, ids.size() - 1]:
-		if (_node_roads[ids[e]] as Array).size() != 1:
-			continue   # (not a dead end there)
+		if _node_ways(ids[e]) != 1:
+			continue   # (not a dead end there -- for cars: a footpath on from it does not count)
 		var p := pts[e]
-		for i: int in _near(_bld_hash, p, 1.5, BLD_CELL):
-			if _bld_solid[i] != 0 and (_bld_box[i] as Rect2).grow(1.5).has_point(p) 					and (Geometry2D.is_point_in_polygon(p, _blds[i]) or _poly_push(_blds[i], p, 1.5) != Vector2.ZERO):
+		# (8 m: the map often ends a garage's lane short of its door -- Ashdod's off HaMada
+		# stops 5 m from the wall, and autodrive went down it at 49 km/h into the building:
+		# tests/drive_bumps.gd LEVEL=3 STARTS=12, 22 Nov)
+		for i: int in _near(_bld_hash, p, 8.0, BLD_CELL):
+			if _bld_solid[i] != 0 and (_bld_box[i] as Rect2).grow(8.0).has_point(p) 					and (Geometry2D.is_point_in_polygon(p, _blds[i]) or _poly_push(_blds[i], p, 8.0) != Vector2.ZERO):
 				into = true
 	_into_bld[ri] = into
 	return into
@@ -25638,7 +25657,7 @@ func _tick_hud() -> void:
 	if _dest_on:
 		var left := _pos.distance_to(_dest)
 		if _auto and _ap_pts.size() > 1:
-			left = _pos.distance_to(_ap_pts[0]) + _ap_len()
+			left = _ap_len()   # (from where the car is: _ap_len)
 		_dest_lbl.text = "→ %s · %s" % [_dest_name, ("%.1f km" % (left / 1000.0)) if left >= 1000.0 else ("%d m" % int(left))]
 	else:
 		_dest_lbl.text = ""
