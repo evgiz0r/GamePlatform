@@ -2325,6 +2325,80 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   PC); nothing worse by 5; 29 +6, 49 +7, 93 +14, 94 +15; 90-99 s 23.7 -> 28.8. Both filmed
   walks scan clean; playtests of levels 5, 6 and 1 survive 25 s.
 
+### Watched levels and what a frame draws (22 Nov 2026)
+
+- **Watch only** (`_watching()`: a walk, a test drive, a scenario but the getaway): `_input`
+  returns before the game's own taps and keys (the shell's pause and exit, the opening's skip
+  and a walk's speed button come first); action_a/b do not switch autodrive; with autodrive
+  off (a tour's stop) the car is held on the brake, not `_manual`. `tests/watch_only.gd`
+  (~1 min): keys, pedals and taps all over the screen on test drive 10 and the test town's
+  walk -- autodrive stays on, seat view and on foot unchanged, the drive goes on; the walk's
+  clock at 1.00 s a second.
+- **Same rule for all**: a walk no longer starts at the top quality in a browser nor keeps its
+  gentler ladder (FPS_LOW_WALK 28 / FULL 40, now unused): QUALITY_WEB in a browser, the same
+  steps as a drive. (Native runs -- the film's recordings -- start at the top as before.)
+- **What a watched frame drew** (`tests/watch_cost.gd`: draws, triangles, objects and the
+  shadow pass every 10 s at the level's own pace, and what is in view by kind; native, top
+  quality, 50 s): Rothschild's walk 537 draws / 2,679k triangles / shadow 850k; walk 1
+  402 / 1,761k / 797k; test drive 8 (Tel Aviv) 442 / 1,881k / 710k. Half the triangles were
+  the facade kits (one white vertex-coloured material): AC units meant for 140 m drawn to
+  424 m (9,700 in view, 814k triangles), balconies for ~230 m to 514 m -- a little thing
+  built a square at a time was one multimesh a 400 m square, its range counted from the
+  square's middle (+284 m). Now `_chunked` cuts the square in four for anything with a range
+  up to `SMALL_RANGE` (260 m): +142 m, not +284. After: Rothschild 564 draws (+5%) / 1,983k
+  triangles (-26%) / shadow 743k (-13%); walk 1 437 (+9%) / 1,517k (-14%) / 742k. Buildings
+  (`VIEW_RANGE` 1100 m) untouched: a far tower still shows. Next biggest: the batched
+  buildings (580k-1M), parked cars (330-380k, already near/far shapes), people (13-16 in view,
+  ~16k triangles each).
+
+### Walks: trees, street things, the bar, evening and night, Delft (22 Nov 2026)
+
+- **The eye at 1.75 m** (`FILM_EYE_DROP` -0.11, the user: "1.75"). It met the low crowns of
+  trees away from a road (a boulevard's middle: Rothschild 39 s), which keep their low
+  planting; so a walk that steps round posts keeps a tree's crown (`_post_reach`, 1.9 m) where
+  the tree is not by a road -- first a step clear of trunks and crowns, then one clear of the
+  solid alone (crowns as hard pushed Ashdod's walk into yard walls). Scans: no EYE IN; brushes
+  of 0.25-0.5 s at Delft's start, Rothschild's first step, an Ashdod kerb, one Ashdod post.
+
+- **Walking through trees** was the crowns and the trunk mesh's branches, not trunks (the post
+  scan saw only trunks): an olive's branches started 1.2 m up, its leaves ~1.35; a ficus's
+  ~1.6; the walk's eye is 1.58, 0.75 m from a pavement tree's trunk. Trees within 3 m of a
+  road's edge (`_nearest_seg` with drive roads) are pruned up -- trunk stretched so branches
+  start at `STREET_BRANCHES` 2.2 m, crown lifted so leaves start at `STREET_LEAVES` 2.5
+  (`CROWN_LOW` 0.75 of the crown's height scale below its middle, measured). Not the parks',
+  woods', mountains', or a footpath's: walk 1's passage lifted scored 6-9 worse (41-49 s), its
+  film closed in by low planting. North-look street trees have no spruce (its cone sweeps
+  the ground 4 m across: Bedford's walk went through them); the woods keep them.
+- **The scan sees more** (`SCAN=1`): `EYE IN` -- the camera inside anything drawn by instance
+  that does not stand on the ground (crowns, awnings, signs; a trunk or pole's box takes in
+  its branches, so those are the post scan's); `ON ROAD` -- on a road's asphalt away from the
+  walk's crossings. Good: all seven walks print no INSIDE / EYE IN / ON ROAD but three
+  quarter-to-half-second brushes (Delft's start by a bridge's parapet, Rothschild's first
+  step, an Ashdod kerb).
+- **Stepping round** (`_film_dodge`) now also steps off walls and, off a crossing, off the
+  asphalt; samples every 0.25 s; up to 3 m; the step nearest the last sample's (the least
+  step flipped sides past a bus shelter and the curve went through its panel).
+- **Street things along the walks** (`make_walks.py` `dress`): props in each city's details
+  file, `"src": "make_walks"`, on the kerb side 0.6 m in from the road's edge, by the look
+  (`DRESS`, `GAP`); details.gd skips one where a post's edge is within 1.6 m or a wall within
+  0.6 (`_taken`: a hydrant beside a bus shelter left 0.8 m to pass).
+- **Paths**: Rothschild down the midline between its carriageways (20 m apart; OSM's footway
+  lay inside the game's fitted asphalt past Allenby); a one-way street is a divided road only
+  where its one-way ways run both ways side by side (`two_ways`); walks start 2.5 m in from
+  their first junction and stop short of the last by half its widest road + 2.5 m; a
+  crossing's kerbs at half the road + 1.5 m (rounded corners' asphalt).
+- **The bar and speed** (`_walk_bar_build`, layer 2 over the phone's grade at layer 1, which
+  washed it out): `WALK_SPEEDS` 1, 2, 4 by the engine's time scale (as STREETS_SIM_SPEED);
+  `filmed_walk.gd` hides it unless `WALK_BAR=1` (shots set beside a film). **Evening / night**:
+  the list's settings row (`_list_settings`, another session's, the same evening: it took the
+  place of a pair of buttons on each walk's row) starts a walk with `{"time": ...}`;
+  `WALK_TIME=` in the test.
+- **Delft**: level 29 (after the scenarios' 16-28: add at the end, never between), its walk along Oude Delft's quay (`promenade`: the canal between two
+  one-way streets), 310 m; route 11 (`pick_routes.py --add delft`). The canal draws as brown
+  ground, not water -- Delft's own build.
+- **Walk 1 against its film**: 34.8 -> 34.6; only 82-83 worse by 5+ (the corner tree's shade
+  dappled differently on the road; the film has none there).
+
 ### Eye height and glances at cars (22 Nov 2026, all walks)
 
 - **Eye height**: `FILM_EYE_DROP` 0.06 (the camera 1.58 m up), not 0.2 (1.44: the film's phone,
@@ -4361,6 +4435,54 @@ back, straight or TURN=left/right. Found:
     from the tree (1.25 needed). The corner family, with Ashdod's trunk curves: not fixed.
     `edge_pocket.gd POSTS=1 POSTS_FROM=1` lists the posts and walls at a spot and who put
     each post up.
+- **22 Nov, the fourth round (corners, tidy-up):**
+  - `drive_bumps` measures the kerb too: seconds with the car's middle within 0.3 m of the
+    asphalt's edge (wheels over it) and 0.8 m past it, a km, worst places; its starts keep
+    40 m inside the barrier (one stood on it, in Tel Aviv). 12 starts x 40 s, before ->
+    after: Givatayim 0.5 -> 0.2 s a km over the kerb, Ashdod 1.9 -> 0.2 (1 hit -> 0), Tel
+    Aviv 2.3 -> 0.1 (6 hits -> 0, the barrier start gone). Corner cutting is rare, then:
+    tenths of a second at a few corners. What it found instead:
+  - **The plan's length** (`_ap_len`) was from its first point, not from the car: a plan of
+    one long straight (Ashdod's HaMada, 173 m to a junction) never fell under the 160 m it is
+    topped up at, the turn onto HaMehkar was never planned, and the car ran on past the
+    junction at 49 km/h down a lane into a building. The same on the code of 21 Nov: old.
+    Now from the car's place on its first stretch (the HUD's distance left too).
+  - `_into_building`: a lane's end within 8 m of a solid building (the map ends a garage's
+    lane short of its door: 5.7 m there), and a dead end by the drivable ways at its end
+    (a footpath on from it made it not one).
+  - Street-name signs off any road's asphalt (`_off_asphalt` in `plant`): one stood where
+    Yehezkel Kaufman's halves cross Nahum Goldman's, in the plan's way.
+  - Posts twice 0 in Ashdod (5: a cat by a parked car sat inside a lamp post -- `cat_at` keeps
+    out of posts) and Tel Aviv (3: a building site's crane listed by two sites, a passage's
+    hoop by two side by side -- `_add_post(..., true)`); city_check's limits 0 there.
+  - `edge_pocket.gd` lists the buildings by a spot too, and `WAYS=road,dir`: what _ap_ways
+    offers at that road's end, scores and all.
+  - Open: Mandelkern's corner tree (the steering cuts that tight right turn: ~1.2 m off the
+    tree, 1.25 needed) -- the one corner case left, so the steering was not changed. The kerb
+    wedges by zebras (`kerbs_on_road` LEVEL=3: 8 single pieces 0.6-0.9 m onto the asphalt,
+    one on Keren Kayemet LeIsrael by HaNeviim): found, not fixed. Edge test after: Ashdod off
+    the road 19.3 -> 10.6 s; Tel Aviv within 25 m of the barrier 39 s (30-47 between runs).
+- **22 Nov, the fifth round (loading, new people, knots, clips, wedges):**
+  - Loading: "laying out the world" and "sorting the town into squares" (the set-up) are
+    steps now. Bedford loads in 3.8 s on the laptop (city file 2.5, start area 1.1; the
+    slowest part "bridges and tunnels set up", 1.2 s): not slow any more.
+  - The new people (people.gd) pass people_pops, people_on_road (0 of 2880 on asphalt),
+    people_clear, people_near and walk_people (level 5, the filmed walk).
+  - HaRishonim and Kinneret's knocks (split_posts DRIVE=1 prints each now): street signs
+    standing in a junction's knot -- where two divided roads cross (HaRishonim by Shavey
+    Zion), a small one-way triangle (Kinneret) -- ground no road's strip covers, that the cars
+    cut across. Leaving signs out inside the knot's shape (its junction points within 30 m,
+    grown 1 m) left out 1425 of 7939 in Ashdod and still knocked one: taken back out. Open:
+    it wants where the cars actually cross (the plans' lines), not the junction's shape.
+  - Clips (`foot_slide.gd CLIP=Run` / `CLIP=Walk`: those figures out of _walkers, playing
+    that clip, its own pace from a foot's speed back past the body while on the ground --
+    the slower way it moves): the new people's walk 0.90 m/s at x1, their jog (Jog_Fwd as
+    "Run") 1.05. Joggers play it at pace / 3.4 (a jogger at 3 m/s: feet ~0.9, sliding
+    ~2 m/s); you at RUN * 0.8. Matched, a jog's steps would be ~3x as quick: a look
+    question for the user, as their walk is.
+  - Kerb wedges by zebras: sliding a shallow corner's ends out along both streets until
+    clear of the other's asphalt made HaNeviim's worse (3 pieces 1.3 m in): taken back out.
+    Open as before.
 - **Loading steps** (user, 22 Nov: "an inner progress, like 2/12"): the city file names its
   11 parts ("reading the map: the roads (4 of 11)", `_load_part`, a frame each -- so
   `_load_city` is a coroutine now: `await` it; prepublish does) and each square round the

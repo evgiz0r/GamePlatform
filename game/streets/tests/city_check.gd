@@ -171,10 +171,10 @@ const LIMITS := {
 	1: {"tilt": 8.0, "pavings": 60.0, "posts_twice": 0.0},
 	2: {"tilt": 3.5, "pavings": 60.0, "posts_twice": 0.0},   # (9.0 on its 36 m height grid, over the 3 set for it
 	                                       # unmeasured; 3.2 on 18 m, levelled twice -- 22 Nov)
-	3: {"tilt": 3.0, "pavings": 140.0, "posts_twice": 5.0},   # (124 m2 after the fixes of 21 Nov, a tail of 1-3 m2 spots in a
+	3: {"tilt": 3.0, "pavings": 140.0, "posts_twice": 0.0},   # (124 m2 after the fixes of 21 Nov, a tail of 1-3 m2 spots in a
 	                                       # town 1.5x Tel Aviv's roads: the user chose to guard it here)
 	4: {"tilt": 3.0, "pavings": 60.0, "posts_twice": 1.0},
-	7: {"tilt": 3.0, "pavings": 60.0, "posts_twice": 3.0},
+	7: {"tilt": 3.0, "pavings": 60.0, "posts_twice": 0.0},
 }
 ## (posts twice: any solid thing put up twice on one spot, world_checks.posts_twice. When it
 ## joined, 21 Nov, the railings' joints were most of it -- 848 / 1 / 1,259 / 177 / 2,593 --

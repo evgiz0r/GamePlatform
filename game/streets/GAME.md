@@ -74,9 +74,40 @@ the pavement -- a tree, a pole, a bin.
 > Lets put in the main menu both walks inside an extra menu, like the test drives. and add
 > some more walks. even not the filmed ones. just to distribute a bit away from my location
 
-Every walk is seen from a person's eyes (1.58 m), not from where the film's phone was held at
+Every walk is seen from a little over a person's eyes (1.75 m, as a camera held up; first 1.58), not from where the film's phone was held at
 the chest (1.44 m); and now and then the head turns to a car going by, follows it a couple of
 seconds and comes back -- except where the film's own look is known (at a zebra, a corner).
+
+**Watching a walk.** A thin bar along the foot of the screen shows how far the walk has gone
+("1:23 / 3:20"), and a button beside it speeds the whole world up, 1x, 2x, 4x. In the walks
+list each walk can also be started in the evening (a low sun, long shadows) or at night (the
+street lights on). Every city has a walk -- Delft's along the Oude Delft canal -- and the
+walks nobody filmed have the street's things along them: bins, scooters, cabinets, hydrants,
+bollards, yellow parking boards (a Dutch street's rows of short bollards; a Canadian
+suburb's few hydrants and bins). Street trees beside a road are pruned up, branches from 2.2
+m and leaves from 2.5, so a walk goes under them, not through them.
+
+**Watched, not driven.** Walks, test drives and the tours and stories that play themselves are
+to watch: no wheel, pedals or buttons of the game's own, only pause, exit and a walk's speed.
+(The getaway is still yours to drive.) Every place starts at the same quality and steps down
+by the same rule; little things on the buildings (AC units, balconies, washing) are drawn
+to about 280 m, not 420, and the buildings themselves as far as before, so a tower far off
+still shows.
+
+> About walks and test drives lets not give the user control. Just simulation. And lets try to
+> optimize a bit to render less or whatever takes performance and not rly needed. And same
+> rule for all. But if there is far high building we do want to see it.
+
+> lets add a progress bar to the walks so we know how much we passed, and maybe a speedup
+
+> do we have evening/night walks? if no lets add/change existing to those. if yes lets
+> mention in the menu
+
+> i want to add more items near the walks ( maybe change paths if needed i didnt look at all
+> of them). fix walking through trees ( if still happens not sure ).
+
+> Lets balance the walks to be from more cities. And in any case we do a new city we put a
+> new walk and drive from those cities
 
 > i think the walk height is bit too low, i am holding the phone probably too low. and
 > sometimes not turning with my head on traffic passes( lets add that , even if it doesnt

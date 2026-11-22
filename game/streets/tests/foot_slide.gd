@@ -43,6 +43,15 @@ func _run() -> void:
 		track.append({"w": w, "a": a, "sk": sk, "feet": [fl, fr], "last": [Vector3.INF, Vector3.INF],
 			"ys": [[], []], "pts": [[], []], "loc": [[], []], "hip": hip, "hips": [], "dirs": [], "steps": 0, "was": [false, false]})
 	print("walkers followed: %d" % track.size())
+	# CLIP=Run: those walkers play that clip at x1 instead, and what is measured is the clip's
+	# own pace -- a foot's speed back past the body (in the figure's own frame) while it is on
+	# the ground -- not their slide (they keep their walking pace: CLIP's foot speed is all)
+	var clip := OS.get_environment("CLIP")
+	if clip != "":
+		g._walkers = []   # (left standing where they are: the game no longer sets their clips)
+		for t: Dictionary in track:
+			t["a"].play(clip, true, 1.0)
+			t["lz"] = [[], []]
 	var dt := 1.0 / 60.0
 	var frames := int(secs * 60.0)
 	for f in range(frames):
@@ -55,11 +64,51 @@ func _run() -> void:
 				(t["ys"][k] as Array).append(p.y - a.global_position.y)
 				(t["pts"][k] as Array).append(p)
 				(t["loc"][k] as Array).append(p - a.global_position)
+				if t.has("lz"):
+					(t["lz"][k] as Array).append((p - a.global_position).dot(a.global_transform.basis.z.normalized()))
+					if k == 0:   # (the game sets its walkers' clip speed as it goes: divided by what played)
+						t["sc"] = float(t.get("sc", 0.0)) + float(t["a"].anim.speed_scale)
+						t["n_sc"] = int(t.get("n_sc", 0)) + 1
+						t["cur"] = String(t["a"].anim.current_animation)
 			(t["hips"] as Array).append((sk.global_transform * sk.get_bone_global_pose(t["hip"]).origin).y - a.global_position.y)
 			var fw := -a.global_transform.basis.z   # (the figure faces -z or +z: the sign is taken from its motion below)
 			(t["dirs"] as Array).append(a.global_position)
 	# planted: within 3 cm of the lowest that foot got; its speed over the ground then, along
 	# the way the walker went (from the actor's own motion) and across it
+	if clip != "":
+		var us: Array = []
+		for t: Dictionary in track:
+			var vs: Array = []
+			for k in [0, 1]:
+				var lz: Array = t["lz"][k]
+				for i in range(1, lz.size()):
+					vs.append((float(lz[i]) - float(lz[i - 1])) / dt)
+			var neg := vs.filter(func(v): return v < 0.0)
+			var pos := vs.filter(func(v): return v > 0.0)
+			if neg.is_empty() or pos.is_empty():
+				continue
+			# on the ground: the way the foot moves more slowly (back at the body's pace; in the
+			# air it swings forward faster) -- not the longer, as a run is longer in the air
+			neg = neg.map(func(v): return absf(v))
+			pos = pos.map(func(v): return absf(v))
+			neg.sort()
+			pos.sort()
+			var stance: Array = neg if float(neg[neg.size() / 2]) < float(pos[pos.size() / 2]) else pos
+			var hips: Array = t["hips"]
+			var hh := 0.0
+			for h in hips:
+				hh += float(h)
+			hh /= maxf(hips.size(), 1)
+			var sc := float(t.get("sc", 1.0)) / maxf(float(t.get("n_sc", 1)), 1.0)
+			if String(t.get("cur", "")) != clip:
+				continue   # (the game put its own clip back on)
+			us.append(stance[stance.size() / 2] / maxf(sc, 0.05))
+			print("  %-15s %s at x%.2f: feet back past the body %.2f m/s -> %.2f at x1, hip %.2f m" % [String(t["a"].character), clip, sc, stance[stance.size() / 2], stance[stance.size() / 2] / maxf(sc, 0.05), hh])
+		us.sort()
+		if not us.is_empty():
+			print("CLIP %s at x1: %.2f m/s (median of %d figures, %.2f-%.2f)" % [clip, us[us.size() / 2], us.size(), us[0], us[us.size() - 1]])
+		quit()
+		return
 	var rows: Array = []
 	for t: Dictionary in track:
 		var pos: Array = t["dirs"]
@@ -105,7 +154,7 @@ func _run() -> void:
 			hip_h += float(h)
 		hip_h /= hips.size()
 		var nat := u / maxf(float(a.anim.speed_scale), 0.01)   # the clip's ground speed at x1, this figure
-		rows.append([absf(per_step), "%-15s %.2f m tall  pace %.2f m/s (moved %.2f)  clip x%.2f  planted foot %+5.1f cm/s, %4.1f cm a step;  hip %.2f m, clip's own pace %.2f m/s = %.2f hips/s" % [
+		rows.append([absf(per_step), String(a.anim.current_animation).rpad(10) + " %-15s %.2f m tall  pace %.2f m/s (moved %.2f)  clip x%.2f  planted foot %+5.1f cm/s, %4.1f cm a step;  hip %.2f m, clip's own pace %.2f m/s = %.2f hips/s" % [
 			String(a.character), float(a.scale.y) if a.scale.y != 1.0 else float(w.get("tall", 0.0)),
 			float(w.get("speed", 0.0)), speed, float(a.anim.speed_scale), med * 100.0, per_step * 100.0, hip_h, nat, nat / maxf(hip_h, 0.01)]])
 	rows.sort_custom(func(x, y): return x[0] > y[0])

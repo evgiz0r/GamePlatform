@@ -65,7 +65,7 @@ func _run() -> void:
 	# the routes' rows only: not the page tabs ("the ten", "yours") or "back" (counted with them,
 	# the test said FAIL and tapped route 8, Tel Aviv, for the 10th)
 	var buttons: Array = g._route_ui.find_children("*", "Button", true, false).filter(
-		func(x): return not (x.text in ["back", "the ten"] or x.text.begins_with("yours") or x.has_meta("setting")))
+		func(x): return not (x.text in ["back", "the ten", "the set"] or x.text.begins_with("yours") or x.has_meta("setting")))
 	print("the list: %d buttons" % buttons.size())
 	# the list's settings (_list_settings): "racer" and "night" tapped, so the drive should start
 	# racing at night (SETTINGS="" leaves them as they are: normal, by day)
@@ -77,7 +77,7 @@ func _run() -> void:
 				await process_frame
 				break
 	buttons = g._route_ui.find_children("*", "Button", true, false).filter(   # (the list was built anew)
-		func(x): return not (x.text in ["back", "the ten"] or x.text.begins_with("yours") or x.has_meta("setting")))
+		func(x): return not (x.text in ["back", "the ten", "the set"] or x.text.begins_with("yours") or x.has_meta("setting")))
 	var route_list_ok := _layout_ok("route_list")
 	await _snap("route_list")
 	var pick := int(OS.get_environment("ROUTE_PICK")) if OS.get_environment("ROUTE_PICK") != "" else 10
@@ -108,6 +108,6 @@ func _run() -> void:
 	var style_ok: bool = g._racing() == ("racer" in want) and g._night == ("night" in want) and g._ap_style_now() == ("racer" if "racer" in want else "rules")
 	print("settings %s: racing %s, night %s, the chip says %s (%s)" % [want, g._racing(), g._night, g._ap_style_now(), "ok" if style_ok else "FAIL"])
 	await _snap("route_started")
-	var ok: bool = buttons.size() == 10 and g._auto and g._dest_on and (g._pos as Vector2).distance_to(from) < 80.0 and style_ok and route_list_ok
+	var ok: bool = buttons.size() == g._routes().size() and g._auto and g._dest_on and (g._pos as Vector2).distance_to(from) < 80.0 and style_ok and route_list_ok
 	print("ROUTE MENU: %s" % ("PASS" if ok else "FAIL"))
 	quit(0)

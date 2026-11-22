@@ -4,6 +4,19 @@ How long each change took, in minutes, from the Claude Code sessions that made i
 
 | date (UTC) | commit | change | agent | runs | you | active | away | lines | files | steps | tools | engine runs | tokens out |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2026-11-22 02:41 | bfdad49 | streets: the loading screen names the set-up too; split_posts tells where it knocks something; foot_slide.g... | 6.2 | 13 | 0.0 | **19** | 0.0 | +86 -2 | 4 | 40 | 46 | 19 | 32.1k |
+| 2026-11-22 02:39 | 1497e69 | streets: far shadows paced through their road and area layers, half size on phones | 7.1 | 1.9 | 8.0 | **17** | 0.0 | +29 -1 | 2 | 14 | 14 | 4 | 9.9k |
+| 2026-11-22 02:31 | 08e3ae6 | streets: walks, test drives and self-playing scenarios are watched, not driven; little building details in ... | 5.1 | 12 | 0.0 | **17** | 0.0 | +230 -12 | 6 | 34 | 37 | 13 | 26.9k |
+| 2026-11-22 02:22 | 6a84563 | streets: slow frames tick traffic and people every 4th tick and halve the catch-up build | 7.7 | 1.9 | 0.0 | **9.7** | 0.0 | +56 -11 | 2 | 20 | 22 | 2 | 12.0k |
+| 2026-11-22 02:19 | b60cc54 | streets: autodrive's plan measured from the car (a long straight was never topped up: on past a junction at... | 10 | 28 | 0.5 | **38** | 19 | +109 -14 | 6 | 50 | 52 | 19 | 39.1k |
+| 2026-11-22 02:14 | 45f9a36 | streets walks: the camera at 1.75 m; generated walks keep clear of low crowns of trees away from roads wher... | 3.3 | 11 | 0.0 | **15** | 39 | +43 -17 | 3 | 22 | 22 | 11 | 19.3k |
+| 2026-11-22 02:12 | 8f4862b | notes: performance handoff -- what is next for the phone | 0.4 | 0.0 | 0.0 | **0.4** | 0.0 | +12 -0 | 1 | 3 | 2 | 0 | 2.3k |
+| 2026-11-22 02:12 | 3b675e8 | notes: is a phone's 14-18 fps expected -- no: drawing and script each ~30 ms; the targets | 3.0 | 2.2 | 0.0 | **5.2** | 0.0 | +10 -0 | 1 | 9 | 9 | 1 | 3.5k |
+| 2026-11-22 02:07 | 7fa32c1 | streets: building a square hands the frame back between every step; hitches name the step | 5.9 | 23 | 0.0 | **29** | 0.0 | +159 -4 | 4 | 46 | 56 | 8 | 27.3k |
+| 2026-11-22 02:04 | 79a6f20 | streets: canals in the Dutch towns, canal-house gables, Dutch plates and cycle paths; Annecy (level 24), th... | 19 | 32 | 0.0 | **51** | 26 | +599 -30 | 8 | 131 | 151 | 20 | 98.9k |
+| 2026-11-22 01:48 | 57b6f72 | streets scenarios that play themselves: a day in the town, night tours, the ambulance run, the getaway film... | 4.5 | 21 | 1.0 | **26** | 14 | +406 -8 | 6 | 28 | 28 | 12 | 29.0k |
+| 2026-11-22 01:38 | 83c4dd2 | notes: a phone's numbers (Adreno 740): loads 8.5-9.5 s, drives at 5-18 fps -- the script's ticks spiral, th... | 8.0 | 2.5 | 0.0 | **11** | 44 | +36 -0 | 1 | 12 | 13 | 3 | 7.9k |
+| 2026-11-22 01:33 | 779db7a | streets racer at a red: the pavement way up tried while coming up to a full queue, bent from the plan as it... | 2.5 | 14 | 0.0 | **17** | 0.0 | +54 -7 | 3 | 14 | 14 | 6 | 12.7k |
 | 2026-11-22 01:25 | c2224bc | streets people: a box carried in both arms (Carry: the arms held from the walk's mid-stride, the box betwee... | 25 | 8.5 | 7.2 | **41** | 1.0 | +321 -16 | 7 | 59 | 61 | 21 | 52.9k |
 | 2026-11-22 01:23 | 7b159e6 | streets start screen: two groups, not three -- Cities and Scenarios under "Drive" (a third column ran off a... | 16 | 0.4 | 0.0 | **16** | 8.2 | +11 -5 | 3 | 11 | 11 | 3 | 4.0k |
 | 2026-11-22 01:20 | 447d3d4 | streets walks: under the street trees, not through them (trees by a road pruned up; no spruce in a pavement... | 15 | 50 | 10 | **75** | 0.0 | +507 -45 | 13 | 76 | 97 | 42 | 90.5k |
