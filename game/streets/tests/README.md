@@ -240,3 +240,4 @@ draws two exam printouts side by side as a scorecard (`exam_chart.py out.png
 "Givatayim:round1.txt:round2.txt:round3.txt" ...`); `side_by_side.py` puts two pictures
 side by side under a title each (a drive before and after a fix). The map names the
 streets driven and the main roads in view, with a legend for the path's colours (speed).
+| `parallel_trial.js` | - | not a test you run: a page snippet (paste into a web build's page within ~0.2 s, the desktop app's browser pane) that records the programs a load links, then on the next load links them all at once in parallel and hands the engine the ready ones; see PERF.md "Parallel compiling, tried" | 22 Nov, Givatayim cold on the home PC: 207 hits, 0 misses, compile calls at load 7.2 -> 0.5 s |
