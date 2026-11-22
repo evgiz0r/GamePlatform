@@ -436,6 +436,31 @@ else costs programs.)
 - **Before switching a built-in material's flag to share a shader, look for code that reads
   the flag** to mean something else (a batcher keeping anything with emission on out of its
   merged meshes, lights that switch emission at night).
+- **Time them on a real GPU, and expect most of a cold load to be programs never drawn.**
+  Chrome/Edge on Windows hand every WebGL program to Direct3D's compiler, and a lit Godot
+  program costs seconds there (an RTX 3060: 2.4-7.7 s each, at link; Chromium's own cache
+  makes a repeat visit ~9 ms a program, but a first visit and every build that changes shader
+  code pay it again). Godot 4.7's Compatibility renderer, when a material's shader is set up,
+  compiles each variant's *default* specialization (`shader_gles3.cpp` `_initialize_version`)
+  -- for the lit pass, plain and instanced, with omni, spot and **area** light code all on.
+  Draws use another one (the base pass turns off each light type no light of that type
+  touches), so with only a sun those two programs per material are never drawn, and they
+  were ~85% of a minute-long cold load. Area lights are most of it (a program 2.45 -> 0.47 s
+  without them; 0.16 s without omni, spot and area). A game with no omni, spot or area
+  lights can wrap `WebGL2RenderingContext.prototype.shaderSource` to add `#define
+  DISABLE_LIGHT_OMNI/SPOT/AREA` to sources that have `#define BASE_PASS` but neither
+  `USE_ADDITIVE_LIGHTING` nor a `DISABLE_LIGHT_OMNI` of their own (the load drops ~4x) --
+  or, better, swap those sources for an empty placeholder with the same `#version` line
+  (the load drops ~10x: even stripped they cost ~190 ms each). Godot links them, finds no
+  uniforms (locations -1, skipped) and never draws with them; wrap the draw calls to count
+  any draw made with a placeholder program, so the assumption is checked, not trusted.
+  Install it before the first material is made. Parallel compiling
+  (`KHR_parallel_shader_compile`) measured 3.3x on 16 threads, but Godot asks each
+  program's status right after linking it, which serialises them, and Chromium did not
+  reuse a program linked in another context. The desktop app's built-in browser pane keeps no compiled shaders
+  between loads, which makes it a cold-load bench on the real GPU -- but keep it on screen:
+  hidden or covered, it gets one frame a second, and every staged load step reads as a round
+  1000 ms.
 
 ## Self-play
 
