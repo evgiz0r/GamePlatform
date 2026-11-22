@@ -1307,7 +1307,7 @@ const MORE_BTN := Rect2(566, 98, 44, 22)     ## the drawer of set-once switches
 const FOLD_BTN := Rect2(612, 98, 20, 22)     ## "–": every button folded away but one "show" (_hud_folded); the user: "not take too much of the screen, or collapsible easily"
 const SHOW_BTN := Rect2(566, 98, 66, 22)     ## folded: the one button left, unfolds them
 const VIEW_BTN := Rect2(566, 124, 66, 22)    ## the camera, round: chase, seat, above the city (keys C, Z)
-const PERF_BTN := Rect2(8, 100, 66, 22)      ## the frames a second, live; a tap opens the perf view under it and closes it (the user, 22 Nov: "a quick performance button", not "more" then "perf view")
+const PERF_BTN := Rect2(8, 70, 66, 22)       ## the frames a second, live; a tap opens the perf view under it and closes it (above its graph, PERF_GRAPH) (the user, 22 Nov: "a quick performance button", not "more" then "perf view")
 ## (no lights button: the user, 22 Nov, "remove lights ui, its not a thing" -- key L only)
 ## (the indicators and the horn are keys only, Q / E and H: on screen they were clutter)
 const STICK_C := Vector2(556, 268)   ## the touch stick sits still, here, on the right
@@ -18327,6 +18327,7 @@ func _settle() -> bool:
 ## and a [hitch] line, so a playtest names what chokes.
 const PERF_FRAMES := 150
 const PERF_RECT := Rect2(486, 74, 146, 20)   ## the fps text: tap it for the perf view
+const PERF_GRAPH := Rect2(8, 96, 150, 30)    ## the perf view's frame times, as bars
 var _prof := {}                      ## part -> microseconds since the last drawn frame began
 var _prof_t := 0
 var _frame_at := 0
@@ -26068,7 +26069,7 @@ func _draw_hud() -> void:
 		_draw_trace()
 	if _perf_view and not _frame_ms.is_empty():
 		# the last frames' times as bars, oldest on the left; 16 and 33 ms marked
-		var box := Rect2(8, 96, 150, 30)
+		var box := PERF_GRAPH
 		_hud.draw_rect(box, Color(bg, 0.7))
 		var n := _frame_ms.size()
 		var w := box.size.x / PERF_FRAMES

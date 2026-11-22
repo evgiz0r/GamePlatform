@@ -56,8 +56,9 @@ func _check_layout(state: String) -> void:
 		"credit": Rect2(g._osm_lbl.position, g._osm_lbl.size), "speed": Rect2(g._speed_lbl.position, Vector2(130, 50))}
 	if g._load_lbl != null and is_instance_valid(g._load_lbl) and g._load_lbl.text != "":   # (the load line, its first seconds)
 		others["load line"] = Rect2(g._load_lbl.position, Vector2(g._load_lbl.get_minimum_size().x, 12))
-	if g._perf_view:   # (the panel the perf button opens under itself)
+	if g._perf_view:   # (the panel the perf button opens under itself, and its graph: the button first sat on it)
 		others["perf view"] = Rect2(g._perf_lbl.position, g._perf_lbl.get_combined_minimum_size().max(g._perf_lbl.size))
+		others["frame graph"] = g.PERF_GRAPH
 	if g._touch_seen:
 		others["stick"] = Rect2(g.STICK_C - Vector2.ONE * (g.STICK_R + 5.0), Vector2.ONE * (g.STICK_R + 5.0) * 2.0)
 	var bad: Array = []
