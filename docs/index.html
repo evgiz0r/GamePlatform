@@ -151,6 +151,41 @@ const SW_READY = (!('serviceWorker' in navigator) || navigator.serviceWorker.con
 		setTimeout(ok, 4000);
 	});
 </script>
+<script>
+// PATCHED by tools/publish_web.sh -- Godot's never-drawn default lit programs compiled as an
+// empty placeholder (see the comment there). Before the engine starts, so its own default
+// material is covered too.
+(() => {
+	if (window.__lstrip || typeof WebGL2RenderingContext === 'undefined') return;
+	const c = window.__lstrip = { n: 0, used: 0 };
+	const P = WebGL2RenderingContext.prototype;
+	const types = new WeakMap(), fake = new WeakSet(), fakeProg = new WeakSet();
+	const cs = P.createShader, ss = P.shaderSource, as = P.attachShader, up = P.useProgram;
+	P.createShader = function (t) { const sh = cs.call(this, t); if (sh) types.set(sh, t); return sh; };
+	P.shaderSource = function (sh, src) {
+		if (typeof src === 'string' && src.indexOf('#define BASE_PASS') >= 0
+				&& src.indexOf('#define USE_ADDITIVE_LIGHTING') < 0 && src.indexOf('#define DISABLE_LIGHT_OMNI') < 0) {
+			const v = src.slice(0, src.indexOf('\n'));
+			src = types.get(sh) === this.VERTEX_SHADER
+				? v + '\nvoid main() { gl_Position = vec4(0.0); }\n'
+				: v + '\nprecision mediump float;\nout vec4 frag_color;\nvoid main() { frag_color = vec4(1.0, 0.0, 1.0, 1.0); }\n';
+			fake.add(sh);
+			if (types.get(sh) !== this.VERTEX_SHADER) c.n += 1;
+		}
+		return ss.call(this, sh, src);
+	};
+	P.attachShader = function (p, sh) { if (fake.has(sh)) fakeProg.add(p); return as.call(this, p, sh); };
+	let cur = null;
+	P.useProgram = function (p) { cur = p; return up.call(this, p); };
+	for (const name of ['drawArrays', 'drawElements', 'drawArraysInstanced', 'drawElementsInstanced', 'drawRangeElements']) {
+		const d = P[name];
+		P[name] = function (...a) {
+			if (cur && fakeProg.has(cur) && c.used++ === 0) console.warn('never-drawn placeholder program was drawn with');
+			return d.apply(this, a);
+		};
+	}
+})();
+</script>
 </head>
 	<body>
 		<canvas id="canvas">
@@ -169,7 +204,7 @@ const SW_READY = (!('serviceWorker' in navigator) || navigator.serviceWorker.con
 
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":2750504,"index.wasm":39509339,"index.art.c73dcb19a071.pck":16028100,"index.data_annecy.4fd580197180.pck":1384940,"index.data_ashdod.b73f2db1e049.pck":2802508,"index.data_bedford.00e1e1f51859.pck":3783084,"index.data_delft.9e06d21a3cd1.pck":3933836,"index.data_dimyon.2040101ccaa2.pck":495372,"index.data_givatayim.b1ff12e93337.pck":1697040,"index.data_leiden.985cd529d9cf.pck":4288812,"index.data_tel_aviv.7adb3afa8446.pck":3578128,"index.sound.1e5ae9778cac.pck":13232832},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":SW_URL};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":2751336,"index.wasm":39509339,"index.art.c73dcb19a071.pck":16028036,"index.data_annecy.4fd580197180.pck":1384940,"index.data_ashdod.b73f2db1e049.pck":2802508,"index.data_bedford.00e1e1f51859.pck":3783084,"index.data_delft.9e06d21a3cd1.pck":3933836,"index.data_dimyon.2040101ccaa2.pck":495372,"index.data_givatayim.b1ff12e93337.pck":1697040,"index.data_leiden.985cd529d9cf.pck":4288812,"index.data_tel_aviv.7adb3afa8446.pck":3578128,"index.sound.1e5ae9778cac.pck":13232832},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":SW_URL};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 const GODOT_PACKS = ["index.art.c73dcb19a071.pck", "index.data_annecy.4fd580197180.pck", "index.data_ashdod.b73f2db1e049.pck", "index.data_bedford.00e1e1f51859.pck", "index.data_delft.9e06d21a3cd1.pck", "index.data_dimyon.2040101ccaa2.pck", "index.data_givatayim.b1ff12e93337.pck", "index.data_leiden.985cd529d9cf.pck", "index.data_tel_aviv.7adb3afa8446.pck", "index.sound.1e5ae9778cac.pck"];

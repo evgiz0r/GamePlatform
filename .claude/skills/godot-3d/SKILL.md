@@ -483,7 +483,13 @@ else costs programs.)
   (the load drops ~10x: even stripped they cost ~190 ms each). Godot links them, finds no
   uniforms (locations -1, skipped) and never draws with them; wrap the draw calls to count
   any draw made with a placeholder program, so the assumption is checked, not trusted.
-  Install it before the first material is made. Parallel compiling
+  **The kit's web build now does this for every game** (`tools/publish_web.sh` puts it in
+  `index.html`, before the engine starts): the engine compiles its own default material's
+  two lit programs at start, before any game script -- 2.8 s on a cold Windows browser
+  that no game could catch. And it is safe whatever lights a game has: a draw's base pass
+  always sets `DISABLE_LIGHTMAP` (or a lightmap's own switch), so no draw ever uses the
+  default specialization. `window.__lstrip` = {n: programs swapped, used: draws made with
+  one}; `used` above 0 means the reasoning broke. Parallel compiling
   (`KHR_parallel_shader_compile`) measured 3.3x on 16 threads, but Godot asks each
   program's status right after linking it, which serialises them, and Chromium did not
   reuse a program linked in another context. The desktop app's built-in browser pane keeps no compiled shaders

@@ -4338,6 +4338,21 @@ films (22 Nov, the user's PC): the Ashdod getaway 21 s (caught at 17), 1,272 fra
 fps in about 4 min with Ashdod's whole build, 5.5 MB; "A day in Givatayim" (28) 183 s, 10,994
 frames in 4 min 35 s, 27.3 MB at the size cap (~1.2 Mbit/s for 3 minutes: fine on a phone).
 
+**Dragons** (`dragons.gd`, the "dragons" beat; levels 35-36, at the end of LEVELS -- they were
+first put after level 28 and would have renumbered six levels other sessions had added).
+One timeline in game time: watch from the street (`WATCH` 16 s), up among the roofs (to
+`CLOSE` 26), the dive (to `DIVE` 30), the run behind the nearest building (`HIDE` 32), over the
+roof (`OVER` 36.5), away (`END` 42). Its own `Camera3D`, the game's put back at the end. The
+two fly `_orbit` round a middle `AHEAD` 150 m ahead, `HIGH` 58 m up, `RING` 46 m out, closing
+in every 8 s; the red one's dive is two quadratic curves through a point `PASS_UP` 15 m over
+our heads and `PASS_SIDE` 6 m aside (at 6 m up, straight at us, the camera ended up inside
+it). Bodies face their velocity (+X forward), banked into turns; the wings beat about X,
+faster climbing or diving. Fire: `CPUParticles3D` at the jaw, mixed not added (added over a
+bright sky it went white). The viewer stands on the pavement, moved on until nothing solid
+is within 3 m (the first stood behind a road sign that filled the view). Traffic stops
+(`hit`). `tests/scenario.gd LEVEL=35`: PASS -- captions at 0.5/15.5/26/30.8/38 s, fire
+in every clash and the dive; shots every 3 s. Film (`STREETS_BUILD_ALL=1 tools/record_video.sh streets 35 70`): 2,760 frames, 46 s at 60 fps, about 3 minutes of compute, 16.7 MB.
+
 **Scenario ideas** (the user asked for them as the work goes, with grades):
 
 | # | Scenario | Effort | Notice | AI grade | Comment |

@@ -612,6 +612,15 @@ out as a little film, the car driving itself, captions across the bottom.
 - *Ambulance run* -- Tel Aviv, Ashdod. Siren on and lights flashing, to the hospital (Tel
   Aviv's, on Weizmann): the cars beside you pull aside and stop, every light turns green,
   and the car goes round whatever is in its way.
+- *Dragons* -- over Tel Aviv, over Givatayim. Evening. From the street you look up: two
+  dragons, a red and a green, circle the towers, close in and burn each other, part and come
+  round again; the camera rises among the roofs to watch. Then the red one turns and comes
+  straight at you -- you run behind the nearest building, it sweeps over the roof roaring,
+  and you step out to watch it go. The traffic stops dead.
+
+  > Dragons fighting above the city and we watch the fight. The one dragon starts flying
+  > towads us amd we hide bwhind a building
+
 - *A day in the town* -- Tel Aviv, Givatayim. Morning to night in three minutes: a drive at
   each time of day, the town's own rhythm in the captions, the camera cutting between shots,
   rain before dawn.
@@ -1777,8 +1786,8 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   aliens come down around the city i am in"; "just the concept of scenarios, where aliens
   are one of those. more stuff - titans, dragons, (dont want army stuff though, gives wrong
   ideas)". A scenario is switched on in whatever town you are in and plays out around you:
-  aliens landing round the city first, then titans, dragons. No soldiers, tanks or army of
-  any kind. (Builds on the disasters idea below.)
+  aliens landing round the city first, then titans, dragons (the dragons are built: see
+  "Scenarios" above). No soldiers, tanks or army of any kind. (Builds on the disasters idea below.)
 - A city on the moon: "A city on the moon".
 - Disasters on the real city: "like simcity hazards, but now we have the graphics so it
   can be cool on steroids, like aliens". Pick a disaster and where it strikes, then watch it
