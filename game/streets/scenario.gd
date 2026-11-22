@@ -213,6 +213,20 @@ func _day_beats() -> Array:
 
 ## ---- running it ------------------------------------------------------------------------------
 
+## for the test: any shot's camera (the director's, the chase's cut, the dragons') near the
+## ground and inside a building -- a camera is a person or a mounted lens, never in a wall
+var cam_in_building := 0
+func _cam_check() -> void:
+	var c: Camera3D = g.get_viewport().get_camera_3d() if g.view == null else g.view.get_camera_3d()
+	if c == null or c == g.cam:
+		return
+	var p: Vector3 = c.global_position
+	var p2 := Vector2(p.x, p.z)
+	if p.y < g._h(p2) + 4.0 and g._push_out(p2, 0.15, false, false) != Vector2.ZERO:
+		cam_in_building += 1
+		if cam_in_building == 1:
+			print("[scenario] camera inside a building at %s, beat %s, %.1f s" % [p2, beats[i][0] if i >= 0 and i < beats.size() else "-", t])
+
 func tick(dt: float) -> void:
 	_caption_tick(dt)
 	if not on:
@@ -224,6 +238,7 @@ func tick(dt: float) -> void:
 	t += dt
 	_shots_tick(dt)
 	_slowmo_tick()
+	_cam_check()
 	if _siren_on:
 		_yield_tick()
 	var b: Array = beats[i]

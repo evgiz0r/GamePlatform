@@ -35,6 +35,7 @@ var dragons: Array = []       ## {node, wl, wr, fire, pos, prev, ang, roar}
 var cam: Camera3D = null
 var said := {}                ## captions given (once each)
 var events := {}              ## for tests: what happened, when
+var run_done := false
 
 func _init(game: Node) -> void:
 	g = game
@@ -64,6 +65,7 @@ func start(view_pos: Vector2, view_dir: Vector2) -> void:
 	cam.fov = 62.0
 	cam.far = 4000.0
 	g.world.add_child(cam)
+	cam.position = viewer   # (before its first frame: made at the town's origin, it stood in a building for a frame)
 	cam.make_current()
 	# the street goes still: every car where it is
 	if g._traffic != null:
@@ -293,22 +295,83 @@ func _roar_sound() -> AudioStreamWAV:
 		buf[k] = env * (0.55 * tanh(2.5 * sin(ph)) + 0.6 * lp)
 	return g._wav(buf, rate, false)
 
-## behind the nearest building from where we stand, on the side away from the fight
+## Where we run to: a spot hard against a building's wall with that building between us and the
+## fight, reached in a straight line along open ground. (The first version took "the far side
+## of the nearest building" and slid the camera there in a line -- through the building.)
+## Each wall of every building near us offers its middle and its ends, a step out from it;
+## a spot counts only when it is clear itself, the whole way to it is clear, and the line from
+## it to the fight crosses that building. The nearest wins; past RUN_MAX none is near enough.
+## Where no wall near has its building between (a Tel Aviv boulevard: the towers stand back
+## along it, none across the line to the fight), the nearest wall we can reach will do: pressed
+## flat to it, looking up.
+const RUN_MAX := 30.0          ## m: the farthest we run for cover (a Tel Aviv boulevard: towers set back 16+ m)
+const RUN_SPEED := 6.0         ## m/s: a person sprinting (not a car)
+const RUN_ACCEL := 9.0         ## m/s^2: off the mark in under a second
+const EYE := 1.65
+var run_len := 0.0             ## m, viewer to hide_at
+var run_dir := Vector2.ZERO
+var _why := {}
+
 func _hide_spot(vp: Vector2, view_dir: Vector2) -> Vector3:
+	var fight := vp + view_dir * AHEAD
 	var best := Vector2.INF
 	var bd := INF
-	for bi: int in g._near(g._bld_hash, vp, 45.0, g.BLD_CELL):
-		var box: Rect2 = g._bld_box[bi]
-		var c := box.get_center()
-		if c.distance_to(vp) < bd:
-			bd = c.distance_to(vp)
-			var half := maxf(box.size.x, box.size.y) * 0.5
-			best = c - view_dir * (half + 3.0)   # (its far side from the fight ahead)
+	for bi: int in g._near(g._bld_hash, vp, RUN_MAX + 30.0, g.BLD_CELL):
+		if g._bld_solid[bi] == 0:
+			continue
+		var poly: PackedVector2Array = g._blds[bi]
+		var n := poly.size()
+		for e in range(n):
+			var p0: Vector2 = poly[e]
+			var p1: Vector2 = poly[(e + 1) % n]
+			var along := p1 - p0
+			if along.length() < 2.0:
+				continue
+			var out := Vector2(along.y, -along.x).normalized()
+			if Geometry2D.is_point_in_polygon(p0 + along * 0.5 + out * 0.3, poly):
+				out = -out   # (whichever way the outline winds: out is the side that is not inside)
+			var m := maxi(1, int(along.length() / 3.0))
+			for j in range(m):
+				var c := p0 + along * ((j + 0.5) / m) + out * 0.9
+				var d := c.distance_to(vp)
+				if d > RUN_MAX or d < 3.0:
+					continue
+				var sheltered := not Geometry2D.intersect_polyline_with_polygon(PackedVector2Array([c, fight]), poly).is_empty()
+				var score := d + (0.0 if sheltered else 1000.0)
+				if score >= bd:
+					continue
+				_why["near"] = int(_why.get("near", 0)) + 1
+				if g._push_out(c, 0.4, true, false) != Vector2.ZERO or not _clear_line(vp, c):
+					continue
+				_why["sheltered" if sheltered else "wall"] = int(_why.get("sheltered" if sheltered else "wall", 0)) + 1
+				best = c
+				bd = score
+	events["cover"] = _why
 	if best == Vector2.INF:
-		best = vp - view_dir * 25.0
-	var out: Vector2 = g._push_out(best, 0.6, true, false)
-	best += out
-	return Vector3(best.x, g._h(best) + 1.65, best.y)
+		best = vp   # no cover near: we stay and duck
+	run_len = best.distance_to(vp)
+	run_dir = (best - vp).normalized() if run_len > 0.1 else -view_dir
+	return Vector3(best.x, g._h(best) + EYE, best.y)
+
+func _clear_line(a: Vector2, b: Vector2) -> bool:
+	var steps := int(ceil(a.distance_to(b) / 0.5))
+	for k in range(1, steps):
+		if g._push_out(a.lerp(b, float(k) / steps), 0.35, true, false) != Vector2.ZERO:
+			return false
+	return true
+
+## how far along the run we are, s seconds after setting off: a sprinter's start, then flat out
+func _run_at(s: float) -> float:
+	var t_acc := RUN_SPEED / RUN_ACCEL
+	var d := 0.5 * RUN_ACCEL * minf(s, t_acc) ** 2 + RUN_SPEED * maxf(s - t_acc, 0.0)
+	return minf(d, run_len)
+
+func _run_time() -> float:
+	var t_acc := RUN_SPEED / RUN_ACCEL
+	var d_acc := 0.5 * RUN_ACCEL * t_acc * t_acc
+	if run_len <= d_acc:
+		return sqrt(2.0 * run_len / RUN_ACCEL)
+	return t_acc + (run_len - d_acc) / RUN_SPEED
 
 ## ---- the camera ---------------------------------------------------------------------------------
 
@@ -335,21 +398,44 @@ func camera(dt: float) -> void:
 		cam.position = viewer
 		cam.fov = 55.0
 		_look(a, dt)
-	elif t < HIDE:
-		# running for it: from the street to behind the building, looking back over the shoulder
-		var u := smoothstep(DIVE, HIDE, t)
-		cam.position = viewer.lerp(hide_at, u) + Vector3(0, sin(u * PI * 6.0) * 0.08, 0)
-		_look(a, dt)
 	elif t < OVER + 1.0:
-		# pressed to the wall, looking up: it sweeps over the roof
-		cam.position = hide_at
-		cam.fov = 70.0
-		_look(a, dt)
+		# running for it, then pressed to the wall looking up as it sweeps over the roof. On
+		# foot: a sprinter's pace, the head bobbing with each stride and swaying side to side,
+		# eyes on where we run with a glance back over the shoulder, and a turn round at the
+		# wall to look up (the first slid along a line at car speed, looking backwards)
+		var s := t - (DIVE + 0.25)   # (a beat to react)
+		var rt := _run_time()
+		var d := _run_at(maxf(s, 0.0))
+		var v := RUN_SPEED * minf(maxf(s, 0.0) * RUN_ACCEL / RUN_SPEED, 1.0) if s < rt else 0.0
+		var stride := d / 1.7 * PI   # a stride every 1.7 m
+		var bob := absf(sin(stride)) * 0.07 * v / RUN_SPEED
+		var sway := sin(stride * 0.5) * 0.05 * v / RUN_SPEED
+		var p2 := Vector2(viewer.x, viewer.z) + run_dir * d
+		var right := Vector2(-run_dir.y, run_dir.x)
+		var crouch := smoothstep(rt, rt + 0.6, s) * 0.35   # down against the wall
+		cam.position = Vector3(p2.x + right.x * sway, g._h(p2) + EYE - 0.05 * v / RUN_SPEED + bob - crouch, p2.y + right.y * sway)
+		cam.fov = lerpf(55.0, 72.0, smoothstep(0.0, rt + 0.8, s))
+		if s > 0.0 and s < rt and run_len > 0.5:
+			var glance := smoothstep(rt * 0.45, rt * 0.6, s) - smoothstep(rt * 0.7, rt * 0.85, s)
+			var ahead := cam.position + Vector3(run_dir.x, -0.15, run_dir.y) * 10.0
+			_look(ahead.lerp(a, glance), dt * 1.6)
+		else:
+			_look(a, dt)
+		cam.rotate_object_local(Vector3.FORWARD, sway * 0.25)
+		run_done = s >= rt
 	else:
-		# a step out: it goes, over the town
-		cam.position = hide_at.lerp(viewer, smoothstep(OVER + 1.0, END - 1.0, t) * 0.5)
+		# a few slow steps back out: it goes, over the town
+		var u := smoothstep(OVER + 1.0, END - 1.0, t) * 0.5
+		var p2 := Vector2(hide_at.x, hide_at.z).lerp(Vector2(viewer.x, viewer.z), u)
+		cam.position = Vector3(p2.x, g._h(p2) + EYE - 0.35 * (1.0 - smoothstep(OVER + 1.0, OVER + 2.5, t)) + absf(sin(u * run_len / 0.7 * PI)) * 0.025, p2.y)
 		cam.fov = 55.0
 		_look(a, dt)
+
+	# for the test: the camera is a person, never inside a building
+	var c2 := Vector2(cam.position.x, cam.position.z)
+	if cam.position.y < g._h(c2) + 4.0 and g._push_out(c2, 0.15, false, false) != Vector2.ZERO:
+		events["cam_in_building"] = int(events.get("cam_in_building", 0)) + 1
+	events["run_m"] = snappedf(run_len, 0.1)
 
 var _aim := Vector3.ZERO
 func _look(at: Vector3, dt: float) -> void:

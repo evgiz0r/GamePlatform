@@ -26285,8 +26285,25 @@ func film_ready() -> bool:
 func film_mode(on: bool) -> void:
 	film = on
 	_film_hide()
+	if on and not OS.has_feature("web"):
+		_film_best()
 	if _hud != null:
 		_hud.queue_redraw()
+
+## Filmed, the frame rate does not matter (the movie maker waits for each frame), so the film
+## looks better than any machine could play: past the top QUALITY level, 8x edge smoothing,
+## the picture drawn at 1.5x and scaled down, the sun's shadows out to 160 m on an 8192 map
+## with the soft filter, and no swapping to a model's simpler copies in the distance.
+const FILM_SHADOW_M := 160.0
+func _film_best() -> void:
+	_set_quality(QUALITY.size() - 1)
+	view.msaa_3d = Viewport.MSAA_8X
+	view.scaling_3d_scale = 1.5
+	view.mesh_lod_threshold = 0.0
+	RenderingServer.directional_shadow_atlas_set_size(8192, true)
+	RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_HIGH)
+	if not _night:
+		sun.directional_shadow_max_distance = FILM_SHADOW_M
 
 func _film_hide() -> void:
 	if _hud == null:
