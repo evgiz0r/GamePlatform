@@ -4,7 +4,9 @@ extends SceneTree
 ## nothing -- walking on the spot, and three builds side by side. Shots pc_<i>_side / _front /
 ## _back.png in $OUT, each person up close.
 ## Good: the bags hang from the hand beside the leg, not through it; the backpack sits on
-## the back, not inside it or floating off it; the box rests on the forearms, hands under it.
+## the back, not inside it or floating off it; the box between the hands, low in front, the arms
+## held still round it (people.gd Carry).
+## On people.gd's figures the sixth is a child and the last on the phone.
 ##   OUT=... game/streets/tests/run.sh people_carry 4
 var g: Node
 
@@ -42,6 +44,13 @@ func _run() -> void:
 		g._people_lod(a)
 		var what: String = kinds[i] if i < kinds.size() else ""
 		g._carry(a, what, 500 + i)
+		if i == 6 and g._people_maker().on():
+			g._ppl.phone(a)   # (the last, in the clear: on the phone)
+		if i == 5 and g._people_maker().on():   # (the sixth: a child)
+			a.height = 1.2
+			a.set_meta("child", true)
+			g._humanize(a, 77)
+			g._people_lod(a)
 		a.position = base + rt * (float(i) * 2.5 - 7.5)
 		a.play("Walk_Carry" if what == "box" else "Walk", true, 0.0001)
 		a.face(fw)   # all facing along the row, spaced out along it: from the side, side by side in profile
