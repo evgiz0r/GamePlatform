@@ -4,6 +4,17 @@ How long each change took, in minutes, from the Claude Code sessions that made i
 
 | date (UTC) | commit | change | agent | runs | you | active | away | lines | files | steps | tools | engine runs | tokens out |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2026-11-22 12:47 | 6f5e9d2 | streets: the fps button above the perf view's graph (it sat on its left end); hud_layout checks the graph too | 0.9 | 0.4 | 0.0 | **1.3** | 0.0 | +5 -3 | 2 | 11 | 9 | 1 | 3.7k |
+| 2026-11-22 12:45 | fcc473e | streets: a one-tap fps button opens the perf view; on slow frames the far squares wait (Tel Aviv at 12 fps:... | 12 | 4.5 | 0.4 | **17** | 0.0 | +205 -20 | 8 | 64 | 63 | 13 | 49.6k |
+| 2026-11-22 12:28 | 171ec59 | streets notes: the draw budget and the levels that cut draws (quality 0: test town 616 -> 467, Givatayim 57... | 1.3 | 1.0 | 0.0 | **2.4** | 0.0 | +29 -4 | 3 | 7 | 8 | 4 | 4.9k |
+| 2026-11-22 12:26 | 7ad8a5a | streets tests: draw_budget's quality 0 line named for what it now is | 0.3 | 0.7 | 0.0 | **0.9** | 0.0 | +1 -1 | 1 | 6 | 4 | 0 | 1.2k |
+| 2026-11-22 12:25 | 026878c | streets (in progress): tests/reach_look.gd -- the same view at quality 2 and 0, the draws, and the ranges a... | 1.5 | 1.4 | 0.0 | **2.9** | 0.0 | +86 -0 | 2 | 13 | 13 | 2 | 8.4k |
+| 2026-11-22 12:22 | 484415a | streets (in progress): quality levels 1 and 0 draw less of the town -- every draw range of 150 m or more sc... | 7.9 | 0.4 | 0.0 | **8.4** | 118 | +247 -9 | 3 | 57 | 59 | 7 | 46.5k |
+| 2026-11-22 10:15 | ea5f9a0 | streets notes: a quality step compiles no programs (QWALK, the test town: 0 at each step) -- the laptop's 1... | 0.7 | 4.9 | 0.0 | **5.6** | 0.0 | +11 -1 | 2 | 5 | 4 | 1 | 4.4k |
+| 2026-11-22 10:10 | 8373569 | streets: the quality walk waits by the clock (a game timer falls behind it past 7.5 fps: under a browser's ... | 1.7 | 1.7 | 0.0 | **3.4** | 0.0 | +13 -5 | 2 | 16 | 15 | 4 | 9.6k |
+| 2026-11-22 10:06 | 91af9f6 | streets: the perf view says what the quality ladder did (each step and the fps it measured, the last four: ... | 5.4 | 1.8 | 0.3 | **7.5** | 24 | +102 -5 | 6 | 32 | 31 | 6 | 33.5k |
+| 2026-11-22 09:35 | daa5d75 | streets tests: the .uid files Godot made for six tests committed without them | 0.6 | 0.1 | 0.0 | **0.6** | 0.0 | +0 -0 | 0 | 3 | 2 | 0 | 3.0k |
+| 2026-11-22 09:35 | d089347 | streets: the quality ladder runs while the city builds in the background (it sat at 2 for the whole build -... | 13 | 2.3 | 0.0 | **16** | 0.0 | +198 -14 | 8 | 70 | 76 | 15 | 81.8k |
 | 2026-11-22 02:46 | 712da82 | streets: the run clip at the pace it covers (the jog 1.05 m/s at x1), up to 2.5x fast -- your jog's feet sl... | 1.4 | 0.4 | 0.8 | **2.6** | 0.0 | +20 -3 | 2 | 8 | 9 | 3 | 6.8k |
 | 2026-11-22 02:44 | c1ffe87 | streets racer: bends read the plan as it was (orig), not points already moved -- racer no longer stands beh... | 19 | 22 | 0.0 | **41** | 15 | +19 -4 | 2 | 28 | 28 | 15 | 26.6k |
 | 2026-11-22 02:41 | bfdad49 | streets: the loading screen names the set-up too; split_posts tells where it knocks something; foot_slide.g... | 6.2 | 13 | 0.0 | **19** | 0.0 | +86 -2 | 4 | 40 | 46 | 19 | 32.1k |

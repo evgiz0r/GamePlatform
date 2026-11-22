@@ -5,8 +5,33 @@ extends SceneTree
 ## fps, it never came back up) and one that only the first step helps.
 ##   STREETS_BUILD_ALL=0 $GODOT --headless --path . -s res://game/streets/tests/quality_ladder.gd
 ## Good: [2]; [2, 1, 0]; [0, 1, 2, 3]; down to 1 and kept there (the top fails, 2 is no better);
-## [2, 1, 0, 2] staying at 2 for FLOOR_S, then tried again; [2, 1, 0, 1].
+## [2, 1, 0, 2] staying at 2 for FLOOR_S, then tried again; [2, 1, 0, 1]; and two CHECK lines
+## PASS: the ladder steps down while the rest of the city builds in the background (it never
+## did: a work laptop sat at quality 2 and 7 fps for the build's hour), and holds while the
+## squares round the car are still catching up.
 var g: Node
+var fails := 0
+
+## through the gate in front of the ladder (_watch_fps), as a browser runs it; the lowest
+## level it reached
+func feed_watched(label: String, secs: float, fps: float) -> int:
+	var t := 0.0
+	var lowest: int = g._quality
+	var trail: Array = []
+	while t < secs:
+		var dt := 1.0 / fps
+		g._watch_fps(dt)
+		t += dt
+		lowest = mini(lowest, g._quality)
+		if trail.is_empty() or trail.back()[0] != g._quality:
+			trail.append([g._quality, int(t)])
+	print("%s: levels [level, at s] %s" % [label, str(trail)])
+	return lowest
+
+func check(what: String, ok: bool) -> void:
+	print("CHECK %s: %s" % [what, "PASS" if ok else "FAIL"])
+	if not ok:
+		fails += 1
 func _initialize() -> void:
 	_run()
 ## frame: seconds a frame, or an Array of the frame rate at each level (0..3)
@@ -65,4 +90,26 @@ func _run() -> void:
 	feed("a machine the levels do not help: 26 fps at every level, 10 min", 600.0, [26.0, 26.0, 26.0, 26.0])
 	fresh()
 	feed("only the first step helps: 26 fps at 2, 33 at 1 and 0, 2 min", 120.0, [33.0, 33.0, 26.0, 26.0])
-	quit(0)
+	# the gate: what the background build left the ladder to do
+	var was := [g._bg_build, g._catch_up, g._zoom_v]
+	g._ladder_native = true
+	g._zoom_v = 0.0
+	fresh()
+	g._fps_wait = 6.0   # (as a drive starts)
+	g._bg_build = true
+	g._catch_up = false
+	var low := feed_watched("the rest of the city building in the background, a slow laptop at 7 fps, 60 s", 60.0, 7.0)
+	check("the ladder steps down while the city builds in the background", low < 2)
+	fresh()
+	g._fps_wait = 6.0
+	g._catch_up = true
+	low = feed_watched("the squares round the car still bare (catching up) at 7 fps, 20 s", 20.0, 7.0)
+	check("the ladder holds while the squares round the car catch up", low == 2)
+	g._ladder_native = false
+	g._bg_build = was[0]
+	g._catch_up = was[1]
+	g._zoom_v = was[2]
+	print("the perf view's ladder line: %s" % " · ".join(g._q_log))
+	check("the perf view says what the ladder did", g._q_log.size() > 0)
+	print("QUALITY LADDER: %s" % ("PASS" if fails == 0 else "%d FAILED" % fails))
+	quit(1 if fails > 0 else 0)

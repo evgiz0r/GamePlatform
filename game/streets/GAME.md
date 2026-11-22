@@ -175,6 +175,9 @@ yours, from where it stood (it leaves the traffic). Parked cars cannot be taken 
   beside it ("racer", "rules" or "green wave": tap for the next), and "go to…".
 - **On the right:** "more", "–", the camera ("chase", "seat" or "above": tap for the next,
   round), "walk" under it ("get in" on foot), and "look" while you drive yourself.
+- **On the left, above the map:** the frames a second ("14 fps"), live; a tap opens the perf
+  view right under it, another closes it ("lets add a quick performance button in main
+  screen. dont like that double click" -- it was "more", then "perf view").
 - No headlights button ("remove lights ui its not a thing"): the key L still switches them.
 - **"more"** opens a drawer of what you set once and leave: time of day (day, evening,
   night), the road (dry, wet), how autodrive drives (keeps rules, green wave, racer), the
@@ -1502,8 +1505,16 @@ squares within about 300 m of the start go up behind the loading text (Givatayim
 71), so the car is on the road in about 2 s here (it was 7), Bedford in 1.2 (was 11.7) and
 Ashdod in 2.8 (was 18); a phone takes two or three times as long. The rest goes up while
 you drive, the square nearest where the car is heading first, a few milliseconds a frame
-(6, or 3 when frames already run slow), so the driving does not stutter; "building the city
-40%" under the street count says how far it has got. Givatayim is all up within about 20 s
+(6, or 3 when frames already run slow), so the driving does not stutter; "building the town
+round you · 3 squares to go" under the street count says what is left within sight, and goes
+once that is up (the perf view says how much of the whole city is built). When the frames
+are already slow (a work laptop's browser at 10-20 fps), the squares out of sight wait until
+the car comes near them -- or go up at full speed from above or paused -- instead of taking
+milliseconds from every frame for half an hour.
+
+> the loading of tel aviv on my laptop in chrome in autodrive really takes forever ( i am on
+> 30% after few minutes of driving i think )
+ Givatayim is all up within about 20 s
 of driving here, Ashdod within a couple of minutes. Nothing is left out: when it is done the
 city is the one the old all-at-once build made, lamp for lamp. Anything laid along a road or
 a fence (asphalt, paint, kerbs, garden walls, wires, fences) is worked out by every square
@@ -1524,7 +1535,7 @@ grain are strong enough to read at the lowest step's lower resolution.
 
 > I start with textures on the street but after I drive a bit they just vanish.
 
-**Seeing what chokes.** Tap the fps text under the speed (or press P) for the perf view: a
+**Seeing what chokes.** Tap the fps button on the left (or press P) for the perf view: a
 graph of the last frames' times (green under 20 ms, red over 40), the average frame split
 into the engine's drawing and the game's own parts (traffic, people, autodrive, the
 minimap...), and the last few hitches -- frames much slower than the ones round them --

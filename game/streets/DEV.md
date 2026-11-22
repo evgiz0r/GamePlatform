@@ -81,7 +81,13 @@ The ones most often touched, and the functions in them:
   (`if _over(): await _pause()`) -- and once no square within `SEE_M` (900 m) of the car is
   left (`_all_seen_built`), `BUILD_FAR_US` 1.5 ms while driving (full speed from above or
   paused): Tel Aviv's build took 4-6 ms of every frame for ~11 minutes on a user's PC, most
-  of it squares past the haze. Two rules keep squares from doubling or
+  of it squares past the haze. Sight is `_see_m()`, SEE_M times the level's reach (450 m at
+  quality 0). On slow frames (`_slow_frames`) the far squares are not built at all while
+  driving (`_far_hold`, between squares in `_build_rest`; `_far_held` for the perf view): at
+  12 fps 1.5 ms a frame would have taken ~25 minutes for Tel Aviv's 150 squares
+  (`tests/build_pace.gd`). The HUD's line is `_build_label` -- only the squares within sight
+  ("building the town round you · N squares to go"); with the perf view up the same label is
+  the whole city (`_build_far_txt`). Two rules keep squares from doubling or
   missing things: what lies along a road or fence is worked out by every square it crosses
   and kept only where its triangles start (`CBuf.clip`, `_near_part`, `_near_span`);
   everything else, and whatever it records (posts, parked cars, lights, tables), belongs
@@ -692,7 +698,24 @@ The ones most often touched, and the functions in them:
   `_send_crossers` / `_zebra_span` / `_away_from` / `_crossers_tick`, the height their feet go
   at `_walk_y` / `_pave_top`, what autodrive stops for `_ap_people_v`.
 - **render quality** -- `QUALITY`, `_set_quality` (what each level drops), `_watch_fps` (web
-  only) / `_judge_fps` (the rule; testable natively), the soft car shadows `_set_blobs`.
+  only; `_ladder_native` for tests) / `_judge_fps` (the rule; testable natively), the soft car
+  shadows `_set_blobs`. `_watch_fps` leaves out only the catch-up round the car
+  (`_bg_build and _catch_up`) and the view from above: it left out the whole background build
+  until 22 Nov, and on a slow machine that is most of an hour -- a work laptop drove at 7 fps
+  and quality 2 for its whole drive, the ladder never asked (PERF.md, "A work laptop").
+  The perf view's "quality ladder:" line is `_q_log` (`_q_note`: each step and the fps it
+  measured, the last four). `--quality-walk=S` (user arg; `tests/web_shaders.js` QWALK=S) holds
+  the ladder off and steps QWALK_LEVELS S seconds apart, each printed, to count what a step
+  costs a browser in programs compiled.
+  **Levels 1 and 0 draw less of the town** (22 Nov): `_reach_set` scales every draw range of
+  `REACH_FROM` (150) m or more by `REACH_1` / `REACH_0` (0.75 / 0.5) -- its end and, for a far
+  version, its begin, so near and far versions still meet -- and `_fog_k` thickens the haze by
+  as much (`_fog_day` / `_fog_night`), so the town fades out where it now ends. Ranges and a
+  haze number only: no shader changes with a step. Each thing's own ranges are kept in its
+  meta (`r_end`, `r_begin`), gathered lazily (`_reach_update`, by world's child count, from the
+  first step below 2); `_zoom_far` lifts ranges as before and landing calls `_reach_apply`.
+  The test town's start: quality 2 614 draws, old quality 0 593, new 463 (`tests/draw_budget.gd`,
+  `tests/reach_look.gd`). The depth pre-pass setting changed nothing at runtime (612).
   Every level keeps the sun's shadows (level 0: 25 m): switching them off recompiled every
   material's shader in the browser, seconds of freeze each time the ladder crossed into or out
   of level 0. Night keeps them too: the moon is the day's sun, dim and blue, its shadows
@@ -1103,8 +1126,9 @@ gained their world checks and Tel Aviv; eleven tests that drive, walk or load en
 speed, steering, gear), autodrive's lane ahead and what held its speed down (`_ap_why`:
 limit, curve, light, sign, zebra, people, car, blocked, choice), the car ahead, every
 traffic car within 50 m and what holds it, and events (hits, rescues, junction choices,
-quality steps, buses passed). The perf view's second page (P twice, or the fps text tapped
-twice) draws it as a map; "save log" there downloads it (a browser) or writes it under
+quality steps, buses passed). The perf view's second page (P twice, or the drawer's "perf
+view" twice) draws it as a map (the fps button, PERF_BTN, opens only the first page, and
+closes either); "save log" there downloads it (a browser) or writes it under
 `user://drive_logs/`. Ask the user for that file when they report bad driving, and draw it:
 `python3 game/streets/tests/drive_log_map.py file.json` -- the streets, the track coloured
 by speed, the plan every 2 s, the other cars, the events, and a strip of speed against time
