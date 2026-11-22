@@ -186,12 +186,18 @@ DRAWN n" if the assumption ever breaks (96: the 42 lit defaults and their depth-
 defaults, also never drawn). Not run here (no Playwright on the user's PC); the cloud
 containers have it.
 
-**Step 2, how to measure on a phone:** after a publish, open the site on the phone (if it
-says "new version ready", tap it -- that is the cold case for anything whose shaders
-changed); pick a city; screenshot the line under the map within 8 s of the car appearing
-("loaded in ... (N shaders, X s compiling, M skipped)"); open "more" > "perf view" and
-screenshot it after a minute of driving. Note the phone's model and browser. Put the numbers
-under "Where things stand".
+**Step 2, how to measure on a phone** (the user plays on the same phone they steer the
+sessions from -- the Claude app open beside the game, screenshots taken mid-drive -- so the
+numbers are a real player's, with a little noise from those):
+1. after a publish, open the site; if it says "new version ready", tap it (that is the cold
+   case for anything whose shaders changed). The build line over the minimap names the build:
+   check it holds the fix being tested (`git merge-base --is-ancestor <fix> <commit>`);
+2. pick a city, turn autodrive on, tap the fps number (the perf view);
+3. screenshot right after a stutter, and once after a minute of plain driving;
+4. send them with what was happening (a turn, night, the first minute).
+What to read: "average ... drawing ... script ... in N ticks" (the frame's two halves), the
+hitch lines ("building (step) ms" names the build step; a big "rest" is the GPU or a shader),
+"N draws", "shaders compiled since the car". Put the numbers under "A phone" below.
 
 ## A phone (22 Nov 2026): Adreno 740 (a 2023 flagship), Chrome, build 22 Nov 03:27 Israel
 
@@ -264,3 +270,16 @@ on one thread. Freezes still in that build: building 692 + rest 634, building 13
 3. Far shadows drawn ahead (`FAR_AHEAD_S`): one frame of GPU work, 0.85 s on a desktop.
 Measure natively with `tests/sim_cost.gd` (script per tick) and `tests/build_spans.gd`;
 the phone's own perf view (hitch lines now name the build step) is the real measure.
+
+**Slow frames (22 Nov 2026, after the phone's 04:13 build: 13-15 fps, script 30-51 ms in
+3.8-5.1 ticks, of it building 16-21 ms -- the catch-up's 16 ms budget every frame while the
+car keeps reaching bare squares -- people ~10, traffic + following ~14; even the made-up
+town at 13-15 fps, so not the city's size).** `_slow_watch`: frame time smoothed over ~0.5 s,
+on over 40 ms, off under 28 ms; then traffic and people tick every 4th tick with four times
+the time (was every 2nd), and the catch-up builds at 8 ms a frame (CATCH_UP_US / 2). The car,
+camera and autodrive tick every tick. `STREETS_SLOW=1/0` forces it. Natively, Tel Aviv,
+`sim_cost` 40 s: script 2.7-3.2 -> 2.3-2.6 ms a tick (people 0.8 -> 0.4-0.6, traffic
+0.6-0.9 -> 0.4-0.5, following 0.3-0.4 -> 0.2-0.3); playtest PASS with it forced. Expected on
+the phone: ~24 -> ~14 ms of people and traffic a frame and ~8 ms less building: ~80 -> ~62 ms,
+12-13 -> ~16 fps. The rest is the drawing half (next). The minimap (3-3.5 ms on the phone)
+left alone: drawn every other frame at ~15 fps its heading-up turn would step visibly.

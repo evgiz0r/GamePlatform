@@ -17734,13 +17734,14 @@ func _physics_process(dt: float) -> void:
 	_p("lights")
 	var split := dt <= WORLD_SPLIT_DT and _world_split_on
 	_world_n += 1
-	var traffic_now := not split or _world_n % 2 == 0
-	var people_now := not split or _world_n % 2 == 1
-	var wdt := dt * 2.0 if split else dt
+	var every := (4 if _slow_frames else 2) if split else 1   # (a slow device: each a quarter of the ticks, _slow_watch)
+	var traffic_now := _world_n % every == 0
+	var people_now := _world_n % every == every / 2
+	var wdt := dt * every
 	_traffic_age = 0.0 if traffic_now else _traffic_age + dt
 	_traffic_dt = wdt if traffic_now else _traffic_dt
 	if _traffic != null:
-		_traffic.ticks_per = 2 if split else 1
+		_traffic.ticks_per = every
 	if _walking:
 		if traffic_now:
 			_traffic.tick(wdt)
@@ -17816,6 +17817,30 @@ func _physics_process(dt: float) -> void:
 const WORLD_SPLIT_DT := 1.0 / 40.0
 ## STREETS_WORLD_SPLIT=0 (tests): every tick for both, as before, to set the two side by side
 var _world_split_on := OS.get_environment("STREETS_WORLD_SPLIT") != "0"
+
+## A device whose frames stay slow (a phone in a browser: 60-90 ms, 4-5 physics ticks a frame,
+## each paying for traffic and people -- PERF.md "A phone") ticks traffic and people every
+## 4th tick with four times the time instead of every 2nd, and builds the squares round the
+## car at half the hurry (CATCH_UP_US / 2: the catch-up was 16-21 ms of every phone frame).
+## On when the frame time, smoothed, passes SLOW_ON; off again under SLOW_OFF. The car, the
+## camera and autodrive still tick every tick. STREETS_SLOW=1/0 forces it (tests).
+const SLOW_ON := 0.040
+const SLOW_OFF := 0.028
+var _slow_frames := OS.get_environment("STREETS_SLOW") == "1"
+var _slow_ema := 1.0 / 60.0
+
+func _slow_watch(dt: float) -> void:
+	var forced := OS.get_environment("STREETS_SLOW")
+	if forced != "":
+		return
+	_slow_ema = lerpf(_slow_ema, minf(dt, 0.25), 0.03)   # (~half a second to follow; one freeze barely moves it)
+	if not _slow_frames and _slow_ema > SLOW_ON:
+		_slow_frames = true
+		print("[streets] slow frames (%.0f ms): traffic and people every 4th tick" % (_slow_ema * 1000.0))
+		Probe.event("slow_frames", {"on": true, "ms": int(_slow_ema * 1000.0)})
+	elif _slow_frames and _slow_ema < SLOW_OFF:
+		_slow_frames = false
+		Probe.event("slow_frames", {"on": false, "ms": int(_slow_ema * 1000.0)})
 var _world_n := 0
 var _traffic_age := 0.0              ## s since the traffic last ticked (0 or one tick)
 var _traffic_dt := 1.0 / 60.0        ## the time its last tick covered
@@ -17845,11 +17870,12 @@ func _frame() -> void:
 	var dt := get_process_delta_time()
 	if _bg_wait:   # the city still building round you: its few milliseconds (_pause)
 		_bg_wait = false
-		_build_us = CATCH_UP_US if _catch_up else (BUILD_US if dt < 0.022 else BUILD_US / 2)
+		_build_us = (CATCH_UP_US / 2 if _slow_frames else CATCH_UP_US) if _catch_up else (BUILD_US if dt < 0.022 else BUILD_US / 2)
 		if not _catch_up and not _paused and _zoom_v <= 0.0 and _all_seen_built():
 			_build_us = BUILD_FAR_US
 		_build_tick.emit()
 		_p("building")
+	_slow_watch(dt)
 	_watch_fps(dt)
 	_hold_tick(dt)
 	if _standins != null:
