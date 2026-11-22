@@ -20,6 +20,33 @@ func _game() -> Node:
 			return n
 	return null
 
+## a tap on a list's button, to the game's own _input
+func _tap(b: Button) -> void:
+	var at := b.get_global_rect().get_center()
+	var ev := InputEventMouseButton.new()
+	ev.button_index = MOUSE_BUTTON_LEFT
+	ev.pressed = true
+	ev.position = at
+	ev.global_position = at
+	# (to the game's own _input, where a real tap arrives already in its 640x360 layout: pushed
+	# into the window it was read as window pixels and landed on another button)
+	g._input(ev)
+
+## every button on the list inside the 640x360 screen and none on another (a settings row once
+## ran "night" off the right edge); prints and returns whether so
+func _layout_ok(what: String) -> bool:
+	var bs: Array = g._route_ui.find_children("*", "Button", true, false)
+	var bad: Array = []
+	for i in range(bs.size()):
+		var a := Rect2((bs[i] as Button).position, (bs[i] as Button).size)
+		if not Rect2(0, 0, 640, 360).encloses(a):
+			bad.append("%s off the screen" % bs[i].text)
+		for j in range(i + 1, bs.size()):
+			if a.intersects(Rect2((bs[j] as Button).position, (bs[j] as Button).size)):
+				bad.append("%s on %s" % [bs[i].text, bs[j].text])
+	print("%s layout: %d buttons, %s" % [what, bs.size(), "ok" if bad.is_empty() else "FAIL " + str(bad)])
+	return bad.is_empty()
+
 func _run() -> void:
 	await create_timer(0.3).timeout
 	var lv := 0
@@ -38,20 +65,23 @@ func _run() -> void:
 	# the routes' rows only: not the page tabs ("the ten", "yours") or "back" (counted with them,
 	# the test said FAIL and tapped route 8, Tel Aviv, for the 10th)
 	var buttons: Array = g._route_ui.find_children("*", "Button", true, false).filter(
-		func(x): return not (x.text in ["back", "the set"] or x.text.begins_with("yours")))
+		func(x): return not (x.text in ["back", "the ten", "the set"] or x.text.begins_with("yours") or x.has_meta("setting")))
 	print("the list: %d buttons" % buttons.size())
+	# the list's settings (_list_settings): "racer" and "night" tapped, so the drive should start
+	# racing at night (SETTINGS="" leaves them as they are: normal, by day)
+	var want: Array = Array((OS.get_environment("SETTINGS") if OS.has_environment("SETTINGS") else "racer,night").split(",", false))
+	for word: String in want:
+		for sb: Button in g._route_ui.find_children("*", "Button", true, false):
+			if sb.has_meta("setting") and sb.text == word:
+				_tap(sb)
+				await process_frame
+				break
+	buttons = g._route_ui.find_children("*", "Button", true, false).filter(   # (the list was built anew)
+		func(x): return not (x.text in ["back", "the ten", "the set"] or x.text.begins_with("yours") or x.has_meta("setting")))
+	var route_list_ok := _layout_ok("route_list")
 	await _snap("route_list")
 	var pick := int(OS.get_environment("ROUTE_PICK")) if OS.get_environment("ROUTE_PICK") != "" else 10
-	var b: Button = buttons[pick - 1]
-	var at := b.get_global_rect().get_center()
-	var ev := InputEventMouseButton.new()
-	ev.button_index = MOUSE_BUTTON_LEFT
-	ev.pressed = true
-	ev.position = at
-	ev.global_position = at
-	# (to the game's own _input, where a real tap arrives already in its 640x360 layout: pushed
-	# into the window it was read as window pixels and landed on another button)
-	g._input(ev)
+	_tap(buttons[pick - 1])
 	# the route's city loads
 	var waited := 0.0
 	g = null
@@ -71,7 +101,13 @@ func _run() -> void:
 	var from := Vector2(float(r["from_at"][0]), float(r["from_at"][1]))
 	print("route %d in %s: the car %.0f m from its start, autodrive %s, going to %s" % [
 		int(r["id"]), g._city_id, (g._pos as Vector2).distance_to(from), "on" if g._auto else "off", g._dest_name if g._dest_on else "(nowhere)"])
+	var t := 0.0
+	while g._tod_busy and t < 20.0:   # (night comes through evening)
+		await create_timer(0.25).timeout
+		t += 0.25
+	var style_ok: bool = g._racing() == ("racer" in want) and g._night == ("night" in want) and g._ap_style_now() == ("racer" if "racer" in want else "rules")
+	print("settings %s: racing %s, night %s, the chip says %s (%s)" % [want, g._racing(), g._night, g._ap_style_now(), "ok" if style_ok else "FAIL"])
 	await _snap("route_started")
-	var ok: bool = buttons.size() == g._routes().size() and g._auto and g._dest_on and (g._pos as Vector2).distance_to(from) < 80.0
+	var ok: bool = buttons.size() == g._routes().size() and g._auto and g._dest_on and (g._pos as Vector2).distance_to(from) < 80.0 and style_ok and route_list_ok
 	print("ROUTE MENU: %s" % ("PASS" if ok else "FAIL"))
 	quit(0)

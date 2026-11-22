@@ -164,9 +164,10 @@ func _run() -> void:
 				vmax_near = maxf(vmax_near, absf(g._v))
 			nose_gap = minf(nose_gap, (end - (g._pos + fwd * g.CAR_LEN * 0.5)).dot(toward))
 			if OS.get_environment("VERBOSE") != "" and int(t * 60.0) % 30 == 0:
-				print("    t %.1f: %.1f m to the end, v %.1f, gear %d, heading %.2f, why %s, stop %s, turning %s, plan %d, slope %.2f, steer %.2f, touching %s" % [t,
+				print("    t %.1f: %.1f m to the end, v %.1f, gear %d, heading %.2f, why %s, stop %s, turning %s, plan %d, slope %.2f, steer %.2f, touching %s, at %s, plan ahead %s" % [t,
 					to_end.dot(toward), g._v, g._gear, fwd.dot(toward), g._ap_why, str(g._ap_dead), str(g._ap_kt.get("n", "-")), g._ap_pts.size(),
-					g._slope, g._steer, g._last_hit if g._touch_t > 0.0 else "-"])
+					g._slope, g._steer, g._last_hit if g._touch_t > 0.0 else "-", str(g._pos.round()),
+					str(Array(g._ap_pts).slice(0, 4).map(func(q): return Vector2i(q.round())))])
 				if not g._ap_kt.is_empty():
 					var parts: Array = []
 					for end_s: float in [1.0, -1.0]:
@@ -215,7 +216,14 @@ func _run() -> void:
 				crashes.append("%s at %d km/h %s" % [e["data"]["hit"], e["data"]["kmh"], when])
 			elif e["kind"] in ["autodrive_stuck", "autodrive_rescue", "autodrive_unstuck"]:
 				trouble.append(e["kind"])
-		if not crashes.is_empty() or out_t < 0.0:
+		# a dead end by the map's edge is one autodrive keeps out of (_edge_walk: the map's cut,
+		# not a cul-de-sac): driving away from it without turning is right, not stuck
+		var rim: Rect2 = (g._bounds as Rect2).grow(-float(g.EDGE) - float(g.EDGE_ROOM))
+		var gap := minf(minf(end.x - rim.position.x, rim.end.x - end.x), minf(end.y - rim.position.y, rim.end.y - end.y))
+		var by_edge: bool = gap <= g.EDGE_DEAD and turned_t < 0.0 and crashes.is_empty() and nose_gap > 30.0
+		if by_edge:
+			trouble.append("drove away: a dead end %.0f m from the map's edge (right)" % gap)
+		elif not crashes.is_empty() or out_t < 0.0:
 			bad += 1
 		if out_t >= 0.0:
 			outs += 1

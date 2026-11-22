@@ -22,6 +22,21 @@ func _game() -> Node:
 			return n
 	return null
 
+## every button on the list inside the 640x360 screen and none on another (a settings row once
+## ran "night" off the right edge); prints and returns whether so
+func _layout_ok(what: String) -> bool:
+	var bs: Array = g._route_ui.find_children("*", "Button", true, false)
+	var bad: Array = []
+	for i in range(bs.size()):
+		var a := Rect2((bs[i] as Button).position, (bs[i] as Button).size)
+		if not Rect2(0, 0, 640, 360).encloses(a):
+			bad.append("%s off the screen" % bs[i].text)
+		for j in range(i + 1, bs.size()):
+			if a.intersects(Rect2((bs[j] as Button).position, (bs[j] as Button).size)):
+				bad.append("%s on %s" % [bs[i].text, bs[j].text])
+	print("%s layout: %d buttons, %s" % [what, bs.size(), "ok" if bad.is_empty() else "FAIL " + str(bad)])
+	return bad.is_empty()
+
 func _run() -> void:
 	await create_timer(0.3).timeout
 	var lv := 0
@@ -50,9 +65,10 @@ func _run() -> void:
 		quit(1)
 		return
 	var all: Array = g._route_ui.find_children("*", "Button", true, false)
-	var cb: Array = all.filter(func(x): return x.text != "back")
+	var cb: Array = all.filter(func(x): return x.text != "back" and not x.has_meta("setting"))
 	print("the Cities list (level %d): %d buttons for %d cities (%s): %s" % [clv, cb.size(), cities,
 		"ok" if cb.size() == cities else "FAIL", ", ".join(cb.map(func(x): return x.text))])
+	_layout_ok("city_list")
 	await _snap("city_list")
 	var back: Array = all.filter(func(x): return x.text == "back")
 	if back.size() != 1:
@@ -75,12 +91,11 @@ func _run() -> void:
 		print("WALK MENU: FAIL, no list")
 		quit(1)
 		return
-	var buttons: Array = g._route_ui.find_children("*", "Button", true, false).filter(func(x): return not x.text in ["back", "evening", "night"])
-	var times: Array = g._route_ui.find_children("*", "Button", true, false).filter(func(x): return x.text in ["evening", "night"])
-	print("evening and night buttons: %d (%s)" % [times.size(), "ok" if times.size() == walks * 2 else "FAIL: two per walk"])
+	var buttons: Array = g._route_ui.find_children("*", "Button", true, false).filter(func(x): return x.text != "back" and not x.has_meta("setting"))
 	print("the list: %d buttons (%s)" % [buttons.size(), "ok" if buttons.size() == walks else "FAIL: one per walk"])
 	for b: Button in buttons:
 		print("  ", b.text)
+	_layout_ok("walk_list")
 	await _snap("walk_list")
 	var pick := int(OS.get_environment("WALK_PICK")) if OS.get_environment("WALK_PICK") != "" else buttons.size()
 	var b: Button = buttons[pick - 1]

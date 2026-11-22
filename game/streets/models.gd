@@ -51,6 +51,28 @@ func tris(name: String) -> Array:
 	_tris[name] = out
 	return out
 
+## the whole model as one mesh of one surface (positions and normals; the caller's material
+## colours it all): for a multimesh of many, as the parks' benches are
+var _meshes := {}
+func mesh(name: String) -> ArrayMesh:
+	if _meshes.has(name):
+		return _meshes[name]
+	var v := PackedVector3Array()
+	var n := PackedVector3Array()
+	for surf: Array in tris(name):
+		v.append_array(surf[1])
+		n.append_array(surf[2])
+	var am: ArrayMesh = null
+	if not v.is_empty():
+		var arr := []
+		arr.resize(Mesh.ARRAY_MAX)
+		arr[Mesh.ARRAY_VERTEX] = v
+		arr[Mesh.ARRAY_NORMAL] = n
+		am = ArrayMesh.new()
+		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	_meshes[name] = am
+	return am
+
 ## into one buffer, each surface in the colour `colour.call(role)` gives
 func stamp(b, name: String, at: Transform3D, colour: Callable) -> void:
 	for surf: Array in tris(name):

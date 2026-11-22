@@ -121,18 +121,23 @@ the street it turns into, no tighter than the car can steer and slowly enough to
 > Real give-way and left-turn decisions (picked from the list of next steps: "1 2 6 7").
 
 **On foot.** The "walk" button (or F) lets the driver out of the door to walk the same city:
-arrows or the stick to walk (a brisk 2.1 m/s) and turn, space to run (6 m/s), over the
+arrows or the stick to jog (4.5 m/s) and turn, space (or the stick pushed all the way) to
+sprint (9.5 m/s), backwards at a walk, over the
 shoulder or (the "seat" button) from the eyes. Out of a moving car you jump: you tumble
 out of the door with the car's speed, roll and get up, and the empty car rolls on by
 itself, slowing, until it stops or hits something. Traffic goes round the car; traffic
 stops for you on the road; walls, fences, trees and passing cars push you aside; the
 minimap marks the car. Back at it, "drive" gets you in (still rolling, it rolls on with
-you).
+you) -- or get into any car in the traffic you are beside: "drive" next to it and it is
+yours, from where it stood (it leaves the traffic). Parked cars cannot be taken yet.
 
 > Walk mode: get out of the car and walk the same city.
 
 > I want to walk a bit faster when I'm out of the car, now it's too slow. I want to be able
 > to start walking also when I'm driving. The car will just continue and I'll pop off.
+
+> the current walk mode is very weak ... Its very slow and i can back only to my car. Lets
+> do i can go inti any car and im pretty fast
 
 ## The buttons on the screen
 
@@ -144,11 +149,10 @@ you).
 (22 Nov 2026.) On the screen only what you use while driving, grouped by what it is for:
 
 - **Along the bottom, where you are going:** "autodrive" and, while it drives, its style
-  beside it ("racer", "rules" or "green wave": tap for the next), "go to…", and "walk"
-  ("get in" on foot).
-- **On the right, the view:** "more", "–", the camera ("chase", "seat" or "above": tap
-  for the next, round), and "look" while you drive yourself.
-- **By the map, after dark:** "lights".
+  beside it ("racer", "rules" or "green wave": tap for the next), and "go to…".
+- **On the right:** "more", "–", the camera ("chase", "seat" or "above": tap for the next,
+  round), "walk" under it ("get in" on foot), and "look" while you drive yourself.
+- No headlights button ("remove lights ui its not a thing"): the key L still switches them.
 - **"more"** opens a drawer of what you set once and leave: time of day (day, evening,
   night), the road (dry, wet), how autodrive drives (keeps rules, green wave, racer), the
   steering assist, pause, the keys, the perf view -- and, small at its foot, the fps, which
@@ -166,6 +170,19 @@ a street held from above -- autodrive drives as the racer, no green wave. The st
 yours to change, in the chip beside the button or the drawer.
 
 > change the default of the autodrive to racer, without green wave.
+
+The chip beside autodrive says how it is driving now, not the setting. (A test drive keeps
+the rules, but the chip said "racer" -- the user asked whether the test drives were racing.)
+
+**Settings on the lists.** The test drives and Cities lists have a row of "normal" or "racer"
+and "day", "evening" or "night"; the Walks list has the time of day only (a walk has no
+autodrive). The one chosen is full, the rest dimmed; the drive or walk starts that way, and
+"play again" keeps it. They are kept while the game is open: test drives start "normal" (they
+are there to test autodrive), cities "racer".
+
+> the test drives are actually driving in racer mode, or its a bug? maybe lets add settings
+> like racer/normal day/evenining/night to both test drives and the walk (it wont have the
+> racer option)
 
 ## What do you do?
 
@@ -542,6 +559,26 @@ move it.
 **Pause.** "pause" (K) holds the city still with the view where it is; "resume" lets it go
 on. Resumed while zoomed out, the city runs under you and the view follows the car, which
 still drives (keys or the stick). The shell's own pause (its menu) is still there too.
+
+**Scenarios.** A page of its own on the start screen ("Scenarios: pick one"): a town played
+out as a little film, the car driving itself, captions across the bottom.
+
+- *Tours* -- Givatayim, Tel Aviv, Ashdod, Bedford. The car drives from one of the town's
+  named streets to the next (the lights turning green for it), and at each it stops: the view
+  rises over the street and circles it while the caption says who or what it is named for;
+  between stops, a line about a neighbourhood or the town's past. A street with a story is
+  explained as you turn into it. Built from each town's own story, so every town with one
+  has its tour.
+
+  > a virtual tour in a city. like a guide, where we stop and look and explain
+
+- *The getaway* -- Ashdod, Tel Aviv. A car with flashing lights and a siren is on your tail;
+  the car runs as a racer to the safe house across town. On a straight you pull away; slow for
+  a corner or a queue and it closes in. Lose it by 160 m or reach the safe house and you got
+  away; let it within 7 m and you are caught. Take the wheel and the drive is yours.
+
+  > some scenario ( aka movie i guess ) happening in a city. doesnt have to be related to
+  > the city itself ... tours will be part of all scenarios
 
 **The opening.** When a town comes up, the view starts high over it, turning slowly round
 where you will start, the town's name across the screen, while the streets round the car
@@ -1672,18 +1709,10 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   comes at them; glancing at you.
 - Better people themselves: "what about people themselves? how can we improve". Five
   low-poly characters are the limit now. Done: builds varied, and things carried (shopping
-  bags, handbags, backpacks, a box). Still to do: try a more detailed free (CC0) set of
-  bodies and moves on the look bench (about 2 MB a person, so phones need checking); looking
-  at a phone; hands moving while they talk; reacting to the car (the line above).
-- A guided tour of the city: "a virtual tour in a city. like a guide, where we stop and
-  look and explain. the more real it gets the more the tour looks nicer". A guide leads you
-  along a route on foot (or driving), stops at the sights, turns your view to each and
-  explains it -- what it is, its history, what to notice -- then goes on. It rides on every
-  realism pass the towns get. Already here to build on: the filmed walks (a route at a
-  person's pace, the head turning to look), the landmarks (Tel Aviv's towers, Sarona) and
-  the places from OSM and the towns' own data. New: each tour's script (the stops, where to
-  look, the words, maybe spoken), a guide to follow, and a way to pause, ask, or skip ahead;
-  a tour as a level of its own in the start screen.
+  bags, handbags, backpacks, a box). Hands while talking: done. Done: every person is now one of Quaternius'
+  free Universal Base Characters with the Universal Animation Library's moves, dressed in
+  code (DEV.md "The people"). Still to do: a pose for carrying a box. Also: looking at a phone; reacting
+  to the car (the line above).
 - Scenarios: "Alien invasion, maybe special scenario, maybe in any city. if i activate. some
   aliens come down around the city i am in"; "just the concept of scenarios, where aliens
   are one of those. more stuff - titans, dragons, (dont want army stuff though, gives wrong
@@ -1723,14 +1752,7 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   lobby and stairwell fitted to the outline, the right number of landings, and that many
   flats each split into rooms the way a block of its age is. Only the building you walk into
   is built inside, while you are in it.
-- Scenarios: little movies playing out in the town. "its similar to a guide. but some
-  scenario ( aka movie i guess ) happening in a city. doesnt have to be related to the city
-  itself". Like the guided tour, a script that moves the camera and stages things -- but a
-  story of its own: a chase, a wedding procession, a delivery that goes wrong, a stray dog
-  followed across town, a first day in a new city. Its actors are the town's own people and
-  cars, sent where the script says (the scene tests already stage people, cars and lights
-  this way); the camera cuts and follows; it can be watched, or played from inside (you are
-  the one being chased). Each scenario is a level of its own in the start screen, and runs in
-  any town, its places picked from the town's map (a long street, a square, a junction with
-  lights). The same machinery as the guided tour and the opening: a script of shots.
-
+- Scenarios, more of them (the first two are built: tours and the getaway -- see
+  "Scenarios" above): a taxi shift, a delivery against the clock, an ambulance run, a wedding
+  convoy, the night tour, Shabbat eve, a kindergarten pick-up rush, an alien arrival -- the
+  list with grades is in DEV.md under "Scenarios".
