@@ -4,6 +4,10 @@ How long each change took, in minutes, from the Claude Code sessions that made i
 
 | date (UTC) | commit | change | agent | runs | you | active | away | lines | files | steps | tools | engine runs | tokens out |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2026-11-22 12:28 | 171ec59 | streets notes: the draw budget and the levels that cut draws (quality 0: test town 616 -> 467, Givatayim 57... | 1.3 | 1.0 | 0.0 | **2.4** | 0.0 | +29 -4 | 3 | 7 | 8 | 4 | 4.9k |
+| 2026-11-22 12:26 | 7ad8a5a | streets tests: draw_budget's quality 0 line named for what it now is | 0.3 | 0.7 | 0.0 | **0.9** | 0.0 | +1 -1 | 1 | 6 | 4 | 0 | 1.2k |
+| 2026-11-22 12:25 | 026878c | streets (in progress): tests/reach_look.gd -- the same view at quality 2 and 0, the draws, and the ranges a... | 1.5 | 1.4 | 0.0 | **2.9** | 0.0 | +86 -0 | 2 | 13 | 13 | 2 | 8.4k |
+| 2026-11-22 12:22 | 484415a | streets (in progress): quality levels 1 and 0 draw less of the town -- every draw range of 150 m or more sc... | 7.9 | 0.4 | 0.0 | **8.4** | 118 | +247 -9 | 3 | 57 | 59 | 7 | 46.5k |
 | 2026-11-22 10:15 | ea5f9a0 | streets notes: a quality step compiles no programs (QWALK, the test town: 0 at each step) -- the laptop's 1... | 0.7 | 4.9 | 0.0 | **5.6** | 0.0 | +11 -1 | 2 | 5 | 4 | 1 | 4.4k |
 | 2026-11-22 10:10 | 8373569 | streets: the quality walk waits by the clock (a game timer falls behind it past 7.5 fps: under a browser's ... | 1.7 | 1.7 | 0.0 | **3.4** | 0.0 | +13 -5 | 2 | 16 | 15 | 4 | 9.6k |
 | 2026-11-22 10:06 | 91af9f6 | streets: the perf view says what the quality ladder did (each step and the fps it measured, the last four: ... | 5.4 | 1.8 | 0.3 | **7.5** | 24 | +102 -5 | 6 | 32 | 31 | 6 | 33.5k |
