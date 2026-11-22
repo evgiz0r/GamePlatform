@@ -86,6 +86,8 @@ const LEVELS := [
 	# the first French town (NEW_CITY.md, "France"): the centre between the station, the old town
 	# and the lake, with IGN BD TOPO's heights and measured roofs ("build": "fr": render, not brick)
 	{"name": "Annecy", "city": "annecy", "start": ["Rue Royale", "Rue de la Poste"], "look": "north", "build": "fr", "decks": "infer"},
+	{"name": "Dragons over Tel Aviv", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "dragons"},
+	{"name": "Dragons over Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "dragons"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 

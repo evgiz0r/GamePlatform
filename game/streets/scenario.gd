@@ -87,6 +87,9 @@ func setup(id: String) -> void:
 		beats = _ambulance_beats()
 	elif id == "day":
 		beats = _day_beats()
+	elif id == "dragons":
+		beats = [["time", "evening"], ["dragons"],
+			["end", "Dragons over %s. The streets will talk about nothing else." % String(story.get("town", g._city_name))]]
 	Probe.event("scenario", {"kind": id, "beats": beats.size()})
 
 func start() -> void:
@@ -235,6 +238,11 @@ func tick(dt: float) -> void:
 				_next()
 		"time", "wet", "shots", "siren":
 			_next()
+		"dragons":
+			if _dragons.tick(dt, func(text: String, secs: float) -> void: _say(text, secs)):
+				_next()
+			else:
+				_dragons.camera(dt)
 		"drive":
 			_street_words()
 			var at: Vector2 = b[1]
@@ -287,6 +295,11 @@ func _next() -> void:
 				_cam_usual()
 		"siren":
 			_set_siren(bool(b[1]))
+		"dragons":
+			g._set_auto(false)
+			g._v = 0.0
+			_dragons = Dragons.new(g)
+			_dragons.start(g._pos, g._fwd())
 		"drive_for":
 			if g._zoomed():
 				g._zoom_set(0.0)
@@ -328,8 +341,13 @@ var _end_tick := -1
 func done_for(secs: float) -> bool:
 	return _end_tick >= 0 and Engine.get_physics_frames() - _end_tick >= int(secs * Engine.physics_ticks_per_second)
 
+const Dragons := preload("res://game/streets/dragons.gd")
+var _dragons = null           ## the dragons' scene (dragons.gd), while it plays
+
 func _finish(how: String) -> void:
 	on = false
+	if _dragons != null and _dragons.on:
+		_dragons.stop()
 	if _end_tick < 0:
 		_end_tick = Engine.get_physics_frames()
 	_cam_usual()
