@@ -4,6 +4,8 @@ How long each change took, in minutes, from the Claude Code sessions that made i
 
 | date (UTC) | commit | change | agent | runs | you | active | away |
 |---|---|---|---|---|---|---|---|
+| 2026-11-22 01:09 | b52c7d7 | effort.py --detail: the agent's minutes as thinking, writing and waiting on the model, the runs' by what ra... | 2.0 | 0.1 | 0.1 | **2.2** | 0.0 |
+| 2026-11-22 01:07 | 520eb44 | effort.py: a commit of the tables alone is no game's work (it had a row in every game) | 0.4 | 0.2 | 0.0 | **0.6** | 0.0 |
 | 2026-11-22 01:06 | 7ece738 | tools/effort.py: how long each change took -- agent, runs and the person's active minutes, time away left o... | 2.9 | 0.9 | 0.0 | **3.8** | 12 |
 | 2026-09-10 19:41 | f7f38c6 | GameMode3D: render the 3D view at window resolution with 4x MSAA | 1.4 | 0.7 | 0.0 | **2.2** | 11 |
 | 2026-09-09 22:58 | 5187280 | publish workflow: quote the Godot invocation so YAML parses | 0.5 | 0.6 | 0.0 | **1.1** | 0.0 |

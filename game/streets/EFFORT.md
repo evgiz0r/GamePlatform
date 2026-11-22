@@ -4,6 +4,7 @@ How long each change took, in minutes, from the Claude Code sessions that made i
 
 | date (UTC) | commit | change | agent | runs | you | active | away |
 |---|---|---|---|---|---|---|---|
+| 2026-11-22 01:08 | a481902 | streets on foot: a jog (4.5 m/s) and a sprint (9.5), and into any car in the traffic you stand beside | 2.0 | 0.8 | 0.0 | **2.8** | 0.0 |
 | 2026-11-22 01:06 | 652d3a0 | streets scenarios: tour stops on public streets, arrival at the kerb counts; the chase's look-back cut, cha... | 2.0 | 17 | 3.2 | **23** | 0.0 |
 | 2026-11-22 00:59 | f93b9bf | streets HUD: no lights button (key L only); walk on the right under the camera, look under it | 1.0 | 2.9 | 0.0 | **4.0** | 17 |
 | 2026-11-22 00:51 | 82c1ba6 | streets: the walk clip's pace by the figures in use (the new people's walk ~0.85 m/s at x1): foot slide 26.... | 2.3 | 1.7 | 0.0 | **4.0** | 0.0 |
@@ -59,4 +60,4 @@ How long each change took, in minutes, from the Claude Code sessions that made i
 | 2026-11-21 21:43 | b388d2f | streets: the wall shader's balconies as the kit's (dark creases, coping, lip and drip line, railings of bar... | 7.3 | 5.2 | 9.0 | **22** | 0.0 |
 | 2026-11-21 21:31 | 704537e | streets: the green wave and the city from above before it is built | 13 | 14 | 1.4 | **28** | 0.0 |
 | 2026-11-20 22:30 | 1b5f176 | streets data, second round: Givatayim's trees, spot heights, land use, addresses and city things; Ramat Gan... | 5.8 | 11 | 7.5 | **24** | 0.0 |
-| 2026-11-20 22:06 | 214e920 | streets data from the user's computer: Givatayim's and Ramat Gan's storeys on level 1 (guessed heights 4,72... | 13 | 7.4 | 0.0 | **20** | 0.0 |
+| 2026-11-20 22:06 | 214e920 | streets data from the user's computer: Givatayim's and Ramat Gan's storeys on level 1 (guessed heights 4,72... | 13 | 6.2 | 1.2 | **20** | 0.0 |
