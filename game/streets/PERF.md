@@ -407,3 +407,10 @@ specialization never equals the default mask -- the default lit programs are nev
 ANY game, lights or not. The placeholder could therefore live in the page itself, before
 the engine starts (`tools/publish_web.sh` patches index.html already), for every game: -2.8 s
 on a cold visit here. Kit-wide, so asked first.
+
+**Kit-wide since 22 Nov 2026 (the user: "yes, kit-wide").** `tools/publish_web.sh` puts the
+placeholder in `index.html` before the engine starts; streets' own LIGHT_STRIP_JS finds
+`window.__lstrip` and stays out. Local export, the home PC's pane, cold: the engine's start
+(the main menu) 21 programs in 5 ms of linking (was ~2.85 s: the default material's two lit
+programs, 1.4 s each); the test town loads and draws as before, `__lstrip` 116 skipped, 0
+drawn with. `web_shaders.js`'s never-drawn check should now read 0 from the page's start.
