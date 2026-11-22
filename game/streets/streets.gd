@@ -9859,14 +9859,11 @@ func _build_parked() -> void:
 						var d := (_along(run, cum, minf(s + 1.0, total)) - c).normalized()
 						var side := Vector2(-d.y, d.x) * sgn
 						var p := c + side * (hw + 0.6)   # mostly up on the pavement: a third of a car in the road
-						var ok := _mine(p) and not _no_parking(r, ri, p) and _push_out(p, 1.0, false) == Vector2.ZERO
+						var face := d * sgn   # nose with the traffic on its side
+						var ok := _mine(p) and not _no_parking(r, ri, p) and _car_fits(p, face)
 						for np: Array in _no_park:   # kept clear by hand (details.gd): a view a film had
 							if p.distance_to(np[0]) < float(np[1]):
 								ok = false
-						for i: int in _near(_post_hash, p, 1.4, BLD_CELL):
-							if _posts[i].distance_to(p) < 1.4:
-								ok = false
-						var face := d * sgn   # nose with the traffic on its side
 						# not poking into the asphalt: near a corner the next street can be
 						# right there, and the car stood in its lane
 						ok = ok and _off_road(p + face * 1.25, -0.1) and _off_road(p - face * 1.25, -0.1)
@@ -12405,9 +12402,12 @@ func _on_street(p: Vector2) -> bool:
 	return _in_junction(p, 0.0)
 
 ## nothing round (a tree, a lamp, a sign) stands within `d` metres of p
+## no post's middle within d of p -- and a big one's body (beyond a tree's 0.3 m) on top: a
+## parked car's circles are 0.85 m, and a motorbike or a bike rack "1 m clear" of their
+## middles stood 0.4 m inside the car (tests/parked_overlap.gd, Ashdod, 22 Nov)
 func _clear_of_posts(p: Vector2, d: float) -> bool:
-	for i: int in _near(_post_hash, p, d, BLD_CELL):
-		if _posts[i].distance_to(p) < d:
+	for i: int in _near(_post_hash, p, d + 0.6, BLD_CELL):
+		if _posts[i].distance_to(p) < d + maxf(0.0, _post_r[i] - 0.3):
 			return false
 	return true
 
@@ -12481,6 +12481,30 @@ func _add_post(p: Vector2, r: float, unique := false) -> bool:
 ## car's own half-length: at 1.25 its front and back wings were 0.17-0.27 m short), leave
 ## about 0.1 m. All 0.85 m: city_check knows a parked car's posts by that, and they reach
 ## into the road by design. (The end two first: tests find a parked car as that pair.)
+## room for a parked car at c, facing `along`: its whole length -- the five circles it stands
+## as (_add_car_posts) -- clear of anything round already up (a tree, a lamp, a wire pole, a
+## parked motorbike, another car) and of walls and buildings. Only its middle was looked at
+## (posts within 1.4 m, walls 1 m): 1767 of Ashdod's 32193 kerbside cars stood with a tree,
+## a lamp or a pole through the bonnet or the boot, a motorbike inside some (a user, 22 Nov,
+## on the chase camera; tests/parked_overlap.gd).
+## something r round at p would stand inside a parked car (its 0.85 m circles), for what is
+## put up after the cars: a cafe's tables, a greengrocer's crates (tests/parked_overlap.gd)
+func _in_parked_car(p: Vector2, r: float) -> bool:
+	for i: int in _near(_post_hash, p, r + 0.85, BLD_CELL):
+		if absf(_post_r[i] - 0.85) < 0.001 and _posts[i].distance_to(p) < 0.85 + r - 0.15:
+			return true
+	return false
+
+func _car_fits(c: Vector2, along: Vector2) -> bool:
+	for k: float in [-1.4, -0.7, 0.0, 0.7, 1.4]:
+		var q := c + along * k
+		for i: int in _near(_post_hash, q, 2.0, BLD_CELL):
+			if _posts[i].distance_to(q) < 0.85 + _post_r[i] - 0.15:
+				return false
+		if _push_out(q, 0.8, false) != Vector2.ZERO:
+			return false
+	return true
+
 func _add_car_posts(c: Vector2, along: Vector2) -> void:
 	_add_post(c + along * 1.4, 0.85)
 	_add_post(c - along * 1.4, 0.85)
@@ -13435,6 +13459,8 @@ func _terrace(pos: Vector2, n: Vector2, along: Vector2, umb: Color, t: Dictionar
 			continue
 		if _post_twin(c, room):
 			continue   # (a table there already: one cafe mapped twice, Tel Aviv 18)
+		if _in_parked_car(c, room):
+			continue   # (laid after the cars: 176 of Tel Aviv's tables stood in one)
 		var gy := _h(c)
 		var face := atan2(along.x, along.y)
 		t["top"].append(Transform3D(Basis(), Vector3(c.x, gy + 0.74, c.y)))
@@ -13483,7 +13509,7 @@ func _crates(b: CBuf, pos: Vector2, n: Vector2, along: Vector2, gy: float, wide:
 	var k := posmod(_hash_i(pos), 5)
 	for sgn: float in [-1.0, 1.0]:
 		var c := pos + n * 0.75 + along * (1.0 * wide) * sgn
-		if _push_out(c, 0.4, false) != Vector2.ZERO:
+		if _push_out(c, 0.4, false) != Vector2.ZERO or _in_parked_car(c, 0.5):
 			continue
 		_furn._box(b, Vector3(c.x, gy + 0.3, c.y), Vector3(1.3, 0.6, 0.55), _tone["tyre"].lightened(0.1), bs)   # the stand
 		for j in 3:

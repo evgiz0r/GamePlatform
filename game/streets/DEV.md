@@ -4701,6 +4701,16 @@ stood 19-26 s; on two-way streets with 3 cars in the lane, 4 of 6 stood.
   UAL1_Standard.glb put in the project for the run, removed after), each up to x3
   (RUN_CLIP_MAX). `tests/sprint_clip.gd`: slide at 2.1 / 4.5 / 7 / 9.5 m/s 0.15 / 1.35 /
   0.6 / 3.1 m/s (were ~1.2 / 3.9 / - / 6.9). Joggers: the jog, the same rate.
+- **Parked cars inside things** (a user, 22 Nov, Ashdod on the chase camera: "some parking
+  cars spawn inside trees or other objects"; `tests/parked_overlap.gd`, the car as its five
+  0.85 m circles against every other post and the walls). A kerbside car looked for posts
+  within 1.4 m of its middle and walls within 1 m: trees, lamps and wire poles stood
+  through bonnets and boots, 1767 of Ashdod's 32193 cars. `_car_fits` checks its whole
+  length (Ashdod parks 30503 now). What is put up after the cars: `_clear_of_posts` counts
+  a big post's body beyond 0.3 m (motorbikes, bike racks: "1 m clear" of a car's middle was
+  0.4 m inside it), `_in_parked_car` for cafe tables and crates (176 tables in Tel Aviv's
+  cars). After, Givatayim / Ashdod / Tel Aviv: 14 / 40 / 197 -> 1 / 1 / 5 (mapped lamps,
+  a light, a bus stop at their mapped spots: good, that tail).
 - **Loading steps** (user, 22 Nov: "an inner progress, like 2/12"): the city file names its
   11 parts ("reading the map: the roads (4 of 11)", `_load_part`, a frame each -- so
   `_load_city` is a coroutine now: `await` it; prepublish does) and each square round the

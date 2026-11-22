@@ -6,6 +6,7 @@ How long each change took, in minutes, from the Claude Code sessions that made i
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 2026-11-22 15:02 | b3ce21a | streets racer: tests/racer_drive.gd (a real drive in live traffic, to a street), why each way round a car w... | 1.4 | 1.9 | 0.0 | **3.3** | 0.0 | +128 -0 | 3 | 9 | 9 | 2 | 8.4k |
 | 2026-11-22 15:00 | c6e94a2 | streets notes: parallel shader compiling tried in a browser -- compile at load 7.2 -> 0.5 s, what a real bu... | 4.1 | 3.6 | 0.0 | **7.7** | 0.0 | +80 -0 | 3 | 23 | 40 | 1 | 22.5k |
+| 2026-11-22 15:00 | c6e94a2 | streets notes: parallel shader compiling tried in a browser -- compile at load 7.2 -> 0.5 s, what a real bu... | 4.1 | 3.6 | 0.0 | **7.6** | 0.0 | +80 -0 | 3 | 23 | 40 | 1 | 22.5k |
 | 2026-11-22 14:58 | 575eefd | streets dragons: the camera placed before its first frame (one frame at the town's origin, in a building --... | 0.3 | 2.2 | 0.0 | **2.5** | 0.0 | +3 -0 | 2 | 3 | 3 | 1 | 1.9k |
 | 2026-11-22 14:58 | 35eacfa | streets: parked cars clear of trees, lamps, poles, motorbikes and walls over their whole length (1767 of As... | 5.5 | 5.4 | 0.0 | **11** | 31 | +102 -8 | 3 | 17 | 20 | 8 | 15.4k |
 | 2026-11-22 14:56 | 7500e05 | streets dragons: the run for cover goes round, not through (a wall reached in a clear line, at a sprinter's... | 7.6 | 10 | 0.0 | **18** | 0.0 | +183 -30 | 7 | 60 | 68 | 12 | 34.9k |
