@@ -52,7 +52,8 @@ const LEVELS := [
 	{"name": "Test town: the market street", "city": "dimyon", "look": "med", "walk": "dimyon_market"},
 	# the first Dutch town (NEW_CITY.md): a box of the old centre, the station and the canals,
 	# with 3DBAG's measured heights and the BGT's trees and lamp posts. Starts on the Oude Delft canal.
-	{"name": "Delft", "city": "delft", "start": ["Oude Delft", "Binnenwatersloot"], "look": "north", "decks": "infer"},
+	# "build": "nl": its houses Dutch -- brick, pitched roofs where 3DBAG measured a ridge (_dutch())
+	{"name": "Delft", "city": "delft", "start": ["Oude Delft", "Binnenwatersloot"], "look": "north", "build": "nl", "decks": "infer"},
 	# the cities: a list, as the walks and the test routes are (no city behind it)
 	{"name": "Cities: pick one", "group": "Cities", "cities": true, "city": "dimyon", "look": "med"},
 ]
@@ -232,6 +233,11 @@ uniform vec4 lit : source_color;      // a lit room, at night
 uniform vec4 lit_cool : source_color; // an office
 uniform float night = 0.0;
 uniform float siding = 0.0;           // northern houses: clapboard, white-framed windows
+uniform float brick = 0.0;            // Dutch houses (a level's "build": "nl"): brick, white-framed windows
+uniform vec4 brick_a : source_color;  // red-brown brick
+uniform vec4 brick_b : source_color;  // dark purple-brown brick
+uniform vec4 brick_c : source_color;  // yellow brick (Delft's old "geel")
+uniform vec4 brick_m : source_color;  // the mortar
 uniform vec4 trim : source_color;
 uniform float textured = 1.0;         // photo plaster and the windows' depth (off at the lowest quality)
 uniform sampler2D plaster_tex : filter_linear_mipmap_anisotropic, repeat_enable;
@@ -419,6 +425,22 @@ void fragment() {
 		float tj = smoothstep(0.38, 0.46, max(tf.x, tf.y));
 		base *= mix(1.0, (0.97 + 0.05 * hash(floor(tg) + seed)) * mix(1.0, 0.86, tj), 1.0 - smoothstep(0.006, 0.02, aa));
 	}
+	// Brick (a Dutch town): COLOR.g picks red, dark or yellow brick, or a mix (4 stays painted
+	// plaster); laid in stretcher bond, 22 x 5 cm with 1.25 cm joints, each brick a shade of
+	// its own. Drawn while a pixel is smaller than a joint is apart, the average further off.
+	if (brick > 0.5 && tk < 3.5 && COLOR.a < 0.95) {
+		vec3 bc = (tk < 0.5 ? brick_a.rgb : (tk < 1.5 ? brick_b.rgb : (tk < 2.5 ? brick_c.rgb
+			: mix(brick_a.rgb, brick_c.rgb, 0.45)))) * COLOR.r;
+		float course = 0.0625;
+		float row = floor(up / course);
+		float xs = along / 0.22 + 0.5 * mod(row, 2.0);
+		vec2 bf = vec2(fract(xs) * 0.22, fract(up / course) * course);
+		float jd = min(min(bf.x, 0.22 - bf.x), min(bf.y, course - bf.y));
+		vec3 mortar = mix(bc, brick_m.rgb * COLOR.r, 0.55);
+		vec3 one = bc * (0.86 + 0.26 * hash(vec2(floor(xs), row) + seed));
+		vec3 near_b = mix(one, mortar, line_cover(jd, 0.006, aa));
+		base = mix(mix(bc, mortar, 0.18), near_b, 1.0 - smoothstep(0.004, 0.014, aa));
+	}
 	vec3 col = base;
 	float rough = 0.92;
 	// at night some rooms have the light on: warm in homes, cooler in offices
@@ -442,7 +464,7 @@ void fragment() {
 	// about half the blocks with balconies have railings of bars, not solid parapets
 	bool rail_blk = hash(vec2(seed, 6.1)) < 0.5;
 	// (how weathered: aged, the sand-plastered old blocks, darker grime under their sills)
-	if (siding > 0.5 && style < 0.5 && facade && fract(up / 0.24) < 0.13) {
+	if (siding > 0.5 && brick < 0.5 && style < 0.5 && facade && fract(up / 0.24) < 0.13) {
 		col *= 0.88;
 	}
 	// ---- the flat facade: paint only (far away, and the whole look at the lowest quality)
@@ -613,7 +635,7 @@ void fragment() {
 						if (house) {   // a cross of muntins
 							cover = max(cover, line_cover(abs(g.y - (lo.y + hi.y) * 0.5), 0.012, aa));
 						}
-						if (ground && !door) {   // security bars, white, every 13 cm, and a rail across
+						if (ground && !door && brick < 0.5) {   // security bars, white, every 13 cm, and a rail across (none in a Dutch town)
 							cover = max(cover, line_cover(abs(fract((g.x - lo.x) / 0.13) - 0.5) * 0.13, 0.008, aa));
 							cover = max(cover, line_cover(abs(g.y - (lo.y + sy) * 0.5), 0.01, aa));
 						}
@@ -3783,10 +3805,11 @@ void fragment() {
 		float h2 = h21(pv.yz + 13.7);
 		vec3 base = pave.rgb;
 		vec3 col;
-		if (mixk < 0.5) {          // reds and browns, mixed
-			vec3 a = base * vec3(1.32, 0.9, 0.78);
-			vec3 b = base * vec3(1.12, 0.86, 0.76);
-			vec3 cc = base * vec3(0.98, 0.84, 0.82);
+		if (mixk < 0.5) {          // reds and browns, mixed: muted, as filmed (they were red over green
+			// 1.2-1.35 on screen and bright against the film's 1.10 on Sirkin; DEV.md "walk 2's paving")
+			vec3 a = base * vec3(0.93, 0.77, 0.69);
+			vec3 b = base * vec3(0.85, 0.75, 0.68);
+			vec3 cc = base * vec3(0.78, 0.74, 0.72);
 			col = h < 0.4 ? a : (h < 0.75 ? b : cc);
 		} else if (mixk < 1.5) {   // greys, a darker one here and there
 			col = base * (h < 0.15 ? 0.84 : (h < 0.55 ? 0.95 : 1.03));
@@ -3802,7 +3825,7 @@ void fragment() {
 		// further off than a few pixels a paver, the pattern is its average colour
 		float fw = length(fwidth(g));
 		float far = smoothstep(0.012, 0.05, fw);
-		vec3 avg = mixk < 0.5 ? base * vec3(1.16, 0.88, 0.79) : (mixk < 1.5 ? base * 0.93 : (mixk < 2.5 ? base * vec3(1.16, 1.1, 0.96) : base * vec3(1.12, 0.92, 0.84)));
+		vec3 avg = mixk < 0.5 ? base * vec3(0.86, 0.75, 0.69) : (mixk < 1.5 ? base * 0.93 : (mixk < 2.5 ? base * vec3(1.16, 1.1, 0.96) : base * vec3(1.12, 0.92, 0.84)));
 		col = mix(col, avg, far);
 		// the joints, sand-filled and dark, and each paver's bevelled edge
 		float jw = 0.004;
@@ -6124,6 +6147,7 @@ func _build_buildings() -> void:
 	var chunks := {}
 	var north := String(_place.get("look", "")) == "north"
 	var med := String(_place.get("look", "")) == "med"
+	var dutch := _dutch()
 	var gables := {"roof": CBuf.new(CHUNK), "end": CBuf.new(CHUNK)}
 	var cores := CBuf.new(CHUNK)   # the walled-in middle of a block lifted on columns
 	var all: Array = _city_data["buildings"]
@@ -6167,11 +6191,25 @@ func _build_buildings() -> void:
 			var ts := _med_plaster(bd, hsh, tk)
 			tk = int(ts.x)
 			stone = ts.y
+		# a Dutch town (_dutch): brick -- red-brown most, then dark, yellow, a mix; a few painted
+		# (WALL_SHADER's brick); and where 3DBAG measured a pitched roof, the walls stop at the
+		# eaves and the roof rises to the measured ridge (_dutch_pitch)
+		var pitch := 0.0
+		if dutch and not bd.has("_glass"):
+			tk = 0 if pick < 45 else (1 if pick < 70 else (2 if pick < 85 else (3 if pick < 93 else 4)))
+			stone = 0.0
+			if bd.has("rr") and raised == 0.0:
+				pitch = _dutch_pitch(ring, float(bd["rr"]))
 		var tint := float(tk) / 4.0
 		if bd.has("_glass"):
 			stone = 1.0   # (the shader's sign for a landmark's curtain wall)
 		var rel := float(bd["_h"])
+		if pitch > 0.0:
+			rel = float(bd["rr"]) - pitch
+			h = g_avg + rel
 		var style: int = 3 if rel > 32.0 else (0 if rel < 10.0 or bd.has("_tile") else [0, 0, 0, 0, 1, 1, 1, 2, 0, 1][posmod(hsh >> 7, 10)])
+		if dutch and rel < 16.0 and style < 3:
+			style = 0   # (a Dutch house or low block: punched windows in the brick, no balconies)
 		var col := Color(bright, tint, float(style) / 4.0 + 0.05, stone)
 		var n := ring.size()
 		var area := 0.0
@@ -6180,7 +6218,7 @@ func _build_buildings() -> void:
 		var sgn := 1.0 if area > 0.0 else -1.0
 		# a pitched roof only on a house that stands on the ground: a raised "building" is a
 		# canopy or a carport (OSM: a roof on stilts), and a house roof on it flew
-		var gabled := (north and rel < 10.0 and absf(area) * 0.5 < 450.0 and raised == 0.0) or bd.has("_tile")
+		var gabled := (north and not dutch and rel < 10.0 and absf(area) * 0.5 < 450.0 and raised == 0.0) or bd.has("_tile") or pitch > 0.0
 		# "komat amudim": many Givatayim blocks stand on columns, the ground floor open for
 		# parking round a walled-in stairwell and lobby
 		var pilotis := med and style <= 1 and rel >= 7.0 and rel <= 22.0 and raised == 0.0 \
@@ -6231,7 +6269,11 @@ func _build_buildings() -> void:
 				walls.tri(ar, a1, b1, -nrm, col, Vector2(0, h - g_lo), Vector2(0, y1), Vector2(len, y1), u2)
 				walls.tri(ar, b1, br, -nrm, col, Vector2(0, h - g_lo), Vector2(len, y1), Vector2(len, h - g_lo), u2)
 		if gabled:
-			_gable(gables, ring, h, hsh, bd.has("_tile"))
+			if pitch > 0.0:
+				_gable(gables, ring, h, hsh, false, pitch, walls, col, g_lo)
+				_tally("roofs_measured", 1)
+			else:
+				_gable(gables, ring, h, hsh, bd.has("_tile"))
 		var idx := Geometry2D.triangulate_polygon(ring)
 		var rc := Color(bright * 0.95, bright * 0.95, bright * 0.95)
 		for i in range(0, idx.size(), 3):
@@ -7119,9 +7161,27 @@ func _stilts(ring: PackedVector2Array, sgn: float, ground: float, under: float, 
 		roofs.tri(Vector3(p0.x, under, p0.y), Vector3(p1.x, under, p1.y), Vector3(p2.x, under, p2.y), Vector3.DOWN, c)
 	look["cols"] = cols
 
-## a pitched roof over a house: the footprint's tightest rectangle, the ridge along its
-## long side, eaves a little past the walls, shingles grey or red-brown
-func _gable(g: Dictionary, ring: PackedVector2Array, top: float, hsh: int, tiled := false) -> void:
+## A Dutch town: the level's "build" is "nl" (brick walls, measured pitched roofs)
+func _dutch() -> bool:
+	return String(_place.get("build", "")) == "nl"
+
+## A Dutch house's roof rise (m) for its measured ridge, or 0 for a flat roof: only on a
+## footprint that is mostly its tightest rectangle (an L or a block round a yard would have its
+## roof float past its walls) and not a hall. The pitch is near 50 degrees, as Dutch roofs are:
+## the rise 0.6 of the span, at most half the ridge's height, so the eaves stay over a storey up.
+func _dutch_pitch(ring: PackedVector2Array, ridge: float) -> float:
+	var r := _min_rect(ring)
+	var size: Vector2 = (r[2] as Vector2) - (r[1] as Vector2)
+	var span := minf(size.x, size.y)
+	var fp := _area(ring)
+	if span < 3.0 or fp > 2500.0 or fp < 0.72 * size.x * size.y:
+		return 0.0
+	var rise := clampf(minf(span * 0.6, ridge * 0.5), 1.2, 10.0)
+	return rise if ridge - rise >= 2.6 else 0.0
+
+## the footprint's tightest rectangle: [its long-or-short axis u, its low corner, its high
+## corner], the corners in (along u, across u)
+func _min_rect(ring: PackedVector2Array) -> Array:
 	var best := INF
 	var u := Vector2.RIGHT
 	var lo := Vector2.ZERO
@@ -7143,6 +7203,18 @@ func _gable(g: Dictionary, ring: PackedVector2Array, top: float, hsh: int, tiled
 			u = e
 			lo = mn
 			hi = mx
+	return [u, lo, hi]
+
+## a pitched roof over a house: the footprint's tightest rectangle, the ridge along its
+## long side, eaves a little past the walls, shingles grey or red-brown. A Dutch house
+## (`rise` given, its measured roof) has orange tiles or dark glazed ones, and its gable ends
+## are brick in the walls' own buffer (`wall_buf`, `wcol`, its ground `g_lo`), no windows
+func _gable(g: Dictionary, ring: PackedVector2Array, top: float, hsh: int, tiled := false,
+		rise_m := 0.0, wall_buf: Buf = null, wcol := Color(), g_lo := 0.0) -> void:
+	var rect := _min_rect(ring)
+	var u: Vector2 = rect[0]
+	var lo: Vector2 = rect[1]
+	var hi: Vector2 = rect[2]
 	var v := Vector2(-u.y, u.x)
 	if hi.y - lo.y > hi.x - lo.x:   # the ridge runs along the long side
 		var t := u
@@ -7154,7 +7226,7 @@ func _gable(g: Dictionary, ring: PackedVector2Array, top: float, hsh: int, tiled
 		hi = h2
 	lo -= Vector2(0.35, 0.35)
 	hi += Vector2(0.35, 0.35)
-	var rise := (hi.y - lo.y) * 0.32
+	var rise := rise_m if rise_m > 0.0 else (hi.y - lo.y) * 0.32
 	var cy := (lo.y + hi.y) * 0.5
 	var P := func(a: float, b: float, y: float) -> Vector3:
 		var q := u * a + v * b
@@ -7164,6 +7236,10 @@ func _gable(g: Dictionary, ring: PackedVector2Array, top: float, hsh: int, tiled
 	var col: Color = shades[posmod(hsh >> 9, shades.size())]
 	if tiled:   # red clay tiles (Sarona's Templer houses), a little weathered one from the next
 		col = Palette.col("hazard").lerp(Palette.col("warn"), 0.4).lerp(Palette.col("bg"), 0.3 + 0.12 * float(posmod(hsh >> 9, 3)))
+	if wall_buf != null:   # Dutch: orange-red clay tiles, or dark glazed ones, about half each
+		var tiles := Palette.col("hazard").lerp(Palette.col("warn"), 0.55).lerp(Palette.col("bg"), 0.45 + 0.08 * float(posmod(hsh >> 9, 3)))
+		var glazed := Palette.col("bg").lerp(Palette.col("bg_alt"), 0.45 + 0.1 * float(posmod(hsh >> 9, 3)))
+		col = tiles if posmod(hsh >> 15, 100) < 55 else glazed
 	var r0: Vector3 = P.call(lo.x, cy, top + rise)
 	var r1: Vector3 = P.call(hi.x, cy, top + rise)
 	for side: Array in [[lo.y, 1.0], [hi.y, -1.0]]:
@@ -7179,7 +7255,13 @@ func _gable(g: Dictionary, ring: PackedVector2Array, top: float, hsh: int, tiled
 		var b: Vector3 = P.call(end[0], hi.y - 0.35, top)
 		var c: Vector3 = P.call(end[0], cy, top + rise - 0.1)
 		var out := Vector3(u.x, 0, u.y) * float(end[1])
-		(g["end"] as Buf).tri(a, b, c, out, Color.WHITE)
+		if wall_buf != null:   # brick, as the walls (the window grid's top at the eaves: none up here)
+			var w := (hi.y - lo.y) - 0.7
+			var u2 := Vector2(w, top - g_lo)
+			wall_buf.tri(a, b, c, out, wcol, Vector2(0, top - g_lo), Vector2(w, top - g_lo),
+					Vector2(w * 0.5, top + rise - 0.1 - g_lo), u2)
+		else:
+			(g["end"] as Buf).tri(a, b, c, out, Color.WHITE)
 	if posmod(hsh >> 13, 10) < 6:   # a chimney up one end, through the slope
 		var at: Vector3 = P.call(lo.x + 1.3, cy + (hi.y - lo.y) * 0.18, top + rise * 0.72)
 		_chimneys.append(Transform3D(Basis(Vector3.UP, atan2(u.x, u.y)), at))
@@ -9436,9 +9518,11 @@ func _car_paints() -> Array:
 	var bg := Palette.col("bg")
 	var alt := Palette.col("bg_alt")
 	var white := ink
-	var silver := ink.lerp(alt, 0.32)
-	var grey := alt.lerp(ink, 0.22)
-	var black := bg.lerp(alt, 0.35)
+	# the greys neutral: mixed from the palette's bg_alt (lavender here) silver and grey cars
+	# came out mauve beside the shops (the paving's greys had the same fault)
+	var silver := _greyed(ink.lerp(alt, 0.32), 0.92)
+	var grey := _greyed(alt.lerp(ink, 0.22), 0.92)
+	var black := _greyed(bg.lerp(alt, 0.35), 0.85)
 	# a car's red is a car paint's red and its blue a dark blue, whatever the palette: the
 	# palette's hazard (pink here) and player (cyan) made pink and teal cars, and a filmed
 	# street has none. Their hue pinned, their strength the palette's.
@@ -12326,7 +12410,7 @@ func _build_walk_lights(pole_mesh: Mesh) -> void:
 ## a lit shopfront on the street side of each shop's building, and its name above it
 func _build_pois() -> void:
 	var k := 1.0 / float(_city_data.get("scale", 10))
-	var front := {"glass": [], "glass_k": [], "post": [], "beam": [], "shutter": []}   ## shop windows and their frames (glass_k: what is inside, SHOP_SHADER)
+	var front := {"glass": [], "glass_k": [], "post": [], "beam": [], "shutter": [], "housing": []}   ## shop windows and their frames (glass_k: what is inside, SHOP_SHADER)
 	var board_cols: Array = []       ## each sign board's colour: dark, white, the shop's, cream
 	var awnings := {"xf": [], "col": []}   ## awning transforms and their colours
 	var crates := new_cbuf(BLD_CELL)    ## fruit and vegetables out in front of a greengrocer
@@ -12406,6 +12490,10 @@ func _build_pois() -> void:
 				_string_lights(crates, bulbs, pos, n, along, gy)
 			if look_k < 10 and kind.begins_with("shop"):   # shut: the roller shutter down
 				front["shutter"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.1, 1.3)))
+			# the roller shutter's box over the window, as most of the towns' shops have it
+			# rolled up into (a grey metal box the window's width); every shut one has one
+			if look_k < 10 or posmod(_hash_i(at) >> 13, 100) < 75:
+				front["housing"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.2, 2.86)))
 			if kind == "pharmacy":
 				crosses.append(Transform3D(b, at3.call(pos + along * (1.6 * wide + 0.5), 0.5, 3.2)))
 		if spot[2] and kind in ["cafe", "restaurant", "fast_food", "ice_cream", "bar", "pub"] and String(shop.get("seats", "")) != "none":
@@ -12466,6 +12554,11 @@ func _build_pois() -> void:
 		var shut := BoxMesh.new()
 		shut.size = Vector3(3.0, 2.4, 0.05)
 		_chunked(shut, front["shutter"], r, [], _surface("shutter"), false)
+	if not (front["housing"] as Array).is_empty():
+		var hb := BoxMesh.new()
+		hb.size = Vector3(3.2, 0.3, 0.3)
+		_chunked(hb, front["housing"], r, [], _surface("shutter"), false)
+	_tally("shutter_boxes", (front["housing"] as Array).size())
 	var awning := BoxMesh.new()
 	awning.size = Vector3(3.3, 0.14, 1.5)
 	_chunked(awning, awnings["xf"], r, awnings["col"], _vc_mat(), true)
@@ -15462,7 +15555,7 @@ const NATURAL := {
 	"tank": 0.3, "furniture": 0.3, "pavement": 0.2, "pavers_dark": 0.15, "slabs": 0.15, "pavers_grey": 0.1, "tactile": 0.3, "pavers_red": 0.45, "kerb": 0.15, "stonewall": 0.45, "roofroom": 0.4,
 	"gardenwall": 0.3, "coping": 0.4,
 	"cat_ginger": 0.6, "cat_grey": 0.1, "cat_black": 0.1, "cat_cream": 0.35, "cat_brown": 0.45,
-	"gable": 0.5, "carglass": 0.4, "cartrim": 0.2, "tyre": 0.15, "rim": 0.2, "concrete": 0.15,
+	"gable": 0.5, "brick_red": 0.6, "brick_dark": 0.5, "brick_yellow": 0.55, "mortar": 0.15, "carglass": 0.4, "cartrim": 0.2, "tyre": 0.15, "rim": 0.2, "concrete": 0.15,
 	"insulator": 0.3, "trafo": 0.4, "cable": 0.2, "railing": 0.3, "brick": 0.7, "rubber": 0.6,
 	"metal": 0.1, "metalrim": 0.1, "skin": 0.75, "hair": 0.5, "shirt_a": 0.6, "shirt_b": 0.4,
 }
@@ -15559,6 +15652,13 @@ func _tones() -> void:
 		"bush": veg.lerp(bg, 0.58),
 		"roofroom": ink.lerp(wn, 0.12).lerp(alt, 0.1),
 		"gable": ink.lerp(wn, 0.15),
+		# Dutch brick: red-brown, a dark purple-brown, the old yellow; light grey mortar
+		# (the palette's red is a pink: half toward its yellow it is a brick's brown-orange; on
+		# screen at 0.14 the sunlit brick read 193/129/127, salmon)
+		"brick_red": Palette.col("hazard").lerp(wn, 0.42).lerp(bg, 0.56),
+		"brick_dark": Palette.col("hazard").lerp(wn, 0.25).lerp(bg, 0.74),
+		"brick_yellow": ink.lerp(wn, 0.5).lerp(Palette.col("hazard"), 0.1) * 0.8,
+		"mortar": ink.lerp(alt, 0.38),
 		"carglass": bg.lerp(pl, 0.12),
 		"cartrim": bg.lerp(alt, 0.4),
 		"tyre": bg.lerp(alt, 0.2),
@@ -15620,6 +15720,10 @@ func _retint_city() -> void:
 		_wall_mat.set_shader_parameter("glass_d", _tone["glass4"])
 		_wall_mat.set_shader_parameter("shutter", _tone["shutter"])
 		_wall_mat.set_shader_parameter("dark", _tone["recess"])
+		_wall_mat.set_shader_parameter("brick_a", _tone["brick_red"])
+		_wall_mat.set_shader_parameter("brick_b", _tone["brick_dark"])
+		_wall_mat.set_shader_parameter("brick_c", _tone["brick_yellow"])
+		_wall_mat.set_shader_parameter("brick_m", _tone["mortar"])
 	if env != null:
 		# by day the photo sky (_sky_dome) sets the haze: the fog takes its horizon, so far
 		# streets melt into the sky, and the shade its blue
@@ -15664,6 +15768,7 @@ func _retint_city() -> void:
 		_wall_mat.set_shader_parameter("night", 1.0 if _night else 0.0)
 		_wall_mat.set_shader_parameter("trim", _tone["mark"])
 		_wall_mat.set_shader_parameter("siding", 1.0 if String(_place.get("look", "")) == "north" else 0.0)
+		_wall_mat.set_shader_parameter("brick", 1.0 if _dutch() else 0.0)
 	for m: ShaderMaterial in _glow_mats.values():
 		m.set_shader_parameter("col", _tone[m.get_meta("tone")])
 	if _furn != null:
@@ -16201,6 +16306,8 @@ func _film_begin(id: String) -> void:
 		var who := int(pp.get("who", _film_people.size()))
 		a.set_character(PEOPLE[who % PEOPLE.size()], float(pp.get("tall", 1.70)))
 		_humanize(a, 9001 + who * 31)
+		if bool(pp.get("talk", false)):
+			_talker(a, 9001 + who * 31)
 		_people_lod(a)
 		var A := Vector2(float(pp["at"][0]), float(pp["at"][1]))
 		var B := Vector2(float(pp["to"][0]), float(pp["to"][1])) if pp.has("to") else A
@@ -18285,6 +18392,7 @@ func _spawn_people() -> void:
 		_people_lod(a)
 		a.play("Idle", true, _people_rng.randf_range(0.8, 1.1))
 		_carry(a, _what_carried(hash(_city_name) * 13 + i, false), hash(_city_name) * 13 + i)
+		_talker(a, hash(_city_name) * 13 + i)
 		a.visible = false
 		_chatters.append({"actor": a, "spot": Vector2.INF})
 	_seat_chatters()
@@ -19417,6 +19525,70 @@ func _humanize(a: Actor3D, seed: int) -> void:
 			nm.roughness = 0.85
 			mi.set_surface_override_material(si, nm)
 		_one_piece(mi)
+
+## ---- hands while talking --------------------------------------------------------------------
+## People standing and talking move their hands: now and then one forearm comes up from the
+## elbow and the hand moves as they make a point, then goes down again; sometimes both. The
+## figures have no clip for it (Idle stands with arms hanging), so this bends the arm bones
+## on top of the pose the animation gave, every frame. (tests/people_talk.gd)
+class Talk extends SkeletonModifier3D:
+	var arms := []      ## [upper arm, forearm] bone indices, left then right
+	var t := 0.0
+	var rate := 1.0     ## how lively: 0.7 slow, 1.3 quick
+	## the axis, in each arm bone's own frame, that brings the hand forward and up, left then
+	## right (measured: about the bone's x alone the hand also swung out to the side, and about
+	## -x behind the back; the same for the upper arm and the forearm)
+	var axes := [Vector3(1, 0, -1).normalized(), Vector3(1, 0, 1).normalized()]
+
+	## how far each arm is up, 0..1, at time t: a gesture of a second or two every few
+	## seconds, one arm (now this one, now the other), sometimes both
+	func _up(side: int) -> float:
+		var cyc := t * 0.3 * rate + float(side) * 0.37
+		var k := floori(cyc)
+		var f := cyc - float(k)
+		var h := posmod(k * 7919 + side * 31 + int(rate * 1000.0), 10)
+		var on := h < (6 if side == 0 else 4)   # (now and then neither: listening)
+		if not on:
+			return 0.0
+		return smoothstep(0.0, 0.18, f) * (1.0 - smoothstep(0.55, 0.75, f))
+
+	func _process_modification_with_delta(delta: float) -> void:
+		var sk := get_skeleton()
+		if sk == null:
+			return
+		t += delta
+		for side in range(arms.size()):
+			var e := _up(side)
+			if e <= 0.001:
+				continue
+			var ua: int = arms[side][0]
+			var fa: int = arms[side][1]
+			# the hand moving as the point is made: a small beat on top
+			var beat := sin(t * (5.0 + float(side)) * rate) * 0.18 + sin(t * 2.3 * rate + float(side)) * 0.1
+			var r1 := Quaternion(axes[side], e * 0.35)
+			var r2 := Quaternion(axes[side], e * (1.15 + beat))
+			sk.set_bone_pose_rotation(ua, sk.get_bone_pose_rotation(ua) * r1)
+			sk.set_bone_pose_rotation(fa, sk.get_bone_pose_rotation(fa) * r2)
+
+## talking hands for someone standing in a group (Talk)
+func _talker(a: Actor3D, seed: int) -> void:
+	if a == null or a.model == null:
+		return
+	var sks := a.model.find_children("*", "Skeleton3D", true, false)
+	if sks.is_empty():
+		return
+	var sk: Skeleton3D = sks[0]
+	var tk := Talk.new()
+	for sd: String in ["L", "R"]:
+		var u := sk.find_bone("UpperArm." + sd)
+		var f := sk.find_bone("LowerArm." + sd)
+		if u >= 0 and f >= 0:
+			tk.arms.append([u, f])
+	if tk.arms.is_empty():
+		return
+	tk.rate = 0.75 + float(posmod(seed, 50)) / 100.0
+	tk.t = float(posmod(seed * 13, 1000)) / 37.0
+	sk.add_child(tk)
 
 ## ---- what people carry -------------------------------------------------------------------------
 ## Things in people's hands and on their backs: a shopping bag or a handbag hanging from one
