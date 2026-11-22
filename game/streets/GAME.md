@@ -1688,7 +1688,8 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   free Universal Base Characters with the Universal Animation Library's moves, dressed in
   code (DEV.md "The people"). Also done: skirts and dresses, older people,
   children walking with a grown-up, cafe groups seated at their tables talking, people on
-  their phones. Still to do: a pose for carrying a box. Also: reacting to the car (the line above).
+  their phones, a box carried in both arms, people glancing at you as you pass. Still to do:
+  reacting to the car (the line above).
 - Scenarios: "Alien invasion, maybe special scenario, maybe in any city. if i activate. some
   aliens come down around the city i am in"; "just the concept of scenarios, where aliens
   are one of those. more stuff - titans, dragons, (dont want army stuff though, gives wrong

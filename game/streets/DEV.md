@@ -2877,6 +2877,51 @@ cartoon figures to compare.
   - Who: one walker in seven with nothing in their hands, and 40% of the people waiting at
     stops.
   - `people_carry`'s last person is on the phone, and its sixth is a child.
+- **Carrying a box** (`people.gd` `box()`, the `Carry` modifier; `_carry` hands "box" to it on
+  these figures): both arms held still, not swinging, the hands at the box's sides low in
+  front, and the box kept between the hands every frame (upright, in metres).
+  - The base pose is the walk's own at 1.05 s, mid-stride, where the hands are level. At 0 s
+    the standing clip has the right hand 0.2 behind the left: turned from there, the arms
+    came out lopsided.
+  - The turns (`CARRY_TURNS`) came from a grid search for hands at (+-0.15, 1.07, 0.3) body
+    units with the forearms near level. Left arm: upper 0.6 about (1, 0, -0.3), forearm 0.2
+    about x. Right: 0.7 about (1, 0, 0.6), 0.2 about (1, 0, 0.2).
+  - The axes on both arms: +x brings a hand forward and up; +z on the right arm and -z on the
+    left bring it in.
+  - The elbows sit at about 1.15-1.2 body units, so a hand can't get much lower than that
+    with the forearm level.
+- **Glancing at you** (the `Glance` modifier, on everyone from `make()`):
+  - When you come within 7 m, and not behind them, half the people turn their head toward
+    you: the neck 35%, the head 65%, about the skeleton's up, at most 1.1 rad.
+  - They hold it 2.4 s, turn back, and don't look again until you've gone past 9 m.
+  - People on the phone don't look up.
+  - Where you are is set each frame from `_frame` (`me_at`: your head walking, about the
+    car's windows driving), as one static for everyone.
+  - Cost: a squared distance a person per frame; the rest only within 7 m.
+  - Who looks is `posmod(seed * 7919, 100) < 50`, not a draw from `rng`: one more draw in
+    `make()` would reshuffle everyone's clothes.
+- **The collar** (`COLLAR_BELOW`, the shader's green field):
+  - The line between skin and shirt was a zigzag. Two reasons:
+    - The parts are per vertex, so the line followed the triangles.
+    - Round the neck, vertices moved by the chest and by the neck alternate, so a line by
+      bone zigzags whatever the height.
+  - Now each body vertex carries a "dressed" field in its colour's green: 1 clothed, 0 skin.
+    Within 0.13 of the neck's middle, it goes from 1 to 0 by height across the collar line.
+    The shader picks skin or shirt by green > 0.5, so the line is an even height across
+    the triangles.
+  - The line is 0.015 below the neck bone's root on each body. The man's neck is 3.5 higher
+    than the woman's, and one height for both bared his chest.
+  - Unchanged: other hems still follow the triangles. A band of the shirt's colour can show
+    between skin and trousers at a shorts hem, half as wide as before. The same field would
+    fix those if they show.
+- **Clothes are not skin** (`CLOTH_V`, `SKIN_APART`):
+  - A cream shirt in the sun drew (1, 1, 0.81), a pale yellow that read as bare to the waist.
+  - Shirts and trousers are now capped at HSV value 0.72.
+  - Clothes are also kept 0.2 (sRGB distance) from the skin as drawn (`_skin_seen`: the
+    texture times the tone's factor), taking the next colour in the list, without a draw.
+  - `tests/people_glance.gd`'s `_collar` shots show both.
+- **Light skin still glares** in full sun, the face going pale yellow. That comes from the
+  scene's exposure, not the people, and is part of the open whole-scene colour item.
 - **Gotchas found in the trial** still hold:
   - The meshes are `SuperHero_Male` and `Superhero_Female`: match names without case.
   - The female's custom arrays break a rebuild with `add_surface_from_arrays`; `_join`

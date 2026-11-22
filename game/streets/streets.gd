@@ -17595,6 +17595,8 @@ func _frame() -> void:
 		_opening.tick(dt)
 	if _scenario != null:
 		_scenario.tick(dt)
+	if _ppl != null:   # (where you are, for people to glance at: your head walking, the car's windows driving)
+		_ppl.me_at(Vector3(_pos.x, _h(_pos) + (1.55 if _walking else 1.15), _pos.y))
 	if _blades != null:
 		_turbines_tick()
 	var f := Engine.get_physics_interpolation_fraction()
@@ -19956,11 +19958,9 @@ func _bone_holder(a: Actor3D, bone: String, upright: bool) -> Node3D:
 func _carry(a: Actor3D, what: String, seed: int) -> void:
 	if what == "" or a == null or a.model == null:
 		return
-	# people.gd's figures: no carrying walk (a box in arms swinging by the sides): a bag
-	# instead; the backpack upright (their chest bone's own axes are not the body's)
+	# people.gd's figures: the backpack upright (their chest bone's own axes are not the body's),
+	# the box held by people.gd's Carry
 	var newer := not a.model.find_children("*", "Skeleton3D", true, false).is_empty() 		and (a.model.find_children("*", "Skeleton3D", true, false)[0] as Skeleton3D).find_bone("spine_03") >= 0
-	if newer and what == "box":
-		what = "bag"
 	var ink := Palette.col("ink")
 	var bg := Palette.col("bg")
 	var alt := Palette.col("bg_alt")
@@ -19995,6 +19995,11 @@ func _carry(a: Actor3D, what: String, seed: int) -> void:
 			_carry_mesh(h, [[Vector3(0.3, 0.4, 0.15), Vector3(0, y, z), c],
 				[Vector3(0.24, 0.16, 0.06), Vector3(0, y - 0.1, z - 0.095), c.darkened(0.2)]])   # (and its front pocket)
 		"box":   # a cardboard box on the forearms, the hands under its front
+			if newer:   # (people.gd's: the arms held round it, the box between the hands)
+				if not _ppl.box(a, _natural(wn.lerp(bg, 0.35), 0.55)):
+					return
+				_people_lod(a)
+				return
 			var h := _bone_holder(a, "Torso", false)
 			if h == null:
 				return

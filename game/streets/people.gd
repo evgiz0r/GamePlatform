@@ -28,6 +28,9 @@ uniform float fade_from = 1e6;   // gone past this distance...
 uniform float fade_to = 1e6;     // ...dissolving in, a dither, from here
 void fragment() {
 	int i = clamp(int(COLOR.r * 8.0 + 0.5), 0, 6);
+	if (i <= 1) {   // skin or shirt: by the smooth field in green, so the collar is a line, not the triangles' zigzag
+		i = COLOR.g > 0.5 ? 1 : 0;
+	}
 	vec3 c;
 	float rough = 0.9;
 	if (i == 0) {
@@ -74,6 +77,75 @@ class Phone extends SkeletonModifier3D:
 		sk.set_bone_pose_rotation(fore, sk.get_bone_pose_rotation(fore) * Quaternion(Vector3(1, 0, 0.45).normalized(), 1.15))
 		sk.set_bone_pose_rotation(head, sk.get_bone_pose_rotation(head) * Quaternion(Vector3(1, 0, 0), 0.38 + glance))
 
+## Carrying a box in front: both arms held still (a walk's swing would carry the hands off the
+## box), the hands at its sides low in front, and the box kept between them, upright, every
+## frame. Each arm's pose is the walk's own at mid-stride, where the two hands are level
+## (1.05 s: at 0 the standing clip has the right arm back), turned by angles found by a search
+## for hands at (+-0.15, 1.07, 0.3) body units, the forearms near level (DEV.md "The people").
+class Carry extends SkeletonModifier3D:
+	var arms := []   ## [bone, its rotation]
+	var hl := -1
+	var hr := -1
+	var box: Node3D = null
+
+	func _process_modification_with_delta(_delta: float) -> void:
+		var sk := get_skeleton()
+		if sk == null:
+			return
+		for b: Array in arms:
+			sk.set_bone_pose_rotation(b[0], b[1])
+		if box != null and hl >= 0 and hr >= 0:
+			var keep := box.scale
+			box.transform = Transform3D(Basis(), (sk.get_bone_global_pose(hl).origin + sk.get_bone_global_pose(hr).origin) * 0.5)
+			box.scale = keep
+
+## Glancing at you: when you come within a few metres, in front of them or to a side, about
+## half of the people turn their head to you for a couple of seconds -- the neck a little, the
+## head the rest, about the skeleton's up (whatever the clip does) -- and then back, and do not
+## look again until you have gone and come back. Turned in the skeleton's space, where the
+## body faces +z (a backpack's -z is behind).
+class Glance extends SkeletonModifier3D:
+	static var at := Vector3(1e9, 0, 0)   ## you, in the world (people.gd's me_at, every frame)
+	var neck := -1
+	var head := -1
+	var curious := true
+	var held := 0.0          ## how long it has looked this time
+	var spent := false       ## looked already; again only once you have gone
+	var turn := 0.0          ## the head's turn now, radians, eased
+
+	func _process_modification_with_delta(delta: float) -> void:
+		var sk := get_skeleton()
+		if sk == null or head < 0:
+			return
+		var want := 0.0
+		var d2 := sk.global_position.distance_squared_to(at)
+		if d2 > 81.0:      # 9 m: gone, may look again next time
+			spent = false
+			held = 0.0
+		elif curious and not spent and d2 < 49.0 and d2 > 0.5:
+			var hp := sk.get_bone_global_pose(head).origin
+			var d := sk.global_transform.affine_inverse() * at - hp
+			var yaw := atan2(d.x, d.z)
+			if absf(yaw) < 1.9:   # (not someone already behind them)
+				want = clampf(yaw, -1.1, 1.1)
+				held += delta
+				if held > 2.4:
+					spent = true
+		if want == 0.0 and absf(turn) < 0.002:
+			turn = 0.0
+			return
+		turn = move_toward(turn, want, delta * 2.6)
+		for b: Array in [[neck, 0.35], [head, 0.65]]:
+			if b[0] < 0:
+				continue
+			var gp := sk.get_bone_global_pose(b[0])
+			sk.set_bone_global_pose(b[0], Transform3D(Basis(Vector3.UP, turn * float(b[1])) * gp.basis, gp.origin))
+
+## the turns from the walk's mid-stride: [bone, axis, angle] (+x brings a hand forward and up
+## on both arms; +z on the right arm, -z on the left, brings it in)
+const CARRY_TURNS := [["upperarm_l", Vector3(1, 0, -0.3), 0.6], ["lowerarm_l", Vector3(1, 0, 0), 0.2],
+	["upperarm_r", Vector3(1, 0, 0.6), 0.7], ["lowerarm_r", Vector3(1, 0, 0.2), 0.2]]
+
 var g: Node
 var _scenes := {}        ## path -> PackedScene
 var _joined := {}        ## "body|hair|sleeves|shorts" -> [ArrayMesh, Skin, hair texture]
@@ -82,6 +154,10 @@ var _shader: Shader
 
 func _init(game: Node) -> void:
 	g = game
+
+## where you are, for Glance
+func me_at(p: Vector3) -> void:
+	Glance.at = p
 
 func on() -> bool:
 	return OS.get_environment("STREETS_OLD_PEOPLE") != "1" and ResourceLoader.exists(DIR + "moves.res")
@@ -148,6 +224,11 @@ func make(a: Actor3D, seed: int) -> void:
 	if child:   # a child's head is big for its body: the same body, smaller, the head kept larger
 		sizes.bones[sk.find_bone("Head")] = Vector3.ONE * 1.22
 	sk.add_child(sizes)
+	var gl := Glance.new()
+	gl.neck = sk.find_bone("neck_01")
+	gl.head = sk.find_bone("Head")
+	gl.curious = posmod(seed * 7919, 100) < 50   # (not from rng: a draw here would reshuffle everyone's clothes)
+	sk.add_child(gl)   # (before the held things: they go where the bones end up)
 	var wd := rng.randf_range(0.94, 1.08)
 	inst.scale *= Vector3(wd, 1.0, wd)
 	# the look: from the game's palette-mixed ranges (_people_looks)
@@ -155,6 +236,23 @@ func make(a: Actor3D, seed: int) -> void:
 	var pick := {}
 	for k: String in looks:
 		pick[k] = looks[k][rng.randi() % (looks[k] as Array).size()]
+	# not dressed in the skin's own colour (a pale shirt on pale skin read as bare to the waist):
+	# the next of the colours instead (in order, no draw: the rest of the look stays the same)
+	for part: String in ["shirt", "pants"]:
+		var opts: Array = looks[part]
+		var at := opts.find(pick[part])
+		for n in range(opts.size()):
+			var c: Color = opts[(at + n) % opts.size()]
+			if _apart(c, _skin_seen(pick["skin"])) >= SKIN_APART:
+				pick[part] = c
+				break
+	# and no cloth brighter than CLOTH_V: a cream shirt in the sun came out (1, 1, 0.81) on
+	# screen, a pale yellow that read as bare skin (tests/people_glance.gd's _collar shots)
+	for part: String in ["shirt", "pants"]:
+		var c: Color = pick[part]
+		if c.v > CLOTH_V:
+			c.v = CLOTH_V
+			pick[part] = c
 	var hairs: Array = HAIR_F if female else HAIR_M
 	if child:
 		hairs = ["hair_buns", "hair_long", "hair_buzzedfemale"] if female else ["hair_simpleparted", "hair_buzzed"]
@@ -188,11 +286,9 @@ func make(a: Actor3D, seed: int) -> void:
 	m.set_shader_parameter("eye_tex", load(DIR + "eye.png"))
 	m.set_shader_parameter("hair_tex", j[2])
 	var skin_c: Color = pick["skin"]
-	var avg := SKIN_AVG.srgb_to_linear()
-	var tone := skin_c.srgb_to_linear()
-	# by brightness only, the texture's own skin hue kept: channel by channel, a greyish tone
-	# over the texture's tiny blue (0.095 linear) tripled the blue -- grey-blue women
-	var k := clampf(tone.get_luminance() / avg.get_luminance(), 0.42, 1.3)
+	# by brightness only, the texture's own skin hue kept (_skin_seen): channel by channel, a
+	# greyish tone over the texture's tiny blue (0.095 linear) tripled the blue -- grey-blue women
+	var k := clampf(skin_c.srgb_to_linear().get_luminance() / SKIN_AVG.srgb_to_linear().get_luminance(), 0.42, 1.3)
 	var f := Vector4(k, k, k, 1.0)
 	var hair_c: Color = pick["hair"]
 	if old:   # grey to white, from the palette's light and dark (greyed: no tint in it)
@@ -206,6 +302,20 @@ func make(a: Actor3D, seed: int) -> void:
 		cols.append(Vector4(l.r, l.g, l.b, 1.0))
 	m.set_shader_parameter("cols", cols)
 	main.set_surface_override_material(0, m)
+
+## the brightest a shirt or trousers may be (HSV value, sRGB)
+const CLOTH_V := 0.72
+## how far (sRGB, straight-line) clothes are kept from the skin's colour
+const SKIN_APART := 0.2
+
+## the skin as drawn: the texture's light skin times the tone's brightness factor (as make() does)
+static func _skin_seen(tone: Color) -> Color:
+	var avg := SKIN_AVG.srgb_to_linear()
+	var k := clampf(tone.srgb_to_linear().get_luminance() / avg.get_luminance(), 0.42, 1.3)
+	return Color(avg.r * k, avg.g * k, avg.b * k).linear_to_srgb()
+
+static func _apart(a: Color, b: Color) -> float:
+	return Vector3(a.r - b.r, a.g - b.g, a.b - b.b).length()
 
 ## the skin textures' average colour (both bodies' light skin, measured: sRGB 0.66, 0.47, 0.34),
 ## to turn a person's tone into a factor on the texture (from the texture at run time it came
@@ -245,6 +355,9 @@ func _join(inst: Node3D, sk: Skeleton3D, body: String, hair: String, long_sleeve
 	var bind_of := {}   # bone name -> the body skin's bind index
 	for b in range(skin.get_bind_count()):
 		bind_of[_bind_name(skin, b, sk)] = b
+	var nb := sk.find_bone("neck_01")
+	var neck_at := sk.get_bone_global_rest(nb).origin if nb >= 0 else Vector3(0, 1.5, 0)
+	var collar := neck_at.y - COLLAR_BELOW
 	var verts := PackedVector3Array()
 	var nrms := PackedVector3Array()
 	var uvs := PackedVector2Array()
@@ -294,9 +407,16 @@ func _join(inst: Node3D, sk: Skeleton3D, body: String, hair: String, long_sleeve
 						bones.append(0)
 						wts.append(0.0)
 				var part: int = pr[1]
+				var cloth := 1.0   # (green: 1 dressed, 0 skin; at the collar, between them by height)
 				if part < 0:
-					part = _cloth(_bind_name(ms, int(top[0][1]), sk), v[i].y, long_sleeves, shorts)
-				cols.append(Color(float(part) / 8.0, 0.0, 0.0))
+					var bn := _bind_name(ms, int(top[0][1]), sk)
+					part = _cloth(bn, v[i].y, long_sleeves, shorts, collar)
+					cloth = 0.0 if part == 0 else 1.0
+					# round the neck, whichever bone moves a vertex (the chest's and the neck's
+					# alternate there: by bone the line zigzagged), by its height
+					if (part <= 1) and Vector2(v[i].x - neck_at.x, v[i].z - neck_at.z).length() < COLLAR_R and v[i].y > collar - 0.12:
+						cloth = clampf(0.5 + (collar - v[i].y) / 0.03, 0.0, 1.0)
+				cols.append(Color(float(part) / 8.0, cloth, 0.0))
 			var ix: PackedInt32Array = arr[Mesh.ARRAY_INDEX] if arr[Mesh.ARRAY_INDEX] != null else PackedInt32Array(range(v.size()))
 			for k in ix:
 				idx.append(k + off)
@@ -322,8 +442,14 @@ func _bind_name(s: Skin, b: int, sk: Skeleton3D) -> String:
 	var n := String(s.get_bind_name(b))
 	return n if n != "" else sk.get_bone_name(s.get_bind_bone(b))
 
+## the collar: this far below the neck bone's root (body units, T-pose; the man's neck is
+## 3.5 higher than the woman's, so one height for both bared the man's chest). The shader cuts
+## skin from shirt on this line, from a field in each vertex's green, not on the triangles' edges
+const COLLAR_BELOW := 0.015
+const COLLAR_R := 0.13   ## how far round the neck's middle the line is cut by height
+
 ## what a body vertex is dressed in, by the bone that moves it most
-func _cloth(bone: String, y: float, long_sleeves: bool, shorts: bool) -> int:
+func _cloth(bone: String, y: float, long_sleeves: bool, shorts: bool, collar: float) -> int:
 	if bone.begins_with("spine") or bone.begins_with("clavicle") or bone.begins_with("upperarm") \
 			or (long_sleeves and bone.begins_with("lowerarm")):
 		return 1
@@ -331,13 +457,46 @@ func _cloth(bone: String, y: float, long_sleeves: bool, shorts: bool) -> int:
 		return 2
 	if bone.begins_with("foot") or bone.begins_with("ball"):
 		return 3
-	if bone.begins_with("neck") and y < 1.47:   # (the collar, round the neck's base; body units, T-pose)
+	if bone.begins_with("neck") and y < collar:   # (the collar, round the neck's base; body units, T-pose)
 		return 1
 	return 0
 
 ## the bones things are held at, on these figures: a hand, the chest
 static func bone_for(where: String) -> String:
 	return {"Fist.L": "hand_l", "Fist.R": "hand_r", "Torso": "spine_03"}.get(where, where)
+
+## someone carrying a box (Carry): the arms held round it and the box between the hands;
+## false when the figure is not one of these
+func box(a: Actor3D, colour: Color) -> bool:
+	if a == null or a.model == null or a.anim == null or not a.anim.has_animation("Walk"):
+		return false
+	var sks := a.model.find_children("*", "Skeleton3D", true, false)
+	if sks.is_empty():
+		return false
+	var sk: Skeleton3D = sks[0]
+	var walk: Animation = a.anim.get_animation("Walk")
+	var c := Carry.new()
+	for t: Array in CARRY_TURNS:
+		var bi := sk.find_bone(t[0])
+		var tr := -1
+		for k in range(walk.get_track_count()):
+			if walk.track_get_type(k) == Animation.TYPE_ROTATION_3D and String(walk.track_get_path(k)).ends_with(":" + String(t[0])):
+				tr = k
+		if bi < 0 or tr < 0:
+			return false
+		c.arms.append([bi, walk.rotation_track_interpolate(tr, 1.05) * Quaternion((t[1] as Vector3).normalized(), t[2])])
+	c.hl = sk.find_bone("hand_l")
+	c.hr = sk.find_bone("hand_r")
+	sk.add_child(c)   # (after PartSizes, before Held)
+	var s: Vector3 = sk.global_transform.basis.get_scale()
+	var h := Node3D.new()
+	sk.add_child(h)
+	h.scale = Vector3(1.0 / s.x, 1.0 / s.y, 1.0 / s.z)   # (in metres)
+	c.box = h
+	# a cardboard box, the hands at its sides near the bottom, a little in front of its middle
+	g._carry_mesh(h, [[Vector3(0.3, 0.26, 0.3), Vector3(0, 0.07, -0.08), colour],
+		[Vector3(0.06, 0.012, 0.302), Vector3(0, 0.2, -0.08), colour.darkened(0.12)]])   # (and the tape across its top)
+	return true
 
 ## someone looking at their phone (Phone): the pose, and a phone in the right hand
 func phone(a: Actor3D) -> void:
@@ -354,6 +513,9 @@ func phone(a: Actor3D) -> void:
 	if ph.upper < 0 or ph.fore < 0 or ph.head < 0:
 		return
 	sk.add_child(ph)   # (after PartSizes and before Held: the phone goes where the hand ends up)
+	for m in sk.get_children():
+		if m is Glance:
+			(m as Glance).curious = false   # (eyes on the screen)
 	var h: Node3D = g._bone_holder(a, "hand_r", true)
 	if h == null:
 		return

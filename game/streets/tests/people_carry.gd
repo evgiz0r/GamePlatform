@@ -4,7 +4,8 @@ extends SceneTree
 ## nothing -- walking on the spot, and three builds side by side. Shots pc_<i>_side / _front /
 ## _back.png in $OUT, each person up close.
 ## Good: the bags hang from the hand beside the leg, not through it; the backpack sits on
-## the back, not inside it or floating off it; the box rests on the forearms, hands under it.
+## the back, not inside it or floating off it; the box between the hands, low in front, the arms
+## held still round it (people.gd Carry).
 ## On people.gd's figures the sixth is a child and the last on the phone.
 ##   OUT=... game/streets/tests/run.sh people_carry 4
 var g: Node
