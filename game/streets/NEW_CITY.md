@@ -47,7 +47,15 @@ whole country.
      add the line at the end of `LEVELS`, so no other level's number changes;
    - `start`: a *public* corner, by street names as OSM spells them, never an address
      the user has mentioned as theirs.
-7. **Check it:**
+7. **A walk and a drive.** Every city has both (the user, 22 Nov: "in any case we do a new
+   city we put a new walk and drive from those cities"):
+   - a walk: a line in `data_tools/make_walks.py`'s `WALKS` (`--list <city> <street>` gives a
+     street's junctions; legs, or a footway's `path`; `promenade` for a boulevard's middle or a
+     canal's quay) and its level at the end of `LEVELS` (`walk`: its id); run the tool, then
+     `SCAN=1 tests/run.sh filmed_walk <level>` until it prints no INSIDE, EYE IN or ON ROAD;
+   - a drive: a line in `tests/pick_routes.py`'s `CITIES`, then `pick_routes.py --add <city>`
+     (appends its route, the others' numbers kept).
+8. **Check it:**
    - `tests/city_check.gd` on the new level, which runs every user-reported family
      across the city as built;
    - the playtest (smart + idle);

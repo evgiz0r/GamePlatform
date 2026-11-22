@@ -50,11 +50,14 @@ func _run() -> void:
 			await create_timer(2.5).timeout
 			root.get_viewport().get_texture().get_image().save_png(out + "/scen_%d.png" % shot)
 			shot += 1
-		if out != "" and String(b[0]) == "chase" and sc._back_cam != null and t - shot_t > 2.5:   # (in the look-back cut)
+		if out != "" and (String(b[0]) in ["chase", "drive_for"]) and t - shot_t > 6.0:   # (a shot every 6 s while it drives)
 			shot_t = t
 			root.get_viewport().get_texture().get_image().save_png(out + "/scen_%d.png" % shot)
 			shot += 1
 		last_i = sc.i
+		if OS.get_environment("VERBOSE") != "" and int(t * 60.0) % 600 == 0:
+			print("   t %.0f v %.1f why %s auto %s dest %s %.0f m style %s lead %.1f" % [t, g._v, g._ap_why, g._auto, g._dest_on,
+				(g._pos as Vector2).distance_to(g._dest_stop), g._ap_style, g._ap_lead])
 	while seen < sc.shown.size():
 		print("  [%5.1f s] %s" % [t, sc.shown[seen]])
 		seen += 1
@@ -67,10 +70,17 @@ func _run() -> void:
 	for b: Array in sc.beats:
 		stops += 1 if String(b[0]) == "look" else 0
 	var ok := people == 0
-	if sc.kind == "tour":
-		ok = ok and sc.reached >= stops - 1 and not sc.on
-	else:
-		ok = ok and sc.result in ["lost", "caught", "gave up"]
+	match String(sc.kind):
+		"tour", "night_tour":
+			ok = ok and sc.reached >= stops - 1 and not sc.on
+		"getaway":
+			ok = ok and sc.result in ["lost", "caught", "gave up"]
+		"ambulance":
+			ok = ok and sc.reached >= 1 and sc.yielded > 0 and not sc.on
+		"day":
+			ok = ok and not sc.on and sc.shots_seen.size() >= 3
+	print("SCENARIO shots: %s; cars that pulled over: %d; time now: %s" % [JSON.stringify(sc.shots_seen), sc.yielded,
+		"night" if g._night else ("evening" if g._evening else "day")])
 	print("SCENARIO %s ended: %s, %d of %d stops reached, %d people hit, %.0f s" % [sc.kind, sc.result, sc.reached, stops, people, t])
 	print("SCENARIO: %s" % ("PASS" if ok else "FAIL"))
 	quit(0)

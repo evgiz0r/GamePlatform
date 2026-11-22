@@ -8,8 +8,21 @@ extends RefCounted
 ##   ["look", where, text, secs]         stop: the view up over `where`, turning round it, the
 ##                                       city held still, a caption; then back down to the car
 ##   ["chase", secs]                     the getaway (below) until lost, caught or out of time
+##   ["drive_for", where, label, style, secs]  a drive that ends after secs (or there)
+##   ["time", "day" | "evening" | "night"]     the time of day, now
+##   ["wet", on]                         after rain, or dry
+##   ["shots", [name, ...], secs]        the camera from now on: each shot in turn for secs --
+##                                       "usual" (the game's own view), "above" (high over the
+##                                       car), "kerb" (low at the roadside ahead as the car comes
+##                                       by), "orbit" (round the car), "chaser" (behind the car
+##                                       on your tail), "back" (ahead of the car looking back);
+##                                       [] puts the game's view back
+##   ["siren", on]                       the car's own siren and flashing lights; the traffic
+##                                       ahead pulls aside and stops for it
 ##   ["end", text]                       the last caption; the city goes on, the drive is yours
-## A level with "scenario" in LEVELS runs one: "tour" (built from the town's own story,
+## A level with "scenario" in LEVELS runs one -- "night_tour" (the tour after dark, ending in
+## the rain), "ambulance" (a siren through town to the hospital), "day" (the town from morning
+## to night in a few minutes, cutting between shots) -- or: "tour" (built from the town's own story,
 ## cities/stories/<town>.json: its named streets in an order that drives well, each one a stop
 ## with who it is named for; the neighbourhoods and history as the captions between) or
 ## "getaway" (a car with flashing lights on your tail, through the town in racer style: lose
@@ -63,8 +76,17 @@ func setup(id: String) -> void:
 	story = _load_story()
 	if id == "tour":
 		beats = _tour_beats()
+	elif id == "night_tour":
+		beats = [["time", "night"]] + _tour_beats()
+		beats[1][1] = "By night -- " + String(beats[1][1])
+		beats.insert(beats.size() - 1, ["wet", true])
+		beats.insert(beats.size() - 1, ["say", "And then the rain: the streets shining under the lamps.", 6.0])
 	elif id == "getaway":
 		beats = _getaway_beats()
+	elif id == "ambulance":
+		beats = _ambulance_beats()
+	elif id == "day":
+		beats = _day_beats()
 	Probe.event("scenario", {"kind": id, "beats": beats.size()})
 
 func start() -> void:
@@ -117,13 +139,74 @@ func _tour_beats() -> Array:
 	out.append(["end", "That was %s. The streets are yours -- drive on, or pick another tour." % town])
 	return out
 
-## somewhere 1.2-2 km off on a main street, autodrive there in racer style, the chaser behind
+## somewhere 1.2-2 km off on a main street, autodrive there in racer style, the chaser behind,
+## filmed: the camera cutting between the usual view, from behind the chaser, from above, at the
+## kerb and looking back; slow motion through each red light it runs
 func _getaway_beats() -> Array:
 	var goal := _far_main_street(1200.0, 2000.0)
 	return [["say", "The getaway. They're right behind you -- lose them.", 3.0],
+		["shots", ["usual", "chaser", "above", "kerb", "back", "usual", "orbit"], 5.0],
 		["drive_on", goal, "the safe house", "racer"],
 		["chase", 150.0],
+		["shots", [], 0.0],
 		["end", ""]]
+
+## the hospital (a street the story says it is on; else a main street 1-2 km off), siren on:
+## the traffic ahead pulls aside, every light turns green, the racer's lines round the rest
+func _ambulance_beats() -> Array:
+	var goal := Vector2.INF
+	var label := "the hospital"
+	var streets: Dictionary = story.get("streets", {})
+	for key: String in streets:
+		if String(streets[key]).to_lower().contains("hospital"):
+			goal = _street_mid(key)
+			if goal != Vector2.INF:
+				label = "the hospital, on %s" % key
+				break
+	if goal == Vector2.INF or goal.distance_to(g._pos) < 500.0:
+		goal = _far_main_street(1000.0, 1800.0)
+	return [["say", "A call comes in. Siren on -- to %s." % label, 3.0],
+		["siren", true],
+		["shots", ["usual", "kerb", "above", "orbit", "kerb", "usual"], 6.0],
+		["drive_for", goal, label, "racer", 240.0],
+		["siren", false],
+		["shots", [], 0.0],
+		["end", "At the hospital's door. The town goes on as if nothing happened."]]
+
+## the town from morning to night: a drive from one of its story's streets to the next at each
+## time of day, the camera cutting between shots, the town's rhythm and lines between
+func _day_beats() -> Array:
+	var town := String(story.get("town", g._city_name))
+	var stops: Array = []
+	for b: Array in _tour_beats():
+		if String(b[0]) == "drive":
+			stops.append([b[1], b[2]])
+	if stops.size() < 3:
+		var far := _far_main_street(600.0, 1400.0)
+		stops = [[far, "across town"], [g._pos, "back again"], [far, "across town"]]
+	var rhythm := String(story.get("rhythm", "")).split(". ", false)
+	var lines: Array = (story.get("lines", []) as Array).duplicate()
+	var say := func(k: int) -> String:
+		if k < rhythm.size():
+			return String(rhythm[k]).trim_suffix(".") + "."
+		return String(lines[k % maxi(lines.size(), 1)]) if not lines.is_empty() else ""
+	return [["time", "day"],
+		["say", "A day in %s." % town, 3.0],
+		["shots", ["above", "kerb", "usual", "orbit", "kerb"], 6.0],
+		["say", "Morning. " + String(say.call(0)), 5.0],
+		["drive_for", stops[0][0], String(stops[0][1]), "rules", 55.0],
+		["time", "evening"],
+		["say", "Evening. " + String(say.call(1)), 5.0],
+		["drive_for", stops[1][0], String(stops[1][1]), "wave", 50.0],
+		["time", "night"],
+		["say", "Night. " + String(say.call(2)), 5.0],
+		["drive_for", stops[2][0], String(stops[2][1]), "wave", 45.0],
+		["wet", true],
+		["say", "Rain before dawn. The streets shine, and empty.", 6.0],
+		["shots", ["above"], 8.0],
+		["say", "%s." % String(story.get("tagline", town)), 5.0],
+		["shots", [], 0.0],
+		["end", "That was a day in %s." % town]]
 
 ## ---- running it ------------------------------------------------------------------------------
 
@@ -136,11 +219,22 @@ func tick(dt: float) -> void:
 	if i < 0 or i >= beats.size():
 		return
 	t += dt
+	_shots_tick(dt)
+	_slowmo_tick()
+	if _siren_on:
+		_yield_tick()
 	var b: Array = beats[i]
 	match String(b[0]):
 		"say":
 			if t >= float(b[2]):
 				_next()
+		"drive_for":
+			var there: bool = (not g._dest_on and t > 2.0) or (g._pos as Vector2).distance_to(b[1]) < 35.0
+			if there or t >= float(b[4]):
+				reached += 1 if there else 0
+				_next()
+		"time", "wet", "shots", "siren":
+			_next()
 		"drive":
 			_street_words()
 			var at: Vector2 = b[1]
@@ -180,6 +274,29 @@ func _next() -> void:
 	match String(b[0]):
 		"say":
 			_say(String(b[1]), float(b[2]))
+		"time":
+			_set_time(String(b[1]))
+		"wet":
+			g._set_wet(bool(b[1]))
+		"shots":
+			_shots = b[1]
+			_shot_len = float(b[2])
+			_shot_i = -1
+			_shot_t = 0.0
+			if _shots.is_empty():
+				_cam_usual()
+		"siren":
+			_set_siren(bool(b[1]))
+		"drive_for":
+			if g._zoomed():
+				g._zoom_set(0.0)
+			g._set_dest(b[1], String(b[2]))
+			g._ap_style = String(b[3])
+			g._apply_ap_style()
+			if _siren_on and g._wave != null:
+				g._wave.set_on(true)   # (an ambulance: racer's lines and every light green too)
+			g._set_auto(true)
+			_say("Next: %s" % String(b[2]), 2.5)
 		"drive", "drive_on":
 			if g._zoomed():
 				g._zoom_set(0.0)
@@ -207,6 +324,11 @@ func _next() -> void:
 
 func _finish(how: String) -> void:
 	on = false
+	_cam_usual()
+	_set_siren(false)
+	if _slow_until > 0:
+		Engine.time_scale = 1.0
+		_slow_until = 0
 	if result == "":
 		result = how
 	if _chaser != null:
@@ -317,6 +439,7 @@ func _start_chase() -> void:
 	_trail = [[g._pos, g._yaw, 0.0]]
 	_gap = CHASE_START
 	_vc = 0.0
+	_reds_seen = g._reds
 	result = ""
 	_chaser = g.model("police", 4.6)
 	g.world.add_child(_chaser)
@@ -389,6 +512,8 @@ func _chase_tick(dt: float) -> void:
 	# the camera cuts: every 7 s, 3 s from just ahead of the car looking back at the chaser
 	# behind it (the usual view the rest of the time)
 	_cut_t += dt
+	if not _shots.is_empty():
+		_cut_t = 0.0   # (a shot list runs the camera: the director's, not this cut)
 	if _cut_t > 7.0 and _back_cam == null:
 		_back_cam = Camera3D.new()
 		_back_cam.fov = 55.0
@@ -402,6 +527,9 @@ func _chase_tick(dt: float) -> void:
 		_back_cam.look_at(_chaser.position.lerp(me3, 0.35) + Vector3.UP, Vector3.UP)   # (between it and you)
 		if _cut_t > 10.0:
 			_end_cut()
+	if g._reds > _reds_seen:   # (through a red light: a moment of slow motion)
+		_reds_seen = g._reds
+		_slowmo(1.6)
 	if _gap <= CHASE_CAUGHT:
 		result = "caught"
 	elif _gap >= CHASE_LOST:
@@ -424,3 +552,219 @@ func _end_chase() -> void:
 	_chaser = null
 	_lights = []
 	Probe.event("chase", {"result": result, "gap": snappedf(_gap, 0.1)})
+
+## ---- the director's camera, the time of day, slow motion, the siren ----------------------------
+
+var _shots: Array = []
+var _shot_len := 5.0
+var _shot_i := -1
+var _shot_t := 0.0
+var _cam: Camera3D = null
+var _kerb_at := Vector3.ZERO
+var _orbit := 0.0
+var _slow_until := 0
+var _reds_seen := 0
+var _siren_on := false
+var _car_bar: Node3D = null
+var _car_siren: AudioStreamPlayer3D = null
+var shots_seen := {}          ## for tests: shot -> times cut to
+
+func _shots_tick(dt: float) -> void:
+	if _shots.is_empty() or g._zoomed():
+		return
+	var b: Array = beats[i]
+	if not (String(b[0]) in ["drive", "drive_on", "drive_for", "chase", "say"]):
+		return
+	_shot_t -= dt
+	if _shot_t <= 0.0:
+		_shot_t = _shot_len
+		_shot_i = (_shot_i + 1) % _shots.size()
+		var name := String(_shots[_shot_i])
+		if name == "chaser" and _chaser == null:
+			name = "kerb"   # (no chaser in this one)
+		if name == "back" and _chaser == null:
+			name = "orbit"
+		shots_seen[name] = int(shots_seen.get(name, 0)) + 1
+		if name == "kerb":
+			# a spot at the roadside some way ahead, low: the car comes by it
+			var fw: Vector2 = g._fwd()
+			var ahead: Vector2 = (g._pos as Vector2) + fw * clampf(absf(g._v) * 2.5 + 12.0, 15.0, 45.0)
+			var side := Vector2(-fw.y, fw.x)
+			var hit: Dictionary = g._nearest_seg(ahead, 20.0, true)
+			var half := float((g._roads[int(hit["road"])] as Dictionary)["w"]) * 0.5 if not hit.is_empty() else 4.0
+			var at := ahead + side * (half + 1.2)
+			_kerb_at = Vector3(at.x, g._h(at) + 0.9, at.y)
+		if name == "usual":
+			_cam_usual()
+		else:
+			_cam_own()
+		_shot_name = name
+	if _cam == null or _shot_name == "usual":
+		return
+	var car := Vector3(g._view_pos.x, float(g._view_y) + 1.0, g._view_pos.y)
+	var fw2: Vector2 = g._fwd()
+	match _shot_name:
+		"above":
+			_cam.position = car + Vector3(-fw2.x * 14.0, 26.0, -fw2.y * 14.0)
+			_cam.look_at(car + Vector3(fw2.x * 6.0, 0, fw2.y * 6.0), Vector3.UP)
+		"kerb":
+			_cam.position = _kerb_at
+			_cam.look_at(car, Vector3.UP)
+		"orbit":
+			_orbit += dt * 0.35
+			_cam.position = car + Vector3(cos(_orbit) * 11.0, 4.5, sin(_orbit) * 11.0)
+			_cam.look_at(car, Vector3.UP)
+		"chaser":
+			if _chaser != null:
+				var cp := _chaser.position
+				var to := (car - cp)
+				to.y = 0.0
+				var d := to.normalized() if to.length() > 0.1 else Vector3.FORWARD
+				_cam.position = cp - d * 6.0 + Vector3(0, 2.6, 0)
+				_cam.look_at(car, Vector3.UP)
+		"back":
+			var eye: Vector2 = (g._pos as Vector2) + fw2 * 9.0 + Vector2(-fw2.y, fw2.x) * 2.5
+			_cam.position = Vector3(eye.x, g._h(eye) + 2.2, eye.y)
+			var tgt := car if _chaser == null else _chaser.position.lerp(car, 0.35) + Vector3.UP
+			_cam.look_at(tgt, Vector3.UP)
+
+var _shot_name := "usual"
+
+func _cam_own() -> void:
+	if _cam == null:
+		_cam = Camera3D.new()
+		_cam.fov = 58.0
+		_cam.far = 3000.0
+		g.world.add_child(_cam)
+	_cam.make_current()
+
+func _cam_usual() -> void:
+	_shot_name = "usual"
+	if _cam != null and is_instance_valid(_cam):
+		_cam.queue_free()
+	_cam = null
+	if g.cam != null:
+		g.cam.make_current()
+
+func _set_time(to: String) -> void:
+	match to:
+		"day":
+			if g._night:
+				g._set_night(false)
+			if g._evening:
+				await g._set_evening(false)
+		"evening":
+			if g._night:
+				g._set_night(false)
+			if not g._evening:
+				await g._set_evening(true)
+		"night":
+			if g._evening:
+				await g._set_evening(false)
+			if not g._night:
+				g._set_night(true)
+	Probe.event("scenario_time", {"to": to})
+
+## a moment of slow motion: the world at a third of its pace for `secs` of real time
+func _slowmo(secs: float) -> void:
+	Engine.time_scale = 0.35
+	_slow_until = Time.get_ticks_msec() + int(secs * 1000.0)
+	shots_seen["slow motion"] = int(shots_seen.get("slow motion", 0)) + 1
+
+func _slowmo_tick() -> void:
+	if _slow_until > 0 and Time.get_ticks_msec() >= _slow_until:
+		_slow_until = 0
+		Engine.time_scale = 1.0
+
+## the car's own light bar and siren (an ambulance's): made as the chaser's are
+func _set_siren(on_: bool) -> void:
+	_siren_on = on_
+	if on_ and _car_bar == null and g._car != null:
+		_car_bar = Node3D.new()
+		g._car.add_child(_car_bar)
+		for col: Color in [Color(1, 0.1, 0.1), Color(0.15, 0.35, 1)]:
+			var mi := _lamp(col)
+			_car_bar.add_child(mi)
+		(_car_bar.get_child(0) as Node3D).position = Vector3(-0.3, 1.55, 0.1)
+		(_car_bar.get_child(1) as Node3D).position = Vector3(0.3, 1.55, 0.1)
+		_car_siren = _make_siren()
+		g._car.add_child(_car_siren)
+		if not Audio.muted():
+			_car_siren.play()
+	elif not on_ and _car_bar != null:
+		for c in _held:   # (everyone stopped for it goes on)
+			c.hit = 0.0
+		_held = {}
+		_car_bar.queue_free()
+		_car_bar = null
+		if _car_siren != null:
+			_car_siren.queue_free()
+			_car_siren = null
+	if _car_bar != null:
+		var red := fmod(Time.get_ticks_msec() / 250.0, 2.0) < 1.0
+		(_car_bar.get_child(0) as Node3D).visible = red
+		(_car_bar.get_child(1) as Node3D).visible = not red
+
+func _lamp(col: Color) -> MeshInstance3D:
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_color = col
+	m.emission_enabled = true
+	m.emission = col
+	m.emission_energy_multiplier = 3.0
+	var bx := BoxMesh.new()
+	bx.size = Vector3(0.5, 0.14, 0.22)
+	var mi := MeshInstance3D.new()
+	mi.mesh = bx
+	mi.material_override = m
+	return mi
+
+func _make_siren() -> AudioStreamPlayer3D:
+	var rate := 22050
+	var buf := PackedFloat32Array()
+	buf.resize(rate * 2)
+	var ph := 0.0
+	for k in range(buf.size()):
+		var sec := float(k) / rate
+		var f := 650.0 + 300.0 * (0.5 + 0.5 * sin(TAU * sec * 0.5))
+		ph += TAU * f / rate
+		buf[k] = tanh(1.8 * sin(ph)) * 0.6
+	var sp := AudioStreamPlayer3D.new()
+	sp.stream = g._wav(buf, rate, true)
+	sp.unit_size = 14.0
+	sp.max_distance = 260.0
+	sp.volume_db = linear_to_db(maxf(0.0001, float(SaveData.data.get("volume_sfx", 0.8)))) - 4.0
+	return sp
+
+## the traffic ahead going the car's way, in the lanes beside its line, pulls aside and stops
+## for the siren; a car in its own lane drives on ahead of it (held still, the ambulance stood
+## behind the very car it had stopped for 2 minutes -- tests/scenario.gd LEVEL=25), and one it
+## is held behind is let go
+var yielded := 0              ## for tests: cars that pulled over
+var _held := {}               ## car -> true: stopped for the siren
+func _yield_tick() -> void:
+	_set_siren(true)   # (the bar's lamps taking turns)
+	if g._traffic == null:
+		return
+	var fw: Vector2 = g._fwd()
+	var side := Vector2(-fw.y, fw.x)
+	for c in g._traffic.cars:
+		if not c.alive:
+			continue
+		var rel: Vector2 = (c.pos as Vector2) - (g._pos as Vector2)
+		var ahead := rel.dot(fw)
+		var lat := absf(rel.dot(side))
+		var mine := lat < 1.8   # (in the ambulance's own lane)
+		var behind_it: bool = g._ap_lead_i >= 0 and g._ap_lead_i < g._traffic.cars.size() and g._traffic.cars[g._ap_lead_i] == c
+		if _held.has(c) and (mine or (behind_it and float(g._ap_wait) > 1.0) or ahead < -6.0):
+			c.hit = 0.0   # (let go: on it goes)
+			_held.erase(c)
+			continue
+		if mine or ahead < 4.0 or ahead > 70.0 or lat > 8.0:
+			continue
+		if Vector2(sin(c.yaw), cos(c.yaw)).dot(fw) < 0.3:
+			continue   # (the other way: they carry on)
+		if not _held.has(c):
+			yielded += 1
+			_held[c] = true
+		c.hit = maxf(float(c.hit), 2.5)   # (stopped beside the way, for the siren to go by)

@@ -102,7 +102,10 @@ const server = http.createServer((req, res) => {
       let h = 0;
       for (let i = 0; i < all.length; i++) h = (h * 31 + all.charCodeAt(i)) | 0;
       const ms = (att.get(pr) || []).reduce((a, sh) => a + (cms.get(sh) || 0), 0);
-      return { defs: defs.join(' '), names, len: all.length, h, ms, text: window.__dump ? all : undefined };
+      // a default lit program as it reached the driver (this wrapper sits under the game's)
+      const litDefault = all.includes('#define BASE_PASS') && !all.includes('#define USE_ADDITIVE_LIGHTING')
+        && !all.includes('#define DISABLE_LIGHT_OMNI');
+      return { defs: defs.join(' '), names, len: all.length, h, ms, litDefault, text: window.__dump ? all : undefined };
     };
     log.what = [];
     wrap('linkProgram', (t, dt) => { log.links.push([t, dt]); });
@@ -181,6 +184,17 @@ const server = http.createServer((req, res) => {
     mine.forEach(([, w]) => { const key = `${(w && w.names) || '-'}  [${(w && w.defs) || ''}]`; byk[key] = (byk[key] || 0) + 1; });
     Object.entries(byk).sort((a, b) => b[1] - a[1]).forEach(([key, v]) => console.log(`  ${String(v).padStart(3)}  ${key}`));
   });
+  // The family "programs compiled that are never drawn": Godot compiles each material's
+  // default lit program (omni, spot and area light code on) and never draws with it; the
+  // game swaps those for a placeholder (LIGHT_STRIP_JS in streets.gd), which cut a cold load
+  // ~10x on Windows browsers. A Godot upgrade or a changed define would let them back in
+  // silently: none may reach the driver, and nothing may be drawn with a placeholder.
+  const escaped = gl.what.filter((w) => w && w.litDefault).length;
+  const ls = await page.evaluate(() => window.__lstrip || null);
+  const okEsc = escaped === 0, okUsed = !!ls && ls.used === 0;
+  console.log(`CHECK never-drawn lit programs compiled: ${escaped} (want 0) ${okEsc ? 'PASS' : 'FAIL'}`);
+  console.log(`CHECK placeholders: ${ls ? ls.n : 'none -- LIGHT_STRIP_JS not on'}, drawn with: ${ls ? ls.used : '-'} (want 0) ${okUsed ? 'PASS' : 'FAIL'}`);
+  if (!okEsc || !okUsed) process.exitCode = 1;
   console.log(`(${Math.round((Date.now() - t0) / 1000)} s of wall time)`);
   await browser.close();
   server.close();

@@ -74,9 +74,29 @@ the pavement -- a tree, a pole, a bin.
 > Lets put in the main menu both walks inside an extra menu, like the test drives. and add
 > some more walks. even not the filmed ones. just to distribute a bit away from my location
 
-Every walk is seen from a person's eyes (1.58 m), not from where the film's phone was held at
+Every walk is seen from a little over a person's eyes (1.75 m, as a camera held up; first 1.58), not from where the film's phone was held at
 the chest (1.44 m); and now and then the head turns to a car going by, follows it a couple of
 seconds and comes back -- except where the film's own look is known (at a zebra, a corner).
+
+**Watching a walk.** A thin bar along the foot of the screen shows how far the walk has gone
+("1:23 / 3:20"), and a button beside it speeds the whole world up, 1x, 2x, 4x. In the walks
+list each walk can also be started in the evening (a low sun, long shadows) or at night (the
+street lights on). Every city has a walk -- Delft's along the Oude Delft canal -- and the
+walks nobody filmed have the street's things along them: bins, scooters, cabinets, hydrants,
+bollards, yellow parking boards (a Dutch street's rows of short bollards; a Canadian
+suburb's few hydrants and bins). Street trees beside a road are pruned up, branches from 2.2
+m and leaves from 2.5, so a walk goes under them, not through them.
+
+> lets add a progress bar to the walks so we know how much we passed, and maybe a speedup
+
+> do we have evening/night walks? if no lets add/change existing to those. if yes lets
+> mention in the menu
+
+> i want to add more items near the walks ( maybe change paths if needed i didnt look at all
+> of them). fix walking through trees ( if still happens not sure ).
+
+> Lets balance the walks to be from more cities. And in any case we do a new city we put a
+> new walk and drive from those cities
 
 > i think the walk height is bit too low, i am holding the phone probably too low. and
 > sometimes not turning with my head on traffic passes( lets add that , even if it doesnt
@@ -557,8 +577,23 @@ out as a little film, the car driving itself, captions across the bottom.
   a corner or a queue and it closes in. Lose it by 160 m or reach the safe house and you got
   away; let it within 7 m and you are caught. Take the wheel and the drive is yours.
 
+  The camera cuts between shots as it goes -- the usual view, from high above, low at the
+  kerb as you come by, from behind the police car, looking back -- and drops into slow
+  motion through each red light.
+
+- *Night tours* -- Tel Aviv, Givatayim. The tour after dark, the towers and street lights
+  lit, ending as the rain comes and the streets shine.
+- *Ambulance run* -- Tel Aviv, Ashdod. Siren on and lights flashing, to the hospital (Tel
+  Aviv's, on Weizmann): the cars beside you pull aside and stop, every light turns green,
+  and the car goes round whatever is in its way.
+- *A day in the town* -- Tel Aviv, Givatayim. Morning to night in three minutes: a drive at
+  each time of day, the town's own rhythm in the captions, the camera cutting between shots,
+  rain before dawn.
+
   > some scenario ( aka movie i guess ) happening in a city. doesnt have to be related to
   > the city itself ... tours will be part of all scenarios
+
+  > I want to think more of automatic scearios for now without my inputs
 
 **The opening.** When a town comes up, the view starts high over it, turning slowly round
 where you will start, the town's name across the screen, while the streets round the car

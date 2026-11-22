@@ -55,6 +55,8 @@ func build() -> void:
 		return
 	var b = g.new_cbuf(400.0)
 	for it: Array in items:
+		if g._over():   # (each one searches for room round it: a square of Ashdod's shelters ran 48 ms unchecked on a desktop)
+			await g._pause()
 		var p: Vector2 = it[1]
 		if String(it[0]) == "kindergarten":
 			_yard(b, p, int(it[3]))

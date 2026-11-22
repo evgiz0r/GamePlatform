@@ -21,13 +21,17 @@ func _initialize() -> void:
 
 func _run() -> void:
 	await create_timer(0.3).timeout
-	root.get_node("Flow").start_game("streets", {"level": int(OS.get_environment("LEVEL")) if OS.get_environment("LEVEL") != "" else 5})
+	# (WALK_TIME=evening or night: the walk in that light, as the walks list's buttons start it)
+	root.get_node("Flow").start_game("streets", {"level": int(OS.get_environment("LEVEL")) if OS.get_environment("LEVEL") != "" else 5,
+		"time": OS.get_environment("WALK_TIME") if OS.get_environment("WALK_TIME") != "" else "day"})
 	while g == null or not g._loaded:
 		await create_timer(0.25).timeout
 		for n in root.find_children("*", "Node2D", true, false):
 			if n.get_script() != null and String(n.get_script().resource_path).ends_with("streets.gd"):
 				g = n
 	var out := OS.get_environment("OUT")
+	if g._walk_ui != null and OS.get_environment("WALK_BAR") != "1":
+		g._walk_ui.visible = false   # (the progress bar and speed button: not in shots set beside a film)
 	if g._film.is_empty():
 		print("FAIL no walk: is this the walk's level?")
 		quit(1)
@@ -102,6 +106,86 @@ func _run() -> void:
 			t += 0.25
 		if was != "":
 			print("INSIDE %s from %.2f to the end" % [was, from])
+		# and the eye: anything drawn by instance (a tree's leaves, an awning, a sign, a shop's
+		# board) whose box holds the camera -- the post scan sees trunks, not the crown a walk's
+		# camera passes through (the leaves hung to 1.35-1.9 m; the eye is at 1.58)
+		var eye_h: float = 1.64 - g.FILM_EYE_DROP
+		var lo := Vector2(INF, INF)
+		var hi := -lo
+		var tt := 0.0
+		while tt <= last:
+			var q: Vector2 = g._film_at(tt)
+			lo = lo.min(q)
+			hi = hi.max(q)
+			tt += 1.0
+		lo -= Vector2(8, 8)
+		hi += Vector2(8, 8)
+		var boxes := {}   # 4 m cell -> [[AABB, what]]
+		for n: Node in root.find_children("*", "MultiMeshInstance3D", true, false):
+			var mmi := n as MultiMeshInstance3D
+			if mmi.multimesh == null or mmi.multimesh.mesh == null or not mmi.is_visible_in_tree():
+				continue
+			var mm := mmi.multimesh
+			var ab := mm.mesh.get_aabb()
+			var count := mm.visible_instance_count if mm.visible_instance_count >= 0 else mm.instance_count
+			for i in range(count):
+				var xf := mmi.global_transform * mm.get_instance_transform(i)
+				var o := xf.origin
+				if o.x < lo.x or o.x > hi.x or o.z < lo.y or o.z > hi.y:
+					continue
+				var box := xf * ab
+				if box.size.y > 30.0 or box.position.y - g._h(Vector2(o.x, o.z)) < 0.4:
+					continue   # (standing on the ground: a trunk, a pole -- the post scan's; its box takes in its branches)
+				var key := Vector2i(floori(o.x / 4.0), floori(o.z / 4.0))
+				if not boxes.has(key):
+					boxes[key] = []
+				(boxes[key] as Array).append([box, "%s %s" % [mmi.name, mm.mesh.resource_name if mm.mesh.resource_name != "" else str(mm.mesh.get_instance_id() % 10000)]])
+		var in_was := ""
+		var in_from := 0.0
+		tt = 0.0
+		var eyes := 0
+		while tt <= last + 0.25:
+			var q: Vector2 = g._film_at(tt)
+			var e := Vector3(q.x, g._walk_y(q) + eye_h, q.y)
+			var what := ""
+			var c := Vector2i(floori(q.x / 4.0), floori(q.y / 4.0))
+			for dz in range(-2, 3):
+				for dx in range(-2, 3):
+					for bw: Array in boxes.get(c + Vector2i(dx, dz), []):
+						var bx: AABB = (bw[0] as AABB).grow(-0.15)
+						if bx.has_point(e):
+							what = "%s (box %.1f to %.1f m up, %.1f wide)" % [bw[1], bx.position.y - e.y + eye_h, bx.end.y - e.y + eye_h, bx.size.x]
+			if what != in_was:
+				if in_was != "":
+					print("EYE IN %s from %.2f to %.2f s, at %s" % [in_was, in_from, tt, Vector2i(g._film_at(in_from))])
+					eyes += 1
+				in_was = what
+				in_from = tt
+			tt += 0.25
+		print("eye scan done: %d stretches with the eye inside something drawn" % eyes)
+		# and the feet: on a road's asphalt outside the walk's crossings (`zebras`, kerb to kerb)
+		# -- a footway OSM maps beside a carriageway can lie inside the game's wider asphalt
+		var on_was := false
+		var on_from := 0.0
+		var ons := 0
+		tt = 0.0
+		while tt <= last + 0.25:
+			var q: Vector2 = g._film_at(tt)
+			var crossing := false
+			for z: Array in g._film_zebras:
+				crossing = crossing or (tt >= float(z[0]) - 0.5 and tt <= float(z[1]) + 0.5)
+			var on: bool = not crossing and not g._off_road(q, 0.0)
+			if on != on_was:
+				if on_was:
+					print("ON ROAD from %.2f to %.2f s, at %s" % [on_from, tt, Vector2i(g._film_at(on_from))])
+					ons += 1
+				on_was = on
+				on_from = tt
+			tt += 0.25
+		if on_was:
+			print("ON ROAD from %.2f to the end" % on_from)
+			ons += 1
+		print("road scan done: %d stretches on asphalt off the crossings" % ons)
 		print("scan done")
 		quit()
 		return

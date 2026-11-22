@@ -68,6 +68,14 @@ const LEVELS := [
 	{"name": "Tour: Bedford by the Basin", "city": "bedford", "look": "north", "decks": "infer", "scenario": "tour"},
 	{"name": "The getaway: Ashdod", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med", "decks": "infer", "scenario": "getaway"},
 	{"name": "The getaway: Tel Aviv", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "getaway"},
+	{"name": "Night tour: Tel Aviv", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "night_tour"},
+	{"name": "Night tour: Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "night_tour"},
+	{"name": "Ambulance run: Tel Aviv", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "ambulance"},
+	{"name": "Ambulance run: Ashdod", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med", "decks": "infer", "scenario": "ambulance"},
+	{"name": "A day in Tel Aviv", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "day"},
+	{"name": "A day in Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "day"},
+	# Delft's walk: every city has one (NEW_CITY.md), laid by data_tools/make_walks.py
+	{"name": "Delft: along the Oude Delft canal", "city": "delft", "look": "north", "build": "nl", "decks": "infer", "walk": "delft_oude_delft"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -1608,8 +1616,20 @@ func _load_line() -> String:
 	s += " city file %.1f · start area %.1f · graphics %.1f" % [
 		_load_split[0] / 1000.0, _load_split[1] / 1000.0, _load_split[2] / 1000.0]
 	if _load_gl.x >= 0.0:
-		s += " (%d shaders, %.1f s compiling)" % [int(_load_gl.x), _load_gl.y / 1000.0]
+		s += " (%d shaders, %.1f s compiling%s)" % [int(_load_gl.x), _load_gl.y / 1000.0, _lstrip_note()]
 	return s
+
+## ", N skipped" -- the never-drawn programs LIGHT_STRIP_JS swapped for a placeholder -- and
+## loudly if one was ever drawn with (it should not be: see LIGHT_STRIP_JS)
+static func _lstrip_note() -> String:
+	if not OS.has_feature("web"):
+		return ""
+	var v = JavaScriptBridge.eval("window.__lstrip ? window.__lstrip.n + ',' + window.__lstrip.used : ''", true)
+	var t := str(v) if v != null else ""
+	if t == "":
+		return ""
+	var used := int(t.get_slice(",", 1))
+	return ", %s skipped%s" % [t.get_slice(",", 0), ", PLACEHOLDER DRAWN %d" % used if used > 0 else ""]
 static var _loads_this_visit := 0
 var _first_load := false
 
@@ -1735,7 +1755,7 @@ const LIGHT_STRIP_JS := """(() => {
 				? v + '\\nvoid main() { gl_Position = vec4(0.0); }\\n'
 				: v + '\\nprecision mediump float;\\nout vec4 frag_color;\\nvoid main() { frag_color = vec4(1.0, 0.0, 1.0, 1.0); }\\n';
 			fake.add(s);
-			c.n += 1;
+			if (types.get(s) !== this.VERTEX_SHADER) c.n += 1;   // programs, not halves
 		}
 		return ss.call(this, s, src);
 	};
@@ -1937,6 +1957,8 @@ func _load_save() -> void:
 
 func _exit_tree() -> void:
 	SaveData.data["volume_sfx"] = _sfx_was
+	if _walk_speed != 1.0:
+		Engine.time_scale = 1.0   # (the menu after a sped-up walk)
 	if _shadow_web:   # put the project's own shadow settings back for the next game
 		RenderingServer.directional_shadow_atlas_set_size(
 			int(ProjectSettings.get_setting("rendering/lights_and_shadows/directional_shadow/size", 4096)), true)
@@ -2966,8 +2988,42 @@ func _clip_buf(cell: float) -> CBuf:
 func _tally(k: String, n: int) -> void:
 	_dressing[k] = int(_dressing.get(k, 0)) + n
 
+## Where the background build runs long without handing the frame back (STREETS_SPANS=1,
+## a debug run: tests/build_spans.gd). Each pause notes how far past its budget the work
+## before it ran, and the call sites that paused: a phone ran single stretches of 1-1.5 s.
+var _span_rec := OS.get_environment("STREETS_SPANS") == "1"
+var _spans: Array = []               ## [ms past the budget, "func:line < func:line < ..."]
+
+var _bstep := ""                     ## the square-building step under way (named in the hitch line)
+var _bstep_slow := ""                ## the step that last ran 30+ ms past the frame's budget, for the next hitch line
+var _bstep_slow_us := 0
+
+## one step of building a square: its name kept for a hitch, the frame handed back first if
+## its budget is used up
+func _build_step(what: String) -> void:
+	if _over():
+		await _pause()   # (before the name changes: a long stretch is the step that ran it)
+	_bstep = what
+
+var _span_last := 0                  ## (STREETS_SPANS) the last budget check: when, and where
+var _span_last_at := ""
+
+func _span_gap() -> void:
+	var now := Time.get_ticks_usec()
+	var st := get_stack()
+	var at: Array = []
+	for i in range(2, mini(5, st.size())):
+		at.append("%s:%d" % [st[i]["function"], st[i]["line"]])
+	var here := " < ".join(at)
+	if _bg_build and _span_last > 0 and now - _span_last > 20000:
+		_spans.append([(now - _span_last) / 1000.0, "from " + _span_last_at + "  TO  " + here])
+	_span_last = now
+	_span_last_at = here
+
 ## the frame's building time is used up
 func _over() -> bool:
+	if _span_rec:
+		_span_gap()
 	return (_bg_build or _fg_build) and Time.get_ticks_usec() > _yield_at
 
 ## Building in the background: hand the frame back and go on in the next one. Meanwhile
@@ -2981,6 +3037,10 @@ func _pause() -> void:
 		await get_tree().process_frame
 		_yield_at = Time.get_ticks_usec() + FG_US
 		return
+	var over_us := Time.get_ticks_usec() - _yield_at
+	if over_us > 30000 and over_us > _bstep_slow_us:   # ran 30+ ms past the budget: which step (the hitch line)
+		_bstep_slow = _bstep if _bstep != "" else "between squares"
+		_bstep_slow_us = over_us
 	var was := _tiled
 	var batching := _batching
 	_set_tiling(false)
@@ -2990,6 +3050,7 @@ func _pause() -> void:
 	_batching = batching
 	_set_tiling(was)
 	_yield_at = Time.get_ticks_usec() + _build_us
+	_span_last = 0   # (the frame in between is not the build's)
 
 ## empty a big table or list a few hundred entries at a time, within the frame's budget
 func _release(table) -> void:
@@ -3160,56 +3221,88 @@ func _build_tile(t: Vector2i) -> void:
 		a.clear()   # made by one builder for the next, square by square
 	var tk := Time.get_ticks_msec()
 	_ao = CBuf.new(GROUND_CELL)
+	# every step behind `_step`: the frame handed back between any two of them if it is used up
+	# (decks, rails, marks, beach, works and places ran back to back unchecked: 50 ms on a
+	# desktop, tests/build_spans.gd), and the step's name kept for the hitch line
+	await _build_step("corner fills")
 	await _note_corner_fills()   # (before anything is stood anywhere: see _off_road)
+	await _build_step("ground")
 	await _build_ground()
+	await _build_step("decks")
 	await _decks.build()
+	await _build_step("rails")
 	await _rails.build()
+	await _build_step("marks")
 	_marks.build()
+	await _build_step("beach")
 	_beach.build()
+	await _build_step("works")
 	_works.build()
-	_places.build()
+	await _build_step("places")
+	await _places.build()
 	tk = _stage("roads", tk)
+	await _build_step("buildings")
 	await _build_buildings()
 	tk = _stage("buildings", tk)
+	await _build_step("roof kit")
 	await _build_roof_kit()
+	await _build_step("facade kit")
 	await _build_facade_kit()
 	tk = _stage("facades", tk)
+	await _build_step("trees")
 	await _build_trees()
 	tk = _stage("trees", tk)
+	await _build_step("kerbs")
 	await _build_kerbs()   # (after the trees: the leaves on the pavement are under them)
 	tk = _stage("kerbs", tk)
+	await _build_step("passages")
 	await _build_passages()
 	tk = _stage("passages", tk)
+	await _build_step("wires")
 	await _furn.wires()
 	tk = _stage("wires", tk)
+	await _build_step("lamps")
 	await _build_lamps()
+	await _build_step("parks")
 	await _build_parks()
 	tk = _stage("lamps", tk)
+	await _build_step("parked")
 	await _build_parked()
+	await _build_step("lots")
 	await _build_lots()
+	await _build_step("contact shadows")
 	for mi: MeshInstance3D in _add_mesh(_ao, _ao_material(), false, AO_SEEN):   # (after the buildings and the cars)
 		mi.extra_cull_margin = 60.0   # (the trees' patches are moved out by the sun, in the shader)
 	_ao = null
 	tk = _stage("parked", tk)
+	await _build_step("signals")
 	await _build_signals()
+	await _build_step("signs")
 	await _build_signs()
+	await _build_step("road paint")
 	await _build_road_paint()
+	await _build_step("speed signs")
 	await _build_speed_signs()
+	await _build_step("street signs")
 	await _build_street_signs()
 	tk = _stage("signs", tk)
+	await _build_step("pois")
 	await _build_pois()
+	await _build_step("stops")
 	await _build_stops()
 	tk = _stage("places", tk)
 	var tfu := Time.get_ticks_usec()
+	await _build_step("furniture")
 	await _furn.build()
 	_part_time("furniture: all (furniture.gd)", tfu)
 	tk = _stage("furniture", tk)
-	if _over():
-		await _pause()
+	await _build_step("batches")
 	await _flush_batches()
 	if _pools_made:
+		await _build_step("light pools")
 		_make_pools()   # it is night: this square's light pools too
 	_stage("batches", tk)
+	_bstep = ""
 	_set_tiling(false)
 	_batching = false
 	if _standins != null:
@@ -3325,11 +3418,14 @@ func _build_rest() -> void:
 	_catch_up = hurry
 	_build_us = CATCH_UP_US if _catch_up else BUILD_US
 	_yield_at = Time.get_ticks_usec() + _build_us
+	_bstep = "gardens"
 	await _build_gardens_later()   # (the start's squares' far gardens, first)
 	if not _tiles_todo.is_empty():   # (the rest, as flat stand-ins seen from above, at once)
+		_bstep = "stand-ins"
 		_standins = Standins.new(self)
 		await _standins.build_all()
 	if not hurry:
+		_bstep = "far shadows"
 		await _far_now()
 	while is_inside_tree():
 		var t = _next_tile()
@@ -3344,11 +3440,14 @@ func _build_rest() -> void:
 			_catch_up_ms = Time.get_ticks_msec() - t0
 			print("[streets] the squares round the car built %d ms after it was shown" % _catch_up_ms)
 			Probe.event("near_built", {"ms": _catch_up_ms, "squares": n})
+			_bstep = "far shadows"
 			await _far_now()
 		if _build_lbl != null:
 			_build_lbl.text = "building the city %d%%" % int(100.0 * _tiles_done.size() / maxf(_build_total, 1.0))
+	_bstep = "far shadows"
 	await _far_now()   # (if it has not come yet: before the city file below is let go)
 	await _far_both()   # (and the other sun's: drawn later, from what is let go, it failed)
+	_bstep = "letting go of the city file"
 	if _build_lbl != null:
 		_build_lbl.text = ""
 	# what was only for building -- the file, the outlines, the squares' lists -- let go of a
@@ -7674,6 +7773,24 @@ func _build_trees() -> void:
 		var jitter := Vector3(rng.randf_range(0.85, 1.15), rng.randf_range(0.85, 1.15), rng.randf_range(0.85, 1.15))
 		var tpart: String = spec[0]
 		var trunk_h := 2.6 if tpart != "ptrunk" else 7.0
+		# a street's trees are pruned up over the pavement: branches from STREET_BRANCHES, leaves
+		# from STREET_LEAVES (a walk's camera went through an olive's at 1.2-1.6 m). Only those
+		# within 3 m of a road's edge: not the parks', woods', mountains', yards' or a footpath's
+		# (the filmed passage's low planting closes it in, and lifting it scored 6-9 worse there).
+		var lift := 0.0
+		var by_road := false
+		if tpart == "trunk" and not forest.has(si) and not mtn.has(si):
+			var rh: Dictionary = _nearest_seg(Vector2(sp.x, sp.y), 6.0, true)
+			by_road = not rh.is_empty() and float(rh["edge"]) < 3.0   # (over a pavement: not a passage's, a yard's)
+		if by_road:
+			var hb := 1.75 * tw.y * sc   # (the trunk mesh's lowest branch, 0.45 over its middle of 2.6)
+			if hb < STREET_BRANCHES:
+				var ny := tw.y * STREET_BRANCHES / hb
+				lift = trunk_h * (ny - tw.y) * sc
+				tw = Vector2(tw.x, ny)
+			var bottom := float(spec[4]) * sc + lift - CROWN_LOW * cw.y * jitter.y * sc
+			if bottom < STREET_LEAVES:
+				lift += STREET_LEAVES - bottom
 		var bark := Color(1.9, 1.9, 1.8) if kind == "birch" else (Color(1.6, 1.55, 1.45) if kind == "eucalyptus" else Color(1, 1, 1))
 		# the leaves (the atlas cell rides in the colour's alpha); some of the round street
 		# trees are feathery, like the melias and jacarandas that line Israeli streets
@@ -7681,10 +7798,10 @@ func _build_trees() -> void:
 		if kind == "round" and rng.randf() < 0.3:
 			cell = 2
 		put.call(tpart, Transform3D(b * Basis.from_scale(Vector3(tw.x, tw.y, tw.x) * sc), base + b * Vector3(0, trunk_h * 0.5 * tw.y * sc, 0)), bark)
-		put.call(spec[2], Transform3D(b * Basis.from_scale(cw * jitter * sc), base + b * Vector3(0, float(spec[4]) * sc, 0)),
+		put.call(spec[2], Transform3D(b * Basis.from_scale(cw * jitter * sc), base + b * Vector3(0, float(spec[4]) * sc + lift, 0)),
 			Color(tint.r * g, tint.g * g, tint.b * g, (float(cell) + 0.5) / 4.0))
 		var tat := Time.get_ticks_usec()
-		_ao_tree(Vector2(sp.x, sp.y), cw.x * jitter.x * sc * (0.55 if tpart == "ptrunk" else 0.85), float(spec[4]) * sc)
+		_ao_tree(Vector2(sp.x, sp.y), cw.x * jitter.x * sc * (0.55 if tpart == "ptrunk" else 0.85), float(spec[4]) * sc + lift)
 		if not forest.has(si) and not mtn.has(si):   # the trunk's foot (the street's trees: not the parks', open land's or mountains')
 			_ao_disc(Vector2(sp.x, sp.y), (0.45 if tpart == "ptrunk" else 0.6) * sc, 0.7)
 		_part_time("trees: shadows on the ground (far, trunk feet)", tat)
@@ -7695,6 +7812,9 @@ func _build_trees() -> void:
 		await _chunked_paced(_tree_meshes[part], parts[part], reach, colours[part], null, true)
 
 var _tree_meshes := {}
+const STREET_BRANCHES := 2.2         ## m: a street tree's lowest branch (pruned over the pavement)
+const STREET_LEAVES := 2.5           ## m: its lowest leaves
+const CROWN_LOW := 0.75              ## the card crown's reach below its middle, per unit of its height scale
 const TREE_COVER := 40.0             ## a town's map of every tree covers within 40-80 m of its trees (cells this big)
 var _tree_cover := {}                ## TREE_COVER cell -> 2: every tree there is mapped (from the air)
 const TREE_NEAR := 9.0               ## no made-up street tree this near a listed one (a row's gap is 11 m)
@@ -7853,7 +7973,9 @@ func _tree_kind(look: String, wood: bool, r: float) -> String:
 	if look == "north":
 		if wood:
 			return "spruce" if r < 0.68 else ("birch" if r < 0.82 else ("maple" if r < 0.93 else "oak"))
-		return "maple" if r < 0.42 else ("spruce" if r < 0.62 else ("birch" if r < 0.78 else "oak"))
+		# (no spruce along a street: its boughs sweep the ground 4 m across, and a walk's camera went
+		# through them on Bedford's pavements -- the north's spruces are the woods' and yards')
+		return "maple" if r < 0.5 else ("birch" if r < 0.72 else "oak")
 	if wood:
 		return "pine" if r < 0.38 else ("eucalyptus" if r < 0.58 else ("cypress" if r < 0.68 else ("olive" if r < 0.84 else "round")))
 	var table := [["ficus", 0.22], ["acacia", 0.39], ["round", 0.56], ["olive", 0.63], ["cypress", 0.68],
@@ -16546,6 +16668,7 @@ func _film_begin(id: String) -> void:
 	_hud.visible = false
 	if OS.get_environment("STREETS_FILM_LOOK") != "0":   # (=0: the game's own picture, to measure it bare)
 		_film_look_layer()
+	_walk_bar_build()
 	Probe.event("film", {"walk": id, "seconds": _film[_film.size() - 1].z})
 
 ## The phone's picture over a filmed walk: a grade on the finished frame, under the shell's
@@ -16640,6 +16763,7 @@ void fragment() {
 
 func _film_tick(dt: float) -> void:
 	_film_t += dt
+	_walk_bar_tick()
 	if not _film_base.is_empty() and _film_t >= _film_dodged:
 		_film_dodged = _film_t + 2.0
 		_film_dodge(_film_t + 4.0, _film_t + 40.0)   # (the squares ahead have built since)
@@ -16754,7 +16878,7 @@ func _film_on_zebras() -> void:
 ## A walk nobody filmed (data_tools/make_walks.py, `dodge`) is laid along a street's pavement
 ## by its map alone and knows nothing of what stands on it -- the city's trees, poles, bins,
 ## and whatever other sessions put on pavements later. So the game steps it round them: the
-## walk resampled every half second (and at each of its own points, so its waits keep their
+## walk resampled every quarter second (and at each of its own points, so its waits keep their
 ## times), and each sample pushed sideways off any post within reach, toward the side that
 ## is clear of walls, the push spread over DODGE_SPREAD m either way so it bends round, not
 ## jumps. Squares build as the walk goes, so it is done again for the stretch ahead every 2 s.
@@ -16773,7 +16897,7 @@ func _film_dodge_begin() -> void:
 	var t := 0.0
 	while t < end:
 		ts[snappedf(t, 0.01)] = true
-		t += 0.5
+		t += 0.25   # (0.5 let a post between two samples through, at a crossing's railings)
 	var keys := ts.keys()
 	keys.sort()
 	var base: Array = []
@@ -16797,6 +16921,18 @@ func _film_dodge_begin() -> void:
 	_film = base.duplicate()
 	_film_dodge(0.0, end + 1.0)
 
+## how far round a post a walk keeps: its own radius, but a tree's crown where the tree is
+## not by a road (only those are pruned up: a boulevard's middle, a park's path keep theirs low,
+## and with the eye at 1.75 Rothschild's walk went through one)
+var _reach_memo := {}
+func _post_reach(j: int) -> float:
+	if not is_equal_approx(_post_r[j], 0.3):
+		return _post_r[j]
+	if not _reach_memo.has(j):
+		var rh: Dictionary = _nearest_seg(_posts[j], 6.0, true)
+		_reach_memo[j] = 0.3 if (not rh.is_empty() and float(rh["edge"]) < 3.0) else 1.9
+	return _reach_memo[j]
+
 func _film_dodge(t0: float, t1: float) -> void:
 	var n := _film_base.size()
 	var need := PackedFloat32Array()
@@ -16812,29 +16948,48 @@ func _film_dodge(t0: float, t1: float) -> void:
 		var p := Vector2(b.x, b.y)
 		var sd: Vector2 = _film_side[i]
 		var near: Array = []
-		for j: int in _near(_post_hash, p, 2.5, BLD_CELL):
-			if p.distance_to(_posts[j]) < _post_r[j] + DODGE_CLEAR + 1.6:
+		for j: int in _near(_post_hash, p, 3.5, BLD_CELL):
+			if p.distance_to(_posts[j]) < _post_reach(j) + DODGE_CLEAR + 1.6:
 				near.append(j)
-		if near.is_empty():
+		# off a crossing, the walk keeps off the asphalt too (a footway OSM maps beside a
+		# carriageway can lie inside the game's fitted one: Rothschild's)
+		var kerbside := true
+		for z: Array in _film_zebras:
+			kerbside = kerbside and not (b.z >= float(z[0]) - 0.6 and b.z <= float(z[1]) + 0.6)
+		if near.is_empty() and _push_out(p, 0.25, false, false) == Vector2.ZERO and (not kerbside or _off_road(p, 0.15)):
 			need[i] = 0.0
-			continue
-		# the least step sideways (up to 1.6 m either way, in 10 cm) clear of all of them at
-		# once and of the walls; if none is, the one with the most room
+			continue   # (nothing near, not in a wall, not on a road: a garden wall's corner sat on one walk's line)
+		# the step sideways (up to 3 m either way, in 10 cm) nearest the last sample's that is
+		# clear of all of them at once and of the walls; if none is, the one with the most room.
+		# (Nearest the last, not the least: the least flipped sides between a shelter's panel and
+		# a bin at the kerb, and the curve between went through the panel.)
+		var prev: float = need[i - 1] if i > lo else 0.0
+		var cands: Array = []
+		for k in range(-30, 31):
+			cands.append(0.1 * float(k))
+		cands.sort_custom(func(x, y): return absf(x - prev) < absf(y - prev))
 		var best := 0.0
 		var room := -INF
-		for k in range(0, 33):
-			var off := 0.1 * float((k + 1) / 2) * (1.0 if k % 2 == 1 else -1.0)
-			var q := p + sd * off
-			var m := INF
-			for j: int in near:
-				m = minf(m, q.distance_to(_posts[j]) - _post_r[j])
-			if m >= DODGE_CLEAR and _push_out(q, 0.25, false, false) == Vector2.ZERO:
-				best = off
-				room = m
+		var found := false
+		# first a step clear of the trunks and the low crowns too, then one clear of what is
+		# solid alone (a crown is to keep out of where there is room, not to walk into a wall for)
+		for soft: bool in [true, false]:
+			for off: float in cands:
+				var q := p + sd * off
+				if _push_out(q, 0.25, false, false) != Vector2.ZERO or (kerbside and not _off_road(q, 0.15)):
+					continue
+				var m := INF
+				for j: int in near:
+					m = minf(m, q.distance_to(_posts[j]) - (_post_reach(j) if soft else _post_r[j]))
+				if m >= DODGE_CLEAR:
+					best = off
+					found = true
+					break
+				if not soft and m > room:
+					room = m
+					best = off
+			if found:
 				break
-			if m > room and _push_out(q, 0.25, false, false) == Vector2.ZERO:
-				room = m
-				best = off
 		need[i] = best
 	if hi < 0:
 		return
@@ -16915,6 +17070,69 @@ func _film_glance(dt: float, may := true) -> Vector2:
 	if on:
 		_glance_a = clampf(angle_difference(_yaw, (c.pos - _pos).angle()), -GLANCE_MAX, GLANCE_MAX)
 	return Vector2(_glance_w, _glance_a) if _glance_w > 0.01 else Vector2.ZERO
+
+## A walk's progress along the foot of the screen: a thin bar and the time ("1:23 / 3:20"), and a
+## speed button beside it -- 1x, 2x, 4x round, the whole world sped up together (the engine's
+## time scale, as STREETS_SIM_SPEED: more game time a tick, not more ticks, so a phone's frame
+## costs the same). The user, 22 Nov: "a progress bar to the walks so we know how much we
+## passed, and maybe a speedup".
+const WALK_SPEEDS := [1.0, 2.0, 4.0]
+var _walk_speed := 1.0
+var _walk_ui: Control
+var _walk_fill: ColorRect
+var _walk_time: Label
+var _walk_btn: Button
+var _walk_shown := -1
+
+func _walk_bar_build() -> void:
+	# (on a layer over the phone's grade, layer 1, which washed it out; under the shell's, 10)
+	var layer := CanvasLayer.new()
+	layer.layer = 2
+	add_child(layer)
+	_walk_ui = Control.new()
+	_walk_ui.size = Vector2(640, 360)
+	_walk_ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(_walk_ui)
+	var back := ColorRect.new()
+	back.color = Color(Palette.col("bg"), 0.55)
+	back.position = Vector2(20, 346)
+	back.size = Vector2(530, 5)
+	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_walk_ui.add_child(back)
+	_walk_fill = ColorRect.new()
+	_walk_fill.color = Palette.col("accent")
+	_walk_fill.position = back.position
+	_walk_fill.size = Vector2(0, 5)
+	_walk_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_walk_ui.add_child(_walk_fill)
+	_walk_time = UIKit.label("", 11, "ink")
+	_walk_time.add_theme_font_override("font", _font)
+	_walk_time.add_theme_color_override("font_outline_color", Palette.col("bg"))
+	_walk_time.add_theme_constant_override("outline_size", 4)
+	_walk_time.position = Vector2(20, 326)
+	_walk_time.size = Vector2(160, 18)
+	_walk_ui.add_child(_walk_time)
+	_walk_btn = _tap_button("1x", func(): _walk_faster())
+	_walk_btn.add_theme_font_override("font", _font)
+	_walk_btn.add_theme_font_size_override("font_size", 12)
+	_walk_ui.add_child(_walk_btn)
+	_put(_walk_btn, Vector2(562, 333), Vector2(58, 24))
+	_walk_bar_tick()
+
+func _walk_faster() -> void:
+	_walk_speed = WALK_SPEEDS[(WALK_SPEEDS.find(_walk_speed) + 1) % WALK_SPEEDS.size()]
+	_walk_btn.text = "%dx" % int(_walk_speed)
+	Probe.event("walk_speed", {"x": _walk_speed})
+
+func _walk_bar_tick() -> void:
+	if _walk_ui == null:
+		return
+	var last: float = _film[_film.size() - 1].z
+	var t := clampf(_film_t, 0.0, last)
+	_walk_fill.size.x = 530.0 * t / maxf(last, 0.1)
+	if int(t) != _walk_shown:
+		_walk_shown = int(t)
+		_walk_time.text = "%d:%02d / %d:%02d" % [int(t) / 60, int(t) % 60, int(last) / 60, int(last) % 60]
 
 ## where the walk is at time t: a smooth curve (Catmull-Rom) through the timed points
 func _film_at(t: float) -> Vector2:
@@ -17052,7 +17270,8 @@ func _foot_camera(dt: float) -> void:
 ## 0.2 down (1.44 m); the user, 22 Nov: "the walk height is bit too low, i am holding the phone
 ## probably too low" -- so the replay is as a person's eyes see it, 1.58 m, not as the phone did
 ## (the film's own measures, film_marks.py's EYE and film_motion.py's, keep 1.44: they read the film)
-const FILM_EYE_DROP := 0.06
+## (then, the same day: "1.75" -- a little over the eyes, as a camera held up: -0.11, 1.75 m)
+const FILM_EYE_DROP := -0.11
 
 ## the phone's tilt below level on a filmed walk: the film's horizon sits 0.30 of the way
 ## down its frame (one frame a second over walk 1, under the arcade, in the passage, on the
@@ -17499,6 +17718,8 @@ var _sim_speed := float(OS.get_environment("STREETS_SIM_SPEED")) if OS.get_envir
 func _physics_process(dt: float) -> void:
 	if _sim_speed > 0.0 and Engine.time_scale != _sim_speed:
 		Engine.time_scale = _sim_speed
+	elif _sim_speed <= 0.0 and not _film.is_empty() and Engine.time_scale != _walk_speed:
+		Engine.time_scale = _walk_speed   # (a walk's speed button: more game time a tick, not more ticks)
 	_prev_pos = _pos   # where the car was at the last tick, for _frame() to blend from
 	_prev_yaw = _yaw
 	_prev_y = _y
@@ -17950,8 +18171,13 @@ func _hitch(ms: float, typical: float) -> void:
 	var words: Array = []
 	for i in range(mini(5, parts.size())):
 		if float(parts[i][0]) >= 1.0:
-			words.append("%s %d" % [parts[i][1], int(round(float(parts[i][0])))])
+			var part: String = parts[i][1]
+			if part == "building" and _bstep_slow != "":   # which step of a square ran long (_pause)
+				part = "building (%s)" % _bstep_slow
+			words.append("%s %d" % [part, int(round(float(parts[i][0])))])
 	words.append("rest %d" % int(round(ms - script_ms)))
+	_bstep_slow = ""
+	_bstep_slow_us = 0
 	var line := "%.1f s  %d ms (usual %d)  %s" % [Time.get_ticks_msec() / 1000.0, int(ms), int(typical), " · ".join(words)]
 	_hitches.push_front(line)
 	if _hitches.size() > 4:
@@ -24688,7 +24914,7 @@ func _close_picker() -> void:
 ## pick starts that route's own city with {"route": id}: the car set down at its "from", "go
 ## to" its "to" on autodrive, and once there, back to the list.
 const ROUTES_FILE := "res://game/streets/routes.json"
-const CITY_NAMES := {"givatayim": "Givatayim", "ashdod": "Ashdod", "tel_aviv": "Tel Aviv", "bedford": "Bedford", "dimyon": "test town"}
+const CITY_NAMES := {"givatayim": "Givatayim", "ashdod": "Ashdod", "tel_aviv": "Tel Aviv", "bedford": "Bedford", "dimyon": "test town", "delft": "Delft"}
 var _route := {}                       ## the drive of the route set being watched, or {}
 var _route_ui: Control                 ## the list of them, while it is up
 
@@ -24793,7 +25019,7 @@ func _route_list_open() -> void:
 	var mine := _my_routes()
 	for k in range(2):
 		var page: String = ["set", "mine"][k]
-		var tab := _tap_button(["the ten", "yours (%d)" % mine.size()][k], func(): _route_page = page; _route_list_open())
+		var tab := _tap_button(["the set", "yours (%d)" % mine.size()][k], func(): _route_page = page; _route_list_open())
 		tab.add_theme_font_override("font", _font)
 		tab.add_theme_font_size_override("font_size", 11)
 		tab.modulate = Color(1, 1, 1, 1.0 if page == _route_page else 0.5)
@@ -24821,9 +25047,13 @@ func _route_list_open() -> void:
 		b.add_theme_font_override("font", _font)
 		b.add_theme_font_size_override("font_size", 10)
 		b.clip_text = true
-		var y := 80.0 + (i + (1 if _route_page == "mine" else 0)) * 27.0
+		# (eleven fit: 25 apart from 78; tighter, a row's button kept the kit's least height over
+		# the next and a tap on route 10 started route 9)
+		var many := routes.size() + (1 if _route_page == "mine" else 0) > 10
+		var pitch := 25.0 if many else 27.0
+		var y := (78.0 if many else 80.0) + (i + (1 if _route_page == "mine" else 0)) * pitch
 		_route_ui.add_child(b)
-		_put(b, Vector2(14, y), Vector2(w, 25))
+		_put(b, Vector2(14, y), Vector2(w, 24.0 if many else 25.0))
 		if r.get("mine", false):
 			var id := int(r["id"])
 			var x := _tap_button("✕", func(): _save_my_routes(_my_routes().filter(func(q): return int(q["id"]) != id)); _route_list_open())
@@ -24842,7 +25072,8 @@ func _route_new_row(have: int) -> void:
 	lbl.position = Vector2(14, 83)
 	lbl.size = Vector2(170, 20)
 	_route_ui.add_child(lbl)
-	var cities: Array = ["givatayim", "tel_aviv", "ashdod", "bedford", "dimyon"]
+	var cities: Array = CITY_NAMES.keys()
+	var cw := 436.0 / cities.size()
 	for k in range(cities.size()):
 		var cid: String = cities[k]
 		var b := _tap_button(CITY_NAMES[cid], func(): Flow.start_game("streets", {"level": _city_level(cid), "make_route": true,
@@ -24850,7 +25081,7 @@ func _route_new_row(have: int) -> void:
 		b.add_theme_font_override("font", _font)
 		b.add_theme_font_size_override("font_size", 10)
 		_route_ui.add_child(b)
-		_put(b, Vector2(190 + k * 87, 80), Vector2(83, 25))
+		_put(b, Vector2(190 + k * cw, 80), Vector2(cw - 4.0, 25))
 
 ## a place in LEVELS that is one of the start screen's lists, not a city to drive
 static func _is_list(lv: Dictionary) -> bool:
@@ -26083,6 +26314,12 @@ func _input(event: InputEvent) -> void:
 					(b.get_meta("cb") as Callable).call()
 					return
 		return
+	if _walk_ui != null and _loaded:   # a walk: its speed button (everything else is the walk's own)
+		var wm := event as InputEventMouseButton
+		if wm != null and wm.pressed and wm.button_index == MOUSE_BUTTON_LEFT and not Flow.pointer_over_hud() 				and _walk_btn.get_global_rect().has_point(wm.position):
+			Audio.play("click", 0.05, -8.0)
+			_walk_faster()
+			return
 	if not _loaded or not _film.is_empty():
 		return
 	if _picker != null:   # everything goes to the picker while it is open

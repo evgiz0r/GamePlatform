@@ -2325,6 +2325,54 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   PC); nothing worse by 5; 29 +6, 49 +7, 93 +14, 94 +15; 90-99 s 23.7 -> 28.8. Both filmed
   walks scan clean; playtests of levels 5, 6 and 1 survive 25 s.
 
+### Walks: trees, street things, the bar, evening and night, Delft (22 Nov 2026)
+
+- **The eye at 1.75 m** (`FILM_EYE_DROP` -0.11, the user: "1.75"). It met the low crowns of
+  trees away from a road (a boulevard's middle: Rothschild 39 s), which keep their low
+  planting; so a walk that steps round posts keeps a tree's crown (`_post_reach`, 1.9 m) where
+  the tree is not by a road -- first a step clear of trunks and crowns, then one clear of the
+  solid alone (crowns as hard pushed Ashdod's walk into yard walls). Scans: no EYE IN; brushes
+  of 0.25-0.5 s at Delft's start, Rothschild's first step, an Ashdod kerb, one Ashdod post.
+
+- **Walking through trees** was the crowns and the trunk mesh's branches, not trunks (the post
+  scan saw only trunks): an olive's branches started 1.2 m up, its leaves ~1.35; a ficus's
+  ~1.6; the walk's eye is 1.58, 0.75 m from a pavement tree's trunk. Trees within 3 m of a
+  road's edge (`_nearest_seg` with drive roads) are pruned up -- trunk stretched so branches
+  start at `STREET_BRANCHES` 2.2 m, crown lifted so leaves start at `STREET_LEAVES` 2.5
+  (`CROWN_LOW` 0.75 of the crown's height scale below its middle, measured). Not the parks',
+  woods', mountains', or a footpath's: walk 1's passage lifted scored 6-9 worse (41-49 s), its
+  film closed in by low planting. North-look street trees have no spruce (its cone sweeps
+  the ground 4 m across: Bedford's walk went through them); the woods keep them.
+- **The scan sees more** (`SCAN=1`): `EYE IN` -- the camera inside anything drawn by instance
+  that does not stand on the ground (crowns, awnings, signs; a trunk or pole's box takes in
+  its branches, so those are the post scan's); `ON ROAD` -- on a road's asphalt away from the
+  walk's crossings. Good: all seven walks print no INSIDE / EYE IN / ON ROAD but three
+  quarter-to-half-second brushes (Delft's start by a bridge's parapet, Rothschild's first
+  step, an Ashdod kerb).
+- **Stepping round** (`_film_dodge`) now also steps off walls and, off a crossing, off the
+  asphalt; samples every 0.25 s; up to 3 m; the step nearest the last sample's (the least
+  step flipped sides past a bus shelter and the curve went through its panel).
+- **Street things along the walks** (`make_walks.py` `dress`): props in each city's details
+  file, `"src": "make_walks"`, on the kerb side 0.6 m in from the road's edge, by the look
+  (`DRESS`, `GAP`); details.gd skips one where a post's edge is within 1.6 m or a wall within
+  0.6 (`_taken`: a hydrant beside a bus shelter left 0.8 m to pass).
+- **Paths**: Rothschild down the midline between its carriageways (20 m apart; OSM's footway
+  lay inside the game's fitted asphalt past Allenby); a one-way street is a divided road only
+  where its one-way ways run both ways side by side (`two_ways`); walks start 2.5 m in from
+  their first junction and stop short of the last by half its widest road + 2.5 m; a
+  crossing's kerbs at half the road + 1.5 m (rounded corners' asphalt).
+- **The bar and speed** (`_walk_bar_build`, layer 2 over the phone's grade at layer 1, which
+  washed it out): `WALK_SPEEDS` 1, 2, 4 by the engine's time scale (as STREETS_SIM_SPEED);
+  `filmed_walk.gd` hides it unless `WALK_BAR=1` (shots set beside a film). **Evening / night**:
+  the list's settings row (`_list_settings`, another session's, the same evening: it took the
+  place of a pair of buttons on each walk's row) starts a walk with `{"time": ...}`;
+  `WALK_TIME=` in the test.
+- **Delft**: level 29 (after the scenarios' 16-28: add at the end, never between), its walk along Oude Delft's quay (`promenade`: the canal between two
+  one-way streets), 310 m; route 11 (`pick_routes.py --add delft`). The canal draws as brown
+  ground, not water -- Delft's own build.
+- **Walk 1 against its film**: 34.8 -> 34.6; only 82-83 worse by 5+ (the corner tree's shade
+  dappled differently on the road; the film has none there).
+
 ### Eye height and glances at cars (22 Nov 2026, all walks)
 
 - **Eye height**: `FILM_EYE_DROP` 0.06 (the camera 1.58 m up), not 0.2 (1.44: the film's phone,
@@ -4144,6 +4192,29 @@ own ran off a phone's start screen; `_walk_list_open("scenarios")`),
 - Open: the cut's camera can sit inside a vehicle ahead; the getaway's end is caught most
   runs on autodrive (a person driving does better); tours for Delft and the test town need
   their stories.
+
+**The director, more** (the user: "automatic scenarios ... without my inputs", then picked the
+day, the night tour, the getaway as a film and the ambulance). New beats -- `time`, `wet`,
+`shots`, `siren`, `drive_for` (a drive that ends after its seconds) -- and the scripts
+`night_tour` (the tour after `["time", "night"]`, rain before its end), `ambulance` (the
+hospital: a story street whose note says "hospital" -- Weizmann in Tel Aviv, Ichilov -- else
+a main street 1-1.8 km off; racer with the green wave on too) and `day` (three drives between
+the tour's stops at day, evening and night, the story's `rhythm` sentences as captions, rain
+at the end). LEVELS 23-28. **Shots** (`_shots_tick`, the director's own `Camera3D`, the game's
+put back with `_cam_usual`): "above" (26 m up, behind), "kerb" (a spot at the roadside
+ahead, picked as the shot starts, 0.9 m up: the car drives past it), "orbit", "chaser"
+(behind the police car), "back" (ahead, looking back); a shot list runs the camera in place
+of the chase's own cut. **Slow motion**: `Engine.time_scale` 0.35 for 1.6 s of real time
+when the getaway runs a red (`_reds_seen`). **The siren** (`_set_siren`, `_yield_tick`):
+the car's own light bar and siren; traffic ahead going its way in the lanes beside its line
+stops (`hit`) and is let go when the car is past, stuck behind it or the siren goes off. The
+first try stopped the car in its own lane too and the ambulance stood behind it for two
+minutes (`VERBOSE=1` on tests/scenario.gd prints autodrive's why every 10 s: "car", lead
+5.4 m). 22 Nov, `tests/scenario.gd`: a day in Givatayim
+(28) 179 s, shots above 7 / kerb 11 / orbit 6 / usual 6, ending at night after rain; the
+ambulance in Tel Aviv (25) at the hospital in 115 s, 98 cars pulled over; the getaway as a
+film (21) caught at 26 s, every shot used once; the night tour of Givatayim (24) 4 of 5
+stops, 528 s; 0 people hit in all.
 
 **Scenario ideas** (the user asked for them as the work goes, with grades):
 
