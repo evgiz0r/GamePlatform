@@ -22,6 +22,13 @@ What a row cannot know: a commit holding several requests' work gets all of them
 cut at commits, not at requests); talk between changes goes to the next commit; work from
 another machine or the web is not in these transcripts.
 
+--detail splits those minutes further: the agent's into thinking and writing (as the
+transcript measured them) and waiting on the model -- before each step, the request going out
+and the model reading the conversation before its first word: 2-4.5 s a step, thousands of
+steps, a third of the agent's time (Nov 2026) -- and the runs' by what ran: the engine
+(Godot, a playtest, a check), git, other shell, files, background runs waited on. A tool call
+that waited on the person (a permission they clicked, a question) counts as theirs.
+
 Writes one table per game, game/<name>/EFFORT.md (commits that touched that game's folder;
 none for a game since deleted), and EFFORT.md at the root for the rest. Rows already in a table are kept as they are: Claude
 Code deletes transcripts after a while (30 days by default), so run this now and then and the
@@ -30,6 +37,7 @@ history stays. Nothing from the transcripts goes in but times: commit subjects c
   python tools/effort.py                  # every commit found, tables updated
   python tools/effort.py --since 2026-11-21 --print    # print, write nothing
   python tools/effort.py --last 8 --print
+  python tools/effort.py --since 2026-11-22 --detail  # what the agent and run minutes were
 """
 import argparse
 import datetime as dt
@@ -102,9 +110,62 @@ def commit_calls(ev):
     return out
 
 
-def split(ev, t0, t1, away_s):
-    """agent / runs / you / away seconds between t0 and t1"""
+ENGINE = re.compile(r"GODOT|godot|playtest\.sh|check_script|shots\.sh|menu_shot|publish_web")
+
+
+def tool_kind(d):
+    """what a tool call ran: engine (Godot, a playtest, a check), git, shell, files, subagent, other"""
+    for x in (d.get("message") or {}).get("content") or []:
+        if not (isinstance(x, dict) and x.get("type") == "tool_use"):
+            continue
+        name = x.get("name", "")
+        inp = x.get("input") or {}
+        if name in ("Bash", "PowerShell"):
+            cmd = str(inp.get("command", ""))
+            if ENGINE.search(cmd):
+                return "engine"
+            if re.match(r"\s*(cd [^;&]*(&&|;)\s*)?git ", cmd) or " git push" in cmd or "git merge" in cmd:
+                return "git"
+            return "shell"
+        if name in ("Read", "Edit", "Write", "Grep", "Glob", "NotebookEdit"):
+            return "files"
+        if name == "Agent":
+            return "subagent"
+        return "other tools"
+    return "other tools"
+
+
+def background(ev):
+    """task id -> what it ran (tool_kind of the call that started it in the background)"""
+    calls = {}
+    for d in ev:
+        if d["type"] == "assistant":
+            for x in (d.get("message") or {}).get("content") or []:
+                if isinstance(x, dict) and x.get("type") == "tool_use" and (x.get("input") or {}).get("run_in_background"):
+                    calls[x.get("id")] = tool_kind(d)
+    out = {}
+    for d in ev:
+        if d["type"] != "user":
+            continue
+        for x in (d.get("message") or {}).get("content") or []:
+            if isinstance(x, dict) and x.get("type") == "tool_result" and x.get("tool_use_id") in calls:
+                m = re.search(r"with ID: (\w+)", json.dumps(x.get("content")))
+                if m:
+                    out[m.group(1)] = calls[x["tool_use_id"]]
+    return out
+
+
+def split(ev, t0, t1, away_s, bg=None):
+    """agent / runs / you / away seconds between t0 and t1, and the parts of each ("agent:
+    thinking", "runs: engine", ...): thinking and writing as the transcript measured them
+    (thinkingDurationMs, toolInputStreamMs; a reply's text by its time), the rest of the
+    model's time "waiting on the model" (the request going out, the first token)"""
     tot = {"agent": 0.0, "runs": 0.0, "you": 0.0, "away": 0.0}
+    part = {}
+
+    def add(k, s):
+        part[k] = part.get(k, 0.0) + s
+
     for a, b in zip(ev, ev[1:]):
         ta, tb = ts(a["timestamp"]), ts(b["timestamp"])
         if tb <= t0 or ta >= t1:
@@ -121,14 +182,64 @@ def split(ev, t0, t1, away_s):
         if kb == "notice":
             cap = BG_CAP
             bucket = "runs"
+            m = re.search(r"<task-id>(\w+)</task-id>", str((b.get("message") or {}).get("content", "")))
+            sub = "runs: waiting on a background " + ((bg or {}).get(m.group(1), "run") if m else "run")
+        elif ka == "tool" and kb == "result" and (
+                str((b.get("permissionDecision") or {}).get("source", "")).startswith("user")
+                or '"name": "AskUserQuestion"' in json.dumps((a.get("message") or {}).get("content"))):
+            # a tool call waiting on the person: a permission they clicked, a question they answered
+            if g > away_s:
+                tot["away"] += g
+            else:
+                tot["you"] += g
+                add("you: approving or answering", g)
+            continue
         elif ka == "tool" and kb == "result":
             cap = AGENT_CAP
             bucket = "runs"
+            sub = "runs: " + tool_kind(a)
         else:
             cap = AGENT_CAP
             bucket = "agent"
-        tot[bucket] += min(g, cap)
+            sub = None
+        used = min(g, cap)
+        tot[bucket] += used
         tot["away"] += max(0.0, g - cap)
+        if sub:
+            add(sub, used)
+            continue
+        # the model's own time: what the record says it spent, the rest waiting on it
+        k = kind(b)
+        spent = 0.0
+        if k == "tool":
+            spent = float(b.get("toolInputStreamMs") or 0) / 1000.0
+            add("agent: writing tool calls", min(spent, used))
+        elif k == "text":
+            c = (b.get("message") or {}).get("content") or []
+            if any(isinstance(x, dict) and x.get("type") == "thinking" for x in c):
+                spent = float(b.get("thinkingDurationMs") or 0) / 1000.0
+                add("agent: thinking", min(spent, used))
+            else:
+                spent = used
+                add("agent: writing replies", used)
+        add("agent: waiting on the model (each step: the request out, the first word)", max(0.0, used - spent))
+    tot["parts"] = part
+    # what it did in that time: model calls (steps), tool calls, engine runs, tokens it wrote
+    reqs = {}
+    tools = engine = 0
+    for d in ev:
+        t = ts(d["timestamp"])
+        if d["type"] != "assistant" or t < t0 or t > t1:
+            continue
+        rid = d.get("requestId") or d.get("uuid")
+        u = (d.get("message") or {}).get("usage") or {}
+        reqs[rid] = max(reqs.get(rid, 0), int(u.get("output_tokens") or 0))
+        for x in (d.get("message") or {}).get("content") or []:
+            if isinstance(x, dict) and x.get("type") == "tool_use":
+                tools += 1
+                if tool_kind({"message": {"content": [x]}}) == "engine":
+                    engine += 1
+    tot["n"] = {"steps": len(reqs), "tools": tools, "engine": engine, "tokens": sum(reqs.values())}
     return tot
 
 
@@ -157,12 +268,31 @@ def game_of(h):
     return sorted(names)
 
 
+GENERATED = re.compile(r"(\.json|\.import|\.uid|\.translation|EFFORT\.md)$|^docs/")
+
+
+def lines_of(h):
+    """lines added, removed, files touched -- code and notes, not generated files (baked city
+    data, the web build, imports, these tables)"""
+    add = rem = files = 0
+    for line in git("show", "--numstat", "--format=", h).splitlines():
+        p = line.split("\t")
+        if len(p) != 3 or GENERATED.search(p[2]):
+            continue
+        files += 1
+        if p[0].isdigit():
+            add += int(p[0])
+            rem += int(p[1])
+    return add, rem, files
+
+
 def fmt(s):
     m = s / 60.0
     return "%.0f" % m if m >= 10 else "%.1f" % m
 
 
-HEAD = "| date (UTC) | commit | change | agent | runs | you | active | away |\n|---|---|---|---|---|---|---|---|\n"
+HEAD = ("| date (UTC) | commit | change | agent | runs | you | active | away | lines | files | steps | tools | engine runs | tokens out |\n"
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
 
 
 def row(r):
@@ -171,9 +301,12 @@ def row(r):
         subj = subj[:107] + "..."
     t = r["t"]
     act = t["agent"] + t["runs"] + t["you"]
-    return "| %s | %s | %s | %s | %s | %s | **%s** | %s |" % (
+    n = t.get("n", {})
+    la, lr, lf = r.get("lines", (0, 0, 0))
+    return "| %s | %s | %s | %s | %s | %s | **%s** | %s | +%d -%d | %d | %d | %d | %d | %.1fk |" % (
         dt.datetime.fromtimestamp(r["time"], dt.timezone.utc).strftime("%Y-%m-%d %H:%M"), r["hash"][:7], subj,
-        fmt(t["agent"]), fmt(t["runs"]), fmt(t["you"]), fmt(act), fmt(t["away"]))
+        fmt(t["agent"]), fmt(t["runs"]), fmt(t["you"]), fmt(act), fmt(t["away"]),
+        la, lr, lf, n.get("steps", 0), n.get("tools", 0), n.get("engine", 0), n.get("tokens", 0) / 1000.0)
 
 
 def write_table(path, title, rows):
@@ -192,8 +325,11 @@ def write_table(path, title, rows):
                 "(`tools/effort.py`, which says how it is counted): **agent** thinking and writing, "
                 "**runs** the tests, engine and git it waited on, **you** between its reply and "
                 "your next message, **active** the three together. **away** is left out: gaps over "
-                "10 minutes, and the rest of any step past its cap. Newest first; rows are kept "
-                "once written.\n\n")
+                "10 minutes, and the rest of any step past its cap. **lines** added and removed and "
+                "**files** touched, leaving out generated files (baked data, the web build, imports); "
+                "**steps** the times the model was called, **tools** its tool calls, **engine runs** "
+                "those that ran the engine (a test, a playtest, a check), **tokens out** what it "
+                "wrote (thinking included). Newest first; rows are kept once written.\n\n")
         f.write(HEAD)
         for l in lines:
             f.write(l + "\n")
@@ -206,6 +342,7 @@ def main():
     ap.add_argument("--last", type=int, help="only the last N commits found")
     ap.add_argument("--away", type=float, default=10.0, help="minutes of quiet that count as away")
     ap.add_argument("--print", action="store_true", help="print the rows, write nothing")
+    ap.add_argument("--detail", action="store_true", help="print what the agent and run minutes were, per commit and in all")
     a = ap.parse_args()
     away_s = a.away * 60.0
     allc = commits()
@@ -213,6 +350,7 @@ def main():
     rows = {}
     for path in glob.glob(os.path.join(a.projects, "*", "*.jsonl")):
         ev = load_session(path)
+        bg = background(ev)
         if len(ev) < 2:
             continue
         start = ts(ev[0]["timestamp"])
@@ -229,8 +367,8 @@ def main():
                     break
         for h in sorted(made, key=lambda h: allc[h][0]):
             ct, subj = allc[h]
-            t = split(ev, prev, ct + 1, away_s)
-            rows[h] = {"hash": h, "time": ct, "subject": subj, "t": t, "session": os.path.basename(path)[:8]}
+            t = split(ev, prev, ct + 1, away_s, bg)
+            rows[h] = {"hash": h, "time": ct, "subject": subj, "t": t, "session": os.path.basename(path)[:8], "lines": lines_of(h)}
             prev = ct + 1
     out = sorted(rows.values(), key=lambda r: r["time"])
     if a.since:
@@ -238,6 +376,19 @@ def main():
         out = [r for r in out if r["time"] >= t_since]
     if a.last:
         out = out[-a.last:]
+    if a.detail:
+        allp = {}
+        for r in out:
+            p = r["t"]["parts"]
+            for k, v in p.items():
+                allp[k] = allp.get(k, 0.0) + v
+            print("%s %s  %s" % (r["hash"][:7], r["subject"][:70], "  ".join(
+                "%s %s" % (k.split(": ")[1], fmt(v)) for k, v in sorted(p.items(), key=lambda kv: -kv[1]) if v >= 6)))
+        tot = sum(allp.values())
+        print("\nIn all (%d commits, %s min of agent and runs):" % (len(out), fmt(tot)))
+        for k, v in sorted(allp.items(), key=lambda kv: -kv[1]):
+            print("  %-42s %6s min  %3.0f%%" % (k, fmt(v), 100.0 * v / max(tot, 1.0)))
+        return
     if a.print:
         sys.stdout.write(HEAD)
         for r in reversed(out):
