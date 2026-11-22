@@ -201,7 +201,10 @@ aircraft; Kenney has no 3D airplane.
 
 `made/` (our own, made with Blender from the recipes in `tools/blender/recipes/`, CC0):
 `slide` (a playground slide: roofed tower, ladder, curved chute; 4.9 m long, 2.5 m high, +X
-down the chute) `spring_rider` (a spring horse; 1.6 m long, 1.1 m high, +X its face). Real
+down the chute) `spring_rider` (a spring horse; 1.6 m long, 1.1 m high, +X its face) `swings` (an A-frame
+swing set, two seats; 4.7 x 1.8 m, 2.5 m high, the bar along Y) `seesaw` (3.4 m along X)
+`climber` (a climbing dome of bars, 3.8 m across, 1.9 m high). `bench` (a park bench: slats, iron ends,
+arms; 1.7 m, sits facing Godot's +Z) `picnic` (a picnic table with its benches, 1.8 m along X). Real
 size in metres, origin at the ground's middle. Their surfaces are named by role -- `paint`
 `paint2` `paint3` `metal` `wood` `dark` -- so a game can colour them its own way (see
 `tools/blender/kit.py`). Make more, or change one: `tools/blender_model.sh <recipe.py>`

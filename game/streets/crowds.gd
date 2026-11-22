@@ -206,7 +206,7 @@ func _go(w: Dictionary) -> void:
 	if w.get("run", false):
 		a.play("Run", true, float(w["speed"]) / 3.4)
 	else:
-		a.play("Walk_Carry" if w["carry"] else "Walk", true, float(w["speed"]) / 1.35)
+		a.play("Walk_Carry" if w["carry"] else "Walk", true, float(w["speed"]) / g._walk_clip_v())
 
 func _retire(w: Dictionary) -> void:
 	var a: Actor3D = w["actor"]

@@ -74,11 +74,13 @@ func _run() -> void:
 	var back_n := 0
 	var came_n := 0
 	var dt := 1.0 / Engine.physics_ticks_per_second
-	var only := int(OS.get_environment("ONLY")) if OS.get_environment("ONLY") != "" else -1
+	var only: Array = []   # (ONLY=2,4,8: those starts)
+	for o in OS.get_environment("ONLY").split(",", false):
+		only.append(int(o))
 	var trace := OS.get_environment("TRACE") != ""
 	for si in range(pick.size()):
 		var s: Array = pick[si]
-		if only >= 0 and si != only:
+		if not only.is_empty() and not only.has(si):
 			continue
 		g._set_auto(false)
 		g._land_on_road(s[0], 15.0, s[1])

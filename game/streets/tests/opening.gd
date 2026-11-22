@@ -40,6 +40,7 @@ func _run() -> void:
 		quit(0)
 		return
 	print("OPENING ran %.1f s, bare squares near the car when it came down: %d" % [g._opening.t, g._opening.squares_at_end])
+	print("OPENING the town's story, lines shown: %s" % JSON.stringify(g._opening.shown))
 	await create_timer(3.0).timeout
 	if out != "":
 		root.get_viewport().get_texture().get_image().save_png(out + "/opening_landed.png")
@@ -47,6 +48,7 @@ func _run() -> void:
 	var ph0: int = g._sig_phase
 	await create_timer(2.0).timeout
 	var runs: bool = g._sig_t != clock0 or g._sig_phase != ph0
-	var ok: bool = (g._opening.squares_at_end == 0 or g._opening.t >= g._opening.MAX_S - 0.1) and runs and not g._paused
+	var story := FileAccess.file_exists("res://game/streets/cities/stories/%s.json" % g._city_id)
+	var ok: bool = (g._opening.squares_at_end == 0 or g._opening.t >= g._opening.MAX_S - 0.1) and runs and not g._paused 			and (not story or g._opening.shown.size() >= 2)
 	print("OPENING: %s (city running after: %s)" % ["PASS" if ok else "FAIL", runs])
 	quit(0)

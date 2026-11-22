@@ -52,9 +52,19 @@ const LEVELS := [
 	{"name": "Test town: the market street", "city": "dimyon", "look": "med", "walk": "dimyon_market"},
 	# the first Dutch town (NEW_CITY.md): a box of the old centre, the station and the canals,
 	# with 3DBAG's measured heights and the BGT's trees and lamp posts. Starts on the Oude Delft canal.
-	{"name": "Delft", "city": "delft", "start": ["Oude Delft", "Binnenwatersloot"], "look": "north", "decks": "infer"},
+	# "build": "nl": its houses Dutch -- brick, pitched roofs where 3DBAG measured a ridge (_dutch())
+	{"name": "Delft", "city": "delft", "start": ["Oude Delft", "Binnenwatersloot"], "look": "north", "build": "nl", "decks": "infer"},
 	# the cities: a list, as the walks and the test routes are (no city behind it)
 	{"name": "Cities: pick one", "group": "Cities", "cities": true, "city": "dimyon", "look": "med"},
+	# scenarios (scenario.gd): a list, as the walks are, and each scenario its own level -- a
+	# town's tour from its own story (cities/stories/<town>.json) or a story played out in it
+	{"name": "Scenarios: pick one", "group": "Scenarios", "scenarios": true, "city": "dimyon", "look": "med"},
+	{"name": "Tour: Givatayim's streets", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "tour"},
+	{"name": "Tour: Tel Aviv, Azrieli to the sea", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "tour"},
+	{"name": "Tour: Ashdod", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med", "decks": "infer", "scenario": "tour"},
+	{"name": "Tour: Bedford by the Basin", "city": "bedford", "look": "north", "decks": "infer", "scenario": "tour"},
+	{"name": "The getaway: Ashdod", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med", "decks": "infer", "scenario": "getaway"},
+	{"name": "The getaway: Tel Aviv", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "getaway"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -232,6 +242,11 @@ uniform vec4 lit : source_color;      // a lit room, at night
 uniform vec4 lit_cool : source_color; // an office
 uniform float night = 0.0;
 uniform float siding = 0.0;           // northern houses: clapboard, white-framed windows
+uniform float brick = 0.0;            // Dutch houses (a level's "build": "nl"): brick, white-framed windows
+uniform vec4 brick_a : source_color;  // red-brown brick
+uniform vec4 brick_b : source_color;  // dark purple-brown brick
+uniform vec4 brick_c : source_color;  // yellow brick (Delft's old "geel")
+uniform vec4 brick_m : source_color;  // the mortar
 uniform vec4 trim : source_color;
 uniform float textured = 1.0;         // photo plaster and the windows' depth (off at the lowest quality)
 uniform sampler2D plaster_tex : filter_linear_mipmap_anisotropic, repeat_enable;
@@ -419,6 +434,22 @@ void fragment() {
 		float tj = smoothstep(0.38, 0.46, max(tf.x, tf.y));
 		base *= mix(1.0, (0.97 + 0.05 * hash(floor(tg) + seed)) * mix(1.0, 0.86, tj), 1.0 - smoothstep(0.006, 0.02, aa));
 	}
+	// Brick (a Dutch town): COLOR.g picks red, dark or yellow brick, or a mix (4 stays painted
+	// plaster); laid in stretcher bond, 22 x 5 cm with 1.25 cm joints, each brick a shade of
+	// its own. Drawn while a pixel is smaller than a joint is apart, the average further off.
+	if (brick > 0.5 && tk < 3.5 && COLOR.a < 0.95) {
+		vec3 bc = (tk < 0.5 ? brick_a.rgb : (tk < 1.5 ? brick_b.rgb : (tk < 2.5 ? brick_c.rgb
+			: mix(brick_a.rgb, brick_c.rgb, 0.45)))) * COLOR.r;
+		float course = 0.0625;
+		float row = floor(up / course);
+		float xs = along / 0.22 + 0.5 * mod(row, 2.0);
+		vec2 bf = vec2(fract(xs) * 0.22, fract(up / course) * course);
+		float jd = min(min(bf.x, 0.22 - bf.x), min(bf.y, course - bf.y));
+		vec3 mortar = mix(bc, brick_m.rgb * COLOR.r, 0.55);
+		vec3 one = bc * (0.86 + 0.26 * hash(vec2(floor(xs), row) + seed));
+		vec3 near_b = mix(one, mortar, line_cover(jd, 0.006, aa));
+		base = mix(mix(bc, mortar, 0.18), near_b, 1.0 - smoothstep(0.004, 0.014, aa));
+	}
 	vec3 col = base;
 	float rough = 0.92;
 	// at night some rooms have the light on: warm in homes, cooler in offices
@@ -442,7 +473,7 @@ void fragment() {
 	// about half the blocks with balconies have railings of bars, not solid parapets
 	bool rail_blk = hash(vec2(seed, 6.1)) < 0.5;
 	// (how weathered: aged, the sand-plastered old blocks, darker grime under their sills)
-	if (siding > 0.5 && style < 0.5 && facade && fract(up / 0.24) < 0.13) {
+	if (siding > 0.5 && brick < 0.5 && style < 0.5 && facade && fract(up / 0.24) < 0.13) {
 		col *= 0.88;
 	}
 	// ---- the flat facade: paint only (far away, and the whole look at the lowest quality)
@@ -613,7 +644,7 @@ void fragment() {
 						if (house) {   // a cross of muntins
 							cover = max(cover, line_cover(abs(g.y - (lo.y + hi.y) * 0.5), 0.012, aa));
 						}
-						if (ground && !door) {   // security bars, white, every 13 cm, and a rail across
+						if (ground && !door && brick < 0.5) {   // security bars, white, every 13 cm, and a rail across (none in a Dutch town)
 							cover = max(cover, line_cover(abs(fract((g.x - lo.x) / 0.13) - 0.5) * 0.13, 0.008, aa));
 							cover = max(cover, line_cover(abs(g.y - (lo.y + sy) * 0.5), 0.01, aa));
 						}
@@ -955,6 +986,8 @@ var _wave: Wave                      ## the green wave: lights turning green for
 var _racer: Racer                    ## racer mode: autodrive with the rules off, the town hooting (racer.gd)
 var _places: Places                  ## a town's own kindergartens and shelters (places.gd)
 var _opening: Opening                ## the view over the town while the squares round the car go up (opening.gd)
+var _models: Models = null           ## models made with Blender, stamped into batches (models.gd)
+var _scenario: Scenario = null       ## a tour or a story played out in the town (scenario.gd)
 var _standins: Standins              ## the squares not built yet, seen from above: flat roads, outlines (standins.gd)
 var _on_deck := -1                   ## while a deck road is drawn: heights come from it, not the ground
 var _inferred := {}                  ## what decks.gd's infer() made of a real town's bridges (the report)
@@ -1044,6 +1077,8 @@ const Standins := preload("res://game/streets/standins.gd")
 const Racer := preload("res://game/streets/racer.gd")
 const Places := preload("res://game/streets/places.gd")
 const Opening := preload("res://game/streets/opening.gd")
+const Models := preload("res://game/streets/models.gd")
+const Scenario := preload("res://game/streets/scenario.gd")
 const DriveLog := preload("res://game/streets/drivelog.gd")
 var _log := DriveLog.new()            ## the last two minutes, for the map page and "save log"
 var _ap_why := ""                     ## what held autodrive's speed down this tick (for the log)
@@ -1135,8 +1170,24 @@ var _me_anim := ""
 var _car_at := Vector2.ZERO          ## where the car was left, and how
 var _car_yaw_at := 0.0
 var _car_y_at := 0.0
-const WALK := 2.1                    ## m/s: a brisk walk (1.45, a stroll, was too slow to get anywhere)
-const RUN := 6.2
+const WALK := 4.5                    ## m/s on foot: a jog (2.1 was "very slow" -- the user; 1.45, a stroll, before that)
+## m/s the walk clip's feet cover at x1, on the figures as built (tests/foot_slide.gd: a
+## foot's speed back past the body while it is on the ground). The kit's figures ~0.97
+## (0.83-1.17); the Universal Base Characters' walk (people.gd) ~0.85 (0.79-1.03, about one
+## hip height a second). Taken to be 1.35, every walker's clip played ~30% slow and the
+## planted foot slid forward 16 cm a step on average, up to 50 (user, 22 Nov: "is movement
+## in our realism?")
+const WALK_CLIP_V_KIT := 0.97
+const WALK_CLIP_V_UBC := 0.85
+var _walk_clip := 0.0
+func _walk_clip_v() -> float:
+	if _walk_clip == 0.0:
+		_walk_clip = WALK_CLIP_V_UBC if _people_maker().on() else WALK_CLIP_V_KIT
+		if OS.get_environment("STREETS_WALK_CLIP_V") != "":   # (a test's other value: foot_slide.gd)
+			_walk_clip = float(OS.get_environment("STREETS_WALK_CLIP_V"))
+	return _walk_clip
+const RUN := 9.5                     ## the run button or the stick pushed right out: a sprint ("i'm pretty fast")
+const TAKE_REACH := 4.0              ## a car this near (to its body) you can get into, yours or any in traffic
 const TURN_ON_FOOT := 2.6            ## rad/s
 var _look_turn := 0.0                ## the driver's glance into a turn
 var _ap_ring_n := 0                  ## autodrive: pieces of roundabout driven since it came onto one
@@ -1214,20 +1265,20 @@ var _stick := Vector2.ZERO           ## its deflection, inside the unit circle
 var _sfx_was := 0.8
 ## The HUD's buttons, by what they are for (the user, 22 Nov: "more organized, with better
 ## logic; some buttons are rarely used"). On screen only what is used while driving: along
-## the bottom, bigger, where you are going (autodrive and its style, go to, walk); on the
-## right, the view (camera, look) and "more"; lights by the map, after dark. Everything set
+## the bottom, bigger, where you are going (autodrive and its style, go to); on the right
+## "more", the camera, walk and look. (No lights button: key L only.) Everything set
 ## once and left -- time of day, wet, the driving style, assist, pause, the fps and build
 ## lines, the keys -- in the "more" drawer (_draw_more, MORE_*). Every toggle says what is
 ## ON now, lit when on: never the state a tap would switch to ("day" had meant "it is night").
 const AUTO_BTN := Rect2(140, 332, 104, 24)   ## autodrive on / off (space; shift off)
 const STYLE_BTN := Rect2(248, 332, 62, 24)   ## while autodrive drives: its style, tap for the next (rules, wave, racer)
 const GOTO_BTN := Rect2(314, 332, 84, 24)
-const WALK_BTN := Rect2(402, 332, 66, 24)    ## out of the car and back in (key F). (Ends short of the stick's hint)
+const WALK_BTN := Rect2(566, 150, 66, 22)    ## out of the car and back in (key F): under the camera (the user, 22 Nov: "put walk below seat chase")
 const MORE_BTN := Rect2(566, 98, 44, 22)     ## the drawer of set-once switches
 const FOLD_BTN := Rect2(612, 98, 20, 22)     ## "–": every button folded away but one "show" (_hud_folded); the user: "not take too much of the screen, or collapsible easily"
 const SHOW_BTN := Rect2(566, 98, 66, 22)     ## folded: the one button left, unfolds them
 const VIEW_BTN := Rect2(566, 124, 66, 22)    ## the camera, round: chase, seat, above the city (keys C, Z)
-const LIGHTS_BTN := Rect2(8, 180, 62, 24)    ## headlights (key L): shown after dark, or while they are on
+## (no lights button: the user, 22 Nov, "remove lights ui, its not a thing" -- key L only)
 ## (the indicators and the horn are keys only, Q / E and H: on screen they were clutter)
 const STICK_C := Vector2(556, 268)   ## the touch stick sits still, here, on the right
 const STICK_R := 52.0                ## thumb travel (design px) for full lock / full gas
@@ -1243,6 +1294,7 @@ func _ready() -> void:
 	# Before super(): the shell's own per-frame hook puts camera shake on top of where
 	# _frame() leaves the camera, so _frame() has to run first.
 	get_tree().process_frame.connect(_frame)
+	_gl_count_on()   # before super() makes the first materials (LIGHT_STRIP_JS)
 	super()
 	Bus.palette_changed.connect(_retint_city)
 
@@ -1266,6 +1318,13 @@ func start(_config: Dictionary) -> void:
 	if _place.get("cities", false):
 		_walk_list_open("cities")   # no city: the list of cities
 		return
+	if _place.get("scenarios", false):
+		_walk_list_open("scenarios")   # no city: the list of scenarios
+		return
+	# how autodrive drives and the time of day, as chosen on the list it came from (_list_settings);
+	# with none, a test drive keeps the rules (it is there to test autodrive) and a city is the racer
+	_ap_style = String(_config.get("style", "rules" if _config.has("route") or _config.get("make_route", false) else "racer"))
+	_start_time = String(_config.get("time", "day"))
 	if _config.has("route"):
 		_route = _route_by_id(int(_config["route"]))
 	if _config.get("make_route", false):
@@ -1301,7 +1360,7 @@ func start(_config: Dictionary) -> void:
 		return
 	var t0 := Time.get_ticks_msec()
 	var gl0 := _gl_count()
-	if not _load_city(String(_place["city"])):
+	if not await _load_city(String(_place["city"])):
 		_loading.queue_free()
 		_build_hud()
 		_show_banner("no city file -- see GAME.md", 30.0)
@@ -1334,6 +1393,7 @@ func start(_config: Dictionary) -> void:
 	_place_start()
 	_build_hud()
 	_show_load_line()
+	_no_local_lights()
 	_far_ahead()
 	_retint_city()
 	_spawn_people()
@@ -1351,6 +1411,8 @@ func start(_config: Dictionary) -> void:
 		_route_begin()
 	elif _making != "":
 		_open_picker()
+	if _start_time != "day":
+		_set_time_of_day(_start_time)   # (as chosen on the list; it steps through evening)
 	track3d(_car, "@")
 	Probe.event("city", {"name": _city_name, "roads": _roads.size(), "buildings": _blds.size(),
 		"trees": _posts.size(), "streets": _streets.size(), "dressing": _dressing, "stage_ms": _stage_ms,
@@ -1368,6 +1430,10 @@ func start(_config: Dictionary) -> void:
 	if Opening.wanted(self):   # (over the town while the squares round the car go up: opening.gd)
 		_opening = Opening.new(self)
 		_opening.start()
+	if _place.has("scenario"):   # (a tour or a story: scenario.gd, after the opening)
+		_scenario = Scenario.new(self)
+		_scenario.setup(String(_place["scenario"]))
+		_scenario.start()
 	_build_rest()   # the rest of the city, while you drive
 
 var _loading: Label
@@ -1555,7 +1621,7 @@ func _show_load_line() -> void:
 	print("[streets] " + t)
 	_load_lbl = _label(8, "ink")
 	_load_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_load_lbl.position = Vector2(8, 164)   # (above the lights button, LIGHTS_BTN)
+	_load_lbl.position = Vector2(8, 190)   # (over the map)
 	_load_lbl.size = Vector2(320, 12)
 	_load_lbl.text = t
 	_load_lbl.modulate.a = 0.8
@@ -1632,11 +1698,71 @@ const GL_COUNT_JS := """(() => {
 		};
 	}
 })()"""
+## ---- the lit shaders Godot compiles and never draws with (web only) ---------------------
+## When a material's shader is set up, Godot's Compatibility renderer compiles its "default"
+## specialization of every variant at once (shader_gles3.cpp `_initialize_version`,
+## `specialization_default_mask`): for the lit pass, plain and instanced, with the omni, spot
+## and AREA light code all switched on. Draws never use it -- the base pass switches each of
+## those off when no such light touches the instance (rasterizer_scene_gles3.cpp), and this
+## game has only the sun. But Chrome/Edge on Windows hand every program to Direct3D's compiler,
+## and those two cost ~2.4-7.7 s each: 44 of them were ~85% of a cold load (user's PC, 22 Nov
+## 2026: Givatayim's graphics 63 s; area lights alone 2.45 -> 0.47 s a program, omni + spot +
+## area 0.16 s). First the three were defined off in those sources (graphics 63 -> 22 s); even
+## so the 42 never-drawn programs were 7.9 s of the 21 s left. Now they are swapped for a
+## placeholder -- the source's own `#version` line and an empty main -- which costs nothing to
+## compile. Picked out exactly: the base pass, not additive, no DISABLE_LIGHT_OMNI of their
+## own (every draw of the base pass has it here: no omni light). Godot still links them, finds
+## no uniforms in them (locations -1, which it skips) and never draws with them. If one ever
+## IS drawn, `used` counts it and the console says so -- that draw would come out empty;
+## `tests/web_shaders.js` / the load line show it (`window.__lstrip.used`).
+## **Only right while the game has no OmniLight3D, SpotLight3D or AreaLight3D** --
+## `_no_local_lights` warns at load if one appears; drop LIGHT_STRIP_JS before adding one.
+const LIGHT_STRIP_JS := """(() => {
+	if (window.__lstrip || typeof WebGL2RenderingContext === 'undefined') return;
+	const c = window.__lstrip = { n: 0, used: 0 };
+	const P = WebGL2RenderingContext.prototype;
+	const types = new WeakMap(), fake = new WeakSet(), fakeProg = new WeakSet();
+	const cs = P.createShader, ss = P.shaderSource, as = P.attachShader, up = P.useProgram;
+	P.createShader = function (t) { const s = cs.call(this, t); if (s) types.set(s, t); return s; };
+	P.shaderSource = function (s, src) {
+		if (typeof src === 'string' && src.indexOf('#define BASE_PASS') >= 0
+				&& src.indexOf('#define USE_ADDITIVE_LIGHTING') < 0 && src.indexOf('#define DISABLE_LIGHT_OMNI') < 0) {
+			const v = src.slice(0, src.indexOf('\\n'));
+			src = types.get(s) === this.VERTEX_SHADER
+				? v + '\\nvoid main() { gl_Position = vec4(0.0); }\\n'
+				: v + '\\nprecision mediump float;\\nout vec4 frag_color;\\nvoid main() { frag_color = vec4(1.0, 0.0, 1.0, 1.0); }\\n';
+			fake.add(s);
+			c.n += 1;
+		}
+		return ss.call(this, s, src);
+	};
+	P.attachShader = function (p, s) { if (fake.has(s)) fakeProg.add(p); return as.call(this, p, s); };
+	let cur = null;
+	P.useProgram = function (p) { cur = p; return up.call(this, p); };
+	for (const name of ['drawArrays', 'drawElements', 'drawArraysInstanced', 'drawElementsInstanced', 'drawRangeElements']) {
+		const d = P[name];
+		P[name] = function (...a) {
+			if (cur && fakeProg.has(cur)) {
+				if (c.used++ === 0) console.warn('[streets] LIGHT_STRIP_JS: a placeholder program was drawn with');
+			}
+			return d.apply(this, a);
+		};
+	}
+})()"""
+
+## warn if a light the strip above assumes away is in the scene
+func _no_local_lights() -> void:
+	for n in get_tree().root.find_children("*", "Light3D", true, false):
+		if not (n is DirectionalLight3D):
+			push_warning("[streets] %s is a %s: LIGHT_STRIP_JS assumes the game has none" % [n.name, n.get_class()])
+			return
+
 var _load_gl := Vector2(-1, 0)       ## the load's programs linked and ms in the compile calls (-1: not a browser)
 var _gl_at_car := Vector2(-1, 0)     ## the count when the car was shown
 
 static func _gl_count_on() -> void:
 	if OS.has_feature("web"):
+		JavaScriptBridge.eval(LIGHT_STRIP_JS, true)
 		JavaScriptBridge.eval(GL_COUNT_JS, true)
 
 ## (programs linked, ms spent in the compile and link calls) so far; x -1 where not counted
@@ -2131,10 +2257,11 @@ func _load_city(id: String) -> bool:
 			return false
 		Probe.note("no %s yet, driving %s instead" % [path, any.get_file()])
 		path = any
-	var tp := Time.get_ticks_usec()
+	var tp := await _load_part("the file", 1)
 	var text := FileAccess.get_file_as_string(path)
 	var data = JSON.parse_string(text)
 	tp = _part_next("%sparse", tp)
+	tp = await _load_part("the details", 2)
 	if not data is Dictionary:
 		Probe.note("city file %s did not parse" % path)
 		return false
@@ -2147,6 +2274,7 @@ func _load_city(id: String) -> bool:
 		_details = Details.new(self, extra)
 		_details.edit_city(data)
 	tp = _part_next("%sdetails", tp)
+	tp = await _load_part("bridges and tunnels", 3)
 	# the bridges, tunnels and ramps as worked out when this build was made, if they were
 	# (prepublish.gd); else here, as always
 	var baked := _bake_use if not _bake_use.is_empty() else (_baked_for(text) if _bake_rec == null else {})
@@ -2170,6 +2298,7 @@ func _load_city(id: String) -> bool:
 			_bake_rec["data"] = changed.duplicate(true)
 			_bake_rec["inferred"] = _inferred.duplicate(true)
 	tp = _part_next("%sdecks inferred", tp)
+	tp = await _load_part("the roads", 4)
 	_city_name = String(data.get("name", id))
 	var b: Array = data["bounds"]
 	_bounds = Rect2(b[0], b[1], float(b[2]) - float(b[0]), float(b[3]) - float(b[1]))
@@ -2233,8 +2362,10 @@ func _load_city(id: String) -> bool:
 			_hash_add(_seg_hash, Rect2(pts[j], Vector2.ZERO).expand(pts[j + 1]).grow(hw), SEG_CELL, ri * 4096 + j)
 
 	tp = _part_next("%sroads", tp)
+	tp = await _load_part("divided roads", 5)
 	_fit_dual_carriageways()
 	tp = _part_next("%sdivided roads fitted", tp)
+	tp = await _load_part("the buildings", 6)
 
 	for ring: Array in data.get("boundary", []):
 		var poly := PackedVector2Array()
@@ -2273,6 +2404,7 @@ func _load_city(id: String) -> bool:
 		if bd.has("addr"):
 			_add_address(String(bd["addr"]), box.get_center())
 	tp = _part_next("%sbuildings", tp)
+	tp = await _load_part("heights", 7)
 	var hg: Dictionary = data.get("height", {})
 	if not hg.is_empty():
 		_hx0 = float(hg["x0"])
@@ -2293,6 +2425,7 @@ func _load_city(id: String) -> bool:
 	if _made_up and _hnx > 0:
 		_mtn_from = _town_top() + 6.0
 	tp = _part_next("%sheights", tp)
+	tp = await _load_part("bridges and tunnels set up", 8)
 	_decks = Decks.new(self)
 	if not baked.is_empty():
 		for key: String in baked["decks"]:
@@ -2322,6 +2455,7 @@ func _load_city(id: String) -> bool:
 				_bake_rec["data"] = {}
 				_bake_rec["inferred"] = _inferred.duplicate(true)
 	tp = _part_next("%sdecks set up", tp)
+	tp = await _load_part("road widths", 9)
 	for a: Dictionary in data.get("areas", []):
 		if a.get("k") == "water" and a.has("y"):   # a river held at its level: too deep to drive into
 			var ring := PackedVector2Array()
@@ -2337,8 +2471,10 @@ func _load_city(id: String) -> bool:
 		_add_address("%s %s" % [a[2], a[3]], Vector2(a[0], a[1]) * k)
 	_fit_widths_to_buildings()
 	tp = _part_next("%swidths fitted", tp)
+	tp = await _load_part("buildings off the roads", 10)
 	_clip_buildings(data["buildings"])
 	tp = _part_next("%sbuildings cut", tp)
+	tp = await _load_part("the street network", 11)
 	_mark_medians()
 	_build_graph()
 	_part_next("%sgraph", tp)
@@ -2346,6 +2482,17 @@ func _load_city(id: String) -> bool:
 	return true
 
 ## _part_time for one part of the city file's loading ("%s" its prefix); the clock for the next
+## the city file's parts on the loading screen, "reading the map: the roads (4 of 11)", a
+## frame drawn for each (only while loading on screen: prepublish's loads never wait). Returns
+## the clock after it, so a part's time is its own, not the frame's.
+const LOAD_PARTS := 11
+func _load_part(what: String, i: int) -> int:
+	if _loading != null and is_inside_tree():
+		_loading.text = "building %s…\nreading the map: %s (%d of %d)" % [_city_name if _city_name != "" else String(_place.get("name", "")), what, i, LOAD_PARTS]
+		_load_tick()
+		await get_tree().process_frame
+	return Time.get_ticks_usec()
+
 func _part_next(name: String, t0_us: int) -> int:
 	_part_time(name % "city file: ", t0_us)
 	return Time.get_ticks_usec()
@@ -2561,8 +2708,30 @@ func _part_time(name: String, t0_us: int) -> void:
 	if not _bg_build:
 		_part_us[name] = int(_part_us.get(name, 0)) + Time.get_ticks_usec() - t0_us
 
+## a square's stages in the order _build_tile builds them, and what the loading text calls
+## each: while the squares round the start go up it names the one under way, "(5 of 13)"
+## (user, 22 Nov: "can we show more steps during the loading ... an inner progress")
+const TILE_STAGES := [["roads", "the ground and the roads"], ["buildings", "buildings"],
+	["facades", "facades"], ["trees", "trees"], ["kerbs", "kerbs and pavements"],
+	["passages", "passages"], ["wires", "overhead wires"], ["lamps", "lamps and parks"],
+	["parked", "parked cars"], ["signs", "lights, signs and road paint"],
+	["places", "shops and bus stops"], ["furniture", "street furniture"],
+	["batches", "putting it together"]]
+var _fg_part := ""                   ## the stage of the square going up behind the loading text
+
+func _fg_stage(i: int) -> void:
+	if not _fg_build or i >= TILE_STAGES.size():
+		return
+	_fg_part = "%s (%d of %d)" % [TILE_STAGES[i][1], i + 1, TILE_STAGES.size()]
+	_loading.text = _fg_text + "\n" + _fg_part
+
 func _stage(name: String, t0: int) -> int:
 	var t := Time.get_ticks_msec()
+	if _fg_build:
+		for i in range(TILE_STAGES.size()):
+			if TILE_STAGES[i][0] == name:
+				_fg_stage(i + 1)
+				break
 	if not _bg_build:   # (in the background the clock runs on through the frames between)
 		_stage_ms[name] = int(_stage_ms.get(name, 0)) + t - t0
 	return t
@@ -2628,6 +2797,7 @@ func _build_world() -> bool:
 		_yield_at = Time.get_ticks_usec() + FG_US
 		await _build_tile(near[i])
 		_fg_build = false
+		_fg_part = ""
 	_gardens_split = false
 	_tiles_todo = _tiles_todo.filter(func(t): return not _tiles_done.has(t))
 	if _details != null:   # what a filmed walk added: built whole, once (details.gd)
@@ -2803,7 +2973,7 @@ func _over() -> bool:
 func _pause() -> void:
 	if _fg_build:   # loading: no game frame to wait for -- just let one be drawn
 		_fg_spin += 1
-		_loading.text = _fg_text + "  " + ["·  ", " · ", "  ·", " · "][_fg_spin % 4]
+		_loading.text = _fg_text + ("\n" + _fg_part if _fg_part != "" else "") + "  " + ["·  ", " · ", "  ·", " · "][_fg_spin % 4]
 		_load_tick()
 		await get_tree().process_frame
 		_yield_at = Time.get_ticks_usec() + FG_US
@@ -2950,6 +3120,7 @@ func _build_setup(t0: int) -> void:
 	_beach.setup(_city_data)
 	_works = Sites.new(self)
 	_works.setup(_city_data)
+	_models = Models.new(self)
 	_places = Places.new(self)
 	_places.setup(_city_data)
 	_wave = Wave.new(self)
@@ -2975,6 +3146,7 @@ func _build_setup(t0: int) -> void:
 ## In the background each builder stops when the frame's few milliseconds are used up and
 ## goes on in the next frame.
 func _build_tile(t: Vector2i) -> void:
+	_fg_stage(0)
 	if _over():
 		await _pause()
 	_tiles_done[t] = true
@@ -6122,6 +6294,7 @@ func _build_buildings() -> void:
 	var chunks := {}
 	var north := String(_place.get("look", "")) == "north"
 	var med := String(_place.get("look", "")) == "med"
+	var dutch := _dutch()
 	var gables := {"roof": CBuf.new(CHUNK), "end": CBuf.new(CHUNK)}
 	var cores := CBuf.new(CHUNK)   # the walled-in middle of a block lifted on columns
 	var all: Array = _city_data["buildings"]
@@ -6165,11 +6338,25 @@ func _build_buildings() -> void:
 			var ts := _med_plaster(bd, hsh, tk)
 			tk = int(ts.x)
 			stone = ts.y
+		# a Dutch town (_dutch): brick -- red-brown most, then dark, yellow, a mix; a few painted
+		# (WALL_SHADER's brick); and where 3DBAG measured a pitched roof, the walls stop at the
+		# eaves and the roof rises to the measured ridge (_dutch_pitch)
+		var pitch := 0.0
+		if dutch and not bd.has("_glass"):
+			tk = 0 if pick < 45 else (1 if pick < 70 else (2 if pick < 85 else (3 if pick < 93 else 4)))
+			stone = 0.0
+			if bd.has("rr") and raised == 0.0:
+				pitch = _dutch_pitch(ring, float(bd["rr"]))
 		var tint := float(tk) / 4.0
 		if bd.has("_glass"):
 			stone = 1.0   # (the shader's sign for a landmark's curtain wall)
 		var rel := float(bd["_h"])
+		if pitch > 0.0:
+			rel = float(bd["rr"]) - pitch
+			h = g_avg + rel
 		var style: int = 3 if rel > 32.0 else (0 if rel < 10.0 or bd.has("_tile") else [0, 0, 0, 0, 1, 1, 1, 2, 0, 1][posmod(hsh >> 7, 10)])
+		if dutch and rel < 16.0 and style < 3:
+			style = 0   # (a Dutch house or low block: punched windows in the brick, no balconies)
 		var col := Color(bright, tint, float(style) / 4.0 + 0.05, stone)
 		var n := ring.size()
 		var area := 0.0
@@ -6178,7 +6365,7 @@ func _build_buildings() -> void:
 		var sgn := 1.0 if area > 0.0 else -1.0
 		# a pitched roof only on a house that stands on the ground: a raised "building" is a
 		# canopy or a carport (OSM: a roof on stilts), and a house roof on it flew
-		var gabled := (north and rel < 10.0 and absf(area) * 0.5 < 450.0 and raised == 0.0) or bd.has("_tile")
+		var gabled := (north and not dutch and rel < 10.0 and absf(area) * 0.5 < 450.0 and raised == 0.0) or bd.has("_tile") or pitch > 0.0
 		# "komat amudim": many Givatayim blocks stand on columns, the ground floor open for
 		# parking round a walled-in stairwell and lobby
 		var pilotis := med and style <= 1 and rel >= 7.0 and rel <= 22.0 and raised == 0.0 \
@@ -6229,7 +6416,11 @@ func _build_buildings() -> void:
 				walls.tri(ar, a1, b1, -nrm, col, Vector2(0, h - g_lo), Vector2(0, y1), Vector2(len, y1), u2)
 				walls.tri(ar, b1, br, -nrm, col, Vector2(0, h - g_lo), Vector2(len, y1), Vector2(len, h - g_lo), u2)
 		if gabled:
-			_gable(gables, ring, h, hsh, bd.has("_tile"))
+			if pitch > 0.0:
+				_gable(gables, ring, h, hsh, false, pitch, walls, col, g_lo)
+				_tally("roofs_measured", 1)
+			else:
+				_gable(gables, ring, h, hsh, bd.has("_tile"))
 		var idx := Geometry2D.triangulate_polygon(ring)
 		var rc := Color(bright * 0.95, bright * 0.95, bright * 0.95)
 		for i in range(0, idx.size(), 3):
@@ -7117,9 +7308,27 @@ func _stilts(ring: PackedVector2Array, sgn: float, ground: float, under: float, 
 		roofs.tri(Vector3(p0.x, under, p0.y), Vector3(p1.x, under, p1.y), Vector3(p2.x, under, p2.y), Vector3.DOWN, c)
 	look["cols"] = cols
 
-## a pitched roof over a house: the footprint's tightest rectangle, the ridge along its
-## long side, eaves a little past the walls, shingles grey or red-brown
-func _gable(g: Dictionary, ring: PackedVector2Array, top: float, hsh: int, tiled := false) -> void:
+## A Dutch town: the level's "build" is "nl" (brick walls, measured pitched roofs)
+func _dutch() -> bool:
+	return String(_place.get("build", "")) == "nl"
+
+## A Dutch house's roof rise (m) for its measured ridge, or 0 for a flat roof: only on a
+## footprint that is mostly its tightest rectangle (an L or a block round a yard would have its
+## roof float past its walls) and not a hall. The pitch is near 50 degrees, as Dutch roofs are:
+## the rise 0.6 of the span, at most half the ridge's height, so the eaves stay over a storey up.
+func _dutch_pitch(ring: PackedVector2Array, ridge: float) -> float:
+	var r := _min_rect(ring)
+	var size: Vector2 = (r[2] as Vector2) - (r[1] as Vector2)
+	var span := minf(size.x, size.y)
+	var fp := _area(ring)
+	if span < 3.0 or fp > 2500.0 or fp < 0.72 * size.x * size.y:
+		return 0.0
+	var rise := clampf(minf(span * 0.6, ridge * 0.5), 1.2, 10.0)
+	return rise if ridge - rise >= 2.6 else 0.0
+
+## the footprint's tightest rectangle: [its long-or-short axis u, its low corner, its high
+## corner], the corners in (along u, across u)
+func _min_rect(ring: PackedVector2Array) -> Array:
 	var best := INF
 	var u := Vector2.RIGHT
 	var lo := Vector2.ZERO
@@ -7141,6 +7350,18 @@ func _gable(g: Dictionary, ring: PackedVector2Array, top: float, hsh: int, tiled
 			u = e
 			lo = mn
 			hi = mx
+	return [u, lo, hi]
+
+## a pitched roof over a house: the footprint's tightest rectangle, the ridge along its
+## long side, eaves a little past the walls, shingles grey or red-brown. A Dutch house
+## (`rise` given, its measured roof) has orange tiles or dark glazed ones, and its gable ends
+## are brick in the walls' own buffer (`wall_buf`, `wcol`, its ground `g_lo`), no windows
+func _gable(g: Dictionary, ring: PackedVector2Array, top: float, hsh: int, tiled := false,
+		rise_m := 0.0, wall_buf: Buf = null, wcol := Color(), g_lo := 0.0) -> void:
+	var rect := _min_rect(ring)
+	var u: Vector2 = rect[0]
+	var lo: Vector2 = rect[1]
+	var hi: Vector2 = rect[2]
 	var v := Vector2(-u.y, u.x)
 	if hi.y - lo.y > hi.x - lo.x:   # the ridge runs along the long side
 		var t := u
@@ -7152,7 +7373,7 @@ func _gable(g: Dictionary, ring: PackedVector2Array, top: float, hsh: int, tiled
 		hi = h2
 	lo -= Vector2(0.35, 0.35)
 	hi += Vector2(0.35, 0.35)
-	var rise := (hi.y - lo.y) * 0.32
+	var rise := rise_m if rise_m > 0.0 else (hi.y - lo.y) * 0.32
 	var cy := (lo.y + hi.y) * 0.5
 	var P := func(a: float, b: float, y: float) -> Vector3:
 		var q := u * a + v * b
@@ -7162,6 +7383,10 @@ func _gable(g: Dictionary, ring: PackedVector2Array, top: float, hsh: int, tiled
 	var col: Color = shades[posmod(hsh >> 9, shades.size())]
 	if tiled:   # red clay tiles (Sarona's Templer houses), a little weathered one from the next
 		col = Palette.col("hazard").lerp(Palette.col("warn"), 0.4).lerp(Palette.col("bg"), 0.3 + 0.12 * float(posmod(hsh >> 9, 3)))
+	if wall_buf != null:   # Dutch: orange-red clay tiles, or dark glazed ones, about half each
+		var tiles := Palette.col("hazard").lerp(Palette.col("warn"), 0.55).lerp(Palette.col("bg"), 0.45 + 0.08 * float(posmod(hsh >> 9, 3)))
+		var glazed := Palette.col("bg").lerp(Palette.col("bg_alt"), 0.45 + 0.1 * float(posmod(hsh >> 9, 3)))
+		col = tiles if posmod(hsh >> 15, 100) < 55 else glazed
 	var r0: Vector3 = P.call(lo.x, cy, top + rise)
 	var r1: Vector3 = P.call(hi.x, cy, top + rise)
 	for side: Array in [[lo.y, 1.0], [hi.y, -1.0]]:
@@ -7177,7 +7402,13 @@ func _gable(g: Dictionary, ring: PackedVector2Array, top: float, hsh: int, tiled
 		var b: Vector3 = P.call(end[0], hi.y - 0.35, top)
 		var c: Vector3 = P.call(end[0], cy, top + rise - 0.1)
 		var out := Vector3(u.x, 0, u.y) * float(end[1])
-		(g["end"] as Buf).tri(a, b, c, out, Color.WHITE)
+		if wall_buf != null:   # brick, as the walls (the window grid's top at the eaves: none up here)
+			var w := (hi.y - lo.y) - 0.7
+			var u2 := Vector2(w, top - g_lo)
+			wall_buf.tri(a, b, c, out, wcol, Vector2(0, top - g_lo), Vector2(w, top - g_lo),
+					Vector2(w * 0.5, top + rise - 0.1 - g_lo), u2)
+		else:
+			(g["end"] as Buf).tri(a, b, c, out, Color.WHITE)
 	if posmod(hsh >> 13, 10) < 6:   # a chimney up one end, through the slope
 		var at: Vector3 = P.call(lo.x + 1.3, cy + (hi.y - lo.y) * 0.18, top + rise * 0.72)
 		_chimneys.append(Transform3D(Basis(Vector3.UP, atan2(u.x, u.y)), at))
@@ -8645,6 +8876,12 @@ func _build_parks() -> void:
 				s_lamp += 27.0
 			s_lamp -= L
 	var bench := _cached("bench", func() -> Mesh:
+		# the bench made with Blender (tools/blender/recipes/bench.py: slats, iron ends, arms);
+		# the boxes below if its file is missing
+		var made: ArrayMesh = _models.mesh("bench") if _models != null else null
+		if made != null:
+			made.surface_set_material(0, _surface("furniture"))
+			return made
 		var bench_buf := Buf.new()
 		_box(bench_buf, Vector3(0, 0.44, 0), Vector3(1.7, 0.07, 0.46))
 		_box(bench_buf, Vector3(0, 0.74, -0.22), Vector3(1.7, 0.36, 0.06))
@@ -8749,7 +8986,11 @@ func _obox(buf: Buf, c: Vector3, size: Vector3, yaw: float, tilt := 0.0) -> void
 				pts.append(c + basis * q)
 			_poly(buf, pts, basis * n)
 
-## a slide tower with a roof, a swing frame and a sandpit, on a round soft floor
+## a park's playground on a round soft floor: the slide, the swing set, a climbing dome, a
+## see-saw and a picnic table (made with Blender: tools/blender/recipes/, stamped by models.gd into the palette's
+## buffers, so a new look recolours them) and a sandpit. Laid out round `at`, `yaw` turning it.
+const PLAY_ROLES := {"paint": "warn", "paint2": "player", "paint3": "accent", "plastic": "friend",
+	"wood": "friend", "metal": "pole", "rubber": "pole", "dark": "pole", "*": "pole"}
 func _playground(b: Dictionary, at: Vector2, yaw: float) -> void:
 	var gy := _h(at)
 	var fwd := Vector2(sin(yaw), cos(yaw))
@@ -8762,25 +9003,20 @@ func _playground(b: Dictionary, at: Vector2, yaw: float) -> void:
 		var a1 := TAU * (i + 1) / seg
 		floor_buf.tri(P.call(at, 0.04), P.call(at + Vector2(cos(a0), sin(a0)) * 7.0, 0.04),
 			P.call(at + Vector2(cos(a1), sin(a1)) * 7.0, 0.04), Vector3.UP, Color.WHITE)
-	# the tower and its slide
-	var t := at - side * 2.5
-	for c: Vector2 in [Vector2(-0.6, -0.6), Vector2(0.6, -0.6), Vector2(0.6, 0.6), Vector2(-0.6, 0.6)]:
-		var q := t + side * c.x + fwd * c.y
-		_obox(b["pole"], P.call(q, 1.45), Vector3(0.1, 2.9, 0.1), yaw)
-	_obox(b["friend"], P.call(t, 1.5), Vector3(1.4, 0.1, 1.4), yaw)
-	_obox(b["accent"], P.call(t, 2.95), Vector3(1.6, 0.1, 1.6), yaw)
-	var run := t + fwd * 2.05
-	_obox(b["warn"], P.call(run, 0.8), Vector3(0.62, 0.06, 2.9), yaw, 0.5)
-	# swings
-	var sw := at + side * 2.6
-	for e: float in [-1.6, 1.6]:
-		for l: float in [-0.5, 0.5]:
-			_obox(b["player"], P.call(sw + side * e + fwd * l * 0.6, 1.2), Vector3(0.08, 2.5, 0.08), yaw, l * 0.45)
-	_obox(b["player"], P.call(sw, 2.4), Vector3(0.1, 0.1, 3.4), yaw + PI * 0.5)
-	for e: float in [-0.7, 0.7]:
-		var q := sw + side * e
-		_obox(b["pole"], P.call(q, 1.5), Vector3(0.03, 1.8, 0.03), yaw)
-		_obox(b["warn"], P.call(q, 0.55), Vector3(0.5, 0.05, 0.22), yaw)
+	# each model's +X along `along`, its middle at q (the models' own frame: +X ahead, up)
+	var put := func(name: String, q: Vector2, along: Vector2) -> void:
+		var bs := Basis(Vector3(along.x, 0, along.y), Vector3.UP, Vector3(-along.y, 0, along.x))
+		_models.stamp_into(b, PLAY_ROLES, name, Transform3D(bs, P.call(q, 0.04)))
+	put.call("slide", at - side * 3.0 - fwd * 0.4, fwd)        # (down the chute along fwd)
+	_add_post(at - side * 3.0 - fwd * 1.6, 0.7)
+	put.call("swings", at + side * 3.2, side)                   # (the bar along fwd, swinging across)
+	_add_post(at + side * 3.2 + fwd * 1.7, 0.2)
+	_add_post(at + side * 3.2 - fwd * 1.7, 0.2)
+	put.call("climber", at + fwd * 4.2 - side * 1.2, fwd)
+	_add_post(at + fwd * 4.2 - side * 1.2, 1.9)
+	put.call("seesaw", at + fwd * 4.6 + side * 3.0, side)
+	put.call("picnic", at - fwd * 3.6 + side * 3.7, fwd)   # (a picnic table by the sandpit, for the grown-ups)
+	_add_post(at - fwd * 3.6 + side * 3.7, 0.9)
 	# the sandpit
 	var sp := at + fwd * -3.4
 	for e: float in [-1.5, 1.5]:
@@ -15479,7 +15715,7 @@ const NATURAL := {
 	"tank": 0.3, "furniture": 0.3, "pavement": 0.2, "pavers_dark": 0.15, "slabs": 0.15, "pavers_grey": 0.1, "tactile": 0.3, "pavers_red": 0.45, "kerb": 0.15, "stonewall": 0.45, "roofroom": 0.4,
 	"gardenwall": 0.3, "coping": 0.4,
 	"cat_ginger": 0.6, "cat_grey": 0.1, "cat_black": 0.1, "cat_cream": 0.35, "cat_brown": 0.45,
-	"gable": 0.5, "carglass": 0.4, "cartrim": 0.2, "tyre": 0.15, "rim": 0.2, "concrete": 0.15,
+	"gable": 0.5, "brick_red": 0.6, "brick_dark": 0.5, "brick_yellow": 0.55, "mortar": 0.15, "carglass": 0.4, "cartrim": 0.2, "tyre": 0.15, "rim": 0.2, "concrete": 0.15,
 	"insulator": 0.3, "trafo": 0.4, "cable": 0.2, "railing": 0.3, "brick": 0.7, "rubber": 0.6,
 	"metal": 0.1, "metalrim": 0.1, "skin": 0.75, "hair": 0.5, "shirt_a": 0.6, "shirt_b": 0.4,
 }
@@ -15576,6 +15812,13 @@ func _tones() -> void:
 		"bush": veg.lerp(bg, 0.58),
 		"roofroom": ink.lerp(wn, 0.12).lerp(alt, 0.1),
 		"gable": ink.lerp(wn, 0.15),
+		# Dutch brick: red-brown, a dark purple-brown, the old yellow; light grey mortar
+		# (the palette's red is a pink: half toward its yellow it is a brick's brown-orange; on
+		# screen at 0.14 the sunlit brick read 193/129/127, salmon)
+		"brick_red": Palette.col("hazard").lerp(wn, 0.42).lerp(bg, 0.56),
+		"brick_dark": Palette.col("hazard").lerp(wn, 0.25).lerp(bg, 0.74),
+		"brick_yellow": ink.lerp(wn, 0.5).lerp(Palette.col("hazard"), 0.1) * 0.8,
+		"mortar": ink.lerp(alt, 0.38),
 		"carglass": bg.lerp(pl, 0.12),
 		"cartrim": bg.lerp(alt, 0.4),
 		"tyre": bg.lerp(alt, 0.2),
@@ -15637,6 +15880,10 @@ func _retint_city() -> void:
 		_wall_mat.set_shader_parameter("glass_d", _tone["glass4"])
 		_wall_mat.set_shader_parameter("shutter", _tone["shutter"])
 		_wall_mat.set_shader_parameter("dark", _tone["recess"])
+		_wall_mat.set_shader_parameter("brick_a", _tone["brick_red"])
+		_wall_mat.set_shader_parameter("brick_b", _tone["brick_dark"])
+		_wall_mat.set_shader_parameter("brick_c", _tone["brick_yellow"])
+		_wall_mat.set_shader_parameter("brick_m", _tone["mortar"])
 	if env != null:
 		# by day the photo sky (_sky_dome) sets the haze: the fog takes its horizon, so far
 		# streets melt into the sky, and the shade its blue
@@ -15681,6 +15928,7 @@ func _retint_city() -> void:
 		_wall_mat.set_shader_parameter("night", 1.0 if _night else 0.0)
 		_wall_mat.set_shader_parameter("trim", _tone["mark"])
 		_wall_mat.set_shader_parameter("siding", 1.0 if String(_place.get("look", "")) == "north" else 0.0)
+		_wall_mat.set_shader_parameter("brick", 1.0 if _dutch() else 0.0)
 	for m: ShaderMaterial in _glow_mats.values():
 		m.set_shader_parameter("col", _tone[m.get_meta("tone")])
 	if _furn != null:
@@ -16141,8 +16389,22 @@ func _get_out() -> void:
 
 func _get_in() -> void:
 	var d := _pos.distance_to(_car_at)
-	if d > 3.6:
-		_show_banner("walk back to the car (%d m)" % int(d), 1.4)
+	# any car in traffic within reach, nearer than yours: you take it (it leaves the traffic,
+	# and your car is where that one stood). Parked cars are drawn in batches a square at a
+	# time, and are not taken yet.
+	var take = _car_to_take(minf(d, TAKE_REACH))
+	if take != null:
+		var cdir := Vector2(sin(float(take.yaw)), cos(float(take.yaw)))
+		_car_at = take.pos
+		_car_yaw_at = cdir.angle()
+		_car_y_at = float(take.y)
+		_car_v = 0.0
+		take.alive = false
+		take.retry = 8.0
+		_show_banner("you took the %s" % String(take.kind), 1.6)
+		Probe.event("take_car", {"kind": String(take.kind)})
+	elif d > 3.6:
+		_show_banner("walk to a car -- yours is %d m off, or any car in the traffic" % int(d), 1.8)
 		return
 	_walking = false
 	_car_material()   # (you, seen through the windows, get in or out)
@@ -16158,6 +16420,24 @@ func _get_in() -> void:
 	_gear = 1
 	Probe.event("walk", {"on": false})
 	_show_banner("driving", 1.0)
+
+## the traffic car nearest you on foot, its body within `reach` (not a bus or a motorbike), or null
+func _car_to_take(reach: float):
+	if _traffic == null:
+		return null
+	var best = null
+	var bd := reach
+	for c in _traffic.cars:
+		if not c.alive or c.kind == "bus" or c.kind == "moto":
+			continue
+		var cdir := Vector2(sin(float(c.yaw)), cos(float(c.yaw)))
+		var half := float(c.len) * 0.5
+		var q := Geometry2D.get_closest_point_to_segment(_pos, c.pos - cdir * half, c.pos + cdir * half)
+		var dd := q.distance_to(_pos) - 0.9   # (from its side, not its middle line)
+		if dd < bd:
+			bd = dd
+			best = c
+	return best
 
 ## ---- a filmed walk, replayed ------------------------------------------------------------------
 ## A place in LEVELS with a "walk" replays a walk someone filmed: in first person, from the
@@ -16230,7 +16510,7 @@ func _film_begin(id: String) -> void:
 		a.face(Vector3(fd.x, 0, fd.y))
 		var moving := B != A
 		var pace: float = A.distance_to(B) / maxf(float(tt[1]) - float(tt[0]), 0.01)
-		a.play("Walk" if moving else "Idle", true, pace / 1.35 if moving else 1.0)
+		a.play("Walk" if moving else "Idle", true, pace / _walk_clip_v() if moving else 1.0)
 		a.visible = not moving
 		# `talk`: one of a group standing talking -- no clip for it, so the body does it: turning a
 		# little to the one spoken to and back, now and then a wider turn (as the film's do)
@@ -16380,6 +16660,15 @@ func _film_tick(dt: float) -> void:
 			if not head:
 				turn += l.z * k
 			tip += l.w * k
+	# a car going by: the head goes with it for a moment (_film_glance), over the walk's own turns
+	var told := false   # (a look or a facing the walk sets: the film's own head, known -- no glance starts)
+	for l: Vector4 in _film_looks:
+		told = told or (_film_t > l.x - 0.5 and _film_t < l.y + 0.5)
+	for fc: Vector3 in _film_faces:
+		told = told or (_film_t > fc.x - 0.5 and _film_t < fc.y + 0.5)
+	var gl := _film_glance(dt, not told)
+	if gl.x > 0.001:
+		turn += angle_difference(turn, gl.y) * gl.x
 	# `face`: the camera held on a way round the map between two seconds, whatever the body does
 	# (where a film's head is known by what its frames show, not by how its head turned)
 	for fc: Vector3 in _film_faces:
@@ -16423,7 +16712,7 @@ func _film_tick(dt: float) -> void:
 			w["film_ahead"] = float(w.get("film_ahead", 0.0)) + dt
 			if float(w["film_ahead"]) > 4.0 and float(w["speed"]) < 1.9:
 				w["speed"] = 1.9
-				wa.anim.speed_scale = 1.9 / 1.35
+				wa.anim.speed_scale = 1.9 / _walk_clip_v()
 		else:
 			w["film_ahead"] = 0.0
 	while _film_sent < _film_cars.size() and _film_t >= float(_film_cars[_film_sent][0]):
@@ -16434,7 +16723,7 @@ func _film_tick(dt: float) -> void:
 	var anim := "Idle" if _v < 0.15 else "Walk"
 	if anim != _me_anim:
 		_me_anim = anim
-		_me.play(anim, true, 1.0 if anim == "Idle" else maxf(_v / WALK, 0.5))
+		_me.play(anim, true, 1.0 if anim == "Idle" else maxf(_v / 2.1, 0.5))   # (as before WALK went up to a jog)
 	if _film_t >= _film[_film.size() - 1].z and not _film_done:
 		_film_done = true
 		Probe.event("film_end", {"at": Vector2i(p)})
@@ -16556,6 +16845,64 @@ func _film_dodge(t0: float, t1: float) -> void:
 		var q := Vector2(b.x, b.y) + (_film_side[i] as Vector2) * off
 		_film[i] = Vector3(q.x, q.y, b.z)
 
+## A person on foot turns their head to a car going by -- the film's walker did now and then and
+## its head turns rarely show it (the user, 22 Nov: "sometimes not turning with my head on traffic
+## passes, lets add that, even if it doesnt match the video 1:1"). So on every walk: a moving car
+## within GLANCE_M, off to the side or coming, is followed by the head for up to GLANCE_S
+## seconds (as far as GLANCE_MAX round from the body, with GLANCE_K of the turn), then let go;
+## GLANCE_REST seconds before the next, so a busy street is not watched car by car. None starts
+## inside a walk's own `looks` or `face` (where the film's head is known: walk 1 at its zebra
+## turned to a car while its film looked across the median, 9-11 s scoring 6-12 worse).
+const GLANCE_M := 14.0
+const GLANCE_S := 2.2
+const GLANCE_REST := 3.5
+const GLANCE_MAX := 1.2          ## radians (~70 degrees) from the way the body faces
+const GLANCE_K := 0.8
+var _glance_car = null           ## the car being looked at (traffic.gd's), or null
+var _glance_for := 0.0           ## seconds it has been looked at
+var _glance_rest := 0.0          ## seconds before the next may be picked
+var _glance_w := 0.0             ## how much the head is with it, eased
+var _glances := 0                ## how many so far (tests)
+var _glance_a := 0.0             ## the head's last turn toward it (the head eases back from there)
+
+## Vector2(weight 0..1, the head's turn from the body toward the car)
+func _film_glance(dt: float, may := true) -> Vector2:
+	_glance_rest = maxf(0.0, _glance_rest - dt)
+	if _traffic == null:
+		return Vector2.ZERO
+	var c = _glance_car
+	if c != null:
+		_glance_for += dt
+		if not c.alive or c.pos.distance_to(_pos) > GLANCE_M + 6.0 or _glance_for > GLANCE_S 				or absf(angle_difference(_yaw, (c.pos - _pos).angle())) > GLANCE_MAX + 0.5:
+			_glance_car = null
+			_glance_rest = GLANCE_REST
+			c = null
+	if c == null and _glance_rest <= 0.0 and may:
+		var best := GLANCE_M
+		for car in _traffic.cars:
+			if not car.alive or car.v < 2.5:
+				continue
+			var rel: Vector2 = car.pos - _pos
+			var d := rel.length()
+			if d >= best or d < 2.0:
+				continue
+			# coming toward the walker, or about to cross its view: not one already going away
+			if Vector2(sin(car.yaw), cos(car.yaw)).dot(rel) > 0.3 and d > 6.0:
+				continue   # (going away)
+			if absf(angle_difference(_yaw, rel.angle())) > GLANCE_MAX:
+				continue
+			best = d
+			c = car
+		if c != null:
+			_glance_car = c
+			_glance_for = 0.0
+			_glances += 1
+	var on := c != null
+	_glance_w = lerpf(_glance_w, GLANCE_K if on else 0.0, 1.0 - exp(-dt * 4.0))
+	if on:
+		_glance_a = clampf(angle_difference(_yaw, (c.pos - _pos).angle()), -GLANCE_MAX, GLANCE_MAX)
+	return Vector2(_glance_w, _glance_a) if _glance_w > 0.01 else Vector2.ZERO
+
 ## where the walk is at time t: a smooth curve (Catmull-Rom) through the timed points
 func _film_at(t: float) -> Vector2:
 	var n := _film.size()
@@ -16630,7 +16977,7 @@ func _walk(dt: float) -> void:
 		go = -signf(_stick.y) * _dead(absf(_stick.y))
 	var run := PInput.pressed("action_a") or (_stick_id >= 0 and _stick.length() > 0.92)
 	_yaw = wrapf(_yaw + turn * TURN_ON_FOOT * dt, -PI, PI)
-	var want := go * (RUN if run and go > 0.0 else WALK) * (0.6 if go < 0.0 else 1.0)
+	var want := go * (RUN if run and go > 0.0 else WALK) * (0.4 if go < 0.0 else 1.0)   # (backwards: a walk, 1.8 m/s)
 	_v = move_toward(_v, want, 9.0 * dt)
 	_pos += _fwd() * _v * dt
 	# walls, trees and posts; the people; the cars going by; the car you left
@@ -16647,12 +16994,12 @@ func _walk(dt: float) -> void:
 			_pos += d.normalized() * (CAR_R + 0.3 - d.length())
 	_keep_inside(0.3, false)
 	_y = lerpf(_y, _walk_y(_pos, _y), 1.0 - exp(-dt * 12.0))   # up and down kerbs in a step, not a jump
-	var anim := "Idle" if absf(_v) < 0.15 else ("Run" if absf(_v) > WALK + 0.5 else "Walk")
+	var anim := "Idle" if absf(_v) < 0.15 else ("Run" if absf(_v) > 2.6 else "Walk")   # (the jog runs)
 	if anim != _me_anim:
 		_me_anim = anim
-		_me.play(anim, true, 1.0 if anim == "Idle" else maxf(absf(_v) / (WALK if anim == "Walk" else RUN * 0.8), 0.5))
+		_me.play(anim, true, 1.0 if anim == "Idle" else maxf(absf(_v) / (_walk_clip_v() if anim == "Walk" else RUN * 0.8), 0.5))
 	elif anim != "Idle":
-		_me.anim.speed_scale = maxf(absf(_v) / (WALK if anim == "Walk" else RUN * 0.8), 0.5)
+		_me.anim.speed_scale = maxf(absf(_v) / (_walk_clip_v() if anim == "Walk" else RUN * 0.8), 0.5)
 
 ## the camera on foot: over the shoulder, a few metres back (kept out of walls), or from the
 ## eyes when the seat view is chosen
@@ -16664,8 +17011,8 @@ func _foot_camera(dt: float) -> void:
 		var eye := Vector3(p.x + fwd.x * 0.15, gy + 1.64, p.y + fwd.y * 0.15)
 		var down := -0.08
 		var hand := Vector3.ZERO
-		if not _film.is_empty():   # a phone held at the chest, looking down, bobbing with each step
-			eye.y += -0.2 + sin(_film_step * PI / 0.72) * 0.022 * clampf(_v / 1.2, 0.0, 1.0)
+		if not _film.is_empty():   # a phone held up before the face, looking down, bobbing with each step
+			eye.y += -FILM_EYE_DROP + sin(_film_step * PI / 0.72) * 0.022 * clampf(_v / 1.2, 0.0, 1.0)
 			hand = _film_hand()
 			fwd = Vector2(cos(_view_yaw + _film_look + hand.x), sin(_view_yaw + _film_look + hand.x))
 			down = tan(clampf(FILM_TILT + _film_tilt + hand.y, -1.4, 0.6))
@@ -16687,6 +17034,12 @@ func _foot_camera(dt: float) -> void:
 	eye = _decks.keep_eye(eye, p, gy)
 	look_from(eye, Vector3(p.x + back.x * 2.0, gy + 1.35, p.y + back.y * 2.0))
 	cam.fov = 56.0   # (was 66: see the eyes' view above)
+
+## how far under the eyes (1.64 m) a walk's camera is. The film's phone was held at the chest,
+## 0.2 down (1.44 m); the user, 22 Nov: "the walk height is bit too low, i am holding the phone
+## probably too low" -- so the replay is as a person's eyes see it, 1.58 m, not as the phone did
+## (the film's own measures, film_marks.py's EYE and film_motion.py's, keep 1.44: they read the film)
+const FILM_EYE_DROP := 0.06
 
 ## the phone's tilt below level on a filmed walk: the film's horizon sits 0.30 of the way
 ## down its frame (one frame a second over walk 1, under the arcade, in the passage, on the
@@ -17278,6 +17631,8 @@ func _frame() -> void:
 		_standins.show(_zoomed())
 	if _opening != null and _opening.on:
 		_opening.tick(dt)
+	if _scenario != null:
+		_scenario.tick(dt)
 	if _blades != null:
 		_turbines_tick()
 	var f := Engine.get_physics_interpolation_fraction()
@@ -18303,9 +18658,9 @@ func _spawn_people() -> void:
 		a.set_character(PEOPLE[(i + 2) % PEOPLE.size()], _people_rng.randf_range(ADULT_LO, ADULT_HI))
 		_humanize(a, hash(a.get_instance_id()))
 		_people_lod(a)
+		_talker(a, hash(_city_name) * 13 + i)   # (before the clip starts: it may change the clips)
 		a.play("Idle", true, _people_rng.randf_range(0.8, 1.1))
 		_carry(a, _what_carried(hash(_city_name) * 13 + i, false), hash(_city_name) * 13 + i)
-		_talker(a, hash(_city_name) * 13 + i)
 		a.visible = false
 		_chatters.append({"actor": a, "spot": Vector2.INF})
 	_seat_chatters()
@@ -18454,7 +18809,7 @@ func _place_walker(w: Dictionary, anywhere: bool, why := "") -> void:
 			w.erase(k)
 		w["dodge"] = 0.0
 		w["dir"] = 1.0 if _people_rng.randf() < 0.5 else -1.0
-		a.play("Walk_Carry" if w["carry"] else "Walk", true, float(w["speed"]) / 1.35)
+		a.play("Walk_Carry" if w["carry"] else "Walk", true, float(w["speed"]) / _walk_clip_v())
 		a.visible = true
 		return
 	a.visible = false
@@ -18649,7 +19004,7 @@ func _walker_anim(w: Dictionary, a: Actor3D, p: Vector2, dt: float) -> void:
 		walking = true
 	var clip := ("Walk_Carry" if w["carry"] else "Walk") if walking else "Idle"
 	if clip != String(w.get("anim_clip", "")) or walking:
-		a.play(clip, true, clampf(v, 0.6, 1.8) / 1.35 if walking else 1.0)
+		a.play(clip, true, clampf(v, 0.6, 1.8) / _walk_clip_v() if walking else 1.0)
 		w["anim_clip"] = clip
 	w["anim_walk"] = walking
 
@@ -19203,7 +19558,7 @@ func _people_tick(dt: float) -> void:
 						w["dir"] = -float(w["dir"])
 		if not at_kerb and w.has("kerb_t"):
 			w.erase("kerb_t")
-			a.play("Walk_Carry" if w["carry"] else "Walk", true, float(w["speed"]) / 1.35)
+			a.play("Walk_Carry" if w["carry"] else "Walk", true, float(w["speed"]) / _walk_clip_v())
 		w["s"] = s
 		var p := _along(line, cum, s)
 		var ahead := _along(line, cum, clampf(s + float(w["dir"]) * 0.5, 0.0, total)) - p
@@ -19400,8 +19755,18 @@ const PART_SIZES := {
 	"Abdomen": Vector3(1.0, 1.06, 1.0),
 }
 
+var _ppl: RefCounted = null          ## people.gd: the people as they are now (Quaternius' base characters, dressed)
+
+func _people_maker() -> RefCounted:
+	if _ppl == null:
+		_ppl = load("res://game/streets/people.gd").new(self)
+	return _ppl
+
 func _humanize(a: Actor3D, seed: int) -> void:
 	if a == null or a.model == null:
+		return
+	if _people_maker().on():   # (STREETS_OLD_PEOPLE=1: the kit's figures, as before, to compare)
+		_ppl.make(a, seed)
 		return
 	var sks := a.model.find_children("*", "Skeleton3D", true, false)
 	if not sks.is_empty():
@@ -19491,6 +19856,11 @@ func _talker(a: Actor3D, seed: int) -> void:
 	if sks.is_empty():
 		return
 	var sk: Skeleton3D = sks[0]
+	if sk.find_bone("UpperArm.L") < 0 and a.anim != null:
+		# people.gd's figures have the library's own talking idle: no bending needed
+		a.anim.remove_animation_library("")
+		a.anim.add_animation_library("", _people_maker()._lib("talk"))
+		return
 	var tk := Talk.new()
 	for sd: String in ["L", "R"]:
 		var u := sk.find_bone("UpperArm." + sd)
@@ -19574,6 +19944,8 @@ func _bone_holder(a: Actor3D, bone: String, upright: bool) -> Node3D:
 	var sk: Skeleton3D = sks[0]
 	var bi := sk.find_bone(bone)
 	if bi < 0:
+		bi = sk.find_bone(_people_maker().bone_for(bone))   # (the same place on people.gd's figures)
+	if bi < 0:
 		return null
 	var held: Held = null
 	for m in sk.get_children():
@@ -19592,6 +19964,11 @@ func _bone_holder(a: Actor3D, bone: String, upright: bool) -> Node3D:
 func _carry(a: Actor3D, what: String, seed: int) -> void:
 	if what == "" or a == null or a.model == null:
 		return
+	# people.gd's figures: no carrying walk (a box in arms swinging by the sides): a bag
+	# instead; the backpack upright (their chest bone's own axes are not the body's)
+	var newer := not a.model.find_children("*", "Skeleton3D", true, false).is_empty() 		and (a.model.find_children("*", "Skeleton3D", true, false)[0] as Skeleton3D).find_bone("spine_03") >= 0
+	if newer and what == "box":
+		what = "bag"
 	var ink := Palette.col("ink")
 	var bg := Palette.col("bg")
 	var alt := Palette.col("bg_alt")
@@ -19617,12 +19994,14 @@ func _carry(a: Actor3D, what: String, seed: int) -> void:
 				_carry_mesh(h, [[Vector3(0.1, 0.2, 0.27), Vector3(0, -0.15, 0), c],
 					[Vector3(0.015, 0.06, 0.12), Vector3(0, -0.03, 0), c.darkened(0.3)]])
 		"backpack":
-			var h := _bone_holder(a, "Torso", false)
+			var h := _bone_holder(a, "Torso", newer)
 			if h == null:
 				return
 			var c: Color = dark[rng.randi() % dark.size()]
-			_carry_mesh(h, [[Vector3(0.3, 0.4, 0.15), Vector3(0, 0.06, -0.165), c],
-				[Vector3(0.24, 0.16, 0.06), Vector3(0, -0.04, -0.26), c.darkened(0.2)]])   # (and its front pocket)
+			var z := -0.13 if newer else -0.165
+			var y := -0.08 if newer else 0.06
+			_carry_mesh(h, [[Vector3(0.3, 0.4, 0.15), Vector3(0, y, z), c],
+				[Vector3(0.24, 0.16, 0.06), Vector3(0, y - 0.1, z - 0.095), c.darkened(0.2)]])   # (and its front pocket)
 		"box":   # a cardboard box on the forearms, the hands under its front
 			var h := _bone_holder(a, "Torso", false)
 			if h == null:
@@ -19876,7 +20255,7 @@ func _crossers_tick(dt: float) -> void:
 						and not _box_waiting(cr, (from + to) * 0.5) \
 						and not _kept_waiting((from + to) * 0.5, from.distance_to(to) * 0.5):
 					cr["state"] = "cross"
-					a.play("Walk", true, float(cr["speed"]) / 1.35)
+					a.play("Walk", true, float(cr["speed"]) / _walk_clip_v())
 			"cross", "back":
 				var w := from.distance_to(to)
 				var sp: float = cr["speed"] * (2.4 if state == "back" else 1.0)
@@ -19898,7 +20277,7 @@ func _crossers_tick(dt: float) -> void:
 					# over (or back): off along the pavement, gone once out of the way
 					cr["state"] = "away"
 					cr["t"] = 12.0
-					a.play("Walk", true, float(cr["speed"]) / 1.35)
+					a.play("Walk", true, float(cr["speed"]) / _walk_clip_v())
 					_away_from(cr, z)
 			"away":
 				cr["t"] = float(cr["t"]) - dt
@@ -21430,7 +21809,7 @@ func _seat_camera(dt: float, yaw: float) -> void:
 ## wheel goes over; at people on the crossing ahead; over the right shoulder reversing.
 ## Autodrive's driver always does; yours while "look" is on. The seat view turns with the
 ## head, the chase camera swings a little toward it, and the head in the car turns.
-const LOOK_BTN := Rect2(566, 150, 66, 22)    ## looking round while you drive yourself (key G: glance); hidden while autodrive drives or you walk
+const LOOK_BTN := Rect2(566, 176, 66, 22)    ## looking round while you drive yourself (key G: glance); hidden while autodrive drives or you walk
 const HEAD_RATE := 3.4                       ## rad/s a head turns at, at most
 var _head_yaw := 0.0                         ## where the driver looks: radians left (+) of ahead
 var _head_plan: Array = []                   ## a scan still to do: [[yaw, seconds held], ...]
@@ -22013,6 +22392,12 @@ func _set_ap_style(s: String) -> void:
 	_show_banner({"rules": "autodrive keeps the rules", "wave": "green wave: the lights ahead turn green for you",
 		"racer": "racer: no lights, no signs, no giving way"}[s], 1.8)
 	Probe.event("ap_style", {"style": s})
+
+## how autodrive is driving NOW -- the chip shows this, not the setting: a test drive's
+## autodrive kept the rules while the chip said "racer" (the user: "the test drives are
+## actually driving in racer mode, or its a bug?" -- the chip's, they were not)
+func _ap_style_now() -> String:
+	return "racer" if _racer != null and _racer.on else ("wave" if _wave != null and _wave.on else "rules")
 
 ## autodrive on or off from the player's own hand: on, in the style chosen
 func _auto_by_hand(on: bool) -> void:
@@ -22669,6 +23054,18 @@ func _ap_plan() -> void:
 			hit = _nearest_seg(way[way.size() - 1], 12.0, true, true)
 			if hit.is_empty():
 				return
+	# at a junction the nearest road can be the one across it: planned along that, the car
+	# turned full lock from a standstill and cut the corner into its post (Givatayim's Eilat
+	# by Yitzhak Rabin, HaShalom's crossing: tests/drive_bumps.gd). The road just ahead of the
+	# car, if that one runs its way, instead.
+	var hp: PackedVector2Array = (_roads[hit["road"]] as Dictionary)["pts"]
+	var al := absf((hp[int(hit["seg"]) + 1] - hp[int(hit["seg"])]).normalized().dot(heading))
+	if al < 0.7:
+		var ahead := _nearest_seg(_pos + heading * 5.0, 8.0, true, true, _y)
+		if not ahead.is_empty():
+			var ap: PackedVector2Array = (_roads[ahead["road"]] as Dictionary)["pts"]
+			if absf((ap[int(ahead["seg"]) + 1] - ap[int(ahead["seg"])]).normalized().dot(heading)) > maxf(al, 0.7):
+				hit = ahead
 	var ri: int = hit["road"]
 	var sj: int = hit["seg"]
 	var r: Dictionary = _roads[ri]
@@ -23396,7 +23793,10 @@ func _ap_next() -> bool:
 			if not _edge_bound(w["leg"]):
 				all_edge = false
 				break
-		if all_edge:
+		# (only when the way back does lead somewhere: in a pocket where it runs off the map too
+		# -- Tel Aviv's HaHilazon, a dead end by the barrier at one end and a junction of ways
+		# off the map at the other -- it turned round at each end in turn for good)
+		if all_edge and (int(r["o"]) != 0 or (back.x >= 0 and not _edge_bound(back))):
 			_tally("ap_edge_turn", 1)
 			Probe.event("edge_turn", {"at": _ap_pts[_ap_pts.size() - 1].round() if _ap_pts.size() > 0 else Vector2.ZERO})
 			_ap_mark_dead_end()
@@ -23497,6 +23897,13 @@ func _ap_ways(ri: int, ei: int, dir: int) -> Array:
 			if not _in_city(p2[nxt]):
 				score -= 2.5   # back toward town rather than out past its edge
 			if _edge_bound(Vector3i(e.x, nxt, d2)):
+				if r2["k"] == "service":
+					# a lane that only runs off the map is never the way out: at the cut end of
+					# Tel Aviv's one-way Tuval autodrive took one lane after another there, each
+					# a dead end by the barrier, and turned round in them for good -- instead of
+					# turning on the spot at the cut end and back the way it came (tests/
+					# edge_pocket.gd lists such a spot's roads)
+					continue
 				score -= 8.0   # every way on from it runs off the map: only if nothing else
 			elif _trap.has((r2["ids"] as PackedInt32Array)[nxt]) and not _trap.has(node):
 				score -= 8.0   # into a pocket, with no way back out (see _find_pockets)
@@ -23521,7 +23928,7 @@ func _ap_ways(ri: int, ei: int, dir: int) -> Array:
 ## stops at its end and turns on the spot.)
 ## tests/dead_end_turns.gd drives into every cul-de-sac of a city.
 const AP_DEAD_ROOM := 7.0           ## metres short of a dead end's end it stops to turn round
-const AP_KT_V := 1.3                ## m/s, the crawl of each move
+const AP_KT_V := 2.2                ## m/s, the crawl of each move (1.3 took 11 s for three moves: walking pace, 22 Nov)
 const AP_KT_KERB := 0.6             ## a move ends when a bumper would be this far (m) over the kerb (the wheels are ~0.9 m in from it)
 const AP_KT_MOVES := 7              ## more than this, or AP_KT_SECS, and the rest is turned on the spot
 const AP_KT_SECS := 30.0
@@ -23609,7 +24016,9 @@ func _ap_kturn(dt: float) -> Array:
 	var diff := angle_difference(_yaw, to.angle())
 	if absf(diff) < 0.45:
 		# facing out, near enough for the lane-following to take it from here: stop, then plan
-		if absf(_v) > 0.1:
+		# (going forward it drives straight on, as a driver does: stopping and setting off
+		# again added a second or two to every turn)
+		if absf(_v) > 0.1 and g < 0:
 			return [0.0, 1.0, 0.0]
 		var spot := int(_ap_kt["n"]) > AP_KT_MOVES or float(_ap_kt["t"]) > AP_KT_SECS
 		Probe.event("turned_round", {"moves": mini(int(_ap_kt["n"]), AP_KT_MOVES), "secs": snappedf(float(_ap_kt["t"]), 0.1), "on_the_spot": spot})
@@ -23631,8 +24040,9 @@ func _ap_kturn(dt: float) -> Array:
 	var wheel := float(_ap_kt["side"]) * MAX_STEER * g   # forward toward the turn, back the other lock
 	if _ap_kt["stop"]:
 		# between moves: stand, into the other gear, the wheel over (below), then go
-		if absf(_v) > 0.08:
-			return [0.0, 1.0, _steer]
+		# (the wheel goes over to the other lock while it brakes, not only once it stands)
+		if absf(_v) > 0.15:
+			return [0.0, 1.0, move_toward(_steer, -wheel, 2.5 * dt)]
 		_ap_kt["gear"] = -g
 		_ap_kt["n"] = int(_ap_kt["n"]) + 1
 		_ap_kt["mt"] = 0.0
@@ -23650,9 +24060,11 @@ func _ap_kturn(dt: float) -> Array:
 			return [0.0, 1.0, _steer]
 	if absf(_steer - wheel) > 0.02 and absf(_v) < 0.3:
 		# the wheel turned over standing still, as a driver does, not snapped from lock to lock
-		return [0.0, 1.0, move_toward(_steer, wheel, 1.8 * dt)]
+		return [0.0, 1.0, move_toward(_steer, wheel, 2.5 * dt)]
 	var fwd := _fwd()
-	var end_p := _pos + fwd * float(g) * (CAR_OFF + 0.25 + absf(_v) * 0.3)
+	# (ahead by a tick's reaction and the stopping distance on the brake, ~8 m/s^2: a fixed
+	# share of the speed stopped the faster crawl ~0.6 m short and took two more moves)
+	var end_p := _pos + fwd * float(g) * (CAR_OFF + 0.25 + absf(_v) * 0.2 + _v * _v / 16.0)
 	# the move is over: at the kerb or something solid, or crawling nowhere (a lip, a slope)
 	if _ap_kt_blocked(end_p) or float(_ap_kt["mt"]) > 6.0 or (float(_ap_kt["mt"]) > 2.0 and absf(_v) < 0.05):
 		_ap_kt["stop"] = true
@@ -24328,7 +24740,7 @@ func _route_list_open() -> void:
 		_route_ui.add_child(tab)
 		# (sized once in the tree, _put: sized before, they kept the kit's 180x34 minimum and
 		# overlapped -- a tap on "test town" started Bedford)
-		_put(tab, Vector2(220 + k * 104, 52), Vector2(96, 22))
+		_put(tab, Vector2(124 + k * 102, 52), Vector2(96, 22))   # (left, by "back": the settings row takes the right)
 	var routes := _routes() if _route_page == "set" else mine
 	if _route_page == "mine":
 		_route_new_row(routes.size())
@@ -24344,7 +24756,8 @@ func _route_list_open() -> void:
 		if not r.get("mine", false):
 			text = "%d   %s" % [int(r["id"]), text]
 		var w := 612.0 if not r.get("mine", false) else 572.0
-		var b := _tap_button(text, func(): Flow.start_game("streets", {"level": int(r["level"]), "route": int(r["id"])}))
+		var b := _tap_button(text, func(): Flow.start_game("streets", {"level": int(r["level"]), "route": int(r["id"]),
+			"style": _routes_style, "time": _list_time}))
 		b.add_theme_font_override("font", _font)
 		b.add_theme_font_size_override("font_size", 10)
 		b.clip_text = true
@@ -24359,6 +24772,7 @@ func _route_list_open() -> void:
 			_route_ui.add_child(x)
 			_put(x, Vector2(590, y), Vector2(36, 25))
 	_back_button(Vector2(14, 52))   # (top left, beside the tabs: ten routes reach the foot)
+	_list_settings(Vector2(336, 52), "routes", _route_list_open)   # (right of the tabs, same reason)
 
 ## "+ a new one": the cities to make it in, one button each (the city loads, then the picker
 ## asks from where and to where)
@@ -24371,7 +24785,8 @@ func _route_new_row(have: int) -> void:
 	var cities: Array = ["givatayim", "tel_aviv", "ashdod", "bedford", "dimyon"]
 	for k in range(cities.size()):
 		var cid: String = cities[k]
-		var b := _tap_button(CITY_NAMES[cid], func(): Flow.start_game("streets", {"level": _city_level(cid), "make_route": true}))
+		var b := _tap_button(CITY_NAMES[cid], func(): Flow.start_game("streets", {"level": _city_level(cid), "make_route": true,
+			"style": _routes_style, "time": _list_time}))
 		b.add_theme_font_override("font", _font)
 		b.add_theme_font_size_override("font_size", 10)
 		_route_ui.add_child(b)
@@ -24379,7 +24794,7 @@ func _route_new_row(have: int) -> void:
 
 ## a place in LEVELS that is one of the start screen's lists, not a city to drive
 static func _is_list(lv: Dictionary) -> bool:
-	return lv.get("routes", false) or lv.get("walks", false) or lv.get("cities", false)
+	return lv.get("routes", false) or lv.get("walks", false) or lv.get("cities", false) or lv.get("scenarios", false)
 
 ## The start screen's lists of places, one button each, a "back" at the foot (in the list's
 ## frame, _route_ui, so _input's taps reach them as the routes' do). "walks": every place in
@@ -24396,14 +24811,19 @@ func _walk_list_open(kind := "walks") -> void:
 	dim.size = Vector2(640, 360)
 	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_route_ui.add_child(dim)
-	var title := UIKit.label("walks: pick one and watch it, in first person" if kind == "walks" else "cities: pick one to drive", 13, "player")
+	var title := UIKit.label({"walks": "walks: pick one and watch it, in first person", "cities": "cities: pick one to drive",
+		"scenarios": "scenarios: a tour of a town, or a story played out in it"}.get(kind, ""), 13, "player")
 	title.add_theme_font_override("font", _font)
 	title.position = Vector2(20, 30)
 	title.size = Vector2(600, 20)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_route_ui.add_child(title)
 	var rows: Array = []
-	if kind == "walks":
+	if kind == "scenarios":
+		for i in range(LEVELS.size()):
+			if (LEVELS[i] as Dictionary).has("scenario"):
+				rows.append([i + 1, String(LEVELS[i]["name"])])
+	elif kind == "walks":
 		for filmed: bool in [true, false]:
 			for i in range(LEVELS.size()):
 				var lv: Dictionary = LEVELS[i]
@@ -24413,7 +24833,7 @@ func _walk_list_open(kind := "walks") -> void:
 		var keyed: Array = []
 		for i in range(LEVELS.size()):
 			var lv: Dictionary = LEVELS[i]
-			if lv.has("city") and not lv.has("walk") and not _is_list(lv):
+			if lv.has("city") and not lv.has("walk") and not lv.has("scenario") and not _is_list(lv):
 				keyed.append([float(lv.get("sort", i)), i + 1, String(lv["name"])])
 		keyed.sort_custom(func(a, b): return a[0] < b[0])
 		for kk: Array in keyed:
@@ -24422,7 +24842,10 @@ func _walk_list_open(kind := "walks") -> void:
 	var two := rows.size() > 7
 	for k in range(rows.size()):
 		var lvl: int = rows[k][0]
-		var b := _tap_button(String(rows[k][1]), func(): Flow.start_game("streets", {"level": lvl}))
+		var cfg := {"level": lvl, "time": _list_time}
+		if kind != "walks":
+			cfg["style"] = _cities_style
+		var b := _tap_button(String(rows[k][1]), func(): Flow.start_game("streets", cfg))
 		b.add_theme_font_override("font", _font)
 		b.add_theme_font_size_override("font_size", 11)
 		b.clip_text = true
@@ -24432,6 +24855,60 @@ func _walk_list_open(kind := "walks") -> void:
 		else:
 			_put(b, Vector2(120, 64 + k * 31.0), Vector2(400, 27))
 	_back_button()
+	_list_settings(Vector2(24, 322), kind, func(): _walk_list_open(kind), 1.3, Vector2(392, 322))   # (at the foot, by "back")
+
+## The lists' settings, chosen before a drive or walk starts and carried in its config ("style",
+## "time"; start() reads them): autodrive "normal" (the rules) or "racer" -- test drives and
+## cities, not walks, which have no autodrive -- and the time of day. The user, 22 Nov: "lets add
+## settings like racer/normal day/evening/night to both test drives and the walk (it wont have
+## the racer option)". Kept while the app runs (static), apart for test drives (normal at first:
+## they are there to test autodrive) and cities (racer at first, as the HUD's own default).
+static var _list_time := "day"
+static var _routes_style := "rules"
+static var _cities_style := "racer"
+var _start_time := "day"             ## the time of day to switch to once the city is up (config "time")
+
+## the row: [normal][racer]  [day][evening][night] from `at` (walks: the times only) -- or,
+## with `style_at`, the times from `at` and normal/racer from there (at a list's foot, either
+## side of "back"). A tap sets it and `again` builds the list anew to show it (the chosen one
+## full, the rest dimmed, as the routes' tabs). `k` scales them (the foot has the room).
+func _list_settings(at: Vector2, kind: String, again: Callable, k := 1.0, style_at := Vector2.INF) -> void:
+	var styles: Array = []   # [text, width, chosen, what it sets]
+	if kind != "walks":
+		var cur := _routes_style if kind == "routes" else _cities_style
+		for st: Array in [["normal", "rules"], ["racer", "racer"]]:
+			styles.append([st[0], {"normal": 48.0, "racer": 40.0}[st[0]] * k, cur == st[1], func():
+				if kind == "routes":
+					_routes_style = st[1]
+				else:
+					_cities_style = st[1]
+				again.call()])
+	var times: Array = []
+	for tm: String in ["day", "evening", "night"]:
+		times.append([tm, {"day": 34.0, "evening": 52.0, "night": 42.0}[tm] * k, _list_time == tm, func():
+			_list_time = tm
+			again.call()])
+	var x := at.x
+	if style_at != Vector2.INF:
+		_list_row(times, at, k)
+		_list_row(styles, style_at, k)
+	else:
+		x = _list_row(styles, at, k)
+		_list_row(times, Vector2(x + (6.0 if not styles.is_empty() else 0.0), at.y), k)
+
+## one run of _list_settings' buttons from `at`; where it ended
+func _list_row(items: Array, at: Vector2, k: float) -> float:
+	var x := at.x
+	for it: Array in items:
+		var b := _tap_button(String(it[0]), it[3])
+		b.add_theme_font_override("font", _font)
+		b.add_theme_font_size_override("font_size", int(round(10 * k)))
+		b.modulate = Color(1, 1, 1, 1.0 if it[2] else 0.45)
+		b.set_meta("setting", true)   # (not a place: the menu tests skip these when counting rows)
+		_route_ui.add_child(b)
+		_put(b, Vector2(x, at.y), Vector2(float(it[1]), 22.0 * minf(k, 1.18)))
+		x += float(it[1]) + 3.0
+	return x
 
 ## "back" at the foot of a list: the start screen again (the shell's own, as "levels" does)
 func _back_button(at := Vector2(270, 322)) -> void:
@@ -24457,6 +24934,7 @@ func _route_begin() -> void:
 			_land_on_road(out["q"], 5.0, Vector2.ZERO)
 			_show_banner("no way out of there: from the nearest street that has one", 3.0)
 	_set_dest(to, String(_route["to"]))
+	_apply_ap_style()   # (the list's "normal" or "racer": _list_settings)
 	_set_auto(true)
 	_show_banner("route %d: %s → %s" % [int(_route["id"]), _route["from"], _route["to"]], 4.0)
 	Probe.event("route", {"id": int(_route["id"])})
@@ -25039,8 +25517,9 @@ func _draw_hud() -> void:
 	if not _walking and not _hud_folded:
 		_hud_btn(AUTO_BTN, "AUTODRIVE ON" if _auto else "autodrive", Palette.col("friend"), _auto, 12)
 		if _auto:   # its style, beside it: tap for the next
-			var sc := {"rules": Palette.col("ink"), "wave": Palette.col("friend"), "racer": Palette.col("hazard")}[_ap_style] as Color
-			_hud_btn(STYLE_BTN, AP_STYLE_SAY[_ap_style] if _ap_style != "rules" else "rules", sc, _ap_style != "rules", 11)
+			var now := _ap_style_now()
+			var sc := {"rules": Palette.col("ink"), "wave": Palette.col("friend"), "racer": Palette.col("hazard")}[now] as Color
+			_hud_btn(STYLE_BTN, AP_STYLE_SAY[now] if now != "rules" else "rules", sc, now != "rules", 11)
 			if _racing() and _racer.reds > 0:
 				_hud_text(STYLE_BTN.position + Vector2(-20, -5), "%d red%s run" % [_racer.reds, "" if _racer.reds == 1 else "s"], 102, 10, Palette.col("hazard"))
 	if _auto and _cross_showing():
@@ -25067,16 +25546,13 @@ func _draw_hud() -> void:
 	if not _hud_folded:
 		_hud_btn(GOTO_BTN, "go to…", Palette.col("accent"), false, 12, true)
 		var near_car := _walking and _pos.distance_to(_car_at) < 3.6
-		_hud_btn(WALK_BTN, "get in" if _walking else "walk", Palette.col("accent"), false, 12, near_car)
+		_hud_btn(WALK_BTN, "get in" if _walking else "walk", Palette.col("accent"), false, 11, near_car)
 		# on the right: the drawer and folding, the camera, looking round
 		_hud_btn(MORE_BTN, "more" if not _more_open else "close", Palette.col("accent"), _more_open, 11)
 		_hud_btn(FOLD_BTN, "–", Palette.col("ink"), false, 13)
 		_hud_btn(VIEW_BTN, _view_name(), Palette.col("player"), _zoom > 0.0 or _cockpit, 11)
 		if not _walking and not _auto:
 			_hud_btn(LOOK_BTN, "look", Palette.col("accent"), _look_on, 11)
-		# by the map, after dark (or while on): the headlights
-		if _lights_shown():
-			_hud_btn(LIGHTS_BTN, "lights", Palette.col("warn"), _lights_on, 11)
 	# the indicator blinking by the speed, as on a dashboard
 	if _blink != 0 and _blink_lit:
 		var s := float(_blink)
@@ -25089,7 +25565,7 @@ func _draw_hud() -> void:
 		_hud.draw_arc(_hold_at, 14.0, 0.0, TAU, 32, Color(Palette.col("bg"), 0.5), 5.0)
 		_hud.draw_arc(_hold_at, 14.0, -PI * 0.5, -PI * 0.5 + TAU * hold, 32, hc, 4.0)
 		_hud.draw_circle(_hold_at, 3.0, hc)
-	if _paused and not (_opening != null and _opening.on):
+	if _paused and not (_opening != null and _opening.on) and not (_scenario != null and _scenario.on):
 		_hud_text(Vector2(170, 62), "PAUSED", 300, 13, Palette.col("warn"))
 		if _zoom > 0.0:
 			var hint := "drag to look round · pinch to zoom and turn" if _touch_seen \
@@ -25130,17 +25606,22 @@ var _keys_open := false
 var _hud_folded := false   ## every button folded away to one "show" (FOLD_BTN)
 var _stick_used := false   ## the stick driven with once: its hint has done its job
 var _tod_busy := false     ## a time of day on its way (_set_time_of_day steps through _next_time)
+var _mouse_at := Vector2.INF   ## a real mouse's position (not a touch's): the button under it is lit as hovered
 
 ## one button: a dark box, its outline and text in `col` when lit (the thing is ON) or `strong`
-## (always worth seeing, as "go to…"), ink when off; lit ones filled with a wash of it too
+## (always worth seeing, as "go to…"), ink when off; lit ones filled with a wash of it too.
+## Under the mouse it fills as the shell's buttons do on hover (UIKit: the accent darkened,
+## the text in the player's colour) -- the user: "when i hover with the mouse it doesnt fill
+## them like in the main and other menus"
 func _hud_btn(r: Rect2, text: String, col: Color, lit: bool, size: int, strong := false) -> void:
 	var c := col if lit or strong else Color(Palette.col("ink"), 0.8)
-	_hud.draw_rect(r, Color(Palette.col("bg"), 0.7))
+	var hover := r.has_point(_mouse_at)
+	_hud.draw_rect(r, Palette.col("accent").darkened(0.55) if hover else Color(Palette.col("bg"), 0.7))
 	if lit:
 		_hud.draw_rect(r, Color(col, 0.22))
 	_hud.draw_rect(r, Color(c, 0.95), false, 2.0 if lit else 1.5)
 	_hud.draw_string(_font, Vector2(r.position.x, r.position.y + r.size.y * 0.5 + size * 0.36), text,
-		HORIZONTAL_ALIGNMENT_CENTER, r.size.x, size, c)
+		HORIZONTAL_ALIGNMENT_CENTER, r.size.x, size, Palette.col("player") if hover and not lit else c)
 
 ## the camera now, as the button says it: chase, seat, above (on foot: behind, eyes, above)
 func _view_name() -> String:
@@ -25161,9 +25642,6 @@ func _next_view() -> void:
 		_zoom_set(ZOOM_UP)
 	else:
 		_set_cockpit(true)
-
-func _lights_shown() -> bool:
-	return _evening or _night or _lights_on
 
 func _time_now() -> String:
 	return "night" if _night else ("evening" if _evening else "day")
@@ -25297,7 +25775,7 @@ func _hud_tap(p: Vector2) -> bool:
 		if not _walking:
 			_auto_by_hand(not _auto)
 	elif _auto and not _walking and STYLE_BTN.grow(3).has_point(p):
-		_set_ap_style(AP_STYLES[(AP_STYLES.find(_ap_style) + 1) % AP_STYLES.size()])
+		_set_ap_style(AP_STYLES[(AP_STYLES.find(_ap_style_now()) + 1) % AP_STYLES.size()])
 	elif GOTO_BTN.grow(3).has_point(p):
 		_open_picker.call_deferred()   # after this click, so it does not hit the list
 	elif WALK_BTN.grow(3).has_point(p):
@@ -25311,8 +25789,6 @@ func _hud_tap(p: Vector2) -> bool:
 		_next_view()
 	elif LOOK_BTN.grow(2).has_point(p) and not _walking and not _auto:
 		_toggle_look()
-	elif _lights_shown() and LIGHTS_BTN.grow(2).has_point(p):
-		_set_lights(not _lights_on)
 	else:
 		return false
 	return true
@@ -25328,8 +25804,6 @@ func _on_hud_button(p: Vector2) -> bool:
 			rs.append(STYLE_BTN)
 		if not _walking and not _auto:
 			rs.append(LOOK_BTN)
-		if _lights_shown():
-			rs.append(LIGHTS_BTN)
 	if _paused and not _zoomed():
 		rs.append(RESUME_BTN)
 	for r: Rect2 in rs:
@@ -25526,6 +26000,11 @@ func _view_footprint() -> PackedVector2Array:
 ## it takes the wheel back from autodrive. ----------------------------------------------------
 
 func _input(event: InputEvent) -> void:
+	# where a real mouse is, for the HUD's hover (_hud_btn); a touch's emulated mouse is no hover
+	if event is InputEventMouseMotion:
+		_mouse_at = (event as InputEventMouseMotion).position if event.device != InputEvent.DEVICE_ID_EMULATION else Vector2.INF
+	elif event is InputEventScreenTouch:
+		_mouse_at = Vector2.INF
 	if _opening != null and _opening.on and not Flow.pointer_over_hud():
 		# the opening: any key, click or tap goes straight down to the car
 		var k := event as InputEventKey

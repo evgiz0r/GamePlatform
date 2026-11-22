@@ -56,7 +56,8 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
                concrete, glass, brick...), yr: the year it was built (start_date, else
                a town survey's), and from a town survey (see SURVEYS): hm: 1 the height
                is the survey's measurement, pil: 1 it stands on columns or has an open
-               ground floor}]
+               ground floor, rr: a pitched roof's ridge, m above the ground, where a survey
+               measured one (3DBAG in the Netherlands: its roof type "slanted")}]
   areas      [{p: ring, k: park|grass|wood|water|parking|pitch|plaza|school|sand, y: level}]
              (sand: a beach, natural=beach or sand)
              (school: the grounds of a school or kindergarten; y: water that lies at its
@@ -799,7 +800,8 @@ SURVEYS = [
     # game/streets/data_tools/nl_3dbag.py into one national extract that only grows.
     {"id": "nl_3dbag", "credit": "building heights © 3DBAG by tudelft3d and 3DGI, CC BY 4.0",
      "extent": (50.75, 3.20, 53.70, 7.25),
-     "h": "h", "floors": "fl", "year": "yr", "ground_counted": True},
+     "h": "h", "floors": "fl", "year": "yr", "ground_counted": True,
+     "ridge": "ridge", "pitched": ("roof", ("slanted",))},
     # A survey with no server the bake can reach (no "url") is read only from a saved extract,
     # data/<id>.geojson beside the city file -- fetched once by hand where the site answers,
     # and committed, so a re-bake anywhere keeps it. Floors only, no measured height; its
@@ -946,8 +948,11 @@ def survey_apply(buildings, P, s, feats, stats):
         for poly in polys:
             rings = [[P(c[1], c[0]) for c in r] for r in poly if len(r) >= 4]
             if rings:
+                pt = s.get("pitched", (None, ()))
+                rr = pr.get(s.get("ridge")) if pt[0] and pr.get(pt[0]) in pt[1] else None
                 surv.append({"rings": rings, "h": h, "a": centroid(rings[0])[2],
                              "yr": pr.get(s.get("year")),
+                             "rr": rr if rr and h * 0.95 <= rr <= h * 2.0 + 4.0 else None,
                              "pil": bool(pilotis[0]) and pr.get(pilotis[0]) in pilotis[1]})
     if not surv:
         return
@@ -1030,6 +1035,8 @@ def survey_apply(buildings, P, s, feats, stats):
             b["hm"] = 1
             n += 1
             done.add(id(b))
+        if sb["rr"] and "rr" not in b:   # a pitched roof, its ridge measured
+            b["rr"] = round(sb["rr"], 1)
         if sb["yr"] and 1800 <= sb["yr"] <= 2100 and "yr" not in b:
             b["yr"] = int(sb["yr"])
         if sb["pil"]:
