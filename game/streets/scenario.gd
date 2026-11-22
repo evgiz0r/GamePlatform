@@ -322,8 +322,16 @@ func _next() -> void:
 			_say(txt, 6.0)
 			_finish(result if result != "" else "done")
 
+var _end_tick := -1
+
+## ended `secs` of game time ago or more (the recorder stops there)
+func done_for(secs: float) -> bool:
+	return _end_tick >= 0 and Engine.get_physics_frames() - _end_tick >= int(secs * Engine.physics_ticks_per_second)
+
 func _finish(how: String) -> void:
 	on = false
+	if _end_tick < 0:
+		_end_tick = Engine.get_physics_frames()
 	_cam_usual()
 	_set_siren(false)
 	if _slow_until > 0:
@@ -350,6 +358,7 @@ func _say(text: String, secs: float) -> void:
 		_cap.add_theme_color_override("font_outline_color", Palette.col("bg"))
 		_cap.add_theme_constant_override("outline_size", 7)
 		_cap.position = Vector2(80, 262)
+		_cap.set_meta("film", true)   # (kept on screen when filming)
 		_cap.size = Vector2(480, 54)
 		g._hud.add_child(_cap)
 	_cap.text = text

@@ -4277,6 +4277,17 @@ ambulance in Tel Aviv (25) at the hospital in 115 s, 98 cars pulled over; the ge
 film (21) caught at 26 s, every shot used once; the night tour of Givatayim (24) 4 of 5
 stops, 528 s; 0 people hit in all.
 
+**Filming** (`tools/record_video.sh streets <level> <secs> <out.mp4>`, with
+`STREETS_BUILD_ALL=1` so nothing pops in on camera): streets answers the recorder's asks --
+`film_ready()` (`_loaded`), `film_mode(on)` (`film`: `_draw_hud` draws nothing and every
+child of `_hud` not marked `set_meta("film", true)` is hidden -- re-applied at the end of
+`_tick_hud`, which sets some labels visible each frame: the load line came back in the
+first film), `film_done()` (`_scenario.done_for(4.0)`: four seconds of game time after the
+script ended). Marked for film: the scenario's caption and the opening's story line. First
+films (22 Nov, the user's PC): the Ashdod getaway 21 s (caught at 17), 1,272 frames at 60
+fps in about 4 min with Ashdod's whole build, 5.5 MB; "A day in Givatayim" (28) 183 s, 10,994
+frames in 4 min 35 s, 27.3 MB at the size cap (~1.2 Mbit/s for 3 minutes: fine on a phone).
+
 **Scenario ideas** (the user asked for them as the work goes, with grades):
 
 | # | Scenario | Effort | Notice | AI grade | Comment |

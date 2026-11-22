@@ -75,6 +75,7 @@ func start() -> void:
 		_story_lbl.add_theme_color_override("font_outline_color", Palette.col("bg"))
 		_story_lbl.add_theme_constant_override("outline_size", 8)
 		_story_lbl.position = Vector2(90, 150)
+		_story_lbl.set_meta("film", true)
 		_story_lbl.size = Vector2(460, 60)
 		g._hud.add_child(_story_lbl)
 		var credit := Label.new()   # (the lines are our own words from these: credited)

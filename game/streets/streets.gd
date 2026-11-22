@@ -25743,6 +25743,32 @@ func _label(size: int, role: String) -> Label:
 	_hud.add_child(l)
 	return l
 
+## ---- filming (tools/record_video.sh) -----------------------------------------------------------
+## The kit's recorder asks a game three things: film_ready() (the city is up: recording starts
+## then), film_mode(true) (no buttons, minimap or HUD text -- only what is marked "film": a
+## scenario's captions, the opening's story lines) and film_done() (a scenario ended a few
+## seconds ago: stop there).
+var film := false
+
+func film_ready() -> bool:
+	return _loaded
+
+func film_mode(on: bool) -> void:
+	film = on
+	_film_hide()
+	if _hud != null:
+		_hud.queue_redraw()
+
+func _film_hide() -> void:
+	if _hud == null:
+		return
+	for c in _hud.get_children():
+		if c is CanvasItem and not c.has_meta("film"):
+			(c as CanvasItem).visible = not film
+
+func film_done() -> bool:
+	return _scenario != null and _scenario.done_for(4.0)
+
 func _build_hud() -> void:
 	_hud = Node2D.new()
 	_hud.z_index = 50
@@ -25917,9 +25943,12 @@ func _tick_hud() -> void:
 	_banner.visible = not (_more_open or _keys_open)   # (over the drawer it hid the choices)
 	_hud.queue_redraw()
 	_map.queue_redraw()
+	if film:
+		_film_hide()   # (last: the lines above set some labels visible each frame)
 
 ## P (or the drawer's "perf view", or a tap on the fps text): the frame times, then the drive
 ## map, then off. PERF_BTN opens the frame times in one tap and closes either.
+
 func _toggle_perf() -> void:
 	if not _perf_view and not _trace_view:
 		_perf_view = true
@@ -26063,6 +26092,8 @@ func _save_log() -> void:
 	Probe.event("drive_log", {"file": where})
 
 func _draw_hud() -> void:
+	if film:
+		return   # (filming: no buttons, no minimap -- see film_mode)
 	var ink := Palette.col("ink")
 	var bg := Palette.col("bg")
 	if _trace_view:

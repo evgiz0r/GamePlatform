@@ -194,6 +194,11 @@ corner, the player stuck in a wall, a goal outside the play area) that counts al
 
 Keep runs short (20–30s). They are cheap, but not free.
 
+To show the user a game playing itself -- on their phone too -- record a level to a
+video: `tools/record_video.sh <game> <level> [seconds] [out.mp4]` (smooth whatever the
+machine, cut to the action, under the chat's 30 MB; the `scene-tests` skill says what a game
+can do to look its best on film), then send the file to the chat.
+
 A playtest passing says the game runs and can be played; it says little about whether a
 3D scene looks right or a system behaves in a particular spot. For that, write a scene
 test (the `scene-tests` skill): stage the situation, measure it, screenshot it, keep the
