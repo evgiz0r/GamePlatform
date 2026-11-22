@@ -4,6 +4,7 @@ How long each change took, in minutes, from the Claude Code sessions that made i
 
 | date (UTC) | commit | change | agent | runs | you | active | away | lines | files | steps | tools | engine runs | tokens out |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2026-11-22 01:22 | eb759c8 | effort.py: per change also its lines added and removed and files touched (generated files left out), model ... | 1.2 | 0.2 | 0.0 | **1.3** | 11 | +47 -6 | 1 | 6 | 7 | 0 | 7.4k |
 | 2026-11-22 01:09 | b52c7d7 | effort.py --detail: the agent's minutes as thinking, writing and waiting on the model, the runs' by what ra... | 2.0 | 0.2 | 0.1 | **2.3** | 0.0 | +114 -4 | 1 | 12 | 14 | 0 | 11.5k |
 | 2026-11-22 01:07 | 520eb44 | effort.py: a commit of the tables alone is no game's work (it had a row in every game) | 0.4 | 0.2 | 0.0 | **0.6** | 0.0 | +5 -0 | 1 | 3 | 3 | 0 | 2.1k |
 | 2026-11-22 01:06 | 7ece738 | tools/effort.py: how long each change took -- agent, runs and the person's active minutes, time away left o... | 2.9 | 0.9 | 0.0 | **3.8** | 12 | +269 -0 | 2 | 13 | 14 | 0 | 15.5k |
