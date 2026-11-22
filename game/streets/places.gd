@@ -176,14 +176,17 @@ func _yard(b, p: Vector2, seed: int) -> void:
 	b.tri(tops[0], tops[2], tops[3], up, sail)
 	b.tri(tops[0], tops[2], tops[1], -up, sail.darkened(0.3))
 	b.tri(tops[0], tops[3], tops[2], -up, sail.darkened(0.3))
-	# a slide: the ladder's tower and the chute down
-	var sc := c + along * (hx * 0.35) + across * (hy * 0.2)
-	var hue: Color = sails[(seed / 4 + 1) % sails.size()]
-	g._furn._box(b, Vector3(sc.x, gy + 0.6, sc.y), Vector3(0.7, 1.2, 0.7), hue, bs)
-	var chute := sc - along * 1.2
-	g._furn._box(b, Vector3(chute.x, gy + 0.6, chute.y), Vector3(1.9, 0.06, 0.55), hue.lightened(0.2),
-		bs * Basis(Vector3(0, 0, 1), -0.55))
-	g._add_post(sc, 0.5)
+	# a slide (made with Blender: tools/blender/recipes/slide.py), its tower at one end of the
+	# yard and the chute down along it; a spring rider in the other corner
+	var cols := {"paint": sails[(seed / 4 + 1) % sails.size()], "paint2": sails[(seed / 4 + 2) % sails.size()],
+		"paint3": sails[(seed / 4 + 3) % sails.size()]}
+	var sc := c - along * (hx - 1.0) - across * (hy * 0.35)
+	_stamp(b, "slide", Transform3D(bs, Vector3(sc.x, gy + 0.06, sc.y)), cols)
+	g._add_post(sc, 0.6)
+	var rc := c + along * (hx - 1.0) + across * (hy * 0.45)
+	var rider_cols := {"paint": cols["paint3"], "paint2": cols["paint"], "paint3": cols["paint2"]}
+	_stamp(b, "spring_rider", Transform3D(bs.rotated(Vector3.UP, PI * 0.75), Vector3(rc.x, gy + 0.06, rc.y)), rider_cols)
+	g._add_post(rc, 0.35)
 
 ## a public shelter's way in
 func _shelter(b, p: Vector2, sub: int, seed: int) -> void:
@@ -236,3 +239,26 @@ func _shelter(b, p: Vector2, sub: int, seed: int) -> void:
 		Vector3(plate.x, (gy + 2.2 if sub != 2 else gy + 1.9), plate.y) + out3 * 0.025)
 	lb.visibility_range_end = 60.0
 	g.world.add_child(lb)
+
+func _role_col(role: String, cols: Dictionary) -> Color:
+	if cols.has(role):
+		return cols[role]
+	match role:
+		"metal":
+			return g._tone["metal"]
+		"wood":
+			return g._tone["woodfence"]
+		"rubber", "dark":
+			return g._real_col("black")
+		"white":
+			return g._real_col("white")
+		"concrete":
+			return g._tone["concrete"] if g._tone.has("concrete") else g._tone["wall"]
+		"plastic":
+			return g._real_col("green")
+	return g._real_col("white")
+
+## a model made with Blender (models.gd) into the yard's batch: "paint" roles from `cols`
+func _stamp(b, name: String, at: Transform3D, cols: Dictionary) -> void:
+	g._models.stamp(b, name, at, func(role: String) -> Color: return _role_col(role, cols))
+	count["models"] = int(count.get("models", 0)) + 1

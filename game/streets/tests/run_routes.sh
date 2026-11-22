@@ -14,7 +14,7 @@ main() {
 	mkdir -p "$out"
 	ids=("$@")
 	if [ ${#ids[@]} -eq 0 ]; then
-		ids=($(python3 -c "import json;print(' '.join(str(r['id']) for r in json.load(open('game/streets/routes.json'))['routes']))"))
+		ids=($(python3 -c "import json;print(' '.join(str(r['id']) for r in json.load(open('game/streets/routes.json', encoding='utf-8'))['routes']))"))
 	fi
 	logs="$HOME/.local/share/godot/app_userdata/GamePlatform/drive_logs"
 	mkdir -p "$logs"

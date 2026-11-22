@@ -137,6 +137,17 @@ road is two roads, one junction is several points, a car park is only its lanes 
 each cost a round of the user's bug reports. Read the `real-places` skill before building
 on a baked city.
 
+## Making 3D models
+
+`tools/blender_model.sh <recipe.py>` makes a `.glb` with Blender, headless, from a short
+Python recipe in `tools/blender/recipes/` that builds the model out of boxes, cylinders,
+balls, rods and curved tubes (`tools/blender/kit.py`); the result goes to
+`assets/models/made/`. Materials are named by role (`paint`, `metal`, `wood`...) so a game
+can colour them by its palette. `--preview <model.glb>` renders a picture of one to check
+it; `--all` remakes every recipe. Blender is only on machines that have it installed (the
+cloud sessions do not): the made `.glb` files are committed, so any session can use them;
+only making or changing one needs Blender. List each new one in `assets/INDEX.md`.
+
 ## Hard requirements
 
 - **Input**: read `PInput`, never `Input`. `PInput.dir()`, `PInput.pressed("action_a")`,
@@ -256,6 +267,13 @@ Short, specific, and all of them cost a debugging session:
   squash. See `assets/INDEX.md`.
 
 ## Ideas that are not being built yet
+
+**When you list next steps or ideas for the user, use a table with these columns** (the user
+asked for this in every session): the number, the idea, **effort** (small / medium / large /
+very large), **how much a player would notice it** (stars), **your grade** (A-F: how much it is
+worth doing now, all things considered -- risk, overlap with other sessions' work, what it
+unlocks) and **a comment** (a line on why: the catch, the dependency, what you would do first).
+Then say which you would do next and why. Number them so the user can answer "4, 9, 10".
 
 `IDEAS.md` at the root is the parking lot for concepts about the kit that are noted but
 not scheduled. Read it before pitching features, so you do not re-pitch what is already

@@ -74,6 +74,15 @@ the pavement -- a tree, a pole, a bin.
 > Lets put in the main menu both walks inside an extra menu, like the test drives. and add
 > some more walks. even not the filmed ones. just to distribute a bit away from my location
 
+Every walk is seen from a person's eyes (1.58 m), not from where the film's phone was held at
+the chest (1.44 m); and now and then the head turns to a car going by, follows it a couple of
+seconds and comes back -- except where the film's own look is known (at a zebra, a corner).
+
+> i think the walk height is bit too low, i am holding the phone probably too low. and
+> sometimes not turning with my head on traffic passes( lets add that , even if it doesnt
+> match the video 1:1 ). i thought about gopro that solves it but im not going with more than
+> phone for now to simulate my movements
+
 **Giving way.** Autodrive comes out of a side street onto a bigger road the way a driver does:
 up to the corner slowly enough to stop, and if a car is coming that it could not get in
 front of with room to spare, it waits at the edge -- looking at that car as it goes by --
@@ -514,6 +523,20 @@ move it.
 on. Resumed while zoomed out, the city runs under you and the view follows the car, which
 still drives (keys or the stick). The shell's own pause (its menu) is still there too.
 
+**The opening.** When a town comes up, the view starts high over it, turning slowly round
+where you will start, the town's name across the screen, while the streets round the car
+finish going up (a few seconds; the parts further off lie flat as their stand-ins). Under
+the name, the town's own story a line at a time -- "Givatayim means 'two hills' in Hebrew",
+"In 1909, 66 families split a sand dune into plots by drawing seashells", "Ashdod has the
+world's largest Georgian Jewish community" -- a different few each time, gathered from
+Wikipedia, Wikivoyage and the towns' own pages and credited under it. Then it
+comes down to the car and the drive begins on finished streets -- no buildings and trees
+popping up in front of you. A tap, a click or any key goes straight down.
+
+> on bringup when the graphics load in the background we will play something, from
+> animation to a story or whatever. instead of these wierd hickups where we see things pop on
+> the screen, its not great
+
 **The city from above before it is built.** At the start only the streets round the car are
 built; the rest goes up square by square while you drive. Zoomed out, the parts not built
 yet are not empty: their roads, the outlines of their buildings, their parks and water lie
@@ -550,7 +573,8 @@ the racer again unless you chose otherwise.
 maps put a kindergarten in every few streets (OSM knew of 7 in Givatayim; its map has 87,
 the day-cares besides) and a public shelter in most gardens (OSM had none). A kindergarten
 is its yard beside the building: a low green fence, soft ground, a shade sail in red, blue,
-yellow or green over it and a slide; the street gets the school's SLOW painted near it. A
+yellow or green over it, a slide with its little roofed tower and a spring horse (made in
+Blender); the street gets the school's SLOW painted near it. A
 shelter is its squat concrete entrance with a steel door facing the street and the blue
 "מקלט" sign over it.
 
@@ -1663,18 +1687,12 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   big meshes, so one has to be taken out of its batch first), panic for people and drivers,
   emergency services, and staying smooth on a phone. Our own disasters, not a copy of any
   one game's.
-- The city's own story: "getting some real 'story' or 'script' for a city. for real cities
-  it will be somewhere online where we will feel the type of the city in many aspects". For
-  each real town, gather what makes it itself from what is written about it online (its
-  Wikipedia and Wikivoyage pages, the town's own site, local guides): what it is known for,
-  its history, its neighbourhoods and their moods, its people and what they do, its food,
-  its landmarks and the stories behind street names. Then let that show all through the
-  game -- the guided tour's words (above), what people and shops are like in each
-  neighbourhood, the sounds, the busy hours -- so Ashdod, Givatayim, Tel Aviv and Bedford
-  each feel like the town they are, not the same town on different maps. New: a script per
-  town, written once from those sources and kept in its folder (credited: Wikipedia and
-  Wikivoyage are CC BY-SA), and the hooks for each part of the game to read it. A made-up
-  town would get a made-up one.
+- The city's own story, the rest of it: each town's story is written now
+  (`cities/stories/<town>.json`: its tagline and lines, history, neighbourhoods and their
+  moods, who its main streets are named for, its food, its weekly rhythm) and the opening
+  shows it; still to come is everything else reading it -- the guided tour's words, people
+  and shops by neighbourhood, Friday afternoon and Shabbat quiet on the streets, a street's
+  name explained as you turn into it. A made-up town would get a made-up one.
 - Going into the buildings: "do we have aparatement/building layouts? i am thinking in the
   future maybe also entering the buildings, and then going into real aparatements maybe".
   Walk in through a building's door, up its stairs, into the flats. No town publishes floor
@@ -1685,13 +1703,14 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   lobby and stairwell fitted to the outline, the right number of landings, and that many
   flats each split into rooms the way a block of its age is. Only the building you walk into
   is built inside, while you are in it.
-- Something to watch while the city loads: "on bringup when the graphics load in the
-  background we will play something, from animation to a story or whatever. instead of these
-  wierd hickups where we see things pop on the screen, its not great". Today the car is shown
-  after a couple of seconds and the rest of the town goes up square by square around it --
-  buildings, trees and cars appearing in view, and a stutter or two while the browser
-  compiles its shaders. Instead: a short opening of its own over those first seconds -- a
-  flight in over the town from above (the stand-ins of the squares not built yet already
-  give it something to show), a few lines of the town's own story, a title card for the
-  level -- that hands over to the car once the squares around it and in view are up and the
-  shaders have compiled, skippable with a tap.
+- Scenarios: little movies playing out in the town. "its similar to a guide. but some
+  scenario ( aka movie i guess ) happening in a city. doesnt have to be related to the city
+  itself". Like the guided tour, a script that moves the camera and stages things -- but a
+  story of its own: a chase, a wedding procession, a delivery that goes wrong, a stray dog
+  followed across town, a first day in a new city. Its actors are the town's own people and
+  cars, sent where the script says (the scene tests already stage people, cars and lights
+  this way); the camera cuts and follows; it can be watched, or played from inside (you are
+  the one being chased). Each scenario is a level of its own in the start screen, and runs in
+  any town, its places picked from the town's map (a long street, a square, a junction with
+  lights). The same machinery as the guided tour and the opening: a script of shots.
+
