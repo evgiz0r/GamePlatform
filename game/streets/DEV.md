@@ -4327,6 +4327,33 @@ back, straight or TURN=left/right. Found:
     from the tree (1.25 needed). The corner family, with Ashdod's trunk curves: not fixed.
     `edge_pocket.gd POSTS=1 POSTS_FROM=1` lists the posts and walls at a spot and who put
     each post up.
+- **22 Nov, the fourth round (corners, tidy-up):**
+  - `drive_bumps` measures the kerb too: seconds with the car's middle within 0.3 m of the
+    asphalt's edge (wheels over it) and 0.8 m past it, a km, worst places; its starts keep
+    40 m inside the barrier (one stood on it, in Tel Aviv). 12 starts x 40 s, before ->
+    after: Givatayim 0.5 -> 0.2 s a km over the kerb, Ashdod 1.9 -> 0.2 (1 hit -> 0), Tel
+    Aviv 2.3 -> 0.1 (6 hits -> 0, the barrier start gone). Corner cutting is rare, then:
+    tenths of a second at a few corners. What it found instead:
+  - **The plan's length** (`_ap_len`) was from its first point, not from the car: a plan of
+    one long straight (Ashdod's HaMada, 173 m to a junction) never fell under the 160 m it is
+    topped up at, the turn onto HaMehkar was never planned, and the car ran on past the
+    junction at 49 km/h down a lane into a building. The same on the code of 21 Nov: old.
+    Now from the car's place on its first stretch (the HUD's distance left too).
+  - `_into_building`: a lane's end within 8 m of a solid building (the map ends a garage's
+    lane short of its door: 5.7 m there), and a dead end by the drivable ways at its end
+    (a footpath on from it made it not one).
+  - Street-name signs off any road's asphalt (`_off_asphalt` in `plant`): one stood where
+    Yehezkel Kaufman's halves cross Nahum Goldman's, in the plan's way.
+  - Posts twice 0 in Ashdod (5: a cat by a parked car sat inside a lamp post -- `cat_at` keeps
+    out of posts) and Tel Aviv (3: a building site's crane listed by two sites, a passage's
+    hoop by two side by side -- `_add_post(..., true)`); city_check's limits 0 there.
+  - `edge_pocket.gd` lists the buildings by a spot too, and `WAYS=road,dir`: what _ap_ways
+    offers at that road's end, scores and all.
+  - Open: Mandelkern's corner tree (the steering cuts that tight right turn: ~1.2 m off the
+    tree, 1.25 needed) -- the one corner case left, so the steering was not changed. The kerb
+    wedges by zebras (`kerbs_on_road` LEVEL=3: 8 single pieces 0.6-0.9 m onto the asphalt,
+    one on Keren Kayemet LeIsrael by HaNeviim): found, not fixed. Edge test after: Ashdod off
+    the road 19.3 -> 10.6 s; Tel Aviv within 25 m of the barrier 39 s (30-47 between runs).
 - **Loading steps** (user, 22 Nov: "an inner progress, like 2/12"): the city file names its
   11 parts ("reading the map: the roads (4 of 11)", `_load_part`, a frame each -- so
   `_load_city` is a coroutine now: `await` it; prepublish does) and each square round the
