@@ -4353,6 +4353,25 @@ is within 3 m (the first stood behind a road sign that filled the view). Traffic
 (`hit`). `tests/scenario.gd LEVEL=35`: PASS -- captions at 0.5/15.5/26/30.8/38 s, fire
 in every clash and the dive; shots every 3 s. Film (`STREETS_BUILD_ALL=1 tools/record_video.sh streets 35 70`): 2,760 frames, 46 s at 60 fps, about 3 minutes of compute, 16.7 MB.
 
+*The run for cover* (the user, on the first film: "we run through buildings, the player
+movement seems unreal"). The first took "the far side of the nearest building" and slid the
+camera there in a straight line in 2 s, looking backwards: through the building, at car
+speed. Now `_hide_spot` tries a spot every 3 m along each wall of every building within
+`RUN_MAX` 30 m, 0.9 m out from it (outward found by testing which side is inside: the outline's
+winding is not to be trusted). A spot must be clear itself, and the whole straight line to it
+must be clear (`_clear_line`, every 0.5 m). A spot whose building lies across its line to the
+fight wins; failing any, the nearest reachable wall. The run is a sprinter's: `RUN_ACCEL` 9,
+`RUN_SPEED` 6 m/s after a 0.25 s beat to react, the head bobbing each 1.7 m stride and swaying,
+looking where it runs with a glance back halfway, then crouching 0.35 m at the wall and
+looking up. The test counts frames with the camera below 4 m inside a building
+(`cam_in_building`, must be 0) and prints `run_m` and `cover`. Tel Aviv (35): no wall within
+16 m (towers set back off the boulevard) and none across the line to the fight within 30 --
+24.8 m to the nearest wall. Givatayim (36): 10.2 m, 8 spots really behind a building.
+
+*The film's look* (`film_mode` -> `_film_best`, native only): past QUALITY's top level, MSAA 8x,
+`scaling_3d_scale` 1.5, shadows to `FILM_SHADOW_M` 160 m on an 8192 map, soft filter high,
+`mesh_lod_threshold` 0. `RES=1920x1080` gets a 5 Mbit/s ceiling in the recorder. Tel Aviv at 1080p with all of it: 46 s in 7 min 4 s of compute (720p at the top level: 3 min), 15.0 MB.
+
 **Scenario ideas** (the user asked for them as the work goes, with grades):
 
 | # | Scenario | Effort | Notice | AI grade | Comment |
@@ -4657,12 +4676,26 @@ stood 19-26 s; on two-way streets with 3 cars in the lane, 4 of 6 stood.
   UAL1_Standard.glb put in the project for the run, removed after), each up to x3
   (RUN_CLIP_MAX). `tests/sprint_clip.gd`: slide at 2.1 / 4.5 / 7 / 9.5 m/s 0.15 / 1.35 /
   0.6 / 3.1 m/s (were ~1.2 / 3.9 / - / 6.9). Joggers: the jog, the same rate.
+- **Parked cars inside things** (a user, 22 Nov, Ashdod on the chase camera: "some parking
+  cars spawn inside trees or other objects"; `tests/parked_overlap.gd`, the car as its five
+  0.85 m circles against every other post and the walls). A kerbside car looked for posts
+  within 1.4 m of its middle and walls within 1 m: trees, lamps and wire poles stood
+  through bonnets and boots, 1767 of Ashdod's 32193 cars. `_car_fits` checks its whole
+  length (Ashdod parks 30503 now). What is put up after the cars: `_clear_of_posts` counts
+  a big post's body beyond 0.3 m (motorbikes, bike racks: "1 m clear" of a car's middle was
+  0.4 m inside it), `_in_parked_car` for cafe tables and crates (176 tables in Tel Aviv's
+  cars). After, Givatayim / Ashdod / Tel Aviv: 14 / 40 / 197 -> 1 / 1 / 5 (mapped lamps,
+  a light, a bus stop at their mapped spots: good, that tail).
 - **Loading steps** (user, 22 Nov: "an inner progress, like 2/12"): the city file names its
   11 parts ("reading the map: the roads (4 of 11)", `_load_part`, a frame each -- so
   `_load_city` is a coroutine now: `await` it; prepublish does) and each square round the
   start its 13 stages ("kerbs and pavements (5 of 13)", TILE_STAGES, shown at each `_stage`
   and by the spinner in `_pause`). `tests/load_text.gd` prints every text the loading
   screen shows, with the time. Not shown yet: world + setup (~1-3 s after the street network).
+- **Leiden's test drive (route 12) touches things on Rapenburg** (22 Nov): it arrives, 2.2 km
+  in 5.7 min, but hits a street sign at 17 km/h and post 977 at 10 km/h on Rapenburg, a 5.1 m
+  one-way canal street with BGT's trees and lamp posts 0.7 m off its asphalt.
+  `run_routes.sh 12` stages it (about 4 min). Annecy's route 13 has no hits.
 - **Islands on the asphalt in the Dutch towns: fixed, 1 m² left in each** (`city_check`'s
   "islands on the road": Delft 39 -> 1, Leiden 87 -> 1; 0 in every other town before and
   after). `tests/islands_where.gd` lists every island on asphalt, worst first, with the road

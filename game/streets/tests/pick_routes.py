@@ -36,6 +36,8 @@ CITIES = [  # level (1-based, as in LEVELS), city file, how many, crow-fly range
     (2, "bedford", 1, (800, 2500)),
     (4, "dimyon", 1, (250, 900)),
     (14, "delft", 1, (600, 1800)),   # (added with --add: route 11)
+    (33, "leiden", 1, (600, 1800)),
+    (34, "annecy", 1, (600, 1800)),
 ]
 DRIVE = {"motorway", "trunk", "primary", "secondary", "tertiary", "unclassified", "residential",
          "living_street", "road", "motorway_link", "trunk_link", "primary_link", "secondary_link", "tertiary_link"}
