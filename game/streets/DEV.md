@@ -2844,10 +2844,84 @@ cartoon figures to compare.
 - **Checked:** people_carry, people_talk, street_people (dog, pram, sitter on the seat,
   waiter), the playtest.
 - **Still to do:**
-  - The box needs a carrying pose of its own.
+  - The box needs a carrying pose of its own (the Phone modifier's way of bending the arms
+    would do it).
   - The jagged collar edge.
   - The kit's figure is still loaded first and then dropped.
   - The film's people keep their places, but have not been looked at against the film.
+- **More kinds of people** (22 Nov, later):
+  - **Skirts and dresses.** For women the "shorts" cut is a skirt: hips and thighs in its
+    colour, the calves bare. A third of the women wear one, and 35% of those a dress (top
+    and skirt one colour).
+  - **Older people.** One grown-up in seven: grey to white hair, greyed from the palette's
+    ink and bg; buzzed, bald or parted for men; more long sleeves. `a.set_meta("old")`, and
+    the walkers' code slows them to 0.72.
+  - **Children.** One walking pair in three becomes a grown-up with a child. The second
+    walker is made again by `_humanize` at 1.05-1.35 m with `set_meta("child")`: Head 1.22
+    in PartSizes, a slimmer chest, children's hair, shorts for 60%.
+    - `make()` clears `a._clip`: a person made again kept the old clip's name, and
+      `Actor3D.play` skips a clip it thinks is already on.
+- **Cafe groups seated.** `_seat_chatters` puts three chatters in four on one of their
+  table's chairs: `_table_along` holds each table's chair line, the chairs 0.62 m out,
+  facing the table. Hips sit over the seat as on a bench, at +0.42 along the facing, and
+  they play SitDown, which the talkers' library maps to Sitting_Talking. The fourth stands
+  by the table. Bench sitters now loop SitDown (Sitting_Idle) rather than seeking to the end
+  of a clip that sits down. street_people shoots one (`sp_chat`).
+- **On the phone** (`people.gd` `phone()`, the `Phone` modifier): the right hand up in front
+  of the chest, the head bowed 0.38 with a slow glance, a dark phone with a lit screen in
+  the hand (`_bone_holder` hand_r, upright).
+  - Measured axes on these bones: upper arm and forearm about +x bring the hand forward and
+    up, +z on the forearm brings it in, the Head about +x drops the chin.
+  - Settled amounts: upper arm 0.22, forearm 1.15 about (1, 0, 0.45). 0.45 and 1.55 put
+    the hand at the mouth.
+  - Who: one walker in seven with nothing in their hands, and 40% of the people waiting at
+    stops.
+  - `people_carry`'s last person is on the phone, and its sixth is a child.
+- **Carrying a box** (`people.gd` `box()`, the `Carry` modifier; `_carry` hands "box" to it on
+  these figures): both arms held still, not swinging, the hands at the box's sides low in
+  front, and the box kept between the hands every frame (upright, in metres).
+  - The base pose is the walk's own at 1.05 s, mid-stride, where the hands are level. At 0 s
+    the standing clip has the right hand 0.2 behind the left: turned from there, the arms
+    came out lopsided.
+  - The turns (`CARRY_TURNS`) came from a grid search for hands at (+-0.15, 1.07, 0.3) body
+    units with the forearms near level. Left arm: upper 0.6 about (1, 0, -0.3), forearm 0.2
+    about x. Right: 0.7 about (1, 0, 0.6), 0.2 about (1, 0, 0.2).
+  - The axes on both arms: +x brings a hand forward and up; +z on the right arm and -z on the
+    left bring it in.
+  - The elbows sit at about 1.15-1.2 body units, so a hand can't get much lower than that
+    with the forearm level.
+- **Glancing at you** (the `Glance` modifier, on everyone from `make()`):
+  - When you come within 7 m, and not behind them, half the people turn their head toward
+    you: the neck 35%, the head 65%, about the skeleton's up, at most 1.1 rad.
+  - They hold it 2.4 s, turn back, and don't look again until you've gone past 9 m.
+  - People on the phone don't look up.
+  - Where you are is set each frame from `_frame` (`me_at`: your head walking, about the
+    car's windows driving), as one static for everyone.
+  - Cost: a squared distance a person per frame; the rest only within 7 m.
+  - Who looks is `posmod(seed * 7919, 100) < 50`, not a draw from `rng`: one more draw in
+    `make()` would reshuffle everyone's clothes.
+- **The collar** (`COLLAR_BELOW`, the shader's green field):
+  - The line between skin and shirt was a zigzag. Two reasons:
+    - The parts are per vertex, so the line followed the triangles.
+    - Round the neck, vertices moved by the chest and by the neck alternate, so a line by
+      bone zigzags whatever the height.
+  - Now each body vertex carries a "dressed" field in its colour's green: 1 clothed, 0 skin.
+    Within 0.13 of the neck's middle, it goes from 1 to 0 by height across the collar line.
+    The shader picks skin or shirt by green > 0.5, so the line is an even height across
+    the triangles.
+  - The line is 0.015 below the neck bone's root on each body. The man's neck is 3.5 higher
+    than the woman's, and one height for both bared his chest.
+  - Unchanged: other hems still follow the triangles. A band of the shirt's colour can show
+    between skin and trousers at a shorts hem, half as wide as before. The same field would
+    fix those if they show.
+- **Clothes are not skin** (`CLOTH_V`, `SKIN_APART`):
+  - A cream shirt in the sun drew (1, 1, 0.81), a pale yellow that read as bare to the waist.
+  - Shirts and trousers are now capped at HSV value 0.72.
+  - Clothes are also kept 0.2 (sRGB distance) from the skin as drawn (`_skin_seen`: the
+    texture times the tone's factor), taking the next colour in the list, without a draw.
+  - `tests/people_glance.gd`'s `_collar` shots show both.
+- **Light skin still glares** in full sun, the face going pale yellow. That comes from the
+  scene's exposure, not the people, and is part of the open whole-scene colour item.
 - **Gotchas found in the trial** still hold:
   - The meshes are `SuperHero_Male` and `Superhero_Female`: match names without case.
   - The female's custom arrays break a rebuild with `add_surface_from_arrays`; `_join`
@@ -4037,7 +4111,8 @@ level 1, 45 playgrounds; `tests/places.gd` shoots one from above and at eye heig
 The user: "a virtual tour in a city ... where we stop and look and explain", then "some
 scenario ( aka movie i guess ) happening in a city", then "tours will be part of all
 scenarios [new section]". `scenario.gd` plays a script of beats (its header lists them) after
-the opening; LEVELS 16 is the list page ("Scenarios" group, `_walk_list_open("scenarios")`),
+the opening; LEVELS 16 is the list page (in the "Drive" group with the Cities list -- a third group of its
+own ran off a phone's start screen; `_walk_list_open("scenarios")`),
 17-20 the towns' tours, 21-22 the getaways (the Cities list leaves out anything with a
 "scenario"). A level's number is its place: add at the end.
 
@@ -4119,6 +4194,49 @@ body's side; not a bus or a motorbike) when nearer than your own: your car is pu
 stood, it leaves the traffic (`alive` false). Parked cars are merged into a square's batches
 (`_build_lots`), so one cannot be lifted out yet: taking one would leave its copy standing.
 `tests/walk_take.gd`: jog 4.5, sprint 9.5, a sedan held beside you taken (PASS).
+
+## Racer at a red, and what gives under the car (22 Nov 2026, night)
+
+The user: "racer waits on red light after a car? we were 2 cars standing in a red light on a
+3 lane street". `tests/racer_queue.gd` stages it: a lit junction whose way in has 2+ lanes,
+held at red, CARS standing at the line (LANE, or ALL_LANES=1 for every lane), racer from 150 m
+back, straight or TURN=left/right. Found:
+- **A car in front, other lanes free**: racer gets by (it changes lane early) -- straight, left
+  and right, 1 and 2 cars: PASS. The older pass (`_ap_pass_bus`) refused whenever the plan
+  turned at the next junction: now not for a car standing, racer's (racer's own passing is
+  `_ap_race_by` now -- the racer session's, merged 22 Nov 01:00; with CARS=1 LANE=1 its checks
+  still refuse and racer stands 23 s: handed to that session, not changed here).
+- **Every lane full** (ALL_LANES=1): only the pavement is left (`_ap_mount_by`), and it never
+  went. Three bugs: tried only once stood 6 m behind the car (the way up ran through that
+  car's back) -- now also while coming up, 40 m back, the way up 14 m short of it; the way
+  up's offset measured from `_lane_off` (the default lane), not where the car is; and the
+  points bent in place, each one's direction read from the one before (already bent) and
+  after (not yet): 1 m apart and 6.6 m over, the push leant ~70 degrees forward. Now from the
+  plan as it was, each point to the pavement's middle by where it lies across the road.
+  After that, Givatayim's pavements are lined with the town's own trees (1 m in on 2.4 m):
+  no car gets by them, so a full red still holds racer there (six junctions tried). Next, as
+  the user asked: squeeze between the lanes, and the oncoming lanes on two-way streets.
+- `_ap_pass_bus` bends the same way, in place: its passes lean forward and fall short of a
+  lane. Bent properly (from the plan as it was) racer's test touched kerb posts on Marathon's
+  bend 3-4 times a drive (0 before), so it is left as it was -- its shortfall is what its
+  tuning was done with. Open: bend it properly and retune where it goes back in.
+- **What gives** (the user: "things bit more breakable that dont completely stop us", and
+  which: kerb railings, bollards and posts on medians, low garden walls, hedges). `add_wall`'s
+  `gives` (`_wall_give`): railings (furniture `_fence_line` rail, 1.05 m), garden walls under
+  0.6 m (`SMASH_WALL_H`), hedges; posts 0.07 m and thinner (railings' posts). Moving faster
+  than 2.5 m/s (`SMASH_V`), your car -- and racer, also when it plans a way round -- goes
+  through them (`_smash`, `_smashed`, `_smash_through`: x0.97 a tick in contact, x0.985 in a
+  hedge, sparks or leaves, a knock). Autodrive keeping the rules does not (it leans on a
+  railing as before). What broke stays drawn (only its hold goes). Bins, bollards and signs
+  were already knocked over or bent (`_knock`, `_bend_sign`). `tests/smash.gd` at 30 km/h:
+  railings 3 of 3 through (6-21 km/h after), low walls 3 of 3 (24-27), hedges 3 of 3 (to a
+  crawl), tall fences 0 of 3 -- PASS. (Its traps: the car must be held at speed, or it coasts
+  to a stop at the line; a garden wall is laid by each plot, so a low one can share its line
+  with a taller one; railings and hedges are laid in pieces under 2.5 m.)
+- **A drive is a fair before/after only when it runs alone.** racer.gd's test beside three
+  other Godot runs touched posts and cars 1-3 times a drive, in plain autodrive too; alone, on
+  the same code, 0 and 0, to the tenth of a second the same as main. The clock-timed budgets
+  (see "The drives repeat -- sometimes") make a busy machine a different drive.
 
 ## Open problems
 

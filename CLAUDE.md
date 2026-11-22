@@ -58,7 +58,9 @@ that screen. The menu itself has no level picking. Self-play skips the start scr
 Dictionaries with a `"name"` are picked by name; give them a `"group"` too and the start
 screen lists each group under its heading, side by side (a level's `"sort"` orders it within
 its group; its number is still its place in `LEVELS`, so reordering the screen never
-renumbers the levels).
+renumbers the levels). **Two groups at most:** each column is at least 250 px of the 640, so a
+third runs off a phone's screen -- put the new list under an existing heading instead, and
+check with `tools/menu_shot.sh levels:<game>`.
 
 Nothing outside a game's own folder should ever name that game. If you find yourself
 writing its name in a doc, a tool or another game, that is the thing that will rot when it

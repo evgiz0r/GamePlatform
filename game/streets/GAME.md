@@ -1695,6 +1695,13 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
 
 ## Later (said, not built)
 
+- Racer boxed in at a red, every lane queued (22 Nov 2026): "1 2" -- squeeze between the
+  lanes, and on two-way streets past the queue in the oncoming lanes. "But those low height
+  splitters between lanes and pavements. If they are low enough lets make it possible for our
+  car to go to the other side. And things bit more breakable that dont completely stop us.
+  Some i think just break and still stuck in place. Not everything but many small items we
+  could just not be blocked by". (Being built: see DEV.md, racer.)
+
 - Not just driving: the same baked city could be walked, or used by another game.
 - Crashes, what is still to come: a sign post bent, a fence panel or a hedge pushed in, a
   scrape mark on the wall the car rubbed.
@@ -1706,8 +1713,10 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   low-poly characters are the limit now. Done: builds varied, and things carried (shopping
   bags, handbags, backpacks, a box). Hands while talking: done. Done: every person is now one of Quaternius'
   free Universal Base Characters with the Universal Animation Library's moves, dressed in
-  code (DEV.md "The people"). Still to do: a pose for carrying a box. Also: looking at a phone; reacting
-  to the car (the line above).
+  code (DEV.md "The people"). Also done: skirts and dresses, older people,
+  children walking with a grown-up, cafe groups seated at their tables talking, people on
+  their phones, a box carried in both arms, people glancing at you as you pass. Still to do:
+  reacting to the car (the line above).
 - Scenarios: "Alien invasion, maybe special scenario, maybe in any city. if i activate. some
   aliens come down around the city i am in"; "just the concept of scenarios, where aliens
   are one of those. more stuff - titans, dragons, (dont want army stuff though, gives wrong
