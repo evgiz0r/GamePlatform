@@ -193,6 +193,7 @@ const SEG_CELL := 24.0               ## spatial hash cell for road segments (m)
 const BLD_CELL := 24.0
 const CHUNK := 400.0                 ## buildings and trees are merged per square this big, for culling
 const VIEW_RANGE := 1100.0           ## building chunks further than this are not drawn
+const SMALL_RANGE := 260.0           ## things drawn no further than this go in quarter squares (_chunked)
 const DETAIL_RANGE := 260.0          ## kerbs, road markings, garden walls: drawn this far
 const GROUND_CELL := 400.0           ## squares the ground details are cut into (big: each layer is a draw a square)
 const TREE_RANGE := 550.0
@@ -2768,9 +2769,10 @@ func _build_world() -> bool:
 	# one shadow map over the near streets, not the default four cascades: those drew every
 	# shadow-casting thing in view four more times a frame, more than the view itself
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
-	# (a filmed walk starts at the best look in a browser too: it is there to be set beside its
-	# film, and on foot a lower frame rate is no hardship -- see FPS_LOW_WALK)
-	_set_quality(QUALITY_WEB if OS.has_feature("web") and not _place.has("walk") else QUALITY.size() - 1)
+	# (the same for every place: a walk once started at the best look in a browser and stepped
+	# down only under 28 fps, to be set beside its film; the user, 22 Nov: "render less ... and
+	# same rule for all". Tests set a walk's quality themselves.)
+	_set_quality(QUALITY_WEB if OS.has_feature("web") else QUALITY.size() - 1)
 	sun.rotation_degrees = SKIES["day"]["sun"]
 	_build_sky_dome()
 	cam.near = 0.3
@@ -12001,10 +12003,17 @@ func _chunked(mesh: Mesh, xforms: Array, range_end: float, colours: Array = [], 
 	# (`cell_m`: squares that size whatever is being built -- a square's range counts to its
 	# middle, so a 400 m one drew what it held out to its range plus 284 m)
 	var cell := cell_m if cell_m > 0.0 else (TILE if _tiled else clampf(range_end, 220.0, CHUNK))
+	# a little thing seen to 200 m or less, built a square at a time: the square cut in four, so
+	# its range counts from a 200 m cell's middle, not a 400 m square's (AC units meant for 140 m
+	# were drawn to 424, 9,700 of them in view from one walk: 814k triangles; a draw or two more
+	# a kind)
+	var quarter := _tiled and cell_m <= 0.0 and range_end <= SMALL_RANGE
+	if quarter:
+		cell = TILE * 0.5
 	var groups := {}
 	for i in range(xforms.size()):
 		var t: Transform3D = xforms[i]
-		var key := _tile if _tiled and cell_m <= 0.0 else _cell(Vector2(t.origin.x, t.origin.z), cell)
+		var key := _tile if _tiled and cell_m <= 0.0 and not quarter else _cell(Vector2(t.origin.x, t.origin.z), cell)
 		if not groups.has(key):
 			groups[key] = []
 		(groups[key] as Array).append(i)
@@ -13439,6 +13448,14 @@ vec3 wet_mirror(vec3 vd) {   // vd: from the eye to the point, in the world
 }
 """
 const FS_PX := 2048                  ## the picture's longer side (px): ~1.6 m a pixel over Givatayim
+## A phone's browser, or any device in slow-frames mode, draws it at half that: the picture is
+## drawn, read back, converted and mipmapped in one frame (a phone: building ~0.6-1 s + "rest"
+## ~0.7-1 s, a 2-second freeze), and a quarter of the pixels is a quarter of that work. The far
+## ground's shadows are coarser (~3 m a pixel), little to see on a phone's screen.
+func _fs_px() -> int:
+	if _slow_frames or OS.has_feature("web_android") or OS.has_feature("web_ios"):
+		return FS_PX / 2
+	return FS_PX
 const FS_DARK_EVE := 0.4             ## the same in the evening: a low sun lights the ground less, so its shadows take less
 const FS_DARK := 0.55                ## the share of the light a shadow takes off the ground (the real ones: tests/far_shadows.gd)
 var _fs_tex: ImageTexture = null
@@ -13494,7 +13511,7 @@ func _build_far_shadows(chunked := false, for_sun := "") -> void:
 		return
 	var off := Vector2(L.x, L.z) / -L.y      # a shadow's reach on the ground per metre of height
 	var t0 := Time.get_ticks_usec()
-	var mpp := maxf(1.0, maxf(_bounds.size.x, _bounds.size.y) / FS_PX)
+	var mpp := maxf(1.0, maxf(_bounds.size.x, _bounds.size.y) / _fs_px())
 	var w := int(ceil(_bounds.size.x / mpp))
 	var h := int(ceil(_bounds.size.y / mpp))
 	var o := _bounds.position
@@ -13572,9 +13589,13 @@ func _build_far_shadows(chunked := false, for_sun := "") -> void:
 	var g1 := PackedColorArray([Color(0, 1, 0)])
 	for kind: String in ["park", "grass", "wood", "pitch"]:
 		for ring: PackedVector2Array in _area_rings.get(kind, []):
+			if chunked and Time.get_ticks_usec() > _yield_at:   # (all of these at once: most of a second on a phone)
+				await _pause()
 			_canvas_ring(green, ring, Color(0, 1, 0))
 	var med := String(_place.get("look", "")) == "med"
 	for r: Dictionary in _roads:
+		if chunked and Time.get_ticks_usec() > _yield_at:
+			await _pause()
 		if med and r["drive"] and r["k"] in ["residential", "living_street"]:
 			var hw: float = float(r["w"]) * 0.5
 			for sgn: float in [-1.0, 1.0]:   # the front gardens, behind the pavements
@@ -13584,10 +13605,14 @@ func _build_far_shadows(chunked := false, for_sun := "") -> void:
 	var bare: RID = layer.call(CanvasItemMaterial.BLEND_MODE_MUL, true)
 	var keep_red := PackedColorArray([Color(1, 0, 1)])
 	for r: Dictionary in _roads:
+		if chunked and Time.get_ticks_usec() > _yield_at:
+			await _pause()
 		var wide: float = float(r["w"]) + (2.0 * (KERB_W + PAVE_W) if r["drive"] and _kerbed(r) else 0.6)
 		RenderingServer.canvas_item_add_polyline(bare, r["pts"], keep_red, wide)
 	for kind: String in ["water", "parking", "plaza", "school"]:
 		for ring: PackedVector2Array in _area_rings.get(kind, []):
+			if chunked and Time.get_ticks_usec() > _yield_at:
+				await _pause()
 			_canvas_ring(bare, ring, Color(1, 0, 1))
 	var feet: RID = layer.call(-1, false)
 	RenderingServer.canvas_item_add_triangle_array(feet, fidx, fpts, fcols)
@@ -17785,14 +17810,16 @@ func _physics_process(dt: float) -> void:
 		_p("explore")
 		_log.tick(self, dt)
 		return
-	if PInput.just_pressed("action_a") and not _auto:
+	if _watching():
+		pass   # (autodrive is the scenario's or the route's to switch)
+	elif PInput.just_pressed("action_a") and not _auto:
 		_set_auto(true)
 	elif PInput.just_pressed("action_b") and _auto:
 		_set_auto(false)
 	if traffic_now:
 		_traffic.tick(wdt)
 	_p("traffic")
-	var ctl: Array = _autodrive(dt) if _auto else _manual(dt)
+	var ctl: Array = _autodrive(dt) if _auto else (_manual(dt) if not _watching() else [0.0, 1.0, 0.0])   # (watched: held on the brake)
 	if _auto:
 		var turn := _ap_turn_ahead()
 		if turn != 0 and _blink != turn:
@@ -17960,9 +17987,8 @@ const STEP_GAIN := 1.12
 const FLOOR_S := 300.0
 const FPS_LOW := 45.0
 const FPS_FULL := 56.0
-## On a filmed walk the look matters more than the rate (the user: "the highest possible
-## quality in the view of the walk"), and a walk's camera moves slowly: a step down only
-## under 28 fps (a frame "long" past 50 ms), and back up at 40.
+## (Unused since 22 Nov, "same rule for all": a walk had a gentler ladder -- a step down only
+## under 28 fps, back up at 40 -- for "the highest possible quality in the view of the walk".)
 const FPS_LOW_WALK := 28.0
 const FPS_FULL_WALK := 40.0
 const STUTTER := 0.1
@@ -18026,7 +18052,7 @@ func _judge_fps(dt: float) -> void:
 		return   # a hitch: not the frame rate
 	_fps_t += dt
 	_fps_frames += 1
-	var walk := _place.has("walk")
+	var walk := false   # (a walk once had its own, gentler ladder, FPS_LOW_WALK; now the same rule for all)
 	if dt > (0.05 if walk else 0.033):
 		_fps_long += 1
 	if _fps_t < 2.0:
@@ -25263,6 +25289,15 @@ func _route_begin() -> void:
 	_show_banner("route %d: %s → %s" % [int(_route["id"]), _route["from"], _route["to"]], 4.0)
 	Probe.event("route", {"id": int(_route["id"])})
 
+## Walks, test drives and the scenarios that play themselves are watched, not driven (the user,
+## 22 Nov: "About walks and test drives lets not give the user control. Just simulation" -- and
+## the tours as well). No wheel, no pedals, no buttons of the game's own; the shell's pause and
+## exit, and a walk's speed. Not the getaway: that one is yours to drive.
+func _watching() -> bool:
+	if not _film.is_empty() or not _route.is_empty():
+		return true
+	return _scenario != null and String(_place.get("scenario", "")) != "getaway"
+
 ## a drawn button that _pick_tap() can press
 func _tap_button(text: String, cb: Callable) -> Button:
 	var b := UIKit.button(text, func(): pass)
@@ -26353,8 +26388,8 @@ func _input(event: InputEvent) -> void:
 			Audio.play("click", 0.05, -8.0)
 			_walk_faster()
 			return
-	if not _loaded or not _film.is_empty():
-		return
+	if not _loaded or _watching():
+		return   # (a walk, a test drive, a tour: watched, not driven -- the shell's pause and exit only)
 	if _picker != null:   # everything goes to the picker while it is open
 		var mb := event as InputEventMouseButton
 		if mb != null and mb.pressed and not Flow.pointer_over_hud():

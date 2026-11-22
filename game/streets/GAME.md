@@ -87,6 +87,17 @@ bollards, yellow parking boards (a Dutch street's rows of short bollards; a Cana
 suburb's few hydrants and bins). Street trees beside a road are pruned up, branches from 2.2
 m and leaves from 2.5, so a walk goes under them, not through them.
 
+**Watched, not driven.** Walks, test drives and the tours and stories that play themselves are
+to watch: no wheel, pedals or buttons of the game's own, only pause, exit and a walk's speed.
+(The getaway is still yours to drive.) Every place starts at the same quality and steps down
+by the same rule; little things on the buildings (AC units, balconies, washing) are drawn
+to about 280 m, not 420, and the buildings themselves as far as before, so a tower far off
+still shows.
+
+> About walks and test drives lets not give the user control. Just simulation. And lets try to
+> optimize a bit to render less or whatever takes performance and not rly needed. And same
+> rule for all. But if there is far high building we do want to see it.
+
 > lets add a progress bar to the walks so we know how much we passed, and maybe a speedup
 
 > do we have evening/night walks? if no lets add/change existing to those. if yes lets
