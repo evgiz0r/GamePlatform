@@ -23199,8 +23199,11 @@ func _ap_pass_bus(lead: Array) -> bool:
 	var fwd := _fwd()
 	var left := Vector2(fwd.y, -fwd.x)
 	var gap: float = lead[0]
-	if _ap_turn_ahead() != 0:
-		return false   # (a junction just after it: stay in lane)
+	if _ap_turn_ahead() != 0 and not (racing_by and float(bus.v) < 1.0):
+		return false   # (a junction just after it: stay in lane -- but racer goes round a car
+		               # standing at a red and turns from where it is: refused whenever its plan
+		               # turned at that junction, it waited behind the car for the whole red, the
+		               # user's "racer waits on red light after a car", tests/racer_queue.gd)
 	# a moving car (racer.gd): it goes on meanwhile, so the way out runs as far on as it gets
 	# in the time it takes to go by, and the lane over must be clear for that and for what
 	# comes along it at a town's pace meanwhile
@@ -23247,15 +23250,14 @@ func _ap_pass_bus(lead: Array) -> bool:
 	var keep_v := _ap_v.duplicate()
 	var keep_lim := _ap_lim.duplicate()
 	_ap_densify(s0 + end_s + 10.0, 2.0)
-	var orig := _ap_pts.duplicate()   # (directions and lengths from the plan as it was: see _ap_mount_by)
 	for k in range(1, _ap_pts.size()):
-		s += (orig[k - 1] as Vector2).distance_to(orig[k])
+		s += _ap_pts[k - 1].distance_to(_ap_pts[k])
 		if s > end_s + 8.0:
 			break
 		var t := clampf((s - start_s) / 8.0, 0.0, 1.0) * clampf((end_s + 8.0 - s) / 8.0, 0.0, 1.0)
 		if t <= 0.0:
 			continue
-		var kd := ((orig[mini(k + 1, orig.size() - 1)] as Vector2) - (orig[k - 1] as Vector2)).normalized()
+		var kd := (_ap_pts[mini(k + 1, _ap_pts.size() - 1)] - _ap_pts[k - 1]).normalized()
 		_ap_pts[k] += Vector2(kd.y, -kd.x) * lane_w * t * sgn
 	if true:
 		# (the way out checked for what stands there, not cars alone: a post, a tree, a
@@ -23465,8 +23467,8 @@ func _ap_mount_by(lead: Array) -> bool:
 		if not ok:
 			break
 	_smash = false
-	if ok and _ap_turn_ahead() != 0:
-		ok = false
+	if ok and _ap_turn_ahead() != 0 and float(lead[1]) >= 1.0:
+		ok = false   # (turning just after: stay in lane -- unless the queue stands: see _ap_pass_bus)
 	if not ok:
 		_ap_pts = keep_pts
 		_ap_v = keep_v

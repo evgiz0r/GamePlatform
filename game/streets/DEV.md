@@ -4097,6 +4097,49 @@ stood, it leaves the traffic (`alive` false). Parked cars are merged into a squa
 (`_build_lots`), so one cannot be lifted out yet: taking one would leave its copy standing.
 `tests/walk_take.gd`: jog 4.5, sprint 9.5, a sedan held beside you taken (PASS).
 
+## Racer at a red, and what gives under the car (22 Nov 2026, night)
+
+The user: "racer waits on red light after a car? we were 2 cars standing in a red light on a
+3 lane street". `tests/racer_queue.gd` stages it: a lit junction whose way in has 2+ lanes,
+held at red, CARS standing at the line (LANE, or ALL_LANES=1 for every lane), racer from 150 m
+back, straight or TURN=left/right. Found:
+- **A car in front, other lanes free**: racer gets by (it changes lane early) -- straight, left
+  and right, 1 and 2 cars: PASS. The older pass (`_ap_pass_bus`) refused whenever the plan
+  turned at the next junction: now not for a car standing, racer's (racer's own passing is
+  `_ap_race_by` now -- the racer session's, merged 22 Nov 01:00; with CARS=1 LANE=1 its checks
+  still refuse and racer stands 23 s: handed to that session, not changed here).
+- **Every lane full** (ALL_LANES=1): only the pavement is left (`_ap_mount_by`), and it never
+  went. Three bugs: tried only once stood 6 m behind the car (the way up ran through that
+  car's back) -- now also while coming up, 40 m back, the way up 14 m short of it; the way
+  up's offset measured from `_lane_off` (the default lane), not where the car is; and the
+  points bent in place, each one's direction read from the one before (already bent) and
+  after (not yet): 1 m apart and 6.6 m over, the push leant ~70 degrees forward. Now from the
+  plan as it was, each point to the pavement's middle by where it lies across the road.
+  After that, Givatayim's pavements are lined with the town's own trees (1 m in on 2.4 m):
+  no car gets by them, so a full red still holds racer there (six junctions tried). Next, as
+  the user asked: squeeze between the lanes, and the oncoming lanes on two-way streets.
+- `_ap_pass_bus` bends the same way, in place: its passes lean forward and fall short of a
+  lane. Bent properly (from the plan as it was) racer's test touched kerb posts on Marathon's
+  bend 3-4 times a drive (0 before), so it is left as it was -- its shortfall is what its
+  tuning was done with. Open: bend it properly and retune where it goes back in.
+- **What gives** (the user: "things bit more breakable that dont completely stop us", and
+  which: kerb railings, bollards and posts on medians, low garden walls, hedges). `add_wall`'s
+  `gives` (`_wall_give`): railings (furniture `_fence_line` rail, 1.05 m), garden walls under
+  0.6 m (`SMASH_WALL_H`), hedges; posts 0.07 m and thinner (railings' posts). Moving faster
+  than 2.5 m/s (`SMASH_V`), your car -- and racer, also when it plans a way round -- goes
+  through them (`_smash`, `_smashed`, `_smash_through`: x0.97 a tick in contact, x0.985 in a
+  hedge, sparks or leaves, a knock). Autodrive keeping the rules does not (it leans on a
+  railing as before). What broke stays drawn (only its hold goes). Bins, bollards and signs
+  were already knocked over or bent (`_knock`, `_bend_sign`). `tests/smash.gd` at 30 km/h:
+  railings 3 of 3 through (6-21 km/h after), low walls 3 of 3 (24-27), hedges 3 of 3 (to a
+  crawl), tall fences 0 of 3 -- PASS. (Its traps: the car must be held at speed, or it coasts
+  to a stop at the line; a garden wall is laid by each plot, so a low one can share its line
+  with a taller one; railings and hedges are laid in pieces under 2.5 m.)
+- **A drive is a fair before/after only when it runs alone.** racer.gd's test beside three
+  other Godot runs touched posts and cars 1-3 times a drive, in plain autodrive too; alone, on
+  the same code, 0 and 0, to the tenth of a second the same as main. The clock-timed budgets
+  (see "The drives repeat -- sometimes") make a busy machine a different drive.
+
 ## Open problems
 
 - **22 Nov, the second round of general bugs** (each with the test that measured it):
