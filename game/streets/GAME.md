@@ -219,6 +219,11 @@ seat. (Before, some said what a tap would switch to -- "day" at night.) Paused b
 "resume" sits in the middle of the screen. Keys do everything too; "keys" in the drawer
 lists them.
 
+The buttons are drawn small to keep the screen clear, but on a touch screen a finger counts
+up to 10 px off one (about 2 mm), the nearest button taking it, and the stick's ring stays
+the stick's. Your choices are kept for next time (from 22 Nov): the lists' time of day and
+autodrive style, the buttons folded away, the steering assist.
+
 **Autodrive is a racer by default.** Switched on by you -- its button, "go to… drive to",
 a street held from above -- autodrive drives as the racer, no green wave. The style is
 yours to change, in the chip beside the button or the drawer.

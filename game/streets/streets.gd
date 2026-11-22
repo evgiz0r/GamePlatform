@@ -1371,6 +1371,9 @@ func start(_config: Dictionary) -> void:
 	SaveData.data["volume_sfx"] = SFX_SCALE
 	set_lives(0)
 	_touch_seen = DisplayServer.is_touchscreen_available()   # phones get the stick hint at once
+	_prefs_load()
+	_hud_folded = bool(_prefs.get("folded", false))
+	_assist = bool(_prefs.get("assist", true))
 	_keep_screen_on(true)
 	_make_font()
 	_tones()
@@ -25981,6 +25984,52 @@ func _walk_list_open(kind := "walks") -> void:
 static var _list_time := "day"
 static var _routes_style := "rules"
 static var _cities_style := "racer"
+
+## ---- the player's choices, kept between launches ----------------------------------------
+## The lists' settings above, the buttons folded away, the steering assist: kept in the game's
+## own file (not SaveData's: that is the shell's, and a game holds its volume lowered in
+## SaveData.data while it runs -- saving that dictionary would keep the lowered volume). Until
+## 22 Nov they lasted only while the app ran (static vars). Not read or written by self-play or the
+## scene tests (STREETS_PREFS=0, which tests/run.sh sets): a test must start from the defaults,
+## and must not change what the player chose on this machine.
+const PREFS_PATH := "user://streets_prefs.json"   ## (STREETS_PREFS_PATH for a test's own file)
+static var _prefs: Dictionary = {}   ## what was read; {} until the first start
+static var _prefs_read := false
+
+func _prefs_path() -> String:
+	var p := OS.get_environment("STREETS_PREFS_PATH")
+	return p if p != "" else PREFS_PATH
+
+func _prefs_on() -> bool:
+	return OS.get_environment("STREETS_PREFS") != "0" and not Flow.skip_level_pick
+
+## read once a launch: the lists' settings straight in, the rest kept for start() to apply
+func _prefs_load() -> void:
+	if _prefs_read or not _prefs_on():
+		return
+	_prefs_read = true
+	if not FileAccess.file_exists(_prefs_path()):
+		return
+	var f := FileAccess.open(_prefs_path(), FileAccess.READ)
+	var d = JSON.parse_string(f.get_as_text()) if f != null else null
+	if not d is Dictionary:
+		return
+	_prefs = d
+	if String(d.get("time", "")) in ["day", "evening", "night"]:
+		_list_time = String(d["time"])
+	if String(d.get("routes_style", "")) in ["rules", "racer"]:
+		_routes_style = String(d["routes_style"])
+	if String(d.get("cities_style", "")) in ["rules", "racer"]:
+		_cities_style = String(d["cities_style"])
+
+func _prefs_save() -> void:
+	if not _prefs_on():
+		return
+	_prefs = {"time": _list_time, "routes_style": _routes_style, "cities_style": _cities_style,
+		"folded": _hud_folded, "assist": _assist}
+	var f := FileAccess.open(_prefs_path(), FileAccess.WRITE)
+	if f != null:
+		f.store_string(JSON.stringify(_prefs))
 var _start_time := "day"             ## the time of day to switch to once the city is up (config "time")
 
 ## the row: [normal][racer]  [day][evening][night] from `at` (walks: the times only) -- or,
@@ -25997,11 +26046,13 @@ func _list_settings(at: Vector2, kind: String, again: Callable, k := 1.0, style_
 					_routes_style = st[1]
 				else:
 					_cities_style = st[1]
+				_prefs_save()
 				again.call()])
 	var times: Array = []
 	for tm: String in ["day", "evening", "night"]:
 		times.append([tm, {"day": 34.0, "evening": 52.0, "night": 42.0}[tm] * k, _list_time == tm, func():
 			_list_time = tm
+			_prefs_save()
 			again.call()])
 	var x := at.x
 	if style_at != Vector2.INF:
@@ -26944,6 +26995,7 @@ func _more_tap(p: Vector2) -> bool:
 				"assist":
 					if (k == "on") != _assist:
 						_assist = k == "on"
+						_prefs_save()
 						_show_banner("steering assist " + k + (" when you drive" if _auto else ""), 1.2)
 						Probe.event("assist", {"on": _assist})
 				"act":
@@ -26961,64 +27013,89 @@ func _more_tap(p: Vector2) -> bool:
 func _hud_tap(p: Vector2) -> bool:
 	if _more_tap(p):
 		return true
-	if _paused and not _zoomed() and RESUME_BTN.grow(3).has_point(p):
-		_toggle_pause()
-		return true
-	if _hud_folded:
-		if SHOW_BTN.grow(3).has_point(p):
+	match _hud_hit(p):
+		"resume":
+			_toggle_pause()
+		"show":
 			_hud_folded = false
-			return true
-		return false
-	if AUTO_BTN.grow(3).has_point(p):
-		if not _walking:
+			_prefs_save()
+		"auto":
 			_auto_by_hand(not _auto)
-	elif _auto and not _walking and STYLE_BTN.grow(3).has_point(p):
-		_set_ap_style(AP_STYLES[(AP_STYLES.find(_ap_style_now()) + 1) % AP_STYLES.size()])
-	elif GOTO_BTN.grow(3).has_point(p):
-		_open_picker.call_deferred()   # after this click, so it does not hit the list
-	elif WALK_BTN.grow(3).has_point(p):
-		_toggle_walk()
-	elif MORE_BTN.grow(2).has_point(p):
-		_more_open = true
-	elif FOLD_BTN.grow(2).has_point(p):
-		_hud_folded = true
-		_show_banner("buttons folded away: \"show\" brings them back", 1.6)
-	elif VIEW_BTN.grow(2).has_point(p):
-		_next_view()
-	elif MAP_BTN.grow(2).has_point(p) and _map_btn_shown():
-		_toggle_map()
-	elif PERF_BTN.grow(2).has_point(p):
-		if _perf_view or _trace_view:   # (the drive map too: P and the drawer go round to it)
-			_trace_view = false
-			_perf_view = false
-			_perf_lbl.visible = false
-		else:
-			_toggle_perf()
-	elif LOOK_BTN.grow(2).has_point(p) and not _walking and not _auto:
-		_toggle_look()
-	else:
-		return false
+		"style":
+			_set_ap_style(AP_STYLES[(AP_STYLES.find(_ap_style_now()) + 1) % AP_STYLES.size()])
+		"goto":
+			_open_picker.call_deferred()   # after this click, so it does not hit the list
+		"walk":
+			_toggle_walk()
+		"more":
+			_more_open = true
+		"fold":
+			_hud_folded = true
+			_prefs_save()
+			_show_banner("buttons folded away: \"show\" brings them back", 1.6)
+		"view":
+			_next_view()
+		"map":
+			_toggle_map()
+		"perf":
+			if _perf_view or _trace_view:   # (the drive map too: P and the drawer go round to it)
+				_trace_view = false
+				_perf_view = false
+				_perf_lbl.visible = false
+			else:
+				_toggle_perf()
+		"look":
+			_toggle_look()
+		_:
+			return false
 	return true
+
+## the HUD's buttons showing now, by name -> their box (as _draw_hud draws them)
+func _hud_buttons() -> Dictionary:
+	var out := {}
+	if _paused and not _zoomed() and not _more_open:
+		out["resume"] = RESUME_BTN
+	if _hud_folded:
+		out["show"] = SHOW_BTN
+		return out
+	if not _walking:
+		out["auto"] = AUTO_BTN
+		if _auto:
+			out["style"] = STYLE_BTN
+	out["goto"] = GOTO_BTN
+	out["walk"] = WALK_BTN
+	out["more"] = MORE_BTN
+	out["fold"] = FOLD_BTN
+	out["view"] = VIEW_BTN
+	out["perf"] = PERF_BTN
+	if _map_btn_shown():
+		out["map"] = MAP_BTN
+	if not _walking and not _auto:
+		out["look"] = LOOK_BTN
+	return out
+
+## Which button a tap at p is for, "" for none. A mouse must land on it (3 px to spare); a
+## finger has HIT_TOUCH px round each, and the nearest box wins where two reach -- the boxes
+## are drawn small (the user wanted the screen kept clear) but 22 px is about 4 mm on a phone
+## held sideways, under half a fingertip.
+const HIT_TOUCH := 10.0
+func _hud_hit(p: Vector2) -> String:
+	var slop := HIT_TOUCH if _touch_seen else 3.0
+	var best := ""
+	var best_d := INF
+	var btns := _hud_buttons()
+	for k: String in btns:
+		var r: Rect2 = btns[k]
+		var d := Vector2(maxf(0.0, maxf(r.position.x - p.x, p.x - r.end.x)), maxf(0.0, maxf(r.position.y - p.y, p.y - r.end.y))).length()
+		if d <= slop and d < best_d:
+			best = k
+			best_d = d
+	return best
 
 ## is there a button (or the open drawer) under p? -- a touch there is the button's, not the
 ## stick's or the view's (the button itself acts on the click the touch emulates)
 func _on_hud_button(p: Vector2) -> bool:
-	if _more_open or _keys_open:
-		return true
-	var rs: Array = [SHOW_BTN] if _hud_folded else [AUTO_BTN, GOTO_BTN, WALK_BTN, MORE_BTN, FOLD_BTN, VIEW_BTN, PERF_BTN]
-	if not _hud_folded:
-		if _auto:
-			rs.append(STYLE_BTN)
-		if not _walking and not _auto:
-			rs.append(LOOK_BTN)
-		if _map_btn_shown():
-			rs.append(MAP_BTN)
-	if _paused and not _zoomed():
-		rs.append(RESUME_BTN)
-	for r: Rect2 in rs:
-		if r.grow(3).has_point(p):
-			return true
-	return false
+	return _more_open or _keys_open or _hud_hit(p) != ""
 
 ## The minimap's lines round a point, in metres from it: outlines, paths, minor and major
 ## streets, the city limits, places. Gathered again only once the car is MAP_MOVE away,

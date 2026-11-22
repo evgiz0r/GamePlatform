@@ -22,6 +22,9 @@ export LEVEL="$level"
 # loading itself sets STREETS_BUILD_ALL=0.
 export STREETS_BUILD_ALL="${STREETS_BUILD_ALL:-1}"
 export OUT="${OUT:-/tmp/streets-tests/$test}"
+# the player's saved choices (user://streets_prefs.json) neither read nor written: a test starts
+# from the defaults and leaves this machine's choices alone (STREETS_PREFS=1 to test them)
+export STREETS_PREFS="${STREETS_PREFS:-0}"
 mkdir -p "$OUT"
 godot="${GODOT:-godot}"
 # assets newer than the last import (another session's textures, merged in): import first,
@@ -47,5 +50,10 @@ if [ -n "${SIM_SPEED:-}" ] && [ "${SIM_SPEED}" != "1" ]; then
 fi
 # a smaller window: the software renderer is bound by pixels (RES=1280x720 for big shots);
 # GODOT_ARGS: more engine flags, e.g. "--fixed-fps 10" to record frames at a steady clock
+# HEADLESS=1: no window at all (the checks of a test that also shoots, without its shots) --
+# a window takes the focus from whatever the person is doing on this machine
+if [ "${HEADLESS:-0}" = "1" ]; then
+	exec "$godot" --headless --path . --audio-driver Dummy ${GODOT_ARGS:-} -s "res://game/streets/tests/$test.gd"
+fi
 exec "${x[@]}" "$godot" --path . --rendering-driver opengl3 --audio-driver Dummy --resolution "${RES:-960x540}" \
 	${GODOT_ARGS:-} -s "res://game/streets/tests/$test.gd"

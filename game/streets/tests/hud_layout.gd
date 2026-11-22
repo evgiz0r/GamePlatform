@@ -15,6 +15,8 @@ func _initialize() -> void:
 
 func _snap(name: String) -> void:
 	await process_frame
+	if DisplayServer.get_name() == "headless":   # (HEADLESS=1: the checks without the shots)
+		return
 	await RenderingServer.frame_post_draw
 	root.get_viewport().get_texture().get_image().save_png(OS.get_environment("OUT") + "/" + name + ".png")
 
@@ -27,29 +29,12 @@ func _tap(r: Rect2) -> void:
 	g._hud_tap(r.get_center())
 	await process_frame
 
-## every button showing now, by name
+## every button showing now, by name (the game's own list: what it draws and hit-tests)
 func _shown() -> Dictionary:
-	var out := {}
-	if g._hud_folded:
-		out["show"] = g.SHOW_BTN
-	else:
-		if not g._walking:
-			out["auto"] = g.AUTO_BTN
-			if g._auto:
-				out["style"] = g.STYLE_BTN
-		out["goto"] = g.GOTO_BTN
-		out["walk"] = g.WALK_BTN
-		out["more"] = g.MORE_BTN
-		out["fold"] = g.FOLD_BTN
-		out["view"] = g.VIEW_BTN
-		out["perf"] = g.PERF_BTN
-		if g._map_btn_shown():
-			out["map"] = g.MAP_BTN
-		if not g._walking and not g._auto:
-			out["look"] = g.LOOK_BTN
-	if g._paused and not g._zoomed():
-		out["resume"] = g.RESUME_BTN
-	return out
+	return g._hud_buttons()
+
+func _rect_circle(r: Rect2, c: Vector2, rad: float) -> bool:
+	return c.distance_to(c.clamp(r.position, r.end)) < rad
 
 func _check_layout(state: String) -> void:
 	var btn := _shown()
@@ -75,7 +60,34 @@ func _check_layout(state: String) -> void:
 		for o: String in others:
 			if a.intersects(others[o]):
 				bad.append("%s on the %s" % [names[i], o])
+		# a finger's reach (HIT_TOUCH round it) kept off the stick's ring, which a touch there is for
+		if g._touch_seen and _rect_circle(a.grow(g.HIT_TOUCH), g.STICK_C, g.STICK_R + 5.0):
+			bad.append("%s's reach on the stick" % names[i])
 	_ok("%s: %d buttons, none overlapping %s" % [state, names.size(), bad], bad.is_empty())
+
+## a finger: each button's middle is that button's; 8 px out from each side it still is,
+## unless another button's box is nearer there (then that one's); and a mouse needs the box
+func _touch_hits() -> void:
+	var bad: Array = []
+	var btn: Dictionary = g._hud_buttons()
+	for k: String in btn:
+		var r: Rect2 = btn[k]
+		if g._hud_hit(r.get_center()) != k:
+			bad.append("%s's middle" % k)
+		for off: Vector2 in [Vector2(0, -r.size.y * 0.5 - 8), Vector2(0, r.size.y * 0.5 + 8), Vector2(-r.size.x * 0.5 - 8, 0), Vector2(r.size.x * 0.5 + 8, 0)]:
+			var q := r.get_center() + off
+			var near := k
+			for o: String in btn:
+				var ro: Rect2 = btn[o]
+				if o != k and ro.grow(8.0).has_point(q):
+					near = ""   # (another as near or nearer: either may win)
+			if near != "" and g._hud_hit(q) != k:
+				bad.append("%s 8 px out %s: %s" % [k, off, g._hud_hit(q)])
+	_ok("a finger 8 px off a button still gets it %s" % [bad], bad.is_empty())
+	g._touch_seen = false
+	var r0: Rect2 = btn["goto"]
+	_ok("a mouse 8 px off does not", g._hud_hit(r0.get_center() + Vector2(0, -r0.size.y * 0.5 - 8)) == "")
+	g._touch_seen = true
 
 func _run() -> void:
 	await create_timer(0.3).timeout
@@ -90,6 +102,7 @@ func _run() -> void:
 	await _snap("hud_drive")
 	_check_layout("driving")
 	_ok("the style starts as racer", g._ap_style == "racer")
+	_touch_hits()
 	# a script's autodrive keeps the rules
 	g._set_auto(true)
 	_ok("a script's _set_auto keeps the rules (racing %s, wave %s)" % [g._racing(), g._wave.on], not g._racing() and not g._wave.on)
