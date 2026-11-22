@@ -176,6 +176,7 @@ func _run() -> void:
 						line += " %.2f,%.2f,%.2f" % [q.x, q.y, g._h(q)]
 					print(line)
 				t2 += 1.0
+		var glanced := 0
 		while g._film_t <= last + 0.5:
 			await RenderingServer.frame_post_draw
 			var t: float = g._film_t
@@ -184,6 +185,12 @@ func _run() -> void:
 			print("POSE %.2f  %.3f %.3f %.3f  %.4f %.4f %.4f  %.4f %.4f %.4f  %.1f" % [t, o.x, o.y, o.z,
 				-b.z.x, -b.z.y, -b.z.z, b.y.x, b.y.y, b.y.z, g.cam.fov])
 			root.get_viewport().get_texture().get_image().save_jpg(out + "/f%05d.jpg" % int(round(t * 10.0)), 0.88)
+			if g._glances != glanced:   # the head going with a passing car (streets.gd _film_glance)
+				glanced = g._glances
+				var gc = g._glance_car
+				if gc != null:
+					print("GLANCE %.1f at a car %.0f m off, %.0f deg from the body, %.0f km/h" % [t, gc.pos.distance_to(g._pos),
+						rad_to_deg(angle_difference(g._yaw, (gc.pos - g._pos).angle())), gc.v * 3.6])
 		print("recorded to ", out)
 		quit()
 		return

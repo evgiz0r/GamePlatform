@@ -2313,6 +2313,21 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   PC); nothing worse by 5; 29 +6, 49 +7, 93 +14, 94 +15; 90-99 s 23.7 -> 28.8. Both filmed
   walks scan clean; playtests of levels 5, 6 and 1 survive 25 s.
 
+### Eye height and glances at cars (22 Nov 2026, all walks)
+
+- **Eye height**: `FILM_EYE_DROP` 0.06 (the camera 1.58 m up), not 0.2 (1.44: the film's phone,
+  held at the chest) -- the user's ask, against the film. The film's own measures
+  (film_marks.py `EYE`, film_motion.py) keep 1.44: they read the film.
+- **Glances** (`_film_glance`): a moving car within `GLANCE_M` (14 m), coming or across the view
+  within 70 degrees of the body, is followed by the head (0.8 of the turn) for up to 2.2 s, then
+  3.5 s before the next; none starts inside a walk's `looks` or `face` (+-0.5 s) -- the first
+  version turned to a car on walk 1's median while its film looks across at the zebra, 9-11 s
+  6-12 worse. `RECORD=1` prints a `GLANCE` line for each. Walk 1: 2 (2.2 s, a car crossing just
+  ahead; 21.4 s by the arcade); Rothschild: 4 in 200 s.
+- **Score** (walk 1 against its film): 35.3 -> 34.8, only second 2 worse by 5+ (the head on the
+  car crossing ahead). The likeness cost is the user's choice: a person's eyes and head over the
+  phone's.
+
 ### Handoff: the filmed walks (22 Nov 2026): measured against the full film, before pass 15
 
 - **The full film is on the user's PC**: `OneDrive/walk/20261120_100527.mp4`, 1080x1920
