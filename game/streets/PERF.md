@@ -11,8 +11,8 @@ container's Chromium (SwiftShader, a software renderer) are about 3x slower on t
 very much slower at drawing: their "warm-up" of 27-60 s says nothing about a phone's. The
 real measure is **the user's own device**: the load line shown for 20 s after each load
 ("loaded in X s (+ page Y s): city file · start area · graphics (N shaders, X s
-compiling)") and the perf view (P, or tap the fps text; twice for the map page and "save
-log"). Ask for a screenshot of both. Check which build it is from (the build line over the
+compiling)") and the perf view (P, or the fps button on the left; P twice for the map page
+and "save log"). Ask for a screenshot of both. Check which build it is from (the build line over the
 minimap) with `git merge-base --is-ancestor <fix> <commit>`.
 
 ## Where things stand (user's PC in a browser, build d9b49f2, 21 Nov 2026)
@@ -198,7 +198,7 @@ numbers are a real player's, with a little noise from those):
 1. after a publish, open the site; if it says "new version ready", tap it (that is the cold
    case for anything whose shaders changed). The build line over the minimap names the build:
    check it holds the fix being tested (`git merge-base --is-ancestor <fix> <commit>`);
-2. pick a city, turn autodrive on, tap the fps number (the perf view);
+2. pick a city, turn autodrive on, tap the fps button on the left (the perf view);
 3. screenshot right after a stutter, and once after a minute of plain driving;
 4. send them with what was happening (a turn, night, the first minute).
 What to read: "average ... drawing ... script ... in N ticks" (the frame's two halves), the
@@ -383,3 +383,15 @@ QWALK confirms a step compiles nothing. The ladder keeps the level that runs bes
 machine whose draws hold it back (the laptop) should now settle at 0; one held back by
 pixels or the script loses nothing. Expected on that laptop, if a draw is ~0.1 ms: 15-20 ms
 off its 70-86 ms of drawing. **Not yet confirmed on the laptop.**
+
+**The far build on a slow machine (22 Nov 2026).** The user, the same laptop: "the loading of
+tel aviv ... in autodrive really takes forever (i am on 30% after few minutes of driving)".
+`tests/build_pace.gd` drives Tel Aviv with `--fixed-fps 12` (each frame gets that frame's
+budget, as the laptop's did; native GDScript here is about the laptop's wasm): 22% (33 of 150
+squares) after 240 s, everything within 900 m up at 179 s, the car never in a bare square; at
+60 fps all 150 at 219 s. The "30%" was the whole city out to 2-3 km, at 1.5 ms a frame -- ~25
+minutes at 12 fps, every millisecond (and the build's overruns) taken from frames with none
+to spare, for squares out of sight. Now sight scales with the level's reach (450 m at quality
+0), and on slow frames the far squares wait until the car nears them (`_far_hold`); the HUD
+line says only what is left within sight, the perf view the whole city.
+

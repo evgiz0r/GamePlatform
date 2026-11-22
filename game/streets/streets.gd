@@ -1307,6 +1307,7 @@ const MORE_BTN := Rect2(566, 98, 44, 22)     ## the drawer of set-once switches
 const FOLD_BTN := Rect2(612, 98, 20, 22)     ## "–": every button folded away but one "show" (_hud_folded); the user: "not take too much of the screen, or collapsible easily"
 const SHOW_BTN := Rect2(566, 98, 66, 22)     ## folded: the one button left, unfolds them
 const VIEW_BTN := Rect2(566, 124, 66, 22)    ## the camera, round: chase, seat, above the city (keys C, Z)
+const PERF_BTN := Rect2(8, 100, 66, 22)      ## the frames a second, live; a tap opens the perf view under it and closes it (the user, 22 Nov: "a quick performance button", not "more" then "perf view")
 ## (no lights button: the user, 22 Nov, "remove lights ui, its not a thing" -- key L only)
 ## (the indicators and the horn are keys only, Q / E and H: on screen they were clutter)
 const STICK_C := Vector2(556, 268)   ## the touch stick sits still, here, on the right
@@ -2877,8 +2878,18 @@ const CATCH_UP_US := 16000           ## the same while a square within NEAR_FIRS
 ## at BUILD_FAR_US a frame while you drive (full speed again from above, or paused): nothing
 ## you can see waits for it, and the frames keep their milliseconds. Tel Aviv's whole city took
 ## 4-6 ms of every frame for ~11 minutes on a user's PC (21 Nov), most of it squares out of sight.
+## SEE_M is at full reach: the weak machine's levels draw less far (QUALITY's reach), and as
+## much less of the town needs building first (_see_m).
+## On slow frames (_slow_frames: a work laptop's browser at 10-20 fps) the far squares wait
+## altogether while you drive (_far_hold): there 1.5 ms a frame built Tel Aviv's 150 squares in
+## ~25 minutes ("building the city 30%" after minutes, 22 Nov), every one of those milliseconds
+## and the build's overruns taken from a frame that had none to spare, for squares nobody saw.
+## They are built when the car comes near them, or from above and paused at full speed.
+## tests/build_pace.gd: at 12 fps everything within 900 m was up in 3 minutes, the car never in
+## a bare square.
 const SEE_M := 900.0
 const BUILD_FAR_US := 1500
+var _far_held := false               ## the far squares waiting (_far_hold): the perf view says so
 var _seen_built := false             ## every square within SEE_M of the car is built (looked at twice a second)
 var _seen_at := 0
 var _catch_up := false               ## a square within NEAR_FIRST of the car is still bare: building at CATCH_UP_US
@@ -2955,10 +2966,34 @@ func _all_seen_built() -> bool:
 	_seen_at = now
 	_seen_built = true
 	for t: Vector2i in _tiles_todo:
-		if _tile_dist(t, _pos) < SEE_M:
+		if _tile_dist(t, _pos) < _see_m():
 			_seen_built = false
 			break
 	return _seen_built
+
+func _see_m() -> float:
+	return SEE_M * _reach
+
+## a slow machine, driving: the squares out of sight wait (SEE_M)
+func _far_hold() -> bool:
+	return _slow_frames and not _paused and _zoom_v <= 0.0 and not _catch_up and _all_seen_built()
+
+## the line under the street count: only while squares within sight are still to build (the
+## far ones are nobody's wait: the whole city's percentage read as a load that never ended).
+## With the perf view up, the whole city instead (_tick_hud).
+var _build_near_txt := ""
+func _build_label(now = null) -> void:
+	var n := 1 if now != null and _tile_dist(now, _pos) < _see_m() else 0
+	for t: Vector2i in _tiles_todo:
+		if _tile_dist(t, _pos) < _see_m():
+			n += 1
+	_build_near_txt = ("building the town round you · %d square%s to go" % [n, "" if n == 1 else "s"]) if n > 0 else ""
+
+func _build_far_txt() -> String:
+	if not _bg_build or _build_total <= 0:
+		return ""
+	return "city %d of %d squares built%s" % [_tiles_done.size(), _build_total,
+		" · the far ones wait while frames are slow" if _far_held else ""]
 
 func _tile_dist(t: Vector2i, p: Vector2) -> float:
 	var r := _tile_rect(t)
@@ -3456,10 +3491,19 @@ func _build_rest() -> void:
 		_bstep = "far shadows"
 		await _far_now()
 	while is_inside_tree():
+		var held := 0
+		while _far_hold() and not _tiles_todo.is_empty() and is_inside_tree():
+			_far_held = true
+			if held % 30 == 0:
+				_build_label()
+			held += 1
+			await get_tree().process_frame
+		_far_held = false
 		var t = _next_tile()
 		if t == null:
 			break
 		_catch_up = hurry and (_tile_dist(t, _pos) < NEAR_FIRST or _bare_near())
+		_build_label(t)
 		await _build_tile(t)
 		n += 1
 		if hurry and not _bare_near():
@@ -3470,14 +3514,12 @@ func _build_rest() -> void:
 			Probe.event("near_built", {"ms": _catch_up_ms, "squares": n})
 			_bstep = "far shadows"
 			await _far_now()
-		if _build_lbl != null:
-			_build_lbl.text = "building the city %d%%" % int(100.0 * _tiles_done.size() / maxf(_build_total, 1.0))
+		_build_label()
 	_bstep = "far shadows"
 	await _far_now()   # (if it has not come yet: before the city file below is let go)
 	await _far_both()   # (and the other sun's: drawn later, from what is let go, it failed)
 	_bstep = "letting go of the city file"
-	if _build_lbl != null:
-		_build_lbl.text = ""
+	_build_near_txt = ""
 	# what was only for building -- the file, the outlines, the squares' lists -- let go of a
 	# little a frame (all at once, it took a frame and a half)
 	for key: String in _city_data.keys():
@@ -25856,6 +25898,7 @@ func _tick_hud() -> void:
 	_ver_lbl.visible = _fps_lbl.visible and not _perf_view   # (the perf view says it on its first line)
 	if is_instance_valid(_load_lbl):   # (and the load line, for its 20 s: it showed through the view's backing)
 		_load_lbl.visible = not _perf_view
+	_build_lbl.text = _build_far_txt() if _perf_view else _build_near_txt
 	if _fps_lbl.visible:
 		_fps_lbl.text = "%d fps · worst %d ms · quality %d" % [Engine.get_frames_per_second(), int(_worst_ms()), _quality]
 	if _perf_view:
@@ -25874,7 +25917,8 @@ func _tick_hud() -> void:
 	_hud.queue_redraw()
 	_map.queue_redraw()
 
-## P (or a tap on the fps text): the frame times, then the drive map, then off
+## P (or the drawer's "perf view", or a tap on the fps text): the frame times, then the drive
+## map, then off. PERF_BTN opens the frame times in one tap and closes either.
 func _toggle_perf() -> void:
 	if not _perf_view and not _trace_view:
 		_perf_view = true
@@ -26076,6 +26120,7 @@ func _draw_hud() -> void:
 		_hud_btn(MORE_BTN, "more" if not _more_open else "close", Palette.col("accent"), _more_open, 11)
 		_hud_btn(FOLD_BTN, "–", Palette.col("ink"), false, 13)
 		_hud_btn(VIEW_BTN, _view_name(), Palette.col("player"), _zoom > 0.0 or _cockpit, 11)
+		_hud_btn(PERF_BTN, "%d fps" % Engine.get_frames_per_second(), Palette.col("accent"), _perf_view or _trace_view, 11)
 		if not _walking and not _auto:
 			_hud_btn(LOOK_BTN, "look", Palette.col("accent"), _look_on, 11)
 	# the indicator blinking by the speed, as on a dashboard
@@ -26312,6 +26357,13 @@ func _hud_tap(p: Vector2) -> bool:
 		_show_banner("buttons folded away: \"show\" brings them back", 1.6)
 	elif VIEW_BTN.grow(2).has_point(p):
 		_next_view()
+	elif PERF_BTN.grow(2).has_point(p):
+		if _perf_view or _trace_view:   # (the drive map too: P and the drawer go round to it)
+			_trace_view = false
+			_perf_view = false
+			_perf_lbl.visible = false
+		else:
+			_toggle_perf()
 	elif LOOK_BTN.grow(2).has_point(p) and not _walking and not _auto:
 		_toggle_look()
 	else:
@@ -26323,7 +26375,7 @@ func _hud_tap(p: Vector2) -> bool:
 func _on_hud_button(p: Vector2) -> bool:
 	if _more_open or _keys_open:
 		return true
-	var rs: Array = [SHOW_BTN] if _hud_folded else [AUTO_BTN, GOTO_BTN, WALK_BTN, MORE_BTN, FOLD_BTN, VIEW_BTN]
+	var rs: Array = [SHOW_BTN] if _hud_folded else [AUTO_BTN, GOTO_BTN, WALK_BTN, MORE_BTN, FOLD_BTN, VIEW_BTN, PERF_BTN]
 	if not _hud_folded:
 		if _auto:
 			rs.append(STYLE_BTN)

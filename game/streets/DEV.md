@@ -81,7 +81,13 @@ The ones most often touched, and the functions in them:
   (`if _over(): await _pause()`) -- and once no square within `SEE_M` (900 m) of the car is
   left (`_all_seen_built`), `BUILD_FAR_US` 1.5 ms while driving (full speed from above or
   paused): Tel Aviv's build took 4-6 ms of every frame for ~11 minutes on a user's PC, most
-  of it squares past the haze. Two rules keep squares from doubling or
+  of it squares past the haze. Sight is `_see_m()`, SEE_M times the level's reach (450 m at
+  quality 0). On slow frames (`_slow_frames`) the far squares are not built at all while
+  driving (`_far_hold`, between squares in `_build_rest`; `_far_held` for the perf view): at
+  12 fps 1.5 ms a frame would have taken ~25 minutes for Tel Aviv's 150 squares
+  (`tests/build_pace.gd`). The HUD's line is `_build_label` -- only the squares within sight
+  ("building the town round you · N squares to go"); with the perf view up the same label is
+  the whole city (`_build_far_txt`). Two rules keep squares from doubling or
   missing things: what lies along a road or fence is worked out by every square it crosses
   and kept only where its triangles start (`CBuf.clip`, `_near_part`, `_near_span`);
   everything else, and whatever it records (posts, parked cars, lights, tables), belongs
@@ -1120,8 +1126,9 @@ gained their world checks and Tel Aviv; eleven tests that drive, walk or load en
 speed, steering, gear), autodrive's lane ahead and what held its speed down (`_ap_why`:
 limit, curve, light, sign, zebra, people, car, blocked, choice), the car ahead, every
 traffic car within 50 m and what holds it, and events (hits, rescues, junction choices,
-quality steps, buses passed). The perf view's second page (P twice, or the fps text tapped
-twice) draws it as a map; "save log" there downloads it (a browser) or writes it under
+quality steps, buses passed). The perf view's second page (P twice, or the drawer's "perf
+view" twice) draws it as a map (the fps button, PERF_BTN, opens only the first page, and
+closes either); "save log" there downloads it (a browser) or writes it under
 `user://drive_logs/`. Ask the user for that file when they report bad driving, and draw it:
 `python3 game/streets/tests/drive_log_map.py file.json` -- the streets, the track coloured
 by speed, the plan every 2 s, the other cars, the events, and a strip of speed against time

@@ -417,8 +417,19 @@ is rarely the one you would guess. What cost the most, in order, last time one d
     its pause runs later, in another square's context. List the coroutines and grep their
     calls. Pause on a signal the game itself emits once a frame, not `process_frame`: when
     the game is left mid-build, its own signal dies with it and the coroutine just stops.
-  - Turn off the frame-rate quality watcher while building: the build is not the machine
-    being slow. Check the result by comparing every item count with the old build.
+  - Turn off the frame-rate quality watcher for the build's first burst only (the squares
+    round the player, seconds): a slow machine is slow building too, and a watcher off for
+    the whole build never steps down there (the ladder bullet above). Check the result by
+    comparing every item count with the old build.
+  - **A budget of milliseconds a frame starves a slow machine.** At 12 fps a frame's 1.5 ms
+    is a fifth of the building a second that 60 fps gets, and every one of them comes off a
+    frame with nothing to spare: a big city's far squares, out of sight, would have taken
+    ~25 minutes, its "building 30%" read by the player as a load that never ends. Build in
+    a hurry what is in sight (scaled with the draw range the quality level keeps), and on
+    slow frames let the rest wait until the player nears it -- or build it at full speed
+    when nobody is watching the frames (paused, a map view). Say on screen only what is
+    left within sight. Test the pace headless with `--fixed-fps 12`: each frame then gets
+    that frame's budget and 1/12 s of game time, as the slow machine's does.
 - **Kilometres of small dressing cost in the checks, not the triangles.** A fence or hedge
   along every front garden, laid by the helper that checks each 2.5 m piece for roads and
   houses, doubled a build stage. Timed piece by piece, the look for the nearest road was
