@@ -3872,6 +3872,18 @@ resumes the city) once nothing within `NEAR_FIRST` is bare, `MIN_S` 4 s at least
 car was shown; the opening ran 8.8 s and came down with 0; the city running after (PASS).
 Shots: up there at 1 and 3 s, at the car 3 s after landing.
 
+**The towns' stories** (`cities/stories/<town>.json`, one per baked Israeli town and Bedford;
+none yet for the made-up town or Delft). Written from Wikipedia (English and Hebrew),
+Wikivoyage, the towns' pages and a few news pieces, in our own words (CC BY-SA sources:
+paraphrased and credited; the others for facts only), each with its `sources`: `tagline`,
+14 `lines` of at most ~90 characters (captions), `known_for`, `history`, `neighbourhoods`
+(name, mood), `streets` (who each main street is named for -- the names as the city file's
+`name_en`), `food`, `rhythm`. The opening shows the tagline, then the lines shuffled, one each
+`STORY_S` (3.4 s), and stays up for two at least; the credit line under it is built from the
+sources (Wikipedia / Wikivoyage, CC BY-SA, "news and guides"). Loaded as a JSON resource when
+imported, else read as a file (as the city files are, which the web build carries).
+`tests/opening.gd` checks two lines or more were shown where the town has a story.
+
 **Models made with Blender** (`tools/blender_model.sh`, recipes in `tools/blender/recipes/`,
 the kit-wide notes in CLAUDE.md "Making 3D models"). `places.gd` stamps them into a square's
 batch (`_stamp`: each surface's triangles into the CBuf, coloured by its material's role --
