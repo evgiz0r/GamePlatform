@@ -105,6 +105,21 @@ All in `DEV.md`; search for the bold lead-in.
   (+ page 2.3): city file 0.5 · start area 6.0 · graphics 21.0 (143 shaders, 15.0 s
   compiling)**; 204 programs by the car in 19 s. Steps reading a round ~1000 ms there were
   the pane throttled, so a player in front of the screen waits less.
+  **Then the never-drawn programs swapped for an empty placeholder** (they still cost 7.9 s
+  of the 21 s left, 42 programs at ~190 ms even stripped): a local export, cold, Givatayim
+  **18.4 s (+ page 5.0): city file 0.5 · start area 6.9 · graphics 10.9 (143 shaders, 6.2 s
+  compiling)**, 220 programs by 30 s of autodrive in 13.6 s; the night click 7 programs,
+  ~0.2 s (was 13 and a 7 s freeze in Tel Aviv). `window.__lstrip.used` -- draws made with a
+  placeholder -- 0 through the load, driving and night. The pane was throttled for much of
+  it (steps of ~1000 ms), so the real wait is shorter still.
+- **Parallel compiling, measured, not built**: `KHR_parallel_shader_compile` is there (16
+  threads): 24 of the heaviest real programs 12.2 s one at a time, 3.7 s all at once. But
+  Godot asks each program's status as soon as it links it, which makes it serial, and a
+  program compiled in another context is not reused (the same source in a second context
+  cost the same: no cross-context cache in that browser). Getting it would mean knowing the
+  sources before Godot asks -- a list made at publish (a headless browser in CI) -- and
+  redirecting Godot's program objects to ones linked ahead in its own context. What is left
+  to win: ~13 s of compiling by the car on this PC (sun pass 9.5 s, depth 2.7).
   How it was found: capture each program's sources and link time from the page (wrap
   `shaderSource`, `attachShader`, `linkProgram`), group by `#define`s, then recompile one
   captured program with a define changed in a throwaway WebGL2 context, a unique `#define`
@@ -134,11 +149,10 @@ All in `DEV.md`; search for the bold lead-in.
 
 ## Open problems, biggest first
 
-1. **The cold load is still ~15-20 s of shader compiling** on a Windows browser (was a
-   minute before `LIGHT_STRIP_JS`), on a first visit and after every publish that touches
-   shader code -- now mostly the sun's additive pass, ~0.38 s a program. Next: fewer shader
-   codes (each is ~2 additive programs), compiling in parallel
-   (`KHR_parallel_shader_compile`), the night click's 13 programs (7 s freeze, cold).
+1. **The cold load is still ~6 s of shader compiling at load and ~13 s by the car** on a
+   Windows browser (was a minute before `LIGHT_STRIP_JS`) -- now mostly the sun's additive
+   pass, ~0.25 s a program (39 of them). Next: fewer shader codes (each is ~2 additive
+   programs), or parallel compiling (measured 3.3x, see above; a big job).
 2. **The script on the browser's one thread** -- 7.9 ms on 5928bd1 (12.9 on d9b49f2), 2.5
    ticks a frame; ~3.5-4 ms a tick natively in both Givatayim and Tel Aviv. Building is
    the biggest part while the rest of the city goes up; the minimap is Tel Aviv's 0.7-0.9.
@@ -148,3 +162,19 @@ All in `DEV.md`; search for the bold lead-in.
 5. **Video memory** -- Tel Aviv 365 MB; phones.
 6. **No automatic check catches a performance regression** -- the numbers are only read when
    someone runs a test by hand.
+
+## Next steps, scored (22 Nov 2026)
+
+Effort: 1 = an hour, 5 = days. Gain: 1 = barely felt, 5 = every player feels it. Risk: 1 =
+can't break the game, 5 = can break it on some devices. Ordered by the pick.
+
+| # | Step | Effort | Gain | Risk | Why |
+|---|---|---|---|---|---|
+| 1 | Check for programs compiled and never drawn: `web_shaders.js` fails on a lit program with every light type on, or `__lstrip.used` > 0 | 1 | 3 | 1 | guards today's 10x; a Godot upgrade or a new lamp would bring the minute back silently |
+| 2 | Phones: the load line and perf view from a phone, cold, after a publish | 1 | 4 | 1 | everything so far is a Windows PC; phones compile differently and may be the real slow case |
+| 3 | Fewer shader codes: merge the ones only one or two things use (each costs ~2 sun-pass programs, ~0.25 s cold) | 3 | 3 | 2 | the sun pass is the biggest cold cost left (9.5 s by the car) |
+| 4 | Minimap drawn less often in Tel Aviv (0.7-0.9 ms a tick) | 1 | 1 | 1 | cheap, small |
+| 5 | Tel Aviv's frame measured properly (panel visible, or `perf_dive` natively) | 2 | 2 | 1 | the 1 fps reading was a throttled window; we don't know the real number |
+| 6 | Draws: quality levels that drop shadow casters and far detail | 4 | 4 | 3 | 500-800 draws and no level lowers them; the quality ladder can't help a weak device |
+| 7 | Bake more of the city file at publish (widths, buildings cut, divided roads) | 3 | 2 | 2 | ~1 s of Tel Aviv's load; already a pattern (`prepublish.gd`) |
+| 8 | Parallel compiling (source list made at publish + redirecting Godot's programs) | 5 | 3 | 4 | measured 3.3x on the remaining compile, but deep in the page's GL layer |

@@ -1296,6 +1296,10 @@ func start(_config: Dictionary) -> void:
 	if _place.get("cities", false):
 		_walk_list_open("cities")   # no city: the list of cities
 		return
+	# how autodrive drives and the time of day, as chosen on the list it came from (_list_settings);
+	# with none, a test drive keeps the rules (it is there to test autodrive) and a city is the racer
+	_ap_style = String(_config.get("style", "rules" if _config.has("route") or _config.get("make_route", false) else "racer"))
+	_start_time = String(_config.get("time", "day"))
 	if _config.has("route"):
 		_route = _route_by_id(int(_config["route"]))
 	if _config.get("make_route", false):
@@ -1382,6 +1386,8 @@ func start(_config: Dictionary) -> void:
 		_route_begin()
 	elif _making != "":
 		_open_picker()
+	if _start_time != "day":
+		_set_time_of_day(_start_time)   # (as chosen on the list; it steps through evening)
 	track3d(_car, "@")
 	Probe.event("city", {"name": _city_name, "roads": _roads.size(), "buildings": _blds.size(),
 		"trees": _posts.size(), "streets": _streets.size(), "dressing": _dressing, "stage_ms": _stage_ms,
@@ -1672,27 +1678,47 @@ const GL_COUNT_JS := """(() => {
 ## game has only the sun. But Chrome/Edge on Windows hand every program to Direct3D's compiler,
 ## and those two cost ~2.4-7.7 s each: 44 of them were ~85% of a cold load (user's PC, 22 Nov
 ## 2026: Givatayim's graphics 63 s; area lights alone 2.45 -> 0.47 s a program, omni + spot +
-## area 0.16 s). Defining the three off in exactly those sources -- the base pass, not
-## additive, no DISABLE_LIGHT_OMNI of its own -- compiles them in a fraction, and the picture
-## cannot change: with no such light the code left out loops over nothing. Cold Givatayim,
-## the same build in the same browser: graphics 63 -> 22 s, the compile calls 63 -> 15.5 s.
+## area 0.16 s). First the three were defined off in those sources (graphics 63 -> 22 s); even
+## so the 42 never-drawn programs were 7.9 s of the 21 s left. Now they are swapped for a
+## placeholder -- the source's own `#version` line and an empty main -- which costs nothing to
+## compile. Picked out exactly: the base pass, not additive, no DISABLE_LIGHT_OMNI of their
+## own (every draw of the base pass has it here: no omni light). Godot still links them, finds
+## no uniforms in them (locations -1, which it skips) and never draws with them. If one ever
+## IS drawn, `used` counts it and the console says so -- that draw would come out empty;
+## `tests/web_shaders.js` / the load line show it (`window.__lstrip.used`).
 ## **Only right while the game has no OmniLight3D, SpotLight3D or AreaLight3D** --
 ## `_no_local_lights` warns at load if one appears; drop LIGHT_STRIP_JS before adding one.
 const LIGHT_STRIP_JS := """(() => {
 	if (window.__lstrip || typeof WebGL2RenderingContext === 'undefined') return;
-	const c = window.__lstrip = { n: 0 };
+	const c = window.__lstrip = { n: 0, used: 0 };
 	const P = WebGL2RenderingContext.prototype;
-	const f = P.shaderSource;
-	const add = '\\n#define DISABLE_LIGHT_OMNI\\n#define DISABLE_LIGHT_SPOT\\n#define DISABLE_LIGHT_AREA\\n';
+	const types = new WeakMap(), fake = new WeakSet(), fakeProg = new WeakSet();
+	const cs = P.createShader, ss = P.shaderSource, as = P.attachShader, up = P.useProgram;
+	P.createShader = function (t) { const s = cs.call(this, t); if (s) types.set(s, t); return s; };
 	P.shaderSource = function (s, src) {
 		if (typeof src === 'string' && src.indexOf('#define BASE_PASS') >= 0
 				&& src.indexOf('#define USE_ADDITIVE_LIGHTING') < 0 && src.indexOf('#define DISABLE_LIGHT_OMNI') < 0) {
-			const i = src.indexOf('\\n');
-			src = src.slice(0, i) + add + src.slice(i + 1);
+			const v = src.slice(0, src.indexOf('\\n'));
+			src = types.get(s) === this.VERTEX_SHADER
+				? v + '\\nvoid main() { gl_Position = vec4(0.0); }\\n'
+				: v + '\\nprecision mediump float;\\nout vec4 frag_color;\\nvoid main() { frag_color = vec4(1.0, 0.0, 1.0, 1.0); }\\n';
+			fake.add(s);
 			c.n += 1;
 		}
-		return f.call(this, s, src);
+		return ss.call(this, s, src);
 	};
+	P.attachShader = function (p, s) { if (fake.has(s)) fakeProg.add(p); return as.call(this, p, s); };
+	let cur = null;
+	P.useProgram = function (p) { cur = p; return up.call(this, p); };
+	for (const name of ['drawArrays', 'drawElements', 'drawArraysInstanced', 'drawElementsInstanced', 'drawRangeElements']) {
+		const d = P[name];
+		P[name] = function (...a) {
+			if (cur && fakeProg.has(cur)) {
+				if (c.used++ === 0) console.warn('[streets] LIGHT_STRIP_JS: a placeholder program was drawn with');
+			}
+			return d.apply(this, a);
+		};
+	}
 })()"""
 
 ## warn if a light the strip above assumes away is in the scene
@@ -18555,9 +18581,9 @@ func _spawn_people() -> void:
 		a.set_character(PEOPLE[(i + 2) % PEOPLE.size()], _people_rng.randf_range(ADULT_LO, ADULT_HI))
 		_humanize(a, hash(a.get_instance_id()))
 		_people_lod(a)
+		_talker(a, hash(_city_name) * 13 + i)   # (before the clip starts: it may change the clips)
 		a.play("Idle", true, _people_rng.randf_range(0.8, 1.1))
 		_carry(a, _what_carried(hash(_city_name) * 13 + i, false), hash(_city_name) * 13 + i)
-		_talker(a, hash(_city_name) * 13 + i)
 		a.visible = false
 		_chatters.append({"actor": a, "spot": Vector2.INF})
 	_seat_chatters()
@@ -19652,8 +19678,18 @@ const PART_SIZES := {
 	"Abdomen": Vector3(1.0, 1.06, 1.0),
 }
 
+var _ppl: RefCounted = null          ## people.gd: the people as they are now (Quaternius' base characters, dressed)
+
+func _people_maker() -> RefCounted:
+	if _ppl == null:
+		_ppl = load("res://game/streets/people.gd").new(self)
+	return _ppl
+
 func _humanize(a: Actor3D, seed: int) -> void:
 	if a == null or a.model == null:
+		return
+	if _people_maker().on():   # (STREETS_OLD_PEOPLE=1: the kit's figures, as before, to compare)
+		_ppl.make(a, seed)
 		return
 	var sks := a.model.find_children("*", "Skeleton3D", true, false)
 	if not sks.is_empty():
@@ -19743,6 +19779,11 @@ func _talker(a: Actor3D, seed: int) -> void:
 	if sks.is_empty():
 		return
 	var sk: Skeleton3D = sks[0]
+	if sk.find_bone("UpperArm.L") < 0 and a.anim != null:
+		# people.gd's figures have the library's own talking idle: no bending needed
+		a.anim.remove_animation_library("")
+		a.anim.add_animation_library("", _people_maker()._lib("talk"))
+		return
 	var tk := Talk.new()
 	for sd: String in ["L", "R"]:
 		var u := sk.find_bone("UpperArm." + sd)
@@ -19826,6 +19867,8 @@ func _bone_holder(a: Actor3D, bone: String, upright: bool) -> Node3D:
 	var sk: Skeleton3D = sks[0]
 	var bi := sk.find_bone(bone)
 	if bi < 0:
+		bi = sk.find_bone(_people_maker().bone_for(bone))   # (the same place on people.gd's figures)
+	if bi < 0:
 		return null
 	var held: Held = null
 	for m in sk.get_children():
@@ -19844,6 +19887,11 @@ func _bone_holder(a: Actor3D, bone: String, upright: bool) -> Node3D:
 func _carry(a: Actor3D, what: String, seed: int) -> void:
 	if what == "" or a == null or a.model == null:
 		return
+	# people.gd's figures: no carrying walk (a box in arms swinging by the sides): a bag
+	# instead; the backpack upright (their chest bone's own axes are not the body's)
+	var newer := not a.model.find_children("*", "Skeleton3D", true, false).is_empty() 		and (a.model.find_children("*", "Skeleton3D", true, false)[0] as Skeleton3D).find_bone("spine_03") >= 0
+	if newer and what == "box":
+		what = "bag"
 	var ink := Palette.col("ink")
 	var bg := Palette.col("bg")
 	var alt := Palette.col("bg_alt")
@@ -19869,12 +19917,14 @@ func _carry(a: Actor3D, what: String, seed: int) -> void:
 				_carry_mesh(h, [[Vector3(0.1, 0.2, 0.27), Vector3(0, -0.15, 0), c],
 					[Vector3(0.015, 0.06, 0.12), Vector3(0, -0.03, 0), c.darkened(0.3)]])
 		"backpack":
-			var h := _bone_holder(a, "Torso", false)
+			var h := _bone_holder(a, "Torso", newer)
 			if h == null:
 				return
 			var c: Color = dark[rng.randi() % dark.size()]
-			_carry_mesh(h, [[Vector3(0.3, 0.4, 0.15), Vector3(0, 0.06, -0.165), c],
-				[Vector3(0.24, 0.16, 0.06), Vector3(0, -0.04, -0.26), c.darkened(0.2)]])   # (and its front pocket)
+			var z := -0.13 if newer else -0.165
+			var y := -0.08 if newer else 0.06
+			_carry_mesh(h, [[Vector3(0.3, 0.4, 0.15), Vector3(0, y, z), c],
+				[Vector3(0.24, 0.16, 0.06), Vector3(0, y - 0.1, z - 0.095), c.darkened(0.2)]])   # (and its front pocket)
 		"box":   # a cardboard box on the forearms, the hands under its front
 			var h := _bone_holder(a, "Torso", false)
 			if h == null:
@@ -22214,6 +22264,12 @@ func _set_ap_style(s: String) -> void:
 		"racer": "racer: no lights, no signs, no giving way"}[s], 1.8)
 	Probe.event("ap_style", {"style": s})
 
+## how autodrive is driving NOW -- the chip shows this, not the setting: a test drive's
+## autodrive kept the rules while the chip said "racer" (the user: "the test drives are
+## actually driving in racer mode, or its a bug?" -- the chip's, they were not)
+func _ap_style_now() -> String:
+	return "racer" if _racer != null and _racer.on else ("wave" if _wave != null and _wave.on else "rules")
+
 ## autodrive on or off from the player's own hand: on, in the style chosen
 func _auto_by_hand(on: bool) -> void:
 	if on:
@@ -24515,7 +24571,7 @@ func _route_list_open() -> void:
 		_route_ui.add_child(tab)
 		# (sized once in the tree, _put: sized before, they kept the kit's 180x34 minimum and
 		# overlapped -- a tap on "test town" started Bedford)
-		_put(tab, Vector2(220 + k * 104, 52), Vector2(96, 22))
+		_put(tab, Vector2(124 + k * 102, 52), Vector2(96, 22))   # (left, by "back": the settings row takes the right)
 	var routes := _routes() if _route_page == "set" else mine
 	if _route_page == "mine":
 		_route_new_row(routes.size())
@@ -24531,7 +24587,8 @@ func _route_list_open() -> void:
 		if not r.get("mine", false):
 			text = "%d   %s" % [int(r["id"]), text]
 		var w := 612.0 if not r.get("mine", false) else 572.0
-		var b := _tap_button(text, func(): Flow.start_game("streets", {"level": int(r["level"]), "route": int(r["id"])}))
+		var b := _tap_button(text, func(): Flow.start_game("streets", {"level": int(r["level"]), "route": int(r["id"]),
+			"style": _routes_style, "time": _list_time}))
 		b.add_theme_font_override("font", _font)
 		b.add_theme_font_size_override("font_size", 10)
 		b.clip_text = true
@@ -24546,6 +24603,7 @@ func _route_list_open() -> void:
 			_route_ui.add_child(x)
 			_put(x, Vector2(590, y), Vector2(36, 25))
 	_back_button(Vector2(14, 52))   # (top left, beside the tabs: ten routes reach the foot)
+	_list_settings(Vector2(336, 52), "routes", _route_list_open)   # (right of the tabs, same reason)
 
 ## "+ a new one": the cities to make it in, one button each (the city loads, then the picker
 ## asks from where and to where)
@@ -24558,7 +24616,8 @@ func _route_new_row(have: int) -> void:
 	var cities: Array = ["givatayim", "tel_aviv", "ashdod", "bedford", "dimyon"]
 	for k in range(cities.size()):
 		var cid: String = cities[k]
-		var b := _tap_button(CITY_NAMES[cid], func(): Flow.start_game("streets", {"level": _city_level(cid), "make_route": true}))
+		var b := _tap_button(CITY_NAMES[cid], func(): Flow.start_game("streets", {"level": _city_level(cid), "make_route": true,
+			"style": _routes_style, "time": _list_time}))
 		b.add_theme_font_override("font", _font)
 		b.add_theme_font_size_override("font_size", 10)
 		_route_ui.add_child(b)
@@ -24609,7 +24668,10 @@ func _walk_list_open(kind := "walks") -> void:
 	var two := rows.size() > 7
 	for k in range(rows.size()):
 		var lvl: int = rows[k][0]
-		var b := _tap_button(String(rows[k][1]), func(): Flow.start_game("streets", {"level": lvl}))
+		var cfg := {"level": lvl, "time": _list_time}
+		if kind != "walks":
+			cfg["style"] = _cities_style
+		var b := _tap_button(String(rows[k][1]), func(): Flow.start_game("streets", cfg))
 		b.add_theme_font_override("font", _font)
 		b.add_theme_font_size_override("font_size", 11)
 		b.clip_text = true
@@ -24619,6 +24681,60 @@ func _walk_list_open(kind := "walks") -> void:
 		else:
 			_put(b, Vector2(120, 64 + k * 31.0), Vector2(400, 27))
 	_back_button()
+	_list_settings(Vector2(24, 322), kind, func(): _walk_list_open(kind), 1.3, Vector2(392, 322))   # (at the foot, by "back")
+
+## The lists' settings, chosen before a drive or walk starts and carried in its config ("style",
+## "time"; start() reads them): autodrive "normal" (the rules) or "racer" -- test drives and
+## cities, not walks, which have no autodrive -- and the time of day. The user, 22 Nov: "lets add
+## settings like racer/normal day/evening/night to both test drives and the walk (it wont have
+## the racer option)". Kept while the app runs (static), apart for test drives (normal at first:
+## they are there to test autodrive) and cities (racer at first, as the HUD's own default).
+static var _list_time := "day"
+static var _routes_style := "rules"
+static var _cities_style := "racer"
+var _start_time := "day"             ## the time of day to switch to once the city is up (config "time")
+
+## the row: [normal][racer]  [day][evening][night] from `at` (walks: the times only) -- or,
+## with `style_at`, the times from `at` and normal/racer from there (at a list's foot, either
+## side of "back"). A tap sets it and `again` builds the list anew to show it (the chosen one
+## full, the rest dimmed, as the routes' tabs). `k` scales them (the foot has the room).
+func _list_settings(at: Vector2, kind: String, again: Callable, k := 1.0, style_at := Vector2.INF) -> void:
+	var styles: Array = []   # [text, width, chosen, what it sets]
+	if kind != "walks":
+		var cur := _routes_style if kind == "routes" else _cities_style
+		for st: Array in [["normal", "rules"], ["racer", "racer"]]:
+			styles.append([st[0], {"normal": 48.0, "racer": 40.0}[st[0]] * k, cur == st[1], func():
+				if kind == "routes":
+					_routes_style = st[1]
+				else:
+					_cities_style = st[1]
+				again.call()])
+	var times: Array = []
+	for tm: String in ["day", "evening", "night"]:
+		times.append([tm, {"day": 34.0, "evening": 52.0, "night": 42.0}[tm] * k, _list_time == tm, func():
+			_list_time = tm
+			again.call()])
+	var x := at.x
+	if style_at != Vector2.INF:
+		_list_row(times, at, k)
+		_list_row(styles, style_at, k)
+	else:
+		x = _list_row(styles, at, k)
+		_list_row(times, Vector2(x + (6.0 if not styles.is_empty() else 0.0), at.y), k)
+
+## one run of _list_settings' buttons from `at`; where it ended
+func _list_row(items: Array, at: Vector2, k: float) -> float:
+	var x := at.x
+	for it: Array in items:
+		var b := _tap_button(String(it[0]), it[3])
+		b.add_theme_font_override("font", _font)
+		b.add_theme_font_size_override("font_size", int(round(10 * k)))
+		b.modulate = Color(1, 1, 1, 1.0 if it[2] else 0.45)
+		b.set_meta("setting", true)   # (not a place: the menu tests skip these when counting rows)
+		_route_ui.add_child(b)
+		_put(b, Vector2(x, at.y), Vector2(float(it[1]), 22.0 * minf(k, 1.18)))
+		x += float(it[1]) + 3.0
+	return x
 
 ## "back" at the foot of a list: the start screen again (the shell's own, as "levels" does)
 func _back_button(at := Vector2(270, 322)) -> void:
@@ -24644,6 +24760,7 @@ func _route_begin() -> void:
 			_land_on_road(out["q"], 5.0, Vector2.ZERO)
 			_show_banner("no way out of there: from the nearest street that has one", 3.0)
 	_set_dest(to, String(_route["to"]))
+	_apply_ap_style()   # (the list's "normal" or "racer": _list_settings)
 	_set_auto(true)
 	_show_banner("route %d: %s → %s" % [int(_route["id"]), _route["from"], _route["to"]], 4.0)
 	Probe.event("route", {"id": int(_route["id"])})
@@ -25226,8 +25343,9 @@ func _draw_hud() -> void:
 	if not _walking and not _hud_folded:
 		_hud_btn(AUTO_BTN, "AUTODRIVE ON" if _auto else "autodrive", Palette.col("friend"), _auto, 12)
 		if _auto:   # its style, beside it: tap for the next
-			var sc := {"rules": Palette.col("ink"), "wave": Palette.col("friend"), "racer": Palette.col("hazard")}[_ap_style] as Color
-			_hud_btn(STYLE_BTN, AP_STYLE_SAY[_ap_style] if _ap_style != "rules" else "rules", sc, _ap_style != "rules", 11)
+			var now := _ap_style_now()
+			var sc := {"rules": Palette.col("ink"), "wave": Palette.col("friend"), "racer": Palette.col("hazard")}[now] as Color
+			_hud_btn(STYLE_BTN, AP_STYLE_SAY[now] if now != "rules" else "rules", sc, now != "rules", 11)
 			if _racing() and _racer.reds > 0:
 				_hud_text(STYLE_BTN.position + Vector2(-20, -5), "%d red%s run" % [_racer.reds, "" if _racer.reds == 1 else "s"], 102, 10, Palette.col("hazard"))
 	if _auto and _cross_showing():
@@ -25317,17 +25435,22 @@ var _keys_open := false
 var _hud_folded := false   ## every button folded away to one "show" (FOLD_BTN)
 var _stick_used := false   ## the stick driven with once: its hint has done its job
 var _tod_busy := false     ## a time of day on its way (_set_time_of_day steps through _next_time)
+var _mouse_at := Vector2.INF   ## a real mouse's position (not a touch's): the button under it is lit as hovered
 
 ## one button: a dark box, its outline and text in `col` when lit (the thing is ON) or `strong`
-## (always worth seeing, as "go to…"), ink when off; lit ones filled with a wash of it too
+## (always worth seeing, as "go to…"), ink when off; lit ones filled with a wash of it too.
+## Under the mouse it fills as the shell's buttons do on hover (UIKit: the accent darkened,
+## the text in the player's colour) -- the user: "when i hover with the mouse it doesnt fill
+## them like in the main and other menus"
 func _hud_btn(r: Rect2, text: String, col: Color, lit: bool, size: int, strong := false) -> void:
 	var c := col if lit or strong else Color(Palette.col("ink"), 0.8)
-	_hud.draw_rect(r, Color(Palette.col("bg"), 0.7))
+	var hover := r.has_point(_mouse_at)
+	_hud.draw_rect(r, Palette.col("accent").darkened(0.55) if hover else Color(Palette.col("bg"), 0.7))
 	if lit:
 		_hud.draw_rect(r, Color(col, 0.22))
 	_hud.draw_rect(r, Color(c, 0.95), false, 2.0 if lit else 1.5)
 	_hud.draw_string(_font, Vector2(r.position.x, r.position.y + r.size.y * 0.5 + size * 0.36), text,
-		HORIZONTAL_ALIGNMENT_CENTER, r.size.x, size, c)
+		HORIZONTAL_ALIGNMENT_CENTER, r.size.x, size, Palette.col("player") if hover and not lit else c)
 
 ## the camera now, as the button says it: chase, seat, above (on foot: behind, eyes, above)
 func _view_name() -> String:
@@ -25484,7 +25607,7 @@ func _hud_tap(p: Vector2) -> bool:
 		if not _walking:
 			_auto_by_hand(not _auto)
 	elif _auto and not _walking and STYLE_BTN.grow(3).has_point(p):
-		_set_ap_style(AP_STYLES[(AP_STYLES.find(_ap_style) + 1) % AP_STYLES.size()])
+		_set_ap_style(AP_STYLES[(AP_STYLES.find(_ap_style_now()) + 1) % AP_STYLES.size()])
 	elif GOTO_BTN.grow(3).has_point(p):
 		_open_picker.call_deferred()   # after this click, so it does not hit the list
 	elif WALK_BTN.grow(3).has_point(p):
@@ -25713,6 +25836,11 @@ func _view_footprint() -> PackedVector2Array:
 ## it takes the wheel back from autodrive. ----------------------------------------------------
 
 func _input(event: InputEvent) -> void:
+	# where a real mouse is, for the HUD's hover (_hud_btn); a touch's emulated mouse is no hover
+	if event is InputEventMouseMotion:
+		_mouse_at = (event as InputEventMouseMotion).position if event.device != InputEvent.DEVICE_ID_EMULATION else Vector2.INF
+	elif event is InputEventScreenTouch:
+		_mouse_at = Vector2.INF
 	if _opening != null and _opening.on and not Flow.pointer_over_hud():
 		# the opening: any key, click or tap goes straight down to the car
 		var k := event as InputEventKey

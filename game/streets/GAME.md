@@ -147,6 +147,19 @@ yours to change, in the chip beside the button or the drawer.
 
 > change the default of the autodrive to racer, without green wave.
 
+The chip beside autodrive says how it is driving now, not the setting. (A test drive keeps
+the rules, but the chip said "racer" -- the user asked whether the test drives were racing.)
+
+**Settings on the lists.** The test drives and Cities lists have a row of "normal" or "racer"
+and "day", "evening" or "night"; the Walks list has the time of day only (a walk has no
+autodrive). The one chosen is full, the rest dimmed; the drive or walk starts that way, and
+"play again" keeps it. They are kept while the game is open: test drives start "normal" (they
+are there to test autodrive), cities "racer".
+
+> the test drives are actually driving in racer mode, or its a bug? maybe lets add settings
+> like racer/normal day/evenining/night to both test drives and the walk (it wont have the
+> racer option)
+
 ## What do you do?
 
 Drive, freely. The car behaves like a car rather than a toy: about 4 m/s² off the line,
@@ -1652,9 +1665,10 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   comes at them; glancing at you.
 - Better people themselves: "what about people themselves? how can we improve". Five
   low-poly characters are the limit now. Done: builds varied, and things carried (shopping
-  bags, handbags, backpacks, a box). Still to do: try a more detailed free (CC0) set of
-  bodies and moves on the look bench (about 2 MB a person, so phones need checking); looking
-  at a phone; hands moving while they talk; reacting to the car (the line above).
+  bags, handbags, backpacks, a box). Hands while talking: done. Done: every person is now one of Quaternius'
+  free Universal Base Characters with the Universal Animation Library's moves, dressed in
+  code (DEV.md "The people"). Still to do: a pose for carrying a box. Also: looking at a phone; reacting
+  to the car (the line above).
 - A guided tour of the city: "a virtual tour in a city. like a guide, where we stop and
   look and explain. the more real it gets the more the tour looks nicer". A guide leads you
   along a route on foot (or driving), stops at the sights, turns your view to each and
