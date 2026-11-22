@@ -1667,27 +1667,47 @@ const GL_COUNT_JS := """(() => {
 ## game has only the sun. But Chrome/Edge on Windows hand every program to Direct3D's compiler,
 ## and those two cost ~2.4-7.7 s each: 44 of them were ~85% of a cold load (user's PC, 22 Nov
 ## 2026: Givatayim's graphics 63 s; area lights alone 2.45 -> 0.47 s a program, omni + spot +
-## area 0.16 s). Defining the three off in exactly those sources -- the base pass, not
-## additive, no DISABLE_LIGHT_OMNI of its own -- compiles them in a fraction, and the picture
-## cannot change: with no such light the code left out loops over nothing. Cold Givatayim,
-## the same build in the same browser: graphics 63 -> 22 s, the compile calls 63 -> 15.5 s.
+## area 0.16 s). First the three were defined off in those sources (graphics 63 -> 22 s); even
+## so the 42 never-drawn programs were 7.9 s of the 21 s left. Now they are swapped for a
+## placeholder -- the source's own `#version` line and an empty main -- which costs nothing to
+## compile. Picked out exactly: the base pass, not additive, no DISABLE_LIGHT_OMNI of their
+## own (every draw of the base pass has it here: no omni light). Godot still links them, finds
+## no uniforms in them (locations -1, which it skips) and never draws with them. If one ever
+## IS drawn, `used` counts it and the console says so -- that draw would come out empty;
+## `tests/web_shaders.js` / the load line show it (`window.__lstrip.used`).
 ## **Only right while the game has no OmniLight3D, SpotLight3D or AreaLight3D** --
 ## `_no_local_lights` warns at load if one appears; drop LIGHT_STRIP_JS before adding one.
 const LIGHT_STRIP_JS := """(() => {
 	if (window.__lstrip || typeof WebGL2RenderingContext === 'undefined') return;
-	const c = window.__lstrip = { n: 0 };
+	const c = window.__lstrip = { n: 0, used: 0 };
 	const P = WebGL2RenderingContext.prototype;
-	const f = P.shaderSource;
-	const add = '\\n#define DISABLE_LIGHT_OMNI\\n#define DISABLE_LIGHT_SPOT\\n#define DISABLE_LIGHT_AREA\\n';
+	const types = new WeakMap(), fake = new WeakSet(), fakeProg = new WeakSet();
+	const cs = P.createShader, ss = P.shaderSource, as = P.attachShader, up = P.useProgram;
+	P.createShader = function (t) { const s = cs.call(this, t); if (s) types.set(s, t); return s; };
 	P.shaderSource = function (s, src) {
 		if (typeof src === 'string' && src.indexOf('#define BASE_PASS') >= 0
 				&& src.indexOf('#define USE_ADDITIVE_LIGHTING') < 0 && src.indexOf('#define DISABLE_LIGHT_OMNI') < 0) {
-			const i = src.indexOf('\\n');
-			src = src.slice(0, i) + add + src.slice(i + 1);
+			const v = src.slice(0, src.indexOf('\\n'));
+			src = types.get(s) === this.VERTEX_SHADER
+				? v + '\\nvoid main() { gl_Position = vec4(0.0); }\\n'
+				: v + '\\nprecision mediump float;\\nout vec4 frag_color;\\nvoid main() { frag_color = vec4(1.0, 0.0, 1.0, 1.0); }\\n';
+			fake.add(s);
 			c.n += 1;
 		}
-		return f.call(this, s, src);
+		return ss.call(this, s, src);
 	};
+	P.attachShader = function (p, s) { if (fake.has(s)) fakeProg.add(p); return as.call(this, p, s); };
+	let cur = null;
+	P.useProgram = function (p) { cur = p; return up.call(this, p); };
+	for (const name of ['drawArrays', 'drawElements', 'drawArraysInstanced', 'drawElementsInstanced', 'drawRangeElements']) {
+		const d = P[name];
+		P[name] = function (...a) {
+			if (cur && fakeProg.has(cur)) {
+				if (c.used++ === 0) console.warn('[streets] LIGHT_STRIP_JS: a placeholder program was drawn with');
+			}
+			return d.apply(this, a);
+		};
+	}
 })()"""
 
 ## warn if a light the strip above assumes away is in the scene
