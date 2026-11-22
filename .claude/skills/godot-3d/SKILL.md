@@ -337,7 +337,18 @@ is rarely the one you would guess. What cost the most, in order, last time one d
   frame rate did not rise, what holds the frame is not what the levels change (draw calls,
   the script on the browser's one thread), so go back up to the best-looking level that ran
   about as fast, and stay there a while -- a PC sat at the bottom, plain and blurred, at the
-  same 25 fps it had at the top.
+  same 25 fps it had at the top. **Pause the watching only for a burst, never for a phase
+  that lasts.** Pausing it "while the world still builds in the background" sounds fair, but
+  a slow machine is exactly where that build takes longest: a laptop at 7 fps stood at 8% of
+  the build after five minutes -- most of an hour to go -- and the ladder never ran once.
+  Leave out the short catch-up round the player, not the long tail.
+- **Reading a frame that runs several physics ticks.** At 60 ticks a second the script's
+  work per real second is fixed whatever the frame rate, so a slow frame does not dilute it:
+  frame time = drawing / (1 - the script's share of each second). A script that eats half of
+  every second doubles the drawing's frame (68 ms of drawing became 135 ms frames, 7.9
+  ticks each, against the engine's cap of 8). Both halves have to shrink, and the drawing
+  alone sets the floor (68 ms: under 15 fps with no script at all). Measure the script per
+  tick, not per frame, to compare two machines.
 - **A time of day, a weather, any look switched at a button: change uniforms, never the
   light setup or the environment's switches.** Every material's shader is compiled per
   scene-wide case, and the browser compiles a material's version the first time it draws

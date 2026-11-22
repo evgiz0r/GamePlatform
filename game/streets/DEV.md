@@ -692,7 +692,11 @@ The ones most often touched, and the functions in them:
   `_send_crossers` / `_zebra_span` / `_away_from` / `_crossers_tick`, the height their feet go
   at `_walk_y` / `_pave_top`, what autodrive stops for `_ap_people_v`.
 - **render quality** -- `QUALITY`, `_set_quality` (what each level drops), `_watch_fps` (web
-  only) / `_judge_fps` (the rule; testable natively), the soft car shadows `_set_blobs`.
+  only; `_ladder_native` for tests) / `_judge_fps` (the rule; testable natively), the soft car
+  shadows `_set_blobs`. `_watch_fps` leaves out only the catch-up round the car
+  (`_bg_build and _catch_up`) and the view from above: it left out the whole background build
+  until 22 Nov, and on a slow machine that is most of an hour -- a work laptop drove at 7 fps
+  and quality 2 for its whole drive, the ladder never asked (PERF.md, "A work laptop").
   Every level keeps the sun's shadows (level 0: 25 m): switching them off recompiled every
   material's shader in the browser, seconds of freeze each time the ladder crossed into or out
   of level 0. Night keeps them too: the moon is the day's sun, dim and blue, its shadows

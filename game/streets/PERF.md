@@ -145,7 +145,8 @@ All in `DEV.md`; search for the bold lead-in.
 | `tests/hitches.gd` | frames over 250 ms / 1 s | software renderer: shows the script only |
 | `tests/sim_cost.gd`, `tests/traffic_motion.gd` | the simulation's cost per tick | `STREETS_WORLD_SPLIT=0` to compare |
 | `tests/index_gain.gd` | what indexing the merged meshes saves | |
-| `tests/quality_ladder.gd` | the quality ladder's rule, made-up frame times | |
+| `tests/quality_ladder.gd` | the quality ladder's rule, made-up frame times | and its gate: it runs while the city builds in the background |
+| `tests/perf_view.gd` | the perf view readable: nothing over it or through it | shot `perf_view.png` |
 
 ## Open problems, biggest first
 
@@ -156,7 +157,9 @@ All in `DEV.md`; search for the bold lead-in.
 2. **The script on the browser's one thread** -- 7.9 ms on 5928bd1 (12.9 on d9b49f2), 2.5
    ticks a frame; ~3.5-4 ms a tick natively in both Givatayim and Tel Aviv. Building is
    the biggest part while the rest of the city goes up; the minimap is Tel Aviv's 0.7-0.9.
-3. **Draws** -- 500-800, and no quality level lowers them.
+3. **Draws** -- 500-800, and no quality level lowers them. A work laptop (Intel graphics,
+   22 Nov, below) spent 68.5 ms a frame drawing them -- under 15 fps with no script at all;
+   the drawing half there scales with the CPU, so fewer draws, not fewer pixels.
 4. **The city file** -- Tel Aviv 1.5 s of it still unbaked (widths, buildings cut, divided
    roads: ~1 s).
 5. **Video memory** -- Tel Aviv 365 MB; phones.
@@ -295,3 +298,44 @@ phone's browser or in slow-frames mode (`_fs_px`: a quarter of the drawing, read
 conversion and mipmaps). Desktop, Ashdod, forced slow: the far shadows' worst frame 82-86 +
 37-70 ms -> 48 and 56 ms. (The "rest ~1 s" at ~8 s on a desktop run is the first frame after
 loading, before the far shadows start: part of the load, not a stutter while driving.)
+
+## A work laptop (22 Nov 2026): Intel graphics (0x7D41), ANGLE on Direct3D 11, a browser, build 2ddd8b3
+
+One perf-view screenshot, mailed: Givatayim at Katznelson, autodrive on, 317 s into the drive.
+- **7 fps, worst 319 ms, quality 2.** Average 135.3 ms = drawing and engine 68.5 + script 66.8 in
+  **7.9 ticks** (the engine's cap is 8): people 22.4, traffic 21.5 (of it deciding, "traffic:
+  follow", 12.5), building 8.1, car 6.0. 588 draws, 2.06 M triangles. Hitches 240-319 ms, each
+  "rest" 187-271 (the drawing) plus the usual parts. "building the city 8%" five minutes in.
+- **Loading was fine**: start area 3.1 · graphics 2.6 (127 shaders, 1.5 s compiling, 328
+  skipped).
+- **About 4x the user's home PC in both halves** (Givatayim there: drawing 16.1 ms; script 3.2
+  ms a tick against 8.5 here; natively in a cloud container 1.7 ms a tick with slow frames
+  forced): the drawing half scales like the script, so the frame is the CPU's in that
+  browser, not the graphics chip's.
+- **The ticks**: at 60 a second the script's work per real second is fixed, so frame =
+  drawing / (1 - script's share) = 68.5 / 0.51 = ~135 ms. The drawing alone caps it at ~14 fps.
+- **Three defects found**, fixed in the next build:
+  1. *The quality ladder never ran.* `_watch_fps` skipped every frame while `_bg_build` was
+     on -- the whole background build, at 8% after 5 minutes there (most of an hour). It
+     sat at 2 for the drive. Now only the catch-up round the car is left out
+     (`_bg_build and _catch_up`); `tests/quality_ladder.gd` has two CHECK lines for it
+     (`_ladder_native` lets the test call the web-only gate). The phone's screenshots (quality
+     2 throughout, the build at 0-5% for minutes) were the same bug.
+  2. *Slow frames left traffic deciding at full rate.* `ceil(3 / ticks_per)` with ticks_per 4
+     is 1: every traffic tick, ~15 a second per near car, the same as at full speed. Now
+     doubled in slow mode (near every 2nd traffic tick, ~7.5 a second; far every 3rd).
+     The exam (Givatayim, slow frames forced, EXAM_SEED=7, 4 x 75 s): checks 24 before, 21
+     after; cars overlapping 6 and 6. One new "stuck 8 s+" after: autodrive behind a bus
+     behind a sedan at a red (the exam's queue rule did not follow the chain through the
+     bus) -- a queue, not a decision missed. Natively deciding is 0.1-0.2 of 1.7 ms a tick.
+  3. *The perf view was half unreadable*: its lines ran over the build line and under the
+     minimap. Now on a dark backing above the map, the build line its first line
+     (`tests/perf_view.gd`).
+- **People, natively, by step** (Givatayim, slow frames, 1.69 ms a people tick, 24 walkers,
+  ~43 people listed): push-outs from cars and posts 0.40, re-placing a walker gone far 0.27,
+  keeping clear of the others (the pairwise loop) 0.25, facing and the dog or pram 0.15, the
+  lane plan 0.13, `_people_apart` 0.11, room to the side 0.10, the rest under 0.08 each. No
+  single hot spot: halving it means doing less for the people far off.
+- Expected from the fixes on that laptop: modest -- ~6 ms of deciding off each frame, and
+  whatever the ladder's levels buy its drawing (on the home PC they bought nothing; this
+  chip may differ). Playable there needs the drawing half cut: fewer draws on a weak machine.

@@ -18049,11 +18049,16 @@ func _set_quality(q: int) -> void:
 
 ## Only on the web: a desktop build has a real GPU, and test runs on a software renderer
 ## would step themselves down to nothing.
+var _ladder_native := false           ## tests: the ladder on a native build too (tests/quality_ladder.gd)
 func _watch_fps(dt: float) -> void:
-	if not OS.has_feature("web"):
+	if not OS.has_feature("web") and not _ladder_native:
 		return
-	if _bg_build or _zoom_v > 0.0:   # the city still building round you, or the whole of it in
-		# view from above, is not this machine being slow
+	if (_bg_build and _catch_up) or _zoom_v > 0.0:   # the squares round you still going up (their
+		# CATCH_UP_US a frame), or the whole city in view from above, is not this machine being
+		# slow. The rest of the background build is a few ms a frame (BUILD_US) and was left out
+		# too -- but it goes on for minutes, and on a slow machine for most of an hour: a work
+		# laptop (Intel graphics, a browser, 22 Nov) stood at "building the city 8%" five minutes
+		# in, at 7 fps, still at quality 2 -- the ladder had never been asked.
 		_fps_t = 0.0
 		_fps_frames = 0
 		_fps_long = 0
@@ -25608,6 +25613,14 @@ func _build_hud() -> void:
 	_perf_lbl.size = Vector2(330, 60)
 	_perf_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_perf_lbl.visible = false
+	# its lines ran down over the build line and under the minimap (made after it, drawn over
+	# it): half the hitch and load lines of a user's screenshot were unreadable (22 Nov). A dark
+	# backing, drawn above the map; the build line is its first line instead (_tick_hud)
+	var pb := StyleBoxFlat.new()
+	pb.bg_color = Color(Palette.col("bg"), 0.8)
+	pb.set_content_margin_all(3.0)
+	_perf_lbl.add_theme_stylebox_override("normal", pb)
+	_perf_lbl.z_index = 1
 	_dest_lbl = _label(12, "accent")
 	_dest_lbl.text_direction = Control.TEXT_DIRECTION_LTR   # "→ <Hebrew street> 47 · 930 m" reads left to right
 	_dest_lbl.position = Vector2(150, 314)
@@ -25711,12 +25724,14 @@ func _tick_hud() -> void:
 	_speed_lbl.text = str(int(round(absf(_v) * 3.6)))
 	# the fps and build lines: in the drawer now, and here only with the perf view up
 	_fps_lbl.visible = _perf_view or _trace_view
-	_ver_lbl.visible = _fps_lbl.visible
+	_ver_lbl.visible = _fps_lbl.visible and not _perf_view   # (the perf view says it on its first line)
+	if is_instance_valid(_load_lbl):   # (and the load line, for its 20 s: it showed through the view's backing)
+		_load_lbl.visible = not _perf_view
 	if _fps_lbl.visible:
 		_fps_lbl.text = "%d fps · worst %d ms · quality %d" % [Engine.get_frames_per_second(), int(_worst_ms()), _quality]
 	if _perf_view:
-		_perf_lbl.text = "frame time, last %d frames (lines: 16 and 33 ms)\n%s\n%s\nhitches (slowest parts, ms):\n%s\n%s" % [
-			_frame_ms.size(), _prof_avg, _gpu_line(), "\n".join(_hitches) if not _hitches.is_empty() else "none yet", _load_text()]
+		_perf_lbl.text = "%s\nframe time, last %d frames (lines: 16 and 33 ms)\n%s\n%s\nhitches (slowest parts, ms):\n%s\n%s" % [
+			_ver_lbl.text, _frame_ms.size(), _prof_avg, _gpu_line(), "\n".join(_hitches) if not _hitches.is_empty() else "none yet", _load_text()]
 	if _dest_on:
 		var left := _pos.distance_to(_dest)
 		if _auto and _ap_pts.size() > 1:
