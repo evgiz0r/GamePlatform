@@ -75,7 +75,9 @@ func _run() -> void:
 		print("WALK MENU: FAIL, no list")
 		quit(1)
 		return
-	var buttons: Array = g._route_ui.find_children("*", "Button", true, false).filter(func(x): return x.text != "back")
+	var buttons: Array = g._route_ui.find_children("*", "Button", true, false).filter(func(x): return not x.text in ["back", "evening", "night"])
+	var times: Array = g._route_ui.find_children("*", "Button", true, false).filter(func(x): return x.text in ["evening", "night"])
+	print("evening and night buttons: %d (%s)" % [times.size(), "ok" if times.size() == walks * 2 else "FAIL: two per walk"])
 	print("the list: %d buttons (%s)" % [buttons.size(), "ok" if buttons.size() == walks else "FAIL: one per walk"])
 	for b: Button in buttons:
 		print("  ", b.text)
@@ -112,5 +114,26 @@ func _run() -> void:
 	print("walk of %.0f s, %d points; %.1f s in, the walker %.1f m from its first point" % [g._film[g._film.size() - 1].z,
 		g._film.size(), g._film_t, g._pos.distance_to(p0)])
 	await _snap("walk_started")
+	# the speed button (bottom right): pressed once, the walk's clock goes twice as fast against
+	# real time; the progress bar's fill and time along the foot
+	var r0: float = g._film_t
+	var w0 := Time.get_ticks_msec()
+	await create_timer(2.0, true, false, true).timeout
+	var rate1: float = (g._film_t - r0) / ((Time.get_ticks_msec() - w0) / 1000.0)
+	var sev := InputEventMouseButton.new()
+	sev.button_index = MOUSE_BUTTON_LEFT
+	sev.pressed = true
+	sev.position = (g._walk_btn as Button).get_global_rect().get_center()
+	sev.global_position = sev.position
+	g._input(sev)
+	await create_timer(0.5, true, false, true).timeout
+	r0 = g._film_t
+	w0 = Time.get_ticks_msec()
+	await create_timer(2.0, true, false, true).timeout
+	var rate2: float = (g._film_t - r0) / ((Time.get_ticks_msec() - w0) / 1000.0)
+	print("speed button: %s; the walk's clock %.2f then %.2f s a second (%s); the bar %s, at %.0f px" % [g._walk_btn.text, rate1, rate2,
+		"ok" if rate2 > rate1 * 1.6 else "FAIL: not faster", g._walk_time.text, g._walk_fill.size.x])
+	print("the game's own transform %s (the bar's layer assumes none)" % g.get_global_transform())
+	await _snap("walk_faster")
 	print("WALK MENU: ok")
 	quit()

@@ -45,7 +45,9 @@ CARS = WALKABLE | {"service", "trunk", "trunk_link"}
 WALKS = {
     "tel_aviv_rothschild": {
         "city": "tel_aviv", "name": "Tel Aviv: along Rothschild",
-        "legs": [["שדרות רוטשילד", "נחלת בנימין", "שד\"ל"]], "promenade": True,
+        # down the boulevard's middle, over Allenby: the carriageways' inner side ran along its
+        # sand strip, not the walk
+        "path": [[-1795.0, 1298.4], [-1720.0, 1275.7], [-1670.0, 1259.5], [-1612.0, 1237.2]],   # (the midline between its two carriageways, 20 m apart: OSM's footway there lay inside the game's asphalt past Allenby)
     },
     "ashdod_halutzim": {
         "city": "ashdod", "name": "Ashdod: HeHalutzim to Herzl",
@@ -54,6 +56,13 @@ WALKS = {
     "bedford_shore": {
         "city": "bedford", "name": "Bedford: Shore Drive by the water",
         "legs": [["Shore Drive", "Bedford Harbourwalk", "Shipyard Road"]], "side": "left",
+    },
+    "delft_oude_delft": {
+        "city": "delft", "name": "Delft: along the Oude Delft canal",
+        # along the canal's quay, not the house side (its fronts stand at a narrow pavement's
+        # back): Oude Delft is a one-way street each side of the canal, so the quay is a
+        # carriageway's inner side, as a boulevard's middle is
+        "legs": [["Oude Delft", "Peperstraat", "Breestraat"]], "promenade": True, "pave": 1.4,
     },
     "dimyon_market": {
         "city": "dimyon", "name": "Test town: through the market street",
@@ -87,6 +96,10 @@ def ends_meeting(d, street, cross):
 def graph(d, pts, street):
     g = {}
     width = {}
+    # a street mapped as two carriageways (one-way ways both ways): each one's pavement is its
+    # traffic's right; a plain one-way street (a canal street) has pavements on both sides
+    dirs = {int(r.get("o", 0)) for r in d["roads"] if r.get("name") == street and r.get("k") in WALKABLE}
+    divided = 1 in dirs and len([r for r in d["roads"] if r.get("name") == street and int(r.get("o", 0)) == 1]) >= 2         and two_ways(d, pts, street)
     for r in d["roads"]:
         if r.get("name") != street or r.get("k") not in WALKABLE:
             continue
@@ -98,9 +111,29 @@ def graph(d, pts, street):
             g.setdefault(v, []).append((u, L))
             # (width, and for one carriageway of a divided road the side its pavement is on,
             # walking u to v: its traffic's right, the median on its left)
+            if not divided:
+                o = 0
             width[(u, v)] = (w, "right" if o == 1 else "left" if o == -1 else None)
             width[(v, u)] = (w, "left" if o == 1 else "right" if o == -1 else None)
     return g, width
+
+
+def two_ways(d, pts, street):
+    """the street's one-way ways run both ways somewhere side by side (within 40 m, opposite
+    headings): a divided road, not a one-way street"""
+    segs = []
+    for r in d["roads"]:
+        if r.get("name") == street and int(r.get("o", 0)) == 1:
+            for u, v in zip(r["n"], r["n"][1:]):
+                segs.append((pts[u], pts[v]))
+    for a, b in segs[:400]:
+        ha = math.atan2(b[1] - a[1], b[0] - a[0])
+        for c, e in segs[:400]:
+            if math.dist(a, c) < 40 and math.dist(a, c) > 4:
+                hc = math.atan2(e[1] - c[1], e[0] - c[0])
+                if abs(abs((ha - hc + math.pi) % (2 * math.pi) - math.pi) - math.pi) < 0.5:
+                    return True
+    return False
 
 
 def path(g, a, b):
@@ -239,6 +272,9 @@ def at(line, cum, s):
 
 def build(wid, spec):
     d, pts = load(spec["city"])
+    if "path" in spec:   # a footway's own points: walked down its middle
+        walk = [tuple(p) for p in spec["path"]]
+        return timed(wid, spec, d, pts, walk, 1.0, None)
     line = []
     ws = []
     start = None
@@ -252,20 +288,33 @@ def build(wid, spec):
         ws += w
         start = nodes[-1]
     ws = ws[: len(line) - 1]
-    walk = offset_line(line, ws, spec.get("side", "right"), float(spec.get("pave", PAVE)), bool(spec.get("promenade", False)))
+    pave = float(spec.get("pave", PAVE))
+    walk = offset_line(line, ws, spec.get("side", "right"), pave, bool(spec.get("promenade", False)))
+    end_w = max([float(r.get("w", 6.0)) for r in d["roads"] if r.get("k") in CARS and start in r["n"]] or [6.0])
+    # the kerb side of each stretch: where its street things stand (dress)
+    kerb = offset_line(line, ws, spec.get("side", "right"), 0.6, bool(spec.get("promenade", False)))
+    return timed(wid, spec, d, pts, walk, end_w / 2 + 2.5, kerb)
+
+
+def timed(wid, spec, d, pts, walk, short, kerb):
     hits, cum = crossings(d, pts, walk)
-    total = cum[-1]
+    # (it stops on the pavement short of the street its last leg ends at: half the widest road
+    # there and 2.5 m more -- Ashdod's ran on into Herzl's carriageway, past a corner's six poles)
+    total = cum[-1] - short
+    hits = [h for h in hits if h[0] < total]
     # the timed points: every ~4 m at the pace, a wait at each kerb, the crossing quicker
     out = []
     looks = []
     zebras = []
     t = 0.0
-    s = 0.0
+    s = 2.5 if kerb else 0.0   # (a leg's walk starts 2.5 m in from its first junction: a bridge's parapet stood there in Delft)
     k = 0
     seed = sum(ord(c) for c in wid)
     for h in hits + [[total + 1e9, total + 1e9, 0]]:
-        kerb_a = h[0] - (h[2] / 2 + 0.5)
-        kerb_b = h[1] + (h[2] / 2 + 0.5)
+        # (the kerbs a little further out than half the road: a junction's corners round the
+        # asphalt out, and a walk waited on it -- the scan's road check)
+        kerb_a = h[0] - (h[2] / 2 + 1.5)
+        kerb_b = h[1] + (h[2] / 2 + 1.5)
         stop = min(kerb_a, total)
         while s < stop - 0.01:
             out.append([round(t, 2), *[round(v, 2) for v in at(walk, cum, s)]])
@@ -293,10 +342,78 @@ def build(wid, spec):
         out.append([round(t, 2), round(p_b[0], 2), round(p_b[1], 2)])
         zebras.append([round(t0, 2), round(t, 2), [round(p_a[0], 2), round(p_a[1], 2)], [round(p_b[0], 2), round(p_b[1], 2)]])
         s = kerb_b + 0.01
-    return {"name": spec["name"], "src": "make_walks", "dodge": True, "points": out, "looks": looks, "zebras": zebras}, total, len(hits)
+    props = dress(wid, spec, walk, cum, total, hits, kerb)
+    return {"name": spec["name"], "src": "make_walks", "dodge": True, "points": out, "looks": looks, "zebras": zebras}, total, len(hits), props
 
 
-def write(city, walks):
+# Street things along a walk (the user, 22 Nov: "add more items near the walks"): every 9-16 m
+# one, on the kerb side 0.6 m in from the road's edge (the street trees stand at 1.3, the walk at
+# 2.05), none within 6 m of a crossing or the walk's ends; on a path (no kerb), 1.6 m to either
+# side by turns. What kinds by the town's look: an Israeli street's bins, scooters, motorbikes,
+# cabinets, hydrants, yellow parking boards and pairs of bollards; a Nova Scotia street's
+# hydrants, bins, cabinets, bollards. The game steps the walk round them (`dodge`).
+DRESS = {
+    "med": [("bin", 25), ("scooter", 18), ("motorbike", 14), ("cabinet", 10), ("hydrant", 8), ("sign_board", 7), ("bollards", 10)],
+    "north": [("hydrant", 30), ("bin", 30), ("cabinet", 20), ("bollards", 15)],
+    # a Dutch town's: rows of short bollards (no cars on the canal's edge), bins, scooters,
+    # cabinets; no fire hydrants above the ground
+    "dutch": [("bollards", 40), ("bin", 25), ("scooter", 20), ("cabinet", 15)],
+}
+GAP = {"med": (9.0, 16.0), "north": (22.0, 38.0), "dutch": (10.0, 18.0)}   # (a suburb's pavement is emptier)
+LOOK = {"tel_aviv": "med", "ashdod": "med", "dimyon": "med", "givatayim": "med", "bedford": "north", "delft": "dutch"}
+
+
+def dress(wid, spec, walk, cum, total, hits, kerb):
+    import random
+    rng = random.Random(sum(ord(c) * (i + 1) for i, c in enumerate(wid)))
+    kinds = DRESS[LOOK.get(spec["city"], "med")]
+    bag = [k for k, n in kinds for _ in range(n)]
+    kc = None
+    if kerb:
+        kc = [0.0]
+        for a, b in zip(kerb, kerb[1:]):
+            kc.append(kc[-1] + math.dist(a, b))
+    props = []
+    s = 5.0 + rng.uniform(0, 6)
+    side = 1
+    while s < total - 5.0:
+        if any(h[0] - 6.0 < s < h[1] + 6.0 for h in hits):
+            s += 4.0
+            continue
+        p = at(walk, cum, s)
+        q = at(walk, cum, min(s + 0.5, cum[-1]))
+        f = ((q[0] - p[0]), (q[1] - p[1]))
+        L = math.hypot(*f) or 1.0
+        f = (f[0] / L, f[1] / L)
+        if kc:
+            k = at(kerb, kc, s * kc[-1] / cum[-1])
+            to_road = (k[0] - p[0], k[1] - p[1])
+            n = math.hypot(*to_road) or 1.0
+            to_road = (to_road[0] / n, to_road[1] / n)
+        else:
+            to_road = (-f[1] * side, f[0] * side)
+            k = (p[0] + to_road[0] * 1.6, p[1] + to_road[1] * 1.6)
+            side = -side
+        kind = rng.choice(bag)
+        here = [round(k[0], 2), round(k[1], 2)]
+        along = [round(f[0], 4), round(f[1], 4)]
+        if kind in ("scooter", "motorbike"):   # nose to the kerb
+            props.append({"kind": kind, "at": here, "dir": [round(-to_road[0], 4), round(-to_road[1], 4)], "box": rng.random() < 0.4})
+        elif kind == "bollards":
+            for o in (-0.8, 0.8):
+                props.append({"kind": "bollard", "at": [round(k[0] + f[0] * o, 2), round(k[1] + f[1] * o, 2)]})
+        elif kind in ("cabinet", "sign_board"):
+            props.append({"kind": kind, "at": here, "dir": [round(-to_road[0], 4), round(-to_road[1], 4)]})
+        else:
+            props.append({"kind": kind, "at": here, "dir": along})
+        s += rng.uniform(*GAP[LOOK.get(spec["city"], "med")])
+    for pr in props:
+        pr["src"] = "make_walks"
+        pr["walk"] = wid
+    return props
+
+
+def write(city, walks, props):
     path_ = os.path.join(CITIES, "details", city + ".json")
     d = {}
     if os.path.exists(path_):
@@ -305,6 +422,7 @@ def write(city, walks):
     w = {k: v for k, v in d.get("walks", {}).items() if v.get("src") != "make_walks"}
     w.update(walks)
     d["walks"] = w
+    d["props"] = [p for p in d.get("props", []) if p.get("src") != "make_walks"] + props
     with open(path_, "w", encoding="utf-8") as fh:
         json.dump(d, fh, ensure_ascii=False, indent=1)
         fh.write("\n")
@@ -339,10 +457,12 @@ if __name__ == "__main__":
         list_junctions(sys.argv[2], sys.argv[3])
         sys.exit(0)
     by_city = {}
+    dressed = {}
     for wid, spec in WALKS.items():
-        walk, total, nx = build(wid, spec)
+        walk, total, nx, props = build(wid, spec)
         by_city.setdefault(spec["city"], {})[wid] = walk
-        print("%-22s %5.0f m, %4.0f s, %d crossings, from (%.0f, %.0f)" % (wid, total, walk["points"][-1][0], nx,
-              walk["points"][0][1], walk["points"][0][2]))
+        dressed.setdefault(spec["city"], []).extend(props)
+        print("%-22s %5.0f m, %4.0f s, %d crossings, %d things along it, from (%.0f, %.0f)" % (wid, total, walk["points"][-1][0], nx,
+              len(props), walk["points"][0][1], walk["points"][0][2]))
     for city, walks in by_city.items():
-        write(city, walks)
+        write(city, walks, dressed[city])

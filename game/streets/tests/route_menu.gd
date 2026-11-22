@@ -38,7 +38,7 @@ func _run() -> void:
 	# the routes' rows only: not the page tabs ("the ten", "yours") or "back" (counted with them,
 	# the test said FAIL and tapped route 8, Tel Aviv, for the 10th)
 	var buttons: Array = g._route_ui.find_children("*", "Button", true, false).filter(
-		func(x): return not (x.text in ["back", "the ten"] or x.text.begins_with("yours")))
+		func(x): return not (x.text in ["back", "the set"] or x.text.begins_with("yours")))
 	print("the list: %d buttons" % buttons.size())
 	await _snap("route_list")
 	var pick := int(OS.get_environment("ROUTE_PICK")) if OS.get_environment("ROUTE_PICK") != "" else 10
@@ -72,6 +72,6 @@ func _run() -> void:
 	print("route %d in %s: the car %.0f m from its start, autodrive %s, going to %s" % [
 		int(r["id"]), g._city_id, (g._pos as Vector2).distance_to(from), "on" if g._auto else "off", g._dest_name if g._dest_on else "(nowhere)"])
 	await _snap("route_started")
-	var ok: bool = buttons.size() == 10 and g._auto and g._dest_on and (g._pos as Vector2).distance_to(from) < 80.0
+	var ok: bool = buttons.size() == g._routes().size() and g._auto and g._dest_on and (g._pos as Vector2).distance_to(from) < 80.0
 	print("ROUTE MENU: %s" % ("PASS" if ok else "FAIL"))
 	quit(0)

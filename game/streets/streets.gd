@@ -56,6 +56,8 @@ const LEVELS := [
 	{"name": "Delft", "city": "delft", "start": ["Oude Delft", "Binnenwatersloot"], "look": "north", "build": "nl", "decks": "infer"},
 	# the cities: a list, as the walks and the test routes are (no city behind it)
 	{"name": "Cities: pick one", "group": "Cities", "cities": true, "city": "dimyon", "look": "med"},
+	# Delft's walk: every city has one (NEW_CITY.md), laid by data_tools/make_walks.py
+	{"name": "Delft: along the Oude Delft canal", "city": "delft", "look": "north", "decks": "infer", "walk": "delft_oude_delft"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -1371,6 +1373,13 @@ func start(_config: Dictionary) -> void:
 	_build_signal_sounds()
 	if _place.has("walk"):
 		_film_begin(String(_place["walk"]))
+		# the walks list's "evening" / "night": the walk in that light (as the time-of-day
+		# button does it while driving: night is the day's sun dimmed, the street lights on)
+		match String(_config.get("time", "day")):
+			"evening":
+				await _set_evening(true)
+			"night":
+				_set_night(true)
 	_dressing["traffic"] = _traffic.alive_count()
 	_loaded = true
 	if not _route.is_empty():
@@ -1874,6 +1883,8 @@ func _load_save() -> void:
 
 func _exit_tree() -> void:
 	SaveData.data["volume_sfx"] = _sfx_was
+	if _walk_speed != 1.0:
+		Engine.time_scale = 1.0   # (the menu after a sped-up walk)
 	if _shadow_web:   # put the project's own shadow settings back for the next game
 		RenderingServer.directional_shadow_atlas_set_size(
 			int(ProjectSettings.get_setting("rendering/lights_and_shadows/directional_shadow/size", 4096)), true)
@@ -7567,6 +7578,24 @@ func _build_trees() -> void:
 		var jitter := Vector3(rng.randf_range(0.85, 1.15), rng.randf_range(0.85, 1.15), rng.randf_range(0.85, 1.15))
 		var tpart: String = spec[0]
 		var trunk_h := 2.6 if tpart != "ptrunk" else 7.0
+		# a street's trees are pruned up over the pavement: branches from STREET_BRANCHES, leaves
+		# from STREET_LEAVES (a walk's camera went through an olive's at 1.2-1.6 m). Only those
+		# within 3 m of a road's edge: not the parks', woods', mountains', yards' or a footpath's
+		# (the filmed passage's low planting closes it in, and lifting it scored 6-9 worse there).
+		var lift := 0.0
+		var by_road := false
+		if tpart == "trunk" and not forest.has(si) and not mtn.has(si):
+			var rh: Dictionary = _nearest_seg(Vector2(sp.x, sp.y), 6.0, true)
+			by_road = not rh.is_empty() and float(rh["edge"]) < 3.0   # (over a pavement: not a passage's, a yard's)
+		if by_road:
+			var hb := 1.75 * tw.y * sc   # (the trunk mesh's lowest branch, 0.45 over its middle of 2.6)
+			if hb < STREET_BRANCHES:
+				var ny := tw.y * STREET_BRANCHES / hb
+				lift = trunk_h * (ny - tw.y) * sc
+				tw = Vector2(tw.x, ny)
+			var bottom := float(spec[4]) * sc + lift - CROWN_LOW * cw.y * jitter.y * sc
+			if bottom < STREET_LEAVES:
+				lift += STREET_LEAVES - bottom
 		var bark := Color(1.9, 1.9, 1.8) if kind == "birch" else (Color(1.6, 1.55, 1.45) if kind == "eucalyptus" else Color(1, 1, 1))
 		# the leaves (the atlas cell rides in the colour's alpha); some of the round street
 		# trees are feathery, like the melias and jacarandas that line Israeli streets
@@ -7574,10 +7603,10 @@ func _build_trees() -> void:
 		if kind == "round" and rng.randf() < 0.3:
 			cell = 2
 		put.call(tpart, Transform3D(b * Basis.from_scale(Vector3(tw.x, tw.y, tw.x) * sc), base + b * Vector3(0, trunk_h * 0.5 * tw.y * sc, 0)), bark)
-		put.call(spec[2], Transform3D(b * Basis.from_scale(cw * jitter * sc), base + b * Vector3(0, float(spec[4]) * sc, 0)),
+		put.call(spec[2], Transform3D(b * Basis.from_scale(cw * jitter * sc), base + b * Vector3(0, float(spec[4]) * sc + lift, 0)),
 			Color(tint.r * g, tint.g * g, tint.b * g, (float(cell) + 0.5) / 4.0))
 		var tat := Time.get_ticks_usec()
-		_ao_tree(Vector2(sp.x, sp.y), cw.x * jitter.x * sc * (0.55 if tpart == "ptrunk" else 0.85), float(spec[4]) * sc)
+		_ao_tree(Vector2(sp.x, sp.y), cw.x * jitter.x * sc * (0.55 if tpart == "ptrunk" else 0.85), float(spec[4]) * sc + lift)
 		if not forest.has(si) and not mtn.has(si):   # the trunk's foot (the street's trees: not the parks', open land's or mountains')
 			_ao_disc(Vector2(sp.x, sp.y), (0.45 if tpart == "ptrunk" else 0.6) * sc, 0.7)
 		_part_time("trees: shadows on the ground (far, trunk feet)", tat)
@@ -7588,6 +7617,9 @@ func _build_trees() -> void:
 		await _chunked_paced(_tree_meshes[part], parts[part], reach, colours[part], null, true)
 
 var _tree_meshes := {}
+const STREET_BRANCHES := 2.2         ## m: a street tree's lowest branch (pruned over the pavement)
+const STREET_LEAVES := 2.5           ## m: its lowest leaves
+const CROWN_LOW := 0.75              ## the card crown's reach below its middle, per unit of its height scale
 const TREE_COVER := 40.0             ## a town's map of every tree covers within 40-80 m of its trees (cells this big)
 var _tree_cover := {}                ## TREE_COVER cell -> 2: every tree there is mapped (from the air)
 const TREE_NEAR := 9.0               ## no made-up street tree this near a listed one (a row's gap is 11 m)
@@ -7746,7 +7778,9 @@ func _tree_kind(look: String, wood: bool, r: float) -> String:
 	if look == "north":
 		if wood:
 			return "spruce" if r < 0.68 else ("birch" if r < 0.82 else ("maple" if r < 0.93 else "oak"))
-		return "maple" if r < 0.42 else ("spruce" if r < 0.62 else ("birch" if r < 0.78 else "oak"))
+		# (no spruce along a street: its boughs sweep the ground 4 m across, and a walk's camera went
+		# through them on Bedford's pavements -- the north's spruces are the woods' and yards')
+		return "maple" if r < 0.5 else ("birch" if r < 0.72 else "oak")
 	if wood:
 		return "pine" if r < 0.38 else ("eucalyptus" if r < 0.58 else ("cypress" if r < 0.68 else ("olive" if r < 0.84 else "round")))
 	var table := [["ficus", 0.22], ["acacia", 0.39], ["round", 0.56], ["olive", 0.63], ["cypress", 0.68],
@@ -16383,6 +16417,7 @@ func _film_begin(id: String) -> void:
 	_hud.visible = false
 	if OS.get_environment("STREETS_FILM_LOOK") != "0":   # (=0: the game's own picture, to measure it bare)
 		_film_look_layer()
+	_walk_bar_build()
 	Probe.event("film", {"walk": id, "seconds": _film[_film.size() - 1].z})
 
 ## The phone's picture over a filmed walk: a grade on the finished frame, under the shell's
@@ -16477,6 +16512,7 @@ void fragment() {
 
 func _film_tick(dt: float) -> void:
 	_film_t += dt
+	_walk_bar_tick()
 	if not _film_base.is_empty() and _film_t >= _film_dodged:
 		_film_dodged = _film_t + 2.0
 		_film_dodge(_film_t + 4.0, _film_t + 40.0)   # (the squares ahead have built since)
@@ -16591,7 +16627,7 @@ func _film_on_zebras() -> void:
 ## A walk nobody filmed (data_tools/make_walks.py, `dodge`) is laid along a street's pavement
 ## by its map alone and knows nothing of what stands on it -- the city's trees, poles, bins,
 ## and whatever other sessions put on pavements later. So the game steps it round them: the
-## walk resampled every half second (and at each of its own points, so its waits keep their
+## walk resampled every quarter second (and at each of its own points, so its waits keep their
 ## times), and each sample pushed sideways off any post within reach, toward the side that
 ## is clear of walls, the push spread over DODGE_SPREAD m either way so it bends round, not
 ## jumps. Squares build as the walk goes, so it is done again for the stretch ahead every 2 s.
@@ -16610,7 +16646,7 @@ func _film_dodge_begin() -> void:
 	var t := 0.0
 	while t < end:
 		ts[snappedf(t, 0.01)] = true
-		t += 0.5
+		t += 0.25   # (0.5 let a post between two samples through, at a crossing's railings)
 	var keys := ts.keys()
 	keys.sort()
 	var base: Array = []
@@ -16652,24 +16688,37 @@ func _film_dodge(t0: float, t1: float) -> void:
 		for j: int in _near(_post_hash, p, 2.5, BLD_CELL):
 			if p.distance_to(_posts[j]) < _post_r[j] + DODGE_CLEAR + 1.6:
 				near.append(j)
-		if near.is_empty():
+		# off a crossing, the walk keeps off the asphalt too (a footway OSM maps beside a
+		# carriageway can lie inside the game's fitted one: Rothschild's)
+		var kerbside := true
+		for z: Array in _film_zebras:
+			kerbside = kerbside and not (b.z >= float(z[0]) - 0.6 and b.z <= float(z[1]) + 0.6)
+		if near.is_empty() and _push_out(p, 0.25, false, false) == Vector2.ZERO and (not kerbside or _off_road(p, 0.15)):
 			need[i] = 0.0
-			continue
-		# the least step sideways (up to 1.6 m either way, in 10 cm) clear of all of them at
-		# once and of the walls; if none is, the one with the most room
+			continue   # (nothing near, not in a wall, not on a road: a garden wall's corner sat on one walk's line)
+		# the step sideways (up to 3 m either way, in 10 cm) nearest the last sample's that is
+		# clear of all of them at once and of the walls; if none is, the one with the most room.
+		# (Nearest the last, not the least: the least flipped sides between a shelter's panel and
+		# a bin at the kerb, and the curve between went through the panel.)
+		var prev: float = need[i - 1] if i > lo else 0.0
+		var cands: Array = []
+		for k in range(-30, 31):
+			cands.append(0.1 * float(k))
+		cands.sort_custom(func(x, y): return absf(x - prev) < absf(y - prev))
 		var best := 0.0
 		var room := -INF
-		for k in range(0, 33):
-			var off := 0.1 * float((k + 1) / 2) * (1.0 if k % 2 == 1 else -1.0)
+		for off: float in cands:
 			var q := p + sd * off
 			var m := INF
 			for j: int in near:
 				m = minf(m, q.distance_to(_posts[j]) - _post_r[j])
-			if m >= DODGE_CLEAR and _push_out(q, 0.25, false, false) == Vector2.ZERO:
+			if _push_out(q, 0.25, false, false) != Vector2.ZERO or (kerbside and not _off_road(q, 0.15)):
+				continue
+			if m >= DODGE_CLEAR:
 				best = off
 				room = m
 				break
-			if m > room and _push_out(q, 0.25, false, false) == Vector2.ZERO:
+			if m > room:
 				room = m
 				best = off
 		need[i] = best
@@ -16752,6 +16801,69 @@ func _film_glance(dt: float, may := true) -> Vector2:
 	if on:
 		_glance_a = clampf(angle_difference(_yaw, (c.pos - _pos).angle()), -GLANCE_MAX, GLANCE_MAX)
 	return Vector2(_glance_w, _glance_a) if _glance_w > 0.01 else Vector2.ZERO
+
+## A walk's progress along the foot of the screen: a thin bar and the time ("1:23 / 3:20"), and a
+## speed button beside it -- 1x, 2x, 4x round, the whole world sped up together (the engine's
+## time scale, as STREETS_SIM_SPEED: more game time a tick, not more ticks, so a phone's frame
+## costs the same). The user, 22 Nov: "a progress bar to the walks so we know how much we
+## passed, and maybe a speedup".
+const WALK_SPEEDS := [1.0, 2.0, 4.0]
+var _walk_speed := 1.0
+var _walk_ui: Control
+var _walk_fill: ColorRect
+var _walk_time: Label
+var _walk_btn: Button
+var _walk_shown := -1
+
+func _walk_bar_build() -> void:
+	# (on a layer over the phone's grade, layer 1, which washed it out; under the shell's, 10)
+	var layer := CanvasLayer.new()
+	layer.layer = 2
+	add_child(layer)
+	_walk_ui = Control.new()
+	_walk_ui.size = Vector2(640, 360)
+	_walk_ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(_walk_ui)
+	var back := ColorRect.new()
+	back.color = Color(Palette.col("bg"), 0.55)
+	back.position = Vector2(20, 346)
+	back.size = Vector2(530, 5)
+	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_walk_ui.add_child(back)
+	_walk_fill = ColorRect.new()
+	_walk_fill.color = Palette.col("accent")
+	_walk_fill.position = back.position
+	_walk_fill.size = Vector2(0, 5)
+	_walk_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_walk_ui.add_child(_walk_fill)
+	_walk_time = UIKit.label("", 11, "ink")
+	_walk_time.add_theme_font_override("font", _font)
+	_walk_time.add_theme_color_override("font_outline_color", Palette.col("bg"))
+	_walk_time.add_theme_constant_override("outline_size", 4)
+	_walk_time.position = Vector2(20, 326)
+	_walk_time.size = Vector2(160, 18)
+	_walk_ui.add_child(_walk_time)
+	_walk_btn = _tap_button("1x", func(): _walk_faster())
+	_walk_btn.add_theme_font_override("font", _font)
+	_walk_btn.add_theme_font_size_override("font_size", 12)
+	_walk_ui.add_child(_walk_btn)
+	_put(_walk_btn, Vector2(562, 333), Vector2(58, 24))
+	_walk_bar_tick()
+
+func _walk_faster() -> void:
+	_walk_speed = WALK_SPEEDS[(WALK_SPEEDS.find(_walk_speed) + 1) % WALK_SPEEDS.size()]
+	_walk_btn.text = "%dx" % int(_walk_speed)
+	Probe.event("walk_speed", {"x": _walk_speed})
+
+func _walk_bar_tick() -> void:
+	if _walk_ui == null:
+		return
+	var last: float = _film[_film.size() - 1].z
+	var t := clampf(_film_t, 0.0, last)
+	_walk_fill.size.x = 530.0 * t / maxf(last, 0.1)
+	if int(t) != _walk_shown:
+		_walk_shown = int(t)
+		_walk_time.text = "%d:%02d / %d:%02d" % [int(t) / 60, int(t) % 60, int(last) / 60, int(last) % 60]
 
 ## where the walk is at time t: a smooth curve (Catmull-Rom) through the timed points
 func _film_at(t: float) -> Vector2:
@@ -17336,6 +17448,8 @@ var _sim_speed := float(OS.get_environment("STREETS_SIM_SPEED")) if OS.get_envir
 func _physics_process(dt: float) -> void:
 	if _sim_speed > 0.0 and Engine.time_scale != _sim_speed:
 		Engine.time_scale = _sim_speed
+	elif _sim_speed <= 0.0 and not _film.is_empty() and Engine.time_scale != _walk_speed:
+		Engine.time_scale = _walk_speed   # (a walk's speed button: more game time a tick, not more ticks)
 	_prev_pos = _pos   # where the car was at the last tick, for _frame() to blend from
 	_prev_yaw = _yaw
 	_prev_y = _y
@@ -24326,7 +24440,7 @@ func _close_picker() -> void:
 ## pick starts that route's own city with {"route": id}: the car set down at its "from", "go
 ## to" its "to" on autodrive, and once there, back to the list.
 const ROUTES_FILE := "res://game/streets/routes.json"
-const CITY_NAMES := {"givatayim": "Givatayim", "ashdod": "Ashdod", "tel_aviv": "Tel Aviv", "bedford": "Bedford", "dimyon": "test town"}
+const CITY_NAMES := {"givatayim": "Givatayim", "ashdod": "Ashdod", "tel_aviv": "Tel Aviv", "bedford": "Bedford", "dimyon": "test town", "delft": "Delft"}
 var _route := {}                       ## the drive of the route set being watched, or {}
 var _route_ui: Control                 ## the list of them, while it is up
 
@@ -24431,7 +24545,7 @@ func _route_list_open() -> void:
 	var mine := _my_routes()
 	for k in range(2):
 		var page: String = ["set", "mine"][k]
-		var tab := _tap_button(["the ten", "yours (%d)" % mine.size()][k], func(): _route_page = page; _route_list_open())
+		var tab := _tap_button(["the set", "yours (%d)" % mine.size()][k], func(): _route_page = page; _route_list_open())
 		tab.add_theme_font_override("font", _font)
 		tab.add_theme_font_size_override("font_size", 11)
 		tab.modulate = Color(1, 1, 1, 1.0 if page == _route_page else 0.5)
@@ -24458,9 +24572,10 @@ func _route_list_open() -> void:
 		b.add_theme_font_override("font", _font)
 		b.add_theme_font_size_override("font_size", 10)
 		b.clip_text = true
-		var y := 80.0 + (i + (1 if _route_page == "mine" else 0)) * 27.0
+		var pitch := minf(27.0, 272.0 / maxf(1.0, routes.size() + (1 if _route_page == "mine" else 0)))   # (eleven and more fit)
+		var y := 80.0 + (i + (1 if _route_page == "mine" else 0)) * pitch
 		_route_ui.add_child(b)
-		_put(b, Vector2(14, y), Vector2(w, 25))
+		_put(b, Vector2(14, y), Vector2(w, pitch - 2.0))
 		if r.get("mine", false):
 			var id := int(r["id"])
 			var x := _tap_button("✕", func(): _save_my_routes(_my_routes().filter(func(q): return int(q["id"]) != id)); _route_list_open())
@@ -24478,14 +24593,15 @@ func _route_new_row(have: int) -> void:
 	lbl.position = Vector2(14, 83)
 	lbl.size = Vector2(170, 20)
 	_route_ui.add_child(lbl)
-	var cities: Array = ["givatayim", "tel_aviv", "ashdod", "bedford", "dimyon"]
+	var cities: Array = CITY_NAMES.keys()
+	var cw := 436.0 / cities.size()
 	for k in range(cities.size()):
 		var cid: String = cities[k]
 		var b := _tap_button(CITY_NAMES[cid], func(): Flow.start_game("streets", {"level": _city_level(cid), "make_route": true}))
 		b.add_theme_font_override("font", _font)
 		b.add_theme_font_size_override("font_size", 10)
 		_route_ui.add_child(b)
-		_put(b, Vector2(190 + k * 87, 80), Vector2(83, 25))
+		_put(b, Vector2(190 + k * cw, 80), Vector2(cw - 4.0, 25))
 
 ## a place in LEVELS that is one of the start screen's lists, not a city to drive
 static func _is_list(lv: Dictionary) -> bool:
@@ -24506,7 +24622,7 @@ func _walk_list_open(kind := "walks") -> void:
 	dim.size = Vector2(640, 360)
 	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_route_ui.add_child(dim)
-	var title := UIKit.label("walks: pick one and watch it, in first person" if kind == "walks" else "cities: pick one to drive", 13, "player")
+	var title := UIKit.label("walks: by day, or in the evening or at night" if kind == "walks" else "cities: pick one to drive", 13, "player")
 	title.add_theme_font_override("font", _font)
 	title.position = Vector2(20, 30)
 	title.size = Vector2(600, 20)
@@ -24528,8 +24644,9 @@ func _walk_list_open(kind := "walks") -> void:
 		keyed.sort_custom(func(a, b): return a[0] < b[0])
 		for kk: Array in keyed:
 			rows.append([kk[1], kk[2]])
-	# two columns past seven, so a dozen fit
-	var two := rows.size() > 7
+	# two columns past seven, so a dozen fit (cities); a walk's row also starts it in the
+	# evening or at night
+	var two := rows.size() > 7 and kind != "walks"
 	for k in range(rows.size()):
 		var lvl: int = rows[k][0]
 		var b := _tap_button(String(rows[k][1]), func(): Flow.start_game("streets", {"level": lvl}))
@@ -24539,6 +24656,15 @@ func _walk_list_open(kind := "walks") -> void:
 		_route_ui.add_child(b)
 		if two:
 			_put(b, Vector2(30 + (k % 2) * 295, 64 + (k / 2) * 31.0), Vector2(285, 27))
+		elif kind == "walks":
+			_put(b, Vector2(40, 64 + k * 31.0), Vector2(370, 27))
+			for j in range(2):
+				var when: String = ["evening", "night"][j]
+				var tb := _tap_button(when, func(): Flow.start_game("streets", {"level": lvl, "time": when}))
+				tb.add_theme_font_override("font", _font)
+				tb.add_theme_font_size_override("font_size", 10)
+				_route_ui.add_child(tb)
+				_put(tb, Vector2(418 + j * 92, 64 + k * 31.0), Vector2(86, 27))
 		else:
 			_put(b, Vector2(120, 64 + k * 31.0), Vector2(400, 27))
 	_back_button()
@@ -25654,6 +25780,12 @@ func _input(event: InputEvent) -> void:
 					(b.get_meta("cb") as Callable).call()
 					return
 		return
+	if _walk_ui != null and _loaded:   # a walk: its speed button (everything else is the walk's own)
+		var wm := event as InputEventMouseButton
+		if wm != null and wm.pressed and wm.button_index == MOUSE_BUTTON_LEFT and not Flow.pointer_over_hud() 				and _walk_btn.get_global_rect().has_point(wm.position):
+			Audio.play("click", 0.05, -8.0)
+			_walk_faster()
+			return
 	if not _loaded or not _film.is_empty():
 		return
 	if _picker != null:   # everything goes to the picker while it is open

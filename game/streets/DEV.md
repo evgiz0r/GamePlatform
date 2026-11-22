@@ -2313,6 +2313,45 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   PC); nothing worse by 5; 29 +6, 49 +7, 93 +14, 94 +15; 90-99 s 23.7 -> 28.8. Both filmed
   walks scan clean; playtests of levels 5, 6 and 1 survive 25 s.
 
+### Walks: trees, street things, the bar, evening and night, Delft (22 Nov 2026)
+
+- **Walking through trees** was the crowns and the trunk mesh's branches, not trunks (the post
+  scan saw only trunks): an olive's branches started 1.2 m up, its leaves ~1.35; a ficus's
+  ~1.6; the walk's eye is 1.58, 0.75 m from a pavement tree's trunk. Trees within 3 m of a
+  road's edge (`_nearest_seg` with drive roads) are pruned up -- trunk stretched so branches
+  start at `STREET_BRANCHES` 2.2 m, crown lifted so leaves start at `STREET_LEAVES` 2.5
+  (`CROWN_LOW` 0.75 of the crown's height scale below its middle, measured). Not the parks',
+  woods', mountains', or a footpath's: walk 1's passage lifted scored 6-9 worse (41-49 s), its
+  film closed in by low planting. North-look street trees have no spruce (its cone sweeps
+  the ground 4 m across: Bedford's walk went through them); the woods keep them.
+- **The scan sees more** (`SCAN=1`): `EYE IN` -- the camera inside anything drawn by instance
+  that does not stand on the ground (crowns, awnings, signs; a trunk or pole's box takes in
+  its branches, so those are the post scan's); `ON ROAD` -- on a road's asphalt away from the
+  walk's crossings. Good: all seven walks print no INSIDE / EYE IN / ON ROAD but three
+  quarter-to-half-second brushes (Delft's start by a bridge's parapet, Rothschild's first
+  step, an Ashdod kerb).
+- **Stepping round** (`_film_dodge`) now also steps off walls and, off a crossing, off the
+  asphalt; samples every 0.25 s; up to 3 m; the step nearest the last sample's (the least
+  step flipped sides past a bus shelter and the curve went through its panel).
+- **Street things along the walks** (`make_walks.py` `dress`): props in each city's details
+  file, `"src": "make_walks"`, on the kerb side 0.6 m in from the road's edge, by the look
+  (`DRESS`, `GAP`); details.gd skips one where a post's edge is within 1.6 m or a wall within
+  0.6 (`_taken`: a hydrant beside a bus shelter left 0.8 m to pass).
+- **Paths**: Rothschild down the midline between its carriageways (20 m apart; OSM's footway
+  lay inside the game's fitted asphalt past Allenby); a one-way street is a divided road only
+  where its one-way ways run both ways side by side (`two_ways`); walks start 2.5 m in from
+  their first junction and stop short of the last by half its widest road + 2.5 m; a
+  crossing's kerbs at half the road + 1.5 m (rounded corners' asphalt).
+- **The bar and speed** (`_walk_bar_build`, layer 2 over the phone's grade at layer 1, which
+  washed it out): `WALK_SPEEDS` 1, 2, 4 by the engine's time scale (as STREETS_SIM_SPEED);
+  `filmed_walk.gd` hides it unless `WALK_BAR=1` (shots set beside a film). **Evening / night**:
+  the list's buttons start a walk with `{"time": ...}`; `WALK_TIME=` in the test.
+- **Delft**: level 16, its walk along Oude Delft's quay (`promenade`: the canal between two
+  one-way streets), 310 m; route 11 (`pick_routes.py --add delft`). The canal draws as brown
+  ground, not water -- Delft's own build.
+- **Walk 1 against its film**: 34.8 -> 34.6; only 82-83 worse by 5+ (the corner tree's shade
+  dappled differently on the road; the film has none there).
+
 ### Eye height and glances at cars (22 Nov 2026, all walks)
 
 - **Eye height**: `FILM_EYE_DROP` 0.06 (the camera 1.58 m up), not 0.2 (1.44: the film's phone,

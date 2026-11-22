@@ -424,6 +424,8 @@ func build() -> void:
 		var d := _v2(pr.get("dir", [1, 0])).normalized()
 		var y: float = maxf(g._walk_y(at), g._h(at) + _lift_at(at))   # (on a pavement, or on paving of ours)
 		k += 1
+		if String(pr.get("src", "")) == "make_walks" and _taken(at):
+			continue   # (laid along a walk: it gives way to what the city put there)
 		match String(pr["kind"]):
 			"bin":
 				_bin(b, at, y, dark)
@@ -1131,6 +1133,15 @@ const SOLID_PROPS := {"bin": 0.3, "hydrant": 0.2, "bollard": 0.1, "twin_poles": 
 	"gatepost": 0.25, "booth": 0.6, "cabinet": 0.4, "sign_board": 0.1, "no_uturn_sign": 0.08, "zone30_sign": 0.08}
 
 ## a litter bin: a black slotted cylinder on a short post
+## something already stands within reach of p (a post's edge within 1.6 m -- room for a walker between, or a wall within
+## 0.6 m): a walk's street things (data_tools/make_walks.py) are laid by the map alone, and one
+## beside a bus shelter left a walk no way between them
+func _taken(p: Vector2) -> bool:
+	for j: int in g._near(g._post_hash, p, 2.0, g.BLD_CELL):
+		if p.distance_to(g._posts[j]) - g._post_r[j] < 1.6:
+			return true
+	return g._push_out(p, 0.6, false, false) != Vector2.ZERO
+
 func _bin(b, at: Vector2, gy: float, col: Color) -> void:
 	g._furn._tube(b, Vector3(at.x, gy, at.y), Vector3(at.x, gy + 1.0, at.y), 0.26, 0.26, col, 10)
 	g._furn._box(b, Vector3(at.x, gy + 1.0, at.y), Vector3(0.5, 0.04, 0.5), col.darkened(0.2))
