@@ -3,7 +3,7 @@ extends SceneTree
 ## Library (CC0; the 7.6 MB UAL1_Standard.glb is not in the repo). Run once with the glb at
 ## $UAL:  UAL=<path inside the project>/UAL1_Standard.glb godot --headless -s res://game/streets/people/make_moves.gd
 const KEEP := ["Walk", "Walk_Formal", "Idle", "Idle_Talking", "Jog_Fwd", "Sitting_Enter", "Sitting_Idle",
-	"Sitting_Talking", "Sitting_Exit", "Push", "Driving", "Roll", "Interact", "PickUp_Table"]
+	"Sitting_Talking", "Sitting_Exit", "Push", "Driving", "Roll", "Interact", "PickUp_Table", "Sprint"]
 
 func _initialize() -> void:
 	var lib: Node = (load(OS.get_environment("UAL")) as PackedScene).instantiate()
