@@ -1326,7 +1326,7 @@ func start(_config: Dictionary) -> void:
 		return
 	var t0 := Time.get_ticks_msec()
 	var gl0 := _gl_count()
-	if not _load_city(String(_place["city"])):
+	if not await _load_city(String(_place["city"])):
 		_loading.queue_free()
 		_build_hud()
 		_show_banner("no city file -- see GAME.md", 30.0)
@@ -2217,10 +2217,11 @@ func _load_city(id: String) -> bool:
 			return false
 		Probe.note("no %s yet, driving %s instead" % [path, any.get_file()])
 		path = any
-	var tp := Time.get_ticks_usec()
+	var tp := await _load_part("the file", 1)
 	var text := FileAccess.get_file_as_string(path)
 	var data = JSON.parse_string(text)
 	tp = _part_next("%sparse", tp)
+	tp = await _load_part("the details", 2)
 	if not data is Dictionary:
 		Probe.note("city file %s did not parse" % path)
 		return false
@@ -2233,6 +2234,7 @@ func _load_city(id: String) -> bool:
 		_details = Details.new(self, extra)
 		_details.edit_city(data)
 	tp = _part_next("%sdetails", tp)
+	tp = await _load_part("bridges and tunnels", 3)
 	# the bridges, tunnels and ramps as worked out when this build was made, if they were
 	# (prepublish.gd); else here, as always
 	var baked := _bake_use if not _bake_use.is_empty() else (_baked_for(text) if _bake_rec == null else {})
@@ -2256,6 +2258,7 @@ func _load_city(id: String) -> bool:
 			_bake_rec["data"] = changed.duplicate(true)
 			_bake_rec["inferred"] = _inferred.duplicate(true)
 	tp = _part_next("%sdecks inferred", tp)
+	tp = await _load_part("the roads", 4)
 	_city_name = String(data.get("name", id))
 	var b: Array = data["bounds"]
 	_bounds = Rect2(b[0], b[1], float(b[2]) - float(b[0]), float(b[3]) - float(b[1]))
@@ -2319,8 +2322,10 @@ func _load_city(id: String) -> bool:
 			_hash_add(_seg_hash, Rect2(pts[j], Vector2.ZERO).expand(pts[j + 1]).grow(hw), SEG_CELL, ri * 4096 + j)
 
 	tp = _part_next("%sroads", tp)
+	tp = await _load_part("divided roads", 5)
 	_fit_dual_carriageways()
 	tp = _part_next("%sdivided roads fitted", tp)
+	tp = await _load_part("the buildings", 6)
 
 	for ring: Array in data.get("boundary", []):
 		var poly := PackedVector2Array()
@@ -2359,6 +2364,7 @@ func _load_city(id: String) -> bool:
 		if bd.has("addr"):
 			_add_address(String(bd["addr"]), box.get_center())
 	tp = _part_next("%sbuildings", tp)
+	tp = await _load_part("heights", 7)
 	var hg: Dictionary = data.get("height", {})
 	if not hg.is_empty():
 		_hx0 = float(hg["x0"])
@@ -2379,6 +2385,7 @@ func _load_city(id: String) -> bool:
 	if _made_up and _hnx > 0:
 		_mtn_from = _town_top() + 6.0
 	tp = _part_next("%sheights", tp)
+	tp = await _load_part("bridges and tunnels set up", 8)
 	_decks = Decks.new(self)
 	if not baked.is_empty():
 		for key: String in baked["decks"]:
@@ -2408,6 +2415,7 @@ func _load_city(id: String) -> bool:
 				_bake_rec["data"] = {}
 				_bake_rec["inferred"] = _inferred.duplicate(true)
 	tp = _part_next("%sdecks set up", tp)
+	tp = await _load_part("road widths", 9)
 	for a: Dictionary in data.get("areas", []):
 		if a.get("k") == "water" and a.has("y"):   # a river held at its level: too deep to drive into
 			var ring := PackedVector2Array()
@@ -2423,8 +2431,10 @@ func _load_city(id: String) -> bool:
 		_add_address("%s %s" % [a[2], a[3]], Vector2(a[0], a[1]) * k)
 	_fit_widths_to_buildings()
 	tp = _part_next("%swidths fitted", tp)
+	tp = await _load_part("buildings off the roads", 10)
 	_clip_buildings(data["buildings"])
 	tp = _part_next("%sbuildings cut", tp)
+	tp = await _load_part("the street network", 11)
 	_mark_medians()
 	_build_graph()
 	_part_next("%sgraph", tp)
@@ -2432,6 +2442,17 @@ func _load_city(id: String) -> bool:
 	return true
 
 ## _part_time for one part of the city file's loading ("%s" its prefix); the clock for the next
+## the city file's parts on the loading screen, "reading the map: the roads (4 of 11)", a
+## frame drawn for each (only while loading on screen: prepublish's loads never wait). Returns
+## the clock after it, so a part's time is its own, not the frame's.
+const LOAD_PARTS := 11
+func _load_part(what: String, i: int) -> int:
+	if _loading != null and is_inside_tree():
+		_loading.text = "building %s…\nreading the map: %s (%d of %d)" % [_city_name if _city_name != "" else String(_place.get("name", "")), what, i, LOAD_PARTS]
+		_load_tick()
+		await get_tree().process_frame
+	return Time.get_ticks_usec()
+
 func _part_next(name: String, t0_us: int) -> int:
 	_part_time(name % "city file: ", t0_us)
 	return Time.get_ticks_usec()
@@ -2647,8 +2668,30 @@ func _part_time(name: String, t0_us: int) -> void:
 	if not _bg_build:
 		_part_us[name] = int(_part_us.get(name, 0)) + Time.get_ticks_usec() - t0_us
 
+## a square's stages in the order _build_tile builds them, and what the loading text calls
+## each: while the squares round the start go up it names the one under way, "(5 of 13)"
+## (user, 22 Nov: "can we show more steps during the loading ... an inner progress")
+const TILE_STAGES := [["roads", "the ground and the roads"], ["buildings", "buildings"],
+	["facades", "facades"], ["trees", "trees"], ["kerbs", "kerbs and pavements"],
+	["passages", "passages"], ["wires", "overhead wires"], ["lamps", "lamps and parks"],
+	["parked", "parked cars"], ["signs", "lights, signs and road paint"],
+	["places", "shops and bus stops"], ["furniture", "street furniture"],
+	["batches", "putting it together"]]
+var _fg_part := ""                   ## the stage of the square going up behind the loading text
+
+func _fg_stage(i: int) -> void:
+	if not _fg_build or i >= TILE_STAGES.size():
+		return
+	_fg_part = "%s (%d of %d)" % [TILE_STAGES[i][1], i + 1, TILE_STAGES.size()]
+	_loading.text = _fg_text + "\n" + _fg_part
+
 func _stage(name: String, t0: int) -> int:
 	var t := Time.get_ticks_msec()
+	if _fg_build:
+		for i in range(TILE_STAGES.size()):
+			if TILE_STAGES[i][0] == name:
+				_fg_stage(i + 1)
+				break
 	if not _bg_build:   # (in the background the clock runs on through the frames between)
 		_stage_ms[name] = int(_stage_ms.get(name, 0)) + t - t0
 	return t
@@ -2714,6 +2757,7 @@ func _build_world() -> bool:
 		_yield_at = Time.get_ticks_usec() + FG_US
 		await _build_tile(near[i])
 		_fg_build = false
+		_fg_part = ""
 	_gardens_split = false
 	_tiles_todo = _tiles_todo.filter(func(t): return not _tiles_done.has(t))
 	if _details != null:   # what a filmed walk added: built whole, once (details.gd)
@@ -2889,7 +2933,7 @@ func _over() -> bool:
 func _pause() -> void:
 	if _fg_build:   # loading: no game frame to wait for -- just let one be drawn
 		_fg_spin += 1
-		_loading.text = _fg_text + "  " + ["·  ", " · ", "  ·", " · "][_fg_spin % 4]
+		_loading.text = _fg_text + ("\n" + _fg_part if _fg_part != "" else "") + "  " + ["·  ", " · ", "  ·", " · "][_fg_spin % 4]
 		_load_tick()
 		await get_tree().process_frame
 		_yield_at = Time.get_ticks_usec() + FG_US
@@ -3062,6 +3106,7 @@ func _build_setup(t0: int) -> void:
 ## In the background each builder stops when the frame's few milliseconds are used up and
 ## goes on in the next frame.
 func _build_tile(t: Vector2i) -> void:
+	_fg_stage(0)
 	if _over():
 		await _pause()
 	_tiles_done[t] = true
@@ -23526,7 +23571,10 @@ func _ap_next() -> bool:
 			if not _edge_bound(w["leg"]):
 				all_edge = false
 				break
-		if all_edge:
+		# (only when the way back does lead somewhere: in a pocket where it runs off the map too
+		# -- Tel Aviv's HaHilazon, a dead end by the barrier at one end and a junction of ways
+		# off the map at the other -- it turned round at each end in turn for good)
+		if all_edge and (int(r["o"]) != 0 or (back.x >= 0 and not _edge_bound(back))):
 			_tally("ap_edge_turn", 1)
 			Probe.event("edge_turn", {"at": _ap_pts[_ap_pts.size() - 1].round() if _ap_pts.size() > 0 else Vector2.ZERO})
 			_ap_mark_dead_end()
@@ -23627,6 +23675,13 @@ func _ap_ways(ri: int, ei: int, dir: int) -> Array:
 			if not _in_city(p2[nxt]):
 				score -= 2.5   # back toward town rather than out past its edge
 			if _edge_bound(Vector3i(e.x, nxt, d2)):
+				if r2["k"] == "service":
+					# a lane that only runs off the map is never the way out: at the cut end of
+					# Tel Aviv's one-way Tuval autodrive took one lane after another there, each
+					# a dead end by the barrier, and turned round in them for good -- instead of
+					# turning on the spot at the cut end and back the way it came (tests/
+					# edge_pocket.gd lists such a spot's roads)
+					continue
 				score -= 8.0   # every way on from it runs off the map: only if nothing else
 			elif _trap.has((r2["ids"] as PackedInt32Array)[nxt]) and not _trap.has(node):
 				score -= 8.0   # into a pocket, with no way back out (see _find_pockets)
@@ -23651,7 +23706,7 @@ func _ap_ways(ri: int, ei: int, dir: int) -> Array:
 ## stops at its end and turns on the spot.)
 ## tests/dead_end_turns.gd drives into every cul-de-sac of a city.
 const AP_DEAD_ROOM := 7.0           ## metres short of a dead end's end it stops to turn round
-const AP_KT_V := 1.3                ## m/s, the crawl of each move
+const AP_KT_V := 2.2                ## m/s, the crawl of each move (1.3 took 11 s for three moves: walking pace, 22 Nov)
 const AP_KT_KERB := 0.6             ## a move ends when a bumper would be this far (m) over the kerb (the wheels are ~0.9 m in from it)
 const AP_KT_MOVES := 7              ## more than this, or AP_KT_SECS, and the rest is turned on the spot
 const AP_KT_SECS := 30.0
@@ -23739,7 +23794,9 @@ func _ap_kturn(dt: float) -> Array:
 	var diff := angle_difference(_yaw, to.angle())
 	if absf(diff) < 0.45:
 		# facing out, near enough for the lane-following to take it from here: stop, then plan
-		if absf(_v) > 0.1:
+		# (going forward it drives straight on, as a driver does: stopping and setting off
+		# again added a second or two to every turn)
+		if absf(_v) > 0.1 and g < 0:
 			return [0.0, 1.0, 0.0]
 		var spot := int(_ap_kt["n"]) > AP_KT_MOVES or float(_ap_kt["t"]) > AP_KT_SECS
 		Probe.event("turned_round", {"moves": mini(int(_ap_kt["n"]), AP_KT_MOVES), "secs": snappedf(float(_ap_kt["t"]), 0.1), "on_the_spot": spot})
@@ -23761,8 +23818,9 @@ func _ap_kturn(dt: float) -> Array:
 	var wheel := float(_ap_kt["side"]) * MAX_STEER * g   # forward toward the turn, back the other lock
 	if _ap_kt["stop"]:
 		# between moves: stand, into the other gear, the wheel over (below), then go
-		if absf(_v) > 0.08:
-			return [0.0, 1.0, _steer]
+		# (the wheel goes over to the other lock while it brakes, not only once it stands)
+		if absf(_v) > 0.15:
+			return [0.0, 1.0, move_toward(_steer, -wheel, 2.5 * dt)]
 		_ap_kt["gear"] = -g
 		_ap_kt["n"] = int(_ap_kt["n"]) + 1
 		_ap_kt["mt"] = 0.0
@@ -23780,9 +23838,11 @@ func _ap_kturn(dt: float) -> Array:
 			return [0.0, 1.0, _steer]
 	if absf(_steer - wheel) > 0.02 and absf(_v) < 0.3:
 		# the wheel turned over standing still, as a driver does, not snapped from lock to lock
-		return [0.0, 1.0, move_toward(_steer, wheel, 1.8 * dt)]
+		return [0.0, 1.0, move_toward(_steer, wheel, 2.5 * dt)]
 	var fwd := _fwd()
-	var end_p := _pos + fwd * float(g) * (CAR_OFF + 0.25 + absf(_v) * 0.3)
+	# (ahead by a tick's reaction and the stopping distance on the brake, ~8 m/s^2: a fixed
+	# share of the speed stopped the faster crawl ~0.6 m short and took two more moves)
+	var end_p := _pos + fwd * float(g) * (CAR_OFF + 0.25 + absf(_v) * 0.2 + _v * _v / 16.0)
 	# the move is over: at the kerb or something solid, or crawling nowhere (a lip, a slope)
 	if _ap_kt_blocked(end_p) or float(_ap_kt["mt"]) > 6.0 or (float(_ap_kt["mt"]) > 2.0 and absf(_v) < 0.05):
 		_ap_kt["stop"] = true
