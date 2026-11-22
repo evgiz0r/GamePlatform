@@ -65,6 +65,12 @@ const LEVELS := [
 	{"name": "Tour: Bedford by the Basin", "city": "bedford", "look": "north", "decks": "infer", "scenario": "tour"},
 	{"name": "The getaway: Ashdod", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med", "decks": "infer", "scenario": "getaway"},
 	{"name": "The getaway: Tel Aviv", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "getaway"},
+	{"name": "Night tour: Tel Aviv", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "night_tour"},
+	{"name": "Night tour: Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "night_tour"},
+	{"name": "Ambulance run: Tel Aviv", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "ambulance"},
+	{"name": "Ambulance run: Ashdod", "city": "ashdod", "start": ["שדרות הרצל", "החלוצים"], "look": "med", "decks": "infer", "scenario": "ambulance"},
+	{"name": "A day in Tel Aviv", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "day"},
+	{"name": "A day in Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "day"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 

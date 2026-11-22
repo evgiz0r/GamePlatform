@@ -4070,6 +4070,29 @@ the opening; LEVELS 16 is the list page ("Scenarios" group, `_walk_list_open("sc
   runs on autodrive (a person driving does better); tours for Delft and the test town need
   their stories.
 
+**The director, more** (the user: "automatic scenarios ... without my inputs", then picked the
+day, the night tour, the getaway as a film and the ambulance). New beats -- `time`, `wet`,
+`shots`, `siren`, `drive_for` (a drive that ends after its seconds) -- and the scripts
+`night_tour` (the tour after `["time", "night"]`, rain before its end), `ambulance` (the
+hospital: a story street whose note says "hospital" -- Weizmann in Tel Aviv, Ichilov -- else
+a main street 1-1.8 km off; racer with the green wave on too) and `day` (three drives between
+the tour's stops at day, evening and night, the story's `rhythm` sentences as captions, rain
+at the end). LEVELS 23-28. **Shots** (`_shots_tick`, the director's own `Camera3D`, the game's
+put back with `_cam_usual`): "above" (26 m up, behind), "kerb" (a spot at the roadside
+ahead, picked as the shot starts, 0.9 m up: the car drives past it), "orbit", "chaser"
+(behind the police car), "back" (ahead, looking back); a shot list runs the camera in place
+of the chase's own cut. **Slow motion**: `Engine.time_scale` 0.35 for 1.6 s of real time
+when the getaway runs a red (`_reds_seen`). **The siren** (`_set_siren`, `_yield_tick`):
+the car's own light bar and siren; traffic ahead going its way in the lanes beside its line
+stops (`hit`) and is let go when the car is past, stuck behind it or the siren goes off. The
+first try stopped the car in its own lane too and the ambulance stood behind it for two
+minutes (`VERBOSE=1` on tests/scenario.gd prints autodrive's why every 10 s: "car", lead
+5.4 m). 22 Nov, `tests/scenario.gd`: a day in Givatayim
+(28) 179 s, shots above 7 / kerb 11 / orbit 6 / usual 6, ending at night after rain; the
+ambulance in Tel Aviv (25) at the hospital in 115 s, 98 cars pulled over; the getaway as a
+film (21) caught at 26 s, every shot used once; the night tour of Givatayim (24) 4 of 5
+stops, 528 s; 0 people hit in all.
+
 **Scenario ideas** (the user asked for them as the work goes, with grades):
 
 | # | Scenario | Effort | Notice | AI grade | Comment |
