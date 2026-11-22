@@ -86,6 +86,9 @@ const LEVELS := [
 	# the first French town (NEW_CITY.md, "France"): the centre between the station, the old town
 	# and the lake, with IGN BD TOPO's heights and measured roofs ("build": "fr": render, not brick)
 	{"name": "Annecy", "city": "annecy", "start": ["Rue Royale", "Rue de la Poste"], "look": "north", "build": "fr", "decks": "infer"},
+	# their walks (NEW_CITY.md: every city has one), laid by data_tools/make_walks.py
+	{"name": "Leiden: down Haarlemmerstraat", "city": "leiden", "look": "north", "build": "nl", "decks": "infer", "walk": "leiden_haarlemmerstraat"},
+	{"name": "Annecy: along the Thiou to the lake", "city": "annecy", "look": "north", "build": "fr", "decks": "infer", "walk": "annecy_thiou"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 

@@ -139,3 +139,10 @@ Each run of `run_routes.sh`, newest last. The routes are in routes.json (picked 
 | 10 | dimyon | הנרקיס 12א -> התאנה 17 | yes | 1.1 min | 0.7 km | 0 | - | 0 | 0 | 0 s |
 
 All ten in 10 minutes on the user's PC, three at once (the cloud's ~10-12 two at once).
+
+## 2026-11-22 (commit d8abe3b)
+
+| # | city | from -> to | arrived | time | driven | hits | longest wait | reds | rescues | off road |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 12 | leiden | Pieter de la Courtstraat 26 -> Morssingel 231 | yes | 5.7 min | 2.2 km | sign street at 17 km/h on Rapenburg; post 977 at 10 km/h on Rapenburg | 8 s (junction, Rapenburg) | 0 | 0 | 0 s |
+| 13 | annecy | Rue Louis Boch 7 -> Rue Pasteur 18 | yes | 5.7 min | 1.9 km | 0 | 21 s (car, Avenue des Îles) | 0 | 0 | 0 s |
