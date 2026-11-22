@@ -106,7 +106,7 @@ it as given.
 
 ### Countries done
 
-**The Netherlands (Delft, level 14; Leiden, level 16; 22 Nov 2026).** For the next Dutch
+**The Netherlands (Delft, level 14; Leiden, level 23; 22 Nov 2026).** For the next Dutch
 town, run two commands with its box: the bake's box plus the margin, 150 m = 0.00135° of
 latitude and about 0.0022° of longitude. Then bake, and add one line at the end of
 `LEVELS` with `"look": "north", "build": "nl"`. Nothing else changes:

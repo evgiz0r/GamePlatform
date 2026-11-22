@@ -384,6 +384,11 @@ normal, not an accident. What that asks of you:
   republished yet, or the phone was still playing the build it had: a new one downloads in
   the background and waits for "new version ready, tap to restart" or the next launch). Check what build it is from (the HUD, a
   feature you know is gone) before chasing the bug.
+- **Log the effort before you push.** `python tools/effort.py` adds a row per commit it can
+  find in this machine's session transcripts -- agent, runs and the person's active minutes,
+  their time away left out -- to `game/<name>/EFFORT.md` (and `EFFORT.md` for the kit); commit
+  those with the push. Rows stay once written (transcripts are deleted after a while), and
+  a session on the web has no transcripts here: its commits get no row.
 - **Say so when others' work rides along.** If your push publishes changes from another
   session, tell the user in a line, so a surprise on screen has an explanation.
 - Editing the same lines at the same time is the one real clash. When you see another
