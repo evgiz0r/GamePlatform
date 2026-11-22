@@ -16812,6 +16812,18 @@ func _film_dodge_begin() -> void:
 	_film = base.duplicate()
 	_film_dodge(0.0, end + 1.0)
 
+## how far round a post a walk keeps: its own radius, but a tree's crown where the tree is
+## not by a road (only those are pruned up: a boulevard's middle, a park's path keep theirs low,
+## and with the eye at 1.75 Rothschild's walk went through one)
+var _reach_memo := {}
+func _post_reach(j: int) -> float:
+	if not is_equal_approx(_post_r[j], 0.3):
+		return _post_r[j]
+	if not _reach_memo.has(j):
+		var rh: Dictionary = _nearest_seg(_posts[j], 6.0, true)
+		_reach_memo[j] = 0.3 if (not rh.is_empty() and float(rh["edge"]) < 3.0) else 1.9
+	return _reach_memo[j]
+
 func _film_dodge(t0: float, t1: float) -> void:
 	var n := _film_base.size()
 	var need := PackedFloat32Array()
@@ -16827,8 +16839,8 @@ func _film_dodge(t0: float, t1: float) -> void:
 		var p := Vector2(b.x, b.y)
 		var sd: Vector2 = _film_side[i]
 		var near: Array = []
-		for j: int in _near(_post_hash, p, 2.5, BLD_CELL):
-			if p.distance_to(_posts[j]) < _post_r[j] + DODGE_CLEAR + 1.6:
+		for j: int in _near(_post_hash, p, 3.5, BLD_CELL):
+			if p.distance_to(_posts[j]) < _post_reach(j) + DODGE_CLEAR + 1.6:
 				near.append(j)
 		# off a crossing, the walk keeps off the asphalt too (a footway OSM maps beside a
 		# carriageway can lie inside the game's fitted one: Rothschild's)
@@ -16849,20 +16861,26 @@ func _film_dodge(t0: float, t1: float) -> void:
 		cands.sort_custom(func(x, y): return absf(x - prev) < absf(y - prev))
 		var best := 0.0
 		var room := -INF
-		for off: float in cands:
-			var q := p + sd * off
-			var m := INF
-			for j: int in near:
-				m = minf(m, q.distance_to(_posts[j]) - _post_r[j])
-			if _push_out(q, 0.25, false, false) != Vector2.ZERO or (kerbside and not _off_road(q, 0.15)):
-				continue
-			if m >= DODGE_CLEAR:
-				best = off
-				room = m
+		var found := false
+		# first a step clear of the trunks and the low crowns too, then one clear of what is
+		# solid alone (a crown is to keep out of where there is room, not to walk into a wall for)
+		for soft: bool in [true, false]:
+			for off: float in cands:
+				var q := p + sd * off
+				if _push_out(q, 0.25, false, false) != Vector2.ZERO or (kerbside and not _off_road(q, 0.15)):
+					continue
+				var m := INF
+				for j: int in near:
+					m = minf(m, q.distance_to(_posts[j]) - (_post_reach(j) if soft else _post_r[j]))
+				if m >= DODGE_CLEAR:
+					best = off
+					found = true
+					break
+				if not soft and m > room:
+					room = m
+					best = off
+			if found:
 				break
-			if m > room:
-				room = m
-				best = off
 		need[i] = best
 	if hi < 0:
 		return
@@ -17143,7 +17161,8 @@ func _foot_camera(dt: float) -> void:
 ## 0.2 down (1.44 m); the user, 22 Nov: "the walk height is bit too low, i am holding the phone
 ## probably too low" -- so the replay is as a person's eyes see it, 1.58 m, not as the phone did
 ## (the film's own measures, film_marks.py's EYE and film_motion.py's, keep 1.44: they read the film)
-const FILM_EYE_DROP := 0.06
+## (then, the same day: "1.75" -- a little over the eyes, as a camera held up: -0.11, 1.75 m)
+const FILM_EYE_DROP := -0.11
 
 ## the phone's tilt below level on a filmed walk: the film's horizon sits 0.30 of the way
 ## down its frame (one frame a second over walk 1, under the arcade, in the passage, on the

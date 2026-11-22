@@ -2327,6 +2327,13 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
 
 ### Walks: trees, street things, the bar, evening and night, Delft (22 Nov 2026)
 
+- **The eye at 1.75 m** (`FILM_EYE_DROP` -0.11, the user: "1.75"). It met the low crowns of
+  trees away from a road (a boulevard's middle: Rothschild 39 s), which keep their low
+  planting; so a walk that steps round posts keeps a tree's crown (`_post_reach`, 1.9 m) where
+  the tree is not by a road -- first a step clear of trunks and crowns, then one clear of the
+  solid alone (crowns as hard pushed Ashdod's walk into yard walls). Scans: no EYE IN; brushes
+  of 0.25-0.5 s at Delft's start, Rothschild's first step, an Ashdod kerb, one Ashdod post.
+
 - **Walking through trees** was the crowns and the trunk mesh's branches, not trunks (the post
   scan saw only trunks): an olive's branches started 1.2 m up, its leaves ~1.35; a ficus's
   ~1.6; the walk's eye is 1.58, 0.75 m from a pavement tree's trunk. Trees within 3 m of a

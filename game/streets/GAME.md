@@ -74,7 +74,7 @@ the pavement -- a tree, a pole, a bin.
 > Lets put in the main menu both walks inside an extra menu, like the test drives. and add
 > some more walks. even not the filmed ones. just to distribute a bit away from my location
 
-Every walk is seen from a person's eyes (1.58 m), not from where the film's phone was held at
+Every walk is seen from a little over a person's eyes (1.75 m, as a camera held up; first 1.58), not from where the film's phone was held at
 the chest (1.44 m); and now and then the head turns to a car going by, follows it a couple of
 seconds and comes back -- except where the film's own look is known (at a zebra, a corner).
 
