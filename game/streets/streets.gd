@@ -2428,7 +2428,7 @@ func _load_city(id: String) -> bool:
 const LOAD_PARTS := 11
 func _load_part(what: String, i: int) -> int:
 	if _loading != null and is_inside_tree():
-		_loading.text = "building %s…\nreading the map: %s (%d of %d)" % [String(_place.get("name", "")), what, i, LOAD_PARTS]
+		_loading.text = "building %s…\nreading the map: %s (%d of %d)" % [_city_name if _city_name != "" else String(_place.get("name", "")), what, i, LOAD_PARTS]
 		_load_tick()
 		await get_tree().process_frame
 	return Time.get_ticks_usec()
