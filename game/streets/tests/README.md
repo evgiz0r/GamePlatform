@@ -39,6 +39,7 @@ these numbers the wrong way has broken something.
 | `opening` | 1 | the opening (opening.gd, `STREETS_OPENING=1 STREETS_BUILD_ALL=0`): bare squares near the car as it was shown, how long the opening ran, bare squares when it came down, the city running after; shots | 5 bare; 8.8 s; 0 bare; PASS |
 | `racer_moves` | 1 | racer round a car held still 60 m ahead: on one-way streets of two lanes (goes round) and of one (onto the pavement where clear, else waits); crashes, people hit | 22 Nov: two-lane streets 2 of 3 round and on past it in 13-14 s (Afek: bent once, never cleared it -- open); one-lane streets 0 of 3 onto the pavement (not clear there: it waits); 0 crashes, 0 people |
 | `scenario` | 18, 21 | a scenario level played through (scenario.gd): its beats, every caption, stops reached, how it ended; shots at each stop and in the chase's cuts | tour (18): 6 of 6 stops, 467 s; getaway (21): caught at 43 s; 0 people hit |
+| `walk_take` | 1 | on foot: the jog's and the sprint's speed, and a traffic car held beside you taken with "drive" | 4.5 / 9.5 m/s; taken |
 | `lights_at` | 1 | one junction (`AT=x,z,dx,dz`, default the Arvey Nahal knot) from a car at its line, a shot per light state; prints its points, groups, lines, walk lights | shots |
 | `no_entry` | 1, 3 | no-entry signs facing drivers who may go in | 0 / 1 |
 | `buildings_on_roads` | 1 | buildings still standing on a road's asphalt | 3 (passages, on purpose) |
