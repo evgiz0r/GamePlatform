@@ -25320,17 +25320,22 @@ var _keys_open := false
 var _hud_folded := false   ## every button folded away to one "show" (FOLD_BTN)
 var _stick_used := false   ## the stick driven with once: its hint has done its job
 var _tod_busy := false     ## a time of day on its way (_set_time_of_day steps through _next_time)
+var _mouse_at := Vector2.INF   ## a real mouse's position (not a touch's): the button under it is lit as hovered
 
 ## one button: a dark box, its outline and text in `col` when lit (the thing is ON) or `strong`
-## (always worth seeing, as "go to…"), ink when off; lit ones filled with a wash of it too
+## (always worth seeing, as "go to…"), ink when off; lit ones filled with a wash of it too.
+## Under the mouse it fills as the shell's buttons do on hover (UIKit: the accent darkened,
+## the text in the player's colour) -- the user: "when i hover with the mouse it doesnt fill
+## them like in the main and other menus"
 func _hud_btn(r: Rect2, text: String, col: Color, lit: bool, size: int, strong := false) -> void:
 	var c := col if lit or strong else Color(Palette.col("ink"), 0.8)
-	_hud.draw_rect(r, Color(Palette.col("bg"), 0.7))
+	var hover := r.has_point(_mouse_at)
+	_hud.draw_rect(r, Palette.col("accent").darkened(0.55) if hover else Color(Palette.col("bg"), 0.7))
 	if lit:
 		_hud.draw_rect(r, Color(col, 0.22))
 	_hud.draw_rect(r, Color(c, 0.95), false, 2.0 if lit else 1.5)
 	_hud.draw_string(_font, Vector2(r.position.x, r.position.y + r.size.y * 0.5 + size * 0.36), text,
-		HORIZONTAL_ALIGNMENT_CENTER, r.size.x, size, c)
+		HORIZONTAL_ALIGNMENT_CENTER, r.size.x, size, Palette.col("player") if hover and not lit else c)
 
 ## the camera now, as the button says it: chase, seat, above (on foot: behind, eyes, above)
 func _view_name() -> String:
@@ -25716,6 +25721,11 @@ func _view_footprint() -> PackedVector2Array:
 ## it takes the wheel back from autodrive. ----------------------------------------------------
 
 func _input(event: InputEvent) -> void:
+	# where a real mouse is, for the HUD's hover (_hud_btn); a touch's emulated mouse is no hover
+	if event is InputEventMouseMotion:
+		_mouse_at = (event as InputEventMouseMotion).position if event.device != InputEvent.DEVICE_ID_EMULATION else Vector2.INF
+	elif event is InputEventScreenTouch:
+		_mouse_at = Vector2.INF
 	if _opening != null and _opening.on and not Flow.pointer_over_hud():
 		# the opening: any key, click or tap goes straight down to the car
 		var k := event as InputEventKey
