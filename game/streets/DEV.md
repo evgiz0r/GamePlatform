@@ -2762,6 +2762,58 @@ rests on the forearms.
     at ~1.03 and 0.98. That is a slight magenta (green ~3-5% low) across the scene, still
     to look at.
 
+## Trial: Quaternius' Universal Base Characters and Animation Library (22 Nov 2026)
+
+The user downloaded both Standard packs (CC0) to their own Downloads folder. Nothing from them
+is in the repo yet: the trial ran from an uncommitted `assets/_trial_ubc/`, and its bench
+script is in the session's scratch folder.
+- **What the free packs hold.**
+  - Characters: two bodies, `Superhero_Male_FullBody` and `Superhero_Female_FullBody` (glTF
+    + bin, 0.7 and 1.0 MB). They are bare, muscular and in underwear, made to be dressed by
+    other packs; the Regular and Teen bodies are only in the paid Source pack.
+  - Textures: 2048 skin textures, Dark and Light, with normal and roughness maps.
+  - Hair, eyebrows and a beard rigged to the same skeleton.
+  - Animations: `UAL1_Standard.glb` (7.6 MB), 43 clips on the **same 65-bone skeleton**
+    (UE names: pelvis, spine_01-03, upperarm_l, hand_l, fingers...). Its tracks are
+    `Armature/Skeleton3D:<bone>`, the body's own path, so an AnimationPlayer under the body
+    with the library's AnimationLibrary plays them directly.
+  - Clips for streets: Walk, Walk_Formal, Idle, Idle_Talking, Sitting_Enter/Idle/Talking/
+    Exit, Driving, Push, Jog_Fwd, PickUp_Table, Interact.
+- **Dressed by bone weights.** Each vertex's part comes from the bone that moves it most:
+  - spine, clavicle and upper arm (plus the forearm for long sleeves): the shirt
+  - pelvis, thigh and calf (calf bare for shorts): the trousers
+  - foot and ball: the shoes
+  - the neck below 1.47 m: the collar
+  - the rest: skin, from the **Light** texture times a per-person tone (the Dark texture
+    under a tint went near black)
+  At street distance it reads as an ordinary person in a T-shirt and jeans. Up close the
+  collar's edge is jagged.
+- **A slimmer build.** `PartSizes` on spine_03 (0.88, 1, 0.9) with neck_01 given back, and
+  spine_02 (0.94, 1, 0.95).
+- **Gotchas.**
+  - The female's mesh is `Superhero_Female` and the male's `SuperHero_Male`: match names
+    without case.
+  - The female's surface carries custom arrays. Rebuilding it with
+    `add_surface_from_arrays` failed ("PACKED_BYTE_ARRAY") until `ARRAY_CUSTOM0-3` were set
+    to null and only the 8-weights flag kept.
+  - Hair: take the hair glTF's MeshInstance3D out of its own scene, put it under the
+    body's Skeleton3D and set `skeleton = ".."`. Tint the eyebrows with the hair, or they
+    stay white.
+- **Cost against today's figures.**
+  - Vertices: about the same (body 8.5-8.8k against Casual_Male's 8.8k; hair 0.5-3k).
+  - Draws: 4 per person (body, eyes, eyebrows, hair) against today's 1. They need joining
+    as `_one_piece` does.
+  - Download: today's five Casual files are 10.2 MB. Two bodies, hair, skin textures cut to
+    1024 and an animation library trimmed to the clips used should come to ~4-6 MB.
+- **Moving to them** means replacing the people everywhere:
+  - `Actor3D`'s clip names (Walk, Idle, Walk_Carry, SitDown)
+  - `PartSizes`, `Held` (Fist.L becomes hand_l), `Talk` (Idle_Talking makes it unneeded)
+  - crowds.gd and the film's people
+  - the people tests
+- **An import gotcha** (run `--import` and see): Godot imports any `.csv` as a translation
+  table. The walk session's `tests/marks/*.csv` came out as `*.translation` files and
+  `.csv.import`s. Delete them, or give each csv an `.import` with `importer="keep"`.
+
 ## Sizes against life (`tests/scale_check.gd`, 20 Nov 2026)
 
 The user's sister said the scale felt off; the check measures what the game builds. Vehicles
