@@ -1191,6 +1191,23 @@ const WALK := 4.5                    ## m/s on foot: a jog (2.1 was "very slow" 
 ## in our realism?")
 const WALK_CLIP_V_KIT := 0.97
 const WALK_CLIP_V_UBC := 0.85
+## The run clip (the new people's jog, Jog_Fwd; the kit's Run) the same way: 1.05 and 0.53
+## m/s at x1 (tests/foot_slide.gd CLIP=Run). A short stride: matched at a 4.5 m/s jog it
+## played x4.3, at a sprint x9 -- so its speed is matched up to RUN_CLIP_MAX and slides past
+## that. (The user, 22 Nov: "keep speed" -- faster steps rather than a slower walk or run.
+## Played at speed / (RUN * 0.8) before: a jog's feet slid ~3.9 m/s.) A sprint clip with a
+## longer stride would take the rest: the library has one, not in moves.res (make_moves.gd).
+const RUN_CLIP_V_KIT := 0.53
+const RUN_CLIP_V_UBC := 1.05
+const RUN_CLIP_MAX := 2.5
+var _run_clip := 0.0
+func _run_clip_rate(v: float) -> float:
+	if _run_clip == 0.0:
+		_run_clip = RUN_CLIP_V_UBC if _people_maker().on() else RUN_CLIP_V_KIT
+		if OS.get_environment("STREETS_RUN_CLIP_V") != "":
+			_run_clip = float(OS.get_environment("STREETS_RUN_CLIP_V"))
+	return clampf(absf(v) / _run_clip, 0.5, RUN_CLIP_MAX)
+
 var _walk_clip := 0.0
 func _walk_clip_v() -> float:
 	if _walk_clip == 0.0:
@@ -17260,9 +17277,9 @@ func _walk(dt: float) -> void:
 	var anim := "Idle" if absf(_v) < 0.15 else ("Run" if absf(_v) > 2.6 else "Walk")   # (the jog runs)
 	if anim != _me_anim:
 		_me_anim = anim
-		_me.play(anim, true, 1.0 if anim == "Idle" else maxf(absf(_v) / (_walk_clip_v() if anim == "Walk" else RUN * 0.8), 0.5))
+		_me.play(anim, true, 1.0 if anim == "Idle" else (maxf(absf(_v) / _walk_clip_v(), 0.5) if anim == "Walk" else _run_clip_rate(_v)))
 	elif anim != "Idle":
-		_me.anim.speed_scale = maxf(absf(_v) / (_walk_clip_v() if anim == "Walk" else RUN * 0.8), 0.5)
+		_me.anim.speed_scale = maxf(absf(_v) / _walk_clip_v(), 0.5) if anim == "Walk" else _run_clip_rate(_v)
 
 ## the camera on foot: over the shoulder, a few metres back (kept out of walls), or from the
 ## eyes when the seat view is chosen

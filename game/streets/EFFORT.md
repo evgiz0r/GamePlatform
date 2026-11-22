@@ -4,6 +4,8 @@ How long each change took, in minutes, from the Claude Code sessions that made i
 
 | date (UTC) | commit | change | agent | runs | you | active | away | lines | files | steps | tools | engine runs | tokens out |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2026-11-22 02:46 | 712da82 | streets: the run clip at the pace it covers (the jog 1.05 m/s at x1), up to 2.5x fast -- your jog's feet sl... | 1.4 | 0.4 | 0.8 | **2.6** | 0.0 | +20 -3 | 2 | 8 | 9 | 3 | 6.8k |
+| 2026-11-22 02:44 | c1ffe87 | streets racer: bends read the plan as it was (orig), not points already moved -- racer no longer stands beh... | 19 | 22 | 0.0 | **41** | 15 | +19 -4 | 2 | 28 | 28 | 15 | 26.6k |
 | 2026-11-22 02:41 | bfdad49 | streets: the loading screen names the set-up too; split_posts tells where it knocks something; foot_slide.g... | 6.2 | 13 | 0.0 | **19** | 0.0 | +86 -2 | 4 | 40 | 46 | 19 | 32.1k |
 | 2026-11-22 02:39 | 1497e69 | streets: far shadows paced through their road and area layers, half size on phones | 7.1 | 1.9 | 8.0 | **17** | 0.0 | +29 -1 | 2 | 14 | 14 | 4 | 9.9k |
 | 2026-11-22 02:31 | 08e3ae6 | streets: walks, test drives and self-playing scenarios are watched, not driven; little building details in ... | 5.1 | 12 | 0.0 | **17** | 0.0 | +230 -12 | 6 | 34 | 37 | 13 | 26.9k |
