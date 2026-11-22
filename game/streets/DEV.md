@@ -4062,6 +4062,10 @@ the opening; LEVELS 16 is the list page ("Scenarios" group, `_walk_list_open("sc
 - `tests/scenario.gd` (`LEVEL=18` Tel Aviv's tour, `21` Ashdod's getaway): 22 Nov -- the
   tour 6 of 6 stops in 467 s, 0 people hit; the getaway caught at 43 s (chaser 17 m/s, the car
   stuck behind traffic at the end); shots at each stop and in each cut.
+- Stops are snapped onto a public drivable street, and a drive counts as there at the stop or
+  at the kerb "go to" chose (`_dest_stop`): Givatayim's tour first gave up on two of five
+  after 150 s each, parked beside them; then 4 of 5 (Yitzhak Rabin still not reached in
+  time -- open).
 - Open: the cut's camera can sit inside a vehicle ahead; the getaway's end is caught most
   runs on autodrive (a person driving does better); tours for Delft and the test town need
   their stories.

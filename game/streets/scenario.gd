@@ -144,8 +144,11 @@ func tick(dt: float) -> void:
 		"drive":
 			_street_words()
 			var at: Vector2 = b[1]
-			if (not g._dest_on and t > 2.0) or (g._pos as Vector2).distance_to(at) < 35.0 or t > DRIVE_MAX:
-				reached += 1 if (g._pos as Vector2).distance_to(at) < 60.0 else 0
+			# there: at the stop, or at the kerb "go to" chose for it (it can only stop where a
+			# street lets it -- Givatayim's tour gave up on two stops 150 s on, parked beside them)
+			var by_kerb: bool = g._dest_on and (g._pos as Vector2).distance_to(g._dest_stop) < 20.0 and absf(g._v) < 2.0
+			if (not g._dest_on and t > 2.0) or (g._pos as Vector2).distance_to(at) < 35.0 or by_kerb or t > DRIVE_MAX:
+				reached += 1 if ((g._pos as Vector2).distance_to(at) < 60.0 or by_kerb or not g._dest_on) and t <= DRIVE_MAX else 0
 				g._set_auto(false)
 				_next()
 			elif not g._auto and t > 3.0:
@@ -287,8 +290,11 @@ func _street_mid(key: String) -> Vector2:
 			L += pts[j].distance_to(pts[j + 1])
 		var mid := pts[pts.size() / 2]
 		if L > bl and g._in_city(mid) and g._bounds.grow(-120.0).has_point(mid):
+			var on: Dictionary = g._nearest_seg(mid, 25.0, true, true)   # (on a public street "go to" can end at)
+			if on.is_empty():
+				continue
 			bl = L
-			best = mid
+			best = on["q"]
 	return best
 
 func _far_main_street(lo: float, hi: float) -> Vector2:
