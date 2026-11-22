@@ -265,6 +265,40 @@ Then add a line at the end of `LEVELS` with `"look": "north", "build": "fr"`.
     city. Run it without that.
 - **Not done yet:** French street plates, RGE ALTI ground, the doubled light.
 
+**Monaco (level 41, 22 Nov 2026): baked, NOT READY, not pushed.** The whole principality, in
+a box of 43.7240,7.4090 to 43.7520,7.4400 with a 150 m margin. Made with:
+
+```
+python game/streets/data_tools/fr_bdtopo.py 43.72265,7.40714,43.75335,7.44186 monaco
+python tools/osm_city.py --place "Monaco" --name "Monaco" --bbox 43.7240,7.4090,43.7520,7.4400 --margin 150 --bare-ground --out game/streets/cities/monaco.json
+```
+
+- **The data is good.** IGN's BD TOPO covers Monaco too: heights for 4,162 of 5,972
+  buildings. 84 towers are over 40 m. There are 312 tunnel road pieces and 71 bridges, and
+  the sea is held at sea level. Loads in 4.2 s; the playtest passes. The start is on
+  Boulevard Albert 1er, the Grand Prix's start-finish straight; OSM names the pit lane.
+- **The look:** `look: "north"`, `build: "fr"`, `trees: "med"`. `"trees"` is a new level key:
+  palms and pines without the `"med"` look's Israeli details (Hebrew plates, red-and-white
+  kerb paint, solar heaters). The street view reads right: towers, palms, shops.
+- **Open, why it is not ready:**
+  - **The harbour (Port Hercule) is not drawn**: the ground covers its water. Ground at
+    (-120, 350) is 1.68 m against the sea's 1.5 (over the grid's base).
+    - Along z 350, the grid points flip in and out of the sea's outline every 25 m (the
+      piers and pontoons cut into it).
+    - A point inside still has 1.8 m after `under_held_water` (new in the baker), which
+      reported 1,769 points lowered. So a later step of the bake raised it again; the
+      road levelling (`level_roads`) is the first suspect.
+    - The cure is probably the canals': cut the ground away over held water (`cn`, decks
+      holes, quay walls) for the sea too. Check it against Tel Aviv's sea, also not drawn
+      (DEV.md, another session's note).
+  - `city_check` shows 41:
+    - buildings on the road 23;
+    - islands on the road 17 m²;
+    - one give-way sign doubled;
+    - road lean over 6% on 34% of the roads, worst 868% in Tunnel Albert II. Cliff roads
+      and tunnels on a 12 m grid of worldwide tiles: deck heights against that ground.
+  - No walk or test drive yet.
+
 **Leiden's and Annecy's walks and drives (22 Nov 2026).**
 - **Walks:** levels 37 and 38, both scan clean (`SCAN=1 tests/run.sh filmed_walk 37 / 38`:
   no INSIDE, EYE IN or ON ROAD).

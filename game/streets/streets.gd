@@ -99,6 +99,11 @@ const LEVELS := [
 	{"name": "The showroom: a walk among the models", "city": "showroom", "look": "med", "walk": "showroom_walk"},
 	# ("traffic": false -- no cars but the one watched: a bus and cars had shared its jump and ramps)
 	{"name": "The trick road", "city": "trick_road", "look": "north", "test_drive": 14, "traffic": false},
+	# Monaco (NEW_CITY.md): the whole principality, Fontvieille to Larvotto, a box of 3.4 x 3.1 km:
+	# the Grand Prix's streets, 312 tunnel pieces, towers on the cliff, BD TOPO's heights (IGN maps
+	# it too). Starts on the start-finish straight, Boulevard Albert 1er. "trees": "med" -- palms
+	# and pines without the "med" look's Israeli details (plates, kerb paint, solar heaters)
+	{"name": "Monaco", "city": "monaco", "start": ["Boulevard Albert 1er", "Rue Suffren Reymond"], "look": "north", "build": "fr", "trees": "med", "decks": "infer"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -7806,7 +7811,7 @@ func _build_trees() -> void:
 	var forms: Array = _city_data.get("tree_forms", [])
 	var fixed := {}     # index into spots -> the kind its species gives it
 	var mapped := 0
-	var look := String(_place.get("look", ""))
+	var look := String(_place.get("trees", _place.get("look", "")))   # (a level's "trees" picks its trees apart from the rest of its look: Monaco's palms without the Israeli details)
 	for i: int in _tile_trees.get(_tile, []):
 		var p := Vector2(tr[i], tr[i + 1]) * k
 		var fi := int(info[i]) if i + 1 < info.size() else -1

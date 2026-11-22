@@ -4786,6 +4786,9 @@ stood 19-26 s; on two-way streets with 3 cars in the lane, 4 of 6 stood.
   start its 13 stages ("kerbs and pavements (5 of 13)", TILE_STAGES, shown at each `_stage`
   and by the spinner in `_pause`). `tests/load_text.gd` prints every text the loading
   screen shows, with the time. Not shown yet: world + setup (~1-3 s after the street network).
+- **Monaco (level 41): baked, not ready** (22 Nov). The harbour's water is under the ground,
+  and city_check shows 41 (23 buildings on the road, 17 m² of island, 34% of roads leaning,
+  worst in its tunnels). Handoff with the numbers in NEW_CITY.md, "Monaco".
 - **Leiden's test drive (route 12) touches things on Rapenburg** (22 Nov): it arrives, 2.2 km
   in 5.7 min, but hits a street sign at 17 km/h and post 977 at 10 km/h on Rapenburg, a 5.1 m
   one-way canal street with BGT's trees and lamp posts 0.7 m off its asphalt.

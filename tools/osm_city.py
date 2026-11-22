@@ -725,6 +725,30 @@ def _hold_sea(blur, wet, nx, nz, step):
         f"{raised} of the shore raised to 0.3 m")
 
 
+def under_held_water(out):
+    """Lowers every grid point inside a water area held at a level (`y`: the sea, a canal) to
+    half a metre under that level wherever the ground stood higher; returns how many."""
+    hg = out.get("height")
+    if not hg:
+        return 0
+    nx, nz, step, x0, z0 = hg["nx"], hg["nz"], hg["step"], hg["x0"], hg["z0"]
+    h = hg["h"]
+    n = 0
+    for a in out["areas"]:
+        if a.get("k") != "water" or "y" not in a:
+            continue
+        ring = [(a["p"][i] / SCALE, a["p"][i + 1] / SCALE) for i in range(0, len(a["p"]), 2)]
+        top = int(a["y"]) - 5   # (both in decimetres over the grid's base)
+        xs, zs = [p[0] for p in ring], [p[1] for p in ring]
+        for j in range(max(0, int((min(zs) - z0) / step)), min(nz, int((max(zs) - z0) / step) + 2)):
+            for i in range(max(0, int((min(xs) - x0) / step)), min(nx, int((max(xs) - x0) / step) + 2)):
+                k = j * nx + i
+                if h[k] > top and point_in_ring(x0 + i * step, z0 + j * step, ring):
+                    h[k] = top
+                    n += 1
+    return n
+
+
 def wgs84_to_rd(lat, lon):
     """The Dutch national grid (Rijksdriehoek, EPSG:28992) from WGS84 lat/lon: the published
     polynomial (Schreutelkamp and Strang van Hees), good to about a metre."""
@@ -1897,6 +1921,11 @@ def bake(raw, name, args):
                         a["cn"] = 1   # a canal: the game cuts the ground away over it, quay walls round it
             for a in sea_areas:   # the sea at sea level, as a river is held at its weirs'
                 a["y"] = int(round(-out["height"]["base"] * SCALE))
+            # no ground above held water inside its outline: a harbour's inner basin came out as
+            # shore (0.1-0.3 m over the sea, Monaco's Port Hercule) and the ground covered its water
+            dry = under_held_water(out)
+            if dry:
+                log(f"ground: {dry} grid points under held water lowered below it")
         except Exception as e:   # flat is better than no city
             log(f"ground: no height data ({e}); the city stays flat")
 
