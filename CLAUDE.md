@@ -58,9 +58,9 @@ that screen. The menu itself has no level picking. Self-play skips the start scr
 Dictionaries with a `"name"` are picked by name; give them a `"group"` too and the start
 screen lists each group under its heading, side by side (a level's `"sort"` orders it within
 its group; its number is still its place in `LEVELS`, so reordering the screen never
-renumbers the levels). **Two groups at most:** each column is at least 250 px of the 640, so a
-third runs off a phone's screen -- put the new list under an existing heading instead, and
-check with `tools/menu_shot.sh levels:<game>`.
+renumbers the levels). Up to three groups sit side by side (columns narrowed to fit the 640:
+three at 250 px each once ran off a phone's edge); past three they wrap to a second row.
+`tools/menu_shot.sh levels:<game>` prints `[fits] ok`, or each button and label off the screen.
 
 Nothing outside a game's own folder should ever name that game. If you find yourself
 writing its name in a doc, a tool or another game, that is the thing that will rot when it
@@ -193,6 +193,11 @@ automatic checks. Read the ASCII maps: they show spatial bugs (everything spawni
 corner, the player stuck in a wall, a goal outside the play area) that counts alone hide.
 
 Keep runs short (20–30s). They are cheap, but not free.
+
+To show the user a game playing itself -- on their phone too -- record a level to a
+video: `tools/record_video.sh <game> <level> [seconds] [out.mp4]` (smooth whatever the
+machine, cut to the action, under the chat's 30 MB; the `scene-tests` skill says what a game
+can do to look its best on film), then send the file to the chat.
 
 A playtest passing says the game runs and can be played; it says little about whether a
 3D scene looks right or a system behaves in a particular spot. For that, write a scene
