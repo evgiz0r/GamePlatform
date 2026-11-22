@@ -23342,7 +23342,7 @@ func _autodrive(dt: float) -> Array:
 	# a while, ignore cars crossing the lane (a standoff in a junction) -- never one ahead
 	var reach := clampf(12.0 + _v * 1.2 + _v * _v / 5.2, 18.0, 130.0)
 	var lead: Array = _traffic.lead_on(_ap_pts, _pos, reach, _ap_wait > 3.0, _y)
-	if racing and float(lead[0]) < 70.0 and _ap_race_by(lead):
+	if racing and float(lead[0]) < 70.0 and (_ap_race_by(lead) or _ap_race_queue(lead)):
 		lead = _traffic.lead_on(_ap_pts, _pos, reach, _ap_wait > 3.0, _y)
 	if racing and float(lead[0]) < 22.0 and _ap_wait > 1.0 and _ap_mount_by(lead):
 		lead = _traffic.lead_on(_ap_pts, _pos, reach, _ap_wait > 3.0, _y)
@@ -24093,6 +24093,261 @@ func _ap_race_by(lead: Array) -> bool:
 		_ap_lim = keep_lim.duplicate()
 	return false
 
+## Racer (racer.gd), coming up to a queue -- cars standing one behind the other, in its lane
+## or in every lane its way (a red): past the whole of it at once, not a car at a time.
+## `_ap_race_by` goes round the car in front and back in 10 m past it -- into the next car of
+## the queue, so every way out was refused and it stood behind two cars at a red on a
+## three-lane street for the whole red (the user, 22 Nov 2026; tests/racer_queue.gd, 8 of 8
+## staged reds). The queue: every car standing (under 1.5 m/s) along the plan from the car in
+## front on, each within QUEUE_GAP of the last, in any lane. Out past the queue's widest car
+## on the left -- the next lane, or on a two-way street the other way's lanes -- or on the
+## right, back in past its head; kept when every point of it is on asphalt, clear of what is
+## solid (through what gives: _smash), 2.6 m from every car, and nothing coming the other way
+## in that lane meets it before it is back in. True when it went.
+const QUEUE_GAP := 14.0      ## m from one standing car's middle to the next's, still one queue
+const SQUEEZE_CLEAR := 2.05  ## m from a standing car's middle to racer's line squeezing by (bodies 1.9, a hand's breadth: lead_on reads one edged over by its body + 0.05)
+const SQUEEZE_ASIDE := 0.9   ## m a standing car edges over at most to let it by (lanes stand ~3.0-3.3 m apart)
+const SQUEEZE_V := 8.0       ## m/s between the lanes
+const SQUEEZE_FROM := 14.0   ## m to the car in front's middle at least, to squeeze (room to swing in)
+var _race_q_why := ""        ## why the last queue pass was not taken (tests/racer_queue.gd prints it)
+var _race_sq_shift := NAN    ## the gap last squeezed into, tried first again for SQUEEZE_KEEP s
+var _race_sq_t := -100.0
+const SQUEEZE_KEEP := 6.0
+func _road_lat(p: Vector2, fwd: Vector2) -> float:   ## across the nearest road from its middle, left + facing `fwd`
+	var h := _nearest_seg(p, 14.0, true, true, _y)
+	if h.is_empty():
+		return 0.0
+	var rp: PackedVector2Array = (_roads[int(h["road"])] as Dictionary)["pts"]
+	var sj: int = h["seg"]
+	var d := (rp[sj + 1] - rp[sj]).normalized()
+	if d.dot(fwd) < 0.0:
+		d = -d
+	return (p - (h["q"] as Vector2)).dot(Vector2(d.y, -d.x))
+func _ap_race_queue(lead: Array) -> bool:
+	var bi: int = lead[3]
+	if bi < 0 or _ap_pts.size() < 2 or float(lead[1]) > 1.5:
+		return false
+	if bi == _ap_passed and _ap_wait < 1.5:
+		return false
+	_race_q_why = "?"
+	var fwd := _fwd()
+	var s0 := _ap_pts[0].distance_to(Geometry2D.get_closest_point_to_segment(_pos, _ap_pts[0], _ap_pts[1]))
+	# every standing car near the plan ahead: [along from the car, across (left +), its half length]
+	var near: Array = []
+	for i in range(_traffic.cars.size()):
+		var c = _traffic.cars[i]
+		if not c.alive or float(c.v) > 1.5:
+			continue
+		var rel: Vector2 = c.pos - _pos
+		if rel.dot(fwd) < -3.0 or rel.length_squared() > 200.0 * 200.0:
+			continue
+		var best := INF
+		var along := 0.0
+		var lat := 0.0
+		var base := -s0
+		for j in range(_ap_pts.size() - 1):
+			var a := _ap_pts[j]
+			var b := _ap_pts[j + 1]
+			var cp := Geometry2D.get_closest_point_to_segment(c.pos, a, b)
+			if cp.distance_squared_to(c.pos) < best:
+				best = cp.distance_squared_to(c.pos)
+				along = base + a.distance_to(cp)
+				var d := (b - a).normalized()
+				lat = (c.pos - cp).dot(Vector2(d.y, -d.x))
+			base += a.distance_to(b)
+			if base > 220.0:
+				break
+		if best < 12.0 * 12.0:
+			near.append([along, lat, float(c.len) * 0.5, i, _road_lat(c.pos, fwd)])
+	near.sort_custom(func(x: Array, y: Array) -> bool: return float(x[0]) < float(y[0]))
+	var gap: float = lead[0]
+	var last := gap
+	var lo := INF
+	var hi := -INF
+	var n_q := 0
+	var queue: Array = []
+	for e: Array in near:
+		var al: float = e[0]
+		if al < gap - 8.0:
+			continue
+		if al > last + QUEUE_GAP:
+			break
+		last = maxf(last, al + float(e[2]) - 2.5)
+		lo = minf(lo, float(e[1]))
+		hi = maxf(hi, float(e[1]))
+		n_q += 1
+		queue.append(e)
+	if n_q < 2:
+		_race_q_why = "one car (%d near)" % near.size()
+		return false   # (one car: _ap_race_by's)
+	var want: float = _racer.limit(_ap_lim[1]) if _ap_lim.size() > 1 else 13.9
+	var half := 2.5
+	var start_s := maxf(gap - half - 12.0, 1.0)
+	var end_s := last + half + 10.0
+	if end_s > 170.0:
+		_race_q_why = "too long"
+		return false
+	# how long it is out there: from where it is, speeding up to `want`
+	var t_out := (end_s + 8.0) / maxf((absf(_v) + want) * 0.5, 4.0)
+	var keep_pts := _ap_pts.duplicate()
+	var keep_v := _ap_v.duplicate()
+	var keep_lim := _ap_lim.duplicate()
+	var outs: Array = [maxf(hi + RACE_CLEAR, 3.2), maxf(hi + RACE_CLEAR, 3.2) + 3.2, minf(lo - RACE_CLEAR, -3.2)]
+	# and between two lanes of it, the cars either side edging over (SQUEEZE_ASIDE at most:
+	# every lane full on a one-way street, trees on the pavement -- 8 of 8 staged reds stood)
+	var lats: Array = []
+	for e: Array in queue:
+		lats.append(float(e[4]))   # (across the road, not the plan: it moves between lanes ahead)
+	lats.sort()
+	var groups: Array = []   # a lane's cars: their mean across
+	for la: float in lats:
+		if groups.is_empty() or la - float(groups[-1][1]) > 1.2:
+			groups.append([la, la, 1])
+		else:
+			groups[-1] = [(float(groups[-1][0]) * int(groups[-1][2]) + la) / (int(groups[-1][2]) + 1), la, int(groups[-1][2]) + 1]
+	var squeeze := {}   # shift -> [group below, group above]
+	for gi in range(groups.size() - 1):
+		var a0: float = groups[gi][0]
+		var a1: float = groups[gi + 1][0]
+		# (only with room to swing in: from 7 m behind it, the turn in was too sharp to follow
+		# and racer's corner went 0.4-0.8 m into the car beside the gap, tests/racer_queue.gd)
+		if a1 - a0 >= 2.0 * (SQUEEZE_CLEAR - SQUEEZE_ASIDE) and gap >= SQUEEZE_FROM:
+			var mid := (a0 + a1) * 0.5
+			outs.append(mid)
+			squeeze[mid] = true
+	# (squeezing already: that gap first -- a retry took the other one and asked other cars to
+	# move, the first ones drifting back, and racer stood between the two)
+	if not is_nan(_race_sq_shift) and float(_traffic._clock) - _race_sq_t < SQUEEZE_KEEP:
+		var keep_at := -1
+		for oi in range(outs.size()):
+			if squeeze.has(outs[oi]) and absf(float(outs[oi]) - _race_sq_shift) < 0.8:
+				keep_at = oi
+		if keep_at >= 0:
+			var kv: float = outs[keep_at]
+			outs.remove_at(keep_at)
+			outs.push_front(kv)
+	for shift: float in outs:
+		var sq := squeeze.has(shift)
+		# (squeezing: each queue car that close edges over, as far as clears racer's body)
+		var moves := {}   # car -> how far, left +
+		var inq := {}     # (squeezing: the queue's cars are measured by `moves`, not by 2.6 m to the middle)
+		var too_far := false
+		if sq:
+			for e: Array in queue:
+				inq[int(e[3])] = true
+			for e: Array in queue:
+				# (from where it stands in its lane, not edged over already: a retry measured from
+				# the edged car asked it for less, and it drifted back into racer's way)
+				var ec = _traffic.cars[int(e[3])]
+				var d := float(e[4]) - float(ec.aside) - shift
+				var need := SQUEEZE_CLEAR - absf(d)
+				if need > SQUEEZE_ASIDE:
+					too_far = true
+					break   # (one would have to move further than it can: no way between them)
+				if need > -0.5:
+					# (and those just clear of it, holding still: by the middle with its wander, a car
+					# 2.25 m off the line in a 9 m street of two lanes held racer behind it)
+					moves[int(e[3])] = signf(d) * maxf(need + 0.05, 0.0) + float(ec.aside) * (0.0 if need > 0.0 else 1.0)
+			var room := not too_far
+			if too_far:
+				_race_q_why += " %.1f: too far aside;" % shift
+			for ci: int in moves:
+				var mc = _traffic.cars[ci]
+				var md := Vector2(sin(mc.yaw), cos(mc.yaw))
+				var over := Vector2(md.y, -md.x) * float(moves[ci])
+				for cq: Vector2 in [mc.pos + over + md * (float(mc.len) * 0.5) + Vector2(md.y, -md.x) * signf(float(moves[ci])) * 0.95,
+						mc.pos + over - md * (float(mc.len) * 0.5) + Vector2(md.y, -md.x) * signf(float(moves[ci])) * 0.95]:
+					if _off_road(cq, 0.15) or _push_out(cq, 0.2, true, false, _y) != Vector2.ZERO:   # (its side to the kerb line and a hand over, no further)
+						room = false   # (no room its side: the kerb, a post)
+			if not room:
+				_race_q_why += " %.1f: no room aside;" % shift
+				continue
+		_ap_densify(s0 + end_s + 10.0, 1.5)
+		# (lengths and ways from the plan as it was: bent in place, each point's way read from
+		# the one before, already moved, leant the push forward along the road -- 3.2 m over,
+		# the way out stayed 0.1 m off the plan, into the car it was going round)
+		var orig := _ap_pts.duplicate()
+		var s := -s0
+		var bent: Array = []
+		var sq_over := NAN
+		for k in range(1, _ap_pts.size()):
+			s += orig[k - 1].distance_to(orig[k])
+			if s > end_s + 8.0:
+				break
+			var t := clampf((s - start_s) / 7.0, 0.0, 1.0) * clampf((end_s + 8.0 - s) / 8.0, 0.0, 1.0)
+			if t <= 0.0:
+				continue
+			var kd := (orig[mini(k + 1, orig.size() - 1)] - orig[k - 1]).normalized()
+			# (squeezing: to the line between two lanes across the road, from where the plan is there)
+			# past the queue's head (into the junction: another road's middle) held as it was there
+			var over := shift
+			if sq:
+				if s <= last + 3.0 or is_nan(sq_over):
+					sq_over = shift - _road_lat(orig[k], fwd)
+				over = sq_over
+			_ap_pts[k] += Vector2(kd.y, -kd.x) * over * t
+			bent.append([_ap_pts[k], maxf(s, 0.0), kd])
+		var ok := not bent.is_empty()
+		_smash = true   # (through what gives: a railing, a low median post -- see _smash)
+		for bq: Array in bent:
+			var q: Vector2 = bq[0]
+			if _off_road(q, -0.3) or _push_out(q, 1.15, true, false, _y) != Vector2.ZERO:
+				_race_q_why += " %.1f: %s at %.0f m;" % [shift, "off the road" if _off_road(q, -0.3) else "solid", float(bq[1])]
+				ok = false
+				break
+			var at_t := float(bq[1]) / maxf((absf(_v) + want) * 0.5, 4.0)
+			var qd: Vector2 = bq[2]
+			for ci in range(_traffic.cars.size()):
+				var c = _traffic.cars[ci]
+				if not c.alive or moves.has(ci) or inq.has(ci):
+					continue
+				if c.pos.distance_squared_to(q) < 2.6 * 2.6:
+					_race_q_why += " %.1f: car %d at %.0f m (%.1f m off);" % [shift, ci, float(bq[1]), c.pos.distance_to(q)]
+					ok = false
+					break
+				if float(c.v) < 0.5:
+					continue
+				var cdir := Vector2(sin(c.yaw), cos(c.yaw))
+				if cdir.dot(qd) < -0.3:
+					# coming the other way along that lane: wherever it is between now and when
+					# racer is back in, not within reach of this point by then
+					var rel: Vector2 = c.pos - q
+					if absf(rel.dot(Vector2(qd.y, -qd.x))) < 2.8 and rel.dot(qd) > -3.0 and rel.dot(qd) < float(c.v) * (t_out - at_t + 1.5) + 4.0:
+						_race_q_why += " %.1f: coming %d;" % [shift, ci]
+						ok = false
+						break
+				elif (c.pos + cdir * float(c.v) * at_t).distance_squared_to(q) < 3.2 * 3.2:
+					ok = false
+					break
+			if not ok:
+				break
+		_smash = false
+		if ok:
+			_race_q_why = "went %.1f over, %d edging aside" % [shift, moves.size()]
+			if bi != _ap_passed:
+				_racer.passes += 1
+			_ap_passed = bi
+			for ci: int in moves:
+				_traffic.cars[ci].aside_to = float(moves[ci])
+				_traffic.cars[ci].aside_t = t_out + 3.0
+			if sq:   # (between the lanes at a squeeze's pace: 30 km/h)
+				_race_sq_shift = shift
+				_race_sq_t = float(_traffic._clock)
+				var s2 := -s0
+				for k in range(1, _ap_pts.size()):
+					s2 += orig[k - 1].distance_to(orig[k])
+					if s2 > end_s + 4.0:
+						break
+					if s2 > start_s:
+						_ap_v[k] = minf(_ap_v[k], SQUEEZE_V)
+			Probe.event("racer_squeeze" if sq else "racer_queue", {"over": snappedf(shift, 0.1), "cars": n_q, "long": snappedf(end_s, 1.0), "aside": moves.size()})
+			_log.event("racer past a queue")
+			return true
+		_ap_pts = keep_pts.duplicate()
+		_ap_v = keep_v.duplicate()
+		_ap_lim = keep_lim.duplicate()
+	return false
+
 ## Racer (racer.gd), stood behind a queue that does not move: up onto the pavement on the
 ## right and along it past the queue, back down at its head -- only where nobody is on that
 ## stretch of pavement (3 m either side of the line), nothing solid stands on it (posts,
@@ -24246,16 +24501,17 @@ func _ap_squeeze_by(bi: int, gap: float) -> bool:
 	var keep_lim := _ap_lim.duplicate()
 	var s0 := _ap_pts[0].distance_to(Geometry2D.get_closest_point_to_segment(_pos, _ap_pts[0], _ap_pts[1]))
 	_ap_densify(s0 + end_s + 10.0, 1.0)
+	var orig := _ap_pts.duplicate()   # (lengths and ways from the plan as it was: see _ap_race_queue)
 	var s := -s0
 	var bent: Array = []
 	for k in range(1, _ap_pts.size()):
-		s += _ap_pts[k - 1].distance_to(_ap_pts[k])
+		s += orig[k - 1].distance_to(orig[k])
 		if s > end_s + 6.0:
 			break
 		var t := clampf((s - start_s) / ramp, 0.0, 1.0) * clampf((end_s + 6.0 - s) / 6.0, 0.0, 1.0)
 		if t <= 0.0:
 			continue
-		var kd := (_ap_pts[mini(k + 1, _ap_pts.size() - 1)] - _ap_pts[k - 1]).normalized()
+		var kd := (orig[mini(k + 1, orig.size() - 1)] - orig[k - 1]).normalized()
 		var away := Vector2(kd.y, -kd.x) * -side
 		_ap_pts[k] += away * shift * t
 		bent.append([_ap_pts[k], away])
