@@ -228,3 +228,17 @@ What to do, by expected gain on this phone:
    the far ones can tick every few frames.
 4. **Shaders after the car** (54-80 on the phone) into the warm-up.
 5. **Draws** (500-680): the quality ladder cannot help a script-bound frame.
+
+**Fix A, first part (22 Nov 2026).** `tests/build_spans.gd` (STREETS_SPANS=1, a debug run with
+the real renderer -- headless hides mesh uploads -- on Ashdod, build in the background):
+- before: a stretch of up to 50 ms with no budget check, 15 times in 90 s, from `_build_ground`
+  to `_build_buildings` -- decks, rails, marks, beach, works and places back to back, and in
+  it `places.gd`'s room search for each shelter/kindergarten (Ashdod has many);
+- after (every step of `_build_tile` behind `_build_step`, `places.gd` paced per item): no
+  stretch over 20 ms while driving.
+- The hitch line now names the step: "building (places) 48" -- and "between squares" -- so a
+  phone screenshot says which step froze it (`_bstep_slow`, set in `_pause`).
+- Left, and the likely phone freezes: at 8 s after the car "rest 842 ms" on the desktop
+  (`FAR_AHEAD_S`: the evening's far shadows drawn ahead -- GPU work in one frame), and
+  "building 82-86 ms" twice (far-shadow chunks). The phone's perf view: "far shadows: work
+  4.7-5.2 s". Next: the far shadows in smaller pieces, or not drawn ahead on slow devices.

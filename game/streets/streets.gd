@@ -2941,8 +2941,42 @@ func _clip_buf(cell: float) -> CBuf:
 func _tally(k: String, n: int) -> void:
 	_dressing[k] = int(_dressing.get(k, 0)) + n
 
+## Where the background build runs long without handing the frame back (STREETS_SPANS=1,
+## a debug run: tests/build_spans.gd). Each pause notes how far past its budget the work
+## before it ran, and the call sites that paused: a phone ran single stretches of 1-1.5 s.
+var _span_rec := OS.get_environment("STREETS_SPANS") == "1"
+var _spans: Array = []               ## [ms past the budget, "func:line < func:line < ..."]
+
+var _bstep := ""                     ## the square-building step under way (named in the hitch line)
+var _bstep_slow := ""                ## the step that last ran 30+ ms past the frame's budget, for the next hitch line
+var _bstep_slow_us := 0
+
+## one step of building a square: its name kept for a hitch, the frame handed back first if
+## its budget is used up
+func _build_step(what: String) -> void:
+	if _over():
+		await _pause()   # (before the name changes: a long stretch is the step that ran it)
+	_bstep = what
+
+var _span_last := 0                  ## (STREETS_SPANS) the last budget check: when, and where
+var _span_last_at := ""
+
+func _span_gap() -> void:
+	var now := Time.get_ticks_usec()
+	var st := get_stack()
+	var at: Array = []
+	for i in range(2, mini(5, st.size())):
+		at.append("%s:%d" % [st[i]["function"], st[i]["line"]])
+	var here := " < ".join(at)
+	if _bg_build and _span_last > 0 and now - _span_last > 20000:
+		_spans.append([(now - _span_last) / 1000.0, "from " + _span_last_at + "  TO  " + here])
+	_span_last = now
+	_span_last_at = here
+
 ## the frame's building time is used up
 func _over() -> bool:
+	if _span_rec:
+		_span_gap()
 	return (_bg_build or _fg_build) and Time.get_ticks_usec() > _yield_at
 
 ## Building in the background: hand the frame back and go on in the next one. Meanwhile
@@ -2956,6 +2990,10 @@ func _pause() -> void:
 		await get_tree().process_frame
 		_yield_at = Time.get_ticks_usec() + FG_US
 		return
+	var over_us := Time.get_ticks_usec() - _yield_at
+	if over_us > 30000 and over_us > _bstep_slow_us:   # ran 30+ ms past the budget: which step (the hitch line)
+		_bstep_slow = _bstep if _bstep != "" else "between squares"
+		_bstep_slow_us = over_us
 	var was := _tiled
 	var batching := _batching
 	_set_tiling(false)
@@ -2965,6 +3003,7 @@ func _pause() -> void:
 	_batching = batching
 	_set_tiling(was)
 	_yield_at = Time.get_ticks_usec() + _build_us
+	_span_last = 0   # (the frame in between is not the build's)
 
 ## empty a big table or list a few hundred entries at a time, within the frame's budget
 func _release(table) -> void:
@@ -3135,56 +3174,88 @@ func _build_tile(t: Vector2i) -> void:
 		a.clear()   # made by one builder for the next, square by square
 	var tk := Time.get_ticks_msec()
 	_ao = CBuf.new(GROUND_CELL)
+	# every step behind `_step`: the frame handed back between any two of them if it is used up
+	# (decks, rails, marks, beach, works and places ran back to back unchecked: 50 ms on a
+	# desktop, tests/build_spans.gd), and the step's name kept for the hitch line
+	await _build_step("corner fills")
 	await _note_corner_fills()   # (before anything is stood anywhere: see _off_road)
+	await _build_step("ground")
 	await _build_ground()
+	await _build_step("decks")
 	await _decks.build()
+	await _build_step("rails")
 	await _rails.build()
+	await _build_step("marks")
 	_marks.build()
+	await _build_step("beach")
 	_beach.build()
+	await _build_step("works")
 	_works.build()
-	_places.build()
+	await _build_step("places")
+	await _places.build()
 	tk = _stage("roads", tk)
+	await _build_step("buildings")
 	await _build_buildings()
 	tk = _stage("buildings", tk)
+	await _build_step("roof kit")
 	await _build_roof_kit()
+	await _build_step("facade kit")
 	await _build_facade_kit()
 	tk = _stage("facades", tk)
+	await _build_step("trees")
 	await _build_trees()
 	tk = _stage("trees", tk)
+	await _build_step("kerbs")
 	await _build_kerbs()   # (after the trees: the leaves on the pavement are under them)
 	tk = _stage("kerbs", tk)
+	await _build_step("passages")
 	await _build_passages()
 	tk = _stage("passages", tk)
+	await _build_step("wires")
 	await _furn.wires()
 	tk = _stage("wires", tk)
+	await _build_step("lamps")
 	await _build_lamps()
+	await _build_step("parks")
 	await _build_parks()
 	tk = _stage("lamps", tk)
+	await _build_step("parked")
 	await _build_parked()
+	await _build_step("lots")
 	await _build_lots()
+	await _build_step("contact shadows")
 	for mi: MeshInstance3D in _add_mesh(_ao, _ao_material(), false, AO_SEEN):   # (after the buildings and the cars)
 		mi.extra_cull_margin = 60.0   # (the trees' patches are moved out by the sun, in the shader)
 	_ao = null
 	tk = _stage("parked", tk)
+	await _build_step("signals")
 	await _build_signals()
+	await _build_step("signs")
 	await _build_signs()
+	await _build_step("road paint")
 	await _build_road_paint()
+	await _build_step("speed signs")
 	await _build_speed_signs()
+	await _build_step("street signs")
 	await _build_street_signs()
 	tk = _stage("signs", tk)
+	await _build_step("pois")
 	await _build_pois()
+	await _build_step("stops")
 	await _build_stops()
 	tk = _stage("places", tk)
 	var tfu := Time.get_ticks_usec()
+	await _build_step("furniture")
 	await _furn.build()
 	_part_time("furniture: all (furniture.gd)", tfu)
 	tk = _stage("furniture", tk)
-	if _over():
-		await _pause()
+	await _build_step("batches")
 	await _flush_batches()
 	if _pools_made:
+		await _build_step("light pools")
 		_make_pools()   # it is night: this square's light pools too
 	_stage("batches", tk)
+	_bstep = ""
 	_set_tiling(false)
 	_batching = false
 	if _standins != null:
@@ -3300,11 +3371,14 @@ func _build_rest() -> void:
 	_catch_up = hurry
 	_build_us = CATCH_UP_US if _catch_up else BUILD_US
 	_yield_at = Time.get_ticks_usec() + _build_us
+	_bstep = "gardens"
 	await _build_gardens_later()   # (the start's squares' far gardens, first)
 	if not _tiles_todo.is_empty():   # (the rest, as flat stand-ins seen from above, at once)
+		_bstep = "stand-ins"
 		_standins = Standins.new(self)
 		await _standins.build_all()
 	if not hurry:
+		_bstep = "far shadows"
 		await _far_now()
 	while is_inside_tree():
 		var t = _next_tile()
@@ -3319,11 +3393,14 @@ func _build_rest() -> void:
 			_catch_up_ms = Time.get_ticks_msec() - t0
 			print("[streets] the squares round the car built %d ms after it was shown" % _catch_up_ms)
 			Probe.event("near_built", {"ms": _catch_up_ms, "squares": n})
+			_bstep = "far shadows"
 			await _far_now()
 		if _build_lbl != null:
 			_build_lbl.text = "building the city %d%%" % int(100.0 * _tiles_done.size() / maxf(_build_total, 1.0))
+	_bstep = "far shadows"
 	await _far_now()   # (if it has not come yet: before the city file below is let go)
 	await _far_both()   # (and the other sun's: drawn later, from what is let go, it failed)
+	_bstep = "letting go of the city file"
 	if _build_lbl != null:
 		_build_lbl.text = ""
 	# what was only for building -- the file, the outlines, the squares' lists -- let go of a
@@ -17865,8 +17942,13 @@ func _hitch(ms: float, typical: float) -> void:
 	var words: Array = []
 	for i in range(mini(5, parts.size())):
 		if float(parts[i][0]) >= 1.0:
-			words.append("%s %d" % [parts[i][1], int(round(float(parts[i][0])))])
+			var part: String = parts[i][1]
+			if part == "building" and _bstep_slow != "":   # which step of a square ran long (_pause)
+				part = "building (%s)" % _bstep_slow
+			words.append("%s %d" % [part, int(round(float(parts[i][0])))])
 	words.append("rest %d" % int(round(ms - script_ms)))
+	_bstep_slow = ""
+	_bstep_slow_us = 0
 	var line := "%.1f s  %d ms (usual %d)  %s" % [Time.get_ticks_msec() / 1000.0, int(ms), int(typical), " · ".join(words)]
 	_hitches.push_front(line)
 	if _hitches.size() > 4:
