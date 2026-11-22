@@ -4596,6 +4596,13 @@ stood 19-26 s; on two-way streets with 3 cars in the lane, 4 of 6 stood.
   - Kerb wedges by zebras: sliding a shallow corner's ends out along both streets until
     clear of the other's asphalt made HaNeviim's worse (3 pieces 1.3 m in): taken back out.
     Open as before.
+- **You on foot, the clips matched** (user, 22 Nov: "keep speed" -- faster steps, not a
+  slower walk): the walk at speed / its pace (0.85), the jog (Run = Jog_Fwd, 1.05 m/s at x1)
+  and, past SPRINT_FROM 6 m/s, the library's Sprint (2.14 at x1, added to moves.res: the
+  library's zip is in the user's Downloads; make_moves.gd with UAL= a copy of its
+  UAL1_Standard.glb put in the project for the run, removed after), each up to x3
+  (RUN_CLIP_MAX). `tests/sprint_clip.gd`: slide at 2.1 / 4.5 / 7 / 9.5 m/s 0.15 / 1.35 /
+  0.6 / 3.1 m/s (were ~1.2 / 3.9 / - / 6.9). Joggers: the jog, the same rate.
 - **Loading steps** (user, 22 Nov: "an inner progress, like 2/12"): the city file names its
   11 parts ("reading the map: the roads (4 of 11)", `_load_part`, a frame each -- so
   `_load_city` is a coroutine now: `await` it; prepublish does) and each square round the

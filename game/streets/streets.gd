@@ -1209,7 +1209,17 @@ const WALK_CLIP_V_UBC := 0.85
 ## longer stride would take the rest: the library has one, not in moves.res (make_moves.gd).
 const RUN_CLIP_V_KIT := 0.53
 const RUN_CLIP_V_UBC := 1.05
-const RUN_CLIP_MAX := 2.5
+const RUN_CLIP_MAX := 3.0
+## the library's sprint (Sprint, added to moves.res 22 Nov: make_moves.gd), a longer stride:
+## 2.14 m/s at x1 (1.58-2.46). You on foot past SPRINT_FROM: matched up to RUN_CLIP_MAX too
+## (9.5 m/s plays it x3, the feet 6.4 m/s: the rest slides, where the jog slid 6.9 of 9.5).
+## The kit's figures have none: they keep the jog.
+const SPRINT_CLIP_V := 2.14
+const SPRINT_FROM := 6.0
+func _sprint_rate(v: float) -> float:
+	if OS.get_environment("STREETS_SPRINT_CLIP_V") != "":
+		return clampf(absf(v) / float(OS.get_environment("STREETS_SPRINT_CLIP_V")), 0.5, RUN_CLIP_MAX)
+	return clampf(absf(v) / SPRINT_CLIP_V, 0.5, RUN_CLIP_MAX)
 var _run_clip := 0.0
 func _run_clip_rate(v: float) -> float:
 	if _run_clip == 0.0:
@@ -17497,11 +17507,20 @@ func _walk(dt: float) -> void:
 	_keep_inside(0.3, false)
 	_y = lerpf(_y, _walk_y(_pos, _y), 1.0 - exp(-dt * 12.0))   # up and down kerbs in a step, not a jump
 	var anim := "Idle" if absf(_v) < 0.15 else ("Run" if absf(_v) > 2.6 else "Walk")   # (the jog runs)
+	if anim == "Run" and absf(_v) > SPRINT_FROM and _me.anim != null and _me.anim.has_animation("Sprint"):
+		anim = "Sprint"
+	var rate := 1.0
+	if anim == "Walk":
+		rate = maxf(absf(_v) / _walk_clip_v(), 0.5)
+	elif anim == "Run":
+		rate = _run_clip_rate(_v)
+	elif anim == "Sprint":
+		rate = _sprint_rate(_v)
 	if anim != _me_anim:
 		_me_anim = anim
-		_me.play(anim, true, 1.0 if anim == "Idle" else (maxf(absf(_v) / _walk_clip_v(), 0.5) if anim == "Walk" else _run_clip_rate(_v)))
+		_me.play(anim, true, rate)
 	elif anim != "Idle":
-		_me.anim.speed_scale = maxf(absf(_v) / _walk_clip_v(), 0.5) if anim == "Walk" else _run_clip_rate(_v)
+		_me.anim.speed_scale = rate
 
 ## the camera on foot: over the shoulder, a few metres back (kept out of walls), or from the
 ## eyes when the seat view is chosen

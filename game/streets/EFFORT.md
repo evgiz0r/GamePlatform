@@ -4,8 +4,10 @@ How long each change took, in minutes, from the Claude Code sessions that made i
 
 | date (UTC) | commit | change | agent | runs | you | active | away | lines | files | steps | tools | engine runs | tokens out |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2026-11-22 14:16 | 7f056b0 | notes: the never-drawn check's 4 -- the engine's own default material, at start, before any game | 17 | 32 | 0.0 | **50** | 647 | +12 -0 | 1 | 17 | 23 | 3 | 11.9k |
 | 2026-11-22 14:15 | dee9130 | shell: a levelled game's start screen fits any number of groups -- up to three side by side in narrower col... | 1.1 | 1.0 | 0.0 | **2.2** | 770 | +35 -19 | 6 | 11 | 12 | 6 | 7.3k |
 | 2026-11-22 14:15 | 6a924b4 | streets on foot: the library's sprint clip past 6 m/s (2.14 m/s at x1, a longer stride than the jog), the c... | 1.9 | 1.8 | 0.0 | **3.6** | 685 | +61 -4 | 5 | 14 | 15 | 5 | 9.3k |
+| 2026-11-22 14:15 | 6a924b4 | streets on foot: the library's sprint clip past 6 m/s (2.14 m/s at x1, a longer stride than the jog), the c... | 1.9 | 1.8 | 0.0 | **3.7** | 685 | +61 -4 | 5 | 14 | 15 | 5 | 9.3k |
 | 2026-11-22 12:47 | 6f5e9d2 | streets: the fps button above the perf view's graph (it sat on its left end); hud_layout checks the graph too | 0.9 | 0.4 | 0.0 | **1.3** | 0.0 | +5 -3 | 2 | 11 | 9 | 1 | 3.7k |
 | 2026-11-22 12:45 | fcc473e | streets: a one-tap fps button opens the perf view; on slow frames the far squares wait (Tel Aviv at 12 fps:... | 12 | 4.5 | 0.4 | **17** | 0.0 | +205 -20 | 8 | 64 | 63 | 13 | 49.6k |
 | 2026-11-22 12:28 | 171ec59 | streets notes: the draw budget and the levels that cut draws (quality 0: test town 616 -> 467, Givatayim 57... | 1.3 | 1.0 | 0.0 | **2.4** | 0.0 | +29 -4 | 3 | 7 | 8 | 4 | 4.9k |
