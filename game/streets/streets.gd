@@ -76,6 +76,12 @@ const LEVELS := [
 	{"name": "A day in Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "day"},
 	# Delft's walk: every city has one (NEW_CITY.md), laid by data_tools/make_walks.py
 	{"name": "Delft: along the Oude Delft canal", "city": "delft", "look": "north", "build": "nl", "decks": "infer", "walk": "delft_oude_delft"},
+	# walks with something going on (the user: "very uninteresting, nothing happening ... More
+	# interesting walks. On the beach. In the park. Near night life"): each with its own scene
+	# of people (make_walks.py's "scene"); the night out starts at night
+	{"name": "Tel Aviv: a night out on Nahalat Binyamin", "city": "tel_aviv", "look": "med", "decks": "infer", "walk": "tel_aviv_night_out", "time": "night"},
+	{"name": "Tel Aviv: through the park", "city": "tel_aviv", "look": "med", "decks": "infer", "walk": "tel_aviv_park"},
+	{"name": "Tel Aviv: along the beach", "city": "tel_aviv", "look": "med", "decks": "infer", "walk": "tel_aviv_beach"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -1337,6 +1343,8 @@ func start(_config: Dictionary) -> void:
 	# with none, a test drive keeps the rules (it is there to test autodrive) and a city is the racer
 	_ap_style = String(_config.get("style", "rules" if _config.has("route") or _config.get("make_route", false) else "racer"))
 	_start_time = String(_config.get("time", "day"))
+	if _start_time == "day" and _place.has("time"):
+		_start_time = String(_place["time"])   # (a place that is its time: the night out)
 	if _config.has("route"):
 		_route = _route_by_id(int(_config["route"]))
 	if _config.get("make_route", false):
@@ -15981,7 +15989,7 @@ func _tones() -> void:
 		"sand": wn.lerp(ink, 0.45).lerp(alt, 0.1),
 		# a beach's: warmer and darker than a sandpit's (the sandpit's tone over a beach's
 		# acres read as snow beside the sea)
-		"beach": wn.lerp(ink, 0.3).lerp(Palette.col("hazard"), 0.06).darkened(0.2),
+		"beach": wn.lerp(ink, 0.3).lerp(Palette.col("hazard"), 0.06).darkened(0.38),   # (0.2 came out white in the sun: a beach walk's frame blown, its grade then flat grey)
 		"concrete": ink.lerp(alt, 0.32).lerp(wn, 0.04),
 		"insulator": ink.lerp(alt, 0.15),
 		"trafo": alt.lerp(ink, 0.4).lerp(fr, 0.08),
@@ -16675,7 +16683,10 @@ func _film_begin(id: String) -> void:
 	_prev_pos = p0
 	_cam_yaw = _yaw
 	_hud.visible = false
-	if OS.get_environment("STREETS_FILM_LOOK") != "0":   # (=0: the game's own picture, to measure it bare)
+	# (=0: the game's own picture, to measure it bare). Only a filmed walk: the grade is its
+	# phone's picture, fitted to set it beside its film -- over the walks nobody filmed it made
+	# a beach's sun a flat grey
+	if OS.get_environment("STREETS_FILM_LOOK") != "0" and bool(_place.get("filmed", false)):
 		_film_look_layer()
 	_walk_bar_build()
 	Probe.event("film", {"walk": id, "seconds": _film[_film.size() - 1].z})
