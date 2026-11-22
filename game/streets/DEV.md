@@ -805,12 +805,16 @@ what) drawn by `_draw_more` and tapped by `_more_tap`; a row is one line there.
   drive races at night with the chip saying so.
 - Time of day by choice: `_set_time_of_day` steps `_next_time` round (it only goes day,
   evening, night); `_tod_busy` keeps two taps from interleaving its awaits.
-- The camera button labels where the view is going (`_zoom > 0`), not `_zoomed()`: that is
-  still true for the second the view sinks back to the car, and the label lagged.
+- The map button (`MAP_BTN`, key M, `_toggle_map`) is the zoom up to `MAP_ZOOM` (0.86) and
+  back: everything from above (paused, `_zoom_pan`, pinch, the long press) is the zoom's.
+  Its label reads `_zoom > 0`, not `_zoomed()`: that stays true for the second the view
+  sinks back, and the label lagged. The camera button is chase <-> seat only; from above it
+  flips `_zoom_seat` (where the view lands). Hidden under the perf view's panel
+  (`_map_btn_shown`), which covers the minimap. The load line moved up to y 168 for it.
 - `tests/hud_layout.gd` (level 4, about a minute) taps every button through `_hud_tap`,
   checks what it did, and checks in every state that no shown button leaves the screen or
   overlaps another, the minimap, the speed, the credit, the stick's ring or the load line.
-  Good: 0 failed, 24 checks. Its shots (`hud_*.png`) are the quickest look at the HUD.
+  Good: 0 failed, 32 checks (the map: up, paused, dragged, the landing swapped, back down). Its shots (`hud_*.png`) are the quickest look at the HUD.
 
 ## Tests
 
