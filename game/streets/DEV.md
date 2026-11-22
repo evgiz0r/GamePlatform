@@ -2325,6 +2325,32 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   PC); nothing worse by 5; 29 +6, 49 +7, 93 +14, 94 +15; 90-99 s 23.7 -> 28.8. Both filmed
   walks scan clean; playtests of levels 5, 6 and 1 survive 25 s.
 
+### Watched levels and what a frame draws (22 Nov 2026)
+
+- **Watch only** (`_watching()`: a walk, a test drive, a scenario but the getaway): `_input`
+  returns before the game's own taps and keys (the shell's pause and exit, the opening's skip
+  and a walk's speed button come first); action_a/b do not switch autodrive; with autodrive
+  off (a tour's stop) the car is held on the brake, not `_manual`. `tests/watch_only.gd`
+  (~1 min): keys, pedals and taps all over the screen on test drive 10 and the test town's
+  walk -- autodrive stays on, seat view and on foot unchanged, the drive goes on; the walk's
+  clock at 1.00 s a second.
+- **Same rule for all**: a walk no longer starts at the top quality in a browser nor keeps its
+  gentler ladder (FPS_LOW_WALK 28 / FULL 40, now unused): QUALITY_WEB in a browser, the same
+  steps as a drive. (Native runs -- the film's recordings -- start at the top as before.)
+- **What a watched frame drew** (`tests/watch_cost.gd`: draws, triangles, objects and the
+  shadow pass every 10 s at the level's own pace, and what is in view by kind; native, top
+  quality, 50 s): Rothschild's walk 537 draws / 2,679k triangles / shadow 850k; walk 1
+  402 / 1,761k / 797k; test drive 8 (Tel Aviv) 442 / 1,881k / 710k. Half the triangles were
+  the facade kits (one white vertex-coloured material): AC units meant for 140 m drawn to
+  424 m (9,700 in view, 814k triangles), balconies for ~230 m to 514 m -- a little thing
+  built a square at a time was one multimesh a 400 m square, its range counted from the
+  square's middle (+284 m). Now `_chunked` cuts the square in four for anything with a range
+  up to `SMALL_RANGE` (260 m): +142 m, not +284. After: Rothschild 564 draws (+5%) / 1,983k
+  triangles (-26%) / shadow 743k (-13%); walk 1 437 (+9%) / 1,517k (-14%) / 742k. Buildings
+  (`VIEW_RANGE` 1100 m) untouched: a far tower still shows. Next biggest: the batched
+  buildings (580k-1M), parked cars (330-380k, already near/far shapes), people (13-16 in view,
+  ~16k triangles each).
+
 ### Walks: trees, street things, the bar, evening and night, Delft (22 Nov 2026)
 
 - **The eye at 1.75 m** (`FILM_EYE_DROP` -0.11, the user: "1.75"). It met the low crowns of
