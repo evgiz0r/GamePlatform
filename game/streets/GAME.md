@@ -1773,15 +1773,15 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
 - Speed humps to bump over: OSM marks them (traffic_calming), but the baker does not keep
   them yet -- it needs that and a re-bake (Overpass, or the bake workflow).
 - People who react ("not needed yet, maybe later"): jumping back, or falling, when a car
-  comes at them; glancing at you.
+  comes at them; glancing at you. Done: glancing at you, and a start back when the car is
+  about to hit them. Still to do: falling.
 - Better people themselves: "what about people themselves? how can we improve". Five
   low-poly characters are the limit now. Done: builds varied, and things carried (shopping
   bags, handbags, backpacks, a box). Hands while talking: done. Done: every person is now one of Quaternius'
   free Universal Base Characters with the Universal Animation Library's moves, dressed in
   code (DEV.md "The people"). Also done: skirts and dresses, older people,
   children walking with a grown-up, cafe groups seated at their tables talking, people on
-  their phones, a box carried in both arms, people glancing at you as you pass. Still to do:
-  reacting to the car (the line above).
+  their phones, a box carried in both arms, people glancing at you as you pass. People step round each other in time. Still to do: falling when hit (the line above).
 - Scenarios: "Alien invasion, maybe special scenario, maybe in any city. if i activate. some
   aliens come down around the city i am in"; "just the concept of scenarios, where aliens
   are one of those. more stuff - titans, dragons, (dont want army stuff though, gives wrong
