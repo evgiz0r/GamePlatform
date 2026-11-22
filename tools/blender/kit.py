@@ -152,6 +152,26 @@ def tube(points, width, role, flat=False, depth=0.06, steps=8):
     return ob
 
 
+def poly(points, role, thick=0.04):
+    """a flat plate through `points` (a wing's membrane, a fin): the outline filled, given a
+    little thickness so it shows from both sides"""
+    bm = bmesh.new()
+    vs = [bm.verts.new(p) for p in points]
+    bm.faces.new(vs)
+    bmesh.ops.triangulate(bm, faces=bm.faces[:])
+    ob = _obj(bm, role, "poly")
+    if thick > 0:
+        bpy.context.view_layer.objects.active = ob
+        sol = ob.modifiers.new("thick", "SOLIDIFY")
+        sol.thickness = thick
+        sol.offset = 0.0
+        bpy.ops.object.select_all(action="DESELECT")
+        ob.select_set(True)
+        bpy.ops.object.modifier_apply(modifier=sol.name)
+        ob.select_set(False)
+    return ob
+
+
 def finish():
     """all the parts joined into one object (one surface per material), flat shaded"""
     parts = [p for p in _parts if p.name in bpy.data.objects]

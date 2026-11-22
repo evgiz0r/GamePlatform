@@ -299,7 +299,13 @@ it is made, with a one-line caption, rather than a report at the end.
 
 ### A video of it (smooth, for a phone)
 
-Any test or scenario records itself with Godot's movie maker: add
+`tools/record_video.sh <game> <level> [seconds] [out.mp4]` does all of the below in one go: it
+starts the level under the movie maker, waits for the game's `film_ready()`, calls its
+`film_mode(true)` (the game hides its HUD and buttons, keeping what it marks for film -- the
+captions) and hides the shell's buttons, prints the frame filming starts at, stops at
+`seconds` or a moment after the game's `film_done()`, cuts the loading off and encodes to fit
+the phone chat. A game that has none of the three is filmed as it looks, for `seconds`. By
+hand, the same steps: add
 `GODOT_ARGS="--write-movie <file>.avi --fixed-fps 60"` (and `RES=1280x720 FULL=1`) to the run.
 Every frame is rendered at exactly 1/60 s of game time however long it takes to compute, so
 the video never stutters, even on a slow machine. Build everything first (a game that builds
@@ -310,8 +316,20 @@ own length). Encode H.264 with a bitrate cap -- detailed foliage at CRF 24 came 
 180 MB for 98 s; `-crf 28 -maxrate 2M -bufsize 4M -pix_fmt yuv420p -movflags +faststart`
 gave 23 MB -- the phone chat takes files under 30 MB (`SendUserFile` refuses more). Measured on
 the user's PC (22 Nov 2026): 6,500 frames of 720p at 60 fps in 3 min 46 s (about half real
-time), the cutting and encoding under a minute. Hide the game's HUD for a film (not done yet:
-the first one carried the buttons).
+time), the cutting and encoding under a minute.
+
+**Look better than play.** Filmed, the frame rate does not matter, so `film_mode(true)` is the
+place to turn everything past what any player's machine could hold: 8x MSAA, the 3D picture at
+1.5x and scaled down, long shadows on a big shadow map, no LOD. With `RES=1920x1080` the
+recorder allows 5 Mbit/s (still under 28 MB for ~45 s).
+
+**A scripted camera is a person.** One that moves "from here to there" by lerping a straight
+line goes through whatever stands between, and one that covers 30 m in 2 s looks like a car,
+not someone running -- the user saw both at once. Pick the destination so the straight way
+to it is clear (sample it every half metre against the solids), move it at a body's pace
+(sprint ~6 m/s, accelerating ~9 m/s^2), bob and sway with the strides, look where it goes.
+And test the family, not the shot: count the frames the camera spends inside a solid (it
+must be zero), in every staged shot, not only the one that showed it.
 
 ## Gotchas (each cost a run)
 

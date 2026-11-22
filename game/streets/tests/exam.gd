@@ -16,6 +16,8 @@ extends SceneTree
 ## (tests/bodies.gd), so a bus counts as a bus:
 ##   bodies overlapping -- two traffic cars, autodrive and a car, or a car's body into a
 ##     building, a wall, a hedge or a post (traffic is on rails: nothing else stops it)
+##   traffic left of the middle -- a moving car's middle 0.5 m+ on the wrong side of a two-way
+##     street, out of junctions (the dead end's way back once ran every car down the wrong side)
 ##   over the line at a red -- stopped for the light, the front more than a metre past the
 ##     stop line (a bus once stopped with its middle at the line, 4 m into the junction)
 ##   pushing -- autodrive's foot on the gas, not moving, 3 s in all before it gets 4 m away
@@ -41,7 +43,7 @@ const CHECKS := ["check: bodies overlapping, traffic", "check: bodies overlappin
 	"check: autodrive body into a building", "check: autodrive body into a wall", "check: autodrive body into a post",
 	"check: over the line at a red, traffic", "check: over the line at a red, autodrive",
 	"check: autodrive pushing 3 s+", "check: held by nothing 10 s+, traffic", "check: held by nothing 10 s+, autodrive",
-	"check: gave way to a car 6 s+ off, autodrive", "check: traffic rolling backwards", "check: traffic body off the asphalt"]
+	"check: gave way to a car 6 s+ off, autodrive", "check: traffic rolling backwards", "check: traffic body off the asphalt", "check: traffic left of the middle"]
 ## what may hold a car standing still (anything else -- the limit, a curve -- is nothing)
 const NAMED := ["light", "zebra", "people", "sign", "junction", "player", "bus stop", "squeezing past",
 	"blocked", "choice", "turning", "backing", "pushing", "delivery"]   # (delivery: a van double-parked to unload)
@@ -495,6 +497,7 @@ var _push_s := 0.0
 var _push_counted := false
 var _backing := {}
 var _off_n := {}   ## car -> samples running with a corner off the asphalt
+var _left_n := {}  ## car -> samples running left of a two-way street's middle
 
 func _check(dt: float) -> void:
 	_tick += 1
@@ -543,6 +546,42 @@ func _check(dt: float) -> void:
 					print("    %s" % _car_line(i))
 			else:
 				_off_n.erase(i)
+	# -- left of the middle: a moving traffic car's middle 0.5 m+ left of a two-way street's
+	# middle, out of junctions, three samples running -- autodrive's own "ticks left of the
+	# middle", widened to traffic. The family of the dead end's turn (the way back joined
+	# straight across to the lane coming in: every car out 1.6-2 m on the wrong side, nose to
+	# nose). Not: round a delivery van (`pass_i`), edged aside for racer, a bus on a street under
+	# 7 m (it rides over the middle there, `_kerb_room`), a scooter filtering.
+	if _tick % 6 == 3:
+		for i: int in boxes:
+			var lc = cars[i]
+			if lc.v < 3.0 or lc.pass_i >= 0 or float(lc.get("aside_t") if lc.get("aside_t") != null else 0.0) > 0.0 or lc.split or lc.kerb:
+				_left_n.erase(i)
+				continue
+			var on: Dictionary = g._nearest_seg(lc.pos, 10.0, true, true, float(lc.y))
+			var bad := false
+			if not on.is_empty():
+				var r: Dictionary = g._roads[on["road"]]
+				if int(r["o"]) == 0 and not r.get("ring", false) and not (lc.kind == "bus" and float(r["w"]) < 7.0):
+					var pts: PackedVector2Array = r["pts"]
+					var sj: int = on["seg"]
+					var d: Vector2 = (pts[sj + 1] - pts[sj]).normalized()
+					var hd := Vector2(sin(lc.yaw), cos(lc.yaw))
+					if d.dot(hd) < 0.0:
+						d = -d
+					var near_j := false
+					for n2: int in [(r["ids"] as PackedInt32Array)[sj], (r["ids"] as PackedInt32Array)[sj + 1]]:
+						if g._node_ways(n2) >= 3 and g._nodes[n2].distance_to(lc.pos) < g._node_r[n2] + 10.0:
+							near_j = true
+					bad = not near_j and absf(d.dot(hd)) > 0.8 and (lc.pos - (on["q"] as Vector2)).dot(Vector2(-d.y, d.x)) < -0.5
+			if bad:
+				_left_n[i] = int(_left_n.get(i, 0)) + 1
+				if _left_n[i] == 3:
+					_count("check: traffic left of the middle")
+					_incident("traffic left of the middle", lc.pos, "%s (%s, %.0f km/h)" % [lc.kind, lc.why, lc.v * 3.6])
+					print("    %s" % _car_line(i))
+			else:
+				_left_n.erase(i)
 	# -- bodies overlapping: traffic with traffic (both standing too: put down on each other
 	# is as wrong as driving into each other), autodrive with traffic
 	var now := {}

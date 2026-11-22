@@ -2,12 +2,13 @@
 """Building heights for any Dutch town from 3DBAG (tudelft3d and 3DGI, CC BY 4.0): one shape
 per BAG building (its lod12 layer) with the roof's height above the ground, the ridge, the
 storeys, the roof type and the year built. All of these are measured from AHN laser scans.
-The result goes in cities/data/nl_3dbag.geojson, which holds every Dutch town baked so far:
-a new town's buildings are merged in by their BAG id, so the file only grows. The baker reads
-it as the survey "nl_3dbag" (SURVEYS in tools/osm_city.py), so a second Dutch town needs only
-this command, run with its own box, before its bake.
+The result goes in cities/data/nl_3dbag_<town>.geojson, one file a town: the baker reads every
+nl_3dbag_*.geojson as the survey "nl_3dbag" (SURVEYS in tools/osm_city.py), so another Dutch
+town needs only this command, with its own box and name, before its bake. (One file for every
+town was 11 MB at the second town, and git keeps a whole new copy each time it changes.)
+Re-running a town merges by BAG id.
 
-    python game/streets/data_tools/nl_3dbag.py S,W,N,E [game/streets/cities/data/nl_3dbag.geojson]
+    python game/streets/data_tools/nl_3dbag.py S,W,N,E <town>
 
 The server answers from anywhere (data.3dbag.nl, WFS 2.0, WGS84 GeoJSON out). Pages of 1000
 buildings, a second apart.
@@ -78,8 +79,8 @@ def slim(f):
 
 def main():
     box = tuple(float(v) for v in sys.argv[1].split(","))
-    out = sys.argv[2] if len(sys.argv) > 2 else os.path.join(
-        os.path.dirname(__file__), "..", "cities", "data", "nl_3dbag.geojson")
+    out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "cities", "data",
+                       "nl_3dbag_%s.geojson" % sys.argv[2])
     have = {}
     if os.path.exists(out):
         with open(out, encoding="utf-8") as fh:

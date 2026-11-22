@@ -176,6 +176,55 @@
     384.2
    ],
    "crow_m": 935
+  },
+  {
+   "id": 12,
+   "level": 33,
+   "city": "leiden",
+   "from": "Pieter de la Courtstraat 26",
+   "from_at": [
+    239.1,
+    930.7
+   ],
+   "to": "Morssingel 231",
+   "to_at": [
+    -377.1,
+    -543.4
+   ],
+   "crow_m": 1597
+  },
+  {
+   "id": 13,
+   "level": 34,
+   "city": "annecy",
+   "from": "Rue Louis Boch 7",
+   "from_at": [
+    121.1,
+    -768.5
+   ],
+   "to": "Rue Pasteur 18",
+   "to_at": [
+    -1178.1,
+    -940.5
+   ],
+   "crow_m": 1310
+  },
+  {
+   "id": 14,
+   "level": 40,
+   "city": "trick_road",
+   "place": "trick road",
+   "from": "the start, before the ramp",
+   "from_at": [
+    103.27,
+    -157.03
+   ],
+   "to": "once round",
+   "to_at": [
+    146.98,
+    -160.55
+   ],
+   "crow_m": 45
   }
  ]
 }

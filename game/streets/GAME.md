@@ -87,6 +87,18 @@ bollards, yellow parking boards (a Dutch street's rows of short bollards; a Cana
 suburb's few hydrants and bins). Street trees beside a road are pruned up, branches from 2.2
 m and leaves from 2.5, so a walk goes under them, not through them.
 
+**Walks with something going on.** A night out down Nahalat Binyamin in Tel Aviv (at night,
+its bars and cafes lit with string lights and their tables out, people standing about in
+groups and passing by), a walk through a Tel Aviv park on its footpaths, and one along the
+beach on the wet sand, the head turning to the sea now and then. A walk brings its own
+people and things, not only what the city has: groups talking, people passing, lit bars.
+The walks nobody filmed show the game's own picture, not the filmed walks' phone look.
+
+> Some of the walks are very uninteresting nothing happening just walking in a blocked area.
+> More interesting walks. On the beach. In the park. Near night life.
+> In those scenarios, you should be able to change things we want (people some other object
+> maybe). Not only getting stuck in the actual city
+
 **Watched, not driven.** Walks, test drives and the tours and stories that play themselves are
 to watch: no wheel, pedals or buttons of the game's own, only pause, exit and a walk's speed.
 (The getaway is still yours to drive.) Every place starts at the same quality and steps down
@@ -108,6 +120,29 @@ still shows.
 
 > Lets balance the walks to be from more cities. And in any case we do a new city we put a
 > new walk and drive from those cities
+
+**Places that are not towns.** Two made-up places show a walk or a drive need no real city.
+*The showroom* (in the Walks list): a paved square with a quiet street and a few blocks round
+it, laid out in rows -- the trees of every kind the game grows, the street's things (bins,
+hydrants, bollards, a barrier, lamps, a booth, a cabinet, signs, motorbikes and scooters),
+the little things the game scatters about (recycling bins, bikes and a delivery bike, a dog,
+a pram, cats, sculptures, an ad column, a billboard), a playground and benches and the odd
+spaceship, and a row of vehicles from a police car to a fire engine -- with people standing
+about. The walk goes up and down the aisles between the rows, stopping twice along each to
+look at the row on one side and then the other, glancing about as it goes (about 5 min).
+*The trick road* (in the test drives, number 14): a one-way figure of eight on open grass,
+driven once round by autodrive, alone (no other traffic): up a ramp onto a bridge over its
+own other leg, off the bridge's end (a ledge: the car flies about 9 m and lands on the ramp
+down), over a jump (a kicker and a ditch across the road: the car flies about 30 m at 50-60
+km/h; a car too slow would drive down into the ditch and out), and through a hill in a
+tunnel between two cuttings. About 1:35. A real gap with nothing under it is not possible
+yet -- the car can only be steered along roads -- so the jump is over a ditch the road dips
+into.
+
+> i want to make the walks/drives maybe a bit more varied. even not from real cities. for
+> example 2 more - a small scene with many of the objects, and i am just walking around
+> looking at the models; a small trick road where the car has ramps tunnels jumps falls; and
+> these illustrate we can make really special cases not only involving the cities
 
 > i think the walk height is bit too low, i am holding the phone probably too low. and
 > sometimes not turning with my head on traffic passes( lets add that , even if it doesnt
@@ -605,6 +640,15 @@ out as a little film, the car driving itself, captions across the bottom.
 - *Ambulance run* -- Tel Aviv, Ashdod. Siren on and lights flashing, to the hospital (Tel
   Aviv's, on Weizmann): the cars beside you pull aside and stop, every light turns green,
   and the car goes round whatever is in its way.
+- *Dragons* -- over Tel Aviv, over Givatayim. Evening. From the street you look up: two
+  dragons, a red and a green, circle the towers, close in and burn each other, part and come
+  round again; the camera rises among the roofs to watch. Then the red one turns and comes
+  straight at you -- you run behind the nearest building, it sweeps over the roof roaring,
+  and you step out to watch it go. The traffic stops dead.
+
+  > Dragons fighting above the city and we watch the fight. The one dragon starts flying
+  > towads us amd we hide bwhind a building
+
 - *A day in the town* -- Tel Aviv, Givatayim. Morning to night in three minutes: a drive at
   each time of day, the town's own rhythm in the captions, the camera cutting between shots,
   rain before dawn.
@@ -1757,21 +1801,21 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
 - Speed humps to bump over: OSM marks them (traffic_calming), but the baker does not keep
   them yet -- it needs that and a re-bake (Overpass, or the bake workflow).
 - People who react ("not needed yet, maybe later"): jumping back, or falling, when a car
-  comes at them; glancing at you.
+  comes at them; glancing at you. Done: glancing at you, and a start back when the car is
+  about to hit them. Still to do: falling.
 - Better people themselves: "what about people themselves? how can we improve". Five
   low-poly characters are the limit now. Done: builds varied, and things carried (shopping
   bags, handbags, backpacks, a box). Hands while talking: done. Done: every person is now one of Quaternius'
   free Universal Base Characters with the Universal Animation Library's moves, dressed in
   code (DEV.md "The people"). Also done: skirts and dresses, older people,
   children walking with a grown-up, cafe groups seated at their tables talking, people on
-  their phones, a box carried in both arms, people glancing at you as you pass. Still to do:
-  reacting to the car (the line above).
+  their phones, a box carried in both arms, people glancing at you as you pass. People step round each other in time. Still to do: falling when hit (the line above).
 - Scenarios: "Alien invasion, maybe special scenario, maybe in any city. if i activate. some
   aliens come down around the city i am in"; "just the concept of scenarios, where aliens
   are one of those. more stuff - titans, dragons, (dont want army stuff though, gives wrong
   ideas)". A scenario is switched on in whatever town you are in and plays out around you:
-  aliens landing round the city first, then titans, dragons. No soldiers, tanks or army of
-  any kind. (Builds on the disasters idea below.)
+  aliens landing round the city first, then titans, dragons (the dragons are built: see
+  "Scenarios" above). No soldiers, tanks or army of any kind. (Builds on the disasters idea below.)
 - A city on the moon: "A city on the moon".
 - Disasters on the real city: "like simcity hazards, but now we have the graphics so it
   can be cool on steroids, like aliens". Pick a disaster and where it strikes, then watch it

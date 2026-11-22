@@ -89,6 +89,16 @@ extends RefCounted
 ##                                                    red-ringed sign facing dir; bin: a small
 ##                                                    one hung on it, a purple liner).
 ##                                                    Anything on a lifted surface stands on it.
+##   show      [{kind: "kit" | "model", name, at, dir, size, paint, r, car}]   a showroom's
+##                                                    exhibits (data_tools/make_showcase.py): one
+##                                                    of furniture.gd's kits by name (SHOW_KITS)
+##                                                    or a model in assets/models/ (the shell's
+##                                                    model(): its longest side `size` m), at
+##                                                    `at` facing `dir`; paint: a tone
+##                                                    (g._tone) for a kit drawn white; r: the
+##                                                    post the walks step round (0.4; 0 none);
+##                                                    car: a car's posts instead, along dir
+##                                                    (the car kit's models are long along z)
 ##   trees     [[x, z], ...]                         more trees for the city's own builder
 ##   shops     [{name | near: [x, z], at: [x, z], add, kind, name_en, sign, awning, umbrella,
 ##              seats, crates, lights, board}]   one place's look, by hand (_build_pois):
@@ -490,6 +500,7 @@ func build() -> void:
 				if pr.get("box", false):
 					boxes.append(xf)
 				g._add_post(at, 0.45)
+	_show()
 	g._add_mesh(b, g._vc_mat(), true, 260.0)
 	g._add_mesh(hedge, g._surface("bush"), true, 260.0)
 	g._add_mesh(glass, _window_glass(), false, 220.0)
@@ -506,6 +517,75 @@ func build() -> void:
 	if not shrubs.is_empty() and g._tree_meshes.has("crown"):
 		g._chunked(g._tree_meshes["crown"], shrubs, 260.0, shrub_cols, null, false)
 	await g._flush_batches()
+
+## ---- a showroom's exhibits ("show") ------------------------------------------------------------
+
+## furniture.gd's kits by the name a showroom gives them
+func _show_kit(name: String) -> Mesh:
+	var f = g._furn
+	match name:
+		"paper_bin": return f._paper_bin_kit()
+		"cage": return f._cage_kit()
+		"glass_bell": return f._glass_bell_kit()
+		"rack": return f._rack_kit()
+		"bike": return f._bike_kit()
+		"delivery": return f._delivery_kit()
+		"scooter": return f._scooter_kit()
+		"dock": return f._dock_kit()
+		"taxi_sign": return f._taxi_sign_kit()
+		"notice": return f._notice_kit()
+		"zone30": return f._zone30_kit()
+		"parking_sign": return f._parking_sign_kit()
+		"ornate": return f.ornate_kit(false)
+		"ornate_double": return f.ornate_kit(true)
+		"column": return f._column_kit(0)
+		"board": return f._board_kit(0)
+		"art0": return f._art_kit(0)
+		"art1": return f._art_kit(1)
+		"art2": return f._art_kit(2)
+		"cat_sit": return f._cat_kit("sit")
+		"cat_loaf": return f._cat_kit("loaf")
+		"dog": return f.dog_kit()
+		"pram": return f.pram_kit()
+		"ac": return f.ac_kit(0)
+		"pit": return f.pit_kit()
+		"grate": return f.grate_kit()
+		"hydrant": return f._hydrant_kit()
+		"cabinet": return f._cabinet_kit()
+		"bin": return f._bin_kit()
+	return null
+
+## each exhibit a node of its own (a showroom holds a few dozen: no batching wanted), standing on
+## the ground or the paving there, a post for the walks to step round
+func _show() -> void:
+	for it: Dictionary in data.get("show", []):
+		var at := _v2(it["at"])
+		var d := _v2(it.get("dir", [0, 1])).normalized()
+		var y: float = maxf(g._walk_y(at), g._h(at) + _lift_at(at))
+		var node: Node3D
+		if String(it["kind"]) == "model":
+			node = g.model(String(it["name"]), float(it.get("size", 1.0)))
+		else:
+			var mesh := _show_kit(String(it["name"]))
+			if mesh == null:
+				push_warning("details: no kit '%s' to show" % it["name"])
+				continue
+			var mi := MeshInstance3D.new()
+			mi.mesh = mesh
+			if it.has("paint") and g._tone.has(String(it["paint"])):
+				var m := StandardMaterial3D.new()
+				m.vertex_color_use_as_albedo = true
+				m.albedo_color = g._tone[String(it["paint"])]
+				m.roughness = 0.7
+				mi.material_override = m
+			node = mi
+		node.name = "show_" + String(it["name"]).replace("-", "_")
+		g.world.add_child(node)
+		node.transform = Transform3D(Basis(Vector3.UP, atan2(d.x, d.y)), Vector3(at.x, y, at.y))
+		if bool(it.get("car", false)):
+			g._add_car_posts(at, d)   # (the car kit's models are long along their own z: along dir)
+		elif float(it.get("r", 0.4)) > 0.0:
+			g._add_post(at, float(it.get("r", 0.4)))
 
 ## ---- paving -----------------------------------------------------------------------------------
 
