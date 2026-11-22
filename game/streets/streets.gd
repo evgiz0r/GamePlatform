@@ -1243,6 +1243,7 @@ func _ready() -> void:
 	# Before super(): the shell's own per-frame hook puts camera shake on top of where
 	# _frame() leaves the camera, so _frame() has to run first.
 	get_tree().process_frame.connect(_frame)
+	_gl_count_on()   # before super() makes the first materials (LIGHT_STRIP_JS)
 	super()
 	Bus.palette_changed.connect(_retint_city)
 
@@ -1334,6 +1335,7 @@ func start(_config: Dictionary) -> void:
 	_place_start()
 	_build_hud()
 	_show_load_line()
+	_no_local_lights()
 	_far_ahead()
 	_retint_city()
 	_spawn_people()
@@ -1632,11 +1634,51 @@ const GL_COUNT_JS := """(() => {
 		};
 	}
 })()"""
+## ---- the lit shaders Godot compiles and never draws with (web only) ---------------------
+## When a material's shader is set up, Godot's Compatibility renderer compiles its "default"
+## specialization of every variant at once (shader_gles3.cpp `_initialize_version`,
+## `specialization_default_mask`): for the lit pass, plain and instanced, with the omni, spot
+## and AREA light code all switched on. Draws never use it -- the base pass switches each of
+## those off when no such light touches the instance (rasterizer_scene_gles3.cpp), and this
+## game has only the sun. But Chrome/Edge on Windows hand every program to Direct3D's compiler,
+## and those two cost ~2.4-7.7 s each: 44 of them were ~85% of a cold load (user's PC, 22 Nov
+## 2026: Givatayim's graphics 63 s; area lights alone 2.45 -> 0.47 s a program, omni + spot +
+## area 0.16 s). Defining the three off in exactly those sources -- the base pass, not
+## additive, no DISABLE_LIGHT_OMNI of its own -- compiles them in a fraction, and the picture
+## cannot change: with no such light the code left out loops over nothing. Cold Givatayim,
+## the same build in the same browser: graphics 63 -> 22 s, the compile calls 63 -> 15.5 s.
+## **Only right while the game has no OmniLight3D, SpotLight3D or AreaLight3D** --
+## `_no_local_lights` warns at load if one appears; drop LIGHT_STRIP_JS before adding one.
+const LIGHT_STRIP_JS := """(() => {
+	if (window.__lstrip || typeof WebGL2RenderingContext === 'undefined') return;
+	const c = window.__lstrip = { n: 0 };
+	const P = WebGL2RenderingContext.prototype;
+	const f = P.shaderSource;
+	const add = '\\n#define DISABLE_LIGHT_OMNI\\n#define DISABLE_LIGHT_SPOT\\n#define DISABLE_LIGHT_AREA\\n';
+	P.shaderSource = function (s, src) {
+		if (typeof src === 'string' && src.indexOf('#define BASE_PASS') >= 0
+				&& src.indexOf('#define USE_ADDITIVE_LIGHTING') < 0 && src.indexOf('#define DISABLE_LIGHT_OMNI') < 0) {
+			const i = src.indexOf('\\n');
+			src = src.slice(0, i) + add + src.slice(i + 1);
+			c.n += 1;
+		}
+		return f.call(this, s, src);
+	};
+})()"""
+
+## warn if a light the strip above assumes away is in the scene
+func _no_local_lights() -> void:
+	for n in get_tree().root.find_children("*", "Light3D", true, false):
+		if not (n is DirectionalLight3D):
+			push_warning("[streets] %s is a %s: LIGHT_STRIP_JS assumes the game has none" % [n.name, n.get_class()])
+			return
+
 var _load_gl := Vector2(-1, 0)       ## the load's programs linked and ms in the compile calls (-1: not a browser)
 var _gl_at_car := Vector2(-1, 0)     ## the count when the car was shown
 
 static func _gl_count_on() -> void:
 	if OS.has_feature("web"):
+		JavaScriptBridge.eval(LIGHT_STRIP_JS, true)
 		JavaScriptBridge.eval(GL_COUNT_JS, true)
 
 ## (programs linked, ms spent in the compile and link calls) so far; x -1 where not counted
