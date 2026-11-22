@@ -4673,6 +4673,10 @@ stood 19-26 s; on two-way streets with 3 cars in the lane, 4 of 6 stood.
   start its 13 stages ("kerbs and pavements (5 of 13)", TILE_STAGES, shown at each `_stage`
   and by the spinner in `_pause`). `tests/load_text.gd` prints every text the loading
   screen shows, with the time. Not shown yet: world + setup (~1-3 s after the street network).
+- **Leiden's test drive (route 12) touches things on Rapenburg** (22 Nov): it arrives, 2.2 km
+  in 5.7 min, but hits a street sign at 17 km/h and post 977 at 10 km/h on Rapenburg, a 5.1 m
+  one-way canal street with BGT's trees and lamp posts 0.7 m off its asphalt.
+  `run_routes.sh 12` stages it (about 4 min). Annecy's route 13 has no hits.
 - **Islands on the asphalt in the Dutch towns: fixed, 1 m² left in each** (`city_check`'s
   "islands on the road": Delft 39 -> 1, Leiden 87 -> 1; 0 in every other town before and
   after). `tests/islands_where.gd` lists every island on asphalt, worst first, with the road

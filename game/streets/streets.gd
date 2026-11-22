@@ -88,6 +88,9 @@ const LEVELS := [
 	{"name": "Annecy", "city": "annecy", "start": ["Rue Royale", "Rue de la Poste"], "look": "north", "build": "fr", "decks": "infer"},
 	{"name": "Dragons over Tel Aviv", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "dragons"},
 	{"name": "Dragons over Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "dragons"},
+	# their walks (NEW_CITY.md: every city has one), laid by data_tools/make_walks.py
+	{"name": "Leiden: down Haarlemmerstraat", "city": "leiden", "look": "north", "build": "nl", "decks": "infer", "walk": "leiden_haarlemmerstraat"},
+	{"name": "Annecy: along the Thiou to the lake", "city": "annecy", "look": "north", "build": "fr", "decks": "infer", "walk": "annecy_thiou"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -1430,6 +1433,12 @@ func start(_config: Dictionary) -> void:
 	var tw := Time.get_ticks_msec()
 	print("[streets] the squares round the start built in %d ms; stages %s" % [tw - t1, _stage_ms])
 	print("[streets] warm-up begins")   # (marks for a browser's log: tests/web_shaders.js counts the shaders compiled between)
+	# The world's look as it will be driven -- the haze with its sun glow (USE_SUN_SCATTER), the
+	# tone curve, the materials' tones -- BEFORE the warm-up: set only after it (as it was until
+	# 22 Nov 2026) the warm-up compiled every shader for a scene with no haze, and the first
+	# minute of driving compiled the sun's pass of everything again: Tel Aviv, a cold browser on
+	# the home PC, 23 programs, 10.5 s, all with USE_SUN_SCATTER. (Called again after the car.)
+	_retint_city()
 	if not await _warm_up():
 		return
 	_stage_ms["warm up (shaders compiled, 4 frames)"] = Time.get_ticks_msec() - tw
