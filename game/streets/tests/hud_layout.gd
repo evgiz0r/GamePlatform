@@ -104,7 +104,9 @@ func _run() -> void:
 	# the drawer
 	await _tap(g.MORE_BTN)
 	_ok("more opens the drawer", g._more_open)
+	g._mouse_at = g._seg_rect(g._more_rows()[0], 2).get_center()   # a mouse over "night": filled as hovered
 	await _snap("hud_more")
+	g._mouse_at = Vector2.INF
 	var rows: Array = g._more_rows()
 	await _tap(g._seg_rect(rows[2], 1))   # autodrive: green wave
 	_ok("the drawer's green wave: wave on, racer off", g._wave.on and not g._racing() and g._ap_style == "wave")
