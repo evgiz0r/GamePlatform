@@ -1171,6 +1171,21 @@ var _car_at := Vector2.ZERO          ## where the car was left, and how
 var _car_yaw_at := 0.0
 var _car_y_at := 0.0
 const WALK := 2.1                    ## m/s: a brisk walk (1.45, a stroll, was too slow to get anywhere)
+## m/s the walk clip's feet cover at x1, on the figures as built (tests/foot_slide.gd: a
+## foot's speed back past the body while it is on the ground). The kit's figures ~0.97
+## (0.83-1.17); the Universal Base Characters' walk (people.gd) ~0.85 (0.79-1.03, about one
+## hip height a second). Taken to be 1.35, every walker's clip played ~30% slow and the
+## planted foot slid forward 16 cm a step on average, up to 50 (user, 22 Nov: "is movement
+## in our realism?")
+const WALK_CLIP_V_KIT := 0.97
+const WALK_CLIP_V_UBC := 0.85
+var _walk_clip := 0.0
+func _walk_clip_v() -> float:
+	if _walk_clip == 0.0:
+		_walk_clip = WALK_CLIP_V_UBC if _people_maker().on() else WALK_CLIP_V_KIT
+		if OS.get_environment("STREETS_WALK_CLIP_V") != "":   # (a test's other value: foot_slide.gd)
+			_walk_clip = float(OS.get_environment("STREETS_WALK_CLIP_V"))
+	return _walk_clip
 const RUN := 6.2
 const TURN_ON_FOOT := 2.6            ## rad/s
 var _look_turn := 0.0                ## the driver's glance into a turn
@@ -1249,20 +1264,20 @@ var _stick := Vector2.ZERO           ## its deflection, inside the unit circle
 var _sfx_was := 0.8
 ## The HUD's buttons, by what they are for (the user, 22 Nov: "more organized, with better
 ## logic; some buttons are rarely used"). On screen only what is used while driving: along
-## the bottom, bigger, where you are going (autodrive and its style, go to, walk); on the
-## right, the view (camera, look) and "more"; lights by the map, after dark. Everything set
+## the bottom, bigger, where you are going (autodrive and its style, go to); on the right
+## "more", the camera, walk and look. (No lights button: key L only.) Everything set
 ## once and left -- time of day, wet, the driving style, assist, pause, the fps and build
 ## lines, the keys -- in the "more" drawer (_draw_more, MORE_*). Every toggle says what is
 ## ON now, lit when on: never the state a tap would switch to ("day" had meant "it is night").
 const AUTO_BTN := Rect2(140, 332, 104, 24)   ## autodrive on / off (space; shift off)
 const STYLE_BTN := Rect2(248, 332, 62, 24)   ## while autodrive drives: its style, tap for the next (rules, wave, racer)
 const GOTO_BTN := Rect2(314, 332, 84, 24)
-const WALK_BTN := Rect2(402, 332, 66, 24)    ## out of the car and back in (key F). (Ends short of the stick's hint)
+const WALK_BTN := Rect2(566, 150, 66, 22)    ## out of the car and back in (key F): under the camera (the user, 22 Nov: "put walk below seat chase")
 const MORE_BTN := Rect2(566, 98, 44, 22)     ## the drawer of set-once switches
 const FOLD_BTN := Rect2(612, 98, 20, 22)     ## "–": every button folded away but one "show" (_hud_folded); the user: "not take too much of the screen, or collapsible easily"
 const SHOW_BTN := Rect2(566, 98, 66, 22)     ## folded: the one button left, unfolds them
 const VIEW_BTN := Rect2(566, 124, 66, 22)    ## the camera, round: chase, seat, above the city (keys C, Z)
-const LIGHTS_BTN := Rect2(8, 180, 62, 24)    ## headlights (key L): shown after dark, or while they are on
+## (no lights button: the user, 22 Nov, "remove lights ui, its not a thing" -- key L only)
 ## (the indicators and the horn are keys only, Q / E and H: on screen they were clutter)
 const STICK_C := Vector2(556, 268)   ## the touch stick sits still, here, on the right
 const STICK_R := 52.0                ## thumb travel (design px) for full lock / full gas
@@ -1605,7 +1620,7 @@ func _show_load_line() -> void:
 	print("[streets] " + t)
 	_load_lbl = _label(8, "ink")
 	_load_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_load_lbl.position = Vector2(8, 164)   # (above the lights button, LIGHTS_BTN)
+	_load_lbl.position = Vector2(8, 190)   # (over the map)
 	_load_lbl.size = Vector2(320, 12)
 	_load_lbl.text = t
 	_load_lbl.modulate.a = 0.8
@@ -16457,7 +16472,7 @@ func _film_begin(id: String) -> void:
 		a.face(Vector3(fd.x, 0, fd.y))
 		var moving := B != A
 		var pace: float = A.distance_to(B) / maxf(float(tt[1]) - float(tt[0]), 0.01)
-		a.play("Walk" if moving else "Idle", true, pace / 1.35 if moving else 1.0)
+		a.play("Walk" if moving else "Idle", true, pace / _walk_clip_v() if moving else 1.0)
 		a.visible = not moving
 		# `talk`: one of a group standing talking -- no clip for it, so the body does it: turning a
 		# little to the one spoken to and back, now and then a wider turn (as the film's do)
@@ -16659,7 +16674,7 @@ func _film_tick(dt: float) -> void:
 			w["film_ahead"] = float(w.get("film_ahead", 0.0)) + dt
 			if float(w["film_ahead"]) > 4.0 and float(w["speed"]) < 1.9:
 				w["speed"] = 1.9
-				wa.anim.speed_scale = 1.9 / 1.35
+				wa.anim.speed_scale = 1.9 / _walk_clip_v()
 		else:
 			w["film_ahead"] = 0.0
 	while _film_sent < _film_cars.size() and _film_t >= float(_film_cars[_film_sent][0]):
@@ -18755,7 +18770,7 @@ func _place_walker(w: Dictionary, anywhere: bool, why := "") -> void:
 			w.erase(k)
 		w["dodge"] = 0.0
 		w["dir"] = 1.0 if _people_rng.randf() < 0.5 else -1.0
-		a.play("Walk_Carry" if w["carry"] else "Walk", true, float(w["speed"]) / 1.35)
+		a.play("Walk_Carry" if w["carry"] else "Walk", true, float(w["speed"]) / _walk_clip_v())
 		a.visible = true
 		return
 	a.visible = false
@@ -18950,7 +18965,7 @@ func _walker_anim(w: Dictionary, a: Actor3D, p: Vector2, dt: float) -> void:
 		walking = true
 	var clip := ("Walk_Carry" if w["carry"] else "Walk") if walking else "Idle"
 	if clip != String(w.get("anim_clip", "")) or walking:
-		a.play(clip, true, clampf(v, 0.6, 1.8) / 1.35 if walking else 1.0)
+		a.play(clip, true, clampf(v, 0.6, 1.8) / _walk_clip_v() if walking else 1.0)
 		w["anim_clip"] = clip
 	w["anim_walk"] = walking
 
@@ -19504,7 +19519,7 @@ func _people_tick(dt: float) -> void:
 						w["dir"] = -float(w["dir"])
 		if not at_kerb and w.has("kerb_t"):
 			w.erase("kerb_t")
-			a.play("Walk_Carry" if w["carry"] else "Walk", true, float(w["speed"]) / 1.35)
+			a.play("Walk_Carry" if w["carry"] else "Walk", true, float(w["speed"]) / _walk_clip_v())
 		w["s"] = s
 		var p := _along(line, cum, s)
 		var ahead := _along(line, cum, clampf(s + float(w["dir"]) * 0.5, 0.0, total)) - p
@@ -20201,7 +20216,7 @@ func _crossers_tick(dt: float) -> void:
 						and not _box_waiting(cr, (from + to) * 0.5) \
 						and not _kept_waiting((from + to) * 0.5, from.distance_to(to) * 0.5):
 					cr["state"] = "cross"
-					a.play("Walk", true, float(cr["speed"]) / 1.35)
+					a.play("Walk", true, float(cr["speed"]) / _walk_clip_v())
 			"cross", "back":
 				var w := from.distance_to(to)
 				var sp: float = cr["speed"] * (2.4 if state == "back" else 1.0)
@@ -20223,7 +20238,7 @@ func _crossers_tick(dt: float) -> void:
 					# over (or back): off along the pavement, gone once out of the way
 					cr["state"] = "away"
 					cr["t"] = 12.0
-					a.play("Walk", true, float(cr["speed"]) / 1.35)
+					a.play("Walk", true, float(cr["speed"]) / _walk_clip_v())
 					_away_from(cr, z)
 			"away":
 				cr["t"] = float(cr["t"]) - dt
@@ -21703,7 +21718,7 @@ func _seat_camera(dt: float, yaw: float) -> void:
 ## wheel goes over; at people on the crossing ahead; over the right shoulder reversing.
 ## Autodrive's driver always does; yours while "look" is on. The seat view turns with the
 ## head, the chase camera swings a little toward it, and the head in the car turns.
-const LOOK_BTN := Rect2(566, 150, 66, 22)    ## looking round while you drive yourself (key G: glance); hidden while autodrive drives or you walk
+const LOOK_BTN := Rect2(566, 176, 66, 22)    ## looking round while you drive yourself (key G: glance); hidden while autodrive drives or you walk
 const HEAD_RATE := 3.4                       ## rad/s a head turns at, at most
 var _head_yaw := 0.0                         ## where the driver looks: radians left (+) of ahead
 var _head_plan: Array = []                   ## a scan still to do: [[yaw, seconds held], ...]
@@ -22942,6 +22957,18 @@ func _ap_plan() -> void:
 			hit = _nearest_seg(way[way.size() - 1], 12.0, true, true)
 			if hit.is_empty():
 				return
+	# at a junction the nearest road can be the one across it: planned along that, the car
+	# turned full lock from a standstill and cut the corner into its post (Givatayim's Eilat
+	# by Yitzhak Rabin, HaShalom's crossing: tests/drive_bumps.gd). The road just ahead of the
+	# car, if that one runs its way, instead.
+	var hp: PackedVector2Array = (_roads[hit["road"]] as Dictionary)["pts"]
+	var al := absf((hp[int(hit["seg"]) + 1] - hp[int(hit["seg"])]).normalized().dot(heading))
+	if al < 0.7:
+		var ahead := _nearest_seg(_pos + heading * 5.0, 8.0, true, true, _y)
+		if not ahead.is_empty():
+			var ap: PackedVector2Array = (_roads[ahead["road"]] as Dictionary)["pts"]
+			if absf((ap[int(ahead["seg"]) + 1] - ap[int(ahead["seg"])]).normalized().dot(heading)) > maxf(al, 0.7):
+				hit = ahead
 	var ri: int = hit["road"]
 	var sj: int = hit["seg"]
 	var r: Dictionary = _roads[ri]
@@ -25388,16 +25415,13 @@ func _draw_hud() -> void:
 	if not _hud_folded:
 		_hud_btn(GOTO_BTN, "go to…", Palette.col("accent"), false, 12, true)
 		var near_car := _walking and _pos.distance_to(_car_at) < 3.6
-		_hud_btn(WALK_BTN, "get in" if _walking else "walk", Palette.col("accent"), false, 12, near_car)
+		_hud_btn(WALK_BTN, "get in" if _walking else "walk", Palette.col("accent"), false, 11, near_car)
 		# on the right: the drawer and folding, the camera, looking round
 		_hud_btn(MORE_BTN, "more" if not _more_open else "close", Palette.col("accent"), _more_open, 11)
 		_hud_btn(FOLD_BTN, "–", Palette.col("ink"), false, 13)
 		_hud_btn(VIEW_BTN, _view_name(), Palette.col("player"), _zoom > 0.0 or _cockpit, 11)
 		if not _walking and not _auto:
 			_hud_btn(LOOK_BTN, "look", Palette.col("accent"), _look_on, 11)
-		# by the map, after dark (or while on): the headlights
-		if _lights_shown():
-			_hud_btn(LIGHTS_BTN, "lights", Palette.col("warn"), _lights_on, 11)
 	# the indicator blinking by the speed, as on a dashboard
 	if _blink != 0 and _blink_lit:
 		var s := float(_blink)
@@ -25487,9 +25511,6 @@ func _next_view() -> void:
 		_zoom_set(ZOOM_UP)
 	else:
 		_set_cockpit(true)
-
-func _lights_shown() -> bool:
-	return _evening or _night or _lights_on
 
 func _time_now() -> String:
 	return "night" if _night else ("evening" if _evening else "day")
@@ -25637,8 +25658,6 @@ func _hud_tap(p: Vector2) -> bool:
 		_next_view()
 	elif LOOK_BTN.grow(2).has_point(p) and not _walking and not _auto:
 		_toggle_look()
-	elif _lights_shown() and LIGHTS_BTN.grow(2).has_point(p):
-		_set_lights(not _lights_on)
 	else:
 		return false
 	return true
@@ -25654,8 +25673,6 @@ func _on_hud_button(p: Vector2) -> bool:
 			rs.append(STYLE_BTN)
 		if not _walking and not _auto:
 			rs.append(LOOK_BTN)
-		if _lights_shown():
-			rs.append(LIGHTS_BTN)
 	if _paused and not _zoomed():
 		rs.append(RESUME_BTN)
 	for r: Rect2 in rs:

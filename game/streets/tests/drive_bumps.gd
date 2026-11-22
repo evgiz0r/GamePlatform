@@ -40,12 +40,28 @@ func _run() -> void:
 		var pts: PackedVector2Array = r["pts"]
 		if pts.size() < 2:
 			continue
-		var mid := pts[pts.size() / 2]
-		if not g._in_city(mid) or priv.near(avoid, mid):
+		# halfway along it by length, 15 m or more from either end (pts[size / 2] of a two-point
+		# road is its end: a junction's middle, where any turn starts inside the corner)
+		var total := 0.0
+		for j in range(pts.size() - 1):
+			total += pts[j].distance_to(pts[j + 1])
+		if total < 30.0:
+			continue
+		var mid := Vector2.INF
+		var md := Vector2.ZERO
+		var run := 0.0
+		for j in range(pts.size() - 1):
+			var l := pts[j].distance_to(pts[j + 1])
+			if run + l >= total * 0.5:
+				mid = pts[j].lerp(pts[j + 1], (total * 0.5 - run) / maxf(l, 0.01))
+				md = (pts[j + 1] - pts[j]).normalized()
+				break
+			run += l
+		if mid == Vector2.INF or not g._in_city(mid) or priv.near(avoid, mid):
 			continue
 		var k := Vector2i(floori(mid.x / 400.0), floori(mid.y / 400.0))
 		if not cells.has(k):
-			cells[k] = [mid, (pts[pts.size() / 2] - pts[pts.size() / 2 - 1]).normalized()]
+			cells[k] = [mid, md]
 	var starts: Array = cells.values()
 	starts.sort_custom(func(a, b): return (a[0] as Vector2).x + (a[0] as Vector2).y * 0.37 < (b[0] as Vector2).x + (b[0] as Vector2).y * 0.37)
 	var pick: Array = []
@@ -64,7 +80,18 @@ func _run() -> void:
 		if not places.has(key):
 			places[key] = [0, p.round(), cause]
 		places[key][0] += 1
-	for s: Array in pick:
+	# each knock or hit with what led to it: the car's last 3 s, twice a second -- where, how
+	# fast, why the plan went that speed, the road under it and how far past its edge
+	var hist: Array = []
+	var tell := func(si: int, what: String) -> void:
+		print("  -- start %d, %s, at %s, %.1f m/s, heading %s:" % [si, what, str(g._pos.round()), g._v, str(g._fwd().snapped(Vector2(0.01, 0.01)))])
+		for h: String in hist:
+			print("       " + h)
+	for si in range(pick.size()):
+		var s: Array = pick[si]
+		if OS.get_environment("ONLY") != "" and not Array(OS.get_environment("ONLY").split(",")).has(str(si)):
+			continue
+		hist.clear()
 		g._set_auto(false)
 		g._land_on_road(s[0], 15.0, s[1])
 		g._ap_pts = PackedVector2Array()
@@ -80,11 +107,19 @@ func _run() -> void:
 		for f in range(60 * secs):
 			await physics_frame
 			var p: Vector2 = g._pos
+			if f % 30 == 0:
+				var on: Dictionary = g._nearest_seg(p, 30.0, true, true, g._y)
+				var rd := "off any road" if on.is_empty() else "%s '%s' edge %.1f" % [g._roads[on["road"]]["k"], g._roads[on["road"]]["en"], float(on["edge"])]
+				hist.append("t %.1f  %s  %.1f m/s  steer %.2f  why %s  [%s]" % [f / 60.0, str(p.round()), g._v, g._steer, g._ap_why, rd])
+				if hist.size() > 6:
+					hist.pop_front()
 			if int(g._knocked_n) > kn0:
+				tell.call(si, "knocked " + String(g._last_hit))
 				knocks += int(g._knocked_n) - kn0
 				add.call("knocked " + String(g._last_hit), p)
 				kn0 = g._knocked_n
 			if float(g._crash_cool) > 0.0 and cool0 <= 0.0:
+				tell.call(si, "hit " + String(g._last_hit))
 				hits += 1
 				add.call("hit " + String(g._last_hit).split(" ")[0], p)
 			cool0 = g._crash_cool
