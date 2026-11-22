@@ -414,3 +414,36 @@ placeholder in `index.html` before the engine starts; streets' own LIGHT_STRIP_J
 (the main menu) 21 programs in 5 ms of linking (was ~2.85 s: the default material's two lit
 programs, 1.4 s each); the test town loads and draws as before, `__lstrip` 116 skipped, 0
 drawn with. `web_shaders.js`'s never-drawn check should now read 0 from the page's start.
+
+**Shaders after the car (22 Nov 2026).** A cold browser on the home PC, Tel Aviv, ~90 s of
+autodrive after the warm-up, every program linked recorded by material and switches: 59
+programs, 11.5 s, and 23 of them -- 10.5 s, the walls 2.2 s, the ground tone 1.65, the cars
+1.0 each -- the sun's pass with `USE_SUN_SCATTER`. None of the warm-up's had it: the haze
+(fog on, its sun glow, the tone curve) was set by `_retint_city()`, which first ran AFTER the
+warm-up, so the warm-up compiled every shader for a scene without haze and the drive
+compiled them again. Now `_retint_city()` runs once before `_warm_up()` too. Same browser,
+same city: after the car 59 programs / 11.5 s -> 35 / 1.5 s; the warm-up 156 -> 180
+programs and the load no longer (graphics 13.0 s, 6.3 s compiling; the PC was busy). What is
+left after the car: the traffic cars' shader (`m_night, m_plate_*`: 0.53 s + its depth passes
+0.1 s -- the cars spawn after the warm-up), then programs of 100-200 ms.
+
+**Parallel compiling, tried (22 Nov 2026, `tests/parallel_trial.js`, a local export, the home
+PC's pane, cold every load).** Load 1 recorded the 243 programs Givatayim links (to 40 s of
+autodrive); load 2 linked all of them at once on the engine's first link, in its own context,
+with `KHR_parallel_shader_compile` (125 ms to issue them), and handed the engine the ready
+program whenever it linked the same sources: 207 hits, 0 misses, 0 drawn with a placeholder.
+Givatayim's graphics 14.5 s -> 9.5 s, **the compile calls at load 7.2 s -> 0.5 s**, and no
+programs left to compile after the car (the PC was busy: the city file 5.5-7.5 s; compare
+the compile column). A first try linked them in the loader's throwaway WebGL-test context
+and missed every one. What a real build would need: (1) the list made at publish (a headless
+browser driving each city in the workflow) -- and its sources must be byte for byte what the
+player's browser gets, unproven across GPUs (Godot writes limits into its GLSL: MAX_* from
+the device?); (2) shipping it: 243 programs are 29.7 MB raw, 6.5 MB gzipped (gzip's window is
+smaller than one shader), 486 distinct sources sharing most lines -- a line dictionary or
+brotli should be well under 1 MB, not measured; (3) the redirect is page-only (index.html),
+no engine change. Worth it only for first visits and after shader-changing publishes on
+Windows browsers, where today's two fixes already took most of the cost.
+**Decision (the user, 22 Nov 2026): stop at the trial.** Parallel compiling is parked; pick it
+up only if first visits on Windows browsers become the complaint again. The first thing then:
+compare a container capture's sources (`web_shaders.js` DUMP=) with a real browser's,
+byte for byte -- if Godot's GLSL differs by device, the whole approach fails.

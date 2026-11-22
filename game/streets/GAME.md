@@ -121,6 +121,29 @@ still shows.
 > Lets balance the walks to be from more cities. And in any case we do a new city we put a
 > new walk and drive from those cities
 
+**Places that are not towns.** Two made-up places show a walk or a drive need no real city.
+*The showroom* (in the Walks list): a paved square with a quiet street and a few blocks round
+it, laid out in rows -- the trees of every kind the game grows, the street's things (bins,
+hydrants, bollards, a barrier, lamps, a booth, a cabinet, signs, motorbikes and scooters),
+the little things the game scatters about (recycling bins, bikes and a delivery bike, a dog,
+a pram, cats, sculptures, an ad column, a billboard), a playground and benches and the odd
+spaceship, and a row of vehicles from a police car to a fire engine -- with people standing
+about. The walk goes up and down the aisles between the rows, stopping twice along each to
+look at the row on one side and then the other, glancing about as it goes (about 5 min).
+*The trick road* (in the test drives, number 14): a one-way figure of eight on open grass,
+driven once round by autodrive, alone (no other traffic): up a ramp onto a bridge over its
+own other leg, off the bridge's end (a ledge: the car flies about 9 m and lands on the ramp
+down), over a jump (a kicker and a ditch across the road: the car flies about 30 m at 50-60
+km/h; a car too slow would drive down into the ditch and out), and through a hill in a
+tunnel between two cuttings. About 1:35. A real gap with nothing under it is not possible
+yet -- the car can only be steered along roads -- so the jump is over a ditch the road dips
+into.
+
+> i want to make the walks/drives maybe a bit more varied. even not from real cities. for
+> example 2 more - a small scene with many of the objects, and i am just walking around
+> looking at the models; a small trick road where the car has ramps tunnels jumps falls; and
+> these illustrate we can make really special cases not only involving the cities
+
 > i think the walk height is bit too low, i am holding the phone probably too low. and
 > sometimes not turning with my head on traffic passes( lets add that , even if it doesnt
 > match the video 1:1 ). i thought about gopro that solves it but im not going with more than

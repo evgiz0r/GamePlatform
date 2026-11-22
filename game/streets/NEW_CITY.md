@@ -265,6 +265,26 @@ Then add a line at the end of `LEVELS` with `"look": "north", "build": "fr"`.
     city. Run it without that.
 - **Not done yet:** French street plates, RGE ALTI ground, the doubled light.
 
+**Leiden's and Annecy's walks and drives (22 Nov 2026).**
+- **Walks:** levels 37 and 38, both scan clean (`SCAN=1 tests/run.sh filmed_walk 37 / 38`:
+  no INSIDE, EYE IN or ON ROAD).
+  - Leiden: down Haarlemmerstraat, the pedestrian shopping street, 455 m.
+  - Annecy: along the Thiou's quays in the old town, 386 m.
+  - Both have a scene: groups standing about and passers-by.
+- **A canal walk can fail on a street named for both banks.** Leiden's Rapenburg is one
+  name on both sides of the canal, so neither `"promenade"` nor a fixed `"side"` kept the
+  walk on the canal's side all the way. The scan found houses, and the quay's row of
+  trees and lamp posts (BGT: 0.7 m off the asphalt), in the walk's line. A pedestrian
+  street, or quays mapped as footways, walked down the middle with `"ways"`, avoids it.
+  End a walk inside its way, not at a road: Annecy's last point on a street's mouth read
+  ON ROAD.
+- **`make_walks.py` writes Unix line ends now.** On Windows it rewrote every town's details
+  file with Windows ones.
+- **Drives (`pick_routes.py --add`):**
+  - route 12, Leiden: arrives, 2.2 km in 5.7 min. Autodrive touches a street sign
+    (17 km/h) and a post (10 km/h) on narrow Rapenburg: open, DEV.md.
+  - route 13, Annecy: arrives, 1.9 km in 5.7 min, no hits.
+
 ## The city card (fill in one per candidate)
 
 ```

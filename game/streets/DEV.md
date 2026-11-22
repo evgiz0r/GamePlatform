@@ -2460,6 +2460,75 @@ pass at a time, biggest differences first, each pass checked with a side-by-side
   car crossing ahead). The likeness cost is the user's choice: a person's eyes and head over the
   phone's.
 
+### Places that are not towns: the showroom and the trick road (levels 39, 40; 22 Nov 2026)
+
+Both made by `data_tools/make_showcase.py` (`showroom` | `trick_road`, both with no argument;
+needs numpy: `uv run -q --with numpy python ...`), city files marked `"made_up": 1` (no OSM
+credit), loaded like any city. The user: "a small scene with many of the objects, and i am just
+walking around looking at the models; a small trick road where the car has ramps tunnels jumps
+falls". `city_check` LEVEL=40 is 0 (with the turbine guard taken out it finds the tower,
+6.3 m into the road: the check for that family, widened from the posts).
+
+- **The showroom** (level 39, `cities/showroom.json` + `cities/details/showroom.json`): a paved
+  square (`plaza` area) ringed by a 30 km/h street and eleven blocks; five rows along x --
+  trees of all nine `tree_forms` (z -24; `tree_surveys` all: 1, so no street trees are made
+  up), the details file's `props` kinds (-11), furniture.gd's kits (-1), the CC0 models (9: the
+  made playground and benches, Kenney's planter, fence, lamps, trees, spaceships, a fork, a
+  plate, a banana), the car kit (21) -- with four aisles between (z -16, -6, 4, 14; x -40..40,
+  even so the 2 m steps land on the stops). The rows started 11 m from the aisles: a hydrant
+  was a speck across an empty square; 5 m now (7 for the vehicles: scaled to their length the
+  car kit's are wide, the fire truck 3.5 m). Walk `showroom_walk`: 362 m at 1.3 m/s, 319 s,
+  `dodge` on; at x +-18 on each aisle a 5 s stop held facing the row to the left, then the
+  right (`face`, map bearings); between them a 48-degree glance every 5.5 s (`looks`); 10
+  people standing (in pairs and threes talking, one at the police car, one at the trees), one
+  strolling the third aisle the other way.
+- **`show` in a details file** (details.gd `_show`, `_show_kit`): an exhibit is a node of its
+  own (a few dozen: no batching) -- `kind: "kit"` one of furniture.gd's kits by name, or
+  `"model"` a model from assets/models/ via the shell's `model(name, size)` (size = its longest
+  side); `paint` a `_tone` for a kit drawn white (the bike, the delivery bike); a post of `r`
+  (0.4, 0 none) so walks step round it, or `car` for a car's posts. The car kit's models are
+  long along their own z (police 1.5 x 3.1: `tools/model_info.sh`), so `dir` is their length.
+- **Stops are held with `face`, not a head's turn**: a walker standing still keeps whatever
+  facing it had, and `filmed_walk.gd`'s `AT` jumps the clock -- after a jump, a still taken at
+  a stop faced wherever the last still had (back along the aisle, at the street). A `face` goes
+  by the clock and holds in a still and a run alike. (`AT` backs up 1.5 s and waits 20 frames:
+  a still is of the walk ~1.2 s before the second asked; for a stop's look ask its end + 0.6.)
+- **The trick road** (level 40, `cities/trick_road.json`; route 14 in routes.json, which the
+  generator keeps in step): a lemniscate of Gerono (x = 230 sin t, z = 180 sin t cos t), 1258 m,
+  one way (`o`: 1), kind `trunk` (no pavement, kerbs or walkers), 70 km/h; turned so the jump
+  runs due east (along the height grid's rows), on a 2 m height grid at ground 10 m (room for
+  the ditch below it). The loop is cut into pieces where what it is built as changes: ground,
+  `em` ramp up at 7% onto a 50 m `br` bridge 7.4 m over its own other leg, `em` down off it, the
+  jump (ground, 1 m nodes), `cu` / `tu` / `cu` through a hill (18 m over the ground, a 22 m
+  flat top, 55 m slopes; tunnel where it is 6.5 m over the road). No `"decks": "infer"`: the
+  file's `y` is used as written.
+- **What flies, and why it is shaped so** (streets.gd `_fly`: AIR_G 7.5, a take-off's lift
+  x1.1 + 0.6, a landing over 5 m/s is a crash; the springs feel the ground smoothed over half a
+  wheelbase): a ramp alone, even 32% at 50 km/h, is ridden down without leaving it (22% was,
+  in the game: no take-off at 48 km/h); a ledge throws it. So the bridge ends in a 0.9 m ledge
+  over 1.5 m, then 15% down (a model of `_fly` in Python: 45-60 km/h fly 8-16 m and land at 3-4
+  m/s), taken at 50 km/h (`DROP_SPEED`, the bridge's `ms`). The jump: a 24 m kicker rising 1.8
+  m (steepening to its lip), an 8 m ditch 2.5 m deep, a landing slope from 1.4 m at 16% down to
+  2 m under the ground, back up at 5% (modelled: lands soft from 47 to 68 km/h; 21 m/s and over
+  lands hard); autodrive's limit there 65. The ditch's walls are 3 m long: at 1.2 m (under a
+  grid step) and across the grid at 28 degrees the ground came out in jagged shards.
+- **`tests/trick_road.gd`** (`LEVEL=40`; headless ~1.5 min for the numbers, `run.sh` for stills
+  on the way into each piece and in the air): good is two take-offs -- the drop ~9 m (0.7-0.85
+  s), the jump 20-31 m (1.25-2.3 s) at 50-62 km/h -- landings soft (the drop's at 4.1 m/s, the crash line 5), "arrived" in 1:19-1:35. The
+  car goes ~45-55 km/h most of the way: the loop's curves (~140 m radius), not the limit.
+- **What the game had to learn for them**: a level can be its own test drive (`"test_drive":
+  <route id>`: `start()` takes that route when the config names none, in the "rules" style, and
+  the Cities list leaves it off); a place can have no traffic (`"traffic": false`, traffic.gd
+  `_spawn`: a bus and cars had shared the jump and the ramps); the test drives list goes
+  in two columns past eleven rows (main's thirteen -- Leiden's and Annecy's added -- had run
+  off the screen; fourteen with this one). And a bug any map with heights but no boundary
+  would hit: `_build_turbines` found no ground outside the town on any bearing and put the wind
+  turbine at the map's middle -- on the trick road, in the bridge's lanes. It builds none now
+  when no crest is found.
+- **Open**: a real gap (nothing under it) needs a road the car may leave and land back on --
+  autodrive only follows roads, so the jump is over a ditch the road dips into; the trick road's
+  grass came out dry and orange in the stills (not looked into).
+
 ### Handoff: the filmed walks (22 Nov 2026): measured against the full film, before pass 15
 
 - **The full film is on the user's PC**: `OneDrive/walk/20261120_100527.mp4`, 1080x1920
@@ -4224,6 +4293,31 @@ map; 144 yards and 37 shelters put, 8 kindergartens left out (no clear ground wi
 Shots taken where each was put (`spots`), not at the map's point: the point is its building,
 the yard a few metres off, and a shot at the point saw a roof.
 
+### Handoff: racer "really passive" (22 Nov 2026, open)
+
+The user, with a screenshot on Katznelson (Givatayim's start) bound for Rambam, 1.3 km: "there
+was only a bus and it didnt want to pass ... pretty passive, wanting to do all that long path,
+waiting in traffic. it probably could just cut through". Reproduced by
+`tests/racer_drive.gd` (LEVEL=1, racer on, to the street TO=Rambam, a line a second: speed,
+`_ap_why`, the car in front, and -- `VERBOSE=1` -- `_race_by_why` / `_race_q_why`, the reason
+each way round was refused; PASS: there within SECS 150, standing under a quarter of it, no
+crash). The traffic differs run to run. What it showed:
+
+1. **The bend round the bus lost.** One run: at 6.5 s, 70 m out, a pass was taken (the bus
+   became `_ap_passed`), yet the car braked to a stop 10 m behind it -- the bend gone or
+   falling short. The run after, the same pass went through at 60 km/h. To find: which move
+   took it (the test prints racer_/pass_ Probe events -- none came out; check the Probe
+   kinds), and whether a re-plan (`_ap_extend`, the route moving on) drops a bent plan.
+2. **Boxed in behind it.** Then stood behind it from stop to stop for 60 of 150 s:
+   `_race_by_why` every time "3.2: hatch v=0 at 2 m, 6.4: off road, -3.2: off road" -- the
+   left lane has cars standing beside us, one more lane over is not road, the right is the
+   kerb; the queue pass the same; `_ap_mount_by` (the pavement) refused every time, reason
+   not logged yet (give it a why like `_race_by_why`). A real racer would go up on the
+   pavement here, or out the moment a gap opens beside it.
+3. **The long way.** It set off away from Rambam: "to go" 1139 -> 1385 m before it turned
+   round at 93 s. Racer should turn on the spot (a U-turn across the road) when the way it
+   faces starts the route away from the goal and turning is far shorter.
+
 ## The opening; models made with Blender (22 Nov 2026)
 
 **The opening** (`opening.gd`). Before, only the squares within `NEAR_NOW` of the start and
@@ -4352,6 +4446,25 @@ bright sky it went white). The viewer stands on the pavement, moved on until not
 is within 3 m (the first stood behind a road sign that filled the view). Traffic stops
 (`hit`). `tests/scenario.gd LEVEL=35`: PASS -- captions at 0.5/15.5/26/30.8/38 s, fire
 in every clash and the dive; shots every 3 s. Film (`STREETS_BUILD_ALL=1 tools/record_video.sh streets 35 70`): 2,760 frames, 46 s at 60 fps, about 3 minutes of compute, 16.7 MB.
+
+*The run for cover* (the user, on the first film: "we run through buildings, the player
+movement seems unreal"). The first took "the far side of the nearest building" and slid the
+camera there in a straight line in 2 s, looking backwards: through the building, at car
+speed. Now `_hide_spot` tries a spot every 3 m along each wall of every building within
+`RUN_MAX` 30 m, 0.9 m out from it (outward found by testing which side is inside: the outline's
+winding is not to be trusted). A spot must be clear itself, and the whole straight line to it
+must be clear (`_clear_line`, every 0.5 m). A spot whose building lies across its line to the
+fight wins; failing any, the nearest reachable wall. The run is a sprinter's: `RUN_ACCEL` 9,
+`RUN_SPEED` 6 m/s after a 0.25 s beat to react, the head bobbing each 1.7 m stride and swaying,
+looking where it runs with a glance back halfway, then crouching 0.35 m at the wall and
+looking up. The test counts frames with the camera below 4 m inside a building
+(`cam_in_building`, must be 0) and prints `run_m` and `cover`. Tel Aviv (35): no wall within
+16 m (towers set back off the boulevard) and none across the line to the fight within 30 --
+24.8 m to the nearest wall. Givatayim (36): 10.2 m, 8 spots really behind a building.
+
+*The film's look* (`film_mode` -> `_film_best`, native only): past QUALITY's top level, MSAA 8x,
+`scaling_3d_scale` 1.5, shadows to `FILM_SHADOW_M` 160 m on an 8192 map, soft filter high,
+`mesh_lod_threshold` 0. `RES=1920x1080` gets a 5 Mbit/s ceiling in the recorder. Tel Aviv at 1080p with all of it: 46 s in 7 min 4 s of compute (720p at the top level: 3 min), 15.0 MB.
 
 **Scenario ideas** (the user asked for them as the work goes, with grades):
 
@@ -4685,12 +4798,26 @@ stood 19-26 s; on two-way streets with 3 cars in the lane, 4 of 6 stood.
   UAL1_Standard.glb put in the project for the run, removed after), each up to x3
   (RUN_CLIP_MAX). `tests/sprint_clip.gd`: slide at 2.1 / 4.5 / 7 / 9.5 m/s 0.15 / 1.35 /
   0.6 / 3.1 m/s (were ~1.2 / 3.9 / - / 6.9). Joggers: the jog, the same rate.
+- **Parked cars inside things** (a user, 22 Nov, Ashdod on the chase camera: "some parking
+  cars spawn inside trees or other objects"; `tests/parked_overlap.gd`, the car as its five
+  0.85 m circles against every other post and the walls). A kerbside car looked for posts
+  within 1.4 m of its middle and walls within 1 m: trees, lamps and wire poles stood
+  through bonnets and boots, 1767 of Ashdod's 32193 cars. `_car_fits` checks its whole
+  length (Ashdod parks 30503 now). What is put up after the cars: `_clear_of_posts` counts
+  a big post's body beyond 0.3 m (motorbikes, bike racks: "1 m clear" of a car's middle was
+  0.4 m inside it), `_in_parked_car` for cafe tables and crates (176 tables in Tel Aviv's
+  cars). After, Givatayim / Ashdod / Tel Aviv: 14 / 40 / 197 -> 1 / 1 / 5 (mapped lamps,
+  a light, a bus stop at their mapped spots: good, that tail).
 - **Loading steps** (user, 22 Nov: "an inner progress, like 2/12"): the city file names its
   11 parts ("reading the map: the roads (4 of 11)", `_load_part`, a frame each -- so
   `_load_city` is a coroutine now: `await` it; prepublish does) and each square round the
   start its 13 stages ("kerbs and pavements (5 of 13)", TILE_STAGES, shown at each `_stage`
   and by the spinner in `_pause`). `tests/load_text.gd` prints every text the loading
   screen shows, with the time. Not shown yet: world + setup (~1-3 s after the street network).
+- **Leiden's test drive (route 12) touches things on Rapenburg** (22 Nov): it arrives, 2.2 km
+  in 5.7 min, but hits a street sign at 17 km/h and post 977 at 10 km/h on Rapenburg, a 5.1 m
+  one-way canal street with BGT's trees and lamp posts 0.7 m off its asphalt.
+  `run_routes.sh 12` stages it (about 4 min). Annecy's route 13 has no hits.
 - **Islands on the asphalt in the Dutch towns: fixed, 1 m² left in each** (`city_check`'s
   "islands on the road": Delft 39 -> 1, Leiden 87 -> 1; 0 in every other town before and
   after). `tests/islands_where.gd` lists every island on asphalt, worst first, with the road

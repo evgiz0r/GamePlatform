@@ -88,6 +88,17 @@ const LEVELS := [
 	{"name": "Annecy", "city": "annecy", "start": ["Rue Royale", "Rue de la Poste"], "look": "north", "build": "fr", "decks": "infer"},
 	{"name": "Dragons over Tel Aviv", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "dragons"},
 	{"name": "Dragons over Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "dragons"},
+	# their walks (NEW_CITY.md: every city has one), laid by data_tools/make_walks.py
+	{"name": "Leiden: down Haarlemmerstraat", "city": "leiden", "look": "north", "build": "nl", "decks": "infer", "walk": "leiden_haarlemmerstraat"},
+	{"name": "Annecy: along the Thiou to the lake", "city": "annecy", "look": "north", "build": "fr", "decks": "infer", "walk": "annecy_thiou"},
+	# two made-up places that are not towns (data_tools/make_showcase.py; the user: "a small scene
+	# with many of the objects, and i am just walking around looking at the models; a small trick
+	# road where the car has ramps tunnels jumps falls"): a walk round a square laid out with the
+	# game's things in rows, and a figure-of-eight circuit autodrive takes once round -- the route
+	# set's drive 14, which this level starts itself ("test_drive"; left off the Cities list)
+	{"name": "The showroom: a walk among the models", "city": "showroom", "look": "med", "walk": "showroom_walk"},
+	# ("traffic": false -- no cars but the one watched: a bus and cars had shared its jump and ramps)
+	{"name": "The trick road", "city": "trick_road", "look": "north", "test_drive": 14, "traffic": false},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -1375,12 +1386,14 @@ func start(_config: Dictionary) -> void:
 		return
 	# how autodrive drives and the time of day, as chosen on the list it came from (_list_settings);
 	# with none, a test drive keeps the rules (it is there to test autodrive) and a city is the racer
-	_ap_style = String(_config.get("style", "rules" if _config.has("route") or _config.get("make_route", false) else "racer"))
+	_ap_style = String(_config.get("style", "rules" if _config.has("route") or _place.has("test_drive") or _config.get("make_route", false) else "racer"))
 	_start_time = String(_config.get("time", "day"))
 	if _start_time == "day" and _place.has("time"):
 		_start_time = String(_place["time"])   # (a place that is its time: the night out)
 	if _config.has("route"):
 		_route = _route_by_id(int(_config["route"]))
+	elif _place.has("test_drive"):   # (a place that is its own test drive: the trick road)
+		_route = _route_by_id(int(_place["test_drive"]))
 	if _config.get("make_route", false):
 		_making = "from"   # (the picker opens once the city is up)
 	SIGNAL_CYCLE = SIGNAL_CYCLE_NORTH if String(_place.get("look", "")) == "north" else SIGNAL_CYCLE_MED
@@ -1430,6 +1443,12 @@ func start(_config: Dictionary) -> void:
 	var tw := Time.get_ticks_msec()
 	print("[streets] the squares round the start built in %d ms; stages %s" % [tw - t1, _stage_ms])
 	print("[streets] warm-up begins")   # (marks for a browser's log: tests/web_shaders.js counts the shaders compiled between)
+	# The world's look as it will be driven -- the haze with its sun glow (USE_SUN_SCATTER), the
+	# tone curve, the materials' tones -- BEFORE the warm-up: set only after it (as it was until
+	# 22 Nov 2026) the warm-up compiled every shader for a scene with no haze, and the first
+	# minute of driving compiled the sun's pass of everything again: Tel Aviv, a cold browser on
+	# the home PC, 23 programs, 10.5 s, all with USE_SUN_SCATTER. (Called again after the car.)
+	_retint_city()
 	if not await _warm_up():
 		return
 	_stage_ms["warm up (shaders compiled, 4 frames)"] = Time.get_ticks_msec() - tw
@@ -3836,6 +3855,9 @@ func _build_turbines() -> void:
 		if v > top_v:
 			top_v = v
 			top = a
+	if float(crest[top][1]) == -INF:
+		return   # no ground outside the town on any bearing (a made-up place with no boundary: the
+		# turbine went up at the map's middle, on the trick road's bridge)
 	var spots: Array = [crest[top][0]]
 	for side: int in [1, -1]:
 		var a := top
@@ -9850,14 +9872,11 @@ func _build_parked() -> void:
 						var d := (_along(run, cum, minf(s + 1.0, total)) - c).normalized()
 						var side := Vector2(-d.y, d.x) * sgn
 						var p := c + side * (hw + 0.6)   # mostly up on the pavement: a third of a car in the road
-						var ok := _mine(p) and not _no_parking(r, ri, p) and _push_out(p, 1.0, false) == Vector2.ZERO
+						var face := d * sgn   # nose with the traffic on its side
+						var ok := _mine(p) and not _no_parking(r, ri, p) and _car_fits(p, face)
 						for np: Array in _no_park:   # kept clear by hand (details.gd): a view a film had
 							if p.distance_to(np[0]) < float(np[1]):
 								ok = false
-						for i: int in _near(_post_hash, p, 1.4, BLD_CELL):
-							if _posts[i].distance_to(p) < 1.4:
-								ok = false
-						var face := d * sgn   # nose with the traffic on its side
 						# not poking into the asphalt: near a corner the next street can be
 						# right there, and the car stood in its lane
 						ok = ok and _off_road(p + face * 1.25, -0.1) and _off_road(p - face * 1.25, -0.1)
@@ -12396,9 +12415,12 @@ func _on_street(p: Vector2) -> bool:
 	return _in_junction(p, 0.0)
 
 ## nothing round (a tree, a lamp, a sign) stands within `d` metres of p
+## no post's middle within d of p -- and a big one's body (beyond a tree's 0.3 m) on top: a
+## parked car's circles are 0.85 m, and a motorbike or a bike rack "1 m clear" of their
+## middles stood 0.4 m inside the car (tests/parked_overlap.gd, Ashdod, 22 Nov)
 func _clear_of_posts(p: Vector2, d: float) -> bool:
-	for i: int in _near(_post_hash, p, d, BLD_CELL):
-		if _posts[i].distance_to(p) < d:
+	for i: int in _near(_post_hash, p, d + 0.6, BLD_CELL):
+		if _posts[i].distance_to(p) < d + maxf(0.0, _post_r[i] - 0.3):
 			return false
 	return true
 
@@ -12472,6 +12494,30 @@ func _add_post(p: Vector2, r: float, unique := false) -> bool:
 ## car's own half-length: at 1.25 its front and back wings were 0.17-0.27 m short), leave
 ## about 0.1 m. All 0.85 m: city_check knows a parked car's posts by that, and they reach
 ## into the road by design. (The end two first: tests find a parked car as that pair.)
+## room for a parked car at c, facing `along`: its whole length -- the five circles it stands
+## as (_add_car_posts) -- clear of anything round already up (a tree, a lamp, a wire pole, a
+## parked motorbike, another car) and of walls and buildings. Only its middle was looked at
+## (posts within 1.4 m, walls 1 m): 1767 of Ashdod's 32193 kerbside cars stood with a tree,
+## a lamp or a pole through the bonnet or the boot, a motorbike inside some (a user, 22 Nov,
+## on the chase camera; tests/parked_overlap.gd).
+## something r round at p would stand inside a parked car (its 0.85 m circles), for what is
+## put up after the cars: a cafe's tables, a greengrocer's crates (tests/parked_overlap.gd)
+func _in_parked_car(p: Vector2, r: float) -> bool:
+	for i: int in _near(_post_hash, p, r + 0.85, BLD_CELL):
+		if absf(_post_r[i] - 0.85) < 0.001 and _posts[i].distance_to(p) < 0.85 + r - 0.15:
+			return true
+	return false
+
+func _car_fits(c: Vector2, along: Vector2) -> bool:
+	for k: float in [-1.4, -0.7, 0.0, 0.7, 1.4]:
+		var q := c + along * k
+		for i: int in _near(_post_hash, q, 2.0, BLD_CELL):
+			if _posts[i].distance_to(q) < 0.85 + _post_r[i] - 0.15:
+				return false
+		if _push_out(q, 0.8, false) != Vector2.ZERO:
+			return false
+	return true
+
 func _add_car_posts(c: Vector2, along: Vector2) -> void:
 	_add_post(c + along * 1.4, 0.85)
 	_add_post(c - along * 1.4, 0.85)
@@ -13426,6 +13472,8 @@ func _terrace(pos: Vector2, n: Vector2, along: Vector2, umb: Color, t: Dictionar
 			continue
 		if _post_twin(c, room):
 			continue   # (a table there already: one cafe mapped twice, Tel Aviv 18)
+		if _in_parked_car(c, room):
+			continue   # (laid after the cars: 176 of Tel Aviv's tables stood in one)
 		var gy := _h(c)
 		var face := atan2(along.x, along.y)
 		t["top"].append(Transform3D(Basis(), Vector3(c.x, gy + 0.74, c.y)))
@@ -13474,7 +13522,7 @@ func _crates(b: CBuf, pos: Vector2, n: Vector2, along: Vector2, gy: float, wide:
 	var k := posmod(_hash_i(pos), 5)
 	for sgn: float in [-1.0, 1.0]:
 		var c := pos + n * 0.75 + along * (1.0 * wide) * sgn
-		if _push_out(c, 0.4, false) != Vector2.ZERO:
+		if _push_out(c, 0.4, false) != Vector2.ZERO or _in_parked_car(c, 0.5):
 			continue
 		_furn._box(b, Vector3(c.x, gy + 0.3, c.y), Vector3(1.3, 0.6, 0.55), _tone["tyre"].lightened(0.1), bs)   # the stand
 		for j in 3:
@@ -24070,18 +24118,22 @@ func _ap_pass_bus(lead: Array) -> bool:
 const RACE_CLEAR := 2.9      ## m from the car's middle to racer's line, going by it
 const RACE_OUT := [3.2, 6.4, 9.6, -3.2]   ## ways out tried: left one lane, two, three; right one
 var _race_tries := 0                      ## ways out already taken round the same car (a retry starts past them)
+var _race_by_why := ""        ## why the last way round the car in front was not taken (tests/racer_drive.gd)
 func _ap_race_by(lead: Array) -> bool:
 	var bi: int = lead[3]
 	if bi < 0 or _ap_pts.size() < 2:
 		return false
 	if bi == _ap_passed and _ap_wait < 1.5:
+		_race_by_why = "just passed"
 		return false   # (bent round it already: give it a moment)
 	_race_tries = _race_tries + 1 if bi == _ap_passed else 0   # (stuck behind it still: the next way out)
 	var car = _traffic.cars[bi]
 	var want: float = _racer.limit(_ap_lim[1]) if _ap_lim.size() > 1 else 13.9
 	if not _racer.can_pass(float(car.v), want):
+		_race_by_why = "no need"
 		return false
 	if _ap_turn_ahead() != 0 and float(lead[0]) > 25.0:
+		_race_by_why = "turn ahead"
 		return false   # (a turn just after it: stay behind until close, then it may still go)
 	var gap: float = lead[0]
 	var fwd := _fwd()
@@ -24101,7 +24153,9 @@ func _ap_race_by(lead: Array) -> bool:
 	var t_pass := (gap + float(car.len) + 20.0) / maxf(want - float(car.v), 3.0)
 	var extra := float(car.v) * t_pass
 	if extra > 160.0:
+		_race_by_why = "too long"
 		return false
+	var whys: Array = []
 	var half := float(car.len) * 0.5
 	var start_s := maxf(gap - half - 12.0, 1.0)
 	var end_s := gap + half + 10.0 + extra
@@ -24138,6 +24192,7 @@ func _ap_race_by(lead: Array) -> bool:
 			# on asphalt (any road: the other way's lanes too), nothing solid there
 			if _off_road(q, -0.3) or _push_out(q, 1.15, true, false, _y) != Vector2.ZERO:
 				ok = false
+				whys.append("%.1f: %s at %.0f m" % [shift, "off road" if _off_road(q, -0.3) else _last_hit, float(bq[1])])
 				break
 			var at_t := float(bq[1]) / maxf(want, 5.0)   # (when racer is there)
 			for c in _traffic.cars:
@@ -24148,6 +24203,7 @@ func _ap_race_by(lead: Array) -> bool:
 				var then: Vector2 = c.pos + cdir * float(c.v) * at_t
 				if then.distance_squared_to(q) < 3.2 * 3.2 or c.pos.distance_squared_to(q) < 2.6 * 2.6:
 					ok = false
+					whys.append("%.1f: %s v=%.0f at %.0f m" % [shift, c.kind, float(c.v), float(bq[1])])
 					break
 			if not ok:
 				break
@@ -24156,10 +24212,12 @@ func _ap_race_by(lead: Array) -> bool:
 			_racer.passes += 1
 			Probe.event("racer_pass", {"over": snappedf(shift, 0.1), "moving": float(car.v) > 0.6})
 			_log.event("racer round a car")
+			_race_by_why = "went %.1f" % shift
 			return true
 		_ap_pts = keep_pts.duplicate()
 		_ap_v = keep_v.duplicate()
 		_ap_lim = keep_lim.duplicate()
+	_race_by_why = ", ".join(whys)
 	return false
 
 ## Racer (racer.gd), coming up to a queue -- cars standing one behind the other, in its lane
@@ -25789,7 +25847,7 @@ func _route_list_open() -> void:
 		var r: Dictionary = routes[i]
 		# ("from" and "to" between the two addresses, not an arrow: a Hebrew address, an arrow
 		# and another came out as one right-to-left run, the arrow pointing from end to start)
-		var text := "%s:   from  %s   to  %s" % [CITY_NAMES.get(r["city"], r["city"]), r["from"], r["to"]]
+		var text := "%s:   from  %s   to  %s" % [r.get("place", CITY_NAMES.get(r["city"], r["city"])), r["from"], r["to"]]
 		if not r.get("mine", false):
 			text = "%d   %s" % [int(r["id"]), text]
 		var w := 612.0 if not r.get("mine", false) else 572.0
@@ -25799,12 +25857,22 @@ func _route_list_open() -> void:
 		b.add_theme_font_size_override("font_size", 10)
 		b.clip_text = true
 		# (eleven fit: 25 apart from 78; tighter, a row's button kept the kit's least height over
-		# the next and a tap on route 10 started route 9)
-		var many := routes.size() + (1 if _route_page == "mine" else 0) > 10
+		# the next and a tap on route 10 started route 9. Past eleven -- thirteen once Leiden's and
+		# Annecy's came, the last two off the screen; fourteen with the trick road -- the set goes
+		# in two columns, its rows' text clipped: tests/route_menu.gd checks none overlaps or runs off)
+		var nrows := routes.size() + (1 if _route_page == "mine" else 0)
+		var many := nrows > 10
+		var two := nrows > 11 and _route_page == "set"
+		var per := ceili(nrows / 2.0) if two else nrows
 		var pitch := 25.0 if many else 27.0
-		var y := (78.0 if many else 80.0) + (i + (1 if _route_page == "mine" else 0)) * pitch
+		var row := i + (1 if _route_page == "mine" else 0)
+		var y := (78.0 if many else 80.0) + (row % per) * pitch
+		var x0 := 14.0 + (row / per) * 309.0 if two else 14.0
+		if two:
+			w = 303.0
+			b.text = text.replace(":   from  ", ": ").replace("   to  ", " to ")
 		_route_ui.add_child(b)
-		_put(b, Vector2(14, y), Vector2(w, 24.0 if many else 25.0))
+		_put(b, Vector2(x0, y), Vector2(w, 24.0 if many else 25.0))
 		if r.get("mine", false):
 			var id := int(r["id"])
 			var x := _tap_button("✕", func(): _save_my_routes(_my_routes().filter(func(q): return int(q["id"]) != id)); _route_list_open())
@@ -25875,7 +25943,7 @@ func _walk_list_open(kind := "walks") -> void:
 		var keyed: Array = []
 		for i in range(LEVELS.size()):
 			var lv: Dictionary = LEVELS[i]
-			if lv.has("city") and not lv.has("walk") and not lv.has("scenario") and not _is_list(lv):
+			if lv.has("city") and not lv.has("walk") and not lv.has("scenario") and not lv.has("test_drive") and not _is_list(lv):
 				keyed.append([float(lv.get("sort", i)), i + 1, String(lv["name"])])
 		keyed.sort_custom(func(a, b): return a[0] < b[0])
 		for kk: Array in keyed:
@@ -26250,8 +26318,25 @@ func film_ready() -> bool:
 func film_mode(on: bool) -> void:
 	film = on
 	_film_hide()
+	if on and not OS.has_feature("web"):
+		_film_best()
 	if _hud != null:
 		_hud.queue_redraw()
+
+## Filmed, the frame rate does not matter (the movie maker waits for each frame), so the film
+## looks better than any machine could play: past the top QUALITY level, 8x edge smoothing,
+## the picture drawn at 1.5x and scaled down, the sun's shadows out to 160 m on an 8192 map
+## with the soft filter, and no swapping to a model's simpler copies in the distance.
+const FILM_SHADOW_M := 160.0
+func _film_best() -> void:
+	_set_quality(QUALITY.size() - 1)
+	view.msaa_3d = Viewport.MSAA_8X
+	view.scaling_3d_scale = 1.5
+	view.mesh_lod_threshold = 0.0
+	RenderingServer.directional_shadow_atlas_set_size(8192, true)
+	RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_HIGH)
+	if not _night:
+		sun.directional_shadow_max_distance = FILM_SHADOW_M
 
 func _film_hide() -> void:
 	if _hud == null:
