@@ -4,6 +4,8 @@ How long each change took, in minutes, from the Claude Code sessions that made i
 
 | date (UTC) | commit | change | agent | runs | you | active | away | lines | files | steps | tools | engine runs | tokens out |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2026-11-22 14:58 | 575eefd | streets dragons: the camera placed before its first frame (one frame at the town's origin, in a building --... | 0.3 | 2.2 | 0.0 | **2.5** | 0.0 | +3 -0 | 2 | 3 | 3 | 1 | 1.9k |
+| 2026-11-22 14:58 | 35eacfa | streets: parked cars clear of trees, lamps, poles, motorbikes and walls over their whole length (1767 of As... | 5.5 | 5.4 | 0.0 | **11** | 31 | +102 -8 | 3 | 17 | 20 | 8 | 15.4k |
 | 2026-11-22 14:56 | 7500e05 | streets dragons: the run for cover goes round, not through (a wall reached in a clear line, at a sprinter's... | 7.6 | 10 | 0.0 | **18** | 0.0 | +183 -30 | 7 | 60 | 68 | 12 | 34.9k |
 | 2026-11-22 14:52 | 693d074 | streets: Leiden's and Annecy's walks and test drives (NEW_CITY.md: every city has both) | 4.7 | 14 | 0.0 | **19** | 17 | +55 -2 | 6 | 45 | 44 | 12 | 28.2k |
 | 2026-11-22 14:51 | 74578ad | streets: the haze set before the warm-up -- the first minute's shader compiling 11.5 s -> 1.5 s | 3.7 | 9.2 | 8.8 | **22** | 0.0 | +18 -0 | 2 | 42 | 52 | 3 | 20.6k |
