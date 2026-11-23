@@ -4,6 +4,7 @@ How long each change took, in minutes, from the Claude Code sessions that made i
 
 | date (UTC) | commit | change | agent | runs | you | active | away | lines | files | steps | tools | engine runs | tokens out |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2026-11-23 01:32 | 436b06e | streets: Monaco ready -- the harbour's water shown, city_check 43 -> 4 m2 of islands and the lean, a walk o... | 17 | 41 | 0.0 | **58** | 507 | +159 -41 | 11 | 139 | 140 | 22 | 72.8k |
 | 2026-11-22 16:56 | cebc5de | streets traffic: no standoff on each other's corners (test town: held by nothing 14 -> 1); exam's "traffic ... | 5.8 | 13 | 0.0 | **19** | 69 | +90 -4 | 5 | 33 | 31 | 6 | 21.4k |
 | 2026-11-22 16:44 | f3d36c2 | streets: your choices kept between launches (lists' time and style, folded, assist); a finger gets 10 px ro... | 2.8 | 2.7 | 0.0 | **5.5** | 31 | +236 -74 | 7 | 21 | 24 | 6 | 17.8k |
 | 2026-11-22 16:41 | 3f6f472 | tools: windowed Godot runs (screenshots, recordings, scene tests) start hidden on Windows -- tools/godot_bg.sh | 26 | 7.4 | 0.3 | **34** | 69 | +60 -4 | 7 | 38 | 39 | 16 | 23.4k |

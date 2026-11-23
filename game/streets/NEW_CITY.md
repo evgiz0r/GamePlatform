@@ -301,9 +301,15 @@ python tools/osm_city.py --place "Monaco" --name "Monaco" --bbox 43.7240,7.4090,
   3-6 m apart in height share the 12 m grid's cells. A finer grid barely helps (`--ground-step`,
   new: 6 m 25%, 4 m 21%, the file 1.7 -> 3.6 MB). The cure would be stepped ground (retaining
   walls between stacked streets): not started, the user's call.
-- **Walk and drive:** level 42, "Monaco: through the old town on the Rock" (241 m along Rue
-  Comte Felix Gastaldi; on to the cathedral, the footpaths wandered 0.9-1 km round the Rock);
-  route 15, Quai Antoine 1er to Avenue des Papalins (672 m crow-fly).
+- **Walk and drive:** level 42, "Monaco: through the old town on the Rock", 171 m down Rue
+  Basse, scans clean. Rue Comte Felix Gastaldi beside it had a cafe table mid-lane (the
+  game now keeps tables off footpaths); on to the cathedral, the footpaths wandered 0.9-1
+  km. Route 15, Quai Antoine 1er to Avenue des Papalins: arrives, 1.4 km in 2.4 min, no
+  hits. Its first run read 18 s "off road": the measure looked for a road at the ground's
+  height while the car was in a tunnel (fixed in route_set.gd).
+- **For the next city: name who put a post up.** `POSTS_FROM=1 SCAN=1 tests/run.sh
+  filmed_walk <level>` prints the code that put up each post the walk runs into. The
+  table here took four guesses before that.
 
 **Leiden's and Annecy's walks and drives (22 Nov 2026).**
 - **Walks:** levels 37 and 38, both scan clean (`SCAN=1 tests/run.sh filmed_walk 37 / 38`:
