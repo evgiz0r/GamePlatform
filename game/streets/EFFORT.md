@@ -4,6 +4,12 @@ How long each change took, in minutes, from the Claude Code sessions that made i
 
 | date (UTC) | commit | change | agent | runs | you | active | away | lines | files | steps | tools | engine runs | tokens out |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2026-11-23 04:59 | 6ce3849 | streets tests: posts_at.gd back as it was (overwritten by mistake); the one-spot lister is spot_at.gd | 0.5 | 0.2 | 0.0 | **0.7** | 0.0 | +119 -31 | 3 | 4 | 4 | 1 | 1.9k |
+| 2026-11-23 04:58 | 4b9e0a4 | streets racer: no stalls behind a narrow or stuck car, the plan kept clear of posts | 37 | 157 | 1.5 | **196** | 542 | +392 -83 | 6 | 155 | 148 | 35 | 92.2k |
+| 2026-11-23 03:21 | c56a6e9 | streets people: back from a shop to where they stood, a turn on the spot before walking on (people_pops: sl... | 1.5 | 6.2 | 0.0 | **7.7** | 0.0 | +43 -10 | 4 | 16 | 14 | 7 | 8.3k |
+| 2026-11-23 03:14 | 043c809 | streets people: standing people start back too; knocked down by the car and up again; waving and pointing; ... | 35 | 53 | 0.0 | **88** | 679 | +1078 -33 | 17 | 142 | 146 | 45 | 107.6k |
+| 2026-11-23 02:46 | ec74c2e | streets traffic: splits eased on the wider road (Shavey Zion's carriageways), buses by the road's room and ... | 38 | 88 | 2.8 | **129** | 294 | +429 -38 | 10 | 163 | 174 | 36 | 124.7k |
+| 2026-11-23 02:08 | 4637269 | streets: the quality level beside the fps on its button ("43 fps 3/3"); godot_bg.sh no longer takes OUT for... | 3.2 | 2.6 | 4.4 | **10** | 18 | +9 -6 | 2 | 26 | 25 | 7 | 14.4k |
 | 2026-11-23 01:39 | ab6c3d1 | streets perf: slow frames tick 30 times a second (autodrive, the car, the rules halved; traffic and people ... | 9.7 | 42 | 0.0 | **51** | 530 | +105 -8 | 5 | 63 | 62 | 21 | 32.5k |
 | 2026-11-23 01:35 | 0a1b685 | streets notes: Monaco ready but for its lean (DEV.md's Cities row and open problems, NEW_CITY's walk and dr... | 0.7 | 2.7 | 0.0 | **3.5** | 0.0 | +21 -6 | 2 | 7 | 7 | 1 | 3.4k |
 | 2026-11-23 01:32 | 436b06e | streets: Monaco ready -- the harbour's water shown, city_check 43 -> 4 m2 of islands and the lean, a walk o... | 17 | 41 | 0.0 | **58** | 507 | +159 -41 | 11 | 139 | 140 | 22 | 72.8k |
