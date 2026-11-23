@@ -242,7 +242,7 @@ func _dance() -> void:
 	var ph := beat * PI
 	me.position = Vector3(0.12 * sin(ph * 0.5), 0.05 * absf(sin(ph)), 0)
 	me.rotation = Vector3(0, deg_to_rad(14.0 * sin(ph * 0.5)), 0)
-	var a := t * 0.35
+	var a := 0.9 * sin(t * 0.45)   # swing round him and back, never behind
 	look_from(Vector3(2.9 * sin(a), 1.45 + 0.15 * sin(t * 0.7), 2.9 * cos(a)), Vector3(0, 1.0, 0))
 	for i in _lights.size():
 		var L := _lights[i]

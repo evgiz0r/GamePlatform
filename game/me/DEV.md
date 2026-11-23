@@ -6,7 +6,7 @@
 
 (under `xvfb-run -a -s "-screen 0 1280x720x24"` in a cloud session). Levels and their
 lengths are `LEVELS` in `me.gd`; give a second or so more than `secs`, `film_done()` stops
-it. At 1280x720, 30 fps the four together took about 10 minutes here.
+it. At 1280x720, 30 fps the four together took about 4.5 minutes here (23 Nov 2026).
 
 Stills of one moment, to check a pose without a video (seconds):
 
