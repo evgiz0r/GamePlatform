@@ -44,3 +44,40 @@ A .glb of him (Avaturn or similar, Mixamo-style humanoid skeleton) will have dif
 names (`mixamorig:RightArm`...), its limbs along a different axis, and no Quaternius clips.
 What changes: a bone-name map in `aim()`/`reach()`, a walk clip from elsewhere (Mixamo) or
 the procedural one, and `BODY` loading from `game/me/` rather than `assets/characters3d/`.
+
+## The realistic version (Blender, not Godot)
+
+`realistic/make.sh` builds a real-proportioned human and films him with real motion capture.
+It runs Blender as a Python module (`pip install bpy`, so the cloud sessions need no Blender)
+and reads only data, never add-on code:
+
+- **Body**: MakeHuman's base mesh and shape targets (CC0, from the makehuman repo; the mpfb2
+  repo's own `targets/` are empty placeholders -- its real targets ship as a separate download
+  that is not reachable). Shape values are `TARGETS` in `build_me.py`.
+- **Rig**: MPFB's `rig.cmu_mb.json` + `weights.cmu_mb.json` (CC0): bone names are exactly
+  the CMU BVH names, so retargeting is name to name. Joints sit at the mean of each
+  `joint-*` helper cube.
+- **Clothes**: cut from his own skin surface (a copy of the body's faces), relaxed, pushed
+  out and given thickness; the skin under them is deleted so nothing pokes through. MakeHuman's
+  `helper-tights` shell gave him a female-looking chest -- don't use it.
+- **Hair**: a Curves object (60 k strands was slow, 30 k is enough), roots sampled on the
+  scalp by *direction from the skull's centre* (`HL` in `build_me.py`: front, temples, sides,
+  nape) with jitter, rigid on the Head bone, over a dark scalp shell. The `helper-hair` shell
+  is a long-hair helmet with cards: don't emit from it. Particle hair took its velocity as the
+  length (hair half a metre long).
+- **Eyes**: procedural iris/pupil round each eyeball's forward axis (the eye helpers' UVs do
+  not fit `brown_eye.png`). **Stubble**: a per-vertex mask baked at rest -- Object texture
+  coordinates follow the deformed mesh, so a mask built from them painted stubble on a
+  forearm raised past the face.
+- **Motion**: CMU mocap (`mocap.py`): world-space rotation deltas from the BVH's rest, with
+  a per-bone swing aligning his A-pose rest to the BVH's T-pose rest; hips height = CMU hips
+  height x leg-length ratio (CMU's floor is z=0). Clips: walk 16_15, wave 141_16, dance
+  113_04, explain 18_08 (index in the cmu-mocap repo). The first frame of a CMU clip is
+  often a T-pose: start a few frames in.
+- **Rendering**: EEVEE through EGL on the CPU (llvmpipe): `apt-get install libegl1
+  libegl-mesa0` first or it fails with "Couldn't open libEGL.so.1". About 22 s a frame at
+  854x480, 8 samples, using under two cores -- two renders at once double the throughput.
+  Cycles at 640x360 / 32 samples was ~30 s a frame.
+
+Still missing for a likeness: his face. A head scan (Avaturn .glb or a photo-fitted head)
+would replace the MakeHuman head; the body, clothes and motion stay.
