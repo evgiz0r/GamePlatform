@@ -265,6 +265,52 @@ Then add a line at the end of `LEVELS` with `"look": "north", "build": "fr"`.
     city. Run it without that.
 - **Not done yet:** French street plates, RGE ALTI ground, the doubled light.
 
+**Monaco (level 41, 22-23 Nov 2026).** The whole principality, in
+a box of 43.7240,7.4090 to 43.7520,7.4400 with a 150 m margin. Made with:
+
+```
+python game/streets/data_tools/fr_bdtopo.py 43.72265,7.40714,43.75335,7.44186 monaco
+python tools/osm_city.py --place "Monaco" --name "Monaco" --bbox 43.7240,7.4090,43.7520,7.4400 --margin 150 --bare-ground --out game/streets/cities/monaco.json
+```
+
+- **The data is good.** IGN's BD TOPO covers Monaco too: heights for 4,162 of 5,972
+  buildings. 84 towers are over 40 m. There are 312 tunnel road pieces and 71 bridges, and
+  the sea is held at sea level. Loads in 4.2 s; the playtest passes. The start is on
+  Boulevard Albert 1er, the Grand Prix's start-finish straight; OSM names the pit lane.
+- **The look:** `look: "north"`, `build: "fr"`, `trees: "med"`. `"trees"` is a new level key:
+  palms and pines without the `"med"` look's Israeli details (Hebrew plates, red-and-white
+  kerb paint, solar heaters). The street view reads right: towers, palms, shops.
+- **Fixed, 23 Nov:**
+  - **The harbour.** The road levelling (`tools/level_roads.py`, run after the bake) pulled
+    the grid near the quay roads back up to the roads, over the lowered basin. The baker now
+    holds the ground under held water again after the levelling (1,005 points). Re-bake:
+    the command above with `--offline`.
+  - **Buildings on the road, 23 to 0.** 18 were on the hill over tunnel portals (Tunnel
+    Dorsale, the Larvotto): `city_check` no longer counts a building or hedge over a tunnel.
+    The other 5 stood over a road through their middle, near none of their edges (the
+    Larvotto under Bay House); the game now puts such a building up over the road, as it
+    does for one spanning a street (`_clip_buildings`).
+  - **Islands on the road, 17 to 4 m2.** A slip-road island was cut back from each road
+    segment alone, and a segment wholly inside it was a hole, left out; now from each run
+    of segments (`_island_cut`). The 4 left: a mapped island over a junction's disc.
+  - **The doubled give-way sign.** Two ways in 40 degrees apart put plates 2 m apart: one
+    plate within 45 degrees now, as the check counts.
+  - **The 868% lean was the check's**: it measured a deck's edges just over the ground, so
+    a tunnel read the hillside above it. It measures decks at their own height now.
+- **Open: the road lean, 30% of the length over 6%.** Streets 0-10 m apart kerb to kerb and
+  3-6 m apart in height share the 12 m grid's cells. A finer grid barely helps (`--ground-step`,
+  new: 6 m 25%, 4 m 21%, the file 1.7 -> 3.6 MB). The cure would be stepped ground (retaining
+  walls between stacked streets): not started, the user's call.
+- **Walk and drive:** level 42, "Monaco: through the old town on the Rock", 171 m down Rue
+  Basse, scans clean. Rue Comte Felix Gastaldi beside it had a cafe table mid-lane (the
+  game now keeps tables off footpaths); on to the cathedral, the footpaths wandered 0.9-1
+  km. Route 15, Quai Antoine 1er to Avenue des Papalins: arrives, 1.4 km in 2.4 min, no
+  hits. Its first run read 18 s "off road": the measure looked for a road at the ground's
+  height while the car was in a tunnel (fixed in route_set.gd).
+- **For the next city: name who put a post up.** `POSTS_FROM=1 SCAN=1 tests/run.sh
+  filmed_walk <level>` prints the code that put up each post the walk runs into. The
+  table here took four guesses before that.
+
 **Leiden's and Annecy's walks and drives (22 Nov 2026).**
 - **Walks:** levels 37 and 38, both scan clean (`SCAN=1 tests/run.sh filmed_walk 37 / 38`:
   no INSIDE, EYE IN or ON ROAD).

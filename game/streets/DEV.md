@@ -1840,6 +1840,7 @@ Bedford have not been re-baked since.
 | 14 | Delft, a box of the old centre ("north") | baked on the user's computer, not the workflow: first `data_tools/nl_3dbag.py 51.99965,4.34181,52.02035,4.37219 delft` and `data_tools/nl_bgt.py` with that box, then place "Delft", bbox "52.0010,4.3440,52.0190,4.3700", margin 150 (NEW_CITY.md, "The Netherlands") |
 | 33 | Leiden, a box of the old centre ("north", build "nl") | as Delft (NEW_CITY.md): `data_tools/nl_3dbag.py 52.14865,4.47180,52.16935,4.50220 leiden`, `data_tools/nl_bgt.py` with the same box, then place "Leiden", bbox "52.1500,4.4740,52.1680,4.5000", margin 150 |
 | 34 | Annecy, the centre and the lake shore ("north", build "fr") | `data_tools/fr_bdtopo.py 45.89065,6.11306,45.91135,6.14394 annecy`, then place "Annecy", bbox "45.8920,6.1150,45.9100,6.1420", margin 150, bare_ground on (NEW_CITY.md, "France") |
+| 41 | Monaco, the whole principality ("north", build "fr", trees "med"); its walk is level 42 | `data_tools/fr_bdtopo.py 43.72265,7.40714,43.75335,7.44186 monaco`, then place "Monaco", bbox "43.7240,7.4090,43.7520,7.4400", margin 150, bare_ground on (NEW_CITY.md, "Monaco") |
 | 7 | Tel Aviv, a box of the centre ("med") | place "Tel Aviv", bbox "32.0639,34.7795,32.0858,34.8021" (read off the user's map screenshot), margin 150, bare_ground on (without it Azrieli stood on a 146 m hill of its own roofs) |
 
 The start points are public street corners named in `LEVELS`. **The web build is public:
@@ -4854,6 +4855,17 @@ stood 19-26 s; on two-way streets with 3 cars in the lane, 4 of 6 stood.
   start its 13 stages ("kerbs and pavements (5 of 13)", TILE_STAGES, shown at each `_stage`
   and by the spinner in `_pause`). `tests/load_text.gd` prints every text the loading
   screen shows, with the time. Not shown yet: world + setup (~1-3 s after the street network).
+- **Monaco (level 41): ready but for its lean** (23 Nov). The harbour's water shows;
+  city_check 43 -> 2 rows: 4 m2 of a mapped island over a junction's disc (-464, -109), and
+  30% of the road length leaning over 6% -- stacked cliff streets sharing the 12 m ground
+  grid's cells, which a finer grid barely helps (NEW_CITY.md, "Monaco", has the numbers and
+  the cure: stepped ground). Walk (level 42) scans clean; drive 15 arrives, 1.4 km in 2.4
+  min, no hits.
+- **Posts on the road, Delft 1 and Ashdod 2** (seen 23 Nov, not from that day's work: the
+  same with it switched off). Delft: a 0.24 m post 4.1 m into Jacoba van Beierenlaan at
+  (-358, 848). Ashdod: 0.4 m into Shavey Zion at (-1419, 505), 1.8 m wide 0.6 m into a
+  tertiary link at (-1624, 2345). `tests/run.sh city_check 14` / `3` show them; the walk
+  scan's `POSTS_FROM=1` naming of who put a post up would find the code.
 - **Leiden's test drive (route 12) touches things on Rapenburg** (22 Nov): it arrives, 2.2 km
   in 5.7 min, but hits a street sign at 17 km/h and post 977 at 10 km/h on Rapenburg, a 5.1 m
   one-way canal street with BGT's trees and lamp posts 0.7 m off its asphalt.

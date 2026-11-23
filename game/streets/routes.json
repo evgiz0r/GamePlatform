@@ -225,6 +225,22 @@
     -160.55
    ],
    "crow_m": 45
+  },
+  {
+   "id": 15,
+   "level": 41,
+   "city": "monaco",
+   "from": "Quai Antoine 1er 4B",
+   "from_at": [
+    -43.1,
+    614.3
+   ],
+   "to": "Avenue des Papalins 9",
+   "to_at": [
+    -25.1,
+    -57.7
+   ],
+   "crow_m": 672
   }
  ]
 }

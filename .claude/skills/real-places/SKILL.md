@@ -216,6 +216,16 @@ the parked cars, which stand a third in the road).
   own level, `y`), with quay walls down to it. Index the holes by place: a ring round a
   whole town's canals has a town-sized box, and testing it against every ground triangle
   cost 2.6 s of loading.
+- **Anything that reshapes the ground after the water is set can bury it again.** Levelling
+  roads side to side pulls the grid near a quay road up to the road's height: a harbour's
+  basin, lowered under its water, came out under 1-2 m of ground once more. Hold the ground
+  under held water as the last step before writing, and check the written file, not the
+  bake's log line (the log counted the lowering that the next step undid).
+- **A cliff town's stacked streets cannot all be level on one height grid.** Streets 0-10 m
+  apart, kerb to kerb, at 3-6 m apart in height (retaining walls in life) share grid cells,
+  so one of them leans: a third of a cliff town's road length leaned over 6% where a
+  lakeside town's leaned 3%. A finer grid barely helps (12 m 34%, 6 m 25%, 4 m 21%, the file
+  twice the size): the cure is a step in the ground (a wall), not more points.
 - **Natural colours from a neon palette.** Water from the palette's "player" and sign blue
   likewise came out khaki and brown under a palette with no blue in it. Pin the hue, as
   the reds and greens are, or take the photo sky's colour for anything that reflects it.
@@ -725,6 +735,13 @@ What a driving game on one needed:
   OSM maps one tunnel as several ways: judge "too short" by the chain, not one piece. A
   19 m piece under a street, between two longer ones, put back on the ground came out a
   cutting at full depth between them -- its railings standing across the street's lanes.
+- **A road wholly inside a building's outline runs under it.** Checking a road against a
+  building's edges misses one through a big block's middle (a covered boulevard under a
+  block of flats): none of the edges is near it, so the building stood on the asphalt. A road
+  point inside the outline after cutting the building back is a road under it: raise the
+  building over it or leave it out, as for one spanning the street. And a building or hedge
+  on the hill over a tunnel's mouth is not in the tunnel's way, though the tunnel there is
+  still near the ground's level: checks of "a solid thing on the road" skip tunnels.
 - **A divided road is two decks overlapping at the median** at slightly different heights:
   decide what is under a body by the carriageway it is on first, the nearest height next,
   or it drifts onto the other and falls off its end.

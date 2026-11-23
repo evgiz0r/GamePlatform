@@ -144,9 +144,19 @@ func _node_desc(n: int) -> String:
 func _service(ri: int) -> bool:
 	return ri >= 0 and String((g._roads[ri] as Dictionary)["k"]) == "service"
 
+## a road in a tunnel: a building or a hedge on the hill over its mouth is not in its way
+## (Monaco's 23 "buildings on the road", 23 Nov, were all over Tunnel Dorsale's and the
+## Larvotto's portals, where the inferred tunnel is still under 3 m down and so counted as at
+## the ground's level)
+func _tunnel(ri: int) -> bool:
+	return ri >= 0 and String((g._roads[ri] as Dictionary).get("deck", "")) == "tu"
+
 func _name(ri: int) -> String:
-	var en := String((g._roads[ri] as Dictionary).get("en", ""))
-	return en if en != "" else String((g._roads[ri] as Dictionary)["k"])
+	var r: Dictionary = g._roads[ri]
+	var en := String(r.get("en", ""))
+	var deck := String(r.get("deck", ""))
+	return (en if en != "" else String(r["k"])) + ("" if deck == "" else " (%s)" % {"br": "bridge", "tu": "tunnel",
+		"em": "embankment", "cu": "cutting"}.get(deck, deck)) + ("" if String(r["name"]) == "" else " '%s'" % r["name"])
 
 ## The limits for the checks of the user's reports that never read 0 (world_checks.gd), per
 ## level, from the measures after each fix with room for small changes: over one, the fixed
@@ -201,7 +211,7 @@ func _check(lvl: int) -> int:
 		for s in range(steps + 1):
 			var q := a.lerp(b, float(s) / steps)
 			var r: Array = _into(q, half)
-			if float(r[0]) > float(worst[0]):
+			if float(r[0]) > float(worst[0]) and not _tunnel(r[1]):
 				worst = [r[0], r[1], q]
 		if float(worst[0]) > 0.3:
 			var kind := "fence" if half <= 0.07 else ("shelter back" if half <= 0.1 else ("garden wall" if half <= 0.2 else "hedge"))
@@ -239,7 +249,7 @@ func _check(lvl: int) -> int:
 			for s in range(steps):
 				var q := a2.lerp(b2, float(s) / steps)
 				var r: Array = _into(q, 0.0)
-				if float(r[0]) > float(worst[0]) and not _service(r[1]):
+				if float(r[0]) > float(worst[0]) and not _service(r[1]) and not _tunnel(r[1]):
 					worst = [r[0], r[1], q]
 		if float(worst[0]) > 0.3:
 			# (a private lane -- Tel Aviv's 14 were all HaKirya's, running under a building or into

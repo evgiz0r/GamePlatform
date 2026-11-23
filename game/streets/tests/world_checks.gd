@@ -224,9 +224,11 @@ static func tilt(g) -> Array:
 			var s := 0.0
 			while s < L:
 				var c := a + d * s
-				var y0: float = g._h(c)
-				var yl: float = g._decks.surf(c + side * hw, y0 + 1.0) if r.has("ys") else g._h(c + side * hw)
-				var yr: float = g._decks.surf(c - side * hw, y0 + 1.0) if r.has("ys") else g._h(c - side * hw)
+				# (a deck at its own height: from just over the ground it read the hillside over a
+				# tunnel -- Monaco's Tunnel Albert II "leaned" 868% -- and the ground under a bridge)
+				var y0: float = g._decks.seg_y(ri, j, c) if r.has("ys") else g._h(c)
+				var yl: float = g._decks.surf(c + side * hw, y0 + 0.5) if r.has("ys") else g._h(c + side * hw)
+				var yr: float = g._decks.surf(c - side * hw, y0 + 0.5) if r.has("ys") else g._h(c - side * hw)
 				var slope := absf(yl - yr) / (2.0 * hw)
 				total += 3.0
 				if slope > 0.06:
