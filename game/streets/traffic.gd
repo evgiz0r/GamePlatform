@@ -1805,7 +1805,12 @@ func lead_on(path: PackedVector2Array, from: Vector2, look: float, ignore_crossi
 				# its, and a hand's breadth (by its middle alone, at 1.5 m, one in the next
 				# lane on a narrow road was not, and autodrive ran in between two of them)
 				var wide := LANE_W
-				if same > 0.6:
+				if same < -0.6:
+					# (one coming at me, by the bodies too: a motorbike standing in racer's lane facing
+					# it, waiting for it, its middle 1.47 m off the line -- inside LANE_W only now and
+					# then -- was no car in front until 8 m, met at 55 km/h, tests/racer_drive.gd)
+					wide = maxf(LANE_W, 0.9 + rad + 0.25)
+				elif same > 0.6:
 					wide = maxf(LANE_W, 0.9 + rad + 0.25)
 					if c.aside_t > 0.0:
 						wide = 0.9 + rad + 0.05   # (edged over to let racer squeeze by: bodies brushing, not touching)
