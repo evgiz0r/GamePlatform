@@ -73,7 +73,9 @@ func _run() -> void:
 			var seen: bool = a.visible and p.distance_to(g._pos) < g.PEOPLE_SEEN and not g._spawn_ok(p)
 			if seen and was.has(key):
 				var prev: Array = was[key]
-				if not prev[0] or (prev[1] as Vector2).distance_to(p) > 2.0:
+				if not prev[0] and e[2] != null and (e[2] as Dictionary).has("shop"):
+					pass   # (out of a shop's door: meant, streets.gd _shop_visit)
+				elif not prev[0] or (prev[1] as Vector2).distance_to(p) > 2.0:
 					pops[e[0]] = int(pops.get(e[0], 0)) + 1
 					if firsts.size() < 8:
 						firsts.append("%s popped at %s, %.0f m from your car (%s)" % [e[0], p.round(), p.distance_to(g._pos),

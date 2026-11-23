@@ -4,7 +4,7 @@ extends SceneTree
 ## $UAL:  UAL=<path inside the project>/UAL1_Standard.glb godot --headless -s res://game/streets/people/make_moves.gd
 const KEEP := ["Walk", "Walk_Formal", "Idle", "Idle_Talking", "Jog_Fwd", "Sitting_Enter", "Sitting_Idle",
 	"Sitting_Talking", "Sitting_Exit", "Push", "Driving", "Roll", "Interact", "PickUp_Table",
-	"Hit_Chest", "Sprint"]   # (Hit_Chest: startled by a car coming at them)
+	"Hit_Chest", "Sprint", "Death01"]   # (Hit_Chest: startled by a car coming at them; Death01: knocked down by it, and played backwards, up again)
 
 func _initialize() -> void:
 	var lib: Node = (load(OS.get_environment("UAL")) as PackedScene).instantiate()

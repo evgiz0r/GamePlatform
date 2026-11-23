@@ -27,8 +27,9 @@ for a in "$@"; do
   case "$a" in /*) a="$(cygpath -w "$a")" ;; esac
   ARGS="$ARGS \"${a//\"/\\\"}\""
 done
-OUT="$(mktemp)"; ERR="$(mktemp)"
-GBG_EXE="$(cygpath -w "$EXE")" GBG_ARGS="$ARGS" GBG_DIR="$(pwd -W)" GBG_OUT="$(cygpath -w "$OUT")" GBG_ERR="$(cygpath -w "$ERR")" \
+# (not OUT: the scene tests pass their shots folder in $OUT, and this one is exported to the game)
+LOG_O="$(mktemp)"; LOG_E="$(mktemp)"
+GBG_EXE="$(cygpath -w "$EXE")" GBG_ARGS="$ARGS" GBG_DIR="$(pwd -W)" GBG_OUT="$(cygpath -w "$LOG_O")" GBG_ERR="$(cygpath -w "$LOG_E")" \
   powershell -NoProfile -NonInteractive -Command '
 $p = Start-Process -FilePath $env:GBG_EXE -ArgumentList $env:GBG_ARGS -WorkingDirectory $env:GBG_DIR `
   -WindowStyle Hidden -PassThru -RedirectStandardOutput $env:GBG_OUT -RedirectStandardError $env:GBG_ERR
@@ -36,6 +37,6 @@ $null = $p.Handle   # (without it ExitCode reads empty: a PowerShell quirk)
 $p.WaitForExit()
 exit $p.ExitCode'
 CODE=$?
-cat "$OUT" "$ERR"
-rm -f "$OUT" "$ERR"
+cat "$LOG_O" "$LOG_E"
+rm -f "$LOG_O" "$LOG_E"
 exit $CODE

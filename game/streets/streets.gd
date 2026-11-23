@@ -13043,7 +13043,7 @@ func _build_walk_lights(pole_mesh: Mesh) -> void:
 ## a lit shopfront on the street side of each shop's building, and its name above it
 func _build_pois() -> void:
 	var k := 1.0 / float(_city_data.get("scale", 10))
-	var front := {"glass": [], "glass_k": [], "post": [], "beam": [], "shutter": [], "housing": []}   ## shop windows and their frames (glass_k: what is inside, SHOP_SHADER)
+	var front := {"glass": [], "glass_k": [], "post": [], "beam": [], "shutter": [], "housing": [], "door": []}   ## shop windows and their frames (glass_k: what is inside, SHOP_SHADER)
 	var board_cols: Array = []       ## each sign board's colour: dark, white, the shop's, cream
 	var awnings := {"xf": [], "col": []}   ## awning transforms and their colours
 	var crates := new_cbuf(BLD_CELL)    ## fruit and vegetables out in front of a greengrocer
@@ -13118,7 +13118,15 @@ func _build_pois() -> void:
 			elif look_k >= 10 and look_k < 50 and kind.begins_with("shop"):   # open: an A-frame board out front
 				_a_board(crates, pos + n * 1.15 + along * (1.25 * wide), n, along, gy, look_k)
 			if look_k >= 10 and _mine(pos):   # (not a shut one) a shopkeeper may stand in its door
-				_shop_spots.append([pos + n * 0.5 + along * (0.6 if look_k % 2 == 0 else -0.6), n])
+				var dside := 0.6 if look_k % 2 == 0 else -0.6
+				_shop_spots.append([pos + n * 0.5 + along * dside, n])
+				# its door: a dark frame on the window's glass, a push bar across it (the glass
+				# shows through: a glass door), where people go in and come out (_shop_visit)
+				var dq := pos + along * dside
+				for pc: Array in [[-0.47, 1.075, 0.07, 2.15], [0.47, 1.075, 0.07, 2.15], [0.0, 2.18, 1.01, 0.07], [0.0, 1.05, 0.6, 0.045]]:
+					front["door"].append(Transform3D(b * Basis.from_scale(Vector3(float(pc[2]), float(pc[3]), 0.05 if float(pc[3]) > 0.06 else 0.04)),
+						at3.call(dq + along * float(pc[0]), 0.1 if float(pc[3]) > 0.05 else 0.14, float(pc[1]))))
+				_shop_doors.append([dq + n * 0.12, n])
 			if shop.get("lights", false):
 				_string_lights(crates, bulbs, pos, n, along, gy)
 			if look_k < 10 and kind.begins_with("shop"):   # shut: the roller shutter down
@@ -13187,6 +13195,9 @@ func _build_pois() -> void:
 		var shut := BoxMesh.new()
 		shut.size = Vector3(3.0, 2.4, 0.05)
 		_chunked(shut, front["shutter"], r, [], _surface("shutter"), false)
+	if not (front["door"] as Array).is_empty():
+		var dbox := BoxMesh.new()   # (a unit box, each piece scaled)
+		_chunked(dbox, front["door"], r, [], _surface("cartrim"), false)
 	if not (front["housing"] as Array).is_empty():
 		var hb := BoxMesh.new()
 		hb.size = Vector3(3.2, 0.3, 0.3)
@@ -16156,6 +16167,16 @@ func _sky_tint() -> Vector3:
 	return Vector3.ONE.lerp(ratio, 0.25)
 
 ## one of the photo's colours, tinted as the dome draws it
+## no magenta in the light: green lifted to the middle of red and blue when it is the lowest.
+## The day's haze (the fog, 205/190/192) and the shade's fill (201/197/200) had green lowest --
+## a pink cast over the whole scene, worst far off where the fog is thick; daylight's haze and
+## shade go grey to blue, never pink. tests/tint_card.gd
+static func _unpink(c: Color) -> Color:
+	var mid := (c.r + c.b) * 0.5
+	if c.g < mid:
+		c.g = mid
+	return c
+
 func _sky_col(c: Vector3) -> Color:
 	var t := _sky_tint()
 	return Color(c.x * t.x, c.y * t.y, c.z * t.z)
@@ -16417,7 +16438,7 @@ func _retint_city() -> void:
 	if env != null:
 		# by day the photo sky (_sky_dome) sets the haze: the fog takes its horizon, so far
 		# streets melt into the sky, and the shade its blue
-		var hor := _sky_col(_sky_now()["horizon"])
+		var hor := _unpink(_sky_col(_sky_now()["horizon"]))
 		var sky := env.sky.sky_material as ProceduralSkyMaterial
 		sky.sky_top_color = _sky_col(_sky_now()["mean"])
 		sky.sky_horizon_color = hor
@@ -16428,7 +16449,7 @@ func _retint_city() -> void:
 		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 		# (in the evening the shade is the sky's blue, not the haze: the warm light and the cool
 		# shade are what makes golden hour, and the haze in it turned the shade khaki)
-		env.ambient_light_color = _sky_col(_sky_now()["mean"]).lerp(_tone["haze"], 0.1 if _evening else 0.4)
+		env.ambient_light_color = _unpink(_sky_col(_sky_now()["mean"]).lerp(_tone["haze"], 0.1 if _evening else 0.4))
 		# (the fill light 0.6 of what it was: with more, every shade was lifted and the shapes
 		# went flat and pastel -- tried on the look bench beside the user's photos)
 		env.ambient_light_energy = (0.62 if _evening else 0.55) * 0.6
@@ -16884,7 +16905,7 @@ func _get_out() -> void:
 	if _me == null:
 		_me = Actor3D.new()
 		world.add_child(_me)
-		_me.set_character(PEOPLE[1], 1.66)   # (a woman's figure: Israel's women average ~1.63, men ~1.77)
+		_set_character(_me, PEOPLE[1], 1.66)   # (a woman's figure: Israel's women average ~1.63, men ~1.77)
 		_humanize(_me, hash(_me.get_instance_id()))
 	_me.visible = true
 	_me_anim = ""
@@ -17027,7 +17048,7 @@ func _film_begin(id: String) -> void:
 		var a := Actor3D.new()
 		world.add_child(a)
 		var who := int(pp.get("who", _film_people.size()))
-		a.set_character(PEOPLE[who % PEOPLE.size()], float(pp.get("tall", 1.70)))
+		_set_character(a, PEOPLE[who % PEOPLE.size()], float(pp.get("tall", 1.70)))
 		_humanize(a, 9001 + who * 31)
 		if bool(pp.get("talk", false)):
 			_talker(a, 9001 + who * 31)
@@ -19440,7 +19461,7 @@ func _spawn_people() -> void:
 	for i in range(WALKERS):
 		var a := Actor3D.new()
 		world.add_child(a)
-		a.set_character(PEOPLE[i % PEOPLE.size()], _people_rng.randf_range(ADULT_LO, ADULT_HI))
+		_set_character(a, PEOPLE[i % PEOPLE.size()], _people_rng.randf_range(ADULT_LO, ADULT_HI))
 		_humanize(a, hash(a.get_instance_id()))
 		_people_lod(a)
 		var w := {"actor": a, "line": PackedVector2Array(), "cum": PackedFloat32Array(), "s": 0.0,
@@ -19491,7 +19512,7 @@ func _spawn_people() -> void:
 	for i in range(CHATTERS):
 		var a := Actor3D.new()
 		world.add_child(a)
-		a.set_character(PEOPLE[(i + 2) % PEOPLE.size()], _people_rng.randf_range(ADULT_LO, ADULT_HI))
+		_set_character(a, PEOPLE[(i + 2) % PEOPLE.size()], _people_rng.randf_range(ADULT_LO, ADULT_HI))
 		_humanize(a, hash(a.get_instance_id()))
 		_people_lod(a)
 		_talker(a, hash(_city_name) * 13 + i)   # (before the clip starts: it may change the clips)
@@ -19503,7 +19524,7 @@ func _spawn_people() -> void:
 	for i in range(SITTERS + WAITERS + KEEPERS):
 		var a := Actor3D.new()
 		world.add_child(a)
-		a.set_character(PEOPLE[(i + 1) % PEOPLE.size()], _people_rng.randf_range(ADULT_LO, ADULT_HI))
+		_set_character(a, PEOPLE[(i + 1) % PEOPLE.size()], _people_rng.randf_range(ADULT_LO, ADULT_HI))
 		_humanize(a, hash(a.get_instance_id()))
 		_people_lod(a)
 		a.visible = false
@@ -19572,6 +19593,7 @@ func _liveliness(p: Vector2) -> float:
 
 ## a walker onto a pavement near the car (ahead of it rather than behind when it moves)
 func _place_walker(w: Dictionary, anywhere: bool, why := "") -> void:
+	w.erase("shop")   # (put somewhere new mid-visit: done with the shop)
 	var a: Actor3D = w["actor"]
 	# a few tries a call, not a dozen: each walks a whole street's pavement, and a walker that
 	# found nothing is simply tried again on a later tick (one walker a tick, _people_tick)
@@ -19889,12 +19911,14 @@ func _walk_beside(w: Dictionary, dt: float) -> void:
 	w["at"] = at
 	a.position = Vector3(at.x, _walk_y(at) if s < float(lw.get("cross", 0.0)) else _h(at) + _pave_top(), at.y)
 	var yaw: float = lw.get("yaw", atan2(fw.y, fw.x))
-	a.face(Vector3(cos(yaw), 0, sin(yaw)))
+	if float(w.get("down", 0.0)) <= 0.0:   # (knocked down: as it fell)
+		a.face(Vector3(cos(yaw), 0, sin(yaw)))
 	if not was_seen:
 		w.erase("anim_p")
 		a.visible = true
 	# the first startled by the car: this one too, at once (it goes where the first steps back)
-	if float(lw.get("startle", 0.0)) > 0.0:
+	_down_tick(w, a, dt)
+	if float(lw.get("startle", 0.0)) > 0.0 or float(w.get("down", 0.0)) > 0.0:
 		if not bool(w.get("startled", false)) and a.anim != null and a.anim.has_animation("Startled"):
 			w["startled"] = true
 			a.play("Startled", false, 1.1)
@@ -19942,7 +19966,10 @@ func _seat_chatters() -> void:
 			a.face(Vector3(face.x, 0, face.y))
 			a.play("SitDown", true)
 			a.visible = true
+			c["sat"] = true
 			continue
+		c["sat"] = false
+		c.erase("startle_base")
 		var off := Vector2(cos(i * 2.4), sin(i * 2.4)) * 0.95
 		var q := t + off
 		a.position = Vector3(q.x, _walk_y(q), q.y)
@@ -19965,6 +19992,8 @@ const WAITERS := 4
 const KEEPERS := 3                   ## shopkeepers in their doorways near you, looking out at the street
 var _keepers: Array = []             ## {actor, spot}
 var _shop_spots: Array = []          ## [a doorway's spot, out to the street] of every open shop
+var _shop_doors: Array = []          ## [a shop door, just out from its glass; out to the street] of every open shop
+var _doors_near: Array = []          ## ... those near you (every 1.5 s)
 var _sitters: Array = []             ## {actor, spot}: on the park benches near you
 var _waiters: Array = []             ## {actor, spot}: at the bus stops near you
 var _bench_spots: Array = []         ## [where, facing] of every bench made
@@ -20140,7 +20169,7 @@ func _place_bathers() -> void:
 		for i in range(BATHERS):
 			var a := Actor3D.new()
 			world.add_child(a)
-			a.set_character(PEOPLE[(i + 2) % PEOPLE.size()], _people_rng.randf_range(ADULT_LO, ADULT_HI))
+			_set_character(a, PEOPLE[(i + 2) % PEOPLE.size()], _people_rng.randf_range(ADULT_LO, ADULT_HI))
 			_humanize(a, hash(a.get_instance_id()))
 			_people_lod(a)
 			a.visible = false
@@ -20157,7 +20186,7 @@ func boarder_at(at: Vector2, face: Vector2, walking: bool) -> bool:
 	if _boarders.is_empty():
 		var na := Actor3D.new()
 		world.add_child(na)
-		na.set_character(PEOPLE[3 % PEOPLE.size()], _people_rng.randf_range(ADULT_LO, ADULT_HI))
+		_set_character(na, PEOPLE[3 % PEOPLE.size()], _people_rng.randf_range(ADULT_LO, ADULT_HI))
 		_humanize(na, hash(na.get_instance_id()))
 		_people_lod(na)
 		na.visible = false
@@ -20235,7 +20264,185 @@ func _place_still(list: Array, spots: Array, how: String) -> void:
 		else:
 			a.position = Vector3(q.x, _walk_y(q), q.y)
 			a.face(Vector3(face.x, 0, face.y))
+		c.erase("startle_base")
 		a.visible = true
+
+## now and then someone waves or points (people.gd's Gesture): a walker waves to someone
+## across the street (one a minute or two each), someone at a stop points down the road, a
+## shopkeeper waves to a passer-by, people standing at the cafe tables point or wave as they
+## talk. Only near you (40 m) and in view of nobody's phone or box. tests/people_gesture.gd
+var _gest_rng := RandomNumberGenerator.new()   ## (its own: draws from _people_rng would move where everyone is put)
+
+func _gestures(dt: float) -> void:
+	if _ppl == null or not _people_maker().on():
+		return
+	for k in range(4):
+		var list: Array = [_walkers, _waiters, _keepers, _chatters][k]
+		for c: Dictionary in list:
+			c["gest_t"] = float(c.get("gest_t", _gest_rng.randf_range(5.0, 60.0))) - dt
+			if float(c["gest_t"]) > 0.0:
+				continue
+			c["gest_t"] = _gest_rng.randf_range([50.0, 25.0, 30.0, 15.0][k], [140.0, 70.0, 80.0, 40.0][k])
+			var a: Actor3D = c["actor"]
+			if not a.visible or c.has("with") or bool(c.get("sat", false)) or float(c.get("startle", 0.0)) > 0.0 or Vector2(a.position.x, a.position.z).distance_to(_pos) > 40.0:
+				continue
+			var kind := "point" if k == 1 else ("wave" if k != 3 else ("wave" if _gest_rng.randf() < 0.4 else "point"))
+			_ppl.gesture(a, kind)
+
+## In and out of the shops: a walker passing an open shop's door a step or two ahead turns to
+## it now and then (SHOP_CHANCE each door, the pavement line 3-5 m out from the glass; not a pair, a dog or a pushchair, nor one carrying
+## something), walks in -- gone at the glass -- and some seconds later comes out of the same
+## door and back to the pavement where it left it, and on. tests/people_shops.gd
+const SHOP_CHANCE := 0.3
+const SHOP_IN := Vector2(6.0, 20.0)   ## seconds inside, from-to
+
+func _shop_try(w: Dictionary, a: Actor3D, p: Vector2, ahead: Vector2, startle: float, dt: float) -> void:
+	w["shop_chk"] = float(w.get("shop_chk", _gest_rng.randf_range(0.0, 1.0))) - dt
+	if float(w["shop_chk"]) > 0.0:
+		return
+	w["shop_chk"] = 1.0
+	if _doors_near.is_empty() or startle > 0.0 or w.has("mate") or w.has("dog") or w.has("pram") or bool(w.get("carry", false)) \
+			or a.has_meta("carry") or not a.visible or ahead == Vector2.ZERO or float(w.get("shop_cool", 0.0)) > Time.get_ticks_msec() / 1000.0:
+		return
+	for d: Array in _doors_near:
+		var q: Vector2 = d[0]
+		var rel := q - p
+		if rel.length() > 5.5 or rel.length() < 0.6 or rel.dot(ahead.normalized()) < 0.3 or rel.dot(d[1]) > 0.0:
+			continue   # (a door a step or two ahead, on this side: the walker before its glass)
+		if _gest_rng.randf() >= SHOP_CHANCE:
+			w["shop_cool"] = Time.get_ticks_msec() / 1000.0 + 8.0   # (passed it by)
+			return
+		w["shop"] = {"door": q, "out": d[1], "from": p, "phase": "to", "t": 0.0}
+		return
+
+func _shop_visit(w: Dictionary, a: Actor3D, dt: float) -> void:
+	var sh: Dictionary = w["shop"]
+	var q := Vector2(a.position.x, a.position.z)
+	var door: Vector2 = sh["door"]
+	var speed: float = w["speed"]
+	match String(sh["phase"]):
+		"to", "back":
+			var to: Vector2 = door if sh["phase"] == "to" else sh["from"]
+			var d := to - q
+			var step := speed * dt
+			if d.length() <= step:
+				q = to
+				if sh["phase"] == "to":   # in: gone through the door
+					sh["phase"] = "in"
+					sh["t"] = _gest_rng.randf_range(SHOP_IN.x, SHOP_IN.y)
+					a.visible = false
+				else:   # back on the pavement: on along the line
+					w.erase("shop")
+					w["shop_cool"] = Time.get_ticks_msec() / 1000.0 + 60.0
+					w["anim_clip"] = ""
+					w.erase("anim_p")
+			else:
+				q += d / d.length() * step
+				w["yaw"] = d.angle()
+				a.face(Vector3(d.x, 0, d.y))
+				if a._clip != "Walk":
+					a.play("Walk", true, speed / _walk_clip_v())
+		"in":
+			sh["t"] = float(sh["t"]) - dt
+			if float(sh["t"]) <= 0.0 and not _body_gap(door, _pos) < 1.5:   # (not out into the car parked at the door)
+				sh["phase"] = "back"
+				a.visible = true
+				var out: Vector2 = sh["out"]
+				w["yaw"] = out.angle()
+				a.face(Vector3(out.x, 0, out.y))
+			q = door
+	a.position = Vector3(q.x, _walk_y(q), q.y)
+	if a.visible:
+		_people_awake(a, q)
+
+## Knocked down by the car: hit at more than KNOCK_DOWN_V, someone walking or standing
+## falls (Fall), lies a moment, gets up (GetUp, slowly) and carries on -- not a game's death:
+## nobody stays down. Held where they fell meanwhile by the start-back's stop (startle), a
+## walking pair both: the one hit falls, the other starts. tests/people_fall.gd
+const KNOCK_DOWN_V := 2.0     ## m/s (7 km/h): slower, the car only nudges them
+const DOWN_T := 4.2           ## seconds from the fall to standing again
+const GETUP_SPEED := 0.6
+
+func _knock_down(id: int, from: Vector2) -> void:
+	if id <= 0:
+		return
+	for list: Array in [_walkers, _chatters, _waiters, _keepers]:
+		for w: Dictionary in list:
+			var a: Actor3D = w["actor"]
+			if a.get_instance_id() != id:
+				continue
+			if bool(w.get("sat", false)) or float(w.get("down", 0.0)) > 0.0 or a.anim == null or not a.anim.has_animation("Fall") or not a.anim.has_animation("GetUp"):
+				return
+			var p := Vector2(a.position.x, a.position.z)
+			w["down"] = DOWN_T
+			w.erase("rising")
+			w["startle"] = DOWN_T
+			w["startle_cd"] = DOWN_T + 3.0
+			w["startle_from"] = (from - p).normalized()
+			w["startled"] = true   # (a pair's second: no start, it fell)
+			a.face(Vector3(from.x - p.x, 0, from.y - p.y))   # (the fall is backwards: away from the car, not under it)
+			a.play("Fall", false, 1.0)
+			if w.has("with"):   # the first of the pair stops for them, startled
+				var lw: Dictionary = _walkers[int(w["with"])]
+				lw["startle"] = maxf(float(lw.get("startle", 0.0)), DOWN_T)
+				lw["startle_cd"] = DOWN_T + 3.0
+				if float(lw.get("down", 0.0)) <= 0.0:
+					lw["startle_from"] = (from - p).normalized()
+					(lw["actor"] as Actor3D).play("Startled", false, 1.15)
+			Probe.event("knocked_down", {"kmh": int(absf(_v) * 3.6), "at": Vector2i(p)})
+			return
+
+## down: the fall's clock, and up again at the end (GetUp played to finish with it)
+func _down_tick(w: Dictionary, a: Actor3D, dt: float) -> void:
+	var down: float = w.get("down", 0.0)
+	if down <= 0.0:
+		return
+	down = maxf(down - dt, 0.0)
+	var up_len := a.anim.get_animation("GetUp").length / GETUP_SPEED if a.anim != null and a.anim.has_animation("GetUp") else 1.0
+	if down <= up_len and not bool(w.get("rising", false)):
+		w["rising"] = true
+		a.play("GetUp", false, GETUP_SPEED)
+	if down <= 0.0:
+		w.erase("rising")
+		w["anim_clip"] = ""   # (the walk or the idle started again: _walker_anim)
+		w["startled"] = false
+	w["down"] = down
+
+## someone standing still (at a stop, a shop door, a cafe table) and the car about to hit
+## them: the walkers' start back (Startled, a half step away from it, a second), then back
+## to where they stood and their idle. The sitters stay sat. tests/people_startle.gd
+func _still_startle(c: Dictionary, dt: float) -> void:
+	var a: Actor3D = c["actor"]
+	var startle: float = c.get("startle", 0.0)
+	c["startle_cd"] = maxf(float(c.get("startle_cd", 0.0)) - dt, 0.0)
+	if not a.visible:
+		return
+	if not c.has("startle_base"):
+		c["startle_base"] = Vector2(a.position.x, a.position.z)
+	var base: Vector2 = c["startle_base"]
+	var to_car := _pos - base
+	if startle <= 0.0 and float(c["startle_cd"]) <= 0.0 and absf(_v) > 2.5 and not _walking and to_car.length() < 16.0 and a.anim != null and a.anim.has_animation("Startled"):
+		var now_gap := _body_gap(base, _pos)
+		var soon := minf(_body_gap(base, _pos + _fwd() * _v * 0.35), _body_gap(base, _pos + _fwd() * _v * 0.7))
+		if soon < 1.0 and soon < now_gap - 0.4:
+			startle = 1.1
+			c["startle_cd"] = 5.0
+			c["startle_from"] = to_car.normalized()
+			a.play("Startled", false, 1.15)
+	_down_tick(c, a, dt)
+	var back: float = c.get("startle_back", 0.0)
+	if startle > 0.0:
+		startle = maxf(startle - dt, 0.0)
+		back = minf(back + dt * 1.6, 0.4)
+		if startle <= 0.0:
+			a.play("Idle", true)
+	else:
+		back = maxf(back - dt * 0.3, 0.0)
+	c["startle"] = startle
+	c["startle_back"] = back
+	if back > 0.0 or startle > 0.0:
+		var p := base - (c.get("startle_from", Vector2.ZERO) as Vector2) * back
+		a.position = Vector3(p.x, _walk_y(p), p.y)
 
 ## somewhere a walker can be put down or taken away unseen: _unseen's, or 20 m or more off
 ## and behind a building from the eye (round a corner, the far side of a block)
@@ -20341,6 +20548,7 @@ func _people_tick(dt: float) -> void:
 		_place_waiters()
 		_place_keepers()
 		_place_bathers()
+		_doors_near = _shop_doors.filter(func(d): return (d[0] as Vector2).distance_to(_pos) < 60.0)
 		for w: Dictionary in _boarders:   # (their car gone elsewhere: they go too, unseen)
 			if (w["actor"] as Actor3D).visible and _boarder_t > 4.0 and _unseen(w["spot"]):
 				(w["actor"] as Actor3D).visible = false
@@ -20348,6 +20556,11 @@ func _people_tick(dt: float) -> void:
 			for c: Dictionary in list:
 				var ca: Actor3D = c["actor"]
 				_people_awake(ca, Vector2(ca.position.x, ca.position.z))
+	for list: Array in [_chatters, _waiters, _keepers]:
+		for c: Dictionary in list:
+			if not bool(c.get("sat", false)):
+				_still_startle(c, dt)
+	_gestures(dt)
 	# one walker a tick is found a new place (a search along the pavements): several at once
 	# when the car had driven on was a stutter
 	var placed := false
@@ -20355,6 +20568,9 @@ func _people_tick(dt: float) -> void:
 		var a: Actor3D = w["actor"]
 		if w.has("with"):
 			_walk_beside(w, dt)
+			continue
+		if w.has("shop"):
+			_shop_visit(w, a, dt)
 			continue
 		var line: PackedVector2Array = w["line"]
 		if line.size() < 2:   # found no place last time: look again now and then
@@ -20426,6 +20642,7 @@ func _people_tick(dt: float) -> void:
 		w["s"] = s
 		var p := _along(line, cum, s)
 		var ahead := _along(line, cum, clampf(s + float(w["dir"]) * 0.5, 0.0, total)) - p
+		_shop_try(w, a, p, ahead, startle, dt)
 		# keeping clear, as people do: round a post, a tree, a bench, a cabinet a step ahead,
 		# to the right of anyone coming the other way (or standing in the way), and never
 		# into anything -- they used to walk through all of it on their line
@@ -20542,7 +20759,7 @@ func _people_tick(dt: float) -> void:
 		# glide): a start back, the hands up (Startled), a half step back from it and a stop
 		# for a second, then on. Once in five seconds at most. tests/people_startle.gd
 		w["startle_cd"] = maxf(float(w.get("startle_cd", 0.0)) - dt, 0.0)
-		if startle <= 0.0 and float(w["startle_cd"]) <= 0.0 and absf(_v) > 2.5 and not _walking 				and to_car.length() < 16.0 and a.anim != null and a.anim.has_animation("Startled"):
+		if startle <= 0.0 and float(w["startle_cd"]) <= 0.0 and absf(_v) > 2.5 and not _walking and to_car.length() < 16.0 and a.anim != null and a.anim.has_animation("Startled"):
 			var now_gap := _body_gap(p, _pos)
 			var soon := minf(_body_gap(p, _pos + _fwd() * _v * 0.35), _body_gap(p, _pos + _fwd() * _v * 0.7))
 			if soon < 1.0 and soon < now_gap - 0.4:
@@ -20550,6 +20767,7 @@ func _people_tick(dt: float) -> void:
 				w["startle_cd"] = 5.0
 				w["startle_from"] = to_car.normalized()
 				a.play("Startled", false, 1.15)
+		_down_tick(w, a, dt)
 		if startle > 0.0:
 			startle = maxf(startle - dt, 0.0)
 			w["startle_back"] = minf(float(w.get("startle_back", 0.0)) + dt * 1.6, 0.4)   # (a quick half step)
@@ -20652,11 +20870,28 @@ func _people_maker() -> RefCounted:
 		_ppl = load("res://game/streets/people.gd").new(self)
 	return _ppl
 
+## a person's figure: with the new people on (people.gd), only its name and height -- make()
+## builds the body. Loading the kit's figure first only to throw it away cost each person an
+## instance of it (skeleton, meshes, a player of 30 clips) on the way into a city.
+func _set_character(a: Actor3D, name: String, tall: float) -> void:
+	if _people_maker().on():
+		for c in a.get_children():
+			c.queue_free()
+		a.character = name
+		a.height = tall
+		a.model = null
+		a.anim = null
+		a._clip = ""
+		return
+	a.set_character(name, tall)
+
 func _humanize(a: Actor3D, seed: int) -> void:
-	if a == null or a.model == null:
+	if a == null:
 		return
 	if _people_maker().on():   # (STREETS_OLD_PEOPLE=1: the kit's figures, as before, to compare)
 		_ppl.make(a, seed)
+		return
+	if a.model == null:
 		return
 	var sks := a.model.find_children("*", "Skeleton3D", true, false)
 	if not sks.is_empty():
@@ -21004,7 +21239,7 @@ func _spawn_crossers() -> void:
 	for i in range(CROSSERS):
 		var a := Actor3D.new()
 		world.add_child(a)
-		a.set_character(PEOPLE[(i + 3) % PEOPLE.size()], _people_rng.randf_range(ADULT_LO, ADULT_HI - 0.02))
+		_set_character(a, PEOPLE[(i + 3) % PEOPLE.size()], _people_rng.randf_range(ADULT_LO, ADULT_HI - 0.02))
 		_humanize(a, hash(a.get_instance_id()))
 		_people_lod(a)
 		a.visible = false
@@ -21952,6 +22187,8 @@ func _crash(speed: float) -> void:
 	_crash_cool = 0.4
 	if _last_hit == "person":   # the car stops at them, a soft knock: never a bang
 		Audio.play("impact_soft", 0.1, -10.0)
+		if speed > KNOCK_DOWN_V and not _walking:
+			_knock_down(_hit_who, _pos)
 		Probe.event("crash", {"kmh": int(speed * 3.6), "hit": _last_hit, "at": Vector2i(_pos)})
 		return
 	if _auto and (_last_hit.begins_with("building") or _last_hit.begins_with("wall") or _last_hit.begins_with("post")):
@@ -22532,6 +22769,7 @@ func _push_out(c: Vector2, r: float, posts: bool, cars := true, y := NAN) -> Vec
 const PERSON_R := 0.28
 var _people_at := PackedVector2Array()   ## where everyone in the street is now (_people_tick)
 var _people_who := PackedInt64Array()    ## ... and who (an actor's id; 0 you on foot)
+var _hit_who := -1                       ## the last one the car touched (_people_push)
 
 func _people_push(c: Vector2, r: float) -> Vector2:
 	var push := Vector2.ZERO
@@ -22544,6 +22782,7 @@ func _people_push(c: Vector2, r: float) -> Vector2:
 		if d.length_squared() < need * need:
 			push += d.normalized() * (need - d.length()) if d.length() > 0.001 else Vector2(need, 0)
 			_last_hit = "person"
+			_hit_who = _people_who[k] if k < _people_who.size() else -1
 	return push
 
 func _poly_push(poly: PackedVector2Array, c: Vector2, r: float) -> Vector2:

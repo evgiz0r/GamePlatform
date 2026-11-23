@@ -1817,8 +1817,9 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
 - Speed humps to bump over: OSM marks them (traffic_calming), but the baker does not keep
   them yet -- it needs that and a re-bake (Overpass, or the bake workflow).
 - People who react ("not needed yet, maybe later"): jumping back, or falling, when a car
-  comes at them; glancing at you. Done: glancing at you, and a start back when the car is
-  about to hit them. Still to do: falling.
+  comes at them; glancing at you. Done: glancing at you, a start back when the car is about
+  to hit them (walking or standing), falling when it does hit them (and getting up again),
+  waving and pointing, people going in and out of the shops' doors.
 - Better people themselves: "what about people themselves? how can we improve". Five
   low-poly characters are the limit now. Done: builds varied, and things carried (shopping
   bags, handbags, backpacks, a box). Hands while talking: done. Done: every person is now one of Quaternius'
