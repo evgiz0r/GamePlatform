@@ -5,7 +5,7 @@ extends SceneTree
 ## pavement: sh_0 on the way, sh_1 gone in, sh_2 come out, sh_3 back on the pavement. sh_door is
 ## a door close up.
 ## Good: some visits on their own (a few in 40 s on a street of shops), each ended back on the
-## pavement; the staged one goes to, in, back and on; the door a dark frame on the glass.
+## pavement; the staged one goes to, in, back, turn (on the spot) and on; the door a dark frame on the glass.
 ##   OUT=... game/streets/tests/run.sh people_shops 1   (the test town has too few walkers by its shops)
 var g: Node
 
@@ -136,7 +136,7 @@ func _run() -> void:
 	g.look_from(dc + Vector3(out.x, 0, out.y) * 2.4 + Vector3(0, 0.3, 0), dc)
 	g._sky_follow()
 	await _snap("sh_door")
-	var ok := phases == ["to", "in", "back", "done"]
+	var ok := phases == ["to", "in", "back", "turn", "done"]
 	print("staged: %s -- %s" % [" -> ".join(phases), "ok" if ok else "WRONG"])
 	print("PASS doors %d, visits begun %d ended %d, staged %s" % [g._shop_doors.size(), begun, ended, "ok" if ok else "wrong"])
 	quit(0)

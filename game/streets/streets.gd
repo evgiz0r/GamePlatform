@@ -20312,7 +20312,9 @@ func _shop_try(w: Dictionary, a: Actor3D, p: Vector2, ahead: Vector2, startle: f
 		if _gest_rng.randf() >= SHOP_CHANCE:
 			w["shop_cool"] = Time.get_ticks_msec() / 1000.0 + 8.0   # (passed it by)
 			return
-		w["shop"] = {"door": q, "out": d[1], "from": p, "phase": "to", "t": 0.0}
+		# (back to where it stood, not its bare line: the lane it kept across the pavement is put
+		# back on the next tick, and from the line that was a sideways jump -- people_pops)
+		w["shop"] = {"door": q, "out": d[1], "from": Vector2(a.position.x, a.position.z), "phase": "to", "t": 0.0}
 		return
 
 func _shop_visit(w: Dictionary, a: Actor3D, dt: float) -> void:
@@ -20331,17 +20333,33 @@ func _shop_visit(w: Dictionary, a: Actor3D, dt: float) -> void:
 					sh["phase"] = "in"
 					sh["t"] = _gest_rng.randf_range(SHOP_IN.x, SHOP_IN.y)
 					a.visible = false
-				else:   # back on the pavement: on along the line
-					w.erase("shop")
-					w["shop_cool"] = Time.get_ticks_msec() / 1000.0 + 60.0
-					w["anim_clip"] = ""
-					w.erase("anim_p")
+				else:   # back on the pavement: a turn on the spot to the way it was going, then on
+					# (walking off along the line still facing the shop was a slide sideways --
+					# people_pops)
+					sh["phase"] = "turn"
+					sh["t"] = 0.0
+					a.play("Idle", true)
 			else:
 				q += d / d.length() * step
 				w["yaw"] = d.angle()
 				a.face(Vector3(d.x, 0, d.y))
 				if a._clip != "Walk":
 					a.play("Walk", true, speed / _walk_clip_v())
+		"turn":
+			var line: PackedVector2Array = w["line"]
+			var cum: PackedFloat32Array = w["cum"]
+			var ws: float = w["s"]
+			var on := _along(line, cum, clampf(ws + float(w["dir"]) * 0.5, 0.0, cum[cum.size() - 1])) - _along(line, cum, ws)
+			var want := on.angle() if on != Vector2.ZERO else float(w.get("yaw", 0.0))
+			var yaw := rotate_toward(float(w.get("yaw", want)), want, dt * 4.0)
+			w["yaw"] = yaw
+			a.face(Vector3(cos(yaw), 0, sin(yaw)))
+			sh["t"] = float(sh["t"]) + dt
+			if absf(angle_difference(yaw, want)) < 0.05 or float(sh["t"]) > 1.0:
+				w.erase("shop")
+				w["shop_cool"] = Time.get_ticks_msec() / 1000.0 + 60.0
+				w["anim_clip"] = ""
+				w.erase("anim_p")
 		"in":
 			sh["t"] = float(sh["t"]) - dt
 			if float(sh["t"]) <= 0.0 and not _body_gap(door, _pos) < 1.5:   # (not out into the car parked at the door)

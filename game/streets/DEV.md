@@ -3194,7 +3194,12 @@ cartoon figures to compare.
   sight, comes out 6-20 s later and walks back to where it left its line, then on. Not a
   pair, a dog, a pushchair or a box. `tests/people_shops.gd` (Givatayim): a staged visit goes
   to, in, back, done; in 40 s by 11 doors only 4 walkers came within 5 m, so visits on their
-  own are rare there. `people_pops` lets a walker out of a door appear (meant).
+  own are rare there. `people_pops` lets a walker out of a door appear (meant). Two slides it caught
+  (`people_pops` 2 by the car, one 4.4 m/s): the walker went back to its bare line point,
+  not where it had stood (its lane across the pavement put back the next tick: a jump); then
+  it walked off along the line still facing the shop. Now it goes back to where it stood and
+  turns on the spot (`turn`) before walking on: 0 by the car. `people_pops` names what a
+  slider was doing (a shop visit, startled, down, dodging).
 - **The old figure is no longer loaded first** (`_set_character`): with the new people on,
   only the name and height are set, and `make()` builds the body. Before, each person
   instanced the kit's figure (skeleton, meshes, a player of 30 clips) only to throw it away.
