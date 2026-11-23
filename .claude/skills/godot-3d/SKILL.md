@@ -175,6 +175,13 @@ is a Z coordinate, not a height.
   same character side by side at the same distance. Their materials are named `Skin`,
   `Shirt`, `Pants`, `Belt`, `Hair` and `Face` (the eyes, pure white): duplicate them per
   person and give `Face` a darker shade of that person's skin.
+- **Posing bones by hand on top of a clip** (a wave, a dance, pointing -- moves the clips
+  lack): set the `AnimationPlayer` to `callback_mode_process = MANUAL`, call
+  `anim.advance(delta)` in your `_process`, *then* set bones with `set_bone_global_pose()`,
+  parents first (a child's `get_bone_global_pose()` is fresh after its parent is set).
+  Left on its own the player updates after your `_process` and wipes what you set. In
+  these rigs a limb runs along its bone's +Y, so "aim +Y at a direction" (shortest-arc
+  quaternion, slerped by a weight to blend with the clip) is all a pose needs.
 - **A Quaternius figure is six draw calls**, one per material (each surface is a draw, and
   another in the shadow pass): a crowd of them costs more than a city block. Join the
   surfaces into one (concatenate vertices, normals, bones, weights, offset the indices; they
