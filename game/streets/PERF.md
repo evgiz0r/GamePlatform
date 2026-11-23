@@ -443,3 +443,7 @@ smaller than one shader), 486 distinct sources sharing most lines -- a line dict
 brotli should be well under 1 MB, not measured; (3) the redirect is page-only (index.html),
 no engine change. Worth it only for first visits and after shader-changing publishes on
 Windows browsers, where today's two fixes already took most of the cost.
+**Decision (the user, 22 Nov 2026): stop at the trial.** Parallel compiling is parked; pick it
+up only if first visits on Windows browsers become the complaint again. The first thing then:
+compare a container capture's sources (`web_shaders.js` DUMP=) with a real browser's,
+byte for byte -- if Godot's GLSL differs by device, the whole approach fails.

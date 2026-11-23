@@ -53,8 +53,10 @@ func _run() -> void:
 	var crashes := 0
 	var next := 0.0
 	var probe = root.get_node("Probe")
+	probe.enabled = true   # (off, it records nothing: no crashes counted, no moves seen)
 	var e0: int = probe._events.size()
 	var e_seen := e0
+	var trace := 0
 	while t < secs:
 		await physics_frame
 		var dt := 1.0 / Engine.physics_ticks_per_second
@@ -68,6 +70,16 @@ func _run() -> void:
 			var k := String(ev["kind"])
 			if k.begins_with("racer_") or k.begins_with("pass_") or k == "crash":
 				print("    event %5.1f s  %s %s" % [t, k, JSON.stringify(ev["data"])])
+				if OS.get_environment("TRACE") != "":
+					trace = 20
+		if trace > 0 and int(g._ap_lead_i) >= 0:
+			trace -= 1
+			var tc = g._traffic.cars[int(g._ap_lead_i)]
+			var toff := INF
+			var tp: PackedVector2Array = g._ap_pts
+			for j in range(tp.size() - 1):
+				toff = minf(toff, Geometry2D.get_closest_point_to_segment(tc.pos, tp[j], tp[j + 1]).distance_to(tc.pos))
+			print("      tick: lead %.1f off %.2f pts %d passed %d" % [float(g._ap_lead), toff, tp.size(), int(g._ap_passed)])
 		if t >= next:
 			next += 1.0
 			var hit: Dictionary = g._nearest_seg(g._pos, 12.0, true)
@@ -76,10 +88,15 @@ func _run() -> void:
 			if int(g._ap_lead_i) >= 0:
 				var c = g._traffic.cars[int(g._ap_lead_i)]
 				lk = "%s v=%.1f" % [c.kind, float(c.v)]
+				var off := INF
+				var pts: PackedVector2Array = g._ap_pts
+				for j in range(pts.size() - 1):
+					off = minf(off, Geometry2D.get_closest_point_to_segment(c.pos, pts[j], pts[j + 1]).distance_to(c.pos))
+				lk += " off %.1f/%d" % [off, pts.size()]
 			print("  %5.1f s  %5.1f km/h  %-10s lead %5.1f m %-14s  %s  to go %.0f m" % [t, float(g._v) * 3.6,
 				g._ap_why, float(g._ap_lead), lk, rn, g._pos.distance_to(best)])
 			if lk != "" and (absf(float(g._v)) < 1.0 or OS.get_environment("VERBOSE") != ""):
-				print("           by: %s | queue: %s" % [g._race_by_why, g._race_q_why])
+				print("           by: %s | queue: %s | up: %s" % [g._race_by_why, g._race_q_why, g._mount_why])
 		if g._pos.distance_to(best) < 25.0 or not g._dest_on:
 			break
 	var there: bool = g._pos.distance_to(best) < 40.0 or not g._dest_on
@@ -89,5 +106,6 @@ func _run() -> void:
 			print("  crash: %s" % JSON.stringify(probe._events[i]["data"]))
 	print("RACER_DRIVE %s in %.0f s, stood %.0f s (%.0f%%), why: %s, crashes %d" % ["there" if there else "NOT there",
 		t, stood, 100.0 * stood / maxf(t, 1.0), JSON.stringify(why), crashes])
+	print("RACER_DRIVE across: %s" % g._across_why)
 	print("RACER_DRIVE: %s" % ("PASS" if there and stood < t * 0.25 and crashes == 0 else "FAIL"))
 	quit(0)

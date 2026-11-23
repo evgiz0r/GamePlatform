@@ -20,5 +20,5 @@ if [ -z "${DISPLAY:-}" ] && command -v xvfb-run >/dev/null 2>&1; then
   RUN=(xvfb-run -a -s "-screen 0 1280x720x24")
 fi
 SCREEN="${1:-menu}"
-"${RUN[@]}" "$BIN" --path . --rendering-driver opengl3 --audio-driver Dummy \
+GODOT="$BIN" "${RUN[@]}" tools/godot_bg.sh --path . --rendering-driver opengl3 --audio-driver Dummy \
   --script "$PWD/tools/menu_shot.gd" -- --screen="$SCREEN" 2>&1 | grep -E "^\[(shot|fits)\]"

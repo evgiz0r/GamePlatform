@@ -780,6 +780,20 @@ car `_held_at_red`: one that will stand at its red need not hold up a car with t
 
 ## The HUD's buttons (22 Nov 2026)
 
+- Which buttons show is `_hud_buttons()` (name -> rect), and which one a tap is for is
+  `_hud_hit(p)`: 3 px to spare for a mouse, `HIT_TOUCH` (10) for a finger, the nearest box
+  winning. `_hud_tap` dispatches by name; `_on_hud_button` is `_hud_hit != ""`. A new button
+  goes in `_hud_buttons`, `_draw_hud` and `_hud_tap`'s match; `tests/hud_layout.gd` reads
+  `_hud_buttons`, so it checks the new one with no change.
+- The player's choices are kept in `user://streets_prefs.json` (`_prefs_load` once a launch
+  in `start()`, `_prefs_save` on each change): the lists' time and styles, folded, assist.
+  Not SaveData's file: the game lowers `volume_sfx` in `SaveData.data` while it runs, and
+  `SaveData.save_file()` writes that whole dictionary -- anything that saved it mid-game
+  would keep the lowered volume. Self-play and `tests/run.sh` (`STREETS_PREFS=0`) neither
+  read nor write it; `tests/prefs.gd` uses its own file (`STREETS_PREFS_PATH`), headless.
+- `HEADLESS=1 tests/run.sh hud_layout 4`: the checks with no window (no shots) -- a window
+  takes the focus from whatever the user is doing on this PC.
+
 All drawn by hand in `_draw_hud` (no Control nodes): the rects are the `*_BTN` constants by
 `AUTO_BTN` (the layout is described there), each drawn with `_hud_btn(rect, text, colour,
 lit, size)`. One place takes a tap -- `_hud_tap(p)`, called from `_input`'s mouse branch -- and
@@ -805,12 +819,16 @@ what) drawn by `_draw_more` and tapped by `_more_tap`; a row is one line there.
   drive races at night with the chip saying so.
 - Time of day by choice: `_set_time_of_day` steps `_next_time` round (it only goes day,
   evening, night); `_tod_busy` keeps two taps from interleaving its awaits.
-- The camera button labels where the view is going (`_zoom > 0`), not `_zoomed()`: that is
-  still true for the second the view sinks back to the car, and the label lagged.
+- The map button (`MAP_BTN`, key M, `_toggle_map`) is the zoom up to `MAP_ZOOM` (0.86) and
+  back: everything from above (paused, `_zoom_pan`, pinch, the long press) is the zoom's.
+  Its label reads `_zoom > 0`, not `_zoomed()`: that stays true for the second the view
+  sinks back, and the label lagged. The camera button is chase <-> seat only; from above it
+  flips `_zoom_seat` (where the view lands). Hidden under the perf view's panel
+  (`_map_btn_shown`), which covers the minimap. The load line moved up to y 168 for it.
 - `tests/hud_layout.gd` (level 4, about a minute) taps every button through `_hud_tap`,
   checks what it did, and checks in every state that no shown button leaves the screen or
   overlaps another, the minimap, the speed, the credit, the stick's ring or the load line.
-  Good: 0 failed, 24 checks. Its shots (`hud_*.png`) are the quickest look at the HUD.
+  Good: 0 failed, 32 checks (the map: up, paused, dragged, the landing swapped, back down). Its shots (`hud_*.png`) are the quickest look at the HUD.
 
 ## Tests
 
@@ -4293,30 +4311,40 @@ map; 144 yards and 37 shelters put, 8 kindergartens left out (no clear ground wi
 Shots taken where each was put (`spots`), not at the map's point: the point is its building,
 the yard a few metres off, and a shot at the point saw a roof.
 
-### Handoff: racer "really passive" (22 Nov 2026, open)
+### Racer "really passive" (22 Nov 2026)
 
 The user, with a screenshot on Katznelson (Givatayim's start) bound for Rambam, 1.3 km: "there
 was only a bus and it didnt want to pass ... pretty passive, wanting to do all that long path,
-waiting in traffic. it probably could just cut through". Reproduced by
-`tests/racer_drive.gd` (LEVEL=1, racer on, to the street TO=Rambam, a line a second: speed,
-`_ap_why`, the car in front, and -- `VERBOSE=1` -- `_race_by_why` / `_race_q_why`, the reason
-each way round was refused; PASS: there within SECS 150, standing under a quarter of it, no
-crash). The traffic differs run to run. What it showed:
+waiting in traffic. it probably could just cut through the border". `tests/racer_drive.gd`
+(LEVEL=1, racer on, to the street TO=Rambam; a line a second: speed, `_ap_why`, the car in
+front and how far the plan passes from it; every racer_/pass_ move as it happens; `VERBOSE=1`
+adds `_race_by_why` / `_race_q_why` / `_mount_why`, why each way round was refused; PASS:
+there within SECS 150, standing under a quarter of it, no crash). Run it `--headless`. The
+traffic differs run to run. Found and fixed:
 
-1. **The bend round the bus lost.** One run: at 6.5 s, 70 m out, a pass was taken (the bus
-   became `_ap_passed`), yet the car braked to a stop 10 m behind it -- the bend gone or
-   falling short. The run after, the same pass went through at 60 km/h. To find: which move
-   took it (the test prints racer_/pass_ Probe events -- none came out; check the Probe
-   kinds), and whether a re-plan (`_ap_extend`, the route moving on) drops a bent plan.
-2. **Boxed in behind it.** Then stood behind it from stop to stop for 60 of 150 s:
-   `_race_by_why` every time "3.2: hatch v=0 at 2 m, 6.4: off road, -3.2: off road" -- the
-   left lane has cars standing beside us, one more lane over is not road, the right is the
-   kerb; the queue pass the same; `_ap_mount_by` (the pavement) refused every time, reason
-   not logged yet (give it a why like `_race_by_why`). A real racer would go up on the
-   pavement here, or out the moment a gap opens beside it.
-3. **The long way.** It set off away from Rambam: "to go" 1139 -> 1385 m before it turned
-   round at 93 s. Racer should turn on the spot (a U-turn across the road) when the way it
-   faces starts the route away from the goal and turning is far shorter.
+1. **Every bend round a car was undone the next tick.** `_ap_densify` put a point every 1.5 m
+   along the whole first stretch -- which can start 80 m behind the car -- and
+   `_ap_nearest_seg` looks at the first three stretches and any within 60 m: all behind, so
+   the car read 80 m off its route and the plan was made afresh, without the bend. Racer
+   "passed" a bus 70 m out (`racer_pass`, bent 28 points 3.5 m clear of it) and stood behind
+   it from stop to stop. Now the first stretch gets a point where the car is and is densified
+   only from there. This was under every pass (bus, van, racer, queue, pavement) taken far
+   along a long straight.
+2. **A car "passed" was never tried again while moving** (`_ap_wait` stays 0 moving): it
+   followed an SUV at 32 km/h for good. Now again after `RACE_RETRY` 3 s.
+3. **The long way: over the median.** `_racer_across` (from `_ap_plan`, racer only): on one
+   half of a divided road, the other half 6-16 m to the left running back; when the trip
+   from there is `ACROSS_GAIN` 80 m shorter, a half circle across at `ACROSS_V` 4.5 m/s,
+   kept only if nothing solid stands on it (`_smash`: through what gives). Katznelson: 13.7 m
+   across, 687 m saved.
+
+Standing in that drive: 40% -> 11% (fix 1) -> 2% (fix 2); with 3, 1151 -> 533 m to go in
+65 s. Open: (a) one run then stood 80 s on Bialik behind a hatchback that never moved (every
+way out off the road or a post; give `_ap_mount_by` and the queue pass another look there);
+(b) low bumps into posts at 4-9 km/h turning from Bialik into Kirinitsi, and one into a car at
+18 km/h just after a queue pass on Katznelson -- racer is not careful (as before: `racer.gd`
+counted 0-2 bumps a drive); (c) the test's `probe.enabled` was missing before 22 Nov evening,
+so crash counts from it before then were 0 by construction.
 
 ## The opening; models made with Blender (22 Nov 2026)
 
@@ -4602,6 +4630,46 @@ stood 19-26 s; on two-way streets with 3 cars in the lane, 4 of 6 stood.
   Moshe Dayan's curve with these changes (main: 0); with the player-corner check off, the
   same post at 10 km/h by racer; with the bus fix off, a car on Kaf-Gimel -- a different
   stray touch each time, none that repeats. Judge it by several drives, not one.
+
+## Traffic clear of parked cars; traffic on the wrong side checked (22 Nov 2026, afternoon)
+
+- **Givatayim's "traffic body into a post" was parked cars.** Each parked car's body is posts
+  (`_add_car_posts`, r 0.85), standing 0.25-0.9 m into the asphalt (Katznelson, Gordon,
+  HaHagana, HaMeri -- `tests/posts_at.gd NEAR=4` at the exam's spots; the incident's place is
+  the car's, not the post's, so NEAR=1.5 found nothing). Traffic measured what stands at the
+  kerb only for a delivery (`_kerb_edge`) and otherwise kept its lane line, its side (a bus's
+  1.25 m) into them. Now `_clear_kerb`: every 0.4 s a car in the kerb-side lane takes the
+  nearest thing on its right from its back to `KERB_AHEAD` (12 m) past its nose and moves left
+  until its side is `KERB_GAP` (0.25 m) clear, at most `KERB_MAX` (0.8 m) -- and no further than
+  its own side of the road (two-way: its middle 0.3 m right of the road's; one-way: its left
+  side 0.3 m on the asphalt). Not while pulling in (a bus to its stop, a van to deliver).
+  Exams (three at once, main beside it the same afternoon): into a post Givatayim 3 (main 5),
+  Ashdod 1 (4), test town 0 (1); Givatayim alone 7 checks in all, 1 into a post.
+- **New exam check "traffic left of the middle"**: a moving traffic car's middle 0.5 m+ left
+  of a two-way street's middle, out of junctions, heading along the street, 3 samples running
+  -- autodrive's "ticks left of the middle" widened to traffic (the dead end's family). Not
+  counted: round a delivery van, edged aside for racer, a bus on a street under 7 m, a scooter
+  filtering, and the last 25 m before a dead end (15 m left a car 16.7 m from HaDganim's end,
+  out of the turn at 29 km/h, its back still trailing inside the circle). Main read 5 / 2 / 4 (Givatayim / Ashdod /
+  test town) before that last exclusion. **Every one of them was a car turning round at a
+  dead end** (`_turn_round`'s half circle a lane wide: a 4.5 m car round a 4 m circle is
+  across the street while it turns -- Yavnieli, Ein Gedi, HaMeri, Kibbutz Galuyot, Ahlama,
+  Pnina, Yoel Moshe Solomon; `tests/lane_points.gd` prints the line across a street point by
+  point, both ways). A first guess, `_clear_lane` putting the line 0.7 m left where parked
+  cars "block" the lane, changed nothing (4 / 6 / 0) and was undone. Open, if it shows on
+  screen: a turn round that tight is a spin on the spot -- a three-point turn, or the circle
+  as wide as the street, would look right.
+- **Traffic stood on each other's corners** (from the corner rule above): a van and an SUV at
+  the test town's HaKalanit, each at an angle, each seeing the other's corner in its way; the
+  ring breaker (`ignore`) skips only cars 0.8 rad+ across, the corner rule starts at 0.5. A
+  queue of four behind, "held by nothing 10 s+, traffic" 14 in one exam. Now the corner rule
+  steps aside while a car is breaking a standoff and after 6 s of waiting.
+- Ashdod's "off the asphalt" reads 18 on main as on this branch: not from these changes.
+- `validate.sh FULL=1 REGRESS=1` after (merged with main d7f46d0, ~60 min): city checks 0
+  but Tel Aviv 1 building and the usual limits; exams test town 7, Givatayim 17, Ashdod 20;
+  queue PASS. REGRESS FAIL: `turn_width` 1 of 10 (main the same), `deck_corner` 1 (it swings
+  0-5 on main too: main 0, 1, 4, 5 and this branch 0, 1, 4 -- noisy, not a verdict on one
+  run), `load_bar` and `people_pops` (loading and walkers: other sessions' corners).
 
 ## Open problems
 

@@ -1,7 +1,7 @@
 extends SceneTree
 ## The HUD's buttons (AUTO_BTN and on, the "more" drawer, folding): taps each through
 ## _hud_tap as a player would, checks what it did, and shoots each state --
-## hud_drive / hud_auto / hud_perf / hud_more / hud_night / hud_keys / hud_folded / hud_walk.png.
+## hud_drive / hud_auto / hud_perf / hud_more / hud_night / hud_keys / hud_map / hud_folded / hud_walk.png.
 ## Checks, every state: the buttons on screen inside the screen and none overlapping another,
 ## the minimap, the stick's ring or the credit. And the autodrive styles: the player's
 ## autodrive is the racer by default, a script's _set_auto (the bots, routes, scene tests)
@@ -15,6 +15,8 @@ func _initialize() -> void:
 
 func _snap(name: String) -> void:
 	await process_frame
+	if DisplayServer.get_name() == "headless":   # (HEADLESS=1: the checks without the shots)
+		return
 	await RenderingServer.frame_post_draw
 	root.get_viewport().get_texture().get_image().save_png(OS.get_environment("OUT") + "/" + name + ".png")
 
@@ -27,27 +29,12 @@ func _tap(r: Rect2) -> void:
 	g._hud_tap(r.get_center())
 	await process_frame
 
-## every button showing now, by name
+## every button showing now, by name (the game's own list: what it draws and hit-tests)
 func _shown() -> Dictionary:
-	var out := {}
-	if g._hud_folded:
-		out["show"] = g.SHOW_BTN
-	else:
-		if not g._walking:
-			out["auto"] = g.AUTO_BTN
-			if g._auto:
-				out["style"] = g.STYLE_BTN
-		out["goto"] = g.GOTO_BTN
-		out["walk"] = g.WALK_BTN
-		out["more"] = g.MORE_BTN
-		out["fold"] = g.FOLD_BTN
-		out["view"] = g.VIEW_BTN
-		out["perf"] = g.PERF_BTN
-		if not g._walking and not g._auto:
-			out["look"] = g.LOOK_BTN
-	if g._paused and not g._zoomed():
-		out["resume"] = g.RESUME_BTN
-	return out
+	return g._hud_buttons()
+
+func _rect_circle(r: Rect2, c: Vector2, rad: float) -> bool:
+	return c.distance_to(c.clamp(r.position, r.end)) < rad
 
 func _check_layout(state: String) -> void:
 	var btn := _shown()
@@ -73,7 +60,34 @@ func _check_layout(state: String) -> void:
 		for o: String in others:
 			if a.intersects(others[o]):
 				bad.append("%s on the %s" % [names[i], o])
+		# a finger's reach (HIT_TOUCH round it) kept off the stick's ring, which a touch there is for
+		if g._touch_seen and _rect_circle(a.grow(g.HIT_TOUCH), g.STICK_C, g.STICK_R + 5.0):
+			bad.append("%s's reach on the stick" % names[i])
 	_ok("%s: %d buttons, none overlapping %s" % [state, names.size(), bad], bad.is_empty())
+
+## a finger: each button's middle is that button's; 8 px out from each side it still is,
+## unless another button's box is nearer there (then that one's); and a mouse needs the box
+func _touch_hits() -> void:
+	var bad: Array = []
+	var btn: Dictionary = g._hud_buttons()
+	for k: String in btn:
+		var r: Rect2 = btn[k]
+		if g._hud_hit(r.get_center()) != k:
+			bad.append("%s's middle" % k)
+		for off: Vector2 in [Vector2(0, -r.size.y * 0.5 - 8), Vector2(0, r.size.y * 0.5 + 8), Vector2(-r.size.x * 0.5 - 8, 0), Vector2(r.size.x * 0.5 + 8, 0)]:
+			var q := r.get_center() + off
+			var near := k
+			for o: String in btn:
+				var ro: Rect2 = btn[o]
+				if o != k and ro.grow(8.0).has_point(q):
+					near = ""   # (another as near or nearer: either may win)
+			if near != "" and g._hud_hit(q) != k:
+				bad.append("%s 8 px out %s: %s" % [k, off, g._hud_hit(q)])
+	_ok("a finger 8 px off a button still gets it %s" % [bad], bad.is_empty())
+	g._touch_seen = false
+	var r0: Rect2 = btn["goto"]
+	_ok("a mouse 8 px off does not", g._hud_hit(r0.get_center() + Vector2(0, -r0.size.y * 0.5 - 8)) == "")
+	g._touch_seen = true
 
 func _run() -> void:
 	await create_timer(0.3).timeout
@@ -88,6 +102,7 @@ func _run() -> void:
 	await _snap("hud_drive")
 	_check_layout("driving")
 	_ok("the style starts as racer", g._ap_style == "racer")
+	_touch_hits()
 	# a script's autodrive keeps the rules
 	g._set_auto(true)
 	_ok("a script's _set_auto keeps the rules (racing %s, wave %s)" % [g._racing(), g._wave.on], not g._racing() and not g._wave.on)
@@ -158,14 +173,31 @@ func _run() -> void:
 	_check_layout("paused")
 	await _tap(g.RESUME_BTN)
 	_ok("resume on screen", not g._paused)
-	# the camera round
+	# the camera: chase, seat, chase
 	var views: Array = [g._view_name()]
-	for i in range(3):
+	for i in range(2):
 		await _tap(g.VIEW_BTN)
 		await create_timer(0.6).timeout
 		views.append(g._view_name())
-	_ok("the camera goes round %s" % [views], views == ["chase", "seat", "above", "chase"])
+	_ok("the camera goes round %s" % [views], views == ["chase", "seat", "chase"])
 	await create_timer(1.0).timeout
+	# the map button: up over the city, paused; dragged about; back down, the city going on
+	await _tap(g.MAP_BTN)
+	await create_timer(2.5).timeout
+	_ok("map: up (%.2f), paused" % g._zoom_v, g._zoom > 0.8 and g._zoom_v > 0.6 and g._paused)
+	g._zoom_pan(Vector2(-120, 40))
+	_ok("map: dragged about (%.0f m)" % g._zoom_off.length(), g._zoom_off.length() > 50.0)
+	await _snap("hud_map")
+	_check_layout("map")
+	await _tap(g.VIEW_BTN)
+	_ok("map: the camera button picks the landing (%s)" % g._view_name(), g._view_name() == "seat")
+	await _tap(g.VIEW_BTN)
+	await _tap(g.MAP_BTN)
+	t = 0.0
+	while g._zoomed() and t < 10.0:
+		await create_timer(0.25).timeout
+		t += 0.25
+	_ok("map: back down in the chase view, going on (%.1f s)" % t, not g._zoomed() and not g._paused and not g._cockpit)
 	# folded
 	await _tap(g.FOLD_BTN)
 	_ok("folded", g._hud_folded)

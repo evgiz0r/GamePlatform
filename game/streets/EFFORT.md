@@ -4,6 +4,16 @@ How long each change took, in minutes, from the Claude Code sessions that made i
 
 | date (UTC) | commit | change | agent | runs | you | active | away | lines | files | steps | tools | engine runs | tokens out |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2026-11-22 16:56 | cebc5de | streets traffic: no standoff on each other's corners (test town: held by nothing 14 -> 1); exam's "traffic ... | 5.8 | 13 | 0.0 | **19** | 69 | +90 -4 | 5 | 33 | 31 | 6 | 21.4k |
+| 2026-11-22 16:44 | f3d36c2 | streets: your choices kept between launches (lists' time and style, folded, assist); a finger gets 10 px ro... | 2.8 | 2.7 | 0.0 | **5.5** | 31 | +236 -74 | 7 | 21 | 24 | 6 | 17.8k |
+| 2026-11-22 16:41 | 3f6f472 | tools: windowed Godot runs (screenshots, recordings, scene tests) start hidden on Windows -- tools/godot_bg.sh | 26 | 7.4 | 0.3 | **34** | 69 | +60 -4 | 7 | 38 | 39 | 16 | 23.4k |
+| 2026-11-22 16:34 | 4af4799 | streets racer: no longer passive -- bends round a car kept (densified from the car on: the plan was remade ... | 7.4 | 30 | 0.0 | **37** | 55 | +178 -26 | 3 | 50 | 53 | 5 | 39.7k |
+| 2026-11-22 16:06 | c9aafb8 | streets: Monaco (level 41) baked but not ready; a level's "trees" key; ground held under held water | 4.4 | 4.5 | 0.0 | **8.9** | 33 | +73 -1 | 5 | 27 | 27 | 4 | 24.3k |
+| 2026-11-22 16:04 | e56c780 | streets: a map button over the minimap -- the city from above, paused, to look round; the camera button is ... | 18 | 1.9 | 0.0 | **20** | 89 | +76 -24 | 4 | 25 | 28 | 4 | 14.3k |
+| 2026-11-22 15:58 | 40b9f0a | streets notes: parallel compiling parked at the trial (the user) | 0.8 | 0.2 | 0.0 | **1.0** | 57 | +4 -0 | 1 | 5 | 4 | 1 | 2.6k |
+| 2026-11-22 15:28 | 0c2754e | streets traffic: clear of parked cars at the kerb (Givatayim's "into a post" was parked cars: 3 vs main 5, ... | 6.7 | 47 | 0.6 | **54** | 667 | +102 -4 | 4 | 53 | 49 | 8 | 27.6k |
+| 2026-11-22 15:25 | 4384566 | streets GAME.md: Rawabi on the later list (OSM too thin for now: 94 buildings at its centre, no storeys) | 1.9 | 19 | 0.0 | **20** | 10 | +11 -0 | 1 | 12 | 12 | 1 | 9.7k |
+| 2026-11-22 15:15 | 7fe491d | streets notes: the showroom and the trick road after the merge (levels 39, 40, route 14), the two-column te... | 1.8 | 2.6 | 0.0 | **4.4** | 0.0 | +9 -7 | 2 | 27 | 27 | 3 | 10.2k |
 | 2026-11-22 15:11 | 5293efd | streets: two made-up places that are not towns -- a showroom walk among the game's things and models, and a... | 25 | 8.9 | 0.0 | **34** | 0.0 | +916 -12 | 10 | 151 | 174 | 18 | 131.0k |
 | 2026-11-22 15:02 | b3ce21a | streets racer: tests/racer_drive.gd (a real drive in live traffic, to a street), why each way round a car w... | 1.4 | 2.0 | 0.0 | **3.4** | 0.0 | +128 -0 | 3 | 9 | 9 | 2 | 8.4k |
 | 2026-11-22 15:00 | c6e94a2 | streets notes: parallel shader compiling tried in a browser -- compile at load 7.2 -> 0.5 s, what a real bu... | 4.1 | 3.6 | 0.0 | **7.7** | 0.0 | +80 -0 | 3 | 23 | 40 | 1 | 22.5k |

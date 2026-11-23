@@ -208,6 +208,11 @@ script in the game's `tests/` folder.
 
 Short, specific, and all of them cost a debugging session:
 
+- **A run with a window must not pop up on the person's screen.** Anything that can run
+  `--headless` does; a run that has to render (screenshots, a recording, a scene test's
+  pictures) goes through `tools/godot_bg.sh <godot args>`, which on Windows keeps the window
+  hidden and still renders (`GODOT_SHOW=1` to watch). The kit's screenshot and video tools
+  already use it. A test window that kept stealing the keyboard mid-game is why.
 - **The default sound is loud.** `SaveData.data["volume_sfx"]` ships at `0.8`, which is a
   lot for a game that makes a noise every few seconds. Every game so far drops it to
   `~0.28` in `start()` and restores it in `_exit_tree()`, in memory only so the saved
