@@ -302,6 +302,26 @@ conversion and mipmaps). Desktop, Ashdod, forced slow: the far shadows' worst fr
 37-70 ms -> 48 and 56 ms. (The "rest ~1 s" at ~8 s on a desktop run is the first frame after
 loading, before the far shadows start: part of the load, not a stutter while driving.)
 
+**30 ticks a second on slow frames (23 Nov 2026).** In slow-frames mode traffic and people
+already ticked 15 times a second, but autodrive, the car, the lights and the rules still ran
+all 60 ticks -- ~1 ms of every tick natively (autodrive 0.4-0.6, car 0.2), 4-5 ticks of a
+phone's frame. Now `_slow_rate()` sets `Engine.physics_ticks_per_second` to 30 while slow
+frames are on (`STREETS_SLOW_HZ`, 60 for none), the world split counted in 60-a-second ticks
+(`per`) so traffic and people keep 15 a second and traffic's "decide every n ticks" its
+pace; 60 put back off slow frames, in sped-up tests and in `_exit_tree` (the engine's, every
+game's). The one per-tick constant in the car (`_vy` eased 0.5 a tick) made time-based.
+Natively, Ashdod, slow forced, `sim_cost` 40 s: 299-309 -> 232 ms a game second (-24%);
+autodrive 0.55 -> 0.25 ms a frame, car 0.17 -> 0.08, traffic and people unchanged. The exam
+(test town, slow forced, 3 x 60 s, seed 7): checks 9 at 60 Hz, 8 at 30, the same Dimyon
+junction's overlaps in both; one "autodrive: hit deep" at 30 was the test town's "deep water"
+across a road at (-524, 430), which stops the car at 60 Hz too (`tests/deep_water_road.gd`,
+open). Playtest smart 30 s, slow forced: PASS. Expected on the phone: ~half of the 4-6 ms the
+car and autodrive cost a frame, and the engine's own per-tick work; to be read from the phone's
+perf view ("in N ticks" should read ~2 instead of ~4).
+Not done (measured, small): far walkers ticked less often -- the people's tick is ~40 us a
+walker spread over ten steps (re-placing 0.2, apart and push 0.17, walking beside 0.1, pose
+0.1 ms a frame...), nothing to cut in one place.
+
 ## A work laptop (22 Nov 2026): Intel graphics (0x7D41), ANGLE on Direct3D 11, a browser, build 2ddd8b3
 
 One perf-view screenshot, mailed: Givatayim at Katznelson, autodrive on, 317 s into the drive.

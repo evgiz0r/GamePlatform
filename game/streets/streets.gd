@@ -2033,6 +2033,7 @@ func _load_save() -> void:
 
 func _exit_tree() -> void:
 	SaveData.data["volume_sfx"] = _sfx_was
+	Engine.physics_ticks_per_second = _base_hz   # (slow frames' 30 a second: the engine's, every game's)
 	if _walk_speed != 1.0:
 		Engine.time_scale = 1.0   # (the menu after a sped-up walk)
 	if _shadow_web:   # put the project's own shadow settings back for the next game
@@ -18093,16 +18094,18 @@ func _physics_process(dt: float) -> void:
 	_smash_cool = maxf(0.0, _smash_cool - dt)
 	_touch_t = maxf(0.0, _touch_t - dt)
 	_p("lights")
-	var split := dt <= WORLD_SPLIT_DT and _world_split_on
+	# (in the 60-a-second game's ticks: at 30 a second, slow frames below, each tick is two)
+	var per := maxi(1, 60 / Engine.physics_ticks_per_second)
+	var split := dt / per <= WORLD_SPLIT_DT and _world_split_on
 	_world_n += 1
-	var every := (4 if _slow_frames else 2) if split else 1   # (a slow device: each a quarter of the ticks, _slow_watch)
+	var every := maxi(1, (4 if _slow_frames else 2) / per) if split else 1   # (a slow device: each a quarter of the ticks, _slow_watch)
 	var traffic_now := _world_n % every == 0
 	var people_now := _world_n % every == every / 2
 	var wdt := dt * every
 	_traffic_age = 0.0 if traffic_now else _traffic_age + dt
 	_traffic_dt = wdt if traffic_now else _traffic_dt
 	if _traffic != null:
-		_traffic.ticks_per = every
+		_traffic.ticks_per = every * per
 	if _walking:
 		if traffic_now:
 			_traffic.tick(wdt)
@@ -18193,17 +18196,35 @@ var _slow_frames := OS.get_environment("STREETS_SLOW") == "1"
 var _slow_ema := 1.0 / 60.0
 
 func _slow_watch(dt: float) -> void:
+	_slow_rate()
 	var forced := OS.get_environment("STREETS_SLOW")
 	if forced != "":
 		return
 	_slow_ema = lerpf(_slow_ema, minf(dt, 0.25), 0.03)   # (~half a second to follow; one freeze barely moves it)
 	if not _slow_frames and _slow_ema > SLOW_ON:
 		_slow_frames = true
-		print("[streets] slow frames (%.0f ms): traffic and people every 4th tick" % (_slow_ema * 1000.0))
+		print("[streets] slow frames (%.0f ms): %d ticks a second, traffic and people 15 a second" % [_slow_ema * 1000.0, _slow_hz])
 		Probe.event("slow_frames", {"on": true, "ms": int(_slow_ema * 1000.0)})
 	elif _slow_frames and _slow_ema < SLOW_OFF:
 		_slow_frames = false
 		Probe.event("slow_frames", {"on": false, "ms": int(_slow_ema * 1000.0)})
+
+## Slow frames also tick the whole game 30 times a second instead of 60 (STREETS_SLOW_HZ=n to
+## try another, 60 for none): what every tick pays for -- autodrive, the car, the lights, the
+## rules -- was ~1 ms natively, 4-5 times a phone's frame; traffic and people keep their 15
+## a second (every 2nd tick of 30). The car and camera are drawn between ticks already, so
+## the car moves as smoothly; its physics take twice the step (tests/sim_cost.gd and the exam
+## forced slow, PERF.md). Put back to the project's 60 on leaving (_exit_tree: it is the
+## engine's, every game's).
+const SLOW_HZ_DEFAULT := 30
+var _slow_hz := int(OS.get_environment("STREETS_SLOW_HZ")) if OS.get_environment("STREETS_SLOW_HZ") != "" else SLOW_HZ_DEFAULT
+var _base_hz := int(ProjectSettings.get_setting("physics/common/physics_ticks_per_second", 60))
+
+func _slow_rate() -> void:
+	var want := _slow_hz if _slow_frames and _sim_speed <= 0.0 else _base_hz
+	if Engine.physics_ticks_per_second != want:
+		Engine.physics_ticks_per_second = want
+
 var _world_n := 0
 var _traffic_age := 0.0              ## s since the traffic last ticked (0 or one tick)
 var _traffic_dt := 1.0 / 60.0        ## the time its last tick covered
@@ -18599,6 +18620,8 @@ var _prof_n := 0                     ## frames in it
 var _prof_wall := 0.0                ## their total time, ms
 var _prof_spell := 0
 var _prof_avg := ""                  ## the last spell's average frame, part by part
+## how many parts the average names (5; STREETS_PROF_PARTS=n for tests that want them all)
+var _PROF_WORDS := int(OS.get_environment("STREETS_PROF_PARTS")) if OS.get_environment("STREETS_PROF_PARTS") != "" else 5
 var _prof_ticks := 0                 ## physics ticks in the current spell (a slow frame runs several)
 var _perf_view := false
 ## "--perf-log" among the command line's user args (a test in a browser): each 2 s spell's frame
@@ -18651,8 +18674,8 @@ func _prof_frame() -> void:
 			parts.append([pm, k])
 		parts.sort_custom(func(a: Array, b: Array) -> bool: return a[0] > b[0])
 		var words: Array = []
-		for i in range(mini(5, parts.size())):
-			words.append("%s %.1f" % [parts[i][1], float(parts[i][0])])
+		for i in range(mini(_PROF_WORDS, parts.size())):
+			words.append(("%s %.2f" if _PROF_WORDS > 5 else "%s %.1f") % [parts[i][1], float(parts[i][0])])
 		_prof_avg = "average %.1f ms: drawing and engine %.1f · script %.1f in %.1f ticks (%s)" % [_prof_wall / _prof_n,
 			_prof_wall / _prof_n - script_ms, script_ms, float(_prof_ticks) / _prof_n, ", ".join(words)]
 		_prof_ticks = 0
@@ -19092,7 +19115,7 @@ func _fly(dt: float) -> void:
 		Probe.event("airborne", {"kmh": int(_v * 3.6)})
 		return
 	_y = ground
-	_vy = lerpf(_vy, gv, 0.5)
+	_vy = lerpf(_vy, gv, 1.0 - pow(0.5, dt * 60.0))   # (half way a 60th of a second, whatever the tick: slow frames tick 30 a second)
 
 ## knocked off the ground (a hard hit): up it goes, a little
 func _hop(up: float) -> void:
