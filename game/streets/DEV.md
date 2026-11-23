@@ -4355,7 +4355,7 @@ plan each 0.25 s before and how far the car was off the plan, its road and kerb 
 plan 3 s before); for a car hit, its heading against ours and its own path; stood 8 s, "the
 jam" (who holds the car in front, `c.blocker`, to its front) or the people in the way; and
 `MISSED`, any car within 1.5 m of the plan 8-60 m ahead going our way that is not the car in
-front. `tests/posts_at.gd AT=x,z R=m POSTS_FROM=1` lists what stands at a spot and who put it up.
+front. `tests/spot_at.gd AT=x,z R=m POSTS_FROM=1` lists the roads at a spot and every post within R m, who put it up and how far off the asphalt (`posts_at.gd` does the posts for several spots).
 
 What they showed, and what changed:
 1. **Behind a motorbike, 40 s:** every way out a car's width (2.9 m from its middle, 3.2 m out
