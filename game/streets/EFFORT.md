@@ -4,6 +4,7 @@ How long each change took, in minutes, from the Claude Code sessions that made i
 
 | date (UTC) | commit | change | agent | runs | you | active | away | lines | files | steps | tools | engine runs | tokens out |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2026-11-23 01:39 | ab6c3d1 | streets perf: slow frames tick 30 times a second (autodrive, the car, the rules halved; traffic and people ... | 9.7 | 42 | 0.0 | **51** | 530 | +105 -8 | 5 | 63 | 62 | 21 | 32.5k |
 | 2026-11-23 01:35 | 0a1b685 | streets notes: Monaco ready but for its lean (DEV.md's Cities row and open problems, NEW_CITY's walk and dr... | 0.7 | 2.7 | 0.0 | **3.5** | 0.0 | +21 -6 | 2 | 7 | 7 | 1 | 3.4k |
 | 2026-11-23 01:32 | 436b06e | streets: Monaco ready -- the harbour's water shown, city_check 43 -> 4 m2 of islands and the lean, a walk o... | 17 | 41 | 0.0 | **58** | 507 | +159 -41 | 11 | 139 | 140 | 22 | 72.8k |
 | 2026-11-22 16:56 | cebc5de | streets traffic: no standoff on each other's corners (test town: held by nothing 14 -> 1); exam's "traffic ... | 5.8 | 13 | 0.0 | **19** | 69 | +90 -4 | 5 | 33 | 31 | 6 | 21.4k |
