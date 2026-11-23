@@ -96,7 +96,10 @@ func _run() -> void:
 				what = String(g._last_hit)
 			if what.begins_with("post "):   # where it stands, to know which way to walk round it
 				var q: Vector2 = g._posts[int(what.get_slice(" ", 1))]
-				what += " at %s" % Vector2(snappedf(q.x, 0.1), snappedf(q.y, 0.1))
+				var pi := int(what.get_slice(" ", 1))
+				what += " at %s, %.2f m round" % [Vector2(snappedf(q.x, 0.1), snappedf(q.y, 0.1)), g._post_r[pi]]
+				if pi < (g._post_from as Array).size():   # (POSTS_FROM=1: who put it up)
+					what += ", from %s" % g._post_from[pi]
 			if what != was:
 				if was != "":
 					print("INSIDE %s from %.2f to %.2f s, walking at %s" % [was, from, t, where])
@@ -153,6 +156,8 @@ func _run() -> void:
 				for dx in range(-2, 3):
 					for bw: Array in boxes.get(c + Vector2i(dx, dz), []):
 						var bx: AABB = (bw[0] as AABB).grow(-0.15)
+						if bx.size.x < 0.0 or bx.size.y < 0.0 or bx.size.z < 0.0:
+							continue   # (thinner than 0.3 m: nothing an eye can be inside; and has_point errors)
 						if bx.has_point(e):
 							what = "%s (box %.1f to %.1f m up, %.1f wide)" % [bw[1], bx.position.y - e.y + eye_h, bx.end.y - e.y + eye_h, bx.size.x]
 			if what != in_was:

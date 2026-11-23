@@ -81,6 +81,16 @@ WALKS = {
         "ways": {"kinds": ["pedestrian", "footway"], "via": [[-351.0, 202.0], [-142.0, 247.0], [-59.0, 261.0], [12.0, 277.0]]},
         "scene": {"groups": [12, 2.0, 4.0], "passers": 20},
     },
+    # Monaco-Ville, on the Rock: from the palace square along the old town's lane, Rue Basse,
+    # ending short of the street at its far end (on a street's mouth the scan reads ON ROAD).
+    # (Rue Comte Felix Gastaldi beside it was the first try: a cafe's table stood mid-lane,
+    # since kept off footpaths, streets.gd _on_footpath; on to the cathedral the footpaths
+    # wandered 0.9-1 km round the Rock)
+    "monaco_rock": {
+        "city": "monaco", "name": "Monaco: through the old town on the Rock",
+        "ways": {"kinds": ["pedestrian", "footway", "steps"], "via": [[-274.0, 756.0], [-247.0, 750.0], [-160.0, 760.0], [-95.0, 766.0]]},
+        "scene": {"groups": [10, 2.0, 4.0], "passers": 16},
+    },
     # down Nahalat Binyamin's pedestrian street at night: its bars and cafes lit, tables out,
     # people standing about and passing (the scene)
     "tel_aviv_night_out": {
@@ -424,7 +434,7 @@ DRESS = {
     "dutch": [("bollards", 40), ("bin", 25), ("scooter", 20), ("cabinet", 15)],
 }
 GAP = {"med": (9.0, 16.0), "north": (22.0, 38.0), "dutch": (10.0, 18.0)}   # (a suburb's pavement is emptier)
-LOOK = {"tel_aviv": "med", "ashdod": "med", "dimyon": "med", "givatayim": "med", "bedford": "north", "delft": "dutch", "leiden": "dutch", "annecy": "north"}
+LOOK = {"tel_aviv": "med", "ashdod": "med", "dimyon": "med", "givatayim": "med", "bedford": "north", "delft": "dutch", "leiden": "dutch", "annecy": "north", "monaco": "north"}
 
 
 def dress(wid, spec, walk, cum, total, hits, kerb):

@@ -146,3 +146,9 @@ All ten in 10 minutes on the user's PC, three at once (the cloud's ~10-12 two at
 |---|---|---|---|---|---|---|---|---|---|---|
 | 12 | leiden | Pieter de la Courtstraat 26 -> Morssingel 231 | yes | 5.7 min | 2.2 km | sign street at 17 km/h on Rapenburg; post 977 at 10 km/h on Rapenburg | 8 s (junction, Rapenburg) | 0 | 0 | 0 s |
 | 13 | annecy | Rue Louis Boch 7 -> Rue Pasteur 18 | yes | 5.7 min | 1.9 km | 0 | 21 s (car, Avenue des Îles) | 0 | 0 | 0 s |
+
+## 2026-11-23 (commit c9aafb8)
+
+| # | city | from -> to | arrived | time | driven | hits | longest wait | reds | rescues | off road |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 15 | monaco | Quai Antoine 1er 4B -> Avenue des Papalins 9 | yes | 2.4 min | 1.4 km | 0 | - | 0 | 0 | 0 s |

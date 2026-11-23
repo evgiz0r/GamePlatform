@@ -1910,7 +1910,7 @@ def bake(raw, name, args):
             water = [[(a["p"][i] / SCALE, a["p"][i + 1] / SCALE) for i in range(0, len(a["p"]), 2)]
                      for a in out["areas"] if a["k"] == "water"]
             water_levels.clear()
-            out["height"] = terrain_grid(P, box, (x0, z0, x1, z1), max(12.0, round(span / 300.0)),
+            out["height"] = terrain_grid(P, box, (x0, z0, x1, z1), args.ground_step or max(12.0, round(span / 300.0)),
                                          bare=args.bare_ground, sea=sea, water=water)
             # (AHN's ground: each canal held a metre under its quays, as the sea is at 0)
             if water_levels:
@@ -2497,6 +2497,8 @@ def main():
     ap.add_argument("--offline", action="store_true", help="bake from tools/.cache only")
     ap.add_argument("--from-file", help="a raw Overpass JSON answer you saved yourself")
     ap.add_argument("--no-terrain", action="store_true", help="skip the ground heights")
+    ap.add_argument("--ground-step", type=float, default=0.0,
+                    help="the ground grid's spacing in metres (default: 12, or a 300th of a big box)")
     ap.add_argument("--no-surveys", action="store_true",
                     help="keep OSM's building heights even where a town publishes its own")
     ap.add_argument("--add-surveys", metavar="CITY_FILE",
@@ -2529,6 +2531,11 @@ def main():
     raw = fetch(args, slug)
     city = bake(raw, name, args)
     level_roads.level(city)   # the roads level side to side on the height grid (tools/level_roads.py)
+    # (again after the levelling: it pulls the grid near a quay road up to the road, and in
+    # Monaco that put Port Hercule's basin back under 1-2 m of ground)
+    wet = under_held_water(city)
+    if wet:
+        log(f"ground: {wet} grid points the road levelling raised over held water lowered again")
     credits_check(city)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as f:

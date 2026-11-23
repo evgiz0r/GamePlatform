@@ -155,7 +155,9 @@ func _run() -> void:
 			hit_log = 0.0
 			_save_log(n, "hit%03d" % int(t))
 		last_v = g._v
-		var on: Dictionary = g._nearest_seg(g._pos, 30.0, true, false)
+		# (at the car's own height: at the ground's, a car in a tunnel had no road under it --
+		# Monaco's drive 15 read 18 s "off road" through the tunnels, 23 Nov)
+		var on: Dictionary = g._nearest_seg(g._pos, 30.0, true, false, g._y)
 		if on.is_empty() or float(on["edge"]) > 1.0:
 			off += dt
 		if t >= next_log:

@@ -104,6 +104,8 @@ const LEVELS := [
 	# it too). Starts on the start-finish straight, Boulevard Albert 1er. "trees": "med" -- palms
 	# and pines without the "med" look's Israeli details (plates, kerb paint, solar heaters)
 	{"name": "Monaco", "city": "monaco", "start": ["Boulevard Albert 1er", "Rue Suffren Reymond"], "look": "north", "build": "fr", "trees": "med", "decks": "infer"},
+	# its walk (data_tools/make_walks.py): the old town's lane on the Rock
+	{"name": "Monaco: through the old town on the Rock", "city": "monaco", "look": "north", "build": "fr", "trees": "med", "decks": "infer", "walk": "monaco_rock"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -2213,11 +2215,16 @@ func _clip_buildings(bdata: Array) -> void:
 			var c := float(r["w"]) * 0.5 + (BLD_CLEAR if _kerbed(r) or r.has("ys") else 0.5)   # (no pavement beside a motorway)
 			if not box.grow(c).intersects(Rect2(a, Vector2.ZERO).expand(b)):
 				continue
+			var hit := false
 			for k in range(n):
 				var cp := Geometry2D.get_closest_points_between_segments(a, b, ring[k], ring[(k + 1) % n])
 				if cp[0].distance_to(cp[1]) < c - 0.05:
-					cuts.append([a, b, c])
+					hit = true
 					break
+			# (or wholly inside: a road through a big block's middle passes near none of its
+			# edges -- Monaco's Boulevard du Larvotto under Bay House, 23 Nov)
+			if hit or Geometry2D.is_point_in_polygon((a + b) * 0.5, ring):
+				cuts.append([a, b, c])
 		if cuts.is_empty():
 			continue
 		var area0 := _area_signed(ring)
@@ -2246,11 +2253,17 @@ func _clip_buildings(bdata: Array) -> void:
 			cur = best
 			if cur.size() < 3:
 				break
-		if cur.size() < 3 or _area(cur) < absf(area0) * 0.5:
+		# a road still under what is left (the strip of one wholly inside cuts a hole, and the
+		# largest piece kept is the outline round it): it runs under the building
+		var under := false
+		if cur.size() >= 3:
+			for cut: Array in cuts:
+				under = under or Geometry2D.is_point_in_polygon(((cut[0] as Vector2) + (cut[1] as Vector2)) * 0.5, cur)
+		if cur.size() < 3 or _area(cur) < absf(area0) * 0.5 or under:
 			# A building a road runs under spans it, past both its edges (a passage). One that
 			# only sits in it, small, is a footprint OSM put on the road -- a little house in the
 			# middle of a Bedford street, another across one (city_check): left out
-			var spans := _spans_a_cut(ring, cuts)
+			var spans := _spans_a_cut(ring, cuts) or under
 			if absf(area0) < 400.0 and not spans:
 				drop.append(bi)
 				continue
@@ -6945,6 +6958,7 @@ func _island_cut(ring: PackedVector2Array) -> Array:
 	var box := _bld_box_of(ring).grow(12.0)
 	var cutters: Array = []
 	var nodes := {}
+	var runs := {}   # road -> its segments here, cut out as one strip per run of them
 	for code: int in _near(_seg_hash, box.get_center(), maxf(box.size.x, box.size.y) * 0.5, SEG_CELL):
 		var ri := code / 4096
 		var r: Dictionary = _roads[ri]
@@ -6958,15 +6972,33 @@ func _island_cut(ring: PackedVector2Array) -> Array:
 			continue
 		if not box.intersects(Rect2(pts[sj], Vector2.ZERO).expand(pts[sj + 1])):
 			continue
-		var hw := float(r["w"]) * 0.5 + (0.1 if r["drive"] else 0.0)
-		# (round ends: a bend's outside, which the drawn ribbon fills, is covered too)
-		cutters.append_array(Geometry2D.offset_polyline(PackedVector2Array([pts[sj], pts[sj + 1]]), hw,
-				Geometry2D.JOIN_ROUND, Geometry2D.END_ROUND))
+		if not runs.has(ri):
+			runs[ri] = {}
+		runs[ri][sj] = true
 		if r["drive"]:
 			var ids: PackedInt32Array = r["ids"]
 			for nd: int in [ids[sj], ids[sj + 1]]:
 				if _node_r[nd] > 0.0 and (_node_roads[nd] as Array).size() >= 2:
 					nodes[nd] = true
+	# (a run, not each segment: a segment wholly inside an island would be a hole, which the
+	# cut leaves out, and Monaco's Pont Sainte-Devote ran 9 m2 under a made-up slip island;
+	# round ends, so a bend's outside, which the drawn ribbon fills, is covered too)
+	for ri: int in runs:
+		var r: Dictionary = _roads[ri]
+		var pts: PackedVector2Array = r["pts"]
+		var hw := float(r["w"]) * 0.5 + (0.1 if r["drive"] else 0.0)
+		var segs: Array = (runs[ri] as Dictionary).keys()
+		segs.sort()
+		var line := PackedVector2Array()
+		for i in range(segs.size()):
+			var sj: int = segs[i]
+			if i > 0 and sj != int(segs[i - 1]) + 1:
+				cutters.append_array(Geometry2D.offset_polyline(line, hw, Geometry2D.JOIN_ROUND, Geometry2D.END_ROUND))
+				line = PackedVector2Array()
+			if line.is_empty():
+				line.append(pts[sj])
+			line.append(pts[sj + 1])
+		cutters.append_array(Geometry2D.offset_polyline(line, hw, Geometry2D.JOIN_ROUND, Geometry2D.END_ROUND))
 	for nd: int in nodes:
 		var disc := PackedVector2Array()
 		for k in range(16):
@@ -13452,6 +13484,23 @@ func _gas_station(at: Vector2, n: Vector2, c: Dictionary) -> void:
 ## them in `umb`'s colour -- where there is pavement (not road, not building). `style`
 ## "stools": a bar's row of tall stools at a narrow ledge along its front instead (as a
 ## filmed bar on a shopping street has them), no umbrellas.
+## a table at q (a circle of `room`) would stand in a footpath's walking line: within the
+## path's half width and half a metre more of its middle. Footpaths, steps and tracks only: a
+## pedestrian street or a square is wide, its tables along the fronts. (Monaco's old town, 23
+## Nov: a cafe's table 2.6 m out from its window stood mid-lane, and the walk went through it)
+const WALK_LINES := ["footway", "path", "steps", "cycleway", "bridleway"]
+func _on_footpath(q: Vector2, room: float) -> bool:
+	for code: int in _near(_seg_hash, q, 6.0, SEG_CELL):
+		var r: Dictionary = _roads[code / 4096]
+		if not (String(r["k"]) in WALK_LINES):
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		var sj := code % 4096
+		var d := Geometry2D.get_closest_point_to_segment(q, pts[sj], pts[sj + 1]).distance_to(q)
+		if d < float(r["w"]) * 0.5 + 0.5 + room:
+			return true
+	return false
+
 func _terrace(pos: Vector2, n: Vector2, along: Vector2, umb: Color, t: Dictionary, shades: Dictionary,
 		style := "tables", umbrellas := true) -> void:
 	if style == "stools":
@@ -13468,7 +13517,7 @@ func _terrace(pos: Vector2, n: Vector2, along: Vector2, umb: Color, t: Dictionar
 				continue   # (that close: one table, and only for an umbrella someone filmed)
 			var q := pos + n * tr.x + along * off
 			var on := _nearest_seg(q, 12.0, true)
-			if _push_out(q, tr.y, false) == Vector2.ZERO and (on.is_empty() or float(on["edge"]) >= tr.z) 					and not _in_corner_fill(q, maxf(tr.z, 0.0) + 0.25):   # (nor on a corner's asphalt: Aluf David, Dizengoff)
+			if _push_out(q, tr.y, false) == Vector2.ZERO and (on.is_empty() or float(on["edge"]) >= tr.z) 					and not _in_corner_fill(q, maxf(tr.z, 0.0) + 0.25) and not _on_footpath(q, tr.y):   # (nor on a corner's asphalt: Aluf David, Dizengoff)
 				c = q
 				if not on.is_empty():
 					room = clampf(float(on["edge"]), 0.1, 0.7)   # (0.25 at least had a table at the lane's edge 0.35 m into Dizengoff)
@@ -15295,11 +15344,12 @@ func _build_signs() -> void:
 					continue
 				# one plate where two would stand side by side: two lanes of a slip road arriving
 				# together, or two signs OSM maps a metre or two apart (Ashdod) -- the rules and
-				# lines stay, each way in still gives way
+				# lines stay, each way in still gives way. Within 45 degrees, as city_check counts a pair: two
+				# ways in 40 degrees apart (Monaco, 23 Nov) put two plates 2 m apart at 0.85
 				var twin := false
 				for o: int in _near(_sign_poles, p, 3.0, SEG_CELL):
 					var tw: Array = sign_at[o]
-					twin = twin or ((tw[0] as Vector2).distance_to(p) < 3.0 and tw[2] == kind and (tw[1] as Vector2).dot(way_in) > 0.85)
+					twin = twin or ((tw[0] as Vector2).distance_to(p) < 3.0 and tw[2] == kind and (tw[1] as Vector2).dot(way_in) > 0.7)
 				if twin:
 					continue
 				var gy := _h(p)

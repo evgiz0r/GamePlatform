@@ -38,6 +38,7 @@ CITIES = [  # level (1-based, as in LEVELS), city file, how many, crow-fly range
     (14, "delft", 1, (600, 1800)),   # (added with --add: route 11)
     (33, "leiden", 1, (600, 1800)),
     (34, "annecy", 1, (600, 1800)),
+    (41, "monaco", 1, (600, 1800)),
 ]
 DRIVE = {"motorway", "trunk", "primary", "secondary", "tertiary", "unclassified", "residential",
          "living_street", "road", "motorway_link", "trunk_link", "primary_link", "secondary_link", "tertiary_link"}
@@ -56,6 +57,8 @@ def seg_dist(p, a, b):
 
 def main(argv):
     add = ""
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")   # (Windows' console code page cannot print a Hebrew address)
     if argv and argv[0] == "--add":
         add = argv[1]
         argv = argv[2:]
@@ -192,7 +195,7 @@ def main(argv):
                            "to_at": [round(b[1][0], 1), round(b[1][1], 1)], "crow_m": int(d)})
             picked += 1
     # (the game reads it: the "Test routes" level)
-    json.dump({"seed": seed, "routes": routes}, open(out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    json.dump({"seed": seed, "routes": routes}, open(out, "w", encoding="utf-8", newline="\n"), ensure_ascii=False, indent=1)   # (LF on Windows too)
     for r in routes:
         print("%2d  %-10s %s -> %s  (%d m)" % (r["id"], r["city"], r["from"], r["to"], r["crow_m"]))
     print(out)
