@@ -1352,7 +1352,7 @@ const MAP_BTN := Rect2(8, 184, 52, 22)       ## over the minimap: the city from 
 ## zoomout. also pausing the game. maybe a tap on minimap is too easy to click, something near
 ## it" -- so a button beside it, not the map itself; it is the zoom, Z, gone up to MAP_ZOOM)
 const MAP_ZOOM := 0.86                       ## where the map button takes the view: ~330 m up, steep, a map
-const PERF_BTN := Rect2(8, 70, 66, 22)       ## the frames a second, live; a tap opens the perf view under it and closes it (above its graph, PERF_GRAPH) (the user, 22 Nov: "a quick performance button", not "more" then "perf view")
+const PERF_BTN := Rect2(8, 70, 78, 22)       ## the frames a second, live; a tap opens the perf view under it and closes it (above its graph, PERF_GRAPH) (the user, 22 Nov: "a quick performance button", not "more" then "perf view")
 ## (no lights button: the user, 22 Nov, "remove lights ui, its not a thing" -- key L only)
 ## (the indicators and the horn are keys only, Q / E and H: on screen they were clutter)
 const STICK_C := Vector2(556, 268)   ## the touch stick sits still, here, on the right
@@ -27230,7 +27230,9 @@ func _draw_hud() -> void:
 		_hud_btn(VIEW_BTN, _view_name(), Palette.col("player"), _cockpit, 11)
 		if _map_btn_shown():
 			_hud_btn(MAP_BTN, "back" if _zoom > 0.0 else "map", Palette.col("friend"), _zoom > 0.0, 11)
-		_hud_btn(PERF_BTN, "%d fps" % Engine.get_frames_per_second(), Palette.col("accent"), _perf_view or _trace_view, 11)
+		# (and the quality beside it, of the top level: the user saw it fall on every machine and
+		# could not tell when, 23 Nov)
+		_hud_btn(PERF_BTN, "%d fps %d/%d" % [Engine.get_frames_per_second(), _quality, QUALITY.size() - 1], Palette.col("accent"), _perf_view or _trace_view, 10)
 		if not _walking and not _auto:
 			_hud_btn(LOOK_BTN, "look", Palette.col("accent"), _look_on, 11)
 	# the indicator blinking by the speed, as on a dashboard

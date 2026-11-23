@@ -27,7 +27,7 @@ for a in "$@"; do
   case "$a" in /*) a="$(cygpath -w "$a")" ;; esac
   ARGS="$ARGS \"${a//\"/\\\"}\""
 done
-# (not OUT: the scene tests pass their shots folder in $OUT, and this one is exported to the game)
+# (not OUT: that is where tests save their shots, and Godot inherits it -- the shots went to the log file's name)
 LOG_O="$(mktemp)"; LOG_E="$(mktemp)"
 GBG_EXE="$(cygpath -w "$EXE")" GBG_ARGS="$ARGS" GBG_DIR="$(pwd -W)" GBG_OUT="$(cygpath -w "$LOG_O")" GBG_ERR="$(cygpath -w "$LOG_E")" \
   powershell -NoProfile -NonInteractive -Command '
