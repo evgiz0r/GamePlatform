@@ -224,6 +224,14 @@ is a Z coordinate, not a height.
   ~1.3 s are the cheapest impact juice there is.
 - The project does not pin a 3D physics engine; the default works headless and on the
   web build. Do not add Jolt to `project.godot` for one game.
+- **A slow device can tick 30 times a second instead of 60** (`Engine.physics_ticks_per_second
+  = 30`, changeable mid-run): everything a tick pays for halves, and a car drawn between its
+  last two ticks (`Engine.get_physics_interpolation_fraction()`) moves as smoothly. It is the
+  engine's setting, every game's: put the project's value back in `_exit_tree`. Before
+  switching, find what counts ticks instead of time -- a `lerp(x, y, 0.5)` each tick (make it
+  `1 - pow(0.5, dt * 60)`), "every 4th tick" schedules, tests stepping 1/60 -- and prove the
+  feel with the game's own driving checks at both rates. A 3D city in a phone's browser:
+  ~1 ms of every tick was the car, autodrive and the rules, 4-5 ticks a frame.
 
 ## Rail games: a road that bends (`reference/drive_by/`)
 
