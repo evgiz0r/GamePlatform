@@ -1336,12 +1336,13 @@ var _sfx_was := 0.8
 ## logic; some buttons are rarely used"). On screen only what is used while driving: along
 ## the bottom, bigger, where you are going (autodrive and its style, go to); on the right
 ## "more", the camera, walk and look. (No lights button: key L only.) Everything set
-## once and left -- time of day, wet, the driving style, assist, pause, the fps and build
+## once and left -- time of day, wet, the driving style, assist, the fps and build
 ## lines, the keys -- in the "more" drawer (_draw_more, MORE_*). Every toggle says what is
 ## ON now, lit when on: never the state a tap would switch to ("day" had meant "it is night").
 const AUTO_BTN := Rect2(140, 332, 104, 24)   ## autodrive on / off (space; shift off)
 const STYLE_BTN := Rect2(248, 332, 62, 24)   ## while autodrive drives: its style, tap for the next (rules, wave, racer)
 const GOTO_BTN := Rect2(314, 332, 84, 24)
+const PAUSE_BTN := Rect2(402, 332, 66, 24)   ## the city holds still and goes on again (key K); the user, 23 Nov: "lets put pause on main screen" (it had been in the drawer only)
 const WALK_BTN := Rect2(566, 150, 66, 22)    ## out of the car and back in (key F): under the camera (the user, 22 Nov: "put walk below seat chase")
 const MORE_BTN := Rect2(566, 98, 44, 22)     ## the drawer of set-once switches
 const FOLD_BTN := Rect2(612, 98, 20, 22)     ## "–": every button folded away but one "show" (_hud_folded); the user: "not take too much of the screen, or collapsible easily"
@@ -27136,6 +27137,7 @@ func _draw_hud() -> void:
 			_hud.draw_rect(Rect2(bar.position, Vector2(bar.size.x * left, 3)), Color(Palette.col("accent"), 0.8))
 	if not _hud_folded:
 		_hud_btn(GOTO_BTN, "go to…", Palette.col("accent"), false, 12, true)
+		_hud_btn(PAUSE_BTN, "PAUSED" if _paused else "pause", Palette.col("warn"), _paused, 12)
 		var near_car := _walking and _pos.distance_to(_car_at) < 3.6
 		_hud_btn(WALK_BTN, "get in" if _walking else "walk", Palette.col("accent"), false, 11, near_car)
 		# on the right: the drawer and folding, the camera, looking round
@@ -27371,7 +27373,7 @@ func _hud_tap(p: Vector2) -> bool:
 	if _more_tap(p):
 		return true
 	match _hud_hit(p):
-		"resume":
+		"resume", "pause":
 			_toggle_pause()
 		"show":
 			_hud_folded = false
@@ -27420,6 +27422,7 @@ func _hud_buttons() -> Dictionary:
 		if _auto:
 			out["style"] = STYLE_BTN
 	out["goto"] = GOTO_BTN
+	out["pause"] = PAUSE_BTN
 	out["walk"] = WALK_BTN
 	out["more"] = MORE_BTN
 	out["fold"] = FOLD_BTN
