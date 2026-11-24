@@ -484,6 +484,14 @@ The ones most often touched, and the functions in them:
   kind 0 ("gardenwall", "pole") or a kit's face with vertex alpha 0.3-0.7 (the cabinet's
   body); height above the ground from the height grid (`_set_hmap`, shared with the grass;
   the tone material is made before the grid is read, so `_retint_tone_mat` hands it over).
+- **signs by country** (23 Nov 2026) -- `_country()` ("il", "nl", "fr", "ca") decides the
+  speed sign, the centre lines' colour, the give-way line (`_give_line`: dashed or
+  `_shark_teeth`), which inferred sign a side street gets, the street-sign plates' look
+  (`_street_sign_mesh`'s Canadian branch) and the school warning; NEW_CITY.md has the table.
+  Before it everything not "med" was drawn Canadian: Delft and Annecy had MAXIMUM boards,
+  yellow centre lines and SLOW in English. Two bugs every town had: the give-way plate
+  stood point up (a warning triangle) and its red was the palette's hazard, pink. Shots:
+  `tests/country_signs.gd`.
 - **zone and parking signs** -- `furniture.street_signs`: meshes with 7-segment digits
   (`_digit`), not Label3D (a draw each). **Passages** -- `_build_passages` (its own stage).
 - **front gardens' walls and gates** -- `_garden_fronts` lays each plot's wall itself
@@ -4712,6 +4720,62 @@ looking up. The test counts frames with the camera below 4 m inside a building
 | 9 | Alien arrival: ships over the towers, cars stop, people look up | Large | 5 | B | The disasters idea's first slice, as a scenario |
 | 10 | Follow that dog: a dog runs off across parks and lanes | Medium | 3 | B- | Dogs exist; the camera follows one |
 
+### The scenarios' redo (24 Nov 2026)
+
+The user: "All the svenarios are very weak. Lets also redo all of that." What was weak: each
+was a drive with captions -- no goal said, nothing on screen saying how it was going, no
+ending beyond a caption, and the one with stakes (the getaway) was decided before it began
+(caught at 26-43 s every run: a flat 17 m/s chaser against racer's 10-15 m/s town pace).
+What every scenario has now (all in `scenario.gd`, the bottom section):
+
+- **Title card** (`["title", name, goal, TITLE_S]`, put first by `setup()`): the level's name
+  and `GOALS[kind]`. 3.5 s.
+- **The live line** (`_strip_tick` / `_strip_text`, a Label at y 50 under the street's
+  name): tour "stop k of n · street · 420 m"; getaway "police 42 m ▮▮▮▯ · safe house 1.2 km"
+  (green / warn / hazard by the gap); ambulance "patient: 1:12 · hospital 900 m"; delivery
+  "drop k of 3 · street n · 0:45 · tips 18". Distances by road (`_ap_len`) when autodrive has
+  a route.
+- **End card** (`_end_card`, from `_finish` unless the player took a tour's wheel): headline,
+  0-3 stars, numbers, and the best so far from `user://streets_scenarios.json` (not SaveData:
+  see `PREFS_PATH`; not written when `STREETS_PREFS=0`). `card_lines` for tests.
+- **Drivable** (`_watching()` in streets.gd): getaway, ambulance, delivery play themselves on
+  autodrive but take the wheel and they go on with you driving.
+
+Per kind:
+- **Getaway**: the chaser's pace is *your* pace at its point on your trail (`_trail` keeps the
+  speed now, `_trail_v`) plus `CHASE_EDGE` 1.0 -> `CHASE_EDGE2` 2.6 m/s as backup joins (20-60 s,
+  top 17 -> 20.5), so it is held up where you were; it closes on you no faster than a follower
+  does (`(gap - 6) * 0.7` over your speed), and you are caught only when held within 12 m (it tails at 10: at 6 the usual view sat inside it) below
+  3 m/s for `CHASE_HOLD` 3.5 s, and never in the first `CHASE_GRACE` 30 s (Ashdod: autodrive stood 4 s for a person on a zebra at the first junction and was caught at 20 s). Within `CLOSE_IN` 18 m and back out past 28: a close call
+  (caption, slow motion, counted). Each red you run: +`CHASE_RED_M` 10 m. It starts rolling at
+  9 m/s, 50 m back (from a standstill it fell 100 m behind and was "lost" in 16 s). The safe
+  house 0.8-1.3 km off (1.2-2 km was 2.5 km by road). Lost at 130 m. Results: lost (3 stars),
+  home (2; 3 with no close call), caught (1 if it lasted a minute).
+- **Ambulance**: `["timer", secs]` -- 1.45 x the crow's flight at 12 m/s + 20 s; "30 seconds
+  left" with the voice; stars 3 with a quarter of the clock spare, 2 in time, 1 late.
+  Tel Aviv (25): 2:20 clock, there in 1:33, 16 cars pulled over.
+- **Tours**: past `TOUR_SKIP_S` 30 s on a drive and still `TOUR_SKIP_M` 160 m off, a fade and
+  `_jump_to` 80 m short of the stop ("A little later, nearing ..."), `skips` counted. Givatayim
+  (17) before the cut's tuning: 5 of 5 stops, 7:09, 3 cuts (it was ~9 min).
+- **Pizza rush** (new, levels 43-44): `_delivery_beats` picks `DROPS` 3 of the town's own
+  addresses (`g._addr`), 200-450 m apart (250-600 ran 6-7 min in Givatayim: autodrive took 4:40 to Zahal 34 there -- slow routes, open for the driving work), one a street. The clock is set once autodrive has its
+  route: `_ap_len() / DROP_PACE` 6 m/s + 25 s (by the crow's flight it was late on every drop in
+  Givatayim: 3:25 for 600 m). At 30% left, autodrive turns racer. Tip 4-18 by time left, 2
+  late, cancelled 90 s past. `SCEN_SEED` fixes the picks for a test. Tel Aviv (44): 3 of 3,
+  30 in tips, 2 stars, 6 min.
+- Day and dragons: the title and end cards only (they are films).
+
+Results, 24 Nov (`tests/scenario.gd`, quality 0): getaway Ashdod (21) a 2:20 chase, 2 close
+calls, caught by a queue (1 star); Tel Aviv (22) the safe house in 1:40, 6 reds run, 3 stars
+(three runs alike); ambulance Tel Aviv (25) 1:23 with 0:56 spare; tour Givatayim (17) 5 of 5
+in 4:23 with 4 cuts (7:09 with 3 before the cut's tuning); pizza Tel Aviv (44) 3 of 3, 6 min,
+Givatayim (43) 3 of 3, 7 min, 22 in tips. Open: the pizza rush runs long in Givatayim (its
+routes are 3x the crow's flight); a cut like the tour's, with the clock charged for the part
+skipped, would bring it to ~3 min. Titles and end cards: `title.png`, `end_card.png` in $OUT.
+
+`tests/scenario.gd` prints the end card (`SCENARIO card:`) and, for the getaway, the gap every
+5 s; PASS needs the card, the getaway's "home" counts, a delivery needs 2 of 3 drops.
+
 ## On foot: faster, and any car in traffic (22 Nov 2026)
 
 `WALK` 2.1 -> 4.5 m/s (a jog, the "Run" clip from 2.6 m/s up), `RUN` 6.2 -> 9.5 (the run
@@ -5228,10 +5292,26 @@ non-fast street, half the time (a third outside `med`), 1-3 in a firm's colour (
 black, orange-red), one in three on its side; in `med` towns a gas cage (two cylinders in
 a steel cage) at the back of the pavement on residential streets, only where a wall is
 within 1.2 m behind it. Both have posts.
+- **Roofs** (`_build_roof_kit`, `med` towns): beside the solar heaters and stair rooms, a
+  satellite dish or two on 45% of roofs (turned south-west), an old TV aerial on a quarter,
+  1-2 AC units on 45%; ~33k in Tel Aviv at first (more triangles than the walls' ACs) cut to
+  ~13.6k (5.7k dishes, 2.2k aerials, 5.8k ACs), drawn to 200 / 160 m.
+- **Fountains**: OSM's `fountain` places (12 in Tel Aviv, 8 on clear ground) as a basin, a
+  bowl and a jet (furniture.gd `_fountain_kit`, in `street_extras`).
+- **Shops shut at night** (`_shuts_at_night`, `_build_pois`): every shop but the late ones
+  (corner shops, kiosks, supermarkets, bakeries, liquor, tobacco; a pharmacy in three) and
+  anything to eat or drink gets a second shutter shown only at night (one MultiMesh a square
+  in `_night_nodes`), and lights no pool on the pavement. Tel Aviv: 1,624. No Shabbat: the
+  game has no day of the week.
 - **Test**: `tests/small_life.gd` (REGRESS line). Good, level 7: 6 flocks down within a
   minute, 0 birds on the asphalt or in a wall, 0 landed in view, the flock walked at goes up;
   ~1,050 e-scooters, ~50 gas cages (Tel Aviv's front gardens keep most walls back), 0 on the
   asphalt.
+- **Not done, and why**: post boxes and drinking taps are not in the baked files (a re-bake
+  with them needs Overpass, unreachable from the cloud containers: the bake workflow); speed
+  bumps likewise (OSM's traffic_calming is not baked) and they are the driving thread's;
+  laundry, night lighting from the town's own lamps (their pools follow each mapped head)
+  and tree species' looks (`tree_forms` from the surveys) were already in.
 - **Open**: birds never perch (on wires, roofs, lamp tops); no flapping sound; a flock
   spooked by traffic on the road only when it is your car; the crows look like grey pigeons
   scaled up (no separate black head and wings in the paint); gas cages only on streets

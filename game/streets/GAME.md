@@ -635,8 +635,9 @@ out as a little film, the car driving itself, captions across the bottom.
 
 - *The getaway* -- Ashdod, Tel Aviv. A car with flashing lights and a siren is on your tail;
   the car runs as a racer to the safe house across town. On a straight you pull away; slow for
-  a corner or a queue and it closes in. Lose it by 160 m or reach the safe house and you got
-  away; let it within 7 m and you are caught. Take the wheel and the drive is yours.
+  a corner or a queue and it closes in. Lose it by 130 m or reach the safe house and you got away; let it box you in -- on your
+  bumper for a few seconds while you are stopped -- and you are caught. Take the wheel and the
+  drive is yours.
 
   The camera cuts between shots as it goes -- the usual view, from high above, low at the
   kerb as you come by, from behind the police car, looking back -- and drops into slow
@@ -664,6 +665,30 @@ out as a little film, the car driving itself, captions across the bottom.
   > the city itself ... tours will be part of all scenarios
 
   > I want to think more of automatic scearios for now without my inputs
+
+- *Pizza rush* -- Givatayim, Tel Aviv. Friday night, three pizzas in the back, three of the
+  town's real addresses one after another, each with its own clock. The faster you get there,
+  the bigger the tip; running late, autodrive drops the rules. Ninety seconds past the clock
+  and the order is cancelled.
+
+**Every scenario has a goal and an ending** (the redo). It opens on a title card: its name
+and what it asks ("Lose the police car, or reach the safe house"). While it plays, a line
+under the street's name says how it is going -- the tour's "stop 2 of 6 · Rothschild · 420 m",
+the getaway's distance to the police car as a bar going from green to red, the ambulance's
+"patient: 1:12 · hospital 900 m", the delivery's clock and tips. It ends on a card: what
+happened, one to three stars, the numbers (time, top speed, close calls, red lights run, cars
+that pulled over, tips) and the best you have done. The getaway, the ambulance and the pizza
+rush play themselves, but take the wheel and they are yours; the goal still counts.
+
+- The getaway now has a story: the police car gets faster over the first minute ("backup's
+  joined"), a brush with it is a *close call* (slow motion, counted) rather than the end, and
+  you are caught only when it holds you for over a second. Reach the safe house, or open a
+  130 m gap.
+- The ambulance has a clock from the distance, and "30 seconds left -- hurry!".
+- A tour no longer sits through a minute of driving between stops: past 35 s it fades and
+  picks up just before the next street.
+
+> All the scenarios are very weak. Lets also redo all of that.
 
 **The opening.** When a town comes up, the view starts high over it, turning slowly round
 where you will start, the town's name across the screen, while the streets round the car
@@ -1729,7 +1754,8 @@ contributors under the ODbL, which is why the credit sits on screen.
   no names), and its own street things: Tel-O-Fun's green bike stations, taxi stands,
   motorbike bays, sculptures, notice boards and fire hydrants. Pigeons and crows peck about the
   pavements and fly up when you come near; rental e-scooters stand (or lie) about; gas
-  cylinder cages by the houses. Everywhere, the cars' shapes and colours are the shares on Israel's vehicle
+  cylinder cages by the houses. Roofs carry dishes, old aerials and AC units; fountains
+  stand where OSM maps them; at night most shops have their shutters down. Everywhere, the cars' shapes and colours are the shares on Israel's vehicle
   register: four in ten an SUV or crossover, more than four in ten white.
 - **Guessed**: a building with no height gets 4 storeys (by type: houses 2, garages 1,
   offices 5...), varied a storey up or down so a street is not one flat wall. A road with
@@ -1870,7 +1896,7 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   lobby and stairwell fitted to the outline, the right number of landings, and that many
   flats each split into rooms the way a block of its age is. Only the building you walk into
   is built inside, while you are in it.
-- Scenarios, more of them (the first two are built: tours and the getaway -- see
-  "Scenarios" above): a taxi shift, a delivery against the clock, an ambulance run, a wedding
-  convoy, the night tour, Shabbat eve, a kindergarten pick-up rush, an alien arrival -- the
-  list with grades is in DEV.md under "Scenarios".
+- Scenarios, more of them (built: tours, night tours, the getaway, the ambulance, a day,
+  dragons, the pizza rush -- see "Scenarios" above): a taxi shift, a wedding convoy, Shabbat
+  eve, a kindergarten pick-up rush, an alien arrival -- the list with grades is in DEV.md
+  under "Scenarios".
