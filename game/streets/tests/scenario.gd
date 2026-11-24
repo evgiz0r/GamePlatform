@@ -6,6 +6,7 @@ extends SceneTree
 ## SECS (default 900) the most it runs. PASS: a tour reached most of its stops (all but one)
 ## and ended; a getaway ended lost, caught or gave up (a chaser ran) -- and nobody was hit.
 var g: Node
+var off_fast := 0.0
 
 func _initialize() -> void:
 	_run()
@@ -55,6 +56,12 @@ func _run() -> void:
 			root.get_viewport().get_texture().get_image().save_png(out + "/scen_%d.png" % shot)
 			shot += 1
 		last_i = sc.i
+		# off the road at speed (the ambulance drove a Tel Aviv pavement at 67 km/h, 24 Nov):
+		# the car's middle beyond every drivable road's edge, over 8 m/s
+		if absf(g._v) > 8.0:
+			var hit: Dictionary = g._nearest_seg(g._pos, 15.0, true, false, g._y)
+			if hit.is_empty() or float(hit["edge"]) > 0.4:
+				off_fast += get_process_time_step()
 		if out != "" and sc.i == 0 and t > 1.5 and not FileAccess.file_exists(out + "/title.png"):
 			root.get_viewport().get_texture().get_image().save_png(out + "/title.png")   # (the title card)
 		if sc.kind == "getaway" and sc._chaser != null and int(t / 5.0) != int((t - get_process_time_step()) / 5.0):
@@ -82,7 +89,7 @@ func _run() -> void:
 			ok = ok and sc.reached >= stops - 1 and not sc.on
 		"getaway":
 			ok = ok and sc.result in ["lost", "caught", "gave up", "home"]
-		"delivery":
+		"delivery", "taxi":
 			ok = ok and sc.drops_done >= 2 and not sc.on
 		"ambulance":
 			ok = ok and sc.reached >= 1 and sc.yielded > 0 and not sc.on
@@ -94,9 +101,10 @@ func _run() -> void:
 		"night" if g._night else ("evening" if g._evening else "day")])
 	print("SCENARIO %s ended: %s, %d of %d stops reached, %d people hit, %.0f s" % [sc.kind, sc.result, sc.reached, stops, people, t])
 	print("SCENARIO camera frames inside a building: %d" % sc.cam_in_building)
+	print("SCENARIO off the road over 8 m/s: %.1f s" % off_fast)
 	print("SCENARIO card: %s; stars %d, %.0f s run, close calls %d, tips %d, tour cuts %d" % [" | ".join(sc.card_lines), sc.stars, sc.run_t,
 		sc.close_calls, sc.tips, sc.skips])
-	ok = ok and not sc.card_lines.is_empty()
+	ok = ok and not sc.card_lines.is_empty() and off_fast < 2.0   # (no car of a scenario drives the pavement at speed)
 	ok = ok and sc.cam_in_building == 0
 	if sc._dragons != null:
 		print("SCENARIO dragons: %s" % JSON.stringify(sc._dragons.events))

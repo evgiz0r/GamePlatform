@@ -110,6 +110,9 @@ const LEVELS := [
 	# against the clock to three of the town's own addresses (scenario.gd "delivery")
 	{"name": "Pizza rush: Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "delivery"},
 	{"name": "Pizza rush: Tel Aviv", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "delivery"},
+	# a taxi shift (24 Nov, the user's go on the ideas list): three fares waving at the kerb, each to an address
+	{"name": "Taxi shift: Tel Aviv", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "taxi"},
+	{"name": "Taxi shift: Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "taxi"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -3066,6 +3069,7 @@ var _tile_lit := {}                  ## square -> junctions with traffic lights
 var _tile_lamps := {}                ## square -> a town's own lamp posts: [where, look, lamps]
 var _lamp_cover := {}                ## LAMP_COVER cell -> true: the town's map has its lamp posts there
 var _tile_things := {}               ## square -> a town's own street things: [where, kind, places] (furniture.gd's town_things)
+var bumps: Array = []                ## OSM's speed bumps, tables and cushions as built: [middle, along the road, its width, kind] (furniture.gd; for the drivers)
 var _hydrant_cover := {}             ## LAMP_COVER cell -> true: the town's map has its hydrants there
 var _tile_bars := {}                 ## square -> mapped fences and hedges that reach it
 var _crossing_set := {}
@@ -3369,6 +3373,11 @@ func _build_setup(t0: int) -> void:
 		_bucket(_tile_things, _tile_of(tp), [tp, kind, int(things[i * 4 + 3])])
 		if kind == "hydrant":
 			_hydrant_cover[_cell(tp, LAMP_COVER)] = true
+	var sp: Array = _city_data.get("street_points", [])   # (OSM's post boxes, taps, bumps: the same)
+	var sp_kinds: Array = _city_data.get("street_point_kinds", [])
+	for i in range(sp.size() / 3):
+		var tp := Vector2(sp[i * 3], sp[i * 3 + 1]) * k
+		_bucket(_tile_things, _tile_of(tp), [tp, String(sp_kinds[int(sp[i * 3 + 2])]), 0])
 	var pois: Array = _city_data.get("pois", [])
 	for i in range(pois.size()):
 		_bucket(_tile_pois, _tile_of(Vector2(pois[i][0], pois[i][1]) * k), i)
@@ -25481,6 +25490,9 @@ const MOUNT_DOWN := 15.0      ## m of road it wants straight after coming back d
 const MOUNT_PAST := 26.0      ## metres of pavement it takes at most past the car in front
 var _mount_why := ""   ## why the last way up onto the pavement was not taken (tests/racer_drive.gd)
 func _ap_mount_by(lead: Array) -> bool:
+	if _scenario != null and _scenario._siren_on:
+		_mount_why = "siren"   # (an ambulance: the traffic pulls aside for it, and it does not take the pavement -- one did at 67 km/h, 24 Nov)
+		return false
 	var bi: int = lead[3]
 	if bi < 0 or (bi == _ap_passed and _ap_wait < 2.0) or _ap_pts.size() < 2:
 		_mount_why = "just passed" if bi >= 0 else ""
@@ -27063,7 +27075,9 @@ func _walk_list_open(kind := "walks") -> void:
 		b.clip_text = true
 		_route_ui.add_child(b)
 		if two:
-			_put(b, Vector2(30 + (k % 2) * 295, 64 + (k / 2) * 31.0), Vector2(285, 27))
+			# (past sixteen rows a little tighter: nine rows at 31 ran into the settings at 322)
+			var step := 31.0 if rows.size() <= 16 else 28.0
+			_put(b, Vector2(30 + (k % 2) * 295, 64 + (k / 2) * step), Vector2(285, step - 4.0))
 		else:
 			_put(b, Vector2(120, 64 + k * 31.0), Vector2(400, 27))
 	_back_button()
@@ -27206,7 +27220,7 @@ func _route_begin() -> void:
 func _watching() -> bool:
 	if not _film.is_empty() or not _route.is_empty():
 		return true
-	return _scenario != null and not (String(_place.get("scenario", "")) in ["getaway", "ambulance", "delivery"])   # (the ones with a goal: yours to drive too)
+	return _scenario != null and not (String(_place.get("scenario", "")) in ["getaway", "ambulance", "delivery", "taxi"])   # (the ones with a goal: yours to drive too)
 
 ## a drawn button that _pick_tap() can press
 func _tap_button(text: String, cb: Callable) -> Button:

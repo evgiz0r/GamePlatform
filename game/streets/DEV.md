@@ -4791,7 +4791,7 @@ Per kind:
   left" with the voice; stars 3 with a quarter of the clock spare, 2 in time, 1 late.
   Tel Aviv (25): 2:20 clock, there in 1:33, 16 cars pulled over.
 - **Tours**: past `TOUR_SKIP_S` 30 s on a drive and still `TOUR_SKIP_M` 160 m off, a fade and
-  `_jump_to` 80 m short of the stop ("A little later, nearing ..."), `skips` counted. Givatayim
+  `_jump_to` the point `CUT_BACK_M` 110 m before the end of autodrive's route (`_route_back`; first 80 m short by the crow, often 1 km round by road on one-ways) ("A little later, nearing ..."), `skips` counted. Givatayim
   (17) before the cut's tuning: 5 of 5 stops, 7:09, 3 cuts (it was ~9 min).
 - **Pizza rush** (new, levels 43-44): `_delivery_beats` picks `DROPS` 3 of the town's own
   addresses (`g._addr`), 200-450 m apart (250-600 ran 6-7 min in Givatayim: autodrive took 4:40 to Zahal 34 there -- slow routes, open for the driving work), one a street. The clock is set once autodrive has its
@@ -4808,6 +4808,26 @@ in 4:23 with 4 cuts (7:09 with 3 before the cut's tuning); pizza Tel Aviv (44) 3
 Givatayim (43) 3 of 3, 7 min, 22 in tips. Open: the pizza rush runs long in Givatayim (its
 routes are 3x the crow's flight); a cut like the tour's, with the clock charged for the part
 skipped, would bring it to ~3 min. Titles and end cards: `title.png`, `end_card.png` in $OUT.
+
+**Round two (24 Nov, morning; the user: "give go to all of these and iterate")**:
+- Pizza rush cuts ahead as tours do (`DROP_SKIP_S` 30 s, still 240 m off by road): `_skip_ahead(b,
+  style, charge=true)` charges the drop's clock for the road skipped at 1.6 x `DROP_PACE` (at
+  the clock's own pace every cut left it "running late" the moment it ended). Givatayim's shift
+  2:16 of play for 3 of 3, 24 in tips (was 7 min).
+- The ambulance never mounts the pavement (`_ap_mount_by`: "siren"). The test's new family
+  check: seconds with the car's middle off every drivable road at over 8 m/s (`off_fast`, must
+  be under 2 s for any scenario). The pavement drive seen in one frame did not show again in
+  this measure (0.0 s in two ambulance runs).
+- The getaway's backup: a second police car (`_chaser2`, `_police_car()`) `BACKUP_BEHIND` 13 m
+  further back on your trail from 45 s, its lamps in counter-phase. `_trail_at(odo)` places both.
+- **Taxi shift** (levels 45-46; "taxi"): night; `DROPS` fares, each a person (`Actor3D`, dressed
+  by `_humanize`, waving every 2.5 s through `people.gd gesture`) at the kerb (`_kerb_of`: 1.3 m
+  past the edge of the nearest public street) 150-350 m on, then their address 300-600 m from
+  there (`_addr_pick`). Beats "pickup" (cut ahead too; there within `PICKUP_M` 30 m on either side -- "go to" went round the block for their own kerb, 100 s and more -- or at "go to"'s kerb, or within
+  60 m and stood after 60 s -- a Givatayim run waited out three 150 s pickups) and "ride" (the
+  delivery's clock and tip, plus a fare of 12 + 6 a km by road, the tip 3 less per crash event).
+  At the door they step out and walk off. Stars at 55 / 75 earned. RIDE_LINES: what they say.
+- The scenarios list goes to 28 px rows past 16 (18 now).
 
 `tests/scenario.gd` prints the end card (`SCENARIO card:`) and, for the getaway, the gap every
 5 s; PASS needs the card, the getaway's "home" counts, a delivery needs 2 of 3 drops.
@@ -5343,10 +5363,18 @@ within 1.2 m behind it. Both have posts.
   minute, 0 birds on the asphalt or in a wall, 0 landed in view, the flock walked at goes up;
   ~1,050 e-scooters, ~50 gas cages (Tel Aviv's front gardens keep most walls back), 0 on the
   asphalt.
-- **Not done, and why**: post boxes and drinking taps are not in the baked files (a re-bake
-  with them needs Overpass, unreachable from the cloud containers: the bake workflow); speed
-  bumps likewise (OSM's traffic_calming is not baked) and they are the driving thread's;
-  laundry, night lighting from the town's own lamps (their pools follow each mapped head)
+- **Post boxes, drinking taps, speed bumps** (24 Nov): `street_points` + `street_point_kinds`
+  in the city file, fetched alone by `tools/osm_city.py --street-points FILE...` (raw kept in
+  cities/data/osm_points_<town>.json, `--offline` redoes it) -- from a cloud session through
+  the "street points into baked cities" workflow (`street_points.yml`, input `files`), which
+  commits each town as it comes: the public servers took 5-15 min a town on 24 Nov (502s,
+  timeouts; kumi.systems answered most). Bucketed into `_tile_things` with the town's things
+  and built by `town_things`: Israel Post's red box at the kerb, a tap on a stone column where
+  mapped, a yellow-black bump (a raised table 3 m deep) across the whole road at the mapped
+  point, 8 cm high and not solid. Every bump built is in `g.bumps` [middle, along, width, kind]
+  for the drivers (how cars slow for them is the driving thread's). Tel Aviv: 7 post boxes, 68
+  taps, 14 bumps and a table in the file; 5 / 65 / 15 built.
+- **Not done**: laundry, night lighting from the town's own lamps (their pools follow each mapped head)
   and tree species' looks (`tree_forms` from the surveys) were already in.
 - **Open**: birds never perch (on wires, roofs, lamp tops); no flapping sound; a flock
   spooked by traffic on the road only when it is your car; the crows look like grey pigeons

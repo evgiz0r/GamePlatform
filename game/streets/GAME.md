@@ -669,7 +669,12 @@ out as a little film, the car driving itself, captions across the bottom.
 - *Pizza rush* -- Givatayim, Tel Aviv. Friday night, three pizzas in the back, three of the
   town's real addresses one after another, each with its own clock. The faster you get there,
   the bigger the tip; running late, autodrive drops the rules. Ninety seconds past the clock
-  and the order is cancelled.
+  and the order is cancelled. Watched, a long drive cuts ahead to near the door, and the clock
+  is charged for the road skipped.
+- *Taxi shift* -- Tel Aviv, Givatayim. Night, light on. Someone waves you down at the kerb a
+  few streets on; you pull up, they get in and say where they're going ("and gently: there's a
+  cake on my lap"); the meter runs. Each ride pays its fare and a tip for getting there quickly,
+  less for every knock on the way; at the door they get out and walk off. Three fares a shift.
 
 **Every scenario has a goal and an ending** (the redo). It opens on a title card: its name
 and what it asks ("Lose the police car, or reach the safe house"). While it plays, a line
@@ -678,12 +683,13 @@ the getaway's distance to the police car as a bar going from green to red, the a
 "patient: 1:12 · hospital 900 m", the delivery's clock and tips. It ends on a card: what
 happened, one to three stars, the numbers (time, top speed, close calls, red lights run, cars
 that pulled over, tips) and the best you have done. The getaway, the ambulance and the pizza
-rush play themselves, but take the wheel and they are yours; the goal still counts.
+rush and the taxi shift play themselves, but take the wheel and they are yours; the goal still
+counts. With its siren on, the ambulance never takes the pavement.
 
 - The getaway now has a story: the police car gets faster over the first minute ("backup's
   joined"), a brush with it is a *close call* (slow motion, counted) rather than the end, and
-  you are caught only when it holds you for over a second. Reach the safe house, or open a
-  130 m gap.
+  you are caught only when it holds you for a few seconds. After 45 s a second police car
+  joins behind the first. Reach the safe house, or open a 130 m gap.
 - The ambulance has a clock from the distance, and "30 seconds left -- hurry!".
 - A tour no longer sits through a minute of driving between stops: past 35 s it fades and
   picks up just before the next street.
@@ -1755,7 +1761,8 @@ contributors under the ODbL, which is why the credit sits on screen.
   motorbike bays, sculptures, notice boards and fire hydrants. Pigeons and crows peck about the
   pavements and fly up when you come near; rental e-scooters stand (or lie) about; gas
   cylinder cages by the houses. Roofs carry dishes, old aerials and AC units; fountains
-  stand where OSM maps them; at night most shops have their shutters down. Everywhere, the cars' shapes and colours are the shares on Israel's vehicle
+  stand where OSM maps them; at night most shops have their shutters down. Post boxes, drinking taps and
+  speed bumps where OpenStreetMap has them. Everywhere, the cars' shapes and colours are the shares on Israel's vehicle
   register: four in ten an SUV or crossover, more than four in ten white.
 - **Guessed**: a building with no height gets 4 storeys (by type: houses 2, garages 1,
   offices 5...), varied a storey up or down so a street is not one flat wall. A road with
@@ -1897,6 +1904,6 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   flats each split into rooms the way a block of its age is. Only the building you walk into
   is built inside, while you are in it.
 - Scenarios, more of them (built: tours, night tours, the getaway, the ambulance, a day,
-  dragons, the pizza rush -- see "Scenarios" above): a taxi shift, a wedding convoy, Shabbat
+  dragons, the pizza rush, the taxi shift -- see "Scenarios" above): a wedding convoy, Shabbat
   eve, a kindergarten pick-up rush, an alien arrival -- the list with grades is in DEV.md
   under "Scenarios".

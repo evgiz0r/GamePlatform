@@ -24,9 +24,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: fetch
+      - name: fetch and commit, a file at a time
         env:
           FILES: ${{ inputs.files }}
+        # (one at a time, each committed as it comes: the public servers can take 5-15 min a
+        # town when busy, and a first run cancelled after three towns lost all three)
         run: |
           read -ra LIST <<< "$FILES"
           for f in "${LIST[@]}"; do
@@ -34,22 +36,15 @@ jobs:
               echo "not a city file here: $f"; exit 1
             fi
           done
-          python3 tools/osm_city.py --street-points "${LIST[@]}"
-
-      - name: commit
-        env:
-          FILES: ${{ inputs.files }}
-        run: |
-          read -ra LIST <<< "$FILES"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "${LIST[@]}"
-          if git diff --cached --quiet; then
-            echo "nothing changed"; exit 0
-          fi
-          git commit -m "street points (post boxes, drinking taps, speed bumps) from OpenStreetMap: ${FILES}"
-          for i in 1 2 3 4 5; do
-            git pull --rebase && git push && exit 0
-            sleep $((i * 10))
+          for f in "${LIST[@]}"; do
+            python3 tools/osm_city.py --street-points "$f" || { echo "failed: $f"; continue; }
+            git add "$f"
+            if git diff --cached --quiet; then continue; fi
+            git commit -m "street points (post boxes, drinking taps, speed bumps) from OpenStreetMap: $f"
+            for i in 1 2 3 4 5; do
+              git pull --rebase && git push && break
+              sleep $((i * 10))
+            done
           done
-          exit 1
