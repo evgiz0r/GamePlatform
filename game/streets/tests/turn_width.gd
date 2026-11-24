@@ -109,6 +109,7 @@ func _run() -> void:
 	var picks := _pick(int(OS.get_environment("TW_N")) if OS.get_environment("TW_N") != "" else 5)
 	print("turn width: %d junctions in %s" % [picks.size(), g._city_id])
 	var over := 0
+	var near := 0   # (turns with the body at something solid round the corner)
 	var runs := 0
 	var stray := 0.0   # (the car's worst straying from its plan, over all the turns)
 	for p: Array in picks:
@@ -119,6 +120,8 @@ func _run() -> void:
 			runs += 1
 			if res["car_over_middle"] or res["plan_over_middle"]:
 				over += 1
+			if res["body_near"] != "":
+				near += 1
 			stray = maxf(stray, float(res["car_off_plan"]))
 			print("TURN WIDTH %s" % JSON.stringify(res))
 	print("TURN WIDTH: %d of %d turns with the car's left side over the middle line after the turn" % [over, runs])
@@ -127,10 +130,14 @@ func _run() -> void:
 	# the middle line, 1.5-2.2 m off a plan whose corner sat on it. The fix read 0 of 8 over
 	# the line (0 of 10 in Ashdod, 0 of 2 in the test town) and the car 0.5-0.8 m off its plan:
 	# none over, and the straying under the bug's least, 1.5 m.
-	var ok := runs > 0 and over == 0 and stray < 1.5
-	print("REGRESS turn_width: %s -- turns with the car or its plan over the middle line after the turn %d of %d, the car at most %.1f m off its plan (good 0, and under 1.5 m; the bug: 4 of 8, 1.5-2.2 m)" % [
-		"PASS" if ok else "FAIL", over, runs, stray])
+	# (and the body clear of posts, walls and buildings round each corner: route 3's back end met a
+	# sign post at a corner, 24 Nov -- the family, "the body cuts a corner into something solid")
+	var ok := runs > 0 and over == 0 and stray < 1.5 and near == 0
+	print("REGRESS turn_width: %s -- turns with the car or its plan over the middle line after the turn %d of %d, the car at most %.1f m off its plan, the body at something solid round the corner %d (good 0, under 1.5 m, 0; the bug: 4 of 8, 1.5-2.2 m)" % [
+		"PASS" if ok else "FAIL", over, runs, stray, near])
 	quit(0)
+
+const CLEAR_M := 0.05   ## m: the body this near something solid counts as touching it
 
 func _radius(path: PackedVector2Array) -> float:
 	# the tightest circle through three points 3 m apart along the line
@@ -189,6 +196,7 @@ func _case(p: Array, turn: String) -> Dictionary:
 	var v_in := INF
 	var car_lat := [INF, -INF]
 	var plan_lat := [INF, -INF]
+	var touch := ""   # the first solid thing the car's body came within CLEAR_M of round the corner
 	while t < 25.0:
 		await physics_frame
 		t += dt
@@ -248,6 +256,16 @@ func _case(p: Array, turn: String) -> Dictionary:
 			var shove: Vector2 = g._push_out(nose, 1.15, true, false, g._y)
 			print("  %s t %.1f  in %.1f right %.1f (of the way in)  out %.1f right %.1f (of the way out)  %.1f m/s  steer %.2f  yaw rate %.2f  shove %.2f (%s)" % [turn, t,
 				(pos - node).dot(h), (pos - node).dot(right), (pos - node).dot(out_d), (pos - node).dot(out_r), g._v, g._steer, g._yaw_rate, shove.dot(Vector2(-fw.y, fw.x)), g._ap_why])
+		# the body round the corner clear of what is solid -- posts, walls, buildings (not the
+		# traffic, which is off): route 3's back end met a sign post at a corner's pavement
+		if d_node < 25.0 and touch == "":
+			var fw2: Vector2 = g._fwd()
+			var keep: String = g._last_hit
+			for off: float in [g.CAR_OFF, -g.CAR_OFF]:
+				g._last_hit = ""
+				if touch == "" and g._push_out(pos + fw2 * off, g.CAR_R + CLEAR_M, true, false, g._y) != Vector2.ZERO:
+					touch = "%s (%s end, %.0f km/h)" % [g._last_hit, "front" if off > 0.0 else "back", absf(g._v) * 3.6]
+			g._last_hit = keep
 		var along: float = (pos - node).dot(out_d)
 		if along > 4.0 and along < 25.0 and absf((pos - node).dot(out_r)) < 12.0:
 			var lat: float = (pos - node).dot(out_r)
@@ -268,4 +286,4 @@ func _case(p: Array, turn: String) -> Dictionary:
 	return {"node": n, "turn": turn, "into": String(cr_road.get("name", "")), "street_w": snappedf(float(cr_road["w"]), 0.1), "lane": snappedf(lane, 0.1),
 		"plan_r": snappedf(_radius(plan_near), 0.1), "car_r": snappedf(_radius(car), 0.1), "kmh_in_it": snappedf(v_in * 3.6, 1),
 		"plan_right_of_middle": [snappedf(plan_lat[0], 0.1), snappedf(plan_lat[1], 0.1)], "car_right_of_middle": [snappedf(car_lat[0], 0.1), snappedf(car_lat[1], 0.1)],
-		"car_off_plan": snappedf(stray, 0.1), "plan_kmh": snappedf(plan_v * 3.6, 1), "plan_points_within_15m": plan_pts, "plan_over_middle": plan_lat[0] < 0.9, "car_over_middle": car_lat[0] < 0.9}
+		"car_off_plan": snappedf(stray, 0.1), "plan_kmh": snappedf(plan_v * 3.6, 1), "plan_points_within_15m": plan_pts, "plan_over_middle": plan_lat[0] < 0.9, "car_over_middle": car_lat[0] < 0.9, "body_near": touch}
