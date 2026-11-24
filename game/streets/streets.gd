@@ -96,7 +96,7 @@ const LEVELS := [
 	# road where the car has ramps tunnels jumps falls"): a walk round a square laid out with the
 	# game's things in rows, and a figure-of-eight circuit autodrive takes once round -- the route
 	# set's drive 14, which this level starts itself ("test_drive"; left off the Cities list)
-	{"name": "The showroom: a walk among the models", "city": "showroom", "look": "med", "walk": "showroom_walk"},
+	{"name": "The showroom: a walk among the models", "city": "showroom", "look": "med", "lang": "en", "walk": "showroom_walk"},
 	# ("traffic": false -- no cars but the one watched: a bus and cars had shared its jump and ramps)
 	{"name": "The trick road", "city": "trick_road", "look": "north", "test_drive": 14, "traffic": false},
 	# Monaco (NEW_CITY.md): the whole principality, Fontvieille to Larvotto, a box of 3.4 x 3.1 km:
@@ -6614,7 +6614,7 @@ func _markings(buf: Buf, r: Dictionary, yellow: Buf) -> void:
 				if _tiled and not _tile_rect(_tile).has_point(a2):
 					s2 += BUS_WORD_STEP
 					continue   # (the next square's: each square's stretch overlaps the next)
-				_road_word("אוטובוס" if String(_place.get("look", "")) == "med" else "BUS",
+				_road_word("אוטובוס" if _hebrew() else "BUS",
 					a2 + Vector2(-d2.y, d2.x) * float(bw[0]), d2 * float(bw[1]))
 				_bus_words += 1
 				if _bus_word_at.size() < 8:
@@ -7741,6 +7741,14 @@ func _country() -> String:
 	if b == "nl" or b == "fr":
 		return b
 	return "il" if String(_place.get("look", "")) == "med" else "ca"
+
+## Whether the town's own writing is Hebrew -- road words (עצור, האט, אוטובוס), the taxis'
+## roof signs (מונית), the street plates' "רח'", a shelter's מקלט: only in an Israeli town
+## (_country() "il"). Everywhere else English, or the local word where the town paints one
+## (the user, 24 Nov: "remove hebrew in general anywhere besides the israeli cities. rest is
+## just english"). A made-up place that is not an Israeli town says so with "lang": "en".
+func _hebrew() -> bool:
+	return _country() == "il" and String(_place.get("lang", "he")) == "he"
 
 ## A town whose roofs were measured (a survey's ridge, `rr`): Dutch ("nl", 3DBAG) or French
 ## ("fr", BD TOPO) -- walls to the eaves, the roof to the ridge (_dutch_pitch)
@@ -10784,7 +10792,7 @@ func _car_material() -> ShaderMaterial:
 		var red := _real_col("red")
 		m.set_shader_parameter("red_lit", Color.from_hsv(red.h, 0.97, 1.0))
 		m.set_shader_parameter("taxi_col", _real_col("yellow"))
-		m.set_shader_parameter("taxi_latin", 0.0 if String(_place.get("look", "")) == "med" else 1.0)
+		m.set_shader_parameter("taxi_latin", 0.0 if _hebrew() else 1.0)
 		m.set_shader_parameter("lamp", _tone["lamplight"])
 		m.set_shader_parameter("tail", Palette.col("hazard"))
 		m.set_shader_parameter("night", 1.0 if _night else 0.0)
@@ -14801,7 +14809,7 @@ var _stop_lines: Array = []          ## [junction, way in, line before it, road 
 ## the Israeli towns); SLOW (האט) before a crossing near a school.
 func _build_road_paint() -> void:
 	var paint := CBuf.new(GROUND_CELL)
-	var med := String(_place.get("look", "")) == "med"
+	var he := _hebrew()
 	var country := _country()
 	for sl: Array in _stop_lines:
 		var c: Vector2 = sl[0]
@@ -14813,13 +14821,13 @@ func _build_road_paint() -> void:
 		var o1 := w * 0.5 - 0.25
 		if sl[5] == "give":
 			_give_line(paint, at, dir, o0, o1)
-			if med:
+			if he:
 				_road_word("האט", at - dir * 2.6 + right * ((o0 + o1) * 0.5), dir)
 			continue
 		paint.quad3(_g3(at + right * o0, Y_MARK + 0.002), _g3(at + right * o1, Y_MARK + 0.002),
 			_g3(at + right * o1 - dir * 0.45, Y_MARK + 0.002), _g3(at + right * o0 - dir * 0.45, Y_MARK + 0.002))
 		if sl[5] == "stop":
-			_road_word("עצור" if med else "STOP", at - dir * 2.6 + right * ((o0 + o1) * 0.5), dir)
+			_road_word("עצור" if he else "STOP", at - dir * 2.6 + right * ((o0 + o1) * 0.5), dir)
 	# SLOW before the crossings near a school or a kindergarten: Israel's האט, Canada's SLOW;
 	# a European town paints no word there (it has the children's warning sign instead:
 	# _build_street_signs)
@@ -14853,7 +14861,7 @@ func _build_road_paint() -> void:
 				if c.distance_to(pts[from]) < 16.0:
 					continue
 				var lane := _lane_off(r)
-				_road_word("האט" if med else "SLOW", c - dir * 12.0 + Vector2(-dir.y, dir.x) * lane, dir)
+				_road_word("האט" if he else "SLOW", c - dir * 12.0 + Vector2(-dir.y, dir.x) * lane, dir)
 	_add_mesh(paint, _surface("mark"), false, DETAIL_RANGE)
 
 ## A give-way's line across the lane(s) from `o0` to `o1` (offsets right of `dir`) at `at`:
@@ -15288,7 +15296,7 @@ func _build_street_signs() -> void:
 			var face := Basis(Vector3.UP, atan2(along.x, along.y) - PI * 0.5)   # its face looks across the street it names
 			plant.call("street", corner, face, 2.6)
 			var en := String(r["en"])
-			var text := ("רח' " + nm + ("\n" + en.to_upper() if en != "" else "")) if med else (en if en != "" else nm)
+			var text := ("רח' " + nm + ("\n" + en.to_upper() if en != "" else "")) if _hebrew() else (en if en != "" else nm)
 			_hash_add(_name_hash, Rect2(corner, Vector2.ZERO), 50.0, _name_signs.size())
 			_name_signs.append([Transform3D(face * Basis.from_scale(Vector3.ONE * SIGN_SCALE), Vector3(corner.x, _h(corner) + 2.6, corner.y) + face * Vector3(0, 0, 0.04)), text])
 			named += 1
@@ -28321,7 +28329,7 @@ func _draw_hud() -> void:
 		if push > 0.0:
 			_hud.draw_rect(Rect2(260, 96, 120, 4), Color(bg, 0.7))
 			_hud.draw_rect(Rect2(260, 96, 120.0 * push, 4), pl)
-	if _touch_seen:
+	if _touch_seen and not _watching():   # (watched: no wheel to steer, so no stick drawn)
 		var held := _stick_id >= 0
 		var c := STICK_C
 		var a := 0.85 if held else 0.45
@@ -28354,7 +28362,17 @@ var _mouse_at := Vector2.INF   ## a real mouse's position (not a touch's): the b
 ## Under the mouse it fills as the shell's buttons do on hover (UIKit: the accent darkened,
 ## the text in the player's colour) -- the user: "when i hover with the mouse it doesnt fill
 ## them like in the main and other menus"
+## Watched (_watching(): a tour, a scenario that plays itself, a test drive) none of them
+## answers a tap, so each is drawn greyed out -- faint outline and text, no fill, no hover --
+## (the user, 24 Nov: "grey out the controls that we cant click in the autoplay")
 func _hud_btn(r: Rect2, text: String, col: Color, lit: bool, size: int, strong := false) -> void:
+	if _watching():
+		var dim := Color(Palette.col("ink"), 0.4)
+		_hud.draw_rect(r, Color(Palette.col("bg"), 0.5))
+		_hud.draw_rect(r, dim, false, 1.0)
+		_hud.draw_string(_font, Vector2(r.position.x, r.position.y + r.size.y * 0.5 + size * 0.36), text,
+			HORIZONTAL_ALIGNMENT_CENTER, r.size.x, size, dim)
+		return
 	var c := col if lit or strong else Color(Palette.col("ink"), 0.8)
 	var hover := r.has_point(_mouse_at)
 	_hud.draw_rect(r, Palette.col("accent").darkened(0.55) if hover else Color(Palette.col("bg"), 0.7))

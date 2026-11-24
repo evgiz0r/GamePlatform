@@ -64,8 +64,8 @@ def showroom():
 
     RX, RN, RS = RING
     c = [node(-RX, RN), node(RX, RN), node(RX, RS), node(-RX, RS)]
-    names = [("רחוב התצוגה", "Display Street"), ("רחוב הדגם", "Model Street"),
-             ("רחוב המוצג", "Exhibit Street"), ("רחוב הגלריה", "Gallery Street")]
+    names = [("Display Street", "Display Street"), ("Model Street", "Model Street"),
+             ("Exhibit Street", "Exhibit Street"), ("Gallery Street", "Gallery Street")]
     roads = []
     for i in range(4):
         a, b = c[i], c[(i + 1) % 4]
@@ -78,7 +78,7 @@ def showroom():
     # a street out, east, so the traffic has somewhere to come from
     e1 = node(RX + 45.0, (RN + RS) / 2)
     mid_e = roads[1]["n"][1]
-    roads.append({"n": [mid_e, e1], "k": "residential", "w": 8.0, "l": 2, "name": "רחוב היציאה",
+    roads.append({"n": [mid_e, e1], "k": "residential", "w": 8.0, "l": 2, "name": "Way Out Street",
                   "name_en": "Way Out Street", "sw": "both", "ms": 30})
 
     buildings = []
@@ -116,8 +116,8 @@ def showroom():
         tree_info.extend([0, 40])
 
     areas = [{"p": rect(*PLAZA), "k": "plaza"}]
-    pois = [[round(-30.0 * S), round((RN - 7.5) * S), "cafe", "קפה התצוגה", "Showroom Cafe"],
-            [round(30.0 * S), round((RS + 7.5) * S), "convenience", "מכולת", "Makolet"]]
+    pois = [[round(-30.0 * S), round((RN - 7.5) * S), "cafe", "Showroom Cafe", "Showroom Cafe"],
+            [round(30.0 * S), round((RS + 7.5) * S), "convenience", "Corner Shop", "Corner Shop"]]
     city = {
         "version": 1, "name": "The showroom", "source": "made up (data_tools/make_showcase.py)", "made_up": 1,
         "fetched": "", "origin": [0.0, 0.0], "scale": S, "bounds": [-100.0, -90.0, 100.0, 85.0],
@@ -510,9 +510,9 @@ def trick_road():
     # the loop closes: the last run joins the first (both ground)
     roads = []
     step_of = {"ground": 6, "em": 1, "br": 2, "cu": 2, "tu": 3, "jump": 1}
-    piece_names = {"ground": ("מסלול הפעלולים", "Trick Road"), "em": ("עליית הגשר", "Bridge Ramp"),
-                   "br": ("גשר הקפיצה", "Jump Bridge"), "cu": ("חפירת הגבעה", "Hill Cutting"),
-                   "tu": ("מנהרת הגבעה", "Hill Tunnel"), "jump": ("הקפיצה", "The Jump")}
+    piece_names = {"ground": ("Trick Road", "Trick Road"), "em": ("Bridge Ramp", "Bridge Ramp"),
+                   "br": ("Jump Bridge", "Jump Bridge"), "cu": ("Hill Cutting", "Hill Cutting"),
+                   "tu": ("Hill Tunnel", "Hill Tunnel"), "jump": ("The Jump", "The Jump")}
     for kd, a, b in runs:
         st = step_of[kd]
         idx = list(range(a, b, st))

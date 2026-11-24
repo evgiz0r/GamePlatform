@@ -101,6 +101,13 @@ A city in a new country needs a decision on each of these:
   (checked against the real conventions, 23 Nov 2026; `tests/country_signs.gd` shoots one of
   each kind):
 
+  **Hebrew only in Israel** (the user, 24 Nov 2026): every Hebrew word the code writes
+  (עצור, האט, אוטובוס, the taxis' מונית, the plates' "רח'", a shelter's מקלט) goes through
+  `_hebrew()`: `_country()` is `"il"` and the level has no `"lang": "en"` (the showroom has it:
+  made up, look `med`, but not an Israeli town). Anywhere else English or the local word, and a
+  made-up place gets English names in its data. `tests/hebrew_scan.gd` reads every label,
+  plate and HUD text a town shows and FAILs on one Hebrew letter outside Israel.
+
   | | Israel | Netherlands | France, Monaco | Canada |
   |---|---|---|---|---|
   | convention | Vienna | Vienna | Vienna | MUTCD (Canada's) |
