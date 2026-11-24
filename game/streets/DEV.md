@@ -1753,6 +1753,13 @@ Givatayim 0 late. Traffic cars do not look at walkers at all (they rely on the k
   Givatayim 1.4 -> 0.7, 2.8 -> 2.2. The records: Tel Aviv 674 KB, Ashdod 702, Bedford 613,
   Givatayim 276, the test town 22; prepublish ~25 s for all. What is left of the file is the
   next thing to bake (widths, buildings cut, divided roads: 1 s of Tel Aviv's 1.5).
+- **Every city on the user's phone** (the on-screen load line, build 21 Nov 17:10 UTC 2b3e4e3,
+  the user's screenshots; total / city file / start area / graphics warm-up, s): Bedford 12.3 /
+  1.4 / 1.9 / 9.0, Givatayim 12.8 / 0.9 / 2.1 / 9.8, Kiryat Dimyon 12.9 / 0.2 / 2.2 / 10.5,
+  Ashdod 14.5 / 2.3 / 3.0 / 9.2, Tel Aviv 14.7 / 1.9 / 3.0 / 9.8. The warm-up is 9-10.5 s
+  in every city, even the made-up town's 37 streets: it is the shader kinds being compiled
+  (74-84 of them, see "Memory, Tel Aviv"), not the city's size -- the biggest thing left in a
+  phone's load. No "+ page" part showed on any of them (`_page_ms` on that phone: unchecked).
 - **Every city in the browser, after the download split** (`tests/web_load.js`, 21 Nov 2026,
   one run each; city file read / start area / warm-up / drivable, s): Givatayim 0.8 / 3.5 / 38 /
   47, Bedford 1.3 / 3.3 / 27 / 37, Ashdod 2.0 / 4.4 / 28 / 39, Kiryat Dimyon 0.3 / 4.6 / 40 /

@@ -475,3 +475,12 @@ Windows browsers, where today's two fixes already took most of the cost.
 up only if first visits on Windows browsers become the complaint again. The first thing then:
 compare a container capture's sources (`web_shaders.js` DUMP=) with a real browser's,
 byte for byte -- if Godot's GLSL differs by device, the whole approach fails.
+
+**Warm-up on stand-ins, tried and left out (24 Nov 2026, another thread).** Each shader key
+drawn once as a ~1 m copy of its node (same mesh and material, a one-copy multimesh) in front
+of the camera with the city hidden, in 4 frames, then the city once -- instead of the city
+itself in 8 groups and 4 views. In the container's browser (SwiftShader, where drawing the
+town is the cost): Givatayim's warm-up 38 s -> 13.5 s, Tel Aviv 35 -> 12.5 s, the same shaders
+compiled. Not kept: on a real GPU the warm-up is the compiling (above), a phone draws the town
+in ~50 ms, so it would save well under a second there, and it could miss variants a view-based
+pass catches. Worth it only if a slow-drawing device turns up (the work laptop's 68 ms draws).
