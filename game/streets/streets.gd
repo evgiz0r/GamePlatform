@@ -2795,6 +2795,66 @@ func _nearest_seg_out(p: Vector2, reach: float, marks: Dictionary) -> Dictionary
 			best = {"road": ri, "seg": sj, "q": (pts[sj] + pts[sj + 1]) * 0.5, "edge": d - float(r["w"]) * 0.5}
 	return best
 
+## A cul-de-sac estate: drive along road ri from point k going dir (k the first point past
+## where you are), and is all you can get to from there -- by the town's public streets, not
+## back through the point you came from -- a few streets that only end? A dead end with side
+## streets of its own that also only end (Bedford's Meadowview Drive and Bridge Street off
+## Union Street, 23 Nov) was not one to traffic's old test, which stopped at the first point
+## with three ways -- a driveway was enough -- so cars went in, turned round, met the ones
+## coming in and jammed there; autodrive roaming had no test at all. Found by walking the
+## streets from there until POCKET_M m of them (not a pocket) or none left (a pocket), once
+## per way in. One-ways are walked both ways (a pocket is a pocket); service lanes, car parks
+## and private ways are not streets out. Reaching the map's edge is not a pocket here (the
+## edge has its own rules: _trap, _edge_bound).
+const POCKET_M := 900.0
+var _pocket_of := {}                 ## Vector3i(road, k, dir) -> bool
+
+func _pocket_ahead(ri: int, k: int, dir: int) -> bool:
+	var key := Vector3i(ri, k, dir)
+	if _pocket_of.has(key):
+		return _pocket_of[key]
+	var r0: Dictionary = _roads[ri]
+	var p0: PackedVector2Array = r0["pts"]
+	if k - dir < 0 or k - dir >= p0.size() or k < 0 or k >= p0.size():
+		return false
+	var rim := _bounds.grow(-EDGE - EDGE_ROOM)
+	var seen := {_pt_key(ri, k - dir): true, _pt_key(ri, k): true}
+	var todo: Array = [Vector2i(ri, k)]
+	var metres := p0[k - dir].distance_to(p0[k])
+	var out := true
+	while not todo.is_empty() and out:
+		var at: Vector2i = todo.pop_back()
+		var ids: PackedInt32Array = (_roads[at.x] as Dictionary)["ids"]
+		var here: Array = [at]
+		if ids[at.y] >= 0:
+			here = _node_roads[ids[at.y]]
+		for e: Vector2i in here:
+			var r: Dictionary = _roads[e.x]
+			if not r["drive"] or r["pv"] or r["k"] == "service":
+				continue
+			var p: PackedVector2Array = r["pts"]
+			for d: int in [1, -1]:
+				var j := e.y + d
+				if j < 0 or j >= p.size():
+					continue
+				var kk := _pt_key(e.x, j)
+				if seen.has(kk):
+					continue
+				seen[kk] = true
+				metres += p[e.y].distance_to(p[j])
+				if metres > POCKET_M or not rim.has_point(p[j]):
+					out = false
+					break
+				todo.append(Vector2i(e.x, j))
+			if not out:
+				break
+	_pocket_of[key] = out
+	return out
+
+func _pt_key(ri: int, j: int) -> int:
+	var id: int = ((_roads[ri] as Dictionary)["ids"] as PackedInt32Array)[j]
+	return id if id >= 0 else -1 - (ri * 100000 + j)
+
 func _graph_reach(from: int, adj: Dictionary) -> Dictionary:
 	var seen := {from: true}
 	var todo: Array = [from]
@@ -25364,6 +25424,8 @@ func _ap_ways(ri: int, ei: int, dir: int) -> Array:
 				score -= 8.0   # every way on from it runs off the map: only if nothing else
 			elif _trap.has((r2["ids"] as PackedInt32Array)[nxt]) and not _trap.has(node):
 				score -= 8.0   # into a pocket, with no way back out (see _find_pockets)
+			elif r2["k"] != "service" and _pocket_ahead(e.x, nxt, d2):
+				score -= 5.0   # into a cul-de-sac estate: only if nothing else (in, round, out)
 			if r.get("ring", false):
 				# on a roundabout: off at one of the next exits, never round and round
 				score += (-0.8 - 1.2 * _ap_ring_n) if r2.get("ring", false) else 1.2

@@ -1869,6 +1869,15 @@ func _spawn(c: Car, first: bool) -> bool:
 		var dir := 1 if rng.randf() < 0.5 else -1
 		if r["o"] != 0:
 			dir = int(r["o"])
+		# in a cul-de-sac estate (g._pocket_ahead): heading out of it, and only now and then
+		# (a resident leaving) -- put down there half of them went in, turned round at the
+		# end and met the ones coming out (Bedford's Meadowview Drive, 23 Nov)
+		if g._pocket_ahead(ri, sj + 1 if dir > 0 else sj, dir):
+			if r["o"] != 0 or g._pocket_ahead(ri, sj if dir > 0 else sj + 1, -dir) or rng.randf() > 0.3:
+				continue
+			dir = -dir
+		elif g._pocket_ahead(ri, sj if dir > 0 else sj + 1, -dir) and rng.randf() > 0.3:
+			continue
 		if _start_on(c, ri, sj, at, dir):
 			return true
 	return false
@@ -2215,8 +2224,10 @@ func _next(c: Car) -> bool:
 			var score := straight * 1.4 + float(KIND_W.get(r2["k"], 0.25)) * 1.2 + rng.randf() * 1.5
 			# into a dead end only when there is nothing else: the cars went in through
 			# traffic, turned round at the end in a queue of others doing the same, and
-			# overlapped there (a dozen times a run in one cul-de-sac)
-			if _dead_end(r2, nxt, d2):
+			# overlapped there (a dozen times a run in one cul-de-sac). Nor into a few
+			# streets that all only end (g._pocket_ahead: a driveway or a side street on
+			# the way was enough to let them in -- Bedford's Meadowview Drive, 23 Nov)
+			if g._pocket_ahead(e.x, nxt, d2):
 				score -= 4.0
 			# nor into a pocket whose only ways out run off the map (see the game's _find_pockets)
 			if g._trap.has((r2["ids"] as PackedInt32Array)[nxt]) and not g._trap.has(node):
@@ -2235,18 +2246,6 @@ func _next(c: Car) -> bool:
 		return false
 	c.ring_n = c.ring_n + 1 if (_roads[best.x] as Dictionary).get("ring", false) else 0
 	_leg(c, best.x, best.y, best.z)
-	return true
-
-## road r from point k on, going dir: does it end in a dead end with no turning on the way?
-func _dead_end(r: Dictionary, k: int, dir: int) -> bool:
-	var ids: PackedInt32Array = r["ids"]
-	var last := ids.size() - 1 if dir > 0 else 0
-	if g._node_ways(ids[last]) > 1:
-		return false
-	while k != last:
-		if g._node_ways(ids[k]) >= 3:
-			return false
-		k += dir
 	return true
 
 ## drop what is well behind, so the path stays short

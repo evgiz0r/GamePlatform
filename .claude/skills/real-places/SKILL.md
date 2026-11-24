@@ -547,6 +547,14 @@ between the points. Two traps cost a round each:
   them and turns round in a queue of its own. Never take "to the end of this street and
   straight back" as a route's start; stop short of the end and turn round there; keep
   traffic out unless there is no other way.
+- **A dead end is often a whole estate, not one street.** "Does this street end before the
+  next junction?" misses most of them: a driveway or a side street on the way counts as a
+  junction, and the side streets end too. Ask instead whether everything you can reach from
+  that way in -- by public streets, not service lanes or car parks, and not back through the
+  way you came -- runs out within a few hundred metres. Walk it once per way in and cache it.
+  Checked only the simple way, AI traffic went into such an estate about every 6 seconds,
+  turned round at its ends and jammed with the cars still coming in. Spawning has the same
+  trap: a car put down inside one should head out.
 - **Turning round takes moves.** A 4.4 m car on 34 degrees of lock needs ~10 m kerb to kerb
   to come round in one sweep; a cul-de-sac is 6-8 m. Stop ~7 m short of the end (room for
   the first move) and turn as a driver does: forward on full lock until the nose nears the

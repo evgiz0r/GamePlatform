@@ -4173,6 +4173,21 @@ checks Givatayim / Ashdod / test town 12 / 12 / 11, all traffic's; route set 10 
   the other (5 of Givatayim's 12 checks). Now a half circle a lane wide, short of the end.
   `tests/traffic_dead_end.gd`: before, every car out 1.6-2 m on the wrong side, 3-16
   overlaps a minute; after, 7 sent, 0 wrong side, 0 overlaps.
+- **Cul-de-sac estates** (23 Nov, Evgeni on Bedford's Meadowview Drive: "many cars just
+  driving there turning around, causing traffic"). Traffic's dead-end test (`_dead_end`) walked
+  the road to its end and called it a way on at the first point with three ways -- a driveway
+  was enough (Meadowview has one at (698, -2135)), and a dead end with side streets that also
+  only end (Bridge Street, River Lane round Union Street's end) never counted. Cars went in,
+  turned round at the end, met the ones still coming in. Autodrive's roaming (`_ap_ways`) had
+  no test at all. Now `streets.gd _pocket_ahead(road, k, dir)`: walk the public streets (not
+  service lanes, car parks, private ways; one-ways both ways) from there without going back
+  through where you came from; a pocket if they run out before `POCKET_M` (900 m), not one
+  if they reach the map's edge (that has `_trap`/`_edge_bound`). Cached per way in. Traffic:
+  -4 on that way in `_next` (only when nothing else), and `_spawn` puts a car down in an
+  estate only 30% of the time, and then heading out. Autodrive roaming: -5.
+  `tests/traffic_pockets.gd` (player standing at Meadowview, 150 s): traffic turn-rounds
+  within 250 m 23 -> 4 (9.2 -> 1.6 a minute); `AUTO=1` autodrive roaming from there: 0 of its
+  own, 17 s of 150 inside (leaving it), traffic 1.
 - **Pulling in at the kerb measured from the wrong lane.** A bus at a stop and a delivery van
   take "the room to the kerb" from `_lane(r)` -- the lane traffic drives by default, the
   middle one of three -- not the lane they are in: a bus in Sderot Herzl's kerb lane got the
