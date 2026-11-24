@@ -1537,6 +1537,7 @@ func _pickup_start(b: Array) -> void:
 	a.face(Vector3(face.x, 0, face.y))
 	a.play("Idle", true, 1.0)
 	_fare = a
+	g.add_person(a)   # (solid, and autodrive brakes for them: not in the street's own lists)
 	if g.has_method("track3d"):
 		g.track3d(a, "*")
 	_wave_t = 0.0
@@ -1597,6 +1598,7 @@ func _fare_off(out_at_kerb: bool) -> void:
 		a.position = Vector3(at.x, g._walk_y(at), at.y)
 		a.face(Vector3(side.x, 0, side.y))
 		a.play("Walk", true, 1.0)
+		g.add_person(a)
 		var tw := a.create_tween()
 		var to := at + side * 6.0
 		tw.tween_property(a, "position", Vector3(to.x, g._walk_y(to), to.y), 4.0)
