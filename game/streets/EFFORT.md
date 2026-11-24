@@ -4,7 +4,8 @@ How long each change took, in minutes, from the Claude Code sessions that made i
 
 | date (UTC) | commit | change | agent | runs | you | active | away | lines | files | steps | tools | engine runs | tokens out |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 2026-11-23 04:59 | 6ce3849 | streets tests: posts_at.gd back as it was (overwritten by mistake); the one-spot lister is spot_at.gd | 0.5 | 0.2 | 0.0 | **0.7** | 0.0 | +119 -31 | 3 | 4 | 4 | 1 | 1.9k |
+| 2026-11-24 01:57 | 6fa12b8 | streets perf: the quality ladder steps down under 28 fps (was 45), up at 40 (was 56), a stutter is a frame ... | 16 | 1.3 | 0.0 | **17** | 1411 | +38 -19 | 4 | 13 | 14 | 3 | 7.0k |
+| 2026-11-23 04:59 | 6ce3849 | streets tests: posts_at.gd back as it was (overwritten by mistake); the one-spot lister is spot_at.gd | 0.5 | 0.2 | 0.0 | **0.8** | 0.0 | +119 -31 | 3 | 4 | 4 | 1 | 1.9k |
 | 2026-11-23 04:58 | 4b9e0a4 | streets racer: no stalls behind a narrow or stuck car, the plan kept clear of posts | 37 | 157 | 1.5 | **196** | 542 | +392 -83 | 6 | 155 | 148 | 35 | 92.2k |
 | 2026-11-23 03:21 | c56a6e9 | streets people: back from a shop to where they stood, a turn on the spot before walking on (people_pops: sl... | 1.5 | 6.2 | 0.0 | **7.7** | 0.0 | +43 -10 | 4 | 16 | 14 | 7 | 8.3k |
 | 2026-11-23 03:14 | 043c809 | streets people: standing people start back too; knocked down by the car and up again; waving and pointing; ... | 35 | 53 | 0.0 | **88** | 679 | +1078 -33 | 17 | 142 | 146 | 45 | 107.6k |
