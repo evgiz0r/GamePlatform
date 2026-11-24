@@ -3122,9 +3122,14 @@ cartoon figures to compare.
     the triangles.
   - The line is 0.015 below the neck bone's root on each body. The man's neck is 3.5 higher
     than the woman's, and one height for both bared his chest.
-  - Unchanged: other hems still follow the triangles. A band of the shirt's colour can show
-    between skin and trousers at a shorts hem, half as wide as before. The same field would
-    fix those if they show.
+  - The hems now go the same way (`limbs` in `_join`): along each arm and leg, a vertex's
+    distance from the shoulder (or the hip) towards the wrist (the foot) sets its green, so
+    a short sleeve ends halfway to the elbow (`SLEEVE` 0.55), a long one 0.035 short of the
+    wrist (`WRIST_IN`), shorts and skirts 0.06 above the knee (`HEM_ABOVE_KNEE`). The legs
+    of shorts are trousers throughout (part 2), skin below the line by the same green; the
+    shader turns part 2 with green under 0.5 to skin. `tests/people_hems.gd`: straight
+    lines on all four (shorts, skirt, short and long sleeves). `make()` keeps each one's
+    clothes in a `clothes` meta for tests.
 - **Clothes are not skin** (`CLOTH_V`, `SKIN_APART`):
   - A cream shirt in the sun drew (1, 1, 0.81), a pale yellow that read as bare to the waist.
   - Shirts and trousers are now capped at HSV value 0.72.
@@ -3138,7 +3143,14 @@ cartoon figures to compare.
   - Now `SKIN_K_MAX` 1.0, roughness 0.72, specular 0.35. A lit forehead in `people_glance`
     went from (1, 1, 0.77) to (1, 0.85, 0.49); red still tops out in full sun, but the hue
     holds.
-  - The whole-scene pink lean is still open.
+  - The whole-scene pink lean: fixed, see below.
+- **The pink cast over the scene** (`_unpink`, `tests/tint_card.gd`): grey cards in the sun
+  and the shade, and the lights' colours. The day's haze (the fog, from the photo sky's
+  horizon times the palette's tint) was 205/190/192 and the shade's fill 201/197/200: green
+  the lowest, which is magenta. A neutral card in the shade read 55/53/54. Now green is
+  lifted to the middle of red and blue in both: the haze 205/198/192, the shade card
+  55/55/54, the sun card 216/201/178 (warm, as it should be). The sky dome's photo is left
+  as it is.
 - **Startled by the car** (streets.gd's walkers, after the step aside; the `Startled` clip is
   the library's `Hit_Chest`, added to `make_moves.gd`'s KEEP with `Sprint`):
   - It fires when the car's body would be within 1 m of them 0.35 or 0.7 s on, closing by
@@ -3154,6 +3166,46 @@ cartoon figures to compare.
   - To remake `moves.res`: unzip `UAL1_Standard.glb` from the Standard zip into a folder in
     the project, `--import`, then run `make_moves.gd` with `UAL=res://<that folder>/...`.
     Delete the folder after; it's 7.6 MB and not for the repo.
+- **Standing people start back too** (`_still_startle`: at the stops, in the shop doors,
+  standing at the cafe tables; not those sitting): the walkers' rule, from where they stood
+  (`startle_base`), a 0.4 m step back, then their idle. `people_startle`: 3/3, the car
+  5.5-6.1 m off.
+- **Knocked down** (`_knock_down`, `_down_tick`): the car touching someone (`_hit_who`, set
+  in `_people_push`) at over `KNOCK_DOWN_V` (2 m/s) makes them fall: turned to face the car
+  (the library's fall, `Death01`, goes backwards: away from it, not under it), down
+  `DOWN_T` 4.2 s, the last part getting up (`GetUp`: the fall reversed by `_reversed` in
+  `people.gd`, at 0.6 speed; the library has no getting up), then on. A pair: the one hit
+  falls, the other starts. `Death01` added to `make_moves.gd`'s KEEP (17 clips).
+  `tests/people_fall.gd`: walkers and people at stops all fall and are up and walking (or
+  idle) after 5.5 s. A shopkeeper in a doorway is not reached: the shopfront stops the car.
+- **Waving and pointing** (`Gesture` in `people.gd`, `_gestures` in streets.gd): every
+  figure has the modifier, idle until `gesture(a, "wave"/"point")`. Turning the bones about
+  their own axes found no wave (a search over the x and z turns put the hand at the face);
+  the bones are aimed instead (`_aim`: the upper arm, then the forearm, turned to point along
+  a direction in the body's frame), so the axes do not matter. Wave: upper arm out and up,
+  forearm up, swinging 0.32 rad; point: the arm out ahead. Who: walkers wave now and then
+  (each every 50-140 s), at stops they point, shopkeepers wave, standing chatters both;
+  only within 40 m, and never with a phone or a box (`carry` meta). Its own rng
+  (`_gest_rng`): draws from `_people_rng` would move where everyone is put.
+  `tests/people_gesture.gd`: the wave's hand at 1.64 m, out 0.46; the point's at 1.39, 0.35
+  ahead of the feet; both back by the end.
+- **Shop doors, and people in and out** (`_shop_try`, `_shop_visit`): every open shop has a
+  door now (a dark frame and a push bar on the window's glass, at the side the shopkeeper
+  stands; one multimesh, `front["door"]`), and `_shop_doors` lists them. A walker passing
+  one 0.6-5.5 m ahead on its side (the pavement line runs 3-5 m out from the glass:
+  measured, 3.2 found nothing) turns in with `SHOP_CHANCE` 0.3, walks to it, goes out of
+  sight, comes out 6-20 s later and walks back to where it left its line, then on. Not a
+  pair, a dog, a pushchair or a box. `tests/people_shops.gd` (Givatayim): a staged visit goes
+  to, in, back, done; in 40 s by 11 doors only 4 walkers came within 5 m, so visits on their
+  own are rare there. `people_pops` lets a walker out of a door appear (meant). Two slides it caught
+  (`people_pops` 2 by the car, one 4.4 m/s): the walker went back to its bare line point,
+  not where it had stood (its lane across the pavement put back the next tick: a jump); then
+  it walked off along the line still facing the shop. Now it goes back to where it stood and
+  turns on the spot (`turn`) before walking on: 0 by the car. `people_pops` names what a
+  slider was doing (a shop visit, startled, down, dodging).
+- **The old figure is no longer loaded first** (`_set_character`): with the new people on,
+  only the name and height are set, and `make()` builds the body. Before, each person
+  instanced the kit's figure (skeleton, meshes, a player of 30 clips) only to throw it away.
 - **Passing each other** (the walkers' "someone ahead" and `_people_apart`):
   - Two coming at each other used to see each other only from 2.6 m, step aside at the last
     moment, and pass 0.29 m apart, shoulders through each other.

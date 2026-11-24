@@ -322,6 +322,14 @@ Not done (measured, small): far walkers ticked less often -- the people's tick i
 walker spread over ten steps (re-placing 0.2, apart and push 0.17, walking beside 0.1, pose
 0.1 ms a frame...), nothing to cut in one place.
 
+## The quality bar lowered to 28 fps (24 Nov 2026)
+
+The user: every browser, even a local one on the PC (Monaco), quickly dropped its quality. The
+ladder stepped down under 45 fps (and counted every frame slower than 33 ms as a stutter), so a
+PC browser at 25-30 fell to 0 within ~10 s. Now: down under `FPS_LOW` 28, up at `FPS_FULL` 40,
+a stutter is a frame over 50 ms (`LONG_FRAME`). `quality_ladder` checks a 25-35 fps browser keeps
+level 2 for 2 min. A phone at 15-22 still steps down. The fps button shows the level ("30 fps 2/3").
+
 ## A work laptop (22 Nov 2026): Intel graphics (0x7D41), ANGLE on Direct3D 11, a browser, build 2ddd8b3
 
 One perf-view screenshot, mailed: Givatayim at Katznelson, autodrive on, 317 s into the drive.

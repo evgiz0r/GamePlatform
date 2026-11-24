@@ -4,8 +4,9 @@ extends SceneTree
 ## their side (a car going by, not at them). Prints for each whether they started (the
 ## Startled clip), when, and how close the car's body came; shots st_<i>_at_<k>.png, four
 ## frames of each start (0.1 to 0.7 s), from beside, in $OUT.
+## Then the car at three people standing still (stops, shop doors, cafe tables): st_still_<i>.
 ## Good: every one driven at starts back, with the car 3-6 m off; none of those driven past
-## starts.
+## starts; the standing ones start too and step about 0.4 m.
 ##   OUT=... game/streets/tests/run.sh people_startle 4
 var g: Node
 
@@ -90,5 +91,70 @@ func _run() -> void:
 			by_bad += 1   # (passing them, it is fair to start only if it came within a metre or so)
 		g._v = 0.0
 		await create_timer(0.5).timeout
-	print("PASS %d/3 driven at started, %d/3 driven past started" % [at_ok, by_bad])
+	# people standing still (at a stop, a shop door, a cafe table): the car at three of them,
+	# from the way they face
+	var still_ok := 0
+	var still_n := 0
+	for run in range(3):
+		var c: Dictionary = {}
+		var best := INF
+		for list: Array in [g._waiters, g._keepers, g._chatters]:
+			for o: Dictionary in list:
+				var a: Node3D = o["actor"]
+				var d := Vector2(a.position.x, a.position.z).distance_to(g._pos)
+				if a.visible and not bool(o.get("sat", false)) and not used.has(a.get_instance_id()) and d < best:
+					best = d
+					c = o
+		if c.is_empty():
+			print("no one standing left")
+			break
+		var a: Node3D = c["actor"]
+		used[a.get_instance_id()] = true
+		var pa := Vector2(a.position.x, a.position.z)
+		var face := Vector2(-a.global_transform.basis.z.x, -a.global_transform.basis.z.z)
+		if face.length() < 0.1:
+			face = Vector2(1, 0)
+		face = face.normalized()
+		if (g._pos - pa).dot(face) < 0.0 and (g._pos - pa).length() > 1.0:
+			face = (g._pos - pa).normalized()   # (whichever way the model faces: from our side)
+		var start := pa + face * 13.0
+		var d := (pa - start).normalized()
+		g._pos = start
+		g._yaw = d.angle()
+		g._v = 8.0
+		g._snap_pose()
+		var t := 0.0
+		var started := -1.0
+		var gap_then := 0.0
+		var moved := 0.0
+		while t < 2.6:
+			await process_frame
+			var dt: float = g.get_process_delta_time()
+			t += dt
+			if started < 0.0:
+				g._pos += d * 8.0 * dt
+			g._yaw = d.angle()
+			g._v = 8.0 if started < 0.0 else 0.0
+			g._snap_pose()
+			var p := Vector2(a.position.x, a.position.z)
+			moved = maxf(moved, p.distance_to(pa))
+			if started < 0.0 and float(c.get("startle", 0.0)) > 0.0:
+				started = t
+				gap_then = g._body_gap(p, g._pos)
+				var cc: Vector3 = a.position + Vector3(0, 1.0, 0)
+				var side := Vector3(d.y, 0, -d.x)
+				for k in range(3):
+					await create_timer(0.08 if k == 0 else 0.25).timeout
+					cc = a.position + Vector3(0, 1.0, 0)
+					g.look_from(cc + side * 2.6 + Vector3(0, 0.3, 0), cc)
+					g._sky_follow()
+					await _snap("st_still_%d_at_%d" % [run, k])
+		still_n += 1
+		var said := "started at %.2f s, the car's body %.1f m off, stepped %.2f m" % [started, gap_then, moved] if started >= 0.0 else "did not start"
+		print("still %d: %s" % [run, said])
+		if started >= 0.0:
+			still_ok += 1
+		g._v = 0.0
+		await create_timer(0.5).timeout
+	print("PASS %d/3 driven at started, %d/3 driven past started, %d/%d standing started" % [at_ok, by_bad, still_ok, still_n])
 	quit(0)

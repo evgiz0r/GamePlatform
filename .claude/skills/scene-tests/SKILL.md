@@ -59,6 +59,16 @@ comes when it ends. `tools/shots.sh`, `menu_shot.sh` and `record_video.sh` alrea
 it; `GODOT_SHOW=1` shows the window. Moving the window off the screen does not work (Godot
 pulls it back), nor does starting it minimized (it stops running).
 
+Because its output only comes when Godot ends, a test that hits a script error before its
+`quit()` sits silently until your timeout, and you learn nothing. Give every test a watchdog
+(`create_timer(300.0).timeout.connect(func(): print("TIMEOUT"); quit(1))` at the top of its
+run) and, while finding out why, pass `--log-file <path>` (through `GODOT_ARGS` where the
+runner takes it) to read the log as it goes. `godot_bg.sh` once kept its own temp file in a
+variable named `OUT`, which is exported, so every test's `$OUT` (its shots folder) came out
+as that temp file and every screenshot failed to save: a wrapper must never reuse the names
+the tests read. A test that takes shots cannot run `--headless`: `frame_post_draw` never
+comes and it hangs at the first one.
+
 ## Ways in
 
 - **Simulate, don't sleep.** `for f in range(60 * 30): await physics_frame` runs 30 s of game
@@ -340,6 +350,22 @@ And test the family, not the shot: count the frames the camera spends inside a s
 must be zero), in every staged shot, not only the one that showed it.
 
 ## Gotchas (each cost a run)
+
+- **A game's 3D view in its own viewport has no camera on the root:**
+  `root.get_viewport().get_camera_3d()` is null. Project with the game's camera
+  (`unproject_position`) and scale by the screenshot's size over that camera's viewport's.
+- **Bones read outside a `SkeletonModifier3D` do not show the modifier.** After the frame,
+  `get_bone_global_pose` gives the pose before the modifiers ran: a raised arm measured as
+  hanging. Have the modifier record what it made (a field set at the end of its
+  `_process_modification_with_delta`) and read that.
+- **Aim a bone, don't search its axes.** To pose a limb (a wave, a point), turn each bone so
+  it points from itself to its child along a direction in the body's frame
+  (`Quaternion(now, want)` on its global pose, then `set_bone_global_pose`), the upper bone
+  first. A grid search over turns about the bone's own axes found no wave at all.
+- **Don't edit code through a Python one-liner in a bash heredoc.** A `\` line
+  continuation in the replacement came out as a literal backslash-n or as a run of tabs
+  (twice, each a parse failure; this very note came out mangled the same way). Write the
+  edit script to a file and run that.
 
 - **Read braking over half a second, not a tick.** A follower that steps its speed to its
   target each tick (an AI car at its hard-braking limit) reads 7.5 m/s^2 in every case; a car
