@@ -5488,7 +5488,7 @@ within 1.2 m behind it. Both have posts.
   its back too. Anything thin built as single faces into the batch has this trap; tests/wire_look.gd.
 - **On the roofs** (24 Nov, not in pitched towns): ROOF_SHARE 0.25 of the flocks land as a
   row of 3-8 pigeons along a flat roof's edge 5-25 m up, the edge whose middle is nearest a
-  road (`_land_roof`; the roof at the ring's mean ground + `_h`, as `_build_roof_kit`), looking
+  road (`_land_roof`, from the game's `_blds` / `_bld_top`, not the city file's buildings: Givatayim's file has none left once built, and the first version threw there every landing; run small_life on level 1 too; the roof at the ring's mean ground + its height, as `_build_roof_kit`), looking
   down at the street; they behave as the wire ones. small_life checks every roof bird is
   inside its building's walls ("off the roof" 0), shot pigeons_roof.
 - **Open**: birds never perch on lamp tops; a flock

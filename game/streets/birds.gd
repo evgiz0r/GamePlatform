@@ -276,22 +276,19 @@ const ROOF_SHARE := 0.25
 func _land_roof(me: Vector2) -> bool:
 	if g._pitched_build() or _free_ix.size() < 3:
 		return false
-	var all: Array = g._city_data["buildings"]
 	for _try in range(4):
 		var c := me + Vector2.RIGHT.rotated(rng.randf() * TAU) * rng.randf_range(20.0, 60.0)
 		var cand: Array = g._near(g._bld_hash, c, 12.0, g.BLD_CELL)
 		if cand.is_empty():
 			continue
 		var bi: int = cand[rng.randi() % cand.size()]
-		if bi >= all.size() or bi >= g._bld_top.size():
+		# (the game's own lists, not the city file's: some towns drop that once built)
+		if bi >= g._blds.size() or bi >= g._bld_top.size() or (bi < g._bld_kind.size() and g._bld_kind[bi] == 2):
 			continue
-		var bd: Dictionary = all[bi]
-		if not bd.has("_ring") or (bi < g._bld_kind.size() and g._bld_kind[bi] == 2):
-			continue
-		var top: float = bd["_h"]
+		var top: float = g._bld_top[bi]
 		if top < 5.0 or top > 25.0:
 			continue
-		var ring: PackedVector2Array = bd["_ring"]
+		var ring: PackedVector2Array = g._blds[bi]
 		var g_sum := 0.0
 		for q: Vector2 in ring:
 			g_sum += float(g._h(q))
