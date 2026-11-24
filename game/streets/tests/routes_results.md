@@ -152,30 +152,3 @@ All ten in 10 minutes on the user's PC, three at once (the cloud's ~10-12 two at
 | # | city | from -> to | arrived | time | driven | hits | longest wait | reds | rescues | off road |
 |---|---|---|---|---|---|---|---|---|---|---|
 | 15 | monaco | Quai Antoine 1er 4B -> Avenue des Papalins 9 | yes | 2.4 min | 1.4 km | 0 | - | 0 | 0 | 0 s |
-
-## 2026-11-24 (commit 988458c)
-
-| # | city | from -> to | arrived | time | driven | hits | longest wait | reds | rescues | off road |
-|---|---|---|---|---|---|---|---|---|---|---|
-| 3 | givatayim | ריינס 70 -> רובין שלמה 1 | yes | 8.4 min | 2.3 km | wall 23604 at 19 km/h on בן גוריון | 101 s (car, יצחק רבין) | 0 | 0 | 0 s |
-| 6 | ashdod | הסחלב 32 -> האדמו"ר מבעלזא 41 | yes | 5.3 min | 2.9 km | 0 | 17 s (light, שדרות הפרחים) | 0 | 0 | 0 s |
-
-## 2026-11-24 (commit 988458c)
-
-| # | city | from -> to | arrived | time | driven | hits | longest wait | reds | rescues | off road |
-|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | givatayim | בנימיני אהרון 3 -> הניצנים 3 | yes | 4.2 min | 1.6 km | 0 | 24 s (light, נחלת יצחק) | 0 | 0 | 0 s |
-| 2 | givatayim | ההסתדרות 13 -> משה דיין 124א | yes | 3.8 min | 1.7 km | car 14 at 16 km/h on הורודצקי; wall 47136 at 3 km/h on השלום | 9 s (car, הורודצקי) | 0 | 0 | 0 s |
-| 3 | givatayim | ריינס 70 -> רובין שלמה 1 | yes | 7.0 min | 2.3 km | 0 | 23 s (car, יצחק רבין) | 0 | 0 | 0 s |
-| 4 | givatayim | רחל 1 -> מסלול 2א | yes | 5.6 min | 2.5 km | 0 | 24 s (car, ויצמן) | 0 | 0 | 0 s |
-| 5 | ashdod | המתנדבים 11 -> שגב 10 | yes | 5.5 min | 2.5 km | 0 | 20 s (light, בני ברית) | 0 | 0 | 0 s |
-| 6 | ashdod | הסחלב 32 -> האדמו"ר מבעלזא 41 | yes | 4.8 min | 2.9 km | 0 | - | 0 | 0 | 0 s |
-| 7 | ashdod | הרותם 29 -> הורקנוס 7-11 | yes | 2.5 min | 1.3 km | 0 | 18 s (light, דב גור) | 0 | 0 | 0 s |
-| 8 | tel_aviv | שאול המלך 4 -> לויד ג'ורג' 4ב | yes | 3.3 min | 1.5 km | 0 | 12 s (light, קרליבך) | 0 | 0 | 0 s |
-| 9 | bedford | Amin Street 50 -> Lowther Lane 12 | yes | 9.6 min | 4.6 km | 0 | 26 s (car, a road) | 0 | 0 | 0 s |
-| 10 | dimyon | הנרקיס 12א -> התאנה 17 | yes | 1.2 min | 0.7 km | 0 | - | 0 | 0 | 0 s |
-| 11 | delft | Dirklangendwarsstraat 42 -> Hugo de Grootstraat 396 | yes | 3.9 min | 1.2 km | 0 | 24 s (car, Westplantsoen) | 0 | 0 | 0 s |
-| 12 | leiden | Pieter de la Courtstraat 26 -> Morssingel 231 | yes | 5.8 min | 2.2 km | 0 | 7 s (car, Prinsessekade) | 0 | 0 | 0 s |
-| 13 | annecy | Rue Louis Boch 7 -> Rue Pasteur 18 | yes | 5.6 min | 1.9 km | 0 | 25 s (light, Avenue des Îles) | 0 | 0 | 0 s |
-| 14 | trick_road | the start, before the ramp -> once round | yes | 1.3 min | 1.2 km | 0 | - | 0 | 0 | 0 s |
-| 15 | monaco | Quai Antoine 1er 4B -> Avenue des Papalins 9 | yes | 2.9 min | 1.4 km | 0 | 12 s (junction, Boulevard Albert 1er) | 0 | 0 | 0 s |
