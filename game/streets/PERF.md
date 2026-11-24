@@ -484,3 +484,23 @@ town is the cost): Givatayim's warm-up 38 s -> 13.5 s, Tel Aviv 35 -> 12.5 s, th
 compiled. Not kept: on a real GPU the warm-up is the compiling (above), a phone draws the town
 in ~50 ms, so it would save well under a second there, and it could miss variants a view-based
 pass catches. Worth it only if a slow-drawing device turns up (the work laptop's 68 ms draws).
+
+## Expected fps by device (24 Nov 2026, estimate from the measurements above)
+
+Script natively today (`sim_cost`, 30 s autodrive, container CPU, quality 0, 60 ticks):
+Givatayim 4.3 ms a tick (people 1.1, traffic 0.8, following 0.5, autodrive 0.3, minimap 0.2),
+Tel Aviv 4.7. Frame model: frame = drawing / (1 - share of each second the ticks take).
+
+| Device, browser at quality 2 | fps | basis |
+|---|---|---|
+| desktop, RTX 3060 (the user's PC) | 25-35 | measured (21 Nov: 29-34 ms; 24 Nov: "25-30") |
+| the same PC, native Godot | 60 (vsync), ~100+ free | estimate: wasm script ~2x, ANGLE/wasm per draw ~4x |
+| laptop, Intel integrated | 7-10 | measured (22 Nov, 0.1-0.17 ms a draw) |
+| that laptop, native | 25-35 | estimate |
+| phone, Adreno 740 flagship | 12-19 | measured (22-23 Nov) |
+| recent iPhone (A16-A18, Safari) | 18-28 | estimate: a desktop-class core |
+| mid Android | 7-12 | estimate |
+| low-end Android | 3-6 | estimate; Tel Aviv's 365 MB of video memory may not fit |
+
+From above (zoomed out) draws were ~3x driving (898 vs 296, Givatayim, before the levels):
+expect roughly half these fps there.
