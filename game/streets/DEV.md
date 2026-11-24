@@ -4267,7 +4267,15 @@ checks Givatayim / Ashdod / test town 12 / 12 / 11, all traffic's; route set 10 
   `tests/traffic_shove.gd` (your car standing in its lane, 0.8 and 1.6 m over, askew 35 deg;
   a car sent from 35 m behind): 0.00 m moved in all 5, before and after -- the straight
   approach was already right; the shove needs a junction's turn, which this test does not
-  stage yet (open).
+  stage yet (open). Only for a standing player (under 0.5 m/s): first written for any
+  player, the full route set had autodrive run into traffic car 0 twice at 11-14 km/h on
+  Ashdod's Hativat HaNegev (route 6) -- a car frozen beside a moving player is only driven
+  into; with the gate route 6 was clean again.
+- **Route set on the branch, 24 Nov night** (15 routes, before the gate above): 15 of 15
+  arrived, 0 reds, 0 rescues. Hits: route 12 Leiden's sign and post on Rapenburg (as on
+  22 Nov), route 6 (the gate's), and route 3 Givatayim, a post and walls on Ben Gurion at
+  11-19 km/h -- route 3 hits there without tonight's traffic change too (a wall at 19 km/h),
+  so it came with main's newer work; not seen on 21-22 Nov. Open, next to look at.
 - **Nightly**: `validate.sh REGRESS=1` now also runs traffic_pockets, people_near (3 trips)
   and rail_break, each with a REGRESS line; 1-2 min each here (64, 73, 122 s).
 - **Pulling in at the kerb measured from the wrong lane.** A bus at a stop and a delivery van

@@ -470,11 +470,12 @@ func tick(dt: float) -> void:
 				c.dip -= 0.012
 			c.cover_on = on
 
-## car c's body touching the player's car (its two circles, the game's _collide) and this
+## car c's body touching the player's standing car (its two circles, the game's _collide) and this
 ## tick's step bringing them closer
 func _into_player(c: Car, dt: float) -> bool:
-	if g._walking or not _level(c, float(g._y), _me_lift):
-		return false
+	if g._walking or absf(float(g._v)) > 0.5 or not _level(c, float(g._y), _me_lift):
+		return false   # (a moving player: theirs to keep clear -- a traffic car frozen beside a
+		               # player closing in on it would only be driven into)
 	var me: Vector2 = g._pos
 	if c.pos.distance_squared_to(me) > 100.0:
 		return false
