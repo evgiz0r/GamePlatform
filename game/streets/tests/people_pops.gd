@@ -18,6 +18,16 @@ extends SceneTree
 ## Ends in a REGRESS line (validate.sh REGRESS=1).
 ##   LEVEL=1 STREETS_BUILD_ALL=1 $GODOT --headless --fixed-fps 60 --path . -s res://game/streets/tests/people_pops.gd
 var g: Node
+## what a walker was doing, for the report: a shop visit, startled, down, dodging
+func _doing(w: Dictionary) -> String:
+	var d := []
+	if w.has("shop"):
+		d.append("shop " + String((w["shop"] as Dictionary)["phase"]))
+	for k: String in ["startle", "down", "dodge"]:
+		if float(w.get(k, 0.0)) > 0.0:
+			d.append("%s %.1f" % [k, float(w[k])])
+	return "" if d.is_empty() else " (" + ", ".join(d) + ")"
+
 func _initialize() -> void:
 	_run()
 
@@ -73,7 +83,9 @@ func _run() -> void:
 			var seen: bool = a.visible and p.distance_to(g._pos) < g.PEOPLE_SEEN and not g._spawn_ok(p)
 			if seen and was.has(key):
 				var prev: Array = was[key]
-				if not prev[0] or (prev[1] as Vector2).distance_to(p) > 2.0:
+				if not prev[0] and e[2] != null and (e[2] as Dictionary).has("shop"):
+					pass   # (out of a shop's door: meant, streets.gd _shop_visit)
+				elif not prev[0] or (prev[1] as Vector2).distance_to(p) > 2.0:
 					pops[e[0]] = int(pops.get(e[0], 0)) + 1
 					if firsts.size() < 8:
 						firsts.append("%s popped at %s, %.0f m from your car (%s)" % [e[0], p.round(), p.distance_to(g._pos),
@@ -91,7 +103,7 @@ func _run() -> void:
 						if near:
 							slide_near += 1
 							if firsts.size() < 8:
-								firsts.append("walker slid sideways %.1f m/s at %s, your car %.1f m off at %.1f m/s" % [absf(sm), p.round(), p.distance_to(g._pos), g._v])
+								firsts.append("walker slid sideways %.1f m/s at %s, your car %.1f m off at %.1f m/s%s" % [absf(sm), p.round(), p.distance_to(g._pos), g._v, _doing(e[2])])
 						else:
 							slide_far += 1
 					elif absf(sm) < 0.5:

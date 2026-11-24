@@ -141,7 +141,7 @@ func _make(_dt: float) -> void:
 func _person(k: int) -> Actor3D:
 	var a := Actor3D.new()
 	g.world.add_child(a)
-	a.set_character(g.PEOPLE[k % g.PEOPLE.size()], rng.randf_range(g.ADULT_LO, g.ADULT_HI))
+	g._set_character(a, g.PEOPLE[k % g.PEOPLE.size()], rng.randf_range(g.ADULT_LO, g.ADULT_HI))
 	g._humanize(a, hash(a.get_instance_id()))
 	g._people_lod(a)
 	return a
