@@ -20936,6 +20936,7 @@ func _people_tick(dt: float) -> void:
 	# (everyone placed, wherever they are: a walker 60 m off still has to see the next one)
 	_people_at.clear()
 	_people_who.clear()
+	_people_y.clear()
 	_boarder_t += dt
 	for list: Array in [_walkers, _chatters, _crossers, _sitters, _waiters, _keepers, _bathers, _boarders,
 			_crowd.everyone() if _crowd != null else []]:
@@ -20944,15 +20945,29 @@ func _people_tick(dt: float) -> void:
 			if a.visible:
 				_people_at.append(Vector2(a.position.x, a.position.z))
 				_people_who.append(a.get_instance_id())
+				_people_y.append(a.position.y)
+	# people a scenario stands somewhere (a fare waving at the kerb, a wedding's guests):
+	# solid, and braked for, as everyone else is (add_person / _people_extra)
+	for k in range(_people_extra.size() - 1, -1, -1):
+		var e = _people_extra[k]   # (untyped: a freed one cannot even be assigned to a Node3D)
+		if not is_instance_valid(e):
+			_people_extra.remove_at(k)
+		elif (e as Node3D).visible:
+			var ep: Vector3 = (e as Node3D).global_position
+			_people_at.append(Vector2(ep.x, ep.z))
+			_people_who.append((e as Node3D).get_instance_id())
+			_people_y.append(ep.y)
 	# the dogs too, so people step round them and the car and you bump them (a dog's "who" is
 	# -100 less its number: its own walker leaves it out)
 	for w: Dictionary in _walkers:
 		if w.has("dog_i") and (w["actor"] as Actor3D).visible and w.has("dog_at"):
 			_people_at.append(w["dog_at"])
 			_people_who.append(-100 - int(w["dog_i"]))
+			_people_y.append((w["actor"] as Actor3D).position.y)
 	if _walking:
 		_people_at.append(_pos)
 		_people_who.append(0)
+		_people_y.append(_y)
 	_people_t -= dt
 	if _people_t <= 0.0:
 		_people_t = 1.5
@@ -21960,11 +21975,24 @@ func _ap_people_v() -> float:
 	for cr: Dictionary in _crossers:
 		if cr["state"] in ["cross", "back"]:
 			var a: Actor3D = cr["actor"]
-			people.append([a.get_instance_id(), Vector2(a.position.x, a.position.z)])
+			if absf(a.position.y - _y) < PEOPLE_DY:
+				people.append([a.get_instance_id(), Vector2(a.position.x, a.position.z)])
 	for w: Dictionary in _walkers:
 		var a: Actor3D = w["actor"]
-		if a.visible:
+		if a.visible and absf(a.position.y - _y) < PEOPLE_DY:
 			people.append([a.get_instance_id(), Vector2(a.position.x, a.position.z)])
+	# ...and everyone else the car would bump (_people_push): someone standing at a bus stop or
+	# chatting, a crowd's stroller -- only walkers and crossers were braked for, and the rest
+	# were driven into at full speed wherever they stood in the lane (the scenarios' wedding run
+	# in Tel Aviv, (249, 236): a person hit at 28-32 km/h on every pass, 24 Nov)
+	for list: Array in [_chatters, _sitters, _waiters, _keepers, _bathers, _boarders, _crowd.everyone() if _crowd != null else []]:
+		for w: Dictionary in list:
+			var a: Actor3D = w["actor"]
+			if a.visible and absf(a.position.y - _y) < PEOPLE_DY:
+				people.append([a.get_instance_id(), Vector2(a.position.x, a.position.z)])
+	for e in _people_extra:
+		if is_instance_valid(e) and (e as Node3D).visible and absf((e as Node3D).global_position.y - _y) < PEOPLE_DY:
+			people.append([(e as Node3D).get_instance_id(), Vector2((e as Node3D).global_position.x, (e as Node3D).global_position.z)])
 	# their pace, once a physics frame (tests call this between frames too)
 	var frame := Engine.get_physics_frames()
 	if frame != _ap_ppl_frame:
@@ -23294,6 +23322,15 @@ func _push_out(c: Vector2, r: float, posts: bool, cars := true, y := NAN) -> Vec
 const PERSON_R := 0.28
 var _people_at := PackedVector2Array()   ## where everyone in the street is now (_people_tick)
 var _people_who := PackedInt64Array()    ## ... and who (an actor's id; 0 you on foot)
+var _people_y := PackedFloat32Array()    ## ... and the height of their feet (a bridge's people are not the street's under it)
+var _people_extra: Array = []            ## people a scenario stands about (add_person): Node3D
+const PEOPLE_DY := 2.5                   ## m: someone further above or below the car than this is on another level
+
+## a person a scenario puts somewhere (Actor3D or any Node3D): solid to the car, and autodrive
+## brakes for them, as for everyone in the street's own lists. Freed: dropped by itself.
+func add_person(n: Node3D) -> void:
+	if not _people_extra.has(n):
+		_people_extra.append(n)
 var _hit_who := -1                       ## the last one the car touched (_people_push)
 
 func _people_push(c: Vector2, r: float) -> Vector2:
@@ -23301,6 +23338,8 @@ func _people_push(c: Vector2, r: float) -> Vector2:
 	for k in range(_people_at.size()):
 		if k < _people_who.size() and _people_who[k] == 0:
 			continue   # (you, on foot, where you were last tick: pushed off that, you ran at 35 m/s)
+		if k < _people_y.size() and not is_nan(_y) and absf(_people_y[k] - _y) > PEOPLE_DY:
+			continue   # (on a bridge over them, or under one)
 		var q := _people_at[k]
 		var d := (c + push) - q
 		var need := r + PERSON_R

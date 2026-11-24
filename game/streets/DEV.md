@@ -4353,6 +4353,23 @@ checks Givatayim / Ashdod / test town 12 / 12 / 11, all traffic's; route set 10 
   a soft knock (`_bump_tick`, Probe "bump"). `tests/bump_slow.gd` (Tel Aviv, 15 bumps built):
   4 bumps, autodrive 15-16 km/h over each, traffic 15, from 25-32 before. Route 8 and 10 after:
   clean. Not yet: the car itself rising over one (only the view shakes).
+- **Autodrive braked only for walkers and crossers (24 Nov afternoon).** The scenarios'
+  wedding run hit someone at (249, 236) on Tel Aviv's Givat HaTachmoshet bridge over the
+  Ayalon at 28-32 km/h on every pass. `_ap_people_v` looked at walkers and crossers on a
+  crossing; everyone else `_people_push` makes solid -- chatters, sitters, waiters at a stop,
+  keepers, bathers, boarders, a crowd's strollers -- was driven into wherever they stood in the
+  lane. Now all of them, and `add_person(node)`: a scenario's own people (a fare, a wedding's
+  guests) solid and braked for like the street's (`_people_extra`; freed ones drop out).
+  And by height: `_people_y` beside `_people_at`, PEOPLE_DY 2.5 m -- someone under a bridge
+  was solid to the car on it, and the old code stood still on the bridge for a person 5 m
+  below. `tests/stop_people.gd`: a person put in the lane on the bridge -- old: drove into
+  them and stood pressed there; new: stopped 3.4 m short -- and under it: old 0 km/h, new
+  42 km/h over them. Note for scenario.gd: its fare (`_pickup_start`) is in no list, so it
+  was neither solid nor braked for; `g.add_person(a)` makes it both.
+  Route set after: 14 of 15, no person hit, no stand for people; Bedford (9) did not arrive,
+  150 s in a traffic queue on Hammonds Plains Road at (-2615, -695) (cars held by cars, a
+  car 20 at its head); alone again it arrived in 560 s -- a traffic lock that comes and goes
+  there, not this change. Leiden's Rapenburg street sign again at 15 km/h (open since 22 Nov).
 - **turn_width now also checks the body at corners**: either of its two circles within
   CLEAR_M (5 cm) of a post, wall or building within 25 m of the junction counts (`body_near`
   in each line, in the REGRESS line). Givatayim 10 turns, Ashdod 12: none. Givatayim's
