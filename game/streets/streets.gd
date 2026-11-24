@@ -1026,6 +1026,7 @@ var _decks: Decks                    ## bridges, embankments, cuttings, tunnels 
 var _rails: Rails                    ## railway tracks, platforms, trains (rails.gd)
 var _marks: Marks                    ## a town's landmarks and its towers' red lights (landmarks.gd)
 var _beach: Beach                    ## the beaches by the sea: umbrellas, chairs, lifeguards (beach.gd)
+var _birds: Birds                   ## pigeons and crows on the pavements round you (birds.gd)
 var _crowd: Crowds                   ## shoppers in a market, people along the shore and in the sea (crowds.gd)
 var _works: Sites                    ## building sites from a town's own map: hoardings, cranes (sites.gd)
 var _wave: Wave                      ## the green wave: lights turning green for the car (wave.gd)
@@ -1117,6 +1118,7 @@ const Rails := preload("res://game/streets/rails.gd")
 const Marks := preload("res://game/streets/landmarks.gd")
 const Beach := preload("res://game/streets/beach.gd")
 const Crowds := preload("res://game/streets/crowds.gd")
+const Birds := preload("res://game/streets/birds.gd")
 const Sites := preload("res://game/streets/sites.gd")
 const Wave := preload("res://game/streets/wave.gd")
 const Standins := preload("res://game/streets/standins.gd")
@@ -3393,6 +3395,8 @@ func _build_tile(t: Vector2i) -> void:
 	_beach.build()
 	await _build_step("works")
 	_works.build()
+	_birds = Birds.new(self)
+	_birds.setup()
 	await _build_step("places")
 	await _places.build()
 	tk = _stage("roads", tk)
@@ -20837,6 +20841,8 @@ func _people_tick(dt: float) -> void:
 			_place_walker(w, false, "far")
 	if _crowd != null:
 		_crowd.tick(dt)
+	if _birds != null:
+		_birds.tick(dt)
 
 ## ---- what people look like ---------------------------------------------------------------------
 ## The kit's people (Quaternius, CC0) are cartoons: big heads and hands, one skin of dark
