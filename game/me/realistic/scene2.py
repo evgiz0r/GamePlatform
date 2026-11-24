@@ -10,9 +10,17 @@ def opt(k, d):
 bpy.ops.wm.open_mainfile(filepath=IN)
 scn = bpy.context.scene
 F0, F1 = int(opt("--from", scn.frame_start)), int(opt("--to", scn.frame_end))
-scn.render.engine = "BLENDER_EEVEE"
-scn.eevee.taa_render_samples = int(opt("--samples", "8"))
-w, h = opt("--res", "854x480").split("x")
+FAST = "--fast" in a     # a rough preview: workbench, small, seconds a frame
+if FAST:
+    scn.render.engine = "BLENDER_WORKBENCH"
+    sh = scn.display.shading
+    sh.light = "STUDIO"; sh.color_type = "MATERIAL"
+    sh.show_shadows = True; sh.show_cavity = False; sh.show_specular_highlight = False
+    scn.display.render_aa = "5"
+else:
+    scn.render.engine = "BLENDER_EEVEE"
+    scn.eevee.taa_render_samples = int(opt("--samples", "8"))
+w, h = opt("--res", "480x270" if FAST else "854x480").split("x")
 scn.render.resolution_x, scn.render.resolution_y = int(w), int(h)
 rig = bpy.data.objects["Rig"]
 cam = scn.camera
@@ -149,12 +157,17 @@ def cam_at(f):
         (B["walk"] + 10, Vector((1.6, -3.9, 0.45)), Vector((0.6, 0, 0.1)), "rel"),
         (B["say"] + 6, Vector((-0.5, -2.8, 0.5)), Vector((0, 0, 0.35)), "rel"),
         (B["write"] + 10, Vector((-2.6, -4.6, 0.9)), Vector((0.5, 0.2, 0.25)), "rel"),
-        (B["fly"], Vector((-1.2, -5.2, 0.4)), Vector((0, 0, 0.5)), "rel"),
+        # the last shot stands still: a wide view of the board and the floor; he rises out of
+        # the top of it and the maths keeps falling after he has gone
+        (B["fly"], Vector((-0.9, -6.2, 0.35)), Vector((0.35, 0.3, 0.45)), "fix"),
     ]
     def eval_shot(s):
         _, off, look, mode = s
         if mode == "abs":
             return off.copy(), look.copy()
+        if mode == "fix":
+            c0 = sm(B["fly"]); c0.z = 1.0
+            return c0 + off, c0 + look
         return c + off, c + look
     cur = shots[0]
     nxt = None
@@ -166,20 +179,25 @@ def cam_at(f):
         l2, k2 = eval_shot(nxt)
         t = (f - (nxt[0] - 24)) / 24.0
         loc, look = lerpv(loc, l2, t), lerpv(look, k2, t)
-    if f >= B["fly"]:
-        # follow him up for a second, then let him go out of the top of the frame
-        hz = min(P[f].z, P[min(END, B["fly"] + 70)].z)
-        look = look + Vector((0, 0, max(0.0, hz - 1.0) * 0.8))
     return loc, look
 
 # ---- lights ride with him (the studio's key, fill, rim) ---------------------------------------
 LB = {n: bpy.data.objects[n].location.copy() for n in ("Key", "Fill", "Rim")}
 def lights_at(f):
-    c = sm(f, 20)
+    c = sm(min(f, B["fly"]), 20)   # they stay with the scene when he flies off
     for n, base in LB.items():
         L = bpy.data.objects[n]
         L.location = base + Vector((c.x, c.y, min(c.z - 1.0, 3.0)))
 
+if FAST:   # workbench draws a material's viewport colour, not its node colour: copy it over
+    for m in bpy.data.materials:
+        if m.name in ("hair", "hairscalp"):
+            m.diffuse_color = (0.09, 0.06, 0.04, 1)
+        elif m.use_nodes and "Principled BSDF" in m.node_tree.nodes:
+            bc = m.node_tree.nodes["Principled BSDF"].inputs["Base Color"]
+            m.diffuse_color = bc.default_value[:]
+            if bc.is_linked:   # a textured one: a flat stand-in
+                m.diffuse_color = {"skin": (0.72, 0.5, 0.4, 1), "hair": (0.12, 0.08, 0.05, 1)}.get(m.name, (0.5, 0.5, 0.5, 1))
 os.makedirs(OUTD, exist_ok=True)
 only = opt("--only", "")
 frames = [int(x) for x in only.split(",")] if only else range(F0, F1 + 1)

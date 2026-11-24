@@ -12,8 +12,10 @@ OUT = sys.argv[sys.argv.index("--") + 1] if "--" in sys.argv else "work/me.blend
 # macro: male, about 35, average muscle, a little soft, average height; then a face nudged
 # toward the photos: long oval face, narrow chin, a high forehead, slightly long nose.
 TARGETS = {
-    "macrodetails/universal-male-young-averagemuscle-averageweight": 0.8,
-    "macrodetails/universal-male-young-averagemuscle-maxweight": 0.2,
+    # slim, a little muscle (he looked soft and wide-hipped at average/max weight)
+    "macrodetails/universal-male-young-averagemuscle-averageweight": 0.45,
+    "macrodetails/universal-male-young-averagemuscle-minweight": 0.35,
+    "macrodetails/universal-male-young-maxmuscle-minweight": 0.2,
     "macrodetails/caucasian-male-young": 1.0,
     "head/head-oval": 0.6,
     "head/head-scale-vert-incr": 0.25,
@@ -25,9 +27,16 @@ TARGETS = {
     "nose/nose-width1-decr": 0.15,
     "cheek/l-cheek-bones-decr": 0.2, "cheek/r-cheek-bones-decr": 0.2,
     "neck/neck-scale-depth-decr": 0.1,
-    "stomach/stomach-pregnant-incr": 0.05,
+    "stomach/stomach-pregnant-decr": 0.4,
+    # a man's frame: broader shoulders and back, narrower hips and thighs
+    "torso/torso-vshape-incr": 0.6,
+    "torso/torso-scale-horiz-incr": 0.1,
+    "hip/hip-scale-horiz-decr": 0.5,
+    "hip/hip-scale-depth-decr": 0.3,
+    "armslegs/l-upperleg-fat-decr": 0.5, "armslegs/r-upperleg-fat-decr": 0.5,
+    "armslegs/l-upperarm-shoulder-muscle-incr": 0.4, "armslegs/r-upperarm-shoulder-muscle-incr": 0.4,
     # he said: "some boobs" -- flatter chest
-    "torso/torso-muscle-pectoral-decr": 0.9,
+    "torso/torso-muscle-pectoral-decr": 0.5,
     "breast/breast-point-decr": 0.8,
     "breast/breast-volume-vert-down": 0.6,
     "torso/torso-scale-depth-decr": 0.15,
@@ -227,7 +236,7 @@ def zone_split(ob):
     return set(shirt_faces), set(pants_faces), pelvis
 
 shirt_f, pants_f, WAIST = zone_split(tights)
-def piece(name, keep, matname, push):
+def piece(name, keep, matname, push, relax=5):
     ob = tights.copy(); ob.data = tights.data.copy(); ob.name = name
     scn.collection.objects.link(ob)
     bm = bmesh.new(); bm.from_mesh(ob.data)
@@ -238,13 +247,13 @@ def piece(name, keep, matname, push):
     for p in ob.data.polygons: p.material_index = 0
     d = ob.modifiers.new("Push", "DISPLACE"); d.strength = push; d.mid_level = 0.0
     ob.modifiers.move(len(ob.modifiers) - 1, 0)
-    sm = ob.modifiers.new("Relax", "SMOOTH"); sm.factor = 0.5; sm.iterations = 5
+    sm = ob.modifiers.new("Relax", "SMOOTH"); sm.factor = 0.5; sm.iterations = relax
     ob.modifiers.move(len(ob.modifiers) - 1, 1)
     s = ob.modifiers.new("Thick", "SOLIDIFY"); s.thickness = 0.004; s.offset = 1.0
     sub = ob.modifiers.new("Smooth", "SUBSURF"); sub.levels = 1; sub.render_levels = 1
     return ob
-shirt = piece("Shirt", shirt_f, "shirt", 0.009)
-pants = piece("Trousers", pants_f, "trousers", 0.011)
+shirt = piece("Shirt", shirt_f, "shirt", 0.016, relax=14)   # hangs a little, not painted on
+pants = piece("Trousers", pants_f, "trousers", 0.017, relax=10)
 bpy.data.objects.remove(tights)
 
 # the neckline: a V cut into the shirt's front

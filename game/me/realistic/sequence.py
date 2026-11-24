@@ -113,15 +113,39 @@ def join(track, seg, n=12):
     track.extend(seg[n:])
 
 D = CMU
-wave = sample(f"{D}/141/141_16.bvh", 5, 200)
 walkc = sample(f"{D}/016/16_15.bvh", 20, 440)
 talk = sample(f"{D}/018/18_08.bvh", 120, 600)
 write = sample(f"{D}/079/79_31.bvh", 110, 579)
 
 CAM_DIR = Vector((0, -1, 0))            # the camera looks from -Y
+
+def point(pose, bone, direction, w):
+    rest = tgt_rest_q(bone)
+    d0 = rest @ Vector((0, 1, 0))
+    want = d0.rotation_difference(direction.normalized()) @ rest
+    pose["q"][bone] = pose["q"][bone].slerp(want, w)
+
+def copy(seg):
+    return [{"q": dict(p["q"]), "p": p["p"].copy()} for p in seg]
+def ease(x):
+    x = max(0.0, min(1.0, x)); return x * x * (3 - 2 * x)
+
+# the wave, made by hand: the CMU wave clip leaned and saluted. He stands easy (the start of
+# the talking clip, for its small natural sway), raises his right hand beside his head and
+# waves the forearm side to side, then lowers it. He faces -Y, so his right is -X.
+WAVE = 66
+wave = place(copy(talk[:WAVE]), CAM_DIR, Vector((0, 0, 0)), pin=0.04)
+for i, p in enumerate(wave):
+    w = ease(i / 12.0) * (1 - ease((i - (WAVE - 14)) / 12.0))
+    sway = math.sin((i - 8) / 30.0 * 2 * math.pi * 2.2)
+    point(p, "RightArm", Vector((-0.75, -0.15, 0.55)), w)
+    point(p, "RightForeArm", Vector((-0.15 + 0.38 * sway, -0.2, 1)), w)
+    for b in ("RightHand", "RightFingerBase", "RightHandFinger1"):
+        if b in p["q"]:
+            point(p, b, Vector((-0.1 + 0.5 * sway, -0.25, 1)), w)
 track, beats = [], {}
 beats["wave"] = 1
-track.extend(place(wave, CAM_DIR, Vector((0, 0, 0))))
+track.extend(wave)
 end = track[-1]["p"]
 beats["walk"] = len(track) + 1
 join(track, place(walkc, Vector((1, 0, 0)), Vector((end.x, end.y, 0)), use_travel=True), 14)
@@ -138,36 +162,37 @@ BOARD = Vector((mid.x, mid.y + 0.62, 0))
 end = track[-1]["p"]
 
 # ---- the ending: turn to the camera, right arm straight up, and away -----------------------
-def point(pose, bone, direction, w):
-    rest = tgt_rest_q(bone)
-    d0 = rest @ Vector((0, 1, 0))
-    want = d0.rotation_difference(direction.normalized()) @ rest
-    pose["q"][bone] = pose["q"][bone].slerp(want, w)
 
-stand = blend(talk[0], talk[0], 0)        # a calm standing pose to turn into
+stand = copy(talk[:1])[0]                # a calm standing pose to turn into
 stand = place([stand], CAM_DIR, Vector((end.x, end.y, 0)))[0]
 beats["turn"] = len(track) + 1
 join(track, [stand] * 18, 18)
 beats["fly"] = len(track) + 1
 base = track[-1]
-FLY = 110
+# the arm goes up over a second while he stands; then he lifts off slowly and speeds up, out of
+# the top of a camera that stays put, and the maths keeps falling on the empty floor for a while
+RAISE, FLY = 32, 170
 for i in range(FLY):
-    t = i / 30.0
+    t = (i - RAISE) / 30.0               # seconds since lift-off
     p = {"q": dict(base["q"]), "p": base["p"].copy()}
-    w = min(1.0, i / 12.0)
-    w = w * w * (3 - 2 * w)
-    up = Vector((0.05, -0.15, 1))
-    for b in ("RightArm", "RightForeArm", "RightHand", "RightFingerBase", "RightHandFinger1"):
+    w = ease(i / RAISE)
+    point(p, "RightArm", Vector((-0.12, -0.12, 1)), w)
+    point(p, "RightForeArm", Vector((-0.06, -0.08, 1)), w)
+    for b in ("RightHand", "RightFingerBase", "RightHandFinger1"):
         if b in p["q"]:
-            point(p, b, up, w)
-    for b in ("LeftArm", "LeftForeArm", "LeftHand"):
-        point(p, b, Vector((0.18, 0.05, -1)), w)
-    for b in ("LeftUpLeg", "LeftLeg", "RightUpLeg", "RightLeg"):
-        point(p, b, Vector((0, 0.12, -1)), w * 0.8)
-    # a short dip, then up, faster and faster
-    dip = -0.06 * math.sin(min(1.0, t / 0.35) * math.pi) if t < 0.35 else 0.0
-    rise = 0.0 if t < 0.3 else 0.5 * 5.0 * (t - 0.3) ** 2
-    p["p"].z += dip + rise
+            point(p, b, Vector((-0.04, -0.05, 1)), w)
+    if t > 0:
+        k = ease(t / 0.8)                # the free arm and legs settle as he leaves the ground
+        for b in ("LeftArm", "LeftForeArm", "LeftHand"):
+            point(p, b, Vector((0.25, 0.05, -1)), k * 0.8)
+        for b in ("LeftUpLeg", "RightUpLeg"):
+            point(p, b, Vector((0, 0.08, -1)), k * 0.6)
+        for b in ("LeftLeg", "RightLeg"):
+            point(p, b, Vector((0, 0.18, -1)), k * 0.6)
+        for b in ("LeftFoot", "RightFoot"):
+            if b in p["q"]:
+                point(p, b, Vector((0, -0.35, -1)), k * 0.5)
+        p["p"].z += 0.18 * t * t + 0.12 * t * t * t
     track.append(p)
 
 # ---- write it into an action -----------------------------------------------------------

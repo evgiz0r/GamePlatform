@@ -81,3 +81,23 @@ and reads only data, never add-on code:
 
 Still missing for a likeness: his face. A head scan (Avaturn .glb or a photo-fitted head)
 would replace the MakeHuman head; the body, clothes and motion stay.
+
+### Rough cut first (asked 24 Nov 2026)
+
+He wants every change shown as a cheap preview before any full render: a 1 h 45 m EEVEE render
+went out with motion problems a 20-minute rough cut would have shown. `scene2.py --fast` renders
+in Workbench at 480x270 (~4 s a frame, two processes at once: 600 frames in ~15 min);
+`make.sh` stops after `work/preview.mp4` unless `FULL=1`. Workbench draws a material's
+*viewport* colour, so `--fast` copies each Principled base colour across (textured skin and the
+hair's Principled Hair get flat stand-ins). `posture.py` renders chosen frames from his front and
+side in seconds -- use it to judge a pose before rendering a run.
+
+Changes after his notes on the first take ("movements and body layout feel off", the take-off
+"too sudden", and he meant to fly *out of* a scene that stays):
+- Body: slimmer macros with some muscle, V-shaped torso, narrower hips and thighs; the shirt and
+  trousers stand off the skin more and are relaxed more, so they hang instead of clinging.
+- Wave: made by hand (`point()` on the arm bones over the talking clip's opening sway). The CMU
+  wave 141_16 leaned and saluted.
+- Ending: the arm goes up over a second standing still, then lift-off z = 0.18 t² + 0.12 t³;
+  the last camera shot is fixed and the lights stay with the scene, so he rises out of the top
+  of the frame and the maths keeps falling on the empty floor.

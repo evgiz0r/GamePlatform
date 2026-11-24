@@ -24,7 +24,7 @@ fetch makehumancommunity/makehuman mh makehuman/data/3dobjs makehuman/data/targe
   makehuman/data/targets/breast/breast-point-decr.target makehuman/data/targets/breast/breast-volume-vert-down.target \
   makehuman/data/targets/head makehuman/data/targets/nose makehuman/data/targets/chin \
   makehuman/data/targets/forehead makehuman/data/targets/cheek makehuman/data/targets/neck \
-  makehuman/data/targets/stomach
+  makehuman/data/targets/stomach makehuman/data/targets/hip makehuman/data/targets/armslegs
 fetch makehumancommunity/mpfb2 mpfb2 src/mpfb/data/rigs/standard src/mpfb/data/mesh_metadata
 fetch meshula/cmu-mocap cmu data/016/16_15.bvh data/141/141_16.bvh data/113/113_04.bvh data/018/18_08.bvh data/079/79_31.bvh
 export MH_DATA=$W/mh/makehuman/data MPFB_DATA=$W/mpfb2/src/mpfb/data
@@ -39,6 +39,11 @@ $B mocap.py -- $W/me_look.blend $W/c_teach.blend $D/018/18_08.bvh 1 2087 --name 
 # write while maths falls, fly away (sequence.py + scene2.py); SCENES="" skips the old four
 export CMU_DATA=$W/cmu/data
 $B sequence.py -- $W/me_look.blend $W/seq.blend
+# always the rough cut first (workbench, ~4 s a frame); FULL=1 for the real render (~22 s a frame)
+$B scene2.py -- $W/seq.blend $W/r_fast --fast
+ffmpeg -loglevel error -y -framerate 30 -i $W/r_fast/f%04d.png -c:v libx264 -crf 23 -pix_fmt yuv420p $W/preview.mp4
+echo "made $W/preview.mp4"
+[ -n "${FULL-}" ] || exit 0
 $B scene2.py -- $W/seq.blend $W/r_seq --samples ${SAMPLES:-8}
 ffmpeg -loglevel error -y -framerate 30 -i $W/r_seq/f%04d.png -c:v libx264 -crf 20 -pix_fmt yuv420p -movflags +faststart $W/real_teach_math.mp4
 echo "made $W/real_teach_math.mp4"
