@@ -5457,7 +5457,12 @@ within 1.2 m behind it. Both have posts.
   shows the night ones at night or on Shabbat, those on Shabbat (from `_set_night`,
   `_set_evening`). A Shabbat shop's window light on the pavement is in its own nodes
   (`_shabbat_dark_nodes`, one a ground cell: 35 in Givatayim, drawn only within LAMP_RANGE),
-  dark on a Friday night. Open: cafes and restaurants all stay open
+  dark on a Friday night. On Shabbat too (24 Nov): no buses (traffic.gd `set_no_buses`: those
+  about taken away, none put back), nobody waits at the stops (`_place_waiters`), and
+  SHABBAT_KIDS 4 children (made at load in the Israeli towns, hidden on other days) walk a
+  step behind the first of four couples (`_walk_beside`'s "behind"; they join only while the
+  couple is out of sight). small_life: no bus on a Saturday, 4 children out, none on Sunday.
+  Open: cafes and restaurants all stay open
   and nobody walks to synagogue. Tests and bots run on a Tuesday whatever the date.
 - **Cars over bumps** (24 Nov): `bump_lift(front, rear)` gives the bump height under each
   axle (`_bump_h`: `_bump_kit`'s profile, 8 cm top 0.6 m deep, a table three times that, easing

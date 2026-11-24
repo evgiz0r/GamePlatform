@@ -1780,7 +1780,8 @@ contributors under the ODbL, which is why the credit sits on screen.
   stand where OSM maps them; at night most shops have their shutters down, and in the Israeli
   towns the day of the week is today's (the time button moves it on a day each night): from
   Friday evening to Saturday evening it is Shabbat and the late shops shut too, but for about
-  one in three in Tel Aviv and one in eight elsewhere. Post boxes, drinking taps and
+  one in three in Tel Aviv and one in eight elsewhere; the buses stop, the bus stops empty,
+  and families stroll with their children. Post boxes, drinking taps and
   speed bumps where OpenStreetMap has them; cars rise over the bumps, front wheels then back. Potholes and dug-up trench strips in the
   asphalt; potted plants on the balconies. Everywhere, the cars' shapes and colours are the shares on Israel's vehicle
   register: four in ten an SUV or crossover, more than four in ten white.

@@ -208,6 +208,7 @@ const PEOPLE := ["Casual_Male", "Casual_Female", "Casual2_Male", "Casual2_Female
 const ADULT_LO := 1.55
 const ADULT_HI := 1.85
 const WALKERS := 24
+const SHABBAT_KIDS := 4             ## children walking with their parents on Shabbat (_spawn_people)
 const SIDESTEP := 0.8                ## m/s: the fastest a walker moves across its pavement, stepping round something
 const CHATTERS := 8
 const PEOPLE_RANGE := 150.0
@@ -13355,6 +13356,8 @@ func _update_day() -> void:
 			_traffic.set_cap(SHABBAT_CARS)
 		elif not sh and _traffic.cap == SHABBAT_CARS:
 			_traffic.set_cap(_traffic.COUNT)
+		if _traffic.no_buses != sh:
+			_traffic.set_no_buses(sh)
 	for n: Node3D in _night_shut_nodes:
 		n.visible = _night or sh
 	for n: Node3D in _shabbat_shut_nodes:
@@ -20066,6 +20069,30 @@ func _spawn_people() -> void:
 			continue
 		_walkers.append(w)
 		_place_walker(w, true, "start")
+	# Shabbat's families (the Israeli towns): a child a step behind the first of SHABBAT_KIDS
+	# pairs, out only on Shabbat (_walk_beside hides them on other days), so a Saturday's
+	# pavements have whole families strolling on them
+	if _country() == "il" and _people_maker().on():
+		var kids := 0
+		for li in range(0, WALKERS, 4):
+			if kids >= SHABBAT_KIDS:
+				break
+			var lw: Dictionary = _walkers[li]
+			if lw.has("dog") or lw.has("pram") or lw.has("with"):
+				continue
+			var a := Actor3D.new()
+			world.add_child(a)
+			_set_character(a, PEOPLE[(li + 3) % PEOPLE.size()], _people_rng.randf_range(ADULT_LO, ADULT_HI))
+			a.height = 1.0 + 0.35 * _people_rng.randf()
+			a.set_meta("child", true)
+			_humanize(a, hash(a.get_instance_id()) + 9)
+			_people_lod(a)
+			a.visible = false
+			_walkers.append({"actor": a, "line": PackedVector2Array(), "cum": PackedFloat32Array(), "s": 0.0,
+				"dir": 1.0, "speed": lw["speed"], "dodge": 0.0, "carry": false, "with": li, "side": 1.0 if kids % 2 == 0 else -1.0,
+				"behind": true, "shabbat": true})
+			kids += 1
+		_tally("shabbat_kids", kids)
 	for i in range(CHATTERS):
 		var a := Actor3D.new()
 		world.add_child(a)
@@ -20433,9 +20460,11 @@ func _walk_beside(w: Dictionary, dt: float) -> void:
 	var lw: Dictionary = _walkers[int(w["with"])]
 	var la: Actor3D = lw["actor"]
 	var line: PackedVector2Array = lw["line"]
-	if not la.visible or line.size() < 2:
+	if not la.visible or line.size() < 2 or (w.has("shabbat") and not _shabbat_now()):
 		a.visible = false
 		return
+	if not a.visible and w.has("shabbat") and not _spawn_ok(Vector2(la.position.x, la.position.z)):
+		return   # (Shabbat came while you watched them: the child joins once they are out of sight)
 	var cum: PackedFloat32Array = lw["cum"]
 	var total := cum[cum.size() - 1]
 	var dir := float(lw["dir"])
@@ -20449,6 +20478,8 @@ func _walk_beside(w: Dictionary, dt: float) -> void:
 	var right := Vector2(-fw.y, fw.x)
 	# beside the first, wherever it stepped to (its lat), or a step behind it
 	var q := lp - fw * 0.15 + right * float(w["side"]) * dir * 0.62   # (the same side as they turn back)
+	if w.has("behind"):   # (a child a step behind, a little to one side)
+		q = lp - fw * 1.0 + right * float(w["side"]) * dir * 0.3
 	# single file where there is no room beside them, or to pass you on foot (the first makes
 	# room for you; the second, beside it, walked into you)
 	var you_near := _walking and (_pos - lp).dot(fw) > -1.0 and (_pos - lp).length() < 4.5
@@ -20775,7 +20806,7 @@ func boarder_gone() -> void:
 ## people waiting at the bus stops near you, one or two a stop, facing the road
 func _place_waiters() -> void:
 	var spots: Array = []
-	for sp: Vector2 in _stop_spots:
+	for sp: Vector2 in (_stop_spots if not _shabbat_now() else []):   # (Shabbat: no buses, nobody waits)
 		if sp.distance_to(_pos) < PEOPLE_RANGE:
 			var hit := _nearest_seg(sp, 15.0, true, true)
 			if not hit.is_empty():

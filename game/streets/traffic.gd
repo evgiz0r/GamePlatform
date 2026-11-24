@@ -325,6 +325,18 @@ func set_cap(n: int) -> void:
 		(cars[alive[k]] as Car).alive = false
 		_hide_or_show(alive[k])
 
+## no buses about (Shabbat in the Israeli towns: the city lines stop from Friday afternoon to
+## Saturday night); those about now taken away, none put back till it is off
+var no_buses := false
+func set_no_buses(on: bool) -> void:
+	no_buses = on
+	if on:
+		for i in range(cars.size()):
+			var c: Car = cars[i]
+			if c.kind == "bus" and c.alive:
+				c.alive = false
+				_hide_or_show(i)
+
 func alive_count() -> int:
 	var n := 0
 	for c: Car in cars:
@@ -361,6 +373,11 @@ func tick(dt: float) -> void:
 				continue
 			if cap < COUNT and c.alive == false and alive_count() >= cap:
 				continue   # (a scenario's quiet streets: no more than its cap)
+			if no_buses and c.kind == "bus":
+				if c.alive:
+					c.alive = false
+					_hide_or_show(i)
+				continue   # (Shabbat: no city buses)
 			spawned = true
 			var t0 := Time.get_ticks_usec()
 			c.alive = _spawn(c, false)

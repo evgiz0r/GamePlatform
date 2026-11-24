@@ -29,6 +29,7 @@ var in_wall := 0
 var pops := 0
 var low_perch := 0
 var off_roof := 0
+var kids_sunday := 0
 var _seen := {}
 var _last_p := Vector2.ZERO
 
@@ -241,7 +242,8 @@ func _run() -> void:
 		g._weekday = 6
 		g._update_day()
 		var up_sat: bool = g._shabbat_now() and g._night_shut_nodes.all(func(n: Node3D) -> bool: return n.visible) \
-			and g._shabbat_shut_nodes.all(func(n: Node3D) -> bool: return n.visible) and g._traffic.cap == g.SHABBAT_CARS
+			and g._shabbat_shut_nodes.all(func(n: Node3D) -> bool: return n.visible) and g._traffic.cap == g.SHABBAT_CARS \
+			and g._traffic.no_buses and not g._traffic.cars.any(func(c) -> bool: return c.alive and c.kind == "bus")
 		if DisplayServer.get_name() != "headless" and g._pois.size() > 0:
 			var sh: Array = g._shop_lights
 			var best: Vector2 = (sh[sh.size() / 2] as Array)[0] if not sh.is_empty() else stand
@@ -251,10 +253,29 @@ func _run() -> void:
 				var pts: PackedVector2Array = g._roads[hh["road"]]["pts"]
 				var t: Vector2 = (pts[int(hh["seg"]) + 1] - pts[int(hh["seg"])]).normalized()
 				await _view("shabbat", q - t * 20.0, q + t * 10.0 + (best - q) * 0.8, 1.7, 0.0)
+		# the families: children out with their parents (a few seconds for them to join, unseen)
+		var kids_out := 0
+		for i in range(80):
+			await _frame(stand, along.angle() + (PI if i >= 40 else 0.0))
+		for w: Dictionary in g._walkers:
+			if w.has("shabbat") and (w["actor"] as Node3D).visible:
+				kids_out += 1
+				if kids_out == 1 and DisplayServer.get_name() != "headless":
+					var kp := Vector2((w["actor"] as Node3D).position.x, (w["actor"] as Node3D).position.z)
+					var lw: Dictionary = g._walkers[int(w["with"])]
+					var yaw := float(lw.get("yaw", 0.0))
+					var fwd := Vector2(cos(yaw), sin(yaw))
+					await _view("shabbat_family", kp + fwd * 7.0 + fwd.orthogonal() * 1.5, kp + fwd * 0.5, 1.5, -6.0)
+		print("shabbat: %d children out with their parents (of %d)" % [kids_out, int(g._dressing.get("shabbat_kids", 0))])
 		g._weekday = 0
 		g._update_day()
+		for i in range(4):
+			await _frame(stand, along.angle())
+		for w: Dictionary in g._walkers:
+			if w.has("shabbat") and (w["actor"] as Node3D).visible:
+				kids_sunday += 1
 		var open_sun: bool = not g._shabbat_now() and g._night_shut_nodes.all(func(n: Node3D) -> bool: return not n.visible) \
-			and g._shabbat_shut_nodes.all(func(n: Node3D) -> bool: return not n.visible) and g._traffic.cap == g._traffic.COUNT
+			and g._shabbat_shut_nodes.all(func(n: Node3D) -> bool: return not n.visible) and g._traffic.cap == g._traffic.COUNT and not g._traffic.no_buses
 		# Friday night: the windows of the shops shut for Shabbat light no pavement; Thursday's do
 		if not g._pools_made:
 			g._make_pools()
@@ -269,8 +290,8 @@ func _run() -> void:
 		g._weekday = 0
 		g._update_day()
 		print("shabbat window light: %d nodes, dark friday night %s, lit thursday night %s" % [g._shabbat_dark_nodes.size(), dark_fri, lit_thu])
-		shab_ok = up_sat and open_sun and shab_n > 20 and dark_fri and lit_thu and not g._shabbat_dark_nodes.is_empty()
-		print("shabbat: %d shutters that close only on shabbat; saturday all down and the streets quiet %s, sunday all up and full %s" % [shab_n, up_sat, open_sun])
+		shab_ok = kids_sunday == 0 and up_sat and open_sun and shab_n > 20 and dark_fri and lit_thu and not g._shabbat_dark_nodes.is_empty()
+		print("shabbat: %d shutters that close only on shabbat; saturday all down, the streets quiet and no buses %s, sunday all up and full %s" % [shab_n, up_sat, open_sun])
 	# a car over a speed bump: lifted 8 cm with both axles on top of a table, tipped nose up
 	# with only its front on a bump
 	var lift_ok := true
