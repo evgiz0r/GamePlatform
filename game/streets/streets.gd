@@ -1336,12 +1336,13 @@ var _sfx_was := 0.8
 ## logic; some buttons are rarely used"). On screen only what is used while driving: along
 ## the bottom, bigger, where you are going (autodrive and its style, go to); on the right
 ## "more", the camera, walk and look. (No lights button: key L only.) Everything set
-## once and left -- time of day, wet, the driving style, assist, pause, the fps and build
+## once and left -- time of day, wet, the driving style, assist, the fps and build
 ## lines, the keys -- in the "more" drawer (_draw_more, MORE_*). Every toggle says what is
 ## ON now, lit when on: never the state a tap would switch to ("day" had meant "it is night").
 const AUTO_BTN := Rect2(140, 332, 104, 24)   ## autodrive on / off (space; shift off)
 const STYLE_BTN := Rect2(248, 332, 62, 24)   ## while autodrive drives: its style, tap for the next (rules, wave, racer)
 const GOTO_BTN := Rect2(314, 332, 84, 24)
+const PAUSE_BTN := Rect2(402, 332, 66, 24)   ## the city holds still and goes on again (key K); the user, 23 Nov: "lets put pause on main screen" (it had been in the drawer only)
 const WALK_BTN := Rect2(566, 150, 66, 22)    ## out of the car and back in (key F): under the camera (the user, 22 Nov: "put walk below seat chase")
 const MORE_BTN := Rect2(566, 98, 44, 22)     ## the drawer of set-once switches
 const FOLD_BTN := Rect2(612, 98, 20, 22)     ## "–": every button folded away but one "show" (_hud_folded); the user: "not take too much of the screen, or collapsible easily"
@@ -17850,12 +17851,17 @@ func _on_horn() -> void:
 				c.ignore = 2.5
 
 ## autodrive: the turn the plan makes within 35 m, for the indicator (-1, 1, or 0)
-func _ap_turn_ahead() -> int:
+func _ap_turn_ahead(reach := 35.0) -> int:
 	var n := _ap_pts.size()
-	var dist := 0.0
+	if n < 3:
+		return 0
+	# (from the car, not from the plan's first point: that can be 70 m behind on a long
+	# straight, and the turn 15 m ahead went unseen -- a pavement pass came down off the kerb
+	# into Bialik's turn into Kirinitsi and its posts, three drives in four, tests/racer_drive.gd)
+	var dist := -_ap_pts[0].distance_to(Geometry2D.get_closest_point_to_segment(_pos, _ap_pts[0], _ap_pts[1]))
 	for j in range(1, n - 1):
 		dist += _ap_pts[j - 1].distance_to(_ap_pts[j])
-		if dist > 35.0:
+		if dist > reach:
 			break
 		var din := (_ap_pts[j] - _ap_pts[maxi(j - 3, 0)]).normalized()
 		var dout := (_ap_pts[mini(j + 3, n - 1)] - _ap_pts[j]).normalized()
@@ -23614,6 +23620,19 @@ func _ap_crossing_clears(ci: int, along: float) -> bool:
 	var cdir := Vector2(sin(c.yaw), cos(c.yaw))
 	if pd == Vector2.ZERO or absf(cdir.dot(pd)) > 0.5:
 		return false   # (going my way, or at me: not across)
+	# turning into my way, not across it: where its own path goes over the next few metres
+	# lies along my plan, my way. Taken for crossing, a sedan turning into Herzl ahead, 20-40 m
+	# off and on the plan, was no car in front until 8 m: racer met it at 30 km/h from 63
+	# (tests/racer_drive.gd)
+	for ahead: float in [4.0, 8.0, 14.0]:
+		var q := _car_path_at(c, ahead)
+		var q2 := _car_path_at(c, ahead + 2.0)
+		if q == Vector2.INF or q2 == Vector2.INF or q.is_equal_approx(q2):
+			continue
+		var mine := _ap_point_ahead(along + 25.0)
+		var cp := Geometry2D.get_closest_point_to_segment(q, p, mine)
+		if cp.distance_to(q) < 2.5 and (q2 - q).normalized().dot((mine - p).normalized()) > 0.6:
+			return false
 	var side := Vector2(-pd.y, pd.x)
 	var vs: float = c.v * cdir.dot(side)   # its speed across my way
 	if absf(vs) < 2.0:
@@ -23625,6 +23644,19 @@ func _ap_crossing_clears(ci: int, along: float) -> bool:
 	var v := maxf(_v, 0.0)
 	var t_me := (sqrt(v * v + 4.0 * d) - v) / 2.0   # (my nose there speeding up at 2 m/s^2 from now)
 	return t_clear + 0.3 < t_me
+
+## where a traffic car will be `d` m on along its own path (INF past what it has planned)
+func _car_path_at(c, d: float) -> Vector2:
+	var want: float = float(c.s) + d
+	var cum: PackedFloat32Array = c.cum
+	var pts: PackedVector2Array = c.pts
+	if cum.size() < 2 or want > cum[cum.size() - 1]:
+		return Vector2.INF
+	for j in range(maxi(int(c.k), 0), cum.size() - 1):
+		if cum[j + 1] >= want:
+			var L := cum[j + 1] - cum[j]
+			return pts[j].lerp(pts[j + 1], (want - cum[j]) / L if L > 0.001 else 0.0)
+	return Vector2.INF
 
 func _ap_follow_v(free: float, room: float, lv: float, la: float) -> float:
 	if free <= 0.0:
@@ -23693,6 +23725,10 @@ func _autodrive(dt: float) -> Array:
 			if _cross.is_empty() and _ap_v.size() > 0:
 				_ap_v[_ap_v.size() - 1] = 0.0
 			break
+	_ap_clear_t -= dt
+	if _ap_clear_t <= 0.0:
+		_ap_clear_t = AP_CLEAR_EVERY
+		_ap_keep_clear(50.0 + absf(_v) * 2.0)
 	# at a dead end: stopped short of its end, it turns round there in moves forward and back
 	if _ap_kt.is_empty() and _ap_dead != Vector2.INF and _ap_at_dead():
 		if absf(_v) > 0.3:
@@ -23818,6 +23854,26 @@ func _autodrive(dt: float) -> Array:
 		lead = _traffic.lead_on(_ap_pts, _pos, reach, _ap_wait > 3.0, _y, int(lead[3]))
 	_ap_lead = float(lead[0]) if float(lead[0]) < INF else -1.0
 	_ap_lead_i = int(lead[3]) if float(lead[0]) < INF else -1
+	# (and when every way round it is refused for its back -- stood too close behind it to swing
+	# out: 70 s behind an SUV at a light on Bialik, every way out "its back at 3 m". A driver
+	# backs up a little and goes round.)
+	var behind_still: bool = racing and _ap_lead_i >= 0 and absf(_v) < 0.5 and float(lead[0]) - float(lead[2]) < 6.0 			and float(_traffic.cars[_ap_lead_i].v) < 0.3
+	# (counted behind the same car, whatever it says it waits for this moment: a motorbike
+	# waiting for racer tried edging by every 3.5 s, saying something else while it tried, and a
+	# count that restarted each time never got to 4 s -- 74 s on Bialik)
+	_race_nose_t = _race_nose_t + dt if behind_still and _ap_lead_i == _race_nose_i else 0.0
+	_race_nose_i = _ap_lead_i if behind_still else -1
+	var stuck_to: bool = behind_still and (String(_traffic.cars[_ap_lead_i].why) == "player" 			or (_race_by_why.contains("its back") and not _race_by_why.contains("v=")))
+	if stuck_to and _race_nose_t > RACE_GIVE_S and (_ap_lead_i != _race_gave or float(_traffic._clock) - _race_gave_at > 12.0):
+		# nose to nose with a car that waits for us (each held by the other): back off a car's
+		# length and plan again. Its own way out -- edging by -- tried every 3.5 s and never
+		# made it, and each try restarted the wait that sends it elsewhere: 25 s on Bialik
+		# (tests/racer_drive.gd prints "the jam" once stood 8 s)
+		_race_gave = _ap_lead_i
+		_race_gave_at = float(_traffic._clock)
+		_race_nose_t = 0.0
+		_ap_back = 1.6
+		Probe.event("racer_gave_way", {"to": String(_traffic.cars[_ap_lead_i].kind)})
 	if float(lead[0]) < INF:
 		var lv: float = lead[1]
 		var li := int(lead[3])
@@ -24528,6 +24584,12 @@ func _ap_pass_bus(lead: Array) -> bool:
 			if _push_out(_ap_pts[k], 1.1, true, false, _y) != Vector2.ZERO:
 				blocked = true
 				break
+			# (and on the asphalt: checked for posts only, three bus passes in 3 s before Herzl's
+			# turn into Klausner left the plan cutting the corner 2.6 m over the kerb into a post
+			# at 22 km/h -- tests/racer_drive.gd; the other pass moves all check this)
+			if k > 1 and _off_road(_ap_pts[k], 0.3):
+				blocked = true
+				break
 		_smash = false
 		if blocked:
 			_ap_pts = keep_pts
@@ -24551,6 +24613,12 @@ func _ap_pass_bus(lead: Array) -> bool:
 ## the same car once stuck behind it (the first try did not clear it). True when it went.
 const RACE_CLEAR := 2.9      ## m from the car's middle to racer's line, going by it
 const RACE_OUT := [3.2, 6.4, 9.6, -3.2]   ## ways out tried: left one lane, two, three; right one
+const RACE_GIVE_S := 4.0      ## s nose to nose with a car waiting for racer before it backs off
+var _race_gave := -1           ## the car it last backed off for (once each)
+var _race_nose_t := 0.0        ## s stood close behind the same still car
+var _race_nose_i := -1         ## ... which
+var _race_gave_at := -100.0    ## when it last backed off (again for the same car 12 s on)
+const RACE_BY_V := 7.0        ## m/s by something narrow (a motorbike) just far enough over
 var _race_tries := 0                      ## ways out already taken round the same car (a retry starts past them)
 const RACE_RETRY := 3.0      ## s after going round a car, still behind it: try again
 var _race_at := -100.0       ## when it last went round one (traffic's clock)
@@ -24600,14 +24668,26 @@ func _ap_race_by(lead: Array) -> bool:
 	var keep_v := _ap_v.duplicate()
 	var keep_lim := _ap_lim.duplicate()
 	var s0 := _ap_pts[0].distance_to(Geometry2D.get_closest_point_to_segment(_pos, _ap_pts[0], _ap_pts[1]))
-	for oi in range(RACE_OUT.size()):
-		var out: float = RACE_OUT[(oi + _race_tries) % RACE_OUT.size()]
+	# from its middle by its own half width: a motorbike is 0.6 m wide, and asked a car's 2.9 m and
+	# a lane's swing out, racer stood 40 s behind one waiting on Bialik, every way out off the
+	# narrow street (tests/racer_drive.gd). Something narrow: by it just far enough first, slowly.
+	var hw: float = (_traffic.CORNERS.get(String(car.kind), Vector2(0.9, 2.2)) as Vector2).x
+	var clear := RACE_CLEAR - 0.9 + hw
+	var outs: Array = RACE_OUT.duplicate()
+	for side: float in [1.0, -1.0]:
+		var by := lat + side * clear
+		if absf(by) < RACE_OUT[0] - 0.2 and signf(by) == side:
+			outs.push_front(by)
+	for oi in range(outs.size()):
+		var out: float = outs[(oi + _race_tries) % outs.size()]
 		# as far over as clears its body: out at least so far past its middle
 		var shift := out
-		if out > 0.0:
-			shift = maxf(out, lat + RACE_CLEAR)
+		if absf(out) < RACE_OUT[0]:
+			shift = out   # (just by: the exact shift, worked out above)
+		elif out > 0.0:
+			shift = maxf(out, lat + clear)
 		else:
-			shift = minf(out, lat - RACE_CLEAR)
+			shift = minf(out, lat - clear)
 		_ap_densify(s0 + end_s + 10.0, 1.5)
 		var orig := _ap_pts.duplicate()   # (lengths and ways read from the plan as it was: bent in place, each
 		                                   # point leaned on the one before, already moved, and the way out hugged the plan)
@@ -24622,6 +24702,8 @@ func _ap_race_by(lead: Array) -> bool:
 				continue
 			var kd := (orig[mini(k + 1, orig.size() - 1)] - orig[k - 1]).normalized()
 			_ap_pts[k] += Vector2(kd.y, -kd.x) * shift * t
+			if absf(shift) < RACE_OUT[0] - 0.2:
+				_ap_v[k] = minf(_ap_v[k], RACE_BY_V)   # (by a hand's breadth more than a body: not at full tilt)
 			bent.append([_ap_pts[k], maxf(s, 0.0)])
 		var ok := not bent.is_empty()
 		for bq: Array in bent:
@@ -24632,6 +24714,17 @@ func _ap_race_by(lead: Array) -> bool:
 				whys.append("%.1f: %s at %.0f m" % [shift, "off road" if _off_road(q, -0.3) else _last_hit, float(bq[1])])
 				break
 			var at_t := float(bq[1]) / maxf(want, 5.0)   # (when racer is there)
+			# clear of the car it goes round too, by its body where it will be: started 2.5 m
+			# behind one, the way out's first metres swung through its back (4 and 34 km/h,
+			# tests/racer_drive.gd) -- every other car was checked, that one not
+			var cdir0 := Vector2(sin(car.yaw), cos(car.yaw))
+			var cnow: Vector2 = car.pos + cdir0 * float(car.v) * at_t
+			var hl: float = (_traffic.CORNERS.get(String(car.kind), Vector2(0.9, 2.2)) as Vector2).y
+			var on_body := Geometry2D.get_closest_point_to_segment(q, cnow - cdir0 * hl, cnow + cdir0 * hl)
+			if on_body.distance_to(q) < hw + CAR_R + 0.3:
+				ok = false
+				whys.append("%.1f: its back at %.0f m" % [shift, float(bq[1])])
+				break
 			for c in _traffic.cars:
 				if not c.alive or c == car:
 					continue
@@ -24923,6 +25016,7 @@ func _ap_race_queue(lead: Array) -> bool:
 ## right and along it past the queue, back down at its head -- only where nobody is on that
 ## stretch of pavement (3 m either side of the line), nothing solid stands on it (posts,
 ## trees, bins, a parked car, a wall) and it is not a junction just ahead. True when it did.
+const MOUNT_DOWN := 15.0      ## m of road it wants straight after coming back down off the pavement
 const MOUNT_PAST := 26.0      ## metres of pavement it takes at most past the car in front
 var _mount_why := ""   ## why the last way up onto the pavement was not taken (tests/racer_drive.gd)
 func _ap_mount_by(lead: Array) -> bool:
@@ -25008,6 +25102,12 @@ func _ap_mount_by(lead: Array) -> bool:
 	if ok and _ap_turn_ahead() != 0 and float(lead[1]) >= 1.0:
 		ok = false
 		_mount_why = "turn ahead"   # (turning just after: stay in lane -- unless the queue stands: see _ap_pass_bus)
+	elif ok and _ap_turn_ahead(end_s + MOUNT_DOWN) != 0:
+		# (back down on the road short of the next turn: coming down off the pavement into
+		# Bialik's turn into Kirinitsi, it cut the corner over the kerb into its posts, 4-10 km/h,
+		# in three drives of four -- tests/racer_drive.gd)
+		ok = false
+		_mount_why = "turn before it is down"
 	if not ok:
 		_ap_pts = keep_pts
 		_ap_v = keep_v
@@ -25127,6 +25227,60 @@ func _ap_squeeze_by(bi: int, gap: float) -> bool:
 ## bus was gone: racer "passed" a bus 70 m out and stood behind it for a minute
 ## (tests/racer_drive.gd, the user's "there was only a bus and it didnt want to pass").
 ## The first stretch keeps its start; a point is put where the car is, and on from there.
+## The plan kept clear of what is solid by the car's body. "The planned lane is clear", the
+## steering said -- but nothing made it so: a lane's line ran 0.5-0.9 m from posts (a corner's
+## post past Bialik into Kirinitsi, a thick one along Kirinitsi; the car's body is two 0.95 m
+## circles), and a bend round a car came back down beside them (tests/racer_drive.gd: three
+## knocks at 4-10 km/h, a post met at 62 km/h). Every metre of the next `upto` m with something
+## solid within the body's reach (+ AP_CLEAR_PAD) gets a point pushed out of it, when a little
+## push does it; a thing dead in the lane is left to the passes and the brakes.
+const AP_CLEAR_EVERY := 0.25   ## s between looks
+const AP_CLEAR_PAD := 0.5      ## m past the body's circle (0.3: the line between the 1 m points still came 0.1 m from a tree at the kerb, at 64 km/h)
+const AP_CLEAR_MAX := 1.4      ## m a point is moved at most
+var _ap_clear_t := 0.0
+var _ap_cleared := 0           ## points moved so far (tests read it)
+func _ap_keep_clear(upto: float) -> void:
+	if _ap_pts.size() < 2:
+		return
+	var r := CAR_R + AP_CLEAR_PAD
+	_smash = _racing()   # (racer plans through what gives: see _smash)
+	var np := PackedVector2Array([_ap_pts[0]])
+	var nv := PackedFloat32Array([_ap_v[0]])
+	var nl := PackedFloat32Array([_ap_lim[0]])
+	var acc := 0.0
+	var moved := 0
+	for k in range(1, _ap_pts.size()):
+		var a := _ap_pts[k - 1]
+		var b := _ap_pts[k]
+		var L := a.distance_to(b)
+		if acc < upto:
+			var m := maxi(int(L), 1)
+			for q in range(1, m):
+				var at := a.lerp(b, float(q) / m)
+				if at.distance_to(_pos) < 2.5:
+					continue   # (not under the car: it is where it is)
+				var push := _push_out(at, r, true, false, _y)
+				if push != Vector2.ZERO and push.length() <= AP_CLEAR_MAX:
+					np.append(at + push)
+					nv.append(maxf(_ap_v[k - 1], _ap_v[k]) if _ap_v[k] > 0.0 else _ap_v[k])
+					nl.append(_ap_lim[k])
+					moved += 1
+			if b.distance_to(_pos) >= 2.5:
+				var pb := _push_out(b, r, true, false, _y)
+				if pb != Vector2.ZERO and pb.length() <= AP_CLEAR_MAX:
+					b += pb
+					moved += 1
+		np.append(b)
+		nv.append(_ap_v[k])
+		nl.append(_ap_lim[k])
+		acc += L
+	_smash = false
+	if moved > 0:
+		_ap_pts = np
+		_ap_v = nv
+		_ap_lim = nl
+		_ap_cleared += moved
+
 func _ap_densify(upto: float, step: float) -> void:
 	var np := PackedVector2Array([_ap_pts[0]])
 	var nv := PackedFloat32Array([_ap_v[0]])
@@ -27240,6 +27394,7 @@ func _draw_hud() -> void:
 			_hud.draw_rect(Rect2(bar.position, Vector2(bar.size.x * left, 3)), Color(Palette.col("accent"), 0.8))
 	if not _hud_folded:
 		_hud_btn(GOTO_BTN, "go to…", Palette.col("accent"), false, 12, true)
+		_hud_btn(PAUSE_BTN, "PAUSED" if _paused else "pause", Palette.col("warn"), _paused, 12)
 		var near_car := _walking and _pos.distance_to(_car_at) < 3.6
 		_hud_btn(WALK_BTN, "get in" if _walking else "walk", Palette.col("accent"), false, 11, near_car)
 		# on the right: the drawer and folding, the camera, looking round
@@ -27475,7 +27630,7 @@ func _hud_tap(p: Vector2) -> bool:
 	if _more_tap(p):
 		return true
 	match _hud_hit(p):
-		"resume":
+		"resume", "pause":
 			_toggle_pause()
 		"show":
 			_hud_folded = false
@@ -27524,6 +27679,7 @@ func _hud_buttons() -> Dictionary:
 		if _auto:
 			out["style"] = STYLE_BTN
 	out["goto"] = GOTO_BTN
+	out["pause"] = PAUSE_BTN
 	out["walk"] = WALK_BTN
 	out["more"] = MORE_BTN
 	out["fold"] = FOLD_BTN
