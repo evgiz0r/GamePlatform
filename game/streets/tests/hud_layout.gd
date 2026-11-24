@@ -1,7 +1,7 @@
 extends SceneTree
 ## The HUD's buttons (AUTO_BTN and on, the "more" drawer, folding): taps each through
 ## _hud_tap as a player would, checks what it did, and shoots each state --
-## hud_drive / hud_auto / hud_perf / hud_more / hud_night / hud_keys / hud_map / hud_folded / hud_walk.png.
+## hud_drive / hud_auto / hud_perf / hud_more / hud_night / hud_keys / hud_paused / hud_map / hud_folded / hud_walk.png.
 ## Checks, every state: the buttons on screen inside the screen and none overlapping another,
 ## the minimap, the stick's ring or the credit. And the autodrive styles: the player's
 ## autodrive is the racer by default, a script's _set_auto (the bots, routes, scene tests)
@@ -173,6 +173,26 @@ func _run() -> void:
 	_check_layout("paused")
 	await _tap(g.RESUME_BTN)
 	_ok("resume on screen", not g._paused)
+	# pause on the main screen (the user, 23 Nov): autodrive moving, a tap holds the car and
+	# the traffic still, the same button lets them go on
+	await _tap(g.AUTO_BTN)
+	await create_timer(2.0).timeout
+	await _tap(g.PAUSE_BTN)
+	_ok("the pause button pauses", g._paused)
+	var car0: Vector2 = g._pos
+	var cars0: Array = g._traffic.cars.map(func(c): return c.pos)
+	await create_timer(1.5).timeout
+	var still := 0
+	for i in range(mini(cars0.size(), g._traffic.cars.size())):
+		if g._traffic.cars[i].pos == cars0[i]:
+			still += 1
+	_ok("paused: the car still (%.2f m) and %d/%d cars" % [g._pos.distance_to(car0), still, cars0.size()], g._pos == car0 and still == cars0.size() and cars0.size() > 0)
+	await _snap("hud_paused")
+	_check_layout("paused by the button")
+	await _tap(g.PAUSE_BTN)
+	await create_timer(1.5).timeout
+	_ok("the pause button resumes, the car going on (%.1f m)" % g._pos.distance_to(car0), not g._paused and g._pos.distance_to(car0) > 1.0)
+	await _tap(g.AUTO_BTN)
 	# the camera: chase, seat, chase
 	var views: Array = [g._view_name()]
 	for i in range(2):
