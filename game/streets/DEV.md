@@ -4321,7 +4321,15 @@ checks Givatayim / Ashdod / test town 12 / 12 / 11, all traffic's; route set 10 
   me, goes first, my green or not -- as a traffic car already in the junction does
   (`_in_site`). Standing still there (at its own red between the carriageways) it holds
   nobody. Route 2 and 8 after: clean, no new waits. The meeting depends on timing, so the
-  route can't show the fix held, only that nothing got worse. Not staged in a test (open).
+  route can't show the fix held, only that nothing got worse. Then staged:
+  `tests/box_clear.gd` (your car standing in that junction, pulling away at 2.5 m/s^2 when
+  a car coming up HaShalom on its held green is LEAD m out): the old code met it (-0.97 m),
+  the first fix still did (-0.11 m) -- pulling away at 1-3 m/s, the player read as due at the
+  lit point in 7-20 s, not within 1.5 s of the car. Now no time test: a player moving inside
+  the junction toward the point, within BOX_M, goes first. LEADS 26-46: none met (at 26 m out
+  the car is past the point first, 1.4 m clear). Routes 1, 2, 4, 8 after: arrived, no hits;
+  route 4 stood 38 s in a queue on La Guardia (12.5 at a light there the run before; a queue,
+  not this junction rule -- watch it).
 - **turn_width now also checks the body at corners**: either of its two circles within
   CLEAR_M (5 cm) of a post, wall or building within 25 m of the junction counts (`body_near`
   in each line, in the REGRESS line). Givatayim 10 turns, Ashdod 12: none. Givatayim's

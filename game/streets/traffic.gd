@@ -885,7 +885,10 @@ func _junction_ahead(c: Car, i: int, dt: float) -> float:
 			# stop for it "comfortably", so it went on, and they met.
 			# (moving: one standing at its own red between the two carriageways waits, and held
 			# the cross street's green for nothing)
-			if pv > 1.0 and pfwd.dot(node_at - me_at) > 0.0 and pd < 30.0 and pd / pv < my_eta + 1.5 and _player_in_box(n, me_at):
+			# (whenever it is: not "due within 1.5 s of me" -- setting off from standing behind
+			# a car there, at 1-3 m/s it read as due in 7-20 s, and the car came on;
+			# tests/box_clear.gd)
+			if pv > 1.0 and pfwd.dot(node_at - me_at) > 0.0 and pd < BOX_M and _player_in_box(n, me_at):
 				return _hold(c, dt, stop)
 		for oi in range(cars.size()):
 			if oi == i:
