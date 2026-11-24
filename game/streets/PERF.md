@@ -322,6 +322,14 @@ Not done (measured, small): far walkers ticked less often -- the people's tick i
 walker spread over ten steps (re-placing 0.2, apart and push 0.17, walking beside 0.1, pose
 0.1 ms a frame...), nothing to cut in one place.
 
+## The quality bar lowered to 28 fps (24 Nov 2026)
+
+The user: every browser, even a local one on the PC (Monaco), quickly dropped its quality. The
+ladder stepped down under 45 fps (and counted every frame slower than 33 ms as a stutter), so a
+PC browser at 25-30 fell to 0 within ~10 s. Now: down under `FPS_LOW` 28, up at `FPS_FULL` 40,
+a stutter is a frame over 50 ms (`LONG_FRAME`). `quality_ladder` checks a 25-35 fps browser keeps
+level 2 for 2 min. A phone at 15-22 still steps down. The fps button shows the level ("30 fps 2/3").
+
 ## A work laptop (22 Nov 2026): Intel graphics (0x7D41), ANGLE on Direct3D 11, a browser, build 2ddd8b3
 
 One perf-view screenshot, mailed: Givatayim at Katznelson, autodrive on, 317 s into the drive.
@@ -467,3 +475,12 @@ Windows browsers, where today's two fixes already took most of the cost.
 up only if first visits on Windows browsers become the complaint again. The first thing then:
 compare a container capture's sources (`web_shaders.js` DUMP=) with a real browser's,
 byte for byte -- if Godot's GLSL differs by device, the whole approach fails.
+
+**Warm-up on stand-ins, tried and left out (24 Nov 2026, another thread).** Each shader key
+drawn once as a ~1 m copy of its node (same mesh and material, a one-copy multimesh) in front
+of the camera with the city hidden, in 4 frames, then the city once -- instead of the city
+itself in 8 groups and 4 views. In the container's browser (SwiftShader, where drawing the
+town is the cost): Givatayim's warm-up 38 s -> 13.5 s, Tel Aviv 35 -> 12.5 s, the same shaders
+compiled. Not kept: on a real GPU the warm-up is the compiling (above), a phone draws the town
+in ~50 ms, so it would save well under a second there, and it could miss variants a view-based
+pass catches. Worth it only if a slow-drawing device turns up (the work laptop's 68 ms draws).

@@ -4,8 +4,9 @@ extends SceneTree
 ## failing; a machine the levels do not help at all (a user's PC in Tel Aviv: quality 0 at 25-27
 ## fps, it never came back up) and one that only the first step helps.
 ##   STREETS_BUILD_ALL=0 $GODOT --headless --path . -s res://game/streets/tests/quality_ladder.gd
-## Good: [2]; [2, 1, 0]; [0, 1, 2, 3]; down to 1 and kept there (the top fails, 2 is no better);
-## [2, 1, 0, 2] staying at 2 for FLOOR_S, then tried again; [2, 1, 0, 1]; and two CHECK lines
+## (24 Nov: the bar went from 45 down / 56 up to 28 / 40; the made-up rates went down with it)
+## Good: [2, 3] (a 50 fps PC now climbs to the top); [3, 2, 1, 0]; [0, 1, 2, 3]; down to 1 and kept there (the top fails, 2 is no better);
+## [2, 1, 0, 2] staying at 2 for FLOOR_S, then tried again; [2, 1, 0, 1]; and three CHECK lines
 ## PASS: the ladder steps down while the rest of the city builds in the background (it never
 ## did: a work laptop sat at quality 2 and 7 fps for the build's hour), and holds while the
 ## squares round the car are still catching up.
@@ -74,22 +75,32 @@ func _run() -> void:
 	g._set_quality(2)
 	g._fps_wait = 0.0
 	feed("PC at 50 fps, a 0.48 s hitch every 5 s, 60 s", 60.0, 0.02, 5.0)
-	feed("then slow: 35 fps at 2, 40 at 1, 55 at 0, 30 s", 30.0, [55.0, 40.0, 35.0, 30.0])
+	feed("then slow: 20 fps at 2, 24 at 1, 45 at 0, 30 s", 30.0, [45.0, 24.0, 20.0, 18.0])
 	feed("then 60 fps again, 120 s", 120.0, 1.0 / 60.0)
-	feed("a level that fails each time: 60 fps but 30 at the top, 6 min", 0.0, 0.0)
+	feed("a level that fails each time: 60 fps but 20 at the top, 6 min", 0.0, 0.0)
 	var t := 0.0
 	var trail: Array = []
 	while t < 360.0:
-		var dt := 1.0 / 30.0 if g._quality >= 2 else 1.0 / 60.0
+		var dt := 1.0 / 20.0 if g._quality >= 2 else 1.0 / 60.0
 		g._judge_fps(dt)
 		t += dt
 		if trail.is_empty() or trail.back()[0] != g._quality:
 			trail.append([g._quality, int(t)])
 	print("  levels [level, at s]: %s" % str(trail))
 	fresh()
-	feed("a machine the levels do not help: 26 fps at every level, 10 min", 600.0, [26.0, 26.0, 26.0, 26.0])
+	feed("a machine the levels do not help: 20 fps at every level, 10 min", 600.0, [20.0, 20.0, 20.0, 20.0])
 	fresh()
-	feed("only the first step helps: 26 fps at 2, 33 at 1 and 0, 2 min", 120.0, [33.0, 33.0, 26.0, 26.0])
+	feed("only the first step helps: 20 fps at 2, 25 at 1 and 0, 2 min", 120.0, [25.0, 25.0, 20.0, 20.0])
+	fresh()
+	feed("a PC browser at 30 fps, uneven (25-35), 2 min", 0.0, 0.0)
+	var pc_t := 0.0
+	var pc_low := 2
+	while pc_t < 120.0:
+		var pdt := 1.0 / (25.0 if int(pc_t * 3.0) % 2 == 0 else 35.0)
+		g._judge_fps(pdt)
+		pc_t += pdt
+		pc_low = mini(pc_low, g._quality)
+	check("a browser at 30 fps keeps its look (24 Nov: every one fell to 0)", pc_low == 2)
 	# the gate: what the background build left the ladder to do
 	var was := [g._bg_build, g._catch_up, g._zoom_v]
 	g._ladder_native = true

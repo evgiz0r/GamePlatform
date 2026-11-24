@@ -29,8 +29,10 @@ uniform float fade_from = 1e6;   // gone past this distance...
 uniform float fade_to = 1e6;     // ...dissolving in, a dither, from here
 void fragment() {
 	int i = clamp(int(COLOR.r * 8.0 + 0.5), 0, 6);
-	if (i <= 1) {   // skin or shirt: by the smooth field in green, so the collar is a line, not the triangles' zigzag
+	if (i <= 1) {   // skin or shirt: by the smooth field in green, so the collar and the sleeves' hems are lines, not the triangles' zigzag
 		i = COLOR.g > 0.5 ? 1 : 0;
+	} else if (i == 2 && COLOR.g < 0.5) {   // (below the shorts' or the skirt's hem)
+		i = 0;
 	}
 	vec3 c;
 	float rough = 0.9;
@@ -143,6 +145,63 @@ class Glance extends SkeletonModifier3D:
 			var gp := sk.get_bone_global_pose(b[0])
 			sk.set_bone_global_pose(b[0], Transform3D(Basis(Vector3.UP, turn * float(b[1])) * gp.basis, gp.origin))
 
+## Waving and pointing: the right arm, for a moment (WAVE_T / POINT_T seconds, eased in and
+## out), on top of whatever the clip does -- a wave, the upper arm out to the side and the
+## forearm up, swinging; a point, the whole arm out ahead. Each bone is aimed (turned so it
+## points along a direction in the body's frame) rather than turned about its own axes: the
+## turns about the bones' x and z found no wave (tests/people_gesture.gd). people.gd's
+## gesture() starts one.
+class Gesture extends SkeletonModifier3D:
+	var upper := -1
+	var fore := -1
+	var hand := -1
+	var kind := ""       ## "wave", "point" or "" (none now)
+	var left := 0.0      ## seconds of it to go
+	var t := 0.0
+	var w := 0.0         ## how far into the pose, eased
+	var hand_at := Vector3.ZERO    ## (tests: where the hand and the elbow went, in the world)
+	var elbow_at := Vector3.ZERO
+
+	func _process_modification_with_delta(delta: float) -> void:
+		var sk := get_skeleton()
+		if sk == null or upper < 0 or fore < 0 or hand < 0:
+			return
+		if left > 0.0:
+			left = maxf(left - delta, 0.0)
+		w = move_toward(w, 1.0 if left > 0.45 else 0.0, delta * 2.4)
+		if w <= 0.0:
+			if left <= 0.0:
+				kind = ""
+			return
+		t += delta
+		var e := w * w * (3.0 - 2.0 * w)
+		var aims: Array = WAVE_AIM if kind == "wave" else POINT_AIM
+		var fore_to: Vector3 = aims[1]
+		if kind == "wave":   # (the forearm swinging side to side, about the way they face)
+			fore_to = fore_to.rotated(Vector3(0, 0, 1), WAVE_SWING * sin(t * 7.0))
+		_aim(sk, upper, fore, aims[0], e)
+		_aim(sk, fore, hand, fore_to, e)
+		hand_at = sk.global_transform * sk.get_bone_global_pose(hand).origin
+		elbow_at = sk.global_transform * sk.get_bone_global_pose(fore).origin
+
+	## bone b turned (by e of the way) so it points from itself to its child c along `to`
+	func _aim(sk: Skeleton3D, b: int, c: int, to: Vector3, e: float) -> void:
+		var gp := sk.get_bone_global_pose(b)
+		var now := sk.get_bone_global_pose(c).origin - gp.origin
+		if now.length_squared() < 1e-8:
+			return
+		var q := Quaternion(now.normalized(), to.normalized())
+		q = Quaternion.IDENTITY.slerp(q, e)
+		sk.set_bone_global_pose(b, Transform3D(Basis(q) * gp.basis, gp.origin))
+
+## where each part of the arm points, in the body's frame (+z ahead, +y up, -x its right):
+## [upper arm, forearm]
+const WAVE_AIM := [Vector3(-0.9, 0.3, 0.2), Vector3(-0.12, 1.0, 0.15)]
+const POINT_AIM := [Vector3(-0.3, 0.12, 1.0), Vector3(-0.25, 0.15, 1.0)]
+const WAVE_SWING := 0.32     ## radians either way
+const WAVE_T := 2.2
+const POINT_T := 2.0
+
 ## the turns from the walk's mid-stride: [bone, axis, angle] (+x brings a hand forward and up
 ## on both arms; +z on the right arm, -z on the left, brings it in)
 const CARRY_TURNS := [["upperarm_l", Vector3(1, 0, -0.3), 0.6], ["lowerarm_l", Vector3(1, 0, 0), 0.2],
@@ -187,8 +246,26 @@ func _lib(kind: String) -> AnimationLibrary:
 		if out.has_animation(k):
 			out.remove_animation(k)
 		out.add_animation(k, (src.get_animation(alias[k]) as Animation).duplicate())
+	# knocked down by the car (Fall) and up again (GetUp: the fall backwards -- the library has
+	# no getting up, and its fall reversed, played slowly, reads as getting up with care)
+	if src.has_animation("Death01"):
+		var fall := src.get_animation("Death01")
+		out.add_animation("Fall", fall.duplicate())
+		out.add_animation("GetUp", _reversed(fall))
 	_libs[kind] = out
 	return out
+
+## a clip backwards: every key at (length - its time)
+static func _reversed(a: Animation) -> Animation:
+	var r := Animation.new()
+	r.length = a.length
+	for t in range(a.get_track_count()):
+		var nt := r.add_track(a.track_get_type(t))
+		r.track_set_path(nt, a.track_get_path(t))
+		r.track_set_interpolation_type(nt, a.track_get_interpolation_type(t))
+		for k in range(a.track_get_key_count(t)):
+			r.track_insert_key(nt, a.length - a.track_get_key_time(t, k), a.track_get_key_value(t, k))
+	return r
 
 ## Turn a made Actor3D (any of the kit's figures, its height set) into one of these people.
 func make(a: Actor3D, seed: int) -> void:
@@ -231,6 +308,11 @@ func make(a: Actor3D, seed: int) -> void:
 	gl.head = sk.find_bone("Head")
 	gl.curious = posmod(seed * 7919, 100) < 50   # (not from rng: a draw here would reshuffle everyone's clothes)
 	sk.add_child(gl)   # (before the held things: they go where the bones end up)
+	var ge := Gesture.new()   # (idle until gesture(): nothing done a frame)
+	ge.upper = sk.find_bone("upperarm_r")
+	ge.fore = sk.find_bone("lowerarm_r")
+	ge.hand = sk.find_bone("hand_r")
+	sk.add_child(ge)
 	var wd := rng.randf_range(0.94, 1.08)
 	inst.scale *= Vector3(wd, 1.0, wd)
 	# the look: from the game's palette-mixed ranges (_people_looks)
@@ -266,6 +348,7 @@ func make(a: Actor3D, seed: int) -> void:
 	# thighs in its colour, the calves bare), a third of them, some of those a dress
 	var shorts := rng.randf() < (0.6 if child else (0.25 if not female else 0.34))
 	var dress := female and shorts and rng.randf() < 0.35
+	a.set_meta("clothes", {"female": female, "long_sleeves": long_sleeves, "shorts": shorts, "dress": dress})   # (for the tests: people_hems)
 	var j := _join(inst, sk, body, hair, long_sleeves, shorts)
 	if j.is_empty():
 		return
@@ -364,6 +447,24 @@ func _join(inst: Node3D, sk: Skeleton3D, body: String, hair: String, long_sleeve
 	var nb := sk.find_bone("neck_01")
 	var neck_at := sk.get_bone_global_rest(nb).origin if nb >= 0 else Vector3(0, 1.5, 0)
 	var collar := neck_at.y - COLLAR_BELOW
+	# the hems, as the collar: a line across each arm and leg at a distance along it (from the
+	# shoulder, from the hip), not the bones' edge, which ran round the triangles in a zigzag
+	var limbs := {}   # "arm_l" -> [from, unit along, hem's distance]
+	for sd: String in ["l", "r"]:
+		var ua: Variant = _rest_at(sk, "upperarm_" + sd)
+		var la: Variant = _rest_at(sk, "lowerarm_" + sd)
+		var ha: Variant = _rest_at(sk, "hand_" + sd)
+		if ua != null and la != null and ha != null:
+			var u: Vector3 = ((ha as Vector3) - (ua as Vector3)).normalized()
+			var hem: float = ((ha as Vector3) - (ua as Vector3)).dot(u) - WRIST_IN if long_sleeves \
+					else ((la as Vector3) - (ua as Vector3)).dot(u) * SLEEVE
+			limbs["arm_" + sd] = [ua, u, hem]
+		var th: Variant = _rest_at(sk, "thigh_" + sd)
+		var ca: Variant = _rest_at(sk, "calf_" + sd)
+		var fo: Variant = _rest_at(sk, "foot_" + sd)
+		if shorts and th != null and ca != null and fo != null:
+			var u: Vector3 = ((fo as Vector3) - (th as Vector3)).normalized()
+			limbs["leg_" + sd] = [th, u, ((ca as Vector3) - (th as Vector3)).dot(u) - HEM_ABOVE_KNEE]
 	var verts := PackedVector3Array()
 	var nrms := PackedVector3Array()
 	var uvs := PackedVector2Array()
@@ -422,6 +523,19 @@ func _join(inst: Node3D, sk: Skeleton3D, body: String, hair: String, long_sleeve
 					# alternate there: by bone the line zigzagged), by its height
 					if (part <= 1) and Vector2(v[i].x - neck_at.x, v[i].z - neck_at.z).length() < COLLAR_R and v[i].y > collar - 0.12:
 						cloth = clampf(0.5 + (collar - v[i].y) / 0.03, 0.0, 1.0)
+					var sd := "l" if bn.ends_with("_l") else "r"
+					var lb: Array = []
+					if bn.begins_with("upperarm") or bn.begins_with("lowerarm") or bn.begins_with("hand"):
+						lb = limbs.get("arm_" + sd, [])
+						if not lb.is_empty():
+							part = 1
+					elif bn.begins_with("thigh") or bn.begins_with("calf"):
+						lb = limbs.get("leg_" + sd, [])
+						if not lb.is_empty():
+							part = 2
+					if not lb.is_empty():
+						var t: float = (v[i] - (lb[0] as Vector3)).dot(lb[1])
+						cloth = clampf(0.5 + (float(lb[2]) - t) / 0.03, 0.0, 1.0)
 				cols.append(Color(float(part) / 8.0, cloth, 0.0))
 			var ix: PackedInt32Array = arr[Mesh.ARRAY_INDEX] if arr[Mesh.ARRAY_INDEX] != null else PackedInt32Array(range(v.size()))
 			for k in ix:
@@ -453,6 +567,14 @@ func _bind_name(s: Skin, b: int, sk: Skeleton3D) -> String:
 ## skin from shirt on this line, from a field in each vertex's green, not on the triangles' edges
 const COLLAR_BELOW := 0.015
 const COLLAR_R := 0.13   ## how far round the neck's middle the line is cut by height
+const SLEEVE := 0.55          ## a short sleeve ends this far from the shoulder to the elbow
+const WRIST_IN := 0.035       ## a long one this far short of the wrist (body units)
+const HEM_ABOVE_KNEE := 0.06  ## shorts and skirts end this far above the knee
+
+## a bone's rest position on the body (T-pose, body units), or null
+func _rest_at(sk: Skeleton3D, bone: String) -> Variant:
+	var b := sk.find_bone(bone)
+	return sk.get_bone_global_rest(b).origin if b >= 0 else null
 
 ## what a body vertex is dressed in, by the bone that moves it most
 func _cloth(bone: String, y: float, long_sleeves: bool, shorts: bool, collar: float) -> int:
@@ -499,9 +621,32 @@ func box(a: Actor3D, colour: Color) -> bool:
 	sk.add_child(h)
 	h.scale = Vector3(1.0 / s.x, 1.0 / s.y, 1.0 / s.z)   # (in metres)
 	c.box = h
+	a.set_meta("carry", true)
 	# a cardboard box, the hands at its sides near the bottom, a little in front of its middle
 	g._carry_mesh(h, [[Vector3(0.3, 0.26, 0.3), Vector3(0, 0.07, -0.08), colour],
 		[Vector3(0.06, 0.012, 0.302), Vector3(0, 0.2, -0.08), colour.darkened(0.12)]])   # (and the tape across its top)
+	return true
+
+## a wave or a point by person a ("wave" / "point"); false when they cannot (the old figures,
+## a phone or a box in that hand, one going already)
+func gesture(a: Actor3D, kind: String) -> bool:
+	if a == null or a.model == null or a.has_meta("phone") or a.has_meta("carry"):
+		return false
+	var sks := a.model.find_children("*", "Skeleton3D", true, false)
+	if sks.is_empty():
+		return false
+	var sk: Skeleton3D = sks[0]
+	var ge: Gesture = null
+	for m in sk.get_children():
+		if m is Gesture:
+			ge = m
+	if ge == null:
+		return false
+	if ge.left > 0.0 or ge.w > 0.0:
+		return false
+	ge.kind = kind
+	ge.left = WAVE_T if kind == "wave" else POINT_T
+	ge.t = 0.0
 	return true
 
 ## someone looking at their phone (Phone): the pose, and a phone in the right hand

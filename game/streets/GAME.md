@@ -1727,7 +1727,9 @@ contributors under the ODbL, which is why the credit sits on screen.
   round them and a tower crane over each big new building, and its licensed shops, cafes,
   barbers and grocers where OSM has none (their signs say what they are: the city's list has
   no names), and its own street things: Tel-O-Fun's green bike stations, taxi stands,
-  motorbike bays, sculptures, notice boards and fire hydrants. Everywhere, the cars' shapes and colours are the shares on Israel's vehicle
+  motorbike bays, sculptures, notice boards and fire hydrants. Pigeons and crows peck about the
+  pavements and fly up when you come near; rental e-scooters stand (or lie) about; gas
+  cylinder cages by the houses. Everywhere, the cars' shapes and colours are the shares on Israel's vehicle
   register: four in ten an SUV or crossover, more than four in ten white.
 - **Guessed**: a building with no height gets 4 storeys (by type: houses 2, garages 1,
   offices 5...), varied a storey up or down so a street is not one flat wall. A road with
@@ -1819,8 +1821,9 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
 - Speed humps to bump over: OSM marks them (traffic_calming), but the baker does not keep
   them yet -- it needs that and a re-bake (Overpass, or the bake workflow).
 - People who react ("not needed yet, maybe later"): jumping back, or falling, when a car
-  comes at them; glancing at you. Done: glancing at you, and a start back when the car is
-  about to hit them. Still to do: falling.
+  comes at them; glancing at you. Done: glancing at you, a start back when the car is about
+  to hit them (walking or standing), falling when it does hit them (and getting up again),
+  waving and pointing, people going in and out of the shops' doors.
 - Better people themselves: "what about people themselves? how can we improve". Five
   low-poly characters are the limit now. Done: builds varied, and things carried (shopping
   bags, handbags, backpacks, a box). Hands while talking: done. Done: every person is now one of Quaternius'
