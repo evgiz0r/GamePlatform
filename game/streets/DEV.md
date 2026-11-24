@@ -20,6 +20,7 @@ merge, re-check (`tools/check_script.sh`, a playtest, the tests below), never fo
 | `decks.gd` | roads off the ground -- bridges, embankments, cuttings, tunnels: their heights, what is under a point at a level (`surf`), their walls for collisions (`push`), the ground cut away over cuttings (`cut_tri`), and drawing them a square at a time (`build`). See "Off the ground" below |
 | `beach.gd` | the beaches by the sea, any town: umbrellas with white chairs facing the water, lifeguard towers, the chairs as seats for `_bathers`; set up from the sand areas and the sea, built per square (see "The beach") |
 | `crowds.gd` | people where the street walkers never go: shoppers down a market's walkway stopping at its stalls (lines from `landmarks.gd`'s `_market_line`), walkers and joggers along a beach's wet sand and people standing in the sea (lines and spots from `beach.gd`'s `_people_lines`); pools made the first time a line is near, ticked from `_people_tick` (see "Crowds") |
+| `birds.gd` | pigeons and crows on the pavements round you: flocks landed out of sight 20-60 m off, walking and pecking, up and away when you, a moving car or a passer-by comes near; three MultiMeshes (standing, wings up, wings down). See "Small life" |
 | `sites.gd` | building sites from a town's own map (the city file's `sites`): printed hoardings round each plot (solid walls), a tower crane over each new building's plot that is tall or 700 m2+ (see "The town's own layers") |
 | `landmarks.gd` | a town's landmarks, found by their building's name in the bake (`BY_CITY`: Tel Aviv's Azrieli towers, the Matcal and Marganit towers, Sarona's houses): a glass of their own, a lit crown, a mast or shaft on the roof, red tile roofs; and in every town the red lights on roofs over 90 m at night. Hooks in streets.gd: `_glass` / `_tile` on a building for `_build_buildings`, `build()` per square, `set_night` |
 | `wave.gd` | the green wave (the "wave" button, V): lit junctions ahead of the car run their own clock to green its way and hold it; streets.gd reads every light through `_ph_at` / `_t_at`, which ask it first. See "The green wave" below |
@@ -5178,3 +5179,27 @@ stood 19-26 s; on two-way streets with 3 cars in the lane, 4 of 6 stood.
 - Traffic cars do not steer round parked cars; parked cars are placed so the lanes miss them.
 - The quality ladder's thresholds are judged from one user's PC and phone; the profiler's
   hitch events are the place to look before retuning.
+
+## Small life: birds, shared e-scooters, gas cages (24 Nov 2026)
+
+The user: "more object people animals". `birds.gd` (`_birds`, made after the works in
+`_build_rest`'s stages, ticked from `_people_tick`): up to `MAX_FLOCKS` 6 flocks, `MAX_BIRDS`
+72 slots; a flock (5-12 pigeons, or 1-3 hooded crows one time in four) lands on a pavement
+20-60 m off where `_spawn_ok`; each bird walks (0.3 m/s, kept within 3.5 m of its landing
+spot, off the asphalt and out of walls), pecks, hops and turns at random; you within 7 m, a
+moving car within 16.5 m or anyone in `_people_at` within 1.8 m sends the whole flock up and
+away (gone after 30 m up or 9 s, the slots freed); a flock past 95 m and unseen is lifted
+and lands again elsewhere. At night none land, and any down go up. Nothing is solid.
+furniture.gd `street_extras` (after `town_things`): rental e-scooters every ~95 m of a
+non-fast street, half the time (a third outside `med`), 1-3 in a firm's colour (lime, teal,
+black, orange-red), one in three on its side; in `med` towns a gas cage (two cylinders in
+a steel cage) at the back of the pavement on residential streets, only where a wall is
+within 1.2 m behind it. Both have posts.
+- **Test**: `tests/small_life.gd` (REGRESS line). Good, level 7: 6 flocks down within a
+  minute, 0 birds on the asphalt or in a wall, 0 landed in view, the flock walked at goes up;
+  ~1,050 e-scooters, ~50 gas cages (Tel Aviv's front gardens keep most walls back), 0 on the
+  asphalt.
+- **Open**: birds never perch (on wires, roofs, lamp tops); no flapping sound; a flock
+  spooked by traffic on the road only when it is your car; the crows look like grey pigeons
+  scaled up (no separate black head and wings in the paint); gas cages only on streets
+  with a wall at the pavement's back.

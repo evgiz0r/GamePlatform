@@ -483,6 +483,8 @@ func build() -> void:
 	t = _timed("bike racks, scooters", t)
 	await town_things()
 	t = _timed("the town's own: bike-share, taxi stands, motorbike bays, sculptures, hydrants", t)
+	await street_extras()
+	t = _timed("shared e-scooters, gas cages", t)
 	await cats()
 	_timed("cats", t)
 	for k: String in _count:
@@ -2047,6 +2049,121 @@ func town_things() -> void:
 	await _place(_notice_kit(), boards, NEAR_SEEN, "notice_boards")
 	for v in range(3):
 		await _place(_art_kit(v), arts[v], SEEN * 0.6, "sculptures_%d" % v, true, art_cols[v])
+
+## ---- shared e-scooters and gas cages -------------------------------------------------------
+## Rental e-scooters left on the pavement the way they are: in ones, twos and threes near
+## the kerb, one in three knocked over on its side, in the operators' colours (a lime green,
+## a teal, a black, an orange-red), every ~95 m of a street about half the time (a third
+## outside the Mediterranean look). In the Mediterranean towns, a gas cage by the house at
+## the back of the pavement on residential streets (Israel's houses run on a pair of gas
+## cylinders in a ventilated steel cage by the wall). Both stand in people's way: posts.
+func street_extras() -> void:
+	var kh: float = g.KERB_H
+	var scoots: Array = []
+	var scoot_cols: Array = []
+	var cages: Array = []
+	var fr := Palette.col("friend")
+	var hz := Palette.col("hazard")
+	var paints := [Color.from_hsv(0.25, clampf(fr.s, 0.6, 0.85), clampf(fr.v * 0.8, 0.5, 0.75)),
+		Color.from_hsv(0.48, clampf(fr.s, 0.55, 0.8), clampf(fr.v * 0.6, 0.4, 0.6)),
+		_tone("tyre").lightened(0.1), Color.from_hsv(0.03, clampf(hz.s, 0.65, 0.85), clampf(hz.v * 0.8, 0.5, 0.75))]
+	for ri: int in g._tile_roads.get(g._tile, []):
+		var r: Dictionary = g._roads[ri]
+		if not r["drive"] or r["pv"] or r["k"] == "service" or FAST.has(r["k"]):
+			continue
+		if g._over():
+			await g._pause()
+		var hw: float = float(r["w"]) * 0.5
+		var sd := 1.0 if posmod(ri, 3) == 0 else -1.0
+		var share := 0.5 if med else 0.33
+		for sp: Array in _walk_road(r, 95.0, 15.0 + _rnd(ri + 31) * 80.0, hw + g.KERB_W + 0.6, sd, 8.0):
+			var p: Vector2 = sp[0]
+			var d: Vector2 = sp[1]
+			var key := Vector2i(p.round())
+			if _rnd(key + Vector2i(4, 4)) > share or not g._mine(p):
+				continue
+			var n := 1 + int(_rnd(key + Vector2i(1, 9)) * 3.0)
+			var col: Color = paints[int(_rnd(key + Vector2i(2, 2)) * 4.0) % 4]   # (a clump is one firm's, mostly)
+			for i in range(n):
+				var q: Vector2 = p + d * float(i) * 0.65
+				if not _free(q, 0.3, 0.45, 0.6):
+					continue
+				var yaw := atan2(d.x, d.y) + (_rnd(key + Vector2i(i, 3)) - 0.5) * 0.7
+				var b := Basis(Vector3.UP, yaw)
+				var lift := 0.0
+				if _rnd(key + Vector2i(i, 7)) < 0.33:
+					b = b * Basis(Vector3.BACK, 1.45 * (1.0 if i % 2 == 0 else -1.0))   # on its side
+					lift = 0.1
+				else:
+					b = b * Basis(Vector3.BACK, 0.1)   # on its stand
+				scoots.append(Transform3D(b, Vector3(q.x, _h(q) + kh + lift, q.y)))
+				scoot_cols.append(col)
+				g._add_post(q, 0.3)
+		if not med or not (r["k"] in ["residential", "living_street", "unclassified"]):
+			continue
+		for sp: Array in _walk_road(r, 55.0, 10.0 + _rnd(ri + 41) * 45.0, hw + g.KERB_W + g.PAVE_W - 0.3, -sd, 6.0):
+			var p: Vector2 = sp[0]
+			var d: Vector2 = sp[1]
+			var o: Vector2 = sp[2]
+			if _rnd(Vector2i(p.round()) + Vector2i(6, 1)) > 0.4 or not g._mine(p):
+				continue
+			# (against a wall: a cage stands by a house, not out on its own)
+			if g._push_out(p + o * 1.2, 0.3, false, false) == Vector2.ZERO:
+				continue
+			if not _free(p, 0.4, 0.45, 0.8):
+				continue
+			cages.append(Transform3D(Basis(Vector3.UP, atan2(o.x, o.y)), Vector3(p.x, _h(p) + kh, p.y)))
+			g._add_post(p, 0.45)
+	await _place(_escooter_kit(), scoots, NEAR_SEEN, "escooters", false, scoot_cols)
+	await _place(_gas_cage_kit(), cages, NEAR_SEEN, "gas_cages")
+
+## a rental e-scooter facing +Z, on the ground: a dark deck and small wheels, its stem and
+## the box on it in the firm's colour (the copy's: drawn white), grips dark
+func _escooter_kit() -> ArrayMesh:
+	if _kits.has("escooter"):
+		return _kits["escooter"]
+	var b = g.new_buf()
+	var dark := _tone("tyre")
+	var w := Color.WHITE
+	for z: float in [-0.45, 0.48]:
+		_tube(b, Vector3(-0.03, 0.1, z), Vector3(0.03, 0.1, z), 0.1, 0.1, dark, 8)
+	_box(b, Vector3(0, 0.14, 0), Vector3(0.18, 0.06, 0.85), w)
+	_box(b, Vector3(0, 0.12, 0), Vector3(0.16, 0.03, 0.82), dark)
+	_tube(b, Vector3(0, 0.14, 0.45), Vector3(0, 1.08, 0.36), 0.025, 0.022, w, 6)
+	_box(b, Vector3(0, 0.95, 0.38), Vector3(0.1, 0.16, 0.06), w)   # the phone and lock box
+	_tube(b, Vector3(-0.26, 1.1, 0.36), Vector3(0.26, 1.1, 0.36), 0.016, 0.016, dark, 4)
+	_box(b, Vector3(0, 0.12, -0.5), Vector3(0.1, 0.05, 0.12), w)   # the mudguard
+	var am: ArrayMesh = _mesh(b)
+	_kits["escooter"] = am
+	return am
+
+## a gas cage, its back to the wall (local +Z), its door to the street (-Z): a steel frame
+## of bars, a sloping lid, and two tall grey cylinders inside
+func _gas_cage_kit() -> ArrayMesh:
+	if _kits.has("gascage"):
+		return _kits["gascage"]
+	var b = g.new_buf()
+	var steel := _tone("fencegreen").lerp(_tone("rim"), 0.5)
+	var bottle := _tone("metal").lerp(_tone("mark"), 0.35)
+	for x: float in [-0.17, 0.17]:
+		_tube(b, Vector3(x, 0.08, 0.02), Vector3(x, 1.12, 0.02), 0.13, 0.13, bottle, 10)
+		_tube(b, Vector3(x, 1.12, 0.02), Vector3(x, 1.2, 0.02), 0.05, 0.05, _tone("tyre"), 6)
+	_box(b, Vector3(0, 0.04, 0), Vector3(0.8, 0.08, 0.46), steel)          # the base
+	_box(b, Vector3(0, 1.38, 0.02), Vector3(0.84, 0.04, 0.52), steel, Basis(Vector3.RIGHT, -0.12))   # the lid
+	for x: float in [-0.39, 0.39]:
+		for z: float in [-0.22, 0.22]:
+			_box(b, Vector3(x, 0.7, z), Vector3(0.035, 1.36, 0.035), steel)
+	for i in range(7):   # the door's bars and the sides'
+		var x := -0.33 + 0.11 * i
+		_box(b, Vector3(x, 0.7, -0.22), Vector3(0.015, 1.3, 0.015), steel)
+	for y: float in [0.3, 0.7, 1.1]:
+		_box(b, Vector3(0, y, -0.22), Vector3(0.8, 0.025, 0.02), steel)
+		for x: float in [-0.39, 0.39]:
+			_box(b, Vector3(x, y, 0), Vector3(0.02, 0.025, 0.44), steel)
+	_box(b, Vector3(0.3, 0.75, -0.235), Vector3(0.05, 0.08, 0.02), Palette.col("warn"))   # the padlock
+	var am: ArrayMesh = _mesh(b)
+	_kits["gascage"] = am
+	return am
 
 ## a bike-share dock: a short grey post, the lock's head on it, along local X
 func _dock_kit() -> ArrayMesh:
