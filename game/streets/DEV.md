@@ -4386,7 +4386,15 @@ checks Givatayim / Ashdod / test town 12 / 12 / 11, all traffic's; route set 10 
   staging stops at the junction first, the route does not); Givatayim's 0.15 -> 0.18. Route 12
   after: clean, the first clean run of it in days. Route 3 that run: a traffic hatch standing
   at HaKnesset (292, 287) pulled out across autodrive's left turn and they touched at 11 km/h
-  (traffic's "player" stop came at 3.6 m) -- open, next.
+  (traffic's "player" stop came at 3.6 m) -- fixed: traffic's check of the player's corners
+  now also looks where its two front corners will be in PLAYER_AHEAD_S (0.8 s) when the player
+  is moving over 1 m/s, so a car about to pull out sees a car coming at it from the side
+  before that car is in its lane. Route set after: 15 of 15, route 3 clean; route 12's sign
+  again (16 km/h). Tried and dropped: counting posts by their own ground for a circle up on a
+  deck (`_push_out` skips posts for those) -- corner_post at Leiden unchanged. corner_post now
+  prints the plan's line's gap, not its nearest point's: at Leiden the line runs 1.59 m from the
+  sign (its points 1.86), under CAR_R + AP_CLEAR_PAD + the post + AP_BEND_PAD, so keep_clear
+  is not pushing the line between its points there -- next to look at.
 - **turn_width now also checks the body at corners**: either of its two circles within
   CLEAR_M (5 cm) of a post, wall or building within 25 m of the junction counts (`body_near`
   in each line, in the REGRESS line). Givatayim 10 turns, Ashdod 12: none. Givatayim's
