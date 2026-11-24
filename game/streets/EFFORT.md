@@ -4,6 +4,13 @@ How long each change took, in minutes, from the Claude Code sessions that made i
 
 | date (UTC) | commit | change | agent | runs | you | active | away | lines | files | steps | tools | engine runs | tokens out |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2026-11-24 13:58 | f3b2866 | Streets: potted plants on balconies (geraniums, trailing greens); small_life shoots one | 0.9 | 7.2 | 0.0 | **8.1** | 0.0 | +47 -3 | 5 | 10 | 11 | 3 | 5.9k |
+| 2026-11-24 13:50 | 29f4b09 | Streets: potholes and filled-in trench strips in the asphalt (shader only) | 18 | 31 | 0.0 | **49** | 184 | +39 -0 | 3 | 29 | 36 | 11 | 18.2k |
+| 2026-11-24 09:57 | 82d328e | Streets: post boxes in the country's colour (PostNL orange, La Poste yellow); small_life's roof check only ... | 16 | 2.6 | 0.0 | **18** | 11 | +5 -3 | 2 | 9 | 13 | 4 | 4.1k |
+| 2026-11-24 09:28 | ce628d8 | Streets notes: street points (post boxes, taps, bumps), the workflow and its times | 0.5 | 7.1 | 0.0 | **7.7** | 0.0 | +14 -5 | 2 | 7 | 11 | 2 | 3.4k |
+| 2026-11-24 08:55 | d5da0f3 | Streets: post boxes, drinking taps and speed bumps where OSM maps them (furniture.gd town_things; g.bumps f... | 1.1 | 21 | 0.0 | **22** | 0.0 | +114 -3 | 3 | 9 | 12 | 3 | 7.6k |
+| 2026-11-24 08:31 | b2f8f3a | Streets: dishes, old aerials and AC units on the roofs; OSM's fountains built; most shops' shutters down at... | 18 | 13 | 0.0 | **32** | 323 | +196 -7 | 5 | 38 | 47 | 11 | 19.6k |
+| 2026-11-24 02:37 | 4c9734f | Streets: pigeons and crows on the pavements (birds.gd: flocks land out of sight, peck about, fly up when yo... | 35 | 8.7 | 0.0 | **44** | 3462 | +551 -1 | 7 | 44 | 52 | 9 | 31.9k |
 | 2026-11-24 01:57 | 6fa12b8 | streets perf: the quality ladder steps down under 28 fps (was 45), up at 40 (was 56), a stutter is a frame ... | 16 | 1.3 | 0.0 | **17** | 1411 | +38 -19 | 4 | 13 | 14 | 3 | 7.0k |
 | 2026-11-23 04:59 | 6ce3849 | streets tests: posts_at.gd back as it was (overwritten by mistake); the one-spot lister is spot_at.gd | 0.5 | 0.2 | 0.0 | **0.8** | 0.0 | +119 -31 | 3 | 4 | 4 | 1 | 1.9k |
 | 2026-11-23 04:58 | 4b9e0a4 | streets racer: no stalls behind a narrow or stuck car, the plan kept clear of posts | 37 | 157 | 1.5 | **196** | 542 | +392 -83 | 6 | 155 | 148 | 35 | 92.2k |
@@ -126,5 +133,9 @@ How long each change took, in minutes, from the Claude Code sessions that made i
 | 2026-11-21 22:13 | d3bd1b7 | streets: racer mode, the Ministry's bus lanes, the towns' kindergartens and shelters | 14 | 17 | 11 | **42** | 0.0 | +935 -26 | 10 | 111 | 117 | 19 | 83.8k |
 | 2026-11-21 21:43 | b388d2f | streets: the wall shader's balconies as the kit's (dark creases, coping, lip and drip line, railings of bar... | 7.3 | 5.2 | 9.0 | **22** | 0.0 | +132 -22 | 7 | 59 | 73 | 17 | 37.7k |
 | 2026-11-21 21:31 | 704537e | streets: the green wave and the city from above before it is built | 13 | 14 | 1.4 | **28** | 0.0 | +795 -22 | 8 | 101 | 99 | 17 | 68.6k |
+| 2026-11-21 16:11 | 6cb5284 | Streets: town things square to their street (a point past a segment's end slanted them); tests: town_layers... | 1.2 | 9.5 | 0.0 | **11** | 0.0 | +23 -5 | 2 | 11 | 13 | 5 | 6.8k |
+| 2026-11-21 16:01 | 80f3478 | Streets: Tel Aviv's own street things -- Tel-O-Fun bike stations, taxi stands, motorbike bays, sculptures, ... | 35 | 13 | 0.0 | **48** | 352 | +329 -16 | 7 | 46 | 55 | 10 | 24.6k |
+| 2026-11-21 09:21 | 51e218d | streets crowds: a shopper standing at a stall kept out of its posts; seaside_people STAY= for drawn shots | 0.7 | 6.9 | 0.0 | **7.5** | 0.0 | +1 -0 | 1 | 10 | 14 | 4 | 4.0k |
+| 2026-11-21 09:13 | 4d9b3d7 | streets realism: people in the Carmel market and on the beach (crowds.gd: shoppers stopping at stalls, walk... | 16 | 17 | 0.0 | **33** | 436 | +1356 -19 | 12 | 129 | 142 | 28 | 93.2k |
 | 2026-11-20 22:30 | 1b5f176 | streets data, second round: Givatayim's trees, spot heights, land use, addresses and city things; Ramat Gan... | 5.8 | 11 | 7.5 | **24** | 0.0 | +280 -1 | 14 | 40 | 45 | 0 | 37.2k |
 | 2026-11-20 22:06 | 214e920 | streets data from the user's computer: Givatayim's and Ramat Gan's storeys on level 1 (guessed heights 4,72... | 13 | 6.2 | 1.2 | **20** | 0.0 | +489 -13 | 12 | 118 | 148 | 0 | 73.0k |

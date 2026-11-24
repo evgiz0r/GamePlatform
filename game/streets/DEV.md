@@ -5427,8 +5427,22 @@ within 1.2 m behind it. Both have posts.
 - **Shops shut at night** (`_shuts_at_night`, `_build_pois`): every shop but the late ones
   (corner shops, kiosks, supermarkets, bakeries, liquor, tobacco; a pharmacy in three) and
   anything to eat or drink gets a second shutter shown only at night (one MultiMesh a square
-  in `_night_nodes`), and lights no pool on the pavement. Tel Aviv: 1,624. No Shabbat: the
-  game has no day of the week.
+  in `_night_shut_nodes`), and lights no pool on the pavement. Tel Aviv: 1,624.
+- **Shabbat** (24 Nov): `_weekday` (0 Sunday) is the player's clock's (`STREETS_DAY` sets it),
+  moved on a day by the time button each time night turns to day; the banner names it in
+  the Israeli towns. `_shabbat_now()`: Friday evening and night, Saturday day and evening.
+  The shops `_shuts_on_shabbat` (the late ones; Tel Aviv keeps 1 in 3, elsewhere 1 in 8) get
+  a third set of shutters (`_shabbat_shut_nodes`, tally `shabbat_shutters`) and the traffic thins to `SHABBAT_CARS` 8 of 22 (only from a full town, so a scenario's own quiet stands); `_update_day`
+  shows the night ones at night or on Shabbat, those on Shabbat (from `_set_night`,
+  `_set_evening`). A Shabbat shop's window light on the pavement is in its own nodes
+  (`_shabbat_dark_nodes`, one a ground cell: 35 in Givatayim, drawn only within LAMP_RANGE),
+  dark on a Friday night. Open: cafes and restaurants all stay open
+  and nobody walks to synagogue. Tests and bots run on a Tuesday whatever the date.
+- **Cars over bumps** (24 Nov): `bump_lift(front, rear)` gives the bump height under each
+  axle (`_bump_h`: `_bump_kit`'s profile, 8 cm top 0.6 m deep, a table three times that, easing
+  off over 0.16 m); `_pose_car` lifts your body by their mean and tips it by their difference
+  over the wheelbase, traffic.gd the same into `c.bump_y`/`c.bump_pitch` for cars within
+  120 m. Visual only: the speed for a bump is `bump_v`'s.
 - **Test**: `tests/small_life.gd` (REGRESS line). Good, level 7: 6 flocks down within a
   minute, 0 birds on the asphalt or in a wall, 0 landed in view, the flock walked at goes up;
   ~1,050 e-scooters, ~50 gas cages (Tel Aviv's front gardens keep most walls back), 0 on the
@@ -5446,7 +5460,10 @@ within 1.2 m behind it. Both have posts.
   taps, 14 bumps and a table in the file; 5 / 65 / 15 built.
 - **Not done**: laundry, night lighting from the town's own lamps (their pools follow each mapped head)
   and tree species' looks (`tree_forms` from the surveys) were already in.
-- **Open**: birds never perch (on wires, roofs, lamp tops); no flapping sound; a flock
+- **Flap** (24 Nov): a flock going up plays `sounds/flap.wav` (make_sounds.py `flap`: five
+  birds' wingbeats, fast then slowing, 1.1 s) from its middle, one of two 3D players in
+  birds.gd, 6 dB under the sfx volume, silent when muted.
+- **Open**: birds never perch (on wires, roofs, lamp tops); a flock
   spooked by traffic on the road only when it is your car; the crows look like grey pigeons
   scaled up (no separate black head and wings in the paint); gas cages only on streets
   with a wall at the pavement's back.

@@ -4,6 +4,8 @@ How long each change took, in minutes, from the Claude Code sessions that made i
 
 | date (UTC) | commit | change | agent | runs | you | active | away | lines | files | steps | tools | engine runs | tokens out |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2026-11-24 09:20 | 0ec6540 | street points workflow: each town committed as it comes (busy servers: 5-15 min a town) | 0.6 | 24 | 0.0 | **25** | 0.0 | +12 -17 | 1 | 13 | 15 | 0 | 3.5k |
+| 2026-11-24 08:33 | a925e47 | tools: osm_city.py --street-points (OSM's post boxes, drinking taps, speed bumps into a baked city file) an... | 0.9 | 0.9 | 0.0 | **1.9** | 0.0 | +121 -0 | 2 | 10 | 13 | 1 | 6.4k |
 | 2026-11-22 16:34 | 4af4799 | streets racer: no longer passive -- bends round a car kept (densified from the car on: the plan was remade ... | 7.4 | 30 | 0.0 | **37** | 55 | +0 -0 | 0 | 50 | 53 | 5 | 39.7k |
 | 2026-11-22 16:07 | 61d9c5c | effort: rows for the latest commits | 0.3 | 2.3 | 0.0 | **2.6** | 0.0 | +0 -0 | 0 | 4 | 4 | 4 | 1.7k |
 | 2026-11-22 16:06 | c9aafb8 | streets: Monaco (level 41) baked but not ready; a level's "trees" key; ground held under held water | 4.4 | 4.5 | 0.0 | **8.9** | 33 | +0 -0 | 0 | 27 | 27 | 4 | 24.3k |
