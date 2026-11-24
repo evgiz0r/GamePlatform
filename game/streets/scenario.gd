@@ -821,13 +821,13 @@ func _shots_tick(dt: float) -> void:
 			# day in Givatayim had 92 frames of camera in a wall, Shabbat eve 11 -- tests/scenario.gd)
 			var at := Vector2.INF
 			for cand: Vector2 in [ahead + side * (half + 1.2), ahead - side * (half + 1.2), ahead + side * maxf(half - 0.6, 0.5)]:
-				if g._push_out(cand, 0.6, false, false) == Vector2.ZERO:
+				if g._push_out(cand, 0.6, true, false) == Vector2.ZERO and _kerb_clear(cand, ahead) and _kerb_view_clear(cand, g._pos):
 					at = cand
 					break
 			if at == Vector2.INF:
 				name = "orbit"
 			else:
-				_kerb_at = Vector3(at.x, g._h(at) + 0.9, at.y)
+				_kerb_at = Vector3(at.x, g._h(at) + 1.3, at.y)
 		if name == "usual":
 			_cam_usual()
 		else:
@@ -844,6 +844,13 @@ func _shots_tick(dt: float) -> void:
 		"kerb":
 			_cam.position = _kerb_at
 			_cam.look_at(car, Vector3.UP)
+			# a car pulling up between the lens and yours (a queue at the light): another shot
+			_kerb_look -= dt
+			if _kerb_look <= 0.0:
+				_kerb_look = 0.4
+				if not _kerb_view_clear(Vector2(_kerb_at.x, _kerb_at.z), Vector2(car.x, car.z)):
+					_shot_t = 0.0   # (the next shot now)
+					kerb_blocked += 1
 		"orbit":
 			_orbit += dt * 0.35
 			_cam.position = car + Vector3(cos(_orbit) * 11.0, 4.5, sin(_orbit) * 11.0)
@@ -863,6 +870,36 @@ func _shots_tick(dt: float) -> void:
 			_cam.look_at(tgt, Vector3.UP)
 
 var _shot_name := "usual"
+
+var _kerb_look := 0.0
+var kerb_blocked := 0         ## for tests: kerb shots cut short by a car pulling up in front of the lens
+## no traffic car between the kerb lens and yours, nor at the lens's elbow
+func _kerb_view_clear(at: Vector2, to: Vector2) -> bool:
+	if g._traffic == null:
+		return true
+	var mine: float = at.distance_to(to)
+	for c in g._traffic.cars:
+		if not c.alive:
+			continue
+		var q: Vector2 = c.pos
+		if q.distance_to(at) > mine:
+			continue
+		if Geometry2D.get_closest_point_to_segment(q, at, to).distance_to(q) < 2.0 and q.distance_to(to) > 3.0:
+			return false
+	return true
+
+## the kerb lens's spot clear of the cars parked along the kerb, and its view of the lane too:
+## the preview of A day in Givatayim had the screen filled by a parked car's flank in three
+## shots of eight, and one low lens over a grass verge that read as a car driving on the grass
+func _kerb_clear(at: Vector2, lane: Vector2) -> bool:
+	var pk: PackedVector2Array = g._parked_at
+	for k in range(pk.size()):
+		var q := pk[k]
+		if q.distance_squared_to(at) > 400.0:
+			continue
+		if Geometry2D.get_closest_point_to_segment(q, at, lane).distance_to(q) < 2.2:
+			return false
+	return true
 
 func _cam_own() -> void:
 	if _cam == null:

@@ -4955,6 +4955,15 @@ iterations?")**:
   pizza 12 (Friday night), taxi 10, night tour 8. Taxi in Tel Aviv **39.3 ms of script a frame
   against 50.6**; the night tour in Givatayim 28.4 ms; pizza in Givatayim 40.9. The wedding did
   not move (60 ms with 14 cars, 58-63 with 22): Tel Aviv itself is its cost. All pass.
+- **The kerb lens**: in the preview of A day, three kerb shots in eight were a parked car's
+  flank filling the screen, and one low lens over a grass verge made a traffic car look as if
+  it drove on the grass (it did not: `SCEN_WHERE=1` prints, at every shot, you, the lens and the
+  nearest traffic cars with their road and distance off its line -- all 1.7-1.9 m, on
+  Katznelson). A kerb spot now has no parked car (`g._parked_at`) within 2.2 m of its line of
+  sight to the lane (`_kerb_clear`), no post at it (`_push_out(.., posts=true)`), no traffic
+  car between it and you (`_kerb_view_clear`, also checked every 0.4 s while it runs: a car
+  pulling up in front cuts to the next shot, counted in `kerb_blocked`), and the lens at 1.3 m
+  (was 0.9). Not caught: trees' crowns (the lens is not tested against them).
 
 ## On foot: faster, and any car in traffic (22 Nov 2026)
 
