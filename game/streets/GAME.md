@@ -659,7 +659,9 @@ out as a little film, the car driving itself, captions across the bottom.
 
 - *A day in the town* -- Tel Aviv, Givatayim. Morning to night in three minutes: a drive at
   each time of day, the town's own rhythm in the captions, the camera cutting between shots,
-  rain before dawn.
+  rain before dawn. The hour ticks on the line under the street ("07:42 · morning rush · 22
+  cars about"), and the traffic follows it: the rush full, the evening thinner, the night
+  nearly empty.
 
   > some scenario ( aka movie i guess ) happening in a city. doesnt have to be related to
   > the city itself ... tours will be part of all scenarios
@@ -681,7 +683,11 @@ out as a little film, the car driving itself, captions across the bottom.
 - *Shabbat eve* -- Givatayim. Friday, the hour before sunset: the shops close, the buses stop,
   the traffic thins to a handful of cars and then one; night falls, candles in the windows,
   "Shabbat shalom". Watched, no inputs -- and the lightest scenario to run, the empty streets
-  costing less than the full ones.
+  costing less than the full ones. The clock on screen counts down the last hour to candle
+  lighting.
+- *Gan pick-up* -- Givatayim. Four o'clock: two kids, Noa and Ari, at two of the town's own
+  kindergartens, and the whole town doing the same run -- parents waiting at each gate. Pick
+  both up and get home on one clock. Watched, no inputs (or take the wheel).
 
   > Lets start just by few 2 3 scenarios. As all these stuff have no inputs, i want them super
   > optimized.
@@ -1915,6 +1921,6 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   flats each split into rooms the way a block of its age is. Only the building you walk into
   is built inside, while you are in it.
 - Scenarios, more of them (built: tours, night tours, the getaway, the ambulance, a day,
-  dragons, the pizza rush, the taxi shift, the wedding convoy, Shabbat eve -- see "Scenarios"
-  above): a kindergarten pick-up rush, an alien arrival -- the list with grades is in DEV.md
+  dragons, the pizza rush, the taxi shift, the wedding convoy, Shabbat eve, the gan pick-up --
+  see "Scenarios" above): an alien arrival; at the gan, cars double-parked at the gates -- the list with grades is in DEV.md
   under "Scenarios".

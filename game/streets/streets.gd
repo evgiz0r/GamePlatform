@@ -118,6 +118,7 @@ const LEVELS := [
 	# cars, the convoy is three models on your own trail (no traffic logic of their own)
 	{"name": "Wedding convoy: Tel Aviv", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "wedding"},
 	{"name": "Shabbat eve: Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "shabbat"},
+	{"name": "Gan pick-up: Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "gan"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -27416,7 +27417,7 @@ func _route_begin() -> void:
 func _watching() -> bool:
 	if not _film.is_empty() or not _route.is_empty():
 		return true
-	return _scenario != null and not (String(_place.get("scenario", "")) in ["getaway", "ambulance", "delivery", "taxi"])   # (the ones with a goal: yours to drive too)
+	return _scenario != null and not (String(_place.get("scenario", "")) in ["getaway", "ambulance", "delivery", "taxi", "gan"])   # (the ones with a goal: yours to drive too)
 
 ## a drawn button that _pick_tap() can press
 func _tap_button(text: String, cb: Callable) -> Button:
