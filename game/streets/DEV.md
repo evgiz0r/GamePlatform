@@ -4374,6 +4374,19 @@ checks Givatayim / Ashdod / test town 12 / 12 / 11, all traffic's; route set 10 
   150 s in a traffic queue on Hammonds Plains Road at (-2615, -695) (cars held by cars, a
   car 20 at its head); alone again it arrived in 560 s -- a traffic lock that comes and goes
   there, not this change. Leiden's Rapenburg street sign again at 15 km/h (open since 22 Nov).
+- **Cycle on main, 24 Nov evening**: route set 15 of 15 arrived, 0 reds, 0 rescues; 14
+  scenarios (17-22, 25, 26, 43-48, SECS=480) all PASS, 0 people hit, 0 camera in buildings.
+  The one hit left: route 12, Leiden's street sign at Doelenbrug (-118.4, 109.9), 0.72 m off
+  Rapenburg's asphalt, clipped at 15-16 km/h on every run since 22 Nov -- the back end in a
+  right turn off the bridge, the corner_post family. AP_BEND_PAD keeps the plan 1.86 m from
+  it; the car's back swung in past that. Now a tail net beside the nose's: in a turn, the back
+  end's circle (CAR_R + AP_TAIL_PAD 0.5) touching something solid on the inside of the turn
+  eases the steering (AP_TAIL_GAIN 3 rad a metre, at most 0.25). corner_post with Leiden's
+  FROM="-112,150" TO="-377.1,-543.4" POST="-118.44,109.92" LEVEL=33: 0.06 -> 0.10 m (that
+  staging stops at the junction first, the route does not); Givatayim's 0.15 -> 0.18. Route 12
+  after: clean, the first clean run of it in days. Route 3 that run: a traffic hatch standing
+  at HaKnesset (292, 287) pulled out across autodrive's left turn and they touched at 11 km/h
+  (traffic's "player" stop came at 3.6 m) -- open, next.
 - **turn_width now also checks the body at corners**: either of its two circles within
   CLEAR_M (5 cm) of a post, wall or building within 25 m of the junction counts (`body_near`
   in each line, in the REGRESS line). Givatayim 10 turns, Ashdod 12: none. Givatayim's

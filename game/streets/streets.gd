@@ -24459,6 +24459,18 @@ func _autodrive(dt: float) -> Array:
 		var side := Vector2(-fwd.y, fwd.x)
 		steer = clampf(steer + clampf(shove.dot(side) * 0.45, -0.3, 0.3), -MAX_STEER, MAX_STEER)
 		ahead_blocked = shove.normalized().dot(fwd) < -0.6
+	# ...and the back end: round a corner it swings inside the line the front takes (the car
+	# turning in from where it stands, at full lock, more), and something solid at the corner's
+	# pavement -- a sign's post 0.7 m off the kerb at Leiden's Doelenbrug (route 12 since 22 Nov),
+	# a post at Givatayim's Reines into Ben Gurion -- was met by the back corner. Held a little
+	# wider while it is near (tests/corner_post.gd with Leiden's FROM, TO, POST)
+	if absf(steer) > 0.05 and absf(_v) > 0.3:
+		var tail_shove := _push_out(_pos - fwd * CAR_OFF, CAR_R + AP_TAIL_PAD, true, false, _y)
+		if tail_shove != Vector2.ZERO:
+			var side_t := Vector2(-fwd.y, fwd.x)
+			var out_t := tail_shove.dot(side_t)
+			if out_t * steer < 0.0:   # (pushed out from the inside of the turn)
+				steer = clampf(steer + clampf(out_t * AP_TAIL_GAIN, -0.25, 0.25), -MAX_STEER, MAX_STEER)
 	# keep the limit, and slow for the corners ahead: at most the speed from which each
 	# one can still be braked down to in time
 	var racing := _racing()
@@ -25959,6 +25971,8 @@ func _ap_keep_clear(upto: float) -> void:
 ## car points along the way it came, so its back end swings further in -- route 3's plan was
 ## 1.8 m from a sign post at that corner, 0.4 m clear of the body, and the back end met the
 ## post at 11-19 km/h every run (tests/corner_post.gd).
+const AP_TAIL_PAD := 0.5    ## m: the back end's circle this near something solid on the inside of a turn eases the steering
+const AP_TAIL_GAIN := 3.0   ## rad of steering eased per metre of that
 const AP_BEND_PAD := 0.35   ## m more on a point where the plan turns by AP_BEND_ANGLE or more
 const AP_BEND_ANGLE := 0.25 ## rad
 func _ap_densify(upto: float, step: float) -> void:
