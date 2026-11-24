@@ -492,6 +492,10 @@ The ones most often touched, and the functions in them:
   yellow centre lines and SLOW in English. Two bugs every town had: the give-way plate
   stood point up (a warning triangle) and its red was the palette's hazard, pink. Shots:
   `tests/country_signs.gd`.
+  Added 24 Nov: Canada's mast arms (`_mast_arm`: a pole on the far right corner, heads over
+  the way in's lanes, bulbs in its group; the near pole stays) and the Dutch and French
+  ZONE 30 boards (furniture `zone30_boards`, only where OSM or the town says 30, at a
+  junction with a road of 45+). `country_signs` shoots `lights_1` and `zone30_1` too.
 - **zone and parking signs** -- `furniture.street_signs`: meshes with 7-segment digits
   (`_digit`), not Label3D (a draw each). **Passages** -- `_build_passages` (its own stage).
 - **front gardens' walls and gates** -- `_garden_fronts` lays each plot's wall itself
@@ -5414,4 +5418,9 @@ within 1.2 m behind it. Both have posts.
   or hold. Seen by tinting `hole` red at a 40% rate (tests/small_life.gd's "asphalt" shot);
   a CPU cannot find the holes for a staged close-up -- the float32 dot's rounding times
   43758 gives another hash.
+- **Balcony plants** (24 Nov, `_build_facade_kit`'s balcony stacks, furniture.gd
+  `balcony_plants_kit`): a terracotta trough on the parapet, geraniums in flower or a trailing
+  green spilling over the front, on one balcony in ten (two in ten in `med` towns); drawn to
+  110 m. Givatayim: ~3,700. `wall_things["plants"]` keeps a few for tests (small_life's
+  "balconies" shot).
 
