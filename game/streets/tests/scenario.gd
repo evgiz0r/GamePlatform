@@ -55,12 +55,19 @@ func _run() -> void:
 			root.get_viewport().get_texture().get_image().save_png(out + "/scen_%d.png" % shot)
 			shot += 1
 		last_i = sc.i
+		if out != "" and sc.i == 0 and t > 1.5 and not FileAccess.file_exists(out + "/title.png"):
+			root.get_viewport().get_texture().get_image().save_png(out + "/title.png")   # (the title card)
+		if sc.kind == "getaway" and sc._chaser != null and int(t / 5.0) != int((t - get_process_time_step()) / 5.0):
+			print("   [%5.1f s] gap %.0f m, you %.1f m/s, chaser %.1f m/s" % [t, sc._gap, g._v, sc._vc])
 		if OS.get_environment("VERBOSE") != "" and int(t * 60.0) % 600 == 0:
 			print("   t %.0f v %.1f why %s auto %s dest %s %.0f m style %s lead %.1f" % [t, g._v, g._ap_why, g._auto, g._dest_on,
 				(g._pos as Vector2).distance_to(g._dest_stop), g._ap_style, g._ap_lead])
 	while seen < sc.shown.size():
 		print("  [%5.1f s] %s" % [t, sc.shown[seen]])
 		seen += 1
+	if out != "" and not sc.card_lines.is_empty():
+		await create_timer(1.2).timeout
+		root.get_viewport().get_texture().get_image().save_png(out + "/end_card.png")
 	var people := 0
 	for k in range(e0, probe._events.size()):
 		var ev: Dictionary = probe._events[k]
@@ -74,7 +81,9 @@ func _run() -> void:
 		"tour", "night_tour":
 			ok = ok and sc.reached >= stops - 1 and not sc.on
 		"getaway":
-			ok = ok and sc.result in ["lost", "caught", "gave up"]
+			ok = ok and sc.result in ["lost", "caught", "gave up", "home"]
+		"delivery":
+			ok = ok and sc.drops_done >= 2 and not sc.on
 		"ambulance":
 			ok = ok and sc.reached >= 1 and sc.yielded > 0 and not sc.on
 		"day":
@@ -85,6 +94,9 @@ func _run() -> void:
 		"night" if g._night else ("evening" if g._evening else "day")])
 	print("SCENARIO %s ended: %s, %d of %d stops reached, %d people hit, %.0f s" % [sc.kind, sc.result, sc.reached, stops, people, t])
 	print("SCENARIO camera frames inside a building: %d" % sc.cam_in_building)
+	print("SCENARIO card: %s; stars %d, %.0f s run, close calls %d, tips %d, tour cuts %d" % [" | ".join(sc.card_lines), sc.stars, sc.run_t,
+		sc.close_calls, sc.tips, sc.skips])
+	ok = ok and not sc.card_lines.is_empty()
 	ok = ok and sc.cam_in_building == 0
 	if sc._dragons != null:
 		print("SCENARIO dragons: %s" % JSON.stringify(sc._dragons.events))
