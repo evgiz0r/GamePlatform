@@ -4422,6 +4422,8 @@ checks Givatayim / Ashdod / test town 12 / 12 / 11, all traffic's; route set 10 
   - Full set after the first three: 15 of 15 arrived, 14 clean (Monaco's sign, then fixed).
   - Open: autodrive and three cars on Keren Kayemet stood 60 s at (-275, -551), Givatayim,
     in A day in Givatayim (level 28, ~110 s) -- not yet staged.
+  - tests/zebras.gd (LEVEL=7) never finishes on main as of 24 Nov 20:20 UTC (20 min, cut off;
+    the same on this cycle's code): it loads, then its 60 s loop never ends. Not looked into.
 - **turn_width now also checks the body at corners**: either of its two circles within
   CLEAR_M (5 cm) of a post, wall or building within 25 m of the junction counts (`body_near`
   in each line, in the REGRESS line). Givatayim 10 turns, Ashdod 12: none. Givatayim's
