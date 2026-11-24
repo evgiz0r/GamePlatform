@@ -4654,8 +4654,8 @@ Per kind:
 - **Getaway**: the chaser's pace is *your* pace at its point on your trail (`_trail` keeps the
   speed now, `_trail_v`) plus `CHASE_EDGE` 1.0 -> `CHASE_EDGE2` 2.6 m/s as backup joins (20-60 s,
   top 17 -> 20.5), so it is held up where you were; it closes on you no faster than a follower
-  does (`(gap - 6) * 0.7` over your speed), and you are caught only when held within 9 m below
-  3 m/s for `CHASE_HOLD` 3.5 s, and never in the first `CHASE_GRACE` 30 s (Ashdod: autodrive stood 4 s for a person on a zebra at the first junction and was caught at 20 s). Within `CLOSE_IN` 15 m and back out past 24: a close call
+  does (`(gap - 6) * 0.7` over your speed), and you are caught only when held within 12 m (it tails at 10: at 6 the usual view sat inside it) below
+  3 m/s for `CHASE_HOLD` 3.5 s, and never in the first `CHASE_GRACE` 30 s (Ashdod: autodrive stood 4 s for a person on a zebra at the first junction and was caught at 20 s). Within `CLOSE_IN` 18 m and back out past 28: a close call
   (caption, slow motion, counted). Each red you run: +`CHASE_RED_M` 10 m. It starts rolling at
   9 m/s, 50 m back (from a standstill it fell 100 m behind and was "lost" in 16 s). The safe
   house 0.8-1.3 km off (1.2-2 km was 2.5 km by road). Lost at 130 m. Results: lost (3 stars),
@@ -4667,12 +4667,20 @@ Per kind:
   `_jump_to` 80 m short of the stop ("A little later, nearing ..."), `skips` counted. Givatayim
   (17) before the cut's tuning: 5 of 5 stops, 7:09, 3 cuts (it was ~9 min).
 - **Pizza rush** (new, levels 43-44): `_delivery_beats` picks `DROPS` 3 of the town's own
-  addresses (`g._addr`), 250-600 m apart, one a street. The clock is set once autodrive has its
+  addresses (`g._addr`), 200-450 m apart (250-600 ran 6-7 min in Givatayim: autodrive took 4:40 to Zahal 34 there -- slow routes, open for the driving work), one a street. The clock is set once autodrive has its
   route: `_ap_len() / DROP_PACE` 6 m/s + 25 s (by the crow's flight it was late on every drop in
   Givatayim: 3:25 for 600 m). At 30% left, autodrive turns racer. Tip 4-18 by time left, 2
   late, cancelled 90 s past. `SCEN_SEED` fixes the picks for a test. Tel Aviv (44): 3 of 3,
   30 in tips, 2 stars, 6 min.
 - Day and dragons: the title and end cards only (they are films).
+
+Results, 24 Nov (`tests/scenario.gd`, quality 0): getaway Ashdod (21) a 2:20 chase, 2 close
+calls, caught by a queue (1 star); Tel Aviv (22) the safe house in 1:40, 6 reds run, 3 stars
+(three runs alike); ambulance Tel Aviv (25) 1:23 with 0:56 spare; tour Givatayim (17) 5 of 5
+in 4:23 with 4 cuts (7:09 with 3 before the cut's tuning); pizza Tel Aviv (44) 3 of 3, 6 min,
+Givatayim (43) 3 of 3, 7 min, 22 in tips. Open: the pizza rush runs long in Givatayim (its
+routes are 3x the crow's flight); a cut like the tour's, with the clock charged for the part
+skipped, would bring it to ~3 min. Titles and end cards: `title.png`, `end_card.png` in $OUT.
 
 `tests/scenario.gd` prints the end card (`SCENARIO card:`) and, for the getaway, the gap every
 5 s; PASS needs the card, the getaway's "home" counts, a delivery needs 2 of 3 drops.

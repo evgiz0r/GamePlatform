@@ -39,7 +39,7 @@ const CHASE_START := 50.0     ## metres behind at the start
 const CHASE_SPOT_S := 1.0     ## seconds before it speeds up ("they spot you")
 const CHASE_ACC := 3.0        ## how fast it picks up speed (m/s^2)
 const HOP := 900.0            ## a tour's next stop no further than this from the last, where it can
-const CHASE_CAUGHT := 7.0     ## ...this close and you are caught
+const CHASE_CAUGHT := 11.0    ## ...this close (and held, CHASE_HOLD) and you are caught; it tails at 10 (at 6 the usual view sat inside it)
 const CHASE_LOST := 130.0     ## ...this far and you lost it
 ## The redo (24 Nov: the user, "All the scenarios are very weak"): each one now has a goal
 ## said on a title card, a live line saying how it is going, stakes (a clock, a chaser that
@@ -62,8 +62,8 @@ var _trail_v := 0.0
 const CHASE_RAMP := 3.5       ## m/s the chaser gains over its first minute ("backup joins")
 const CHASE_GRACE := 30.0     ## no catch in the first seconds (Ashdod: autodrive stood 4 s for a person on a zebra at the first junction and was caught at 20 s, both runs)
 const CHASE_HOLD := 3.5       ## seconds held (on your bumper, you near stopped) before it counts as caught: a touch is a close call
-const CLOSE_IN := 15.0        ## the chaser within this...
-const CLOSE_OUT := 24.0       ## ...and then back past this: a close call
+const CLOSE_IN := 18.0        ## the chaser within this...
+const CLOSE_OUT := 28.0       ## ...and then back past this: a close call
 const TOUR_SKIP_S := 30.0     ## a tour's drive longer than this, still far off: cut ahead to near the stop
 const TOUR_SKIP_M := 160.0   ## (260: Arlosoroff, 200 m off by a one-way's long way round, took 138 s uncut)
 const DROP_PACE := 6.0        ## m/s by road a drop's clock allows
@@ -716,7 +716,7 @@ func _chase_tick(dt: float) -> void:
 		Audio.play("impact_light", 0.05, -8.0)
 		_slowmo(0.9)
 	# caught only when held within reach for a moment (a touch at a queue is a close call)
-	_hold_t = _hold_t + dt if _gap <= CHASE_CAUGHT + 2.0 and absf(float(g._v)) < 3.0 else 0.0
+	_hold_t = _hold_t + dt if _gap <= CHASE_CAUGHT + 1.0 and absf(float(g._v)) < 3.0 else 0.0
 	if _hold_t >= CHASE_HOLD and t > CHASE_GRACE:
 		result = "caught"
 	elif _gap >= CHASE_LOST:
@@ -1117,7 +1117,7 @@ func _skip_ahead(b: Array) -> void:
 
 ## ---- the delivery ---------------------------------------------------------------------------
 
-## DROPS of the town's own addresses, each 250-600 m from the last; a clock for each from the
+## DROPS of the town's own addresses, each 200-450 m from the last; a clock for each from the
 ## distance (as the ambulance's), the tip from how much of it was left
 func _delivery_beats() -> Array:
 	var town := String(story.get("town", g._city_name))
@@ -1140,7 +1140,7 @@ func _delivery_beats() -> Array:
 			for a: Array in g._addr[st]:
 				var p: Vector2 = a[1]
 				var d := p.distance_to(from)
-				if d < 250.0 or d > 600.0 or not g._in_city(p) or not g._bounds.grow(-150.0).has_point(p):
+				if d < 200.0 or d > 450.0 or not g._in_city(p) or not g._bounds.grow(-150.0).has_point(p):   # (250-600: Givatayim ran 6-7 min, one drop 4:40 by its one-ways)
 					continue
 				cands.append([p, st, String(a[0])])
 				break   # (one a street)
@@ -1240,7 +1240,7 @@ func _end_card() -> void:
 		"delivery":
 			head = "Shift over"
 			var all_ := DROPS * 18
-			stars = 3 if tips >= int(all_ * 0.7) else (2 if tips >= int(all_ * 0.45) else (1 if drops_done > 0 else 0))
+			stars = 3 if tips >= int(all_ * 0.55) else (2 if tips >= int(all_ * 0.37) else (1 if drops_done > 0 else 0))   # (30 / 20 of 54: three on-time drops with a third of the clock left tip ~9 each)
 			lines.append("%d of %d delivered · tips %d" % [drops_done, DROPS, tips])
 			var per: Array = []
 			for s_: int in _drop_t:
