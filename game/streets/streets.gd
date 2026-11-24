@@ -12757,6 +12757,8 @@ var _light_far: Array = []   ## [pole, junction, way in] put up by _build_signal
 ## direction so crossing streets take turns
 func _build_signals() -> void:
 	var med := String(_place.get("look", "")) == "med"
+	var ca := _country() == "ca"
+	var masts: Array = []   # Canada's: [pole, arm] transforms (_mast_arm)
 	var poles: Array = []
 	var heads: Array = []
 	var bulbs: Array = [[[], [], []], [[], [], []]]
@@ -12878,6 +12880,8 @@ func _build_signals() -> void:
 				_wave.lamp(_site_of.get(node, -1), "car", g, ci, Vector3(p.x, gy + 3.3 + 0.3 - 0.3 * ci, p.y) + front)
 			if is_nan(py) or py - _h(p) < 1.0:
 				_add_post(p, 0.15)   # (posts are solid at the ground's level: not one up on a bridge)
+			if ca and not deck:
+				_mast_arm(c, rn, dir, r, g, masts, heads, bulbs, node)
 	if poles.is_empty():
 		return
 	var pole_mesh := CylinderMesh.new()
@@ -12891,11 +12895,67 @@ func _build_signals() -> void:
 	head_mesh.material = _surface("pole")
 	_chunked(pole_mesh, poles, LAMP_RANGE)
 	_chunked(head_mesh, heads, LAMP_RANGE)
+	if not masts.is_empty():
+		var mast := CylinderMesh.new()   # (the mast arms' poles and arms: unit lengths, scaled)
+		mast.top_radius = 0.1
+		mast.bottom_radius = 0.13
+		mast.height = 1.0
+		mast.radial_segments = 6
+		mast.material = _surface("pole")
+		_chunked(mast, masts, LAMP_RANGE)
+		_tally("signal_mast_arms", masts.size() / 2)
 	for g in range(2):
 		for ci in range(3):
 			if not (bulbs[g][ci] as Array).is_empty():
 				_add_bulbs(g, ci, bulbs[g][ci])
 	_build_walk_lights(pole_mesh)
+
+## North America hangs a junction's lights over the lanes on the FAR side, from a mast arm, so
+## a driver waiting at the line looks up and across at them (the pole on the near corner is
+## Europe's and Israel's). Canada's ways in get one as well as their near-side pole: a pole on
+## the far right corner, an arm over the lanes of the way in, a head over each lane (two at
+## most), its bulbs in the way's group. Left out where the far corner is no place for a pole
+## (a road, a building, the junction's asphalt).
+func _mast_arm(c: Vector2, rn: float, dir: Vector2, r: Dictionary, g: int, masts: Array, heads: Array, bulbs: Array, node: int) -> void:
+	var right := Vector2(-dir.y, dir.x)
+	var w: float = r["w"]
+	var lane0 := 0.0 if r["o"] == 0 else -w * 0.5   # (the lanes of this way in: right of the middle)
+	var lane1 := w * 0.5
+	var p := Vector2.INF
+	for back: float in [-(rn + 1.5), -(rn + 3.0), -(rn + 5.0)]:
+		for out: float in [1.0, 1.8]:
+			var q := c - dir * back + right * (lane1 + out)
+			if p != Vector2.INF or _push_out(q, 0.3, false) != Vector2.ZERO or _in_corner_fill(q, 0.15):
+				continue
+			var on := _nearest_seg(q, 12.0, true)
+			if on.is_empty() or float(on["edge"]) >= 0.5:
+				p = q
+	if p == Vector2.INF:
+		return
+	var gy := _h(p)
+	var top := 6.2
+	masts.append(Transform3D(Basis.from_scale(Vector3(1, top, 1)), Vector3(p.x, gy + top * 0.5, p.y)))
+	# the arm: from the pole's top in over the lanes, level, a little past the inner lane
+	var pr := (p - c).dot(right)   # (the pole's offset right of the road's middle)
+	var tip := p + right * (lane0 - 0.3 - pr)
+	var span := p.distance_to(tip)
+	var mid := (p + tip) * 0.5
+	var along := (tip - p).normalized()
+	var arm_basis := Basis(Vector3(along.x, 0, along.y).cross(Vector3.UP).normalized(), Vector3(along.x, 0, along.y), Vector3.UP)
+	masts.append(Transform3D(arm_basis * Basis.from_scale(Vector3(0.55, span, 0.55)), Vector3(mid.x, gy + top - 0.25, mid.y)))
+	var face := Basis(Vector3.UP, atan2(-dir.x, -dir.y))
+	var n := clampi(int(round((lane1 - lane0) / 3.3)), 1, 2)
+	for k in range(n):
+		var off := lane0 + (lane1 - lane0) * (k + 0.5) / n
+		var hp := p + right * (off - pr)
+		var hy := gy + top - 0.85
+		heads.append(Transform3D(face, Vector3(hp.x, hy, hp.y)))
+		var front := Vector3(-dir.x, 0.0, -dir.y) * 0.17
+		for ci in range(3):
+			var at := Vector3(hp.x, hy + 0.3 - 0.3 * ci, hp.y) + front
+			bulbs[g][ci].append(at)
+			_wave.lamp(_site_of.get(node, -1), "car", g, ci, at)
+	_add_post(p, 0.15)
 
 var _bulb_mm: Array = []             ## [group][colour] -> the one multimesh of those bulbs, city-wide
 var _bulb_at: Array = []             ## [group][colour] -> their transforms, 12 numbers a bulb
