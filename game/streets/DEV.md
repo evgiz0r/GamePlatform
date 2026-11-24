@@ -5486,7 +5486,12 @@ within 1.2 m behind it. Both have posts.
   two ribbons were one-sided, and merged into the square's batch, whose TONE_SHADER is
   `cull_back` -- seen from above or one side only, from below not at all. Now each ribbon has
   its back too. Anything thin built as single faces into the batch has this trap; tests/wire_look.gd.
-- **Open**: birds never perch on roofs or lamp tops; a flock
+- **On the roofs** (24 Nov, not in pitched towns): ROOF_SHARE 0.25 of the flocks land as a
+  row of 3-8 pigeons along a flat roof's edge 5-25 m up, the edge whose middle is nearest a
+  road (`_land_roof`; the roof at the ring's mean ground + `_h`, as `_build_roof_kit`), looking
+  down at the street; they behave as the wire ones. small_life checks every roof bird is
+  inside its building's walls ("off the roof" 0), shot pigeons_roof.
+- **Open**: birds never perch on lamp tops; a flock
   spooked by traffic on the road only when it is your car; the crows look like grey pigeons
   scaled up (no separate black head and wings in the paint); gas cages only on streets
   with a wall at the pavement's back.

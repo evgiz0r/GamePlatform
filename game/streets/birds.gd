@@ -22,7 +22,7 @@ const FLAP := 0.09
 var g: Node
 var rng := RandomNumberGenerator.new()
 var flocks: Array = []              ## {c, birds: [{p, y, yaw, h, peck, walk, v: Vector3, crow}], up: bool, t}
-var count := {"landed": 0, "flew": 0, "crows": 0, "perched": 0}
+var count := {"landed": 0, "flew": 0, "crows": 0, "perched": 0, "on_roofs": 0}
 var _mm: Array = []                 ## standing, wings up, wings down
 var _free_ix: Array = []            ## bird slots not in use
 var _t := 0.0
@@ -270,6 +270,82 @@ func _land_wire(me: Vector2) -> bool:
 		return true
 	return false
 
+## a row of pigeons on the edge of a flat roof over a street (a block 5-25 m high, 20-60 m off,
+## out of sight): its edge nearest a road, a hand apart along it, looking down at the street
+const ROOF_SHARE := 0.25
+func _land_roof(me: Vector2) -> bool:
+	if g._pitched_build() or _free_ix.size() < 3:
+		return false
+	var all: Array = g._city_data["buildings"]
+	for _try in range(4):
+		var c := me + Vector2.RIGHT.rotated(rng.randf() * TAU) * rng.randf_range(20.0, 60.0)
+		var cand: Array = g._near(g._bld_hash, c, 12.0, g.BLD_CELL)
+		if cand.is_empty():
+			continue
+		var bi: int = cand[rng.randi() % cand.size()]
+		if bi >= all.size() or bi >= g._bld_top.size():
+			continue
+		var bd: Dictionary = all[bi]
+		if not bd.has("_ring") or (bi < g._bld_kind.size() and g._bld_kind[bi] == 2):
+			continue
+		var top: float = bd["_h"]
+		if top < 5.0 or top > 25.0:
+			continue
+		var ring: PackedVector2Array = bd["_ring"]
+		var g_sum := 0.0
+		for q: Vector2 in ring:
+			g_sum += float(g._h(q))
+		var y := g_sum / ring.size() + top
+		# the edge that looks onto a street: its middle nearest a road's asphalt, 4 m long or more
+		var best := -1
+		var best_d := 14.0
+		for k in range(ring.size()):
+			var a := ring[k]
+			var e := ring[(k + 1) % ring.size()]
+			if a.distance_to(e) < 4.0:
+				continue
+			var hit: Dictionary = g._nearest_seg((a + e) * 0.5, best_d, true, true)
+			if not hit.is_empty() and (hit["q"] as Vector2).distance_to((a + e) * 0.5) < best_d:
+				best_d = (hit["q"] as Vector2).distance_to((a + e) * 0.5)
+				best = k
+		if best < 0:
+			continue
+		var a := ring[best]
+		var e := ring[(best + 1) % ring.size()]
+		var mid := (a + e) * 0.5
+		if mid.distance_to(me) < 20.0 or not g._spawn_ok(mid):
+			continue
+		var d := (e - a).normalized()
+		var inward := Vector2(-d.y, d.x)   # (the ring runs counter-clockwise: the inside on its left)
+		var L := a.distance_to(e)
+		var n := mini(rng.randi_range(3, 8), _free_ix.size())
+		var gap := rng.randf_range(0.25, 0.45)
+		var s0 := rng.randf_range(0.5, maxf(L - gap * n - 0.5, 0.6))
+		var face := atan2(-inward.x, -inward.y)
+		var base: Color = g._tone["rim"].lerp(g._tone["signblue"], 0.12)
+		var birds: Array = []
+		for k in range(n):
+			var sa := s0 + gap * k * rng.randf_range(0.85, 1.25)
+			if sa > L - 0.3:
+				break
+			var p := a + d * sa + inward * 0.12
+			var i: int = _free_ix.pop_back()
+			var v := rng.randf()
+			var col: Color = base.lerp(g._tone["woodfence"], 0.4) if v < 0.12 else (base.lerp(g._tone["mark"], 0.45) if v < 0.22 else base)
+			for m in range(3):
+				_mm[m].set_instance_color(i, col)
+			birds.append({"i": i, "p": p, "home": mid, "h": y,
+				"yaw": face + (PI if rng.randf() < 0.1 else 0.0) + rng.randf_range(-0.3, 0.3), "peck": 0.0, "walk": 0.0,
+				"hop": 0.0, "next": rng.randf_range(0.5, 4.0), "s": rng.randf_range(0.92, 1.08), "v": Vector3.ZERO, "p3": Vector3.ZERO})
+		if birds.is_empty():
+			continue
+		_next_id += 1
+		flocks.append({"id": _next_id, "c": mid, "birds": birds, "up": false, "t": 0.0, "crow": false, "perch": true, "roof": true})
+		count["landed"] = int(count["landed"]) + 1
+		count["on_roofs"] = int(count.get("on_roofs", 0)) + 1
+		return true
+	return false
+
 ## a bird on a wire: still, now and then turning round or preening
 func _sit(bd: Dictionary, dt: float) -> void:
 	bd["peck"] = maxf(float(bd["peck"]) - dt, 0.0)
@@ -282,7 +358,10 @@ func _sit(bd: Dictionary, dt: float) -> void:
 		bd["next"] = rng.randf_range(1.5, 6.0)
 
 func _land(me: Vector2) -> void:
-	if rng.randf() < PERCH_SHARE and _land_wire(me):
+	var pick := rng.randf()
+	if pick < PERCH_SHARE and _land_wire(me):
+		return
+	if pick >= PERCH_SHARE and pick < PERCH_SHARE + ROOF_SHARE and _land_roof(me):
 		return
 	for _try in range(4):
 		var c := me + Vector2.RIGHT.rotated(rng.randf() * TAU) * rng.randf_range(20.0, 60.0)
