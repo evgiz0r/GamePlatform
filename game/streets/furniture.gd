@@ -1547,6 +1547,48 @@ func _laundry_cols() -> Array:
 		_natural(Palette.col("friend").lerp(ink, 0.3), 0.45), _natural(Palette.col("accent").lerp(ink, 0.3), 0.45),
 		_natural(Palette.col("player").lerp(Palette.col("bg"), 0.5), 0.5), alt.lerp(Palette.col("bg"), 0.3)]
 
+## a satellite dish on a short mast with its stand, the dish facing +Z and up a little
+## (Israel's satellites are to the south-west: the caller turns it so), drawn pale grey
+func roof_dish_kit() -> ArrayMesh:
+	if _kits.has("dish"):
+		return _kits["dish"]
+	var b = g.new_buf()
+	var w := _tone("mark").lerp(_tone("metal"), 0.25)
+	_box(b, Vector3(0, 0.03, 0), Vector3(0.5, 0.06, 0.5), _tone("metal"))
+	_tube(b, Vector3(0, 0.05, 0), Vector3(0, 0.75, 0.05), 0.025, 0.025, _tone("rim"), 6)
+	var c := Vector3(0, 0.8, 0.12)
+	var tilt := Basis(Vector3.RIGHT, -0.45)
+	for i in range(10):   # the dish: a shallow cone of ten wedges
+		var a0 := TAU * i / 10.0
+		var a1 := TAU * (i + 1) / 10.0
+		var p0 := c + tilt * Vector3(cos(a0) * 0.38, sin(a0) * 0.38, 0.0)
+		var p1 := c + tilt * Vector3(cos(a1) * 0.38, sin(a1) * 0.38, 0.0)
+		var mid := c + tilt * Vector3(0, 0, -0.09)
+		var n := tilt * Vector3(0, 0, 1)
+		b.tri(mid, p0, p1, n, w)
+		b.tri(mid, p1, p0, -n, w.darkened(0.15))
+	_tube(b, c + tilt * Vector3(0, -0.3, 0.02), c + tilt * Vector3(0, -0.05, 0.42), 0.012, 0.012, _tone("rim"), 4)
+	_box(b, c + tilt * Vector3(0, -0.04, 0.44), Vector3(0.06, 0.06, 0.08), _tone("tyre"))   # the LNB
+	var am: ArrayMesh = _mesh(b)
+	_kits["dish"] = am
+	return am
+
+## an old TV aerial: a mast and a fishbone of rods along +Z, guy-less, as most roofs still have
+func roof_aerial_kit() -> ArrayMesh:
+	if _kits.has("aerial"):
+		return _kits["aerial"]
+	var b = g.new_buf()
+	var m := _tone("rim")
+	_tube(b, Vector3(0, 0, 0), Vector3(0, 2.6, 0), 0.02, 0.018, m, 5)
+	_tube(b, Vector3(0, 2.5, -0.7), Vector3(0, 2.5, 0.9), 0.01, 0.01, m, 4)
+	for i in range(7):
+		var z := -0.6 + 0.24 * i
+		var half := 0.45 - 0.04 * i
+		_tube(b, Vector3(-half, 2.5, z), Vector3(half, 2.5, z), 0.006, 0.006, m, 3)
+	var am: ArrayMesh = _mesh(b)
+	_kits["aerial"] = am
+	return am
+
 ## A washing rack under a window, the Israeli way: two arms out from the wall at the top
 ## (y = 0), four lines along it, and on them towels, shirts, trousers, a sheet, socks. Three
 ## arrangements (k).
@@ -2114,8 +2156,49 @@ func street_extras() -> void:
 				continue
 			cages.append(Transform3D(Basis(Vector3.UP, atan2(o.x, o.y)), Vector3(p.x, _h(p) + kh, p.y)))
 			g._add_post(p, 0.45)
+	# the town's fountains (OSM's amenity=fountain): a round basin of water with a jet, where
+	# the map puts it if the ground there is clear (they stand in squares and parks)
+	var fountains: Array = []
+	var kf := 1.0 / float(g._city_data.get("scale", 10))
+	var all_pois: Array = g._city_data.get("pois", [])
+	for pi: int in g._tile_pois.get(g._tile, []):
+		var pp: Array = all_pois[pi]
+		if String(pp[2]) != "fountain":
+			continue
+		var at := Vector2(pp[0], pp[1]) * kf
+		if g._off_road(at, 2.6) and g._push_out(at, 2.4, false, false) == Vector2.ZERO and g._clear_of_posts(at, 2.0):
+			fountains.append(Transform3D(Basis(Vector3.UP, _rnd(pi) * TAU), Vector3(at.x, _h(at), at.y)))
+			g._add_post(at, 2.2)
+	await _place(_fountain_kit(), fountains, SEEN * 0.6, "fountains", true)
 	await _place(_escooter_kit(), scoots, NEAR_SEEN, "escooters", false, scoot_cols)
 	await _place(_gas_cage_kit(), cages, NEAR_SEEN, "gas_cages")
+
+## a fountain: a round stone basin 4 m across, its water, a pedestal and a bowl in the
+## middle, and the jet: a white column of spray falling back as a fringe
+func _fountain_kit() -> ArrayMesh:
+	if _kits.has("fountain"):
+		return _kits["fountain"]
+	var b = g.new_buf()
+	var stone: Color = _tone("metal").lerp(_tone("mark"), 0.55)
+	var water: Color = _tone("signblue").lerp(_tone("mark"), 0.35)
+	var spray: Color = _tone("mark")
+	var seg := 18
+	for i in range(seg):   # the basin's rim, in short blocks round the ring
+		var a := TAU * (i + 0.5) / seg
+		_box(b, Vector3(cos(a) * 2.0, 0.25, sin(a) * 2.0), Vector3(0.3, 0.5, 0.75), stone, Basis(Vector3.UP, -a))
+	for i in range(seg):   # the water's surface: a disc just under the rim
+		var a0 := TAU * i / seg
+		var a1 := TAU * (i + 1) / seg
+		b.tri(Vector3(0, 0.38, 0), Vector3(cos(a1) * 1.88, 0.38, sin(a1) * 1.88), Vector3(cos(a0) * 1.88, 0.38, sin(a0) * 1.88), Vector3.UP, water)
+	_tube(b, Vector3(0, 0.3, 0), Vector3(0, 1.0, 0), 0.22, 0.16, stone, 10)
+	_tube(b, Vector3(0, 1.0, 0), Vector3(0, 1.12, 0), 0.7, 0.75, stone, 14)
+	_tube(b, Vector3(0, 1.12, 0), Vector3(0, 2.4, 0), 0.06, 0.03, spray, 6)
+	for i in range(10):   # the spray falling back into the bowl
+		var a := TAU * i / 10.0
+		_tube(b, Vector3(0, 2.35, 0), Vector3(cos(a) * 0.65, 1.15, sin(a) * 0.65), 0.03, 0.015, spray, 4)
+	var am: ArrayMesh = _mesh(b)
+	_kits["fountain"] = am
+	return am
 
 ## a rental e-scooter facing +Z, on the ground: a dark deck and small wheels, its stem and
 ## the box on it in the firm's colour (the copy's: drawn white), grips dark

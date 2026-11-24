@@ -5258,10 +5258,26 @@ non-fast street, half the time (a third outside `med`), 1-3 in a firm's colour (
 black, orange-red), one in three on its side; in `med` towns a gas cage (two cylinders in
 a steel cage) at the back of the pavement on residential streets, only where a wall is
 within 1.2 m behind it. Both have posts.
+- **Roofs** (`_build_roof_kit`, `med` towns): beside the solar heaters and stair rooms, a
+  satellite dish or two on 45% of roofs (turned south-west), an old TV aerial on a quarter,
+  1-2 AC units on 45%; ~33k in Tel Aviv at first (more triangles than the walls' ACs) cut to
+  ~13.6k (5.7k dishes, 2.2k aerials, 5.8k ACs), drawn to 200 / 160 m.
+- **Fountains**: OSM's `fountain` places (12 in Tel Aviv, 8 on clear ground) as a basin, a
+  bowl and a jet (furniture.gd `_fountain_kit`, in `street_extras`).
+- **Shops shut at night** (`_shuts_at_night`, `_build_pois`): every shop but the late ones
+  (corner shops, kiosks, supermarkets, bakeries, liquor, tobacco; a pharmacy in three) and
+  anything to eat or drink gets a second shutter shown only at night (one MultiMesh a square
+  in `_night_nodes`), and lights no pool on the pavement. Tel Aviv: 1,624. No Shabbat: the
+  game has no day of the week.
 - **Test**: `tests/small_life.gd` (REGRESS line). Good, level 7: 6 flocks down within a
   minute, 0 birds on the asphalt or in a wall, 0 landed in view, the flock walked at goes up;
   ~1,050 e-scooters, ~50 gas cages (Tel Aviv's front gardens keep most walls back), 0 on the
   asphalt.
+- **Not done, and why**: post boxes and drinking taps are not in the baked files (a re-bake
+  with them needs Overpass, unreachable from the cloud containers: the bake workflow); speed
+  bumps likewise (OSM's traffic_calming is not baked) and they are the driving thread's;
+  laundry, night lighting from the town's own lamps (their pools follow each mapped head)
+  and tree species' looks (`tree_forms` from the surveys) were already in.
 - **Open**: birds never perch (on wires, roofs, lamp tops); no flapping sound; a flock
   spooked by traffic on the road only when it is your car; the crows look like grey pigeons
   scaled up (no separate black head and wings in the paint); gas cages only on streets

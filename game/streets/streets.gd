@@ -8776,6 +8776,9 @@ func _build_roof_kit() -> void:
 	var panels: Array = []
 	var tanks: Array = []
 	var rooms: Array = []            ## the stairwell room most blocks have on the roof
+	var dishes: Array = []
+	var aerials: Array = []
+	var roof_acs: Array = []
 	var rng := RandomNumberGenerator.new()
 	var all: Array = _city_data["buildings"]
 	for bi: int in _tile_blds.get(_tile, []):
@@ -8822,6 +8825,25 @@ func _build_roof_kit() -> void:
 			# the panel faces south (+z), tilted ~35 degrees; the tank lies behind, east-west
 			panels.append(Transform3D(Basis(Vector3.RIGHT, 0.6), Vector3(p.x, top + 0.55, p.y + 0.15)))
 			tanks.append(Transform3D(Basis(Vector3.FORWARD, PI * 0.5), Vector3(p.x, top + 1.05, p.y - 0.55)))
+		# the rest of a roof's clutter: dishes (turned to the south-west), an old aerial or two,
+		# AC units' outdoor halves (round the rooms they cool, so a block has several)
+		# (kept few: ~33k on Tel Aviv's roofs at first, more triangles than the city's own
+		# ACs on the walls; a third of that now, and none drawn past 200 m)
+		var junk := [[dishes, rng.randi_range(1, 2) if rng.randf() < 0.45 else 0, 0.5], [aerials, 1 if rng.randf() < 0.25 else 0, 0.3],
+			[roof_acs, rng.randi_range(1, 2) if rng.randf() < 0.45 else 0, 0.6]]
+		for ji in range(junk.size()):
+			var j: Array = junk[ji]
+			var got := 0
+			for _try in range(int(j[1]) * 4):
+				if got >= int(j[1]):
+					break
+				var p := Vector2(rng.randf_range(box.position.x, box.end.x), rng.randf_range(box.position.y, box.end.y))
+				var r: float = j[2]
+				if not (Geometry2D.is_point_in_polygon(p + Vector2(r, r), ring) and Geometry2D.is_point_in_polygon(p - Vector2(r, r), ring)):
+					continue
+				got += 1
+				var yaw := (-2.36 + rng.randf_range(-0.25, 0.25)) if ji == 0 else rng.randf() * TAU
+				(j[0] as Array).append(Transform3D(Basis(Vector3.UP, yaw), Vector3(p.x, top + 0.02, p.y)))
 	var panel := BoxMesh.new()
 	panel.size = Vector3(2.0, 0.06, 1.15)
 	panel.material = _surface("solar")
@@ -8838,6 +8860,12 @@ func _build_roof_kit() -> void:
 	room.size = Vector3(3.0, 2.6, 3.4)
 	room.material = _surface("roofroom")
 	_chunked(room, rooms, VIEW_RANGE * 0.5)
+	_chunked(_furn.roof_dish_kit(), dishes, 200.0)
+	_chunked(_furn.roof_aerial_kit(), aerials, 200.0)
+	_chunked(_furn.ac_kit(0), roof_acs, 160.0)
+	_tally("roof_dishes", dishes.size())
+	_tally("roof_aerials", aerials.size())
+	_tally("roof_acs", roof_acs.size())
 	_tally("roof_rooms", rooms.size())
 	_tally("solar", panels.size())
 
@@ -13126,9 +13154,21 @@ func _build_walk_lights(pole_mesh: Mesh) -> void:
 
 
 ## a lit shopfront on the street side of each shop's building, and its name above it
+## a shop that pulls its shutter down at night: most do; what sells late (corner shops and
+## kiosks, the supermarket chains' city branches, bakeries, liquor, a pharmacy in three) and
+## anything to eat or drink stays open
+func _shuts_at_night(kind: String, at: Vector2) -> bool:
+	if not (kind.begins_with("shop:") or kind in ["bank", "pharmacy", "post_office"]):
+		return false
+	if kind in ["shop:convenience", "shop:kiosk", "shop:alcohol", "shop:bakery", "shop:supermarket", "shop:tobacco", "shop:ice_cream"]:
+		return false
+	if kind == "pharmacy" and posmod(_hash_i(at) >> 5, 3) == 0:
+		return false
+	return true
+
 func _build_pois() -> void:
 	var k := 1.0 / float(_city_data.get("scale", 10))
-	var front := {"glass": [], "glass_k": [], "post": [], "beam": [], "shutter": [], "housing": [], "door": []}   ## shop windows and their frames (glass_k: what is inside, SHOP_SHADER)
+	var front := {"glass": [], "glass_k": [], "post": [], "beam": [], "shutter": [], "night_shut": [], "housing": [], "door": []}   ## shop windows and their frames (glass_k: what is inside, SHOP_SHADER)
 	var board_cols: Array = []       ## each sign board's colour: dark, white, the shop's, cream
 	var awnings := {"xf": [], "col": []}   ## awning transforms and their colours
 	var crates := new_cbuf(BLD_CELL)    ## fruit and vegetables out in front of a greengrocer
@@ -13186,7 +13226,7 @@ func _build_pois() -> void:
 			var inside_k := 1.0 if kind in ["cafe", "restaurant", "fast_food", "ice_cream", "bar", "pub"] else \
 				(0.6 if sub in ["clothes", "shoes", "fashion", "boutique", "jewelry", "bag", "fabric"] else 0.0)
 			front["glass_k"].append(Color(inside_k, 0.0, 0.0, 1.0))
-			if _mine(pos):
+			if _mine(pos) and not _shuts_at_night(kind, at):   # (a shut shop lights nothing at night)
 				_shop_lights.append([pos + n * 0.1, n, wide])
 			front["beam"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.08, 2.62)))
 			for sgn: float in [-1.0, 1.0]:
@@ -13216,6 +13256,8 @@ func _build_pois() -> void:
 				_string_lights(crates, bulbs, pos, n, along, gy)
 			if look_k < 10 and kind.begins_with("shop"):   # shut: the roller shutter down
 				front["shutter"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.1, 1.3)))
+			elif _shuts_at_night(kind, at):   # open by day, its shutter down at night
+				front["night_shut"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.1, 1.3)))
 			# the roller shutter's box over the window, as most of the towns' shops have it
 			# rolled up into (a grey metal box the window's width); every shut one has one
 			if look_k < 10 or posmod(_hash_i(at) >> 13, 100) < 75:
@@ -13280,6 +13322,26 @@ func _build_pois() -> void:
 		var shut := BoxMesh.new()
 		shut.size = Vector3(3.0, 2.4, 0.05)
 		_chunked(shut, front["shutter"], r, [], _surface("shutter"), false)
+	if not (front["night_shut"] as Array).is_empty():
+		# the shops that close for the night: their shutters, shown only in the dark (one node
+		# a square, in _night_nodes: _set_night shows and hides them)
+		var ns := BoxMesh.new()
+		ns.size = Vector3(3.0, 2.4, 0.05)
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = ns
+		mm.instance_count = (front["night_shut"] as Array).size()
+		for i in range(mm.instance_count):
+			mm.set_instance_transform(i, front["night_shut"][i])
+		var mmi := MultiMeshInstance3D.new()
+		mmi.multimesh = mm
+		mmi.material_override = _surface("shutter")
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mmi.visibility_range_end = r + TILE * 0.71
+		mmi.visible = _night
+		world.add_child(mmi)
+		_night_nodes.append(mmi)
+		_tally("night_shutters", mm.instance_count)
 	if not (front["door"] as Array).is_empty():
 		var dbox := BoxMesh.new()   # (a unit box, each piece scaled)
 		_chunked(dbox, front["door"], r, [], _surface("cartrim"), false)
