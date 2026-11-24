@@ -4309,8 +4309,23 @@ checks Givatayim / Ashdod / test town 12 / 12 / 11, all traffic's; route set 10 
   Route set after (15 routes): 15 of 15 arrived, 0 reds, 0 rescues, 0 off road; route 3 and
   route 12 (Leiden's sign and post on Rapenburg) clean. One new hit: route 2, an SUV in traffic
   (car 14, 'limit', 39 km/h) came across Horodetsky/HaShalom from the side as autodrive went
-  through at 30 km/h; autodrive braked from 8 m, touched it at 16 km/h. Who should have given
-  way there is not checked yet -- open.
+  through at 30 km/h; autodrive braked from 8 m, touched it at 16 km/h. Looked at below.
+- **Route 2: traffic let the player clear a big junction only if it could stop "comfortably".**
+  Horodetsky across HaShalom is two divided roads, lit at three of its four corners, 10-20 m
+  apart. Autodrive stood behind a car inside it, then went on through (30 km/h); HaShalom got
+  its green meanwhile and an SUV came up at 39 km/h. traffic.gd's player check holds a car for
+  a player coming into the junction only when `can_stop` (with autodrive on, autodrive is
+  trusted to give way) -- and autodrive, past its own light and inside the junction, was not
+  looking. Now `_player_in_box`: a player moving (over 1 m/s) inside a junction of several lit
+  points (within BOX_M 25 m of each other), toward this point and due there within 1.5 s of
+  me, goes first, my green or not -- as a traffic car already in the junction does
+  (`_in_site`). Standing still there (at its own red between the carriageways) it holds
+  nobody. Route 2 and 8 after: clean, no new waits. The meeting depends on timing, so the
+  route can't show the fix held, only that nothing got worse. Not staged in a test (open).
+- **turn_width now also checks the body at corners**: either of its two circles within
+  CLEAR_M (5 cm) of a post, wall or building within 25 m of the junction counts (`body_near`
+  in each line, in the REGRESS line). Givatayim 10 turns, Ashdod 12: none. Givatayim's
+  REGRESS still FAILs on Sirkin's right turn over the middle line (it did before these changes).
 - **What a drive log calls a hit was sometimes not what was hit.** `_push_out` names what it
   touches in `_last_hit`, and autodrive's looks ahead (`_ap_keep_clear`, the nose's safety
   net, a dozen more) call it too, after `_collide` in the same tick: route 3's "wall 23604"
