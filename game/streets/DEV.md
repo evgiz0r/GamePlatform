@@ -5281,10 +5281,18 @@ within 1.2 m behind it. Both have posts.
   minute, 0 birds on the asphalt or in a wall, 0 landed in view, the flock walked at goes up;
   ~1,050 e-scooters, ~50 gas cages (Tel Aviv's front gardens keep most walls back), 0 on the
   asphalt.
-- **Not done, and why**: post boxes and drinking taps are not in the baked files (a re-bake
-  with them needs Overpass, unreachable from the cloud containers: the bake workflow); speed
-  bumps likewise (OSM's traffic_calming is not baked) and they are the driving thread's;
-  laundry, night lighting from the town's own lamps (their pools follow each mapped head)
+- **Post boxes, drinking taps, speed bumps** (24 Nov): `street_points` + `street_point_kinds`
+  in the city file, fetched alone by `tools/osm_city.py --street-points FILE...` (raw kept in
+  cities/data/osm_points_<town>.json, `--offline` redoes it) -- from a cloud session through
+  the "street points into baked cities" workflow (`street_points.yml`, input `files`), which
+  commits each town as it comes: the public servers took 5-15 min a town on 24 Nov (502s,
+  timeouts; kumi.systems answered most). Bucketed into `_tile_things` with the town's things
+  and built by `town_things`: Israel Post's red box at the kerb, a tap on a stone column where
+  mapped, a yellow-black bump (a raised table 3 m deep) across the whole road at the mapped
+  point, 8 cm high and not solid. Every bump built is in `g.bumps` [middle, along, width, kind]
+  for the drivers (how cars slow for them is the driving thread's). Tel Aviv: 7 post boxes, 68
+  taps, 14 bumps and a table in the file; 5 / 65 / 15 built.
+- **Not done**: laundry, night lighting from the town's own lamps (their pools follow each mapped head)
   and tree species' looks (`tree_forms` from the surveys) were already in.
 - **Open**: birds never perch (on wires, roofs, lamp tops); no flapping sound; a flock
   spooked by traffic on the road only when it is your car; the crows look like grey pigeons
