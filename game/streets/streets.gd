@@ -11923,6 +11923,36 @@ void fragment() {
 						c *= mix(1.0, 0.8, inside);
 						c *= 1.0 - 0.4 * inside * (1.0 - smoothstep(0.02, 0.02 + pxw * 2.0, min(d.x, d.y)));
 					}
+					// a trench dug for a cable or a pipe and filled again: a long strip 0.7 m
+					// wide of newer asphalt, its seams sealed, in one 40 m square in six
+					vec2 tc = floor(p / 40.0);
+					if (hash(tc + 11.7) < 0.17) {
+						bool along_x = hash(tc + 12.9) < 0.5;
+						float at = (along_x ? tc.y : tc.x) * 40.0 + 6.0 + 28.0 * hash(tc + 13.1);
+						float off = abs((along_x ? p.y : p.x) - at);
+						float run = (along_x ? p.x : p.y) - (along_x ? tc.x : tc.y) * 40.0;
+						float inside = step(off, 0.35) * step(4.0, run) * step(run, 36.0);
+						c *= mix(1.0, 0.78, inside);
+						c *= 1.0 - 0.35 * inside * (1.0 - smoothstep(0.02, 0.02 + pxw * 2.0, 0.35 - off));
+					}
+					// potholes: one 7 m square in 33 has one, a ragged hole 0.6-1.4 m across, dark
+					// and damp at the bottom, its broken edge lighter, the grit loose round it
+					// (the cell taken mod 97 before hashing: sin() of a big number differs between
+					// GPUs. A CPU cannot work out where the holes are even so: the float32 dot
+					// product's rounding, times 43758, gives another hash -- tried for a test)
+					vec2 hc = mod(floor(p / 7.0), 97.0);
+					if (hash(hc + 21.3) < 0.03 && dist < 90.0) {
+						vec2 hcen = (floor(p / 7.0) + 0.25 + 0.5 * vec2(hash(hc + 22.1), hash(hc + 23.7))) * 7.0;
+						vec2 q = p - hcen;
+						float ang = atan(q.y, q.x);
+						float rr = (0.3 + 0.4 * hash(hc + 24.5)) * (1.0 + 0.22 * sin(ang * 3.0 + hash(hc) * 6.0) + 0.12 * sin(ang * 7.0 + 1.3));
+						float dd = length(q * vec2(1.0, 1.0 + 0.4 * hash(hc + 25.9))) - rr;
+						float hole = 1.0 - smoothstep(-pxw, pxw, dd);
+						float lip = (1.0 - smoothstep(0.0, 0.06 + pxw, abs(dd))) * (1.0 - hole);
+						float bowl = clamp(-dd / max(rr, 0.01), 0.0, 1.0);
+						c *= mix(1.0, 0.42 - 0.12 * bowl, hole);
+						c *= 1.0 + 0.25 * lip;
+					}
 					c *= crazing(p, dist, pxw);
 					c *= 1.0 + step(0.94, hash(floor(p / 0.012))) * 0.4 * (1.0 - smoothstep(3.0, 12.0, dist));
 				}

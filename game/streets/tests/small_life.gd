@@ -180,6 +180,7 @@ func _run() -> void:
 				var t: Vector2 = (pts[int(hh["seg"]) + 1] - pts[int(hh["seg"])]).normalized()
 				from = (hh["q"] as Vector2) - t * 10.0
 			await _view(name, from, at, 1.5, -4.0)
+	await _view("asphalt", stand - Vector2(-along.y, along.x) * 1.0, stand + along * 25.0, 1.6, -14.0)
 	await _view("roofs", stand, stand + along * 60.0, 40.0, -30.0)
 	if g._pois.size() > 0 and DisplayServer.get_name() != "headless":
 		g._set_night(true)
