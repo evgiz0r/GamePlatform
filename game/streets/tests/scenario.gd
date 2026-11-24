@@ -59,6 +59,8 @@ func _run() -> void:
 		if out != "" and (String(b[0]) in ["chase", "drive_for", "dragons"]) and t - shot_t > (3.0 if String(b[0]) == "dragons" else 6.0):   # (a shot every 6 s while it drives)
 			shot_t = t
 			root.get_viewport().get_texture().get_image().save_png(out + "/scen_%d.png" % shot)
+			if OS.get_environment("SCEN_WHERE") != "":   # (where a shot was: you, the lens, the nearest traffic cars and their roads)
+				_where(g, shot, t)
 			shot += 1
 		last_i = sc.i
 		frames += 1
@@ -121,6 +123,7 @@ func _run() -> void:
 		"night" if g._night else ("evening" if g._evening else "day")])
 	print("SCENARIO %s ended: %s, %d of %d stops reached, %d people hit, %.0f s" % [sc.kind, sc.result, sc.reached, stops, people, t])
 	print("SCENARIO camera frames inside a building: %d" % sc.cam_in_building)
+	print("SCENARIO kerb shots cut short by a car in front of the lens: %d" % sc.kerb_blocked)
 	print("SCENARIO off the road over 8 m/s: %.1f s" % off_fast)
 	# (frames a second say nothing here: the cloud's software renderer holds every run at ~4. The
 	# CPU's own time a frame -- scripts, the traffic, physics -- is what a scenario adds or saves)
@@ -142,3 +145,20 @@ func _run() -> void:
 
 func get_process_time_step() -> float:
 	return root.get_process_delta_time()
+
+func _where(g: Node, shot: int, t: float) -> void:
+	var c: Camera3D = g.get_viewport().get_camera_3d() if g.view == null else g.view.get_camera_3d()
+	var cp: Vector3 = c.global_position if c != null else Vector3.ZERO
+	var near: Array = []
+	if g._traffic != null:
+		for car in g._traffic.cars:
+			if car.alive:
+				near.append([(car.pos as Vector2).distance_to(Vector2(cp.x, cp.z)), car.pos])
+	near.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
+	var txt: Array = []
+	for e: Array in near.slice(0, 3):
+		var hit: Dictionary = g._nearest_seg(e[1], 30.0, true)
+		var rn := "" if hit.is_empty() else "%s (%s, %.1f m off its line)" % [String(g._roads[int(hit["road"])]["name"]), String(g._roads[int(hit["road"])]["k"]), (hit["q"] as Vector2).distance_to(e[1])]
+		txt.append("%s %s" % [Vector2i(e[1]), rn])
+	print("WHERE shot %d at %.1f s: you %s yaw %.2f, lens %s; cars: %s" % [shot, t, Vector2i(g._pos), float(g._yaw), Vector3i(cp), " | ".join(txt)])
+
