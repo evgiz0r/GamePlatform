@@ -483,6 +483,14 @@ The ones most often touched, and the functions in them:
   kind 0 ("gardenwall", "pole") or a kit's face with vertex alpha 0.3-0.7 (the cabinet's
   body); height above the ground from the height grid (`_set_hmap`, shared with the grass;
   the tone material is made before the grid is read, so `_retint_tone_mat` hands it over).
+- **signs by country** (23 Nov 2026) -- `_country()` ("il", "nl", "fr", "ca") decides the
+  speed sign, the centre lines' colour, the give-way line (`_give_line`: dashed or
+  `_shark_teeth`), which inferred sign a side street gets, the street-sign plates' look
+  (`_street_sign_mesh`'s Canadian branch) and the school warning; NEW_CITY.md has the table.
+  Before it everything not "med" was drawn Canadian: Delft and Annecy had MAXIMUM boards,
+  yellow centre lines and SLOW in English. Two bugs every town had: the give-way plate
+  stood point up (a warning triangle) and its red was the palette's hazard, pink. Shots:
+  `tests/country_signs.gd`.
 - **zone and parking signs** -- `furniture.street_signs`: meshes with 7-segment digits
   (`_digit`), not Label3D (a draw each). **Passages** -- `_build_passages` (its own stage).
 - **front gardens' walls and gates** -- `_garden_fronts` lays each plot's wall itself

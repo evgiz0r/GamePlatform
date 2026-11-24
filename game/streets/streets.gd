@@ -6443,7 +6443,9 @@ func _markings(buf: Buf, r: Dictionary, yellow: Buf) -> void:
 		return
 	var w: float = r["w"]
 	var pts: PackedVector2Array = r["pts"]
-	var north := String(_place.get("look", "")) == "north"
+	# (yellow centre lines, double on main roads, and edge lines: North America's. A European
+	# town's centre line is white and dashed, as Israel's: Delft and Annecy had Canada's)
+	var north := _country() == "ca"
 	var main: bool = MAIN_ROADS.has(r["k"])
 	var lines: Array = []   # [offset, solid, yellow]
 	if r["o"] == 0:
@@ -7631,6 +7633,21 @@ func _stilts(ring: PackedVector2Array, sgn: float, ground: float, under: float, 
 ## A Dutch town: the level's "build" is "nl" (brick walls, measured pitched roofs)
 func _dutch() -> bool:
 	return String(_place.get("build", "")) == "nl"
+
+## Which country's traffic signs and road paint a town wears: "il" (Israel), "nl" (the
+## Netherlands), "fr" (France and Monaco), "ca" (Canada, the North American MUTCD). A level's
+## own "country" wins; else the build ("nl", "fr"), else the look ("med" is Israel, any other
+## Canada: Bedford). Israel, the Netherlands and France sign by the Vienna Convention (round
+## red-rimmed limits, blue mandatory discs, red-rimmed warning triangles, white centre lines);
+## Canada by its MUTCD (white MAXIMUM boards, black-on-white regulatory signs, yellow warning
+## diamonds, yellow centre lines, stop signs on nearly every side street). See NEW_CITY.md.
+func _country() -> String:
+	if _place.has("country"):
+		return String(_place["country"])
+	var b := String(_place.get("build", ""))
+	if b == "nl" or b == "fr":
+		return b
+	return "il" if String(_place.get("look", "")) == "med" else "ca"
 
 ## A town whose roofs were measured (a survey's ridge, `rr`): Dutch ("nl", 3DBAG) or French
 ## ("fr", BD TOPO) -- walls to the eaves, the roof to the ridge (_dutch_pitch)
@@ -14428,6 +14445,7 @@ var _stop_lines: Array = []          ## [junction, way in, line before it, road 
 func _build_road_paint() -> void:
 	var paint := CBuf.new(GROUND_CELL)
 	var med := String(_place.get("look", "")) == "med"
+	var country := _country()
 	for sl: Array in _stop_lines:
 		var c: Vector2 = sl[0]
 		var dir: Vector2 = sl[1]
@@ -14436,13 +14454,8 @@ func _build_road_paint() -> void:
 		var at := c - dir * float(sl[2])
 		var o0 := -(w * 0.5 - 0.25) if sl[4] else 0.15
 		var o1 := w * 0.5 - 0.25
-		if sl[5] == "give":   # a give-way's line is dashed: half a metre on, half off
-			var n := maxi(1, int((o1 - o0) / 1.0))
-			for k in range(n):
-				var d0 := lerpf(o0, o1, float(k) / n)
-				var d1 := d0 + (o1 - o0) / n * 0.5
-				paint.quad3(_g3(at + right * d0, Y_MARK + 0.002), _g3(at + right * d1, Y_MARK + 0.002),
-					_g3(at + right * d1 - dir * 0.3, Y_MARK + 0.002), _g3(at + right * d0 - dir * 0.3, Y_MARK + 0.002))
+		if sl[5] == "give":
+			_give_line(paint, at, dir, o0, o1)
 			if med:
 				_road_word("האט", at - dir * 2.6 + right * ((o0 + o1) * 0.5), dir)
 			continue
@@ -14450,7 +14463,12 @@ func _build_road_paint() -> void:
 			_g3(at + right * o1 - dir * 0.45, Y_MARK + 0.002), _g3(at + right * o0 - dir * 0.45, Y_MARK + 0.002))
 		if sl[5] == "stop":
 			_road_word("עצור" if med else "STOP", at - dir * 2.6 + right * ((o0 + o1) * 0.5), dir)
-	# SLOW before the crossings near a school or a kindergarten
+	# SLOW before the crossings near a school or a kindergarten: Israel's האט, Canada's SLOW;
+	# a European town paints no word there (it has the children's warning sign instead:
+	# _build_street_signs)
+	if country == "nl" or country == "fr":
+		_add_mesh(paint, _surface("mark"), false, DETAIL_RANGE)
+		return
 	var schools := _schools
 	for ni: int in _tile_nodes.get(_tile, []):
 		if not _crossing_set.has(ni):
@@ -14480,6 +14498,36 @@ func _build_road_paint() -> void:
 				var lane := _lane_off(r)
 				_road_word("האט" if med else "SLOW", c - dir * 12.0 + Vector2(-dir.y, dir.x) * lane, dir)
 	_add_mesh(paint, _surface("mark"), false, DETAIL_RANGE)
+
+## A give-way's line across the lane(s) from `o0` to `o1` (offsets right of `dir`) at `at`:
+## dashed, half a metre on and half off, in Israel and France; shark's teeth in the
+## Netherlands and Canada
+func _give_line(paint, at: Vector2, dir: Vector2, o0: float, o1: float) -> void:
+	if _country() in ["nl", "ca"]:
+		_shark_teeth(paint, at, dir, o0, o1)
+		return
+	var right := Vector2(-dir.y, dir.x)
+	var n := maxi(1, int((o1 - o0) / 1.0))
+	for k in range(n):
+		var d0 := lerpf(o0, o1, float(k) / n)
+		var d1 := d0 + (o1 - o0) / n * 0.5
+		paint.quad3(_g3(at + right * d0, Y_MARK + 0.002), _g3(at + right * d1, Y_MARK + 0.002),
+			_g3(at + right * d1 - dir * 0.3, Y_MARK + 0.002), _g3(at + right * d0 - dir * 0.3, Y_MARK + 0.002))
+
+## A give-way line as the Dutch and North Americans paint it ("shark's teeth"): a row of
+## white triangles across the lane(s) from `o0` to `o1` (offsets right of `dir`), their
+## bases on the line at `at`, their points toward the driver who gives way. (Israel and
+## France paint a dashed line.) Teeth 0.5 m wide, 0.6 m long, a quarter metre apart.
+func _shark_teeth(paint, at: Vector2, dir: Vector2, o0: float, o1: float) -> void:
+	var right := Vector2(-dir.y, dir.x)
+	var n := maxi(1, int((o1 - o0 + 0.25) / 0.75))
+	var pad := ((o1 - o0) - (n * 0.75 - 0.25)) * 0.5
+	var y := Y_MARK + 0.002
+	for k in range(n):
+		var d0 := o0 + pad + k * 0.75
+		var d1 := d0 + 0.5
+		var tip := at + right * (d0 + d1) * 0.5 - dir * 0.6
+		paint.quad3(_g3(at + right * d0, y), _g3(at + right * d1, y), _g3(tip, y), _g3(tip, y))
 
 ## a word painted on the road, read by a driver going `dir`: flat, stretched long the way
 ## road lettering is so it reads at a shallow angle
@@ -14526,9 +14574,10 @@ func _town_limits(roads: Array) -> Dictionary:
 	return out
 
 ## Speed limits on the main roads: a sign a little after each junction, every way the road
-## runs. Round and red-rimmed in Givatayim; a white MAXIMUM board in Bedford.
+## runs. Round and red-rimmed under the Vienna Convention (Israel, Europe); a white MAXIMUM
+## board in Canada.
 func _build_speed_signs() -> void:
-	var med := String(_place.get("look", "")) == "med"
+	var med := _country() != "ca"   # (the round sign: Delft and Annecy had Canada's board)
 	var poles: Array = []
 	var plates: Array = []
 	var rims: Array = []
@@ -14613,7 +14662,7 @@ func _build_speed_signs() -> void:
 		rim.height = 0.03
 		rim.radial_segments = 16
 		rim.rings = 1
-		rim.material = mat("hazard", 0.15)
+		rim.material = _surface("signred")   # (a sign's red: the palette's hazard is pink)
 		var face := CylinderMesh.new()
 		face.top_radius = 0.31
 		face.bottom_radius = 0.31
@@ -14707,6 +14756,7 @@ var _planted: Array = []             ## [kind, where, the way its face looks(, r
 
 func _build_street_signs() -> void:
 	var med := String(_place.get("look", "")) == "med"
+	var country := _country()
 	var plates := {}     # kind -> transforms
 	var poles: Array = []
 	var marks := CBuf.new(GROUND_CELL)
@@ -14814,6 +14864,15 @@ func _build_street_signs() -> void:
 				var sp: Vector2 = side_spot.call(c, dir, _node_r[ni] + 6.0, w)
 				if _off_road(sp, 0.4) and _push_out(sp, 0.4, true, false) == Vector2.ZERO:
 					plant.call("roundabout", sp, toward.call(dir), 2.2)
+				# Europe and Canada also sign the way in itself: a give-way at the line, which
+				# is painted (the ring has the right of way already: traffic.gd _junction_ahead)
+				if country != "il":
+					var at: Vector2 = c - dir * (_node_r[ni] + 1.0)
+					var o1 := w * 0.5 - 0.25
+					_give_line(marks, at, dir, -o1 if r["o"] != 0 else 0.15, o1)
+					var gp: Vector2 = side_spot.call(c, dir, _node_r[ni] + 1.6, w)
+					if spot_free.call(gp, 0.4):
+						plant.call("give_way", gp, toward.call(dir), 2.0)
 			# lane arrows before the junctions of the main roads
 			if MAIN_ROADS.has(r["k"]) and float(a[2]) > 30.0 and not r.get("ring", false):
 				_lane_arrows(marks, ni, dir, r)
@@ -14895,6 +14954,32 @@ func _build_street_signs() -> void:
 				if _off_road(sp, 0.4) and _push_out(sp, 0.4, true, false) == Vector2.ZERO:
 					plant.call("crossing", sp, toward.call(dir), 2.4)
 			break
+	# outside Israel, a warning before the crossings near a school or a kindergarten (where
+	# Israel and Canada paint a word on the road: _build_road_paint): Vienna's red triangle
+	# with two children in Europe, the yellow-green school pentagon in Canada
+	if country != "il":
+		for ni: int in _tile_nodes.get(_tile, []):
+			if not _crossing_set.has(ni):
+				continue
+			var c := _nodes[ni]
+			var near := false
+			for sc: Vector2 in _schools:
+				near = near or sc.distance_to(c) < 150.0
+			if not near:
+				continue
+			for e: Vector2i in _node_roads[ni]:
+				var r: Dictionary = _roads[e.x]
+				if not r["drive"] or r["k"] == "service":
+					continue
+				var pts: PackedVector2Array = r["pts"]
+				for d2: int in [-1, 1]:
+					var from := e.y + d2
+					if from < 0 or from >= pts.size() or (r["o"] != 0 and r["o"] != -d2) or c.distance_to(pts[from]) < 16.0:
+						continue
+					var dir := (c - pts[from]).normalized()
+					var sp: Vector2 = side_spot.call(c, dir, 12.0, float(r["w"]))
+					if spot_free.call(sp, 0.4):
+						plant.call("children", sp, toward.call(dir), 2.2)
 	# car parks: a P by the road at the corner nearest it
 	for ring: PackedVector2Array in _rings_near("parking"):
 		if _area(ring) < 300.0 or not _ring_mine(ring):
@@ -15122,7 +15207,110 @@ func _street_sign_mesh(kind: String) -> ArrayMesh:
 		for i in range(pts.size() - 1, -1, -1):
 			out.append(Vector2(-(pts[i] as Vector2).x, (pts[i] as Vector2).y))
 		return out
+	var country := _country()
+	var black: Color = _tone["tyre"]
+	var amber: Color = _tone["markyellow"]                # a warning diamond's yellow
+	var lime: Color = amber.lerp(_tone["signgreen"], 0.3).lightened(0.15)   # fluorescent yellow-green
+	# a ring between radii r0 and r1 (a prohibition's red, a "permitted" green)
+	var ring := func(r0: float, r1: float, z: float, col: Color) -> void:
+		for i in range(16):
+			var a0 := TAU * i / 16.0
+			var a1 := TAU * (i + 1) / 16.0
+			flat.call([Vector2(cos(a0), sin(a0)) * r0, Vector2(cos(a0), sin(a0)) * r1,
+					Vector2(cos(a1), sin(a1)) * r1, Vector2(cos(a1), sin(a1)) * r0], z, col)
+	# a polygon shrunk toward its middle (the inside of a rim)
+	var inset := func(pts: Array, k: float) -> Array:
+		var mid := Vector2.ZERO
+		for v: Vector2 in pts:
+			mid += v
+		mid /= pts.size()
+		return pts.map(func(v): return mid + (v - mid) * k)
+	# a walking figure `s` tall at (cx, cy) (its feet), in black: head, body, a striding pair of legs
+	var person := func(cx: float, cy: float, s: float, z: float) -> void:
+		flat.call(circle.call(s * 0.11).map(func(v): return v + Vector2(cx, cy + s * 0.88)), z, black)
+		flat.call(box.call(cx, cy + s * 0.55, s * 0.2, s * 0.38), z, black)
+		flat.call([Vector2(cx - s * 0.06, cy + s * 0.38), Vector2(cx - s * 0.25, cy), Vector2(cx - s * 0.14, cy), Vector2(cx + s * 0.04, cy + s * 0.36)], z, black)
+		flat.call([Vector2(cx - s * 0.02, cy + s * 0.36), Vector2(cx + s * 0.14, cy), Vector2(cx + s * 0.25, cy), Vector2(cx + s * 0.08, cy + s * 0.38)], z, black)
+	var up_tri := [Vector2(-0.4, -0.33), Vector2(0.4, -0.33), Vector2(0.0, 0.37)]
+	# the three arrows chasing round a roundabout, in `col`, `k` the size
+	var round_arrows := func(k: float, z: float, col: Color, at: Vector2) -> void:
+		for i in range(3):
+			var a0 := TAU * i / 3.0
+			for j in range(4):
+				var t0 := a0 + j * 0.32
+				var t1 := t0 + 0.32
+				flat.call([at + Vector2(cos(t0), sin(t0)) * 0.15 * k, at + Vector2(cos(t0), sin(t0)) * 0.21 * k,
+						at + Vector2(cos(t1), sin(t1)) * 0.21 * k, at + Vector2(cos(t1), sin(t1)) * 0.15 * k], z, col)
+			var tip := a0 + 1.5
+			flat.call([at + Vector2(cos(tip - 0.25), sin(tip - 0.25)) * 0.1 * k, at + Vector2(cos(tip - 0.25), sin(tip - 0.25)) * 0.26 * k,
+					at + Vector2(cos(tip), sin(tip)) * 0.18 * k], z, col)
+	# Canada's regulatory signs are black on white (MUTCD): a white plate in a thin black rim
+	var na_plate := func(w: float, h: float) -> void:
+		flat.call(box.call(0, 0, w, h), 0.0, black)
+		flat.call(box.call(0, 0, w - 0.04, h - 0.04), 0.004, white)
+	if country == "ca" and kind in ["oneway", "noentry", "turn_r", "turn_l", "keepright", "roundabout", "crossing", "children"]:
+		match kind:
+			"oneway":   # a white board, a black arrow, painted both sides (it stands side-on)
+				both.call(box.call(0, 0, 0.74, 0.3), 0.0, black)
+				both.call(box.call(0, 0, 0.7, 0.26), 0.004, white)
+				both.call(box.call(-0.07, 0.0, 0.4, 0.07), 0.008, black)
+				both.call([Vector2(0.12, -0.1), Vector2(0.29, 0.0), Vector2(0.12, 0.1)], 0.008, black)
+			"noentry":   # Do Not Enter: a black arrow ahead under a red ring and slash
+				na_plate.call(0.6, 0.6)
+				flat.call(box.call(0.0, -0.05, 0.07, 0.3), 0.008, black)
+				flat.call([Vector2(-0.12, 0.08), Vector2(0.12, 0.08), Vector2(0.0, 0.2)], 0.008, black)
+				ring.call(0.22, 0.27, 0.012, red)
+				var d := Vector2(1, -1).normalized()
+				var n := Vector2(-d.y, d.x) * 0.03
+				flat.call([-d * 0.24 - n, d * 0.24 - n, d * 0.24 + n, -d * 0.24 + n], 0.012, red)
+			"turn_r", "turn_l":   # this way only: a black arrow in a green ring, on white
+				na_plate.call(0.6, 0.6)
+				ring.call(0.23, 0.27, 0.008, green.lerp(Color(0.1, 0.6, 0.25), 0.5))
+				var parts: Array = [box.call(-0.06, -0.06, 0.07, 0.26), box.call(0.01, 0.035, 0.2, 0.07),
+						[Vector2(0.1, -0.06), Vector2(0.21, 0.035), Vector2(0.1, 0.13)]]
+				for pts: Array in parts:
+					flat.call(pts if kind == "turn_r" else mirror.call(pts), 0.012, black)
+			"keepright":   # a tall white board, a black arrow down past a black island on its right
+				na_plate.call(0.46, 0.62)
+				flat.call(circle.call(0.06).map(func(v): return v + Vector2(-0.07, -0.16)), 0.008, black)
+				var d := Vector2(1, -1).normalized()
+				var n := Vector2(-d.y, d.x)
+				var a := Vector2(-0.12, 0.2)
+				var t := Vector2(0.06, 0.02)
+				flat.call([a - n * 0.035, t - n * 0.035, t + n * 0.035, a + n * 0.035], 0.008, black)
+				flat.call([t - n * 0.1, t + d * 0.13, t + n * 0.1], 0.008, black)
+			"roundabout":   # a warning: the yellow diamond, black rim, black arrows round
+				var dia := [Vector2(0, -0.42), Vector2(0.42, 0), Vector2(0, 0.42), Vector2(-0.42, 0)]
+				flat.call(dia, 0.0, black)
+				flat.call(inset.call(dia, 0.92), 0.004, amber)
+				round_arrows.call(1.0, 0.008, black, Vector2.ZERO)
+			"crossing":   # the pedestrian crosswalk: a black walker on fluorescent yellow-green
+				flat.call(box.call(0, 0, 0.58, 0.58), 0.0, black)
+				flat.call(box.call(0, 0, 0.54, 0.54), 0.004, lime)
+				person.call(0.0, -0.2, 0.4, 0.008)
+				for k in range(3):
+					flat.call(box.call(-0.15 + k * 0.15, -0.23, 0.09, 0.03), 0.008, black)
+			"children":   # a school area: the yellow-green pentagon, two children walking
+				var pent := [Vector2(-0.3, -0.34), Vector2(0.3, -0.34), Vector2(0.3, 0.1), Vector2(0.0, 0.4), Vector2(-0.3, 0.1)]
+				flat.call(pent, 0.0, black)
+				flat.call(inset.call(pent, 0.92), 0.004, lime)
+				person.call(-0.09, -0.27, 0.42, 0.008)
+				person.call(0.11, -0.27, 0.32, 0.008)
+		var am_ca := ArrayMesh.new()
+		am_ca.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, b.arrays())
+		am_ca.surface_set_material(0, _vc_mat())
+		_sign_meshes[kind] = am_ca
+		return am_ca
 	match kind:
+		"children":   # Vienna's warning triangle, point up, red rim: two children
+			flat.call(up_tri, 0.0, red)
+			flat.call(inset.call(up_tri, 0.72), 0.006, white)
+			person.call(-0.06, -0.2, 0.3, 0.012)
+			person.call(0.08, -0.2, 0.23, 0.012)
+		"give_way":   # (a plate of the street signs' kind: at a roundabout's ways in)
+			var down := [Vector2(0.0, -0.37), Vector2(0.4, 0.33), Vector2(-0.4, 0.33)]
+			flat.call(down, 0.0, red)
+			flat.call(inset.call(down, 0.62), 0.006, white)
 		"oneway":
 			both.call(box.call(0, 0, 0.7, 0.3), 0.0, blue)
 			both.call(box.call(-0.07, 0.0, 0.4, 0.07), 0.006, white)
@@ -15143,6 +15331,10 @@ func _street_sign_mesh(kind: String) -> ArrayMesh:
 			var t := d * 0.07
 			flat.call([a - n * 0.04, t - n * 0.04, t + n * 0.04, a + n * 0.04], 0.006, white)
 			flat.call([t - n * 0.12, t + d * 0.15, t + n * 0.12], 0.006, white)
+		"roundabout" when country == "fr":   # France warns of one: a red triangle, arrows round
+			flat.call(up_tri, 0.0, red)
+			flat.call(inset.call(up_tri, 0.72), 0.006, white)
+			round_arrows.call(0.8, 0.012, black, Vector2(0, -0.06))
 		"roundabout":
 			flat.call(circle.call(0.32), 0.0, blue)
 			for k in range(3):   # three white arrows chasing round
@@ -15168,9 +15360,10 @@ func _street_sign_mesh(kind: String) -> ArrayMesh:
 			flat.call(box.call(0.03, 0.08, 0.09, 0.07), 0.012, blue)
 		"street":
 			flat.call([Vector2(-0.66, -0.17), Vector2(0.58, -0.17), Vector2(0.7, 0.0), Vector2(0.58, 0.17), Vector2(-0.66, 0.17)], 0.0, white)
-			# (a Dutch town's: white on blue, as its plates are; an Israeli town's green)
+			# (a Dutch or French town's: white on blue, as their plates are; an Israeli or
+			# Canadian town's green)
 			flat.call([Vector2(-0.63, -0.14), Vector2(0.56, -0.14), Vector2(0.66, 0.0), Vector2(0.56, 0.14), Vector2(-0.63, 0.14)], 0.006,
-					blue if _dutch() else green)
+					blue if country in ["nl", "fr"] else green)
 	var am := ArrayMesh.new()
 	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, b.arrays())
 	am.surface_set_material(0, _vc_mat())
@@ -15208,8 +15401,9 @@ func _junction_of(node: int, reach: float) -> int:
 ## OSM maps few stop and give-way signs (Givatayim 33, Tel Aviv 22), where nearly every side
 ## street meeting a bigger one without lights has one. Each such way in gets one here, as a
 ## sign facing that way: a stop where the bigger road is a main road (secondary or up) in an
-## Israeli town, a give-way otherwise (and always on a slip road, and in Bedford, where stop
-## signs are rare). Left alone: a slip road merging onto a motorway or trunk road, two
+## Israeli town; in a Canadian one a stop on every side street (North America signs a minor
+## street's way in with a stop, rarely a yield: Bedford had give-ways everywhere); a give-way
+## otherwise (a European town's) and always on a slip road. Left alone: a slip road merging onto a motorway or trunk road, two
 ## streets of one class (first come, as before), roundabouts
 ## (their own rule), service roads and driveways, lit junctions, a junction with a sign mapped
 ## within SIGN_MAPPED, the gap through a divided road's median (only the outer way in), and a
@@ -15225,6 +15419,7 @@ func _infer_signs() -> void:
 		if node >= 0 and node < _nodes.size():
 			_hash_add(mapped, Rect2(_nodes[node], Vector2.ZERO), SEG_CELL, node)
 	var med := String(_place.get("look", "")) == "med"
+	var ca := _country() == "ca"
 	var added := {"stop": 0, "give_way": 0}
 	for ni in range(_nodes.size()):
 		if _node_roads[ni].size() < 2 or _sig_set.has(ni) or _node_ways(ni) < 3:
@@ -15271,7 +15466,8 @@ func _infer_signs() -> void:
 					if o != ni and _node_ways(o) >= 3 and _other_half(ni, o, e.x):
 						continue   # across a divided road's median: the outer way in has it
 				var way_in := (c - pts[from]).normalized()
-				var kind := "stop" if med and top >= 4 and not String(r["k"]).ends_with("_link") else "give_way"
+				var link := String(r["k"]).ends_with("_link")
+				var kind := "stop" if not link and ((med and top >= 4) or ca) else "give_way"
 				signs.append([ni, kind, roundi(way_in.x * 100.0), roundi(way_in.y * 100.0)])
 				_bucket(_tile_signs, _tile_of(c), signs.size() - 1)
 				added[kind] += 1
@@ -15403,7 +15599,7 @@ func _build_signs() -> void:
 	_tally("signs", poles.size())
 
 ## the plate, facing +Z: a red octagon in a thin white rim, or a white triangle point down
-## in a red one; grey behind
+## in a red one; grey behind (the points are y down: turned over into the plate)
 func _sign_plate(kind: String) -> ArrayMesh:
 	var outer: Array = []
 	var inner: Array = []
@@ -15413,9 +15609,12 @@ func _sign_plate(kind: String) -> ArrayMesh:
 			outer.append(Vector2(cos(a), sin(a)) * 0.38)
 			inner.append(Vector2(cos(a), sin(a)) * 0.34)
 	else:
-		for v: Vector2 in [Vector2(0, -0.42), Vector2(0.46, 0.38), Vector2(-0.46, 0.38)]:
+		# point down, as give-way signs are everywhere (the y is turned over below: it stood
+		# point up, a warning triangle, in every town)
+		var mid := Vector2(0, -0.087)
+		for v: Vector2 in [Vector2(0, 0.42), Vector2(0.46, -0.34), Vector2(-0.46, -0.34)]:
 			outer.append(v)
-			inner.append(Vector2(v.x, v.y + 0.035) * 0.62)
+			inner.append(mid + (v - mid) * 0.62)
 	var rim := Buf.new()
 	var face := Buf.new()
 	var back := Buf.new()
@@ -15433,7 +15632,7 @@ func _sign_plate(kind: String) -> ArrayMesh:
 	_poly(rim, outer.map(func(v): return Vector3(v.x, -v.y, 0.012)), Vector3.BACK)
 	_poly(face, inner.map(func(v): return Vector3(v.x, -v.y, 0.016)), Vector3.BACK)
 	_poly(back, outer.map(func(v): return Vector3(v.x, -v.y, 0.0)), Vector3.FORWARD)
-	var red := mat("hazard", 0.15)
+	var red := _surface("signred")   # (the palette's hazard was pink: a pink stop sign)
 	var white := _surface("mark")
 	var am := ArrayMesh.new()
 	for pair: Array in [[rim, white if kind == "stop" else red], [face, red if kind == "stop" else white],
