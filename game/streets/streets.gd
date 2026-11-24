@@ -3066,6 +3066,7 @@ var _tile_lit := {}                  ## square -> junctions with traffic lights
 var _tile_lamps := {}                ## square -> a town's own lamp posts: [where, look, lamps]
 var _lamp_cover := {}                ## LAMP_COVER cell -> true: the town's map has its lamp posts there
 var _tile_things := {}               ## square -> a town's own street things: [where, kind, places] (furniture.gd's town_things)
+var bumps: Array = []                ## OSM's speed bumps, tables and cushions as built: [middle, along the road, its width, kind] (furniture.gd; for the drivers)
 var _hydrant_cover := {}             ## LAMP_COVER cell -> true: the town's map has its hydrants there
 var _tile_bars := {}                 ## square -> mapped fences and hedges that reach it
 var _crossing_set := {}
@@ -3369,6 +3370,11 @@ func _build_setup(t0: int) -> void:
 		_bucket(_tile_things, _tile_of(tp), [tp, kind, int(things[i * 4 + 3])])
 		if kind == "hydrant":
 			_hydrant_cover[_cell(tp, LAMP_COVER)] = true
+	var sp: Array = _city_data.get("street_points", [])   # (OSM's post boxes, taps, bumps: the same)
+	var sp_kinds: Array = _city_data.get("street_point_kinds", [])
+	for i in range(sp.size() / 3):
+		var tp := Vector2(sp[i * 3], sp[i * 3 + 1]) * k
+		_bucket(_tile_things, _tile_of(tp), [tp, String(sp_kinds[int(sp[i * 3 + 2])]), 0])
 	var pois: Array = _city_data.get("pois", [])
 	for i in range(pois.size()):
 		_bucket(_tile_pois, _tile_of(Vector2(pois[i][0], pois[i][1]) * k), i)

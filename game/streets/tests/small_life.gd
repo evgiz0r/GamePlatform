@@ -88,6 +88,18 @@ func _run() -> void:
 			if not g._off_road(Vector2(xf.origin.x, xf.origin.z), 0.0):
 				bad_extras += 1
 	nx["fountains"] = (g._furn.where.get("fountains", []) as Array).size()
+	var mapped_pts: int = (g._city_data.get("street_points", []) as Array).size() / 3
+	for key: String in ["post_boxes", "drinking_taps", "bumps"]:
+		nx[key] = (g._furn.where.get(key, []) as Array).size()
+	nx["street_points_in_file"] = mapped_pts
+	for xf: Transform3D in g._furn.where.get("post_boxes", []) + g._furn.where.get("drinking_taps", []):
+		if not g._off_road(Vector2(xf.origin.x, xf.origin.z), 0.0):
+			bad_extras += 1
+	var bumps_off := 0   # a bump's middle must be on its road's asphalt
+	for bm: Array in g.bumps:
+		if g._off_road(bm[0], 0.0):
+			bumps_off += 1
+	nx["bumps_off_the_road"] = bumps_off
 	for key: String in ["night_shutters", "roof_dishes", "roof_aerials", "roof_acs", "solar"]:
 		nx[key] = int(g._dressing.get(key, 0))
 	print("extras: ", nx, ", on the asphalt ", bad_extras)
@@ -156,6 +168,18 @@ func _run() -> void:
 	if not fx.is_empty():
 		var o: Vector3 = (fx[0] as Transform3D).origin
 		await _view("fountain", Vector2(o.x, o.z) + Vector2(7, 4), Vector2(o.x, o.z), 1.6, -2.0)
+	for name: String in ["bumps", "post_boxes"]:
+		var bx: Array = g._furn.where.get(name, [])
+		if not bx.is_empty():
+			var o: Vector3 = (bx[bx.size() / 2] as Transform3D).origin
+			var at := Vector2(o.x, o.z)
+			var hh: Dictionary = g._nearest_seg(at, 20.0, true, true)
+			var from := at + Vector2(8, 0)
+			if not hh.is_empty():
+				var pts: PackedVector2Array = g._roads[hh["road"]]["pts"]
+				var t: Vector2 = (pts[int(hh["seg"]) + 1] - pts[int(hh["seg"])]).normalized()
+				from = (hh["q"] as Vector2) - t * 10.0
+			await _view(name, from, at, 1.5, -4.0)
 	await _view("roofs", stand, stand + along * 60.0, 40.0, -30.0)
 	if g._pois.size() > 0 and DisplayServer.get_name() != "headless":
 		g._set_night(true)
@@ -171,7 +195,9 @@ func _run() -> void:
 			await _view("shops_night", q - t * 20.0, q + t * 10.0 + (best - q) * 0.8, 1.7, 0.0)
 		g._set_night(false)
 	var ok: bool = most >= 3 and on_road == 0 and in_wall == 0 and pops == 0 and flew and bad_extras == 0 \
-		and int(nx["escooters"]) > 100 and int(nx["night_shutters"]) > 100 and int(nx["roof_dishes"]) > 100
-	print("REGRESS small_life: %s (flocks down %d want 3+; birds on the asphalt %d, in a wall %d, landed in view %d want 0; walked-at flock up %s; e-scooters %d, gas cages %d, on the asphalt %d want 0; fountains %d, night shutters %d, roof dishes %d)" % [
-		"PASS" if ok else "FAIL", most, on_road, in_wall, pops, flew, int(nx["escooters"]), int(nx["gas_cages"]), bad_extras, int(nx["fountains"]), int(nx["night_shutters"]), int(nx["roof_dishes"])])
+		and int(nx["escooters"]) > 100 and int(nx["night_shutters"]) > 100 and int(nx["roof_dishes"]) > 100 and bumps_off == 0 \
+		and (mapped_pts == 0 or int(nx["post_boxes"]) + int(nx["drinking_taps"]) + int(nx["bumps"]) > 0)
+	print("REGRESS small_life: %s (flocks down %d want 3+; birds on the asphalt %d, in a wall %d, landed in view %d want 0; walked-at flock up %s; e-scooters %d, gas cages %d, on the asphalt %d want 0; fountains %d, night shutters %d, roof dishes %d; post boxes %d, taps %d, bumps %d, off the road %d want 0)" % [
+		"PASS" if ok else "FAIL", most, on_road, in_wall, pops, flew, int(nx["escooters"]), int(nx["gas_cages"]), bad_extras, int(nx["fountains"]), int(nx["night_shutters"]), int(nx["roof_dishes"]),
+		int(nx["post_boxes"]), int(nx["drinking_taps"]), int(nx["bumps"]), bumps_off])
 	quit()
