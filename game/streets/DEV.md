@@ -827,6 +827,9 @@ what) drawn by `_draw_more` and tapped by `_more_tap`; a row is one line there.
   drive races at night with the chip saying so.
 - Time of day by choice: `_set_time_of_day` steps `_next_time` round (it only goes day,
   evening, night); `_tod_busy` keeps two taps from interleaving its awaits.
+- Pause is on the main screen too (`PAUSE_BTN`, bottom row after "go to…", key K; the user,
+  23 Nov: "lets put pause on main screen"): "pause", lit "PAUSED" while held; the same
+  `_toggle_pause` as the drawer's row and the middle "resume". Folded away with the rest.
 - The map button (`MAP_BTN`, key M, `_toggle_map`) is the zoom up to `MAP_ZOOM` (0.86) and
   back: everything from above (paused, `_zoom_pan`, pinch, the long press) is the zoom's.
   Its label reads `_zoom > 0`, not `_zoomed()`: that stays true for the second the view
@@ -836,7 +839,7 @@ what) drawn by `_draw_more` and tapped by `_more_tap`; a row is one line there.
 - `tests/hud_layout.gd` (level 4, about a minute) taps every button through `_hud_tap`,
   checks what it did, and checks in every state that no shown button leaves the screen or
   overlaps another, the minimap, the speed, the credit, the stick's ring or the load line.
-  Good: 0 failed, 32 checks (the map: up, paused, dragged, the landing swapped, back down). Its shots (`hud_*.png`) are the quickest look at the HUD.
+  Good: 0 failed, 37 checks (the pause button: car and every traffic car held still, going on after; the map: up, paused, dragged, the landing swapped, back down). Its shots (`hud_*.png`) are the quickest look at the HUD.
 
 ## Tests
 
