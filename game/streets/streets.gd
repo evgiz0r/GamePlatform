@@ -237,7 +237,7 @@ const Y_MARK := 0.085
 const NEW_STREET_M := 30.0           ## drive this far along a street for it to count
 const MAP_R := 210.0                 ## the minimap shows this far around the car (m)
 const AP_LAT := 3.6                  ## autodrive keeps the sideways pull in turns under this (m/s^2)...
-const AP_LAT_TIGHT := 4.8            ## ...rising to this in a bend of 5 m radius (from 15 m down)
+const AP_LAT_TIGHT := 4.2            ## ...rising to this in a bend of 5 m radius (from 15 m down)
 ## Ground steeper than this (rise per metre, about 32 degrees) cannot be driven or walked up:
 ## it is as solid as a wall. No real town so far has any (Givatayim's steepest is 52%); the
 ## made-up town's mountains do, and they are what keeps it a valley.
@@ -18304,7 +18304,12 @@ func _physics_process(dt: float) -> void:
 	if traffic_now:
 		_traffic.tick(wdt)
 	_p("traffic")
+	# (autodrive's looks ahead go through _push_out too, which names what they touch in
+	# _last_hit: kept as the car's own, or a drive log and the route set name a wall the plan
+	# came near as what the car hit -- route 3's "walls" on Ben Gurion were a sign post)
+	var hit0 := _last_hit
 	var ctl: Array = _autodrive(dt) if _auto else (_manual(dt) if not _watching() else [0.0, 1.0, 0.0])   # (watched: held on the brake)
+	_last_hit = hit0
 	if _auto:
 		var turn := _ap_turn_ahead()
 		if turn != 0 and _blink != turn:
@@ -23971,7 +23976,7 @@ func _autodrive(dt: float) -> Array:
 	# (the point it steers at: nearer at a corner's pace -- 5.4 m ahead at 14 km/h, it started
 	# round a right turn 6 m early, came out with the turn not done and crossed its new lane
 	# toward the middle line by a metre; the same as before from ~50 km/h)
-	var look := clampf(2.0 + absf(_v) * 0.6, 3.5, 16.0)
+	var look := clampf(1.5 + absf(_v) * 0.55, 3.0, 16.0)
 	var tgt := _ap_point_ahead(look)
 	var to := tgt - rear
 	var alpha := fwd.angle_to(to)
@@ -25457,7 +25462,10 @@ func _ap_keep_clear(upto: float) -> void:
 					nl.append(_ap_lim[k])
 					moved += 1
 			if b.distance_to(_pos) >= 2.5:
-				var pb := _push_out(b, r, true, false, _y)
+				var rb := r
+				if k + 1 < _ap_pts.size() and absf((b - a).angle_to(_ap_pts[k + 1] - b)) >= AP_BEND_ANGLE:
+					rb += AP_BEND_PAD   # (a bend: the car cuts inside it and its back end swings in)
+				var pb := _push_out(b, rb, true, false, _y)
 				if pb != Vector2.ZERO and pb.length() <= AP_CLEAR_MAX:
 					b += pb
 					moved += 1
@@ -25472,6 +25480,14 @@ func _ap_keep_clear(upto: float) -> void:
 		_ap_lim = nl
 		_ap_cleared += moved
 
+## The room a plan point needs: the car's body (r) and, in a bend, AP_BEND_PAD more. Round a
+## corner the car does not run on the plan's line: the steering turns in early and cuts
+## inside it (0.6 m at Givatayim's Reines into Ben Gurion, a right turn at 20 km/h), and the
+## car points along the way it came, so its back end swings further in -- route 3's plan was
+## 1.8 m from a sign post at that corner, 0.4 m clear of the body, and the back end met the
+## post at 11-19 km/h every run (tests/corner_post.gd).
+const AP_BEND_PAD := 0.35   ## m more on a point where the plan turns by AP_BEND_ANGLE or more
+const AP_BEND_ANGLE := 0.25 ## rad
 func _ap_densify(upto: float, step: float) -> void:
 	var np := PackedVector2Array([_ap_pts[0]])
 	var nv := PackedFloat32Array([_ap_v[0]])

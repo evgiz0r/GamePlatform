@@ -4283,7 +4283,33 @@ checks Givatayim / Ashdod / test town 12 / 12 / 11, all traffic's; route set 10 
   arrived, 0 reds, 0 rescues. Hits: route 12 Leiden's sign and post on Rapenburg (as on
   22 Nov), route 6 (the gate's), and route 3 Givatayim, a post and walls on Ben Gurion at
   11-19 km/h -- route 3 hits there without tonight's traffic change too (a wall at 19 km/h),
-  so it came with main's newer work; not seen on 21-22 Nov. Open, next to look at.
+  so it came with main's newer work; not seen on 21-22 Nov. Fixed the next morning, below.
+- **Route 3: a sign post at a right turn's corner (24 Nov morning).** Reines 70 right into
+  Ben Gurion: a sign post stands 1.3 m behind the kerb at the corner, and the car's back end
+  met it at 11-19 km/h on every run. The plan was fine (its middle 1.8 m from the post, the
+  body 0.4 m clear); the car was not on it: pure pursuit's point ahead (5.4 m at 20 km/h)
+  turns it in early, 0.6 m inside the plan's line, and a car points along the way it came, so
+  its back swings further in. Three small changes: the look ahead shorter at a corner's pace
+  (`1.5 + v * 0.55`, 3-16 m, was `2 + v * 0.6`, 3.5-16 -- the same from ~50 km/h up), a plan
+  point where the plan bends 0.25 rad or more kept AP_BEND_PAD (0.35 m) further from what is
+  solid, and AP_LAT_TIGHT 4.8 -> 4.2 (a 5.5 m corner at 17 km/h, was 18.5; people take a
+  tight town corner at 15). `tests/corner_post.gd` stages it: closest -0.25 -> +0.11 m.
+  AP_BEND_PAD 0.7 got 0.24 m but pushed a 6 m street's right-turn plan over its middle line
+  (turn_width, Sirkin): keep it small. turn_width: Sirkin's right turn has the car's left side
+  over the middle line before and after (0.7 -> 0.9 m right of it; the line is at 0.9) --
+  the one FAIL in 10, open.
+  Route set after (15 routes): 15 of 15 arrived, 0 reds, 0 rescues, 0 off road; route 3 and
+  route 12 (Leiden's sign and post on Rapenburg) clean. One new hit: route 2, an SUV in traffic
+  (car 14, 'limit', 39 km/h) came across Horodetsky/HaShalom from the side as autodrive went
+  through at 30 km/h; autodrive braked from 8 m, touched it at 16 km/h. Who should have given
+  way there is not checked yet -- open.
+- **What a drive log calls a hit was sometimes not what was hit.** `_push_out` names what it
+  touches in `_last_hit`, and autodrive's looks ahead (`_ap_keep_clear`, the nose's safety
+  net, a dozen more) call it too, after `_collide` in the same tick: route 3's "wall 23604"
+  and "wall 23619" were walls the plan came near; the car hit the sign post. The tick
+  (`_physics_process`) now keeps `_last_hit` across `_autodrive()`. And a wall's or post's number is that run's
+  build order (`STREETS_BUILD_ALL` builds round the start first): find it by place
+  (`tests/walls_at.gd`, or `_posts` near the spot), not by number.
 - **Nightly**: `validate.sh REGRESS=1` now also runs traffic_pockets, people_near (3 trips)
   and rail_break, each with a REGRESS line; 1-2 min each here (64, 73, 122 s).
 - **Pulling in at the kerb measured from the wrong lane.** A bus at a stop and a delivery van
