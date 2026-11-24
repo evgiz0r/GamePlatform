@@ -4330,6 +4330,29 @@ checks Givatayim / Ashdod / test town 12 / 12 / 11, all traffic's; route set 10 
   the car is past the point first, 1.4 m clear). Routes 1, 2, 4, 8 after: arrived, no hits;
   route 4 stood 38 s in a queue on La Guardia (12.5 at a light there the run before; a queue,
   not this junction rule -- watch it).
+- **Sirkin's right turn (turn_width's one FAIL).** Givatayim's node 1978: a 120-degree right
+  turn off Gvulot into Sirkin, a 6 m street. `_lane_corner` wants AP_TURN_R (5.5 m) but the
+  points either side squeeze it to 3.9 m -- tighter than the car turns (~4.1 m) -- and
+  `_ap_curves` read the bend through points 5 m either side as 5-6 m round: planned at
+  17 km/h, the car came out 0.7 m off the plan, its left side 0.04 m onto the middle line.
+  Now `_ap_curves` takes the tighter of the 5 m and 2.5 m reads: 14 km/h there, the car
+  0.02 m onto the line; other corners unchanged (17-20 km/h). turn_width counts "over" past
+  OVER_TOL (0.1 m: the paint's own width) -- the bug it guards was 1.5-2.2 m over -- and prints
+  `car_left_side` (m past the line, - is short of it). Still open: the arc itself could start
+  further back when the street before the corner is straight past its last point.
+  Route set after (15): 15 of 15 arrived, 0 reds, 0 rescues, 0 off road, no hits at all.
+  Delft (11) stood 58 s in a queue on Westplantsoen (a bus, a taxi and an SUV ahead, all held
+  by the car in front; the run before: 24 + 19 s in the same queue) -- traffic, not autodrive.
+- **Speed bumps slow the cars (24 Nov).** The street-points thread built OSM's bumps, tables
+  and cushions into `g.bumps` (drawn, 8 cm, not solid). `g.bump_v(p, fwd, look, decel)`: the
+  speed to hold for the ones across the way ahead (their width, the lane not minded; one under
+  the car still holds it; one across a side street passed is skipped by its direction) --
+  BUMP_KMH 15 a bump, 25 a cushion or a table, braked down to from further back. Autodrive
+  (why "bump", 2.0 m/s^2; racer 1.5x the pace) and traffic (`_target`, BRAKE * 0.6) both;
+  hashed as squares bring them in. You driving: over one 5 km/h or more too fast, a shake and
+  a soft knock (`_bump_tick`, Probe "bump"). `tests/bump_slow.gd` (Tel Aviv, 15 bumps built):
+  4 bumps, autodrive 15-16 km/h over each, traffic 15, from 25-32 before. Route 8 and 10 after:
+  clean. Not yet: the car itself rising over one (only the view shakes).
 - **turn_width now also checks the body at corners**: either of its two circles within
   CLEAR_M (5 cm) of a post, wall or building within 25 m of the junction counts (`body_near`
   in each line, in the REGRESS line). Givatayim 10 turns, Ashdod 12: none. Givatayim's
@@ -4778,7 +4801,7 @@ Per kind:
   left" with the voice; stars 3 with a quarter of the clock spare, 2 in time, 1 late.
   Tel Aviv (25): 2:20 clock, there in 1:33, 16 cars pulled over.
 - **Tours**: past `TOUR_SKIP_S` 30 s on a drive and still `TOUR_SKIP_M` 160 m off, a fade and
-  `_jump_to` 80 m short of the stop ("A little later, nearing ..."), `skips` counted. Givatayim
+  `_jump_to` the point `CUT_BACK_M` 110 m before the end of autodrive's route (`_route_back`; first 80 m short by the crow, often 1 km round by road on one-ways) ("A little later, nearing ..."), `skips` counted. Givatayim
   (17) before the cut's tuning: 5 of 5 stops, 7:09, 3 cuts (it was ~9 min).
 - **Pizza rush** (new, levels 43-44): `_delivery_beats` picks `DROPS` 3 of the town's own
   addresses (`g._addr`), 200-450 m apart (250-600 ran 6-7 min in Givatayim: autodrive took 4:40 to Zahal 34 there -- slow routes, open for the driving work), one a street. The clock is set once autodrive has its
@@ -4795,6 +4818,26 @@ in 4:23 with 4 cuts (7:09 with 3 before the cut's tuning); pizza Tel Aviv (44) 3
 Givatayim (43) 3 of 3, 7 min, 22 in tips. Open: the pizza rush runs long in Givatayim (its
 routes are 3x the crow's flight); a cut like the tour's, with the clock charged for the part
 skipped, would bring it to ~3 min. Titles and end cards: `title.png`, `end_card.png` in $OUT.
+
+**Round two (24 Nov, morning; the user: "give go to all of these and iterate")**:
+- Pizza rush cuts ahead as tours do (`DROP_SKIP_S` 30 s, still 240 m off by road): `_skip_ahead(b,
+  style, charge=true)` charges the drop's clock for the road skipped at 1.6 x `DROP_PACE` (at
+  the clock's own pace every cut left it "running late" the moment it ended). Givatayim's shift
+  2:16 of play for 3 of 3, 24 in tips (was 7 min).
+- The ambulance never mounts the pavement (`_ap_mount_by`: "siren"). The test's new family
+  check: seconds with the car's middle off every drivable road at over 8 m/s (`off_fast`, must
+  be under 2 s for any scenario). The pavement drive seen in one frame did not show again in
+  this measure (0.0 s in two ambulance runs).
+- The getaway's backup: a second police car (`_chaser2`, `_police_car()`) `BACKUP_BEHIND` 13 m
+  further back on your trail from 45 s, its lamps in counter-phase. `_trail_at(odo)` places both.
+- **Taxi shift** (levels 45-46; "taxi"): night; `DROPS` fares, each a person (`Actor3D`, dressed
+  by `_humanize`, waving every 2.5 s through `people.gd gesture`) at the kerb (`_kerb_of`: 1.3 m
+  past the edge of the nearest public street) 150-350 m on, then their address 300-600 m from
+  there (`_addr_pick`). Beats "pickup" (cut ahead too; there within `PICKUP_M` 30 m on either side -- "go to" went round the block for their own kerb, 100 s and more -- or at "go to"'s kerb, or within
+  60 m and stood after 60 s -- a Givatayim run waited out three 150 s pickups) and "ride" (the
+  delivery's clock and tip, plus a fare of 12 + 6 a km by road, the tip 3 less per crash event).
+  At the door they step out and walk off. Stars at 55 / 75 earned. RIDE_LINES: what they say.
+- The scenarios list goes to 28 px rows past 16 (18 now).
 
 `tests/scenario.gd` prints the end card (`SCENARIO card:`) and, for the getaway, the gap every
 5 s; PASS needs the card, the getaway's "home" counts, a delivery needs 2 of 3 drops.
