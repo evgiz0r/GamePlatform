@@ -91,6 +91,8 @@ class Car:
 	var kerb_clear := 0.0             ## left of its lane this much, clear of what stands at the kerb (parked cars, poles)
 	var kerb_look := 0.0              ## seconds to the next look at the kerb
 	var dip := 0.0                    ## the body: nose down braking, up pulling away (visual)
+	var bump_y := 0.0                 ## the body lifted over a speed bump, and tipped (visual: g.bump_lift)
+	var bump_pitch := 0.0
 	var roll := 0.0                   ## the body: leaning out of a turn (visual)
 	var paint := Color.WHITE
 	var kind := "sedan"
@@ -2433,6 +2435,14 @@ func _place(c: Car) -> void:
 		c.steer_to = clampf(angle_difference(c.yaw, ty), -0.5, 0.5)
 		if g._hnx > 0:
 			c.pitch = atan2(float(g._decks.surf(front, c.y)) - float(g._decks.surf(c.rear, c.y)), d.length())
+		# over a speed bump (only near you, where it can be seen: a hash look-up a car)
+		if not g.bumps.is_empty() and c.pos.distance_squared_to(g._pos) < 120.0 * 120.0:
+			var hb: Vector2 = g.bump_lift(front, c.rear)
+			c.bump_y = (hb.x + hb.y) * 0.5
+			c.bump_pitch = atan2(hb.x - hb.y, maxf(d.length(), 1.0))
+		else:
+			c.bump_y = 0.0
+			c.bump_pitch = 0.0
 
 func _in_view(p: Vector2) -> bool:
 	var look := Vector2(cos(float(g._yaw)), sin(float(g._yaw)))
@@ -2450,8 +2460,8 @@ func draw(f: float) -> void:
 		var p := c.prev_pos.lerp(c.pos, f)
 		var yaw := lerp_angle(c.prev_yaw, c.yaw, f)
 		# (the slope it is on, the nose dipping or lifting, the lean in a turn)
-		var basis := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, -c.pitch + c.dip) * Basis(Vector3.BACK, c.roll)
-		var xf := Transform3D(basis, Vector3(p.x, lerpf(c.prev_y, c.y, f) + float(g.road_top()), p.y))
+		var basis := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, -c.pitch - c.bump_pitch + c.dip) * Basis(Vector3.BACK, c.roll)
+		var xf := Transform3D(basis, Vector3(p.x, lerpf(c.prev_y, c.y, f) + c.bump_y + float(g.road_top()), p.y))
 		var mm: MultiMesh = _mms[c.kind]
 		mm.set_instance_transform(i, xf)
 		var lit := c.blink != 0 and fmod(_clock + float(i) * 0.13, 0.7) < 0.36

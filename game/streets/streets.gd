@@ -118,6 +118,7 @@ const LEVELS := [
 	# cars, the convoy is three models on your own trail (no traffic logic of their own)
 	{"name": "Wedding convoy: Tel Aviv", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "wedding"},
 	{"name": "Shabbat eve: Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "shabbat"},
+	{"name": "Gan pick-up: Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "gan"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -1505,6 +1506,7 @@ func start(_config: Dictionary) -> void:
 	_spawn_crossers()
 	_traffic = Traffic.new()
 	_traffic.setup(self)
+	_update_day()   # (Shabbat today: the shutters down, the streets quiet)
 	_build_engine()
 	_build_street_sounds()
 	_build_signal_sounds()
@@ -9181,7 +9183,8 @@ const LAMP_POOL := 8.5
 const POOL_STRENGTH := 0.95
 var _pools_made := false
 var _pools_from := 0                 ## _pool_at before this have theirs
-var _shop_lights: Array = []         ## [the window's foot, out to the street, how wide] of every lit shop window
+var _shop_lights: Array = []         ## [the window's foot, out to the street, how wide, dark on Shabbat] of every lit shop window
+var _shabbat_dark_nodes: Array = []  ## the light on the pavement of the shops that shut on Shabbat: at night, not on Shabbat
 var _shop_lit_from := 0
 
 ## The light pools (and halos, and lit shop windows' light on the pavement) for every lamp so
@@ -9212,8 +9215,10 @@ func _make_pools(chunked := false) -> void:
 	_pools_from = upto
 	# a lit shop window's light on the pavement in front of it
 	var shops_upto := _shop_lights.size()
+	var shab := CBuf.new(GROUND_CELL)   # (those of the shops that shut on Shabbat, a node of their own)
 	for i in range(_shop_lit_from, shops_upto):
 		var s: Array = _shop_lights[i]
+		var into: CBuf = shab if s.size() > 3 and bool(s[3]) else pools
 		var at: Vector2 = s[0]
 		var n: Vector2 = s[1]
 		var w: float = 1.5 * float(s[2])
@@ -9224,13 +9229,16 @@ func _make_pools(chunked := false) -> void:
 		var b0 := _g3(at - t * (w + 0.8) + n * 2.6, y)
 		var b1 := _g3(at + t * (w + 0.8) + n * 2.6, y)
 		var m0 := _g3(at, y)
-		pools.tri(m0, a1, b1, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(0.35, 0), Vector2(0.6, 0.72))
-		pools.tri(m0, b1, b0, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(0.6, 0.72), Vector2(-0.6, 0.72))
-		pools.tri(m0, b0, a0, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(-0.6, 0.72), Vector2(-0.35, 0))
+		into.tri(m0, a1, b1, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(0.35, 0), Vector2(0.6, 0.72))
+		into.tri(m0, b1, b0, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(0.6, 0.72), Vector2(-0.6, 0.72))
+		into.tri(m0, b0, a0, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(-0.6, 0.72), Vector2(-0.35, 0))
 	_shop_lit_from = shops_upto
 	for mi: MeshInstance3D in _add_mesh(pools, _glow_mat("lamplight", POOL_STRENGTH), false, LAMP_RANGE):
 		mi.visible = _night
 		_night_nodes.append(mi)
+	for mi: MeshInstance3D in _add_mesh(shab, _glow_mat("lamplight", POOL_STRENGTH), false, LAMP_RANGE):
+		mi.visible = _night and not _shabbat_now()
+		_shabbat_dark_nodes.append(mi)
 	_pools_busy = false
 	if chunked and (_pool_at.size() > _pools_from or _shop_lights.size() > _shop_lit_from):
 		_make_pools()   # (the lamps of squares built meanwhile)
@@ -9815,6 +9823,7 @@ func _next_time() -> void:
 	var gl0 := _gl_count()
 	var to := "day" if _night else ("night" if _evening else "evening")
 	if _night:
+		_weekday = (_day() + 1) % 7   # (night to day: the next morning)
 		_set_night(false)
 	elif _evening:
 		await _set_evening(false)
@@ -9861,7 +9870,8 @@ func _set_evening(on: bool) -> void:
 		_far_update()
 		if not _fs_drawing.has(key):
 			_far_draw(key)
-	_show_banner("evening" if on else "day", 1.2)
+	_update_day()
+	_show_banner(_time_banner("evening" if on else "day"), 1.6)
 	Probe.event("evening", {"on": on})
 
 func _set_night(on: bool) -> void:
@@ -9897,7 +9907,8 @@ func _set_night(on: bool) -> void:
 	if _car_shader_mat != null:
 		_car_material()
 	_far_update()
-	_show_banner("night" if on else "day", 1.2)
+	_update_day()
+	_show_banner(_time_banner("night" if on else "day"), 1.6)
 	Probe.event("night", {"on": on})
 
 ## Parked cars down Givatayim's streets, half up on the pavement the way they really
@@ -13294,9 +13305,71 @@ func _shuts_at_night(kind: String, at: Vector2) -> bool:
 		return false
 	return true
 
+## and on Shabbat (Friday evening to Saturday evening, in the Israeli towns) the rest close
+## too: the corner shops, supermarkets, kiosks and bakeries that stay open late shut with
+## everything else -- but Tel Aviv keeps about one in three of them open (its AM:PM-style
+## branches and kiosks, by city by-law or not), the other towns about one in eight
+func _shuts_on_shabbat(kind: String, at: Vector2) -> bool:
+	if _country() != "il" or _shuts_at_night(kind, at):
+		return false
+	if not (kind.begins_with("shop:") or kind == "pharmacy"):
+		return false
+	var keep := 3 if _city_id == "tel_aviv" else 8
+	return posmod(_hash_i(at) >> 9, keep) != 0
+
+## The day of the week, 0 Sunday to 6 Saturday: today's, by the player's clock (STREETS_DAY
+## to set it; a Tuesday in tests and bots' runs); the time button moves it on a day each time night turns to day.
+var _weekday := -1
+const DAY_NAMES := ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]
+var _night_shut_nodes: Array = []     ## the shutters of the shops that close at night (and on Shabbat)
+var _shabbat_shut_nodes: Array = []   ## the shutters of the shops that close only on Shabbat
+
+func _day() -> int:
+	if _weekday < 0:
+		var e := OS.get_environment("STREETS_DAY")
+		if e != "":
+			_weekday = posmod(int(e), 7)
+		elif DisplayServer.get_name() == "headless" or get_tree().get_script() != null:
+			_weekday = 2   # (a test or a bot's run: a Tuesday, whatever the date, so its counts hold)
+		else:
+			_weekday = int(Time.get_datetime_dict_from_system()["weekday"])
+	return _weekday
+
+## Shabbat now: Friday from the evening, Saturday until night (shops reopen Saturday night)
+func _shabbat_now() -> bool:
+	if _country() != "il":
+		return false
+	return (_day() == 5 and (_evening or _night)) or (_day() == 6 and not _night)
+
+## the shutters for this day and time: the night ones at night or on Shabbat, the Shabbat ones
+## on Shabbat; and on Shabbat the streets go quiet, SHABBAT_CARS of the traffic's cars about
+## (not over a scenario's own quiet: only from a full town, and back only from Shabbat's)
+const SHABBAT_CARS := 8
+func _update_day() -> void:
+	var sh := _shabbat_now()
+	if _traffic != null:
+		if sh and _traffic.cap == _traffic.COUNT:
+			_traffic.set_cap(SHABBAT_CARS)
+		elif not sh and _traffic.cap == SHABBAT_CARS:
+			_traffic.set_cap(_traffic.COUNT)
+	for n: Node3D in _night_shut_nodes:
+		n.visible = _night or sh
+	for n: Node3D in _shabbat_shut_nodes:
+		n.visible = sh
+	for n: Node3D in _shabbat_dark_nodes:
+		n.visible = _night and not sh
+
+func _time_banner(t: String) -> String:
+	if _country() != "il":
+		return t   # (the day only changes anything in the Israeli towns)
+	var msg: String = DAY_NAMES[_day()] + " " + t
+	if _shabbat_now():
+		msg += ": shabbat, the shops shut"
+	return msg
+
 func _build_pois() -> void:
 	var k := 1.0 / float(_city_data.get("scale", 10))
-	var front := {"glass": [], "glass_k": [], "post": [], "beam": [], "shutter": [], "night_shut": [], "housing": [], "door": []}   ## shop windows and their frames (glass_k: what is inside, SHOP_SHADER)
+	var front := {"glass": [], "glass_k": [], "post": [], "beam": [], "shutter": [], "night_shut": [], "shabbat_shut": [], "housing": [], "door": []}   ## shop windows and their frames (glass_k: what is inside, SHOP_SHADER)
 	var board_cols: Array = []       ## each sign board's colour: dark, white, the shop's, cream
 	var awnings := {"xf": [], "col": []}   ## awning transforms and their colours
 	var crates := new_cbuf(BLD_CELL)    ## fruit and vegetables out in front of a greengrocer
@@ -13355,7 +13428,7 @@ func _build_pois() -> void:
 				(0.6 if sub in ["clothes", "shoes", "fashion", "boutique", "jewelry", "bag", "fabric"] else 0.0)
 			front["glass_k"].append(Color(inside_k, 0.0, 0.0, 1.0))
 			if _mine(pos) and not _shuts_at_night(kind, at):   # (a shut shop lights nothing at night)
-				_shop_lights.append([pos + n * 0.1, n, wide])
+				_shop_lights.append([pos + n * 0.1, n, wide, _shuts_on_shabbat(kind, at)])
 			front["beam"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.08, 2.62)))
 			for sgn: float in [-1.0, 1.0]:
 				front["post"].append(Transform3D(b, at3.call(pos + along * 1.56 * wide * sgn, 0.08, 1.3)))
@@ -13386,6 +13459,8 @@ func _build_pois() -> void:
 				front["shutter"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.1, 1.3)))
 			elif _shuts_at_night(kind, at):   # open by day, its shutter down at night
 				front["night_shut"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.1, 1.3)))
+			elif _shuts_on_shabbat(kind, at):   # open late, but its shutter down on Shabbat
+				front["shabbat_shut"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.1, 1.3)))
 			# the roller shutter's box over the window, as most of the towns' shops have it
 			# rolled up into (a grey metal box the window's width); every shut one has one
 			if look_k < 10 or posmod(_hash_i(at) >> 13, 100) < 75:
@@ -13450,26 +13525,33 @@ func _build_pois() -> void:
 		var shut := BoxMesh.new()
 		shut.size = Vector3(3.0, 2.4, 0.05)
 		_chunked(shut, front["shutter"], r, [], _surface("shutter"), false)
-	if not (front["night_shut"] as Array).is_empty():
-		# the shops that close for the night: their shutters, shown only in the dark (one node
-		# a square, in _night_nodes: _set_night shows and hides them)
+	for key: String in ["night_shut", "shabbat_shut"]:
+		if (front[key] as Array).is_empty():
+			continue
+		# the shops that close for the night (or for Shabbat): their shutters, shown only then
+		# (one node a square: _update_day shows and hides them)
 		var ns := BoxMesh.new()
 		ns.size = Vector3(3.0, 2.4, 0.05)
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.mesh = ns
-		mm.instance_count = (front["night_shut"] as Array).size()
+		mm.instance_count = (front[key] as Array).size()
 		for i in range(mm.instance_count):
-			mm.set_instance_transform(i, front["night_shut"][i])
+			mm.set_instance_transform(i, front[key][i])
 		var mmi := MultiMeshInstance3D.new()
 		mmi.multimesh = mm
 		mmi.material_override = _surface("shutter")
 		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		mmi.visibility_range_end = r + TILE * 0.71
-		mmi.visible = _night
 		world.add_child(mmi)
-		_night_nodes.append(mmi)
-		_tally("night_shutters", mm.instance_count)
+		if key == "night_shut":
+			_night_shut_nodes.append(mmi)
+			mmi.visible = _night or _shabbat_now()
+			_tally("night_shutters", mm.instance_count)
+		else:
+			_shabbat_shut_nodes.append(mmi)
+			mmi.visible = _shabbat_now()
+			_tally("shabbat_shutters", mm.instance_count)
 	if not (front["door"] as Array).is_empty():
 		var dbox := BoxMesh.new()   # (a unit box, each piece scaled)
 		_chunked(dbox, front["door"], r, [], _surface("cartrim"), false)
@@ -19688,13 +19770,18 @@ func _pose_car(p: Vector2, yaw: float, y := NAN) -> void:
 	if _air:   # in the air the nose follows the flight
 		_car.rotation.x = lerp_angle(_car.rotation.x, -atan2(_vy, maxf(absf(_v), 3.0)) * 0.8, 0.15)
 		return
+	var fwd := Vector2(cos(yaw), sin(yaw))
+	var hb := bump_lift(p + fwd * WHEELBASE * 0.5, p - fwd * WHEELBASE * 0.5)   # (over a speed bump)
+	_car.position.y += (hb.x + hb.y) * 0.5
+	var bump_pitch := atan2(hb.x - hb.y, WHEELBASE)
 	if _hnx > 0:
-		var fwd := Vector2(cos(yaw), sin(yaw))
 		var side := Vector2(-fwd.y, fwd.x)
 		var pitch := atan2(_decks.surf(p + fwd * 1.4, at) - _decks.surf(p - fwd * 1.4, at), 2.8)
 		var roll := atan2(_decks.surf(p - side * 0.8, at) - _decks.surf(p + side * 0.8, at), 1.6)
-		_car.rotation.x = -pitch
+		_car.rotation.x = -pitch - bump_pitch
 		_car.rotation.z = roll
+	else:
+		_car.rotation.x = -bump_pitch
 
 ## ---- the sounds of driving -----------------------------------------------------------------
 ## Loops made by sounds/make_sounds.py (it says why each is what it is), played at a pitch
@@ -24228,6 +24315,37 @@ func bump_v(p: Vector2, fwd: Vector2, look: float, decel: float) -> float:
 		v = minf(v, sqrt(at * at + 2.0 * decel * front))
 	return v
 
+## The height of the bumps under a car's two axles, `front` and `rear` (m above the road):
+## the hump's profile as furniture.gd's _bump_kit draws it -- 0.08 m on its top, 0.6 m deep
+## (a table's three times that), easing down to the road over the 0.16 m either side. A car
+## rides up it, front wheels then back: the body lifts by the mean of the two and tips by
+## their difference over the wheelbase (you: _pose_car; traffic: traffic.gd's _bump_pose).
+## (A user's "cars drive through the speed bumps as if they were not there".)
+func bump_lift(front: Vector2, rear: Vector2) -> Vector2:
+	if bumps.is_empty():
+		return Vector2.ZERO
+	if _bump_n != bumps.size():
+		bump_v(front, Vector2.RIGHT, 0.0, 1.0)   # (hashes the new ones)
+	var out := Vector2.ZERO
+	for i: int in _near(_bump_hash, (front + rear) * 0.5, front.distance_to(rear) * 0.5 + 3.0, SEG_CELL):
+		var b: Array = bumps[i]
+		out.x = maxf(out.x, _bump_h(b, front))
+		out.y = maxf(out.y, _bump_h(b, rear))
+	return out
+
+func _bump_h(b: Array, p: Vector2) -> float:
+	var d: Vector2 = b[1]
+	var rel: Vector2 = p - (b[0] as Vector2)
+	if absf(rel.dot(Vector2(-d.y, d.x))) > float(b[2]) * 0.5:
+		return 0.0
+	var sx := 3.0 if String(b[3]) == "table" else 1.0
+	var x := absf(rel.dot(d)) / sx
+	if x >= 0.46:
+		return 0.0
+	if x <= 0.3:
+		return 0.08
+	return 0.08 * smoothstep(0.46, 0.3, x)
+
 ## a jolt over a bump taken too fast: the car hops, the view shakes (you driving, or anyone)
 var _bump_jolt := 0.0
 func _bump_tick(dt: float) -> void:
@@ -27430,7 +27548,7 @@ func _route_begin() -> void:
 func _watching() -> bool:
 	if not _film.is_empty() or not _route.is_empty():
 		return true
-	return _scenario != null and not (String(_place.get("scenario", "")) in ["getaway", "ambulance", "delivery", "taxi"])   # (the ones with a goal: yours to drive too)
+	return _scenario != null and not (String(_place.get("scenario", "")) in ["getaway", "ambulance", "delivery", "taxi", "gan"])   # (the ones with a goal: yours to drive too)
 
 ## a drawn button that _pick_tap() can press
 func _tap_button(text: String, cb: Callable) -> Button:

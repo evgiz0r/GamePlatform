@@ -56,6 +56,7 @@ const GOALS := {
 	"delivery": "Three pizzas, three real addresses. The faster, the bigger the tip. Take the wheel any time.",
 	"wedding": "Lead the convoy to the hall before the ceremony starts. Everyone hoots.",
 	"shabbat": "Friday, the hour before sunset: the town winds down. Sit back.",
+	"gan": "Two kids, two kindergartens, one clock: both picked up and home before it runs out.",
 	"taxi": "Pick up whoever waves you down, take them where they're going. Quick and in one piece pays. Take the wheel any time.",
 }
 const CHASE_EDGE := 1.0       ## m/s faster than you were at that point of your trail, at first...
@@ -152,6 +153,8 @@ func setup(id: String) -> void:
 		beats = _wedding_beats()
 	elif id == "shabbat":
 		beats = _shabbat_beats()
+	elif id == "gan":
+		beats = _gan_beats()
 	# every one opens on its title card: what it is and what counts as winning it
 	beats.insert(0, ["title", String(g._place.get("name", id)), String(GOALS.get(id, "")), TITLE_S])
 	Probe.event("scenario", {"kind": id, "beats": beats.size()})
@@ -262,18 +265,20 @@ func _day_beats() -> Array:
 		if k < rhythm.size():
 			return String(rhythm[k]).trim_suffix(".") + "."
 		return String(lines[k % maxi(lines.size(), 1)]) if not lines.is_empty() else ""
-	return [["time", "day"],
+	# the hour on the line under the street, and the traffic the hour has: the rush full, the
+	# evening thinner, the night nearly empty -- truer, and the quiet hours cost less to run
+	return [["time", "day"], ["clock", 7 * 60 + 20, 4.0, "morning rush"],
 		["say", "A day in %s." % town, 3.0],
 		["shots", ["above", "kerb", "usual", "orbit", "kerb"], 6.0],
 		["say", "Morning. " + String(say.call(0)), 5.0],
 		["drive_for", stops[0][0], String(stops[0][1]), "rules", 55.0],
-		["time", "evening"],
+		["time", "evening"], ["clock", 18 * 60 + 30, 2.5, "evening"], ["quiet", 14],
 		["say", "Evening. " + String(say.call(1)), 5.0],
 		["drive_for", stops[1][0], String(stops[1][1]), "wave", 50.0],
-		["time", "night"],
+		["time", "night"], ["clock", 23 * 60 + 10, 3.0, "night"], ["quiet", 5],
 		["say", "Night. " + String(say.call(2)), 5.0],
 		["drive_for", stops[2][0], String(stops[2][1]), "wave", 45.0],
-		["wet", true],
+		["wet", true], ["clock", 4 * 60 + 40, 1.5, "before dawn"], ["quiet", 2],
 		["say", "Rain before dawn. The streets shine, and empty.", 6.0],
 		["shots", ["above"], 8.0],
 		["say", "%s." % String(story.get("tagline", town)), 5.0],
@@ -316,6 +321,8 @@ func tick(dt: float) -> void:
 		_yield_tick()
 	if not _convoy.is_empty():
 		_convoy_tick(dt)
+	if _clock_m >= 0.0:
+		_clock_m = fmod(_clock_m + _clock_rate * dt, 1440.0)
 	var b: Array = beats[i]
 	match String(b[0]):
 		"title":
@@ -345,7 +352,7 @@ func tick(dt: float) -> void:
 					if not there:
 						stars = 0
 				_next()
-		"time", "wet", "shots", "siren", "convoy", "quiet":
+		"time", "wet", "shots", "siren", "convoy", "quiet", "clock":
 			_next()
 		"dragons":
 			if _dragons.tick(dt, func(text: String, secs: float) -> void: _say(text, secs)):
@@ -424,6 +431,10 @@ func _next() -> void:
 		"quiet":
 			if g._traffic != null:
 				g._traffic.set_cap(int(b[1]))
+		"clock":
+			_clock_m = float(b[1])
+			_clock_rate = float(b[2])
+			_clock_what = String(b[3])
 		"dragons":
 			g._set_auto(false)
 			g._v = 0.0
@@ -476,6 +487,10 @@ func _next() -> void:
 				var lw := _limit - run_t
 				txt = ("The hall's lights, the music already playing, %s to spare. Mazal tov!" % _mmss(lw)) if stars >= 2 \
 					else "They held the ceremony for you. Mazal tov -- just."
+			elif kind == "gan":
+				var lg := _limit - run_t
+				txt = ("Home, both of them, with %s to spare. Snack time." % _mmss(lg)) if stars >= 2 \
+					else "Home at last. Two tired kids and one tired parent."
 			elif kind == "taxi":
 				txt = "Light off. %d fares, %d on the meter and in tips." % [drops_done, tips]
 			_say(txt, 6.0)
@@ -511,6 +526,7 @@ func _finish(how: String) -> void:
 	if g._traffic != null and g._traffic.cap < g._traffic.COUNT:
 		g._traffic.set_cap(g._traffic.COUNT)   # (the streets fill again)
 	_convoy_off()
+	_gan_crowd_off()
 	if how != "yours":
 		_end_card()
 	Probe.event("scenario_end", {"kind": kind, "result": result, "reached": reached, "stars": stars,
@@ -1106,12 +1122,29 @@ func _strip_text() -> String:
 			var left := _limit - run_t
 			_strip_role = "friend" if left > 30.0 else ("warn" if left > 0.0 else "hazard")
 			return "patient: %s%s · hospital %s" % ["" if left >= 0.0 else "late ", _mmss(absf(left)), _dist_txt(_left_m())]
+		"day", "shabbat":
+			if _clock_m < 0.0:
+				return ""
+			_strip_role = "accent"
+			var n: int = g._traffic.alive_count() if g._traffic != null else 0
+			return "%02d:%02d · %s · %d %s about" % [int(_clock_m) / 60, int(_clock_m) % 60, _clock_what, n, "car" if n == 1 else "cars"]
 		"wedding":
 			if _limit <= 0.0:
 				return ""
 			var lw := _limit - run_t
 			_strip_role = "friend" if lw > 30.0 else ("warn" if lw > 0.0 else "hazard")
 			return "ceremony in %s%s · the hall %s" % ["" if lw >= 0.0 else "-", _mmss(absf(lw)), _dist_txt(_left_m())]
+		"gan":
+			if _limit <= 0.0:
+				return ""
+			var lg := _limit - run_t
+			_strip_role = "friend" if lg > 30.0 else ("warn" if lg > 0.0 else "hazard")
+			var bg: Array = beats[i]
+			var where := "home"
+			if String(bg[0]) == "pickup":
+				where = "%s at the gan on %s" % [String(bg[5]), String(bg[2])]
+			return "%s%s · %s %s · %d of 2 picked up" % ["" if lg >= 0.0 else "late ", _mmss(absf(lg)), where,
+				_dist_txt(_left_m()), drops_done]
 		"taxi":
 			var b: Array = beats[i]
 			if String(b[0]) == "pickup":
@@ -1335,6 +1368,11 @@ func _end_card() -> void:
 			head = "Shabbat shalom"
 			stars = 0
 			lines.append("%s through %s as it went quiet" % [_mmss(run_t), String(story.get("town", g._city_name))])
+		"gan":
+			var lg := _limit - run_t
+			head = "Everyone home" if stars >= 2 else ("Home, a bit late" if stars == 1 else "Not home yet")
+			lines.append("%s for the round · %s %s" % [_mmss(run_t), _mmss(absf(lg)), "to spare" if lg >= 0.0 else "late"])
+			lines.append("%d of 2 kids picked up · %d parents waiting at the gates" % [drops_done, gan_parents])
 		"taxi":
 			head = "End of the shift"
 			stars = 3 if tips >= 75 else (2 if tips >= 55 else (1 if drops_done > 0 else 0))
@@ -1396,6 +1434,10 @@ func _end_card() -> void:
 	print("[scenario] end card: %s %s | %s" % [head, "★".repeat(stars), " | ".join(lines)])
 
 var card_lines: Array = []    ## for tests: what the end card said
+
+var _clock_m := -1.0          ## the hour shown on the line ("clock" beat): minutes after midnight; -1 none
+var _clock_rate := 0.0        ## minutes of the day a second
+var _clock_what := ""
 
 func _best_load() -> Dictionary:
 	if not FileAccess.file_exists(SCEN_BEST):
@@ -1529,9 +1571,11 @@ func _pickup_start(b: Array) -> void:
 	_fare_off(false)
 	var a := Actor3D.new()
 	g.world.add_child(a)
-	g._set_character(a, g.PEOPLE[(drops_done * 3 + 1) % g.PEOPLE.size()], 1.72)
+	g._set_character(a, g.PEOPLE[(drops_done * 3 + 1) % g.PEOPLE.size()], 1.15 if kind == "gan" else 1.72)
 	g._humanize(a, 4200 + drops_done * 17)
 	a.position = Vector3(at.x, g._walk_y(at), at.y)
+	if kind == "gan":
+		_gan_crowd(at)
 	var hit: Dictionary = g._nearest_seg(at, 12.0, true, true)
 	var face: Vector2 = ((hit["q"] as Vector2) - at).normalized() if not hit.is_empty() else Vector2.UP
 	a.face(Vector3(face.x, 0, face.y))
@@ -1541,11 +1585,14 @@ func _pickup_start(b: Array) -> void:
 	if g.has_method("track3d"):
 		g.track3d(a, "*")
 	_wave_t = 0.0
-	g._set_dest(at, "a fare on %s" % String(b[2]))
-	g._ap_style = "wave"
+	g._set_dest(at, ("%s's gan" % String(b[5])) if kind == "gan" else ("a fare on %s" % String(b[2])))
+	g._ap_style = "rules" if kind == "gan" else "wave"   # (a parent, kids about: by the rules)
 	g._apply_ap_style()
 	g._set_auto(true)
-	_say("Someone's waving you down on %s." % String(b[2]), 2.5)
+	if kind == "gan":
+		_say("Next: %s, at the gan on %s." % [String(b[5]), String(b[2])], 2.5)
+	else:
+		_say("Someone's waving you down on %s." % String(b[2]), 2.5)
 
 func _pickup_tick(b: Array, dt: float) -> void:
 	if OS.get_environment("SCEN_DEBUG") != "" and int(t * 0.5) != int((t - dt) * 0.5):
@@ -1556,7 +1603,7 @@ func _pickup_tick(b: Array, dt: float) -> void:
 		g._ppl.gesture(_fare, "wave")
 	# a long way round, watched: the cut, as for a drop (no clock to charge: they only wait)
 	if g._auto and t > DROP_SKIP_S and _skip_i != i and _skip_t < 0.0 and _left_m() > TOUR_SKIP_M * 1.5:
-		_skip_ahead(b, String(g._ap_style), false)
+		_skip_ahead(b, String(g._ap_style), kind == "gan")   # (the gan's clock pays for a cut, as a drop's)
 	# there: by them, or where "go to" pulled up for them, or near and stood (and they walk over:
 	# a run in Givatayim waited out three fares' 150 s each, never stopping where it could be "there")
 	var near := (g._pos as Vector2).distance_to(b[1])
@@ -1572,10 +1619,13 @@ func _pickup_tick(b: Array, dt: float) -> void:
 			g._set_auto(false)
 		g._v = minf(absf(float(g._v)), 2.0)
 		_fare_off(false)   # (in they get)
+		if kind == "gan":
+			drops_done += 1
+			_gan_crowd_off()
 		Audio.play("open", 0.0, -8.0)
 		_say("\"%s\"" % String(b[4]), 3.5)
 		_next()
-	elif t > 150.0:
+	elif t > 150.0 and kind != "gan":   # (a kid does not give up: the gan's clock is the stake)
 		_fare_off(false)
 		_drop_t.append(-1)
 		_say("They gave up and hailed another cab.", 3.0)
@@ -1625,6 +1675,103 @@ func _route_back(back: float) -> Vector2:
 		if acc >= back:
 			return pts[k - 1]
 	return Vector2.INF
+
+## ---- the kindergarten pick-up -----------------------------------------------------------------
+
+## Four o'clock: two kids at two of the town's own kindergartens (places.gd), then home, all on one
+## clock. Light by design: the gans are the town's (already built), the kids are the taxi's
+## pickups (one Actor3D each), and the crowd at each gate is GAN_CROWD standing people -- no AI.
+const GAN_KIDS := [["Noa", "Abba! I made you a drawing!"], ["Ari", "Can we get ice cream? Pleeease?"]]
+const GAN_CROWD := 3          ## parents standing at a gate (static, solid, braked for)
+const GAN_PACE := 6.0         ## m/s by crow-line x GAN_WIND the clock allows (a drop's 6 by road)
+const GAN_WIND := 1.7         ## road over crow-line (1.45: a round ran 1:39 late, one-ways and two cuts charged; 1.9: 2:14-2:30 to spare)
+var _gan_people: Array = []   ## the parents at the gate now
+var gan_parents := 0          ## for tests and the end card
+
+func _gan_beats() -> Array:
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	if OS.get_environment("SCEN_SEED") != "":
+		rng.seed = int(OS.get_environment("SCEN_SEED"))
+	var gans: Array = []
+	if g._places != null:
+		for items: Array in g._places._tile_items.values():
+			for it: Array in items:
+				if String(it[0]) == "kindergarten" and g._bounds.grow(-150.0).has_point(it[1]) and g._in_city(it[1]):   # (one past the town line: "leaving Givatayim", the road unbuilt)
+					gans.append(it[1])
+	var en := {}
+	for r: Dictionary in g._roads:
+		if String(r["en"]) != "":
+			en[r["name"]] = r["en"]
+	var out: Array = [["time", "day"]]
+	var from: Vector2 = g._pos
+	var picks: Array = []
+	for k in range(GAN_KIDS.size()):
+		var cands: Array = []
+		for p: Vector2 in gans:
+			var d := p.distance_to(from)
+			if d >= 250.0 and d <= 550.0 and (picks.is_empty() or p.distance_to(picks[0][0]) > 200.0):
+				var hit: Dictionary = g._nearest_seg(p, 40.0, true, true)
+				if not hit.is_empty():
+					cands.append([p, String((g._roads[int(hit["road"])] as Dictionary)["name"])])
+		if cands.is_empty():
+			break
+		var c: Array = cands[rng.randi() % cands.size()]
+		picks.append(c)
+		from = c[0]
+	var home := _addr_pick(from, 300.0, 600.0, {}, rng)
+	var crow := 0.0
+	var at: Vector2 = g._pos
+	for c: Array in picks:
+		crow += at.distance_to(c[0])
+		at = c[0]
+	if not home.is_empty():
+		crow += at.distance_to(home[0])
+	var limit := roundf(crow * GAN_WIND / GAN_PACE + 20.0 * picks.size() + 20.0)
+	out.append(["say", "The gans close at 16:30, and the whole town is doing the same run. You have %s." % _mmss(limit), 3.5])
+	out.append(["timer", limit])
+	out.append(["shots", ["usual", "back", "kerb", "above", "orbit"], 7.0])
+	for k in range(picks.size()):
+		var c: Array = picks[k]
+		var st := String(en.get(c[1], c[1]))
+		out.append(["pickup", _kerb_of(c[0]), st, 0.0, GAN_KIDS[k][1], GAN_KIDS[k][0]])
+	if not home.is_empty():
+		out.append(["drive_for", home[0], "home, on %s" % String(en.get(home[1], home[1])), "rules", limit + 90.0])
+	out.append(["shots", [], 0.0])
+	out.append(["end", ""])
+	if OS.get_environment("SCEN_DEBUG") != "":
+		print("gan: %d gans in town, picks %s, home %s, clock %d s" % [gans.size(), picks, home, int(limit)])
+	return out
+
+## a few parents waiting by the gate, on the pavement beside the kid (each a person: solid, and
+## autodrive brakes for them; they stand, so they cost their animation and nothing else)
+func _gan_crowd(at: Vector2) -> void:
+	_gan_crowd_off()
+	var hit: Dictionary = g._nearest_seg(at, 12.0, true, true)
+	var along := Vector2.RIGHT
+	var face := Vector2.UP
+	if not hit.is_empty():
+		face = ((hit["q"] as Vector2) - at).normalized()
+		along = Vector2(-face.y, face.x)
+	for k in range(GAN_CROWD):
+		var a := Actor3D.new()
+		g.world.add_child(a)
+		g._set_character(a, g.PEOPLE[(k * 5 + drops_done * 7 + 2) % g.PEOPLE.size()], 1.62 + 0.06 * (k % 3))
+		g._humanize(a, 5100 + k * 13 + drops_done * 31)
+		var p := at + along * (1.6 + 1.3 * k) * (1.0 if k % 2 == 0 else -1.0) - face * (0.4 * (k % 2))
+		a.position = Vector3(p.x, g._walk_y(p), p.y)
+		var look := (along * (-1.0 if k % 2 == 0 else 1.0) + face * 0.5).normalized()
+		a.face(Vector3(look.x, 0, look.y))
+		a.play("Idle", true, 0.8 + 0.1 * k)
+		g.add_person(a)
+		_gan_people.append(a)
+		gan_parents += 1
+
+func _gan_crowd_off() -> void:
+	for a: Node3D in _gan_people:
+		if is_instance_valid(a):
+			a.queue_free()
+	_gan_people.clear()
 
 ## ---- the wedding convoy -------------------------------------------------------------------------
 
@@ -1798,7 +1945,7 @@ func _shabbat_beats() -> Array:
 	if stops.size() < 2:
 		var far := _far_main_street(500.0, 1000.0)
 		stops = [[far, "across town"], [g._pos, "home"]]
-	return [["time", "evening"],
+	return [["time", "evening"], ["clock", 15 * 60 + 15, 0.45, "Friday, to candle lighting"],
 		["say", "Friday in %s, the hour before sunset." % town, 4.0],
 		["quiet", 8],
 		["shots", ["usual", "kerb", "above", "kerb"], 9.0],
@@ -1807,7 +1954,7 @@ func _shabbat_beats() -> Array:
 		["quiet", 3],
 		["say", "The buses have stopped. Streets that roared all week are almost empty.", 6.0],
 		["drive_for", stops[1][0], String(stops[1][1]), "rules", 60.0],
-		["time", "night"],
+		["time", "night"], ["clock", 16 * 60 + 17, 0.3, "Shabbat"],   # (late November, Tel Aviv: candles at 16:17)
 		["quiet", 1],
 		["say", "Candles in the windows. Shabbat has begun.", 6.0],
 		["shots", ["above"], 8.0],

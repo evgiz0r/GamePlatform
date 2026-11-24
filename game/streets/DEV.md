@@ -4899,6 +4899,22 @@ have no inputs, i want them super optimized")**: two new ones, both built to cos
   is used only when `g._push_out(cand, 0.6, false, false)` is zero, else the shot falls back to
   "orbit". 0 frames in every scenario since (`cam_in_building`).
 
+**Round four (24 Nov, evening; the user: "we need something to push? anything else? cycles of
+iterations?")**:
+- **Gan pick-up** (level 49, Givatayim; "gan"): the taxi's "pickup" beat with a kid (Actor3D at
+  1.15 m) at the kerb of one of the town's own kindergartens (`g._places._tile_items`, kind
+  "kindergarten", inside the town -- one past the town line had the road unbuilt), twice, then
+  "drive_for" home (an address 300-600 m on) on one clock (`timer`). `_gan_crowd`: GAN_CROWD 3
+  parents standing at the gate, `g.add_person` each, freed at the pickup. A gan pickup's cut
+  charges the clock; a kid never "gives up". Clock: crow-line x `GAN_WIND` 1.7 / 6 m/s + 20 s a
+  stop + 20 (1.45: 1:39 late; 1.9: 2:14-2:30 to spare, too easy). Four runs: 0:10 to 2:30 spare
+  at 1.7-1.9, 3 of 4 runs 2-3 stars. Script 39-45 ms a frame (A day in Givatayim's 48).
+- **A day, weakest of the films, now has its hour** (beat `["clock", minutes, rate, what]`: the
+  line under the street reads "07:42 · morning rush · 22 cars about") **and the traffic of the
+  hour** (`quiet` 14 in the evening, 5 at night, 2 before dawn). Givatayim: 13.6 cars on
+  average, **39.0 ms of script a frame against 48.1** before. Shabbat eve has the clock too
+  (15:15 to the candles at 16:17, late November).
+
 ## On foot: faster, and any car in traffic (22 Nov 2026)
 
 `WALK` 2.1 -> 4.5 m/s (a jog, the "Run" clip from 2.6 m/s up), `RUN` 6.2 -> 9.5 (the run
@@ -5424,8 +5440,22 @@ within 1.2 m behind it. Both have posts.
 - **Shops shut at night** (`_shuts_at_night`, `_build_pois`): every shop but the late ones
   (corner shops, kiosks, supermarkets, bakeries, liquor, tobacco; a pharmacy in three) and
   anything to eat or drink gets a second shutter shown only at night (one MultiMesh a square
-  in `_night_nodes`), and lights no pool on the pavement. Tel Aviv: 1,624. No Shabbat: the
-  game has no day of the week.
+  in `_night_shut_nodes`), and lights no pool on the pavement. Tel Aviv: 1,624.
+- **Shabbat** (24 Nov): `_weekday` (0 Sunday) is the player's clock's (`STREETS_DAY` sets it),
+  moved on a day by the time button each time night turns to day; the banner names it in
+  the Israeli towns. `_shabbat_now()`: Friday evening and night, Saturday day and evening.
+  The shops `_shuts_on_shabbat` (the late ones; Tel Aviv keeps 1 in 3, elsewhere 1 in 8) get
+  a third set of shutters (`_shabbat_shut_nodes`, tally `shabbat_shutters`) and the traffic thins to `SHABBAT_CARS` 8 of 22 (only from a full town, so a scenario's own quiet stands); `_update_day`
+  shows the night ones at night or on Shabbat, those on Shabbat (from `_set_night`,
+  `_set_evening`). A Shabbat shop's window light on the pavement is in its own nodes
+  (`_shabbat_dark_nodes`, one a ground cell: 35 in Givatayim, drawn only within LAMP_RANGE),
+  dark on a Friday night. Open: cafes and restaurants all stay open
+  and nobody walks to synagogue. Tests and bots run on a Tuesday whatever the date.
+- **Cars over bumps** (24 Nov): `bump_lift(front, rear)` gives the bump height under each
+  axle (`_bump_h`: `_bump_kit`'s profile, 8 cm top 0.6 m deep, a table three times that, easing
+  off over 0.16 m); `_pose_car` lifts your body by their mean and tips it by their difference
+  over the wheelbase, traffic.gd the same into `c.bump_y`/`c.bump_pitch` for cars within
+  120 m. Visual only: the speed for a bump is `bump_v`'s.
 - **Test**: `tests/small_life.gd` (REGRESS line). Good, level 7: 6 flocks down within a
   minute, 0 birds on the asphalt or in a wall, 0 landed in view, the flock walked at goes up;
   ~1,050 e-scooters, ~50 gas cages (Tel Aviv's front gardens keep most walls back), 0 on the
@@ -5443,7 +5473,10 @@ within 1.2 m behind it. Both have posts.
   taps, 14 bumps and a table in the file; 5 / 65 / 15 built.
 - **Not done**: laundry, night lighting from the town's own lamps (their pools follow each mapped head)
   and tree species' looks (`tree_forms` from the surveys) were already in.
-- **Open**: birds never perch (on wires, roofs, lamp tops); no flapping sound; a flock
+- **Flap** (24 Nov): a flock going up plays `sounds/flap.wav` (make_sounds.py `flap`: five
+  birds' wingbeats, fast then slowing, 1.1 s) from its middle, one of two 3D players in
+  birds.gd, 6 dB under the sfx volume, silent when muted.
+- **Open**: birds never perch (on wires, roofs, lamp tops); a flock
   spooked by traffic on the road only when it is your car; the crows look like grey pigeons
   scaled up (no separate black head and wings in the paint); gas cages only on streets
   with a wall at the pavement's back.
