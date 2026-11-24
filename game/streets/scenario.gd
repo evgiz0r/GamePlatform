@@ -134,6 +134,7 @@ func setup(id: String) -> void:
 	elif id == "night_tour":
 		beats = [["time", "night"]] + _tour_beats()
 		beats[1][1] = "By night -- " + String(beats[1][1])
+		beats.insert(1, ["quiet", 8])   # (the town at night: fewer cars, and fewer to run)
 		beats.insert(beats.size() - 1, ["wet", true])
 		beats.insert(beats.size() - 1, ["say", "And then the rain: the streets shining under the lamps.", 6.0])
 	elif id == "getaway":
@@ -272,10 +273,10 @@ func _day_beats() -> Array:
 		["shots", ["above", "kerb", "usual", "orbit", "kerb"], 6.0],
 		["say", "Morning. " + String(say.call(0)), 5.0],
 		["drive_for", stops[0][0], String(stops[0][1]), "rules", 55.0],
-		["time", "evening"], ["clock", 18 * 60 + 30, 2.5, "evening"], ["quiet", 14],
+		["time", "evening"], ["clock", 15 * 60 + 50, 0.9, "evening"], ["quiet", 14],   # (the evening look is the low sun before sunset: 16:40 in late November -- at 18:50 it read as broad day)
 		["say", "Evening. " + String(say.call(1)), 5.0],
 		["drive_for", stops[1][0], String(stops[1][1]), "wave", 50.0],
-		["time", "night"], ["clock", 23 * 60 + 10, 3.0, "night"], ["quiet", 5],
+		["time", "night"], ["clock", 21 * 60 + 40, 3.0, "night"], ["quiet", 5],
 		["say", "Night. " + String(say.call(2)), 5.0],
 		["drive_for", stops[2][0], String(stops[2][1]), "wave", 45.0],
 		["wet", true], ["clock", 4 * 60 + 40, 1.5, "before dawn"], ["quiet", 2],
@@ -1215,7 +1216,7 @@ func _skip_ahead(b: Array, style := "", charge := false) -> void:
 ## distance (as the ambulance's), the tip from how much of it was left
 func _delivery_beats() -> Array:
 	var town := String(story.get("town", g._city_name))
-	var out: Array = [["say", "Friday night in %s. Three pizzas in the back, still hot." % town, 3.5]]
+	var out: Array = [["quiet", 12], ["say", "Friday night in %s. Three pizzas in the back, still hot." % town, 3.5]]
 	var from: Vector2 = g._pos
 	var used := {}
 	var rng := RandomNumberGenerator.new()
@@ -1500,7 +1501,7 @@ const RIDE_LINES := [
 ## DROPS fares: someone waving at the kerb 150-350 m on, then their address 300-600 m from there
 func _taxi_beats() -> Array:
 	var town := String(story.get("town", g._city_name))
-	var out: Array = [["time", "night"], ["say", "Night shift in %s. Light on -- someone's always going somewhere." % town, 3.5]]
+	var out: Array = [["time", "night"], ["quiet", 10], ["say", "Night shift in %s. Light on -- someone's always going somewhere." % town, 3.5]]
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
 	if OS.get_environment("SCEN_SEED") != "":
@@ -1782,7 +1783,7 @@ func _wedding_beats() -> Array:
 	var limit := roundf(goal.distance_to(g._pos) * 1.5 / 7.5 + 25.0)   # (at / 9 m/s it was 0:13 late)
 	if OS.get_environment("SCEN_DEBUG") != "":
 		print("wedding: from %s to %s" % [g._pos, goal])
-	return [["time", "day" if OS.get_environment("SCEN_DAY") != "" else "evening"],
+	return [["time", "day" if OS.get_environment("SCEN_DAY") != "" else "evening"], ["quiet", 14],
 		["say", "The ceremony is at the hall in %s. The cousins are behind you, hands on the horn." % _mmss(limit), 3.5],
 		["timer", limit],
 		["convoy", 3],

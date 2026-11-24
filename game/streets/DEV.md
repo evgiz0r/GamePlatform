@@ -4922,6 +4922,12 @@ iterations?")**:
   hour** (`quiet` 14 in the evening, 5 at night, 2 before dawn). Givatayim: 13.6 cars on
   average, **39.0 ms of script a frame against 48.1** before. Shabbat eve has the clock too
   (15:15 to the candles at 16:17, late November).
+- The day's clock first put the evening look at 18:30-20:45: the evening is the low sun before
+  sunset (16:40 in late November), and at 18:50 it read as broad day. Evening now 15:50 on.
+- **The night and evening scenarios run on fewer cars** (`quiet` at the start): wedding 14,
+  pizza 12 (Friday night), taxi 10, night tour 8. Taxi in Tel Aviv **39.3 ms of script a frame
+  against 50.6**; the night tour in Givatayim 28.4 ms; pizza in Givatayim 40.9. The wedding did
+  not move (60 ms with 14 cars, 58-63 with 22): Tel Aviv itself is its cost. All pass.
 
 ## On foot: faster, and any car in traffic (22 Nov 2026)
 
