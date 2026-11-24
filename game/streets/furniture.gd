@@ -2277,13 +2277,15 @@ func _gas_cage_kit() -> ArrayMesh:
 	_kits["gascage"] = am
 	return am
 
-## Israel Post's box: a red box with a rounded top on a grey post, its slot and the white
+## a post box (Israel Post's red one; orange or yellow where the country's post is): a box with a rounded top on a grey post, its slot and the white
 ## band of its sign on the front (-Z)
 func _post_box_kit() -> ArrayMesh:
 	if _kits.has("postbox"):
 		return _kits["postbox"]
 	var b = g.new_buf()
-	var red: Color = g._real_col("red")
+	# the country's post: red in Israel and Canada, PostNL's orange, La Poste's yellow
+	var country: String = g._country()
+	var red: Color = g._real_col("orange") if country == "nl" else (g._real_col("yellow") if country == "fr" else g._real_col("red"))
 	_tube(b, Vector3(0, 0, 0), Vector3(0, 0.75, 0), 0.05, 0.05, _tone("rim"), 6)
 	_box(b, Vector3(0, 1.05, 0), Vector3(0.42, 0.6, 0.32), red)
 	_tube(b, Vector3(-0.21, 1.35, 0), Vector3(0.21, 1.35, 0), 0.16, 0.16, red, 8)

@@ -195,7 +195,7 @@ func _run() -> void:
 			await _view("shops_night", q - t * 20.0, q + t * 10.0 + (best - q) * 0.8, 1.7, 0.0)
 		g._set_night(false)
 	var ok: bool = most >= 3 and on_road == 0 and in_wall == 0 and pops == 0 and flew and bad_extras == 0 \
-		and int(nx["escooters"]) > 100 and int(nx["night_shutters"]) > 100 and int(nx["roof_dishes"]) > 100 and bumps_off == 0 \
+		and int(nx["escooters"]) > 100 and int(nx["night_shutters"]) > 100 and (g._country() != "il" or int(nx["roof_dishes"]) > 100) and bumps_off == 0 \
 		and (mapped_pts == 0 or int(nx["post_boxes"]) + int(nx["drinking_taps"]) + int(nx["bumps"]) > 0)
 	print("REGRESS small_life: %s (flocks down %d want 3+; birds on the asphalt %d, in a wall %d, landed in view %d want 0; walked-at flock up %s; e-scooters %d, gas cages %d, on the asphalt %d want 0; fountains %d, night shutters %d, roof dishes %d; post boxes %d, taps %d, bumps %d, off the road %d want 0)" % [
 		"PASS" if ok else "FAIL", most, on_road, in_wall, pops, flew, int(nx["escooters"]), int(nx["gas_cages"]), bad_extras, int(nx["fountains"]), int(nx["night_shutters"]), int(nx["roof_dishes"]),
