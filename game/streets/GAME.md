@@ -675,6 +675,16 @@ out as a little film, the car driving itself, captions across the bottom.
   few streets on; you pull up, they get in and say where they're going ("and gently: there's a
   cake on my lap"); the meter runs. Each ride pays its fare and a tip for getting there quickly,
   less for every knock on the way; at the door they get out and walk off. Three fares a shift.
+- *Wedding convoy* -- Tel Aviv. Evening. You lead; three cars dressed in white ribbons and
+  flowers follow close behind, hooting, to the hall before the ceremony starts (a clock on
+  screen). Watched, no inputs.
+- *Shabbat eve* -- Givatayim. Friday, the hour before sunset: the shops close, the buses stop,
+  the traffic thins to a handful of cars and then one; night falls, candles in the windows,
+  "Shabbat shalom". Watched, no inputs -- and the lightest scenario to run, the empty streets
+  costing less than the full ones.
+
+  > Lets start just by few 2 3 scenarios. As all these stuff have no inputs, i want them super
+  > optimized.
 
 **Every scenario has a goal and an ending** (the redo). It opens on a title card: its name
 and what it asks ("Lose the police car, or reach the safe house"). While it plays, a line
@@ -1904,6 +1914,6 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   flats each split into rooms the way a block of its age is. Only the building you walk into
   is built inside, while you are in it.
 - Scenarios, more of them (built: tours, night tours, the getaway, the ambulance, a day,
-  dragons, the pizza rush, the taxi shift -- see "Scenarios" above): a wedding convoy, Shabbat
-  eve, a kindergarten pick-up rush, an alien arrival -- the list with grades is in DEV.md
+  dragons, the pizza rush, the taxi shift, the wedding convoy, Shabbat eve -- see "Scenarios"
+  above): a kindergarten pick-up rush, an alien arrival -- the list with grades is in DEV.md
   under "Scenarios".

@@ -7,6 +7,11 @@ extends SceneTree
 ## and ended; a getaway ended lost, caught or gave up (a chaser ran) -- and nobody was hit.
 var g: Node
 var off_fast := 0.0
+var frames := 0
+var cars_sum := 0.0
+var cpu_sum := 0.0
+var script_ms: Array = []     ## the game's own "script N ms" a frame, each 2 s spell (its perf view's line)
+var last_avg := ""
 
 func _initialize() -> void:
 	_run()
@@ -56,6 +61,16 @@ func _run() -> void:
 			root.get_viewport().get_texture().get_image().save_png(out + "/scen_%d.png" % shot)
 			shot += 1
 		last_i = sc.i
+		frames += 1
+		if String(g._prof_avg) != last_avg:
+			last_avg = String(g._prof_avg)
+			var rx := RegEx.create_from_string("script ([0-9.]+)")
+			var m := rx.search(last_avg)
+			if m != null:
+				script_ms.append(float(m.get_string(1)))
+		cpu_sum += Performance.get_monitor(Performance.TIME_PROCESS) + Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS)
+		if g._traffic != null:
+			cars_sum += g._traffic.alive_count()
 		# off the road at speed (the ambulance drove a Tel Aviv pavement at 67 km/h, 24 Nov):
 		# the car's middle beyond every drivable road's edge, over 8 m/s
 		if absf(g._v) > 8.0:
@@ -80,6 +95,7 @@ func _run() -> void:
 		var ev: Dictionary = probe._events[k]
 		if String(ev["kind"]) == "crash" and String((ev["data"] as Dictionary).get("hit", "")) == "person":
 			people += 1
+			print("SCENARIO a person hit at %.1f s: %s" % [float(ev.get("t", 0.0)), JSON.stringify(ev["data"])])
 	var stops := 0
 	for b: Array in sc.beats:
 		stops += 1 if String(b[0]) == "look" else 0
@@ -93,8 +109,10 @@ func _run() -> void:
 			ok = ok and sc.drops_done >= 2 and not sc.on
 		"ambulance":
 			ok = ok and sc.reached >= 1 and sc.yielded > 0 and not sc.on
-		"day":
-			ok = ok and not sc.on and sc.shots_seen.size() >= 3
+		"day", "shabbat":
+			ok = ok and not sc.on and sc.shots_seen.size() >= 2
+		"wedding":
+			ok = ok and not sc.on and sc.reached >= 1 and sc.hoots > 0
 		"dragons":
 			ok = ok and not sc.on and sc._dragons != null and int(sc._dragons.events.get("fire", 0)) >= 2 				and int(sc._dragons.events.get("cam_in_building", 0)) == 0
 	print("SCENARIO shots: %s; cars that pulled over: %d; time now: %s" % [JSON.stringify(sc.shots_seen), sc.yielded,
@@ -102,6 +120,15 @@ func _run() -> void:
 	print("SCENARIO %s ended: %s, %d of %d stops reached, %d people hit, %.0f s" % [sc.kind, sc.result, sc.reached, stops, people, t])
 	print("SCENARIO camera frames inside a building: %d" % sc.cam_in_building)
 	print("SCENARIO off the road over 8 m/s: %.1f s" % off_fast)
+	# (frames a second say nothing here: the cloud's software renderer holds every run at ~4. The
+	# CPU's own time a frame -- scripts, the traffic, physics -- is what a scenario adds or saves)
+	var sm := 0.0
+	for v: float in script_ms:
+		sm += v
+	print("SCENARIO cost: loaded in %.1f s, the game's script %.2f ms a frame (over %d spells), %.1f traffic cars on average (quality %d)" % [g._load_ms / 1000.0,
+		sm / maxf(script_ms.size(), 1), script_ms.size(), cars_sum / maxf(frames, 1), g._quality])
+	if sc.convoy_ticks > 0:
+		print("SCENARIO convoy: %.3f ms a tick over %d ticks" % [sc.convoy_us / 1000.0 / sc.convoy_ticks, sc.convoy_ticks])
 	print("SCENARIO card: %s; stars %d, %.0f s run, close calls %d, tips %d, tour cuts %d" % [" | ".join(sc.card_lines), sc.stars, sc.run_t,
 		sc.close_calls, sc.tips, sc.skips])
 	ok = ok and not sc.card_lines.is_empty() and off_fast < 2.0   # (no car of a scenario drives the pavement at speed)

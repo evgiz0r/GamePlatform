@@ -4842,6 +4842,29 @@ skipped, would bring it to ~3 min. Titles and end cards: `title.png`, `end_card.
 `tests/scenario.gd` prints the end card (`SCENARIO card:`) and, for the getaway, the gap every
 5 s; PASS needs the card, the getaway's "home" counts, a delivery needs 2 of 3 drops.
 
+**Round three (24 Nov, day; the user: "Lets start just by few 2 3 scenarios. As all these stuff
+have no inputs, i want them super optimized")**: two new ones, both built to cost nothing.
+- **Wedding convoy** (level 47, Tel Aviv; "wedding"): you lead, `_convoy_on(n)` puts n decorated
+  cars on your own trail (`_ctrail`, every 0.5 m; `CONVOY_GAP` 11 m) -- no AI, no steering, no
+  physics: each is placed at the trail point of its odometer, so the whole convoy costs
+  **0.05 ms a tick** (`convoy_us / convoy_ticks`, printed by the test). One horn stream on an
+  `AudioStreamPlayer3D` per car, a hoot every 3-8 s. Ribbons and flowers (`_dress`) are a few
+  boxes and spheres in palette materials (`_flat`). The hall: `_ahead_main_street(700, 1100)`,
+  the main street most in the facing direction; the clock is distance x 1.5 / 7.5 m/s + 25 s.
+- **Shabbat eve** (level 48, Givatayim; "shabbat"): evening into night, with beat "quiet n"
+  calling `traffic.set_cap(n)` -- 8, then 3, then 1 car. `set_cap` kills the farthest cars
+  beyond the cap and the respawn branch skips while `alive_count() >= cap`. The story is that
+  the street empties, so the scenario is cheaper as it goes: **40.5 ms of script a frame** on
+  average against 48.1 for "A day in Givatayim" (same city, same container, quality 0; 6.1
+  traffic cars on average against 22). `_finish` puts the cap back to `COUNT`.
+- The test's cost line now gives the game's own script time (`_prof_avg`, "script N ms",
+  averaged over every 2 s spell) instead of fps, which reads 3.8 in every run under the
+  software renderer and so said nothing. Loads: wedding ~16 s (as the ambulance in Tel Aviv),
+  Shabbat 12.6 s (as A day, 11.7).
+- The kerb camera stood inside buildings (92 frames in "A day", before this round): a kerb spot
+  is used only when `g._push_out(cand, 0.6, false, false)` is zero, else the shot falls back to
+  "orbit". 0 frames in every scenario since (`cam_in_building`).
+
 ## On foot: faster, and any car in traffic (22 Nov 2026)
 
 `WALK` 2.1 -> 4.5 m/s (a jog, the "Run" clip from 2.6 m/s up), `RUN` 6.2 -> 9.5 (the run

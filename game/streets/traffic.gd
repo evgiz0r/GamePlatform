@@ -307,6 +307,21 @@ func set_night(on: bool) -> void:
 	for i in range(cars.size()):   # nothing drawn yet for cars that are not alive
 		_beams.multimesh.set_instance_transform(i, Transform3D(Basis(), Vector3(0, -500, 0)))
 
+## at most `n` cars about (a scenario's quiet streets -- Shabbat eve: 4); the farthest of the
+## rest taken away now, none put back past it. COUNT gives them all back.
+var cap := COUNT
+func set_cap(n: int) -> void:
+	cap = clampi(n, 0, COUNT)
+	var alive: Array = []
+	for i in range(cars.size()):
+		if (cars[i] as Car).alive:
+			alive.append(i)
+	var me: Vector2 = g._pos
+	alive.sort_custom(func(a, b): return (cars[a] as Car).pos.distance_to(me) < (cars[b] as Car).pos.distance_to(me))
+	for k in range(cap, alive.size()):
+		(cars[alive[k]] as Car).alive = false
+		_hide_or_show(alive[k])
+
 func alive_count() -> int:
 	var n := 0
 	for c: Car in cars:
@@ -341,6 +356,8 @@ func tick(dt: float) -> void:
 			c.retry -= dt
 			if spawned or c.retry > 0.0:
 				continue
+			if cap < COUNT and c.alive == false and alive_count() >= cap:
+				continue   # (a scenario's quiet streets: no more than its cap)
 			spawned = true
 			var t0 := Time.get_ticks_usec()
 			c.alive = _spawn(c, false)

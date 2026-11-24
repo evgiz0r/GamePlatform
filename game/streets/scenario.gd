@@ -54,6 +54,8 @@ const GOALS := {
 	"day": "Morning to night in three minutes.",
 	"dragons": "Look up.",
 	"delivery": "Three pizzas, three real addresses. The faster, the bigger the tip. Take the wheel any time.",
+	"wedding": "Lead the convoy to the hall before the ceremony starts. Everyone hoots.",
+	"shabbat": "Friday, the hour before sunset: the town winds down. Sit back.",
 	"taxi": "Pick up whoever waves you down, take them where they're going. Quick and in one piece pays. Take the wheel any time.",
 }
 const CHASE_EDGE := 1.0       ## m/s faster than you were at that point of your trail, at first...
@@ -146,6 +148,10 @@ func setup(id: String) -> void:
 		beats = _delivery_beats()
 	elif id == "taxi":
 		beats = _taxi_beats()
+	elif id == "wedding":
+		beats = _wedding_beats()
+	elif id == "shabbat":
+		beats = _shabbat_beats()
 	# every one opens on its title card: what it is and what counts as winning it
 	beats.insert(0, ["title", String(g._place.get("name", id)), String(GOALS.get(id, "")), TITLE_S])
 	Probe.event("scenario", {"kind": id, "beats": beats.size()})
@@ -308,6 +314,8 @@ func tick(dt: float) -> void:
 	_cam_check()
 	if _siren_on:
 		_yield_tick()
+	if not _convoy.is_empty():
+		_convoy_tick(dt)
 	var b: Array = beats[i]
 	match String(b[0]):
 		"title":
@@ -337,7 +345,7 @@ func tick(dt: float) -> void:
 					if not there:
 						stars = 0
 				_next()
-		"time", "wet", "shots", "siren":
+		"time", "wet", "shots", "siren", "convoy", "quiet":
 			_next()
 		"dragons":
 			if _dragons.tick(dt, func(text: String, secs: float) -> void: _say(text, secs)):
@@ -411,6 +419,11 @@ func _next() -> void:
 				_cam_usual()
 		"siren":
 			_set_siren(bool(b[1]))
+		"convoy":
+			_convoy_on(int(b[1]))
+		"quiet":
+			if g._traffic != null:
+				g._traffic.set_cap(int(b[1]))
 		"dragons":
 			g._set_auto(false)
 			g._v = 0.0
@@ -459,6 +472,10 @@ func _next() -> void:
 					else ("At the hospital, %s late. They rush the stretcher in." % _mmss(-left) if stars == 1 else "Stuck. Another ambulance had to take over.")
 			elif kind == "delivery":
 				txt = "Shift over: %d of %d delivered, %d in tips." % [drops_done, DROPS, tips]
+			elif kind == "wedding":
+				var lw := _limit - run_t
+				txt = ("The hall's lights, the music already playing, %s to spare. Mazal tov!" % _mmss(lw)) if stars >= 2 \
+					else "They held the ceremony for you. Mazal tov -- just."
 			elif kind == "taxi":
 				txt = "Light off. %d fares, %d on the meter and in tips." % [drops_done, tips]
 			_say(txt, 6.0)
@@ -491,6 +508,9 @@ func _finish(how: String) -> void:
 	_title_off()
 	if _strip != null:
 		_strip.visible = false
+	if g._traffic != null and g._traffic.cap < g._traffic.COUNT:
+		g._traffic.set_cap(g._traffic.COUNT)   # (the streets fill again)
+	_convoy_off()
 	if how != "yours":
 		_end_card()
 	Probe.event("scenario_end", {"kind": kind, "result": result, "reached": reached, "stars": stars,
@@ -780,8 +800,17 @@ func _shots_tick(dt: float) -> void:
 			var side := Vector2(-fw.y, fw.x)
 			var hit: Dictionary = g._nearest_seg(ahead, 20.0, true)
 			var half := float((g._roads[int(hit["road"])] as Dictionary)["w"]) * 0.5 if not hit.is_empty() else 4.0
-			var at := ahead + side * (half + 1.2)
-			_kerb_at = Vector3(at.x, g._h(at) + 0.9, at.y)
+			# the kerb on either side, else the road's edge: never a spot inside a building (a
+			# day in Givatayim had 92 frames of camera in a wall, Shabbat eve 11 -- tests/scenario.gd)
+			var at := Vector2.INF
+			for cand: Vector2 in [ahead + side * (half + 1.2), ahead - side * (half + 1.2), ahead + side * maxf(half - 0.6, 0.5)]:
+				if g._push_out(cand, 0.6, false, false) == Vector2.ZERO:
+					at = cand
+					break
+			if at == Vector2.INF:
+				name = "orbit"
+			else:
+				_kerb_at = Vector3(at.x, g._h(at) + 0.9, at.y)
 		if name == "usual":
 			_cam_usual()
 		else:
@@ -1077,6 +1106,12 @@ func _strip_text() -> String:
 			var left := _limit - run_t
 			_strip_role = "friend" if left > 30.0 else ("warn" if left > 0.0 else "hazard")
 			return "patient: %s%s · hospital %s" % ["" if left >= 0.0 else "late ", _mmss(absf(left)), _dist_txt(_left_m())]
+		"wedding":
+			if _limit <= 0.0:
+				return ""
+			var lw := _limit - run_t
+			_strip_role = "friend" if lw > 30.0 else ("warn" if lw > 0.0 else "hazard")
+			return "ceremony in %s%s · the hall %s" % ["" if lw >= 0.0 else "-", _mmss(absf(lw)), _dist_txt(_left_m())]
 		"taxi":
 			var b: Array = beats[i]
 			if String(b[0]) == "pickup":
@@ -1291,6 +1326,15 @@ func _end_card() -> void:
 				per.append(_mmss(s_) if s_ >= 0 else "cancelled")
 			if not per.is_empty():
 				lines.append("drops: " + ", ".join(per))
+		"wedding":
+			var lw := _limit - run_t
+			head = "Mazal tov!" if stars >= 2 else "Late to your own party"
+			lines.append("%s for the drive · %s %s" % [_mmss(run_t), _mmss(absf(lw)), "to spare" if lw >= 0.0 else "late"])
+			lines.append("%d cars in the convoy · %d hoots" % [convoy_n + 1, hoots])
+		"shabbat":
+			head = "Shabbat shalom"
+			stars = 0
+			lines.append("%s through %s as it went quiet" % [_mmss(run_t), String(story.get("town", g._city_name))])
 		"taxi":
 			head = "End of the shift"
 			stars = 3 if tips >= 75 else (2 if tips >= 55 else (1 if drops_done > 0 else 0))
@@ -1579,3 +1623,214 @@ func _route_back(back: float) -> Vector2:
 		if acc >= back:
 			return pts[k - 1]
 	return Vector2.INF
+
+## ---- the wedding convoy -------------------------------------------------------------------------
+
+## the hall 0.9-1.4 km off; you lead, three decorated cars on your trail hooting; a clock to the
+## ceremony (the ambulance's: drive_for with _limit)
+func _wedding_beats() -> Array:
+	var goal := _ahead_main_street(700.0, 1100.0)   # (0.9-1.4 km: a 3 min drive, long to watch)
+	var limit := roundf(goal.distance_to(g._pos) * 1.5 / 7.5 + 25.0)   # (at / 9 m/s it was 0:13 late)
+	if OS.get_environment("SCEN_DEBUG") != "":
+		print("wedding: from %s to %s" % [g._pos, goal])
+	return [["time", "day" if OS.get_environment("SCEN_DAY") != "" else "evening"],
+		["say", "The ceremony is at the hall in %s. The cousins are behind you, hands on the horn." % _mmss(limit), 3.5],
+		["timer", limit],
+		["convoy", 3],
+		["shots", ["usual", "back", "above", "kerb", "orbit"], 7.0],
+		["drive_for", goal, "the wedding hall", "rules", limit + 90.0],   # (in green-wave style autodrive hit a person on a crossing in 2 runs of 3: a light turned for it as they crossed)
+		["shots", [], 0.0],
+		["end", ""]]
+
+const CONVOY_GAP := 11.0      ## metres of your trail between the cars
+const WEDDING_SAYS := ["Every car on the street joins in the hooting.", "Someone's waving a flag out of the sunroof.",
+	"An uncle on the phone: 'Where are you?!'", "A bus driver hoots back. Even he's happy."]
+var _convoy: Array = []       ## the following cars (Node3D)
+var _ctrail: Array = []       ## [where, yaw, odometer] of your car, every 0.5 m (the chase's trail, its own)
+var _horns: Array = []        ## an AudioStreamPlayer3D on each
+var _hoot_t := 2.0
+var _say_t := 18.0
+var hoots := 0                ## for tests and the end card
+var convoy_n := 0
+
+func _convoy_on(n: int) -> void:
+	_convoy_off()
+	_ctrail = [[g._pos, g._yaw, 0.0]]
+	var ribbon := _flat("ink")
+	var bloom := [_flat("prize"), _flat("accent"), _flat("friend")]
+	_dress(g._car, ribbon, bloom)
+	var horn := _horn_stream()
+	for k in range(n):
+		var c: Node3D = g.model(["sedan", "suv", "taxi", "van"][k % 4] if k != 2 else "sedan", 4.4)
+		g.world.add_child(c)
+		_dress(c, ribbon, bloom)
+		var hp := AudioStreamPlayer3D.new()
+		hp.stream = horn
+		hp.unit_size = 12.0
+		hp.max_distance = 200.0
+		hp.volume_db = linear_to_db(maxf(0.0001, float(SaveData.data.get("volume_sfx", 0.8)))) - 8.0
+		hp.pitch_scale = 0.92 + 0.08 * k
+		c.add_child(hp)
+		_convoy.append(c)
+		_horns.append(hp)
+		convoy_n = _convoy.size()
+		c.visible = false   # (until the trail is long enough to put it on)
+
+func _convoy_off() -> void:
+	for c in _convoy:
+		if is_instance_valid(c):
+			c.queue_free()
+	_convoy = []
+	_horns = []
+	if g._car != null and g._car.has_node("wedding"):
+		g._car.get_node("wedding").queue_free()
+
+## the cars on your trail, a few metres apart; now and then one hoots (a couple at once, often)
+var convoy_us := 0            ## for the test: what the convoy costs (microseconds, all its ticks)
+var convoy_ticks := 0
+func _convoy_tick(dt: float) -> void:
+	var t0 := Time.get_ticks_usec()
+	_convoy_move(dt)
+	convoy_us += Time.get_ticks_usec() - t0
+	convoy_ticks += 1
+	if OS.get_environment("SCEN_DEBUG") != "" and convoy_ticks % 300 == 0:
+		print("wedding: at %s, %.0f km/h, %s" % [Vector2i(g._pos), absf(g._v) * 3.6, g._on_name])
+
+func _convoy_move(dt: float) -> void:
+	var last: Array = _ctrail[_ctrail.size() - 1]
+	var moved := (g._pos as Vector2).distance_to(last[0])
+	if moved >= 0.5:
+		_ctrail.append([g._pos, g._yaw, float(last[2]) + moved])
+	var head := float(_ctrail[_ctrail.size() - 1][2])
+	while _ctrail.size() > 2 and float(_ctrail[1][2]) < head - CONVOY_GAP * (_convoy.size() + 1) - 2.0:
+		_ctrail.remove_at(0)
+	for k in range(_convoy.size()):
+		var want := head - CONVOY_GAP * (k + 1)
+		var c: Node3D = _convoy[k]
+		if want < 0.0:
+			continue
+		var j := 0
+		while j < _ctrail.size() - 2 and float(_ctrail[j + 1][2]) < want:
+			j += 1
+		var a: Array = _ctrail[j]
+		var b: Array = _ctrail[mini(j + 1, _ctrail.size() - 1)]
+		var f := clampf((want - float(a[2])) / maxf(float(b[2]) - float(a[2]), 0.01), 0.0, 1.0)
+		var p := (a[0] as Vector2).lerp(b[0], f)
+		c.position = Vector3(p.x, g._h(p), p.y)
+		c.rotation = Vector3(0, -lerp_angle(float(a[1]), float(b[1]), f) + PI * 0.5, 0)
+		c.visible = true
+	_hoot_t -= dt
+	if _hoot_t <= 0.0 and not Audio.muted():
+		_hoot_t = randf_range(3.0, 8.0)
+		var k := randi() % maxi(_horns.size(), 1)
+		if k < _horns.size() and _convoy[k].visible:
+			(_horns[k] as AudioStreamPlayer3D).play()
+			hoots += 1
+			get_tree_timer(randf_range(0.25, 0.7), func() -> void:   # (stopped short: a toot, or a long one)
+				if is_instance_valid(_horns[k] if k < _horns.size() else null):
+					(_horns[k] as AudioStreamPlayer3D).stop())
+	_say_t -= dt
+	if _say_t <= 0.0 and String(beats[i][0]) == "drive_for":
+		_say_t = 22.0
+		_say(WEDDING_SAYS[hoots % WEDDING_SAYS.size()], 3.0)
+
+func get_tree_timer(secs: float, cb: Callable) -> void:
+	g.get_tree().create_timer(secs).timeout.connect(cb)
+
+## white ribbons from the bonnet's corners to the roof, a bunch of flowers on the bonnet: a
+## node named "wedding" on the car (one shared material each: a few boxes and balls a car)
+func _dress(car: Node3D, ribbon: Material, bloom: Array) -> void:
+	if car == null:
+		return
+	var w := Node3D.new()
+	w.name = "wedding"
+	car.add_child(w)
+	for side in [-1.0, 1.0]:
+		var r := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.07, 0.02, 1.7)
+		r.mesh = bm
+		r.material_override = ribbon
+		r.position = Vector3(0.55 * side, 1.15, 0.0)
+		r.rotation = Vector3(0.38, 0.0, 0.0)
+		w.add_child(r)
+	for k in range(3):
+		var f := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = 0.13
+		sm.height = 0.24
+		sm.radial_segments = 8
+		sm.rings = 4
+		f.mesh = sm
+		f.material_override = bloom[k % bloom.size()]
+		f.position = Vector3(-0.15 + 0.15 * k, 0.98, 1.25 + 0.05 * (k % 2))
+		w.add_child(f)
+	w.set_meta("film", true)
+
+func _flat(role: String) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Palette.col(role) if role != "ink" else Color(0.96, 0.96, 0.94)
+	m.roughness = 0.6
+	return m
+
+func _horn_stream() -> AudioStreamWAV:
+	var rate := 22050
+	var buf := PackedFloat32Array()
+	buf.resize(int(rate * 0.5))
+	for k in range(buf.size()):
+		var tt := float(k) / rate
+		buf[k] = tanh(2.2 * sin(TAU * 410.0 * tt)) + tanh(2.2 * sin(TAU * 515.0 * tt)) * 0.85
+	return g._wav(buf, rate, true)
+
+## ---- Shabbat eve ------------------------------------------------------------------------------
+
+## evening; the traffic thinned to a few cars (traffic.gd set_cap -- the cheapest scenario of all:
+## fewer cars to move and draw), a slow drive between two of the story's streets, the shots held
+## long, then night: "Shabbat has begun", one car left on the road
+func _shabbat_beats() -> Array:
+	var town := String(story.get("town", g._city_name))
+	var stops: Array = []
+	for b: Array in _tour_beats():
+		if String(b[0]) == "drive":
+			stops.append([b[1], b[2]])
+	if stops.size() < 2:
+		var far := _far_main_street(500.0, 1000.0)
+		stops = [[far, "across town"], [g._pos, "home"]]
+	return [["time", "evening"],
+		["say", "Friday in %s, the hour before sunset." % town, 4.0],
+		["quiet", 8],
+		["shots", ["usual", "kerb", "above", "kerb"], 9.0],
+		["say", "The shops pull their shutters down. Last bags of challah, a bunch of flowers under an arm.", 6.0],
+		["drive_for", stops[0][0], String(stops[0][1]), "rules", 60.0],
+		["quiet", 3],
+		["say", "The buses have stopped. Streets that roared all week are almost empty.", 6.0],
+		["drive_for", stops[1][0], String(stops[1][1]), "rules", 60.0],
+		["time", "night"],
+		["quiet", 1],
+		["say", "Candles in the windows. Shabbat has begun.", 6.0],
+		["shots", ["above"], 8.0],
+		["say", "Somewhere, a family sings over the wine.", 6.0],
+		["shots", [], 0.0],
+		["end", "Shabbat shalom."]]
+
+## a main street lo-hi m off the way the car faces (the wedding: Tel Aviv's farthest one took a
+## way out where autodrive hit a person on a crossing at (249, 236) in every run -- reported to
+## the driving work; the hall is put ahead instead, a straighter drive)
+func _ahead_main_street(lo: float, hi: float) -> Vector2:
+	var best := Vector2.INF
+	var bd := -INF
+	var fw: Vector2 = g._fwd()
+	for r: Dictionary in g._roads:
+		if not r["drive"] or not (String(r["k"]) in ["primary", "secondary", "tertiary"]):
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		var mid := pts[pts.size() / 2]
+		var to := mid - (g._pos as Vector2)
+		var d := to.length()
+		if d < lo or d > hi or not g._bounds.grow(-150.0).has_point(mid):
+			continue
+		var score := to.normalized().dot(fw)
+		if score > bd:
+			bd = score
+			best = mid
+	return best if best != Vector2.INF else _far_main_street(lo, hi)
