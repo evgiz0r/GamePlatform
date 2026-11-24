@@ -655,7 +655,12 @@ func _target(c: Car, i: int, dt: float) -> float:
 	# past it skipped the player altogether (the test town's (-546, 405), 3-6 a run: "autodrive
 	# in a car ... 0.3 m in, autodrive 0 km/h, held by junction"). Each corner in my way where
 	# the bodies would touch -- with a hand's breadth, squeezing past too (brushing, not into it)
-	if not g._walking and _level(c, float(g._y), _me_lift) and g._pos.distance_squared_to(c.pos) < (look + 8.0) * (look + 8.0):
+	# (but not a player going my way with its middle behind mine: I am the one in front, it
+	# follows -- Annecy's Boulevard du Lycée, route 13: a moto drew up beside autodrive's nose at
+	# a roundabout's mouth, waited for those corners while autodrive waited for the moto, and
+	# both stood there for 500 s)
+	var behind_me: bool = g._fwd().dot(fwd) > 0.7 and (g._pos - c.pos).dot(fwd) < 0.0
+	if not g._walking and not behind_me and _level(c, float(g._y), _me_lift) and g._pos.distance_squared_to(c.pos) < (look + 8.0) * (look + 8.0):
 		var pf: Vector2 = g._fwd()
 		var ps := Vector2(-pf.y, pf.x)
 		var hl: float = float(g.CAR_LEN) * 0.5

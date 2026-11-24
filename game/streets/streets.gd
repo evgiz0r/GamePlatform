@@ -22009,16 +22009,23 @@ func _crossers_tick(dt: float) -> void:
 					a.play("Walk", true, float(cr["speed"]) / _walk_clip_v())
 			"cross", "back":
 				var w := from.distance_to(to)
-				var sp: float = cr["speed"] * (2.4 if state == "back" else 1.0)
+				var sp: float = cr["speed"] * (2.4 if state == "back" or cr.get("hurry", false) else 1.0)
 				cr["s"] = clampf(float(cr["s"]) + (sp if state == "cross" else -sp) * dt / maxf(w, 0.1), 0.0, 1.0)
 				p = from.lerp(to, float(cr["s"]))
 				# (and where the person is, and their pace across: cars wait only while they are
 				# on that car's half of the road, see _zebra_clear)
 				_zebras_on.append([(from + to) * 0.5, from.distance_to(to) * 0.5 - 0.1, (to - from).normalized(), p,
-					float(cr["speed"]) * (1.0 if state == "cross" else -2.4)])
+					sp if state == "cross" else -sp])
 				# the player bearing down on them: back to the kerb they came from
-				if state == "cross" and p.distance_to(_pos) < 5.5 and absf(_v) > 2.0 and (p - _pos).dot(_fwd() * signf(_v)) > 0.0:
-					cr["state"] = "back"
+				if state == "cross" and not cr.get("hurry", false) and p.distance_to(_pos) < 5.5 and absf(_v) > 2.0 and (p - _pos).dot(_fwd() * signf(_v)) > 0.0:
+					# back the way they came only while that side of the car's line is still
+					# theirs; past it, on over at a run (Annecy's Boulevard Nicollet, route 13:
+					# someone already over the car's line ran back across it and into the car)
+					var fv := _fwd() * signf(_v)
+					if signf(fv.cross(from - _pos)) == signf(fv.cross(p - _pos)):
+						cr["state"] = "back"
+					else:
+						cr["hurry"] = true
 					a.play("Run", true, 1.2)
 					if _zebra_warned != int(cr["ni"]):
 						_zebra_warned = int(cr["ni"])
@@ -22026,6 +22033,7 @@ func _crossers_tick(dt: float) -> void:
 						Probe.event("zebra", {"street": _on_name, "kmh": int(absf(_v) * 3.6), "auto": _auto})
 				if state == "cross" and float(cr["s"]) >= 1.0 or state == "back" and float(cr["s"]) <= 0.0:
 					# over (or back): off along the pavement, gone once out of the way
+					cr["hurry"] = false
 					cr["state"] = "away"
 					cr["t"] = 12.0
 					a.play("Walk", true, float(cr["speed"]) / _walk_clip_v())
@@ -26082,25 +26090,45 @@ func _ap_keep_clear(upto: float) -> void:
 	var nl := PackedFloat32Array([_ap_lim[0]])
 	var acc := 0.0
 	var moved := 0
+	# where the plan bends (the room there is r + AP_BEND_PAD, on the line either side too:
+	# Leiden's Doelenbrug, route 12, had the bend's points 1.86 m from a sign's post and the
+	# line between them 1.59, and the back end clipped it there)
+	var bend := PackedByteArray()
+	bend.resize(_ap_pts.size())
+	for k in range(1, _ap_pts.size() - 1):
+		if absf((_ap_pts[k] - _ap_pts[k - 1]).angle_to(_ap_pts[k + 1] - _ap_pts[k])) >= AP_BEND_ANGLE:
+			bend[k] = 1
 	for k in range(1, _ap_pts.size()):
 		var a := _ap_pts[k - 1]
 		var b := _ap_pts[k]
 		var L := a.distance_to(b)
 		if acc < upto:
-			var m := maxi(int(L), 1)
+			# (every metre or less: int(L) left a 1.9 m step of Leiden's plan unlooked-at, its
+			# line 1.59 m from a post. Not under a metre: a pushed middle is a new plan point, so
+			# halving every step each look doubled the plan near anything solid four times a
+			# second -- Ashdod's route 6 took 35 s a frame by 11 minutes)
+			var m := ceili(L) if L > 1.0 else 1
 			for q in range(1, m):
 				var at := a.lerp(b, float(q) / m)
 				if at.distance_to(_pos) < 2.5:
 					continue   # (not under the car: it is where it is)
-				var push := _push_out(at, r, true, false, _y)
-				if push != Vector2.ZERO and push.length() <= AP_CLEAR_MAX:
+				var ra := r
+				if (bend[k - 1] == 1 and at.distance_to(a) < AP_BEND_REACH) or (bend[k] == 1 and at.distance_to(b) < AP_BEND_REACH):
+					ra += AP_BEND_PAD
+				var push := _push_out(at, ra, true, false, _y)
+				# (and only one that still goes forward: pushed out of a tight spot -- a sign, a
+				# post and a building's corner at a Monaco bend -- the points came out behind each
+				# other, the plan doubled back on itself and the car took the bend at 37 km/h into
+				# the sign)
+				if push != Vector2.ZERO and push.length() <= AP_CLEAR_MAX and (at + push - np[np.size() - 1]).dot((b - a) / L) > 0.05 \
+						and (b - (at + push)).dot(b - a) > 0.0:
 					np.append(at + push)
 					nv.append(maxf(_ap_v[k - 1], _ap_v[k]) if _ap_v[k] > 0.0 else _ap_v[k])
 					nl.append(_ap_lim[k])
 					moved += 1
 			if b.distance_to(_pos) >= 2.5:
 				var rb := r
-				if k + 1 < _ap_pts.size() and absf((b - a).angle_to(_ap_pts[k + 1] - b)) >= AP_BEND_ANGLE:
+				if bend[k] == 1:
 					rb += AP_BEND_PAD   # (a bend: the car cuts inside it and its back end swings in)
 				var pb := _push_out(b, rb, true, false, _y)
 				if pb != Vector2.ZERO and pb.length() <= AP_CLEAR_MAX:
@@ -26127,6 +26155,7 @@ const AP_TAIL_PAD := 0.5    ## m: the back end's circle this near something soli
 const AP_TAIL_GAIN := 3.0   ## rad of steering eased per metre of that
 const AP_BEND_PAD := 0.35   ## m more on a point where the plan turns by AP_BEND_ANGLE or more
 const AP_BEND_ANGLE := 0.25 ## rad
+const AP_BEND_REACH := 3.0  ## m of the line either side of a bend's point that gets AP_BEND_PAD too
 func _ap_densify(upto: float, step: float) -> void:
 	var np := PackedVector2Array([_ap_pts[0]])
 	var nv := PackedFloat32Array([_ap_v[0]])

@@ -4395,6 +4395,33 @@ checks Givatayim / Ashdod / test town 12 / 12 / 11, all traffic's; route set 10 
   prints the plan's line's gap, not its nearest point's: at Leiden the line runs 1.59 m from the
   sign (its points 1.86), under CAR_R + AP_CLEAR_PAD + the post + AP_BEND_PAD, so keep_clear
   is not pushing the line between its points there -- next to look at.
+- **Cycle 2, 24 Nov night** (route set after each change; good numbers in brackets):
+  - Leiden's sign: `_ap_keep_clear` looked between a step's ends only every whole metre, `int(L)`,
+    so a 1.9 m step had no look at all and its line ran 1.59 m from the post. Now `ceili(L)` for
+    steps over 1 m, and AP_BEND_PAD on the line within AP_BEND_REACH (3 m) of a bend, not just
+    on the bend's point: the line 1.80-1.85 m. Route 12: clean in 4 of 7 runs (it hit every run
+    since 22 Nov). Still open, now and then, at 16 km/h.
+  - **Trap**: a pushed middle is a new plan point, and keep_clear runs four times a second on
+    the plan it made, so splitting every step (`maxi(ceili(L), 2)`) halved the steps near
+    anything solid each look: Ashdod's route 6 took 35 s a frame by 11 minutes and never
+    finished (the route printed nothing: look for a missing ROUTE RESULT line). Steps under a
+    metre are not split. The route's `[hitch]` lines show it: "usual" climbing.
+  - Pushed middles must still go forward (`(at + push - last).dot(dir) > 0.05` and short of b):
+    out of a tight spot at a Monaco bend (a sign, a post, a building's corner) the points came out
+    behind each other and the car took the bend at 37 km/h into the sign.
+  - Annecy (route 13) stood 500 s at Boulevard du Lycée: a moto drew up beside autodrive's nose,
+    waited for its corners, and autodrive waited for the moto. Traffic no longer looks at the
+    player's corners when the player is going its way (dot > 0.7) with its middle behind the
+    car's: the one in front goes.
+  - Annecy's Boulevard Nicollet: someone on a zebra already past the car's line "ran back" (the
+    player bearing down within 5.5 m) across it, into the car at 7 km/h. Now back only while the
+    kerb they came from is on their side of the car's line; past it they hurry on (`hurry`, 2.4x).
+  - tests/traffic_on_road.gd (REGRESS, ~2.5 min): every moving traffic car's middle within 0.4 m
+    of a drivable road, 150 s of Givatayim: 0 off (A day in Givatayim's "car on a median" was a
+    low camera behind parked cars, not a car off the road).
+  - Full set after the first three: 15 of 15 arrived, 14 clean (Monaco's sign, then fixed).
+  - Open: autodrive and three cars on Keren Kayemet stood 60 s at (-275, -551), Givatayim,
+    in A day in Givatayim (level 28, ~110 s) -- not yet staged.
 - **turn_width now also checks the body at corners**: either of its two circles within
   CLEAR_M (5 cm) of a post, wall or building within 25 m of the junction counts (`body_near`
   in each line, in the REGRESS line). Givatayim 10 turns, Ashdod 12: none. Givatayim's
