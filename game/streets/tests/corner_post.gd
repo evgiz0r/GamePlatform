@@ -70,15 +70,16 @@ func _run() -> void:
 		if g._pos.distance_to(post) < 12.0 and t >= next:
 			next = t + 0.25
 			var pg := INF
-			for p: Vector2 in g._ap_pts:
-				pg = minf(pg, p.distance_to(post))
+			var pp: PackedVector2Array = g._ap_pts
+			for k in range(pp.size() - 1):   # (its line, not only its points: they can be 5 m apart)
+				pg = minf(pg, Geometry2D.get_closest_point_to_segment(post, pp[k], pp[k + 1]).distance_to(post))
 			if OS.get_environment("PLAN") != "":
 				var pl := ""
 				for p: Vector2 in g._ap_pts:
 					if p.distance_to(post) < 8.0:
 						pl += " (%.1f,%.1f)" % [p.x, p.y]
 				print("   plan:" + pl)
-			print("t %.2f at (%.1f, %.1f) %.1f km/h yaw %.2f: front %.2f back %.2f m clear%s; plan's nearest point %.2f m from the post" % [
+			print("t %.2f at (%.1f, %.1f) %.1f km/h yaw %.2f: front %.2f back %.2f m clear%s; plan's line %.2f m from the post" % [
 				t, g._pos.x, g._pos.y, absf(g._v) * 3.6, g._yaw, gaps[0], gaps[1], "  TOUCH" if gap < 0.0 else "", pg])
 	print("REGRESS corner_post: %s -- autodrive round a corner past a post at the corner (Givatayim, Reines into Ben Gurion): closest %.2f m clear at %.0f km/h, %d ticks touching (the bug: 0.25 m into it at 11-19 km/h)" % [
 		"PASS" if worst > 0.0 else "FAIL", worst, worst_v * 3.6, touches])

@@ -40,6 +40,7 @@ const DBL_ROADS := {"residential": true, "tertiary": true, "unclassified": true,
 const KERB_EVERY := Vector2(35.0, 75.0)   ## seconds between cars set to pull out ahead of the player
 const KERB_BOARD := 0.6      ## of those, the share with someone getting in beside the driver first
 const LANE_W := 1.5          ## a car on my path: its middle within this of my lane line
+const PLAYER_AHEAD_S := 0.8  ## s: the moving player's front corners looked at this far ahead too
 const PLAYER_W := 2.0        ## the player's car counts as in my way from further over: it
                              ## need not be on a lane line, and half in the lane is in it
 const CURVE_LAT := 2.6       ## sideways pull a driver takes a corner at (m/s^2)
@@ -644,7 +645,16 @@ func _target(c: Car, i: int, dt: float) -> float:
 		var hw: float = float(g.CAR_WIDTH) * 0.5
 		var mine: Vector2 = CORNERS.get(c.kind, CORNERS["sedan"])
 		var cw: float = mine.x + (0.1 if c.squeeze > 0.0 or c.split else 0.25)
-		for pq: Vector2 in [g._pos + pf * hl + ps * hw, g._pos + pf * hl - ps * hw, g._pos - pf * hl + ps * hw, g._pos - pf * hl - ps * hw]:
+		# (and where those corners will be in PLAYER_AHEAD_S, the player moving: autodrive going
+		# round Givatayim's Kikar Irgunei HaMitnadvim came across a hatch pulling out of
+		# HaKnesset, which saw its corners only once they were 3.6 m in front of it and touched
+		# it at 11 km/h -- a car coming from the side is in my way before it is in my lane)
+		var lead_off: Vector2 = pf * maxf(float(g._v), 0.0) * PLAYER_AHEAD_S if float(g._v) > 1.0 else Vector2.ZERO
+		var pqs: Array = [g._pos + pf * hl + ps * hw, g._pos + pf * hl - ps * hw, g._pos - pf * hl + ps * hw, g._pos - pf * hl - ps * hw]
+		if lead_off != Vector2.ZERO:
+			pqs.append(g._pos + pf * hl + ps * hw + lead_off)
+			pqs.append(g._pos + pf * hl - ps * hw + lead_off)
+		for pq: Vector2 in pqs:
 			if (pq - c.pos).dot(fwd) < 0.0:
 				continue
 			var cg := _path_gap(c, pq, look, cw)   # (from my middle, as `best` is; a corner has no length of its own)
