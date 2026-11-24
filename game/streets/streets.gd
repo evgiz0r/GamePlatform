@@ -113,6 +113,11 @@ const LEVELS := [
 	# a taxi shift (24 Nov, the user's go on the ideas list): three fares waving at the kerb, each to an address
 	{"name": "Taxi shift: Tel Aviv", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "taxi"},
 	{"name": "Taxi shift: Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "taxi"},
+	# two more (24 Nov, the user: "Lets start just by few 2 3 scenarios. As all these stuff have no
+	# inputs, i want them super optimized"): watched only; Shabbat eve thins the traffic to a few
+	# cars, the convoy is three models on your own trail (no traffic logic of their own)
+	{"name": "Wedding convoy: Tel Aviv", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "wedding"},
+	{"name": "Shabbat eve: Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "shabbat"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -27266,8 +27271,8 @@ func _walk_list_open(kind := "walks") -> void:
 		b.clip_text = true
 		_route_ui.add_child(b)
 		if two:
-			# (past sixteen rows a little tighter: nine rows at 31 ran into the settings at 322)
-			var step := 31.0 if rows.size() <= 16 else 28.0
+			# (more rows a little tighter: nine rows at 31 ran into the settings at 322)
+			var step := minf(31.0, 250.0 / ceilf(rows.size() / 2.0))   # (ten rows: 25)
 			_put(b, Vector2(30 + (k % 2) * 295, 64 + (k / 2) * step), Vector2(285, step - 4.0))
 		else:
 			_put(b, Vector2(120, 64 + k * 31.0), Vector2(400, 27))
