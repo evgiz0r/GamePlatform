@@ -143,7 +143,7 @@ bpy.ops.wm.save_as_mainfile(filepath=OUT)
 if STILL:
     cam = scn.camera
     tgt = Vector((0, 0, 1.0)) if "--face" not in args else Vector((0, 0, 1.63))
-    cam.location = Vector((0.4, -3.6, 1.2)) if "--face" not in args else Vector((0.25, -0.75, 1.70))
+    cam.location = Vector((2.6, -2.6, 1.3)) if "--face" not in args else Vector((0.25, -0.75, 1.70))
     d = tgt - cam.location
     cam.rotation_euler = d.to_track_quat("-Z", "Y").to_euler()
     scn.render.filepath = STILL

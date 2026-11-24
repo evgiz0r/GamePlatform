@@ -26,6 +26,11 @@ TARGETS = {
     "cheek/l-cheek-bones-decr": 0.2, "cheek/r-cheek-bones-decr": 0.2,
     "neck/neck-scale-depth-decr": 0.1,
     "stomach/stomach-pregnant-incr": 0.05,
+    # he said: "some boobs" -- flatter chest
+    "torso/torso-muscle-pectoral-decr": 0.9,
+    "breast/breast-point-decr": 0.8,
+    "breast/breast-volume-vert-down": 0.6,
+    "torso/torso-scale-depth-decr": 0.15,
 }
 
 def read_obj(path):

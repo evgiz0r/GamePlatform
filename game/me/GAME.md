@@ -20,6 +20,19 @@ What was asked (23 Nov 2026), in their words:
 4. **teach** -- explains with his hands, turns and writes three lines on a whiteboard, then
    points at each line (17 s)
 
+## The realistic take (asked 24 Nov 2026)
+
+> lets make in the simulation - i am waving in the beginning, then walking to the board. and
+> saying. now i will teach you math. while i am typing, math objects start falling around me -
+> e , p , numbers , signs, and so on.
+> when i finish rotating and it is still falling, i raise my arm and fly away
+
+Built in Blender (`realistic/`): a real-proportioned body in his clothes, real motion capture
+for the wave, walk, talk and writing, the line as a caption, symbols (e, π, ∑, √, ∞, digits,
+signs) raining and bouncing round him, then his right arm up and away. He said of the first
+realistic stills: the dance "looks weird", "some boobs", "shoulders too high" -- the chest is
+flattened (targets) and the collarbones no longer take the mocap's rest angle.
+
 ## The body
 
 For now a stand-in: the kit's low-poly Quaternius person dressed like the photos (brick-red

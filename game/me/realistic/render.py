@@ -31,6 +31,8 @@ for f in frames:
     scn.frame_set(f)
     hips = rig.matrix_world @ rig.pose.bones["Hips"].head
     tgt = Vector((hips.x, hips.y, 1.0))
+    if "--static" in a:
+        tgt = Vector((2.2, 0, 1.1)); dirs[view] = Vector((0, -1, 0))
     cam.location = tgt + dirs[view] * dist + Vector((0, 0, 0.35))
     cam.rotation_euler = (tgt - cam.location).to_track_quat("-Z", "Y").to_euler()
     scn.render.filepath = os.path.join(OUTD, "f%04d.png" % f)
