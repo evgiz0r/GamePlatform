@@ -11596,6 +11596,9 @@ render_mode cull_back;
 uniform int gone_n = 0;   // road signs bent by the car (_bend_sign): hidden here, a bent copy drawn
 uniform vec4 gone[12];    // ... x, z of the pole, from what height, to what height
 uniform float gone_r[12]; // ... and how far out its plate reaches
+uniform int rail_n = 0;   // railing panels the car broke through (_break_rail): flattened to their foot
+uniform vec4 rail_gone[12];  // ... the panel's two ends, x z x z
+uniform vec2 rail_y[12];     // ... from what height (its foot, above the kerb) to what height
 uniform vec4 tones[64] : source_color;
 uniform vec4 tone_fx[64];
 uniform float textured = 1.0;
@@ -11647,6 +11650,17 @@ void vertex() {
 		// its stub (the pole's foot is left; a merged batch cannot leave one sign out)
 		if (distance(wpos.xz, gone[i].xy) < gone_r[i] && wpos.y > gone[i].z && wpos.y < gone[i].w) {
 			wpos = vec3(gone[i].x + (wpos.x - gone[i].x) * 0.05, gone[i].z, gone[i].y + (wpos.z - gone[i].y) * 0.05);
+			VERTEX = (inverse(MODEL_MATRIX) * vec4(wpos, 1.0)).xyz;
+		}
+	}
+	for (int i = 0; i < rail_n; i++) {
+		// a railing's posts and top rail along a broken panel (merged into the batches with
+		// everything else): laid flat at its foot, where nobody sees them
+		vec2 a = rail_gone[i].xy;
+		vec2 ab = rail_gone[i].zw - a;
+		float k = clamp(dot(wpos.xz - a, ab) / max(dot(ab, ab), 0.0001), 0.0, 1.0);
+		if (distance(wpos.xz, a + ab * k) < 0.12 && wpos.y > rail_y[i].x && wpos.y < rail_y[i].y) {
+			wpos.y = rail_y[i].x;
 			VERTEX = (inverse(MODEL_MATRIX) * vec4(wpos, 1.0)).xyz;
 		}
 	}
@@ -12544,13 +12558,14 @@ func new_cbuf(cell: float) -> CBuf:
 var _walls := PackedVector2Array()   ## two points a wall
 var _wall_r := PackedFloat32Array()  ## half its thickness
 var _wall_soft := PackedByteArray()  ## 1: a hedge, that gives (no dent, no glass, leaves fly)
-var _wall_give := PackedByteArray()  ## 1: the car breaks through at speed (a railing, a low wall, a hedge: _smash)
+var _wall_give := PackedByteArray()  ## 1: the car breaks through at speed (a railing, a low wall, a hedge: _smash); 2: broken, down (_break_rail)
+var _wall_rail := PackedByteArray()  ## 1: a railing's panel, that falls when the car breaks through it (_break_rail)
 var _wall_hash := {}
 
 ## `gives`: light enough that the car goes through it at speed rather than stopping -- a kerb
 ## railing, a garden wall under knee height, a hedge (the user, 22 Nov 2026: "things bit more
 ## breakable that dont completely stop us"). Tall fences and building walls do not.
-func add_wall(a: Vector2, b: Vector2, half: float, soft := false, gives := false) -> void:
+func add_wall(a: Vector2, b: Vector2, half: float, soft := false, gives := false, rail := false) -> void:
 	if a.distance_squared_to(b) < 0.0001:
 		return
 	var i := _wall_r.size()
@@ -12559,6 +12574,7 @@ func add_wall(a: Vector2, b: Vector2, half: float, soft := false, gives := false
 	_wall_r.append(half)
 	_wall_soft.append(1 if soft else 0)
 	_wall_give.append(1 if (gives or soft) else 0)
+	_wall_rail.append(1 if rail else 0)
 	_hash_add(_wall_hash, Rect2(a, Vector2.ZERO).expand(b).grow(half), BLD_CELL, i)
 
 ## a post as big as r already stands within 0.3 m of p (see _add_post's `unique`)
@@ -21916,7 +21932,10 @@ func _collide() -> void:
 	# jittering between the two, stuck
 	# (you driving, or racer: autodrive keeping the rules leans on a kerb railing as before --
 	# breaking through one on Moshe Dayan's bend it touched the post behind it, racer.gd's test)
-	_smash = absf(_v) > SMASH_V and not _walking and (not _auto or _racing())
+	# (racer -- the ambulance, the getaway -- at any pace above a crawl: planned over a median
+	# through its railings (_racer_across) at 4.5 m/s, it slowed under SMASH_V in the turn and
+	# the railing held it, pressing, for a minute -- Evgeni's ambulance on Kaplan, 24 Nov)
+	_smash = not _walking and (absf(_v) > SMASH_V and not _auto or _racing() and absf(_v) > RACER_SMASH_V)
 	_smashed = ""
 	for _pass in range(3):
 		var moved := false
@@ -21998,6 +22017,8 @@ func _smash_through() -> void:
 	var hedge := i >= 0 and i < _wall_soft.size() and _wall_soft[i] == 1
 	_v *= 0.985 if hedge else 0.97   # (each tick in it: a hedge drags, a railing knocks)
 	var at := Vector3(_pos.x, _y + 0.5, _pos.y) + Vector3(_fwd().x, 0.0, _fwd().y) * (CAR_OFF + CAR_R)
+	if i >= 0 and i < _wall_rail.size() and _wall_rail[i] == 1 and _wall_give[i] == 1:
+		_break_rail(i)   # (every panel it goes through, not one a cool-down)
 	if _smash_cool > 0.0:
 		return
 	_smash_cool = 0.6
@@ -22011,6 +22032,106 @@ func _smash_through() -> void:
 		shake3d(0.8)
 		Audio.play("impact_punch", 0.1, -6.0)
 	Probe.event("smash", {"what": _knocked_what, "kmh": int(absf(_v) * 3.6)})
+
+## A railing's panel the car went through falls (Evgeni, 24 Nov: "can we just crash/destroy
+## such objects"): it stops being solid (_wall_give 2), the thin posts along it too, the
+## batches lay it flat at its foot (TONE_SHADER's and FENCE_SHADER's `rail_gone`: a merged
+## batch cannot leave one panel out), and a loose panel tumbles away from the car. Put back
+## as the knocked bins are: KNOCK_BACK_S on, out of sight 70 m off; RAILS_DOWN_MAX at once.
+const RAILS_DOWN_MAX := 12
+var _rails_down: Array = []          ## {i, posts: [[post, r]], body, ground, t, gone: Vector4, y: Vector2}
+
+func _break_rail(i: int) -> void:
+	_wall_give[i] = 2
+	var a := _walls[i * 2]
+	var b := _walls[i * 2 + 1]
+	var mid := (a + b) * 0.5
+	var L := a.distance_to(b)
+	var foot := minf(_h(a), _h(b)) + 0.17   # (over the kerb's top: the kerb is not laid flat with it)
+	var posts: Array = []
+	for j: int in _near(_post_hash, mid, L * 0.5 + 0.2, BLD_CELL):
+		if _post_r[j] > 0.0 and _post_r[j] <= SMASH_POST_R and not _knockable.has(j) and not _signs_at.has(j) \
+				and Geometry2D.get_closest_point_to_segment(_posts[j], a, b).distance_to(_posts[j]) < 0.2:
+			posts.append([j, _post_r[j]])
+			_post_r[j] = 0.0
+	# the loose panel: a thin white box the length of the piece, sent on the way the car goes
+	var body := RigidBody3D.new()
+	body.mass = 12.0
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(L, 0.95, 0.05)
+	bm.material = _surface("railing")
+	mi.mesh = bm
+	body.add_child(mi)
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = bm.size
+	shape.shape = box
+	body.add_child(shape)
+	world.add_child(body)
+	var along := (b - a).normalized()
+	body.global_transform = Transform3D(Basis(Vector3.UP, -atan2(along.y, along.x)), Vector3(mid.x, foot + 0.4, mid.y))
+	var f := _fwd() * signf(_v)
+	var speed := absf(_v)
+	body.linear_velocity = Vector3(f.x, 0.0, f.y) * (speed * 0.8 + 1.0) + Vector3.UP * (1.0 + speed * 0.1)
+	body.angular_velocity = Vector3(randf_range(-3, 3), randf_range(-1, 1), randf_range(-3, 3))
+	var ground := StaticBody3D.new()   # (the city has no physics of its own: something to land on)
+	var gs := CollisionShape3D.new()
+	var gb := BoxShape3D.new()
+	gb.size = Vector3(30, 1, 30)
+	gs.shape = gb
+	ground.add_child(gs)
+	world.add_child(ground)
+	ground.global_position = Vector3(mid.x, foot - 0.17 + 0.07 - 0.5, mid.y)
+	_rails_down.append({"i": i, "posts": posts, "body": body, "ground": ground, "t": 0.0,
+		"gone": Vector4(a.x, a.y, b.x, b.y), "y": Vector2(foot, foot + 2.0)})
+	if _rails_down.size() > RAILS_DOWN_MAX:
+		_rail_up(_rails_down.pop_front())
+	_rails_gone()
+	Audio.play("impact_metal", 0.1, -8.0)
+	Probe.event("knocked", {"what": "railing", "kmh": int(speed * 3.6), "at": Vector2i(_pos)})
+
+## a broken railing's panel stood back up as it was
+func _rail_up(e: Dictionary) -> void:
+	for n: String in ["body", "ground"]:
+		if is_instance_valid(e[n]):
+			(e[n] as Node).queue_free()
+	_wall_give[int(e["i"])] = 1
+	for pr: Array in e["posts"]:
+		_post_r[int(pr[0])] = float(pr[1])
+
+## the shaders' list of the broken panels (the batches, and the railings' own panels)
+func _rails_gone() -> void:
+	var g4: Array = []
+	var gy: Array = []
+	for e: Dictionary in _rails_down:
+		g4.append(e["gone"])
+		gy.append(e["y"])
+	while g4.size() < RAILS_DOWN_MAX:
+		g4.append(Vector4.ZERO)
+		gy.append(Vector2.ZERO)
+	var mats: Array = [_tone_mat()]
+	if _furn != null:
+		mats.append(_furn._fence_material("railing", 0.15))
+	for m: ShaderMaterial in mats:
+		m.set_shader_parameter("rail_gone", g4)
+		m.set_shader_parameter("rail_y", gy)
+		m.set_shader_parameter("rail_n", _rails_down.size())
+
+func _rails_tick(dt: float) -> void:
+	if _rails_down.is_empty():
+		return
+	var changed := false
+	for k in range(_rails_down.size() - 1, -1, -1):
+		var e: Dictionary = _rails_down[k]
+		e["t"] = float(e["t"]) + dt
+		var gp: Vector4 = e["gone"]
+		if float(e["t"]) > KNOCK_BACK_S and Vector2(gp.x, gp.y).distance_to(_pos) > 70.0:
+			_rail_up(e)
+			_rails_down.remove_at(k)
+			changed = true
+	if changed:
+		_rails_gone()
 
 func _crash(speed: float) -> void:
 	if speed < 1.2 or _crash_cool > 0.0:
@@ -22254,6 +22375,7 @@ func _knock_back(e: Dictionary) -> void:
 
 func _knock_tick(dt: float) -> void:
 	_bent_tick(dt)
+	_rails_tick(dt)
 	if _knocked.is_empty():
 		return
 	for i in range(_knocked.size() - 1, -1, -1):
@@ -22527,6 +22649,7 @@ func _any_steep() -> bool:
 const SMASH_V := 2.5          ## m/s: slower than this, a railing still stops the car
 const SMASH_WALL_H := 0.6     ## m: a garden wall lower than this the car goes over
 const SMASH_POST_R := 0.07    ## m: posts this thin (railings' posts) give
+const RACER_SMASH_V := 0.3    ## m/s: racer (autodrive in a hurry) goes through them at any pace above this
 var _smash := false
 var _smashed := ""
 
@@ -22558,6 +22681,8 @@ func _push_out(c: Vector2, r: float, posts: bool, cars := true, y := NAN) -> Vec
 	if posts and ground and low:
 		# fences, railings, hedges, garden walls, a shelter's back: thin walls, as segments
 		for i: int in _near(_wall_hash, c, r + 0.5, BLD_CELL):
+			if _wall_give[i] == 2:
+				continue   # (a railing's panel broken and lying down: _break_rail)
 			if _smash and _wall_give[i] == 1:
 				var qs := c + push
 				var cps := Geometry2D.get_closest_point_to_segment(qs, _walls[i * 2], _walls[i * 2 + 1])

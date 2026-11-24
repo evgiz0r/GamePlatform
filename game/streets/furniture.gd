@@ -73,6 +73,21 @@ render_mode cull_disabled, depth_draw_opaque;
 uniform vec4 col : source_color;
 uniform float gap = 0.12;
 uniform float haze = 0.45;
+uniform int rail_n = 0;   // railing panels the car broke through (g._break_rail): flattened to their foot
+uniform vec4 rail_gone[12];
+uniform vec2 rail_y[12];
+void vertex() {
+	vec3 w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	for (int i = 0; i < rail_n; i++) {
+		vec2 a = rail_gone[i].xy;
+		vec2 ab = rail_gone[i].zw - a;
+		float k = clamp(dot(w.xz - a, ab) / max(dot(ab, ab), 0.0001), 0.0, 1.0);
+		if (distance(w.xz, a + ab * k) < 0.12 && w.y > rail_y[i].x && w.y < rail_y[i].y) {
+			w.y = rail_y[i].x;
+			VERTEX = (inverse(MODEL_MATRIX) * vec4(w, 1.0)).xyz;
+		}
+	}
+}
 void fragment() {
 	vec2 fw = fwidth(UV);
 	float d = abs(fract(UV.x / gap + 0.5) - 0.5) * gap;
@@ -915,7 +930,7 @@ func _fence_line(panel, posts, a: Vector2, e: Vector2, H: float, col: Color, ste
 		var n := (B - A).cross(Vector3.UP).normalized()
 		var u2 := Vector2(H, 0)
 		if g._mine(p0):   # (each square along the fence works it out: one records it)
-			g.add_wall(p0, p1, 0.06, false, rail and H <= 1.2)   # (a kerb railing gives at speed: g._smash)
+			g.add_wall(p0, p1, 0.06, false, rail and H <= 1.2, rail and H <= 1.2)   # (a kerb railing gives at speed: g._smash; and falls, g._break_rail)
 		panel.tri(A, B, B + up, n, col, Vector2(run, 0), Vector2(run + L, 0), Vector2(run + L, H), u2)
 		panel.tri(A, B + up, A + up, n, col, Vector2(run, 0), Vector2(run + L, H), Vector2(run, H), u2)
 		if i % post_every == 0:   # a post: four sides, no ends (nobody sees its top)

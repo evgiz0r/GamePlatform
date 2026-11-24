@@ -4191,6 +4191,22 @@ checks Givatayim / Ashdod / test town 12 / 12 / 11, all traffic's; route set 10 
   `tests/traffic_pockets.gd` (player standing at Meadowview, 150 s): traffic turn-rounds
   within 250 m 23 -> 4 (9.2 -> 1.6 a minute); `AUTO=1` autodrive roaming from there: 0 of its
   own, 17 s of 150 inside (leaving it), traffic 1.
+- **The ambulance stood a minute against Kaplan's railings** (24 Nov, Evgeni, the Tel Aviv
+  ambulance run just after its start: "can we just crash/destroy such objects"). The ambulance
+  drives as racer, and racer turns round over a divided road's median (`_racer_across`),
+  planned through what gives (`_smash` true while it checks). But the car only went through a
+  railing above SMASH_V (2.5 m/s), and in the U it slows; under that the railing held it, and
+  it pressed there. Now racer goes through at any pace above RACER_SMASH_V (0.3 m/s); you
+  driving still need SMASH_V, plain autodrive never. And a railing's panel the car goes
+  through falls (`_break_rail`): not solid any more (`_wall_give` 2), the thin posts along it
+  neither, laid flat at its foot in the batches and in the railings' own panels
+  (TONE_SHADER's and FENCE_SHADER's `rail_gone`/`rail_y`, 12 at most), a loose white panel
+  tumbling away; put back after KNOCK_BACK_S out of sight, as the bins are. The spot itself
+  was not reproduced: started headless the run's U over Kaplan (-541, 162) -> (-543, 149)
+  crosses no railing in this build (`tests/start_stuck.gd LEVEL=25`, 4 runs, 0 stuck).
+  `tests/rail_break.gd`: by hand at 18 km/h, 1-2 panels down, through; racer at 3 km/h, 2 down,
+  through; plain autodrive at 3 km/h stops at it. (Its shots do not show the spot yet: the
+  game's camera wins over the test's.)
 - **Pulling in at the kerb measured from the wrong lane.** A bus at a stop and a delivery van
   take "the room to the kerb" from `_lane(r)` -- the lane traffic drives by default, the
   middle one of three -- not the lane they are in: a bus in Sderot Herzl's kerb lane got the
