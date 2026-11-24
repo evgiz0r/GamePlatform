@@ -8732,9 +8732,12 @@ class Tubes:
 				tg.append_array([along.x, along.y, along.z, 1.0])
 				uv.append(Vector2(float(j) / sides * 0.9 * (ra + rb) / 0.27, L * float(e)))
 				col.append(Color.WHITE)
+		# (wound clockwise seen from outside, Godot's front: it was the other way round for
+		# years -- every trunk drawn inside out, its near side culled and the far side's inside
+		# showing, lit from behind: tests/backface_scan.gd, 24 Nov 2026)
 		for j in range(sides):
 			var i0 := base + j * 2
-			idx.append_array([i0, i0 + 2, i0 + 1, i0 + 1, i0 + 2, i0 + 3])
+			idx.append_array([i0, i0 + 1, i0 + 2, i0 + 1, i0 + 3, i0 + 2])
 
 	func mesh(m: Material) -> ArrayMesh:
 		var a := []

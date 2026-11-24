@@ -5499,6 +5499,11 @@ within 1.2 m behind it. Both have posts.
   road (`_land_roof`, from the game's `_blds` / `_bld_top`, not the city file's buildings: Givatayim's file has none left once built, and the first version threw there every landing; run small_life on level 1 too; the roof at the ring's mean ground + its height, as `_build_roof_kit`), looking
   down at the street; they behave as the wire ones. small_life checks every roof bird is
   inside its building's walls ("off the roof" 0), shot pigeons_roof.
+- **Inside-out trunks** (24 Nov, found by tests/backface_scan.gd): `Tubes.tube` wound its
+  quads anticlockwise seen from outside, Godot's back -- every tree trunk and branch since
+  the trunks were made had its near side culled and showed the inside of its far side, lit
+  from behind (dark on the sunny side). Now clockwise. The scan's other finds are small (a
+  parked car's rear underside, a garden wall's far top) and left for now.
 - **Open**: birds never perch on lamp tops; a flock
   spooked by traffic on the road only when it is your car; the crows look like grey pigeons
   scaled up (no separate black head and wings in the paint); gas cages only on streets

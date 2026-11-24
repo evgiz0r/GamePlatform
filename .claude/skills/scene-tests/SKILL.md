@@ -599,3 +599,15 @@ tree signal (`process_frame`) rather than `_process`, so `set_process(false)` al
 shot the game's own view -- and aim it with the kit's `look_from` (it keeps the base the shake
 resets the camera to).
 
+## Finding faces that are missing from one side
+
+A one-sided face seen from its back is simply not drawn, so nothing errors and a screenshot
+shows only an absence (overhead wires invisible from the street; tree trunks built inside
+out, their near side gone). To find the whole family at once: draw a view, then give every
+`GeometryInstance3D` a `material_override` that is unshaded and `cull_disabled`, painting
+`FRONT_FACING ? black : red` (black regardless for things whose own material is two-sided on
+purpose), and count the red pixels. Push back faces a hair deeper in that shader (`DEPTH =
+FRAGCOORD.z * 0.999` when not front-facing, reverse-z) or a back face lying flat on a front
+one (a parapet's inside on the wall's line) wins the depth tie and floods the result. Do not
+diff against the scene re-rendered two-sided instead: the lighting changes everywhere and
+every edge lights up.
