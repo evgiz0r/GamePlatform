@@ -202,10 +202,65 @@ func _run() -> void:
 			var t: Vector2 = (pts[int(hh["seg"]) + 1] - pts[int(hh["seg"])]).normalized()
 			await _view("shops_night", q - t * 20.0, q + t * 10.0 + (best - q) * 0.8, 1.7, 0.0)
 		g._set_night(false)
-	var ok: bool = most >= 3 and on_road == 0 and in_wall == 0 and pops == 0 and flew and bad_extras == 0 \
+	# Shabbat (24 Nov): a Saturday by day in an Israeli town, the shops that stay open late
+	# shut too; a Sunday, they open
+	var shab_n := int(g._dressing.get("shabbat_shutters", 0))
+	var shab_ok := true
+	if g._country() == "il":
+		g._weekday = 6
+		g._update_day()
+		var up_sat: bool = g._shabbat_now() and g._night_shut_nodes.all(func(n: Node3D) -> bool: return n.visible) \
+			and g._shabbat_shut_nodes.all(func(n: Node3D) -> bool: return n.visible) and g._traffic.cap == g.SHABBAT_CARS
+		if DisplayServer.get_name() != "headless" and g._pois.size() > 0:
+			var sh: Array = g._shop_lights
+			var best: Vector2 = (sh[sh.size() / 2] as Array)[0] if not sh.is_empty() else stand
+			var hh: Dictionary = g._nearest_seg(best, 30.0, true, true)
+			if not hh.is_empty():
+				var q: Vector2 = hh["q"]
+				var pts: PackedVector2Array = g._roads[hh["road"]]["pts"]
+				var t: Vector2 = (pts[int(hh["seg"]) + 1] - pts[int(hh["seg"])]).normalized()
+				await _view("shabbat", q - t * 20.0, q + t * 10.0 + (best - q) * 0.8, 1.7, 0.0)
+		g._weekday = 0
+		g._update_day()
+		var open_sun: bool = not g._shabbat_now() and g._night_shut_nodes.all(func(n: Node3D) -> bool: return not n.visible) \
+			and g._shabbat_shut_nodes.all(func(n: Node3D) -> bool: return not n.visible) and g._traffic.cap == g._traffic.COUNT
+		shab_ok = up_sat and open_sun and shab_n > 20
+		print("shabbat: %d shutters that close only on shabbat; saturday all down and the streets quiet %s, sunday all up and full %s" % [shab_n, up_sat, open_sun])
+	# a car over a speed bump: lifted 8 cm with both axles on top of a table, tipped nose up
+	# with only its front on a bump
+	var lift_ok := true
+	if not g.bumps.is_empty():
+		var bm: Array = g.bumps[g.bumps.size() / 2]
+		var bq: Vector2 = bm[0]
+		var bd: Vector2 = bm[1]
+		var half: float = g.WHEELBASE * 0.5
+		var on_front: Vector2 = g.bump_lift(bq + bd * 0.0, bq - bd * g.WHEELBASE)
+		var clear: Vector2 = g.bump_lift(bq + bd * 6.0, bq + bd * 6.0 - bd * g.WHEELBASE)
+		lift_ok = absf(on_front.x - 0.08) < 0.001 and on_front.y == 0.0 and clear == Vector2.ZERO
+		print("bump lift: front wheels on it %s, clear of it %s" % [on_front, clear])
+		if DisplayServer.get_name() != "headless":
+			g._car.visible = true
+			var side := Vector2(-bd.y, bd.x)
+			var cp := bq - bd * half
+			g._pos = cp
+			g._yaw = bd.angle()
+			g._pose_car(cp, bd.angle())
+			var eye := cp + side * 6.5 + bd * 1.0
+			g._dev_cam[2] = 0.9
+			g._dev_cam[4] = -4.0
+			for i in 3:
+				g._pos = eye
+				g._prev_pos = eye
+				g._yaw = (cp - eye).angle()
+				g._prev_yaw = g._yaw
+				g._pose_car(cp, bd.angle())
+				await process_frame
+			await _snap("car_on_bump")
+			g._car.visible = false
+	var ok: bool = shab_ok and lift_ok and most >= 3 and on_road == 0 and in_wall == 0 and pops == 0 and flew and bad_extras == 0 \
 		and int(nx["escooters"]) > 100 and int(nx["night_shutters"]) > 100 and (g._country() != "il" or int(nx["roof_dishes"]) > 100) and bumps_off == 0 \
 		and (mapped_pts == 0 or int(nx["post_boxes"]) + int(nx["drinking_taps"]) + int(nx["bumps"]) > 0)
-	print("REGRESS small_life: %s (flocks down %d want 3+; birds on the asphalt %d, in a wall %d, landed in view %d want 0; walked-at flock up %s; e-scooters %d, gas cages %d, on the asphalt %d want 0; fountains %d, night shutters %d, roof dishes %d; post boxes %d, taps %d, bumps %d, off the road %d want 0)" % [
-		"PASS" if ok else "FAIL", most, on_road, in_wall, pops, flew, int(nx["escooters"]), int(nx["gas_cages"]), bad_extras, int(nx["fountains"]), int(nx["night_shutters"]), int(nx["roof_dishes"]),
+	print("REGRESS small_life: %s (shabbat %s, bump lift %s; flocks down %d want 3+; birds on the asphalt %d, in a wall %d, landed in view %d want 0; walked-at flock up %s; e-scooters %d, gas cages %d, on the asphalt %d want 0; fountains %d, night shutters %d, roof dishes %d; post boxes %d, taps %d, bumps %d, off the road %d want 0)" % [
+		"PASS" if ok else "FAIL", shab_ok, lift_ok, most, on_road, in_wall, pops, flew, int(nx["escooters"]), int(nx["gas_cages"]), bad_extras, int(nx["fountains"]), int(nx["night_shutters"]), int(nx["roof_dishes"]),
 		int(nx["post_boxes"]), int(nx["drinking_taps"]), int(nx["bumps"]), bumps_off])
 	quit()

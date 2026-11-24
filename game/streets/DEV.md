@@ -5411,8 +5411,21 @@ within 1.2 m behind it. Both have posts.
 - **Shops shut at night** (`_shuts_at_night`, `_build_pois`): every shop but the late ones
   (corner shops, kiosks, supermarkets, bakeries, liquor, tobacco; a pharmacy in three) and
   anything to eat or drink gets a second shutter shown only at night (one MultiMesh a square
-  in `_night_nodes`), and lights no pool on the pavement. Tel Aviv: 1,624. No Shabbat: the
-  game has no day of the week.
+  in `_night_shut_nodes`), and lights no pool on the pavement. Tel Aviv: 1,624.
+- **Shabbat** (24 Nov): `_weekday` (0 Sunday) is the player's clock's (`STREETS_DAY` sets it),
+  moved on a day by the time button each time night turns to day; the banner names it in
+  the Israeli towns. `_shabbat_now()`: Friday evening and night, Saturday day and evening.
+  The shops `_shuts_on_shabbat` (the late ones; Tel Aviv keeps 1 in 3, elsewhere 1 in 8) get
+  a third set of shutters (`_shabbat_shut_nodes`, tally `shabbat_shutters`) and the traffic thins to `SHABBAT_CARS` 8 of 22 (only from a full town, so a scenario's own quiet stands); `_update_day`
+  shows the night ones at night or on Shabbat, those on Shabbat (from `_set_night`,
+  `_set_evening`). Open: a Shabbat shop's window still lights its pavement Friday night
+  (`_shop_lights` is built once), cafes and restaurants all stay open
+  and nobody walks to synagogue. Tests and bots run on a Tuesday whatever the date.
+- **Cars over bumps** (24 Nov): `bump_lift(front, rear)` gives the bump height under each
+  axle (`_bump_h`: `_bump_kit`'s profile, 8 cm top 0.6 m deep, a table three times that, easing
+  off over 0.16 m); `_pose_car` lifts your body by their mean and tips it by their difference
+  over the wheelbase, traffic.gd the same into `c.bump_y`/`c.bump_pitch` for cars within
+  120 m. Visual only: the speed for a bump is `bump_v`'s.
 - **Test**: `tests/small_life.gd` (REGRESS line). Good, level 7: 6 flocks down within a
   minute, 0 birds on the asphalt or in a wall, 0 landed in view, the flock walked at goes up;
   ~1,050 e-scooters, ~50 gas cages (Tel Aviv's front gardens keep most walls back), 0 on the
