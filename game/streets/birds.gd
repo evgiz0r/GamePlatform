@@ -22,7 +22,7 @@ const FLAP := 0.09
 var g: Node
 var rng := RandomNumberGenerator.new()
 var flocks: Array = []              ## {c, birds: [{p, y, yaw, h, peck, walk, v: Vector3, crow}], up: bool, t}
-var count := {"landed": 0, "flew": 0, "crows": 0}
+var count := {"landed": 0, "flew": 0, "crows": 0, "perched": 0}
 var _mm: Array = []                 ## standing, wings up, wings down
 var _free_ix: Array = []            ## bird slots not in use
 var _t := 0.0
@@ -108,7 +108,10 @@ func tick(dt: float) -> void:
 		var d := c.distance_to(me)
 		if not fl["up"]:
 			var scare := Vector2.INF
-			if d < FLEE_FOOT + 2.5 or (car_moving and d < FLEE_CAR + 2.5) or night:
+			if fl.get("perch", false):
+				if night or (g._walking and d < PERCH_FLEE):
+					scare = me
+			elif d < FLEE_FOOT + 2.5 or (car_moving and d < FLEE_CAR + 2.5) or night:
 				scare = me
 			else:
 				for q: Vector2 in g._people_at:
@@ -137,9 +140,13 @@ func tick(dt: float) -> void:
 				_show(i, 1 + (flap + (i % 2)) % 2, xf)
 			else:
 				all_gone = false
-				_ground(bd, dt)
+				var perched: bool = fl.get("perch", false)
+				if perched:
+					_sit(bd, dt)
+				else:
+					_ground(bd, dt)
 				var p: Vector2 = bd["p"]
-				var pitch := 0.55 if float(bd["peck"]) > 0.0 else 0.0
+				var pitch := (0.3 if perched else 0.55) if float(bd["peck"]) > 0.0 else 0.0
 				var xf := Transform3D(Basis(Vector3.UP, float(bd["yaw"])) * Basis(Vector3.RIGHT, pitch).scaled(Vector3.ONE * float(bd["s"])),
 					Vector3(p.x, float(bd["h"]) + float(bd["hop"]), p.y))
 				_show(i, 0, xf)
@@ -214,7 +221,69 @@ func _show(i: int, k: int, xf: Transform3D) -> void:
 		_mm[m].set_instance_transform(i, xf if m == k else zero)
 
 ## a flock put down 20-60 m off, on a pavement or a square, where you cannot see it land
+## a row of pigeons on an overhead wire (furniture.gd's perches), a span 20-60 m off and out of
+## sight: sitting a hand apart, facing across the street, now and then one turning round or
+## preening. Cars do not bother them; you on foot under them do (PERCH_FLEE).
+const PERCH_SHARE := 0.4
+const PERCH_FLEE := 6.0
+func _land_wire(me: Vector2) -> bool:
+	var per: Dictionary = g._furn.perches
+	if per.is_empty() or _free_ix.size() < 3:
+		return false
+	for _try in range(4):
+		var c := me + Vector2.RIGHT.rotated(rng.randf() * TAU) * rng.randf_range(20.0, 60.0)
+		var cell := Vector2i(floori(c.x / g._furn.PERCH_CELL), floori(c.y / g._furn.PERCH_CELL))
+		var spans: Array = per.get(cell, [])
+		if spans.is_empty():
+			continue
+		var sp: Array = spans[rng.randi() % spans.size()]
+		var a: Vector3 = sp[0]
+		var e: Vector3 = sp[1]
+		var L := Vector2(a.x, a.z).distance_to(Vector2(e.x, e.z))
+		if L < 8.0:
+			continue
+		var mid := Vector2(a.x + e.x, a.z + e.z) * 0.5
+		if mid.distance_to(me) < 20.0 or not g._spawn_ok(mid):
+			continue
+		var n := mini(rng.randi_range(3, 9), _free_ix.size())
+		var gap := rng.randf_range(0.22, 0.4) / L
+		var t := rng.randf_range(0.15, 0.85 - gap * n)
+		var across := Vector2(e.z - a.z, -(e.x - a.x)).normalized()
+		var face := atan2(across.x, across.y) + (PI if rng.randf() < 0.5 else 0.0)
+		var birds: Array = []
+		var base: Color = g._tone["rim"].lerp(g._tone["signblue"], 0.12)
+		for k in range(n):
+			var q: Vector3 = g._furn.wire_at(a, e, clampf(t, 0.05, 0.95))
+			t += gap * rng.randf_range(0.8, 1.4)
+			var i: int = _free_ix.pop_back()
+			var v := rng.randf()
+			var col: Color = base.lerp(g._tone["woodfence"], 0.4) if v < 0.12 else (base.lerp(g._tone["mark"], 0.45) if v < 0.22 else base)
+			for m in range(3):
+				_mm[m].set_instance_color(i, col)
+			birds.append({"i": i, "p": Vector2(q.x, q.z), "home": mid, "h": q.y + 0.025,
+				"yaw": face + (PI if rng.randf() < 0.15 else 0.0) + rng.randf_range(-0.15, 0.15), "peck": 0.0, "walk": 0.0,
+				"hop": 0.0, "next": rng.randf_range(0.5, 4.0), "s": rng.randf_range(0.92, 1.08), "v": Vector3.ZERO, "p3": Vector3.ZERO})
+		_next_id += 1
+		flocks.append({"id": _next_id, "c": mid, "birds": birds, "up": false, "t": 0.0, "crow": false, "perch": true})
+		count["landed"] = int(count["landed"]) + 1
+		count["perched"] = int(count.get("perched", 0)) + 1
+		return true
+	return false
+
+## a bird on a wire: still, now and then turning round or preening
+func _sit(bd: Dictionary, dt: float) -> void:
+	bd["peck"] = maxf(float(bd["peck"]) - dt, 0.0)
+	bd["next"] = float(bd["next"]) - dt
+	if float(bd["next"]) <= 0.0:
+		if rng.randf() < 0.25:
+			bd["yaw"] = float(bd["yaw"]) + PI + rng.randf_range(-0.2, 0.2)
+		else:
+			bd["peck"] = 0.4
+		bd["next"] = rng.randf_range(1.5, 6.0)
+
 func _land(me: Vector2) -> void:
+	if rng.randf() < PERCH_SHARE and _land_wire(me):
+		return
 	for _try in range(4):
 		var c := me + Vector2.RIGHT.rotated(rng.randf() * TAU) * rng.randf_range(20.0, 60.0)
 		var hit: Dictionary = g._nearest_seg(c, 30.0, true, true)

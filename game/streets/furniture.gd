@@ -308,6 +308,8 @@ func wires() -> void:
 					_cable(wire, last_at[i], at[i], 0.05 if i < 3 else 0.07)
 				if mine:
 					spans += 1
+					for i in range(3):   # (the top three: where pigeons sit, birds.gd)
+						_add_perch(last_at[i], at[i])
 			last_p = p
 			last_at = at
 		if not med and n > 0:
@@ -322,6 +324,21 @@ func wires() -> void:
 		g._chunked(head, heads, SEEN)
 	g._add_mesh(wire, g._surface("cable"), false, WIRE_SEEN)
 	_count["wire_spans"] = int(_count.get("wire_spans", 0)) + spans
+
+## the overhead wires' spans, [a, e] each, bucketed by PERCH_CELL m square (birds.gd lands a
+## row of pigeons on one); `_cable`'s sag
+const PERCH_CELL := 50.0
+var perches := {}
+func _add_perch(a: Vector3, e: Vector3) -> void:
+	var c := Vector2i(floori((a.x + e.x) * 0.5 / PERCH_CELL), floori((a.z + e.z) * 0.5 / PERCH_CELL))
+	if not perches.has(c):
+		perches[c] = []
+	perches[c].append([a, e])
+
+static func wire_at(a: Vector3, e: Vector3, t: float) -> Vector3:
+	var L := Vector2(a.x, a.z).distance_to(Vector2(e.x, e.z))
+	var sag := 0.25 + L * 0.012
+	return a.lerp(e, t) - Vector3.UP * sag * 4.0 * t * (1.0 - t)
 
 ## one wire from a to e sagging in the middle: two thin ribbons crossed, so it shows from
 ## below and from the side
@@ -340,6 +357,13 @@ func _cable(b, a: Vector3, e: Vector3, w: float) -> void:
 		var n := side.normalized()
 		b.tri(prev - up, prev + up, q + up, n, col)
 		b.tri(prev - up, q + up, q - up, n, col)
+		# and their backs: the square's batch (TONE_SHADER) culls back faces, so one-sided the
+		# wires showed only from above and from one side -- from the street, under them, not at
+		# all (24 Nov: pigeons sat in a row on nothing)
+		b.tri(q + side, prev + side, prev - side, -Vector3.UP, col)
+		b.tri(q - side, q + side, prev - side, -Vector3.UP, col)
+		b.tri(q + up, prev + up, prev - up, -n, col)
+		b.tri(q - up, q + up, prev - up, -n, col)
 		prev = q
 
 func _pole_kit(H: float) -> ArrayMesh:
