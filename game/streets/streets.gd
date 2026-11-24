@@ -18371,7 +18371,7 @@ const QUALITY := [
 ]
 const QUALITY_WEB := 2               ## where a browser starts
 ## A step down: two 2-second spells in a row under FPS_LOW, or with more than STUTTER of their
-## frames slower than 33 ms. A step back up: STEP_UP_S seconds at the display's own rate
+## frames slower than LONG_FRAME. A step back up: STEP_UP_S seconds at the display's own rate
 ## (FPS_FULL) -- unless that level failed lately: then not before its wait is up, a wait
 ## that doubles each time it fails again. Hitches (frames over HITCH_S: loading, a shader
 ## compiling) are left out of the reckoning: one half-second stall in a spell made a
@@ -18385,12 +18385,13 @@ const QUALITY_WEB := 2               ## where a browser starts
 ## waiting in traffic as much as driving, and never came back up.
 const STEP_GAIN := 1.12
 const FLOOR_S := 300.0
-const FPS_LOW := 45.0
-const FPS_FULL := 56.0
-## (Unused since 22 Nov, "same rule for all": a walk had a gentler ladder -- a step down only
-## under 28 fps, back up at 40 -- for "the highest possible quality in the view of the walk".)
-const FPS_LOW_WALK := 28.0
-const FPS_FULL_WALK := 40.0
+## The bar was 45 down, 56 up (a ladder aiming at 60): every browser on a PC runs 25-30, so
+## each one fell to 0 within seconds, everywhere (the user, 24 Nov, Monaco on a PC). Now 28
+## down and 40 up, the bar a walk once had: a PC at 30 keeps its look; a phone at 15-22 still
+## steps down.
+const FPS_LOW := 28.0
+const FPS_FULL := 40.0
+const LONG_FRAME := 0.05   ## a frame this slow counts against STUTTER (was 33 ms: every frame at 30 fps)
 const STUTTER := 0.1
 const HITCH_S := 0.25
 const STEP_UP_S := 8.0
@@ -18558,8 +18559,7 @@ func _judge_fps(dt: float) -> void:
 		return   # a hitch: not the frame rate
 	_fps_t += dt
 	_fps_frames += 1
-	var walk := false   # (a walk once had its own, gentler ladder, FPS_LOW_WALK; now the same rule for all)
-	if dt > (0.05 if walk else 0.033):
+	if dt > LONG_FRAME:
 		_fps_long += 1
 	if _fps_t < 2.0:
 		return
@@ -18568,7 +18568,7 @@ func _judge_fps(dt: float) -> void:
 	_fps_t = 0.0
 	_fps_frames = 0
 	_fps_long = 0
-	var low := fps < (FPS_LOW_WALK if walk else FPS_LOW) or stutter > STUTTER
+	var low := fps < FPS_LOW or stutter > STUTTER
 	var floor := _q_floor if _q_clock < _q_floor_until else 0
 	if _q_on_trial:   # the last step down, measured
 		_q_trial.append(fps)
@@ -18596,7 +18596,7 @@ func _judge_fps(dt: float) -> void:
 		_log.event("quality", _quality)
 		return
 	_fps_low = 0
-	if fps < (FPS_FULL_WALK if walk else FPS_FULL) or stutter > 0.03:
+	if fps < FPS_FULL or stutter > 0.03:
 		_fps_good = 0.0
 		return
 	_fps_good += 2.0
