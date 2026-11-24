@@ -110,6 +110,9 @@ const LEVELS := [
 	# against the clock to three of the town's own addresses (scenario.gd "delivery")
 	{"name": "Pizza rush: Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "delivery"},
 	{"name": "Pizza rush: Tel Aviv", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "delivery"},
+	# a taxi shift (24 Nov, the user's go on the ideas list): three fares waving at the kerb, each to an address
+	{"name": "Taxi shift: Tel Aviv", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "taxi"},
+	{"name": "Taxi shift: Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "taxi"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -25487,6 +25490,9 @@ const MOUNT_DOWN := 15.0      ## m of road it wants straight after coming back d
 const MOUNT_PAST := 26.0      ## metres of pavement it takes at most past the car in front
 var _mount_why := ""   ## why the last way up onto the pavement was not taken (tests/racer_drive.gd)
 func _ap_mount_by(lead: Array) -> bool:
+	if _scenario != null and _scenario._siren_on:
+		_mount_why = "siren"   # (an ambulance: the traffic pulls aside for it, and it does not take the pavement -- one did at 67 km/h, 24 Nov)
+		return false
 	var bi: int = lead[3]
 	if bi < 0 or (bi == _ap_passed and _ap_wait < 2.0) or _ap_pts.size() < 2:
 		_mount_why = "just passed" if bi >= 0 else ""
@@ -27062,7 +27068,9 @@ func _walk_list_open(kind := "walks") -> void:
 		b.clip_text = true
 		_route_ui.add_child(b)
 		if two:
-			_put(b, Vector2(30 + (k % 2) * 295, 64 + (k / 2) * 31.0), Vector2(285, 27))
+			# (past sixteen rows a little tighter: nine rows at 31 ran into the settings at 322)
+			var step := 31.0 if rows.size() <= 16 else 28.0
+			_put(b, Vector2(30 + (k % 2) * 295, 64 + (k / 2) * step), Vector2(285, step - 4.0))
 		else:
 			_put(b, Vector2(120, 64 + k * 31.0), Vector2(400, 27))
 	_back_button()
@@ -27205,7 +27213,7 @@ func _route_begin() -> void:
 func _watching() -> bool:
 	if not _film.is_empty() or not _route.is_empty():
 		return true
-	return _scenario != null and not (String(_place.get("scenario", "")) in ["getaway", "ambulance", "delivery"])   # (the ones with a goal: yours to drive too)
+	return _scenario != null and not (String(_place.get("scenario", "")) in ["getaway", "ambulance", "delivery", "taxi"])   # (the ones with a goal: yours to drive too)
 
 ## a drawn button that _pick_tap() can press
 func _tap_button(text: String, cb: Callable) -> Button:

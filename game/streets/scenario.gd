@@ -54,6 +54,7 @@ const GOALS := {
 	"day": "Morning to night in three minutes.",
 	"dragons": "Look up.",
 	"delivery": "Three pizzas, three real addresses. The faster, the bigger the tip. Take the wheel any time.",
+	"taxi": "Pick up whoever waves you down, take them where they're going. Quick and in one piece pays. Take the wheel any time.",
 }
 const CHASE_EDGE := 1.0       ## m/s faster than you were at that point of your trail, at first...
 const CHASE_EDGE2 := 2.6      ## ...and once backup has joined
@@ -66,6 +67,8 @@ const CLOSE_IN := 18.0        ## the chaser within this...
 const CLOSE_OUT := 28.0       ## ...and then back past this: a close call
 const TOUR_SKIP_S := 30.0     ## a tour's drive longer than this, still far off: cut ahead to near the stop
 const TOUR_SKIP_M := 160.0   ## (260: Arlosoroff, 200 m off by a one-way's long way round, took 138 s uncut)
+const DROP_SKIP_S := 30.0     ## a drop's drive watched longer than this, still far: the cut
+var skipped_s := 0.0          ## seconds of clock charged for cuts
 const DROP_PACE := 6.0        ## m/s by road a drop's clock allows
 const DROPS := 3              ## a delivery's addresses
 const SCEN_BEST := "user://streets_scenarios.json"   ## the best of each scenario (not SaveData's: see streets.gd PREFS_PATH)
@@ -141,6 +144,8 @@ func setup(id: String) -> void:
 			["end", "Dragons over %s. The streets will talk about nothing else." % String(story.get("town", g._city_name))]]
 	elif id == "delivery":
 		beats = _delivery_beats()
+	elif id == "taxi":
+		beats = _taxi_beats()
 	# every one opens on its title card: what it is and what counts as winning it
 	beats.insert(0, ["title", String(g._place.get("name", id)), String(GOALS.get(id, "")), TITLE_S])
 	Probe.event("scenario", {"kind": id, "beats": beats.size()})
@@ -312,8 +317,10 @@ func tick(dt: float) -> void:
 		"say":
 			if t >= float(b[2]):
 				_next()
-		"deliver":
+		"deliver", "ride":
 			_deliver_tick(b)
+		"pickup":
+			_pickup_tick(b, dt)
 		"timer":
 			_next()
 		"drive_for":
@@ -385,8 +392,10 @@ func _next() -> void:
 		"timer":
 			_limit = float(b[1])
 			run_t = 0.0
-		"deliver":
+		"deliver", "ride":
 			_deliver_start(b)
+		"pickup":
+			_pickup_start(b)
 		"say":
 			_say(String(b[1]), float(b[2]))
 		"time":
@@ -450,6 +459,8 @@ func _next() -> void:
 					else ("At the hospital, %s late. They rush the stretcher in." % _mmss(-left) if stars == 1 else "Stuck. Another ambulance had to take over.")
 			elif kind == "delivery":
 				txt = "Shift over: %d of %d delivered, %d in tips." % [drops_done, DROPS, tips]
+			elif kind == "taxi":
+				txt = "Light off. %d fares, %d on the meter and in tips." % [drops_done, tips]
 			_say(txt, 6.0)
 			_finish(result if result != "" else "done")
 
@@ -593,24 +604,7 @@ func _start_chase() -> void:
 	_reds_seen = g._reds
 	_reds0 = g._reds
 	result = ""
-	_chaser = g.model("police", 4.6)
-	g.world.add_child(_chaser)
-	for col: Color in [Color(1, 0.1, 0.1), Color(0.15, 0.35, 1)]:
-		var m := StandardMaterial3D.new()
-		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		m.albedo_color = col
-		m.emission_enabled = true
-		m.emission = col
-		m.emission_energy_multiplier = 3.0
-		var bx := BoxMesh.new()
-		bx.size = Vector3(0.5, 0.14, 0.22)
-		var mi := MeshInstance3D.new()
-		mi.mesh = bx
-		mi.material_override = m
-		_chaser.add_child(mi)
-		_lights.append(mi)
-	(_lights[0] as Node3D).position = Vector3(-0.3, 1.62, 0)
-	(_lights[1] as Node3D).position = Vector3(0.3, 1.62, 0)
+	_chaser = _police_car()
 	# the siren: two tones, rising and falling (made here, as the horn is)
 	var rate := 22050
 	var buf := PackedFloat32Array()
@@ -655,30 +649,34 @@ func _chase_tick(dt: float) -> void:
 		_vc = minf(_vc, maxf(float(g._v), 0.0) + maxf(_gap - CHASE_CAUGHT + 1.0, 0.0) * 0.7)
 		if t > 45.0 and not _backup_said:
 			_backup_said = true
-			_say("Backup's joined -- they're faster now.", 2.5)
+			_say("Backup's joined -- two of them now, and faster.", 2.5)
+			_chaser2 = _police_car()
 	var vp := maxf(float(g._v), 0.0)
 	_gap += (vp - _vc) * dt
 	_gap = maxf(_gap, 0.0)
 	var head := float(_trail[_trail.size() - 1][2])
 	var want := head - _gap
 	# its place on the trail: the point at `want` metres along it
-	while _trail.size() > 2 and float(_trail[1][2]) < want:
-		_trail.remove_at(0)
-	var a: Array = _trail[0]
-	var b: Array = _trail[mini(1, _trail.size() - 1)]
-	var f := clampf((want - float(a[2])) / maxf(float(b[2]) - float(a[2]), 0.01), 0.0, 1.0)
-	var p := (a[0] as Vector2).lerp(b[0], f)
-	var yaw := lerp_angle(float(a[1]), float(b[1]), f)
+	while _trail.size() > 2 and float(_trail[1][2]) < want - BACKUP_BEHIND - 2.0:
+		_trail.remove_at(0)   # (kept a little behind it: the backup car drives there)
+	var at := _trail_at(want)
+	var p: Vector2 = at[0]
+	var yaw: float = at[1]
 	if want < float(_trail[0][2]):
 		_trail_v = CHASE_TOP   # (still behind where you started: open road to it -- your standing start there held it at 1 m/s and every run was "lost" in 12-24 s)
 	else:
-		_trail_v = lerpf(float(a[3]) if a.size() > 3 else 0.0, float(b[3]) if b.size() > 3 else 0.0, f)
+		_trail_v = at[2]
+	if _chaser2 != null:
+		var at2 := _trail_at(want - BACKUP_BEHIND)
+		var p2: Vector2 = at2[0]
+		_chaser2.position = Vector3(p2.x, g._h(p2), p2.y)
+		_chaser2.rotation = Vector3(0, -float(at2[1]) + PI * 0.5, 0)
 	_chaser.position = Vector3(p.x, g._h(p), p.y)
 	_chaser.rotation = Vector3(0, -yaw + PI * 0.5, 0)
-	# the lights take turns, four times a second
+	# the lights take turns, four times a second (the backup's the other way round)
 	var on_red := fmod(Time.get_ticks_msec() / 250.0, 2.0) < 1.0
-	(_lights[0] as Node3D).visible = on_red
-	(_lights[1] as Node3D).visible = not on_red
+	for k in range(_lights.size()):
+		(_lights[k] as Node3D).visible = on_red if (k % 2 == 0) != (k >= 2) else not on_red
 	# the camera cuts: every 7 s, 3 s from just ahead of the car looking back at the chaser
 	# behind it (the usual view the rest of the time)
 	_cut_t += dt
@@ -737,6 +735,9 @@ func _end_chase() -> void:
 	if _chaser != null and is_instance_valid(_chaser):
 		_chaser.queue_free()
 	_chaser = null
+	if _chaser2 != null and is_instance_valid(_chaser2):
+		_chaser2.queue_free()
+	_chaser2 = null
 	_lights = []
 	Probe.event("chase", {"result": result, "gap": snappedf(_gap, 0.1)})
 
@@ -1076,6 +1077,16 @@ func _strip_text() -> String:
 			var left := _limit - run_t
 			_strip_role = "friend" if left > 30.0 else ("warn" if left > 0.0 else "hazard")
 			return "patient: %s%s · hospital %s" % ["" if left >= 0.0 else "late ", _mmss(absf(left)), _dist_txt(_left_m())]
+		"taxi":
+			var b: Array = beats[i]
+			if String(b[0]) == "pickup":
+				return "fare %d of %d · waving on %s · %s · earned %d" % [drops_done + 1, DROPS, String(b[2]), _dist_txt(_left_m()), tips]
+			if String(b[0]) != "ride":
+				return "earned %d" % tips
+			var left := float(b[3]) - t
+			_strip_role = "friend" if left > 20.0 else ("warn" if left > 0.0 else "hazard")
+			return "fare %d of %d · to %s · %s%s · earned %d" % [drops_done + 1, DROPS, String(b[2]), "" if left >= 0.0 else "late ",
+				_mmss(absf(left)), tips]
 		"delivery":
 			var b: Array = beats[i]
 			if String(b[0]) != "deliver":
@@ -1089,7 +1100,7 @@ func _strip_text() -> String:
 ## a tour's long drive: a moment's fade, then the car near the stop (in its lane, stopped) and on
 var _skip_t := -1.0
 var _skip_i := -1
-func _skip_ahead(b: Array) -> void:
+func _skip_ahead(b: Array, style := "", charge := false) -> void:
 	_skip_i = i
 	_skip_t = 0.0
 	var fade := _band(Rect2(0, 0, 640, 360), 1.0)
@@ -1097,16 +1108,31 @@ func _skip_ahead(b: Array) -> void:
 	g._hud.add_child(fade)
 	var at: Vector2 = b[1]
 	var from: Vector2 = g._pos
+	var st := style if style != "" else String(b[3])
 	var tw := fade.create_tween()
 	tw.tween_property(fade, "modulate:a", 1.0, 0.45)
+	var beat := i
 	tw.tween_callback(func() -> void:
-		var near := at + (from - at).normalized() * 80.0
+		if beat != i or not on:
+			return   # (the beat ended under the fade -- a fare reached as it began: its stale "go to" made every later ride "arrive" in 2 s)
+		var before: float = _left_m()
+		var near := _route_back(CUT_BACK_M)
+		if near == Vector2.INF:
+			near = at + (from - at).normalized() * 80.0
 		g._jump_to(near, "")
 		g._set_dest(at, String(b[2]))
-		g._ap_style = String(b[3])
+		g._ap_style = st
 		g._apply_ap_style()
 		g._set_auto(true)
 		skips += 1
+		if charge:
+			# the clock pays for the road skipped, at the pace it allows: a cut is no shortcut
+			# (at a fair clip, 1.6 x the clock's pace: charged at the clock's own, every cut
+			# left the drop "running late" the moment it ended)
+			var skipped := maxf(before - CUT_BACK_M, 0.0) / (DROP_PACE * 1.6)
+			t += skipped
+			run_t += skipped
+			skipped_s += skipped
 		Probe.event("scenario_skip", {"to": String(b[2])}))
 	tw.tween_interval(0.25)
 	tw.tween_property(fade, "modulate:a", 0.0, 0.5)
@@ -1173,14 +1199,20 @@ func _deliver_start(b: Array) -> void:
 	g._set_auto(true)
 	_drop_style_racer = false
 	_drop_fixed = false
+	_crash0 = Probe._events.size()
 	_say("Next: %s" % String(b[2]), 2.0)
 
 var _drop_fixed := false
+var _drop_route := 0.0        ## the way there by road, as autodrive first planned it
+var _crash0 := 0
 func _deliver_tick(b: Array) -> void:
+	if OS.get_environment("SCEN_DEBUG") != "" and int(t * 4.0) != int((t - 0.02) * 4.0):
+		print("[scen dbg] %s t %.1f pos %s to %s dest_on %s dest %s stop %s auto %s v %.1f pts %d" % [b[0], t, Vector2i(g._pos), Vector2i(b[1]), g._dest_on, Vector2i(g._dest), Vector2i(g._dest_stop), g._auto, g._v, g._ap_pts.size()])
 	# the clock, once autodrive has its way there: by road at a delivery's town pace (by the crow's
 	# flight, Givatayim's winding one-ways made autodrive late on every drop: 3:25 for 600 m)
 	if not _drop_fixed and t > 1.0 and g._auto and g._ap_pts.size() > 1:
 		_drop_fixed = true
+		_drop_route = g._ap_len()
 		b[3] = roundf(g._ap_len() / DROP_PACE + 25.0)
 		_say("%s -- %s on the clock." % [String(b[2]), _mmss(float(b[3]))], 3.0)
 	var secs := float(b[3])
@@ -1192,16 +1224,28 @@ func _deliver_tick(b: Array) -> void:
 		g._apply_ap_style()
 		_say("Running late -- the rules can wait.", 2.5)
 		Audio.play("voice_hurry_up", 0.0, -6.0)
-	var there: bool = (not g._dest_on and t > 2.0) or (g._pos as Vector2).distance_to(b[1]) < 18.0
+	# a long drive, watched: the same cut as a tour's, the clock charged for it (Givatayim's
+	# shift ran 6-7 min of mostly driving)
+	if g._auto and t > DROP_SKIP_S and _skip_i != i and _skip_t < 0.0 and _left_m() > TOUR_SKIP_M * 1.5:
+		_skip_ahead(b, String(g._ap_style), true)
+	var there: bool = (not g._dest_on and t > 2.0 and (g._pos as Vector2).distance_to(b[1]) < 60.0) or (g._pos as Vector2).distance_to(b[1]) < 18.0
 	if there:
 		var tip := 2 if left < 0.0 else int(round(4.0 + 14.0 * clampf(left / secs, 0.0, 1.0)))
+		if String(b[0]) == "ride":
+			# the meter (a flag fall and by the km driven) and a tip; less for every knock on the way
+			var fare := 12 + int(_drop_route / 1000.0 * 6.0)
+			tip = maxi(tip - 3 * _knocks(), 0)
+			_say(("%s -- fare %d, tip %d." % [String(b[4]), fare, tip]), 3.5)
+			tips += fare
+			_fare_off(true)
 		tips += tip
 		drops_done += 1
 		_drop_t.append(int(t))
 		if g._dest_on:
 			g._clear_dest()
 		g._v = minf(float(g._v), 3.0)
-		_say(("Delivered, %s -- tip %d!" if left >= 0.0 else "Delivered cold, %s late -- tip %d.") % [_mmss(absf(left)), tip], 3.0)
+		if String(b[0]) != "ride":
+			_say(("Delivered, %s -- tip %d!" if left >= 0.0 else "Delivered cold, %s late -- tip %d.") % [_mmss(absf(left)), tip], 3.0)
 		Audio.play("coin", 0.0, -4.0)
 		Juice.text(g._hud, Vector2(320, 150), "+%d" % tip, Palette.col("prize"))
 		_next()
@@ -1247,6 +1291,15 @@ func _end_card() -> void:
 				per.append(_mmss(s_) if s_ >= 0 else "cancelled")
 			if not per.is_empty():
 				lines.append("drops: " + ", ".join(per))
+		"taxi":
+			head = "End of the shift"
+			stars = 3 if tips >= 75 else (2 if tips >= 55 else (1 if drops_done > 0 else 0))
+			lines.append("%d of %d fares · earned %d" % [drops_done, DROPS, tips])
+			var per2: Array = []
+			for s_: int in _drop_t:
+				per2.append(_mmss(s_) if s_ >= 0 else "walked off")
+			if not per2.is_empty():
+				lines.append("rides: " + ", ".join(per2))
 		"day":
 			head = "Dawn again"
 			stars = 0
@@ -1317,3 +1370,212 @@ func _hush_banner() -> void:
 		if g._banner_tw != null:
 			g._banner_tw.kill()
 		g._banner.modulate.a = 0.0
+
+## ---- the police cars --------------------------------------------------------------------------
+
+const BACKUP_BEHIND := 13.0   ## metres of your trail the backup car keeps behind the first
+var _chaser2: Node3D = null   ## the backup (after 45 s): drives your trail behind the first
+
+## a police car with its light bar (its two lamps added to _lights), in the world
+func _police_car() -> Node3D:
+	var car: Node3D = g.model("police", 4.6)
+	g.world.add_child(car)
+	var k := 0
+	for col: Color in [Color(1, 0.1, 0.1), Color(0.15, 0.35, 1)]:
+		var mi := _lamp(col)
+		mi.position = Vector3(-0.3 if k == 0 else 0.3, 1.62, 0)
+		car.add_child(mi)
+		_lights.append(mi)
+		k += 1
+	return car
+
+## [where, yaw, your speed there] at `odo` metres along your trail
+func _trail_at(odo: float) -> Array:
+	var j := 0
+	while j < _trail.size() - 2 and float(_trail[j + 1][2]) < odo:
+		j += 1
+	var a: Array = _trail[j]
+	var b: Array = _trail[mini(j + 1, _trail.size() - 1)]
+	var f := clampf((odo - float(a[2])) / maxf(float(b[2]) - float(a[2]), 0.01), 0.0, 1.0)
+	return [(a[0] as Vector2).lerp(b[0], f), lerp_angle(float(a[1]), float(b[1]), f),
+		lerpf(float(a[3]) if a.size() > 3 else 0.0, float(b[3]) if b.size() > 3 else 0.0, f)]
+
+## ---- the taxi shift ---------------------------------------------------------------------------
+
+const RIDE_LINES := [
+	["To %s, please. And I'm already late.", "Made it! Keep the change."],
+	["%s. Take the quick way, not the scenic one.", "Not bad at all."],
+	["Can you take me to %s? My phone's dead.", "You're a lifesaver."],
+	["%s -- my sister's wedding, I can't miss the toast!", "Just in time, thank you!"],
+	["%s, and gently: there's a cake on my lap.", "The cake survived. Thank you."],
+	["%s. I'll give you directions -- no, the app's fine.", "Thanks, have a good night."],
+]
+
+## DROPS fares: someone waving at the kerb 150-350 m on, then their address 300-600 m from there
+func _taxi_beats() -> Array:
+	var town := String(story.get("town", g._city_name))
+	var out: Array = [["time", "night"], ["say", "Night shift in %s. Light on -- someone's always going somewhere." % town, 3.5]]
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	if OS.get_environment("SCEN_SEED") != "":
+		rng.seed = int(OS.get_environment("SCEN_SEED"))
+	var en := {}
+	for r: Dictionary in g._roads:
+		if String(r["en"]) != "":
+			en[r["name"]] = r["en"]
+	var used := {}
+	var from: Vector2 = g._pos
+	var lines := RIDE_LINES.duplicate()
+	for k in range(DROPS):
+		var pick := _addr_pick(from, 150.0, 350.0, used, rng)
+		if pick.is_empty():
+			break
+		var kerb := _kerb_of(pick[0])
+		var dest := _addr_pick(kerb, 300.0, 600.0, used, rng)
+		if dest.is_empty():
+			break
+		var st_name := String(en.get(pick[1], pick[1]))
+		var to_name := "%s %s" % [String(en.get(dest[1], dest[1])), String(dest[2])]
+		var ln: Array = lines.pop_at(rng.randi() % lines.size())
+		out.append(["pickup", kerb, st_name, 0.0, ln[0] % to_name])
+		out.append(["ride", dest[0], to_name, 120.0, ln[1]])
+		from = dest[0]
+	out.append(["end", ""])
+	return out
+
+## one of the town's addresses `lo`-`hi` m from `from`, on a street not used yet: [where, street, number]
+func _addr_pick(from: Vector2, lo: float, hi: float, used: Dictionary, rng: RandomNumberGenerator) -> Array:
+	var cands: Array = []
+	for st: String in g._addr:
+		if used.has(st) or st.is_valid_int():
+			continue
+		for a: Array in g._addr[st]:
+			var p: Vector2 = a[1]
+			var d := p.distance_to(from)
+			if d < lo or d > hi or not g._in_city(p) or not g._bounds.grow(-150.0).has_point(p):
+				continue
+			if g._nearest_seg(p, 40.0, true, true).is_empty():
+				continue
+			cands.append([p, st, String(a[0])])
+			break
+	if cands.is_empty():
+		return []
+	var c: Array = cands[rng.randi() % cands.size()]
+	used[c[1]] = true
+	return c
+
+## the pavement beside the nearest public street to `p`, on `p`'s side: where a fare stands
+func _kerb_of(p: Vector2) -> Vector2:
+	var hit: Dictionary = g._nearest_seg(p, 40.0, true, true)
+	if hit.is_empty():
+		return p
+	var r: Dictionary = g._roads[int(hit["road"])]
+	var q: Vector2 = hit["q"]
+	var side := (p - q).normalized() if p.distance_to(q) > 0.1 else Vector2.RIGHT
+	return q + side * (float(r["w"]) * 0.5 + 1.3)
+
+const PICKUP_M := 30.0        ## a fare this near: you pull up and they get in
+var _fare: Node3D = null      ## the person waving, while a pickup is on
+var _wave_t := 0.0
+
+func _pickup_start(b: Array) -> void:
+	if g._zoomed():
+		g._zoom_set(0.0)
+	var at: Vector2 = b[1]
+	_fare_off(false)
+	var a := Actor3D.new()
+	g.world.add_child(a)
+	g._set_character(a, g.PEOPLE[(drops_done * 3 + 1) % g.PEOPLE.size()], 1.72)
+	g._humanize(a, 4200 + drops_done * 17)
+	a.position = Vector3(at.x, g._walk_y(at), at.y)
+	var hit: Dictionary = g._nearest_seg(at, 12.0, true, true)
+	var face: Vector2 = ((hit["q"] as Vector2) - at).normalized() if not hit.is_empty() else Vector2.UP
+	a.face(Vector3(face.x, 0, face.y))
+	a.play("Idle", true, 1.0)
+	_fare = a
+	if g.has_method("track3d"):
+		g.track3d(a, "*")
+	_wave_t = 0.0
+	g._set_dest(at, "a fare on %s" % String(b[2]))
+	g._ap_style = "wave"
+	g._apply_ap_style()
+	g._set_auto(true)
+	_say("Someone's waving you down on %s." % String(b[2]), 2.5)
+
+func _pickup_tick(b: Array, dt: float) -> void:
+	if OS.get_environment("SCEN_DEBUG") != "" and int(t * 0.5) != int((t - dt) * 0.5):
+		print("[scen dbg] pickup t %.1f pos %s to %s dest_on %s dest %s stop %s auto %s v %.1f pts %d why %s" % [t, Vector2i(g._pos), Vector2i(b[1]), g._dest_on, Vector2i(g._dest), Vector2i(g._dest_stop), g._auto, g._v, g._ap_pts.size(), g._ap_why])
+	_wave_t -= dt
+	if _wave_t <= 0.0 and _fare != null and g._ppl != null:
+		_wave_t = 2.5
+		g._ppl.gesture(_fare, "wave")
+	# a long way round, watched: the cut, as for a drop (no clock to charge: they only wait)
+	if g._auto and t > DROP_SKIP_S and _skip_i != i and _skip_t < 0.0 and _left_m() > TOUR_SKIP_M * 1.5:
+		_skip_ahead(b, String(g._ap_style), false)
+	# there: by them, or where "go to" pulled up for them, or near and stood (and they walk over:
+	# a run in Givatayim waited out three fares' 150 s each, never stopping where it could be "there")
+	var near := (g._pos as Vector2).distance_to(b[1])
+	var by_kerb: bool = g._dest_on and (g._pos as Vector2).distance_to(g._dest_stop) < 20.0 and absf(float(g._v)) < 2.0
+	# (a fare waves you in on either side of the street: within PICKUP_M you pull up -- "go to"
+	# wanted their own kerb and went round the block for it, 100 s and more, every Tel Aviv run)
+	var there: bool = (not g._dest_on and t > 2.0 and near < 60.0) or near < PICKUP_M or by_kerb \
+		or (near < 60.0 and absf(float(g._v)) < 1.0 and t > 60.0)
+	if there:
+		if g._dest_on:
+			g._clear_dest()
+		if g._auto:
+			g._set_auto(false)
+		g._v = minf(absf(float(g._v)), 2.0)
+		_fare_off(false)   # (in they get)
+		Audio.play("open", 0.0, -8.0)
+		_say("\"%s\"" % String(b[4]), 3.5)
+		_next()
+	elif t > 150.0:
+		_fare_off(false)
+		_drop_t.append(-1)
+		_say("They gave up and hailed another cab.", 3.0)
+		Audio.play("voice_wrong", 0.0, -8.0)
+		i += 1   # (their ride goes with them)
+		_next()
+
+## the fare gone: into the car, or (at the end of a ride) out at the kerb and walking off
+func _fare_off(out_at_kerb: bool) -> void:
+	if _fare != null and is_instance_valid(_fare):
+		_fare.queue_free()
+	_fare = null
+	if out_at_kerb and g._car != null:
+		var a := Actor3D.new()
+		g.world.add_child(a)
+		g._set_character(a, g.PEOPLE[(drops_done * 3 + 1) % g.PEOPLE.size()], 1.72)
+		g._humanize(a, 4200 + drops_done * 17)
+		var side := Vector2(-g._fwd().y, g._fwd().x)
+		var at: Vector2 = (g._pos as Vector2) + side * 2.0
+		a.position = Vector3(at.x, g._walk_y(at), at.y)
+		a.face(Vector3(side.x, 0, side.y))
+		a.play("Walk", true, 1.0)
+		var tw := a.create_tween()
+		var to := at + side * 6.0
+		tw.tween_property(a, "position", Vector3(to.x, g._walk_y(to), to.y), 4.0)
+		tw.tween_callback(a.queue_free)
+
+## knocks since the ride began (the Probe's crash events: none recorded when it is off)
+func _knocks() -> int:
+	var n := 0
+	for k in range(_crash0, Probe._events.size()):
+		if String((Probe._events[k] as Dictionary).get("kind", "")) == "crash":
+			n += 1
+	return n
+
+## the point `back` metres before the end of autodrive's way there (the cut lands on the route,
+## not 80 m short by the crow: on Tel Aviv's one-ways that was often 1 km round by road)
+const CUT_BACK_M := 110.0
+func _route_back(back: float) -> Vector2:
+	var pts: PackedVector2Array = g._ap_pts
+	if not g._auto or pts.size() < 3:
+		return Vector2.INF
+	var acc := 0.0
+	for k in range(pts.size() - 1, 0, -1):
+		acc += pts[k].distance_to(pts[k - 1])
+		if acc >= back:
+			return pts[k - 1]
+	return Vector2.INF
