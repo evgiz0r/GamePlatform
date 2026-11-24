@@ -665,6 +665,30 @@ out as a little film, the car driving itself, captions across the bottom.
 
   > I want to think more of automatic scearios for now without my inputs
 
+- *Pizza rush* -- Givatayim, Tel Aviv. Friday night, three pizzas in the back, three of the
+  town's real addresses one after another, each with its own clock. The faster you get there,
+  the bigger the tip; running late, autodrive drops the rules. Ninety seconds past the clock
+  and the order is cancelled.
+
+**Every scenario has a goal and an ending** (the redo). It opens on a title card: its name
+and what it asks ("Lose the police car, or reach the safe house"). While it plays, a line
+under the street's name says how it is going -- the tour's "stop 2 of 6 · Rothschild · 420 m",
+the getaway's distance to the police car as a bar going from green to red, the ambulance's
+"patient: 1:12 · hospital 900 m", the delivery's clock and tips. It ends on a card: what
+happened, one to three stars, the numbers (time, top speed, close calls, red lights run, cars
+that pulled over, tips) and the best you have done. The getaway, the ambulance and the pizza
+rush play themselves, but take the wheel and they are yours; the goal still counts.
+
+- The getaway now has a story: the police car gets faster over the first minute ("backup's
+  joined"), a brush with it is a *close call* (slow motion, counted) rather than the end, and
+  you are caught only when it holds you for over a second. Reach the safe house, or open a
+  160 m gap.
+- The ambulance has a clock from the distance, and "30 seconds left -- hurry!".
+- A tour no longer sits through a minute of driving between stops: past 35 s it fades and
+  picks up just before the next street.
+
+> All the scenarios are very weak. Lets also redo all of that.
+
 **The opening.** When a town comes up, the view starts high over it, turning slowly round
 where you will start, the town's name across the screen, while the streets round the car
 finish going up (a few seconds; the parts further off lie flat as their stand-ins). Under
@@ -1868,7 +1892,7 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   lobby and stairwell fitted to the outline, the right number of landings, and that many
   flats each split into rooms the way a block of its age is. Only the building you walk into
   is built inside, while you are in it.
-- Scenarios, more of them (the first two are built: tours and the getaway -- see
-  "Scenarios" above): a taxi shift, a delivery against the clock, an ambulance run, a wedding
-  convoy, the night tour, Shabbat eve, a kindergarten pick-up rush, an alien arrival -- the
-  list with grades is in DEV.md under "Scenarios".
+- Scenarios, more of them (built: tours, night tours, the getaway, the ambulance, a day,
+  dragons, the pizza rush -- see "Scenarios" above): a taxi shift, a wedding convoy, Shabbat
+  eve, a kindergarten pick-up rush, an alien arrival -- the list with grades is in DEV.md
+  under "Scenarios".

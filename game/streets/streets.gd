@@ -106,6 +106,10 @@ const LEVELS := [
 	{"name": "Monaco", "city": "monaco", "start": ["Boulevard Albert 1er", "Rue Suffren Reymond"], "look": "north", "build": "fr", "trees": "med", "decks": "infer"},
 	# its walk (data_tools/make_walks.py): the old town's lane on the Rock
 	{"name": "Monaco: through the old town on the Rock", "city": "monaco", "look": "north", "build": "fr", "trees": "med", "decks": "infer", "walk": "monaco_rock"},
+	# the scenarios' redo (24 Nov, the user: "All the scenarios are very weak"): a delivery
+	# against the clock to three of the town's own addresses (scenario.gd "delivery")
+	{"name": "Pizza rush: Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "delivery"},
+	{"name": "Pizza rush: Tel Aviv", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "delivery"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -26725,7 +26729,7 @@ func _route_begin() -> void:
 func _watching() -> bool:
 	if not _film.is_empty() or not _route.is_empty():
 		return true
-	return _scenario != null and String(_place.get("scenario", "")) != "getaway"
+	return _scenario != null and not (String(_place.get("scenario", "")) in ["getaway", "ambulance", "delivery"])   # (the ones with a goal: yours to drive too)
 
 ## a drawn button that _pick_tap() can press
 func _tap_button(text: String, cb: Callable) -> Button:

@@ -4628,6 +4628,54 @@ looking up. The test counts frames with the camera below 4 m inside a building
 | 9 | Alien arrival: ships over the towers, cars stop, people look up | Large | 5 | B | The disasters idea's first slice, as a scenario |
 | 10 | Follow that dog: a dog runs off across parks and lanes | Medium | 3 | B- | Dogs exist; the camera follows one |
 
+### The scenarios' redo (24 Nov 2026)
+
+The user: "All the svenarios are very weak. Lets also redo all of that." What was weak: each
+was a drive with captions -- no goal said, nothing on screen saying how it was going, no
+ending beyond a caption, and the one with stakes (the getaway) was decided before it began
+(caught at 26-43 s every run: a flat 17 m/s chaser against racer's 10-15 m/s town pace).
+What every scenario has now (all in `scenario.gd`, the bottom section):
+
+- **Title card** (`["title", name, goal, TITLE_S]`, put first by `setup()`): the level's name
+  and `GOALS[kind]`. 3.5 s.
+- **The live line** (`_strip_tick` / `_strip_text`, a Label at y 50 under the street's
+  name): tour "stop k of n · street · 420 m"; getaway "police 42 m ▮▮▮▯ · safe house 1.2 km"
+  (green / warn / hazard by the gap); ambulance "patient: 1:12 · hospital 900 m"; delivery
+  "drop k of 3 · street n · 0:45 · tips 18". Distances by road (`_ap_len`) when autodrive has
+  a route.
+- **End card** (`_end_card`, from `_finish` unless the player took a tour's wheel): headline,
+  0-3 stars, numbers, and the best so far from `user://streets_scenarios.json` (not SaveData:
+  see `PREFS_PATH`; not written when `STREETS_PREFS=0`). `card_lines` for tests.
+- **Drivable** (`_watching()` in streets.gd): getaway, ambulance, delivery play themselves on
+  autodrive but take the wheel and they go on with you driving.
+
+Per kind:
+- **Getaway**: the chaser's pace is *your* pace at its point on your trail (`_trail` keeps the
+  speed now, `_trail_v`) plus `CHASE_EDGE` 1.0 -> `CHASE_EDGE2` 2.6 m/s as backup joins (20-60 s,
+  top 17 -> 20.5), so it is held up where you were; it closes on you no faster than a follower
+  does (`(gap - 6) * 0.7` over your speed), and you are caught only when held within 9 m below
+  3 m/s for `CHASE_HOLD` 3.5 s, and never in the first `CHASE_GRACE` 30 s (Ashdod: autodrive stood 4 s for a person on a zebra at the first junction and was caught at 20 s). Within `CLOSE_IN` 15 m and back out past 24: a close call
+  (caption, slow motion, counted). Each red you run: +`CHASE_RED_M` 10 m. It starts rolling at
+  9 m/s, 50 m back (from a standstill it fell 100 m behind and was "lost" in 16 s). The safe
+  house 0.8-1.3 km off (1.2-2 km was 2.5 km by road). Lost at 130 m. Results: lost (3 stars),
+  home (2; 3 with no close call), caught (1 if it lasted a minute).
+- **Ambulance**: `["timer", secs]` -- 1.45 x the crow's flight at 12 m/s + 20 s; "30 seconds
+  left" with the voice; stars 3 with a quarter of the clock spare, 2 in time, 1 late.
+  Tel Aviv (25): 2:20 clock, there in 1:33, 16 cars pulled over.
+- **Tours**: past `TOUR_SKIP_S` 30 s on a drive and still `TOUR_SKIP_M` 160 m off, a fade and
+  `_jump_to` 80 m short of the stop ("A little later, nearing ..."), `skips` counted. Givatayim
+  (17) before the cut's tuning: 5 of 5 stops, 7:09, 3 cuts (it was ~9 min).
+- **Pizza rush** (new, levels 43-44): `_delivery_beats` picks `DROPS` 3 of the town's own
+  addresses (`g._addr`), 250-600 m apart, one a street. The clock is set once autodrive has its
+  route: `_ap_len() / DROP_PACE` 6 m/s + 25 s (by the crow's flight it was late on every drop in
+  Givatayim: 3:25 for 600 m). At 30% left, autodrive turns racer. Tip 4-18 by time left, 2
+  late, cancelled 90 s past. `SCEN_SEED` fixes the picks for a test. Tel Aviv (44): 3 of 3,
+  30 in tips, 2 stars, 6 min.
+- Day and dragons: the title and end cards only (they are films).
+
+`tests/scenario.gd` prints the end card (`SCENARIO card:`) and, for the getaway, the gap every
+5 s; PASS needs the card, the getaway's "home" counts, a delivery needs 2 of 3 drops.
+
 ## On foot: faster, and any car in traffic (22 Nov 2026)
 
 `WALK` 2.1 -> 4.5 m/s (a jog, the "Run" clip from 2.6 m/s up), `RUN` 6.2 -> 9.5 (the run
