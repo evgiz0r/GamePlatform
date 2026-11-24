@@ -554,6 +554,12 @@ opens a window briefly.
   sees their backs and casts no shadow: the inside of a tunnel was lit like the street.
   Give its meshes `cast_shadow = SHADOW_CASTING_SETTING_DOUBLE_SIDED` (their own instances,
   not merged into a batch that casts one-sided).
+- **A thin thing made of single faces vanishes once merged into a culling batch.** A wire
+  drawn as two crossed ribbons, each one-sided, under its own double-sided material looks
+  fine; merged into a batch whose shader is `cull_back` it shows only from the sides its faces
+  happen to point -- overhead wires seen from the street under them did not show at all, for
+  weeks, until birds sat on them. Give every ribbon, card or sheet its back face too (the same
+  triangles wound the other way, normal flipped) before it goes into a shared batch.
 - Polygon-to-segment distance: `Geometry2D.get_closest_points_between_segments()` over the
   polygon's edges, plus a point-in-polygon test for a segment wholly inside.
 - **A shader error shows only when something draws with it**, as a `SHADER ERROR` in the

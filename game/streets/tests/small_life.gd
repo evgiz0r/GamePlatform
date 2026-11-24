@@ -27,6 +27,8 @@ func _snap(name: String) -> void:
 var on_road := 0
 var in_wall := 0
 var pops := 0
+var low_perch := 0
+var off_roof := 0
 var _seen := {}
 var _last_p := Vector2.ZERO
 
@@ -49,6 +51,13 @@ func _frame(p: Vector2, yaw: float) -> void:
 				pops += 1
 				print("  landed in view at %s, %.0f m off" % [fl["c"].round(), (fl["c"] as Vector2).distance_to(p)])
 		if fl["up"]:
+			continue
+		if fl.get("perch", false):   # (on a wire or a roof: high over the ground; a roof's inside its walls)
+			for bd: Dictionary in fl["birds"]:
+				if float(bd["h"]) - float(g._h(bd["p"])) < 4.0:
+					low_perch += 1
+				if fl.get("roof", false) and g._push_out(bd["p"], 0.02, false, false) == Vector2.ZERO:
+					off_roof += 1
 			continue
 		for bd: Dictionary in fl["birds"]:
 			var q: Vector2 = bd["p"]
@@ -126,10 +135,18 @@ func _run() -> void:
 				down += 1
 		most = maxi(most, down)
 	print("birds: flocks down at most %d; %s; on the asphalt %d, in a wall %d, landed in view %d" % [most, g._birds.count, on_road, in_wall, pops])
+	var n_spans := 0
+	for k in g._furn.perches:
+		n_spans += (g._furn.perches[k] as Array).size()
+	print("birds on wires: %d flocks perched (of %d wires' spans), on roofs %d; birds under 4 m up %d, on a roof but off it %d" % [int(g._birds.count["perched"]), n_spans, int(g._birds.count["on_roofs"]), low_perch, off_roof])
 	# walk at the nearest flock on the ground: it must go up
 	var target: Dictionary = {}
+	for i in range(100):   # (none on the ground just now: wait up to 10 s for one to land)
+		if g._birds.flocks.any(func(f: Dictionary) -> bool: return not f["up"] and not f.get("perch", false)):
+			break
+		await _frame(stand, along.angle())
 	for fl: Dictionary in g._birds.flocks:
-		if not fl["up"] and (target.is_empty() or (fl["c"] as Vector2).distance_to(stand) < (target["c"] as Vector2).distance_to(stand)):
+		if not fl["up"] and not fl.get("perch", false) and (target.is_empty() or (fl["c"] as Vector2).distance_to(stand) < (target["c"] as Vector2).distance_to(stand)):
 			target = fl
 	var flew := false
 	var shot_done := false
@@ -148,6 +165,20 @@ func _run() -> void:
 			await _frame(p, (c - p).angle())
 		await _snap("pigeons_up")
 	print("the flock walked at went up: %s" % flew)
+	for fl: Dictionary in g._birds.flocks:
+		if fl.get("perch", false) and not fl["up"]:
+			var c: Vector2 = fl["c"]
+			var b0: Dictionary = fl["birds"][0]
+			var from := c + Vector2(cos(float(b0["yaw"])), sin(float(b0["yaw"]))).orthogonal() * 3.0 + (c - stand).normalized() * -8.0
+			await _view("pigeons_wire", from, c, 1.6, 26.0)
+			break
+	for fl: Dictionary in g._birds.flocks:
+		if fl.get("roof", false) and not fl["up"]:
+			var c: Vector2 = fl["c"]
+			var b0: Dictionary = fl["birds"][0]
+			var out := Vector2(sin(float(b0["yaw"])), cos(float(b0["yaw"])))
+			await _view("pigeons_roof", c + out * 14.0, c, 1.6, 28.0)
+			break
 	# shots of the extras
 	for name: String in ["escooters", "gas_cages"]:
 		var xs: Array = g._furn.where.get(name, [])
@@ -271,10 +302,10 @@ func _run() -> void:
 				await process_frame
 			await _snap("car_on_bump")
 			g._car.visible = false
-	var ok: bool = shab_ok and lift_ok and most >= 3 and on_road == 0 and in_wall == 0 and pops == 0 and flew and bad_extras == 0 \
+	var ok: bool = shab_ok and lift_ok and low_perch == 0 and off_roof == 0 and most >= 3 and on_road == 0 and in_wall == 0 and pops == 0 and flew and bad_extras == 0 \
 		and int(nx["escooters"]) > 100 and int(nx["night_shutters"]) > 100 and (g._country() != "il" or int(nx["roof_dishes"]) > 100) and bumps_off == 0 \
 		and (mapped_pts == 0 or int(nx["post_boxes"]) + int(nx["drinking_taps"]) + int(nx["bumps"]) > 0)
-	print("REGRESS small_life: %s (shabbat %s, bump lift %s; flocks down %d want 3+; birds on the asphalt %d, in a wall %d, landed in view %d want 0; walked-at flock up %s; e-scooters %d, gas cages %d, on the asphalt %d want 0; fountains %d, night shutters %d, roof dishes %d; post boxes %d, taps %d, bumps %d, off the road %d want 0)" % [
-		"PASS" if ok else "FAIL", shab_ok, lift_ok, most, on_road, in_wall, pops, flew, int(nx["escooters"]), int(nx["gas_cages"]), bad_extras, int(nx["fountains"]), int(nx["night_shutters"]), int(nx["roof_dishes"]),
+	print("REGRESS small_life: %s (shabbat %s, bump lift %s; perched %d, on roofs %d, low %d, off the roof %d want 0; flocks down %d want 3+; birds on the asphalt %d, in a wall %d, landed in view %d want 0; walked-at flock up %s; e-scooters %d, gas cages %d, on the asphalt %d want 0; fountains %d, night shutters %d, roof dishes %d; post boxes %d, taps %d, bumps %d, off the road %d want 0)" % [
+		"PASS" if ok else "FAIL", shab_ok, lift_ok, int(g._birds.count["perched"]), int(g._birds.count["on_roofs"]), low_perch, off_roof, most, on_road, in_wall, pops, flew, int(nx["escooters"]), int(nx["gas_cages"]), bad_extras, int(nx["fountains"]), int(nx["night_shutters"]), int(nx["roof_dishes"]),
 		int(nx["post_boxes"]), int(nx["drinking_taps"]), int(nx["bumps"]), bumps_off])
 	quit()

@@ -5484,7 +5484,22 @@ within 1.2 m behind it. Both have posts.
 - **Flap** (24 Nov): a flock going up plays `sounds/flap.wav` (make_sounds.py `flap`: five
   birds' wingbeats, fast then slowing, 1.1 s) from its middle, one of two 3D players in
   birds.gd, 6 dB under the sfx volume, silent when muted.
-- **Open**: birds never perch (on wires, roofs, lamp tops); a flock
+- **On the wires** (24 Nov): `furniture.wires` keeps every span of its top three wires in
+  `perches` (by PERCH_CELL 50 m squares, `wire_at` gives the sagging wire's point); birds.gd
+  lands PERCH_SHARE 0.4 of its flocks as a row of 3-9 pigeons on a span 20-60 m off, out of
+  sight, a hand apart and facing across the street, now and then one turning round or
+  preening (`_sit`). Cars and people do not bother them; you on foot within PERCH_FLEE 6 m do,
+  and the night. small_life: perched flocks counted, none under 4 m up.
+- **The wires were invisible from the street** (found by the perching shot, 24 Nov): `_cable`'s
+  two ribbons were one-sided, and merged into the square's batch, whose TONE_SHADER is
+  `cull_back` -- seen from above or one side only, from below not at all. Now each ribbon has
+  its back too. Anything thin built as single faces into the batch has this trap; tests/wire_look.gd.
+- **On the roofs** (24 Nov, not in pitched towns): ROOF_SHARE 0.25 of the flocks land as a
+  row of 3-8 pigeons along a flat roof's edge 5-25 m up, the edge whose middle is nearest a
+  road (`_land_roof`; the roof at the ring's mean ground + `_h`, as `_build_roof_kit`), looking
+  down at the street; they behave as the wire ones. small_life checks every roof bird is
+  inside its building's walls ("off the roof" 0), shot pigeons_roof.
+- **Open**: birds never perch on lamp tops; a flock
   spooked by traffic on the road only when it is your car; the crows look like grey pigeons
   scaled up (no separate black head and wings in the paint); gas cages only on streets
   with a wall at the pavement's back.
