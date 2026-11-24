@@ -5418,8 +5418,9 @@ within 1.2 m behind it. Both have posts.
   The shops `_shuts_on_shabbat` (the late ones; Tel Aviv keeps 1 in 3, elsewhere 1 in 8) get
   a third set of shutters (`_shabbat_shut_nodes`, tally `shabbat_shutters`) and the traffic thins to `SHABBAT_CARS` 8 of 22 (only from a full town, so a scenario's own quiet stands); `_update_day`
   shows the night ones at night or on Shabbat, those on Shabbat (from `_set_night`,
-  `_set_evening`). Open: a Shabbat shop's window still lights its pavement Friday night
-  (`_shop_lights` is built once), cafes and restaurants all stay open
+  `_set_evening`). A Shabbat shop's window light on the pavement is in its own nodes
+  (`_shabbat_dark_nodes`, one a ground cell: 35 in Givatayim, drawn only within LAMP_RANGE),
+  dark on a Friday night. Open: cafes and restaurants all stay open
   and nobody walks to synagogue. Tests and bots run on a Tuesday whatever the date.
 - **Cars over bumps** (24 Nov): `bump_lift(front, rear)` gives the bump height under each
   axle (`_bump_h`: `_bump_kit`'s profile, 8 cm top 0.6 m deep, a table three times that, easing

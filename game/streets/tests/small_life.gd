@@ -224,7 +224,21 @@ func _run() -> void:
 		g._update_day()
 		var open_sun: bool = not g._shabbat_now() and g._night_shut_nodes.all(func(n: Node3D) -> bool: return not n.visible) \
 			and g._shabbat_shut_nodes.all(func(n: Node3D) -> bool: return not n.visible) and g._traffic.cap == g._traffic.COUNT
-		shab_ok = up_sat and open_sun and shab_n > 20
+		# Friday night: the windows of the shops shut for Shabbat light no pavement; Thursday's do
+		if not g._pools_made:
+			g._make_pools()
+		g._night = true
+		g._weekday = 5
+		g._update_day()
+		var dark_fri: bool = g._shabbat_dark_nodes.all(func(n: Node3D) -> bool: return not n.visible)
+		g._weekday = 4
+		g._update_day()
+		var lit_thu: bool = g._shabbat_dark_nodes.all(func(n: Node3D) -> bool: return n.visible)
+		g._night = false
+		g._weekday = 0
+		g._update_day()
+		print("shabbat window light: %d nodes, dark friday night %s, lit thursday night %s" % [g._shabbat_dark_nodes.size(), dark_fri, lit_thu])
+		shab_ok = up_sat and open_sun and shab_n > 20 and dark_fri and lit_thu and not g._shabbat_dark_nodes.is_empty()
 		print("shabbat: %d shutters that close only on shabbat; saturday all down and the streets quiet %s, sunday all up and full %s" % [shab_n, up_sat, open_sun])
 	# a car over a speed bump: lifted 8 cm with both axles on top of a table, tipped nose up
 	# with only its front on a bump

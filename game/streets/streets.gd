@@ -9182,7 +9182,8 @@ const LAMP_POOL := 8.5
 const POOL_STRENGTH := 0.95
 var _pools_made := false
 var _pools_from := 0                 ## _pool_at before this have theirs
-var _shop_lights: Array = []         ## [the window's foot, out to the street, how wide] of every lit shop window
+var _shop_lights: Array = []         ## [the window's foot, out to the street, how wide, dark on Shabbat] of every lit shop window
+var _shabbat_dark_nodes: Array = []  ## the light on the pavement of the shops that shut on Shabbat: at night, not on Shabbat
 var _shop_lit_from := 0
 
 ## The light pools (and halos, and lit shop windows' light on the pavement) for every lamp so
@@ -9213,8 +9214,10 @@ func _make_pools(chunked := false) -> void:
 	_pools_from = upto
 	# a lit shop window's light on the pavement in front of it
 	var shops_upto := _shop_lights.size()
+	var shab := CBuf.new(GROUND_CELL)   # (those of the shops that shut on Shabbat, a node of their own)
 	for i in range(_shop_lit_from, shops_upto):
 		var s: Array = _shop_lights[i]
+		var into: CBuf = shab if s.size() > 3 and bool(s[3]) else pools
 		var at: Vector2 = s[0]
 		var n: Vector2 = s[1]
 		var w: float = 1.5 * float(s[2])
@@ -9225,13 +9228,16 @@ func _make_pools(chunked := false) -> void:
 		var b0 := _g3(at - t * (w + 0.8) + n * 2.6, y)
 		var b1 := _g3(at + t * (w + 0.8) + n * 2.6, y)
 		var m0 := _g3(at, y)
-		pools.tri(m0, a1, b1, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(0.35, 0), Vector2(0.6, 0.72))
-		pools.tri(m0, b1, b0, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(0.6, 0.72), Vector2(-0.6, 0.72))
-		pools.tri(m0, b0, a0, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(-0.6, 0.72), Vector2(-0.35, 0))
+		into.tri(m0, a1, b1, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(0.35, 0), Vector2(0.6, 0.72))
+		into.tri(m0, b1, b0, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(0.6, 0.72), Vector2(-0.6, 0.72))
+		into.tri(m0, b0, a0, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(-0.6, 0.72), Vector2(-0.35, 0))
 	_shop_lit_from = shops_upto
 	for mi: MeshInstance3D in _add_mesh(pools, _glow_mat("lamplight", POOL_STRENGTH), false, LAMP_RANGE):
 		mi.visible = _night
 		_night_nodes.append(mi)
+	for mi: MeshInstance3D in _add_mesh(shab, _glow_mat("lamplight", POOL_STRENGTH), false, LAMP_RANGE):
+		mi.visible = _night and not _shabbat_now()
+		_shabbat_dark_nodes.append(mi)
 	_pools_busy = false
 	if chunked and (_pool_at.size() > _pools_from or _shop_lights.size() > _shop_lit_from):
 		_make_pools()   # (the lamps of squares built meanwhile)
@@ -13349,6 +13355,8 @@ func _update_day() -> void:
 		n.visible = _night or sh
 	for n: Node3D in _shabbat_shut_nodes:
 		n.visible = sh
+	for n: Node3D in _shabbat_dark_nodes:
+		n.visible = _night and not sh
 
 func _time_banner(t: String) -> String:
 	if _country() != "il":
@@ -13419,7 +13427,7 @@ func _build_pois() -> void:
 				(0.6 if sub in ["clothes", "shoes", "fashion", "boutique", "jewelry", "bag", "fabric"] else 0.0)
 			front["glass_k"].append(Color(inside_k, 0.0, 0.0, 1.0))
 			if _mine(pos) and not _shuts_at_night(kind, at):   # (a shut shop lights nothing at night)
-				_shop_lights.append([pos + n * 0.1, n, wide])
+				_shop_lights.append([pos + n * 0.1, n, wide, _shuts_on_shabbat(kind, at)])
 			front["beam"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.08, 2.62)))
 			for sgn: float in [-1.0, 1.0]:
 				front["post"].append(Transform3D(b, at3.call(pos + along * 1.56 * wide * sgn, 0.08, 1.3)))
