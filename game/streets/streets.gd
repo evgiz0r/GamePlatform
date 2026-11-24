@@ -7181,6 +7181,7 @@ func _build_facade_kit() -> void:
 	var acs: Array = [[], []]    # AC units: on the wall on arms, up on a balcony's back wall
 	var washing: Array = [[], [], []]   # racks of washing under windows, three arrangements
 	var towels: Array = []       # over the balconies' parapets
+	var plants: Array = [[], []] # potted plants on them: geraniums, trailing green
 	var towel_cols: Array = []
 	var laundry: Array = _furn._laundry_cols() if med else []
 	var plates: Array = []
@@ -7249,6 +7250,8 @@ func _build_facade_kit() -> void:
 							if hb % 10 < 3:   # an AC up on the balcony's back wall, over the parapet
 								var q := at + (b - a) / L * (0.75 if hb % 2 == 0 else -0.75)
 								(acs[1] as Array).append(Transform3D(face, Vector3(q.x, g_lo + lv * 3.0 + 1.95, q.y)))
+							elif hb % 10 == 5 or (hb % 10 == 6 and med):   # potted plants on the parapet
+								plants[hb / 10 % 2].append(Transform3D(face, Vector3(p.x, g_lo + lv * 3.0, p.y)))
 							elif hb % 10 == 4 and hb / 10 % 3 == 0:   # a towel over the parapet
 								var tx := (hb / 30 % 5 - 2) * 0.35
 								towels.append(Transform3D(face, Vector3(p.x, g_lo + lv * 3.0, p.y)) * Transform3D(Basis(), Vector3(tx, 0, 0)))
@@ -7354,7 +7357,11 @@ func _build_facade_kit() -> void:
 		wash_tints.append(Color.WHITE.lerp(laundry[posmod(_hash_i(Vector2(t.origin.x, t.origin.z)), laundry.size())], 0.35))
 	_instanced(_furn.washing_kit(0), all_wash, 110.0, wash_tints)
 	await _chunked_paced(_furn.towel_kit(), towels, 120.0, towel_cols)
-	var seen_now := {"ac": acs[0], "ac_balcony": acs[1], "washing": (washing[0] as Array) + (washing[1] as Array) + (washing[2] as Array), "towels": towels}
+	for v in range(2):
+		await _chunked_paced(_furn.balcony_plants_kit(v), plants[v], 110.0, [])
+	_tally("balcony_plants", (plants[0] as Array).size() + (plants[1] as Array).size())
+	var seen_now := {"ac": acs[0], "ac_balcony": acs[1], "washing": (washing[0] as Array) + (washing[1] as Array) + (washing[2] as Array), "towels": towels,
+		"plants": (plants[0] as Array) + (plants[1] as Array)}
 	for k: String in seen_now:   # (a few of each kept for the tests: tests/wall_things.gd)
 		var keep: Array = wall_things.get(k, [])
 		keep.append_array((seen_now[k] as Array).slice(0, maxi(0, 200 - keep.size())))
@@ -11928,6 +11935,36 @@ void fragment() {
 						c *= mix(1.0, 0.8, inside);
 						c *= 1.0 - 0.4 * inside * (1.0 - smoothstep(0.02, 0.02 + pxw * 2.0, min(d.x, d.y)));
 					}
+					// a trench dug for a cable or a pipe and filled again: a long strip 0.7 m
+					// wide of newer asphalt, its seams sealed, in one 40 m square in six
+					vec2 tc = floor(p / 40.0);
+					if (hash(tc + 11.7) < 0.17) {
+						bool along_x = hash(tc + 12.9) < 0.5;
+						float at = (along_x ? tc.y : tc.x) * 40.0 + 6.0 + 28.0 * hash(tc + 13.1);
+						float off = abs((along_x ? p.y : p.x) - at);
+						float run = (along_x ? p.x : p.y) - (along_x ? tc.x : tc.y) * 40.0;
+						float inside = step(off, 0.35) * step(4.0, run) * step(run, 36.0);
+						c *= mix(1.0, 0.78, inside);
+						c *= 1.0 - 0.35 * inside * (1.0 - smoothstep(0.02, 0.02 + pxw * 2.0, 0.35 - off));
+					}
+					// potholes: one 7 m square in 33 has one, a ragged hole 0.6-1.4 m across, dark
+					// and damp at the bottom, its broken edge lighter, the grit loose round it
+					// (the cell taken mod 97 before hashing: sin() of a big number differs between
+					// GPUs. A CPU cannot work out where the holes are even so: the float32 dot
+					// product's rounding, times 43758, gives another hash -- tried for a test)
+					vec2 hc = mod(floor(p / 7.0), 97.0);
+					if (hash(hc + 21.3) < 0.03 && dist < 90.0) {
+						vec2 hcen = (floor(p / 7.0) + 0.25 + 0.5 * vec2(hash(hc + 22.1), hash(hc + 23.7))) * 7.0;
+						vec2 q = p - hcen;
+						float ang = atan(q.y, q.x);
+						float rr = (0.3 + 0.4 * hash(hc + 24.5)) * (1.0 + 0.22 * sin(ang * 3.0 + hash(hc) * 6.0) + 0.12 * sin(ang * 7.0 + 1.3));
+						float dd = length(q * vec2(1.0, 1.0 + 0.4 * hash(hc + 25.9))) - rr;
+						float hole = 1.0 - smoothstep(-pxw, pxw, dd);
+						float lip = (1.0 - smoothstep(0.0, 0.06 + pxw, abs(dd))) * (1.0 - hole);
+						float bowl = clamp(-dd / max(rr, 0.01), 0.0, 1.0);
+						c *= mix(1.0, 0.42 - 0.12 * bowl, hole);
+						c *= 1.0 + 0.25 * lip;
+					}
 					c *= crazing(p, dist, pxw);
 					c *= 1.0 + step(0.94, hash(floor(p / 0.012))) * 0.4 * (1.0 - smoothstep(3.0, 12.0, dist));
 				}
@@ -12762,6 +12799,8 @@ var _light_far: Array = []   ## [pole, junction, way in] put up by _build_signal
 ## direction so crossing streets take turns
 func _build_signals() -> void:
 	var med := String(_place.get("look", "")) == "med"
+	var ca := _country() == "ca"
+	var masts: Array = []   # Canada's: [pole, arm] transforms (_mast_arm)
 	var poles: Array = []
 	var heads: Array = []
 	var bulbs: Array = [[[], [], []], [[], [], []]]
@@ -12883,6 +12922,8 @@ func _build_signals() -> void:
 				_wave.lamp(_site_of.get(node, -1), "car", g, ci, Vector3(p.x, gy + 3.3 + 0.3 - 0.3 * ci, p.y) + front)
 			if is_nan(py) or py - _h(p) < 1.0:
 				_add_post(p, 0.15)   # (posts are solid at the ground's level: not one up on a bridge)
+			if ca and not deck:
+				_mast_arm(c, rn, dir, r, g, masts, heads, bulbs, node)
 	if poles.is_empty():
 		return
 	var pole_mesh := CylinderMesh.new()
@@ -12896,11 +12937,67 @@ func _build_signals() -> void:
 	head_mesh.material = _surface("pole")
 	_chunked(pole_mesh, poles, LAMP_RANGE)
 	_chunked(head_mesh, heads, LAMP_RANGE)
+	if not masts.is_empty():
+		var mast := CylinderMesh.new()   # (the mast arms' poles and arms: unit lengths, scaled)
+		mast.top_radius = 0.1
+		mast.bottom_radius = 0.13
+		mast.height = 1.0
+		mast.radial_segments = 6
+		mast.material = _surface("pole")
+		_chunked(mast, masts, LAMP_RANGE)
+		_tally("signal_mast_arms", masts.size() / 2)
 	for g in range(2):
 		for ci in range(3):
 			if not (bulbs[g][ci] as Array).is_empty():
 				_add_bulbs(g, ci, bulbs[g][ci])
 	_build_walk_lights(pole_mesh)
+
+## North America hangs a junction's lights over the lanes on the FAR side, from a mast arm, so
+## a driver waiting at the line looks up and across at them (the pole on the near corner is
+## Europe's and Israel's). Canada's ways in get one as well as their near-side pole: a pole on
+## the far right corner, an arm over the lanes of the way in, a head over each lane (two at
+## most), its bulbs in the way's group. Left out where the far corner is no place for a pole
+## (a road, a building, the junction's asphalt).
+func _mast_arm(c: Vector2, rn: float, dir: Vector2, r: Dictionary, g: int, masts: Array, heads: Array, bulbs: Array, node: int) -> void:
+	var right := Vector2(-dir.y, dir.x)
+	var w: float = r["w"]
+	var lane0 := 0.0 if r["o"] == 0 else -w * 0.5   # (the lanes of this way in: right of the middle)
+	var lane1 := w * 0.5
+	var p := Vector2.INF
+	for back: float in [-(rn + 1.5), -(rn + 3.0), -(rn + 5.0)]:
+		for out: float in [1.0, 1.8]:
+			var q := c - dir * back + right * (lane1 + out)
+			if p != Vector2.INF or _push_out(q, 0.3, false) != Vector2.ZERO or _in_corner_fill(q, 0.15):
+				continue
+			var on := _nearest_seg(q, 12.0, true)
+			if on.is_empty() or float(on["edge"]) >= 0.5:
+				p = q
+	if p == Vector2.INF:
+		return
+	var gy := _h(p)
+	var top := 6.2
+	masts.append(Transform3D(Basis.from_scale(Vector3(1, top, 1)), Vector3(p.x, gy + top * 0.5, p.y)))
+	# the arm: from the pole's top in over the lanes, level, a little past the inner lane
+	var pr := (p - c).dot(right)   # (the pole's offset right of the road's middle)
+	var tip := p + right * (lane0 - 0.3 - pr)
+	var span := p.distance_to(tip)
+	var mid := (p + tip) * 0.5
+	var along := (tip - p).normalized()
+	var arm_basis := Basis(Vector3(along.x, 0, along.y).cross(Vector3.UP).normalized(), Vector3(along.x, 0, along.y), Vector3.UP)
+	masts.append(Transform3D(arm_basis * Basis.from_scale(Vector3(0.55, span, 0.55)), Vector3(mid.x, gy + top - 0.25, mid.y)))
+	var face := Basis(Vector3.UP, atan2(-dir.x, -dir.y))
+	var n := clampi(int(round((lane1 - lane0) / 3.3)), 1, 2)
+	for k in range(n):
+		var off := lane0 + (lane1 - lane0) * (k + 0.5) / n
+		var hp := p + right * (off - pr)
+		var hy := gy + top - 0.85
+		heads.append(Transform3D(face, Vector3(hp.x, hy, hp.y)))
+		var front := Vector3(-dir.x, 0.0, -dir.y) * 0.17
+		for ci in range(3):
+			var at := Vector3(hp.x, hy + 0.3 - 0.3 * ci, hp.y) + front
+			bulbs[g][ci].append(at)
+			_wave.lamp(_site_of.get(node, -1), "car", g, ci, at)
+	_add_post(p, 0.15)
 
 var _bulb_mm: Array = []             ## [group][colour] -> the one multimesh of those bulbs, city-wide
 var _bulb_at: Array = []             ## [group][colour] -> their transforms, 12 numbers a bulb
@@ -20911,6 +21008,7 @@ func _people_tick(dt: float) -> void:
 	# (everyone placed, wherever they are: a walker 60 m off still has to see the next one)
 	_people_at.clear()
 	_people_who.clear()
+	_people_y.clear()
 	_boarder_t += dt
 	for list: Array in [_walkers, _chatters, _crossers, _sitters, _waiters, _keepers, _bathers, _boarders,
 			_crowd.everyone() if _crowd != null else []]:
@@ -20919,15 +21017,29 @@ func _people_tick(dt: float) -> void:
 			if a.visible:
 				_people_at.append(Vector2(a.position.x, a.position.z))
 				_people_who.append(a.get_instance_id())
+				_people_y.append(a.position.y)
+	# people a scenario stands somewhere (a fare waving at the kerb, a wedding's guests):
+	# solid, and braked for, as everyone else is (add_person / _people_extra)
+	for k in range(_people_extra.size() - 1, -1, -1):
+		var e = _people_extra[k]   # (untyped: a freed one cannot even be assigned to a Node3D)
+		if not is_instance_valid(e):
+			_people_extra.remove_at(k)
+		elif (e as Node3D).visible:
+			var ep: Vector3 = (e as Node3D).global_position
+			_people_at.append(Vector2(ep.x, ep.z))
+			_people_who.append((e as Node3D).get_instance_id())
+			_people_y.append(ep.y)
 	# the dogs too, so people step round them and the car and you bump them (a dog's "who" is
 	# -100 less its number: its own walker leaves it out)
 	for w: Dictionary in _walkers:
 		if w.has("dog_i") and (w["actor"] as Actor3D).visible and w.has("dog_at"):
 			_people_at.append(w["dog_at"])
 			_people_who.append(-100 - int(w["dog_i"]))
+			_people_y.append((w["actor"] as Actor3D).position.y)
 	if _walking:
 		_people_at.append(_pos)
 		_people_who.append(0)
+		_people_y.append(_y)
 	_people_t -= dt
 	if _people_t <= 0.0:
 		_people_t = 1.5
@@ -21935,11 +22047,24 @@ func _ap_people_v() -> float:
 	for cr: Dictionary in _crossers:
 		if cr["state"] in ["cross", "back"]:
 			var a: Actor3D = cr["actor"]
-			people.append([a.get_instance_id(), Vector2(a.position.x, a.position.z)])
+			if absf(a.position.y - _y) < PEOPLE_DY:
+				people.append([a.get_instance_id(), Vector2(a.position.x, a.position.z)])
 	for w: Dictionary in _walkers:
 		var a: Actor3D = w["actor"]
-		if a.visible:
+		if a.visible and absf(a.position.y - _y) < PEOPLE_DY:
 			people.append([a.get_instance_id(), Vector2(a.position.x, a.position.z)])
+	# ...and everyone else the car would bump (_people_push): someone standing at a bus stop or
+	# chatting, a crowd's stroller -- only walkers and crossers were braked for, and the rest
+	# were driven into at full speed wherever they stood in the lane (the scenarios' wedding run
+	# in Tel Aviv, (249, 236): a person hit at 28-32 km/h on every pass, 24 Nov)
+	for list: Array in [_chatters, _sitters, _waiters, _keepers, _bathers, _boarders, _crowd.everyone() if _crowd != null else []]:
+		for w: Dictionary in list:
+			var a: Actor3D = w["actor"]
+			if a.visible and absf(a.position.y - _y) < PEOPLE_DY:
+				people.append([a.get_instance_id(), Vector2(a.position.x, a.position.z)])
+	for e in _people_extra:
+		if is_instance_valid(e) and (e as Node3D).visible and absf((e as Node3D).global_position.y - _y) < PEOPLE_DY:
+			people.append([(e as Node3D).get_instance_id(), Vector2((e as Node3D).global_position.x, (e as Node3D).global_position.z)])
 	# their pace, once a physics frame (tests call this between frames too)
 	var frame := Engine.get_physics_frames()
 	if frame != _ap_ppl_frame:
@@ -23269,6 +23394,15 @@ func _push_out(c: Vector2, r: float, posts: bool, cars := true, y := NAN) -> Vec
 const PERSON_R := 0.28
 var _people_at := PackedVector2Array()   ## where everyone in the street is now (_people_tick)
 var _people_who := PackedInt64Array()    ## ... and who (an actor's id; 0 you on foot)
+var _people_y := PackedFloat32Array()    ## ... and the height of their feet (a bridge's people are not the street's under it)
+var _people_extra: Array = []            ## people a scenario stands about (add_person): Node3D
+const PEOPLE_DY := 2.5                   ## m: someone further above or below the car than this is on another level
+
+## a person a scenario puts somewhere (Actor3D or any Node3D): solid to the car, and autodrive
+## brakes for them, as for everyone in the street's own lists. Freed: dropped by itself.
+func add_person(n: Node3D) -> void:
+	if not _people_extra.has(n):
+		_people_extra.append(n)
 var _hit_who := -1                       ## the last one the car touched (_people_push)
 
 func _people_push(c: Vector2, r: float) -> Vector2:
@@ -23276,6 +23410,8 @@ func _people_push(c: Vector2, r: float) -> Vector2:
 	for k in range(_people_at.size()):
 		if k < _people_who.size() and _people_who[k] == 0:
 			continue   # (you, on foot, where you were last tick: pushed off that, you ran at 35 m/s)
+		if k < _people_y.size() and not is_nan(_y) and absf(_people_y[k] - _y) > PEOPLE_DY:
+			continue   # (on a bridge over them, or under one)
 		var q := _people_at[k]
 		var d := (c + push) - q
 		var need := r + PERSON_R

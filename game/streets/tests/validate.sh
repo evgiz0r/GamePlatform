@@ -73,6 +73,7 @@ if [ -n "${REGRESS:-}" ]; then
 	EXTRA="STREETS_BUILD_ALL=1" run re_corner_post 1 1 corner_post 900
 	EXTRA="STREETS_BUILD_ALL=1" run re_box_clear 1 1 box_clear 900
 	EXTRA="STREETS_BUILD_ALL=1" run re_bump_slow 7 1 bump_slow 900
+	EXTRA="STREETS_BUILD_ALL=1 TRIPS=2" run re_stop_people 7 1 stop_people 900
 fi
 echo
 echo "=== STREETS VALIDATION ($(git rev-parse --short HEAD)) ==="

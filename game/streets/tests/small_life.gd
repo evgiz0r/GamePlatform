@@ -100,7 +100,7 @@ func _run() -> void:
 		if g._off_road(bm[0], 0.0):
 			bumps_off += 1
 	nx["bumps_off_the_road"] = bumps_off
-	for key: String in ["night_shutters", "roof_dishes", "roof_aerials", "roof_acs", "solar"]:
+	for key: String in ["night_shutters", "roof_dishes", "roof_aerials", "roof_acs", "solar", "balcony_plants", "towels"]:
 		nx[key] = int(g._dressing.get(key, 0))
 	print("extras: ", nx, ", on the asphalt ", bad_extras)
 	# on a pavement near the start: the start point's nearest street, onto its pavement
@@ -180,6 +180,14 @@ func _run() -> void:
 				var t: Vector2 = (pts[int(hh["seg"]) + 1] - pts[int(hh["seg"])]).normalized()
 				from = (hh["q"] as Vector2) - t * 10.0
 			await _view(name, from, at, 1.5, -4.0)
+	var pl: Array = g.wall_things.get("plants", [])
+	if not pl.is_empty():
+		var bt: Transform3D = pl[pl.size() / 2]
+		var out3: Vector3 = bt.basis.z
+		var b2 := Vector2(bt.origin.x, bt.origin.z)
+		var from := b2 + Vector2(out3.x, out3.z) * 12.0
+		await _view("balconies", from, b2, maxf(bt.origin.y - g._h(from) - 1.0, 1.6), 0.0)
+	await _view("asphalt", stand - Vector2(-along.y, along.x) * 1.0, stand + along * 25.0, 1.6, -14.0)
 	await _view("roofs", stand, stand + along * 60.0, 40.0, -30.0)
 	if g._pois.size() > 0 and DisplayServer.get_name() != "headless":
 		g._set_night(true)

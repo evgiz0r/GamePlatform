@@ -492,6 +492,10 @@ The ones most often touched, and the functions in them:
   yellow centre lines and SLOW in English. Two bugs every town had: the give-way plate
   stood point up (a warning triangle) and its red was the palette's hazard, pink. Shots:
   `tests/country_signs.gd`.
+  Added 24 Nov: Canada's mast arms (`_mast_arm`: a pole on the far right corner, heads over
+  the way in's lanes, bulbs in its group; the near pole stays) and the Dutch and French
+  ZONE 30 boards (furniture `zone30_boards`, only where OSM or the town says 30, at a
+  junction with a road of 45+). `country_signs` shoots `lights_1` and `zone30_1` too.
 - **zone and parking signs** -- `furniture.street_signs`: meshes with 7-segment digits
   (`_digit`), not Label3D (a draw each). **Passages** -- `_build_passages` (its own stage).
 - **front gardens' walls and gates** -- `_garden_fronts` lays each plot's wall itself
@@ -4353,6 +4357,23 @@ checks Givatayim / Ashdod / test town 12 / 12 / 11, all traffic's; route set 10 
   a soft knock (`_bump_tick`, Probe "bump"). `tests/bump_slow.gd` (Tel Aviv, 15 bumps built):
   4 bumps, autodrive 15-16 km/h over each, traffic 15, from 25-32 before. Route 8 and 10 after:
   clean. Not yet: the car itself rising over one (only the view shakes).
+- **Autodrive braked only for walkers and crossers (24 Nov afternoon).** The scenarios'
+  wedding run hit someone at (249, 236) on Tel Aviv's Givat HaTachmoshet bridge over the
+  Ayalon at 28-32 km/h on every pass. `_ap_people_v` looked at walkers and crossers on a
+  crossing; everyone else `_people_push` makes solid -- chatters, sitters, waiters at a stop,
+  keepers, bathers, boarders, a crowd's strollers -- was driven into wherever they stood in the
+  lane. Now all of them, and `add_person(node)`: a scenario's own people (a fare, a wedding's
+  guests) solid and braked for like the street's (`_people_extra`; freed ones drop out).
+  And by height: `_people_y` beside `_people_at`, PEOPLE_DY 2.5 m -- someone under a bridge
+  was solid to the car on it, and the old code stood still on the bridge for a person 5 m
+  below. `tests/stop_people.gd`: a person put in the lane on the bridge -- old: drove into
+  them and stood pressed there; new: stopped 3.4 m short -- and under it: old 0 km/h, new
+  42 km/h over them. Note for scenario.gd: its fare (`_pickup_start`) is in no list, so it
+  was neither solid nor braked for; `g.add_person(a)` makes it both.
+  Route set after: 14 of 15, no person hit, no stand for people; Bedford (9) did not arrive,
+  150 s in a traffic queue on Hammonds Plains Road at (-2615, -695) (cars held by cars, a
+  car 20 at its head); alone again it arrived in 560 s -- a traffic lock that comes and goes
+  there, not this change. Leiden's Rapenburg street sign again at 15 km/h (open since 22 Nov).
 - **turn_width now also checks the body at corners**: either of its two circles within
   CLEAR_M (5 cm) of a post, wall or building within 25 m of the junction counts (`body_near`
   in each line, in the REGRESS line). Givatayim 10 turns, Ashdod 12: none. Givatayim's
@@ -5413,3 +5434,16 @@ within 1.2 m behind it. Both have posts.
   spooked by traffic on the road only when it is your car; the crows look like grey pigeons
   scaled up (no separate black head and wings in the paint); gas cages only on streets
   with a wall at the pavement's back.
+- **Potholes and trenches** (24 Nov, TONE_SHADER's asphalt, within 140 m, roads with patches):
+  beside the patched 5 m squares, a filled trench (a 0.7 m strip of newer asphalt 32 m long,
+  along x or z) in one 40 m square in six, and a pothole (a ragged dark hole 0.6-1.4 m across,
+  a lighter broken lip) in one 7 m square in 33, within 90 m. Shader only: nothing to draw
+  or hold. Seen by tinting `hole` red at a 40% rate (tests/small_life.gd's "asphalt" shot);
+  a CPU cannot find the holes for a staged close-up -- the float32 dot's rounding times
+  43758 gives another hash.
+- **Balcony plants** (24 Nov, `_build_facade_kit`'s balcony stacks, furniture.gd
+  `balcony_plants_kit`): a terracotta trough on the parapet, geraniums in flower or a trailing
+  green spilling over the front, on one balcony in ten (two in ten in `med` towns); drawn to
+  110 m. Givatayim: ~3,700. `wall_things["plants"]` keeps a few for tests (small_life's
+  "balconies" shot).
+

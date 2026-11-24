@@ -114,9 +114,10 @@ A city in a new country needs a decision on each of these:
   | crossing | blue square (also on light poles) | blue square | blue square | black walker on yellow-green |
   | near a school | האט painted | red triangle, two children | red triangle, two children | yellow-green pentagon + SLOW painted |
   | name plates | green, Hebrew + English | blue | blue | green |
+  | traffic lights | near-side pole | near-side pole | near-side pole | near-side pole, and heads on a mast arm over the far side (`_mast_arm`) |
+  | 30 zones | blue ZONE 30 square (furniture `street_signs`) | white ZONE 30 board where a 30 street leaves a faster one (`zone30_boards`) | as the Netherlands | none |
 
-  Not done: the signal heads stand on the near-side pole everywhere (North America hangs
-  them over the far side), and right-hand traffic only
+  Not done: right-hand traffic only
   (a left-hand country, the UK, mirrors all of this and the driving code too).
 - **Car mix.** It comes from Israel's register (`cities/data/vehicle_mix.json`). Use a
   national register where one is open (the Netherlands' RDW is), or otherwise a

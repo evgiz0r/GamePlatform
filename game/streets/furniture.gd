@@ -479,6 +479,9 @@ func build() -> void:
 	if med:
 		await street_signs()
 		t = _timed("zone and parking signs", t)
+	elif g._country() in ["nl", "fr"]:
+		await zone30_boards()
+		t = _timed("zone 30 boards", t)
 	await street_life()
 	t = _timed("bike racks, scooters", t)
 	await town_things()
@@ -1211,6 +1214,98 @@ func street_signs() -> void:
 	await _place(_zone30_kit(), zone, NEAR_SEEN * 1.6, "signs_zone30")
 	await _place(_parking_sign_kit(), parking, NEAR_SEEN * 1.6, "signs_parking")
 
+## The Dutch and French town's 30 zone where it starts: a ZONE 30 board (white, "ZONE" over
+## the round red-rimmed 30) on the right a few metres into each street limited to 30 from a
+## junction with a faster one, facing the traffic turning in. (Israel's is the blue square:
+## street_signs; Canada has no zone boards.) Only streets whose limit really is 30 (OSM's
+## maxspeed, or the town's own for that kind): most of Delft's and Annecy's side streets.
+func zone30_boards() -> void:
+	var boards: Array = []
+	for ni: int in g._tile_nodes.get(g._tile, []):
+		var arms: Array = g._node_roads[ni]
+		if arms.size() < 3:
+			continue
+		var fast := false
+		for e: Vector2i in arms:
+			var o: Dictionary = g._roads[e.x]
+			fast = fast or (o["drive"] and float(o["speed"]) * 3.6 >= 45.0 and o["k"] != "service")
+		if not fast:
+			continue
+		if g._over():
+			await g._pause()
+		var c: Vector2 = g._nodes[ni]
+		for e: Vector2i in arms:
+			var r: Dictionary = g._roads[e.x]
+			if not r["drive"] or r["pv"] or absf(float(r["speed"]) * 3.6 - 30.0) > 2.0 \
+					or not (r["k"] in ["residential", "unclassified", "tertiary", "living_street"]):
+				continue
+			var pts: PackedVector2Array = r["pts"]
+			for step: int in [-1, 1]:
+				if e.y + step < 0 or e.y + step >= pts.size() or pts[e.y].distance_to(pts[e.y + step]) < 10.0:
+					continue
+				if r["o"] != 0 and r["o"] != step:
+					continue   # (one way out of it: nobody drives in here)
+				var d := (pts[e.y + step] - c).normalized()
+				var right := Vector2(-d.y, d.x)
+				var p := c + d * (float(g._node_r[ni]) + 6.0) + right * (float(r["w"]) * 0.5 + 0.55)
+				if not (g._mine(p) and _free(p, 0.35, 0.4, 0.8)):
+					continue
+				boards.append(Transform3D(Basis(Vector3.UP, atan2(-d.x, -d.y)), Vector3(p.x, _h(p) + g.KERB_H, p.y)))
+				g._add_post(p, 0.07)
+	await _place(_zone30_eu_kit(), boards, NEAR_SEEN * 1.6, "signs_zone30")
+
+## the European ZONE 30 board on its pole, facing +Z: white in a thin grey rim, ZONE in black
+## block letters over a round sign of 30 (red ring, black digits)
+func _zone30_eu_kit() -> ArrayMesh:
+	if _kits.has("zone30_eu"):
+		return _kits["zone30_eu"]
+	var b = g.new_buf()
+	_tube(b, Vector3.ZERO, Vector3(0, 2.9, 0), 0.035, 0.035, _tone("pole"), 6)
+	var y := 2.3
+	_box(b, Vector3(0, y, 0.04), Vector3(0.58, 0.9, 0.02), _tone("pole"))
+	_box(b, Vector3(0, y, 0.05), Vector3(0.54, 0.86, 0.02), _tone("mark"))
+	var ink := Palette.col("bg")
+	var lx := -0.165
+	for ch: String in "ZONE":
+		_glyph(b, ch, lx, y + 0.27, 0.064, 0.13, ink)
+		lx += 0.11
+	_disc(b, y - 0.1, 0.062, 0.0, 0.21, _tone("mark"))
+	_disc(b, y - 0.1, 0.064, 0.16, 0.21, _tone("signred"))
+	_digit(b, 3, -0.058, y - 0.1, 0.068, 0.14, ink)
+	_digit(b, 0, 0.058, y - 0.1, 0.068, 0.14, ink)
+	var am: ArrayMesh = _mesh(b)
+	_kits["zone30_eu"] = am
+	return am
+
+## a block capital (Z, O, N or E) h high, its middle at (x, y), in the plane z
+func _glyph(b, ch: String, x: float, y: float, z: float, h: float, col: Color) -> void:
+	var w := h * 0.62
+	var s := h * 0.17
+	var bar := func(cx: float, cy: float, sx: float, sy: float) -> void:
+		_box(b, Vector3(x + cx, y + cy, z), Vector3(sx, sy, 0.01), col)
+	var slant := func(sgn: float) -> void:   # corner to corner: +1 bottom left to top right
+		var ln := sqrt(w * w + h * h) - s
+		_box(b, Vector3(x, y, z), Vector3(ln, s, 0.01), col, Basis(Vector3.BACK, sgn * atan2(h - s, w - s)))
+	match ch:
+		"Z":
+			bar.call(0.0, (h - s) * 0.5, w, s)
+			bar.call(0.0, -(h - s) * 0.5, w, s)
+			slant.call(1.0)
+		"O":
+			bar.call(0.0, (h - s) * 0.5, w, s)
+			bar.call(0.0, -(h - s) * 0.5, w, s)
+			bar.call(-(w - s) * 0.5, 0.0, s, h)
+			bar.call((w - s) * 0.5, 0.0, s, h)
+		"N":
+			bar.call(-(w - s) * 0.5, 0.0, s, h)
+			bar.call((w - s) * 0.5, 0.0, s, h)
+			slant.call(-1.0)
+		"E":
+			bar.call(-(w - s) * 0.5, 0.0, s, h)
+			bar.call(0.0, (h - s) * 0.5, w, s)
+			bar.call(0.0, 0.0, w * 0.8, s)
+			bar.call(0.0, -(h - s) * 0.5, w, s)
+
 ## seven-segment digits on a sign, in a vertical plane at z, the digit's middle at (x, y),
 ## h high
 func _digit(b, n: int, x: float, y: float, z: float, h: float, col: Color) -> void:
@@ -1659,6 +1754,30 @@ func towel_kit() -> ArrayMesh:
 	_box(b, Vector3(0, 0.9, 0.513), Vector3(0.55, 0.22, 0.012), Color.WHITE)
 	var am: ArrayMesh = _mesh(b)
 	_kits["towel"] = am
+	return am
+
+## potted plants on a balcony's parapet (its front at z = 0.62, top at y = 1.0, as the
+## towel): a terracotta trough on the coping and the green of what grows in it, in one of two
+## kinds -- geraniums in flower (v 0) or a trailing green that spills over the front (v 1)
+func balcony_plants_kit(v: int) -> ArrayMesh:
+	var key := "bplants%d" % v
+	if _kits.has(key):
+		return _kits[key]
+	var b = g.new_buf()
+	var pot: Color = g._real_col("orange").lerp(_tone("woodfence"), 0.45)
+	var leaf: Color = _tone("leaf")
+	_box(b, Vector3(0, 1.09, 0.56), Vector3(0.7, 0.18, 0.2), pot)
+	for i in range(3):
+		var x := -0.22 + 0.22 * i
+		_ellipsoid(b, Vector3(x, 1.3, 0.56), Vector3(0.19, 0.17, 0.15), leaf.lightened(0.05 * i), Basis(), false, 6, 3)
+		if v == 0:
+			for j in range(3):
+				var a := TAU * (j + i * 0.3) / 3.0
+				_box(b, Vector3(x + cos(a) * 0.08, 1.36 + 0.02 * j, 0.56 + sin(a) * 0.07), Vector3(0.05, 0.04, 0.05), g._real_col("red"))
+		else:
+			_box(b, Vector3(x, 0.95, 0.67), Vector3(0.16, 0.32, 0.03), leaf.darkened(0.1))   # hanging over the front
+	var am: ArrayMesh = _mesh(b)
+	_kits[key] = am
 	return am
 
 ## ---- the people's company (streets.gd _companions) ---------------------------------------------

@@ -1772,7 +1772,8 @@ contributors under the ODbL, which is why the credit sits on screen.
   pavements and fly up when you come near; rental e-scooters stand (or lie) about; gas
   cylinder cages by the houses. Roofs carry dishes, old aerials and AC units; fountains
   stand where OSM maps them; at night most shops have their shutters down. Post boxes, drinking taps and
-  speed bumps where OpenStreetMap has them. Everywhere, the cars' shapes and colours are the shares on Israel's vehicle
+  speed bumps where OpenStreetMap has them. Potholes and dug-up trench strips in the
+  asphalt; potted plants on the balconies. Everywhere, the cars' shapes and colours are the shares on Israel's vehicle
   register: four in ten an SUV or crossover, more than four in ten white.
 - **Guessed**: a building with no height gets 4 storeys (by type: houses 2, garages 1,
   offices 5...), varied a storey up or down so a street is not one flat wall. A road with
