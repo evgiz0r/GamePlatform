@@ -4886,6 +4886,22 @@ have no inputs, i want them super optimized")**: two new ones, both built to cos
   is used only when `g._push_out(cand, 0.6, false, false)` is zero, else the shot falls back to
   "orbit". 0 frames in every scenario since (`cam_in_building`).
 
+**Round four (24 Nov, evening; the user: "we need something to push? anything else? cycles of
+iterations?")**:
+- **Gan pick-up** (level 49, Givatayim; "gan"): the taxi's "pickup" beat with a kid (Actor3D at
+  1.15 m) at the kerb of one of the town's own kindergartens (`g._places._tile_items`, kind
+  "kindergarten", inside the town -- one past the town line had the road unbuilt), twice, then
+  "drive_for" home (an address 300-600 m on) on one clock (`timer`). `_gan_crowd`: GAN_CROWD 3
+  parents standing at the gate, `g.add_person` each, freed at the pickup. A gan pickup's cut
+  charges the clock; a kid never "gives up". Clock: crow-line x `GAN_WIND` 1.7 / 6 m/s + 20 s a
+  stop + 20 (1.45: 1:39 late; 1.9: 2:14-2:30 to spare, too easy). Four runs: 0:10 to 2:30 spare
+  at 1.7-1.9, 3 of 4 runs 2-3 stars. Script 39-45 ms a frame (A day in Givatayim's 48).
+- **A day, weakest of the films, now has its hour** (beat `["clock", minutes, rate, what]`: the
+  line under the street reads "07:42 · morning rush · 22 cars about") **and the traffic of the
+  hour** (`quiet` 14 in the evening, 5 at night, 2 before dawn). Givatayim: 13.6 cars on
+  average, **39.0 ms of script a frame against 48.1** before. Shabbat eve has the clock too
+  (15:15 to the candles at 16:17, late November).
+
 ## On foot: faster, and any car in traffic (22 Nov 2026)
 
 `WALK` 2.1 -> 4.5 m/s (a jog, the "Run" clip from 2.6 m/s up), `RUN` 6.2 -> 9.5 (the run

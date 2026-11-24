@@ -113,6 +113,8 @@ func _run() -> void:
 			ok = ok and not sc.on and sc.shots_seen.size() >= 2
 		"wedding":
 			ok = ok and not sc.on and sc.reached >= 1 and sc.hoots > 0
+		"gan":
+			ok = ok and not sc.on and sc.drops_done >= 2 and sc.reached >= 1 and sc.gan_parents > 0
 		"dragons":
 			ok = ok and not sc.on and sc._dragons != null and int(sc._dragons.events.get("fire", 0)) >= 2 				and int(sc._dragons.events.get("cam_in_building", 0)) == 0
 	print("SCENARIO shots: %s; cars that pulled over: %d; time now: %s" % [JSON.stringify(sc.shots_seen), sc.yielded,
