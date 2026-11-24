@@ -22915,6 +22915,7 @@ func _knock_back(e: Dictionary) -> void:
 
 func _knock_tick(dt: float) -> void:
 	_bent_tick(dt)
+	_bump_tick(dt)
 	_rails_tick(dt)
 	if _knocked.is_empty():
 		return
@@ -24055,6 +24056,58 @@ func _set_auto(on: bool) -> void:
 	_show_banner("autodrive" if on else "you drive", 1.2)
 
 ## the lower of two speeds, noting what the new one is for when it is the lower
+## Speed bumps, tables and cushions (OSM's, built by furniture.gd into `bumps`): the speed to
+## hold at p heading `fwd` for the ones in its way within `look` m -- over one at its own pace
+## (BUMP_KMH by kind), braked down to it from further back at `decel`. A car's whole length
+## counts: one under it still holds it. INF when none. Across the road (its width), so the
+## lane does not matter; a cushion lets a car straddle it a little faster.
+const BUMP_KMH := {"bump": 15.0, "cushion": 25.0, "table": 25.0}
+var _bump_hash := {}
+var _bump_n := 0
+func bump_v(p: Vector2, fwd: Vector2, look: float, decel: float) -> float:
+	if bumps.is_empty():
+		return INF
+	if _bump_n != bumps.size():   # (bumps come in as the squares are built: hashed as they come)
+		for i in range(_bump_n, bumps.size()):
+			_hash_add(_bump_hash, Rect2(bumps[i][0], Vector2.ZERO), SEG_CELL, i)
+		_bump_n = bumps.size()
+	var v := INF
+	for i: int in _near(_bump_hash, p + fwd * look * 0.5, look * 0.5 + 3.0, SEG_CELL):
+		var b: Array = bumps[i]
+		var rel: Vector2 = (b[0] as Vector2) - p
+		var along := rel.dot(fwd)
+		if along < -CAR_LEN * 0.5 or along > look:
+			continue
+		if absf((b[1] as Vector2).dot(fwd)) < 0.7:
+			continue   # (one across a side street we pass the end of)
+		if absf(rel.dot(Vector2(-fwd.y, fwd.x))) > float(b[2]) * 0.5 + 0.5:
+			continue
+		var at: float = float(BUMP_KMH.get(String(b[3]), 15.0)) / 3.6
+		var front := maxf(along - CAR_LEN * 0.5 - 0.5, 0.0)
+		v = minf(v, sqrt(at * at + 2.0 * decel * front))
+	return v
+
+## a jolt over a bump taken too fast: the car hops, the view shakes (you driving, or anyone)
+var _bump_jolt := 0.0
+func _bump_tick(dt: float) -> void:
+	_bump_jolt = maxf(0.0, _bump_jolt - dt)
+	if _bump_n != bumps.size():
+		bump_v(_pos, Vector2.RIGHT, 0.0, 1.0)   # (hashes the new ones)
+	if bumps.is_empty() or _walking or _bump_jolt > 0.0 or absf(_v) < 4.0:
+		return
+	var fwd := _fwd()
+	for i: int in _near(_bump_hash, _pos, 3.0, SEG_CELL):
+		var b: Array = bumps[i]
+		var rel: Vector2 = (b[0] as Vector2) - _pos
+		if absf(rel.dot(fwd)) < CAR_OFF + 0.3 and absf(rel.dot(Vector2(-fwd.y, fwd.x))) < float(b[2]) * 0.5:
+			var over := absf(_v) * 3.6 - float(BUMP_KMH.get(String(b[3]), 15.0))
+			if over > 5.0:
+				_bump_jolt = 0.6
+				shake3d(clampf(over * 0.04, 0.3, 1.6))
+				Audio.play("impact_soft", 0.1, -10.0 + clampf(over * 0.2, 0.0, 6.0))
+				Probe.event("bump", {"kmh": int(absf(_v) * 3.6), "kind": b[3]})
+			return
+
 func _held(cur: float, v: float, why: String) -> float:
 	if v < cur:
 		_ap_why = why
@@ -24295,6 +24348,8 @@ func _autodrive(dt: float) -> Array:
 	# only in its lane when it was too close to stop)
 	vt = _held(vt, _ap_zebra_v(), "zebra")
 	vt = _held(vt, _ap_people_v(), "people")
+	# speed bumps (racer over them half again as fast: it is in a hurry, not careless)
+	vt = _held(vt, bump_v(_pos, _fwd(), 50.0, 2.0) * (1.5 if racing else 1.0), "bump")
 	var tg := Time.get_ticks_usec()
 	if not racing:
 		vt = _held(vt, _ap_give_v(dt), "junction")

@@ -4343,6 +4343,16 @@ checks Givatayim / Ashdod / test town 12 / 12 / 11, all traffic's; route set 10 
   Route set after (15): 15 of 15 arrived, 0 reds, 0 rescues, 0 off road, no hits at all.
   Delft (11) stood 58 s in a queue on Westplantsoen (a bus, a taxi and an SUV ahead, all held
   by the car in front; the run before: 24 + 19 s in the same queue) -- traffic, not autodrive.
+- **Speed bumps slow the cars (24 Nov).** The street-points thread built OSM's bumps, tables
+  and cushions into `g.bumps` (drawn, 8 cm, not solid). `g.bump_v(p, fwd, look, decel)`: the
+  speed to hold for the ones across the way ahead (their width, the lane not minded; one under
+  the car still holds it; one across a side street passed is skipped by its direction) --
+  BUMP_KMH 15 a bump, 25 a cushion or a table, braked down to from further back. Autodrive
+  (why "bump", 2.0 m/s^2; racer 1.5x the pace) and traffic (`_target`, BRAKE * 0.6) both;
+  hashed as squares bring them in. You driving: over one 5 km/h or more too fast, a shake and
+  a soft knock (`_bump_tick`, Probe "bump"). `tests/bump_slow.gd` (Tel Aviv, 15 bumps built):
+  4 bumps, autodrive 15-16 km/h over each, traffic 15, from 25-32 before. Route 8 and 10 after:
+  clean. Not yet: the car itself rising over one (only the view shakes).
 - **turn_width now also checks the body at corners**: either of its two circles within
   CLEAR_M (5 cm) of a post, wall or building within 25 m of the junction counts (`body_near`
   in each line, in the REGRESS line). Givatayim 10 turns, Ashdod 12: none. Givatayim's

@@ -515,6 +515,7 @@ func _target(c: Car, i: int, dt: float) -> float:
 	var lv := _light_ahead(c)
 	vt = _held(c, vt, lv, "light")
 	vt = _held(c, vt, _zebra_ahead(c), "zebra")
+	vt = _held(c, vt, g.bump_v(c.pos, Vector2(sin(c.yaw), cos(c.yaw)), 40.0, BRAKE * 0.6), "bump")
 	if lv == INF:
 		vt = _held(c, vt, _sign_ahead(c, dt), "sign")
 		if not c.holding:
