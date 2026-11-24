@@ -5397,4 +5397,9 @@ within 1.2 m behind it. Both have posts.
   or hold. Seen by tinting `hole` red at a 40% rate (tests/small_life.gd's "asphalt" shot);
   a CPU cannot find the holes for a staged close-up -- the float32 dot's rounding times
   43758 gives another hash.
+- **Balcony plants** (24 Nov, `_build_facade_kit`'s balcony stacks, furniture.gd
+  `balcony_plants_kit`): a terracotta trough on the parapet, geraniums in flower or a trailing
+  green spilling over the front, on one balcony in ten (two in ten in `med` towns); drawn to
+  110 m. Givatayim: ~3,700. `wall_things["plants"]` keeps a few for tests (small_life's
+  "balconies" shot).
 

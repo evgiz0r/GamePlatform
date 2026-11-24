@@ -1661,6 +1661,30 @@ func towel_kit() -> ArrayMesh:
 	_kits["towel"] = am
 	return am
 
+## potted plants on a balcony's parapet (its front at z = 0.62, top at y = 1.0, as the
+## towel): a terracotta trough on the coping and the green of what grows in it, in one of two
+## kinds -- geraniums in flower (v 0) or a trailing green that spills over the front (v 1)
+func balcony_plants_kit(v: int) -> ArrayMesh:
+	var key := "bplants%d" % v
+	if _kits.has(key):
+		return _kits[key]
+	var b = g.new_buf()
+	var pot: Color = g._real_col("orange").lerp(_tone("woodfence"), 0.45)
+	var leaf: Color = _tone("leaf")
+	_box(b, Vector3(0, 1.09, 0.56), Vector3(0.7, 0.18, 0.2), pot)
+	for i in range(3):
+		var x := -0.22 + 0.22 * i
+		_ellipsoid(b, Vector3(x, 1.3, 0.56), Vector3(0.19, 0.17, 0.15), leaf.lightened(0.05 * i), Basis(), false, 6, 3)
+		if v == 0:
+			for j in range(3):
+				var a := TAU * (j + i * 0.3) / 3.0
+				_box(b, Vector3(x + cos(a) * 0.08, 1.36 + 0.02 * j, 0.56 + sin(a) * 0.07), Vector3(0.05, 0.04, 0.05), g._real_col("red"))
+		else:
+			_box(b, Vector3(x, 0.95, 0.67), Vector3(0.16, 0.32, 0.03), leaf.darkened(0.1))   # hanging over the front
+	var am: ArrayMesh = _mesh(b)
+	_kits[key] = am
+	return am
+
 ## ---- the people's company (streets.gd _companions) ---------------------------------------------
 
 ## A dog, facing +Z, feet at y = 0, about knee high (the copy's scale makes it smaller or

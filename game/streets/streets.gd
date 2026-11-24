@@ -7176,6 +7176,7 @@ func _build_facade_kit() -> void:
 	var acs: Array = [[], []]    # AC units: on the wall on arms, up on a balcony's back wall
 	var washing: Array = [[], [], []]   # racks of washing under windows, three arrangements
 	var towels: Array = []       # over the balconies' parapets
+	var plants: Array = [[], []] # potted plants on them: geraniums, trailing green
 	var towel_cols: Array = []
 	var laundry: Array = _furn._laundry_cols() if med else []
 	var plates: Array = []
@@ -7244,6 +7245,8 @@ func _build_facade_kit() -> void:
 							if hb % 10 < 3:   # an AC up on the balcony's back wall, over the parapet
 								var q := at + (b - a) / L * (0.75 if hb % 2 == 0 else -0.75)
 								(acs[1] as Array).append(Transform3D(face, Vector3(q.x, g_lo + lv * 3.0 + 1.95, q.y)))
+							elif hb % 10 == 5 or (hb % 10 == 6 and med):   # potted plants on the parapet
+								plants[hb / 10 % 2].append(Transform3D(face, Vector3(p.x, g_lo + lv * 3.0, p.y)))
 							elif hb % 10 == 4 and hb / 10 % 3 == 0:   # a towel over the parapet
 								var tx := (hb / 30 % 5 - 2) * 0.35
 								towels.append(Transform3D(face, Vector3(p.x, g_lo + lv * 3.0, p.y)) * Transform3D(Basis(), Vector3(tx, 0, 0)))
@@ -7349,7 +7352,11 @@ func _build_facade_kit() -> void:
 		wash_tints.append(Color.WHITE.lerp(laundry[posmod(_hash_i(Vector2(t.origin.x, t.origin.z)), laundry.size())], 0.35))
 	_instanced(_furn.washing_kit(0), all_wash, 110.0, wash_tints)
 	await _chunked_paced(_furn.towel_kit(), towels, 120.0, towel_cols)
-	var seen_now := {"ac": acs[0], "ac_balcony": acs[1], "washing": (washing[0] as Array) + (washing[1] as Array) + (washing[2] as Array), "towels": towels}
+	for v in range(2):
+		await _chunked_paced(_furn.balcony_plants_kit(v), plants[v], 110.0, [])
+	_tally("balcony_plants", (plants[0] as Array).size() + (plants[1] as Array).size())
+	var seen_now := {"ac": acs[0], "ac_balcony": acs[1], "washing": (washing[0] as Array) + (washing[1] as Array) + (washing[2] as Array), "towels": towels,
+		"plants": (plants[0] as Array) + (plants[1] as Array)}
 	for k: String in seen_now:   # (a few of each kept for the tests: tests/wall_things.gd)
 		var keep: Array = wall_things.get(k, [])
 		keep.append_array((seen_now[k] as Array).slice(0, maxi(0, 200 - keep.size())))
