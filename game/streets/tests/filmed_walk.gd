@@ -21,13 +21,17 @@ func _initialize() -> void:
 
 func _run() -> void:
 	await create_timer(0.3).timeout
-	root.get_node("Flow").start_game("streets", {"level": int(OS.get_environment("LEVEL")) if OS.get_environment("LEVEL") != "" else 5})
+	# (WALK_TIME=evening or night: the walk in that light, as the walks list's buttons start it)
+	root.get_node("Flow").start_game("streets", {"level": int(OS.get_environment("LEVEL")) if OS.get_environment("LEVEL") != "" else 5,
+		"time": OS.get_environment("WALK_TIME") if OS.get_environment("WALK_TIME") != "" else "day"})
 	while g == null or not g._loaded:
 		await create_timer(0.25).timeout
 		for n in root.find_children("*", "Node2D", true, false):
 			if n.get_script() != null and String(n.get_script().resource_path).ends_with("streets.gd"):
 				g = n
 	var out := OS.get_environment("OUT")
+	if g._walk_ui != null and OS.get_environment("WALK_BAR") != "1":
+		g._walk_ui.visible = false   # (the progress bar and speed button: not in shots set beside a film)
 	if g._film.is_empty():
 		print("FAIL no walk: is this the walk's level?")
 		quit(1)
@@ -73,6 +77,8 @@ func _run() -> void:
 						box.position.y - g._h(Vector2(p.x, p.z)), box.end.y - g._h(Vector2(p.x, p.z)), Vector2(p.x, p.z).distance_to(c)])
 		quit()
 		return
+	if not g._film_base.is_empty():   # a walk that steps round posts: over the whole walk, all built
+		g._film_dodge(0.0, last + 1.0)
 	if OS.get_environment("SCAN") == "1":
 		# the whole route, every quarter second: each stretch inside a building or a post
 		# (anything solid: a bollard, a parked bike) -- a replayed walk goes through walls
@@ -90,7 +96,10 @@ func _run() -> void:
 				what = String(g._last_hit)
 			if what.begins_with("post "):   # where it stands, to know which way to walk round it
 				var q: Vector2 = g._posts[int(what.get_slice(" ", 1))]
-				what += " at %s" % Vector2(snappedf(q.x, 0.1), snappedf(q.y, 0.1))
+				var pi := int(what.get_slice(" ", 1))
+				what += " at %s, %.2f m round" % [Vector2(snappedf(q.x, 0.1), snappedf(q.y, 0.1)), g._post_r[pi]]
+				if pi < (g._post_from as Array).size():   # (POSTS_FROM=1: who put it up)
+					what += ", from %s" % g._post_from[pi]
 			if what != was:
 				if was != "":
 					print("INSIDE %s from %.2f to %.2f s, walking at %s" % [was, from, t, where])
@@ -100,6 +109,88 @@ func _run() -> void:
 			t += 0.25
 		if was != "":
 			print("INSIDE %s from %.2f to the end" % [was, from])
+		# and the eye: anything drawn by instance (a tree's leaves, an awning, a sign, a shop's
+		# board) whose box holds the camera -- the post scan sees trunks, not the crown a walk's
+		# camera passes through (the leaves hung to 1.35-1.9 m; the eye is at 1.58)
+		var eye_h: float = 1.64 - g.FILM_EYE_DROP
+		var lo := Vector2(INF, INF)
+		var hi := -lo
+		var tt := 0.0
+		while tt <= last:
+			var q: Vector2 = g._film_at(tt)
+			lo = lo.min(q)
+			hi = hi.max(q)
+			tt += 1.0
+		lo -= Vector2(8, 8)
+		hi += Vector2(8, 8)
+		var boxes := {}   # 4 m cell -> [[AABB, what]]
+		for n: Node in root.find_children("*", "MultiMeshInstance3D", true, false):
+			var mmi := n as MultiMeshInstance3D
+			if mmi.multimesh == null or mmi.multimesh.mesh == null or not mmi.is_visible_in_tree():
+				continue
+			var mm := mmi.multimesh
+			var ab := mm.mesh.get_aabb()
+			var count := mm.visible_instance_count if mm.visible_instance_count >= 0 else mm.instance_count
+			for i in range(count):
+				var xf := mmi.global_transform * mm.get_instance_transform(i)
+				var o := xf.origin
+				if o.x < lo.x or o.x > hi.x or o.z < lo.y or o.z > hi.y:
+					continue
+				var box := xf * ab
+				if box.size.y > 30.0 or box.position.y - g._h(Vector2(o.x, o.z)) < 0.4:
+					continue   # (standing on the ground: a trunk, a pole -- the post scan's; its box takes in its branches)
+				var key := Vector2i(floori(o.x / 4.0), floori(o.z / 4.0))
+				if not boxes.has(key):
+					boxes[key] = []
+				(boxes[key] as Array).append([box, "%s %s" % [mmi.name, mm.mesh.resource_name if mm.mesh.resource_name != "" else str(mm.mesh.get_instance_id() % 10000)]])
+		var in_was := ""
+		var in_from := 0.0
+		tt = 0.0
+		var eyes := 0
+		while tt <= last + 0.25:
+			var q: Vector2 = g._film_at(tt)
+			var e := Vector3(q.x, g._walk_y(q) + eye_h, q.y)
+			var what := ""
+			var c := Vector2i(floori(q.x / 4.0), floori(q.y / 4.0))
+			for dz in range(-2, 3):
+				for dx in range(-2, 3):
+					for bw: Array in boxes.get(c + Vector2i(dx, dz), []):
+						var bx: AABB = (bw[0] as AABB).grow(-0.15)
+						if bx.size.x < 0.0 or bx.size.y < 0.0 or bx.size.z < 0.0:
+							continue   # (thinner than 0.3 m: nothing an eye can be inside; and has_point errors)
+						if bx.has_point(e):
+							what = "%s (box %.1f to %.1f m up, %.1f wide)" % [bw[1], bx.position.y - e.y + eye_h, bx.end.y - e.y + eye_h, bx.size.x]
+			if what != in_was:
+				if in_was != "":
+					print("EYE IN %s from %.2f to %.2f s, at %s" % [in_was, in_from, tt, Vector2i(g._film_at(in_from))])
+					eyes += 1
+				in_was = what
+				in_from = tt
+			tt += 0.25
+		print("eye scan done: %d stretches with the eye inside something drawn" % eyes)
+		# and the feet: on a road's asphalt outside the walk's crossings (`zebras`, kerb to kerb)
+		# -- a footway OSM maps beside a carriageway can lie inside the game's wider asphalt
+		var on_was := false
+		var on_from := 0.0
+		var ons := 0
+		tt = 0.0
+		while tt <= last + 0.25:
+			var q: Vector2 = g._film_at(tt)
+			var crossing := false
+			for z: Array in g._film_zebras:
+				crossing = crossing or (tt >= float(z[0]) - 0.5 and tt <= float(z[1]) + 0.5)
+			var on: bool = not crossing and not g._off_road(q, 0.0)
+			if on != on_was:
+				if on_was:
+					print("ON ROAD from %.2f to %.2f s, at %s" % [on_from, tt, Vector2i(g._film_at(on_from))])
+					ons += 1
+				on_was = on
+				on_from = tt
+			tt += 0.25
+		if on_was:
+			print("ON ROAD from %.2f to the end" % on_from)
+			ons += 1
+		print("road scan done: %d stretches on asphalt off the crossings" % ons)
 		print("scan done")
 		quit()
 		return
@@ -143,10 +234,52 @@ func _run() -> void:
 		quit()
 		return
 	if OS.get_environment("RECORD") == "1":
+		# with each frame the camera's exact pose (POSE t  x y z  forward xyz  up xyz, and the
+		# vertical field of view): tests/film_marks.py projects world points through it, to
+		# set a landmark's place in the replay's frame beside its place in the film's
+		if OS.get_environment("POSTS_ALONG") != "0":
+			# every post within 30 m of the walk's line, once: the bollards, poles, columns and
+			# trunks film_marks.py can name as landmarks (POSTS_ALONG=0 leaves them out)
+			var seen := {}
+			var t2 := 0.0
+			while t2 <= last:
+				var c: Vector2 = g._film_at(t2)
+				for i in range(g._posts.size()):
+					if not seen.has(i) and g._posts[i].distance_to(c) <= 30.0:
+						seen[i] = true
+						print("POST %d %.2f %.2f %.2f %.2f" % [i, g._posts[i].x, g._posts[i].y, g._post_r[i], g._h(g._posts[i])])
+				t2 += 1.0
+			# and the buildings' corners within 40 m: film_marks.py's anchors (a wall's corner
+			# at the ground is where OSM is surest)
+			var bseen := {}
+			t2 = 0.0
+			while t2 <= last:
+				var c: Vector2 = g._film_at(t2)
+				for b in range(g._blds.size()):
+					if bseen.has(b) or not (g._bld_box[b] as Rect2).grow(40.0).has_point(c):
+						continue
+					bseen[b] = true
+					var ring: PackedVector2Array = g._blds[b]
+					var line := "BLD %d %d" % [b, g._bld_kind[b]]
+					for q: Vector2 in ring:
+						line += " %.2f,%.2f,%.2f" % [q.x, q.y, g._h(q)]
+					print(line)
+				t2 += 1.0
+		var glanced := 0
 		while g._film_t <= last + 0.5:
 			await RenderingServer.frame_post_draw
 			var t: float = g._film_t
+			var b: Basis = g.cam.global_transform.basis
+			var o: Vector3 = g.cam.global_position
+			print("POSE %.2f  %.3f %.3f %.3f  %.4f %.4f %.4f  %.4f %.4f %.4f  %.1f" % [t, o.x, o.y, o.z,
+				-b.z.x, -b.z.y, -b.z.z, b.y.x, b.y.y, b.y.z, g.cam.fov])
 			root.get_viewport().get_texture().get_image().save_jpg(out + "/f%05d.jpg" % int(round(t * 10.0)), 0.88)
+			if g._glances != glanced:   # the head going with a passing car (streets.gd _film_glance)
+				glanced = g._glances
+				var gc = g._glance_car
+				if gc != null:
+					print("GLANCE %.1f at a car %.0f m off, %.0f deg from the body, %.0f km/h" % [t, gc.pos.distance_to(g._pos),
+						rad_to_deg(angle_difference(g._yaw, (gc.pos - g._pos).angle())), gc.v * 3.6])
 		print("recorded to ", out)
 		quit()
 		return
@@ -157,11 +290,35 @@ func _run() -> void:
 		for i in range(20):
 			await physics_frame
 		await RenderingServer.frame_post_draw
-		root.get_viewport().get_texture().get_image().save_png(out + "/t%03d.png" % int(t))
+		# (whole seconds as t005.png; a fraction keeps its tenth, t092.3.png -- it once saved
+		# 92 and 92.3 to one file)
+		var name := ("t%03d" % int(t)) if is_equal_approx(t, roundf(t)) else ("t%05.1f" % t)
+		root.get_viewport().get_texture().get_image().save_png(out + "/" + name + ".png")
 		# what is nearest: anything solid within a step means the walk goes through it
 		var hit: Vector2 = g._push_out(g._pos, 0.3, true, false)
-		print("t=%3d s at %s  facing %3d deg  %s" % [int(t), Vector2i(g._pos), int(rad_to_deg(g._yaw)),
+		print("t=%5.1f s at %s  facing %3d deg  %s" % [t, Vector2i(g._pos), int(rad_to_deg(g._yaw)),
 			"clear" if hit == Vector2.ZERO else "INSIDE %s (%.2f m)" % [g._last_hit, hit.length()]])
+		if OS.get_environment("SWEEP") != "":
+			# SWEEP="yaw,yaw,...[/pitch]": from the camera's place at t, a shot facing each yaw
+			# (degrees round the map's x/z, as CAMERA_LOG prints) and the pitch (default the
+			# phone's -15.6), t091_y125.png -- to find which way the film faces: set the shots
+			# beside its frame. The game stands still meanwhile.
+			var sw := OS.get_environment("SWEEP").split("/")
+			var pitch := float(sw[1]) if sw.size() > 1 else -15.6
+			# (the game moves its camera from the tree's process_frame, not _process: unhooked
+			# meanwhile, or every shot is the walk's own view)
+			g.get_tree().process_frame.disconnect(g._frame)
+			g.set_physics_process(false)
+			var eye: Vector3 = g.cam.global_position
+			for y: float in sw[0].split_floats(","):
+				var d := Vector3(cos(deg_to_rad(y)) * cos(deg_to_rad(pitch)), sin(deg_to_rad(pitch)), sin(deg_to_rad(y)) * cos(deg_to_rad(pitch)))
+				g.look_from(eye, eye + d)   # (the kit's: it keeps the shot's base, which a bare
+				                            # camera move lost to the shake's reset each frame)
+				await RenderingServer.frame_post_draw
+				await RenderingServer.frame_post_draw
+				root.get_viewport().get_texture().get_image().save_png(out + "/%s_y%03d.png" % [name, int(y)])
+			g.get_tree().process_frame.connect(g._frame)
+			g.set_physics_process(true)
 	g._film_t = last + 1.0
 	for i in range(30):
 		await physics_frame

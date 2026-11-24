@@ -32,6 +32,18 @@ right now, offer to add it here rather than letting it get lost in the chat.
 
 ## Platform and tooling
 
+- **Check for secrets before anything goes public.** "in the validation process, to see
+  that there are no secrets in the repo, as it is public". The repository and its web build
+  are public, so a key, token or password committed by mistake -- or a private detail, such
+  as an address the person mentioned as theirs -- is out for anyone to read the moment it is
+  pushed. Scan every push (and the publish, before `docs/` is written) for anything that
+  looks like a secret: known key formats, high-entropy strings, `.env` and credential files,
+  plus a short list of the person's own private strings kept out of the repo. Fail the push
+  or the publish and say which file and line, before it lands on `main`. A ready-made
+  scanner (gitleaks, trufflehog, or GitHub's own secret scanning, turned on in the
+  repository's settings) covers the known formats; the private strings need our own check.
+  Scan the history once too, since something committed and later deleted is still in it.
+
 - **Bus lanes from official data, for baked Israeli towns.** The city baker
   (`tools/osm_city.py`) could take the Ministry of Transport's layer of existing bus and
   priority lanes (data.gov.il, dataset `nataz_kayam`, CC BY: credit it on screen beside

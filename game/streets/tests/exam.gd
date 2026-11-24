@@ -16,6 +16,8 @@ extends SceneTree
 ## (tests/bodies.gd), so a bus counts as a bus:
 ##   bodies overlapping -- two traffic cars, autodrive and a car, or a car's body into a
 ##     building, a wall, a hedge or a post (traffic is on rails: nothing else stops it)
+##   traffic left of the middle -- a moving car's middle 0.5 m+ on the wrong side of a two-way
+##     street, out of junctions (the dead end's way back once ran every car down the wrong side)
 ##   over the line at a red -- stopped for the light, the front more than a metre past the
 ##     stop line (a bus once stopped with its middle at the line, 4 m into the junction)
 ##   pushing -- autodrive's foot on the gas, not moving, 3 s in all before it gets 4 m away
@@ -23,6 +25,8 @@ extends SceneTree
 ##   held by nothing -- standing 10 s+ with no named reason: what holds it (and whatever
 ##     holds that, down a queue) is the speed limit, a curve, a car that is gone, or a loop
 ##     of cars each waiting for the next
+##   gave way to a car far off -- a named reason that is wrong: 3 s into giving way, the car
+##     waited for is 30 m+ from the junction and 6 s+ from it at its speed
 ## Per minute driven, so runs of different lengths compare; and the worst places, each with
 ## the drive log of the moments before (user://drive_logs/exam-*.json: draw them with
 ## tests/drive_log_map.py). The loop: run it, look at the top of the list, fix, run it again.
@@ -38,7 +42,8 @@ const CHECKS := ["check: bodies overlapping, traffic", "check: bodies overlappin
 	"check: traffic body into a building", "check: traffic body into a wall", "check: traffic body into a post",
 	"check: autodrive body into a building", "check: autodrive body into a wall", "check: autodrive body into a post",
 	"check: over the line at a red, traffic", "check: over the line at a red, autodrive",
-	"check: autodrive pushing 3 s+", "check: held by nothing 10 s+, traffic", "check: held by nothing 10 s+, autodrive"]
+	"check: autodrive pushing 3 s+", "check: held by nothing 10 s+, traffic", "check: held by nothing 10 s+, autodrive",
+	"check: gave way to a car 6 s+ off, autodrive", "check: traffic rolling backwards", "check: traffic body off the asphalt", "check: traffic left of the middle"]
 ## what may hold a car standing still (anything else -- the limit, a curve -- is nothing)
 const NAMED := ["light", "zebra", "people", "sign", "junction", "player", "bus stop", "squeezing past",
 	"blocked", "choice", "turning", "backing", "pushing", "delivery"]   # (delivery: a van double-parked to unload)
@@ -61,6 +66,25 @@ func _count(k: String, n := 1) -> void:
 	counts[k] = int(counts.get(k, 0)) + n
 
 var _pending: Array = []
+
+## Giving way for a reason that is named but wrong: 3 s into a wait at a junction, the car it
+## waits for is 30 m+ from the junction and more than 6 s from it at its speed -- nothing a
+## driver would wait for. (Autodrive gave a roundabout's right of way to cars still coming up
+## other arms: 11 s for a motorbike 78 m off at Givatayim's Geisler square. "held by nothing"
+## missed it: the wait had a name, "junction".)
+func _give_far() -> void:
+	var i: int = g._ap_give_car
+	if i < 0 or i >= g._traffic.cars.size():
+		return
+	var c = g._traffic.cars[i]
+	if not c.alive:
+		return
+	var d := INF
+	for n: int in g._ap_giving:
+		d = minf(d, c.pos.distance_to(g._nodes[n]))
+	if d > 30.0 and d / maxf(c.v, 1.0) > 6.0:
+		_count("check: gave way to a car 6 s+ off, autodrive")
+		_incident("gave way to a car far off", g._pos, "a %s %.0f m from the junction at %.1f m/s" % [c.kind, d, c.v])
 
 func _incident(what: String, at: Vector2, detail: String, save := true) -> void:
 	if _watch_r > 0.0:
@@ -223,6 +247,8 @@ func _drive(secs: float) -> void:
 		# it takes a smaller gap after 12 s (AP_GIVE_PATIENT), so 30 s is a stall after all
 		if absf(g._v) < 0.3 and held == "junction" and not g._ap_giving.is_empty():
 			giving += dt
+			if absf(giving - 3.0) < dt * 0.5:
+				_give_far()
 			if absf(giving - 8.0) < dt * 0.5:
 				_count("autodrive: gave way 8 s+")
 			if absf(giving - 30.0) < dt * 0.5:
@@ -469,6 +495,9 @@ var _ap_stand := 0.0
 var _push_at := Vector2.INF
 var _push_s := 0.0
 var _push_counted := false
+var _backing := {}
+var _off_n := {}   ## car -> samples running with a corner off the asphalt
+var _left_n := {}  ## car -> samples running left of a two-way street's middle
 
 func _check(dt: float) -> void:
 	_tick += 1
@@ -478,6 +507,88 @@ func _check(dt: float) -> void:
 		if cars[i].alive:
 			boxes[i] = Bodies.car_box(cars[i])
 	var pb: Array = Bodies.player_box(g)
+	# -- rolling backwards: no traffic car's speed is ever below 0 (backing out of a kerb
+	# spot moves it without a speed). A car pulling away from a hard brake once carried the
+	# brake on through 0 and backed 3 m/s into the queue behind it. Once a car, a spell.
+	for i: int in boxes:
+		var rc = cars[i]
+		if rc.v < -0.1:
+			if not _backing.has(i):
+				_count("check: traffic rolling backwards")
+				_incident("traffic rolling backwards", rc.pos, "%s (%s, %.1f m/s)" % [rc.kind, rc.why, rc.v])
+			_backing[i] = true
+		elif rc.v > 0.5:
+			_backing.erase(i)
+	# -- off the asphalt: a moving car's corner 0.35 m+ past every road's edge (a bus's corner
+	# swings ~0.3 m out on a bend) and not in a junction's disc, three samples running (0.3 s).
+	# Traffic is on rails, so nothing else stops it riding the kerb: the exam saw it only where
+	# a post happened to stand (a car on Sderot Herzl's two-lane piece with the three-lane
+	# piece's kerb shift, 1 m over the kerb into the hydrants; buses pulled in at stops too far).
+	if _tick % 6 == 0:
+		for i: int in boxes:
+			var oc = cars[i]
+			if oc.v < 2.0 or oc.kerb or oc.hold_t > 0.0 or oc.rev_t > 0.0:
+				_off_n.erase(i)
+				continue
+			var worst := -INF
+			var at := Vector2.ZERO
+			for q: Vector2 in Bodies.corners(boxes[i]):
+				var on: Dictionary = g._nearest_seg(q, 14.0, true, true, float(oc.y))
+				var e := INF if on.is_empty() else float(on["edge"])
+				if e > 0.35 and not g._in_junction(q, 0.2) and not g._in_corner_fill(q, 0.2) and e > worst:
+					worst = e
+					at = q
+			if worst > -INF:
+				_off_n[i] = int(_off_n.get(i, 0)) + 1
+				if _off_n[i] == 3:
+					_count("check: traffic body off the asphalt")
+					_incident("traffic off the asphalt", at, "%s (%s, %.0f km/h), a corner %.2f m past the edge" % [oc.kind, oc.why, oc.v * 3.6, worst])
+					print("    %s" % _car_line(i))
+			else:
+				_off_n.erase(i)
+	# -- left of the middle: a moving traffic car's middle 0.5 m+ left of a two-way street's
+	# middle, out of junctions, three samples running -- autodrive's own "ticks left of the
+	# middle", widened to traffic. The family of the dead end's turn (the way back joined
+	# straight across to the lane coming in: every car out 1.6-2 m on the wrong side, nose to
+	# nose). Not: round a delivery van (`pass_i`), edged aside for racer, a bus on a street under
+	# 7 m (it rides over the middle there, `_kerb_room`), a scooter filtering.
+	if _tick % 6 == 3:
+		for i: int in boxes:
+			var lc = cars[i]
+			if lc.v < 3.0 or lc.pass_i >= 0 or float(lc.get("aside_t") if lc.get("aside_t") != null else 0.0) > 0.0 or lc.split or lc.kerb:
+				_left_n.erase(i)
+				continue
+			var on: Dictionary = g._nearest_seg(lc.pos, 10.0, true, true, float(lc.y))
+			var bad := false
+			if not on.is_empty():
+				var r: Dictionary = g._roads[on["road"]]
+				if int(r["o"]) == 0 and not r.get("ring", false) and not (lc.kind == "bus" and float(r["w"]) < 7.0):
+					var pts: PackedVector2Array = r["pts"]
+					var sj: int = on["seg"]
+					var d: Vector2 = (pts[sj + 1] - pts[sj]).normalized()
+					var hd := Vector2(sin(lc.yaw), cos(lc.yaw))
+					if d.dot(hd) < 0.0:
+						d = -d
+					var near_j := false
+					for n2: int in [(r["ids"] as PackedInt32Array)[sj], (r["ids"] as PackedInt32Array)[sj + 1]]:
+						if g._node_ways(n2) >= 3 and g._nodes[n2].distance_to(lc.pos) < g._node_r[n2] + 10.0:
+							near_j = true
+						# (nor turning round at a dead end: a 4.5 m car round a circle a lane wide is
+						# across the street while it turns -- every case of the first version was one,
+						# Yavnieli, Ein Gedi, HaMeri, Kibbutz Galuyot: tests/lane_points.gd)
+						# (25 m: out of the turn, its back trails inside the circle a few metres more --
+						# a car 16.7 m from HaDganim's end at 29 km/h, its middle still left)
+						if g._node_ways(n2) == 1 and g._nodes[n2].distance_to(lc.pos) < 25.0:
+							near_j = true
+					bad = not near_j and absf(d.dot(hd)) > 0.8 and (lc.pos - (on["q"] as Vector2)).dot(Vector2(-d.y, d.x)) < -0.5
+			if bad:
+				_left_n[i] = int(_left_n.get(i, 0)) + 1
+				if _left_n[i] == 3:
+					_count("check: traffic left of the middle")
+					_incident("traffic left of the middle", lc.pos, "%s (%s, %.0f km/h)" % [lc.kind, lc.why, lc.v * 3.6])
+					print("    %s" % _car_line(i))
+			else:
+				_left_n.erase(i)
 	# -- bodies overlapping: traffic with traffic (both standing too: put down on each other
 	# is as wrong as driving into each other), autodrive with traffic
 	var now := {}

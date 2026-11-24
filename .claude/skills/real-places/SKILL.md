@@ -198,6 +198,37 @@ the parked cars, which stand a third in the road).
   publishing, because real data is messier than anything made up.
 - Re-bake when the baker learns a new field (it keeps nothing it was not told to): the
   game should treat a missing field as "not known" so old files still load.
+- **Water mapped as a multipolygon with islands.** A town's canals are often one relation
+  whose inner rings are the blocks between them. The baker took only single ways, so two
+  Dutch towns baked with no canals at all, and their canal streets showed a bare strip.
+  Skipping relations with inner rings lost every canal there too, since all of them had
+  islands. The city format's areas have no holes, so each hole is joined to the outer ring
+  by a cut of no width (`keyhole_ring`). The result still triangulates, and still tests
+  inside and outside correctly. Draw the water from the file on a plan before trusting it.
+- **The worldwide elevation tiles are a surface model.** A flat old town comes out as hills
+  of its own roofs: Leiden read -1 to 15 m. `--bare-ground` only halves that. Water lies
+  flat at its shore's lowest point, so it ends up under those hills. Use the country's
+  bare-ground laser model where there is one; the baker reads the Netherlands' AHN by
+  itself (`ahn_grid`).
+- **A canal narrower than the height grid cannot be dug into it.** On a 12 m grid a 15 m
+  canal holds one sunk point at most. So the ground is cut away over it, the same way the
+  ground over a cutting is (decks holes). The water is held a metre under its quays (its
+  own level, `y`), with quay walls down to it. Index the holes by place: a ring round a
+  whole town's canals has a town-sized box, and testing it against every ground triangle
+  cost 2.6 s of loading.
+- **Anything that reshapes the ground after the water is set can bury it again.** Levelling
+  roads side to side pulls the grid near a quay road up to the road's height: a harbour's
+  basin, lowered under its water, came out under 1-2 m of ground once more. Hold the ground
+  under held water as the last step before writing, and check the written file, not the
+  bake's log line (the log counted the lowering that the next step undid).
+- **A cliff town's stacked streets cannot all be level on one height grid.** Streets 0-10 m
+  apart, kerb to kerb, at 3-6 m apart in height (retaining walls in life) share grid cells,
+  so one of them leans: a third of a cliff town's road length leaned over 6% where a
+  lakeside town's leaned 3%. A finer grid barely helps (12 m 34%, 6 m 25%, 4 m 21%, the file
+  twice the size): the cure is a step in the ground (a wall), not more points.
+- **Natural colours from a neon palette.** Water from the palette's "player" and sign blue
+  likewise came out khaki and brown under a palette with no blue in it. Pin the hue, as
+  the reds and greens are, or take the photo sky's colour for anything that reflects it.
 
 ## Roads
 
@@ -221,7 +252,14 @@ the parked cars, which stand a third in the road).
   half's partner (one-way the other way, on its left, within ~40 m along most of its
   length), size each half to its lanes (3.3 m a lane), remember the median between them.
   Its inner side gets a kerb and half the median, not a pavement; people walk only on the
-  outer sides; a zebra on one half is crossed kerb to kerb across both. Anything laid "along
+  outer sides; a zebra on one half is crossed kerb to kerb across both. OSM maps that zebra
+  as a crossing point on *each* half, so whatever stands at a crossing's ends (walk lights,
+  a sign) comes out twice, side by side. Put up one where two would stand: before placing a
+  thing that stands alone, look for one of its kind already within a few metres facing the
+  same way (a grid of the placed ones). Pairing the two crossings through the halves'
+  partner missed a third of them, where the halves bend or part at a junction, and two
+  crossings in line (a main road's and its slip road's) can start from one kerb too.
+  Anything laid "along
   both sides of a street" -- parked cars above all -- goes on the outer side only: parked
   both sides, a row of cars stood down the middle of the boulevard. Check the spot itself,
   not the road's flag: halves pair up along only part of their length. And a median is one
@@ -229,6 +267,15 @@ the parked cars, which stand a third in the road).
   else laying kerbs onto it -- no corner curving into a narrow one, no kerb from the cross
   street's stretch between the halves (laid apart, those pieces stood about its end at odd
   angles, in three colours).
+- **Where a two-way road splits into its halves, the cars drive past the halves' asphalt.**
+  OSM starts both halves at the two-way road's middle line, so the half's narrower asphalt
+  begins in the middle of the wide road: a car in the two-way road's lane comes into the half
+  2.4 m off its middle and takes ~25 m to reach its lane, its side past the half's edge for
+  the first ~13 m. Anything planted "1 m off the half's asphalt" there stands in that lane --
+  a one-way arrow at the half's corner was knocked flat by the AI on every drive. Keep signs
+  and posts out of that sweep (no one-way arrow on a half where it splits off: the split's
+  own sign is the keep-right on the median's nose), and test it along the line the cars
+  really drive, not the road's centre line.
 - **Lanes**: `lanes` counts both directions on a two-way road. Cap any count by what the
   width holds (a "two-lane" road narrowed to 4 m has one). On a one-way road of several,
   drive the middle of the right-hand lane -- the middle of the road is astride two.
@@ -271,6 +318,22 @@ the parked cars, which stand a third in the road).
   costs nothing at load: `tools/level_roads.py` does it to a baked file, and both bakers call
   it. What is left is two roads at different levels within a cell (an interchange's slip
   roads, a lane below a street): only a finer grid fixes those.
+
+### Laying an official list of streets onto OSM's roads
+
+An official layer that names streets and gives two end points (a ministry's bus lanes, a
+town's one-way list) is matched to the baked roads by name and by lying along the line
+between the points. Two traps cost a round each:
+
+- **Names are spelt differently.** Hebrew is written with or without the vowel letters (עלית /
+  עליית), with or without the article (חשמונאים / החשמונאים), with or without "road",
+  "boulevard", "street" in front. Compare a key with those dropped, not the names: in one
+  game it took the matches from 11 to 14, 12 to 22 and 59 to 71 stretches in three towns.
+- **Per-lane letters must line up with the game's lanes, not OSM's.** OSM leaves the lane
+  count out on many streets and the game reckons it from the width (and can fit the width
+  again at load). A pattern written for a count the game does not use puts a left lane in
+  the middle, or every lane: the game must check the pattern against its own count (never
+  every lane a bus lane), and the bake should reckon the count with the game's own rule.
 
 ## Junctions and roundabouts
 
@@ -332,6 +395,12 @@ the parked cars, which stand a third in the road).
   against other roads' asphalt along its whole length -- checked at its middle only, a
   straight kerb across a road's mouth went in whole and laid a strip of pavement across the
   junction. A fine grid (8 m) of road segments makes those checks cheap while building.
+
+## Roundabouts' give way
+
+- **Only a car on the ring has the ring's right of way.** Ranked by the road it will be on
+  where the paths meet, a car still coming up another way in counted as on the ring, and an
+  AI at the ring's edge waited 11 s for a motorbike 78 m off. Coming in, it gives way itself.
 
 ## Traffic lights
 
@@ -423,6 +492,16 @@ the parked cars, which stand a third in the road).
   measure "metres ahead" from the car's projection onto the plan, not from the plan's first
   point -- which is the start of the current stretch and can be 40 m behind. Both together
   had autodrive "pass" a van with a bend that landed behind it, then stand there.
+  Grep for every loop that sums the plan's lengths from index 0: the same mistake in a
+  "is there a turn ahead?" test hid every turn on long straights, and each move gated on it
+  (pass here, not before a turn) went ahead into the corner.
+- **Nothing makes a plan clear of posts unless something does.** A lane line drawn from OSM
+  runs where it runs; a post 0.8 m from it is one the car's body (two circles, ~1 m each
+  side) hits. Ease the plan's next stretch off anything solid by the body plus a margin, as a
+  pass over it every fraction of a second (plans grow at their far end as the car drives),
+  and check every bend of the plan for the road as well as for posts. Then a crash log that
+  prints the hit thing's distance from the plan *and* the car's distance from the plan
+  says at once which of the two is at fault.
 - **One rule for "in my way", or the strict one stands while the others drive past.**
   Traffic counted a car in its way by its middle, the player's AI by its body plus a
   margin: a delivery van standing at the kerb, its middle 2.5 m off the lane, was passed by
@@ -542,6 +621,23 @@ the parked cars, which stand a third in the road).
   all with such a controller: that target is always a hair under the speed, the error stays
   tiny, the need grows -- command the deceleration instead (aim at the speed now less the
   braking wanted over the controller's gain).
+- **The speed behind a car must not fall off a cliff.** "Room left over the gap kept behind
+  it, or stop" (`0 if room <= 0`) has the follower stand on its brakes a metre inside its
+  gap behind a car doing its own pace, and stop dead behind a queue pulling away -- the
+  user's "sudden stops due to other cars". Inside the gap, ask a little under that car's
+  speed (its speed + 0.5 x the metres short) and stop only with no road left to its back.
+  And the same controller lag as above: once the braking needed (to where the car in front
+  will stand if it keeps braking as now, from its own acceleration, or to its speed by its
+  back) passes ~2 m/s^2, command that deceleration; following the slope alone it ran 1-1.5
+  m/s over all the way down and braked the last metres at 5-8 m/s^2.
+- **A car crossing your path is not a wall.** Taking a car's speed along your way (zero for
+  one crossing) treats a car crossing 7 m ahead at 50 km/h, gone in a third of a second, as
+  standing in the lane: a 6 m/s^2 stop for nothing, just after giving way to it. Skip one
+  that is crossing (near square to the lane), not braking, whose back will be past your
+  sides before your nose can get there at a brisk pull-away.
+- **Knocking a sign over is not a crash, so count it.** Things the car bends or knocks flat
+  (signs, bins, bollards) cost speed but set no crash timer; a test that counts hits by
+  crashes never sees them. Keep a counter of things knocked and list them with the hits.
 - **A pure-pursuit point far ahead starts a corner early and finishes it late**: at 5.4 m
   ahead at 14 km/h the car began a right turn 6 m early and came out with the turn not done,
   across its new lane. Keep the point near at a corner's pace (2 + 0.6 v, at least 3.5 m).
@@ -649,6 +745,13 @@ What a driving game on one needed:
   OSM maps one tunnel as several ways: judge "too short" by the chain, not one piece. A
   19 m piece under a street, between two longer ones, put back on the ground came out a
   cutting at full depth between them -- its railings standing across the street's lanes.
+- **A road wholly inside a building's outline runs under it.** Checking a road against a
+  building's edges misses one through a big block's middle (a covered boulevard under a
+  block of flats): none of the edges is near it, so the building stood on the asphalt. A road
+  point inside the outline after cutting the building back is a road under it: raise the
+  building over it or leave it out, as for one spanning the street. And a building or hedge
+  on the hill over a tunnel's mouth is not in the tunnel's way, though the tunnel there is
+  still near the ground's level: checks of "a solid thing on the road" skip tunnels.
 - **A divided road is two decks overlapping at the median** at slightly different heights:
   decide what is under a body by the carriageway it is on first, the nearest height next,
   or it drifts onto the other and falls off its end.
@@ -761,6 +864,38 @@ everything it cannot reach is cut off, points past the barrier are on no way at 
 the AIs out of traps, take a destination in a cut-off pocket to the nearest street with a
 way in, and start a route set down in a trap from the nearest street with a way out -- never
 choosing a street past the barrier as "the nearest". A wider bake only moves the cut.
+
+## Walks nobody filmed
+
+A walk laid from the map alone -- a street's centre line set off to its pavement -- costs
+three surprises, each seen once:
+
+- **A divided road is two one-way carriageways, and the pavement is on each one's own
+  outer side.** A route found along the street's ways ignores their direction, so "the
+  right-hand pavement" taken against a carriageway's traffic lands on the median side, or
+  in the other carriageway. Take the side from the carriageway's direction, not the walk's;
+  walking a boulevard's middle promenade is that inner side on purpose.
+- **The line a walk takes is the line a game plants its street trees on.** A pavement's
+  middle is where a generated tree row stands; set the walk behind the row (between it and
+  the building fronts), not in the pavement's middle.
+- **The map does not know what stands on a pavement**, and other work keeps adding to it
+  (mapped trees and poles at every distance from the kerb, bins, cabinets, stalls). Rather
+  than nudging the route by hand after each scan, let the game step a generated walk round
+  every post as it loads: resample it finely (keeping its own points, so its waits keep
+  their times), push each sample sideways by the least amount clear of all posts near it at
+  once and of walls (pushing off one post at a time pushes into the next where a tree and a
+  railing stand 1.7 m apart), and spread each push over a couple of metres so it bends.
+  Redo it for the stretch ahead every few seconds, as the city's squares build. Where a
+  pavement is a market's stalls and a shop front 1.5 m apart, walk the other pavement.
+
+- **A walk through a tree is its leaves, not its trunk.** A scan for solid things sees the
+  trunk; the camera at eye height passes through low crowns and branches, which a street's
+  trees beside a pavement do not have (pruned to ~2.2 m clear). Check the eye against what is
+  drawn above the ground, and lift trees by a road's edge -- not a park's or a footpath's,
+  whose low planting can be what a place looks like. And no wide-skirted conifer in a
+  pavement's tree strip.
+- **A footway OSM maps beside a carriageway can lie on the game's asphalt** once road widths
+  are fitted: check a walk's feet against the drawn roads, not the map's lines.
 
 ## Filmed walks and drives
 

@@ -7,9 +7,14 @@ extends RefCounted
 ## [count or measure, the first or worst place as text].
 ##
 ## Should read 0:
-##   signs_doubled      two stop / give-way poles facing the same way within 3 m (a slip
-##                      road's sign also given to the street it merges into -- the user's
-##                      "a lot of places have double signs"; tests/signs_double.gd)
+##   doubled            a thing that stands alone put up twice: two of one kind within reach of
+##                      each other, facing the same way. One rule, every kind the city keeps a
+##                      list of (doubled_all): stop / give-way signs (a slip road's sign also
+##                      given to the street it merges into -- "a lot of places have double
+##                      signs"; tests/signs_double.gd), people's lights (a divided road's zebra
+##                      on each half, each putting poles at both outer kerbs -- "two red lights
+##                      to the same direction for the people"; tests/walk_twins.gd), cars'
+##                      lights, bus stops. A new kind of thing that stands alone joins the list.
 ##   junction_twins     a junction offering the same street twice within 40 degrees (an unnamed
 ##                      slip road offered beside the turn it shortcuts -- "it gave 4 options, 1
 ##                      of them is weird"; tests/junction_offers.gd)
@@ -26,19 +31,48 @@ extends RefCounted
 ##                      phone's depth buffer flickers between them ("a pavement ... is flickering
 ##                      a bit"; tests/pave_overlap.gd)
 
-static func signs_doubled(g) -> Array:
-	var at: Array = g.sign_at
+## [[kind, [count, the first pair]], ...] for every kind of thing that stands alone
+static func doubled_all(g) -> Array:
+	var signs: Array = []
+	for a: Array in g.sign_at:
+		signs.append([a[0], a[1], String(a[2])])
+	var walk: Array = []
+	for a: Array in g._walk_spots:
+		walk.append([Vector2((a[0] as Vector3).x, (a[0] as Vector3).z), a[1], "a walk light"])
+	var lights: Array = []
+	for a: Array in g._light_spots:
+		lights.append([Vector2((a[0] as Vector3).x, (a[0] as Vector3).z), a[1], "a light"])
+	var stops: Array = []
+	for ri: int in g._stops_by_road:
+		for c: Vector2 in g._stops_by_road[ri]:
+			stops.append([c, Vector2.ZERO, "a stop on '%s'" % (g._roads[ri] as Dictionary)["name"]])
+	return [["signs doubled", doubled(signs, 3.0)], ["walk lights doubled", doubled(walk, 3.0)],
+		["lights doubled", doubled(lights, 3.0)], ["bus stops doubled", doubled(stops, 5.0)]]
+
+## two of `spots` ([where, the way it faces (ZERO: any), what]) within `reach` of each other
+## and facing the same way: [count, the first pair]
+static func doubled(spots: Array, reach: float) -> Array:
+	var cells := {}
 	var n := 0
 	var first := ""
-	for i in range(at.size()):
-		for j in range(i + 1, at.size()):
-			var a: Array = at[i]
-			var b: Array = at[j]
-			if (a[0] as Vector2).distance_to(b[0]) > 3.0 or (a[1] as Vector2).dot(b[1]) < 0.7:
-				continue
-			n += 1
-			if first == "":
-				first = "%s at %s and %s at %s" % [a[2], (a[0] as Vector2).round(), b[2], (b[0] as Vector2).round()]
+	for i in range(spots.size()):
+		var a: Array = spots[i]
+		var p: Vector2 = a[0]
+		var cell := Vector2i((p / reach).floor())
+		for dx in [-1, 0, 1]:
+			for dz in [-1, 0, 1]:
+				for j: int in cells.get(cell + Vector2i(dx, dz), []):
+					var b: Array = spots[j]
+					if p.distance_to(b[0]) > reach:
+						continue
+					if (a[1] as Vector2) != Vector2.ZERO and (a[1] as Vector2).dot(b[1]) < 0.7:
+						continue
+					n += 1
+					if first == "":
+						first = "%s at %s and %s at %s" % [b[2], (b[0] as Vector2).round(), a[2], p.round()]
+		if not cells.has(cell):
+			cells[cell] = []
+		(cells[cell] as Array).append(i)
 	return [n, first]
 
 static func junction_twins(g) -> Array:
@@ -70,6 +104,15 @@ static func junction_twins(g) -> Array:
 							first = "'%s' twice at %s" % [exits[a]["name"], Vector2i(pts[ei])]
 	return [n, first]
 
+## a hit (_nearest_seg) on a deck more than a metre off the ground at both ends of its piece:
+## a lawn under a bridge's span is not on its road (streets.gd _island_cut keeps it)
+static func high_deck(g, hit: Dictionary) -> bool:
+	var r: Dictionary = g._roads[int(hit["road"])]
+	if not r.has("ys"):
+		return false
+	var sj := int(hit["seg"])
+	return minf(absf(r["ys"][sj] - r["gs"][sj]), absf(r["ys"][sj + 1] - r["gs"][sj + 1])) > 1.0
+
 static func islands_on_road(g) -> Array:
 	var n := 0
 	var first := ""
@@ -82,7 +125,7 @@ static func islands_on_road(g) -> Array:
 				var p := Vector2(x, z)
 				if Geometry2D.is_point_in_polygon(p, piece):
 					var hit: Dictionary = g._nearest_seg(p, 14.0, true)
-					if (not hit.is_empty() and float(hit["edge"]) < -0.05) or g._in_junction(p, -0.05):
+					if (not hit.is_empty() and float(hit["edge"]) < -0.05 and not high_deck(g, hit)) or g._in_junction(p, -0.05):
 						n += 1
 						if first == "":
 							first = "at %s" % p.round()
@@ -181,9 +224,11 @@ static func tilt(g) -> Array:
 			var s := 0.0
 			while s < L:
 				var c := a + d * s
-				var y0: float = g._h(c)
-				var yl: float = g._decks.surf(c + side * hw, y0 + 1.0) if r.has("ys") else g._h(c + side * hw)
-				var yr: float = g._decks.surf(c - side * hw, y0 + 1.0) if r.has("ys") else g._h(c - side * hw)
+				# (a deck at its own height: from just over the ground it read the hillside over a
+				# tunnel -- Monaco's Tunnel Albert II "leaned" 868% -- and the ground under a bridge)
+				var y0: float = g._decks.seg_y(ri, j, c) if r.has("ys") else g._h(c)
+				var yl: float = g._decks.surf(c + side * hw, y0 + 0.5) if r.has("ys") else g._h(c + side * hw)
+				var yr: float = g._decks.surf(c - side * hw, y0 + 0.5) if r.has("ys") else g._h(c - side * hw)
 				var slope := absf(yl - yr) / (2.0 * hw)
 				total += 3.0
 				if slope > 0.06:
@@ -283,3 +328,284 @@ static func pavings_overlap(g) -> Array:
 ## pavings_overlap's overlap by 25 m square, most first: [m2, a point, {"code/code": m2}, [the
 ## first two triangles that overlap there]]
 static var last_places: Array = []
+
+## The lights as built, as tests/light_audit.gd counts them before its drive (it calls this):
+## every signalled junction against what a driver and a walker would expect. Returns the counts
+## and the audit's summary lines; `verbose` prints each place. city_check.gd guards them per city.
+static func light_counts(g, verbose := false) -> Dictionary:
+	var lines: Array = []
+	# ---- groups at each lit junction
+	var conflicts := 0
+	var conflict_j := {}
+	var single := 0
+	for j: int in g._lit:
+		var arms := light_arms(g, j)
+		var seen := {}
+		var groups := {}
+		for a: Array in arms:
+			groups[g._light_group(j, a[0])] = true
+		if groups.size() < 2:
+			single += 1
+		# (a way from inside the junction -- the road between two of its points -- has no light
+		# and no line: its cars are in the junction already, and it is no way in to conflict)
+		var inside: Array = []
+		for way: Array in g._sig_line.get(j, []):
+			if bool(way[3]):
+				inside.append([way[0], int(way[2])])
+		var from_inside := func(a: Array) -> bool:
+			return inside.any(func(w): return int(w[1]) == int(a[1]) and (w[0] as Vector2).dot(a[0]) > 0.99)
+		for x in range(arms.size()):
+			for y in range(x + 1, arms.size()):
+				var A: Array = arms[x]
+				var B: Array = arms[y]
+				if not A[3] or not B[3] or from_inside.call(A) or from_inside.call(B):
+					continue
+				var da: Vector2 = A[0]
+				var db: Vector2 = B[0]
+				if absf(da.dot(db)) < 0.6 and g._light_group(j, da) == g._light_group(j, db):
+					conflicts += 1
+					conflict_j[j] = true
+					if verbose:
+						print("  same group, crossing: node %d at %s  '%s' %s / '%s' %s  angle %d" % [j, g._nodes[j].round(), A[2], da.snapped(Vector2(0.01, 0.01)), B[2], db.snapped(Vector2(0.01, 0.01)), int(rad_to_deg(da.angle_to(db)))])
+	lines.append("lit junctions %d; crossing ways in sharing a group: %d (at %d junctions); junctions with one group only: %d" % [g._lit.size(), conflicts, conflict_j.size(), single])
+	# ---- stop points that are not a junction's (a light mapped a few metres out)
+	var short := 0
+	for n: int in g._sig_set:
+		if g._node_ways(n) < 3:
+			var near_j := false
+			for o: int in g._sig_set:
+				if o != n and g._node_ways(o) >= 3 and g._nodes[o].distance_to(g._nodes[n]) < 40.0:
+					near_j = true
+			if near_j:
+				short += 1
+				if verbose:
+					print("  stop point %d %s is not a junction, and a lit junction is within 40 m" % [n, g._nodes[n].round()])
+	var multi := 0
+	var most := 0
+	for st: Dictionary in g._sites:
+		if (st["nodes"] as Array).size() > 1:
+			multi += 1
+		most = maxi(most, (st["nodes"] as Array).size())
+	if verbose:
+		for st: Dictionary in g._sites:
+			var ns: Array = st["nodes"]
+			if ns.size() >= 4:
+				var names := {}
+				var span := 0.0
+				for n: int in ns:
+					span = maxf(span, g._nodes[n].distance_to(st["c"]))
+					for e: Vector2i in g._node_roads[n]:
+						names[String((g._roads[e.x] as Dictionary)["name"])] = true
+				print("  site of %d points at %s, %.0f m across: %s" % [ns.size(), (st["c"] as Vector2).round(), span * 2.0, ", ".join(names.keys())])
+	lines.append("sites %d (of several points: %d, the most %d); stop points short of a junction (where no pole stands): %d" % [g._sites.size(), multi, most, short])
+	# ---- knots: a junction's points within 35 m of each other along a road
+	var unlit_twins := 0
+	var split_groups := 0
+	for j: int in g._lit:
+		for e: Vector2i in g._node_roads[j]:
+			var r: Dictionary = g._roads[e.x]
+			if not r["drive"]:
+				continue
+			var ids: PackedInt32Array = r["ids"]
+			var pts: PackedVector2Array = r["pts"]
+			for step: int in [-1, 1]:
+				var k := e.y
+				var d := 0.0
+				while k + step >= 0 and k + step < ids.size():
+					d += pts[k].distance_to(pts[k + step])
+					k += step
+					if d > 35.0:
+						break
+					var o: int = ids[k]
+					if g._node_ways(o) < 3:
+						continue
+					if not g._lit.has(o) and not g._sig_set.has(o) and g._other_half(j, o, e.x):
+						unlit_twins += 1
+						if verbose:
+							print("  lit %d %s and the unlit other half of its road %d %.0f m along '%s'" % [j, g._nodes[j].round(), o, d, r["name"]])
+					elif g._lit.has(o) and o > j:
+						# travelling j -> o along this road: same light both?
+						var dir := (pts[k] - pts[k - step]).normalized()
+						var gj: int = g._light_group(j, (pts[e.y] - pts[e.y - step]).normalized() if e.y - step >= 0 and e.y - step < pts.size() else dir)
+						var go: int = g._light_group(o, dir)
+						if gj != go:
+							split_groups += 1
+							if verbose:
+								print("  knot %d -> %d along '%s' (%.0f m): group %d then %d" % [j, o, r["name"], d, gj, go])
+					break
+	lines.append("knots: lit junction with the other half of its divided road unlit: %d; a road through two lit points of one knot in different groups: %d" % [unlit_twins, split_groups])
+	# ---- ways in with no pole: built poles face -dir from their spot
+	var no_pole := 0
+	var on_zebra := 0
+	for j: int in g._lit:
+		for a: Array in g._sig_line.get(j, []):
+			if a[3]:
+				continue   # from inside the site: no light on purpose
+			var din: Vector2 = a[0]
+			# where a stopped car's front is, against the zebras on that way in
+			var front: Vector2 = g._nodes[j] - din * (float(a[1]) + 1.0)
+			for ni: int in g._crossing_nodes:
+				var zp: Vector2 = g._nodes[ni]
+				if zp.distance_to(front) < 12.0:
+					var along := (front - zp).dot(din)
+					if absf((front - zp).dot(Vector2(-din.y, din.x))) < 3.0 and along > -1.5 and along < 1.5 + g.CAR_LEN:
+						on_zebra += 1
+						if verbose:
+							print("  node %d %s: a car stopped at the line has its front on the zebra %d" % [j, g._nodes[j].round(), ni])
+			var found := false
+			for sp: Array in g._light_spots:
+				var hd: Vector3 = sp[0]
+				var p := Vector2(hd.x, hd.z)
+				if p.distance_to(g._nodes[j]) < 30.0 and (sp[1] as Vector2).dot(-din) > 0.95:
+					found = true
+					break
+			if not found:
+				no_pole += 1
+				if verbose:
+					var r: Dictionary = g._roads[int(a[2])]
+					print("  node %d %s: no light for the way in %s along '%s' (%s, w %.1f, one-way %d)" % [j, g._nodes[j].round(), din.snapped(Vector2(0.01, 0.01)), r["name"], r["k"], r["w"], r["o"]])
+	lines.append("ways in to a lit junction with no light facing them: %d; stop lines that leave a waiting car's front on a zebra: %d" % [no_pole, on_zebra])
+	# ---- walk lights: the road under the zebra, both ways, against the walk light's group
+	var walk_bad := 0
+	var walk_n := 0
+	for ni: int in g._crossing_nodes:
+		var z: Array = g._zebra_geom(ni)
+		if z.is_empty():
+			continue
+		var j: int = g._zebra_light(ni)
+		if j < 0:
+			continue
+		walk_n += 1
+		var gw: int = g._light_group(j, z[3])
+		var gb: int = g._light_group(j, -(z[3] as Vector2))
+		if gw != gb:
+			walk_bad += 1
+			if verbose:
+				print("  zebra %d %s: its road is group %d one way and %d the other" % [ni, (z[0] as Vector2).round(), gw, gb])
+	lines.append("zebras with walk lights: %d; of them on a road with green one way while the green man shows: %d" % [walk_n, walk_bad])
+	return {"conflicts": conflicts, "single": single, "short": short, "unlit_twins": unlit_twins,
+		"split_groups": split_groups, "no_pole": no_pole, "on_zebra": on_zebra, "walk_n": walk_n,
+		"walk_bad": walk_bad, "lines": lines}
+
+## a lit junction's arms: [way in, road, name, one-way lets it in]
+static func light_arms(g, j: int) -> Array:
+	var out: Array = []   # [way in, road, name, one-way ok]
+	var c: Vector2 = g._nodes[j]
+	for e: Vector2i in g._node_roads[j]:
+		var r: Dictionary = g._roads[e.x]
+		if not r["drive"]:
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		for d2: int in [-1, 1]:
+			var from := e.y + d2
+			if from < 0 or from >= pts.size():
+				continue
+			var ok: bool = r["o"] == 0 or r["o"] == -d2
+			out.append([(c - pts[from]).normalized(), e.x, String(r["name"]), ok])
+	return out
+
+## Cars parked by the streets (g._parked_at, _parked_face) where nobody parks, each judged on
+## the car's body: between two roads (asphalt within 2.6 m either side: a divided road's
+## median -- "a lot of parked cars in the middle of somewhat main roads"; tests/parked_median.gd),
+## in a bus stop (its middle within the law's 12 m either side along the stop's own kerb --
+## "a lot of parked cars inside bus stations"), on a zebra (its body over the stripes), in a
+## junction (an end inside the junction's disc). [[row, [count, the first]], ...]
+static func parked_wrong(g) -> Array:
+	var res := {"parked on a median": [0, ""], "parked in a bus stop": [0, ""], "parked on a zebra": [0, ""],
+		"parked in a junction": [0, ""]}
+	var cell := 20.0
+	var stops := {}      ## cell -> [[spot, its kerb's way]]
+	for ri: int in g._stops_by_road:
+		var pts: PackedVector2Array = g._roads[ri]["pts"]
+		for c: Vector2 in g._stops_by_road[ri]:
+			var best := INF
+			var dir := Vector2.ZERO
+			for j in range(pts.size() - 1):
+				var q := Geometry2D.get_closest_point_to_segment(c, pts[j], pts[j + 1])
+				if q.distance_squared_to(c) < best:
+					best = q.distance_squared_to(c)
+					dir = (pts[j + 1] - pts[j]).normalized()
+			_cell_add(stops, c, cell, [c, dir])
+	var zebras := {}     ## cell -> [[middle, along the road, half the road's width]]
+	for ni: int in g._crossing_nodes:
+		var z: Array = g._zebra_geom(ni)
+		if not z.is_empty():
+			_cell_add(zebras, z[0], cell, [z[0], z[3], float(z[2])])
+	var joins := {}      ## cell -> [[junction point, its disc's radius]]
+	for n in range(g._nodes.size()):
+		if g._node_ways(n) >= 3:
+			_cell_add(joins, g._nodes[n], cell, [g._nodes[n], float(g._node_r[n])])
+	var half: float = g.CAR_LEN * 0.5
+	for i in range(g._parked_at.size()):
+		var p: Vector2 = g._parked_at[i]
+		var f: Vector2 = g._parked_face[i]
+		var lx := Vector2(-f.y, f.x)
+		var at := "at %s" % p.round()
+		if not g._off_road(p + lx * 2.6, 0.0) and not g._off_road(p - lx * 2.6, 0.0):
+			_count(res["parked on a median"], at)
+		for st: Array in _cell_near(stops, p, cell):
+			var c: Vector2 = st[0]
+			var d: Vector2 = st[1]
+			if absf((p - c).dot(d)) < g.BUS_CLEAR and absf((p - c).dot(Vector2(-d.y, d.x))) < 4.0:
+				_count(res["parked in a bus stop"], at)
+				break
+		for z: Array in _cell_near(zebras, p, cell):
+			var mid: Vector2 = z[0]
+			var along: Vector2 = z[1]
+			# the stripes: about 2 m either side of the crossing's line, kerb to kerb (+ the
+			# parking strip by it); the car's body: its half length along the road, a metre across
+			if absf((p - mid).dot(along)) < 2.0 + half * absf(f.dot(along)) + 0.9 * absf(lx.dot(along)) \
+					and absf((p - mid).dot(Vector2(-along.y, along.x))) < float(z[2]) + 2.5:
+				_count(res["parked on a zebra"], at)
+				break
+		for jn: Array in _cell_near(joins, p, cell):
+			if (p + f * half).distance_to(jn[0]) < float(jn[1]) or (p - f * half).distance_to(jn[0]) < float(jn[1]):
+				_count(res["parked in a junction"], at)
+				break
+	var out: Array = []
+	for k: String in res:
+		out.append([k, res[k]])
+	return out
+
+static func _count(row: Array, at: String) -> void:
+	row[0] = int(row[0]) + 1
+	if String(row[1]) == "":
+		row[1] = at
+
+static func _cell_add(cells: Dictionary, p: Vector2, size: float, item: Array) -> void:
+	var k := Vector2i((p / size).floor())
+	if not cells.has(k):
+		cells[k] = []
+	(cells[k] as Array).append(item)
+
+## the items in p's cell and the eight round it
+static func _cell_near(cells: Dictionary, p: Vector2, size: float) -> Array:
+	var out: Array = []
+	var k := Vector2i((p / size).floor())
+	for dx in [-1, 0, 1]:
+		for dz in [-1, 0, 1]:
+			out.append_array(cells.get(k + Vector2i(dx, dz), []))
+	return out
+
+## Any solid thing put up twice, of whatever kind: two posts (every tree, pole, bollard, bin,
+## lamp, bench... registers one, g._add_post) the same size with their middles within 0.3 m.
+## The doubled rows above know which way each kind faces; this knows no kinds, so it catches
+## only the same spot -- but for every kind, with no list of its own needed. A parked car's
+## posts (`parked_r`) are left out: five overlap along each car. [count, the first]
+static func posts_twice(g, parked_r: float) -> Array:
+	var n := 0
+	var first := ""
+	for i in range(g._posts.size()):
+		var r: float = g._post_r[i]
+		if is_equal_approx(r, parked_r):
+			continue
+		var p: Vector2 = g._posts[i]
+		for j: int in g._near(g._post_hash, p, 0.3, g.BLD_CELL):
+			if j <= i or not is_equal_approx(float(g._post_r[j]), r):
+				continue
+			if (g._posts[j] as Vector2).distance_to(p) < 0.3:
+				n += 1
+				if first == "":
+					first = "two posts %.2f m across at %s" % [r * 2.0, p.snapped(Vector2(0.1, 0.1))]
+				break
+	return [n, first]

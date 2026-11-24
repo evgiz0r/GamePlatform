@@ -58,7 +58,9 @@ that screen. The menu itself has no level picking. Self-play skips the start scr
 Dictionaries with a `"name"` are picked by name; give them a `"group"` too and the start
 screen lists each group under its heading, side by side (a level's `"sort"` orders it within
 its group; its number is still its place in `LEVELS`, so reordering the screen never
-renumbers the levels).
+renumbers the levels). Up to three groups sit side by side (columns narrowed to fit the 640:
+three at 250 px each once ran off a phone's edge); past three they wrap to a second row.
+`tools/menu_shot.sh levels:<game>` prints `[fits] ok`, or each button and label off the screen.
 
 Nothing outside a game's own folder should ever name that game. If you find yourself
 writing its name in a doc, a tool or another game, that is the thing that will rot when it
@@ -137,6 +139,17 @@ road is two roads, one junction is several points, a car park is only its lanes 
 each cost a round of the user's bug reports. Read the `real-places` skill before building
 on a baked city.
 
+## Making 3D models
+
+`tools/blender_model.sh <recipe.py>` makes a `.glb` with Blender, headless, from a short
+Python recipe in `tools/blender/recipes/` that builds the model out of boxes, cylinders,
+balls, rods and curved tubes (`tools/blender/kit.py`); the result goes to
+`assets/models/made/`. Materials are named by role (`paint`, `metal`, `wood`...) so a game
+can colour them by its palette. `--preview <model.glb>` renders a picture of one to check
+it; `--all` remakes every recipe. Blender is only on machines that have it installed (the
+cloud sessions do not): the made `.glb` files are committed, so any session can use them;
+only making or changing one needs Blender. List each new one in `assets/INDEX.md`.
+
 ## Hard requirements
 
 - **Input**: read `PInput`, never `Input`. `PInput.dir()`, `PInput.pressed("action_a")`,
@@ -181,6 +194,11 @@ corner, the player stuck in a wall, a goal outside the play area) that counts al
 
 Keep runs short (20–30s). They are cheap, but not free.
 
+To show the user a game playing itself -- on their phone too -- record a level to a
+video: `tools/record_video.sh <game> <level> [seconds] [out.mp4]` (smooth whatever the
+machine, cut to the action, under the chat's 30 MB; the `scene-tests` skill says what a game
+can do to look its best on film), then send the file to the chat.
+
 A playtest passing says the game runs and can be played; it says little about whether a
 3D scene looks right or a system behaves in a particular spot. For that, write a scene
 test (the `scene-tests` skill): stage the situation, measure it, screenshot it, keep the
@@ -190,6 +208,11 @@ script in the game's `tests/` folder.
 
 Short, specific, and all of them cost a debugging session:
 
+- **A run with a window must not pop up on the person's screen.** Anything that can run
+  `--headless` does; a run that has to render (screenshots, a recording, a scene test's
+  pictures) goes through `tools/godot_bg.sh <godot args>`, which on Windows keeps the window
+  hidden and still renders (`GODOT_SHOW=1` to watch). The kit's screenshot and video tools
+  already use it. A test window that kept stealing the keyboard mid-game is why.
 - **The default sound is loud.** `SaveData.data["volume_sfx"]` ships at `0.8`, which is a
   lot for a game that makes a noise every few seconds. Every game so far drops it to
   `~0.28` in `start()` and restores it in `_exit_tree()`, in memory only so the saved
@@ -256,6 +279,14 @@ Short, specific, and all of them cost a debugging session:
   squash. See `assets/INDEX.md`.
 
 ## Ideas that are not being built yet
+
+**When you list next steps or ideas for the user, use a narrow table** (the user reads on a
+phone): the number, the idea in a few words, **effort** to build, **compute time** (the real
+time the machine spends on it -- rendering, recording, test runs; it matters to the user) and
+**your grade** (A-F: worth doing now, all things considered). Put the comments -- the catch,
+the dependency, what you would do first -- as numbered notes under the table, not as a
+column. Then say which you would do next and why. Number them so the user can answer
+"4, 9, 10".
 
 `IDEAS.md` at the root is the parking lot for concepts about the kit that are noted but
 not scheduled. Read it before pitching features, so you do not re-pitch what is already
@@ -366,6 +397,11 @@ normal, not an accident. What that asks of you:
   republished yet, or the phone was still playing the build it had: a new one downloads in
   the background and waits for "new version ready, tap to restart" or the next launch). Check what build it is from (the HUD, a
   feature you know is gone) before chasing the bug.
+- **Log the effort before you push.** `python tools/effort.py` adds a row per commit it can
+  find in this machine's session transcripts -- agent, runs and the person's active minutes,
+  their time away left out -- to `game/<name>/EFFORT.md` (and `EFFORT.md` for the kit); commit
+  those with the push. Rows stay once written (transcripts are deleted after a while), and
+  a session on the web has no transcripts here: its commits get no row.
 - **Say so when others' work rides along.** If your push publishes changes from another
   session, tell the user in a line, so a surprise on screen has an explanation.
 - Editing the same lines at the same time is the one real clash. When you see another
@@ -394,6 +430,17 @@ writing it down is small next to the next session rediscovering it.
   `tests/` folder rather than leaving it in a scratch directory that vanishes with the
   session.
 - Update what is there when it turns out wrong; a stale note is worse than none.
+
+**After every fix, ask whether the checks should have caught it.** The user asked for this:
+each time a bug is fixed, say in the reply whether the automatic checks (a game's nightly or
+validation run, its scene tests, the playtest) should have caught it, and if they did not,
+what a check for its whole *family* would cost. A family is the rule the bug broke, said so
+it holds for every kind of thing and everywhere at once -- not "two lights at this crossing"
+but "nothing that stands alone is put up twice"; not "a bollard on this road" but "no solid
+thing stands on asphalt". Often a check for the family already exists for one kind and only
+needs widening to the rest: say which, roughly what it costs (the work, and the time it adds
+to a run), do the cheap widening as part of the fix, and offer the dear one rather than
+starting it. A check that only finds the one reported spot is not worth adding on its own.
 
 **Suggest compacting past ~60%.** The user wants a session compacted once its context is
 more than about 60% full, not left to fill up. Only the user can do it (`/compact` is

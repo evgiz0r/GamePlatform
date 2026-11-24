@@ -51,11 +51,33 @@ LEVEL=3 OUT=/tmp/shots xvfb-run -a -s "-screen 0 1280x720x24" $GODOT --path . \
 
 A game's `tests/run.sh <test> [level]` wraps that line (see an existing one).
 
+**On someone's own Windows PC, never let that window show.** A windowed run pops up over
+whatever they are doing and takes the keyboard (mid-game, once). Start it through
+`tools/godot_bg.sh` -- the same arguments, `$GODOT` as the engine -- which starts Godot's plain
+`.exe` with its window hidden: it still renders (screenshots, `--write-movie`), its output
+comes when it ends. `tools/shots.sh`, `menu_shot.sh` and `record_video.sh` already go through
+it; `GODOT_SHOW=1` shows the window. Moving the window off the screen does not work (Godot
+pulls it back), nor does starting it minimized (it stops running).
+
+Because its output only comes when Godot ends, a test that hits a script error before its
+`quit()` sits silently until your timeout, and you learn nothing. Give every test a watchdog
+(`create_timer(300.0).timeout.connect(func(): print("TIMEOUT"); quit(1))` at the top of its
+run) and, while finding out why, pass `--log-file <path>` (through `GODOT_ARGS` where the
+runner takes it) to read the log as it goes. `godot_bg.sh` once kept its own temp file in a
+variable named `OUT`, which is exported, so every test's `$OUT` (its shots folder) came out
+as that temp file and every screenshot failed to save: a wrapper must never reuse the names
+the tests read. A test that takes shots cannot run `--headless`: `frame_post_draw` never
+comes and it hangs at the first one.
+
 ## Ways in
 
 - **Simulate, don't sleep.** `for f in range(60 * 30): await physics_frame` runs 30 s of game
-  time however slow the machine is; `create_timer` waits wall time and the game may do far
-  less in it on a slow box.
+  time however slow the machine is. `create_timer` is neither game time nor wall time you can
+  count on: it adds each frame's step, and Godot caps a frame's step at 8 physics ticks (0.13
+  s). Past 7.5 fps it falls behind the clock -- under the software renderer in a browser
+  (~2.5 s a frame) a 25 s timer took eight minutes, and a test waiting on it saw nothing
+  happen. To wait by the clock, loop `await process_frame` until `Time.get_ticks_msec()`
+  passes the mark.
 - **Freeze for stills.** `g.set_physics_process(false)` and disconnect the game's per-frame
   function (`process_frame.disconnect(g._frame)`), then place the camera with
   `g.look_from(eye, target)` and snap. Unfrozen, the game's own camera moves it back.
@@ -186,7 +208,47 @@ film's drifted by a degree or two -- and the differences are the head's turns to
 head = the film's facing less the body's) and the pace's shape to copy (the share of each
 stretch's distance, between landmark times kept, since a replayed place's lengths are not
 the real one's). The up-and-down summed this way is not usable: while the camera looks down,
-its far band is ground, and walking forward reads as tipping down.
+its far band is ground, and walking forward reads as tipping down. And the summed facing reads
+a turn short wherever the "far" band is near: under an arcade it held the ceiling, the columns
+and motorbikes a metre or two off, the walker's own steps slid them as much as a turn did, and
+a 90-degree turn along the arcade read 50 -- the head fitted to it pointed the replay at the
+shop windows from half a metre for six seconds. Check a fitted facing against the frames
+wherever the scene closes in (arcades, columns, a car filling the frame), and there take the
+facing from the frames (what is level, what the stripes and kerbs point at) instead.
+
+**Score a replay against its film, and calibrate the score on the film itself.** A number per
+second of "how alike" is what lets a pass show where it helped and a merge where it hurt, but
+render against real footage never scores high, so the raw number means nothing alone. Score
+the film against itself shifted in time: half a second on, one, two, thirty (a different
+place). Then a replay's second reads as "as alike as the film N seconds later". Per frame:
+the turn that lines up the far band's edges (phase correlation), then edge *directions* per
+cell (a few directions in a coarse grid, each cell scaled to itself), brightness over a grid,
+and colour over a grid in Lab. Plain edge maps correlated read near nothing: the real film's
+texture swamps them. "Which film moment does this replay frame look most like" (a lag)
+flipped sign every few seconds -- a render and a street are too unlike to place a moment by
+the whole picture. Use landmarks for that.
+
+**Landmarks against a film: solve them all at once, not frame by frame.** A thing's foot in a
+film frame, cast through the replay camera's logged pose onto the ground, gives the film's
+place for it -- if the phone was tipped as the replay's. It never quite is: a hand's tip of a
+few degrees moved bollards 10-20 m in single-frame reads. Fit everything together instead (a
+small bundle adjustment, scipy's least_squares with a soft-L1 loss): one place per thing; per
+marked frame the phone's turn, tip and place on the ground off the replay's camera, each held
+near zero by a prior and the place kept smooth between neighbouring frames. What comes out
+reliably is the *layout* (things' places relative to each other) and the head's real turns
+and tips. Where everything is along a corridor, the places along it rest on the replay's pace
+being right: a fit with few things and very low error (a fraction of a pixel) is
+under-determined, not exact. Mark each thing in 3+ frames from different places. Mark a wall's
+edge by its bearing only when its foot is hidden. Read marks off the full-resolution film: a
+pixel of a 400-wide copy is a tenth of a degree. Draw the place from above with the solved
+places over the game's to see the result.
+
+**Pull a film's frames by decoding, not by a fast seek.** `ffmpeg -ss T -i clip.mp4` (the
+seek before the input) jumps by keyframes, and on one phone clip it returned the same frozen
+frame for every time in its first 8 s -- a whole pass's "it faces straight across at 1-2.5 s"
+was read off that frame, and the replay looked the wrong way for its first five seconds.
+`ffmpeg -i clip.mp4 -ss T` decodes up to the time (slower: fine for a few frames), or check that
+two nearby times give different pictures before measuring anything on them.
 
 **A test that jumps a scene's clock cannot show what is timed by it.** Stills taken by
 setting a replay's time and running a third of a second skip every scripted event in
@@ -253,7 +315,57 @@ speed against time coloured by what held the car; the same drive before and afte
 side under a one-line title each; and a few bullets of what changed. Send each picture as
 it is made, with a one-line caption, rather than a report at the end.
 
+### A video of it (smooth, for a phone)
+
+`tools/record_video.sh <game> <level> [seconds] [out.mp4]` does all of the below in one go: it
+starts the level under the movie maker, waits for the game's `film_ready()`, calls its
+`film_mode(true)` (the game hides its HUD and buttons, keeping what it marks for film -- the
+captions) and hides the shell's buttons, prints the frame filming starts at, stops at
+`seconds` or a moment after the game's `film_done()`, cuts the loading off and encodes to fit
+the phone chat. A game that has none of the three is filmed as it looks, for `seconds`. By
+hand, the same steps: add
+`GODOT_ARGS="--write-movie <file>.avi --fixed-fps 60"` (and `RES=1280x720 FULL=1`) to the run.
+Every frame is rendered at exactly 1/60 s of game time however long it takes to compute, so
+the video never stutters, even on a slow machine. Build everything first (a game that builds
+its world while it runs pops things in on camera: in a city game, the whole city up front),
+and the recording starts at the engine's first frame -- the loading screen included: cut it
+off with ffmpeg (`-ss <seconds>`: the movie's length from Godot's last line, less the scene's
+own length). Encode H.264 with a bitrate cap -- detailed foliage at CRF 24 came out at 15 Mbps,
+180 MB for 98 s; `-crf 28 -maxrate 2M -bufsize 4M -pix_fmt yuv420p -movflags +faststart`
+gave 23 MB -- the phone chat takes files under 30 MB (`SendUserFile` refuses more). Measured on
+the user's PC (22 Nov 2026): 6,500 frames of 720p at 60 fps in 3 min 46 s (about half real
+time), the cutting and encoding under a minute.
+
+**Look better than play.** Filmed, the frame rate does not matter, so `film_mode(true)` is the
+place to turn everything past what any player's machine could hold: 8x MSAA, the 3D picture at
+1.5x and scaled down, long shadows on a big shadow map, no LOD. With `RES=1920x1080` the
+recorder allows 5 Mbit/s (still under 28 MB for ~45 s).
+
+**A scripted camera is a person.** One that moves "from here to there" by lerping a straight
+line goes through whatever stands between, and one that covers 30 m in 2 s looks like a car,
+not someone running -- the user saw both at once. Pick the destination so the straight way
+to it is clear (sample it every half metre against the solids), move it at a body's pace
+(sprint ~6 m/s, accelerating ~9 m/s^2), bob and sway with the strides, look where it goes.
+And test the family, not the shot: count the frames the camera spends inside a solid (it
+must be zero), in every staged shot, not only the one that showed it.
+
 ## Gotchas (each cost a run)
+
+- **A game's 3D view in its own viewport has no camera on the root:**
+  `root.get_viewport().get_camera_3d()` is null. Project with the game's camera
+  (`unproject_position`) and scale by the screenshot's size over that camera's viewport's.
+- **Bones read outside a `SkeletonModifier3D` do not show the modifier.** After the frame,
+  `get_bone_global_pose` gives the pose before the modifiers ran: a raised arm measured as
+  hanging. Have the modifier record what it made (a field set at the end of its
+  `_process_modification_with_delta`) and read that.
+- **Aim a bone, don't search its axes.** To pose a limb (a wave, a point), turn each bone so
+  it points from itself to its child along a direction in the body's frame
+  (`Quaternion(now, want)` on its global pose, then `set_bone_global_pose`), the upper bone
+  first. A grid search over turns about the bone's own axes found no wave at all.
+- **Don't edit code through a Python one-liner in a bash heredoc.** A `\` line
+  continuation in the replacement came out as a literal backslash-n or as a run of tabs
+  (twice, each a parse failure; this very note came out mangled the same way). Write the
+  edit script to a file and run that.
 
 - **Read braking over half a second, not a tick.** A follower that steps its speed to its
   target each tick (an AI car at its hard-braking limit) reads 7.5 m/s^2 in every case; a car
@@ -310,7 +422,8 @@ it is made, with a one-line caption, rather than a report at the end.
 - **Don't annotate with a `class_name` type that uses autoloads** (`var a: Actor3D`) in a
   `-s` script: it is compiled before the autoloads exist and fails ("Identifier not found:
   Probe"), taking the whole test with it. Use the base type (`Node3D`). A cast counts too
-  (`x as Actor3D`), and the damage reaches past the test: the class stays broken for the
+  (`x as Actor3D`), and so does a type test (`n is Actor3D`): match by the node's script path
+  instead. The damage reaches past the test: the class stays broken for the
   run, so the game's own `Actor3D.new()` fails and the city has no people -- a crossing test
   ran "PASS" with every case quietly erroring out on an empty list of crossers.
 - **Do the work in `_initialize()`, never `_init()`.** In `_init()` the autoloads are not up
@@ -399,6 +512,16 @@ it is made, with a one-line caption, rather than a report at the end.
   after it stands and check where it waits; and stage the far case (a light 80 m off), not
   only the near ones the rule was written for. A number a test prints as "a little off" is
   worth one more case before it goes on the open list.
+- **A seeded drive may repeat, but do not count on it.** The same code drove the same route
+  twice to the tenth of a second -- and the same code and route beside a heavier run went
+  otherwise, and old code put back to replay a moment parted from the first drive within
+  50 s: anything timed by the wall clock (a build's time budget, work spread over frames by
+  how long they took) feeds the randomness. So a one-off seen in a drive (a car cutting in)
+  will not come back for a second look: log enough the first time (what was in front, its
+  heading and lane, what held it), or stage it in a scene test.
+- **A speed lost with nothing hit: divide it.** A drop to an exact fraction of the speed in
+  one tick (13.74 -> 8.24 m/s, x0.6) is the game's own multiplier for some event; grep the
+  game for `*= 0.6` and the culprit is named (here a sign knocked flat, not a crash).
 - Parse-check first: `tools/check_script.sh res://game/<game>/<game>.gd` takes seconds and
   says which line; a broken script makes a scene test fail in a confusing way minutes in.
 
@@ -451,3 +574,28 @@ A city that builds in 5 s on a laptop can take 15 there, and a minute of game ti
 wall time. Run tests with the shell's background mode and a long timeout, chain several
 in one script (two Godot runs at once on 4 cores is about the limit), and carry on working.
 A foreground command is cut off at 10 minutes, and a `&` job inside it does not outlive it.
+
+## A bench for judging looks
+
+Trying a look on a real town costs minutes a picture: loading it is most of a run. A tiny
+made-up place in the same data format (a street or two, a dozen buildings of the kinds that
+matter, a few shops and trees), loaded by a test only, takes seconds and shows the same
+materials, kits and lights. Put the looks being tried behind a test-only switch (an
+environment variable read once, off by default), shoot the same fixed views with each, and
+lay them side by side; then keep what reads best. Mind what the generator leaves to the game:
+anything it adds by itself (made-up street trees, parked cars) can stand in front of the very
+thing a view is aimed at, so give the bench enough of its own to stop that, and aim cameras
+from where a person would stand (the middle of the street, the kerb), not from inside the
+next garden. A shot that waits for a drawn frame never returns headless: run such a bench
+with rendering on.
+
+## Which way does the film face? Sweep, don't guess
+
+When a replay's camera should face what a film's frame shows, render the replay from the same
+spot at several headings (every 20-30 degrees) and set the shots beside the frame: the right
+heading is plain at a glance, where reading it off the frame's lines is a guess. To hold the
+camera still for the shots, unhook *whatever* moves it each frame -- a game may move it from a
+tree signal (`process_frame`) rather than `_process`, so `set_process(false)` alone leaves every
+shot the game's own view -- and aim it with the kit's `look_from` (it keeps the base the shake
+resets the camera to).
+

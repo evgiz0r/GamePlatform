@@ -224,6 +224,14 @@ is a Z coordinate, not a height.
   ~1.3 s are the cheapest impact juice there is.
 - The project does not pin a 3D physics engine; the default works headless and on the
   web build. Do not add Jolt to `project.godot` for one game.
+- **A slow device can tick 30 times a second instead of 60** (`Engine.physics_ticks_per_second
+  = 30`, changeable mid-run): everything a tick pays for halves, and a car drawn between its
+  last two ticks (`Engine.get_physics_interpolation_fraction()`) moves as smoothly. It is the
+  engine's setting, every game's: put the project's value back in `_exit_tree`. Before
+  switching, find what counts ticks instead of time -- a `lerp(x, y, 0.5)` each tick (make it
+  `1 - pow(0.5, dt * 60)`), "every 4th tick" schedules, tests stepping 1/60 -- and prove the
+  feel with the game's own driving checks at both rates. A 3D city in a phone's browser:
+  ~1 ms of every tick was the car, autodrive and the rules, 4-5 ticks a frame.
 
 ## Rail games: a road that bends (`reference/drive_by/`)
 
@@ -333,7 +341,41 @@ is rarely the one you would guess. What cost the most, in order, last time one d
   seconds on every step between that level and the next, over and over as the ladder went
   down and back up (a user saw 3.2 s). Keep shadows on at the bottom with a short reach
   (25 m round the car) instead; anything else a level changes should be a shader parameter
-  or a buffer size, not a material's feature.
+  or a buffer size, not a material's feature. Then a step down is worth measuring: if the
+  frame rate did not rise, what holds the frame is not what the levels change (draw calls,
+  the script on the browser's one thread), so go back up to the best-looking level that ran
+  about as fast, and stay there a while -- a PC sat at the bottom, plain and blurred, at the
+  same 25 fps it had at the top. **Pause the watching only for a burst, never for a phase
+  that lasts.** Pausing it "while the world still builds in the background" sounds fair, but
+  a slow machine is exactly where that build takes longest: a laptop at 7 fps stood at 8% of
+  the build after five minutes -- most of an hour to go -- and the ladder never ran once.
+  Leave out the short catch-up round the player, not the long tail. **And give the lowest
+  levels something that lowers the draw count.** MSAA, 3D resolution and shadow reach are
+  pixels: a browser held back by its CPU (each draw call ~0.1 ms on a slow laptop: WebGL's
+  checks, ANGLE, the engine in wasm) gains nothing from them -- the bottom level drew 3% fewer
+  calls than the top. Scaling every long draw range (`visibility_range_end`, and `_begin` of
+  a far version by as much, so the two still meet) and thickening the fog by the same factor
+  cut a quarter of the draws with no shader changed. Keep each node's own ranges in its meta,
+  and catch what is built later by the world's child count.
+- **Reading a frame that runs several physics ticks.** At 60 ticks a second the script's
+  work per real second is fixed whatever the frame rate, so a slow frame does not dilute it:
+  frame time = drawing / (1 - the script's share of each second). A script that eats half of
+  every second doubles the drawing's frame (68 ms of drawing became 135 ms frames, 7.9
+  ticks each, against the engine's cap of 8). Both halves have to shrink, and the drawing
+  alone sets the floor (68 ms: under 15 fps with no script at all). Measure the script per
+  tick, not per frame, to compare two machines.
+- **A time of day, a weather, any look switched at a button: change uniforms, never the
+  light setup or the environment's switches.** Every material's shader is compiled per
+  scene-wide case, and the browser compiles a material's version the first time it draws
+  with it -- at the click, all of them at once. Cases that each cost a full set (Godot 4.7,
+  Compatibility, measured by diffing the programs' sources): the sun's shadows on or off; no
+  light at all (the sun hidden, or a light whose `light_cull_mask` is 0 -- that counts as
+  none: the materials are compiled again without their lighting code); the environment's
+  fog sun scatter 0 or not (its own define). A night as a hidden or shadowless sun cost a
+  user's PC a 2 s hang at the button: make the moon the same sun, dim and blue, its shadows
+  reaching a metre; give the haze a trace of sun scatter by day (0.01) if the evening uses
+  it. Count a click's programs in the browser (wrap WebGL2's `linkProgram` on the
+  prototype) -- a native run keeps a shader cache and shows nothing.
 - **What a browser compiles is shader CODE, not materials.** A ShaderMaterial compiles its
   Shader once per variant (drawn plain or instanced, and again for the shadow pass when it
   casts shadows); a StandardMaterial3D's shader is generated from its switches (flags, modes,
@@ -383,8 +425,19 @@ is rarely the one you would guess. What cost the most, in order, last time one d
     its pause runs later, in another square's context. List the coroutines and grep their
     calls. Pause on a signal the game itself emits once a frame, not `process_frame`: when
     the game is left mid-build, its own signal dies with it and the coroutine just stops.
-  - Turn off the frame-rate quality watcher while building: the build is not the machine
-    being slow. Check the result by comparing every item count with the old build.
+  - Turn off the frame-rate quality watcher for the build's first burst only (the squares
+    round the player, seconds): a slow machine is slow building too, and a watcher off for
+    the whole build never steps down there (the ladder bullet above). Check the result by
+    comparing every item count with the old build.
+  - **A budget of milliseconds a frame starves a slow machine.** At 12 fps a frame's 1.5 ms
+    is a fifth of the building a second that 60 fps gets, and every one of them comes off a
+    frame with nothing to spare: a big city's far squares, out of sight, would have taken
+    ~25 minutes, its "building 30%" read by the player as a load that never ends. Build in
+    a hurry what is in sight (scaled with the draw range the quality level keeps), and on
+    slow frames let the rest wait until the player nears it -- or build it at full speed
+    when nobody is watching the frames (paused, a map view). Say on screen only what is
+    left within sight. Test the pace headless with `--fixed-fps 12`: each frame then gets
+    that frame's budget and 1/12 s of game time, as the slow machine's does.
 - **Kilometres of small dressing cost in the checks, not the triangles.** A fence or hedge
   along every front garden, laid by the helper that checks each 2.5 m piece for roads and
   houses, doubled a build stage. Timed piece by piece, the look for the nearest road was
@@ -420,6 +473,37 @@ else costs programs.)
 - **Before switching a built-in material's flag to share a shader, look for code that reads
   the flag** to mean something else (a batcher keeping anything with emission on out of its
   merged meshes, lights that switch emission at night).
+- **Time them on a real GPU, and expect most of a cold load to be programs never drawn.**
+  Chrome/Edge on Windows hand every WebGL program to Direct3D's compiler, and a lit Godot
+  program costs seconds there (an RTX 3060: 2.4-7.7 s each, at link; Chromium's own cache
+  makes a repeat visit ~9 ms a program, but a first visit and every build that changes shader
+  code pay it again). Godot 4.7's Compatibility renderer, when a material's shader is set up,
+  compiles each variant's *default* specialization (`shader_gles3.cpp` `_initialize_version`)
+  -- for the lit pass, plain and instanced, with omni, spot and **area** light code all on.
+  Draws use another one (the base pass turns off each light type no light of that type
+  touches), so with only a sun those two programs per material are never drawn, and they
+  were ~85% of a minute-long cold load. Area lights are most of it (a program 2.45 -> 0.47 s
+  without them; 0.16 s without omni, spot and area). A game with no omni, spot or area
+  lights can wrap `WebGL2RenderingContext.prototype.shaderSource` to add `#define
+  DISABLE_LIGHT_OMNI/SPOT/AREA` to sources that have `#define BASE_PASS` but neither
+  `USE_ADDITIVE_LIGHTING` nor a `DISABLE_LIGHT_OMNI` of their own (the load drops ~4x) --
+  or, better, swap those sources for an empty placeholder with the same `#version` line
+  (the load drops ~10x: even stripped they cost ~190 ms each). Godot links them, finds no
+  uniforms (locations -1, skipped) and never draws with them; wrap the draw calls to count
+  any draw made with a placeholder program, so the assumption is checked, not trusted.
+  **The kit's web build now does this for every game** (`tools/publish_web.sh` puts it in
+  `index.html`, before the engine starts): the engine compiles its own default material's
+  two lit programs at start, before any game script -- 2.8 s on a cold Windows browser
+  that no game could catch. And it is safe whatever lights a game has: a draw's base pass
+  always sets `DISABLE_LIGHTMAP` (or a lightmap's own switch), so no draw ever uses the
+  default specialization. `window.__lstrip` = {n: programs swapped, used: draws made with
+  one}; `used` above 0 means the reasoning broke. Parallel compiling
+  (`KHR_parallel_shader_compile`) measured 3.3x on 16 threads, but Godot asks each
+  program's status right after linking it, which serialises them, and Chromium did not
+  reuse a program linked in another context. The desktop app's built-in browser pane keeps no compiled shaders
+  between loads, which makes it a cold-load bench on the real GPU -- but keep it on screen:
+  hidden or covered, it gets one frame a second, and every staged load step reads as a round
+  1000 ms.
 
 ## Self-play
 

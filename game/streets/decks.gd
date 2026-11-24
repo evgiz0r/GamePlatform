@@ -199,7 +199,10 @@ func surf(p: Vector2, y: float) -> float:
 	# a cutting's shallow top under a street's lanes): the street carries a body at its level.
 	var on_street := false
 	for ri: int in on:
-		if String(g._roads[ri]["deck"]) in ["cu", "tu"]:
+		# (or any deck whose surface is under the ground here: an embankment's ramp where it
+		# starts below a street at grade, its pavement over the street's outer lane -- a car
+		# there was put 0.6 m down, Givat HaTahmoshet in Tel Aviv, street_holes)
+		if String(g._roads[ri]["deck"]) in ["cu", "tu"] or float(on[ri][1]) < ground - 0.3:
 			on_street = _street_over(p)
 			break
 	if not open and on_street:
@@ -334,6 +337,32 @@ func bank_at(ri: int, p: Vector2, out: Vector2, y: float) -> float:
 			return -1.0
 	return width
 
+## bank_at's widths along a road's side, with the bank taken out (-1: the wall instead) at
+## both ends of a piece whose foot -- straight from one point's foot to the next -- comes
+## within 1 m of another road's asphalt. bank_at looks only straight out from each point,
+## and the foot between two of them cut the edge of a street alongside (street_holes' last
+## two walls in Tel Aviv, 22 Nov). Both what is drawn and what is solid go by this.
+func feet_clear(ri: int, pts: PackedVector2Array, outs: PackedVector2Array, widths: PackedFloat32Array) -> PackedFloat32Array:
+	var r: Dictionary = g._roads[ri]
+	var e0 := float(r["w"]) * 0.5 + float(r["side"])
+	var out := widths.duplicate()
+	for j in range(pts.size() - 1):
+		if widths[j] < 0.0 or widths[j + 1] < 0.0 or maxf(widths[j], widths[j + 1]) <= 0.0:
+			continue
+		if not _foot_clear(ri, pts[j] + outs[j] * (e0 + widths[j]), pts[j + 1] + outs[j + 1] * (e0 + widths[j + 1])):
+			out[j] = -1.0
+			out[j + 1] = -1.0
+	return out
+
+## a bank's foot from f0 to f1 keeps 1 m off other roads' asphalt, every 2 m along it
+func _foot_clear(ri: int, f0: Vector2, f1: Vector2) -> bool:
+	var n := maxi(1, int(ceil(f0.distance_to(f1) / 2.0)))
+	for k in range(n + 1):
+		var on: Dictionary = g._nearest_seg(f0.lerp(f1, float(k) / n), 12.0, true)
+		if not on.is_empty() and int(on["road"]) != ri and float(on["edge"]) < 1.0:
+			return false
+	return true
+
 func _in_building(c: Vector2, rad: float) -> bool:
 	for i: int in g._near(g._bld_hash, c, rad, g.BLD_CELL):
 		if g._bld_solid[i] == 0 or not (g._bld_box[i] as Rect2).grow(rad).has_point(c):
@@ -456,6 +485,7 @@ func _walls_of(ri: int) -> void:
 		var banks := PackedFloat32Array()
 		for j in range(pts.size()):
 			banks.append(bank_at(ri, pts[j], outs[j], ys[j]) if kind == "em" else -1.0)
+		banks = feet_clear(ri, pts, outs, banks)
 		for j in range(pts.size() - 1):
 			if (cum[j] < clear_a or cum[j + 1] > total - clear_b) \
 					and (kind != "br" or maxf(absf(ys[j] - gs[j]), absf(ys[j + 1] - gs[j + 1])) < CLEAR_LOW):
@@ -667,12 +697,35 @@ func _holes_of(ri: int) -> void:
 
 ## The ground mesh's triangles with the holes cut out: given one triangle's corners (with
 ## their normals), the triangles to draw instead -- itself when it misses every hole.
+var _hole_hash := {}      ## 100 m cell -> the holes reaching it (cut_tri), rebuilt as holes change
+var _hole_n := -1
+
 func cut_tri(v: Array, nrm: Array) -> Array:
 	var tri := PackedVector2Array([Vector2(v[0].x, v[0].z), Vector2(v[1].x, v[1].z), Vector2(v[2].x, v[2].z)])
 	var box := Rect2(tri[0], Vector2.ZERO).expand(tri[1]).expand(tri[2])
 	var polys: Array = [tri]
 	var hit := false
-	for i in range(holes.size()):
+	# only the holes near it: a town's canals are hundreds of holes (streets.gd cuts them in
+	# 100 m pieces), and testing every one for every ground triangle took seconds
+	if _hole_n != holes.size():
+		_hole_hash = {}
+		for i in range(holes.size()):
+			var hb: Rect2 = hole_boxes[i]
+			for cx in range(floori(hb.position.x / 100.0), floori(hb.end.x / 100.0) + 1):
+				for cz in range(floori(hb.position.y / 100.0), floori(hb.end.y / 100.0) + 1):
+					var k := Vector2i(cx, cz)
+					if not _hole_hash.has(k):
+						_hole_hash[k] = []
+					(_hole_hash[k] as Array).append(i)
+		_hole_n = holes.size()
+	var near := {}
+	for cx in range(floori(box.position.x / 100.0), floori(box.end.x / 100.0) + 1):
+		for cz in range(floori(box.position.y / 100.0), floori(box.end.y / 100.0) + 1):
+			for i: int in _hole_hash.get(Vector2i(cx, cz), []):
+				near[i] = true
+	var order: Array = near.keys()
+	order.sort()
+	for i: int in order:
 		if not (hole_boxes[i] as Rect2).intersects(box):
 			continue
 		var next: Array = []
@@ -945,6 +998,7 @@ func _raised(ri: int, pts: PackedVector2Array, walk: RefCounted, kerb: RefCounte
 		var widths := PackedFloat32Array()
 		for i in range(pts.size()):
 			widths.append(-1.0 if bridge else bank_at(ri, pts[i], outs[i], deck_y(ri, pts[i])))
+		widths = feet_clear(ri, pts, outs, widths)
 		var gap_bank := PackedByteArray()
 		var gap_w := PackedByteArray()
 		for i in range(pts.size()):

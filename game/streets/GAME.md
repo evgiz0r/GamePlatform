@@ -22,7 +22,7 @@ streets
 
 Someone driving an ordinary car through their own town, on a sunny day, seen from just
 behind and above the car (a chase cam that swings out a little on the turns and pulls in
-rather than sit inside a wall) -- or from the driver's seat (the "seat" button, or C):
+rather than sit inside a wall) -- or from the driver's seat (the camera button, or C):
 the dashboard, a steering wheel that turns with the front wheels, a speedometer and rev
 counter seen through the top of it, the pillars and the mirror, the eyes leading a little
 into the turns.
@@ -63,6 +63,92 @@ the game's files: the web build is public.
 
 > Maybe later in the same menu I would be able to enter my own.
 
+**Walks.** "Walks: watch one", beside the test routes, is a list of walks to watch in first
+person, each loading its own city: the two filmed in Givatayim first, then walks nobody
+filmed, along real streets elsewhere -- down the middle of Rothschild Boulevard in Tel Aviv,
+HeHalutzim to Herzl in Ashdod, Shore Drive by the water in Bedford, and the test town's
+market street. Those walk at an unhurried pace on the pavement, stop at each kerb and look
+left and right before crossing (the cars stop for them), and step round whatever stands on
+the pavement -- a tree, a pole, a bin.
+
+> Lets put in the main menu both walks inside an extra menu, like the test drives. and add
+> some more walks. even not the filmed ones. just to distribute a bit away from my location
+
+Every walk is seen from a little over a person's eyes (1.75 m, as a camera held up; first 1.58), not from where the film's phone was held at
+the chest (1.44 m); and now and then the head turns to a car going by, follows it a couple of
+seconds and comes back -- except where the film's own look is known (at a zebra, a corner).
+
+**Watching a walk.** A thin bar along the foot of the screen shows how far the walk has gone
+("1:23 / 3:20"), and a button beside it speeds the whole world up, 1x, 2x, 4x. In the walks
+list each walk can also be started in the evening (a low sun, long shadows) or at night (the
+street lights on). Every city has a walk -- Delft's along the Oude Delft canal -- and the
+walks nobody filmed have the street's things along them: bins, scooters, cabinets, hydrants,
+bollards, yellow parking boards (a Dutch street's rows of short bollards; a Canadian
+suburb's few hydrants and bins). Street trees beside a road are pruned up, branches from 2.2
+m and leaves from 2.5, so a walk goes under them, not through them.
+
+**Walks with something going on.** A night out down Nahalat Binyamin in Tel Aviv (at night,
+its bars and cafes lit with string lights and their tables out, people standing about in
+groups and passing by), a walk through a Tel Aviv park on its footpaths, and one along the
+beach on the wet sand, the head turning to the sea now and then. A walk brings its own
+people and things, not only what the city has: groups talking, people passing, lit bars.
+The walks nobody filmed show the game's own picture, not the filmed walks' phone look.
+
+> Some of the walks are very uninteresting nothing happening just walking in a blocked area.
+> More interesting walks. On the beach. In the park. Near night life.
+> In those scenarios, you should be able to change things we want (people some other object
+> maybe). Not only getting stuck in the actual city
+
+**Watched, not driven.** Walks, test drives and the tours and stories that play themselves are
+to watch: no wheel, pedals or buttons of the game's own, only pause, exit and a walk's speed.
+(The getaway is still yours to drive.) Every place starts at the same quality and steps down
+by the same rule; little things on the buildings (AC units, balconies, washing) are drawn
+to about 280 m, not 420, and the buildings themselves as far as before, so a tower far off
+still shows.
+
+> About walks and test drives lets not give the user control. Just simulation. And lets try to
+> optimize a bit to render less or whatever takes performance and not rly needed. And same
+> rule for all. But if there is far high building we do want to see it.
+
+> lets add a progress bar to the walks so we know how much we passed, and maybe a speedup
+
+> do we have evening/night walks? if no lets add/change existing to those. if yes lets
+> mention in the menu
+
+> i want to add more items near the walks ( maybe change paths if needed i didnt look at all
+> of them). fix walking through trees ( if still happens not sure ).
+
+> Lets balance the walks to be from more cities. And in any case we do a new city we put a
+> new walk and drive from those cities
+
+**Places that are not towns.** Two made-up places show a walk or a drive need no real city.
+*The showroom* (in the Walks list): a paved square with a quiet street and a few blocks round
+it, laid out in rows -- the trees of every kind the game grows, the street's things (bins,
+hydrants, bollards, a barrier, lamps, a booth, a cabinet, signs, motorbikes and scooters),
+the little things the game scatters about (recycling bins, bikes and a delivery bike, a dog,
+a pram, cats, sculptures, an ad column, a billboard), a playground and benches and the odd
+spaceship, and a row of vehicles from a police car to a fire engine -- with people standing
+about. The walk goes up and down the aisles between the rows, stopping twice along each to
+look at the row on one side and then the other, glancing about as it goes (about 5 min).
+*The trick road* (in the test drives, number 14): a one-way figure of eight on open grass,
+driven once round by autodrive, alone (no other traffic): up a ramp onto a bridge over its
+own other leg, off the bridge's end (a ledge: the car flies about 9 m and lands on the ramp
+down), over a jump (a kicker and a ditch across the road: the car flies about 30 m at 50-60
+km/h; a car too slow would drive down into the ditch and out), and through a hill in a
+tunnel between two cuttings. About 1:35. A real gap with nothing under it is not possible
+yet -- the car can only be steered along roads -- so the jump is over a ditch the road dips
+into.
+
+> i want to make the walks/drives maybe a bit more varied. even not from real cities. for
+> example 2 more - a small scene with many of the objects, and i am just walking around
+> looking at the models; a small trick road where the car has ramps tunnels jumps falls; and
+> these illustrate we can make really special cases not only involving the cities
+
+> i think the walk height is bit too low, i am holding the phone probably too low. and
+> sometimes not turning with my head on traffic passes( lets add that , even if it doesnt
+> match the video 1:1 ). i thought about gopro that solves it but im not going with more than
+> phone for now to simulate my movements
+
 **Giving way.** Autodrive comes out of a side street onto a bigger road the way a driver does:
 up to the corner slowly enough to stop, and if a car is coming that it could not get in
 front of with room to spare, it waits at the edge -- looking at that car as it goes by --
@@ -81,18 +167,83 @@ the street it turns into, no tighter than the car can steer and slowly enough to
 > Real give-way and left-turn decisions (picked from the list of next steps: "1 2 6 7").
 
 **On foot.** The "walk" button (or F) lets the driver out of the door to walk the same city:
-arrows or the stick to walk (a brisk 2.1 m/s) and turn, space to run (6 m/s), over the
+arrows or the stick to jog (4.5 m/s) and turn, space (or the stick pushed all the way) to
+sprint (9.5 m/s), backwards at a walk, over the
 shoulder or (the "seat" button) from the eyes. Out of a moving car you jump: you tumble
 out of the door with the car's speed, roll and get up, and the empty car rolls on by
 itself, slowing, until it stops or hits something. Traffic goes round the car; traffic
 stops for you on the road; walls, fences, trees and passing cars push you aside; the
 minimap marks the car. Back at it, "drive" gets you in (still rolling, it rolls on with
-you).
+you) -- or get into any car in the traffic you are beside: "drive" next to it and it is
+yours, from where it stood (it leaves the traffic). Parked cars cannot be taken yet.
 
 > Walk mode: get out of the car and walk the same city.
 
 > I want to walk a bit faster when I'm out of the car, now it's too slow. I want to be able
 > to start walking also when I'm driving. The car will just continue and I'll pop off.
+
+> the current walk mode is very weak ... Its very slow and i can back only to my car. Lets
+> do i can go inti any car and im pretty fast
+
+## The buttons on the screen
+
+> lets make the other buttons better, more organized, with better logic. some buttons are
+> rarely used and so on
+> i want something not to take too much of the screen or maybe collapsable easily. all
+> those [little] notations also take a bit
+
+(22 Nov 2026.) On the screen only what you use while driving, grouped by what it is for:
+
+- **Along the bottom, where you are going:** "autodrive" and, while it drives, its style
+  beside it ("racer", "rules" or "green wave": tap for the next), "go to…", and "pause"
+  ("lets put pause on main screen"): a tap holds the city still, the button lit "PAUSED",
+  and another lets it go on.
+- **On the right:** "more", "–", the camera ("chase" or "seat": tap to swap), "walk" under it ("get in" on foot), and "look" while you drive yourself.
+- **On the left, above the map:** the frames a second ("14 fps"), live; a tap opens the perf
+  view right under it, another closes it ("lets add a quick performance button in main
+  screen. dont like that double click" -- it was "more", then "perf view").
+- **Just over the minimap, "map"** (or M): the city from high above, paused, to look round
+  -- drag, pinch, turn, hold a street to drive there (the zoom, below). "back" (the same
+  button) comes down to the car and the city goes on. Up there the camera button says which
+  view you land in, and a tap swaps it. "the tap on the minimap ... would open it where i can
+  move around. like a zoomout. also pausing the game. maybe a tap on minimap is too easy to
+  click, something near it" -- so a button by it, not the map itself.
+- No headlights button ("remove lights ui its not a thing"): the key L still switches them.
+- **"more"** opens a drawer of what you set once and leave: time of day (day, evening,
+  night), the road (dry, wet), how autodrive drives (keeps rules, green wave, racer), the
+  steering assist, pause, the keys, the perf view -- and, small at its foot, the fps, which
+  build this is, how long the city took to load, and the towns' own credits. A tap outside
+  closes it.
+- **"–"** folds every button away but one small "show" (the stick stays).
+
+Every button says what is on now, and is lit when it is on: "seat" means you are in the
+seat. (Before, some said what a tap would switch to -- "day" at night.) Paused by hand, a
+"resume" sits in the middle of the screen. Keys do everything too; "keys" in the drawer
+lists them.
+
+The buttons are drawn small to keep the screen clear, but on a touch screen a finger counts
+up to 10 px off one (about 2 mm), the nearest button taking it, and the stick's ring stays
+the stick's. Your choices are kept for next time (from 22 Nov): the lists' time of day and
+autodrive style, the buttons folded away, the steering assist.
+
+**Autodrive is a racer by default.** Switched on by you -- its button, "go to… drive to",
+a street held from above -- autodrive drives as the racer, no green wave. The style is
+yours to change, in the chip beside the button or the drawer.
+
+> change the default of the autodrive to racer, without green wave.
+
+The chip beside autodrive says how it is driving now, not the setting. (A test drive keeps
+the rules, but the chip said "racer" -- the user asked whether the test drives were racing.)
+
+**Settings on the lists.** The test drives and Cities lists have a row of "normal" or "racer"
+and "day", "evening" or "night"; the Walks list has the time of day only (a walk has no
+autodrive). The one chosen is full, the rest dimmed; the drive or walk starts that way, and
+"play again" keeps it. They are kept while the game is open: test drives start "normal" (they
+are there to test autodrive), cities "racer".
+
+> the test drives are actually driving in racer mode, or its a bug? maybe lets add settings
+> like racer/normal day/evenining/night to both test drives and the walk (it wont have the
+> racer option)
 
 ## What do you do?
 
@@ -126,7 +277,7 @@ takes the wheel back from autodrive; tap "autodrive" to hand it over.
 > The circle keeps moving. Can't drive like that. Make it a static circle, somewhere on
 > the right side.
 
-**Driving assist** (on by default, the "assist" button): while you roughly follow a street
+**Driving assist** (on by default; "steering assist" in the "more" drawer): while you roughly follow a street
 it eases the car toward the street's direction and the middle of your lane, letting go
 the moment you steer harder than a nudge, and it brakes for something solid right in
 front at speed.
@@ -179,12 +330,20 @@ way that has the address on the kerb side; driving hands the way there to autodr
 
 > Besides go to, I want also jump to. It teleports there, instead of driving.
 
-**Places.** Entering the game asks where, in two lists side by side: **Cities** (Givatayim,
-Bedford, Ashdod, Tel Aviv, and the made-up test town last) and **Auto Experiments** (the
-filmed walks and the test routes' drives). Each level's `"group"` puts it in one.
+**Places.** Entering the game asks where, under two headings: **Cities** ("Cities: pick
+one") and **Auto Experiments** ("Test routes: watch a drive", "Walks: watch one"). Each opens
+a page of its own -- the cities (Givatayim, Bedford, Ashdod, Tel Aviv, Delft, and the
+made-up test town last), the ten drives, the walks -- with a "back" to this screen. Only the
+three lists have a `"group"`; a city or a walk has none, and its list finds it.
 
 > lets rearrange the menu items instead street. 2 categories: Cities, Auto Experiments (walks
 > + test-drives). no extra button for walks, just split in the menu.
+
+(Then, 22 Nov: the walks behind one button after all, as the test drives are -- below; and
+the cities too, with a way back from each list:)
+
+> remove the filmed from the notations please. also please add a back to each of the internal
+> menus. and add a cities extra menu. with the cities as we gonna start having more
 
 Givatayim starts on Katznelson just past Weizmann, the town's central junction; Ashdod at
 Sderot Herzl and HeHalutzim, its busiest corner for shops. Each place is one
@@ -432,12 +591,14 @@ The minimap (bottom left) shows the real streets and buildings round you, headin
 the city limits in pink. The name of the street you are on is at the top, in Hebrew with
 the English name under it when OSM has one.
 
-Over the minimap, small, is which build this is: "build 21 Nov 10:05 UTC · 79f2bc6", when
-it was published and the commit it came from, so a screenshot says whether a fix is in it
-("dev build" when run from the project). Under the map, small and wrapped so it stays
-clear of the buttons, the credits: OpenStreetMap's, and the towns' own surveys.
+In the "more" drawer, small, is which build this is (it sat over the minimap until 22 Nov): "build 21 Nov 12:05 Israel · 79f2bc6", when
+it was published, on Israel's clock (summer time too), and the commit it came from, so a
+screenshot says whether a fix is in it ("dev build" when run from the project).
 
-**Zooming out.** "zoom" (on the right, under "walk"; Z, or the mouse wheel down, or two
+> can we print build times in israel time Under the map, small, OpenStreetMap's credit; the
+towns' own surveys are credited at the foot of the "more" drawer.
+
+**Zooming out.** "map" (over the minimap, higher; M; or Z, or the mouse wheel down, or two
 fingers pinching together) lifts the view off the car -- or off you, on foot -- up over the
 city, centred on where you are, the way you were facing at the top of the screen, and
 pauses the city: the car, traffic, people and lights hold still where they are, and the
@@ -456,9 +617,114 @@ screen outlined, and an arrow for you (on its edge if you are off it). Trees, pa
 the rest are drawn all the way across the view while it is up, so nothing pops in as you
 move it.
 
-**Pause.** "pause" (K) holds the city still with the view where it is; "resume" lets it go
+**Pause.** "pause" (K, the bottom row, or the drawer) holds the city still with the view where it is; "resume" lets it go
 on. Resumed while zoomed out, the city runs under you and the view follows the car, which
 still drives (keys or the stick). The shell's own pause (its menu) is still there too.
+
+**Scenarios.** A page of its own on the start screen ("Scenarios: pick one"): a town played
+out as a little film, the car driving itself, captions across the bottom.
+
+- *Tours* -- Givatayim, Tel Aviv, Ashdod, Bedford. The car drives from one of the town's
+  named streets to the next (the lights turning green for it), and at each it stops: the view
+  rises over the street and circles it while the caption says who or what it is named for;
+  between stops, a line about a neighbourhood or the town's past. A street with a story is
+  explained as you turn into it. Built from each town's own story, so every town with one
+  has its tour.
+
+  > a virtual tour in a city. like a guide, where we stop and look and explain
+
+- *The getaway* -- Ashdod, Tel Aviv. A car with flashing lights and a siren is on your tail;
+  the car runs as a racer to the safe house across town. On a straight you pull away; slow for
+  a corner or a queue and it closes in. Lose it by 160 m or reach the safe house and you got
+  away; let it within 7 m and you are caught. Take the wheel and the drive is yours.
+
+  The camera cuts between shots as it goes -- the usual view, from high above, low at the
+  kerb as you come by, from behind the police car, looking back -- and drops into slow
+  motion through each red light.
+
+- *Night tours* -- Tel Aviv, Givatayim. The tour after dark, the towers and street lights
+  lit, ending as the rain comes and the streets shine.
+- *Ambulance run* -- Tel Aviv, Ashdod. Siren on and lights flashing, to the hospital (Tel
+  Aviv's, on Weizmann): the cars beside you pull aside and stop, every light turns green,
+  and the car goes round whatever is in its way.
+- *Dragons* -- over Tel Aviv, over Givatayim. Evening. From the street you look up: two
+  dragons, a red and a green, circle the towers, close in and burn each other, part and come
+  round again; the camera rises among the roofs to watch. Then the red one turns and comes
+  straight at you -- you run behind the nearest building, it sweeps over the roof roaring,
+  and you step out to watch it go. The traffic stops dead.
+
+  > Dragons fighting above the city and we watch the fight. The one dragon starts flying
+  > towads us amd we hide bwhind a building
+
+- *A day in the town* -- Tel Aviv, Givatayim. Morning to night in three minutes: a drive at
+  each time of day, the town's own rhythm in the captions, the camera cutting between shots,
+  rain before dawn.
+
+  > some scenario ( aka movie i guess ) happening in a city. doesnt have to be related to
+  > the city itself ... tours will be part of all scenarios
+
+  > I want to think more of automatic scearios for now without my inputs
+
+**The opening.** When a town comes up, the view starts high over it, turning slowly round
+where you will start, the town's name across the screen, while the streets round the car
+finish going up (a few seconds; the parts further off lie flat as their stand-ins). Under
+the name, the town's own story a line at a time -- "Givatayim means 'two hills' in Hebrew",
+"In 1909, 66 families split a sand dune into plots by drawing seashells", "Ashdod has the
+world's largest Georgian Jewish community" -- a different few each time, gathered from
+Wikipedia, Wikivoyage and the towns' own pages and credited under it. Then it
+comes down to the car and the drive begins on finished streets -- no buildings and trees
+popping up in front of you. A tap, a click or any key goes straight down.
+
+> on bringup when the graphics load in the background we will play something, from
+> animation to a story or whatever. instead of these wierd hickups where we see things pop on
+> the screen, its not great
+
+**The city from above before it is built.** At the start only the streets round the car are
+built; the rest goes up square by square while you drive. Zoomed out, the parts not built
+yet are not empty: their roads, the outlines of their buildings, their parks and water lie
+flat on the ground straight away, each square swapping for the real one as it goes up -- so
+there is something to see, and to hold the mouse on to drive there, from the first second.
+
+> when i zoom the beginning the rest of the city is still being built. maybe i can still see
+> something (roads?!, dunno), and click in the area of the city, before it rendered
+
+**The green wave.** "green wave" (autodrive's style: the chip beside it or the "more" drawer; or V) turns it on: every crossroads with lights
+you come up to, driving yourself or on autodrive, turns green for you. It does it the proper
+way, as if it saw you coming: the cross street's green ends with its flashing and amber,
+red all round, then red-and-amber and green your way, so its cars and people stop as they
+would; it stays green until you are through, then goes back to the town's rhythm. It reaches
+about twelve seconds ahead at your speed (150 m at least), so even a light that has just
+gone red for you has turned by the time you get there.
+
+> any crossroads i approach switches to green for my car
+
+**Racer.** "racer" (autodrive's style, and its default; or R) has autodrive drive with the rules
+off: it goes through red lights and stop signs, never gives way, takes the bends as fast as the tyres hold rather than the limit (about
+one and a half times it, up to 100 km/h) and goes round any slower car -- on the left, or
+the right where the road has the lanes, over the centre line when nothing is coming -- and
+when a queue will not move it goes up onto the pavement and along it, if nobody is on it.
+It still stops for people on a zebra and brakes for anyone in its way. The town
+carries on as before: the traffic stands on its brakes for you, and a car that has to, or
+that finds you coming at it in its lane, sounds its horn. Each red it runs is counted
+over the style chip. Autodrive off (the stick, the keys, walking) ends it; on again, it is
+the racer again unless you chose otherwise.
+
+> thief or racer mode, where the autodrive doesn't care about traffic
+
+**The towns' own kindergartens and shelters.** Givatayim's, Ramat Gan's and Ashdod's own
+maps put a kindergarten in every few streets (OSM knew of 7 in Givatayim; its map has 87,
+the day-cares besides) and a public shelter in most gardens (OSM had none). A kindergarten
+is its yard beside the building: a low green fence, soft ground, a shade sail in red, blue,
+yellow or green over it, a slide with its little roofed tower and a spring horse (made in
+Blender); the street gets the school's SLOW painted near it. A
+shelter is its squat concrete entrance with a steel door facing the street and the blue
+"מקלט" sign over it.
+
+**Bus lanes from the Ministry of Transport.** Beside the ones OSM marks, the Ministry's own
+list of bus lanes is laid on the streets it names: Menachem Begin, Derekh HaShalom, Arlozorov
+and the rest -- painted and kept for buses (and taxis) as the others are; Ashdod's Herzl
+busway down the middle of the boulevard and King George's rapid-bus lanes too. Not yet: the
+lanes where buses go against a one-way street.
 
 > If I would want a zoom out feature, that zooms out from where I am. Maybe it pauses the
 > city (maybe we can add a pause feature anyway), and we can zoom back in (or check around).
@@ -539,6 +805,19 @@ across, so cars through the junction no longer stop in the middle of it for them
 > The movement of the people: they bounce, jump, teleport and so on. They also don't cross
 > the roads according to the lights, so in many crossroads we have to stop for them in the
 > middle.
+
+People cross the road only at the zebras. At the end of a block they go round the corner
+or turn back; they no longer step over a side street's mouth into the traffic. They step
+aside only from a car that is actually coming onto the pavement at them, never because one
+drives past on the road, and when they step round something it is at a person's pace, not
+a glide. Someone put somewhere new is put where they stay out of sight: well behind a
+building from where the camera is and from where it is about to be.
+
+> people crossing the road in random location, bothers the traffic and shouldnt happen imo
+
+> sometimes when i just autodrive, and its near a pavement with people walking, they jump to
+> the side. i dont want any popping of any objects, it looks fake, even more than collision
+> stuff. need some more object permanence
 
 The people are grown-ups, not the kit's chunky cartoons: smaller heads, hands and feet,
 longer legs and a longer middle (scaled on their skeletons after every animation frame),
@@ -696,7 +975,7 @@ the wind once you are moving quickly; the nearest car going by as the whoosh of 
 its pitch falling as it passes; and the city far off, always, soft. (See "Sound you do not
 switch off" below for why it changed.)
 
-**Night.** The "night" button: a dark sky and a dim moon, a share of the windows lit (warm
+**Night.** "night" (time of day, in the "more" drawer): a dark sky and a dim moon, a share of the windows lit (warm
 in homes, cooler in offices), street lamps on with a pool of light under each, shop
 windows bright, headlights with their beams on the road, tail lights glowing.
 
@@ -984,7 +1263,7 @@ the city now has what the walk had underfoot and at eye height:
 
 > go next
 
-**Golden hour.** The time-of-day button steps through day, evening and night. The evening is
+**Golden hour.** Time of day, in the "more" drawer: day, evening and night. The evening is
 the hour before sunset: a sky photographed then, clouds lit gold from below and a glow
 along the horizon where the sun is going down (in the west-south-west, as it sets over
 Givatayim in the autumn); the sun low and orange, so the fronts that face it glow and the
@@ -1005,7 +1284,7 @@ whoosh; the coin for a new street is a quiet tick, the indicator a relay's soft 
 
 > go next
 
-**After rain.** The "wet" button (beside the time of day; "dry" turns it back) soaks the
+**After rain.** "wet" (the road, in the "more" drawer; "dry" turns it back) soaks the
 streets over a second and a half: asphalt, paint and pavers go dark, puddles lie in the
 dips holding the sky (and, low down, the buildings across the street), the sun's glare
 runs along the wet road when you drive towards it, grass and earth go a little darker. The
@@ -1192,6 +1471,31 @@ few seconds. A road sign hit at more than about 15 km/h bends over at its foot w
 Buses, trucks and scooters blink in their own lamps like the cars. The old blocks' sand
 plaster is browner in shade.
 
+> the dogs look pretty wierd, and their hitboxes and how they walk is pretty wierd
+>
+> some people are walking in place ( like that girl on the right ) and their legs are somewhat
+> bit inside the ground
+
+**Dogs like dogs; people's feet on the pavement.** A dog is a rounded dog now -- a deep
+chest, a head and muzzle, floppy ears, legs with paws, a wagging tail -- in black, brown,
+golden, white, grey or tan, small to medium; it keeps its place by its walker and trots
+there facing where it goes, its legs going only as it moves; people step round dogs and the
+car and you bump them. People walk only while they really go somewhere, at the pace they
+go, and stand when they stop (they walked on the spot). Walkers stepping over a side
+street's mouth no longer stand a kerb's height down in the pavement.
+
+> I am looking at the balconies compared to real ones. i am thinking why the real looks so real
+> compared to the fake ... the buildings and balconies feel somewhat cartoony or blurred
+> compared to reality. Maybe we can create some small enviorement ... quick for testing and
+> checking the taste of the look. push all
+
+**Balconies that stand out, and deeper light.** The balconies were boxes the wall's colour,
+lit like the wall, so they melted into it; now their undersides are dark, the wall under
+each is in its shade, a lip catches the light with a dark drip line under it, a coping runs
+along the parapet, and half the blocks have railings of dark bars instead of a solid
+parapet. The fill light is lower and the sun a touch stronger, so shade reads as shade. All
+tried first on a small made-up street that loads in seconds (only the tests see it).
+
 > I took a video on my phone, walking in Givatayim.
 
 ## Smooth on a laptop and a phone
@@ -1245,8 +1549,16 @@ squares within about 300 m of the start go up behind the loading text (Givatayim
 71), so the car is on the road in about 2 s here (it was 7), Bedford in 1.2 (was 11.7) and
 Ashdod in 2.8 (was 18); a phone takes two or three times as long. The rest goes up while
 you drive, the square nearest where the car is heading first, a few milliseconds a frame
-(6, or 3 when frames already run slow), so the driving does not stutter; "building the city
-40%" under the street count says how far it has got. Givatayim is all up within about 20 s
+(6, or 3 when frames already run slow), so the driving does not stutter; "building the town
+round you · 3 squares to go" under the street count says what is left within sight, and goes
+once that is up (the perf view says how much of the whole city is built). When the frames
+are already slow (a work laptop's browser at 10-20 fps), the squares out of sight wait until
+the car comes near them -- or go up at full speed from above or paused -- instead of taking
+milliseconds from every frame for half an hour.
+
+> the loading of tel aviv on my laptop in chrome in autodrive really takes forever ( i am on
+> 30% after few minutes of driving i think )
+ Givatayim is all up within about 20 s
 of driving here, Ashdod within a couple of minutes. Nothing is left out: when it is done the
 city is the one the old all-at-once build made, lamp for lamp. Anything laid along a road or
 a fence (asphalt, paint, kerbs, garden walls, wires, fences) is worked out by every square
@@ -1267,7 +1579,7 @@ grain are strong enough to read at the lowest step's lower resolution.
 
 > I start with textures on the street but after I drive a bit they just vanish.
 
-**Seeing what chokes.** Tap the fps text under the speed (or press P) for the perf view: a
+**Seeing what chokes.** Tap the fps button on the left (or press P) for the perf view: a
 graph of the last frames' times (green under 20 ms, red over 40), the average frame split
 into the engine's drawing and the game's own parts (traffic, people, autodrive, the
 minimap...), and the last few hitches -- frames much slower than the ones round them --
@@ -1481,26 +1793,49 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
 
 ## Later (said, not built)
 
+- Rawabi (22 Nov 2026): "do we have enough details for rawabi to build something?" -- not
+  yet. A trial bake found OSM thin there:
+  - no town boundary;
+  - 94 buildings within 700 m of the centre, none with storeys, where the town is hundreds
+    of 6-10 storey blocks;
+  - two named streets, no traffic lights.
+
+  The hills come through well (387-857 m). Next step when it comes back: check the
+  machine-mapped footprint datasets (Microsoft's, Overture, Google Open Buildings) for its
+  blocks and heights.
+
+- Racer boxed in at a red, every lane queued (22 Nov 2026): "1 2" -- squeeze between the
+  lanes, and on two-way streets past the queue in the oncoming lanes. "But those low height
+  splitters between lanes and pavements. If they are low enough lets make it possible for our
+  car to go to the other side. And things bit more breakable that dont completely stop us.
+  Some i think just break and still stuck in place. Not everything but many small items we
+  could just not be blocked by". (Built 22 Nov: past the queue in the oncoming lanes, what
+  gives under the car, squeezing between the lanes -- the squeeze still refuses on 4 of 6
+  staged reds with every lane full, see DEV.md "Racer past a whole queue".)
+
 - Not just driving: the same baked city could be walked, or used by another game.
 - Crashes, what is still to come: a sign post bent, a fence panel or a hedge pushed in, a
   scrape mark on the wall the car rubbed.
 - Speed humps to bump over: OSM marks them (traffic_calming), but the baker does not keep
   them yet -- it needs that and a re-bake (Overpass, or the bake workflow).
 - People who react ("not needed yet, maybe later"): jumping back, or falling, when a car
-  comes at them; glancing at you.
-- A guided tour of the city: "a virtual tour in a city. like a guide, where we stop and
-  look and explain. the more real it gets the more the tour looks nicer". A guide leads you
-  along a route on foot (or driving), stops at the sights, turns your view to each and
-  explains it -- what it is, its history, what to notice -- then goes on. It rides on every
-  realism pass the towns get. Already here to build on: the filmed walks (a route at a
-  person's pace, the head turning to look), the landmarks (Tel Aviv's towers, Sarona) and
-  the places from OSM and the towns' own data. New: each tour's script (the stops, where to
-  look, the words, maybe spoken), a guide to follow, and a way to pause, ask, or skip ahead;
-  a tour as a level of its own in the start screen.
-- A "green wave": "any crossroads i approach switches to green for my car" -- a switch for
-  the player's car (driving or autodrive) that turns each light it comes up to green its
-  way, through the usual change for the cross street (amber, red) so the traffic there stops
-  as it would.
+  comes at them; glancing at you. Done: glancing at you, a start back when the car is about
+  to hit them (walking or standing), falling when it does hit them (and getting up again),
+  waving and pointing, people going in and out of the shops' doors.
+- Better people themselves: "what about people themselves? how can we improve". Five
+  low-poly characters are the limit now. Done: builds varied, and things carried (shopping
+  bags, handbags, backpacks, a box). Hands while talking: done. Done: every person is now one of Quaternius'
+  free Universal Base Characters with the Universal Animation Library's moves, dressed in
+  code (DEV.md "The people"). Also done: skirts and dresses, older people,
+  children walking with a grown-up, cafe groups seated at their tables talking, people on
+  their phones, a box carried in both arms, people glancing at you as you pass. People step round each other in time. Still to do: falling when hit (the line above).
+- Scenarios: "Alien invasion, maybe special scenario, maybe in any city. if i activate. some
+  aliens come down around the city i am in"; "just the concept of scenarios, where aliens
+  are one of those. more stuff - titans, dragons, (dont want army stuff though, gives wrong
+  ideas)". A scenario is switched on in whatever town you are in and plays out around you:
+  aliens landing round the city first, then titans, dragons (the dragons are built: see
+  "Scenarios" above). No soldiers, tanks or army of any kind. (Builds on the disasters idea below.)
+- A city on the moon: "A city on the moon".
 - Disasters on the real city: "like simcity hazards, but now we have the graphics so it
   can be cool on steroids, like aliens". Pick a disaster and where it strikes, then watch it
   from the zoomed-out view or live through it in the car or on foot. Aliens first, as asked:
@@ -1517,3 +1852,23 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   big meshes, so one has to be taken out of its batch first), panic for people and drivers,
   emergency services, and staying smooth on a phone. Our own disasters, not a copy of any
   one game's.
+- The city's own story, the rest of it: each town's story is written now
+  (`cities/stories/<town>.json`: its tagline and lines, history, neighbourhoods and their
+  moods, who its main streets are named for, its food, its weekly rhythm) and the opening
+  shows it; still to come is everything else reading it -- the guided tour's words, people
+  and shops by neighbourhood, Friday afternoon and Shabbat quiet on the streets, a street's
+  name explained as you turn into it. A made-up town would get a made-up one.
+- Going into the buildings: "do we have aparatement/building layouts? i am thinking in the
+  future maybe also entering the buildings, and then going into real aparatements maybe".
+  Walk in through a building's door, up its stairs, into the flats. No town publishes floor
+  plans (they are in building-permit files, and real flats' plans would be a privacy
+  matter), so the insides would be made up, believable for that building: what is known is
+  its outline, its storeys, its year, its address and, in Givatayim, how many flats it has
+  on how many floors (the town's map; `cities/data/givatayim_units.json`) -- enough for a
+  lobby and stairwell fitted to the outline, the right number of landings, and that many
+  flats each split into rooms the way a block of its age is. Only the building you walk into
+  is built inside, while you are in it.
+- Scenarios, more of them (the first two are built: tours and the getaway -- see
+  "Scenarios" above): a taxi shift, a delivery against the clock, an ambulance run, a wedding
+  convoy, the night tour, Shabbat eve, a kindergarten pick-up rush, an alien arrival -- the
+  list with grades is in DEV.md under "Scenarios".

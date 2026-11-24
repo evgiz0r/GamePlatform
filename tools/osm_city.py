@@ -56,7 +56,8 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
                concrete, glass, brick...), yr: the year it was built (start_date, else
                a town survey's), and from a town survey (see SURVEYS): hm: 1 the height
                is the survey's measurement, pil: 1 it stands on columns or has an open
-               ground floor}]
+               ground floor, rr: a pitched roof's ridge, m above the ground, where a survey
+               measured one (3DBAG in the Netherlands: its roof type "slanted")}]
   areas      [{p: ring, k: park|grass|wood|water|parking|pitch|plaza|school|sand, y: level}]
              (sand: a beach, natural=beach or sand)
              (school: the grounds of a school or kindergarten; y: water that lies at its
@@ -105,6 +106,9 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
   stations   [[x, z, name, name_en, kind], ...]   kind: OSM's station= (train, light_rail,
              subway...), "train" when it does not say
              (rails, platforms and stations are absent from files baked before they were kept)
+  places     [x, z, kind, sub, ...]   a town's own kindergartens and public shelters (places_apply),
+             kind an index into place_kinds ("kindergarten", "shelter"), sub for a shelter
+             1 above the ground, 2 under it, 0 not known
   made_up    1 in a town tools/fake_city.py made up (no OSM data, no credit owed); absent here
   credits    ["building heights © ...", ...]   sources besides OSM the file took data from
              (a town survey); a game shows each beside OSM's credit. Absent when none
@@ -342,6 +346,9 @@ DATA_FILTERS = (
     'way["leisure"~"^(park|garden|playground|dog_park|pitch|sports_centre|track)$"];'
     'way["landuse"~"^(grass|recreation_ground|village_green|meadow|cemetery|forest|orchard|flowerbed|allotments)$"];'
     'way["natural"~"^(wood|scrub|grassland|water|beach|sand)$"];'
+    # water mapped as a multipolygon: most of a Dutch town's canals (Delft's and Leiden's were
+    # all missing, the canal streets' middles bare ground)
+    'rel["natural"="water"]["type"="multipolygon"];'
     'way["amenity"="parking"];'
     'way["barrier"~"^(fence|hedge)$"];'
     'way["place"="square"];'
@@ -505,6 +512,38 @@ def clean_ring(pts, min_step=0.3):
     if signed_area(out) < 0:  # counter-clockwise in (x, z): positive shoelace
         out.reverse()
     return out
+
+
+def keyhole_ring(outer, holes):
+    """One ring for a polygon with holes: each hole joined to the outside by a cut of no width
+    (from its point furthest east, straight east to the nearest edge, along it to that edge's
+    end), the hole run the other way round. Triangulates as the polygon with its holes, and a
+    point is inside it (even-odd) exactly when it is in the polygon and not in a hole."""
+    def area2(r):
+        return sum(r[i - 1][0] * r[i][1] - r[i][0] * r[i - 1][1] for i in range(len(r)))
+    ring = list(outer)
+    if area2(ring) < 0:
+        ring.reverse()
+    for h in sorted(holes, key=lambda h: -max(p[0] for p in h)):
+        h = list(h)
+        if area2(h) > 0:
+            h.reverse()
+        mi = max(range(len(h)), key=lambda i: h[i][0])
+        mx, mz = h[mi]
+        best, bi = None, None
+        for i in range(len(ring)):
+            (ax, az), (bx, bz) = ring[i], ring[(i + 1) % len(ring)]
+            if (az > mz) == (bz > mz) or az == bz:
+                continue
+            x = ax + (mz - az) * (bx - ax) / (bz - az)
+            if x >= mx and (best is None or x < best):
+                best = x
+                bi = i if ax >= bx else (i + 1) % len(ring)
+        if bi is None:
+            continue   # (a hole not inside after all)
+        hole = h[mi:] + h[:mi] + [h[mi]]
+        ring = ring[:bi + 1] + hole + ring[bi:]
+    return ring
 
 
 def join_rings(segments):
@@ -686,7 +725,134 @@ def _hold_sea(blur, wet, nx, nz, step):
         f"{raised} of the shore raised to 0.3 m")
 
 
-def terrain_grid(P, box, bounds, step, zoom=13, bare=False, sea=None):
+def under_held_water(out):
+    """Lowers every grid point inside a water area held at a level (`y`: the sea, a canal) to
+    half a metre under that level wherever the ground stood higher; returns how many."""
+    hg = out.get("height")
+    if not hg:
+        return 0
+    nx, nz, step, x0, z0 = hg["nx"], hg["nz"], hg["step"], hg["x0"], hg["z0"]
+    h = hg["h"]
+    n = 0
+    for a in out["areas"]:
+        if a.get("k") != "water" or "y" not in a:
+            continue
+        ring = [(a["p"][i] / SCALE, a["p"][i + 1] / SCALE) for i in range(0, len(a["p"]), 2)]
+        top = int(a["y"]) - 5   # (both in decimetres over the grid's base)
+        xs, zs = [p[0] for p in ring], [p[1] for p in ring]
+        for j in range(max(0, int((min(zs) - z0) / step)), min(nz, int((max(zs) - z0) / step) + 2)):
+            for i in range(max(0, int((min(xs) - x0) / step)), min(nx, int((max(xs) - x0) / step) + 2)):
+                k = j * nx + i
+                if h[k] > top and point_in_ring(x0 + i * step, z0 + j * step, ring):
+                    h[k] = top
+                    n += 1
+    return n
+
+
+def wgs84_to_rd(lat, lon):
+    """The Dutch national grid (Rijksdriehoek, EPSG:28992) from WGS84 lat/lon: the published
+    polynomial (Schreutelkamp and Strang van Hees), good to about a metre."""
+    dp, dl = 0.36 * (lat - 52.15517440), 0.36 * (lon - 5.38720621)
+    x = 155000 + (190094.945 * dl - 11832.228 * dp * dl - 114.221 * dp ** 2 * dl - 32.391 * dl ** 3
+                  - 0.705 * dp - 2.340 * dp ** 3 * dl - 0.608 * dp * dl ** 3 - 0.008 * dl ** 2
+                  + 0.148 * dp ** 2 * dl ** 3)
+    y = 463000 + (309056.544 * dp + 3638.893 * dl ** 2 + 73.077 * dp ** 2 - 157.984 * dp * dl ** 2
+                  + 59.788 * dp ** 3 + 0.433 * dl - 6.439 * dp ** 2 * dl ** 2 - 0.032 * dp * dl
+                  + 0.092 * dl ** 4 - 0.054 * dp * dl ** 4)
+    return x, y
+
+
+AHN = "https://service.pdok.nl/rws/ahn/wcs/v1_0"
+water_levels = []   # ahn_grid: a level (m above sea) for each water ring it was given, or None
+NL_EXTENT = (50.75, 3.20, 53.70, 7.25)
+
+
+def ahn_grid(P, x0, z0, nx, nz, step, water=None):
+    """The ground in the Netherlands from AHN (the national laser scan's bare ground, 0.5 m,
+    via PDOK's WCS; CC0), sampled on the city's grid: a 4 m raster over the box, fetched once
+    (cached in tools/.cache). No value under buildings and water: filled from around. Under
+    the water areas (`water`: rings in metres) the ground is sunk 1.5 m below that, so a
+    canal lies below its quays. None when the server cannot be reached."""
+    from PIL import Image   # (only here: the rest of the baker needs nothing installed)
+    pts = [wgs84_to_rd(P.lat0 - (z0 + j * step) / P.my, P.lon0 + (x0 + i * step) / P.mx)
+           for j in range(nz) for i in range(nx)]
+    rx0, rx1 = math.floor(min(p[0] for p in pts)) - 8, math.ceil(max(p[0] for p in pts)) + 8
+    ry0, ry1 = math.floor(min(p[1] for p in pts)) - 8, math.ceil(max(p[1] for p in pts)) + 8
+    res = 4.0
+    w, h = int((rx1 - rx0) / res), int((ry1 - ry0) / res)
+    path = os.path.join(CACHE, "ahn_%d_%d_%d_%d.tif" % (rx0, ry0, rx1, ry1))
+    if not os.path.exists(path):
+        q = {"SERVICE": "WCS", "VERSION": "2.0.1", "REQUEST": "GetCoverage", "COVERAGEID": "dtm_05m",
+             "FORMAT": "image/tiff"}
+        url = AHN + "?" + urllib.parse.urlencode(q) + "&SUBSET=x(%d,%d)&SUBSET=y(%d,%d)&SCALESIZE=x(%d),y(%d)" % (
+            rx0, rx1, ry0, ry1, w, h)
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "osm-city-bake/1 (a game kit's map baker)"})
+            with urllib.request.urlopen(req, timeout=180) as r:
+                raw = r.read()
+        except Exception as e:
+            log(f"ground: AHN not reachable ({e})")
+            return None
+        os.makedirs(CACHE, exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(raw)
+    im = Image.open(path)
+    W, H = im.size
+    pix = im.load()
+    grid, gaps = [], 0
+    for (x, y) in pts:
+        u = min(W - 1, max(0, int((x - rx0) / (rx1 - rx0) * W)))
+        v = min(H - 1, max(0, int((ry1 - y) / (ry1 - ry0) * H)))
+        val = pix[u, v]
+        ok = val is not None and -60.0 < val < 400.0
+        grid.append(val if ok else None)
+        gaps += 0 if ok else 1
+    # fill the gaps (buildings, water) from their neighbours, ring by ring inward
+    known = [g is not None for g in grid]
+    vals = [g if g is not None else 0.0 for g in grid]
+    todo = [k for k in range(len(grid)) if not known[k]]
+    while todo:
+        nxt, got = [], []
+        for k in todo:
+            i, j = k % nx, k // nx
+            acc = cnt = 0
+            for di, dj in ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, -1), (1, -1), (-1, 1)):
+                ii, jj = i + di, j + dj
+                if 0 <= ii < nx and 0 <= jj < nz and known[jj * nx + ii]:
+                    acc += vals[jj * nx + ii]
+                    cnt += 1
+            if cnt:
+                got.append((k, acc / cnt))
+            else:
+                nxt.append(k)
+        if not got:
+            break
+        for k, v in got:
+            vals[k] = v
+            known[k] = True
+        todo = nxt
+    # each water area's level: its banks' middle height (the filled ground along its edge,
+    # before sinking) less a metre -- a canal lies a metre below its quays (water_levels)
+    global water_levels
+    water_levels = []
+    for ring in water or []:
+        bank = sorted(vals[min(nz - 1, max(0, int(round((z - z0) / step)))) * nx + min(nx - 1, max(0, int(round((x - x0) / step))))]
+                      for x, z in ring)
+        water_levels.append(bank[len(bank) // 2] - 1.0 if bank else None)
+    sunk = 0
+    for ring in water or []:
+        xs, zs = [p[0] for p in ring], [p[1] for p in ring]
+        for j in range(max(0, int((min(zs) - z0) / step)), min(nz, int((max(zs) - z0) / step) + 2)):
+            for i in range(max(0, int((min(xs) - x0) / step)), min(nx, int((max(xs) - x0) / step) + 2)):
+                if point_in_ring(x0 + i * step, z0 + j * step, ring):
+                    vals[j * nx + i] -= 1.5
+                    sunk += 1
+    log(f"ground: AHN (the Dutch laser scan, bare ground), {gaps} of {len(grid)} points filled "
+        f"(buildings, water), {sunk} sunk under water")
+    return vals
+
+
+def terrain_grid(P, box, bounds, step, zoom=13, bare=False, sea=None, water=None):
     """Ground height on a regular grid over the bounds, in metres above its lowest point.
     With `sea` (the sea polygons and the islands in them) the sea floor is held under sea
     level and the shore over it: the tiles read the sea a metre or so either side of 0 and
@@ -722,11 +888,17 @@ def terrain_grid(P, box, bounds, step, zoom=13, bare=False, sea=None):
         h01, h11 = px_height(ix, iy + 1), px_height(ix + 1, iy + 1)
         return (h00 * (1 - ax) + h10 * ax) * (1 - ay) + (h01 * (1 - ax) + h11 * ax) * ay
 
-    grid = []
-    for j in range(nz):
-        for i in range(nx):
-            x, z = x0 + i * step, z0 + j * step
-            grid.append(height(P.lat0 - z / P.my, P.lon0 + x / P.mx))
+    grid = None
+    if NL_EXTENT[0] < P.lat0 < NL_EXTENT[2] and NL_EXTENT[1] < P.lon0 < NL_EXTENT[3]:
+        grid = ahn_grid(P, x0, z0, nx, nz, step, water)
+        if grid is not None:
+            bare = False   # (bare ground already: no roofs to take out)
+    if grid is None:
+        grid = []
+        for j in range(nz):
+            for i in range(nx):
+                x, z = x0 + i * step, z0 + j * step
+                grid.append(height(P.lat0 - z / P.my, P.lon0 + x / P.mx))
     wet = _wet_cells(sea, x0, z0, step, nx, nz) if sea and sea[0] else None
     if wet:
         # (sea level before --bare-ground, whose lowest-round-each-point would carry the sea
@@ -791,6 +963,20 @@ SURVEYS = [
      "oid": "oid_mivne", "h": "gova_simplex_2019", "floors": "ms_komot", "year": "year",
      "pilotis": ("t_amudim", ("כן", "קיימת קומה מפולשת")),
      "skip": ("t_sug_mivne", ("מבנה ארעי", "תחנת אוטובוס", "מבנה בבנייה"))},
+    # The whole Netherlands: 3DBAG's laser-measured heights (roof at its 70th percentile above
+    # the ground, storeys counting the ground floor), saved per town by
+    # game/streets/data_tools/nl_3dbag.py into one extract a town (nl_3dbag_<town>.geojson).
+    {"id": "nl_3dbag", "credit": "building heights © 3DBAG by tudelft3d and 3DGI, CC BY 4.0",
+     "extent": (50.75, 3.20, 53.70, 7.25),
+     "h": "h", "floors": "fl", "year": "yr", "ground_counted": True,
+     "ridge": "ridge", "pitched": ("roof", ("slanted",))},
+    # The whole of France: IGN's BD TOPO (height to the eaves, the roof's top, storeys, the
+    # year it appeared), saved per town by game/streets/data_tools/fr_bdtopo.py
+    # (fr_bdtopo_<town>.geojson). Its storeys leave out the ground floor.
+    {"id": "fr_bdtopo", "credit": "building heights © IGN BD TOPO, Licence Ouverte",
+     "extent": (41.30, -5.20, 51.10, 9.60),
+     "h": "h", "floors": "fl", "year": "yr", "ground_counted": False,
+     "ridge": "ridge", "pitched": ("roof", ("pitched",))},
     # A survey with no server the bake can reach (no "url") is read only from a saved extract,
     # data/<id>.geojson beside the city file -- fetched once by hand where the site answers,
     # and committed, so a re-bake anywhere keeps it. Floors only, no measured height; its
@@ -812,12 +998,20 @@ SURVEYS = [
 
 
 def survey_extract(s, box, data_dir):
-    """The survey's buildings in the box from a saved extract (data_dir/<id>.geojson), or None."""
-    path = os.path.join(data_dir, s["id"] + ".geojson") if data_dir else None
-    if not path or not os.path.exists(path):
+    """The survey's buildings in the box from its saved extracts, or None: data_dir/<id>.geojson,
+    and data_dir/<id>_<town>.geojson -- a national survey keeps one file a town (3DBAG: one
+    file for every Dutch town was 11 MB at the second, rewritten whole in git each time)."""
+    if not data_dir:
         return None
-    with open(path, encoding="utf-8") as f:
-        feats = json.load(f).get("features", [])
+    paths = [os.path.join(data_dir, f) for f in sorted(os.listdir(data_dir)) if os.path.isdir(data_dir)
+             and (f == s["id"] + ".geojson" or (f.startswith(s["id"] + "_") and f.endswith(".geojson")))]
+    if not paths:
+        return None
+    feats = []
+    for path in paths:
+        with open(path, encoding="utf-8") as f:
+            feats += json.load(f).get("features", [])
+    path = ", ".join(os.path.basename(q) for q in paths)
     out = []
     for ft in feats:
         g = ft.get("geometry") or {}
@@ -826,7 +1020,7 @@ def survey_extract(s, box, data_dir):
         ys = [c[1] for p in polys for c in p[0]]
         if xs and min(ys) < box[2] and box[0] < max(ys) and min(xs) < box[3] and box[1] < max(xs):
             out.append(ft)
-    log(f"survey {s['id']}: {len(out)} buildings from {os.path.relpath(path)}")
+    log(f"survey {s['id']}: {len(out)} buildings from {path}")
     return out
 
 
@@ -937,8 +1131,11 @@ def survey_apply(buildings, P, s, feats, stats):
         for poly in polys:
             rings = [[P(c[1], c[0]) for c in r] for r in poly if len(r) >= 4]
             if rings:
+                pt = s.get("pitched", (None, ()))
+                rr = pr.get(s.get("ridge")) if pt[0] and pr.get(pt[0]) in pt[1] else None
                 surv.append({"rings": rings, "h": h, "a": centroid(rings[0])[2],
                              "yr": pr.get(s.get("year")),
+                             "rr": rr if rr and h * 0.95 <= rr <= h * 2.0 + 4.0 else None,
                              "pil": bool(pilotis[0]) and pr.get(pilotis[0]) in pilotis[1]})
     if not surv:
         return
@@ -1021,6 +1218,8 @@ def survey_apply(buildings, P, s, feats, stats):
             b["hm"] = 1
             n += 1
             done.add(id(b))
+        if sb["rr"] and "rr" not in b:   # a pitched roof, its ridge measured
+            b["rr"] = round(sb["rr"], 1)
         if sb["yr"] and 1800 <= sb["yr"] <= 2100 and "yr" not in b:
             b["yr"] = int(sb["yr"])
         if sb["pil"]:
@@ -1533,6 +1732,34 @@ def bake(raw, name, args):
             out["areas"].append({"p": flat(r), "k": kind})
             stats["areas"] += 1
 
+    # water mapped as a multipolygon (a town's canals): its outer rings joined, and its inner
+    # rings -- the islands, which in a Dutch town are the blocks between the canals -- cut in
+    # as keyholes (keyhole_ring), since an area here is one ring with no holes
+    holed = 0
+    for e in elements:
+        t = e.get("tags", {})
+        if e["type"] != "relation" or t.get("natural") != "water" or t.get("type") != "multipolygon":
+            continue
+        rings_of = lambda role: [r for r in join_rings([[P(g["lat"], g["lon"]) for g in m.get("geometry", []) if g]
+                                 for m in e.get("members", []) if m.get("role") == role]) if len(r) >= 3]
+        inners = rings_of("inner")
+        holed += len(inners)
+        for ring in rings_of("outer"):
+            ring = clean_ring(ring, 0.5)
+            if not ring:
+                continue
+            mine = [h for h in inners if point_in_ring(sum(p[0] for p in h) / len(h), sum(p[1] for p in h) / len(h), ring)]
+            r = keyhole_ring(ring, [clean_ring(h, 0.5) or h for h in mine])
+            if not r:
+                continue
+            xs = [p[0] for p in r]
+            zs = [p[1] for p in r]
+            if max(xs) > x0 - 100 and min(xs) < x1 + 100 and max(zs) > z0 - 100 and min(zs) < z1 + 100:
+                out["areas"].append({"p": flat(r), "k": "water"})
+                stats["areas"] += 1
+                stats["water_rels"] = stats.get("water_rels", 0) + 1
+    log(f"water multipolygons: {stats.get('water_rels', 0)} rings, {holed} islands cut out of them")
+
     # fences and hedges, as lines (a closed one is a ring with its first point again last)
     for e in elements:
         t = e.get("tags", {})
@@ -1671,17 +1898,34 @@ def bake(raw, name, args):
         if args.out:
             for c in tree_surveys_apply(out, P, os.path.join(os.path.dirname(os.path.abspath(args.out)), "data")):
                 out.setdefault("credits", []).append(c)
-            for c in town_layers_apply(out, P, os.path.join(os.path.dirname(os.path.abspath(args.out)), "data")):
+            for c in town_layers_apply(out, P, os.path.join(os.path.dirname(os.path.abspath(args.out)), "data")) \
+                    + bus_lanes_apply(out, P, os.path.join(os.path.dirname(os.path.abspath(args.out)), "data")) \
+                    + places_apply(out, P, os.path.join(os.path.dirname(os.path.abspath(args.out)), "data")):
                 if c not in out.setdefault("credits", []):
                     out["credits"].append(c)
 
     if not args.no_terrain:
         try:
             span = max(x1 - x0, z1 - z0)
-            out["height"] = terrain_grid(P, box, (x0, z0, x1, z1), max(12.0, round(span / 300.0)),
-                                         bare=args.bare_ground, sea=sea)
+            water = [[(a["p"][i] / SCALE, a["p"][i + 1] / SCALE) for i in range(0, len(a["p"]), 2)]
+                     for a in out["areas"] if a["k"] == "water"]
+            water_levels.clear()
+            out["height"] = terrain_grid(P, box, (x0, z0, x1, z1), args.ground_step or max(12.0, round(span / 300.0)),
+                                         bare=args.bare_ground, sea=sea, water=water)
+            # (AHN's ground: each canal held a metre under its quays, as the sea is at 0)
+            if water_levels:
+                wa = [a for a in out["areas"] if a["k"] == "water"]
+                for a, lv in zip(wa, water_levels):
+                    if lv is not None and "y" not in a:
+                        a["y"] = int(round((lv - out["height"]["base"]) * SCALE))
+                        a["cn"] = 1   # a canal: the game cuts the ground away over it, quay walls round it
             for a in sea_areas:   # the sea at sea level, as a river is held at its weirs'
                 a["y"] = int(round(-out["height"]["base"] * SCALE))
+            # no ground above held water inside its outline: a harbour's inner basin came out as
+            # shore (0.1-0.3 m over the sea, Monaco's Port Hercule) and the ground covered its water
+            dry = under_held_water(out)
+            if dry:
+                log(f"ground: {dry} grid points under held water lowered below it")
         except Exception as e:   # flat is better than no city
             log(f"ground: no height data ({e}); the city stays flat")
 
@@ -1718,6 +1962,9 @@ TREE_SURVEYS = [
     {"id": "givatayim_trees", "file": "givatayim_trees.json", "rows": "trees", "all": True,
      "shift": (0.8, -0.6),
      "credit": "trees © Givatayim Municipality"},              # [lon, lat, crown radius m]
+    # the whole Netherlands: the BGT's trees (game/streets/data_tools/nl_bgt.py), no species
+    {"id": "nl_bgt_trees", "file": "nl_bgt_trees.json", "rows": "rows", "all": False,
+     "credit": "trees, lamp posts © BGT via PDOK"},                # [lon, lat, ""]
 ]
 # The form a species grows into, by a word in its Hebrew name (the first that matches; else
 # "round": a bottle tree, a hackberry, a lagerstroemia...). Feathery crowns (jacaranda,
@@ -1819,6 +2066,8 @@ TOWN_LAYERS = [
     {"id": "tel_aviv", "shift": (-0.4, -1.9), "credit": "city data © Tel Aviv-Yafo Municipality",
      "lamps": "tel_aviv_lamp_poles.json", "places": "places_tel_aviv.geojson",
      "businesses": "tel_aviv_businesses.json", "hydrants": "tel_aviv_hydrants.json"},
+    # the whole Netherlands: the BGT's lamp posts (game/streets/data_tools/nl_bgt.py)
+    {"id": "nl_bgt", "credit": "trees, lamp posts © BGT via PDOK", "lamps": "nl_bgt_lamps.json"},
 ]
 # the things in the places layer stood in the street where the town maps them ("things"):
 # its kind's name in the city file, and the number it carries (docks, places) if any
@@ -2004,6 +2253,197 @@ def town_layers_apply(out, P, data_dir):
     return credits
 
 
+def credits_check(city):
+    """Every credit must read "what © who": the game's credit line (streets.gd, _credit_line)
+    drops the owner of one without " © " (Delft's first build showed "building heights,
+    trees ©" and nothing after it; the bus lanes' "bus lanes: Israel Ministry of Transport
+    (CC BY)" is folded in with the towns' data and reads as theirs). Warns, loudly."""
+    bad = [c for c in city.get("credits", []) if " © " not in c]
+    if bad:
+        log("WARNING: credits must read 'what © who' or the game's credit line garbles them "
+            "(SURVEYS, TREE_SURVEYS, TOWN_LAYERS, bus lanes, places): %s" % bad)
+
+
+PLACE_FILES = ("places_givatayim.geojson", "places_ramat_gan.geojson", "places_ashdod.geojson")
+PLACE_KINDS = ["kindergarten", "shelter"]
+
+
+def places_apply(out, P, data_dir):
+    """The towns' own kindergartens (day-cares too) and public shelters (data_dir's
+    places_*.geojson, from each municipality's map) as `places` [x, z, kind, sub, ...] with
+    `place_kinds`: kind an index into it, sub for a shelter 1 above the ground, 2 under it,
+    0 not known. One where two maps put the same within 6 m (the box can take in two
+    towns' maps). Replaces the key on each run. Returns the credits of the maps used."""
+    if not data_dir:
+        return []
+    x0, z0, x1, z1 = out["bounds"]
+    places, credits = [], []
+    seen = []
+    for name in PLACE_FILES:
+        path = os.path.join(data_dir, name)
+        if not os.path.exists(path):
+            continue
+        with open(path, encoding="utf-8") as f:
+            src = json.load(f)
+        got = 0
+        for ft in src.get("features", []):
+            pr = ft.get("properties", {})
+            kind = {"kindergarten": 0, "daycare": 0, "shelter": 1}.get(pr.get("kind"))
+            if kind is None or ft.get("geometry", {}).get("type") != "Point":
+                continue
+            lon, lat = ft["geometry"]["coordinates"][:2]
+            x, z = P(lat, lon)
+            if not (x0 <= x <= x1 and z0 <= z <= z1):
+                continue
+            if any(k == kind and math.hypot(x - sx, z - sz) < 6.0 for sx, sz, k in seen):
+                continue
+            seen.append((x, z, kind))
+            sub = 0
+            if kind == 1:
+                lv = pr.get("level", "")
+                sub = 1 if lv == "above_ground" else (2 if lv in ("underground", "below_ground") else 0)
+            places += [round(x * 10), round(z * 10), kind, sub]
+            got += 1
+        if got:
+            credits.append(src.get("credit", ""))
+            log(f"places: {got} kindergartens and shelters from {name}")
+    out.pop("places", None)
+    out.pop("place_kinds", None)
+    if places:
+        out["places"], out["place_kinds"] = places, PLACE_KINDS
+    return [c for c in credits if c]
+
+
+BUS_LANES_FILE = "bus_lanes.json"
+# right and left bus lanes; a public-transport road (מת"צ: Ashdod's Herzl busway down the
+# median) and BRT (רת"צ: King George's) run where a divided street's left lanes are; priority
+# at junctions (העדפה בצמתים) is a short right lane before one. Contraflow lanes (נת"צ נגדי)
+# are left out: buses would drive against a one-way street beside its cars
+BUS_LANE_KINDS = {"נת\"\"צ ימני": "right", "נת\"\"צ שמאלי": "left", "מת\"\"צ": "left",
+                  "רת\"\"צ": "left", "העדפה בצמתים": "right"}
+BUS_LANE_ROADS = {"motorway", "trunk", "primary", "secondary", "tertiary", "unclassified",
+                  "residential", "motorway_link", "trunk_link", "primary_link",
+                  "secondary_link", "tertiary_link"}
+BUS_LANE_NEAR = 22.0       # m: a road piece's middle this close to a stretch's line...
+BUS_LANE_SHARE = 0.5       # ...for at least this share of its length, the same street and way
+
+
+def bus_street_key(name):
+    """a street's name as the Ministry and OSM can both write it: no "road"/"boulevard"/
+    "street" before it, no punctuation or spaces"""
+    n = (name or "").strip()
+    for pre in ("דרך ", "שדרות ", "שד' ", "רחוב ", "רח' ", "כביש "):
+        if n.startswith(pre):
+            n = n[len(pre):]
+    n = "".join(ch for ch in n if ch.isalnum())
+    # spelt with or without the vowel letters (עלית / עליית), with or without the article
+    n = n.replace("י", "").replace("ו", "")
+    return n[1:] if n.startswith("ה") and len(n) > 3 else n
+
+
+def lanes_each_way(r):
+    """how many lanes a road has each way, as the game reckons it (streets.gd
+    _lanes_each_way: OSM's count where it has one, else the width's, never more than the
+    width holds)"""
+    l, w = int(r.get("l") or 0), float(r.get("w") or 0.0)
+    if int(r.get("o", 0)) != 0:
+        n = min(l if l > 0 else int(w / 3.3), int(w / 2.8))
+    else:
+        n = min(l // 2 if l > 1 else int(w / 6.6), int(w / 5.6))
+    return max(1, min(n, 4))
+
+
+def bus_lanes_apply(out, P, data_dir):
+    """The Ministry of Transport's bus lanes (data_dir/bus_lanes.json: each stretch a street,
+    two end points in the way of travel, how many lanes, on the right or the left) laid on
+    the city's roads as bf / bb where OSM marks none: every drivable road piece of the same
+    street that runs along a stretch (its middle within BUS_LANE_NEAR m of the stretch's
+    line for BUS_LANE_SHARE of its length) the stretch's way gets its lanes, the rightmost
+    or the leftmost; a road with one lane that way gets none (a bus lane takes a lane from
+    the cars, never the only one). Whole bus roads and BRT go in as left lanes, priority at
+    junctions as right ones (BUS_LANE_KINDS); contraflow lanes are left out. Marks the
+    roads it set with bm ("f", "b", "fb") and takes those out first when applied again.
+    Returns the credit when it brought anything."""
+    if not data_dir:
+        return []
+    path = os.path.join(data_dir, BUS_LANES_FILE)
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding="utf-8") as f:
+        src = json.load(f)
+    roads, nodes = out["roads"], out["nodes"]
+    k = 1.0 / float(out.get("scale", 10))
+    for r in roads:   # (again: the last run's first)
+        m = r.pop("bm", "")
+        if "f" in m:
+            r.pop("bf", None)
+        if "b" in m:
+            r.pop("bb", None)
+    x0, z0, x1, z1 = out["bounds"]
+    by_name = {}
+    for ri, r in enumerate(roads):
+        if r.get("k") in BUS_LANE_ROADS and r.get("name"):
+            by_name.setdefault(bus_street_key(r["name"]), []).append(ri)
+    stretches = used = 0
+    marked = 0
+    for town, rows in src.get("towns", {}).items():
+        for st in rows:
+            side = BUS_LANE_KINDS.get(st.get("type", ""))
+            if not side:
+                continue
+            ax, az = P(st["a"][1], st["a"][0])
+            bx, bz = P(st["b"][1], st["b"][0])
+            if not (x0 - 50 <= ax <= x1 + 50 and z0 - 50 <= az <= z1 + 50) and \
+                    not (x0 - 50 <= bx <= x1 + 50 and z0 - 50 <= bz <= z1 + 50):
+                continue
+            stretches += 1
+            dx, dz = bx - ax, bz - az
+            L = math.hypot(dx, dz)
+            if L < 5.0:
+                continue
+            ux, uz = dx / L, dz / L
+            got = False
+            for ri in by_name.get(bus_street_key(st.get("street")), []):
+                r = roads[ri]
+                ids = r["n"]
+                total = along = 0.0
+                fwd = 0.0
+                for i in range(len(ids) - 1):
+                    px, pz = nodes[2 * ids[i]] * k, nodes[2 * ids[i] + 1] * k
+                    qx, qz = nodes[2 * ids[i + 1]] * k, nodes[2 * ids[i + 1] + 1] * k
+                    sl = math.hypot(qx - px, qz - pz)
+                    if sl < 0.01:
+                        continue
+                    total += sl
+                    mx, mz = (px + qx) * 0.5 - ax, (pz + qz) * 0.5 - az
+                    t = (mx * ux + mz * uz) / L
+                    off = abs(mx * uz - mz * ux)
+                    dot = ((qx - px) * ux + (qz - pz) * uz) / sl
+                    if -0.03 <= t <= 1.03 and off <= BUS_LANE_NEAR and abs(dot) > 0.7:
+                        along += sl
+                        fwd += sl * (1.0 if dot > 0 else -1.0)
+                if total <= 0.0 or along < total * BUS_LANE_SHARE:
+                    continue
+                o = int(r.get("o", 0))
+                key = "bf" if fwd > 0 else "bb"
+                if (o == 1 and key == "bb") or (o == -1 and key == "bf"):
+                    continue   # (against a one-way street's travel: the other carriageway's)
+                # (a one-way drawn against its travel, o -1: its lanes are bb -- see bus_lanes --
+                # and only a stretch running against its node order, bb, gets here)
+                each = lanes_each_way(r)   # (the game's count: the letters must line up with its lanes)
+                n = min(int(st.get("lanes") or 1), each - 1)
+                if n < 1 or key in r:
+                    continue   # (one lane that way; or OSM has its own)
+                r[key] = ("-" * (each - n) + "b" * n) if side == "right" else ("b" * n + "-" * (each - n))
+                r["bm"] = r.get("bm", "") + key[1]
+                marked += 1
+                got = True
+            used += 1 if got else 0
+    log(f"bus lanes (Ministry of Transport): {used} of {stretches} stretches in the box laid on "
+        f"{marked} road pieces")
+    return [src.get("credit", "bus lanes: Israel Ministry of Transport (CC BY)")] if marked else []
+
+
 def add_surveys(path, offline):
     """The survey step alone, on a city file baked already (its OSM data is left as it is)."""
     with open(path, encoding="utf-8") as f:
@@ -2023,12 +2463,15 @@ def add_surveys(path, offline):
                     city["credits"].append(s["credit"])
     tree_credits = tree_surveys_apply(city, P, os.path.join(os.path.dirname(os.path.abspath(path)), "data"))
     tree_credits += town_layers_apply(city, P, os.path.join(os.path.dirname(os.path.abspath(path)), "data"))
+    tree_credits += bus_lanes_apply(city, P, os.path.join(os.path.dirname(os.path.abspath(path)), "data"))
+    tree_credits += places_apply(city, P, os.path.join(os.path.dirname(os.path.abspath(path)), "data"))
     for c in tree_credits:
         if c not in city.setdefault("credits", []):
             city["credits"].append(c)
     if not stats and not tree_credits:
         log("no survey covers this town (or none could be reached): file left as it was")
         return
+    credits_check(city)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(city, f, ensure_ascii=False, separators=(",", ":"))
     log(f"wrote {path} ({os.path.getsize(path) / 1e6:.1f} MB)")
@@ -2054,6 +2497,8 @@ def main():
     ap.add_argument("--offline", action="store_true", help="bake from tools/.cache only")
     ap.add_argument("--from-file", help="a raw Overpass JSON answer you saved yourself")
     ap.add_argument("--no-terrain", action="store_true", help="skip the ground heights")
+    ap.add_argument("--ground-step", type=float, default=0.0,
+                    help="the ground grid's spacing in metres (default: 12, or a 300th of a big box)")
     ap.add_argument("--no-surveys", action="store_true",
                     help="keep OSM's building heights even where a town publishes its own")
     ap.add_argument("--add-surveys", metavar="CITY_FILE",
@@ -2086,6 +2531,12 @@ def main():
     raw = fetch(args, slug)
     city = bake(raw, name, args)
     level_roads.level(city)   # the roads level side to side on the height grid (tools/level_roads.py)
+    # (again after the levelling: it pulls the grid near a quay road up to the road, and in
+    # Monaco that put Port Hercule's basin back under 1-2 m of ground)
+    wet = under_held_water(city)
+    if wet:
+        log(f"ground: {wet} grid points the road levelling raised over held water lowered again")
+    credits_check(city)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(city, f, ensure_ascii=False, separators=(",", ":"))

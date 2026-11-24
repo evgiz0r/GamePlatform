@@ -115,10 +115,13 @@ func build() -> void:
 			count["panels"] = int(count.get("panels", 0)) + 1
 			continue
 		if String(it[0]) == "crane":
+			# (one crane on one spot: two sites listed the same one -- Tel Aviv's at (-735,
+			# 1714) went up twice, city_check's "posts twice")
+			if not g._add_post(it[1], 1.1, true):
+				continue
 			if cranes == null:
 				cranes = g.new_cbuf(400.0)
 			_crane(cranes, it[1], it[2], it[3], it[4])
-			g._add_post(it[1], 1.1)
 			count["cranes"] = int(count.get("cranes", 0)) + 1
 	if not hoard.empty():
 		g._add_mesh(hoard, g._vc_mat(), true, 400.0)

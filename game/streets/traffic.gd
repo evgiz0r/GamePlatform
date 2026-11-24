@@ -34,7 +34,8 @@ const DWELL := 7.0           ## seconds a bus stands at a stop
 ## lane (there is no room at the kerb: the parked cars); cars behind go round it over the
 ## centre line when nothing is coming, autodrive too (_ap_pass_bus). And now and then a car
 ## parked ahead of the player pulls out as they come.
-const DBL_SHARE := 0.45      ## of the vans and trucks, the share that stop somewhere on the way
+const DBL_SHARE := 0.1       ## of the vans and trucks, the share that stop somewhere on the way
+                             ## (0.45 was too many standing in the street: "very rare in Israel", a user)
 const DBL_ROADS := {"residential": true, "tertiary": true, "unclassified": true, "secondary": true, "living_street": true}
 const KERB_EVERY := Vector2(35.0, 75.0)   ## seconds between cars set to pull out ahead of the player
 const KERB_BOARD := 0.6      ## of those, the share with someone getting in beside the driver first
@@ -82,6 +83,13 @@ class Car:
 	var lead_v := 0.0                 ## the speed of the car in front, along my way
 	var still := 0.0                  ## seconds standing
 	var drift := 0.0                  ## phase of its wander in the lane
+	var aside := 0.0                  ## edged over in its lane to let racer squeeze by (m, left +, as shift)
+	var aside_to := 0.0
+	var aside_t := 0.0                ## seconds it stays edged over, then back
+	var track := 0.0                  ## a bus or truck: its front out from the lane by this on a bend (m, left +)
+	var aside_was := 0.0              ## `aside` when last placed: the back slides with the front
+	var kerb_clear := 0.0             ## left of its lane this much, clear of what stands at the kerb (parked cars, poles)
+	var kerb_look := 0.0              ## seconds to the next look at the kerb
 	var dip := 0.0                    ## the body: nose down braking, up pulling away (visual)
 	var roll := 0.0                   ## the body: leaning out of a turn (visual)
 	var paint := Color.WHITE
@@ -310,6 +318,10 @@ func alive_count() -> int:
 
 var _tick_n := 0
 
+## how many of the game's 60-a-second ticks each tick here stands for: 2 at the real rate (the
+## traffic ticks every other one, streets.gd's WORLD_SPLIT_DT), 1 in a test run faster
+var ticks_per := 1
+
 func tick(dt: float) -> void:
 	_clock += dt
 	_tick_n += 1
@@ -350,7 +362,12 @@ func tick(dt: float) -> void:
 		# follows every tick. A driver reacts slower than that anyway, and deciding it every
 		# tick for every car was most of traffic's time.
 		# (and one far off, out of sight, every sixth tick: nobody sees it think)
-		var every := 3 if c.pos.distance_squared_to(me) < 120.0 * 120.0 or _in_view(c.pos) else 6
+		# (fewer ticks apart when each tick stands for two of the game's: `ticks_per`)
+		# (a slow device, streets.gd's `_slow_frames`: half as often again, ~7.5 a second near.
+		# Its traffic ticks every 4th game tick, so 3 / 4 made it every tick -- deciding as often
+		# as at full speed, while all else slowed: "traffic: follow" was 12.5 ms of a work
+		# laptop's 135 ms frame. A test run at 3x already decides every 150 ms of game time.)
+		var every := ceili(float((3 if c.pos.distance_squared_to(me) < 120.0 * 120.0 or _in_view(c.pos) else 6) * (2 if g._slow_frames else 1)) / ticks_per)
 		if c.want < 0.0 or (i + _tick_n) % every == 0:
 			c.want = _target(c, i, dt * (1.0 if c.want < 0.0 else float(every)))
 		var vt := c.want
@@ -365,7 +382,10 @@ func tick(dt: float) -> void:
 		# Sideways only as it rolls, like a car steering: its back trails the front (_place),
 		# so a shift while it stood moved the front alone and swung the body round -- cars
 		# waiting at Kaplan's light stood 60 degrees across the next lane, on its cars
-		lat = minf(lat, c.v * SIDE_PER_V * 4.6 / maxf(c.len, 4.6))   # (a 12 m bus angled as much swung its ends into the next lane)
+		# (pulling out from close behind a delivery van it goes round: steeper, as people turn
+		# out at a crawl -- at 19 degrees, from 2 m behind it, it met the van's corner first)
+		var side_k := 0.8 if c.pass_i >= 0 and c.v < 3.0 else SIDE_PER_V
+		lat = minf(lat, c.v * side_k * 4.6 / maxf(c.len, 4.6))   # (a 12 m bus angled as much swung its ends into the next lane)
 		var ds := clampf(c.shift_to - c.shift, -lat * dt, lat * dt)
 		if c.realign and absf(c.shift_to - c.shift - ds) < 0.05:
 			c.realign = false
@@ -388,7 +408,9 @@ func tick(dt: float) -> void:
 				# 3.5 m/s is about 2 m of room at the braking it plans with.)
 				# (0.3 m/s: seen to be moving -- at 0.5 the follower waited ~0.45 s more for the
 				# car in front's gentle first push to show; nearer 0 the queue went like a train)
-				if not (c.why == "car" and c.lead_v < 0.3 and vt < 3.5):
+				# (unless it is going round a van: that one never moves off -- waiting for it,
+				# a car behind a van with the way clear stood till taken away)
+				if not (c.why == "car" and c.lead_v < 0.3 and vt < 3.5 and c.pass_i < 0):
 					c.react_t += dt
 				# and waiting to react it stands: it crept on at 0.26 m/s for as long as it
 				# waited, neither pulling away nor stopped
@@ -396,7 +418,11 @@ func tick(dt: float) -> void:
 				c.acc = 0.0
 			else:
 				var want_a := c.accel * clampf(1.0 - pow(c.v / maxf(vt, 1.0), 4.0), 0.2, 1.0)
-				c.acc = move_toward(c.acc, want_a, 4.0 * dt)
+				# (from the braking it was doing, not through it: `acc` still held the last hard
+				# brake (-7.5), and easing that up at 4 m/s^3 while adding it, a car that wanted
+				# 6 m/s slowed on through 0 and backed 3 m/s into the queue behind it -- the
+				# test town's bus on Derekh HaHarim, the exam's "bus (player, -11 km/h)")
+				c.acc = move_toward(maxf(c.acc, 0.0), want_a, 4.0 * dt)
 				c.v = minf(c.v + c.acc * dt, vt)
 		else:
 			# slowing: as before, down to what it wants at once if it must (its plans brake at
@@ -417,6 +443,10 @@ func tick(dt: float) -> void:
 		if c.s >= c.cum[c.cum.size() - 1] - 0.01:
 			c.alive = false   # the end of a road with nowhere on: gone, back elsewhere next tick
 			continue
+		if c.aside_t > 0.0 or c.aside != 0.0:
+			# (edged over for racer squeezing between the lanes, at a walk, then back once gone)
+			c.aside_t -= dt
+			c.aside = move_toward(c.aside, c.aside_to if c.aside_t > 0.0 else 0.0, 0.9 * dt)
 		_place(c)
 		c.steer = move_toward(c.steer, c.steer_to, 1.4 * dt)   # (a driver turns the wheel, not snaps it)
 		# a front wheel over a manhole cover, near you: the nose bobs
@@ -522,6 +552,26 @@ func _target(c: Car, i: int, dt: float) -> float:
 			best_len = 4.6 if j == cars.size() else (cars[j] as Car).len
 			# moving with me: its speed along my way, else treat it as standing
 			lead_v = ov * maxf(0.0, cos(angle_difference(oyaw, c.yaw)))
+		# one standing across my way near by (waiting at a give-way line as I turn in past it):
+		# its corners too, not only its middle -- a car turning into the test town's HaKalanit
+		# off Derekh HaHarim cut across the nose of the one waiting to come out, its middle
+		# 1.5 m+ off the turn and its body in it (8-10 overlaps a run at (-639, 224))
+		# (not while breaking a standoff: two standing at an angle each saw the other's corner in
+		# its way, and the ring breaker skips only cars 0.8 rad+ across -- a van and an SUV at the
+		# test town's HaKalanit stood on each other's corners, a queue of four behind, 14 a run)
+		if j < cars.size() and ov < 1.0 and d2 < 400.0 and absf(angle_difference(oyaw, c.yaw)) > 0.5 and not c.split 				and c.ignore <= 0.0 and c.wait < 6.0:
+			var so: Car = cars[j]
+			var sf := Vector2(sin(so.yaw), cos(so.yaw))
+			var ss := Vector2(-sf.y, sf.x)
+			var sz: Vector2 = CORNERS.get(so.kind, CORNERS["sedan"])
+			var mz: Vector2 = CORNERS.get(c.kind, CORNERS["sedan"])
+			for sq: Vector2 in [q + sf * sz.y + ss * sz.x, q + sf * sz.y - ss * sz.x, q - sf * sz.y + ss * sz.x, q - sf * sz.y - ss * sz.x]:
+				var cg := _path_gap(c, sq, look, mz.x + 0.2)
+				if cg < best - best_len * 0.5:   # (nearer, body to body: free = gap - lengths / 2)
+					best = cg
+					who = j
+					best_len = 0.0
+					lead_v = 0.0
 	# the player's car, left standing while they walk: in the way like any other
 	if g._walking and g._car_at.distance_squared_to(c.pos) < (look + 6.0) * (look + 6.0):
 		var pg := _path_gap(c, g._car_at, look, PLAYER_W)
@@ -530,11 +580,33 @@ func _target(c: Car, i: int, dt: float) -> float:
 			who = -1
 			best_len = 4.6
 			lead_v = 0.0
+	# the player's corners, not only its middle: autodrive held at a give-way line stands with
+	# its nose over it, its middle 2.2 m back, and traffic on the road it waits to join drove
+	# into the nose -- by its middle the player was outside PLAYER_W of the lane, and squeezing
+	# past it skipped the player altogether (the test town's (-546, 405), 3-6 a run: "autodrive
+	# in a car ... 0.3 m in, autodrive 0 km/h, held by junction"). Each corner in my way where
+	# the bodies would touch -- with a hand's breadth, squeezing past too (brushing, not into it)
+	if not g._walking and _level(c, float(g._y), _me_lift) and g._pos.distance_squared_to(c.pos) < (look + 8.0) * (look + 8.0):
+		var pf: Vector2 = g._fwd()
+		var ps := Vector2(-pf.y, pf.x)
+		var hl: float = float(g.CAR_LEN) * 0.5
+		var hw: float = float(g.CAR_WIDTH) * 0.5
+		var mine: Vector2 = CORNERS.get(c.kind, CORNERS["sedan"])
+		var cw: float = mine.x + (0.1 if c.squeeze > 0.0 or c.split else 0.25)
+		for pq: Vector2 in [g._pos + pf * hl + ps * hw, g._pos + pf * hl - ps * hw, g._pos - pf * hl + ps * hw, g._pos - pf * hl - ps * hw]:
+			if (pq - c.pos).dot(fwd) < 0.0:
+				continue
+			var cg := _path_gap(c, pq, look, cw)   # (from my middle, as `best` is; a corner has no length of its own)
+			if cg < best - best_len * 0.5:
+				best = cg
+				who = -1
+				best_len = 0.0
+				lead_v = maxf(float(g._v), 0.0) * maxf(0.0, pf.dot(fwd))
 	# a delivery van stood in the street ahead: round it, over the centre line, when nothing comes
 	if who >= 0 and who != c.pass_i and best < 35.0 and _parked_double(cars[who]) and c.kind != "bus":
 		var rr: Dictionary = _roads[c.rd[mini(c.k + 1, c.rd.size() - 1)]]
 		if _lanes_dir(rr) <= 1 and int(rr["o"]) == 0 and not _near_junction(c, best + 12.0) \
-				and _oncoming_clear(c, i, best + 45.0, _pass_shift(rr)):
+				and _oncoming_clear(c, i, best + 45.0, _pass_shift(rr), _pass_secs(c, best + (cars[who] as Car).len + c.len + 1.5), best + (cars[who] as Car).len + c.len + 1.5):
 			c.pass_i = who
 			Probe.event("go_round", {"kind": c.kind})
 	c.ignore = maxf(0.0, c.ignore - dt)
@@ -549,10 +621,20 @@ func _target(c: Car, i: int, dt: float) -> float:
 		# (the seconds behind at its own speed while it is the slower: a queue pulling away
 		# kept its gap for the speed the car in front had reached, so each waited till that
 		# one was well off -- the third car of a queue moved 9 s after the green)
-		var room := best - (c.len + best_len) * 0.5 - c.gap - minf(lead_v, c.v) * c.headway
+		var free := best - (c.len + best_len) * 0.5 - c.gap
+		var room := free - minf(lead_v, c.v) * c.headway
 		var follow := sqrt(maxf(0.0, lead_v * lead_v + 2.0 * BRAKE * maxf(room, 0.0)))
+		# (inside its seconds behind: a little under that car's pace to open the gap again,
+		# not a stop -- `0.0` there braked it 7.5 m/s^2 to a standstill behind a car going
+		# its own speed, and the player's car behind it, its sudden stops charted)
 		if room <= 0.0:
-			follow = 0.0
+			follow = maxf(lead_v + room * 0.5, 0.0) if free > 0.0 else 0.0
+		if who >= 0 and who == c.pass_i:
+			# going round the van it stands behind: creep on, pulling out. It moves sideways
+			# only as it rolls, and the van counts as in its way until it is out past its side:
+			# standing there, waiting to be out before it rolled, it never went (van_pass).
+			var bump := best - (c.len + best_len) * 0.5
+			follow = maxf(follow, minf(1.2, sqrt(2.0 * BRAKE * maxf(bump - 0.6, 0.0))))
 		if follow < vt:
 			vt = follow
 			c.why = "player" if who == -1 else "car"
@@ -1023,8 +1105,23 @@ func _parked_double(o: Car) -> bool:
 func _pass_shift(r: Dictionary) -> float:
 	return clampf(2.0 * _lane(r), 2.3, 3.4)
 
-## nothing coming the other way (nor anyone already over there) for `reach` metres ahead
-func _oncoming_clear(c: Car, i: int, reach: float, over: float) -> bool:
+var pass_by_time := true   ## false for a test: a pass judged by distance alone, as before (tests/van_pass.gd PASS_OLD=1)
+
+## seconds for car c to drive `d` metres from its speed now, pulling away as it does
+func _pass_secs(c: Car, d: float) -> float:
+	if not pass_by_time:
+		return 0.0
+	var a := maxf(c.accel, 1.0)
+	# (and a margin: round a van it eases out and back, slower than it could)
+	return (sqrt(c.v * c.v + 2.0 * a * maxf(d, 0.0)) - c.v) / a * 1.25 + 1.5
+
+## nothing coming the other way (nor anyone already over there) for `reach` metres ahead --
+## and, given `secs` (how long the pass of `d` metres will take), nothing that would get to
+## the pass's far end in that time at its speed now.
+## (By distance alone, 35 + 45 m, a car went round a delivery van with the player 60-80 m
+## off at 50 km/h -- there in under 6 s, the pass taking 7 or 8 -- and stood head-on in the
+## player's lane, held by them: autodrive braked 8.8 m/s^2 from 48 km/h and touched it.)
+func _oncoming_clear(c: Car, i: int, reach: float, over: float, secs := 0.0, d := 0.0) -> bool:
 	for j in range(cars.size() + 1):
 		var q: Vector2
 		if j == cars.size():
@@ -1036,9 +1133,12 @@ func _oncoming_clear(c: Car, i: int, reach: float, over: float) -> bool:
 			if j == i or not o.alive or not _level(c, o.y, o.lift) or _parked_double(o):
 				continue
 			q = o.pos
-		if q.distance_squared_to(c.pos) > (reach + 10.0) * (reach + 10.0):
+		# (it must not reach the far end of the pass, `d` on, before the pass is done)
+		var qv: float = maxf(float(g._v), 0.0) if j == cars.size() else (cars[j] as Car).v
+		var far := maxf(reach, d + qv * secs + 10.0)
+		if q.distance_squared_to(c.pos) > (far + 10.0) * (far + 10.0):
 			continue
-		var pr := _proj(c, q, 8.0, reach)
+		var pr := _proj(c, q, 8.0, far)
 		if pr.x != INF and absf(pr.y - over) < 2.0:
 			return false
 	return true
@@ -1074,7 +1174,10 @@ func _double_park(c: Car, dt: float) -> float:
 	if to < 35.0:   # in toward the kerb, as far as there is room
 		var r: Dictionary = _roads[c.rd[mini(c.k + 1, c.rd.size() - 1)]]
 		var cw: float = (CORNERS.get(c.kind, Vector2(0.95, 2.4)) as Vector2).x
-		var room := clampf(float(r["w"]) * 0.5 - _lane(r) - cw - 0.3, 0.0, 1.0)
+		# (from the lane it is in, right of the middle: `_lane(r) - shift_to`. From `_lane(r)`
+		# alone -- the lane traffic drives in by default, the middle one of three -- a van in
+		# the kerb lane of a three-lane road was given the whole metre and more, over the kerb)
+		var room := clampf(float(r["w"]) * 0.5 - (_lane(r) - c.shift_to) - cw - 0.3, 0.0, 1.0)
 		# and no further than keeps its side 0.3 m off what stands at the kerb, on the way in
 		# and where it stops: parked cars stand a third in the road, and a truck pulled in by
 		# the asphalt's room alone stood 0.3 m into one's side (the exam's "traffic body into a
@@ -1409,6 +1512,35 @@ func _kerb_room(c: Car, r: Dictionary) -> float:
 	var hw: float = (CORNERS.get(c.kind, Vector2(0.9, 2.3)) as Vector2).x
 	return maxf(0.0, g._lane_off(r) + hw + 0.3 - float(r["w"]) * 0.5)
 
+## Clear of what stands at the kerb: parked cars stand 0.25-0.9 m into the asphalt (their
+## bodies are posts, `_add_car_posts`), and a car or bus kept its lane line exactly, its side
+## into them -- the exam's "traffic body into a post" in Givatayim, 7-9 a run, nearly all
+## parked cars (Katznelson, Gordon, HaHagana, HaMeri: tests/posts_at.gd). Like a driver, a
+## little left: its side KERB_GAP clear of the nearest thing on its right from its back to
+## KERB_AHEAD past its nose, at most KERB_MAX. Looked at every 0.4 s; not while pulling in
+## (a bus to its stop, a van for a delivery: they measure their own room).
+const KERB_GAP := 0.25
+const KERB_AHEAD := 12.0
+const KERB_MAX := 0.8
+func _clear_kerb(c: Car, dt: float, r: Dictionary) -> float:
+	if c.why == "bus stop" or c.why == "delivery" or c.dwell > 0.0 or c.split:
+		c.kerb_clear = 0.0
+		return 0.0
+	c.kerb_look -= dt
+	if c.kerb_look <= 0.0:
+		c.kerb_look = 0.4
+		var hw: float = (CORNERS.get(c.kind, Vector2(0.9, 2.3)) as Vector2).x
+		var edge := _kerb_edge(c, c.len + KERB_AHEAD)   # (left of the lane line, its inner reach)
+		var base := c.shift_to - c.kerb_clear            # (the lane's own shift, before this)
+		# (and no further than its own side of the road: on a two-way street its middle 0.3 m
+		# right of the road's, on a one-way street its left side 0.3 m on the asphalt -- uncapped,
+		# cars on Ashdod's narrow residential streets and a living street ran over the middle)
+		var cap := _lane(r) - base - 0.3
+		if int(r["o"]) != 0:
+			cap = _lane(r) - base - hw + float(r["w"]) * 0.5 - 0.3
+		c.kerb_clear = clampf(edge + KERB_GAP + hw - base, 0.0, clampf(cap, 0.0, KERB_MAX)) if edge > -INF else 0.0
+	return c.kerb_clear
+
 ## Which lane: on a road with more than one each way, into the right one for the turn
 ## ahead (right lane for a right turn, left for a left), out to overtake a slow car in
 ## front when the lane beside is free, back to the right now and then. A bus keeps to the
@@ -1422,6 +1554,13 @@ func _steer_lanes(c: Car, i: int, dt: float, best: float, lead_v: float) -> void
 		var pr := _proj(c, o.pos, 40.0, 60.0)
 		if not o.alive or pr.x == INF or pr.x < -(o.len + c.len) * 0.5 - 1.5:
 			c.pass_i = -1
+		elif pass_by_time and absf(c.shift) < 0.4 and c.v > 0.5 and not _oncoming_clear(c, i, pr.x + 20.0, _pass_shift(r),
+				_pass_secs(c, pr.x + (o.len + c.len) * 0.5 + 1.5), pr.x + (o.len + c.len) * 0.5 + 1.5):
+			# something coming that will be here before it is past, and it has barely begun to
+			# move over: back in behind the van, and wait. (Only then: once further out, or
+			# standing, it could not get back -- a car moves sideways only as it rolls -- and
+			# stood with its nose in the other lane, face to face with autodrive, till taken away.)
+			c.pass_i = -1
 		else:
 			c.shift_to = _pass_shift(r)
 			return
@@ -1434,7 +1573,7 @@ func _steer_lanes(c: Car, i: int, dt: float, best: float, lead_v: float) -> void
 			if c.shift_rd >= 0 and absf(to1 - c.shift_to) > 0.3:
 				c.realign = true
 			c.shift_rd = rid1
-		c.shift_to = to1
+		c.shift_to = to1 + _clear_kerb(c, dt, r)
 		return
 	# Onto the next road: the lane of it the car is in, where it is, not the same number. Two
 	# roads drawn on the node they share lie on one middle line, so the second lane of a
@@ -1519,11 +1658,24 @@ func _steer_lanes(c: Car, i: int, dt: float, best: float, lead_v: float) -> void
 	# into the poles there for 25 m.
 	var to := _lane_shift(r, c.lane_i)
 	var rid: int = c.rd[mini(c.k + 1, c.rd.size() - 1)]
+	# Across the stretch where one road hands over to the next, the line the car follows slides
+	# from the old road's lane to the new one's (the points either end are each in their own
+	# road's lane); its shift goes with it, the same lane of each, blended by how far along.
+	# Taken at once, the new road's shift on the old road's line put a car in the kerb lane of
+	# Sderot Herzl's three-lane piece 5.55 m right of its two-lane piece's middle (8.9 m wide),
+	# a metre over the kerb into the hydrants and trees there at 40 km/h -- the exam's
+	# "traffic into a post", Herzl and Begin, every Ashdod run.
+	var rk: int = c.rd[clampi(c.k, 0, c.rd.size() - 1)]
+	if rk != rid and rk >= 0 and c.k + 1 < c.cum.size():
+		var r_k: Dictionary = _roads[rk]
+		var seg := c.cum[c.k + 1] - c.cum[c.k]
+		var tk := clampf((c.s - c.cum[c.k]) / maxf(seg, 0.01), 0.0, 1.0)
+		to = lerpf(_lane_shift(r_k, clampi(c.lane_i, 0, maxi(_lanes_dir(r_k) - 1, 0))), to, tk)
 	if rid != c.shift_rd:
 		if c.shift_rd >= 0 and absf(to - c.shift_to) > 0.3:
 			c.realign = true
 		c.shift_rd = rid
-	c.shift_to = to
+	c.shift_to = to + (_clear_kerb(c, dt, r) if c.lane_i == 0 else 0.0)
 	if c.kind == "moto":
 		if best < 20.0 and lead_v < 2.0:
 			c.split = true
@@ -1593,7 +1745,10 @@ func _bus_stop(c: Car, dt: float) -> float:
 				var room := 0.9
 				if j < c.rd.size() and c.rd[j] >= 0:
 					var r: Dictionary = _roads[c.rd[j]]
-					room = clampf(float(r["w"]) * 0.5 - g._lane_off(r) - CORNERS["bus"].x - 0.3, 0.0, 0.9)
+					# (from the lane it is in: on a road of three lanes `_lane_off` is the middle
+					# one, so a bus in the kerb lane of Sderot Herzl got the whole 0.9 m -- 4.23 m
+					# right of the middle, its side 0.48 m over the kerb, into a hydrant at 42 km/h)
+					room = clampf(float(r["w"]) * 0.5 - (g._lane_off(r) - c.shift_to) - CORNERS["bus"].x - 0.3, 0.0, 0.9)
 				c.shift_to -= room
 			if at < 1.6:
 				if c.v < 0.4:
@@ -1611,7 +1766,7 @@ func _bus_stop(c: Car, dt: float) -> float:
 ## body (five along a bus), not only its middle: a bus pulled in at its stop, or slanting out
 ## of it, stuck its back corner into the lane while its middle was clear of it -- and the
 ## half length lets autodrive stop short of a bus's back, not a car's length behind its middle.
-func lead_on(path: PackedVector2Array, from: Vector2, look: float, ignore_crossing: bool, y := NAN) -> Array:
+func lead_on(path: PackedVector2Array, from: Vector2, look: float, ignore_crossing: bool, y := NAN, skip := -1) -> Array:
 	var best := INF
 	var bv := 0.0
 	var bhalf := 0.0
@@ -1619,8 +1774,9 @@ func lead_on(path: PackedVector2Array, from: Vector2, look: float, ignore_crossi
 	if path.size() < 2:
 		return [best, bv, bhalf, who]
 	var start := Geometry2D.get_closest_point_to_segment(from, path[0], path[1])
+	var skipped: Car = cars[skip] if skip >= 0 and skip < cars.size() else null   # (one crossing that will be gone: see autodrive)
 	for c: Car in cars:
-		if not c.alive or c.pos.distance_squared_to(from) > (look + c.len * 0.5 + 6.0) * (look + c.len * 0.5 + 6.0):
+		if not c.alive or c == skipped or c.pos.distance_squared_to(from) > (look + c.len * 0.5 + 6.0) * (look + c.len * 0.5 + 6.0):
 			continue
 		if not is_nan(y) and absf(c.y - y) > LEVEL + 0.08 * c.pos.distance_to(from):
 			continue   # (on a bridge overhead, in a tunnel underneath -- not just down a hill:
@@ -1649,8 +1805,15 @@ func lead_on(path: PackedVector2Array, from: Vector2, look: float, ignore_crossi
 				# its, and a hand's breadth (by its middle alone, at 1.5 m, one in the next
 				# lane on a narrow road was not, and autodrive ran in between two of them)
 				var wide := LANE_W
-				if same > 0.6:
+				if same < -0.6:
+					# (one coming at me, by the bodies too: a motorbike standing in racer's lane facing
+					# it, waiting for it, its middle 1.47 m off the line -- inside LANE_W only now and
+					# then -- was no car in front until 8 m, met at 55 km/h, tests/racer_drive.gd)
 					wide = maxf(LANE_W, 0.9 + rad + 0.25)
+				elif same > 0.6:
+					wide = maxf(LANE_W, 0.9 + rad + 0.25)
+					if c.aside_t > 0.0:
+						wide = 0.9 + rad + 0.05   # (edged over to let racer squeeze by: bodies brushing, not touching)
 				if cp.distance_to(q) < wide:
 					var along := base + a.distance_to(cp) - off * same   # (as if from its middle)
 					if along > 0.5 and along < found and not (ignore_crossing and same < 0.6):
@@ -1668,6 +1831,8 @@ func lead_on(path: PackedVector2Array, from: Vector2, look: float, ignore_crossi
 ## ---- the path -----------------------------------------------------------------------------
 
 func _spawn(c: Car, first: bool) -> bool:
+	if not bool(g._place.get("traffic", true)):
+		return false   # (a place with no traffic: the trick road, the car alone on its loop)
 	var me: Vector2 = g._pos
 	var look := Vector2(cos(float(g._yaw)), sin(float(g._yaw)))
 	# a few tries a tick once driving (the rest on later ticks: see tick()), more at the start
@@ -1862,6 +2027,7 @@ func _leg(c: Car, ri: int, from: int, dir: int) -> void:
 		last = _ring_stop(r, from, dir, last)
 	_turn_into(c, ri, from, dir, lane, lim)
 	var start := c.pts.size()
+	_turn_round(c, ri, from, dir, lane, lim)
 	var i := from
 	while true:
 		var prv := p[i - dir] if (i - dir >= 0 and i - dir < p.size()) else p[i]
@@ -1879,6 +2045,37 @@ func _leg(c: Car, ri: int, from: int, dir: int) -> void:
 		i += dir
 	c.end = Vector3i(ri, last, dir)
 	_curves(c, start - 8)
+
+## Turning round at a dead end (`_next`'s way back): the leg back starts at the point
+## before the end, so the line from the end, in the lane coming in, ran straight to the
+## next point in the lane going out -- on a street of two points (HaDganim, Givatayim) one
+## 135 m diagonal down the wrong side, into the cars still coming in, nose to nose and through
+## them (tests/traffic_dead_end.gd: every car out 1.6-2 m on the wrong side, 3-16 overlaps a minute).
+## Now a half circle at the end, a lane wide, short of it: out in the lane going back at once.
+func _turn_round(c: Car, ri: int, from: int, dir: int, lane: float, lim: float) -> void:
+	var r: Dictionary = _roads[ri]
+	var p: PackedVector2Array = r["pts"]
+	var ids: PackedInt32Array = r["ids"]
+	var at := from - dir
+	var n := c.pts.size()
+	if at < 0 or at >= p.size() or n < 2 or c.node[n - 1] != ids[at]:
+		return
+	var came := (c.pts[n - 1] - c.pts[n - 2]).normalized()
+	var go := (p[from] - p[at]).normalized()
+	if came == Vector2.ZERO or go == Vector2.ZERO or came.dot(go) > -0.8:
+		return   # (not doubling back)
+	var right := Vector2(-came.y, came.x)
+	var rad := maxf(absf(lane), 1.2)
+	var mid: Vector2 = p[at] - came * rad   # (the half circle's middle, a lane short of the end)
+	var slow := minf(lim, 2.5)
+	for k in range(1, 5):
+		var th := PI * float(k) / 4.0
+		var q := mid + (right * cos(th) + came * sin(th)) * rad
+		c.cum.append(c.cum[c.cum.size() - 1] + c.pts[c.pts.size() - 1].distance_to(q))
+		c.pts.append(q)
+		c.node.append(-1)
+		c.rd.append(ri)
+		c.vmax.append(slow)
 
 ## Into the next road at a junction (the player's autodrive does the same, see the game's
 ## _ap_turn_into): the last road ended on the junction's point and the next one's first
@@ -2102,8 +2299,8 @@ func _place(c: Car) -> void:
 	# corner it pivoted on its middle: a bus's back swung out across the lane, a car's nose
 	# snapped round at each kink in its line -- "they jump around".
 	var wb := clampf(c.len * 0.6, 1.3, 7.0)
-	var wander := sin(_clock * 0.31 + c.drift) * 0.1 * clampf(c.v / 8.0, 0.0, 1.0)
-	var off := c.shift + wander
+	var wander := sin(_clock * 0.31 + c.drift) * 0.1 * clampf(c.v / 8.0, 0.0, 1.0) * (0.0 if c.aside_t > 0.0 else 1.0)
+	var off := c.shift + wander + c.aside + c.track
 	# (the front on the lane rounded over 4 m: the lane line has corners in it -- a bend in
 	# the map's road -- and a front run exactly round each flicked the heading at 2.5 rad/s)
 	var fa := _at(c, c.s + wb * 0.5 - 2.0)
@@ -2112,6 +2309,11 @@ func _place(c: Car) -> void:
 	var td := fb - fa
 	var ty := atan2(td.x, td.y) if td.length_squared() > 0.0001 else c.yaw
 	var front := f0 + Vector2(cos(ty), -sin(ty)) * off   # (its lane: left of the line)
+	if c.aside != c.aside_was and c.rear != Vector2.INF:
+		# (edging over is the whole car sliding, back and all: standing, the back follows the
+		# front only as it rolls, so the car turned on the spot and its back stayed in the gap)
+		c.rear += Vector2(cos(ty), -sin(ty)) * (c.aside - c.aside_was)
+	c.aside_was = c.aside
 	if c.rear == Vector2.INF or c.rear.distance_to(front) > wb * 1.6:
 		# placed afresh (a new start, sent elsewhere): its back on the lane behind
 		var r0 := _at(c, c.s - wb * 0.5)
@@ -2120,6 +2322,24 @@ func _place(c: Car) -> void:
 		c.rear = r0 + Vector2(cos(ry), -sin(ry)) * off
 	else:
 		c.rear = front + (c.rear - front).normalized() * wb
+	if c.len > 6.0:
+		# (a bus's back cuts inside a bend by wheelbase^2 / 2R -- 0.72 m at 34 m, over the kerb on
+		# Givatayim's bends: tests/bus_bends.gd. As a driver does, the front out by the back's cut
+		# in, so each is out by half: steered by where the back is against its lane now)
+		var r0 := _at(c, c.s - wb * 0.5 - 1.0)
+		var r1 := _at(c, c.s - wb * 0.5 + 1.0)
+		var rdd := r1 - r0
+		if rdd.length_squared() > 0.01:
+			var ryy := atan2(rdd.x, rdd.y)
+			var lft := Vector2(cos(ryy), -sin(ryy))
+			var dev := (c.rear - ((r0 + r1) * 0.5 + lft * (c.shift + c.aside))).dot(lft)
+			# (not on a tight turn: there its front overhang swings out past the kerb already --
+			# pushed out more, a bus's corner went 0.70 -> 0.93 m over at Ashdod's HaAtzmaut, an
+			# 8 m turn; off by 10 m of radius, whole from 20)
+			var bend := absf(angle_difference(ryy, ty))
+			var radius := wb / maxf(bend, 0.001)
+			var k := clampf((radius - 10.0) / 10.0, 0.0, 1.0)
+			c.track = lerpf(c.track, clampf((c.track - dev) * 0.5, -0.6, 0.6) * k, 0.05)   # (the cut-in is track - dev: half of it)
 	var d := front - c.rear
 	c.pos = (front + c.rear) * 0.5
 	c.y = g._decks.surf(c.pos, c.y)

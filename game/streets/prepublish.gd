@@ -28,7 +28,7 @@ func _run() -> void:
 	var done := {}
 	var kept := 0
 	for lv: Dictionary in G.LEVELS:
-		if not lv.has("city") or lv.get("routes", false):
+		if not lv.has("city") or G._is_list(lv):
 			continue
 		var file: String = G.baked_file(lv)
 		if done.has(file):
@@ -39,7 +39,7 @@ func _run() -> void:
 		var a = G.new()
 		a._place = lv
 		a._bake_rec = {}
-		if not a._load_city(String(lv["city"])) or not (a._bake_rec as Dictionary).has("decks"):
+		if not await a._load_city(String(lv["city"])) or not (a._bake_rec as Dictionary).has("decks"):
 			print("prepublish: %s -- nothing to bake" % file)
 			a.free()
 			continue
@@ -52,7 +52,7 @@ func _run() -> void:
 		var b = G.new()
 		b._place = lv
 		b._bake_use = rec
-		b._load_city(String(lv["city"]))
+		await b._load_city(String(lv["city"]))
 		var t2 := Time.get_ticks_msec()
 		var bad := _differs(a, b)
 		if bad != "":

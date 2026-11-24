@@ -82,6 +82,8 @@ func _run() -> void:
 			await physics_frame
 			t += step
 			if absf(g._v) >= 0.3:
+				if still >= 2.0:
+					print("    ... on after %.1f s standing" % still)
 				still = 0.0
 				continue
 			still += step
@@ -98,6 +100,10 @@ func _run() -> void:
 				if OS.get_environment("WAYS") != "":   # (its ways in, and whether it counts as a slip road's light)
 					line += "\n      slip road's: %s; ways in: %s" % [g._slip_join(n), (g._sig_line.get(n, []) as Array).map(
 						func(w): return "%s from road %d (%s) line %.1f inside %s" % [(w[0] as Vector2).snapped(Vector2(0.01, 0.01)), int(w[2]), g._roads[int(w[2])]["k"], float(w[1]), w[3]])]
+			if g._ap_give_car >= 0 and g._ap_give_car < g._traffic.cars.size():
+				var gc = g._traffic.cars[g._ap_give_car]
+				line += "\n    giving way to a %s %.0f m off at %.1f m/s, on the ring %s" % [gc.kind, gc.pos.distance_to(g._pos), gc.v,
+					g._ap_giving.has(gc.node[mini(gc.k + 1, gc.node.size() - 1)]) if gc.node.size() > 0 else "?"]
 			for c in g._traffic.cars:
 				if c.alive and c.pos.distance_to(g._pos) < 40.0 and c.v < 0.3:
 					line += "\n    a %s standing %.0f m off, its why '%s'" % [c.kind, c.pos.distance_to(g._pos), c.why]

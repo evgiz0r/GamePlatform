@@ -3,6 +3,11 @@
 same drives can be run again and again (tests/route_set.gd) and their results compared.
 
     python3 game/streets/tests/pick_routes.py [seed]
+    python3 game/streets/tests/pick_routes.py --add <city> [seed]   # one more, for a new city
+
+`--add` keeps every route there is (their numbers and results stay) and appends that city's
+share as the next ids: a new city gets its drive this way, beside its walk
+(data_tools/make_walks.py) -- NEW_CITY.md.
 
 Per city a share of the ten (Givatayim 4, Ashdod 3, Tel Aviv, Bedford and the test town one
 each); the two ends real addresses (a building's or an address point's) within 40 m of a
@@ -11,9 +16,11 @@ flies; less in the small test town), and joined by the road graph one-ways and a
 street by the map's edge can be a pocket with no way out). Run it again only to start a new set -- results are
 tracked against the routes' numbers.
 
-PRIVACY (see DEV.md): the web build is public. Nothing within 800 m of the corner of Ha-Meri
-and Sheinkin in Givatayim, and nothing on HaAtzmaut in Ashdod -- places the user has named
-as theirs or their family's.
+PRIVACY (see DEV.md): the web build and this repo are public. Places to keep routes away from
+are read from game/streets/tests/.private_places.json, which is git-ignored and never
+committed: {"streets": {"<city>": ["<street>", ...]}, "corners": {"<city>": [["<street A>",
+"<street B>"], ...]}} -- no route within 800 m of a corner, none on a street. Without the file
+it picks from everywhere: ask the user before running it.
 """
 import json
 import math
@@ -28,11 +35,17 @@ CITIES = [  # level (1-based, as in LEVELS), city file, how many, crow-fly range
     (7, "tel_aviv", 1, (700, 2200)),
     (2, "bedford", 1, (800, 2500)),
     (4, "dimyon", 1, (250, 900)),
+    (14, "delft", 1, (600, 1800)),   # (added with --add: route 11)
+    (33, "leiden", 1, (600, 1800)),
+    (34, "annecy", 1, (600, 1800)),
+    (41, "monaco", 1, (600, 1800)),
 ]
 DRIVE = {"motorway", "trunk", "primary", "secondary", "tertiary", "unclassified", "residential",
          "living_street", "road", "motorway_link", "trunk_link", "primary_link", "secondary_link", "tertiary_link"}
-AVOID_STREETS = {"ashdod": ["העצמאות"]}
-AVOID_CORNERS = {"givatayim": [("HaMeri", "Sheinkin")]}   # (by the English names: the Hebrew is spelled more than one way)
+_PRIVATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".private_places.json")
+_priv = json.load(open(_PRIVATE, encoding="utf-8")) if os.path.exists(_PRIVATE) else {}
+AVOID_STREETS = _priv.get("streets", {})
+AVOID_CORNERS = {c: [tuple(x) for x in v] for c, v in _priv.get("corners", {}).items()}   # (corners by the English names: the Hebrew is spelled more than one way)
 
 
 def seg_dist(p, a, b):
@@ -43,14 +56,26 @@ def seg_dist(p, a, b):
 
 
 def main(argv):
+    add = ""
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")   # (Windows' console code page cannot print a Hebrew address)
+    if argv and argv[0] == "--add":
+        add = argv[1]
+        argv = argv[2:]
     seed = int(argv[0]) if argv else 2026
-    rng = random.Random(seed)
+    rng = random.Random(seed + sum(ord(ch) for ch in add))
     routes = []
+    out = os.path.join(HERE, "..", "routes.json")
+    if add:
+        routes = json.load(open(out, encoding="utf-8"))["routes"]
+        seed = json.load(open(out, encoding="utf-8")).get("seed", seed)
     for level, cid, count, (lo, hi) in CITIES:
+        if add and cid != add:
+            continue
         path = os.path.join(HERE, "..", "cities", cid + ".json")
         if not os.path.exists(path):
             continue
-        c = json.load(open(path))
+        c = json.load(open(path, encoding="utf-8"))
         k = 1.0 / float(c.get("scale", 10))
         N = c["nodes"]
         roads = []
@@ -169,8 +194,8 @@ def main(argv):
                            "from_at": [round(a[1][0], 1), round(a[1][1], 1)], "to": b[0],
                            "to_at": [round(b[1][0], 1), round(b[1][1], 1)], "crow_m": int(d)})
             picked += 1
-    out = os.path.join(HERE, "..", "routes.json")   # (the game reads it: the "Test routes" level)
-    json.dump({"seed": seed, "routes": routes}, open(out, "w"), ensure_ascii=False, indent=1)
+    # (the game reads it: the "Test routes" level)
+    json.dump({"seed": seed, "routes": routes}, open(out, "w", encoding="utf-8", newline="\n"), ensure_ascii=False, indent=1)   # (LF on Windows too)
     for r in routes:
         print("%2d  %-10s %s -> %s  (%d m)" % (r["id"], r["city"], r["from"], r["to"], r["crow_m"]))
     print(out)

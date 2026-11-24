@@ -1,0 +1,59 @@
+# walk 1, the forecourt (film 26-33 s): thing, film second, foot x, foot y (fractions of the upright 1080x1920 frame)
+bollard A, 26.0, 0.102, 0.3625
+bollard A, 26.5, 0.002, 0.36
+bollard A, 27.0, 0.200, 0.3625
+bollard A, 27.5, 0.198, 0.396
+bollard A, 28.0, 0.028, 0.479
+bollard B rusty, 26.5, 0.080, 0.29
+bollard B rusty, 27.0, 0.333, 0.276
+bollard B rusty, 27.5, 0.376, 0.286
+bollard B rusty, 28.0, 0.272, 0.333
+bollard B rusty, 28.5, 0.207, 0.422
+bollard B rusty, 29.0, 0.139, 0.529
+bollard B rusty, 29.5, 0.041, 0.625
+bollard C, 26.5, 0.190, 0.325
+bollard C, 27.0, 0.440, 0.302
+bollard C, 27.5, 0.491, 0.318
+bollard C, 28.0, 0.393, 0.377
+bollard C, 28.5, 0.344, 0.481
+bollard C, 29.0, 0.296, 0.609
+bollard C, 29.5, 0.222, 0.771
+bollard D, 26.5, 0.330, 0.29
+bollard D, 27.0, 0.600, 0.266
+bollard D, 27.5, 0.676, 0.273
+bollard D, 28.0, 0.607, 0.321
+bollard D, 28.5, 0.585, 0.399
+bollard D, 29.0, 0.578, 0.495
+bollard D, 29.5, 0.565, 0.583
+bollard D, 30.0, 0.561, 0.698
+bollard D, 30.5, 0.694, 0.870
+bollard E far, 28.5, 0.583, 0.266
+bollard E far, 29.5, 0.528, 0.365
+bollard E far, 30.0, 0.510, 0.417
+bollard E far, 30.5, 0.596, 0.474
+bollard E far, 31.0, 0.689, 0.518
+bollard E far, 31.5, 0.709, 0.516
+bollard E far, 32.0, 0.552, 0.435
+barrier post, 26.5, 0.139, 0.198
+barrier post, 27.0, 0.430, 0.158
+barrier post, 27.5, 0.485, 0.146
+barrier post, 28.0, 0.431, 0.1875
+barrier post, 28.5, 0.394, 0.248
+barrier post, 29.5, 0.330, 0.344
+barrier post, 30.0, 0.300, 0.396
+barrier post, 30.5, 0.374, 0.448
+barrier post, 31.0, 0.459, 0.490
+barrier post, 31.5, 0.467, 0.479
+barrier post, 32.0, 0.291, 0.399
+pole left, 26.5, 0.370, 0.23
+pole left, 28.5, 0.663, 0.302
+pole left, 29.5, 0.626, 0.427
+pole left, 30.0, 0.624, 0.490
+pole left, 30.5, 0.731, 0.571
+pole left, 31.0, 0.861, 0.646
+woman left, 26.0, 0.537, 0.378
+woman left, 26.5, 0.796, 0.318
+woman right, 26.0, 0.657, 0.378
+woman right, 26.5, 0.944, 0.33
+motorbike rear wheel, 26.0, 0.315, 0.346
+motorbike rear wheel, 26.5, 0.556, 0.285

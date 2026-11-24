@@ -14,6 +14,17 @@
 // done: the moment the car can be driven. The files are served from localhost, so downloading costs nothing here --
 // on a phone after a publish that is the main index.pck (~4 MB) on top, plus any split pack whose content changed (see tools/split_pck.py).
 //
+// PLAY=n keeps each load going n seconds after the car can be driven, with the smart bot (it
+// switches autodrive on) and the game's "--perf-log": every 2 s the frame rate, the quality
+// level and the average frame part by part -- the script's own milliseconds are the wasm's real
+// cost on this CPU, "drawing and engine" is SwiftShader's.
+//
+// TIMES=n then clicks the time-of-day button n times (day -> evening -> night -> day), GAP
+// seconds apart (default 30), and prints what each click made the browser compile -- the
+// programs linked and the time in the compile calls (the game's GL_COUNT_JS counter, read from
+// the page) -- and the slowest frame after it. A click that compiles nothing does not hang a
+// player's PC; one that compiles a hundred did (21 Nov: switching the sun's shadows off).
+//
 // SwiftShader draws in software: the warm-up (shader compiling plus twelve frames of the
 // town) and any stage that draws frames ("far shadows") are many times a real GPU's. The
 // CPU stages (city file, kerbs, roads...) are the wasm's own cost, and in proportion.
@@ -26,6 +37,9 @@ const dir = process.argv[2] && path.resolve(process.argv[2]);   // (a relative o
 const level = process.argv[3] || '1';
 const runs = Number(process.env.RUNS || '1');
 const shots = process.env.SHOT || '';
+const play = Number(process.env.PLAY || '0');
+const times = Number(process.env.TIMES || '0');
+const gap = Number(process.env.GAP || '30');
 if (!dir || !fs.existsSync(path.join(dir, 'index.html'))) {
   console.error('usage: node web_load.js <exported web dir> [level]');
   process.exit(1);
@@ -40,7 +54,7 @@ const server = http.createServer((req, res) => {
   if (!f.startsWith(path.resolve(dir)) || !fs.existsSync(f)) { res.writeHead(404); res.end(); return; }
   let body = fs.readFileSync(f);
   if (p === '/index.html') {   // straight into the level, no worker (it would cache across runs)
-    body = body.toString().replace('"args":[]', `"args":["--","--sim=streets","--bot=idle","--seconds=600","--level=${level}"]`)
+    body = body.toString().replace('"args":[]', `"args":["--","--sim=streets","--bot=${play ? 'smart' : 'idle'}","--seconds=${600 + play}","--level=${level}"${play ? ',"--perf-log"' : ''}]`)
       .replace('"serviceWorker":SW_URL', '"serviceWorker":""')
       .replace('"serviceWorker":"index.service.worker.js"', '"serviceWorker":""');
   }
@@ -61,6 +75,7 @@ const server = http.createServer((req, res) => {
   page.on('console', (m) => {
     const t = m.text();
     if (/SCRIPT ERROR|USER ERROR/.test(t)) mark('game: ' + t.split('\n')[0]);
+    if (t.startsWith('[perf]')) { if (!times) mark(t); return; }
     if (!t.startsWith('[streets]')) return;
     if (t.startsWith('[streets] warm-up done')) done = true;
     if (shots && t.startsWith('[streets] city file read')) {
@@ -87,6 +102,28 @@ const server = http.createServer((req, res) => {
     const limit = Date.now() + 900000;
     while (!done && Date.now() < limit) await page.waitForTimeout(500);
     mark(done ? 'the car can be driven' : 'gave up waiting');
+    if (done && play) await page.waitForTimeout(play * 1000);
+    if (done && times) {
+      await page.waitForTimeout(gap * 1000);
+      // the button: NIGHT_BTN in the game's 640x360 HUD, scaled to the page
+      const vp = page.viewportSize();
+      const at = { x: (452 + 26) * vp.width / 640, y: (334 + 10) * vp.height / 360 };
+      await page.evaluate(() => {   // the slowest frame since the last read
+        window.__slow = 0;
+        let last = performance.now();
+        const f = (t) => { window.__slow = Math.max(window.__slow, t - last); last = t; requestAnimationFrame(f); };
+        requestAnimationFrame(f);
+      });
+      const names = ['evening', 'night', 'day'];
+      for (let k = 0; k < times; k += 1) {
+        const before = await page.evaluate(() => window.__glc ? [window.__glc.n, window.__glc.ms] : [0, 0]);
+        await page.evaluate(() => { window.__slow = 0; });
+        await page.mouse.click(at.x, at.y);
+        await page.waitForTimeout(gap * 1000);
+        const after = await page.evaluate(() => [window.__glc ? window.__glc.n : 0, window.__glc ? window.__glc.ms : 0, window.__slow]);
+        mark(`click ${k + 1} (to ${names[k % 3]}): ${after[0] - before[0]} programs compiled, ${Math.round(after[1] - before[1])} ms in the compile calls; the slowest frame after it ${Math.round(after[2])} ms`);
+      }
+    }
     if (shots && done) {
       await page.waitForTimeout(1500);
       await page.screenshot({ path: path.join(shots, `driving_${run}.png`) }).catch(() => {});
