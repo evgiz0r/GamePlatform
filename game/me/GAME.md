@@ -41,6 +41,9 @@ The next step is a model with his real face (see "Later").
 
 ## Later (said, not built)
 
+- Paused 24 Nov 2026 after the rough cut (`realistic/`, preview first): "its not the worst but
+  the head movement is not great". Next: steadier, more natural head motion (the mocap's head
+  and neck), then a full render.
 - His real face: a model made from daylight selfies (front with a neutral face, 45° left,
   45° right) or a short video turning his head, exported as .glb with a humanoid skeleton.
 - Run, and "look" (looking around), as scenes.
