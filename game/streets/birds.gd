@@ -33,8 +33,18 @@ func _init(game: Node) -> void:
 	g = game
 	rng.seed = 24112026
 
+## the flutter of a flock going up (sounds/flap.wav), two players so two flocks can overlap
+var _flaps: Array = []
+
 func setup() -> void:
 	var f = g._furn
+	for k in range(2):
+		var ap := AudioStreamPlayer3D.new()
+		ap.stream = load("res://game/streets/sounds/flap.wav")
+		ap.unit_size = 6.0
+		ap.max_distance = 60.0
+		g.world.add_child(ap)
+		_flaps.append(ap)
 	var meshes := [_bird_mesh(f, 0), _bird_mesh(f, 1), _bird_mesh(f, 2)]
 	for m: ArrayMesh in meshes:
 		var mm := MultiMesh.new()
@@ -173,6 +183,13 @@ func _fly(fl: Dictionary, from: Vector2) -> void:
 	fl["up"] = true
 	fl["t"] = 0.0
 	count["flew"] = int(count["flew"]) + 1
+	if not Audio.muted() and not _flaps.is_empty():
+		var ap: AudioStreamPlayer3D = _flaps[0] if not (_flaps[0] as AudioStreamPlayer3D).playing else _flaps[1]
+		var c: Vector2 = fl["c"]
+		ap.position = Vector3(c.x, float(g._h(c)) + 0.5, c.y)
+		ap.pitch_scale = rng.randf_range(0.9, 1.15)
+		ap.volume_db = linear_to_db(maxf(0.0001, float(SaveData.data.get("volume_sfx", 0.8)))) - 6.0
+		ap.play()
 	for bd: Dictionary in fl["birds"]:
 		var p: Vector2 = bd["p"]
 		var away := (p - from).normalized() if p.distance_to(from) > 0.05 else Vector2.RIGHT.rotated(rng.randf() * TAU)

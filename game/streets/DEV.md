@@ -5443,7 +5443,10 @@ within 1.2 m behind it. Both have posts.
   taps, 14 bumps and a table in the file; 5 / 65 / 15 built.
 - **Not done**: laundry, night lighting from the town's own lamps (their pools follow each mapped head)
   and tree species' looks (`tree_forms` from the surveys) were already in.
-- **Open**: birds never perch (on wires, roofs, lamp tops); no flapping sound; a flock
+- **Flap** (24 Nov): a flock going up plays `sounds/flap.wav` (make_sounds.py `flap`: five
+  birds' wingbeats, fast then slowing, 1.1 s) from its middle, one of two 3D players in
+  birds.gd, 6 dB under the sfx volume, silent when muted.
+- **Open**: birds never perch (on wires, roofs, lamp tops); a flock
   spooked by traffic on the road only when it is your car; the crows look like grey pigeons
   scaled up (no separate black head and wings in the paint); gas cages only on streets
   with a wall at the pavement's back.

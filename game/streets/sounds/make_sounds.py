@@ -26,6 +26,9 @@ and the street's own life, which the game fades in and out by where you are and 
                           syllables, vowels and pauses, muffled by the distance -- a murmur,
                           no words (the loop's ends are cross-faded)
   dog.wav        ~1.5 s   a dog barking twice a street or two away (not a loop)
+  flap.wav        1.1 s   a flock of pigeons going up (birds.gd): five birds' wingbeats, each a
+                          soft clap of air, fast at the take-off and slowing as they climb
+                          away, fading (not a loop)
 
   train.wav        4 s    a train going by (rails.gd, a 3D sound on each train): the wheels'
                           roar on the rails, the bogies' thump coach by coach (three coaches
@@ -252,6 +255,30 @@ def dog():
     return x / np.abs(x).max()
 
 
+def flap():
+    n = int(R * 1.1)
+    x = np.zeros(n)
+    rng = np.random.default_rng(61)
+    clap = shaped_noise(0.05, lambda f: bp(f, 350, 2600), 62)
+    m = len(clap)
+    env = np.exp(-np.arange(m) / (R * 0.012))
+    for b in range(5):
+        t = rng.uniform(0.0, 0.12)
+        rate = rng.uniform(9.0, 12.0)
+        loud = rng.uniform(0.6, 1.0)
+        while t < 1.0:
+            i = int(t * R)
+            k = loud * (1.0 - t) ** 1.5
+            x[i:i + m] += (clap * env)[:n - i] * k
+            t += 1.0 / rate
+            rate = max(rate * 0.93, 5.0)
+    x = lowpass(x, 3500)
+    fade = np.ones(n)
+    fade[-int(R * 0.15):] = np.linspace(1, 0, int(R * 0.15))
+    x *= fade
+    return x / np.abs(x).max()
+
+
 def train():
     n = int(R * 4.0)
     t = np.arange(n) / R
@@ -285,7 +312,7 @@ def train_horn():
 
 
 SOUNDS = {"engine": lambda: engine(False), "engine_load": lambda: engine(True), "road": road,
-          "wind": wind, "city": city, "birds": birds, "crickets": crickets, "voices": voices, "dog": dog,
+          "wind": wind, "city": city, "birds": birds, "crickets": crickets, "voices": voices, "dog": dog, "flap": flap,
           "train": train, "train_horn": train_horn}
 
 
