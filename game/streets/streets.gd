@@ -25912,11 +25912,18 @@ func _ap_curves(from_k: int) -> void:
 	for k in range(maxi(1, from_k), _ap_pts.size() - 1):
 		if _ap_v[k] == 0.0:
 			continue   # a stop to turn round at (a dead end's U-turn): kept
-		var a := _ap_walk(k, -5.0)
 		var b := _ap_pts[k]
-		var c := _ap_walk(k, 5.0)
-		var cross := absf((b - a).cross(c - a))
-		var radius := INF if cross < 0.001 else a.distance_to(b) * b.distance_to(c) * c.distance_to(a) / (2.0 * cross)
+		# (the bend's radius through the points 5 m either side -- and 2.5 m: a corner squeezed
+		# tighter than AP_TURN_R by the points either side of it, a 120-degree right turn into
+		# Givatayim's Sirkin, 3.9 m round, read as 5-6 m through 5 m, was planned at 17 km/h and
+		# the car came out over the middle line of the 6 m street; tests/turn_width.gd)
+		var radius := INF
+		for reach: float in [5.0, 2.5]:
+			var a := _ap_walk(k, -reach)
+			var c := _ap_walk(k, reach)
+			var cross := absf((b - a).cross(c - a))
+			if cross >= 0.001:
+				radius = minf(radius, a.distance_to(b) * b.distance_to(c) * c.distance_to(a) / (2.0 * cross))
 		# (more sideways pull in a tight bend, as people take one: 3.6 m/s^2 from a 15 m radius up,
 		# rising to 4.8 at 5 m -- at 3.6 throughout, a roundabout's way on and off, 4-8 m, was
 		# 14-18 km/h, and the car eased off for each: "very defensive, somewhat slow")

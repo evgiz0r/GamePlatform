@@ -137,6 +137,10 @@ func _run() -> void:
 		"PASS" if ok else "FAIL", over, runs, stray, near])
 	quit(0)
 
+## m: the car's left side this far onto the middle line still counts as in its lane -- the
+## paint itself is 0.1 m wide (Sirkin, a 6 m street, after a 120-degree right turn tighter
+## than the car turns: its left side 0.04 m onto the line; the bug was 1.5-2.2 m over)
+const OVER_TOL := 0.1
 const CLEAR_M := 0.05   ## m: the body this near something solid counts as touching it
 
 func _radius(path: PackedVector2Array) -> float:
@@ -286,4 +290,4 @@ func _case(p: Array, turn: String) -> Dictionary:
 	return {"node": n, "turn": turn, "into": String(cr_road.get("name", "")), "street_w": snappedf(float(cr_road["w"]), 0.1), "lane": snappedf(lane, 0.1),
 		"plan_r": snappedf(_radius(plan_near), 0.1), "car_r": snappedf(_radius(car), 0.1), "kmh_in_it": snappedf(v_in * 3.6, 1),
 		"plan_right_of_middle": [snappedf(plan_lat[0], 0.1), snappedf(plan_lat[1], 0.1)], "car_right_of_middle": [snappedf(car_lat[0], 0.1), snappedf(car_lat[1], 0.1)],
-		"car_off_plan": snappedf(stray, 0.1), "plan_kmh": snappedf(plan_v * 3.6, 1), "plan_points_within_15m": plan_pts, "plan_over_middle": plan_lat[0] < 0.9, "car_over_middle": car_lat[0] < 0.9, "body_near": touch}
+		"car_off_plan": snappedf(stray, 0.1), "plan_kmh": snappedf(plan_v * 3.6, 1), "plan_points_within_15m": plan_pts, "plan_over_middle": plan_lat[0] < 0.9, "car_over_middle": car_lat[0] < 0.9 - OVER_TOL, "car_left_side": snappedf(car_lat[0] - 0.9, 0.01), "body_near": touch}

@@ -4330,6 +4330,19 @@ checks Givatayim / Ashdod / test town 12 / 12 / 11, all traffic's; route set 10 
   the car is past the point first, 1.4 m clear). Routes 1, 2, 4, 8 after: arrived, no hits;
   route 4 stood 38 s in a queue on La Guardia (12.5 at a light there the run before; a queue,
   not this junction rule -- watch it).
+- **Sirkin's right turn (turn_width's one FAIL).** Givatayim's node 1978: a 120-degree right
+  turn off Gvulot into Sirkin, a 6 m street. `_lane_corner` wants AP_TURN_R (5.5 m) but the
+  points either side squeeze it to 3.9 m -- tighter than the car turns (~4.1 m) -- and
+  `_ap_curves` read the bend through points 5 m either side as 5-6 m round: planned at
+  17 km/h, the car came out 0.7 m off the plan, its left side 0.04 m onto the middle line.
+  Now `_ap_curves` takes the tighter of the 5 m and 2.5 m reads: 14 km/h there, the car
+  0.02 m onto the line; other corners unchanged (17-20 km/h). turn_width counts "over" past
+  OVER_TOL (0.1 m: the paint's own width) -- the bug it guards was 1.5-2.2 m over -- and prints
+  `car_left_side` (m past the line, - is short of it). Still open: the arc itself could start
+  further back when the street before the corner is straight past its last point.
+  Route set after (15): 15 of 15 arrived, 0 reds, 0 rescues, 0 off road, no hits at all.
+  Delft (11) stood 58 s in a queue on Westplantsoen (a bus, a taxi and an SUV ahead, all held
+  by the car in front; the run before: 24 + 19 s in the same queue) -- traffic, not autodrive.
 - **turn_width now also checks the body at corners**: either of its two circles within
   CLEAR_M (5 cm) of a post, wall or building within 25 m of the junction counts (`body_near`
   in each line, in the REGRESS line). Givatayim 10 turns, Ashdod 12: none. Givatayim's
