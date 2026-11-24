@@ -1547,6 +1547,48 @@ func _laundry_cols() -> Array:
 		_natural(Palette.col("friend").lerp(ink, 0.3), 0.45), _natural(Palette.col("accent").lerp(ink, 0.3), 0.45),
 		_natural(Palette.col("player").lerp(Palette.col("bg"), 0.5), 0.5), alt.lerp(Palette.col("bg"), 0.3)]
 
+## a satellite dish on a short mast with its stand, the dish facing +Z and up a little
+## (Israel's satellites are to the south-west: the caller turns it so), drawn pale grey
+func roof_dish_kit() -> ArrayMesh:
+	if _kits.has("dish"):
+		return _kits["dish"]
+	var b = g.new_buf()
+	var w := _tone("mark").lerp(_tone("metal"), 0.25)
+	_box(b, Vector3(0, 0.03, 0), Vector3(0.5, 0.06, 0.5), _tone("metal"))
+	_tube(b, Vector3(0, 0.05, 0), Vector3(0, 0.75, 0.05), 0.025, 0.025, _tone("rim"), 6)
+	var c := Vector3(0, 0.8, 0.12)
+	var tilt := Basis(Vector3.RIGHT, -0.45)
+	for i in range(10):   # the dish: a shallow cone of ten wedges
+		var a0 := TAU * i / 10.0
+		var a1 := TAU * (i + 1) / 10.0
+		var p0 := c + tilt * Vector3(cos(a0) * 0.38, sin(a0) * 0.38, 0.0)
+		var p1 := c + tilt * Vector3(cos(a1) * 0.38, sin(a1) * 0.38, 0.0)
+		var mid := c + tilt * Vector3(0, 0, -0.09)
+		var n := tilt * Vector3(0, 0, 1)
+		b.tri(mid, p0, p1, n, w)
+		b.tri(mid, p1, p0, -n, w.darkened(0.15))
+	_tube(b, c + tilt * Vector3(0, -0.3, 0.02), c + tilt * Vector3(0, -0.05, 0.42), 0.012, 0.012, _tone("rim"), 4)
+	_box(b, c + tilt * Vector3(0, -0.04, 0.44), Vector3(0.06, 0.06, 0.08), _tone("tyre"))   # the LNB
+	var am: ArrayMesh = _mesh(b)
+	_kits["dish"] = am
+	return am
+
+## an old TV aerial: a mast and a fishbone of rods along +Z, guy-less, as most roofs still have
+func roof_aerial_kit() -> ArrayMesh:
+	if _kits.has("aerial"):
+		return _kits["aerial"]
+	var b = g.new_buf()
+	var m := _tone("rim")
+	_tube(b, Vector3(0, 0, 0), Vector3(0, 2.6, 0), 0.02, 0.018, m, 5)
+	_tube(b, Vector3(0, 2.5, -0.7), Vector3(0, 2.5, 0.9), 0.01, 0.01, m, 4)
+	for i in range(7):
+		var z := -0.6 + 0.24 * i
+		var half := 0.45 - 0.04 * i
+		_tube(b, Vector3(-half, 2.5, z), Vector3(half, 2.5, z), 0.006, 0.006, m, 3)
+	var am: ArrayMesh = _mesh(b)
+	_kits["aerial"] = am
+	return am
+
 ## A washing rack under a window, the Israeli way: two arms out from the wall at the top
 ## (y = 0), four lines along it, and on them towels, shirts, trousers, a sheet, socks. Three
 ## arrangements (k).
@@ -1941,6 +1983,9 @@ func town_things() -> void:
 	var scooter_cols: Array = []
 	var signs: Array = []
 	var boards: Array = []
+	var posts_boxes: Array = []
+	var taps: Array = []
+	var bump_xf: Array = []
 	var arts: Array = [[], [], []]
 	var art_cols: Array = [[], [], []]
 	var hz := Palette.col("hazard")
@@ -2005,6 +2050,29 @@ func town_things() -> void:
 					art_cols[v].append(art_paint[int(_rnd(key + Vector2i(7, 7)) * 5.0) % 5])
 					g._add_post(p, 0.7)
 					_count["sculptures"] = int(_count.get("sculptures", 0)) + 1
+			"post_box":   # Israel Post's red box on its post, at the kerb (or where mapped, off the road)
+				var p: Vector2 = q + out * (hw + 0.5) if on_street else at
+				if _free(p, 0.2, 0.3, 0.5):
+					posts_boxes.append(Transform3D(Basis(Vector3.UP, atan2(-out.x, -out.y)), Vector3(p.x, _h(p) + (kh if on_street else 0.0), p.y)))
+					g._add_post(p, 0.25)
+			"drinking_water":   # a tap on a column, where mapped (parks, squares, the beach)
+				var p: Vector2 = at
+				if not g._off_road(p, 0.3) and on_street:
+					p = q + out * (hw + g.KERB_W + g.PAVE_W - 0.4)
+				if _free(p, 0.2, 0.3, 0.5):
+					taps.append(Transform3D(Basis(Vector3.UP, _rnd(key) * TAU), Vector3(p.x, g._walk_y(p), p.y)))
+					g._add_post(p, 0.2)
+			"bump", "table", "cushion":   # across the road at the mapped point, painted, not solid
+				if hit.is_empty() or at.distance_to(q) > hw + 1.5:
+					continue
+				var r2: Dictionary = g._roads[hit["road"]]
+				if FAST.has(r2["k"]):
+					continue
+				var w := float(r2["w"])
+				var deep := 3.0 if kind == "table" else 0.6
+				var y: float = g._walk_y(q)
+				bump_xf.append(Transform3D(Basis(Vector3.UP, atan2(-d.y, d.x)) * Basis.from_scale(Vector3(deep, 1.0, w)), Vector3(q.x, y, q.y)))
+				g.bumps.append([q, d, w, kind])
 			"bike_share":
 				if not on_street:
 					continue
@@ -2047,6 +2115,9 @@ func town_things() -> void:
 	await _place(_scooter_kit(), scooters, NEAR_SEEN * 1.2, "motorbike_bays", false, scooter_cols)
 	await _place(_taxi_sign_kit(), signs, NEAR_SEEN * 1.3, "taxi_signs")
 	await _place(_notice_kit(), boards, NEAR_SEEN, "notice_boards")
+	await _place(_post_box_kit(), posts_boxes, NEAR_SEEN, "post_boxes")
+	await _place(_tap_kit(), taps, NEAR_SEEN * 0.8, "drinking_taps")
+	await _place(_bump_kit(), bump_xf, SEEN * 0.5, "bumps")
 	for v in range(3):
 		await _place(_art_kit(v), arts[v], SEEN * 0.6, "sculptures_%d" % v, true, art_cols[v])
 
@@ -2114,8 +2185,49 @@ func street_extras() -> void:
 				continue
 			cages.append(Transform3D(Basis(Vector3.UP, atan2(o.x, o.y)), Vector3(p.x, _h(p) + kh, p.y)))
 			g._add_post(p, 0.45)
+	# the town's fountains (OSM's amenity=fountain): a round basin of water with a jet, where
+	# the map puts it if the ground there is clear (they stand in squares and parks)
+	var fountains: Array = []
+	var kf := 1.0 / float(g._city_data.get("scale", 10))
+	var all_pois: Array = g._city_data.get("pois", [])
+	for pi: int in g._tile_pois.get(g._tile, []):
+		var pp: Array = all_pois[pi]
+		if String(pp[2]) != "fountain":
+			continue
+		var at := Vector2(pp[0], pp[1]) * kf
+		if g._off_road(at, 2.6) and g._push_out(at, 2.4, false, false) == Vector2.ZERO and g._clear_of_posts(at, 2.0):
+			fountains.append(Transform3D(Basis(Vector3.UP, _rnd(pi) * TAU), Vector3(at.x, _h(at), at.y)))
+			g._add_post(at, 2.2)
+	await _place(_fountain_kit(), fountains, SEEN * 0.6, "fountains", true)
 	await _place(_escooter_kit(), scoots, NEAR_SEEN, "escooters", false, scoot_cols)
 	await _place(_gas_cage_kit(), cages, NEAR_SEEN, "gas_cages")
+
+## a fountain: a round stone basin 4 m across, its water, a pedestal and a bowl in the
+## middle, and the jet: a white column of spray falling back as a fringe
+func _fountain_kit() -> ArrayMesh:
+	if _kits.has("fountain"):
+		return _kits["fountain"]
+	var b = g.new_buf()
+	var stone: Color = _tone("metal").lerp(_tone("mark"), 0.55)
+	var water: Color = _tone("signblue").lerp(_tone("mark"), 0.35)
+	var spray: Color = _tone("mark")
+	var seg := 18
+	for i in range(seg):   # the basin's rim, in short blocks round the ring
+		var a := TAU * (i + 0.5) / seg
+		_box(b, Vector3(cos(a) * 2.0, 0.25, sin(a) * 2.0), Vector3(0.3, 0.5, 0.75), stone, Basis(Vector3.UP, -a))
+	for i in range(seg):   # the water's surface: a disc just under the rim
+		var a0 := TAU * i / seg
+		var a1 := TAU * (i + 1) / seg
+		b.tri(Vector3(0, 0.38, 0), Vector3(cos(a1) * 1.88, 0.38, sin(a1) * 1.88), Vector3(cos(a0) * 1.88, 0.38, sin(a0) * 1.88), Vector3.UP, water)
+	_tube(b, Vector3(0, 0.3, 0), Vector3(0, 1.0, 0), 0.22, 0.16, stone, 10)
+	_tube(b, Vector3(0, 1.0, 0), Vector3(0, 1.12, 0), 0.7, 0.75, stone, 14)
+	_tube(b, Vector3(0, 1.12, 0), Vector3(0, 2.4, 0), 0.06, 0.03, spray, 6)
+	for i in range(10):   # the spray falling back into the bowl
+		var a := TAU * i / 10.0
+		_tube(b, Vector3(0, 2.35, 0), Vector3(cos(a) * 0.65, 1.15, sin(a) * 0.65), 0.03, 0.015, spray, 4)
+	var am: ArrayMesh = _mesh(b)
+	_kits["fountain"] = am
+	return am
 
 ## a rental e-scooter facing +Z, on the ground: a dark deck and small wheels, its stem and
 ## the box on it in the firm's colour (the copy's: drawn white), grips dark
@@ -2163,6 +2275,56 @@ func _gas_cage_kit() -> ArrayMesh:
 	_box(b, Vector3(0.3, 0.75, -0.235), Vector3(0.05, 0.08, 0.02), Palette.col("warn"))   # the padlock
 	var am: ArrayMesh = _mesh(b)
 	_kits["gascage"] = am
+	return am
+
+## Israel Post's box: a red box with a rounded top on a grey post, its slot and the white
+## band of its sign on the front (-Z)
+func _post_box_kit() -> ArrayMesh:
+	if _kits.has("postbox"):
+		return _kits["postbox"]
+	var b = g.new_buf()
+	var red: Color = g._real_col("red")
+	_tube(b, Vector3(0, 0, 0), Vector3(0, 0.75, 0), 0.05, 0.05, _tone("rim"), 6)
+	_box(b, Vector3(0, 1.05, 0), Vector3(0.42, 0.6, 0.32), red)
+	_tube(b, Vector3(-0.21, 1.35, 0), Vector3(0.21, 1.35, 0), 0.16, 0.16, red, 8)
+	_box(b, Vector3(0, 1.2, -0.165), Vector3(0.24, 0.03, 0.01), _tone("tyre"))     # the slot
+	_box(b, Vector3(0, 1.0, -0.165), Vector3(0.36, 0.1, 0.01), _tone("mark"))     # the sign's band
+	var am: ArrayMesh = _mesh(b)
+	_kits["postbox"] = am
+	return am
+
+## a drinking tap: a stone column, a steel basin on top and its spout
+func _tap_kit() -> ArrayMesh:
+	if _kits.has("tap"):
+		return _kits["tap"]
+	var b = g.new_buf()
+	var stone: Color = _tone("metal").lerp(_tone("mark"), 0.5)
+	_box(b, Vector3(0, 0.45, 0), Vector3(0.3, 0.9, 0.3), stone)
+	_tube(b, Vector3(0, 0.9, 0), Vector3(0, 0.98, 0), 0.24, 0.26, _tone("rim"), 10)
+	_tube(b, Vector3(0, 0.95, -0.12), Vector3(0, 1.12, -0.1), 0.02, 0.02, _tone("rim"), 5)
+	_tube(b, Vector3(0, 1.12, -0.1), Vector3(0, 1.1, 0.02), 0.02, 0.015, _tone("rim"), 5)
+	var am: ArrayMesh = _mesh(b)
+	_kits["tap"] = am
+	return am
+
+## a speed bump: a low rounded hump 1 m deep (local X) and 1 m across the road (local Z: the
+## copy's scale stretches it to the road's width, its depth to a table's), in yellow and
+## black stripes, its top 0.08 m up
+func _bump_kit() -> ArrayMesh:
+	if _kits.has("bump"):
+		return _kits["bump"]
+	var b = g.new_buf()
+	var yel: Color = g._real_col("yellow")
+	var blk: Color = _tone("tyre")
+	var n := 8
+	for i in range(n):
+		var z0 := -0.5 + float(i) / n
+		var col: Color = yel if i % 2 == 0 else blk
+		_box(b, Vector3(0, 0.04, z0 + 0.5 / n), Vector3(0.6, 0.08, 1.0 / n), col)
+		_box(b, Vector3(-0.38, 0.02, z0 + 0.5 / n), Vector3(0.16, 0.04, 1.0 / n), col)
+		_box(b, Vector3(0.38, 0.02, z0 + 0.5 / n), Vector3(0.16, 0.04, 1.0 / n), col)
+	var am: ArrayMesh = _mesh(b)
+	_kits["bump"] = am
 	return am
 
 ## a bike-share dock: a short grey post, the lock's head on it, along local X

@@ -815,6 +815,28 @@ func _clear_back(c: Car, j: int, n: int) -> float:
 		need = maxf(need, (float(r["w"]) * 0.5 + 0.5 + hw * absf(in_dir.dot(u))) / sn)
 	return minf(need, _node_r[n] * 2.5 + 2.0)
 
+## is p inside the junction that lit point n is one corner of: the lit points within
+## BOX_M of n (a divided road crossing another is four, 10-20 m apart) and p within their
+## spread of their middle; false for a junction lit at one point
+const BOX_M := 25.0
+func _player_in_box(n: int, p: Vector2) -> bool:
+	if not g._sig_set.has(n):
+		return false
+	var at: Vector2 = g._nodes[n]
+	var pts: Array = []
+	var mid := Vector2.ZERO
+	for o: int in g._near(g._sig_hash, at, BOX_M, g.SEG_CELL):
+		if (g._nodes[o] as Vector2).distance_to(at) < BOX_M:
+			pts.append(g._nodes[o])
+			mid += g._nodes[o]
+	if pts.size() < 2:
+		return false
+	mid /= pts.size()
+	var spread := 0.0
+	for q: Vector2 in pts:
+		spread = maxf(spread, q.distance_to(mid))
+	return p.distance_to(mid) < spread + 2.0
+
 func _junction_ahead(c: Car, i: int, dt: float) -> float:
 	for j in range(c.k + 1, c.pts.size() - 1):
 		var dist := c.cum[j] - c.s
@@ -854,6 +876,19 @@ func _junction_ahead(c: Car, i: int, dt: float) -> float:
 			var can_stop: bool = not g._auto or c.v * c.v <= 2.0 * BRAKE * maxf(edge - 0.3, 0.0) + 2.0
 			if pd < _node_r[n] + 30.0 and pv > 1.5 and pfwd.dot(node_at - me_at) > 0.0 \
 					and pd / pv < my_eta + 1.5 and can_stop:
+				return _hold(c, dt, stop)
+			# the player inside a junction of several lit points (a divided road crossing
+			# another), clearing it toward this point: it goes first, as a car in it does, my
+			# green or not. Route 2 (Givatayim, Horodetsky across HaShalom, 24 Nov): autodrive
+			# held behind a car in the middle of the junction, then going on through it at
+			# 30 km/h, and an SUV coming up HaShalom on its new green at 39 km/h -- too fast to
+			# stop for it "comfortably", so it went on, and they met.
+			# (moving: one standing at its own red between the two carriageways waits, and held
+			# the cross street's green for nothing)
+			# (whenever it is: not "due within 1.5 s of me" -- setting off from standing behind
+			# a car there, at 1-3 m/s it read as due in 7-20 s, and the car came on;
+			# tests/box_clear.gd)
+			if pv > 1.0 and pfwd.dot(node_at - me_at) > 0.0 and pd < BOX_M and _player_in_box(n, me_at):
 				return _hold(c, dt, stop)
 		for oi in range(cars.size()):
 			if oi == i:
