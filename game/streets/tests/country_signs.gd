@@ -84,6 +84,28 @@ func _run() -> void:
 			var dir: Vector2 = lm[2]
 			await _shoot("speed_%d" % sp, lm[0], -dir, 12.0, 2.35)
 	counts["speed"] = sp
+	# a junction with lights, from a driver's seat at its line (Canada: the heads hung over the
+	# far side as well as the near pole), and the zone boards (furniture.gd's)
+	var lit := 0
+	for ls: Array in g._light_spots:
+		if lit >= shots:
+			break
+		var hp: Vector3 = ls[0]
+		var p := Vector2(hp.x, hp.z)
+		var dir: Vector2 = -(ls[1] as Vector2)   # (the way the traffic it faces goes)
+		if p.distance_to(g._pos) > 700.0 or posmod(int(p.x * 7.0), 5) != 0:
+			continue
+		lit += 1
+		var from := p - dir * 12.0 - Vector2(-dir.y, dir.x) * 2.5
+		g.look_from(Vector3(from.x, g._h(from) + 1.4, from.y), Vector3(p.x + dir.x * 10.0, g._h(p) + 3.6, p.y + dir.y * 10.0))
+		await _snap("lights_%d" % lit)
+	counts["mast_arms"] = int(g._dressing.get("signal_mast_arms", 0))
+	var zb: Array = g._furn.where.get("signs_zone30", []) if "_furn" in g and g._furn != null else []
+	counts["zone30"] = zb.size()
+	for k in range(mini(shots, zb.size())):
+		var xf: Transform3D = zb[k * maxi(1, zb.size() / maxi(shots, 1))]
+		var f3 := (xf.basis * Vector3.BACK).normalized()
+		await _shoot("zone30_%d" % (k + 1), Vector2(xf.origin.x, xf.origin.z), Vector2(f3.x, f3.z).normalized(), 7.0, 2.3)
 	# words painted on the road (stop, give way, school), read from behind them
 	var words := {}
 	for lb in g.world.get_children():
