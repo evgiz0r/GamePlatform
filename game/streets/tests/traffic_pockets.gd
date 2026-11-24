@@ -124,4 +124,8 @@ func _run() -> void:
 	if auto:
 		line += "; autodrive turned round %d times, %.0f s of %.0f in an estate, %.0f m driven" % [my_turns, in_pocket_s, secs, g._odo]
 	print(line)
+	# (before the fix: 9.2 a minute here; after: 0.4-1.6)
+	var per_min := turns * 60.0 / secs
+	print("REGRESS traffic_pockets: %s -- traffic turning round within %.0f m of a cul-de-sac estate %.1f a minute (good under 4.5, it reads 0.4-2.5; the bug: 9.2)" % [
+		"PASS" if per_min < 4.5 else "FAIL", near, per_min])
 	quit(0)

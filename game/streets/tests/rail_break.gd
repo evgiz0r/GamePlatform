@@ -47,6 +47,7 @@ func _run() -> void:
 	var kmh := float(OS.get_environment("KMH")) if OS.get_environment("KMH") != "" else 18.0
 	var used := {}
 	var done := {}
+	var ok := {}   # run -> as it should be (through and down; autodrive stopped)
 	# (each kind of run tried at up to four panels: the car parks along the railings fill at
 	# random, and a parked car in the way pushed the car back before it reached the railing)
 	for run: int in [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2]:
@@ -128,6 +129,7 @@ func _run() -> void:
 			at = mid + (b - a).normalized() * 30.0
 			continue
 		done[run] = true
+		ok[run] = (down > 0 and past > 2.0) if run < 2 else (down == 0 and past < 0.0)
 		print("RAIL BREAK run %d (%s, %.0f km/h): panel %d at (%.1f, %.1f), %.1f m long; panels down %d, the car %.1f m past its line after %.1f s" % [
 			run, ["by hand", "racer", "autodrive"][run], v * 3.6, best, mid.x, mid.y, a.distance_to(b), (g._rails_down as Array).size() - down0, past, t])
 		g._auto = false
@@ -137,4 +139,6 @@ func _run() -> void:
 			await physics_frame
 		await _snap("rail_%d_after" % run, mid, mid + n * 9.0 + (b - a).normalized() * 3.0)
 		at = mid + (b - a).normalized() * 30.0
+	print("REGRESS rail_break: %s -- through a railing, panels falling: by hand %s, racer at a crawl %s; plain autodrive stopped at it %s (the bug: racer held at a railing under 9 km/h for a minute)" % [
+		"PASS" if ok.get(0, false) and ok.get(1, false) and ok.get(2, false) else "FAIL", str(ok.get(0, false)), str(ok.get(1, false)), str(ok.get(2, false))])
 	quit(0)

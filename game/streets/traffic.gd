@@ -436,6 +436,15 @@ func tick(dt: float) -> void:
 		c.dip = lerpf(c.dip, clampf(-c.acc * 0.011, -0.03, 0.06), minf(1.0, dt * 6.0))
 		c.roll = lerpf(c.roll, clampf(turn * c.v * 0.012, -0.06, 0.06), minf(1.0, dt * 5.0))
 		c.braking = clampf(c.braking + (dt * 8.0 if c.v < was - 0.01 or c.v < 0.2 else -dt * 4.0), 0.0, 1.0)
+		# touching the player's car and closing on it: it stops there. It used to drive on and
+		# _push_out moved the player instead -- a traffic SUV at 2 m/s shoved autodrive, standing
+		# in a junction's tangle, 8 m sideways into the posts (route 7, Rabbi Meir Baal HaNes);
+		# the test town's "traffic shoves your standing car", 3 a run
+		if c.v > 0.0 and _into_player(c, dt):
+			c.v = 0.0
+			c.acc = 0.0
+			c.why = "player"
+			c.blocker = -1
 		c.still = c.still + dt if c.v < 0.3 else 0.0
 		var before := c.s
 		c.s = minf(c.s + c.v * dt, c.cum[c.cum.size() - 1])
@@ -460,6 +469,27 @@ func tick(dt: float) -> void:
 			if on & ~c.cover_on:
 				c.dip -= 0.012
 			c.cover_on = on
+
+## car c's body touching the player's car (its two circles, the game's _collide) and this
+## tick's step bringing them closer
+func _into_player(c: Car, dt: float) -> bool:
+	if g._walking or not _level(c, float(g._y), _me_lift):
+		return false
+	var me: Vector2 = g._pos
+	if c.pos.distance_squared_to(me) > 100.0:
+		return false
+	var pf: Vector2 = g._fwd()
+	var fwd := Vector2(sin(c.yaw), cos(c.yaw))
+	var body: Array = BODY.get(c.kind, [[1.25, -1.25], 0.85])
+	var step := fwd * c.v * dt
+	for off: float in body[0]:
+		var q := c.pos + fwd * off
+		for po: float in [g.CAR_OFF, -g.CAR_OFF]:
+			var p := me + pf * po
+			var need := float(body[1]) + float(g.CAR_R) + 0.05
+			if q.distance_to(p) < need and (q + step).distance_to(p) < q.distance_to(p):
+				return true
+	return false
 
 ## time spent in one part of the tick, for the game's frame profiler (sub-parts of "traffic":
 ## a name with a colon is not added to the frame's script total again)

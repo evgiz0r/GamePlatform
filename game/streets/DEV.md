@@ -4259,6 +4259,17 @@ checks Givatayim / Ashdod / test town 12 / 12 / 11, all traffic's; route set 10 
   `tests/rail_break.gd`: by hand at 18 km/h, 1-2 panels down, through; racer at 3 km/h, 2 down,
   through; plain autodrive at 3 km/h stops at it. (Its shots do not show the spot yet: the
   game's camera wins over the test's.)
+- **Traffic touching your standing car stops** (24 Nov; route 7's open item: a traffic SUV at
+  2 m/s shoved autodrive 8 m sideways into posts in a junction's tangle). traffic.gd
+  `_into_player`: a car whose body circles touch the player's and whose step this tick closes
+  on it stands (held by "player") instead of driving on while `_push_out` moved the player.
+  A safety net under the lead-car and junction logic, which normally stop it short.
+  `tests/traffic_shove.gd` (your car standing in its lane, 0.8 and 1.6 m over, askew 35 deg;
+  a car sent from 35 m behind): 0.00 m moved in all 5, before and after -- the straight
+  approach was already right; the shove needs a junction's turn, which this test does not
+  stage yet (open).
+- **Nightly**: `validate.sh REGRESS=1` now also runs traffic_pockets, people_near (3 trips)
+  and rail_break, each with a REGRESS line; 1-2 min each here (64, 73, 122 s).
 - **Pulling in at the kerb measured from the wrong lane.** A bus at a stop and a delivery van
   take "the room to the kerb" from `_lane(r)` -- the lane traffic drives by default, the
   middle one of three -- not the lane they are in: a bus in Sderot Herzl's kerb lane got the

@@ -64,6 +64,12 @@ if [ -n "${REGRESS:-}" ]; then
 	# (object permanence: people and cars popping, sliding or on a street in view; 90 s of
 	# autodrive in Givatayim, ~5 min headless)
 	EXTRA="STREETS_BUILD_ALL=1" run re_people_pops 1 1 people_pops 900
+	# (driving, 24 Nov, each 1-2 min here: traffic turning round in cul-de-sac estates, 120 s at Bedford's
+	# Meadowview; autodrive and the people stepping into its lane, 3 trips down Hollyhock;
+	# racer through a railing and the panel falling)
+	EXTRA="STREETS_BUILD_ALL=1 SECS=120" run re_traffic_pockets 2 1 traffic_pockets 900
+	EXTRA="STREETS_BUILD_ALL=1 TRIPS=3" run re_people_near 2 1 people_near 900
+	EXTRA="STREETS_BUILD_ALL=1" run re_rail_break 25 1 rail_break 900
 fi
 echo
 echo "=== STREETS VALIDATION ($(git rev-parse --short HEAD)) ==="
