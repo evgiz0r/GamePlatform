@@ -5394,3 +5394,11 @@ within 1.2 m behind it. Both have posts.
   spooked by traffic on the road only when it is your car; the crows look like grey pigeons
   scaled up (no separate black head and wings in the paint); gas cages only on streets
   with a wall at the pavement's back.
+- **Potholes and trenches** (24 Nov, TONE_SHADER's asphalt, within 140 m, roads with patches):
+  beside the patched 5 m squares, a filled trench (a 0.7 m strip of newer asphalt 32 m long,
+  along x or z) in one 40 m square in six, and a pothole (a ragged dark hole 0.6-1.4 m across,
+  a lighter broken lip) in one 7 m square in 33, within 90 m. Shader only: nothing to draw
+  or hold. Seen by tinting `hole` red at a 40% rate (tests/small_life.gd's "asphalt" shot);
+  a CPU cannot find the holes for a staged close-up -- the float32 dot's rounding times
+  43758 gives another hash.
+
