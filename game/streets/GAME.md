@@ -195,7 +195,9 @@ yours, from where it stood (it leaves the traffic). Parked cars cannot be taken 
 (22 Nov 2026.) On the screen only what you use while driving, grouped by what it is for:
 
 - **Along the bottom, where you are going:** "autodrive" and, while it drives, its style
-  beside it ("racer", "rules" or "green wave": tap for the next), and "go to…".
+  beside it ("racer", "rules" or "green wave": tap for the next), "go to…", and "pause"
+  ("lets put pause on main screen"): a tap holds the city still, the button lit "PAUSED",
+  and another lets it go on.
 - **On the right:** "more", "–", the camera ("chase" or "seat": tap to swap), "walk" under it ("get in" on foot), and "look" while you drive yourself.
 - **On the left, above the map:** the frames a second ("14 fps"), live; a tap opens the perf
   view right under it, another closes it ("lets add a quick performance button in main
@@ -615,7 +617,7 @@ screen outlined, and an arrow for you (on its edge if you are off it). Trees, pa
 the rest are drawn all the way across the view while it is up, so nothing pops in as you
 move it.
 
-**Pause.** "pause" (K) holds the city still with the view where it is; "resume" lets it go
+**Pause.** "pause" (K, the bottom row, or the drawer) holds the city still with the view where it is; "resume" lets it go
 on. Resumed while zoomed out, the city runs under you and the view follows the car, which
 still drives (keys or the stick). The shell's own pause (its menu) is still there too.
 

@@ -819,6 +819,9 @@ what) drawn by `_draw_more` and tapped by `_more_tap`; a row is one line there.
   drive races at night with the chip saying so.
 - Time of day by choice: `_set_time_of_day` steps `_next_time` round (it only goes day,
   evening, night); `_tod_busy` keeps two taps from interleaving its awaits.
+- Pause is on the main screen too (`PAUSE_BTN`, bottom row after "go to…", key K; the user,
+  23 Nov: "lets put pause on main screen"): "pause", lit "PAUSED" while held; the same
+  `_toggle_pause` as the drawer's row and the middle "resume". Folded away with the rest.
 - The map button (`MAP_BTN`, key M, `_toggle_map`) is the zoom up to `MAP_ZOOM` (0.86) and
   back: everything from above (paused, `_zoom_pan`, pinch, the long press) is the zoom's.
   Its label reads `_zoom > 0`, not `_zoomed()`: that stays true for the second the view
@@ -828,7 +831,7 @@ what) drawn by `_draw_more` and tapped by `_more_tap`; a row is one line there.
 - `tests/hud_layout.gd` (level 4, about a minute) taps every button through `_hud_tap`,
   checks what it did, and checks in every state that no shown button leaves the screen or
   overlaps another, the minimap, the speed, the credit, the stick's ring or the load line.
-  Good: 0 failed, 32 checks (the map: up, paused, dragged, the landing swapped, back down). Its shots (`hud_*.png`) are the quickest look at the HUD.
+  Good: 0 failed, 37 checks (the pause button: car and every traffic car held still, going on after; the map: up, paused, dragged, the landing swapped, back down). Its shots (`hud_*.png`) are the quickest look at the HUD.
 
 ## Tests
 
@@ -4346,6 +4349,69 @@ way out off the road or a post; give `_ap_mount_by` and the queue pass another l
 18 km/h just after a queue pass on Katznelson -- racer is not careful (as before: `racer.gd`
 counted 0-2 bumps a drive); (c) the test's `probe.enabled` was missing before 22 Nov evening,
 so crash counts from it before then were 0 by construction.
+
+### Racer stalls and bumps (23 Nov 2026)
+
+The user picked "1 and 2" off the list: the Bialik stall and the low bumps. `racer_drive.gd`
+grew the tools that found each (keep them): on a crash, what it hit, where that stood from the
+plan each 0.25 s before and how far the car was off the plan, its road and kerb (`PLAN=1`: the
+plan 3 s before); for a car hit, its heading against ours and its own path; stood 8 s, "the
+jam" (who holds the car in front, `c.blocker`, to its front) or the people in the way; and
+`MISSED`, any car within 1.5 m of the plan 8-60 m ahead going our way that is not the car in
+front. `tests/spot_at.gd AT=x,z R=m POSTS_FROM=1` lists the roads at a spot and every post within R m, who put it up and how far off the asphalt (`posts_at.gd` does the posts for several spots).
+
+What they showed, and what changed:
+1. **Behind a motorbike, 40 s:** every way out a car's width (2.9 m from its middle, 3.2 m out
+   at least) and Bialik narrow. Now clearance is the car in front's own half width
+   (`traffic.CORNERS`), and something narrow gets a "just by" way out first, at `RACE_BY_V`.
+2. **Ways out through the car being passed:** started 2.5 m behind one, the bend's first
+   metres went through its back (4 and 34 km/h). Every other car was checked, that one not;
+   now its body, where it will be, too ("its back at n m" in the whys).
+3. **The plan never kept clear of posts.** The steering said "the planned lane is clear";
+   lanes ran 0.5-0.9 m from posts, the body needing ~1.1. `_ap_keep_clear` every
+   `AP_CLEAR_EVERY` s eases each metre of the next 50 m + 2 s of speed off anything solid by
+   the body + `AP_CLEAR_PAD` (0.5; 0.3 left a tree at the kerb 0.1 m clear at 64 km/h), points
+   moved at most 1.4 m. 5-150 points a drive (`_ap_cleared`). Applies to all autodrive.
+4. **`_ap_turn_ahead` measured from the plan's first point**, up to 70 m behind the car on a
+   long straight -- the turn 15 m ahead unseen, so every "turn ahead" refusal was half blind.
+   The same family as 22 Nov's densify bug (*distances along the plan from the car, not from
+   its first point*; `_ap_len`, `_ap_lead`'s braking and lead_on already did). It was the
+   Bialik corner knocks: a pavement pass round a standing motorbike came down into the turn
+   into Kirinitsi over its corner posts (4-10 km/h, three drives in four). Also now: a
+   pavement pass is refused when a turn comes before it is `MOUNT_DOWN` m back on the road.
+5. **Standoffs:** racer nose to nose with a car waiting for *it* (`why == "player"`); that
+   car's edging by retried every 3.5 s and restarted its own wait each time, so the 9 s that
+   sends it elsewhere never came (25-74 s). And behind a car at a light, too close to swing
+   out ("its back" every way). `_race_nose_t` counts the stand behind the same still car
+   (whatever it says it waits for at the moment -- a count reset on each change never got to
+   4 s); at `RACE_GIVE_S` it backs off 1.6 s (`_ap_back`) and plans again; again for the same
+   car after 12 s. Probe `racer_gave_way`.
+6. **A car turning into the lane taken for crossing** (`_ap_crossing_clears`): a sedan
+   turning into Herzl, on the plan 20-40 m ahead, was no car in front until 8 m (30 km/h).
+   Now a car whose own path (`_car_path_at`) runs along the plan, our way, 4-14 m on, is not
+   crossing. All autodrive.
+7. **The bus pass checked posts but not the road:** three in 3 s before Herzl's turn into
+   Klausner left the plan cutting the corner 2.6 m over the kerb into a post (22 km/h).
+8. **`lead_on` counted a car coming at us only within `LANE_W`** (1.5 m), a car going our way
+   by the bodies' reach: a motorbike standing in racer's lane facing it, 1.47 m off the line,
+   was seen at 8 m, met at 55 km/h. Now by the bodies both ways.
+
+Results, Katznelson -> Rambam (`racer_drive`, 150 s): before, stood 1% and 31% (crashes 4
+and 1); last three after, stood 0, 12, 7% (crashes 2, 1, 0). Two of the 20-odd drives in
+between passed outright (148 s, stood 0, no crash). `racer.gd` PASS (racer 129-146 s, 0-1
+touches at 6-12 km/h, as before); `racer_moves` two-lane 3 of 3 for the first time
+(Poalei HaRakevet: 2 of 3 runs since), pavement as before; `racer_queue` PASS; `drive_bumps`
+Givatayim and Tel Aviv 0 hits (one run had a 0.5 m/s touch after a three-point turn on
+Jabotinsky, not seen again); `auto_stands` PASS.
+
+Open, all on Kirinitsi east of Bialik:
+- the motorbike (car 6 in those drives) standing in the racer's lane facing it, waiting for
+  it, still met at 44 km/h after fix 8 -- why it stands there, in which lane racer is (a pass's
+  bend into the oncoming lanes?), not looked at yet; drives 27, 29 and 32 all meet it at 99.5 s;
+- a tree at the kerb (593, -1008), r 0.85, touched at 7-11 km/h, then a slow car just past it
+  at 15 km/h -- the eased plan clears it, the car at 64 km/h swings 0.2-0.6 m off the plan;
+- the drive is ~10 s slower than before (148 against 135-145 s, not "there" in 150 s): passes
+  near turns are now refused for real (fix 4).
 
 ## The opening; models made with Blender (22 Nov 2026)
 

@@ -492,6 +492,16 @@ between the points. Two traps cost a round each:
   measure "metres ahead" from the car's projection onto the plan, not from the plan's first
   point -- which is the start of the current stretch and can be 40 m behind. Both together
   had autodrive "pass" a van with a bend that landed behind it, then stand there.
+  Grep for every loop that sums the plan's lengths from index 0: the same mistake in a
+  "is there a turn ahead?" test hid every turn on long straights, and each move gated on it
+  (pass here, not before a turn) went ahead into the corner.
+- **Nothing makes a plan clear of posts unless something does.** A lane line drawn from OSM
+  runs where it runs; a post 0.8 m from it is one the car's body (two circles, ~1 m each
+  side) hits. Ease the plan's next stretch off anything solid by the body plus a margin, as a
+  pass over it every fraction of a second (plans grow at their far end as the car drives),
+  and check every bend of the plan for the road as well as for posts. Then a crash log that
+  prints the hit thing's distance from the plan *and* the car's distance from the plan
+  says at once which of the two is at fault.
 - **One rule for "in my way", or the strict one stands while the others drive past.**
   Traffic counted a car in its way by its middle, the player's AI by its body plus a
   margin: a delivery van standing at the kerb, its middle 2.5 m off the lane, was passed by
