@@ -85,6 +85,10 @@ Godot top view and keeps the map from coming out mirrored). Format, version 1:
              kind an index into thing_kinds ("bike_share" a docking station, "taxi_stand",
              "motorbikes" a motorbike parking bay of n places, "sculpture", "notice_board",
              "hydrant"); n the places a bay has, else 0
+  street_points [x, z, kind, ...]   small things OSM maps as points (tools/osm_city.py
+             --street-points, added to a baked file): kind an index into street_point_kinds
+             ("post_box", "drinking_water", "bump" a speed bump or hump, "table" a raised
+             table, "cushion" speed cushions)
   pois rows with a 6th field (the town layer's id) are licensed businesses from the town's
              map with no OSM place within 8 m: the kind as OSM's, the name the word for it
   stops      [[x, z, name], ...]   bus stops
@@ -2477,6 +2481,61 @@ def add_surveys(path, offline):
     log(f"wrote {path} ({os.path.getsize(path) / 1e6:.1f} MB)")
 
 
+# small things OSM maps as points, fetched into a baked file on their own (--street-points):
+# the tag, its value(s) and the kind they are given
+STREET_POINTS = [("amenity", "post_box", "post_box"), ("amenity", "drinking_water", "drinking_water"),
+                 ("traffic_calming", "bump", "bump"), ("traffic_calming", "hump", "bump"),
+                 ("traffic_calming", "yes", "bump"), ("traffic_calming", "table", "table"),
+                 ("traffic_calming", "cushion", "cushion")]
+
+
+def street_points(path, offline):
+    """Post boxes, drinking taps and speed bumps in a baked city's box, as `street_points`
+    (the rest of the file left as it is). The raw answer is kept in cities/data/ (not
+    shipped) so --offline can redo it."""
+    with open(path, encoding="utf-8") as f:
+        city = json.load(f)
+    P = Proj(*city["origin"])
+    x0, z0, x1, z1 = city["bounds"]
+    s_, w_, n_, e_ = (city["origin"][0] - z1 / P.my, city["origin"][1] + x0 / P.mx,
+                      city["origin"][0] - z0 / P.my, city["origin"][1] + x1 / P.mx)
+    slug = os.path.splitext(os.path.basename(path))[0]
+    raw_path = os.path.join(os.path.dirname(os.path.abspath(path)), "data", f"osm_points_{slug}.json")
+    if offline:
+        with open(raw_path, encoding="utf-8") as f:
+            raw = json.load(f)
+    else:
+        bb = f"({s_:.6f},{w_:.6f},{n_:.6f},{e_:.6f})"
+        parts = "".join(f'node["{k}"="{v}"]{bb};way["{k}"="{v}"]{bb};' for k, v, _ in STREET_POINTS)
+        raw = overpass(f"[out:json][timeout:180];({parts});out center;")
+        if raw is None:
+            log("street points: no server answered; file left as it was")
+            return
+        os.makedirs(os.path.dirname(raw_path), exist_ok=True)
+        with open(raw_path, "w", encoding="utf-8") as f:
+            json.dump(raw, f)
+    kinds, pts, counts = [], [], {}
+    for el in raw.get("elements", []):
+        tags = el.get("tags", {})
+        kind = next((kd for k, v, kd in STREET_POINTS if tags.get(k) == v), None)
+        lat = el.get("lat", (el.get("center") or {}).get("lat"))
+        lon = el.get("lon", (el.get("center") or {}).get("lon"))
+        if kind is None or lat is None:
+            continue
+        x, z = P(lat, lon)
+        if not (x0 <= x <= x1 and z0 <= z <= z1):
+            continue
+        if kind not in kinds:
+            kinds.append(kind)
+        pts += [q(x), q(z), kinds.index(kind)]
+        counts[kind] = counts.get(kind, 0) + 1
+    city["street_points"], city["street_point_kinds"] = pts, kinds
+    log(f"street points: {counts}")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(city, f, ensure_ascii=False, separators=(",", ":"))
+    log(f"wrote {path} ({os.path.getsize(path) / 1e6:.1f} MB)")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--place", help="administrative area name as on OSM (any language)")
@@ -2504,12 +2563,19 @@ def main():
     ap.add_argument("--add-surveys", metavar="CITY_FILE",
                     help="only put the town surveys' heights on a city file baked already "
                          "(no OSM download; the file is rewritten in place)")
+    ap.add_argument("--street-points", metavar="CITY_FILE", nargs="+",
+                    help="only fetch OSM's post boxes, drinking taps and speed bumps into city "
+                         "files baked already (the rest of each file left as it is)")
     ap.add_argument("--bare-ground", action="store_true",
                     help="take buildings out of the ground heights (a city of towers comes "
                          "out of the terrain tiles as hills)")
     ap.add_argument("--print-query", action="store_true",
                     help="print a browser link that downloads the raw data, for --from-file")
     args = ap.parse_args()
+    if args.street_points:
+        for path in args.street_points:
+            street_points(path, args.offline)
+        return
     if args.add_surveys:
         add_surveys(args.add_surveys, args.offline)
         return
