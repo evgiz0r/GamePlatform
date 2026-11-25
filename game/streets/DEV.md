@@ -5553,6 +5553,20 @@ within 1.2 m behind it. Both have posts.
   the trunks were made had its near side culled and showed the inside of its far side, lit
   from behind (dark on the sunny side). Now clockwise. The scan's other finds are small (a
   parked car's rear underside, a garden wall's far top) and left for now.
+- **Interactions** (25 Nov, "more realistic interactions"): the horn (`_on_horn`) now also
+  turns the people standing about within HORN_LOOK 18 m to look at you for 2-3 s (`look_t`,
+  turned back in `_still_startle`; tally horn_looks) and sends up every flock within 30 m (20
+  for the wire and roof ones: birds.gd `horn`). Only while the horn sounds: muted, nothing
+  (the horn's own gate). A traffic car held up by you for TOOT_AFTER 3 s while you stand
+  toots twice (`traffic_toot`, a made 3D sound; 12 s before it may again) -- not when a red
+  light holds it (`_light_ahead` INF only). On foot within DOG_BARK_AT 3 m of a dog on a lead,
+  the even-numbered dogs bark at you (dog.wav at the dog, 15 s apart).
+- **Hooded crows** (25 Nov): three meshes of their own (a black head, wings, tail and beak on
+  the grey body: the copy's colour tints the body), six draws in all; `_show` touches only
+  the bird's own kind's three.
+- **Trolleys** (25 Nov, furniture.gd street_extras, `_trolley_kit`): by each OSM supermarket, a
+  row of 3-6 nested along the front at the first clear spot out of the building toward its
+  street, and one in three a stray 8-24 m down the pavement. Tel Aviv ~570, Givatayim ~100.
 - **Open**: birds never perch on lamp tops; a flock
   spooked by traffic on the road only when it is your car; the crows look like grey pigeons
   scaled up (no separate black head and wings in the paint); gas cages only on streets
