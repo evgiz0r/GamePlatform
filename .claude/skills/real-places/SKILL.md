@@ -247,6 +247,15 @@ the parked cars, which stand a third in the road).
   runs right under, past both its edges, with no `min_height` (a mall's bridge over its
   street) must then be lifted -- a storey and a half, columns out of the lanes -- or it
   stands on the street as a wall: kept whole and left on the ground, it blocked one.
+- **Heights: even the roads out as one network, and blend where roads are close.** A height
+  grid of 8-46 m points under roads laid on it gives facets, and a divided road's two halves
+  each take the hillside under them -- a metre or more apart -- so the grid points between
+  them flip from one half to the other: crests and dips along both and twisted junctions. What
+  worked (`tools/level_roads.py`): sample every road's centre line, a junction one shared
+  sample, smooth the heights over that network; give a grid point near several roads a
+  distance-weighted blend of them. What did not: smoothing road by road and pinning junctions
+  to the ground there (the pins put the bumps back), a plane per junction (kinks at its edge),
+  linking side-by-side roads into the network (the smoothing spread for kilometres).
 - **A divided road is two one-way roads**, each guessed at the full class width, so the
   halves overlap and each one's kerb and pavement run down the other's lanes. Find each
   half's partner (one-way the other way, on its left, within ~40 m along most of its

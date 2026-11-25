@@ -4422,6 +4422,29 @@ checks Givatayim / Ashdod / test town 12 / 12 / 11, all traffic's; route set 10 
   - Full set after the first three: 15 of 15 arrived, 14 clean (Monaco's sign, then fixed).
   - Open: autodrive and three cars on Keren Kayemet stood 60 s at (-275, -551), Givatayim,
     in A day in Givatayim (level 28, ~110 s) -- not yet staged.
+- **Roads even along their length, 25 Nov** (Evgeni: "many roads seem broken... the road is
+  not flat and causes weird driving, and some intersections are weird"). The height grid is a
+  surface model on 8-46 m points; levelled side to side only (20 Nov), roads still climbed in
+  facets, and the worst came from **divided roads**: each half took the hillside under it, 1.5 m
+  apart over 13 m on Givatayim's HaShalom, and the grid points between went to one half, then
+  the next to the other (nearest asphalt won) -- crests and dips along both halves and a twist
+  at each junction. `tools/level_roads.py` now (1) evens every road's height out as one network
+  (2 m samples, a junction one shared sample, each moved half way to its neighbours' mean
+  ~2(SMOOTH/2)^2 times, SMOOTH 12 m) and (2) gives a grid point near several roads a blend of
+  them (1/(1+edge distance)^2), not the nearest's. Evening road by road and pinning at junctions
+  to the ground there put the bumps back (a junction every 40-80 m); fitting a plane per junction
+  made the edges of its disc kinks; coupling side-by-side roads in the network spread the
+  smoothing for kilometres (8 m moves). All nine towns levelled once, from main's files.
+  `level_roads.py --check` crests and dips (slope along changing over 6% in 6 m), before -> after:
+  Givatayim 2.86 -> 1.26%, Bedford 2.92 -> 1.01, Annecy 2.14 -> 1.39, Tel Aviv 0.36 -> 0.17,
+  Ashdod 0.29 -> 0.15, Monaco 18.4 -> 15.4 (a cliff town: a 12 m grid cannot hold it). In the
+  game (`tests/road_bumps.gd`, Givatayim): kinks 2.36 -> 1.04%, junctions twisted over 0.15 m
+  32 -> 22%; `decks` 1 clean but `_1875_back` touching a tunnel wall at 0 km/h (as before).
+  Points moved up to 5 m (Givatayim), 12.6 (an Ashdod dune, 46 m grid): rooftop bumps in the
+  surface model under roads. Not done: the route set after it (Evgeni's 70% usage cap); a
+  second levelling pass takes Givatayim 1.26 -> 0.92%; a 6 m grid takes it to ~0.7% but
+  quadruples every ground-following mesh; "weird intersections" may also be the drawing
+  (asphalt pieces, kerbs) rather than heights -- ask for a shot.
   - tests/zebras.gd (LEVEL=7) never finishes on main as of 24 Nov 20:20 UTC (20 min, cut off;
     the same on this cycle's code): it loads, then its 60 s loop never ends. Not looked into.
 - **turn_width now also checks the body at corners**: either of its two circles within
