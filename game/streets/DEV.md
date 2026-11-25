@@ -4445,6 +4445,11 @@ checks Givatayim / Ashdod / test town 12 / 12 / 11, all traffic's; route set 10 
   second levelling pass takes Givatayim 1.26 -> 0.92%; a 6 m grid takes it to ~0.7% but
   quadruples every ground-following mesh; "weird intersections" may also be the drawing
   (asphalt pieces, kerbs) rather than heights -- ask for a shot.
+  Paused there (25 Nov, Evgeni: finish and pause). Top-down shots of the worst-twisted
+  junctions (tests/top_at.gd, UP=60; Givatayim (-719,-1422), (-626,-1408), (-378,-1529),
+  (604,1283), (-814,-1288), (-4,304)): most sit at the town's south edge by the Ayalon
+  interchange; (-626,-1408) on Katznelson shows white patches through the asphalt -- a
+  drawing fault to chase next, not a height one.
   - tests/zebras.gd (LEVEL=7) never finishes on main as of 24 Nov 20:20 UTC (20 min, cut off;
     the same on this cycle's code): it loads, then its 60 s loop never ends. Not looked into.
 - **turn_width now also checks the body at corners**: either of its two circles within
