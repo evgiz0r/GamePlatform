@@ -92,6 +92,7 @@ class Car:
 	var kerb_clear := 0.0             ## left of its lane this much, clear of what stands at the kerb (parked cars, poles)
 	var kerb_look := 0.0              ## seconds to the next look at the kerb
 	var dip := 0.0                    ## the body: nose down braking, up pulling away (visual)
+	var toot_cd := 0.0                ## seconds before it may hoot at you again
 	var bump_y := 0.0                 ## the body lifted over a speed bump, and tipped (visual: g.bump_lift)
 	var bump_pitch := 0.0
 	var roll := 0.0                   ## the body: leaning out of a turn (visual)
@@ -328,6 +329,7 @@ func set_cap(n: int) -> void:
 ## no buses about (Shabbat in the Israeli towns: the city lines stop from Friday afternoon to
 ## Saturday night); those about now taken away, none put back till it is off
 var no_buses := false
+const TOOT_AFTER := 3.0             ## seconds held up by you before a car hoots
 func set_no_buses(on: bool) -> void:
 	no_buses = on
 	if on:
@@ -724,6 +726,13 @@ func _target(c: Car, i: int, dt: float) -> float:
 			if c.v < 0.3:
 				c.wait += dt
 				c.blocker = who
+				# held up by you standing in its way: a toot after a few seconds (and again later)
+				c.toot_cd -= dt
+				# (not when it is a red light that holds you both: only a light it need not stop for)
+				if who == -1 and c.wait > TOOT_AFTER and c.toot_cd <= 0.0 and absf(float(g._v)) < 0.5:
+					c.toot_cd = 12.0
+					if _light_ahead(c) == INF:
+						g.traffic_toot(c.pos)
 				# Face to face with the player in a narrow street, both standing (the player
 				# waits for it, it waits for the player, for ever -- and autodrive with
 				# them): if there is nearly room, it edges by, brushing past; if they are

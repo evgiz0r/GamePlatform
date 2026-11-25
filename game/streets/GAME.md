@@ -1775,7 +1775,10 @@ contributors under the ODbL, which is why the credit sits on screen.
   barbers and grocers where OSM has none (their signs say what they are: the city's list has
   no names), and its own street things: Tel-O-Fun's green bike stations, taxi stands,
   motorbike bays, sculptures, notice boards and fire hydrants. Pigeons and crows peck about the
-  pavements and fly up when you come near, and pigeons sit in rows on the overhead wires and along the roof edges; rental e-scooters stand (or lie) about; gas
+  pavements and fly up when you come near, and pigeons sit in rows on the overhead wires and along the roof edges, and hooded crows walk
+  about with their black heads; the horn sends them up and makes people standing about look
+  round; a car you hold up toots at you; a dog on a lead may bark as you walk past it;
+  supermarket trolleys stand nested by the doors (and the odd one down the street); rental e-scooters stand (or lie) about; gas
   cylinder cages by the houses. Roofs carry dishes, old aerials and AC units; fountains
   stand where OSM maps them; at night most shops have their shutters down, and in the Israeli
   towns the day of the week is today's (the time button moves it on a day each night): from

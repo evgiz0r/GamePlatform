@@ -2342,8 +2342,84 @@ func street_extras() -> void:
 			fountains.append(Transform3D(Basis(Vector3.UP, _rnd(pi) * TAU), Vector3(at.x, _h(at), at.y)))
 			g._add_post(at, 2.2)
 	await _place(_fountain_kit(), fountains, SEEN * 0.6, "fountains", true)
+	# supermarket trolleys: a nested row of 3-6 by the door of each supermarket, and one in three
+	# with a stray left on the pavement down the street (OSM's shop=supermarket)
+	var trolleys: Array = []
+	for pi: int in g._tile_pois.get(g._tile, []):
+		var pp: Array = all_pois[pi]
+		if String(pp[2]) != "shop:supermarket":
+			continue
+		var at := Vector2(pp[0], pp[1]) * kf
+		var hit: Dictionary = g._nearest_seg(at, 40.0, true, true)
+		if hit.is_empty():
+			continue
+		var q: Vector2 = hit["q"]
+		var r2: Dictionary = g._roads[hit["road"]]
+		var rp: PackedVector2Array = r2["pts"]
+		var d: Vector2 = (rp[int(hit["seg"]) + 1] - rp[int(hit["seg"])]).normalized()
+		var out := Vector2(-d.y, d.x)
+		if out.dot(at - q) < 0.0:
+			out = -out
+		# out of the building, toward the street: the first clear spot, then a step more
+		var front := Vector2.INF
+		for k in range(1, 40):
+			var p := at + (q - at).normalized() * (k * 0.5)
+			if g._push_out(p, 0.5, false, false) == Vector2.ZERO:
+				front = p + (q - at).normalized() * 0.4
+				break
+		if front == Vector2.INF or not g._off_road(front, 1.0):
+			continue
+		var n := 3 + int(_rnd(pi * 3) * 4.0)
+		var face := Basis(Vector3.UP, atan2(d.x, d.y))   # (along the shop front, nested one in the next)
+		var side := 1.0 if _rnd(pi * 5) < 0.5 else -1.0
+		var put := 0
+		for k in range(n):
+			var p := front + d * side * (1.2 + k * 0.3)
+			if not _free(p, 0.6, 0.3, 0.3):
+				break
+			trolleys.append(Transform3D(face, Vector3(p.x, _h(p), p.y)))
+			put += 1
+		if put > 0:
+			g._add_post(front + d * side * (1.2 + (put - 1) * 0.15), 0.4 + put * 0.15)
+		if _rnd(pi * 7) < 0.34:
+			var sp := front + d * side * (-1.0) * (8.0 + _rnd(pi * 11) * 16.0) + out * 0.3
+			if _free(sp, 0.5, 0.4, 0.6):
+				trolleys.append(Transform3D(Basis(Vector3.UP, _rnd(pi * 13) * TAU), Vector3(sp.x, _h(sp), sp.y)))
+				g._add_post(sp, 0.4)
+	await _place(_trolley_kit(), trolleys, NEAR_SEEN, "trolleys")
 	await _place(_escooter_kit(), scoots, NEAR_SEEN, "escooters", false, scoot_cols)
 	await _place(_gas_cage_kit(), cages, NEAR_SEEN, "gas_cages")
+
+## a supermarket trolley, 0.95 m long (local Z, the handle at -Z), 0.55 wide, 1 m to the
+## handle: a wire basket (its frame and a few bars), the chassis, four castors, a red handle
+func _trolley_kit() -> ArrayMesh:
+	if _kits.has("trolley"):
+		return _kits["trolley"]
+	var b = g.new_buf()
+	var m: Color = _tone("metal")
+	var red: Color = g._real_col("red")
+	var blk: Color = _tone("tyre")
+	# the basket's rim and floor, tapering to the front
+	for sg: float in [-1.0, 1.0]:
+		_box(b, Vector3(sg * 0.27, 0.95, 0.0), Vector3(0.02, 0.02, 0.9), m)        # the rim's sides
+		_box(b, Vector3(sg * 0.22, 0.55, 0.05), Vector3(0.02, 0.02, 0.8), m)       # the floor's sides
+		for z: float in [-0.4, -0.13, 0.14, 0.42]:                                    # the side bars
+			_box(b, Vector3(sg * 0.25, 0.75, z), Vector3(0.012, 0.4, 0.012), m)
+	for z: float in [-0.44, 0.44]:
+		_box(b, Vector3(0, 0.95, z), Vector3(0.56, 0.02, 0.02), m)
+		_box(b, Vector3(0, 0.75, z), Vector3(0.5, 0.36, 0.012), m.darkened(0.15))   # the ends, a mesh
+	_box(b, Vector3(0, 0.55, 0.05), Vector3(0.44, 0.012, 0.8), m.darkened(0.2))     # the floor's mesh
+	# the chassis: two rails from the castors up to the basket
+	for sg: float in [-1.0, 1.0]:
+		_box(b, Vector3(sg * 0.2, 0.12, 0.0), Vector3(0.03, 0.03, 0.85), m)
+		_box(b, Vector3(sg * 0.24, 0.55, -0.42), Vector3(0.025, 0.85, 0.025), m, Basis(Vector3.RIGHT, -0.15))
+		for z: float in [-0.38, 0.4]:
+			_box(b, Vector3(sg * 0.2, 0.05, z), Vector3(0.03, 0.1, 0.1), blk)   # castors
+	_box(b, Vector3(0, 1.0, -0.52), Vector3(0.54, 0.045, 0.045), red)               # the handle
+	_box(b, Vector3(0, 0.3, 0.0), Vector3(0.36, 0.012, 0.6), m.darkened(0.25))      # the tray underneath
+	var am: ArrayMesh = _mesh(b)
+	_kits["trolley"] = am
+	return am
 
 ## a fountain: a round stone basin 4 m across, its water, a pedestal and a bowl in the
 ## middle, and the jet: a white column of spray falling back as a fringe

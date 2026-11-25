@@ -8,7 +8,7 @@ extends RefCounted
 ## you are not looking. By day only: at night they roost.
 ##
 ## Drawn as three MultiMeshes (standing, wings up, wings down: a flap is the two swapped
-## every FLAP s), so all of them together cost three draws. A bird not in use has a zero
+## every FLAP s) for the pigeons and three for the crows, so all of them together cost six draws. A bird not in use has a zero
 ## transform. Nothing here is solid: the car and people go through where a bird was, and it
 ## is up and away by then.
 const MAX_BIRDS := 72
@@ -45,7 +45,8 @@ func setup() -> void:
 		ap.max_distance = 60.0
 		g.world.add_child(ap)
 		_flaps.append(ap)
-	var meshes := [_bird_mesh(f, 0), _bird_mesh(f, 1), _bird_mesh(f, 2)]
+	# pigeons' three, then the hooded crows' three (a black head, wings and tail on a grey body)
+	var meshes := [_bird_mesh(f, 0), _bird_mesh(f, 1), _bird_mesh(f, 2), _bird_mesh(f, 0, true), _bird_mesh(f, 1, true), _bird_mesh(f, 2, true)]
 	for m: ArrayMesh in meshes:
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
@@ -68,14 +69,15 @@ func setup() -> void:
 
 ## a bird facing +Z, its feet at y = 0, about 0.32 m long; drawn white (each copy's colour is
 ## its plumage). part 0 standing (wings folded, legs), 1 flying wings up, 2 wings down
-func _bird_mesh(f, part: int) -> ArrayMesh:
+func _bird_mesh(f, part: int, crow := false) -> ArrayMesh:
 	var b = g.new_buf()
-	var w := Color.WHITE
-	var dark := Color(0.55, 0.55, 0.58)
+	var body := Color.WHITE
+	var dark := Color(0.12, 0.12, 0.13) if crow else Color(0.55, 0.55, 0.58)
+	var w := dark if crow else body   # (the head: a crow's is black)
 	var y0 := 0.06 if part == 0 else 0.0
-	f._ellipsoid(b, Vector3(0, y0 + 0.08, 0), Vector3(0.075, 0.068, 0.14), w, Basis(Vector3.RIGHT, -0.25 if part == 0 else 0.0))
+	f._ellipsoid(b, Vector3(0, y0 + 0.08, 0), Vector3(0.075, 0.068, 0.14), body, Basis(Vector3.RIGHT, -0.25 if part == 0 else 0.0))
 	f._ellipsoid(b, Vector3(0, y0 + 0.17 if part == 0 else y0 + 0.11, 0.12 if part == 0 else 0.15), Vector3(0.042, 0.042, 0.046), w)
-	f._box(b, Vector3(0, y0 + (0.165 if part == 0 else 0.105), 0.17 if part == 0 else 0.2), Vector3(0.016, 0.014, 0.04), Color(0.3, 0.28, 0.26))   # the beak
+	f._box(b, Vector3(0, y0 + (0.165 if part == 0 else 0.105), 0.17 if part == 0 else 0.2), Vector3(0.016, 0.014, 0.04), Color(0.08, 0.08, 0.08) if crow else Color(0.3, 0.28, 0.26))   # the beak
 	f._box(b, Vector3(0, y0 + 0.09, -0.17), Vector3(0.07, 0.016, 0.1), dark, Basis(Vector3.RIGHT, -0.2 if part == 0 else 0.0))   # the tail
 	if part == 0:
 		for x: float in [-0.025, 0.025]:
@@ -137,7 +139,7 @@ func tick(dt: float) -> void:
 					all_gone = false
 				var yaw := atan2(v.x, v.z)
 				var xf := Transform3D(Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, -0.35).scaled(Vector3.ONE * float(bd["s"])), p3)
-				_show(i, 1 + (flap + (i % 2)) % 2, xf)
+				_show(i, 1 + (flap + (i % 2)) % 2, xf, fl.get("crow", false))
 			else:
 				all_gone = false
 				var perched: bool = fl.get("perch", false)
@@ -149,7 +151,7 @@ func tick(dt: float) -> void:
 				var pitch := (0.3 if perched else 0.55) if float(bd["peck"]) > 0.0 else 0.0
 				var xf := Transform3D(Basis(Vector3.UP, float(bd["yaw"])) * Basis(Vector3.RIGHT, pitch).scaled(Vector3.ONE * float(bd["s"])),
 					Vector3(p.x, float(bd["h"]) + float(bd["hop"]), p.y))
-				_show(i, 0, xf)
+				_show(i, 0, xf, fl.get("crow", false))
 		if fl["up"] and (all_gone or float(fl["t"]) > 9.0):
 			_retire(fi)
 
@@ -209,16 +211,18 @@ func _retire(fi: int) -> void:
 	var zero := Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
 	for bd: Dictionary in flocks[fi]["birds"]:
 		var i: int = bd["i"]
-		for k in range(3):
+		for k in range(_mm.size()):
 			_mm[k].set_instance_transform(i, zero)
 		_free_ix.append(i)
 	flocks.remove_at(fi)
 
 ## show bird slot i as mesh `k` (the other two hidden)
-func _show(i: int, k: int, xf: Transform3D) -> void:
+## (a crow's: its own three meshes; the other kind's stay zero from _retire)
+func _show(i: int, k: int, xf: Transform3D, crow := false) -> void:
+	var base := 3 if crow else 0
 	var zero := Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
 	for m in range(3):
-		_mm[m].set_instance_transform(i, xf if m == k else zero)
+		_mm[base + m].set_instance_transform(i, xf if m == k else zero)
 
 ## a flock put down 20-60 m off, on a pavement or a square, where you cannot see it land
 ## a row of pigeons on an overhead wire (furniture.gd's perches), a span 20-60 m off and out of
@@ -258,7 +262,7 @@ func _land_wire(me: Vector2) -> bool:
 			var i: int = _free_ix.pop_back()
 			var v := rng.randf()
 			var col: Color = base.lerp(g._tone["woodfence"], 0.4) if v < 0.12 else (base.lerp(g._tone["mark"], 0.45) if v < 0.22 else base)
-			for m in range(3):
+			for m in range(_mm.size()):
 				_mm[m].set_instance_color(i, col)
 			birds.append({"i": i, "p": Vector2(q.x, q.z), "home": mid, "h": q.y + 0.025,
 				"yaw": face + (PI if rng.randf() < 0.15 else 0.0) + rng.randf_range(-0.15, 0.15), "peck": 0.0, "walk": 0.0,
@@ -329,7 +333,7 @@ func _land_roof(me: Vector2) -> bool:
 			var i: int = _free_ix.pop_back()
 			var v := rng.randf()
 			var col: Color = base.lerp(g._tone["woodfence"], 0.4) if v < 0.12 else (base.lerp(g._tone["mark"], 0.45) if v < 0.22 else base)
-			for m in range(3):
+			for m in range(_mm.size()):
 				_mm[m].set_instance_color(i, col)
 			birds.append({"i": i, "p": p, "home": mid, "h": y,
 				"yaw": face + (PI if rng.randf() < 0.1 else 0.0) + rng.randf_range(-0.3, 0.3), "peck": 0.0, "walk": 0.0,
@@ -342,6 +346,15 @@ func _land_roof(me: Vector2) -> bool:
 		count["on_roofs"] = int(count.get("on_roofs", 0)) + 1
 		return true
 	return false
+
+## the horn: every flock on the ground within 30 m goes up, those on the wires and roofs within 20
+func horn(at: Vector2) -> void:
+	for fl: Dictionary in flocks:
+		if fl["up"]:
+			continue
+		var d := (fl["c"] as Vector2).distance_to(at)
+		if d < (20.0 if fl.get("perch", false) else 30.0):
+			_fly(fl, at)
 
 ## a bird on a wire: still, now and then turning round or preening
 func _sit(bd: Dictionary, dt: float) -> void:
@@ -389,7 +402,7 @@ func _land(me: Vector2) -> void:
 				var base: Color = g._tone["rim"].lerp(g._tone["signblue"], 0.12)
 				var v := rng.randf()
 				col = base.lerp(g._tone["woodfence"], 0.4) if v < 0.12 else (base.lerp(g._tone["mark"], 0.45) if v < 0.22 else base)
-			for m in range(3):
+			for m in range(_mm.size()):
 				_mm[m].set_instance_color(i, col)
 			birds.append({"i": i, "p": p, "home": c, "h": g._walk_y(p), "yaw": rng.randf() * TAU, "peck": 0.0, "walk": 0.0,
 				"hop": 0.0, "next": rng.randf_range(0.0, 1.5), "s": (1.35 if crow else 1.0) * rng.randf_range(0.92, 1.08), "v": Vector3.ZERO, "p3": Vector3.ZERO})

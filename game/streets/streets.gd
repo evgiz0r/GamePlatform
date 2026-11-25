@@ -208,6 +208,7 @@ const PEOPLE := ["Casual_Male", "Casual_Female", "Casual2_Male", "Casual2_Female
 const ADULT_LO := 1.55
 const ADULT_HI := 1.85
 const WALKERS := 24
+const DOG_BARK_AT := 3.0            ## you on foot this near a dog on a lead: it may bark at you
 const SHABBAT_KIDS := 4             ## children walking with their parents on Shabbat (_spawn_people)
 const SIDESTEP := 0.8                ## m/s: the fastest a walker moves across its pavement, stepping round something
 const CHATTERS := 8
@@ -18319,6 +18320,30 @@ func _build_signal_sounds() -> void:
 	_snd_horn = AudioStreamPlayer.new()
 	_snd_horn.stream = _wav(horn, rate, true)
 	add_child(_snd_horn)
+	# another car's horn: two short toots, a little lower (a car held up behind you)
+	var toot := PackedFloat32Array()
+	toot.resize(int(rate * 0.5))
+	for i in range(toot.size()):
+		var t := float(i) / rate
+		var on := t < 0.16 or (t > 0.25 and t < 0.45)
+		var env := minf(1.0, minf(fmod(t, 0.25) / 0.01, 1.0)) if on else 0.0
+		toot[i] = env * (tanh(2.0 * sin(TAU * 370.0 * t)) + tanh(2.0 * sin(TAU * 465.0 * t)) * 0.8)
+	_snd_toot = AudioStreamPlayer3D.new()
+	_snd_toot.stream = _wav(toot, rate, false)
+	_snd_toot.unit_size = 12.0
+	_snd_toot.max_distance = 120.0
+	world.add_child(_snd_toot)
+
+## a car held up behind you hoots (traffic.gd, when it has waited on you a few seconds)
+var _snd_toot: AudioStreamPlayer3D
+func traffic_toot(at: Vector2) -> void:
+	if _snd_toot == null or _snd_toot.playing or Audio.muted():
+		return
+	_snd_toot.position = Vector3(at.x, _h(at) + 1.0, at.y)
+	_snd_toot.pitch_scale = randf_range(0.9, 1.12)
+	_snd_toot.volume_db = linear_to_db(maxf(0.0001, float(SaveData.data.get("volume_sfx", 0.8)))) - 4.0
+	_snd_toot.play()
+	Probe.event("tooted_at", {})
 
 func _wav(samples: PackedFloat32Array, rate: int, loop: bool) -> AudioStreamWAV:
 	var peak := 0.0001
@@ -18391,7 +18416,8 @@ func _controls_tick(dt: float) -> void:
 			_snd_horn.stop()
 
 ## what the horn does: people on a crossing ahead hurry, a car standing in a standoff in
-## front of you goes
+## front of you goes, people standing about within HORN_LOOK look round, the pigeons go up
+const HORN_LOOK := 18.0
 func _on_horn() -> void:
 	Probe.event("horn", {})
 	for cr: Dictionary in _crossers:
@@ -18401,6 +18427,21 @@ func _on_horn() -> void:
 		for c in _traffic.cars:
 			if c.alive and c.v < 0.3 and c.wait > 1.5 and c.pos.distance_to(_pos) < 15.0 and (c.pos - _pos).dot(_fwd()) > 0.0:
 				c.ignore = 2.5
+	# people standing about near you turn to look at the noise a few seconds, then back to what
+	# they were doing (_still_startle turns them back); the pigeons go up (birds.gd horn)
+	for list: Array in [_chatters, _waiters, _keepers]:
+		for c: Dictionary in list:
+			var a: Actor3D = c["actor"]
+			if not a.visible or bool(c.get("sat", false)) or float(c.get("look_t", 0.0)) > 0.0 or float(c.get("startle", 0.0)) > 0.0:
+				continue
+			var at := Vector2(a.position.x, a.position.z)
+			if at.distance_to(_pos) < HORN_LOOK:
+				c["look_was"] = a.rotation.y
+				c["look_t"] = _people_rng.randf_range(1.8, 3.2)
+				a.face(Vector3(_pos.x - at.x, 0.0, _pos.y - at.y))
+				_tally("horn_looks", 1)
+	if _birds != null:
+		_birds.horn(_pos)
 
 ## autodrive: the turn the plan makes within 35 m, for the indicator (-1, 1, or 0)
 func _ap_turn_ahead(reach := 35.0) -> int:
@@ -21029,6 +21070,10 @@ func _still_startle(c: Dictionary, dt: float) -> void:
 	var a: Actor3D = c["actor"]
 	var startle: float = c.get("startle", 0.0)
 	c["startle_cd"] = maxf(float(c.get("startle_cd", 0.0)) - dt, 0.0)
+	if float(c.get("look_t", 0.0)) > 0.0:   # (looking round at the horn: back to how it stood)
+		c["look_t"] = float(c["look_t"]) - dt
+		if float(c["look_t"]) <= 0.0 and startle <= 0.0:
+			a.rotation.y = float(c["look_was"])
 	if not a.visible:
 		return
 	if not c.has("startle_base"):
@@ -21162,6 +21207,17 @@ func _people_tick(dt: float) -> void:
 	# -100 less its number: its own walker leaves it out)
 	for w: Dictionary in _walkers:
 		if w.has("dog_i") and (w["actor"] as Actor3D).visible and w.has("dog_at"):
+			# you on foot walking up to a dog: one in two barks at you (not again for a while)
+			w["bark_cd"] = maxf(float(w.get("bark_cd", 0.0)) - dt, 0.0)
+			var dg: Vector2 = w["dog_at"]
+			if _walking and float(w["bark_cd"]) <= 0.0 and dg.distance_to(_pos) < DOG_BARK_AT:
+				w["bark_cd"] = 15.0
+				if int(w["dog_i"]) % 2 == 0 and _dog != null and not _dog.playing and not Audio.muted():
+					_dog.position = Vector3(dg.x, _h(dg) + 0.4, dg.y)
+					_dog.pitch_scale = 1.15 + 0.1 * float(posmod(int(w["dog_i"]), 3))
+					_dog.volume_db = linear_to_db(maxf(0.0001, float(SaveData.data.get("volume_sfx", 0.8)))) - 2.0
+					_dog.play()
+					Probe.event("dog_barked", {})
 			_people_at.append(w["dog_at"])
 			_people_who.append(-100 - int(w["dog_i"]))
 			_people_y.append((w["actor"] as Actor3D).position.y)
