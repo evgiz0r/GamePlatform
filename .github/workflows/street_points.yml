@@ -1,0 +1,50 @@
+# Fetches the small things OpenStreetMap maps as points -- post boxes, drinking taps, speed
+# bumps and humps -- into city files baked already (tools/osm_city.py --street-points), on
+# GitHub's machines (which reach the Overpass servers when a cloud session cannot), and
+# commits them to the branch it was run on. Nothing else in the files changes.
+name: street points into baked cities
+
+on:
+  workflow_dispatch:
+    inputs:
+      files:
+        description: "City files, space-separated: game/<game>/cities/<city>.json ..."
+        required: true
+
+concurrency:
+  group: points-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  points:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: fetch and commit, a file at a time
+        env:
+          FILES: ${{ inputs.files }}
+        # (one at a time, each committed as it comes: the public servers can take 5-15 min a
+        # town when busy, and a first run cancelled after three towns lost all three)
+        run: |
+          read -ra LIST <<< "$FILES"
+          for f in "${LIST[@]}"; do
+            if ! [[ "$f" =~ ^game/[A-Za-z0-9_-]+/cities/[A-Za-z0-9_-]+\.json$ ]] || [ ! -f "$f" ]; then
+              echo "not a city file here: $f"; exit 1
+            fi
+          done
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for f in "${LIST[@]}"; do
+            python3 tools/osm_city.py --street-points "$f" || { echo "failed: $f"; continue; }
+            git add "$f"
+            if git diff --cached --quiet; then continue; fi
+            git commit -m "street points (post boxes, drinking taps, speed bumps) from OpenStreetMap: $f"
+            for i in 1 2 3 4 5; do
+              git pull --rebase && git push && break
+              sleep $((i * 10))
+            done
+          done

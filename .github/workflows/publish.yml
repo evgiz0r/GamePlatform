@@ -13,6 +13,9 @@ on:
     paths-ignore:
       - "docs/**"
       - "build.txt"
+      # notes, plans and effort rows change nothing in the build (no .md is exported): a push
+      # of only those used to export and publish an identical game (about a third of the runs)
+      - "**/*.md"
   workflow_dispatch:
 
 concurrency:
@@ -55,4 +58,24 @@ jobs:
             echo "nothing changed in the build"; exit 0
           fi
           git commit -m "publish: web build $(cat build.txt) [skip ci]"
-          git push
+          # Another session's push often lands while this one builds (a fifth of the runs
+          # failed here with "fetch first", and that publish was lost). Only one publish runs
+          # at a time (concurrency above) and its commit touches docs/ and build.txt alone, so
+          # it replays cleanly on top of the newer main; that push's own run publishes it.
+          # Except when what landed is the previous run's own publish (it pushed after this
+          # run was triggered, so after this checkout): both touch docs/ and the replay
+          # conflicts (24 Nov: a merged PR's build lost so, the site left a build behind).
+          # This build is the newer one then: put it on top of that main as it is.
+          for i in 1 2 3 4; do
+            git push && exit 0
+            sleep $((i * 5))
+            git fetch origin main
+            if ! git rebase origin/main; then
+              git rebase --abort
+              git reset -q --mixed origin/main
+              git add -A docs build.txt
+              git diff --cached --quiet && exit 0
+              git commit -q -m "publish: web build $(cat build.txt) [skip ci]"
+            fi
+          done
+          exit 1

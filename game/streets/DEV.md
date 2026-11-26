@@ -20,6 +20,7 @@ merge, re-check (`tools/check_script.sh`, a playtest, the tests below), never fo
 | `decks.gd` | roads off the ground -- bridges, embankments, cuttings, tunnels: their heights, what is under a point at a level (`surf`), their walls for collisions (`push`), the ground cut away over cuttings (`cut_tri`), and drawing them a square at a time (`build`). See "Off the ground" below |
 | `beach.gd` | the beaches by the sea, any town: umbrellas with white chairs facing the water, lifeguard towers, the chairs as seats for `_bathers`; set up from the sand areas and the sea, built per square (see "The beach") |
 | `crowds.gd` | people where the street walkers never go: shoppers down a market's walkway stopping at its stalls (lines from `landmarks.gd`'s `_market_line`), walkers and joggers along a beach's wet sand and people standing in the sea (lines and spots from `beach.gd`'s `_people_lines`); pools made the first time a line is near, ticked from `_people_tick` (see "Crowds") |
+| `birds.gd` | pigeons and crows on the pavements round you: flocks landed out of sight 20-60 m off, walking and pecking, up and away when you, a moving car or a passer-by comes near; three MultiMeshes (standing, wings up, wings down). See "Small life" |
 | `sites.gd` | building sites from a town's own map (the city file's `sites`): printed hoardings round each plot (solid walls), a tower crane over each new building's plot that is tall or 700 m2+ (see "The town's own layers") |
 | `landmarks.gd` | a town's landmarks, found by their building's name in the bake (`BY_CITY`: Tel Aviv's Azrieli towers, the Matcal and Marganit towers, Sarona's houses): a glass of their own, a lit crown, a mast or shaft on the roof, red tile roofs; and in every town the red lights on roofs over 90 m at night. Hooks in streets.gd: `_glass` / `_tile` on a building for `_build_buildings`, `build()` per square, `set_night` |
 | `wave.gd` | the green wave (the "wave" button, V): lit junctions ahead of the car run their own clock to green its way and hold it; streets.gd reads every light through `_ph_at` / `_t_at`, which ask it first. See "The green wave" below |
@@ -483,6 +484,18 @@ The ones most often touched, and the functions in them:
   kind 0 ("gardenwall", "pole") or a kit's face with vertex alpha 0.3-0.7 (the cabinet's
   body); height above the ground from the height grid (`_set_hmap`, shared with the grass;
   the tone material is made before the grid is read, so `_retint_tone_mat` hands it over).
+- **signs by country** (23 Nov 2026) -- `_country()` ("il", "nl", "fr", "ca") decides the
+  speed sign, the centre lines' colour, the give-way line (`_give_line`: dashed or
+  `_shark_teeth`), which inferred sign a side street gets, the street-sign plates' look
+  (`_street_sign_mesh`'s Canadian branch) and the school warning; NEW_CITY.md has the table.
+  Before it everything not "med" was drawn Canadian: Delft and Annecy had MAXIMUM boards,
+  yellow centre lines and SLOW in English. Two bugs every town had: the give-way plate
+  stood point up (a warning triangle) and its red was the palette's hazard, pink. Shots:
+  `tests/country_signs.gd`.
+  Added 24 Nov: Canada's mast arms (`_mast_arm`: a pole on the far right corner, heads over
+  the way in's lanes, bulbs in its group; the near pole stays) and the Dutch and French
+  ZONE 30 boards (furniture `zone30_boards`, only where OSM or the town says 30, at a
+  junction with a road of 45+). `country_signs` shoots `lights_1` and `zone30_1` too.
 - **zone and parking signs** -- `furniture.street_signs`: meshes with 7-segment digits
   (`_digit`), not Label3D (a draw each). **Passages** -- `_build_passages` (its own stage).
 - **front gardens' walls and gates** -- `_garden_fronts` lays each plot's wall itself
@@ -1752,6 +1765,13 @@ Givatayim 0 late. Traffic cars do not look at walkers at all (they rely on the k
   Givatayim 1.4 -> 0.7, 2.8 -> 2.2. The records: Tel Aviv 674 KB, Ashdod 702, Bedford 613,
   Givatayim 276, the test town 22; prepublish ~25 s for all. What is left of the file is the
   next thing to bake (widths, buildings cut, divided roads: 1 s of Tel Aviv's 1.5).
+- **Every city on the user's phone** (the on-screen load line, build 21 Nov 17:10 UTC 2b3e4e3,
+  the user's screenshots; total / city file / start area / graphics warm-up, s): Bedford 12.3 /
+  1.4 / 1.9 / 9.0, Givatayim 12.8 / 0.9 / 2.1 / 9.8, Kiryat Dimyon 12.9 / 0.2 / 2.2 / 10.5,
+  Ashdod 14.5 / 2.3 / 3.0 / 9.2, Tel Aviv 14.7 / 1.9 / 3.0 / 9.8. The warm-up is 9-10.5 s
+  in every city, even the made-up town's 37 streets: it is the shader kinds being compiled
+  (74-84 of them, see "Memory, Tel Aviv"), not the city's size -- the biggest thing left in a
+  phone's load. No "+ page" part showed on any of them (`_page_ms` on that phone: unchecked).
 - **Every city in the browser, after the download split** (`tests/web_load.js`, 21 Nov 2026,
   one run each; city file read / start area / warm-up / drivable, s): Givatayim 0.8 / 3.5 / 38 /
   47, Bedford 1.3 / 3.3 / 27 / 37, Ashdod 2.0 / 4.4 / 28 / 39, Kiryat Dimyon 0.3 / 4.6 / 40 /
@@ -4259,6 +4279,223 @@ checks Givatayim / Ashdod / test town 12 / 12 / 11, all traffic's; route set 10 
   the other (5 of Givatayim's 12 checks). Now a half circle a lane wide, short of the end.
   `tests/traffic_dead_end.gd`: before, every car out 1.6-2 m on the wrong side, 3-16
   overlaps a minute; after, 7 sent, 0 wrong side, 0 overlaps.
+- **Cul-de-sac estates** (23 Nov, Evgeni on Bedford's Meadowview Drive: "many cars just
+  driving there turning around, causing traffic"). Traffic's dead-end test (`_dead_end`) walked
+  the road to its end and called it a way on at the first point with three ways -- a driveway
+  was enough (Meadowview has one at (698, -2135)), and a dead end with side streets that also
+  only end (Bridge Street, River Lane round Union Street's end) never counted. Cars went in,
+  turned round at the end, met the ones still coming in. Autodrive's roaming (`_ap_ways`) had
+  no test at all. Now `streets.gd _pocket_ahead(road, k, dir)`: walk the public streets (not
+  service lanes, car parks, private ways; one-ways both ways) from there without going back
+  through where you came from; a pocket if they run out before `POCKET_M` (900 m), not one
+  if they reach the map's edge (that has `_trap`/`_edge_bound`). Cached per way in. Traffic:
+  -4 on that way in `_next` (only when nothing else), and `_spawn` puts a car down in an
+  estate only 30% of the time, and then heading out. Autodrive roaming: -5.
+  `tests/traffic_pockets.gd` (player standing at Meadowview, 150 s): traffic turn-rounds
+  within 250 m 23 -> 4 (9.2 -> 1.6 a minute); `AUTO=1` autodrive roaming from there: 0 of its
+  own, 17 s of 150 inside (leaving it), traffic 1.
+- **The ambulance stood a minute against Kaplan's railings** (24 Nov, Evgeni, the Tel Aviv
+  ambulance run just after its start: "can we just crash/destroy such objects"). The ambulance
+  drives as racer, and racer turns round over a divided road's median (`_racer_across`),
+  planned through what gives (`_smash` true while it checks). But the car only went through a
+  railing above SMASH_V (2.5 m/s), and in the U it slows; under that the railing held it, and
+  it pressed there. Now racer goes through at any pace above RACER_SMASH_V (0.3 m/s); you
+  driving still need SMASH_V, plain autodrive never. And a railing's panel the car goes
+  through falls (`_break_rail`): not solid any more (`_wall_give` 2), the thin posts along it
+  neither, laid flat at its foot in the batches and in the railings' own panels
+  (TONE_SHADER's and FENCE_SHADER's `rail_gone`/`rail_y`, 12 at most), a loose white panel
+  tumbling away; put back after KNOCK_BACK_S out of sight, as the bins are. The spot itself
+  was not reproduced: started headless the run's U over Kaplan (-541, 162) -> (-543, 149)
+  crosses no railing in this build (`tests/start_stuck.gd LEVEL=25`, 4 runs, 0 stuck).
+  `tests/rail_break.gd`: by hand at 18 km/h, 1-2 panels down, through; racer at 3 km/h, 2 down,
+  through; plain autodrive at 3 km/h stops at it. (Its shots do not show the spot yet: the
+  game's camera wins over the test's.)
+- **Traffic touching your standing car stops** (24 Nov; route 7's open item: a traffic SUV at
+  2 m/s shoved autodrive 8 m sideways into posts in a junction's tangle). traffic.gd
+  `_into_player`: a car whose body circles touch the player's and whose step this tick closes
+  on it stands (held by "player") instead of driving on while `_push_out` moved the player.
+  A safety net under the lead-car and junction logic, which normally stop it short.
+  `tests/traffic_shove.gd` (your car standing in its lane, 0.8 and 1.6 m over, askew 35 deg;
+  a car sent from 35 m behind): 0.00 m moved in all 5, before and after -- the straight
+  approach was already right; the shove needs a junction's turn, which this test does not
+  stage yet (open). Only for a standing player (under 0.5 m/s): first written for any
+  player, the full route set had autodrive run into traffic car 0 twice at 11-14 km/h on
+  Ashdod's Hativat HaNegev (route 6) -- a car frozen beside a moving player is only driven
+  into; with the gate route 6 was clean again.
+- **Route set on the branch, 24 Nov night** (15 routes, before the gate above): 15 of 15
+  arrived, 0 reds, 0 rescues. Hits: route 12 Leiden's sign and post on Rapenburg (as on
+  22 Nov), route 6 (the gate's), and route 3 Givatayim, a post and walls on Ben Gurion at
+  11-19 km/h -- route 3 hits there without tonight's traffic change too (a wall at 19 km/h),
+  so it came with main's newer work; not seen on 21-22 Nov. Fixed the next morning, below.
+- **Route 3: a sign post at a right turn's corner (24 Nov morning).** Reines 70 right into
+  Ben Gurion: a sign post stands 1.3 m behind the kerb at the corner, and the car's back end
+  met it at 11-19 km/h on every run. The plan was fine (its middle 1.8 m from the post, the
+  body 0.4 m clear); the car was not on it: pure pursuit's point ahead (5.4 m at 20 km/h)
+  turns it in early, 0.6 m inside the plan's line, and a car points along the way it came, so
+  its back swings further in. Three small changes: the look ahead shorter at a corner's pace
+  (`1.5 + v * 0.55`, 3-16 m, was `2 + v * 0.6`, 3.5-16 -- the same from ~50 km/h up), a plan
+  point where the plan bends 0.25 rad or more kept AP_BEND_PAD (0.35 m) further from what is
+  solid, and AP_LAT_TIGHT 4.8 -> 4.2 (a 5.5 m corner at 17 km/h, was 18.5; people take a
+  tight town corner at 15). `tests/corner_post.gd` stages it: closest -0.25 -> +0.11 m.
+  AP_BEND_PAD 0.7 got 0.24 m but pushed a 6 m street's right-turn plan over its middle line
+  (turn_width, Sirkin): keep it small. turn_width: Sirkin's right turn has the car's left side
+  over the middle line before and after (0.7 -> 0.9 m right of it; the line is at 0.9) --
+  the one FAIL in 10, open.
+  Route set after (15 routes): 15 of 15 arrived, 0 reds, 0 rescues, 0 off road; route 3 and
+  route 12 (Leiden's sign and post on Rapenburg) clean. One new hit: route 2, an SUV in traffic
+  (car 14, 'limit', 39 km/h) came across Horodetsky/HaShalom from the side as autodrive went
+  through at 30 km/h; autodrive braked from 8 m, touched it at 16 km/h. Looked at below.
+- **Route 2: traffic let the player clear a big junction only if it could stop "comfortably".**
+  Horodetsky across HaShalom is two divided roads, lit at three of its four corners, 10-20 m
+  apart. Autodrive stood behind a car inside it, then went on through (30 km/h); HaShalom got
+  its green meanwhile and an SUV came up at 39 km/h. traffic.gd's player check holds a car for
+  a player coming into the junction only when `can_stop` (with autodrive on, autodrive is
+  trusted to give way) -- and autodrive, past its own light and inside the junction, was not
+  looking. Now `_player_in_box`: a player moving (over 1 m/s) inside a junction of several lit
+  points (within BOX_M 25 m of each other), toward this point and due there within 1.5 s of
+  me, goes first, my green or not -- as a traffic car already in the junction does
+  (`_in_site`). Standing still there (at its own red between the carriageways) it holds
+  nobody. Route 2 and 8 after: clean, no new waits. The meeting depends on timing, so the
+  route can't show the fix held, only that nothing got worse. Then staged:
+  `tests/box_clear.gd` (your car standing in that junction, pulling away at 2.5 m/s^2 when
+  a car coming up HaShalom on its held green is LEAD m out): the old code met it (-0.97 m),
+  the first fix still did (-0.11 m) -- pulling away at 1-3 m/s, the player read as due at the
+  lit point in 7-20 s, not within 1.5 s of the car. Now no time test: a player moving inside
+  the junction toward the point, within BOX_M, goes first. LEADS 26-46: none met (at 26 m out
+  the car is past the point first, 1.4 m clear). Routes 1, 2, 4, 8 after: arrived, no hits;
+  route 4 stood 38 s in a queue on La Guardia (12.5 at a light there the run before; a queue,
+  not this junction rule -- watch it).
+- **Sirkin's right turn (turn_width's one FAIL).** Givatayim's node 1978: a 120-degree right
+  turn off Gvulot into Sirkin, a 6 m street. `_lane_corner` wants AP_TURN_R (5.5 m) but the
+  points either side squeeze it to 3.9 m -- tighter than the car turns (~4.1 m) -- and
+  `_ap_curves` read the bend through points 5 m either side as 5-6 m round: planned at
+  17 km/h, the car came out 0.7 m off the plan, its left side 0.04 m onto the middle line.
+  Now `_ap_curves` takes the tighter of the 5 m and 2.5 m reads: 14 km/h there, the car
+  0.02 m onto the line; other corners unchanged (17-20 km/h). turn_width counts "over" past
+  OVER_TOL (0.1 m: the paint's own width) -- the bug it guards was 1.5-2.2 m over -- and prints
+  `car_left_side` (m past the line, - is short of it). Still open: the arc itself could start
+  further back when the street before the corner is straight past its last point.
+  Route set after (15): 15 of 15 arrived, 0 reds, 0 rescues, 0 off road, no hits at all.
+  Delft (11) stood 58 s in a queue on Westplantsoen (a bus, a taxi and an SUV ahead, all held
+  by the car in front; the run before: 24 + 19 s in the same queue) -- traffic, not autodrive.
+- **Speed bumps slow the cars (24 Nov).** The street-points thread built OSM's bumps, tables
+  and cushions into `g.bumps` (drawn, 8 cm, not solid). `g.bump_v(p, fwd, look, decel)`: the
+  speed to hold for the ones across the way ahead (their width, the lane not minded; one under
+  the car still holds it; one across a side street passed is skipped by its direction) --
+  BUMP_KMH 15 a bump, 25 a cushion or a table, braked down to from further back. Autodrive
+  (why "bump", 2.0 m/s^2; racer 1.5x the pace) and traffic (`_target`, BRAKE * 0.6) both;
+  hashed as squares bring them in. You driving: over one 5 km/h or more too fast, a shake and
+  a soft knock (`_bump_tick`, Probe "bump"). `tests/bump_slow.gd` (Tel Aviv, 15 bumps built):
+  4 bumps, autodrive 15-16 km/h over each, traffic 15, from 25-32 before. Route 8 and 10 after:
+  clean. Not yet: the car itself rising over one (only the view shakes).
+- **Autodrive braked only for walkers and crossers (24 Nov afternoon).** The scenarios'
+  wedding run hit someone at (249, 236) on Tel Aviv's Givat HaTachmoshet bridge over the
+  Ayalon at 28-32 km/h on every pass. `_ap_people_v` looked at walkers and crossers on a
+  crossing; everyone else `_people_push` makes solid -- chatters, sitters, waiters at a stop,
+  keepers, bathers, boarders, a crowd's strollers -- was driven into wherever they stood in the
+  lane. Now all of them, and `add_person(node)`: a scenario's own people (a fare, a wedding's
+  guests) solid and braked for like the street's (`_people_extra`; freed ones drop out).
+  And by height: `_people_y` beside `_people_at`, PEOPLE_DY 2.5 m -- someone under a bridge
+  was solid to the car on it, and the old code stood still on the bridge for a person 5 m
+  below. `tests/stop_people.gd`: a person put in the lane on the bridge -- old: drove into
+  them and stood pressed there; new: stopped 3.4 m short -- and under it: old 0 km/h, new
+  42 km/h over them. Note for scenario.gd: its fare (`_pickup_start`) is in no list, so it
+  was neither solid nor braked for; `g.add_person(a)` makes it both.
+  Route set after: 14 of 15, no person hit, no stand for people; Bedford (9) did not arrive,
+  150 s in a traffic queue on Hammonds Plains Road at (-2615, -695) (cars held by cars, a
+  car 20 at its head); alone again it arrived in 560 s -- a traffic lock that comes and goes
+  there, not this change. Leiden's Rapenburg street sign again at 15 km/h (open since 22 Nov).
+- **Cycle on main, 24 Nov evening**: route set 15 of 15 arrived, 0 reds, 0 rescues; 14
+  scenarios (17-22, 25, 26, 43-48, SECS=480) all PASS, 0 people hit, 0 camera in buildings.
+  The one hit left: route 12, Leiden's street sign at Doelenbrug (-118.4, 109.9), 0.72 m off
+  Rapenburg's asphalt, clipped at 15-16 km/h on every run since 22 Nov -- the back end in a
+  right turn off the bridge, the corner_post family. AP_BEND_PAD keeps the plan 1.86 m from
+  it; the car's back swung in past that. Now a tail net beside the nose's: in a turn, the back
+  end's circle (CAR_R + AP_TAIL_PAD 0.5) touching something solid on the inside of the turn
+  eases the steering (AP_TAIL_GAIN 3 rad a metre, at most 0.25). corner_post with Leiden's
+  FROM="-112,150" TO="-377.1,-543.4" POST="-118.44,109.92" LEVEL=33: 0.06 -> 0.10 m (that
+  staging stops at the junction first, the route does not); Givatayim's 0.15 -> 0.18. Route 12
+  after: clean, the first clean run of it in days. Route 3 that run: a traffic hatch standing
+  at HaKnesset (292, 287) pulled out across autodrive's left turn and they touched at 11 km/h
+  (traffic's "player" stop came at 3.6 m) -- fixed: traffic's check of the player's corners
+  now also looks where its two front corners will be in PLAYER_AHEAD_S (0.8 s) when the player
+  is moving over 1 m/s, so a car about to pull out sees a car coming at it from the side
+  before that car is in its lane. Route set after: 15 of 15, route 3 clean; route 12's sign
+  again (16 km/h). Tried and dropped: counting posts by their own ground for a circle up on a
+  deck (`_push_out` skips posts for those) -- corner_post at Leiden unchanged. corner_post now
+  prints the plan's line's gap, not its nearest point's: at Leiden the line runs 1.59 m from the
+  sign (its points 1.86), under CAR_R + AP_CLEAR_PAD + the post + AP_BEND_PAD, so keep_clear
+  is not pushing the line between its points there -- next to look at.
+- **Cycle 2, 24 Nov night** (route set after each change; good numbers in brackets):
+  - Leiden's sign: `_ap_keep_clear` looked between a step's ends only every whole metre, `int(L)`,
+    so a 1.9 m step had no look at all and its line ran 1.59 m from the post. Now `ceili(L)` for
+    steps over 1 m, and AP_BEND_PAD on the line within AP_BEND_REACH (3 m) of a bend, not just
+    on the bend's point: the line 1.80-1.85 m. Route 12: clean in 4 of 7 runs (it hit every run
+    since 22 Nov). Still open, now and then, at 16 km/h.
+  - **Trap**: a pushed middle is a new plan point, and keep_clear runs four times a second on
+    the plan it made, so splitting every step (`maxi(ceili(L), 2)`) halved the steps near
+    anything solid each look: Ashdod's route 6 took 35 s a frame by 11 minutes and never
+    finished (the route printed nothing: look for a missing ROUTE RESULT line). Steps under a
+    metre are not split. The route's `[hitch]` lines show it: "usual" climbing.
+  - Pushed middles must still go forward (`(at + push - last).dot(dir) > 0.05` and short of b):
+    out of a tight spot at a Monaco bend (a sign, a post, a building's corner) the points came out
+    behind each other and the car took the bend at 37 km/h into the sign.
+  - Annecy (route 13) stood 500 s at Boulevard du Lycée: a moto drew up beside autodrive's nose,
+    waited for its corners, and autodrive waited for the moto. Traffic no longer looks at the
+    player's corners when the player is going its way (dot > 0.7) with its middle behind the
+    car's: the one in front goes.
+  - Annecy's Boulevard Nicollet: someone on a zebra already past the car's line "ran back" (the
+    player bearing down within 5.5 m) across it, into the car at 7 km/h. Now back only while the
+    kerb they came from is on their side of the car's line; past it they hurry on (`hurry`, 2.4x).
+  - tests/traffic_on_road.gd (REGRESS, ~2.5 min): every moving traffic car's middle within 0.4 m
+    of a drivable road, 150 s of Givatayim: 0 off (A day in Givatayim's "car on a median" was a
+    low camera behind parked cars, not a car off the road).
+  - Full set after the first three: 15 of 15 arrived, 14 clean (Monaco's sign, then fixed).
+  - Open: autodrive and three cars on Keren Kayemet stood 60 s at (-275, -551), Givatayim,
+    in A day in Givatayim (level 28, ~110 s) -- not yet staged.
+- **Roads even along their length, 25 Nov** (Evgeni: "many roads seem broken... the road is
+  not flat and causes weird driving, and some intersections are weird"). The height grid is a
+  surface model on 8-46 m points; levelled side to side only (20 Nov), roads still climbed in
+  facets, and the worst came from **divided roads**: each half took the hillside under it, 1.5 m
+  apart over 13 m on Givatayim's HaShalom, and the grid points between went to one half, then
+  the next to the other (nearest asphalt won) -- crests and dips along both halves and a twist
+  at each junction. `tools/level_roads.py` now (1) evens every road's height out as one network
+  (2 m samples, a junction one shared sample, each moved half way to its neighbours' mean
+  ~2(SMOOTH/2)^2 times, SMOOTH 12 m) and (2) gives a grid point near several roads a blend of
+  them (1/(1+edge distance)^2), not the nearest's. Evening road by road and pinning at junctions
+  to the ground there put the bumps back (a junction every 40-80 m); fitting a plane per junction
+  made the edges of its disc kinks; coupling side-by-side roads in the network spread the
+  smoothing for kilometres (8 m moves). All nine towns levelled once, from main's files.
+  `level_roads.py --check` crests and dips (slope along changing over 6% in 6 m), before -> after:
+  Givatayim 2.86 -> 1.26%, Bedford 2.92 -> 1.01, Annecy 2.14 -> 1.39, Tel Aviv 0.36 -> 0.17,
+  Ashdod 0.29 -> 0.15, Monaco 18.4 -> 15.4 (a cliff town: a 12 m grid cannot hold it). In the
+  game (`tests/road_bumps.gd`, Givatayim): kinks 2.36 -> 1.04%, junctions twisted over 0.15 m
+  32 -> 22%; `decks` 1 clean but `_1875_back` touching a tunnel wall at 0 km/h (as before).
+  Points moved up to 5 m (Givatayim), 12.6 (an Ashdod dune, 46 m grid): rooftop bumps in the
+  surface model under roads. Not done: the route set after it (Evgeni's 70% usage cap); a
+  second levelling pass takes Givatayim 1.26 -> 0.92%; a 6 m grid takes it to ~0.7% but
+  quadruples every ground-following mesh; "weird intersections" may also be the drawing
+  (asphalt pieces, kerbs) rather than heights -- ask for a shot.
+  Paused there (25 Nov, Evgeni: finish and pause). Top-down shots of the worst-twisted
+  junctions (tests/top_at.gd, UP=60; Givatayim (-719,-1422), (-626,-1408), (-378,-1529),
+  (604,1283), (-814,-1288), (-4,304)): most sit at the town's south edge by the Ayalon
+  interchange; (-626,-1408) on Katznelson shows white patches through the asphalt -- a
+  drawing fault to chase next, not a height one.
+  - tests/zebras.gd (LEVEL=7) never finishes on main as of 24 Nov 20:20 UTC (20 min, cut off;
+    the same on this cycle's code): it loads, then its 60 s loop never ends. Not looked into.
+- **turn_width now also checks the body at corners**: either of its two circles within
+  CLEAR_M (5 cm) of a post, wall or building within 25 m of the junction counts (`body_near`
+  in each line, in the REGRESS line). Givatayim 10 turns, Ashdod 12: none. Givatayim's
+  REGRESS still FAILs on Sirkin's right turn over the middle line (it did before these changes).
+- **What a drive log calls a hit was sometimes not what was hit.** `_push_out` names what it
+  touches in `_last_hit`, and autodrive's looks ahead (`_ap_keep_clear`, the nose's safety
+  net, a dozen more) call it too, after `_collide` in the same tick: route 3's "wall 23604"
+  and "wall 23619" were walls the plan came near; the car hit the sign post. The tick
+  (`_physics_process`) now keeps `_last_hit` across `_autodrive()`. And a wall's or post's number is that run's
+  build order (`STREETS_BUILD_ALL` builds round the start first): find it by place
+  (`tests/walls_at.gd`, or `_posts` near the spot), not by number.
+- **Nightly**: `validate.sh REGRESS=1` now also runs traffic_pockets, people_near (3 trips)
+  and rail_break, each with a REGRESS line; 1-2 min each here (64, 73, 122 s).
 - **Pulling in at the kerb measured from the wrong lane.** A bus at a stop and a delivery van
   take "the room to the kerb" from `_lane(r)` -- the lane traffic drives by default, the
   middle one of three -- not the lane they are in: a bus in Sderot Herzl's kerb lane got the
@@ -4659,6 +4896,136 @@ looking up. The test counts frames with the camera below 4 m inside a building
 | 9 | Alien arrival: ships over the towers, cars stop, people look up | Large | 5 | B | The disasters idea's first slice, as a scenario |
 | 10 | Follow that dog: a dog runs off across parks and lanes | Medium | 3 | B- | Dogs exist; the camera follows one |
 
+### The scenarios' redo (24 Nov 2026)
+
+The user: "All the svenarios are very weak. Lets also redo all of that." What was weak: each
+was a drive with captions -- no goal said, nothing on screen saying how it was going, no
+ending beyond a caption, and the one with stakes (the getaway) was decided before it began
+(caught at 26-43 s every run: a flat 17 m/s chaser against racer's 10-15 m/s town pace).
+What every scenario has now (all in `scenario.gd`, the bottom section):
+
+- **Title card** (`["title", name, goal, TITLE_S]`, put first by `setup()`): the level's name
+  and `GOALS[kind]`. 3.5 s.
+- **The live line** (`_strip_tick` / `_strip_text`, a Label at y 50 under the street's
+  name): tour "stop k of n · street · 420 m"; getaway "police 42 m ▮▮▮▯ · safe house 1.2 km"
+  (green / warn / hazard by the gap); ambulance "patient: 1:12 · hospital 900 m"; delivery
+  "drop k of 3 · street n · 0:45 · tips 18". Distances by road (`_ap_len`) when autodrive has
+  a route.
+- **End card** (`_end_card`, from `_finish` unless the player took a tour's wheel): headline,
+  0-3 stars, numbers, and the best so far from `user://streets_scenarios.json` (not SaveData:
+  see `PREFS_PATH`; not written when `STREETS_PREFS=0`). `card_lines` for tests.
+- **Drivable** (`_watching()` in streets.gd): getaway, ambulance, delivery play themselves on
+  autodrive but take the wheel and they go on with you driving.
+
+Per kind:
+- **Getaway**: the chaser's pace is *your* pace at its point on your trail (`_trail` keeps the
+  speed now, `_trail_v`) plus `CHASE_EDGE` 1.0 -> `CHASE_EDGE2` 2.6 m/s as backup joins (20-60 s,
+  top 17 -> 20.5), so it is held up where you were; it closes on you no faster than a follower
+  does (`(gap - 6) * 0.7` over your speed), and you are caught only when held within 12 m (it tails at 10: at 6 the usual view sat inside it) below
+  3 m/s for `CHASE_HOLD` 3.5 s, and never in the first `CHASE_GRACE` 30 s (Ashdod: autodrive stood 4 s for a person on a zebra at the first junction and was caught at 20 s). Within `CLOSE_IN` 18 m and back out past 28: a close call
+  (caption, slow motion, counted). Each red you run: +`CHASE_RED_M` 10 m. It starts rolling at
+  9 m/s, 50 m back (from a standstill it fell 100 m behind and was "lost" in 16 s). The safe
+  house 0.8-1.3 km off (1.2-2 km was 2.5 km by road). Lost at 130 m. Results: lost (3 stars),
+  home (2; 3 with no close call), caught (1 if it lasted a minute).
+- **Ambulance**: `["timer", secs]` -- 1.45 x the crow's flight at 12 m/s + 20 s; "30 seconds
+  left" with the voice; stars 3 with a quarter of the clock spare, 2 in time, 1 late.
+  Tel Aviv (25): 2:20 clock, there in 1:33, 16 cars pulled over.
+- **Tours**: past `TOUR_SKIP_S` 30 s on a drive and still `TOUR_SKIP_M` 160 m off, a fade and
+  `_jump_to` the point `CUT_BACK_M` 110 m before the end of autodrive's route (`_route_back`; first 80 m short by the crow, often 1 km round by road on one-ways) ("A little later, nearing ..."), `skips` counted. Givatayim
+  (17) before the cut's tuning: 5 of 5 stops, 7:09, 3 cuts (it was ~9 min).
+- **Pizza rush** (new, levels 43-44): `_delivery_beats` picks `DROPS` 3 of the town's own
+  addresses (`g._addr`), 200-450 m apart (250-600 ran 6-7 min in Givatayim: autodrive took 4:40 to Zahal 34 there -- slow routes, open for the driving work), one a street. The clock is set once autodrive has its
+  route: `_ap_len() / DROP_PACE` 6 m/s + 25 s (by the crow's flight it was late on every drop in
+  Givatayim: 3:25 for 600 m). At 30% left, autodrive turns racer. Tip 4-18 by time left, 2
+  late, cancelled 90 s past. `SCEN_SEED` fixes the picks for a test. Tel Aviv (44): 3 of 3,
+  30 in tips, 2 stars, 6 min.
+- Day and dragons: the title and end cards only (they are films).
+
+Results, 24 Nov (`tests/scenario.gd`, quality 0): getaway Ashdod (21) a 2:20 chase, 2 close
+calls, caught by a queue (1 star); Tel Aviv (22) the safe house in 1:40, 6 reds run, 3 stars
+(three runs alike); ambulance Tel Aviv (25) 1:23 with 0:56 spare; tour Givatayim (17) 5 of 5
+in 4:23 with 4 cuts (7:09 with 3 before the cut's tuning); pizza Tel Aviv (44) 3 of 3, 6 min,
+Givatayim (43) 3 of 3, 7 min, 22 in tips. Open: the pizza rush runs long in Givatayim (its
+routes are 3x the crow's flight); a cut like the tour's, with the clock charged for the part
+skipped, would bring it to ~3 min. Titles and end cards: `title.png`, `end_card.png` in $OUT.
+
+**Round two (24 Nov, morning; the user: "give go to all of these and iterate")**:
+- Pizza rush cuts ahead as tours do (`DROP_SKIP_S` 30 s, still 240 m off by road): `_skip_ahead(b,
+  style, charge=true)` charges the drop's clock for the road skipped at 1.6 x `DROP_PACE` (at
+  the clock's own pace every cut left it "running late" the moment it ended). Givatayim's shift
+  2:16 of play for 3 of 3, 24 in tips (was 7 min).
+- The ambulance never mounts the pavement (`_ap_mount_by`: "siren"). The test's new family
+  check: seconds with the car's middle off every drivable road at over 8 m/s (`off_fast`, must
+  be under 2 s for any scenario). The pavement drive seen in one frame did not show again in
+  this measure (0.0 s in two ambulance runs).
+- The getaway's backup: a second police car (`_chaser2`, `_police_car()`) `BACKUP_BEHIND` 13 m
+  further back on your trail from 45 s, its lamps in counter-phase. `_trail_at(odo)` places both.
+- **Taxi shift** (levels 45-46; "taxi"): night; `DROPS` fares, each a person (`Actor3D`, dressed
+  by `_humanize`, waving every 2.5 s through `people.gd gesture`) at the kerb (`_kerb_of`: 1.3 m
+  past the edge of the nearest public street) 150-350 m on, then their address 300-600 m from
+  there (`_addr_pick`). Beats "pickup" (cut ahead too; there within `PICKUP_M` 30 m on either side -- "go to" went round the block for their own kerb, 100 s and more -- or at "go to"'s kerb, or within
+  60 m and stood after 60 s -- a Givatayim run waited out three 150 s pickups) and "ride" (the
+  delivery's clock and tip, plus a fare of 12 + 6 a km by road, the tip 3 less per crash event).
+  At the door they step out and walk off. Stars at 55 / 75 earned. RIDE_LINES: what they say.
+- The scenarios list goes to 28 px rows past 16 (18 now).
+
+`tests/scenario.gd` prints the end card (`SCENARIO card:`) and, for the getaway, the gap every
+5 s; PASS needs the card, the getaway's "home" counts, a delivery needs 2 of 3 drops.
+
+**Round three (24 Nov, day; the user: "Lets start just by few 2 3 scenarios. As all these stuff
+have no inputs, i want them super optimized")**: two new ones, both built to cost nothing.
+- **Wedding convoy** (level 47, Tel Aviv; "wedding"): you lead, `_convoy_on(n)` puts n decorated
+  cars on your own trail (`_ctrail`, every 0.5 m; `CONVOY_GAP` 11 m) -- no AI, no steering, no
+  physics: each is placed at the trail point of its odometer, so the whole convoy costs
+  **0.05 ms a tick** (`convoy_us / convoy_ticks`, printed by the test). One horn stream on an
+  `AudioStreamPlayer3D` per car, a hoot every 3-8 s. Ribbons and flowers (`_dress`) are a few
+  boxes and spheres in palette materials (`_flat`). The hall: `_ahead_main_street(700, 1100)`,
+  the main street most in the facing direction; the clock is distance x 1.5 / 7.5 m/s + 25 s.
+- **Shabbat eve** (level 48, Givatayim; "shabbat"): evening into night, with beat "quiet n"
+  calling `traffic.set_cap(n)` -- 8, then 3, then 1 car. `set_cap` kills the farthest cars
+  beyond the cap and the respawn branch skips while `alive_count() >= cap`. The story is that
+  the street empties, so the scenario is cheaper as it goes: **40.5 ms of script a frame** on
+  average against 48.1 for "A day in Givatayim" (same city, same container, quality 0; 6.1
+  traffic cars on average against 22). `_finish` puts the cap back to `COUNT`.
+- The test's cost line now gives the game's own script time (`_prof_avg`, "script N ms",
+  averaged over every 2 s spell) instead of fps, which reads 3.8 in every run under the
+  software renderer and so said nothing. Loads: wedding ~16 s (as the ambulance in Tel Aviv),
+  Shabbat 12.6 s (as A day, 11.7).
+- The kerb camera stood inside buildings (92 frames in "A day", before this round): a kerb spot
+  is used only when `g._push_out(cand, 0.6, false, false)` is zero, else the shot falls back to
+  "orbit". 0 frames in every scenario since (`cam_in_building`).
+
+**Round four (24 Nov, evening; the user: "we need something to push? anything else? cycles of
+iterations?")**:
+- **Gan pick-up** (level 49, Givatayim; "gan"): the taxi's "pickup" beat with a kid (Actor3D at
+  1.15 m) at the kerb of one of the town's own kindergartens (`g._places._tile_items`, kind
+  "kindergarten", inside the town -- one past the town line had the road unbuilt), twice, then
+  "drive_for" home (an address 300-600 m on) on one clock (`timer`). `_gan_crowd`: GAN_CROWD 3
+  parents standing at the gate, `g.add_person` each, freed at the pickup. A gan pickup's cut
+  charges the clock; a kid never "gives up". Clock: crow-line x `GAN_WIND` 1.7 / 6 m/s + 20 s a
+  stop + 20 (1.45: 1:39 late; 1.9: 2:14-2:30 to spare, too easy). Four runs: 0:10 to 2:30 spare
+  at 1.7-1.9, 3 of 4 runs 2-3 stars. Script 39-45 ms a frame (A day in Givatayim's 48).
+- **A day, weakest of the films, now has its hour** (beat `["clock", minutes, rate, what]`: the
+  line under the street reads "07:42 · morning rush · 22 cars about") **and the traffic of the
+  hour** (`quiet` 14 in the evening, 5 at night, 2 before dawn). Givatayim: 13.6 cars on
+  average, **39.0 ms of script a frame against 48.1** before. Shabbat eve has the clock too
+  (15:15 to the candles at 16:17, late November).
+- The day's clock first put the evening look at 18:30-20:45: the evening is the low sun before
+  sunset (16:40 in late November), and at 18:50 it read as broad day. Evening now 15:50 on.
+- **The night and evening scenarios run on fewer cars** (`quiet` at the start): wedding 14,
+  pizza 12 (Friday night), taxi 10, night tour 8. Taxi in Tel Aviv **39.3 ms of script a frame
+  against 50.6**; the night tour in Givatayim 28.4 ms; pizza in Givatayim 40.9. The wedding did
+  not move (60 ms with 14 cars, 58-63 with 22): Tel Aviv itself is its cost. All pass.
+- **The kerb lens**: in the preview of A day, three kerb shots in eight were a parked car's
+  flank filling the screen, and one low lens over a grass verge made a traffic car look as if
+  it drove on the grass (it did not: `SCEN_WHERE=1` prints, at every shot, you, the lens and the
+  nearest traffic cars with their road and distance off its line -- all 1.7-1.9 m, on
+  Katznelson). A kerb spot now has no parked car (`g._parked_at`) within 2.2 m of its line of
+  sight to the lane (`_kerb_clear`), no post at it (`_push_out(.., posts=true)`), no traffic
+  car between it and you (`_kerb_view_clear`, also checked every 0.4 s while it runs: a car
+  pulling up in front cuts to the next shot, counted in `kerb_blocked`), and the lens at 1.3 m
+  (was 0.9). Not caught: trees' crowns (the lens is not tested against them).
+
 ## On foot: faster, and any car in traffic (22 Nov 2026)
 
 `WALK` 2.1 -> 4.5 m/s (a jog, the "Run" clip from 2.6 m/s up), `RUN` 6.2 -> 9.5 (the run
@@ -4820,6 +5187,30 @@ stood 19-26 s; on two-way streets with 3 cars in the lane, 4 of 6 stood.
   queue PASS. REGRESS FAIL: `turn_width` 1 of 10 (main the same), `deck_corner` 1 (it swings
   0-5 on main too: main 0, 1, 4, 5 and this branch 0, 1, 4 -- noisy, not a verdict on one
   run), `load_bar` and `people_pops` (loading and walkers: other sessions' corners).
+
+## Bedford: a standoff at Giles Drive, a car park off a dead end (26 Nov 2026)
+The user, on the web build in Bedford: autodrive "slows down a lot, moving weirdly, even when
+alone on the road", then "need to fix these weird places and dead ends, always stuck there"
+(a shot of autodrive in a car park among parked cars off Meadowview Drive).
+- **Route 9 stood 230 s** at Hammonds Plains Road / Giles Drive (-2615, -695): turning left
+  into Giles, autodrive waited for a sedan nosing out of Giles; the sedan was held by
+  traffic's `_into_player` (why "player"), which resets its wait each tick, so the
+  face-to-face rule that sends a car elsewhere after 9 s never fired. After it went, the
+  next car out did the same. Autodrive's "ignore crossing cars after 3 s" (`lead_on`'s
+  ignore flag) did not get it out either: it lasts one tick, because `_ap_wait` is zeroed as
+  soon as the ignored car no longer limits the speed. Fix: racer's "nose to nose with a car
+  that waits for us: back off and plan again" now applies to autodrive too (AP_GIVE_S 5 s;
+  Probe event `autodrive_gave_way`). Route 9: arrived in 557 s (was 600 s, not arrived).
+  tests/turn_standoff.gd stages the spot but did not reproduce it with one car; the jam had
+  a queue round it. The one-tick ignore is still there (not changed: it is everywhere).
+- **Streets that end in a driveway/car park**: `_ap_ways` offered the driveway as the only
+  way on, so it was taken (service -6 only ranks it, it never refuses). Now `_ap_next`
+  treats a two-way street whose every way on is a service lane as a dead end and turns
+  round (roam only; tally `ap_lane_end_turn`). tests/dead_end_turns.gd counts those ends too.
+- **Go-to** (`_graph_roads`): service lanes cost 4x per metre, parking aisles/driveways 8x,
+  private ways 6x, so a route uses a car park only when there is no street way.
+- The "slows when alone" part: the drive log's slowdowns were real -- "curve" on bends
+  (46 -> 18 km/h on a sharp one) and "car" behind real cars 15-30 m ahead. Nothing phantom found.
 
 ## Open problems
 
@@ -5159,3 +5550,128 @@ stood 19-26 s; on two-way streets with 3 cars in the lane, 4 of 6 stood.
 - Traffic cars do not steer round parked cars; parked cars are placed so the lanes miss them.
 - The quality ladder's thresholds are judged from one user's PC and phone; the profiler's
   hitch events are the place to look before retuning.
+
+## Small life: birds, shared e-scooters, gas cages (24 Nov 2026)
+
+The user: "more object people animals". `birds.gd` (`_birds`, made after the works in
+`_build_rest`'s stages, ticked from `_people_tick`): up to `MAX_FLOCKS` 6 flocks, `MAX_BIRDS`
+72 slots; a flock (5-12 pigeons, or 1-3 hooded crows one time in four) lands on a pavement
+20-60 m off where `_spawn_ok`; each bird walks (0.3 m/s, kept within 3.5 m of its landing
+spot, off the asphalt and out of walls), pecks, hops and turns at random; you within 7 m, a
+moving car within 16.5 m or anyone in `_people_at` within 1.8 m sends the whole flock up and
+away (gone after 30 m up or 9 s, the slots freed); a flock past 95 m and unseen is lifted
+and lands again elsewhere. At night none land, and any down go up. Nothing is solid.
+furniture.gd `street_extras` (after `town_things`): rental e-scooters every ~95 m of a
+non-fast street, half the time (a third outside `med`), 1-3 in a firm's colour (lime, teal,
+black, orange-red), one in three on its side; in `med` towns a gas cage (two cylinders in
+a steel cage) at the back of the pavement on residential streets, only where a wall is
+within 1.2 m behind it. Both have posts.
+- **Roofs** (`_build_roof_kit`, `med` towns): beside the solar heaters and stair rooms, a
+  satellite dish or two on 45% of roofs (turned south-west), an old TV aerial on a quarter,
+  1-2 AC units on 45%; ~33k in Tel Aviv at first (more triangles than the walls' ACs) cut to
+  ~13.6k (5.7k dishes, 2.2k aerials, 5.8k ACs), drawn to 200 / 160 m.
+- **Fountains**: OSM's `fountain` places (12 in Tel Aviv, 8 on clear ground) as a basin, a
+  bowl and a jet (furniture.gd `_fountain_kit`, in `street_extras`).
+- **Shops shut at night** (`_shuts_at_night`, `_build_pois`): every shop but the late ones
+  (corner shops, kiosks, supermarkets, bakeries, liquor, tobacco; a pharmacy in three) and
+  anything to eat or drink gets a second shutter shown only at night (one MultiMesh a square
+  in `_night_shut_nodes`), and lights no pool on the pavement. Tel Aviv: 1,624.
+- **Shabbat** (24 Nov): `_weekday` (0 Sunday) is the player's clock's (`STREETS_DAY` sets it),
+  moved on a day by the time button each time night turns to day; the banner names it in
+  the Israeli towns. `_shabbat_now()`: Friday evening and night, Saturday day and evening.
+  The shops `_shuts_on_shabbat` (the late ones; Tel Aviv keeps 1 in 3, elsewhere 1 in 8) get
+  a third set of shutters (`_shabbat_shut_nodes`, tally `shabbat_shutters`) and the traffic thins to `SHABBAT_CARS` 8 of 22 (only from a full town, so a scenario's own quiet stands); `_update_day`
+  shows the night ones at night or on Shabbat, those on Shabbat (from `_set_night`,
+  `_set_evening`). A Shabbat shop's window light on the pavement is in its own nodes
+  (`_shabbat_dark_nodes`, one a ground cell: 35 in Givatayim, drawn only within LAMP_RANGE),
+  dark on a Friday night. On Shabbat too (24 Nov): no buses (traffic.gd `set_no_buses`: those
+  about taken away, none put back), nobody waits at the stops (`_place_waiters`), and
+  SHABBAT_KIDS 4 children (made at load in the Israeli towns, hidden on other days) walk a
+  step behind the first of four couples (`_walk_beside`'s "behind"; they join only while the
+  couple is out of sight). small_life: no bus on a Saturday, 4 children out, none on Sunday.
+  Open: cafes and restaurants all stay open
+  and nobody walks to synagogue. Tests and bots run on a Tuesday whatever the date.
+- **Cars over bumps** (24 Nov): `bump_lift(front, rear)` gives the bump height under each
+  axle (`_bump_h`: `_bump_kit`'s profile, 8 cm top 0.6 m deep, a table three times that, easing
+  off over 0.16 m); `_pose_car` lifts your body by their mean and tips it by their difference
+  over the wheelbase, traffic.gd the same into `c.bump_y`/`c.bump_pitch` for cars within
+  120 m. Visual only: the speed for a bump is `bump_v`'s.
+- **Test**: `tests/small_life.gd` (REGRESS line). Good, level 7: 6 flocks down within a
+  minute, 0 birds on the asphalt or in a wall, 0 landed in view, the flock walked at goes up;
+  ~1,050 e-scooters, ~50 gas cages (Tel Aviv's front gardens keep most walls back), 0 on the
+  asphalt.
+- **Post boxes, drinking taps, speed bumps** (24 Nov): `street_points` + `street_point_kinds`
+  in the city file, fetched alone by `tools/osm_city.py --street-points FILE...` (raw kept in
+  cities/data/osm_points_<town>.json, `--offline` redoes it) -- from a cloud session through
+  the "street points into baked cities" workflow (`street_points.yml`, input `files`), which
+  commits each town as it comes: the public servers took 5-15 min a town on 24 Nov (502s,
+  timeouts; kumi.systems answered most). Bucketed into `_tile_things` with the town's things
+  and built by `town_things`: Israel Post's red box at the kerb, a tap on a stone column where
+  mapped, a yellow-black bump (a raised table 3 m deep) across the whole road at the mapped
+  point, 8 cm high and not solid. Every bump built is in `g.bumps` [middle, along, width, kind]
+  for the drivers (how cars slow for them is the driving thread's). Tel Aviv: 7 post boxes, 68
+  taps, 14 bumps and a table in the file; 5 / 65 / 15 built.
+- **Not done**: laundry, night lighting from the town's own lamps (their pools follow each mapped head)
+  and tree species' looks (`tree_forms` from the surveys) were already in.
+- **Flap** (24 Nov): a flock going up plays `sounds/flap.wav` (make_sounds.py `flap`: five
+  birds' wingbeats, fast then slowing, 1.1 s) from its middle, one of two 3D players in
+  birds.gd, 6 dB under the sfx volume, silent when muted.
+- **On the wires** (24 Nov): `furniture.wires` keeps every span of its top three wires in
+  `perches` (by PERCH_CELL 50 m squares, `wire_at` gives the sagging wire's point); birds.gd
+  lands PERCH_SHARE 0.4 of its flocks as a row of 3-9 pigeons on a span 20-60 m off, out of
+  sight, a hand apart and facing across the street, now and then one turning round or
+  preening (`_sit`). Cars and people do not bother them; you on foot within PERCH_FLEE 6 m do,
+  and the night. small_life: perched flocks counted, none under 4 m up.
+- **The wires were invisible from the street** (found by the perching shot, 24 Nov): `_cable`'s
+  two ribbons were one-sided, and merged into the square's batch, whose TONE_SHADER is
+  `cull_back` -- seen from above or one side only, from below not at all. Now each ribbon has
+  its back too. Anything thin built as single faces into the batch has this trap; tests/wire_look.gd.
+- **On the roofs** (24 Nov, not in pitched towns): ROOF_SHARE 0.25 of the flocks land as a
+  row of 3-8 pigeons along a flat roof's edge 5-25 m up, the edge whose middle is nearest a
+  road (`_land_roof`, from the game's `_blds` / `_bld_top`, not the city file's buildings: Givatayim's file has none left once built, and the first version threw there every landing; run small_life on level 1 too; the roof at the ring's mean ground + its height, as `_build_roof_kit`), looking
+  down at the street; they behave as the wire ones. small_life checks every roof bird is
+  inside its building's walls ("off the roof" 0), shot pigeons_roof.
+- **Inside-out trunks** (24 Nov, found by tests/backface_scan.gd): `Tubes.tube` wound its
+  quads anticlockwise seen from outside, Godot's back -- every tree trunk and branch since
+  the trunks were made had its near side culled and showed the inside of its far side, lit
+  from behind (dark on the sunny side). Now clockwise. The scan's other finds are small (a
+  parked car's rear underside, a garden wall's far top) and left for now.
+- **Interactions** (25 Nov, "more realistic interactions"): the horn (`_on_horn`) now also
+  turns the people standing about within HORN_LOOK 18 m to look at you for 2-3 s (`look_t`,
+  turned back in `_still_startle`; tally horn_looks) and sends up every flock within 30 m (20
+  for the wire and roof ones: birds.gd `horn`). Only while the horn sounds: muted, nothing
+  (the horn's own gate). A traffic car held up by you for TOOT_AFTER 3 s while you stand
+  toots twice (`traffic_toot`, a made 3D sound; 12 s before it may again) -- not when a red
+  light holds it (`_light_ahead` INF only). On foot within DOG_BARK_AT 3 m of a dog on a lead,
+  the even-numbered dogs bark at you (dog.wav at the dog, 15 s apart).
+- **Hooded crows** (25 Nov): three meshes of their own (a black head, wings, tail and beak on
+  the grey body: the copy's colour tints the body), six draws in all; `_show` touches only
+  the bird's own kind's three.
+- **Trolleys** (25 Nov, furniture.gd street_extras, `_trolley_kit`): by each OSM supermarket, a
+  row of 3-6 nested along the front at the first clear spot out of the building toward its
+  street, and one in three a stray 8-24 m down the pavement. Tel Aviv ~570, Givatayim ~100.
+- **Birds stuck in mid-air** (26 Nov, the user): the roof rows took a building and its height
+  from the town's lists (`_blds`, `_bld_top`), which hold buildings never drawn and know
+  nothing of the 0.7 m parapet -- rows sat over nothing, or under the parapet's top. Now only
+  a flat roof `_build_buildings` actually drew, at the height it drew its parapet's top
+  (`_roof_y`, NAN for the rest). "Too many pigeons": MAX_FLOCKS 6 -> 4, flocks 4-9 (was
+  5-12), rows on wires and roofs 2-6 (were 3-9 / 3-8). The check that should have caught it:
+  small_life's "off the roof" only asked whether the bird stood inside the outline, never
+  whether a roof was drawn there at that height.
+- **Open**: birds never perch on lamp tops; a flock
+  spooked by traffic on the road only when it is your car; the crows look like grey pigeons
+  scaled up (no separate black head and wings in the paint); gas cages only on streets
+  with a wall at the pavement's back.
+- **Potholes and trenches** (24 Nov, TONE_SHADER's asphalt, within 140 m, roads with patches):
+  beside the patched 5 m squares, a filled trench (a 0.7 m strip of newer asphalt 32 m long,
+  along x or z) in one 40 m square in six, and a pothole (a ragged dark hole 0.6-1.4 m across,
+  a lighter broken lip) in one 7 m square in 33, within 90 m. Shader only: nothing to draw
+  or hold. Seen by tinting `hole` red at a 40% rate (tests/small_life.gd's "asphalt" shot);
+  a CPU cannot find the holes for a staged close-up -- the float32 dot's rounding times
+  43758 gives another hash.
+- **Balcony plants** (24 Nov, `_build_facade_kit`'s balcony stacks, furniture.gd
+  `balcony_plants_kit`): a terracotta trough on the parapet, geraniums in flower or a trailing
+  green spilling over the front, on one balcony in ten (two in ten in `med` towns); drawn to
+  110 m. Givatayim: ~3,700. `wall_things["plants"]` keeps a few for tests (small_life's
+  "balconies" shot).
+

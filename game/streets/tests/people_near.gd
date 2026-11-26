@@ -147,5 +147,7 @@ func _run() -> void:
 			last_hit = h
 		metres += g._odo - odo0
 		print("trip %d: %.0f s, %.0f m, arrived %s" % [trip, t - t0, g._odo - odo0, str(not g._dest_on)])
+	print("REGRESS people_near: %s -- autodrive's hits on people %d, people into its lane too late to stop for %d, over %.1f km (good 0 and 0; the bug: a hit at 32 km/h, 4 late)" % [
+		"PASS" if hits == 0 and late == 0 else "FAIL", hits, late, metres / 1000.0])
 	print("PEOPLE NEAR: %d hits, %d within %.1f m of the body (%d under 1 m), %d into the lane too late to stop for, over %.1f km" % [hits, near, reach, under1, late, metres / 1000.0])
 	quit(0)

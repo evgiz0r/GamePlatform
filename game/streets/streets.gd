@@ -96,7 +96,7 @@ const LEVELS := [
 	# road where the car has ramps tunnels jumps falls"): a walk round a square laid out with the
 	# game's things in rows, and a figure-of-eight circuit autodrive takes once round -- the route
 	# set's drive 14, which this level starts itself ("test_drive"; left off the Cities list)
-	{"name": "The showroom: a walk among the models", "city": "showroom", "look": "med", "walk": "showroom_walk"},
+	{"name": "The showroom: a walk among the models", "city": "showroom", "look": "med", "lang": "en", "walk": "showroom_walk"},
 	# ("traffic": false -- no cars but the one watched: a bus and cars had shared its jump and ramps)
 	{"name": "The trick road", "city": "trick_road", "look": "north", "test_drive": 14, "traffic": false},
 	# Monaco (NEW_CITY.md): the whole principality, Fontvieille to Larvotto, a box of 3.4 x 3.1 km:
@@ -106,6 +106,19 @@ const LEVELS := [
 	{"name": "Monaco", "city": "monaco", "start": ["Boulevard Albert 1er", "Rue Suffren Reymond"], "look": "north", "build": "fr", "trees": "med", "decks": "infer"},
 	# its walk (data_tools/make_walks.py): the old town's lane on the Rock
 	{"name": "Monaco: through the old town on the Rock", "city": "monaco", "look": "north", "build": "fr", "trees": "med", "decks": "infer", "walk": "monaco_rock"},
+	# the scenarios' redo (24 Nov, the user: "All the scenarios are very weak"): a delivery
+	# against the clock to three of the town's own addresses (scenario.gd "delivery")
+	{"name": "Pizza rush: Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "delivery"},
+	{"name": "Pizza rush: Tel Aviv", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "delivery"},
+	# a taxi shift (24 Nov, the user's go on the ideas list): three fares waving at the kerb, each to an address
+	{"name": "Taxi shift: Tel Aviv", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "taxi"},
+	{"name": "Taxi shift: Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "taxi"},
+	# two more (24 Nov, the user: "Lets start just by few 2 3 scenarios. As all these stuff have no
+	# inputs, i want them super optimized"): watched only; Shabbat eve thins the traffic to a few
+	# cars, the convoy is three models on your own trail (no traffic logic of their own)
+	{"name": "Wedding convoy: Tel Aviv", "city": "tel_aviv", "start": ["אליעזר קפלן", "לאונרדו דה וינצ'י"], "look": "med", "decks": "infer", "scenario": "wedding"},
+	{"name": "Shabbat eve: Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "shabbat"},
+	{"name": "Gan pick-up: Givatayim", "city": "givatayim", "start": ["כצנלסון", "ויצמן"], "look": "med", "decks": "infer", "scenario": "gan"},
 ]
 const SFX_SCALE := 0.28              ## the shell default is loud; in memory only, see CLAUDE.md
 
@@ -195,6 +208,8 @@ const PEOPLE := ["Casual_Male", "Casual_Female", "Casual2_Male", "Casual2_Female
 const ADULT_LO := 1.55
 const ADULT_HI := 1.85
 const WALKERS := 24
+const DOG_BARK_AT := 3.0            ## you on foot this near a dog on a lead: it may bark at you
+const SHABBAT_KIDS := 4             ## children walking with their parents on Shabbat (_spawn_people)
 const SIDESTEP := 0.8                ## m/s: the fastest a walker moves across its pavement, stepping round something
 const CHATTERS := 8
 const PEOPLE_RANGE := 150.0
@@ -237,7 +252,7 @@ const Y_MARK := 0.085
 const NEW_STREET_M := 30.0           ## drive this far along a street for it to count
 const MAP_R := 210.0                 ## the minimap shows this far around the car (m)
 const AP_LAT := 3.6                  ## autodrive keeps the sideways pull in turns under this (m/s^2)...
-const AP_LAT_TIGHT := 4.8            ## ...rising to this in a bend of 5 m radius (from 15 m down)
+const AP_LAT_TIGHT := 4.2            ## ...rising to this in a bend of 5 m radius (from 15 m down)
 ## Ground steeper than this (rise per metre, about 32 degrees) cannot be driven or walked up:
 ## it is as solid as a wall. No real town so far has any (Givatayim's steepest is 52%); the
 ## made-up town's mountains do, and they are what keeps it a valley.
@@ -1002,6 +1017,7 @@ var _seg_hash := {}                  ## Vector2i cell -> Array of road * 4096 + 
 var _blds: Array = []                ## PackedVector2Array outlines, counter-clockwise
 var _bld_box: Array = []             ## Rect2 per building
 var _bld_solid := PackedByteArray()  ## 0 for a building raised on stilts you can drive under
+var _roof_y := PackedFloat32Array()  ## a drawn flat roof's edge height (its parapet's top), NAN for the rest and the not yet drawn (birds.gd)
 var _bld_kind := PackedByteArray()   ## 1 a block on columns, 2 a house with a pitched roof, 3 balconies
 var _bld_top := PackedFloat32Array() ## its walls' height (m), for a view from above kept over the roofs
 var _bld_hash := {}
@@ -1022,6 +1038,7 @@ var _decks: Decks                    ## bridges, embankments, cuttings, tunnels 
 var _rails: Rails                    ## railway tracks, platforms, trains (rails.gd)
 var _marks: Marks                    ## a town's landmarks and its towers' red lights (landmarks.gd)
 var _beach: Beach                    ## the beaches by the sea: umbrellas, chairs, lifeguards (beach.gd)
+var _birds: Birds                   ## pigeons and crows on the pavements round you (birds.gd)
 var _crowd: Crowds                   ## shoppers in a market, people along the shore and in the sea (crowds.gd)
 var _works: Sites                    ## building sites from a town's own map: hoardings, cranes (sites.gd)
 var _wave: Wave                      ## the green wave: lights turning green for the car (wave.gd)
@@ -1113,6 +1130,7 @@ const Rails := preload("res://game/streets/rails.gd")
 const Marks := preload("res://game/streets/landmarks.gd")
 const Beach := preload("res://game/streets/beach.gd")
 const Crowds := preload("res://game/streets/crowds.gd")
+const Birds := preload("res://game/streets/birds.gd")
 const Sites := preload("res://game/streets/sites.gd")
 const Wave := preload("res://game/streets/wave.gd")
 const Standins := preload("res://game/streets/standins.gd")
@@ -1491,6 +1509,7 @@ func start(_config: Dictionary) -> void:
 	_spawn_crossers()
 	_traffic = Traffic.new()
 	_traffic.setup(self)
+	_update_day()   # (Shabbat today: the shutters down, the streets quiet)
 	_build_engine()
 	_build_street_sounds()
 	_build_signal_sounds()
@@ -2698,9 +2717,15 @@ func _build_graph() -> void:
 	# the cost of each point only they reach -- taken only where there is no other way. Left
 	# out, a street whose only ways out are private was cut off: "go to" from Timna in
 	# Givatayim, or to a close in Bedford, found no way at all (tests/route_check.gd)
-	for pass_pv: bool in [false, true]:
-		_graph_roads(pass_pv)
+	# (service lanes between the two, at SERVICE_COST: a car park's aisles and the lanes behind
+	# blocks are not streets -- at the cost of one, "go to" cut through them as shortcuts and
+	# autodrive ended up between parked cars, Bedford's Meadowview Drive, 26 Nov)
+	for pass_i: int in [0, 1, 2]:
+		_graph_roads(pass_i)
 	_find_pockets()
+
+const SERVICE_COST := 4.0            ## a service lane's points cost this many times a street's
+const SERVICE_AISLE_COST := 8.0      ## ... a car park's aisle, a driveway
 
 ## ---- pockets: streets you can drive into and not out of, or not into at all -----------------
 ## The bake cuts the town off at its edge, and with it the far ends of some one-way streets. A
@@ -2796,6 +2821,66 @@ func _nearest_seg_out(p: Vector2, reach: float, marks: Dictionary) -> Dictionary
 			best = {"road": ri, "seg": sj, "q": (pts[sj] + pts[sj + 1]) * 0.5, "edge": d - float(r["w"]) * 0.5}
 	return best
 
+## A cul-de-sac estate: drive along road ri from point k going dir (k the first point past
+## where you are), and is all you can get to from there -- by the town's public streets, not
+## back through the point you came from -- a few streets that only end? A dead end with side
+## streets of its own that also only end (Bedford's Meadowview Drive and Bridge Street off
+## Union Street, 23 Nov) was not one to traffic's old test, which stopped at the first point
+## with three ways -- a driveway was enough -- so cars went in, turned round, met the ones
+## coming in and jammed there; autodrive roaming had no test at all. Found by walking the
+## streets from there until POCKET_M m of them (not a pocket) or none left (a pocket), once
+## per way in. One-ways are walked both ways (a pocket is a pocket); service lanes, car parks
+## and private ways are not streets out. Reaching the map's edge is not a pocket here (the
+## edge has its own rules: _trap, _edge_bound).
+const POCKET_M := 900.0
+var _pocket_of := {}                 ## Vector3i(road, k, dir) -> bool
+
+func _pocket_ahead(ri: int, k: int, dir: int) -> bool:
+	var key := Vector3i(ri, k, dir)
+	if _pocket_of.has(key):
+		return _pocket_of[key]
+	var r0: Dictionary = _roads[ri]
+	var p0: PackedVector2Array = r0["pts"]
+	if k - dir < 0 or k - dir >= p0.size() or k < 0 or k >= p0.size():
+		return false
+	var rim := _bounds.grow(-EDGE - EDGE_ROOM)
+	var seen := {_pt_key(ri, k - dir): true, _pt_key(ri, k): true}
+	var todo: Array = [Vector2i(ri, k)]
+	var metres := p0[k - dir].distance_to(p0[k])
+	var out := true
+	while not todo.is_empty() and out:
+		var at: Vector2i = todo.pop_back()
+		var ids: PackedInt32Array = (_roads[at.x] as Dictionary)["ids"]
+		var here: Array = [at]
+		if ids[at.y] >= 0:
+			here = _node_roads[ids[at.y]]
+		for e: Vector2i in here:
+			var r: Dictionary = _roads[e.x]
+			if not r["drive"] or r["pv"] or r["k"] == "service":
+				continue
+			var p: PackedVector2Array = r["pts"]
+			for d: int in [1, -1]:
+				var j := e.y + d
+				if j < 0 or j >= p.size():
+					continue
+				var kk := _pt_key(e.x, j)
+				if seen.has(kk):
+					continue
+				seen[kk] = true
+				metres += p[e.y].distance_to(p[j])
+				if metres > POCKET_M or not rim.has_point(p[j]):
+					out = false
+					break
+				todo.append(Vector2i(e.x, j))
+			if not out:
+				break
+	_pocket_of[key] = out
+	return out
+
+func _pt_key(ri: int, j: int) -> int:
+	var id: int = ((_roads[ri] as Dictionary)["ids"] as PackedInt32Array)[j]
+	return id if id >= 0 else -1 - (ri * 100000 + j)
+
 func _graph_reach(from: int, adj: Dictionary) -> Dictionary:
 	var seen := {from: true}
 	var todo: Array = [from]
@@ -2807,11 +2892,19 @@ func _graph_reach(from: int, adj: Dictionary) -> Dictionary:
 				todo.append(m)
 	return seen
 
-func _graph_roads(private: bool) -> void:
+func _graph_roads(pass_i: int) -> void:   # 0 streets, 1 service lanes, 2 private ways
 	for ri in range(_roads.size()):
 		var r: Dictionary = _roads[ri]
-		if not r["drive"] or bool(r["pv"]) != private:
+		if not r["drive"]:
 			continue
+		var kind := 2 if bool(r["pv"]) else (1 if r["k"] == "service" else 0)
+		if kind != pass_i:
+			continue
+		var cost := 1.0
+		if kind == 2:
+			cost = 6.0
+		elif kind == 1:
+			cost = SERVICE_AISLE_COST if String(r.get("sv", "")) in ["parking_aisle", "driveway", "drive-through"] else SERVICE_COST
 		var ids: PackedInt32Array = r["ids"]
 		for j in range(ids.size() - 1):
 			var a := ids[j]
@@ -2820,7 +2913,7 @@ func _graph_roads(private: bool) -> void:
 				continue
 			for id: int in [a, b]:
 				if not _astar.has_point(id):
-					_astar.add_point(id, _nodes[id], 6.0 if private else 1.0)
+					_astar.add_point(id, _nodes[id], cost)
 			if r["o"] != -1:
 				_astar.connect_points(a, b, false)
 				_edge_of[Vector2i(a, b)] = Vector3i(ri, j, 1)
@@ -3000,6 +3093,7 @@ var _tile_lit := {}                  ## square -> junctions with traffic lights
 var _tile_lamps := {}                ## square -> a town's own lamp posts: [where, look, lamps]
 var _lamp_cover := {}                ## LAMP_COVER cell -> true: the town's map has its lamp posts there
 var _tile_things := {}               ## square -> a town's own street things: [where, kind, places] (furniture.gd's town_things)
+var bumps: Array = []                ## OSM's speed bumps, tables and cushions as built: [middle, along the road, its width, kind] (furniture.gd; for the drivers)
 var _hydrant_cover := {}             ## LAMP_COVER cell -> true: the town's map has its hydrants there
 var _tile_bars := {}                 ## square -> mapped fences and hedges that reach it
 var _crossing_set := {}
@@ -3233,6 +3327,8 @@ func _build_setup(t0: int) -> void:
 	_build_asph_hash()
 	_bld_kind.resize((_city_data["buildings"] as Array).size())
 	_bld_kind.fill(0)
+	_roof_y.resize(_bld_kind.size())
+	_roof_y.fill(NAN)
 	for ni in _city_data.get("crossings", []):
 		_crossing_nodes.append(int(ni))
 		_crossing_set[int(ni)] = true
@@ -3303,6 +3399,11 @@ func _build_setup(t0: int) -> void:
 		_bucket(_tile_things, _tile_of(tp), [tp, kind, int(things[i * 4 + 3])])
 		if kind == "hydrant":
 			_hydrant_cover[_cell(tp, LAMP_COVER)] = true
+	var sp: Array = _city_data.get("street_points", [])   # (OSM's post boxes, taps, bumps: the same)
+	var sp_kinds: Array = _city_data.get("street_point_kinds", [])
+	for i in range(sp.size() / 3):
+		var tp := Vector2(sp[i * 3], sp[i * 3 + 1]) * k
+		_bucket(_tile_things, _tile_of(tp), [tp, String(sp_kinds[int(sp[i * 3 + 2])]), 0])
 	var pois: Array = _city_data.get("pois", [])
 	for i in range(pois.size()):
 		_bucket(_tile_pois, _tile_of(Vector2(pois[i][0], pois[i][1]) * k), i)
@@ -3389,6 +3490,8 @@ func _build_tile(t: Vector2i) -> void:
 	_beach.build()
 	await _build_step("works")
 	_works.build()
+	_birds = Birds.new(self)
+	_birds.setup()
 	await _build_step("places")
 	await _places.build()
 	tk = _stage("roads", tk)
@@ -6444,7 +6547,9 @@ func _markings(buf: Buf, r: Dictionary, yellow: Buf) -> void:
 		return
 	var w: float = r["w"]
 	var pts: PackedVector2Array = r["pts"]
-	var north := String(_place.get("look", "")) == "north"
+	# (yellow centre lines, double on main roads, and edge lines: North America's. A European
+	# town's centre line is white and dashed, as Israel's: Delft and Annecy had Canada's)
+	var north := _country() == "ca"
 	var main: bool = MAIN_ROADS.has(r["k"])
 	var lines: Array = []   # [offset, solid, yellow]
 	if r["o"] == 0:
@@ -6527,7 +6632,7 @@ func _markings(buf: Buf, r: Dictionary, yellow: Buf) -> void:
 				if _tiled and not _tile_rect(_tile).has_point(a2):
 					s2 += BUS_WORD_STEP
 					continue   # (the next square's: each square's stretch overlaps the next)
-				_road_word("אוטובוס" if String(_place.get("look", "")) == "med" else "BUS",
+				_road_word("אוטובוס" if _hebrew() else "BUS",
 					a2 + Vector2(-d2.y, d2.x) * float(bw[0]), d2 * float(bw[1]))
 				_bus_words += 1
 				if _bus_word_at.size() < 8:
@@ -6676,6 +6781,8 @@ func _build_buildings() -> void:
 			"sgn": sgn, "gabled": gabled, "pilotis": pilotis, "lip": lip}
 		bd["_look"] = look
 		_bld_kind[bi] = 1 if pilotis else (2 if gabled else 0)
+		if not gabled and raised == 0.0 and bi < _roof_y.size():
+			_roof_y[bi] = h + lip   # (a flat roof as drawn: its parapet's top, where birds sit)
 		if raised == 0.0 and _ao != null:
 			if pilotis:   # the parking under it (round the lobby, 2.2 m in) in the shade, and a little out past its edge
 				var tao := Time.get_ticks_usec()
@@ -7097,6 +7204,7 @@ func _build_facade_kit() -> void:
 	var acs: Array = [[], []]    # AC units: on the wall on arms, up on a balcony's back wall
 	var washing: Array = [[], [], []]   # racks of washing under windows, three arrangements
 	var towels: Array = []       # over the balconies' parapets
+	var plants: Array = [[], []] # potted plants on them: geraniums, trailing green
 	var towel_cols: Array = []
 	var laundry: Array = _furn._laundry_cols() if med else []
 	var plates: Array = []
@@ -7165,6 +7273,8 @@ func _build_facade_kit() -> void:
 							if hb % 10 < 3:   # an AC up on the balcony's back wall, over the parapet
 								var q := at + (b - a) / L * (0.75 if hb % 2 == 0 else -0.75)
 								(acs[1] as Array).append(Transform3D(face, Vector3(q.x, g_lo + lv * 3.0 + 1.95, q.y)))
+							elif hb % 10 == 5 or (hb % 10 == 6 and med):   # potted plants on the parapet
+								plants[hb / 10 % 2].append(Transform3D(face, Vector3(p.x, g_lo + lv * 3.0, p.y)))
 							elif hb % 10 == 4 and hb / 10 % 3 == 0:   # a towel over the parapet
 								var tx := (hb / 30 % 5 - 2) * 0.35
 								towels.append(Transform3D(face, Vector3(p.x, g_lo + lv * 3.0, p.y)) * Transform3D(Basis(), Vector3(tx, 0, 0)))
@@ -7270,7 +7380,11 @@ func _build_facade_kit() -> void:
 		wash_tints.append(Color.WHITE.lerp(laundry[posmod(_hash_i(Vector2(t.origin.x, t.origin.z)), laundry.size())], 0.35))
 	_instanced(_furn.washing_kit(0), all_wash, 110.0, wash_tints)
 	await _chunked_paced(_furn.towel_kit(), towels, 120.0, towel_cols)
-	var seen_now := {"ac": acs[0], "ac_balcony": acs[1], "washing": (washing[0] as Array) + (washing[1] as Array) + (washing[2] as Array), "towels": towels}
+	for v in range(2):
+		await _chunked_paced(_furn.balcony_plants_kit(v), plants[v], 110.0, [])
+	_tally("balcony_plants", (plants[0] as Array).size() + (plants[1] as Array).size())
+	var seen_now := {"ac": acs[0], "ac_balcony": acs[1], "washing": (washing[0] as Array) + (washing[1] as Array) + (washing[2] as Array), "towels": towels,
+		"plants": (plants[0] as Array) + (plants[1] as Array)}
 	for k: String in seen_now:   # (a few of each kept for the tests: tests/wall_things.gd)
 		var keep: Array = wall_things.get(k, [])
 		keep.append_array((seen_now[k] as Array).slice(0, maxi(0, 200 - keep.size())))
@@ -7632,6 +7746,29 @@ func _stilts(ring: PackedVector2Array, sgn: float, ground: float, under: float, 
 ## A Dutch town: the level's "build" is "nl" (brick walls, measured pitched roofs)
 func _dutch() -> bool:
 	return String(_place.get("build", "")) == "nl"
+
+## Which country's traffic signs and road paint a town wears: "il" (Israel), "nl" (the
+## Netherlands), "fr" (France and Monaco), "ca" (Canada, the North American MUTCD). A level's
+## own "country" wins; else the build ("nl", "fr"), else the look ("med" is Israel, any other
+## Canada: Bedford). Israel, the Netherlands and France sign by the Vienna Convention (round
+## red-rimmed limits, blue mandatory discs, red-rimmed warning triangles, white centre lines);
+## Canada by its MUTCD (white MAXIMUM boards, black-on-white regulatory signs, yellow warning
+## diamonds, yellow centre lines, stop signs on nearly every side street). See NEW_CITY.md.
+func _country() -> String:
+	if _place.has("country"):
+		return String(_place["country"])
+	var b := String(_place.get("build", ""))
+	if b == "nl" or b == "fr":
+		return b
+	return "il" if String(_place.get("look", "")) == "med" else "ca"
+
+## Whether the town's own writing is Hebrew -- road words (עצור, האט, אוטובוס), the taxis'
+## roof signs (מונית), the street plates' "רח'", a shelter's מקלט: only in an Israeli town
+## (_country() "il"). Everywhere else English, or the local word where the town paints one
+## (the user, 24 Nov: "remove hebrew in general anywhere besides the israeli cities. rest is
+## just english"). A made-up place that is not an Israeli town says so with "lang": "en".
+func _hebrew() -> bool:
+	return _country() == "il" and String(_place.get("lang", "he")) == "he"
 
 ## A town whose roofs were measured (a survey's ridge, `rr`): Dutch ("nl", 3DBAG) or French
 ## ("fr", BD TOPO) -- walls to the eaves, the roof to the ridge (_dutch_pitch)
@@ -8624,9 +8761,12 @@ class Tubes:
 				tg.append_array([along.x, along.y, along.z, 1.0])
 				uv.append(Vector2(float(j) / sides * 0.9 * (ra + rb) / 0.27, L * float(e)))
 				col.append(Color.WHITE)
+		# (wound clockwise seen from outside, Godot's front: it was the other way round for
+		# years -- every trunk drawn inside out, its near side culled and the far side's inside
+		# showing, lit from behind: tests/backface_scan.gd, 24 Nov 2026)
 		for j in range(sides):
 			var i0 := base + j * 2
-			idx.append_array([i0, i0 + 2, i0 + 1, i0 + 1, i0 + 2, i0 + 3])
+			idx.append_array([i0, i0 + 1, i0 + 2, i0 + 1, i0 + 3, i0 + 2])
 
 	func mesh(m: Material) -> ArrayMesh:
 		var a := []
@@ -8708,6 +8848,9 @@ func _build_roof_kit() -> void:
 	var panels: Array = []
 	var tanks: Array = []
 	var rooms: Array = []            ## the stairwell room most blocks have on the roof
+	var dishes: Array = []
+	var aerials: Array = []
+	var roof_acs: Array = []
 	var rng := RandomNumberGenerator.new()
 	var all: Array = _city_data["buildings"]
 	for bi: int in _tile_blds.get(_tile, []):
@@ -8754,6 +8897,25 @@ func _build_roof_kit() -> void:
 			# the panel faces south (+z), tilted ~35 degrees; the tank lies behind, east-west
 			panels.append(Transform3D(Basis(Vector3.RIGHT, 0.6), Vector3(p.x, top + 0.55, p.y + 0.15)))
 			tanks.append(Transform3D(Basis(Vector3.FORWARD, PI * 0.5), Vector3(p.x, top + 1.05, p.y - 0.55)))
+		# the rest of a roof's clutter: dishes (turned to the south-west), an old aerial or two,
+		# AC units' outdoor halves (round the rooms they cool, so a block has several)
+		# (kept few: ~33k on Tel Aviv's roofs at first, more triangles than the city's own
+		# ACs on the walls; a third of that now, and none drawn past 200 m)
+		var junk := [[dishes, rng.randi_range(1, 2) if rng.randf() < 0.45 else 0, 0.5], [aerials, 1 if rng.randf() < 0.25 else 0, 0.3],
+			[roof_acs, rng.randi_range(1, 2) if rng.randf() < 0.45 else 0, 0.6]]
+		for ji in range(junk.size()):
+			var j: Array = junk[ji]
+			var got := 0
+			for _try in range(int(j[1]) * 4):
+				if got >= int(j[1]):
+					break
+				var p := Vector2(rng.randf_range(box.position.x, box.end.x), rng.randf_range(box.position.y, box.end.y))
+				var r: float = j[2]
+				if not (Geometry2D.is_point_in_polygon(p + Vector2(r, r), ring) and Geometry2D.is_point_in_polygon(p - Vector2(r, r), ring)):
+					continue
+				got += 1
+				var yaw := (-2.36 + rng.randf_range(-0.25, 0.25)) if ji == 0 else rng.randf() * TAU
+				(j[0] as Array).append(Transform3D(Basis(Vector3.UP, yaw), Vector3(p.x, top + 0.02, p.y)))
 	var panel := BoxMesh.new()
 	panel.size = Vector3(2.0, 0.06, 1.15)
 	panel.material = _surface("solar")
@@ -8770,6 +8932,12 @@ func _build_roof_kit() -> void:
 	room.size = Vector3(3.0, 2.6, 3.4)
 	room.material = _surface("roofroom")
 	_chunked(room, rooms, VIEW_RANGE * 0.5)
+	_chunked(_furn.roof_dish_kit(), dishes, 200.0)
+	_chunked(_furn.roof_aerial_kit(), aerials, 200.0)
+	_chunked(_furn.ac_kit(0), roof_acs, 160.0)
+	_tally("roof_dishes", dishes.size())
+	_tally("roof_aerials", aerials.size())
+	_tally("roof_acs", roof_acs.size())
 	_tally("roof_rooms", rooms.size())
 	_tally("solar", panels.size())
 
@@ -9047,7 +9215,8 @@ const LAMP_POOL := 8.5
 const POOL_STRENGTH := 0.95
 var _pools_made := false
 var _pools_from := 0                 ## _pool_at before this have theirs
-var _shop_lights: Array = []         ## [the window's foot, out to the street, how wide] of every lit shop window
+var _shop_lights: Array = []         ## [the window's foot, out to the street, how wide, dark on Shabbat] of every lit shop window
+var _shabbat_dark_nodes: Array = []  ## the light on the pavement of the shops that shut on Shabbat: at night, not on Shabbat
 var _shop_lit_from := 0
 
 ## The light pools (and halos, and lit shop windows' light on the pavement) for every lamp so
@@ -9078,8 +9247,10 @@ func _make_pools(chunked := false) -> void:
 	_pools_from = upto
 	# a lit shop window's light on the pavement in front of it
 	var shops_upto := _shop_lights.size()
+	var shab := CBuf.new(GROUND_CELL)   # (those of the shops that shut on Shabbat, a node of their own)
 	for i in range(_shop_lit_from, shops_upto):
 		var s: Array = _shop_lights[i]
+		var into: CBuf = shab if s.size() > 3 and bool(s[3]) else pools
 		var at: Vector2 = s[0]
 		var n: Vector2 = s[1]
 		var w: float = 1.5 * float(s[2])
@@ -9090,13 +9261,16 @@ func _make_pools(chunked := false) -> void:
 		var b0 := _g3(at - t * (w + 0.8) + n * 2.6, y)
 		var b1 := _g3(at + t * (w + 0.8) + n * 2.6, y)
 		var m0 := _g3(at, y)
-		pools.tri(m0, a1, b1, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(0.35, 0), Vector2(0.6, 0.72))
-		pools.tri(m0, b1, b0, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(0.6, 0.72), Vector2(-0.6, 0.72))
-		pools.tri(m0, b0, a0, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(-0.6, 0.72), Vector2(-0.35, 0))
+		into.tri(m0, a1, b1, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(0.35, 0), Vector2(0.6, 0.72))
+		into.tri(m0, b1, b0, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(0.6, 0.72), Vector2(-0.6, 0.72))
+		into.tri(m0, b0, a0, Vector3.UP, Color.WHITE, Vector2.ZERO, Vector2(-0.6, 0.72), Vector2(-0.35, 0))
 	_shop_lit_from = shops_upto
 	for mi: MeshInstance3D in _add_mesh(pools, _glow_mat("lamplight", POOL_STRENGTH), false, LAMP_RANGE):
 		mi.visible = _night
 		_night_nodes.append(mi)
+	for mi: MeshInstance3D in _add_mesh(shab, _glow_mat("lamplight", POOL_STRENGTH), false, LAMP_RANGE):
+		mi.visible = _night and not _shabbat_now()
+		_shabbat_dark_nodes.append(mi)
 	_pools_busy = false
 	if chunked and (_pool_at.size() > _pools_from or _shop_lights.size() > _shop_lit_from):
 		_make_pools()   # (the lamps of squares built meanwhile)
@@ -9681,6 +9855,7 @@ func _next_time() -> void:
 	var gl0 := _gl_count()
 	var to := "day" if _night else ("night" if _evening else "evening")
 	if _night:
+		_weekday = (_day() + 1) % 7   # (night to day: the next morning)
 		_set_night(false)
 	elif _evening:
 		await _set_evening(false)
@@ -9727,7 +9902,8 @@ func _set_evening(on: bool) -> void:
 		_far_update()
 		if not _fs_drawing.has(key):
 			_far_draw(key)
-	_show_banner("evening" if on else "day", 1.2)
+	_update_day()
+	_show_banner(_time_banner("evening" if on else "day"), 1.6)
 	Probe.event("evening", {"on": on})
 
 func _set_night(on: bool) -> void:
@@ -9763,7 +9939,8 @@ func _set_night(on: bool) -> void:
 	if _car_shader_mat != null:
 		_car_material()
 	_far_update()
-	_show_banner("night" if on else "day", 1.2)
+	_update_day()
+	_show_banner(_time_banner("night" if on else "day"), 1.6)
 	Probe.event("night", {"on": on})
 
 ## Parked cars down Givatayim's streets, half up on the pavement the way they really
@@ -10635,7 +10812,7 @@ func _car_material() -> ShaderMaterial:
 		var red := _real_col("red")
 		m.set_shader_parameter("red_lit", Color.from_hsv(red.h, 0.97, 1.0))
 		m.set_shader_parameter("taxi_col", _real_col("yellow"))
-		m.set_shader_parameter("taxi_latin", 0.0 if String(_place.get("look", "")) == "med" else 1.0)
+		m.set_shader_parameter("taxi_latin", 0.0 if _hebrew() else 1.0)
 		m.set_shader_parameter("lamp", _tone["lamplight"])
 		m.set_shader_parameter("tail", Palette.col("hazard"))
 		m.set_shader_parameter("night", 1.0 if _night else 0.0)
@@ -11536,6 +11713,9 @@ render_mode cull_back;
 uniform int gone_n = 0;   // road signs bent by the car (_bend_sign): hidden here, a bent copy drawn
 uniform vec4 gone[12];    // ... x, z of the pole, from what height, to what height
 uniform float gone_r[12]; // ... and how far out its plate reaches
+uniform int rail_n = 0;   // railing panels the car broke through (_break_rail): flattened to their foot
+uniform vec4 rail_gone[12];  // ... the panel's two ends, x z x z
+uniform vec2 rail_y[12];     // ... from what height (its foot, above the kerb) to what height
 uniform vec4 tones[64] : source_color;
 uniform vec4 tone_fx[64];
 uniform float textured = 1.0;
@@ -11587,6 +11767,17 @@ void vertex() {
 		// its stub (the pole's foot is left; a merged batch cannot leave one sign out)
 		if (distance(wpos.xz, gone[i].xy) < gone_r[i] && wpos.y > gone[i].z && wpos.y < gone[i].w) {
 			wpos = vec3(gone[i].x + (wpos.x - gone[i].x) * 0.05, gone[i].z, gone[i].y + (wpos.z - gone[i].y) * 0.05);
+			VERTEX = (inverse(MODEL_MATRIX) * vec4(wpos, 1.0)).xyz;
+		}
+	}
+	for (int i = 0; i < rail_n; i++) {
+		// a railing's posts and top rail along a broken panel (merged into the batches with
+		// everything else): laid flat at its foot, where nobody sees them
+		vec2 a = rail_gone[i].xy;
+		vec2 ab = rail_gone[i].zw - a;
+		float k = clamp(dot(wpos.xz - a, ab) / max(dot(ab, ab), 0.0001), 0.0, 1.0);
+		if (distance(wpos.xz, a + ab * k) < 0.12 && wpos.y > rail_y[i].x && wpos.y < rail_y[i].y) {
+			wpos.y = rail_y[i].x;
 			VERTEX = (inverse(MODEL_MATRIX) * vec4(wpos, 1.0)).xyz;
 		}
 	}
@@ -11786,6 +11977,36 @@ void fragment() {
 						float inside = step(0.0, min(d.x, d.y));
 						c *= mix(1.0, 0.8, inside);
 						c *= 1.0 - 0.4 * inside * (1.0 - smoothstep(0.02, 0.02 + pxw * 2.0, min(d.x, d.y)));
+					}
+					// a trench dug for a cable or a pipe and filled again: a long strip 0.7 m
+					// wide of newer asphalt, its seams sealed, in one 40 m square in six
+					vec2 tc = floor(p / 40.0);
+					if (hash(tc + 11.7) < 0.17) {
+						bool along_x = hash(tc + 12.9) < 0.5;
+						float at = (along_x ? tc.y : tc.x) * 40.0 + 6.0 + 28.0 * hash(tc + 13.1);
+						float off = abs((along_x ? p.y : p.x) - at);
+						float run = (along_x ? p.x : p.y) - (along_x ? tc.x : tc.y) * 40.0;
+						float inside = step(off, 0.35) * step(4.0, run) * step(run, 36.0);
+						c *= mix(1.0, 0.78, inside);
+						c *= 1.0 - 0.35 * inside * (1.0 - smoothstep(0.02, 0.02 + pxw * 2.0, 0.35 - off));
+					}
+					// potholes: one 7 m square in 33 has one, a ragged hole 0.6-1.4 m across, dark
+					// and damp at the bottom, its broken edge lighter, the grit loose round it
+					// (the cell taken mod 97 before hashing: sin() of a big number differs between
+					// GPUs. A CPU cannot work out where the holes are even so: the float32 dot
+					// product's rounding, times 43758, gives another hash -- tried for a test)
+					vec2 hc = mod(floor(p / 7.0), 97.0);
+					if (hash(hc + 21.3) < 0.03 && dist < 90.0) {
+						vec2 hcen = (floor(p / 7.0) + 0.25 + 0.5 * vec2(hash(hc + 22.1), hash(hc + 23.7))) * 7.0;
+						vec2 q = p - hcen;
+						float ang = atan(q.y, q.x);
+						float rr = (0.3 + 0.4 * hash(hc + 24.5)) * (1.0 + 0.22 * sin(ang * 3.0 + hash(hc) * 6.0) + 0.12 * sin(ang * 7.0 + 1.3));
+						float dd = length(q * vec2(1.0, 1.0 + 0.4 * hash(hc + 25.9))) - rr;
+						float hole = 1.0 - smoothstep(-pxw, pxw, dd);
+						float lip = (1.0 - smoothstep(0.0, 0.06 + pxw, abs(dd))) * (1.0 - hole);
+						float bowl = clamp(-dd / max(rr, 0.01), 0.0, 1.0);
+						c *= mix(1.0, 0.42 - 0.12 * bowl, hole);
+						c *= 1.0 + 0.25 * lip;
 					}
 					c *= crazing(p, dist, pxw);
 					c *= 1.0 + step(0.94, hash(floor(p / 0.012))) * 0.4 * (1.0 - smoothstep(3.0, 12.0, dist));
@@ -12484,13 +12705,14 @@ func new_cbuf(cell: float) -> CBuf:
 var _walls := PackedVector2Array()   ## two points a wall
 var _wall_r := PackedFloat32Array()  ## half its thickness
 var _wall_soft := PackedByteArray()  ## 1: a hedge, that gives (no dent, no glass, leaves fly)
-var _wall_give := PackedByteArray()  ## 1: the car breaks through at speed (a railing, a low wall, a hedge: _smash)
+var _wall_give := PackedByteArray()  ## 1: the car breaks through at speed (a railing, a low wall, a hedge: _smash); 2: broken, down (_break_rail)
+var _wall_rail := PackedByteArray()  ## 1: a railing's panel, that falls when the car breaks through it (_break_rail)
 var _wall_hash := {}
 
 ## `gives`: light enough that the car goes through it at speed rather than stopping -- a kerb
 ## railing, a garden wall under knee height, a hedge (the user, 22 Nov 2026: "things bit more
 ## breakable that dont completely stop us"). Tall fences and building walls do not.
-func add_wall(a: Vector2, b: Vector2, half: float, soft := false, gives := false) -> void:
+func add_wall(a: Vector2, b: Vector2, half: float, soft := false, gives := false, rail := false) -> void:
 	if a.distance_squared_to(b) < 0.0001:
 		return
 	var i := _wall_r.size()
@@ -12499,6 +12721,7 @@ func add_wall(a: Vector2, b: Vector2, half: float, soft := false, gives := false
 	_wall_r.append(half)
 	_wall_soft.append(1 if soft else 0)
 	_wall_give.append(1 if (gives or soft) else 0)
+	_wall_rail.append(1 if rail else 0)
 	_hash_add(_wall_hash, Rect2(a, Vector2.ZERO).expand(b).grow(half), BLD_CELL, i)
 
 ## a post as big as r already stands within 0.3 m of p (see _add_post's `unique`)
@@ -12619,6 +12842,8 @@ var _light_far: Array = []   ## [pole, junction, way in] put up by _build_signal
 ## direction so crossing streets take turns
 func _build_signals() -> void:
 	var med := String(_place.get("look", "")) == "med"
+	var ca := _country() == "ca"
+	var masts: Array = []   # Canada's: [pole, arm] transforms (_mast_arm)
 	var poles: Array = []
 	var heads: Array = []
 	var bulbs: Array = [[[], [], []], [[], [], []]]
@@ -12740,6 +12965,8 @@ func _build_signals() -> void:
 				_wave.lamp(_site_of.get(node, -1), "car", g, ci, Vector3(p.x, gy + 3.3 + 0.3 - 0.3 * ci, p.y) + front)
 			if is_nan(py) or py - _h(p) < 1.0:
 				_add_post(p, 0.15)   # (posts are solid at the ground's level: not one up on a bridge)
+			if ca and not deck:
+				_mast_arm(c, rn, dir, r, g, masts, heads, bulbs, node)
 	if poles.is_empty():
 		return
 	var pole_mesh := CylinderMesh.new()
@@ -12753,11 +12980,67 @@ func _build_signals() -> void:
 	head_mesh.material = _surface("pole")
 	_chunked(pole_mesh, poles, LAMP_RANGE)
 	_chunked(head_mesh, heads, LAMP_RANGE)
+	if not masts.is_empty():
+		var mast := CylinderMesh.new()   # (the mast arms' poles and arms: unit lengths, scaled)
+		mast.top_radius = 0.1
+		mast.bottom_radius = 0.13
+		mast.height = 1.0
+		mast.radial_segments = 6
+		mast.material = _surface("pole")
+		_chunked(mast, masts, LAMP_RANGE)
+		_tally("signal_mast_arms", masts.size() / 2)
 	for g in range(2):
 		for ci in range(3):
 			if not (bulbs[g][ci] as Array).is_empty():
 				_add_bulbs(g, ci, bulbs[g][ci])
 	_build_walk_lights(pole_mesh)
+
+## North America hangs a junction's lights over the lanes on the FAR side, from a mast arm, so
+## a driver waiting at the line looks up and across at them (the pole on the near corner is
+## Europe's and Israel's). Canada's ways in get one as well as their near-side pole: a pole on
+## the far right corner, an arm over the lanes of the way in, a head over each lane (two at
+## most), its bulbs in the way's group. Left out where the far corner is no place for a pole
+## (a road, a building, the junction's asphalt).
+func _mast_arm(c: Vector2, rn: float, dir: Vector2, r: Dictionary, g: int, masts: Array, heads: Array, bulbs: Array, node: int) -> void:
+	var right := Vector2(-dir.y, dir.x)
+	var w: float = r["w"]
+	var lane0 := 0.0 if r["o"] == 0 else -w * 0.5   # (the lanes of this way in: right of the middle)
+	var lane1 := w * 0.5
+	var p := Vector2.INF
+	for back: float in [-(rn + 1.5), -(rn + 3.0), -(rn + 5.0)]:
+		for out: float in [1.0, 1.8]:
+			var q := c - dir * back + right * (lane1 + out)
+			if p != Vector2.INF or _push_out(q, 0.3, false) != Vector2.ZERO or _in_corner_fill(q, 0.15):
+				continue
+			var on := _nearest_seg(q, 12.0, true)
+			if on.is_empty() or float(on["edge"]) >= 0.5:
+				p = q
+	if p == Vector2.INF:
+		return
+	var gy := _h(p)
+	var top := 6.2
+	masts.append(Transform3D(Basis.from_scale(Vector3(1, top, 1)), Vector3(p.x, gy + top * 0.5, p.y)))
+	# the arm: from the pole's top in over the lanes, level, a little past the inner lane
+	var pr := (p - c).dot(right)   # (the pole's offset right of the road's middle)
+	var tip := p + right * (lane0 - 0.3 - pr)
+	var span := p.distance_to(tip)
+	var mid := (p + tip) * 0.5
+	var along := (tip - p).normalized()
+	var arm_basis := Basis(Vector3(along.x, 0, along.y).cross(Vector3.UP).normalized(), Vector3(along.x, 0, along.y), Vector3.UP)
+	masts.append(Transform3D(arm_basis * Basis.from_scale(Vector3(0.55, span, 0.55)), Vector3(mid.x, gy + top - 0.25, mid.y)))
+	var face := Basis(Vector3.UP, atan2(-dir.x, -dir.y))
+	var n := clampi(int(round((lane1 - lane0) / 3.3)), 1, 2)
+	for k in range(n):
+		var off := lane0 + (lane1 - lane0) * (k + 0.5) / n
+		var hp := p + right * (off - pr)
+		var hy := gy + top - 0.85
+		heads.append(Transform3D(face, Vector3(hp.x, hy, hp.y)))
+		var front := Vector3(-dir.x, 0.0, -dir.y) * 0.17
+		for ci in range(3):
+			var at := Vector3(hp.x, hy + 0.3 - 0.3 * ci, hp.y) + front
+			bulbs[g][ci].append(at)
+			_wave.lamp(_site_of.get(node, -1), "car", g, ci, at)
+	_add_post(p, 0.15)
 
 var _bulb_mm: Array = []             ## [group][colour] -> the one multimesh of those bulbs, city-wide
 var _bulb_at: Array = []             ## [group][colour] -> their transforms, 12 numbers a bulb
@@ -13042,9 +13325,85 @@ func _build_walk_lights(pole_mesh: Mesh) -> void:
 
 
 ## a lit shopfront on the street side of each shop's building, and its name above it
+## a shop that pulls its shutter down at night: most do; what sells late (corner shops and
+## kiosks, the supermarket chains' city branches, bakeries, liquor, a pharmacy in three) and
+## anything to eat or drink stays open
+func _shuts_at_night(kind: String, at: Vector2) -> bool:
+	if not (kind.begins_with("shop:") or kind in ["bank", "pharmacy", "post_office"]):
+		return false
+	if kind in ["shop:convenience", "shop:kiosk", "shop:alcohol", "shop:bakery", "shop:supermarket", "shop:tobacco", "shop:ice_cream"]:
+		return false
+	if kind == "pharmacy" and posmod(_hash_i(at) >> 5, 3) == 0:
+		return false
+	return true
+
+## and on Shabbat (Friday evening to Saturday evening, in the Israeli towns) the rest close
+## too: the corner shops, supermarkets, kiosks and bakeries that stay open late shut with
+## everything else -- but Tel Aviv keeps about one in three of them open (its AM:PM-style
+## branches and kiosks, by city by-law or not), the other towns about one in eight
+func _shuts_on_shabbat(kind: String, at: Vector2) -> bool:
+	if _country() != "il" or _shuts_at_night(kind, at):
+		return false
+	if not (kind.begins_with("shop:") or kind == "pharmacy"):
+		return false
+	var keep := 3 if _city_id == "tel_aviv" else 8
+	return posmod(_hash_i(at) >> 9, keep) != 0
+
+## The day of the week, 0 Sunday to 6 Saturday: today's, by the player's clock (STREETS_DAY
+## to set it; a Tuesday in tests and bots' runs); the time button moves it on a day each time night turns to day.
+var _weekday := -1
+const DAY_NAMES := ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]
+var _night_shut_nodes: Array = []     ## the shutters of the shops that close at night (and on Shabbat)
+var _shabbat_shut_nodes: Array = []   ## the shutters of the shops that close only on Shabbat
+
+func _day() -> int:
+	if _weekday < 0:
+		var e := OS.get_environment("STREETS_DAY")
+		if e != "":
+			_weekday = posmod(int(e), 7)
+		elif DisplayServer.get_name() == "headless" or get_tree().get_script() != null:
+			_weekday = 2   # (a test or a bot's run: a Tuesday, whatever the date, so its counts hold)
+		else:
+			_weekday = int(Time.get_datetime_dict_from_system()["weekday"])
+	return _weekday
+
+## Shabbat now: Friday from the evening, Saturday until night (shops reopen Saturday night)
+func _shabbat_now() -> bool:
+	if _country() != "il":
+		return false
+	return (_day() == 5 and (_evening or _night)) or (_day() == 6 and not _night)
+
+## the shutters for this day and time: the night ones at night or on Shabbat, the Shabbat ones
+## on Shabbat; and on Shabbat the streets go quiet, SHABBAT_CARS of the traffic's cars about
+## (not over a scenario's own quiet: only from a full town, and back only from Shabbat's)
+const SHABBAT_CARS := 8
+func _update_day() -> void:
+	var sh := _shabbat_now()
+	if _traffic != null:
+		if sh and _traffic.cap == _traffic.COUNT:
+			_traffic.set_cap(SHABBAT_CARS)
+		elif not sh and _traffic.cap == SHABBAT_CARS:
+			_traffic.set_cap(_traffic.COUNT)
+		if _traffic.no_buses != sh:
+			_traffic.set_no_buses(sh)
+	for n: Node3D in _night_shut_nodes:
+		n.visible = _night or sh
+	for n: Node3D in _shabbat_shut_nodes:
+		n.visible = sh
+	for n: Node3D in _shabbat_dark_nodes:
+		n.visible = _night and not sh
+
+func _time_banner(t: String) -> String:
+	if _country() != "il":
+		return t   # (the day only changes anything in the Israeli towns)
+	var msg: String = DAY_NAMES[_day()] + " " + t
+	if _shabbat_now():
+		msg += ": shabbat, the shops shut"
+	return msg
+
 func _build_pois() -> void:
 	var k := 1.0 / float(_city_data.get("scale", 10))
-	var front := {"glass": [], "glass_k": [], "post": [], "beam": [], "shutter": [], "housing": [], "door": []}   ## shop windows and their frames (glass_k: what is inside, SHOP_SHADER)
+	var front := {"glass": [], "glass_k": [], "post": [], "beam": [], "shutter": [], "night_shut": [], "shabbat_shut": [], "housing": [], "door": []}   ## shop windows and their frames (glass_k: what is inside, SHOP_SHADER)
 	var board_cols: Array = []       ## each sign board's colour: dark, white, the shop's, cream
 	var awnings := {"xf": [], "col": []}   ## awning transforms and their colours
 	var crates := new_cbuf(BLD_CELL)    ## fruit and vegetables out in front of a greengrocer
@@ -13102,8 +13461,8 @@ func _build_pois() -> void:
 			var inside_k := 1.0 if kind in ["cafe", "restaurant", "fast_food", "ice_cream", "bar", "pub"] else \
 				(0.6 if sub in ["clothes", "shoes", "fashion", "boutique", "jewelry", "bag", "fabric"] else 0.0)
 			front["glass_k"].append(Color(inside_k, 0.0, 0.0, 1.0))
-			if _mine(pos):
-				_shop_lights.append([pos + n * 0.1, n, wide])
+			if _mine(pos) and not _shuts_at_night(kind, at):   # (a shut shop lights nothing at night)
+				_shop_lights.append([pos + n * 0.1, n, wide, _shuts_on_shabbat(kind, at)])
 			front["beam"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.08, 2.62)))
 			for sgn: float in [-1.0, 1.0]:
 				front["post"].append(Transform3D(b, at3.call(pos + along * 1.56 * wide * sgn, 0.08, 1.3)))
@@ -13132,6 +13491,10 @@ func _build_pois() -> void:
 				_string_lights(crates, bulbs, pos, n, along, gy)
 			if look_k < 10 and kind.begins_with("shop"):   # shut: the roller shutter down
 				front["shutter"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.1, 1.3)))
+			elif _shuts_at_night(kind, at):   # open by day, its shutter down at night
+				front["night_shut"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.1, 1.3)))
+			elif _shuts_on_shabbat(kind, at):   # open late, but its shutter down on Shabbat
+				front["shabbat_shut"].append(Transform3D(b * Basis.from_scale(Vector3(wide, 1, 1)), at3.call(pos, 0.1, 1.3)))
 			# the roller shutter's box over the window, as most of the towns' shops have it
 			# rolled up into (a grey metal box the window's width); every shut one has one
 			if look_k < 10 or posmod(_hash_i(at) >> 13, 100) < 75:
@@ -13196,6 +13559,33 @@ func _build_pois() -> void:
 		var shut := BoxMesh.new()
 		shut.size = Vector3(3.0, 2.4, 0.05)
 		_chunked(shut, front["shutter"], r, [], _surface("shutter"), false)
+	for key: String in ["night_shut", "shabbat_shut"]:
+		if (front[key] as Array).is_empty():
+			continue
+		# the shops that close for the night (or for Shabbat): their shutters, shown only then
+		# (one node a square: _update_day shows and hides them)
+		var ns := BoxMesh.new()
+		ns.size = Vector3(3.0, 2.4, 0.05)
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = ns
+		mm.instance_count = (front[key] as Array).size()
+		for i in range(mm.instance_count):
+			mm.set_instance_transform(i, front[key][i])
+		var mmi := MultiMeshInstance3D.new()
+		mmi.multimesh = mm
+		mmi.material_override = _surface("shutter")
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mmi.visibility_range_end = r + TILE * 0.71
+		world.add_child(mmi)
+		if key == "night_shut":
+			_night_shut_nodes.append(mmi)
+			mmi.visible = _night or _shabbat_now()
+			_tally("night_shutters", mm.instance_count)
+		else:
+			_shabbat_shut_nodes.append(mmi)
+			mmi.visible = _shabbat_now()
+			_tally("shabbat_shutters", mm.instance_count)
 	if not (front["door"] as Array).is_empty():
 		var dbox := BoxMesh.new()   # (a unit box, each piece scaled)
 		_chunked(dbox, front["door"], r, [], _surface("cartrim"), false)
@@ -14439,7 +14829,8 @@ var _stop_lines: Array = []          ## [junction, way in, line before it, road 
 ## the Israeli towns); SLOW (האט) before a crossing near a school.
 func _build_road_paint() -> void:
 	var paint := CBuf.new(GROUND_CELL)
-	var med := String(_place.get("look", "")) == "med"
+	var he := _hebrew()
+	var country := _country()
 	for sl: Array in _stop_lines:
 		var c: Vector2 = sl[0]
 		var dir: Vector2 = sl[1]
@@ -14448,21 +14839,21 @@ func _build_road_paint() -> void:
 		var at := c - dir * float(sl[2])
 		var o0 := -(w * 0.5 - 0.25) if sl[4] else 0.15
 		var o1 := w * 0.5 - 0.25
-		if sl[5] == "give":   # a give-way's line is dashed: half a metre on, half off
-			var n := maxi(1, int((o1 - o0) / 1.0))
-			for k in range(n):
-				var d0 := lerpf(o0, o1, float(k) / n)
-				var d1 := d0 + (o1 - o0) / n * 0.5
-				paint.quad3(_g3(at + right * d0, Y_MARK + 0.002), _g3(at + right * d1, Y_MARK + 0.002),
-					_g3(at + right * d1 - dir * 0.3, Y_MARK + 0.002), _g3(at + right * d0 - dir * 0.3, Y_MARK + 0.002))
-			if med:
+		if sl[5] == "give":
+			_give_line(paint, at, dir, o0, o1)
+			if he:
 				_road_word("האט", at - dir * 2.6 + right * ((o0 + o1) * 0.5), dir)
 			continue
 		paint.quad3(_g3(at + right * o0, Y_MARK + 0.002), _g3(at + right * o1, Y_MARK + 0.002),
 			_g3(at + right * o1 - dir * 0.45, Y_MARK + 0.002), _g3(at + right * o0 - dir * 0.45, Y_MARK + 0.002))
 		if sl[5] == "stop":
-			_road_word("עצור" if med else "STOP", at - dir * 2.6 + right * ((o0 + o1) * 0.5), dir)
-	# SLOW before the crossings near a school or a kindergarten
+			_road_word("עצור" if he else "STOP", at - dir * 2.6 + right * ((o0 + o1) * 0.5), dir)
+	# SLOW before the crossings near a school or a kindergarten: Israel's האט, Canada's SLOW;
+	# a European town paints no word there (it has the children's warning sign instead:
+	# _build_street_signs)
+	if country == "nl" or country == "fr":
+		_add_mesh(paint, _surface("mark"), false, DETAIL_RANGE)
+		return
 	var schools := _schools
 	for ni: int in _tile_nodes.get(_tile, []):
 		if not _crossing_set.has(ni):
@@ -14490,8 +14881,38 @@ func _build_road_paint() -> void:
 				if c.distance_to(pts[from]) < 16.0:
 					continue
 				var lane := _lane_off(r)
-				_road_word("האט" if med else "SLOW", c - dir * 12.0 + Vector2(-dir.y, dir.x) * lane, dir)
+				_road_word("האט" if he else "SLOW", c - dir * 12.0 + Vector2(-dir.y, dir.x) * lane, dir)
 	_add_mesh(paint, _surface("mark"), false, DETAIL_RANGE)
+
+## A give-way's line across the lane(s) from `o0` to `o1` (offsets right of `dir`) at `at`:
+## dashed, half a metre on and half off, in Israel and France; shark's teeth in the
+## Netherlands and Canada
+func _give_line(paint, at: Vector2, dir: Vector2, o0: float, o1: float) -> void:
+	if _country() in ["nl", "ca"]:
+		_shark_teeth(paint, at, dir, o0, o1)
+		return
+	var right := Vector2(-dir.y, dir.x)
+	var n := maxi(1, int((o1 - o0) / 1.0))
+	for k in range(n):
+		var d0 := lerpf(o0, o1, float(k) / n)
+		var d1 := d0 + (o1 - o0) / n * 0.5
+		paint.quad3(_g3(at + right * d0, Y_MARK + 0.002), _g3(at + right * d1, Y_MARK + 0.002),
+			_g3(at + right * d1 - dir * 0.3, Y_MARK + 0.002), _g3(at + right * d0 - dir * 0.3, Y_MARK + 0.002))
+
+## A give-way line as the Dutch and North Americans paint it ("shark's teeth"): a row of
+## white triangles across the lane(s) from `o0` to `o1` (offsets right of `dir`), their
+## bases on the line at `at`, their points toward the driver who gives way. (Israel and
+## France paint a dashed line.) Teeth 0.5 m wide, 0.6 m long, a quarter metre apart.
+func _shark_teeth(paint, at: Vector2, dir: Vector2, o0: float, o1: float) -> void:
+	var right := Vector2(-dir.y, dir.x)
+	var n := maxi(1, int((o1 - o0 + 0.25) / 0.75))
+	var pad := ((o1 - o0) - (n * 0.75 - 0.25)) * 0.5
+	var y := Y_MARK + 0.002
+	for k in range(n):
+		var d0 := o0 + pad + k * 0.75
+		var d1 := d0 + 0.5
+		var tip := at + right * (d0 + d1) * 0.5 - dir * 0.6
+		paint.quad3(_g3(at + right * d0, y), _g3(at + right * d1, y), _g3(tip, y), _g3(tip, y))
 
 ## a word painted on the road, read by a driver going `dir`: flat, stretched long the way
 ## road lettering is so it reads at a shallow angle
@@ -14538,9 +14959,10 @@ func _town_limits(roads: Array) -> Dictionary:
 	return out
 
 ## Speed limits on the main roads: a sign a little after each junction, every way the road
-## runs. Round and red-rimmed in Givatayim; a white MAXIMUM board in Bedford.
+## runs. Round and red-rimmed under the Vienna Convention (Israel, Europe); a white MAXIMUM
+## board in Canada.
 func _build_speed_signs() -> void:
-	var med := String(_place.get("look", "")) == "med"
+	var med := _country() != "ca"   # (the round sign: Delft and Annecy had Canada's board)
 	var poles: Array = []
 	var plates: Array = []
 	var rims: Array = []
@@ -14625,7 +15047,7 @@ func _build_speed_signs() -> void:
 		rim.height = 0.03
 		rim.radial_segments = 16
 		rim.rings = 1
-		rim.material = mat("hazard", 0.15)
+		rim.material = _surface("signred")   # (a sign's red: the palette's hazard is pink)
 		var face := CylinderMesh.new()
 		face.top_radius = 0.31
 		face.bottom_radius = 0.31
@@ -14719,6 +15141,7 @@ var _planted: Array = []             ## [kind, where, the way its face looks(, r
 
 func _build_street_signs() -> void:
 	var med := String(_place.get("look", "")) == "med"
+	var country := _country()
 	var plates := {}     # kind -> transforms
 	var poles: Array = []
 	var marks := CBuf.new(GROUND_CELL)
@@ -14826,6 +15249,15 @@ func _build_street_signs() -> void:
 				var sp: Vector2 = side_spot.call(c, dir, _node_r[ni] + 6.0, w)
 				if _off_road(sp, 0.4) and _push_out(sp, 0.4, true, false) == Vector2.ZERO:
 					plant.call("roundabout", sp, toward.call(dir), 2.2)
+				# Europe and Canada also sign the way in itself: a give-way at the line, which
+				# is painted (the ring has the right of way already: traffic.gd _junction_ahead)
+				if country != "il":
+					var at: Vector2 = c - dir * (_node_r[ni] + 1.0)
+					var o1 := w * 0.5 - 0.25
+					_give_line(marks, at, dir, -o1 if r["o"] != 0 else 0.15, o1)
+					var gp: Vector2 = side_spot.call(c, dir, _node_r[ni] + 1.6, w)
+					if spot_free.call(gp, 0.4):
+						plant.call("give_way", gp, toward.call(dir), 2.0)
 			# lane arrows before the junctions of the main roads
 			if MAIN_ROADS.has(r["k"]) and float(a[2]) > 30.0 and not r.get("ring", false):
 				_lane_arrows(marks, ni, dir, r)
@@ -14884,7 +15316,7 @@ func _build_street_signs() -> void:
 			var face := Basis(Vector3.UP, atan2(along.x, along.y) - PI * 0.5)   # its face looks across the street it names
 			plant.call("street", corner, face, 2.6)
 			var en := String(r["en"])
-			var text := ("רח' " + nm + ("\n" + en.to_upper() if en != "" else "")) if med else (en if en != "" else nm)
+			var text := ("רח' " + nm + ("\n" + en.to_upper() if en != "" else "")) if _hebrew() else (en if en != "" else nm)
 			_hash_add(_name_hash, Rect2(corner, Vector2.ZERO), 50.0, _name_signs.size())
 			_name_signs.append([Transform3D(face * Basis.from_scale(Vector3.ONE * SIGN_SCALE), Vector3(corner.x, _h(corner) + 2.6, corner.y) + face * Vector3(0, 0, 0.04)), text])
 			named += 1
@@ -14907,6 +15339,32 @@ func _build_street_signs() -> void:
 				if _off_road(sp, 0.4) and _push_out(sp, 0.4, true, false) == Vector2.ZERO:
 					plant.call("crossing", sp, toward.call(dir), 2.4)
 			break
+	# outside Israel, a warning before the crossings near a school or a kindergarten (where
+	# Israel and Canada paint a word on the road: _build_road_paint): Vienna's red triangle
+	# with two children in Europe, the yellow-green school pentagon in Canada
+	if country != "il":
+		for ni: int in _tile_nodes.get(_tile, []):
+			if not _crossing_set.has(ni):
+				continue
+			var c := _nodes[ni]
+			var near := false
+			for sc: Vector2 in _schools:
+				near = near or sc.distance_to(c) < 150.0
+			if not near:
+				continue
+			for e: Vector2i in _node_roads[ni]:
+				var r: Dictionary = _roads[e.x]
+				if not r["drive"] or r["k"] == "service":
+					continue
+				var pts: PackedVector2Array = r["pts"]
+				for d2: int in [-1, 1]:
+					var from := e.y + d2
+					if from < 0 or from >= pts.size() or (r["o"] != 0 and r["o"] != -d2) or c.distance_to(pts[from]) < 16.0:
+						continue
+					var dir := (c - pts[from]).normalized()
+					var sp: Vector2 = side_spot.call(c, dir, 12.0, float(r["w"]))
+					if spot_free.call(sp, 0.4):
+						plant.call("children", sp, toward.call(dir), 2.2)
 	# car parks: a P by the road at the corner nearest it
 	for ring: PackedVector2Array in _rings_near("parking"):
 		if _area(ring) < 300.0 or not _ring_mine(ring):
@@ -15134,7 +15592,110 @@ func _street_sign_mesh(kind: String) -> ArrayMesh:
 		for i in range(pts.size() - 1, -1, -1):
 			out.append(Vector2(-(pts[i] as Vector2).x, (pts[i] as Vector2).y))
 		return out
+	var country := _country()
+	var black: Color = _tone["tyre"]
+	var amber: Color = _tone["markyellow"]                # a warning diamond's yellow
+	var lime: Color = amber.lerp(_tone["signgreen"], 0.3).lightened(0.15)   # fluorescent yellow-green
+	# a ring between radii r0 and r1 (a prohibition's red, a "permitted" green)
+	var ring := func(r0: float, r1: float, z: float, col: Color) -> void:
+		for i in range(16):
+			var a0 := TAU * i / 16.0
+			var a1 := TAU * (i + 1) / 16.0
+			flat.call([Vector2(cos(a0), sin(a0)) * r0, Vector2(cos(a0), sin(a0)) * r1,
+					Vector2(cos(a1), sin(a1)) * r1, Vector2(cos(a1), sin(a1)) * r0], z, col)
+	# a polygon shrunk toward its middle (the inside of a rim)
+	var inset := func(pts: Array, k: float) -> Array:
+		var mid := Vector2.ZERO
+		for v: Vector2 in pts:
+			mid += v
+		mid /= pts.size()
+		return pts.map(func(v): return mid + (v - mid) * k)
+	# a walking figure `s` tall at (cx, cy) (its feet), in black: head, body, a striding pair of legs
+	var person := func(cx: float, cy: float, s: float, z: float) -> void:
+		flat.call(circle.call(s * 0.11).map(func(v): return v + Vector2(cx, cy + s * 0.88)), z, black)
+		flat.call(box.call(cx, cy + s * 0.55, s * 0.2, s * 0.38), z, black)
+		flat.call([Vector2(cx - s * 0.06, cy + s * 0.38), Vector2(cx - s * 0.25, cy), Vector2(cx - s * 0.14, cy), Vector2(cx + s * 0.04, cy + s * 0.36)], z, black)
+		flat.call([Vector2(cx - s * 0.02, cy + s * 0.36), Vector2(cx + s * 0.14, cy), Vector2(cx + s * 0.25, cy), Vector2(cx + s * 0.08, cy + s * 0.38)], z, black)
+	var up_tri := [Vector2(-0.4, -0.33), Vector2(0.4, -0.33), Vector2(0.0, 0.37)]
+	# the three arrows chasing round a roundabout, in `col`, `k` the size
+	var round_arrows := func(k: float, z: float, col: Color, at: Vector2) -> void:
+		for i in range(3):
+			var a0 := TAU * i / 3.0
+			for j in range(4):
+				var t0 := a0 + j * 0.32
+				var t1 := t0 + 0.32
+				flat.call([at + Vector2(cos(t0), sin(t0)) * 0.15 * k, at + Vector2(cos(t0), sin(t0)) * 0.21 * k,
+						at + Vector2(cos(t1), sin(t1)) * 0.21 * k, at + Vector2(cos(t1), sin(t1)) * 0.15 * k], z, col)
+			var tip := a0 + 1.5
+			flat.call([at + Vector2(cos(tip - 0.25), sin(tip - 0.25)) * 0.1 * k, at + Vector2(cos(tip - 0.25), sin(tip - 0.25)) * 0.26 * k,
+					at + Vector2(cos(tip), sin(tip)) * 0.18 * k], z, col)
+	# Canada's regulatory signs are black on white (MUTCD): a white plate in a thin black rim
+	var na_plate := func(w: float, h: float) -> void:
+		flat.call(box.call(0, 0, w, h), 0.0, black)
+		flat.call(box.call(0, 0, w - 0.04, h - 0.04), 0.004, white)
+	if country == "ca" and kind in ["oneway", "noentry", "turn_r", "turn_l", "keepright", "roundabout", "crossing", "children"]:
+		match kind:
+			"oneway":   # a white board, a black arrow, painted both sides (it stands side-on)
+				both.call(box.call(0, 0, 0.74, 0.3), 0.0, black)
+				both.call(box.call(0, 0, 0.7, 0.26), 0.004, white)
+				both.call(box.call(-0.07, 0.0, 0.4, 0.07), 0.008, black)
+				both.call([Vector2(0.12, -0.1), Vector2(0.29, 0.0), Vector2(0.12, 0.1)], 0.008, black)
+			"noentry":   # Do Not Enter: a black arrow ahead under a red ring and slash
+				na_plate.call(0.6, 0.6)
+				flat.call(box.call(0.0, -0.05, 0.07, 0.3), 0.008, black)
+				flat.call([Vector2(-0.12, 0.08), Vector2(0.12, 0.08), Vector2(0.0, 0.2)], 0.008, black)
+				ring.call(0.22, 0.27, 0.012, red)
+				var d := Vector2(1, -1).normalized()
+				var n := Vector2(-d.y, d.x) * 0.03
+				flat.call([-d * 0.24 - n, d * 0.24 - n, d * 0.24 + n, -d * 0.24 + n], 0.012, red)
+			"turn_r", "turn_l":   # this way only: a black arrow in a green ring, on white
+				na_plate.call(0.6, 0.6)
+				ring.call(0.23, 0.27, 0.008, green.lerp(Color(0.1, 0.6, 0.25), 0.5))
+				var parts: Array = [box.call(-0.06, -0.06, 0.07, 0.26), box.call(0.01, 0.035, 0.2, 0.07),
+						[Vector2(0.1, -0.06), Vector2(0.21, 0.035), Vector2(0.1, 0.13)]]
+				for pts: Array in parts:
+					flat.call(pts if kind == "turn_r" else mirror.call(pts), 0.012, black)
+			"keepright":   # a tall white board, a black arrow down past a black island on its right
+				na_plate.call(0.46, 0.62)
+				flat.call(circle.call(0.06).map(func(v): return v + Vector2(-0.07, -0.16)), 0.008, black)
+				var d := Vector2(1, -1).normalized()
+				var n := Vector2(-d.y, d.x)
+				var a := Vector2(-0.12, 0.2)
+				var t := Vector2(0.06, 0.02)
+				flat.call([a - n * 0.035, t - n * 0.035, t + n * 0.035, a + n * 0.035], 0.008, black)
+				flat.call([t - n * 0.1, t + d * 0.13, t + n * 0.1], 0.008, black)
+			"roundabout":   # a warning: the yellow diamond, black rim, black arrows round
+				var dia := [Vector2(0, -0.42), Vector2(0.42, 0), Vector2(0, 0.42), Vector2(-0.42, 0)]
+				flat.call(dia, 0.0, black)
+				flat.call(inset.call(dia, 0.92), 0.004, amber)
+				round_arrows.call(1.0, 0.008, black, Vector2.ZERO)
+			"crossing":   # the pedestrian crosswalk: a black walker on fluorescent yellow-green
+				flat.call(box.call(0, 0, 0.58, 0.58), 0.0, black)
+				flat.call(box.call(0, 0, 0.54, 0.54), 0.004, lime)
+				person.call(0.0, -0.2, 0.4, 0.008)
+				for k in range(3):
+					flat.call(box.call(-0.15 + k * 0.15, -0.23, 0.09, 0.03), 0.008, black)
+			"children":   # a school area: the yellow-green pentagon, two children walking
+				var pent := [Vector2(-0.3, -0.34), Vector2(0.3, -0.34), Vector2(0.3, 0.1), Vector2(0.0, 0.4), Vector2(-0.3, 0.1)]
+				flat.call(pent, 0.0, black)
+				flat.call(inset.call(pent, 0.92), 0.004, lime)
+				person.call(-0.09, -0.27, 0.42, 0.008)
+				person.call(0.11, -0.27, 0.32, 0.008)
+		var am_ca := ArrayMesh.new()
+		am_ca.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, b.arrays())
+		am_ca.surface_set_material(0, _vc_mat())
+		_sign_meshes[kind] = am_ca
+		return am_ca
 	match kind:
+		"children":   # Vienna's warning triangle, point up, red rim: two children
+			flat.call(up_tri, 0.0, red)
+			flat.call(inset.call(up_tri, 0.72), 0.006, white)
+			person.call(-0.06, -0.2, 0.3, 0.012)
+			person.call(0.08, -0.2, 0.23, 0.012)
+		"give_way":   # (a plate of the street signs' kind: at a roundabout's ways in)
+			var down := [Vector2(0.0, -0.37), Vector2(0.4, 0.33), Vector2(-0.4, 0.33)]
+			flat.call(down, 0.0, red)
+			flat.call(inset.call(down, 0.62), 0.006, white)
 		"oneway":
 			both.call(box.call(0, 0, 0.7, 0.3), 0.0, blue)
 			both.call(box.call(-0.07, 0.0, 0.4, 0.07), 0.006, white)
@@ -15155,6 +15716,10 @@ func _street_sign_mesh(kind: String) -> ArrayMesh:
 			var t := d * 0.07
 			flat.call([a - n * 0.04, t - n * 0.04, t + n * 0.04, a + n * 0.04], 0.006, white)
 			flat.call([t - n * 0.12, t + d * 0.15, t + n * 0.12], 0.006, white)
+		"roundabout" when country == "fr":   # France warns of one: a red triangle, arrows round
+			flat.call(up_tri, 0.0, red)
+			flat.call(inset.call(up_tri, 0.72), 0.006, white)
+			round_arrows.call(0.8, 0.012, black, Vector2(0, -0.06))
 		"roundabout":
 			flat.call(circle.call(0.32), 0.0, blue)
 			for k in range(3):   # three white arrows chasing round
@@ -15180,9 +15745,10 @@ func _street_sign_mesh(kind: String) -> ArrayMesh:
 			flat.call(box.call(0.03, 0.08, 0.09, 0.07), 0.012, blue)
 		"street":
 			flat.call([Vector2(-0.66, -0.17), Vector2(0.58, -0.17), Vector2(0.7, 0.0), Vector2(0.58, 0.17), Vector2(-0.66, 0.17)], 0.0, white)
-			# (a Dutch town's: white on blue, as its plates are; an Israeli town's green)
+			# (a Dutch or French town's: white on blue, as their plates are; an Israeli or
+			# Canadian town's green)
 			flat.call([Vector2(-0.63, -0.14), Vector2(0.56, -0.14), Vector2(0.66, 0.0), Vector2(0.56, 0.14), Vector2(-0.63, 0.14)], 0.006,
-					blue if _dutch() else green)
+					blue if country in ["nl", "fr"] else green)
 	var am := ArrayMesh.new()
 	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, b.arrays())
 	am.surface_set_material(0, _vc_mat())
@@ -15220,8 +15786,9 @@ func _junction_of(node: int, reach: float) -> int:
 ## OSM maps few stop and give-way signs (Givatayim 33, Tel Aviv 22), where nearly every side
 ## street meeting a bigger one without lights has one. Each such way in gets one here, as a
 ## sign facing that way: a stop where the bigger road is a main road (secondary or up) in an
-## Israeli town, a give-way otherwise (and always on a slip road, and in Bedford, where stop
-## signs are rare). Left alone: a slip road merging onto a motorway or trunk road, two
+## Israeli town; in a Canadian one a stop on every side street (North America signs a minor
+## street's way in with a stop, rarely a yield: Bedford had give-ways everywhere); a give-way
+## otherwise (a European town's) and always on a slip road. Left alone: a slip road merging onto a motorway or trunk road, two
 ## streets of one class (first come, as before), roundabouts
 ## (their own rule), service roads and driveways, lit junctions, a junction with a sign mapped
 ## within SIGN_MAPPED, the gap through a divided road's median (only the outer way in), and a
@@ -15237,6 +15804,7 @@ func _infer_signs() -> void:
 		if node >= 0 and node < _nodes.size():
 			_hash_add(mapped, Rect2(_nodes[node], Vector2.ZERO), SEG_CELL, node)
 	var med := String(_place.get("look", "")) == "med"
+	var ca := _country() == "ca"
 	var added := {"stop": 0, "give_way": 0}
 	for ni in range(_nodes.size()):
 		if _node_roads[ni].size() < 2 or _sig_set.has(ni) or _node_ways(ni) < 3:
@@ -15283,7 +15851,8 @@ func _infer_signs() -> void:
 					if o != ni and _node_ways(o) >= 3 and _other_half(ni, o, e.x):
 						continue   # across a divided road's median: the outer way in has it
 				var way_in := (c - pts[from]).normalized()
-				var kind := "stop" if med and top >= 4 and not String(r["k"]).ends_with("_link") else "give_way"
+				var link := String(r["k"]).ends_with("_link")
+				var kind := "stop" if not link and ((med and top >= 4) or ca) else "give_way"
 				signs.append([ni, kind, roundi(way_in.x * 100.0), roundi(way_in.y * 100.0)])
 				_bucket(_tile_signs, _tile_of(c), signs.size() - 1)
 				added[kind] += 1
@@ -15415,7 +15984,7 @@ func _build_signs() -> void:
 	_tally("signs", poles.size())
 
 ## the plate, facing +Z: a red octagon in a thin white rim, or a white triangle point down
-## in a red one; grey behind
+## in a red one; grey behind (the points are y down: turned over into the plate)
 func _sign_plate(kind: String) -> ArrayMesh:
 	var outer: Array = []
 	var inner: Array = []
@@ -15425,9 +15994,12 @@ func _sign_plate(kind: String) -> ArrayMesh:
 			outer.append(Vector2(cos(a), sin(a)) * 0.38)
 			inner.append(Vector2(cos(a), sin(a)) * 0.34)
 	else:
-		for v: Vector2 in [Vector2(0, -0.42), Vector2(0.46, 0.38), Vector2(-0.46, 0.38)]:
+		# point down, as give-way signs are everywhere (the y is turned over below: it stood
+		# point up, a warning triangle, in every town)
+		var mid := Vector2(0, -0.087)
+		for v: Vector2 in [Vector2(0, 0.42), Vector2(0.46, -0.34), Vector2(-0.46, -0.34)]:
 			outer.append(v)
-			inner.append(Vector2(v.x, v.y + 0.035) * 0.62)
+			inner.append(mid + (v - mid) * 0.62)
 	var rim := Buf.new()
 	var face := Buf.new()
 	var back := Buf.new()
@@ -15445,7 +16017,7 @@ func _sign_plate(kind: String) -> ArrayMesh:
 	_poly(rim, outer.map(func(v): return Vector3(v.x, -v.y, 0.012)), Vector3.BACK)
 	_poly(face, inner.map(func(v): return Vector3(v.x, -v.y, 0.016)), Vector3.BACK)
 	_poly(back, outer.map(func(v): return Vector3(v.x, -v.y, 0.0)), Vector3.FORWARD)
-	var red := mat("hazard", 0.15)
+	var red := _surface("signred")   # (the palette's hazard was pink: a pink stop sign)
 	var white := _surface("mark")
 	var am := ArrayMesh.new()
 	for pair: Array in [[rim, white if kind == "stop" else red], [face, red if kind == "stop" else white],
@@ -17767,6 +18339,30 @@ func _build_signal_sounds() -> void:
 	_snd_horn = AudioStreamPlayer.new()
 	_snd_horn.stream = _wav(horn, rate, true)
 	add_child(_snd_horn)
+	# another car's horn: two short toots, a little lower (a car held up behind you)
+	var toot := PackedFloat32Array()
+	toot.resize(int(rate * 0.5))
+	for i in range(toot.size()):
+		var t := float(i) / rate
+		var on := t < 0.16 or (t > 0.25 and t < 0.45)
+		var env := minf(1.0, minf(fmod(t, 0.25) / 0.01, 1.0)) if on else 0.0
+		toot[i] = env * (tanh(2.0 * sin(TAU * 370.0 * t)) + tanh(2.0 * sin(TAU * 465.0 * t)) * 0.8)
+	_snd_toot = AudioStreamPlayer3D.new()
+	_snd_toot.stream = _wav(toot, rate, false)
+	_snd_toot.unit_size = 12.0
+	_snd_toot.max_distance = 120.0
+	world.add_child(_snd_toot)
+
+## a car held up behind you hoots (traffic.gd, when it has waited on you a few seconds)
+var _snd_toot: AudioStreamPlayer3D
+func traffic_toot(at: Vector2) -> void:
+	if _snd_toot == null or _snd_toot.playing or Audio.muted():
+		return
+	_snd_toot.position = Vector3(at.x, _h(at) + 1.0, at.y)
+	_snd_toot.pitch_scale = randf_range(0.9, 1.12)
+	_snd_toot.volume_db = linear_to_db(maxf(0.0001, float(SaveData.data.get("volume_sfx", 0.8)))) - 4.0
+	_snd_toot.play()
+	Probe.event("tooted_at", {})
 
 func _wav(samples: PackedFloat32Array, rate: int, loop: bool) -> AudioStreamWAV:
 	var peak := 0.0001
@@ -17839,7 +18435,8 @@ func _controls_tick(dt: float) -> void:
 			_snd_horn.stop()
 
 ## what the horn does: people on a crossing ahead hurry, a car standing in a standoff in
-## front of you goes
+## front of you goes, people standing about within HORN_LOOK look round, the pigeons go up
+const HORN_LOOK := 18.0
 func _on_horn() -> void:
 	Probe.event("horn", {})
 	for cr: Dictionary in _crossers:
@@ -17849,6 +18446,21 @@ func _on_horn() -> void:
 		for c in _traffic.cars:
 			if c.alive and c.v < 0.3 and c.wait > 1.5 and c.pos.distance_to(_pos) < 15.0 and (c.pos - _pos).dot(_fwd()) > 0.0:
 				c.ignore = 2.5
+	# people standing about near you turn to look at the noise a few seconds, then back to what
+	# they were doing (_still_startle turns them back); the pigeons go up (birds.gd horn)
+	for list: Array in [_chatters, _waiters, _keepers]:
+		for c: Dictionary in list:
+			var a: Actor3D = c["actor"]
+			if not a.visible or bool(c.get("sat", false)) or float(c.get("look_t", 0.0)) > 0.0 or float(c.get("startle", 0.0)) > 0.0:
+				continue
+			var at := Vector2(a.position.x, a.position.z)
+			if at.distance_to(_pos) < HORN_LOOK:
+				c["look_was"] = a.rotation.y
+				c["look_t"] = _people_rng.randf_range(1.8, 3.2)
+				a.face(Vector3(_pos.x - at.x, 0.0, _pos.y - at.y))
+				_tally("horn_looks", 1)
+	if _birds != null:
+		_birds.horn(_pos)
 
 ## autodrive: the turn the plan makes within 35 m, for the indicator (-1, 1, or 0)
 func _ap_turn_ahead(reach := 35.0) -> int:
@@ -18224,7 +18836,12 @@ func _physics_process(dt: float) -> void:
 	if traffic_now:
 		_traffic.tick(wdt)
 	_p("traffic")
+	# (autodrive's looks ahead go through _push_out too, which names what they touch in
+	# _last_hit: kept as the car's own, or a drive log and the route set name a wall the plan
+	# came near as what the car hit -- route 3's "walls" on Ben Gurion were a sign post)
+	var hit0 := _last_hit
 	var ctl: Array = _autodrive(dt) if _auto else (_manual(dt) if not _watching() else [0.0, 1.0, 0.0])   # (watched: held on the brake)
+	_last_hit = hit0
 	if _auto:
 		var turn := _ap_turn_ahead()
 		if turn != 0 and _blink != turn:
@@ -19227,13 +19844,18 @@ func _pose_car(p: Vector2, yaw: float, y := NAN) -> void:
 	if _air:   # in the air the nose follows the flight
 		_car.rotation.x = lerp_angle(_car.rotation.x, -atan2(_vy, maxf(absf(_v), 3.0)) * 0.8, 0.15)
 		return
+	var fwd := Vector2(cos(yaw), sin(yaw))
+	var hb := bump_lift(p + fwd * WHEELBASE * 0.5, p - fwd * WHEELBASE * 0.5)   # (over a speed bump)
+	_car.position.y += (hb.x + hb.y) * 0.5
+	var bump_pitch := atan2(hb.x - hb.y, WHEELBASE)
 	if _hnx > 0:
-		var fwd := Vector2(cos(yaw), sin(yaw))
 		var side := Vector2(-fwd.y, fwd.x)
 		var pitch := atan2(_decks.surf(p + fwd * 1.4, at) - _decks.surf(p - fwd * 1.4, at), 2.8)
 		var roll := atan2(_decks.surf(p - side * 0.8, at) - _decks.surf(p + side * 0.8, at), 1.6)
-		_car.rotation.x = -pitch
+		_car.rotation.x = -pitch - bump_pitch
 		_car.rotation.z = roll
+	else:
+		_car.rotation.x = -bump_pitch
 
 ## ---- the sounds of driving -----------------------------------------------------------------
 ## Loops made by sounds/make_sounds.py (it says why each is what it is), played at a pitch
@@ -19515,6 +20137,30 @@ func _spawn_people() -> void:
 			continue
 		_walkers.append(w)
 		_place_walker(w, true, "start")
+	# Shabbat's families (the Israeli towns): a child a step behind the first of SHABBAT_KIDS
+	# pairs, out only on Shabbat (_walk_beside hides them on other days), so a Saturday's
+	# pavements have whole families strolling on them
+	if _country() == "il" and _people_maker().on():
+		var kids := 0
+		for li in range(0, WALKERS, 4):
+			if kids >= SHABBAT_KIDS:
+				break
+			var lw: Dictionary = _walkers[li]
+			if lw.has("dog") or lw.has("pram") or lw.has("with"):
+				continue
+			var a := Actor3D.new()
+			world.add_child(a)
+			_set_character(a, PEOPLE[(li + 3) % PEOPLE.size()], _people_rng.randf_range(ADULT_LO, ADULT_HI))
+			a.height = 1.0 + 0.35 * _people_rng.randf()
+			a.set_meta("child", true)
+			_humanize(a, hash(a.get_instance_id()) + 9)
+			_people_lod(a)
+			a.visible = false
+			_walkers.append({"actor": a, "line": PackedVector2Array(), "cum": PackedFloat32Array(), "s": 0.0,
+				"dir": 1.0, "speed": lw["speed"], "dodge": 0.0, "carry": false, "with": li, "side": 1.0 if kids % 2 == 0 else -1.0,
+				"behind": true, "shabbat": true})
+			kids += 1
+		_tally("shabbat_kids", kids)
 	for i in range(CHATTERS):
 		var a := Actor3D.new()
 		world.add_child(a)
@@ -19882,9 +20528,11 @@ func _walk_beside(w: Dictionary, dt: float) -> void:
 	var lw: Dictionary = _walkers[int(w["with"])]
 	var la: Actor3D = lw["actor"]
 	var line: PackedVector2Array = lw["line"]
-	if not la.visible or line.size() < 2:
+	if not la.visible or line.size() < 2 or (w.has("shabbat") and not _shabbat_now()):
 		a.visible = false
 		return
+	if not a.visible and w.has("shabbat") and not _spawn_ok(Vector2(la.position.x, la.position.z)):
+		return   # (Shabbat came while you watched them: the child joins once they are out of sight)
 	var cum: PackedFloat32Array = lw["cum"]
 	var total := cum[cum.size() - 1]
 	var dir := float(lw["dir"])
@@ -19898,6 +20546,8 @@ func _walk_beside(w: Dictionary, dt: float) -> void:
 	var right := Vector2(-fw.y, fw.x)
 	# beside the first, wherever it stepped to (its lat), or a step behind it
 	var q := lp - fw * 0.15 + right * float(w["side"]) * dir * 0.62   # (the same side as they turn back)
+	if w.has("behind"):   # (a child a step behind, a little to one side)
+		q = lp - fw * 1.0 + right * float(w["side"]) * dir * 0.3
 	# single file where there is no room beside them, or to pass you on foot (the first makes
 	# room for you; the second, beside it, walked into you)
 	var you_near := _walking and (_pos - lp).dot(fw) > -1.0 and (_pos - lp).length() < 4.5
@@ -20224,7 +20874,7 @@ func boarder_gone() -> void:
 ## people waiting at the bus stops near you, one or two a stop, facing the road
 func _place_waiters() -> void:
 	var spots: Array = []
-	for sp: Vector2 in _stop_spots:
+	for sp: Vector2 in (_stop_spots if not _shabbat_now() else []):   # (Shabbat: no buses, nobody waits)
 		if sp.distance_to(_pos) < PEOPLE_RANGE:
 			var hit := _nearest_seg(sp, 15.0, true, true)
 			if not hit.is_empty():
@@ -20439,6 +21089,10 @@ func _still_startle(c: Dictionary, dt: float) -> void:
 	var a: Actor3D = c["actor"]
 	var startle: float = c.get("startle", 0.0)
 	c["startle_cd"] = maxf(float(c.get("startle_cd", 0.0)) - dt, 0.0)
+	if float(c.get("look_t", 0.0)) > 0.0:   # (looking round at the horn: back to how it stood)
+		c["look_t"] = float(c["look_t"]) - dt
+		if float(c["look_t"]) <= 0.0 and startle <= 0.0:
+			a.rotation.y = float(c["look_was"])
 	if not a.visible:
 		return
 	if not c.has("startle_base"):
@@ -20547,6 +21201,7 @@ func _people_tick(dt: float) -> void:
 	# (everyone placed, wherever they are: a walker 60 m off still has to see the next one)
 	_people_at.clear()
 	_people_who.clear()
+	_people_y.clear()
 	_boarder_t += dt
 	for list: Array in [_walkers, _chatters, _crossers, _sitters, _waiters, _keepers, _bathers, _boarders,
 			_crowd.everyone() if _crowd != null else []]:
@@ -20555,15 +21210,40 @@ func _people_tick(dt: float) -> void:
 			if a.visible:
 				_people_at.append(Vector2(a.position.x, a.position.z))
 				_people_who.append(a.get_instance_id())
+				_people_y.append(a.position.y)
+	# people a scenario stands somewhere (a fare waving at the kerb, a wedding's guests):
+	# solid, and braked for, as everyone else is (add_person / _people_extra)
+	for k in range(_people_extra.size() - 1, -1, -1):
+		var e = _people_extra[k]   # (untyped: a freed one cannot even be assigned to a Node3D)
+		if not is_instance_valid(e):
+			_people_extra.remove_at(k)
+		elif (e as Node3D).visible:
+			var ep: Vector3 = (e as Node3D).global_position
+			_people_at.append(Vector2(ep.x, ep.z))
+			_people_who.append((e as Node3D).get_instance_id())
+			_people_y.append(ep.y)
 	# the dogs too, so people step round them and the car and you bump them (a dog's "who" is
 	# -100 less its number: its own walker leaves it out)
 	for w: Dictionary in _walkers:
 		if w.has("dog_i") and (w["actor"] as Actor3D).visible and w.has("dog_at"):
+			# you on foot walking up to a dog: one in two barks at you (not again for a while)
+			w["bark_cd"] = maxf(float(w.get("bark_cd", 0.0)) - dt, 0.0)
+			var dg: Vector2 = w["dog_at"]
+			if _walking and float(w["bark_cd"]) <= 0.0 and dg.distance_to(_pos) < DOG_BARK_AT:
+				w["bark_cd"] = 15.0
+				if int(w["dog_i"]) % 2 == 0 and _dog != null and not _dog.playing and not Audio.muted():
+					_dog.position = Vector3(dg.x, _h(dg) + 0.4, dg.y)
+					_dog.pitch_scale = 1.15 + 0.1 * float(posmod(int(w["dog_i"]), 3))
+					_dog.volume_db = linear_to_db(maxf(0.0001, float(SaveData.data.get("volume_sfx", 0.8)))) - 2.0
+					_dog.play()
+					Probe.event("dog_barked", {})
 			_people_at.append(w["dog_at"])
 			_people_who.append(-100 - int(w["dog_i"]))
+			_people_y.append((w["actor"] as Actor3D).position.y)
 	if _walking:
 		_people_at.append(_pos)
 		_people_who.append(0)
+		_people_y.append(_y)
 	_people_t -= dt
 	if _people_t <= 0.0:
 		_people_t = 1.5
@@ -20833,6 +21513,8 @@ func _people_tick(dt: float) -> void:
 			_place_walker(w, false, "far")
 	if _crowd != null:
 		_crowd.tick(dt)
+	if _birds != null:
+		_birds.tick(dt)
 
 ## ---- what people look like ---------------------------------------------------------------------
 ## The kit's people (Quaternius, CC0) are cartoons: big heads and hands, one skin of dark
@@ -21410,16 +22092,23 @@ func _crossers_tick(dt: float) -> void:
 					a.play("Walk", true, float(cr["speed"]) / _walk_clip_v())
 			"cross", "back":
 				var w := from.distance_to(to)
-				var sp: float = cr["speed"] * (2.4 if state == "back" else 1.0)
+				var sp: float = cr["speed"] * (2.4 if state == "back" or cr.get("hurry", false) else 1.0)
 				cr["s"] = clampf(float(cr["s"]) + (sp if state == "cross" else -sp) * dt / maxf(w, 0.1), 0.0, 1.0)
 				p = from.lerp(to, float(cr["s"]))
 				# (and where the person is, and their pace across: cars wait only while they are
 				# on that car's half of the road, see _zebra_clear)
 				_zebras_on.append([(from + to) * 0.5, from.distance_to(to) * 0.5 - 0.1, (to - from).normalized(), p,
-					float(cr["speed"]) * (1.0 if state == "cross" else -2.4)])
+					sp if state == "cross" else -sp])
 				# the player bearing down on them: back to the kerb they came from
-				if state == "cross" and p.distance_to(_pos) < 5.5 and absf(_v) > 2.0 and (p - _pos).dot(_fwd() * signf(_v)) > 0.0:
-					cr["state"] = "back"
+				if state == "cross" and not cr.get("hurry", false) and p.distance_to(_pos) < 5.5 and absf(_v) > 2.0 and (p - _pos).dot(_fwd() * signf(_v)) > 0.0:
+					# back the way they came only while that side of the car's line is still
+					# theirs; past it, on over at a run (Annecy's Boulevard Nicollet, route 13:
+					# someone already over the car's line ran back across it and into the car)
+					var fv := _fwd() * signf(_v)
+					if signf(fv.cross(from - _pos)) == signf(fv.cross(p - _pos)):
+						cr["state"] = "back"
+					else:
+						cr["hurry"] = true
 					a.play("Run", true, 1.2)
 					if _zebra_warned != int(cr["ni"]):
 						_zebra_warned = int(cr["ni"])
@@ -21427,6 +22116,7 @@ func _crossers_tick(dt: float) -> void:
 						Probe.event("zebra", {"street": _on_name, "kmh": int(absf(_v) * 3.6), "auto": _auto})
 				if state == "cross" and float(cr["s"]) >= 1.0 or state == "back" and float(cr["s"]) <= 0.0:
 					# over (or back): off along the pavement, gone once out of the way
+					cr["hurry"] = false
 					cr["state"] = "away"
 					cr["t"] = 12.0
 					a.play("Walk", true, float(cr["speed"]) / _walk_clip_v())
@@ -21569,11 +22259,24 @@ func _ap_people_v() -> float:
 	for cr: Dictionary in _crossers:
 		if cr["state"] in ["cross", "back"]:
 			var a: Actor3D = cr["actor"]
-			people.append([a.get_instance_id(), Vector2(a.position.x, a.position.z)])
+			if absf(a.position.y - _y) < PEOPLE_DY:
+				people.append([a.get_instance_id(), Vector2(a.position.x, a.position.z)])
 	for w: Dictionary in _walkers:
 		var a: Actor3D = w["actor"]
-		if a.visible:
+		if a.visible and absf(a.position.y - _y) < PEOPLE_DY:
 			people.append([a.get_instance_id(), Vector2(a.position.x, a.position.z)])
+	# ...and everyone else the car would bump (_people_push): someone standing at a bus stop or
+	# chatting, a crowd's stroller -- only walkers and crossers were braked for, and the rest
+	# were driven into at full speed wherever they stood in the lane (the scenarios' wedding run
+	# in Tel Aviv, (249, 236): a person hit at 28-32 km/h on every pass, 24 Nov)
+	for list: Array in [_chatters, _sitters, _waiters, _keepers, _bathers, _boarders, _crowd.everyone() if _crowd != null else []]:
+		for w: Dictionary in list:
+			var a: Actor3D = w["actor"]
+			if a.visible and absf(a.position.y - _y) < PEOPLE_DY:
+				people.append([a.get_instance_id(), Vector2(a.position.x, a.position.z)])
+	for e in _people_extra:
+		if is_instance_valid(e) and (e as Node3D).visible and absf((e as Node3D).global_position.y - _y) < PEOPLE_DY:
+			people.append([(e as Node3D).get_instance_id(), Vector2((e as Node3D).global_position.x, (e as Node3D).global_position.z)])
 	# their pace, once a physics frame (tests call this between frames too)
 	var frame := Engine.get_physics_frames()
 	if frame != _ap_ppl_frame:
@@ -22109,7 +22812,10 @@ func _collide() -> void:
 	# jittering between the two, stuck
 	# (you driving, or racer: autodrive keeping the rules leans on a kerb railing as before --
 	# breaking through one on Moshe Dayan's bend it touched the post behind it, racer.gd's test)
-	_smash = absf(_v) > SMASH_V and not _walking and (not _auto or _racing())
+	# (racer -- the ambulance, the getaway -- at any pace above a crawl: planned over a median
+	# through its railings (_racer_across) at 4.5 m/s, it slowed under SMASH_V in the turn and
+	# the railing held it, pressing, for a minute -- Evgeni's ambulance on Kaplan, 24 Nov)
+	_smash = not _walking and (absf(_v) > SMASH_V and not _auto or _racing() and absf(_v) > RACER_SMASH_V)
 	_smashed = ""
 	for _pass in range(3):
 		var moved := false
@@ -22191,6 +22897,8 @@ func _smash_through() -> void:
 	var hedge := i >= 0 and i < _wall_soft.size() and _wall_soft[i] == 1
 	_v *= 0.985 if hedge else 0.97   # (each tick in it: a hedge drags, a railing knocks)
 	var at := Vector3(_pos.x, _y + 0.5, _pos.y) + Vector3(_fwd().x, 0.0, _fwd().y) * (CAR_OFF + CAR_R)
+	if i >= 0 and i < _wall_rail.size() and _wall_rail[i] == 1 and _wall_give[i] == 1:
+		_break_rail(i)   # (every panel it goes through, not one a cool-down)
 	if _smash_cool > 0.0:
 		return
 	_smash_cool = 0.6
@@ -22204,6 +22912,106 @@ func _smash_through() -> void:
 		shake3d(0.8)
 		Audio.play("impact_punch", 0.1, -6.0)
 	Probe.event("smash", {"what": _knocked_what, "kmh": int(absf(_v) * 3.6)})
+
+## A railing's panel the car went through falls (Evgeni, 24 Nov: "can we just crash/destroy
+## such objects"): it stops being solid (_wall_give 2), the thin posts along it too, the
+## batches lay it flat at its foot (TONE_SHADER's and FENCE_SHADER's `rail_gone`: a merged
+## batch cannot leave one panel out), and a loose panel tumbles away from the car. Put back
+## as the knocked bins are: KNOCK_BACK_S on, out of sight 70 m off; RAILS_DOWN_MAX at once.
+const RAILS_DOWN_MAX := 12
+var _rails_down: Array = []          ## {i, posts: [[post, r]], body, ground, t, gone: Vector4, y: Vector2}
+
+func _break_rail(i: int) -> void:
+	_wall_give[i] = 2
+	var a := _walls[i * 2]
+	var b := _walls[i * 2 + 1]
+	var mid := (a + b) * 0.5
+	var L := a.distance_to(b)
+	var foot := minf(_h(a), _h(b)) + 0.17   # (over the kerb's top: the kerb is not laid flat with it)
+	var posts: Array = []
+	for j: int in _near(_post_hash, mid, L * 0.5 + 0.2, BLD_CELL):
+		if _post_r[j] > 0.0 and _post_r[j] <= SMASH_POST_R and not _knockable.has(j) and not _signs_at.has(j) \
+				and Geometry2D.get_closest_point_to_segment(_posts[j], a, b).distance_to(_posts[j]) < 0.2:
+			posts.append([j, _post_r[j]])
+			_post_r[j] = 0.0
+	# the loose panel: a thin white box the length of the piece, sent on the way the car goes
+	var body := RigidBody3D.new()
+	body.mass = 12.0
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(L, 0.95, 0.05)
+	bm.material = _surface("railing")
+	mi.mesh = bm
+	body.add_child(mi)
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = bm.size
+	shape.shape = box
+	body.add_child(shape)
+	world.add_child(body)
+	var along := (b - a).normalized()
+	body.global_transform = Transform3D(Basis(Vector3.UP, -atan2(along.y, along.x)), Vector3(mid.x, foot + 0.4, mid.y))
+	var f := _fwd() * signf(_v)
+	var speed := absf(_v)
+	body.linear_velocity = Vector3(f.x, 0.0, f.y) * (speed * 0.8 + 1.0) + Vector3.UP * (1.0 + speed * 0.1)
+	body.angular_velocity = Vector3(randf_range(-3, 3), randf_range(-1, 1), randf_range(-3, 3))
+	var ground := StaticBody3D.new()   # (the city has no physics of its own: something to land on)
+	var gs := CollisionShape3D.new()
+	var gb := BoxShape3D.new()
+	gb.size = Vector3(30, 1, 30)
+	gs.shape = gb
+	ground.add_child(gs)
+	world.add_child(ground)
+	ground.global_position = Vector3(mid.x, foot - 0.17 + 0.07 - 0.5, mid.y)
+	_rails_down.append({"i": i, "posts": posts, "body": body, "ground": ground, "t": 0.0,
+		"gone": Vector4(a.x, a.y, b.x, b.y), "y": Vector2(foot, foot + 2.0)})
+	if _rails_down.size() > RAILS_DOWN_MAX:
+		_rail_up(_rails_down.pop_front())
+	_rails_gone()
+	Audio.play("impact_metal", 0.1, -8.0)
+	Probe.event("knocked", {"what": "railing", "kmh": int(speed * 3.6), "at": Vector2i(_pos)})
+
+## a broken railing's panel stood back up as it was
+func _rail_up(e: Dictionary) -> void:
+	for n: String in ["body", "ground"]:
+		if is_instance_valid(e[n]):
+			(e[n] as Node).queue_free()
+	_wall_give[int(e["i"])] = 1
+	for pr: Array in e["posts"]:
+		_post_r[int(pr[0])] = float(pr[1])
+
+## the shaders' list of the broken panels (the batches, and the railings' own panels)
+func _rails_gone() -> void:
+	var g4: Array = []
+	var gy: Array = []
+	for e: Dictionary in _rails_down:
+		g4.append(e["gone"])
+		gy.append(e["y"])
+	while g4.size() < RAILS_DOWN_MAX:
+		g4.append(Vector4.ZERO)
+		gy.append(Vector2.ZERO)
+	var mats: Array = [_tone_mat()]
+	if _furn != null:
+		mats.append(_furn._fence_material("railing", 0.15))
+	for m: ShaderMaterial in mats:
+		m.set_shader_parameter("rail_gone", g4)
+		m.set_shader_parameter("rail_y", gy)
+		m.set_shader_parameter("rail_n", _rails_down.size())
+
+func _rails_tick(dt: float) -> void:
+	if _rails_down.is_empty():
+		return
+	var changed := false
+	for k in range(_rails_down.size() - 1, -1, -1):
+		var e: Dictionary = _rails_down[k]
+		e["t"] = float(e["t"]) + dt
+		var gp: Vector4 = e["gone"]
+		if float(e["t"]) > KNOCK_BACK_S and Vector2(gp.x, gp.y).distance_to(_pos) > 70.0:
+			_rail_up(e)
+			_rails_down.remove_at(k)
+			changed = true
+	if changed:
+		_rails_gone()
 
 func _crash(speed: float) -> void:
 	if speed < 1.2 or _crash_cool > 0.0:
@@ -22449,6 +23257,8 @@ func _knock_back(e: Dictionary) -> void:
 
 func _knock_tick(dt: float) -> void:
 	_bent_tick(dt)
+	_bump_tick(dt)
+	_rails_tick(dt)
 	if _knocked.is_empty():
 		return
 	for i in range(_knocked.size() - 1, -1, -1):
@@ -22722,6 +23532,7 @@ func _any_steep() -> bool:
 const SMASH_V := 2.5          ## m/s: slower than this, a railing still stops the car
 const SMASH_WALL_H := 0.6     ## m: a garden wall lower than this the car goes over
 const SMASH_POST_R := 0.07    ## m: posts this thin (railings' posts) give
+const RACER_SMASH_V := 0.3    ## m/s: racer (autodrive in a hurry) goes through them at any pace above this
 var _smash := false
 var _smashed := ""
 
@@ -22753,6 +23564,8 @@ func _push_out(c: Vector2, r: float, posts: bool, cars := true, y := NAN) -> Vec
 	if posts and ground and low:
 		# fences, railings, hedges, garden walls, a shelter's back: thin walls, as segments
 		for i: int in _near(_wall_hash, c, r + 0.5, BLD_CELL):
+			if _wall_give[i] == 2:
+				continue   # (a railing's panel broken and lying down: _break_rail)
 			if _smash and _wall_give[i] == 1:
 				var qs := c + push
 				var cps := Geometry2D.get_closest_point_to_segment(qs, _walls[i * 2], _walls[i * 2 + 1])
@@ -22793,6 +23606,15 @@ func _push_out(c: Vector2, r: float, posts: bool, cars := true, y := NAN) -> Vec
 const PERSON_R := 0.28
 var _people_at := PackedVector2Array()   ## where everyone in the street is now (_people_tick)
 var _people_who := PackedInt64Array()    ## ... and who (an actor's id; 0 you on foot)
+var _people_y := PackedFloat32Array()    ## ... and the height of their feet (a bridge's people are not the street's under it)
+var _people_extra: Array = []            ## people a scenario stands about (add_person): Node3D
+const PEOPLE_DY := 2.5                   ## m: someone further above or below the car than this is on another level
+
+## a person a scenario puts somewhere (Actor3D or any Node3D): solid to the car, and autodrive
+## brakes for them, as for everyone in the street's own lists. Freed: dropped by itself.
+func add_person(n: Node3D) -> void:
+	if not _people_extra.has(n):
+		_people_extra.append(n)
 var _hit_who := -1                       ## the last one the car touched (_people_push)
 
 func _people_push(c: Vector2, r: float) -> Vector2:
@@ -22800,6 +23622,8 @@ func _people_push(c: Vector2, r: float) -> Vector2:
 	for k in range(_people_at.size()):
 		if k < _people_who.size() and _people_who[k] == 0:
 			continue   # (you, on foot, where you were last tick: pushed off that, you ran at 35 m/s)
+		if k < _people_y.size() and not is_nan(_y) and absf(_people_y[k] - _y) > PEOPLE_DY:
+			continue   # (on a bridge over them, or under one)
 		var q := _people_at[k]
 		var d := (c + push) - q
 		var need := r + PERSON_R
@@ -23585,6 +24409,89 @@ func _set_auto(on: bool) -> void:
 	_show_banner("autodrive" if on else "you drive", 1.2)
 
 ## the lower of two speeds, noting what the new one is for when it is the lower
+## Speed bumps, tables and cushions (OSM's, built by furniture.gd into `bumps`): the speed to
+## hold at p heading `fwd` for the ones in its way within `look` m -- over one at its own pace
+## (BUMP_KMH by kind), braked down to it from further back at `decel`. A car's whole length
+## counts: one under it still holds it. INF when none. Across the road (its width), so the
+## lane does not matter; a cushion lets a car straddle it a little faster.
+const BUMP_KMH := {"bump": 15.0, "cushion": 25.0, "table": 25.0}
+var _bump_hash := {}
+var _bump_n := 0
+func bump_v(p: Vector2, fwd: Vector2, look: float, decel: float) -> float:
+	if bumps.is_empty():
+		return INF
+	if _bump_n != bumps.size():   # (bumps come in as the squares are built: hashed as they come)
+		for i in range(_bump_n, bumps.size()):
+			_hash_add(_bump_hash, Rect2(bumps[i][0], Vector2.ZERO), SEG_CELL, i)
+		_bump_n = bumps.size()
+	var v := INF
+	for i: int in _near(_bump_hash, p + fwd * look * 0.5, look * 0.5 + 3.0, SEG_CELL):
+		var b: Array = bumps[i]
+		var rel: Vector2 = (b[0] as Vector2) - p
+		var along := rel.dot(fwd)
+		if along < -CAR_LEN * 0.5 or along > look:
+			continue
+		if absf((b[1] as Vector2).dot(fwd)) < 0.7:
+			continue   # (one across a side street we pass the end of)
+		if absf(rel.dot(Vector2(-fwd.y, fwd.x))) > float(b[2]) * 0.5 + 0.5:
+			continue
+		var at: float = float(BUMP_KMH.get(String(b[3]), 15.0)) / 3.6
+		var front := maxf(along - CAR_LEN * 0.5 - 0.5, 0.0)
+		v = minf(v, sqrt(at * at + 2.0 * decel * front))
+	return v
+
+## The height of the bumps under a car's two axles, `front` and `rear` (m above the road):
+## the hump's profile as furniture.gd's _bump_kit draws it -- 0.08 m on its top, 0.6 m deep
+## (a table's three times that), easing down to the road over the 0.16 m either side. A car
+## rides up it, front wheels then back: the body lifts by the mean of the two and tips by
+## their difference over the wheelbase (you: _pose_car; traffic: traffic.gd's _bump_pose).
+## (A user's "cars drive through the speed bumps as if they were not there".)
+func bump_lift(front: Vector2, rear: Vector2) -> Vector2:
+	if bumps.is_empty():
+		return Vector2.ZERO
+	if _bump_n != bumps.size():
+		bump_v(front, Vector2.RIGHT, 0.0, 1.0)   # (hashes the new ones)
+	var out := Vector2.ZERO
+	for i: int in _near(_bump_hash, (front + rear) * 0.5, front.distance_to(rear) * 0.5 + 3.0, SEG_CELL):
+		var b: Array = bumps[i]
+		out.x = maxf(out.x, _bump_h(b, front))
+		out.y = maxf(out.y, _bump_h(b, rear))
+	return out
+
+func _bump_h(b: Array, p: Vector2) -> float:
+	var d: Vector2 = b[1]
+	var rel: Vector2 = p - (b[0] as Vector2)
+	if absf(rel.dot(Vector2(-d.y, d.x))) > float(b[2]) * 0.5:
+		return 0.0
+	var sx := 3.0 if String(b[3]) == "table" else 1.0
+	var x := absf(rel.dot(d)) / sx
+	if x >= 0.46:
+		return 0.0
+	if x <= 0.3:
+		return 0.08
+	return 0.08 * smoothstep(0.46, 0.3, x)
+
+## a jolt over a bump taken too fast: the car hops, the view shakes (you driving, or anyone)
+var _bump_jolt := 0.0
+func _bump_tick(dt: float) -> void:
+	_bump_jolt = maxf(0.0, _bump_jolt - dt)
+	if _bump_n != bumps.size():
+		bump_v(_pos, Vector2.RIGHT, 0.0, 1.0)   # (hashes the new ones)
+	if bumps.is_empty() or _walking or _bump_jolt > 0.0 or absf(_v) < 4.0:
+		return
+	var fwd := _fwd()
+	for i: int in _near(_bump_hash, _pos, 3.0, SEG_CELL):
+		var b: Array = bumps[i]
+		var rel: Vector2 = (b[0] as Vector2) - _pos
+		if absf(rel.dot(fwd)) < CAR_OFF + 0.3 and absf(rel.dot(Vector2(-fwd.y, fwd.x))) < float(b[2]) * 0.5:
+			var over := absf(_v) * 3.6 - float(BUMP_KMH.get(String(b[3]), 15.0))
+			if over > 5.0:
+				_bump_jolt = 0.6
+				shake3d(clampf(over * 0.04, 0.3, 1.6))
+				Audio.play("impact_soft", 0.1, -10.0 + clampf(over * 0.2, 0.0, 6.0))
+				Probe.event("bump", {"kmh": int(absf(_v) * 3.6), "kind": b[3]})
+			return
+
 func _held(cur: float, v: float, why: String) -> float:
 	if v < cur:
 		_ap_why = why
@@ -23780,7 +24687,7 @@ func _autodrive(dt: float) -> Array:
 	# (the point it steers at: nearer at a corner's pace -- 5.4 m ahead at 14 km/h, it started
 	# round a right turn 6 m early, came out with the turn not done and crossed its new lane
 	# toward the middle line by a metre; the same as before from ~50 km/h)
-	var look := clampf(2.0 + absf(_v) * 0.6, 3.5, 16.0)
+	var look := clampf(1.5 + absf(_v) * 0.55, 3.0, 16.0)
 	var tgt := _ap_point_ahead(look)
 	var to := tgt - rear
 	var alpha := fwd.angle_to(to)
@@ -23795,6 +24702,18 @@ func _autodrive(dt: float) -> Array:
 		var side := Vector2(-fwd.y, fwd.x)
 		steer = clampf(steer + clampf(shove.dot(side) * 0.45, -0.3, 0.3), -MAX_STEER, MAX_STEER)
 		ahead_blocked = shove.normalized().dot(fwd) < -0.6
+	# ...and the back end: round a corner it swings inside the line the front takes (the car
+	# turning in from where it stands, at full lock, more), and something solid at the corner's
+	# pavement -- a sign's post 0.7 m off the kerb at Leiden's Doelenbrug (route 12 since 22 Nov),
+	# a post at Givatayim's Reines into Ben Gurion -- was met by the back corner. Held a little
+	# wider while it is near (tests/corner_post.gd with Leiden's FROM, TO, POST)
+	if absf(steer) > 0.05 and absf(_v) > 0.3:
+		var tail_shove := _push_out(_pos - fwd * CAR_OFF, CAR_R + AP_TAIL_PAD, true, false, _y)
+		if tail_shove != Vector2.ZERO:
+			var side_t := Vector2(-fwd.y, fwd.x)
+			var out_t := tail_shove.dot(side_t)
+			if out_t * steer < 0.0:   # (pushed out from the inside of the turn)
+				steer = clampf(steer + clampf(out_t * AP_TAIL_GAIN, -0.25, 0.25), -MAX_STEER, MAX_STEER)
 	# keep the limit, and slow for the corners ahead: at most the speed from which each
 	# one can still be braked down to in time
 	var racing := _racing()
@@ -23825,6 +24744,8 @@ func _autodrive(dt: float) -> Array:
 	# only in its lane when it was too close to stop)
 	vt = _held(vt, _ap_zebra_v(), "zebra")
 	vt = _held(vt, _ap_people_v(), "people")
+	# speed bumps (racer over them half again as fast: it is in a hurry, not careless)
+	vt = _held(vt, bump_v(_pos, _fwd(), 50.0, 2.0) * (1.5 if racing else 1.0), "bump")
 	var tg := Time.get_ticks_usec()
 	if not racing:
 		vt = _held(vt, _ap_give_v(dt), "junction")
@@ -23857,14 +24778,17 @@ func _autodrive(dt: float) -> Array:
 	# (and when every way round it is refused for its back -- stood too close behind it to swing
 	# out: 70 s behind an SUV at a light on Bialik, every way out "its back at 3 m". A driver
 	# backs up a little and goes round.)
-	var behind_still: bool = racing and _ap_lead_i >= 0 and absf(_v) < 0.5 and float(lead[0]) - float(lead[2]) < 6.0 			and float(_traffic.cars[_ap_lead_i].v) < 0.3
+	# (not only racer: autodrive turning from Hammonds Plains Road into Giles Drive, Bedford's
+	# route 9, stood 230 s nose to nose with a sedan coming out of Giles that waited for it --
+	# then with the next one out. tests/turn_standoff.gd. The user: "always stuck there".)
+	var behind_still: bool = _ap_lead_i >= 0 and absf(_v) < 0.5 and float(lead[0]) - float(lead[2]) < 6.0 			and float(_traffic.cars[_ap_lead_i].v) < 0.3
 	# (counted behind the same car, whatever it says it waits for this moment: a motorbike
 	# waiting for racer tried edging by every 3.5 s, saying something else while it tried, and a
 	# count that restarted each time never got to 4 s -- 74 s on Bialik)
 	_race_nose_t = _race_nose_t + dt if behind_still and _ap_lead_i == _race_nose_i else 0.0
 	_race_nose_i = _ap_lead_i if behind_still else -1
-	var stuck_to: bool = behind_still and (String(_traffic.cars[_ap_lead_i].why) == "player" 			or (_race_by_why.contains("its back") and not _race_by_why.contains("v=")))
-	if stuck_to and _race_nose_t > RACE_GIVE_S and (_ap_lead_i != _race_gave or float(_traffic._clock) - _race_gave_at > 12.0):
+	var stuck_to: bool = behind_still and (String(_traffic.cars[_ap_lead_i].why) == "player" 			or (racing and _race_by_why.contains("its back") and not _race_by_why.contains("v=")))
+	if stuck_to and _race_nose_t > (RACE_GIVE_S if racing else AP_GIVE_S) and (_ap_lead_i != _race_gave or float(_traffic._clock) - _race_gave_at > 12.0):
 		# nose to nose with a car that waits for us (each held by the other): back off a car's
 		# length and plan again. Its own way out -- edging by -- tried every 3.5 s and never
 		# made it, and each try restarted the wait that sends it elsewhere: 25 s on Bialik
@@ -23873,7 +24797,7 @@ func _autodrive(dt: float) -> Array:
 		_race_gave_at = float(_traffic._clock)
 		_race_nose_t = 0.0
 		_ap_back = 1.6
-		Probe.event("racer_gave_way", {"to": String(_traffic.cars[_ap_lead_i].kind)})
+		Probe.event("racer_gave_way" if racing else "autodrive_gave_way", {"to": String(_traffic.cars[_ap_lead_i].kind)})
 	if float(lead[0]) < INF:
 		var lv: float = lead[1]
 		var li := int(lead[3])
@@ -24613,6 +25537,7 @@ func _ap_pass_bus(lead: Array) -> bool:
 ## the same car once stuck behind it (the first try did not clear it). True when it went.
 const RACE_CLEAR := 2.9      ## m from the car's middle to racer's line, going by it
 const RACE_OUT := [3.2, 6.4, 9.6, -3.2]   ## ways out tried: left one lane, two, three; right one
+const AP_GIVE_S := 5.0        ## ...and autodrive, a little more patient
 const RACE_GIVE_S := 4.0      ## s nose to nose with a car waiting for racer before it backs off
 var _race_gave := -1           ## the car it last backed off for (once each)
 var _race_nose_t := 0.0        ## s stood close behind the same still car
@@ -25020,6 +25945,9 @@ const MOUNT_DOWN := 15.0      ## m of road it wants straight after coming back d
 const MOUNT_PAST := 26.0      ## metres of pavement it takes at most past the car in front
 var _mount_why := ""   ## why the last way up onto the pavement was not taken (tests/racer_drive.gd)
 func _ap_mount_by(lead: Array) -> bool:
+	if _scenario != null and _scenario._siren_on:
+		_mount_why = "siren"   # (an ambulance: the traffic pulls aside for it, and it does not take the pavement -- one did at 67 km/h, 24 Nov)
+		return false
 	var bi: int = lead[3]
 	if bi < 0 or (bi == _ap_passed and _ap_wait < 2.0) or _ap_pts.size() < 2:
 		_mount_why = "just passed" if bi >= 0 else ""
@@ -25249,24 +26177,47 @@ func _ap_keep_clear(upto: float) -> void:
 	var nl := PackedFloat32Array([_ap_lim[0]])
 	var acc := 0.0
 	var moved := 0
+	# where the plan bends (the room there is r + AP_BEND_PAD, on the line either side too:
+	# Leiden's Doelenbrug, route 12, had the bend's points 1.86 m from a sign's post and the
+	# line between them 1.59, and the back end clipped it there)
+	var bend := PackedByteArray()
+	bend.resize(_ap_pts.size())
+	for k in range(1, _ap_pts.size() - 1):
+		if absf((_ap_pts[k] - _ap_pts[k - 1]).angle_to(_ap_pts[k + 1] - _ap_pts[k])) >= AP_BEND_ANGLE:
+			bend[k] = 1
 	for k in range(1, _ap_pts.size()):
 		var a := _ap_pts[k - 1]
 		var b := _ap_pts[k]
 		var L := a.distance_to(b)
 		if acc < upto:
-			var m := maxi(int(L), 1)
+			# (every metre or less: int(L) left a 1.9 m step of Leiden's plan unlooked-at, its
+			# line 1.59 m from a post. Not under a metre: a pushed middle is a new plan point, so
+			# halving every step each look doubled the plan near anything solid four times a
+			# second -- Ashdod's route 6 took 35 s a frame by 11 minutes)
+			var m := ceili(L) if L > 1.0 else 1
 			for q in range(1, m):
 				var at := a.lerp(b, float(q) / m)
 				if at.distance_to(_pos) < 2.5:
 					continue   # (not under the car: it is where it is)
-				var push := _push_out(at, r, true, false, _y)
-				if push != Vector2.ZERO and push.length() <= AP_CLEAR_MAX:
+				var ra := r
+				if (bend[k - 1] == 1 and at.distance_to(a) < AP_BEND_REACH) or (bend[k] == 1 and at.distance_to(b) < AP_BEND_REACH):
+					ra += AP_BEND_PAD
+				var push := _push_out(at, ra, true, false, _y)
+				# (and only one that still goes forward: pushed out of a tight spot -- a sign, a
+				# post and a building's corner at a Monaco bend -- the points came out behind each
+				# other, the plan doubled back on itself and the car took the bend at 37 km/h into
+				# the sign)
+				if push != Vector2.ZERO and push.length() <= AP_CLEAR_MAX and (at + push - np[np.size() - 1]).dot((b - a) / L) > 0.05 \
+						and (b - (at + push)).dot(b - a) > 0.0:
 					np.append(at + push)
 					nv.append(maxf(_ap_v[k - 1], _ap_v[k]) if _ap_v[k] > 0.0 else _ap_v[k])
 					nl.append(_ap_lim[k])
 					moved += 1
 			if b.distance_to(_pos) >= 2.5:
-				var pb := _push_out(b, r, true, false, _y)
+				var rb := r
+				if bend[k] == 1:
+					rb += AP_BEND_PAD   # (a bend: the car cuts inside it and its back end swings in)
+				var pb := _push_out(b, rb, true, false, _y)
 				if pb != Vector2.ZERO and pb.length() <= AP_CLEAR_MAX:
 					b += pb
 					moved += 1
@@ -25281,6 +26232,17 @@ func _ap_keep_clear(upto: float) -> void:
 		_ap_lim = nl
 		_ap_cleared += moved
 
+## The room a plan point needs: the car's body (r) and, in a bend, AP_BEND_PAD more. Round a
+## corner the car does not run on the plan's line: the steering turns in early and cuts
+## inside it (0.6 m at Givatayim's Reines into Ben Gurion, a right turn at 20 km/h), and the
+## car points along the way it came, so its back end swings further in -- route 3's plan was
+## 1.8 m from a sign post at that corner, 0.4 m clear of the body, and the back end met the
+## post at 11-19 km/h every run (tests/corner_post.gd).
+const AP_TAIL_PAD := 0.5    ## m: the back end's circle this near something solid on the inside of a turn eases the steering
+const AP_TAIL_GAIN := 3.0   ## rad of steering eased per metre of that
+const AP_BEND_PAD := 0.35   ## m more on a point where the plan turns by AP_BEND_ANGLE or more
+const AP_BEND_ANGLE := 0.25 ## rad
+const AP_BEND_REACH := 3.0  ## m of the line either side of a bend's point that gets AP_BEND_PAD too
 func _ap_densify(upto: float, step: float) -> void:
 	var np := PackedVector2Array([_ap_pts[0]])
 	var nv := PackedFloat32Array([_ap_v[0]])
@@ -25440,11 +26402,18 @@ func _ap_curves(from_k: int) -> void:
 	for k in range(maxi(1, from_k), _ap_pts.size() - 1):
 		if _ap_v[k] == 0.0:
 			continue   # a stop to turn round at (a dead end's U-turn): kept
-		var a := _ap_walk(k, -5.0)
 		var b := _ap_pts[k]
-		var c := _ap_walk(k, 5.0)
-		var cross := absf((b - a).cross(c - a))
-		var radius := INF if cross < 0.001 else a.distance_to(b) * b.distance_to(c) * c.distance_to(a) / (2.0 * cross)
+		# (the bend's radius through the points 5 m either side -- and 2.5 m: a corner squeezed
+		# tighter than AP_TURN_R by the points either side of it, a 120-degree right turn into
+		# Givatayim's Sirkin, 3.9 m round, read as 5-6 m through 5 m, was planned at 17 km/h and
+		# the car came out over the middle line of the 6 m street; tests/turn_width.gd)
+		var radius := INF
+		for reach: float in [5.0, 2.5]:
+			var a := _ap_walk(k, -reach)
+			var c := _ap_walk(k, reach)
+			var cross := absf((b - a).cross(c - a))
+			if cross >= 0.001:
+				radius = minf(radius, a.distance_to(b) * b.distance_to(c) * c.distance_to(a) / (2.0 * cross))
 		# (more sideways pull in a tight bend, as people take one: 3.6 m/s^2 from a 15 m radius up,
 		# rising to 4.8 at 5 m -- at 3.6 throughout, a roundabout's way on and off, 4-8 m, was
 		# 14-18 km/h, and the car eased off for each: "very defensive, somewhat slow")
@@ -25490,6 +26459,16 @@ func _ap_next() -> bool:
 		# "turning round at a dead end"). Planned as a lane out and a lane back, the U-turn was a
 		# corner a few metres across taken at 2.5 m/s -- autodrive swung wide past the end into
 		# the trees and garden walls, or onto the footpath beyond and on along it at 40 km/h.
+		_ap_mark_dead_end()
+		return false
+	# a street that ends in nothing but lanes on -- a driveway, a car park's aisles: a dead end
+	# for a car out driving, turned round in like any other. Roaming down Bedford's Meadowview
+	# Drive (a cul-de-sac with a car park's driveway off its end), autodrive took the only way
+	# "on", into the car park, and stood among the parked cars (the user, 26 Nov: "need to fix
+	# these weird places and dead ends, always stuck there")
+	if not _dest_on and r["k"] != "service" and int(r["o"]) == 0 and back.x >= 0 \
+			and ways.all(func(w): return w["service"]):
+		_tally("ap_lane_end_turn", 1)
 		_ap_mark_dead_end()
 		return false
 	# every way on from here only runs off the map (a street the map's edge cut): turn round
@@ -25622,6 +26601,8 @@ func _ap_ways(ri: int, ei: int, dir: int) -> Array:
 				score -= 8.0   # every way on from it runs off the map: only if nothing else
 			elif _trap.has((r2["ids"] as PackedInt32Array)[nxt]) and not _trap.has(node):
 				score -= 8.0   # into a pocket, with no way back out (see _find_pockets)
+			elif r2["k"] != "service" and _pocket_ahead(e.x, nxt, d2):
+				score -= 5.0   # into a cul-de-sac estate: only if nothing else (in, round, out)
 			if r.get("ring", false):
 				# on a roundabout: off at one of the next exits, never round and round
 				score += (-0.8 - 1.2 * _ap_ring_n) if r2.get("ring", false) else 1.2
@@ -26582,7 +27563,9 @@ func _walk_list_open(kind := "walks") -> void:
 		b.clip_text = true
 		_route_ui.add_child(b)
 		if two:
-			_put(b, Vector2(30 + (k % 2) * 295, 64 + (k / 2) * 31.0), Vector2(285, 27))
+			# (more rows a little tighter: nine rows at 31 ran into the settings at 322)
+			var step := minf(31.0, 250.0 / ceilf(rows.size() / 2.0))   # (ten rows: 25)
+			_put(b, Vector2(30 + (k % 2) * 295, 64 + (k / 2) * step), Vector2(285, step - 4.0))
 		else:
 			_put(b, Vector2(120, 64 + k * 31.0), Vector2(400, 27))
 	_back_button()
@@ -26725,7 +27708,7 @@ func _route_begin() -> void:
 func _watching() -> bool:
 	if not _film.is_empty() or not _route.is_empty():
 		return true
-	return _scenario != null and String(_place.get("scenario", "")) != "getaway"
+	return _scenario != null and not (String(_place.get("scenario", "")) in ["getaway", "ambulance", "delivery", "taxi", "gan"])   # (the ones with a goal: yours to drive too)
 
 ## a drawn button that _pick_tap() can press
 func _tap_button(text: String, cb: Callable) -> Button:
@@ -27435,7 +28418,7 @@ func _draw_hud() -> void:
 		if push > 0.0:
 			_hud.draw_rect(Rect2(260, 96, 120, 4), Color(bg, 0.7))
 			_hud.draw_rect(Rect2(260, 96, 120.0 * push, 4), pl)
-	if _touch_seen:
+	if _touch_seen and not _watching():   # (watched: no wheel to steer, so no stick drawn)
 		var held := _stick_id >= 0
 		var c := STICK_C
 		var a := 0.85 if held else 0.45
@@ -27468,7 +28451,17 @@ var _mouse_at := Vector2.INF   ## a real mouse's position (not a touch's): the b
 ## Under the mouse it fills as the shell's buttons do on hover (UIKit: the accent darkened,
 ## the text in the player's colour) -- the user: "when i hover with the mouse it doesnt fill
 ## them like in the main and other menus"
+## Watched (_watching(): a tour, a scenario that plays itself, a test drive) none of them
+## answers a tap, so each is drawn greyed out -- faint outline and text, no fill, no hover --
+## (the user, 24 Nov: "grey out the controls that we cant click in the autoplay")
 func _hud_btn(r: Rect2, text: String, col: Color, lit: bool, size: int, strong := false) -> void:
+	if _watching():
+		var dim := Color(Palette.col("ink"), 0.4)
+		_hud.draw_rect(r, Color(Palette.col("bg"), 0.5))
+		_hud.draw_rect(r, dim, false, 1.0)
+		_hud.draw_string(_font, Vector2(r.position.x, r.position.y + r.size.y * 0.5 + size * 0.36), text,
+			HORIZONTAL_ALIGNMENT_CENTER, r.size.x, size, dim)
+		return
 	var c := col if lit or strong else Color(Palette.col("ink"), 0.8)
 	var hover := r.has_point(_mouse_at)
 	_hud.draw_rect(r, Palette.col("accent").darkened(0.55) if hover else Color(Palette.col("bg"), 0.7))

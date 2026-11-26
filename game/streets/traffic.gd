@@ -40,6 +40,7 @@ const DBL_ROADS := {"residential": true, "tertiary": true, "unclassified": true,
 const KERB_EVERY := Vector2(35.0, 75.0)   ## seconds between cars set to pull out ahead of the player
 const KERB_BOARD := 0.6      ## of those, the share with someone getting in beside the driver first
 const LANE_W := 1.5          ## a car on my path: its middle within this of my lane line
+const PLAYER_AHEAD_S := 0.8  ## s: the moving player's front corners looked at this far ahead too
 const PLAYER_W := 2.0        ## the player's car counts as in my way from further over: it
                              ## need not be on a lane line, and half in the lane is in it
 const CURVE_LAT := 2.6       ## sideways pull a driver takes a corner at (m/s^2)
@@ -91,6 +92,9 @@ class Car:
 	var kerb_clear := 0.0             ## left of its lane this much, clear of what stands at the kerb (parked cars, poles)
 	var kerb_look := 0.0              ## seconds to the next look at the kerb
 	var dip := 0.0                    ## the body: nose down braking, up pulling away (visual)
+	var toot_cd := 0.0                ## seconds before it may hoot at you again
+	var bump_y := 0.0                 ## the body lifted over a speed bump, and tipped (visual: g.bump_lift)
+	var bump_pitch := 0.0
 	var roll := 0.0                   ## the body: leaning out of a turn (visual)
 	var paint := Color.WHITE
 	var kind := "sedan"
@@ -307,6 +311,34 @@ func set_night(on: bool) -> void:
 	for i in range(cars.size()):   # nothing drawn yet for cars that are not alive
 		_beams.multimesh.set_instance_transform(i, Transform3D(Basis(), Vector3(0, -500, 0)))
 
+## at most `n` cars about (a scenario's quiet streets -- Shabbat eve: 4); the farthest of the
+## rest taken away now, none put back past it. COUNT gives them all back.
+var cap := COUNT
+func set_cap(n: int) -> void:
+	cap = clampi(n, 0, COUNT)
+	var alive: Array = []
+	for i in range(cars.size()):
+		if (cars[i] as Car).alive:
+			alive.append(i)
+	var me: Vector2 = g._pos
+	alive.sort_custom(func(a, b): return (cars[a] as Car).pos.distance_to(me) < (cars[b] as Car).pos.distance_to(me))
+	for k in range(cap, alive.size()):
+		(cars[alive[k]] as Car).alive = false
+		_hide_or_show(alive[k])
+
+## no buses about (Shabbat in the Israeli towns: the city lines stop from Friday afternoon to
+## Saturday night); those about now taken away, none put back till it is off
+var no_buses := false
+const TOOT_AFTER := 3.0             ## seconds held up by you before a car hoots
+func set_no_buses(on: bool) -> void:
+	no_buses = on
+	if on:
+		for i in range(cars.size()):
+			var c: Car = cars[i]
+			if c.kind == "bus" and c.alive:
+				c.alive = false
+				_hide_or_show(i)
+
 func alive_count() -> int:
 	var n := 0
 	for c: Car in cars:
@@ -341,6 +373,13 @@ func tick(dt: float) -> void:
 			c.retry -= dt
 			if spawned or c.retry > 0.0:
 				continue
+			if cap < COUNT and c.alive == false and alive_count() >= cap:
+				continue   # (a scenario's quiet streets: no more than its cap)
+			if no_buses and c.kind == "bus":
+				if c.alive:
+					c.alive = false
+					_hide_or_show(i)
+				continue   # (Shabbat: no city buses)
 			spawned = true
 			var t0 := Time.get_ticks_usec()
 			c.alive = _spawn(c, false)
@@ -436,6 +475,15 @@ func tick(dt: float) -> void:
 		c.dip = lerpf(c.dip, clampf(-c.acc * 0.011, -0.03, 0.06), minf(1.0, dt * 6.0))
 		c.roll = lerpf(c.roll, clampf(turn * c.v * 0.012, -0.06, 0.06), minf(1.0, dt * 5.0))
 		c.braking = clampf(c.braking + (dt * 8.0 if c.v < was - 0.01 or c.v < 0.2 else -dt * 4.0), 0.0, 1.0)
+		# touching the player's car and closing on it: it stops there. It used to drive on and
+		# _push_out moved the player instead -- a traffic SUV at 2 m/s shoved autodrive, standing
+		# in a junction's tangle, 8 m sideways into the posts (route 7, Rabbi Meir Baal HaNes);
+		# the test town's "traffic shoves your standing car", 3 a run
+		if c.v > 0.0 and _into_player(c, dt):
+			c.v = 0.0
+			c.acc = 0.0
+			c.why = "player"
+			c.blocker = -1
 		c.still = c.still + dt if c.v < 0.3 else 0.0
 		var before := c.s
 		c.s = minf(c.s + c.v * dt, c.cum[c.cum.size() - 1])
@@ -461,6 +509,28 @@ func tick(dt: float) -> void:
 				c.dip -= 0.012
 			c.cover_on = on
 
+## car c's body touching the player's standing car (its two circles, the game's _collide) and this
+## tick's step bringing them closer
+func _into_player(c: Car, dt: float) -> bool:
+	if g._walking or absf(float(g._v)) > 0.5 or not _level(c, float(g._y), _me_lift):
+		return false   # (a moving player: theirs to keep clear -- a traffic car frozen beside a
+		               # player closing in on it would only be driven into)
+	var me: Vector2 = g._pos
+	if c.pos.distance_squared_to(me) > 100.0:
+		return false
+	var pf: Vector2 = g._fwd()
+	var fwd := Vector2(sin(c.yaw), cos(c.yaw))
+	var body: Array = BODY.get(c.kind, [[1.25, -1.25], 0.85])
+	var step := fwd * c.v * dt
+	for off: float in body[0]:
+		var q := c.pos + fwd * off
+		for po: float in [g.CAR_OFF, -g.CAR_OFF]:
+			var p := me + pf * po
+			var need := float(body[1]) + float(g.CAR_R) + 0.05
+			if q.distance_to(p) < need and (q + step).distance_to(p) < q.distance_to(p):
+				return true
+	return false
+
 ## time spent in one part of the tick, for the game's frame profiler (sub-parts of "traffic":
 ## a name with a colon is not added to the frame's script total again)
 func _us(part: String, t0: int, t1: int = -1) -> void:
@@ -484,6 +554,7 @@ func _target(c: Car, i: int, dt: float) -> float:
 	var lv := _light_ahead(c)
 	vt = _held(c, vt, lv, "light")
 	vt = _held(c, vt, _zebra_ahead(c), "zebra")
+	vt = _held(c, vt, g.bump_v(c.pos, Vector2(sin(c.yaw), cos(c.yaw)), 40.0, BRAKE * 0.6), "bump")
 	if lv == INF:
 		vt = _held(c, vt, _sign_ahead(c, dt), "sign")
 		if not c.holding:
@@ -586,14 +657,28 @@ func _target(c: Car, i: int, dt: float) -> float:
 	# past it skipped the player altogether (the test town's (-546, 405), 3-6 a run: "autodrive
 	# in a car ... 0.3 m in, autodrive 0 km/h, held by junction"). Each corner in my way where
 	# the bodies would touch -- with a hand's breadth, squeezing past too (brushing, not into it)
-	if not g._walking and _level(c, float(g._y), _me_lift) and g._pos.distance_squared_to(c.pos) < (look + 8.0) * (look + 8.0):
+	# (but not a player going my way with its middle behind mine: I am the one in front, it
+	# follows -- Annecy's Boulevard du Lycée, route 13: a moto drew up beside autodrive's nose at
+	# a roundabout's mouth, waited for those corners while autodrive waited for the moto, and
+	# both stood there for 500 s)
+	var behind_me: bool = g._fwd().dot(fwd) > 0.7 and (g._pos - c.pos).dot(fwd) < 0.0
+	if not g._walking and not behind_me and _level(c, float(g._y), _me_lift) and g._pos.distance_squared_to(c.pos) < (look + 8.0) * (look + 8.0):
 		var pf: Vector2 = g._fwd()
 		var ps := Vector2(-pf.y, pf.x)
 		var hl: float = float(g.CAR_LEN) * 0.5
 		var hw: float = float(g.CAR_WIDTH) * 0.5
 		var mine: Vector2 = CORNERS.get(c.kind, CORNERS["sedan"])
 		var cw: float = mine.x + (0.1 if c.squeeze > 0.0 or c.split else 0.25)
-		for pq: Vector2 in [g._pos + pf * hl + ps * hw, g._pos + pf * hl - ps * hw, g._pos - pf * hl + ps * hw, g._pos - pf * hl - ps * hw]:
+		# (and where those corners will be in PLAYER_AHEAD_S, the player moving: autodrive going
+		# round Givatayim's Kikar Irgunei HaMitnadvim came across a hatch pulling out of
+		# HaKnesset, which saw its corners only once they were 3.6 m in front of it and touched
+		# it at 11 km/h -- a car coming from the side is in my way before it is in my lane)
+		var lead_off: Vector2 = pf * maxf(float(g._v), 0.0) * PLAYER_AHEAD_S if float(g._v) > 1.0 else Vector2.ZERO
+		var pqs: Array = [g._pos + pf * hl + ps * hw, g._pos + pf * hl - ps * hw, g._pos - pf * hl + ps * hw, g._pos - pf * hl - ps * hw]
+		if lead_off != Vector2.ZERO:
+			pqs.append(g._pos + pf * hl + ps * hw + lead_off)
+			pqs.append(g._pos + pf * hl - ps * hw + lead_off)
+		for pq: Vector2 in pqs:
 			if (pq - c.pos).dot(fwd) < 0.0:
 				continue
 			var cg := _path_gap(c, pq, look, cw)   # (from my middle, as `best` is; a corner has no length of its own)
@@ -641,6 +726,13 @@ func _target(c: Car, i: int, dt: float) -> float:
 			if c.v < 0.3:
 				c.wait += dt
 				c.blocker = who
+				# held up by you standing in its way: a toot after a few seconds (and again later)
+				c.toot_cd -= dt
+				# (not when it is a red light that holds you both: only a light it need not stop for)
+				if who == -1 and c.wait > TOOT_AFTER and c.toot_cd <= 0.0 and absf(float(g._v)) < 0.5:
+					c.toot_cd = 12.0
+					if _light_ahead(c) == INF:
+						g.traffic_toot(c.pos)
 				# Face to face with the player in a narrow street, both standing (the player
 				# waits for it, it waits for the player, for ever -- and autodrive with
 				# them): if there is nearly room, it edges by, brushing past; if they are
@@ -784,6 +876,28 @@ func _clear_back(c: Car, j: int, n: int) -> float:
 		need = maxf(need, (float(r["w"]) * 0.5 + 0.5 + hw * absf(in_dir.dot(u))) / sn)
 	return minf(need, _node_r[n] * 2.5 + 2.0)
 
+## is p inside the junction that lit point n is one corner of: the lit points within
+## BOX_M of n (a divided road crossing another is four, 10-20 m apart) and p within their
+## spread of their middle; false for a junction lit at one point
+const BOX_M := 25.0
+func _player_in_box(n: int, p: Vector2) -> bool:
+	if not g._sig_set.has(n):
+		return false
+	var at: Vector2 = g._nodes[n]
+	var pts: Array = []
+	var mid := Vector2.ZERO
+	for o: int in g._near(g._sig_hash, at, BOX_M, g.SEG_CELL):
+		if (g._nodes[o] as Vector2).distance_to(at) < BOX_M:
+			pts.append(g._nodes[o])
+			mid += g._nodes[o]
+	if pts.size() < 2:
+		return false
+	mid /= pts.size()
+	var spread := 0.0
+	for q: Vector2 in pts:
+		spread = maxf(spread, q.distance_to(mid))
+	return p.distance_to(mid) < spread + 2.0
+
 func _junction_ahead(c: Car, i: int, dt: float) -> float:
 	for j in range(c.k + 1, c.pts.size() - 1):
 		var dist := c.cum[j] - c.s
@@ -823,6 +937,19 @@ func _junction_ahead(c: Car, i: int, dt: float) -> float:
 			var can_stop: bool = not g._auto or c.v * c.v <= 2.0 * BRAKE * maxf(edge - 0.3, 0.0) + 2.0
 			if pd < _node_r[n] + 30.0 and pv > 1.5 and pfwd.dot(node_at - me_at) > 0.0 \
 					and pd / pv < my_eta + 1.5 and can_stop:
+				return _hold(c, dt, stop)
+			# the player inside a junction of several lit points (a divided road crossing
+			# another), clearing it toward this point: it goes first, as a car in it does, my
+			# green or not. Route 2 (Givatayim, Horodetsky across HaShalom, 24 Nov): autodrive
+			# held behind a car in the middle of the junction, then going on through it at
+			# 30 km/h, and an SUV coming up HaShalom on its new green at 39 km/h -- too fast to
+			# stop for it "comfortably", so it went on, and they met.
+			# (moving: one standing at its own red between the two carriageways waits, and held
+			# the cross street's green for nothing)
+			# (whenever it is: not "due within 1.5 s of me" -- setting off from standing behind
+			# a car there, at 1-3 m/s it read as due in 7-20 s, and the car came on;
+			# tests/box_clear.gd)
+			if pv > 1.0 and pfwd.dot(node_at - me_at) > 0.0 and pd < BOX_M and _player_in_box(n, me_at):
 				return _hold(c, dt, stop)
 		for oi in range(cars.size()):
 			if oi == i:
@@ -1869,6 +1996,15 @@ func _spawn(c: Car, first: bool) -> bool:
 		var dir := 1 if rng.randf() < 0.5 else -1
 		if r["o"] != 0:
 			dir = int(r["o"])
+		# in a cul-de-sac estate (g._pocket_ahead): heading out of it, and only now and then
+		# (a resident leaving) -- put down there half of them went in, turned round at the
+		# end and met the ones coming out (Bedford's Meadowview Drive, 23 Nov)
+		if g._pocket_ahead(ri, sj + 1 if dir > 0 else sj, dir):
+			if r["o"] != 0 or g._pocket_ahead(ri, sj if dir > 0 else sj + 1, -dir) or rng.randf() > 0.3:
+				continue
+			dir = -dir
+		elif g._pocket_ahead(ri, sj if dir > 0 else sj + 1, -dir) and rng.randf() > 0.3:
+			continue
 		if _start_on(c, ri, sj, at, dir):
 			return true
 	return false
@@ -2215,8 +2351,10 @@ func _next(c: Car) -> bool:
 			var score := straight * 1.4 + float(KIND_W.get(r2["k"], 0.25)) * 1.2 + rng.randf() * 1.5
 			# into a dead end only when there is nothing else: the cars went in through
 			# traffic, turned round at the end in a queue of others doing the same, and
-			# overlapped there (a dozen times a run in one cul-de-sac)
-			if _dead_end(r2, nxt, d2):
+			# overlapped there (a dozen times a run in one cul-de-sac). Nor into a few
+			# streets that all only end (g._pocket_ahead: a driveway or a side street on
+			# the way was enough to let them in -- Bedford's Meadowview Drive, 23 Nov)
+			if g._pocket_ahead(e.x, nxt, d2):
 				score -= 4.0
 			# nor into a pocket whose only ways out run off the map (see the game's _find_pockets)
 			if g._trap.has((r2["ids"] as PackedInt32Array)[nxt]) and not g._trap.has(node):
@@ -2235,18 +2373,6 @@ func _next(c: Car) -> bool:
 		return false
 	c.ring_n = c.ring_n + 1 if (_roads[best.x] as Dictionary).get("ring", false) else 0
 	_leg(c, best.x, best.y, best.z)
-	return true
-
-## road r from point k on, going dir: does it end in a dead end with no turning on the way?
-func _dead_end(r: Dictionary, k: int, dir: int) -> bool:
-	var ids: PackedInt32Array = r["ids"]
-	var last := ids.size() - 1 if dir > 0 else 0
-	if g._node_ways(ids[last]) > 1:
-		return false
-	while k != last:
-		if g._node_ways(ids[k]) >= 3:
-			return false
-		k += dir
 	return true
 
 ## drop what is well behind, so the path stays short
@@ -2350,6 +2476,14 @@ func _place(c: Car) -> void:
 		c.steer_to = clampf(angle_difference(c.yaw, ty), -0.5, 0.5)
 		if g._hnx > 0:
 			c.pitch = atan2(float(g._decks.surf(front, c.y)) - float(g._decks.surf(c.rear, c.y)), d.length())
+		# over a speed bump (only near you, where it can be seen: a hash look-up a car)
+		if not g.bumps.is_empty() and c.pos.distance_squared_to(g._pos) < 120.0 * 120.0:
+			var hb: Vector2 = g.bump_lift(front, c.rear)
+			c.bump_y = (hb.x + hb.y) * 0.5
+			c.bump_pitch = atan2(hb.x - hb.y, maxf(d.length(), 1.0))
+		else:
+			c.bump_y = 0.0
+			c.bump_pitch = 0.0
 
 func _in_view(p: Vector2) -> bool:
 	var look := Vector2(cos(float(g._yaw)), sin(float(g._yaw)))
@@ -2367,8 +2501,8 @@ func draw(f: float) -> void:
 		var p := c.prev_pos.lerp(c.pos, f)
 		var yaw := lerp_angle(c.prev_yaw, c.yaw, f)
 		# (the slope it is on, the nose dipping or lifting, the lean in a turn)
-		var basis := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, -c.pitch + c.dip) * Basis(Vector3.BACK, c.roll)
-		var xf := Transform3D(basis, Vector3(p.x, lerpf(c.prev_y, c.y, f) + float(g.road_top()), p.y))
+		var basis := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, -c.pitch - c.bump_pitch + c.dip) * Basis(Vector3.BACK, c.roll)
+		var xf := Transform3D(basis, Vector3(p.x, lerpf(c.prev_y, c.y, f) + c.bump_y + float(g.road_top()), p.y))
 		var mm: MultiMesh = _mms[c.kind]
 		mm.set_instance_transform(i, xf)
 		var lit := c.blink != 0 and fmod(_clock + float(i) * 0.13, 0.7) < 0.36

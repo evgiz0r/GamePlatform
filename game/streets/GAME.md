@@ -635,8 +635,9 @@ out as a little film, the car driving itself, captions across the bottom.
 
 - *The getaway* -- Ashdod, Tel Aviv. A car with flashing lights and a siren is on your tail;
   the car runs as a racer to the safe house across town. On a straight you pull away; slow for
-  a corner or a queue and it closes in. Lose it by 160 m or reach the safe house and you got
-  away; let it within 7 m and you are caught. Take the wheel and the drive is yours.
+  a corner or a queue and it closes in. Lose it by 130 m or reach the safe house and you got away; let it box you in -- on your
+  bumper for a few seconds while you are stopped -- and you are caught. Take the wheel and the
+  drive is yours.
 
   The camera cuts between shots as it goes -- the usual view, from high above, low at the
   kerb as you come by, from behind the police car, looking back -- and drops into slow
@@ -658,12 +659,58 @@ out as a little film, the car driving itself, captions across the bottom.
 
 - *A day in the town* -- Tel Aviv, Givatayim. Morning to night in three minutes: a drive at
   each time of day, the town's own rhythm in the captions, the camera cutting between shots,
-  rain before dawn.
+  rain before dawn. The hour ticks on the line under the street ("07:42 · morning rush · 22
+  cars about"), and the traffic follows it: the rush full, the evening thinner, the night
+  nearly empty.
 
   > some scenario ( aka movie i guess ) happening in a city. doesnt have to be related to
   > the city itself ... tours will be part of all scenarios
 
   > I want to think more of automatic scearios for now without my inputs
+
+- *Pizza rush* -- Givatayim, Tel Aviv. Friday night, three pizzas in the back, three of the
+  town's real addresses one after another, each with its own clock. The faster you get there,
+  the bigger the tip; running late, autodrive drops the rules. Ninety seconds past the clock
+  and the order is cancelled. Watched, a long drive cuts ahead to near the door, and the clock
+  is charged for the road skipped.
+- *Taxi shift* -- Tel Aviv, Givatayim. Night, light on. Someone waves you down at the kerb a
+  few streets on; you pull up, they get in and say where they're going ("and gently: there's a
+  cake on my lap"); the meter runs. Each ride pays its fare and a tip for getting there quickly,
+  less for every knock on the way; at the door they get out and walk off. Three fares a shift.
+- *Wedding convoy* -- Tel Aviv. Evening. You lead; three cars dressed in white ribbons and
+  flowers follow close behind, hooting, to the hall before the ceremony starts (a clock on
+  screen). Watched, no inputs.
+- *Shabbat eve* -- Givatayim. Friday, the hour before sunset: the shops close, the buses stop,
+  the traffic thins to a handful of cars and then one; night falls, candles in the windows,
+  "Shabbat shalom". Watched, no inputs -- and the lightest scenario to run, the empty streets
+  costing less than the full ones. The clock on screen counts down the last hour to candle
+  lighting.
+- *Gan pick-up* -- Givatayim. Four o'clock: two kids, Noa and Ari, at two of the town's own
+  kindergartens, and the whole town doing the same run -- parents waiting at each gate. Pick
+  both up and get home on one clock. Watched, no inputs (or take the wheel).
+
+  > Lets start just by few 2 3 scenarios. As all these stuff have no inputs, i want them super
+  > optimized.
+
+**Every scenario has a goal and an ending** (the redo). It opens on a title card: its name
+and what it asks ("Lose the police car, or reach the safe house"). While it plays, a line
+under the street's name says how it is going -- the tour's "stop 2 of 6 · Rothschild · 420 m",
+the getaway's distance to the police car as a bar going from green to red, the ambulance's
+"patient: 1:12 · hospital 900 m", the delivery's clock and tips. It ends on a card: what
+happened, one to three stars, the numbers (time, top speed, close calls, red lights run, cars
+that pulled over, tips) and the best you have done. The getaway, the ambulance and the pizza
+rush and the taxi shift play themselves, but take the wheel and they are yours; the goal still
+counts. With its siren on, the ambulance never takes the pavement.
+
+- The getaway now has a story: the police car gets faster over the first minute ("backup's
+  joined"), a brush with it is a *close call* (slow motion, counted) rather than the end, and
+  you are caught only when it holds you for a few seconds. After 45 s a second police car
+  joins behind the first. Reach the safe house, or open a 130 m gap.
+- The ambulance has a clock from the distance, and "30 seconds left -- hurry!".
+- A tour no longer sits through a minute of driving between stops: past 35 s it fades and
+  picks up just before the next street.
+
+> All the scenarios are very weak. Lets also redo all of that.
 
 **The opening.** When a town comes up, the view starts high over it, turning slowly round
 where you will start, the town's name across the screen, while the streets round the car
@@ -1727,7 +1774,19 @@ contributors under the ODbL, which is why the credit sits on screen.
   round them and a tower crane over each big new building, and its licensed shops, cafes,
   barbers and grocers where OSM has none (their signs say what they are: the city's list has
   no names), and its own street things: Tel-O-Fun's green bike stations, taxi stands,
-  motorbike bays, sculptures, notice boards and fire hydrants. Everywhere, the cars' shapes and colours are the shares on Israel's vehicle
+  motorbike bays, sculptures, notice boards and fire hydrants. Pigeons and crows peck about the
+  pavements and fly up when you come near, and pigeons sit in rows on the overhead wires and along the roof edges, and hooded crows walk
+  about with their black heads; the horn sends them up and makes people standing about look
+  round; a car you hold up toots at you; a dog on a lead may bark as you walk past it;
+  supermarket trolleys stand nested by the doors (and the odd one down the street); rental e-scooters stand (or lie) about; gas
+  cylinder cages by the houses. Roofs carry dishes, old aerials and AC units; fountains
+  stand where OSM maps them; at night most shops have their shutters down, and in the Israeli
+  towns the day of the week is today's (the time button moves it on a day each night): from
+  Friday evening to Saturday evening it is Shabbat and the late shops shut too, but for about
+  one in three in Tel Aviv and one in eight elsewhere; the buses stop, the bus stops empty,
+  and families stroll with their children. Post boxes, drinking taps and
+  speed bumps where OpenStreetMap has them; cars rise over the bumps, front wheels then back. Potholes and dug-up trench strips in the
+  asphalt; potted plants on the balconies. Everywhere, the cars' shapes and colours are the shares on Israel's vehicle
   register: four in ten an SUV or crossover, more than four in ten white.
 - **Guessed**: a building with no height gets 4 storeys (by type: houses 2, garages 1,
   offices 5...), varied a storey up or down so a street is not one flat wall. A road with
@@ -1868,7 +1927,7 @@ near loom and the street look small and far. The filmed walks keep a phone's vie
   lobby and stairwell fitted to the outline, the right number of landings, and that many
   flats each split into rooms the way a block of its age is. Only the building you walk into
   is built inside, while you are in it.
-- Scenarios, more of them (the first two are built: tours and the getaway -- see
-  "Scenarios" above): a taxi shift, a delivery against the clock, an ambulance run, a wedding
-  convoy, the night tour, Shabbat eve, a kindergarten pick-up rush, an alien arrival -- the
-  list with grades is in DEV.md under "Scenarios".
+- Scenarios, more of them (built: tours, night tours, the getaway, the ambulance, a day,
+  dragons, the pizza rush, the taxi shift, the wedding convoy, Shabbat eve, the gan pick-up --
+  see "Scenarios" above): an alien arrival; at the gan, cars double-parked at the gates -- the list with grades is in DEV.md
+  under "Scenarios".

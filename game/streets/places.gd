@@ -227,7 +227,7 @@ func _shelter(b, p: Vector2, sub: int, seed: int) -> void:
 	var plate := face + across * 0.03
 	g._furn._box(b, Vector3(plate.x, gy + 2.2 if sub != 2 else gy + 1.9, plate.y), Vector3(1.1, 0.34, 0.03), g._tone["signblue"], bs)
 	var lb := Label3D.new()
-	lb.text = "מקלט"
+	lb.text = "מקלט" if g._hebrew() else "SHELTER"   # (Hebrew only in an Israeli town)
 	lb.font = g._font
 	lb.font_size = 64
 	lb.pixel_size = 0.0045

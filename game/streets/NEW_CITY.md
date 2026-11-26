@@ -94,13 +94,38 @@ A city in a new country needs a decision on each of these:
 - **`look`.** Today there are only `"med"` (palms, solar heaters) and `"north"`
   (conifers). A new region can mean a new look, with tiled pitched roofs, brick and
   other street-light types (`streets.gd`, wherever `look ==` appears).
-- **Signs and lettering.**
-  - Street-name plates are Hebrew and English, with Hebrew fonts and right-to-left
-    text handling.
-  - A Latin-script country needs its plate style: Dutch blue, French blue enamel, US
-    green.
-  - The US also needs yellow centre lines and lights hung over the far side of the
-    junction.
+- **Signs and lettering: the country (`_country()` in streets.gd).** `"il"`, `"nl"`,
+  `"fr"` or `"ca"`, from the level's `"country"` if it has one, else its `build`, else its
+  look (`med` is Israel, anything else Canada). A new country is a new value and a branch in
+  each place below; a new town in a done country needs nothing. What each one draws
+  (checked against the real conventions, 23 Nov 2026; `tests/country_signs.gd` shoots one of
+  each kind):
+
+  **Hebrew only in Israel** (the user, 24 Nov 2026): every Hebrew word the code writes
+  (עצור, האט, אוטובוס, the taxis' מונית, the plates' "רח'", a shelter's מקלט) goes through
+  `_hebrew()`: `_country()` is `"il"` and the level has no `"lang": "en"` (the showroom has it:
+  made up, look `med`, but not an Israeli town). Anywhere else English or the local word, and a
+  made-up place gets English names in its data. `tests/hebrew_scan.gd` reads every label,
+  plate and HUD text a town shows and FAILs on one Hebrew letter outside Israel.
+
+  | | Israel | Netherlands | France, Monaco | Canada |
+  |---|---|---|---|---|
+  | convention | Vienna | Vienna | Vienna | MUTCD (Canada's) |
+  | speed limit | round, red rim | round, red rim | round, red rim | white MAXIMUM board |
+  | centre line | white dashed (6.5 m+) | white dashed (6.5 m+) | white dashed (6.5 m+) | yellow, double on main roads, white edge lines |
+  | give-way line | dashed | shark's teeth | dashed | shark's teeth |
+  | inferred signs | stop onto secondary+, else give way | give way | give way | stop on every side street, give way on slip roads |
+  | stop sign | octagon with the hand | STOP | STOP | STOP |
+  | roundabout | blue disc | blue disc + give way at the line | red warning triangle + give way | yellow warning diamond + give way |
+  | no entry, one way, turn only, keep right | red disc, blue signs | as Israel | as Israel | black on white; Do Not Enter a red ring and slash over an arrow; turn only a green ring |
+  | crossing | blue square (also on light poles) | blue square | blue square | black walker on yellow-green |
+  | near a school | האט painted | red triangle, two children | red triangle, two children | yellow-green pentagon + SLOW painted |
+  | name plates | green, Hebrew + English | blue | blue | green |
+  | traffic lights | near-side pole | near-side pole | near-side pole | near-side pole, and heads on a mast arm over the far side (`_mast_arm`) |
+  | 30 zones | blue ZONE 30 square (furniture `street_signs`) | white ZONE 30 board where a 30 street leaves a faster one (`zone30_boards`) | as the Netherlands | none |
+
+  Not done: right-hand traffic only
+  (a left-hand country, the UK, mirrors all of this and the driving code too).
 - **Car mix.** It comes from Israel's register (`cities/data/vehicle_mix.json`). Use a
   national register where one is open (the Netherlands' RDW is), or otherwise a
   hand-set mix: pickups for the US, small hatchbacks for Europe.

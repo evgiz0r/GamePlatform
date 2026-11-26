@@ -14,7 +14,7 @@ the ground (`y`, bridges, tunnels, embankments, cuttings) are left out: they hav
 heights.
 
 The bakers (osm_city.py, fake_city.py) call level() before writing; run it on a city file
-baked before that to level it in place (running it again changes next to nothing):
+baked before that to level it in place (once: a second run evens out more, it is not a no-op):
 
     python3 tools/level_roads.py city.json [more.json ...]      (--check: measure, write nothing)
 """
@@ -60,14 +60,14 @@ def _roads(city):
         if rd.get("k") not in KINDS or any(f in rd for f in OFF_GROUND):
             continue
         pts = [(nd[2 * n] * k, nd[2 * n + 1] * k) for n in rd["n"]]
-        out.append((pts, float(rd.get("w", 6.0))))
+        out.append((pts, float(rd.get("w", 6.0)), list(rd["n"])))
     return out
 
 
 def lean(city, grid, h=None, step=4.0):
     """the share of the roads' length leaning more than 3%, 6%, 10% side to side, and the worst"""
     total, over, worst = 0.0, [0.0, 0.0, 0.0], 0.0
-    for pts, w in _roads(city):
+    for pts, w, _ids in _roads(city):
         for (ax, az), (bx, bz) in zip(pts, pts[1:]):
             L = math.hypot(bx - ax, bz - az)
             if L < 0.5:
@@ -87,6 +87,103 @@ def lean(city, grid, h=None, step=4.0):
     return total, [o / max(total, 1.0) for o in over], worst
 
 
+SMOOTH = 12.0     # m: how far along a road its height is evened out (a Gaussian's sigma)
+JUNCTION = 2.0   # m past the widest road's half width: a junction's disc, one height at its middle
+
+
+def profiles(city, grid, roads):
+    """Each road's surface height along it, evened out: the ground grid comes from a surface
+    model (it sees rooftops) on a grid 8-46 m a point, and a road laid on it climbed in facets
+    -- its slope changing by 20-35% from one 6 m to the next in places (a crest or a dip a car
+    pitches over), and a junction's arms meeting at different heights. Here every road's centre
+    line is sampled every 2 m, all of them one network (a junction's node one sample that its
+    arms share), and the heights are evened out over the network -- each sample moved half way
+    to its neighbours' mean, again and again (about a Gaussian of SMOOTH metres): through a
+    junction as along a street, so the town's roads stay one surface and every junction's arms
+    meet at one height. (Evened out road by road and pinned at the junctions to the ground
+    there, the pins put the bumps back: a junction every 40-80 m.) Returns per road (distance
+    along it of each sample, heights, the samples' points, {sample index: node})."""
+    key_of = {}    # ("n", node) -> sample id
+    xs, hs, nbr = [], [], []
+
+    def sample(p, key=None):
+        if key is not None and key in key_of:
+            return key_of[key]
+        i = len(hs)
+        xs.append(p)
+        hs.append(grid.at(*p))
+        nbr.append([])
+        if key is not None:
+            key_of[key] = i
+        return i
+
+    per_road = []
+    for pts, w, ids in roads:
+        ss, sid, node_at, xy = [0.0], [sample(pts[0], ("n", ids[0]))], {0: ids[0]}, [pts[0]]
+        for i in range(len(pts) - 1):
+            (ax, az), (bx, bz) = pts[i], pts[i + 1]
+            L = math.hypot(bx - ax, bz - az)
+            m = max(1, int(math.ceil(L / 2.0)))
+            for q in range(1, m + 1):
+                t = q / m
+                p = (ax + (bx - ax) * t, az + (bz - az) * t)
+                j = sample(p, ("n", ids[i + 1]) if q == m else None)
+                nbr[j].append(sid[-1])
+                nbr[sid[-1]].append(j)
+                ss.append(ss[-1] + L / m)
+                sid.append(j)
+                xy.append(p)
+            node_at[len(ss) - 1] = ids[i + 1]
+        per_road.append((ss, sid, xy, node_at))
+    # half way to the neighbours' mean, n times: a spread of about sqrt(n / 2) samples
+    h = hs[:]
+    n_it = int(round(2.0 * (SMOOTH / 2.0) ** 2))
+    for _ in range(n_it):
+        nh = h[:]
+        for i, nb in enumerate(nbr):
+            if nb:
+                nh[i] = 0.5 * h[i] + 0.5 * sum(h[j] for j in nb) / len(nb)
+        h = nh
+    out = []
+    for ss, sid, xy, node_at in per_road:
+        out.append((ss, [h[i] for i in sid], xy, node_at))
+    return out, key_of
+
+
+def _along(prof, s):
+    """a road's evened-out height s metres along it"""
+    ss, sm = prof[0], prof[1]
+    lo, hi = 0, len(ss) - 1
+    while hi - lo > 1:
+        mid = (lo + hi) // 2
+        if ss[mid] <= s:
+            lo = mid
+        else:
+            hi = mid
+    if ss[hi] - ss[lo] < 1e-6:
+        return sm[lo]
+    f = min(1.0, max(0.0, (s - ss[lo]) / (ss[hi] - ss[lo])))
+    return sm[lo] + (sm[hi] - sm[lo]) * f
+
+
+def kinks(city, grid, h=None, over=0.06):
+    """the share of the roads' length whose slope along changes by more than `over` from the
+    last 6 m to the next 6 m (a crest or a dip), sampled every 2 m"""
+    total = bad = 0
+    for pts, w, _ids in _roads(city):
+        prof = []
+        for (ax, az), (bx, bz) in zip(pts, pts[1:]):
+            L = math.hypot(bx - ax, bz - az)
+            m = max(1, int(L / 2.0))
+            for q in range(m):
+                prof.append(grid.at(ax + (bx - ax) * q / m, az + (bz - az) * q / m, h))
+        for i in range(3, len(prof) - 3):
+            total += 1
+            if abs((prof[i + 3] - prof[i]) - (prof[i] - prof[i - 3])) / 6.0 > over:
+                bad += 1
+    return bad / max(total, 1)
+
+
 def level(city):
     """Level the roads of `city` (a baked city dict) in its height grid; returns a few numbers."""
     hg = city.get("height")
@@ -98,10 +195,16 @@ def level(city):
     target = list(g.h)
     full = g.step * 1.42           # a cell's diagonal past the pavement: every triangle on the asphalt
     fade = g.step                  # then back to the hillside over one more cell
-    for pts, w in _roads(city):
+    roads = _roads(city)
+    profs, _pin = profiles(city, g, roads)
+    seen = {}     # grid point -> {road: its weight} (the nearest each road comes)
+    near_h = {}   # grid point -> {road: its height there}
+    for (pts, w, _ids), prof in zip(roads, profs):
         hw = w * 0.5
         reach = hw + PAVE + full + fade
-        for (ax, az), (bx, bz) in zip(pts, pts[1:]):
+        s0 = 0.0
+        for seg, ((ax, az), (bx, bz)) in enumerate(zip(pts, pts[1:])):
+            seg_len = math.hypot(bx - ax, bz - az)
             vx, vz = bx - ax, bz - az
             L2 = vx * vx + vz * vz
             i0 = max(0, int(math.floor((min(ax, bx) - reach - g.x0) / g.step)))
@@ -116,9 +219,21 @@ def level(city):
                     t = 0.0 if L2 < 1e-6 else min(1.0, max(0.0, ((px - ax) * vx + (pz - az) * vz) / L2))
                     cx, cz = ax + vx * t, az + vz * t
                     e = math.hypot(px - cx, pz - cz) - hw   # past the asphalt's edge
-                    if e < best[row + i] and e < PAVE + full + fade:
-                        best[row + i] = e
-                        target[row + i] = g.at(cx, cz)
+                    if e < PAVE + full + fade:
+                        # (every road near it has a say, the nearer the more: nearest-wins
+                        # gave the grid points between a divided road's two halves to one half
+                        # and the next to the other, 1.5 m apart on a hillside -- crests and
+                        # dips along both, Givatayim's HaShalom)
+                        wt = 1.0 / (max(e, 0.0) + 1.0) ** 2
+                        if wt > seen.get(row + i, {}).get(id(prof), 0.0):
+                            seen.setdefault(row + i, {})[id(prof)] = wt
+                            near_h.setdefault(row + i, {})[id(prof)] = _along(prof, s0 + t * seg_len)
+                        if e < best[row + i]:
+                            best[row + i] = e
+            s0 += seg_len
+    for r, ws in seen.items():
+        tw = sum(ws.values())
+        target[r] = sum(near_h[r][q] * wq for q, wq in ws.items()) / tw
     new = list(g.h)
     moved, most = 0, 0.0
     for r in range(n):
@@ -149,13 +264,16 @@ def main():
             continue
         g0 = Grid(city["height"], float(city.get("scale", 10)))
         before = lean(city, g0)
+        k0 = kinks(city, g0)
         got = level(city)
         g1 = Grid(city["height"], float(city.get("scale", 10)))
         after = lean(city, g1)
+        k1 = kinks(city, g1)
         print("%s: %.1f km of road; leaning over 3%% / 6%% / 10%% across: %.1f / %.1f / %.1f%% -> %.1f / %.1f / %.1f%%, "
-              "worst %.0f%% -> %.0f%%; %d of %d grid points moved, the most %.1f m" % (
+              "worst %.0f%% -> %.0f%%; crests and dips (slope along changing over 6%% in 6 m) %.2f%% -> %.2f%%; "
+              "%d of %d grid points moved, the most %.1f m" % (
                   path, before[0] / 1000.0, *(100 * v for v in before[1]), *(100 * v for v in after[1]),
-                  100 * before[2], 100 * after[2], got["moved"], got["points"], got["most"]))
+                  100 * before[2], 100 * after[2], 100 * k0, 100 * k1, got["moved"], got["points"], got["most"]))
         if not args.check:
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(city, f, ensure_ascii=False, separators=(",", ":"))
