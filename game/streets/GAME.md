@@ -1725,6 +1725,10 @@ night it gives way to the dark night sky.
 > 1 2 4 5 6 7 (colours and lighting; a real sky; street-level detail; the bus, the scooter
 > and people in the cars; the people; loading near-first)
 
+In Bedford most houses have a closed garden behind them, as on Fleetview Drive: a 1.8 m
+wooden board fence round the back, from the house's rear corners out 6-14 m, stopping at the
+neighbours' fences. They are solid: you walk or drive into them.
+
 ## Where the city comes from: a repeatable process
 
 Nothing about a city is in the code. A city is one JSON file in `cities/`, baked from
